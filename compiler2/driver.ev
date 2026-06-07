@@ -76,18 +76,28 @@
 --   · `true` / `false` atoms (cached Z3_mk_true/false handles)
 --   · negative int literals (sign folded at lex time when the Minus
 --     has no atom before it)
---   · `effects ∈ Seq(Effect) = ⟨Exit(<expr>)⟩` (single Exit literal)
+--   · effects literals with 1-2 elements (P3e): `⟨Exit(<expr>)⟩`,
+--     `⟨LibCall("lib","fn",⟨ArgStr(<lit-or-ident>)⟩), Exit(<expr>)⟩`
+--     — Exit args go through the Pratt FSM; LibCall elements parse
+--     as a fixed two-bite shape (pmode 5 element walk)
 --   · OpNeq lowers as mk_eq + mk_not (C2Not item); ENot likewise
---   · the build-context Effect enum is Exit-only (the kernel matches
---     effect variants by name at runtime; LibCall's Seq(LibArg) field
---     needs the multi-datatype sort registry — later)
---   · symbol table: 8 fixed slots
+--   · the build-context Effect floor is FULL (P3e): LibArg,
+--     __SeqOf_LibArg, and all five Effect variants are declared by
+--     the ED machine (translate2_ctor.ev's step claims) at ZINIT
+--   · USER ENUMS (P3e): one nullary-variant enum per compile
+--     (`enum Color = Red | Green | Blue`) — declared in the build
+--     context via the same ED machine at parse time; variant values
+--     resolve in expressions; enum-typed memberships declare consts
+--     of the enum sort and land in the manifest as `name:Enum`
+--   · String memberships/pins, string literals, `++` (str.++)
+--   · symbol table: 8 fixed slots; enum-value table: 6
 --   · no `_<name>` carry-over decls in the emitted unit (fixtures
 --     exit on tick 0; multi-tick user programs are later)
 --   · NOT covered: Real membership / float literals (021 — needs
---     FloatLit lexing in this FSM + mk_real_sort + mk_numeral),
---     String membership/pins, user enums, quantifiers, Seq values,
---     match/matches, composition lines, multi-name memberships
+--     FloatLit lexing in this FSM + mk_numeral), match/matches
+--     (006), payloaded user enum variants, multiple user enums,
+--     3+-element effects literals, quantifiers, Seq values,
+--     composition lines, multi-name memberships
 
 import "stdlib/kernel.ev"
 import "stdlib/z3_ast.ev"
@@ -112,8 +122,10 @@ enum C2Item =
     C2PinEq
     C2AssertTop
     C2Drop
-    C2ExitApp
-    C2SelectLen
+    C2PushH(Int)
+    C2App(Int, Int)
+    C2SelectEq(Int)
+    C2LenEq(Int)
 
 enum C2Items =
     C2INil
@@ -139,6 +151,7 @@ claim C2TokOp(t ∈ Token, o ∈ Op, rec ∈ Bool)
     c2to_an ∈ Bool = (t matches OpAnd)
     c2to_or ∈ Bool = (t matches OpOr)
     c2to_im ∈ Bool = (t matches OpImplies)
+    c2to_cc ∈ Bool = (t matches PlusPlus)
     o = (c2to_pl ? OpPlus
        : c2to_mi ? OpSub
        : c2to_st ? OpMul
@@ -152,10 +165,11 @@ claim C2TokOp(t ∈ Token, o ∈ Op, rec ∈ Bool)
        : c2to_an ? OpConj
        : c2to_or ? OpDisj
        : c2to_im ? OpImpl
+       : c2to_cc ? OpConcat
        : OpPlus)
     rec = (c2to_pl ∨ c2to_mi ∨ c2to_st ∨ c2to_sl ∨ c2to_eq
          ∨ c2to_lt ∨ c2to_gt ∨ c2to_le ∨ c2to_ge ∨ c2to_ne
-         ∨ c2to_an ∨ c2to_or ∨ c2to_im)
+         ∨ c2to_an ∨ c2to_or ∨ c2to_im ∨ c2to_cc)
 
 -- ── Token → atomic Expr ───────────────────────────────────────────
 claim C2AtomE(t ∈ Token, e ∈ Expr, ok ∈ Bool)
@@ -163,18 +177,23 @@ claim C2AtomE(t ∈ Token, e ∈ Expr, ok ∈ Bool)
     c2a_id  ∈ Bool = (t matches Ident(_))
     c2a_tr  ∈ Bool = (t matches KwTrue)
     c2a_fa  ∈ Bool = (t matches KwFalse)
+    c2a_sl  ∈ Bool = (t matches StringLit(_))
     c2a_n ∈ Int = match t
         IntLit(n) ⇒ n
         _ ⇒ 0
     c2a_s ∈ String = match t
         Ident(s) ⇒ s
         _ ⇒ ""
+    c2a_ls ∈ String = match t
+        StringLit(s) ⇒ s
+        _ ⇒ ""
     e = (c2a_int ? EInt(c2a_n)
        : c2a_id ? EIdent(c2a_s)
        : c2a_tr ? EIdent("true")
        : c2a_fa ? EIdent("false")
+       : c2a_sl ? EStr(c2a_ls)
        : ENoExpr)
-    ok = (c2a_int ∨ c2a_id ∨ c2a_tr ∨ c2a_fa)
+    ok = (c2a_int ∨ c2a_id ∨ c2a_tr ∨ c2a_fa ∨ c2a_sl)
 
 -- ── FTI token decode: (tag, payload0, string) → Token ─────────────
 -- Inverse of LexCharTag / LexKeywordTag plus the literal tags
@@ -220,6 +239,7 @@ claim FtiTok(tag ∈ Int, p0 ∈ Int, s ∈ String, t ∈ Token)
        : tag = 50 ? OpNot
        : tag = 51 ? OpForall
        : tag = 52 ? OpExists
+       : tag = 60 ? PlusPlus
        : tag = 62 ? Lt
        : tag = 63 ? Gt
        : tag = 64 ? Dot
@@ -255,12 +275,13 @@ claim C2Prec(o ∈ Op, n ∈ Int, right ∈ Bool, chain ∈ Bool)
     pc_su ∈ Bool = (o matches OpSub)
     pc_mu ∈ Bool = (o matches OpMul)
     pc_dv ∈ Bool = (o matches OpDiv)
+    pc_cc ∈ Bool = (o matches OpConcat)
     chain = (pc_lt ∨ pc_gt ∨ pc_le ∨ pc_ge ∨ pc_ne ∨ pc_eq)
     n = (pc_im ? 1
        : pc_or ? 3
        : pc_an ? 4
        : chain ? 5
-       : (pc_pl ∨ pc_su) ? 6
+       : (pc_pl ∨ pc_su ∨ pc_cc) ? 6
        : (pc_mu ∨ pc_dv) ? 7
        : 0)
     right = pc_im
@@ -505,16 +526,18 @@ claim driver_main
         StringResult(s) ⇒ s
         _ ⇒ ""
 
-    -- ── ZINIT — Z3 lifecycle + Effect datatype + effects consts ──
+    -- ── ZINIT — Z3 lifecycle + Effect-floor datatypes + consts ───
     -- zstep: -2 on tick 0, -1 on tick 1, then 0,1,2,… (capped).
+    -- zstep HOLDS at 9 while the ED machine (below) declares the
+    -- three Effect-floor datatypes (LibArg → __SeqOf_LibArg →
+    -- Effect) in the build context; it resumes at 10 when ed_src
+    -- reaches 3 with the machine idle.
     zstep  ∈ Int
     _zstep ∈ Int
-    zstep = (is_first_tick ? 0 - 2 : (_zstep < 60 ? _zstep + 1 : _zstep))
-
-    -- Parsed-data literal for the build-context Effect enum
-    -- (Exit-only — see header scope note).
-    d_v_exit ∈ EnumVariantDecl = EVDeclP("Exit", EVFCons(EVFType("Int"), EVFNil))
-    d_eff_decl ∈ EnumDeclAst = EnumD("Effect", EVCons(d_v_exit, EVNil))
+    ed_hold ∈ Bool = (_ed_act ≠ 0 ∨ _ed_src < 3)
+    zstep = (is_first_tick ? 0 - 2
+        : (_zstep = 9 ∧ ed_hold) ? 9
+        : (_zstep < 60 ? _zstep + 1 : _zstep))
 
     z_cfg ∈ Int
     _z_cfg ∈ Int
@@ -531,74 +554,471 @@ claim driver_main
     z_bsort ∈ Int
     _z_bsort ∈ Int
     z_bsort = (is_first_tick ? 0 : zstep = 6 ? d_cap_int : _z_bsort)
+    z_ssort ∈ Int
+    _z_ssort ∈ Int
+    z_ssort = (is_first_tick ? 0 : zstep = 7 ? d_cap_int : _z_ssort)
+    z_rsort ∈ Int
+    _z_rsort ∈ Int
+    z_rsort = (is_first_tick ? 0 : zstep = 8 ? d_cap_int : _z_rsort)
+    -- zstep holds at 9; latch the arena only on the FIRST 9-tick.
     z_arena ∈ Int
     _z_arena ∈ Int
-    z_arena = (is_first_tick ? 0 : zstep = 7 ? d_cap_int : _z_arena)
-    z_sym_exit ∈ Int
-    _z_sym_exit ∈ Int
-    z_sym_exit = (is_first_tick ? 0 : zstep = 8 ? d_cap_int : _z_sym_exit)
-    z_sym_is ∈ Int
-    _z_sym_is ∈ Int
-    z_sym_is = (is_first_tick ? 0 : zstep = 9 ? d_cap_int : _z_sym_is)
-    z_sym_f0 ∈ Int
-    _z_sym_f0 ∈ Int
-    z_sym_f0 = (is_first_tick ? 0 : zstep = 10 ? d_cap_int : _z_sym_f0)
-    z_sym_eff ∈ Int
-    _z_sym_eff ∈ Int
-    z_sym_eff = (is_first_tick ? 0 : zstep = 11 ? d_cap_int : _z_sym_eff)
-    z_ctor ∈ Int
-    _z_ctor ∈ Int
-    z_ctor = (is_first_tick ? 0 : zstep = 15 ? d_cap_int : _z_ctor)
-    z_clist ∈ Int
-    _z_clist ∈ Int
-    z_clist = (is_first_tick ? 0 : zstep = 17 ? d_cap_int : _z_clist)
-    z_effsort ∈ Int
-    _z_effsort ∈ Int
-    z_effsort = (is_first_tick ? 0 : zstep = 21 ? d_cap_int : _z_effsort)
-    z_exitdecl ∈ Int
-    _z_exitdecl ∈ Int
-    z_exitdecl = (is_first_tick ? 0 : zstep = 23 ? d_cap_int : _z_exitdecl)
+    z_arena = (is_first_tick ? 0
+        : (zstep = 9 ∧ _zstep = 8) ? d_cap_int : _z_arena)
     z_arrsort ∈ Int
     _z_arrsort ∈ Int
-    z_arrsort = (is_first_tick ? 0 : zstep = 24 ? d_cap_int : _z_arrsort)
+    z_arrsort = (is_first_tick ? 0 : zstep = 11 ? d_cap_int : _z_arrsort)
     z_sym_effs ∈ Int
     _z_sym_effs ∈ Int
-    z_sym_effs = (is_first_tick ? 0 : zstep = 25 ? d_cap_int : _z_sym_effs)
+    z_sym_effs = (is_first_tick ? 0 : zstep = 12 ? d_cap_int : _z_sym_effs)
     z_effs ∈ Int
     _z_effs ∈ Int
-    z_effs = (is_first_tick ? 0 : zstep = 26 ? d_cap_int : _z_effs)
+    z_effs = (is_first_tick ? 0 : zstep = 13 ? d_cap_int : _z_effs)
     z_sym_elen ∈ Int
     _z_sym_elen ∈ Int
-    z_sym_elen = (is_first_tick ? 0 : zstep = 27 ? d_cap_int : _z_sym_elen)
+    z_sym_elen = (is_first_tick ? 0 : zstep = 14 ? d_cap_int : _z_sym_elen)
     z_elen ∈ Int
     _z_elen ∈ Int
-    z_elen = (is_first_tick ? 0 : zstep = 28 ? d_cap_int : _z_elen)
+    z_elen = (is_first_tick ? 0 : zstep = 15 ? d_cap_int : _z_elen)
     z_zero ∈ Int
     _z_zero ∈ Int
-    z_zero = (is_first_tick ? 0 : zstep = 29 ? d_cap_int : _z_zero)
+    z_zero = (is_first_tick ? 0 : zstep = 16 ? d_cap_int : _z_zero)
     z_one ∈ Int
     _z_one ∈ Int
-    z_one = (is_first_tick ? 0 : zstep = 30 ? d_cap_int : _z_one)
+    z_one = (is_first_tick ? 0 : zstep = 17 ? d_cap_int : _z_one)
+    z_two ∈ Int
+    _z_two ∈ Int
+    z_two = (is_first_tick ? 0 : zstep = 18 ? d_cap_int : _z_two)
     z_true ∈ Int
     _z_true ∈ Int
-    z_true = (is_first_tick ? 0 : zstep = 31 ? d_cap_int : _z_true)
+    z_true = (is_first_tick ? 0 : zstep = 19 ? d_cap_int : _z_true)
     z_false ∈ Int
     _z_false ∈ Int
-    z_false = (is_first_tick ? 0 : zstep = 32 ? d_cap_int : _z_false)
+    z_false = (is_first_tick ? 0 : zstep = 20 ? d_cap_int : _z_false)
     tbase ∈ Int
     _tbase ∈ Int
-    tbase = (is_first_tick ? 0 : zstep = 33 ? d_cap_int : _tbase)
+    tbase = (is_first_tick ? 0 : zstep = 21 ? d_cap_int : _tbase)
 
-    -- Field-slot resolution for Exit's Int payload (pure).
-    d_exit_fty ∈ String
-    VariantFieldType(v ↦ d_v_exit, idx ↦ 0, ty ↦ d_exit_fty)
-    d_fss_slot ∈ Int
-    d_fss_ref ∈ Int
-    d_fss_self ∈ Bool
-    FieldSortSlot(enum_name ↦ "Effect", ty ↦ d_exit_fty,
-        int_sort_h ↦ z_isort, bool_sort_h ↦ z_bsort, string_sort_h ↦ 0,
+    -- ── ED — the enum-declaration machine ────────────────────────
+    -- ONE FSM declares any enum (parsed EnumDeclAst data) in the
+    -- build context through translate2_ctor.ev's step claims, then
+    -- harvests each variant's ctor func_decl + (nullary) value.
+    -- It runs FOUR times: three ZINIT floor runs (ed_src 0 LibArg,
+    -- 1 __SeqOf_LibArg, 2 Effect — zstep holds at 9) and once per
+    -- USER enum at parse time (pmode 4, ed_user).
+    --
+    -- Acts/steps (ed_act · ed_step; one effect per tick, captures
+    -- land next tick keyed off the (_ed_act, _ed_step) that ran):
+    --   act 1 (declare, per variant; n = field count):
+    --     0 name sym · 1 recog sym · 2..4 field syms (skip by n) ·
+    --     5 array-write batch (≤8 effects) · 6 mk_constructor ·
+    --     7 write ctor → ctors[vidx], advance variant
+    --   act 2 (finalize): 0 enum sort sym · 1 mk_constructor_list ·
+    --     2 write batch (sort name + clist) · 3 mk_datatypes ·
+    --     4 read sort · 5 capture sort, reset walk → harvest
+    --   act 3 (harvest, per variant): 0 read ctor handle · 1 query ·
+    --     2 read ctor decl · 3 capture decl (+ floor-decl register
+    --     latches), mk_app for nullary · 4 capture value (evt / floor
+    --     value latches), advance variant
+    --
+    -- Arena layout for the machine (reused per run; the WALK's
+    -- regions live at +200..247 and never overlap in time):
+    --   +0 fnames[3] · +24 fsorts[3] · +48 srefs (2 packed writes) ·
+    --   +64 ctors[5] · +104 sort_names[1] · +112 sorts_out[1] ·
+    --   +120 clists[1] · +128 query out block (16 + 8·3)
+    ed_act ∈ Int
+    _ed_act ∈ Int
+    ed_step ∈ Int
+    _ed_step ∈ Int
+    ed_src ∈ Int
+    _ed_src ∈ Int
+    ed_user ∈ Bool
+    _ed_user ∈ Bool
+    ed_name ∈ String
+    _ed_name ∈ String
+    ed_all ∈ EnumVariantList
+    _ed_all ∈ EnumVariantList
+    ed_vs ∈ EnumVariantList
+    _ed_vs ∈ EnumVariantList
+    ed_vidx ∈ Int
+    _ed_vidx ∈ Int
+    ed_nv ∈ Int
+    _ed_nv ∈ Int
+    ed_h_name ∈ Int
+    _ed_h_name ∈ Int
+    ed_h_rec ∈ Int
+    _ed_h_rec ∈ Int
+    ed_h_f0 ∈ Int
+    _ed_h_f0 ∈ Int
+    ed_h_f1 ∈ Int
+    _ed_h_f1 ∈ Int
+    ed_h_f2 ∈ Int
+    _ed_h_f2 ∈ Int
+
+    -- Floor enum decls as parsed data (pinned body vars — the oracle
+    -- gap forbids ctor literals in slot bindings). The Effect floor
+    -- comes from translate2_ctor.ev's EffectEnumDecl.
+    d_la_decl ∈ EnumDeclAst = EnumD("LibArg",
+        EVCons(EVDeclP("ArgInt", EVFCons(EVFType("Int"), EVFNil)),
+        EVCons(EVDeclP("ArgStr", EVFCons(EVFType("String"), EVFNil)),
+        EVCons(EVDeclP("ArgReal", EVFCons(EVFType("Real"), EVFNil)),
+        EVNil))))
+    d_sq_decl ∈ EnumDeclAst = EnumD("__SeqOf_LibArg",
+        EVCons(EVDecl("__Empty_LibArg"),
+        EVCons(EVDeclP("__Cell_LibArg",
+            EVFCons(EVFType("LibArg"),
+                EVFCons(EVFType("__SeqOf_LibArg"), EVFNil))),
+        EVNil)))
+    d_eff_decl ∈ EnumDeclAst
+    EffectEnumDecl(decl ↦ d_eff_decl)
+    d_la_vs ∈ EnumVariantList
+    EnumVariantListOf(decl ↦ d_la_decl, vs ↦ d_la_vs)
+    d_sq_vs ∈ EnumVariantList
+    EnumVariantListOf(decl ↦ d_sq_decl, vs ↦ d_sq_vs)
+    d_eff_vs ∈ EnumVariantList
+    EnumVariantListOf(decl ↦ d_eff_decl, vs ↦ d_eff_vs)
+
+    -- Start triggers. Floor runs start when zstep first parks at 9
+    -- and after each completed floor run; the user run starts from
+    -- the pmode-4 collection (ec_start, defined with the dispatcher).
+    ed_go_floor ∈ Bool = ((¬is_first_tick) ∧ (zstep = 9)
+        ∧ (_ed_act = 0) ∧ (_ed_src < 3))
+    ed_go ∈ Bool = (ed_go_floor ∨ ec_start)
+    ed_go_vs ∈ EnumVariantList = (ec_start ? ec_list_n
+        : _ed_src = 0 ? d_la_vs
+        : _ed_src = 1 ? d_sq_vs
+        : d_eff_vs)
+    ed_go_name ∈ String = (ec_start ? _ue_name
+        : _ed_src = 0 ? "LibArg"
+        : _ed_src = 1 ? "__SeqOf_LibArg"
+        : "Effect")
+
+    -- Current variant (head of the remaining list) + its shape.
+    -- The START tick already runs step 0 (the first variant's name
+    -- sym), so the peel must see the NEW list on that tick.
+    ed_vs_eff ∈ EnumVariantList = (ed_go ? ed_go_vs : _ed_vs)
+    ed_v ∈ EnumVariantDecl
+    ed_vrest ∈ EnumVariantList
+    ed_vs_nonempty ∈ Bool
+    EnumVariantsHead(vs ↦ ed_vs_eff, v ↦ ed_v, rest ↦ ed_vrest,
+        nonempty ↦ ed_vs_nonempty)
+    ed_n ∈ Int
+    VariantFieldCount(v ↦ ed_v, n ↦ ed_n)
+    ed_vname ∈ String = match ed_v
+        EVDecl(n) ⇒ n
+        EVDeclP(n, _) ⇒ n
+        EVNoVariant ⇒ ""
+    ed_nullary ∈ Bool = (ed_n = 0)
+
+    -- Field sort slots (FieldSortSlot + the driver's sort registry
+    -- for non-primitive field types — the translate2_ctor.ev header's
+    -- "driver registry" scope note).
+    ed_ty0 ∈ String
+    VariantFieldType(v ↦ ed_v, idx ↦ 0, ty ↦ ed_ty0)
+    ed_ty1 ∈ String
+    VariantFieldType(v ↦ ed_v, idx ↦ 1, ty ↦ ed_ty1)
+    ed_ty2 ∈ String
+    VariantFieldType(v ↦ ed_v, idx ↦ 2, ty ↦ ed_ty2)
+    ed_fs0 ∈ Int
+    ed_fr0 ∈ Int
+    ed_fself0 ∈ Bool
+    FieldSortSlot(enum_name ↦ _ed_name, ty ↦ ed_ty0,
+        int_sort_h ↦ z_isort, bool_sort_h ↦ z_bsort, string_sort_h ↦ z_ssort,
         self_sort_idx ↦ 0,
-        sort_slot ↦ d_fss_slot, ref_slot ↦ d_fss_ref, is_self ↦ d_fss_self)
+        sort_slot ↦ ed_fs0, ref_slot ↦ ed_fr0, is_self ↦ ed_fself0)
+    ed_fs1 ∈ Int
+    ed_fr1 ∈ Int
+    ed_fself1 ∈ Bool
+    FieldSortSlot(enum_name ↦ _ed_name, ty ↦ ed_ty1,
+        int_sort_h ↦ z_isort, bool_sort_h ↦ z_bsort, string_sort_h ↦ z_ssort,
+        self_sort_idx ↦ 0,
+        sort_slot ↦ ed_fs1, ref_slot ↦ ed_fr1, is_self ↦ ed_fself1)
+    ed_fs2 ∈ Int
+    ed_fr2 ∈ Int
+    ed_fself2 ∈ Bool
+    FieldSortSlot(enum_name ↦ _ed_name, ty ↦ ed_ty2,
+        int_sort_h ↦ z_isort, bool_sort_h ↦ z_bsort, string_sort_h ↦ z_ssort,
+        self_sort_idx ↦ 0,
+        sort_slot ↦ ed_fs2, ref_slot ↦ ed_fr2, is_self ↦ ed_fself2)
+    ed_slot0 ∈ Int = ((ed_fs0 ≠ 0 ∨ ed_fself0) ? ed_fs0
+        : ed_ty0 = "Real" ? z_rsort
+        : ed_ty0 = "LibArg" ? la_sort
+        : ed_ty0 = "Seq(LibArg)" ? sq_sort
+        : 0)
+    ed_slot1 ∈ Int = ((ed_fs1 ≠ 0 ∨ ed_fself1) ? ed_fs1
+        : ed_ty1 = "Real" ? z_rsort
+        : ed_ty1 = "LibArg" ? la_sort
+        : ed_ty1 = "Seq(LibArg)" ? sq_sort
+        : 0)
+    ed_slot2 ∈ Int = ((ed_fs2 ≠ 0 ∨ ed_fself2) ? ed_fs2
+        : ed_ty2 = "Real" ? z_rsort
+        : ed_ty2 = "LibArg" ? la_sort
+        : ed_ty2 = "Seq(LibArg)" ? sq_sort
+        : 0)
+    ed_pack01 ∈ Int
+    SortRefsPack2(ref_lo ↦ ed_fr0, ref_hi ↦ ed_fr1, packed ↦ ed_pack01)
+
+    -- The step to RUN this tick (pure transition off last tick).
+    ed_cur_act ∈ Int = (ed_go ? 1
+        : _ed_act = 1 ?
+            (_ed_step = 7 ? (ed_vs_nonempty ? 1 : 2) : 1)
+        : _ed_act = 2 ? (_ed_step = 5 ? 3 : 2)
+        : _ed_act = 3 ?
+            (_ed_step = 4 ? (ed_vs_nonempty ? 3 : 0) : 3)
+        : 0)
+    ed_cur_step ∈ Int = (ed_go ? 0
+        : _ed_act = 1 ?
+            (_ed_step = 0 ? 1
+            : _ed_step = 1 ? (ed_n = 0 ? 6 : 2)
+            : _ed_step = 2 ? (ed_n = 1 ? 5 : 3)
+            : _ed_step = 3 ? (ed_n = 2 ? 5 : 4)
+            : _ed_step = 4 ? 5
+            : _ed_step = 5 ? 6
+            : _ed_step = 6 ? 7
+            : 0)
+        : _ed_act = 2 ? (_ed_step = 5 ? 0 : _ed_step + 1)
+        : _ed_act = 3 ? (_ed_step = 4 ? 0 : _ed_step + 1)
+        : 0)
+    ed_running ∈ Bool = (ed_go ∨ _ed_act ≠ 0)
+    ed_done ∈ Bool = (_ed_act = 3 ∧ _ed_step = 4 ∧ (¬ed_vs_nonempty))
+    ed_done_user ∈ Bool = (ed_done ∧ _ed_user)
+
+    -- State carry. The variant walk advances at act-1 step 7 and
+    -- act-3 step 4; the harvest walk restarts at act-2 step 5.
+    ed_adv ∈ Bool = (ed_running ∧
+        ((ed_cur_act = 1 ∧ ed_cur_step = 7)
+        ∨ (ed_cur_act = 3 ∧ ed_cur_step = 4)))
+    ed_act = (is_first_tick ? 0
+        : ed_done ? 0
+        : ed_running ? ed_cur_act
+        : 0)
+    ed_step = (is_first_tick ? 0 : ed_running ? ed_cur_step : 0)
+    ed_src = (is_first_tick ? 0
+        : (ed_done ∧ (¬_ed_user)) ? _ed_src + 1
+        : _ed_src)
+    ed_user = (is_first_tick ? false
+        : ec_start ? true
+        : ed_done ? false
+        : _ed_user)
+    ed_name = (is_first_tick ? "" : ed_go ? ed_go_name : _ed_name)
+    ed_all = (is_first_tick ? EVNil : ed_go ? ed_go_vs : _ed_all)
+    ed_vs = (is_first_tick ? EVNil
+        : ed_go ? ed_go_vs
+        : ed_adv ? ed_vrest
+        : (ed_cur_act = 2 ∧ ed_cur_step = 5) ? _ed_all
+        : _ed_vs)
+    ed_vidx = (is_first_tick ? 0
+        : ed_go ? 0
+        : ed_adv ? _ed_vidx + 1
+        : (ed_cur_act = 2 ∧ ed_cur_step = 5) ? 0
+        : _ed_vidx)
+    ed_nv = (is_first_tick ? 0
+        : (ed_cur_act = 1 ∧ ed_cur_step = 7) ? _ed_vidx + 1
+        : _ed_nv)
+
+    -- Captures (keyed off the step that ran LAST tick).
+    ed_h_name = (is_first_tick ? 0
+        : (_ed_act = 1 ∧ _ed_step = 0) ? d_cap_int
+        : (_ed_act = 2 ∧ _ed_step = 0) ? d_cap_int
+        : _ed_h_name)
+    ed_h_rec = (is_first_tick ? 0
+        : (_ed_act = 1 ∧ _ed_step = 1) ? d_cap_int : _ed_h_rec)
+    ed_h_f0 = (is_first_tick ? 0
+        : (_ed_act = 1 ∧ _ed_step = 2) ? d_cap_int : _ed_h_f0)
+    ed_h_f1 = (is_first_tick ? 0
+        : (_ed_act = 1 ∧ _ed_step = 3) ? d_cap_int : _ed_h_f1)
+    ed_h_f2 = (is_first_tick ? 0
+        : (_ed_act = 1 ∧ _ed_step = 4) ? d_cap_int : _ed_h_f2)
+
+    -- Sort + floor-decl registers.
+    la_sort ∈ Int
+    _la_sort ∈ Int
+    sq_sort ∈ Int
+    _sq_sort ∈ Int
+    z_effsort ∈ Int
+    _z_effsort ∈ Int
+    ue_sort ∈ Int
+    _ue_sort ∈ Int
+    ed_sort_cap ∈ Bool = (_ed_act = 2 ∧ _ed_step = 4)
+    la_sort = (is_first_tick ? 0
+        : (ed_sort_cap ∧ (¬_ed_user) ∧ _ed_src = 0) ? d_cap_int : _la_sort)
+    sq_sort = (is_first_tick ? 0
+        : (ed_sort_cap ∧ (¬_ed_user) ∧ _ed_src = 1) ? d_cap_int : _sq_sort)
+    z_effsort = (is_first_tick ? 0
+        : (ed_sort_cap ∧ (¬_ed_user) ∧ _ed_src = 2) ? d_cap_int : _z_effsort)
+    ue_sort = (is_first_tick ? 0
+        : (ed_sort_cap ∧ _ed_user) ? d_cap_int : _ue_sort)
+
+    ed_decl_cap ∈ Bool = (_ed_act = 3 ∧ _ed_step = 2)
+    z_exitdecl ∈ Int
+    _z_exitdecl ∈ Int
+    z_exitdecl = (is_first_tick ? 0
+        : (ed_decl_cap ∧ ed_vname = "Exit") ? d_cap_int : _z_exitdecl)
+    z_lc_decl ∈ Int
+    _z_lc_decl ∈ Int
+    z_lc_decl = (is_first_tick ? 0
+        : (ed_decl_cap ∧ ed_vname = "LibCall") ? d_cap_int : _z_lc_decl)
+    z_argstr_decl ∈ Int
+    _z_argstr_decl ∈ Int
+    z_argstr_decl = (is_first_tick ? 0
+        : (ed_decl_cap ∧ ed_vname = "ArgStr") ? d_cap_int : _z_argstr_decl)
+    z_argint_decl ∈ Int
+    _z_argint_decl ∈ Int
+    z_argint_decl = (is_first_tick ? 0
+        : (ed_decl_cap ∧ ed_vname = "ArgInt") ? d_cap_int : _z_argint_decl)
+    z_cell_decl ∈ Int
+    _z_cell_decl ∈ Int
+    z_cell_decl = (is_first_tick ? 0
+        : (ed_decl_cap ∧ ed_vname = "__Cell_LibArg") ? d_cap_int : _z_cell_decl)
+    ed_val_cap ∈ Bool = (_ed_act = 3 ∧ _ed_step = 3 ∧ ed_nullary)
+    z_empty_val ∈ Int
+    _z_empty_val ∈ Int
+    z_empty_val = (is_first_tick ? 0
+        : (ed_val_cap ∧ ed_vname = "__Empty_LibArg") ? d_cap_int : _z_empty_val)
+
+    -- User-enum variant VALUE table (nullary variants of the one
+    -- supported user enum; `Red` in an expression resolves here).
+    evt_cnt ∈ Int
+    _evt_cnt ∈ Int
+    evt_n0 ∈ String
+    _evt_n0 ∈ String
+    evt_v0 ∈ Int
+    _evt_v0 ∈ Int
+    evt_n1 ∈ String
+    _evt_n1 ∈ String
+    evt_v1 ∈ Int
+    _evt_v1 ∈ Int
+    evt_n2 ∈ String
+    _evt_n2 ∈ String
+    evt_v2 ∈ Int
+    _evt_v2 ∈ Int
+    evt_n3 ∈ String
+    _evt_n3 ∈ String
+    evt_v3 ∈ Int
+    _evt_v3 ∈ Int
+    evt_n4 ∈ String
+    _evt_n4 ∈ String
+    evt_v4 ∈ Int
+    _evt_v4 ∈ Int
+    evt_n5 ∈ String
+    _evt_n5 ∈ String
+    evt_v5 ∈ Int
+    _evt_v5 ∈ Int
+    evt_add ∈ Bool = (ed_val_cap ∧ _ed_user)
+    evt_cnt = (is_first_tick ? 0 : evt_add ? _evt_cnt + 1 : _evt_cnt)
+    evt_n0 = (is_first_tick ? "" : (evt_add ∧ _evt_cnt = 0) ? ed_vname : _evt_n0)
+    evt_v0 = (is_first_tick ? 0 : (evt_add ∧ _evt_cnt = 0) ? d_cap_int : _evt_v0)
+    evt_n1 = (is_first_tick ? "" : (evt_add ∧ _evt_cnt = 1) ? ed_vname : _evt_n1)
+    evt_v1 = (is_first_tick ? 0 : (evt_add ∧ _evt_cnt = 1) ? d_cap_int : _evt_v1)
+    evt_n2 = (is_first_tick ? "" : (evt_add ∧ _evt_cnt = 2) ? ed_vname : _evt_n2)
+    evt_v2 = (is_first_tick ? 0 : (evt_add ∧ _evt_cnt = 2) ? d_cap_int : _evt_v2)
+    evt_n3 = (is_first_tick ? "" : (evt_add ∧ _evt_cnt = 3) ? ed_vname : _evt_n3)
+    evt_v3 = (is_first_tick ? 0 : (evt_add ∧ _evt_cnt = 3) ? d_cap_int : _evt_v3)
+    evt_n4 = (is_first_tick ? "" : (evt_add ∧ _evt_cnt = 4) ? ed_vname : _evt_n4)
+    evt_v4 = (is_first_tick ? 0 : (evt_add ∧ _evt_cnt = 4) ? d_cap_int : _evt_v4)
+    evt_n5 = (is_first_tick ? "" : (evt_add ∧ _evt_cnt = 5) ? ed_vname : _evt_n5)
+    evt_v5 = (is_first_tick ? 0 : (evt_add ∧ _evt_cnt = 5) ? d_cap_int : _evt_v5)
+
+    -- ED arena pointers.
+    ed_fn_p ∈ Int = z_arena
+    ed_fsort_p ∈ Int = z_arena + 24
+    ed_sr_p ∈ Int = z_arena + 48
+    ed_ctors_p ∈ Int = z_arena + 64
+    ed_names_p ∈ Int = z_arena + 104
+    ed_souts_p ∈ Int = z_arena + 112
+    ed_clists_p ∈ Int = z_arena + 120
+    ed_qout_p ∈ Int = z_arena + 128
+
+    -- ED effects. Sym handles emitted at step k are captured at the
+    -- k+1 tick; the write batch uses the just-landed one directly.
+    ed_f0u ∈ Int = (_ed_step = 2 ? d_cap_int : _ed_h_f0)
+    ed_f1u ∈ Int = (_ed_step = 3 ? d_cap_int : _ed_h_f1)
+    ed_f2u ∈ Int = (_ed_step = 4 ? d_cap_int : _ed_h_f2)
+    ede_nsym ∈ Effect
+    VariantNameSymStep(ctx_h ↦ z_ctx, v ↦ ed_v, eff ↦ ede_nsym)
+    ede_rsym ∈ Effect
+    VariantRecognizerSymStep(ctx_h ↦ z_ctx, v ↦ ed_v, eff ↦ ede_rsym)
+    ede_fsym0 ∈ Effect
+    VariantFieldSymStep(ctx_h ↦ z_ctx, v ↦ ed_v, idx ↦ 0, eff ↦ ede_fsym0)
+    ede_fsym1 ∈ Effect
+    VariantFieldSymStep(ctx_h ↦ z_ctx, v ↦ ed_v, idx ↦ 1, eff ↦ ede_fsym1)
+    ede_fsym2 ∈ Effect
+    VariantFieldSymStep(ctx_h ↦ z_ctx, v ↦ ed_v, idx ↦ 2, eff ↦ ede_fsym2)
+    edw_fn0 ∈ Effect
+    BuildMemWriteLong(addr ↦ ed_fn_p, value ↦ ed_f0u, eff ↦ edw_fn0)
+    edw_fn1 ∈ Effect
+    BuildMemWriteLong(addr ↦ ed_fn_p + 8, value ↦ ed_f1u, eff ↦ edw_fn1)
+    edw_fn2 ∈ Effect
+    BuildMemWriteLong(addr ↦ ed_fn_p + 16, value ↦ ed_f2u, eff ↦ edw_fn2)
+    edw_fs0 ∈ Effect
+    BuildMemWriteLong(addr ↦ ed_fsort_p, value ↦ ed_slot0, eff ↦ edw_fs0)
+    edw_fs1 ∈ Effect
+    BuildMemWriteLong(addr ↦ ed_fsort_p + 8, value ↦ ed_slot1, eff ↦ edw_fs1)
+    edw_fs2 ∈ Effect
+    BuildMemWriteLong(addr ↦ ed_fsort_p + 16, value ↦ ed_slot2, eff ↦ edw_fs2)
+    edw_sr01 ∈ Effect
+    BuildMemWriteLong(addr ↦ ed_sr_p, value ↦ ed_pack01, eff ↦ edw_sr01)
+    edw_sr2 ∈ Effect
+    BuildMemWriteLong(addr ↦ ed_sr_p + 8, value ↦ ed_fr2, eff ↦ edw_sr2)
+    ede_mkctor ∈ Effect
+    VariantMkConstructorStep(ctx_h ↦ z_ctx, v ↦ ed_v,
+        name_sym_h ↦ ed_h_name, recog_sym_h ↦ ed_h_rec,
+        fnames_p ↦ ed_fn_p, fsorts_p ↦ ed_fsort_p, srefs_p ↦ ed_sr_p,
+        eff ↦ ede_mkctor)
+    edw_ctor ∈ Effect
+    BuildMemWriteLong(addr ↦ ed_ctors_p + (8 * _ed_vidx), value ↦ d_cap_int,
+        eff ↦ edw_ctor)
+    ed_sortsym_decl ∈ EnumDeclAst = EnumD(_ed_name, EVNil)
+    ede_ssym ∈ Effect
+    EnumSortSymStep(ctx_h ↦ z_ctx, decl ↦ ed_sortsym_decl, eff ↦ ede_ssym)
+    ede_clist ∈ Effect
+    BuildZ3MkConstructorList(ctx_h ↦ z_ctx, n_ctors ↦ _ed_nv,
+        ctors_arr_p ↦ ed_ctors_p, eff ↦ ede_clist)
+    edw_nm ∈ Effect
+    BuildMemWriteLong(addr ↦ ed_names_p, value ↦ ed_h_name, eff ↦ edw_nm)
+    edw_cl ∈ Effect
+    BuildMemWriteLong(addr ↦ ed_clists_p, value ↦ d_cap_int, eff ↦ edw_cl)
+    ede_mkdt ∈ Effect
+    BuildZ3MkDatatypes(ctx_h ↦ z_ctx, n_sorts ↦ 1,
+        sort_names_arr_p ↦ ed_names_p, sorts_out_arr_p ↦ ed_souts_p,
+        ctor_lists_arr_p ↦ ed_clists_p, eff ↦ ede_mkdt)
+    ede_rdsort ∈ Effect
+    BuildMemReadLong(addr ↦ ed_souts_p, eff ↦ ede_rdsort)
+    ede_rdctor ∈ Effect
+    BuildMemReadLong(addr ↦ ed_ctors_p + (8 * _ed_vidx), eff ↦ ede_rdctor)
+    ede_query ∈ Effect
+    VariantQueryStep(ctx_h ↦ z_ctx, ctor_h ↦ d_cap_int, v ↦ ed_v,
+        out_base_p ↦ ed_qout_p, eff ↦ ede_query)
+    ede_rddecl ∈ Effect
+    BuildMemReadLong(addr ↦ ed_qout_p, eff ↦ ede_rddecl)
+    ede_app0 ∈ Effect
+    CtorAppStep(ctx_h ↦ z_ctx, ctor_decl_h ↦ d_cap_int, n_args ↦ 0,
+        args_p ↦ 0, eff ↦ ede_app0)
+    ede_filler ∈ Effect = LibCall("libc", "getpid", ⟨⟩)
+
+    ed_eff1 ∈ Effect = (ed_cur_act = 1 ?
+            (ed_cur_step = 0 ? ede_nsym
+            : ed_cur_step = 1 ? ede_rsym
+            : ed_cur_step = 2 ? ede_fsym0
+            : ed_cur_step = 3 ? ede_fsym1
+            : ed_cur_step = 4 ? ede_fsym2
+            : ed_cur_step = 6 ? ede_mkctor
+            : edw_ctor)
+        : ed_cur_act = 2 ?
+            (ed_cur_step = 0 ? ede_ssym
+            : ed_cur_step = 1 ? ede_clist
+            : ed_cur_step = 3 ? ede_mkdt
+            : ed_cur_step = 4 ? ede_rdsort
+            : ede_filler)
+        : ed_cur_act = 3 ?
+            (ed_cur_step = 0 ? ede_rdctor
+            : ed_cur_step = 1 ? ede_query
+            : ed_cur_step = 2 ? ede_rddecl
+            : ed_cur_step = 3 ? (ed_nullary ? ede_app0 : ede_filler)
+            : ede_filler)
+        : ede_filler)
+    ed_w5 ∈ Bool = (ed_cur_act = 1 ∧ ed_cur_step = 5)
+    ed_w2 ∈ Bool = (ed_cur_act = 2 ∧ ed_cur_step = 2)
 
     -- ZINIT effects (one per zstep).
     ze_cfg ∈ Effect
@@ -613,47 +1033,12 @@ claim driver_main
     BuildZ3MkIntSort(ctx_h ↦ z_ctx, eff ↦ ze_isort)
     ze_bsort ∈ Effect
     BuildZ3MkBoolSort(ctx_h ↦ z_ctx, eff ↦ ze_bsort)
+    ze_ssort ∈ Effect
+    BuildZ3MkStringSort(ctx_h ↦ z_ctx, eff ↦ ze_ssort)
+    ze_rsort ∈ Effect
+    BuildZ3MkRealSort(ctx_h ↦ z_ctx, eff ↦ ze_rsort)
     ze_arena ∈ Effect
     BuildMalloc(n_bytes ↦ 512, eff ↦ ze_arena)
-    ze_sym_exit ∈ Effect
-    VariantNameSymStep(ctx_h ↦ z_ctx, v ↦ d_v_exit, eff ↦ ze_sym_exit)
-    ze_sym_is ∈ Effect
-    VariantRecognizerSymStep(ctx_h ↦ z_ctx, v ↦ d_v_exit, eff ↦ ze_sym_is)
-    ze_sym_f0 ∈ Effect
-    VariantFieldSymStep(ctx_h ↦ z_ctx, v ↦ d_v_exit, idx ↦ 0, eff ↦ ze_sym_f0)
-    ze_sym_eff ∈ Effect
-    EnumSortSymStep(ctx_h ↦ z_ctx, decl ↦ d_eff_decl, eff ↦ ze_sym_eff)
-    ze_w_fn ∈ Effect
-    BuildMemWriteLong(addr ↦ z_arena, value ↦ z_sym_f0, eff ↦ ze_w_fn)
-    ze_w_fs ∈ Effect
-    BuildMemWriteLong(addr ↦ z_arena + 8, value ↦ d_fss_slot, eff ↦ ze_w_fs)
-    ze_w_sr ∈ Effect
-    BuildMemWriteLong(addr ↦ z_arena + 16, value ↦ d_fss_ref, eff ↦ ze_w_sr)
-    ze_mkctor ∈ Effect
-    VariantMkConstructorStep(ctx_h ↦ z_ctx, v ↦ d_v_exit,
-        name_sym_h ↦ z_sym_exit, recog_sym_h ↦ z_sym_is,
-        fnames_p ↦ z_arena, fsorts_p ↦ z_arena + 8, srefs_p ↦ z_arena + 16,
-        eff ↦ ze_mkctor)
-    ze_w_ct ∈ Effect
-    BuildMemWriteLong(addr ↦ z_arena + 24, value ↦ z_ctor, eff ↦ ze_w_ct)
-    ze_clist ∈ Effect
-    BuildZ3MkConstructorList(ctx_h ↦ z_ctx, n_ctors ↦ 1,
-        ctors_arr_p ↦ z_arena + 24, eff ↦ ze_clist)
-    ze_w_nm ∈ Effect
-    BuildMemWriteLong(addr ↦ z_arena + 32, value ↦ z_sym_eff, eff ↦ ze_w_nm)
-    ze_w_cl ∈ Effect
-    BuildMemWriteLong(addr ↦ z_arena + 48, value ↦ z_clist, eff ↦ ze_w_cl)
-    ze_mkdt ∈ Effect
-    BuildZ3MkDatatypes(ctx_h ↦ z_ctx, n_sorts ↦ 1,
-        sort_names_arr_p ↦ z_arena + 32, sorts_out_arr_p ↦ z_arena + 40,
-        ctor_lists_arr_p ↦ z_arena + 48, eff ↦ ze_mkdt)
-    ze_rd_sort ∈ Effect
-    BuildMemReadLong(addr ↦ z_arena + 40, eff ↦ ze_rd_sort)
-    ze_query ∈ Effect
-    VariantQueryStep(ctx_h ↦ z_ctx, ctor_h ↦ z_ctor, v ↦ d_v_exit,
-        out_base_p ↦ z_arena + 56, eff ↦ ze_query)
-    ze_rd_decl ∈ Effect
-    BuildMemReadLong(addr ↦ z_arena + 56, eff ↦ ze_rd_decl)
     ze_arrsort ∈ Effect
     BuildZ3MkArraySort(ctx_h ↦ z_ctx, idx_sort_h ↦ z_isort,
         val_sort_h ↦ z_effsort, eff ↦ ze_arrsort)
@@ -671,6 +1056,8 @@ claim driver_main
     BuildZ3MkInt(ctx_h ↦ z_ctx, val ↦ 0, sort_h ↦ z_isort, eff ↦ ze_zero)
     ze_one ∈ Effect
     BuildZ3MkInt(ctx_h ↦ z_ctx, val ↦ 1, sort_h ↦ z_isort, eff ↦ ze_one)
+    ze_two ∈ Effect
+    BuildZ3MkInt(ctx_h ↦ z_ctx, val ↦ 2, sort_h ↦ z_isort, eff ↦ ze_two)
     ze_true ∈ Effect
     BuildZ3MkTrue(ctx_h ↦ z_ctx, eff ↦ ze_true)
     ze_false ∈ Effect
@@ -686,7 +1073,7 @@ claim driver_main
     _next_pos ∈ Int
     pos = (is_first_tick ? 0 - 1
         : ((¬_got_path) ? 0 - 1
-        : (_zstep < 33 ? 0 - 1
+        : (_zstep < 21 ? 0 - 1
         : (_pos < 0 ? 0 : _next_pos))))
 
     partial_str  ∈ String
@@ -787,16 +1174,28 @@ claim driver_main
         tag1 ↦ k_tag1, a_tag0 ↦ k_atag0, a_p0 ↦ k_ap0, a_tag1 ↦ k_atag1,
         count_n ↦ k_cn, last_n ↦ k_ln, prev_n ↦ k_pn)
 
+    -- `++` (PlusPlus, tag 60): a two-char ASCII token the per-char
+    -- scanner can't see. Detected by peeking the next char (same
+    -- trick as the `--` comment); the written op tag is overridden
+    -- 8 → 60 and the scan advances 2.
+    lx_pp ∈ Bool = ((cur_char = "+") ∧ (lx_next_char = "+")
+        ∧ in_range ∧ (¬_in_strlit))
+    k_tag0pp ∈ Int = ((lx_pp ∧ k_kind = 1) ? 60 : k_tag0)
+    k_tag1pp ∈ Int = ((lx_pp ∧ (k_kind = 4 ∨ k_kind = 5 ∨ k_kind = 6))
+        ? 60 : k_tag1)
+
     lx_count = (is_first_tick ? 0 : k_cn)
-    lx_last = (is_first_tick ? 0 : k_ln)
+    lx_last = (is_first_tick ? 0
+        : (lx_pp ∧ k_kind ≠ 0) ? 60
+        : k_ln)
     lx_prev = (is_first_tick ? 0 : k_pn)
     lx_pend = (is_first_tick ? 0 - 1
         : ((k_kind = 3 ∨ k_kind = 5) ? k_ap0 : 0 - 1))
     lx_have_pend ∈ Bool = (_lx_pend ≥ 0)
 
-    w_tag0e ∈ Effect = LibCall("__mem", "write_long", ⟨ArgInt(k_atag0), ArgInt(k_tag0)⟩)
+    w_tag0e ∈ Effect = LibCall("__mem", "write_long", ⟨ArgInt(k_atag0), ArgInt(k_tag0pp)⟩)
     w_p0e   ∈ Effect = LibCall("__mem", "write_long", ⟨ArgInt(k_ap0), ArgInt(k_p0)⟩)
-    w_tag1e ∈ Effect = LibCall("__mem", "write_long", ⟨ArgInt(k_atag1), ArgInt(k_tag1)⟩)
+    w_tag1e ∈ Effect = LibCall("__mem", "write_long", ⟨ArgInt(k_atag1), ArgInt(k_tag1pp)⟩)
     e_dup   ∈ Effect = LibCall("libc", "strdup", ⟨ArgStr(k_str0)⟩)
     w_pend  ∈ Effect = LibCall("__mem", "write_long", ⟨ArgInt(_lx_pend), ArgInt(d_cap_int)⟩)
     w_eof   ∈ Effect = LibCall("__mem", "write_long", ⟨ArgInt(tbase + (lx_count * 32)), ArgInt(13)⟩)
@@ -817,7 +1216,8 @@ claim driver_main
     next_pos = (is_first_tick ? 0
         : (lx_comment ? lx_comment_to
         : (lx_skip_ws ? pos + lx_ws_adv
-        : pos + 1)))
+        : (lx_pp ? pos + 2
+        : pos + 1))))
 
     -- ── PHASE control (0 lex · 2 parse · 3 emit; REVERSE deleted) ─
     phase  ∈ Int
@@ -1044,12 +1444,29 @@ claim driver_main
     ww_l5 ∈ TokenList = match ww_l4
         TLCons(_, r) ⇒ r
         TLNil ⇒ TLNil
+    ww_t5 ∈ Token = match ww_l5
+        TLCons(t, _) ⇒ t
+        TLNil ⇒ EofTok
+    ww_l6 ∈ TokenList = match ww_l5
+        TLCons(_, r) ⇒ r
+        TLNil ⇒ TLNil
+    ww_t6 ∈ Token = match ww_l6
+        TLCons(t, _) ⇒ t
+        TLNil ⇒ EofTok
+    ww_l7 ∈ TokenList = match ww_l6
+        TLCons(_, r) ⇒ r
+        TLNil ⇒ TLNil
 
-    -- per-mode lookahead need; gate + fetch trigger
+    -- per-mode lookahead need; gate + fetch trigger. pmode 4 only
+    -- reads tokens while COLLECTING variant names (the ED machine,
+    -- once started, consumes none); pmode 5 (effects elements) may
+    -- need the full window for the LibCall bites.
     w_need ∈ Int = (¬in_parse ? 0
         : _pmode = 0 ? 3
         : _pmode = 1 ? 1
         : _pmode = 3 ? 1
+        : _pmode = 4 ? (_ed_act = 0 ? 2 : 0)
+        : _pmode = 5 ? (d_witems_nil ? 8 : 0)
         : d_witems_nil ? 5
         : 0)
     tok_ready ∈ Bool = ((_fmode = 0) ∧ (w_need > 0) ∧ (w_rem ≥ w_need))
@@ -1092,12 +1509,124 @@ claim driver_main
     d_name_ok ∈ Bool = (d_cl_name = target)
     d_is_param ∈ Bool = (ww_t2 matches LParen)
 
+    -- user enum declarations: a KwEnum head whose name is NOT one
+    -- of the floor enums already declared at ZINIT enters the
+    -- collection mode (pmode 4) instead of the skip walk. One user
+    -- enum per compile (ue_done gates re-entry); nullary variants
+    -- only (a LParen after a variant name bails to skip).
+    d_head_is_enum ∈ Bool = (ww_t0 matches KwEnum)
+    d_en_reserved ∈ Bool = (d_cl_name = "Effect" ∨ d_cl_name = "Result"
+        ∨ d_cl_name = "LibArg")
+
     d_in_dispatch ∈ Bool = (in_parse ∧ (_pmode = 0) ∧ tok_ready)
     d_enter_claim ∈ Bool = (d_in_dispatch ∧ (¬d_items_nil) ∧ d_head_is_claim ∧ d_name_ok ∧ (¬d_is_param))
-    d_enter_skip  ∈ Bool = (d_in_dispatch ∧ (¬d_items_nil) ∧ (¬d_enter_claim))
+    d_enter_edecl ∈ Bool = (d_in_dispatch ∧ (¬d_items_nil)
+        ∧ d_head_is_enum ∧ (¬d_en_reserved) ∧ (¬_ue_done)
+        ∧ (ww_t1 matches Ident(_)) ∧ (ww_t2 matches Eq))
+    d_enter_skip  ∈ Bool = (d_in_dispatch ∧ (¬d_items_nil) ∧ (¬d_enter_claim) ∧ (¬d_enter_edecl))
     d_all_done    ∈ Bool = (d_in_dispatch ∧ d_items_nil)
     d_in_skip     ∈ Bool = (in_parse ∧ (_pmode = 1) ∧ tok_ready)
     d_in_claim    ∈ Bool = (in_parse ∧ (_pmode = 2))
+
+    -- user enum name + done flag
+    ue_name ∈ String
+    _ue_name ∈ String
+    ue_name = (is_first_tick ? "" : d_enter_edecl ? d_cl_name : _ue_name)
+    ue_done ∈ Bool
+    _ue_done ∈ Bool
+    ue_done = (is_first_tick ? false : ed_done_user ? true : _ue_done)
+
+    -- pmode 4 collection: one `Vname |` (or final `Vname`) per tick,
+    -- prepend-accumulated (the declared variant order is REVERSED vs
+    -- source — harmless: declaration and harvest peel the same list).
+    ec_active ∈ Bool = (in_parse ∧ (_pmode = 4) ∧ (_ed_act = 0)
+        ∧ (¬ed_done_user) ∧ tok_ready)
+    ec_vname ∈ String = match ww_t0
+        Ident(s) ⇒ s
+        _ ⇒ ""
+    ec_v_ok ∈ Bool = (ww_t0 matches Ident(_))
+    ec_more ∈ Bool = (ww_t1 matches Pipe)
+    ec_payload ∈ Bool = (ww_t1 matches LParen)
+    ec_bail ∈ Bool = (ec_active ∧ (ec_payload ∨ (¬ec_v_ok)))
+    ec_take ∈ Bool = (ec_active ∧ ec_v_ok ∧ (¬ec_payload))
+    ec_start ∈ Bool = (ec_take ∧ (¬ec_more))
+    ec_list ∈ EnumVariantList
+    _ec_list ∈ EnumVariantList
+    ec_list_n ∈ EnumVariantList = (ec_take
+        ? EVCons(EVDecl(ec_vname), _ec_list) : _ec_list)
+    ec_list = (is_first_tick ? EVNil
+        : d_enter_edecl ? EVNil
+        : ec_take ? ec_list_n
+        : _ec_list)
+
+    -- pmode 5: effects-literal element walk. Items run under pmode 5
+    -- exactly as under the claim walk; this dispatcher fires only
+    -- when the element items have drained.
+    el_cnt ∈ Int
+    _el_cnt ∈ Int
+    el_lc ∈ Int
+    _el_lc ∈ Int
+    el_lib ∈ String
+    _el_lib ∈ String
+    el_fn ∈ String
+    _el_fn ∈ String
+
+    d_in_el ∈ Bool = (in_parse ∧ (_pmode = 5) ∧ d_witems_nil ∧ tok_ready)
+    el_w_t2s ∈ String = match ww_t2
+        StringLit(s) ⇒ s
+        _ ⇒ ""
+    el_w_t4s ∈ String = match ww_t4
+        StringLit(s) ⇒ s
+        _ ⇒ ""
+    el_head_name ∈ String = match ww_t0
+        Ident(s) ⇒ s
+        _ ⇒ ""
+    -- element dispatch (el_lc = 0)
+    el_exit_enter ∈ Bool = (d_in_el ∧ (_el_lc = 0)
+        ∧ (el_head_name = "Exit") ∧ (ww_t1 matches LParen))
+    el_lc_enter ∈ Bool = (d_in_el ∧ (_el_lc = 0)
+        ∧ (el_head_name = "LibCall") ∧ (ww_t1 matches LParen)
+        ∧ (ww_t2 matches StringLit(_)) ∧ (ww_t3 matches Comma)
+        ∧ (ww_t4 matches StringLit(_)) ∧ (ww_t5 matches Comma))
+    el_comma ∈ Bool = (d_in_el ∧ (_el_lc = 0) ∧ (ww_t0 matches Comma))
+    el_close ∈ Bool = (d_in_el ∧ (_el_lc = 0) ∧ (ww_t0 matches OpSeqClose))
+    -- LibCall bite 2: `⟨ ArgStr ( X ) ⟩ )` with X a string literal,
+    -- an ident, or an int literal (ArgInt).
+    el_arg_name ∈ String = match ww_t1
+        Ident(s) ⇒ s
+        _ ⇒ ""
+    el_arg_e ∈ Expr
+    el_arg_ok ∈ Bool
+    C2AtomE(t ↦ ww_t3, e ↦ el_arg_e, ok ↦ el_arg_ok)
+    el_b2_shape ∈ Bool = ((ww_t0 matches OpSeqOpen)
+        ∧ (ww_t1 matches Ident(_)) ∧ (ww_t2 matches LParen)
+        ∧ el_arg_ok ∧ (ww_t4 matches RParen)
+        ∧ (ww_t5 matches OpSeqClose) ∧ (ww_t6 matches RParen))
+    el_b2 ∈ Bool = (d_in_el ∧ (_el_lc = 1) ∧ el_b2_shape)
+    el_b2_bad ∈ Bool = (d_in_el ∧ (_el_lc = 1) ∧ (¬el_b2_shape))
+    el_bad ∈ Bool = (d_in_el ∧ (_el_lc = 0)
+        ∧ (¬el_exit_enter) ∧ (¬el_lc_enter) ∧ (¬el_comma) ∧ (¬el_close))
+    el_argdecl ∈ Int = (el_arg_name = "ArgInt" ? z_argint_decl
+        : z_argstr_decl)
+    el_lc_items ∈ C2Items = C2ICons(C2Process(EStr(_el_lib)),
+        C2ICons(C2Process(EStr(_el_fn)),
+        C2ICons(C2Process(el_arg_e),
+        C2ICons(C2App(el_argdecl, 1),
+        C2ICons(C2PushH(z_empty_val),
+        C2ICons(C2App(z_cell_decl, 2),
+        C2ICons(C2App(z_lc_decl, 3),
+        C2ICons(C2SelectEq(_el_cnt), C2INil))))))))
+
+    el_lc = (is_first_tick ? 0
+        : el_lc_enter ? 1
+        : (el_b2 ∨ el_b2_bad) ? 0
+        : _el_lc)
+    el_lib = (is_first_tick ? "" : el_lc_enter ? el_w_t2s : _el_lib)
+    el_fn = (is_first_tick ? "" : el_lc_enter ? el_w_t4s : _el_fn)
+    el_cnt = (is_first_tick ? 0
+        : d_enter_el ? 0
+        : ((p_done ∧ (¬pr_bad) ∧ _pk_kind = 3) ∨ el_b2) ? _el_cnt + 1
+        : _el_cnt)
 
     -- skip machine: walk one token per tick to the next top-level kw.
     d_skipl_nil ∈ Bool = (ww_t0 matches EofTok)
@@ -1120,6 +1649,8 @@ claim driver_main
     _tmp_h ∈ Int
     fstr  ∈ String
     _fstr ∈ String
+    cdstr  ∈ String
+    _cdstr ∈ String
 
     -- pend application (the capture tick of the previous builder).
     d_hstk_in ∈ C2H = ((_pend = 1 ∨ _pend = 3) ? C2HCons(d_cap_int, _hstk) : _hstk)
@@ -1212,7 +1743,10 @@ claim driver_main
         C2INil ⇒ C2INil
 
     d_classify   ∈ Bool = (d_in_claim ∧ d_witems_nil ∧ tok_ready)
-    d_processing ∈ Bool = (d_in_claim ∧ (¬d_witems_nil))
+    -- items drain identically under the claim walk and the effects
+    -- element walk (pmode 5)
+    d_processing ∈ Bool = ((d_in_claim ∨ (in_parse ∧ (_pmode = 5)))
+        ∧ (¬d_witems_nil))
 
     d_it_proc    ∈ Bool = (d_whead matches C2Process(_))
     d_it_op      ∈ Bool = (d_whead matches C2Op(_))
@@ -1223,8 +1757,10 @@ claim driver_main
     d_it_pineq   ∈ Bool = (d_whead matches C2PinEq)
     d_it_assert  ∈ Bool = (d_whead matches C2AssertTop)
     d_it_drop    ∈ Bool = (d_whead matches C2Drop)
-    d_it_exitapp ∈ Bool = (d_whead matches C2ExitApp)
-    d_it_sellen  ∈ Bool = (d_whead matches C2SelectLen)
+    d_it_pushh   ∈ Bool = (d_whead matches C2PushH(_))
+    d_it_app     ∈ Bool = (d_whead matches C2App(_, _))
+    d_it_seleq   ∈ Bool = (d_whead matches C2SelectEq(_))
+    d_it_leneq   ∈ Bool = (d_whead matches C2LenEq(_))
 
     d_pe ∈ Expr = match d_whead
         C2Process(e) ⇒ e
@@ -1238,10 +1774,29 @@ claim driver_main
     d_dc_sc ∈ Int = match d_whead
         C2DeclConst(_, s) ⇒ s
         _ ⇒ 0
+    d_ph_h ∈ Int = match d_whead
+        C2PushH(h) ⇒ h
+        _ ⇒ 0
+    d_app_d ∈ Int = match d_whead
+        C2App(h, _) ⇒ h
+        _ ⇒ 0
+    d_app_n ∈ Int = match d_whead
+        C2App(_, n) ⇒ n
+        _ ⇒ 0
+    d_sel_i ∈ Int = match d_whead
+        C2SelectEq(i) ⇒ i
+        _ ⇒ 0
+    d_len_n ∈ Int = match d_whead
+        C2LenEq(n) ⇒ n
+        _ ⇒ 0
 
     -- Expr-node decomposition via the pass claims.
     d_pe_is_int ∈ Bool = (d_pe matches EInt(_))
     d_pe_is_id  ∈ Bool = (d_pe matches EIdent(_))
+    d_pe_is_str ∈ Bool = (d_pe matches EStr(_))
+    d_pe_str ∈ String = match d_pe
+        EStr(s) ⇒ s
+        _ ⇒ ""
     d_lkname ∈ String = match d_pe
         EIdent(s) ⇒ s
         _ ⇒ ""
@@ -1275,6 +1830,12 @@ claim driver_main
         : st_n5 = d_lkname ? st_h5
         : st_n6 = d_lkname ? st_h6
         : st_n7 = d_lkname ? st_h7
+        : evt_n0 = d_lkname ? evt_v0
+        : evt_n1 = d_lkname ? evt_v1
+        : evt_n2 = d_lkname ? evt_v2
+        : evt_n3 = d_lkname ? evt_v3
+        : evt_n4 = d_lkname ? evt_v4
+        : evt_n5 = d_lkname ? evt_v5
         : 0)
 
     -- Op family flags (via the pass discriminators).
@@ -1283,7 +1844,8 @@ claim driver_main
     d_op_bool_arr ∈ Bool
     BoolOpIsArray(op ↦ d_op, out ↦ d_op_bool_arr)
     d_op_is_div ∈ Bool = (d_op matches OpDiv)
-    d_op_arr ∈ Bool = (d_op_arith_arr ∨ d_op_bool_arr)
+    d_op_cc ∈ Bool = (d_op matches OpConcat)
+    d_op_arr ∈ Bool = (d_op_arith_arr ∨ d_op_bool_arr ∨ d_op_cc)
 
     -- ── LINE CLASSIFIER (pure; runs when witems is empty) ─────────
     -- Reads the shared window: c_t0..c_t4 = ww_t0..ww_t4 (lookahead
@@ -1308,7 +1870,12 @@ claim driver_main
         Ident(s) ⇒ s
         _ ⇒ ""
     c_is_nat ∈ Bool = (c_type_str = "Nat")
-    c_sc ∈ Int = (c_type_str = "Bool" ? 1 : 0)
+    -- sort class: 0 Int (incl Nat) · 1 Bool · 2 the user enum ·
+    -- 3 String
+    c_sc ∈ Int = (c_type_str = "Bool" ? 1
+        : (_ue_done ∧ (c_type_str = _ue_name)) ? 2
+        : c_type_str = "String" ? 3
+        : 0)
     c_pinned ∈ Bool = (c_is_mem ∧ (¬c_eff_line) ∧ (c_t3 matches Eq))
     c_bnd_op ∈ Op
     c_t3_is_op ∈ Bool
@@ -1327,14 +1894,18 @@ claim driver_main
         ∨ (c_t0 matches KwTrue) ∨ (c_t0 matches KwFalse))
     d_claim_end ∈ Bool = (d_classify ∧ (c_rem_nil ∨ c_t0_is_tlkw
         ∨ (¬c_can_expr)))
-    d_enter_pratt ∈ Bool = (d_classify ∧ (¬d_claim_end)
-        ∧ (c_eff_line ∨ c_pinned ∨ (¬c_is_mem)))
-    -- tokens consumed before the expression starts: the effects
-    -- literal's `effects ∈ Seq ( Effect ) = ⟨ Exit (` head is 10
-    -- tokens; a pin's `name ∈ Type =` is 4; standalone constraint /
-    -- bare-equality lines start at the expression itself.
-    d_pratt_cons0 ∈ Int = (c_eff_line ? 10 : c_pinned ? 4 : 0)
-    d_pratt_kind0 ∈ Int = (c_eff_line ? 3 : c_pinned ? 1 : 2)
+    -- the effects literal enters the ELEMENT walk (pmode 5) after
+    -- its 8-token head `effects ∈ Seq ( Effect ) = ⟨`; element
+    -- bodies re-enter the Pratt FSM per Exit argument.
+    d_enter_el ∈ Bool = (d_classify ∧ (¬d_claim_end) ∧ c_eff_line)
+    d_enter_pratt0 ∈ Bool = (d_classify ∧ (¬d_claim_end)
+        ∧ (¬c_eff_line) ∧ (c_pinned ∨ (¬c_is_mem)))
+    d_enter_pratt ∈ Bool = (d_enter_pratt0 ∨ el_exit_enter)
+    -- tokens consumed before the expression starts: a pin's
+    -- `name ∈ Type =` is 4; an element's `Exit (` is 2; standalone
+    -- constraint / bare-equality lines start at the expression.
+    d_pratt_cons0 ∈ Int = (el_exit_enter ? 2 : c_pinned ? 4 : 0)
+    d_pratt_kind0 ∈ Int = (el_exit_enter ? 3 : c_pinned ? 1 : 2)
 
     c_seg_bound ∈ C2Items = C2ICons(C2Process(c_bnd_e),
         C2ICons(C2Op(c_bnd_op), C2ICons(C2AssertTop, C2INil)))
@@ -1345,13 +1916,24 @@ claim driver_main
         : c_tailseg)
     c_mem_items ∈ C2Items = C2ICons(C2DeclConst(c_name, c_sc), c_natseg)
 
-    d_new_items ∈ C2Items = ((d_claim_end ∨ d_enter_pratt) ? C2INil
-        : c_mem_items)
+    d_new_items ∈ C2Items = ((d_claim_end ∨ d_enter_pratt0 ∨ d_enter_el)
+        ? C2INil : c_mem_items)
     -- a direct (non-pratt) membership line consumes `x ∈ Type` = 3
     -- tokens, or 5 with a single `op atom` bound.
-    d_mem_line ∈ Bool = (d_classify ∧ (¬d_claim_end) ∧ (¬d_enter_pratt))
+    d_mem_line ∈ Bool = (d_classify ∧ (¬d_claim_end) ∧ (¬d_enter_pratt0)
+        ∧ (¬d_enter_el))
     d_mem_cons ∈ Int = (c_bound ? 5 : 3)
-    c_field ∈ String = c_name ++ ":" ++ (c_sc = 1 ? "Bool" : "Int")
+    c_tyname ∈ String = (c_sc = 1 ? "Bool"
+        : c_sc = 2 ? c_type_str
+        : c_sc = 3 ? "String"
+        : "Int")
+    c_field ∈ String = c_name ++ ":" ++ c_tyname
+    -- `_<name>` carry-over DECLARES (fossil parity): the kernel pins
+    -- `_<name> = <prev>` from tick 1 on — and the functionizer's
+    -- verify solves tick 1 even for tick-0-exit programs. Z3 only
+    -- serializes consts the asserts mention, so the carries must be
+    -- textual lines in the emitted unit.
+    c_cdecl ∈ String = "(declare-fun _" ++ c_name ++ " () " ++ c_tyname ++ ")\n"
 
     -- ── PRATT FSM state (pmode 3; reads the shared window) ────────
     d_in_pratt ∈ Bool = (in_parse ∧ (_pmode = 3) ∧ tok_ready)
@@ -1425,13 +2007,14 @@ claim driver_main
         : d_pk_pinseg)
     d_pratt_items ∈ C2Items = (pr_bad ? C2INil
         : _pk_kind = 3 ? C2ICons(C2Process(pr_sres),
-            C2ICons(C2ExitApp, C2ICons(C2SelectLen, C2INil)))
+            C2ICons(C2App(z_exitdecl, 1),
+            C2ICons(C2SelectEq(_el_cnt), C2INil)))
         : _pk_kind = 1 ? C2ICons(C2DeclConst(_pk_name, _pk_sc), d_pk_natseg)
         : C2ICons(C2Process(pr_sres), C2ICons(C2AssertTop, C2INil)))
-    -- kind 3: the effects literal closes with `) ⟩` after the Exit
-    -- argument — skip both. On a malformed line skip one token so
-    -- the walk always progresses.
-    d_done_cons ∈ Int = (pr_bad ? 1 : _pk_kind = 3 ? 2 : 0)
+    -- kind 3: the Exit argument closes with `)` — consume it; the
+    -- element walk (pmode 5) handles the following `,` / `⟩`. On a
+    -- malformed line skip one token so the walk always progresses.
+    d_done_cons ∈ Int = (pr_bad ? 1 : _pk_kind = 3 ? 1 : 0)
 
     -- ── state transitions ─────────────────────────────────────────
     d_pops ∈ Int = (¬d_processing ? 0
@@ -1442,14 +2025,16 @@ claim driver_main
         : d_it_pineq ? 2
         : d_it_assert ? 1
         : d_it_drop ? 1
-        : d_it_exitapp ? (_istep = 1 ? 1 : 0)
-        : d_it_sellen ? (_istep = 1 ? 1 : 0)
+        : d_it_app ? (_istep = d_app_n ? d_app_n : 0)
+        : d_it_seleq ? (_istep = 1 ? 1 : 0)
         : 0)
     d_push_ident ∈ Bool = (d_processing ∧ d_it_proc ∧ d_pe_is_id)
+    d_push_h ∈ Bool = (d_processing ∧ d_it_pushh)
 
     hstk = (is_first_tick ? C2HNil
         : d_enter_claim ? C2HNil
         : d_push_ident ? C2HCons(d_lk, d_hstk_in)
+        : d_push_h ? C2HCons(d_ph_h, d_hstk_in)
         : d_pops = 3 ? d_h_t3
         : d_pops = 2 ? d_h_t2
         : d_pops = 1 ? d_h_t1
@@ -1459,6 +2044,8 @@ claim driver_main
         : d_enter_claim ? C2INil
         : d_classify ? d_new_items
         : p_done ? d_pratt_items
+        : el_b2 ? el_lc_items
+        : el_close ? C2ICons(C2LenEq(_el_cnt), C2INil)
         : ¬d_processing ? _witems
         : d_it_proc ∧ d_pe_is_bin ∧ d_pe_op_ne ? C2ICons(C2Process(d_pe_l), C2ICons(C2Process(d_pe_r), C2ICons(C2Op(OpEq), C2ICons(C2Not, d_wtail))))
         : d_it_proc ∧ d_pe_is_bin ? C2ICons(C2Process(d_pe_l), C2ICons(C2Process(d_pe_r), C2ICons(C2Op(d_pe_op), d_wtail)))
@@ -1467,30 +2054,33 @@ claim driver_main
         : d_it_proc ? d_wtail
         : d_it_op ? (d_op_arr ? (_istep = 2 ? d_wtail : _witems) : d_wtail)
         : d_it_decl ? (_istep = 1 ? d_wtail : _witems)
-        : d_it_exitapp ? (_istep = 1 ? d_wtail : _witems)
-        : d_it_sellen ? (_istep = 4 ? d_wtail : _witems)
+        : d_it_app ? (_istep = d_app_n ? d_wtail : _witems)
+        : d_it_seleq ? (_istep = 2 ? d_wtail : _witems)
+        : d_it_leneq ? (_istep = 1 ? d_wtail : _witems)
         : d_wtail)
 
     d_multi_cont ∈ Bool = (d_processing ∧
         ((d_it_op ∧ d_op_arr ∧ (_istep < 2))
         ∨ (d_it_decl ∧ (_istep < 1))
-        ∨ (d_it_exitapp ∧ (_istep < 1))
-        ∨ (d_it_sellen ∧ (_istep < 4))))
+        ∨ (d_it_app ∧ (_istep < d_app_n))
+        ∨ (d_it_seleq ∧ (_istep < 2))
+        ∨ (d_it_leneq ∧ (_istep < 1))))
     istep = (is_first_tick ? 0
         : d_multi_cont ? _istep + 1
         : 0)
 
     pend = (is_first_tick ? 0
         : ¬d_processing ? 0
-        : d_it_proc ? (d_pe_is_int ? 1 : 0)
+        : d_it_proc ? ((d_pe_is_int ∨ d_pe_is_str) ? 1 : 0)
         : d_it_op ? (d_op_arr ? (_istep = 2 ? 1 : 0) : 1)
         : d_it_ite ? 1
         : d_it_not ? 1
         : d_it_decl ? (_istep = 0 ? 2 : 3)
         : d_it_nat ? 1
         : d_it_pineq ? 1
-        : d_it_exitapp ? (_istep = 1 ? 1 : 0)
-        : d_it_sellen ? ((_istep = 0 ∨ _istep = 1 ∨ _istep = 3) ? 2 : 0)
+        : d_it_app ? (_istep = d_app_n ? 1 : 0)
+        : d_it_seleq ? ((_istep = 0 ∨ _istep = 1) ? 2 : 0)
+        : d_it_leneq ? (_istep = 0 ? 2 : 0)
         : 0)
     pend_name = (is_first_tick ? ""
         : (d_processing ∧ d_it_decl ∧ (_istep = 1)) ? d_dc_name
@@ -1500,8 +2090,15 @@ claim driver_main
     -- Exactly one consumer acts per tick (mode bools are mutually
     -- exclusive and tok_ready-gated); fetch ticks consume nothing.
     dcons ∈ Int = (d_enter_claim ? 2
+        : d_enter_edecl ? 3
         : d_enter_skip ? 1
         : (d_in_skip ∧ (¬d_skip_stop)) ? 1
+        : (ec_active ∧ ec_payload) ? 1
+        : ec_take ? (ec_more ? 2 : 1)
+        : d_enter_el ? 8
+        : el_lc_enter ? 6
+        : el_b2 ? 7
+        : (el_comma ∨ el_close) ? 1
         : d_enter_pratt ? d_pratt_cons0
         : d_mem_line ? d_mem_cons
         : p_done ? d_done_cons
@@ -1515,6 +2112,8 @@ claim driver_main
         : dcons = 3 ? ww_l3
         : dcons = 4 ? ww_l4
         : dcons = 5 ? ww_l5
+        : dcons = 6 ? ww_l6
+        : dcons = 7 ? ww_l7
         : TLNil)
     wtoks = (is_first_tick ? TLNil
         : _fmode = 2 ? f_built
@@ -1524,15 +2123,26 @@ claim driver_main
         : (d_classify ∧ (¬d_claim_end) ∧ c_is_mem ∧ (¬c_eff_line))
             ? (_fstr = "" ? c_field : _fstr ++ " " ++ c_field)
         : _fstr)
+    cdstr = (is_first_tick ? ""
+        : (d_classify ∧ (¬d_claim_end) ∧ c_is_mem ∧ (¬c_eff_line))
+            ? _cdstr ++ c_cdecl
+        : _cdstr)
 
     pmode = (is_first_tick ? 0
         : entering_parse ? 0
         : d_enter_claim ? 2
+        : d_enter_edecl ? 4
         : d_enter_skip ? 1
         : d_skip_stop ? 0
         : d_claim_end ? 0
+        : d_enter_el ? 5
         : d_enter_pratt ? 3
-        : p_done ? 2
+        : p_done ? (_pk_kind = 3 ? 5 : 2)
+        : (ec_active ∧ ec_payload) ? 1
+        : (ec_active ∧ (¬ec_v_ok)) ? 0
+        : ed_done_user ? 0
+        : el_close ? 2
+        : (el_bad ∨ el_b2_bad) ? 2
         : _pmode)
 
     phase = (is_first_tick ? 0
@@ -1553,26 +2163,35 @@ claim driver_main
     d_eff_arith ∈ Effect
     d_arith_ok ∈ Bool
     ArithBinopBuildZ3(ctx_h ↦ z_ctx, op ↦ d_op,
-        l_h ↦ d_h_2nd, r_h ↦ d_h_top, args_arr_ptr ↦ z_arena + 80,
+        l_h ↦ d_h_2nd, r_h ↦ d_h_top, args_arr_ptr ↦ z_arena + 200,
         eff ↦ d_eff_arith, ok ↦ d_arith_ok)
     d_eff_nary ∈ Effect
     d_nary_ok ∈ Bool
     BoolNaryBuildZ3(ctx_h ↦ z_ctx, op ↦ d_op, num_args ↦ 2,
-        args_arr_ptr ↦ z_arena + 80, eff ↦ d_eff_nary, ok ↦ d_nary_ok)
+        args_arr_ptr ↦ z_arena + 200, eff ↦ d_eff_nary, ok ↦ d_nary_ok)
+    -- `++` → (str.++ l r) via the same 2-slot args buffer
+    d_eff_concat ∈ Effect
+    BuildZ3MkSeqConcat(ctx_h ↦ z_ctx, num_args ↦ 2,
+        args_arr_ptr ↦ z_arena + 200, eff ↦ d_eff_concat)
     d_eff_ite ∈ Effect
     TernaryBuildZ3(ctx_h ↦ z_ctx, cond_h ↦ d_h_3rd, then_h ↦ d_h_2nd,
         else_h ↦ d_h_top, eff ↦ d_eff_ite)
     d_eff_not ∈ Effect
     BoolNotBuildZ3(ctx_h ↦ z_ctx, x_h ↦ d_h_top, eff ↦ d_eff_not)
     d_eff_wl0 ∈ Effect
-    BuildMemWriteLong(addr ↦ z_arena + 80, value ↦ d_h_2nd, eff ↦ d_eff_wl0)
+    BuildMemWriteLong(addr ↦ z_arena + 200, value ↦ d_h_2nd, eff ↦ d_eff_wl0)
     d_eff_wl1 ∈ Effect
-    BuildMemWriteLong(addr ↦ z_arena + 88, value ↦ d_h_top, eff ↦ d_eff_wl1)
+    BuildMemWriteLong(addr ↦ z_arena + 208, value ↦ d_h_top, eff ↦ d_eff_wl1)
+    d_eff_mkstring ∈ Effect
+    BuildZ3MkString(ctx_h ↦ z_ctx, s ↦ d_pe_str, eff ↦ d_eff_mkstring)
     d_eff_sym ∈ Effect
     BuildZ3MkStringSymbol(ctx_h ↦ z_ctx, name ↦ d_dc_name, eff ↦ d_eff_sym)
     d_eff_const ∈ Effect
     BuildZ3MkConst(ctx_h ↦ z_ctx, sym_h ↦ d_tmp_in,
-        sort_h ↦ (d_dc_sc = 1 ? z_bsort : z_isort), eff ↦ d_eff_const)
+        sort_h ↦ (d_dc_sc = 1 ? z_bsort
+            : d_dc_sc = 2 ? ue_sort
+            : d_dc_sc = 3 ? z_ssort
+            : z_isort), eff ↦ d_eff_const)
     -- oracle gap: a ctor literal in a slot binding breaks the callee's
     -- `matches` translation — pass pinned body vars instead.
     d_op_geq ∈ Op = OpGeq
@@ -1593,31 +2212,46 @@ claim driver_main
     d_eff_asserttmp ∈ Effect
     BuildZ3SolverAssert(ctx_h ↦ z_ctx, solver_h ↦ z_sol, ast_h ↦ d_tmp_in,
         eff ↦ d_eff_asserttmp)
+    -- C2App: istep k < n writes args[n-1-k] from stack depth k
+    -- (top/2nd/3rd — post-order means the TOP is the LAST arg);
+    -- istep n applies the harvested decl over the args array.
+    d_app_arg ∈ Int = (_istep = 0 ? d_h_top
+        : _istep = 1 ? d_h_2nd
+        : d_h_3rd)
     d_eff_caw ∈ Effect
-    CtorArgWriteStep(args_p ↦ z_arena + 96, idx ↦ 0, arg_h ↦ d_h_top,
-        eff ↦ d_eff_caw)
+    CtorArgWriteStep(args_p ↦ z_arena + 224, idx ↦ d_app_n - 1 - _istep,
+        arg_h ↦ d_app_arg, eff ↦ d_eff_caw)
     d_eff_app ∈ Effect
-    CtorAppStep(ctx_h ↦ z_ctx, ctor_decl_h ↦ z_exitdecl, n_args ↦ 1,
-        args_p ↦ z_arena + 96, eff ↦ d_eff_app)
+    CtorAppStep(ctx_h ↦ z_ctx, ctor_decl_h ↦ d_app_d, n_args ↦ d_app_n,
+        args_p ↦ z_arena + 224, eff ↦ d_eff_app)
+    d_sel_idx_h ∈ Int = (d_sel_i = 0 ? z_zero
+        : d_sel_i = 1 ? z_one
+        : z_two)
     d_eff_sel ∈ Effect
-    BuildZ3MkSelect(ctx_h ↦ z_ctx, arr_h ↦ z_effs, idx_h ↦ z_zero,
+    BuildZ3MkSelect(ctx_h ↦ z_ctx, arr_h ↦ z_effs, idx_h ↦ d_sel_idx_h,
         eff ↦ d_eff_sel)
     d_eff_seleq ∈ Effect
     d_seleq_ok ∈ Bool
     d_seleq_nn ∈ Bool
     BoolCmpBuildZ3(ctx_h ↦ z_ctx, op ↦ d_op_eq, l_h ↦ d_tmp_in, r_h ↦ d_h_top,
         eff ↦ d_eff_seleq, ok ↦ d_seleq_ok, needs_not ↦ d_seleq_nn)
+    d_len_n_h ∈ Int = (d_len_n = 1 ? z_one
+        : d_len_n = 2 ? z_two
+        : z_zero)
     d_eff_leneq ∈ Effect
     d_leneq_ok ∈ Bool
     d_leneq_nn ∈ Bool
-    BoolCmpBuildZ3(ctx_h ↦ z_ctx, op ↦ d_op_eq, l_h ↦ z_elen, r_h ↦ z_one,
+    BoolCmpBuildZ3(ctx_h ↦ z_ctx, op ↦ d_op_eq, l_h ↦ z_elen, r_h ↦ d_len_n_h,
         eff ↦ d_eff_leneq, ok ↦ d_leneq_ok, needs_not ↦ d_leneq_nn)
     d_eff_filler ∈ Effect = LibCall("libc", "getpid", ⟨⟩)
 
     d_eff_lib ∈ Effect = (d_it_proc ∧ d_pe_is_int ? d_eff_mkint
+        : d_it_proc ∧ d_pe_is_str ? d_eff_mkstring
         : d_it_op ∧ d_op_arr ∧ (_istep = 0) ? d_eff_wl0
         : d_it_op ∧ d_op_arr ∧ (_istep = 1) ? d_eff_wl1
-        : d_it_op ∧ d_op_arr ? (d_op_bool_arr ? d_eff_nary : d_eff_arith)
+        : d_it_op ∧ d_op_arr ? (d_op_bool_arr ? d_eff_nary
+            : d_op_cc ? d_eff_concat
+            : d_eff_arith)
         : d_it_op ∧ d_op_is_div ? d_eff_arith
         : d_it_op ? d_eff_cmp
         : d_it_ite ? d_eff_ite
@@ -1626,12 +2260,11 @@ claim driver_main
         : d_it_nat ? d_eff_natge
         : d_it_pineq ? d_eff_pineq
         : d_it_assert ? d_eff_assert
-        : d_it_exitapp ? (_istep = 0 ? d_eff_caw : d_eff_app)
-        : d_it_sellen ? (_istep = 0 ? d_eff_sel
+        : d_it_app ? (_istep < d_app_n ? d_eff_caw : d_eff_app)
+        : d_it_seleq ? (_istep = 0 ? d_eff_sel
             : _istep = 1 ? d_eff_seleq
-            : _istep = 2 ? d_eff_asserttmp
-            : _istep = 3 ? d_eff_leneq
             : d_eff_asserttmp)
+        : d_it_leneq ? (_istep = 0 ? d_eff_leneq : d_eff_asserttmp)
         : d_eff_filler)
 
     -- ── EMIT ──────────────────────────────────────────────────────
@@ -1664,7 +2297,10 @@ claim driver_main
         ++ "(declare-fun last_results__len () Int)\n"
         ++ "(assert (>= last_results__len 0))\n"
         ++ "(declare-fun is_first_tick () Bool)\n")
-    d_unit ∈ String = d_manifest ++ "\n\n" ++ d_prelude ++ rendered
+    -- carry declares go AFTER the solver body: an enum-typed carry
+    -- (`_c () Color`) needs its sort, and the declare-datatypes live
+    -- in the rendered serialization.
+    d_unit ∈ String = d_manifest ++ "\n\n" ++ d_prelude ++ rendered ++ cdstr
 
     e_puts ∈ Effect
     BuildPrintln(s ↦ d_unit, eff ↦ e_puts)
@@ -1679,33 +2315,27 @@ claim driver_main
         : zstep = 3 ? ⟨ze_sinc⟩
         : zstep = 4 ? ⟨ze_isort⟩
         : zstep = 5 ? ⟨ze_bsort⟩
-        : zstep = 6 ? ⟨ze_arena⟩
-        : zstep = 7 ? ⟨ze_sym_exit⟩
-        : zstep = 8 ? ⟨ze_sym_is⟩
-        : zstep = 9 ? ⟨ze_sym_f0⟩
-        : zstep = 10 ? ⟨ze_sym_eff⟩
-        : zstep = 11 ? ⟨ze_w_fn⟩
-        : zstep = 12 ? ⟨ze_w_fs⟩
-        : zstep = 13 ? ⟨ze_w_sr⟩
-        : zstep = 14 ? ⟨ze_mkctor⟩
-        : zstep = 15 ? ⟨ze_w_ct⟩
-        : zstep = 16 ? ⟨ze_clist⟩
-        : zstep = 17 ? ⟨ze_w_nm⟩
-        : zstep = 18 ? ⟨ze_w_cl⟩
-        : zstep = 19 ? ⟨ze_mkdt⟩
-        : zstep = 20 ? ⟨ze_rd_sort⟩
-        : zstep = 21 ? ⟨ze_query⟩
-        : zstep = 22 ? ⟨ze_rd_decl⟩
-        : zstep = 23 ? ⟨ze_arrsort⟩
-        : zstep = 24 ? ⟨ze_sym_effs⟩
-        : zstep = 25 ? ⟨ze_effs⟩
-        : zstep = 26 ? ⟨ze_sym_elen⟩
-        : zstep = 27 ? ⟨ze_elen⟩
-        : zstep = 28 ? ⟨ze_zero⟩
-        : zstep = 29 ? ⟨ze_one⟩
-        : zstep = 30 ? ⟨ze_true⟩
-        : zstep = 31 ? ⟨ze_false⟩
-        : zstep = 32 ? ⟨ze_tbuf⟩
+        : zstep = 6 ? ⟨ze_ssort⟩
+        : zstep = 7 ? ⟨ze_rsort⟩
+        : zstep = 8 ? ⟨ze_arena⟩
+        : ed_running ? (ed_w5
+            ? (ed_n = 1 ? ⟨edw_fn0, edw_fs0, edw_sr01⟩
+              : ed_n = 2 ? ⟨edw_fn0, edw_fn1, edw_fs0, edw_fs1, edw_sr01⟩
+              : ⟨edw_fn0, edw_fn1, edw_fn2, edw_fs0, edw_fs1, edw_fs2,
+                 edw_sr01, edw_sr2⟩)
+            : ed_w2 ? ⟨edw_nm, edw_cl⟩
+            : ⟨ed_eff1⟩)
+        : zstep = 10 ? ⟨ze_arrsort⟩
+        : zstep = 11 ? ⟨ze_sym_effs⟩
+        : zstep = 12 ? ⟨ze_effs⟩
+        : zstep = 13 ? ⟨ze_sym_elen⟩
+        : zstep = 14 ? ⟨ze_elen⟩
+        : zstep = 15 ? ⟨ze_zero⟩
+        : zstep = 16 ? ⟨ze_one⟩
+        : zstep = 17 ? ⟨ze_two⟩
+        : zstep = 18 ? ⟨ze_true⟩
+        : zstep = 19 ? ⟨ze_false⟩
+        : zstep = 20 ? ⟨ze_tbuf⟩
         : entering_parse ? (lx_have_pend ? ⟨w_pend, w_eof⟩ : ⟨w_eof⟩)
         : estep = 0 ? ⟨e_s2s⟩
         : estep = 1 ? ⟨e_copy⟩

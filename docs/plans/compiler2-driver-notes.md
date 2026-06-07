@@ -1,4 +1,4 @@
-# compiler2 driver skeleton (P3a + P3b + P3c + P3d) — notes
+# compiler2 driver skeleton (P3a + P3b + P3c + P3d + P3e) — notes
 
 Status: P3a LANDED — both acceptance fixtures compile + run green
 (see Acceptance below). P3b LANDED — the census
@@ -8,7 +8,9 @@ the bounded shape-enumeration parsers are replaced by a Pratt
 parser FSM (see P3c below). P3d LANDED — the TokenList cons-list
 lexer + REVERSE phase are replaced by the FTI token buffer
 (compiler2/lex_fti.ev) and a cursor/window parse path (see P3d
-below).
+below). P3e LANDED — user enum declarations + the full Effect
+floor (LibCall/LibArg/__SeqOf_LibArg) + multi-element effects
+literals + String memberships/`++` (see P3e below).
 
 `compiler2/driver.ev` is the first end-to-end compiler2 driver: an
 Evident program (oracle-compiled to a ~209 KB .smt2) that the kernel
@@ -21,14 +23,14 @@ the constraint path.
 ```
 stdin: flat-path \n claim \n        (wave-4o protocol, same as compiler.smt2)
   ↓ tick 0-1  ReadLine ×2, ReadFile
-  ↓ ZINIT     ticks 2..32 — one libcall per tick:
-              config/context/solver/int·bool sorts/512-byte arena,
-              Effect datatype (Exit-only) via translate2_ctor.ev's
-              step claims (VariantNameSymStep/VariantRecognizerSymStep/
-              VariantFieldSymStep/EnumSortSymStep/FieldSortSlot/
-              VariantMkConstructorStep/VariantQueryStep),
+  ↓ ZINIT     one libcall per tick (P3e: zstep parks at 9 for the
+              ED machine): config/context/solver/int·bool·string·real
+              sorts/512-byte arena, the FULL Effect floor — LibArg,
+              __SeqOf_LibArg, Effect(ReadLine/ReadFile/WriteFile/
+              LibCall/Exit) — declared via translate2_ctor.ev's
+              step claims through the generic ED FSM (see P3e),
               `effects : (Array Int Effect)` + `effects__len : Int`
-              consts, cached 0/1 numerals.
+              consts, cached 0/1/2 numerals.
   ↓ LEX       the fossil's per-char scanner FSM + compiler2/lex_fti.ev's
               LexFtiPlan (P3d): tokens land in a calloc'd FTI buffer
               (32 bytes/token, append order) via __mem.write_long;
@@ -37,10 +39,13 @@ stdin: flat-path \n claim \n        (wave-4o protocol, same as compiler.smt2)
   ↓ (REVERSE deleted in P3d — append order is source order; the
               lex_done tick flushes the pending string write + writes
               the EofTok sentinel, then phase 0 → 2 directly.)
-  ↓ PARSE     top-level dispatch: KwEnum and parametrized / non-target
-              claims SKIPPED one token per tick; the target bare-head
-              claim enters the walk. All token access goes through an
-              8-token decoded window over the buffer (see P3d).
+  ↓ PARSE     top-level dispatch: parametrized / non-target claims
+              and the RESERVED floor enums (Effect/Result/LibArg)
+              SKIPPED one token per tick; a USER enum declaration
+              enters the pmode-4 collection + ED run (P3e); the
+              target bare-head claim enters the walk. All token
+              access goes through an 8-token decoded window over
+              the buffer (see P3d).
   ↓ WALK      per body line:
               1. a PURE one-tick classifier + bounded expression parser
                  (C2ParseExpr) turn the line into a work-item program
@@ -60,9 +65,12 @@ stdin: flat-path \n claim \n        (wave-4o protocol, same as compiler.smt2)
                 C2PinEq        (= decl_h rhs_h)
                 C2AssertTop    Z3_solver_assert(top), pop
                 C2Drop         pure pop
-                C2ExitApp      CtorArgWriteStep + CtorAppStep on the
-                               harvested Exit decl
-                C2SelectLen    (= (select effects 0) app) + (= effects__len 1)
+                C2PushH(h)     pure push of a known handle (P3e)
+                C2App(d, n)    n CtorArgWriteSteps + CtorAppStep on a
+                               harvested decl (n ≤ 3) — replaces the
+                               P3a C2ExitApp (P3e)
+                C2SelectEq(i)  (= (select effects i) top) — i ≤ 2
+                C2LenEq(n)     (= effects__len n)
               Handle plumbing: a builder's result is read from
               last_results on the NEXT tick and applied before that
               tick's own step (`pend` ∈ {none, push, tmp, decl}).
@@ -274,11 +282,12 @@ kernel-run: prints exactly the canonical string, exit 0.
   and a Real branch in the decl/manifest paths. Cleanly separable;
   nothing else blocks on it.
 - Indentation-aware blocks (see semantics note above).
-- Effect enum floor: LibCall's `Seq(LibArg)` payload needs the
-  multi-datatype sort registry (LibArg + __SeqOf_LibArg + Effect in
-  one or three mk_datatypes batches) — translate2_ctor.ev documents
-  the mechanics; the driver only declares Exit.
-- User enum declarations are skipped, not translated.
+- ~~Effect enum floor~~ — LANDED in P3e (the ED machine declares
+  LibArg + __SeqOf_LibArg + the full Effect in three sequential
+  mk_datatypes runs; the driver registry resolves the cross-enum
+  field sorts).
+- ~~User enum declarations~~ — LANDED in P3e (one nullary user
+  enum per compile; see the P3e section for the remaining gaps).
 - General expressions are now COVERED (P3c Pratt FSM) — still
   missing: match/matches, Seq values, quantifiers, composition
   lines, string pins/atoms, multi-name memberships, chained bounds
@@ -286,10 +295,12 @@ kernel-run: prints exactly the canonical string, exit 0.
   (would mis-assert mk_eq — C2Op(OpNeq) only arrives via the
   Process-expansion path, which lowers it correctly).
 - Symbol table: 8 fixed slots.
-- No `_<name>` carry-over declares in the emitted unit and no
-  `(assert (>= effects__len 0))` floor — fine for tick-0-exit
-  fixtures; multi-tick user programs need them.
-- `effects` literal: exactly one Exit element.
+- ~~No `_<name>` carry-over declares in the emitted unit~~ —
+  FIXED in P3e (the missing declares crash the kernel's
+  functionizer verify; see the P3e carry-over section). The
+  `(assert (>= effects__len 0))` floor is still not emitted.
+- ~~`effects` literal: exactly one Exit element~~ — widened in
+  P3e (≤ 2 elements, LibCall + Exit).
 - max-effects emitted as the fixed 16 (bootstrap's cap), not derived.
 
 ## How to build + run
@@ -441,11 +452,181 @@ the canonical AST and exits 0; lex_fti_fixture exits 0 unchanged.
   docs/plans/fti-lexer-notes.md applies unchanged (digit-bearing
   idents, no string escapes, no FloatLit — the 021 descope).
 
+## P3e — user enums + the full Effect floor (landed 2026-06-07)
+
+Two driver surfaces, one new machine.
+
+### The ED machine (enum declaration FSM)
+
+ONE FSM declares any enum — parsed `EnumDeclAst` data — in the
+build context through translate2_ctor.ev's step claims
+(VariantNameSymStep / VariantRecognizerSymStep / VariantFieldSymStep /
+FieldSortSlot / SortRefsPack2 / VariantMkConstructorStep /
+EnumSortSymStep / VariantQueryStep / CtorAppStep, plus the
+EnumVariantsHead / VariantFieldCount / VariantFieldType peels),
+then harvests each variant's ctor func_decl and (for nullary
+variants) its mk_app value. Three acts:
+
+- act 1 (declare, per variant): name sym → recog sym → field syms
+  (0-3, skipped by arity) → ONE write-batch tick (≤ 8 effects:
+  fnames + fsorts + packed srefs) → mk_constructor → write
+  ctors[vidx].
+- act 2 (finalize): sort sym → mk_constructor_list → write batch
+  (sort name + clist) → mk_datatypes → read sort → capture.
+- act 3 (harvest, per variant): read ctor handle → query_constructor
+  → read ctor decl → capture decl (+ named floor-decl register
+  latches) + mk_app for nullary → capture value (evt table / floor
+  value latches).
+
+It runs FOUR times per compile: three ZINIT runs — `LibArg`,
+`__SeqOf_LibArg` (the self-referential cons, sort_refs path),
+`Effect` with ALL FIVE floor variants — while zstep parks at 9,
+and once per USER enum at parse time. Field-sort resolution is
+FieldSortSlot for primitives/self plus a driver registry patch
+(`Real` → mk_real_sort, `LibArg`/`Seq(LibArg)` → the harvested
+floor sorts) — exactly the registry split translate2_ctor.ev's
+header reserved for the driver. The emitted unit's serialization
+now carries the same three declare-datatypes the fossil prelude
+spelled textually (kernel-compatible by construction: the kernel
+walks `__Cell_LibArg`/`__Empty_LibArg` by name, tick.rs
+decode_libargs).
+
+### User enum declarations (pmode 4)
+
+`enum Color = Red | Green | Blue` at top level no longer skips: a
+KwEnum head whose name is not reserved (`Effect`/`Result`/`LibArg`
+— the floor enums every flattened source carries from
+stdlib/kernel.ev) enters a collection mode that consumes
+`Vname |`-pairs one tick each (nullary only; a `(` after a variant
+name bails to the skip walk), then starts the ED machine with the
+collected list. Harvested nullary values register in a 6-slot
+enum-value table the symbol lookup falls through to, so `c = Red`
+and `d ≠ North` build mk_eq over ctor-app handles. Enum-typed
+memberships (`c ∈ Color`) declare consts of the harvested enum
+SORT and land in the manifest as `c:Color` (non-primitive state
+fields are manifest-legal; compiler.smt2's own manifest carries
+Token-typed fields). The collection list is prepend-accumulated,
+so the datatype declares variants in REVERSED source order —
+harmless (declaration and harvest peel the same list; census
+checks are substring checks).
+
+### Effects literals (pmode 5) + the Effect floor at compile time
+
+The single-Exit special case is gone. The classifier consumes the
+8-token literal head `effects ∈ Seq ( Effect ) = ⟨` and enters an
+ELEMENT walk:
+
+- `Exit ( <expr> )` — the argument runs through the Pratt FSM
+  (kind 3 now returns to the element walk, consuming only its `)`).
+- `LibCall ( "lib" , "fn" , ⟨ ArgStr|ArgInt ( <lit-or-ident> ) ⟩ )`
+  — a fixed two-bite parse (6 + 7 tokens; the 8-token window
+  covers each bite). Its work-item program builds the value
+  bottom-up through the generalized items: mk_string ×2, the arg
+  (string literal / symtab ident / int), C2App(argstr_decl, 1),
+  C2PushH(empty_val), C2App(cell_decl, 2), C2App(lc_decl, 3) —
+  i.e. `(LibCall "libc" "puts" (__Cell_LibArg (ArgStr …)
+  __Empty_LibArg))` as a HANDLE, no text.
+- per element `C2SelectEq(i)` asserts `(= (select effects i) h)`;
+  the closing `⟩` emits `C2LenEq(n)`. Elements are capped at 2
+  (cached 0/1/2 numerals — the universal `⟨puts, Exit⟩` shape).
+
+C2ExitApp/C2SelectLen are DELETED, replaced by the generic
+C2PushH(h) / C2App(decl, n ≤ 3) / C2SelectEq(i) / C2LenEq(n)
+items.
+
+### Carry-over declares (new P3e finding — fossil parity restored)
+
+The P3c stance "no `_<name>` carry-over decls — fine for
+tick-0-exit fixtures" is WRONG once the kernel's functionizer can
+extract the emitted unit: functionize VERIFIES against real Z3
+solves of tick 0 AND tick 1, and the tick-1 solve pins
+`(= _<name> <prev>)` unconditionally. With `_<name>` undeclared,
+Z3's parse error escalates through the context's default error
+handler and kills the kernel process (`Error: … unknown constant
+_msg`, exit 1) — 005's unit hit this; earlier fixtures only
+survived because their units refused extraction before the verify
+step. The driver now appends one textual
+`(declare-fun _<name> () <Type>)` per collected state field AFTER
+the rendered solver body (an enum-typed carry needs its
+declare-datatypes first; the kernel's declaration extraction is
+order-preserving). This is what the fossil emits — compiler.smt2
+carries 249 such lines.
+
+### String surface (005)
+
+- The lexer folds `+ +` into PlusPlus (tag 60) by next-char peek
+  (same trick as the `--` comment), advancing 2; FtiTok decodes it;
+  C2TokOp maps it to OpConcat at additive precedence.
+- StringLit atoms parse to EStr; C2Process(EStr) is one
+  Z3_mk_string tick; C2Op(OpConcat) reuses the 2-slot args-array
+  path with Z3_mk_seq_concat → `(str.++ …)`.
+- `msg ∈ String = …` declares a string-sort const, manifest
+  `msg:String`.
+
+### P3e acceptance (run 2026-06-07, oracle-built driver, parallel)
+
+Every row ran BOTH checks: smt2-contains on the emitted unit +
+kernel run of the unit vs expected exit (and expected stdout where
+the fixture defines one). Driver compile exit 0 on all rows.
+
+NEW targets:
+
+| fixture | checks | result |
+|---|---|---|
+| 043-enum-declaration | `(Red)` in unit · run exit 0/0 · manifest `c:Color` | PASS |
+| 044-enum-constraint | `(East)` in unit · run exit 0/0 | PASS |
+| 002-string-literal-print | `"conformance"` + `LibCall` + `(Exit 0)` in unit · stdout `conformance` · exit 0/0 | PASS |
+| 005-string-concat | `str.++` in unit · stdout `concat` · exit 0/0 | PASS |
+
+Full 22-fixture regression table, re-run on the FINAL artifact
+(after the carry-declare fix; smt2-contains green on every row):
+
+| fixture | exit got/want | | fixture | exit got/want |
+|---|---|---|---|---|
+| 004-comparison-ternary | 1/1 ✓ | | 028-chained-comparison | 0/0 ✓ |
+| 008-boolean-and | 1/1 ✓ | | 029-chained-comparison-unsat | 2/2 ✓ |
+| 017-nat-membership | 0/0 ✓ | | 030-logic-and | 0/0 ✓ |
+| 018-int-membership-negative | 0/0 ✓ | | 031-logic-or | 0/0 ✓ |
+| 020-bool-membership | 0/0 ✓ | | 032-logic-not | 0/0 ✓ |
+| 022-inequality | 0/0 ✓ | | 033-implies | 0/0 ✓ |
+| 023-less-than | 0/0 ✓ | | 034-implies-vacuous | 0/0 ✓ |
+| 024-greater-than | 0/0 ✓ | | 036-implies-block | 0/0 ✓ |
+| 025-lte-gte | 0/0 ✓ | | 037-nested-implies-block | 0/0 ✓ |
+| 026-arithmetic-add | 0/0 ✓ | | 053-bool-as-constraint | 0/0 ✓ |
+| 027-arithmetic-unsat | 2/2 ✓ | | 054-not-bool-as-constraint | 0/0 ✓ |
+
+Negative control re-verified on the final artifact: nonexistent
+claim → manifest (empty state-fields) + textual prelude only,
+1 assert (the last_results__len floor), no `(+ `, driver exit 0.
+pratt_fixture re-verified post-change: prints the canonical AST,
+exit 0. lex_fti_fixture / ctor_fixture untouched by this wave
+(their imports didn't change).
+
+Tick-budget note: ZINIT grew from ~33 to ~190 ticks (three ED
+floor runs — declare + finalize + harvest over 10 variants — plus
+string/real sorts and the 2 numeral); a user enum adds ~35
+parse-time ticks. Census-fixture compile wall is unchanged in
+character (~5-6 min serial; the per-tick functionizer-residual
+cost and LEX still dominate, as in P3d).
+
+### P3e descopes
+
+- 006-enum-match needs `match` in the emit path (per-arm tester
+  dispatch + accessor binds) — not in the driver; descoped.
+- One user enum per compile; payloaded user variants bail to skip
+  (the ED machine itself handles payloads — the floor enums use
+  them — only the token-collection step is nullary-only).
+- Effects literals: ≤ 2 elements; LibCall args: exactly one
+  ArgStr/ArgInt (the puts shape). ⟨⟩ empty literals unsupported.
+- User enums must precede the target claim in the flattened
+  source (the walk needs the harvested sort/values; true for the
+  corpus — stdlib precedes user code, enums precede claims).
+
 ## Next steps
 
-- Full Effect floor (sort registry), user enums via the ctor
-  steps, the rest of the membership surface. (P3c's Pratt FSM
-  closed the expression-parser gap.)
+- The rest of the membership surface (multi-name, chained bounds
+  in memberships, Real/021).
+- match/matches in the emit path (unblocks 006).
 - Tick-rate: measure; if the walk dominates, batch pure ticks
   (classify + expansion) into the libcall ticks.
 - Census: run the full conformance suite under a driver-backed
