@@ -42,19 +42,34 @@
 --           → manifest header + Result/last_results textual prelude +
 --           the solver body → puts → Exit(0).
 --
--- Scope (P3a skeleton — enough for the acceptance fixtures, NOT the
--- full language; see docs/plans/compiler2-driver-notes.md):
+-- Scope (P3a skeleton + P3b widening — enough for the census
+-- arithmetic/comparison/implies classes, NOT the full language; see
+-- docs/plans/compiler2-driver-notes.md):
 --   · scalar memberships `x ∈ Int|Nat|Bool [= pin | < bound]`
 --   · bare assert lines `name = <expr>`
+--   · standalone constraint lines (C2ParseCons): comparisons
+--     `x < 5` / `x ≠ 0`, chained comparisons `0 < x < 5` (→ conj),
+--     implies `cmp ⇒ cmp`, `name ⇒ name op atom`,
+--     `¬name ⇒ name op atom`, and the nested
+--     `cmp ⇒ ( cmp ) ⇒ cmp` (right-assoc)
+--   · `true` / `false` atoms (cached Z3_mk_true/false handles)
+--   · negative int literals (sign folded at lex time when the Minus
+--     has no atom before it)
 --   · `effects ∈ Seq(Effect) = ⟨Exit(<expr>)⟩` (single Exit literal)
 --   · <expr>: atoms, one binop, parenthesized comparison [∧/∨ pair],
---     ternary with atom arms — C2ParseExpr below
+--     ternary with atom arms, nested group
+--     `( ( a op a ) op a ∧|∨ a op a )` — C2ParseExpr below
+--   · OpNeq lowers as mk_eq + mk_not (C2Not item); ENot likewise
 --   · the build-context Effect enum is Exit-only (the kernel matches
 --     effect variants by name at runtime; LibCall's Seq(LibArg) field
---     needs the multi-datatype sort registry — P3b)
+--     needs the multi-datatype sort registry — later)
 --   · symbol table: 8 fixed slots
 --   · no `_<name>` carry-over decls in the emitted unit (fixtures
---     exit on tick 0; multi-tick user programs are P3b)
+--     exit on tick 0; multi-tick user programs are later)
+--   · NOT covered: Real membership / float literals (021 — needs
+--     FloatLit lexing in this FSM + mk_real_sort + mk_numeral),
+--     String membership/pins, user enums, quantifiers, Seq values,
+--     match/matches, composition lines, multi-name memberships
 
 import "stdlib/kernel.ev"
 import "stdlib/z3_ast.ev"
@@ -72,6 +87,7 @@ enum C2Item =
     C2Process(Expr)
     C2Op(Op)
     C2Ite
+    C2Not
     C2DeclConst(String, Int)
     C2NatBound
     C2PinEq
@@ -126,14 +142,20 @@ claim C2TokOp(t ∈ Token, o ∈ Op, rec ∈ Bool)
 claim C2AtomE(t ∈ Token, e ∈ Expr, ok ∈ Bool)
     c2a_int ∈ Bool = (t matches IntLit(_))
     c2a_id  ∈ Bool = (t matches Ident(_))
+    c2a_tr  ∈ Bool = (t matches KwTrue)
+    c2a_fa  ∈ Bool = (t matches KwFalse)
     c2a_n ∈ Int = match t
         IntLit(n) ⇒ n
         _ ⇒ 0
     c2a_s ∈ String = match t
         Ident(s) ⇒ s
         _ ⇒ ""
-    e = (c2a_int ? EInt(c2a_n) : c2a_id ? EIdent(c2a_s) : ENoExpr)
-    ok = (c2a_int ∨ c2a_id)
+    e = (c2a_int ? EInt(c2a_n)
+       : c2a_id ? EIdent(c2a_s)
+       : c2a_tr ? EIdent("true")
+       : c2a_fa ? EIdent("false")
+       : ENoExpr)
+    ok = (c2a_int ∨ c2a_id ∨ c2a_tr ∨ c2a_fa)
 
 -- ── Bounded one-tick expression parser ────────────────────────────
 -- Shapes (P3a scope):
@@ -249,9 +271,15 @@ claim C2ParseExpr(toks ∈ TokenList, e ∈ Expr, rest ∈ TokenList, ok ∈ Boo
     c2pe_a8 ∈ Expr
     c2pe_a8ok ∈ Bool
     C2AtomE(t ↦ c2pe_t8, e ↦ c2pe_a8, ok ↦ c2pe_a8ok)
+    c2pe_a9 ∈ Expr
+    c2pe_a9ok ∈ Bool
+    C2AtomE(t ↦ c2pe_t9, e ↦ c2pe_a9, ok ↦ c2pe_a9ok)
     c2pe_a10 ∈ Expr
     c2pe_a10ok ∈ Bool
     C2AtomE(t ↦ c2pe_t10, e ↦ c2pe_a10, ok ↦ c2pe_a10ok)
+    c2pe_a11 ∈ Expr
+    c2pe_a11ok ∈ Bool
+    C2AtomE(t ↦ c2pe_t11, e ↦ c2pe_a11, ok ↦ c2pe_a11ok)
     c2pe_a12 ∈ Expr
     c2pe_a12ok ∈ Bool
     C2AtomE(t ↦ c2pe_t12, e ↦ c2pe_a12, ok ↦ c2pe_a12ok)
@@ -262,9 +290,15 @@ claim C2ParseExpr(toks ∈ TokenList, e ∈ Expr, rest ∈ TokenList, ok ∈ Boo
     c2pe_op2 ∈ Op
     c2pe_op2ok ∈ Bool
     C2TokOp(t ↦ c2pe_t2, o ↦ c2pe_op2, rec ↦ c2pe_op2ok)
+    c2pe_op3 ∈ Op
+    c2pe_op3ok ∈ Bool
+    C2TokOp(t ↦ c2pe_t3, o ↦ c2pe_op3, rec ↦ c2pe_op3ok)
     c2pe_op6 ∈ Op
     c2pe_op6ok ∈ Bool
     C2TokOp(t ↦ c2pe_t6, o ↦ c2pe_op6, rec ↦ c2pe_op6ok)
+    c2pe_op10 ∈ Op
+    c2pe_op10ok ∈ Bool
+    C2TokOp(t ↦ c2pe_t10, o ↦ c2pe_op10, rec ↦ c2pe_op10ok)
 
     c2pe_is_lp ∈ Bool = (c2pe_t0 matches LParen)
     c2pe_inner1 ∈ Expr = EBinOp(c2pe_op2, c2pe_a1, c2pe_a3)
@@ -275,6 +309,17 @@ claim C2ParseExpr(toks ∈ TokenList, e ∈ Expr, rest ∈ TokenList, ok ∈ Boo
     c2pe_pc ∈ Bool = (c2pe_is_lp
         ∧ ((c2pe_t4 matches OpAnd) ∨ (c2pe_t4 matches OpOr))
         ∧ (c2pe_t8 matches RParen))
+    -- nested-group form: ( ( a op a ) op a ∧|∨ a op a )
+    c2pe_n_in ∈ Expr = EBinOp(c2pe_op3, c2pe_a2, c2pe_a4)
+    c2pe_n_l ∈ Expr = EBinOp(c2pe_op6, c2pe_n_in, c2pe_a7)
+    c2pe_n_r ∈ Expr = EBinOp(c2pe_op10, c2pe_a9, c2pe_a11)
+    c2pe_n_conj ∈ Op = ((c2pe_t8 matches OpAnd) ? OpConj : OpDisj)
+    c2pe_nst ∈ Bool = (c2pe_is_lp ∧ (c2pe_t1 matches LParen)
+        ∧ (c2pe_t5 matches RParen)
+        ∧ ((c2pe_t8 matches OpAnd) ∨ (c2pe_t8 matches OpOr))
+        ∧ (c2pe_t12 matches RParen)
+        ∧ c2pe_a2ok ∧ c2pe_op3ok ∧ c2pe_a4ok ∧ c2pe_op6ok ∧ c2pe_a7ok
+        ∧ c2pe_a9ok ∧ c2pe_op10ok ∧ c2pe_a11ok)
     c2pe_conj_op ∈ Op = ((c2pe_t4 matches OpAnd) ? OpConj : OpDisj)
     c2pe_grp ∈ Expr = (c2pe_pc
         ? EBinOp(c2pe_conj_op, c2pe_inner1, c2pe_inner2)
@@ -285,7 +330,8 @@ claim C2ParseExpr(toks ∈ TokenList, e ∈ Expr, rest ∈ TokenList, ok ∈ Boo
     c2pe_al_tern ∈ Bool = (c2pe_al ∧ (c2pe_t1 matches Question))
     c2pe_al_bin ∈ Bool = (c2pe_al ∧ (¬c2pe_al_tern) ∧ c2pe_op1ok ∧ c2pe_a2ok)
 
-    e = (c2pe_ps_tern ? ETernary(c2pe_inner1, c2pe_a6, c2pe_a8)
+    e = (c2pe_nst ? EBinOp(c2pe_n_conj, c2pe_n_l, c2pe_n_r)
+       : c2pe_ps_tern ? ETernary(c2pe_inner1, c2pe_a6, c2pe_a8)
        : c2pe_ps ? c2pe_inner1
        : c2pe_pc_tern ? ETernary(c2pe_grp, c2pe_a10, c2pe_a12)
        : c2pe_pc ? c2pe_grp
@@ -293,7 +339,8 @@ claim C2ParseExpr(toks ∈ TokenList, e ∈ Expr, rest ∈ TokenList, ok ∈ Boo
        : c2pe_al_bin ? EBinOp(c2pe_op1, c2pe_a0, c2pe_a2)
        : c2pe_al ? c2pe_a0
        : ENoExpr)
-    rest = (c2pe_ps_tern ? c2pe_l9
+    rest = (c2pe_nst ? c2pe_l13
+       : c2pe_ps_tern ? c2pe_l9
        : c2pe_ps ? c2pe_l5
        : c2pe_pc_tern ? c2pe_l13
        : c2pe_pc ? c2pe_l9
@@ -302,8 +349,254 @@ claim C2ParseExpr(toks ∈ TokenList, e ∈ Expr, rest ∈ TokenList, ok ∈ Boo
        : c2pe_al ? c2pe_l1
        : toks)
     ok = (c2pe_is_lp
-        ? ((c2pe_ps ∨ c2pe_pc) ∧ c2pe_inner1ok ∧ ((¬c2pe_pc) ∨ c2pe_inner2ok))
+        ? (c2pe_nst
+            ∨ ((c2pe_ps ∨ c2pe_pc) ∧ c2pe_inner1ok ∧ ((¬c2pe_pc) ∨ c2pe_inner2ok)))
         : c2pe_al)
+
+-- ── Op classes for constraint-line shapes ─────────────────────────
+claim C2OpClass(o ∈ Op, is_cmp ∈ Bool, is_chain ∈ Bool, is_arith ∈ Bool, is_cmpeq ∈ Bool)
+    oc_lt ∈ Bool = (o matches OpLt)
+    oc_gt ∈ Bool = (o matches OpGt)
+    oc_le ∈ Bool = (o matches OpLeq)
+    oc_ge ∈ Bool = (o matches OpGeq)
+    oc_ne ∈ Bool = (o matches OpNeq)
+    oc_eq ∈ Bool = (o matches OpEq)
+    oc_pl ∈ Bool = (o matches OpPlus)
+    oc_su ∈ Bool = (o matches OpSub)
+    oc_mu ∈ Bool = (o matches OpMul)
+    oc_dv ∈ Bool = (o matches OpDiv)
+    is_chain = (oc_lt ∨ oc_gt ∨ oc_le ∨ oc_ge)
+    is_cmp = (is_chain ∨ oc_ne)
+    is_arith = (oc_pl ∨ oc_su ∨ oc_mu ∨ oc_dv)
+    is_cmpeq = (is_cmp ∨ oc_eq)
+
+-- ── Bounded one-tick constraint-line parser ───────────────────────
+-- Standalone boolean-constraint lines (assert the parsed Expr):
+--   A:  atom cmp atom                         x < 5 · x ≠ 0
+--   B:  atom cmp atom cmp atom                0 < x < 5   (→ conjunction)
+--   B2: atom cmp atom arith atom              x < y + 1   (RHS binds tighter)
+--   C:  atom cmp atom ⇒ atom op atom          x > 3 ⇒ x < 10
+--   D:  atom ⇒ atom op atom                   flag ⇒ x = 42
+--   E:  ¬ atom ⇒ atom op atom                 ¬flag ⇒ x = 99
+--   F:  atom cmp atom ⇒ ( atom op atom ) ⇒ atom op atom
+--       (nested implies, right-assoc)
+claim C2ParseCons(toks ∈ TokenList, e ∈ Expr, rest ∈ TokenList, ok ∈ Bool)
+    cn_t0 ∈ Token = match toks
+        TLCons(t, _) ⇒ t
+        TLNil ⇒ EofTok
+    cn_l1 ∈ TokenList = match toks
+        TLCons(_, r) ⇒ r
+        TLNil ⇒ TLNil
+    cn_t1 ∈ Token = match cn_l1
+        TLCons(t, _) ⇒ t
+        TLNil ⇒ EofTok
+    cn_l2 ∈ TokenList = match cn_l1
+        TLCons(_, r) ⇒ r
+        TLNil ⇒ TLNil
+    cn_t2 ∈ Token = match cn_l2
+        TLCons(t, _) ⇒ t
+        TLNil ⇒ EofTok
+    cn_l3 ∈ TokenList = match cn_l2
+        TLCons(_, r) ⇒ r
+        TLNil ⇒ TLNil
+    cn_t3 ∈ Token = match cn_l3
+        TLCons(t, _) ⇒ t
+        TLNil ⇒ EofTok
+    cn_l4 ∈ TokenList = match cn_l3
+        TLCons(_, r) ⇒ r
+        TLNil ⇒ TLNil
+    cn_t4 ∈ Token = match cn_l4
+        TLCons(t, _) ⇒ t
+        TLNil ⇒ EofTok
+    cn_l5 ∈ TokenList = match cn_l4
+        TLCons(_, r) ⇒ r
+        TLNil ⇒ TLNil
+    cn_t5 ∈ Token = match cn_l5
+        TLCons(t, _) ⇒ t
+        TLNil ⇒ EofTok
+    cn_l6 ∈ TokenList = match cn_l5
+        TLCons(_, r) ⇒ r
+        TLNil ⇒ TLNil
+    cn_t6 ∈ Token = match cn_l6
+        TLCons(t, _) ⇒ t
+        TLNil ⇒ EofTok
+    cn_l7 ∈ TokenList = match cn_l6
+        TLCons(_, r) ⇒ r
+        TLNil ⇒ TLNil
+    cn_t7 ∈ Token = match cn_l7
+        TLCons(t, _) ⇒ t
+        TLNil ⇒ EofTok
+    cn_l8 ∈ TokenList = match cn_l7
+        TLCons(_, r) ⇒ r
+        TLNil ⇒ TLNil
+    cn_t8 ∈ Token = match cn_l8
+        TLCons(t, _) ⇒ t
+        TLNil ⇒ EofTok
+    cn_l9 ∈ TokenList = match cn_l8
+        TLCons(_, r) ⇒ r
+        TLNil ⇒ TLNil
+    cn_t9 ∈ Token = match cn_l9
+        TLCons(t, _) ⇒ t
+        TLNil ⇒ EofTok
+    cn_l10 ∈ TokenList = match cn_l9
+        TLCons(_, r) ⇒ r
+        TLNil ⇒ TLNil
+    cn_t10 ∈ Token = match cn_l10
+        TLCons(t, _) ⇒ t
+        TLNil ⇒ EofTok
+    cn_l11 ∈ TokenList = match cn_l10
+        TLCons(_, r) ⇒ r
+        TLNil ⇒ TLNil
+    cn_t11 ∈ Token = match cn_l11
+        TLCons(t, _) ⇒ t
+        TLNil ⇒ EofTok
+    cn_l12 ∈ TokenList = match cn_l11
+        TLCons(_, r) ⇒ r
+        TLNil ⇒ TLNil
+    cn_t12 ∈ Token = match cn_l12
+        TLCons(t, _) ⇒ t
+        TLNil ⇒ EofTok
+    cn_l13 ∈ TokenList = match cn_l12
+        TLCons(_, r) ⇒ r
+        TLNil ⇒ TLNil
+
+    cn_a0 ∈ Expr
+    cn_a0ok ∈ Bool
+    C2AtomE(t ↦ cn_t0, e ↦ cn_a0, ok ↦ cn_a0ok)
+    cn_a1 ∈ Expr
+    cn_a1ok ∈ Bool
+    C2AtomE(t ↦ cn_t1, e ↦ cn_a1, ok ↦ cn_a1ok)
+    cn_a2 ∈ Expr
+    cn_a2ok ∈ Bool
+    C2AtomE(t ↦ cn_t2, e ↦ cn_a2, ok ↦ cn_a2ok)
+    cn_a3 ∈ Expr
+    cn_a3ok ∈ Bool
+    C2AtomE(t ↦ cn_t3, e ↦ cn_a3, ok ↦ cn_a3ok)
+    cn_a4 ∈ Expr
+    cn_a4ok ∈ Bool
+    C2AtomE(t ↦ cn_t4, e ↦ cn_a4, ok ↦ cn_a4ok)
+    cn_a5 ∈ Expr
+    cn_a5ok ∈ Bool
+    C2AtomE(t ↦ cn_t5, e ↦ cn_a5, ok ↦ cn_a5ok)
+    cn_a6 ∈ Expr
+    cn_a6ok ∈ Bool
+    C2AtomE(t ↦ cn_t6, e ↦ cn_a6, ok ↦ cn_a6ok)
+    cn_a7 ∈ Expr
+    cn_a7ok ∈ Bool
+    C2AtomE(t ↦ cn_t7, e ↦ cn_a7, ok ↦ cn_a7ok)
+    cn_a10 ∈ Expr
+    cn_a10ok ∈ Bool
+    C2AtomE(t ↦ cn_t10, e ↦ cn_a10, ok ↦ cn_a10ok)
+    cn_a12 ∈ Expr
+    cn_a12ok ∈ Bool
+    C2AtomE(t ↦ cn_t12, e ↦ cn_a12, ok ↦ cn_a12ok)
+
+    cn_op1 ∈ Op
+    cn_op1ok ∈ Bool
+    C2TokOp(t ↦ cn_t1, o ↦ cn_op1, rec ↦ cn_op1ok)
+    cn_op3 ∈ Op
+    cn_op3ok ∈ Bool
+    C2TokOp(t ↦ cn_t3, o ↦ cn_op3, rec ↦ cn_op3ok)
+    cn_op4 ∈ Op
+    cn_op4ok ∈ Bool
+    C2TokOp(t ↦ cn_t4, o ↦ cn_op4, rec ↦ cn_op4ok)
+    cn_op5 ∈ Op
+    cn_op5ok ∈ Bool
+    C2TokOp(t ↦ cn_t5, o ↦ cn_op5, rec ↦ cn_op5ok)
+    cn_op6 ∈ Op
+    cn_op6ok ∈ Bool
+    C2TokOp(t ↦ cn_t6, o ↦ cn_op6, rec ↦ cn_op6ok)
+    cn_op11 ∈ Op
+    cn_op11ok ∈ Bool
+    C2TokOp(t ↦ cn_t11, o ↦ cn_op11, rec ↦ cn_op11ok)
+
+    cn_o1_cmp ∈ Bool
+    cn_o1_chain ∈ Bool
+    cn_o1_arith ∈ Bool
+    cn_o1_cmpeq ∈ Bool
+    C2OpClass(o ↦ cn_op1, is_cmp ↦ cn_o1_cmp, is_chain ↦ cn_o1_chain,
+        is_arith ↦ cn_o1_arith, is_cmpeq ↦ cn_o1_cmpeq)
+    cn_o3_cmp ∈ Bool
+    cn_o3_chain ∈ Bool
+    cn_o3_arith ∈ Bool
+    cn_o3_cmpeq ∈ Bool
+    C2OpClass(o ↦ cn_op3, is_cmp ↦ cn_o3_cmp, is_chain ↦ cn_o3_chain,
+        is_arith ↦ cn_o3_arith, is_cmpeq ↦ cn_o3_cmpeq)
+    cn_o4_cmp ∈ Bool
+    cn_o4_chain ∈ Bool
+    cn_o4_arith ∈ Bool
+    cn_o4_cmpeq ∈ Bool
+    C2OpClass(o ↦ cn_op4, is_cmp ↦ cn_o4_cmp, is_chain ↦ cn_o4_chain,
+        is_arith ↦ cn_o4_arith, is_cmpeq ↦ cn_o4_cmpeq)
+    cn_o5_cmp ∈ Bool
+    cn_o5_chain ∈ Bool
+    cn_o5_arith ∈ Bool
+    cn_o5_cmpeq ∈ Bool
+    C2OpClass(o ↦ cn_op5, is_cmp ↦ cn_o5_cmp, is_chain ↦ cn_o5_chain,
+        is_arith ↦ cn_o5_arith, is_cmpeq ↦ cn_o5_cmpeq)
+    cn_o6_cmp ∈ Bool
+    cn_o6_chain ∈ Bool
+    cn_o6_arith ∈ Bool
+    cn_o6_cmpeq ∈ Bool
+    C2OpClass(o ↦ cn_op6, is_cmp ↦ cn_o6_cmp, is_chain ↦ cn_o6_chain,
+        is_arith ↦ cn_o6_arith, is_cmpeq ↦ cn_o6_cmpeq)
+    cn_o11_cmp ∈ Bool
+    cn_o11_chain ∈ Bool
+    cn_o11_arith ∈ Bool
+    cn_o11_cmpeq ∈ Bool
+    C2OpClass(o ↦ cn_op11, is_cmp ↦ cn_o11_cmp, is_chain ↦ cn_o11_chain,
+        is_arith ↦ cn_o11_arith, is_cmpeq ↦ cn_o11_cmpeq)
+
+    cn_imp1 ∈ Bool = (cn_t1 matches OpImplies)
+    cn_imp2 ∈ Bool = (cn_t2 matches OpImplies)
+    cn_imp3 ∈ Bool = (cn_t3 matches OpImplies)
+    cn_imp9 ∈ Bool = (cn_t9 matches OpImplies)
+    cn_lp4 ∈ Bool = (cn_t4 matches LParen)
+    cn_rp8 ∈ Bool = (cn_t8 matches RParen)
+    cn_not0 ∈ Bool = (cn_t0 matches OpNot)
+
+    cn_lhs_ok ∈ Bool = (cn_a0ok ∧ cn_op1ok ∧ cn_o1_cmp ∧ cn_a2ok)
+    cn_F ∈ Bool = (cn_lhs_ok ∧ cn_imp3 ∧ cn_lp4
+        ∧ cn_a5ok ∧ cn_op6ok ∧ cn_o6_cmpeq ∧ cn_a7ok ∧ cn_rp8 ∧ cn_imp9
+        ∧ cn_a10ok ∧ cn_op11ok ∧ cn_o11_cmpeq ∧ cn_a12ok)
+    cn_C ∈ Bool = ((¬cn_F) ∧ cn_lhs_ok ∧ cn_imp3
+        ∧ cn_a4ok ∧ cn_op5ok ∧ cn_o5_cmpeq ∧ cn_a6ok)
+    cn_B ∈ Bool = (cn_lhs_ok ∧ (¬cn_imp3) ∧ cn_op3ok ∧ cn_o3_chain
+        ∧ cn_o1_chain ∧ cn_a4ok)
+    cn_B2 ∈ Bool = (cn_lhs_ok ∧ (¬cn_imp3) ∧ cn_op3ok ∧ cn_o3_arith
+        ∧ cn_a4ok)
+    cn_A ∈ Bool = (cn_lhs_ok ∧ (¬cn_imp3) ∧ (¬cn_op3ok))
+    cn_D ∈ Bool = ((¬cn_not0) ∧ cn_a0ok ∧ cn_imp1
+        ∧ cn_a2ok ∧ cn_op3ok ∧ cn_o3_cmpeq ∧ cn_a4ok)
+    cn_E ∈ Bool = (cn_not0 ∧ cn_a1ok ∧ cn_imp2
+        ∧ cn_a3ok ∧ cn_op4ok ∧ cn_o4_cmpeq ∧ cn_a5ok)
+
+    cn_lhs ∈ Expr = EBinOp(cn_op1, cn_a0, cn_a2)
+    cn_f_in ∈ Expr = EBinOp(cn_op6, cn_a5, cn_a7)
+    cn_f_q ∈ Expr = EBinOp(cn_op11, cn_a10, cn_a12)
+    cn_f_tail ∈ Expr = EBinOp(OpImpl, cn_f_in, cn_f_q)
+    cn_c_q ∈ Expr = EBinOp(cn_op5, cn_a4, cn_a6)
+    cn_b_r ∈ Expr = EBinOp(cn_op3, cn_a2, cn_a4)
+    cn_e_q ∈ Expr = EBinOp(cn_op4, cn_a3, cn_a5)
+    cn_e_ant ∈ Expr = ENot(cn_a1)
+
+    e = (cn_F ? EBinOp(OpImpl, cn_lhs, cn_f_tail)
+       : cn_C ? EBinOp(OpImpl, cn_lhs, cn_c_q)
+       : cn_B ? EBinOp(OpConj, cn_lhs, cn_b_r)
+       : cn_B2 ? EBinOp(cn_op1, cn_a0, cn_b_r)
+       : cn_A ? cn_lhs
+       : cn_D ? EBinOp(OpImpl, cn_a0, cn_b_r)
+       : cn_E ? EBinOp(OpImpl, cn_e_ant, cn_e_q)
+       : ENoExpr)
+    rest = (cn_F ? cn_l13
+       : cn_C ? cn_l7
+       : cn_B ? cn_l5
+       : cn_B2 ? cn_l5
+       : cn_A ? cn_l3
+       : cn_D ? cn_l5
+       : cn_E ? cn_l6
+       : toks)
+    ok = (cn_F ∨ cn_C ∨ cn_B ∨ cn_B2 ∨ cn_A ∨ cn_D ∨ cn_E)
 
 claim driver_main
     -- ── INPUT — per-process source path via stdin (wave 4o) ──────
@@ -414,6 +707,12 @@ claim driver_main
     z_one ∈ Int
     _z_one ∈ Int
     z_one = (is_first_tick ? 0 : zstep = 30 ? d_cap_int : _z_one)
+    z_true ∈ Int
+    _z_true ∈ Int
+    z_true = (is_first_tick ? 0 : zstep = 31 ? d_cap_int : _z_true)
+    z_false ∈ Int
+    _z_false ∈ Int
+    z_false = (is_first_tick ? 0 : zstep = 32 ? d_cap_int : _z_false)
 
     -- Field-slot resolution for Exit's Int payload (pure).
     d_exit_fty ∈ String
@@ -497,6 +796,10 @@ claim driver_main
     BuildZ3MkInt(ctx_h ↦ z_ctx, val ↦ 0, sort_h ↦ z_isort, eff ↦ ze_zero)
     ze_one ∈ Effect
     BuildZ3MkInt(ctx_h ↦ z_ctx, val ↦ 1, sort_h ↦ z_isort, eff ↦ ze_one)
+    ze_true ∈ Effect
+    BuildZ3MkTrue(ctx_h ↦ z_ctx, eff ↦ ze_true)
+    ze_false ∈ Effect
+    BuildZ3MkFalse(ctx_h ↦ z_ctx, eff ↦ ze_false)
 
     -- ── LEX (fossil FSM; gated to start after ZINIT) ──────────────
     pos  ∈ Int
@@ -505,7 +808,7 @@ claim driver_main
     _next_pos ∈ Int
     pos = (is_first_tick ? 0 - 1
         : ((¬_got_path) ? 0 - 1
-        : (_zstep < 30 ? 0 - 1
+        : (_zstep < 32 ? 0 - 1
         : (_pos < 0 ? 0 : _next_pos))))
 
     partial_str  ∈ String
@@ -578,13 +881,31 @@ claim driver_main
     tokens  ∈ TokenList
     _tokens ∈ TokenList
     strlit_tok ∈ Token = StringLit(_partial_strlit)
+    -- negative-literal fold: a Minus directly before a finishing int,
+    -- with no atom before the Minus, is a sign — replace the Minus +
+    -- IntLit(n) pair with IntLit(-n).
+    tk_p1 ∈ Token = match _tokens
+        TLCons(t, _) ⇒ t
+        TLNil ⇒ EofTok
+    tk_tl1 ∈ TokenList = match _tokens
+        TLCons(_, r) ⇒ r
+        TLNil ⇒ TLNil
+    tk_p2 ∈ Token = match tk_tl1
+        TLCons(t, _) ⇒ t
+        TLNil ⇒ EofTok
+    tk_p2_atom ∈ Bool = ((tk_p2 matches IntLit(_)) ∨ (tk_p2 matches Ident(_))
+        ∨ (tk_p2 matches RParen) ∨ (tk_p2 matches StringLit(_)))
+    tk_neg ∈ Bool = ((tk_p1 matches Minus) ∧ (¬tk_p2_atom))
+    neg_int_tok ∈ Token = IntLit(0 - _partial_int)
+    int_tok_f ∈ Token = (tk_neg ? neg_int_tok : int_tok)
+    int_base ∈ TokenList = (tk_neg ? tk_tl1 : _tokens)
     tokens = (is_first_tick ? TLNil
             : (lx_comment ? _tokens
             : (strlit_closing ? TLCons(strlit_tok, _tokens)
             : (finish_str_with_op ? TLCons(op_tok, TLCons(classified_str, _tokens))
-            : (finish_int_with_op ? TLCons(op_tok, TLCons(int_tok, _tokens))
+            : (finish_int_with_op ? TLCons(op_tok, TLCons(int_tok_f, int_base))
             : (finish_str_only ? TLCons(classified_str, _tokens)
-            : (finish_int_only ? TLCons(int_tok, _tokens)
+            : (finish_int_only ? TLCons(int_tok_f, int_base)
             : (char_only ? TLCons(op_tok, _tokens)
             : _tokens))))))))
 
@@ -811,6 +1132,7 @@ claim driver_main
     d_it_proc    ∈ Bool = (d_whead matches C2Process(_))
     d_it_op      ∈ Bool = (d_whead matches C2Op(_))
     d_it_ite     ∈ Bool = (d_whead matches C2Ite)
+    d_it_not     ∈ Bool = (d_whead matches C2Not)
     d_it_decl    ∈ Bool = (d_whead matches C2DeclConst(_, _))
     d_it_nat     ∈ Bool = (d_whead matches C2NatBound)
     d_it_pineq   ∈ Bool = (d_whead matches C2PinEq)
@@ -850,10 +1172,17 @@ claim driver_main
     d_pe_is_tern ∈ Bool
     TernaryExprParts(e ↦ d_pe, cond_e ↦ d_pe_c, then_e ↦ d_pe_t,
         else_e ↦ d_pe_e, is_tern ↦ d_pe_is_tern)
+    d_pe_ni ∈ Expr
+    d_pe_is_not ∈ Bool
+    NotExprParts(e ↦ d_pe, inner ↦ d_pe_ni, is_not ↦ d_pe_is_not)
+    d_pe_op_ne ∈ Bool = (d_pe_op matches OpNeq)
 
     -- symbol-table lookup (post-update slots: a decl completed this
-    -- tick is visible to the same tick's item).
-    d_lk ∈ Int = (st_n0 = d_lkname ? st_h0
+    -- tick is visible to the same tick's item). true/false resolve to
+    -- the cached Z3_mk_true/Z3_mk_false handles.
+    d_lk ∈ Int = (d_lkname = "true" ? z_true
+        : d_lkname = "false" ? z_false
+        : st_n0 = d_lkname ? st_h0
         : st_n1 = d_lkname ? st_h1
         : st_n2 = d_lkname ? st_h2
         : st_n3 = d_lkname ? st_h3
@@ -935,7 +1264,7 @@ claim driver_main
         _ ⇒ ""
 
     c_is_mem ∈ Bool = (c_t1 matches OpIn)
-    c_is_bare ∈ Bool = (c_t1 matches Eq)
+    c_is_bare ∈ Bool = (c_t0_is_ident ∧ (c_t1 matches Eq))
     c_eff_line ∈ Bool = (c_is_mem ∧ (c_name = "effects"))
     c_type_str ∈ String = match c_t2
         Ident(s) ⇒ s
@@ -972,8 +1301,16 @@ claim driver_main
         TLCons(_, r) ⇒ r
         TLNil ⇒ TLNil
 
-    d_kind_none ∈ Bool = ((¬c_eff_line) ∧ (¬c_is_mem) ∧ (¬c_is_bare))
-    d_claim_end ∈ Bool = (d_classify ∧ (c_rem_nil ∨ c_t0_is_tlkw ∨ (¬c_t0_is_ident) ∨ d_kind_none))
+    -- standalone constraint lines (comparisons, chains, implies, ¬).
+    c_cons_e ∈ Expr
+    c_cons_rest ∈ TokenList
+    c_cons_ok ∈ Bool
+    C2ParseCons(toks ↦ _rem, e ↦ c_cons_e, rest ↦ c_cons_rest, ok ↦ c_cons_ok)
+    c_is_cons ∈ Bool = ((¬c_eff_line) ∧ (¬c_is_mem) ∧ (¬c_is_bare) ∧ c_cons_ok)
+
+    d_kind_none ∈ Bool = ((¬c_eff_line) ∧ (¬c_is_mem) ∧ (¬c_is_bare) ∧ (¬c_is_cons))
+    d_claim_end ∈ Bool = (d_classify ∧ (c_rem_nil ∨ c_t0_is_tlkw
+        ∨ ((¬c_t0_is_ident) ∧ (¬c_is_cons)) ∨ d_kind_none))
 
     c_seg_pin ∈ C2Items = C2ICons(C2Process(c_pin_e),
         C2ICons(C2PinEq, C2ICons(C2AssertTop, C2INil)))
@@ -990,15 +1327,19 @@ claim driver_main
         C2ICons(C2AssertTop, C2INil))
     c_fx_items ∈ C2Items = C2ICons(C2Process(c_fx_e),
         C2ICons(C2ExitApp, C2ICons(C2SelectLen, C2INil)))
+    c_cons_items ∈ C2Items = C2ICons(C2Process(c_cons_e),
+        C2ICons(C2AssertTop, C2INil))
 
     d_new_items ∈ C2Items = (d_claim_end ? C2INil
         : c_eff_line ? c_fx_items
         : c_is_mem ? c_mem_items
-        : c_bare_items)
+        : c_is_bare ? c_bare_items
+        : c_cons_items)
     d_rem_new ∈ TokenList = (d_claim_end ? _rem
         : c_eff_line ? c_fx_after
         : c_is_mem ? (c_pinned ? c_pin_rest : c_bound ? c_l5 : c_l3)
-        : c_bare_rest)
+        : c_is_bare ? c_bare_rest
+        : c_cons_rest)
     c_field ∈ String = c_name ++ ":" ++ (c_sc = 1 ? "Bool" : "Int")
 
     -- ── state transitions ─────────────────────────────────────────
@@ -1006,6 +1347,7 @@ claim driver_main
         : d_it_proc ? 0
         : d_it_op ? (d_op_arr ? (_istep = 2 ? 2 : 0) : 2)
         : d_it_ite ? 3
+        : d_it_not ? 1
         : d_it_pineq ? 2
         : d_it_assert ? 1
         : d_it_drop ? 1
@@ -1026,8 +1368,10 @@ claim driver_main
         : d_enter_claim ? C2INil
         : d_classify ? d_new_items
         : ¬d_processing ? _witems
+        : d_it_proc ∧ d_pe_is_bin ∧ d_pe_op_ne ? C2ICons(C2Process(d_pe_l), C2ICons(C2Process(d_pe_r), C2ICons(C2Op(OpEq), C2ICons(C2Not, d_wtail))))
         : d_it_proc ∧ d_pe_is_bin ? C2ICons(C2Process(d_pe_l), C2ICons(C2Process(d_pe_r), C2ICons(C2Op(d_pe_op), d_wtail)))
         : d_it_proc ∧ d_pe_is_tern ? C2ICons(C2Process(d_pe_c), C2ICons(C2Process(d_pe_t), C2ICons(C2Process(d_pe_e), C2ICons(C2Ite, d_wtail))))
+        : d_it_proc ∧ d_pe_is_not ? C2ICons(C2Process(d_pe_ni), C2ICons(C2Not, d_wtail))
         : d_it_proc ? d_wtail
         : d_it_op ? (d_op_arr ? (_istep = 2 ? d_wtail : _witems) : d_wtail)
         : d_it_decl ? (_istep = 1 ? d_wtail : _witems)
@@ -1049,6 +1393,7 @@ claim driver_main
         : d_it_proc ? (d_pe_is_int ? 1 : 0)
         : d_it_op ? (d_op_arr ? (_istep = 2 ? 1 : 0) : 1)
         : d_it_ite ? 1
+        : d_it_not ? 1
         : d_it_decl ? (_istep = 0 ? 2 : 3)
         : d_it_nat ? 1
         : d_it_pineq ? 1
@@ -1110,6 +1455,8 @@ claim driver_main
     d_eff_ite ∈ Effect
     TernaryBuildZ3(ctx_h ↦ z_ctx, cond_h ↦ d_h_3rd, then_h ↦ d_h_2nd,
         else_h ↦ d_h_top, eff ↦ d_eff_ite)
+    d_eff_not ∈ Effect
+    BoolNotBuildZ3(ctx_h ↦ z_ctx, x_h ↦ d_h_top, eff ↦ d_eff_not)
     d_eff_wl0 ∈ Effect
     BuildMemWriteLong(addr ↦ z_arena + 80, value ↦ d_h_2nd, eff ↦ d_eff_wl0)
     d_eff_wl1 ∈ Effect
@@ -1167,6 +1514,7 @@ claim driver_main
         : d_it_op ∧ d_op_is_div ? d_eff_arith
         : d_it_op ? d_eff_cmp
         : d_it_ite ? d_eff_ite
+        : d_it_not ? d_eff_not
         : d_it_decl ? (_istep = 0 ? d_eff_sym : d_eff_const)
         : d_it_nat ? d_eff_natge
         : d_it_pineq ? d_eff_pineq
@@ -1247,6 +1595,8 @@ claim driver_main
         : zstep = 27 ? ⟨ze_elen⟩
         : zstep = 28 ? ⟨ze_zero⟩
         : zstep = 29 ? ⟨ze_one⟩
+        : zstep = 30 ? ⟨ze_true⟩
+        : zstep = 31 ? ⟨ze_false⟩
         : estep = 0 ? ⟨e_s2s⟩
         : estep = 1 ? ⟨e_copy⟩
         : estep ≥ 2 ? ⟨e_puts, Exit(0)⟩
