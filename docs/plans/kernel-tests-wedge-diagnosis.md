@@ -223,3 +223,16 @@ EVIDENT_TICK_LIMIT=3000 EVIDENT_PHASE_TRACE=1 \
   compiler_driver_canonical_comment -o /tmp/out.smt2
 # → exit 3, "kernel: tick limit (3000) reached", 0-byte out.smt2
 ```
+
+## POST-MERGE CORRECTION (orchestrator A/B)
+
+The "root regression: oracle-regenerated compiler.smt2 is globally
+broken" framing is WRONG. A/B on the first grinder fixture
+(test_compiler_driver_canonical_comment, EVIDENT_TICK_LIMIT=3000):
+the FOSSIL artifact (a085f93^) grinds identically — rc 3, tick
+limit, 0-byte emit. The conformance 124/138 baseline is also
+identical pre/post promotion. The test_compiler_driver_* grind is
+PRE-EXISTING capability/perf debt, not a regeneration regression.
+Recommendations #1 (per-fixture timeout), #2 (stream progress),
+#4 (kill-group trap) remain valid and are implemented; #3
+(artifact fix) is moot.

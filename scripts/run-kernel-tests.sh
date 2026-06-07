@@ -144,7 +144,18 @@ run_one() {
     # mktemp on macOS may ignore the suffix; that's fine — the path is passed through.
 
     local emit_err
-    emit_err="$("$EVIDENT" emit "$path" "$claim" -o "$smt" 2>&1 >/dev/null)"
+    # Per-fixture wall-clock cap (wedge diagnosis 2026-06-08: the
+    # test_compiler_driver_* class grinds the 100k tick limit at
+    # ~15 ms/tick ≈ 25-31 min EACH with no timeout; 119 fixtures × 4-way
+    # looked like a hang for hours). Wall time, not ticks — legitimate
+    # emits need tens of thousands of ticks.
+    local tmo="${EVIDENT_KERNEL_FIXTURE_TIMEOUT:-120}"
+    emit_err="$(timeout "$tmo" "$EVIDENT" emit "$path" "$claim" -o "$smt" 2>&1 >/dev/null)"
+    if [ $? -eq 124 ]; then
+        rm -f "$smt"
+        printf '  \xe2\x9c\x97 %s: emit TIMEOUT (%ss cap)\n' "$name" "$tmo"
+        return 1
+    fi
     rc=$?
     if [ "$rc" -ne 0 ]; then
         rm -f "$smt"
@@ -153,9 +164,9 @@ run_one() {
     fi
 
     if [ "$HAS_STDIN" -eq 1 ]; then
-        actual="$(printf '%s' "$STDIN_TEXT" | "$KERNEL" "$smt" 2>/tmp/evident_kernel_stderr.$$)"
+        actual="$(printf '%s' "$STDIN_TEXT" | timeout "$tmo" "$KERNEL" "$smt" 2>/tmp/evident_kernel_stderr.$$)"
     else
-        actual="$("$KERNEL" "$smt" 2>/tmp/evident_kernel_stderr.$$ </dev/null)"
+        actual="$(timeout "$tmo" "$KERNEL" "$smt" 2>/tmp/evident_kernel_stderr.$$ </dev/null)"
     fi
     rc=$?
     local kstderr; kstderr="$(cat /tmp/evident_kernel_stderr.$$ 2>/dev/null)"
@@ -197,12 +208,14 @@ if [ "$PAR" -gt "${#files[@]}" ]; then PAR=${#files[@]}; fi
 # Per-file invocation writes the ✓/✗ line and returns 0/1 via exit code.
 # Aggregate failures by line-checking the stdout (✗ markers) so we don't
 # need to sum codes across processes.
+# Stream progress (tee) instead of buffer-then-cat — the wedge looked
+# like a hang precisely because 3 h of real output sat in this file.
+# Kill the whole xargs process group when this script is interrupted.
+trap 'kill -- -$$ 2>/dev/null' INT TERM
 output_file="$(mktemp -t evident_kernel_results.XXXXXX)"
 printf '%s\n' "${files[@]}" \
-    | xargs -P "$PAR" -I{} bash -c 'run_one "$@" || true' _ {} \
-    > "$output_file" 2>&1
-
-cat "$output_file"
+    | xargs -P "$PAR" -I{} bash -c 'run_one "$@" || true' _ {} 2>&1 \
+    | tee "$output_file"
 nfiles=${#files[@]}
 failed=$(grep -c $'\xe2\x9c\x97' "$output_file" 2>/dev/null) || true
 [ -z "$failed" ] && failed=0
