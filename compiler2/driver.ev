@@ -1,0 +1,1254 @@
+-- compiler2/driver.ev — P3a: the compiler2 driver skeleton.
+--
+-- An Evident program that, run under the kernel, COMPILES a small .ev
+-- file end-to-end by building Z3 ASTs in memory (the compiler2
+-- architecture, docs/plans/z3-ast-compiler2-plan.md) instead of
+-- concatenating SMT-LIB text (the fossil's approach, and the source
+-- of its dropped-compound-expression bug class).
+--
+-- Wire protocol (wave 4o, same as compiler.smt2):
+--   stdin line 1 = flattened source path, line 2 = target claim name.
+--   tick 0: ReadLine ×2 · tick 1: ReadFile(path) · output: the .smt2
+--   translation unit on stdout via puts, then Exit(0).
+--
+-- Pipeline:
+--   INPUT   ticks 0-1 (fossil's wave-4o block, verbatim).
+--   ZINIT   ticks 2-32: Z3 lifecycle (config/context/solver/sorts) +
+--           the Effect datatype declared IN THE BUILD CONTEXT via
+--           translate2_ctor.ev's step claims + the `effects` /
+--           `effects__len` consts + cached 0/1 numerals.
+--   LEX     the fossil's consolidated lexer FSM (one token per tick,
+--           whitespace/comment bulk-skip) — copied from
+--           compiler/compiler.ev, gated to start after ZINIT.
+--   REVERSE the fossil's reverse→forward pop loop.
+--   PARSE   top-level dispatch: enums and parametrized / non-target
+--           claims are SKIPPED (one token per tick); the target
+--           bare-head claim enters the claim walk.
+--   WALK    per body line: a one-tick PURE classifier parses the line
+--           into a work-item program (C2Items); subsequent ticks run
+--           one item micro-step per tick, each step one Z3-builder
+--           LibCall, dispatching per-node choices to the pass claims:
+--             arith binop  → translate_arith.ev  ArithBinopBuildZ3
+--             cmp/eq       → translate2_bool.ev  BoolCmpBuildZ3
+--             ∧/∨ (n-ary)  → translate2_bool.ev  BoolNaryBuildZ3
+--             ternary      → translate2_bool.ev  TernaryBuildZ3
+--             ctor app     → translate2_ctor.ev  CtorArgWriteStep/CtorAppStep
+--           Built handles live on a parallel handle stack (C2H);
+--           captures follow the PROVEN discipline: a builder's result
+--           is read from last_results on the NEXT tick (the `pend`
+--           mechanism below) and used the same tick it lands.
+--   EMIT    Z3_solver_to_string (which serializes declare-datatypes +
+--           declare-funs + asserts — verified empirically) → __cstr.copy
+--           → manifest header + Result/last_results textual prelude +
+--           the solver body → puts → Exit(0).
+--
+-- Scope (P3a skeleton — enough for the acceptance fixtures, NOT the
+-- full language; see docs/plans/compiler2-driver-notes.md):
+--   · scalar memberships `x ∈ Int|Nat|Bool [= pin | < bound]`
+--   · bare assert lines `name = <expr>`
+--   · `effects ∈ Seq(Effect) = ⟨Exit(<expr>)⟩` (single Exit literal)
+--   · <expr>: atoms, one binop, parenthesized comparison [∧/∨ pair],
+--     ternary with atom arms — C2ParseExpr below
+--   · the build-context Effect enum is Exit-only (the kernel matches
+--     effect variants by name at runtime; LibCall's Seq(LibArg) field
+--     needs the multi-datatype sort registry — P3b)
+--   · symbol table: 8 fixed slots
+--   · no `_<name>` carry-over decls in the emitted unit (fixtures
+--     exit on tick 0; multi-tick user programs are P3b)
+
+import "stdlib/kernel.ev"
+import "stdlib/z3_ast.ev"
+import "stdlib/z3_core.ev"
+import "stdlib/z3_seq.ev"
+import "stdlib/z3_datatypes.ev"
+import "compiler/lexer.ev"
+import "compiler/parser.ev"
+import "compiler/translate_arith.ev"
+import "compiler2/translate2_bool.ev"
+import "compiler2/translate2_ctor.ev"
+
+-- ── Work items: one line of claim body = one small program ────────
+enum C2Item =
+    C2Process(Expr)
+    C2Op(Op)
+    C2Ite
+    C2DeclConst(String, Int)
+    C2NatBound
+    C2PinEq
+    C2AssertTop
+    C2Drop
+    C2ExitApp
+    C2SelectLen
+
+enum C2Items =
+    C2INil
+    C2ICons(C2Item, C2Items)
+
+-- Handle stack (Z3_ast handles, post-order operand order).
+enum C2H =
+    C2HNil
+    C2HCons(Int, C2H)
+
+-- ── Token → Op classifier (wider than parser.ev's TokenToOp) ──────
+claim C2TokOp(t ∈ Token, o ∈ Op, rec ∈ Bool)
+    c2to_pl ∈ Bool = (t matches Plus)
+    c2to_mi ∈ Bool = (t matches Minus)
+    c2to_st ∈ Bool = (t matches Star)
+    c2to_sl ∈ Bool = (t matches Slash)
+    c2to_eq ∈ Bool = (t matches Eq)
+    c2to_lt ∈ Bool = (t matches Lt)
+    c2to_gt ∈ Bool = (t matches Gt)
+    c2to_le ∈ Bool = (t matches OpLe)
+    c2to_ge ∈ Bool = (t matches OpGe)
+    c2to_ne ∈ Bool = (t matches OpNe)
+    c2to_an ∈ Bool = (t matches OpAnd)
+    c2to_or ∈ Bool = (t matches OpOr)
+    c2to_im ∈ Bool = (t matches OpImplies)
+    o = (c2to_pl ? OpPlus
+       : c2to_mi ? OpSub
+       : c2to_st ? OpMul
+       : c2to_sl ? OpDiv
+       : c2to_eq ? OpEq
+       : c2to_lt ? OpLt
+       : c2to_gt ? OpGt
+       : c2to_le ? OpLeq
+       : c2to_ge ? OpGeq
+       : c2to_ne ? OpNeq
+       : c2to_an ? OpConj
+       : c2to_or ? OpDisj
+       : c2to_im ? OpImpl
+       : OpPlus)
+    rec = (c2to_pl ∨ c2to_mi ∨ c2to_st ∨ c2to_sl ∨ c2to_eq
+         ∨ c2to_lt ∨ c2to_gt ∨ c2to_le ∨ c2to_ge ∨ c2to_ne
+         ∨ c2to_an ∨ c2to_or ∨ c2to_im)
+
+-- ── Token → atomic Expr ───────────────────────────────────────────
+claim C2AtomE(t ∈ Token, e ∈ Expr, ok ∈ Bool)
+    c2a_int ∈ Bool = (t matches IntLit(_))
+    c2a_id  ∈ Bool = (t matches Ident(_))
+    c2a_n ∈ Int = match t
+        IntLit(n) ⇒ n
+        _ ⇒ 0
+    c2a_s ∈ String = match t
+        Ident(s) ⇒ s
+        _ ⇒ ""
+    e = (c2a_int ? EInt(c2a_n) : c2a_id ? EIdent(c2a_s) : ENoExpr)
+    ok = (c2a_int ∨ c2a_id)
+
+-- ── Bounded one-tick expression parser ────────────────────────────
+-- Shapes (P3a scope):
+--   atom
+--   atom op atom
+--   atom ? atom : atom
+--   ( atom op atom )                          [? atom : atom]
+--   ( atom op atom ∧|∨ atom op atom )         [? atom : atom]
+claim C2ParseExpr(toks ∈ TokenList, e ∈ Expr, rest ∈ TokenList, ok ∈ Bool)
+    c2pe_t0 ∈ Token = match toks
+        TLCons(t, _) ⇒ t
+        TLNil ⇒ EofTok
+    c2pe_l1 ∈ TokenList = match toks
+        TLCons(_, r) ⇒ r
+        TLNil ⇒ TLNil
+    c2pe_t1 ∈ Token = match c2pe_l1
+        TLCons(t, _) ⇒ t
+        TLNil ⇒ EofTok
+    c2pe_l2 ∈ TokenList = match c2pe_l1
+        TLCons(_, r) ⇒ r
+        TLNil ⇒ TLNil
+    c2pe_t2 ∈ Token = match c2pe_l2
+        TLCons(t, _) ⇒ t
+        TLNil ⇒ EofTok
+    c2pe_l3 ∈ TokenList = match c2pe_l2
+        TLCons(_, r) ⇒ r
+        TLNil ⇒ TLNil
+    c2pe_t3 ∈ Token = match c2pe_l3
+        TLCons(t, _) ⇒ t
+        TLNil ⇒ EofTok
+    c2pe_l4 ∈ TokenList = match c2pe_l3
+        TLCons(_, r) ⇒ r
+        TLNil ⇒ TLNil
+    c2pe_t4 ∈ Token = match c2pe_l4
+        TLCons(t, _) ⇒ t
+        TLNil ⇒ EofTok
+    c2pe_l5 ∈ TokenList = match c2pe_l4
+        TLCons(_, r) ⇒ r
+        TLNil ⇒ TLNil
+    c2pe_t5 ∈ Token = match c2pe_l5
+        TLCons(t, _) ⇒ t
+        TLNil ⇒ EofTok
+    c2pe_l6 ∈ TokenList = match c2pe_l5
+        TLCons(_, r) ⇒ r
+        TLNil ⇒ TLNil
+    c2pe_t6 ∈ Token = match c2pe_l6
+        TLCons(t, _) ⇒ t
+        TLNil ⇒ EofTok
+    c2pe_l7 ∈ TokenList = match c2pe_l6
+        TLCons(_, r) ⇒ r
+        TLNil ⇒ TLNil
+    c2pe_t7 ∈ Token = match c2pe_l7
+        TLCons(t, _) ⇒ t
+        TLNil ⇒ EofTok
+    c2pe_l8 ∈ TokenList = match c2pe_l7
+        TLCons(_, r) ⇒ r
+        TLNil ⇒ TLNil
+    c2pe_t8 ∈ Token = match c2pe_l8
+        TLCons(t, _) ⇒ t
+        TLNil ⇒ EofTok
+    c2pe_l9 ∈ TokenList = match c2pe_l8
+        TLCons(_, r) ⇒ r
+        TLNil ⇒ TLNil
+    c2pe_t9 ∈ Token = match c2pe_l9
+        TLCons(t, _) ⇒ t
+        TLNil ⇒ EofTok
+    c2pe_l10 ∈ TokenList = match c2pe_l9
+        TLCons(_, r) ⇒ r
+        TLNil ⇒ TLNil
+    c2pe_t10 ∈ Token = match c2pe_l10
+        TLCons(t, _) ⇒ t
+        TLNil ⇒ EofTok
+    c2pe_l11 ∈ TokenList = match c2pe_l10
+        TLCons(_, r) ⇒ r
+        TLNil ⇒ TLNil
+    c2pe_t11 ∈ Token = match c2pe_l11
+        TLCons(t, _) ⇒ t
+        TLNil ⇒ EofTok
+    c2pe_l12 ∈ TokenList = match c2pe_l11
+        TLCons(_, r) ⇒ r
+        TLNil ⇒ TLNil
+    c2pe_t12 ∈ Token = match c2pe_l12
+        TLCons(t, _) ⇒ t
+        TLNil ⇒ EofTok
+    c2pe_l13 ∈ TokenList = match c2pe_l12
+        TLCons(_, r) ⇒ r
+        TLNil ⇒ TLNil
+
+    c2pe_a0 ∈ Expr
+    c2pe_a0ok ∈ Bool
+    C2AtomE(t ↦ c2pe_t0, e ↦ c2pe_a0, ok ↦ c2pe_a0ok)
+    c2pe_a1 ∈ Expr
+    c2pe_a1ok ∈ Bool
+    C2AtomE(t ↦ c2pe_t1, e ↦ c2pe_a1, ok ↦ c2pe_a1ok)
+    c2pe_a2 ∈ Expr
+    c2pe_a2ok ∈ Bool
+    C2AtomE(t ↦ c2pe_t2, e ↦ c2pe_a2, ok ↦ c2pe_a2ok)
+    c2pe_a3 ∈ Expr
+    c2pe_a3ok ∈ Bool
+    C2AtomE(t ↦ c2pe_t3, e ↦ c2pe_a3, ok ↦ c2pe_a3ok)
+    c2pe_a4 ∈ Expr
+    c2pe_a4ok ∈ Bool
+    C2AtomE(t ↦ c2pe_t4, e ↦ c2pe_a4, ok ↦ c2pe_a4ok)
+    c2pe_a5 ∈ Expr
+    c2pe_a5ok ∈ Bool
+    C2AtomE(t ↦ c2pe_t5, e ↦ c2pe_a5, ok ↦ c2pe_a5ok)
+    c2pe_a6 ∈ Expr
+    c2pe_a6ok ∈ Bool
+    C2AtomE(t ↦ c2pe_t6, e ↦ c2pe_a6, ok ↦ c2pe_a6ok)
+    c2pe_a7 ∈ Expr
+    c2pe_a7ok ∈ Bool
+    C2AtomE(t ↦ c2pe_t7, e ↦ c2pe_a7, ok ↦ c2pe_a7ok)
+    c2pe_a8 ∈ Expr
+    c2pe_a8ok ∈ Bool
+    C2AtomE(t ↦ c2pe_t8, e ↦ c2pe_a8, ok ↦ c2pe_a8ok)
+    c2pe_a10 ∈ Expr
+    c2pe_a10ok ∈ Bool
+    C2AtomE(t ↦ c2pe_t10, e ↦ c2pe_a10, ok ↦ c2pe_a10ok)
+    c2pe_a12 ∈ Expr
+    c2pe_a12ok ∈ Bool
+    C2AtomE(t ↦ c2pe_t12, e ↦ c2pe_a12, ok ↦ c2pe_a12ok)
+
+    c2pe_op1 ∈ Op
+    c2pe_op1ok ∈ Bool
+    C2TokOp(t ↦ c2pe_t1, o ↦ c2pe_op1, rec ↦ c2pe_op1ok)
+    c2pe_op2 ∈ Op
+    c2pe_op2ok ∈ Bool
+    C2TokOp(t ↦ c2pe_t2, o ↦ c2pe_op2, rec ↦ c2pe_op2ok)
+    c2pe_op6 ∈ Op
+    c2pe_op6ok ∈ Bool
+    C2TokOp(t ↦ c2pe_t6, o ↦ c2pe_op6, rec ↦ c2pe_op6ok)
+
+    c2pe_is_lp ∈ Bool = (c2pe_t0 matches LParen)
+    c2pe_inner1 ∈ Expr = EBinOp(c2pe_op2, c2pe_a1, c2pe_a3)
+    c2pe_inner1ok ∈ Bool = (c2pe_a1ok ∧ c2pe_op2ok ∧ c2pe_a3ok)
+    c2pe_inner2 ∈ Expr = EBinOp(c2pe_op6, c2pe_a5, c2pe_a7)
+    c2pe_inner2ok ∈ Bool = (c2pe_a5ok ∧ c2pe_op6ok ∧ c2pe_a7ok)
+    c2pe_ps ∈ Bool = (c2pe_is_lp ∧ (c2pe_t4 matches RParen))
+    c2pe_pc ∈ Bool = (c2pe_is_lp
+        ∧ ((c2pe_t4 matches OpAnd) ∨ (c2pe_t4 matches OpOr))
+        ∧ (c2pe_t8 matches RParen))
+    c2pe_conj_op ∈ Op = ((c2pe_t4 matches OpAnd) ? OpConj : OpDisj)
+    c2pe_grp ∈ Expr = (c2pe_pc
+        ? EBinOp(c2pe_conj_op, c2pe_inner1, c2pe_inner2)
+        : c2pe_inner1)
+    c2pe_ps_tern ∈ Bool = (c2pe_ps ∧ (c2pe_t5 matches Question))
+    c2pe_pc_tern ∈ Bool = (c2pe_pc ∧ (c2pe_t9 matches Question))
+    c2pe_al ∈ Bool = ((¬c2pe_is_lp) ∧ c2pe_a0ok)
+    c2pe_al_tern ∈ Bool = (c2pe_al ∧ (c2pe_t1 matches Question))
+    c2pe_al_bin ∈ Bool = (c2pe_al ∧ (¬c2pe_al_tern) ∧ c2pe_op1ok ∧ c2pe_a2ok)
+
+    e = (c2pe_ps_tern ? ETernary(c2pe_inner1, c2pe_a6, c2pe_a8)
+       : c2pe_ps ? c2pe_inner1
+       : c2pe_pc_tern ? ETernary(c2pe_grp, c2pe_a10, c2pe_a12)
+       : c2pe_pc ? c2pe_grp
+       : c2pe_al_tern ? ETernary(c2pe_a0, c2pe_a2, c2pe_a4)
+       : c2pe_al_bin ? EBinOp(c2pe_op1, c2pe_a0, c2pe_a2)
+       : c2pe_al ? c2pe_a0
+       : ENoExpr)
+    rest = (c2pe_ps_tern ? c2pe_l9
+       : c2pe_ps ? c2pe_l5
+       : c2pe_pc_tern ? c2pe_l13
+       : c2pe_pc ? c2pe_l9
+       : c2pe_al_tern ? c2pe_l5
+       : c2pe_al_bin ? c2pe_l3
+       : c2pe_al ? c2pe_l1
+       : toks)
+    ok = (c2pe_is_lp
+        ? ((c2pe_ps ∨ c2pe_pc) ∧ c2pe_inner1ok ∧ ((¬c2pe_pc) ∨ c2pe_inner2ok))
+        : c2pe_al)
+
+claim driver_main
+    -- ── INPUT — per-process source path via stdin (wave 4o) ──────
+    got_path  ∈ Bool
+    _got_path ∈ Bool
+    got_path = (is_first_tick ? false : true)
+
+    src_path  ∈ String
+    _src_path ∈ String
+    path_read ∈ String = match last_results[0]
+        StringResult(s) ⇒ s
+        _ ⇒ ""
+    src_path = (is_first_tick ? "" : ((¬_got_path) ? path_read : _src_path))
+
+    input  ∈ String
+    _input ∈ String
+    content_read ∈ String = match last_results[0]
+        StringResult(s) ⇒ s
+        _ ⇒ "<no-read>"
+    input = (is_first_tick ? "" : ((¬_got_path) ? "" : (_input = "" ? content_read : _input)))
+
+    target  ∈ String
+    _target ∈ String
+    target_read ∈ String = match last_results[1]
+        StringResult(s) ⇒ s
+        _ ⇒ ""
+    target = (is_first_tick ? "" : ((¬_got_path) ? target_read : _target))
+
+    -- Shared per-tick result captures.
+    d_cap_int ∈ Int = match last_results[0]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+    d_cap_str ∈ String = match last_results[0]
+        StringResult(s) ⇒ s
+        _ ⇒ ""
+
+    -- ── ZINIT — Z3 lifecycle + Effect datatype + effects consts ──
+    -- zstep: -2 on tick 0, -1 on tick 1, then 0,1,2,… (capped).
+    zstep  ∈ Int
+    _zstep ∈ Int
+    zstep = (is_first_tick ? 0 - 2 : (_zstep < 60 ? _zstep + 1 : _zstep))
+
+    -- Parsed-data literal for the build-context Effect enum
+    -- (Exit-only — see header scope note).
+    d_v_exit ∈ EnumVariantDecl = EVDeclP("Exit", EVFCons(EVFType("Int"), EVFNil))
+    d_eff_decl ∈ EnumDeclAst = EnumD("Effect", EVCons(d_v_exit, EVNil))
+
+    z_cfg ∈ Int
+    _z_cfg ∈ Int
+    z_cfg = (is_first_tick ? 0 : zstep = 1 ? d_cap_int : _z_cfg)
+    z_ctx ∈ Int
+    _z_ctx ∈ Int
+    z_ctx = (is_first_tick ? 0 : zstep = 2 ? d_cap_int : _z_ctx)
+    z_sol ∈ Int
+    _z_sol ∈ Int
+    z_sol = (is_first_tick ? 0 : zstep = 3 ? d_cap_int : _z_sol)
+    z_isort ∈ Int
+    _z_isort ∈ Int
+    z_isort = (is_first_tick ? 0 : zstep = 5 ? d_cap_int : _z_isort)
+    z_bsort ∈ Int
+    _z_bsort ∈ Int
+    z_bsort = (is_first_tick ? 0 : zstep = 6 ? d_cap_int : _z_bsort)
+    z_arena ∈ Int
+    _z_arena ∈ Int
+    z_arena = (is_first_tick ? 0 : zstep = 7 ? d_cap_int : _z_arena)
+    z_sym_exit ∈ Int
+    _z_sym_exit ∈ Int
+    z_sym_exit = (is_first_tick ? 0 : zstep = 8 ? d_cap_int : _z_sym_exit)
+    z_sym_is ∈ Int
+    _z_sym_is ∈ Int
+    z_sym_is = (is_first_tick ? 0 : zstep = 9 ? d_cap_int : _z_sym_is)
+    z_sym_f0 ∈ Int
+    _z_sym_f0 ∈ Int
+    z_sym_f0 = (is_first_tick ? 0 : zstep = 10 ? d_cap_int : _z_sym_f0)
+    z_sym_eff ∈ Int
+    _z_sym_eff ∈ Int
+    z_sym_eff = (is_first_tick ? 0 : zstep = 11 ? d_cap_int : _z_sym_eff)
+    z_ctor ∈ Int
+    _z_ctor ∈ Int
+    z_ctor = (is_first_tick ? 0 : zstep = 15 ? d_cap_int : _z_ctor)
+    z_clist ∈ Int
+    _z_clist ∈ Int
+    z_clist = (is_first_tick ? 0 : zstep = 17 ? d_cap_int : _z_clist)
+    z_effsort ∈ Int
+    _z_effsort ∈ Int
+    z_effsort = (is_first_tick ? 0 : zstep = 21 ? d_cap_int : _z_effsort)
+    z_exitdecl ∈ Int
+    _z_exitdecl ∈ Int
+    z_exitdecl = (is_first_tick ? 0 : zstep = 23 ? d_cap_int : _z_exitdecl)
+    z_arrsort ∈ Int
+    _z_arrsort ∈ Int
+    z_arrsort = (is_first_tick ? 0 : zstep = 24 ? d_cap_int : _z_arrsort)
+    z_sym_effs ∈ Int
+    _z_sym_effs ∈ Int
+    z_sym_effs = (is_first_tick ? 0 : zstep = 25 ? d_cap_int : _z_sym_effs)
+    z_effs ∈ Int
+    _z_effs ∈ Int
+    z_effs = (is_first_tick ? 0 : zstep = 26 ? d_cap_int : _z_effs)
+    z_sym_elen ∈ Int
+    _z_sym_elen ∈ Int
+    z_sym_elen = (is_first_tick ? 0 : zstep = 27 ? d_cap_int : _z_sym_elen)
+    z_elen ∈ Int
+    _z_elen ∈ Int
+    z_elen = (is_first_tick ? 0 : zstep = 28 ? d_cap_int : _z_elen)
+    z_zero ∈ Int
+    _z_zero ∈ Int
+    z_zero = (is_first_tick ? 0 : zstep = 29 ? d_cap_int : _z_zero)
+    z_one ∈ Int
+    _z_one ∈ Int
+    z_one = (is_first_tick ? 0 : zstep = 30 ? d_cap_int : _z_one)
+
+    -- Field-slot resolution for Exit's Int payload (pure).
+    d_exit_fty ∈ String
+    VariantFieldType(v ↦ d_v_exit, idx ↦ 0, ty ↦ d_exit_fty)
+    d_fss_slot ∈ Int
+    d_fss_ref ∈ Int
+    d_fss_self ∈ Bool
+    FieldSortSlot(enum_name ↦ "Effect", ty ↦ d_exit_fty,
+        int_sort_h ↦ z_isort, bool_sort_h ↦ z_bsort, string_sort_h ↦ 0,
+        self_sort_idx ↦ 0,
+        sort_slot ↦ d_fss_slot, ref_slot ↦ d_fss_ref, is_self ↦ d_fss_self)
+
+    -- ZINIT effects (one per zstep).
+    ze_cfg ∈ Effect
+    BuildZ3MkConfig(eff ↦ ze_cfg)
+    ze_ctx ∈ Effect
+    BuildZ3MkContext(cfg_h ↦ z_cfg, eff ↦ ze_ctx)
+    ze_sol ∈ Effect
+    BuildZ3MkSolver(ctx_h ↦ z_ctx, eff ↦ ze_sol)
+    ze_sinc ∈ Effect
+    BuildZ3SolverIncRef(ctx_h ↦ z_ctx, solver_h ↦ z_sol, eff ↦ ze_sinc)
+    ze_isort ∈ Effect
+    BuildZ3MkIntSort(ctx_h ↦ z_ctx, eff ↦ ze_isort)
+    ze_bsort ∈ Effect
+    BuildZ3MkBoolSort(ctx_h ↦ z_ctx, eff ↦ ze_bsort)
+    ze_arena ∈ Effect
+    BuildMalloc(n_bytes ↦ 512, eff ↦ ze_arena)
+    ze_sym_exit ∈ Effect
+    VariantNameSymStep(ctx_h ↦ z_ctx, v ↦ d_v_exit, eff ↦ ze_sym_exit)
+    ze_sym_is ∈ Effect
+    VariantRecognizerSymStep(ctx_h ↦ z_ctx, v ↦ d_v_exit, eff ↦ ze_sym_is)
+    ze_sym_f0 ∈ Effect
+    VariantFieldSymStep(ctx_h ↦ z_ctx, v ↦ d_v_exit, idx ↦ 0, eff ↦ ze_sym_f0)
+    ze_sym_eff ∈ Effect
+    EnumSortSymStep(ctx_h ↦ z_ctx, decl ↦ d_eff_decl, eff ↦ ze_sym_eff)
+    ze_w_fn ∈ Effect
+    BuildMemWriteLong(addr ↦ z_arena, value ↦ z_sym_f0, eff ↦ ze_w_fn)
+    ze_w_fs ∈ Effect
+    BuildMemWriteLong(addr ↦ z_arena + 8, value ↦ d_fss_slot, eff ↦ ze_w_fs)
+    ze_w_sr ∈ Effect
+    BuildMemWriteLong(addr ↦ z_arena + 16, value ↦ d_fss_ref, eff ↦ ze_w_sr)
+    ze_mkctor ∈ Effect
+    VariantMkConstructorStep(ctx_h ↦ z_ctx, v ↦ d_v_exit,
+        name_sym_h ↦ z_sym_exit, recog_sym_h ↦ z_sym_is,
+        fnames_p ↦ z_arena, fsorts_p ↦ z_arena + 8, srefs_p ↦ z_arena + 16,
+        eff ↦ ze_mkctor)
+    ze_w_ct ∈ Effect
+    BuildMemWriteLong(addr ↦ z_arena + 24, value ↦ z_ctor, eff ↦ ze_w_ct)
+    ze_clist ∈ Effect
+    BuildZ3MkConstructorList(ctx_h ↦ z_ctx, n_ctors ↦ 1,
+        ctors_arr_p ↦ z_arena + 24, eff ↦ ze_clist)
+    ze_w_nm ∈ Effect
+    BuildMemWriteLong(addr ↦ z_arena + 32, value ↦ z_sym_eff, eff ↦ ze_w_nm)
+    ze_w_cl ∈ Effect
+    BuildMemWriteLong(addr ↦ z_arena + 48, value ↦ z_clist, eff ↦ ze_w_cl)
+    ze_mkdt ∈ Effect
+    BuildZ3MkDatatypes(ctx_h ↦ z_ctx, n_sorts ↦ 1,
+        sort_names_arr_p ↦ z_arena + 32, sorts_out_arr_p ↦ z_arena + 40,
+        ctor_lists_arr_p ↦ z_arena + 48, eff ↦ ze_mkdt)
+    ze_rd_sort ∈ Effect
+    BuildMemReadLong(addr ↦ z_arena + 40, eff ↦ ze_rd_sort)
+    ze_query ∈ Effect
+    VariantQueryStep(ctx_h ↦ z_ctx, ctor_h ↦ z_ctor, v ↦ d_v_exit,
+        out_base_p ↦ z_arena + 56, eff ↦ ze_query)
+    ze_rd_decl ∈ Effect
+    BuildMemReadLong(addr ↦ z_arena + 56, eff ↦ ze_rd_decl)
+    ze_arrsort ∈ Effect
+    BuildZ3MkArraySort(ctx_h ↦ z_ctx, idx_sort_h ↦ z_isort,
+        val_sort_h ↦ z_effsort, eff ↦ ze_arrsort)
+    ze_sym_effs ∈ Effect
+    BuildZ3MkStringSymbol(ctx_h ↦ z_ctx, name ↦ "effects", eff ↦ ze_sym_effs)
+    ze_effs ∈ Effect
+    BuildZ3MkConst(ctx_h ↦ z_ctx, sym_h ↦ z_sym_effs, sort_h ↦ z_arrsort,
+        eff ↦ ze_effs)
+    ze_sym_elen ∈ Effect
+    BuildZ3MkStringSymbol(ctx_h ↦ z_ctx, name ↦ "effects__len", eff ↦ ze_sym_elen)
+    ze_elen ∈ Effect
+    BuildZ3MkConst(ctx_h ↦ z_ctx, sym_h ↦ z_sym_elen, sort_h ↦ z_isort,
+        eff ↦ ze_elen)
+    ze_zero ∈ Effect
+    BuildZ3MkInt(ctx_h ↦ z_ctx, val ↦ 0, sort_h ↦ z_isort, eff ↦ ze_zero)
+    ze_one ∈ Effect
+    BuildZ3MkInt(ctx_h ↦ z_ctx, val ↦ 1, sort_h ↦ z_isort, eff ↦ ze_one)
+
+    -- ── LEX (fossil FSM; gated to start after ZINIT) ──────────────
+    pos  ∈ Int
+    _pos ∈ Int
+    next_pos  ∈ Int
+    _next_pos ∈ Int
+    pos = (is_first_tick ? 0 - 1
+        : ((¬_got_path) ? 0 - 1
+        : (_zstep < 30 ? 0 - 1
+        : (_pos < 0 ? 0 : _next_pos))))
+
+    partial_str  ∈ String
+    _partial_str ∈ String
+    partial_int  ∈ Int
+    _partial_int ∈ Int
+
+    cur_char ∈ String = substr(input, pos, 1)
+
+    is_alpha ∈ Bool
+    IsAlphaChar(c ↦ cur_char, out ↦ is_alpha)
+    is_dig ∈ Bool
+    IsDigitChar(c ↦ cur_char, out ↦ is_dig)
+    is_ws ∈ Bool
+    IsWhitespace(c ↦ cur_char, out ↦ is_ws)
+    is_quote ∈ Bool
+    IsQuote(c ↦ cur_char, out ↦ is_quote)
+    op_tok ∈ Token
+    is_op ∈ Bool
+    SingleCharTok(c ↦ cur_char, t ↦ op_tok, recognized ↦ is_op)
+    dig_val ∈ Int
+    DigitToInt(c ↦ cur_char, n ↦ dig_val)
+
+    done ∈ Bool = ((pos ≥ #input) ∧ (#input > 0))
+    in_range ∈ Bool = ((pos ≥ 0) ∧ ¬done)
+
+    was_collecting_str ∈ Bool = (#_partial_str > 0)
+    was_collecting_int ∈ Bool = (_partial_int ≥ 0)
+
+    in_strlit  ∈ Bool
+    _in_strlit ∈ Bool
+    partial_strlit  ∈ String
+    _partial_strlit ∈ String
+
+    strlit_open       ∈ Bool = ((¬_in_strlit) ∧ is_quote ∧ in_range ∧ (¬was_collecting_str) ∧ (¬was_collecting_int))
+    strlit_continuing ∈ Bool = (_in_strlit ∧ (¬is_quote) ∧ in_range)
+    strlit_closing    ∈ Bool = (_in_strlit ∧ is_quote ∧ in_range)
+
+    in_strlit = (is_first_tick ? false
+        : (strlit_open ? true
+        : (strlit_closing ? false
+        : _in_strlit)))
+    partial_strlit = (is_first_tick ? ""
+        : (strlit_open ? ""
+        : (strlit_continuing ? _partial_strlit ++ cur_char
+        : (strlit_closing ? ""
+        : _partial_strlit))))
+
+    str_continuing ∈ Bool = (was_collecting_str ∧ is_alpha ∧ in_range ∧ ¬_in_strlit)
+    str_finishing  ∈ Bool = (was_collecting_str ∧ ((¬is_alpha ∧ in_range) ∨ done))
+    str_starting   ∈ Bool = ((¬was_collecting_str) ∧ is_alpha ∧ in_range ∧ ¬_in_strlit)
+
+    int_continuing ∈ Bool = (was_collecting_int ∧ is_dig ∧ in_range ∧ ¬_in_strlit)
+    int_finishing  ∈ Bool = (was_collecting_int ∧ ((¬is_dig ∧ in_range) ∨ done))
+    int_starting   ∈ Bool = ((¬was_collecting_int) ∧ is_dig ∧ in_range ∧ ¬_in_strlit)
+
+    partial_str = (is_first_tick ? "" : (str_continuing ? _partial_str ++ cur_char : (str_starting ? cur_char : "")))
+    partial_int = (is_first_tick ? 0 - 1 : (int_continuing ? (_partial_int * 10) + dig_val : (int_starting ? dig_val : 0 - 1)))
+
+    classified_str ∈ Token
+    MaybeKeyword(s ↦ _partial_str, t ↦ classified_str)
+    int_tok ∈ Token = IntLit(_partial_int)
+
+    finish_str_only    ∈ Bool = (str_finishing ∧ (is_ws ∨ done))
+    finish_int_only    ∈ Bool = (int_finishing ∧ (is_ws ∨ done))
+    finish_str_with_op ∈ Bool = (str_finishing ∧ is_op ∧ in_range)
+    finish_int_with_op ∈ Bool = (int_finishing ∧ is_op ∧ in_range)
+    char_only          ∈ Bool = ((¬was_collecting_str) ∧ (¬was_collecting_int) ∧ is_op ∧ in_range ∧ ¬_in_strlit)
+
+    tokens  ∈ TokenList
+    _tokens ∈ TokenList
+    strlit_tok ∈ Token = StringLit(_partial_strlit)
+    tokens = (is_first_tick ? TLNil
+            : (lx_comment ? _tokens
+            : (strlit_closing ? TLCons(strlit_tok, _tokens)
+            : (finish_str_with_op ? TLCons(op_tok, TLCons(classified_str, _tokens))
+            : (finish_int_with_op ? TLCons(op_tok, TLCons(int_tok, _tokens))
+            : (finish_str_only ? TLCons(classified_str, _tokens)
+            : (finish_int_only ? TLCons(int_tok, _tokens)
+            : (char_only ? TLCons(op_tok, _tokens)
+            : _tokens))))))))
+
+    has_input ∈ Bool = (#input > 0)
+    lex_done ∈ Bool = (done ∧ ¬was_collecting_str ∧ ¬was_collecting_int ∧ ¬_in_strlit ∧ has_input)
+
+    lx_next_char ∈ String = substr(input, pos + 1, 1)
+    lx_collecting ∈ Bool = (was_collecting_str ∨ was_collecting_int)
+    lx_is_dash    ∈ Bool = (cur_char = "-")
+    lx_next_dash  ∈ Bool = (lx_next_char = "-")
+    lx_comment ∈ Bool = (lx_is_dash ∧ lx_next_dash ∧ in_range ∧ (¬lx_collecting) ∧ (¬_in_strlit))
+    lx_nl ∈ Int = index_of(input, "\n", pos)
+    lx_comment_to ∈ Int = (lx_nl < 0 ? #input : lx_nl)
+    lx_skip_ws ∈ Bool = (is_ws ∧ in_range ∧ (¬_in_strlit))
+    lx_ws_adv ∈ Int
+    WsRunLen(s ↦ input, p ↦ pos, adv ↦ lx_ws_adv)
+    next_pos = (is_first_tick ? 0
+        : (lx_comment ? lx_comment_to
+        : (lx_skip_ws ? pos + lx_ws_adv
+        : pos + 1)))
+
+    -- ── PHASE control (0 lex · 1 reverse · 2 parse · 3 emit) ──────
+    phase  ∈ Int
+    _phase ∈ Int
+
+    work_is_nil ∈ Bool = match _work
+        TLNil ⇒ true
+        _ ⇒ false
+    work_hd ∈ Token = match _work
+        TLCons(t, _) ⇒ t
+        TLNil ⇒ EofTok
+    work_tl ∈ TokenList = match _work
+        TLCons(_, r) ⇒ r
+        TLNil ⇒ TLNil
+
+    entering_reverse ∈ Bool = ((¬is_first_tick) ∧ (_phase = 0) ∧ lex_done)
+    in_reverse       ∈ Bool = (_phase = 1)
+    entering_parse   ∈ Bool = ((¬is_first_tick) ∧ (_phase = 1) ∧ work_is_nil)
+    in_parse         ∈ Bool = (_phase = 2)
+
+    work ∈ TokenList
+    _work ∈ TokenList
+    fwd  ∈ TokenList
+    _fwd ∈ TokenList
+    work = (is_first_tick ? TLNil
+        : (entering_reverse ? tokens
+        : (in_reverse ∧ (¬work_is_nil) ? work_tl
+        : _work)))
+    fwd = (is_first_tick ? TLNil
+        : (entering_reverse ? TLNil
+        : (in_reverse ∧ (¬work_is_nil) ? TLCons(work_hd, _fwd)
+        : _fwd)))
+
+    -- ── PARSE dispatch (pmode 0 dispatch · 1 skip · 2 claim) ──────
+    pmode  ∈ Int
+    _pmode ∈ Int
+    items  ∈ TokenList
+    _items ∈ TokenList
+
+    d_items_hd ∈ Token = match _items
+        TLCons(t, _) ⇒ t
+        TLNil ⇒ EofTok
+    d_items_nil ∈ Bool = match _items
+        TLNil ⇒ true
+        _ ⇒ false
+    d_items_l1 ∈ TokenList = match _items
+        TLCons(_, r) ⇒ r
+        TLNil ⇒ TLNil
+    d_name_tok ∈ Token = match d_items_l1
+        TLCons(t, _) ⇒ t
+        TLNil ⇒ EofTok
+    d_items_l2 ∈ TokenList = match d_items_l1
+        TLCons(_, r) ⇒ r
+        TLNil ⇒ TLNil
+    d_after_tok ∈ Token = match d_items_l2
+        TLCons(t, _) ⇒ t
+        TLNil ⇒ EofTok
+
+    d_head_is_claim ∈ Bool = (d_items_hd matches KwClaim)
+    d_cl_name ∈ String = match d_name_tok
+        Ident(s) ⇒ s
+        _ ⇒ ""
+    d_name_ok ∈ Bool = (d_cl_name = target)
+    d_is_param ∈ Bool = (d_after_tok matches LParen)
+
+    d_in_dispatch ∈ Bool = (in_parse ∧ (_pmode = 0))
+    d_enter_claim ∈ Bool = (d_in_dispatch ∧ (¬d_items_nil) ∧ d_head_is_claim ∧ d_name_ok ∧ (¬d_is_param))
+    d_enter_skip  ∈ Bool = (d_in_dispatch ∧ (¬d_items_nil) ∧ (¬d_enter_claim))
+    d_all_done    ∈ Bool = (d_in_dispatch ∧ d_items_nil)
+    d_in_skip     ∈ Bool = (in_parse ∧ (_pmode = 1))
+    d_in_claim    ∈ Bool = (in_parse ∧ (_pmode = 2))
+
+    -- skip machine: walk one token per tick to the next top-level kw.
+    skipl  ∈ TokenList
+    _skipl ∈ TokenList
+    d_skipl_hd ∈ Token = match _skipl
+        TLCons(t, _) ⇒ t
+        TLNil ⇒ EofTok
+    d_skipl_tl ∈ TokenList = match _skipl
+        TLCons(_, r) ⇒ r
+        TLNil ⇒ TLNil
+    d_skipl_nil ∈ Bool = match _skipl
+        TLNil ⇒ true
+        _ ⇒ false
+    d_skip_at_tlkw ∈ Bool = ((d_skipl_hd matches KwEnum) ∨ (d_skipl_hd matches KwClaim)
+        ∨ (d_skipl_hd matches KwType) ∨ (d_skipl_hd matches KwFsm) ∨ (d_skipl_hd matches KwSchema))
+    d_skip_stop ∈ Bool = (d_in_skip ∧ (d_skipl_nil ∨ d_skip_at_tlkw))
+    skipl = (is_first_tick ? TLNil
+        : (d_enter_skip ? d_items_l1
+        : (d_in_skip ∧ (¬d_skip_stop) ? d_skipl_tl
+        : _skipl)))
+
+    -- ── CLAIM WALK state ──────────────────────────────────────────
+    rem  ∈ TokenList
+    _rem ∈ TokenList
+    witems  ∈ C2Items
+    _witems ∈ C2Items
+    hstk  ∈ C2H
+    _hstk ∈ C2H
+    istep  ∈ Int
+    _istep ∈ Int
+    pend  ∈ Int
+    _pend ∈ Int
+    pend_name  ∈ String
+    _pend_name ∈ String
+    tmp_h  ∈ Int
+    _tmp_h ∈ Int
+    fstr  ∈ String
+    _fstr ∈ String
+
+    -- pend application (the capture tick of the previous builder).
+    d_hstk_in ∈ C2H = ((_pend = 1 ∨ _pend = 3) ? C2HCons(d_cap_int, _hstk) : _hstk)
+    d_tmp_in ∈ Int = (_pend = 2 ? d_cap_int : _tmp_h)
+    tmp_h = (is_first_tick ? 0 : d_tmp_in)
+
+    -- 8-slot symbol table; appended on decl completion (pend = 3).
+    st_cnt  ∈ Int
+    _st_cnt ∈ Int
+    st_n0 ∈ String
+    _st_n0 ∈ String
+    st_h0 ∈ Int
+    _st_h0 ∈ Int
+    st_n1 ∈ String
+    _st_n1 ∈ String
+    st_h1 ∈ Int
+    _st_h1 ∈ Int
+    st_n2 ∈ String
+    _st_n2 ∈ String
+    st_h2 ∈ Int
+    _st_h2 ∈ Int
+    st_n3 ∈ String
+    _st_n3 ∈ String
+    st_h3 ∈ Int
+    _st_h3 ∈ Int
+    st_n4 ∈ String
+    _st_n4 ∈ String
+    st_h4 ∈ Int
+    _st_h4 ∈ Int
+    st_n5 ∈ String
+    _st_n5 ∈ String
+    st_h5 ∈ Int
+    _st_h5 ∈ Int
+    st_n6 ∈ String
+    _st_n6 ∈ String
+    st_h6 ∈ Int
+    _st_h6 ∈ Int
+    st_n7 ∈ String
+    _st_n7 ∈ String
+    st_h7 ∈ Int
+    _st_h7 ∈ Int
+    d_st_add ∈ Bool = (_pend = 3)
+    st_cnt = (is_first_tick ? 0 : (d_st_add ? _st_cnt + 1 : _st_cnt))
+    st_n0 = (is_first_tick ? "" : (d_st_add ∧ (_st_cnt = 0) ? _pend_name : _st_n0))
+    st_h0 = (is_first_tick ? 0 : (d_st_add ∧ (_st_cnt = 0) ? d_cap_int : _st_h0))
+    st_n1 = (is_first_tick ? "" : (d_st_add ∧ (_st_cnt = 1) ? _pend_name : _st_n1))
+    st_h1 = (is_first_tick ? 0 : (d_st_add ∧ (_st_cnt = 1) ? d_cap_int : _st_h1))
+    st_n2 = (is_first_tick ? "" : (d_st_add ∧ (_st_cnt = 2) ? _pend_name : _st_n2))
+    st_h2 = (is_first_tick ? 0 : (d_st_add ∧ (_st_cnt = 2) ? d_cap_int : _st_h2))
+    st_n3 = (is_first_tick ? "" : (d_st_add ∧ (_st_cnt = 3) ? _pend_name : _st_n3))
+    st_h3 = (is_first_tick ? 0 : (d_st_add ∧ (_st_cnt = 3) ? d_cap_int : _st_h3))
+    st_n4 = (is_first_tick ? "" : (d_st_add ∧ (_st_cnt = 4) ? _pend_name : _st_n4))
+    st_h4 = (is_first_tick ? 0 : (d_st_add ∧ (_st_cnt = 4) ? d_cap_int : _st_h4))
+    st_n5 = (is_first_tick ? "" : (d_st_add ∧ (_st_cnt = 5) ? _pend_name : _st_n5))
+    st_h5 = (is_first_tick ? 0 : (d_st_add ∧ (_st_cnt = 5) ? d_cap_int : _st_h5))
+    st_n6 = (is_first_tick ? "" : (d_st_add ∧ (_st_cnt = 6) ? _pend_name : _st_n6))
+    st_h6 = (is_first_tick ? 0 : (d_st_add ∧ (_st_cnt = 6) ? d_cap_int : _st_h6))
+    st_n7 = (is_first_tick ? "" : (d_st_add ∧ (_st_cnt = 7) ? _pend_name : _st_n7))
+    st_h7 = (is_first_tick ? 0 : (d_st_add ∧ (_st_cnt = 7) ? d_cap_int : _st_h7))
+
+    -- handle-stack views (post pend application).
+    d_h_top ∈ Int = match d_hstk_in
+        C2HCons(h, _) ⇒ h
+        C2HNil ⇒ 0
+    d_h_t1 ∈ C2H = match d_hstk_in
+        C2HCons(_, r) ⇒ r
+        C2HNil ⇒ C2HNil
+    d_h_2nd ∈ Int = match d_h_t1
+        C2HCons(h, _) ⇒ h
+        C2HNil ⇒ 0
+    d_h_t2 ∈ C2H = match d_h_t1
+        C2HCons(_, r) ⇒ r
+        C2HNil ⇒ C2HNil
+    d_h_3rd ∈ Int = match d_h_t2
+        C2HCons(h, _) ⇒ h
+        C2HNil ⇒ 0
+    d_h_t3 ∈ C2H = match d_h_t2
+        C2HCons(_, r) ⇒ r
+        C2HNil ⇒ C2HNil
+
+    -- current work item.
+    d_witems_nil ∈ Bool = match _witems
+        C2INil ⇒ true
+        _ ⇒ false
+    d_whead ∈ C2Item = match _witems
+        C2ICons(h, _) ⇒ h
+        C2INil ⇒ C2Drop
+    d_wtail ∈ C2Items = match _witems
+        C2ICons(_, r) ⇒ r
+        C2INil ⇒ C2INil
+
+    d_classify   ∈ Bool = (d_in_claim ∧ d_witems_nil)
+    d_processing ∈ Bool = (d_in_claim ∧ (¬d_witems_nil))
+
+    d_it_proc    ∈ Bool = (d_whead matches C2Process(_))
+    d_it_op      ∈ Bool = (d_whead matches C2Op(_))
+    d_it_ite     ∈ Bool = (d_whead matches C2Ite)
+    d_it_decl    ∈ Bool = (d_whead matches C2DeclConst(_, _))
+    d_it_nat     ∈ Bool = (d_whead matches C2NatBound)
+    d_it_pineq   ∈ Bool = (d_whead matches C2PinEq)
+    d_it_assert  ∈ Bool = (d_whead matches C2AssertTop)
+    d_it_drop    ∈ Bool = (d_whead matches C2Drop)
+    d_it_exitapp ∈ Bool = (d_whead matches C2ExitApp)
+    d_it_sellen  ∈ Bool = (d_whead matches C2SelectLen)
+
+    d_pe ∈ Expr = match d_whead
+        C2Process(e) ⇒ e
+        _ ⇒ ENoExpr
+    d_op ∈ Op = match d_whead
+        C2Op(o) ⇒ o
+        _ ⇒ OpPlus
+    d_dc_name ∈ String = match d_whead
+        C2DeclConst(n, _) ⇒ n
+        _ ⇒ ""
+    d_dc_sc ∈ Int = match d_whead
+        C2DeclConst(_, s) ⇒ s
+        _ ⇒ 0
+
+    -- Expr-node decomposition via the pass claims.
+    d_pe_is_int ∈ Bool = (d_pe matches EInt(_))
+    d_pe_is_id  ∈ Bool = (d_pe matches EIdent(_))
+    d_lkname ∈ String = match d_pe
+        EIdent(s) ⇒ s
+        _ ⇒ ""
+    d_pe_op ∈ Op
+    d_pe_l ∈ Expr
+    d_pe_r ∈ Expr
+    d_pe_is_bin ∈ Bool
+    BoolExprBinopParts(e ↦ d_pe, op ↦ d_pe_op, lhs ↦ d_pe_l,
+        rhs ↦ d_pe_r, is_binop ↦ d_pe_is_bin)
+    d_pe_c ∈ Expr
+    d_pe_t ∈ Expr
+    d_pe_e ∈ Expr
+    d_pe_is_tern ∈ Bool
+    TernaryExprParts(e ↦ d_pe, cond_e ↦ d_pe_c, then_e ↦ d_pe_t,
+        else_e ↦ d_pe_e, is_tern ↦ d_pe_is_tern)
+
+    -- symbol-table lookup (post-update slots: a decl completed this
+    -- tick is visible to the same tick's item).
+    d_lk ∈ Int = (st_n0 = d_lkname ? st_h0
+        : st_n1 = d_lkname ? st_h1
+        : st_n2 = d_lkname ? st_h2
+        : st_n3 = d_lkname ? st_h3
+        : st_n4 = d_lkname ? st_h4
+        : st_n5 = d_lkname ? st_h5
+        : st_n6 = d_lkname ? st_h6
+        : st_n7 = d_lkname ? st_h7
+        : 0)
+
+    -- Op family flags (via the pass discriminators).
+    d_op_arith_arr ∈ Bool
+    BinopIsArray(op ↦ d_op, out ↦ d_op_arith_arr)
+    d_op_bool_arr ∈ Bool
+    BoolOpIsArray(op ↦ d_op, out ↦ d_op_bool_arr)
+    d_op_is_div ∈ Bool = (d_op matches OpDiv)
+    d_op_arr ∈ Bool = (d_op_arith_arr ∨ d_op_bool_arr)
+
+    -- ── LINE CLASSIFIER (pure; runs when witems is empty) ─────────
+    c_rem_nil ∈ Bool = match _rem
+        TLNil ⇒ true
+        _ ⇒ false
+    c_t0 ∈ Token = match _rem
+        TLCons(t, _) ⇒ t
+        TLNil ⇒ EofTok
+    c_l1 ∈ TokenList = match _rem
+        TLCons(_, r) ⇒ r
+        TLNil ⇒ TLNil
+    c_t1 ∈ Token = match c_l1
+        TLCons(t, _) ⇒ t
+        TLNil ⇒ EofTok
+    c_l2 ∈ TokenList = match c_l1
+        TLCons(_, r) ⇒ r
+        TLNil ⇒ TLNil
+    c_t2 ∈ Token = match c_l2
+        TLCons(t, _) ⇒ t
+        TLNil ⇒ EofTok
+    c_l3 ∈ TokenList = match c_l2
+        TLCons(_, r) ⇒ r
+        TLNil ⇒ TLNil
+    c_t3 ∈ Token = match c_l3
+        TLCons(t, _) ⇒ t
+        TLNil ⇒ EofTok
+    c_l4 ∈ TokenList = match c_l3
+        TLCons(_, r) ⇒ r
+        TLNil ⇒ TLNil
+    c_t4 ∈ Token = match c_l4
+        TLCons(t, _) ⇒ t
+        TLNil ⇒ EofTok
+    c_l5 ∈ TokenList = match c_l4
+        TLCons(_, r) ⇒ r
+        TLNil ⇒ TLNil
+    c_l6 ∈ TokenList = match c_l5
+        TLCons(_, r) ⇒ r
+        TLNil ⇒ TLNil
+    c_l7 ∈ TokenList = match c_l6
+        TLCons(_, r) ⇒ r
+        TLNil ⇒ TLNil
+    c_l8 ∈ TokenList = match c_l7
+        TLCons(_, r) ⇒ r
+        TLNil ⇒ TLNil
+    c_t8 ∈ Token = match c_l8
+        TLCons(t, _) ⇒ t
+        TLNil ⇒ EofTok
+    c_l9 ∈ TokenList = match c_l8
+        TLCons(_, r) ⇒ r
+        TLNil ⇒ TLNil
+    c_t9 ∈ Token = match c_l9
+        TLCons(t, _) ⇒ t
+        TLNil ⇒ EofTok
+    c_l10 ∈ TokenList = match c_l9
+        TLCons(_, r) ⇒ r
+        TLNil ⇒ TLNil
+
+    c_t0_is_ident ∈ Bool = (c_t0 matches Ident(_))
+    c_t0_is_tlkw ∈ Bool = ((c_t0 matches KwEnum) ∨ (c_t0 matches KwClaim)
+        ∨ (c_t0 matches KwType) ∨ (c_t0 matches KwFsm) ∨ (c_t0 matches KwSchema))
+    c_name ∈ String = match c_t0
+        Ident(s) ⇒ s
+        _ ⇒ ""
+
+    c_is_mem ∈ Bool = (c_t1 matches OpIn)
+    c_is_bare ∈ Bool = (c_t1 matches Eq)
+    c_eff_line ∈ Bool = (c_is_mem ∧ (c_name = "effects"))
+    c_type_str ∈ String = match c_t2
+        Ident(s) ⇒ s
+        _ ⇒ ""
+    c_is_nat ∈ Bool = (c_type_str = "Nat")
+    c_sc ∈ Int = (c_type_str = "Bool" ? 1 : 0)
+    c_pinned ∈ Bool = (c_is_mem ∧ (¬c_eff_line) ∧ (c_t3 matches Eq))
+    c_bnd_op ∈ Op
+    c_t3_is_op ∈ Bool
+    C2TokOp(t ↦ c_t3, o ↦ c_bnd_op, rec ↦ c_t3_is_op)
+    c_bound ∈ Bool = (c_is_mem ∧ (¬c_eff_line) ∧ (¬c_pinned) ∧ c_t3_is_op)
+    c_bnd_e ∈ Expr
+    c_bnd_ok ∈ Bool
+    C2AtomE(t ↦ c_t4, e ↦ c_bnd_e, ok ↦ c_bnd_ok)
+
+    c_pin_e ∈ Expr
+    c_pin_rest ∈ TokenList
+    c_pin_ok ∈ Bool
+    C2ParseExpr(toks ↦ c_l4, e ↦ c_pin_e, rest ↦ c_pin_rest, ok ↦ c_pin_ok)
+    c_bare_e ∈ Expr
+    c_bare_rest ∈ TokenList
+    c_bare_ok ∈ Bool
+    C2ParseExpr(toks ↦ c_l2, e ↦ c_bare_e, rest ↦ c_bare_rest, ok ↦ c_bare_ok)
+    c_fx_e ∈ Expr
+    c_fx_rest ∈ TokenList
+    c_fx_ok ∈ Bool
+    C2ParseExpr(toks ↦ c_l10, e ↦ c_fx_e, rest ↦ c_fx_rest, ok ↦ c_fx_ok)
+
+    -- the effects literal closes with `) ⟩` after the Exit argument.
+    c_fx_r1 ∈ TokenList = match c_fx_rest
+        TLCons(_, r) ⇒ r
+        TLNil ⇒ TLNil
+    c_fx_after ∈ TokenList = match c_fx_r1
+        TLCons(_, r) ⇒ r
+        TLNil ⇒ TLNil
+
+    d_kind_none ∈ Bool = ((¬c_eff_line) ∧ (¬c_is_mem) ∧ (¬c_is_bare))
+    d_claim_end ∈ Bool = (d_classify ∧ (c_rem_nil ∨ c_t0_is_tlkw ∨ (¬c_t0_is_ident) ∨ d_kind_none))
+
+    c_seg_pin ∈ C2Items = C2ICons(C2Process(c_pin_e),
+        C2ICons(C2PinEq, C2ICons(C2AssertTop, C2INil)))
+    c_seg_bound ∈ C2Items = C2ICons(C2Process(c_bnd_e),
+        C2ICons(C2Op(c_bnd_op), C2ICons(C2AssertTop, C2INil)))
+    c_seg_drop ∈ C2Items = C2ICons(C2Drop, C2INil)
+    c_tailseg ∈ C2Items = (c_pinned ? c_seg_pin : c_bound ? c_seg_bound : c_seg_drop)
+    c_natseg ∈ C2Items = (c_is_nat
+        ? C2ICons(C2NatBound, C2ICons(C2AssertTop, c_tailseg))
+        : c_tailseg)
+    c_mem_items ∈ C2Items = C2ICons(C2DeclConst(c_name, c_sc), c_natseg)
+    c_bare_items ∈ C2Items = C2ICons(
+        C2Process(EBinOp(OpEq, EIdent(c_name), c_bare_e)),
+        C2ICons(C2AssertTop, C2INil))
+    c_fx_items ∈ C2Items = C2ICons(C2Process(c_fx_e),
+        C2ICons(C2ExitApp, C2ICons(C2SelectLen, C2INil)))
+
+    d_new_items ∈ C2Items = (d_claim_end ? C2INil
+        : c_eff_line ? c_fx_items
+        : c_is_mem ? c_mem_items
+        : c_bare_items)
+    d_rem_new ∈ TokenList = (d_claim_end ? _rem
+        : c_eff_line ? c_fx_after
+        : c_is_mem ? (c_pinned ? c_pin_rest : c_bound ? c_l5 : c_l3)
+        : c_bare_rest)
+    c_field ∈ String = c_name ++ ":" ++ (c_sc = 1 ? "Bool" : "Int")
+
+    -- ── state transitions ─────────────────────────────────────────
+    d_pops ∈ Int = (¬d_processing ? 0
+        : d_it_proc ? 0
+        : d_it_op ? (d_op_arr ? (_istep = 2 ? 2 : 0) : 2)
+        : d_it_ite ? 3
+        : d_it_pineq ? 2
+        : d_it_assert ? 1
+        : d_it_drop ? 1
+        : d_it_exitapp ? (_istep = 1 ? 1 : 0)
+        : d_it_sellen ? (_istep = 1 ? 1 : 0)
+        : 0)
+    d_push_ident ∈ Bool = (d_processing ∧ d_it_proc ∧ d_pe_is_id)
+
+    hstk = (is_first_tick ? C2HNil
+        : d_enter_claim ? C2HNil
+        : d_push_ident ? C2HCons(d_lk, d_hstk_in)
+        : d_pops = 3 ? d_h_t3
+        : d_pops = 2 ? d_h_t2
+        : d_pops = 1 ? d_h_t1
+        : d_hstk_in)
+
+    witems = (is_first_tick ? C2INil
+        : d_enter_claim ? C2INil
+        : d_classify ? d_new_items
+        : ¬d_processing ? _witems
+        : d_it_proc ∧ d_pe_is_bin ? C2ICons(C2Process(d_pe_l), C2ICons(C2Process(d_pe_r), C2ICons(C2Op(d_pe_op), d_wtail)))
+        : d_it_proc ∧ d_pe_is_tern ? C2ICons(C2Process(d_pe_c), C2ICons(C2Process(d_pe_t), C2ICons(C2Process(d_pe_e), C2ICons(C2Ite, d_wtail))))
+        : d_it_proc ? d_wtail
+        : d_it_op ? (d_op_arr ? (_istep = 2 ? d_wtail : _witems) : d_wtail)
+        : d_it_decl ? (_istep = 1 ? d_wtail : _witems)
+        : d_it_exitapp ? (_istep = 1 ? d_wtail : _witems)
+        : d_it_sellen ? (_istep = 4 ? d_wtail : _witems)
+        : d_wtail)
+
+    d_multi_cont ∈ Bool = (d_processing ∧
+        ((d_it_op ∧ d_op_arr ∧ (_istep < 2))
+        ∨ (d_it_decl ∧ (_istep < 1))
+        ∨ (d_it_exitapp ∧ (_istep < 1))
+        ∨ (d_it_sellen ∧ (_istep < 4))))
+    istep = (is_first_tick ? 0
+        : d_multi_cont ? _istep + 1
+        : 0)
+
+    pend = (is_first_tick ? 0
+        : ¬d_processing ? 0
+        : d_it_proc ? (d_pe_is_int ? 1 : 0)
+        : d_it_op ? (d_op_arr ? (_istep = 2 ? 1 : 0) : 1)
+        : d_it_ite ? 1
+        : d_it_decl ? (_istep = 0 ? 2 : 3)
+        : d_it_nat ? 1
+        : d_it_pineq ? 1
+        : d_it_exitapp ? (_istep = 1 ? 1 : 0)
+        : d_it_sellen ? ((_istep = 0 ∨ _istep = 1 ∨ _istep = 3) ? 2 : 0)
+        : 0)
+    pend_name = (is_first_tick ? ""
+        : (d_processing ∧ d_it_decl ∧ (_istep = 1)) ? d_dc_name
+        : _pend_name)
+
+    rem = (is_first_tick ? TLNil
+        : d_enter_claim ? d_items_l2
+        : (d_classify ∧ (¬d_claim_end)) ? d_rem_new
+        : _rem)
+
+    fstr = (is_first_tick ? ""
+        : (d_classify ∧ (¬d_claim_end) ∧ c_is_mem ∧ (¬c_eff_line))
+            ? (_fstr = "" ? c_field : _fstr ++ " " ++ c_field)
+        : _fstr)
+
+    items = (is_first_tick ? TLNil
+        : entering_parse ? _fwd
+        : d_skip_stop ? _skipl
+        : d_claim_end ? _rem
+        : _items)
+    pmode = (is_first_tick ? 0
+        : entering_parse ? 0
+        : d_enter_claim ? 2
+        : d_enter_skip ? 1
+        : d_skip_stop ? 0
+        : d_claim_end ? 0
+        : _pmode)
+
+    phase = (is_first_tick ? 0
+        : (_phase = 0 ? (lex_done ? 1 : 0)
+        : (_phase = 1 ? (work_is_nil ? 2 : 1)
+        : (_phase = 2 ? (d_all_done ? 3 : 2)
+        : 3))))
+
+    -- ── per-item build effects (pass-claim dispatch) ──────────────
+    d_eff_mkint ∈ Effect
+    d_atom_ok ∈ Bool
+    AtomBuildZ3(ctx_h ↦ z_ctx, int_sort_h ↦ z_isort, sym_h ↦ 0,
+        e ↦ d_pe, eff ↦ d_eff_mkint, ok ↦ d_atom_ok)
+    d_eff_cmp ∈ Effect
+    d_cmp_ok ∈ Bool
+    d_cmp_nn ∈ Bool
+    BoolCmpBuildZ3(ctx_h ↦ z_ctx, op ↦ d_op, l_h ↦ d_h_2nd, r_h ↦ d_h_top,
+        eff ↦ d_eff_cmp, ok ↦ d_cmp_ok, needs_not ↦ d_cmp_nn)
+    d_eff_arith ∈ Effect
+    d_arith_ok ∈ Bool
+    ArithBinopBuildZ3(ctx_h ↦ z_ctx, op ↦ d_op,
+        l_h ↦ d_h_2nd, r_h ↦ d_h_top, args_arr_ptr ↦ z_arena + 80,
+        eff ↦ d_eff_arith, ok ↦ d_arith_ok)
+    d_eff_nary ∈ Effect
+    d_nary_ok ∈ Bool
+    BoolNaryBuildZ3(ctx_h ↦ z_ctx, op ↦ d_op, num_args ↦ 2,
+        args_arr_ptr ↦ z_arena + 80, eff ↦ d_eff_nary, ok ↦ d_nary_ok)
+    d_eff_ite ∈ Effect
+    TernaryBuildZ3(ctx_h ↦ z_ctx, cond_h ↦ d_h_3rd, then_h ↦ d_h_2nd,
+        else_h ↦ d_h_top, eff ↦ d_eff_ite)
+    d_eff_wl0 ∈ Effect
+    BuildMemWriteLong(addr ↦ z_arena + 80, value ↦ d_h_2nd, eff ↦ d_eff_wl0)
+    d_eff_wl1 ∈ Effect
+    BuildMemWriteLong(addr ↦ z_arena + 88, value ↦ d_h_top, eff ↦ d_eff_wl1)
+    d_eff_sym ∈ Effect
+    BuildZ3MkStringSymbol(ctx_h ↦ z_ctx, name ↦ d_dc_name, eff ↦ d_eff_sym)
+    d_eff_const ∈ Effect
+    BuildZ3MkConst(ctx_h ↦ z_ctx, sym_h ↦ d_tmp_in,
+        sort_h ↦ (d_dc_sc = 1 ? z_bsort : z_isort), eff ↦ d_eff_const)
+    -- oracle gap: a ctor literal in a slot binding breaks the callee's
+    -- `matches` translation — pass pinned body vars instead.
+    d_op_geq ∈ Op = OpGeq
+    d_op_eq ∈ Op = OpEq
+    d_eff_natge ∈ Effect
+    d_nat_ok ∈ Bool
+    d_nat_nn ∈ Bool
+    BoolCmpBuildZ3(ctx_h ↦ z_ctx, op ↦ d_op_geq, l_h ↦ d_h_top, r_h ↦ z_zero,
+        eff ↦ d_eff_natge, ok ↦ d_nat_ok, needs_not ↦ d_nat_nn)
+    d_eff_pineq ∈ Effect
+    d_pin_ok2 ∈ Bool
+    d_pin_nn ∈ Bool
+    BoolCmpBuildZ3(ctx_h ↦ z_ctx, op ↦ d_op_eq, l_h ↦ d_h_2nd, r_h ↦ d_h_top,
+        eff ↦ d_eff_pineq, ok ↦ d_pin_ok2, needs_not ↦ d_pin_nn)
+    d_eff_assert ∈ Effect
+    BuildZ3SolverAssert(ctx_h ↦ z_ctx, solver_h ↦ z_sol, ast_h ↦ d_h_top,
+        eff ↦ d_eff_assert)
+    d_eff_asserttmp ∈ Effect
+    BuildZ3SolverAssert(ctx_h ↦ z_ctx, solver_h ↦ z_sol, ast_h ↦ d_tmp_in,
+        eff ↦ d_eff_asserttmp)
+    d_eff_caw ∈ Effect
+    CtorArgWriteStep(args_p ↦ z_arena + 96, idx ↦ 0, arg_h ↦ d_h_top,
+        eff ↦ d_eff_caw)
+    d_eff_app ∈ Effect
+    CtorAppStep(ctx_h ↦ z_ctx, ctor_decl_h ↦ z_exitdecl, n_args ↦ 1,
+        args_p ↦ z_arena + 96, eff ↦ d_eff_app)
+    d_eff_sel ∈ Effect
+    BuildZ3MkSelect(ctx_h ↦ z_ctx, arr_h ↦ z_effs, idx_h ↦ z_zero,
+        eff ↦ d_eff_sel)
+    d_eff_seleq ∈ Effect
+    d_seleq_ok ∈ Bool
+    d_seleq_nn ∈ Bool
+    BoolCmpBuildZ3(ctx_h ↦ z_ctx, op ↦ d_op_eq, l_h ↦ d_tmp_in, r_h ↦ d_h_top,
+        eff ↦ d_eff_seleq, ok ↦ d_seleq_ok, needs_not ↦ d_seleq_nn)
+    d_eff_leneq ∈ Effect
+    d_leneq_ok ∈ Bool
+    d_leneq_nn ∈ Bool
+    BoolCmpBuildZ3(ctx_h ↦ z_ctx, op ↦ d_op_eq, l_h ↦ z_elen, r_h ↦ z_one,
+        eff ↦ d_eff_leneq, ok ↦ d_leneq_ok, needs_not ↦ d_leneq_nn)
+    d_eff_filler ∈ Effect = LibCall("libc", "getpid", ⟨⟩)
+
+    d_eff_lib ∈ Effect = (d_it_proc ∧ d_pe_is_int ? d_eff_mkint
+        : d_it_op ∧ d_op_arr ∧ (_istep = 0) ? d_eff_wl0
+        : d_it_op ∧ d_op_arr ∧ (_istep = 1) ? d_eff_wl1
+        : d_it_op ∧ d_op_arr ? (d_op_bool_arr ? d_eff_nary : d_eff_arith)
+        : d_it_op ∧ d_op_is_div ? d_eff_arith
+        : d_it_op ? d_eff_cmp
+        : d_it_ite ? d_eff_ite
+        : d_it_decl ? (_istep = 0 ? d_eff_sym : d_eff_const)
+        : d_it_nat ? d_eff_natge
+        : d_it_pineq ? d_eff_pineq
+        : d_it_assert ? d_eff_assert
+        : d_it_exitapp ? (_istep = 0 ? d_eff_caw : d_eff_app)
+        : d_it_sellen ? (_istep = 0 ? d_eff_sel
+            : _istep = 1 ? d_eff_seleq
+            : _istep = 2 ? d_eff_asserttmp
+            : _istep = 3 ? d_eff_leneq
+            : d_eff_asserttmp)
+        : d_eff_filler)
+
+    -- ── EMIT ──────────────────────────────────────────────────────
+    estep  ∈ Int
+    _estep ∈ Int
+    estep = (is_first_tick ? 0 - 1
+        : _estep ≥ 0 ? (_estep < 5 ? _estep + 1 : _estep)
+        : d_all_done ? 0
+        : 0 - 1)
+
+    sptr  ∈ Int
+    _sptr ∈ Int
+    sptr = (is_first_tick ? 0 : estep = 1 ? d_cap_int : _sptr)
+    rendered  ∈ String
+    _rendered ∈ String
+    rendered = (is_first_tick ? "" : estep = 2 ? d_cap_str : _rendered)
+
+    e_s2s ∈ Effect
+    BuildZ3SolverToString(ctx_h ↦ z_ctx, solver_h ↦ z_sol, eff ↦ e_s2s)
+    e_copy ∈ Effect
+    BuildCstrCopy(addr ↦ sptr, eff ↦ e_copy)
+
+    d_manifest ∈ String = (";; manifest: state-fields = " ++ _fstr ++ "\n"
+        ++ ";; manifest: effects-name = effects\n"
+        ++ ";; manifest: effect-enum-name = Effect\n"
+        ++ ";; manifest: result-enum-name = Result\n"
+        ++ ";; manifest: max-effects = 16")
+    d_prelude ∈ String = ("(declare-datatypes ((Result 0)) (((NoResult) (IntResult (IntResult__f0 Int)) (StringResult (StringResult__f0 String)) (RealResult (RealResult__f0 Real)) (EofResult) (ErrorResult (ErrorResult__f0 String)))))\n"
+        ++ "(declare-fun last_results () (Array Int Result))\n"
+        ++ "(declare-fun last_results__len () Int)\n"
+        ++ "(assert (>= last_results__len 0))\n"
+        ++ "(declare-fun is_first_tick () Bool)\n")
+    d_unit ∈ String = d_manifest ++ "\n\n" ++ d_prelude ++ rendered
+
+    e_puts ∈ Effect
+    BuildPrintln(s ↦ d_unit, eff ↦ e_puts)
+
+    -- ── effects schedule ──────────────────────────────────────────
+    effects ∈ Seq(Effect) = (is_first_tick ? ⟨ReadLine, ReadLine⟩
+        : (¬_got_path) ? ⟨ReadFile(src_path)⟩
+        : zstep = 0 ? ⟨ze_cfg⟩
+        : zstep = 1 ? ⟨ze_ctx⟩
+        : zstep = 2 ? ⟨ze_sol⟩
+        : zstep = 3 ? ⟨ze_sinc⟩
+        : zstep = 4 ? ⟨ze_isort⟩
+        : zstep = 5 ? ⟨ze_bsort⟩
+        : zstep = 6 ? ⟨ze_arena⟩
+        : zstep = 7 ? ⟨ze_sym_exit⟩
+        : zstep = 8 ? ⟨ze_sym_is⟩
+        : zstep = 9 ? ⟨ze_sym_f0⟩
+        : zstep = 10 ? ⟨ze_sym_eff⟩
+        : zstep = 11 ? ⟨ze_w_fn⟩
+        : zstep = 12 ? ⟨ze_w_fs⟩
+        : zstep = 13 ? ⟨ze_w_sr⟩
+        : zstep = 14 ? ⟨ze_mkctor⟩
+        : zstep = 15 ? ⟨ze_w_ct⟩
+        : zstep = 16 ? ⟨ze_clist⟩
+        : zstep = 17 ? ⟨ze_w_nm⟩
+        : zstep = 18 ? ⟨ze_w_cl⟩
+        : zstep = 19 ? ⟨ze_mkdt⟩
+        : zstep = 20 ? ⟨ze_rd_sort⟩
+        : zstep = 21 ? ⟨ze_query⟩
+        : zstep = 22 ? ⟨ze_rd_decl⟩
+        : zstep = 23 ? ⟨ze_arrsort⟩
+        : zstep = 24 ? ⟨ze_sym_effs⟩
+        : zstep = 25 ? ⟨ze_effs⟩
+        : zstep = 26 ? ⟨ze_sym_elen⟩
+        : zstep = 27 ? ⟨ze_elen⟩
+        : zstep = 28 ? ⟨ze_zero⟩
+        : zstep = 29 ? ⟨ze_one⟩
+        : estep = 0 ? ⟨e_s2s⟩
+        : estep = 1 ? ⟨e_copy⟩
+        : estep ≥ 2 ? ⟨e_puts, Exit(0)⟩
+        : d_processing ? ⟨d_eff_lib⟩
+        : ⟨d_eff_filler⟩)
