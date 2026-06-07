@@ -1,0 +1,197 @@
+-- stdlib/z3_seq.ev validation, string/sequence leg (§6 of
+-- docs/plans/z3-sugar-inventory.md). Companion fixture
+-- sugar_arrays.ev covers the §5 array leg. The FSM:
+--   1. Builds Z3 lifecycle (config, context).
+--   2. Z3_mk_string "ab" and "cd" → two string-literal ASTs.
+--   3. Allocates a 16-byte args buffer, writes both handles
+--      (the Z3_mk_seq_concat arity is array+count, same marshaling
+--      as Z3_mk_add in tests/kernel/test_translate_arith_via_z3.ev).
+--   4. Z3_mk_seq_concat → cat_h; Z3_mk_seq_length(cat_h) → len_h.
+--   5. Z3_ast_to_string + __cstr.copy for both.
+--   6. Compares against Z3 4.15.4's canonical prints, discovered
+--      empirically via the z3 CLI (`(get-assertions)` echo):
+--        (str.++ "ab" "cd")
+--        (str.len (str.++ "ab" "cd"))
+--   7. Exit 0 iff both match; exit 4 (concat mismatch) / 5 (length
+--      mismatch) / 6 (premature) localize a failure.
+--
+-- NOTE on sugar-claim invocation: this fixture emits the raw
+-- LibCall effects the stdlib/z3_seq.ev claims wrap, instead of
+-- invoking the claims via `Name(slot ↦ …)` composition. Composition
+-- itself WORKS under the committed compiler.smt2 (verified with a
+-- BuildPrintln(s ↦ …, eff ↦ e0) probe: prints, exits 0); the raw
+-- form is a size-envelope choice — a 35-phase version of this FSM
+-- mis-compiled (truncated near the top of the claim body), so both
+-- z3_seq fixtures stay at test_translate_arith_via_z3.ev's proven
+-- single-schema scale. The LibCall shapes below are byte-for-byte
+-- the bodies of the z3_seq.ev claims (BuildZ3MkString,
+-- BuildZ3MkSeqConcat, BuildZ3MkSeqLength), so they prove the same
+-- marshaling.
+--
+-- The FSM is MULTI-TICK: every libz3 return lands in last_results
+-- on the NEXT tick. Phase N's effect is first readable on phase N+1.
+--
+-- expect: stdout = ""
+-- expect: exit = 0
+
+import "stdlib/kernel.ev"
+import "stdlib/z3_seq.ev"
+
+claim main
+    phase  ∈ Int
+    _phase ∈ Int
+    phase = (is_first_tick ? 0 : _phase + 1)
+
+    -- ── Captured handles, one per libz3 return ──────────────────
+
+    cfg_h ∈ Int
+    _cfg_h ∈ Int
+    cfg_cap ∈ Int = match last_results[0]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+    cfg_h = (is_first_tick ? 0 : phase = 1 ? cfg_cap : _cfg_h)
+
+    ctx_h ∈ Int
+    _ctx_h ∈ Int
+    ctx_cap ∈ Int = match last_results[0]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+    ctx_h = (is_first_tick ? 0 : phase = 2 ? ctx_cap : _ctx_h)
+
+    ab_h ∈ Int
+    _ab_h ∈ Int
+    ab_cap ∈ Int = match last_results[0]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+    ab_h = (is_first_tick ? 0 : phase = 3 ? ab_cap : _ab_h)
+
+    cd_h ∈ Int
+    _cd_h ∈ Int
+    cd_cap ∈ Int = match last_results[0]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+    cd_h = (is_first_tick ? 0 : phase = 4 ? cd_cap : _cd_h)
+
+    buf ∈ Int
+    _buf ∈ Int
+    buf_cap ∈ Int = match last_results[0]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+    buf = (is_first_tick ? 0 : phase = 5 ? buf_cap : _buf)
+
+    cat_h ∈ Int
+    _cat_h ∈ Int
+    cat_cap ∈ Int = match last_results[0]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+    cat_h = (is_first_tick ? 0 : phase = 8 ? cat_cap : _cat_h)
+
+    len_h ∈ Int
+    _len_h ∈ Int
+    len_cap ∈ Int = match last_results[0]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+    len_h = (is_first_tick ? 0 : phase = 10 ? len_cap : _len_h)
+
+    cat_ptr ∈ Int
+    _cat_ptr ∈ Int
+    cat_ptr_cap ∈ Int = match last_results[0]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+    cat_ptr = (is_first_tick ? 0 : phase = 12 ? cat_ptr_cap : _cat_ptr)
+
+    cat_str ∈ String
+    _cat_str ∈ String
+    cat_str_cap ∈ String = match last_results[0]
+        StringResult(s) ⇒ s
+        _ ⇒ ""
+    cat_str = (is_first_tick ? ""
+        : phase = 13 ? cat_str_cap
+        : _cat_str)
+
+    len_ptr ∈ Int
+    _len_ptr ∈ Int
+    len_ptr_cap ∈ Int = match last_results[0]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+    len_ptr = (is_first_tick ? 0 : phase = 14 ? len_ptr_cap : _len_ptr)
+
+    len_str ∈ String
+    _len_str ∈ String
+    len_str_cap ∈ String = match last_results[0]
+        StringResult(s) ⇒ s
+        _ ⇒ ""
+    len_str = (is_first_tick ? ""
+        : phase = 15 ? len_str_cap
+        : _len_str)
+
+    -- ── Verdict ──────────────────────────────────────────────────
+
+    expected_cat ∈ String = "(str.++ \"ab\" \"cd\")"
+    expected_len ∈ String = "(str.len (str.++ \"ab\" \"cd\"))"
+    cat_ok ∈ Bool = (cat_str = expected_cat)
+    len_ok ∈ Bool = (len_str = expected_len)
+    exit_code ∈ Int = (phase = 16
+        ? (cat_ok ? (len_ok ? 0 : 5) : 4)
+        : 6)
+
+    -- ── Effects per phase ────────────────────────────────────────
+    --   0  Z3_mk_config                    → cfg_h
+    --   1  Z3_mk_context(cfg)              → ctx_h
+    --   2  Z3_mk_string(ctx, "ab")         → ab_h
+    --   3  Z3_mk_string(ctx, "cd")         → cd_h
+    --   4  malloc 16                       → buf
+    --   5  __mem.write_long(buf, ab_h)
+    --   6  __mem.write_long(buf+8, cd_h)
+    --   7  Z3_mk_seq_concat(ctx, 2, buf)   → cat_h
+    --   8  Z3_inc_ref(ctx, cat_h)
+    --   9  Z3_mk_seq_length(ctx, cat_h)    → len_h
+    --  10  Z3_inc_ref(ctx, len_h)
+    --  11  Z3_ast_to_string(ctx, cat_h)    → cat_ptr
+    --  12  __cstr.copy(cat_ptr)            → cat_str
+    --  13  Z3_ast_to_string(ctx, len_h)    → len_ptr
+    --  14  __cstr.copy(len_ptr)            → len_str
+    --  15  (compare on 16)
+    --  16  Exit(exit_code)
+
+    effects ∈ Seq(Effect) = (phase = 0
+            ? ⟨LibCall("libz3", "Z3_mk_config", ⟨⟩)⟩
+        : phase = 1
+            ? ⟨LibCall("libz3", "Z3_mk_context", ⟨ArgInt(cfg_h)⟩)⟩
+        : phase = 2
+            ? ⟨LibCall("libz3", "Z3_mk_string", ⟨ArgInt(ctx_h), ArgStr("ab")⟩)⟩
+        : phase = 3
+            ? ⟨LibCall("libz3", "Z3_mk_string", ⟨ArgInt(ctx_h), ArgStr("cd")⟩)⟩
+        : phase = 4
+            ? ⟨LibCall("libc", "malloc", ⟨ArgInt(16)⟩)⟩
+        : phase = 5
+            ? ⟨LibCall("__mem", "write_long",
+                ⟨ArgInt(buf), ArgInt(ab_h)⟩)⟩
+        : phase = 6
+            ? ⟨LibCall("__mem", "write_long",
+                ⟨ArgInt(buf + 8), ArgInt(cd_h)⟩)⟩
+        : phase = 7
+            ? ⟨LibCall("libz3", "Z3_mk_seq_concat",
+                ⟨ArgInt(ctx_h), ArgInt(2), ArgInt(buf)⟩)⟩
+        : phase = 8
+            ? ⟨LibCall("libz3", "Z3_inc_ref",
+                ⟨ArgInt(ctx_h), ArgInt(cat_h)⟩)⟩
+        : phase = 9
+            ? ⟨LibCall("libz3", "Z3_mk_seq_length",
+                ⟨ArgInt(ctx_h), ArgInt(cat_h)⟩)⟩
+        : phase = 10
+            ? ⟨LibCall("libz3", "Z3_inc_ref",
+                ⟨ArgInt(ctx_h), ArgInt(len_h)⟩)⟩
+        : phase = 11
+            ? ⟨LibCall("libz3", "Z3_ast_to_string",
+                ⟨ArgInt(ctx_h), ArgInt(cat_h)⟩)⟩
+        : phase = 12
+            ? ⟨LibCall("__cstr", "copy", ⟨ArgInt(cat_ptr)⟩)⟩
+        : phase = 13
+            ? ⟨LibCall("libz3", "Z3_ast_to_string",
+                ⟨ArgInt(ctx_h), ArgInt(len_h)⟩)⟩
+        : phase = 14
+            ? ⟨LibCall("__cstr", "copy", ⟨ArgInt(len_ptr)⟩)⟩
+        : phase = 15
+            ? ⟨LibCall("libc", "time", ⟨ArgInt(0)⟩)⟩
+        : ⟨Exit(exit_code)⟩)
