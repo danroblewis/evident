@@ -24,8 +24,10 @@
 --   PARSE   top-level dispatch: enums and parametrized / non-target
 --           claims are SKIPPED (one token per tick); the target
 --           bare-head claim enters the claim walk.
---   WALK    per body line: a one-tick PURE classifier parses the line
---           into a work-item program (C2Items); subsequent ticks run
+--   WALK    per body line: a one-tick PURE classifier picks the line
+--           kind; lines carrying an expression run the Pratt FSM
+--           (pmode 3, one parser action per tick) to an Expr, which
+--           becomes a work-item program (C2Items); subsequent ticks run
 --           one item micro-step per tick, each step one Z3-builder
 --           LibCall, dispatching per-node choices to the pass claims:
 --             arith binop  → translate_arith.ev  ArithBinopBuildZ3
@@ -42,23 +44,24 @@
 --           → manifest header + Result/last_results textual prelude +
 --           the solver body → puts → Exit(0).
 --
--- Scope (P3a skeleton + P3b widening — enough for the census
--- arithmetic/comparison/implies classes, NOT the full language; see
--- docs/plans/compiler2-driver-notes.md):
+-- Scope (P3a skeleton + P3b widening + P3c Pratt parser — enough for
+-- the census arithmetic/comparison/logic/implies/ternary classes,
+-- NOT the full language; see docs/plans/compiler2-driver-notes.md):
 --   · scalar memberships `x ∈ Int|Nat|Bool [= pin | < bound]`
---   · bare assert lines `name = <expr>`
---   · standalone constraint lines (C2ParseCons): comparisons
---     `x < 5` / `x ≠ 0`, chained comparisons `0 < x < 5` (→ conj),
---     implies `cmp ⇒ cmp`, `name ⇒ name op atom`,
---     `¬name ⇒ name op atom`, and the nested
---     `cmp ⇒ ( cmp ) ⇒ cmp` (right-assoc)
+--   · GENERAL expressions everywhere an expression is parsed (pins,
+--     bare `name = <expr>` lines, standalone constraint lines, the
+--     effects literal's Exit argument): the P3b bounded shape
+--     parsers (C2ParseExpr / C2ParseCons) are REPLACED by a Pratt /
+--     shunting-yard FSM (C2PrattStep, pmode 3 — one shift or one
+--     reduce per tick) with arbitrary nesting/parens, all binary
+--     ops (+ - * / = < > ≤ ≥ ≠ ∧ ∨ ⇒), unary ¬, ternary ?:,
+--     chained comparisons (`0 < x < 5` → conjunction; `=` is a
+--     chain member, matching the legacy parser), and the
+--     oracle-verified precedence ladder (see C2Prec)
 --   · `true` / `false` atoms (cached Z3_mk_true/false handles)
 --   · negative int literals (sign folded at lex time when the Minus
 --     has no atom before it)
 --   · `effects ∈ Seq(Effect) = ⟨Exit(<expr>)⟩` (single Exit literal)
---   · <expr>: atoms, one binop, parenthesized comparison [∧/∨ pair],
---     ternary with atom arms, nested group
---     `( ( a op a ) op a ∧|∨ a op a )` — C2ParseExpr below
 --   · OpNeq lowers as mk_eq + mk_not (C2Not item); ENot likewise
 --   · the build-context Effect enum is Exit-only (the kernel matches
 --     effect variants by name at runtime; LibCall's Seq(LibArg) field
@@ -157,446 +160,245 @@ claim C2AtomE(t ∈ Token, e ∈ Expr, ok ∈ Bool)
        : ENoExpr)
     ok = (c2a_int ∨ c2a_id ∨ c2a_tr ∨ c2a_fa)
 
--- ── Bounded one-tick expression parser ────────────────────────────
--- Shapes (P3a scope):
---   atom
---   atom op atom
---   atom ? atom : atom
---   ( atom op atom )                          [? atom : atom]
---   ( atom op atom ∧|∨ atom op atom )         [? atom : atom]
-claim C2ParseExpr(toks ∈ TokenList, e ∈ Expr, rest ∈ TokenList, ok ∈ Bool)
-    c2pe_t0 ∈ Token = match toks
+-- ── Operator precedence (oracle-verified ladder, P3c) ─────────────
+-- Probed empirically against the frozen bootstrap oracle:
+--   ⇒ 1 (right-assoc) · ?: 2 (right) · ∨ 3 · ∧ 4 ·
+--   chain ops < > ≤ ≥ = ≠ all at 5 (a run of them lowers to a
+--   conjunction of consecutive pairs: `flag = x < 5` →
+--   (and (= flag x) (< x 5)), `0 < x < 5` → (and (< 0 x) (< x 5)))
+--   · + - 6 · * / 7 · unary ¬ 8.
+-- NOTE: CLAUDE.md's footgun section claims ⇒ binds TIGHTER than ∧;
+-- the oracle disagrees (`a ∧ b ⇒ c` → (=> (and a b) c),
+-- `a ⇒ b ∧ c` → (=> a (and b c))). The oracle is the reference
+-- semantics; the divergence is pinned in
+-- docs/plans/compiler2-driver-notes.md.
+claim C2Prec(o ∈ Op, n ∈ Int, right ∈ Bool, chain ∈ Bool)
+    pc_im ∈ Bool = (o matches OpImpl)
+    pc_or ∈ Bool = (o matches OpDisj)
+    pc_an ∈ Bool = (o matches OpConj)
+    pc_lt ∈ Bool = (o matches OpLt)
+    pc_gt ∈ Bool = (o matches OpGt)
+    pc_le ∈ Bool = (o matches OpLeq)
+    pc_ge ∈ Bool = (o matches OpGeq)
+    pc_ne ∈ Bool = (o matches OpNeq)
+    pc_eq ∈ Bool = (o matches OpEq)
+    pc_pl ∈ Bool = (o matches OpPlus)
+    pc_su ∈ Bool = (o matches OpSub)
+    pc_mu ∈ Bool = (o matches OpMul)
+    pc_dv ∈ Bool = (o matches OpDiv)
+    chain = (pc_lt ∨ pc_gt ∨ pc_le ∨ pc_ge ∨ pc_ne ∨ pc_eq)
+    n = (pc_im ? 1
+       : pc_or ? 3
+       : pc_an ? 4
+       : chain ? 5
+       : (pc_pl ∨ pc_su) ? 6
+       : (pc_mu ∨ pc_dv) ? 7
+       : 0)
+    right = pc_im
+
+-- Operator-stack entries for the Pratt FSM. PrLP / PrQuest are
+-- floor markers (never auto-reduced; prec -1); PrTern is the armed
+-- ternary (pops 3 operands); PrNot the prefix ¬ (pops 1); PrBin a
+-- binary operator (pops 2). PrNone is the empty-stack sentinel.
+enum PrOp =
+    PrBin(Op)
+    PrLP
+    PrQuest
+    PrTern
+    PrNot
+    PrNone
+
+enum PrOps =
+    PrNil
+    PrCons(PrOp, PrOps)
+
+-- ── Pratt parser step (shunting-yard; ONE action per invocation) ──
+-- State in: (toks, outs, ops, expop, pd, qd); state out: the n*
+-- mirrors. Each call performs exactly one action:
+--   shift   — consume an atom / `(` / `¬` / binary op / `?`
+--   reduce  — pop the top operator, apply it to the operand stack
+--   close   — consume `)` matching the PrLP at top (pd > 0)
+--   swap    — consume `:`, arm the pending PrQuest into PrTern
+--   done    — head token can't extend the expression and the op
+--             stack is empty; sres = the single operand left
+-- expop: true when the next token must START an operand. pd / qd:
+-- open-paren and pending-`?` depths — they decide whether `)` / `:`
+-- continue the expression or terminate it (the driver's expression
+-- contexts end at the first token that can't continue: the next
+-- body line's head, the effects literal's closing `) ⟩`, EOF).
+-- A token that can't start an operand while expop holds is a
+-- malformed line: done fires with sres = ENoExpr.
+-- The driver runs this once per tick under pmode = 3;
+-- tests/kernel/compiler2/pratt_fixture.ev runs the same claim
+-- standalone.
+claim C2PrattStep(toks ∈ TokenList, outs ∈ ExprList, ops ∈ PrOps,
+        expop ∈ Bool, pd ∈ Int, qd ∈ Int,
+        ntoks ∈ TokenList, nouts ∈ ExprList, nops ∈ PrOps,
+        nexpop ∈ Bool, npd ∈ Int, nqd ∈ Int,
+        sdone ∈ Bool, sres ∈ Expr)
+    ps_hd ∈ Token = match toks
         TLCons(t, _) ⇒ t
         TLNil ⇒ EofTok
-    c2pe_l1 ∈ TokenList = match toks
-        TLCons(_, r) ⇒ r
-        TLNil ⇒ TLNil
-    c2pe_t1 ∈ Token = match c2pe_l1
-        TLCons(t, _) ⇒ t
-        TLNil ⇒ EofTok
-    c2pe_l2 ∈ TokenList = match c2pe_l1
-        TLCons(_, r) ⇒ r
-        TLNil ⇒ TLNil
-    c2pe_t2 ∈ Token = match c2pe_l2
-        TLCons(t, _) ⇒ t
-        TLNil ⇒ EofTok
-    c2pe_l3 ∈ TokenList = match c2pe_l2
-        TLCons(_, r) ⇒ r
-        TLNil ⇒ TLNil
-    c2pe_t3 ∈ Token = match c2pe_l3
-        TLCons(t, _) ⇒ t
-        TLNil ⇒ EofTok
-    c2pe_l4 ∈ TokenList = match c2pe_l3
-        TLCons(_, r) ⇒ r
-        TLNil ⇒ TLNil
-    c2pe_t4 ∈ Token = match c2pe_l4
-        TLCons(t, _) ⇒ t
-        TLNil ⇒ EofTok
-    c2pe_l5 ∈ TokenList = match c2pe_l4
-        TLCons(_, r) ⇒ r
-        TLNil ⇒ TLNil
-    c2pe_t5 ∈ Token = match c2pe_l5
-        TLCons(t, _) ⇒ t
-        TLNil ⇒ EofTok
-    c2pe_l6 ∈ TokenList = match c2pe_l5
-        TLCons(_, r) ⇒ r
-        TLNil ⇒ TLNil
-    c2pe_t6 ∈ Token = match c2pe_l6
-        TLCons(t, _) ⇒ t
-        TLNil ⇒ EofTok
-    c2pe_l7 ∈ TokenList = match c2pe_l6
-        TLCons(_, r) ⇒ r
-        TLNil ⇒ TLNil
-    c2pe_t7 ∈ Token = match c2pe_l7
-        TLCons(t, _) ⇒ t
-        TLNil ⇒ EofTok
-    c2pe_l8 ∈ TokenList = match c2pe_l7
-        TLCons(_, r) ⇒ r
-        TLNil ⇒ TLNil
-    c2pe_t8 ∈ Token = match c2pe_l8
-        TLCons(t, _) ⇒ t
-        TLNil ⇒ EofTok
-    c2pe_l9 ∈ TokenList = match c2pe_l8
-        TLCons(_, r) ⇒ r
-        TLNil ⇒ TLNil
-    c2pe_t9 ∈ Token = match c2pe_l9
-        TLCons(t, _) ⇒ t
-        TLNil ⇒ EofTok
-    c2pe_l10 ∈ TokenList = match c2pe_l9
-        TLCons(_, r) ⇒ r
-        TLNil ⇒ TLNil
-    c2pe_t10 ∈ Token = match c2pe_l10
-        TLCons(t, _) ⇒ t
-        TLNil ⇒ EofTok
-    c2pe_l11 ∈ TokenList = match c2pe_l10
-        TLCons(_, r) ⇒ r
-        TLNil ⇒ TLNil
-    c2pe_t11 ∈ Token = match c2pe_l11
-        TLCons(t, _) ⇒ t
-        TLNil ⇒ EofTok
-    c2pe_l12 ∈ TokenList = match c2pe_l11
-        TLCons(_, r) ⇒ r
-        TLNil ⇒ TLNil
-    c2pe_t12 ∈ Token = match c2pe_l12
-        TLCons(t, _) ⇒ t
-        TLNil ⇒ EofTok
-    c2pe_l13 ∈ TokenList = match c2pe_l12
+    ps_tl ∈ TokenList = match toks
         TLCons(_, r) ⇒ r
         TLNil ⇒ TLNil
 
-    c2pe_a0 ∈ Expr
-    c2pe_a0ok ∈ Bool
-    C2AtomE(t ↦ c2pe_t0, e ↦ c2pe_a0, ok ↦ c2pe_a0ok)
-    c2pe_a1 ∈ Expr
-    c2pe_a1ok ∈ Bool
-    C2AtomE(t ↦ c2pe_t1, e ↦ c2pe_a1, ok ↦ c2pe_a1ok)
-    c2pe_a2 ∈ Expr
-    c2pe_a2ok ∈ Bool
-    C2AtomE(t ↦ c2pe_t2, e ↦ c2pe_a2, ok ↦ c2pe_a2ok)
-    c2pe_a3 ∈ Expr
-    c2pe_a3ok ∈ Bool
-    C2AtomE(t ↦ c2pe_t3, e ↦ c2pe_a3, ok ↦ c2pe_a3ok)
-    c2pe_a4 ∈ Expr
-    c2pe_a4ok ∈ Bool
-    C2AtomE(t ↦ c2pe_t4, e ↦ c2pe_a4, ok ↦ c2pe_a4ok)
-    c2pe_a5 ∈ Expr
-    c2pe_a5ok ∈ Bool
-    C2AtomE(t ↦ c2pe_t5, e ↦ c2pe_a5, ok ↦ c2pe_a5ok)
-    c2pe_a6 ∈ Expr
-    c2pe_a6ok ∈ Bool
-    C2AtomE(t ↦ c2pe_t6, e ↦ c2pe_a6, ok ↦ c2pe_a6ok)
-    c2pe_a7 ∈ Expr
-    c2pe_a7ok ∈ Bool
-    C2AtomE(t ↦ c2pe_t7, e ↦ c2pe_a7, ok ↦ c2pe_a7ok)
-    c2pe_a8 ∈ Expr
-    c2pe_a8ok ∈ Bool
-    C2AtomE(t ↦ c2pe_t8, e ↦ c2pe_a8, ok ↦ c2pe_a8ok)
-    c2pe_a9 ∈ Expr
-    c2pe_a9ok ∈ Bool
-    C2AtomE(t ↦ c2pe_t9, e ↦ c2pe_a9, ok ↦ c2pe_a9ok)
-    c2pe_a10 ∈ Expr
-    c2pe_a10ok ∈ Bool
-    C2AtomE(t ↦ c2pe_t10, e ↦ c2pe_a10, ok ↦ c2pe_a10ok)
-    c2pe_a11 ∈ Expr
-    c2pe_a11ok ∈ Bool
-    C2AtomE(t ↦ c2pe_t11, e ↦ c2pe_a11, ok ↦ c2pe_a11ok)
-    c2pe_a12 ∈ Expr
-    c2pe_a12ok ∈ Bool
-    C2AtomE(t ↦ c2pe_t12, e ↦ c2pe_a12, ok ↦ c2pe_a12ok)
+    ps_top ∈ PrOp = match ops
+        PrCons(o2, _) ⇒ o2
+        PrNil ⇒ PrNone
+    ps_ops_tl ∈ PrOps = match ops
+        PrCons(_, r) ⇒ r
+        PrNil ⇒ PrNil
+    ps_ops_nil ∈ Bool = (ops matches PrNil)
 
-    c2pe_op1 ∈ Op
-    c2pe_op1ok ∈ Bool
-    C2TokOp(t ↦ c2pe_t1, o ↦ c2pe_op1, rec ↦ c2pe_op1ok)
-    c2pe_op2 ∈ Op
-    c2pe_op2ok ∈ Bool
-    C2TokOp(t ↦ c2pe_t2, o ↦ c2pe_op2, rec ↦ c2pe_op2ok)
-    c2pe_op3 ∈ Op
-    c2pe_op3ok ∈ Bool
-    C2TokOp(t ↦ c2pe_t3, o ↦ c2pe_op3, rec ↦ c2pe_op3ok)
-    c2pe_op6 ∈ Op
-    c2pe_op6ok ∈ Bool
-    C2TokOp(t ↦ c2pe_t6, o ↦ c2pe_op6, rec ↦ c2pe_op6ok)
-    c2pe_op10 ∈ Op
-    c2pe_op10ok ∈ Bool
-    C2TokOp(t ↦ c2pe_t10, o ↦ c2pe_op10, rec ↦ c2pe_op10ok)
+    ps_o1 ∈ Expr = match outs
+        ELCons(e1, _) ⇒ e1
+        ELNil ⇒ ENoExpr
+    ps_o_t1 ∈ ExprList = match outs
+        ELCons(_, r) ⇒ r
+        ELNil ⇒ ELNil
+    ps_o2 ∈ Expr = match ps_o_t1
+        ELCons(e1, _) ⇒ e1
+        ELNil ⇒ ENoExpr
+    ps_o_t2 ∈ ExprList = match ps_o_t1
+        ELCons(_, r) ⇒ r
+        ELNil ⇒ ELNil
+    ps_o3 ∈ Expr = match ps_o_t2
+        ELCons(e1, _) ⇒ e1
+        ELNil ⇒ ENoExpr
+    ps_o_t3 ∈ ExprList = match ps_o_t2
+        ELCons(_, r) ⇒ r
+        ELNil ⇒ ELNil
 
-    c2pe_is_lp ∈ Bool = (c2pe_t0 matches LParen)
-    c2pe_inner1 ∈ Expr = EBinOp(c2pe_op2, c2pe_a1, c2pe_a3)
-    c2pe_inner1ok ∈ Bool = (c2pe_a1ok ∧ c2pe_op2ok ∧ c2pe_a3ok)
-    c2pe_inner2 ∈ Expr = EBinOp(c2pe_op6, c2pe_a5, c2pe_a7)
-    c2pe_inner2ok ∈ Bool = (c2pe_a5ok ∧ c2pe_op6ok ∧ c2pe_a7ok)
-    c2pe_ps ∈ Bool = (c2pe_is_lp ∧ (c2pe_t4 matches RParen))
-    c2pe_pc ∈ Bool = (c2pe_is_lp
-        ∧ ((c2pe_t4 matches OpAnd) ∨ (c2pe_t4 matches OpOr))
-        ∧ (c2pe_t8 matches RParen))
-    -- nested-group form: ( ( a op a ) op a ∧|∨ a op a )
-    c2pe_n_in ∈ Expr = EBinOp(c2pe_op3, c2pe_a2, c2pe_a4)
-    c2pe_n_l ∈ Expr = EBinOp(c2pe_op6, c2pe_n_in, c2pe_a7)
-    c2pe_n_r ∈ Expr = EBinOp(c2pe_op10, c2pe_a9, c2pe_a11)
-    c2pe_n_conj ∈ Op = ((c2pe_t8 matches OpAnd) ? OpConj : OpDisj)
-    c2pe_nst ∈ Bool = (c2pe_is_lp ∧ (c2pe_t1 matches LParen)
-        ∧ (c2pe_t5 matches RParen)
-        ∧ ((c2pe_t8 matches OpAnd) ∨ (c2pe_t8 matches OpOr))
-        ∧ (c2pe_t12 matches RParen)
-        ∧ c2pe_a2ok ∧ c2pe_op3ok ∧ c2pe_a4ok ∧ c2pe_op6ok ∧ c2pe_a7ok
-        ∧ c2pe_a9ok ∧ c2pe_op10ok ∧ c2pe_a11ok)
-    c2pe_conj_op ∈ Op = ((c2pe_t4 matches OpAnd) ? OpConj : OpDisj)
-    c2pe_grp ∈ Expr = (c2pe_pc
-        ? EBinOp(c2pe_conj_op, c2pe_inner1, c2pe_inner2)
-        : c2pe_inner1)
-    c2pe_ps_tern ∈ Bool = (c2pe_ps ∧ (c2pe_t5 matches Question))
-    c2pe_pc_tern ∈ Bool = (c2pe_pc ∧ (c2pe_t9 matches Question))
-    c2pe_al ∈ Bool = ((¬c2pe_is_lp) ∧ c2pe_a0ok)
-    c2pe_al_tern ∈ Bool = (c2pe_al ∧ (c2pe_t1 matches Question))
-    c2pe_al_bin ∈ Bool = (c2pe_al ∧ (¬c2pe_al_tern) ∧ c2pe_op1ok ∧ c2pe_a2ok)
+    -- head-token classification
+    ps_atom_e ∈ Expr
+    ps_atom_ok ∈ Bool
+    C2AtomE(t ↦ ps_hd, e ↦ ps_atom_e, ok ↦ ps_atom_ok)
+    ps_bin_o ∈ Op
+    ps_bin_ok ∈ Bool
+    C2TokOp(t ↦ ps_hd, o ↦ ps_bin_o, rec ↦ ps_bin_ok)
+    ps_is_q ∈ Bool = (ps_hd matches Question)
+    ps_is_col ∈ Bool = (ps_hd matches Colon)
+    ps_is_lp ∈ Bool = (ps_hd matches LParen)
+    ps_is_rp ∈ Bool = (ps_hd matches RParen)
+    ps_is_not ∈ Bool = (ps_hd matches OpNot)
 
-    e = (c2pe_nst ? EBinOp(c2pe_n_conj, c2pe_n_l, c2pe_n_r)
-       : c2pe_ps_tern ? ETernary(c2pe_inner1, c2pe_a6, c2pe_a8)
-       : c2pe_ps ? c2pe_inner1
-       : c2pe_pc_tern ? ETernary(c2pe_grp, c2pe_a10, c2pe_a12)
-       : c2pe_pc ? c2pe_grp
-       : c2pe_al_tern ? ETernary(c2pe_a0, c2pe_a2, c2pe_a4)
-       : c2pe_al_bin ? EBinOp(c2pe_op1, c2pe_a0, c2pe_a2)
-       : c2pe_al ? c2pe_a0
-       : ENoExpr)
-    rest = (c2pe_nst ? c2pe_l13
-       : c2pe_ps_tern ? c2pe_l9
-       : c2pe_ps ? c2pe_l5
-       : c2pe_pc_tern ? c2pe_l13
-       : c2pe_pc ? c2pe_l9
-       : c2pe_al_tern ? c2pe_l5
-       : c2pe_al_bin ? c2pe_l3
-       : c2pe_al ? c2pe_l1
-       : toks)
-    ok = (c2pe_is_lp
-        ? (c2pe_nst
-            ∨ ((c2pe_ps ∨ c2pe_pc) ∧ c2pe_inner1ok ∧ ((¬c2pe_pc) ∨ c2pe_inner2ok)))
-        : c2pe_al)
+    ps_in_p0 ∈ Int
+    ps_in_r0 ∈ Bool
+    ps_in_ch0 ∈ Bool
+    C2Prec(o ↦ ps_bin_o, n ↦ ps_in_p0, right ↦ ps_in_r0, chain ↦ ps_in_ch0)
+    ps_in_p ∈ Int = (ps_is_q ? 2 : ps_in_p0)
+    ps_in_right ∈ Bool = (ps_is_q ? true : ps_in_r0)
 
--- ── Op classes for constraint-line shapes ─────────────────────────
-claim C2OpClass(o ∈ Op, is_cmp ∈ Bool, is_chain ∈ Bool, is_arith ∈ Bool, is_cmpeq ∈ Bool)
-    oc_lt ∈ Bool = (o matches OpLt)
-    oc_gt ∈ Bool = (o matches OpGt)
-    oc_le ∈ Bool = (o matches OpLeq)
-    oc_ge ∈ Bool = (o matches OpGeq)
-    oc_ne ∈ Bool = (o matches OpNeq)
-    oc_eq ∈ Bool = (o matches OpEq)
-    oc_pl ∈ Bool = (o matches OpPlus)
-    oc_su ∈ Bool = (o matches OpSub)
-    oc_mu ∈ Bool = (o matches OpMul)
-    oc_dv ∈ Bool = (o matches OpDiv)
-    is_chain = (oc_lt ∨ oc_gt ∨ oc_le ∨ oc_ge)
-    is_cmp = (is_chain ∨ oc_ne)
-    is_arith = (oc_pl ∨ oc_su ∨ oc_mu ∨ oc_dv)
-    is_cmpeq = (is_cmp ∨ oc_eq)
+    -- top-of-op-stack decomposition
+    ps_top_op ∈ Op = match ps_top
+        PrBin(o2) ⇒ o2
+        _ ⇒ OpPlus
+    ps_top_bin ∈ Bool = (ps_top matches PrBin(_))
+    ps_top_not ∈ Bool = (ps_top matches PrNot)
+    ps_top_tern ∈ Bool = (ps_top matches PrTern)
+    ps_top_quest ∈ Bool = (ps_top matches PrQuest)
+    ps_top_lp ∈ Bool = (ps_top matches PrLP)
+    ps_tb_p ∈ Int
+    ps_tb_r ∈ Bool
+    ps_top_chain ∈ Bool
+    C2Prec(o ↦ ps_top_op, n ↦ ps_tb_p, right ↦ ps_tb_r, chain ↦ ps_top_chain)
+    ps_top_p ∈ Int = (ps_top_bin ? ps_tb_p
+        : ps_top_not ? 8
+        : ps_top_tern ? 2
+        : 0 - 1)
+    ps_top_red ∈ Bool = (ps_top_bin ∨ ps_top_not ∨ ps_top_tern)
 
--- ── Bounded one-tick constraint-line parser ───────────────────────
--- Standalone boolean-constraint lines (assert the parsed Expr):
---   A:  atom cmp atom                         x < 5 · x ≠ 0
---   B:  atom cmp atom cmp atom                0 < x < 5   (→ conjunction)
---   B2: atom cmp atom arith atom              x < y + 1   (RHS binds tighter)
---   C:  atom cmp atom ⇒ atom op atom          x > 3 ⇒ x < 10
---   D:  atom ⇒ atom op atom                   flag ⇒ x = 42
---   E:  ¬ atom ⇒ atom op atom                 ¬flag ⇒ x = 99
---   F:  atom cmp atom ⇒ ( atom op atom ) ⇒ atom op atom
---       (nested implies, right-assoc)
-claim C2ParseCons(toks ∈ TokenList, e ∈ Expr, rest ∈ TokenList, ok ∈ Bool)
-    cn_t0 ∈ Token = match toks
-        TLCons(t, _) ⇒ t
-        TLNil ⇒ EofTok
-    cn_l1 ∈ TokenList = match toks
-        TLCons(_, r) ⇒ r
-        TLNil ⇒ TLNil
-    cn_t1 ∈ Token = match cn_l1
-        TLCons(t, _) ⇒ t
-        TLNil ⇒ EofTok
-    cn_l2 ∈ TokenList = match cn_l1
-        TLCons(_, r) ⇒ r
-        TLNil ⇒ TLNil
-    cn_t2 ∈ Token = match cn_l2
-        TLCons(t, _) ⇒ t
-        TLNil ⇒ EofTok
-    cn_l3 ∈ TokenList = match cn_l2
-        TLCons(_, r) ⇒ r
-        TLNil ⇒ TLNil
-    cn_t3 ∈ Token = match cn_l3
-        TLCons(t, _) ⇒ t
-        TLNil ⇒ EofTok
-    cn_l4 ∈ TokenList = match cn_l3
-        TLCons(_, r) ⇒ r
-        TLNil ⇒ TLNil
-    cn_t4 ∈ Token = match cn_l4
-        TLCons(t, _) ⇒ t
-        TLNil ⇒ EofTok
-    cn_l5 ∈ TokenList = match cn_l4
-        TLCons(_, r) ⇒ r
-        TLNil ⇒ TLNil
-    cn_t5 ∈ Token = match cn_l5
-        TLCons(t, _) ⇒ t
-        TLNil ⇒ EofTok
-    cn_l6 ∈ TokenList = match cn_l5
-        TLCons(_, r) ⇒ r
-        TLNil ⇒ TLNil
-    cn_t6 ∈ Token = match cn_l6
-        TLCons(t, _) ⇒ t
-        TLNil ⇒ EofTok
-    cn_l7 ∈ TokenList = match cn_l6
-        TLCons(_, r) ⇒ r
-        TLNil ⇒ TLNil
-    cn_t7 ∈ Token = match cn_l7
-        TLCons(t, _) ⇒ t
-        TLNil ⇒ EofTok
-    cn_l8 ∈ TokenList = match cn_l7
-        TLCons(_, r) ⇒ r
-        TLNil ⇒ TLNil
-    cn_t8 ∈ Token = match cn_l8
-        TLCons(t, _) ⇒ t
-        TLNil ⇒ EofTok
-    cn_l9 ∈ TokenList = match cn_l8
-        TLCons(_, r) ⇒ r
-        TLNil ⇒ TLNil
-    cn_t9 ∈ Token = match cn_l9
-        TLCons(t, _) ⇒ t
-        TLNil ⇒ EofTok
-    cn_l10 ∈ TokenList = match cn_l9
-        TLCons(_, r) ⇒ r
-        TLNil ⇒ TLNil
-    cn_t10 ∈ Token = match cn_l10
-        TLCons(t, _) ⇒ t
-        TLNil ⇒ EofTok
-    cn_l11 ∈ TokenList = match cn_l10
-        TLCons(_, r) ⇒ r
-        TLNil ⇒ TLNil
-    cn_t11 ∈ Token = match cn_l11
-        TLCons(t, _) ⇒ t
-        TLNil ⇒ EofTok
-    cn_l12 ∈ TokenList = match cn_l11
-        TLCons(_, r) ⇒ r
-        TLNil ⇒ TLNil
-    cn_t12 ∈ Token = match cn_l12
-        TLCons(t, _) ⇒ t
-        TLNil ⇒ EofTok
-    cn_l13 ∈ TokenList = match cn_l12
-        TLCons(_, r) ⇒ r
-        TLNil ⇒ TLNil
+    -- chain-comparison lowering parts (lhs = ps_o2 when reducing a
+    -- PrBin whose op is a chain op): a chain-shaped lhs turns
+    -- `l op r` into (and l (op middle r)), duplicating the shared
+    -- middle operand — same lowering the oracle performs.
+    ps_l_op ∈ Op
+    ps_l_l ∈ Expr
+    ps_l_r ∈ Expr
+    ps_l_bin ∈ Bool
+    BoolExprBinopParts(e ↦ ps_o2, op ↦ ps_l_op, lhs ↦ ps_l_l,
+        rhs ↦ ps_l_r, is_binop ↦ ps_l_bin)
+    ps_l_p ∈ Int
+    ps_l_rt ∈ Bool
+    ps_l_chain ∈ Bool
+    C2Prec(o ↦ ps_l_op, n ↦ ps_l_p, right ↦ ps_l_rt, chain ↦ ps_l_chain)
+    ps_l_conj ∈ Bool = (ps_l_op matches OpConj)
+    ps_lr_op ∈ Op
+    ps_lr_l ∈ Expr
+    ps_lr_r ∈ Expr
+    ps_lr_bin ∈ Bool
+    BoolExprBinopParts(e ↦ ps_l_r, op ↦ ps_lr_op, lhs ↦ ps_lr_l,
+        rhs ↦ ps_lr_r, is_binop ↦ ps_lr_bin)
+    ps_lr_p ∈ Int
+    ps_lr_rt ∈ Bool
+    ps_lr_chain ∈ Bool
+    C2Prec(o ↦ ps_lr_op, n ↦ ps_lr_p, right ↦ ps_lr_rt, chain ↦ ps_lr_chain)
+    ps_chain1 ∈ Bool = (ps_top_chain ∧ ps_l_bin ∧ ps_l_chain)
+    ps_chain2 ∈ Bool = (ps_top_chain ∧ ps_l_bin ∧ ps_l_conj
+        ∧ ps_lr_bin ∧ ps_lr_chain)
+    ps_apply_bin ∈ Expr = (ps_chain1
+            ? EBinOp(OpConj, ps_o2, EBinOp(ps_top_op, ps_l_r, ps_o1))
+        : ps_chain2
+            ? EBinOp(OpConj, ps_o2, EBinOp(ps_top_op, ps_lr_r, ps_o1))
+        : EBinOp(ps_top_op, ps_o2, ps_o1))
 
-    cn_a0 ∈ Expr
-    cn_a0ok ∈ Bool
-    C2AtomE(t ↦ cn_t0, e ↦ cn_a0, ok ↦ cn_a0ok)
-    cn_a1 ∈ Expr
-    cn_a1ok ∈ Bool
-    C2AtomE(t ↦ cn_t1, e ↦ cn_a1, ok ↦ cn_a1ok)
-    cn_a2 ∈ Expr
-    cn_a2ok ∈ Bool
-    C2AtomE(t ↦ cn_t2, e ↦ cn_a2, ok ↦ cn_a2ok)
-    cn_a3 ∈ Expr
-    cn_a3ok ∈ Bool
-    C2AtomE(t ↦ cn_t3, e ↦ cn_a3, ok ↦ cn_a3ok)
-    cn_a4 ∈ Expr
-    cn_a4ok ∈ Bool
-    C2AtomE(t ↦ cn_t4, e ↦ cn_a4, ok ↦ cn_a4ok)
-    cn_a5 ∈ Expr
-    cn_a5ok ∈ Bool
-    C2AtomE(t ↦ cn_t5, e ↦ cn_a5, ok ↦ cn_a5ok)
-    cn_a6 ∈ Expr
-    cn_a6ok ∈ Bool
-    C2AtomE(t ↦ cn_t6, e ↦ cn_a6, ok ↦ cn_a6ok)
-    cn_a7 ∈ Expr
-    cn_a7ok ∈ Bool
-    C2AtomE(t ↦ cn_t7, e ↦ cn_a7, ok ↦ cn_a7ok)
-    cn_a10 ∈ Expr
-    cn_a10ok ∈ Bool
-    C2AtomE(t ↦ cn_t10, e ↦ cn_a10, ok ↦ cn_a10ok)
-    cn_a12 ∈ Expr
-    cn_a12ok ∈ Bool
-    C2AtomE(t ↦ cn_t12, e ↦ cn_a12, ok ↦ cn_a12ok)
+    -- action selection (exactly one fires)
+    ps_sh_atom ∈ Bool = (expop ∧ ps_atom_ok)
+    ps_sh_lp ∈ Bool = (expop ∧ ps_is_lp)
+    ps_sh_not ∈ Bool = (expop ∧ ps_is_not)
+    ps_bad ∈ Bool = (expop ∧ (¬ps_atom_ok) ∧ (¬ps_is_lp) ∧ (¬ps_is_not))
 
-    cn_op1 ∈ Op
-    cn_op1ok ∈ Bool
-    C2TokOp(t ↦ cn_t1, o ↦ cn_op1, rec ↦ cn_op1ok)
-    cn_op3 ∈ Op
-    cn_op3ok ∈ Bool
-    C2TokOp(t ↦ cn_t3, o ↦ cn_op3, rec ↦ cn_op3ok)
-    cn_op4 ∈ Op
-    cn_op4ok ∈ Bool
-    C2TokOp(t ↦ cn_t4, o ↦ cn_op4, rec ↦ cn_op4ok)
-    cn_op5 ∈ Op
-    cn_op5ok ∈ Bool
-    C2TokOp(t ↦ cn_t5, o ↦ cn_op5, rec ↦ cn_op5ok)
-    cn_op6 ∈ Op
-    cn_op6ok ∈ Bool
-    C2TokOp(t ↦ cn_t6, o ↦ cn_op6, rec ↦ cn_op6ok)
-    cn_op11 ∈ Op
-    cn_op11ok ∈ Bool
-    C2TokOp(t ↦ cn_t11, o ↦ cn_op11, rec ↦ cn_op11ok)
+    ps_cont ∈ Bool = (ps_bin_ok ∨ ps_is_q
+        ∨ (ps_is_col ∧ (qd > 0)) ∨ (ps_is_rp ∧ (pd > 0)))
+    ps_arr ∈ Bool = ((¬expop) ∧ (ps_bin_ok ∨ ps_is_q))
+    ps_arr_red ∈ Bool = (ps_arr ∧ ps_top_red
+        ∧ (ps_in_right ? ps_top_p > ps_in_p : ps_top_p ≥ ps_in_p))
+    ps_arr_shift ∈ Bool = (ps_arr ∧ (¬ps_arr_red))
+    ps_col ∈ Bool = ((¬expop) ∧ ps_is_col ∧ (qd > 0))
+    ps_col_swap ∈ Bool = (ps_col ∧ ps_top_quest)
+    ps_rp ∈ Bool = ((¬expop) ∧ ps_is_rp ∧ (pd > 0))
+    ps_rp_close ∈ Bool = (ps_rp ∧ ps_top_lp)
+    ps_end ∈ Bool = ((¬expop) ∧ (¬ps_cont))
+    ps_need_red ∈ Bool = ((ps_col ∧ (¬ps_col_swap))
+        ∨ (ps_rp ∧ (¬ps_rp_close))
+        ∨ (ps_end ∧ (¬ps_ops_nil))
+        ∨ ps_arr_red)
+    ps_reduce ∈ Bool = (ps_need_red ∧ ps_top_red)
+    ps_discard ∈ Bool = (ps_need_red ∧ (¬ps_top_red))
 
-    cn_o1_cmp ∈ Bool
-    cn_o1_chain ∈ Bool
-    cn_o1_arith ∈ Bool
-    cn_o1_cmpeq ∈ Bool
-    C2OpClass(o ↦ cn_op1, is_cmp ↦ cn_o1_cmp, is_chain ↦ cn_o1_chain,
-        is_arith ↦ cn_o1_arith, is_cmpeq ↦ cn_o1_cmpeq)
-    cn_o3_cmp ∈ Bool
-    cn_o3_chain ∈ Bool
-    cn_o3_arith ∈ Bool
-    cn_o3_cmpeq ∈ Bool
-    C2OpClass(o ↦ cn_op3, is_cmp ↦ cn_o3_cmp, is_chain ↦ cn_o3_chain,
-        is_arith ↦ cn_o3_arith, is_cmpeq ↦ cn_o3_cmpeq)
-    cn_o4_cmp ∈ Bool
-    cn_o4_chain ∈ Bool
-    cn_o4_arith ∈ Bool
-    cn_o4_cmpeq ∈ Bool
-    C2OpClass(o ↦ cn_op4, is_cmp ↦ cn_o4_cmp, is_chain ↦ cn_o4_chain,
-        is_arith ↦ cn_o4_arith, is_cmpeq ↦ cn_o4_cmpeq)
-    cn_o5_cmp ∈ Bool
-    cn_o5_chain ∈ Bool
-    cn_o5_arith ∈ Bool
-    cn_o5_cmpeq ∈ Bool
-    C2OpClass(o ↦ cn_op5, is_cmp ↦ cn_o5_cmp, is_chain ↦ cn_o5_chain,
-        is_arith ↦ cn_o5_arith, is_cmpeq ↦ cn_o5_cmpeq)
-    cn_o6_cmp ∈ Bool
-    cn_o6_chain ∈ Bool
-    cn_o6_arith ∈ Bool
-    cn_o6_cmpeq ∈ Bool
-    C2OpClass(o ↦ cn_op6, is_cmp ↦ cn_o6_cmp, is_chain ↦ cn_o6_chain,
-        is_arith ↦ cn_o6_arith, is_cmpeq ↦ cn_o6_cmpeq)
-    cn_o11_cmp ∈ Bool
-    cn_o11_chain ∈ Bool
-    cn_o11_arith ∈ Bool
-    cn_o11_cmpeq ∈ Bool
-    C2OpClass(o ↦ cn_op11, is_cmp ↦ cn_o11_cmp, is_chain ↦ cn_o11_chain,
-        is_arith ↦ cn_o11_arith, is_cmpeq ↦ cn_o11_cmpeq)
+    sdone = (ps_bad ∨ (ps_end ∧ ps_ops_nil))
+    sres = (ps_bad ? ENoExpr : ps_o1)
 
-    cn_imp1 ∈ Bool = (cn_t1 matches OpImplies)
-    cn_imp2 ∈ Bool = (cn_t2 matches OpImplies)
-    cn_imp3 ∈ Bool = (cn_t3 matches OpImplies)
-    cn_imp9 ∈ Bool = (cn_t9 matches OpImplies)
-    cn_lp4 ∈ Bool = (cn_t4 matches LParen)
-    cn_rp8 ∈ Bool = (cn_t8 matches RParen)
-    cn_not0 ∈ Bool = (cn_t0 matches OpNot)
+    ps_consume ∈ Bool = (ps_sh_atom ∨ ps_sh_lp ∨ ps_sh_not
+        ∨ ps_arr_shift ∨ ps_col_swap ∨ ps_rp_close)
+    ntoks = (ps_consume ? ps_tl : toks)
 
-    cn_lhs_ok ∈ Bool = (cn_a0ok ∧ cn_op1ok ∧ cn_o1_cmp ∧ cn_a2ok)
-    cn_F ∈ Bool = (cn_lhs_ok ∧ cn_imp3 ∧ cn_lp4
-        ∧ cn_a5ok ∧ cn_op6ok ∧ cn_o6_cmpeq ∧ cn_a7ok ∧ cn_rp8 ∧ cn_imp9
-        ∧ cn_a10ok ∧ cn_op11ok ∧ cn_o11_cmpeq ∧ cn_a12ok)
-    cn_C ∈ Bool = ((¬cn_F) ∧ cn_lhs_ok ∧ cn_imp3
-        ∧ cn_a4ok ∧ cn_op5ok ∧ cn_o5_cmpeq ∧ cn_a6ok)
-    cn_B ∈ Bool = (cn_lhs_ok ∧ (¬cn_imp3) ∧ cn_op3ok ∧ cn_o3_chain
-        ∧ cn_o1_chain ∧ cn_a4ok)
-    cn_B2 ∈ Bool = (cn_lhs_ok ∧ (¬cn_imp3) ∧ cn_op3ok ∧ cn_o3_arith
-        ∧ cn_a4ok)
-    cn_A ∈ Bool = (cn_lhs_ok ∧ (¬cn_imp3) ∧ (¬cn_op3ok))
-    cn_D ∈ Bool = ((¬cn_not0) ∧ cn_a0ok ∧ cn_imp1
-        ∧ cn_a2ok ∧ cn_op3ok ∧ cn_o3_cmpeq ∧ cn_a4ok)
-    cn_E ∈ Bool = (cn_not0 ∧ cn_a1ok ∧ cn_imp2
-        ∧ cn_a3ok ∧ cn_op4ok ∧ cn_o4_cmpeq ∧ cn_a5ok)
+    ps_red_e ∈ Expr = (ps_top_not ? ENot(ps_o1)
+        : ps_top_tern ? ETernary(ps_o3, ps_o2, ps_o1)
+        : ps_apply_bin)
+    ps_red_base ∈ ExprList = (ps_top_not ? ps_o_t1
+        : ps_top_tern ? ps_o_t3
+        : ps_o_t2)
+    nouts = (ps_sh_atom ? ELCons(ps_atom_e, outs)
+        : ps_reduce ? ELCons(ps_red_e, ps_red_base)
+        : outs)
 
-    cn_lhs ∈ Expr = EBinOp(cn_op1, cn_a0, cn_a2)
-    cn_f_in ∈ Expr = EBinOp(cn_op6, cn_a5, cn_a7)
-    cn_f_q ∈ Expr = EBinOp(cn_op11, cn_a10, cn_a12)
-    cn_f_tail ∈ Expr = EBinOp(OpImpl, cn_f_in, cn_f_q)
-    cn_c_q ∈ Expr = EBinOp(cn_op5, cn_a4, cn_a6)
-    cn_b_r ∈ Expr = EBinOp(cn_op3, cn_a2, cn_a4)
-    cn_e_q ∈ Expr = EBinOp(cn_op4, cn_a3, cn_a5)
-    cn_e_ant ∈ Expr = ENot(cn_a1)
+    ps_push ∈ PrOp = (ps_is_q ? PrQuest : PrBin(ps_bin_o))
+    nops = (ps_sh_lp ? PrCons(PrLP, ops)
+        : ps_sh_not ? PrCons(PrNot, ops)
+        : ps_arr_shift ? PrCons(ps_push, ops)
+        : ps_col_swap ? PrCons(PrTern, ps_ops_tl)
+        : (ps_rp_close ∨ ps_reduce ∨ ps_discard) ? ps_ops_tl
+        : ops)
 
-    e = (cn_F ? EBinOp(OpImpl, cn_lhs, cn_f_tail)
-       : cn_C ? EBinOp(OpImpl, cn_lhs, cn_c_q)
-       : cn_B ? EBinOp(OpConj, cn_lhs, cn_b_r)
-       : cn_B2 ? EBinOp(cn_op1, cn_a0, cn_b_r)
-       : cn_A ? cn_lhs
-       : cn_D ? EBinOp(OpImpl, cn_a0, cn_b_r)
-       : cn_E ? EBinOp(OpImpl, cn_e_ant, cn_e_q)
-       : ENoExpr)
-    rest = (cn_F ? cn_l13
-       : cn_C ? cn_l7
-       : cn_B ? cn_l5
-       : cn_B2 ? cn_l5
-       : cn_A ? cn_l3
-       : cn_D ? cn_l5
-       : cn_E ? cn_l6
-       : toks)
-    ok = (cn_F ∨ cn_C ∨ cn_B ∨ cn_B2 ∨ cn_A ∨ cn_D ∨ cn_E)
+    nexpop = (ps_sh_atom ? false
+        : ps_rp_close ? false
+        : (ps_arr_shift ∨ ps_col_swap ∨ ps_sh_lp ∨ ps_sh_not) ? true
+        : expop)
+
+    npd = (ps_sh_lp ? pd + 1 : ps_rp_close ? pd - 1 : pd)
+    nqd = ((ps_arr_shift ∧ ps_is_q) ? qd + 1 : ps_col_swap ? qd - 1 : qd)
 
 claim driver_main
     -- ── INPUT — per-process source path via stdin (wave 4o) ──────
@@ -1264,7 +1066,6 @@ claim driver_main
         _ ⇒ ""
 
     c_is_mem ∈ Bool = (c_t1 matches OpIn)
-    c_is_bare ∈ Bool = (c_t0_is_ident ∧ (c_t1 matches Eq))
     c_eff_line ∈ Bool = (c_is_mem ∧ (c_name = "effects"))
     c_type_str ∈ String = match c_t2
         Ident(s) ⇒ s
@@ -1280,67 +1081,129 @@ claim driver_main
     c_bnd_ok ∈ Bool
     C2AtomE(t ↦ c_t4, e ↦ c_bnd_e, ok ↦ c_bnd_ok)
 
-    c_pin_e ∈ Expr
-    c_pin_rest ∈ TokenList
-    c_pin_ok ∈ Bool
-    C2ParseExpr(toks ↦ c_l4, e ↦ c_pin_e, rest ↦ c_pin_rest, ok ↦ c_pin_ok)
-    c_bare_e ∈ Expr
-    c_bare_rest ∈ TokenList
-    c_bare_ok ∈ Bool
-    C2ParseExpr(toks ↦ c_l2, e ↦ c_bare_e, rest ↦ c_bare_rest, ok ↦ c_bare_ok)
-    c_fx_e ∈ Expr
-    c_fx_rest ∈ TokenList
-    c_fx_ok ∈ Bool
-    C2ParseExpr(toks ↦ c_l10, e ↦ c_fx_e, rest ↦ c_fx_rest, ok ↦ c_fx_ok)
-
-    -- the effects literal closes with `) ⟩` after the Exit argument.
-    c_fx_r1 ∈ TokenList = match c_fx_rest
-        TLCons(_, r) ⇒ r
-        TLNil ⇒ TLNil
-    c_fx_after ∈ TokenList = match c_fx_r1
-        TLCons(_, r) ⇒ r
-        TLNil ⇒ TLNil
-
-    -- standalone constraint lines (comparisons, chains, implies, ¬).
-    c_cons_e ∈ Expr
-    c_cons_rest ∈ TokenList
-    c_cons_ok ∈ Bool
-    C2ParseCons(toks ↦ _rem, e ↦ c_cons_e, rest ↦ c_cons_rest, ok ↦ c_cons_ok)
-    c_is_cons ∈ Bool = ((¬c_eff_line) ∧ (¬c_is_mem) ∧ (¬c_is_bare) ∧ c_cons_ok)
-
-    d_kind_none ∈ Bool = ((¬c_eff_line) ∧ (¬c_is_mem) ∧ (¬c_is_bare) ∧ (¬c_is_cons))
+    -- Lines needing an expression parsed (membership pins, the
+    -- effects literal's Exit argument, and every standalone
+    -- constraint / bare-equality line) enter the Pratt FSM
+    -- (pmode 3); plain / bounded memberships build items directly.
+    c_can_expr ∈ Bool = (c_t0_is_ident ∨ (c_t0 matches IntLit(_))
+        ∨ (c_t0 matches OpNot) ∨ (c_t0 matches LParen)
+        ∨ (c_t0 matches KwTrue) ∨ (c_t0 matches KwFalse))
     d_claim_end ∈ Bool = (d_classify ∧ (c_rem_nil ∨ c_t0_is_tlkw
-        ∨ ((¬c_t0_is_ident) ∧ (¬c_is_cons)) ∨ d_kind_none))
+        ∨ (¬c_can_expr)))
+    d_enter_pratt ∈ Bool = (d_classify ∧ (¬d_claim_end)
+        ∧ (c_eff_line ∨ c_pinned ∨ (¬c_is_mem)))
+    d_pratt_toks0 ∈ TokenList = (c_eff_line ? c_l10
+        : c_pinned ? c_l4
+        : _rem)
+    d_pratt_kind0 ∈ Int = (c_eff_line ? 3 : c_pinned ? 1 : 2)
 
-    c_seg_pin ∈ C2Items = C2ICons(C2Process(c_pin_e),
-        C2ICons(C2PinEq, C2ICons(C2AssertTop, C2INil)))
     c_seg_bound ∈ C2Items = C2ICons(C2Process(c_bnd_e),
         C2ICons(C2Op(c_bnd_op), C2ICons(C2AssertTop, C2INil)))
     c_seg_drop ∈ C2Items = C2ICons(C2Drop, C2INil)
-    c_tailseg ∈ C2Items = (c_pinned ? c_seg_pin : c_bound ? c_seg_bound : c_seg_drop)
+    c_tailseg ∈ C2Items = (c_bound ? c_seg_bound : c_seg_drop)
     c_natseg ∈ C2Items = (c_is_nat
         ? C2ICons(C2NatBound, C2ICons(C2AssertTop, c_tailseg))
         : c_tailseg)
     c_mem_items ∈ C2Items = C2ICons(C2DeclConst(c_name, c_sc), c_natseg)
-    c_bare_items ∈ C2Items = C2ICons(
-        C2Process(EBinOp(OpEq, EIdent(c_name), c_bare_e)),
-        C2ICons(C2AssertTop, C2INil))
-    c_fx_items ∈ C2Items = C2ICons(C2Process(c_fx_e),
-        C2ICons(C2ExitApp, C2ICons(C2SelectLen, C2INil)))
-    c_cons_items ∈ C2Items = C2ICons(C2Process(c_cons_e),
-        C2ICons(C2AssertTop, C2INil))
 
-    d_new_items ∈ C2Items = (d_claim_end ? C2INil
-        : c_eff_line ? c_fx_items
-        : c_is_mem ? c_mem_items
-        : c_is_bare ? c_bare_items
-        : c_cons_items)
-    d_rem_new ∈ TokenList = (d_claim_end ? _rem
-        : c_eff_line ? c_fx_after
-        : c_is_mem ? (c_pinned ? c_pin_rest : c_bound ? c_l5 : c_l3)
-        : c_is_bare ? c_bare_rest
-        : c_cons_rest)
+    d_new_items ∈ C2Items = ((d_claim_end ∨ d_enter_pratt) ? C2INil
+        : c_mem_items)
+    d_rem_new ∈ TokenList = ((d_claim_end ∨ d_enter_pratt) ? _rem
+        : c_bound ? c_l5 : c_l3)
     c_field ∈ String = c_name ++ ":" ++ (c_sc = 1 ? "Bool" : "Int")
+
+    -- ── PRATT FSM state (pmode 3) ─────────────────────────────────
+    d_in_pratt ∈ Bool = (in_parse ∧ (_pmode = 3))
+
+    p_toks ∈ TokenList
+    _p_toks ∈ TokenList
+    p_out ∈ ExprList
+    _p_out ∈ ExprList
+    p_ops ∈ PrOps
+    _p_ops ∈ PrOps
+    p_expop ∈ Bool
+    _p_expop ∈ Bool
+    p_pd ∈ Int
+    _p_pd ∈ Int
+    p_qd ∈ Int
+    _p_qd ∈ Int
+    pk_kind ∈ Int
+    _pk_kind ∈ Int
+    pk_name ∈ String
+    _pk_name ∈ String
+    pk_sc ∈ Int
+    _pk_sc ∈ Int
+    pk_nat ∈ Bool
+    _pk_nat ∈ Bool
+
+    pr_ntoks ∈ TokenList
+    pr_nouts ∈ ExprList
+    pr_nops ∈ PrOps
+    pr_nexpop ∈ Bool
+    pr_npd ∈ Int
+    pr_nqd ∈ Int
+    pr_sdone ∈ Bool
+    pr_sres ∈ Expr
+    C2PrattStep(toks ↦ _p_toks, outs ↦ _p_out, ops ↦ _p_ops,
+        expop ↦ _p_expop, pd ↦ _p_pd, qd ↦ _p_qd,
+        ntoks ↦ pr_ntoks, nouts ↦ pr_nouts, nops ↦ pr_nops,
+        nexpop ↦ pr_nexpop, npd ↦ pr_npd, nqd ↦ pr_nqd,
+        sdone ↦ pr_sdone, sres ↦ pr_sres)
+
+    p_toks = (is_first_tick ? TLNil
+        : d_enter_pratt ? d_pratt_toks0
+        : d_in_pratt ? pr_ntoks
+        : _p_toks)
+    p_out = (is_first_tick ? ELNil
+        : d_enter_pratt ? ELNil
+        : d_in_pratt ? pr_nouts
+        : _p_out)
+    p_ops = (is_first_tick ? PrNil
+        : d_enter_pratt ? PrNil
+        : d_in_pratt ? pr_nops
+        : _p_ops)
+    p_expop = (is_first_tick ? true
+        : d_enter_pratt ? true
+        : d_in_pratt ? pr_nexpop
+        : _p_expop)
+    p_pd = (is_first_tick ? 0
+        : d_enter_pratt ? 0
+        : d_in_pratt ? pr_npd
+        : _p_pd)
+    p_qd = (is_first_tick ? 0
+        : d_enter_pratt ? 0
+        : d_in_pratt ? pr_nqd
+        : _p_qd)
+    pk_kind = (is_first_tick ? 0 : d_enter_pratt ? d_pratt_kind0 : _pk_kind)
+    pk_name = (is_first_tick ? "" : d_enter_pratt ? c_name : _pk_name)
+    pk_sc = (is_first_tick ? 0 : d_enter_pratt ? c_sc : _pk_sc)
+    pk_nat = (is_first_tick ? false : d_enter_pratt ? c_is_nat : _pk_nat)
+
+    -- parse completion → build the line's work-item program.
+    p_done ∈ Bool = (d_in_pratt ∧ pr_sdone)
+    pr_bad ∈ Bool = (p_done ∧ (pr_sres matches ENoExpr))
+    d_pt_l1 ∈ TokenList = match _p_toks
+        TLCons(_, r) ⇒ r
+        TLNil ⇒ TLNil
+    d_pt_l2 ∈ TokenList = match d_pt_l1
+        TLCons(_, r) ⇒ r
+        TLNil ⇒ TLNil
+    d_pk_pinseg ∈ C2Items = C2ICons(C2Process(pr_sres),
+        C2ICons(C2PinEq, C2ICons(C2AssertTop, C2INil)))
+    d_pk_natseg ∈ C2Items = (_pk_nat
+        ? C2ICons(C2NatBound, C2ICons(C2AssertTop, d_pk_pinseg))
+        : d_pk_pinseg)
+    d_pratt_items ∈ C2Items = (pr_bad ? C2INil
+        : _pk_kind = 3 ? C2ICons(C2Process(pr_sres),
+            C2ICons(C2ExitApp, C2ICons(C2SelectLen, C2INil)))
+        : _pk_kind = 1 ? C2ICons(C2DeclConst(_pk_name, _pk_sc), d_pk_natseg)
+        : C2ICons(C2Process(pr_sres), C2ICons(C2AssertTop, C2INil)))
+    -- kind 3: the effects literal closes with `) ⟩` after the Exit
+    -- argument — skip both. On a malformed line skip one token so
+    -- the walk always progresses.
+    d_pratt_rem ∈ TokenList = (pr_bad ? d_pt_l1
+        : _pk_kind = 3 ? d_pt_l2
+        : _p_toks)
 
     -- ── state transitions ─────────────────────────────────────────
     d_pops ∈ Int = (¬d_processing ? 0
@@ -1367,6 +1230,7 @@ claim driver_main
     witems = (is_first_tick ? C2INil
         : d_enter_claim ? C2INil
         : d_classify ? d_new_items
+        : p_done ? d_pratt_items
         : ¬d_processing ? _witems
         : d_it_proc ∧ d_pe_is_bin ∧ d_pe_op_ne ? C2ICons(C2Process(d_pe_l), C2ICons(C2Process(d_pe_r), C2ICons(C2Op(OpEq), C2ICons(C2Not, d_wtail))))
         : d_it_proc ∧ d_pe_is_bin ? C2ICons(C2Process(d_pe_l), C2ICons(C2Process(d_pe_r), C2ICons(C2Op(d_pe_op), d_wtail)))
@@ -1407,6 +1271,7 @@ claim driver_main
     rem = (is_first_tick ? TLNil
         : d_enter_claim ? d_items_l2
         : (d_classify ∧ (¬d_claim_end)) ? d_rem_new
+        : p_done ? d_pratt_rem
         : _rem)
 
     fstr = (is_first_tick ? ""
@@ -1425,6 +1290,8 @@ claim driver_main
         : d_enter_skip ? 1
         : d_skip_stop ? 0
         : d_claim_end ? 0
+        : d_enter_pratt ? 3
+        : p_done ? 2
         : _pmode)
 
     phase = (is_first_tick ? 0
