@@ -210,3 +210,9 @@ parallelizes cleanly — 18 concurrent compiles ran fine in 156 GB /
    not subset-constrained. The map still matters for anything the
    FOSSIL must compile before first oracle use, and as the census's
    companion when reading failure classes.
+
+5. Two more cliffs from the stage-0 spike (evidence in
+   tests/seam/stage0_toy/ + docs/plans/stage0-sizing.md): multi-arm
+   `match` miscompiles loudly (default arm leaks a literal `_`;
+   only cascaded 2-arm works), and a DIGIT anywhere in an
+   identifier silently drains the claim body.
