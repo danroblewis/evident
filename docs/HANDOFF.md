@@ -432,3 +432,14 @@ RESUME ORDER: (1) finish #22 bisect (kernel+driver matrix:
 4 cells, 30s probes with EVIDENT_FUNCTIONIZE_WHY=1); (2) fix;
 (3) E1+F1 continuation agent in its worktree; (4) F2 compositions;
 (5) canonical .goalpost harness runs; (6) sample.ev attempt.
+
+## Resume point 9 (post-harness-change session)
+
+#22 CLOSED: functionizer three-part fix (cycle deferral → runtime
+fixpoint, IDIV/MOD eval, JIT-free fixpoint rounds) — driver
+extracts 1188 steps, 026 at 14s, smoke unaffected. E1+F1 LANDED
+via continuation agent (48 census fixtures: carries + manifest
+floor + param lists + multi-name; carry_fixture verified on main).
+LAST checklist item: F2 compositions (agent next). Then: canonical
+.goalpost harness runs (now meaningful at ~14s/fixture), sample.ev
+attempt, self-compile, oracle sunset + rename.
