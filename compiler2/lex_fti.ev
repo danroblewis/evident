@@ -1,0 +1,194 @@
+-- compiler2/lex_fti.ev — FTI lexer: token push-plan claims.
+--
+-- SPIKE (standalone proof; see tests/kernel/compiler2/lex_fti_fixture.ev).
+-- Replaces the driver's TokenList cons-list accumulation with the FTI
+-- token buffer from docs/plans/sample-ev-fti-pivot.md: ONE calloc'd
+-- region, one 32-byte entry (4 i64 slots) per token, written via
+-- `__mem.write_long` at `base + count*32`. The Z3-carried lexer state
+-- is `tokens_base ∈ Int` + `tokens_count ∈ Int` (+ two cached tag Ints
+-- for the negative-literal fold + one pending-pointer Int) — never a
+-- TokenList. Tokens land in APPEND (source) order, so the driver's
+-- whole REVERSE phase becomes dead weight: no pop loop, phase 0 → 2.
+--
+-- ── Entry encoding (mirrors stdlib/fti/token_stack.ev) ─────────────
+--   slot 0 (+0):  tag      — TokenTag_* integer discriminator
+--   slot 1 (+8):  payload0 — IntLit value, OR a malloc'd char* for
+--                            string-carrying tags (Ident=1, StringLit=3)
+--   slot 2 (+16): payload1 — reserved (FloatLit fractional; unused here)
+--   slot 3 (+24): payload2 — reserved (FloatLit frac-digits; unused)
+-- The region MUST be calloc'd (zeroed), so payload slots of nullary
+-- tokens read deterministically as 0 and a peek past the EofTok
+-- sentinel reads tag 0.
+--
+-- ── String payloads (the two-tick strdup idiom) ────────────────────
+-- A string-carrying token finishing at tick T emits
+-- `LibCall("libc","strdup",⟨ArgStr(s)⟩)` as effects[0] of tick T; the
+-- pointer arrives in tick T+1's last_results[0] and is written into
+-- the entry's slot 1 by a write_long emitted at T+1 (`pend` carries
+-- the slot-1 address across the tick; -1 = nothing pending). The
+-- fossil lexer's branch structure guarantees two string-carrying
+-- tokens never finish on consecutive ticks, so a strdup tick never
+-- coincides with a pending write — strdup is always effects[0].
+-- v1 leaks the strdup'd strings until process exit (same stance as
+-- stdlib/fti/token_stack.ev).
+--
+-- ── Host contract ──────────────────────────────────────────────────
+-- The host FSM (the fixture today; compiler2/driver.ev's LEX section
+-- after the Pratt merge) keeps the fossil per-char scanner exactly as
+-- is (pos/partial_str/partial_int/in_strlit/partial_strlit and the
+-- branch bools), binds LexFtiPlan once per tick, and:
+--   · carries count/last_tag/prev_tag/pend as Int state, assigning
+--     count ← count_n, last_tag ← last_n, prev_tag ← prev_n,
+--     pend ← (kind = 3 ∨ kind = 5 ? a_p0 : -1);
+--   · assembles effects from `kind` (w(a,v) = __mem.write_long):
+--       0  no token       —             (pending write / filler only)
+--       1  one nullary    ⟨w(a_tag0,tag0)⟩
+--       2  one IntLit     ⟨w(a_tag0,tag0), w(a_p0,p0)⟩
+--       3  one str-tok    ⟨strdup(str0), w(a_tag0,tag0)⟩
+--       4  keyword + op   ⟨w(a_tag0,tag0), w(a_tag1,tag1)⟩
+--       5  ident + op     ⟨strdup(str0), w(a_tag0,tag0), w(a_tag1,tag1)⟩
+--       6  IntLit + op    ⟨w(a_tag0,tag0), w(a_p0,p0), w(a_tag1,tag1)⟩
+--     prepending ⟨w(pend, last_results[0])⟩ when pend ≥ 0 (only
+--     possible alongside kinds 0 and 1);
+--   · on the lex_done tick writes the EofTok sentinel
+--     w(base + count*32, 13) — NOT counted in tokens_count — and
+--     flushes any pending write.
+--
+-- The negative-literal fold (driver.ev P3b: `= -3` → IntLit(-3),
+-- `10 - 13` stays binary) is decided HERE from the cached
+-- last_tag/prev_tag pair instead of peeking the cons list: when the
+-- fold fires, the IntLit OVERWRITES the already-written Minus entry
+-- at count-1 (count_n then grows by one less).
+--
+-- Downstream (parser-side) contract: docs/plans/fti-lexer-notes.md.
+
+import "stdlib/kernel.ev"
+
+-- Single-char token tag. Same classification as compiler/lexer.ev's
+-- SingleCharTok, but yielding the stable integer tags from
+-- stdlib/fti/token_stack.ev instead of a Token datatype value.
+-- Pipe/Question/Hash/Colon tags 65-68 are appended there.
+claim LexCharTag(c ∈ String, tag ∈ Int, recognized ∈ Bool)
+    tag = (c = "(" ? 5
+        : c = ")" ? 6
+        : c = "," ? 7
+        : c = "+" ? 8
+        : c = "*" ? 9
+        : c = "/" ? 10
+        : c = "-" ? 11
+        : c = "=" ? 12
+        : c = "<" ? 62
+        : c = ">" ? 63
+        : c = "." ? 64
+        : c = "|" ? 65
+        : c = ":" ? 68
+        : c = "?" ? 66
+        : c = "#" ? 67
+        : c = "∈" ? 40
+        : c = "⇒" ? 41
+        : c = "⟨" ? 42
+        : c = "⟩" ? 43
+        : c = "↦" ? 44
+        : c = "≤" ? 45
+        : c = "≥" ? 46
+        : c = "≠" ? 47
+        : c = "∧" ? 48
+        : c = "∨" ? 49
+        : c = "¬" ? 50
+        : c = "∀" ? 51
+        : c = "∃" ? 52
+        : 14)
+    recognized = (c = "(" ∨ c = ")" ∨ c = "," ∨ c = "+" ∨ c = "="
+        ∨ c = "*" ∨ c = "/" ∨ c = "-"
+        ∨ c = "<" ∨ c = ">" ∨ c = "." ∨ c = "|" ∨ c = ":" ∨ c = "?" ∨ c = "#"
+        ∨ c = "∈" ∨ c = "⇒" ∨ c = "⟨" ∨ c = "⟩" ∨ c = "↦"
+        ∨ c = "≤" ∨ c = "≥" ∨ c = "≠"
+        ∨ c = "∧" ∨ c = "∨" ∨ c = "¬"
+        ∨ c = "∀" ∨ c = "∃")
+
+-- Keyword tag for a collected alpha run. tag = 1 means "not a
+-- keyword": the run is an Ident and carries a string payload.
+-- Mirrors compiler/lexer.ev's MaybeKeyword.
+claim LexKeywordTag(s ∈ String, tag ∈ Int)
+    tag = (s = "claim" ? 15
+        : s = "type" ? 16
+        : s = "schema" ? 17
+        : s = "fsm" ? 18
+        : s = "enum" ? 19
+        : s = "import" ? 20
+        : s = "match" ? 21
+        : s = "subclaim" ? 22
+        : s = "external" ? 23
+        : s = "matches" ? 24
+        : s = "in" ? 25
+        : s = "true" ? 26
+        : s = "false" ? 27
+        : s = "mapsto" ? 28
+        : 1)
+
+-- The per-tick token push-plan. Inputs are the fossil lexer's branch
+-- bools (mutually exclusive after the lx_comment guard, same priority
+-- order as the fossil `tokens` ternary) plus the PREVIOUS-tick
+-- collection state (_partial_str / _partial_int / _partial_strlit —
+-- the finishing token's content) and the FTI state. All body locals
+-- lf_-prefixed (composition leaks body locals into the host).
+claim LexFtiPlan(lx_comment ∈ Bool, strlit_closing ∈ Bool,
+                 fs_op ∈ Bool, fi_op ∈ Bool,
+                 fs_only ∈ Bool, fi_only ∈ Bool, ch_only ∈ Bool,
+                 cur_char ∈ String, partial_str ∈ String,
+                 partial_strlit ∈ String, partial_int ∈ Int,
+                 base ∈ Int, count ∈ Int,
+                 last_tag ∈ Int, prev_tag ∈ Int,
+                 kind ∈ Int, tag0 ∈ Int, p0 ∈ Int, str0 ∈ String,
+                 tag1 ∈ Int, a_tag0 ∈ Int, a_p0 ∈ Int, a_tag1 ∈ Int,
+                 count_n ∈ Int, last_n ∈ Int, prev_n ∈ Int)
+    lf_ctag ∈ Int
+    lf_crec ∈ Bool
+    LexCharTag(c ↦ cur_char, tag ↦ lf_ctag, recognized ↦ lf_crec)
+    lf_ktag ∈ Int
+    LexKeywordTag(s ↦ partial_str, tag ↦ lf_ktag)
+    lf_kw_ident ∈ Bool = (lf_ktag = 1)
+
+    kind = (lx_comment ? 0
+        : strlit_closing ? 3
+        : fs_op ? (lf_kw_ident ? 5 : 4)
+        : fi_op ? 6
+        : fs_only ? (lf_kw_ident ? 3 : 1)
+        : fi_only ? 2
+        : ch_only ? 1
+        : 0)
+
+    -- negative-literal fold: the finishing IntLit overwrites a Minus
+    -- pushed just before it, unless the token before the Minus is
+    -- atom-shaped (IntLit=2 / Ident=1 / StringLit=3 / RParen=6 —
+    -- then `a - 3` is binary subtraction).
+    lf_prev_atom ∈ Bool = (prev_tag = 1 ∨ prev_tag = 2
+        ∨ prev_tag = 3 ∨ prev_tag = 6)
+    lf_fold ∈ Bool = ((kind = 2 ∨ kind = 6)
+        ∧ (last_tag = 11) ∧ (¬lf_prev_atom))
+
+    lf_e0 ∈ Int = (lf_fold ? count - 1 : count)
+    a_tag0 = base + (lf_e0 * 32)
+    a_p0 = a_tag0 + 8
+    a_tag1 = base + ((lf_e0 + 1) * 32)
+
+    tag0 = (strlit_closing ? 3
+        : (kind = 2 ∨ kind = 6) ? 2
+        : ch_only ? lf_ctag
+        : lf_ktag)
+    p0 = (lf_fold ? 0 - partial_int : partial_int)
+    str0 = (strlit_closing ? partial_strlit : partial_str)
+    tag1 = lf_ctag
+
+    count_n = (kind = 0 ? count
+        : (kind = 2 ∧ lf_fold) ? count
+        : (kind = 6 ∧ lf_fold) ? count + 1
+        : (kind = 4 ∨ kind = 5 ∨ kind = 6) ? count + 2
+        : count + 1)
+    last_n = (kind = 0 ? last_tag
+        : (kind = 4 ∨ kind = 5 ∨ kind = 6) ? tag1
+        : tag0)
+    prev_n = (kind = 0 ? prev_tag
+        : (kind = 4 ∨ kind = 5 ∨ kind = 6) ? tag0
+        : lf_fold ? prev_tag
+        : last_tag)

@@ -1,0 +1,320 @@
+-- tests/kernel/compiler2/lex_fti_fixture.ev — FTI lexer spike proof.
+--
+-- Lexes a representative 8-line Evident snippet (inline `input`
+-- String) into FTI memory via compiler2/lex_fti.ev's LexFtiPlan, then
+-- WALKS the token buffer with __mem.read_long / __cstr.copy and
+-- verifies every (tag, payload) entry against the hand-tokenized
+-- expectation (LexFtiExpected below). The snippet covers: keyword
+-- (claim), idents, IntLits, the negative fold (`= -3` folds; the
+-- binary `10 - 2` does NOT), ASCII ops, unicode glyphs
+-- (∈ ≥ ∧ ≠ ⟨ ⟩), parens, a StringLit ("hi"), a comment line
+-- (skipped), and the EofTok sentinel. 41 tokens + sentinel.
+--
+-- Z3-carried lexer state: tokens base/count + last/prev tag + pending
+-- string-pointer slot — five Ints. NO TokenList, NO Token datatype
+-- values anywhere in state. No REVERSE phase: the walk reads entries
+-- in append (source) order.
+--
+-- Exit codes:
+--   0        all 42 walked entries match
+--   99       tokens_count ≠ 41
+--   100 + k  tag mismatch at entry k
+--   150 + k  int/zero payload mismatch at entry k
+--   200 + k  string payload mismatch at entry k
+--
+-- Build + run (oracle path; mktemp for all temp files):
+--   TD=$(mktemp -d)
+--   evident-oracle emit tests/kernel/compiler2/lex_fti_fixture.ev lex_fti_main -o "$TD/f.smt2"
+--   kernel/target/release/kernel "$TD/f.smt2"   # expect exit 0
+--
+-- Negative control: corrupt any expected tag below (e.g. k=13's 8→9)
+-- and the run exits 100+k.
+
+import "stdlib/kernel.ev"
+import "compiler/lexer.ev"
+import "compiler2/lex_fti.ev"
+
+-- Hand-tokenized expectation for the snippet. is_str ⇔ the entry
+-- carries a char* payload in slot 1 (Ident=1 / StringLit=3).
+claim LexFtiExpected(k ∈ Int, tag ∈ Int, p0 ∈ Int, is_str ∈ Bool,
+                     s ∈ String)
+    tag = (k = 0 ? 15
+        : k = 1 ? 1
+        : k = 2 ? 1
+        : k = 3 ? 40
+        : k = 4 ? 1
+        : k = 5 ? 12
+        : k = 6 ? 2
+        : k = 7 ? 1
+        : k = 8 ? 40
+        : k = 9 ? 1
+        : k = 10 ? 1
+        : k = 11 ? 12
+        : k = 12 ? 1
+        : k = 13 ? 8
+        : k = 14 ? 2
+        : k = 15 ? 11
+        : k = 16 ? 2
+        : k = 17 ? 1
+        : k = 18 ? 12
+        : k = 19 ? 5
+        : k = 20 ? 1
+        : k = 21 ? 46
+        : k = 22 ? 2
+        : k = 23 ? 48
+        : k = 24 ? 1
+        : k = 25 ? 47
+        : k = 26 ? 2
+        : k = 27 ? 6
+        : k = 28 ? 1
+        : k = 29 ? 40
+        : k = 30 ? 1
+        : k = 31 ? 12
+        : k = 32 ? 3
+        : k = 33 ? 1
+        : k = 34 ? 12
+        : k = 35 ? 42
+        : k = 36 ? 1
+        : k = 37 ? 5
+        : k = 38 ? 2
+        : k = 39 ? 6
+        : k = 40 ? 43
+        : k = 41 ? 13
+        : 0 - 1)
+    p0 = (k = 6 ? 0 - 3
+        : k = 14 ? 10
+        : k = 16 ? 2
+        : 0)
+    is_str = (tag = 1 ∨ tag = 3)
+    s = (k = 1 ? "foo"
+        : k = 2 ? "x"
+        : k = 4 ? "Int"
+        : k = 7 ? "y"
+        : k = 9 ? "Nat"
+        : k = 10 ? "y"
+        : k = 12 ? "x"
+        : k = 17 ? "ok"
+        : k = 20 ? "y"
+        : k = 24 ? "x"
+        : k = 28 ? "s"
+        : k = 30 ? "String"
+        : k = 32 ? "hi"
+        : k = 33 ? "effects"
+        : k = 36 ? "Exit"
+        : "")
+
+claim lex_fti_main
+    input ∈ String = "claim foo\n    x ∈ Int = -3\n    y ∈ Nat\n    y = x + 10 - 2\n    ok = (y ≥ 0 ∧ x ≠ 0)\n    -- comment line\n    s ∈ String = \"hi\"\n    effects = ⟨Exit(0)⟩\n"
+
+    -- ── FTI state ─────────────────────────────────────────────────
+    base ∈ Int
+    _base ∈ Int
+    base_cap ∈ Int = match last_results[0]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+    base = (is_first_tick ? 0 : (_base = 0 ? base_cap : _base))
+
+    count ∈ Int
+    _count ∈ Int
+    last_tag ∈ Int
+    _last_tag ∈ Int
+    prev_tag ∈ Int
+    _prev_tag ∈ Int
+    pend ∈ Int
+    _pend ∈ Int
+
+    -- ── fossil per-char scanner (driver.ev LEX section, ungated) ──
+    pos ∈ Int
+    _pos ∈ Int
+    next_pos ∈ Int
+    _next_pos ∈ Int
+    pos = (is_first_tick ? 0 - 1 : (_pos < 0 ? 0 : _next_pos))
+
+    partial_str ∈ String
+    _partial_str ∈ String
+    partial_int ∈ Int
+    _partial_int ∈ Int
+
+    cur_char ∈ String = substr(input, pos, 1)
+
+    is_alpha ∈ Bool
+    IsAlphaChar(c ↦ cur_char, out ↦ is_alpha)
+    is_dig ∈ Bool
+    IsDigitChar(c ↦ cur_char, out ↦ is_dig)
+    is_ws ∈ Bool
+    IsWhitespace(c ↦ cur_char, out ↦ is_ws)
+    is_quote ∈ Bool
+    IsQuote(c ↦ cur_char, out ↦ is_quote)
+    cc_tag ∈ Int
+    is_op ∈ Bool
+    LexCharTag(c ↦ cur_char, tag ↦ cc_tag, recognized ↦ is_op)
+    dig_val ∈ Int
+    DigitToInt(c ↦ cur_char, n ↦ dig_val)
+
+    done ∈ Bool = ((pos ≥ #input) ∧ (#input > 0))
+    in_range ∈ Bool = ((pos ≥ 0) ∧ ¬done)
+
+    was_collecting_str ∈ Bool = (#_partial_str > 0)
+    was_collecting_int ∈ Bool = (_partial_int ≥ 0)
+
+    in_strlit ∈ Bool
+    _in_strlit ∈ Bool
+    partial_strlit ∈ String
+    _partial_strlit ∈ String
+
+    strlit_open       ∈ Bool = ((¬_in_strlit) ∧ is_quote ∧ in_range ∧ (¬was_collecting_str) ∧ (¬was_collecting_int))
+    strlit_continuing ∈ Bool = (_in_strlit ∧ (¬is_quote) ∧ in_range)
+    strlit_closing    ∈ Bool = (_in_strlit ∧ is_quote ∧ in_range)
+
+    in_strlit = (is_first_tick ? false
+        : (strlit_open ? true
+        : (strlit_closing ? false
+        : _in_strlit)))
+    partial_strlit = (is_first_tick ? ""
+        : (strlit_open ? ""
+        : (strlit_continuing ? _partial_strlit ++ cur_char
+        : (strlit_closing ? ""
+        : _partial_strlit))))
+
+    str_continuing ∈ Bool = (was_collecting_str ∧ is_alpha ∧ in_range ∧ ¬_in_strlit)
+    str_finishing  ∈ Bool = (was_collecting_str ∧ ((¬is_alpha ∧ in_range) ∨ done))
+    str_starting   ∈ Bool = ((¬was_collecting_str) ∧ is_alpha ∧ in_range ∧ ¬_in_strlit)
+
+    int_continuing ∈ Bool = (was_collecting_int ∧ is_dig ∧ in_range ∧ ¬_in_strlit)
+    int_finishing  ∈ Bool = (was_collecting_int ∧ ((¬is_dig ∧ in_range) ∨ done))
+    int_starting   ∈ Bool = ((¬was_collecting_int) ∧ is_dig ∧ in_range ∧ ¬_in_strlit)
+
+    partial_str = (is_first_tick ? "" : (str_continuing ? _partial_str ++ cur_char : (str_starting ? cur_char : "")))
+    partial_int = (is_first_tick ? 0 - 1 : (int_continuing ? (_partial_int * 10) + dig_val : (int_starting ? dig_val : 0 - 1)))
+
+    finish_str_only    ∈ Bool = (str_finishing ∧ (is_ws ∨ done))
+    finish_int_only    ∈ Bool = (int_finishing ∧ (is_ws ∨ done))
+    finish_str_with_op ∈ Bool = (str_finishing ∧ is_op ∧ in_range)
+    finish_int_with_op ∈ Bool = (int_finishing ∧ is_op ∧ in_range)
+    char_only          ∈ Bool = ((¬was_collecting_str) ∧ (¬was_collecting_int) ∧ is_op ∧ in_range ∧ ¬_in_strlit)
+
+    has_input ∈ Bool = (#input > 0)
+    lex_done ∈ Bool = (done ∧ ¬was_collecting_str ∧ ¬was_collecting_int ∧ ¬_in_strlit ∧ has_input)
+
+    lx_next_char ∈ String = substr(input, pos + 1, 1)
+    lx_collecting ∈ Bool = (was_collecting_str ∨ was_collecting_int)
+    lx_is_dash    ∈ Bool = (cur_char = "-")
+    lx_next_dash  ∈ Bool = (lx_next_char = "-")
+    lx_comment ∈ Bool = (lx_is_dash ∧ lx_next_dash ∧ in_range ∧ (¬lx_collecting) ∧ (¬_in_strlit))
+    lx_nl ∈ Int = index_of(input, "\n", pos)
+    lx_comment_to ∈ Int = (lx_nl < 0 ? #input : lx_nl)
+    lx_skip_ws ∈ Bool = (is_ws ∧ in_range ∧ (¬_in_strlit))
+    lx_ws_adv ∈ Int
+    WsRunLen(s ↦ input, p ↦ pos, adv ↦ lx_ws_adv)
+    next_pos = (is_first_tick ? 0
+        : (lx_comment ? lx_comment_to
+        : (lx_skip_ws ? pos + lx_ws_adv
+        : pos + 1)))
+
+    -- ── FTI push plan ─────────────────────────────────────────────
+    k_kind ∈ Int
+    k_tag0 ∈ Int
+    k_p0 ∈ Int
+    k_str0 ∈ String
+    k_tag1 ∈ Int
+    k_atag0 ∈ Int
+    k_ap0 ∈ Int
+    k_atag1 ∈ Int
+    k_cn ∈ Int
+    k_ln ∈ Int
+    k_pn ∈ Int
+    LexFtiPlan(lx_comment ↦ lx_comment, strlit_closing ↦ strlit_closing,
+        fs_op ↦ finish_str_with_op, fi_op ↦ finish_int_with_op,
+        fs_only ↦ finish_str_only, fi_only ↦ finish_int_only,
+        ch_only ↦ char_only,
+        cur_char ↦ cur_char, partial_str ↦ _partial_str,
+        partial_strlit ↦ _partial_strlit, partial_int ↦ _partial_int,
+        base ↦ base, count ↦ _count,
+        last_tag ↦ _last_tag, prev_tag ↦ _prev_tag,
+        kind ↦ k_kind, tag0 ↦ k_tag0, p0 ↦ k_p0, str0 ↦ k_str0,
+        tag1 ↦ k_tag1, a_tag0 ↦ k_atag0, a_p0 ↦ k_ap0, a_tag1 ↦ k_atag1,
+        count_n ↦ k_cn, last_n ↦ k_ln, prev_n ↦ k_pn)
+
+    count = (is_first_tick ? 0 : k_cn)
+    last_tag = (is_first_tick ? 0 : k_ln)
+    prev_tag = (is_first_tick ? 0 : k_pn)
+    pend = (is_first_tick ? 0 - 1
+        : ((k_kind = 3 ∨ k_kind = 5) ? k_ap0 : 0 - 1))
+    have_pend ∈ Bool = (_pend ≥ 0)
+    ptr_cap ∈ Int = match last_results[0]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+
+    -- ── phase: 0 = lex, 1 = verify ────────────────────────────────
+    lphase ∈ Int
+    _lphase ∈ Int
+    lphase = (is_first_tick ? 0
+        : ((_lphase = 0 ∧ lex_done) ? 1 : _lphase))
+    ver ∈ Bool = (_lphase = 1)
+
+    -- ── verify walk ───────────────────────────────────────────────
+    vk ∈ Int
+    _vk ∈ Int
+    vstep ∈ Int
+    _vstep ∈ Int
+
+    x_tag ∈ Int
+    x_p0 ∈ Int
+    x_is ∈ Bool
+    x_s ∈ String
+    LexFtiExpected(k ↦ _vk, tag ↦ x_tag, p0 ↦ x_p0, is_str ↦ x_is, s ↦ x_s)
+
+    v_tag ∈ Int = match last_results[0]
+        IntResult(n) ⇒ n
+        _ ⇒ 0 - 1
+    v_p0 ∈ Int = match last_results[1]
+        IntResult(n) ⇒ n
+        _ ⇒ 0 - 1
+    v_str ∈ String = match last_results[0]
+        StringResult(s) ⇒ s
+        _ ⇒ ""
+    tag_ok ∈ Bool = (v_tag = x_tag)
+    p0_ok ∈ Bool = (v_p0 = x_p0)
+    str_ok ∈ Bool = (v_str = x_s)
+    count_ok ∈ Bool = (count = 41)
+
+    vstep = (is_first_tick ? 0
+        : (¬ver) ? 0
+        : (_vstep = 0 ? 1
+        : ((_vstep = 1 ∧ x_is) ? 2
+        : 0)))
+    vk = (is_first_tick ? 0
+        : (¬ver) ? 0
+        : (((_vstep = 1 ∧ (¬x_is)) ∨ _vstep = 2) ? _vk + 1 : _vk))
+
+    -- ── effects ───────────────────────────────────────────────────
+    w_tag0 ∈ Effect = LibCall("__mem", "write_long", ⟨ArgInt(k_atag0), ArgInt(k_tag0)⟩)
+    w_p0   ∈ Effect = LibCall("__mem", "write_long", ⟨ArgInt(k_ap0), ArgInt(k_p0)⟩)
+    w_tag1 ∈ Effect = LibCall("__mem", "write_long", ⟨ArgInt(k_atag1), ArgInt(k_tag1)⟩)
+    e_dup  ∈ Effect = LibCall("libc", "strdup", ⟨ArgStr(k_str0)⟩)
+    w_pend ∈ Effect = LibCall("__mem", "write_long", ⟨ArgInt(_pend), ArgInt(ptr_cap)⟩)
+    w_eof  ∈ Effect = LibCall("__mem", "write_long", ⟨ArgInt(base + (count * 32)), ArgInt(13)⟩)
+    e_fill ∈ Effect = LibCall("libc", "getpid", ⟨⟩)
+    rd_tag ∈ Effect = LibCall("__mem", "read_long", ⟨ArgInt(base + (_vk * 32))⟩)
+    rd_p0  ∈ Effect = LibCall("__mem", "read_long", ⟨ArgInt(base + (_vk * 32) + 8)⟩)
+    e_copy ∈ Effect = LibCall("__cstr", "copy", ⟨ArgInt(v_p0)⟩)
+
+    effects ∈ Seq(Effect) = (is_first_tick ? ⟨LibCall("libc", "calloc", ⟨ArgInt(128), ArgInt(32)⟩)⟩
+        : (_lphase = 0 ∧ lex_done) ? (have_pend ? ⟨w_pend, w_eof⟩ : ⟨w_eof⟩)
+        : (ver ∧ (¬count_ok)) ? ⟨Exit(99)⟩
+        : (ver ∧ _vstep = 0 ∧ _vk ≥ 42) ? ⟨Exit(0)⟩
+        : (ver ∧ _vstep = 0) ? ⟨rd_tag, rd_p0⟩
+        : (ver ∧ _vstep = 1 ∧ (¬tag_ok)) ? ⟨Exit(100 + _vk)⟩
+        : (ver ∧ _vstep = 1 ∧ x_is) ? ⟨e_copy⟩
+        : (ver ∧ _vstep = 1 ∧ (¬p0_ok)) ? ⟨Exit(150 + _vk)⟩
+        : (ver ∧ _vstep = 2 ∧ (¬str_ok)) ? ⟨Exit(200 + _vk)⟩
+        : ver ? ⟨e_fill⟩
+        : (k_kind = 1 ∧ have_pend) ? ⟨w_pend, w_tag0⟩
+        : k_kind = 1 ? ⟨w_tag0⟩
+        : k_kind = 2 ? ⟨w_tag0, w_p0⟩
+        : k_kind = 3 ? ⟨e_dup, w_tag0⟩
+        : k_kind = 4 ? ⟨w_tag0, w_tag1⟩
+        : k_kind = 5 ? ⟨e_dup, w_tag0, w_tag1⟩
+        : k_kind = 6 ? ⟨w_tag0, w_p0, w_tag1⟩
+        : have_pend ? ⟨w_pend⟩
+        : ⟨e_fill⟩)
