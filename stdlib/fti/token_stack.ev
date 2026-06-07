@@ -183,6 +183,20 @@ claim TokenTag_Gt(out ∈ Int)
 claim TokenTag_Dot(out ∈ Int)
     out = 64
 
+-- Remaining single-char tokens (65..70). Appended for the FTI lexer
+-- spike (compiler2/lex_fti.ev) — the driver's lexer emits these four.
+claim TokenTag_Pipe(out ∈ Int)
+    out = 65
+
+claim TokenTag_Question(out ∈ Int)
+    out = 66
+
+claim TokenTag_Hash(out ∈ Int)
+    out = 67
+
+claim TokenTag_Colon(out ∈ Int)
+    out = 68
+
 -- ── Contract: legal transitions (mirrors Stack's depth-delta shape) ─
 
 claim TokenStack(depth ∈ Int, prev_depth ∈ Int, is_init ∈ Bool,
