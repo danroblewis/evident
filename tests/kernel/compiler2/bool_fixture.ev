@@ -1,0 +1,299 @@
+-- compiler2 P2 fixture: drive compiler2/translate2_bool.ev's
+-- BuildZ3-emitting claims end-to-end for the hardcoded expression
+--
+--   (ite (and (< 3 4) (not (= 1 2))) 1 0)
+--
+-- parsed as ETernary(EBinOp(OpConj, EBinOp(OpLt, 3, 4),
+-- EBinOp(OpNeq, 1, 2)), 1, 0) — the ≠ arm exercises the OpNeq
+-- two-step (Z3_mk_eq then Z3_mk_not, signaled by needs_not).
+--
+-- The FSM (modeled on tests/kernel/test_translate_arith_via_z3.ev,
+-- with its capture off-by-one fixed: each handle is captured on the
+-- tick AFTER its builder effect, and inc_ref'd on that same capture
+-- tick — never before):
+--   1. Z3 lifecycle (config, context, int_sort).
+--   2. Five Z3_mk_int leaves (3, 4, 1, 2, 0), each inc_ref'd.
+--   3. Per-node builders chosen by translate2_bool claims from the
+--      decomposed Expr tree: BoolCmpBuildZ3 (OpLt → Z3_mk_lt;
+--      OpNeq → Z3_mk_eq + needs_not), BoolNotBuildZ3 (the neq
+--      second step), BoolNaryBuildZ3 (OpConj → Z3_mk_and over a
+--      malloc'd 2-slot handle array), TernaryBuildZ3 (Z3_mk_ite).
+--   4. Z3_ast_to_string + __cstr.copy readback.
+--   5. Compare against Z3 4.15.4's canonical printing (verified
+--      empirically: `(apply skip)` through /usr/local/bin/z3 prints
+--      the term as "(ite (and (< 3 4) (not (= 1 2))) 1 0)").
+--
+-- Exit codes, one per divergence point:
+--   0 — rendered string matches
+--   4 — readback nonempty but ≠ expected (builder picked wrong op)
+--   5 — fell off the phase schedule (FSM wiring broken)
+--   6 — readback empty (to_string/cstr.copy chain broke)
+--   7 — claim discrimination diverged (ok / needs_not / parts flags)
+--
+-- expect: stdout = ""
+-- expect: exit = 0
+
+import "compiler2/translate2_bool.ev"
+
+claim main
+    phase  ∈ Int
+    _phase ∈ Int
+    phase = (is_first_tick ? 0 : _phase + 1)
+
+    -- ── The hardcoded source expression, decomposed via the pass's
+    --    parts claims so every per-node choice flows from the node.
+
+    expr ∈ Expr = ETernary(
+        EBinOp(OpConj,
+            EBinOp(OpLt, EInt(3), EInt(4)),
+            EBinOp(OpNeq, EInt(1), EInt(2))),
+        EInt(1), EInt(0))
+
+    cond_e, then_e, else_e ∈ Expr
+    is_tern ∈ Bool
+    TernaryExprParts(e ↦ expr, cond_e ↦ cond_e, then_e ↦ then_e,
+        else_e ↦ else_e, is_tern ↦ is_tern)
+
+    conj_op ∈ Op
+    conj_l, conj_r ∈ Expr
+    cond_is_binop ∈ Bool
+    BoolExprBinopParts(e ↦ cond_e, op ↦ conj_op, lhs ↦ conj_l,
+        rhs ↦ conj_r, is_binop ↦ cond_is_binop)
+
+    conj_is_array ∈ Bool
+    BoolOpIsArray(op ↦ conj_op, out ↦ conj_is_array)
+
+    lt_op ∈ Op
+    lt_l, lt_r ∈ Expr
+    lt_is_binop ∈ Bool
+    BoolExprBinopParts(e ↦ conj_l, op ↦ lt_op, lhs ↦ lt_l,
+        rhs ↦ lt_r, is_binop ↦ lt_is_binop)
+
+    ne_op ∈ Op
+    ne_l, ne_r ∈ Expr
+    ne_is_binop ∈ Bool
+    BoolExprBinopParts(e ↦ conj_r, op ↦ ne_op, lhs ↦ ne_l,
+        rhs ↦ ne_r, is_binop ↦ ne_is_binop)
+
+    -- ── Captured handles. Each set from last_results[0] on its
+    --    capture tick (builder phase + 1), otherwise carried.
+
+    cfg_h ∈ Int
+    _cfg_h ∈ Int
+    cap ∈ Int = match last_results[0]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+    cfg_h = (is_first_tick ? 0 : phase = 1 ? cap : _cfg_h)
+
+    ctx_h ∈ Int
+    _ctx_h ∈ Int
+    ctx_h = (is_first_tick ? 0 : phase = 2 ? cap : _ctx_h)
+
+    int_sort_h ∈ Int
+    _int_sort_h ∈ Int
+    int_sort_h = (is_first_tick ? 0 : phase = 3 ? cap : _int_sort_h)
+
+    n3_h ∈ Int
+    _n3_h ∈ Int
+    n3_h = (is_first_tick ? 0 : phase = 4 ? cap : _n3_h)
+
+    n4_h ∈ Int
+    _n4_h ∈ Int
+    n4_h = (is_first_tick ? 0 : phase = 6 ? cap : _n4_h)
+
+    n1_h ∈ Int
+    _n1_h ∈ Int
+    n1_h = (is_first_tick ? 0 : phase = 8 ? cap : _n1_h)
+
+    n2_h ∈ Int
+    _n2_h ∈ Int
+    n2_h = (is_first_tick ? 0 : phase = 10 ? cap : _n2_h)
+
+    n0_h ∈ Int
+    _n0_h ∈ Int
+    n0_h = (is_first_tick ? 0 : phase = 12 ? cap : _n0_h)
+
+    lt_h ∈ Int
+    _lt_h ∈ Int
+    lt_h = (is_first_tick ? 0 : phase = 14 ? cap : _lt_h)
+
+    eq_h ∈ Int
+    _eq_h ∈ Int
+    eq_h = (is_first_tick ? 0 : phase = 16 ? cap : _eq_h)
+
+    neg_h ∈ Int
+    _neg_h ∈ Int
+    neg_h = (is_first_tick ? 0 : phase = 18 ? cap : _neg_h)
+
+    and_buf ∈ Int
+    _and_buf ∈ Int
+    and_buf = (is_first_tick ? 0 : phase = 20 ? cap : _and_buf)
+
+    and_h ∈ Int
+    _and_h ∈ Int
+    and_h = (is_first_tick ? 0 : phase = 23 ? cap : _and_h)
+
+    ite_h ∈ Int
+    _ite_h ∈ Int
+    ite_h = (is_first_tick ? 0 : phase = 25 ? cap : _ite_h)
+
+    str_ptr ∈ Int
+    _str_ptr ∈ Int
+    str_ptr = (is_first_tick ? 0 : phase = 27 ? cap : _str_ptr)
+
+    rendered ∈ String
+    _rendered ∈ String
+    str_cap ∈ String = match last_results[0]
+        StringResult(s) ⇒ s
+        _ ⇒ ""
+    rendered = (is_first_tick ? ""
+        : phase = 28 ? str_cap
+        : _rendered)
+
+    -- ── Per-node effects from the pass's claims.
+
+    lt_eff ∈ Effect
+    lt_ok, lt_needs_not ∈ Bool
+    BoolCmpBuildZ3(ctx_h ↦ ctx_h, op ↦ lt_op, l_h ↦ n3_h, r_h ↦ n4_h,
+        eff ↦ lt_eff, ok ↦ lt_ok, needs_not ↦ lt_needs_not)
+
+    ne_eff ∈ Effect
+    ne_ok, ne_needs_not ∈ Bool
+    BoolCmpBuildZ3(ctx_h ↦ ctx_h, op ↦ ne_op, l_h ↦ n1_h, r_h ↦ n2_h,
+        eff ↦ ne_eff, ok ↦ ne_ok, needs_not ↦ ne_needs_not)
+
+    neg_eff ∈ Effect
+    BoolNotBuildZ3(ctx_h ↦ ctx_h, x_h ↦ eq_h, eff ↦ neg_eff)
+
+    and_eff ∈ Effect
+    and_ok ∈ Bool
+    BoolNaryBuildZ3(ctx_h ↦ ctx_h, op ↦ conj_op, num_args ↦ 2,
+        args_arr_ptr ↦ and_buf, eff ↦ and_eff, ok ↦ and_ok)
+
+    ite_eff ∈ Effect
+    TernaryBuildZ3(ctx_h ↦ ctx_h, cond_h ↦ and_h, then_h ↦ n1_h,
+        else_h ↦ n0_h, eff ↦ ite_eff)
+
+    -- ── Verdict.
+
+    claims_ok ∈ Bool = (is_tern ∧ cond_is_binop ∧ conj_is_array
+        ∧ lt_is_binop ∧ lt_ok ∧ ¬lt_needs_not
+        ∧ ne_is_binop ∧ ne_ok ∧ ne_needs_not
+        ∧ and_ok)
+    expected ∈ String = "(ite (and (< 3 4) (not (= 1 2))) 1 0)"
+    match_ok ∈ Bool = (rendered = expected)
+    empty_render ∈ Bool = (rendered = "")
+    exit_code ∈ Int = (phase = 28
+        ? (¬claims_ok ? 7
+            : empty_render ? 6
+            : match_ok ? 0
+            : 4)
+        : 5)
+
+    -- ── Phase schedule. Effect at phase N → result first readable
+    --    (and captured + inc_ref'd) at phase N+1.
+    --    0  Z3_mk_config                → cfg_h      @1
+    --    1  Z3_mk_context(cfg)          → ctx_h      @2
+    --    2  Z3_mk_int_sort(ctx)         → int_sort_h @3
+    --    3  Z3_mk_int 3                 → n3_h       @4
+    --    4  inc_ref(n3_h)
+    --    5  Z3_mk_int 4                 → n4_h       @6
+    --    6  inc_ref(n4_h)
+    --    7  Z3_mk_int 1                 → n1_h       @8
+    --    8  inc_ref(n1_h)
+    --    9  Z3_mk_int 2                 → n2_h       @10
+    --   10  inc_ref(n2_h)
+    --   11  Z3_mk_int 0                 → n0_h       @12
+    --   12  inc_ref(n0_h)
+    --   13  lt_eff  (Z3_mk_lt)          → lt_h       @14
+    --   14  inc_ref(lt_h)
+    --   15  ne_eff  (Z3_mk_eq, neq step 1) → eq_h    @16
+    --   16  inc_ref(eq_h)
+    --   17  neg_eff (Z3_mk_not, neq step 2) → neg_h  @18
+    --   18  inc_ref(neg_h)
+    --   19  malloc 16                   → and_buf    @20
+    --   20  __mem.write_long(and_buf,   lt_h)
+    --   21  __mem.write_long(and_buf+8, neg_h)
+    --   22  and_eff (Z3_mk_and 2 args)  → and_h      @23
+    --   23  inc_ref(and_h)
+    --   24  ite_eff (Z3_mk_ite)         → ite_h      @25
+    --   25  inc_ref(ite_h)
+    --   26  Z3_ast_to_string(ctx, ite_h) → str_ptr   @27
+    --   27  __cstr.copy(str_ptr)        → rendered   @28
+    --   28+ Exit(exit_code)
+
+    effects ∈ Seq(Effect) = (phase = 0
+            ? ⟨LibCall("libz3", "Z3_mk_config", ⟨⟩)⟩
+        : phase = 1
+            ? ⟨LibCall("libz3", "Z3_mk_context", ⟨ArgInt(cfg_h)⟩)⟩
+        : phase = 2
+            ? ⟨LibCall("libz3", "Z3_mk_int_sort", ⟨ArgInt(ctx_h)⟩)⟩
+        : phase = 3
+            ? ⟨LibCall("libz3", "Z3_mk_int",
+                ⟨ArgInt(ctx_h), ArgInt(3), ArgInt(int_sort_h)⟩)⟩
+        : phase = 4
+            ? ⟨LibCall("libz3", "Z3_inc_ref",
+                ⟨ArgInt(ctx_h), ArgInt(n3_h)⟩)⟩
+        : phase = 5
+            ? ⟨LibCall("libz3", "Z3_mk_int",
+                ⟨ArgInt(ctx_h), ArgInt(4), ArgInt(int_sort_h)⟩)⟩
+        : phase = 6
+            ? ⟨LibCall("libz3", "Z3_inc_ref",
+                ⟨ArgInt(ctx_h), ArgInt(n4_h)⟩)⟩
+        : phase = 7
+            ? ⟨LibCall("libz3", "Z3_mk_int",
+                ⟨ArgInt(ctx_h), ArgInt(1), ArgInt(int_sort_h)⟩)⟩
+        : phase = 8
+            ? ⟨LibCall("libz3", "Z3_inc_ref",
+                ⟨ArgInt(ctx_h), ArgInt(n1_h)⟩)⟩
+        : phase = 9
+            ? ⟨LibCall("libz3", "Z3_mk_int",
+                ⟨ArgInt(ctx_h), ArgInt(2), ArgInt(int_sort_h)⟩)⟩
+        : phase = 10
+            ? ⟨LibCall("libz3", "Z3_inc_ref",
+                ⟨ArgInt(ctx_h), ArgInt(n2_h)⟩)⟩
+        : phase = 11
+            ? ⟨LibCall("libz3", "Z3_mk_int",
+                ⟨ArgInt(ctx_h), ArgInt(0), ArgInt(int_sort_h)⟩)⟩
+        : phase = 12
+            ? ⟨LibCall("libz3", "Z3_inc_ref",
+                ⟨ArgInt(ctx_h), ArgInt(n0_h)⟩)⟩
+        : phase = 13
+            ? ⟨lt_eff⟩
+        : phase = 14
+            ? ⟨LibCall("libz3", "Z3_inc_ref",
+                ⟨ArgInt(ctx_h), ArgInt(lt_h)⟩)⟩
+        : phase = 15
+            ? ⟨ne_eff⟩
+        : phase = 16
+            ? ⟨LibCall("libz3", "Z3_inc_ref",
+                ⟨ArgInt(ctx_h), ArgInt(eq_h)⟩)⟩
+        : phase = 17
+            ? ⟨neg_eff⟩
+        : phase = 18
+            ? ⟨LibCall("libz3", "Z3_inc_ref",
+                ⟨ArgInt(ctx_h), ArgInt(neg_h)⟩)⟩
+        : phase = 19
+            ? ⟨LibCall("libc", "malloc", ⟨ArgInt(16)⟩)⟩
+        : phase = 20
+            ? ⟨LibCall("__mem", "write_long",
+                ⟨ArgInt(and_buf), ArgInt(lt_h)⟩)⟩
+        : phase = 21
+            ? ⟨LibCall("__mem", "write_long",
+                ⟨ArgInt(and_buf + 8), ArgInt(neg_h)⟩)⟩
+        : phase = 22
+            ? ⟨and_eff⟩
+        : phase = 23
+            ? ⟨LibCall("libz3", "Z3_inc_ref",
+                ⟨ArgInt(ctx_h), ArgInt(and_h)⟩)⟩
+        : phase = 24
+            ? ⟨ite_eff⟩
+        : phase = 25
+            ? ⟨LibCall("libz3", "Z3_inc_ref",
+                ⟨ArgInt(ctx_h), ArgInt(ite_h)⟩)⟩
+        : phase = 26
+            ? ⟨LibCall("libz3", "Z3_ast_to_string",
+                ⟨ArgInt(ctx_h), ArgInt(ite_h)⟩)⟩
+        : phase = 27
+            ? ⟨LibCall("__cstr", "copy", ⟨ArgInt(str_ptr)⟩)⟩
+        : ⟨Exit(exit_code)⟩)
