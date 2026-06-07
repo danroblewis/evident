@@ -1,7 +1,9 @@
-# compiler2 driver skeleton (P3a) — notes
+# compiler2 driver skeleton (P3a + P3b) — notes
 
 Status: P3a LANDED — both acceptance fixtures compile + run green
-(see Acceptance below).
+(see Acceptance below). P3b LANDED — the census
+arithmetic/comparison/membership class and the implies class flip
+green through the driver (see P3b acceptance below).
 
 `compiler2/driver.ev` is the first end-to-end compiler2 driver: an
 Evident program (oracle-compiled to a ~209 KB .smt2) that the kernel
@@ -95,16 +97,77 @@ stdin: flat-path \n claim \n        (wave-4o protocol, same as compiler.smt2)
   Build depth behind a handle is unbounded (the work stack recurses);
   it is the PARSER that is bounded.
 
-## Descopes (P3b+)
+## P3b widening (landed 2026-06-07)
 
+New surface on top of the P3a skeleton:
+
+- **Standalone constraint lines** via the new one-tick bounded
+  parser `C2ParseCons` (+ `C2OpClass`): `x < 5`, `x ≠ 0`,
+  chained `0 < x < 5` (lowered to a conjunction), implies lines
+  `cmp ⇒ cmp`, `name ⇒ name op atom`, `¬name ⇒ name op atom`,
+  and the nested right-assoc `cmp ⇒ ( cmp ) ⇒ cmp`. The classifier
+  gained a fourth line kind (`c_is_cons`); claim-end detection now
+  admits lines starting with IntLit/¬.
+- **OpNeq lowering**: `≠` Process-expands to
+  `Process(l) · Process(r) · C2Op(OpEq) · C2Not` — the documented
+  two-step (mk_eq then mk_not). New `C2Not` work item (pops 1,
+  pushes the mk_not handle); `ENot` expands through it too.
+- **true/false literals**: lexer keywords KwTrue/KwFalse become
+  EIdent("true"/"false") atoms; the symtab lookup resolves them to
+  Z3_mk_true / Z3_mk_false handles cached at ZINIT (zsteps 30/31;
+  the LEX gate moved 30 → 32).
+- **Negative int literals**: token-level sign fold in the lexer
+  cons — a Minus directly under a finishing IntLit with no
+  atom-shaped token before it (IntLit/Ident/RParen/StringLit)
+  becomes IntLit(-n). `10 - 13` stays a binary sub; `= -3`,
+  `∧ -3`, `(-3` fold.
+- **C2ParseExpr nested-group shape**
+  `( ( a op a ) op a ∧|∨ a op a )` — covers 018's pin.
+
+## P3b acceptance (run 2026-06-07, oracle-built driver, all 18 in parallel)
+
+Every row below ran BOTH checks (smt2-contains on the emitted unit +
+kernel run of the unit against expected/exit). All census FAILs
+before; all PASS through the driver now:
+
+017 ✓ (exit 0) · 018 ✓ ((- 10 13), (- 3) numerals; exit 0) ·
+020 ✓ ((= flag true) via mk_true; exit 0) · 022 ✓ ((not (= x 0));
+exit 0) · 023 ✓ · 024 ✓ · 025 ✓ · 027 ✓ (UNSAT → exit 2) ·
+028 ✓ ((and (< 0 x) (< x 5))) · 029 ✓ (UNSAT → exit 2) ·
+033 ✓ ((=> (> x 3) (< x 10))) · 034 ✓ · 036 ✓ · 037 ✓
+((=> (> x 3) (=> (< x 10) (= y 99))) — right-assoc) · 053 ✓
+((=> flag (= x 42))) · 054 ✓ ((=> (not flag) (= x 99))).
+
+Regression gates re-verified in the same batch: 026 ✓ (exit 0,
+`(+ ` present) and 008 ✓ (exit 1, `(and` present).
+
+Census semantics note: an implies BLOCK (036) is compiled greedily —
+`x > 3 ⇒ │ y = 10 │ x < 100` becomes `(x>3 ⇒ y=10) ∧ (x<100)`, not
+`x>3 ⇒ (y=10 ∧ x<100)` — the lexer drops newline/indent structure.
+Equivalent for 036's pinned model; NOT equivalent in general.
+Real block scoping needs indentation-aware lexing (descoped below).
+
+## Descopes (P3c+)
+
+- **021-real-membership**: needs FloatLit collection in the driver's
+  lexer FSM (currently `3.14` lexes as IntLit·Dot·IntLit and kills
+  the walk), Z3_mk_real_sort at ZINIT, mk_numeral for the literal,
+  and a Real branch in the decl/manifest paths. Cleanly separable;
+  nothing else blocks on it.
+- Indentation-aware blocks (see semantics note above).
 - Effect enum floor: LibCall's `Seq(LibArg)` payload needs the
   multi-datatype sort registry (LibArg + __SeqOf_LibArg + Effect in
   one or three mk_datatypes batches) — translate2_ctor.ev documents
   the mechanics; the driver only declares Exit.
 - User enum declarations are skipped, not translated.
-- General expressions: no nesting beyond the C2ParseExpr shapes, no
+- General expressions: no nesting beyond the C2ParseExpr/C2ParseCons
+  shapes (the shape zoo is at its useful limit — the next consumer
+  should build the Pratt-parser FSM instead of adding shapes), no
   match/matches, no Seq values, no quantifiers, no composition lines,
-  no string pins, no multi-name memberships, no chained bounds.
+  no string pins, no multi-name memberships, no chained bounds in
+  memberships (`0 < x ∈ Int < 5`), no ≠ as a membership bound
+  (would mis-assert mk_eq — C2Op(OpNeq) only arrives via the
+  Process-expansion path, which lowers it correctly).
 - Symbol table: 8 fixed slots.
 - No `_<name>` carry-over declares in the emitted unit and no
   `(assert (>= effects__len 0))` floor — fine for tick-0-exit
