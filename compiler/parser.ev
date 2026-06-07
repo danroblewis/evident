@@ -71,6 +71,10 @@ enum Op =
 --     ECall1("str_len", e). The arg vector is unrolled into three
 --     fixed-arity variants (a 4-field payload is oracle-supported;
 --     probed end-to-end 2026-06-07).
+--   EMatches(ctor, e) — `e matches Ctor` / `e matches Ctor(_[, _])`
+--     (compiler2 gap census C4): a Bool recognizer — the tester app
+--     `((_ is Ctor) e)`. Corpus pattern binds are always `_`, so
+--     only the ctor NAME is carried; no payload binding exists.
 enum Expr =
     EInt(Int)
     EIdent(String)
@@ -84,6 +88,7 @@ enum Expr =
     ECall1(String, Expr)
     ECall2(String, Expr, Expr)
     ECall3(String, Expr, Expr, Expr)
+    EMatches(String, Expr)
     ENoExpr
 
 -- ── Match patterns (B9) ────────────────────────────────────────
