@@ -4299,31 +4299,31 @@
 (declare-fun MembershipStep__ms_matches_str__call1268 () String)
 (declare-fun MembershipStep__ms_rhs_expr__call1268 () Expr)
 (declare-fun ArithExprSmtlib__is_binop__call1289 () Bool)
-(declare-fun ArithExprSmtlib__op__call1289 () Op)
-(declare-fun ArithExprSmtlib__lhs__call1289 () Expr)
-(declare-fun ArithExprSmtlib__rhs__call1289 () Expr)
-(declare-fun ArithExprSmtlib__is_plus__call1289 () Bool)
-(declare-fun ArithExprSmtlib__is_sub__call1289 () Bool)
-(declare-fun ArithExprSmtlib__is_mul__call1289 () Bool)
-(declare-fun ArithExprSmtlib__is_div__call1289 () Bool)
-(declare-fun ArithExprSmtlib__is_arith__call1289 () Bool)
-(declare-fun ArithExprSmtlib__op_str__call1289 () String)
+(declare-fun ArithExprSmtlib__op_x__call1289 () Op)
+(declare-fun ArithExprSmtlib__lhs_x__call1289 () Expr)
+(declare-fun ArithExprSmtlib__rhs_x__call1289 () Expr)
+(declare-fun ArithExprSmtlib__is_plus_x__call1289 () Bool)
+(declare-fun ArithExprSmtlib__is_sub_x__call1289 () Bool)
+(declare-fun ArithExprSmtlib__is_mul_x__call1289 () Bool)
+(declare-fun ArithExprSmtlib__is_div_x__call1289 () Bool)
+(declare-fun ArithExprSmtlib__is_arith_x__call1289 () Bool)
+(declare-fun ArithExprSmtlib__op_str_x__call1289 () String)
 (declare-fun AtomSmtlib__is_int__call1290 () Bool)
 (declare-fun AtomSmtlib__is_ident__call1290 () Bool)
 (declare-fun AtomSmtlib__is_str__call1290 () Bool)
 (declare-fun AtomSmtlib__int_val__call1290 () Int)
 (declare-fun AtomSmtlib__ident_val__call1290 () String)
 (declare-fun AtomSmtlib__str_val__call1290 () String)
-(declare-fun ArithExprSmtlib__lhs_ok__call1289 () Bool)
-(declare-fun ArithExprSmtlib__lhs_str__call1289 () String)
+(declare-fun ArithExprSmtlib__lhs_ok_x__call1289 () Bool)
+(declare-fun ArithExprSmtlib__lhs_str_x__call1289 () String)
 (declare-fun AtomSmtlib__is_int__call1291 () Bool)
 (declare-fun AtomSmtlib__is_ident__call1291 () Bool)
 (declare-fun AtomSmtlib__is_str__call1291 () Bool)
 (declare-fun AtomSmtlib__int_val__call1291 () Int)
 (declare-fun AtomSmtlib__ident_val__call1291 () String)
 (declare-fun AtomSmtlib__str_val__call1291 () String)
-(declare-fun ArithExprSmtlib__rhs_ok__call1289 () Bool)
-(declare-fun ArithExprSmtlib__rhs_str__call1289 () String)
+(declare-fun ArithExprSmtlib__rhs_ok_x__call1289 () Bool)
+(declare-fun ArithExprSmtlib__rhs_str_x__call1289 () String)
 (declare-fun MembershipStep__ms_arith_ok__call1268 () Bool)
 (declare-fun MembershipStep__ms_arith_str__call1268 () String)
 (declare-fun BoolExprSmtlib__is_binop__call1292 () Bool)
@@ -26595,56 +26595,56 @@
           a!1))))
 (assert (= ArithExprSmtlib__is_binop__call1289
    ((_ is EBinOp) MembershipStep__ms_rhs_expr__call1268)))
-(assert (= ArithExprSmtlib__op__call1289
+(assert (= ArithExprSmtlib__op_x__call1289
    (ite ((_ is EBinOp) MembershipStep__ms_rhs_expr__call1268)
         (EBinOp__f0 MembershipStep__ms_rhs_expr__call1268)
         OpPlus)))
-(assert (= ArithExprSmtlib__lhs__call1289
+(assert (= ArithExprSmtlib__lhs_x__call1289
    (ite ((_ is EBinOp) MembershipStep__ms_rhs_expr__call1268)
         (EBinOp__f1 MembershipStep__ms_rhs_expr__call1268)
         ENoExpr)))
-(assert (= ArithExprSmtlib__rhs__call1289
+(assert (= ArithExprSmtlib__rhs_x__call1289
    (ite ((_ is EBinOp) MembershipStep__ms_rhs_expr__call1268)
         (EBinOp__f2 MembershipStep__ms_rhs_expr__call1268)
         ENoExpr)))
-(assert (= ArithExprSmtlib__is_plus__call1289
-   ((_ is OpPlus) ArithExprSmtlib__op__call1289)))
-(assert (= ArithExprSmtlib__is_sub__call1289
-   ((_ is OpSub) ArithExprSmtlib__op__call1289)))
-(assert (= ArithExprSmtlib__is_mul__call1289
-   ((_ is OpMul) ArithExprSmtlib__op__call1289)))
-(assert (= ArithExprSmtlib__is_div__call1289
-   ((_ is OpDiv) ArithExprSmtlib__op__call1289)))
-(assert (= ArithExprSmtlib__is_arith__call1289
-   (or ArithExprSmtlib__is_plus__call1289
-       ArithExprSmtlib__is_sub__call1289
-       ArithExprSmtlib__is_mul__call1289
-       ArithExprSmtlib__is_div__call1289)))
-(assert (let ((a!1 (ite ArithExprSmtlib__is_plus__call1289
+(assert (= ArithExprSmtlib__is_plus_x__call1289
+   ((_ is OpPlus) ArithExprSmtlib__op_x__call1289)))
+(assert (= ArithExprSmtlib__is_sub_x__call1289
+   ((_ is OpSub) ArithExprSmtlib__op_x__call1289)))
+(assert (= ArithExprSmtlib__is_mul_x__call1289
+   ((_ is OpMul) ArithExprSmtlib__op_x__call1289)))
+(assert (= ArithExprSmtlib__is_div_x__call1289
+   ((_ is OpDiv) ArithExprSmtlib__op_x__call1289)))
+(assert (= ArithExprSmtlib__is_arith_x__call1289
+   (or ArithExprSmtlib__is_plus_x__call1289
+       ArithExprSmtlib__is_sub_x__call1289
+       ArithExprSmtlib__is_mul_x__call1289
+       ArithExprSmtlib__is_div_x__call1289)))
+(assert (let ((a!1 (ite ArithExprSmtlib__is_plus_x__call1289
                 "+"
-                (ite ArithExprSmtlib__is_sub__call1289
+                (ite ArithExprSmtlib__is_sub_x__call1289
                      "-"
-                     (ite ArithExprSmtlib__is_mul__call1289
+                     (ite ArithExprSmtlib__is_mul_x__call1289
                           "*"
-                          (ite ArithExprSmtlib__is_div__call1289 "div" ""))))))
-  (= ArithExprSmtlib__op_str__call1289 a!1)))
-(assert (= AtomSmtlib__is_int__call1290 ((_ is EInt) ArithExprSmtlib__lhs__call1289)))
+                          (ite ArithExprSmtlib__is_div_x__call1289 "div" ""))))))
+  (= ArithExprSmtlib__op_str_x__call1289 a!1)))
+(assert (= AtomSmtlib__is_int__call1290 ((_ is EInt) ArithExprSmtlib__lhs_x__call1289)))
 (assert (= AtomSmtlib__is_ident__call1290
-   ((_ is EIdent) ArithExprSmtlib__lhs__call1289)))
-(assert (= AtomSmtlib__is_str__call1290 ((_ is EStr) ArithExprSmtlib__lhs__call1289)))
+   ((_ is EIdent) ArithExprSmtlib__lhs_x__call1289)))
+(assert (= AtomSmtlib__is_str__call1290 ((_ is EStr) ArithExprSmtlib__lhs_x__call1289)))
 (assert (= AtomSmtlib__int_val__call1290
-   (ite ((_ is EInt) ArithExprSmtlib__lhs__call1289)
-        (EInt__f0 ArithExprSmtlib__lhs__call1289)
+   (ite ((_ is EInt) ArithExprSmtlib__lhs_x__call1289)
+        (EInt__f0 ArithExprSmtlib__lhs_x__call1289)
         0)))
 (assert (= AtomSmtlib__ident_val__call1290
-   (ite ((_ is EIdent) ArithExprSmtlib__lhs__call1289)
-        (EIdent__f0 ArithExprSmtlib__lhs__call1289)
+   (ite ((_ is EIdent) ArithExprSmtlib__lhs_x__call1289)
+        (EIdent__f0 ArithExprSmtlib__lhs_x__call1289)
         "")))
 (assert (= AtomSmtlib__str_val__call1290
-   (ite ((_ is EStr) ArithExprSmtlib__lhs__call1289)
-        (EStr__f0 ArithExprSmtlib__lhs__call1289)
+   (ite ((_ is EStr) ArithExprSmtlib__lhs_x__call1289)
+        (EStr__f0 ArithExprSmtlib__lhs_x__call1289)
         "")))
-(assert (= ArithExprSmtlib__lhs_ok__call1289
+(assert (= ArithExprSmtlib__lhs_ok_x__call1289
    (or AtomSmtlib__is_int__call1290
        AtomSmtlib__is_ident__call1290
        AtomSmtlib__is_str__call1290)))
@@ -26658,24 +26658,24 @@
                      (ite AtomSmtlib__is_str__call1290
                           (str.++ """" AtomSmtlib__str_val__call1290 """")
                           "")))))
-  (= ArithExprSmtlib__lhs_str__call1289 a!2))))
-(assert (= AtomSmtlib__is_int__call1291 ((_ is EInt) ArithExprSmtlib__rhs__call1289)))
+  (= ArithExprSmtlib__lhs_str_x__call1289 a!2))))
+(assert (= AtomSmtlib__is_int__call1291 ((_ is EInt) ArithExprSmtlib__rhs_x__call1289)))
 (assert (= AtomSmtlib__is_ident__call1291
-   ((_ is EIdent) ArithExprSmtlib__rhs__call1289)))
-(assert (= AtomSmtlib__is_str__call1291 ((_ is EStr) ArithExprSmtlib__rhs__call1289)))
+   ((_ is EIdent) ArithExprSmtlib__rhs_x__call1289)))
+(assert (= AtomSmtlib__is_str__call1291 ((_ is EStr) ArithExprSmtlib__rhs_x__call1289)))
 (assert (= AtomSmtlib__int_val__call1291
-   (ite ((_ is EInt) ArithExprSmtlib__rhs__call1289)
-        (EInt__f0 ArithExprSmtlib__rhs__call1289)
+   (ite ((_ is EInt) ArithExprSmtlib__rhs_x__call1289)
+        (EInt__f0 ArithExprSmtlib__rhs_x__call1289)
         0)))
 (assert (= AtomSmtlib__ident_val__call1291
-   (ite ((_ is EIdent) ArithExprSmtlib__rhs__call1289)
-        (EIdent__f0 ArithExprSmtlib__rhs__call1289)
+   (ite ((_ is EIdent) ArithExprSmtlib__rhs_x__call1289)
+        (EIdent__f0 ArithExprSmtlib__rhs_x__call1289)
         "")))
 (assert (= AtomSmtlib__str_val__call1291
-   (ite ((_ is EStr) ArithExprSmtlib__rhs__call1289)
-        (EStr__f0 ArithExprSmtlib__rhs__call1289)
+   (ite ((_ is EStr) ArithExprSmtlib__rhs_x__call1289)
+        (EStr__f0 ArithExprSmtlib__rhs_x__call1289)
         "")))
-(assert (= ArithExprSmtlib__rhs_ok__call1289
+(assert (= ArithExprSmtlib__rhs_ok_x__call1289
    (or AtomSmtlib__is_int__call1291
        AtomSmtlib__is_ident__call1291
        AtomSmtlib__is_str__call1291)))
@@ -26689,20 +26689,20 @@
                      (ite AtomSmtlib__is_str__call1291
                           (str.++ """" AtomSmtlib__str_val__call1291 """")
                           "")))))
-  (= ArithExprSmtlib__rhs_str__call1289 a!2))))
+  (= ArithExprSmtlib__rhs_str_x__call1289 a!2))))
 (assert (= MembershipStep__ms_arith_ok__call1268
    (and ArithExprSmtlib__is_binop__call1289
-        ArithExprSmtlib__is_arith__call1289
-        ArithExprSmtlib__lhs_ok__call1289
-        ArithExprSmtlib__rhs_ok__call1289)))
+        ArithExprSmtlib__is_arith_x__call1289
+        ArithExprSmtlib__lhs_ok_x__call1289
+        ArithExprSmtlib__rhs_ok_x__call1289)))
 (assert (= MembershipStep__ms_arith_str__call1268
    (ite MembershipStep__ms_arith_ok__call1268
         (str.++ "("
-                ArithExprSmtlib__op_str__call1289
+                ArithExprSmtlib__op_str_x__call1289
                 " "
-                ArithExprSmtlib__lhs_str__call1289
+                ArithExprSmtlib__lhs_str_x__call1289
                 " "
-                ArithExprSmtlib__rhs_str__call1289
+                ArithExprSmtlib__rhs_str_x__call1289
                 ")")
         "")))
 (assert (= BoolExprSmtlib__is_binop__call1292
