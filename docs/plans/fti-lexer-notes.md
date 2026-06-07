@@ -1,11 +1,14 @@
 # FTI lexer — spike results + driver-integration contract
 
-Status: SPIKE LANDED (standalone proof). `compiler2/lex_fti.ev` +
-`tests/kernel/compiler2/lex_fti_fixture.ev` prove the FTI token
+Status: INTEGRATED (P3d, 2026-06-07). `compiler2/lex_fti.ev` +
+`tests/kernel/compiler2/lex_fti_fixture.ev` proved the FTI token
 buffer from `docs/plans/sample-ev-fti-pivot.md` end-to-end on the
-driver's own lexer FSM shape. compiler2/driver.ev is UNTOUCHED (the
-Pratt agent owns it); the NEXT agent wires this in after the Pratt
-merge.
+driver's own lexer FSM shape; compiler2/driver.ev now uses it (the
+cons-list lexer + REVERSE phase are deleted; the parse phases read
+the buffer through an 8-token cursor window). See the P3d section
+of docs/plans/compiler2-driver-notes.md for the integration design
++ the 22-fixture acceptance run. The recipe below is kept as the
+record of what was de-risked ahead of that wiring.
 
 ## What was proven (all kernel-run, oracle-built)
 

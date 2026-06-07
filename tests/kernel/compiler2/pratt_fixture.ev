@@ -188,11 +188,12 @@ claim main
     f_nqd ∈ Int
     f_sdone ∈ Bool
     f_sres ∈ Expr
+    f_scons ∈ Bool
     C2PrattStep(toks ↦ _ft_toks, outs ↦ _ft_out, ops ↦ _ft_ops,
         expop ↦ _ft_expop, pd ↦ _ft_pd, qd ↦ _ft_qd,
         ntoks ↦ f_ntoks, nouts ↦ f_nouts, nops ↦ f_nops,
         nexpop ↦ f_nexpop, npd ↦ f_npd, nqd ↦ f_nqd,
-        sdone ↦ f_sdone, sres ↦ f_sres)
+        sdone ↦ f_sdone, sres ↦ f_sres, scons ↦ f_scons)
 
     ft_toks = (is_first_tick ? f_toks0 : f_ntoks)
     ft_out = (is_first_tick ? ELNil : f_nouts)
