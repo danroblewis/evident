@@ -42,14 +42,9 @@ claim BuildZ3MkConstArray(ctx_h ∈ Int, idx_sort_h ∈ Int, val_h ∈ Int, eff 
         ⟨ArgInt(ctx_h), ArgInt(idx_sort_h), ArgInt(val_h)⟩)
 
 -- ── §6 sorts + literals ──────────────────────────────────────
-
--- Z3_mk_string_sort(ctx) → Z3_sort handle (String). Nullary; cache.
-claim BuildZ3MkStringSort(ctx_h ∈ Int, eff ∈ Effect)
-    eff = LibCall("libz3", "Z3_mk_string_sort", ⟨ArgInt(ctx_h)⟩)
-
--- Z3_mk_string(ctx, s) → Z3_ast (string literal, prints as "s").
-claim BuildZ3MkString(ctx_h ∈ Int, s ∈ String, eff ∈ Effect)
-    eff = LibCall("libz3", "Z3_mk_string", ⟨ArgInt(ctx_h), ArgStr(s)⟩)
+-- BuildZ3MkStringSort and BuildZ3MkString live in stdlib/z3_core.ev
+-- (claim names are global; the duplicates that briefly lived here
+-- were removed at merge time).
 
 -- ── §6 sequence builders ─────────────────────────────────────
 
