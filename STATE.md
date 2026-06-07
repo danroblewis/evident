@@ -134,3 +134,11 @@ by construction. Descopes + next steps:
 docs/plans/compiler2-driver-notes.md. The census
 (docs/plans/conformance-census-2026-06-07.log, 14/138) is the
 scoreboard; widening the driver's surface is the work.
+
+Update (P3b merged): compiler2 now flips 18 census fixtures
+(016 in P3b: memberships, comparisons, chained, implies forms,
+bool-as-constraint — incl. 2 formerly-vacuous UNSATs now genuinely
+solved; spot-verified 026/037 independently on main). Next per
+driver-notes: Pratt expression parser (the shape zoo is at its
+limit) + FTI lexer pivot (token_stack.ev) before big sources.
+Driver entry claim is `driver_main`.
