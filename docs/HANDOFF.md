@@ -410,3 +410,25 @@ baseline banked (2/119, runner timeout fix landed). C5+D2 agent in
 driver slot (match payload binds + expr arm bodies; conditional
 effects literals). After: E1 carries/manifest floor, F1 params,
 F2 compositions → then the sample.ev attempt (spec in heartbeat).
+
+## Resume point 8 (harness change — all sessions killed deliberately)
+
+compiler2 at 46 census fixtures on main. .goalpost/ live (12
+measures, <80ms self-timeboxed, artifact pattern; harnesses in
+.goalpost/bin/ run out-of-band). OPEN INVESTIGATION (task #22):
+functionizer regression — current driver compiles at 624s/fixture
+(was 11s), 'an output had no covering assignment', 1253/1253
+residual. KEY CLUE from the killed bisect agent: the cdfff1f-era
+driver ALSO refuses under HEAD's kernel → suspect the
+bare-Bool-literal kernel fix (cdfff1f) interacting with newer
+shapes, or kernel drift since — bisect the KERNEL as well as the
+driver waves. PARKED WORK: E1+F1 implementation complete-but-
+unvalidated in worktree agent-abee9c1ab905ea92b (driver.ev +
+carry_fixture.ev + params_fixture.ev + notes, uncommitted; its
+wave-1 battery was 16/16 before the stop — validate after the
+perf fix at restored speed, then commit/merge from there).
+RESUME ORDER: (1) finish #22 bisect (kernel+driver matrix:
+{cdfff1f kernel, HEAD kernel} × {cdfff1f driver, HEAD driver} —
+4 cells, 30s probes with EVIDENT_FUNCTIONIZE_WHY=1); (2) fix;
+(3) E1+F1 continuation agent in its worktree; (4) F2 compositions;
+(5) canonical .goalpost harness runs; (6) sample.ev attempt.
