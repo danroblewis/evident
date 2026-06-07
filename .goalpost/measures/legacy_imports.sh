@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Self-enforced budget: hard-cap this script at 55s regardless of runner.
+[ -z "${GP_TIMEBOXED:-}" ] && exec env GP_TIMEBOXED=1 timeout 55 bash "$0" "$@"
 # Deletability clause: "the legacy compiler/ tree [is] deletable
 # without loss of capability." That is false for as long as compiler2's
 # own import closure reaches into compiler/ — today compiler2/driver.ev

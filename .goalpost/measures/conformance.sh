@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Self-enforced budget: hard-cap this script at 55s regardless of runner.
+[ -z "${GP_TIMEBOXED:-}" ] && exec env GP_TIMEBOXED=1 timeout 55 bash "$0" "$@"
 # Goal clause (1): compiler2 correctly compiles the conformance corpus
 # (tests/conformance/features/), emitted units running correctly.
 #

@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Self-enforced budget: hard-cap this script at 55s regardless of runner.
+[ -z "${GP_TIMEBOXED:-}" ] && exec env GP_TIMEBOXED=1 timeout 55 bash "$0" "$@"
 # Goal clause (3): compiler2 correctly compiles the legacy sat-check
 # driver source (compiler/sample.ev). "Correctly" = the compiler2-built
 # unit, run as a sample driver, produces the same (claim, sat/unsat)

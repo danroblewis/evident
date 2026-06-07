@@ -21,3 +21,10 @@ the honest zero state plus a maximally-stale freshness gate
 ruler. The goalpost skill's prompt.md gained the hard 60 s ceiling
 (no borderline tier) and the graceful missing-artifact rule.
 Targets and harness semantics unchanged — no thresholds moved.
+
+## 2026-06-08 — self-enforced timeouts (operator-directed)
+
+Every measure script now hard-caps itself at 55 s via a
+timeout-self-exec first line (GP_TIMEBOXED guard) — the budget holds
+regardless of runner. Skill prompt.md records the pattern as a hard
+rule. All five measures re-verified rc=0, <80 ms. No targets moved.

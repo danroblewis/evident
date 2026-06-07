@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Self-enforced budget: hard-cap this script at 55s regardless of runner.
+[ -z "${GP_TIMEBOXED:-}" ] && exec env GP_TIMEBOXED=1 timeout 55 bash "$0" "$@"
 # Goal clause (4), the definition of "genuinely self-hosting":
 # compiler2 compiles its own source (compiler2/driver.ev + imports)
 # into a stage2 artifact, and that stage2 WORKS AS A COMPILER (it

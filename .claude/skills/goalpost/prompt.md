@@ -99,6 +99,14 @@ evidence costs more than 60s to gather, the measure does NOT gather it —
 it reads an artifact (below). Verify the budget empirically (`time` each
 measure before committing) and re-verify after amending.
 
+**Self-enforce the cap — do not trust the runner.** Every measure script's
+first executable line wraps itself in a hard timeout, so the budget holds
+no matter who or what invokes it:
+
+```bash
+[ -z "${GP_TIMEBOXED:-}" ] && exec env GP_TIMEBOXED=1 timeout 55 bash "$0" "$@"
+```
+
 | script runtime | verdict |
 |---|---|
 | < 5s | ideal — measure directly |

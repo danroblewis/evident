@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Self-enforced budget: hard-cap this script at 55s regardless of runner.
+[ -z "${GP_TIMEBOXED:-}" ] && exec env GP_TIMEBOXED=1 timeout 55 bash "$0" "$@"
 # Goal clause (2): compiler2 correctly compiles the kernel fixture
 # corpus (tests/kernel/test_*.ev), emitted units matching each
 # fixture's `-- expect:` stdout/exit headers when run under the kernel.
