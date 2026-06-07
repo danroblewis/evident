@@ -121,3 +121,16 @@ broke the Linux aarch64 build (c_char is u8 there) — fixed.
   `RenderExprL0`.
 - Per-emit wall-clock ~35 s in the container on the functionized
   fast path (was ~18 min Z3-path, ~3:40 on the Mac pre-16eea4d).
+
+## compiler2 milestone (2026-06-08): first census fixtures green
+
+compiler2/driver.ev (P3a, merged) compiles real .ev sources via
+Z3-AST building end-to-end: lex (reused) → parse → work-stack walk
+→ P2 per-node claims → Z3_solver_to_string emit. 026-arithmetic-add
+and 008-boolean-and — census FAILURES under the legacy artifact —
+compile through it and RUN with expected exits (independently
+re-verified on main). The dropped-compound-expression class is gone
+by construction. Descopes + next steps:
+docs/plans/compiler2-driver-notes.md. The census
+(docs/plans/conformance-census-2026-06-07.log, 14/138) is the
+scoreboard; widening the driver's surface is the work.
