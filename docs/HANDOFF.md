@@ -358,3 +358,18 @@ P3 (driver) prerequisites collected by the P2 agents:
   builder-phase+1 (bool_fixture.ev is the reference; the committed
   test_translate_arith_via_z3.ev does it wrong and segfaults —
   tracked task).
+
+## Resume point 4 (2026-06-08)
+
+compiler2 at 22 census fixtures flipped (P3b memberships/
+comparisons/implies +16; P3c Pratt parser +4, shape zoo deleted).
+FTI lexer proven + merged (compiler2/lex_fti.ev, contract in
+docs/plans/fti-lexer-notes.md). Driver entry claim: driver_main.
+NEXT: (1) wiring agent — integrate lex_fti into driver post-Pratt
+(steps 1-4 de-risked; step 5 = parser cursor reads), regression
+suite = the 22 green fixtures; (2) then first big source
+(sample.ev) through compiler2; (3) CLAUDE.md precedence footgun
+("⇒ tighter than ∧") empirically FALSE vs the oracle — operator
+to adjudicate doc fix vs intended-spec; (4) remaining driver
+descopes in compiler2-driver-notes.md (Real literals, user enums
+in emit, Effect floor, Pratt n-ary flattening divergences).
