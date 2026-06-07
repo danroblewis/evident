@@ -1,9 +1,11 @@
-# compiler2 driver skeleton (P3a + P3b) — notes
+# compiler2 driver skeleton (P3a + P3b + P3c) — notes
 
 Status: P3a LANDED — both acceptance fixtures compile + run green
 (see Acceptance below). P3b LANDED — the census
 arithmetic/comparison/membership class and the implies class flip
-green through the driver (see P3b acceptance below).
+green through the driver (see P3b acceptance below). P3c LANDED —
+the bounded shape-enumeration parsers are replaced by a Pratt
+parser FSM (see P3c below).
 
 `compiler2/driver.ev` is the first end-to-end compiler2 driver: an
 Evident program (oracle-compiled to a ~209 KB .smt2) that the kernel
@@ -147,6 +149,115 @@ Census semantics note: an implies BLOCK (036) is compiled greedily —
 Equivalent for 036's pinned model; NOT equivalent in general.
 Real block scoping needs indentation-aware lexing (descoped below).
 
+## P3c — Pratt parser FSM (landed 2026-06-07)
+
+The shape zoo (C2ParseExpr's 8 shapes + C2ParseCons's 7 line forms +
+C2OpClass) is DELETED — ~440 lines of bounded enumeration replaced by
+a precedence-climbing shunting-yard FSM. driver.smt2 shrank ~209 KB →
+~148 KB.
+
+Architecture:
+
+- `C2PrattStep` (compiler2/driver.ev) — a pure step claim: state
+  in/out is (toks, operand stack ExprList, operator stack PrOps,
+  expect-operand flag, paren depth, `?`-pending depth). Each
+  invocation performs exactly ONE action: shift (atom / `(` / `¬` /
+  binary op / `?`), reduce one operator onto the operand stack,
+  close a paren group, swap PrQuest→PrTern on `:`, or report done.
+  The driver runs it once per tick under the new `pmode = 3`;
+  tests/kernel/compiler2/pratt_fixture.ev drives the same claim
+  standalone.
+- The line classifier now only picks the line KIND: plain/bounded
+  memberships still build items directly in one tick; everything
+  carrying an expression (membership pins, the effects literal's
+  Exit argument, and ALL standalone constraint / bare-equality
+  lines — formerly C2ParseCons's seven shapes plus the bare-line
+  path) enters the Pratt FSM with `(pk_kind, pk_name, pk_sc,
+  pk_nat)` latched. On done, the parsed Expr becomes the line's
+  work-item program (the walker is unchanged — it already recursed
+  to arbitrary depth; only the PARSER was bounded).
+- An expression ends at the first token that cannot extend it
+  (the next body line's head, the effects literal's closing
+  `) ⟩`, EOF). Lexed newlines don't exist, so implies-BLOCK
+  greediness is unchanged from P3b (see census semantics note).
+
+Precedence ladder — probed empirically against the frozen oracle
+(`scripts/build-oracle.sh` binary), NOT taken from CLAUDE.md:
+
+    ⇒ 1 (right-assoc) · ?: 2 (right) · ∨ 3 · ∧ 4 ·
+    < > ≤ ≥ = ≠ all at 5 (the chain level) · + - 6 · * / 7 · ¬ 8
+
+Oracle findings that contradict/extend the documented table:
+
+1. **CLAUDE.md's footgun "⇒ binds tighter than ∧" is empirically
+   false for the legacy parser**: `a ∧ b ⇒ c` → `(=> (and a b) c)`
+   and `a ⇒ b ∧ c` → `(=> a (and b c))`. ⇒ is the LOOSEST binary
+   operator (and right-assoc: `a ⇒ b ⇒ c` → `(=> a (=> b c))`).
+   The driver follows the oracle.
+2. **`=` is a chain-comparison member**: `flag = x < 5` →
+   `(and (= flag x) (< x 5))`, `0 < x = 5` → `(and (< 0 x) (= x 5))`.
+   A run of chain ops lowers to a conjunction of consecutive pairs,
+   duplicating the shared middle operand (`ok = x + 1 < y` →
+   `(and (= ok (+ x 1)) (< (+ x 1) y))` — verified oracle behavior).
+   ≠ chains too.
+3. **Ternary sits between ⇒ and ∨**: `a ⇒ b ? c : d` →
+   `(=> a (ite b c d))`, `a ∧ b ? c : d` → `(ite (and a b) c d)`,
+   `a ? b : c ∧ d` → `(ite a b (and c d))`; the else branch
+   right-nests (`a ? b : c ? d : e`).
+
+Known divergences from the fossil/oracle (semantics-preserving):
+
+- 3+-element chains emit nested 2-ary conjunctions
+  (`(and (and a b) c)`) where the oracle emits flat `(and a b c)`;
+  ∧/∨ likewise build 2-ary nested nodes (BoolNaryBuildZ3 with 2
+  args per reduce step).
+- Compound membership PINS parse the full RHS as one expression:
+  `ok ∈ Bool = ¬a ∧ b` pins `ok = (¬a ∧ b)`, whereas the oracle's
+  bare-line chain rule would read `ok = ¬a ∧ b` (as a constraint
+  line) as `(and (= ok ¬a) b)`. Fixture surface always
+  parenthesizes compound pins, so nothing observable changes.
+- A malformed line (token that can't start an operand) completes
+  with ENoExpr; the driver drops the line and skips one token to
+  keep the walk progressing (the shape zoo claim-ended instead).
+
+## P3c acceptance (run 2026-06-07, oracle-built driver, all parallel)
+
+Every row ran BOTH checks (smt2-contains on the emitted unit +
+kernel run of the emitted unit against expected/exit).
+
+Regressions — all six P3a/P3b gates stay green through the Pratt
+path:
+
+| fixture | exit got/want | emitted shape spot-check |
+|---|---|---|
+| 026-arithmetic-add | 0/0 ✓ | `(= y (+ x 2))` |
+| 008-boolean-and | 1/1 ✓ | `(Exit (ite (and (> 3 0) (< 3 10)) 1 0))` |
+| 018-int-membership-negative | 0/0 ✓ | `(= ok (and (= (- 10 13) (- 3)) (< (- 3) 0)))` |
+| 028-chained-comparison | 0/0 ✓ | `(and (< 0 x) (< x 5))` |
+| 037-nested-implies-block | 0/0 ✓ | `(=> (> x 3) (=> (< x 10) (= y 99)))` (right-assoc) |
+| 053-bool-as-constraint | 0/0 ✓ | `(=> flag (= x 42))` |
+
+Newly green — census fixtures the shape zoo could NOT parse:
+
+| fixture | exit got/want | emitted shape |
+|---|---|---|
+| 030-logic-and | 0/0 ✓ | standalone `(and (> x 0) (< x 10))` |
+| 031-logic-or | 0/0 ✓ | bare-eq disjunction `(or (= x 1) (= x 2))` |
+| 032-logic-not | 0/0 ✓ | `(= b false)` + pin `(= ok (not b))` |
+| 004-comparison-ternary | 1/1 ✓ | unparenthesized `(ite (< 3 5) 1 0)` |
+
+036-implies-block (P3b green) re-verified through the new path: 0/0 ✓.
+
+Negative control re-verified: compiling 026 with claim name
+`nonexistent_claim` emits only manifest + textual prelude (zero
+user asserts, no `(+ `), driver exit 0.
+
+Parser unit fixture: tests/kernel/compiler2/pratt_fixture.ev —
+drives C2PrattStep over `a + b * c < d ∧ ¬ ( e ⇒ f )` one action
+per tick and string-compares the rendered AST against the canonical
+`(and (< (+ a (* b c)) d) (not (=> e f)))`. Oracle-compiled,
+kernel-run: prints exactly the canonical string, exit 0.
+
 ## Descopes (P3c+)
 
 - **021-real-membership**: needs FloatLit collection in the driver's
@@ -160,12 +271,10 @@ Real block scoping needs indentation-aware lexing (descoped below).
   one or three mk_datatypes batches) — translate2_ctor.ev documents
   the mechanics; the driver only declares Exit.
 - User enum declarations are skipped, not translated.
-- General expressions: no nesting beyond the C2ParseExpr/C2ParseCons
-  shapes (the shape zoo is at its useful limit — the next consumer
-  should build the Pratt-parser FSM instead of adding shapes), no
-  match/matches, no Seq values, no quantifiers, no composition lines,
-  no string pins, no multi-name memberships, no chained bounds in
-  memberships (`0 < x ∈ Int < 5`), no ≠ as a membership bound
+- General expressions are now COVERED (P3c Pratt FSM) — still
+  missing: match/matches, Seq values, quantifiers, composition
+  lines, string pins/atoms, multi-name memberships, chained bounds
+  in memberships (`0 < x ∈ Int < 5`), and ≠ as a membership bound
   (would mis-assert mk_eq — C2Op(OpNeq) only arrives via the
   Process-expansion path, which lowers it correctly).
 - Symbol table: 8 fixed slots.
@@ -214,9 +323,9 @@ shapes — the known P2 finding; perf-only).
 
 ## Next steps
 
-- P3b: full Effect floor (sort registry), user enums via the ctor
-  steps, the rest of the membership surface, a real Pratt-parser FSM
-  to replace C2ParseExpr's bounded shapes.
+- Full Effect floor (sort registry), user enums via the ctor
+  steps, the rest of the membership surface. (P3c's Pratt FSM
+  closed the expression-parser gap.)
 - Tick-rate: measure; if the walk dominates, batch pure ticks
   (classify + expansion) into the libcall ticks.
 - Census: run the full conformance suite under a driver-backed

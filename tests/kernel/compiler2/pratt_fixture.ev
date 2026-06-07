@@ -1,0 +1,218 @@
+-- tests/kernel/compiler2/pratt_fixture.ev — P3c unit fixture for the
+-- driver's Pratt expression parser (C2PrattStep in compiler2/driver.ev).
+--
+-- Drives the parser FSM one action per tick over the token stream of
+--
+--     a + b * c < d ∧ ¬ ( e ⇒ f )
+--
+-- and renders the resulting Expr AST to a canonical s-expression,
+-- exercising in one expression: * over +, + under <, < under ∧
+-- (comparison vs connective binding), prefix ¬ over a parenthesized
+-- group, and ⇒ inside parens. Expected AST (oracle-verified ladder:
+-- ⇒ 1 · ?: 2 · ∨ 3 · ∧ 4 · chain 5 · +- 6 · */ 7 · ¬ 8):
+--
+--     (and (< (+ a (* b c)) d) (not (=> e f)))
+--
+-- Exit 0 iff the rendered string equals the canonical above; 4 on a
+-- mismatch (the rendered string is printed either way); 7 if the FSM
+-- fails to finish within 200 ticks.
+--
+-- Build + run (oracle path; mktemp for all temp files):
+--   TD=$(mktemp -d)
+--   evident-oracle emit tests/kernel/compiler2/pratt_fixture.ev \
+--       main -o "$TD/f.smt2"
+--   kernel/target/release/kernel "$TD/f.smt2"   # expect exit 0
+--
+-- expect: stdout = "(and (< (+ a (* b c)) d) (not (=> e f)))"
+-- expect: exit = 0
+
+import "compiler2/driver.ev"
+
+-- ── canonical AST renderer (test-only; bounded depth 4) ───────────
+claim C2OpStr(o ∈ Op, s ∈ String)
+    os_pl ∈ Bool = (o matches OpPlus)
+    os_su ∈ Bool = (o matches OpSub)
+    os_mu ∈ Bool = (o matches OpMul)
+    os_dv ∈ Bool = (o matches OpDiv)
+    os_eq ∈ Bool = (o matches OpEq)
+    os_lt ∈ Bool = (o matches OpLt)
+    os_gt ∈ Bool = (o matches OpGt)
+    os_le ∈ Bool = (o matches OpLeq)
+    os_ge ∈ Bool = (o matches OpGeq)
+    os_ne ∈ Bool = (o matches OpNeq)
+    os_an ∈ Bool = (o matches OpConj)
+    os_or ∈ Bool = (o matches OpDisj)
+    os_im ∈ Bool = (o matches OpImpl)
+    s = (os_pl ? "+"
+       : os_su ? "-"
+       : os_mu ? "*"
+       : os_dv ? "/"
+       : os_eq ? "="
+       : os_lt ? "<"
+       : os_gt ? ">"
+       : os_le ? "<="
+       : os_ge ? ">="
+       : os_ne ? "!="
+       : os_an ? "and"
+       : os_or ? "or"
+       : os_im ? "=>"
+       : "?op")
+
+claim C2Rend0(re0 ∈ Expr, s ∈ String)
+    r0_n ∈ String = match re0
+        EIdent(nm) ⇒ nm
+        _ ⇒ "?"
+    s = r0_n
+
+claim C2Rend1(re1 ∈ Expr, s ∈ String)
+    r1_op ∈ Op
+    r1_l ∈ Expr
+    r1_r ∈ Expr
+    r1_isb ∈ Bool
+    BoolExprBinopParts(e ↦ re1, op ↦ r1_op, lhs ↦ r1_l, rhs ↦ r1_r,
+        is_binop ↦ r1_isb)
+    r1_ni ∈ Expr
+    r1_isn ∈ Bool
+    NotExprParts(e ↦ re1, inner ↦ r1_ni, is_not ↦ r1_isn)
+    r1_os ∈ String
+    C2OpStr(o ↦ r1_op, s ↦ r1_os)
+    r1_ls ∈ String
+    C2Rend0(re0 ↦ r1_l, s ↦ r1_ls)
+    r1_rs ∈ String
+    C2Rend0(re0 ↦ r1_r, s ↦ r1_rs)
+    r1_ns ∈ String
+    C2Rend0(re0 ↦ r1_ni, s ↦ r1_ns)
+    r1_at ∈ String
+    C2Rend0(re0 ↦ re1, s ↦ r1_at)
+    s = (r1_isb ? "(" ++ r1_os ++ " " ++ r1_ls ++ " " ++ r1_rs ++ ")"
+       : r1_isn ? "(not " ++ r1_ns ++ ")"
+       : r1_at)
+
+claim C2Rend2(re2 ∈ Expr, s ∈ String)
+    r2_op ∈ Op
+    r2_l ∈ Expr
+    r2_r ∈ Expr
+    r2_isb ∈ Bool
+    BoolExprBinopParts(e ↦ re2, op ↦ r2_op, lhs ↦ r2_l, rhs ↦ r2_r,
+        is_binop ↦ r2_isb)
+    r2_ni ∈ Expr
+    r2_isn ∈ Bool
+    NotExprParts(e ↦ re2, inner ↦ r2_ni, is_not ↦ r2_isn)
+    r2_os ∈ String
+    C2OpStr(o ↦ r2_op, s ↦ r2_os)
+    r2_ls ∈ String
+    C2Rend1(re1 ↦ r2_l, s ↦ r2_ls)
+    r2_rs ∈ String
+    C2Rend1(re1 ↦ r2_r, s ↦ r2_rs)
+    r2_ns ∈ String
+    C2Rend1(re1 ↦ r2_ni, s ↦ r2_ns)
+    r2_at ∈ String
+    C2Rend0(re0 ↦ re2, s ↦ r2_at)
+    s = (r2_isb ? "(" ++ r2_os ++ " " ++ r2_ls ++ " " ++ r2_rs ++ ")"
+       : r2_isn ? "(not " ++ r2_ns ++ ")"
+       : r2_at)
+
+claim C2Rend3(re3 ∈ Expr, s ∈ String)
+    r3_op ∈ Op
+    r3_l ∈ Expr
+    r3_r ∈ Expr
+    r3_isb ∈ Bool
+    BoolExprBinopParts(e ↦ re3, op ↦ r3_op, lhs ↦ r3_l, rhs ↦ r3_r,
+        is_binop ↦ r3_isb)
+    r3_ni ∈ Expr
+    r3_isn ∈ Bool
+    NotExprParts(e ↦ re3, inner ↦ r3_ni, is_not ↦ r3_isn)
+    r3_os ∈ String
+    C2OpStr(o ↦ r3_op, s ↦ r3_os)
+    r3_ls ∈ String
+    C2Rend2(re2 ↦ r3_l, s ↦ r3_ls)
+    r3_rs ∈ String
+    C2Rend2(re2 ↦ r3_r, s ↦ r3_rs)
+    r3_ns ∈ String
+    C2Rend2(re2 ↦ r3_ni, s ↦ r3_ns)
+    r3_at ∈ String
+    C2Rend0(re0 ↦ re3, s ↦ r3_at)
+    s = (r3_isb ? "(" ++ r3_os ++ " " ++ r3_ls ++ " " ++ r3_rs ++ ")"
+       : r3_isn ? "(not " ++ r3_ns ++ ")"
+       : r3_at)
+
+claim C2Rend4(re4 ∈ Expr, s ∈ String)
+    r4_op ∈ Op
+    r4_l ∈ Expr
+    r4_r ∈ Expr
+    r4_isb ∈ Bool
+    BoolExprBinopParts(e ↦ re4, op ↦ r4_op, lhs ↦ r4_l, rhs ↦ r4_r,
+        is_binop ↦ r4_isb)
+    r4_ni ∈ Expr
+    r4_isn ∈ Bool
+    NotExprParts(e ↦ re4, inner ↦ r4_ni, is_not ↦ r4_isn)
+    r4_os ∈ String
+    C2OpStr(o ↦ r4_op, s ↦ r4_os)
+    r4_ls ∈ String
+    C2Rend3(re3 ↦ r4_l, s ↦ r4_ls)
+    r4_rs ∈ String
+    C2Rend3(re3 ↦ r4_r, s ↦ r4_rs)
+    r4_ns ∈ String
+    C2Rend3(re3 ↦ r4_ni, s ↦ r4_ns)
+    r4_at ∈ String
+    C2Rend0(re0 ↦ re4, s ↦ r4_at)
+    s = (r4_isb ? "(" ++ r4_os ++ " " ++ r4_ls ++ " " ++ r4_rs ++ ")"
+       : r4_isn ? "(not " ++ r4_ns ++ ")"
+       : r4_at)
+
+claim main
+    f_tick ∈ Int
+    _f_tick ∈ Int
+    f_tick = (is_first_tick ? 0 : _f_tick + 1)
+
+    f_toks0 ∈ TokenList = TLCons(Ident("a"), TLCons(Plus, TLCons(Ident("b"), TLCons(Star, TLCons(Ident("c"), TLCons(Lt, TLCons(Ident("d"), TLCons(OpAnd, TLCons(OpNot, TLCons(LParen, TLCons(Ident("e"), TLCons(OpImplies, TLCons(Ident("f"), TLCons(RParen, TLNil))))))))))))))
+
+    ft_toks ∈ TokenList
+    _ft_toks ∈ TokenList
+    ft_out ∈ ExprList
+    _ft_out ∈ ExprList
+    ft_ops ∈ PrOps
+    _ft_ops ∈ PrOps
+    ft_expop ∈ Bool
+    _ft_expop ∈ Bool
+    ft_pd ∈ Int
+    _ft_pd ∈ Int
+    ft_qd ∈ Int
+    _ft_qd ∈ Int
+
+    f_ntoks ∈ TokenList
+    f_nouts ∈ ExprList
+    f_nops ∈ PrOps
+    f_nexpop ∈ Bool
+    f_npd ∈ Int
+    f_nqd ∈ Int
+    f_sdone ∈ Bool
+    f_sres ∈ Expr
+    C2PrattStep(toks ↦ _ft_toks, outs ↦ _ft_out, ops ↦ _ft_ops,
+        expop ↦ _ft_expop, pd ↦ _ft_pd, qd ↦ _ft_qd,
+        ntoks ↦ f_ntoks, nouts ↦ f_nouts, nops ↦ f_nops,
+        nexpop ↦ f_nexpop, npd ↦ f_npd, nqd ↦ f_nqd,
+        sdone ↦ f_sdone, sres ↦ f_sres)
+
+    ft_toks = (is_first_tick ? f_toks0 : f_ntoks)
+    ft_out = (is_first_tick ? ELNil : f_nouts)
+    ft_ops = (is_first_tick ? PrNil : f_nops)
+    ft_expop = (is_first_tick ? true : f_nexpop)
+    ft_pd = (is_first_tick ? 0 : f_npd)
+    ft_qd = (is_first_tick ? 0 : f_nqd)
+
+    f_done ∈ Bool = ((¬is_first_tick) ∧ f_sdone)
+
+    f_rs ∈ String
+    C2Rend4(re4 ↦ f_sres, s ↦ f_rs)
+    f_canon ∈ String = "(and (< (+ a (* b c)) d) (not (=> e f)))"
+    f_code ∈ Int = (f_rs = f_canon ? 0 : 4)
+
+    f_puts ∈ Effect
+    BuildPrintln(s ↦ f_rs, eff ↦ f_puts)
+    f_filler ∈ Effect = LibCall("libc", "getpid", ⟨⟩)
+
+    effects ∈ Seq(Effect) = (is_first_tick ? ⟨f_filler⟩
+        : f_done ? ⟨f_puts, Exit(f_code)⟩
+        : f_tick > 200 ? ⟨Exit(7)⟩
+        : ⟨f_filler⟩)
