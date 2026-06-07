@@ -1,0 +1,68 @@
+-- tests/kernel/compiler2/symtab_fixture.ev — B1 stress fixture for the
+-- driver's FTI symbol table (gap census B1: symtab beyond 8 slots).
+--
+-- NOT a kernel test_*.ev fixture: this file is an INPUT for the
+-- compiler2 driver. It binds 41 distinct identifiers (v00..v39 + ok)
+-- in one claim — 5x the old 8-slot table — as a single dependency
+-- chain, so every pin after the eighth exercises the FTI lookup path
+-- (index_of over st_names + __mem.read_long of st_base[idx]), and the
+-- final line resolves BOTH the earliest (v00) and latest (v39)
+-- entries.
+--
+-- Build + run (oracle-built driver; mktemp for all temp files):
+--   TD=$(mktemp -d)
+--   evident-oracle emit compiler2/driver.ev driver_main -o "$TD/driver.smt2"
+--   scripts/flatten-evident.sh tests/kernel/compiler2/symtab_fixture.ev > "$TD/flat.ev"
+--   printf '%s\nmain\n' "$TD/flat.ev" | kernel/target/release/kernel "$TD/driver.smt2" > "$TD/out.smt2"
+--   grep -F '(= v39 (+ v38 1))' "$TD/out.smt2"   # late pin landed
+--   kernel/target/release/kernel "$TD/out.smt2"  # expect exit 0
+--
+-- The chain pins v00 = 1, vNN = v(NN-1) + 1, so the emitted unit is
+-- only satisfiable with v39 = 40; the run exits 0 iff every lookup
+-- resolved the RIGHT handle (a wrong handle makes ok unsat -> exit 1/2).
+
+import "stdlib/kernel.ev"
+
+claim main
+    v00 ∈ Int = 1
+    v01 ∈ Int = v00 + 1
+    v02 ∈ Int = v01 + 1
+    v03 ∈ Int = v02 + 1
+    v04 ∈ Int = v03 + 1
+    v05 ∈ Int = v04 + 1
+    v06 ∈ Int = v05 + 1
+    v07 ∈ Int = v06 + 1
+    v08 ∈ Int = v07 + 1
+    v09 ∈ Int = v08 + 1
+    v10 ∈ Int = v09 + 1
+    v11 ∈ Int = v10 + 1
+    v12 ∈ Int = v11 + 1
+    v13 ∈ Int = v12 + 1
+    v14 ∈ Int = v13 + 1
+    v15 ∈ Int = v14 + 1
+    v16 ∈ Int = v15 + 1
+    v17 ∈ Int = v16 + 1
+    v18 ∈ Int = v17 + 1
+    v19 ∈ Int = v18 + 1
+    v20 ∈ Int = v19 + 1
+    v21 ∈ Int = v20 + 1
+    v22 ∈ Int = v21 + 1
+    v23 ∈ Int = v22 + 1
+    v24 ∈ Int = v23 + 1
+    v25 ∈ Int = v24 + 1
+    v26 ∈ Int = v25 + 1
+    v27 ∈ Int = v26 + 1
+    v28 ∈ Int = v27 + 1
+    v29 ∈ Int = v28 + 1
+    v30 ∈ Int = v29 + 1
+    v31 ∈ Int = v30 + 1
+    v32 ∈ Int = v31 + 1
+    v33 ∈ Int = v32 + 1
+    v34 ∈ Int = v33 + 1
+    v35 ∈ Int = v34 + 1
+    v36 ∈ Int = v35 + 1
+    v37 ∈ Int = v36 + 1
+    v38 ∈ Int = v37 + 1
+    v39 ∈ Int = v38 + 1
+    ok ∈ Bool = ((v39 = 40) ∧ (v00 = 1))
+    effects ∈ Seq(Effect) = ⟨Exit(ok ? 0 : 1)⟩
