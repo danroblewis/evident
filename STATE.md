@@ -37,11 +37,19 @@ mechanisms for comparison.
 - Deterministic: repeated compiles produce byte-identical output.
 - `./test.sh --rust-only` green.
 
-Per-tick cost is ~5x the Mac's historical ~33 ms/tick — possibly
-the tactic re-run per tick, possibly virtualization. Open lever:
-the functionizer refuses compiler.smt2 ("an output had no covering
-assignment"), so every tick is a full Z3 solve. Fixing extraction
-would collapse the 18-min compile to seconds (tracked task).
+**Update, same day: the functionizer now covers compiler.smt2**
+(commit `c8e7d9b` — five fixes: recognizer constructor from decl
+parameters, XOR-shape intermediate capture, tick-0 carry seeding
+from the verify model, guard-tree recursion for nested else-if
+effect writers, prev_results threaded into the fast path). With it:
+
+- Seam compile: **~35 s** (was ~18 min Z3-path) — ~5 ms/tick
+  interpreted, ZERO per-tick Z3 fallbacks, 7852 steps extracted
+  (810 JIT / 6450 interp / 45 residual predicates).
+- Output byte-identical to the Z3-path ground truth; emitted hello
+  prints "hello world" exit 0; canonical seam smoke passes in 35.6 s.
+- The Z3 path (Mech T) remains the verification baseline and the
+  fallback for any tick the fast path refuses.
 
 ## Gotcha that cost an afternoon
 
@@ -86,8 +94,9 @@ broke the Linux aarch64 build (c_char is u8 there) — fixed.
 
 ## What's next
 
-1. **Functionizer coverage for compiler.smt2** — the perf lever
-   (see tracked task; `[functionizer-why]` output exists).
+1. **Run the full test suite** (`./test.sh`) — the kernel/lang
+   phases that were ~2 hours at 3-4 min/fixture should now be
+   minutes at ~35 s/fixture. Expect and triage any divergences.
 2. Port `expr_as_var` into `compiler/sample.ev` (pre-existing task,
    unchanged).
 3. `translate_bool.ev` pivot to Z3-AST building (wave-5 direction,
@@ -110,5 +119,5 @@ broke the Linux aarch64 build (c_char is u8 there) — fixed.
   args (`Exit(3 + 4)` emits `(Exit 3)`). 16 conformance features
   allowlisted; real fix is in `compiler/translate_ctor.ev`'s
   `RenderExprL0`.
-- Per-emit wall-clock ~18 min in the container (was ~3:40 on the
-  Mac pre-16eea4d). Functionizer coverage is the fix path.
+- Per-emit wall-clock ~35 s in the container on the functionized
+  fast path (was ~18 min Z3-path, ~3:40 on the Mac pre-16eea4d).

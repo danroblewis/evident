@@ -123,17 +123,17 @@ Pivoting each one is the work.
 
 ## Tasks (use `TaskList` if available)
 
-### Highest priority — compile speed (memory is solved, see above)
+### Highest priority
 
-1. **Functionizer coverage for compiler.smt2** — it refuses with
-   "extract_program: an output had no covering assignment", leaving
-   all 7852 asserts residual (full Z3 solve every tick, ~161 ms).
-   `EVIDENT_FUNCTIONIZE_STATS=verbose` + the `[functionizer-why]`
-   stuck-vars report show which output lacks coverage. Fixing this
-   collapses ~18 min seam compiles to seconds.
-2. ~~EVIDENT_NO_PRESIMPLIFY measurement~~ — moot: with z3 4.15.4
+1. ~~Functionizer coverage for compiler.smt2~~ — DONE (c8e7d9b).
+   compiler.smt2 functionizes (7852 steps, 45 residual predicates);
+   seam compiles run ~35 s at ~5 ms/tick with zero per-tick Z3
+   fallbacks, output byte-identical to the Z3 path. See STATE.md.
+2. **Run the full `./test.sh`** — the 2-hour kernel/lang phases
+   should now be minutes; triage divergences if any.
+3. ~~EVIDENT_NO_PRESIMPLIFY measurement~~ — moot: with z3 4.15.4
    the presimplify pass takes 0.1 s.
-3. ~~Pin-cap measurement~~ — deprioritized: post-Mech-T term-table
+4. ~~Pin-cap measurement~~ — deprioritized: post-Mech-T term-table
    growth is ~30-60 KB/tick (~400 MB/compile), bounded enough.
 
 ### Medium priority — architecture direction
