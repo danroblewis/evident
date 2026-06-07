@@ -48,54 +48,37 @@ Git is the safety net. If you produce a broken `sample.smt2` or
 `compiler.smt2`, `git checkout <file>` restores. **Never push a
 broken artifact** — test before `mv`-ing a candidate into place.
 
-### Memory growth is the major open problem
+### Memory growth — SOLVED (2026-06-07, commit 4552527)
 
-Running `kernel + compiler.smt2` to compile real-size programs
-(e.g. `compiler/sample.ev`, `tests/kernel/test_translate_arith_via_z3.ev`)
-uses 2+ GB RSS and 10+ minutes wall-clock, sometimes OOM-killed by
-macOS jetsam. We've diagnosed the cause and tried fixes:
+The 2+ GB / 10+ min / OOM-killed seam compiles were NOT a
+pin-string or startup-simplify problem. Root cause: `16eea4d`'s
+persistent solver put every per-tick check-sat on Z3's raw
+incremental core, which gets NO preprocessing. compiler.smt2's
+7851 ground functional asserts solve in 0.7 s with preprocessing
+(solve-eqs eliminates every variable) but the incremental core
+churns 12.9M added-eqs and never terminates — 153 GB RSS observed.
+"Stuck in startup body-simplify" was this, misattributed; startup
+is instant (verified with EVIDENT_PHASE_TRACE=1).
 
-- **Root diagnosis**: `compiler.smt2`'s manifest lists 47 cons-list /
-  datatype state-fields (27 `TokenList`, 17 `Token`, 3 misc). Every
-  tick the kernel reads each whole list out of the Z3 model and
-  re-emits it as a nested `(TLCons t1 (TLCons t2 ...))` pin string.
-  Z3 parses each pin string into AST nodes which accumulate in
-  the context's term hash-cons table. Plus a one-shot per-assertion
-  `Z3_simplify` over 7800 body assertions at startup that ALSO grows
-  the term store and takes minutes.
+Fix: **Mech T** (default since 4552527) — fresh
+`Z3_mk_solver_from_tactic("default")` per tick, cached body ASTs +
+pins asserted fresh, solver freed at tick end. Verified end-to-end:
+smoke_effects.ev compiles (~6700 ticks, ~161 ms/tick, RSS bounded
+~1.5 GB) and the emitted program runs, exit 0.
 
-- **Things tried and committed (none of which actually fix the
-  memory)**:
-  - **Kernel push/pop scoping per-tick pins** (`16eea4d`):
-    correctness-clean discipline, doesn't help — manages solver
-    state, not the term hash-cons table.
-  - **Periodic Z3 context teardown** (built then reverted, see commit
-    history): doesn't help because macOS allocator doesn't return
-    freed memory to the OS.
-  - **`EVIDENT_PIN_DEPTH_CAP=<N>`** (`13b6464`): truncates cons-list
-    pin rendering at depth N. Code is right (verified on a synthetic
-    fixture in /tmp), but never measured under real load because
-    real load is stuck in startup body-simplify, not per-tick. So
-    pin-cap targets the wrong layer.
-  - **`EVIDENT_NO_PRESIMPLIFY=1`** (uncommitted as of handoff —
-    check `git status`): skips the per-assertion `Z3_simplify` pass
-    at startup. This was being measured when the session ended.
-
-- **Real fix paths** (documented in `docs/plans/`):
-  1. **Pivot `compiler/*.ev` to use FTI Stack** (see
-     `stdlib/fti/token_stack.ev`, `docs/plans/sample-ev-fti-pivot.md`)
-     so `TokenList` state-fields become `(base ∈ Int, depth ∈ Int)`
-     with contents in libc memory. Substantial multi-stage refactor;
-     order matters (compiler.ev first, then one painful rebuild,
-     then sample.ev). Stage 4 (sub-claim pivot) honest cost analysis
-     in the doc.
+Still-relevant fix paths, now for SPEED rather than survival:
+  1. **Functionizer coverage** (tracked task): it refuses
+     compiler.smt2 ("an output had no covering assignment") so all
+     7852 asserts stay residual and every tick is a full Z3 solve.
+     Covering them collapses ~18 min compiles to seconds.
   2. **Pivot `compiler/translate_*.ev` to build Z3 ASTs via libcalls**
-     instead of building SMT-LIB strings by `++` concatenation
      (`docs/plans/z3-sugar-inventory.md`). `compiler/translate_arith.ev`
-     is the first one done (commit `7278bdb`); ~55 BuildZ3* claims
-     remain. This is the long-term architecture direction — the
-     compiler stops needing to "know" SMT-LIB syntax, Z3 owns
-     canonical serialization.
+     is done (commit `7278bdb`); ~55 BuildZ3* claims remain. Long-term
+     architecture direction.
+  3. **FTI Stack pivot** (`docs/plans/sample-ev-fti-pivot.md`):
+     DEPRIORITIZED — the memory cliff it targeted is gone. Term-table
+     growth is ~30-60 KB/tick now. Revisit only if compile length
+     demands it.
 
 ### Architecture direction (long term)
 
@@ -138,22 +121,20 @@ Pivoting each one is the work.
   bootstrap fix in commit c817c6c lives only in the committed
   `sample.smt2` — see "Known gotcha" below).
 
-## Tasks (use `TaskList` if available; #353/358 still pending)
+## Tasks (use `TaskList` if available)
 
-### Highest priority — the memory bound
+### Highest priority — compile speed (memory is solved, see above)
 
-1. **Continue measuring `EVIDENT_NO_PRESIMPLIFY=1`** (commit it
-   first — currently uncommitted as of handoff). Run the seam smoke
-   with it set, observe if startup is faster and whether
-   correctness holds. If yes, this is a free win — make it the
-   default for compiler.smt2 runs.
-2. **If presimplify-skip helps startup but per-tick is still
-   bottleneck**, the `EVIDENT_PIN_DEPTH_CAP=16` measurement
-   becomes possible — diagnostic logging is in place (commit
-   `13b6464` + uncommitted diag). Watch for `pin-cap-diag` and
-   `truncating` events.
-3. **If pin-cap helps** make it the default. If not, the FTI
-   cascade in `docs/plans/sample-ev-fti-pivot.md` is the next path.
+1. **Functionizer coverage for compiler.smt2** — it refuses with
+   "extract_program: an output had no covering assignment", leaving
+   all 7852 asserts residual (full Z3 solve every tick, ~161 ms).
+   `EVIDENT_FUNCTIONIZE_STATS=verbose` + the `[functionizer-why]`
+   stuck-vars report show which output lacks coverage. Fixing this
+   collapses ~18 min seam compiles to seconds.
+2. ~~EVIDENT_NO_PRESIMPLIFY measurement~~ — moot: with z3 4.15.4
+   the presimplify pass takes 0.1 s.
+3. ~~Pin-cap measurement~~ — deprioritized: post-Mech-T term-table
+   growth is ~30-60 KB/tick (~400 MB/compile), bounded enough.
 
 ### Medium priority — architecture direction
 
@@ -191,12 +172,20 @@ Pivoting each one is the work.
 For a fresh `.ev` test fixture:
 ```
 flat=$(mktemp); scripts/flatten-evident.sh path/to/file.ev > "$flat"
-# Compile via the seam:
+# Compile via the seam — the second stdin line is the CLAIM NAME and
+# must match the fixture (test_hello.ev's claim is `hello`, NOT
+# `main`!). A nonexistent claim "succeeds" with a 12-line stub
+# (empty state-fields, max-effects 0) — do not misread that as a
+# translator bug; it cost an afternoon once.
 printf '%s\nmain\n' "$flat" | kernel/target/release/kernel compiler.smt2 > /tmp/out.smt2
 # Run the result:
 kernel/target/release/kernel /tmp/out.smt2; echo "exit: $?"
 rm "$flat"
 ```
+
+`EVIDENT_PHASE_TRACE=1` on the kernel prints startup-phase markers,
+tick progress, and per-effect dispatch (ReadLine/ReadFile/Exit) to
+stderr — first thing to reach for when a seam run looks stuck.
 
 For the smoke test: `scripts/run-seam-smoke.sh` (~4 min baseline).
 

@@ -1,107 +1,114 @@
 # STATE
 
-## Post-bootstrap-deletion (re-deleted at <new-commit>; corrected understanding)
+## The "memory growth" problem is solved (2026-06-07)
 
-The producing path is `kernel + compiler.smt2` end-to-end. Bootstrap
-was deleted (76dc491), restored (c83afb1) as a misjudged crutch
-while iterating on Goal 1, then re-deleted with the corrected
-understanding: **the dev loop is not fragile**. Git is the safety
-net for `compiler/*.ev` edits; `compiler.smt2`/`sample.smt2` are
-committed artifacts that can be restored or kept-as-is when a new
-build is broken.
+The multi-GB / hours-long / OOM-killed seam compiles were **not** a
+pin-string or startup-simplify memory problem. Root cause, found by
+phase-tracing a run in a Linux container:
 
-When the seam (`kernel + compiler.smt2`) can't compile a given
-shape today, that is a capability gap in `compiler.smt2` to track
-and fix at the source level (in `compiler/*.ev`) — not something
-to route around by restoring bootstrap.
+Commit `16eea4d` ("persistent solver + push/pop") put every per-tick
+`check-sat` on Z3's **raw incremental smt core, which gets no
+preprocessing**. compiler.smt2's body is 7851 ground functional
+asserts (zero quantifiers) — `solve-eqs` eliminates every variable
+and the preprocessed solve is **0.7 s** (z3 CLI, verified on both
+4.8.12 and 4.15.4), but the incremental core churns 12.9M added-eqs
+on the same formula and **never terminates** (153 GB RSS observed
+before kill). HANDOFF's "stuck in startup body-simplify" diagnosis
+was this, misattributed: startup is instant; tick 0's check-sat was
+the thing that never returned. Every post-16eea4d observation
+("presimplify takes minutes", "pin-cap never measurable", "real
+load stuck at startup") traces to this.
 
-Known open capability gap: the `expr_as_var` fix from Goal 1 part 1
-(commit c817c6c) lived in bootstrap's Rust, NOT in `compiler/*.ev`.
-The current committed `sample.smt2` was produced with that fix
-baked in; subsequent seam re-builds of `sample.smt2` from
-`compiler/sample.ev` will lose the fix until the same logic is
-ported to `compiler/sample.ev`. That porting is the right work and
-is tracked as a follow-on task.
+**The fix — Mech T (commit `4552527`, new default):** fresh
+`Z3_mk_solver_from_tactic("default")` per tick; cached body ASTs +
+pin ASTs asserted fresh each tick; solver freed at tick end. Every
+tick gets the full preprocessing pipeline. This restores the
+pre-16eea4d per-tick discipline (a fresh non-incremental solver is
+the combined solver, i.e. the tactic path) while keeping the
+cached-AST reuse. `EVIDENT_PIN_MECH=A|B` still selects the old
+mechanisms for comparison.
 
-```
-  source.ev ──→ flatten ──→ kernel + compiler.smt2 ──→ output.smt2 ──→ kernel ──→ exit / stdout
-```
+## Verified end-to-end (Linux container, 24-core aarch64, z3 4.15.4)
+
+- `tests/seam/smoke_effects.ev` seam compile: ~6700 ticks at
+  ~161 ms/tick (~18 min wall), RSS bounded at ~1.5 GB (was:
+  unbounded growth, never finished). Emitted .smt2 contains the
+  full effects body and **runs under the kernel, exit 0**.
+- Deterministic: repeated compiles produce byte-identical output.
+- `./test.sh --rust-only` green.
+
+Per-tick cost is ~5x the Mac's historical ~33 ms/tick — possibly
+the tactic re-run per tick, possibly virtualization. Open lever:
+the functionizer refuses compiler.smt2 ("an output had no covering
+assignment"), so every tick is a full Z3 solve. Fixing extraction
+would collapse the 18-min compile to seconds (tracked task).
+
+## Gotcha that cost an afternoon
+
+The emit claim name must match the fixture: `test_hello.ev`'s claim
+is `hello`, not `main`. Asking the seam for a nonexistent claim
+produces a structurally valid **12-line stub** (empty state-fields,
+max-effects 0) and exits 0 — easy to misread as a translator bug.
+HANDOFF's verify recipe hardcoded `main`.
+
+## Environment note (container vs Mac)
+
+The dev container's Debian bookworm ships z3 4.8.12 (2021), which
+dies with "Overflow encountered when expanding vector" under load.
+Dockerfile.dev now installs the official Z3 release per-arch
+(arm64 → 4.15.4, amd64 → 4.14.1; newest whose glibc floor fits
+bookworm's 2.36). `kernel/src/libcall.rs` had a `*const i8` that
+broke the Linux aarch64 build (c_char is u8 there) — fixed.
+
+## Diagnostics added (kernel, env-gated)
+
+- `EVIDENT_PHASE_TRACE=1` — startup-phase markers (parse /
+  presimplify / decls / solver setup / functionize), tick-progress
+  lines, and per-effect dispatch logging (ReadLine/ReadFile results,
+  Exit codes). This is what found the misattribution.
+- `EVIDENT_NO_PRESIMPLIFY=1` — moot on z3 4.15.4 (presimplify is
+  0.1 s); kept as a switch.
+- `EVIDENT_PIN_DEPTH_CAP` — deprioritized; per-tick term-table
+  growth is now ~30-60 KB/tick (~400 MB per compile).
 
 ## What runs the project
 
-- `kernel/` — ~880 LOC Rust (Cargo crate). Builds with the bundled
-  linker patch (`scripts/cc-wrapper.sh`).
+- `kernel/` — ~1 kLOC Rust (Cargo crate).
 - `compiler.smt2` — ~2 MB / 42k lines of SMT-LIB at the repo root.
   Committed artifact; rebuilding it from `compiler/compiler.ev` is
   the wave-5 closure.
 - `sample.smt2` — sister artifact for the sat-check verb.
 - `scripts/evident-self bin` — single resolution point for the
   compiler CLI; every test/bench script asks it.
-
-## Verified this session
-
-- `tests/seam/smoke_effects.ev` compiles through the seam in
-  ~3:40 wall-clock and emits the full effects body. Phase 6 of
-  test.sh gates this on every run.
-- `tests/kernel/test_hello.ev` compiles through the seam in
-  ~3:45 and the kernel runs the emitted `.smt2` to print
-  "hello world" exit 0.
-- `./test.sh --rust-only` is green (4 kernel unit tests).
-
-## Important behavior fix landed this session
-
-`scripts/mem-cap.sh` (polling RSS watchdog) was spawning its child
-with `"$@" &`. Bash's default for backgrounded jobs is to redirect
-stdin from `/dev/null`, so kernel processes that read stdin via the
-`ReadLine` effect saw instant EOF, halted at tick 1, and emitted a
-truncated 11-line program. This looked exactly like a "compiler that
-silently drops constructor arguments" — which is what STATE.md
-(pre-fix) and a prior session's diagnosis said it was. It was not a
-compiler bug. The two-character fix is `"$@" <&0 &`.
-
-Side-effect: the mem-cap default cap was raised from 3 GB to 12 GB.
-Real compiles peak around 4 GB; the tight cap was killing
-legitimate runs.
+- `compiler.smt2.evidentc` — functionize-simplify cache side-car,
+  regenerated locally (not committed; keyed on src-hash + codegen
+  version — NOT keyed on Z3 version, keep in mind when swapping Z3).
 
 ## What's next
 
-`docs/plans/post-cutover-roadmap.md` sequences the four feasibility
-plans that are already on disk:
+1. **Functionizer coverage for compiler.smt2** — the perf lever
+   (see tracked task; `[functionizer-why]` output exists).
+2. Port `expr_as_var` into `compiler/sample.ev` (pre-existing task,
+   unchanged).
+3. `translate_bool.ev` pivot to Z3-AST building (wave-5 direction,
+   reference: `compiler/translate_arith.ev`).
+4. TokenList → FTI pivot: deprioritized — the memory cliff it
+   targeted is gone; revisit only if compile times demand it.
 
-1. Wave 5a — Z3 wrapper in Evident (FFI to libz3). Solve loop HIGH;
-   model-readback needs two named primitives.
-2. Wave 5b — Trampoline + libffi in Evident. Path A (libffi as a C
-   dep) HIGH and depends on 5a; Path B (mmap + mprotect codegen)
-   MEDIUM and is the prerequisite for 5c option Z.
-3. Wave 5c — Functionizer in Evident. Recognizer HIGH; codegen
-   option X (emit asm → `as` → dlopen) HIGH and depends on 5b's
-   dlopen sugar.
-4. Wave 5d — AOT functionizer binary cache. MEDIUM. Materializes 5c
-   into a side-car `.evidentc` format.
-
-Suggested order: 5a → 5b → 5c → 5d. See the roadmap for cross-wave
-blockers.
+`docs/plans/post-cutover-roadmap.md` still sequences waves 5a-5d.
 
 ## Operational guards retained
 
 - `scripts/mem-cap.sh` — polling watchdog (default 12 GB).
-- `scripts/run-{lang,kernel}-tests.sh` default parallelism: 4
-  (was sysctl `hw.activecpu` ≈ 12). Each kernel-on-compiler.smt2
-  child can briefly use 3–6 GB; high fanout swamps the host even
-  with the per-child cap.
-- `tests/conformance/features/runner.sh` has a known-fails
-  allowlist for `IMPL=selfhost` covering the genuine arithmetic-in-
-  ctor cases that compiler.smt2 doesn't yet handle (a real
-  capability gap, not the masquerading bug above).
+- `scripts/run-{lang,kernel}-tests.sh` default parallelism: 4.
+- `tests/conformance/features/runner.sh` known-fails allowlist for
+  `IMPL=selfhost` (genuine arithmetic-in-ctor gaps).
 
-## Open known issues (not blockers; documented for the next session)
+## Open known issues
 
 - `compiler.smt2` cannot yet compile arithmetic inside constructor
   args (`Exit(3 + 4)` emits `(Exit 3)`). 16 conformance features
-  fail under selfhost because of this. Allowlisted today; a real
-  fix in `compiler/translate_ctor.ev`'s `RenderExprL0` extends the
-  ctor-arg expression renderer.
-- Per-emit wall-clock is ~3:40 on the smoke fixture. The kernel
-  phase under full `./test.sh` (~140 fixtures × 3–4 min / 4
-  parallel) is ~2 hours. Acceptable for now; targeted by wave 5d's
-  AOT cache.
+  allowlisted; real fix is in `compiler/translate_ctor.ev`'s
+  `RenderExprL0`.
+- Per-emit wall-clock ~18 min in the container (was ~3:40 on the
+  Mac pre-16eea4d). Functionizer coverage is the fix path.
