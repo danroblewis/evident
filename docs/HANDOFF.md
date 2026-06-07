@@ -385,3 +385,18 @@ Open triage: task #20 (sample.smt2 wrong-unsat on
 sat_recognizer_match_false vs oracle-sat — bisect vs
 df48137^:sample.smt2); full test.sh sweep failure lists in
 /tmp/full_test3.log when complete.
+
+## Resume point 6 (overnight, continued)
+
+compiler2 scoreboard: 38 census fixtures (B3 string ops +11: call
+syntax in Pratt via PrCall floor markers, ECall1/2/3 nodes, oracle's
+negative-safe str_from_int composite). B1+B2 landed earlier (FTI
+symtab — fixed-width name records, 3 state fields; String state;
+019 + 41-ident stress green). Kernel: bare-Bool-literal capture
+(driver 26× faster). Runner: per-fixture 120s timeout + streaming
+(wedge diagnosed: pre-existing test_compiler_driver_* grind, NOT a
+promotion regression — fossil A/B identical; doc corrected).
+Triage closed: #20 (pre-existing legacy recognizer verdict), #21.
+Checklist next: D3+C2 (in flight), C3 ctor apps, C4 matches, C5
+match binds, D2 conditional effects, E1 carries, F1 params, F2
+compositions. Then: sample.ev attempt.
