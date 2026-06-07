@@ -1315,12 +1315,199 @@ cost dominate; the driver's state grew by the uev/mp tables).
   and are accepted as wildcards (the names at pattern positions
   are not inspected).
 
+## C5 + D2 — match payload binds + full-expr arm bodies; conditional
+## effects + Seq literals (gap census, landed 2026-06-07)
+
+The corpus's two L-tier walker items.
+
+### C5: pmode 6 arm bodies are full Pratt expressions
+
+The arm-with-atom-body shapes are gone. The pmode-6 walk now
+detects only arm HEADS — `Ctor ( bind ) ⇒` (5 tokens), `Ctor ⇒`
+(2), `_ ⇒` (2) — latches (ctor, bind, is-wildcard) and re-enters
+the Pratt FSM per arm body under a new pk_kind 4. The body
+expression ends at the first token that cannot extend it (the next
+arm's head Ident, the next body line's head, EOF — lexed newlines
+don't exist, same boundary rule as every other expression context).
+
+DESIGN CHOICE — Pratt re-entry per arm body, not a queued body
+token range: the FSM already owns expression termination, the
+8-token window, calls, `matches`, indexing and ternaries; a
+separate body-range parser would recreate exactly the bounded-shape
+class P3c deleted. The handoffs are free — the head tick IS the
+Pratt-enter tick (head tokens consumed as cons0), and the body-done
+tick IS the promotion tick.
+
+Arm accounting moves to body-COMPLETION time (mq_*): a finished
+non-wildcard arm becomes the PENDING arm, promoting the previous
+pending one into a tested slot (≤ 2, the C4 cap unchanged); a
+wildcard body's completion fires the match with def = its parsed
+expression; a non-arm head with a pending arm fires with the
+pending arm as the dropped-test default (the legacy fold rule).
+
+### C5: scoped payload-bind substitution
+
+Two new PURE work items bracket each bind-carrying arm body in the
+items program: `C2BindScope(bind, acc)` arms a 3-register walker
+scope (bsc_on/bsc_n/bsc_acc) and `C2BindEnd` clears it. Item
+expansion is depth-first (children prepend ahead of the tail), so
+everything the body's `C2Process` expands to runs strictly between
+the two markers — the bind name shadows ONLY within its arm body,
+at any nesting depth. An in-scope `EIdent(bind)` leaf bypasses the
+symtab and expands to the accessor app over the scrutinee —
+P(scrut)·C2App(acc, 1), translate2_match.ev's MatchPayloadBuildZ3
+semantics = the oracle's `(Ctor__f0 scrut)` — including the
+`last_results[i]` scrutinee flavor (re-select per occurrence).
+
+Accessor decls: the ED machine's USER run now harvests each payload
+variant's FIELD-0 accessor into the uev registry (uev_a0..a5)
+alongside ctor + tester — the act-3 step-4 tick (previously a
+filler for user runs) emits the qout+16 read, with `uev_acc_pend`
+carrying the variant index across the advance tick (the same pend
+dance as the Result floor's z_iracc/z_sracc). Lookup is uev + the
+IntResult/StringResult floor.
+
+Oracle findings (probed, pinned by the fixture):
+
+- `B(v) ⇒ v * 2 · A ⇒ 0` →
+  `(= y (ite ((_ is B) x) (* (B__f0 x) 2) 0))`.
+- A dropped-test DEFAULT arm's bind still reads through the
+  accessor: `A ⇒ 0 · B(v) ⇒ v + 1` →
+  `(ite ((_ is A) x) 0 (+ (B__f0 x) 1))` (Z3 accessors are total).
+  The driver wraps the default in its bind scope accordingly.
+
+### D2: conditional effects — the oracle's guarded select/len shape
+
+Probed empirically (the census's discover-empirically clause):
+`effects = (c ? ⟨a, b⟩ : ⟨d⟩)` does NOT emit per-slot ites. The
+oracle emits ONE assert, a right-nested guard tree with per-branch
+conjunctions:
+
+    (and (=> c (and (= effects__len 2) (= (select effects 0) a)
+                    (= (select effects 1) b)))
+         (=> (not c) (and (= effects__len 1)
+                          (= (select effects 0) d))))
+
+nesting in else position for deeper chains; `⟨⟩` lowers to
+`(and (= effects__len 0))`.
+
+Driver lowering (pmode 5 became a CHAIN walk; el_st substates):
+
+- The classifier's 8-token effects head now branches on token 7:
+  `⟨` keeps the P3e literal path byte-for-byte; `(` enters the
+  chain (el_st 1).
+- Branch GUARDS are full Pratt expressions under pk_kind 6 with a
+  new `qstop` input to C2PrattStep: a top-level `?` (pd = qd = 0)
+  in operator position TERMINATES the expression (the `?` belongs
+  to the chain and is consumed on completion). Covers the corpus's
+  `is_first_tick` / `(¬_got_path)` / arbitrary Bool guards.
+- In a chain, element eqs become HANDLES: `C2SelEqH(i)` (select +
+  mk_eq, pushed) replaces `C2SelectEq(i)` (assert); the branch
+  close folds k eqs + `C2LenEqH(n)` into a conjunction handle via
+  C2Op(OpConj) — Z3's serialization flattens the 2-ary nesting back
+  to a flat `(and …)` (conjunct ORDER differs: ours len last,
+  oracle len first — cosmetic, the accepted P3c divergence class).
+- The chain end (`)` at chain depth 1) folds the (g_k, B_k) pairs
+  bottom-up into the nested guard tree, one 8-item run per level
+  (C2ChainLvl: Dup3 · Not · Swap · Impl · Rot3 · Impl · Swap ·
+  Conj, over three new PURE stack items C2Dup3/C2Swap/C2Rot3), and
+  asserts the root. ≤ 4 guards / 5 branches (corpus max: 4);
+  then-branches must be literals, chains nest in else position
+  only (the corpus shape).
+- Literals: 0-4 elements (cached 0..4 numerals — z_three/z_four
+  are new zsteps 32-33; the LEX gate moved 32 → 35), `⟨⟩` empty
+  branch literals, and LibCall's empty-args `⟨ ⟩ )` bite (the
+  corpus getpid shape, el_b2e).
+
+### D2: user Seq(Int) values (051/052/057/065)
+
+- `s ∈ Seq(Int)` declares s : (Array Int Int) (z_iarr, zstep 34) +
+  `s__len : Int` + the `(>= s__len 0)` floor — entirely through
+  existing items (two C2DeclConsts + NatBound/AssertTop/Drop ×2);
+  manifest `s:Seq(Int)`, TWO carry declares (`_s () (Array Int
+  Int)` + `_s__len () Int` — the oracle's lines). Both names land
+  in the symtab, so `s[i]` (D3's PrIdx/C2SelH) and `s__len`
+  resolve like any const.
+- `s = ⟨10, 20, 30⟩` enters pmode 8: one full-Pratt element per
+  `,` (pk_kind 7), each asserting `(= (select s i) e_i)` via
+  P(s)·P(EInt i)·SelH·P(e)·PinEq·Assert — zero new work items; the
+  closing `⟩` asserts `(= s__len n)` (mk_int numerals — element
+  count NOT capped at 4). One registered seq var per compile.
+- `#s` dispatches per sort: the registered seq var's `#`/str_len
+  lowers to its s__len const; everything else stays str.len —
+  translate2_seq.ev's CardBuildZ3 split, realized in d_c1_items.
+- DIVERGENCE (deliberate): the oracle RECORDS a per-var length and
+  substitutes it, emitting degenerate `(= 3 3)` / `(= 3 5)` shapes
+  and never constraining s__len; the driver pins s__len for real.
+  Sat-equivalent on every census fixture (065's contradiction is
+  `(= s__len 3) ∧ (= s__len 5)` — still UNSAT → exit 2), and
+  strictly more faithful state.
+
+### C5+D2 acceptance (run 2026-06-07, oracle-built driver)
+
+NEW unit fixtures (driver INPUTS; both: compile exit 0 + emitted
+shape + kernel run):
+
+| fixture | emitted shape spot-check | result |
+|---|---|---|
+| tests/kernel/compiler2/match_bind_fixture.ev (C5) | `(= y (ite ((_ is B) x) (* (B__f0 x) 2) 0))` — the oracle shape byte-for-byte: payload bind through the harvested USER accessor, full-expr body, dropped-test default; `(= x (B 21))`; serialized `(declare-datatypes ((E 0)) (((B (B__f0 Int)) (A))))` | unit `Exit(y - 42)` → exit 0/0 ✓ |
+| tests/kernel/compiler2/cond_effects_fixture.ev (D2) | ONE assert: `(and (=> c (and (= (select effects 0) (LibCall "libc" "puts" (__Cell_LibArg (ArgStr "yes") __Empty_LibArg))) (= (select effects 1) (Exit 0)) (= effects__len 2))) (=> (not c) (and (= (select effects 0) (Exit 1)) (= effects__len 1))))` — the oracle's guard tree, flat conjunctions | unit takes the c = true path: stdout `yes`, exit 0/0 ✓ |
+
+Census flips — all four D2 gates (driver compile exit 0 +
+smt2-contains + kernel run, both checks per row):
+
+| fixture | gate check | exit got/want |
+|---|---|---|
+| 051-seq-type-index | `select` in unit; `#s = 3` + indexed pins + ok conjunction | 0/0 ✓ |
+| 052-seq-literal | `select` in unit; literal select-eqs + `(= s__len 3)` | 0/0 ✓ |
+| 057-seq-cardinality | `ite` in unit; 4-element literal, `(= s__len 4)` consistent with `#s = 4` | 0/0 ✓ |
+| 065-seq-length-contradiction | `Exit` in unit; `(= s__len 3) ∧ (= s__len 5)` → UNSAT | 2/2 ✓ |
+
+Full 42-fixture census regression (the C3+C4 list), re-run on the
+FINAL artifact — every row ALL checks green (driver compile exit 0,
+every smt2-contains line, kernel run exit, stdout where defined):
+002 003 004 005 006 008 011 012 014 017 018 019 020 022 023 024
+025 026 027 028 029 030 031 032 033 034 036 037 041 042 043 044
+050 053 054 062 067 068 069 071 072 073 — 42/42 PASS (046 rows
+total with the four flips above; zero failures).
+
+Driver-input fixtures re-verified on the final artifact:
+ctor_app_fixture (ctor app + testers) 0/0 ✓ · lastresults_fixture
+(the pmode-6 rewrite's regression — the D3 ite/accessor shapes
+unchanged) 0/0 ✓ · symtab_fixture (41-ident chain) 0/0 ✓.
+
+Negative control re-verified: nonexistent claim → manifest +
+textual prelude, exactly 1 assert, no `(+ `, driver exit 0.
+pratt_fixture re-verified post-signature-change (qstop input,
+bound false): canonical AST printed, exit 0. lex_fti_fixture
+re-verified: exit 0. The other compiler2 unit fixtures
+(match/ctor/bool/record/seq/solver_emit) re-run: all exit 0.
+
+### C5+D2 descopes
+
+- Match-pins remain MEMBERSHIP pins (`y ∈ Type = match x`); a bare
+  `y = match x` line has no sort for the decl (zero corpus
+  occurrences — the corpus's 185 `= match` pins are all membership
+  form).
+- 2-field payload binds (`Ctor(a, b) ⇒`): only the field-0
+  accessor is harvested; corpus match binds are all 1-field.
+- Guarded-writer effects lines (`cond ⇒ effects = ⟨…⟩`): zero
+  corpus occurrences — the corpus's only conditional effects shape
+  is the nested ternary chain (sample.ev:1061). Descoped honestly.
+- Then-branch nesting (`((a ? X : Y) ? … : …)`): chains nest in
+  else position only (the corpus shape).
+- ≥ 5 guards / ≥ 5-element effects literals (corpus max: 4 / 2).
+- Seq element type Int only (the census surface); one registered
+  seq var per compile; combined membership+literal pins
+  (`s ∈ Seq(Int) = ⟨…⟩` on one line) unsupported — the census
+  sources declare and pin on separate lines.
+
 ## Next steps
 
 - The rest of the membership surface (multi-name, chained bounds
   in memberships, Real/021).
-- Seq values (052) + match as a general expression / full-expr arm
-  bodies (C5).
+- Match as a general EXPRESSION (non-pin positions); bare
+  `y = match` pins.
 - Tick-rate: measure; if the walk dominates, batch pure ticks
   (classify + expansion) into the libcall ticks.
 - Census: run the full conformance suite under a driver-backed
