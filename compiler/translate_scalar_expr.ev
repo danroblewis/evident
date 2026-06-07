@@ -1,0 +1,365 @@
+-- compiler/translate_scalar_expr.ev — scalar EXPRESSION renderer over
+-- the lexer TokenList, for claim-composition slot values (the port of
+-- bootstrap's expr_as_var compound-expression branch, commit c817c6c).
+--
+-- bootstrap/runtime/src/translate/exprs/mapping.rs::expr_as_var accepted
+-- a compound expression as a `slot ↦ value` binding by trying the scalar
+-- translators in order (bool first — its operators are the most
+-- distinctive — then int/real/string). The self-hosted walk needs the
+-- same capability at the TOKEN level: render the value tokens of
+--
+--   Helper(p ↦ (x > 3), out ↦ result)
+--   Helper(n ↦ (a * (b + 1)), out ↦ r)
+--   Helper(n ↦ (c ? t : (0 - x)), out ↦ r)
+--
+-- to their SMT-LIB text — `(> x 3)`, `(* a (+ b 1))`,
+-- `(ite c t (- 0 x))` — so the call-site inliner (CallArgsStep +
+-- the driver's pmode-4 splice in compiler/sample.ev) can substitute the
+-- rendered text for the callee's parameter names. The operator spelling
+-- is sort-agnostic in SMT-LIB text (`>`/`and`/`+`/`ite` work for every
+-- scalar sort), so "try bool then int then real then string" collapses
+-- to a single token-shape renderer here — same first-success semantics,
+-- one pass.
+--
+-- Like RenderExprL0/L1/L2/L3 (translate_ctor.ev), claims cannot
+-- self-recurse, so the recursion is DEPTH-UNROLLED:
+--
+--   SPrim{N}  — primary: [¬] (atom | "(" SChain{N-1} ")")
+--   SChain{N} — operator chain of up to four SPrim{N} primaries, with
+--               binop / bool-split / ternary shapes (see below)
+--
+-- SPrim2 is the level exposed to CallArgsStep — deep enough for every
+-- shape in tests/lang_tests/test_expr_slot_binding.ev. A ctor-headed
+-- value (Ident followed by `(`) is REJECTED (ok=false) so record-literal
+-- arguments keep their current fallback behaviour.
+--
+-- Chain shapes (q1/q2/q3 are the tokens after primaries 1/2/3):
+--   A  p1                                   q1 not an op / `?`
+--   B  p1 ? p2 : p3                         → (ite p1 p2 p3)
+--   C  p1 op p2                             → (op p1 p2)
+--   D  p1 op p2 ? p3 : p4                   → (ite (op p1 p2) p3 p4)
+--   E1 p1 op p2 ∧/∨ p3 op p4                → (and/or (op p1 p2) (op p3 p4))
+--   E2 p1 op p2 ∧/∨ p3                      → (and/or (op p1 p2) p3)
+-- This encodes the precedence the corpus uses (comparisons bind tighter
+-- than ∧/∨); deeper mixes go through explicit parens, which recurse a
+-- level down.
+
+import "compiler/lexer.ev"
+import "compiler/parser.ev"
+import "compiler/translate_ctor.ev"
+
+-- ── SAtomR: render a leaf token (Ident / IntLit / StringLit / true /
+--    false). An Ident followed by `(` is a constructor head, NOT an
+--    atom — the caller passes the following token as `nxt`.
+claim SAtomR
+    t ∈ Token
+    nxt ∈ Token
+    out ∈ String
+    ok ∈ Bool
+    sa_is_int ∈ Bool = (t matches IntLit(_))
+    sa_is_str ∈ Bool = (t matches StringLit(_))
+    sa_is_id  ∈ Bool = (t matches Ident(_))
+    sa_true   ∈ Bool = (t matches KwTrue)
+    sa_false  ∈ Bool = (t matches KwFalse)
+    sa_iv ∈ Int = match t
+        IntLit(n) ⇒ n
+        _ ⇒ 0
+    sa_sv ∈ String = match t
+        StringLit(s) ⇒ s
+        _ ⇒ ""
+    sa_idv ∈ String = match t
+        Ident(s) ⇒ s
+        _ ⇒ ""
+    sa_ctor_head ∈ Bool = (sa_is_id ∧ (nxt matches LParen))
+    ok = ((sa_is_int ∨ sa_is_str ∨ sa_true ∨ sa_false ∨ sa_is_id) ∧ (¬sa_ctor_head))
+    out = (sa_is_int ? str_from_int(sa_iv)
+        : sa_true ? "true"
+        : sa_false ? "false"
+        : sa_is_str ? "\"" ++ sa_sv ++ "\""
+        : sa_idv)
+
+-- ── SOpSmt: binary-operator token → SMT-LIB spelling ──────────────────
+-- `≠` lowers to `distinct` (equivalent to bootstrap's
+-- `(not (= …))` for two operands).
+claim SOpSmt
+    t ∈ Token
+    out ∈ String
+    ok ∈ Bool
+    so_plus ∈ Bool = (t matches Plus)
+    so_minus ∈ Bool = (t matches Minus)
+    so_star ∈ Bool = (t matches Star)
+    so_slash ∈ Bool = (t matches Slash)
+    so_lt ∈ Bool = (t matches Lt)
+    so_gt ∈ Bool = (t matches Gt)
+    so_le ∈ Bool = (t matches OpLe)
+    so_ge ∈ Bool = (t matches OpGe)
+    so_eq ∈ Bool = (t matches Eq)
+    so_ne ∈ Bool = (t matches OpNe)
+    so_and ∈ Bool = (t matches OpAnd)
+    so_or ∈ Bool = (t matches OpOr)
+    so_impl ∈ Bool = (t matches OpImplies)
+    ok = (so_plus ∨ so_minus ∨ so_star ∨ so_slash ∨ so_lt ∨ so_gt
+        ∨ so_le ∨ so_ge ∨ so_eq ∨ so_ne ∨ so_and ∨ so_or ∨ so_impl)
+    out = (so_plus ? "+"
+        : so_minus ? "-"
+        : so_star ? "*"
+        : so_slash ? "div"
+        : so_lt ? "<"
+        : so_gt ? ">"
+        : so_le ? "<="
+        : so_ge ? ">="
+        : so_eq ? "="
+        : so_ne ? "distinct"
+        : so_and ? "and"
+        : so_or ? "or"
+        : so_impl ? "=>"
+        : "")
+
+-- ══ Level 0 ════════════════════════════════════════════════════════════
+-- SPrim0: [¬] atom — no parenthesised sub-expressions at the base level.
+claim SPrim0
+    toks ∈ TokenList
+    out ∈ String
+    rest ∈ TokenList
+    ok ∈ Bool
+    sp0_h0 ∈ Token
+    TLHdC(l ↦ toks, out ↦ sp0_h0)
+    sp0_t0 ∈ TokenList
+    TLTlC(l ↦ toks, out ↦ sp0_t0)
+    sp0_neg ∈ Bool = (sp0_h0 matches OpNot)
+    sp0_seed ∈ TokenList = (sp0_neg ? sp0_t0 : toks)
+    sp0_a0 ∈ Token
+    TLHdC(l ↦ sp0_seed, out ↦ sp0_a0)
+    sp0_s0 ∈ TokenList
+    TLTlC(l ↦ sp0_seed, out ↦ sp0_s0)
+    sp0_a1 ∈ Token
+    TLHdC(l ↦ sp0_s0, out ↦ sp0_a1)
+    sp0_ao ∈ String
+    sp0_ak ∈ Bool
+    SAtomR(t ↦ sp0_a0, nxt ↦ sp0_a1, out ↦ sp0_ao, ok ↦ sp0_ak)
+    ok = sp0_ak
+    out = (sp0_neg ? "(not " ++ sp0_ao ++ ")" : sp0_ao)
+    rest = sp0_s0
+
+-- SChain0: operator chain of SPrim0 primaries.
+claim SChain0
+    toks ∈ TokenList
+    out ∈ String
+    rest ∈ TokenList
+    ok ∈ Bool
+
+    sc0_o1 ∈ String
+    sc0_r1 ∈ TokenList
+    sc0_k1 ∈ Bool
+    SPrim0(toks ↦ toks, out ↦ sc0_o1, rest ↦ sc0_r1, ok ↦ sc0_k1)
+    sc0_q1 ∈ Token
+    TLHdC(l ↦ sc0_r1, out ↦ sc0_q1)
+    sc0_s2 ∈ TokenList
+    TLTlC(l ↦ sc0_r1, out ↦ sc0_s2)
+    sc0_o2 ∈ String
+    sc0_r2 ∈ TokenList
+    sc0_k2 ∈ Bool
+    SPrim0(toks ↦ sc0_s2, out ↦ sc0_o2, rest ↦ sc0_r2, ok ↦ sc0_k2)
+    sc0_q2 ∈ Token
+    TLHdC(l ↦ sc0_r2, out ↦ sc0_q2)
+    sc0_s3 ∈ TokenList
+    TLTlC(l ↦ sc0_r2, out ↦ sc0_s3)
+    sc0_o3 ∈ String
+    sc0_r3 ∈ TokenList
+    sc0_k3 ∈ Bool
+    SPrim0(toks ↦ sc0_s3, out ↦ sc0_o3, rest ↦ sc0_r3, ok ↦ sc0_k3)
+    sc0_q3 ∈ Token
+    TLHdC(l ↦ sc0_r3, out ↦ sc0_q3)
+    sc0_s4 ∈ TokenList
+    TLTlC(l ↦ sc0_r3, out ↦ sc0_s4)
+    sc0_o4 ∈ String
+    sc0_r4 ∈ TokenList
+    sc0_k4 ∈ Bool
+    SPrim0(toks ↦ sc0_s4, out ↦ sc0_o4, rest ↦ sc0_r4, ok ↦ sc0_k4)
+
+    sc0_op1 ∈ String
+    sc0_op1k ∈ Bool
+    SOpSmt(t ↦ sc0_q1, out ↦ sc0_op1, ok ↦ sc0_op1k)
+    sc0_op3 ∈ String
+    sc0_op3k ∈ Bool
+    SOpSmt(t ↦ sc0_q3, out ↦ sc0_op3, ok ↦ sc0_op3k)
+
+    sc0_q1_tern ∈ Bool = (sc0_q1 matches Question)
+    sc0_q2_tern ∈ Bool = (sc0_q2 matches Question)
+    sc0_q2_and ∈ Bool = (sc0_q2 matches OpAnd)
+    sc0_q2_or ∈ Bool = (sc0_q2 matches OpOr)
+    sc0_q2_bool ∈ Bool = (sc0_q2_and ∨ sc0_q2_or)
+    sc0_b2 ∈ String = (sc0_q2_and ? "and" : "or")
+    sc0_q2_colon ∈ Bool = (sc0_q2 matches Colon)
+    sc0_q3_colon ∈ Bool = (sc0_q3 matches Colon)
+
+    ok = (sc0_q1_tern ? (sc0_k1 ∧ sc0_k2 ∧ sc0_q2_colon ∧ sc0_k3)
+        : (¬sc0_op1k) ? sc0_k1
+        : sc0_q2_tern ? (sc0_k1 ∧ sc0_k2 ∧ sc0_k3 ∧ sc0_q3_colon ∧ sc0_k4)
+        : sc0_q2_bool ? (sc0_op3k ? (sc0_k1 ∧ sc0_k2 ∧ sc0_k3 ∧ sc0_k4)
+                                  : (sc0_k1 ∧ sc0_k2 ∧ sc0_k3))
+        : (sc0_k1 ∧ sc0_k2))
+    out = (sc0_q1_tern ? "(ite " ++ sc0_o1 ++ " " ++ sc0_o2 ++ " " ++ sc0_o3 ++ ")"
+        : (¬sc0_op1k) ? sc0_o1
+        : sc0_q2_tern ? "(ite (" ++ sc0_op1 ++ " " ++ sc0_o1 ++ " " ++ sc0_o2 ++ ") " ++ sc0_o3 ++ " " ++ sc0_o4 ++ ")"
+        : sc0_q2_bool ? (sc0_op3k
+            ? "(" ++ sc0_b2 ++ " (" ++ sc0_op1 ++ " " ++ sc0_o1 ++ " " ++ sc0_o2 ++ ") (" ++ sc0_op3 ++ " " ++ sc0_o3 ++ " " ++ sc0_o4 ++ "))"
+            : "(" ++ sc0_b2 ++ " (" ++ sc0_op1 ++ " " ++ sc0_o1 ++ " " ++ sc0_o2 ++ ") " ++ sc0_o3 ++ ")")
+        : "(" ++ sc0_op1 ++ " " ++ sc0_o1 ++ " " ++ sc0_o2 ++ ")")
+    rest = (sc0_q1_tern ? sc0_r3
+        : (¬sc0_op1k) ? sc0_r1
+        : sc0_q2_tern ? sc0_r4
+        : sc0_q2_bool ? (sc0_op3k ? sc0_r4 : sc0_r3)
+        : sc0_r2)
+
+-- ══ Level 1 ════════════════════════════════════════════════════════════
+-- SPrim1: [¬] (atom | "(" SChain0 ")").
+claim SPrim1
+    toks ∈ TokenList
+    out ∈ String
+    rest ∈ TokenList
+    ok ∈ Bool
+    sp1_h0 ∈ Token
+    TLHdC(l ↦ toks, out ↦ sp1_h0)
+    sp1_t0 ∈ TokenList
+    TLTlC(l ↦ toks, out ↦ sp1_t0)
+    sp1_neg ∈ Bool = (sp1_h0 matches OpNot)
+    sp1_seed ∈ TokenList = (sp1_neg ? sp1_t0 : toks)
+    sp1_b0 ∈ Token
+    TLHdC(l ↦ sp1_seed, out ↦ sp1_b0)
+    sp1_bt ∈ TokenList
+    TLTlC(l ↦ sp1_seed, out ↦ sp1_bt)
+    sp1_b1 ∈ Token
+    TLHdC(l ↦ sp1_bt, out ↦ sp1_b1)
+    sp1_par ∈ Bool = (sp1_b0 matches LParen)
+
+    sp1_io ∈ String
+    sp1_ir ∈ TokenList
+    sp1_ik ∈ Bool
+    SChain0(toks ↦ sp1_bt, out ↦ sp1_io, rest ↦ sp1_ir, ok ↦ sp1_ik)
+    sp1_close ∈ Token
+    TLHdC(l ↦ sp1_ir, out ↦ sp1_close)
+    sp1_par_ok ∈ Bool = (sp1_par ∧ sp1_ik ∧ (sp1_close matches RParen))
+    sp1_pr ∈ TokenList
+    TLTlC(l ↦ sp1_ir, out ↦ sp1_pr)
+
+    sp1_ao ∈ String
+    sp1_ak ∈ Bool
+    SAtomR(t ↦ sp1_b0, nxt ↦ sp1_b1, out ↦ sp1_ao, ok ↦ sp1_ak)
+
+    ok = (sp1_par ? sp1_par_ok : sp1_ak)
+    sp1_base ∈ String = (sp1_par ? sp1_io : sp1_ao)
+    out = (sp1_neg ? "(not " ++ sp1_base ++ ")" : sp1_base)
+    rest = (sp1_par ? sp1_pr : sp1_bt)
+
+-- SChain1: operator chain of SPrim1 primaries.
+claim SChain1
+    toks ∈ TokenList
+    out ∈ String
+    rest ∈ TokenList
+    ok ∈ Bool
+
+    sc1_o1 ∈ String
+    sc1_r1 ∈ TokenList
+    sc1_k1 ∈ Bool
+    SPrim1(toks ↦ toks, out ↦ sc1_o1, rest ↦ sc1_r1, ok ↦ sc1_k1)
+    sc1_q1 ∈ Token
+    TLHdC(l ↦ sc1_r1, out ↦ sc1_q1)
+    sc1_s2 ∈ TokenList
+    TLTlC(l ↦ sc1_r1, out ↦ sc1_s2)
+    sc1_o2 ∈ String
+    sc1_r2 ∈ TokenList
+    sc1_k2 ∈ Bool
+    SPrim1(toks ↦ sc1_s2, out ↦ sc1_o2, rest ↦ sc1_r2, ok ↦ sc1_k2)
+    sc1_q2 ∈ Token
+    TLHdC(l ↦ sc1_r2, out ↦ sc1_q2)
+    sc1_s3 ∈ TokenList
+    TLTlC(l ↦ sc1_r2, out ↦ sc1_s3)
+    sc1_o3 ∈ String
+    sc1_r3 ∈ TokenList
+    sc1_k3 ∈ Bool
+    SPrim1(toks ↦ sc1_s3, out ↦ sc1_o3, rest ↦ sc1_r3, ok ↦ sc1_k3)
+    sc1_q3 ∈ Token
+    TLHdC(l ↦ sc1_r3, out ↦ sc1_q3)
+    sc1_s4 ∈ TokenList
+    TLTlC(l ↦ sc1_r3, out ↦ sc1_s4)
+    sc1_o4 ∈ String
+    sc1_r4 ∈ TokenList
+    sc1_k4 ∈ Bool
+    SPrim1(toks ↦ sc1_s4, out ↦ sc1_o4, rest ↦ sc1_r4, ok ↦ sc1_k4)
+
+    sc1_op1 ∈ String
+    sc1_op1k ∈ Bool
+    SOpSmt(t ↦ sc1_q1, out ↦ sc1_op1, ok ↦ sc1_op1k)
+    sc1_op3 ∈ String
+    sc1_op3k ∈ Bool
+    SOpSmt(t ↦ sc1_q3, out ↦ sc1_op3, ok ↦ sc1_op3k)
+
+    sc1_q1_tern ∈ Bool = (sc1_q1 matches Question)
+    sc1_q2_tern ∈ Bool = (sc1_q2 matches Question)
+    sc1_q2_and ∈ Bool = (sc1_q2 matches OpAnd)
+    sc1_q2_or ∈ Bool = (sc1_q2 matches OpOr)
+    sc1_q2_bool ∈ Bool = (sc1_q2_and ∨ sc1_q2_or)
+    sc1_b2 ∈ String = (sc1_q2_and ? "and" : "or")
+    sc1_q2_colon ∈ Bool = (sc1_q2 matches Colon)
+    sc1_q3_colon ∈ Bool = (sc1_q3 matches Colon)
+
+    ok = (sc1_q1_tern ? (sc1_k1 ∧ sc1_k2 ∧ sc1_q2_colon ∧ sc1_k3)
+        : (¬sc1_op1k) ? sc1_k1
+        : sc1_q2_tern ? (sc1_k1 ∧ sc1_k2 ∧ sc1_k3 ∧ sc1_q3_colon ∧ sc1_k4)
+        : sc1_q2_bool ? (sc1_op3k ? (sc1_k1 ∧ sc1_k2 ∧ sc1_k3 ∧ sc1_k4)
+                                  : (sc1_k1 ∧ sc1_k2 ∧ sc1_k3))
+        : (sc1_k1 ∧ sc1_k2))
+    out = (sc1_q1_tern ? "(ite " ++ sc1_o1 ++ " " ++ sc1_o2 ++ " " ++ sc1_o3 ++ ")"
+        : (¬sc1_op1k) ? sc1_o1
+        : sc1_q2_tern ? "(ite (" ++ sc1_op1 ++ " " ++ sc1_o1 ++ " " ++ sc1_o2 ++ ") " ++ sc1_o3 ++ " " ++ sc1_o4 ++ ")"
+        : sc1_q2_bool ? (sc1_op3k
+            ? "(" ++ sc1_b2 ++ " (" ++ sc1_op1 ++ " " ++ sc1_o1 ++ " " ++ sc1_o2 ++ ") (" ++ sc1_op3 ++ " " ++ sc1_o3 ++ " " ++ sc1_o4 ++ "))"
+            : "(" ++ sc1_b2 ++ " (" ++ sc1_op1 ++ " " ++ sc1_o1 ++ " " ++ sc1_o2 ++ ") " ++ sc1_o3 ++ ")")
+        : "(" ++ sc1_op1 ++ " " ++ sc1_o1 ++ " " ++ sc1_o2 ++ ")")
+    rest = (sc1_q1_tern ? sc1_r3
+        : (¬sc1_op1k) ? sc1_r1
+        : sc1_q2_tern ? sc1_r4
+        : sc1_q2_bool ? (sc1_op3k ? sc1_r4 : sc1_r3)
+        : sc1_r2)
+
+-- ══ Level 2 ════════════════════════════════════════════════════════════
+-- SPrim2: [¬] (atom | "(" SChain1 ")") — the level CallArgsStep uses for
+-- each slot value.
+claim SPrim2
+    toks ∈ TokenList
+    out ∈ String
+    rest ∈ TokenList
+    ok ∈ Bool
+    sp2_h0 ∈ Token
+    TLHdC(l ↦ toks, out ↦ sp2_h0)
+    sp2_t0 ∈ TokenList
+    TLTlC(l ↦ toks, out ↦ sp2_t0)
+    sp2_neg ∈ Bool = (sp2_h0 matches OpNot)
+    sp2_seed ∈ TokenList = (sp2_neg ? sp2_t0 : toks)
+    sp2_b0 ∈ Token
+    TLHdC(l ↦ sp2_seed, out ↦ sp2_b0)
+    sp2_bt ∈ TokenList
+    TLTlC(l ↦ sp2_seed, out ↦ sp2_bt)
+    sp2_b1 ∈ Token
+    TLHdC(l ↦ sp2_bt, out ↦ sp2_b1)
+    sp2_par ∈ Bool = (sp2_b0 matches LParen)
+
+    sp2_io ∈ String
+    sp2_ir ∈ TokenList
+    sp2_ik ∈ Bool
+    SChain1(toks ↦ sp2_bt, out ↦ sp2_io, rest ↦ sp2_ir, ok ↦ sp2_ik)
+    sp2_close ∈ Token
+    TLHdC(l ↦ sp2_ir, out ↦ sp2_close)
+    sp2_par_ok ∈ Bool = (sp2_par ∧ sp2_ik ∧ (sp2_close matches RParen))
+    sp2_pr ∈ TokenList
+    TLTlC(l ↦ sp2_ir, out ↦ sp2_pr)
+
+    sp2_ao ∈ String
+    sp2_ak ∈ Bool
+    SAtomR(t ↦ sp2_b0, nxt ↦ sp2_b1, out ↦ sp2_ao, ok ↦ sp2_ak)
+
+    ok = (sp2_par ? sp2_par_ok : sp2_ak)
+    sp2_base ∈ String = (sp2_par ? sp2_io : sp2_ao)
+    out = (sp2_neg ? "(not " ++ sp2_base ++ ")" : sp2_base)
+    rest = (sp2_par ? sp2_pr : sp2_bt)

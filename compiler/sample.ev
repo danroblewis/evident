@@ -80,6 +80,7 @@ import "compiler/parse_body_seq.ev"
 import "compiler/parse_body_match.ev"
 import "compiler/translate_ctor.ev"
 import "compiler/parse_body_ctor.ev"
+import "compiler/parse_body_call.ev"
 
 claim main
     -- ── INPUT — per-process source path via stdin (wave 4o) ──────
@@ -476,25 +477,142 @@ claim main
 
     chunk ∈ String = (sel_pinned ? sel_decl ++ "\n" ++ sel_assert : sel_decl)
 
-    claim_done ∈ Bool = (in_claim_run ∧ (¬sel_ok))
+    -- ══ Claim-call with `↦` bindings (expr_as_var port, c817c6c) ══
+    -- A body line `Name(slot ↦ value, …)` where every value is an atom
+    -- or a scalar expression (rendered by SPrim2). CallArgsStep parses
+    -- the call site and builds the slot→rendered-text table; the
+    -- pmode-4 inliner below splices the callee's body tokens into the
+    -- walk, substituting bound parameter names. A value the renderer
+    -- can't handle (e.g. a record-literal arg) reports ok=false and the
+    -- line keeps the previous lone-name fallback.
+    cca_name ∈ String
+    cca_table ∈ String
+    cca_rest ∈ TokenList
+    cca_ok ∈ Bool
+    CallArgsStep(rem ↦ _rem, cname ↦ cca_name, table ↦ cca_table,
+        rest ↦ cca_rest, ok ↦ cca_ok)
+    do_ccall ∈ Bool = (in_claim_run ∧ (¬mem_is_ctor) ∧ (¬mem_is_match)
+        ∧ (¬mem_is_seq) ∧ cca_ok)
+
+    -- Inline sub-machine state (pmode 4), adapted from compiler.ev's
+    -- lone-name inliner. iph: 0 search `claim <iname>` in _fwd · 5 skip
+    -- the callee's first-line param list `( … )` · 1 collect its body
+    -- (reverse) · 2 transfer (reverse → forward onto the saved tail),
+    -- substituting each Ident through the binding table `_isub`.
+    -- KNOWN LIMIT: the param-list skip is FLAT — a callee whose param
+    -- list nests parens (`xs ∈ Seq(Int)`) would stop at the inner `)`.
+    -- No current corpus callee reachable from a `slot ↦ value` call has
+    -- such a param list; depth tracking is the follow-on if one appears.
+    iph    ∈ Int
+    _iph   ∈ Int
+    iname  ∈ String
+    _iname ∈ String
+    isub   ∈ String
+    _isub  ∈ String
+    iscan  ∈ TokenList
+    _iscan ∈ TokenList
+    icoll  ∈ TokenList
+    _icoll ∈ TokenList
+    itail  ∈ TokenList
+    _itail ∈ TokenList
+
+    in_inline ∈ Bool = (in_parse ∧ (_pmode = 4))
+    is_hd ∈ Token
+    TLHd(l ↦ _iscan, out ↦ is_hd)
+    is_tl ∈ TokenList
+    TLTl(l ↦ _iscan, out ↦ is_tl)
+    is_hd2 ∈ Token
+    TLHd(l ↦ is_tl, out ↦ is_hd2)
+    is_tl2 ∈ TokenList
+    TLTl(l ↦ is_tl, out ↦ is_tl2)
+    is_hd3 ∈ Token
+    TLHd(l ↦ is_tl2, out ↦ is_hd3)
+    is_tl3 ∈ TokenList
+    TLTl(l ↦ is_tl2, out ↦ is_tl3)
+    iscan_nil ∈ Bool = match _iscan
+        TLNil ⇒ true
+        _ ⇒ false
+    icoll_hd ∈ Token
+    TLHd(l ↦ _icoll, out ↦ icoll_hd)
+    icoll_tl ∈ TokenList
+    TLTl(l ↦ _icoll, out ↦ icoll_tl)
+    icoll_nil ∈ Bool = match _icoll
+        TLNil ⇒ true
+        _ ⇒ false
+
+    i_hd2_name ∈ String = match is_hd2
+        Ident(s) ⇒ s
+        _ ⇒ ""
+    i_found ∈ Bool = (in_inline ∧ (_iph = 0) ∧ (is_hd matches KwClaim) ∧ (i_hd2_name = _iname))
+    i_search_step ∈ Bool = (in_inline ∧ (_iph = 0) ∧ (¬i_found) ∧ (¬iscan_nil))
+    i_search_fail ∈ Bool = (in_inline ∧ (_iph = 0) ∧ iscan_nil)
+    i_found_param ∈ Bool = (i_found ∧ (is_hd3 matches LParen))
+    i_pskip ∈ Bool = (in_inline ∧ (_iph = 5))
+    i_pskip_done ∈ Bool = (i_pskip ∧ ((is_hd matches RParen) ∨ iscan_nil))
+    i_hd_is_tlkw ∈ Bool = ((is_hd matches KwClaim) ∨ (is_hd matches KwEnum)
+        ∨ (is_hd matches KwType) ∨ (is_hd matches KwFsm) ∨ (is_hd matches KwSchema))
+    i_collect_done ∈ Bool = (in_inline ∧ (_iph = 1) ∧ (iscan_nil ∨ i_hd_is_tlkw))
+    i_collecting ∈ Bool = (in_inline ∧ (_iph = 1) ∧ (¬iscan_nil) ∧ (¬i_hd_is_tlkw))
+    i_xfer ∈ Bool = (in_inline ∧ (_iph = 2) ∧ (¬icoll_nil))
+    i_xfer_done ∈ Bool = (in_inline ∧ (_iph = 2) ∧ icoll_nil)
+
+    iph = (is_first_tick ? 0
+        : (do_ccall ? 0
+        : (i_found ? (i_found_param ? 5 : 1)
+        : (i_pskip_done ? 1
+        : (i_search_fail ? 2
+        : (i_collect_done ? 2
+        : _iph))))))
+    iname = (is_first_tick ? "" : (do_ccall ? cca_name : _iname))
+    isub  = (is_first_tick ? "" : (do_ccall ? cca_table : _isub))
+    iscan = (is_first_tick ? TLNil
+        : (do_ccall ? _fwd
+        : (i_found ? (i_found_param ? is_tl3 : is_tl2)
+        : (i_search_step ? is_tl
+        : (i_pskip ? is_tl
+        : (i_collecting ? is_tl
+        : _iscan))))))
+    icoll = (is_first_tick ? TLNil
+        : (do_ccall ? TLNil
+        : (i_collecting ? TLCons(is_hd, _icoll)
+        : (i_xfer ? icoll_tl
+        : _icoll))))
+    itail = (is_first_tick ? TLNil : (do_ccall ? cca_rest : _itail))
+
+    -- Transfer-time substitution: a body Ident that is a bound slot is
+    -- replaced by its rendered binding (an SMT-LIB atom/expr string —
+    -- AtomSmtlib/AtomTokRenderC pass Ident payloads through verbatim).
+    icoll_hd_name ∈ String = match icoll_hd
+        Ident(s) ⇒ s
+        _ ⇒ ""
+    i_sub_val ∈ String
+    SlotSubst(ss_tab ↦ _isub, ss_name ↦ icoll_hd_name, ss_out ↦ i_sub_val)
+    i_xfer_tok ∈ Token = (((icoll_hd matches Ident(_)) ∧ (i_sub_val ≠ ""))
+        ? Ident(i_sub_val) : icoll_hd)
+
+    claim_done ∈ Bool = (in_claim_run ∧ (¬sel_ok) ∧ (¬do_ccall))
 
     rem = (is_first_tick ? TLNil
         : (enter_claim ? items_d2
+        : (do_ccall ? _rem
+        : (i_collect_done ? _itail
+        : (i_search_fail ? _itail
+        : (i_xfer ? TLCons(i_xfer_tok, _rem)
         : (in_claim_run ∧ sel_ok ? sel_rest
-        : _rem)))
+        : _rem)))))))
 
     out  ∈ String
     _out ∈ String
     out = (is_first_tick ? ""
         : (enter_claim ? ""
-        : (in_claim_run ∧ sel_ok ? (_out = "" ? chunk : _out ++ "\n" ++ chunk)
+        : (in_claim_run ∧ sel_ok ∧ (¬do_ccall) ? (_out = "" ? chunk : _out ++ "\n" ++ chunk)
         : _out)))
 
     fstr  ∈ String
     _fstr ∈ String
     fstr = (is_first_tick ? ""
         : (enter_claim ? ""
-        : (in_claim_run ∧ sel_ok ? (sel_field = "" ? _fstr : (_fstr = "" ? sel_field : _fstr ++ " " ++ sel_field))
+        : (in_claim_run ∧ sel_ok ∧ (¬do_ccall) ? (sel_field = "" ? _fstr : (_fstr = "" ? sel_field : _fstr ++ " " ++ sel_field))
         : _fstr)))
 
     -- max-effects accumulator: the maximum effects-literal length seen across
@@ -829,10 +947,12 @@ claim main
         : (enter_enum ? 1
         : (enter_claim ? 2
         : (enter_skip ? 3
+        : (do_ccall ? 4
+        : (i_xfer_done ? 2
         : (enum_done ? 0
         : (claim_done ? 0
         : (skip_stop ? 0
-        : _pmode))))))))
+        : _pmode))))))))))
 
     -- ══════════════════════════════════════════════════════════════
     -- SAMPLE EMIT (wave 4m): one (push)/(check-sat)/(pop) block per

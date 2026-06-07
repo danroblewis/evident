@@ -1,0 +1,155 @@
+-- compiler/parse_body_call.ev — claim-call composition with `↦` slot
+-- bindings (composition mechanism #5), including EXPRESSION values:
+--
+--   AcceptBool(p ↦ (x > 3), out ↦ result)
+--   AcceptInt(n ↦ (a + b), out ↦ r)
+--   BuildPrintln(s ↦ "hi", eff ↦ eff)
+--
+-- This is the self-hosted port of bootstrap's expr_as_var (commit
+-- c817c6c): a slot's bound value may be an atom (name / literal) or a
+-- compound scalar expression. CallArgsStep parses the call site off the
+-- front of `rem`, renders each value via SPrim2
+-- (compiler/translate_scalar_expr.ev), and returns a substitution table
+-- the driver's pmode-4 inliner applies while splicing the callee's body
+-- tokens into the walk (compiler/sample.ev).
+--
+-- Table format: one `|<slot>#<rendered>;` entry per binding, e.g.
+--   |p#(> x 3);|out#result;
+-- Rendered scalar text never contains `;`, `|<name>#` collisions are
+-- avoided by the `|`/`#` fencing. (A string-literal value containing
+-- `;` would truncate its entry — accepted, the corpus never does.)
+--
+-- Bounded arity: up to THREE bindings (the corpus maximum is two).
+-- A call with more, or with a value SPrim2 can't render (e.g. a
+-- record-literal / ctor argument), reports ok=false so the driver keeps
+-- the previous lone-name fallback for those lines.
+
+import "compiler/lexer.ev"
+import "compiler/parser.ev"
+import "compiler/translate_scalar_expr.ev"
+
+claim CallArgsStep
+    rem ∈ TokenList
+    cname ∈ String
+    table ∈ String
+    rest ∈ TokenList
+    ok ∈ Bool
+
+    -- Head shape: Ident "(" Ident "↦" …
+    ca_t0 ∈ Token
+    TLHdC(l ↦ rem, out ↦ ca_t0)
+    ca_l1 ∈ TokenList
+    TLTlC(l ↦ rem, out ↦ ca_l1)
+    ca_t1 ∈ Token
+    TLHdC(l ↦ ca_l1, out ↦ ca_t1)
+    ca_l2 ∈ TokenList
+    TLTlC(l ↦ ca_l1, out ↦ ca_l2)
+    ca_t2 ∈ Token
+    TLHdC(l ↦ ca_l2, out ↦ ca_t2)
+    ca_l3 ∈ TokenList
+    TLTlC(l ↦ ca_l2, out ↦ ca_l3)
+    ca_t3 ∈ Token
+    TLHdC(l ↦ ca_l3, out ↦ ca_t3)
+    ca_l4 ∈ TokenList
+    TLTlC(l ↦ ca_l3, out ↦ ca_l4)
+
+    ca_head_ok ∈ Bool = ((ca_t0 matches Ident(_)) ∧ (ca_t1 matches LParen)
+        ∧ (ca_t2 matches Ident(_)) ∧ (ca_t3 matches OpMapsto))
+    cname = match ca_t0
+        Ident(s) ⇒ s
+        _ ⇒ ""
+    ca_s1 ∈ String = match ca_t2
+        Ident(s) ⇒ s
+        _ ⇒ ""
+
+    -- Binding 1 value.
+    ca_v1o ∈ String
+    ca_v1r ∈ TokenList
+    ca_v1k ∈ Bool
+    SPrim2(toks ↦ ca_l4, out ↦ ca_v1o, rest ↦ ca_v1r, ok ↦ ca_v1k)
+    ca_d1 ∈ Token
+    TLHdC(l ↦ ca_v1r, out ↦ ca_d1)
+    ca_d1_close ∈ Bool = (ca_d1 matches RParen)
+    ca_d1_comma ∈ Bool = (ca_d1 matches Comma)
+
+    -- Binding 2: `, Ident ↦ value`.
+    ca_b2 ∈ TokenList
+    TLTlC(l ↦ ca_v1r, out ↦ ca_b2)
+    ca_t4 ∈ Token
+    TLHdC(l ↦ ca_b2, out ↦ ca_t4)
+    ca_b2a ∈ TokenList
+    TLTlC(l ↦ ca_b2, out ↦ ca_b2a)
+    ca_t5 ∈ Token
+    TLHdC(l ↦ ca_b2a, out ↦ ca_t5)
+    ca_l6 ∈ TokenList
+    TLTlC(l ↦ ca_b2a, out ↦ ca_l6)
+    ca_h2_ok ∈ Bool = ((ca_t4 matches Ident(_)) ∧ (ca_t5 matches OpMapsto))
+    ca_s2 ∈ String = match ca_t4
+        Ident(s) ⇒ s
+        _ ⇒ ""
+    ca_v2o ∈ String
+    ca_v2r ∈ TokenList
+    ca_v2k ∈ Bool
+    SPrim2(toks ↦ ca_l6, out ↦ ca_v2o, rest ↦ ca_v2r, ok ↦ ca_v2k)
+    ca_d2 ∈ Token
+    TLHdC(l ↦ ca_v2r, out ↦ ca_d2)
+    ca_d2_close ∈ Bool = (ca_d2 matches RParen)
+    ca_d2_comma ∈ Bool = (ca_d2 matches Comma)
+
+    -- Binding 3: `, Ident ↦ value`.
+    ca_b3 ∈ TokenList
+    TLTlC(l ↦ ca_v2r, out ↦ ca_b3)
+    ca_t6 ∈ Token
+    TLHdC(l ↦ ca_b3, out ↦ ca_t6)
+    ca_b3a ∈ TokenList
+    TLTlC(l ↦ ca_b3, out ↦ ca_b3a)
+    ca_t7 ∈ Token
+    TLHdC(l ↦ ca_b3a, out ↦ ca_t7)
+    ca_l8 ∈ TokenList
+    TLTlC(l ↦ ca_b3a, out ↦ ca_l8)
+    ca_h3_ok ∈ Bool = ((ca_t6 matches Ident(_)) ∧ (ca_t7 matches OpMapsto))
+    ca_s3 ∈ String = match ca_t6
+        Ident(s) ⇒ s
+        _ ⇒ ""
+    ca_v3o ∈ String
+    ca_v3r ∈ TokenList
+    ca_v3k ∈ Bool
+    SPrim2(toks ↦ ca_l8, out ↦ ca_v3o, rest ↦ ca_v3r, ok ↦ ca_v3k)
+    ca_d3 ∈ Token
+    TLHdC(l ↦ ca_v3r, out ↦ ca_d3)
+    ca_d3_close ∈ Bool = (ca_d3 matches RParen)
+
+    ok = (ca_head_ok ∧ ca_v1k ∧ (ca_d1_close
+        ∨ (ca_d1_comma ∧ ca_h2_ok ∧ ca_v2k ∧ (ca_d2_close
+        ∨ (ca_d2_comma ∧ ca_h3_ok ∧ ca_v3k ∧ ca_d3_close)))))
+
+    ca_e1 ∈ String = "|" ++ ca_s1 ++ "#" ++ ca_v1o ++ ";"
+    ca_e2 ∈ String = "|" ++ ca_s2 ++ "#" ++ ca_v2o ++ ";"
+    ca_e3 ∈ String = "|" ++ ca_s3 ++ "#" ++ ca_v3o ++ ";"
+    table = (ca_d1_close ? ca_e1
+        : ca_d2_close ? ca_e1 ++ ca_e2
+        : ca_e1 ++ ca_e2 ++ ca_e3)
+
+    ca_after1 ∈ TokenList
+    TLTlC(l ↦ ca_v1r, out ↦ ca_after1)
+    ca_after2 ∈ TokenList
+    TLTlC(l ↦ ca_v2r, out ↦ ca_after2)
+    ca_after3 ∈ TokenList
+    TLTlC(l ↦ ca_v3r, out ↦ ca_after3)
+    rest = (ca_d1_close ? ca_after1
+        : ca_d2_close ? ca_after2
+        : ca_after3)
+
+-- ── SlotSubst: substitution-table lookup ───────────────────────────────
+-- Returns the rendered text bound to `ss_name`, or "" when the name is
+-- not a bound slot (the inliner then keeps the original token).
+claim SlotSubst
+    ss_tab ∈ String
+    ss_name ∈ String
+    ss_out ∈ String
+    ss_key ∈ String = "|" ++ ss_name ++ "#"
+    ss_kpos ∈ Int = index_of(ss_tab, ss_key, 0)
+    ss_found ∈ Bool = (ss_kpos ≥ 0)
+    ss_vstart ∈ Int = ss_kpos + #ss_key
+    ss_semi ∈ Int = index_of(ss_tab, ";", ss_vstart)
+    ss_out = (ss_found ? substr(ss_tab, ss_vstart, ss_semi - ss_vstart) : "")
