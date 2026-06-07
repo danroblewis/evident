@@ -1,0 +1,10 @@
+-- Probe: negated-guard implication (`(¬flag) ⇒ (n = 11)`).
+
+import "stdlib/kernel.ev"
+
+claim main
+    n ∈ Int
+    flag ∈ Bool
+    (¬flag) ⇒ (n = 11)
+    sentinel ∈ Int = 42
+    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

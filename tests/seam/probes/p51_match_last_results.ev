@@ -1,0 +1,13 @@
+-- Probe: compiler.ev's own input idiom — match on last_results[0]
+-- with a payload binding (`StringResult(s) ⇒ s`). Combines two shapes
+-- broken in isolation (seq-index scrutinee p44, payload var p34);
+-- probing the exact source idiom in case the fossil special-cases it.
+
+import "stdlib/kernel.ev"
+
+claim main
+    path_read ∈ String = match last_results[0]
+        StringResult(s) ⇒ s
+        _ ⇒ ""
+    sentinel ∈ Int = 42
+    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

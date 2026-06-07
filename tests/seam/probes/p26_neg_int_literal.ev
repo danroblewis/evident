@@ -1,0 +1,8 @@
+-- Probe: negative integer literal pin (`x ∈ Int = -7`).
+
+import "stdlib/kernel.ev"
+
+claim main
+    x ∈ Int = -7
+    sentinel ∈ Int = 42
+    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

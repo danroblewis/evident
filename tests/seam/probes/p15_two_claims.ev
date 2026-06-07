@@ -1,0 +1,14 @@
+-- Probe: multi-claim file — an extra INDEPENDENT claim before main.
+-- Checks claim selection ignores the unused claim cleanly.
+-- expect-smt2: main's body only; no `z = 99`; sentinel survives.
+
+import "stdlib/kernel.ev"
+
+claim Unused
+    z ∈ Int
+    z = 99
+
+claim main
+    x ∈ Int = 7
+    sentinel ∈ Int = 42
+    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

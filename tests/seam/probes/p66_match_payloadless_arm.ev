@@ -1,0 +1,12 @@
+-- Probe: match arm with a PAYLOADLESS variant pattern (`EofResult ⇒`)
+-- on a stdlib enum — p61's drop suspect (p46/p49 used `IntResult(_)`).
+
+import "stdlib/kernel.ev"
+
+claim main
+    e ∈ Result = EofResult
+    n ∈ Int = match e
+        EofResult ⇒ 1
+        _ ⇒ 0
+    sentinel ∈ Int = 42
+    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

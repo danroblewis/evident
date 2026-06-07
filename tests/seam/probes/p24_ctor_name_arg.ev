@@ -1,0 +1,8 @@
+-- Probe: ctor argument that is a NAME, not a literal (`Exit(code)`).
+
+import "stdlib/kernel.ev"
+
+claim main
+    code ∈ Int = 0
+    sentinel ∈ Int = 42
+    effects ∈ Seq(Effect) = ⟨Exit(code)⟩

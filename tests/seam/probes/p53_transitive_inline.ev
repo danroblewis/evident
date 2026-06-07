@@ -1,0 +1,22 @@
+-- Probe: TRANSITIVE bare-name inlining — main inlines A, A's body
+-- inlines B. Determines whether compiler2 can decompose into nested
+-- parameterless claims or only one level deep.
+
+import "stdlib/kernel.ev"
+
+claim SetsBase
+    b ∈ Int
+    b = 5
+
+claim SetsDerived
+    b ∈ Int
+    n ∈ Int
+    SetsBase
+    n = 11
+
+claim main
+    b ∈ Int
+    n ∈ Int
+    SetsDerived
+    sentinel ∈ Int = 42
+    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

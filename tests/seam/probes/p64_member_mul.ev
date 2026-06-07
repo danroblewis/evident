@@ -1,0 +1,9 @@
+-- Probe: single `*` binop in a membership pin.
+
+import "stdlib/kernel.ev"
+
+claim main
+    a ∈ Int = 9
+    m ∈ Int = a * 2
+    sentinel ∈ Int = 42
+    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

@@ -1,0 +1,12 @@
+-- Probe: match RHS in a membership pin — compiler.ev's own idiom
+-- (`lone_name ∈ String = match r_t0 …`).
+
+import "stdlib/kernel.ev"
+
+claim main
+    e ∈ Result = IntResult(7)
+    n ∈ Int = match e
+        IntResult(v) ⇒ v
+        _ ⇒ 0
+    sentinel ∈ Int = 42
+    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

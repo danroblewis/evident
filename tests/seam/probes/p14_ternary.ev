@@ -1,0 +1,11 @@
+-- Probe: ternary expression in an assignment.
+-- expect-smt2: (= y (ite (> x 3) 1 0))-style.
+
+import "stdlib/kernel.ev"
+
+claim main
+    x ∈ Int = 5
+    y ∈ Int
+    y = (x > 3 ? 1 : 0)
+    sentinel ∈ Int = 42
+    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

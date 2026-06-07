@@ -1,0 +1,9 @@
+-- Probe: `#s` string length in a membership pin (`n ∈ Int = #s`).
+
+import "stdlib/kernel.ev"
+
+claim main
+    s ∈ String = "ab"
+    n ∈ Int = #s
+    sentinel ∈ Int = 42
+    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

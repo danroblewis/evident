@@ -1,0 +1,9 @@
+-- Probe: nested parenthesized arithmetic in a membership pin.
+
+import "stdlib/kernel.ev"
+
+claim main
+    x ∈ Int = 7
+    y ∈ Int = ((x + 1) * 2)
+    sentinel ∈ Int = 42
+    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

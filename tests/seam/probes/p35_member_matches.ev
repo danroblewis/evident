@@ -1,0 +1,10 @@
+-- Probe: `matches` RHS in a Bool membership pin — compiler.ev's idiom
+-- (`r_t0_is_name ∈ Bool = (r_t0 matches Ident(_))`).
+
+import "stdlib/kernel.ev"
+
+claim main
+    e ∈ Result = IntResult(7)
+    ok ∈ Bool = (e matches IntResult(_))
+    sentinel ∈ Int = 42
+    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

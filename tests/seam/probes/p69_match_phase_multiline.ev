@@ -1,0 +1,18 @@
+-- Probe: p67 retry with the MULTI-LINE enum form (stdlib's form) —
+-- p67's inline `Run2(Int) | Halt2(Int)` shredded the enum parser.
+
+import "stdlib/kernel.ev"
+
+enum Phase3 =
+    Run3(Int)
+    Halt3(Int)
+
+claim main
+    e_halt ∈ Effect = Exit(0)
+    e_run ∈ Effect = ReadLine
+    ph ∈ Phase3 = Halt3(1)
+    e0 ∈ Effect = match ph
+        Halt3(_) ⇒ e_halt
+        _ ⇒ e_run
+    effects ∈ Seq(Effect) = ⟨e0⟩
+    sentinel ∈ Int = 42

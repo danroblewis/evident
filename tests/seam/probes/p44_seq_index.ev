@@ -1,0 +1,9 @@
+-- Probe: Seq indexing in a membership pin (`y ∈ Int = xs[0]`).
+
+import "stdlib/kernel.ev"
+
+claim main
+    xs ∈ Seq(Int) = ⟨5, 6⟩
+    y ∈ Int = xs[0]
+    sentinel ∈ Int = 42
+    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

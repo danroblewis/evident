@@ -1,0 +1,9 @@
+-- Probe: Bool literal pin in chained membership (`flag ∈ Bool = true`).
+-- Round-1 p06 showed `(assert (= flag ))` — isolating here.
+
+import "stdlib/kernel.ev"
+
+claim main
+    flag ∈ Bool = true
+    sentinel ∈ Int = 42
+    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

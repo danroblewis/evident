@@ -1,0 +1,13 @@
+-- Probe: match whose arms are NAMES declared elsewhere (no payload vars).
+
+import "stdlib/kernel.ev"
+
+claim main
+    a ∈ Int = 5
+    b ∈ Int = 9
+    e ∈ Result = IntResult(7)
+    n ∈ Int = match e
+        IntResult(_) ⇒ a
+        _ ⇒ b
+    sentinel ∈ Int = 42
+    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

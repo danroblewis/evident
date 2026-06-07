@@ -1,0 +1,8 @@
+-- Probe: empty Seq literal (`⟨⟩`) — the "no effects this tick" shape.
+
+import "stdlib/kernel.ev"
+
+claim main
+    xs ∈ Seq(Int) = ⟨⟩
+    sentinel ∈ Int = 42
+    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

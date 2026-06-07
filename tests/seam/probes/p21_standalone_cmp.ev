@@ -1,0 +1,10 @@
+-- Probe: standalone comparison constraints on their own lines.
+
+import "stdlib/kernel.ev"
+
+claim main
+    x ∈ Int
+    x < 10
+    x > 0
+    sentinel ∈ Int = 42
+    effects ∈ Seq(Effect) = ⟨Exit(0)⟩
