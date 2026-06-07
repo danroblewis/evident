@@ -1,0 +1,10 @@
+-- Probe: ternary RHS in a MEMBERSHIP pin (`y ∈ Int = (x > 3 ? 1 : 0)`)
+-- vs round-1 p14's broken bare-assert ternary.
+
+import "stdlib/kernel.ev"
+
+claim main
+    x ∈ Int = 7
+    y ∈ Int = (x > 3 ? 1 : 0)
+    sentinel ∈ Int = 42
+    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

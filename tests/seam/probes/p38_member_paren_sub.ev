@@ -1,0 +1,8 @@
+-- Probe: negative value via subtraction in membership pin (`x ∈ Int = (0 - 7)`).
+
+import "stdlib/kernel.ev"
+
+claim main
+    x ∈ Int = (0 - 7)
+    sentinel ∈ Int = 42
+    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

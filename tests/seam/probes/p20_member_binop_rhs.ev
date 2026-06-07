@@ -1,0 +1,10 @@
+-- Probe: binop RHS inside a chained-membership pin (`y ∈ Int = x + 1`)
+-- vs round-1 p00's bare `y = x + 1` which truncated to `(= y x)`.
+
+import "stdlib/kernel.ev"
+
+claim main
+    x ∈ Int = 7
+    y ∈ Int = x + 1
+    sentinel ∈ Int = 42
+    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

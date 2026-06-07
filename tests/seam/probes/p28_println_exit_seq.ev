@@ -1,0 +1,9 @@
+-- Probe: nested-ctor effects literal — print then exit.
+-- The shape compiler2 needs to EMIT its output:
+-- ⟨LibCall("libc", "puts", ⟨ArgStr("hi")⟩), Exit(0)⟩
+
+import "stdlib/kernel.ev"
+
+claim main
+    effects ∈ Seq(Effect) = ⟨LibCall("libc", "puts", ⟨ArgStr("hi")⟩), Exit(0)⟩
+    sentinel ∈ Int = 42

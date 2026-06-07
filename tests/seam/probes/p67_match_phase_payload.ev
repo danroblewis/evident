@@ -1,0 +1,16 @@
+-- Probe: p61's conditional-effect recipe with PARENTHESIZED patterns —
+-- phase variants carry a dummy Int payload so every arm is `Name(_)`.
+
+import "stdlib/kernel.ev"
+
+enum Phase2 = Run2(Int) | Halt2(Int)
+
+claim main
+    e_halt ∈ Effect = Exit(0)
+    e_run ∈ Effect = ReadLine
+    ph ∈ Phase2 = Halt2(1)
+    e0 ∈ Effect = match ph
+        Halt2(_) ⇒ e_halt
+        _ ⇒ e_run
+    effects ∈ Seq(Effect) = ⟨e0⟩
+    sentinel ∈ Int = 42

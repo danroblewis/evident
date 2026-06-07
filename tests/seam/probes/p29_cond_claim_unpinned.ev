@@ -1,0 +1,15 @@
+-- Probe: `cond ⇒ ClaimName` retry with UNPINNED flag — round-1 p06
+-- was confounded by `flag ∈ Bool = true` failing first.
+
+import "stdlib/kernel.ev"
+
+claim IsEleven
+    n ∈ Int
+    n = 11
+
+claim main
+    n ∈ Int
+    flag ∈ Bool
+    flag ⇒ IsEleven
+    sentinel ∈ Int = 42
+    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

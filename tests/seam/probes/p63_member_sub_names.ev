@@ -1,0 +1,10 @@
+-- Probe: single `-` binop with name·name operands in a membership pin.
+
+import "stdlib/kernel.ev"
+
+claim main
+    a ∈ Int = 9
+    b ∈ Int = 4
+    d ∈ Int = a - b
+    sentinel ∈ Int = 42
+    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

@@ -1,0 +1,10 @@
+-- Probe: `#xs` on a Seq in a membership pin (p43 showed `#s` on a
+-- String emits an undeclared `s__len`; Seqs DO have __len companions).
+
+import "stdlib/kernel.ev"
+
+claim main
+    xs ∈ Seq(Int) = ⟨1, 2⟩
+    n ∈ Int = #xs
+    sentinel ∈ Int = 42
+    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

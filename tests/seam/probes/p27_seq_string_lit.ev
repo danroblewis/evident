@@ -1,0 +1,8 @@
+-- Probe: Seq(String) literal (`⟨"a", "b"⟩`).
+
+import "stdlib/kernel.ev"
+
+claim main
+    names ∈ Seq(String) = ⟨"a", "b"⟩
+    sentinel ∈ Int = 42
+    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

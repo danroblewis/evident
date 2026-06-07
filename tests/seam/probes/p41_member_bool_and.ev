@@ -1,0 +1,10 @@
+-- Probe: conjunction of comparisons in a Bool membership pin —
+-- compiler.ev's discriminator idiom (`ok ∈ Bool = ((x > 0) ∧ (x < 10))`).
+
+import "stdlib/kernel.ev"
+
+claim main
+    x ∈ Int = 7
+    ok ∈ Bool = ((x > 0) ∧ (x < 10))
+    sentinel ∈ Int = 42
+    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

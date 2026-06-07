@@ -1,0 +1,17 @@
+-- Probe: the conditional-exit recipe — match over an enum selecting
+-- between Effect-typed NAMES (p49's working shape, Effect-sorted),
+-- routed into effects via a name element (p59's working shape).
+
+import "stdlib/kernel.ev"
+
+enum Phase = Run | Halt
+
+claim main
+    e_halt ∈ Effect = Exit(0)
+    e_run ∈ Effect = ReadLine
+    ph ∈ Phase = Halt
+    e0 ∈ Effect = match ph
+        Halt ⇒ e_halt
+        _ ⇒ e_run
+    effects ∈ Seq(Effect) = ⟨e0⟩
+    sentinel ∈ Int = 42

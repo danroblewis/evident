@@ -1,0 +1,10 @@
+-- Probe: auto-named payload accessor as a call (`IntResult__f0(e)`),
+-- the alternative to match payload binding (broken, p34).
+
+import "stdlib/kernel.ev"
+
+claim main
+    e ∈ Result = IntResult(7)
+    n ∈ Int = IntResult__f0(e)
+    sentinel ∈ Int = 42
+    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

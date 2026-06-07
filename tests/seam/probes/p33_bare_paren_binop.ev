@@ -1,0 +1,11 @@
+-- Probe: bare assert with PARENTHESIZED binop RHS (`y = (x + 1)`)
+-- vs round-1 p00's unparenthesized `y = x + 1` which truncated.
+
+import "stdlib/kernel.ev"
+
+claim main
+    x ∈ Int = 7
+    y ∈ Int
+    y = (x + 1)
+    sentinel ∈ Int = 42
+    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

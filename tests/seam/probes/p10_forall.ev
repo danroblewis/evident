@@ -1,0 +1,10 @@
+-- Probe: `∀ x ∈ seq : body` element iteration.
+-- expect-smt2: per-element (> … 0) constraints (unrolled or quantified).
+
+import "stdlib/kernel.ev"
+
+claim main
+    xs ∈ Seq(Int) = ⟨1, 2, 3⟩
+    ∀ x ∈ xs : x > 0
+    sentinel ∈ Int = 42
+    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

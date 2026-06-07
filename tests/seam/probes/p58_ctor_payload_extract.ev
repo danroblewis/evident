@@ -1,0 +1,12 @@
+-- Probe: payload extraction via ctor equation (`e = StringResult(s0)`)
+-- — sound when the variant is known; the workaround for broken match
+-- payload bindings (p34) if it compiles.
+
+import "stdlib/kernel.ev"
+
+claim main
+    e ∈ Result = StringResult("hi")
+    s0 ∈ String
+    e = StringResult(s0)
+    sentinel ∈ Int = 42
+    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

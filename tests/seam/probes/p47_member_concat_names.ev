@@ -1,0 +1,11 @@
+-- Probe: String `++` with NAME operands in a membership pin
+-- (p42's `s ++ "c"` dropped the string-literal operand).
+
+import "stdlib/kernel.ev"
+
+claim main
+    s ∈ String = "ab"
+    u ∈ String = "c"
+    t ∈ String = s ++ u
+    sentinel ∈ Int = 42
+    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

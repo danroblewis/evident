@@ -1,0 +1,9 @@
+-- Probe: Bool literal via separate bare assert (`flag = true`).
+
+import "stdlib/kernel.ev"
+
+claim main
+    flag ∈ Bool
+    flag = true
+    sentinel ∈ Int = 42
+    effects ∈ Seq(Effect) = ⟨Exit(0)⟩
