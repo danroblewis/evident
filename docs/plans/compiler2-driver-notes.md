@@ -451,6 +451,8 @@ the canonical AST and exits 0; lex_fti_fixture exits 0 unchanged.
 - The "faithfully-carried fossil quirks" list in
   docs/plans/fti-lexer-notes.md applies unchanged (digit-bearing
   idents, no string escapes, no FloatLit — the 021 descope).
+  [UPDATE: digit-bearing idents + string escapes FIXED in the
+  A1/A2 wave below; FloatLit remains the 021 descope.]
 
 ## P3e — user enums + the full Effect floor (landed 2026-06-07)
 
@@ -621,6 +623,106 @@ cost and LEX still dominate, as in P3d).
 - User enums must precede the target claim in the flattened
   source (the walk needs the harvested sort/values; true for the
   corpus — stdlib precedes user code, enums precede claims).
+
+## A1 + A2 — lexer correctness: digit-bearing idents + string escapes
+## (gap census phase A, landed 2026-06-07)
+
+The two census items gating the whole sample.ev corpus (A1: 2,159
+digit-bearing ident occurrences; A2: 100 escape occurrences). Both
+land in the HOST per-char scanner (driver.ev LEX section + the
+lex_fti_fixture mirror); LexFtiPlan and the token encoding are
+unchanged, so the classifier/parser saw no token-shape change.
+
+Oracle behavior (probed against /usr/local/bin/evident-oracle AND
+read from the pinned legacy lexer, c218dca^
+bootstrap/runtime/src/lexer.rs):
+
+1. **Ident class**: `is_ident_start` = ASCII alpha + `_`;
+   `is_ident_continue` = ASCII alnum + `_`. So `t0`, `r_l1`,
+   `cs_t2` are single Idents (runtime-confirmed: `t0 = 5,
+   r_l1 = t0 + 1, cs_t2 = r_l1 + t0` samples to 5/6/11).
+2. **`10x`**: the digit branch is matched before the ident branch
+   and only consumes digits → **IntLit(10) + Ident("x")**, NOT a
+   lex error (runtime-confirmed: `= 10x` produces the same parse
+   error as `= 10 x`; `x10` is a single unbound Ident).
+3. **Escapes**: exactly four — `\"` `\\` `\n` `\t` — each storing
+   the TRANSLATED byte in the Str payload (runtime-confirmed:
+   `#"a\tb" = 3` is sat). Any other escape is a LEX ERROR
+   (`unknown escape \q`), and unterminated strings/escapes are lex
+   errors. compiler/lexer.ev's EscapeChar table (lexer.ev:280)
+   matches the four.
+
+Scanner changes (mirrored in driver.ev + lex_fti_fixture.ev):
+
+- A1: `is_alnum = is_alpha ∨ is_dig`; `str_continuing`/
+  `str_finishing` test is_alnum (digits extend a collecting ident);
+  `int_starting` gains `¬was_collecting_str` (a digit inside an
+  ident never starts an int); `finish_int_only` gains an `is_alpha`
+  arm (an int finishing at an alpha char pushes the IntLit — kind 2
+  — and the ident starts the SAME tick, giving the oracle's
+  `10x` → IntLit(10) + Ident("x") split). The negative fold is
+  untouched: `t0 ∈ Int = -3` still folds (last=Minus, prev=Eq not
+  atom-shaped) and `t0 - 3` stays binary (prev=Ident is atom).
+- A2: a strlit gains an escape-pending mode: `esc_pend ∈ Bool`
+  (one new Bool of Z3 state), armed by `\` (IsBackslash) when not
+  already pending — that tick appends nothing — and consumed by the
+  next char, which appends `EscapeChar(c)` (the translated byte) to
+  partial_strlit. `strlit_closing` requires `¬_esc_pend`, so `\"`
+  stays inside the literal; `\\` appends one backslash and disarms
+  (the second `\` is the escaped char, not a new lead-in). Unknown
+  escapes pass the char through — the driver has no lex-error
+  channel (divergence from the oracle's hard error; the corpus
+  only carries the four).
+- The strdup-pending invariant ("two string-carrying tokens never
+  finish on consecutive ticks") survives both: a kind-3/5 tick
+  always resets/empties the collectors, so the next tick can only
+  be kind 0/1 — pend flushes exactly as before.
+
+Fixture: tests/kernel/compiler2/lex_fti_fixture.ev extended from
+41 → 69 tokens (+ sentinel = 70 walked entries): `t0 ∈ Int = -3`
+(fold interaction), `r_l1 = t0 + cs_t2`, `z = 10x` (the two-token
+split), and all four escapes as StringLit payloads (`"a\tb"`,
+`"c\nd"`, `"q\"r"`, `"s\\u"` — expectation strings carry the REAL
+bytes via the fixture source's own escapes). Mismatch exit codes
+unified to 100+k (the old 150+k/200+k bands collide past k=50).
+Verified: oracle emit + kernel run exit 0; negative controls fire
+exactly (k=59 tag 3→9 → exit 159; k=62 payload `c\nd`→`c\nX` →
+exit 162).
+
+Acceptance (run 2026-06-07, oracle-built driver, all parallel —
+the full 26-fixture regression: the 22 P3d rows + 043, 044, 002,
+005; every row BOTH checks: smt2-contains + kernel run of the
+emitted unit vs expected exit/stdout):
+
+| fixture | exit got/want | | fixture | exit got/want |
+|---|---|---|---|---|
+| 002-string-literal-print | 0/0 ✓ | | 028-chained-comparison | 0/0 ✓ |
+| 004-comparison-ternary | 1/1 ✓ | | 029-chained-comparison-unsat | 2/2 ✓ |
+| 005-string-concat | 0/0 ✓ | | 030-logic-and | 0/0 ✓ |
+| 008-boolean-and | 1/1 ✓ | | 031-logic-or | 0/0 ✓ |
+| 017-nat-membership | 0/0 ✓ | | 032-logic-not | 0/0 ✓ |
+| 018-int-membership-negative | 0/0 ✓ | | 033-implies | 0/0 ✓ |
+| 020-bool-membership | 0/0 ✓ | | 034-implies-vacuous | 0/0 ✓ |
+| 022-inequality | 0/0 ✓ | | 036-implies-block | 0/0 ✓ |
+| 023-less-than | 0/0 ✓ | | 037-nested-implies-block | 0/0 ✓ |
+| 024-greater-than | 0/0 ✓ | | 043-enum-declaration | 0/0 ✓ |
+| 025-lte-gte | 0/0 ✓ | | 044-enum-constraint | 0/0 ✓ |
+| 026-arithmetic-add | 0/0 ✓ | | 053-bool-as-constraint | 0/0 ✓ |
+| 027-arithmetic-unsat | 2/2 ✓ | | 054-not-bool-as-constraint | 0/0 ✓ |
+
+Negative control re-verified on the new driver artifact:
+nonexistent claim → manifest + textual prelude only, no user
+asserts (1 floor assert, no `(+ `), driver exit 0. pratt_fixture
+re-verified (imports driver.ev): canonical AST printed, exit 0.
+
+End-to-end A1+A2 smoke through the FULL driver (beyond the lex
+fixture): a source with `t0 ∈ Int = 5`, `r_l1 ∈ Int = t0 + 1` and
+`msg ∈ String = "a\tb" ++ "\n" ++ "q\"r" ++ "s\\u"` piped through
+driver.smt2 → emitted unit carries `(= t0 5)`,
+`(= r_l1 (+ t0 1))`, manifest `t0:Int r_l1:Int ok:Bool msg:String`;
+unit run exit 0 with stdout bytes exactly
+`a TAB b NL q " r s \ u NL` — the translated escape bytes survive
+lexer → mk_string → serialization → kernel puts.
 
 ## Next steps
 
