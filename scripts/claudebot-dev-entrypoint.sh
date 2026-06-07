@@ -3,6 +3,12 @@
 # announce the tunnel URL to the Discord channel, then exec the real command
 # (claude). The announce flow runs in the background so claude starts
 # immediately even if the tunnel is slow or fails.
+
+# Frozen bootstrap oracle (policy + sunset clause: scripts/build-oracle.sh
+# header). Built from pinned git history on first boot; the cwd is the
+# project root (docker -w), where the script lives.
+{ [ -x /usr/local/bin/evident-oracle ] || ./scripts/build-oracle.sh || true; } >/tmp/oracle-build.log 2>&1 &
+
 {
     MD_URL="http://127.0.0.1:8085"
     # serve the project directory (docker -w puts us there); flags go first
