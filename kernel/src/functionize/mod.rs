@@ -82,6 +82,15 @@ pub struct Program {
     /// Number of scalar steps the JIT compiled vs interpreted (reporting).
     pub jit_count: usize,
     pub interp_count: usize,
+    /// Tick-0 values of the `_<name>` state carries, read from the verify
+    /// solve's Z3 model. On tick 0 the carries are unconstrained by pins but
+    /// mentioned in the body, so Z3 assigns them deterministic default-ish
+    /// values (e.g. TLNil for an unconstrained TokenList) — and unguarded
+    /// body equations (`items_nil = is-TLNil(_items)`) OBSERVE those values.
+    /// Seeding the eval env with the same values keeps the fast path
+    /// bit-identical to the Z3 path on tick 0. Empty when verify is skipped
+    /// (falls back to type sentinels).
+    pub tick0_carries: HashMap<String, Sv>,
     /// inc_ref'd simplified formulas; keeps every sub-AST in `steps` alive for
     /// the program's (process) lifetime. Never dec_ref'd — the kernel is a
     /// short-lived process.
@@ -326,6 +335,37 @@ pub(crate) unsafe fn app_decl_name(ctx: Z3_context, a: Z3_ast) -> Option<String>
     }
     let decl = Z3_get_app_decl(ctx, app);
     Some(tick::decode_sym_pub(ctx, Z3_get_decl_name(ctx, decl)))
+}
+
+/// The constructor name a datatype recognizer tests for. Z3 renders the
+/// parametric recognizer `(_ is C)` with decl NAME "is" and the constructor
+/// decl as the first decl PARAMETER (z3 ≥ ~4.12; older builds and the
+/// standalone recognizer form spell the name "is-C" / "is_C"). Prefer the
+/// parameter; fall back to stripping the name prefix.
+pub(crate) unsafe fn recognizer_target(ctx: Z3_context, a: Z3_ast) -> Option<String> {
+    if Z3_get_ast_kind(ctx, a) != AstKind::App {
+        return None;
+    }
+    let app = Z3_to_app(ctx, a);
+    if app.is_null() {
+        return None;
+    }
+    let decl = Z3_get_app_decl(ctx, app);
+    if Z3_get_decl_num_parameters(ctx, decl) >= 1
+        && Z3_get_decl_parameter_kind(ctx, decl, 0) == ParameterKind::FuncDecl
+    {
+        let ctor = Z3_get_decl_func_decl_parameter(ctx, decl, 0);
+        if !ctor.is_null() {
+            return Some(tick::decode_sym_pub(ctx, Z3_get_decl_name(ctx, ctor)));
+        }
+    }
+    let name = tick::decode_sym_pub(ctx, Z3_get_decl_name(ctx, decl));
+    Some(
+        name.strip_prefix("is-")
+            .or_else(|| name.strip_prefix("is_"))
+            .unwrap_or(&name)
+            .to_string(),
+    )
 }
 
 pub(crate) unsafe fn children(ctx: Z3_context, a: Z3_ast) -> Vec<Z3_ast> {
@@ -684,7 +724,78 @@ unsafe fn classify_guarded(
         raw.guarded.entry(arr).or_default().push(Branch { guard, neg, body: GBody::Seq(elems) });
         return true;
     }
+    // `Q = (and Q1 … Qn)` where the Qi are themselves guarded shapes —
+    // Z3's simplifier renders else-if chains this way, e.g. compiler.smt2's
+    // effects writer: `(or is_first_tick (and (or _got_path B1)
+    // (or (not _got_path) (and (or (not emit_now) B2) (or emit_now B3)))))`.
+    // Recurse with guards compounded conjunctively down the tree.
+    // Transactional: ALL conjuncts must classify, else roll back — a partial
+    // capture would mark the assertion handled while silently dropping the
+    // unrecognized conjuncts' constraints.
+    if decl_kind(ctx, conseq) == Some(DeclKind::AND) {
+        let snapshot = raw.guarded.clone();
+        let mut all = true;
+        for c in children(ctx, conseq) {
+            let ok = 'child: {
+                let Some(dk) = decl_kind(ctx, c) else { break 'child false };
+                let cch = children(ctx, c);
+                if dk == DeclKind::IMPLIES && cch.len() == 2 {
+                    let g = conj_guard(ctx, guard, neg, cch[0], false);
+                    break 'child classify_guarded(ctx, cch[1], g, false, outputs, raw);
+                }
+                if dk == DeclKind::OR && cch.len() == 2 {
+                    let g1 = conj_guard(ctx, guard, neg, cch[0], true);
+                    if classify_guarded(ctx, cch[1], g1, false, outputs, raw) {
+                        break 'child true;
+                    }
+                    let g2 = conj_guard(ctx, guard, neg, cch[1], true);
+                    break 'child classify_guarded(ctx, cch[0], g2, false, outputs, raw);
+                }
+                // Plain conjunct (equality / seq-and / deeper and): same guard.
+                classify_guarded(ctx, c, guard, neg, outputs, raw)
+            };
+            if !ok {
+                all = false;
+                break;
+            }
+        }
+        if all {
+            return true;
+        }
+        raw.guarded = snapshot;
+    }
     false
+}
+
+/// Conjunction of an outer guard (with its neg flag) and an inner condition
+/// (negated when it came from an `(or X B)` shape). The built ASTs are
+/// inc_ref'd and intentionally leaked — Program ASTs live for the process
+/// lifetime anyway (see `Program::_keepalive`).
+unsafe fn conj_guard(
+    ctx: Z3_context,
+    outer: Z3_ast,
+    outer_neg: bool,
+    inner: Z3_ast,
+    inner_neg: bool,
+) -> Z3_ast {
+    let o = if outer_neg {
+        let n = Z3_mk_not(ctx, outer);
+        Z3_inc_ref(ctx, n);
+        n
+    } else {
+        outer
+    };
+    let i = if inner_neg {
+        let n = Z3_mk_not(ctx, inner);
+        Z3_inc_ref(ctx, n);
+        n
+    } else {
+        inner
+    };
+    let args = [o, i];
+    let r = Z3_mk_and(ctx, 2, args.as_ptr());
+    Z3_inc_ref(ctx, r);
+    r
 }
 
 /// Assemble a single var's body from the raw partition, or `None` if `var` has
@@ -760,6 +871,27 @@ unsafe fn extract_program(
                     raw.scalar.insert(name, neg);
                     captured = true;
                     break;
+                }
+            }
+            // Intermediates: the flip-flop cycle the OUTPUT-only rule guards
+            // against needs bare consts on BOTH sides (`(not (= a b))` with
+            // a,b vars — either orientation is a valid def and capturing one
+            // here while another assertion captures the reverse creates a
+            // 2-var cycle). When exactly ONE side is a const, the shape is
+            // `var = (not <compound>)` and the orientation is unambiguous —
+            // capture it like any scalar def. compiler.smt2's bool
+            // intermediates (`lt_use_cons = (not (= hint ""))`) need this:
+            // dropping them left output steps referencing names with no env
+            // entry (run-time "missing env entry" refusal).
+            if !captured && is_uninterp_const(ctx, bv1) != is_uninterp_const(ctx, bv2) {
+                for (bv, neg) in [(bv1, neg1), (bv2, neg2)] {
+                    if !is_uninterp_const(ctx, bv) { continue; }
+                    let Some(name) = ast_app_name(ctx, bv) else { continue };
+                    if !raw.scalar.contains_key(&name) && !mentions_name(ctx, neg, &name) {
+                        raw.scalar.insert(name, neg);
+                        captured = true;
+                        break;
+                    }
                 }
             }
             if captured { continue; }
@@ -1079,7 +1211,11 @@ pub unsafe fn functionize(
 
     let mut keepalive = simplified;
     keepalive.shrink_to_fit();
-    let prog = Program { steps, predicates, jit_count, interp_count, _keepalive: keepalive };
+    let mut prog = Program {
+        steps, predicates, jit_count, interp_count,
+        tick0_carries: HashMap::new(),
+        _keepalive: keepalive,
+    };
 
     // ── Verify on tick 0 and tick 1 against a real Z3 solve. ──
     // Set EVIDENT_FUNCTIONIZE_SKIP_VERIFY=1 to bypass entirely (debug only,
@@ -1089,20 +1225,22 @@ pub unsafe fn functionize(
         let Ok(Some(z3_0)) = tick::solve_tick_sv(ctx, body, decl_preamble, manifest, true, &empty_prev) else {
             refuse!("verify: tick-0 Z3 solve failed");
         };
-        let Some(mine_0) = run_program(ctx, &prog, &build_inputs(true, &empty_prev, manifest)) else {
+        // Seed the eval with the carry values Z3 chose (see Program doc).
+        prog.tick0_carries = z3_0.2.clone();
+        let Some(mine_0) = run_program(ctx, &prog, &build_inputs(true, &empty_prev, manifest, Some(&prog.tick0_carries))) else {
             refuse!("verify: tick-0 eval refused (unsupported op)");
         };
-        if !outputs_match(manifest, &z3_0, &mine_0) {
+        if !outputs_match(manifest, &(z3_0.0.clone(), z3_0.1.clone()), &mine_0) {
             refuse!("verify: tick-0 mismatch vs Z3");
         }
         let prev1: Vec<Option<Sv>> = z3_0.0.iter().cloned().map(Some).collect();
         let Ok(Some(z3_1)) = tick::solve_tick_sv(ctx, body, decl_preamble, manifest, false, &prev1) else {
             refuse!("verify: tick-1 Z3 solve failed");
         };
-        let Some(mine_1) = run_program(ctx, &prog, &build_inputs(false, &prev1, manifest)) else {
+        let Some(mine_1) = run_program(ctx, &prog, &build_inputs(false, &prev1, manifest, None)) else {
             refuse!("verify: tick-1 eval refused (unsupported op)");
         };
-        if !outputs_match(manifest, &z3_1, &mine_1) {
+        if !outputs_match(manifest, &(z3_1.0.clone(), z3_1.1.clone()), &mine_1) {
             refuse!("verify: tick-1 mismatch vs Z3");
         }
     }
@@ -1121,8 +1259,42 @@ pub unsafe fn functionize(
     (Some(prog), stats)
 }
 
+/// `build_inputs` + the previous tick's effect results (as decoded
+/// `Sv::Datatype` Result values: IntResult/StringResult/…). Overwrites the
+/// empty-seed `last_results` entries `build_inputs` installs. The Z3 path
+/// pins exactly these values per tick; without them, FSMs that read
+/// `last_results` (compiler.smt2 receives its ReadLine/ReadFile inputs that
+/// way) silently see empty results on the fast path.
+pub fn build_inputs_with_results(
+    is_first: bool,
+    prev_state: &[Option<Sv>],
+    manifest: &Manifest,
+    tick0_carries: Option<&HashMap<String, Sv>>,
+    results: &[Sv],
+) -> HashMap<String, Sv> {
+    let mut env = build_inputs(is_first, prev_state, manifest, tick0_carries);
+    if !results.is_empty() {
+        env.insert("last_results__len".to_string(), Sv::Int(results.len() as i64));
+        let no_result = Sv::Datatype("NoResult".to_string(), Vec::new());
+        let mut seq: Vec<Sv> = results.to_vec();
+        while seq.len() < 16 {
+            seq.push(no_result.clone());
+        }
+        env.insert("last_results".to_string(), Sv::Seq(seq));
+    }
+    env
+}
+
 /// Inputs for a tick: `is_first_tick` + each `_<name>` state-carry.
-pub fn build_inputs(is_first: bool, prev_state: &[Option<Sv>], manifest: &Manifest) -> HashMap<String, Sv> {
+/// `tick0_carries` (tick 0 only): the carry values Z3's verify model chose —
+/// see `Program::tick0_carries`. Fields absent from the map fall back to the
+/// type sentinel.
+pub fn build_inputs(
+    is_first: bool,
+    prev_state: &[Option<Sv>],
+    manifest: &Manifest,
+    tick0_carries: Option<&HashMap<String, Sv>>,
+) -> HashMap<String, Sv> {
     let mut env = HashMap::new();
     env.insert("is_first_tick".to_string(), Sv::Bool(is_first));
     // Seed the kernel's effect-result history. On tick 0 these are unconstrained
@@ -1137,10 +1309,15 @@ pub fn build_inputs(is_first: bool, prev_state: &[Option<Sv>], manifest: &Manife
     for (i, (name, ty)) in manifest.state_fields.iter().enumerate() {
         let key = format!("_{name}");
         if is_first {
-            // On tick 0 the `_<name>` carries are unconstrained; supply a
-            // type-correct sentinel so a JIT step that eagerly loads `_<name>`
-            // (e.g. the untaken `ite` arm) has a slot. Under the is_first
-            // branch the value is never observed.
+            // On tick 0 prefer the carry value Z3's verify model chose
+            // (bit-identical to the Z3 path; body equations CAN observe
+            // carries unguarded — compiler.smt2's `*_nil` recognizers do).
+            if let Some(v) = tick0_carries.and_then(|m| m.get(&key)) {
+                env.insert(key, v.clone());
+                continue;
+            }
+            // Fallback: a type-correct sentinel so a JIT step that eagerly
+            // loads `_<name>` (e.g. the untaken `ite` arm) has a slot.
             let sentinel = match ty.as_str() {
                 "Int" => Sv::Int(0),
                 "Bool" => Sv::Bool(false),
@@ -1227,7 +1404,17 @@ pub unsafe fn run_program(ctx: Z3_context, prog: &Program, inputs: &HashMap<Stri
                     }
                 }
                 let Some(body) = chosen else {
-                    if trace_enabled() { eprintln!("[fz/run] guarded step {:?}: no branch guard matched", step.var); }
+                    if trace_enabled() {
+                        eprintln!("[fz/run] guarded step {:?}: no branch guard matched", step.var);
+                        for (i, b) in branches.iter().enumerate() {
+                            let p = Z3_ast_to_string(ctx, b.guard);
+                            let s = if p.is_null() { String::new() }
+                                    else { std::ffi::CStr::from_ptr(p).to_string_lossy().into_owned() };
+                            let head: String = s.chars().take(120).collect();
+                            eprintln!("[fz/run]   guard[{i}] neg={} val={:?}: {head}",
+                                b.neg, eval::eval_scalar(ctx, b.guard, &env));
+                        }
+                    }
                     return None;
                 };
                 match body {

@@ -303,8 +303,7 @@ pub unsafe fn eval_scalar(ctx: Z3_context, a: Z3_ast, env: &HashMap<String, Sv>)
                 }
                 return None;
             };
-            let want = app_decl_name(ctx, a)?;
-            let want = want.strip_prefix("is-").or_else(|| want.strip_prefix("is_")).unwrap_or(&want);
+            let want = super::recognizer_target(ctx, a)?;
             if std::env::var("EVIDENT_FUNCTIONIZE_TRACE").is_ok() {
                 eprintln!("[fz/eval] DT_IS: actual={} want={}", actual, want);
             }

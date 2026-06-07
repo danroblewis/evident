@@ -424,12 +424,16 @@ unsafe fn run_inner(src: &str, manifest: &Manifest) -> Result<u8, String> {
         // Functionizer fast path: evaluate the extracted program (native or
         // JIT) for this tick and skip Z3 entirely. `run_program` returns None
         // for any shape/predicate it can't honour this tick → fall through to
-        // the Z3 solve below. (`prev_results` is intentionally not threaded in:
-        // a body that reads `last_results` won't have verified, so it never
-        // reaches here.)
+        // the Z3 solve below. `prev_results` IS threaded in: compiler.smt2
+        // reads `last_results` to receive ReadLine/ReadFile results, and
+        // verify can't catch the omission (ticks 0/1 see empty results on
+        // both paths) — dropping them silently broke the FSM's input flow
+        // (src_path stayed "" → empty 11-line emit at tick 4).
         if let Some(prog) = &functionized {
             let tf = mark();
-            let inputs = crate::functionize::build_inputs(is_first, &prev_state, manifest);
+            let prev_results_sv: Vec<Sv> = prev_results.iter().map(res_to_sv).collect();
+            let inputs = crate::functionize::build_inputs_with_results(
+                is_first, &prev_state, manifest, Some(&prog.tick0_carries), &prev_results_sv);
             let run_opt = crate::functionize::run_program(ctx, prog, &inputs);
             let dt = since(tf);
             tick_func += dt;
@@ -959,6 +963,19 @@ enum Res {
     Error(String),
 }
 
+/// Decode a `Res` into the `Sv::Datatype` shape the functionizer's eval uses
+/// for `last_results` entries (matching the Result datatype's constructors).
+fn res_to_sv(r: &Res) -> Sv {
+    match r {
+        Res::No => Sv::Datatype("NoResult".to_string(), Vec::new()),
+        Res::Int(n) => Sv::Datatype("IntResult".to_string(), vec![Sv::Int(*n)]),
+        Res::Str(s) => Sv::Datatype("StringResult".to_string(), vec![Sv::Str(s.clone())]),
+        Res::Real(x) => Sv::Datatype("RealResult".to_string(), vec![Sv::Real(*x)]),
+        Res::Eof => Sv::Datatype("EofResult".to_string(), Vec::new()),
+        Res::Error(e) => Sv::Datatype("ErrorResult".to_string(), vec![Sv::Str(e.clone())]),
+    }
+}
+
 impl Res {
     /// Emit as SMT-LIB constructor expression matching emit.rs's Result decl.
     fn smtlib(&self) -> String {
@@ -1424,7 +1441,7 @@ pub(crate) unsafe fn solve_tick_sv(
     manifest: &Manifest,
     is_first: bool,
     prev_state: &[Option<Sv>],
-) -> Result<Option<(Vec<Sv>, Vec<Sv>)>, String> {
+) -> Result<Option<(Vec<Sv>, Vec<Sv>, std::collections::HashMap<String, Sv>)>, String> {
     let solver = Z3_mk_solver(ctx);
     Z3_solver_inc_ref(ctx, solver);
     for &a in body {
@@ -1475,9 +1492,23 @@ pub(crate) unsafe fn solve_tick_sv(
         state.push(read_state_var(ctx, model, name, ty)?);
     }
     let effects = read_effects_sv(ctx, model, manifest)?;
+    // Tick 0 only: read the `_<name>` carry values Z3 chose. They're
+    // unconstrained by pins but mentioned in the body, so the model assigns
+    // them; the functionizer seeds its tick-0 eval env with these so eval and
+    // Z3 agree on every body equation that observes a carry (read_state_var
+    // failures → absent from the map → eval falls back to a type sentinel).
+    let mut carries = std::collections::HashMap::new();
+    if is_first {
+        for (name, ty) in &manifest.state_fields {
+            let carry = format!("_{name}");
+            if let Ok(v) = read_state_var(ctx, model, &carry, ty) {
+                carries.insert(carry, v);
+            }
+        }
+    }
     Z3_model_dec_ref(ctx, model);
     Z3_solver_dec_ref(ctx, solver);
-    Ok(Some((state, effects)))
+    Ok(Some((state, effects, carries)))
 }
 
 /// Dispatch a single effect given as a decoded `Sv::Datatype` (the
