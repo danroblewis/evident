@@ -12,12 +12,17 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 A="$ROOT/.goalpost/artifacts/compiler2-selfhost.json"
-[ -f "$A" ] || { echo "no artifact: run .goalpost/bin/run-selfhost.sh" >&2; exit 1; }
-
-built="$(jq -r 'if .stage2_built then 1 else 0 end' "$A")"
-works="$(jq -r 'if .stage2_built and .stage2_smoke then 1 else 0 end' "$A")"
-ts="$(jq -r .ts "$A")"
-age_h="$(awk -v now="$(date +%s)" -v ts="$ts" 'BEGIN{printf "%.1f",(now-ts)/3600}')"
+# Missing artifact = "never measured": honest zero + maximally-stale freshness.
+if [ -f "$A" ]; then
+    built="$(jq -r 'if .stage2_built then 1 else 0 end' "$A")"
+    works="$(jq -r 'if .stage2_built and .stage2_smoke then 1 else 0 end' "$A")"
+    ts="$(jq -r .ts "$A")"
+    age_h="$(awk -v now="$(date +%s)" -v ts="$ts" 'BEGIN{printf "%.1f",(now-ts)/3600}')"
+else
+    built=0
+    works=0
+    age_h=999999
+fi
 
 printf '{"goal":"compiler2-selfhost","measure":"selfhost_stage2_built","kind":"gate","value":%s,"rung":"deterministic","period_s":300,"label":"compiler2 compiles its own source to a non-stub stage2 artifact"}\n' "$built"
 printf '{"goal":"compiler2-selfhost","measure":"selfhost_stage2_works","kind":"gate","value":%s,"rung":"deterministic","period_s":300,"label":"the self-compiled stage2 correctly compiles smoke fixtures"}\n' "$works"

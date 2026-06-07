@@ -90,15 +90,21 @@ the *targets* that define done.
 
 md samples each script no faster than every 60s, backing off based on the
 script's own runtime and its declared `period_s`. Anything slow degrades the
-whole panel, and anything past **10 minutes is killed** and surfaces as
-`errored`.
+whole panel.
+
+**HARD RULE: a measure script must complete in under 60 seconds — always,
+on the repo as it stands, with no pre-warmed caches.** Anything past 60s is
+killed and surfaces as `errored`. There is no "borderline" tier: if the
+evidence costs more than 60s to gather, the measure does NOT gather it —
+it reads an artifact (below). Verify the budget empirically (`time` each
+measure before committing) and re-verify after amending.
 
 | script runtime | verdict |
 |---|---|
 | < 5s | ideal — measure directly |
 | 5–30s | acceptable — declare a matching `period_s` (e.g. 300) |
-| 30s–2m | borderline — only if genuinely valuable; `period_s` ≥ 900 |
-| > 2m | **do not run it in the measure** — use the artifact pattern |
+| 30–60s | last resort — only if irreducible; `period_s` ≥ 900 |
+| > 60s | **forbidden in a measure** — use the artifact pattern |
 
 **The artifact pattern.** A 30-minute test suite is a terrible measure script
 but a great measure. Have the thing that *already runs it* (CI, the doer's own
@@ -115,11 +121,16 @@ gitignored). The measure script then:
 {"goal":"G","measure":"tests_fresh","kind":"gate","value":2.1,"target":24,"higher_is_better":false,"unit":"h","label":"age of last full test run"}
 ```
 
-3. exits non-zero (ruler broken → `errored`) only when the artifact is
-   *missing entirely*.
+3. when the artifact is *missing entirely*, still exit 0 and emit the
+   honest zero state — `value: 0` (or `null`) for the gate plus a
+   freshness gate that is maximally stale (e.g. `value: 999999`) — so
+   the panel shows "never measured" rather than `errored`. Reserve
+   non-zero exit (ruler broken → `errored`) for genuine script faults
+   (unparseable artifact, missing dependency).
 
 This keeps the doer honest too: if they stop running the suite, the freshness
-gate goes red on its own.
+gate goes red on its own — and a brand-new checkout shows red gates, not a
+broken ruler.
 
 ---
 

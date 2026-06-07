@@ -13,11 +13,15 @@ A="$ROOT/.goalpost/artifacts/compiler2-kernel.json"
 
 live_total="$(ls "$ROOT"/tests/kernel/test_*.ev 2>/dev/null | wc -l | tr -d ' ')"
 [ "$live_total" -gt 0 ] || { echo "no kernel fixture corpus found" >&2; exit 1; }
-[ -f "$A" ] || { echo "no artifact: run .goalpost/bin/run-kernel-corpus.sh" >&2; exit 1; }
-
-passed="$(jq -r .passed "$A")"
-ts="$(jq -r .ts "$A")"
-age_h="$(awk -v now="$(date +%s)" -v ts="$ts" 'BEGIN{printf "%.1f",(now-ts)/3600}')"
+# Missing artifact = "never measured": honest zero + maximally-stale freshness.
+if [ -f "$A" ]; then
+    passed="$(jq -r .passed "$A")"
+    ts="$(jq -r .ts "$A")"
+    age_h="$(awk -v now="$(date +%s)" -v ts="$ts" 'BEGIN{printf "%.1f",(now-ts)/3600}')"
+else
+    passed=0
+    age_h=999999
+fi
 failing=$(( live_total - passed )); [ "$failing" -lt 0 ] && failing=0
 
 printf '{"goal":"compiler2-selfhost","measure":"kernel_fixtures_pass","kind":"gate","value":%s,"target":%s,"unit":"count","rung":"deterministic","period_s":300,"label":"kernel fixtures compiled+run correctly via compiler2"}\n' "$passed" "$live_total"

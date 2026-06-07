@@ -18,11 +18,17 @@ A="$ROOT/.goalpost/artifacts/compiler2-conformance.json"
 
 live_total="$(ls -d "$ROOT"/tests/conformance/features/[0-9]*/ 2>/dev/null | wc -l | tr -d ' ')"
 [ "$live_total" -gt 0 ] || { echo "no conformance corpus found" >&2; exit 1; }
-[ -f "$A" ] || { echo "no artifact: run .goalpost/bin/run-conformance.sh" >&2; exit 1; }
 
-passed="$(jq -r .passed "$A")"
-ts="$(jq -r .ts "$A")"
-age_h="$(awk -v now="$(date +%s)" -v ts="$ts" 'BEGIN{printf "%.1f",(now-ts)/3600}')"
+# Missing artifact = "never measured": emit the honest zero state with a
+# maximally-stale freshness gate (panel goes red, ruler stays unbroken).
+if [ -f "$A" ]; then
+    passed="$(jq -r .passed "$A")"
+    ts="$(jq -r .ts "$A")"
+    age_h="$(awk -v now="$(date +%s)" -v ts="$ts" 'BEGIN{printf "%.1f",(now-ts)/3600}')"
+else
+    passed=0
+    age_h=999999
+fi
 failing=$(( live_total - passed )); [ "$failing" -lt 0 ] && failing=0
 
 printf '{"goal":"compiler2-selfhost","measure":"conformance_pass","kind":"gate","value":%s,"target":%s,"unit":"count","rung":"deterministic","period_s":300,"label":"conformance fixtures compiled+run correctly via compiler2"}\n' "$passed" "$live_total"
