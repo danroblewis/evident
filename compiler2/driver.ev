@@ -3678,7 +3678,8 @@ claim driver_main
     -- F1 group walk (pmode 9) and the F2 call walk (pmode 10)
     d_processing ∈ Bool = ((d_in_claim ∨ (in_parse ∧ (_pmode = 5))
         ∨ (in_parse ∧ (_pmode = 8)) ∨ (in_parse ∧ (_pmode = 9))
-        ∨ (in_parse ∧ (_pmode = 10)) ∨ (in_parse ∧ (_pmode = 12)))
+        ∨ (in_parse ∧ (_pmode = 10)) ∨ (in_parse ∧ (_pmode = 12))
+        ∨ (in_parse ∧ (_pmode = 14)))
         ∧ (¬d_witems_nil))
 
     d_it_proc    ∈ Bool = (d_whead matches C2Process(_))
