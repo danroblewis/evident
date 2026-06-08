@@ -1,0 +1,29 @@
+-- FtiNamedAppend isolation test: the cursor + parallel name registry
+-- advance in lockstep on the `add` gate, seed on the first tick, and
+-- carry across ticks. Drives count 0→3 appending "|x" each gated tick.
+--
+-- entry: main
+-- expect: stdout = "0|seed"
+-- expect: stdout = "1|seed|x"
+-- expect: stdout = "2|seed|x|x"
+-- expect: stdout = "3|seed|x|x|x"
+-- expect: exit = 0
+import "stdlib/kernel.ev"
+import "compiler2/driver_ir.ev"
+
+fsm main
+    buf ∈ FtiBuffer
+    buf.base = 0
+    buf.cap = 100
+    names ∈ String
+    _names ∈ String
+    tick ∈ Int
+    tick = (is_first_tick ? 0 : _tick + 1)
+    add ∈ Bool = (tick > 0)
+    FtiNamedAppend(first ↦ is_first_tick, add ↦ add, prev_count ↦ _buf.count,
+                   prev_names ↦ _names, init_count ↦ 0, seed_names ↦ "|seed",
+                   entry ↦ "|x", count ↦ buf.count, names ↦ names)
+    msg ∈ String = str_from_int(buf.count) ++ names
+    effects ∈ Seq(Effect) = (buf.count ≥ 3
+        ? ⟨LibCall("libc","puts",⟨ArgStr(msg)⟩), Exit(0)⟩
+        : ⟨LibCall("libc","puts",⟨ArgStr(msg)⟩)⟩)
