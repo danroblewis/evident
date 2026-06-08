@@ -188,4 +188,38 @@ added, gate result. Deliverable: a branch meeting all of §6, with a report.
 
 ## 12. Execution log
 
-(filled in during execution)
+Branch `compiler2-driver-decomp`. Baseline conformance 137/138 (the one
+failure is the pre-existing `123-subschema-shadowing-quantifier`). Gate =
+`scripts/driver-decomp-gate.sh` (§9 steps 1+2; step 3 is implied by
+byte-identity — see note). Unit harness = `tests/compiler2_units/run.sh`.
+
+Pivotal feasibility finding (recorded before any module): a `..ModuleName`
+names-match **lift** of an extracted block is byte-identical to the inline
+original (empty §9(1) diff), whereas slot-bind composition churns
+thousands of SMT2 lines (subsystem-map §5). So every extraction either
+(a) `..`-lifts a stateful block to a separate file, or (b) moves pure
+helper CLAIM definitions to a separate file (call sites inline
+identically). Both keep the per-step gate byte-identical. Because the
+emit stays byte-identical (mod `__callN`), the compiler behaves
+identically on every input, so conformance 137/138 is preserved by
+construction; it was re-run in full after the one behavior-changing
+commit (the ternary guard) and stayed 137/138.
+
+| # | commit | module / file | lines | interface | tests | gate | driver_main |
+|---|---|---|---|---|---|---|---|
+| 0 | `be9d72a` | Phase 0: flatten-first pipeline + gate + unit harness + 2-file Counter proof | — | — | 2-file Counter ⇒ 0,1,2 | EQUIV; manifest unchanged | 5930 |
+| 1 | `99d62e9` | `driver_lex.ev` (`fsm DriverLex`) | 246 (225 body) | 5 bus (input, tbase, d_cap_int, _zstep, _got_path) | lex_idents (2 toks), lex_twochar_op (`++`⇒3) | EQUIV; manifest unchanged | 5707 |
+| 2 | `0226dda` | `driver_expr.ev` (C2TokOp/C2AtomE/C2Prec/PrOps/C2PrattStep) | 506 (~485 body) | 3–4 slots; C2PrattStep 19 (justified §6.4) | prec_ladder, tokop_classify | EQUIV; manifest unchanged | 5221 |
+| — | `e0a042a` | ternary null-operand guard (`TernaryBuildZ3`, translate2_bool.ev) + repro | +7 SMT2 | n/a | ternary_null_guard ⇒ Exit 7 | behavior-change: conformance 137/138; re-baselined | 5221 |
+| — | `f5574de` | buffer-overrun regression (bounds-as-UNSAT) | — | n/a | overrun_bound (drive to cap ⇒ exit 2) | n/a (test-only) | 5221 |
+
+Status at handoff: 2 of the ~12 planned modules extracted + BOTH mandated
+bug regressions (overrun, ternary) landed; 7 unit fixtures green; gate
+green per step; driver_main 5930 → 5221 (-709). §6.1 (`driver_main` < 600)
+is NOT yet met — the remaining stateful subsystems (ZINIT, ED/enum,
+G2-record, TOKEN WINDOW, claim-index, composition-inlining, positional-
+binding, per-item build/dispatch, EMIT+§31) are queued for the
+continuation. Each is `..`-liftable (gate stays byte-identical); the cost
+is the per-module isolation test, which for the Z3-handle machines means
+observing a control scalar (cf. driver_lex's lx_count) rather than the
+opaque handle.
