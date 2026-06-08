@@ -261,3 +261,174 @@ model computed — which it does (`base + slot*8` is passed verbatim as the
 no use-after-free obligation is in this file precisely because §1.2 shows
 it can only be proven against a modeled refcount; a `liveness.ev` sketch
 is described in §1.2 but its proof would carry the documented caveat.
+
+---
+
+## 4. Would it have caught our two real bugs?
+
+Both bugs cost ~a day each, debugged inline in `driver_main`. Honest
+assessment of whether the proposed standalone formal validation would
+have caught each *before* it cost that day.
+
+### Bug 1 — buffer overrun (resume point 12) → **YES**
+
+The lexer/symtab/claim-index FTIs were sized for conformance fixtures
+(4096 tokens, 1024 symbols, 256 claims). `sample.ev` (6283 lines) lexes
+to tens of thousands of tokens and the writes ran off the buffer end,
+corrupting the heap / segfaulting. The fix was the bounds membership
+(`lx_count ∈ Int < 65534`, etc.) — which is *exactly* PROOF 1/PROOF 3 in
+`buffer_safety.ev`.
+
+Would standalone validation have caught it? **Yes, with high confidence.**
+A standalone FTI buffer model with a `capacity` slot and the
+`write_slot < capacity` invariant, exercised by a proof that drives
+`count` up to and past `capacity`, makes the overrun UNSAT — and the
+*absence* of such a bound is visible the moment you write the proof: you
+cannot state `unsat_write_into_full_buffer` without naming `capacity`,
+and naming it forces the question "is the buffer big enough for the real
+workload?" The bug was fundamentally "a bound that wasn't in the model."
+A discipline that requires every FTI to ship its bounds-safety proof
+makes that omission a missing-test failure, not a production segfault.
+Caveat: the proof proves *a* capacity is respected; choosing the *right*
+capacity for `sample.ev` is a sizing decision the proof surfaces but does
+not make for you. Still — it converts a silent heap corruption into a
+loud "you have no capacity bound," which is the day-saving move.
+
+### Bug 2 — Z3 AST use-after-free (missing inc_ref) → **PARTIAL / mostly NO**
+
+A `Z3_ast` built via the C API starts at refcount 0 and Z3 GCs it under
+memory pressure unless `inc_ref`'d. The driver builds ~142k ASTs carried
+as `Int` handles; a long-lived one got reclaimed mid-build and Z3
+segfaulted. The fix was a **kernel** policy (`inc_ref` every AST-returning
+`libz3` builder); the git log records that **a model-side attempt failed.**
+
+Would standalone validation have caught it? **Partial, leaning no**, and
+§1.2 is why. The thing that went wrong is Z3's *internal* refcount — a
+number invisible to Z3-the-solver. A modeled `rc ∈ Int` ownership
+discipline (the `Liveness` claim sketch) can prove "a use after a modeled
+free is UNSAT," but the bug was not a violation of a modeled discipline —
+it was the *absence* of any refcount tracking at all, in a layer (the C
+heap) the model cannot observe. Writing a liveness proof would have
+**raised the question** "who owns these AST handles and when do they
+die?" — which is real value, and might have prompted the `inc_ref` policy
+earlier. But the proof itself cannot discharge against the external heap,
+so it would not have *mechanically* caught the bug the way bug 1's bound
+does. Honest verdict: formal validation would have improved the odds of
+*noticing the lifetime question* during design, but would NOT have given
+a red/green proof signal on the actual fault. This is the boundary of
+what a constraint model over external memory can do.
+
+### Summary
+
+| Bug | Caught? | Why |
+|---|---|---|
+| Buffer overrun | **Yes** | Bounds safety is decidable arithmetic over `Int` metadata; the proof can't be written without naming the missing capacity bound. |
+| AST use-after-free | **Partial / no** | External-heap liveness is invisible to Z3; a modeled refcount proves discipline self-consistency, not actual-heap safety. The fix was necessarily a kernel policy. |
+
+One-for-two on mechanical catch — but the one it catches is the *class*
+of bug (bounds/sizing) that recurs every time the FTI meets a bigger
+workload, and the one it misses is a one-time lifetime fix now closed by
+kernel policy. That asymmetry matters for the cost/benefit call.
+
+---
+
+## 5. Benefit / cost, and the before-or-after-compiler2 call
+
+### Cost to build standalone validated FTI models
+
+| Item | Effort |
+|---|---|
+| Buffer/stack/queue invariant + step helpers (the §2 shape) | ~0.5 day |
+| Proof suite (bounds, region, aliasing, underflow, non-vacuity) per FTI | ~0.25 day (the worked file is the template) |
+| Wire proofs into `test.sh` as a phase / `goalpost` measure | ~0.25 day |
+| A `Liveness` discipline model + its honest-caveat proof | ~0.25 day (optional; documented value-add, not a bug-catcher) |
+| **Total for a validated buffer FTI used as the driver's spec** | **~1–1.5 days** |
+
+This is small because the worked example already de-risked the hard
+parts: the proof vehicle (`sample --all`), the state-scoping shape
+(Probe-C helpers), and the kernel-run form all exist and discharge.
+
+### Benefit
+
+- **Recurring class avoided.** Bug 1's class — an FTI bound that fits the
+  fixtures but not the real workload — recurs at every scale jump
+  (4096→65536 tokens was one; the next corpus is another). Each instance
+  has historically cost ~a day of segfault archaeology. A standalone
+  model with bounds proofs turns each into a one-line capacity edit
+  guarded by a green/red proof.
+- **Reproducible boundary conditions, cheaply.** Today the only way to
+  hit an FTI boundary is to run the whole driver on a big input. A
+  standalone model reproduces "buffer full," "pop empty," "address at
+  region end" in milliseconds, in isolation — the thing the mission notes
+  as the missing capability.
+- **The model becomes the spec.** The driver's inline FTI must match the
+  standalone invariant; divergence is a test failure. This is the
+  isolation/unit-test the inline 6000-line FTI structurally cannot have.
+
+### The honest limit on benefit
+
+The use-after-free class (bug 2) is **not** covered mechanically (§4), and
+that was the more time-consuming, harder-to-reason bug. So formal
+validation does not insure against the *whole* FTI failure surface — it
+insures against the bounds/sizing half, which is the *recurring* half.
+The lifetime half is now closed by kernel policy and is unlikely to recur
+unless the FFI surface grows.
+
+### Before or after compiler2? — **Before. Do a thin slice now.**
+
+The operator's framing: compiler2 is ~one hard bug from compiling
+`sample.ev`, and its FTI is the thing that keeps breaking.
+
+**Recommendation: build the thin standalone FTI buffer model + bounds
+proofs NOW (before finishing compiler2), using the oracle as the build
+tool — but keep it thin (the ~1 day core, defer the liveness model).**
+
+Reasoning:
+
+1. **The FTI is on the critical path and is the active failure source.**
+   Two of the recent day-costing bugs were FTI bugs; the remaining "one
+   hard bug" is plausibly another FTI/sizing issue. Hardening the exact
+   subsystem that keeps breaking, before pushing more weight onto it, is
+   the textbook "stop digging" move.
+2. **The oracle makes "before" cheap and unblocked.** Standalone FTI
+   models are plain `.ev` compiled by `evident-oracle` — they do **not**
+   depend on compiler2 being finished. There is no sequencing blocker:
+   "before" costs nothing in tooling that "after" would save.
+3. **The model is the spec the driver needs anyway.** The driver's inline
+   bounds (`lx_count < 65534` etc.) were added reactively, one segfault at
+   a time. A standalone model gives a place to decide capacities
+   deliberately and prove them, then port the bound into the driver with
+   confidence — directly serving the "compile sample.ev" goal rather than
+   detouring from it.
+4. **It is genuinely small** (§ cost) and the worked example has already
+   discharged the methodology risk. This is not a research detour; it is a
+   day of writing proofs whose shape is already validated.
+
+**But scope it thin:** build the buffer bounds/region/aliasing/underflow
+proofs (the bug-1 class, high ROI, fast). **Defer** the `Liveness` /
+refcount discipline model — §4 shows it would not have caught bug 2
+mechanically, so it is documentation-grade value, not critical-path
+insurance; do it after compiler2 if at all. Spending the "before" budget
+on the half that mechanically catches the recurring bug, and deferring
+the half that doesn't, is the highest-ROI split.
+
+**What would change the call to "after":** if the remaining compiler2 bug
+turns out to be non-FTI (a parser/translate gap), then finishing it
+first is fine — the FTI isn't the blocker in that case. The trigger to do
+the model *first* is specifically: the next bug is again an FTI
+sizing/bounds fault. Given the recent history (two of two), that is the
+way to bet.
+
+---
+
+## 6. Artifacts
+
+- `tests/fti_proofs/buffer_safety.ev` — 5 discharged sat/unsat
+  obligations (bounds, universal region theorem, aliasing, underflow,
+  non-vacuity). Run: `evident-oracle sample … --all`.
+- `tests/fti_proofs/overrun_unsat.ev` — kernel-run overrun → exit 2.
+- `tests/fti_proofs/safe_exit.ev` — kernel-run in-bounds write → exit 0.
+- Reference: `docs/plans/driver-subsystem-map.md` §3 (state-scoping
+  verdict the §2 model shape respects); `kernel/src/libcall.rs` (the
+  `__mem` primitive + the `inc_ref` AST-lifetime policy that closes the
+  bug-2 gap a constraint cannot).
