@@ -252,6 +252,7 @@ import "compiler2/driver_zinit.ev"
 import "compiler2/driver_broadcast.ev"
 import "compiler2/driver_guard.ev"
 import "compiler2/driver_litmem.ev"
+import "compiler2/driver_buildeff.ev"
 
 import "compiler2/driver_ir.ev"
 
@@ -304,6 +305,8 @@ fsm driver_main
     ..DriverEnum
     -- ── G2: the record-type registry + the RD machine ─────────────
     ..DriverRecord
+    -- ── enum-decl + Z3-lifecycle effect bank (see compiler2/driver_buildeff.ev) ──
+    ..DriverBuildEff
     -- ── LEX (fossil FSM; gated to start after ZINIT) ──────────────
     ..DriverLex
 
