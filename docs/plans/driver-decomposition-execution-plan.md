@@ -212,10 +212,14 @@ commit (the ternary guard) and stayed 137/138.
 | 2 | `0226dda` | `driver_expr.ev` (C2TokOp/C2AtomE/C2Prec/PrOps/C2PrattStep) | 506 (~485 body) | 3–4 slots; C2PrattStep 19 (justified §6.4) | prec_ladder, tokop_classify | EQUIV; manifest unchanged | 5221 |
 | — | `e0a042a` | ternary null-operand guard (`TernaryBuildZ3`, translate2_bool.ev) + repro | +7 SMT2 | n/a | ternary_null_guard ⇒ Exit 7 | behavior-change: conformance 137/138; re-baselined | 5221 |
 | — | `f5574de` | buffer-overrun regression (bounds-as-UNSAT) | — | n/a | overrun_bound (drive to cap ⇒ exit 2) | n/a (test-only) | 5221 |
+| 3 | `b4d2303` | `driver_record.ev` (`fsm DriverRecord` + Rt* lookups) | 665 (577 stateful body + 69 pure) | Rt* 3–13; RtFieldAcc 23 (justified §6.4) | registry_lookup (RtIdxOf slot + unfinished/absent miss; RtSortOf Int/Nat/user/unknown) | EQUIV; manifest unchanged | 4577 |
 
-Status at handoff: 2 of the ~12 planned modules extracted + BOTH mandated
-bug regressions (overrun, ternary) landed; 7 unit fixtures green; gate
-green per step; driver_main 5930 → 5221 (-709). §6.1 (`driver_main` < 600)
+Status at handoff: 3 of the ~12 planned modules extracted + BOTH mandated
+bug regressions (overrun, ternary) landed; 8 unit fixtures green; gate
+green per step; driver_main 5930 → 4577 (-1353, ~23%). The 577-line
+stateful record registry moved with ZERO emit drift — proof the same
+`..`-lift extraction scales to the remaining Z3-handle machines. §6.1
+(`driver_main` < 600)
 is NOT yet met — the remaining stateful subsystems (ZINIT, ED/enum,
 G2-record, TOKEN WINDOW, claim-index, composition-inlining, positional-
 binding, per-item build/dispatch, EMIT+§31) are queued for the
