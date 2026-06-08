@@ -223,9 +223,9 @@ fsm DriverBuildEff
     -- symtab pre-seed: slots 0/1 = last_results / is_first_tick
     -- (st_names is initialized with the matching two records).
     ze_seed0 ∈ Effect
-    BuildMemWriteLong(addr ↦ st_base, value ↦ z_lastres, eff ↦ ze_seed0)
+    BuildMemWriteLong(addr ↦ stbuf.base, value ↦ z_lastres, eff ↦ ze_seed0)
     ze_seed1 ∈ Effect
-    BuildMemWriteLong(addr ↦ st_base + 8, value ↦ z_ift, eff ↦ ze_seed1)
+    BuildMemWriteLong(addr ↦ stbuf.base + 8, value ↦ z_ift, eff ↦ ze_seed1)
     -- D2 additions (zsteps 32-34).
     ze_three ∈ Effect
     BuildZ3MkInt(ctx_h ↦ z_ctx, val ↦ 3, sort_h ↦ z_isort, eff ↦ ze_three)

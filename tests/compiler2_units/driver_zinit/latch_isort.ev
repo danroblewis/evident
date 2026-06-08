@@ -30,6 +30,7 @@ fsm main
     -- cursors are driven by DriverLex/DriverClaimIdx, absent here; stub
     -- the counts so the carried record fields have a covering assignment.
     tbuf.count = (is_first_tick ? 0 : _tbuf.count)
+    stbuf.count = (is_first_tick ? 0 : _stbuf.count)
     cibuf.count = (is_first_tick ? 0 : _cibuf.count)
     isort_msg ∈ String = str_from_int(z_isort)
     effects ∈ Seq(Effect) = (zstep ≥ 6

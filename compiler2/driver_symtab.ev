@@ -35,7 +35,7 @@ fsm DriverSymtab
     -- FTI bounds constraint: st_base holds 8192 symtab handle entries.
     -- st_cnt < 8192 makes a declare past the buffer end UNSAT (the model
     -- refuses it) rather than a native overrun.
-    st_cnt  ∈ Int < 8192
+    stbuf.count < 8192
     st_names ∈ String
     d_st_add ∈ Bool = (d_processing ∧ d_it_decl ∧ (_istep = 2))
     st_entry ∈ String = "|" ++ substr(d_dc_name ++ "                               ", 0, 31)
@@ -44,7 +44,7 @@ fsm DriverSymtab
     -- names resolve like any declared const.
     d_seed_names ∈ String = ("|" ++ substr("last_results                               ", 0, 31)
         ++ "|" ++ substr("is_first_tick                               ", 0, 31))
-    st_cnt = (is_first_tick ? 2 : (d_st_add ? _st_cnt + 1 : _st_cnt))
+    stbuf.count = (is_first_tick ? 2 : (d_st_add ? _stbuf.count + 1 : _stbuf.count))
     st_names = (is_first_tick ? d_seed_names
         : d_st_add ? _st_names ++ st_entry
         : _st_names)

@@ -40,8 +40,9 @@ fsm main
     tbuf ∈ FtiBuffer
     tbuf.base = (is_first_tick ? 0 : _tbuf.base)
     tbuf.count = (is_first_tick ? 0 : _tbuf.count)
-    st_base ∈ Int
-    st_base = (is_first_tick ? 0 : _st_base)
+    stbuf ∈ FtiBuffer
+    stbuf.base = (is_first_tick ? 0 : _stbuf.base)
+    stbuf.count = (is_first_tick ? 0 : _stbuf.count)
     cibuf ∈ FtiBuffer
     cibuf.base = (is_first_tick ? 0 : _cibuf.base)
     cibuf.count = (is_first_tick ? 0 : _cibuf.count)

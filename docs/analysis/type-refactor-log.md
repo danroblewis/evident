@@ -88,4 +88,64 @@ only `.base`).
 
 Unit tests: PASS — 29/29 (full compiler2_units suite).
 Gate: **PASS — 137/138** (only known `123-subschema`; 0 timeouts).
+COMMITTED `d3971ed`.
+
+## FtiBuffer instance 3 — symbol table (`st_base` + `st_cnt` → `stbuf`)
+
+Third and final FtiBuffer instance, completing the "instantiated three
+times" thesis (token buffer / symbol table / claim index). The 8192×8
+handle table. 8 code refs across 5 modules (incl. the big `driver.ev`):
+- `driver_zinit.ev` — `st_base` decl+carry → `stbuf`/`stbuf.base`.
+- `driver_symtab.ev` — bound (`stbuf.count < 8192`) + carry (init `2`,
+  the two kernel-seeded slots).
+- `driver_buildeff.ev` — the two D3 seed writes (`stbuf.base`, `+8`).
+- `driver.ev` — symtab read (`stbuf.base + 8*(pos/32)`) + the decl
+  istep-2 write (`stbuf.base + 8*_stbuf.count`).
+- `driver_emit.ev` — free `stbuf.base`.
+Fixtures updated: driver_buildeff/{select_w2,select_w5},
+driver_emit/estep_walk, driver_zinit/latch_isort,
+driver_symtab/decode_peel (declare `stbuf` + stub `.base`, since
+DriverSymtab constrains only `.count`; + driver_ir import where absent).
+
+Unit tests: PASS — 29/29.
+Gate: **PASS — 137/138** (artifact: total 138, passed 137, failed 1 =
+only known `123-subschema`, 0 timeouts, wall 418s, builder oracle).
 COMMITTED.
+
+---
+
+## Summary — FtiBuffer fully landed (3/3 instances)
+
+`type FtiBuffer(base ∈ Int, count ∈ Int)` now unifies all three FTI
+base+cursor pairs the analysis flagged (Appendix A.1): the token buffer
+(`tbuf`), the symbol table (`stbuf`), and the claim index (`cibuf`).
+28 base/cursor code references collapsed onto one declared record type;
+the three loose `_base`/`_cnt` decl+carry pairs became three records.
+
+### Record-carry idiom — established facts (the reusable recipe)
+1. Declare `x ∈ T` ONCE (in the module that owns the base pin); the fsm
+   autocarry transform synthesizes the prev-tick dual `_x ∈ T`. No
+   explicit `_x` decl is needed.
+2. Field constraints may live in DIFFERENT module fsms (base pinned in
+   driver_zinit, cursor driven in driver_lex/symtab/claimidx) — they all
+   merge into driver_main via `..Module` and share the one declaration.
+3. A bound that was a decl+bound (`cnt ∈ Int < N`) becomes a plain field
+   constraint (`x.count < N`); the type already declares the field.
+4. Forward type reference is fine — `FtiBuffer` is declared in
+   driver_ir.ev (imported last) yet used in earlier-flattened modules.
+5. **Every field of a carried record must have a covering assignment
+   each tick**, or the kernel aborts (`state var X not in model`). In
+   the full driver this is automatic; module-isolation fixtures that use
+   only one field must stub the others with an identity carry. This is
+   the one real constraint the type system imposes — see the "Finding"
+   above. It is also a design guardrail: do NOT lump weakly-related
+   fields into one record, because each forces a live value every tick.
+
+### Next candidates (impact order, not yet done)
+- `rt_*` → `RecTypeEntry` (43 members, flattened array-of-records →
+  record element in a cons-list enum). Highest line-removal, highest
+  risk (hand-unrolled `_n0/_n1/_f0…` registry).
+- `z_*` → a Z3 handle-bank record (42 members, all carried with the
+  identical zstep latch). Mechanical but wide; per fact #5 all 42 fields
+  must stay live every tick — they already are, so it fits.
+- Smaller element records (`Window8`, `Frame`, `MatchPinCtx`, …).
