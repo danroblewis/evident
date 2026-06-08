@@ -472,3 +472,20 @@ driver.ev (127-call draft, larger) and agent-ac92a028fb826f9da
 fault clears; alternatively implement G2 inline. After G2:
 sample.ev attempt (records were its last blocker) → kernel corpus
 → self-compile → oracle sunset → rename.
+
+## Resume point 12 — sample.ev recon: BUFFER CAPACITY, not logic
+
+Conformance 137/138 (G2a merged 534fd45, canonical). Pivoted to
+sample.ev rung: compiler2 compiles compiler/sample.ev (6283 lines)
+CORRECTLY for ~16,050 ticks then SIGABRTs ('corrupted size vs
+prev_size') — heap overrun of FIXED-SIZE FTI buffers sized for
+conformance fixtures, NOT a translation gap (no error, no dropped
+shape; functionizer extracts it). Undersized calloc'd buffers in
+compiler2/driver.ev ZINIT (~line 2139): token buf 4096×32,
+symtab 1024×8, claim-index 256×8 — sample.ev exceeds these
+(364 distinct idents in main alone per gap census; dozens of
+claims). FIX (small driver edit): raise capacities (token ~65536,
+symtab ~8192, claim-index ~2048) + ideally overflow guards. Then
+re-attempt the full sample.ev compile (cached driver pattern:
+/tmp recon used EVIDENT_TICK_LIMIT=500000). THEN: sample_ev harness
+(.goalpost/bin/run-sample.sh) for verdict-equivalence → rung 3 green.
