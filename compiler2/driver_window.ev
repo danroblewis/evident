@@ -1,0 +1,350 @@
+-- MODULE DriverWindow
+-- CONSUMES: the parse-phase gate (in_parse), the active parse mode + the
+--           consumer sub-state carries that set lookahead need (_pmode,
+--           _rc_on, _ed_act, d_witems_nil, _cw_st, _pt_st), the FTI token
+--           buffer base (tbase) + the per-tick libc read results
+--           (last_results), and its own carried cursor (_tcur/_wend/
+--           _fmode/_wtoks).
+-- PRODUCES: the decoded 8-token window (wtoks + the ww_t0..ww_t7 head
+--           views), the per-tick lookahead need (w_need), the fetch gate
+--           (tok_ready / fetch_go), the fetch state machine (fmode 0→1→2),
+--           the read-burst effects (rd_t0..rd_q7) and the latched
+--           tag/payload registers (wt*/wq*) + the last_results int/string
+--           decoders (f_ir*/f_sr*) and copy effects (cp*).
+-- MAINTAINS: a consumer acts only when w_rem ≥ w_need (else a 3-tick fetch
+--           burst refills from tcur); the window never holds an unbounded
+--           TokenList — exactly 8 entries decoded from the buffer, entries
+--           past the sentinel decode to EofTok. The cursor STATE TRANSITIONS
+--           (tcur/wend/wtoks =) live in the sibling token-consumption region
+--           of driver_main; this module owns the decode + fetch-read side.
+--
+-- FTI cursor → decoded 8-token window + fetch burst. Lifted into
+-- driver_main via `..DriverWindow`.
+
+-- ── FTI token decode: (tag, payload0, string) → Token ─────────────
+-- Inverse of LexCharTag / LexKeywordTag plus the literal tags
+-- (stdlib/fti/token_stack.ev's table). Tags the driver lexer never
+-- writes (FloatLit, PlusPlus, DotDot, ErrTok, Newline, Indent) and
+-- the calloc'd 0 past the EofTok sentinel decode to EofTok.
+claim FtiTok(tag ∈ Int, p0 ∈ Int, s ∈ String, t ∈ Token)
+    -- G2: FloatLit rides ONE payload slot — p0 = scaled·8 + digits
+    -- (3.14 → 314·8+2). Decoded as FloatLit(scaled, digits, 0): the
+    -- driver's C2AtomE turns it into the `__real` call shape; the
+    -- parser.ev (whole, frac, digs) reading never runs here.
+    t = (tag = 1 ? Ident(s)
+       : tag = 2 ? IntLit(p0)
+       : tag = 3 ? StringLit(s)
+       : tag = 4 ? FloatLit(p0 / 8, p0 - ((p0 / 8) * 8), 0)
+       : tag = 5 ? LParen
+       : tag = 6 ? RParen
+       : tag = 7 ? Comma
+       : tag = 8 ? Plus
+       : tag = 9 ? Star
+       : tag = 10 ? Slash
+       : tag = 11 ? Minus
+       : tag = 12 ? Eq
+       : tag = 15 ? KwClaim
+       : tag = 16 ? KwType
+       : tag = 17 ? KwSchema
+       : tag = 18 ? KwFsm
+       : tag = 19 ? KwEnum
+       : tag = 20 ? KwImport
+       : tag = 21 ? KwMatch
+       : tag = 22 ? KwSubclaim
+       : tag = 23 ? KwExternal
+       : tag = 24 ? KwMatches
+       : tag = 25 ? KwIn
+       : tag = 26 ? KwTrue
+       : tag = 27 ? KwFalse
+       : tag = 28 ? KwMapsTo
+       : tag = 40 ? OpIn
+       : tag = 41 ? OpImplies
+       : tag = 42 ? OpSeqOpen
+       : tag = 43 ? OpSeqClose
+       : tag = 44 ? OpMapsto
+       : tag = 45 ? OpLe
+       : tag = 46 ? OpGe
+       : tag = 47 ? OpNe
+       : tag = 48 ? OpAnd
+       : tag = 49 ? OpOr
+       : tag = 50 ? OpNot
+       : tag = 51 ? OpForall
+       : tag = 52 ? OpExists
+       : tag = 60 ? PlusPlus
+       : tag = 62 ? Lt
+       : tag = 63 ? Gt
+       : tag = 64 ? Dot
+       : tag = 65 ? Pipe
+       : tag = 66 ? Question
+       : tag = 67 ? Hash
+       : tag = 68 ? Colon
+       : tag = 69 ? LBracket
+       : tag = 70 ? RBracket
+       : tag = 71 ? LBrace
+       : tag = 72 ? RBrace
+       : tag = 73 ? OpNotIn
+       : EofTok)
+
+fsm DriverWindow
+    -- ── TOKEN WINDOW (FTI cursor + 8-token decoded window) ────────
+    -- The parse phases never hold an unbounded TokenList: tcur is
+    -- the absolute index of the next unconsumed token; wtoks is a
+    -- decoded window of the 8 buffer entries starting at tcur
+    -- (entries past the sentinel decode to EofTok); wend is the
+    -- buffer index one past the fetched coverage. A consumer may
+    -- only act when the window holds its lookahead need (w_need);
+    -- otherwise the 3-tick fetch burst refills from tcur.
+    tcur ∈ Int
+    wend ∈ Int
+    fmode ∈ Int
+    wtoks ∈ TokenList
+
+    w_rem ∈ Int = _wend - _tcur
+
+    -- latched tags/payloads between the read tick and the copy tick
+    wt0 ∈ Int
+    wt1 ∈ Int
+    wt2 ∈ Int
+    wt3 ∈ Int
+    wt4 ∈ Int
+    wt5 ∈ Int
+    wt6 ∈ Int
+    wt7 ∈ Int
+    wq0 ∈ Int
+    wq1 ∈ Int
+    wq2 ∈ Int
+    wq3 ∈ Int
+    wq4 ∈ Int
+    wq5 ∈ Int
+    wq6 ∈ Int
+    wq7 ∈ Int
+
+    f_ir0 ∈ Int = match last_results[0]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+    f_ir1 ∈ Int = match last_results[1]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+    f_ir2 ∈ Int = match last_results[2]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+    f_ir3 ∈ Int = match last_results[3]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+    f_ir4 ∈ Int = match last_results[4]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+    f_ir5 ∈ Int = match last_results[5]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+    f_ir6 ∈ Int = match last_results[6]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+    f_ir7 ∈ Int = match last_results[7]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+    f_ir8 ∈ Int = match last_results[8]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+    f_ir9 ∈ Int = match last_results[9]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+    f_ir10 ∈ Int = match last_results[10]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+    f_ir11 ∈ Int = match last_results[11]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+    f_ir12 ∈ Int = match last_results[12]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+    f_ir13 ∈ Int = match last_results[13]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+    f_ir14 ∈ Int = match last_results[14]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+    f_ir15 ∈ Int = match last_results[15]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+
+    f_cap ∈ Bool = (_fmode = 1)
+    wt0 = (is_first_tick ? 0 : f_cap ? f_ir0 : _wt0)
+    wq0 = (is_first_tick ? 0 : f_cap ? f_ir1 : _wq0)
+    wt1 = (is_first_tick ? 0 : f_cap ? f_ir2 : _wt1)
+    wq1 = (is_first_tick ? 0 : f_cap ? f_ir3 : _wq1)
+    wt2 = (is_first_tick ? 0 : f_cap ? f_ir4 : _wt2)
+    wq2 = (is_first_tick ? 0 : f_cap ? f_ir5 : _wq2)
+    wt3 = (is_first_tick ? 0 : f_cap ? f_ir6 : _wt3)
+    wq3 = (is_first_tick ? 0 : f_cap ? f_ir7 : _wq3)
+    wt4 = (is_first_tick ? 0 : f_cap ? f_ir8 : _wt4)
+    wq4 = (is_first_tick ? 0 : f_cap ? f_ir9 : _wq4)
+    wt5 = (is_first_tick ? 0 : f_cap ? f_ir10 : _wt5)
+    wq5 = (is_first_tick ? 0 : f_cap ? f_ir11 : _wq5)
+    wt6 = (is_first_tick ? 0 : f_cap ? f_ir12 : _wt6)
+    wq6 = (is_first_tick ? 0 : f_cap ? f_ir13 : _wq6)
+    wt7 = (is_first_tick ? 0 : f_cap ? f_ir14 : _wt7)
+    wq7 = (is_first_tick ? 0 : f_cap ? f_ir15 : _wq7)
+
+    -- copy-tick effects: slot-aligned — a string-carrying slot emits
+    -- __cstr.copy of its just-captured pointer; every other slot a
+    -- getpid filler, so slot i's result is last_results[i] exactly.
+    f_s0 ∈ Bool = (f_ir0 = 1 ∨ f_ir0 = 3)
+    f_s1 ∈ Bool = (f_ir2 = 1 ∨ f_ir2 = 3)
+    f_s2 ∈ Bool = (f_ir4 = 1 ∨ f_ir4 = 3)
+    f_s3 ∈ Bool = (f_ir6 = 1 ∨ f_ir6 = 3)
+    f_s4 ∈ Bool = (f_ir8 = 1 ∨ f_ir8 = 3)
+    f_s5 ∈ Bool = (f_ir10 = 1 ∨ f_ir10 = 3)
+    f_s6 ∈ Bool = (f_ir12 = 1 ∨ f_ir12 = 3)
+    f_s7 ∈ Bool = (f_ir14 = 1 ∨ f_ir14 = 3)
+    cp0 ∈ Effect = (f_s0 ? LibCall("__cstr", "copy", ⟨ArgInt(f_ir1)⟩) : LibCall("libc", "getpid", ⟨⟩))
+    cp1 ∈ Effect = (f_s1 ? LibCall("__cstr", "copy", ⟨ArgInt(f_ir3)⟩) : LibCall("libc", "getpid", ⟨⟩))
+    cp2 ∈ Effect = (f_s2 ? LibCall("__cstr", "copy", ⟨ArgInt(f_ir5)⟩) : LibCall("libc", "getpid", ⟨⟩))
+    cp3 ∈ Effect = (f_s3 ? LibCall("__cstr", "copy", ⟨ArgInt(f_ir7)⟩) : LibCall("libc", "getpid", ⟨⟩))
+    cp4 ∈ Effect = (f_s4 ? LibCall("__cstr", "copy", ⟨ArgInt(f_ir9)⟩) : LibCall("libc", "getpid", ⟨⟩))
+    cp5 ∈ Effect = (f_s5 ? LibCall("__cstr", "copy", ⟨ArgInt(f_ir11)⟩) : LibCall("libc", "getpid", ⟨⟩))
+    cp6 ∈ Effect = (f_s6 ? LibCall("__cstr", "copy", ⟨ArgInt(f_ir13)⟩) : LibCall("libc", "getpid", ⟨⟩))
+    cp7 ∈ Effect = (f_s7 ? LibCall("__cstr", "copy", ⟨ArgInt(f_ir15)⟩) : LibCall("libc", "getpid", ⟨⟩))
+
+    f_sr0 ∈ String = match last_results[0]
+        StringResult(s) ⇒ s
+        _ ⇒ ""
+    f_sr1 ∈ String = match last_results[1]
+        StringResult(s) ⇒ s
+        _ ⇒ ""
+    f_sr2 ∈ String = match last_results[2]
+        StringResult(s) ⇒ s
+        _ ⇒ ""
+    f_sr3 ∈ String = match last_results[3]
+        StringResult(s) ⇒ s
+        _ ⇒ ""
+    f_sr4 ∈ String = match last_results[4]
+        StringResult(s) ⇒ s
+        _ ⇒ ""
+    f_sr5 ∈ String = match last_results[5]
+        StringResult(s) ⇒ s
+        _ ⇒ ""
+    f_sr6 ∈ String = match last_results[6]
+        StringResult(s) ⇒ s
+        _ ⇒ ""
+    f_sr7 ∈ String = match last_results[7]
+        StringResult(s) ⇒ s
+        _ ⇒ ""
+
+    f_tok0 ∈ Token
+    FtiTok(tag ↦ _wt0, p0 ↦ _wq0, s ↦ f_sr0, t ↦ f_tok0)
+    f_tok1 ∈ Token
+    FtiTok(tag ↦ _wt1, p0 ↦ _wq1, s ↦ f_sr1, t ↦ f_tok1)
+    f_tok2 ∈ Token
+    FtiTok(tag ↦ _wt2, p0 ↦ _wq2, s ↦ f_sr2, t ↦ f_tok2)
+    f_tok3 ∈ Token
+    FtiTok(tag ↦ _wt3, p0 ↦ _wq3, s ↦ f_sr3, t ↦ f_tok3)
+    f_tok4 ∈ Token
+    FtiTok(tag ↦ _wt4, p0 ↦ _wq4, s ↦ f_sr4, t ↦ f_tok4)
+    f_tok5 ∈ Token
+    FtiTok(tag ↦ _wt5, p0 ↦ _wq5, s ↦ f_sr5, t ↦ f_tok5)
+    f_tok6 ∈ Token
+    FtiTok(tag ↦ _wt6, p0 ↦ _wq6, s ↦ f_sr6, t ↦ f_tok6)
+    f_tok7 ∈ Token
+    FtiTok(tag ↦ _wt7, p0 ↦ _wq7, s ↦ f_sr7, t ↦ f_tok7)
+    f_built ∈ TokenList = TLCons(f_tok0, TLCons(f_tok1, TLCons(f_tok2,
+        TLCons(f_tok3, TLCons(f_tok4, TLCons(f_tok5, TLCons(f_tok6,
+        TLCons(f_tok7, TLNil))))))))
+
+    -- window views (head + lookahead, ≤ depth 5 inspected)
+    ww_t0 ∈ Token = match _wtoks
+        TLCons(t, _) ⇒ t
+        TLNil ⇒ EofTok
+    ww_l1 ∈ TokenList = match _wtoks
+        TLCons(_, r) ⇒ r
+        TLNil ⇒ TLNil
+    ww_t1 ∈ Token = match ww_l1
+        TLCons(t, _) ⇒ t
+        TLNil ⇒ EofTok
+    ww_l2 ∈ TokenList = match ww_l1
+        TLCons(_, r) ⇒ r
+        TLNil ⇒ TLNil
+    ww_t2 ∈ Token = match ww_l2
+        TLCons(t, _) ⇒ t
+        TLNil ⇒ EofTok
+    ww_l3 ∈ TokenList = match ww_l2
+        TLCons(_, r) ⇒ r
+        TLNil ⇒ TLNil
+    ww_t3 ∈ Token = match ww_l3
+        TLCons(t, _) ⇒ t
+        TLNil ⇒ EofTok
+    ww_l4 ∈ TokenList = match ww_l3
+        TLCons(_, r) ⇒ r
+        TLNil ⇒ TLNil
+    ww_t4 ∈ Token = match ww_l4
+        TLCons(t, _) ⇒ t
+        TLNil ⇒ EofTok
+    ww_l5 ∈ TokenList = match ww_l4
+        TLCons(_, r) ⇒ r
+        TLNil ⇒ TLNil
+    ww_t5 ∈ Token = match ww_l5
+        TLCons(t, _) ⇒ t
+        TLNil ⇒ EofTok
+    ww_l6 ∈ TokenList = match ww_l5
+        TLCons(_, r) ⇒ r
+        TLNil ⇒ TLNil
+    ww_t6 ∈ Token = match ww_l6
+        TLCons(t, _) ⇒ t
+        TLNil ⇒ EofTok
+    ww_l7 ∈ TokenList = match ww_l6
+        TLCons(_, r) ⇒ r
+        TLNil ⇒ TLNil
+    ww_t7 ∈ Token = match ww_l7
+        TLCons(t, _) ⇒ t
+        TLNil ⇒ EofTok
+
+    -- per-mode lookahead need; gate + fetch trigger. pmode 4 only
+    -- reads tokens while COLLECTING variant names (the ED machine,
+    -- once started, consumes none); pmode 5 (effects elements) may
+    -- need the full window for the LibCall bites.
+    -- pmode 3/4 needs widen to 7 only when the WINDOW HEAD shows a
+    -- multi-token shape coming (`matches …` postfix / a payloaded
+    -- variant's `(`) — the refill refetches from tcur, so the
+    -- decision token is the same one the consumer will see.
+    w_need ∈ Int = (¬in_parse ? 0
+        : _pmode = 0 ? 3
+        : _pmode = 1 ? (_rc_on ? 6 : 1)
+        : _pmode = 3 ? ((ww_t0 matches KwMatches) ? 7 : 2)
+        : _pmode = 4 ? (_ed_act = 0
+            ? ((ww_t1 matches LParen) ? 7 : 2) : 0)
+        : _pmode = 5 ? (d_witems_nil ? 8 : 0)
+        : _pmode = 6 ? 5
+        : _pmode = 7 ? 2
+        : _pmode = 8 ? (d_witems_nil ? 1 : 0)
+        : _pmode = 10 ? ((_cw_st = 1 ∧ d_witems_nil) ? 2 : 0)
+        : _pmode = 11 ? 2
+        : _pmode = 12 ? ((_pt_st = 0 ∧ d_witems_nil) ? 5 : 0)
+        : _pmode = 13 ? 0
+        : _pmode = 14 ? (d_witems_nil ? 2 : 0)
+        : d_witems_nil ? 8
+        : 0)
+    tok_ready ∈ Bool = ((_fmode = 0) ∧ (w_need > 0) ∧ (w_rem ≥ w_need))
+    fetch_go ∈ Bool = ((_fmode = 0) ∧ (w_need > 0) ∧ (w_rem < w_need))
+
+    fmode = (is_first_tick ? 0
+        : fetch_go ? 1
+        : _fmode = 1 ? 2
+        : 0)
+
+    f_a ∈ Int = tbase + (_tcur * 32)
+    rd_t0 ∈ Effect = LibCall("__mem", "read_long", ⟨ArgInt(f_a)⟩)
+    rd_q0 ∈ Effect = LibCall("__mem", "read_long", ⟨ArgInt(f_a + 8)⟩)
+    rd_t1 ∈ Effect = LibCall("__mem", "read_long", ⟨ArgInt(f_a + 32)⟩)
+    rd_q1 ∈ Effect = LibCall("__mem", "read_long", ⟨ArgInt(f_a + 40)⟩)
+    rd_t2 ∈ Effect = LibCall("__mem", "read_long", ⟨ArgInt(f_a + 64)⟩)
+    rd_q2 ∈ Effect = LibCall("__mem", "read_long", ⟨ArgInt(f_a + 72)⟩)
+    rd_t3 ∈ Effect = LibCall("__mem", "read_long", ⟨ArgInt(f_a + 96)⟩)
+    rd_q3 ∈ Effect = LibCall("__mem", "read_long", ⟨ArgInt(f_a + 104)⟩)
+    rd_t4 ∈ Effect = LibCall("__mem", "read_long", ⟨ArgInt(f_a + 128)⟩)
+    rd_q4 ∈ Effect = LibCall("__mem", "read_long", ⟨ArgInt(f_a + 136)⟩)
+    rd_t5 ∈ Effect = LibCall("__mem", "read_long", ⟨ArgInt(f_a + 160)⟩)
+    rd_q5 ∈ Effect = LibCall("__mem", "read_long", ⟨ArgInt(f_a + 168)⟩)
+    rd_t6 ∈ Effect = LibCall("__mem", "read_long", ⟨ArgInt(f_a + 192)⟩)
+    rd_q6 ∈ Effect = LibCall("__mem", "read_long", ⟨ArgInt(f_a + 200)⟩)
+    rd_t7 ∈ Effect = LibCall("__mem", "read_long", ⟨ArgInt(f_a + 224)⟩)
+    rd_q7 ∈ Effect = LibCall("__mem", "read_long", ⟨ArgInt(f_a + 232)⟩)
