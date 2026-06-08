@@ -41,8 +41,17 @@ gp_require_tools() {
 # Records which builder produced it in GP_STAGE1.builder.
 gp_build_stage1() {
     if [ -x "$GP_ORACLE" ]; then
-        "$GP_ORACLE" emit "$GP_ROOT/compiler2/driver.ev" driver_main -o "$GP_STAGE1" \
-            || gp_die "oracle emit of compiler2/driver.ev failed"
+        # driver.ev uses `fsm` + bare fields; the prev-tick `_<name>`
+        # carries are synthesized by expand-fsm-autocarry.sh BEFORE the
+        # oracle (which only knows `fsm`==`claim`) sees the source.
+        # Expand to a temp, then oracle-emit with cwd unchanged so the
+        # driver's imports still resolve relative to the repo root.
+        local _drv_exp; _drv_exp="$(mktemp -t gp-driver-exp.XXXXXX.ev)"
+        "$GP_ROOT/scripts/expand-fsm-autocarry.sh" < "$GP_ROOT/compiler2/driver.ev" > "$_drv_exp" \
+            || gp_die "fsm-autocarry expansion of compiler2/driver.ev failed"
+        "$GP_ORACLE" emit "$_drv_exp" driver_main -o "$GP_STAGE1" \
+            || { rm -f "$_drv_exp"; gp_die "oracle emit of compiler2/driver.ev failed"; }
+        rm -f "$_drv_exp"
         echo oracle > "$GP_STAGE1.builder"
     elif [ -s "$GP_STAGE1" ]; then
         # Oracle gone (post-sunset): reuse the existing stage1 (expected

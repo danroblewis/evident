@@ -923,28 +923,24 @@ claim RtFieldAcc(fname ∈ String,
                 : rfa_i2 = 3 ? a23 : rfa_i2 = 4 ? a24 : a25)
         : 0)
 
-claim driver_main
+fsm driver_main
     -- ── INPUT — per-process source path via stdin (wave 4o) ──────
     got_path  ∈ Bool
-    _got_path ∈ Bool
     got_path = (is_first_tick ? false : true)
 
     src_path  ∈ String
-    _src_path ∈ String
     path_read ∈ String = match last_results[0]
         StringResult(s) ⇒ s
         _ ⇒ ""
     src_path = (is_first_tick ? "" : ((¬_got_path) ? path_read : _src_path))
 
     input  ∈ String
-    _input ∈ String
     content_read ∈ String = match last_results[0]
         StringResult(s) ⇒ s
         _ ⇒ "<no-read>"
     input = (is_first_tick ? "" : ((¬_got_path) ? "" : (_input = "" ? content_read : _input)))
 
     target  ∈ String
-    _target ∈ String
     target_read ∈ String = match last_results[1]
         StringResult(s) ⇒ s
         _ ⇒ ""
@@ -965,73 +961,52 @@ claim driver_main
     -- Effect) in the build context; it resumes at 10 when ed_src
     -- reaches 3 with the machine idle.
     zstep  ∈ Int
-    _zstep ∈ Int
     ed_hold ∈ Bool = (_ed_act ≠ 0 ∨ _ed_src < 4)
     zstep = (is_first_tick ? 0 - 2
         : (_zstep = 9 ∧ ed_hold) ? 9
         : (_zstep < 60 ? _zstep + 1 : _zstep))
 
     z_cfg ∈ Int
-    _z_cfg ∈ Int
     z_cfg = (is_first_tick ? 0 : zstep = 1 ? d_cap_int : _z_cfg)
     z_ctx ∈ Int
-    _z_ctx ∈ Int
     z_ctx = (is_first_tick ? 0 : zstep = 2 ? d_cap_int : _z_ctx)
     z_sol ∈ Int
-    _z_sol ∈ Int
     z_sol = (is_first_tick ? 0 : zstep = 3 ? d_cap_int : _z_sol)
     z_isort ∈ Int
-    _z_isort ∈ Int
     z_isort = (is_first_tick ? 0 : zstep = 5 ? d_cap_int : _z_isort)
     z_bsort ∈ Int
-    _z_bsort ∈ Int
     z_bsort = (is_first_tick ? 0 : zstep = 6 ? d_cap_int : _z_bsort)
     z_ssort ∈ Int
-    _z_ssort ∈ Int
     z_ssort = (is_first_tick ? 0 : zstep = 7 ? d_cap_int : _z_ssort)
     z_rsort ∈ Int
-    _z_rsort ∈ Int
     z_rsort = (is_first_tick ? 0 : zstep = 8 ? d_cap_int : _z_rsort)
     -- zstep holds at 9; latch the arena only on the FIRST 9-tick.
     z_arena ∈ Int
-    _z_arena ∈ Int
     z_arena = (is_first_tick ? 0
         : (zstep = 9 ∧ _zstep = 8) ? d_cap_int : _z_arena)
     z_arrsort ∈ Int
-    _z_arrsort ∈ Int
     z_arrsort = (is_first_tick ? 0 : zstep = 11 ? d_cap_int : _z_arrsort)
     z_sym_effs ∈ Int
-    _z_sym_effs ∈ Int
     z_sym_effs = (is_first_tick ? 0 : zstep = 12 ? d_cap_int : _z_sym_effs)
     z_effs ∈ Int
-    _z_effs ∈ Int
     z_effs = (is_first_tick ? 0 : zstep = 13 ? d_cap_int : _z_effs)
     z_sym_elen ∈ Int
-    _z_sym_elen ∈ Int
     z_sym_elen = (is_first_tick ? 0 : zstep = 14 ? d_cap_int : _z_sym_elen)
     z_elen ∈ Int
-    _z_elen ∈ Int
     z_elen = (is_first_tick ? 0 : zstep = 15 ? d_cap_int : _z_elen)
     z_zero ∈ Int
-    _z_zero ∈ Int
     z_zero = (is_first_tick ? 0 : zstep = 16 ? d_cap_int : _z_zero)
     z_one ∈ Int
-    _z_one ∈ Int
     z_one = (is_first_tick ? 0 : zstep = 17 ? d_cap_int : _z_one)
     z_two ∈ Int
-    _z_two ∈ Int
     z_two = (is_first_tick ? 0 : zstep = 18 ? d_cap_int : _z_two)
     z_true ∈ Int
-    _z_true ∈ Int
     z_true = (is_first_tick ? 0 : zstep = 19 ? d_cap_int : _z_true)
     z_false ∈ Int
-    _z_false ∈ Int
     z_false = (is_first_tick ? 0 : zstep = 20 ? d_cap_int : _z_false)
     tbase ∈ Int
-    _tbase ∈ Int
     tbase = (is_first_tick ? 0 : zstep = 21 ? d_cap_int : _tbase)
     st_base ∈ Int
-    _st_base ∈ Int
     st_base = (is_first_tick ? 0 : zstep = 22 ? d_cap_int : _st_base)
     -- D3: last_results / last_results__len / is_first_tick as real
     -- build-context consts (zsteps 22-31), so user constraints can
@@ -1041,51 +1016,38 @@ claim driver_main
     -- datatype + last_results decl lines drop only when a user
     -- constraint mentioned last_results — see saw_lr).
     z_lrsort ∈ Int
-    _z_lrsort ∈ Int
     z_lrsort = (is_first_tick ? 0 : zstep = 23 ? d_cap_int : _z_lrsort)
     z_sym_lr ∈ Int
-    _z_sym_lr ∈ Int
     z_sym_lr = (is_first_tick ? 0 : zstep = 24 ? d_cap_int : _z_sym_lr)
     z_lastres ∈ Int
-    _z_lastres ∈ Int
     z_lastres = (is_first_tick ? 0 : zstep = 25 ? d_cap_int : _z_lastres)
     z_sym_lrl ∈ Int
-    _z_sym_lrl ∈ Int
     z_sym_lrl = (is_first_tick ? 0 : zstep = 26 ? d_cap_int : _z_sym_lrl)
     z_lrlen ∈ Int
-    _z_lrlen ∈ Int
     z_lrlen = (is_first_tick ? 0 : zstep = 27 ? d_cap_int : _z_lrlen)
     z_sym_ift ∈ Int
-    _z_sym_ift ∈ Int
     z_sym_ift = (is_first_tick ? 0 : zstep = 28 ? d_cap_int : _z_sym_ift)
     z_ift ∈ Int
-    _z_ift ∈ Int
     z_ift = (is_first_tick ? 0 : zstep = 29 ? d_cap_int : _z_ift)
     z_lrge ∈ Int
-    _z_lrge ∈ Int
     z_lrge = (is_first_tick ? 0 : zstep = 30 ? d_cap_int : _z_lrge)
     -- D2: 3/4 numerals (effects literals up to 4 elements) + the
     -- (Array Int Int) sort for user Seq(Int) memberships.
     z_three ∈ Int
-    _z_three ∈ Int
     z_three = (is_first_tick ? 0 : zstep = 33 ? d_cap_int : _z_three)
     z_four ∈ Int
-    _z_four ∈ Int
     z_four = (is_first_tick ? 0 : zstep = 34 ? d_cap_int : _z_four)
     z_iarr ∈ Int
-    _z_iarr ∈ Int
     z_iarr = (is_first_tick ? 0 : zstep = 35 ? d_cap_int : _z_iarr)
     -- E1: the effects floor `(assert (>= effects__len 0))` lives in
     -- the BUILD context (zsteps 35-36, the ze_lrge/ze_lrassert
     -- pattern) — the oracle emits it unconditionally for every unit.
     z_ege ∈ Int
-    _z_ege ∈ Int
     z_ege = (is_first_tick ? 0 : zstep = 36 ? d_cap_int : _z_ege)
     -- F2: the claim-index cursor buffer (256 entries × 8 bytes; the
     -- body-start token cursor of every skipped claim, decl order —
     -- names live in ci_names, the st_names pattern).
     ci_base ∈ Int
-    _ci_base ∈ Int
     ci_base = (is_first_tick ? 0 : zstep = 38 ? d_cap_int : _ci_base)
 
     -- ── ED — the enum-declaration machine ────────────────────────
@@ -1121,33 +1083,19 @@ claim driver_main
     --   +136 sorts_out[1] · +144 clists[1] ·
     --   +152 query out block (16 + 8·3)
     ed_act ∈ Int
-    _ed_act ∈ Int
     ed_step ∈ Int
-    _ed_step ∈ Int
     ed_src ∈ Int
-    _ed_src ∈ Int
     ed_user ∈ Bool
-    _ed_user ∈ Bool
     ed_name ∈ String
-    _ed_name ∈ String
     ed_all ∈ EnumVariantList
-    _ed_all ∈ EnumVariantList
     ed_vs ∈ EnumVariantList
-    _ed_vs ∈ EnumVariantList
     ed_vidx ∈ Int
-    _ed_vidx ∈ Int
     ed_nv ∈ Int
-    _ed_nv ∈ Int
     ed_h_name ∈ Int
-    _ed_h_name ∈ Int
     ed_h_rec ∈ Int
-    _ed_h_rec ∈ Int
     ed_h_f0 ∈ Int
-    _ed_h_f0 ∈ Int
     ed_h_f1 ∈ Int
-    _ed_h_f1 ∈ Int
     ed_h_f2 ∈ Int
-    _ed_h_f2 ∈ Int
 
     -- Floor enum decls as parsed data (pinned body vars — the oracle
     -- gap forbids ctor literals in slot bindings). The Effect floor
@@ -1341,15 +1289,10 @@ claim driver_main
 
     -- Sort + floor-decl registers.
     la_sort ∈ Int
-    _la_sort ∈ Int
     sq_sort ∈ Int
-    _sq_sort ∈ Int
     z_effsort ∈ Int
-    _z_effsort ∈ Int
     z_ressort ∈ Int
-    _z_ressort ∈ Int
     ue_sort ∈ Int
-    _ue_sort ∈ Int
     ed_sort_cap ∈ Bool = (_ed_act = 2 ∧ _ed_step = 4)
     la_sort = (is_first_tick ? 0
         : (ed_sort_cap ∧ (¬_ed_user) ∧ _ed_src = 0) ? d_cap_int : _la_sort)
@@ -1364,28 +1307,22 @@ claim driver_main
 
     ed_decl_cap ∈ Bool = (_ed_act = 3 ∧ _ed_step = 2)
     z_exitdecl ∈ Int
-    _z_exitdecl ∈ Int
     z_exitdecl = (is_first_tick ? 0
         : (ed_decl_cap ∧ ed_vname = "Exit") ? d_cap_int : _z_exitdecl)
     z_lc_decl ∈ Int
-    _z_lc_decl ∈ Int
     z_lc_decl = (is_first_tick ? 0
         : (ed_decl_cap ∧ ed_vname = "LibCall") ? d_cap_int : _z_lc_decl)
     z_argstr_decl ∈ Int
-    _z_argstr_decl ∈ Int
     z_argstr_decl = (is_first_tick ? 0
         : (ed_decl_cap ∧ ed_vname = "ArgStr") ? d_cap_int : _z_argstr_decl)
     z_argint_decl ∈ Int
-    _z_argint_decl ∈ Int
     z_argint_decl = (is_first_tick ? 0
         : (ed_decl_cap ∧ ed_vname = "ArgInt") ? d_cap_int : _z_argint_decl)
     z_cell_decl ∈ Int
-    _z_cell_decl ∈ Int
     z_cell_decl = (is_first_tick ? 0
         : (ed_decl_cap ∧ ed_vname = "__Cell_LibArg") ? d_cap_int : _z_cell_decl)
     ed_val_cap ∈ Bool = (_ed_act = 3 ∧ _ed_step = 3 ∧ ed_nullary)
     z_empty_val ∈ Int
-    _z_empty_val ∈ Int
     z_empty_val = (is_first_tick ? 0
         : (ed_val_cap ∧ ed_vname = "__Empty_LibArg") ? d_cap_int : _z_empty_val)
 
@@ -1401,17 +1338,14 @@ claim driver_main
     ed_res_run ∈ Bool = ((¬_ed_user) ∧ (_ed_src = 3))
     ed_res_harvest ∈ Bool = (ed_res_run ∧ (¬ed_nullary))
     z_irtest ∈ Int
-    _z_irtest ∈ Int
     z_irtest = (is_first_tick ? 0
         : (_ed_act = 3 ∧ _ed_step = 3 ∧ ed_res_run ∧ ed_vname = "IntResult")
             ? d_cap_int : _z_irtest)
     z_srtest ∈ Int
-    _z_srtest ∈ Int
     z_srtest = (is_first_tick ? 0
         : (_ed_act = 3 ∧ _ed_step = 3 ∧ ed_res_run ∧ ed_vname = "StringResult")
             ? d_cap_int : _z_srtest)
     res_acc_pend ∈ Int
-    _res_acc_pend ∈ Int
     res_acc_pend = (is_first_tick ? 0
         : (ed_cur_act = 3 ∧ ed_cur_step = 4 ∧ ed_res_harvest)
             ? (ed_vname = "IntResult" ? 1
@@ -1419,12 +1353,10 @@ claim driver_main
               : 0)
         : 0)
     z_iracc ∈ Int
-    _z_iracc ∈ Int
     z_iracc = (is_first_tick ? 0
         : (_ed_act = 3 ∧ _ed_step = 4 ∧ _res_acc_pend = 1) ? d_cap_int
         : _z_iracc)
     z_sracc ∈ Int
-    _z_sracc ∈ Int
     z_sracc = (is_first_tick ? 0
         : (_ed_act = 3 ∧ _ed_step = 4 ∧ _res_acc_pend = 2) ? d_cap_int
         : _z_sracc)
@@ -1432,31 +1364,18 @@ claim driver_main
     -- User-enum variant VALUE table (nullary variants of the one
     -- supported user enum; `Red` in an expression resolves here).
     evt_cnt ∈ Int
-    _evt_cnt ∈ Int
     evt_n0 ∈ String
-    _evt_n0 ∈ String
     evt_v0 ∈ Int
-    _evt_v0 ∈ Int
     evt_n1 ∈ String
-    _evt_n1 ∈ String
     evt_v1 ∈ Int
-    _evt_v1 ∈ Int
     evt_n2 ∈ String
-    _evt_n2 ∈ String
     evt_v2 ∈ Int
-    _evt_v2 ∈ Int
     evt_n3 ∈ String
-    _evt_n3 ∈ String
     evt_v3 ∈ Int
-    _evt_v3 ∈ Int
     evt_n4 ∈ String
-    _evt_n4 ∈ String
     evt_v4 ∈ Int
-    _evt_v4 ∈ Int
     evt_n5 ∈ String
-    _evt_n5 ∈ String
     evt_v5 ∈ Int
-    _evt_v5 ∈ Int
     evt_add ∈ Bool = (ed_val_cap ∧ _ed_user)
     evt_cnt = (is_first_tick ? 0 : evt_add ? _evt_cnt + 1 : _evt_cnt)
     evt_n0 = (is_first_tick ? "" : (evt_add ∧ _evt_cnt = 0) ? ed_vname : _evt_n0)
@@ -1484,41 +1403,23 @@ claim driver_main
     uev_cap_t ∈ Bool = (_ed_act = 3 ∧ _ed_step = 3 ∧ _ed_user)
     uev_t_val ∈ Int = (ed_nullary ? f_ir1 : d_cap_int)
     uev_n0 ∈ String
-    _uev_n0 ∈ String
     uev_d0 ∈ Int
-    _uev_d0 ∈ Int
     uev_t0 ∈ Int
-    _uev_t0 ∈ Int
     uev_n1 ∈ String
-    _uev_n1 ∈ String
     uev_d1 ∈ Int
-    _uev_d1 ∈ Int
     uev_t1 ∈ Int
-    _uev_t1 ∈ Int
     uev_n2 ∈ String
-    _uev_n2 ∈ String
     uev_d2 ∈ Int
-    _uev_d2 ∈ Int
     uev_t2 ∈ Int
-    _uev_t2 ∈ Int
     uev_n3 ∈ String
-    _uev_n3 ∈ String
     uev_d3 ∈ Int
-    _uev_d3 ∈ Int
     uev_t3 ∈ Int
-    _uev_t3 ∈ Int
     uev_n4 ∈ String
-    _uev_n4 ∈ String
     uev_d4 ∈ Int
-    _uev_d4 ∈ Int
     uev_t4 ∈ Int
-    _uev_t4 ∈ Int
     uev_n5 ∈ String
-    _uev_n5 ∈ String
     uev_d5 ∈ Int
-    _uev_d5 ∈ Int
     uev_t5 ∈ Int
-    _uev_t5 ∈ Int
     uev_n0 = (is_first_tick ? "" : (uev_cap_d ∧ _ed_vidx = 0) ? ed_vname : _uev_n0)
     uev_d0 = (is_first_tick ? 0 : (uev_cap_d ∧ _ed_vidx = 0) ? d_cap_int : _uev_d0)
     uev_t0 = (is_first_tick ? 0 : (uev_cap_t ∧ _ed_vidx = 0) ? uev_t_val : _uev_t0)
@@ -1543,24 +1444,17 @@ claim driver_main
     -- the rdacc emitted on the step-4 (advance) tick lands AFTER the
     -- variant walk moved on, so uev_acc_pend carries vidx + 1.
     uev_acc_pend ∈ Int
-    _uev_acc_pend ∈ Int
     uev_acc_pend = (is_first_tick ? 0
         : (ed_cur_act = 3 ∧ ed_cur_step = 4 ∧ ed_user ∧ (¬ed_nullary))
             ? _ed_vidx + 1
         : 0)
     uev_cap_a ∈ Bool = (_ed_act = 3 ∧ _ed_step = 4 ∧ _uev_acc_pend > 0)
     uev_a0 ∈ Int
-    _uev_a0 ∈ Int
     uev_a1 ∈ Int
-    _uev_a1 ∈ Int
     uev_a2 ∈ Int
-    _uev_a2 ∈ Int
     uev_a3 ∈ Int
-    _uev_a3 ∈ Int
     uev_a4 ∈ Int
-    _uev_a4 ∈ Int
     uev_a5 ∈ Int
-    _uev_a5 ∈ Int
     uev_a0 = (is_first_tick ? 0 : (uev_cap_a ∧ _uev_acc_pend = 1) ? d_cap_int : _uev_a0)
     uev_a1 = (is_first_tick ? 0 : (uev_cap_a ∧ _uev_acc_pend = 2) ? d_cap_int : _uev_a1)
     uev_a2 = (is_first_tick ? 0 : (uev_cap_a ∧ _uev_acc_pend = 3) ? d_cap_int : _uev_a2)
@@ -1580,105 +1474,56 @@ claim driver_main
     -- slot (sort stays 0 ⇒ every registry lookup misses ⇒ pure-G1
     -- frame behavior).
     rt_cnt ∈ Int
-    _rt_cnt ∈ Int
     rt_n0 ∈ String
-    _rt_n0 ∈ String
     rt_n1 ∈ String
-    _rt_n1 ∈ String
     rt_n2 ∈ String
-    _rt_n2 ∈ String
     rt_f0 ∈ String
-    _rt_f0 ∈ String
     rt_f1 ∈ String
-    _rt_f1 ∈ String
     rt_f2 ∈ String
-    _rt_f2 ∈ String
     rt_t0 ∈ String
-    _rt_t0 ∈ String
     rt_t1 ∈ String
-    _rt_t1 ∈ String
     rt_t2 ∈ String
-    _rt_t2 ∈ String
     rt_nf0 ∈ Int
-    _rt_nf0 ∈ Int
     rt_nf1 ∈ Int
-    _rt_nf1 ∈ Int
     rt_nf2 ∈ Int
-    _rt_nf2 ∈ Int
     rt_sort0 ∈ Int
-    _rt_sort0 ∈ Int
     rt_sort1 ∈ Int
-    _rt_sort1 ∈ Int
     rt_sort2 ∈ Int
-    _rt_sort2 ∈ Int
     rt_ctor0 ∈ Int
-    _rt_ctor0 ∈ Int
     rt_ctor1 ∈ Int
-    _rt_ctor1 ∈ Int
     rt_ctor2 ∈ Int
-    _rt_ctor2 ∈ Int
     rt_asort0 ∈ Int
-    _rt_asort0 ∈ Int
     rt_asort1 ∈ Int
-    _rt_asort1 ∈ Int
     rt_asort2 ∈ Int
-    _rt_asort2 ∈ Int
     rt_ssort0 ∈ Int
-    _rt_ssort0 ∈ Int
     rt_ssort1 ∈ Int
-    _rt_ssort1 ∈ Int
     rt_ssort2 ∈ Int
-    _rt_ssort2 ∈ Int
     rt_a00 ∈ Int
-    _rt_a00 ∈ Int
     rt_a01 ∈ Int
-    _rt_a01 ∈ Int
     rt_a02 ∈ Int
-    _rt_a02 ∈ Int
     rt_a03 ∈ Int
-    _rt_a03 ∈ Int
     rt_a04 ∈ Int
-    _rt_a04 ∈ Int
     rt_a05 ∈ Int
-    _rt_a05 ∈ Int
     rt_a10 ∈ Int
-    _rt_a10 ∈ Int
     rt_a11 ∈ Int
-    _rt_a11 ∈ Int
     rt_a12 ∈ Int
-    _rt_a12 ∈ Int
     rt_a13 ∈ Int
-    _rt_a13 ∈ Int
     rt_a14 ∈ Int
-    _rt_a14 ∈ Int
     rt_a15 ∈ Int
-    _rt_a15 ∈ Int
     rt_a20 ∈ Int
-    _rt_a20 ∈ Int
     rt_a21 ∈ Int
-    _rt_a21 ∈ Int
     rt_a22 ∈ Int
-    _rt_a22 ∈ Int
     rt_a23 ∈ Int
-    _rt_a23 ∈ Int
     rt_a24 ∈ Int
-    _rt_a24 ∈ Int
     rt_a25 ∈ Int
-    _rt_a25 ∈ Int
 
     -- collection state (active only during a type top's skip walk)
     rc_on ∈ Bool
-    _rc_on ∈ Bool
     rc_ok ∈ Bool
-    _rc_ok ∈ Bool
     rc_np ∈ Int
-    _rc_np ∈ Int
     rc_p0 ∈ String
-    _rc_p0 ∈ String
     rc_p1 ∈ String
-    _rc_p1 ∈ String
     rc_p2 ∈ String
-    _rc_p2 ∈ String
 
     rck ∈ Int = _rt_cnt - 1
     rc_name ∈ String = (rck = 0 ? rt_n0 : rck = 1 ? rt_n1 : rt_n2)
@@ -1777,23 +1622,14 @@ claim driver_main
     -- read ctor decl · st 5 read accessors (per field) · st 6
     -- mk_array_sort(Int, T) · st 7 mk_set_sort(T) · 8 done.
     rd_st ∈ Int
-    _rd_st ∈ Int
     rd_fi ∈ Int
-    _rd_fi ∈ Int
     rd_hn ∈ Int
-    _rd_hn ∈ Int
     rd_hf0 ∈ Int
-    _rd_hf0 ∈ Int
     rd_hf1 ∈ Int
-    _rd_hf1 ∈ Int
     rd_hf2 ∈ Int
-    _rd_hf2 ∈ Int
     rd_hf3 ∈ Int
-    _rd_hf3 ∈ Int
     rd_hf4 ∈ Int
-    _rd_hf4 ∈ Int
     rd_hf5 ∈ Int
-    _rd_hf5 ∈ Int
 
     rd_go ∈ Bool = (d_skip_stop ∧ _rc_on ∧ _rc_ok ∧ (rck ≥ 0)
         ∧ (rc_nf > 0))
@@ -2206,18 +2042,14 @@ claim driver_main
 
     -- ── LEX (fossil FSM; gated to start after ZINIT) ──────────────
     pos  ∈ Int
-    _pos ∈ Int
     next_pos  ∈ Int
-    _next_pos ∈ Int
     pos = (is_first_tick ? 0 - 1
         : ((¬_got_path) ? 0 - 1
         : (_zstep < 38 ? 0 - 1
         : (_pos < 0 ? 0 : _next_pos))))
 
     partial_str  ∈ String
-    _partial_str ∈ String
     partial_int  ∈ Int
-    _partial_int ∈ Int
 
     cur_char ∈ String = substr(input, pos, 1)
 
@@ -2242,9 +2074,7 @@ claim driver_main
     was_collecting_int ∈ Bool = (_partial_int ≥ 0)
 
     in_strlit  ∈ Bool
-    _in_strlit ∈ Bool
     partial_strlit  ∈ String
-    _partial_strlit ∈ String
 
     -- A2 (gap census): escape-pending mode. `\` inside a strlit
     -- appends nothing and arms esc_pend; the NEXT char appends its
@@ -2258,7 +2088,6 @@ claim driver_main
     esc_tr ∈ String
     EscapeChar(c ↦ cur_char, out ↦ esc_tr)
     esc_pend ∈ Bool
-    _esc_pend ∈ Bool
 
     strlit_open       ∈ Bool = ((¬_in_strlit) ∧ is_quote ∧ in_range ∧ (¬was_collecting_str) ∧ (¬was_collecting_int))
     strlit_esc_open   ∈ Bool = (_in_strlit ∧ (¬_esc_pend) ∧ is_bs ∧ in_range)
@@ -2304,11 +2133,8 @@ claim driver_main
     nx_dig ∈ Bool
     IsDigitChar(c ↦ lx_next_char, out ↦ nx_dig)
     lx_fr ∈ Bool
-    _lx_fr ∈ Bool
     fl_whole ∈ Int
-    _fl_whole ∈ Int
     fr_digs ∈ Int
-    _fr_digs ∈ Int
     frac_enter ∈ Bool = (was_collecting_int ∧ (¬_lx_fr)
         ∧ (cur_char = ".") ∧ nx_dig ∧ in_range ∧ (¬_in_strlit))
     float_fin ∈ Bool = (_lx_fr ∧ int_finishing)
@@ -2360,13 +2186,9 @@ claim driver_main
     -- and the native kernel corrupted the heap / segfaulted. The "+2"
     -- headroom covers the two-token push shapes (float-with-op etc.).
     lx_count ∈ Int < 65534
-    _lx_count ∈ Int
     lx_last ∈ Int
-    _lx_last ∈ Int
     lx_prev ∈ Int
-    _lx_prev ∈ Int
     lx_pend ∈ Int
-    _lx_pend ∈ Int
 
     k_kind ∈ Int
     k_tag0 ∈ Int
@@ -2447,7 +2269,6 @@ claim driver_main
 
     -- ── PHASE control (0 lex · 2 parse · 3 emit; REVERSE deleted) ─
     phase  ∈ Int
-    _phase ∈ Int
 
     -- entering_parse = the lex_done tick: flush any pending string
     -- write, write the EofTok sentinel, then parse starts next tick.
@@ -2463,49 +2284,29 @@ claim driver_main
     -- only act when the window holds its lookahead need (w_need);
     -- otherwise the 3-tick fetch burst refills from tcur.
     tcur ∈ Int
-    _tcur ∈ Int
     wend ∈ Int
-    _wend ∈ Int
     fmode ∈ Int
-    _fmode ∈ Int
     wtoks ∈ TokenList
-    _wtoks ∈ TokenList
 
     w_rem ∈ Int = _wend - _tcur
 
     -- latched tags/payloads between the read tick and the copy tick
     wt0 ∈ Int
-    _wt0 ∈ Int
     wt1 ∈ Int
-    _wt1 ∈ Int
     wt2 ∈ Int
-    _wt2 ∈ Int
     wt3 ∈ Int
-    _wt3 ∈ Int
     wt4 ∈ Int
-    _wt4 ∈ Int
     wt5 ∈ Int
-    _wt5 ∈ Int
     wt6 ∈ Int
-    _wt6 ∈ Int
     wt7 ∈ Int
-    _wt7 ∈ Int
     wq0 ∈ Int
-    _wq0 ∈ Int
     wq1 ∈ Int
-    _wq1 ∈ Int
     wq2 ∈ Int
-    _wq2 ∈ Int
     wq3 ∈ Int
-    _wq3 ∈ Int
     wq4 ∈ Int
-    _wq4 ∈ Int
     wq5 ∈ Int
-    _wq5 ∈ Int
     wq6 ∈ Int
-    _wq6 ∈ Int
     wq7 ∈ Int
-    _wq7 ∈ Int
 
     f_ir0 ∈ Int = match last_results[0]
         IntResult(n) ⇒ n
@@ -2741,7 +2542,6 @@ claim driver_main
     -- All modes read the shared token window; "nil" = EofTok head
     -- (the sentinel / past-end decode). Actions are tok_ready-gated.
     pmode  ∈ Int
-    _pmode ∈ Int
 
     d_items_nil ∈ Bool = (ww_t0 matches EofTok)
     d_head_is_claim ∈ Bool = (ww_t0 matches KwClaim)
@@ -2777,10 +2577,8 @@ claim driver_main
 
     -- user enum name + done flag
     ue_name ∈ String
-    _ue_name ∈ String
     ue_name = (is_first_tick ? "" : d_enter_edecl ? d_cl_name : _ue_name)
     ue_done ∈ Bool
-    _ue_done ∈ Bool
     ue_done = (is_first_tick ? false : ed_done_user ? true : _ue_done)
 
     -- ── F2: the claim index ───────────────────────────────────────
@@ -2797,9 +2595,7 @@ claim driver_main
     -- ci_cnt < 2048 makes an index past the buffer end UNSAT (the model
     -- refuses it) rather than a native overrun.
     ci_cnt ∈ Int < 2048
-    _ci_cnt ∈ Int
     ci_names ∈ String
-    _ci_names ∈ String
     ci_add ∈ Bool = (d_enter_skip
         ∧ (d_head_is_claim ∨ (ww_t0 matches KwType))
         ∧ (ww_t1 matches Ident(_)))
@@ -2860,7 +2656,6 @@ claim driver_main
         : ec_p1 ? (ec_more_p ? 5 : 4)
         : ec_more ? 2 : 1)
     ec_list ∈ EnumVariantList
-    _ec_list ∈ EnumVariantList
     ec_list_n ∈ EnumVariantList = (ec_take
         ? EVCons(ec_v, _ec_list) : _ec_list)
     ec_list = (is_first_tick ? EVNil
@@ -2890,21 +2685,13 @@ claim driver_main
     -- shape and asserts it. Unconditional literals keep the P3e
     -- per-element asserts byte-for-byte.
     el_cnt ∈ Int
-    _el_cnt ∈ Int
     el_lc ∈ Int
-    _el_lc ∈ Int
     el_lib ∈ String
-    _el_lib ∈ String
     el_fn ∈ String
-    _el_fn ∈ String
     el_st ∈ Int
-    _el_st ∈ Int
     ch_on ∈ Bool
-    _ch_on ∈ Bool
     ch_pd ∈ Int
-    _ch_pd ∈ Int
     ch_n ∈ Int
-    _ch_n ∈ Int
 
     d_in_el ∈ Bool = (in_parse ∧ (_pmode = 5) ∧ d_witems_nil ∧ tok_ready)
     el_w_t2s ∈ String = match ww_t2
@@ -3075,51 +2862,31 @@ claim driver_main
     -- the ED machine's user run) + the IntResult/StringResult floor.
     -- Testers resolve through uev + the floor as before.
     mp_st ∈ Int
-    _mp_st ∈ Int
     mp_name ∈ String
-    _mp_name ∈ String
     mp_sc ∈ Int
-    _mp_sc ∈ Int
     mp_lr ∈ Bool
-    _mp_lr ∈ Bool
     mp_idx ∈ Int
-    _mp_idx ∈ Int
     mp_scrut ∈ String
-    _mp_scrut ∈ String
     -- arm-head latches (C5: the head tick latches these, then the
     -- body parses through the Pratt FSM under pk_kind 4)
     mp_ac ∈ String
-    _mp_ac ∈ String
     mp_ab ∈ String
-    _mp_ab ∈ String
     mp_awc ∈ Bool
-    _mp_awc ∈ Bool
     -- pending arm (the most recent COMPLETED ctor arm — promoted to
     -- a tested slot when a later arm's body completes, or becomes
     -- the default at end)
     mp_pc ∈ String
-    _mp_pc ∈ String
     mp_pb ∈ String
-    _mp_pb ∈ String
     mp_pe ∈ Expr
-    _mp_pe ∈ Expr
     mp_hasp ∈ Bool
-    _mp_hasp ∈ Bool
     -- tested arm slots (promotion order = source order)
     mp_n ∈ Int
-    _mp_n ∈ Int
     mp_c1 ∈ String
-    _mp_c1 ∈ String
     mp_bd1 ∈ String
-    _mp_bd1 ∈ String
     mp_e1 ∈ Expr
-    _mp_e1 ∈ Expr
     mp_c2 ∈ String
-    _mp_c2 ∈ String
     mp_bd2 ∈ String
-    _mp_bd2 ∈ String
     mp_e2 ∈ Expr
-    _mp_e2 ∈ Expr
 
     m_act ∈ Bool = (in_parse ∧ (_pmode = 6) ∧ tok_ready)
     mp_s_lr ∈ Bool = (m_act ∧ (_mp_st = 0)
@@ -3338,11 +3105,8 @@ claim driver_main
     -- C2Not for ∉). The empty set lowers to `false` (062: `x ∈ {}`
     -- is UNSAT by construction).
     ms_name ∈ String
-    _ms_name ∈ String
     ms_neg ∈ Bool
-    _ms_neg ∈ Bool
     ms_e ∈ Expr
-    _ms_e ∈ Expr
 
     s_act ∈ Bool = (in_parse ∧ (_pmode = 7) ∧ tok_ready)
     ms_elem ∈ Bool = (s_act ∧ (ww_t0 matches IntLit(_)))
@@ -3380,11 +3144,8 @@ claim driver_main
     -- s__len const (per-sort `#` dispatch), not str.len. One
     -- registered seq var per compile (the census surface).
     sq_set ∈ Bool
-    _sq_set ∈ Bool
     sq_name ∈ String
-    _sq_name ∈ String
     sq_rt ∈ Int
-    _sq_rt ∈ Int
     sq_set = (is_first_tick ? false : d_seq_mem ? true : _sq_set)
     sq_name = (is_first_tick ? ""
         : (d_seq_mem ∧ (¬_sq_set)) ? c_dname
@@ -3400,25 +3161,15 @@ claim driver_main
     -- each element a C2RecVal ctor app, records the element names
     -- (for ∀-over-set and cardinality), and pins the const.
     stv_cnt ∈ Int
-    _stv_cnt ∈ Int
     stv_n0 ∈ String
-    _stv_n0 ∈ String
     stv_k0 ∈ Int
-    _stv_k0 ∈ Int
     stv_e0 ∈ String
-    _stv_e0 ∈ String
     stv_c0 ∈ Int
-    _stv_c0 ∈ Int
     stv_n1 ∈ String
-    _stv_n1 ∈ String
     stv_k1 ∈ Int
-    _stv_k1 ∈ Int
     stv_e1 ∈ String
-    _stv_e1 ∈ String
     stv_c1 ∈ Int
-    _stv_c1 ∈ Int
     sv_cur ∈ Int
-    _sv_cur ∈ Int
 
     d_setmem ∈ Bool = (d_classify ∧ (¬d_line_end) ∧ c_setmem_line)
     stv_cnt = (is_first_tick ? 0
@@ -3538,7 +3289,6 @@ claim driver_main
         : qset_seg1)
 
     sl_cnt ∈ Int
-    _sl_cnt ∈ Int
     d_in_sl ∈ Bool = (in_parse ∧ (_pmode = 8) ∧ d_witems_nil ∧ tok_ready)
     sl_close ∈ Bool = (d_in_sl ∧ (ww_t0 matches OpSeqClose))
     sl_comma ∈ Bool = (d_in_sl ∧ (ww_t0 matches Comma))
@@ -3574,19 +3324,12 @@ claim driver_main
 
     -- ── CLAIM WALK state ──────────────────────────────────────────
     witems  ∈ C2Items
-    _witems ∈ C2Items
     hstk  ∈ C2H
-    _hstk ∈ C2H
     istep  ∈ Int
-    _istep ∈ Int
     pend  ∈ Int
-    _pend ∈ Int
     tmp_h  ∈ Int
-    _tmp_h ∈ Int
     fstr  ∈ String
-    _fstr ∈ String
     cdstr  ∈ String
-    _cdstr ∈ String
 
     -- pend application (the capture tick of the previous builder).
     d_hstk_in ∈ C2H = (_pend = 1 ? C2HCons(d_cap_int, _hstk) : _hstk)
@@ -3611,9 +3354,7 @@ claim driver_main
     -- st_cnt < 8192 makes a declare past the buffer end UNSAT (the model
     -- refuses it) rather than a native overrun.
     st_cnt  ∈ Int < 8192
-    _st_cnt ∈ Int
     st_names ∈ String
-    _st_names ∈ String
     d_st_add ∈ Bool = (d_processing ∧ d_it_decl ∧ (_istep = 2))
     st_entry ∈ String = "|" ++ substr(d_dc_name ++ "                               ", 0, 31)
     -- D3 pre-seed: slots 0/1 are last_results / is_first_tick (their
@@ -3631,12 +3372,10 @@ claim driver_main
     -- declares (+ the Result datatype for last_results), so the
     -- textual prelude must drop the duplicates.
     saw_lr ∈ Bool
-    _saw_lr ∈ Bool
     saw_lr = (is_first_tick ? false
         : (d_lk_read ∧ d_lkname = "last_results") ? true
         : _saw_lr)
     saw_ift ∈ Bool
-    _saw_ift ∈ Bool
     saw_ift = (is_first_tick ? false
         : (d_lk_read ∧ d_lkname = "is_first_tick") ? true
         : _saw_ift)
@@ -4187,11 +3926,8 @@ claim driver_main
     -- a symtab lookup: it expands to the accessor app over the
     -- scrutinee — mk_app(acc, scrut) = the oracle's (Ctor__f0 scrut).
     bsc_on ∈ Bool
-    _bsc_on ∈ Bool
     bsc_n ∈ String
-    _bsc_n ∈ String
     bsc_acc ∈ Int
-    _bsc_acc ∈ Int
     bsc_on = (is_first_tick ? false
         : (d_processing ∧ d_it_bsc) ? true
         : (d_processing ∧ d_it_bend) ? false
@@ -4442,7 +4178,6 @@ claim driver_main
         : c_pinned ? 1 : 2)
     -- qstop: only guard parses stop at a top-level `?`
     pq_qstop ∈ Bool
-    _pq_qstop ∈ Bool
     pq_qstop = (is_first_tick ? false
         : d_enter_pratt ? el_g_enter
         : _pq_qstop)
@@ -4563,25 +4298,15 @@ claim driver_main
 
     -- fl: the quantifier expansion loop (one body re-walk per element)
     fl_on ∈ Bool
-    _fl_on ∈ Bool
     fl_ex ∈ Bool
-    _fl_ex ∈ Bool
     fl_var ∈ String
-    _fl_var ∈ String
     fl_kind ∈ Int
-    _fl_kind ∈ Int
     fl_lo ∈ Int
-    _fl_lo ∈ Int
     fl_hi ∈ Int
-    _fl_hi ∈ Int
     fl_seq ∈ String
-    _fl_seq ∈ String
     fl_body ∈ Expr
-    _fl_body ∈ Expr
     fl_nx ∈ Int
-    _fl_nx ∈ Int
     fl_v ∈ Int
-    _fl_v ∈ Int
     fq_done ∈ Bool = (p_done ∧ (_pk_kind = 9) ∧ (¬pr_bad))
     fx_disp ∈ Bool = (d_in_claim ∧ _fl_on ∧ d_witems_nil
         ∧ (_il_ps = 0) ∧ tok_ready)
@@ -4616,7 +4341,6 @@ claim driver_main
     -- sv: the registered seq var's recorded literal length (`#s = k`
     -- pins, recognized at parse completion) — feeds ∀-over-seq.
     sv_len ∈ Int
-    _sv_len ∈ Int
     svr_l_c1 ∈ Bool = (gc_l matches ECall1(_, _))
     svr_nm ∈ String = match gc_l
         ECall1(n, _) ⇒ n
@@ -4644,17 +4368,11 @@ claim driver_main
     -- resolves in the symtab reads through it, and a REGISTRY-ctor
     -- call (`IVec2(10, 20)`) selects its field-index argument.
     rb_on ∈ Bool
-    _rb_on ∈ Bool
     rb_k ∈ Int
-    _rb_k ∈ Int
     rb_nm ∈ String
-    _rb_nm ∈ String
     rb_body ∈ Expr
-    _rb_body ∈ Expr
     rb_fi ∈ Int
-    _rb_fi ∈ Int
     rb_v ∈ Int
-    _rb_v ∈ Int
     rq_done ∈ Bool = (p_done ∧ (_pk_kind = 1) ∧ (¬pr_bad)
         ∧ (_pk_rec ≥ 0))
     rb_nf ∈ Int = (_rb_k = 0 ? rt_nf0 : _rb_k = 1 ? rt_nf1 : rt_nf2)
@@ -4768,19 +4486,12 @@ claim driver_main
     -- Seq(...) params and bounds/pins on group lines are descoped
     -- (zero corpus occurrences of either).
     pg_pend ∈ TokenList
-    _pg_pend ∈ TokenList
     pg_st ∈ Int
-    _pg_st ∈ Int
     pg_param ∈ Bool
-    _pg_param ∈ Bool
     pg_close ∈ Bool
-    _pg_close ∈ Bool
     pg_sc ∈ Int
-    _pg_sc ∈ Int
     pg_nat ∈ Bool
-    _pg_nat ∈ Bool
     pg_ty ∈ String
-    _pg_ty ∈ String
 
     pg_active ∈ Bool = (in_parse ∧ (_pmode = 9) ∧ d_witems_nil
         ∧ tok_ready)
@@ -4864,48 +4575,29 @@ claim driver_main
     -- is mechanical: deeper stack views + cs slots), depth 8
     -- (corpus reaches ≥ 5).
     il_frames ∈ C2Frames
-    _il_frames ∈ C2Frames
     il_binds ∈ C2Binds
-    _il_binds ∈ C2Binds
     il_pfx ∈ String
-    _il_pfx ∈ String
     il_depth ∈ Int
-    _il_depth ∈ Int
     il_cnt ∈ Int
-    _il_cnt ∈ Int
     il_tgt ∈ Int
-    _il_tgt ∈ Int
     -- param-skip: a jump lands on the token after `claim Name`; a
     -- `(` there is the callee's first-line param list — consumed
     -- one token per tick to its matching `)` (il_pd tracks nesting
     -- for Seq(...) param types). Slot params bind at the call site,
     -- so the list itself carries nothing the frame needs.
     il_ps ∈ Int
-    _il_ps ∈ Int
     il_pd ∈ Int
-    _il_pd ∈ Int
     cw_st ∈ Int
-    _cw_st ∈ Int
     cw_bare ∈ Bool
-    _cw_bare ∈ Bool
     cw_ty ∈ Bool
-    _cw_ty ∈ Bool
     ts_pfx ∈ String
-    _ts_pfx ∈ String
     cw_k ∈ Int
-    _cw_k ∈ Int
     cs_n0 ∈ String
-    _cs_n0 ∈ String
     cs_n1 ∈ String
-    _cs_n1 ∈ String
     cs_n2 ∈ String
-    _cs_n2 ∈ String
     cs_n3 ∈ String
-    _cs_n3 ∈ String
     cs_n4 ∈ String
-    _cs_n4 ∈ String
     cs_n5 ∈ String
-    _cs_n5 ∈ String
 
     -- current-frame binds peel (≤ 4 entries)
     ilb_n0 ∈ String = match _il_binds
@@ -5144,9 +4836,7 @@ claim driver_main
         : c_ty_line ? (_il_pfx ++ c_name ++ ".")
         : _ts_pfx)
     ts_k ∈ Int
-    _ts_k ∈ Int
     ts_nm ∈ String
-    _ts_nm ∈ String
     c_ty_rtk ∈ Int
     RtIdxOf(nm ↦ c_type_str, n0 ↦ rt_n0, n1 ↦ rt_n1, n2 ↦ rt_n2,
         s0 ↦ rt_sort0, s1 ↦ rt_sort1, s2 ↦ rt_sort2, idx ↦ c_ty_rtk)
@@ -5171,31 +4861,18 @@ claim driver_main
     d_in_pratt ∈ Bool = (in_parse ∧ (_pmode = 3) ∧ tok_ready)
 
     p_out ∈ ExprList
-    _p_out ∈ ExprList
     p_ops ∈ PrOps
-    _p_ops ∈ PrOps
     p_expop ∈ Bool
-    _p_expop ∈ Bool
     p_pd ∈ Int
-    _p_pd ∈ Int
     p_qd ∈ Int
-    _p_qd ∈ Int
     p_cd ∈ Int
-    _p_cd ∈ Int
     pk_kind ∈ Int
-    _pk_kind ∈ Int
     pk_name ∈ String
-    _pk_name ∈ String
     pk_sc ∈ Int
-    _pk_sc ∈ Int
     pk_nat ∈ Bool
-    _pk_nat ∈ Bool
     pk_nodecl ∈ Bool
-    _pk_nodecl ∈ Bool
     pk_pn ∈ String
-    _pk_pn ∈ String
     pk_rec ∈ Int
-    _pk_rec ∈ Int
 
     d_cb_pad ∈ String = "                               "
     d_cb_names ∈ String = ("|" ++ substr("str_len" ++ d_cb_pad, 0, 31)
@@ -5302,9 +4979,7 @@ claim driver_main
     gj_fire ∈ Bool = (in_parse ∧ (_pmode = 10) ∧ (_cw_st = 4)
         ∧ d_witems_nil)
     il_guard ∈ Int
-    _il_guard ∈ Int
     il_gd ∈ Int
-    _il_gd ∈ Int
     gj_unguard ∈ Bool = (il_pop ∧ (_il_depth = _il_gd))
     il_guard = (is_first_tick ? 0
         : cw_reset ? 0
@@ -5328,15 +5003,10 @@ claim driver_main
     -- callee's param names (pn) and ips_done zips them with the
     -- held handles into il_binds (receiver = first param).
     pt_st ∈ Int
-    _pt_st ∈ Int
     pt_callee ∈ String
-    _pt_callee ∈ String
     pc_k ∈ Int
-    _pc_k ∈ Int
     pj ∈ Bool
-    _pj ∈ Bool
     pj_recv ∈ Bool
-    _pj_recv ∈ Bool
 
     -- entry shapes (classify tick; comp/membership kinds take priority)
     pcl_t2nm ∈ String = match c_t2
@@ -5387,9 +5057,7 @@ claim driver_main
     ptt_items ∈ C2Items = C2ICons(C2Process(ptt_e0),
         C2ICons(C2Process(ptt_e1), C2INil))
     pt_tup ∈ Bool
-    _pt_tup ∈ Bool
     pt_ts ∈ Int
-    _pt_ts ∈ Int
     pt_tup = (is_first_tick ? false
         : pcl_line ? false
         : pt_tup_b ? true
@@ -5482,21 +5150,13 @@ claim driver_main
 
     -- param-name collection during the param-skip walk
     pn_k ∈ Int
-    _pn_k ∈ Int
     pn_prev ∈ Int
-    _pn_prev ∈ Int
     pn0 ∈ String
-    _pn0 ∈ String
     pn1 ∈ String
-    _pn1 ∈ String
     pn2 ∈ String
-    _pn2 ∈ String
     pn3 ∈ String
-    _pn3 ∈ String
     pn4 ∈ String
-    _pn4 ∈ String
     pn5 ∈ String
-    _pn5 ∈ String
     pn_take ∈ Bool = (ips_skp ∧ (ww_t0 matches Ident(_))
         ∧ (_pn_prev = 1))
     -- G2: each param's TYPE (the Ident after its `∈`) — needed to
@@ -5507,13 +5167,9 @@ claim driver_main
         Ident(s) ⇒ s
         _ ⇒ ""
     pty0 ∈ String
-    _pty0 ∈ String
     pty1 ∈ String
-    _pty1 ∈ String
     pty2 ∈ String
-    _pty2 ∈ String
     pty3 ∈ String
-    _pty3 ∈ String
     pty0 = (is_first_tick ? "" : il_jump ? ""
         : (pty_take ∧ _pn_k = 1) ? pty_nm : _pty0)
     pty1 = (is_first_tick ? "" : il_jump ? ""
@@ -6152,17 +5808,14 @@ claim driver_main
 
     -- ── EMIT ──────────────────────────────────────────────────────
     estep  ∈ Int
-    _estep ∈ Int
     estep = (is_first_tick ? 0 - 1
         : _estep ≥ 0 ? (_estep < 5 ? _estep + 1 : _estep)
         : d_all_done ? 0
         : 0 - 1)
 
     sptr  ∈ Int
-    _sptr ∈ Int
     sptr = (is_first_tick ? 0 : estep = 1 ? d_cap_int : _sptr)
     rendered  ∈ String
-    _rendered ∈ String
     rendered = (is_first_tick ? "" : estep = 2 ? d_cap_str : _rendered)
 
     e_s2s ∈ Effect
