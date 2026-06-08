@@ -6,48 +6,53 @@
 -- resolves to its slot's sort; unknown ⇒ 0). If a lookup mis-resolves or
 -- the unfinished-slot guard regresses, `ok` goes false and this prints BAD.
 --
+-- The registry is now a fixed ×3 array of RecTypeEntry records; each probe
+-- takes the three slot records (e0/e1/e2). The slots are pinned here
+-- (name + sort are the only fields these two probes read).
+--
 -- entry: main
 -- expect: stdout = "ok"
 -- expect: exit = 0
 import "stdlib/kernel.ev"
+import "compiler2/driver_ir.ev"
 import "compiler2/driver_record.ev"
 
 claim main
+    -- Registry: slot 0 = Point (sort 7, finished), slot 1 = Color
+    -- (sort 9, finished), slot 2 = empty.
+    e0 ∈ RecTypeEntry(name ↦ "Point", sort ↦ 7)
+    e1 ∈ RecTypeEntry(name ↦ "Color", sort ↦ 9)
+    e2 ∈ RecTypeEntry(name ↦ "", sort ↦ 0)
+    -- Same registry, but slot 0 UNFINISHED (sort 0) for the miss case.
+    eu0 ∈ RecTypeEntry(name ↦ "Point", sort ↦ 0)
+
     -- RtIdxOf: "Point" is slot 0 (sort handle 7, finished) → 0.
     i_pt ∈ Int
-    RtIdxOf(nm ↦ "Point", n0 ↦ "Point", n1 ↦ "Color", n2 ↦ "",
-        s0 ↦ 7, s1 ↦ 9, s2 ↦ 0, idx ↦ i_pt)
+    RtIdxOf(nm ↦ "Point", e0 ↦ e0, e1 ↦ e1, e2 ↦ e2, idx ↦ i_pt)
     -- "Color" is slot 1 → 1.
     i_co ∈ Int
-    RtIdxOf(nm ↦ "Color", n0 ↦ "Point", n1 ↦ "Color", n2 ↦ "",
-        s0 ↦ 7, s1 ↦ 9, s2 ↦ 0, idx ↦ i_co)
-    -- "Point" name present but its slot is UNFINISHED (s0 = 0) → miss (-1).
+    RtIdxOf(nm ↦ "Color", e0 ↦ e0, e1 ↦ e1, e2 ↦ e2, idx ↦ i_co)
+    -- "Point" name present but its slot is UNFINISHED (sort 0) → miss (-1).
     i_un ∈ Int
-    RtIdxOf(nm ↦ "Point", n0 ↦ "Point", n1 ↦ "Color", n2 ↦ "",
-        s0 ↦ 0, s1 ↦ 9, s2 ↦ 0, idx ↦ i_un)
+    RtIdxOf(nm ↦ "Point", e0 ↦ eu0, e1 ↦ e1, e2 ↦ e2, idx ↦ i_un)
     -- absent name → miss (-1).
     i_miss ∈ Int
-    RtIdxOf(nm ↦ "Zzz", n0 ↦ "Point", n1 ↦ "Color", n2 ↦ "",
-        s0 ↦ 7, s1 ↦ 9, s2 ↦ 0, idx ↦ i_miss)
+    RtIdxOf(nm ↦ "Zzz", e0 ↦ e0, e1 ↦ e1, e2 ↦ e2, idx ↦ i_miss)
 
     -- RtSortOf: Int → int_h(11); Nat aliases Int → 11; user "Color" → s1(9);
     -- unknown → 0.
     so_int ∈ Int
     RtSortOf(ty ↦ "Int", int_h ↦ 11, bool_h ↦ 12, str_h ↦ 13, real_h ↦ 14,
-        iarr_h ↦ 15, n0 ↦ "Point", n1 ↦ "Color", n2 ↦ "",
-        s0 ↦ 7, s1 ↦ 9, s2 ↦ 0, sort ↦ so_int)
+        iarr_h ↦ 15, e0 ↦ e0, e1 ↦ e1, e2 ↦ e2, sort ↦ so_int)
     so_nat ∈ Int
     RtSortOf(ty ↦ "Nat", int_h ↦ 11, bool_h ↦ 12, str_h ↦ 13, real_h ↦ 14,
-        iarr_h ↦ 15, n0 ↦ "Point", n1 ↦ "Color", n2 ↦ "",
-        s0 ↦ 7, s1 ↦ 9, s2 ↦ 0, sort ↦ so_nat)
+        iarr_h ↦ 15, e0 ↦ e0, e1 ↦ e1, e2 ↦ e2, sort ↦ so_nat)
     so_co ∈ Int
     RtSortOf(ty ↦ "Color", int_h ↦ 11, bool_h ↦ 12, str_h ↦ 13, real_h ↦ 14,
-        iarr_h ↦ 15, n0 ↦ "Point", n1 ↦ "Color", n2 ↦ "",
-        s0 ↦ 7, s1 ↦ 9, s2 ↦ 0, sort ↦ so_co)
+        iarr_h ↦ 15, e0 ↦ e0, e1 ↦ e1, e2 ↦ e2, sort ↦ so_co)
     so_un ∈ Int
     RtSortOf(ty ↦ "Widget", int_h ↦ 11, bool_h ↦ 12, str_h ↦ 13, real_h ↦ 14,
-        iarr_h ↦ 15, n0 ↦ "Point", n1 ↦ "Color", n2 ↦ "",
-        s0 ↦ 7, s1 ↦ 9, s2 ↦ 0, sort ↦ so_un)
+        iarr_h ↦ 15, e0 ↦ e0, e1 ↦ e1, e2 ↦ e2, sort ↦ so_un)
 
     ok ∈ Bool = (i_pt = 0 ∧ i_co = 1 ∧ i_un = (0 - 1) ∧ i_miss = (0 - 1)
         ∧ so_int = 11 ∧ so_nat = 11 ∧ so_co = 9 ∧ so_un = 0)

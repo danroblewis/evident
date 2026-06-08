@@ -301,8 +301,8 @@ fsm DriverCompose
     ts_k ∈ Int
     ts_nm ∈ String
     c_ty_rtk ∈ Int
-    RtIdxOf(nm ↦ c_type_str, n0 ↦ rt_n0, n1 ↦ rt_n1, n2 ↦ rt_n2,
-        s0 ↦ rt_sort0, s1 ↦ rt_sort1, s2 ↦ rt_sort2, idx ↦ c_ty_rtk)
+    RtIdxOf(nm ↦ c_type_str, e0 ↦ rt_e0, e1 ↦ rt_e1, e2 ↦ rt_e2,
+        idx ↦ c_ty_rtk)
     ts_k = (is_first_tick ? 0 - 1
         : c_ty_line ? c_ty_rtk
         : _ts_k)

@@ -3,7 +3,7 @@
 --           classify-mode gate (d_classify), the claim/type index
 --           (ci_names) + symbol table (st_names), the inline-frame state
 --           (_il_depth, _il_pfx, ilb_n0..n5), the record registry
---           (rt_n0..n2, rt_sort0..2), the user-enum + seq-var carries
+--           (rt_e0..2 .name / .sort), the user-enum + seq-var carries
 --           (_ue_done, _ue_name, _sq_set, _sq_name), and the sibling
 --           sub-walks' per-line enter signals (el_*/mp_*/sl_*/cw_slot/
 --           q_*/pt_*) that fold into d_enter_pratt. Wide by nature: this
@@ -76,8 +76,8 @@ fsm DriverClassify
     -- of (Array Int T) + xs__len; `xs ∈ Set(T)` declares ONE const
     -- of the set sort (Array T Bool), no __len.
     c_sq_rt ∈ Int
-    RtIdxOf(nm ↦ c_sq_ty, n0 ↦ rt_n0, n1 ↦ rt_n1, n2 ↦ rt_n2,
-        s0 ↦ rt_sort0, s1 ↦ rt_sort1, s2 ↦ rt_sort2, idx ↦ c_sq_rt)
+    RtIdxOf(nm ↦ c_sq_ty, e0 ↦ rt_e0, e1 ↦ rt_e1, e2 ↦ rt_e2,
+        idx ↦ c_sq_rt)
     c_seq_line ∈ Bool = (c_is_mem ∧ (¬c_eff_line) ∧ (c_type_str = "Seq")
         ∧ (c_t3 matches LParen) ∧ ((c_sq_ty = "Int") ∨ (c_sq_rt ≥ 0))
         ∧ (ww_t5 matches RParen))
