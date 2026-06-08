@@ -213,8 +213,9 @@ commit (the ternary guard) and stayed 137/138.
 | — | `e0a042a` | ternary null-operand guard (`TernaryBuildZ3`, translate2_bool.ev) + repro | +7 SMT2 | n/a | ternary_null_guard ⇒ Exit 7 | behavior-change: conformance 137/138; re-baselined | 5221 |
 | — | `f5574de` | buffer-overrun regression (bounds-as-UNSAT) | — | n/a | overrun_bound (drive to cap ⇒ exit 2) | n/a (test-only) | 5221 |
 | 3 | `b4d2303` | `driver_record.ev` (`fsm DriverRecord` + Rt* lookups) | 665 (577 stateful body + 69 pure) | Rt* 3–13; RtFieldAcc 23 (justified §6.4) | registry_lookup (RtIdxOf slot + unfinished/absent miss; RtSortOf Int/Nat/user/unknown) | EQUIV; manifest unchanged | 4577 |
+| 7 | (this run) | `driver_enum.ev` (`fsm DriverEnum`, the ED machine) | 434 (411 body + 23 header) | 10 bus (zstep, ec_start, ec_list_n, ue_name, f_ir1, z_isort/bsort/ssort/rsort, d_cap_int) — wide but irreducible: declaring a Z3 datatype reads all 4 base sorts + the capture reg + the user-enum collection signals (justified §6.4) | floor_walk (hold zstep=9 ⇒ ed_src walks 0→4 over the four Effect-floor enum runs) | EQUIV; manifest unchanged | 4168 |
 
-Status at handoff: 3 of the ~12 planned modules extracted + BOTH mandated
+Status at handoff: 4 of the ~12 planned modules extracted + BOTH mandated
 bug regressions (overrun, ternary) landed; 8 unit fixtures green; gate
 green per step; driver_main 5930 → 4577 (-1353, ~23%). The 577-line
 stateful record registry moved with ZERO emit drift — proof the same
