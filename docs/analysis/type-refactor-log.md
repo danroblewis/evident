@@ -141,11 +141,30 @@ the three loose `_base`/`_cnt` decl+carry pairs became three records.
    above. It is also a design guardrail: do NOT lump weakly-related
    fields into one record, because each forces a live value every tick.
 
-### Next candidates (impact order, not yet done)
-- `rt_*` → `RecTypeEntry` (43 members, flattened array-of-records →
-  record element in a cons-list enum). Highest line-removal, highest
-  risk (hand-unrolled `_n0/_n1/_f0…` registry).
-- `z_*` → a Z3 handle-bank record (42 members, all carried with the
-  identical zstep latch). Mechanical but wide; per fact #5 all 42 fields
-  must stay live every tick — they already are, so it fits.
-- Smaller element records (`Window8`, `Frame`, `MatchPinCtx`, …).
+### Next candidates — assessed, deferred (with measured reasons)
+- **`rt_*` → `RecTypeEntry`** (43 members; cohesion 61 — the highest of
+  any registry). Highest line-removal, but NOT a mechanical rename: the
+  registry is a hand-unrolled array-of-records (`rt_cnt`, `rt_n0..rt_n2`,
+  `rt_f0…`) and the target shape is a record ELEMENT inside a cons-list
+  enum (the `CFCons` "Frame" pattern). That is a structural rewrite of
+  the registry's append/probe logic (`RtIdxOf`/`RtRecName`/`RtFieldAcc`),
+  not a field-for-field substitution. High risk; should be its own
+  focused session with a fresh gate budget. NOT attempted (would not
+  fit safely before the harness window closes).
+- **`z_*` → a Z3 handle-bank record.** MEASURED: 30+ distinct handles,
+  **345 total reference sites** across every compiler2 module (`z_ctx`
+  alone = 77). They are also weakly related — numerals (`z_zero…z_four`),
+  sort handles (`z_isort/z_rsort/z_bsort/z_ssort`), solver handles
+  (`z_ctx/z_sol/z_cfg`), decl handles (`z_lc_decl/z_argint_decl/…`) —
+  not one co-traveling tuple. Lumping them into a single ~30-field
+  record both (a) violates the fact-#5 guardrail (a god-record forces
+  every weakly-related field live every tick) and (b) is a 345-site
+  blast radius with dozens of isolation fixtures stubbing individual
+  handles. A better future move is several SMALL cohesive records
+  (`Z3Sorts`, `Z3Numerals`, `Z3SolverCtx`), each gated separately — not
+  one bank. NOT attempted as a single type.
+- Smaller element records (`Window8`/`ww_*`, `Frame`/`CFCons` payload,
+  `MatchPinCtx`/`mp_*`). `ww_*` is cohesive but wide-surface (the token
+  window is matched in nearly every classifier module). `mp_*` (65
+  members) is a context, not a clean tuple. Tractable but lower value
+  than completing FtiBuffer; left for follow-on.
