@@ -17,7 +17,7 @@ import "compiler2/driver_ir.ev"
 
 fsm main
     buf ∈ FtiBuffer
-    buf.count < 2048
+    buf.cap = 2048
     buf.base = (is_first_tick ? 100 : _buf.base)
     buf.count = (is_first_tick ? 0 : _buf.count + 1)
     addr ∈ Int = buf.base + (8 * buf.count)

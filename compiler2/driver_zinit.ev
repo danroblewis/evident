@@ -63,8 +63,10 @@ fsm DriverZInit
     z_false = (is_first_tick ? 0 : zstep = 20 ? d_cap_int : _z_false)
     tbuf ∈ FtiBuffer
     tbuf.base = (is_first_tick ? 0 : zstep = 21 ? d_cap_int : _tbuf.base)
+    tbuf.cap = 65534
     stbuf ∈ FtiBuffer
     stbuf.base = (is_first_tick ? 0 : zstep = 22 ? d_cap_int : _stbuf.base)
+    stbuf.cap = 8192
     -- D3: last_results / last_results__len / is_first_tick as real
     -- build-context consts (zsteps 22-31), so user constraints can
     -- reference them. The last_results__len floor assert moves INTO
@@ -104,3 +106,4 @@ fsm DriverZInit
     -- names live in ci_names, the st_names pattern).
     cibuf ∈ FtiBuffer
     cibuf.base = (is_first_tick ? 0 : zstep = 38 ? d_cap_int : _cibuf.base)
+    cibuf.cap = 2048

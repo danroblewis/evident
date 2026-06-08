@@ -350,3 +350,61 @@ self-contained rewrites of the `RtIdxOf`/`RtRecName`/`RtSortOf`/
   window is matched in nearly every classifier module). `mp_*` (65
   members) is a context, not a clean tuple. Tractable but lower value
   than completing FtiBuffer; left for follow-on.
+
+---
+
+## Pass 2 — type invariants (the "a type is its constraints" correction)
+
+Operator feedback: the Phase-1 types were **anemic** — bare field bags
+with no membership conditions. In a constraint language the type's body
+is the point: the invariants that **bind the fields' relationships**.
+Verified end-to-end (oracle instantiates a type body over `x`'s fields;
+the kernel re-checks every tick; a violation forces `UNSAT` → exit 2).
+CLAUDE.md gained a "Type invariants" section with two worked examples.
+
+Final state on branch `type-invariants` (**bounds only** — see the
+functionizer finding below for why the conditionals were dropped):
+
+| Type | Invariants (landed) |
+|---|---|
+| `FtiBuffer(base, count, cap)` | `base ≥ 0`, `cap ≥ 0`, `0 ≤ count ≤ cap` — **added the `cap` field** so the per-site bound (`tbuf.count < 65534`, `stbuf < 8192`, `cibuf < 2048`) lifts into the type as the FTI memory-safety contract. Caps pinned in zinit. |
+| `Z3SolverCtx(cfg, ctx, sol)` | `cfg ≥ 0`, `ctx ≥ 0`, `sol ≥ 0` |
+| `Z3Sorts` | `isort/bsort/ssort/rsort ≥ 0` |
+| `Z3Numerals` | `zero..four ≥ 0` |
+| `RecTypeEntry` | `0 ≤ nf ≤ 6` (the registry's ≤6-accessor structural bound) |
+
+### The functionizer wall (the load-bearing finding)
+
+The first cut added the **lifecycle conditionals** too — `sol ≠ 0 ⇒
+(ctx ≠ 0 ∧ cfg ≠ 0)` on `Z3SolverCtx`, last-latched-keyed implications on
+`Z3Sorts`/`Z3Numerals`. Semantically sound (verified by violation tests),
+but they **broke the compiler's performance**: the full conformance run
+hit a **1800 s compile timeout on every fixture**, kernel RSS climbing.
+
+Bisected on fixture 001 (clean baseline: 19 s, fully functionized,
+`0.0 ms z3`):
+
+| Variant | 001 | functionized |
+|---|---|---|
+| + all simple bounds (`≥0`, `0≤nf≤6`) | 19 s ✓ | yes (53 residual) |
+| + `FtiBuffer` `cap` + `count ≤ cap` | 19 s ✓ | yes (62 residual) |
+| + the three `⇒` conditionals | **>90 s timeout** ✗ | **no** |
+
+**Cause:** a conditional is an *outputless boolean constraint*; the
+functionizer extracts per-output assignments and can't extract it, so it
+falls to Z3 residual and is re-solved every tick. On the compiler's hot
+loop (thousands of ticks/compile) that means Z3 re-solves the whole
+11 k-line model every tick. Plain bounds/comparisons extract for free.
+
+**Resolution:** keep the bounds (incl. the `FtiBuffer` memory-safety
+contract — that one extracts fine), drop the conditionals on hot
+compiler state. Conditionals remain the right tool for **user-facing /
+short-running** types. Documented in CLAUDE.md (⚠ perf caveat) + memory.
+`RecTypeEntry`'s `sort ≠ 0 ⇒ ctor ≠ 0` was independently rejected anyway
+(latch order: `sort` latches one zstep before `ctor`).
+
+**Tests:** `tests/compiler2_units/type_invariants/` holds 3 violation
+fixtures (`count` negative, `count` overrun past `cap`, `nf > 6`), each
+asserting `UNSAT` → exit 2; the 3 conditional-violation fixtures were
+removed with their invariants. 8/8 type unit tests green (5 carry + 3
+violation); driver emits clean (11668 lines).
