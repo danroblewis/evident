@@ -1831,6 +1831,165 @@ seq/solver_emit 0 ✓ (six rows).
 - A 5th+ slot, malformed slot heads, or a malformed value bail
   the line (consume 1, classifier resumes — silent-drop parity).
 
+## G1 — burndown wave: records, conditional inline, quantifiers,
+## positional binding, string stragglers (landed 2026-06-08)
+
+Worked from the .goalpost conformance artifact's failing-50 list.
+Canonical harness before: 88/138. After: see G1 acceptance below.
+Seven classes, in landing order:
+
+### replace() → str.replace (013 · 070 · 080)
+
+StrOpBuildZ3 (compiler2/translate2_seq.ev) gained the
+`"replace"` → Z3_mk_seq_replace row; the walker's d_c3_items
+dispatches `replace(s, a, b)` to it. Three fixtures flip.
+
+### Infix contains — `"lit" ∈ s` (075 · 076)
+
+A new classifier line kind (c_strin_line — StringLit head + `∈` +
+Ident): a fixed item program for `(str.contains s "lit")` + assert
+(oracle-probed operand order: container = the VAR, needle = the
+literal). The line previously fell into d_mem_line and declared an
+EMPTY-named const.
+
+### Type splice — record flattening (045 · 046 · 119 · 120 · 124 ·
+### 133 · 134 · 135)
+
+The skip pass now indexes `type Name` tops alongside claims (same
+ci_names/ci_base index). A membership whose TYPE resolves in the
+index (and is not a scalar/enum/Seq) becomes a composition jump
+with prefix `"name."` — fields flatten to dotted consts
+(`p ∈ Point` declares `p.x`/`p.y`; oracle parity: the legacy
+compiler emits `(declare-fun f.p () Int)`). Two flavors:
+`f ∈ Foo (p ↦ 5)` runs the EXISTING pmode-10 slot walk (the type's
+first-line params bind at the use site — the driver substitutes
+where the oracle declares + pins; sat-equivalent, the F2
+divergence class), and bare `s ∈ Sprite` jumps direct. cw_ty /
+ts_pfx latch the type prefix; il_cnt is NOT burned (no α-rename).
+
+- Inside a type frame (prefix ends with ".") memberships are NOT
+  manifest state fields and append no textual carry — the oracle's
+  exact layout (h.local declared, absent from state-fields).
+- DOT-FOLD in C2PrattStep: in operator position, `. Ident` over an
+  EIdent top operand folds the flattened dotted name (`p.x`,
+  `s.pos.x` chains, `s.rects[0]` then indexes). A 2-token action;
+  no signature change.
+- Seq fields inside type bodies: c_seqmem_items / sq_name now use
+  the SCOPED name (s.rects + s.rects__len); the `#` dispatch
+  (d_sl_seq) resolves through the frame prefix. 133-135 flip on
+  exactly this.
+
+### Conditional inline — `cond ⇒ ClaimName` (096 · 097 · 098 ·
+### 116 · 117 · 118)
+
+A standalone line whose parsed root is `(=> guard EIdent(Name))`
+with Name in the claim index (gc_hit, at Pratt completion) splices
+Name's body with every asserted constraint wrapped in
+`(=> guard …)` — the oracle's shape, probed: the membership floor
+`(>= n 0)` re-asserts under the guard, declares stay unguarded.
+Flow: the guard expression builds to a HANDLE (its items run under
+pmode 10, cw_st 3 → 4 — the cursor read rides the detection tick),
+then the jump fires with il_guard armed; the matching frame pop
+disarms it (il_gd). C2AssertTop becomes a 2-step item under an
+active guard (mk_implies → assert tmp). ONE active guard; nested
+guarded splices descoped (zero corpus occurrences).
+
+THE WAVE'S BUG: the Pratt call-head shift (`Ident` + `(` in
+operand position) swallowed the NEXT LINE's paren — lexed newlines
+do not exist, so `flag ⇒ Pos` followed by `(¬x) ⇒ …` parsed
+`Pos((¬x))` as a call, fed handle 0 to mk_implies, and Z3 killed
+the compile ("ast is not an expression"). FIX: C2PrattStep gained
+a `calls` input — a fixed-width-32 whitelist of legal call names
+(the 9 string builtins + harvested user ctor names, built
+driver-side as d_cb_names); an Ident outside it shifts as a plain
+atom and the `(` ends the expression (statement boundary
+restored). pratt_fixture binds calls ↦ "".
+
+### Bounded quantifiers (038 · 039 · 040 · 136)
+
+Statement-level `∀|∃ v ∈ {lo..hi} : body` and `∀ v ∈ seq : body`.
+The head is classifier-detected (range: the 8-token bite
+`∀ v ∈ { lo . . hi` + a pmode-11 `} :` close; seq: 5/7-token heads
+incl. the dotted form `s.nums`); the body parses ONCE through the
+Pratt FSM (pk_kind 9); the fl loop then re-walks the parsed Expr
+once per element with the bound name expanding to the element
+value — range: the numeral (one mk_int per element); seq:
+`(select s i)` — and/or-folds 2-ary (Z3's serialization flattens;
+the accepted P3c divergence class), asserting at the end.
+∀-over-seq takes its bound from sv_len, recorded when a
+`#seq = k` pin completes (svr_hit at Pratt completion). The fl
+loop suppresses the classifier (d_classify gained ¬_fl_on) and is
+tok_ready-gated (refills must not collide with item effects).
+
+### Positional binding (081-089 — tuple-in, method calls, arg
+### inference)
+
+Four head shapes at the classifier: statement calls
+`add(2, 3, mid)` (Ident-in-index + `(`, no `↦`), method calls
+`x.add(3, result)` / `box.value.add(50, r)` (4/6-token heads, the
+receiver Process-pushed FIRST = first positional), tuple-in
+`(3, 4, result) ∈ add` (LParen + atom + Comma head), and
+method-tuple-in `(4, r) ∈ x.add` (receiver resolved at the close,
+landing on TOP of the stack — the pj_recv zip layout). Elements
+are full Pratt expressions (pk_kind 10) building to HANDLES on
+hstk; the close resolves the callee in the claim index, reads its
+cursor, and jumps a fresh "__cN_" frame (pmode 12, pt_st
+0 → 2 → 3 → fire).
+
+Param-name harvest: the EXISTING param-skip walk (il_ps) now
+collects the callee's first-line param names (pn0..pn5 — an Ident
+following the opening `(` or a depth-1 `,`); ips_done zips them
+with the held handles into il_binds (pz_act). ARG INFERENCE: a
+lone UNDECLARED ident element (`mid`) declares an Int const +
+manifest field + textual carry before binding — the oracle's
+mid:Int shape, probed. Caps: ≤ 4 positional args (corpus max 3,
+incl. receiver), ≤ 6 collected param names.
+
+### Slot width 4 → 6 (no fixture; the F2 next-step item)
+
+d_h peel deepened to 6, cs_n4/cs_n5, b_h4/b_h5, il_binds_new rows
+for k = 5/6, cw_slot cap < 6, binds peel ilb_n4/n5 (lookup +
+c_bnd). The 8-slot MembershipStep site still needs 6 → 8 before
+the corpus compile.
+
+### G1 acceptance (canonical harness, 2026-06-08)
+
+`.goalpost/bin/run-conformance.sh` run from the worktree (GP_ROOT
+resolves via BASH_SOURCE, so the harness measures THIS tree's
+driver; stage1 oracle-built at run start):
+
+- BEFORE: 88/138 passed, 50 failed (the burndown artifact).
+- checkpoint (all classes except positional binding): 111/138.
+- AFTER: 120/138 passed, 18 failed, 0 timed out (wall 340 s,
+  stage1 oracle-built). +32 flips, ZERO regressions — the 18
+  failures are exactly the descope list below (021 · 090-093 ·
+  121-123 · 125-132 · 137-138).
+
+Re-verified on the final driver: the full driver-input unit
+fixture suite (carry · params · compose · symtab · ctor_app ·
+lastresults · match_bind all exit 0; cond_effects stdout `yes`
+exit 0), the oracle-path fixtures (pratt — calls slot bound — ·
+lex_fti · bool · ctor · match · record · seq · solver_emit all
+exit 0), and the negative control (nonexistent claim → manifest +
+textual prelude, exactly 2 asserts, no `(+ `, driver exit 0).
+
+### G1 descopes (probed, stated honestly)
+
+- 021-real-membership: unchanged (FloatLit lexing + Real decls).
+- 090-093 tuple→record coercion: binding a tuple to a record
+  param needs the type's FIELD NAMES at the call site
+  (`v.x ↦ 3, v.y ↦ 4`); the type index doesn't carry field lists.
+- 121/122 record arithmetic (`pos + IVec2(10, 20)`): the
+  componentwise broadcast lift needs per-field re-walks of record
+  exprs; 122's bare `s ∈ Sprite` also leaves the unbound record
+  param unflattened (params bind at use sites only).
+- 123: a quantifier in PIN position (inside a type body) — the fl
+  machinery is statement-level only.
+- 125-132 + 137/138 composite seq/set elements: need real record
+  DATATYPES (mk_Pair ctors + plain-named field accessors) — the
+  ED machine's field syms are __fN-shaped and its registry is
+  single-enum; its own wave.
+
 ## Next steps
 
 - Widen slot caps 4 → 8 (MembershipStep) before attempting the

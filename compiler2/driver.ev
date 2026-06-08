@@ -189,6 +189,21 @@
 --     names-match (inherit scope, no renaming). Memberships of
 --     bound or already-declared names resolve instead of
 --     redeclaring (no duplicate declares/fields/carries).
+--   · G1 (2026-06-08): RECORD TYPE SPLICES (`type Name` indexed by
+--     the skip pass; `p ∈ Point` / `f ∈ Foo (p ↦ 5)` flatten fields
+--     to dotted consts under prefix "name." — Pratt dot-fold reads
+--     them back; type-frame memberships are not state fields),
+--     CONDITIONAL INLINE (`cond ⇒ ClaimName` — guard handle +
+--     il_guard-wrapped asserts; the Pratt call-head shift is now
+--     whitelist-gated so a claim name before a `(`-headed line no
+--     longer parses as a call), BOUNDED QUANTIFIERS
+--     (`∀|∃ v ∈ {lo..hi} : body`, `∀ v ∈ seq : body` — one Pratt
+--     body parse + the fl re-walk loop), POSITIONAL BINDING
+--     (`(a, b, c) ∈ add`, `recv.add(args)`, `add(args)` statement
+--     calls, `(args) ∈ recv.add` — param names harvested by the
+--     param-skip walk, zipped at ips_done; lone undeclared ident
+--     args declare Int consts — arg inference), infix contains
+--     (`"lit" ∈ s`), replace() → str.replace, slot width 6.
 --   · NOT covered: Real membership / float literals (021 — needs
 --     FloatLit lexing in this FSM + mk_numeral), match as a general
 --     EXPRESSION (only the pmode-6 match-pin shape; bare `y = match`
@@ -197,11 +212,14 @@
 --     enums, 5+-element effects literals, guarded-writer effects
 --     lines (`cond ⇒ effects = ⟨…⟩` — zero corpus occurrences; the
 --     corpus's only conditional effects shape is the ternary chain),
---     quantifiers, Seq(...)-typed / bounded / pinned multi-name
---     groups, callees AFTER the call site textually (one-pass
---     index), positional binding `(a, b) ∈ Claim`, conditional
---     inline `cond ⇒ ClaimName`, composition calls in EXPRESSION
---     position, carry (`_x`) memberships inside inline frames
+--     quantifiers in EXPRESSION position (123), record arithmetic
+--     broadcast (121/122), tuple→record coercion (090-093),
+--     composite seq/set elements (125-132, 137/138 — need record
+--     DATATYPES with plain-named accessors), Seq(...)-typed /
+--     bounded / pinned multi-name groups, callees AFTER the call
+--     site textually (one-pass index), composition calls in
+--     EXPRESSION position, carry (`_x`) memberships inside inline
+--     frames, nested guarded splices
 
 import "stdlib/kernel.ev"
 import "stdlib/z3_ast.ev"
@@ -481,6 +499,7 @@ enum PrOps =
 -- GUARDS this way (the `?` belongs to the chain, not the guard).
 claim C2PrattStep(toks ∈ TokenList, outs ∈ ExprList, ops ∈ PrOps,
         expop ∈ Bool, pd ∈ Int, qd ∈ Int, cd ∈ Int, qstop ∈ Bool,
+        calls ∈ String,
         ntoks ∈ TokenList, nouts ∈ ExprList, nops ∈ PrOps,
         nexpop ∈ Bool, npd ∈ Int, nqd ∈ Int, ncd ∈ Int,
         sdone ∈ Bool, sres ∈ Expr, scons ∈ Int)
@@ -578,6 +597,20 @@ claim C2PrattStep(toks ∈ TokenList, outs ∈ ExprList, ops ∈ PrOps,
         _ ⇒ ""
     ps_nx_lp ∈ Bool = (ps_nx matches LParen)
 
+    -- dot-fold (G1 records): in OPERATOR position, `. Ident` over an
+    -- EIdent top operand folds into the flattened dotted name
+    -- (`p` `.` `x` → EIdent("p.x")); chains fold left (`s.pos.x`).
+    -- The 2-token action mirrors the call head; nothing else changes.
+    ps_o1_id ∈ Bool = (ps_o1 matches EIdent(_))
+    ps_o1_nm ∈ String = match ps_o1
+        EIdent(s6) ⇒ s6
+        _ ⇒ ""
+    ps_nx_nm ∈ String = match ps_nx
+        Ident(s7) ⇒ s7
+        _ ⇒ ""
+    ps_dotf ∈ Bool = ((¬expop) ∧ (ps_hd matches Dot)
+        ∧ (ps_nx matches Ident(_)) ∧ ps_o1_id)
+
     -- `matches` postfix (C4): in OPERATOR position (operand just
     -- completed), `matches Ctor` / `matches Ctor(_)` /
     -- `matches Ctor(_, _)` is consumed in ONE action (2/5/7 tokens)
@@ -672,7 +705,10 @@ claim C2PrattStep(toks ∈ TokenList, outs ∈ ExprList, ops ∈ PrOps,
     -- action selection (exactly one fires). A call head (Ident
     -- followed by `(` in operand position) takes priority over the
     -- plain atom shift of the same Ident.
-    ps_sh_call ∈ Bool = (expop ∧ (ps_hd matches Ident(_)) ∧ ps_nx_lp)
+    ps_call_key ∈ String = "|" ++ substr(ps_hd_nm ++ "                               ", 0, 31)
+    ps_call_ok ∈ Bool = (index_of(calls, ps_call_key, 0) ≥ 0)
+    ps_sh_call ∈ Bool = (expop ∧ (ps_hd matches Ident(_)) ∧ ps_nx_lp
+        ∧ ps_call_ok)
     ps_sh_atom ∈ Bool = (expop ∧ ps_atom_ok ∧ (¬ps_sh_call))
     ps_sh_lp ∈ Bool = (expop ∧ ps_is_lp)
     ps_sh_not ∈ Bool = (expop ∧ ps_is_not)
@@ -682,7 +718,7 @@ claim C2PrattStep(toks ∈ TokenList, outs ∈ ExprList, ops ∈ PrOps,
 
     ps_q_stop ∈ Bool = (qstop ∧ ps_is_q ∧ (pd = 0) ∧ (qd = 0))
     ps_cont ∈ Bool = (ps_bin_ok ∨ (ps_is_q ∧ (¬ps_q_stop)) ∨ ps_is_lb
-        ∨ ps_match
+        ∨ ps_match ∨ ps_dotf
         ∨ (ps_is_col ∧ (qd > 0)) ∨ (ps_is_rp ∧ (pd > 0))
         ∨ (ps_is_rb ∧ (pd > 0))
         ∨ (ps_is_com ∧ (cd > 0)))
@@ -720,9 +756,11 @@ claim C2PrattStep(toks ∈ TokenList, outs ∈ ExprList, ops ∈ PrOps,
         ∨ ps_com_bump ∨ ps_sh_idx ∨ ps_rb_close)
     scons = (ps_sh_call ? 2
         : ps_match ? ps_mt_cons
+        : ps_dotf ? 2
         : ps_consume ? 1 : 0)
     ntoks = (ps_sh_call ? ps_tl2
         : ps_match ? (ps_mt_p2 ? ps_tl7 : ps_mt_p1 ? ps_tl5 : ps_tl2)
+        : ps_dotf ? ps_tl2
         : ps_consume ? ps_tl : toks)
 
     -- call close: argc = comma count + 1; operands pop in reverse
@@ -748,6 +786,7 @@ claim C2PrattStep(toks ∈ TokenList, outs ∈ ExprList, ops ∈ PrOps,
         : ps_rp_call ? ELCons(ps_call_e, ps_call_base)
         : ps_rb_close ? ELCons(ps_idx_e, ps_o_t2)
         : ps_match ? ELCons(EMatches(ps_mt_nm, ps_o1), ps_o_t1)
+        : ps_dotf ? ELCons(EIdent(ps_o1_nm ++ "." ++ ps_nx_nm), ps_o_t1)
         : outs)
 
     ps_push ∈ PrOp = (ps_is_q ? PrQuest : PrBin(ps_bin_o))
@@ -2090,6 +2129,8 @@ claim driver_main
         : _pmode = 7 ? 2
         : _pmode = 8 ? (d_witems_nil ? 1 : 0)
         : _pmode = 10 ? ((_cw_st = 1 ∧ d_witems_nil) ? 2 : 0)
+        : _pmode = 11 ? 2
+        : _pmode = 12 ? ((_pt_st = 0 ∧ d_witems_nil) ? 5 : 0)
         : d_witems_nil ? 8
         : 0)
     tok_ready ∈ Bool = ((_fmode = 0) ∧ (w_need > 0) ∧ (w_rem ≥ w_need))
@@ -2178,7 +2219,8 @@ claim driver_main
     _ci_cnt ∈ Int
     ci_names ∈ String
     _ci_names ∈ String
-    ci_add ∈ Bool = (d_enter_skip ∧ d_head_is_claim
+    ci_add ∈ Bool = (d_enter_skip
+        ∧ (d_head_is_claim ∨ (ww_t0 matches KwType))
         ∧ (ww_t1 matches Ident(_)))
     ci_entry ∈ String = "|" ++ substr(d_cl_name ++ "                               ", 0, 31)
     ci_cnt = (is_first_tick ? 0 : ci_add ? _ci_cnt + 1 : _ci_cnt)
@@ -2762,7 +2804,7 @@ claim driver_main
     _sq_name ∈ String
     sq_set = (is_first_tick ? false : d_seq_mem ? true : _sq_set)
     sq_name = (is_first_tick ? ""
-        : (d_seq_mem ∧ (¬_sq_set)) ? c_name
+        : (d_seq_mem ∧ (¬_sq_set)) ? c_dname
         : _sq_name)
     sl_cnt ∈ Int
     _sl_cnt ∈ Int
@@ -2881,6 +2923,18 @@ claim driver_main
     d_h_t4 ∈ C2H = match d_h_t3
         C2HCons(_, r) ⇒ r
         C2HNil ⇒ C2HNil
+    d_h_5th ∈ Int = match d_h_t4
+        C2HCons(h, _) ⇒ h
+        C2HNil ⇒ 0
+    d_h_t5 ∈ C2H = match d_h_t4
+        C2HCons(_, r) ⇒ r
+        C2HNil ⇒ C2HNil
+    d_h_6th ∈ Int = match d_h_t5
+        C2HCons(h, _) ⇒ h
+        C2HNil ⇒ 0
+    d_h_t6 ∈ C2H = match d_h_t5
+        C2HCons(_, r) ⇒ r
+        C2HNil ⇒ C2HNil
 
     -- current work item.
     d_witems_nil ∈ Bool = match _witems
@@ -2896,13 +2950,13 @@ claim driver_main
     -- F2: the param-skip substate (il_ps) suppresses the classifier
     -- until the callee's first-line param list is walked over.
     d_classify   ∈ Bool = (d_in_claim ∧ d_witems_nil ∧ tok_ready
-        ∧ (_il_ps = 0))
+        ∧ (_il_ps = 0) ∧ (¬_fl_on))
     -- items drain identically under the claim walk, the effects
     -- element walk (pmode 5), the seq-literal walk (pmode 8), the
     -- F1 group walk (pmode 9) and the F2 call walk (pmode 10)
     d_processing ∈ Bool = ((d_in_claim ∨ (in_parse ∧ (_pmode = 5))
         ∨ (in_parse ∧ (_pmode = 8)) ∨ (in_parse ∧ (_pmode = 9))
-        ∨ (in_parse ∧ (_pmode = 10)))
+        ∨ (in_parse ∧ (_pmode = 10)) ∨ (in_parse ∧ (_pmode = 12)))
         ∧ (¬d_witems_nil))
 
     d_it_proc    ∈ Bool = (d_whead matches C2Process(_))
@@ -3085,7 +3139,8 @@ claim driver_main
     d_ca0_nm ∈ String = match d_ca0
         EIdent(can) ⇒ can
         _ ⇒ ""
-    d_sl_seq ∈ Bool = (_sq_set ∧ (d_ca0_nm = _sq_name))
+    d_sl_seq ∈ Bool = (_sq_set ∧ ((d_ca0_nm = _sq_name)
+        ∨ ((_il_pfx ++ d_ca0_nm) = _sq_name)))
     d_c1_items ∈ C2Items = (d_cnm = "str_len"
             ? (d_sl_seq
                 ? C2ICons(C2Process(EIdent(_sq_name ++ "__len")), d_wtail)
@@ -3118,7 +3173,11 @@ claim driver_main
             ? C2ICons(C2Process(d_ca0), C2ICons(C2Process(d_ca1),
                 C2ICons(C2App(d_ctor_d, 2), d_wtail)))
         : C2ICons(C2PushH(0), d_wtail))
-    d_c3_items ∈ C2Items = (d_cnm = "substr"
+    d_c3_items ∈ C2Items = (d_cnm = "replace"
+            ? C2ICons(C2Process(d_ca0), C2ICons(C2Process(d_ca1),
+                C2ICons(C2Process(d_ca2),
+                C2ICons(C2StrOp("replace", 3), d_wtail))))
+        : d_cnm = "substr"
             ? C2ICons(C2Process(d_ca0), C2ICons(C2Process(d_ca1),
                 C2ICons(C2Process(d_ca2),
                 C2ICons(C2StrOp("substr", 3), d_wtail))))
@@ -3146,11 +3205,14 @@ claim driver_main
     -- ("__cN_" ++ name) takes priority over the plain table.
     d_ilb_found ∈ Bool = ((d_lkname ≠ "") ∧ ((ilb_n0 = d_lkname)
         ∨ (ilb_n1 = d_lkname) ∨ (ilb_n2 = d_lkname)
-        ∨ (ilb_n3 = d_lkname)))
+        ∨ (ilb_n3 = d_lkname) ∨ (ilb_n4 = d_lkname)
+        ∨ (ilb_n5 = d_lkname)))
     d_ilb_h ∈ Int = (ilb_n0 = d_lkname ? ilb_h0
         : ilb_n1 = d_lkname ? ilb_h1
         : ilb_n2 = d_lkname ? ilb_h2
-        : ilb_h3)
+        : ilb_n3 = d_lkname ? ilb_h3
+        : ilb_n4 = d_lkname ? ilb_h4
+        : ilb_h5)
     d_lk_pfx_key ∈ String = "|" ++ substr((_il_pfx ++ d_lkname) ++ "                               ", 0, 31)
     d_lk_pfx_pos ∈ Int = index_of(st_names, d_lk_pfx_key, 0)
     d_lk_pfx_on ∈ Bool = ((_il_pfx ≠ "") ∧ (d_lk_pfx_pos ≥ 0))
@@ -3193,6 +3255,15 @@ claim driver_main
         : _bsc_acc)
     d_bind_hit ∈ Bool = (d_it_proc ∧ d_pe_is_id ∧ _bsc_on
         ∧ (d_lkname = _bsc_n))
+    -- G1: quantifier bound-name expansion (range: the element
+    -- numeral; seq: (select s i)) — shadows every other resolution.
+    d_vb_hit ∈ Bool = (d_it_proc ∧ d_pe_is_id ∧ _fl_on
+        ∧ (d_lkname = _fl_var))
+    d_vb_items ∈ C2Items = (_fl_kind = 0
+        ? C2ICons(C2Process(EInt(_fl_v)), d_wtail)
+        : C2ICons(C2Process(EIdent(_fl_seq)),
+            C2ICons(C2Process(EInt(_fl_v)),
+            C2ICons(C2SelH, d_wtail))))
     d_bind_items ∈ C2Items = (_mp_lr
         ? C2ICons(C2Process(EIdent("last_results")),
             C2ICons(C2Process(EInt(_mp_idx)),
@@ -3305,7 +3376,8 @@ claim driver_main
     -- start a body line): at depth 0 it ends the walk; inside an
     -- inline frame it POPS back to the caller.
     d_line_end ∈ Bool = (c_rem_nil ∨ c_t0_is_tlkw
-        ∨ ((¬c_can_expr) ∧ (¬c_dd_head)))
+        ∨ ((¬c_can_expr) ∧ (¬c_dd_head) ∧ (¬c_strin_line)
+            ∧ (¬c_q_line)))
     d_claim_end ∈ Bool = (d_classify ∧ d_line_end ∧ (_il_depth = 0))
     il_pop ∈ Bool = (d_classify ∧ d_line_end ∧ (_il_depth > 0))
 
@@ -3338,10 +3410,12 @@ claim driver_main
     d_enter_pratt0 ∈ Bool = (d_classify ∧ (¬d_line_end)
         ∧ (¬c_eff_line) ∧ (¬c_set_line) ∧ (¬c_match_line)
         ∧ (¬c_seq_line) ∧ (¬c_seqlit_line) ∧ (¬c_mn_line)
-        ∧ (¬c_comp_line)
+        ∧ (¬c_comp_line) ∧ (¬c_strin_line) ∧ (¬c_ty_line)
+        ∧ (¬c_q_rng) ∧ (¬(c_q_seq ∧ _sq_set)) ∧ (¬pcl_line)
         ∧ (c_pinned ∨ (¬c_is_mem)))
     d_enter_pratt ∈ Bool = (d_enter_pratt0 ∨ el_exit_enter
-        ∨ el_g_enter ∨ mp_benter ∨ sl_e_enter ∨ cw_slot)
+        ∨ el_g_enter ∨ mp_benter ∨ sl_e_enter ∨ cw_slot
+        ∨ q_close ∨ d_enter_qs ∨ pt_elem)
     -- tokens consumed before the expression starts: a pin's
     -- `name ∈ Type =` is 4; an element's `Exit (` is 2; a match
     -- arm's payload head `Ctor ( b ) ⇒` is 5, nullary/wildcard
@@ -3352,12 +3426,18 @@ claim driver_main
         : mp_benter ? ((mp_take ∧ mp_arm_pl_h) ? 5 : 2)
         : sl_e_enter ? 0
         : cw_slot ? 2
+        : q_close ? 2
+        : d_enter_qs ? (c_q_s2 ? 7 : 5)
+        : pt_elem ? 0
         : c_pinned ? 4 : 0)
     d_pratt_kind0 ∈ Int = (el_exit_enter ? 3
         : el_g_enter ? 6
         : mp_benter ? 4
         : sl_e_enter ? 7
         : cw_slot ? 8
+        : q_close ? 9
+        : d_enter_qs ? 9
+        : pt_elem ? 10
         : c_pinned ? 1 : 2)
     -- qstop: only guard parses stop at a top-level `?`
     pq_qstop ∈ Bool
@@ -3386,24 +3466,189 @@ claim driver_main
     c_chk_key ∈ String = "|" ++ substr(c_chk_name ++ "                               ", 0, 31)
     c_dup ∈ Bool = (index_of(st_names, c_chk_key, 0) ≥ 0)
     c_bnd ∈ Bool = ((c_name ≠ "") ∧ ((ilb_n0 = c_name) ∨ (ilb_n1 = c_name)
-        ∨ (ilb_n2 = c_name) ∨ (ilb_n3 = c_name)))
+        ∨ (ilb_n2 = c_name) ∨ (ilb_n3 = c_name) ∨ (ilb_n4 = c_name)
+        ∨ (ilb_n5 = c_name)))
     c_nodecl ∈ Bool = (c_bnd ∨ c_dup)
     c_pn ∈ String = (c_bnd ? c_name : c_dname)
     c_mem_head ∈ C2Item = (c_nodecl ? C2Process(EIdent(c_pn))
         : C2DeclConst(c_dname, c_sc))
     c_mem_items ∈ C2Items = C2ICons(c_mem_head, c_natseg)
 
+    -- ── G1: infix contains — `"lit" ∈ name` → (str.contains name "lit")
+    c_strin_line ∈ Bool = ((c_t0 matches StringLit(_)) ∧ c_is_mem
+        ∧ (c_t2 matches Ident(_)))
+    c_si_lit ∈ String = match c_t0
+        StringLit(s) ⇒ s
+        _ ⇒ ""
+    c_si_items ∈ C2Items = C2ICons(C2Process(EIdent(c_type_str)),
+        C2ICons(C2Process(EStr(c_si_lit)),
+        C2ICons(C2StrOp("contains", 2),
+        C2ICons(C2AssertTop, C2INil))))
+    d_enter_si ∈ Bool = (d_classify ∧ (¬d_line_end) ∧ c_strin_line)
+
+    -- ── G1: type splice — a membership whose TYPE name resolves in
+    -- the claim/type index splices the type body with prefix
+    -- "name." (fields flatten to dotted consts — oracle parity:
+    -- f.p, s.rects). `f ∈ Foo (p ↦ 5)` runs the pmode-10 slot walk
+    -- first (params bind at the use site); `p ∈ Point` jumps direct.
+    -- Inside a type frame (prefix ends with ".") memberships are NOT
+    -- manifest state fields and get no textual carry (oracle parity).
+    c_ty_key ∈ String = "|" ++ substr(c_type_str ++ "                               ", 0, 31)
+    c_ty_pos ∈ Int = index_of(ci_names, c_ty_key, 0)
+    c_ty_found ∈ Bool = (c_is_mem ∧ (¬c_eff_line) ∧ (c_sc = 0)
+        ∧ (c_type_str ≠ "Int") ∧ (c_type_str ≠ "Nat")
+        ∧ (c_type_str ≠ "Seq") ∧ (c_type_str ≠ "")
+        ∧ (¬c_strin_line) ∧ (c_ty_pos ≥ 0))
+    c_ty_call ∈ Bool = (d_classify ∧ (¬d_line_end) ∧ c_ty_found
+        ∧ (c_t3 matches LParen) ∧ (c_t4 matches Ident(_))
+        ∧ (ww_t5 matches OpMapsto) ∧ (_il_depth < 8))
+    c_ty_bare ∈ Bool = (d_classify ∧ (¬d_line_end) ∧ c_ty_found
+        ∧ (¬(c_t3 matches LParen)) ∧ (¬c_pinned) ∧ (¬c_bound)
+        ∧ (_il_depth < 8))
+    c_ty_line ∈ Bool = (c_ty_call ∨ c_ty_bare)
+    c_in_ty ∈ Bool = ((#_il_pfx > 0)
+        ∧ (substr(_il_pfx, #_il_pfx - 1, 1) = "."))
+    c_cur_pos ∈ Int = (c_ty_line ? c_ty_pos : c_comp_pos)
+
+    -- ── G1: bounded quantifier lines — `∀|∃ v ∈ {lo..hi} : body` and
+    -- `∀ v ∈ seq : body` (seq = the registered Seq var; its length
+    -- comes from the recorded `#seq = k` pin). The body parses ONCE
+    -- through the Pratt FSM (pk_kind 9); the fl loop then re-walks
+    -- the parsed Expr once per element with the bound name expanding
+    -- to the element value (range: the numeral; seq: (select s i)),
+    -- and/or-folds, and asserts — the oracle's flat expansion modulo
+    -- the accepted 2-ary nesting divergence.
+    c_q_ex ∈ Bool = (c_t0 matches OpExists)
+    c_q_hd ∈ Bool = ((c_t0 matches OpForall) ∨ c_q_ex)
+    c_q_line ∈ Bool = (c_q_hd ∧ (c_t1 matches Ident(_))
+        ∧ (c_t2 matches OpIn))
+    c_q_var ∈ String = match c_t1
+        Ident(s) ⇒ s
+        _ ⇒ ""
+    c_q_rng ∈ Bool = (c_q_line ∧ (c_t3 matches LBrace)
+        ∧ (c_t4 matches IntLit(_)) ∧ (ww_t5 matches Dot)
+        ∧ (ww_t6 matches Dot) ∧ (ww_t7 matches IntLit(_)))
+    c_q_lo ∈ Int = match c_t4
+        IntLit(n) ⇒ n
+        _ ⇒ 0
+    c_q_hi ∈ Int = match ww_t7
+        IntLit(n) ⇒ n
+        _ ⇒ 0
+    c_q_t3nm ∈ String = match c_t3
+        Ident(s) ⇒ s
+        _ ⇒ ""
+    c_q_t5nm ∈ String = match ww_t5
+        Ident(s) ⇒ s
+        _ ⇒ ""
+    c_q_s1 ∈ Bool = (c_q_line ∧ (c_t3 matches Ident(_))
+        ∧ (c_t4 matches Colon))
+    c_q_s2 ∈ Bool = (c_q_line ∧ (c_t3 matches Ident(_))
+        ∧ (c_t4 matches Dot) ∧ (ww_t5 matches Ident(_))
+        ∧ (ww_t6 matches Colon))
+    c_q_seq ∈ Bool = (c_q_s1 ∨ c_q_s2)
+    c_q_seqnm0 ∈ String = (c_q_s2 ? (c_q_t3nm ++ "." ++ c_q_t5nm) : c_q_t3nm)
+    c_q_seqnm ∈ String = (((_il_pfx ++ c_q_seqnm0) = _sq_name)
+        ? _sq_name : c_q_seqnm0)
+    d_enter_qr ∈ Bool = (d_classify ∧ (¬d_line_end) ∧ c_q_rng)
+    d_enter_qs ∈ Bool = (d_classify ∧ (¬d_line_end) ∧ (¬c_q_rng)
+        ∧ c_q_seq ∧ _sq_set)
+
+    -- pmode 11: the range head's `} :` close (the 8-token classify
+    -- bite latched lo/hi; the brace close enters the body parse)
+    q_act ∈ Bool = (in_parse ∧ (_pmode = 11) ∧ d_witems_nil ∧ tok_ready)
+    q_close ∈ Bool = (q_act ∧ (ww_t0 matches RBrace)
+        ∧ (ww_t1 matches Colon))
+    q_bail ∈ Bool = (q_act ∧ (¬q_close))
+
+    -- fl: the quantifier expansion loop (one body re-walk per element)
+    fl_on ∈ Bool
+    _fl_on ∈ Bool
+    fl_ex ∈ Bool
+    _fl_ex ∈ Bool
+    fl_var ∈ String
+    _fl_var ∈ String
+    fl_kind ∈ Int
+    _fl_kind ∈ Int
+    fl_lo ∈ Int
+    _fl_lo ∈ Int
+    fl_hi ∈ Int
+    _fl_hi ∈ Int
+    fl_seq ∈ String
+    _fl_seq ∈ String
+    fl_body ∈ Expr
+    _fl_body ∈ Expr
+    fl_nx ∈ Int
+    _fl_nx ∈ Int
+    fl_v ∈ Int
+    _fl_v ∈ Int
+    fq_done ∈ Bool = (p_done ∧ (_pk_kind = 9) ∧ (¬pr_bad))
+    fx_disp ∈ Bool = (d_in_claim ∧ _fl_on ∧ d_witems_nil
+        ∧ (_il_ps = 0) ∧ tok_ready)
+    fx_more ∈ Bool = (fx_disp ∧ (_fl_nx ≤ _fl_hi))
+    fx_fin ∈ Bool = (fx_disp ∧ (_fl_nx > _fl_hi))
+    fl_ex = (is_first_tick ? false
+        : (d_enter_qr ∨ d_enter_qs) ? c_q_ex : _fl_ex)
+    fl_var = (is_first_tick ? ""
+        : (d_enter_qr ∨ d_enter_qs) ? c_q_var : _fl_var)
+    fl_kind = (is_first_tick ? 0
+        : d_enter_qr ? 0 : d_enter_qs ? 1 : _fl_kind)
+    fl_lo = (is_first_tick ? 0
+        : d_enter_qr ? c_q_lo : d_enter_qs ? 0 : _fl_lo)
+    fl_hi = (is_first_tick ? 0
+        : d_enter_qr ? c_q_hi : d_enter_qs ? _sv_len - 1 : _fl_hi)
+    fl_seq = (is_first_tick ? "" : d_enter_qs ? c_q_seqnm : _fl_seq)
+    fl_body = (is_first_tick ? ENoExpr : fq_done ? pr_sres : _fl_body)
+    fl_on = (is_first_tick ? false
+        : fq_done ? true
+        : fx_fin ? false
+        : _fl_on)
+    fl_nx = (is_first_tick ? 0
+        : (d_enter_qr ∨ d_enter_qs) ? (d_enter_qr ? c_q_lo : 0)
+        : fx_more ? _fl_nx + 1
+        : _fl_nx)
+    fl_v = (is_first_tick ? 0 : fx_more ? _fl_nx : _fl_v)
+    fx_fold ∈ Op = (_fl_ex ? OpDisj : OpConj)
+    fx_items ∈ C2Items = C2ICons(C2Process(_fl_body),
+        ((_fl_nx > _fl_lo) ? C2ICons(C2Op(fx_fold), C2INil) : C2INil))
+    fx_fin_items ∈ C2Items = C2ICons(C2AssertTop, C2INil)
+
+    -- sv: the registered seq var's recorded literal length (`#s = k`
+    -- pins, recognized at parse completion) — feeds ∀-over-seq.
+    sv_len ∈ Int
+    _sv_len ∈ Int
+    svr_l_c1 ∈ Bool = (gc_l matches ECall1(_, _))
+    svr_nm ∈ String = match gc_l
+        ECall1(n, _) ⇒ n
+        _ ⇒ ""
+    svr_arg ∈ Expr = match gc_l
+        ECall1(_, a) ⇒ a
+        _ ⇒ ENoExpr
+    svr_argnm ∈ String = match svr_arg
+        EIdent(s) ⇒ s
+        _ ⇒ ""
+    svr_k ∈ Int = match gc_r
+        EInt(n) ⇒ n
+        _ ⇒ 0 - 1
+    svr_hit ∈ Bool = (p_done ∧ (_pk_kind = 2) ∧ (¬pr_bad) ∧ gc_bin
+        ∧ (gc_op matches OpEq) ∧ svr_l_c1 ∧ (svr_nm = "str_len")
+        ∧ (svr_k ≥ 0) ∧ _sq_set
+        ∧ ((svr_argnm = _sq_name) ∨ ((_il_pfx ++ svr_argnm) = _sq_name)))
+    sv_len = (is_first_tick ? 0 : svr_hit ? svr_k : _sv_len)
+
     -- D2: a Seq(Int) membership declares the array const + its
     -- companion `<name>__len` Int const + the `(>= len 0)` floor —
     -- all through existing items (the two handles stay on the stack
     -- through the NatBound/AssertTop pair, then drop).
-    c_seqmem_items ∈ C2Items = C2ICons(C2DeclConst(c_name, 5),
-        C2ICons(C2DeclConst(c_name ++ "__len", 0),
+    c_seqmem_items ∈ C2Items = C2ICons(C2DeclConst(c_dname, 5),
+        C2ICons(C2DeclConst(c_dname ++ "__len", 0),
         C2ICons(C2NatBound, C2ICons(C2AssertTop,
         C2ICons(C2Drop, C2ICons(C2Drop, C2INil))))))
     d_new_items ∈ C2Items = ((d_line_end ∨ d_enter_pratt0 ∨ d_enter_el
-        ∨ d_enter_set ∨ d_enter_match ∨ d_enter_sl ∨ c_comp_line)
+        ∨ d_enter_set ∨ d_enter_match ∨ d_enter_sl ∨ c_comp_line
+        ∨ c_ty_line ∨ d_enter_qr ∨ d_enter_qs ∨ pcl_tup ∨ pcl_stmt)
         ? C2INil
+        : pcl_meth ? pcl_recv_items
+        : d_enter_si ? c_si_items
         : d_seq_mem ? c_seqmem_items
         : c_mem_items)
     -- a direct (non-pratt) membership line consumes `x ∈ Type` = 3
@@ -3411,7 +3656,9 @@ claim driver_main
     -- `s ∈ Seq ( Int )` is 6.
     d_mem_line ∈ Bool = (d_classify ∧ (¬d_line_end) ∧ (¬d_enter_pratt0)
         ∧ (¬d_enter_el) ∧ (¬d_enter_set) ∧ (¬d_enter_match)
-        ∧ (¬d_enter_sl) ∧ (¬d_enter_mn) ∧ (¬c_comp_line))
+        ∧ (¬d_enter_sl) ∧ (¬d_enter_mn) ∧ (¬c_comp_line)
+        ∧ (¬c_strin_line) ∧ (¬c_ty_line) ∧ (¬c_q_line)
+        ∧ (¬pcl_line))
     d_mem_cons ∈ Int = (d_seq_mem ? 6 : c_bound ? 5 : 3)
     c_tyname ∈ String = (c_sc = 1 ? "Bool"
         : c_sc = 2 ? c_type_str
@@ -3566,6 +3813,10 @@ claim driver_main
     _cw_st ∈ Int
     cw_bare ∈ Bool
     _cw_bare ∈ Bool
+    cw_ty ∈ Bool
+    _cw_ty ∈ Bool
+    ts_pfx ∈ String
+    _ts_pfx ∈ String
     cw_k ∈ Int
     _cw_k ∈ Int
     cs_n0 ∈ String
@@ -3576,6 +3827,10 @@ claim driver_main
     _cs_n2 ∈ String
     cs_n3 ∈ String
     _cs_n3 ∈ String
+    cs_n4 ∈ String
+    _cs_n4 ∈ String
+    cs_n5 ∈ String
+    _cs_n5 ∈ String
 
     -- current-frame binds peel (≤ 4 entries)
     ilb_n0 ∈ String = match _il_binds
@@ -3611,6 +3866,24 @@ claim driver_main
     ilb_h3 ∈ Int = match ilb_t2
         CBCons(_, h, _) ⇒ h
         CBNil ⇒ 0
+    ilb_t3 ∈ C2Binds = match ilb_t2
+        CBCons(_, _, r) ⇒ r
+        CBNil ⇒ CBNil
+    ilb_n4 ∈ String = match ilb_t3
+        CBCons(n, _, _) ⇒ n
+        CBNil ⇒ ""
+    ilb_h4 ∈ Int = match ilb_t3
+        CBCons(_, h, _) ⇒ h
+        CBNil ⇒ 0
+    ilb_t4 ∈ C2Binds = match ilb_t3
+        CBCons(_, _, r) ⇒ r
+        CBNil ⇒ CBNil
+    ilb_n5 ∈ String = match ilb_t4
+        CBCons(n, _, _) ⇒ n
+        CBNil ⇒ ""
+    ilb_h5 ∈ Int = match ilb_t4
+        CBCons(_, h, _) ⇒ h
+        CBNil ⇒ 0
 
     -- suspended-frame head peel
     fr_ret ∈ Int = match _il_frames
@@ -3628,9 +3901,9 @@ claim driver_main
 
     -- the classify tick of a composition line emits the callee
     -- body-cursor read (capture lands next tick)
-    il_rdcur ∈ Bool = c_comp_line
+    il_rdcur ∈ Bool = (c_comp_line ∨ c_ty_line)
     e_cir ∈ Effect
-    BuildMemReadLong(addr ↦ ci_base + (8 * (c_comp_pos / 32)), eff ↦ e_cir)
+    BuildMemReadLong(addr ↦ ci_base + (8 * (c_cur_pos / 32)), eff ↦ e_cir)
 
     -- pmode 10 dispatch
     d_in_cw0 ∈ Bool = (in_parse ∧ (_pmode = 10) ∧ (_cw_st = 0))
@@ -3639,7 +3912,7 @@ claim driver_main
     d_in_cw1 ∈ Bool = (in_parse ∧ (_pmode = 10) ∧ (_cw_st = 1)
         ∧ d_witems_nil ∧ tok_ready)
     cw_slot ∈ Bool = (d_in_cw1 ∧ (ww_t0 matches Ident(_))
-        ∧ (ww_t1 matches OpMapsto) ∧ (_cw_k < 4))
+        ∧ (ww_t1 matches OpMapsto) ∧ (_cw_k < 6))
     cw_comma ∈ Bool = (d_in_cw1 ∧ (ww_t0 matches Comma))
     cw_fire ∈ Bool = (d_in_cw1 ∧ (ww_t0 matches RParen))
     cw_bail ∈ Bool = (d_in_cw1 ∧ (¬cw_slot) ∧ (¬cw_comma) ∧ (¬cw_fire))
@@ -3651,25 +3924,38 @@ claim driver_main
     -- fire: pop the k slot-value handles (post-order — the stack
     -- top is the LAST slot's value) into the new frame's binds
     b_h0 ∈ Int = (_cw_k = 1 ? d_h_top : _cw_k = 2 ? d_h_2nd
-        : _cw_k = 3 ? d_h_3rd : d_h_4th)
-    b_h1 ∈ Int = (_cw_k = 2 ? d_h_top : _cw_k = 3 ? d_h_2nd : d_h_3rd)
-    b_h2 ∈ Int = (_cw_k = 3 ? d_h_top : d_h_2nd)
-    b_h3 ∈ Int = d_h_top
+        : _cw_k = 3 ? d_h_3rd : _cw_k = 4 ? d_h_4th
+        : _cw_k = 5 ? d_h_5th : d_h_6th)
+    b_h1 ∈ Int = (_cw_k = 2 ? d_h_top : _cw_k = 3 ? d_h_2nd
+        : _cw_k = 4 ? d_h_3rd : _cw_k = 5 ? d_h_4th : d_h_5th)
+    b_h2 ∈ Int = (_cw_k = 3 ? d_h_top : _cw_k = 4 ? d_h_2nd
+        : _cw_k = 5 ? d_h_3rd : d_h_4th)
+    b_h3 ∈ Int = (_cw_k = 4 ? d_h_top : _cw_k = 5 ? d_h_2nd : d_h_3rd)
+    b_h4 ∈ Int = (_cw_k = 5 ? d_h_top : d_h_2nd)
+    b_h5 ∈ Int = d_h_top
     il_binds_new ∈ C2Binds = (_cw_k = 1 ? CBCons(_cs_n0, b_h0, CBNil)
         : _cw_k = 2 ? CBCons(_cs_n0, b_h0, CBCons(_cs_n1, b_h1, CBNil))
         : _cw_k = 3 ? CBCons(_cs_n0, b_h0, CBCons(_cs_n1, b_h1,
             CBCons(_cs_n2, b_h2, CBNil)))
         : _cw_k = 4 ? CBCons(_cs_n0, b_h0, CBCons(_cs_n1, b_h1,
             CBCons(_cs_n2, b_h2, CBCons(_cs_n3, b_h3, CBNil))))
+        : _cw_k = 5 ? CBCons(_cs_n0, b_h0, CBCons(_cs_n1, b_h1,
+            CBCons(_cs_n2, b_h2, CBCons(_cs_n3, b_h3,
+            CBCons(_cs_n4, b_h4, CBNil)))))
+        : _cw_k = 6 ? CBCons(_cs_n0, b_h0, CBCons(_cs_n1, b_h1,
+            CBCons(_cs_n2, b_h2, CBCons(_cs_n3, b_h3,
+            CBCons(_cs_n4, b_h4, CBCons(_cs_n5, b_h5, CBNil))))))
         : CBNil)
     cw_pop_stk ∈ C2H = (_cw_k = 1 ? d_h_t1
         : _cw_k = 2 ? d_h_t2
         : _cw_k = 3 ? d_h_t3
         : _cw_k = 4 ? d_h_t4
+        : _cw_k = 5 ? d_h_t5
+        : _cw_k = 6 ? d_h_t6
         : d_hstk_in)
     il_pfx_new ∈ String = "__c" ++ str_from_int(_il_cnt) ++ "_"
 
-    il_jump ∈ Bool = (cw_fire ∨ cw_bjump)
+    il_jump ∈ Bool = (cw_fire ∨ cw_bjump ∨ gj_fire ∨ ptj_fire)
     il_tgt_v ∈ Int = (cw_bjump ? d_cap_int : _il_tgt)
     il_ret_v ∈ Int = (cw_fire ? _tcur + 1 : _tcur)
 
@@ -3691,11 +3977,15 @@ claim driver_main
     il_binds = (is_first_tick ? CBNil
         : cw_reset ? CBNil
         : cw_fire ? il_binds_new
+        : ptj_fire ? CBNil
+        : pz_act ? pz_binds
         : il_pop ? fr_bnd
         : _il_binds)
     il_pfx = (is_first_tick ? ""
         : cw_reset ? ""
-        : cw_fire ? il_pfx_new
+        : cw_fire ? (_cw_ty ? _ts_pfx : il_pfx_new)
+        : (cw_bjump ∧ _cw_ty) ? _ts_pfx
+        : ptj_fire ? il_pfx_new
         : il_pop ? fr_pfx
         : _il_pfx)
     il_depth = (is_first_tick ? 0
@@ -3705,9 +3995,12 @@ claim driver_main
         : _il_depth)
     il_cnt = (is_first_tick ? 1
         : cw_reset ? 1
-        : cw_fire ? _il_cnt + 1
+        : (cw_fire ∧ (¬_cw_ty)) ? _il_cnt + 1
+        : ptj_fire ? _il_cnt + 1
         : _il_cnt)
-    il_tgt = (is_first_tick ? 0 : cw_cap ? d_cap_int : _il_tgt)
+    il_tgt = (is_first_tick ? 0
+        : (cw_cap ∨ gj_cap ∨ ptj_cap) ? d_cap_int
+        : _il_tgt)
     il_ps = (is_first_tick ? 0
         : il_jump ? 1
         : ips_open ? 2
@@ -3720,21 +4013,32 @@ claim driver_main
             : _il_pd)
         : _il_pd)
     cw_st = (is_first_tick ? 0
-        : c_comp_line ? 0
+        : (c_comp_line ∨ c_ty_line) ? 0
+        : gc_hit ? 3
+        : gj_cap ? 4
         : cw_cap ? 1
         : _cw_st)
     cw_bare = (is_first_tick ? false
-        : c_comp_call ? false
-        : (c_comp_bare ∨ c_comp_dd) ? true
+        : (c_comp_call ∨ c_ty_call) ? false
+        : (c_comp_bare ∨ c_comp_dd ∨ c_ty_bare) ? true
         : _cw_bare)
+    cw_ty = (is_first_tick ? false
+        : c_ty_line ? true
+        : c_comp_line ? false
+        : _cw_ty)
+    ts_pfx = (is_first_tick ? ""
+        : c_ty_line ? (_il_pfx ++ c_name ++ ".")
+        : _ts_pfx)
     cw_k = (is_first_tick ? 0
-        : c_comp_call ? 0
+        : (c_comp_call ∨ c_ty_call) ? 0
         : cw_vdone ? _cw_k + 1
         : _cw_k)
     cs_n0 = (is_first_tick ? "" : (cw_slot ∧ _cw_k = 0) ? cw_slot_nm : _cs_n0)
     cs_n1 = (is_first_tick ? "" : (cw_slot ∧ _cw_k = 1) ? cw_slot_nm : _cs_n1)
     cs_n2 = (is_first_tick ? "" : (cw_slot ∧ _cw_k = 2) ? cw_slot_nm : _cs_n2)
     cs_n3 = (is_first_tick ? "" : (cw_slot ∧ _cw_k = 3) ? cw_slot_nm : _cs_n3)
+    cs_n4 = (is_first_tick ? "" : (cw_slot ∧ _cw_k = 4) ? cw_slot_nm : _cs_n4)
+    cs_n5 = (is_first_tick ? "" : (cw_slot ∧ _cw_k = 5) ? cw_slot_nm : _cs_n5)
 
     -- ── PRATT FSM state (pmode 3; reads the shared window) ────────
     d_in_pratt ∈ Bool = (in_parse ∧ (_pmode = 3) ∧ tok_ready)
@@ -3764,6 +4068,22 @@ claim driver_main
     pk_pn ∈ String
     _pk_pn ∈ String
 
+    d_cb_pad ∈ String = "                               "
+    d_cb_names ∈ String = ("|" ++ substr("str_len" ++ d_cb_pad, 0, 31)
+        ++ "|" ++ substr("str_from_int" ++ d_cb_pad, 0, 31)
+        ++ "|" ++ substr("substr" ++ d_cb_pad, 0, 31)
+        ++ "|" ++ substr("char_at" ++ d_cb_pad, 0, 31)
+        ++ "|" ++ substr("index_of" ++ d_cb_pad, 0, 31)
+        ++ "|" ++ substr("str_contains" ++ d_cb_pad, 0, 31)
+        ++ "|" ++ substr("starts_with" ++ d_cb_pad, 0, 31)
+        ++ "|" ++ substr("ends_with" ++ d_cb_pad, 0, 31)
+        ++ "|" ++ substr("replace" ++ d_cb_pad, 0, 31)
+        ++ ((uev_n0 ≠ "") ? ("|" ++ substr(uev_n0 ++ d_cb_pad, 0, 31)) : "")
+        ++ ((uev_n1 ≠ "") ? ("|" ++ substr(uev_n1 ++ d_cb_pad, 0, 31)) : "")
+        ++ ((uev_n2 ≠ "") ? ("|" ++ substr(uev_n2 ++ d_cb_pad, 0, 31)) : "")
+        ++ ((uev_n3 ≠ "") ? ("|" ++ substr(uev_n3 ++ d_cb_pad, 0, 31)) : "")
+        ++ ((uev_n4 ≠ "") ? ("|" ++ substr(uev_n4 ++ d_cb_pad, 0, 31)) : "")
+        ++ ((uev_n5 ≠ "") ? ("|" ++ substr(uev_n5 ++ d_cb_pad, 0, 31)) : ""))
     pr_ntoks ∈ TokenList
     pr_nouts ∈ ExprList
     pr_nops ∈ PrOps
@@ -3776,7 +4096,7 @@ claim driver_main
     pr_scons ∈ Int
     C2PrattStep(toks ↦ _wtoks, outs ↦ _p_out, ops ↦ _p_ops,
         expop ↦ _p_expop, pd ↦ _p_pd, qd ↦ _p_qd, cd ↦ _p_cd,
-        qstop ↦ _pq_qstop,
+        qstop ↦ _pq_qstop, calls ↦ d_cb_names,
         ntoks ↦ pr_ntoks, nouts ↦ pr_nouts, nops ↦ pr_nops,
         nexpop ↦ pr_nexpop, npd ↦ pr_npd, nqd ↦ pr_nqd, ncd ↦ pr_ncd,
         sdone ↦ pr_sdone, sres ↦ pr_sres, scons ↦ pr_scons)
@@ -3815,6 +4135,249 @@ claim driver_main
     -- parse completion → build the line's work-item program.
     p_done ∈ Bool = (d_in_pratt ∧ pr_sdone)
     pr_bad ∈ Bool = (p_done ∧ (pr_sres matches ENoExpr))
+
+    -- ── G1: conditional inline `cond ⇒ ClaimName` — a standalone
+    -- line whose parsed root is (=> guard EIdent(Name)) with Name in
+    -- the claim index splices Name's body with every asserted
+    -- constraint wrapped in (=> guard …) — the oracle's shape.
+    -- The guard expression builds to a HANDLE first (its items run
+    -- under pmode 10, cw_st 3→4), then the jump fires with il_guard
+    -- armed; the matching frame pop disarms it. ONE active guard
+    -- (no nested guarded splices — zero corpus occurrences).
+    gc_op ∈ Op
+    gc_l ∈ Expr
+    gc_r ∈ Expr
+    gc_bin ∈ Bool
+    BoolExprBinopParts(e ↦ pr_sres, op ↦ gc_op, lhs ↦ gc_l,
+        rhs ↦ gc_r, is_binop ↦ gc_bin)
+    gc_rnm ∈ String = match gc_r
+        EIdent(s) ⇒ s
+        _ ⇒ ""
+    gc_key ∈ String = "|" ++ substr(gc_rnm ++ "                               ", 0, 31)
+    gc_pos ∈ Int = index_of(ci_names, gc_key, 0)
+    gc_hit ∈ Bool = (p_done ∧ (_pk_kind = 2) ∧ (¬pr_bad) ∧ gc_bin
+        ∧ (gc_op matches OpImpl) ∧ (gc_rnm ≠ "") ∧ (gc_pos ≥ 0)
+        ∧ (_il_depth < 8))
+    e_gcr ∈ Effect
+    BuildMemReadLong(addr ↦ ci_base + (8 * (gc_pos / 32)), eff ↦ e_gcr)
+    gj_cap ∈ Bool = (in_parse ∧ (_pmode = 10) ∧ (_cw_st = 3))
+    gj_fire ∈ Bool = (in_parse ∧ (_pmode = 10) ∧ (_cw_st = 4)
+        ∧ d_witems_nil)
+    il_guard ∈ Int
+    _il_guard ∈ Int
+    il_gd ∈ Int
+    _il_gd ∈ Int
+    gj_unguard ∈ Bool = (il_pop ∧ (_il_depth = _il_gd))
+    il_guard = (is_first_tick ? 0
+        : cw_reset ? 0
+        : gj_fire ? d_h_top
+        : gj_unguard ? 0
+        : _il_guard)
+    il_gd = (is_first_tick ? 0
+        : cw_reset ? 0
+        : gj_fire ? _il_depth + 1
+        : gj_unguard ? 0
+        : _il_gd)
+    d_guard_on ∈ Bool = (_il_guard ≠ 0)
+
+    -- ── G1: positional binding — `(e1, e2, e3) ∈ add` tuple-in,
+    -- `recv.add(args)` method calls (bare or dotted receiver),
+    -- statement calls `add(2, 3, mid)`, and `(args) ∈ recv.add`
+    -- method-tuple-in. Elements parse to HANDLES (Pratt kind 10);
+    -- a lone UNDECLARED ident element declares an Int const first
+    -- (arg inference — the oracle's mid:Int). The jump pushes a
+    -- fresh "__cN_" frame; the param-skip walk COLLECTS the
+    -- callee's param names (pn) and ips_done zips them with the
+    -- held handles into il_binds (receiver = first param).
+    pt_st ∈ Int
+    _pt_st ∈ Int
+    pt_callee ∈ String
+    _pt_callee ∈ String
+    pc_k ∈ Int
+    _pc_k ∈ Int
+    pj ∈ Bool
+    _pj ∈ Bool
+    pj_recv ∈ Bool
+    _pj_recv ∈ Bool
+
+    -- entry shapes (classify tick; comp/membership kinds take priority)
+    pcl_t2nm ∈ String = match c_t2
+        Ident(s) ⇒ s
+        _ ⇒ ""
+    pcl_t4nm ∈ String = match c_t4
+        Ident(s) ⇒ s
+        _ ⇒ ""
+    pcl_stmt ∈ Bool = (d_classify ∧ (¬d_line_end) ∧ c_t0_is_ident
+        ∧ (c_t1 matches LParen) ∧ (¬(c_t3 matches OpMapsto))
+        ∧ c_comp_found ∧ (¬c_dd_shape) ∧ (_il_depth < 8))
+    pcl_m1key ∈ String = "|" ++ substr(pcl_t2nm ++ "                               ", 0, 31)
+    pcl_m1 ∈ Bool = (d_classify ∧ (¬d_line_end) ∧ c_t0_is_ident
+        ∧ (c_t1 matches Dot) ∧ (c_t2 matches Ident(_))
+        ∧ (c_t3 matches LParen)
+        ∧ (index_of(ci_names, pcl_m1key, 0) ≥ 0) ∧ (_il_depth < 8))
+    pcl_m2key ∈ String = "|" ++ substr(pcl_t4nm ++ "                               ", 0, 31)
+    pcl_m2 ∈ Bool = (d_classify ∧ (¬d_line_end) ∧ c_t0_is_ident
+        ∧ (c_t1 matches Dot) ∧ (c_t2 matches Ident(_))
+        ∧ (c_t3 matches Dot) ∧ (c_t4 matches Ident(_))
+        ∧ (ww_t5 matches LParen)
+        ∧ (index_of(ci_names, pcl_m2key, 0) ≥ 0) ∧ (_il_depth < 8))
+    pcl_meth ∈ Bool = (pcl_m1 ∨ pcl_m2)
+    pcl_recv_nm ∈ String = (pcl_m2 ? (c_name ++ "." ++ pcl_t2nm) : c_name)
+    pcl_tup ∈ Bool = (d_classify ∧ (¬d_line_end) ∧ (c_t0 matches LParen)
+        ∧ (c_t2 matches Comma) ∧ (_il_depth < 8))
+    pcl_line ∈ Bool = (pcl_stmt ∨ pcl_meth ∨ pcl_tup)
+    pcl_recv_items ∈ C2Items = C2ICons(C2Process(EIdent(pcl_recv_nm)), C2INil)
+
+    -- element walk (pt_st 0)
+    pe_act ∈ Bool = (in_parse ∧ (_pmode = 12) ∧ (_pt_st = 0)
+        ∧ d_witems_nil ∧ tok_ready)
+    pt_comma ∈ Bool = (pe_act ∧ (ww_t0 matches Comma))
+    pt_rp ∈ Bool = (pe_act ∧ (ww_t0 matches RParen))
+    pt_elem ∈ Bool = (pe_act ∧ (¬pt_comma) ∧ (¬pt_rp))
+    -- close flavors
+    ptc_w2nm ∈ String = match ww_t2
+        Ident(s) ⇒ s
+        _ ⇒ ""
+    ptc_w4nm ∈ String = match ww_t4
+        Ident(s) ⇒ s
+        _ ⇒ ""
+    ptc_n ∈ Bool = (pt_rp ∧ (_pt_callee ≠ ""))
+    ptc_tm ∈ Bool = (pt_rp ∧ (_pt_callee = "") ∧ (ww_t1 matches OpIn)
+        ∧ (ww_t2 matches Ident(_)) ∧ (ww_t3 matches Dot)
+        ∧ (ww_t4 matches Ident(_)))
+    ptc_t ∈ Bool = (pt_rp ∧ (_pt_callee = "") ∧ (ww_t1 matches OpIn)
+        ∧ (ww_t2 matches Ident(_)) ∧ (¬ptc_tm))
+    ptc_nm ∈ String = (ptc_n ? _pt_callee : ptc_tm ? ptc_w4nm : ptc_w2nm)
+    ptc_key ∈ String = "|" ++ substr(ptc_nm ++ "                               ", 0, 31)
+    ptc_pos ∈ Int = index_of(ci_names, ptc_key, 0)
+    ptc_ok ∈ Bool = ((ptc_n ∨ ptc_t ∨ ptc_tm) ∧ (ptc_pos ≥ 0))
+    pt_close ∈ Bool = ptc_ok
+    pt_bail ∈ Bool = (pt_rp ∧ (¬ptc_ok))
+    e_pcr ∈ Effect
+    BuildMemReadLong(addr ↦ ci_base + (8 * (ptc_pos / 32)), eff ↦ e_pcr)
+    ptc_recv_items ∈ C2Items = C2ICons(C2Process(EIdent(ptc_w2nm)), C2INil)
+
+    -- capture + fire
+    ptj_cap ∈ Bool = (in_parse ∧ (_pmode = 12) ∧ (_pt_st = 2))
+    ptj_fire ∈ Bool = (in_parse ∧ (_pmode = 12) ∧ (_pt_st = 3)
+        ∧ d_witems_nil)
+
+    pt_st = (is_first_tick ? 0
+        : pcl_line ? 0
+        : pt_close ? 2
+        : ptj_cap ? 3
+        : ptj_fire ? 0
+        : _pt_st)
+    pt_callee = (is_first_tick ? ""
+        : pcl_stmt ? c_name
+        : pcl_m1 ? pcl_t2nm
+        : pcl_m2 ? pcl_t4nm
+        : pcl_tup ? ""
+        : _pt_callee)
+    pi_done ∈ Bool = (p_done ∧ (_pk_kind = 10) ∧ (¬pr_bad))
+    pc_k = (is_first_tick ? 0
+        : (pcl_stmt ∨ pcl_tup) ? 0
+        : pcl_meth ? 1
+        : pi_done ? _pc_k + 1
+        : (pt_close ∧ ptc_tm) ? _pc_k + 1
+        : _pc_k)
+    pj = (is_first_tick ? false
+        : cw_reset ? false
+        : ptj_fire ? true
+        : (pz_act ∨ ips_off) ? false
+        : _pj)
+    pj_recv = (is_first_tick ? false
+        : pcl_meth ? false
+        : pcl_line ? false
+        : (pt_close ∧ ptc_tm) ? true
+        : _pj_recv)
+
+    -- arg inference: a lone UNDECLARED ident element declares an
+    -- Int const (manifest field + carry, oracle parity)
+    pi_nm ∈ String = match pr_sres
+        EIdent(s) ⇒ s
+        _ ⇒ ""
+    pi_skey ∈ String = "|" ++ substr((_il_pfx ++ pi_nm) ++ "                               ", 0, 31)
+    pi_pkey ∈ String = "|" ++ substr(pi_nm ++ "                               ", 0, 31)
+    pi_evt ∈ Bool = ((evt_n0 = pi_nm) ∨ (evt_n1 = pi_nm)
+        ∨ (evt_n2 = pi_nm) ∨ (evt_n3 = pi_nm) ∨ (evt_n4 = pi_nm)
+        ∨ (evt_n5 = pi_nm))
+    pi_ilb ∈ Bool = ((ilb_n0 = pi_nm) ∨ (ilb_n1 = pi_nm)
+        ∨ (ilb_n2 = pi_nm) ∨ (ilb_n3 = pi_nm) ∨ (ilb_n4 = pi_nm)
+        ∨ (ilb_n5 = pi_nm))
+    pi_unres ∈ Bool = ((pi_nm ≠ "") ∧ (pi_nm ≠ "true")
+        ∧ (pi_nm ≠ "false") ∧ (¬pi_evt) ∧ (¬pi_ilb)
+        ∧ (index_of(st_names, pi_skey, 0) < 0)
+        ∧ (index_of(st_names, pi_pkey, 0) < 0))
+    pi_decl ∈ Bool = (pi_done ∧ pi_unres)
+    pi_dname ∈ String = _il_pfx ++ pi_nm
+    pi_field ∈ String = pi_dname ++ ":Int"
+    pi_cdecl ∈ String = "(declare-fun _" ++ pi_dname ++ " () Int)\n"
+    pi_items ∈ C2Items = (pi_decl
+        ? C2ICons(C2DeclConst(pi_dname, 0), C2INil)
+        : C2ICons(C2Process(pr_sres), C2INil))
+
+    -- param-name collection during the param-skip walk
+    pn_k ∈ Int
+    _pn_k ∈ Int
+    pn_prev ∈ Int
+    _pn_prev ∈ Int
+    pn0 ∈ String
+    _pn0 ∈ String
+    pn1 ∈ String
+    _pn1 ∈ String
+    pn2 ∈ String
+    _pn2 ∈ String
+    pn3 ∈ String
+    _pn3 ∈ String
+    pn4 ∈ String
+    _pn4 ∈ String
+    pn5 ∈ String
+    _pn5 ∈ String
+    pn_take ∈ Bool = (ips_skp ∧ (ww_t0 matches Ident(_))
+        ∧ (_pn_prev = 1))
+    pn_nm ∈ String = match ww_t0
+        Ident(s) ⇒ s
+        _ ⇒ ""
+    pn_prev = (is_first_tick ? 0
+        : ips_open ? 1
+        : ips_skp ? (((ww_t0 matches Comma) ∧ (_il_pd = 1)) ? 1 : 0)
+        : _pn_prev)
+    pn_k = (is_first_tick ? 0
+        : il_jump ? 0
+        : pn_take ? _pn_k + 1
+        : _pn_k)
+    pn0 = (is_first_tick ? "" : (pn_take ∧ _pn_k = 0) ? pn_nm : _pn0)
+    pn1 = (is_first_tick ? "" : (pn_take ∧ _pn_k = 1) ? pn_nm : _pn1)
+    pn2 = (is_first_tick ? "" : (pn_take ∧ _pn_k = 2) ? pn_nm : _pn2)
+    pn3 = (is_first_tick ? "" : (pn_take ∧ _pn_k = 3) ? pn_nm : _pn3)
+    pn4 = (is_first_tick ? "" : (pn_take ∧ _pn_k = 4) ? pn_nm : _pn4)
+    pn5 = (is_first_tick ? "" : (pn_take ∧ _pn_k = 5) ? pn_nm : _pn5)
+
+    -- zip at param-list end: pn names ↦ the held element handles
+    pz_act ∈ Bool = (ips_done ∧ _pj)
+    pz_v0 ∈ Int = (_pj_recv ? d_h_top
+        : _pc_k = 1 ? d_h_top : _pc_k = 2 ? d_h_2nd
+        : _pc_k = 3 ? d_h_3rd : d_h_4th)
+    pz_v1 ∈ Int = (_pj_recv
+        ? (_pc_k = 2 ? d_h_2nd : _pc_k = 3 ? d_h_3rd : d_h_4th)
+        : (_pc_k = 2 ? d_h_top : _pc_k = 3 ? d_h_2nd : d_h_3rd))
+    pz_v2 ∈ Int = (_pj_recv
+        ? (_pc_k = 3 ? d_h_2nd : d_h_3rd)
+        : (_pc_k = 3 ? d_h_top : d_h_2nd))
+    pz_v3 ∈ Int = (_pj_recv ? d_h_2nd : d_h_top)
+    pz_binds ∈ C2Binds = (_pc_k = 1 ? CBCons(_pn0, pz_v0, CBNil)
+        : _pc_k = 2 ? CBCons(_pn0, pz_v0, CBCons(_pn1, pz_v1, CBNil))
+        : _pc_k = 3 ? CBCons(_pn0, pz_v0, CBCons(_pn1, pz_v1,
+            CBCons(_pn2, pz_v2, CBNil)))
+        : _pc_k = 4 ? CBCons(_pn0, pz_v0, CBCons(_pn1, pz_v1,
+            CBCons(_pn2, pz_v2, CBCons(_pn3, pz_v3, CBNil))))
+        : CBNil)
+    pz_pop ∈ C2H = (_pc_k = 1 ? d_h_t1
+        : _pc_k = 2 ? d_h_t2
+        : _pc_k = 3 ? d_h_t3
+        : _pc_k = 4 ? d_h_t4
+        : d_hstk_in)
     d_pk_pinseg ∈ C2Items = C2ICons(C2Process(pr_sres),
         C2ICons(C2PinEq, C2ICons(C2AssertTop, C2INil)))
     d_pk_natseg ∈ C2Items = (_pk_nat
@@ -3832,7 +4395,10 @@ claim driver_main
         : _pk_kind = 6 ? C2ICons(C2Process(pr_sres), C2INil)
         : _pk_kind = 7 ? sl_elem_items
         : _pk_kind = 8 ? C2ICons(C2Process(pr_sres), C2INil)
+        : _pk_kind = 9 ? C2INil
+        : _pk_kind = 10 ? pi_items
         : _pk_kind = 1 ? C2ICons(d_pk_head, d_pk_natseg)
+        : gc_hit ? C2ICons(C2Process(gc_l), C2INil)
         : C2ICons(C2Process(pr_sres), C2ICons(C2AssertTop, C2INil)))
     -- kind 3: the Exit argument closes with `)` — consume it; the
     -- element walk (pmode 5) handles the following `,` / `⟩`.
@@ -3852,7 +4418,7 @@ claim driver_main
         : d_it_ite ? 3
         : d_it_not ? 1
         : d_it_pineq ? 2
-        : d_it_assert ? 1
+        : d_it_assert ? (d_guard_on ? (_istep = 1 ? 1 : 0) : 1)
         : d_it_drop ? 1
         : d_it_app ? (_istep = d_app_n ? d_app_n : 0)
         : d_it_seleq ? (_istep = 1 ? 1 : 0)
@@ -3861,11 +4427,11 @@ claim driver_main
         : d_it_selh ? 2
         : 0)
     d_ilb_push ∈ Bool = (d_processing ∧ d_it_proc ∧ d_pe_is_id
-        ∧ d_ilb_found ∧ (¬d_bind_hit))
+        ∧ d_ilb_found ∧ (¬d_bind_hit) ∧ (¬d_vb_hit))
     d_push_ident ∈ Bool = (d_processing ∧ d_it_proc ∧ d_pe_is_id
-        ∧ d_lk_pure ∧ (¬d_bind_hit) ∧ (¬d_ilb_found))
+        ∧ d_lk_pure ∧ (¬d_bind_hit) ∧ (¬d_ilb_found) ∧ (¬d_vb_hit))
     d_lk_read ∈ Bool = (d_processing ∧ d_it_proc ∧ d_pe_is_id
-        ∧ (¬d_lk_pure) ∧ (¬d_bind_hit) ∧ (¬d_ilb_found))
+        ∧ (¬d_lk_pure) ∧ (¬d_bind_hit) ∧ (¬d_ilb_found) ∧ (¬d_vb_hit))
     d_push_h ∈ Bool = (d_processing ∧ d_it_pushh)
     d_push_decl ∈ Bool = (d_processing ∧ d_it_decl ∧ (_istep = 2))
     d_stk_dup3 ∈ Bool = (d_processing ∧ d_it_dup3)
@@ -3875,6 +4441,8 @@ claim driver_main
     hstk = (is_first_tick ? C2HNil
         : (d_enter_claim ∨ d_enter_claimp) ? C2HNil
         : cw_fire ? cw_pop_stk
+        : gj_fire ? d_h_t1
+        : pz_act ? pz_pop
         : d_ilb_push ? C2HCons(d_ilb_h, d_hstk_in)
         : d_push_ident ? C2HCons(d_lk, d_hstk_in)
         : d_push_h ? C2HCons(d_ph_h, d_hstk_in)
@@ -3901,12 +4469,16 @@ claim driver_main
         : sl_close ? sl_close_items
         : pg_ty_tick ? c_mem_items
         : pg_drain ? pg_drain_items
+        : (pt_close ∧ ptc_tm) ? ptc_recv_items
+        : fx_more ? fx_items
+        : fx_fin ? fx_fin_items
         : ¬d_processing ? _witems
         : d_it_proc ∧ d_pe_is_bin ∧ d_pe_op_ne ? C2ICons(C2Process(d_pe_l), C2ICons(C2Process(d_pe_r), C2ICons(C2Op(OpEq), C2ICons(C2Not, d_wtail))))
         : d_it_proc ∧ d_pe_is_bin ? C2ICons(C2Process(d_pe_l), C2ICons(C2Process(d_pe_r), C2ICons(C2Op(d_pe_op), d_wtail)))
         : d_it_proc ∧ d_pe_is_tern ? C2ICons(C2Process(d_pe_c), C2ICons(C2Process(d_pe_t), C2ICons(C2Process(d_pe_e), C2ICons(C2Ite, d_wtail))))
         : d_it_proc ∧ d_pe_is_not ? C2ICons(C2Process(d_pe_ni), C2ICons(C2Not, d_wtail))
         : d_it_proc ∧ d_pe_is_m ? d_m_items
+        : d_it_proc ∧ d_vb_hit ? d_vb_items
         : d_it_proc ∧ d_bind_hit ? d_bind_items
         : d_it_proc ∧ d_pe_is_c1 ? d_c1_items
         : d_it_proc ∧ d_pe_is_c2 ? d_c2_items
@@ -3918,10 +4490,12 @@ claim driver_main
         : d_it_seleq ? (_istep = 2 ? d_wtail : _witems)
         : d_it_seleqh ? (_istep = 1 ? d_wtail : _witems)
         : d_it_leneq ? (_istep = 1 ? d_wtail : _witems)
+        : d_it_assert ? ((d_guard_on ∧ (_istep = 0)) ? _witems : d_wtail)
         : d_wtail)
 
     d_multi_cont ∈ Bool = (d_processing ∧
         ((d_it_op ∧ d_op_arr ∧ (_istep < 2))
+        ∨ (d_it_assert ∧ d_guard_on ∧ (_istep < 1))
         ∨ (d_it_decl ∧ (_istep < 2))
         ∨ (d_it_app ∧ (_istep < d_app_n))
         ∨ (d_it_seleq ∧ (_istep < 2))
@@ -3940,6 +4514,7 @@ claim driver_main
         : d_it_decl ? (_istep = 2 ? 0 : 2)
         : d_it_nat ? 1
         : d_it_pineq ? 1
+        : d_it_assert ? ((d_guard_on ∧ (_istep = 0)) ? 2 : 0)
         : d_it_app ? (_istep = d_app_n ? 1 : 0)
         : d_it_seleq ? ((_istep = 0 ∨ _istep = 1) ? 2 : 0)
         : d_it_seleqh ? (_istep = 0 ? 2 : 1)
@@ -3983,6 +4558,17 @@ claim driver_main
         : c_comp_call ? 2
         : c_comp_bare ? 1
         : c_comp_dd ? 3
+        : c_ty_call ? 4
+        : c_ty_bare ? 3
+        : d_enter_si ? 3
+        : d_enter_qr ? 8
+        : q_bail ? 1
+        : pcl_stmt ? 2
+        : pcl_m1 ? 4
+        : pcl_m2 ? 6
+        : pcl_tup ? 1
+        : pt_comma ? 1
+        : (pt_close ∨ pt_bail) ? (ptc_tm ? 5 : (ptc_t ∨ (pt_bail ∧ (ww_t1 matches OpIn))) ? 3 : 1)
         : (cw_comma ∨ cw_fire ∨ cw_bail) ? 1
         : (ips_open ∨ ips_skp) ? 1
         : d_enter_pratt ? d_pratt_cons0
@@ -4023,7 +4609,8 @@ claim driver_main
     -- is NOT a state field and gets NO `__name` carry of its own.
     c_field_add ∈ Bool = (d_classify ∧ (¬d_line_end) ∧ c_is_mem
         ∧ (¬c_eff_line) ∧ (¬c_set_line) ∧ (¬c_is_carry)
-        ∧ (¬c_nodecl))
+        ∧ (¬c_nodecl) ∧ (¬c_strin_line) ∧ (¬c_ty_line)
+        ∧ (¬c_in_ty))
     -- E1: the first time a `_name` const is MENTIONED in an
     -- expression (d_lk_read of a carry name), the solver
     -- serialization will carry its declare-fun — so the textual
@@ -4037,11 +4624,13 @@ claim driver_main
     cs_cut ∈ String = (substr(_cdstr, 0, cs_pos)
         ++ substr(_cdstr, cs_nl + 1, #_cdstr - (cs_nl + 1)))
     fstr = (is_first_tick ? ""
+        : (pi_decl ∧ (¬c_in_ty)) ? (_fstr = "" ? pi_field : _fstr ++ " " ++ pi_field)
         : c_field_add ? (_fstr = "" ? c_field : _fstr ++ " " ++ c_field)
         : pg_ty_tick ? (_fstr = "" ? c_field : _fstr ++ " " ++ c_field)
         : pg_drain ? (_fstr = "" ? pg_field : _fstr ++ " " ++ pg_field)
         : _fstr)
     cdstr = (is_first_tick ? ""
+        : (pi_decl ∧ (¬c_in_ty)) ? _cdstr ++ pi_cdecl
         : c_field_add ? _cdstr ++ c_cdecl
         : pg_ty_tick ? _cdstr ++ c_cdecl
         : pg_drain ? _cdstr ++ pg_cdecl
@@ -4056,8 +4645,15 @@ claim driver_main
         : d_enter_skip ? 1
         : d_skip_stop ? 0
         : d_claim_end ? 0
-        : c_comp_line ? 10
+        : (c_comp_line ∨ c_ty_line) ? 10
+        : gc_hit ? 10
+        : gj_fire ? 2
         : (cw_bjump ∨ cw_fire ∨ cw_bail) ? 2
+        : d_enter_qr ? 11
+        : q_bail ? 2
+        : pcl_line ? 12
+        : pt_bail ? 2
+        : ptj_fire ? 2
         : d_enter_el ? 5
         : d_enter_set ? 7
         : d_enter_match ? 6
@@ -4072,6 +4668,7 @@ claim driver_main
             : _pk_kind = 6 ? (pr_bad ? 2 : 5)
             : _pk_kind = 7 ? (pr_bad ? 2 : 8)
             : _pk_kind = 8 ? (pr_bad ? 2 : 10)
+            : _pk_kind = 10 ? (pr_bad ? 2 : 12)
             : 2)
         : (ec_active ∧ ec_payload ∧ (¬ec_p_ok)) ? 1
         : (ec_active ∧ (¬ec_v_ok)) ? 0
@@ -4156,6 +4753,14 @@ claim driver_main
     -- `matches` translation — pass pinned body vars instead.
     d_op_geq ∈ Op = OpGeq
     d_op_eq ∈ Op = OpEq
+    d_op_impl ∈ Op = OpImpl
+    -- G1: guarded assert — (=> il_guard top), then assert the tmp.
+    d_eff_gimpl ∈ Effect
+    d_gimp_ok ∈ Bool
+    d_gimp_nn ∈ Bool
+    BoolCmpBuildZ3(ctx_h ↦ z_ctx, op ↦ d_op_impl, l_h ↦ _il_guard,
+        r_h ↦ d_h_top, eff ↦ d_eff_gimpl, ok ↦ d_gimp_ok,
+        needs_not ↦ d_gimp_nn)
     d_eff_natge ∈ Effect
     d_nat_ok ∈ Bool
     d_nat_nn ∈ Bool
@@ -4230,7 +4835,9 @@ claim driver_main
             : d_eff_stwr)
         : d_it_nat ? d_eff_natge
         : d_it_pineq ? d_eff_pineq
-        : d_it_assert ? d_eff_assert
+        : d_it_assert ? (d_guard_on
+            ? (_istep = 0 ? d_eff_gimpl : d_eff_asserttmp)
+            : d_eff_assert)
         : d_it_app ? (_istep < d_app_n ? d_eff_caw : d_eff_app)
         : d_it_seleq ? (_istep = 0 ? d_eff_sel
             : _istep = 1 ? d_eff_seleq
@@ -4348,6 +4955,8 @@ claim driver_main
         : _fmode = 1 ? ⟨cp0, cp1, cp2, cp3, cp4, cp5, cp6, cp7⟩
         : ci_add ? ⟨e_ciw⟩
         : il_rdcur ? ⟨e_cir⟩
+        : gc_hit ? ⟨e_gcr⟩
+        : pt_close ? ⟨e_pcr⟩
         : d_processing ? ⟨d_eff_lib⟩
         : (k_kind = 1 ∧ lx_have_pend) ? ⟨w_pend, w_tag0e⟩
         : k_kind = 1 ? ⟨w_tag0e⟩
