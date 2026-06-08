@@ -1,101 +1,191 @@
-# driver_main decomposition — execution plan (for review)
+# driver_main decomposition — execution plan (binding spec)
 
-Status: APPROVED — executing unattended (2026-06-08, 03:5x).
-Operator decisions: (1) §31 — ACCEPT the eff_out bridge. (2) Scope — run
-ALL phases A→E unattended. (3) Crash fix — extract E1 behavior-preserving,
-land the ternary fix as a SEPARATE commit + unit test after E1.
-Supersedes the Probe-C-only approach in `driver-subsystem-map.md` §4 now
-that carry-preserving fsm composition exists (`fsm-composition.md`).
+Status: APPROVED, criteria locked (2026-06-08). This doc is the BINDING
+SPEC, not a sketch. The refactor is REJECTED if it does not meet §6.
 
-## Goal
+Operator decisions: (1) §31 effects — ACCEPT the `eff_out` bridge.
+(2) Run all modules unattended. (3) Translation: extract behavior-
+preserving first, land the ternary fix as a SEPARATE commit + test.
 
-Turn `compiler2/driver.ev`'s `driver_main` (~5930 lines) from one
-monolith into ~10–14 per-file, **independently unit-testable** subsystems.
-Each becomes a **carry-owning `fsm`** in its own file; `driver_main`
-shrinks to wiring (the shared bus + one slot-call per subsystem).
+Related: `fsm-composition.md` (the mechanism), `driver-subsystem-map.md`
+(the 31-subsystem inventory these modules cluster), `sample-ternary-crash-
+diagnosis.md` (a bug that must become a module test).
 
-## Why now / why this differs from the held Probe-C branch
+---
 
-The held branch (`worktree-agent-a488863a`, 221 lines moved) used Probe-C:
-declarations stay in `driver_main`, only bodies move. That left the carry
-scaffolding stranded — which is why it barely shrank. With carry-preserving
-fsm composition, a subsystem **owns** its `x`/`_x`: we write the latch/
-machine as a standalone `fsm`, compose it `Sub(x ↦ busvar)`, and the
-transform injects `_x ↦ _busvar` so the carry travels with the logic.
-That's the genuine isolation, and each subsystem is then a unit you can
-test and prove against in isolation.
+## 1. The real goal (read this before touching code)
 
-## Per-step protocol (every extraction, no exceptions)
+The goal is NOT "make `driver_main` smaller." The goal is:
 
-1. Move one subsystem's fields + transition logic into a new
-   `compiler2/driver_<name>.ev` as an `fsm`; replace it in `driver_main`
-   with a slot-call.
-2. `expand-fsm-autocarry.sh < driver.ev | oracle emit driver_main` →
-   stage1.
-3. **Equivalence gate (all three must hold):**
-   - `sed 's/__call[0-9]\+/__callN/g'` diff vs frozen baseline == empty
-     (semantic identity modulo the oracle's call-counter renaming),
-   - manifest `state-fields` line byte-identical (no field added / dropped
-     / retyped),
-   - conformance == **137/138**.
-4. Write a unit test for the extracted fsm in `tests/compiler2_units/`
-   (compose standalone, drive an input, assert output/exit).
-5. Commit (one subsystem per commit). If a step can't be made equivalent,
-   **revert it** and record why in this doc.
+1. **Well-tested modules** — each compiler concern verifiable in isolation.
+2. **Add-a-test-on-bug** — when a bug appears, you can name the module,
+   write a failing test, fix it, and keep the test as a regression guard.
+3. **Clear, isolated contracts** — each module has a small, explicit
+   interface; concerns don't leak across module boundaries.
 
-Frozen baseline = stage1 from `main`'s `driver_main` captured once at start.
+Modularization is the *means*. Conformance 137/138 is an *integration*
+test — necessary, but it never tells you WHICH module broke. Per-module
+tests are the point.
 
-## Extraction order (smallest blast radius → biggest payoff)
+## 2. The anti-pattern we are rejecting
 
-**Phase A — pure muxes (zero carry; reuse held-branch work where clean)**
-- A1. §27 state transitions → `driver_state.ev` (port from held branch)
-- A2. §28 token consumption → `driver_consume.ev` (port from held branch)
-- A3. §31 effects schedule — *blocked by the single-writer validator*; see
-  Decision 1.
+The **pitiful refactor**: tiny 1–5 line components are hoisted out, the
+original stays several-thousand lines, and the core problems remain. We
+reject it explicitly via §3 (size floor), §5 (a real test per module), and
+§6 (hard success criteria). A swarm of <40-line stubs is a FAILURE, not
+progress.
 
-**Phase B — carry-owning latches (redo as fsms, NOT Probe-C)**
-- B1. §2 ZINIT `z_*` latches (34 fields) → `driver_zinit.ev` (carry-owning fsm)
-- B2. §3/§4 ED/G2 `d_cap_int` latches (49 calls) → fold into the same shape
+## 3. Code standards
 
-**Phase C — the big machines (the real bulk; the point of the exercise)**
-- C1. §3 ED machine step bodies (66 carry fields) → `driver_ed.ev`
-- C2. §4 G2 RD record registry (58 fields) → `driver_g2.ev`
+- **A module is a cohesive compiler phase or data structure** with a named
+  contract. Every module file opens with a header:
+  ```
+  -- MODULE <name>
+  -- CONSUMES: <bus slots in>
+  -- PRODUCES: <slots out>
+  -- MAINTAINS: <invariants it guarantees>
+  ```
+  If you cannot write that header in three honest lines, the cut is wrong.
+- **Size: 150–500 lines.** >600 → split. **<40 → forbidden** (fold it; a
+  trivial extraction is the pitiful-refactor signature).
+- **Interface width ≤ ~8 slots.** A module needing 12+ bus inputs means the
+  concern isn't isolated — redesign the cut or justify it in writing. This
+  is the real measure of "isolated contracts," and it is load-bearing.
+- **`driver_main` reads as the pipeline**: lex → parse → translate → emit,
+  one composed module per line, over the shared bus.
+- Follow CLAUDE.md style (compact wiring, logic in claims, element-form
+  iteration, record types over parallel Seqs).
 
-**Phase D — walks**
-- D1. §10–13, §20–26 pmode-N walk bodies → `driver_pmode_*.ev`
+## 4. Target end-state (~10–14 modules, ~250–450 lines each)
 
-**Phase E — translation (where the live crash is)**
-- E1. expression / handle-stack translation incl. `C2Ite` → `driver_translate.ev`
-- E2. the ternary-crash unit test (from `repro_deep.ev`) + the fix (null
-  then/else handles), as a SEPARATE commit after E1's behavior-preserving
-  extraction — so the equivalence gate stays meaningful (see Decision 3).
+`driver_main` 5930 → ~400–600 line orchestrator. The 5000+ lines
+redistribute into cohesive, named, testable units. Each row below must be
+describable in one sentence — that is the test of a good cut.
 
-**Stays in `driver_main` (the shared bus):** `d_cap_int`, `pmode`, `zstep`,
-`tcur`/`wend`/window, `st_*`, `il_*` — passed as input slots to whatever
-needs them. Not "owned" by any subsystem.
+| # | Module / file | ~Lines | Contract (one sentence) | Owns bug |
+|---|---|---|---|---|
+| 1 | `driver_lex.ev` | ~250 | chars → tokens (incl. 2-char operators) | |
+| 2 | `driver_buffers.ev` | ~200 | bounded token/symbol/claim-index storage in `__mem` | **overrun** |
+| 3 | `driver_zinit.ev` | ~150 | Z3 config/context/sorts/solver setup | |
+| 4 | `driver_recognize.ev` | ~350 | tokens → claim/type/enum/fsm headers + fields | |
+| 5 | `driver_expr.ev` | ~400 | tokens → expr tree (precedence, ternary) | **ternary** |
+| 6 | `driver_workitems.ev` | ~450 | C2Items micro-step interpreter + handle stack | **ternary** |
+| 7 | `driver_enum.ev` (ED) | ~400 | enum decls → Z3 datatypes | |
+| 8 | `driver_record.ev` (G2) | ~350 | record decls → Z3 tuple sorts | |
+| 9 | `driver_compose.ev` | ~450 | claim-composition (`Sub(x↦y)`, `..`) inlining | |
+| 10 | `driver_dispatch.ev` | ~250 | route a node to `translate2_{arith,bool,…}` | |
+| 11 | `driver_emit.ev` | ~250 | effects schedule + smt2/manifest output | |
+| 12 | `driver.ev` (`driver_main`) | ~500 | the shared bus + the pipeline wiring | |
 
-## How it runs
+(Counts are targets, not quotas — a clean cut at 520 or 180 lines is fine;
+a cut at 25 or 900 is not.) Plus the 6 existing `translate2_*.ev`.
 
-One long-running background agent on a fresh branch off `main`: sequential
-(single file, gated per step), staged commits for agent-fault resilience.
-NOT parallel (one file = worktree conflicts). I check in between phases and
-report. Deliverable: a branch with N gated commits + per-subsystem unit
-tests, a `driver_main` that reads as wiring, and a report — left for review,
-not auto-merged.
+Target `driver_main` shape (illustrative):
+```
+fsm driver_main
+    -- shared bus: the few genuinely-global carries
+    pos ∈ Int ; tcur ∈ Int ; pmode ∈ Int ; zstep ∈ Int ; ...
+    -- pipeline: each line a module owning its own state
+    DriverLex(src ↦ content, ...)
+    DriverBuffers(push ↦ tok, ...)
+    DriverRecognize(...)
+    DriverExpr(...)
+    DriverWorkItems(...)
+    DriverEnum(...) ; DriverRecord(...) ; DriverCompose(...)
+    DriverDispatch(...)
+    DriverEmit(... ↦ effects)
+```
 
-## Decisions needed from you (defaults recommended)
+## 5. Testing standards
 
-1. **§31 effects schedule.** The emit validator enforces the single-writer
-   rule syntactically (`effects` must be one SeqLit-equality in
-   `driver_main`). Extracting it needs a local `eff_out ∈ Seq(Effect)` +
-   `effects = eff_out` bridge — adds ONE manifest field, conformance-green
-   but not call-N-identical. *Recommend: accept the bridge* (only way to
-   extract it; provably benign). Alternative: leave §31 inline.
+- **Every module ships ≥1 isolation test** — construct its inputs, run the
+  module ALONE (composed standalone via fsm composition), assert outputs.
+  Conformance is NOT a substitute.
+- **Per module: happy-path + ≥1 boundary/edge + a regression test for any
+  known bug in its domain.**
+- **Known bugs become module tests now:** the buffer overrun → a bounds
+  test on module 2 (drive `count` to `capacity`); the ternary null-operand
+  (`repro_deep.ev`) → a test on modules 5/6 that asserts a clean result, not
+  a segfault. These are the proof the structure addresses what we hit.
+- **A module is not "done" until a test exists that FAILS if its contract
+  is violated.** Tests live in `tests/compiler2_units/<module>/`, kernel-
+  fixture header style (expected stdout + exit).
 
-2. **Scope tonight.** *Recommend: run A→C* (the bulk / real payoff), stop,
-   and let you review before D→E. Alternative: run all A→E unattended.
+## 6. Success criteria — REJECT the refactor if any fail
 
-3. **Ternary fix coupling.** *Recommend: keep extraction behavior-
-   preserving (gate green) and land the fix as a separate commit + unit
-   test after E1.* Keeps the equivalence gate meaningful. Alternative: fold
-   the fix into E1 (gate then expected to change at E1).
+1. `driver_main` < ~600 lines (from 5930).
+2. 10–15 modules, each 150–500 lines — **no swarm of <40-line stubs.**
+3. Every module: contract header (§3) + ≥1 isolation test (§5).
+4. No interface wider than ~8 slots without written justification.
+5. The two known bugs (overrun, ternary) each have a regression test in
+   their module.
+6. Every module describable in one sentence (the §4 table is honest).
+7. (don't-regress) conformance stays 137/138; equivalence gate green per
+   step (see §9).
+
+## 7. Method — contract-first, test-first (per module)
+
+For each module, in this order:
+1. **Write the contract header** (CONSUMES/PRODUCES/MAINTAINS).
+2. **Write the isolation tests** against that contract (they fail (red)
+   because the module doesn't exist yet — that's expected).
+3. **Extract** the fields + logic into the module fsm; wire the slot-call
+   in `driver_main`.
+4. **Make the tests green** + pass the equivalence gate (§9).
+5. **Commit** (one module per commit).
+Tests are written BEFORE the extraction is "done," not bolted on after.
+
+## 8. Phase 0 — pipeline prerequisite (do FIRST, blocks everything)
+
+`expand-fsm-autocarry.sh` operates on one file's text; if modules live in
+separate imported files, `expand < driver.ev | oracle` never sees them and
+carry-injection fails for cross-file composition. `flatten-evident.sh`
+already resolves imports AND runs expand on the flattened result, so the
+self-host path works — but the oracle gate (`gp_build_stage1`) and the unit-
+test harness do not flatten first.
+
+**Phase 0 task:** make the build, the gate, and the test harness
+**flatten-first** (`flatten driver.ev` → single expanded text → `oracle
+emit`). VERIFY it produces a stage1 byte-identical (modulo `__callN`) to the
+current `expand|oracle` baseline on the un-split driver. Only once a
+separate-file fsm module compiles + carries correctly through this pipeline
+(prove with a throwaway 2-file Counter that prints `0,1,2`) may module
+extraction begin. If flatten-first cannot be made baseline-identical,
+STOP and report — do not paper over it.
+
+## 9. Per-step gate (every extraction)
+
+Capture the frozen baseline once (post-Phase-0 pipeline). After each module:
+```bash
+flatten-evident.sh compiler2/driver.ev > /tmp/flat.ev          # imports + expand
+oracle emit /tmp/flat.ev driver_main -o /tmp/now.smt2
+diff <(sed 's/__call[0-9]\+/__callN/g' BASE.smt2) \
+     <(sed 's/__call[0-9]\+/__callN/g' /tmp/now.smt2) && echo EQUIV   # (1)
+diff <(grep '^;; manifest: state-fields' BASE.smt2) \
+     <(grep '^;; manifest: state-fields' /tmp/now.smt2)               # (2) (except §31 eff_out)
+bash .goalpost/bin/run-conformance.sh    # (3) must be 137/138
+# (4) the module's isolation tests pass
+```
+All four green → commit. If a step can't go equivalent, REVERT it and note
+why. After §31 the manifest legitimately gains `eff_out`; re-baseline then.
+
+## 10. Extraction order
+
+Phase 0 (pipeline) → then most-isolated first:
+`driver_lex` → `driver_buffers` (+overrun test) → `driver_zinit` →
+`driver_recognize` → `driver_emit` → `driver_enum` → `driver_record` →
+`driver_compose` → `driver_dispatch` → `driver_expr` → `driver_workitems`
+→ (translation extraction behavior-preserving) → **separate commit:** the
+ternary null-handle fix + `repro_deep` unit test → `driver_main` is now the
+orchestrator residue; confirm §6.
+
+## 11. How it runs / deliverable
+
+One sequential background agent, fresh branch off `main`, staged commits
+(harness-fault resilience), NOT auto-merged. Maintains the execution log
+below: per module — commit hash, final line count, interface width, tests
+added, gate result. Deliverable: a branch meeting all of §6, with a report.
+
+## 12. Execution log
+
+(filled in during execution)
