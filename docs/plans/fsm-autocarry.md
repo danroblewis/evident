@@ -106,3 +106,12 @@ CLAUDE.md.
 
 `compiler2/driver.ev`: 6277 → 5930 lines (**−347**, the deleted carry decls);
 `claim driver_main` → `fsm driver_main`.
+
+## Composition (follow-up)
+
+The single-fsm rule above is now extended to carry-preserving fsm
+**composition** — slot-bind (`Sub(x ↦ y)` injects `_x ↦ _y` and synthesizes
+the parent's `_y`), lift (`..Sub` carries for free), multi-call-site, and
+nested fsm→fsm→fsm via a fixpoint registry. The same expander does both;
+composition only fires when the callee is a registered fsm, so the driver's
+stage1 stays byte-identical. See `docs/plans/fsm-composition.md`.
