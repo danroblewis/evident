@@ -329,3 +329,334 @@ structs, heaps, stacks, and arrays. These patterns bridge that gap.
   multi-tick stall in the middle of parsing.
 - **Related.** The lexer/parser "lookahead buffer"; OS demand-paging
   (fetch on miss); GoF *Iterator* with a bounded buffer.
+
+## 4. Behavioral patterns
+
+How constraints drive computation across ticks. This is the heart of
+FSM-over-SMT: with no loops, no mutation, and a one-tick memory, *all*
+control flow is encoded as carried state plus a per-tick transition
+constraint. These patterns are the vocabulary of that encoding.
+
+### 4.1 Carry Latch (the fundamental cell)
+
+- **Intent.** Give a value memory: initialize it on the first tick and
+  otherwise hold its previous value, overwriting only when a write
+  condition fires.
+- **Motivation.** The kernel's carry gives you `_x` = "x last tick," but
+  every stateful variable must *explicitly* decide each tick whether to
+  change or persist. This three-way choice (init / update / hold) is the
+  atom from which every other behavioral pattern is built.
+- **Structure.** `x = is_first_tick ? INIT : (write_cond ? NEW : _x)`.
+  The trailing `: _x` is the "hold"; omitting it would let `x` float to
+  any value the solver likes (a silent bug).
+- **Example.** Everywhere. Canonical: `compiler2/driver_symtab.ev:47-50`
+  (`st_cnt`/`st_names`), `compiler2/driver_compose.ev:241-321` (the
+  whole frame-stack bank). The pattern is so pervasive that *forgetting
+  the `: _x` tail* is the corpus's archetypal bug.
+- **Consequences.** (+) Deterministic, inspectable cell semantics.
+  (−) Verbose: every field restates its hold. (−) A missing hold or a
+  missing `is_first_tick` guard is a silent wrong-answer (the solver
+  picks an arbitrary value). (−) Multiple write conditions must be
+  priority-ordered by hand in the ternary.
+- **Related.** A hardware register with clock-enable; ASP's frame
+  axiom / inertia; the State monad's `get`/`put` collapsed into one
+  expression.
+
+### 4.2 Latch-Once Register
+
+- **Intent.** A carry latch whose write fires *exactly once*, at a named
+  step value — the building block of staged setup.
+- **Motivation.** Foreign handles (a context, a sort) are created once
+  and then immutable. Their latch should capture the creating call's
+  result on the one tick it lands and never change again.
+- **Structure.** `h = is_first_tick ? 0 : (step = N ? captured : _h)` —
+  a carry latch keyed on a program-counter equality (§4.3), idempotent
+  off-step.
+- **Example.** `compiler2/driver_zinit.ev:33-115` — every `z_*` handle
+  (`z_cfg = ... zstep = 1 ? d_cap_int : _z_cfg`).
+- **Consequences.** (+) Each handle latches deterministically at its
+  named step; trivially auditable. (−) Couples the register to a magic
+  step number; reordering setup renumbers everything.
+- **Related.** Write-once / single-assignment variables; the Co-Traveling
+  Handle Bank (§3.1) is a bank of these.
+
+### 4.3 Step Sequencer (Program Counter)
+
+- **Intent.** An `Int` state-field that advances deterministically each
+  tick to sequence a fixed straight-line program of setup/teardown
+  actions.
+- **Motivation.** Z3 lifecycle setup is ~38 ordered steps (config →
+  context → solver → sorts → consts → buffers). With no loop, the order
+  is encoded as a counter that ticks up, and each action is gated on its
+  step number.
+- **Structure.** `step = is_first_tick ? 0 : (_step < MAX ? _step+1 :
+  _step)`; actions and latches branch on `step = N`.
+- **Example.** `compiler2/driver_zinit.ev:27-31` (`zstep`, −2,−1,0,…,
+  capped at 60); `istep` (the micro-step counter,
+  `compiler2/driver.ev:1059-1061`); `estep` (emit phase); `ed_step`
+  (`compiler2/driver_enum.ev`). The `effects` master ternary
+  (`driver.ev:1463-1538`) reads `zstep = N ? ⟨...⟩` as a giant jump
+  table.
+- **Consequences.** (+) Turns "do these N things in order" into pure
+  data. (+) Composes with Hold (§4.4) for subroutine calls. (−) Magic
+  numbers proliferate; inserting a step renumbers downstream. (−) One
+  action per tick — setup is inherently O(steps) ticks.
+- **Related.** A microcode program counter; the *Template Method* as a
+  linear schedule; the staged-builder pattern in OO.
+
+### 4.4 Counter Hold (stall-as-subroutine-call)
+
+- **Intent.** Park a sequencer at one value while a sub-machine runs,
+  resuming when the sub-machine signals it is idle — a poor man's
+  subroutine call.
+- **Motivation.** The ZINIT sequencer must declare four datatypes
+  mid-stream (the ED machine, §5.2), which itself takes many ticks. The
+  outer counter *stalls* at step 9 until the inner machine is done, then
+  advances. No call stack needed — just a guarded non-increment.
+- **Structure.** `step = (_step = K ∧ sub_busy) ? K : <advance>`, where
+  `sub_busy` is the sub-machine's not-idle signal.
+- **Example.** `compiler2/driver_zinit.ev:28-31` —
+  `ed_hold = (_ed_act ≠ 0 ∨ _ed_src < 4)`, and `zstep` holds at 9 while
+  `ed_hold`. The arena latches only on the *first* 9-tick
+  (`:48-50`, `zstep = 9 ∧ _zstep = 8`) — the entry edge.
+- **Consequences.** (+) Lets a linear sequencer invoke a variable-length
+  sub-process without a stack. (−) Only nests one level cleanly; deeper
+  nesting needs explicit save/restore (which the *call frame* pattern,
+  §6.2, does for inlining). (−) "First-tick-at-K" edge detection
+  (`step = K ∧ _step = K-1`) is a recurring subtlety.
+- **Related.** Coroutine yield; a CPU wait-state; the Hold is the
+  control-flow dual of the call-frame stack.
+
+### 4.5 Mode Mux (the priority-ternary dispatch table)
+
+- **Intent.** A single `Int` "mode" register selects which of many
+  mutually-exclusive sub-machines is live this tick; one huge
+  priority-ordered ternary *is* the dispatch table.
+- **Motivation.** The driver is really ~15 interleaved machines (lex,
+  fetch, dispatch, skip, claim-walk, Pratt, group-walk, compose,
+  match-pin, set/seq literals, quantifier, positional-bind, emit). Only
+  one acts per tick. A `pmode`/`fmode` register names the active one, and
+  every shared output (`witems`, `hstk`, `pmode`, `tcur`, `effects`)
+  is a single big ternary that dispatches on it.
+- **Structure.** `pmode ∈ Int`; outputs computed as
+  `out = cond_A ? expr_A : cond_B ? expr_B : … : _out`, where the
+  conditions encode the mode + sub-state and the *order* encodes
+  priority.
+- **Example.** `compiler2/driver.ev:1205-1251` (the `pmode` transition —
+  ~40 branches); the `witems` and `hstk` selectors
+  (`:981-1049`); `dcons` token-consumption (`:1088-1142`);
+  `compiler2/driver_classify.ev` (the pure-classifier half of the same
+  dispatch). The modes themselves: 0 dispatch, 1 skip, 2 claim, 3 Pratt,
+  4 enum-decl, 5 effects-elem, 6 match-pin, 7 set, 8 seq-lit, 9 group,
+  10 compose-call, 11 quant-range, 12 positional, 13 record-decl,
+  14 set-lit.
+- **Consequences.** (+) Makes "exactly one machine acts" structurally
+  true and gives a single audit point per output. (+) New machine = new
+  mode number + branches, no new control plumbing. (−) The ternaries
+  grow monstrous (the `effects` selector is 75 lines); priority ordering
+  is load-bearing and fragile. (−) All machines' state-fields coexist
+  even when dormant.
+- **Related.** GoF *State* pattern (the mode is the state object) fused
+  with a jump table / `switch`; a CPU's instruction-decode mux.
+
+### 4.6 Pure Classifier Tick
+
+- **Intent.** Separate decision from action: a tick that does no I/O and
+  changes no state, computing only a pure function of the window to pick
+  the next mode and consumption.
+- **Motivation.** Deciding "what kind of line is this?" needs to inspect
+  lookahead against every subsystem's entry condition. Folding that into
+  an acting tick would entangle decision with effect. Instead one
+  classifier tick produces a fan of boolean `c_*` flags; the next tick
+  acts on them.
+- **Structure.** A gate (`d_classify`, true only when the work-item list
+  is empty and tokens are ready) guards a block of *pure* `Bool`/`Int`
+  members (no `effects`, no carried writes) that compute the line kind
+  and the dispatch target.
+- **Example.** `compiler2/driver_classify.ev` in full — `d_classify`
+  (`:116`), the `c_is_mem`/`c_pinned`/`c_eff_line`/`c_comp_line`/`c_ty_line`
+  fan, and the `d_enter_*` dispatch signals. The header explicitly notes
+  "classification is a PURE function of the window + the registries (no
+  own carried state)."
+- **Consequences.** (+) The decision logic is testable in isolation and
+  has no temporal coupling. (+) One place to read "how is a line
+  recognized." (−) Costs a dedicated tick per line. (−) Must inspect the
+  whole world (it is "the central dispatch brain," coupling to every
+  subsystem's entry shape).
+- **Related.** Lexer/parser "scannerless classify"; GoF *Interpreter*'s
+  separation of parse from eval; a pure reducer.
+
+### 4.7 Handle-Capture (deferred foreign result)
+
+- **Intent.** Apply a foreign call's return value on the tick *after* the
+  call, using a small register that records what to do with it when it
+  arrives.
+- **Motivation.** Every effect's result lands in `last_results` on the
+  *next* tick. A builder that creates a Z3 node this tick can't use the
+  node's handle until next tick. So the FSM emits the call now, records
+  in a `pend` register where the result should go (push to the handle
+  stack? store to `tmp`?), and next tick reads `last_results[0]` and
+  routes it.
+- **Structure.** `pend ∈ Int` set the tick the call is emitted; next tick
+  `d_cap_int = match last_results[0] (IntResult(n)⇒n)` and the consumers
+  branch on `_pend` (e.g. `hstk_in = _pend = 1 ? Cons(cap, _hstk) :
+  _hstk`).
+- **Example.** `compiler2/driver.ev:387-389` (`d_hstk_in`/`d_tmp_in`
+  keyed on `_pend`), the `pend` assignment table (`:1063-1083`), and
+  `d_cap_int` (`:295-300`). The header calls it "the PROVEN discipline:
+  a builder's result is read from last_results on the NEXT tick."
+- **Consequences.** (+) The only correct way to thread foreign return
+  values through a tick-delayed world. (−) Every build is inherently
+  two-phase (emit, then capture); a missed `pend` silently drops the
+  result. (−) Forces "at most one capturing effect per tick" discipline.
+- **Related.** Future/promise resolution; asynchronous callback; the
+  classic delayed-load pipeline hazard.
+
+### 4.8 Externalize-then-Reread (the two-tick round trip)
+
+- **Intent.** Move a value across the model↔foreign boundary by writing
+  it out via one effect tick and reading it back as a Result next tick.
+- **Motivation.** A `String` payload in the model can't be stored in the
+  FTI byte buffer directly; it must be `strdup`'d (libc returns a
+  pointer next tick) and the pointer written into the buffer. Symmetric
+  on read: a token's string payload is `__cstr.copy`'d from its pointer
+  and arrives as a `StringResult`.
+- **Structure.** Tick T emits `strdup`/`copy`; tick T+1's
+  `last_results[0]` holds the pointer/string; a `pend`-like address
+  register (or slot index) says where it goes.
+- **Example.** `compiler2/lex_fti.ev:23-33` (the two-tick `strdup`
+  idiom for string-carrying tokens); `compiler2/driver_window.ev:200-232`
+  (the FETCH copy burst: `cp*` effects then `f_sr*` reads).
+- **Consequences.** (+) Bridges the immutable-model / mutable-foreign gap.
+  (−) Two ticks per crossing; (−) requires the *Slot-Aligned Filler*
+  (§4.9) to keep batched crossings position-aligned.
+- **Related.** Serialization/deserialization across a boundary; DMA
+  bounce buffers.
+
+### 4.9 Slot-Aligned Filler
+
+- **Intent.** Keep result positions aligned with a fixed schema across a
+  batch of heterogeneous effects by padding the "no-op" slots with a
+  cheap dummy call, so `last_results[i]` is always meaningful for slot i.
+- **Motivation.** When refilling the 8-token window, only the
+  string-carrying slots need a `__cstr.copy`; the rest need nothing. But
+  `last_results` is position-aligned to the `effects` Seq, so skipping a
+  slot would shift every later result. The fix: emit a `getpid` filler
+  (cheap, side-effect-free-enough) in every slot that doesn't need a real
+  call, so slot i's result is exactly `last_results[i]`.
+- **Structure.** `cp_i = needs_real(i) ? real_call(i) : LibCall("libc",
+  "getpid", ⟨⟩)` for a fixed-width batch.
+- **Example.** `compiler2/driver_window.ev:200-207` (`cp0..cp7`, getpid
+  filler vs. `__cstr.copy`); the lexer's filler at
+  `compiler2/driver.ev:1419` (`d_eff_filler`).
+- **Consequences.** (+) Preserves a rigid result schema under sparse
+  real work. (−) Wastes effect slots on dummies; (−) `getpid` as a
+  "harmless" call is a convention, not a guarantee.
+- **Related.** NOP-padding in VLIW/microcode; struct field alignment;
+  the null-object pattern applied to effect slots.
+
+### 4.10 Work-Item Micro-Step Interpreter
+
+- **Intent.** Compile one source line into a tiny stack-machine program,
+  then interpret it one instruction per tick against an operand stack —
+  the program's central computational engine.
+- **Motivation.** A line like `x = (a + b) * c` must become a tree of Z3
+  builder calls, but each builder is a tick-delayed effect (§4.7) and the
+  operands are handles produced by earlier builders. The clean encoding:
+  lower the line to a postfix `C2Items` program; carry it as a cons-stack
+  (§3.6); each tick pop the head item, emit its one builder call, and
+  push/pop the `C2H` handle stack. Recursion (a `C2Process(expr)` item
+  expanding into sub-items) is handled by *prepending* the expansion to
+  the work list — the list is both program and continuation.
+- **Structure.** `witems ∈ C2Items` (the program/continuation),
+  `hstk ∈ C2H` (operand stack), `istep` (intra-item micro-step for
+  multi-tick items), `pend`/`tmp` (capture plumbing). The per-item
+  dispatch (`d_it_proc`/`d_it_op`/`d_it_app`/…) picks the action; the
+  item's effect goes through the Mode Mux into `effects`.
+- **Example.** `compiler2/driver_ir.ev:10-38` (the `C2Item` opcode set);
+  `compiler2/driver_symtab.ev:104-213` (item decode + per-opcode
+  discriminators); `compiler2/driver.ev:1002-1049` (the `witems`
+  transition — the interpreter's fetch/expand/advance) and `:1421-1453`
+  (the per-item builder selection `d_eff_lib`). A `C2Process` of a binop
+  expands to `⟨Process(l), Process(r), Op(op), …tail⟩`
+  (`:1026-1027`).
+- **Consequences.** (+) Arbitrarily nested expressions compile correctly
+  because every sub-expression is a handle, not text — the legacy
+  text-concatenation compiler's "dropped compound argument" bug class is
+  *impossible by construction* (driver header, `:7`, `:111`). (+) One
+  uniform engine handles arithmetic, boolean, ctor-application, string
+  ops, select, all of it. (−) One Z3 builder per tick → deep expressions
+  are many ticks. (−) The opcode set + dispatch is large and grows with
+  every language feature.
+- **Related.** A bytecode VM / Forth inner interpreter; GoF *Interpreter*
+  + *Command* (each `C2Item` is a command object); CPS (the work list as
+  explicit continuation).
+
+### 4.11 Postfix Stack-Compose
+
+- **Intent.** Build a compound foreign AST as a postfix sequence of
+  stack-manipulation items (dup/swap/rot + binary combiners), emitted as
+  work items.
+- **Motivation.** Some target shapes (the conditional-effects guard tree
+  `(and (=> g B) (=> ¬g T))`) aren't a direct lowering of one surface
+  node; they're a *rewrite* of stack contents. Rather than special-case
+  them, the interpreter gets stack-shuffle opcodes and the rewrite is a
+  fixed item sequence.
+- **Structure.** Opcodes `C2Dup3`/`C2Swap`/`C2Rot3` plus combiners
+  (`C2Not`, `C2Op(OpImpl)`, `C2Op(OpConj)`) emitted in postfix order
+  over `C2H`.
+- **Example.** `compiler2/driver.ev:263-268` (the D2 guard-fold spec:
+  "Dup3 · Not · Swap · Impl · Rot3 · Impl · Swap · Conj"); the
+  stack-op transitions at `:977-993`.
+- **Consequences.** (+) Reuses the one interpreter for tree rewrites the
+  parser can't express directly. (−) Stack choreography is write-only;
+  the comment is the only spec. (−) Easy to get the shuffle wrong.
+- **Related.** Forth/RPN; SSA-free stack-machine codegen; the
+  "concatenative" programming style.
+
+### 4.11b Bounded-Quantifier Re-Walk
+
+- **Intent.** Implement `∀`/`∃` over a finite range or sequence by
+  unrolling: re-parse/re-execute the body once per element under a loop
+  counter, rather than emitting a real quantified formula.
+- **Motivation.** A real Z3 `∀` over a user sequence is hard to build and
+  often hard to solve; for the corpus's small bounded ranges, unrolling
+  to a conjunction is simpler and stays in the decidable fragment. The
+  body is parsed once to an `Expr`, then a loop walks the elements,
+  substituting the bound variable (a numeral, or `(select seq i)`).
+- **Structure.** A loop-state bank (`fl_on`/`fl_var`/`fl_v`/`fl_seq`/
+  `fl_kind`) drives repeated emission; an in-scope bound-name leaf
+  expands to the element value (§ shadowing in the symbol resolver).
+- **Example.** `compiler2/driver_quant.ev` (the re-walk loop);
+  `compiler2/driver.ev:804-834` (`d_vb_hit`/`d_vb_items` — bound-name
+  expansion to numeral or `select`).
+- **Consequences.** (+) Stays in an easy solver fragment; reuses the
+  expression engine. (−) Unrolling is O(range) ticks and only works for
+  statically bounded ranges. (−) Quantifiers in *expression* position
+  aren't covered (driver header "NOT covered").
+- **Related.** Loop unrolling; bounded model checking; CP's reified
+  decomposition of a global constraint into a conjunction.
+
+### 4.12 Single-Writer Effects Funnel
+
+- **Intent.** Route every sub-machine's per-tick effect into one master
+  `effects = …` constraint, because the kernel forbids two unconditional
+  writers.
+- **Motivation.** `effects = ⟨a⟩ ∧ effects = ⟨b⟩` is UNSAT — the kernel
+  enforces a single unconditional writer. With ~15 machines each wanting
+  to emit, the orchestrator owns the one `effects` ternary and selects
+  each tick's rows from the lifted modules by mode/step.
+- **Structure.** One top-level `effects ∈ Seq(Effect) = (cond ? rows :
+  …)`, a priority ternary keyed on the same modes as the Mode Mux; each
+  module exposes its candidate rows (e.g. `ze_*`, `rd_*`, `d_eff_lib`)
+  as ordinary members that the funnel references.
+- **Example.** `compiler2/driver.ev:1458-1538` — the master `effects`
+  selector, with the comment "driver_main owns the single unconditional
+  `effects = …` writer (the orchestrator's one output funnel)."
+- **Consequences.** (+) Satisfies the single-writer rule; one place to
+  see everything the program can do per tick. (+) Composable: a lifted
+  module contributes rows, not writes. (−) The funnel is a 75-line
+  ternary that every feature must thread through; (−) it centrally
+  couples all machines' output timing.
+- **Related.** The single-writer principle (Disruptor/LMAX); a hardware
+  output bus arbiter; GoF *Mediator* (one object coordinates many).
