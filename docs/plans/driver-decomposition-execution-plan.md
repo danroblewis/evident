@@ -232,6 +232,7 @@ the remaining `..`-liftable clean blocks listed in §12 (ZINIT, EMIT, rb
 broadcast, cond-inline, pmode-7/8) + splits the >500-line DriverRecord.
 
 | ZI | (this run) | `driver_zinit.ev` (`fsm DriverZInit`) — the Z3-lifecycle latch bank (zstep program counter + every captured handle/const: cfg/ctx/sol, 4 base sorts, arena, effects-array consts, numerals, buffer bases, last_results/is_first_tick build consts) | 124 (105 body) | 4 bus IN (d_cap_int, _ed_act, _ed_src, is_first_tick) — narrow input; the ~34 PRODUCES are a setup latch bank, not an interface | latch_isort (ed_hold released ⇒ zstep climbs; z_isort captures d_cap_int=42 at exactly zstep 5) | EQUIV; manifest unchanged | 1705 |
+| rb | (this run) | `driver_broadcast.ev` (`fsm DriverBroadcast`) — the G2 record-pin BROADCAST loop (re-walks a record-pinned body once per field, emitting per-field declare+pin) | 73 (46 body) | ~16 bus IN (>8, JUSTIFIED §6.4: the join of parse-result + record field registry + claim-walk dispatch gate — none droppable) | field_walk (record-pin completion + 2-field record ⇒ rb_fi steps 0→2 then disarms) | EQUIV; manifest unchanged | 1662 |
 
 Status after continuation run: 15 modules extracted total (3 prior +
 DriverEnum, DriverWindow, DriverClassify[+driver_ir hoist], DriverCompose,

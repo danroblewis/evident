@@ -249,6 +249,7 @@ import "compiler2/driver_group.ev"
 import "compiler2/driver_setvar.ev"
 import "compiler2/driver_pratt.ev"
 import "compiler2/driver_zinit.ev"
+import "compiler2/driver_broadcast.ev"
 
 import "compiler2/driver_ir.ev"
 
@@ -915,52 +916,8 @@ fsm driver_main
     ..DriverClassify
     -- ── G1: bounded quantifier (see compiler2/driver_quant.ev) ──
     ..DriverQuant
-    -- ── G2: rb — the record-pin BROADCAST loop. A membership pinned
-    -- to a record expression re-walks the parsed body once per FIELD
-    -- of the record type: `offset_pos ∈ IVec2 = pos + IVec2(10, 20)`
-    -- becomes per-field declare+pin (s.offset_pos.x = s.pos.x + 10).
-    -- During a re-walk, an IDENT whose field-qualified dotted name
-    -- resolves in the symtab reads through it, and a REGISTRY-ctor
-    -- call (`IVec2(10, 20)`) selects its field-index argument.
-    rb_on ∈ Bool
-    rb_k ∈ Int
-    rb_nm ∈ String
-    rb_body ∈ Expr
-    rb_fi ∈ Int
-    rb_v ∈ Int
-    rq_done ∈ Bool = (p_done ∧ (_pk_kind = 1) ∧ (¬pr_bad)
-        ∧ (_pk_rec ≥ 0))
-    rb_nf ∈ Int = (_rb_k = 0 ? rt_nf0 : _rb_k = 1 ? rt_nf1 : rt_nf2)
-    rb_fs ∈ String = (_rb_k = 0 ? rt_f0 : _rb_k = 1 ? rt_f1 : rt_f2)
-    rbx_disp ∈ Bool = (d_in_claim ∧ _rb_on ∧ d_witems_nil
-        ∧ (_il_ps = 0) ∧ tok_ready)
-    rbx_more ∈ Bool = (rbx_disp ∧ (_rb_fi < rb_nf))
-    rbx_fin ∈ Bool = (rbx_disp ∧ (_rb_fi ≥ rb_nf))
-    rb_on = (is_first_tick ? false
-        : rq_done ? true
-        : rbx_fin ? false
-        : _rb_on)
-    rb_k = (is_first_tick ? 0 : rq_done ? _pk_rec : _rb_k)
-    rb_nm = (is_first_tick ? "" : rq_done ? _pk_name : _rb_nm)
-    rb_body = (is_first_tick ? ENoExpr : rq_done ? pr_sres : _rb_body)
-    rb_fi = (is_first_tick ? 0
-        : rq_done ? 0
-        : rbx_more ? _rb_fi + 1
-        : _rb_fi)
-    rb_v = (is_first_tick ? 0 : rbx_more ? _rb_fi : _rb_v)
-    rb_f ∈ String
-    RtRecName(s ↦ rb_fs, i ↦ _rb_v, name ↦ rb_f)
-    rbx_f ∈ String
-    RtRecName(s ↦ rb_fs, i ↦ _rb_fi, name ↦ rbx_f)
-    rb_dname ∈ String = _rb_nm ++ "." ++ rbx_f
-    rb_dup ∈ Bool = (index_of(st_names,
-        "|" ++ substr(rb_dname ++ "                               ", 0, 31),
-        0) ≥ 0)
-    rb_head ∈ C2Item = (rb_dup ? C2Process(EIdent(rb_dname))
-        : C2DeclConst(rb_dname, 0))
-    rbx_items ∈ C2Items = C2ICons(rb_head,
-        C2ICons(C2Process(_rb_body),
-        C2ICons(C2PinEq, C2ICons(C2AssertTop, C2INil))))
+    -- ── G2: rb — record-pin BROADCAST loop (see compiler2/driver_broadcast.ev) ──
+    ..DriverBroadcast
 
     -- D2: a Seq(Int) membership declares the array const + its
     -- companion `<name>__len` Int const + the `(>= len 0)` floor —
