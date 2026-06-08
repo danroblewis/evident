@@ -1,0 +1,65 @@
+-- MODULE DriverGuard
+-- CONSUMES: the parsed root (pr_sres) + parse-done signal (p_done,
+--           _pk_kind, pr_bad), the claim index (ci_names, ci_base),
+--           the pmode-10 composition-walk state (in_parse, _pmode,
+--           _cw_st, cw_reset, d_witems_nil), and the inline-frame
+--           stack views (il_pop, _il_depth, d_h_top).
+-- PRODUCES: the guard recognizer (gc_op/gc_l/gc_r/gc_bin/gc_rnm/gc_key/
+--           gc_pos/gc_hit), the claim-body fetch effect (e_gcr), the
+--           jump capture/fire signals (gj_cap/gj_fire/gj_unguard), and
+--           the active-guard carry (il_guard/il_gd) + d_guard_on flag.
+-- MAINTAINS: a `cond ⇒ ClaimName` line splices Name's body with every
+--           asserted constraint wrapped in (=> guard …); the guard is
+--           armed when the jump fires (il_guard ← the guard handle) and
+--           disarmed by the matching frame pop. ONE active guard at a
+--           time (no nested guarded splices — zero corpus occurrences).
+--
+-- INTERFACE WIDTH: ~14 external reads (>8) — JUSTIFIED per §6.4: a
+-- guarded composition jump inherently couples the parse result it
+-- recognizes, the claim index it resolves the callee in, and the
+-- inline-frame stack it arms/disarms the guard against.
+--
+-- The G1 conditional-inline (`cond ⇒ ClaimName`) guarded-splice phase.
+-- Lifted into driver_main via `..DriverGuard`.
+fsm DriverGuard
+    -- ── G1: conditional inline `cond ⇒ ClaimName` — a standalone
+    -- line whose parsed root is (=> guard EIdent(Name)) with Name in
+    -- the claim index splices Name's body with every asserted
+    -- constraint wrapped in (=> guard …) — the oracle's shape.
+    -- The guard expression builds to a HANDLE first (its items run
+    -- under pmode 10, cw_st 3→4), then the jump fires with il_guard
+    -- armed; the matching frame pop disarms it. ONE active guard
+    -- (no nested guarded splices — zero corpus occurrences).
+    gc_op ∈ Op
+    gc_l ∈ Expr
+    gc_r ∈ Expr
+    gc_bin ∈ Bool
+    BoolExprBinopParts(e ↦ pr_sres, op ↦ gc_op, lhs ↦ gc_l,
+        rhs ↦ gc_r, is_binop ↦ gc_bin)
+    gc_rnm ∈ String = match gc_r
+        EIdent(s) ⇒ s
+        _ ⇒ ""
+    gc_key ∈ String = "|" ++ substr(gc_rnm ++ "                               ", 0, 31)
+    gc_pos ∈ Int = index_of(ci_names, gc_key, 0)
+    gc_hit ∈ Bool = (p_done ∧ (_pk_kind = 2) ∧ (¬pr_bad) ∧ gc_bin
+        ∧ (gc_op matches OpImpl) ∧ (gc_rnm ≠ "") ∧ (gc_pos ≥ 0)
+        ∧ (_il_depth < 8))
+    e_gcr ∈ Effect
+    BuildMemReadLong(addr ↦ ci_base + (8 * (gc_pos / 32)), eff ↦ e_gcr)
+    gj_cap ∈ Bool = (in_parse ∧ (_pmode = 10) ∧ (_cw_st = 3))
+    gj_fire ∈ Bool = (in_parse ∧ (_pmode = 10) ∧ (_cw_st = 4)
+        ∧ d_witems_nil)
+    il_guard ∈ Int
+    il_gd ∈ Int
+    gj_unguard ∈ Bool = (il_pop ∧ (_il_depth = _il_gd))
+    il_guard = (is_first_tick ? 0
+        : cw_reset ? 0
+        : gj_fire ? d_h_top
+        : gj_unguard ? 0
+        : _il_guard)
+    il_gd = (is_first_tick ? 0
+        : cw_reset ? 0
+        : gj_fire ? _il_depth + 1
+        : gj_unguard ? 0
+        : _il_gd)
+    d_guard_on ∈ Bool = (_il_guard ≠ 0)

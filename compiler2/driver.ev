@@ -250,6 +250,7 @@ import "compiler2/driver_setvar.ev"
 import "compiler2/driver_pratt.ev"
 import "compiler2/driver_zinit.ev"
 import "compiler2/driver_broadcast.ev"
+import "compiler2/driver_guard.ev"
 
 import "compiler2/driver_ir.ev"
 
@@ -989,47 +990,8 @@ fsm driver_main
     ..DriverCompose
     -- ── PRATT FSM state (see compiler2/driver_pratt.ev) ──
     ..DriverPratt
-    -- ── G1: conditional inline `cond ⇒ ClaimName` — a standalone
-    -- line whose parsed root is (=> guard EIdent(Name)) with Name in
-    -- the claim index splices Name's body with every asserted
-    -- constraint wrapped in (=> guard …) — the oracle's shape.
-    -- The guard expression builds to a HANDLE first (its items run
-    -- under pmode 10, cw_st 3→4), then the jump fires with il_guard
-    -- armed; the matching frame pop disarms it. ONE active guard
-    -- (no nested guarded splices — zero corpus occurrences).
-    gc_op ∈ Op
-    gc_l ∈ Expr
-    gc_r ∈ Expr
-    gc_bin ∈ Bool
-    BoolExprBinopParts(e ↦ pr_sres, op ↦ gc_op, lhs ↦ gc_l,
-        rhs ↦ gc_r, is_binop ↦ gc_bin)
-    gc_rnm ∈ String = match gc_r
-        EIdent(s) ⇒ s
-        _ ⇒ ""
-    gc_key ∈ String = "|" ++ substr(gc_rnm ++ "                               ", 0, 31)
-    gc_pos ∈ Int = index_of(ci_names, gc_key, 0)
-    gc_hit ∈ Bool = (p_done ∧ (_pk_kind = 2) ∧ (¬pr_bad) ∧ gc_bin
-        ∧ (gc_op matches OpImpl) ∧ (gc_rnm ≠ "") ∧ (gc_pos ≥ 0)
-        ∧ (_il_depth < 8))
-    e_gcr ∈ Effect
-    BuildMemReadLong(addr ↦ ci_base + (8 * (gc_pos / 32)), eff ↦ e_gcr)
-    gj_cap ∈ Bool = (in_parse ∧ (_pmode = 10) ∧ (_cw_st = 3))
-    gj_fire ∈ Bool = (in_parse ∧ (_pmode = 10) ∧ (_cw_st = 4)
-        ∧ d_witems_nil)
-    il_guard ∈ Int
-    il_gd ∈ Int
-    gj_unguard ∈ Bool = (il_pop ∧ (_il_depth = _il_gd))
-    il_guard = (is_first_tick ? 0
-        : cw_reset ? 0
-        : gj_fire ? d_h_top
-        : gj_unguard ? 0
-        : _il_guard)
-    il_gd = (is_first_tick ? 0
-        : cw_reset ? 0
-        : gj_fire ? _il_depth + 1
-        : gj_unguard ? 0
-        : _il_gd)
-    d_guard_on ∈ Bool = (_il_guard ≠ 0)
+    -- ── G1: conditional inline (see compiler2/driver_guard.ev) ──
+    ..DriverGuard
 
     -- ── G1: positional binding (see compiler2/driver_posbind.ev) ──
     ..DriverPosBind

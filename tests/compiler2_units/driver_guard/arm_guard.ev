@@ -1,0 +1,54 @@
+-- DriverGuard isolation — the guard arms when the jump fires.
+--
+-- Drives the composition jump-fire condition (in_parse, pmode 10,
+-- cw_st 4, witems nil) with a guard handle on the inline-frame top
+-- (d_h_top = 99) and no reset/unguard. The guarded-splice phase must
+-- latch il_guard ← 99 on the fire tick. We report il_guard. If the
+-- fire condition or the arm latch regresses, il_guard stays 0.
+--
+-- entry: main
+-- expect: stdout = "99"
+-- expect: exit = 0
+import "stdlib/kernel.ev"
+import "compiler/parser.ev"
+import "compiler2/translate2_bool.ev"
+import "stdlib/z3_datatypes.ev"
+import "compiler2/driver_guard.ev"
+
+fsm main
+    -- Jump-fire gate: pmode-10 composition walk in cw_st 4 with the
+    -- callee's items consumed (witems nil).
+    in_parse ∈ Bool
+    in_parse = (is_first_tick ? true : _in_parse)
+    pmode ∈ Int
+    pmode = (is_first_tick ? 10 : _pmode)
+    cw_st ∈ Int
+    cw_st = (is_first_tick ? 4 : _cw_st)
+    d_witems_nil ∈ Bool
+    d_witems_nil = (is_first_tick ? true : _d_witems_nil)
+    d_h_top ∈ Int
+    d_h_top = (is_first_tick ? 99 : _d_h_top)
+    cw_reset ∈ Bool
+    cw_reset = (is_first_tick ? false : _cw_reset)
+    il_pop ∈ Bool
+    il_pop = (is_first_tick ? false : _il_pop)
+    il_depth ∈ Int
+    il_depth = (is_first_tick ? 0 : _il_depth)
+    -- Recognizer inputs the phase also reads (inert here — no guard line).
+    pr_sres ∈ Expr
+    pr_sres = (is_first_tick ? ENoExpr : _pr_sres)
+    p_done ∈ Bool
+    p_done = (is_first_tick ? false : _p_done)
+    pk_kind ∈ Int
+    pk_kind = (is_first_tick ? 0 : _pk_kind)
+    pr_bad ∈ Bool
+    pr_bad = (is_first_tick ? false : _pr_bad)
+    ci_names ∈ String
+    ci_names = (is_first_tick ? "" : _ci_names)
+    ci_base ∈ Int
+    ci_base = (is_first_tick ? 0 : _ci_base)
+    ..DriverGuard
+    g_msg ∈ String = str_from_int(il_guard)
+    effects ∈ Seq(Effect) = ((¬is_first_tick)
+        ? ⟨LibCall("libc", "puts", ⟨ArgStr(g_msg)⟩), Exit(0)⟩
+        : ⟨LibCall("libc", "getpid", ⟨⟩)⟩)
