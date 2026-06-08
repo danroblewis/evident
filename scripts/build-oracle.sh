@@ -6,8 +6,14 @@
 # working tree, built once, kept only as a binary. The source never
 # re-enters the repo, so there is nothing to be tempted to extend.
 #
-#   - Pinned source: c218dca^ (the re-deletion's parent — includes the
-#     c817c6c expr_as_var fix and the 22-predicate Z3 coverage).
+#   - Pinned source: c95710c (the record-carry fix — recovered c218dca^
+#     bootstrap plus the two translate/emit.rs fixes for record-typed
+#     state fields: pinned-constant manifest exclusion and dotted
+#     record-field carry. Supersedes c218dca^, which had the
+#     c817c6c expr_as_var fix and the 22-predicate Z3 coverage but
+#     mis-translated records built from constants and never carried
+#     record fields). The fixed bootstrap source lives in that commit
+#     only; it is removed from the working tree in the next commit.
 #   - Install: /usr/local/bin/evident-oracle
 #   - SUNSET: delete this script and the binary the day compiler2
 #     compiles itself. The oracle is scaffolding, not a dependency.
@@ -16,7 +22,10 @@
 
 set -euo pipefail
 
-PIN="c218dca^"
+# Pin the record-carry-fixed bootstrap (see header). The source is
+# present in this commit's history even though it is absent from the
+# working tree; `git archive` reads it from the object store.
+PIN="c95710c"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 BUILD=/opt/bootstrap-oracle
 BIN=/usr/local/bin/evident-oracle
