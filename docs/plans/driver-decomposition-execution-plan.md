@@ -238,15 +238,42 @@ broadcast, cond-inline, pmode-7/8) + splits the >500-line DriverRecord.
 | em | (this run) | `driver_emit.ev` (`fsm DriverEmit`) — the EMIT rendering phase: serialize solver → assemble manifest+prelude+body unit → puts → free buffers → Exit(0), driven by the estep program counter | 69 (44 body) | ~12 bus IN (d_all_done, d_cap_int/str, z_ctx/z_sol, _fstr, _saw_lr/_saw_ift, cdstr, tbase/st_base/ci_base) | estep_walk (d_all_done ⇒ estep parks −1 then walks 0→5 capped). NOTE: the `effects = …` SINGLE-WRITER SCHEDULE was deliberately KEPT in driver_main (the orchestrator's one output funnel, §4 `DriverEmit(…↦effects)`). The §31 eff_out bridge WAS implemented + verified to emit (manifest legitimately gains `eff_out:Seq(Effect)`), but extracting the schedule yields a module whose ~300-slot schedule has NO feasible isolation test (the §12 integration-core property) — §6.3 (binding) takes precedence, so only the testable rendering phase was lifted; the schedule stays byte-identical in the orchestrator. | EQUIV; manifest unchanged | 1538 |
 | 3-split | (this run) | **§3 >500 SPLIT** of the 578-line `fsm DriverRecord`. The fsm mashed FOUR concerns: record registry, RD tuple-sort machine + its effects, the ED enum-decl effect bank, the ZINIT lifecycle effect bank. Split into: (a) `driver_record.ev` `fsm DriverRecord` = registry + RD machine + RD effects (the record concern, end-to-end), now **438 lines** (340 fsm body, <500 ✓); (b) `driver_buildeff.ev` `fsm DriverBuildEff` = the ED + ZINIT pure per-step effect-constructor banks (ede_/edw_/ze_ + the ed_eff1/ed_w5/w2/w3u selectors), 249 (228 body) — evicted from DriverRecord where they were squatting. Lifted at the SAME position (`..DriverBuildEff` right after `..DriverRecord`) so emit order — and §9 byte-identity — is preserved. | DriverBuildEff: ~45 handle reads (a stateless effect bank indexed by the schedule — its meaningful test is integration/conformance per §12, but the pure ed_eff1 row-selector logic IS isolation-testable) | select_w5 (act 1 step 5 ⇒ ed_w5 wide-row); select_w2 (act 2 step 2 ⇒ ed_w2 double-write) | EQUIV; manifest unchanged | 1572 |
 
-Status after continuation run: 15 modules extracted total (3 prior +
+Status after continuation run #1: 15 modules extracted total (3 prior +
 DriverEnum, DriverWindow, DriverClassify[+driver_ir hoist], DriverCompose,
 DriverSymtab, DriverClaimIdx, DriverMatchPin, DriverPosBind, DriverQuant,
-DriverGroup, DriverSetVar, DriverPratt this run) + BOTH mandated bug
+DriverGroup, DriverSetVar, DriverPratt) + BOTH mandated bug
 regressions (overrun, ternary). 20 unit fixtures green; gate EQUIV +
 manifest unchanged per step; conformance 137/138 (preserved by byte-identity
 — the prebuilt stage1 conformance artifact reads 137 pass / 1 fail, the
 pre-existing 123-subschema-shadowing-quantifier). driver_main 5930 → 1797
 (-4133, -70%).
+
+Status after continuation run #2 (the clean-block sweep): 6 more
+modules + the DriverRecord §3 split this run — DriverZInit, DriverBroadcast
+(rb), DriverGuard (cond-inline), DriverLitMem (pmode-7/8), DriverEmit
+(rendering), and the DriverRecord → DriverRecord + DriverBuildEff split.
+**21 modules total**, 28 unit fixtures green; gate EQUIV + manifest
+unchanged on EVERY step (every extraction byte-identical via `..`-lift,
+incl. the DriverRecord split lifted at the same position); full
+conformance re-run 137/138 (the one fail is the pre-existing
+123-subschema-shadowing-quantifier). **driver_main 1797 → 1538** (this run
+−259; cumulative 5930 → 1538, −74%).
+
+The clean blocks named for this run are now EXHAUSTED. The residual ~1538
+splits into: (a) the legitimate orchestrator residue — INPUT/stdin wiring,
+pmode dispatch flags, the CLAIM-WALK bus, and the single-writer effects
+SCHEDULE which deliberately STAYS in driver_main (§4's target shape wires
+`DriverEmit(… ↦ effects)` — the effects assignment belongs to the
+orchestrator; extracting it needs the §31 eff_out indirection whose
+~300-slot schedule has no feasible isolation test, §6.3); and (b) the
+INTEGRATION CORE that resists clean isolation — the work-item lowering
+engine (~475 lines, ext 178, the VERIFIED `w_need`-drop §9 build-error
+BLOCKER — NOT retried this run per the §10 STOP condition), state
+transitions (ext 133), token consumption (ext 145), and per-item build
+effects (ext 115). Per §3 (>12 bus inputs ⇒ not isolated) and §6.4, these
+are NOT cleanly-isolable modules; forcing them yields wide-interface lifts
+with weak smoke tests — the §1/§3 anti-pattern. STOP condition reached:
+the lowering engine is the residual, as predicted.
 
 §6.1 (`driver_main` < 600) is NOT met and is **NOT cleanly reachable** —
 this is the §10 STOP-and-report condition. The remaining ~1797 lines split
