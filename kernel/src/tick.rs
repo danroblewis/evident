@@ -565,6 +565,7 @@ unsafe fn run_inner(src: &str, manifest: &Manifest) -> Result<u8, String> {
 
         if res == Z3_L_FALSE {
             eprintln!("kernel: UNSAT on tick {tick}");
+            report_unsat_core(ctx, &body, &pin_asts, tick);
             Z3_solver_dec_ref(ctx, solver);
             Z3_del_context(ctx);
             return Ok(2);
@@ -880,6 +881,68 @@ unsafe fn apply_pins_a(ctx: Z3_context, solver: Z3_solver, pin_asts: &[Z3_ast]) 
         Z3_solver_assert(ctx, solver, a);
     }
     Z3_solver_check(ctx, solver)
+}
+
+/// On UNSAT, name the conflicting constraints — the "constraint stack trace".
+/// A tick goes UNSAT when the program's body assertions plus this tick's pins
+/// have no satisfying assignment; the bare `kernel: UNSAT on tick N` says
+/// nothing about WHICH constraints clash. This re-solves in a fresh solver
+/// with every assertion `assert_and_track`'d behind a fresh boolean, then asks
+/// Z3 for the minimal `unsat_core` and prints each member's rendered text.
+/// Gated on EVIDENT_UNSAT_CORE=1 (off by default — the extra solve roughly
+/// doubles the failing tick's cost, but failing ticks are terminal anyway).
+unsafe fn report_unsat_core(
+    ctx: Z3_context,
+    body: &[Z3_ast],
+    pin_asts: &[Z3_ast],
+    tick: usize,
+) {
+    if std::env::var("EVIDENT_UNSAT_CORE").ok().as_deref() != Some("1") {
+        return;
+    }
+    let solver = Z3_mk_solver(ctx);
+    Z3_solver_inc_ref(ctx, solver);
+    let bool_sort = Z3_mk_bool_sort(ctx);
+    // tracking-literal → human label, recovered from the core.
+    let mut labels: std::collections::HashMap<String, (String, Z3_ast)> =
+        std::collections::HashMap::new();
+    let mut track = |a: Z3_ast, kind: &str, i: usize| {
+        let pfx = CString::new(format!("__core_{kind}_{i}")).unwrap();
+        let lit = Z3_mk_fresh_const(ctx, pfx.as_ptr(), bool_sort);
+        Z3_inc_ref(ctx, lit);
+        let litname = ast_to_string(ctx, lit);
+        labels.insert(litname, (format!("{kind}[{i}]"), a));
+        Z3_solver_assert_and_track(ctx, solver, a, lit);
+    };
+    for (i, &a) in body.iter().enumerate() { track(a, "body", i); }
+    for (i, &a) in pin_asts.iter().enumerate() { track(a, "pin", i); }
+
+    let res = Z3_solver_check(ctx, solver);
+    if res != Z3_L_FALSE {
+        // Tracked solve disagreed (rare — e.g. a model-completion edge);
+        // nothing trustworthy to report.
+        eprintln!("[unsat-core] tick {tick}: core unavailable (tracked solve = {res:?})");
+        Z3_solver_dec_ref(ctx, solver);
+        return;
+    }
+    let core = Z3_solver_get_unsat_core(ctx, solver);
+    Z3_ast_vector_inc_ref(ctx, core);
+    let n = Z3_ast_vector_size(ctx, core);
+    eprintln!("[unsat-core] tick {tick}: {n} conflicting constraint(s) — the program asserts a contradiction here:");
+    for i in 0..n {
+        let lit = Z3_ast_vector_get(ctx, core, i);
+        let litname = ast_to_string(ctx, lit);
+        match labels.get(&litname) {
+            Some((label, a)) => {
+                let text = ast_to_string(ctx, *a);
+                let head: String = text.chars().take(200).collect();
+                eprintln!("[unsat-core]   {label}: {head}");
+            }
+            None => eprintln!("[unsat-core]   <{litname}>"),
+        }
+    }
+    Z3_ast_vector_dec_ref(ctx, core);
+    Z3_solver_dec_ref(ctx, solver);
 }
 
 /// Mechanism B: pass the pin ASTs as assumptions to the persistent solver
