@@ -13,6 +13,7 @@ import "compiler/lexer.ev"
 import "compiler/parser.ev"
 import "compiler2/translate2_bool.ev"
 import "compiler2/translate2_ctor.ev"
+import "compiler2/driver_ir.ev"
 import "compiler2/driver_buildeff.ev"
 
 fsm main
@@ -48,8 +49,9 @@ fsm main
     ed_step = (is_first_tick ? 0 : _ed_step)
     ed_vidx ∈ Int
     ed_vidx = (is_first_tick ? 0 : _ed_vidx)
-    st_base ∈ Int
-    st_base = (is_first_tick ? 0 : _st_base)
+    stbuf ∈ FtiBuffer
+    stbuf.base = (is_first_tick ? 0 : _stbuf.base)
+    stbuf.count = (is_first_tick ? 0 : _stbuf.count)
     z_arena ∈ Int
     z_arena = (is_first_tick ? 0 : _z_arena)
     z_arrsort ∈ Int

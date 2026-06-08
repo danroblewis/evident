@@ -1,0 +1,27 @@
+-- FtiBuffer carry — the base+cursor record element travels across ticks.
+--
+-- A bare FtiBuffer: base pinned once (tick 0), count the bounded append
+-- cursor that climbs by 1 each tick. The autocarry transform must
+-- synthesize `_buf ∈ FtiBuffer` (the record dual) so both fields carry;
+-- addr = base + 8*count proves field arithmetic reads the carried record.
+-- If the record dual is not synthesized, count never climbs and the run
+-- never reaches the Exit branch.
+--
+-- entry: main
+-- expect: stdout = "100/0"
+-- expect: stdout = "108/1"
+-- expect: stdout = "116/2"
+-- expect: exit = 0
+import "stdlib/kernel.ev"
+import "compiler2/driver_ir.ev"
+
+fsm main
+    buf ∈ FtiBuffer
+    buf.count < 2048
+    buf.base = (is_first_tick ? 100 : _buf.base)
+    buf.count = (is_first_tick ? 0 : _buf.count + 1)
+    addr ∈ Int = buf.base + (8 * buf.count)
+    msg ∈ String = str_from_int(addr) ++ "/" ++ str_from_int(buf.count)
+    effects ∈ Seq(Effect) = (buf.count ≥ 2
+        ? ⟨LibCall("libc", "puts", ⟨ArgStr(msg)⟩), Exit(0)⟩
+        : ⟨LibCall("libc", "puts", ⟨ArgStr(msg)⟩)⟩)

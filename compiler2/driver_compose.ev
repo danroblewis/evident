@@ -133,7 +133,7 @@ fsm DriverCompose
     -- body-cursor read (capture lands next tick)
     il_rdcur ∈ Bool = (c_comp_line ∨ c_ty_line)
     e_cir ∈ Effect
-    BuildMemReadLong(addr ↦ ci_base + (8 * (c_cur_pos / 32)), eff ↦ e_cir)
+    BuildMemReadLong(addr ↦ cibuf.base + (8 * (c_cur_pos / 32)), eff ↦ e_cir)
 
     -- pmode 10 dispatch
     d_in_cw0 ∈ Bool = (in_parse ∧ (_pmode = 10) ∧ (_cw_st = 0))

@@ -68,10 +68,10 @@ fsm DriverZInit
     z_true = (is_first_tick ? 0 : zstep = 19 ? d_cap_int : _z_true)
     z_false ∈ Int
     z_false = (is_first_tick ? 0 : zstep = 20 ? d_cap_int : _z_false)
-    tbase ∈ Int
-    tbase = (is_first_tick ? 0 : zstep = 21 ? d_cap_int : _tbase)
-    st_base ∈ Int
-    st_base = (is_first_tick ? 0 : zstep = 22 ? d_cap_int : _st_base)
+    tbuf ∈ FtiBuffer
+    tbuf.base = (is_first_tick ? 0 : zstep = 21 ? d_cap_int : _tbuf.base)
+    stbuf ∈ FtiBuffer
+    stbuf.base = (is_first_tick ? 0 : zstep = 22 ? d_cap_int : _stbuf.base)
     -- D3: last_results / last_results__len / is_first_tick as real
     -- build-context consts (zsteps 22-31), so user constraints can
     -- reference them. The last_results__len floor assert moves INTO
@@ -111,5 +111,5 @@ fsm DriverZInit
     -- F2: the claim-index cursor buffer (256 entries × 8 bytes; the
     -- body-start token cursor of every skipped claim, decl order —
     -- names live in ci_names, the st_names pattern).
-    ci_base ∈ Int
-    ci_base = (is_first_tick ? 0 : zstep = 38 ? d_cap_int : _ci_base)
+    cibuf ∈ FtiBuffer
+    cibuf.base = (is_first_tick ? 0 : zstep = 38 ? d_cap_int : _cibuf.base)

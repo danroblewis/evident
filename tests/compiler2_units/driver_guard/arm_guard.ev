@@ -13,6 +13,7 @@ import "stdlib/kernel.ev"
 import "compiler/parser.ev"
 import "compiler2/translate2_bool.ev"
 import "stdlib/z3_datatypes.ev"
+import "compiler2/driver_ir.ev"
 import "compiler2/driver_guard.ev"
 
 fsm main
@@ -45,8 +46,9 @@ fsm main
     pr_bad = (is_first_tick ? false : _pr_bad)
     ci_names ∈ String
     ci_names = (is_first_tick ? "" : _ci_names)
-    ci_base ∈ Int
-    ci_base = (is_first_tick ? 0 : _ci_base)
+    cibuf ∈ FtiBuffer
+    cibuf.base = (is_first_tick ? 0 : _cibuf.base)
+    cibuf.count = (is_first_tick ? 0 : _cibuf.count)
     ..DriverGuard
     g_msg ∈ String = str_from_int(il_guard)
     effects ∈ Seq(Effect) = ((¬is_first_tick)

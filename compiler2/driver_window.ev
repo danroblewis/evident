@@ -331,7 +331,7 @@ fsm DriverWindow
         : _fmode = 1 ? 2
         : 0)
 
-    f_a ∈ Int = tbase + (_tcur * 32)
+    f_a ∈ Int = tbuf.base + (_tcur * 32)
     rd_t0 ∈ Effect = LibCall("__mem", "read_long", ⟨ArgInt(f_a)⟩)
     rd_q0 ∈ Effect = LibCall("__mem", "read_long", ⟨ArgInt(f_a + 8)⟩)
     rd_t1 ∈ Effect = LibCall("__mem", "read_long", ⟨ArgInt(f_a + 32)⟩)

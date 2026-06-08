@@ -778,7 +778,7 @@ fsm driver_main
         : evt_n5 = d_lkname ? evt_v5
         : 0)
     d_eff_stread ∈ Effect
-    BuildMemReadLong(addr ↦ st_base + (8 * (d_lk_pos_eff / 32)), eff ↦ d_eff_stread)
+    BuildMemReadLong(addr ↦ stbuf.base + (8 * (d_lk_pos_eff / 32)), eff ↦ d_eff_stread)
 
     -- C5: match-arm bind scope. C2BindScope(bind, acc) arms it for
     -- the items between it and C2BindEnd (an arm body's expansion —
@@ -1323,7 +1323,7 @@ fsm driver_main
             : z_isort), eff ↦ d_eff_const)
     -- decl istep 2: park the const handle (in tmp) at st_base[st_cnt]
     d_eff_stwr ∈ Effect
-    BuildMemWriteLong(addr ↦ st_base + (8 * _st_cnt), value ↦ d_tmp_in,
+    BuildMemWriteLong(addr ↦ stbuf.base + (8 * _stbuf.count), value ↦ d_tmp_in,
         eff ↦ d_eff_stwr)
     -- oracle gap: a ctor literal in a slot binding breaks the callee's
     -- `matches` translation — pass pinned body vars instead.

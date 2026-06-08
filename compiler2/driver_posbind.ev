@@ -116,7 +116,7 @@ fsm DriverPosBind
     pt_close ∈ Bool = ptc_ok
     pt_bail ∈ Bool = (pt_rp ∧ (¬ptc_ok))
     e_pcr ∈ Effect
-    BuildMemReadLong(addr ↦ ci_base + (8 * (ptc_pos / 32)), eff ↦ e_pcr)
+    BuildMemReadLong(addr ↦ cibuf.base + (8 * (ptc_pos / 32)), eff ↦ e_pcr)
     ptc_recv_items ∈ C2Items = C2ICons(C2Process(EIdent(ptc_w2nm)), C2INil)
 
     -- capture + fire

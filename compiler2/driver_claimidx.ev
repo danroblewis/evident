@@ -38,18 +38,18 @@ fsm DriverClaimIdx
     -- FTI bounds constraint: ci_base holds 2048 claim-index entries.
     -- ci_cnt < 2048 makes an index past the buffer end UNSAT (the model
     -- refuses it) rather than a native overrun.
-    ci_cnt ∈ Int < 2048
+    cibuf.count < 2048
     ci_names ∈ String
     ci_add ∈ Bool = (d_enter_skip
         ∧ (d_head_is_claim ∨ (ww_t0 matches KwType))
         ∧ (ww_t1 matches Ident(_)))
     ci_entry ∈ String = "|" ++ substr(d_cl_name ++ "                               ", 0, 31)
-    ci_cnt = (is_first_tick ? 0 : ci_add ? _ci_cnt + 1 : _ci_cnt)
+    cibuf.count = (is_first_tick ? 0 : ci_add ? _cibuf.count + 1 : _cibuf.count)
     ci_names = (is_first_tick ? ""
         : ci_add ? _ci_names ++ ci_entry
         : _ci_names)
     e_ciw ∈ Effect
-    BuildMemWriteLong(addr ↦ ci_base + (8 * _ci_cnt), value ↦ _tcur + 2,
+    BuildMemWriteLong(addr ↦ cibuf.base + (8 * _cibuf.count), value ↦ _tcur + 2,
         eff ↦ e_ciw)
 
     -- pmode 4 collection: one variant per tick — `Vname [|]` or a
