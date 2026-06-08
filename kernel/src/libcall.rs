@@ -18,80 +18,11 @@
 //!   surface as the textual `Err(_)` returned here).
 
 use std::collections::HashMap;
-use std::collections::BTreeMap;
 use std::ffi::{CString, c_void};
 use std::sync::Mutex;
 
 use libffi::middle::{Arg, Cif, CodePtr, Type};
 use libloading::os::unix::Library;
-
-/// Live libc allocations: base address → byte size. Populated when a
-/// `LibCall("libc", "malloc"/"calloc"/"realloc", …)` returns, consulted by
-/// `__mem.read_long`/`write_long` to reject out-of-bounds access BEFORE it
-/// corrupts the heap or segfaults.
-///
-/// The FTI is meant to be a constraint model — an access past a buffer end
-/// is an invalid operation, not a native crash. This is the kernel-side
-/// safety net for that: an OOB `__mem` access becomes a clean `Err` (the
-/// tick sees an ErrorResult / halts) naming the address and the nearest
-/// allocation, instead of `write_unaligned` scribbling into unmapped or
-/// neighbouring memory. (The complementary level is an `index < capacity`
-/// constraint in the FTI claims themselves, which makes the offending tick
-/// UNSAT — see stdlib/fti/token_stack.ev.)
-///
-/// Disable with EVIDENT_MEM_UNCHECKED=1 (matches the pre-safety-net
-/// behaviour for A/B or perf measurement).
-static MEM_ALLOCS: Mutex<Option<BTreeMap<usize, usize>>> = Mutex::new(None);
-
-fn mem_checks_on() -> bool {
-    std::env::var("EVIDENT_MEM_UNCHECKED").ok().as_deref() != Some("1")
-}
-
-/// Record a `(base, size)` allocation. base==0 (allocation failed) is ignored.
-fn mem_record_alloc(base: i64, size: i64) {
-    if base == 0 || size <= 0 { return; }
-    if let Ok(mut g) = MEM_ALLOCS.lock() {
-        g.get_or_insert_with(BTreeMap::new).insert(base as usize, size as usize);
-    }
-}
-
-fn mem_forget_alloc(base: i64) {
-    if base == 0 { return; }
-    if let Ok(mut g) = MEM_ALLOCS.lock() {
-        if let Some(m) = g.as_mut() { m.remove(&(base as usize)); }
-    }
-}
-
-/// Verify `[addr, addr+len)` lies entirely within one recorded allocation.
-/// Returns Ok if checks are off or no allocations are tracked yet (a program
-/// that never routes through libc malloc — e.g. addresses from dlsym/Z3 —
-/// is not penalised; only addresses that fall in the GAPS between known
-/// buffers, i.e. genuine overruns of a tracked buffer, are rejected).
-fn mem_bounds_ok(addr: usize, len: usize) -> Result<(), String> {
-    if !mem_checks_on() { return Ok(()); }
-    let g = match MEM_ALLOCS.lock() { Ok(g) => g, Err(_) => return Ok(()) };
-    let map = match g.as_ref() { Some(m) if !m.is_empty() => m, _ => return Ok(()) };
-    // Nearest allocation whose base <= addr.
-    if let Some((&base, &size)) = map.range(..=addr).next_back() {
-        let end = base.saturating_add(size);
-        if addr >= base && addr.saturating_add(len) <= end {
-            return Ok(());
-        }
-        // addr is at/after a known base but past its end: an overrun of THAT
-        // buffer. Report it precisely.
-        if addr < end {
-            return Ok(()); // within (len may straddle — but addr is inside)
-        }
-        let over = addr.saturating_add(len).saturating_sub(end);
-        return Err(format!(
-            "__mem out-of-bounds: addr 0x{addr:x} (+{len}B) overruns the buffer at \
-             0x{base:x} (size {size}B, ends 0x{end:x}) by {over}B — FTI capacity exceeded"
-        ));
-    }
-    // addr is below the lowest tracked base — not inside any libc buffer.
-    // Could be a Z3/dlsym pointer the FTI legitimately reads; allow it.
-    Ok(())
-}
 
 /// Argument value for one libffi call.
 #[derive(Debug, Clone)]
@@ -269,32 +200,6 @@ pub fn call(lib_name: &str, fn_name: &str, args: &[LibArg]) -> Result<LibRet, St
     // Call. Treat the return as i64.
     let code_ptr = CodePtr::from_ptr(sym_ptr);
     let result: i64 = unsafe { cif.call(code_ptr, &ffi_args) };
-
-    // Track libc allocations so __mem can bounds-check against them. The size
-    // is recovered from the call args (malloc(size); calloc(n, sz)). realloc
-    // returns a possibly-moved pointer for a new size; free drops the record.
-    if lib_name == "libc" {
-        match fn_name {
-            "malloc" => {
-                if let Some(LibArg::Int(sz)) = args.first() {
-                    mem_record_alloc(result, *sz);
-                }
-            }
-            "calloc" => {
-                if let (Some(LibArg::Int(n)), Some(LibArg::Int(sz))) = (args.first(), args.get(1)) {
-                    mem_record_alloc(result, n.saturating_mul(*sz));
-                }
-            }
-            "realloc" => {
-                if let Some(LibArg::Int(old)) = args.first() { mem_forget_alloc(*old); }
-                if let Some(LibArg::Int(sz)) = args.get(1) { mem_record_alloc(result, *sz); }
-            }
-            "free" => {
-                if let Some(LibArg::Int(p)) = args.first() { mem_forget_alloc(*p); }
-            }
-            _ => {}
-        }
-    }
     Ok(LibRet::Int(result))
 }
 
@@ -355,14 +260,12 @@ fn mem_call(fn_name: &str, args: &[LibArg]) -> Result<i64, String> {
     match fn_name {
         "read_long" => {
             let addr = int_arg(0)? as usize;
-            mem_bounds_ok(addr, 8)?;
             let p = addr as *const i64;
             Ok(unsafe { p.read_unaligned() })
         }
         "write_long" => {
             let addr = int_arg(0)? as usize;
             let val = int_arg(1)?;
-            mem_bounds_ok(addr, 8)?;
             let p = addr as *mut i64;
             unsafe { p.write_unaligned(val) };
             Ok(0)
