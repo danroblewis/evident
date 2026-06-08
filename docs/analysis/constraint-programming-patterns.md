@@ -930,3 +930,152 @@ class-vs-object structural axis.
   syntax-directed translation scheme.
 
 ---
+## 7. Pattern index
+
+| # | Pattern | Category | Anchor example |
+|---|---------|----------|----------------|
+| 3.1 | Co-Traveling Handle Bank | Structural | `driver_zinit.ev` `z_*` |
+| 3.2 | Externalized Heap (FTI Buffer) | Structural | `lex_fti.ev` token buffer |
+| 3.3 | Fixed-Width Record String | Structural | `driver_symtab.ev` `st_names` |
+| 3.4 | Bounded Cursor | Structural | `st_cnt ∈ Int < 8192` |
+| 3.5 | Offset-Partitioned Arena | Structural | `z_arena + 200/224` |
+| 3.6 | Cons-Stack | Structural | `driver_ir.ev` `C2H`/`C2Items` |
+| 3.7 | Peel-View Bank | Structural | `d_h_top..d_h_6th` |
+| 3.8 | Decoded Sliding Window | Structural | `driver_window.ev` `wtoks` |
+| 4.1 | Carry Latch | Behavioral | `x = is_first_tick ? … : _x` |
+| 4.2 | Latch-Once Register | Behavioral | `z_cfg` at `zstep=1` |
+| 4.3 | Step Sequencer | Behavioral | `zstep` / `istep` / `estep` |
+| 4.4 | Counter Hold | Behavioral | `ed_hold` parks `zstep` at 9 |
+| 4.5 | Mode Mux | Behavioral | `pmode` priority-ternaries |
+| 4.6 | Pure Classifier Tick | Behavioral | `driver_classify.ev` |
+| 4.7 | Handle-Capture (`pend`) | Behavioral | `d_hstk_in`/`pend` |
+| 4.8 | Externalize-then-Reread | Behavioral | two-tick `strdup` |
+| 4.9 | Slot-Aligned Filler | Behavioral | `cp*` getpid filler |
+| 4.10 | Work-Item Micro-Step Interpreter | Behavioral | `witems`/`hstk`/`istep` |
+| 4.11 | Postfix Stack-Compose | Behavioral | Dup3/Swap/Rot3 guard fold |
+| 4.11b | Bounded-Quantifier Re-Walk | Behavioral | `driver_quant.ev` |
+| 4.12 | Single-Writer Effects Funnel | Behavioral | master `effects` ternary |
+| 5.1 | Build\* Effect Constructor | Creational | `stdlib/kernel.ev` `Build*` |
+| 5.2 | Staged Builder Machine | Creational | ED machine `driver_enum.ev` |
+| 5.3 | Harvest Register Bank | Creational | `uev_*`/`evt_*` |
+| 5.4 | Args-Array Marshaling | Creational | `z_arena+200` write run |
+| 5.5 | Reify-to-Handle | Creational | the whole AST-build path |
+| 6.1 | Names-Match Lift (`..`) | Compositional | `..DriverX` splices |
+| 6.2 | Carry-Preserving Composition | Compositional | parallel module FSMs |
+| 6.3 | Slot-Bind Inline + α-Prefix | Compositional | `driver_compose.ev` |
+| 6.4 | No-Redeclare Resolution | Compositional | `c_nodecl` |
+| 6.5 | Pass-Claim Dispatch Table | Compositional | `translate2_*BuildZ3` |
+
+A few patterns are *compounds*: the Decoded Sliding Window (3.8) is
+Externalized Heap + Peel-View + a refill sequencer; Reify-to-Handle (5.5)
+is realized *by* the Work-Item Interpreter (4.10). The richest single
+idea is the **Work-Item Micro-Step Interpreter** — it is where the
+FSM-over-SMT model pays off most, turning "no loops, tick-delayed
+foreign calls" from a liability into a clean bytecode VM.
+
+---
+
+## Appendix A — Refactor seeds
+
+Concrete, in-corpus candidates that *instantiate* the patterns and would
+be the natural units of a future refactor. The taxonomy is the primary
+deliverable; these are secondary notes. (No source is changed by this
+document.)
+
+### A.1 Types worth extracting / naming
+
+- **`type FtiBuffer(base ∈ Int, count ∈ Int)`** — the recurring
+  base+cursor pair (§3.2/§3.4). Instantiated three times informally:
+  the token buffer (`tbase`/`lx_count`), the symbol table
+  (`st_base`/`st_cnt`), the claim index (`ci_base`/…). A record type
+  with a `bound` invariant would unify them and document the capacity.
+- **`type Window8(toks ∈ TokenList, cursor, wend, fmode ∈ Int)`** — the
+  decoded sliding window (§3.8) as a first-class record rather than a
+  loose field cluster in `driver_window.ev`.
+- **`type Frame(ret ∈ Int, pfx ∈ String, binds ∈ C2Binds)`** — already
+  *almost* a type, encoded as the `CFCons(Int, String, C2Binds, …)`
+  payload (`driver_ir.ev:61-64`); promoting the payload to a named record
+  would let the peel views (`fr_ret`/`fr_pfx`/`fr_bnd`) become field
+  access (§3.7 reduction).
+- **`type HandleStack`** alias for `C2H` with named depth-view accessors —
+  the `d_h_top..d_h_6th` ladder (§3.7) is a candidate for a generated or
+  reusable peel claim.
+
+### A.2 Reusable `claim`s already factored (keep / generalize)
+
+- **`LexFtiPlan` / `LexCharTag` / `LexKeywordTag`** (`lex_fti.ev`) — a
+  clean, self-contained pass (§6.5) with a documented host contract; the
+  model for how to factor a stateful sub-pass.
+- **`FtiTok`** (`driver_window.ev:29-86`) — the pure tag→`Token` decode;
+  exact inverse of the lexer tag tables. A textbook Pass-Claim (§6.5).
+- **The `*BuildZ3` family** (`translate2_bool.ev`, `translate2_seq.ev`,
+  `translate2_ctor.ev`, `translate_arith.ev`) — the Pass-Claim Dispatch
+  Table (§6.5) in its cleanest form; the dispatch *site* in
+  `driver.ev:1421-1453` is what could be generalized (a table-driven
+  selector instead of a hand-written ternary).
+- **`RtIdxOf` / `RtRecName` / `RtFieldAcc`** (record registry lookups,
+  used across `driver.ev`/`driver_classify.ev`/`driver_compose.ev`) —
+  pure registry probes; good Harvest-Register-Bank (§5.3) accessors.
+
+### A.3 Subclaims / sub-FSMs that are the pattern exemplars
+
+- **`DriverEnum` (the ED machine)** — the Staged Builder Machine (§5.2)
+  reference. If any one module documents "how to build a foreign object
+  over many ticks," it is this.
+- **`DriverCompose`** — the Slot-Bind Inline + α-Prefix (§6.3) and the
+  reified call stack (`C2Frames`). The exemplar for "subroutines over
+  constraints."
+- **`DriverWindow`** — the Decoded Sliding Window (§3.8) + Slot-Aligned
+  Filler (§4.9) + Externalize-then-Reread (§4.8) in one place.
+- **`DriverClassify`** — the Pure Classifier Tick (§4.6) and the
+  No-Redeclare rule (§6.4).
+- **The `effects` master ternary in `driver.ev`** — the Single-Writer
+  Funnel (§4.12); a candidate to be *generated* from each module's
+  declared row-contributions rather than hand-maintained.
+
+### A.4 Cross-cutting cleanup the taxonomy suggests
+
+- The **Peel-View Bank** boilerplate (§3.7) dominates `driver_symtab.ev`,
+  `driver_compose.ev`, and `driver_window.ev`. A generic
+  "first-N-of-cons-list" mechanism (if the language/compiler grew one)
+  would delete hundreds of lines.
+- The **magic step numbers** of the Step Sequencers (§4.3) and
+  Latch-Once Registers (§4.2) are the corpus's most fragile coupling;
+  symbolic step names would help.
+
+---
+
+## Appendix B — Prior-art sources
+
+- **constraintpatterns.com** — Domain-specific Constraint Patterns
+  repository. Patterns templated as recurring-problem → solution
+  (best-practice modelling) → consequences, tied to problem domains
+  (scheduling, timetabling, TSP). <https://constraintpatterns.com/>
+- **Kelareva et al., *Easy, adaptable and high-quality Modelling with
+  domain-specific Constraint Patterns*** — the backing paper for the
+  above; GoF-style template applied to CP *modelling* (not computation).
+  <https://arxiv.org/pdf/2206.02479>
+- **MiniZinc Handbook, *Effective Modelling Practices* (§2.7)** — the
+  canonical idiom list: variable bounds, dual/viewpoint models,
+  channeling, redundant/implied constraints, symmetry breaking. All
+  search-efficiency oriented.
+  <https://docs.minizinc.dev/en/stable/efficient.html>
+- **Effective encodings of constraint programming models to SMT** (St
+  Andrews) — CP→SMT encoding, auxiliary-variable decomposition.
+  <https://research-repository.st-andrews.ac.uk/handle/10023/20648>
+- **An Encoding for CLP Problems in SMT-LIB** (arXiv:2404.14924) —
+  reification, element constraint, decomposition into aux variables in
+  SMT-LIB. <https://arxiv.org/pdf/2404.14924>
+- **Answer Set Programming overview** (ScienceDirect topic) — the
+  fact (empty body) / integrity constraint (empty head) / generate-and-test
+  idioms. <https://www.sciencedirect.com/topics/computer-science/answer-set-programming>
+
+**Bottom line of the survey.** A CP *modelling*-patterns catalog exists
+and is GoF-shaped, but it targets encoding search problems for a solver.
+No prior catalog addresses **FSM-over-SMT** — driving a deterministic,
+stateful computation by re-solving a single-model constraint set every
+tick. The 30 patterns above appear to be the first catalog of that
+regime, with **reification** (§5.5) the only strong bridge to existing CP
+literature and the classic search-oriented patterns (channeling,
+symmetry breaking, redundant constraints) notably *absent* because
+compiler2 does no search.
