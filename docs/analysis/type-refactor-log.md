@@ -222,48 +222,47 @@ New carry unit test `types/z3_numerals_carry.ev`.
 Unit tests: PASS — 32/32. Gate: **PASS — 137/138** (only known
 `123-subschema`; 0 timeouts). COMMITTED.
 
-## rt_* → cons-list enum — ATTEMPTED (feasibility), REJECTED with proof
+## rt_* → cons-list enum — DEFERRED (big rewrite), NOT infeasible
 
-The analysis proposed restructuring the record registry (`rt_cnt`,
-`rt_n0..rt_n2`, `rt_f0…`, the 3×6 accessor grid `rt_a00..rt_a25`) into a
-cons-list enum of a `RecTypeEntry` record element (the `CFCons` "Frame"
-pattern). **This specific target is INFEASIBLE for the rt_ registry, and
-the reason is structural, not effort:**
+> CORRECTION (post-hoc, orchestrator): the original conclusion below
+> claimed enum-typed members "do not carry" and that a cons-list is
+> "off the table." **That is wrong — it was a flawed probe**, the same
+> trap the record-carry investigation hit earlier (a missing prev-tick
+> dual). A cons-list **enum carries fine** when its `_xs ∈ T` dual is
+> declared (or synthesized by `fsm` autocarry):
+>
+> ```
+> enum Stack = Nil | Push(Int, Stack)
+> claim main
+>     s ∈ Stack
+>     _s ∈ Stack                 -- the dual the probe below omitted
+>     s = (is_first_tick ? Push(0, Nil) : Push(_depth + 1, _s))
+>     ...
+> ```
+> → carries correctly (verified: depth reaches 2, exit 0). The driver's
+> own work-item stacks are carried cons-list enums too. The probes below
+> failed only because they wrote `xs ∈ IntList = (… _xs …)` / `c ∈ Col =
+> (… _c …)` with **no `_xs`/`_c` declaration** — so the dual was unbound,
+> not because enum carry is unsupported.
+>
+> So `rt_*` → a cons-list enum of `RecTypeEntry` **is feasible**. It is
+> still a large registry rewrite (the append/probe logic) and was
+> rightly deferred for time, but as a SCOPE call, not an impossibility.
+> The record-unrolled-×3 form is the other viable shape. Either is a
+> focused-session task.
 
-The rt_ registry is **carried cross-tick state** — it is built
-incrementally as the SKIP pass walks `type` tops over successive ticks
-(`rck = _rt_cnt - 1`, `rc_start = … ∧ (_rt_cnt < 3)`; every probe reads
-the prev-tick duals `_rt_n0`, `_rt_sort0`, …). The kernel's state-carry
-only carries members of **primitive type** (Int/Bool/Real/String), and
-records carry **because the autocarry transform flattens them to
-primitive field consts** (the FtiBuffer/Z3SolverCtx/Z3Sorts/Z3Numerals
-mechanism). A cons-list **enum** has no fixed primitive flattening — it
-is a recursive datatype — so an enum-typed fsm member does **not** get a
-synthesized prev-tick dual and does **not** carry.
+--- original (flawed-probe) finding, retained for the record: ---
 
-PROVEN empirically (scratch probes, both fail identically at emit):
-- recursive: `enum IntList = INil | ICons(Int, IntList)`; `xs ∈ IntList
-  = (is_first_tick ? ICons(7,INil) : ICons(step, _xs))` →
-  `dropped constraint (couldn't translate to Bool)` — `_xs` is unbound.
-- **non-recursive**: `enum Col = Red|Green|Blue`; `c ∈ Col =
-  (is_first_tick ? Red : _c)` → same drop, `_c` unbound. So it is the
-  **carry of an enum member** that is unsupported, independent of
-  recursion. (The `CFCons`/C2Frames cons-lists in the codebase work
-  precisely because they are **within-tick** stacks, never carried
-  across ticks — exactly the opposite of the rt_ registry.)
-
-Conclusion: the proposed cons-list-enum shape cannot hold the registry's
-across-tick carried state. Reverted (never landed in source). The viable
-structural alternative is a `RecTypeEntry` **record** (all-primitive
-fields → carries via field flattening) **unrolled ×3** (`rt_e0/rt_e1/
-rt_e2 ∈ RecTypeEntry`), which collapses the parallel `rt_*N` suffix
-arrays into 3 cohesive carried records WITHOUT a cons-list. That is a
-real win but a large, self-contained rewrite (14-field record × 3, plus
-rewriting the four probe claims `RtIdxOf`/`RtRecName`/`RtSortOf`/
-`RtFieldAcc` and their ~25 call sites to thread records or `.field`
-reads) — the prior agent's "own focused session" assessment stands, now
-with the added hard constraint that **a cons-list is off the table for
-any carried registry; only the record-array form is viable.**
+The analysis proposed restructuring the record registry into a cons-list
+enum of a `RecTypeEntry` element. The agent's probes (`xs ∈ IntList =
+(is_first_tick ? ICons(7,INil) : ICons(step, _xs))` and `c ∈ Col =
+(is_first_tick ? Red : _c)`) failed at emit with `_xs`/`_c` unbound — but
+those probes omitted the `_xs ∈ IntList` / `_c ∈ Col` dual, so the
+failure was the missing declaration, not an enum-carry limit. The viable
+shapes are (a) a cons-list enum of `RecTypeEntry` with the carried-list
+dual, or (b) a `RecTypeEntry` record unrolled ×3; both are large
+self-contained rewrites of the `RtIdxOf`/`RtRecName`/`RtSortOf`/
+`RtFieldAcc` probes and their ~25 call sites.
 
 ### Other candidates — assessed, deferred (with measured reasons)
 - **`z_*` → a Z3 handle-bank record. DONE as three cohesive sub-records**
