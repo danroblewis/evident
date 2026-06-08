@@ -1990,6 +1990,132 @@ textual prelude, exactly 2 asserts, no `(+ `, driver exit 0).
   ED machine's field syms are __fN-shaped and its registry is
   single-enum; its own wave.
 
+## G2a — record DATATYPES: real Z3 tuple sorts, composite Seq/Set,
+## tuple→record coercion, Real (landed 2026-06-08)
+
+Closes the 18-fixture burndown G1 left as descopes (021 · 090-093 ·
+121-123 · 125-132 · 137-138). Where G1 flattened a record into dotted
+scalar consts (a frame splice — `p ∈ Point` → `p.x`/`p.y`), G2a adds
+a SECOND lowering: a record can become a real Z3 datatype sort with
+PLAIN field-name accessors, so a `Seq(Point)`/`Set(Point)` element is
+a single ctor app and `t.duration` is `(duration (select s i))`.
+
+The two lowerings coexist by design. The rule (document it, because
+it is the load-bearing invariant):
+
+> A record TYPE that is used as a Seq/Set element type, or appears in
+> a record-pin broadcast (`offset ∈ IVec2 = …`), gets a datatype sort
+> in the registry. A record VARIABLE used scalar-at-a-time
+> (`s.pos.x = 5`) stays G1 frame-flattened. The registry's RtIdxOf
+> returns −1 for any type whose sort handle is still 0, so a lookup
+> that misses falls straight back to G1 behavior — the two paths
+> never fight over the same name.
+
+The draft (converged across the two parked worktrees
+agent-a9bd3fb992c9f9c5f / agent-ac92a028fb826f9da, byte-identical)
+carried this. The pieces:
+
+### The record registry + the RD machine (pmode 13)
+
+The SKIP pass (the existing claim-body skip) now also collects each
+`type Name` top's fields — names + types — into one of 3 registry
+slots (rt_n*/rt_f*/rt_t*/rt_nf*; corpus max is 2 record types, +1
+headroom). When the skip stops at the next top-level keyword the RD
+machine declares the record as a Z3 datatype in ONE
+`Z3_mk_tuple_sort` call (field accessors carry the PLAIN field names),
+then harvests the ctor decl, the per-field accessors, and the
+`(Array Int T)` + `(Array T Bool)` sorts for composite seq/set use.
+A type whose fields don't all resolve (generics, >6 fields,
+self-reference) abandons its slot: sort stays 0 ⇒ every lookup misses
+⇒ pure-G1 frame behavior. Fields live in the fixed-width 32-byte
+`|name<pad31>` record pattern (same as st_names); handles are plain
+Int state. Helper claims RtRecName / RtIdxOf / RtSortOf / RtFieldAcc.
+
+### Record literals + decls as ctor apps (C2RecVal / C2RecDecl)
+
+Two new C2Item variants. C2RecVal expands a record IDENT to a ctor
+app over its flattened dotted consts (`a` → `(mk_Item a.id a.kind)`),
+recursing through nested record fields. C2RecDecl declares the dotted
+consts of a record instance from the registry — needed because a bare
+type jump (`a ∈ Item (id ↦ 1, …)`) has no body memberships to declare
+the params. Used by composite set literals, `∀`-over-set unrolls, and
+the type-slot call path (which now also DECLAREs+PINs each param as a
+real dotted const, sat-equivalent to G1's substitution).
+
+### Composite Seq/Set memberships + set-literal walk (pmode 14)
+
+`xs ∈ Seq(T)` (T a registry type) declares an `(Array Int T)` const +
+`xs__len`; `xs ∈ Set(T)` declares ONE `(Array T Bool)` const. A
+set literal `s = {a, b}` folds `mk_set_add` over `mk_empty_set`, each
+element a C2RecVal ctor app, recording the element names for
+`∀`-over-set and `#s` cardinality. `a ∈ items` asserts
+`(select items (mk_T …))`.
+
+THE WAVE'S BUG (the wedge that killed both prior agents at the
+100k-tick limit): the pmode-14 set-literal element walk spliced its
+C2Items into `witems`, but `d_processing` — the predicate that lets
+the item-execution machinery actually CONSUME those items — did not
+list pmode 14. So the items sat un-executed, no token advanced, and
+the driver spun the filler branch to the tick cap (351 s wall →
+rc 3). FIX: one disjunct, `∨ (in_parse ∧ (_pmode = 14))`, in
+d_processing. Bisected with minimal sources (`items = {a}` alone
+reproduced; slot-calls + bare `Set(Item)` decl did not). After the
+fix the set class compiles in ~19 s/fixture like every other.
+
+### __field accessor reads, ∀-over-composite, rb broadcast
+
+`groups[0].items` (postfix `.field` over a NON-ident operand) folds
+to `ECall2("__field", base, field)` in the Pratt FSM (ps_dotf2), then
+the walker lowers it to `mk_app` of the accessor resolved by FIELD
+NAME across the registry (RtFieldAcc; first hit wins, corpus is
+unambiguous). `∀ t ∈ tasks : t.duration ≥ 0` over a composite seq
+expands the dotted bound name to `(duration (select tasks i))`
+(d_vb_dot). The rb loop re-walks a record-pinned body once per field
+(`offset_pos ∈ IVec2 = pos + IVec2(10,20)` → per-field
+declare+pin), reading dotted consts through the symtab and selecting
+a registry-ctor call's field-index argument.
+
+### Tuple→record coercion at the positional-binding zip (090-093)
+
+A `( atom , atom )` tuple element parses as one 5-token Pratt bite
+(pt_tup_b) pushing two handles. At the bind zip, a record-typed param
+binds the two handles to its first two FIELD NAMES
+(`v.x ↦ h0, v.y ↦ h1`); a scalar param binds the first handle only
+(092's only-when-record contract). Param TYPES are harvested by the
+existing param-skip walk (pty*) to drive the decision.
+
+### Real / FloatLit (021)
+
+`3.14` lexes by re-entering int collection after the `.` (lx_fr
+armed); the fraction-finish writes ONE FloatLit token packed as
+`scaled·8 + digits`. C2AtomE lowers it to `ECall2("__real", …)`, the
+walker to one `Z3_mk_numeral("314/100", Real)`. Negative floats
+descoped (zero corpus occurrences).
+
+### G2a acceptance (canonical harness, 2026-06-08)
+
+`.goalpost/bin/run-conformance.sh` run from the worktree
+(oracle-built stage1, 12 jobs, 1800 s/fixture cap):
+
+- BEFORE: 120/138 passed, 18 failed (021 · 090-093 · 121-123 ·
+  125-132 · 137-138 — exactly G1's descope list).
+- AFTER: 137/138 passed, 1 failed, 0 timed out (wall 281 s, stage1
+  builder oracle). +17 flips, ZERO regressions.
+- The lone remaining failure is 123-subschema-shadowing-quantifier
+  (compile error, fast — not a wedge), the documented descope below.
+
+Regression anchors (001 · 119) hold; the oracle-path unit fixtures
+match main's pre-G2a baseline (pratt green; the record / bool / ctor
+/ match / seq / lex / solver / carry / params / compose exit-1s are
+PRE-EXISTING on main, re-verified — NOT G2a regressions).
+
+### G2a remaining descope
+
+- 123-subschema-shadowing-quantifier: a quantifier in PIN position
+  (inside a type body) — the `fl` quantifier machinery is
+  statement-level only, unchanged from G1. Fails fast (compile
+  error), not a wedge.
+
 ## Next steps
 
 - Widen slot caps 4 → 8 (MembershipStep) before attempting the
