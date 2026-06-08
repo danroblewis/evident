@@ -43,7 +43,8 @@ fsm DriverClaimIdx
     ci_add ∈ Bool = (d_enter_skip
         ∧ (d_head_is_claim ∨ (ww_t0 matches KwType))
         ∧ (ww_t1 matches Ident(_)))
-    ci_entry ∈ String = "|" ++ substr(d_cl_name ++ "                               ", 0, 31)
+    ci_entry ∈ String
+    FtiNameEntry(name ↦ d_cl_name, entry ↦ ci_entry)
     FtiNamedAppend(first ↦ is_first_tick, add ↦ ci_add,
         prev_count ↦ _cibuf.count, prev_names ↦ _ci_names,
         init_count ↦ 0, seed_names ↦ "", entry ↦ ci_entry,

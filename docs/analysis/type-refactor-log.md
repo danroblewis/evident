@@ -474,11 +474,18 @@ Two identical inline blocks → one tested claim. Gated by conformance +
 the functionization gate (compiler stays 0.0 ms z3 — the composition does
 not fall off the fast path).
 
-### Further FTI-reuse candidates (noted, next step)
-- **`FtiNameEntry`** — the 31-char padded name formatter
-  `"|" ++ substr(name ++ <31 spaces>, 0, 31)` is BYTE-IDENTICAL in
-  `st_entry` and `ci_entry`. The cleanest possible hoist (pure string
-  function, no carry). Do next.
+### FtiNameEntry (DONE)
+The 31-char padded name formatter `"|" ++ substr(name ++ <31 spaces>, 0,
+31)`, byte-identical in `st_entry`/`ci_entry`, is now one claim in
+`driver_ir.ev` composed at both sites (`name ↦ d_dc_name` / `d_cl_name`).
+Pure string function, no carry. Isolation test
+`tests/compiler2_units/fti/name_entry.ev` (len=32 + the name text survives
+after the "|"). Functionization gate GREEN.
+
+### Remaining FTI-reuse candidates (noted)
 - **`FtiAddr`** — `base + idx*stride` address computation (lex stride 32,
   symtab/claimidx stride 8). A 1-liner with a per-site stride; lower
   value, optional.
+- The `d_seed_names` literal in `driver_symtab` is two FtiNameEntry-shaped
+  rows for the kernel pre-seed names; rebuildable from two FtiNameEntry
+  calls, but the literal reads clearly as-is.

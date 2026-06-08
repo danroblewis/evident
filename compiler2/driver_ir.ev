@@ -38,6 +38,14 @@ claim FtiNamedAppend(first ∈ Bool, add ∈ Bool, prev_count ∈ Int,
     count = (first ? init_count : (add ? prev_count + 1 : prev_count))
     names = (first ? seed_names : (add ? prev_names ++ entry : prev_names))
 
+-- ── FTI name-registry entry: a fixed-width 32-byte "|name<pad>" row ─
+-- Every name registry stores fixed-width rows: a "|" delimiter then the
+-- name padded/truncated to 31 chars, so row N lives at a known offset.
+-- The same formatter behind the symbol table's `st_entry` and the claim
+-- index's `ci_entry`. Feed the resulting `entry` to FtiNamedAppend.
+claim FtiNameEntry(name ∈ String, entry ∈ String)
+    entry = "|" ++ substr(name ++ "                               ", 0, 31)
+
 -- ── Z3 solver lifecycle: the three handles created together at boot ─
 -- cfg → ctx → sol: the Z3 config, the context derived from it, and the
 -- solver derived from the context (zinit zsteps 1/2/3). They travel as

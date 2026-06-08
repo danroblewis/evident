@@ -38,7 +38,8 @@ fsm DriverSymtab
     stbuf.count < 8192
     st_names ∈ String
     d_st_add ∈ Bool = (d_processing ∧ d_it_decl ∧ (_istep = 2))
-    st_entry ∈ String = "|" ++ substr(d_dc_name ++ "                               ", 0, 31)
+    st_entry ∈ String
+    FtiNameEntry(name ↦ d_dc_name, entry ↦ st_entry)
     -- D3 pre-seed: slots 0/1 are last_results / is_first_tick (their
     -- handles are written at zstep 31), so the two kernel-provided
     -- names resolve like any declared const.

@@ -519,6 +519,30 @@ under `IMPL=selfhost`. Phases 4+5 drive lang_tests and kernel
 fixtures via the seam wrapper. Phase 6 runs the seam smoke
 regression. There is no `IMPL=bootstrap` anymore.
 
+### The compiler2 conformance gate (the behavior gate for refactors)
+
+`.goalpost/bin/run-conformance.sh` compiles + runs all 138 fixtures
+through compiler2. A clean run is **~7 min** (8 jobs); it has a
+**global 15-min wall cap** (`GP_GLOBAL_TIMEOUT`, default 900s) — if a
+change makes fixtures slow (e.g. the `≠`-disequality trap), it **bails
+and reaps the workers** instead of running for hours, and the artifact
+is marked `bailed` (the measure goes red). `137/138` is the bar
+(`123-subschema-shadowing-quantifier` is the one known failure).
+
+**Workflow — fast gate per change, slow gate per batch.** Conformance is
+the ~7-min long pole, so don't run it after every edit:
+
+1. After each refactor step, run the **fast** gates: the affected
+   isolation tests (`tests/compiler2_units/run.sh <module…>`) and
+   `scripts/functionization-gate.sh` (~20s). These catch most breakage.
+2. **Batch** several green-on-fast steps, then run conformance **once**.
+3. If the batch fails or bails, **bisect**: re-apply the steps one at a
+   time (or `git revert` them individually), running conformance on each,
+   to isolate the culprit. Per-step commits make this trivial.
+
+This amortizes the 7-min cost across a batch while keeping each step
+independently revertible.
+
 ## Style for Evident source
 
 - Drop annotations the inference recovers.
