@@ -457,3 +457,18 @@ widening (mechanical), 045/046 need record types (separate small
 wave), one 8-slot multi-line site (MembershipStep). THEN:
 sample.ev attempt → self-compile → oracle sunset → rename
 compiler2/ → compiler/.
+
+## Resume point 11 — agent infrastructure fault
+
+Canonical scoreboard: 120/138 (artifact fresh). G2 (record
+datatypes + Real; targets the 18-fixture burndown via jq .failures
+on the conformance artifact) attempted twice; BOTH agents killed by
+harness 'API Error: 400 Invalid signature in thinking block' —
+systemic after today's harness change, not work-related. Drafts
+parked: .claude/worktrees/agent-a9bd3fb992c9f9c5f/compiler2/
+driver.ev (127-call draft, larger) and agent-ac92a028fb826f9da
+(32-call partial). RESUME: retry the G2 continuation brief
+(resume point 10's mission + the parked drafts) once the harness
+fault clears; alternatively implement G2 inline. After G2:
+sample.ev attempt (records were its last blocker) → kernel corpus
+→ self-compile → oracle sunset → rename.
