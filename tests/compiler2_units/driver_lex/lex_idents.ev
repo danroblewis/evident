@@ -1,0 +1,41 @@
+-- DriverLex isolation — happy path: lex two idents separated by ws.
+--
+-- Drives the real DriverLex scan FSM standalone over input "ab cd": the
+-- module's char-class + collection logic must produce exactly two Ident
+-- tokens, so lx_count settles at 2 by the time lex_done fires. The token
+-- buffer writes (w_*) are NOT scheduled into effects, so no __mem/Z3
+-- arena is needed — we observe the pure scan cursor (lx_count) directly.
+-- If the scan logic regresses (miscounts, fails to advance, mis-collects)
+-- this count changes and the test fails.
+--
+-- entry: main
+-- expect: stdout = "2"
+-- expect: exit = 0
+import "stdlib/kernel.ev"
+import "compiler/lexer.ev"
+import "compiler2/lex_fti.ev"
+import "compiler2/driver_lex.ev"
+
+fsm main
+    -- DriverLex reads _zstep/_got_path (its start gate) — these are
+    -- carries it does not own, so main owns them and holds them past
+    -- the gate (zstep ≥ 38, got_path) for the whole run.
+    zstep   ∈ Int
+    zstep   = (is_first_tick ? 38 : _zstep)
+    got_path ∈ Bool
+    got_path = (is_first_tick ? true : _got_path)
+    -- input/tbase/d_cap_int are read by DriverLex as plain values; hold
+    -- them as live carries so they stay present in every tick's model
+    -- (a pinned `= const` gets simplified out and the kernel's state
+    -- carry then can't find the field).
+    input   ∈ String
+    input   = (is_first_tick ? "ab cd" : _input)
+    tbase     ∈ Int
+    tbase     = (is_first_tick ? 0 : _tbase)
+    d_cap_int ∈ Int
+    d_cap_int = (is_first_tick ? 0 : _d_cap_int)
+    ..DriverLex
+    cnt_msg ∈ String = str_from_int(lx_count)
+    effects ∈ Seq(Effect) = (lex_done
+        ? ⟨LibCall("libc", "puts", ⟨ArgStr(cnt_msg)⟩), Exit(0)⟩
+        : ⟨LibCall("libc", "getpid", ⟨⟩)⟩)
