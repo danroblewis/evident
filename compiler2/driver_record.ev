@@ -1,0 +1,665 @@
+-- MODULE DriverRecord
+-- CONSUMES: the parse cursor/window + skip-pass record collection (the
+--           `type Name(...)` tops), the Z3 base-sort handles (int/bool/
+--           str/real/iarr), d_cap_int captures, and the pmode-13 RD gate.
+-- PRODUCES: the record-type registry (≤3 types): per-type Z3 tuple sort,
+--           ctor decl, array/set sorts, ≤6 accessor decls, the fixed-width
+--           field-name/type record strings, and the RD machine's build
+--           effects (mk_tuple_sort etc.). Pure lookups RtRecName/RtIdxOf/
+--           RtSortOf/RtFieldAcc resolve a name/type/field to its slot.
+-- MAINTAINS: ≤3 registered record types; a slot with sort handle 0 is
+--           "not finished" and never matches a lookup; field records are
+--           32-byte "|name<pad31>" aligned so index_of is slot-arithmetic.
+--
+-- record decls → Z3 tuple sorts + accessor registry. The pure Rt* lookup
+-- claims are the registry's read layer (called from the parse FSM and the
+-- RD machine); DriverRecord is the stateful RD build machine, lifted into
+-- driver_main via `..DriverRecord`.
+-- ── G2: record-registry helpers ───────────────────────────────────
+-- The registry stores ≤ 3 record types (the conformance corpus max
+-- is 2 + headroom). Field names/types live in fixed-width 32-byte
+-- "|name<pad31>" records (the st_names pattern); handles live in
+-- plain Int state (sort / ctor decl / array sort / set sort / ≤ 6
+-- accessor decls per type).
+
+-- RtRecName: record i of a fixed-width string, trailing pad trimmed.
+claim RtRecName(s ∈ String, i ∈ Int, name ∈ String)
+    rrn_raw ∈ String = substr(s, i * 32 + 1, 31)
+    rrn_sp ∈ Int = index_of(rrn_raw, " ", 0)
+    name = substr(rrn_raw, 0, rrn_sp < 0 ? 31 : rrn_sp)
+
+-- RtIdxOf: registry slot of a type name (-1 = miss). A slot whose
+-- sort handle is still 0 (declaration not finished / abandoned)
+-- does not match.
+claim RtIdxOf(nm ∈ String, n0 ∈ String, n1 ∈ String, n2 ∈ String,
+        s0 ∈ Int, s1 ∈ Int, s2 ∈ Int, idx ∈ Int)
+    idx = ((nm ≠ "" ∧ nm = n0 ∧ s0 ≠ 0) ? 0
+        : (nm ≠ "" ∧ nm = n1 ∧ s1 ≠ 0) ? 1
+        : (nm ≠ "" ∧ nm = n2 ∧ s2 ≠ 0) ? 2
+        : 0 - 1)
+
+-- RtSortOf: one field-type string → the Z3 sort handle slot for the
+-- mk_tuple_sort field arrays. "Nat" is Int at sort level (the per-
+-- instance ≥ 0 floor stays a frame-splice concern; datatype-element
+-- Nat floors are descoped). Unknown → 0 (the collector rejects the
+-- type before the RD machine ever runs on it).
+claim RtSortOf(ty ∈ String,
+        int_h ∈ Int, bool_h ∈ Int, str_h ∈ Int, real_h ∈ Int,
+        iarr_h ∈ Int,
+        n0 ∈ String, n1 ∈ String, n2 ∈ String,
+        s0 ∈ Int, s1 ∈ Int, s2 ∈ Int,
+        sort ∈ Int)
+    sort = ((ty = "Int" ∨ ty = "Nat") ? int_h
+        : ty = "Bool" ? bool_h
+        : ty = "String" ? str_h
+        : ty = "Real" ? real_h
+        : ty = "Seq(Int)" ? iarr_h
+        : (ty ≠ "" ∧ ty = n0) ? s0
+        : (ty ≠ "" ∧ ty = n1) ? s1
+        : (ty ≠ "" ∧ ty = n2) ? s2
+        : 0)
+
+-- RtFieldAcc: accessor decl for a FIELD NAME, searched across all
+-- three registry slots (first hit wins — the corpus is unambiguous).
+claim RtFieldAcc(fname ∈ String,
+        f0 ∈ String, f1 ∈ String, f2 ∈ String,
+        a00 ∈ Int, a01 ∈ Int, a02 ∈ Int, a03 ∈ Int, a04 ∈ Int, a05 ∈ Int,
+        a10 ∈ Int, a11 ∈ Int, a12 ∈ Int, a13 ∈ Int, a14 ∈ Int, a15 ∈ Int,
+        a20 ∈ Int, a21 ∈ Int, a22 ∈ Int, a23 ∈ Int, a24 ∈ Int, a25 ∈ Int,
+        acc ∈ Int)
+    rfa_key ∈ String = "|" ++ substr(fname ++ "                               ", 0, 31)
+    rfa_p0 ∈ Int = index_of(f0, rfa_key, 0)
+    rfa_p1 ∈ Int = index_of(f1, rfa_key, 0)
+    rfa_p2 ∈ Int = index_of(f2, rfa_key, 0)
+    rfa_i0 ∈ Int = rfa_p0 / 32
+    rfa_i1 ∈ Int = rfa_p1 / 32
+    rfa_i2 ∈ Int = rfa_p2 / 32
+    acc = ((fname ≠ "" ∧ rfa_p0 ≥ 0)
+            ? (rfa_i0 = 0 ? a00 : rfa_i0 = 1 ? a01 : rfa_i0 = 2 ? a02
+                : rfa_i0 = 3 ? a03 : rfa_i0 = 4 ? a04 : a05)
+        : (fname ≠ "" ∧ rfa_p1 ≥ 0)
+            ? (rfa_i1 = 0 ? a10 : rfa_i1 = 1 ? a11 : rfa_i1 = 2 ? a12
+                : rfa_i1 = 3 ? a13 : rfa_i1 = 4 ? a14 : a15)
+        : (fname ≠ "" ∧ rfa_p2 ≥ 0)
+            ? (rfa_i2 = 0 ? a20 : rfa_i2 = 1 ? a21 : rfa_i2 = 2 ? a22
+                : rfa_i2 = 3 ? a23 : rfa_i2 = 4 ? a24 : a25)
+        : 0)
+
+fsm DriverRecord
+    -- The SKIP pass collects each `type Name` top's fields (names +
+    -- types) into one of 3 registry slots; when the skip stops at
+    -- the next top-level keyword the RD machine (pmode 13) declares
+    -- the record as a Z3 datatype in ONE Z3_mk_tuple_sort call —
+    -- field accessors carry the PLAIN field names (x, y, duration) —
+    -- then harvests ctor decl + accessors + the (Array Int T) and
+    -- set (Array T Bool) sorts. A type whose fields don't all
+    -- resolve (generics, >6 fields, self-reference) abandons its
+    -- slot (sort stays 0 ⇒ every registry lookup misses ⇒ pure-G1
+    -- frame behavior).
+    rt_cnt ∈ Int
+    rt_n0 ∈ String
+    rt_n1 ∈ String
+    rt_n2 ∈ String
+    rt_f0 ∈ String
+    rt_f1 ∈ String
+    rt_f2 ∈ String
+    rt_t0 ∈ String
+    rt_t1 ∈ String
+    rt_t2 ∈ String
+    rt_nf0 ∈ Int
+    rt_nf1 ∈ Int
+    rt_nf2 ∈ Int
+    rt_sort0 ∈ Int
+    rt_sort1 ∈ Int
+    rt_sort2 ∈ Int
+    rt_ctor0 ∈ Int
+    rt_ctor1 ∈ Int
+    rt_ctor2 ∈ Int
+    rt_asort0 ∈ Int
+    rt_asort1 ∈ Int
+    rt_asort2 ∈ Int
+    rt_ssort0 ∈ Int
+    rt_ssort1 ∈ Int
+    rt_ssort2 ∈ Int
+    rt_a00 ∈ Int
+    rt_a01 ∈ Int
+    rt_a02 ∈ Int
+    rt_a03 ∈ Int
+    rt_a04 ∈ Int
+    rt_a05 ∈ Int
+    rt_a10 ∈ Int
+    rt_a11 ∈ Int
+    rt_a12 ∈ Int
+    rt_a13 ∈ Int
+    rt_a14 ∈ Int
+    rt_a15 ∈ Int
+    rt_a20 ∈ Int
+    rt_a21 ∈ Int
+    rt_a22 ∈ Int
+    rt_a23 ∈ Int
+    rt_a24 ∈ Int
+    rt_a25 ∈ Int
+
+    -- collection state (active only during a type top's skip walk)
+    rc_on ∈ Bool
+    rc_ok ∈ Bool
+    rc_np ∈ Int
+    rc_p0 ∈ String
+    rc_p1 ∈ String
+    rc_p2 ∈ String
+
+    rck ∈ Int = _rt_cnt - 1
+    rc_name ∈ String = (rck = 0 ? rt_n0 : rck = 1 ? rt_n1 : rt_n2)
+    rc_f ∈ String = (rck = 0 ? rt_f0 : rck = 1 ? rt_f1 : rt_f2)
+    rc_t ∈ String = (rck = 0 ? rt_t0 : rck = 1 ? rt_t1 : rt_t2)
+    rc_nf ∈ Int = (rck = 0 ? rt_nf0 : rck = 1 ? rt_nf1 : rt_nf2)
+    rc_sort ∈ Int = (rck = 0 ? rt_sort0 : rck = 1 ? rt_sort1 : rt_sort2)
+
+    rc_start ∈ Bool = (ci_add ∧ (ww_t0 matches KwType) ∧ (_rt_cnt < 3))
+    rc_skip ∈ Bool = (d_in_skip ∧ (¬d_skip_stop) ∧ _rc_on)
+    rcf_t0nm ∈ String = match ww_t0
+        Ident(s) ⇒ s
+        _ ⇒ ""
+    rcf_t2nm ∈ String = match ww_t2
+        Ident(s) ⇒ s
+        _ ⇒ ""
+    rcf_t4nm ∈ String = match ww_t4
+        Ident(s) ⇒ s
+        _ ⇒ ""
+    rcf_pend ∈ Bool = (rc_skip ∧ (ww_t0 matches Ident(_))
+        ∧ (ww_t1 matches Comma) ∧ (ww_t2 matches Ident(_)))
+    rcf_take ∈ Bool = (rc_skip ∧ (ww_t0 matches Ident(_))
+        ∧ (ww_t1 matches OpIn) ∧ (ww_t2 matches Ident(_)))
+    rcf_seq ∈ Bool = (rcf_take ∧ (rcf_t2nm = "Seq")
+        ∧ (ww_t3 matches LParen) ∧ (rcf_t4nm = "Int")
+        ∧ (ww_t5 matches RParen))
+    rcf_prim ∈ Bool = (rcf_t2nm = "Int" ∨ rcf_t2nm = "Nat"
+        ∨ rcf_t2nm = "Bool" ∨ rcf_t2nm = "String" ∨ rcf_t2nm = "Real")
+    rcf_reck ∈ Int
+    RtIdxOf(nm ↦ rcf_t2nm, n0 ↦ _rt_n0, n1 ↦ _rt_n1, n2 ↦ _rt_n2,
+        s0 ↦ _rt_sort0, s1 ↦ _rt_sort1, s2 ↦ _rt_sort2, idx ↦ rcf_reck)
+    rcf_cnt ∈ Int = (_rc_np + 1) + (rcf_seq ? 1 : 0)
+    rc_nf_prev ∈ Int = (rck = 0 ? _rt_nf0 : rck = 1 ? _rt_nf1 : _rt_nf2)
+    rcf_bad ∈ Bool = ((rcf_take ∧ (((¬rcf_prim) ∧ (¬rcf_seq) ∧ rcf_reck < 0)
+        ∨ (rcf_seq ∧ _rc_np > 0)
+        ∨ (rc_nf_prev + rcf_cnt > 6)))
+        ∨ (rcf_pend ∧ _rc_np ≥ 3))
+    rc_padv ∈ String = "                               "
+    rcf_ty_norm ∈ String = (rcf_seq ? "Seq(Int)" : rcf_t2nm)
+    rcf_rec_n ∈ String = "|" ++ substr(rcf_t0nm ++ rc_padv, 0, 31)
+    rcf_rec_p0 ∈ String = "|" ++ substr(_rc_p0 ++ rc_padv, 0, 31)
+    rcf_rec_p1 ∈ String = "|" ++ substr(_rc_p1 ++ rc_padv, 0, 31)
+    rcf_rec_p2 ∈ String = "|" ++ substr(_rc_p2 ++ rc_padv, 0, 31)
+    rcf_trec ∈ String = "|" ++ substr(rcf_ty_norm ++ rc_padv, 0, 31)
+    rcf_lenrec ∈ String = "|" ++ substr((rcf_t0nm ++ "__len") ++ rc_padv, 0, 31)
+    rcf_irec ∈ String = "|" ++ substr("Int" ++ rc_padv, 0, 31)
+    rcf_app_f ∈ String = ((_rc_np = 0 ? rcf_rec_n
+        : _rc_np = 1 ? rcf_rec_p0 ++ rcf_rec_n
+        : _rc_np = 2 ? rcf_rec_p0 ++ rcf_rec_p1 ++ rcf_rec_n
+        : rcf_rec_p0 ++ rcf_rec_p1 ++ rcf_rec_p2 ++ rcf_rec_n)
+        ++ (rcf_seq ? rcf_lenrec : ""))
+    rcf_app_t ∈ String = ((_rc_np = 0 ? rcf_trec
+        : _rc_np = 1 ? rcf_trec ++ rcf_trec
+        : _rc_np = 2 ? rcf_trec ++ rcf_trec ++ rcf_trec
+        : rcf_trec ++ rcf_trec ++ rcf_trec ++ rcf_trec)
+        ++ (rcf_seq ? rcf_irec : ""))
+    rcf_ok ∈ Bool = (rcf_take ∧ (¬rcf_bad))
+
+    rc_on = (is_first_tick ? false
+        : rc_start ? true
+        : d_skip_stop ? false
+        : _rc_on)
+    rc_ok = (is_first_tick ? false
+        : rc_start ? true
+        : rcf_bad ? false
+        : _rc_ok)
+    rc_np = (is_first_tick ? 0
+        : rc_start ? 0
+        : rcf_take ? 0
+        : (rcf_pend ∧ _rc_np < 3) ? _rc_np + 1
+        : _rc_np)
+    rc_p0 = (is_first_tick ? ""
+        : (rcf_pend ∧ _rc_np = 0) ? rcf_t0nm : _rc_p0)
+    rc_p1 = (is_first_tick ? ""
+        : (rcf_pend ∧ _rc_np = 1) ? rcf_t0nm : _rc_p1)
+    rc_p2 = (is_first_tick ? ""
+        : (rcf_pend ∧ _rc_np = 2) ? rcf_t0nm : _rc_p2)
+
+    rt_cnt = (is_first_tick ? 0 : rc_start ? _rt_cnt + 1 : _rt_cnt)
+    rt_n0 = (is_first_tick ? "" : (rc_start ∧ _rt_cnt = 0) ? d_cl_name : _rt_n0)
+    rt_n1 = (is_first_tick ? "" : (rc_start ∧ _rt_cnt = 1) ? d_cl_name : _rt_n1)
+    rt_n2 = (is_first_tick ? "" : (rc_start ∧ _rt_cnt = 2) ? d_cl_name : _rt_n2)
+    rt_f0 = (is_first_tick ? "" : (rcf_ok ∧ rck = 0) ? _rt_f0 ++ rcf_app_f : _rt_f0)
+    rt_f1 = (is_first_tick ? "" : (rcf_ok ∧ rck = 1) ? _rt_f1 ++ rcf_app_f : _rt_f1)
+    rt_f2 = (is_first_tick ? "" : (rcf_ok ∧ rck = 2) ? _rt_f2 ++ rcf_app_f : _rt_f2)
+    rt_t0 = (is_first_tick ? "" : (rcf_ok ∧ rck = 0) ? _rt_t0 ++ rcf_app_t : _rt_t0)
+    rt_t1 = (is_first_tick ? "" : (rcf_ok ∧ rck = 1) ? _rt_t1 ++ rcf_app_t : _rt_t1)
+    rt_t2 = (is_first_tick ? "" : (rcf_ok ∧ rck = 2) ? _rt_t2 ++ rcf_app_t : _rt_t2)
+    rt_nf0 = (is_first_tick ? 0 : (rcf_ok ∧ rck = 0) ? _rt_nf0 + rcf_cnt : _rt_nf0)
+    rt_nf1 = (is_first_tick ? 0 : (rcf_ok ∧ rck = 1) ? _rt_nf1 + rcf_cnt : _rt_nf1)
+    rt_nf2 = (is_first_tick ? 0 : (rcf_ok ∧ rck = 2) ? _rt_nf2 + rcf_cnt : _rt_nf2)
+
+    -- RD machine (pmode 13): st 0 name sym · st 1 field syms (per
+    -- field) · st 2 the 12-slot write batch (6 fname syms + 6
+    -- fsorts; unused slots write 0) · st 3 mk_tuple_sort · st 4
+    -- read ctor decl · st 5 read accessors (per field) · st 6
+    -- mk_array_sort(Int, T) · st 7 mk_set_sort(T) · 8 done.
+    rd_st ∈ Int
+    rd_fi ∈ Int
+    rd_hn ∈ Int
+    rd_hf0 ∈ Int
+    rd_hf1 ∈ Int
+    rd_hf2 ∈ Int
+    rd_hf3 ∈ Int
+    rd_hf4 ∈ Int
+    rd_hf5 ∈ Int
+
+    rd_go ∈ Bool = (d_skip_stop ∧ _rc_on ∧ _rc_ok ∧ (rck ≥ 0)
+        ∧ (rc_nf > 0))
+    rd_prev ∈ Bool = (_pmode = 13)
+    rd_cur_st ∈ Int = (rd_go ? 0
+        : (¬rd_prev) ? 8
+        : _rd_st = 0 ? 1
+        : _rd_st = 1 ? ((_rd_fi + 1 < rc_nf) ? 1 : 2)
+        : _rd_st = 2 ? 3
+        : _rd_st = 3 ? 4
+        : _rd_st = 4 ? 5
+        : _rd_st = 5 ? ((_rd_fi + 1 < rc_nf) ? 5 : 6)
+        : _rd_st = 6 ? 7
+        : 8)
+    rd_cur_fi ∈ Int = (rd_go ? 0
+        : (_rd_st = 1 ∧ rd_cur_st = 1) ? _rd_fi + 1
+        : _rd_st = 0 ? 0
+        : _rd_st = 4 ? 0
+        : (_rd_st = 5 ∧ rd_cur_st = 5) ? _rd_fi + 1
+        : 0)
+    rd_fin ∈ Bool = (rd_prev ∧ rd_cur_st = 8)
+    rd_act_now ∈ Bool = (rd_go ∨ (rd_prev ∧ rd_cur_st ≤ 7))
+    rd_st = (is_first_tick ? 8 : rd_go ? 0 : rd_prev ? rd_cur_st : _rd_st)
+    rd_fi = (is_first_tick ? 0 : (rd_go ∨ rd_prev) ? rd_cur_fi : _rd_fi)
+
+    rd_cap ∈ Bool = rd_prev
+    rd_hn = (is_first_tick ? 0
+        : (rd_cap ∧ _rd_st = 0) ? d_cap_int : _rd_hn)
+    rd_hf0 = (is_first_tick ? 0
+        : (rd_cap ∧ _rd_st = 1 ∧ _rd_fi = 0) ? d_cap_int : _rd_hf0)
+    rd_hf1 = (is_first_tick ? 0
+        : (rd_cap ∧ _rd_st = 1 ∧ _rd_fi = 1) ? d_cap_int : _rd_hf1)
+    rd_hf2 = (is_first_tick ? 0
+        : (rd_cap ∧ _rd_st = 1 ∧ _rd_fi = 2) ? d_cap_int : _rd_hf2)
+    rd_hf3 = (is_first_tick ? 0
+        : (rd_cap ∧ _rd_st = 1 ∧ _rd_fi = 3) ? d_cap_int : _rd_hf3)
+    rd_hf4 = (is_first_tick ? 0
+        : (rd_cap ∧ _rd_st = 1 ∧ _rd_fi = 4) ? d_cap_int : _rd_hf4)
+    rd_hf5 = (is_first_tick ? 0
+        : (rd_cap ∧ _rd_st = 1 ∧ _rd_fi = 5) ? d_cap_int : _rd_hf5)
+    rd_sort_cap ∈ Bool = (rd_cap ∧ _rd_st = 3)
+    rd_ctor_cap ∈ Bool = (rd_cap ∧ _rd_st = 4)
+    rd_acc_cap ∈ Bool = (rd_cap ∧ _rd_st = 5)
+    rd_as_cap ∈ Bool = (rd_cap ∧ _rd_st = 6)
+    rd_ss_cap ∈ Bool = (rd_cap ∧ _rd_st = 7)
+    rt_sort0 = (is_first_tick ? 0 : (rd_sort_cap ∧ rck = 0) ? d_cap_int : _rt_sort0)
+    rt_sort1 = (is_first_tick ? 0 : (rd_sort_cap ∧ rck = 1) ? d_cap_int : _rt_sort1)
+    rt_sort2 = (is_first_tick ? 0 : (rd_sort_cap ∧ rck = 2) ? d_cap_int : _rt_sort2)
+    rt_ctor0 = (is_first_tick ? 0 : (rd_ctor_cap ∧ rck = 0) ? d_cap_int : _rt_ctor0)
+    rt_ctor1 = (is_first_tick ? 0 : (rd_ctor_cap ∧ rck = 1) ? d_cap_int : _rt_ctor1)
+    rt_ctor2 = (is_first_tick ? 0 : (rd_ctor_cap ∧ rck = 2) ? d_cap_int : _rt_ctor2)
+    rt_asort0 = (is_first_tick ? 0 : (rd_as_cap ∧ rck = 0) ? d_cap_int : _rt_asort0)
+    rt_asort1 = (is_first_tick ? 0 : (rd_as_cap ∧ rck = 1) ? d_cap_int : _rt_asort1)
+    rt_asort2 = (is_first_tick ? 0 : (rd_as_cap ∧ rck = 2) ? d_cap_int : _rt_asort2)
+    rt_ssort0 = (is_first_tick ? 0 : (rd_ss_cap ∧ rck = 0) ? d_cap_int : _rt_ssort0)
+    rt_ssort1 = (is_first_tick ? 0 : (rd_ss_cap ∧ rck = 1) ? d_cap_int : _rt_ssort1)
+    rt_ssort2 = (is_first_tick ? 0 : (rd_ss_cap ∧ rck = 2) ? d_cap_int : _rt_ssort2)
+    rt_a00 = (is_first_tick ? 0 : (rd_acc_cap ∧ rck = 0 ∧ _rd_fi = 0) ? d_cap_int : _rt_a00)
+    rt_a01 = (is_first_tick ? 0 : (rd_acc_cap ∧ rck = 0 ∧ _rd_fi = 1) ? d_cap_int : _rt_a01)
+    rt_a02 = (is_first_tick ? 0 : (rd_acc_cap ∧ rck = 0 ∧ _rd_fi = 2) ? d_cap_int : _rt_a02)
+    rt_a03 = (is_first_tick ? 0 : (rd_acc_cap ∧ rck = 0 ∧ _rd_fi = 3) ? d_cap_int : _rt_a03)
+    rt_a04 = (is_first_tick ? 0 : (rd_acc_cap ∧ rck = 0 ∧ _rd_fi = 4) ? d_cap_int : _rt_a04)
+    rt_a05 = (is_first_tick ? 0 : (rd_acc_cap ∧ rck = 0 ∧ _rd_fi = 5) ? d_cap_int : _rt_a05)
+    rt_a10 = (is_first_tick ? 0 : (rd_acc_cap ∧ rck = 1 ∧ _rd_fi = 0) ? d_cap_int : _rt_a10)
+    rt_a11 = (is_first_tick ? 0 : (rd_acc_cap ∧ rck = 1 ∧ _rd_fi = 1) ? d_cap_int : _rt_a11)
+    rt_a12 = (is_first_tick ? 0 : (rd_acc_cap ∧ rck = 1 ∧ _rd_fi = 2) ? d_cap_int : _rt_a12)
+    rt_a13 = (is_first_tick ? 0 : (rd_acc_cap ∧ rck = 1 ∧ _rd_fi = 3) ? d_cap_int : _rt_a13)
+    rt_a14 = (is_first_tick ? 0 : (rd_acc_cap ∧ rck = 1 ∧ _rd_fi = 4) ? d_cap_int : _rt_a14)
+    rt_a15 = (is_first_tick ? 0 : (rd_acc_cap ∧ rck = 1 ∧ _rd_fi = 5) ? d_cap_int : _rt_a15)
+    rt_a20 = (is_first_tick ? 0 : (rd_acc_cap ∧ rck = 2 ∧ _rd_fi = 0) ? d_cap_int : _rt_a20)
+    rt_a21 = (is_first_tick ? 0 : (rd_acc_cap ∧ rck = 2 ∧ _rd_fi = 1) ? d_cap_int : _rt_a21)
+    rt_a22 = (is_first_tick ? 0 : (rd_acc_cap ∧ rck = 2 ∧ _rd_fi = 2) ? d_cap_int : _rt_a22)
+    rt_a23 = (is_first_tick ? 0 : (rd_acc_cap ∧ rck = 2 ∧ _rd_fi = 3) ? d_cap_int : _rt_a23)
+    rt_a24 = (is_first_tick ? 0 : (rd_acc_cap ∧ rck = 2 ∧ _rd_fi = 4) ? d_cap_int : _rt_a24)
+    rt_a25 = (is_first_tick ? 0 : (rd_acc_cap ∧ rck = 2 ∧ _rd_fi = 5) ? d_cap_int : _rt_a25)
+
+    -- RD arena regions (free past the C2App args at +224..271)
+    rd_fn_p ∈ Int = z_arena + 288
+    rd_fs_p ∈ Int = z_arena + 336
+    rd_ct_p ∈ Int = z_arena + 384
+    rd_ac_p ∈ Int = z_arena + 392
+
+    rd_eff_st ∈ Int = (rd_go ? 0 : rd_cur_st)
+    rd_eff_fi ∈ Int = (rd_go ? 0 : rd_cur_fi)
+    rdf_name ∈ String
+    RtRecName(s ↦ rc_f, i ↦ rd_eff_fi, name ↦ rdf_name)
+    rd_hfu0 ∈ Int = ((rd_cap ∧ _rd_st = 1 ∧ _rd_fi = 0) ? d_cap_int : _rd_hf0)
+    rd_hfu1 ∈ Int = ((rd_cap ∧ _rd_st = 1 ∧ _rd_fi = 1) ? d_cap_int : _rd_hf1)
+    rd_hfu2 ∈ Int = ((rd_cap ∧ _rd_st = 1 ∧ _rd_fi = 2) ? d_cap_int : _rd_hf2)
+    rd_hfu3 ∈ Int = ((rd_cap ∧ _rd_st = 1 ∧ _rd_fi = 3) ? d_cap_int : _rd_hf3)
+    rd_hfu4 ∈ Int = ((rd_cap ∧ _rd_st = 1 ∧ _rd_fi = 4) ? d_cap_int : _rd_hf4)
+    rd_hfu5 ∈ Int = ((rd_cap ∧ _rd_st = 1 ∧ _rd_fi = 5) ? d_cap_int : _rd_hf5)
+    rdt_0 ∈ String
+    RtRecName(s ↦ rc_t, i ↦ 0, name ↦ rdt_0)
+    rdt_1 ∈ String
+    RtRecName(s ↦ rc_t, i ↦ 1, name ↦ rdt_1)
+    rdt_2 ∈ String
+    RtRecName(s ↦ rc_t, i ↦ 2, name ↦ rdt_2)
+    rdt_3 ∈ String
+    RtRecName(s ↦ rc_t, i ↦ 3, name ↦ rdt_3)
+    rdt_4 ∈ String
+    RtRecName(s ↦ rc_t, i ↦ 4, name ↦ rdt_4)
+    rdt_5 ∈ String
+    RtRecName(s ↦ rc_t, i ↦ 5, name ↦ rdt_5)
+    rds_0 ∈ Int
+    RtSortOf(ty ↦ rdt_0, int_h ↦ z_isort, bool_h ↦ z_bsort,
+        str_h ↦ z_ssort, real_h ↦ z_rsort, iarr_h ↦ z_iarr,
+        n0 ↦ rt_n0, n1 ↦ rt_n1, n2 ↦ rt_n2,
+        s0 ↦ rt_sort0, s1 ↦ rt_sort1, s2 ↦ rt_sort2, sort ↦ rds_0)
+    rds_1 ∈ Int
+    RtSortOf(ty ↦ rdt_1, int_h ↦ z_isort, bool_h ↦ z_bsort,
+        str_h ↦ z_ssort, real_h ↦ z_rsort, iarr_h ↦ z_iarr,
+        n0 ↦ rt_n0, n1 ↦ rt_n1, n2 ↦ rt_n2,
+        s0 ↦ rt_sort0, s1 ↦ rt_sort1, s2 ↦ rt_sort2, sort ↦ rds_1)
+    rds_2 ∈ Int
+    RtSortOf(ty ↦ rdt_2, int_h ↦ z_isort, bool_h ↦ z_bsort,
+        str_h ↦ z_ssort, real_h ↦ z_rsort, iarr_h ↦ z_iarr,
+        n0 ↦ rt_n0, n1 ↦ rt_n1, n2 ↦ rt_n2,
+        s0 ↦ rt_sort0, s1 ↦ rt_sort1, s2 ↦ rt_sort2, sort ↦ rds_2)
+    rds_3 ∈ Int
+    RtSortOf(ty ↦ rdt_3, int_h ↦ z_isort, bool_h ↦ z_bsort,
+        str_h ↦ z_ssort, real_h ↦ z_rsort, iarr_h ↦ z_iarr,
+        n0 ↦ rt_n0, n1 ↦ rt_n1, n2 ↦ rt_n2,
+        s0 ↦ rt_sort0, s1 ↦ rt_sort1, s2 ↦ rt_sort2, sort ↦ rds_3)
+    rds_4 ∈ Int
+    RtSortOf(ty ↦ rdt_4, int_h ↦ z_isort, bool_h ↦ z_bsort,
+        str_h ↦ z_ssort, real_h ↦ z_rsort, iarr_h ↦ z_iarr,
+        n0 ↦ rt_n0, n1 ↦ rt_n1, n2 ↦ rt_n2,
+        s0 ↦ rt_sort0, s1 ↦ rt_sort1, s2 ↦ rt_sort2, sort ↦ rds_4)
+    rds_5 ∈ Int
+    RtSortOf(ty ↦ rdt_5, int_h ↦ z_isort, bool_h ↦ z_bsort,
+        str_h ↦ z_ssort, real_h ↦ z_rsort, iarr_h ↦ z_iarr,
+        n0 ↦ rt_n0, n1 ↦ rt_n1, n2 ↦ rt_n2,
+        s0 ↦ rt_sort0, s1 ↦ rt_sort1, s2 ↦ rt_sort2, sort ↦ rds_5)
+
+    rde_nsym ∈ Effect
+    BuildZ3MkStringSymbol(ctx_h ↦ z_ctx, name ↦ rc_name, eff ↦ rde_nsym)
+    rde_fsym ∈ Effect
+    BuildZ3MkStringSymbol(ctx_h ↦ z_ctx, name ↦ rdf_name, eff ↦ rde_fsym)
+    rde_wfn0 ∈ Effect
+    BuildMemWriteLong(addr ↦ rd_fn_p, value ↦ rd_hfu0, eff ↦ rde_wfn0)
+    rde_wfn1 ∈ Effect
+    BuildMemWriteLong(addr ↦ rd_fn_p + 8, value ↦ rd_hfu1, eff ↦ rde_wfn1)
+    rde_wfn2 ∈ Effect
+    BuildMemWriteLong(addr ↦ rd_fn_p + 16, value ↦ rd_hfu2, eff ↦ rde_wfn2)
+    rde_wfn3 ∈ Effect
+    BuildMemWriteLong(addr ↦ rd_fn_p + 24, value ↦ rd_hfu3, eff ↦ rde_wfn3)
+    rde_wfn4 ∈ Effect
+    BuildMemWriteLong(addr ↦ rd_fn_p + 32, value ↦ rd_hfu4, eff ↦ rde_wfn4)
+    rde_wfn5 ∈ Effect
+    BuildMemWriteLong(addr ↦ rd_fn_p + 40, value ↦ rd_hfu5, eff ↦ rde_wfn5)
+    rde_wfs0 ∈ Effect
+    BuildMemWriteLong(addr ↦ rd_fs_p, value ↦ rds_0, eff ↦ rde_wfs0)
+    rde_wfs1 ∈ Effect
+    BuildMemWriteLong(addr ↦ rd_fs_p + 8, value ↦ rds_1, eff ↦ rde_wfs1)
+    rde_wfs2 ∈ Effect
+    BuildMemWriteLong(addr ↦ rd_fs_p + 16, value ↦ rds_2, eff ↦ rde_wfs2)
+    rde_wfs3 ∈ Effect
+    BuildMemWriteLong(addr ↦ rd_fs_p + 24, value ↦ rds_3, eff ↦ rde_wfs3)
+    rde_wfs4 ∈ Effect
+    BuildMemWriteLong(addr ↦ rd_fs_p + 32, value ↦ rds_4, eff ↦ rde_wfs4)
+    rde_wfs5 ∈ Effect
+    BuildMemWriteLong(addr ↦ rd_fs_p + 40, value ↦ rds_5, eff ↦ rde_wfs5)
+    rde_tup ∈ Effect = LibCall("libz3", "Z3_mk_tuple_sort",
+        ⟨ArgInt(z_ctx), ArgInt(rd_hn), ArgInt(rc_nf), ArgInt(rd_fn_p),
+         ArgInt(rd_fs_p), ArgInt(rd_ct_p), ArgInt(rd_ac_p)⟩)
+    rde_rdct ∈ Effect
+    BuildMemReadLong(addr ↦ rd_ct_p, eff ↦ rde_rdct)
+    rde_rdacc ∈ Effect
+    BuildMemReadLong(addr ↦ rd_ac_p + (8 * rd_eff_fi), eff ↦ rde_rdacc)
+    rde_asort ∈ Effect
+    BuildZ3MkArraySort(ctx_h ↦ z_ctx, idx_sort_h ↦ z_isort,
+        val_sort_h ↦ rc_sort, eff ↦ rde_asort)
+    rde_ssort ∈ Effect = LibCall("libz3", "Z3_mk_set_sort",
+        ⟨ArgInt(z_ctx), ArgInt(rc_sort)⟩)
+    rd_eff1 ∈ Effect = (rd_eff_st = 0 ? rde_nsym
+        : rd_eff_st = 1 ? rde_fsym
+        : rd_eff_st = 3 ? rde_tup
+        : rd_eff_st = 4 ? rde_rdct
+        : rd_eff_st = 5 ? rde_rdacc
+        : rd_eff_st = 6 ? rde_asort
+        : rd_eff_st = 7 ? rde_ssort
+        : LibCall("libc", "getpid", ⟨⟩))
+
+    -- ED arena pointers.
+    ed_fn_p ∈ Int = z_arena
+    ed_fsort_p ∈ Int = z_arena + 24
+    ed_sr_p ∈ Int = z_arena + 48
+    ed_ctors_p ∈ Int = z_arena + 64
+    ed_names_p ∈ Int = z_arena + 128
+    ed_souts_p ∈ Int = z_arena + 136
+    ed_clists_p ∈ Int = z_arena + 144
+    ed_qout_p ∈ Int = z_arena + 152
+
+    -- ED effects. Sym handles emitted at step k are captured at the
+    -- k+1 tick; the write batch uses the just-landed one directly.
+    ed_f0u ∈ Int = (_ed_step = 2 ? d_cap_int : _ed_h_f0)
+    ed_f1u ∈ Int = (_ed_step = 3 ? d_cap_int : _ed_h_f1)
+    ed_f2u ∈ Int = (_ed_step = 4 ? d_cap_int : _ed_h_f2)
+    ede_nsym ∈ Effect
+    VariantNameSymStep(ctx_h ↦ z_ctx, v ↦ ed_v, eff ↦ ede_nsym)
+    ede_rsym ∈ Effect
+    VariantRecognizerSymStep(ctx_h ↦ z_ctx, v ↦ ed_v, eff ↦ ede_rsym)
+    ede_fsym0 ∈ Effect
+    VariantFieldSymStep(ctx_h ↦ z_ctx, v ↦ ed_v, idx ↦ 0, eff ↦ ede_fsym0)
+    ede_fsym1 ∈ Effect
+    VariantFieldSymStep(ctx_h ↦ z_ctx, v ↦ ed_v, idx ↦ 1, eff ↦ ede_fsym1)
+    ede_fsym2 ∈ Effect
+    VariantFieldSymStep(ctx_h ↦ z_ctx, v ↦ ed_v, idx ↦ 2, eff ↦ ede_fsym2)
+    edw_fn0 ∈ Effect
+    BuildMemWriteLong(addr ↦ ed_fn_p, value ↦ ed_f0u, eff ↦ edw_fn0)
+    edw_fn1 ∈ Effect
+    BuildMemWriteLong(addr ↦ ed_fn_p + 8, value ↦ ed_f1u, eff ↦ edw_fn1)
+    edw_fn2 ∈ Effect
+    BuildMemWriteLong(addr ↦ ed_fn_p + 16, value ↦ ed_f2u, eff ↦ edw_fn2)
+    edw_fs0 ∈ Effect
+    BuildMemWriteLong(addr ↦ ed_fsort_p, value ↦ ed_slot0, eff ↦ edw_fs0)
+    edw_fs1 ∈ Effect
+    BuildMemWriteLong(addr ↦ ed_fsort_p + 8, value ↦ ed_slot1, eff ↦ edw_fs1)
+    edw_fs2 ∈ Effect
+    BuildMemWriteLong(addr ↦ ed_fsort_p + 16, value ↦ ed_slot2, eff ↦ edw_fs2)
+    edw_sr01 ∈ Effect
+    BuildMemWriteLong(addr ↦ ed_sr_p, value ↦ ed_pack01, eff ↦ edw_sr01)
+    edw_sr2 ∈ Effect
+    BuildMemWriteLong(addr ↦ ed_sr_p + 8, value ↦ ed_fr2, eff ↦ edw_sr2)
+    ede_mkctor ∈ Effect
+    VariantMkConstructorStep(ctx_h ↦ z_ctx, v ↦ ed_v,
+        name_sym_h ↦ ed_h_name, recog_sym_h ↦ ed_h_rec,
+        fnames_p ↦ ed_fn_p, fsorts_p ↦ ed_fsort_p, srefs_p ↦ ed_sr_p,
+        eff ↦ ede_mkctor)
+    edw_ctor ∈ Effect
+    BuildMemWriteLong(addr ↦ ed_ctors_p + (8 * _ed_vidx), value ↦ d_cap_int,
+        eff ↦ edw_ctor)
+    ed_sortsym_decl ∈ EnumDeclAst = EnumD(_ed_name, EVNil)
+    ede_ssym ∈ Effect
+    EnumSortSymStep(ctx_h ↦ z_ctx, decl ↦ ed_sortsym_decl, eff ↦ ede_ssym)
+    ede_clist ∈ Effect
+    BuildZ3MkConstructorList(ctx_h ↦ z_ctx, n_ctors ↦ _ed_nv,
+        ctors_arr_p ↦ ed_ctors_p, eff ↦ ede_clist)
+    edw_nm ∈ Effect
+    BuildMemWriteLong(addr ↦ ed_names_p, value ↦ ed_h_name, eff ↦ edw_nm)
+    edw_cl ∈ Effect
+    BuildMemWriteLong(addr ↦ ed_clists_p, value ↦ d_cap_int, eff ↦ edw_cl)
+    ede_mkdt ∈ Effect
+    BuildZ3MkDatatypes(ctx_h ↦ z_ctx, n_sorts ↦ 1,
+        sort_names_arr_p ↦ ed_names_p, sorts_out_arr_p ↦ ed_souts_p,
+        ctor_lists_arr_p ↦ ed_clists_p, eff ↦ ede_mkdt)
+    ede_rdsort ∈ Effect
+    BuildMemReadLong(addr ↦ ed_souts_p, eff ↦ ede_rdsort)
+    ede_rdctor ∈ Effect
+    BuildMemReadLong(addr ↦ ed_ctors_p + (8 * _ed_vidx), eff ↦ ede_rdctor)
+    ede_query ∈ Effect
+    VariantQueryStep(ctx_h ↦ z_ctx, ctor_h ↦ d_cap_int, v ↦ ed_v,
+        out_base_p ↦ ed_qout_p, eff ↦ ede_query)
+    ede_rddecl ∈ Effect
+    BuildMemReadLong(addr ↦ ed_qout_p, eff ↦ ede_rddecl)
+    ede_app0 ∈ Effect
+    CtorAppStep(ctx_h ↦ z_ctx, ctor_decl_h ↦ d_cap_int, n_args ↦ 0,
+        args_p ↦ 0, eff ↦ ede_app0)
+    -- Result-run harvest reads (D3): tester + accessor decls.
+    ede_rdtest ∈ Effect
+    BuildMemReadLong(addr ↦ ed_qout_p + 8, eff ↦ ede_rdtest)
+    ede_rdacc ∈ Effect
+    BuildMemReadLong(addr ↦ ed_qout_p + 16, eff ↦ ede_rdacc)
+    ede_filler ∈ Effect = LibCall("libc", "getpid", ⟨⟩)
+
+    ed_eff1 ∈ Effect = (ed_cur_act = 1 ?
+            (ed_cur_step = 0 ? ede_nsym
+            : ed_cur_step = 1 ? ede_rsym
+            : ed_cur_step = 2 ? ede_fsym0
+            : ed_cur_step = 3 ? ede_fsym1
+            : ed_cur_step = 4 ? ede_fsym2
+            : ed_cur_step = 6 ? ede_mkctor
+            : edw_ctor)
+        : ed_cur_act = 2 ?
+            (ed_cur_step = 0 ? ede_ssym
+            : ed_cur_step = 1 ? ede_clist
+            : ed_cur_step = 3 ? ede_mkdt
+            : ed_cur_step = 4 ? ede_rdsort
+            : ede_filler)
+        : ed_cur_act = 3 ?
+            (ed_cur_step = 0 ? ede_rdctor
+            : ed_cur_step = 1 ? ede_query
+            : ed_cur_step = 2 ? ede_rddecl
+            : ed_cur_step = 3 ? (ed_nullary ? ede_app0
+                : (ed_res_harvest ∨ ed_user) ? ede_rdtest
+                : ede_filler)
+            : (ed_res_harvest ∨ (ed_user ∧ (¬ed_nullary))) ? ede_rdacc
+            : ede_filler)
+        : ede_filler)
+    ed_w5 ∈ Bool = (ed_cur_act = 1 ∧ ed_cur_step = 5)
+    ed_w2 ∈ Bool = (ed_cur_act = 2 ∧ ed_cur_step = 2)
+    -- C4: a USER run's act-3 step 3 harvests the variant's TESTER
+    -- alongside the nullary value — a nullary variant's tick emits
+    -- ⟨mk_app, rdtest⟩ (value lands lr[0], tester lr[1]); a payload
+    -- variant's tick emits the single rdtest (tester lands lr[0],
+    -- the ed_eff1 row above).
+    ed_w3u ∈ Bool = (ed_user ∧ ed_cur_act = 3 ∧ ed_cur_step = 3
+        ∧ ed_nullary)
+
+    -- ZINIT effects (one per zstep).
+    ze_cfg ∈ Effect
+    BuildZ3MkConfig(eff ↦ ze_cfg)
+    ze_ctx ∈ Effect
+    BuildZ3MkContext(cfg_h ↦ z_cfg, eff ↦ ze_ctx)
+    ze_sol ∈ Effect
+    BuildZ3MkSolver(ctx_h ↦ z_ctx, eff ↦ ze_sol)
+    ze_sinc ∈ Effect
+    BuildZ3SolverIncRef(ctx_h ↦ z_ctx, solver_h ↦ z_sol, eff ↦ ze_sinc)
+    ze_isort ∈ Effect
+    BuildZ3MkIntSort(ctx_h ↦ z_ctx, eff ↦ ze_isort)
+    ze_bsort ∈ Effect
+    BuildZ3MkBoolSort(ctx_h ↦ z_ctx, eff ↦ ze_bsort)
+    ze_ssort ∈ Effect
+    BuildZ3MkStringSort(ctx_h ↦ z_ctx, eff ↦ ze_ssort)
+    ze_rsort ∈ Effect
+    BuildZ3MkRealSort(ctx_h ↦ z_ctx, eff ↦ ze_rsort)
+    ze_arena ∈ Effect
+    BuildMalloc(n_bytes ↦ 512, eff ↦ ze_arena)
+    ze_arrsort ∈ Effect
+    BuildZ3MkArraySort(ctx_h ↦ z_ctx, idx_sort_h ↦ z_isort,
+        val_sort_h ↦ z_effsort, eff ↦ ze_arrsort)
+    ze_sym_effs ∈ Effect
+    BuildZ3MkStringSymbol(ctx_h ↦ z_ctx, name ↦ "effects", eff ↦ ze_sym_effs)
+    ze_effs ∈ Effect
+    BuildZ3MkConst(ctx_h ↦ z_ctx, sym_h ↦ z_sym_effs, sort_h ↦ z_arrsort,
+        eff ↦ ze_effs)
+    ze_sym_elen ∈ Effect
+    BuildZ3MkStringSymbol(ctx_h ↦ z_ctx, name ↦ "effects__len", eff ↦ ze_sym_elen)
+    ze_elen ∈ Effect
+    BuildZ3MkConst(ctx_h ↦ z_ctx, sym_h ↦ z_sym_elen, sort_h ↦ z_isort,
+        eff ↦ ze_elen)
+    ze_zero ∈ Effect
+    BuildZ3MkInt(ctx_h ↦ z_ctx, val ↦ 0, sort_h ↦ z_isort, eff ↦ ze_zero)
+    ze_one ∈ Effect
+    BuildZ3MkInt(ctx_h ↦ z_ctx, val ↦ 1, sort_h ↦ z_isort, eff ↦ ze_one)
+    ze_two ∈ Effect
+    BuildZ3MkInt(ctx_h ↦ z_ctx, val ↦ 2, sort_h ↦ z_isort, eff ↦ ze_two)
+    ze_true ∈ Effect
+    BuildZ3MkTrue(ctx_h ↦ z_ctx, eff ↦ ze_true)
+    ze_false ∈ Effect
+    BuildZ3MkFalse(ctx_h ↦ z_ctx, eff ↦ ze_false)
+    -- FTI token buffer: 65536 entries × 32 bytes, calloc'd (zeroed
+    -- slots ⇒ deterministic nullary payloads + EofTok past the end).
+    -- Sized for real programs: compiler/sample.ev (6283 lines) lexes
+    -- to tens of thousands of tokens — the 4096 conformance-fixture
+    -- size overran the heap (resume point 12).
+    ze_tbuf ∈ Effect = LibCall("libc", "calloc", ⟨ArgInt(65536), ArgInt(32)⟩)
+    -- FTI symtab handle buffer (B1): 8192 entries × 8 bytes — the
+    -- declared const's Z3_ast handle, indexed by decl order. Names
+    -- live in st_names (fixed-width Z3 String), not here. (sample.ev's
+    -- main alone binds 364 distinct idents; 1024 was fixture-sized.)
+    ze_sbuf ∈ Effect = LibCall("libc", "calloc", ⟨ArgInt(8192), ArgInt(8)⟩)
+    -- D3 consts (zsteps 22-31).
+    ze_lrarr ∈ Effect
+    BuildZ3MkArraySort(ctx_h ↦ z_ctx, idx_sort_h ↦ z_isort,
+        val_sort_h ↦ z_ressort, eff ↦ ze_lrarr)
+    ze_sym_lr ∈ Effect
+    BuildZ3MkStringSymbol(ctx_h ↦ z_ctx, name ↦ "last_results",
+        eff ↦ ze_sym_lr)
+    ze_lastres ∈ Effect
+    BuildZ3MkConst(ctx_h ↦ z_ctx, sym_h ↦ z_sym_lr, sort_h ↦ z_lrsort,
+        eff ↦ ze_lastres)
+    ze_sym_lrl ∈ Effect
+    BuildZ3MkStringSymbol(ctx_h ↦ z_ctx, name ↦ "last_results__len",
+        eff ↦ ze_sym_lrl)
+    ze_lrlen ∈ Effect
+    BuildZ3MkConst(ctx_h ↦ z_ctx, sym_h ↦ z_sym_lrl, sort_h ↦ z_isort,
+        eff ↦ ze_lrlen)
+    ze_sym_ift ∈ Effect
+    BuildZ3MkStringSymbol(ctx_h ↦ z_ctx, name ↦ "is_first_tick",
+        eff ↦ ze_sym_ift)
+    ze_ift ∈ Effect
+    BuildZ3MkConst(ctx_h ↦ z_ctx, sym_h ↦ z_sym_ift, sort_h ↦ z_bsort,
+        eff ↦ ze_ift)
+    ze_lrge ∈ Effect
+    ze_lrge_ok ∈ Bool
+    ze_lrge_nn ∈ Bool
+    BoolCmpBuildZ3(ctx_h ↦ z_ctx, op ↦ d_op_geq, l_h ↦ z_lrlen,
+        r_h ↦ z_zero, eff ↦ ze_lrge, ok ↦ ze_lrge_ok, needs_not ↦ ze_lrge_nn)
+    ze_lrassert ∈ Effect
+    BuildZ3SolverAssert(ctx_h ↦ z_ctx, solver_h ↦ z_sol, ast_h ↦ z_lrge,
+        eff ↦ ze_lrassert)
+    -- symtab pre-seed: slots 0/1 = last_results / is_first_tick
+    -- (st_names is initialized with the matching two records).
+    ze_seed0 ∈ Effect
+    BuildMemWriteLong(addr ↦ st_base, value ↦ z_lastres, eff ↦ ze_seed0)
+    ze_seed1 ∈ Effect
+    BuildMemWriteLong(addr ↦ st_base + 8, value ↦ z_ift, eff ↦ ze_seed1)
+    -- D2 additions (zsteps 32-34).
+    ze_three ∈ Effect
+    BuildZ3MkInt(ctx_h ↦ z_ctx, val ↦ 3, sort_h ↦ z_isort, eff ↦ ze_three)
+    ze_four ∈ Effect
+    BuildZ3MkInt(ctx_h ↦ z_ctx, val ↦ 4, sort_h ↦ z_isort, eff ↦ ze_four)
+    ze_iarr ∈ Effect
+    BuildZ3MkArraySort(ctx_h ↦ z_ctx, idx_sort_h ↦ z_isort,
+        val_sort_h ↦ z_isort, eff ↦ ze_iarr)
+    -- E1 effects floor (zsteps 35-36).
+    ze_ege ∈ Effect
+    ze_ege_ok ∈ Bool
+    ze_ege_nn ∈ Bool
+    BoolCmpBuildZ3(ctx_h ↦ z_ctx, op ↦ d_op_geq, l_h ↦ z_elen,
+        r_h ↦ z_zero, eff ↦ ze_ege, ok ↦ ze_ege_ok, needs_not ↦ ze_ege_nn)
+    ze_eassert ∈ Effect
+    BuildZ3SolverAssert(ctx_h ↦ z_ctx, solver_h ↦ z_sol, ast_h ↦ z_ege,
+        eff ↦ ze_eassert)
+    -- F2 claim-index buffer (zstep 37). 2048 claims: sample.ev has
+    -- dozens-to-hundreds; 256 was fixture-sized (resume point 12).
+    ze_cibuf ∈ Effect = LibCall("libc", "calloc", ⟨ArgInt(2048), ArgInt(8)⟩)
+
