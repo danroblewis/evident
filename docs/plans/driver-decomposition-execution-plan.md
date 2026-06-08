@@ -227,16 +227,18 @@ commit (the ternary guard) and stayed 137/138.
 | G2s | (this run) | `driver_setvar.ev` (`fsm DriverSetVar`) — Set(T) variable registry (≤2) + pmode-14 set walk + quantifier-over-set | 186 (167 body) | ~37 bus (classifier set-line flags, classify gate, window head, registered-seq carries, inline prefix, Pratt result) | registry_append (drive d_setmem ⇒ stv_cnt 0→2 capped ∧ stv_n0 captures "myset") | EQUIV; manifest unchanged | 1888 |
 | 5p | (this run) | `driver_pratt.ev` (`fsm DriverPratt`) — pmode-3 Pratt expression-parser FSM | 110 (94 body) | ~26 bus (parse gate, d_enter_pratt + d_pratt_kind0 entry, classifier pin/decl flags, record + user-enum registries, qstop) | entry_kind (drive d_enter_pratt + d_pratt_kind0 5 ⇒ pk_kind latches 5) | EQUIV; manifest unchanged | 1797 |
 
-Status after continuation run: 14 modules extracted total (3 prior +
+Status after continuation run: 15 modules extracted total (3 prior +
 DriverEnum, DriverWindow, DriverClassify[+driver_ir hoist], DriverCompose,
 DriverSymtab, DriverClaimIdx, DriverMatchPin, DriverPosBind, DriverQuant,
-DriverGroup, DriverSetVar this run) + BOTH mandated bug regressions
-(overrun, ternary). 19 unit fixtures green; gate EQUIV + manifest unchanged
-per step; conformance 137/138 (preserved by byte-identity, re-confirmed).
-driver_main 5930 → 1797 (-4133, -70%). 15 modules total (DriverPratt added); 20 unit fixtures green.
+DriverGroup, DriverSetVar, DriverPratt this run) + BOTH mandated bug
+regressions (overrun, ternary). 20 unit fixtures green; gate EQUIV +
+manifest unchanged per step; conformance 137/138 (preserved by byte-identity
+— the prebuilt stage1 conformance artifact reads 137 pass / 1 fail, the
+pre-existing 123-subschema-shadowing-quantifier). driver_main 5930 → 1797
+(-4133, -70%).
 
 §6.1 (`driver_main` < 600) is NOT met and is **NOT cleanly reachable** —
-this is the §10 STOP-and-report condition. The remaining ~1888 lines split
+this is the §10 STOP-and-report condition. The remaining ~1797 lines split
 into (a) the shared bus + pipeline wiring (the legitimate orchestrator
 residue, ~300 lines) and (b) an irreducible INTEGRATION CORE that resists
 clean isolation. Measured interface widths (distinct external bus reads per
