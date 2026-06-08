@@ -107,4 +107,11 @@ walk() {
     done < "$file"
 }
 
-walk "$(canon "$ROOT_ARG")"
+# Walk the import graph into a temp, then run the fsm prev-tick carry
+# expansion as a final pass before emitting. walk's own die/exit (bad
+# import, cycle) fire in THIS shell via the redirect, so error exit codes
+# are preserved; the expander only runs once the flatten succeeded.
+FLAT_TMP="$(mktemp -t evflat.XXXXXX.ev)" || die "mktemp failed"
+trap 'rm -f "$FLAT_TMP"' EXIT
+walk "$(canon "$ROOT_ARG")" > "$FLAT_TMP"
+"$SCRIPT_DIR/expand-fsm-autocarry.sh" < "$FLAT_TMP"
