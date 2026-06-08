@@ -43,18 +43,15 @@ fsm main
     tok_ready ∈ Bool
     tok_ready = (is_first_tick ? true : _tok_ready)
     -- A 2-field record type at registry slot 0.
-    rt_nf0 ∈ Int
-    rt_nf0 = (is_first_tick ? 2 : _rt_nf0)
-    rt_nf1 ∈ Int
-    rt_nf1 = (is_first_tick ? 0 : _rt_nf1)
-    rt_nf2 ∈ Int
-    rt_nf2 = (is_first_tick ? 0 : _rt_nf2)
-    rt_f0 ∈ String
-    rt_f0 = (is_first_tick ? "" : _rt_f0)
-    rt_f1 ∈ String
-    rt_f1 = (is_first_tick ? "" : _rt_f1)
-    rt_f2 ∈ String
-    rt_f2 = (is_first_tick ? "" : _rt_f2)
+    rt_e0 ∈ RecTypeEntry(name ↦ "", fnames ↦ "", ftypes ↦ "", nf ↦ 2,
+        sort ↦ 0, ctor ↦ 0, asort ↦ 0, ssort ↦ 0,
+        a0 ↦ 0, a1 ↦ 0, a2 ↦ 0, a3 ↦ 0, a4 ↦ 0, a5 ↦ 0)
+    rt_e1 ∈ RecTypeEntry(name ↦ "", fnames ↦ "", ftypes ↦ "", nf ↦ 0,
+        sort ↦ 0, ctor ↦ 0, asort ↦ 0, ssort ↦ 0,
+        a0 ↦ 0, a1 ↦ 0, a2 ↦ 0, a3 ↦ 0, a4 ↦ 0, a5 ↦ 0)
+    rt_e2 ∈ RecTypeEntry(name ↦ "", fnames ↦ "", ftypes ↦ "", nf ↦ 0,
+        sort ↦ 0, ctor ↦ 0, asort ↦ 0, ssort ↦ 0,
+        a0 ↦ 0, a1 ↦ 0, a2 ↦ 0, a3 ↦ 0, a4 ↦ 0, a5 ↦ 0)
     st_names ∈ String
     st_names = (is_first_tick ? "" : _st_names)
     ..DriverBroadcast

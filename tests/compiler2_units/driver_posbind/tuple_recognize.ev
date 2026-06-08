@@ -160,24 +160,15 @@ fsm main
     pr_bad = (is_first_tick ? false : _pr_bad)
     pr_sres ∈ Expr
     pr_sres = (is_first_tick ? EInt(0) : _pr_sres)
-    rt_f0 ∈ String
-    rt_f0 = (is_first_tick ? "" : _rt_f0)
-    rt_f1 ∈ String
-    rt_f1 = (is_first_tick ? "" : _rt_f1)
-    rt_f2 ∈ String
-    rt_f2 = (is_first_tick ? "" : _rt_f2)
-    rt_n0 ∈ String
-    rt_n0 = (is_first_tick ? "" : _rt_n0)
-    rt_n1 ∈ String
-    rt_n1 = (is_first_tick ? "" : _rt_n1)
-    rt_n2 ∈ String
-    rt_n2 = (is_first_tick ? "" : _rt_n2)
-    rt_sort0 ∈ Int
-    rt_sort0 = (is_first_tick ? 0 : _rt_sort0)
-    rt_sort1 ∈ Int
-    rt_sort1 = (is_first_tick ? 0 : _rt_sort1)
-    rt_sort2 ∈ Int
-    rt_sort2 = (is_first_tick ? 0 : _rt_sort2)
+    rt_e0 ∈ RecTypeEntry(name ↦ "", fnames ↦ "", ftypes ↦ "", nf ↦ 0,
+        sort ↦ 0, ctor ↦ 0, asort ↦ 0, ssort ↦ 0,
+        a0 ↦ 0, a1 ↦ 0, a2 ↦ 0, a3 ↦ 0, a4 ↦ 0, a5 ↦ 0)
+    rt_e1 ∈ RecTypeEntry(name ↦ "", fnames ↦ "", ftypes ↦ "", nf ↦ 0,
+        sort ↦ 0, ctor ↦ 0, asort ↦ 0, ssort ↦ 0,
+        a0 ↦ 0, a1 ↦ 0, a2 ↦ 0, a3 ↦ 0, a4 ↦ 0, a5 ↦ 0)
+    rt_e2 ∈ RecTypeEntry(name ↦ "", fnames ↦ "", ftypes ↦ "", nf ↦ 0,
+        sort ↦ 0, ctor ↦ 0, asort ↦ 0, ssort ↦ 0,
+        a0 ↦ 0, a1 ↦ 0, a2 ↦ 0, a3 ↦ 0, a4 ↦ 0, a5 ↦ 0)
     sl_elem_items ∈ C2Items
     sl_elem_items = (is_first_tick ? C2INil : _sl_elem_items)
     st_names ∈ String

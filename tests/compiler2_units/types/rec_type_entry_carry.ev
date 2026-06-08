@@ -1,0 +1,50 @@
+-- RecTypeEntry carry — a record-type registry slot travels across ticks.
+--
+-- The rt_* registry is now a fixed ×3 array of RecTypeEntry records. This
+-- proves one slot carries: the type name is latched once (tick 0) and
+-- persists; the sort handle climbs by 1 each tick (a stand-in for the RD
+-- machine driving it). The autocarry transform must synthesize the record
+-- dual `_e ∈ RecTypeEntry` so every field carries. RtIdxOf, called on the
+-- CARRIED entry each tick, must resolve "Pt" to slot 0 once its sort ≠ 0 —
+-- proving the read layer works over a carried RecTypeEntry, not just a
+-- pinned literal. If the dual is not synthesized, sort never climbs and the
+-- run never reaches the Exit branch.
+--
+-- entry: main
+-- expect: stdout = "Pt/1/0"
+-- expect: stdout = "Pt/2/0"
+-- expect: stdout = "Pt/3/0"
+-- expect: exit = 0
+import "stdlib/kernel.ev"
+import "compiler2/driver_ir.ev"
+import "compiler2/driver_record.ev"
+
+fsm main
+    e ∈ RecTypeEntry
+    e.name = (is_first_tick ? "Pt" : _e.name)
+    e.fnames = (is_first_tick ? "" : _e.fnames)
+    e.ftypes = (is_first_tick ? "" : _e.ftypes)
+    e.nf = (is_first_tick ? 0 : _e.nf)
+    e.sort = (is_first_tick ? 1 : _e.sort + 1)
+    e.ctor = (is_first_tick ? 0 : _e.ctor)
+    e.asort = (is_first_tick ? 0 : _e.asort)
+    e.ssort = (is_first_tick ? 0 : _e.ssort)
+    e.a0 = (is_first_tick ? 0 : _e.a0)
+    e.a1 = (is_first_tick ? 0 : _e.a1)
+    e.a2 = (is_first_tick ? 0 : _e.a2)
+    e.a3 = (is_first_tick ? 0 : _e.a3)
+    e.a4 = (is_first_tick ? 0 : _e.a4)
+    e.a5 = (is_first_tick ? 0 : _e.a5)
+    -- two empty sibling slots so RtIdxOf has its full ×3 input.
+    empty1 ∈ RecTypeEntry(name ↦ "", fnames ↦ "", ftypes ↦ "", nf ↦ 0,
+        sort ↦ 0, ctor ↦ 0, asort ↦ 0, ssort ↦ 0,
+        a0 ↦ 0, a1 ↦ 0, a2 ↦ 0, a3 ↦ 0, a4 ↦ 0, a5 ↦ 0)
+    empty2 ∈ RecTypeEntry(name ↦ "", fnames ↦ "", ftypes ↦ "", nf ↦ 0,
+        sort ↦ 0, ctor ↦ 0, asort ↦ 0, ssort ↦ 0,
+        a0 ↦ 0, a1 ↦ 0, a2 ↦ 0, a3 ↦ 0, a4 ↦ 0, a5 ↦ 0)
+    k ∈ Int
+    RtIdxOf(nm ↦ "Pt", e0 ↦ e, e1 ↦ empty1, e2 ↦ empty2, idx ↦ k)
+    msg ∈ String = e.name ++ "/" ++ str_from_int(e.sort) ++ "/" ++ str_from_int(k)
+    effects ∈ Seq(Effect) = (e.sort ≥ 3
+        ? ⟨LibCall("libc", "puts", ⟨ArgStr(msg)⟩), Exit(0)⟩
+        : ⟨LibCall("libc", "puts", ⟨ArgStr(msg)⟩)⟩)

@@ -393,10 +393,10 @@ fsm driver_main
     -- G2: C2RecVal expansion — a record IDENT's value as a ctor app
     -- over its flattened dotted consts; a record-typed FIELD recurses
     -- through a nested C2RecVal (the walk itself is the recursion).
-    d_rv_f ∈ String = (d_rv_k = 0 ? rt_f0 : d_rv_k = 1 ? rt_f1 : rt_f2)
-    d_rv_t ∈ String = (d_rv_k = 0 ? rt_t0 : d_rv_k = 1 ? rt_t1 : rt_t2)
-    d_rv_n ∈ Int = (d_rv_k = 0 ? rt_nf0 : d_rv_k = 1 ? rt_nf1 : rt_nf2)
-    d_rv_ctor ∈ Int = (d_rv_k = 0 ? rt_ctor0 : d_rv_k = 1 ? rt_ctor1 : rt_ctor2)
+    d_rv_f ∈ String = (d_rv_k = 0 ? rt_e0.fnames : d_rv_k = 1 ? rt_e1.fnames : rt_e2.fnames)
+    d_rv_t ∈ String = (d_rv_k = 0 ? rt_e0.ftypes : d_rv_k = 1 ? rt_e1.ftypes : rt_e2.ftypes)
+    d_rv_n ∈ Int = (d_rv_k = 0 ? rt_e0.nf : d_rv_k = 1 ? rt_e1.nf : rt_e2.nf)
+    d_rv_ctor ∈ Int = (d_rv_k = 0 ? rt_e0.ctor : d_rv_k = 1 ? rt_e1.ctor : rt_e2.ctor)
     rv_f0 ∈ String
     RtRecName(s ↦ d_rv_f, i ↦ 0, name ↦ rv_f0)
     rv_f1 ∈ String
@@ -422,23 +422,17 @@ fsm driver_main
     rv_t5 ∈ String
     RtRecName(s ↦ d_rv_t, i ↦ 5, name ↦ rv_t5)
     rv_k0 ∈ Int
-    RtIdxOf(nm ↦ rv_t0, n0 ↦ rt_n0, n1 ↦ rt_n1, n2 ↦ rt_n2,
-        s0 ↦ rt_sort0, s1 ↦ rt_sort1, s2 ↦ rt_sort2, idx ↦ rv_k0)
+    RtIdxOf(nm ↦ rv_t0, e0 ↦ rt_e0, e1 ↦ rt_e1, e2 ↦ rt_e2, idx ↦ rv_k0)
     rv_k1 ∈ Int
-    RtIdxOf(nm ↦ rv_t1, n0 ↦ rt_n0, n1 ↦ rt_n1, n2 ↦ rt_n2,
-        s0 ↦ rt_sort0, s1 ↦ rt_sort1, s2 ↦ rt_sort2, idx ↦ rv_k1)
+    RtIdxOf(nm ↦ rv_t1, e0 ↦ rt_e0, e1 ↦ rt_e1, e2 ↦ rt_e2, idx ↦ rv_k1)
     rv_k2 ∈ Int
-    RtIdxOf(nm ↦ rv_t2, n0 ↦ rt_n0, n1 ↦ rt_n1, n2 ↦ rt_n2,
-        s0 ↦ rt_sort0, s1 ↦ rt_sort1, s2 ↦ rt_sort2, idx ↦ rv_k2)
+    RtIdxOf(nm ↦ rv_t2, e0 ↦ rt_e0, e1 ↦ rt_e1, e2 ↦ rt_e2, idx ↦ rv_k2)
     rv_k3 ∈ Int
-    RtIdxOf(nm ↦ rv_t3, n0 ↦ rt_n0, n1 ↦ rt_n1, n2 ↦ rt_n2,
-        s0 ↦ rt_sort0, s1 ↦ rt_sort1, s2 ↦ rt_sort2, idx ↦ rv_k3)
+    RtIdxOf(nm ↦ rv_t3, e0 ↦ rt_e0, e1 ↦ rt_e1, e2 ↦ rt_e2, idx ↦ rv_k3)
     rv_k4 ∈ Int
-    RtIdxOf(nm ↦ rv_t4, n0 ↦ rt_n0, n1 ↦ rt_n1, n2 ↦ rt_n2,
-        s0 ↦ rt_sort0, s1 ↦ rt_sort1, s2 ↦ rt_sort2, idx ↦ rv_k4)
+    RtIdxOf(nm ↦ rv_t4, e0 ↦ rt_e0, e1 ↦ rt_e1, e2 ↦ rt_e2, idx ↦ rv_k4)
     rv_k5 ∈ Int
-    RtIdxOf(nm ↦ rv_t5, n0 ↦ rt_n0, n1 ↦ rt_n1, n2 ↦ rt_n2,
-        s0 ↦ rt_sort0, s1 ↦ rt_sort1, s2 ↦ rt_sort2, idx ↦ rv_k5)
+    RtIdxOf(nm ↦ rv_t5, e0 ↦ rt_e0, e1 ↦ rt_e1, e2 ↦ rt_e2, idx ↦ rv_k5)
     rv_seg0 ∈ C2Item = (rv_k0 ≥ 0
         ? C2RecVal(d_rv_nm ++ "." ++ rv_f0, rv_k0)
         : C2Process(EIdent(d_rv_nm ++ "." ++ rv_f0)))
@@ -686,13 +680,7 @@ fsm driver_main
         _ ⇒ ""
     d_fld_acc ∈ Int
     RtFieldAcc(fname ↦ d_fld_nm,
-        f0 ↦ rt_f0, f1 ↦ rt_f1, f2 ↦ rt_f2,
-        a00 ↦ rt_a00, a01 ↦ rt_a01, a02 ↦ rt_a02, a03 ↦ rt_a03,
-        a04 ↦ rt_a04, a05 ↦ rt_a05,
-        a10 ↦ rt_a10, a11 ↦ rt_a11, a12 ↦ rt_a12, a13 ↦ rt_a13,
-        a14 ↦ rt_a14, a15 ↦ rt_a15,
-        a20 ↦ rt_a20, a21 ↦ rt_a21, a22 ↦ rt_a22, a23 ↦ rt_a23,
-        a24 ↦ rt_a24, a25 ↦ rt_a25,
+        e0 ↦ rt_e0, e1 ↦ rt_e1, e2 ↦ rt_e2,
         acc ↦ d_fld_acc)
     d_c2_items ∈ C2Items = (d_cnm = "__real"
             ? C2ICons(C2Real(d_rl_s, d_rl_d), d_wtail)
@@ -820,13 +808,7 @@ fsm driver_main
         #d_lkname - #d_vb_pfx)
     d_vb_acc ∈ Int
     RtFieldAcc(fname ↦ d_vb_fld,
-        f0 ↦ rt_f0, f1 ↦ rt_f1, f2 ↦ rt_f2,
-        a00 ↦ rt_a00, a01 ↦ rt_a01, a02 ↦ rt_a02, a03 ↦ rt_a03,
-        a04 ↦ rt_a04, a05 ↦ rt_a05,
-        a10 ↦ rt_a10, a11 ↦ rt_a11, a12 ↦ rt_a12, a13 ↦ rt_a13,
-        a14 ↦ rt_a14, a15 ↦ rt_a15,
-        a20 ↦ rt_a20, a21 ↦ rt_a21, a22 ↦ rt_a22, a23 ↦ rt_a23,
-        a24 ↦ rt_a24, a25 ↦ rt_a25,
+        e0 ↦ rt_e0, e1 ↦ rt_e1, e2 ↦ rt_e2,
         acc ↦ d_vb_acc)
     d_vbd_items ∈ C2Items = C2ICons(C2Process(EIdent(_fl_seq)),
         C2ICons(C2Process(EInt(_fl_v)),
@@ -841,8 +823,7 @@ fsm driver_main
         ∧ (index_of(st_names, rb_q_key, 0) ≥ 0))
     d_rb_items ∈ C2Items = C2ICons(C2Process(EIdent(rb_q_name)), d_wtail)
     rbc_rtk ∈ Int
-    RtIdxOf(nm ↦ d_cnm, n0 ↦ rt_n0, n1 ↦ rt_n1, n2 ↦ rt_n2,
-        s0 ↦ rt_sort0, s1 ↦ rt_sort1, s2 ↦ rt_sort2, idx ↦ rbc_rtk)
+    RtIdxOf(nm ↦ d_cnm, e0 ↦ rt_e0, e1 ↦ rt_e1, e2 ↦ rt_e2, idx ↦ rbc_rtk)
     d_rbc_hit ∈ Bool = (d_it_proc ∧ _rb_on ∧ (rbc_rtk ≥ 0)
         ∧ (d_pe_is_c1 ∨ d_pe_is_c2 ∨ d_pe_is_c3))
     d_rbc_items ∈ C2Items = C2ICons(
@@ -907,9 +888,9 @@ fsm driver_main
         ∧ (¬c_strin_line) ∧ (¬c_ty_line) ∧ (¬c_q_line)
         ∧ (¬pcl_line))
     d_mem_cons ∈ Int = (d_seq_mem ? 6 : c_bound ? 5 : 3)
-    c_sq_eltnm ∈ String = (c_sq_rt = 0 ? rt_n0
-        : c_sq_rt = 1 ? rt_n1
-        : rt_n2)
+    c_sq_eltnm ∈ String = (c_sq_rt = 0 ? rt_e0.name
+        : c_sq_rt = 1 ? rt_e1.name
+        : rt_e2.name)
     c_tyname ∈ String = (c_sc = 1 ? "Bool"
         : c_sc = 2 ? c_type_str
         : c_sc = 3 ? "String"
@@ -1314,12 +1295,12 @@ fsm driver_main
             : d_dc_sc = 4 ? z_ressort
             : d_dc_sc = 5 ? z_iarr
             : d_dc_sc = 6 ? z3sorts.rsort
-            : d_dc_sc = 10 ? rt_asort0
-            : d_dc_sc = 11 ? rt_asort1
-            : d_dc_sc = 12 ? rt_asort2
-            : d_dc_sc = 20 ? rt_ssort0
-            : d_dc_sc = 21 ? rt_ssort1
-            : d_dc_sc = 22 ? rt_ssort2
+            : d_dc_sc = 10 ? rt_e0.asort
+            : d_dc_sc = 11 ? rt_e1.asort
+            : d_dc_sc = 12 ? rt_e2.asort
+            : d_dc_sc = 20 ? rt_e0.ssort
+            : d_dc_sc = 21 ? rt_e1.ssort
+            : d_dc_sc = 22 ? rt_e2.ssort
             : z3sorts.isort), eff ↦ d_eff_const)
     -- decl istep 2: park the const handle (in tmp) at st_base[st_cnt]
     d_eff_stwr ∈ Effect
@@ -1394,9 +1375,9 @@ fsm driver_main
         eff ↦ d_eff_real)
     -- G2: set builders — empty set of the registry elem sort; set_add
     -- pops (set, elem) and pushes the grown set.
-    d_mes_sort ∈ Int = (d_mes_k = 0 ? rt_sort0
-        : d_mes_k = 1 ? rt_sort1
-        : rt_sort2)
+    d_mes_sort ∈ Int = (d_mes_k = 0 ? rt_e0.sort
+        : d_mes_k = 1 ? rt_e1.sort
+        : rt_e2.sort)
     d_eff_mes ∈ Effect = LibCall("libz3", "Z3_mk_empty_set",
         ⟨ArgInt(z3ctx.ctx), ArgInt(d_mes_sort)⟩)
     d_eff_sadd ∈ Effect = LibCall("libz3", "Z3_mk_set_add",

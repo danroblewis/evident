@@ -222,6 +222,76 @@ New carry unit test `types/z3_numerals_carry.ev`.
 Unit tests: PASS — 32/32. Gate: **PASS — 137/138** (only known
 `123-subschema`; 0 timeouts). COMMITTED.
 
+## rt_* → RecTypeEntry ×3 record array — LANDED (shape 2)
+
+The highest-line-impact type. The hand-unrolled record-type registry
+(`rt_cnt` + a 42-field parallel-array: `rt_n0..2` names, `rt_f0..2`
+field-name strings, `rt_t0..2` field-type strings, `rt_nf0..2` field
+counts, `rt_sort0..2` / `rt_ctor0..2` / `rt_asort0..2` / `rt_ssort0..2`
+handles, and the 3×6 accessor grid `rt_a00..rt_a25`) is now a fixed ×3
+array of a typed `RecTypeEntry` record (`rt_e0/rt_e1/rt_e2`), declared
+in `driver_ir.ev`:
+
+```
+type RecTypeEntry(name ∈ String, fnames ∈ String, ftypes ∈ String,
+    nf ∈ Int, sort ∈ Int, ctor ∈ Int, asort ∈ Int, ssort ∈ Int,
+    a0 ∈ Int, a1 ∈ Int, a2 ∈ Int, a3 ∈ Int, a4 ∈ Int, a5 ∈ Int)
+```
+
+### Why shape 2 (record ×3), not shape 1 (cons-list enum)
+Shape 1 was attempted first and rejected on a concrete, verified block:
+a registry walk needs a probe that recurses over the list, but **a claim
+cannot call itself in an expression** — the oracle inlines claims, and a
+self-referential call (`SumIL_total(rest)`) drops at emit with "couldn't
+translate to Bool". So a cons-list walk could only be a bounded 3-deep
+`match`-unroll, which (a) gives no advantage over the ×3 array (still
+capped at 3) and (b) would force rebuilding the *in-place incremental* RD
+builder — the registry is updated slot-by-slot across ticks, and a
+cons-list cannot mutate an interior element, it must rebuild the whole
+list each tick. Enum-list *carry* works (the corrected finding below is
+right), but the *read layer* is the blocker, not carry. Shape 2 keeps the
+≤3 cap but delivers the typed structure and the line win.
+
+### Mechanism facts verified (load-bearing, before the rewrite)
+- A **mixed String/Int record carries** across ticks (name latched, an
+  Int field climbs) — `types/rec_type_entry_carry.ev`.
+- A **whole record passes as a claim parameter** with `.field` reads in
+  the body (`e0.name`, `e0.sort`) — this is the line win: the probes drop
+  from ~8/12/22 flattened params to 3 slot records.
+- The **prev-tick dual `_rt_e0` passes whole as a claim arg** (the
+  internal dedup `RtIdxOf` reads the prior registry) — autocarry
+  synthesizes `_rt_e0 ∈ RecTypeEntry`.
+- A **full record pin inside an fsm** (constant each tick, all 14 fields
+  covered) is the clean isolation-fixture stub — no carry/dual needed,
+  satisfies the every-field-live guardrail trivially.
+
+### Sites rewritten
+- `driver_ir.ev` — +1 type decl (`RecTypeEntry`).
+- `driver_record.ev` — the whole registry: `rt_cnt` kept as a scalar
+  counter; the 42 array fields → `rt_e0/e1/e2`; all internal reads and
+  ~80 state assignments → `rt_eK.field`; the three probes
+  (`RtIdxOf`/`RtSortOf`/`RtFieldAcc`) re-signatured to take `e0/e1/e2`.
+  `RtRecName` UNCHANGED — it is a pure fixed-width string-slice helper
+  (takes arbitrary field strings, never the registry).
+- External readers — `driver.ev` (RtIdxOf ×7, RtFieldAcc ×2, the
+  `d_rv_*` / `c_sq_eltnm` / `d_mes_sort` / asort+ssort ternaries),
+  `driver_broadcast.ev` (`.nf` / `.fnames`), `driver_pratt.ev`
+  (`.name` / `.sort`), `driver_compose.ev` + `driver_classify.ev` +
+  `driver_posbind.ev` (RtIdxOf + `.fnames`).
+- Fixtures — the 6 registry-touching isolation tests
+  (`driver_record/registry_lookup`, `driver_posbind/tuple_recognize`,
+  `driver_broadcast/field_walk`, `driver_pratt/entry_kind`,
+  `driver_compose/slot_capture`, `driver_classify/membership_pin`) now
+  pin `RecTypeEntry` slots; new carry test `types/rec_type_entry_carry.ev`.
+
+Net compiler2 source: **−56 lines** (133 added / 189 removed). The decl
+block (42→3) and the probe signatures + multi-line call sites are the win;
+the per-field state assignments stay 1:1 (one line per field per slot).
+
+Unit tests: PASS — 33/33. Gate: **PASS — 137/138** (only known
+`123-subschema-shadowing-quantifier` = compile error; 0 timeouts;
+wall 431s; oracle builder). COMMITTED.
+
 ## rt_* → cons-list enum — DEFERRED (big rewrite), NOT infeasible
 
 > CORRECTION (post-hoc, orchestrator): the original conclusion below
