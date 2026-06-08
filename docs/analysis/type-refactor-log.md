@@ -67,4 +67,25 @@ group, but a reason NOT to lump weakly-related fields into one record.
 Unit tests: PASS — 6/6 (types/fti_buffer_carry, driver_claimidx,
 driver_compose, driver_emit, driver_guard, driver_posbind).
 Gate: **PASS — 137/138** (only known failure
-`123-subschema-shadowing-quantifier`; 0 timeouts). COMMITTED.
+`123-subschema-shadowing-quantifier`; 0 timeouts). COMMITTED `0829183`.
+
+## FtiBuffer instance 2 — token buffer (`tbase` + `lx_count` → `tbuf`)
+
+The highest-traffic FTI buffer: the 65536×32 token arena written by the
+lexer and read by the window. Same proven idiom; second instance of the
+already-declared `FtiBuffer` type. 12 code refs across 4 modules:
+- `driver_zinit.ev` — `tbase` decl+carry → `tbuf`/`tbuf.base`.
+- `driver_lex.ev` — bound (`tbuf.count < 65534`), carry, the three
+  float-token writes (`tbuf.base + _tbuf.count*32 …`), the EOF write,
+  and the `LexFtiPlan(base ↦ tbuf.base, count ↦ _tbuf.count)` call.
+- `driver_window.ev` — fetch addr `tbuf.base + _tcur*32`.
+- `driver_emit.ev` — free `tbuf.base`.
+Fixtures updated: driver_lex/{lex_idents,lex_twochar_op},
+driver_window/fetch_burst, driver_emit/estep_walk,
+driver_zinit/latch_isort (+ driver_ir import where the module didn't
+already pull it; + identity `.count` stubs where a fixture exercises
+only `.base`).
+
+Unit tests: PASS — 29/29 (full compiler2_units suite).
+Gate: **PASS — 137/138** (only known `123-subschema`; 0 timeouts).
+COMMITTED.

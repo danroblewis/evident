@@ -37,8 +37,9 @@ fsm main
     saw_ift = (is_first_tick ? false : _saw_ift)
     cdstr ∈ String
     cdstr = (is_first_tick ? "" : _cdstr)
-    tbase ∈ Int
-    tbase = (is_first_tick ? 0 : _tbase)
+    tbuf ∈ FtiBuffer
+    tbuf.base = (is_first_tick ? 0 : _tbuf.base)
+    tbuf.count = (is_first_tick ? 0 : _tbuf.count)
     st_base ∈ Int
     st_base = (is_first_tick ? 0 : _st_base)
     cibuf ∈ FtiBuffer

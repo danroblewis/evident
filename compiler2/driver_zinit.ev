@@ -68,8 +68,8 @@ fsm DriverZInit
     z_true = (is_first_tick ? 0 : zstep = 19 ? d_cap_int : _z_true)
     z_false ∈ Int
     z_false = (is_first_tick ? 0 : zstep = 20 ? d_cap_int : _z_false)
-    tbase ∈ Int
-    tbase = (is_first_tick ? 0 : zstep = 21 ? d_cap_int : _tbase)
+    tbuf ∈ FtiBuffer
+    tbuf.base = (is_first_tick ? 0 : zstep = 21 ? d_cap_int : _tbuf.base)
     st_base ∈ Int
     st_base = (is_first_tick ? 0 : zstep = 22 ? d_cap_int : _st_base)
     -- D3: last_results / last_results__len / is_first_tick as real

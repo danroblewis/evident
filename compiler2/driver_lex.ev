@@ -135,11 +135,11 @@ fsm DriverLex
         : 1)
     fl_p0 ∈ Int = (_fl_whole * fl_pow + _partial_int) * 8 + _fr_digs
     w_ftag ∈ Effect = LibCall("__mem", "write_long",
-        ⟨ArgInt(tbase + (_lx_count * 32)), ArgInt(4)⟩)
+        ⟨ArgInt(tbuf.base + (_tbuf.count * 32)), ArgInt(4)⟩)
     w_fp0 ∈ Effect = LibCall("__mem", "write_long",
-        ⟨ArgInt(tbase + (_lx_count * 32) + 8), ArgInt(fl_p0)⟩)
+        ⟨ArgInt(tbuf.base + (_tbuf.count * 32) + 8), ArgInt(fl_p0)⟩)
     w_fop ∈ Effect = LibCall("__mem", "write_long",
-        ⟨ArgInt(tbase + ((_lx_count + 1) * 32)), ArgInt(cc_tag)⟩)
+        ⟨ArgInt(tbuf.base + ((_tbuf.count + 1) * 32)), ArgInt(cc_tag)⟩)
 
     partial_str = (is_first_tick ? "" : (str_continuing ? _partial_str ++ cur_char : (str_starting ? cur_char : "")))
     partial_int = (is_first_tick ? 0 - 1 : (int_continuing ? (_partial_int * 10) + dig_val : (int_starting ? dig_val : 0 - 1)))
@@ -163,7 +163,7 @@ fsm DriverLex
     -- the violated constraint. Without it, the write went out of bounds
     -- and the native kernel corrupted the heap / segfaulted. The "+2"
     -- headroom covers the two-token push shapes (float-with-op etc.).
-    lx_count ∈ Int < 65534
+    tbuf.count < 65534
     lx_last ∈ Int
     lx_prev ∈ Int
     lx_pend ∈ Int
@@ -189,7 +189,7 @@ fsm DriverLex
         ch_only ↦ char_only,
         cur_char ↦ cur_char, partial_str ↦ _partial_str,
         partial_strlit ↦ _partial_strlit, partial_int ↦ _partial_int,
-        base ↦ tbase, count ↦ _lx_count,
+        base ↦ tbuf.base, count ↦ _tbuf.count,
         last_tag ↦ _lx_last, prev_tag ↦ _lx_prev,
         kind ↦ k_kind, tag0 ↦ k_tag0, p0 ↦ k_p0, str0 ↦ k_str0,
         tag1 ↦ k_tag1, a_tag0 ↦ k_atag0, a_p0 ↦ k_ap0, a_tag1 ↦ k_atag1,
@@ -205,8 +205,8 @@ fsm DriverLex
     k_tag1pp ∈ Int = ((lx_pp ∧ (k_kind = 4 ∨ k_kind = 5 ∨ k_kind = 6))
         ? 60 : k_tag1)
 
-    lx_count = (is_first_tick ? 0
-        : float_fin ? (_lx_count + (float_op ? 2 : 1))
+    tbuf.count = (is_first_tick ? 0
+        : float_fin ? (_tbuf.count + (float_op ? 2 : 1))
         : k_cn)
     lx_last = (is_first_tick ? 0
         : float_fin ? (float_op ? cc_tag : 4)
@@ -224,7 +224,7 @@ fsm DriverLex
     w_tag1e ∈ Effect = LibCall("__mem", "write_long", ⟨ArgInt(k_atag1), ArgInt(k_tag1pp)⟩)
     e_dup   ∈ Effect = LibCall("libc", "strdup", ⟨ArgStr(k_str0)⟩)
     w_pend  ∈ Effect = LibCall("__mem", "write_long", ⟨ArgInt(_lx_pend), ArgInt(d_cap_int)⟩)
-    w_eof   ∈ Effect = LibCall("__mem", "write_long", ⟨ArgInt(tbase + (lx_count * 32)), ArgInt(13)⟩)
+    w_eof   ∈ Effect = LibCall("__mem", "write_long", ⟨ArgInt(tbuf.base + (tbuf.count * 32)), ArgInt(13)⟩)
 
     has_input ∈ Bool = (#input > 0)
     lex_done ∈ Bool = (done ∧ ¬was_collecting_str ∧ ¬was_collecting_int ∧ ¬_in_strlit ∧ has_input)
