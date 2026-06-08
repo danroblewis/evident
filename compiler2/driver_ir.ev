@@ -28,6 +28,12 @@ type Z3SolverCtx(cfg ∈ Int, ctx ∈ Int, sol ∈ Int)
 -- solver triple) driven every tick so all four stay live.
 type Z3Sorts(isort ∈ Int, bsort ∈ Int, ssort ∈ Int, rsort ∈ Int)
 
+-- ── Z3 numeral cache: the small int constants 0..4 made once at boot ─
+-- effects-array indices and lengths only ever need 0..4, so zinit makes
+-- those five Z3 int-numeral handles once (zsteps 16/17/18/33/34) instead
+-- of re-minting them per use. Pinned once, carried, driven every tick.
+type Z3Numerals(zero ∈ Int, one ∈ Int, two ∈ Int, three ∈ Int, four ∈ Int)
+
 -- ── Work items: one line of claim body = one small program ────────
 enum C2Item =
     C2Process(Expr)

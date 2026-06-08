@@ -216,7 +216,7 @@ fsm DriverBuildEff
     ze_lrge_ok ∈ Bool
     ze_lrge_nn ∈ Bool
     BoolCmpBuildZ3(ctx_h ↦ z3ctx.ctx, op ↦ d_op_geq, l_h ↦ z_lrlen,
-        r_h ↦ z_zero, eff ↦ ze_lrge, ok ↦ ze_lrge_ok, needs_not ↦ ze_lrge_nn)
+        r_h ↦ z3nums.zero, eff ↦ ze_lrge, ok ↦ ze_lrge_ok, needs_not ↦ ze_lrge_nn)
     ze_lrassert ∈ Effect
     BuildZ3SolverAssert(ctx_h ↦ z3ctx.ctx, solver_h ↦ z3ctx.sol, ast_h ↦ z_lrge,
         eff ↦ ze_lrassert)
@@ -239,7 +239,7 @@ fsm DriverBuildEff
     ze_ege_ok ∈ Bool
     ze_ege_nn ∈ Bool
     BoolCmpBuildZ3(ctx_h ↦ z3ctx.ctx, op ↦ d_op_geq, l_h ↦ z_elen,
-        r_h ↦ z_zero, eff ↦ ze_ege, ok ↦ ze_ege_ok, needs_not ↦ ze_ege_nn)
+        r_h ↦ z3nums.zero, eff ↦ ze_ege, ok ↦ ze_ege_ok, needs_not ↦ ze_ege_nn)
     ze_eassert ∈ Effect
     BuildZ3SolverAssert(ctx_h ↦ z3ctx.ctx, solver_h ↦ z3ctx.sol, ast_h ↦ z_ege,
         eff ↦ ze_eassert)

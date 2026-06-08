@@ -94,8 +94,12 @@ fsm main
     z_sym_lr = (is_first_tick ? 0 : _z_sym_lr)
     z_sym_lrl ∈ Int
     z_sym_lrl = (is_first_tick ? 0 : _z_sym_lrl)
-    z_zero ∈ Int
-    z_zero = (is_first_tick ? 0 : _z_zero)
+    z3nums ∈ Z3Numerals
+    z3nums.zero = (is_first_tick ? 0 : _z3nums.zero)
+    z3nums.one = (is_first_tick ? 0 : _z3nums.one)
+    z3nums.two = (is_first_tick ? 0 : _z3nums.two)
+    z3nums.three = (is_first_tick ? 0 : _z3nums.three)
+    z3nums.four = (is_first_tick ? 0 : _z3nums.four)
     ed_nullary ∈ Bool
     ed_nullary = (is_first_tick ? false : _ed_nullary)
     ed_res_harvest ∈ Bool

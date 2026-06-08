@@ -7,7 +7,7 @@
 --           z3ctx (cfg/ctx/sol), z3sorts (the four base sorts isort/
 --           bsort/ssort/rsort), z_arena, z_arrsort, the effects-array
 --           consts (z_sym_effs/z_effs/z_sym_elen/z_elen), the numeral
---           consts (z_zero..z_four), z_true/z_false, the token/symbol/
+--           consts z3nums (zero..four), z_true/z_false, the token/symbol/
 --           claim-index buffer bases (tbase/st_base/ci_base), and the
 --           last_results / is_first_tick build-context consts
 --           (z_lrsort..z_lrge, z_ege).
@@ -53,12 +53,10 @@ fsm DriverZInit
     z_sym_elen = (is_first_tick ? 0 : zstep = 14 ? d_cap_int : _z_sym_elen)
     z_elen ∈ Int
     z_elen = (is_first_tick ? 0 : zstep = 15 ? d_cap_int : _z_elen)
-    z_zero ∈ Int
-    z_zero = (is_first_tick ? 0 : zstep = 16 ? d_cap_int : _z_zero)
-    z_one ∈ Int
-    z_one = (is_first_tick ? 0 : zstep = 17 ? d_cap_int : _z_one)
-    z_two ∈ Int
-    z_two = (is_first_tick ? 0 : zstep = 18 ? d_cap_int : _z_two)
+    z3nums ∈ Z3Numerals
+    z3nums.zero = (is_first_tick ? 0 : zstep = 16 ? d_cap_int : _z3nums.zero)
+    z3nums.one = (is_first_tick ? 0 : zstep = 17 ? d_cap_int : _z3nums.one)
+    z3nums.two = (is_first_tick ? 0 : zstep = 18 ? d_cap_int : _z3nums.two)
     z_true ∈ Int
     z_true = (is_first_tick ? 0 : zstep = 19 ? d_cap_int : _z_true)
     z_false ∈ Int
@@ -92,10 +90,8 @@ fsm DriverZInit
     z_lrge = (is_first_tick ? 0 : zstep = 30 ? d_cap_int : _z_lrge)
     -- D2: 3/4 numerals (effects literals up to 4 elements) + the
     -- (Array Int Int) sort for user Seq(Int) memberships.
-    z_three ∈ Int
-    z_three = (is_first_tick ? 0 : zstep = 33 ? d_cap_int : _z_three)
-    z_four ∈ Int
-    z_four = (is_first_tick ? 0 : zstep = 34 ? d_cap_int : _z_four)
+    z3nums.three = (is_first_tick ? 0 : zstep = 33 ? d_cap_int : _z3nums.three)
+    z3nums.four = (is_first_tick ? 0 : zstep = 34 ? d_cap_int : _z3nums.four)
     z_iarr ∈ Int
     z_iarr = (is_first_tick ? 0 : zstep = 35 ? d_cap_int : _z_iarr)
     -- E1: the effects floor `(assert (>= effects__len 0))` lives in

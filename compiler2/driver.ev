@@ -707,7 +707,7 @@ fsm driver_main
                 C2ICons(C2StrOp("char_at", 2), d_wtail)))
         : d_cnm = "index_of"
             ? C2ICons(C2Process(d_ca0), C2ICons(C2Process(d_ca1),
-                C2ICons(C2PushH(z_zero),
+                C2ICons(C2PushH(z3nums.zero),
                 C2ICons(C2StrOp("indexof", 3), d_wtail))))
         : d_cnm = "str_contains"
             ? C2ICons(C2Process(d_ca0), C2ICons(C2Process(d_ca1),
@@ -1340,7 +1340,7 @@ fsm driver_main
     d_eff_natge ∈ Effect
     d_nat_ok ∈ Bool
     d_nat_nn ∈ Bool
-    BoolCmpBuildZ3(ctx_h ↦ z3ctx.ctx, op ↦ d_op_geq, l_h ↦ d_h_top, r_h ↦ z_zero,
+    BoolCmpBuildZ3(ctx_h ↦ z3ctx.ctx, op ↦ d_op_geq, l_h ↦ d_h_top, r_h ↦ z3nums.zero,
         eff ↦ d_eff_natge, ok ↦ d_nat_ok, needs_not ↦ d_nat_nn)
     d_eff_pineq ∈ Effect
     d_pin_ok2 ∈ Bool
@@ -1368,10 +1368,10 @@ fsm driver_main
     d_eff_app ∈ Effect
     CtorAppStep(ctx_h ↦ z3ctx.ctx, ctor_decl_h ↦ d_app_d, n_args ↦ d_app_n,
         args_p ↦ z_arena + 224, eff ↦ d_eff_app)
-    d_sel_idx_h ∈ Int = (d_sel_i = 0 ? z_zero
-        : d_sel_i = 1 ? z_one
-        : d_sel_i = 2 ? z_two
-        : z_three)
+    d_sel_idx_h ∈ Int = (d_sel_i = 0 ? z3nums.zero
+        : d_sel_i = 1 ? z3nums.one
+        : d_sel_i = 2 ? z3nums.two
+        : z3nums.three)
     d_eff_sel ∈ Effect
     BuildZ3MkSelect(ctx_h ↦ z3ctx.ctx, arr_h ↦ z_effs, idx_h ↦ d_sel_idx_h,
         eff ↦ d_eff_sel)
@@ -1406,11 +1406,11 @@ fsm driver_main
     d_seleq_nn ∈ Bool
     BoolCmpBuildZ3(ctx_h ↦ z3ctx.ctx, op ↦ d_op_eq, l_h ↦ d_tmp_in, r_h ↦ d_h_top,
         eff ↦ d_eff_seleq, ok ↦ d_seleq_ok, needs_not ↦ d_seleq_nn)
-    d_len_n_h ∈ Int = (d_len_n = 1 ? z_one
-        : d_len_n = 2 ? z_two
-        : d_len_n = 3 ? z_three
-        : d_len_n = 4 ? z_four
-        : z_zero)
+    d_len_n_h ∈ Int = (d_len_n = 1 ? z3nums.one
+        : d_len_n = 2 ? z3nums.two
+        : d_len_n = 3 ? z3nums.three
+        : d_len_n = 4 ? z3nums.four
+        : z3nums.zero)
     d_eff_leneq ∈ Effect
     d_leneq_ok ∈ Bool
     d_leneq_nn ∈ Bool
