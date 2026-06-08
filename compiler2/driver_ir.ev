@@ -14,6 +14,13 @@ import "compiler/parser.ev"
 -- append cursor (carried, bounded by the region capacity at each site).
 type FtiBuffer(base ∈ Int, count ∈ Int)
 
+-- ── Z3 solver lifecycle: the three handles created together at boot ─
+-- cfg → ctx → sol: the Z3 config, the context derived from it, and the
+-- solver derived from the context (zinit zsteps 1/2/3). They travel as
+-- one unit — every Build*Z3 effect threads `ctx`, asserts go through
+-- `sol`. Pinned once during zinit, carried thereafter.
+type Z3SolverCtx(cfg ∈ Int, ctx ∈ Int, sol ∈ Int)
+
 -- ── Work items: one line of claim body = one small program ────────
 enum C2Item =
     C2Process(Expr)

@@ -141,6 +141,38 @@ the three loose `_base`/`_cnt` decl+carry pairs became three records.
    above. It is also a design guardrail: do NOT lump weakly-related
    fields into one record, because each forces a live value every tick.
 
+---
+
+## Z3SolverCtx — the solver-lifecycle handle triple (`z_cfg/z_ctx/z_sol`)
+
+First of the cohesive `z_*` sub-records (the prior "god-record" was
+rejected; the split is the right shape). `type Z3SolverCtx(cfg, ctx,
+sol ∈ Int)` unifies the three Z3 lifecycle handles created consecutively
+during zinit (zsteps 1/2/3): the config, the context, the solver. They
+are a genuinely co-traveling group — every `Build*Z3` effect threads
+`ctx`, every assert goes through `sol` — so all three are driven every
+tick by DriverZInit (the every-field-live guardrail is satisfied in the
+full driver automatically).
+
+Sites rewritten: 93 references (`z_ctx` alone = 77) across 4 modules,
+all READS (slot args `ctx_h ↦ z3ctx.ctx` / `ArgInt(z3ctx.ctx)`):
+- `driver_ir.ev` — +1 type decl (`Z3SolverCtx`).
+- `driver_zinit.ev` — the three decl+latch lines → `z3ctx` record +
+  three field latches (`z3ctx.cfg = is_first_tick ? 0 : zstep=1 ? … :
+  _z3ctx.cfg`, etc.). Doc header updated.
+- `driver_buildeff.ev` — ~40 `z_ctx` slot args + `z_cfg`/`z_sol`.
+- `driver.ev` — ~25 build-step slot args.
+- `driver_record.ev`, `driver_emit.ev` — the remaining reads.
+Fixtures: driver_buildeff/{select_w2,select_w5}, driver_emit/estep_walk
+(their stub `z_cfg/z_ctx/z_sol ∈ Int` carries → one `z3ctx ∈
+Z3SolverCtx` stub driving all three fields each tick, per the guardrail).
+New carry unit test `types/z3_solverctx_carry.ev` (step-latched triple;
+proves the autocarry synthesizes `_z3ctx ∈ Z3SolverCtx` so each field's
+latched value persists).
+
+Unit tests: PASS — 30/30. Gate: **PASS — 137/138** (only known
+`123-subschema`; 0 timeouts; wall 416s). COMMITTED.
+
 ### Next candidates — assessed, deferred (with measured reasons)
 - **`rt_*` → `RecTypeEntry`** (43 members; cohesion 61 — the highest of
   any registry). Highest line-removal, but NOT a mechanical rename: the

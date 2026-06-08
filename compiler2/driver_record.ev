@@ -389,9 +389,9 @@ fsm DriverRecord
         s0 ↦ rt_sort0, s1 ↦ rt_sort1, s2 ↦ rt_sort2, sort ↦ rds_5)
 
     rde_nsym ∈ Effect
-    BuildZ3MkStringSymbol(ctx_h ↦ z_ctx, name ↦ rc_name, eff ↦ rde_nsym)
+    BuildZ3MkStringSymbol(ctx_h ↦ z3ctx.ctx, name ↦ rc_name, eff ↦ rde_nsym)
     rde_fsym ∈ Effect
-    BuildZ3MkStringSymbol(ctx_h ↦ z_ctx, name ↦ rdf_name, eff ↦ rde_fsym)
+    BuildZ3MkStringSymbol(ctx_h ↦ z3ctx.ctx, name ↦ rdf_name, eff ↦ rde_fsym)
     rde_wfn0 ∈ Effect
     BuildMemWriteLong(addr ↦ rd_fn_p, value ↦ rd_hfu0, eff ↦ rde_wfn0)
     rde_wfn1 ∈ Effect
@@ -417,17 +417,17 @@ fsm DriverRecord
     rde_wfs5 ∈ Effect
     BuildMemWriteLong(addr ↦ rd_fs_p + 40, value ↦ rds_5, eff ↦ rde_wfs5)
     rde_tup ∈ Effect = LibCall("libz3", "Z3_mk_tuple_sort",
-        ⟨ArgInt(z_ctx), ArgInt(rd_hn), ArgInt(rc_nf), ArgInt(rd_fn_p),
+        ⟨ArgInt(z3ctx.ctx), ArgInt(rd_hn), ArgInt(rc_nf), ArgInt(rd_fn_p),
          ArgInt(rd_fs_p), ArgInt(rd_ct_p), ArgInt(rd_ac_p)⟩)
     rde_rdct ∈ Effect
     BuildMemReadLong(addr ↦ rd_ct_p, eff ↦ rde_rdct)
     rde_rdacc ∈ Effect
     BuildMemReadLong(addr ↦ rd_ac_p + (8 * rd_eff_fi), eff ↦ rde_rdacc)
     rde_asort ∈ Effect
-    BuildZ3MkArraySort(ctx_h ↦ z_ctx, idx_sort_h ↦ z_isort,
+    BuildZ3MkArraySort(ctx_h ↦ z3ctx.ctx, idx_sort_h ↦ z_isort,
         val_sort_h ↦ rc_sort, eff ↦ rde_asort)
     rde_ssort ∈ Effect = LibCall("libz3", "Z3_mk_set_sort",
-        ⟨ArgInt(z_ctx), ArgInt(rc_sort)⟩)
+        ⟨ArgInt(z3ctx.ctx), ArgInt(rc_sort)⟩)
     rd_eff1 ∈ Effect = (rd_eff_st = 0 ? rde_nsym
         : rd_eff_st = 1 ? rde_fsym
         : rd_eff_st = 3 ? rde_tup

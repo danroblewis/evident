@@ -58,10 +58,10 @@ fsm main
     z_arrsort = (is_first_tick ? 0 : _z_arrsort)
     z_bsort ∈ Int
     z_bsort = (is_first_tick ? 0 : _z_bsort)
-    z_cfg ∈ Int
-    z_cfg = (is_first_tick ? 0 : _z_cfg)
-    z_ctx ∈ Int
-    z_ctx = (is_first_tick ? 0 : _z_ctx)
+    z3ctx ∈ Z3SolverCtx
+    z3ctx.cfg = (is_first_tick ? 0 : _z3ctx.cfg)
+    z3ctx.ctx = (is_first_tick ? 0 : _z3ctx.ctx)
+    z3ctx.sol = (is_first_tick ? 0 : _z3ctx.sol)
     z_effsort ∈ Int
     z_effsort = (is_first_tick ? 0 : _z_effsort)
     z_ege ∈ Int
@@ -82,8 +82,6 @@ fsm main
     z_lrsort = (is_first_tick ? 0 : _z_lrsort)
     z_ressort ∈ Int
     z_ressort = (is_first_tick ? 0 : _z_ressort)
-    z_sol ∈ Int
-    z_sol = (is_first_tick ? 0 : _z_sol)
     z_sym_effs ∈ Int
     z_sym_effs = (is_first_tick ? 0 : _z_sym_effs)
     z_sym_elen ∈ Int

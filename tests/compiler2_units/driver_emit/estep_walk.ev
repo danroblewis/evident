@@ -25,10 +25,10 @@ fsm main
     d_cap_int = (is_first_tick ? 0 : _d_cap_int)
     d_cap_str ∈ String
     d_cap_str = (is_first_tick ? "" : _d_cap_str)
-    z_ctx ∈ Int
-    z_ctx = (is_first_tick ? 0 : _z_ctx)
-    z_sol ∈ Int
-    z_sol = (is_first_tick ? 0 : _z_sol)
+    z3ctx ∈ Z3SolverCtx
+    z3ctx.cfg = (is_first_tick ? 0 : _z3ctx.cfg)
+    z3ctx.ctx = (is_first_tick ? 0 : _z3ctx.ctx)
+    z3ctx.sol = (is_first_tick ? 0 : _z3ctx.sol)
     fstr ∈ String
     fstr = (is_first_tick ? "" : _fstr)
     saw_lr ∈ Bool
