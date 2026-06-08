@@ -219,6 +219,29 @@ pub fn call(lib_name: &str, fn_name: &str, args: &[LibArg]) -> Result<LibRet, St
         }
     }
 
+    // Null-AST-operand guard. A 0 handle reaching a libz3 builder that
+    // dereferences its operands (e.g. Z3_mk_ite) segfaults Z3 inside
+    // ast_manager::mk_app — a hard crash with no diagnostic. Such a 0 is
+    // always a compiler bug (a handle-stack underflow / an operand the
+    // codegen never built), never legitimate. Refuse it with a nameable
+    // Err so the failure is a clean exit-3 with a message instead of a
+    // signal kill. Only fixed-arity, all-AST-operand builders are checked
+    // (their args after arg[0]=ctx are all Z3_asts); array-arity builders
+    // pass operands through a memory buffer, not direct args, and value
+    // builders like Z3_mk_int take a legitimate literal 0 — neither is in
+    // the list, so this never false-positives on a valid call.
+    if lib_name == "libz3" && ast_operand_builder(fn_name) {
+        for (i, a) in args.iter().enumerate().skip(1) {
+            if matches!(a, LibArg::Int(0)) {
+                return Err(format!(
+                    "{fn_name}: null AST handle in operand {i} — the compiler \
+                     emitted a 0 where a Z3 expression was required (likely a \
+                     handle-stack underflow). Refused before it could segfault Z3."
+                ));
+            }
+        }
+    }
+
     // Call. Treat the return as i64.
     let code_ptr = CodePtr::from_ptr(sym_ptr);
     let result: i64 = unsafe { cif.call(code_ptr, &ffi_args) };
@@ -276,6 +299,37 @@ fn returns_ast(fn_name: &str) -> bool {
                 | "Z3_mk_constructor_list"
                 | "Z3_mk_datatypes"
         )
+}
+
+/// True iff every argument after arg[0] (the `Z3_context`) of this libz3
+/// builder is a `Z3_ast` operand passed *directly* (not a count, sort,
+/// symbol, decl, or a literal value, and not via an args buffer). For these
+/// — and only these — a `0` argument is a null AST handle, i.e. a compiler
+/// bug, so the null-AST-operand guard checks them. The list is deliberately
+/// conservative: omissions only mean "no extra guard there" (it segfaults as
+/// before, no worse), whereas a wrong inclusion would reject a valid call —
+/// so a function goes in only when its post-ctx args are unambiguously all
+/// ASTs. Value builders (`Z3_mk_int`, `_int64`, `_unsigned_int`, `_bv_…`)
+/// and array-arity builders (`Z3_mk_app`, `_and`, `_or`, `_add`, `_mul`,
+/// `_select`, …) are intentionally absent.
+fn ast_operand_builder(fn_name: &str) -> bool {
+    matches!(
+        fn_name,
+        // boolean / comparison (fixed arity, all-AST operands)
+        "Z3_mk_ite" | "Z3_mk_eq" | "Z3_mk_not" | "Z3_mk_implies"
+            | "Z3_mk_iff" | "Z3_mk_xor"
+            | "Z3_mk_lt" | "Z3_mk_le" | "Z3_mk_gt" | "Z3_mk_ge"
+            // arithmetic (binary/unary, all-AST operands)
+            | "Z3_mk_unary_minus" | "Z3_mk_div" | "Z3_mk_mod"
+            | "Z3_mk_rem" | "Z3_mk_power"
+            // sequence/string (fixed arity, all-AST operands)
+            | "Z3_mk_seq_length" | "Z3_mk_str_to_int" | "Z3_mk_int_to_str"
+            | "Z3_mk_seq_at" | "Z3_mk_seq_nth" | "Z3_mk_seq_index"
+            | "Z3_mk_seq_contains" | "Z3_mk_seq_prefix" | "Z3_mk_seq_suffix"
+            | "Z3_mk_seq_extract" | "Z3_mk_seq_replace"
+            // set membership (element, set) — both ASTs
+            | "Z3_mk_set_member" | "Z3_mk_set_add" | "Z3_mk_set_del"
+    )
 }
 
 /// The `__cstr` pseudo-library: a faithful char* → Evident-String marshal.
