@@ -221,11 +221,29 @@ pub fn run(src: &str, manifest: &Manifest) -> Result<u8, String> {
 }
 
 unsafe fn run_inner(src: &str, manifest: &Manifest) -> Result<u8, String> {
+    crate::libcall::init_effect_trace();
     // EVIDENT_PHASE_TRACE=1 — startup-phase + tick-progress markers on
     // stderr, for attributing wall-clock/memory to a phase when a run
     // looks stuck (e.g. the 2026-06 container runs that ground for hours
     // before tick 1). Each line carries elapsed seconds since run start.
     let phase_trace = std::env::var("EVIDENT_PHASE_TRACE").ok().as_deref() == Some("1");
+    // With EVIDENT_EFFECT_TRACE, also print a `[tick N | field=val …]` marker
+    // before each tick's effects (paired with the per-call trace in
+    // libcall::call). The marker
+    // is the *why* for the effects that follow: given prev-state + input, the
+    // solve produced this state vector, and that state is what the effect
+    // ternary branches on to choose each LibCall. Only primitive state fields
+    // are shown — those are exactly the ones that carry across ticks (the
+    // FSM's program counter), so they fully determine the next emission.
+    let eff_trace = std::env::var("EVIDENT_EFFECT_TRACE").ok().as_deref() == Some("1");
+    // Optional explicit allow-list: EVIDENT_EFFECT_TRACE_FIELDS=a,b,c shows
+    // those fields' ABSOLUTE values every tick (good for watching a counter).
+    // Unset → the marker shows only fields that CHANGED since the previous
+    // tick (`name:old→new`), which is the FSM step itself and keeps the line
+    // short even with a ~300-field state vector.
+    let eff_trace_fields: Option<Vec<String>> = std::env::var("EVIDENT_EFFECT_TRACE_FIELDS")
+        .ok()
+        .map(|s| s.split(',').map(|f| f.trim().to_string()).filter(|f| !f.is_empty()).collect());
     let phase_t0 = Instant::now();
     let phase = |msg: &str| {
         if phase_trace {
@@ -453,6 +471,10 @@ unsafe fn run_inner(src: &str, manifest: &Manifest) -> Result<u8, String> {
                     }
                 }
                 if covered {
+                    if eff_trace {
+                        eprintln!("[tick {tick} | {}]",
+                            fmt_state_marker(&manifest.state_fields, &new_state, &prev_state, &eff_trace_fields));
+                    }
                     let td = mark();
                     let mut exit_code: Option<u8> = None;
                     let mut new_results: Vec<Res> = Vec::new();
@@ -597,6 +619,10 @@ unsafe fn run_inner(src: &str, manifest: &Manifest) -> Result<u8, String> {
         tick_z3 += dz;
         stats.t_z3 += dz;
 
+        if eff_trace {
+            eprintln!("[tick {tick} | {}]",
+                fmt_state_marker(&manifest.state_fields, &new_state, &prev_state, &eff_trace_fields));
+        }
         let td = mark();
         let mut exit_code: Option<u8> = None;
         let mut new_results: Vec<Res> = Vec::new();
@@ -1440,6 +1466,56 @@ unsafe fn ast_to_string(ctx: Z3_context, ast: Z3_ast) -> String {
     let p = Z3_ast_to_string(ctx, ast);
     if p.is_null() { return "<null>".into(); }
     CStr::from_ptr(p).to_string_lossy().into_owned()
+}
+
+/// Compact one-line render of primitive state for the EVIDENT_EFFECT_TRACE
+/// per-tick marker — the *why* of the effects
+/// that follow. Datatype/Seq fields are elided (they don't carry, so they
+/// aren't part of the FSM program counter); strings are truncated.
+///
+/// `filter = Some(names)` → those fields' absolute values, every tick.
+/// `filter = None`        → only fields that changed vs `prev` (`name:old→new`).
+fn fmt_sv_short(v: &Sv) -> Option<String> {
+    match v {
+        Sv::Int(n)  => Some(n.to_string()),
+        Sv::Bool(b) => Some(b.to_string()),
+        Sv::Real(r) => Some(r.to_string()),
+        Sv::Str(s) => Some(if s.chars().count() > 24 {
+            format!("{:?}…", s.chars().take(24).collect::<String>())
+        } else { format!("{s:?}") }),
+        Sv::Datatype(..) | Sv::Seq(_) => None,
+    }
+}
+
+fn fmt_state_marker(
+    fields: &[(String, String)],
+    state: &[Sv],
+    prev: &[Option<Sv>],
+    filter: &Option<Vec<String>>,
+) -> String {
+    let mut parts: Vec<String> = Vec::new();
+    for (i, ((name, _), v)) in fields.iter().zip(state.iter()).enumerate() {
+        let Some(cur) = fmt_sv_short(v) else { continue };
+        match filter {
+            Some(names) => {
+                if names.iter().any(|n| n == name) {
+                    parts.push(format!("{name}={cur}"));
+                }
+            }
+            None => {
+                let changed = match prev.get(i) {
+                    Some(Some(pv)) => !compare_sv(pv, v),
+                    _ => true, // first tick / no prior value
+                };
+                if changed {
+                    let old = prev.get(i).and_then(|o| o.as_ref())
+                        .and_then(fmt_sv_short).unwrap_or_else(|| "·".into());
+                    parts.push(format!("{name}:{old}→{cur}"));
+                }
+            }
+        }
+    }
+    parts.join(" ")
 }
 
 fn compare_sv(a: &Sv, b: &Sv) -> bool {

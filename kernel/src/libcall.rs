@@ -63,11 +63,33 @@ struct ArgStorage {
 /// path but we cache to avoid the dlopen syscall per call.
 static LIB_CACHE: Mutex<Option<HashMap<String, Library>>> = Mutex::new(None);
 
+/// State for EVIDENT_EFFECT_TRACE (see `call`). The flag is read once and
+/// cached so we don't hit the env on every call.
+static EFFECT_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+static EFFECT_TRACE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+/// Call once at startup to latch the EVIDENT_EFFECT_TRACE env into the flag.
+pub fn init_effect_trace() {
+    if std::env::var("EVIDENT_EFFECT_TRACE").ok().as_deref() == Some("1") {
+        EFFECT_TRACE.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+}
+
 /// Resolve a function in a (possibly cached) library and call it with the
 /// given args. Returns either an i64 (the libffi register-return value, the
 /// historical default) or a String (used by pseudo-libraries that need to
 /// surface a textual result — today only `__cstr.copy`).
 pub fn call(lib_name: &str, fn_name: &str, args: &[LibArg]) -> Result<LibRet, String> {
+    // EVIDENT_EFFECT_TRACE=1 prints every C call the program dispatches, in
+    // order, with a global sequence number. Joins the kernel's diagnostic
+    // suite (EVIDENT_PHASE_TRACE / EVIDENT_FUNCTIONIZE_STATS / EVIDENT_UNSAT_CORE)
+    // and is off by default (one relaxed atomic load per call when off). The
+    // effects ARE the driver's Z3-model build trace (each LibCall is one libz3
+    // C call); the last line before a crash localizes the failing op far better
+    // than guessing. Includes __mem loads/stores so a bad FTI address shows.
+    if EFFECT_TRACE.load(std::sync::atomic::Ordering::Relaxed) {
+        let n = EFFECT_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        eprintln!("[eff {n}] {lib_name}::{fn_name}({args:?})");
+    }
     // `__mem`: the minimal pointer-deref escape hatch the FTI honesty audit
     // (task #23) requires. An honest FTI keeps its data in libc-`malloc`'d
     // memory and reads it back; libffi's int/str/real arg grammar cannot
@@ -200,7 +222,60 @@ pub fn call(lib_name: &str, fn_name: &str, args: &[LibArg]) -> Result<LibRet, St
     // Call. Treat the return as i64.
     let code_ptr = CodePtr::from_ptr(sym_ptr);
     let result: i64 = unsafe { cif.call(code_ptr, &ffi_args) };
+
+    // AST-lifetime policy. A Z3_ast built via the C API starts at refcount 0
+    // and Z3 GCs it under memory pressure unless inc_ref'd. The compiler
+    // (compiler2/driver.ev) builds tens of thousands of ASTs across ticks and
+    // carries them as Int handles; a long-lived one — a cached sort/constant,
+    // or an operand built early and passed to Z3_mk_ite much later — gets
+    // reclaimed mid-build and Z3 segfaults (observed compiling sample.ev at
+    // ~142k ASTs; latent below that because small programs never trigger a
+    // GC). Refcount discipline is imperative memory management, not a
+    // constraint, so it can't live in the model cleanly; and the kernel owns
+    // the Z3 context's lifetime. So: keep every AST the program builds alive
+    // for the (short-lived) process — inc_ref the result of AST-returning
+    // libz3 builders. Identified by name (Z3_mk_* + Z3_simplify) minus the
+    // Z3_mk_* that return non-AST objects (config/context/solver/symbol/…),
+    // an allowlist by construction: an unrecognised call is never inc_ref'd,
+    // so a non-AST i64 is never mistaken for an ast pointer.
+    if lib_name == "libz3" && result != 0 && returns_ast(fn_name) {
+        if let Some(LibArg::Int(ctx)) = args.first() {
+            unsafe {
+                z3_sys::Z3_inc_ref(*ctx as z3_sys::Z3_context, result as z3_sys::Z3_ast);
+            }
+        }
+    }
     Ok(LibRet::Int(result))
+}
+
+/// True iff a `libz3` function returns an inc_ref-able `Z3_ast` (incl. sorts
+/// and func_decls, which are ast subtypes). The builders Z3_mk_* qualify
+/// except the handful that return other object kinds; Z3_simplify also
+/// returns an ast. Everything else (introspection, solver/tactic ops, the
+/// char*/lbool/void returns) is excluded — inc_ref'ing those would deref a
+/// non-pointer i64.
+fn returns_ast(fn_name: &str) -> bool {
+    if fn_name == "Z3_simplify" {
+        return true;
+    }
+    fn_name.starts_with("Z3_mk_")
+        && !matches!(
+            fn_name,
+            "Z3_mk_config"
+                | "Z3_mk_context"
+                | "Z3_mk_context_rc"
+                | "Z3_mk_solver"
+                | "Z3_mk_simple_solver"
+                | "Z3_mk_solver_from_tactic"
+                | "Z3_mk_tactic"
+                | "Z3_mk_goal"
+                | "Z3_mk_params"
+                | "Z3_mk_string_symbol"
+                | "Z3_mk_int_symbol"
+                | "Z3_mk_constructor"
+                | "Z3_mk_constructor_list"
+                | "Z3_mk_datatypes"
+        )
 }
 
 /// The `__cstr` pseudo-library: a faithful char* → Evident-String marshal.
