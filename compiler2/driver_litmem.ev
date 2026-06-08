@@ -1,0 +1,78 @@
+-- MODULE DriverLitMem
+-- CONSUMES: the parse gate (in_parse, _pmode, tok_ready), the decoded
+--           window head (ww_t0), the set-literal entry + classifier
+--           views (d_enter_set, c_name, c_is_nmem), and the seq-literal
+--           entry + classifier views (d_seq_mem, c_dname, c_sq_rt).
+-- PRODUCES: the pmode-7 set-literal walk state (ms_name/ms_neg/ms_e +
+--           ms_body/ms_items, the or-folded membership Expr and its
+--           assert program) and the pmode-8 seq-literal registry latch
+--           (sq_set/sq_name/sq_rt — the one registered Seq(Int) var).
+-- MAINTAINS: a `x ∈ {a,b,…}` line or-folds one int element per tick
+--           into an Expr, asserted (C2Not-wrapped for ∉) at the closing
+--           `}`; the empty set lowers to `false`. A `s ∈ Seq(Int)` line
+--           latches exactly one registered seq var (name + element
+--           record type, −1 = Int) on first sight.
+--
+-- INTERFACE WIDTH: ~10 external reads (slightly >8) — JUSTIFIED §6.4:
+-- two literal-collection membership shapes share the parse gate + the
+-- classifier's per-line name/sort views; splitting them would duplicate
+-- that shared read surface across two <40-line stubs (the §3 anti-pattern).
+--
+-- The pmode-7/8 literal-collection membership walks. Lifted into
+-- driver_main via `..DriverLitMem`.
+fsm DriverLitMem
+    -- ── pmode 7: set-literal membership walk (C2: 041/042/062) ────
+    -- `x ∈ { a, b, … }` / `x ∉ { … }` — one int element per tick,
+    -- or-folded into an Expr; the closing `}` asserts it (wrapped in
+    -- C2Not for ∉). The empty set lowers to `false` (062: `x ∈ {}`
+    -- is UNSAT by construction).
+    ms_name ∈ String
+    ms_neg ∈ Bool
+    ms_e ∈ Expr
+
+    s_act ∈ Bool = (in_parse ∧ (_pmode = 7) ∧ tok_ready)
+    ms_elem ∈ Bool = (s_act ∧ (ww_t0 matches IntLit(_)))
+    ms_close ∈ Bool = (s_act ∧ (ww_t0 matches RBrace))
+    ms_bad ∈ Bool = (s_act ∧ (¬ms_elem) ∧ (¬ms_close))
+    ms_v ∈ Int = match ww_t0
+        IntLit(n) ⇒ n
+        _ ⇒ 0
+    ms_eq ∈ Expr = EBinOp(OpEq, EIdent(_ms_name), EInt(ms_v))
+    ms_e_n ∈ Expr = ((_ms_e matches ENoExpr) ? ms_eq
+        : EBinOp(OpDisj, _ms_e, ms_eq))
+    ms_name = (is_first_tick ? "" : d_enter_set ? c_name : _ms_name)
+    ms_neg = (is_first_tick ? false : d_enter_set ? c_is_nmem : _ms_neg)
+    ms_e = (is_first_tick ? ENoExpr
+        : d_enter_set ? ENoExpr
+        : ms_elem ? ms_e_n
+        : _ms_e)
+    ms_body ∈ Expr = ((_ms_e matches ENoExpr) ? EIdent("false") : _ms_e)
+    ms_items ∈ C2Items = C2ICons(C2Process(ms_body),
+        (_ms_neg ? C2ICons(C2Not, C2ICons(C2AssertTop, C2INil))
+            : C2ICons(C2AssertTop, C2INil)))
+
+    -- ── pmode 8: user Seq(Int) literal walk (D2: 051/052/057/065) ──
+    -- `s ∈ Seq(Int)` declares TWO consts — `s : (Array Int Int)` and
+    -- `s__len : Int` with the `(>= s__len 0)` floor (the oracle's
+    -- exact decl shape; manifest `s:Seq(Int)`, two carry declares).
+    -- `s = ⟨e0, e1, …⟩` walks one full-Pratt element per `,`
+    -- (pk_kind 7), asserting `(= (select s i) e_i)` per element and
+    -- `(= s__len n)` at the closing `⟩` — all through EXISTING items
+    -- (symtab reads of s / s__len + SelH + PinEq). NOTE: the oracle
+    -- emits a degenerate `(= n n)` here (it substitutes a recorded
+    -- length for `#s`); the driver pins s__len for real — sat-equal
+    -- on every census fixture, and 065's contradiction still lowers
+    -- to UNSAT ((= s__len 3) ∧ (= s__len 5)). `#s` lowers to the
+    -- s__len const (per-sort `#` dispatch), not str.len. One
+    -- registered seq var per compile (the census surface).
+    sq_set ∈ Bool
+    sq_name ∈ String
+    sq_rt ∈ Int
+    sq_set = (is_first_tick ? false : d_seq_mem ? true : _sq_set)
+    sq_name = (is_first_tick ? ""
+        : (d_seq_mem ∧ (¬_sq_set)) ? c_dname
+        : _sq_name)
+    -- G2: the registered seq var's ELEMENT record type (-1 = Int)
+    sq_rt = (is_first_tick ? 0 - 1
+        : (d_seq_mem ∧ (¬_sq_set)) ? c_sq_rt
+        : _sq_rt)
