@@ -1,0 +1,213 @@
+-- MODULE DriverSymtab
+-- CONSUMES: the current work-item list (witems) + the handle stack
+--           (d_hstk_in), the parse gate (in_parse, _pmode, tok_ready),
+--           the decl-context flags (d_in_claim, fl_on, rb_on, il_ps),
+--           the lookup-read signal (d_lk_read, d_lkname), the micro-step
+--           cursor (_istep), and the kernel last_results floor.
+-- PRODUCES: the FTI symbol table (st_cnt, st_names) + its append on a
+--           C2DeclConst, the saw_lr/saw_ift duplicate-suppression flags,
+--           the post-pend handle-stack views (d_h_top/2nd/3rd/4th/5th/6th
+--           + the C2H tails), the current work-item (d_whead) and its
+--           per-opcode discriminators (d_it_proc/op/ite/.../recv/recd),
+--           and the C2RecVal/C2RecDecl head decode (d_rv_nm/d_rv_k).
+-- MAINTAINS: st_cnt < 8192 (a declare past the buffer end is UNSAT, not a
+--           native overrun); the 32-byte "|name<pad31>" record layout so
+--           a name lookup is pure index_of arithmetic; one decl appended
+--           per C2DeclConst istep-2 tick, visible to every later lookup.
+--
+-- The FTI symbol table + work-item decode layer. Lifted into driver_main
+-- via `..DriverSymtab`.
+fsm DriverSymtab
+    -- ── FTI symbol table (B1: corpus scale, 1024 entries) ─────────
+    -- Handles live in the calloc'd st_base buffer (8 bytes/entry,
+    -- decl order); names live in st_names, a Z3 String of
+    -- fixed-width 32-byte records: "|" ++ name padded to 31 with
+    -- spaces. "|" never occurs inside a record (idents are
+    -- alnum/underscore, padding is spaces), so every index_of match
+    -- is 32-aligned and lookup is pure arithmetic:
+    -- idx = index_of(st_names, key) / 32; the handle is then ONE
+    -- __mem.read_long through the pend=1 capture path. Names longer
+    -- than 31 chars would truncate-alias (corpus max is 21).
+    -- A decl appends at C2DeclConst istep 2: the const handle (in
+    -- tmp) is written to st_base[st_cnt], the name record appends to
+    -- st_names, and the handle pushes onto hstk purely — all on the
+    -- same tick, so a decl is visible to every later lookup tick.
+    -- FTI bounds constraint: st_base holds 8192 symtab handle entries.
+    -- st_cnt < 8192 makes a declare past the buffer end UNSAT (the model
+    -- refuses it) rather than a native overrun.
+    st_cnt  ∈ Int < 8192
+    st_names ∈ String
+    d_st_add ∈ Bool = (d_processing ∧ d_it_decl ∧ (_istep = 2))
+    st_entry ∈ String = "|" ++ substr(d_dc_name ++ "                               ", 0, 31)
+    -- D3 pre-seed: slots 0/1 are last_results / is_first_tick (their
+    -- handles are written at zstep 31), so the two kernel-provided
+    -- names resolve like any declared const.
+    d_seed_names ∈ String = ("|" ++ substr("last_results                               ", 0, 31)
+        ++ "|" ++ substr("is_first_tick                               ", 0, 31))
+    st_cnt = (is_first_tick ? 2 : (d_st_add ? _st_cnt + 1 : _st_cnt))
+    st_names = (is_first_tick ? d_seed_names
+        : d_st_add ? _st_names ++ st_entry
+        : _st_names)
+
+    -- saw flags (D3): a user constraint mentioned last_results /
+    -- is_first_tick — the serialized solver body then carries their
+    -- declares (+ the Result datatype for last_results), so the
+    -- textual prelude must drop the duplicates.
+    saw_lr ∈ Bool
+    saw_lr = (is_first_tick ? false
+        : (d_lk_read ∧ d_lkname = "last_results") ? true
+        : _saw_lr)
+    saw_ift ∈ Bool
+    saw_ift = (is_first_tick ? false
+        : (d_lk_read ∧ d_lkname = "is_first_tick") ? true
+        : _saw_ift)
+
+    -- handle-stack views (post pend application).
+    d_h_top ∈ Int = match d_hstk_in
+        C2HCons(h, _) ⇒ h
+        C2HNil ⇒ 0
+    d_h_t1 ∈ C2H = match d_hstk_in
+        C2HCons(_, r) ⇒ r
+        C2HNil ⇒ C2HNil
+    d_h_2nd ∈ Int = match d_h_t1
+        C2HCons(h, _) ⇒ h
+        C2HNil ⇒ 0
+    d_h_t2 ∈ C2H = match d_h_t1
+        C2HCons(_, r) ⇒ r
+        C2HNil ⇒ C2HNil
+    d_h_3rd ∈ Int = match d_h_t2
+        C2HCons(h, _) ⇒ h
+        C2HNil ⇒ 0
+    d_h_t3 ∈ C2H = match d_h_t2
+        C2HCons(_, r) ⇒ r
+        C2HNil ⇒ C2HNil
+    d_h_4th ∈ Int = match d_h_t3
+        C2HCons(h, _) ⇒ h
+        C2HNil ⇒ 0
+    d_h_t4 ∈ C2H = match d_h_t3
+        C2HCons(_, r) ⇒ r
+        C2HNil ⇒ C2HNil
+    d_h_5th ∈ Int = match d_h_t4
+        C2HCons(h, _) ⇒ h
+        C2HNil ⇒ 0
+    d_h_t5 ∈ C2H = match d_h_t4
+        C2HCons(_, r) ⇒ r
+        C2HNil ⇒ C2HNil
+    d_h_6th ∈ Int = match d_h_t5
+        C2HCons(h, _) ⇒ h
+        C2HNil ⇒ 0
+    d_h_t6 ∈ C2H = match d_h_t5
+        C2HCons(_, r) ⇒ r
+        C2HNil ⇒ C2HNil
+
+    -- current work item.
+    d_witems_nil ∈ Bool = match _witems
+        C2INil ⇒ true
+        _ ⇒ false
+    d_whead ∈ C2Item = match _witems
+        C2ICons(h, _) ⇒ h
+        C2INil ⇒ C2Drop
+    d_wtail ∈ C2Items = match _witems
+        C2ICons(_, r) ⇒ r
+        C2INil ⇒ C2INil
+
+    -- F2: the param-skip substate (il_ps) suppresses the classifier
+    -- until the callee's first-line param list is walked over.
+    d_classify   ∈ Bool = (d_in_claim ∧ d_witems_nil ∧ tok_ready
+        ∧ (_il_ps = 0) ∧ (¬_fl_on) ∧ (¬_rb_on))
+    -- items drain identically under the claim walk, the effects
+    -- element walk (pmode 5), the seq-literal walk (pmode 8), the
+    -- F1 group walk (pmode 9) and the F2 call walk (pmode 10)
+    d_processing ∈ Bool = ((d_in_claim ∨ (in_parse ∧ (_pmode = 5))
+        ∨ (in_parse ∧ (_pmode = 8)) ∨ (in_parse ∧ (_pmode = 9))
+        ∨ (in_parse ∧ (_pmode = 10)) ∨ (in_parse ∧ (_pmode = 12))
+        ∨ (in_parse ∧ (_pmode = 14)))
+        ∧ (¬d_witems_nil))
+
+    d_it_proc    ∈ Bool = (d_whead matches C2Process(_))
+    d_it_op      ∈ Bool = (d_whead matches C2Op(_))
+    d_it_ite     ∈ Bool = (d_whead matches C2Ite)
+    d_it_not     ∈ Bool = (d_whead matches C2Not)
+    d_it_decl    ∈ Bool = (d_whead matches C2DeclConst(_, _))
+    d_it_nat     ∈ Bool = (d_whead matches C2NatBound)
+    d_it_pineq   ∈ Bool = (d_whead matches C2PinEq)
+    d_it_assert  ∈ Bool = (d_whead matches C2AssertTop)
+    d_it_drop    ∈ Bool = (d_whead matches C2Drop)
+    d_it_pushh   ∈ Bool = (d_whead matches C2PushH(_))
+    d_it_app     ∈ Bool = (d_whead matches C2App(_, _))
+    d_it_seleq   ∈ Bool = (d_whead matches C2SelectEq(_))
+    d_it_leneq   ∈ Bool = (d_whead matches C2LenEq(_))
+    d_it_strop   ∈ Bool = (d_whead matches C2StrOp(_, _))
+    d_it_selh    ∈ Bool = (d_whead matches C2SelH)
+    d_it_seleqh  ∈ Bool = (d_whead matches C2SelEqH(_))
+    d_it_leneqh  ∈ Bool = (d_whead matches C2LenEqH(_))
+    d_it_dup3    ∈ Bool = (d_whead matches C2Dup3)
+    d_it_swap    ∈ Bool = (d_whead matches C2Swap)
+    d_it_rot3    ∈ Bool = (d_whead matches C2Rot3)
+    d_it_bsc     ∈ Bool = (d_whead matches C2BindScope(_, _))
+    d_it_bend    ∈ Bool = (d_whead matches C2BindEnd)
+    d_it_real    ∈ Bool = (d_whead matches C2Real(_, _))
+    d_it_mes     ∈ Bool = (d_whead matches C2MkEmptySet(_))
+    d_it_sadd    ∈ Bool = (d_whead matches C2SetAdd)
+    d_it_recv    ∈ Bool = (d_whead matches C2RecVal(_, _))
+    d_it_recd    ∈ Bool = (d_whead matches C2RecDecl(_, _))
+
+    d_pe ∈ Expr = match d_whead
+        C2Process(e) ⇒ e
+        _ ⇒ ENoExpr
+    d_op ∈ Op = match d_whead
+        C2Op(o) ⇒ o
+        _ ⇒ OpPlus
+    d_dc_name ∈ String = match d_whead
+        C2DeclConst(n, _) ⇒ n
+        _ ⇒ ""
+    d_dc_sc ∈ Int = match d_whead
+        C2DeclConst(_, s) ⇒ s
+        _ ⇒ 0
+    d_ph_h ∈ Int = match d_whead
+        C2PushH(h) ⇒ h
+        _ ⇒ 0
+    d_app_d ∈ Int = match d_whead
+        C2App(h, _) ⇒ h
+        _ ⇒ 0
+    d_app_n ∈ Int = match d_whead
+        C2App(_, n) ⇒ n
+        _ ⇒ 0
+    d_sel_i ∈ Int = match d_whead
+        C2SelectEq(i) ⇒ i
+        C2SelEqH(i2) ⇒ i2
+        _ ⇒ 0
+    d_len_n ∈ Int = match d_whead
+        C2LenEq(n) ⇒ n
+        C2LenEqH(n2) ⇒ n2
+        _ ⇒ 0
+    d_bs_n ∈ String = match d_whead
+        C2BindScope(bn, _) ⇒ bn
+        _ ⇒ ""
+    d_bs_a ∈ Int = match d_whead
+        C2BindScope(_, ba) ⇒ ba
+        _ ⇒ 0
+    d_so_nm ∈ String = match d_whead
+        C2StrOp(sn, _) ⇒ sn
+        _ ⇒ ""
+    d_so_n ∈ Int = match d_whead
+        C2StrOp(_, sk) ⇒ sk
+        _ ⇒ 0
+    d_re_s ∈ Int = match d_whead
+        C2Real(rs, _) ⇒ rs
+        _ ⇒ 0
+    d_re_d ∈ Int = match d_whead
+        C2Real(_, rd2) ⇒ rd2
+        _ ⇒ 0
+    d_mes_k ∈ Int = match d_whead
+        C2MkEmptySet(mk2) ⇒ mk2
+        _ ⇒ 0
+    d_rv_nm ∈ String = match d_whead
+        C2RecVal(rn2, _) ⇒ rn2
+        C2RecDecl(rn3, _) ⇒ rn3
+        _ ⇒ ""
+    d_rv_k ∈ Int = match d_whead
+        C2RecVal(_, rk2) ⇒ rk2
+        C2RecDecl(_, rk3) ⇒ rk3
+        _ ⇒ 0
+

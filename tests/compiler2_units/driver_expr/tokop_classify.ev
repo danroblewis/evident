@@ -1,0 +1,34 @@
+-- DriverExpr isolation — boundary: token→Op classification (C2TokOp),
+-- including the unrecognized boundary. `*` ↦ OpMul (rec), `++` ↦ OpConcat
+-- (rec, the 2-char concat op), and a non-operator token (IntLit) ↦ rec
+-- false. If the classifier mis-maps an op or wrongly marks a literal as
+-- an operator, `ok` goes false and this prints BAD.
+--
+-- entry: main
+-- expect: stdout = "ok"
+-- expect: exit = 0
+import "stdlib/kernel.ev"
+import "compiler/lexer.ev"
+import "compiler/parser.ev"
+import "compiler2/driver_expr.ev"
+
+claim main
+    t_star ∈ Token = Star
+    t_cc   ∈ Token = PlusPlus
+    t_lit  ∈ Token = IntLit(5)
+
+    o_star ∈ Op
+    rec_star ∈ Bool
+    C2TokOp(t ↦ t_star, o ↦ o_star, rec ↦ rec_star)
+    o_cc ∈ Op
+    rec_cc ∈ Bool
+    C2TokOp(t ↦ t_cc, o ↦ o_cc, rec ↦ rec_cc)
+    o_lit ∈ Op
+    rec_lit ∈ Bool
+    C2TokOp(t ↦ t_lit, o ↦ o_lit, rec ↦ rec_lit)
+
+    ok ∈ Bool = (rec_star ∧ (o_star matches OpMul)
+        ∧ rec_cc ∧ (o_cc matches OpConcat)
+        ∧ (¬rec_lit))
+    msg ∈ String = (ok ? "ok" : "BAD")
+    effects ∈ Seq(Effect) = ⟨LibCall("libc", "puts", ⟨ArgStr(msg)⟩), Exit(0)⟩

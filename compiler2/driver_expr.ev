@@ -1,0 +1,506 @@
+-- MODULE DriverExpr
+-- CONSUMES: a Token stream (TokenList) + the Pratt parser stacks/depths
+--           carried by the caller (PrOps op-stack, ExprList output-stack,
+--           expop / pd / qd / cd / qstop). Pure: value-in, value-out.
+-- PRODUCES: per token, the classification (C2TokOp t→Op, C2AtomE t→Expr),
+--           the precedence row (C2Prec o→level/assoc/chain), and ONE
+--           shunting-yard action (C2PrattStep): the next stacks + a
+--           finished Expr when the expression closes.
+-- MAINTAINS: the oracle-verified precedence ladder (⇒1 · ?:2 · ∨3 · ∧4 ·
+--           chain-cmp 5 · +-6 · */7 · unary 8); right-assoc ternary;
+--           comparison-chain folding to a conjunction of consecutive
+--           pairs. No FSM carry of its own — these are pure helper claims.
+--
+-- Tokens → expression tree (precedence-climbing Pratt, incl. ternary).
+-- The driver's parse FSM (driver_main, pmode 3) drives C2PrattStep one
+-- action per tick over the shared token window; these claims are the
+-- pure folding core it calls. Owns the ternary PARSE path (the C2Ite
+-- handle-stack underflow bug lives downstream in the build step, not here).
+-- ── Token → Op classifier (wider than parser.ev's TokenToOp) ──────
+claim C2TokOp(t ∈ Token, o ∈ Op, rec ∈ Bool)
+    c2to_pl ∈ Bool = (t matches Plus)
+    c2to_mi ∈ Bool = (t matches Minus)
+    c2to_st ∈ Bool = (t matches Star)
+    c2to_sl ∈ Bool = (t matches Slash)
+    c2to_eq ∈ Bool = (t matches Eq)
+    c2to_lt ∈ Bool = (t matches Lt)
+    c2to_gt ∈ Bool = (t matches Gt)
+    c2to_le ∈ Bool = (t matches OpLe)
+    c2to_ge ∈ Bool = (t matches OpGe)
+    c2to_ne ∈ Bool = (t matches OpNe)
+    c2to_an ∈ Bool = (t matches OpAnd)
+    c2to_or ∈ Bool = (t matches OpOr)
+    c2to_im ∈ Bool = (t matches OpImplies)
+    c2to_cc ∈ Bool = (t matches PlusPlus)
+    o = (c2to_pl ? OpPlus
+       : c2to_mi ? OpSub
+       : c2to_st ? OpMul
+       : c2to_sl ? OpDiv
+       : c2to_eq ? OpEq
+       : c2to_lt ? OpLt
+       : c2to_gt ? OpGt
+       : c2to_le ? OpLeq
+       : c2to_ge ? OpGeq
+       : c2to_ne ? OpNeq
+       : c2to_an ? OpConj
+       : c2to_or ? OpDisj
+       : c2to_im ? OpImpl
+       : c2to_cc ? OpConcat
+       : OpPlus)
+    rec = (c2to_pl ∨ c2to_mi ∨ c2to_st ∨ c2to_sl ∨ c2to_eq
+         ∨ c2to_lt ∨ c2to_gt ∨ c2to_le ∨ c2to_ge ∨ c2to_ne
+         ∨ c2to_an ∨ c2to_or ∨ c2to_im ∨ c2to_cc)
+
+-- ── Token → atomic Expr ───────────────────────────────────────────
+claim C2AtomE(t ∈ Token, e ∈ Expr, ok ∈ Bool)
+    c2a_int ∈ Bool = (t matches IntLit(_))
+    c2a_id  ∈ Bool = (t matches Ident(_))
+    c2a_tr  ∈ Bool = (t matches KwTrue)
+    c2a_fa  ∈ Bool = (t matches KwFalse)
+    c2a_sl  ∈ Bool = (t matches StringLit(_))
+    -- G2: a FloatLit atom (FtiTok's (scaled, digits, 0) packing)
+    -- becomes the `__real` call shape — the walker lowers it to ONE
+    -- Z3_mk_numeral("scaled/10^digits", Real) tick.
+    c2a_fl  ∈ Bool = (t matches FloatLit(_, _, _))
+    c2a_n ∈ Int = match t
+        IntLit(n) ⇒ n
+        _ ⇒ 0
+    c2a_s ∈ String = match t
+        Ident(s) ⇒ s
+        _ ⇒ ""
+    c2a_ls ∈ String = match t
+        StringLit(s) ⇒ s
+        _ ⇒ ""
+    c2a_fs ∈ Int = match t
+        FloatLit(w, _, _) ⇒ w
+        _ ⇒ 0
+    c2a_fd ∈ Int = match t
+        FloatLit(_, f, _) ⇒ f
+        _ ⇒ 0
+    e = (c2a_int ? EInt(c2a_n)
+       : c2a_id ? EIdent(c2a_s)
+       : c2a_tr ? EIdent("true")
+       : c2a_fa ? EIdent("false")
+       : c2a_sl ? EStr(c2a_ls)
+       : c2a_fl ? ECall2("__real", EInt(c2a_fs), EInt(c2a_fd))
+       : ENoExpr)
+    ok = (c2a_int ∨ c2a_id ∨ c2a_tr ∨ c2a_fa ∨ c2a_sl ∨ c2a_fl)
+
+-- ── Operator precedence (oracle-verified ladder, P3c) ─────────────
+-- Probed empirically against the frozen bootstrap oracle:
+--   ⇒ 1 (right-assoc) · ?: 2 (right) · ∨ 3 · ∧ 4 ·
+--   chain ops < > ≤ ≥ = ≠ all at 5 (a run of them lowers to a
+--   conjunction of consecutive pairs: `flag = x < 5` →
+--   (and (= flag x) (< x 5)), `0 < x < 5` → (and (< 0 x) (< x 5)))
+--   · + - 6 · * / 7 · unary ¬ 8.
+-- NOTE: CLAUDE.md's footgun section claims ⇒ binds TIGHTER than ∧;
+-- the oracle disagrees (`a ∧ b ⇒ c` → (=> (and a b) c),
+-- `a ⇒ b ∧ c` → (=> a (and b c))). The oracle is the reference
+-- semantics; the divergence is pinned in
+-- docs/plans/compiler2-driver-notes.md.
+claim C2Prec(o ∈ Op, n ∈ Int, right ∈ Bool, chain ∈ Bool)
+    pc_im ∈ Bool = (o matches OpImpl)
+    pc_or ∈ Bool = (o matches OpDisj)
+    pc_an ∈ Bool = (o matches OpConj)
+    pc_lt ∈ Bool = (o matches OpLt)
+    pc_gt ∈ Bool = (o matches OpGt)
+    pc_le ∈ Bool = (o matches OpLeq)
+    pc_ge ∈ Bool = (o matches OpGeq)
+    pc_ne ∈ Bool = (o matches OpNeq)
+    pc_eq ∈ Bool = (o matches OpEq)
+    pc_pl ∈ Bool = (o matches OpPlus)
+    pc_su ∈ Bool = (o matches OpSub)
+    pc_mu ∈ Bool = (o matches OpMul)
+    pc_dv ∈ Bool = (o matches OpDiv)
+    pc_cc ∈ Bool = (o matches OpConcat)
+    chain = (pc_lt ∨ pc_gt ∨ pc_le ∨ pc_ge ∨ pc_ne ∨ pc_eq)
+    n = (pc_im ? 1
+       : pc_or ? 3
+       : pc_an ? 4
+       : chain ? 5
+       : (pc_pl ∨ pc_su ∨ pc_cc) ? 6
+       : (pc_mu ∨ pc_dv) ? 7
+       : 0)
+    right = pc_im
+
+-- Operator-stack entries for the Pratt FSM. PrLP / PrQuest /
+-- PrCall / PrIdx are floor markers (never auto-reduced; prec -1);
+-- PrTern is the armed ternary (pops 3 operands); PrNot the prefix ¬
+-- and PrHash the prefix `#` (each pops 1; PrHash reduces to
+-- ECall1("str_len", e)); PrBin a binary operator (pops 2).
+-- PrCall(name, k) carries the call head + the COMMA count so far —
+-- argc at close is k+1 (the surface has no zero-arg calls).
+-- PrIdx is the postfix-index floor: a `[` after a completed operand
+-- pushes it (D3 — `last_results[0]`); the matching `]` pops base +
+-- index into ECall2("__index", base, idx). `[` bumps pd like `(`,
+-- so a `]` can never terminate the expression while a PrIdx is open.
+-- PrNone is the empty-stack sentinel.
+enum PrOp =
+    PrBin(Op)
+    PrLP
+    PrQuest
+    PrTern
+    PrNot
+    PrHash
+    PrCall(String, Int)
+    PrIdx
+    PrNone
+
+enum PrOps =
+    PrNil
+    PrCons(PrOp, PrOps)
+
+-- ── Pratt parser step (shunting-yard; ONE action per invocation) ──
+-- State in: (toks, outs, ops, expop, pd, qd, cd); state out: the n*
+-- mirrors. Each call performs exactly one action:
+--   shift   — consume an atom / `(` / `¬` / `#` / binary op / `?`,
+--             or an Ident + `(` CALL HEAD (the only 2-token action;
+--             scons = 2) pushing the PrCall floor
+--   reduce  — pop the top operator, apply it to the operand stack
+--   close   — consume `)` matching the PrLP at top (pd > 0), or the
+--             PrCall at top (build ECall1/2/3 from the top k+1
+--             operands)
+--   bump    — consume `,` over a PrCall top: arg count + 1 (a `,`
+--             below a non-floor top reduces first, like `)`)
+--   swap    — consume `:`, arm the pending PrQuest into PrTern
+--   done    — head token can't extend the expression and the op
+--             stack is empty; sres = the single operand left
+-- expop: true when the next token must START an operand. pd / qd /
+-- cd: open-paren, pending-`?` and open-call depths — they decide
+-- whether `)` / `:` / `,` continue the expression or terminate it
+-- (the driver's expression contexts end at the first token that
+-- can't continue: the next body line's head, the effects literal's
+-- `,` / `) ⟩`, EOF — a call's `(` bumps pd too, so its `)` never
+-- terminates; a `,` only continues when cd > 0).
+-- A token that can't start an operand while expop holds is a
+-- malformed line: done fires with sres = ENoExpr.
+-- The driver runs this once per tick under pmode = 3;
+-- tests/kernel/compiler2/pratt_fixture.ev runs the same claim
+-- standalone.
+-- qstop (D2): when set, a `?` at top level (pd = 0, qd = 0) in
+-- operator position TERMINATES the expression instead of arming a
+-- ternary — the conditional-effects chain walk parses its branch
+-- GUARDS this way (the `?` belongs to the chain, not the guard).
+claim C2PrattStep(toks ∈ TokenList, outs ∈ ExprList, ops ∈ PrOps,
+        expop ∈ Bool, pd ∈ Int, qd ∈ Int, cd ∈ Int, qstop ∈ Bool,
+        calls ∈ String,
+        ntoks ∈ TokenList, nouts ∈ ExprList, nops ∈ PrOps,
+        nexpop ∈ Bool, npd ∈ Int, nqd ∈ Int, ncd ∈ Int,
+        sdone ∈ Bool, sres ∈ Expr, scons ∈ Int)
+    ps_hd ∈ Token = match toks
+        TLCons(t, _) ⇒ t
+        TLNil ⇒ EofTok
+    ps_tl ∈ TokenList = match toks
+        TLCons(_, r) ⇒ r
+        TLNil ⇒ TLNil
+    ps_nx ∈ Token = match ps_tl
+        TLCons(t, _) ⇒ t
+        TLNil ⇒ EofTok
+    ps_tl2 ∈ TokenList = match ps_tl
+        TLCons(_, r) ⇒ r
+        TLNil ⇒ TLNil
+    -- deeper lookahead (C4): the `matches` postfix action consumes
+    -- up to 7 tokens (`matches Ctor ( _ , _ )`) in ONE action, so
+    -- the pattern shape is decided from positions 2..6.
+    ps_nx2 ∈ Token = match ps_tl2
+        TLCons(t, _) ⇒ t
+        TLNil ⇒ EofTok
+    ps_tl3 ∈ TokenList = match ps_tl2
+        TLCons(_, r) ⇒ r
+        TLNil ⇒ TLNil
+    ps_nx3 ∈ Token = match ps_tl3
+        TLCons(t, _) ⇒ t
+        TLNil ⇒ EofTok
+    ps_tl4 ∈ TokenList = match ps_tl3
+        TLCons(_, r) ⇒ r
+        TLNil ⇒ TLNil
+    ps_nx4 ∈ Token = match ps_tl4
+        TLCons(t, _) ⇒ t
+        TLNil ⇒ EofTok
+    ps_tl5 ∈ TokenList = match ps_tl4
+        TLCons(_, r) ⇒ r
+        TLNil ⇒ TLNil
+    ps_nx5 ∈ Token = match ps_tl5
+        TLCons(t, _) ⇒ t
+        TLNil ⇒ EofTok
+    ps_tl6 ∈ TokenList = match ps_tl5
+        TLCons(_, r) ⇒ r
+        TLNil ⇒ TLNil
+    ps_nx6 ∈ Token = match ps_tl6
+        TLCons(t, _) ⇒ t
+        TLNil ⇒ EofTok
+    ps_tl7 ∈ TokenList = match ps_tl6
+        TLCons(_, r) ⇒ r
+        TLNil ⇒ TLNil
+
+    ps_top ∈ PrOp = match ops
+        PrCons(o2, _) ⇒ o2
+        PrNil ⇒ PrNone
+    ps_ops_tl ∈ PrOps = match ops
+        PrCons(_, r) ⇒ r
+        PrNil ⇒ PrNil
+    ps_ops_nil ∈ Bool = (ops matches PrNil)
+
+    ps_o1 ∈ Expr = match outs
+        ELCons(e1, _) ⇒ e1
+        ELNil ⇒ ENoExpr
+    ps_o_t1 ∈ ExprList = match outs
+        ELCons(_, r) ⇒ r
+        ELNil ⇒ ELNil
+    ps_o2 ∈ Expr = match ps_o_t1
+        ELCons(e1, _) ⇒ e1
+        ELNil ⇒ ENoExpr
+    ps_o_t2 ∈ ExprList = match ps_o_t1
+        ELCons(_, r) ⇒ r
+        ELNil ⇒ ELNil
+    ps_o3 ∈ Expr = match ps_o_t2
+        ELCons(e1, _) ⇒ e1
+        ELNil ⇒ ENoExpr
+    ps_o_t3 ∈ ExprList = match ps_o_t2
+        ELCons(_, r) ⇒ r
+        ELNil ⇒ ELNil
+
+    -- head-token classification
+    ps_atom_e ∈ Expr
+    ps_atom_ok ∈ Bool
+    C2AtomE(t ↦ ps_hd, e ↦ ps_atom_e, ok ↦ ps_atom_ok)
+    ps_bin_o ∈ Op
+    ps_bin_ok ∈ Bool
+    C2TokOp(t ↦ ps_hd, o ↦ ps_bin_o, rec ↦ ps_bin_ok)
+    ps_is_q ∈ Bool = (ps_hd matches Question)
+    ps_is_col ∈ Bool = (ps_hd matches Colon)
+    ps_is_lp ∈ Bool = (ps_hd matches LParen)
+    ps_is_rp ∈ Bool = (ps_hd matches RParen)
+    ps_is_not ∈ Bool = (ps_hd matches OpNot)
+    ps_is_hash ∈ Bool = (ps_hd matches Hash)
+    ps_is_com ∈ Bool = (ps_hd matches Comma)
+    ps_is_lb ∈ Bool = (ps_hd matches LBracket)
+    ps_is_rb ∈ Bool = (ps_hd matches RBracket)
+    ps_hd_nm ∈ String = match ps_hd
+        Ident(s2) ⇒ s2
+        _ ⇒ ""
+    ps_nx_lp ∈ Bool = (ps_nx matches LParen)
+
+    -- dot-fold (G1 records): in OPERATOR position, `. Ident` over an
+    -- EIdent top operand folds into the flattened dotted name
+    -- (`p` `.` `x` → EIdent("p.x")); chains fold left (`s.pos.x`).
+    -- The 2-token action mirrors the call head; nothing else changes.
+    ps_o1_id ∈ Bool = (ps_o1 matches EIdent(_))
+    ps_o1_nm ∈ String = match ps_o1
+        EIdent(s6) ⇒ s6
+        _ ⇒ ""
+    ps_nx_nm ∈ String = match ps_nx
+        Ident(s7) ⇒ s7
+        _ ⇒ ""
+    ps_dotf ∈ Bool = ((¬expop) ∧ (ps_hd matches Dot)
+        ∧ (ps_nx matches Ident(_)) ∧ ps_o1_id)
+    -- G2: `.field` over a NON-ident completed operand (e.g.
+    -- `groups[0].items`) folds to ECall2("__field", base, field) —
+    -- the walker lowers it to mk_app of the registry accessor.
+    ps_o1_some ∈ Bool = (¬(outs matches ELNil))
+    ps_dotf2 ∈ Bool = ((¬expop) ∧ (ps_hd matches Dot)
+        ∧ (ps_nx matches Ident(_)) ∧ (¬ps_o1_id) ∧ ps_o1_some)
+
+    -- `matches` postfix (C4): in OPERATOR position (operand just
+    -- completed), `matches Ctor` / `matches Ctor(_)` /
+    -- `matches Ctor(_, _)` is consumed in ONE action (2/5/7 tokens)
+    -- and replaces the top operand with EMatches(ctor, top). It
+    -- binds tightest (applies to the completed operand directly) —
+    -- corpus scrutinees are atoms/paren groups. Inner binds are
+    -- wildcards in the whole corpus, so the names at positions 3/5
+    -- are not inspected.
+    ps_is_kwm ∈ Bool = (ps_hd matches KwMatches)
+    ps_mt_hd ∈ Bool = ((¬expop) ∧ ps_is_kwm ∧ (ps_nx matches Ident(_)))
+    ps_mt_nm ∈ String = match ps_nx
+        Ident(s3) ⇒ s3
+        _ ⇒ ""
+    ps_mt_lp ∈ Bool = (ps_nx2 matches LParen)
+    ps_mt_p1 ∈ Bool = (ps_mt_lp ∧ (ps_nx3 matches Ident(_))
+        ∧ (ps_nx4 matches RParen))
+    ps_mt_p2 ∈ Bool = (ps_mt_lp ∧ (ps_nx3 matches Ident(_))
+        ∧ (ps_nx4 matches Comma) ∧ (ps_nx5 matches Ident(_))
+        ∧ (ps_nx6 matches RParen))
+    ps_match ∈ Bool = (ps_mt_hd ∧ ((¬ps_mt_lp) ∨ ps_mt_p1 ∨ ps_mt_p2))
+    ps_mt_cons ∈ Int = (ps_mt_p2 ? 7 : ps_mt_p1 ? 5 : 2)
+
+    ps_in_p0 ∈ Int
+    ps_in_r0 ∈ Bool
+    ps_in_ch0 ∈ Bool
+    C2Prec(o ↦ ps_bin_o, n ↦ ps_in_p0, right ↦ ps_in_r0, chain ↦ ps_in_ch0)
+    ps_in_p ∈ Int = (ps_is_q ? 2 : ps_in_p0)
+    ps_in_right ∈ Bool = (ps_is_q ? true : ps_in_r0)
+
+    -- top-of-op-stack decomposition
+    ps_top_op ∈ Op = match ps_top
+        PrBin(o2) ⇒ o2
+        _ ⇒ OpPlus
+    ps_top_bin ∈ Bool = (ps_top matches PrBin(_))
+    ps_top_not ∈ Bool = (ps_top matches PrNot)
+    ps_top_hash ∈ Bool = (ps_top matches PrHash)
+    ps_top_tern ∈ Bool = (ps_top matches PrTern)
+    ps_top_quest ∈ Bool = (ps_top matches PrQuest)
+    ps_top_lp ∈ Bool = (ps_top matches PrLP)
+    ps_top_call ∈ Bool = (ps_top matches PrCall(_, _))
+    ps_top_idx ∈ Bool = (ps_top matches PrIdx)
+    ps_tc_nm ∈ String = match ps_top
+        PrCall(n2, _) ⇒ n2
+        _ ⇒ ""
+    ps_tc_k ∈ Int = match ps_top
+        PrCall(_, k2) ⇒ k2
+        _ ⇒ 0
+    ps_tb_p ∈ Int
+    ps_tb_r ∈ Bool
+    ps_top_chain ∈ Bool
+    C2Prec(o ↦ ps_top_op, n ↦ ps_tb_p, right ↦ ps_tb_r, chain ↦ ps_top_chain)
+    ps_top_p ∈ Int = (ps_top_bin ? ps_tb_p
+        : (ps_top_not ∨ ps_top_hash) ? 8
+        : ps_top_tern ? 2
+        : 0 - 1)
+    ps_top_red ∈ Bool = (ps_top_bin ∨ ps_top_not ∨ ps_top_tern ∨ ps_top_hash)
+
+    -- chain-comparison lowering parts (lhs = ps_o2 when reducing a
+    -- PrBin whose op is a chain op): a chain-shaped lhs turns
+    -- `l op r` into (and l (op middle r)), duplicating the shared
+    -- middle operand — same lowering the oracle performs.
+    ps_l_op ∈ Op
+    ps_l_l ∈ Expr
+    ps_l_r ∈ Expr
+    ps_l_bin ∈ Bool
+    BoolExprBinopParts(e ↦ ps_o2, op ↦ ps_l_op, lhs ↦ ps_l_l,
+        rhs ↦ ps_l_r, is_binop ↦ ps_l_bin)
+    ps_l_p ∈ Int
+    ps_l_rt ∈ Bool
+    ps_l_chain ∈ Bool
+    C2Prec(o ↦ ps_l_op, n ↦ ps_l_p, right ↦ ps_l_rt, chain ↦ ps_l_chain)
+    ps_l_conj ∈ Bool = (ps_l_op matches OpConj)
+    ps_lr_op ∈ Op
+    ps_lr_l ∈ Expr
+    ps_lr_r ∈ Expr
+    ps_lr_bin ∈ Bool
+    BoolExprBinopParts(e ↦ ps_l_r, op ↦ ps_lr_op, lhs ↦ ps_lr_l,
+        rhs ↦ ps_lr_r, is_binop ↦ ps_lr_bin)
+    ps_lr_p ∈ Int
+    ps_lr_rt ∈ Bool
+    ps_lr_chain ∈ Bool
+    C2Prec(o ↦ ps_lr_op, n ↦ ps_lr_p, right ↦ ps_lr_rt, chain ↦ ps_lr_chain)
+    ps_chain1 ∈ Bool = (ps_top_chain ∧ ps_l_bin ∧ ps_l_chain)
+    ps_chain2 ∈ Bool = (ps_top_chain ∧ ps_l_bin ∧ ps_l_conj
+        ∧ ps_lr_bin ∧ ps_lr_chain)
+    ps_apply_bin ∈ Expr = (ps_chain1
+            ? EBinOp(OpConj, ps_o2, EBinOp(ps_top_op, ps_l_r, ps_o1))
+        : ps_chain2
+            ? EBinOp(OpConj, ps_o2, EBinOp(ps_top_op, ps_lr_r, ps_o1))
+        : EBinOp(ps_top_op, ps_o2, ps_o1))
+
+    -- action selection (exactly one fires). A call head (Ident
+    -- followed by `(` in operand position) takes priority over the
+    -- plain atom shift of the same Ident.
+    ps_call_key ∈ String = "|" ++ substr(ps_hd_nm ++ "                               ", 0, 31)
+    ps_call_ok ∈ Bool = (index_of(calls, ps_call_key, 0) ≥ 0)
+    ps_sh_call ∈ Bool = (expop ∧ (ps_hd matches Ident(_)) ∧ ps_nx_lp
+        ∧ ps_call_ok)
+    ps_sh_atom ∈ Bool = (expop ∧ ps_atom_ok ∧ (¬ps_sh_call))
+    ps_sh_lp ∈ Bool = (expop ∧ ps_is_lp)
+    ps_sh_not ∈ Bool = (expop ∧ ps_is_not)
+    ps_sh_hash ∈ Bool = (expop ∧ ps_is_hash)
+    ps_bad ∈ Bool = (expop ∧ (¬ps_atom_ok) ∧ (¬ps_is_lp) ∧ (¬ps_is_not)
+        ∧ (¬ps_is_hash))
+
+    ps_q_stop ∈ Bool = (qstop ∧ ps_is_q ∧ (pd = 0) ∧ (qd = 0))
+    ps_cont ∈ Bool = (ps_bin_ok ∨ (ps_is_q ∧ (¬ps_q_stop)) ∨ ps_is_lb
+        ∨ ps_match ∨ ps_dotf ∨ ps_dotf2
+        ∨ (ps_is_col ∧ (qd > 0)) ∨ (ps_is_rp ∧ (pd > 0))
+        ∨ (ps_is_rb ∧ (pd > 0))
+        ∨ (ps_is_com ∧ (cd > 0)))
+    ps_arr ∈ Bool = ((¬expop) ∧ (ps_bin_ok ∨ (ps_is_q ∧ (¬ps_q_stop))))
+    ps_arr_red ∈ Bool = (ps_arr ∧ ps_top_red
+        ∧ (ps_in_right ? ps_top_p > ps_in_p : ps_top_p ≥ ps_in_p))
+    ps_arr_shift ∈ Bool = (ps_arr ∧ (¬ps_arr_red))
+    ps_col ∈ Bool = ((¬expop) ∧ ps_is_col ∧ (qd > 0))
+    ps_col_swap ∈ Bool = (ps_col ∧ ps_top_quest)
+    ps_rp ∈ Bool = ((¬expop) ∧ ps_is_rp ∧ (pd > 0))
+    ps_rp_close ∈ Bool = (ps_rp ∧ ps_top_lp)
+    ps_rp_call ∈ Bool = (ps_rp ∧ ps_top_call)
+    -- postfix index (D3): `[` after a completed operand opens a
+    -- PrIdx floor; `]` over the PrIdx top closes it.
+    ps_sh_idx ∈ Bool = ((¬expop) ∧ ps_is_lb)
+    ps_rb ∈ Bool = ((¬expop) ∧ ps_is_rb ∧ (pd > 0))
+    ps_rb_close ∈ Bool = (ps_rb ∧ ps_top_idx)
+    ps_com ∈ Bool = ((¬expop) ∧ ps_is_com ∧ (cd > 0))
+    ps_com_bump ∈ Bool = (ps_com ∧ ps_top_call)
+    ps_end ∈ Bool = ((¬expop) ∧ (¬ps_cont))
+    ps_need_red ∈ Bool = ((ps_col ∧ (¬ps_col_swap))
+        ∨ (ps_rp ∧ (¬ps_rp_close) ∧ (¬ps_rp_call))
+        ∨ (ps_rb ∧ (¬ps_rb_close))
+        ∨ (ps_com ∧ (¬ps_com_bump))
+        ∨ (ps_end ∧ (¬ps_ops_nil))
+        ∨ ps_arr_red)
+    ps_reduce ∈ Bool = (ps_need_red ∧ ps_top_red)
+    ps_discard ∈ Bool = (ps_need_red ∧ (¬ps_top_red))
+
+    sdone = (ps_bad ∨ (ps_end ∧ ps_ops_nil))
+    sres = (ps_bad ? ENoExpr : ps_o1)
+
+    ps_consume ∈ Bool = (ps_sh_atom ∨ ps_sh_lp ∨ ps_sh_not ∨ ps_sh_hash
+        ∨ ps_arr_shift ∨ ps_col_swap ∨ ps_rp_close ∨ ps_rp_call
+        ∨ ps_com_bump ∨ ps_sh_idx ∨ ps_rb_close)
+    scons = (ps_sh_call ? 2
+        : ps_match ? ps_mt_cons
+        : (ps_dotf ∨ ps_dotf2) ? 2
+        : ps_consume ? 1 : 0)
+    ntoks = (ps_sh_call ? ps_tl2
+        : ps_match ? (ps_mt_p2 ? ps_tl7 : ps_mt_p1 ? ps_tl5 : ps_tl2)
+        : (ps_dotf ∨ ps_dotf2) ? ps_tl2
+        : ps_consume ? ps_tl : toks)
+
+    -- call close: argc = comma count + 1; operands pop in reverse
+    -- (post-order — the top is the LAST arg).
+    ps_argc ∈ Int = ps_tc_k + 1
+    ps_call_e ∈ Expr = (ps_argc = 1 ? ECall1(ps_tc_nm, ps_o1)
+        : ps_argc = 2 ? ECall2(ps_tc_nm, ps_o2, ps_o1)
+        : ECall3(ps_tc_nm, ps_o3, ps_o2, ps_o1))
+    ps_call_base ∈ ExprList = (ps_argc = 1 ? ps_o_t1
+        : ps_argc = 2 ? ps_o_t2
+        : ps_o_t3)
+
+    ps_red_e ∈ Expr = (ps_top_not ? ENot(ps_o1)
+        : ps_top_hash ? ECall1("str_len", ps_o1)
+        : ps_top_tern ? ETernary(ps_o3, ps_o2, ps_o1)
+        : ps_apply_bin)
+    ps_red_base ∈ ExprList = ((ps_top_not ∨ ps_top_hash) ? ps_o_t1
+        : ps_top_tern ? ps_o_t3
+        : ps_o_t2)
+    ps_idx_e ∈ Expr = ECall2("__index", ps_o2, ps_o1)
+    nouts = (ps_sh_atom ? ELCons(ps_atom_e, outs)
+        : ps_reduce ? ELCons(ps_red_e, ps_red_base)
+        : ps_rp_call ? ELCons(ps_call_e, ps_call_base)
+        : ps_rb_close ? ELCons(ps_idx_e, ps_o_t2)
+        : ps_match ? ELCons(EMatches(ps_mt_nm, ps_o1), ps_o_t1)
+        : ps_dotf ? ELCons(EIdent(ps_o1_nm ++ "." ++ ps_nx_nm), ps_o_t1)
+        : ps_dotf2 ? ELCons(ECall2("__field", ps_o1, EIdent(ps_nx_nm)), ps_o_t1)
+        : outs)
+
+    ps_push ∈ PrOp = (ps_is_q ? PrQuest : PrBin(ps_bin_o))
+    nops = (ps_sh_lp ? PrCons(PrLP, ops)
+        : ps_sh_not ? PrCons(PrNot, ops)
+        : ps_sh_hash ? PrCons(PrHash, ops)
+        : ps_sh_call ? PrCons(PrCall(ps_hd_nm, 0), ops)
+        : ps_sh_idx ? PrCons(PrIdx, ops)
+        : ps_arr_shift ? PrCons(ps_push, ops)
+        : ps_col_swap ? PrCons(PrTern, ps_ops_tl)
+        : ps_com_bump ? PrCons(PrCall(ps_tc_nm, ps_tc_k + 1), ps_ops_tl)
+        : (ps_rp_close ∨ ps_rp_call ∨ ps_rb_close ∨ ps_reduce
+            ∨ ps_discard) ? ps_ops_tl
+        : ops)
+
+    nexpop = (ps_sh_atom ? false
+        : (ps_rp_close ∨ ps_rp_call ∨ ps_rb_close) ? false
+        : (ps_arr_shift ∨ ps_col_swap ∨ ps_sh_lp ∨ ps_sh_not
+            ∨ ps_sh_hash ∨ ps_sh_call ∨ ps_com_bump ∨ ps_sh_idx) ? true
+        : expop)
+
+    npd = ((ps_sh_lp ∨ ps_sh_call ∨ ps_sh_idx) ? pd + 1
+        : (ps_rp_close ∨ ps_rp_call ∨ ps_rb_close) ? pd - 1
+        : pd)
+    nqd = ((ps_arr_shift ∧ ps_is_q) ? qd + 1 : ps_col_swap ? qd - 1 : qd)
+    ncd = (ps_sh_call ? cd + 1 : ps_rp_call ? cd - 1 : cd)

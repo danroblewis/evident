@@ -1,0 +1,63 @@
+-- MODULE driver_ir — the shared C2 work-item IR vocabulary
+-- The intermediate representation produced by the line classifier and
+-- consumed by the work-item interpreter / dispatch: one claim-body line
+-- compiles to a small C2Items program over a C2H handle stack, with
+-- C2Binds/C2Frames carrying the composition-inline frame state. Hoisted
+-- out of driver.ev so the extracted modules (and their isolation tests)
+-- share the same IR definitions.
+import "compiler/parser.ev"
+
+-- ── Work items: one line of claim body = one small program ────────
+enum C2Item =
+    C2Process(Expr)
+    C2Op(Op)
+    C2Ite
+    C2Not
+    C2DeclConst(String, Int)
+    C2NatBound
+    C2PinEq
+    C2AssertTop
+    C2Drop
+    C2PushH(Int)
+    C2App(Int, Int)
+    C2SelectEq(Int)
+    C2LenEq(Int)
+    C2StrOp(String, Int)
+    C2SelH
+    C2SelEqH(Int)
+    C2LenEqH(Int)
+    C2Dup3
+    C2Swap
+    C2Rot3
+    C2BindScope(String, Int)
+    C2BindEnd
+    C2Real(Int, Int)
+    C2MkEmptySet(Int)
+    C2SetAdd
+    C2RecVal(String, Int)
+    C2RecDecl(String, Int)
+
+enum C2Items =
+    C2INil
+    C2ICons(C2Item, C2Items)
+
+-- Handle stack (Z3_ast handles, post-order operand order).
+enum C2H =
+    C2HNil
+    C2HCons(Int, C2H)
+
+-- ── F2: composition-inline frames ─────────────────────────────────
+-- A slot-call binding table: slot name → the CALLER's value HANDLE
+-- (built by the Pratt FSM + walker before the jump — values may be
+-- arbitrary expressions). ≤ 4 entries per call.
+enum C2Binds =
+    CBNil
+    CBCons(String, Int, C2Binds)
+
+-- The suspended-frame stack: (return cursor, saved α-prefix, saved
+-- binds, rest). A slot call pushes the CURRENT (pfx, binds) and
+-- installs fresh ones; a bare names-match inline pushes and KEEPS
+-- them (pure splice). Depth ≤ 8.
+enum C2Frames =
+    CFNil
+    CFCons(Int, String, C2Binds, C2Frames)

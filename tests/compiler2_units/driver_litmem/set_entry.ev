@@ -1,0 +1,46 @@
+-- DriverLitMem isolation — the set-literal walk entry latches.
+--
+-- Drives a `x ∉ { … }` membership entry (d_enter_set, one-shot at
+-- tc = 1) with classifier name c_name = "x" and the negated-membership
+-- flag c_is_nmem true. The pmode-7 set walk must latch ms_name = "x"
+-- and ms_neg = true on entry and hold them. We report "<name>/<sign>".
+-- If the entry latches regress, the name or the ∉ sign is wrong (the
+-- ∉ sign drives whether the folded Expr is C2Not-wrapped at assert).
+--
+-- entry: main
+-- expect: stdout = "x/neg"
+-- expect: exit = 0
+import "stdlib/kernel.ev"
+import "compiler/lexer.ev"
+import "compiler/parser.ev"
+import "compiler2/driver_ir.ev"
+import "compiler2/driver_litmem.ev"
+
+fsm main
+    tc ∈ Int
+    tc = (is_first_tick ? 0 : _tc + 1)
+    d_enter_set ∈ Bool = (tc = 1)
+    c_name ∈ String
+    c_name = (is_first_tick ? "x" : _c_name)
+    c_is_nmem ∈ Bool
+    c_is_nmem = (is_first_tick ? true : _c_is_nmem)
+    -- pmode-7 walk gate + pmode-8 inputs the lifted module reads (inert).
+    in_parse ∈ Bool
+    in_parse = (is_first_tick ? false : _in_parse)
+    pmode ∈ Int
+    pmode = (is_first_tick ? 0 : _pmode)
+    tok_ready ∈ Bool
+    tok_ready = (is_first_tick ? false : _tok_ready)
+    ww_t0 ∈ Token
+    ww_t0 = (is_first_tick ? EofTok : _ww_t0)
+    d_seq_mem ∈ Bool
+    d_seq_mem = (is_first_tick ? false : _d_seq_mem)
+    c_dname ∈ String
+    c_dname = (is_first_tick ? "" : _c_dname)
+    c_sq_rt ∈ Int
+    c_sq_rt = (is_first_tick ? 0 - 1 : _c_sq_rt)
+    ..DriverLitMem
+    e_msg ∈ String = ms_name ++ "/" ++ (ms_neg ? "neg" : "pos")
+    effects ∈ Seq(Effect) = (tc ≥ 2
+        ? ⟨LibCall("libc", "puts", ⟨ArgStr(e_msg)⟩), Exit(0)⟩
+        : ⟨LibCall("libc", "getpid", ⟨⟩)⟩)

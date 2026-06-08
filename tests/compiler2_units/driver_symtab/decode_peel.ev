@@ -1,0 +1,49 @@
+-- DriverSymtab isolation — handle-stack peel + work-item discriminator.
+--
+-- Pins the handle stack to ⟨99, 7⟩ and the work-item list to one
+-- C2DeclConst("x", 0). The module must peel d_h_top = 99, d_h_2nd = 7 and
+-- decode the current work item to d_it_decl = true. verdict = 1*(top=99)
+-- + 2*(2nd=7) + 4*d_it_decl = 7. Exercises the C2H stack decode and the
+-- C2Item opcode discriminator; either regressing changes the verdict.
+--
+-- entry: main
+-- expect: stdout = "7"
+-- expect: exit = 0
+import "stdlib/kernel.ev"
+import "compiler/lexer.ev"
+import "compiler/parser.ev"
+import "compiler2/driver_ir.ev"
+import "compiler2/driver_symtab.ev"
+
+fsm main
+    d_hstk_in ∈ C2H
+    d_hstk_in = (is_first_tick ? C2HCons(99, C2HCons(7, C2HNil)) : _d_hstk_in)
+    witems ∈ C2Items
+    witems = (is_first_tick ? C2ICons(C2DeclConst("x", 0), C2INil) : _witems)
+    d_in_claim ∈ Bool
+    d_in_claim = (is_first_tick ? false : _d_in_claim)
+    d_lk_read ∈ Bool
+    d_lk_read = (is_first_tick ? false : _d_lk_read)
+    d_lkname ∈ String
+    d_lkname = (is_first_tick ? "" : _d_lkname)
+    fl_on ∈ Bool
+    fl_on = (is_first_tick ? false : _fl_on)
+    il_ps ∈ Int
+    il_ps = (is_first_tick ? 0 : _il_ps)
+    in_parse ∈ Bool
+    in_parse = (is_first_tick ? false : _in_parse)
+    istep ∈ Int
+    istep = (is_first_tick ? 0 : _istep)
+    pmode ∈ Int
+    pmode = (is_first_tick ? 0 : _pmode)
+    rb_on ∈ Bool
+    rb_on = (is_first_tick ? false : _rb_on)
+    tok_ready ∈ Bool
+    tok_ready = (is_first_tick ? false : _tok_ready)
+    ..DriverSymtab
+    verdict ∈ Int = ((d_h_top = 99 ? 1 : 0) + (d_h_2nd = 7 ? 2 : 0)
+        + (d_it_decl ? 4 : 0))
+    v_msg ∈ String = str_from_int(verdict)
+    effects ∈ Seq(Effect) = ((¬is_first_tick)
+        ? ⟨LibCall("libc", "puts", ⟨ArgStr(v_msg)⟩), Exit(0)⟩
+        : ⟨LibCall("libc", "getpid", ⟨⟩)⟩)

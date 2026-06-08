@@ -1,0 +1,111 @@
+-- DriverBuildEff isolation — the ED effect-row selector.
+-- Act 2 (datatype run) step 2 is the name+constructor-list double write:
+-- ed_w2 must select it (w2=1, w5/w3u=0). Boundary case vs the w5 row.
+-- entry: main
+-- expect: stdout = "0/1/0"
+-- expect: exit = 0
+import "stdlib/kernel.ev"
+import "stdlib/z3_ast.ev"
+import "stdlib/z3_core.ev"
+import "stdlib/z3_seq.ev"
+import "stdlib/z3_datatypes.ev"
+import "compiler/lexer.ev"
+import "compiler/parser.ev"
+import "compiler2/translate2_bool.ev"
+import "compiler2/translate2_ctor.ev"
+import "compiler2/driver_buildeff.ev"
+
+fsm main
+    ed_cur_act ∈ Int
+    ed_cur_act = (is_first_tick ? 2 : _ed_cur_act)
+    ed_cur_step ∈ Int
+    ed_cur_step = (is_first_tick ? 2 : _ed_cur_step)
+    d_cap_int ∈ Int
+    d_cap_int = (is_first_tick ? 0 : _d_cap_int)
+    ed_fr2 ∈ Int
+    ed_fr2 = (is_first_tick ? 0 : _ed_fr2)
+    ed_h_f0 ∈ Int
+    ed_h_f0 = (is_first_tick ? 0 : _ed_h_f0)
+    ed_h_f1 ∈ Int
+    ed_h_f1 = (is_first_tick ? 0 : _ed_h_f1)
+    ed_h_f2 ∈ Int
+    ed_h_f2 = (is_first_tick ? 0 : _ed_h_f2)
+    ed_h_name ∈ Int
+    ed_h_name = (is_first_tick ? 0 : _ed_h_name)
+    ed_h_rec ∈ Int
+    ed_h_rec = (is_first_tick ? 0 : _ed_h_rec)
+    ed_nv ∈ Int
+    ed_nv = (is_first_tick ? 0 : _ed_nv)
+    ed_pack01 ∈ Int
+    ed_pack01 = (is_first_tick ? 0 : _ed_pack01)
+    ed_slot0 ∈ Int
+    ed_slot0 = (is_first_tick ? 0 : _ed_slot0)
+    ed_slot1 ∈ Int
+    ed_slot1 = (is_first_tick ? 0 : _ed_slot1)
+    ed_slot2 ∈ Int
+    ed_slot2 = (is_first_tick ? 0 : _ed_slot2)
+    ed_step ∈ Int
+    ed_step = (is_first_tick ? 0 : _ed_step)
+    ed_vidx ∈ Int
+    ed_vidx = (is_first_tick ? 0 : _ed_vidx)
+    st_base ∈ Int
+    st_base = (is_first_tick ? 0 : _st_base)
+    z_arena ∈ Int
+    z_arena = (is_first_tick ? 0 : _z_arena)
+    z_arrsort ∈ Int
+    z_arrsort = (is_first_tick ? 0 : _z_arrsort)
+    z_bsort ∈ Int
+    z_bsort = (is_first_tick ? 0 : _z_bsort)
+    z_cfg ∈ Int
+    z_cfg = (is_first_tick ? 0 : _z_cfg)
+    z_ctx ∈ Int
+    z_ctx = (is_first_tick ? 0 : _z_ctx)
+    z_effsort ∈ Int
+    z_effsort = (is_first_tick ? 0 : _z_effsort)
+    z_ege ∈ Int
+    z_ege = (is_first_tick ? 0 : _z_ege)
+    z_elen ∈ Int
+    z_elen = (is_first_tick ? 0 : _z_elen)
+    z_ift ∈ Int
+    z_ift = (is_first_tick ? 0 : _z_ift)
+    z_isort ∈ Int
+    z_isort = (is_first_tick ? 0 : _z_isort)
+    z_lastres ∈ Int
+    z_lastres = (is_first_tick ? 0 : _z_lastres)
+    z_lrge ∈ Int
+    z_lrge = (is_first_tick ? 0 : _z_lrge)
+    z_lrlen ∈ Int
+    z_lrlen = (is_first_tick ? 0 : _z_lrlen)
+    z_lrsort ∈ Int
+    z_lrsort = (is_first_tick ? 0 : _z_lrsort)
+    z_ressort ∈ Int
+    z_ressort = (is_first_tick ? 0 : _z_ressort)
+    z_sol ∈ Int
+    z_sol = (is_first_tick ? 0 : _z_sol)
+    z_sym_effs ∈ Int
+    z_sym_effs = (is_first_tick ? 0 : _z_sym_effs)
+    z_sym_elen ∈ Int
+    z_sym_elen = (is_first_tick ? 0 : _z_sym_elen)
+    z_sym_ift ∈ Int
+    z_sym_ift = (is_first_tick ? 0 : _z_sym_ift)
+    z_sym_lr ∈ Int
+    z_sym_lr = (is_first_tick ? 0 : _z_sym_lr)
+    z_sym_lrl ∈ Int
+    z_sym_lrl = (is_first_tick ? 0 : _z_sym_lrl)
+    z_zero ∈ Int
+    z_zero = (is_first_tick ? 0 : _z_zero)
+    ed_nullary ∈ Bool
+    ed_nullary = (is_first_tick ? false : _ed_nullary)
+    ed_res_harvest ∈ Bool
+    ed_res_harvest = (is_first_tick ? false : _ed_res_harvest)
+    ed_user ∈ Bool
+    ed_user = (is_first_tick ? false : _ed_user)
+    ed_name ∈ String
+    ed_name = (is_first_tick ? "" : _ed_name)
+    d_op_geq ∈ Op = OpGeq
+    ed_v ∈ EnumVariantDecl = EVNoVariant
+    ..DriverBuildEff
+    sel ∈ String = (ed_w5 ? "1" : "0") ++ "/" ++ (ed_w2 ? "1" : "0") ++ "/" ++ (ed_w3u ? "1" : "0")
+    effects ∈ Seq(Effect) = ((¬is_first_tick)
+        ? ⟨LibCall("libc", "puts", ⟨ArgStr(sel)⟩), Exit(0)⟩
+        : ⟨LibCall("libc", "getpid", ⟨⟩)⟩)

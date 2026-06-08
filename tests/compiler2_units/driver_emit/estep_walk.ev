@@ -1,0 +1,57 @@
+-- DriverEmit isolation — the EMIT program counter walks once done.
+--
+-- The EMIT phase parks at estep = −1 until d_all_done, then steps
+-- 0→1→2→…→5 (capped) one per tick — solver-to-string, cstr-copy,
+-- render-capture, then the free+puts+Exit row. We hold d_all_done true
+-- and let estep drive the exit at ≥ 5, reporting estep. If the counter
+-- fails to launch (d_all_done gate) or miscaps, it never reaches 5 (the
+-- fixture times out) or reports the wrong value.
+--
+-- entry: main
+-- expect: stdout = "5"
+-- expect: exit = 0
+import "stdlib/kernel.ev"
+import "stdlib/z3_ast.ev"
+import "stdlib/z3_core.ev"
+import "compiler/lexer.ev"
+import "compiler/parser.ev"
+import "compiler2/driver_emit.ev"
+
+fsm main
+    d_all_done ∈ Bool
+    d_all_done = (is_first_tick ? true : _d_all_done)
+    d_cap_int ∈ Int
+    d_cap_int = (is_first_tick ? 0 : _d_cap_int)
+    d_cap_str ∈ String
+    d_cap_str = (is_first_tick ? "" : _d_cap_str)
+    z_ctx ∈ Int
+    z_ctx = (is_first_tick ? 0 : _z_ctx)
+    z_sol ∈ Int
+    z_sol = (is_first_tick ? 0 : _z_sol)
+    fstr ∈ String
+    fstr = (is_first_tick ? "" : _fstr)
+    saw_lr ∈ Bool
+    saw_lr = (is_first_tick ? false : _saw_lr)
+    saw_ift ∈ Bool
+    saw_ift = (is_first_tick ? false : _saw_ift)
+    cdstr ∈ String
+    cdstr = (is_first_tick ? "" : _cdstr)
+    tbase ∈ Int
+    tbase = (is_first_tick ? 0 : _tbase)
+    st_base ∈ Int
+    st_base = (is_first_tick ? 0 : _st_base)
+    ci_base ∈ Int
+    ci_base = (is_first_tick ? 0 : _ci_base)
+    -- DriverEmit's d_prelude string literal contains the text
+    -- "last_results", which trips the oracle's saw_lr heuristic and
+    -- suppresses the genuine `last_results` declaration. A real read
+    -- forces it back into the build context so the kernel's per-tick
+    -- result carry resolves (otherwise: "unknown constant last_results").
+    lr_probe ∈ Int = match last_results[0]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+    ..DriverEmit
+    e_msg ∈ String = str_from_int(estep + (lr_probe - lr_probe))
+    effects ∈ Seq(Effect) = (estep ≥ 5
+        ? ⟨LibCall("libc", "puts", ⟨ArgStr(e_msg)⟩), Exit(0)⟩
+        : ⟨LibCall("libc", "getpid", ⟨⟩)⟩)

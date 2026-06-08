@@ -1,0 +1,64 @@
+-- DriverBroadcast isolation — the per-field broadcast walk.
+--
+-- Drives a record-pinned membership completion (p_done with pk_kind 1,
+-- pk_rec 0, not bad) on one tick, then holds the claim-walk dispatch
+-- gate open with a 2-field record (rt_nf0 = 2). The broadcast must arm
+-- (rb_on), reset rb_fi to 0, then step it 0→1→2 one field per tick and
+-- disarm at the last field. We report rb_fi after the walk settles.
+-- If the loop miscounts fields, stalls, or fails to arm/disarm, rb_fi is
+-- not 2 and this fails.
+--
+-- entry: main
+-- expect: stdout = "2"
+-- expect: exit = 0
+import "stdlib/kernel.ev"
+import "compiler/parser.ev"
+import "compiler2/driver_ir.ev"
+import "compiler2/driver_record.ev"
+import "compiler2/driver_broadcast.ev"
+
+fsm main
+    -- tick counter to time the one-shot entry and the exit.
+    tc ∈ Int
+    tc = (is_first_tick ? 0 : _tc + 1)
+    -- Record-pin completion fires once, at tc = 1.
+    p_done ∈ Bool = (tc = 1)
+    pk_kind ∈ Int
+    pk_kind = (is_first_tick ? 1 : _pk_kind)
+    pk_rec ∈ Int
+    pk_rec = (is_first_tick ? 0 : _pk_rec)
+    pr_bad ∈ Bool
+    pr_bad = (is_first_tick ? false : _pr_bad)
+    pk_name ∈ String
+    pk_name = (is_first_tick ? "p" : _pk_name)
+    pr_sres ∈ Expr
+    pr_sres = (is_first_tick ? ENoExpr : _pr_sres)
+    -- Claim-walk dispatch gate: held open so the broadcast can step.
+    d_in_claim ∈ Bool
+    d_in_claim = (is_first_tick ? true : _d_in_claim)
+    d_witems_nil ∈ Bool
+    d_witems_nil = (is_first_tick ? true : _d_witems_nil)
+    il_ps ∈ Int
+    il_ps = (is_first_tick ? 0 : _il_ps)
+    tok_ready ∈ Bool
+    tok_ready = (is_first_tick ? true : _tok_ready)
+    -- A 2-field record type at registry slot 0.
+    rt_nf0 ∈ Int
+    rt_nf0 = (is_first_tick ? 2 : _rt_nf0)
+    rt_nf1 ∈ Int
+    rt_nf1 = (is_first_tick ? 0 : _rt_nf1)
+    rt_nf2 ∈ Int
+    rt_nf2 = (is_first_tick ? 0 : _rt_nf2)
+    rt_f0 ∈ String
+    rt_f0 = (is_first_tick ? "" : _rt_f0)
+    rt_f1 ∈ String
+    rt_f1 = (is_first_tick ? "" : _rt_f1)
+    rt_f2 ∈ String
+    rt_f2 = (is_first_tick ? "" : _rt_f2)
+    st_names ∈ String
+    st_names = (is_first_tick ? "" : _st_names)
+    ..DriverBroadcast
+    fi_msg ∈ String = str_from_int(rb_fi)
+    effects ∈ Seq(Effect) = (tc ≥ 5
+        ? ⟨LibCall("libc", "puts", ⟨ArgStr(fi_msg)⟩), Exit(0)⟩
+        : ⟨LibCall("libc", "getpid", ⟨⟩)⟩)

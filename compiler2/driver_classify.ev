@@ -1,0 +1,270 @@
+-- MODULE DriverClassify
+-- CONSUMES: the decoded token window head views (ww_t0..ww_t7), the
+--           classify-mode gate (d_classify), the claim/type index
+--           (ci_names) + symbol table (st_names), the inline-frame state
+--           (_il_depth, _il_pfx, ilb_n0..n5), the record registry
+--           (rt_n0..n2, rt_sort0..2), the user-enum + seq-var carries
+--           (_ue_done, _ue_name, _sq_set, _sq_name), and the sibling
+--           sub-walks' per-line enter signals (el_*/mp_*/sl_*/cw_slot/
+--           q_*/pt_*) that fold into d_enter_pratt. Wide by nature: this
+--           is the central dispatch brain — it inspects the whole window
+--           against every other subsystem's entry condition (justified
+--           §6.4).
+-- PRODUCES: the per-line classification flags (c_is_mem/c_pinned/c_bound/
+--           c_eff_line/c_seq_line/c_match_line/c_comp_line/c_ty_line/
+--           c_strin_line/…), the line-end + frame-pop decisions
+--           (d_line_end/d_claim_end/il_pop), every dispatch enter signal
+--           (d_enter_pratt/_el/_set/_match/_mn/_sl/_si/…), the Pratt
+--           entry cons/kind (d_pratt_cons0/d_pratt_kind0), and the
+--           directly-built membership/contains item lists.
+-- MAINTAINS: classification is a PURE function of the window + the
+--           registries (no own carried state beyond pq_qstop); a name
+--           that is bound or already declared (c_nodecl) resolves the
+--           existing handle instead of redeclaring — the rule that keeps
+--           names-match splices from emitting duplicate decls.
+--
+-- Token window → per-line classification + dispatch decision. Lifted into
+-- driver_main via `..DriverClassify`.
+fsm DriverClassify
+    -- ── LINE CLASSIFIER (pure; runs when witems is empty) ─────────
+    -- Reads the shared window: c_t0..c_t4 = ww_t0..ww_t4 (lookahead
+    -- need 5). Consumption is cursor arithmetic via dcons below.
+    c_rem_nil ∈ Bool = (ww_t0 matches EofTok)
+    c_t0 ∈ Token = ww_t0
+    c_t1 ∈ Token = ww_t1
+    c_t2 ∈ Token = ww_t2
+    c_t3 ∈ Token = ww_t3
+    c_t4 ∈ Token = ww_t4
+
+    c_t0_is_ident ∈ Bool = (c_t0 matches Ident(_))
+    c_t0_is_tlkw ∈ Bool = ((c_t0 matches KwEnum) ∨ (c_t0 matches KwClaim)
+        ∨ (c_t0 matches KwType) ∨ (c_t0 matches KwFsm) ∨ (c_t0 matches KwSchema))
+    c_name ∈ String = match c_t0
+        Ident(s) ⇒ s
+        _ ⇒ ""
+
+    c_is_mem ∈ Bool = (c_t1 matches OpIn)
+    c_is_nmem ∈ Bool = (c_t1 matches OpNotIn)
+    -- E1: `_`-prefixed membership = an explicit carry declaration.
+    c_is_carry ∈ Bool = (substr(c_name, 0, 1) = "_")
+    -- F1: a multi-name group head (`x, y, z ∈ Nat` — body form).
+    c_mn_line ∈ Bool = (c_t0_is_ident ∧ (c_t1 matches Comma)
+        ∧ (c_t2 matches Ident(_)))
+    c_eff_line ∈ Bool = (c_is_mem ∧ (c_name = "effects"))
+    c_type_str ∈ String = match c_t2
+        Ident(s) ⇒ s
+        _ ⇒ ""
+    c_is_nat ∈ Bool = (c_type_str = "Nat")
+    -- sort class: 0 Int (incl Nat) · 1 Bool · 2 the user enum ·
+    -- 3 String · 4 the Result floor · 5 Seq(Int) (D2) · 6 Real (G2)
+    -- · 10+k (Array Int T_k) composite seq · 20+k (Array T_k Bool)
+    -- composite set (G2 record registry slots)
+    c_sc ∈ Int = (c_type_str = "Bool" ? 1
+        : (_ue_done ∧ (c_type_str = _ue_name)) ? 2
+        : c_type_str = "String" ? 3
+        : c_type_str = "Result" ? 4
+        : c_type_str = "Seq" ? 5
+        : c_type_str = "Real" ? 6
+        : 0)
+    -- D2: Seq(Int) membership (`s ∈ Seq ( Int )` — 6 tokens) and
+    -- the registered-var seq literal line (`s = ⟨…⟩` — pmode 8).
+    c_sq_ty ∈ String = match ww_t4
+        Ident(s) ⇒ s
+        _ ⇒ ""
+    -- G2: composite Seq/Set memberships — the element type resolves
+    -- in the record registry. `xs ∈ Seq(T)` declares the array const
+    -- of (Array Int T) + xs__len; `xs ∈ Set(T)` declares ONE const
+    -- of the set sort (Array T Bool), no __len.
+    c_sq_rt ∈ Int
+    RtIdxOf(nm ↦ c_sq_ty, n0 ↦ rt_n0, n1 ↦ rt_n1, n2 ↦ rt_n2,
+        s0 ↦ rt_sort0, s1 ↦ rt_sort1, s2 ↦ rt_sort2, idx ↦ c_sq_rt)
+    c_seq_line ∈ Bool = (c_is_mem ∧ (¬c_eff_line) ∧ (c_type_str = "Seq")
+        ∧ (c_t3 matches LParen) ∧ ((c_sq_ty = "Int") ∨ (c_sq_rt ≥ 0))
+        ∧ (ww_t5 matches RParen))
+    c_setmem_line ∈ Bool = (c_is_mem ∧ (¬c_eff_line)
+        ∧ (c_type_str = "Set") ∧ (c_t3 matches LParen) ∧ (c_sq_rt ≥ 0)
+        ∧ (ww_t5 matches RParen))
+    c_seqlit_line ∈ Bool = (c_t0_is_ident ∧ (c_t1 matches Eq)
+        ∧ (c_t2 matches OpSeqOpen) ∧ _sq_set ∧ (c_name = _sq_name))
+    -- D2: a conditional effects RHS (`= (` instead of `= ⟨`)
+    c_eff_cond ∈ Bool = (c_eff_line ∧ (ww_t7 matches LParen))
+    c_pinned ∈ Bool = (c_is_mem ∧ (¬c_eff_line) ∧ (c_t3 matches Eq))
+    -- set-membership lines (C2: 041/042/062): `x ∈ {…}` / `x ∉ {…}`
+    -- enter the set walk (pmode 7); match-pin lines (D3:
+    -- `name ∈ Type = match …`) enter the match walk (pmode 6).
+    c_set_line ∈ Bool = ((c_is_mem ∨ c_is_nmem) ∧ (c_t2 matches LBrace))
+    c_match_line ∈ Bool = (c_is_mem ∧ (¬c_eff_line) ∧ c_pinned
+        ∧ (c_t4 matches KwMatch))
+    c_bnd_op ∈ Op
+    c_t3_is_op ∈ Bool
+    C2TokOp(t ↦ c_t3, o ↦ c_bnd_op, rec ↦ c_t3_is_op)
+    c_bound ∈ Bool = (c_is_mem ∧ (¬c_eff_line) ∧ (¬c_pinned) ∧ c_t3_is_op)
+    c_bnd_e ∈ Expr
+    c_bnd_ok ∈ Bool
+    C2AtomE(t ↦ c_t4, e ↦ c_bnd_e, ok ↦ c_bnd_ok)
+
+    -- Lines needing an expression parsed (membership pins, the
+    -- effects literal's Exit argument, and every standalone
+    -- constraint / bare-equality line) enter the Pratt FSM
+    -- (pmode 3); plain / bounded memberships build items directly.
+    c_can_expr ∈ Bool = (c_t0_is_ident ∨ (c_t0 matches IntLit(_))
+        ∨ (c_t0 matches OpNot) ∨ (c_t0 matches LParen)
+        ∨ (c_t0 matches KwTrue) ∨ (c_t0 matches KwFalse)
+        ∨ (c_t0 matches Hash))
+
+    -- ── F2: composition-line detection ────────────────────────────
+    -- Three head shapes, all requiring the name to resolve in the
+    -- claim index: `Name ( slot ↦ …` (slot call), `..Name`
+    -- (passthrough splice — Dot Dot Ident), and a bare `Name` line
+    -- (names-match splice). Slot values are full Pratt expressions;
+    -- bare/`..` splice with the CURRENT scope (no fresh binds, no
+    -- fresh prefix). Depth caps at 8.
+    c_dd_shape ∈ Bool = ((c_t0 matches Dot) ∧ (c_t1 matches Dot)
+        ∧ (c_t2 matches Ident(_)))
+    c_dd_nm ∈ String = match c_t2
+        Ident(s) ⇒ s
+        _ ⇒ ""
+    c_comp_nm ∈ String = (c_dd_shape ? c_dd_nm : c_name)
+    c_comp_key ∈ String = "|" ++ substr(c_comp_nm ++ "                               ", 0, 31)
+    c_comp_pos ∈ Int = index_of(ci_names, c_comp_key, 0)
+    c_comp_found ∈ Bool = ((c_comp_pos ≥ 0) ∧ (c_comp_nm ≠ ""))
+    c_dd_head ∈ Bool = (c_dd_shape ∧ c_comp_found ∧ (_il_depth < 8))
+
+    -- line-end SHAPE (EOF / next top-level decl / a head that can't
+    -- start a body line): at depth 0 it ends the walk; inside an
+    -- inline frame it POPS back to the caller.
+    d_line_end ∈ Bool = (c_rem_nil ∨ c_t0_is_tlkw
+        ∨ ((¬c_can_expr) ∧ (¬c_dd_head) ∧ (¬c_strin_line)
+            ∧ (¬c_q_line)))
+    d_claim_end ∈ Bool = (d_classify ∧ d_line_end ∧ (_il_depth = 0))
+    il_pop ∈ Bool = (d_classify ∧ d_line_end ∧ (_il_depth > 0))
+
+    c_comp_call ∈ Bool = (d_classify ∧ (¬d_line_end) ∧ c_t0_is_ident
+        ∧ (c_t1 matches LParen) ∧ (c_t3 matches OpMapsto)
+        ∧ c_comp_found ∧ (_il_depth < 8))
+    c_comp_bare ∈ Bool = (d_classify ∧ (¬d_line_end) ∧ c_t0_is_ident
+        ∧ c_comp_found ∧ (¬(c_t1 matches LParen))
+        ∧ (¬c_is_mem) ∧ (¬c_is_nmem) ∧ (¬(c_t1 matches Eq))
+        ∧ (¬(c_t1 matches Comma)) ∧ (_il_depth < 8))
+    c_comp_dd ∈ Bool = (d_classify ∧ c_dd_head)
+    c_comp_line ∈ Bool = (c_comp_call ∨ c_comp_bare ∨ c_comp_dd)
+    -- the effects literal enters the ELEMENT walk (pmode 5) after
+    -- its 8-token head — `effects ∈ Seq ( Effect ) = ⟨` (plain
+    -- literal) or `effects ∈ Seq ( Effect ) = (` (D2 conditional
+    -- chain); element bodies re-enter the Pratt FSM per Exit
+    -- argument, branch guards per pk_kind 6.
+    d_enter_el ∈ Bool = (d_classify ∧ (¬d_line_end) ∧ c_eff_line)
+    d_enter_set ∈ Bool = (d_classify ∧ (¬d_line_end) ∧ c_set_line)
+    d_enter_match ∈ Bool = (d_classify ∧ (¬d_line_end)
+        ∧ (¬c_set_line) ∧ c_match_line)
+    d_seq_mem ∈ Bool = (d_classify ∧ (¬d_line_end) ∧ c_seq_line)
+    d_enter_sl ∈ Bool = (d_classify ∧ (¬d_line_end) ∧ (¬c_is_mem)
+        ∧ (¬c_is_nmem) ∧ c_seqlit_line)
+    -- F1: a body multi-name group enters the pmode-9 group walk
+    -- (no top-level comma exists in expression grammar, so the
+    -- `Ident , Ident` head is unambiguous).
+    d_enter_mn ∈ Bool = (d_classify ∧ (¬d_line_end) ∧ c_mn_line
+        ∧ (¬c_seqlit_line))
+    d_enter_pratt0 ∈ Bool = (d_classify ∧ (¬d_line_end)
+        ∧ (¬c_eff_line) ∧ (¬c_set_line) ∧ (¬c_match_line)
+        ∧ (¬c_seq_line) ∧ (¬c_seqlit_line) ∧ (¬c_mn_line)
+        ∧ (¬c_comp_line) ∧ (¬c_strin_line) ∧ (¬c_ty_line)
+        ∧ (¬c_q_rng) ∧ (¬(c_q_seq ∧ _sq_set)) ∧ (¬pcl_line)
+        ∧ (¬c_setlit_line) ∧ (¬d_enter_qset)
+        ∧ (c_pinned ∨ (¬c_is_mem)))
+    d_enter_pratt ∈ Bool = (d_enter_pratt0 ∨ el_exit_enter
+        ∨ el_g_enter ∨ mp_benter ∨ sl_e_enter ∨ cw_slot
+        ∨ q_close ∨ d_enter_qs ∨ pt_elem)
+    -- tokens consumed before the expression starts: a pin's
+    -- `name ∈ Type =` is 4; an element's `Exit (` is 2; a match
+    -- arm's payload head `Ctor ( b ) ⇒` is 5, nullary/wildcard
+    -- heads 2; guards and seq elements start at the expression;
+    -- standalone constraint / bare-equality lines likewise.
+    d_pratt_cons0 ∈ Int = (el_exit_enter ? 2
+        : el_g_enter ? 0
+        : mp_benter ? ((mp_take ∧ mp_arm_pl_h) ? 5 : 2)
+        : sl_e_enter ? 0
+        : cw_slot ? 2
+        : q_close ? 2
+        : d_enter_qs ? (c_q_s2 ? 7 : 5)
+        : pt_elem ? 0
+        : c_pinned ? 4 : 0)
+    d_pratt_kind0 ∈ Int = (el_exit_enter ? 3
+        : el_g_enter ? 6
+        : mp_benter ? 4
+        : sl_e_enter ? 7
+        : cw_slot ? 8
+        : q_close ? 9
+        : d_enter_qs ? 9
+        : pt_elem ? 10
+        : c_pinned ? 1 : 2)
+    -- qstop: only guard parses stop at a top-level `?`
+    pq_qstop ∈ Bool
+    pq_qstop = (is_first_tick ? false
+        : d_enter_pratt ? el_g_enter
+        : _pq_qstop)
+
+    c_seg_bound ∈ C2Items = C2ICons(C2Process(c_bnd_e),
+        C2ICons(C2Op(c_bnd_op), C2ICons(C2AssertTop, C2INil)))
+    c_seg_drop ∈ C2Items = C2ICons(C2Drop, C2INil)
+    c_tailseg ∈ C2Items = (c_bound ? c_seg_bound : c_seg_drop)
+    c_natseg ∈ C2Items = (c_is_nat
+        ? C2ICons(C2NatBound, C2ICons(C2AssertTop, c_tailseg))
+        : c_tailseg)
+    -- F2: declared names are α-scoped — inside a slot-call frame
+    -- the decl name is prefix ++ name ("__cN_"); bare splices and
+    -- depth 0 have prefix "". A membership whose name is BOUND (a
+    -- slot of the current frame) or already DECLARED under the
+    -- scoped name does NOT redeclare: it resolves the existing
+    -- handle (the dup head) and re-applies any bound — that is what
+    -- keeps names-match splices (`..Base`, bare `IsPositive`) from
+    -- emitting duplicate declares/manifest fields/carry lines.
+    c_chk_name ∈ String = _il_pfx ++ c_name
+    c_dname ∈ String = c_chk_name
+    c_chk_key ∈ String = "|" ++ substr(c_chk_name ++ "                               ", 0, 31)
+    c_dup ∈ Bool = (index_of(st_names, c_chk_key, 0) ≥ 0)
+    c_bnd ∈ Bool = ((c_name ≠ "") ∧ ((ilb_n0 = c_name) ∨ (ilb_n1 = c_name)
+        ∨ (ilb_n2 = c_name) ∨ (ilb_n3 = c_name) ∨ (ilb_n4 = c_name)
+        ∨ (ilb_n5 = c_name)))
+    c_nodecl ∈ Bool = (c_bnd ∨ c_dup)
+    c_pn ∈ String = (c_bnd ? c_name : c_dname)
+    c_mem_head ∈ C2Item = (c_nodecl ? C2Process(EIdent(c_pn))
+        : C2DeclConst(c_dname, c_sc))
+    c_mem_items ∈ C2Items = C2ICons(c_mem_head, c_natseg)
+
+    -- ── G1: infix contains — `"lit" ∈ name` → (str.contains name "lit")
+    c_strin_line ∈ Bool = ((c_t0 matches StringLit(_)) ∧ c_is_mem
+        ∧ (c_t2 matches Ident(_)))
+    c_si_lit ∈ String = match c_t0
+        StringLit(s) ⇒ s
+        _ ⇒ ""
+    c_si_items ∈ C2Items = C2ICons(C2Process(EIdent(c_type_str)),
+        C2ICons(C2Process(EStr(c_si_lit)),
+        C2ICons(C2StrOp("contains", 2),
+        C2ICons(C2AssertTop, C2INil))))
+    d_enter_si ∈ Bool = (d_classify ∧ (¬d_line_end) ∧ c_strin_line)
+
+    -- ── G1: type splice — a membership whose TYPE name resolves in
+    -- the claim/type index splices the type body with prefix
+    -- "name." (fields flatten to dotted consts — oracle parity:
+    -- f.p, s.rects). `f ∈ Foo (p ↦ 5)` runs the pmode-10 slot walk
+    -- first (params bind at the use site); `p ∈ Point` jumps direct.
+    -- Inside a type frame (prefix ends with ".") memberships are NOT
+    -- manifest state fields and get no textual carry (oracle parity).
+    c_ty_key ∈ String = "|" ++ substr(c_type_str ++ "                               ", 0, 31)
+    c_ty_pos ∈ Int = index_of(ci_names, c_ty_key, 0)
+    c_ty_found ∈ Bool = (c_is_mem ∧ (¬c_eff_line) ∧ (c_sc = 0)
+        ∧ (c_type_str ≠ "Int") ∧ (c_type_str ≠ "Nat")
+        ∧ (c_type_str ≠ "Seq") ∧ (c_type_str ≠ "")
+        ∧ (¬c_strin_line) ∧ (c_ty_pos ≥ 0))
+    c_ty_call ∈ Bool = (d_classify ∧ (¬d_line_end) ∧ c_ty_found
+        ∧ (c_t3 matches LParen) ∧ (c_t4 matches Ident(_))
+        ∧ (ww_t5 matches OpMapsto) ∧ (_il_depth < 8))
+    c_ty_bare ∈ Bool = (d_classify ∧ (¬d_line_end) ∧ c_ty_found
+        ∧ (¬(c_t3 matches LParen)) ∧ (¬c_pinned) ∧ (¬c_bound)
+        ∧ (_il_depth < 8))
+    c_ty_line ∈ Bool = (c_ty_call ∨ c_ty_bare)
+    c_in_ty ∈ Bool = ((#_il_pfx > 0)
+        ∧ (substr(_il_pfx, #_il_pfx - 1, 1) = "."))
+    c_cur_pos ∈ Int = (c_ty_line ? c_ty_pos : c_comp_pos)
+

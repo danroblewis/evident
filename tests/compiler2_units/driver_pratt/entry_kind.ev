@@ -1,0 +1,81 @@
+-- DriverPratt isolation — entry-kind latch.
+--
+-- Drives the pmode-3 Pratt entry (in_parse, pmode 3, tok_ready, with
+-- d_enter_pratt held and the entry kind d_pratt_kind0 = 5). The module
+-- must latch pk_kind = 5 (the parse-kind that selects which consumer the
+-- result returns to). We report pk_kind. A regression in the entry latch
+-- changes it. (The full shift/reduce parse needs a fed token window; this
+-- fixture exercises the entry/kind wiring in isolation.)
+--
+-- entry: main
+-- expect: stdout = "5"
+-- expect: exit = 0
+import "stdlib/kernel.ev"
+import "compiler/lexer.ev"
+import "compiler/parser.ev"
+import "compiler2/driver_ir.ev"
+import "compiler2/driver_expr.ev"
+import "compiler2/driver_pratt.ev"
+
+fsm main
+    in_parse ∈ Bool
+    in_parse = (is_first_tick ? true : _in_parse)
+    pmode ∈ Int
+    pmode = (is_first_tick ? 3 : _pmode)
+    tok_ready ∈ Bool
+    tok_ready = (is_first_tick ? true : _tok_ready)
+    d_enter_pratt ∈ Bool
+    d_enter_pratt = (is_first_tick ? true : _d_enter_pratt)
+    d_pratt_kind0 ∈ Int
+    d_pratt_kind0 = (is_first_tick ? 5 : _d_pratt_kind0)
+    c_dname ∈ String
+    c_dname = (is_first_tick ? "" : _c_dname)
+    c_is_mem ∈ Bool
+    c_is_mem = (is_first_tick ? false : _c_is_mem)
+    c_is_nat ∈ Bool
+    c_is_nat = (is_first_tick ? false : _c_is_nat)
+    c_nodecl ∈ Bool
+    c_nodecl = (is_first_tick ? false : _c_nodecl)
+    c_pinned ∈ Bool
+    c_pinned = (is_first_tick ? false : _c_pinned)
+    c_pn ∈ String
+    c_pn = (is_first_tick ? "" : _c_pn)
+    c_sc ∈ Int
+    c_sc = (is_first_tick ? 0 : _c_sc)
+    c_ty_rtk ∈ Int
+    c_ty_rtk = (is_first_tick ? 0 : _c_ty_rtk)
+    pq_qstop ∈ Bool
+    pq_qstop = (is_first_tick ? false : _pq_qstop)
+    rt_n0 ∈ String
+    rt_n0 = (is_first_tick ? "" : _rt_n0)
+    rt_n1 ∈ String
+    rt_n1 = (is_first_tick ? "" : _rt_n1)
+    rt_n2 ∈ String
+    rt_n2 = (is_first_tick ? "" : _rt_n2)
+    rt_sort0 ∈ Int
+    rt_sort0 = (is_first_tick ? 0 : _rt_sort0)
+    rt_sort1 ∈ Int
+    rt_sort1 = (is_first_tick ? 0 : _rt_sort1)
+    rt_sort2 ∈ Int
+    rt_sort2 = (is_first_tick ? 0 : _rt_sort2)
+    toks ∈ TokenList
+    toks = (is_first_tick ? TLNil : _toks)
+    uev_n0 ∈ String
+    uev_n0 = (is_first_tick ? "" : _uev_n0)
+    uev_n1 ∈ String
+    uev_n1 = (is_first_tick ? "" : _uev_n1)
+    uev_n2 ∈ String
+    uev_n2 = (is_first_tick ? "" : _uev_n2)
+    uev_n3 ∈ String
+    uev_n3 = (is_first_tick ? "" : _uev_n3)
+    uev_n4 ∈ String
+    uev_n4 = (is_first_tick ? "" : _uev_n4)
+    uev_n5 ∈ String
+    uev_n5 = (is_first_tick ? "" : _uev_n5)
+    wtoks ∈ TokenList
+    wtoks = (is_first_tick ? TLNil : _wtoks)
+    ..DriverPratt
+    msg ∈ String = str_from_int(pk_kind)
+    effects ∈ Seq(Effect) = ((¬is_first_tick)
+        ? ⟨LibCall("libc", "puts", ⟨ArgStr(msg)⟩), Exit(0)⟩
+        : ⟨LibCall("libc", "getpid", ⟨⟩)⟩)

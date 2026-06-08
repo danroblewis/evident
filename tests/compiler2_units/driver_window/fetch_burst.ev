@@ -1,0 +1,56 @@
+-- DriverWindow isolation — lookahead-need dispatch + fetch state machine.
+--
+-- Holds the window's cursor empty (tcur = wend = 0 ⇒ w_rem = 0) under an
+-- active parse mode (in_parse, pmode 6 ⇒ w_need = 5). With need > rem the
+-- module must raise fetch_go every idle tick and walk its fetch state
+-- machine fmode 0→1→2; each time fmode reaches 2 a read burst completed.
+-- We count completed bursts and exit at 3 — observing the pure fetch
+-- sequencing scalar, no __mem arena needed (the rd_* read effects are not
+-- scheduled). If the w_need dispatch table, the w_rem comparison, or the
+-- fmode transition regresses, the burst counter never reaches 3.
+--
+-- entry: main
+-- expect: stdout = "3"
+-- expect: exit = 0
+import "stdlib/kernel.ev"
+import "compiler/lexer.ev"
+import "compiler/parser.ev"
+import "compiler2/driver_window.ev"
+
+fsm main
+    -- The window's start gate + the mode it serves (pmode 6 ⇒ w_need 5).
+    in_parse ∈ Bool
+    in_parse = (is_first_tick ? true : _in_parse)
+    pmode ∈ Int
+    pmode = (is_first_tick ? 6 : _pmode)
+    -- Cursor held empty: w_rem = wend - tcur = 0 < w_need, so every idle
+    -- tick demands a fetch. These fields are declared by DriverWindow but
+    -- their transitions live in driver_main's cursor region (absent here),
+    -- so main pins them as held carries.
+    tcur ∈ Int
+    tcur = (is_first_tick ? 0 : _tcur)
+    wend ∈ Int
+    wend = (is_first_tick ? 0 : _wend)
+    wtoks ∈ TokenList
+    wtoks = (is_first_tick ? TLNil : _wtoks)
+    tbase ∈ Int
+    tbase = (is_first_tick ? 0 : _tbase)
+    -- Sub-state carries read only by non-pmode-6 w_need branches; held so
+    -- the names resolve.
+    rc_on ∈ Bool
+    rc_on = (is_first_tick ? false : _rc_on)
+    ed_act ∈ Int
+    ed_act = (is_first_tick ? 0 : _ed_act)
+    cw_st ∈ Int
+    cw_st = (is_first_tick ? 0 : _cw_st)
+    pt_st ∈ Int
+    pt_st = (is_first_tick ? 0 : _pt_st)
+    d_witems_nil ∈ Bool
+    d_witems_nil = (is_first_tick ? true : _d_witems_nil)
+    ..DriverWindow
+    bursts ∈ Int
+    bursts = (is_first_tick ? 0 : (_fmode = 2 ? _bursts + 1 : _bursts))
+    b_msg ∈ String = str_from_int(bursts)
+    effects ∈ Seq(Effect) = (bursts = 3
+        ? ⟨LibCall("libc", "puts", ⟨ArgStr(b_msg)⟩), Exit(0)⟩
+        : ⟨LibCall("libc", "getpid", ⟨⟩)⟩)

@@ -1,0 +1,54 @@
+-- DriverExpr isolation — happy path: the oracle-verified precedence
+-- ladder (C2Prec). ⇒ is 1 and right-assoc; ∨ 3; ∧ 4; the comparison
+-- ops fold at 5 (chain=true); + - 6; * / 7. If the ladder is reordered
+-- or an op's level/assoc/chain flag regresses, `ok` goes false and this
+-- prints BAD.
+--
+-- entry: main
+-- expect: stdout = "ok"
+-- expect: exit = 0
+import "stdlib/kernel.ev"
+import "compiler/parser.ev"
+import "compiler2/driver_expr.ev"
+
+claim main
+    o_im ∈ Op = OpImpl
+    o_or ∈ Op = OpDisj
+    o_an ∈ Op = OpConj
+    o_lt ∈ Op = OpLt
+    o_pl ∈ Op = OpPlus
+    o_mu ∈ Op = OpMul
+
+    n_im ∈ Int
+    r_im ∈ Bool
+    c_im ∈ Bool
+    C2Prec(o ↦ o_im, n ↦ n_im, right ↦ r_im, chain ↦ c_im)
+    n_or ∈ Int
+    r_or ∈ Bool
+    c_or ∈ Bool
+    C2Prec(o ↦ o_or, n ↦ n_or, right ↦ r_or, chain ↦ c_or)
+    n_an ∈ Int
+    r_an ∈ Bool
+    c_an ∈ Bool
+    C2Prec(o ↦ o_an, n ↦ n_an, right ↦ r_an, chain ↦ c_an)
+    n_lt ∈ Int
+    r_lt ∈ Bool
+    c_lt ∈ Bool
+    C2Prec(o ↦ o_lt, n ↦ n_lt, right ↦ r_lt, chain ↦ c_lt)
+    n_pl ∈ Int
+    r_pl ∈ Bool
+    c_pl ∈ Bool
+    C2Prec(o ↦ o_pl, n ↦ n_pl, right ↦ r_pl, chain ↦ c_pl)
+    n_mu ∈ Int
+    r_mu ∈ Bool
+    c_mu ∈ Bool
+    C2Prec(o ↦ o_mu, n ↦ n_mu, right ↦ r_mu, chain ↦ c_mu)
+
+    ok ∈ Bool = (n_im = 1 ∧ r_im ∧ (¬c_im)
+        ∧ n_or = 3 ∧ (¬r_or)
+        ∧ n_an = 4
+        ∧ n_lt = 5 ∧ c_lt
+        ∧ n_pl = 6 ∧ (¬c_pl)
+        ∧ n_mu = 7)
+    msg ∈ String = (ok ? "ok" : "BAD")
+    effects ∈ Seq(Effect) = ⟨LibCall("libc", "puts", ⟨ArgStr(msg)⟩), Exit(0)⟩

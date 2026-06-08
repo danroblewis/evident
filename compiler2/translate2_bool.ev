@@ -140,13 +140,24 @@ claim BoolNotBuildZ3(ctx_h ∈ Int, x_h ∈ Int, eff ∈ Effect)
 
 -- ── TernaryBuildZ3: the libcall for an ETernary node, given the
 --    three operand handles (cond must be Bool-sorted; then/else
---    same-sorted). Unconditional: Z3_mk_ite is fixed 3-arity, no
---    args buffer.
+--    same-sorted). Z3_mk_ite is fixed 3-arity, no args buffer.
+--
+--    NULL-OPERAND GUARD (sample-ternary-crash-diagnosis.md): a 0 handle
+--    means a branch sub-expression never pushed a Z3 AST (e.g. an
+--    enum-constructor branch in a deep chain). Passing 0 to Z3_mk_ite
+--    derefs null in ast_manager::mk_app → SIGSEGV. A compiler must error
+--    NAMEABLY, not segfault: when any operand is 0 we halt the build
+--    with Exit(7) (the "ternary null operand" code) instead of calling
+--    into Z3. Valid ternaries (all handles non-zero) are unaffected —
+--    `bad` is false and the same mk_ite call is emitted.
 claim TernaryBuildZ3(
         ctx_h ∈ Int, cond_h ∈ Int, then_h ∈ Int, else_h ∈ Int,
         eff ∈ Effect)
-    eff = LibCall("libz3", "Z3_mk_ite",
-        ⟨ArgInt(ctx_h), ArgInt(cond_h), ArgInt(then_h), ArgInt(else_h)⟩)
+    bad ∈ Bool = (cond_h = 0 ∨ then_h = 0 ∨ else_h = 0)
+    eff = (bad
+        ? Exit(7)
+        : LibCall("libz3", "Z3_mk_ite",
+            ⟨ArgInt(ctx_h), ArgInt(cond_h), ArgInt(then_h), ArgInt(else_h)⟩))
 
 -- ── BoolOpIsArray: true iff the op's Z3 spelling takes an args
 --    array (and/or) versus a 2-arity signature (everything else in

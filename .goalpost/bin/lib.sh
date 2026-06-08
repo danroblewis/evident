@@ -41,17 +41,21 @@ gp_require_tools() {
 # Records which builder produced it in GP_STAGE1.builder.
 gp_build_stage1() {
     if [ -x "$GP_ORACLE" ]; then
-        # driver.ev uses `fsm` + bare fields; the prev-tick `_<name>`
-        # carries are synthesized by expand-fsm-autocarry.sh BEFORE the
-        # oracle (which only knows `fsm`==`claim`) sees the source.
-        # Expand to a temp, then oracle-emit with cwd unchanged so the
-        # driver's imports still resolve relative to the repo root.
-        local _drv_exp; _drv_exp="$(mktemp -t gp-driver-exp.XXXXXX.ev)"
-        "$GP_ROOT/scripts/expand-fsm-autocarry.sh" < "$GP_ROOT/compiler2/driver.ev" > "$_drv_exp" \
-            || gp_die "fsm-autocarry expansion of compiler2/driver.ev failed"
-        "$GP_ORACLE" emit "$_drv_exp" driver_main -o "$GP_STAGE1" \
-            || { rm -f "$_drv_exp"; gp_die "oracle emit of compiler2/driver.ev failed"; }
-        rm -f "$_drv_exp"
+        # FLATTEN-FIRST (Phase 0 of the driver decomposition). driver.ev
+        # now imports its subsystems as separate `fsm`/`claim` module
+        # files; flatten-evident.sh resolves the import graph AND runs the
+        # prev-tick `_<name>` carry expansion (expand-fsm-autocarry.sh) on
+        # the flattened result, so cross-file `fsm` module composition
+        # gets its carries injected before the oracle (which only knows
+        # `fsm`==`claim`) sees a single translation unit. Verified
+        # byte-identical (mod __callN) to the prior expand-only build on
+        # the un-split driver (Phase 0 baseline check).
+        local _drv_flat; _drv_flat="$(mktemp -t gp-driver-flat.XXXXXX.ev)"
+        "$GP_ROOT/scripts/flatten-evident.sh" "$GP_ROOT/compiler2/driver.ev" > "$_drv_flat" \
+            || { rm -f "$_drv_flat"; gp_die "flatten of compiler2/driver.ev failed"; }
+        "$GP_ORACLE" emit "$_drv_flat" driver_main -o "$GP_STAGE1" \
+            || { rm -f "$_drv_flat"; gp_die "oracle emit of compiler2/driver.ev failed"; }
+        rm -f "$_drv_flat"
         echo oracle > "$GP_STAGE1.builder"
     elif [ -s "$GP_STAGE1" ]; then
         # Oracle gone (post-sunset): reuse the existing stage1 (expected

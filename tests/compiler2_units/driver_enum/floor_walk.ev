@@ -1,0 +1,51 @@
+-- DriverEnum isolation — the four Effect-floor enum runs walk to completion.
+--
+-- Drives the real ED machine standalone with its start gate held open
+-- (zstep parked at 9, no user enum). With the floor enum decls supplied as
+-- pinned data, the machine must declare LibArg (src 0), __SeqOf_LibArg
+-- (1), Effect (2) and Result (3) in turn, advancing ed_src each time a run
+-- completes, until it idles at ed_src = 4. The Z3 build effects are NOT
+-- scheduled into effects (no arena needed) — we observe the pure act/step/
+-- src walk scalar directly, exactly as driver_lex's test reads lx_count.
+-- If the act/step transition table or the floor-run sequencing regresses
+-- (a run stalls, miscounts variants, or fails to advance src) the machine
+-- never reaches src 4 and this test times out / reports the wrong count.
+--
+-- entry: main
+-- expect: stdout = "4"
+-- expect: exit = 0
+import "stdlib/kernel.ev"
+import "compiler/parser.ev"
+import "compiler2/translate2_ctor.ev"
+import "compiler2/driver_enum.ev"
+
+fsm main
+    -- DriverEnum's start gate: zstep held at 9 keeps ed_go_floor firing
+    -- run-after-run until ed_src reaches 4.
+    zstep ∈ Int
+    zstep = (is_first_tick ? 9 : _zstep)
+    -- No user enum on this run — the floor path only.
+    ec_start ∈ Bool = false
+    ec_list_n ∈ EnumVariantList = EVNil
+    ue_name ∈ String
+    ue_name = (is_first_tick ? "" : _ue_name)
+    -- Bus values the machine reads as plain handles; held live so they
+    -- stay in every tick's model (a pinned `= const` simplifies out and
+    -- the kernel's state carry then can't find the field).
+    f_ir1 ∈ Int
+    f_ir1 = (is_first_tick ? 0 : _f_ir1)
+    z_isort ∈ Int
+    z_isort = (is_first_tick ? 0 : _z_isort)
+    z_bsort ∈ Int
+    z_bsort = (is_first_tick ? 0 : _z_bsort)
+    z_ssort ∈ Int
+    z_ssort = (is_first_tick ? 0 : _z_ssort)
+    z_rsort ∈ Int
+    z_rsort = (is_first_tick ? 0 : _z_rsort)
+    d_cap_int ∈ Int
+    d_cap_int = (is_first_tick ? 0 : _d_cap_int)
+    ..DriverEnum
+    src_msg ∈ String = str_from_int(ed_src)
+    effects ∈ Seq(Effect) = (ed_src = 4
+        ? ⟨LibCall("libc", "puts", ⟨ArgStr(src_msg)⟩), Exit(0)⟩
+        : ⟨LibCall("libc", "getpid", ⟨⟩)⟩)

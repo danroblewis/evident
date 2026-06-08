@@ -1,0 +1,274 @@
+-- MODULE DriverClaimIdx
+-- CONSUMES: the skip-pass entry (d_enter_skip) + the window head views
+--           (ww_t0..ww_t6), the claim head shape (d_head_is_claim,
+--           d_cl_name), the parse gate (in_parse, _pmode, tok_ready,
+--           d_witems_nil), the pmode-4 enum-collection signals
+--           (d_enter_edecl, ed_act, ed_done_user, ue_name) + floor decl
+--           handles (z_*_decl/z_empty_val), the Pratt result (p_done,
+--           pr_bad, pk_kind), and the claim-index buffer base (ci_base).
+-- PRODUCES: the claim/type index (ci_cnt, ci_names) + its per-skip append
+--           effect (e_ciw), the pmode-4 user-enum variant collection
+--           (ec_take/ec_start/ec_v/ec_list/ec_list_n + the variant shape
+--           classifiers ec_*), and the pmode-5 effects-literal / D2
+--           conditional-chain element walk dispatch.
+-- MAINTAINS: ci_cnt < 2048 (an index past the buffer end is UNSAT, not a
+--           native overrun); one claim recorded per skip-entry tick in
+--           declaration order; the conditional-effects chain folds
+--           bottom-up via C2ChainLvl into the oracle's nested guard shape.
+--
+-- The claim index + enum/effects collection. Lifted into driver_main via
+-- `..DriverClaimIdx`. C2ChainLvl (the D2 chain-fold helper) travels with
+-- it as a pure claim (call sites inline identically).
+claim C2ChainLvl(tail ∈ C2Items, out ∈ C2Items)
+    out = C2ICons(C2Dup3, C2ICons(C2Not, C2ICons(C2Swap,
+        C2ICons(C2Op(OpImpl), C2ICons(C2Rot3, C2ICons(C2Op(OpImpl),
+        C2ICons(C2Swap, C2ICons(C2Op(OpConj), tail))))))))
+
+fsm DriverClaimIdx
+    -- ── F2: the claim index ───────────────────────────────────────
+    -- Built during the skip pass: every skipped `claim Name …` top
+    -- records its name (ci_names — fixed-width 32-byte records, the
+    -- B1 st_names pattern) and its body-start cursor (_tcur + 2 —
+    -- the token after `claim Name`, which is `(` for parametrized
+    -- claims; the call-time param-skip walks over it). Cursors live
+    -- in the ci_base buffer (256 × 8 bytes), written one per skipped
+    -- claim on the skip-entry tick. Composition can only call claims
+    -- that PRECEDE the call site textually (one-pass index — true
+    -- for the corpus: stdlib then helpers then main).
+    -- FTI bounds constraint: ci_base holds 2048 claim-index entries.
+    -- ci_cnt < 2048 makes an index past the buffer end UNSAT (the model
+    -- refuses it) rather than a native overrun.
+    ci_cnt ∈ Int < 2048
+    ci_names ∈ String
+    ci_add ∈ Bool = (d_enter_skip
+        ∧ (d_head_is_claim ∨ (ww_t0 matches KwType))
+        ∧ (ww_t1 matches Ident(_)))
+    ci_entry ∈ String = "|" ++ substr(d_cl_name ++ "                               ", 0, 31)
+    ci_cnt = (is_first_tick ? 0 : ci_add ? _ci_cnt + 1 : _ci_cnt)
+    ci_names = (is_first_tick ? ""
+        : ci_add ? _ci_names ++ ci_entry
+        : _ci_names)
+    e_ciw ∈ Effect
+    BuildMemWriteLong(addr ↦ ci_base + (8 * _ci_cnt), value ↦ _tcur + 2,
+        eff ↦ e_ciw)
+
+    -- pmode 4 collection: one variant per tick — `Vname [|]` or a
+    -- PAYLOADED `Vname ( Ty [, Ty] ) [|]` (C3; up to TWO fields of
+    -- Int/Bool/String/Real/self — a third field would need a
+    -- 9-token lookahead past the 8-token window; an unknown field
+    -- type would mis-resolve to sort 0). Prepend-accumulated (the
+    -- declared variant order is REVERSED vs source — harmless:
+    -- declaration and harvest peel the same list).
+    ec_active ∈ Bool = (in_parse ∧ (_pmode = 4) ∧ (_ed_act = 0)
+        ∧ (¬ed_done_user) ∧ tok_ready)
+    ec_vname ∈ String = match ww_t0
+        Ident(s) ⇒ s
+        _ ⇒ ""
+    ec_v_ok ∈ Bool = (ww_t0 matches Ident(_))
+    ec_more ∈ Bool = (ww_t1 matches Pipe)
+    ec_payload ∈ Bool = (ww_t1 matches LParen)
+    ec_ty0 ∈ String = match ww_t2
+        Ident(s) ⇒ s
+        _ ⇒ ""
+    ec_ty1 ∈ String = match ww_t4
+        Ident(s) ⇒ s
+        _ ⇒ ""
+    ec_ty0_ok ∈ Bool = (ec_ty0 = "Int" ∨ ec_ty0 = "Bool"
+        ∨ ec_ty0 = "String" ∨ ec_ty0 = "Real" ∨ ec_ty0 = _ue_name)
+    ec_ty1_ok ∈ Bool = (ec_ty1 = "Int" ∨ ec_ty1 = "Bool"
+        ∨ ec_ty1 = "String" ∨ ec_ty1 = "Real" ∨ ec_ty1 = _ue_name)
+    ec_p1 ∈ Bool = (ec_payload ∧ (ww_t2 matches Ident(_)) ∧ ec_ty0_ok
+        ∧ (ww_t3 matches RParen))
+    ec_p2 ∈ Bool = (ec_payload ∧ (ww_t2 matches Ident(_)) ∧ ec_ty0_ok
+        ∧ (ww_t3 matches Comma) ∧ (ww_t4 matches Ident(_)) ∧ ec_ty1_ok
+        ∧ (ww_t5 matches RParen))
+    ec_p_ok ∈ Bool = (ec_p1 ∨ ec_p2)
+    ec_more_p ∈ Bool = (ec_p2 ? (ww_t6 matches Pipe)
+        : (ww_t4 matches Pipe))
+    ec_more_u ∈ Bool = (ec_payload ? ec_more_p : ec_more)
+    ec_bail ∈ Bool = (ec_active
+        ∧ ((ec_payload ∧ (¬ec_p_ok)) ∨ (¬ec_v_ok)))
+    ec_take ∈ Bool = (ec_active ∧ ec_v_ok ∧ ((¬ec_payload) ∨ ec_p_ok))
+    ec_start ∈ Bool = (ec_take ∧ (¬ec_more_u))
+    ec_fields ∈ EVFieldList = (ec_p2
+        ? EVFCons(EVFType(ec_ty0), EVFCons(EVFType(ec_ty1), EVFNil))
+        : EVFCons(EVFType(ec_ty0), EVFNil))
+    ec_v ∈ EnumVariantDecl = (ec_payload
+        ? EVDeclP(ec_vname, ec_fields)
+        : EVDecl(ec_vname))
+    ec_cons ∈ Int = (ec_p2 ? (ec_more_p ? 7 : 6)
+        : ec_p1 ? (ec_more_p ? 5 : 4)
+        : ec_more ? 2 : 1)
+    ec_list ∈ EnumVariantList
+    ec_list_n ∈ EnumVariantList = (ec_take
+        ? EVCons(ec_v, _ec_list) : _ec_list)
+    ec_list = (is_first_tick ? EVNil
+        : d_enter_edecl ? EVNil
+        : ec_take ? ec_list_n
+        : _ec_list)
+
+    -- pmode 5: effects-literal element walk. Items run under pmode 5
+    -- exactly as under the claim walk; this dispatcher fires only
+    -- when the element items have drained.
+    -- D2: the walk is now a CHAIN walk over the corpus's conditional
+    -- shape `effects ∈ Seq(Effect) = (g1 ? ⟨…⟩ : (g2 ? ⟨…⟩ : ⟨…⟩))`
+    -- as well as the plain literal. Chain substates (el_st):
+    --   0 = expect a branch head (`⟨` literal / `(` nested chain) or
+    --       walk the current literal's elements (the P3e machinery);
+    --   1 = expect a branch GUARD — a full Pratt expression parsed
+    --       under pk_kind 6 with qstop (the top-level `?` terminates
+    --       it and is consumed on completion);
+    --   2 = after a branch literal closed — `:` returns to 0 (else
+    --       branch), `)` closes one chain paren (the LAST one fires
+    --       the guard fold).
+    -- In a chain, element select-eqs and the branch len-eq become
+    -- HANDLES (C2SelEqH / C2LenEqH) folded into a per-branch
+    -- conjunction on the stack; the chain end folds (g_k, B_k)
+    -- pairs bottom-up via C2ChainLvl into the oracle's nested
+    --   (and (=> g B) (=> (not g) T))
+    -- shape and asserts it. Unconditional literals keep the P3e
+    -- per-element asserts byte-for-byte.
+    el_cnt ∈ Int
+    el_lc ∈ Int
+    el_lib ∈ String
+    el_fn ∈ String
+    el_st ∈ Int
+    ch_on ∈ Bool
+    ch_pd ∈ Int
+    ch_n ∈ Int
+
+    d_in_el ∈ Bool = (in_parse ∧ (_pmode = 5) ∧ d_witems_nil ∧ tok_ready)
+    el_w_t2s ∈ String = match ww_t2
+        StringLit(s) ⇒ s
+        _ ⇒ ""
+    el_w_t4s ∈ String = match ww_t4
+        StringLit(s) ⇒ s
+        _ ⇒ ""
+    el_head_name ∈ String = match ww_t0
+        Ident(s) ⇒ s
+        _ ⇒ ""
+    -- chain dispatch
+    el_g_enter ∈ Bool = (d_in_el ∧ (_el_st = 1))
+    el_open ∈ Bool = (d_in_el ∧ (_el_st = 0) ∧ _ch_on ∧ (_el_lc = 0)
+        ∧ (ww_t0 matches OpSeqOpen))
+    el_nest ∈ Bool = (d_in_el ∧ (_el_st = 0) ∧ _ch_on ∧ (_el_lc = 0)
+        ∧ (ww_t0 matches LParen))
+    el_st2 ∈ Bool = (d_in_el ∧ (_el_st = 2))
+    el_colon ∈ Bool = (el_st2 ∧ (ww_t0 matches Colon))
+    el_rp ∈ Bool = (el_st2 ∧ (ww_t0 matches RParen))
+    ch_fire ∈ Bool = (el_rp ∧ (_ch_pd = 1))
+    el_st2_bad ∈ Bool = (el_st2 ∧ (¬el_colon) ∧ (¬el_rp))
+    -- element dispatch (el_st = 0, el_lc = 0)
+    el_exit_enter ∈ Bool = (d_in_el ∧ (_el_st = 0) ∧ (_el_lc = 0)
+        ∧ (el_head_name = "Exit") ∧ (ww_t1 matches LParen))
+    el_lc_enter ∈ Bool = (d_in_el ∧ (_el_st = 0) ∧ (_el_lc = 0)
+        ∧ (el_head_name = "LibCall") ∧ (ww_t1 matches LParen)
+        ∧ (ww_t2 matches StringLit(_)) ∧ (ww_t3 matches Comma)
+        ∧ (ww_t4 matches StringLit(_)) ∧ (ww_t5 matches Comma))
+    el_comma ∈ Bool = (d_in_el ∧ (_el_st = 0) ∧ (_el_lc = 0)
+        ∧ (ww_t0 matches Comma))
+    el_close ∈ Bool = (d_in_el ∧ (_el_st = 0) ∧ (_el_lc = 0)
+        ∧ (ww_t0 matches OpSeqClose))
+    -- LibCall bite 2: `⟨ ArgStr ( X ) ⟩ )` with X a string literal,
+    -- an ident, or an int literal (ArgInt) — or the EMPTY args seq
+    -- `⟨ ⟩ )` (the corpus getpid shape).
+    el_arg_name ∈ String = match ww_t1
+        Ident(s) ⇒ s
+        _ ⇒ ""
+    el_arg_e ∈ Expr
+    el_arg_ok ∈ Bool
+    C2AtomE(t ↦ ww_t3, e ↦ el_arg_e, ok ↦ el_arg_ok)
+    el_b2_shape ∈ Bool = ((ww_t0 matches OpSeqOpen)
+        ∧ (ww_t1 matches Ident(_)) ∧ (ww_t2 matches LParen)
+        ∧ el_arg_ok ∧ (ww_t4 matches RParen)
+        ∧ (ww_t5 matches OpSeqClose) ∧ (ww_t6 matches RParen))
+    el_b2e_shape ∈ Bool = ((ww_t0 matches OpSeqOpen)
+        ∧ (ww_t1 matches OpSeqClose) ∧ (ww_t2 matches RParen))
+    el_b2 ∈ Bool = (d_in_el ∧ (_el_lc = 1) ∧ el_b2_shape)
+    el_b2e ∈ Bool = (d_in_el ∧ (_el_lc = 1) ∧ el_b2e_shape)
+    el_b2_bad ∈ Bool = (d_in_el ∧ (_el_lc = 1) ∧ (¬el_b2_shape)
+        ∧ (¬el_b2e_shape))
+    el_bad ∈ Bool = (d_in_el ∧ (_el_st = 0) ∧ (_el_lc = 0)
+        ∧ (¬el_exit_enter) ∧ (¬el_lc_enter) ∧ (¬el_comma) ∧ (¬el_close)
+        ∧ (¬el_open) ∧ (¬el_nest))
+    el_argdecl ∈ Int = (el_arg_name = "ArgInt" ? z_argint_decl
+        : z_argstr_decl)
+    -- in a chain, the element eq is a HANDLE, not an assert
+    el_seleq_item ∈ C2Item = (_ch_on ? C2SelEqH(_el_cnt)
+        : C2SelectEq(_el_cnt))
+    el_lc_items ∈ C2Items = C2ICons(C2Process(EStr(_el_lib)),
+        C2ICons(C2Process(EStr(_el_fn)),
+        C2ICons(C2Process(el_arg_e),
+        C2ICons(C2App(el_argdecl, 1),
+        C2ICons(C2PushH(z_empty_val),
+        C2ICons(C2App(z_cell_decl, 2),
+        C2ICons(C2App(z_lc_decl, 3),
+        C2ICons(el_seleq_item, C2INil))))))))
+    el_lce_items ∈ C2Items = C2ICons(C2Process(EStr(_el_lib)),
+        C2ICons(C2Process(EStr(_el_fn)),
+        C2ICons(C2PushH(z_empty_val),
+        C2ICons(C2App(z_lc_decl, 3),
+        C2ICons(el_seleq_item, C2INil)))))
+
+    -- guard completion (the kind-6 Pratt parse finished)
+    eg_done ∈ Bool = (p_done ∧ (_pk_kind = 6) ∧ (¬pr_bad))
+
+    -- branch close (chain): fold the k sel-eq handles + the len-eq
+    -- into this branch's conjunction handle B
+    el_cj1 ∈ C2Items = C2ICons(C2Op(OpConj), C2INil)
+    el_cj2 ∈ C2Items = C2ICons(C2Op(OpConj), el_cj1)
+    el_cj3 ∈ C2Items = C2ICons(C2Op(OpConj), el_cj2)
+    el_cj4 ∈ C2Items = C2ICons(C2Op(OpConj), el_cj3)
+    el_bfold ∈ C2Items = C2ICons(C2LenEqH(_el_cnt),
+        (_el_cnt = 0 ? C2INil
+        : _el_cnt = 1 ? el_cj1
+        : _el_cnt = 2 ? el_cj2
+        : _el_cnt = 3 ? el_cj3
+        : el_cj4))
+    -- chain end: fold ch_n (guard, branch) pairs bottom-up + assert
+    ch_l0 ∈ C2Items = C2ICons(C2AssertTop, C2INil)
+    ch_l1 ∈ C2Items
+    C2ChainLvl(tail ↦ ch_l0, out ↦ ch_l1)
+    ch_l2 ∈ C2Items
+    C2ChainLvl(tail ↦ ch_l1, out ↦ ch_l2)
+    ch_l3 ∈ C2Items
+    C2ChainLvl(tail ↦ ch_l2, out ↦ ch_l3)
+    ch_l4 ∈ C2Items
+    C2ChainLvl(tail ↦ ch_l3, out ↦ ch_l4)
+    ch_fold_items ∈ C2Items = (_ch_n = 1 ? ch_l1
+        : _ch_n = 2 ? ch_l2
+        : _ch_n = 3 ? ch_l3
+        : _ch_n ≥ 4 ? ch_l4
+        : ch_l0)
+
+    el_lc = (is_first_tick ? 0
+        : el_lc_enter ? 1
+        : (el_b2 ∨ el_b2e ∨ el_b2_bad) ? 0
+        : _el_lc)
+    el_lib = (is_first_tick ? "" : el_lc_enter ? el_w_t2s : _el_lib)
+    el_fn = (is_first_tick ? "" : el_lc_enter ? el_w_t4s : _el_fn)
+    el_cnt = (is_first_tick ? 0
+        : d_enter_el ? 0
+        : el_open ? 0
+        : ((p_done ∧ (¬pr_bad) ∧ _pk_kind = 3) ∨ el_b2 ∨ el_b2e)
+            ? _el_cnt + 1
+        : _el_cnt)
+    el_st = (is_first_tick ? 0
+        : d_enter_el ? (c_eff_cond ? 1 : 0)
+        : eg_done ? 0
+        : el_colon ? 0
+        : el_nest ? 1
+        : (el_close ∧ _ch_on) ? 2
+        : el_rp ? 2
+        : _el_st)
+    ch_on = (is_first_tick ? false : d_enter_el ? c_eff_cond : _ch_on)
+    ch_pd = (is_first_tick ? 0
+        : d_enter_el ? (c_eff_cond ? 1 : 0)
+        : el_nest ? _ch_pd + 1
+        : el_rp ? _ch_pd - 1
+        : _ch_pd)
+    ch_n = (is_first_tick ? 0
+        : d_enter_el ? 0
+        : eg_done ? _ch_n + 1
+        : _ch_n)
+

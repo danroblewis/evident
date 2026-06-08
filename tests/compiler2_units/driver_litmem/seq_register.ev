@@ -1,0 +1,47 @@
+-- DriverLitMem isolation — the seq-literal registry latches once.
+--
+-- Drives a `s ∈ Seq(Int)` membership (d_seq_mem) with the classifier
+-- name c_dname = "myseq" on the capture tick, then KEEPS d_seq_mem true
+-- with a DIFFERENT name ("other") on later ticks. The pmode-8 registry
+-- must latch exactly ONE seq var on first sight: sq_name = "myseq" and
+-- must NOT be overwritten by the later "other". We report sq_name. If
+-- the latch-once guard (¬_sq_set) regresses, sq_name becomes "other".
+--
+-- entry: main
+-- expect: stdout = "myseq"
+-- expect: exit = 0
+import "stdlib/kernel.ev"
+import "compiler/lexer.ev"
+import "compiler/parser.ev"
+import "compiler2/driver_ir.ev"
+import "compiler2/driver_litmem.ev"
+
+fsm main
+    tc ∈ Int
+    tc = (is_first_tick ? 0 : _tc + 1)
+    -- seq membership, present every tick; name changes after capture.
+    d_seq_mem ∈ Bool
+    d_seq_mem = (is_first_tick ? true : _d_seq_mem)
+    c_dname ∈ String = (tc ≤ 1 ? "myseq" : "other")
+    c_sq_rt ∈ Int
+    c_sq_rt = (is_first_tick ? 0 - 1 : _c_sq_rt)
+    -- pmode-7 set-walk inputs the lifted module also reads (inert here).
+    in_parse ∈ Bool
+    in_parse = (is_first_tick ? false : _in_parse)
+    pmode ∈ Int
+    pmode = (is_first_tick ? 0 : _pmode)
+    tok_ready ∈ Bool
+    tok_ready = (is_first_tick ? false : _tok_ready)
+    ww_t0 ∈ Token
+    ww_t0 = (is_first_tick ? EofTok : _ww_t0)
+    d_enter_set ∈ Bool
+    d_enter_set = (is_first_tick ? false : _d_enter_set)
+    c_name ∈ String
+    c_name = (is_first_tick ? "" : _c_name)
+    c_is_nmem ∈ Bool
+    c_is_nmem = (is_first_tick ? false : _c_is_nmem)
+    ..DriverLitMem
+    n_msg ∈ String = sq_name
+    effects ∈ Seq(Effect) = (tc ≥ 3
+        ? ⟨LibCall("libc", "puts", ⟨ArgStr(n_msg)⟩), Exit(0)⟩
+        : ⟨LibCall("libc", "getpid", ⟨⟩)⟩)
