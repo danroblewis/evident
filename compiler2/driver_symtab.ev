@@ -44,10 +44,10 @@ fsm DriverSymtab
     -- names resolve like any declared const.
     d_seed_names ∈ String = ("|" ++ substr("last_results                               ", 0, 31)
         ++ "|" ++ substr("is_first_tick                               ", 0, 31))
-    stbuf.count = (is_first_tick ? 2 : (d_st_add ? _stbuf.count + 1 : _stbuf.count))
-    st_names = (is_first_tick ? d_seed_names
-        : d_st_add ? _st_names ++ st_entry
-        : _st_names)
+    FtiNamedAppend(first ↦ is_first_tick, add ↦ d_st_add,
+        prev_count ↦ _stbuf.count, prev_names ↦ _st_names,
+        init_count ↦ 2, seed_names ↦ d_seed_names, entry ↦ st_entry,
+        count ↦ stbuf.count, names ↦ st_names)
 
     -- saw flags (D3): a user constraint mentioned last_results /
     -- is_first_tick — the serialized solver body then carries their

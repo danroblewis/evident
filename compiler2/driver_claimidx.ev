@@ -44,10 +44,10 @@ fsm DriverClaimIdx
         ∧ (d_head_is_claim ∨ (ww_t0 matches KwType))
         ∧ (ww_t1 matches Ident(_)))
     ci_entry ∈ String = "|" ++ substr(d_cl_name ++ "                               ", 0, 31)
-    cibuf.count = (is_first_tick ? 0 : ci_add ? _cibuf.count + 1 : _cibuf.count)
-    ci_names = (is_first_tick ? ""
-        : ci_add ? _ci_names ++ ci_entry
-        : _ci_names)
+    FtiNamedAppend(first ↦ is_first_tick, add ↦ ci_add,
+        prev_count ↦ _cibuf.count, prev_names ↦ _ci_names,
+        init_count ↦ 0, seed_names ↦ "", entry ↦ ci_entry,
+        count ↦ cibuf.count, names ↦ ci_names)
     e_ciw ∈ Effect
     BuildMemWriteLong(addr ↦ cibuf.base + (8 * _cibuf.count), value ↦ _tcur + 2,
         eff ↦ e_ciw)

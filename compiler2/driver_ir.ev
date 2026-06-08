@@ -24,6 +24,20 @@ type FtiBuffer(base ∈ Int, count ∈ Int, cap ∈ Int)
                        -- an overrun makes the tick UNSAT, halting the
                        -- kernel instead of writing out of region
 
+-- ── Named FTI buffer append: cursor + parallel name registry ──────
+-- The shared "append a named row" step behind every FTI buffer that
+-- keeps a companion name string (the symbol table's `st_names`, the
+-- claim index's `ci_names`): on the `add` gate, the cursor climbs by 1
+-- and `entry` is concatenated onto the names registry; off the gate
+-- both hold; on the first tick both seed. One tested definition instead
+-- of a copy per consumer. Compose with the buffer's cursor + names as
+-- outputs, e.g. `count ↦ stbuf.count, names ↦ st_names`.
+claim FtiNamedAppend(first ∈ Bool, add ∈ Bool, prev_count ∈ Int,
+        prev_names ∈ String, init_count ∈ Int, seed_names ∈ String,
+        entry ∈ String, count ∈ Int, names ∈ String)
+    count = (first ? init_count : (add ? prev_count + 1 : prev_count))
+    names = (first ? seed_names : (add ? prev_names ++ entry : prev_names))
+
 -- ── Z3 solver lifecycle: the three handles created together at boot ─
 -- cfg → ctx → sol: the Z3 config, the context derived from it, and the
 -- solver derived from the context (zinit zsteps 1/2/3). They travel as

@@ -446,3 +446,39 @@ the 3 lifecycle violation tests are restored. Functionization gate GREEN
   conflicts / propagations / deterministic `rlimit-count`). Ranks the
   costliest constraints; `--bisect` finds the dominant search-space driver
   in O(log n) deterministic Z3 runs.
+
+---
+
+## Pass 3 — FTI reuse: the named-buffer append (Phase 2 sub-model)
+
+Operator note: "if we discover FTI models that could be reused, move them
+to a common file and re-use them." Discovered one and hoisted it.
+
+**`FtiNamedAppend`** (in `compiler2/driver_ir.ev`, the common file) — the
+"append a named row" step shared by every FTI buffer that keeps a
+companion name registry. On the `add` gate the cursor climbs by 1 and
+`entry` concatenates onto the names string; off the gate both hold; on
+the first tick both seed:
+
+    count = (first ? init_count : (add ? prev_count + 1 : prev_count))
+    names = (first ? seed_names  : (add ? prev_names ++ entry : prev_names))
+
+Verified the oracle binds a composed claim's outputs to a record field
+(`count ↦ stbuf.count`) and a carried string (`names ↦ st_names`) — proven
+in isolation (`tests/compiler2_units/fti/named_append.ev`, 0→3 with the
+names registry growing in lockstep). Re-used in:
+- `driver_symtab` (`stbuf` + `st_names`, init 2, seed = the two kernel
+  pre-seed names),
+- `driver_claimidx` (`cibuf` + `ci_names`, init 0, seed "").
+Two identical inline blocks → one tested claim. Gated by conformance +
+the functionization gate (compiler stays 0.0 ms z3 — the composition does
+not fall off the fast path).
+
+### Further FTI-reuse candidates (noted, next step)
+- **`FtiNameEntry`** — the 31-char padded name formatter
+  `"|" ++ substr(name ++ <31 spaces>, 0, 31)` is BYTE-IDENTICAL in
+  `st_entry` and `ci_entry`. The cleanest possible hoist (pure string
+  function, no carry). Do next.
+- **`FtiAddr`** — `base + idx*stride` address computation (lex stride 32,
+  symtab/claimidx stride 8). A 1-liner with a per-site stride; lower
+  value, optional.
