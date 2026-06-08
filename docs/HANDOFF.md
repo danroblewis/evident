@@ -489,3 +489,47 @@ symtab ~8192, claim-index ~2048) + ideally overflow guards. Then
 re-attempt the full sample.ev compile (cached driver pattern:
 /tmp recon used EVIDENT_TICK_LIMIT=500000). THEN: sample_ev harness
 (.goalpost/bin/run-sample.sh) for verdict-equivalence → rung 3 green.
+
+## Resume point 13 (pre-compaction — many threads live)
+
+CONFORMANCE: 137/138 (goalpost-measured, on main). Now on the
+SELF-HOST rungs.
+
+THE LIVE BLOCKER — sample.ev (compiler/sample.ev, 6283 lines) crashes
+compiling through compiler2. Diagnosis evolved 3×: (1) heap overrun
+of FTI token buffer at 4096 → FIXED by bumping caps (lx/st/ci) AND
+adding `< CAP` CONSTRAINTS in the model (driver.ev — committed); got
+to tick 142,675. (2) Hypothesized Z3 AST GC/use-after-free → added
+kernel AST-lifetime policy (libcall.rs returns_ast(): inc_ref every
+Z3_mk_*/simplify result; COMMITTED-pending in working tree) → did
+NOT fix it, same crash. (3) CURRENT: crash is Z3_mk_ite get_sort on
+a BAD OPERAND (null/garbage handle), NOT a lifetime bug — a driver
+LOGIC bug: some ternary in sample.ev past tick 142k computes a
+null/garbage operand. DIAGNOSTIC RUNNING: temp [mk_ite] arg-log in
+libcall.rs (UNCOMMITTED debug) — /tmp/mkite.err, the last [mk_ite]
+line before crash = the bad operand values. gdb confirmed the
+backtrace (Z3_mk_ite → mk_func_decl → get_sort segv).
+
+KERNEL STATE: working tree has (a) the AST-lifetime policy
+(returns_ast + inc_ref — KEEP, it's correct discipline) and (b) a
+TEMP [mk_ite] eprintln debug (REMOVE before committing). Neither
+committed yet. Decide after the mkite.err result.
+
+BACKGROUND AGENTS (worktrees, may die on harness fault — staged
+commits): 
+- a987ec1 driver subsystem MAP — DONE, branch ready to merge
+  (docs/plans/driver-subsystem-map.md + a ZLatch refactor PoC that
+  passed 12/12 conformance; verdict: composition is value-subst not
+  state-scoping, so carry DECLS stay in driver_main but transition
+  BODIES can move to helpers).
+- a9a375d FTI formal-validation feasibility (task #25) — running.
+- a31d4f9 fsm auto-carry expansion (flatten-time, rule: auto _x iff
+  body refs _x) — running, converts driver_main, validates vs
+  conformance.
+
+NEXT (post-compaction): (1) read /tmp/mkite.err → find the bad
+mk_ite operand → fix the driver ternary logic bug (the REAL sample.ev
+blocker); remove the temp debug; commit the AST-policy. (2) merge the
+3 agents' branches with conformance gates. (3) resume sample.ev →
+kernel corpus → self-compile → oracle sunset → rename compiler2→
+compiler.
