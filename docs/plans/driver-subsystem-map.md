@@ -319,3 +319,37 @@ Recommended first extraction: **§31 effects schedule + §27 state
 transitions** (zero owned carry, pure muxes, smallest blast radius),
 then **ZINIT (§2)** as the first carry-bearing subsystem to validate the
 Probe-C pattern on real driver state before tackling ED/G2.
+
+---
+
+## 5. PoC landed (2026-06-08)
+
+Validated the Probe-C pattern on REAL driver state. Added a `ZLatch`
+helper and converted three ZINIT latches (z_cfg/z_ctx/z_sol) from the
+inlined ternary to a composed call:
+
+```evident
+claim ZLatch(active ∈ Bool, cap ∈ Int, prev ∈ Int, first ∈ Bool, out ∈ Int)
+    out = (first ? 0 : (active ? cap : prev))
+-- in driver_main, z_cfg ∈ Int / _z_cfg ∈ Int stay declared; the body becomes:
+ZLatch(active ↦ (zstep = 1), cap ↦ d_cap_int, prev ↦ _z_cfg, first ↦ is_first_tick, out ↦ z_cfg)
+```
+
+Oracle-built the driver (exit 0) and ran 12 diverse conformance
+fixtures — 002 006 026 045 (the directed set) plus 094 047 038 081 102
+052 075 096 (bare/passthrough/mapped composition, range quantifier,
+positional binding, seq literal, infix-contains, conditional inline) —
+**12/12 PASS** on both smt2-contains and run (exit/stdout) checks. Zero
+regression. Commit `37c9b99`.
+
+Note: the emitted stage1 SMT2 differs from baseline by ~3800 lines
+(the oracle compiles the `ZLatch` composition with `__cN_`-prefixed
+internal build-context const names and reordered build steps), but the
+driver's OBSERVABLE output — the units it emits for every fixture — is
+unchanged. The internal churn is cosmetic to the build context; only
+the source got shorter and clearer.
+
+This confirms the proposal is executable as written: extract one
+subsystem's transition bodies at a time, oracle-compile, run the
+conformance set between each step, keep the carry-pair declarations in
+`driver_main`.
