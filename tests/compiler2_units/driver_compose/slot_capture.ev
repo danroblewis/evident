@@ -1,0 +1,130 @@
+-- DriverCompose isolation — slot-call name capture through cw_st.
+--
+-- Drives the pmode-10 slot-call walk: with in_parse/pmode 10 held and the
+-- frame idle (cw_st 0, cw_bare false), cw_cap advances cw_st 0→1; on the
+-- next tick d_in_cw1 is live and the window head `p ↦` (Ident, OpMapsto)
+-- makes cw_slot fire, capturing cw_slot_nm into cs_n0 (slot index 0). We
+-- exit reporting cs_n0 — it must read "p". This exercises the cw_st state
+-- machine, the slot recognizer, the slot-name decode, and the cs_n0 write
+-- path together; any of them regressing changes the captured name.
+--
+-- entry: main
+-- expect: stdout = "p"
+-- expect: exit = 0
+import "stdlib/kernel.ev"
+import "stdlib/z3_ast.ev"
+import "stdlib/z3_datatypes.ev"
+import "compiler/lexer.ev"
+import "compiler/parser.ev"
+import "compiler2/driver_ir.ev"
+import "compiler2/driver_record.ev"
+import "compiler2/driver_compose.ev"
+
+fsm main
+    pmode ∈ Int
+    pmode = (is_first_tick ? 10 : _pmode)
+    in_parse ∈ Bool
+    in_parse = (is_first_tick ? true : _in_parse)
+    d_witems_nil ∈ Bool
+    d_witems_nil = (is_first_tick ? true : _d_witems_nil)
+    tok_ready ∈ Bool
+    tok_ready = (is_first_tick ? true : _tok_ready)
+    ww_t0 ∈ Token
+    ww_t0 = (is_first_tick ? Ident("p") : _ww_t0)
+    ww_t1 ∈ Token
+    ww_t1 = (is_first_tick ? OpMapsto : _ww_t1)
+    c_comp_bare ∈ Bool
+    c_comp_bare = (is_first_tick ? false : _c_comp_bare)
+    c_comp_call ∈ Bool
+    c_comp_call = (is_first_tick ? false : _c_comp_call)
+    c_comp_dd ∈ Bool
+    c_comp_dd = (is_first_tick ? false : _c_comp_dd)
+    c_comp_line ∈ Bool
+    c_comp_line = (is_first_tick ? false : _c_comp_line)
+    c_cur_pos ∈ Int
+    c_cur_pos = (is_first_tick ? 0 : _c_cur_pos)
+    c_name ∈ String
+    c_name = (is_first_tick ? "" : _c_name)
+    c_ty_bare ∈ Bool
+    c_ty_bare = (is_first_tick ? false : _c_ty_bare)
+    c_ty_call ∈ Bool
+    c_ty_call = (is_first_tick ? false : _c_ty_call)
+    c_ty_line ∈ Bool
+    c_ty_line = (is_first_tick ? false : _c_ty_line)
+    c_type_str ∈ String
+    c_type_str = (is_first_tick ? "" : _c_type_str)
+    ci_base ∈ Int
+    ci_base = (is_first_tick ? 0 : _ci_base)
+    d_cap_int ∈ Int
+    d_cap_int = (is_first_tick ? 0 : _d_cap_int)
+    d_enter_claim ∈ Bool
+    d_enter_claim = (is_first_tick ? false : _d_enter_claim)
+    d_enter_claimp ∈ Bool
+    d_enter_claimp = (is_first_tick ? false : _d_enter_claimp)
+    d_h_2nd ∈ Int
+    d_h_2nd = (is_first_tick ? 0 : _d_h_2nd)
+    d_h_3rd ∈ Int
+    d_h_3rd = (is_first_tick ? 0 : _d_h_3rd)
+    d_h_4th ∈ Int
+    d_h_4th = (is_first_tick ? 0 : _d_h_4th)
+    d_h_5th ∈ Int
+    d_h_5th = (is_first_tick ? 0 : _d_h_5th)
+    d_h_6th ∈ Int
+    d_h_6th = (is_first_tick ? 0 : _d_h_6th)
+    d_h_t1 ∈ C2H
+    d_h_t1 = (is_first_tick ? C2HNil : _d_h_t1)
+    d_h_t2 ∈ C2H
+    d_h_t2 = (is_first_tick ? C2HNil : _d_h_t2)
+    d_h_t3 ∈ C2H
+    d_h_t3 = (is_first_tick ? C2HNil : _d_h_t3)
+    d_h_t4 ∈ C2H
+    d_h_t4 = (is_first_tick ? C2HNil : _d_h_t4)
+    d_h_t5 ∈ C2H
+    d_h_t5 = (is_first_tick ? C2HNil : _d_h_t5)
+    d_h_t6 ∈ C2H
+    d_h_t6 = (is_first_tick ? C2HNil : _d_h_t6)
+    d_h_top ∈ Int
+    d_h_top = (is_first_tick ? 0 : _d_h_top)
+    d_hstk_in ∈ C2H
+    d_hstk_in = (is_first_tick ? C2HNil : _d_hstk_in)
+    gc_hit ∈ Bool
+    gc_hit = (is_first_tick ? false : _gc_hit)
+    gj_cap ∈ Bool
+    gj_cap = (is_first_tick ? false : _gj_cap)
+    gj_fire ∈ Bool
+    gj_fire = (is_first_tick ? false : _gj_fire)
+    il_pop ∈ Bool
+    il_pop = (is_first_tick ? false : _il_pop)
+    p_done ∈ Bool
+    p_done = (is_first_tick ? false : _p_done)
+    pk_kind ∈ Int
+    pk_kind = (is_first_tick ? 0 : _pk_kind)
+    pr_bad ∈ Bool
+    pr_bad = (is_first_tick ? false : _pr_bad)
+    ptj_cap ∈ Bool
+    ptj_cap = (is_first_tick ? false : _ptj_cap)
+    ptj_fire ∈ Bool
+    ptj_fire = (is_first_tick ? false : _ptj_fire)
+    pz_act ∈ Bool
+    pz_act = (is_first_tick ? false : _pz_act)
+    pz_binds ∈ C2Binds
+    pz_binds = (is_first_tick ? CBNil : _pz_binds)
+    rt_n0 ∈ String
+    rt_n0 = (is_first_tick ? "" : _rt_n0)
+    rt_n1 ∈ String
+    rt_n1 = (is_first_tick ? "" : _rt_n1)
+    rt_n2 ∈ String
+    rt_n2 = (is_first_tick ? "" : _rt_n2)
+    rt_sort0 ∈ Int
+    rt_sort0 = (is_first_tick ? 0 : _rt_sort0)
+    rt_sort1 ∈ Int
+    rt_sort1 = (is_first_tick ? 0 : _rt_sort1)
+    rt_sort2 ∈ Int
+    rt_sort2 = (is_first_tick ? 0 : _rt_sort2)
+    tcur ∈ Int
+    tcur = (is_first_tick ? 0 : _tcur)
+    ..DriverCompose
+    captured ∈ Bool = (cs_n0 = "p")
+    effects ∈ Seq(Effect) = (captured
+        ? ⟨LibCall("libc", "puts", ⟨ArgStr(cs_n0)⟩), Exit(0)⟩
+        : ⟨LibCall("libc", "getpid", ⟨⟩)⟩)
