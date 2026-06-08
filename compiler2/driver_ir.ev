@@ -7,6 +7,13 @@
 -- share the same IR definitions.
 import "compiler/parser.ev"
 
+-- ── FTI buffers: a base address + a write cursor travel together ───
+-- The recurring base+cursor pair behind every FTI-resident buffer (the
+-- token buffer, the symbol table, the claim index). `base` is the
+-- calloc'd region start (pinned once during zinit); `count` is the
+-- append cursor (carried, bounded by the region capacity at each site).
+type FtiBuffer(base ∈ Int, count ∈ Int)
+
 -- ── Work items: one line of claim body = one small program ────────
 enum C2Item =
     C2Process(Expr)

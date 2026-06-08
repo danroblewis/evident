@@ -111,5 +111,5 @@ fsm DriverZInit
     -- F2: the claim-index cursor buffer (256 entries × 8 bytes; the
     -- body-start token cursor of every skipped claim, decl order —
     -- names live in ci_names, the st_names pattern).
-    ci_base ∈ Int
-    ci_base = (is_first_tick ? 0 : zstep = 38 ? d_cap_int : _ci_base)
+    cibuf ∈ FtiBuffer
+    cibuf.base = (is_first_tick ? 0 : zstep = 38 ? d_cap_int : _cibuf.base)

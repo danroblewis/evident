@@ -15,6 +15,7 @@ import "stdlib/z3_ast.ev"
 import "stdlib/z3_core.ev"
 import "compiler/lexer.ev"
 import "compiler/parser.ev"
+import "compiler2/driver_ir.ev"
 import "compiler2/driver_emit.ev"
 
 fsm main
@@ -40,8 +41,9 @@ fsm main
     tbase = (is_first_tick ? 0 : _tbase)
     st_base ∈ Int
     st_base = (is_first_tick ? 0 : _st_base)
-    ci_base ∈ Int
-    ci_base = (is_first_tick ? 0 : _ci_base)
+    cibuf ∈ FtiBuffer
+    cibuf.base = (is_first_tick ? 0 : _cibuf.base)
+    cibuf.count = (is_first_tick ? 0 : _cibuf.count)
     -- DriverEmit's d_prelude string literal contains the text
     -- "last_results", which trips the oracle's saw_lr heuristic and
     -- suppresses the genuine `last_results` declaration. A real read

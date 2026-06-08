@@ -57,8 +57,9 @@ fsm main
     c_t3 = (is_first_tick ? EofTok : _c_t3)
     c_t4 ∈ Token
     c_t4 = (is_first_tick ? EofTok : _c_t4)
-    ci_base ∈ Int
-    ci_base = (is_first_tick ? 0 : _ci_base)
+    cibuf ∈ FtiBuffer
+    cibuf.base = (is_first_tick ? 0 : _cibuf.base)
+    cibuf.count = (is_first_tick ? 0 : _cibuf.count)
     ci_names ∈ String
     ci_names = (is_first_tick ? "" : _ci_names)
     cw_reset ∈ Bool
