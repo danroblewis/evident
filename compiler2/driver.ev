@@ -1258,7 +1258,7 @@ fsm driver_main
     -- ── per-item build effects (pass-claim dispatch) ──────────────
     d_eff_mkint ∈ Effect
     d_atom_ok ∈ Bool
-    AtomBuildZ3(ctx_h ↦ z3ctx.ctx, int_sort_h ↦ z_isort, sym_h ↦ 0,
+    AtomBuildZ3(ctx_h ↦ z3ctx.ctx, int_sort_h ↦ z3sorts.isort, sym_h ↦ 0,
         e ↦ d_pe, eff ↦ d_eff_mkint, ok ↦ d_atom_ok)
     d_eff_cmp ∈ Effect
     d_cmp_ok ∈ Bool
@@ -1308,19 +1308,19 @@ fsm driver_main
     BuildZ3MkStringSymbol(ctx_h ↦ z3ctx.ctx, name ↦ d_dc_name, eff ↦ d_eff_sym)
     d_eff_const ∈ Effect
     BuildZ3MkConst(ctx_h ↦ z3ctx.ctx, sym_h ↦ d_tmp_in,
-        sort_h ↦ (d_dc_sc = 1 ? z_bsort
+        sort_h ↦ (d_dc_sc = 1 ? z3sorts.bsort
             : d_dc_sc = 2 ? ue_sort
-            : d_dc_sc = 3 ? z_ssort
+            : d_dc_sc = 3 ? z3sorts.ssort
             : d_dc_sc = 4 ? z_ressort
             : d_dc_sc = 5 ? z_iarr
-            : d_dc_sc = 6 ? z_rsort
+            : d_dc_sc = 6 ? z3sorts.rsort
             : d_dc_sc = 10 ? rt_asort0
             : d_dc_sc = 11 ? rt_asort1
             : d_dc_sc = 12 ? rt_asort2
             : d_dc_sc = 20 ? rt_ssort0
             : d_dc_sc = 21 ? rt_ssort1
             : d_dc_sc = 22 ? rt_ssort2
-            : z_isort), eff ↦ d_eff_const)
+            : z3sorts.isort), eff ↦ d_eff_const)
     -- decl istep 2: park the const handle (in tmp) at st_base[st_cnt]
     d_eff_stwr ∈ Effect
     BuildMemWriteLong(addr ↦ stbuf.base + (8 * _stbuf.count), value ↦ d_tmp_in,
@@ -1390,7 +1390,7 @@ fsm driver_main
         : "1")
     d_re_str ∈ String = str_from_int(d_re_s) ++ "/" ++ d_re_den
     d_eff_real ∈ Effect
-    BuildZ3MkNumeral(ctx_h ↦ z3ctx.ctx, num ↦ d_re_str, sort_h ↦ z_rsort,
+    BuildZ3MkNumeral(ctx_h ↦ z3ctx.ctx, num ↦ d_re_str, sort_h ↦ z3sorts.rsort,
         eff ↦ d_eff_real)
     -- G2: set builders — empty set of the registry elem sort; set_add
     -- pops (set, elem) and pushes the grown set.

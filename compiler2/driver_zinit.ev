@@ -4,8 +4,8 @@
 --           zstep hold at 9 while the Effect-floor datatypes declare.
 -- PRODUCES: the Z3-lifecycle latch bank — zstep (the setup program
 --           counter) plus every captured handle/const it latches:
---           z3ctx (cfg/ctx/sol), the four base sorts (z_isort/z_bsort/
---           z_ssort/z_rsort), z_arena, z_arrsort, the effects-array
+--           z3ctx (cfg/ctx/sol), z3sorts (the four base sorts isort/
+--           bsort/ssort/rsort), z_arena, z_arrsort, the effects-array
 --           consts (z_sym_effs/z_effs/z_sym_elen/z_elen), the numeral
 --           consts (z_zero..z_four), z_true/z_false, the token/symbol/
 --           claim-index buffer bases (tbase/st_base/ci_base), and the
@@ -34,14 +34,11 @@ fsm DriverZInit
     z3ctx.cfg = (is_first_tick ? 0 : zstep = 1 ? d_cap_int : _z3ctx.cfg)
     z3ctx.ctx = (is_first_tick ? 0 : zstep = 2 ? d_cap_int : _z3ctx.ctx)
     z3ctx.sol = (is_first_tick ? 0 : zstep = 3 ? d_cap_int : _z3ctx.sol)
-    z_isort ∈ Int
-    z_isort = (is_first_tick ? 0 : zstep = 5 ? d_cap_int : _z_isort)
-    z_bsort ∈ Int
-    z_bsort = (is_first_tick ? 0 : zstep = 6 ? d_cap_int : _z_bsort)
-    z_ssort ∈ Int
-    z_ssort = (is_first_tick ? 0 : zstep = 7 ? d_cap_int : _z_ssort)
-    z_rsort ∈ Int
-    z_rsort = (is_first_tick ? 0 : zstep = 8 ? d_cap_int : _z_rsort)
+    z3sorts ∈ Z3Sorts
+    z3sorts.isort = (is_first_tick ? 0 : zstep = 5 ? d_cap_int : _z3sorts.isort)
+    z3sorts.bsort = (is_first_tick ? 0 : zstep = 6 ? d_cap_int : _z3sorts.bsort)
+    z3sorts.ssort = (is_first_tick ? 0 : zstep = 7 ? d_cap_int : _z3sorts.ssort)
+    z3sorts.rsort = (is_first_tick ? 0 : zstep = 8 ? d_cap_int : _z3sorts.rsort)
     -- zstep holds at 9; latch the arena only on the FIRST 9-tick.
     z_arena ∈ Int
     z_arena = (is_first_tick ? 0

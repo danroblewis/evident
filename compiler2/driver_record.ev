@@ -358,33 +358,33 @@ fsm DriverRecord
     rdt_5 ∈ String
     RtRecName(s ↦ rc_t, i ↦ 5, name ↦ rdt_5)
     rds_0 ∈ Int
-    RtSortOf(ty ↦ rdt_0, int_h ↦ z_isort, bool_h ↦ z_bsort,
-        str_h ↦ z_ssort, real_h ↦ z_rsort, iarr_h ↦ z_iarr,
+    RtSortOf(ty ↦ rdt_0, int_h ↦ z3sorts.isort, bool_h ↦ z3sorts.bsort,
+        str_h ↦ z3sorts.ssort, real_h ↦ z3sorts.rsort, iarr_h ↦ z_iarr,
         n0 ↦ rt_n0, n1 ↦ rt_n1, n2 ↦ rt_n2,
         s0 ↦ rt_sort0, s1 ↦ rt_sort1, s2 ↦ rt_sort2, sort ↦ rds_0)
     rds_1 ∈ Int
-    RtSortOf(ty ↦ rdt_1, int_h ↦ z_isort, bool_h ↦ z_bsort,
-        str_h ↦ z_ssort, real_h ↦ z_rsort, iarr_h ↦ z_iarr,
+    RtSortOf(ty ↦ rdt_1, int_h ↦ z3sorts.isort, bool_h ↦ z3sorts.bsort,
+        str_h ↦ z3sorts.ssort, real_h ↦ z3sorts.rsort, iarr_h ↦ z_iarr,
         n0 ↦ rt_n0, n1 ↦ rt_n1, n2 ↦ rt_n2,
         s0 ↦ rt_sort0, s1 ↦ rt_sort1, s2 ↦ rt_sort2, sort ↦ rds_1)
     rds_2 ∈ Int
-    RtSortOf(ty ↦ rdt_2, int_h ↦ z_isort, bool_h ↦ z_bsort,
-        str_h ↦ z_ssort, real_h ↦ z_rsort, iarr_h ↦ z_iarr,
+    RtSortOf(ty ↦ rdt_2, int_h ↦ z3sorts.isort, bool_h ↦ z3sorts.bsort,
+        str_h ↦ z3sorts.ssort, real_h ↦ z3sorts.rsort, iarr_h ↦ z_iarr,
         n0 ↦ rt_n0, n1 ↦ rt_n1, n2 ↦ rt_n2,
         s0 ↦ rt_sort0, s1 ↦ rt_sort1, s2 ↦ rt_sort2, sort ↦ rds_2)
     rds_3 ∈ Int
-    RtSortOf(ty ↦ rdt_3, int_h ↦ z_isort, bool_h ↦ z_bsort,
-        str_h ↦ z_ssort, real_h ↦ z_rsort, iarr_h ↦ z_iarr,
+    RtSortOf(ty ↦ rdt_3, int_h ↦ z3sorts.isort, bool_h ↦ z3sorts.bsort,
+        str_h ↦ z3sorts.ssort, real_h ↦ z3sorts.rsort, iarr_h ↦ z_iarr,
         n0 ↦ rt_n0, n1 ↦ rt_n1, n2 ↦ rt_n2,
         s0 ↦ rt_sort0, s1 ↦ rt_sort1, s2 ↦ rt_sort2, sort ↦ rds_3)
     rds_4 ∈ Int
-    RtSortOf(ty ↦ rdt_4, int_h ↦ z_isort, bool_h ↦ z_bsort,
-        str_h ↦ z_ssort, real_h ↦ z_rsort, iarr_h ↦ z_iarr,
+    RtSortOf(ty ↦ rdt_4, int_h ↦ z3sorts.isort, bool_h ↦ z3sorts.bsort,
+        str_h ↦ z3sorts.ssort, real_h ↦ z3sorts.rsort, iarr_h ↦ z_iarr,
         n0 ↦ rt_n0, n1 ↦ rt_n1, n2 ↦ rt_n2,
         s0 ↦ rt_sort0, s1 ↦ rt_sort1, s2 ↦ rt_sort2, sort ↦ rds_4)
     rds_5 ∈ Int
-    RtSortOf(ty ↦ rdt_5, int_h ↦ z_isort, bool_h ↦ z_bsort,
-        str_h ↦ z_ssort, real_h ↦ z_rsort, iarr_h ↦ z_iarr,
+    RtSortOf(ty ↦ rdt_5, int_h ↦ z3sorts.isort, bool_h ↦ z3sorts.bsort,
+        str_h ↦ z3sorts.ssort, real_h ↦ z3sorts.rsort, iarr_h ↦ z_iarr,
         n0 ↦ rt_n0, n1 ↦ rt_n1, n2 ↦ rt_n2,
         s0 ↦ rt_sort0, s1 ↦ rt_sort1, s2 ↦ rt_sort2, sort ↦ rds_5)
 
@@ -424,7 +424,7 @@ fsm DriverRecord
     rde_rdacc ∈ Effect
     BuildMemReadLong(addr ↦ rd_ac_p + (8 * rd_eff_fi), eff ↦ rde_rdacc)
     rde_asort ∈ Effect
-    BuildZ3MkArraySort(ctx_h ↦ z3ctx.ctx, idx_sort_h ↦ z_isort,
+    BuildZ3MkArraySort(ctx_h ↦ z3ctx.ctx, idx_sort_h ↦ z3sorts.isort,
         val_sort_h ↦ rc_sort, eff ↦ rde_asort)
     rde_ssort ∈ Effect = LibCall("libz3", "Z3_mk_set_sort",
         ⟨ArgInt(z3ctx.ctx), ArgInt(rc_sort)⟩)

@@ -57,8 +57,11 @@ fsm main
     z_arena = (is_first_tick ? 0 : _z_arena)
     z_arrsort ∈ Int
     z_arrsort = (is_first_tick ? 0 : _z_arrsort)
-    z_bsort ∈ Int
-    z_bsort = (is_first_tick ? 0 : _z_bsort)
+    z3sorts ∈ Z3Sorts
+    z3sorts.isort = (is_first_tick ? 0 : _z3sorts.isort)
+    z3sorts.bsort = (is_first_tick ? 0 : _z3sorts.bsort)
+    z3sorts.ssort = (is_first_tick ? 0 : _z3sorts.ssort)
+    z3sorts.rsort = (is_first_tick ? 0 : _z3sorts.rsort)
     z3ctx ∈ Z3SolverCtx
     z3ctx.cfg = (is_first_tick ? 0 : _z3ctx.cfg)
     z3ctx.ctx = (is_first_tick ? 0 : _z3ctx.ctx)
@@ -71,8 +74,6 @@ fsm main
     z_elen = (is_first_tick ? 0 : _z_elen)
     z_ift ∈ Int
     z_ift = (is_first_tick ? 0 : _z_ift)
-    z_isort ∈ Int
-    z_isort = (is_first_tick ? 0 : _z_isort)
     z_lastres ∈ Int
     z_lastres = (is_first_tick ? 0 : _z_lastres)
     z_lrge ∈ Int

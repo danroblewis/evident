@@ -173,6 +173,32 @@ latched value persists).
 Unit tests: PASS — 30/30. Gate: **PASS — 137/138** (only known
 `123-subschema`; 0 timeouts; wall 416s). COMMITTED.
 
+## Z3Sorts — the four base-sort handles (`z_isort/z_bsort/z_ssort/z_rsort`)
+
+Second cohesive `z_*` sub-record. `type Z3Sorts(isort, bsort, ssort,
+rsort ∈ Int)` unifies the Int/Bool/String/Real sort handles latched
+consecutively in zinit (zsteps 5/6/7/8). Every type-directed Build*Z3
+step picks one by the field/atom type string; all four are driven each
+tick by DriverZInit (guardrail satisfied in the full driver).
+
+Sites rewritten: 71 references across 4 modules, all READS (slot args
+`int_sort_h ↦ z3sorts.isort` and ternary RHS values `… = "Real" ?
+z3sorts.rsort`):
+- `driver_ir.ev` — +1 type decl (`Z3Sorts`).
+- `driver_zinit.ev` — four decl+latch lines → `z3sorts` record + four
+  field latches. Doc header updated.
+- `driver_buildeff.ev`, `driver.ev`, `driver_enum.ev`,
+  `driver_record.ev` — slot-arg / ternary reads.
+Fixtures: driver_enum/floor_walk (4 sort stubs → one `z3sorts` record
+stub + driver_ir import), driver_buildeff/{select_w2,select_w5} (their
+isort+bsort stubs → full `z3sorts` record driving all four fields, per
+the guardrail), driver_zinit/latch_isort (read + comments →
+z3sorts.isort; the module drives all four). New carry unit test
+`types/z3_sorts_carry.ev`.
+
+Unit tests: PASS — 31/31. Gate: **PASS — 137/138** (only known
+`123-subschema`; 0 timeouts; wall 416s). COMMITTED.
+
 ### Next candidates — assessed, deferred (with measured reasons)
 - **`rt_*` → `RecTypeEntry`** (43 members; cohesion 61 — the highest of
   any registry). Highest line-removal, but NOT a mechanical rename: the

@@ -1,6 +1,6 @@
 -- MODULE DriverEnum
 -- CONSUMES: the ZINIT start gate (zstep parked at 9), the Z3 base-sort
---           handles (z_isort/z_bsort/z_ssort/z_rsort) + the int-result-1
+--           handles (z3sorts.isort/z3sorts.bsort/z3sorts.ssort/z3sorts.rsort) + the int-result-1
 --           value f_ir1, d_cap_int (last libc capture), and the user-enum
 --           collection signals from the parse dispatcher (ec_start,
 --           ec_list_n, _ue_name, _ed_user).
@@ -151,35 +151,35 @@ fsm DriverEnum
     ed_fr0 ∈ Int
     ed_fself0 ∈ Bool
     FieldSortSlot(enum_name ↦ _ed_name, ty ↦ ed_ty0,
-        int_sort_h ↦ z_isort, bool_sort_h ↦ z_bsort, string_sort_h ↦ z_ssort,
+        int_sort_h ↦ z3sorts.isort, bool_sort_h ↦ z3sorts.bsort, string_sort_h ↦ z3sorts.ssort,
         self_sort_idx ↦ 0,
         sort_slot ↦ ed_fs0, ref_slot ↦ ed_fr0, is_self ↦ ed_fself0)
     ed_fs1 ∈ Int
     ed_fr1 ∈ Int
     ed_fself1 ∈ Bool
     FieldSortSlot(enum_name ↦ _ed_name, ty ↦ ed_ty1,
-        int_sort_h ↦ z_isort, bool_sort_h ↦ z_bsort, string_sort_h ↦ z_ssort,
+        int_sort_h ↦ z3sorts.isort, bool_sort_h ↦ z3sorts.bsort, string_sort_h ↦ z3sorts.ssort,
         self_sort_idx ↦ 0,
         sort_slot ↦ ed_fs1, ref_slot ↦ ed_fr1, is_self ↦ ed_fself1)
     ed_fs2 ∈ Int
     ed_fr2 ∈ Int
     ed_fself2 ∈ Bool
     FieldSortSlot(enum_name ↦ _ed_name, ty ↦ ed_ty2,
-        int_sort_h ↦ z_isort, bool_sort_h ↦ z_bsort, string_sort_h ↦ z_ssort,
+        int_sort_h ↦ z3sorts.isort, bool_sort_h ↦ z3sorts.bsort, string_sort_h ↦ z3sorts.ssort,
         self_sort_idx ↦ 0,
         sort_slot ↦ ed_fs2, ref_slot ↦ ed_fr2, is_self ↦ ed_fself2)
     ed_slot0 ∈ Int = ((ed_fs0 ≠ 0 ∨ ed_fself0) ? ed_fs0
-        : ed_ty0 = "Real" ? z_rsort
+        : ed_ty0 = "Real" ? z3sorts.rsort
         : ed_ty0 = "LibArg" ? la_sort
         : ed_ty0 = "Seq(LibArg)" ? sq_sort
         : 0)
     ed_slot1 ∈ Int = ((ed_fs1 ≠ 0 ∨ ed_fself1) ? ed_fs1
-        : ed_ty1 = "Real" ? z_rsort
+        : ed_ty1 = "Real" ? z3sorts.rsort
         : ed_ty1 = "LibArg" ? la_sort
         : ed_ty1 = "Seq(LibArg)" ? sq_sort
         : 0)
     ed_slot2 ∈ Int = ((ed_fs2 ≠ 0 ∨ ed_fself2) ? ed_fs2
-        : ed_ty2 = "Real" ? z_rsort
+        : ed_ty2 = "Real" ? z3sorts.rsort
         : ed_ty2 = "LibArg" ? la_sort
         : ed_ty2 = "Seq(LibArg)" ? sq_sort
         : 0)

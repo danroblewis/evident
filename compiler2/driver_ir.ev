@@ -21,6 +21,13 @@ type FtiBuffer(base ∈ Int, count ∈ Int)
 -- `sol`. Pinned once during zinit, carried thereafter.
 type Z3SolverCtx(cfg ∈ Int, ctx ∈ Int, sol ∈ Int)
 
+-- ── Z3 base sorts: the four primitive sort handles made at boot ────
+-- Int / Bool / String / Real sort handles (zinit zsteps 5/6/7/8). Every
+-- type-directed Build*Z3 step picks one of these by the field/atom type
+-- string. Pinned once during zinit, carried thereafter, and (like the
+-- solver triple) driven every tick so all four stay live.
+type Z3Sorts(isort ∈ Int, bsort ∈ Int, ssort ∈ Int, rsort ∈ Int)
+
 -- ── Work items: one line of claim body = one small program ────────
 enum C2Item =
     C2Process(Expr)
