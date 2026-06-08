@@ -660,3 +660,273 @@ constraint. These patterns are the vocabulary of that encoding.
   couples all machines' output timing.
 - **Related.** The single-writer principle (Disruptor/LMAX); a hardware
   output bus arbiter; GoF *Mediator* (one object coordinates many).
+
+## 5. Creational patterns
+
+How Z3 objects and effects get built. In a normal language these would
+be constructors and factory methods; here the "object" is a foreign Z3
+AST/sort/decl, and "construction" is a tick-delayed libffi call (or a
+sequence of them) whose result is captured into a register.
+
+### 5.1 Build\* Effect Constructor
+
+- **Intent.** Name one foreign-call shape as a reusable claim that
+  constrains `eff` to a specific `LibCall`, so the FSM just selects
+  *which* `Build*`'s `eff` to emit this tick.
+- **Motivation.** A raw `LibCall("libz3", "Z3_mk_add", ⟨...⟩)` is noisy
+  and easy to get wrong. A `Build*` claim captures the argument shape
+  once and gives it a domain name; the kernel's whole "add a syscall =
+  add a `BuildXyz` claim, no kernel change" extensibility story rests on
+  this.
+- **Structure.** `claim BuildFoo(args…, eff ∈ Effect) ; eff =
+  LibCall("lib","fn", ⟨…⟩)`. The caller writes `BuildFoo(a ↦ …, eff ↦
+  x)` and uses `x`.
+- **Example.** `stdlib/kernel.ev:72-241` (`BuildPrintln`, `BuildTime`,
+  the whole `BuildZ3*` lifecycle set); `stdlib/z3_ast.ev:38-127` (the
+  AST-builder set); used throughout `compiler2/driver.ev:1259-1418`.
+- **Consequences.** (+) Self-documenting, single source of truth per
+  call shape, kernel-stable extensibility. (−) One claim per shape — the
+  `Build*` namespace grows with the foreign surface. (−) The
+  n-ary-array shapes still need caller-side marshaling (§5.4).
+- **Related.** GoF *Factory Method* / *Builder*; a typed FFI binding
+  layer; ASP's "fact" (a named, parameterized atom).
+
+### 5.2 Staged Builder Machine
+
+- **Intent.** A multi-tick sub-FSM that constructs a complex foreign
+  object (a Z3 datatype/sort) through a fixed sequence of
+  constructor/finalize/harvest micro-steps, latching the resulting
+  handles into registers.
+- **Motivation.** Declaring a Z3 datatype is not one call: you build
+  symbols, per-variant constructors, a constructor list, call
+  `mk_datatypes`, then *harvest* each variant's func_decl and tester and
+  accessor handles back out. That is dozens of ordered, capture-bearing
+  steps — a whole machine. It runs five times (four floor enums +
+  one user enum), so it is parameterized, not inlined.
+- **Structure.** An `(act, step)` micro-coordinate (declare / finalize /
+  harvest phases), one effect per tick, captures keyed off the previous
+  tick's `(act, step)`; a reusable arena (§3.5) for the intermediate
+  arrays; results latched into a Harvest Register Bank (§5.3).
+- **Example.** `compiler2/driver_enum.ev` — the `ed_act`/`ed_step`/
+  `ed_src` walk; the act/step table is spelled out at `:36-55`. Driven
+  via the Counter Hold (§4.4) from ZINIT.
+- **Consequences.** (+) One machine declares *any* enum, floor or user.
+  (+) Encapsulates a genuinely intricate foreign protocol. (−) The
+  most complex single module; the act/step table is the only spec.
+  (−) Reuse across five runs means its state must be reset between runs.
+- **Related.** GoF *Builder* (a director walking a fixed construction
+  sequence); a multi-phase compiler pass; staged initialization.
+
+### 5.3 Harvest Register Bank
+
+- **Intent.** After a staged build, latch the resulting foreign decls /
+  values into a flat bank of named registers that serves as the runtime
+  symbol table for that constructed type.
+- **Motivation.** Once a datatype exists, the program constantly needs
+  "the tester decl for variant V" and "the accessor for field F" to
+  lower `matches` and field access. Those handles are harvested once and
+  parked in a parallel-array register bank, looked up by name.
+- **Structure.** Parallel banks `uev_n0..n5` (names), `uev_d0..d5`
+  (ctor decls), `uev_t0..t5` (testers), accessors, plus a value table
+  `evt_*` for nullary variants; floor types get dedicated registers
+  (`z_irtest`, `z_srtest`, ...).
+- **Example.** `compiler2/driver_enum.ev` (the `uev_*`/`evt_*` harvest);
+  consumed at `compiler2/driver.ev:574-600` (ctor + tester resolution),
+  `:771-779` (enum-value resolution).
+- **Consequences.** (+) Constant-time (pure) resolution of variant
+  machinery. (−) Fixed width (6 variants) caps "one user enum per
+  compile, ≤6 variants." (−) Parallel arrays are the very "parallel Seqs"
+  the style guide warns against — tolerated here for flat O(1) access.
+- **Related.** A linker symbol table; a vtable; the Co-Traveling Handle
+  Bank (§3.1) specialized to a constructed type.
+
+### 5.4 Args-Array Marshaling
+
+- **Intent.** Call an n-ary foreign function that takes a C array, when
+  the effect grammar has no array shape, by writing operand handles into
+  consecutive arena slots and passing the base pointer.
+- **Motivation.** `Z3_mk_add(ctx, n, args[])` needs a pointer to `n`
+  i64s. `LibArg` can't express an array. So the FSM writes each operand
+  to `arena+0, +8, …` via `write_long` effects (themselves work items),
+  then calls the builder with the base pointer.
+- **Structure.** A run of `BuildMemWriteLong(addr ↦ base + 8*i, value ↦
+  handle_i)` items, then the n-ary `Build*` with `args_arr_ptr ↦ base`.
+  For binops this is the fixed `z_arena+200`/`+208` pair.
+- **Example.** `stdlib/translate2_bool.ev:43-52` (the marshaling spec);
+  `compiler2/driver.ev:1286-1289` (`d_eff_wl0`/`d_eff_wl1` write the two
+  operand slots) feeding `d_eff_nary`/`d_eff_arith` (`:1273-1276`);
+  ctor-arg marshaling via `CtorArgWriteStep` (`:1365-1370`).
+- **Consequences.** (+) Bridges the array-shaped C ABI through a
+  scalar-only effect grammar. (−) Several ticks per n-ary call (one
+  write per arg). (−) Relies on the Offset-Partitioned Arena's temporal
+  non-overlap invariant.
+- **Related.** Manual `va_args` marshaling; FFI struct-by-pointer
+  passing; the *element constraint* used as a write rather than a read.
+
+### 5.5 Reify-to-Handle
+
+- **Intent.** Lower every surface expression — boolean *and* arithmetic —
+  to a first-class Z3 AST handle, so compound subexpressions are values
+  that can't be dropped or mis-nested.
+- **Motivation.** This is reification (§2) taken to the limit. The
+  legacy compiler concatenated SMT-LIB *text*, and lost compound
+  arguments (the `Exit(3+4)` bug). compiler2 instead *builds the AST*:
+  `3 + 4` becomes a `Z3_mk_add` handle, and `Exit(3+4)` is
+  `mk_app(Exit, handle)`. Every node is reified to a handle on the
+  operand stack.
+- **Structure.** The Work-Item Interpreter (§4.10) over `C2H`: a
+  `C2Process(expr)` ultimately yields a handle; operators consume
+  handles and push a handle; nothing is text until the final
+  `solver_to_string` emit.
+- **Example.** `compiler2/driver.ev:1-7` and `:106-111` (the design
+  rationale — "compound args come free… the legacy dropped-Exit(3+4) bug
+  class cannot exist here"); the entire `d_eff_lib` builder dispatch
+  (`:1421-1453`).
+- **Consequences.** (+) Correctness by construction for arbitrary
+  nesting — the headline win of the whole compiler2 architecture.
+  (+) Uniform: one mechanism for all expression kinds. (−) Every node
+  costs a build tick. (−) Refcount discipline (inc_ref on capture) is a
+  manual hazard (noted across the stdlib).
+- **Related.** SMT/CP *reification*; AST-building vs. string-templating
+  codegen; SSA value numbering.
+
+---
+
+## 6. Compositional patterns
+
+How claims combine. This is the axis with the least prior art and the
+most Evident-specific content — the language offers seven composition
+forms, and compiler2 uses them as deliberate engineering tools with
+different scoping/hiding semantics. This is the closest analog to GoF's
+class-vs-object structural axis.
+
+### 6.1 Names-Match Lift (`..Claim`)
+
+- **Intent.** Splice a claim's entire body into the host scope sharing
+  all names — no hiding, no renaming — to assemble one big FSM from many
+  files.
+- **Motivation.** `driver_main` is ~15 machines totaling 7,800 lines.
+  Holding it in one file is unmanageable. `..DriverX` inlines each
+  module's body verbatim; because the modules share the host's name
+  space, a field one module defines (`zstep`, `st_cnt`) is directly
+  visible to the others. The split is purely textual/organizational —
+  semantically it is one flat claim.
+- **Structure.** `..ClaimName` at the splice site; the callee's
+  top-level memberships become the host's carried state-fields.
+- **Example.** `compiler2/driver.ev:303-456` and throughout — the ~25
+  `..DriverZInit` / `..DriverWindow` / `..DriverSymtab` / … splices that
+  build `driver_main`; each module file is an `fsm DriverX` whose header
+  documents what host fields it CONSUMES / PRODUCES / MAINTAINS.
+- **Consequences.** (+) Modular *source* with a single shared state
+  space — the only way to keep the mega-FSM legible. (−) No
+  encapsulation whatsoever: every module can read/write every other's
+  fields; name collisions are silent. (−) The CONSUMES/PRODUCES header
+  comments are the *only* interface contract.
+- **Related.** C `#include`; a mixin / trait with open recursion; GoF
+  has no direct analog (OO always hides).
+
+### 6.2 Carry-Preserving Composition (state composition)
+
+- **Intent.** Recognize that because `..`-lifted modules carry their own
+  `_x` state, *composition is also state composition* — the host tick
+  advances all lifted machines simultaneously.
+- **Motivation.** This is the consequence that makes §6.1 powerful rather
+  than merely textual: each module is a little FSM with its own carried
+  registers, and splicing them means their transition functions all fire
+  every host tick, coordinated only by the shared Mode Mux (§4.5).
+  Composition of claims *is* parallel composition of state machines.
+- **Structure.** Lifted modules declare carried fields (`x = is_first_tick
+  ? … : _x`); the host's single tick re-solves all of them at once; only
+  the active mode's writes are non-identity.
+- **Example.** The interplay of `compiler2/driver_zinit.ev` (`zstep`),
+  `compiler2/driver_compose.ev` (`il_*` frame stack), and
+  `compiler2/driver_window.ev` (`fmode`/`wtoks`) — all advancing each
+  tick, gated by mode so dormant machines hold.
+- **Consequences.** (+) Free concurrency: N machines, one clock.
+  (−) Every dormant machine still costs solver variables every tick.
+  (−) A machine that forgets to hold (`: _x`) corrupts state even while
+  "inactive."
+- **Related.** Synchronous-language parallel composition (Esterel/Lustre);
+  hardware modules on a shared clock; the Actor model with one scheduler.
+
+### 6.3 Slot-Bind Inline with α-Prefix (`Helper(slot ↦ value)`)
+
+- **Intent.** Inline a claim *with* hiding: bind its parameters to
+  caller expressions and α-rename its locals under a per-call-site prefix
+  so they can't collide — a real call with argument passing.
+- **Motivation.** Unlike `..` (names-match, no hiding), a slot call needs
+  the callee's body locals to be private to that call (so the same
+  helper can be inlined twice). The compose machine renames every callee
+  local to `"__cN_" ++ name` and binds the slots to caller handles.
+- **Structure.** A call-frame stack (`C2Frames` = return cursor + saved
+  prefix + saved binds), a binds table (`C2Binds` = slot→handle), and an
+  α-prefix (`il_pfx`); the jump sets the cursor into the callee body, the
+  body end pops the frame.
+- **Example.** `compiler2/driver_compose.ev` in full — `il_frames`/
+  `il_binds`/`il_pfx`/`il_depth` (`:40-45`), the slot-call walk
+  (`cw_*`, `:138-185`), the α-prefix `"__cN_"` (`:186`), frame
+  push/pop (`:241-283`). Bare `Name` / `..Name` splices *keep* the
+  caller scope (`cw_bare`); only slot calls install fresh binds+prefix.
+- **Consequences.** (+) True subroutine inlining with private locals and
+  argument passing, depth ≤8. (−) The most intricate control machine in
+  the program (a manual call stack over constraints). (−) Caps (4 slots,
+  depth 8) are hand-set; widening is mechanical but touches many peel
+  views.
+- **Related.** Procedure inlining with hygienic renaming; macro hygiene
+  (α-conversion); a software call stack reified as data.
+
+### 6.4 No-Redeclare Resolution (idempotent splice)
+
+- **Intent.** Make re-inlining safe: a names-match splice that
+  re-mentions an already-declared (or bound) name resolves the existing
+  handle instead of redeclaring it.
+- **Motivation.** Because `..` shares scope, a spliced body that
+  declares `count` when the host already has `count` would emit a
+  duplicate Z3 const (a malformed unit). The classifier checks the
+  symbol table (and the current frame's binds) first; if the scoped name
+  already exists, it resolves rather than declares — which is exactly
+  what makes idempotent re-splicing of shared claims correct.
+- **Structure.** `c_dup = index_of(st_names, scoped_key) ≥ 0`;
+  `c_bnd = name ∈ current frame binds`; `c_nodecl = c_bnd ∨ c_dup`; the
+  membership head becomes a *resolve* (`C2Process(EIdent …)`) instead of
+  a `C2DeclConst`.
+- **Example.** `compiler2/driver_classify.ev:214-233` (`c_nodecl`,
+  `c_mem_head`); the header note "what keeps names-match splices
+  (`..Base`, bare `IsPositive`) from emitting duplicate
+  declares/manifest fields/carry lines."
+- **Consequences.** (+) Safe composition of overlapping claims; the
+  enabling rule for §6.1/§6.3 to coexist. (−) Subtle: the
+  declare-vs-resolve decision is buried in the classifier and depends on
+  the scoped-name key construction. (−) Silent if the scoping prefix is
+  computed wrong.
+- **Related.** Idempotent `CREATE IF NOT EXISTS`; the diamond-import
+  problem; ASP's set semantics (re-deriving a fact is harmless).
+
+### 6.5 Pass-Claim Dispatch Table
+
+- **Intent.** Factor per-node-kind translation into independent "pass"
+  claims, each owning the single decision "which libcall builds *this*
+  node family," selected at the call site by a discriminator.
+- **Motivation.** Arithmetic, comparison, n-ary boolean, ternary,
+  string-op, and ctor-app nodes each map to a different Z3 builder. Rather
+  than one giant function, each family is a claim (`ArithBinopBuildZ3`,
+  `BoolCmpBuildZ3`, `BoolNaryBuildZ3`, `StrOpBuildZ3`, …) that constrains
+  `eff` for its case; the interpreter dispatches by item/op kind.
+- **Structure.** One claim per node family, each `(inputs…, eff, ok)`;
+  the work-item interpreter binds the right one per `d_it_*`/`d_op`
+  discriminator and routes its `eff` through the funnel.
+- **Example.** `compiler2/translate2_bool.ev` (`BoolCmpBuildZ3`,
+  `BoolNaryBuildZ3`, `TernaryBuildZ3`, `BoolNotBuildZ3`);
+  `compiler/translate_arith.ev` (`ArithBinopBuildZ3`);
+  `compiler2/translate2_seq.ev` (`StrOpBuildZ3` — a name-keyed sub-table);
+  bound together at `compiler2/driver.ev:1421-1453`.
+- **Consequences.** (+) Each node family is a small, independently
+  testable unit owning one concern ("which libcall"). (+) Mirrors the
+  legacy text renderers one-to-one, easing oracle comparison. (−) The
+  caller still hand-wires the dispatch; adding a node kind touches both
+  the pass claim and the interpreter's mux.
+- **Related.** GoF *Strategy* (one strategy per node kind) + *Visitor*
+  (the interpreter visits nodes, dispatching to pass claims); a
+  syntax-directed translation scheme.
+
+---
