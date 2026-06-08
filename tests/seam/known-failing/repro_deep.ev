@@ -1,0 +1,14 @@
+enum Tok = TA | TB | TC | TD | TE | TF | TG | TH | TI | TErr(String)
+claim main
+    c ∈ String = "z"
+    t ∈ Tok = (c = "↦" ? TA
+        : c = "≤" ? TB
+        : c = "≥" ? TC
+        : c = "≠" ? TD
+        : c = "∧" ? TE
+        : c = "∨" ? TF
+        : c = "¬" ? TG
+        : c = "∀" ? TH
+        : c = "∃" ? TI
+        : TErr(c))
+    effects ∈ Seq(Effect) = ⟨Exit(0)⟩
