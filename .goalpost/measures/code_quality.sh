@@ -25,26 +25,28 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 files=$(find "$ROOT/compiler2" "$ROOT/stdlib" -name '*.ev' 2>/dev/null || true)
 [ -n "$files" ] || { echo "no production Evident source found" >&2; exit 1; }
 
-# awk: walk every decl, record span sizes; report max, avg, count, #>500,
-# and the name of the largest. Reset the open decl at each file boundary.
-read -r mx avg cnt over mxname <<EOF
-$(awk '
-  function close_decl() {
-    if (name != "") { c++; tot += cur; if (cur > mx) { mx = cur; mxname = name }
-                      if (cur > 500) over++ }
-  }
+# Per-claim sizes (one "<lines>\t<name>" per declaration), reset at each
+# file boundary. p95 (not avg) is the upper-tier signal: avg is dragged to
+# noise by the ~190 tiny helpers, while p95 shows how big the big claims
+# actually are without collapsing to a single outlier like max.
+sizes=$(awk '
+  function close_decl() { if (name != "") printf "%d\t%s\n", cur, name }
   FNR == 1 { close_decl(); name = ""; cur = 0 }
   /^(claim|fsm|type|schema|enum)[ \t]/ { close_decl(); name = $2; cur = 1; next }
   name != "" { cur++ }
-  END {
-    close_decl()
-    avg = (c > 0) ? tot / c : 0
-    printf "%d %.1f %d %d %s\n", mx, avg, c, over, (mxname == "" ? "-" : mxname)
-  }
+  END { close_decl() }
 ' $files)
-EOF
+[ -n "$sizes" ] || { echo "no declarations found" >&2; exit 1; }
+
+cnt=$(printf '%s\n' "$sizes" | wc -l | tr -d ' ')
+maxline=$(printf '%s\n' "$sizes" | sort -rn | head -1)
+mx=${maxline%%$'\t'*}; mxname=${maxline#*$'\t'}
+# 95th percentile by nearest-rank: ceil(0.95 * n).
+p95idx=$(awk -v n="$cnt" 'BEGIN{ i=0.95*n; r=int(i); if(r<i)r++; if(r<1)r=1; print r }')
+p95=$(printf '%s\n' "$sizes" | cut -f1 | sort -n | awk -v i="$p95idx" 'NR==i{print; exit}')
+over=$(printf '%s\n' "$sizes" | awk -F'\t' '$1>500' | wc -l | tr -d ' ')
 
 printf '{"goal":"code-quality","measure":"max_claim_lines","kind":"trend","value":%s,"target":500,"higher_is_better":false,"unit":"lines","rung":"deterministic","period_s":300,"label":"largest single claim (%s) — should fall to <=500 as the monolith decomposes"}\n' "$mx" "$mxname"
-printf '{"goal":"code-quality","measure":"avg_claim_lines","kind":"trend","value":%s,"target":150,"higher_is_better":false,"unit":"lines","rung":"deterministic","period_s":300,"label":"average claim footprint across compiler2 + stdlib"}\n' "$avg"
+printf '{"goal":"code-quality","measure":"p95_claim_lines","kind":"trend","value":%s,"target":300,"higher_is_better":false,"unit":"lines","rung":"deterministic","period_s":300,"label":"95th-percentile claim size (upper-tier footprint, robust to the monolith outlier)"}\n' "$p95"
 printf '{"goal":"code-quality","measure":"oversized_claims","kind":"gate","value":%s,"target":0,"higher_is_better":false,"unit":"count","rung":"deterministic","period_s":300,"label":"claims over 500 lines (the monolith ceiling)"}\n' "$over"
 printf '{"goal":"code-quality","measure":"claim_count","kind":"trend","value":%s,"target":0,"higher_is_better":true,"unit":"count","rung":"deterministic","period_s":300,"label":"top-level declarations in production Evident source"}\n' "$cnt"
