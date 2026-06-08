@@ -153,3 +153,13 @@ wedge is gone). This list is compiler2's eventual scoreboard for
 the kernel-fixture corpus, alongside the conformance census.
 compiler2 meanwhile: 41 census fixtures + Result floor +
 last_results selects (ahead of the fossil on those shapes).
+
+## Canonical scoreboard (goalpost-measured, 2026-06-08)
+
+conformance_pass 120/138 (was 14 under the legacy artifact; ground
+truth from .goalpost/bin/run-conformance.sh, 0 timeouts, fresh
+artifact). Burndown: 18 — record DATATYPES class (~16: composite
+seq/set elements, tuple coercion, componentwise arithmetic),
+Real literals (021), quantifier-in-pin (123). G1 landed records-as-
+frames, conditional inlines, bounded quantifiers, positional/method
+bindings, replace, infix-contains, slot-width 6.
