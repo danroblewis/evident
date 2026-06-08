@@ -182,6 +182,64 @@ Four lifts happen automatically:
 3. Type-use pins: `pos ∈ IVec2(380, 280)` or `pos ∈ IVec2(x ↦ 1)`.
 4. Record literals in expressions: `state.pos = IVec2(0, 0)`.
 
+### Type invariants — a type is its constraints, not its fields
+
+The header line `type T(a, b ∈ …)` only names the fields. The **body**
+is where the type earns its keep: a type is "a named set defined by
+membership conditions," so put the invariants that **bind the fields'
+relationships** in the body. A bodyless `type T(a, b)` is an anemic
+tuple — avoid it. When you write `x ∈ T`, the oracle instantiates the
+body over `x`'s fields, and the kernel **re-checks it every tick**: a
+violation on carried state surfaces as a loud `UNSAT` (exit 2) instead
+of a silent wrong answer. This is the single highest-leverage thing a
+type does in this language.
+
+```evident
+-- GOOD: the body binds count to cap — a memory-safety contract.
+-- `cap` exists precisely so the cursor-in-bounds relationship is
+-- expressible; a good type may need a field to state its invariant.
+type FtiBuffer(base ∈ Int, count ∈ Int, cap ∈ Int)
+    base ≥ 0           -- a real calloc'd address, never negative
+    cap  ≥ 0           -- the region holds `cap` slots
+    0 ≤ count ≤ cap    -- the write cursor never passes the last slot
+```
+
+An append that would drive `count` past `cap` makes the tick UNSAT —
+the overrun halts the kernel instead of corrupting memory.
+
+**Carried/lifecycle types: use conditional invariants.** A type that is
+carried state passes through an uninitialized boot window where its
+handles are legitimately `0`. A universal `handle ≠ 0` would falsely
+fail tick 0. State the contract **conditionally** so it's vacuously
+true during init and binds the relationship once the thing is live:
+
+```evident
+-- GOOD: "if the solver is live, so are its context and config."
+-- Vacuous while sol = 0 (boot); enforced once sol is latched.
+type Z3SolverCtx(cfg ∈ Int, ctx ∈ Int, sol ∈ Int)
+    cfg ≥ 0
+    ctx ≥ 0
+    sol ≥ 0
+    sol ≠ 0 ⇒ (ctx ≠ 0 ∧ cfg ≠ 0)
+```
+
+Rules of thumb for writing a type body:
+
+- State what must **always** be true of the fields — including during
+  the boot window. If a property only holds once initialized, guard it
+  (`live ⇒ …`), don't assert it unconditionally.
+- Prefer invariants that **relate** fields (`count ≤ cap`,
+  `sol ≠ 0 ⇒ ctx ≠ 0`) over per-field sanity — the relationship *is*
+  the abstraction.
+- Mind the footguns: `⇒` binds tighter than `∧`, so wrap consequents
+  `A ⇒ (B ∧ C)`; `=` binds tighter than comparisons, so wrap boolean
+  assignments. Chained membership (`0 ≤ count ≤ cap`) works in a body.
+- Adding an invariant is a **behavior change**, not a refactor — gate
+  it on conformance + the type's carry unit test, never the
+  byte-identical emit gate. A conformance regression means the
+  invariant is actually false somewhere: that's real signal, investigate
+  it before weakening the invariant.
+
 ### Seq
 
 ```evident
