@@ -129,9 +129,20 @@ Four keywords produce the same AST node (`SchemaDecl`):
 | `type`   | Defines a record / nominal value type (a noun).                       |
 | `claim`  | A predicate / constraint / property (a verb-like assertion).          |
 | `schema` | Synonym for `type`. Avoid in new code.                                |
-| `fsm`    | Currently a synonym for `claim`. Reserved for FSM-specific semantics. |
+| `fsm`    | A `claim` whose referenced `_x` prev-tick carries are auto-synthesized (its FSM-specific semantics; see below). Use for stateful tick-machines. |
 
 `sat_*` / `unsat_*` test claims are written as `claim`.
+
+`fsm` is no longer a bare synonym for `claim`. The pre-oracle transform
+`scripts/expand-fsm-autocarry.sh` rewrites `fsm Name` → `claim Name` and,
+for every bare field `x ∈ T` whose `_x` is referenced in the body, inserts
+a `_x ∈ base(T)` carry-dual — so a carry-bearing machine is written `fsm`
+with no hand-written `_<name>` declarations. A plain `claim` (no autocarry)
+still needs explicit `_x` decls. Use `fsm` for anything that carries state
+across ticks; reserve `claim` for pure predicates/helpers. `fsm`
+composition also threads carries into the parent (slot-bind injects
+`_x ↦ _y`; `..`-lift and nested forms work) — see
+`docs/plans/fsm-composition.md`.
 
 ### Composition mechanisms
 
@@ -291,6 +302,18 @@ Top-level memberships of primitive type (`Int`/`Bool`/`Real`/`String`),
 excluding `effects`, `last_results`, `is_first_tick`, and `_<name>`
 carry-overs, are read from the model after each solve and asserted
 as `_<name> = <prev value>` on the next tick.
+
+**Record-typed fields carry too.** A carried `r ∈ T` (record `type`)
+declared alongside its `_r ∈ T` dual is flattened by the oracle into its
+primitive field-consts (`r.f`/`_r.f`), which carry by the rule above — so
+records are usable as evolving FSM state, not just transient values
+(oracle fix, commit `c95710c`). Guardrails: **every field of a carried
+record must have a covering assignment each tick** (else the kernel aborts
+with `state var X not in model` — this also forbids wide "god-records"),
+and **collections of records should be cons-list `enum`s, never `Seq`**
+(`Seq` is ~250× slower on Z3 — see `docs/plans/blocked-cons-to-seq-perf.md`).
+`Seq(T)` and cons-list `enum`s also carry. In an `fsm`, the autocarry
+transform synthesizes the `_x`/`_r` duals automatically (above).
 
 ### is_first_tick
 
