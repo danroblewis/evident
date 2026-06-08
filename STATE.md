@@ -163,3 +163,13 @@ seq/set elements, tuple coercion, componentwise arithmetic),
 Real literals (021), quantifier-in-pin (123). G1 landed records-as-
 frames, conditional inlines, bounded quantifiers, positional/method
 bindings, replace, infix-contains, slot-width 6.
+
+## Conformance conquered (goalpost-measured, 2026-06-08): 137/138
+
+G2a closed the burndown: record DATATYPE sorts (Z3_mk_tuple_sort +
+field-named accessors), record literals, accessor reads,
+componentwise lifts, tuple→record coercion, Real/FloatLit. Only
+descope: 123 (quantifier in pin position). Legacy artifact: 14.
+Pivot now to the OTHER three self-host rungs: kernel-fixture corpus,
+sample.ev equivalence, self-compile (run their .goalpost harnesses
+for honest readings).
