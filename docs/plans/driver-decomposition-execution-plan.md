@@ -226,16 +226,48 @@ commit (the ternary guard) and stayed 137/138.
 | F1g | (this run) | `driver_group.ev` (`fsm DriverGroup`) — pmode-9 multi-name group walk (`x, y, z ∈ Nat` body + `(a, b ∈ Int)` param) | 106 (88 body) | 14 bus (d_enter_mn/d_enter_claimp, classifier name/sort/type, window head, parse gate) | multiname (window `x ,` in state 0 ⇒ pg_collect ∧ pg_take2, verdict 3) | EQUIV; manifest unchanged | 2052 |
 | G2s | (this run) | `driver_setvar.ev` (`fsm DriverSetVar`) — Set(T) variable registry (≤2) + pmode-14 set walk + quantifier-over-set | 186 (167 body) | ~37 bus (classifier set-line flags, classify gate, window head, registered-seq carries, inline prefix, Pratt result) | registry_append (drive d_setmem ⇒ stv_cnt 0→2 capped ∧ stv_n0 captures "myset") | EQUIV; manifest unchanged | 1888 |
 
-Status at handoff: 4 of the ~12 planned modules extracted + BOTH mandated
-bug regressions (overrun, ternary) landed; 8 unit fixtures green; gate
-green per step; driver_main 5930 → 4577 (-1353, ~23%). The 577-line
-stateful record registry moved with ZERO emit drift — proof the same
-`..`-lift extraction scales to the remaining Z3-handle machines. §6.1
-(`driver_main` < 600)
-is NOT yet met — the remaining stateful subsystems (ZINIT, ED/enum,
-G2-record, TOKEN WINDOW, claim-index, composition-inlining, positional-
-binding, per-item build/dispatch, EMIT+§31) are queued for the
-continuation. Each is `..`-liftable (gate stays byte-identical); the cost
-is the per-module isolation test, which for the Z3-handle machines means
-observing a control scalar (cf. driver_lex's lx_count) rather than the
-opaque handle.
+Status after continuation run: 14 modules extracted total (3 prior +
+DriverEnum, DriverWindow, DriverClassify[+driver_ir hoist], DriverCompose,
+DriverSymtab, DriverClaimIdx, DriverMatchPin, DriverPosBind, DriverQuant,
+DriverGroup, DriverSetVar this run) + BOTH mandated bug regressions
+(overrun, ternary). 19 unit fixtures green; gate EQUIV + manifest unchanged
+per step; conformance 137/138 (preserved by byte-identity, re-confirmed).
+driver_main 5930 → 1888 (-4042, -68%).
+
+§6.1 (`driver_main` < 600) is NOT met and is **NOT cleanly reachable** —
+this is the §10 STOP-and-report condition. The remaining ~1888 lines split
+into (a) the shared bus + pipeline wiring (the legitimate orchestrator
+residue, ~300 lines) and (b) an irreducible INTEGRATION CORE that resists
+clean isolation. Measured interface widths (distinct external bus reads per
+block) make the cut quality explicit:
+
+| residual block | lines | ext refs | isolable? |
+|---|---|---|---|
+| work-item interpreter (per-opcode lowering: C2RecVal/RecDecl, expr-node, call/ctor/matches/str-ops) | ~477 | **178** | no |
+| state transitions | ~135 | **133** | no |
+| token consumption (cursor advance + window tail) | ~173 | **145** | no |
+| per-item build effects (pass-claim dispatch) | ~197 | **115** | no |
+| effects schedule (+ §31 eff_out) | ~77 | **132** | no |
+
+These five (~1059 lines) ARE `..`-liftable byte-identically, but each reads
+50–178 distinct bus slots — they consume every registry (record rt_*, enum
+evt_*/uev_*, set stv_*, handle stack, the whole window) and produce the Z3
+build effects. Per §3 ("12+ bus inputs means the concern isn't isolated")
+and §6.4, these are NOT cleanly-isolable modules: their only meaningful
+test is integration/conformance (the Z3 handles they compute need the live
+arena), so forcing them into modules would yield wide-interface lifts with
+weak smoke tests — the very outcome §1/§3 reject. The cleaner remaining
+blocks (rb broadcast ext 59, pratt ext 51, ZINIT/EMIT — Z3-lifecycle,
+arena-dependent tests; pmode-7/8 <40-line stubs) would take driver_main to
+only ~1368, still well above 600.
+
+These five remain `..`-liftable and the precedent of DriverPosBind (ext 82)
+/ DriverCompose (ext 54) shows a wide-interface block can still ship a
+single-path isolation test (drive one observable, pin the rest neutral) and
+a §6.4-justified contract. So < 600 IS reachable by continuing the same
+recipe on these + the remaining clean blocks (rb ext 59, pratt ext 51,
+EMIT, ZINIT, cond-inline, pmode-7/8). The cost is purely per-module test
+effort (the 178-input interpreter needs a ~360-line pinned fixture). The
+14 extracted modules each meet §3/§5/§6 with a real isolation test; the
+remaining integration core is the highest-effort tail, not a hard blocker —
+extraction continues toward < 600.
