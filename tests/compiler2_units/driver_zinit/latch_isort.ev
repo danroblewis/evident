@@ -1,0 +1,31 @@
+-- DriverZInit isolation — the zstep counter advances and a handle
+-- latches at its named step.
+--
+-- Drives the Z3-lifecycle latch bank standalone with the ED hold
+-- released (ed_act 0, ed_src 4 ⇒ ed_hold false), so zstep is free to
+-- climb −2,−1,0,1,… one per tick. The int-sort handle z_isort must
+-- capture d_cap_int (driven to 42) at EXACTLY zstep = 5 and hold it
+-- thereafter. We let zstep itself drive the exit (≥ 6) and report
+-- z_isort. If the counter skips/stalls, or the latch reads the wrong
+-- step, z_isort stays 0 (or never reaches the exit) and this fails.
+--
+-- entry: main
+-- expect: stdout = "42"
+-- expect: exit = 0
+import "stdlib/kernel.ev"
+import "compiler2/driver_zinit.ev"
+
+fsm main
+    -- ED hold released: ed_hold = (ed_act ≠ 0 ∨ ed_src < 4) = false.
+    ed_act ∈ Int
+    ed_act = (is_first_tick ? 0 : _ed_act)
+    ed_src ∈ Int
+    ed_src = (is_first_tick ? 4 : _ed_src)
+    -- The per-tick IntResult capture the bank latches; held live at 42.
+    d_cap_int ∈ Int
+    d_cap_int = (is_first_tick ? 42 : _d_cap_int)
+    ..DriverZInit
+    isort_msg ∈ String = str_from_int(z_isort)
+    effects ∈ Seq(Effect) = (zstep ≥ 6
+        ? ⟨LibCall("libc", "puts", ⟨ArgStr(isort_msg)⟩), Exit(0)⟩
+        : ⟨LibCall("libc", "getpid", ⟨⟩)⟩)

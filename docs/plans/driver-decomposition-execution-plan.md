@@ -227,6 +227,12 @@ commit (the ternary guard) and stayed 137/138.
 | G2s | (this run) | `driver_setvar.ev` (`fsm DriverSetVar`) — Set(T) variable registry (≤2) + pmode-14 set walk + quantifier-over-set | 186 (167 body) | ~37 bus (classifier set-line flags, classify gate, window head, registered-seq carries, inline prefix, Pratt result) | registry_append (drive d_setmem ⇒ stv_cnt 0→2 capped ∧ stv_n0 captures "myset") | EQUIV; manifest unchanged | 1888 |
 | 5p | (this run) | `driver_pratt.ev` (`fsm DriverPratt`) — pmode-3 Pratt expression-parser FSM | 110 (94 body) | ~26 bus (parse gate, d_enter_pratt + d_pratt_kind0 entry, classifier pin/decl flags, record + user-enum registries, qstop) | entry_kind (drive d_enter_pratt + d_pratt_kind0 5 ⇒ pk_kind latches 5) | EQUIV; manifest unchanged | 1797 |
 
+Continuation run #2 (clean-block sweep). Resumes from f263d4e; extracts
+the remaining `..`-liftable clean blocks listed in §12 (ZINIT, EMIT, rb
+broadcast, cond-inline, pmode-7/8) + splits the >500-line DriverRecord.
+
+| ZI | (this run) | `driver_zinit.ev` (`fsm DriverZInit`) — the Z3-lifecycle latch bank (zstep program counter + every captured handle/const: cfg/ctx/sol, 4 base sorts, arena, effects-array consts, numerals, buffer bases, last_results/is_first_tick build consts) | 124 (105 body) | 4 bus IN (d_cap_int, _ed_act, _ed_src, is_first_tick) — narrow input; the ~34 PRODUCES are a setup latch bank, not an interface | latch_isort (ed_hold released ⇒ zstep climbs; z_isort captures d_cap_int=42 at exactly zstep 5) | EQUIV; manifest unchanged | 1705 |
+
 Status after continuation run: 15 modules extracted total (3 prior +
 DriverEnum, DriverWindow, DriverClassify[+driver_ir hoist], DriverCompose,
 DriverSymtab, DriverClaimIdx, DriverMatchPin, DriverPosBind, DriverQuant,

@@ -248,6 +248,7 @@ import "compiler2/driver_quant.ev"
 import "compiler2/driver_group.ev"
 import "compiler2/driver_setvar.ev"
 import "compiler2/driver_pratt.ev"
+import "compiler2/driver_zinit.ev"
 
 import "compiler2/driver_ir.ev"
 
@@ -293,101 +294,8 @@ fsm driver_main
         StringResult(s) ⇒ s
         _ ⇒ ""
 
-    -- ── ZINIT — Z3 lifecycle + Effect-floor datatypes + consts ───
-    -- zstep: -2 on tick 0, -1 on tick 1, then 0,1,2,… (capped).
-    -- zstep HOLDS at 9 while the ED machine (below) declares the
-    -- three Effect-floor datatypes (LibArg → __SeqOf_LibArg →
-    -- Effect) in the build context; it resumes at 10 when ed_src
-    -- reaches 3 with the machine idle.
-    zstep  ∈ Int
-    ed_hold ∈ Bool = (_ed_act ≠ 0 ∨ _ed_src < 4)
-    zstep = (is_first_tick ? 0 - 2
-        : (_zstep = 9 ∧ ed_hold) ? 9
-        : (_zstep < 60 ? _zstep + 1 : _zstep))
-
-    z_cfg ∈ Int
-    z_cfg = (is_first_tick ? 0 : zstep = 1 ? d_cap_int : _z_cfg)
-    z_ctx ∈ Int
-    z_ctx = (is_first_tick ? 0 : zstep = 2 ? d_cap_int : _z_ctx)
-    z_sol ∈ Int
-    z_sol = (is_first_tick ? 0 : zstep = 3 ? d_cap_int : _z_sol)
-    z_isort ∈ Int
-    z_isort = (is_first_tick ? 0 : zstep = 5 ? d_cap_int : _z_isort)
-    z_bsort ∈ Int
-    z_bsort = (is_first_tick ? 0 : zstep = 6 ? d_cap_int : _z_bsort)
-    z_ssort ∈ Int
-    z_ssort = (is_first_tick ? 0 : zstep = 7 ? d_cap_int : _z_ssort)
-    z_rsort ∈ Int
-    z_rsort = (is_first_tick ? 0 : zstep = 8 ? d_cap_int : _z_rsort)
-    -- zstep holds at 9; latch the arena only on the FIRST 9-tick.
-    z_arena ∈ Int
-    z_arena = (is_first_tick ? 0
-        : (zstep = 9 ∧ _zstep = 8) ? d_cap_int : _z_arena)
-    z_arrsort ∈ Int
-    z_arrsort = (is_first_tick ? 0 : zstep = 11 ? d_cap_int : _z_arrsort)
-    z_sym_effs ∈ Int
-    z_sym_effs = (is_first_tick ? 0 : zstep = 12 ? d_cap_int : _z_sym_effs)
-    z_effs ∈ Int
-    z_effs = (is_first_tick ? 0 : zstep = 13 ? d_cap_int : _z_effs)
-    z_sym_elen ∈ Int
-    z_sym_elen = (is_first_tick ? 0 : zstep = 14 ? d_cap_int : _z_sym_elen)
-    z_elen ∈ Int
-    z_elen = (is_first_tick ? 0 : zstep = 15 ? d_cap_int : _z_elen)
-    z_zero ∈ Int
-    z_zero = (is_first_tick ? 0 : zstep = 16 ? d_cap_int : _z_zero)
-    z_one ∈ Int
-    z_one = (is_first_tick ? 0 : zstep = 17 ? d_cap_int : _z_one)
-    z_two ∈ Int
-    z_two = (is_first_tick ? 0 : zstep = 18 ? d_cap_int : _z_two)
-    z_true ∈ Int
-    z_true = (is_first_tick ? 0 : zstep = 19 ? d_cap_int : _z_true)
-    z_false ∈ Int
-    z_false = (is_first_tick ? 0 : zstep = 20 ? d_cap_int : _z_false)
-    tbase ∈ Int
-    tbase = (is_first_tick ? 0 : zstep = 21 ? d_cap_int : _tbase)
-    st_base ∈ Int
-    st_base = (is_first_tick ? 0 : zstep = 22 ? d_cap_int : _st_base)
-    -- D3: last_results / last_results__len / is_first_tick as real
-    -- build-context consts (zsteps 22-31), so user constraints can
-    -- reference them. The last_results__len floor assert moves INTO
-    -- the build context (it always serializes, so the textual
-    -- prelude drops its len lines unconditionally; the Result
-    -- datatype + last_results decl lines drop only when a user
-    -- constraint mentioned last_results — see saw_lr).
-    z_lrsort ∈ Int
-    z_lrsort = (is_first_tick ? 0 : zstep = 23 ? d_cap_int : _z_lrsort)
-    z_sym_lr ∈ Int
-    z_sym_lr = (is_first_tick ? 0 : zstep = 24 ? d_cap_int : _z_sym_lr)
-    z_lastres ∈ Int
-    z_lastres = (is_first_tick ? 0 : zstep = 25 ? d_cap_int : _z_lastres)
-    z_sym_lrl ∈ Int
-    z_sym_lrl = (is_first_tick ? 0 : zstep = 26 ? d_cap_int : _z_sym_lrl)
-    z_lrlen ∈ Int
-    z_lrlen = (is_first_tick ? 0 : zstep = 27 ? d_cap_int : _z_lrlen)
-    z_sym_ift ∈ Int
-    z_sym_ift = (is_first_tick ? 0 : zstep = 28 ? d_cap_int : _z_sym_ift)
-    z_ift ∈ Int
-    z_ift = (is_first_tick ? 0 : zstep = 29 ? d_cap_int : _z_ift)
-    z_lrge ∈ Int
-    z_lrge = (is_first_tick ? 0 : zstep = 30 ? d_cap_int : _z_lrge)
-    -- D2: 3/4 numerals (effects literals up to 4 elements) + the
-    -- (Array Int Int) sort for user Seq(Int) memberships.
-    z_three ∈ Int
-    z_three = (is_first_tick ? 0 : zstep = 33 ? d_cap_int : _z_three)
-    z_four ∈ Int
-    z_four = (is_first_tick ? 0 : zstep = 34 ? d_cap_int : _z_four)
-    z_iarr ∈ Int
-    z_iarr = (is_first_tick ? 0 : zstep = 35 ? d_cap_int : _z_iarr)
-    -- E1: the effects floor `(assert (>= effects__len 0))` lives in
-    -- the BUILD context (zsteps 35-36, the ze_lrge/ze_lrassert
-    -- pattern) — the oracle emits it unconditionally for every unit.
-    z_ege ∈ Int
-    z_ege = (is_first_tick ? 0 : zstep = 36 ? d_cap_int : _z_ege)
-    -- F2: the claim-index cursor buffer (256 entries × 8 bytes; the
-    -- body-start token cursor of every skipped claim, decl order —
-    -- names live in ci_names, the st_names pattern).
-    ci_base ∈ Int
-    ci_base = (is_first_tick ? 0 : zstep = 38 ? d_cap_int : _ci_base)
+    -- ── ZINIT — Z3 lifecycle latch bank (see compiler2/driver_zinit.ev) ──
+    ..DriverZInit
 
     -- ── ED — enum-declaration machine (see compiler2/driver_enum.ev) ──
     ..DriverEnum
