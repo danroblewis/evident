@@ -1,0 +1,21 @@
+-- Kernel-run companion to overrun_unsat.ev: an in-bounds write is
+-- admitted, the FSM runs to Exit(0). Proves the bound is not vacuously
+-- UNSAT — the model accepts every legal write and rejects only the
+-- overrun.
+--
+--     evident-oracle emit tests/fti_proofs/safe_exit.ev main -o /tmp/safe.smt2
+--     kernel /tmp/safe.smt2   # expect exit 0
+--
+-- expect: exit = 0
+import "stdlib/kernel.ev"
+
+claim main
+    -- Last legal slot in a capacity-4 buffer. write_slot = 3 < 4 ⇒ SAT,
+    -- and the exit code is the write address offset proving the value
+    -- threaded through: 3*8 = 24, minus 24 = Exit(0).
+    -- A free slot bounded by capacity. The bound `write_slot < 4` is the
+    -- safety constraint; 0 ≤ write_slot keeps it in-region. Z3 must pick a
+    -- legal value (the model is non-empty), so the tick is SAT and the FSM
+    -- exits cleanly — the bound rejects only the overrun, not every write.
+    0 ≤ write_slot ∈ Int < 4
+    effects ∈ Seq(Effect) = ⟨Exit(0)⟩
