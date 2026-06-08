@@ -245,6 +245,7 @@ import "compiler2/driver_claimidx.ev"
 import "compiler2/driver_matchpin.ev"
 import "compiler2/driver_posbind.ev"
 import "compiler2/driver_quant.ev"
+import "compiler2/driver_group.ev"
 
 import "compiler2/driver_ir.ev"
 
@@ -1280,94 +1281,8 @@ fsm driver_main
         ? "(declare-fun _" ++ c_dname ++ " () (Array " ++ c_sq_eltnm ++ " Bool))\n"
         : "(declare-fun _" ++ c_dname ++ " () " ++ c_tyname ++ ")\n")
 
-    -- ── F1: pmode-9 GROUP walk (first-line param lists + body
-    -- multi-name memberships) ─────────────────────────────────────
-    -- Two flavors share one FSM. PARAM (`claim main(a, b ∈ Int,
-    -- ok ∈ Bool)`): groups separated by `,`, list closed by `)`.
-    -- BODY (`x, y, z ∈ Nat`): one group, no separator after the
-    -- type. Collect substate (pg_st 0): one `Ident ,` per tick
-    -- pushes the name; the `Ident ∈ Type` tick declares the LAST
-    -- name through the classifier's own c_mem_items/c_field/c_cdecl
-    -- (same window positions as a plain membership) and latches the
-    -- group type. Drain substate (pg_st 1): one pending name per
-    -- tick declares through pg_drain_items with the latched type.
-    -- Scalar types only (Int/Nat/Bool/String/Result/the user enum);
-    -- Seq(...) params and bounds/pins on group lines are descoped
-    -- (zero corpus occurrences of either).
-    pg_pend ∈ TokenList
-    pg_st ∈ Int
-    pg_param ∈ Bool
-    pg_close ∈ Bool
-    pg_sc ∈ Int
-    pg_nat ∈ Bool
-    pg_ty ∈ String
-
-    pg_active ∈ Bool = (in_parse ∧ (_pmode = 9) ∧ d_witems_nil
-        ∧ tok_ready)
-    pg_collect ∈ Bool = (pg_active ∧ (_pg_st = 0))
-    pg_take2 ∈ Bool = (pg_collect ∧ (ww_t0 matches Ident(_))
-        ∧ (ww_t1 matches Comma))
-    pg_ty_tick ∈ Bool = (pg_collect ∧ (ww_t0 matches Ident(_))
-        ∧ c_is_mem)
-    pg_bail ∈ Bool = (pg_collect ∧ (¬pg_take2) ∧ (¬pg_ty_tick))
-    pg_drain ∈ Bool = (pg_active ∧ (_pg_st = 1))
-
-    pg_have_pend ∈ Bool = (¬(_pg_pend matches TLNil))
-    pg_hd_t ∈ Token = match _pg_pend
-        TLCons(t, _) ⇒ t
-        TLNil ⇒ EofTok
-    pg_hd_nm ∈ String = match pg_hd_t
-        Ident(s) ⇒ s
-        _ ⇒ ""
-    pg_tail ∈ TokenList = match _pg_pend
-        TLCons(_, r) ⇒ r
-        TLNil ⇒ TLNil
-    pg_last ∈ Bool = (pg_tail matches TLNil)
-
-    -- group-end bookkeeping on the type tick: PARAM flavor also
-    -- consumes the separator (`,` next group / `)` list end).
-    pg_ty_cons ∈ Int = (_pg_param ? 4 : 3)
-    pg_ty_close ∈ Bool = (ww_t3 matches RParen)
-    -- where the walk goes when the current group is fully declared
-    pg_group_done_mode ∈ Int = ((¬_pg_param) ? 2
-        : _pg_close ? 2
-        : 9)
-    pg_ty_exit_mode ∈ Int = ((¬_pg_param) ? 2
-        : pg_ty_close ? 2
-        : 9)
-
-    pg_pend = (is_first_tick ? TLNil
-        : d_enter_claimp ? TLNil
-        : d_enter_mn ? TLCons(c_t0, TLNil)
-        : pg_take2 ? TLCons(ww_t0, _pg_pend)
-        : pg_drain ? pg_tail
-        : _pg_pend)
-    pg_st = (is_first_tick ? 0
-        : (d_enter_claimp ∨ d_enter_mn) ? 0
-        : pg_ty_tick ? (pg_have_pend ? 1 : 0)
-        : (pg_drain ∧ pg_last) ? 0
-        : _pg_st)
-    pg_param = (is_first_tick ? false
-        : d_enter_claimp ? true
-        : d_enter_mn ? false
-        : _pg_param)
-    pg_close = (is_first_tick ? false
-        : d_enter_claimp ? false
-        : (pg_ty_tick ∧ _pg_param) ? pg_ty_close
-        : _pg_close)
-    pg_sc = (is_first_tick ? 0 : pg_ty_tick ? c_sc : _pg_sc)
-    pg_nat = (is_first_tick ? false : pg_ty_tick ? c_is_nat : _pg_nat)
-    pg_ty = (is_first_tick ? "" : pg_ty_tick ? c_tyname : _pg_ty)
-
-    pg_field ∈ String = pg_hd_nm ++ ":" ++ _pg_ty
-    pg_cdecl ∈ String = ("(declare-fun _" ++ pg_hd_nm ++ " () "
-        ++ _pg_ty ++ ")\n")
-    pg_drain_items ∈ C2Items = C2ICons(C2DeclConst(pg_hd_nm, _pg_sc),
-        (_pg_nat
-            ? C2ICons(C2NatBound, C2ICons(C2AssertTop,
-                C2ICons(C2Drop, C2INil)))
-            : C2ICons(C2Drop, C2INil)))
-
+    -- ── F1: pmode-9 GROUP walk (see compiler2/driver_group.ev) ──
+    ..DriverGroup
     -- ── F2: composition inlining (see compiler2/driver_compose.ev) ──
     ..DriverCompose
     -- ── PRATT FSM state (pmode 3; reads the shared window) ────────

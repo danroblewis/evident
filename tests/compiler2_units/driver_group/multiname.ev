@@ -1,0 +1,52 @@
+-- DriverGroup isolation — multi-name collect recognizer.
+--
+-- Drives the pmode-9 group walk in collect state 0 (pg_active) with the
+-- window head `x ,` (Ident Comma). The module must be active (pg_collect)
+-- and recognize the multi-name continuation (pg_take2). verdict =
+-- 1*pg_collect + 2*pg_take2 = 3. A regression in the group gate or the
+-- name-continuation recognizer changes the verdict.
+--
+-- entry: main
+-- expect: stdout = "3"
+-- expect: exit = 0
+import "stdlib/kernel.ev"
+import "compiler/lexer.ev"
+import "compiler/parser.ev"
+import "compiler2/driver_ir.ev"
+import "compiler2/driver_group.ev"
+
+fsm main
+    in_parse ∈ Bool
+    in_parse = (is_first_tick ? true : _in_parse)
+    pmode ∈ Int
+    pmode = (is_first_tick ? 9 : _pmode)
+    tok_ready ∈ Bool
+    tok_ready = (is_first_tick ? true : _tok_ready)
+    d_witems_nil ∈ Bool
+    d_witems_nil = (is_first_tick ? true : _d_witems_nil)
+    ww_t0 ∈ Token
+    ww_t0 = (is_first_tick ? Ident("x") : _ww_t0)
+    ww_t1 ∈ Token
+    ww_t1 = (is_first_tick ? Comma : _ww_t1)
+    c_is_mem ∈ Bool
+    c_is_mem = (is_first_tick ? false : _c_is_mem)
+    c_is_nat ∈ Bool
+    c_is_nat = (is_first_tick ? false : _c_is_nat)
+    c_sc ∈ Int
+    c_sc = (is_first_tick ? 0 : _c_sc)
+    c_t0 ∈ Token
+    c_t0 = (is_first_tick ? EofTok : _c_t0)
+    c_tyname ∈ String
+    c_tyname = (is_first_tick ? "" : _c_tyname)
+    d_enter_claimp ∈ Bool
+    d_enter_claimp = (is_first_tick ? false : _d_enter_claimp)
+    d_enter_mn ∈ Bool
+    d_enter_mn = (is_first_tick ? false : _d_enter_mn)
+    ww_t3 ∈ Token
+    ww_t3 = (is_first_tick ? EofTok : _ww_t3)
+    ..DriverGroup
+    verdict ∈ Int = ((pg_collect ? 1 : 0) + (pg_take2 ? 2 : 0))
+    v_msg ∈ String = str_from_int(verdict)
+    effects ∈ Seq(Effect) = ((¬is_first_tick)
+        ? ⟨LibCall("libc", "puts", ⟨ArgStr(v_msg)⟩), Exit(0)⟩
+        : ⟨LibCall("libc", "getpid", ⟨⟩)⟩)
