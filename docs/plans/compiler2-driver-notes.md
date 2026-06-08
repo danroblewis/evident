@@ -2092,17 +2092,22 @@ armed); the fraction-finish writes ONE FloatLit token packed as
 walker to one `Z3_mk_numeral("314/100", Real)`. Negative floats
 descoped (zero corpus occurrences).
 
-### G2a acceptance
+### G2a acceptance (canonical harness, 2026-06-08)
 
-Probed per-fixture through the canonical harness path (oracle-built
-stage1, kernel-run, smt2-contains + exit checks; mktemp throughout).
-Flips, all PASS: 021 · 045 · 081 · 090 · 091 · 092 · 093 · 096 ·
-110 · 119 · 121 · 122 · 125 · 126 · 127 · 128 · 129 · 130 · 131 ·
-132 · 133 · 137 · 138. Regression anchors (001 · 119) hold; the
-oracle-path unit fixtures match main's pre-G2a baseline (pratt green;
-the record/bool/ctor/match/seq/lex/solver/carry/params/compose
-exit-1s are PRE-EXISTING on main, re-verified — NOT G2a
-regressions). The full canonical run lands the burndown.
+`.goalpost/bin/run-conformance.sh` run from the worktree
+(oracle-built stage1, 12 jobs, 1800 s/fixture cap):
+
+- BEFORE: 120/138 passed, 18 failed (021 · 090-093 · 121-123 ·
+  125-132 · 137-138 — exactly G1's descope list).
+- AFTER: 137/138 passed, 1 failed, 0 timed out (wall 281 s, stage1
+  builder oracle). +17 flips, ZERO regressions.
+- The lone remaining failure is 123-subschema-shadowing-quantifier
+  (compile error, fast — not a wedge), the documented descope below.
+
+Regression anchors (001 · 119) hold; the oracle-path unit fixtures
+match main's pre-G2a baseline (pratt green; the record / bool / ctor
+/ match / seq / lex / solver / carry / params / compose exit-1s are
+PRE-EXISTING on main, re-verified — NOT G2a regressions).
 
 ### G2a remaining descope
 
