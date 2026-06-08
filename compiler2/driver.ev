@@ -253,6 +253,7 @@ import "compiler2/driver_broadcast.ev"
 import "compiler2/driver_guard.ev"
 import "compiler2/driver_litmem.ev"
 import "compiler2/driver_buildeff.ev"
+import "compiler2/driver_emit.ev"
 
 import "compiler2/driver_ir.ev"
 
@@ -1451,52 +1452,14 @@ fsm driver_main
         : d_it_sadd ? d_eff_sadd
         : d_eff_filler)
 
-    -- ── EMIT ──────────────────────────────────────────────────────
-    estep  ∈ Int
-    estep = (is_first_tick ? 0 - 1
-        : _estep ≥ 0 ? (_estep < 5 ? _estep + 1 : _estep)
-        : d_all_done ? 0
-        : 0 - 1)
-
-    sptr  ∈ Int
-    sptr = (is_first_tick ? 0 : estep = 1 ? d_cap_int : _sptr)
-    rendered  ∈ String
-    rendered = (is_first_tick ? "" : estep = 2 ? d_cap_str : _rendered)
-
-    e_s2s ∈ Effect
-    BuildZ3SolverToString(ctx_h ↦ z_ctx, solver_h ↦ z_sol, eff ↦ e_s2s)
-    e_copy ∈ Effect
-    BuildCstrCopy(addr ↦ sptr, eff ↦ e_copy)
-
-    d_manifest ∈ String = (";; manifest: state-fields = " ++ _fstr ++ "\n"
-        ++ ";; manifest: effects-name = effects\n"
-        ++ ";; manifest: effect-enum-name = Effect\n"
-        ++ ";; manifest: result-enum-name = Result\n"
-        ++ ";; manifest: max-effects = 16")
-    -- D3: the last_results__len floor assert lives in the BUILD
-    -- context now, so its declare + assert always come out in the
-    -- rendered serialization (textual lines dropped). The Result
-    -- datatype + last_results declares stay textual UNLESS a user
-    -- constraint mentioned last_results (then the serialization
-    -- carries them and the textual copies would be duplicate-sort
-    -- errors — sample.ev's `_saw_result` dance). Same for the
-    -- is_first_tick declare keyed off saw_ift.
-    d_prelude ∈ String = ((_saw_lr ? ""
-            : "(declare-datatypes ((Result 0)) (((NoResult) (IntResult (IntResult__f0 Int)) (StringResult (StringResult__f0 String)) (RealResult (RealResult__f0 Real)) (EofResult) (ErrorResult (ErrorResult__f0 String)))))\n"
-              ++ "(declare-fun last_results () (Array Int Result))\n")
-        ++ (_saw_ift ? "" : "(declare-fun is_first_tick () Bool)\n"))
-    -- carry declares go AFTER the solver body: an enum-typed carry
-    -- (`_c () Color`) needs its sort, and the declare-datatypes live
-    -- in the rendered serialization.
-    d_unit ∈ String = d_manifest ++ "\n\n" ++ d_prelude ++ rendered ++ cdstr
-
-    e_puts ∈ Effect
-    BuildPrintln(s ↦ d_unit, eff ↦ e_puts)
-    e_free_tbuf ∈ Effect = LibCall("libc", "free", ⟨ArgInt(tbase)⟩)
-    e_free_sbuf ∈ Effect = LibCall("libc", "free", ⟨ArgInt(st_base)⟩)
-    e_free_cibuf ∈ Effect = LibCall("libc", "free", ⟨ArgInt(ci_base)⟩)
+    -- ── EMIT rendering phase (see compiler2/driver_emit.ev) ──
+    ..DriverEmit
 
     -- ── effects schedule ──────────────────────────────────────────
+    -- driver_main owns the single unconditional `effects = …` writer
+    -- (the orchestrator's one output funnel, §4) — it selects each
+    -- tick's rows from the lifted modules (ZINIT ze_*, ED/RD, lex/
+    -- parse/work-item, and DriverEmit's e_* rows once estep ≥ 0).
     effects ∈ Seq(Effect) = (is_first_tick ? ⟨ReadLine, ReadLine⟩
         : (¬_got_path) ? ⟨ReadFile(src_path)⟩
         : zstep = 0 ? ⟨ze_cfg⟩
