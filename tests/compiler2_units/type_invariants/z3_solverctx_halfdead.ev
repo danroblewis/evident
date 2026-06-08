@@ -1,0 +1,17 @@
+-- Z3SolverCtx lifecycle invariant: `sol > 0 ⇒ (ctx > 0 ∧ cfg > 0)`.
+-- A live solver (sol = 5) with a null context (ctx = 0) is an impossible
+-- lifecycle state — a solver cannot exist without its context — so the
+-- tick is UNSAT (exit 2). (Written with `> 0`, not `≠ 0`: convex, so it
+-- functionizes — see scripts/functionization-gate.sh.)
+--
+-- entry: main
+-- expect: exit = 2
+import "stdlib/kernel.ev"
+import "compiler2/driver_ir.ev"
+
+fsm main
+    z ∈ Z3SolverCtx
+    z.cfg = 2
+    z.ctx = 0
+    z.sol = 5
+    effects ∈ Seq(Effect) = ⟨Exit(7)⟩

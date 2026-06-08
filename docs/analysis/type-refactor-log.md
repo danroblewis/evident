@@ -408,3 +408,41 @@ fixtures (`count` negative, `count` overrun past `cap`, `nf > 6`), each
 asserting `UNSAT` → exit 2; the 3 conditional-violation fixtures were
 removed with their invariants. 8/8 type unit tests green (5 carry + 3
 violation); driver emits clean (11668 lines).
+
+---
+
+## Pass 2b — the real cause was `≠`, not `⇒` (and perf tooling)
+
+Operator pushback: "why would the conditional implication not functionize?
+It's basically an if/then." Correct — the functionizer JITs `ite` shapes.
+Re-bisected with a controlled A/B:
+
+| invariant on Z3SolverCtx | fixture-001 | functionized |
+|---|---|---|
+| `sol ≠ 0 ⇒ (ctx ≠ 0 ∧ cfg ≠ 0)` | >30-min timeout | no |
+| `sol > 0 ⇒ (ctx > 0 ∧ cfg > 0)` | 20 s, `0.0 ms z3` | yes |
+
+Same implication, same structure — only `≠` vs `>`. **The trap is the
+disequality `≠`, not the `⇒`.** `x ≠ 0` is non-convex (`x<0 ∨ x>0`), so Z3
+case-splits; on handles the model references everywhere, that compounds
+every tick and explodes. Convex comparisons (`> ≥ ≤ < =`) and the
+implication itself are cheap. (A bare satisfiable `≠` on a lightly-used
+carried var profiled at `0.0 ms z3` — the cost is `≠` × heavy entanglement.)
+
+**Resolution:** the lifecycle relational invariants are **back**, written
+with `> 0` (Z3 handles are positive pointers): `Z3SolverCtx`/`Z3Sorts`/
+`Z3Numerals` each carry their last-latched-keyed all-live conditional, and
+the 3 lifecycle violation tests are restored. Functionization gate GREEN
+(compiler `0.0 ms z3`), conformance re-run.
+
+**New tooling (CLAUDE.md):**
+- `scripts/functionization-gate.sh` — asserts the compiler + the FTI perf
+  fixtures (`tests/compiler2_units/perf/`) stay near-zero `ms z3` + under a
+  wall ceiling. Catches the `≠` class of regression. Verified: injecting a
+  `≠` turns it RED.
+- `scripts/perf-profile.sh` — per-constraint profiler. Fuses the kernel's
+  band profiler (`FUNCTIONIZE_TIMING`, marginal solve ms + variable),
+  `FUNCTIONIZE_DUMP` (constraint expression), and `z3 -st` (decisions /
+  conflicts / propagations / deterministic `rlimit-count`). Ranks the
+  costliest constraints; `--bisect` finds the dominant search-space driver
+  in O(log n) deterministic Z3 runs.

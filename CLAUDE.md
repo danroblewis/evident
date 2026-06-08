@@ -207,54 +207,57 @@ type FtiBuffer(base ∈ Int, count ∈ Int, cap ∈ Int)
 An append that would drive `count` past `cap` makes the tick UNSAT —
 the overrun halts the kernel instead of corrupting memory.
 
-**Lifecycle types: conditional invariants — but mind the functionizer.**
+**Lifecycle types: conditional invariants are fine — disequality is not.**
 A type that is carried state passes through an uninitialized boot window
 where its handles are legitimately `0`. A universal `handle ≠ 0` would
 falsely fail tick 0. The natural fix is a **conditional** invariant,
-vacuously true during init and binding the relationship once live:
+vacuously true during init and binding the relationship once live. Write
+the liveness test with a **convex** comparison (`> 0`), not `≠ 0`:
 
 ```evident
 -- "if the solver is live, so are its context and config."
--- Semantically correct; vacuous while sol = 0 (boot).
+-- Z3 handles are positive pointers, so `> 0` means "live" — and it
+-- functionizes, where `≠ 0` would not (see the caveat).
 type Z3SolverCtx(cfg ∈ Int, ctx ∈ Int, sol ∈ Int)
     cfg ≥ 0
     ctx ≥ 0
     sol ≥ 0
-    sol ≠ 0 ⇒ (ctx ≠ 0 ∧ cfg ≠ 0)   -- ⚠ see the perf caveat below
+    sol > 0 ⇒ (ctx > 0 ∧ cfg > 0)
 ```
 
-> **⚠ PERF CAVEAT (hard-won, 2026-06-08).** A conditional (`⇒`) invariant
-> is an *outputless boolean constraint*. The functionizer extracts
-> per-output assignments; it cannot extract a bare constraint, so a
-> conditional falls to **Z3 residual** and is re-solved **every tick**.
-> On a short-running **user program** that is free. On **carried state in
-> a hot loop** — e.g. the compiler's own `Z3SolverCtx`/`FtiBuffer` records,
-> which tick thousands of times per compile — it is catastrophic: adding
-> three such conditionals took fixture-001 from **19 s to a >30-min
-> timeout**, because Z3 now re-solves the whole model on every tick.
-> **Plain bounds (`≥ 0`, `0 ≤ count ≤ cap`) functionize for free;
-> conditionals do not.** On hot carried state, stick to bounds and drop
-> the conditional (the real compiler's `Z3SolverCtx` carries only the
-> `≥ 0` bounds for exactly this reason). Use the `[functionizer]` line
-> (`0.0 ms z3` = good; nonzero = a constraint fell to Z3) to check.
+> **⚠ PERF CAVEAT (hard-won, 2026-06-08).** The cost is about the
+> **operator, not the `⇒`**. A disequality (`≠`) is *non-convex* — Z3
+> reads `x ≠ 0` as `x < 0 ∨ x > 0` and must case-split. On carried state
+> that the model references heavily (the compiler's Z3 handles), that
+> case-splitting compounds every tick across thousands of ticks and
+> **explodes**: the lifecycle invariant written with `≠ 0` took
+> fixture-001 from **19 s to a >30-min timeout**. The *same implication*
+> written with `> 0` stays fully functionized (`0.0 ms z3`, 20 s). Convex
+> comparisons (`> ≥ ≤ < =`) and the implication itself are cheap; the `≠`
+> was the trap. **Rule: never put `≠` on hot carried state — if you mean
+> "nonzero" and the sign is known, write `> 0` / `< 0`.** Guard it with
+> `scripts/functionization-gate.sh` (asserts the compiler + the FTI perf
+> fixtures stay near-zero `ms z3`); check the `[functionizer]` line
+> yourself (`0.0 ms z3` = good, nonzero = a constraint fell to Z3).
 
 Rules of thumb for writing a type body:
 
 - State what must **always** be true of the fields — including during
-  the boot window. If a property only holds once initialized, either
-  guard it (`live ⇒ …`) *or*, on hot state, drop it for a plain bound.
-- Prefer invariants that **relate** fields (`count ≤ cap`) — the
-  relationship *is* the abstraction — but keep them **functionizable**
-  (comparisons/bounds) on anything carried through a hot loop.
+  the boot window. If a property only holds once initialized, guard it
+  (`live ⇒ …`) with a convex test (`sol > 0 ⇒ …`).
+- Prefer invariants that **relate** fields (`count ≤ cap`, `sol > 0 ⇒
+  ctx > 0`) — the relationship *is* the abstraction.
+- **No `≠` on hot carried state.** It is the one operator that reliably
+  falls off the fast path. Convex comparisons are safe.
 - Mind the footguns: `⇒` binds tighter than `∧`, so wrap consequents
   `A ⇒ (B ∧ C)`; `=` binds tighter than comparisons, so wrap boolean
   assignments. Chained membership (`0 ≤ count ≤ cap`) works in a body.
 - Adding an invariant is a **behavior change**, not a refactor — gate it
-  on conformance + the type's carry/violation unit tests, never the
-  byte-identical emit gate. A conformance regression means the invariant
-  is actually false somewhere (real signal); a conformance *timeout*
-  means it fell off the functionizer (the perf caveat) — investigate
-  before weakening or dropping.
+  on conformance + the type's carry/violation unit tests + the
+  functionization gate, never the byte-identical emit gate. A conformance
+  *failure* means the invariant is actually false somewhere (real
+  signal); a conformance/gate *timeout* means it fell off the
+  functionizer (the `≠` trap) — investigate before weakening or dropping.
 
 ### Seq
 
@@ -460,6 +463,46 @@ functionizable claim and `[functionizer]` shows it as residual,
 the diagnostic is telling you the shape didn't extract — that's
 a real signal worth investigating before pushing more code on
 top.
+
+## Performance profiling — which constraints cost the most
+
+**`scripts/perf-profile.sh <file.ev> <claim>`** answers "which
+variables / sub-constraints cost the most to solve?" — use it
+whenever a claim feels slow, before adding an invariant to hot
+carried state, or to investigate a functionizer residual. It fuses
+three signals the kernel + Z3 already expose:
+
+- **marginal solve time per constraint** — the kernel's built-in
+  band profiler (`EVIDENT_FUNCTIONIZE_TIMING`), reporting how much
+  each constraint *added* to the tick-0 solve, with the variable it
+  constrains. (Negative marginal = the constraint *sped* the solve.)
+- **the constraint expression** — `EVIDENT_FUNCTIONIZE_DUMP` maps
+  each band to the actual `(<= buf.count 2048)` text.
+- **search-space size** — the tick-0 model through `z3 -st`:
+  `decisions` / `conflicts` / `propagations` / **`rlimit-count`**
+  (Z3's *deterministic* work counter — machine-independent).
+
+Output is a ranked table of the costliest constraints plus the
+model's global search-space stats. Flags:
+
+- `--bisect` — binary-search the constraint set for the subset whose
+  removal most cuts `rlimit-count`. The deterministic "what's blowing
+  up the search" finder, in O(log n) Z3 runs. Use this on a big model
+  (the compiler) where a one-shot ranking is too coarse.
+- `--top N` / `--bands N` / `--reps N` — result count / band
+  granularity / timing reps (min over reps cuts noise).
+
+```
+scripts/perf-profile.sh tests/compiler2_units/perf/fti_buffer_loop.ev main
+scripts/perf-profile.sh compiler2/driver.ev driver_main --bisect
+```
+
+Companion gate: **`scripts/functionization-gate.sh`** asserts the
+compiler and the FTI perf fixtures (`tests/compiler2_units/perf/`)
+stay near-zero `ms z3` and under a wall ceiling — run it after any
+change to a hot carried type's invariants. It is what catches the
+`≠`-disequality class of regression (see the type-invariant perf
+caveat above).
 
 ## How to run tests
 

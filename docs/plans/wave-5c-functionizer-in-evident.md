@@ -261,3 +261,29 @@ API, not just context/solver lifecycle; (b) wave-5b must expose
 recognizer-functionizes-itself bootstrap requires the Rust stage-0
 functionizer to remain until AOT closes the loop
 ([[project_smtlib_compile_target]]).
+
+---
+
+## Note: port the diagnostic + perf instrumentation too
+
+The functionizer that moves into Evident in this wave currently carries a
+set of **diagnostic env-var hooks** implemented in the Rust kernel
+(`kernel/src/functionize/`, `kernel/src/tick.rs`):
+
+- `EVIDENT_FUNCTIONIZE_STATS` (summary/verbose) — the per-run `[functionizer]`
+  totals + per-step shape report.
+- `EVIDENT_FUNCTIONIZE_TIMING` (+ `_BANDS`, `_REPS`) — the per-constraint
+  *marginal* tick-0 solve-cost band profiler, with variable attribution.
+- `EVIDENT_FUNCTIONIZE_DUMP` — the flat `flat[i] = <expr>` constraint listing.
+- `EVIDENT_FUNCTIONIZE_WHY` / `_TRACE` — refusal reasons / per-tick timing.
+
+These are not cosmetic: the perf toolchain depends on them —
+`scripts/perf-profile.sh` (per-constraint cost ranking + `--bisect`) and
+`scripts/functionization-gate.sh` (the `≠`-disequality regression gate, see
+[[types-carry-invariants]] / the type-invariant perf caveat in CLAUDE.md).
+**When the Rust `functionize/` module is replaced, re-expose equivalent
+instrumentation in the Evident implementation, or both scripts go dark and
+the project loses its only window into per-constraint solve cost.** The
+`z3 -st` search-space half of `perf-profile.sh` is external (the `z3` CLI)
+and survives the transition; only the kernel-side TIMING/DUMP/WHY hooks
+need re-adding.

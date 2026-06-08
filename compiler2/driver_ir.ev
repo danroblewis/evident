@@ -30,19 +30,23 @@ type FtiBuffer(base ∈ Int, count ∈ Int, cap ∈ Int)
 -- one unit — every Build*Z3 effect threads `ctx`, asserts go through
 -- `sol`. Pinned once during zinit, carried thereafter.
 --
--- PERF NOTE — no conditional invariant here. The natural lifecycle
--- invariant `sol ≠ 0 ⇒ (ctx ≠ 0 ∧ cfg ≠ 0)` is correct and harmless on a
--- short-running user program, but FATAL here: this record is carried
--- through the compiler's hot loop, and a conditional (`⇒`) is an
--- outputless boolean constraint the functionizer cannot extract. It falls
--- to Z3, which then re-solves the whole model EVERY tick across thousands
--- of ticks per compile → fixture-001 went from 19 s to a >30-min timeout
--- (measured 2026-06-08). Plain `≥ 0` bounds extract fine; conditionals do
--- not. On hot carried state, stick to bounds.
+-- The lifecycle invariant `sol > 0 ⇒ (ctx > 0 ∧ cfg > 0)` binds the
+-- relationship: a live solver implies a live context and config. It is
+-- vacuous during boot (all 0) and enforced once the handles latch.
+--
+-- PERF NOTE — the liveness test MUST be `> 0`, not `≠ 0`. Disequality is
+-- non-convex (Z3 reads `x ≠ 0` as `x < 0 ∨ x > 0` and case-splits), and on
+-- these handles — which the model references everywhere — that splitting
+-- compounds every tick across thousands of ticks per compile and explodes:
+-- the `≠ 0` form took fixture-001 from 19 s to a >30-min timeout (measured
+-- 2026-06-08). The `> 0` form (handles are positive pointers) is convex,
+-- stays fully functionized (0.0 ms z3), and is guarded by
+-- scripts/functionization-gate.sh. The `⇒` itself is fine; never the `≠`.
 type Z3SolverCtx(cfg ∈ Int, ctx ∈ Int, sol ∈ Int)
     cfg ≥ 0
     ctx ≥ 0
     sol ≥ 0
+    sol > 0 ⇒ (ctx > 0 ∧ cfg > 0)
 
 -- ── Z3 base sorts: the four primitive sort handles made at boot ────
 -- Int / Bool / String / Real sort handles (zinit zsteps 5/6/7/8). Every
@@ -53,7 +57,10 @@ type Z3Sorts(isort ∈ Int, bsort ∈ Int, ssort ∈ Int, rsort ∈ Int)
     isort ≥ 0
     bsort ≥ 0
     ssort ≥ 0
-    rsort ≥ 0          -- (no all-live conditional — see Z3SolverCtx note)
+    rsort ≥ 0
+    -- rsort latches last of the four, so a live rsort implies the rest
+    -- are live (convex `> 0` test — see the Z3SolverCtx perf note).
+    rsort > 0 ⇒ (isort > 0 ∧ bsort > 0 ∧ ssort > 0)
 
 -- ── Z3 numeral cache: the small int constants 0..4 made once at boot ─
 -- effects-array indices and lengths only ever need 0..4, so zinit makes
@@ -64,7 +71,10 @@ type Z3Numerals(zero ∈ Int, one ∈ Int, two ∈ Int, three ∈ Int, four ∈ 
     one   ≥ 0
     two   ≥ 0
     three ≥ 0
-    four  ≥ 0          -- (no all-live conditional — see Z3SolverCtx note)
+    four  ≥ 0
+    -- `four` is minted last, so a live `four` implies the whole cache is
+    -- live (convex `> 0` test — see the Z3SolverCtx perf note).
+    four > 0 ⇒ (zero > 0 ∧ one > 0 ∧ two > 0 ∧ three > 0)
 
 -- ── Record-type registry entry: one registered `type Name(...)` ─────
 -- One slot of the record-type registry (DriverRecord builds ≤3). name =
