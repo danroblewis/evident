@@ -193,9 +193,10 @@ claim main
     f_sres ∈ Expr
     f_scons ∈ Int
     ft_qstop ∈ Bool = false
+    ft_calls ∈ String = ""
     C2PrattStep(toks ↦ _ft_toks, outs ↦ _ft_out, ops ↦ _ft_ops,
         expop ↦ _ft_expop, pd ↦ _ft_pd, qd ↦ _ft_qd, cd ↦ _ft_cd,
-        qstop ↦ ft_qstop,
+        qstop ↦ ft_qstop, calls ↦ ft_calls,
         ntoks ↦ f_ntoks, nouts ↦ f_nouts, nops ↦ f_nops,
         nexpop ↦ f_nexpop, npd ↦ f_npd, nqd ↦ f_nqd, ncd ↦ f_ncd,
         sdone ↦ f_sdone, sres ↦ f_sres, scons ↦ f_scons)

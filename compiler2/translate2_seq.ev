@@ -161,6 +161,7 @@ claim ConcatBuildZ3(ctx_h ∈ Int, op ∈ Op, num_args ∈ Int, args_arr_ptr ∈
 --   "char_at"      Z3_mk_seq_at                (s a_h, i b_h)
 --   "int_to_str"   Z3_mk_int_to_str            (x a_h)
 --   "str_to_int"   Z3_mk_str_to_int            (x a_h)
+--   "replace"      Z3_mk_seq_replace           (s a_h, src b_h, dst c_h)
 claim StrOpBuildZ3(ctx_h ∈ Int, op_name ∈ String, a_h ∈ Int, b_h ∈ Int, c_h ∈ Int,
         eff ∈ Effect, ok ∈ Bool)
     is_substr   ∈ Bool = (op_name = "substr")
@@ -171,8 +172,9 @@ claim StrOpBuildZ3(ctx_h ∈ Int, op_name ∈ String, a_h ∈ Int, b_h ∈ Int, 
     is_char_at  ∈ Bool = (op_name = "char_at")
     is_i2s      ∈ Bool = (op_name = "int_to_str")
     is_s2i      ∈ Bool = (op_name = "str_to_int")
+    is_replace  ∈ Bool = (op_name = "replace")
     ok = (is_substr ∨ is_contains ∨ is_prefixof ∨ is_suffixof
-        ∨ is_indexof ∨ is_char_at ∨ is_i2s ∨ is_s2i)
+        ∨ is_indexof ∨ is_char_at ∨ is_i2s ∨ is_s2i ∨ is_replace)
     eff = (is_substr
         ? LibCall("libz3", "Z3_mk_seq_extract",
             ⟨ArgInt(ctx_h), ArgInt(a_h), ArgInt(b_h), ArgInt(c_h)⟩)
@@ -195,6 +197,9 @@ claim StrOpBuildZ3(ctx_h ∈ Int, op_name ∈ String, a_h ∈ Int, b_h ∈ Int, 
         ? LibCall("libz3", "Z3_mk_int_to_str", ⟨ArgInt(ctx_h), ArgInt(a_h)⟩)
         : is_s2i
         ? LibCall("libz3", "Z3_mk_str_to_int", ⟨ArgInt(ctx_h), ArgInt(a_h)⟩)
+        : is_replace
+        ? LibCall("libz3", "Z3_mk_seq_replace",
+            ⟨ArgInt(ctx_h), ArgInt(a_h), ArgInt(b_h), ArgInt(c_h)⟩)
         : LibCall("libc", "time", ⟨ArgInt(0)⟩))
 
 -- ── Parse probe ──────────────────────────────────────────────────
