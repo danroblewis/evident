@@ -2136,13 +2136,17 @@ claim driver_main
     BuildZ3MkTrue(ctx_h ↦ z_ctx, eff ↦ ze_true)
     ze_false ∈ Effect
     BuildZ3MkFalse(ctx_h ↦ z_ctx, eff ↦ ze_false)
-    -- FTI token buffer: 4096 entries × 32 bytes, calloc'd (zeroed
+    -- FTI token buffer: 65536 entries × 32 bytes, calloc'd (zeroed
     -- slots ⇒ deterministic nullary payloads + EofTok past the end).
-    ze_tbuf ∈ Effect = LibCall("libc", "calloc", ⟨ArgInt(4096), ArgInt(32)⟩)
-    -- FTI symtab handle buffer (B1): 1024 entries × 8 bytes — the
+    -- Sized for real programs: compiler/sample.ev (6283 lines) lexes
+    -- to tens of thousands of tokens — the 4096 conformance-fixture
+    -- size overran the heap (resume point 12).
+    ze_tbuf ∈ Effect = LibCall("libc", "calloc", ⟨ArgInt(65536), ArgInt(32)⟩)
+    -- FTI symtab handle buffer (B1): 8192 entries × 8 bytes — the
     -- declared const's Z3_ast handle, indexed by decl order. Names
-    -- live in st_names (fixed-width Z3 String), not here.
-    ze_sbuf ∈ Effect = LibCall("libc", "calloc", ⟨ArgInt(1024), ArgInt(8)⟩)
+    -- live in st_names (fixed-width Z3 String), not here. (sample.ev's
+    -- main alone binds 364 distinct idents; 1024 was fixture-sized.)
+    ze_sbuf ∈ Effect = LibCall("libc", "calloc", ⟨ArgInt(8192), ArgInt(8)⟩)
     -- D3 consts (zsteps 22-31).
     ze_lrarr ∈ Effect
     BuildZ3MkArraySort(ctx_h ↦ z_ctx, idx_sort_h ↦ z_isort,
@@ -2196,8 +2200,9 @@ claim driver_main
     ze_eassert ∈ Effect
     BuildZ3SolverAssert(ctx_h ↦ z_ctx, solver_h ↦ z_sol, ast_h ↦ z_ege,
         eff ↦ ze_eassert)
-    -- F2 claim-index buffer (zstep 37).
-    ze_cibuf ∈ Effect = LibCall("libc", "calloc", ⟨ArgInt(256), ArgInt(8)⟩)
+    -- F2 claim-index buffer (zstep 37). 2048 claims: sample.ev has
+    -- dozens-to-hundreds; 256 was fixture-sized (resume point 12).
+    ze_cibuf ∈ Effect = LibCall("libc", "calloc", ⟨ArgInt(2048), ArgInt(8)⟩)
 
     -- ── LEX (fossil FSM; gated to start after ZINIT) ──────────────
     pos  ∈ Int
@@ -2344,7 +2349,17 @@ claim driver_main
     -- FTI lexer state: five Ints, no TokenList. The negative-literal
     -- fold (`= -3` folds, `10 - 2` stays binary) is decided inside
     -- LexFtiPlan from the cached lx_last/lx_prev tag pair.
-    lx_count ∈ Int
+    --
+    -- FTI bounds CONSTRAINT (the model, not a runtime check): the token
+    -- buffer (ze_tbuf) holds 65536 entries × 32 bytes. The lexer writes
+    -- entry _lx_count (and, on a two-token tick, _lx_count+1) at
+    -- tbase + _lx_count*32. Constraining lx_count < 65536 makes a write
+    -- past the buffer end UNSAT — Z3 refuses the tick, the kernel halts
+    -- cleanly (exit 2), and EVIDENT_UNSAT_CORE=1 names this very line as
+    -- the violated constraint. Without it, the write went out of bounds
+    -- and the native kernel corrupted the heap / segfaulted. The "+2"
+    -- headroom covers the two-token push shapes (float-with-op etc.).
+    lx_count ∈ Int < 65534
     _lx_count ∈ Int
     lx_last ∈ Int
     _lx_last ∈ Int
@@ -2778,7 +2793,10 @@ claim driver_main
     -- claim on the skip-entry tick. Composition can only call claims
     -- that PRECEDE the call site textually (one-pass index — true
     -- for the corpus: stdlib then helpers then main).
-    ci_cnt ∈ Int
+    -- FTI bounds constraint: ci_base holds 2048 claim-index entries.
+    -- ci_cnt < 2048 makes an index past the buffer end UNSAT (the model
+    -- refuses it) rather than a native overrun.
+    ci_cnt ∈ Int < 2048
     _ci_cnt ∈ Int
     ci_names ∈ String
     _ci_names ∈ String
@@ -3589,7 +3607,10 @@ claim driver_main
     -- tmp) is written to st_base[st_cnt], the name record appends to
     -- st_names, and the handle pushes onto hstk purely — all on the
     -- same tick, so a decl is visible to every later lookup tick.
-    st_cnt  ∈ Int
+    -- FTI bounds constraint: st_base holds 8192 symtab handle entries.
+    -- st_cnt < 8192 makes a declare past the buffer end UNSAT (the model
+    -- refuses it) rather than a native overrun.
+    st_cnt  ∈ Int < 8192
     _st_cnt ∈ Int
     st_names ∈ String
     _st_names ∈ String
