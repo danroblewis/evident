@@ -141,28 +141,141 @@ the three loose `_base`/`_cnt` decl+carry pairs became three records.
    above. It is also a design guardrail: do NOT lump weakly-related
    fields into one record, because each forces a live value every tick.
 
-### Next candidates — assessed, deferred (with measured reasons)
-- **`rt_*` → `RecTypeEntry`** (43 members; cohesion 61 — the highest of
-  any registry). Highest line-removal, but NOT a mechanical rename: the
-  registry is a hand-unrolled array-of-records (`rt_cnt`, `rt_n0..rt_n2`,
-  `rt_f0…`) and the target shape is a record ELEMENT inside a cons-list
-  enum (the `CFCons` "Frame" pattern). That is a structural rewrite of
-  the registry's append/probe logic (`RtIdxOf`/`RtRecName`/`RtFieldAcc`),
-  not a field-for-field substitution. High risk; should be its own
-  focused session with a fresh gate budget. NOT attempted (would not
-  fit safely before the harness window closes).
-- **`z_*` → a Z3 handle-bank record.** MEASURED: 30+ distinct handles,
-  **345 total reference sites** across every compiler2 module (`z_ctx`
-  alone = 77). They are also weakly related — numerals (`z_zero…z_four`),
-  sort handles (`z_isort/z_rsort/z_bsort/z_ssort`), solver handles
-  (`z_ctx/z_sol/z_cfg`), decl handles (`z_lc_decl/z_argint_decl/…`) —
-  not one co-traveling tuple. Lumping them into a single ~30-field
-  record both (a) violates the fact-#5 guardrail (a god-record forces
-  every weakly-related field live every tick) and (b) is a 345-site
-  blast radius with dozens of isolation fixtures stubbing individual
-  handles. A better future move is several SMALL cohesive records
-  (`Z3Sorts`, `Z3Numerals`, `Z3SolverCtx`), each gated separately — not
-  one bank. NOT attempted as a single type.
+---
+
+## Z3SolverCtx — the solver-lifecycle handle triple (`z_cfg/z_ctx/z_sol`)
+
+First of the cohesive `z_*` sub-records (the prior "god-record" was
+rejected; the split is the right shape). `type Z3SolverCtx(cfg, ctx,
+sol ∈ Int)` unifies the three Z3 lifecycle handles created consecutively
+during zinit (zsteps 1/2/3): the config, the context, the solver. They
+are a genuinely co-traveling group — every `Build*Z3` effect threads
+`ctx`, every assert goes through `sol` — so all three are driven every
+tick by DriverZInit (the every-field-live guardrail is satisfied in the
+full driver automatically).
+
+Sites rewritten: 93 references (`z_ctx` alone = 77) across 4 modules,
+all READS (slot args `ctx_h ↦ z3ctx.ctx` / `ArgInt(z3ctx.ctx)`):
+- `driver_ir.ev` — +1 type decl (`Z3SolverCtx`).
+- `driver_zinit.ev` — the three decl+latch lines → `z3ctx` record +
+  three field latches (`z3ctx.cfg = is_first_tick ? 0 : zstep=1 ? … :
+  _z3ctx.cfg`, etc.). Doc header updated.
+- `driver_buildeff.ev` — ~40 `z_ctx` slot args + `z_cfg`/`z_sol`.
+- `driver.ev` — ~25 build-step slot args.
+- `driver_record.ev`, `driver_emit.ev` — the remaining reads.
+Fixtures: driver_buildeff/{select_w2,select_w5}, driver_emit/estep_walk
+(their stub `z_cfg/z_ctx/z_sol ∈ Int` carries → one `z3ctx ∈
+Z3SolverCtx` stub driving all three fields each tick, per the guardrail).
+New carry unit test `types/z3_solverctx_carry.ev` (step-latched triple;
+proves the autocarry synthesizes `_z3ctx ∈ Z3SolverCtx` so each field's
+latched value persists).
+
+Unit tests: PASS — 30/30. Gate: **PASS — 137/138** (only known
+`123-subschema`; 0 timeouts; wall 416s). COMMITTED.
+
+## Z3Sorts — the four base-sort handles (`z_isort/z_bsort/z_ssort/z_rsort`)
+
+Second cohesive `z_*` sub-record. `type Z3Sorts(isort, bsort, ssort,
+rsort ∈ Int)` unifies the Int/Bool/String/Real sort handles latched
+consecutively in zinit (zsteps 5/6/7/8). Every type-directed Build*Z3
+step picks one by the field/atom type string; all four are driven each
+tick by DriverZInit (guardrail satisfied in the full driver).
+
+Sites rewritten: 71 references across 4 modules, all READS (slot args
+`int_sort_h ↦ z3sorts.isort` and ternary RHS values `… = "Real" ?
+z3sorts.rsort`):
+- `driver_ir.ev` — +1 type decl (`Z3Sorts`).
+- `driver_zinit.ev` — four decl+latch lines → `z3sorts` record + four
+  field latches. Doc header updated.
+- `driver_buildeff.ev`, `driver.ev`, `driver_enum.ev`,
+  `driver_record.ev` — slot-arg / ternary reads.
+Fixtures: driver_enum/floor_walk (4 sort stubs → one `z3sorts` record
+stub + driver_ir import), driver_buildeff/{select_w2,select_w5} (their
+isort+bsort stubs → full `z3sorts` record driving all four fields, per
+the guardrail), driver_zinit/latch_isort (read + comments →
+z3sorts.isort; the module drives all four). New carry unit test
+`types/z3_sorts_carry.ev`.
+
+Unit tests: PASS — 31/31. Gate: **PASS — 137/138** (only known
+`123-subschema`; 0 timeouts; wall 416s). COMMITTED.
+
+## Z3Numerals — the cached 0..4 int-numeral handles (`z_zero..z_four`)
+
+Third cohesive `z_*` sub-record. `type Z3Numerals(zero, one, two, three,
+four ∈ Int)` unifies the five small int-numeral handles minted once in
+zinit (zsteps 16/17/18/33/34 — z_three/z_four live in the later D2
+section but latch the same way) so effects-array indices/lengths reuse
+them instead of re-minting. All five driven each tick by DriverZInit.
+
+Sites rewritten: 25 references across 2 modules, all READS (effects-index
+ternaries `d_sel_i = 0 ? z3nums.zero : …`, length ternaries, the geq
+floor `r_h ↦ z3nums.zero`, a `C2PushH(z3nums.zero)`):
+- `driver_ir.ev` — +1 type decl (`Z3Numerals`).
+- `driver_zinit.ev` — five decl+latch lines → `z3nums` record + five
+  field latches (zero/one/two at zsteps 16-18; three/four at 33/34).
+  Doc header updated.
+- `driver_buildeff.ev`, `driver.ev` — the read sites.
+Fixtures: driver_buildeff/{select_w2,select_w5} (their single `z_zero`
+stub → full `z3nums` record driving all five fields, per the guardrail).
+New carry unit test `types/z3_numerals_carry.ev`.
+
+Unit tests: PASS — 32/32. Gate: **PASS — 137/138** (only known
+`123-subschema`; 0 timeouts). COMMITTED.
+
+## rt_* → cons-list enum — ATTEMPTED (feasibility), REJECTED with proof
+
+The analysis proposed restructuring the record registry (`rt_cnt`,
+`rt_n0..rt_n2`, `rt_f0…`, the 3×6 accessor grid `rt_a00..rt_a25`) into a
+cons-list enum of a `RecTypeEntry` record element (the `CFCons` "Frame"
+pattern). **This specific target is INFEASIBLE for the rt_ registry, and
+the reason is structural, not effort:**
+
+The rt_ registry is **carried cross-tick state** — it is built
+incrementally as the SKIP pass walks `type` tops over successive ticks
+(`rck = _rt_cnt - 1`, `rc_start = … ∧ (_rt_cnt < 3)`; every probe reads
+the prev-tick duals `_rt_n0`, `_rt_sort0`, …). The kernel's state-carry
+only carries members of **primitive type** (Int/Bool/Real/String), and
+records carry **because the autocarry transform flattens them to
+primitive field consts** (the FtiBuffer/Z3SolverCtx/Z3Sorts/Z3Numerals
+mechanism). A cons-list **enum** has no fixed primitive flattening — it
+is a recursive datatype — so an enum-typed fsm member does **not** get a
+synthesized prev-tick dual and does **not** carry.
+
+PROVEN empirically (scratch probes, both fail identically at emit):
+- recursive: `enum IntList = INil | ICons(Int, IntList)`; `xs ∈ IntList
+  = (is_first_tick ? ICons(7,INil) : ICons(step, _xs))` →
+  `dropped constraint (couldn't translate to Bool)` — `_xs` is unbound.
+- **non-recursive**: `enum Col = Red|Green|Blue`; `c ∈ Col =
+  (is_first_tick ? Red : _c)` → same drop, `_c` unbound. So it is the
+  **carry of an enum member** that is unsupported, independent of
+  recursion. (The `CFCons`/C2Frames cons-lists in the codebase work
+  precisely because they are **within-tick** stacks, never carried
+  across ticks — exactly the opposite of the rt_ registry.)
+
+Conclusion: the proposed cons-list-enum shape cannot hold the registry's
+across-tick carried state. Reverted (never landed in source). The viable
+structural alternative is a `RecTypeEntry` **record** (all-primitive
+fields → carries via field flattening) **unrolled ×3** (`rt_e0/rt_e1/
+rt_e2 ∈ RecTypeEntry`), which collapses the parallel `rt_*N` suffix
+arrays into 3 cohesive carried records WITHOUT a cons-list. That is a
+real win but a large, self-contained rewrite (14-field record × 3, plus
+rewriting the four probe claims `RtIdxOf`/`RtRecName`/`RtSortOf`/
+`RtFieldAcc` and their ~25 call sites to thread records or `.field`
+reads) — the prior agent's "own focused session" assessment stands, now
+with the added hard constraint that **a cons-list is off the table for
+any carried registry; only the record-array form is viable.**
+
+### Other candidates — assessed, deferred (with measured reasons)
+- **`z_*` → a Z3 handle-bank record. DONE as three cohesive sub-records**
+  (`Z3SolverCtx`, `Z3Sorts`, `Z3Numerals` — see the three sections
+  above; 93 + 71 + 25 = 189 of the 345 sites collapsed). The original
+  single-god-record idea was correctly rejected (it would force every
+  weakly-related handle live every tick, violating fact #5). The
+  remaining `z_*` handles (decl handles `z_lc_decl/z_argint_decl/…`, the
+  effects-array consts `z_effs/z_elen/…`, `z_true/z_false`, the
+  last_results/is_first_tick build-context consts) are weakly related to
+  each other and to the three landed groups; any further split should be
+  another cohesion pass, not one bank.
 - Smaller element records (`Window8`/`ww_*`, `Frame`/`CFCons` payload,
   `MatchPinCtx`/`mp_*`). `ww_*` is cohesive but wide-surface (the token
   window is matched in nearly every classifier module). `mp_*` (65

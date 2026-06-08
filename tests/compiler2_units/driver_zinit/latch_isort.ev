@@ -3,11 +3,11 @@
 --
 -- Drives the Z3-lifecycle latch bank standalone with the ED hold
 -- released (ed_act 0, ed_src 4 ⇒ ed_hold false), so zstep is free to
--- climb −2,−1,0,1,… one per tick. The int-sort handle z_isort must
+-- climb −2,−1,0,1,… one per tick. The int-sort handle z3sorts.isort must
 -- capture d_cap_int (driven to 42) at EXACTLY zstep = 5 and hold it
 -- thereafter. We let zstep itself drive the exit (≥ 6) and report
--- z_isort. If the counter skips/stalls, or the latch reads the wrong
--- step, z_isort stays 0 (or never reaches the exit) and this fails.
+-- z3sorts.isort. If the counter skips/stalls, or the latch reads the wrong
+-- step, z3sorts.isort stays 0 (or never reaches the exit) and this fails.
 --
 -- entry: main
 -- expect: stdout = "42"
@@ -32,7 +32,7 @@ fsm main
     tbuf.count = (is_first_tick ? 0 : _tbuf.count)
     stbuf.count = (is_first_tick ? 0 : _stbuf.count)
     cibuf.count = (is_first_tick ? 0 : _cibuf.count)
-    isort_msg ∈ String = str_from_int(z_isort)
+    isort_msg ∈ String = str_from_int(z3sorts.isort)
     effects ∈ Seq(Effect) = (zstep ≥ 6
         ? ⟨LibCall("libc", "puts", ⟨ArgStr(isort_msg)⟩), Exit(0)⟩
         : ⟨LibCall("libc", "getpid", ⟨⟩)⟩)

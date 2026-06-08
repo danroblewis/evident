@@ -17,6 +17,7 @@
 import "stdlib/kernel.ev"
 import "compiler/parser.ev"
 import "compiler2/translate2_ctor.ev"
+import "compiler2/driver_ir.ev"
 import "compiler2/driver_enum.ev"
 
 fsm main
@@ -34,14 +35,11 @@ fsm main
     -- the kernel's state carry then can't find the field).
     f_ir1 ∈ Int
     f_ir1 = (is_first_tick ? 0 : _f_ir1)
-    z_isort ∈ Int
-    z_isort = (is_first_tick ? 0 : _z_isort)
-    z_bsort ∈ Int
-    z_bsort = (is_first_tick ? 0 : _z_bsort)
-    z_ssort ∈ Int
-    z_ssort = (is_first_tick ? 0 : _z_ssort)
-    z_rsort ∈ Int
-    z_rsort = (is_first_tick ? 0 : _z_rsort)
+    z3sorts ∈ Z3Sorts
+    z3sorts.isort = (is_first_tick ? 0 : _z3sorts.isort)
+    z3sorts.bsort = (is_first_tick ? 0 : _z3sorts.bsort)
+    z3sorts.ssort = (is_first_tick ? 0 : _z3sorts.ssort)
+    z3sorts.rsort = (is_first_tick ? 0 : _z3sorts.rsort)
     d_cap_int ∈ Int
     d_cap_int = (is_first_tick ? 0 : _d_cap_int)
     ..DriverEnum

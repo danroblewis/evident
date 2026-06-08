@@ -1,0 +1,30 @@
+-- Z3SolverCtx carry — the cfg/ctx/sol lifecycle triple travels across ticks.
+--
+-- Mirrors the real zinit latch bank: a step counter latches each handle
+-- once at its named step, then holds. Proves the autocarry transform
+-- synthesizes the record dual `_z3ctx ∈ Z3SolverCtx` so each field's
+-- latched value persists on later ticks (cfg pinned at step 1 must still
+-- read 100 at step 3, ctx at step 2 must still read 200, sol latches last).
+-- If the record dual is not synthesized, a latched field would reset and
+-- the final line would not read "100/200/300".
+--
+-- entry: main
+-- expect: stdout = "11/0/0"
+-- expect: stdout = "100/0/0"
+-- expect: stdout = "100/200/0"
+-- expect: stdout = "100/200/300"
+-- expect: exit = 0
+import "stdlib/kernel.ev"
+import "compiler2/driver_ir.ev"
+
+fsm main
+    step ∈ Int
+    step = (is_first_tick ? 0 : _step + 1)
+    z3ctx ∈ Z3SolverCtx
+    z3ctx.cfg = (is_first_tick ? 11 : step = 1 ? 100 : _z3ctx.cfg)
+    z3ctx.ctx = (is_first_tick ? 0 : step = 2 ? 200 : _z3ctx.ctx)
+    z3ctx.sol = (is_first_tick ? 0 : step = 3 ? 300 : _z3ctx.sol)
+    msg ∈ String = str_from_int(z3ctx.cfg) ++ "/" ++ str_from_int(z3ctx.ctx) ++ "/" ++ str_from_int(z3ctx.sol)
+    effects ∈ Seq(Effect) = (step ≥ 3
+        ? ⟨LibCall("libc", "puts", ⟨ArgStr(msg)⟩), Exit(0)⟩
+        : ⟨LibCall("libc", "puts", ⟨ArgStr(msg)⟩)⟩)

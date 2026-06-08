@@ -707,7 +707,7 @@ fsm driver_main
                 C2ICons(C2StrOp("char_at", 2), d_wtail)))
         : d_cnm = "index_of"
             ? C2ICons(C2Process(d_ca0), C2ICons(C2Process(d_ca1),
-                C2ICons(C2PushH(z_zero),
+                C2ICons(C2PushH(z3nums.zero),
                 C2ICons(C2StrOp("indexof", 3), d_wtail))))
         : d_cnm = "str_contains"
             ? C2ICons(C2Process(d_ca0), C2ICons(C2Process(d_ca1),
@@ -1258,37 +1258,37 @@ fsm driver_main
     -- ── per-item build effects (pass-claim dispatch) ──────────────
     d_eff_mkint ∈ Effect
     d_atom_ok ∈ Bool
-    AtomBuildZ3(ctx_h ↦ z_ctx, int_sort_h ↦ z_isort, sym_h ↦ 0,
+    AtomBuildZ3(ctx_h ↦ z3ctx.ctx, int_sort_h ↦ z3sorts.isort, sym_h ↦ 0,
         e ↦ d_pe, eff ↦ d_eff_mkint, ok ↦ d_atom_ok)
     d_eff_cmp ∈ Effect
     d_cmp_ok ∈ Bool
     d_cmp_nn ∈ Bool
-    BoolCmpBuildZ3(ctx_h ↦ z_ctx, op ↦ d_op, l_h ↦ d_h_2nd, r_h ↦ d_h_top,
+    BoolCmpBuildZ3(ctx_h ↦ z3ctx.ctx, op ↦ d_op, l_h ↦ d_h_2nd, r_h ↦ d_h_top,
         eff ↦ d_eff_cmp, ok ↦ d_cmp_ok, needs_not ↦ d_cmp_nn)
     d_eff_arith ∈ Effect
     d_arith_ok ∈ Bool
-    ArithBinopBuildZ3(ctx_h ↦ z_ctx, op ↦ d_op,
+    ArithBinopBuildZ3(ctx_h ↦ z3ctx.ctx, op ↦ d_op,
         l_h ↦ d_h_2nd, r_h ↦ d_h_top, args_arr_ptr ↦ z_arena + 200,
         eff ↦ d_eff_arith, ok ↦ d_arith_ok)
     d_eff_nary ∈ Effect
     d_nary_ok ∈ Bool
-    BoolNaryBuildZ3(ctx_h ↦ z_ctx, op ↦ d_op, num_args ↦ 2,
+    BoolNaryBuildZ3(ctx_h ↦ z3ctx.ctx, op ↦ d_op, num_args ↦ 2,
         args_arr_ptr ↦ z_arena + 200, eff ↦ d_eff_nary, ok ↦ d_nary_ok)
     -- `++` → (str.++ l r) via the same 2-slot args buffer
     d_eff_concat ∈ Effect
-    BuildZ3MkSeqConcat(ctx_h ↦ z_ctx, num_args ↦ 2,
+    BuildZ3MkSeqConcat(ctx_h ↦ z3ctx.ctx, num_args ↦ 2,
         args_arr_ptr ↦ z_arena + 200, eff ↦ d_eff_concat)
     d_eff_ite ∈ Effect
-    TernaryBuildZ3(ctx_h ↦ z_ctx, cond_h ↦ d_h_3rd, then_h ↦ d_h_2nd,
+    TernaryBuildZ3(ctx_h ↦ z3ctx.ctx, cond_h ↦ d_h_3rd, then_h ↦ d_h_2nd,
         else_h ↦ d_h_top, eff ↦ d_eff_ite)
     d_eff_not ∈ Effect
-    BoolNotBuildZ3(ctx_h ↦ z_ctx, x_h ↦ d_h_top, eff ↦ d_eff_not)
+    BoolNotBuildZ3(ctx_h ↦ z3ctx.ctx, x_h ↦ d_h_top, eff ↦ d_eff_not)
     d_eff_wl0 ∈ Effect
     BuildMemWriteLong(addr ↦ z_arena + 200, value ↦ d_h_2nd, eff ↦ d_eff_wl0)
     d_eff_wl1 ∈ Effect
     BuildMemWriteLong(addr ↦ z_arena + 208, value ↦ d_h_top, eff ↦ d_eff_wl1)
     d_eff_mkstring ∈ Effect
-    BuildZ3MkString(ctx_h ↦ z_ctx, s ↦ d_pe_str, eff ↦ d_eff_mkstring)
+    BuildZ3MkString(ctx_h ↦ z3ctx.ctx, s ↦ d_pe_str, eff ↦ d_eff_mkstring)
     -- C2StrOp (B3): one tick — pops d_so_n operand handles, builds
     -- the str.* node. Operand mapping per arity (post-order: the
     -- stack top is the LAST arg): 1 → (top) · 2 → (2nd, top) ·
@@ -1299,28 +1299,28 @@ fsm driver_main
     d_so_b ∈ Int = (d_so_n = 3 ? d_h_2nd : d_so_n = 2 ? d_h_top : 0)
     d_so_c ∈ Int = (d_so_n = 3 ? d_h_top : 0)
     d_eff_slen ∈ Effect
-    BuildZ3MkSeqLength(ctx_h ↦ z_ctx, s_h ↦ d_h_top, eff ↦ d_eff_slen)
+    BuildZ3MkSeqLength(ctx_h ↦ z3ctx.ctx, s_h ↦ d_h_top, eff ↦ d_eff_slen)
     d_eff_strop ∈ Effect
     d_strop_ok ∈ Bool
-    StrOpBuildZ3(ctx_h ↦ z_ctx, op_name ↦ d_so_nm, a_h ↦ d_so_a,
+    StrOpBuildZ3(ctx_h ↦ z3ctx.ctx, op_name ↦ d_so_nm, a_h ↦ d_so_a,
         b_h ↦ d_so_b, c_h ↦ d_so_c, eff ↦ d_eff_strop, ok ↦ d_strop_ok)
     d_eff_sym ∈ Effect
-    BuildZ3MkStringSymbol(ctx_h ↦ z_ctx, name ↦ d_dc_name, eff ↦ d_eff_sym)
+    BuildZ3MkStringSymbol(ctx_h ↦ z3ctx.ctx, name ↦ d_dc_name, eff ↦ d_eff_sym)
     d_eff_const ∈ Effect
-    BuildZ3MkConst(ctx_h ↦ z_ctx, sym_h ↦ d_tmp_in,
-        sort_h ↦ (d_dc_sc = 1 ? z_bsort
+    BuildZ3MkConst(ctx_h ↦ z3ctx.ctx, sym_h ↦ d_tmp_in,
+        sort_h ↦ (d_dc_sc = 1 ? z3sorts.bsort
             : d_dc_sc = 2 ? ue_sort
-            : d_dc_sc = 3 ? z_ssort
+            : d_dc_sc = 3 ? z3sorts.ssort
             : d_dc_sc = 4 ? z_ressort
             : d_dc_sc = 5 ? z_iarr
-            : d_dc_sc = 6 ? z_rsort
+            : d_dc_sc = 6 ? z3sorts.rsort
             : d_dc_sc = 10 ? rt_asort0
             : d_dc_sc = 11 ? rt_asort1
             : d_dc_sc = 12 ? rt_asort2
             : d_dc_sc = 20 ? rt_ssort0
             : d_dc_sc = 21 ? rt_ssort1
             : d_dc_sc = 22 ? rt_ssort2
-            : z_isort), eff ↦ d_eff_const)
+            : z3sorts.isort), eff ↦ d_eff_const)
     -- decl istep 2: park the const handle (in tmp) at st_base[st_cnt]
     d_eff_stwr ∈ Effect
     BuildMemWriteLong(addr ↦ stbuf.base + (8 * _stbuf.count), value ↦ d_tmp_in,
@@ -1334,24 +1334,24 @@ fsm driver_main
     d_eff_gimpl ∈ Effect
     d_gimp_ok ∈ Bool
     d_gimp_nn ∈ Bool
-    BoolCmpBuildZ3(ctx_h ↦ z_ctx, op ↦ d_op_impl, l_h ↦ _il_guard,
+    BoolCmpBuildZ3(ctx_h ↦ z3ctx.ctx, op ↦ d_op_impl, l_h ↦ _il_guard,
         r_h ↦ d_h_top, eff ↦ d_eff_gimpl, ok ↦ d_gimp_ok,
         needs_not ↦ d_gimp_nn)
     d_eff_natge ∈ Effect
     d_nat_ok ∈ Bool
     d_nat_nn ∈ Bool
-    BoolCmpBuildZ3(ctx_h ↦ z_ctx, op ↦ d_op_geq, l_h ↦ d_h_top, r_h ↦ z_zero,
+    BoolCmpBuildZ3(ctx_h ↦ z3ctx.ctx, op ↦ d_op_geq, l_h ↦ d_h_top, r_h ↦ z3nums.zero,
         eff ↦ d_eff_natge, ok ↦ d_nat_ok, needs_not ↦ d_nat_nn)
     d_eff_pineq ∈ Effect
     d_pin_ok2 ∈ Bool
     d_pin_nn ∈ Bool
-    BoolCmpBuildZ3(ctx_h ↦ z_ctx, op ↦ d_op_eq, l_h ↦ d_h_2nd, r_h ↦ d_h_top,
+    BoolCmpBuildZ3(ctx_h ↦ z3ctx.ctx, op ↦ d_op_eq, l_h ↦ d_h_2nd, r_h ↦ d_h_top,
         eff ↦ d_eff_pineq, ok ↦ d_pin_ok2, needs_not ↦ d_pin_nn)
     d_eff_assert ∈ Effect
-    BuildZ3SolverAssert(ctx_h ↦ z_ctx, solver_h ↦ z_sol, ast_h ↦ d_h_top,
+    BuildZ3SolverAssert(ctx_h ↦ z3ctx.ctx, solver_h ↦ z3ctx.sol, ast_h ↦ d_h_top,
         eff ↦ d_eff_assert)
     d_eff_asserttmp ∈ Effect
-    BuildZ3SolverAssert(ctx_h ↦ z_ctx, solver_h ↦ z_sol, ast_h ↦ d_tmp_in,
+    BuildZ3SolverAssert(ctx_h ↦ z3ctx.ctx, solver_h ↦ z3ctx.sol, ast_h ↦ d_tmp_in,
         eff ↦ d_eff_asserttmp)
     -- C2App: istep k < n writes args[n-1-k] from stack depth k
     -- (top/2nd/3rd — post-order means the TOP is the LAST arg);
@@ -1366,19 +1366,19 @@ fsm driver_main
     CtorArgWriteStep(args_p ↦ z_arena + 224, idx ↦ d_app_n - 1 - _istep,
         arg_h ↦ d_app_arg, eff ↦ d_eff_caw)
     d_eff_app ∈ Effect
-    CtorAppStep(ctx_h ↦ z_ctx, ctor_decl_h ↦ d_app_d, n_args ↦ d_app_n,
+    CtorAppStep(ctx_h ↦ z3ctx.ctx, ctor_decl_h ↦ d_app_d, n_args ↦ d_app_n,
         args_p ↦ z_arena + 224, eff ↦ d_eff_app)
-    d_sel_idx_h ∈ Int = (d_sel_i = 0 ? z_zero
-        : d_sel_i = 1 ? z_one
-        : d_sel_i = 2 ? z_two
-        : z_three)
+    d_sel_idx_h ∈ Int = (d_sel_i = 0 ? z3nums.zero
+        : d_sel_i = 1 ? z3nums.one
+        : d_sel_i = 2 ? z3nums.two
+        : z3nums.three)
     d_eff_sel ∈ Effect
-    BuildZ3MkSelect(ctx_h ↦ z_ctx, arr_h ↦ z_effs, idx_h ↦ d_sel_idx_h,
+    BuildZ3MkSelect(ctx_h ↦ z3ctx.ctx, arr_h ↦ z_effs, idx_h ↦ d_sel_idx_h,
         eff ↦ d_eff_sel)
     -- C2SelH (D3): generic select — pops (arr, idx) off the handle
     -- stack, pushes (select arr idx).
     d_eff_selh ∈ Effect
-    BuildZ3MkSelect(ctx_h ↦ z_ctx, arr_h ↦ d_h_2nd, idx_h ↦ d_h_top,
+    BuildZ3MkSelect(ctx_h ↦ z3ctx.ctx, arr_h ↦ d_h_2nd, idx_h ↦ d_h_top,
         eff ↦ d_eff_selh)
     -- G2: Real literal — mk_numeral of the rational "scaled/10^d".
     d_re_den ∈ String = (d_re_d = 1 ? "10"
@@ -1390,7 +1390,7 @@ fsm driver_main
         : "1")
     d_re_str ∈ String = str_from_int(d_re_s) ++ "/" ++ d_re_den
     d_eff_real ∈ Effect
-    BuildZ3MkNumeral(ctx_h ↦ z_ctx, num ↦ d_re_str, sort_h ↦ z_rsort,
+    BuildZ3MkNumeral(ctx_h ↦ z3ctx.ctx, num ↦ d_re_str, sort_h ↦ z3sorts.rsort,
         eff ↦ d_eff_real)
     -- G2: set builders — empty set of the registry elem sort; set_add
     -- pops (set, elem) and pushes the grown set.
@@ -1398,23 +1398,23 @@ fsm driver_main
         : d_mes_k = 1 ? rt_sort1
         : rt_sort2)
     d_eff_mes ∈ Effect = LibCall("libz3", "Z3_mk_empty_set",
-        ⟨ArgInt(z_ctx), ArgInt(d_mes_sort)⟩)
+        ⟨ArgInt(z3ctx.ctx), ArgInt(d_mes_sort)⟩)
     d_eff_sadd ∈ Effect = LibCall("libz3", "Z3_mk_set_add",
-        ⟨ArgInt(z_ctx), ArgInt(d_h_2nd), ArgInt(d_h_top)⟩)
+        ⟨ArgInt(z3ctx.ctx), ArgInt(d_h_2nd), ArgInt(d_h_top)⟩)
     d_eff_seleq ∈ Effect
     d_seleq_ok ∈ Bool
     d_seleq_nn ∈ Bool
-    BoolCmpBuildZ3(ctx_h ↦ z_ctx, op ↦ d_op_eq, l_h ↦ d_tmp_in, r_h ↦ d_h_top,
+    BoolCmpBuildZ3(ctx_h ↦ z3ctx.ctx, op ↦ d_op_eq, l_h ↦ d_tmp_in, r_h ↦ d_h_top,
         eff ↦ d_eff_seleq, ok ↦ d_seleq_ok, needs_not ↦ d_seleq_nn)
-    d_len_n_h ∈ Int = (d_len_n = 1 ? z_one
-        : d_len_n = 2 ? z_two
-        : d_len_n = 3 ? z_three
-        : d_len_n = 4 ? z_four
-        : z_zero)
+    d_len_n_h ∈ Int = (d_len_n = 1 ? z3nums.one
+        : d_len_n = 2 ? z3nums.two
+        : d_len_n = 3 ? z3nums.three
+        : d_len_n = 4 ? z3nums.four
+        : z3nums.zero)
     d_eff_leneq ∈ Effect
     d_leneq_ok ∈ Bool
     d_leneq_nn ∈ Bool
-    BoolCmpBuildZ3(ctx_h ↦ z_ctx, op ↦ d_op_eq, l_h ↦ z_elen, r_h ↦ d_len_n_h,
+    BoolCmpBuildZ3(ctx_h ↦ z3ctx.ctx, op ↦ d_op_eq, l_h ↦ z_elen, r_h ↦ d_len_n_h,
         eff ↦ d_eff_leneq, ok ↦ d_leneq_ok, needs_not ↦ d_leneq_nn)
     d_eff_filler ∈ Effect = LibCall("libc", "getpid", ⟨⟩)
 

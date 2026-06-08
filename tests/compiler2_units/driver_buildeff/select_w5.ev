@@ -57,12 +57,15 @@ fsm main
     z_arena = (is_first_tick ? 0 : _z_arena)
     z_arrsort ∈ Int
     z_arrsort = (is_first_tick ? 0 : _z_arrsort)
-    z_bsort ∈ Int
-    z_bsort = (is_first_tick ? 0 : _z_bsort)
-    z_cfg ∈ Int
-    z_cfg = (is_first_tick ? 0 : _z_cfg)
-    z_ctx ∈ Int
-    z_ctx = (is_first_tick ? 0 : _z_ctx)
+    z3sorts ∈ Z3Sorts
+    z3sorts.isort = (is_first_tick ? 0 : _z3sorts.isort)
+    z3sorts.bsort = (is_first_tick ? 0 : _z3sorts.bsort)
+    z3sorts.ssort = (is_first_tick ? 0 : _z3sorts.ssort)
+    z3sorts.rsort = (is_first_tick ? 0 : _z3sorts.rsort)
+    z3ctx ∈ Z3SolverCtx
+    z3ctx.cfg = (is_first_tick ? 0 : _z3ctx.cfg)
+    z3ctx.ctx = (is_first_tick ? 0 : _z3ctx.ctx)
+    z3ctx.sol = (is_first_tick ? 0 : _z3ctx.sol)
     z_effsort ∈ Int
     z_effsort = (is_first_tick ? 0 : _z_effsort)
     z_ege ∈ Int
@@ -71,8 +74,6 @@ fsm main
     z_elen = (is_first_tick ? 0 : _z_elen)
     z_ift ∈ Int
     z_ift = (is_first_tick ? 0 : _z_ift)
-    z_isort ∈ Int
-    z_isort = (is_first_tick ? 0 : _z_isort)
     z_lastres ∈ Int
     z_lastres = (is_first_tick ? 0 : _z_lastres)
     z_lrge ∈ Int
@@ -83,8 +84,6 @@ fsm main
     z_lrsort = (is_first_tick ? 0 : _z_lrsort)
     z_ressort ∈ Int
     z_ressort = (is_first_tick ? 0 : _z_ressort)
-    z_sol ∈ Int
-    z_sol = (is_first_tick ? 0 : _z_sol)
     z_sym_effs ∈ Int
     z_sym_effs = (is_first_tick ? 0 : _z_sym_effs)
     z_sym_elen ∈ Int
@@ -95,8 +94,12 @@ fsm main
     z_sym_lr = (is_first_tick ? 0 : _z_sym_lr)
     z_sym_lrl ∈ Int
     z_sym_lrl = (is_first_tick ? 0 : _z_sym_lrl)
-    z_zero ∈ Int
-    z_zero = (is_first_tick ? 0 : _z_zero)
+    z3nums ∈ Z3Numerals
+    z3nums.zero = (is_first_tick ? 0 : _z3nums.zero)
+    z3nums.one = (is_first_tick ? 0 : _z3nums.one)
+    z3nums.two = (is_first_tick ? 0 : _z3nums.two)
+    z3nums.three = (is_first_tick ? 0 : _z3nums.three)
+    z3nums.four = (is_first_tick ? 0 : _z3nums.four)
     ed_nullary ∈ Bool
     ed_nullary = (is_first_tick ? false : _ed_nullary)
     ed_res_harvest ∈ Bool

@@ -1,0 +1,32 @@
+-- Z3Numerals carry — the cached 0..4 int-numeral handles travel across ticks.
+--
+-- Mirrors the real zinit numeral cache: a step counter latches each
+-- numeral handle once at its named step, then holds. Proves the autocarry
+-- transform synthesizes the record dual `_z3nums ∈ Z3Numerals` so each
+-- field's latched value persists. If the dual is not synthesized, a
+-- latched field resets and the final line is wrong.
+--
+-- entry: main
+-- expect: stdout = "0/0/0/0/0"
+-- expect: stdout = "10/0/0/0/0"
+-- expect: stdout = "10/11/0/0/0"
+-- expect: stdout = "10/11/12/0/0"
+-- expect: stdout = "10/11/12/13/0"
+-- expect: stdout = "10/11/12/13/14"
+-- expect: exit = 0
+import "stdlib/kernel.ev"
+import "compiler2/driver_ir.ev"
+
+fsm main
+    step ∈ Int
+    step = (is_first_tick ? 0 : _step + 1)
+    z3nums ∈ Z3Numerals
+    z3nums.zero = (is_first_tick ? 0 : step = 1 ? 10 : _z3nums.zero)
+    z3nums.one = (is_first_tick ? 0 : step = 2 ? 11 : _z3nums.one)
+    z3nums.two = (is_first_tick ? 0 : step = 3 ? 12 : _z3nums.two)
+    z3nums.three = (is_first_tick ? 0 : step = 4 ? 13 : _z3nums.three)
+    z3nums.four = (is_first_tick ? 0 : step = 5 ? 14 : _z3nums.four)
+    msg ∈ String = str_from_int(z3nums.zero) ++ "/" ++ str_from_int(z3nums.one) ++ "/" ++ str_from_int(z3nums.two) ++ "/" ++ str_from_int(z3nums.three) ++ "/" ++ str_from_int(z3nums.four)
+    effects ∈ Seq(Effect) = (step ≥ 5
+        ? ⟨LibCall("libc", "puts", ⟨ArgStr(msg)⟩), Exit(0)⟩
+        : ⟨LibCall("libc", "puts", ⟨ArgStr(msg)⟩)⟩)

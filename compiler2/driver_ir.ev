@@ -14,6 +14,26 @@ import "compiler/parser.ev"
 -- append cursor (carried, bounded by the region capacity at each site).
 type FtiBuffer(base ∈ Int, count ∈ Int)
 
+-- ── Z3 solver lifecycle: the three handles created together at boot ─
+-- cfg → ctx → sol: the Z3 config, the context derived from it, and the
+-- solver derived from the context (zinit zsteps 1/2/3). They travel as
+-- one unit — every Build*Z3 effect threads `ctx`, asserts go through
+-- `sol`. Pinned once during zinit, carried thereafter.
+type Z3SolverCtx(cfg ∈ Int, ctx ∈ Int, sol ∈ Int)
+
+-- ── Z3 base sorts: the four primitive sort handles made at boot ────
+-- Int / Bool / String / Real sort handles (zinit zsteps 5/6/7/8). Every
+-- type-directed Build*Z3 step picks one of these by the field/atom type
+-- string. Pinned once during zinit, carried thereafter, and (like the
+-- solver triple) driven every tick so all four stay live.
+type Z3Sorts(isort ∈ Int, bsort ∈ Int, ssort ∈ Int, rsort ∈ Int)
+
+-- ── Z3 numeral cache: the small int constants 0..4 made once at boot ─
+-- effects-array indices and lengths only ever need 0..4, so zinit makes
+-- those five Z3 int-numeral handles once (zsteps 16/17/18/33/34) instead
+-- of re-minting them per use. Pinned once, carried, driven every tick.
+type Z3Numerals(zero ∈ Int, one ∈ Int, two ∈ Int, three ∈ Int, four ∈ Int)
+
 -- ── Work items: one line of claim body = one small program ────────
 enum C2Item =
     C2Process(Expr)
