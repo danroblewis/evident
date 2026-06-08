@@ -1,0 +1,25 @@
+-- Carry-preserving fsm composition: LIFT form (`..Sub`).
+--
+-- Same Counter as counter_slot.ev, but Main lifts it via `..Counter`
+-- (names-match) instead of a slot bind. The transform synthesizes
+-- Counter's `_n` inside Counter; the oracle's `..` lift then copies BOTH
+-- `n` and `_n` into Main as Main's own fields, so `n` carries with no
+-- injection needed. Proves the lift path reaches the same 0,1,2 carry.
+--
+-- entry: Main
+-- expect: stdout = "0"
+-- expect: stdout = "1"
+-- expect: stdout = "2"
+-- expect: exit = 0
+import "stdlib/kernel.ev"
+
+fsm Counter
+    n ∈ Int
+    n = (is_first_tick ? 0 : _n + 1)
+
+fsm Main
+    ..Counter
+    msg ∈ String = str_from_int(n)
+    effects ∈ Seq(Effect) = (n ≥ 2
+        ? ⟨LibCall("libc", "puts", ⟨ArgStr(msg)⟩), Exit(0)⟩
+        : ⟨LibCall("libc", "puts", ⟨ArgStr(msg)⟩)⟩)

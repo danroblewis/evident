@@ -1,0 +1,32 @@
+-- Carry-preserving fsm composition: MULTI-CALL-SITE independence.
+--
+-- Two different carrying fsms composed in one parent: Up1 steps +1, Up2
+-- steps +2. Each call binds a distinct parent var (x, y), so the transform
+-- synthesizes independent carries `_x` and `_y` and injects each call's
+-- own `_a ↦ _x` / `_b ↦ _y`. The two carries must advance independently:
+-- x = 0,1,2 while y = 0,2,4.
+--
+-- entry: Main
+-- expect: stdout = "0,0"
+-- expect: stdout = "1,2"
+-- expect: stdout = "2,4"
+-- expect: exit = 0
+import "stdlib/kernel.ev"
+
+fsm Up1
+    a ∈ Int
+    a = (is_first_tick ? 0 : _a + 1)
+
+fsm Up2
+    b ∈ Int
+    b = (is_first_tick ? 0 : _b + 2)
+
+fsm Main
+    x ∈ Int
+    y ∈ Int
+    Up1(a ↦ x)
+    Up2(b ↦ y)
+    msg ∈ String = str_from_int(x) ++ "," ++ str_from_int(y)
+    effects ∈ Seq(Effect) = (x ≥ 2
+        ? ⟨LibCall("libc", "puts", ⟨ArgStr(msg)⟩), Exit(0)⟩
+        : ⟨LibCall("libc", "puts", ⟨ArgStr(msg)⟩)⟩)

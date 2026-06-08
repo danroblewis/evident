@@ -1,0 +1,31 @@
+-- Carry-preserving fsm composition: NESTED 3-level transitivity.
+--
+-- Inner owns the carry (`iv = is_first_tick ? 0 : _iv + 1`). Mid composes
+-- Inner via `Inner(iv ↦ mv)`; Outer composes Mid via `Mid(mv ↦ ov)`.
+-- Neither Mid nor Outer references any `_x` directly — their carry status
+-- is *induced* by composition. The transform computes carries to a
+-- FIXPOINT: carry(Inner,iv) → carry(Mid,mv) → carry(Outer,ov), and injects
+-- `_iv ↦ _mv` and `_mv ↦ _ov`. The carry must survive end-to-end: 0,1,2.
+--
+-- entry: Outer
+-- expect: stdout = "0"
+-- expect: stdout = "1"
+-- expect: stdout = "2"
+-- expect: exit = 0
+import "stdlib/kernel.ev"
+
+fsm Inner
+    iv ∈ Int
+    iv = (is_first_tick ? 0 : _iv + 1)
+
+fsm Mid
+    mv ∈ Int
+    Inner(iv ↦ mv)
+
+fsm Outer
+    ov ∈ Int
+    Mid(mv ↦ ov)
+    msg ∈ String = str_from_int(ov)
+    effects ∈ Seq(Effect) = (ov ≥ 2
+        ? ⟨LibCall("libc", "puts", ⟨ArgStr(msg)⟩), Exit(0)⟩
+        : ⟨LibCall("libc", "puts", ⟨ArgStr(msg)⟩)⟩)
