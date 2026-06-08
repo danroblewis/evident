@@ -207,38 +207,54 @@ type FtiBuffer(base ∈ Int, count ∈ Int, cap ∈ Int)
 An append that would drive `count` past `cap` makes the tick UNSAT —
 the overrun halts the kernel instead of corrupting memory.
 
-**Carried/lifecycle types: use conditional invariants.** A type that is
-carried state passes through an uninitialized boot window where its
-handles are legitimately `0`. A universal `handle ≠ 0` would falsely
-fail tick 0. State the contract **conditionally** so it's vacuously
-true during init and binds the relationship once the thing is live:
+**Lifecycle types: conditional invariants — but mind the functionizer.**
+A type that is carried state passes through an uninitialized boot window
+where its handles are legitimately `0`. A universal `handle ≠ 0` would
+falsely fail tick 0. The natural fix is a **conditional** invariant,
+vacuously true during init and binding the relationship once live:
 
 ```evident
--- GOOD: "if the solver is live, so are its context and config."
--- Vacuous while sol = 0 (boot); enforced once sol is latched.
+-- "if the solver is live, so are its context and config."
+-- Semantically correct; vacuous while sol = 0 (boot).
 type Z3SolverCtx(cfg ∈ Int, ctx ∈ Int, sol ∈ Int)
     cfg ≥ 0
     ctx ≥ 0
     sol ≥ 0
-    sol ≠ 0 ⇒ (ctx ≠ 0 ∧ cfg ≠ 0)
+    sol ≠ 0 ⇒ (ctx ≠ 0 ∧ cfg ≠ 0)   -- ⚠ see the perf caveat below
 ```
+
+> **⚠ PERF CAVEAT (hard-won, 2026-06-08).** A conditional (`⇒`) invariant
+> is an *outputless boolean constraint*. The functionizer extracts
+> per-output assignments; it cannot extract a bare constraint, so a
+> conditional falls to **Z3 residual** and is re-solved **every tick**.
+> On a short-running **user program** that is free. On **carried state in
+> a hot loop** — e.g. the compiler's own `Z3SolverCtx`/`FtiBuffer` records,
+> which tick thousands of times per compile — it is catastrophic: adding
+> three such conditionals took fixture-001 from **19 s to a >30-min
+> timeout**, because Z3 now re-solves the whole model on every tick.
+> **Plain bounds (`≥ 0`, `0 ≤ count ≤ cap`) functionize for free;
+> conditionals do not.** On hot carried state, stick to bounds and drop
+> the conditional (the real compiler's `Z3SolverCtx` carries only the
+> `≥ 0` bounds for exactly this reason). Use the `[functionizer]` line
+> (`0.0 ms z3` = good; nonzero = a constraint fell to Z3) to check.
 
 Rules of thumb for writing a type body:
 
 - State what must **always** be true of the fields — including during
-  the boot window. If a property only holds once initialized, guard it
-  (`live ⇒ …`), don't assert it unconditionally.
-- Prefer invariants that **relate** fields (`count ≤ cap`,
-  `sol ≠ 0 ⇒ ctx ≠ 0`) over per-field sanity — the relationship *is*
-  the abstraction.
+  the boot window. If a property only holds once initialized, either
+  guard it (`live ⇒ …`) *or*, on hot state, drop it for a plain bound.
+- Prefer invariants that **relate** fields (`count ≤ cap`) — the
+  relationship *is* the abstraction — but keep them **functionizable**
+  (comparisons/bounds) on anything carried through a hot loop.
 - Mind the footguns: `⇒` binds tighter than `∧`, so wrap consequents
   `A ⇒ (B ∧ C)`; `=` binds tighter than comparisons, so wrap boolean
   assignments. Chained membership (`0 ≤ count ≤ cap`) works in a body.
-- Adding an invariant is a **behavior change**, not a refactor — gate
-  it on conformance + the type's carry unit test, never the
-  byte-identical emit gate. A conformance regression means the
-  invariant is actually false somewhere: that's real signal, investigate
-  it before weakening the invariant.
+- Adding an invariant is a **behavior change**, not a refactor — gate it
+  on conformance + the type's carry/violation unit tests, never the
+  byte-identical emit gate. A conformance regression means the invariant
+  is actually false somewhere (real signal); a conformance *timeout*
+  means it fell off the functionizer (the perf caveat) — investigate
+  before weakening or dropping.
 
 ### Seq
 

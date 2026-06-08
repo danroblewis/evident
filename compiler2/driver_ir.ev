@@ -7,19 +7,42 @@
 -- share the same IR definitions.
 import "compiler/parser.ev"
 
--- ── FTI buffers: a base address + a write cursor travel together ───
--- The recurring base+cursor pair behind every FTI-resident buffer (the
--- token buffer, the symbol table, the claim index). `base` is the
+-- ── FTI buffers: base + write cursor + capacity travel together ────
+-- The recurring base+cursor+cap triple behind every FTI-resident buffer
+-- (the token buffer, the symbol table, the claim index). `base` is the
 -- calloc'd region start (pinned once during zinit); `count` is the
--- append cursor (carried, bounded by the region capacity at each site).
-type FtiBuffer(base ∈ Int, count ∈ Int)
+-- append cursor (carried); `cap` is the region's slot capacity (pinned).
+-- The `0 ≤ count ≤ cap` invariant lifts the per-site capacity bound into
+-- the type — the cursor-in-region memory-safety contract, now checked
+-- every tick for every buffer rather than ad-hoc at each use-site. Plain
+-- bounds like these functionize for free (see the Z3SolverCtx note for
+-- the kind of invariant this type deliberately does NOT carry).
+type FtiBuffer(base ∈ Int, count ∈ Int, cap ∈ Int)
+    base ≥ 0           -- a calloc'd region start, never negative
+    cap  ≥ 0           -- the region holds `cap` slots
+    0 ≤ count ≤ cap    -- the write cursor never passes the last slot;
+                       -- an overrun makes the tick UNSAT, halting the
+                       -- kernel instead of writing out of region
 
 -- ── Z3 solver lifecycle: the three handles created together at boot ─
 -- cfg → ctx → sol: the Z3 config, the context derived from it, and the
 -- solver derived from the context (zinit zsteps 1/2/3). They travel as
 -- one unit — every Build*Z3 effect threads `ctx`, asserts go through
 -- `sol`. Pinned once during zinit, carried thereafter.
+--
+-- PERF NOTE — no conditional invariant here. The natural lifecycle
+-- invariant `sol ≠ 0 ⇒ (ctx ≠ 0 ∧ cfg ≠ 0)` is correct and harmless on a
+-- short-running user program, but FATAL here: this record is carried
+-- through the compiler's hot loop, and a conditional (`⇒`) is an
+-- outputless boolean constraint the functionizer cannot extract. It falls
+-- to Z3, which then re-solves the whole model EVERY tick across thousands
+-- of ticks per compile → fixture-001 went from 19 s to a >30-min timeout
+-- (measured 2026-06-08). Plain `≥ 0` bounds extract fine; conditionals do
+-- not. On hot carried state, stick to bounds.
 type Z3SolverCtx(cfg ∈ Int, ctx ∈ Int, sol ∈ Int)
+    cfg ≥ 0
+    ctx ≥ 0
+    sol ≥ 0
 
 -- ── Z3 base sorts: the four primitive sort handles made at boot ────
 -- Int / Bool / String / Real sort handles (zinit zsteps 5/6/7/8). Every
@@ -27,12 +50,21 @@ type Z3SolverCtx(cfg ∈ Int, ctx ∈ Int, sol ∈ Int)
 -- string. Pinned once during zinit, carried thereafter, and (like the
 -- solver triple) driven every tick so all four stay live.
 type Z3Sorts(isort ∈ Int, bsort ∈ Int, ssort ∈ Int, rsort ∈ Int)
+    isort ≥ 0
+    bsort ≥ 0
+    ssort ≥ 0
+    rsort ≥ 0          -- (no all-live conditional — see Z3SolverCtx note)
 
 -- ── Z3 numeral cache: the small int constants 0..4 made once at boot ─
 -- effects-array indices and lengths only ever need 0..4, so zinit makes
 -- those five Z3 int-numeral handles once (zsteps 16/17/18/33/34) instead
 -- of re-minting them per use. Pinned once, carried, driven every tick.
 type Z3Numerals(zero ∈ Int, one ∈ Int, two ∈ Int, three ∈ Int, four ∈ Int)
+    zero  ≥ 0
+    one   ≥ 0
+    two   ≥ 0
+    three ≥ 0
+    four  ≥ 0          -- (no all-live conditional — see Z3SolverCtx note)
 
 -- ── Record-type registry entry: one registered `type Name(...)` ─────
 -- One slot of the record-type registry (DriverRecord builds ≤3). name =
@@ -44,6 +76,9 @@ type Z3Numerals(zero ∈ Int, one ∈ Int, two ∈ Int, three ∈ Int, four ∈ 
 type RecTypeEntry(name ∈ String, fnames ∈ String, ftypes ∈ String,
     nf ∈ Int, sort ∈ Int, ctor ∈ Int, asort ∈ Int, ssort ∈ Int,
     a0 ∈ Int, a1 ∈ Int, a2 ∈ Int, a3 ∈ Int, a4 ∈ Int, a5 ∈ Int)
+    -- a registry slot holds 0 fields (empty) up to 6 (a0..a5 are the
+    -- ≤6 field-accessor decls — the registry's hard structural bound).
+    0 ≤ nf ≤ 6
 
 -- ── Work items: one line of claim body = one small program ────────
 enum C2Item =

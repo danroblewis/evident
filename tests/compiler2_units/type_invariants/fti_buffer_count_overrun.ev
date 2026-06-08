@@ -1,0 +1,17 @@
+-- FtiBuffer memory-safety invariant: `count ≤ cap`. A write cursor past
+-- the region's capacity (count = 3000 into a 2048-slot buffer) is an
+-- overrun — the tick is UNSAT (exit 2), so the kernel halts instead of
+-- writing out of region. This is the FTI memory-safety contract the
+-- roadmap calls for, now enforced by the type itself every tick.
+--
+-- entry: main
+-- expect: exit = 2
+import "stdlib/kernel.ev"
+import "compiler2/driver_ir.ev"
+
+fsm main
+    buf ∈ FtiBuffer
+    buf.base = 100
+    buf.count = 3000
+    buf.cap = 2048
+    effects ∈ Seq(Effect) = ⟨Exit(7)⟩
