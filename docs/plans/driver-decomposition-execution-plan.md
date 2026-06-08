@@ -261,13 +261,27 @@ blocks (rb broadcast ext 59, pratt ext 51, ZINIT/EMIT — Z3-lifecycle,
 arena-dependent tests; pmode-7/8 <40-line stubs) would take driver_main to
 only ~1368, still well above 600.
 
-These five remain `..`-liftable and the precedent of DriverPosBind (ext 82)
-/ DriverCompose (ext 54) shows a wide-interface block can still ship a
-single-path isolation test (drive one observable, pin the rest neutral) and
-a §6.4-justified contract. So < 600 IS reachable by continuing the same
-recipe on these + the remaining clean blocks (rb ext 59, pratt ext 51,
-EMIT, ZINIT, cond-inline, pmode-7/8). The cost is purely per-module test
-effort (the 178-input interpreter needs a ~360-line pinned fixture). The
-14 extracted modules each meet §3/§5/§6 with a real isolation test; the
-remaining integration core is the highest-effort tail, not a hard blocker —
-extraction continues toward < 600.
+VERIFIED BLOCKER (§10 STOP condition): the work-item lowering engine
+(~476 lines, the C2RecVal/RecDecl + expr-node/call/ctor/matches/str-op
+lowering, ext 128) does **not** `..`-lift. Attempting to lift it (`fsm
+DriverLower`) makes the oracle DROP an unrelated constraint — DriverWindow's
+`w_need` Int assignment ("couldn't translate to Bool") — so the whole-driver
+emit fails the §9 gate (build error, not drift). This was REVERTED per §9.
+Bisection confirmed it is NOT a size effect: lifting just the 127-line
+C2RecVal/RecDecl sub-block reproduces the identical `w_need` drop. So unlike
+all 14 cleanly-lifted blocks (each EQUIV byte-identical), the lowering
+engine resists the `..`-lift mechanism — most likely a flatten/expand
+autocarry × heavy-pass-claim-call interaction that perturbs the oracle's
+translation of a sibling module's `matches`-bearing ternary. Root-causing
+that is a TOOL (expander/oracle) fix, out of scope for this source-only
+decomposition.
+
+Consequence: < 600 is NOT reachable by `..`-lift alone, because the 476-line
+lowering engine is the largest residual block and cannot be lifted; even
+extracting every remaining clean block (rb ext 59, pratt ext 51, ZINIT,
+EMIT, cond-inline, pmode-7/8 — ~520 lines) would leave driver_main ≈ 1368
+(lowering engine + orchestrator wiring + bus). The 14 extracted modules each
+meet §3/§5/§6 with a real isolation test; the lowering engine is the honest,
+verified blocker to §6.1, and unblocking it requires a fix to the
+flatten/expand autocarry path (a kernel/tooling change), not more source
+extraction.
