@@ -1,0 +1,20 @@
+-- FtiNameEntry isolation test: a "|name<pad>" row is always 32 bytes —
+-- "|" + the name padded to 31 chars. tick 0 checks the length (32);
+-- tick 1 checks the name text survives after the "|".
+--
+-- entry: main
+-- expect: stdout = "len=32"
+-- expect: stdout = "head=|hi"
+-- expect: exit = 0
+import "stdlib/kernel.ev"
+import "compiler2/driver_ir.ev"
+
+fsm main
+    tick ∈ Int
+    tick = (is_first_tick ? 0 : _tick + 1)
+    e ∈ String
+    FtiNameEntry(name ↦ "hi", entry ↦ e)
+    msg ∈ String = (tick = 0 ? "len=" ++ str_from_int(#e) : "head=" ++ substr(e, 0, 3))
+    effects ∈ Seq(Effect) = (tick ≥ 1
+        ? ⟨LibCall("libc","puts",⟨ArgStr(msg)⟩), Exit(0)⟩
+        : ⟨LibCall("libc","puts",⟨ArgStr(msg)⟩)⟩)
