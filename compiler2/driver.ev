@@ -247,6 +247,7 @@ import "compiler2/driver_posbind.ev"
 import "compiler2/driver_quant.ev"
 import "compiler2/driver_group.ev"
 import "compiler2/driver_setvar.ev"
+import "compiler2/driver_pratt.ev"
 
 import "compiler2/driver_ir.ev"
 
@@ -1121,100 +1122,8 @@ fsm driver_main
     ..DriverGroup
     -- ── F2: composition inlining (see compiler2/driver_compose.ev) ──
     ..DriverCompose
-    -- ── PRATT FSM state (pmode 3; reads the shared window) ────────
-    d_in_pratt ∈ Bool = (in_parse ∧ (_pmode = 3) ∧ tok_ready)
-
-    p_out ∈ ExprList
-    p_ops ∈ PrOps
-    p_expop ∈ Bool
-    p_pd ∈ Int
-    p_qd ∈ Int
-    p_cd ∈ Int
-    pk_kind ∈ Int
-    pk_name ∈ String
-    pk_sc ∈ Int
-    pk_nat ∈ Bool
-    pk_nodecl ∈ Bool
-    pk_pn ∈ String
-    pk_rec ∈ Int
-
-    d_cb_pad ∈ String = "                               "
-    d_cb_names ∈ String = ("|" ++ substr("str_len" ++ d_cb_pad, 0, 31)
-        ++ "|" ++ substr("str_from_int" ++ d_cb_pad, 0, 31)
-        ++ "|" ++ substr("substr" ++ d_cb_pad, 0, 31)
-        ++ "|" ++ substr("char_at" ++ d_cb_pad, 0, 31)
-        ++ "|" ++ substr("index_of" ++ d_cb_pad, 0, 31)
-        ++ "|" ++ substr("str_contains" ++ d_cb_pad, 0, 31)
-        ++ "|" ++ substr("starts_with" ++ d_cb_pad, 0, 31)
-        ++ "|" ++ substr("ends_with" ++ d_cb_pad, 0, 31)
-        ++ "|" ++ substr("replace" ++ d_cb_pad, 0, 31)
-        ++ ((uev_n0 ≠ "") ? ("|" ++ substr(uev_n0 ++ d_cb_pad, 0, 31)) : "")
-        ++ ((uev_n1 ≠ "") ? ("|" ++ substr(uev_n1 ++ d_cb_pad, 0, 31)) : "")
-        ++ ((uev_n2 ≠ "") ? ("|" ++ substr(uev_n2 ++ d_cb_pad, 0, 31)) : "")
-        ++ ((uev_n3 ≠ "") ? ("|" ++ substr(uev_n3 ++ d_cb_pad, 0, 31)) : "")
-        ++ ((uev_n4 ≠ "") ? ("|" ++ substr(uev_n4 ++ d_cb_pad, 0, 31)) : "")
-        ++ ((uev_n5 ≠ "") ? ("|" ++ substr(uev_n5 ++ d_cb_pad, 0, 31)) : "")
-        ++ ((rt_n0 ≠ "" ∧ rt_sort0 ≠ 0) ? ("|" ++ substr(rt_n0 ++ d_cb_pad, 0, 31)) : "")
-        ++ ((rt_n1 ≠ "" ∧ rt_sort1 ≠ 0) ? ("|" ++ substr(rt_n1 ++ d_cb_pad, 0, 31)) : "")
-        ++ ((rt_n2 ≠ "" ∧ rt_sort2 ≠ 0) ? ("|" ++ substr(rt_n2 ++ d_cb_pad, 0, 31)) : ""))
-    pr_ntoks ∈ TokenList
-    pr_nouts ∈ ExprList
-    pr_nops ∈ PrOps
-    pr_nexpop ∈ Bool
-    pr_npd ∈ Int
-    pr_nqd ∈ Int
-    pr_ncd ∈ Int
-    pr_sdone ∈ Bool
-    pr_sres ∈ Expr
-    pr_scons ∈ Int
-    C2PrattStep(toks ↦ _wtoks, outs ↦ _p_out, ops ↦ _p_ops,
-        expop ↦ _p_expop, pd ↦ _p_pd, qd ↦ _p_qd, cd ↦ _p_cd,
-        qstop ↦ _pq_qstop, calls ↦ d_cb_names,
-        ntoks ↦ pr_ntoks, nouts ↦ pr_nouts, nops ↦ pr_nops,
-        nexpop ↦ pr_nexpop, npd ↦ pr_npd, nqd ↦ pr_nqd, ncd ↦ pr_ncd,
-        sdone ↦ pr_sdone, sres ↦ pr_sres, scons ↦ pr_scons)
-
-    p_out = (is_first_tick ? ELNil
-        : d_enter_pratt ? ELNil
-        : d_in_pratt ? pr_nouts
-        : _p_out)
-    p_ops = (is_first_tick ? PrNil
-        : d_enter_pratt ? PrNil
-        : d_in_pratt ? pr_nops
-        : _p_ops)
-    p_expop = (is_first_tick ? true
-        : d_enter_pratt ? true
-        : d_in_pratt ? pr_nexpop
-        : _p_expop)
-    p_pd = (is_first_tick ? 0
-        : d_enter_pratt ? 0
-        : d_in_pratt ? pr_npd
-        : _p_pd)
-    p_qd = (is_first_tick ? 0
-        : d_enter_pratt ? 0
-        : d_in_pratt ? pr_nqd
-        : _p_qd)
-    p_cd = (is_first_tick ? 0
-        : d_enter_pratt ? 0
-        : d_in_pratt ? pr_ncd
-        : _p_cd)
-    pk_kind = (is_first_tick ? 0 : d_enter_pratt ? d_pratt_kind0 : _pk_kind)
-    pk_name = (is_first_tick ? "" : d_enter_pratt ? c_dname : _pk_name)
-    pk_sc = (is_first_tick ? 0 : d_enter_pratt ? c_sc : _pk_sc)
-    pk_nat = (is_first_tick ? false : d_enter_pratt ? c_is_nat : _pk_nat)
-    pk_nodecl = (is_first_tick ? false : d_enter_pratt ? c_nodecl : _pk_nodecl)
-    pk_pn = (is_first_tick ? "" : d_enter_pratt ? c_pn : _pk_pn)
-    -- G2: record-pinned membership (`offset_pos ∈ IVec2 = <expr>`)
-    -- arms the rb broadcast loop at parse completion.
-    c_pin_rtk ∈ Int = ((c_pinned ∧ c_is_mem) ? c_ty_rtk : 0 - 1)
-    pk_rec = (is_first_tick ? 0 - 1
-        : d_enter_pratt ? c_pin_rtk
-        : _pk_rec)
-
-    -- parse completion → build the line's work-item program.
-    p_done ∈ Bool = (d_in_pratt ∧ pr_sdone)
-    pr_bad ∈ Bool = (p_done ∧ (pr_sres matches ENoExpr))
-
+    -- ── PRATT FSM state (see compiler2/driver_pratt.ev) ──
+    ..DriverPratt
     -- ── G1: conditional inline `cond ⇒ ClaimName` — a standalone
     -- line whose parsed root is (=> guard EIdent(Name)) with Name in
     -- the claim index splices Name's body with every asserted

@@ -225,6 +225,7 @@ commit (the ternary guard) and stayed 137/138.
 | G1q | (this run) | `driver_quant.ev` (`fsm DriverQuant`) — bounded-quantifier line classifier (`∀\|∃ v ∈ {lo..hi}` / `∀ v ∈ seq`) + the str_len/seq-length recognizer | 132 (114 body) | ~32 bus (classifier head c_t0..t4 + window lookahead, registered-seq carries, record registry, Pratt result) | range_header (pin `∀ x ∈ {0..9}` ⇒ c_q_rng ∧ c_q_hi 9) | EQUIV; manifest unchanged | 2137 |
 | F1g | (this run) | `driver_group.ev` (`fsm DriverGroup`) — pmode-9 multi-name group walk (`x, y, z ∈ Nat` body + `(a, b ∈ Int)` param) | 106 (88 body) | 14 bus (d_enter_mn/d_enter_claimp, classifier name/sort/type, window head, parse gate) | multiname (window `x ,` in state 0 ⇒ pg_collect ∧ pg_take2, verdict 3) | EQUIV; manifest unchanged | 2052 |
 | G2s | (this run) | `driver_setvar.ev` (`fsm DriverSetVar`) — Set(T) variable registry (≤2) + pmode-14 set walk + quantifier-over-set | 186 (167 body) | ~37 bus (classifier set-line flags, classify gate, window head, registered-seq carries, inline prefix, Pratt result) | registry_append (drive d_setmem ⇒ stv_cnt 0→2 capped ∧ stv_n0 captures "myset") | EQUIV; manifest unchanged | 1888 |
+| 5p | (this run) | `driver_pratt.ev` (`fsm DriverPratt`) — pmode-3 Pratt expression-parser FSM | 110 (94 body) | ~26 bus (parse gate, d_enter_pratt + d_pratt_kind0 entry, classifier pin/decl flags, record + user-enum registries, qstop) | entry_kind (drive d_enter_pratt + d_pratt_kind0 5 ⇒ pk_kind latches 5) | EQUIV; manifest unchanged | 1797 |
 
 Status after continuation run: 14 modules extracted total (3 prior +
 DriverEnum, DriverWindow, DriverClassify[+driver_ir hoist], DriverCompose,
@@ -232,7 +233,7 @@ DriverSymtab, DriverClaimIdx, DriverMatchPin, DriverPosBind, DriverQuant,
 DriverGroup, DriverSetVar this run) + BOTH mandated bug regressions
 (overrun, ternary). 19 unit fixtures green; gate EQUIV + manifest unchanged
 per step; conformance 137/138 (preserved by byte-identity, re-confirmed).
-driver_main 5930 → 1888 (-4042, -68%).
+driver_main 5930 → 1797 (-4133, -70%). 15 modules total (DriverPratt added); 20 unit fixtures green.
 
 §6.1 (`driver_main` < 600) is NOT met and is **NOT cleanly reachable** —
 this is the §10 STOP-and-report condition. The remaining ~1888 lines split
