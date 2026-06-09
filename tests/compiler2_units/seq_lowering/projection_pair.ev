@@ -1,0 +1,27 @@
+-- The keyed-projection PAIR (∀-pin + ¬∃-default) lowers to the covered
+-- select chain. Two appends; the "b" lookup hits slot 1 (→ 20), the "z"
+-- lookup misses (→ default 7). exit = 20 + 7.
+--
+-- entry: main
+-- expect: exit = 27
+import "stdlib/kernel.ev"
+
+type Pair(name ∈ String, value ∈ Int)
+
+fsm main
+    tick ∈ Int
+    tick = (is_first_tick ? 0 : _tick + 1)
+    nm ∈ String = (tick = 1 ? "a" : "b")
+    vl ∈ Int = (tick = 1 ? 10 : 20)
+    xs ∈ Seq(Pair)
+    #xs ≤ 3
+    xs = (is_first_tick ? ⟨⟩ : tick ≤ 2 ? _xs ++ ⟨Pair(nm, vl)⟩ : _xs)
+    hit ∈ Int
+    ∀ k ∈ {0..2} : ((xs[k].name = "b") ⇒ (hit = xs[k].value))
+    (¬(∃ i ∈ {0..#xs-1} : xs[i].name = "b")) ⇒ (hit = 0)
+    miss ∈ Int
+    ∀ k ∈ {0..2} : ((xs[k].name = "z") ⇒ (miss = xs[k].value))
+    (¬(∃ i ∈ {0..2} : xs[i].name = "z")) ⇒ (miss = 7)
+    effects ∈ Seq(Effect) = (tick ≥ 3
+        ? ⟨Exit(hit + miss)⟩
+        : ⟨LibCall("libc","abs",⟨ArgInt(1)⟩)⟩)

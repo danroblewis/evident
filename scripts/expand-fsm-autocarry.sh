@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# TODO: rewrite in Evident
+# TODO: rewrite in Evident (compiler2/passes/ once the self-hosting seam
+# exists — see docs/plans/post-cutover-roadmap.md "host passes in Evident")
 #
 # expand-fsm-autocarry.sh — fsm prev-tick carry expansion preprocessor.
 #
