@@ -314,33 +314,10 @@ fsm DriverEnum
         : (_ed_act = 3 ∧ _ed_step = 4 ∧ _res_acc_pend = 2) ? d_cap_int
         : _z_sracc)
 
-    evt_cnt ∈ Int
-    evt_n0 ∈ String
-    evt_v0 ∈ Int
-    evt_n1 ∈ String
-    evt_v1 ∈ Int
-    evt_n2 ∈ String
-    evt_v2 ∈ Int
-    evt_n3 ∈ String
-    evt_v3 ∈ Int
-    evt_n4 ∈ String
-    evt_v4 ∈ Int
-    evt_n5 ∈ String
-    evt_v5 ∈ Int
+    evt ∈ Seq(EnumVariantVal)
+    #evt ≤ 6
     evt_add ∈ Bool = (ed_val_cap ∧ _ed_user)
-    evt_cnt = (is_first_tick ? 0 : evt_add ? _evt_cnt + 1 : _evt_cnt)
-    evt_n0 = (is_first_tick ? "" : (evt_add ∧ _evt_cnt = 0) ? ed_vname : _evt_n0)
-    evt_v0 = (is_first_tick ? 0 : (evt_add ∧ _evt_cnt = 0) ? d_cap_int : _evt_v0)
-    evt_n1 = (is_first_tick ? "" : (evt_add ∧ _evt_cnt = 1) ? ed_vname : _evt_n1)
-    evt_v1 = (is_first_tick ? 0 : (evt_add ∧ _evt_cnt = 1) ? d_cap_int : _evt_v1)
-    evt_n2 = (is_first_tick ? "" : (evt_add ∧ _evt_cnt = 2) ? ed_vname : _evt_n2)
-    evt_v2 = (is_first_tick ? 0 : (evt_add ∧ _evt_cnt = 2) ? d_cap_int : _evt_v2)
-    evt_n3 = (is_first_tick ? "" : (evt_add ∧ _evt_cnt = 3) ? ed_vname : _evt_n3)
-    evt_v3 = (is_first_tick ? 0 : (evt_add ∧ _evt_cnt = 3) ? d_cap_int : _evt_v3)
-    evt_n4 = (is_first_tick ? "" : (evt_add ∧ _evt_cnt = 4) ? ed_vname : _evt_n4)
-    evt_v4 = (is_first_tick ? 0 : (evt_add ∧ _evt_cnt = 4) ? d_cap_int : _evt_v4)
-    evt_n5 = (is_first_tick ? "" : (evt_add ∧ _evt_cnt = 5) ? ed_vname : _evt_n5)
-    evt_v5 = (is_first_tick ? 0 : (evt_add ∧ _evt_cnt = 5) ? d_cap_int : _evt_v5)
+    evt = (is_first_tick ? ⟨⟩ : evt_add ? _evt ++ ⟨EnumVariantVal(ed_vname, d_cap_int)⟩ : _evt)
 
     -- User-enum variant DECL registry (C3/C4): per variant (indexed
     -- by ed_vidx — the harvest visits variants in declaration

@@ -114,4 +114,8 @@ walk() {
 FLAT_TMP="$(mktemp -t evflat.XXXXXX.ev)" || die "mktemp failed"
 trap 'rm -f "$FLAT_TMP"' EXIT
 walk "$(canon "$ROOT_ARG")" > "$FLAT_TMP"
-"$SCRIPT_DIR/expand-fsm-autocarry.sh" < "$FLAT_TMP"
+# autocarry first (synthesizes `_xs ∈ Seq(…)` duals), then the bounded-Seq
+# lowering rewrites both decls to flat scalars — ordering avoids double
+# duals. The lowering is opt-in (a `#xs ≤ N` bound) and fails loudly on
+# unsupported uses (see scripts/lower-bounded-seq.sh).
+"$SCRIPT_DIR/expand-fsm-autocarry.sh" < "$FLAT_TMP" | "$SCRIPT_DIR/lower-bounded-seq.sh"

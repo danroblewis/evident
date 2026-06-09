@@ -84,18 +84,9 @@ fsm main
     d_hstk_in = (is_first_tick ? C2HNil : _d_hstk_in)
     d_line_end ∈ Bool
     d_line_end = (is_first_tick ? false : _d_line_end)
-    evt_n0 ∈ String
-    evt_n0 = (is_first_tick ? "" : _evt_n0)
-    evt_n1 ∈ String
-    evt_n1 = (is_first_tick ? "" : _evt_n1)
-    evt_n2 ∈ String
-    evt_n2 = (is_first_tick ? "" : _evt_n2)
-    evt_n3 ∈ String
-    evt_n3 = (is_first_tick ? "" : _evt_n3)
-    evt_n4 ∈ String
-    evt_n4 = (is_first_tick ? "" : _evt_n4)
-    evt_n5 ∈ String
-    evt_n5 = (is_first_tick ? "" : _evt_n5)
+    evt ∈ Seq(EnumVariantVal)
+    #evt ≤ 6
+    evt = (is_first_tick ? ⟨⟩ : _evt)
     gc_hit ∈ Bool
     gc_hit = (is_first_tick ? false : _gc_hit)
     gc_l ∈ Expr

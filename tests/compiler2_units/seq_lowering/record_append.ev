@@ -1,0 +1,23 @@
+-- Bounded Seq(record) lowering, end-to-end through flatten's native pass:
+-- a guarded carried append of Pair rows, an ∃ keyed lookup, literal-index
+-- field access, and #. Appends ("1",10) and ("2",20); at tick 3 the "2"
+-- lookup hits, v0 = first row's value, exit = 10 + len = 12.
+--
+-- entry: main
+-- expect: exit = 12
+import "stdlib/kernel.ev"
+
+type Pair(name ∈ String, value ∈ Int)
+
+fsm main
+    tick ∈ Int
+    tick = (is_first_tick ? 0 : _tick + 1)
+    add ∈ Bool = (tick = 1 ∨ tick = 2)
+    xs ∈ Seq(Pair)
+    #xs ≤ 3
+    xs = (is_first_tick ? ⟨⟩ : add ? _xs ++ ⟨Pair(str_from_int(tick), tick * 10)⟩ : _xs)
+    hit ∈ Bool = (∃ i ∈ {0..#xs-1} : xs[i].name = "2")
+    v0 ∈ Int = xs[0].value
+    effects ∈ Seq(Effect) = (tick ≥ 3
+        ? ⟨Exit(hit ? v0 + #xs : 9)⟩
+        : ⟨LibCall("libc","abs",⟨ArgInt(1)⟩)⟩)
