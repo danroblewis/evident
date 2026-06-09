@@ -53,18 +53,9 @@ fsm main
         a0 ↦ 0, a1 ↦ 0, a2 ↦ 0, a3 ↦ 0, a4 ↦ 0, a5 ↦ 0)
     toks ∈ TokenList
     toks = (is_first_tick ? TLNil : _toks)
-    uev_n0 ∈ String
-    uev_n0 = (is_first_tick ? "" : _uev_n0)
-    uev_n1 ∈ String
-    uev_n1 = (is_first_tick ? "" : _uev_n1)
-    uev_n2 ∈ String
-    uev_n2 = (is_first_tick ? "" : _uev_n2)
-    uev_n3 ∈ String
-    uev_n3 = (is_first_tick ? "" : _uev_n3)
-    uev_n4 ∈ String
-    uev_n4 = (is_first_tick ? "" : _uev_n4)
-    uev_n5 ∈ String
-    uev_n5 = (is_first_tick ? "" : _uev_n5)
+    uev ∈ Seq(UserEnumVariant)
+    #uev ≤ 6
+    uev = (is_first_tick ? ⟨⟩ : _uev)
     wtoks ∈ TokenList
     wtoks = (is_first_tick ? TLNil : _wtoks)
     ..DriverPratt

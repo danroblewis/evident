@@ -36,42 +36,9 @@ fsm main
     pr_bad = (is_first_tick ? false : _pr_bad)
     pr_sres ∈ Expr
     pr_sres = (is_first_tick ? EInt(0) : _pr_sres)
-    uev_a0 ∈ Int
-    uev_a0 = (is_first_tick ? 0 : _uev_a0)
-    uev_a1 ∈ Int
-    uev_a1 = (is_first_tick ? 0 : _uev_a1)
-    uev_a2 ∈ Int
-    uev_a2 = (is_first_tick ? 0 : _uev_a2)
-    uev_a3 ∈ Int
-    uev_a3 = (is_first_tick ? 0 : _uev_a3)
-    uev_a4 ∈ Int
-    uev_a4 = (is_first_tick ? 0 : _uev_a4)
-    uev_a5 ∈ Int
-    uev_a5 = (is_first_tick ? 0 : _uev_a5)
-    uev_n0 ∈ String
-    uev_n0 = (is_first_tick ? "" : _uev_n0)
-    uev_n1 ∈ String
-    uev_n1 = (is_first_tick ? "" : _uev_n1)
-    uev_n2 ∈ String
-    uev_n2 = (is_first_tick ? "" : _uev_n2)
-    uev_n3 ∈ String
-    uev_n3 = (is_first_tick ? "" : _uev_n3)
-    uev_n4 ∈ String
-    uev_n4 = (is_first_tick ? "" : _uev_n4)
-    uev_n5 ∈ String
-    uev_n5 = (is_first_tick ? "" : _uev_n5)
-    uev_t0 ∈ Int
-    uev_t0 = (is_first_tick ? 0 : _uev_t0)
-    uev_t1 ∈ Int
-    uev_t1 = (is_first_tick ? 0 : _uev_t1)
-    uev_t2 ∈ Int
-    uev_t2 = (is_first_tick ? 0 : _uev_t2)
-    uev_t3 ∈ Int
-    uev_t3 = (is_first_tick ? 0 : _uev_t3)
-    uev_t4 ∈ Int
-    uev_t4 = (is_first_tick ? 0 : _uev_t4)
-    uev_t5 ∈ Int
-    uev_t5 = (is_first_tick ? 0 : _uev_t5)
+    uev ∈ Seq(UserEnumVariant)
+    #uev ≤ 6
+    uev = (is_first_tick ? ⟨⟩ : _uev)
     ww_t1 ∈ Token
     ww_t1 = (is_first_tick ? EofTok : _ww_t1)
     ww_t2 ∈ Token

@@ -1,7 +1,7 @@
 -- DriverSetVar isolation — Set(T) registry append + name capture.
 -- c_setmem_line held under d_classify (not at line end) so d_setmem
 -- fires and the ≤2-entry Set registry appends: stv_cnt climbs 0→1→2
--- (capped), stv_n0 captures c_dname = "myset". Exit at stv_cnt = 2.
+-- (capped), stv[0].name captures c_dname = "myset". Exit at stv_cnt = 2.
 --
 -- entry: main
 -- expect: stdout = "myset"
@@ -91,5 +91,5 @@ fsm main
     ..DriverSetVar
     done ∈ Bool = (stv_cnt = 2)
     effects ∈ Seq(Effect) = (done
-        ? ⟨LibCall("libc", "puts", ⟨ArgStr(stv_n0)⟩), Exit(0)⟩
+        ? ⟨LibCall("libc", "puts", ⟨ArgStr(stv[0].name)⟩), Exit(0)⟩
         : ⟨LibCall("libc", "getpid", ⟨⟩)⟩)

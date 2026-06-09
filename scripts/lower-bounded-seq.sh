@@ -236,6 +236,11 @@ END {
                 else           { seqDecl[cur, nm] = 1; elemOf[nm] = el }
             }
         }
+        # len-writer detection: append / hold / literal assignment
+        if (code ~ /^[ \t]*[A-Za-z][A-Za-z0-9_]*[ \t]*=[ \t]*\([ \t]*is_first_tick[ \t]*\?[ \t]*⟨⟩/ ||
+            code ~ /^[ \t]*[A-Za-z][A-Za-z0-9_]*[ \t]*=[ \t]*⟨.*⟩[ \t]*$/) {
+            hasLen[lead_ident(code)] = 1
+        }
         if (code ~ /^[ \t]*#[A-Za-z][A-Za-z0-9_]*[ \t]*≤[ \t]*[0-9]+[ \t]*$/) {
             nm = code; sub(/^[ \t]*#/, "", nm); sub(/[ \t]*≤.*$/, "", nm)
             v  = code; sub(/^.*≤[ \t]*/, "", v); sub(/[ \t]*$/, "", v)
@@ -268,7 +273,7 @@ END {
                 else for (j = 1; j <= tnf[el]; j++)
                     O[++on] = ind "_" base "_" k "_" tfield[el, j] " ∈ " ttype[el, j]
             }
-            O[++on] = ind "_" base "_len ∈ Int"
+            if (base in hasLen) O[++on] = ind "_" base "_len ∈ Int"
             continue
         }
 
@@ -288,8 +293,10 @@ END {
                     else for (j = 1; j <= tnf[el]; j++)
                         O[++on] = ind nm "_" k "_" tfield[el, j] " ∈ " ttype[el, j]
                 }
-                O[++on] = ind nm "_len ∈ Int"
-                O[++on] = ind "0 ≤ " nm "_len"
+                if (nm in hasLen) {
+                    O[++on] = ind nm "_len ∈ Int"
+                    O[++on] = ind "0 ≤ " nm "_len"
+                }
             }
             continue
         }
@@ -388,6 +395,35 @@ END {
                 for (k = 0; k < Nn; k++)
                     out = out (k ? " ∨ " : "") "((" k " < " rhs "_len) ∧ (" lhs " = " rhs "_" k "))"
                 O[++on] = ind "(" out ")"
+                continue
+            }
+        }
+
+        # the bound directive of a len-less seq vanishes (nothing to bound)
+        if (code ~ /^[ \t]*#[A-Za-z][A-Za-z0-9_]*[ \t]*≤[ \t]*[0-9]+[ \t]*$/) {
+            bn = code; sub(/^[ \t]*#/, "", bn); sub(/[ \t]*≤.*$/, "", bn)
+            if ((bn in gbnd) && !(bn in hasLen)) continue
+        }
+
+        # range-∀ slot instantiation:  ∀ k ∈ {LO..HI} : BODY
+        # (BODY mentions a registered seq via xs[k] / _xs[k]) — emit BODY
+        # once per k with the bound var substituted, then index/card-lower.
+        if (code ~ /^[ \t]*∀[ \t].*∈[ \t]*\{[0-9]+\.\.[0-9]+\}[ \t]*:/) {
+            bvar = code; sub(/^[ \t]*∀[ \t]*/, "", bvar); sub(/[ \t]*∈.*$/, "", bvar); bvar = trim(bvar)
+            lo = code; sub(/^[^{]*\{/, "", lo); sub(/\.\..*$/, "", lo)
+            hi = code; sub(/^[^{]*\{[0-9]+\.\./, "", hi); sub(/\}.*$/, "", hi)
+            body = code; sub(/^[^:]*:[ \t]*/, "", body)
+            touches = 0
+            for (g in gbnd) {
+                if (index(body, g "[") > 0 || index(body, "_" g "[") > 0) { touches = 1; break }
+            }
+            if (touches) {
+                for (k = lo + 0; k <= hi + 0; k++) {
+                    t2 = subst_tok(body, bvar, k)
+                    t2 = subst_index(t2)
+                    t2 = subst_card(t2)
+                    O[++on] = ind t2
+                }
                 continue
             }
         }

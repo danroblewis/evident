@@ -186,48 +186,48 @@ fsm DriverMatchPin
     mp_v_dc ∈ String = (mq_wc ? "" : _mp_pc)
     mp_t1 ∈ Int = (mp_v_c1 = "IntResult" ? z_irtest
         : mp_v_c1 = "StringResult" ? z_srtest
-        : uev_n0 = mp_v_c1 ? uev_t0
-        : uev_n1 = mp_v_c1 ? uev_t1
-        : uev_n2 = mp_v_c1 ? uev_t2
-        : uev_n3 = mp_v_c1 ? uev_t3
-        : uev_n4 = mp_v_c1 ? uev_t4
-        : uev_n5 = mp_v_c1 ? uev_t5
+        : uev[0].name = mp_v_c1 ? uev[0].tester
+        : uev[1].name = mp_v_c1 ? uev[1].tester
+        : uev[2].name = mp_v_c1 ? uev[2].tester
+        : uev[3].name = mp_v_c1 ? uev[3].tester
+        : uev[4].name = mp_v_c1 ? uev[4].tester
+        : uev[5].name = mp_v_c1 ? uev[5].tester
         : 0)
     mp_t2 ∈ Int = (mp_v_c2 = "IntResult" ? z_irtest
         : mp_v_c2 = "StringResult" ? z_srtest
-        : uev_n0 = mp_v_c2 ? uev_t0
-        : uev_n1 = mp_v_c2 ? uev_t1
-        : uev_n2 = mp_v_c2 ? uev_t2
-        : uev_n3 = mp_v_c2 ? uev_t3
-        : uev_n4 = mp_v_c2 ? uev_t4
-        : uev_n5 = mp_v_c2 ? uev_t5
+        : uev[0].name = mp_v_c2 ? uev[0].tester
+        : uev[1].name = mp_v_c2 ? uev[1].tester
+        : uev[2].name = mp_v_c2 ? uev[2].tester
+        : uev[3].name = mp_v_c2 ? uev[3].tester
+        : uev[4].name = mp_v_c2 ? uev[4].tester
+        : uev[5].name = mp_v_c2 ? uev[5].tester
         : 0)
     mp_acc1 ∈ Int = (mp_v_c1 = "IntResult" ? z_iracc
         : mp_v_c1 = "StringResult" ? z_sracc
-        : uev_n0 = mp_v_c1 ? uev_a0
-        : uev_n1 = mp_v_c1 ? uev_a1
-        : uev_n2 = mp_v_c1 ? uev_a2
-        : uev_n3 = mp_v_c1 ? uev_a3
-        : uev_n4 = mp_v_c1 ? uev_a4
-        : uev_n5 = mp_v_c1 ? uev_a5
+        : uev[0].name = mp_v_c1 ? uev[0].acc
+        : uev[1].name = mp_v_c1 ? uev[1].acc
+        : uev[2].name = mp_v_c1 ? uev[2].acc
+        : uev[3].name = mp_v_c1 ? uev[3].acc
+        : uev[4].name = mp_v_c1 ? uev[4].acc
+        : uev[5].name = mp_v_c1 ? uev[5].acc
         : 0)
     mp_acc2 ∈ Int = (mp_v_c2 = "IntResult" ? z_iracc
         : mp_v_c2 = "StringResult" ? z_sracc
-        : uev_n0 = mp_v_c2 ? uev_a0
-        : uev_n1 = mp_v_c2 ? uev_a1
-        : uev_n2 = mp_v_c2 ? uev_a2
-        : uev_n3 = mp_v_c2 ? uev_a3
-        : uev_n4 = mp_v_c2 ? uev_a4
-        : uev_n5 = mp_v_c2 ? uev_a5
+        : uev[0].name = mp_v_c2 ? uev[0].acc
+        : uev[1].name = mp_v_c2 ? uev[1].acc
+        : uev[2].name = mp_v_c2 ? uev[2].acc
+        : uev[3].name = mp_v_c2 ? uev[3].acc
+        : uev[4].name = mp_v_c2 ? uev[4].acc
+        : uev[5].name = mp_v_c2 ? uev[5].acc
         : 0)
     mp_dacc ∈ Int = (mp_v_dc = "IntResult" ? z_iracc
         : mp_v_dc = "StringResult" ? z_sracc
-        : uev_n0 = mp_v_dc ? uev_a0
-        : uev_n1 = mp_v_dc ? uev_a1
-        : uev_n2 = mp_v_dc ? uev_a2
-        : uev_n3 = mp_v_dc ? uev_a3
-        : uev_n4 = mp_v_dc ? uev_a4
-        : uev_n5 = mp_v_dc ? uev_a5
+        : uev[0].name = mp_v_dc ? uev[0].acc
+        : uev[1].name = mp_v_dc ? uev[1].acc
+        : uev[2].name = mp_v_dc ? uev[2].acc
+        : uev[3].name = mp_v_dc ? uev[3].acc
+        : uev[4].name = mp_v_dc ? uev[4].acc
+        : uev[5].name = mp_v_dc ? uev[5].acc
         : 0)
     mp_tailE ∈ C2Items = C2ICons(C2PinEq,
         C2ICons(C2AssertTop, C2INil))

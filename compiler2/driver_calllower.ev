@@ -45,14 +45,14 @@ fsm DriverCallLower
         _ ⇒ ""
     d_sl_seq ∈ Bool = (_sq_set ∧ ((d_ca0_nm = _sq_name)
         ∨ ((_il_pfx ++ d_ca0_nm) = _sq_name)))
-    d_sl_setk ∈ Int = ((d_ca0_nm ≠ "" ∧ ((d_ca0_nm = stv_n0)
-            ∨ ((_il_pfx ++ d_ca0_nm) = stv_n0))) ? 0
-        : (d_ca0_nm ≠ "" ∧ ((d_ca0_nm = stv_n1)
-            ∨ ((_il_pfx ++ d_ca0_nm) = stv_n1))) ? 1
+    d_sl_setk ∈ Int = ((d_ca0_nm ≠ "" ∧ ((d_ca0_nm = stv[0].name)
+            ∨ ((_il_pfx ++ d_ca0_nm) = stv[0].name))) ? 0
+        : (d_ca0_nm ≠ "" ∧ ((d_ca0_nm = stv[1].name)
+            ∨ ((_il_pfx ++ d_ca0_nm) = stv[1].name))) ? 1
         : 0 - 1)
-    d_slc_e ∈ String = (d_sl_setk = 0 ? stv_e0 : stv_e1)
-    d_slc_c ∈ Int = (d_sl_setk = 0 ? stv_c0 : stv_c1)
-    d_slc_k ∈ Int = (d_sl_setk = 0 ? stv_k0 : stv_k1)
+    d_slc_e ∈ String = (d_sl_setk = 0 ? stv[0].elems : stv[1].elems)
+    d_slc_c ∈ Int = (d_sl_setk = 0 ? stv[0].count : stv[1].count)
+    d_slc_k ∈ Int = (d_sl_setk = 0 ? stv[0].kidx : stv[1].kidx)
     d_slc_e0 ∈ String
     RtRecName(s ↦ d_slc_e, i ↦ 0, name ↦ d_slc_e0)
     d_slc_e1 ∈ String
