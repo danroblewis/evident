@@ -1,0 +1,10 @@
+-- E15 prefix: plen ≤ slen ∧ ∀ i<plen : p[i]=s[i]. Bounded → decidable.
+-- entry: main
+-- expect: exit = 0
+import "stdlib/kernel.ev"
+claim main
+    s ∈ Seq(Int) = ⟨1, 2, 3, 4, 5⟩
+    p ∈ Seq(Int) = ⟨1, 2, 3⟩
+    #p ≤ #s
+    ∀ i ∈ {0..2} : p[i] = s[i]
+    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

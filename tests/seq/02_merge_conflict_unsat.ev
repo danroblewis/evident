@@ -1,0 +1,15 @@
+-- A2 conflicting overlap. ch1 forces c<f; ch2 = ⟨f,d,c⟩ forces f<d<c,
+-- i.e. f<c. The two orderings contradict on the shared pair → UNSAT
+-- → exit 2.
+-- entry: main
+-- expect: exit = 2
+import "stdlib/kernel.ev"
+claim main
+    c ∈ Int
+    d ∈ Int
+    f ∈ Int
+    ch1 ∈ Seq(Int) = ⟨c, f⟩
+    ch2 ∈ Seq(Int) = ⟨f, d, c⟩
+    ∀ i ∈ {0..0} : ch1[i] < ch1[i+1]
+    ∀ i ∈ {0..1} : ch2[i] < ch2[i+1]
+    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

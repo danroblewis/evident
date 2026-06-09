@@ -1,0 +1,10 @@
+-- C9 coindexed/zip ∀ (a,b) ∈ coindexed(xs,ys) : P — parallel walk of
+-- two bounded seqs. (Verified: this parses AND constrains.)
+-- entry: main
+-- expect: exit = 0
+import "stdlib/kernel.ev"
+claim main
+    xs ∈ Seq(Int) = ⟨1, 2, 3⟩
+    ys ∈ Seq(Int) = ⟨2, 3, 4⟩
+    ∀ (a, b) ∈ coindexed(xs, ys) : b = a + 1
+    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

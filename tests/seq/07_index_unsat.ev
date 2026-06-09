@@ -1,0 +1,8 @@
+-- C7 indexing, wrong value at slot 1 → UNSAT → exit 2.
+-- entry: main
+-- expect: exit = 2
+import "stdlib/kernel.ev"
+claim main
+    xs ∈ Seq(Int) = ⟨10, 20, 30⟩
+    xs[1] = 99
+    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

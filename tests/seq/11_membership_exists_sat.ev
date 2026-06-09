@@ -1,0 +1,11 @@
+-- C11 membership. Direct `x ∈ xs` on a Seq is DROPPED by the oracle
+-- (a known gap). The decidable, supported equivalent is
+-- `∃ i ∈ {0..#xs-1} : xs[i] = target`. Present element → exit 0.
+-- entry: main
+-- expect: exit = 0
+import "stdlib/kernel.ev"
+claim main
+    xs ∈ Seq(Int) = ⟨1, 2, 3⟩
+    target ∈ Int = 2
+    ∃ i ∈ {0..2} : xs[i] = target
+    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

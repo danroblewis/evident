@@ -1,0 +1,12 @@
+-- E18 window, wrong extracted value: the window at start=1 is ⟨20,30⟩,
+-- so w[1]=99 is UNSAT → exit 2.
+-- entry: main
+-- expect: exit = 2
+import "stdlib/kernel.ev"
+claim main
+    s ∈ Seq(Int) = ⟨10, 20, 30, 40, 50⟩
+    w ∈ Seq(Int)
+    #w = 2
+    ∀ j ∈ {0..1} : w[j] = s[1 + j]
+    w[1] = 99
+    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

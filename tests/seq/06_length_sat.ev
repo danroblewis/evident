@@ -1,0 +1,8 @@
+-- C6 length #xs of a bounded literal.
+-- entry: main
+-- expect: exit = 0
+import "stdlib/kernel.ev"
+claim main
+    xs ∈ Seq(Int) = ⟨7, 8, 9, 10⟩
+    #xs = 4
+    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

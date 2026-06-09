@@ -1,0 +1,9 @@
+-- D12 sortedness violated: a pinned literal that descends cannot
+-- satisfy xs[i] ≤ xs[i+1] → UNSAT → exit 2.
+-- entry: main
+-- expect: exit = 2
+import "stdlib/kernel.ev"
+claim main
+    xs ∈ Seq(Int) = ⟨3, 1, 2, 4⟩
+    ∀ i ∈ {0..2} : xs[i] ≤ xs[i+1]
+    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

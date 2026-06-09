@@ -1,0 +1,8 @@
+-- C8 existential with no witness → UNSAT → exit 2.
+-- entry: main
+-- expect: exit = 2
+import "stdlib/kernel.ev"
+claim main
+    xs ∈ Seq(Int) = ⟨1, 2, 3⟩
+    ∃ x ∈ xs : x > 99
+    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

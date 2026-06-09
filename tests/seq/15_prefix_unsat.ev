@@ -1,0 +1,9 @@
+-- E15 prefix mismatch at i=1 → UNSAT → exit 2.
+-- entry: main
+-- expect: exit = 2
+import "stdlib/kernel.ev"
+claim main
+    s ∈ Seq(Int) = ⟨1, 2, 3, 4, 5⟩
+    p ∈ Seq(Int) = ⟨1, 9, 3⟩
+    ∀ i ∈ {0..2} : p[i] = s[i]
+    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

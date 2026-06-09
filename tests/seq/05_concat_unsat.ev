@@ -1,0 +1,11 @@
+-- B5 concat, order violated. After a ++ b ++ ⟨5⟩, slot 2 is b[0]=3;
+-- asserting xs[2]=99 is UNSAT → exit 2.
+-- entry: main
+-- expect: exit = 2
+import "stdlib/kernel.ev"
+claim main
+    a ∈ Seq(Int) = ⟨1, 2⟩
+    b ∈ Seq(Int) = ⟨3, 4⟩
+    xs ∈ Seq(Int) = a ++ b ++ ⟨5⟩
+    xs[2] = 99
+    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

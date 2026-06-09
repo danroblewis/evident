@@ -1,0 +1,13 @@
+-- B4 literal and empty. ⟨⟩ has length 0; a pinned literal exposes each
+-- slot by index. Both are bounded by construction. SAT → exit 0.
+-- entry: main
+-- expect: exit = 0
+import "stdlib/kernel.ev"
+claim main
+    empty ∈ Seq(Int) = ⟨⟩
+    #empty = 0
+    lit ∈ Seq(Int) = ⟨10, 20, 30⟩
+    #lit = 3
+    lit[0] = 10
+    lit[2] = 30
+    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

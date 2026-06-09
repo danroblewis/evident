@@ -1,0 +1,8 @@
+-- C8 existential ∃ x ∈ xs : P over a bounded seq.
+-- entry: main
+-- expect: exit = 0
+import "stdlib/kernel.ev"
+claim main
+    xs ∈ Seq(Int) = ⟨1, 2, 3⟩
+    ∃ x ∈ xs : x > 2
+    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

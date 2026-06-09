@@ -1,0 +1,12 @@
+-- D13 permutation / all-distinct. A bounded seq of 3 distinct values in
+-- {0..2} is a permutation of 0..2. SAT → exit 0.
+-- entry: main
+-- expect: exit = 0
+import "stdlib/kernel.ev"
+claim main
+    xs ∈ Seq(Int)
+    #xs = 3
+    ∀ x ∈ xs : 0 ≤ x ∧ x ≤ 2
+    distinct(xs)
+    xs[0] = 2
+    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

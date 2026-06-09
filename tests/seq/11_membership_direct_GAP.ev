@@ -1,0 +1,14 @@
+-- C11 GAP WITNESS. Direct `target ∈ xs` on a Seq is silently DROPPED
+-- by the oracle (it cannot translate Seq membership to a Z3 Bool;
+-- `target` does not even appear in the emitted SMT2). Here target=99
+-- is NOT in xs, yet the constraint vanishes and the claim is vacuously
+-- SAT → exit 0. If Seq membership ever compiles, this fixture FLIPS to
+-- exit 2 and this expectation must be revisited. This documents the gap.
+-- entry: main
+-- expect: exit = 0
+import "stdlib/kernel.ev"
+claim main
+    xs ∈ Seq(Int) = ⟨1, 2, 3⟩
+    target ∈ Int = 99
+    target ∈ xs
+    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

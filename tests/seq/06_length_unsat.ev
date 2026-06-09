@@ -1,0 +1,8 @@
+-- C6 length, wrong cardinality. A 4-element literal cannot have #=5.
+-- entry: main
+-- expect: exit = 2
+import "stdlib/kernel.ev"
+claim main
+    xs ∈ Seq(Int) = ⟨7, 8, 9, 10⟩
+    #xs = 5
+    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

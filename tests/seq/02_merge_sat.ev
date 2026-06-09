@@ -1,0 +1,19 @@
+-- A2 overlapping-chain merge. Two bounded chains share c and f:
+-- ch1 = a<b<c<f<g, ch2 = c<d<e<f. Z3 solves the union of orderings
+-- — the merged order a..g exists. SAT → exit 0.
+-- entry: main
+-- expect: exit = 0
+import "stdlib/kernel.ev"
+claim main
+    a ∈ Int
+    b ∈ Int
+    c ∈ Int
+    d ∈ Int
+    e ∈ Int
+    f ∈ Int
+    g ∈ Int
+    ch1 ∈ Seq(Int) = ⟨a, b, c, f, g⟩
+    ch2 ∈ Seq(Int) = ⟨c, d, e, f⟩
+    ∀ i ∈ {0..3} : ch1[i] < ch1[i+1]
+    ∀ i ∈ {0..2} : ch2[i] < ch2[i+1]
+    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

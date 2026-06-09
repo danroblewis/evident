@@ -1,0 +1,16 @@
+-- A1 ordering chain. The position of an element in ⟨a,b,c⟩ encodes
+-- its rank; the chain a<b<c is a per-adjacent-pair index constraint
+-- on a BOUNDED seq (#xs=3). SAT: a=1, c=10 leaves room for b.
+-- entry: main
+-- expect: exit = 0
+import "stdlib/kernel.ev"
+claim main
+    a ∈ Int
+    b ∈ Int
+    c ∈ Int
+    xs ∈ Seq(Int) = ⟨a, b, c⟩
+    #xs = 3
+    ∀ i ∈ {0..1} : xs[i] < xs[i+1]
+    a = 1
+    c = 10
+    effects ∈ Seq(Effect) = ⟨Exit(0)⟩
