@@ -177,7 +177,7 @@ fsm DriverPosBind
         _ ⇒ ""
     pty ∈ Seq(PbStr)
     #pty ≤ 4
-    ∀ (k, e) ∈ pty : e.s = (is_first_tick ? "" : il_jump ? "" : (pty_take ∧ _pn_k = k + 1) ? pty_nm : _e.s)
+    ∀ k ∈ {0..3} : pty[k].s = (is_first_tick ? "" : il_jump ? "" : (pty_take ∧ _pn_k = k + 1) ? pty_nm : _pty[k].s)
     pn_nm ∈ String = match ww_t0
         Ident(s) ⇒ s
         _ ⇒ ""
@@ -189,7 +189,7 @@ fsm DriverPosBind
         : il_jump ? 0
         : pn_take ? _pn_k + 1
         : _pn_k)
-    ∀ (k, e) ∈ pn : e.s = (is_first_tick ? "" : (pn_take ∧ _pn_k = k) ? pn_nm : _e.s)
+    ∀ k ∈ {0..5} : pn[k].s = (is_first_tick ? "" : (pn_take ∧ _pn_k = k) ? pn_nm : _pn[k].s)
 
     pz_act ∈ Bool = (ips_done ∧ _pj)
     pz_v0 ∈ Int = (_pj_recv ? d_h_top

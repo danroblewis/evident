@@ -33,15 +33,6 @@
 #           (unguarded form: G ≡ true, emitted without the guard conjunct)
 #   ∀       ∀ x ∈ xs : P   (Int or record) → len-guarded ∧-unroll
 #           (record element: P uses x.f, substituted per slot)
-#   indexed family   ∀ (k, e) ∈ xs : BODY  → per-slot instantiation,
-#           k = position, e = element, _e = carry dual. For bodies that
-#           need the position as data (cursor writes `_cur = k`, wire-
-#           position claim args `i ↦ k`). Emits one line per slot,
-#           UNGUARDED — carried writes must cover every slot every tick.
-#           A `_e` reference synthesizes the `_xs` dual decls (autocarry
-#           cannot see through the tuple bind).
-#   coindexed pair   ∀ (a, b) ∈ coindexed(xs, ys) : BODY → per-slot with
-#           a/b bound to the k-th element of each seq.
 #   member  y ∈ xs         (Int only)      → len-guarded ∨-unroll
 #   ∃       (∃ i ∈ {0..#xs-1} : P) / (∃ e ∈ xs : P)
 #           → ((0<xs_len)∧(P[slot 0])) ∨ …
@@ -304,16 +295,6 @@ END {
             projKey[cur, pOut] = pKey; projV[cur, pOut] = pV
             projHi[cur, pOut] = pHi; projPinLine[cur, pOut] = i
         }
-        # tuple-∀ carry detection: `∀ (k, e) ∈ xs : … _e …` implies xs
-        # carries, but autocarry cannot see that `_e` is `_xs` — synthesize
-        # the dual decls at the main decl site (PASS 2) when autocarry did not.
-        if (code ~ /^[ \t]*∀[ \t]*\([ \t]*[A-Za-z_][A-Za-z0-9_]*[ \t]*,[ \t]*[A-Za-z_][A-Za-z0-9_]*[ \t]*\)[ \t]*∈[ \t]*[A-Za-z_][A-Za-z0-9_]*[ \t]*:/) {
-            tb = code; sub(/^[ \t]*∀[ \t]*\(/, "", tb)
-            tev = tb; sub(/^[^,]*,[ \t]*/, "", tev); sub(/[ \t]*\).*$/, "", tev); tev = trim(tev)
-            tsn = tb; sub(/^[^)]*\)[ \t]*∈[ \t]*/, "", tsn); sub(/[ \t]*:.*$/, "", tsn); tsn = trim(tsn)
-            tpr = tb; sub(/^[^:]*:[ \t]*/, "", tpr)
-            if (tpr ~ ("(^|[^A-Za-z0-9_])_" tev "([^A-Za-z0-9_]|$)")) gTupleDual[tsn] = 1
-        }
         # keyed-projection PIN, element form (preferred — occupied slots only):
         #   ∀ e ∈ xs : ((e.F = KEY) ⇒ (OUT = e.V))
         if (code ~ /^[ \t]*∀[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*∈[ \t]*[A-Za-z_][A-Za-z0-9_]*[ \t]*:[ \t]*\(\([A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*[ \t]*=[ \t]*[A-Za-z_][A-Za-z0-9_]*\)[ \t]*⇒[ \t]*\([A-Za-z_][A-Za-z0-9_]*[ \t]*=[ \t]*[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*\)\)[ \t]*$/) {
@@ -405,15 +386,6 @@ END {
                     O[++on] = ind "0 ≤ " nm "_len"
                 }
             }
-            # tuple-∀ `_e` carry with no autocarry-synthesized dual decl
-            if ((nm in gTupleDual) && !((F SUBSEP nm) in dualDecl)) {
-                for (k = 0; k < Nn; k++) {
-                    if (el == "Int") O[++on] = ind "_" nm "_" k " ∈ Int"
-                    else for (j = 1; j <= tnf[el]; j++)
-                        O[++on] = ind "_" nm "_" k "_" tfield[el, j] " ∈ " ttype[el, j]
-                }
-                if (nm in hasLen) O[++on] = ind "_" nm "_len ∈ Int"
-            }
             continue
         }
 
@@ -485,54 +457,6 @@ END {
             continue
         }
 
-        # indexed family  `∀ (k, e) ∈ xs : BODY`  — per-slot instantiation
-        # with k = slot index, e = the element, _e = its carry dual. The
-        # tuple names the position where the body needs it (cursor writes,
-        # wire-position claim args); emits one line per slot, unguarded —
-        # carried writes must cover EVERY slot every tick.
-        if (code ~ /^[ \t]*∀[ \t]*\([ \t]*[A-Za-z_][A-Za-z0-9_]*[ \t]*,[ \t]*[A-Za-z_][A-Za-z0-9_]*[ \t]*\)[ \t]*∈[ \t]*[A-Za-z_][A-Za-z0-9_]*[ \t]*:/) {
-            body = code; sub(/^[ \t]*∀[ \t]*\(/, "", body)
-            kvar = body; sub(/[ \t]*,.*$/, "", kvar); kvar = trim(kvar)
-            evar = body; sub(/^[^,]*,[ \t]*/, "", evar); sub(/[ \t]*\).*$/, "", evar); evar = trim(evar)
-            sname = body; sub(/^[^)]*\)[ \t]*∈[ \t]*/, "", sname); sub(/[ \t]*:.*$/, "", sname); sname = trim(sname)
-            pred = body; sub(/^[^:]*:[ \t]*/, "", pred)
-            if (sname in gbnd) {
-                Nn = gbnd[sname]
-                for (k = 0; k < Nn; k++) {
-                    t2 = subst_tok(pred, "_" evar, "_" sname "[" k "]")
-                    t2 = subst_tok(t2, evar, sname "[" k "]")
-                    t2 = subst_tok(t2, kvar, k)
-                    t2 = subst_index(t2)
-                    t2 = subst_card(t2)
-                    O[++on] = ind t2
-                }
-                continue
-            }
-        }
-        # coindexed pair  `∀ (a, b) ∈ coindexed(xs, ys) : BODY` — per-slot
-        # with a/b bound to the k-th element of each seq.
-        if (code ~ /^[ \t]*∀[ \t]*\([ \t]*[A-Za-z_][A-Za-z0-9_]*[ \t]*,[ \t]*[A-Za-z_][A-Za-z0-9_]*[ \t]*\)[ \t]*∈[ \t]*coindexed\(/) {
-            body = code; sub(/^[ \t]*∀[ \t]*\(/, "", body)
-            avar = body; sub(/[ \t]*,.*$/, "", avar); avar = trim(avar)
-            bvar2 = body; sub(/^[^,]*,[ \t]*/, "", bvar2); sub(/[ \t]*\).*$/, "", bvar2); bvar2 = trim(bvar2)
-            args2 = body; sub(/^.*coindexed\(/, "", args2); sub(/\)[ \t]*:.*$/, "", args2)
-            s1 = args2; sub(/[ \t]*,.*$/, "", s1); s1 = trim(s1)
-            s2 = args2; sub(/^[^,]*,[ \t]*/, "", s2); s2 = trim(s2)
-            pred = body; sub(/^[^:]*:[ \t]*/, "", pred)
-            if ((s1 in gbnd) && (s2 in gbnd)) {
-                Nn = gbnd[s1]
-                for (k = 0; k < Nn; k++) {
-                    t2 = subst_tok(pred, "_" avar, "_" s1 "[" k "]")
-                    t2 = subst_tok(t2, "_" bvar2, "_" s2 "[" k "]")
-                    t2 = subst_tok(t2, avar, s1 "[" k "]")
-                    t2 = subst_tok(t2, bvar2, s2 "[" k "]")
-                    t2 = subst_index(t2)
-                    t2 = subst_card(t2)
-                    O[++on] = ind t2
-                }
-                continue
-            }
-        }
         # forall over an Int seq  `∀ x ∈ xs : P`
         if (code ~ /^[ \t]*∀[ \t]/) {
             body = code; sub(/^[ \t]*∀[ \t]*/, "", body)

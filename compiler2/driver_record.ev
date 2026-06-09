@@ -157,7 +157,7 @@ fsm DriverRecord
         : rcf_take ? 0
         : (rcf_pend ∧ _rc_np < 3) ? _rc_np + 1
         : _rc_np)
-    ∀ (k, e) ∈ rc_p : e.pname = (is_first_tick ? "" : (rcf_pend ∧ _rc_np = k) ? rcf_t0nm : _e.pname)
+    ∀ k ∈ {0..2} : rc_p[k].pname = (is_first_tick ? "" : (rcf_pend ∧ _rc_np = k) ? rcf_t0nm : _rc_p[k].pname)
 
     rt_cnt = (is_first_tick ? 0 : rc_start ? _rt_cnt + 1 : _rt_cnt)
     rt_e0.name = (is_first_tick ? "" : (rc_start ∧ _rt_cnt = 0) ? d_cl_name : _rt_e0.name)
@@ -206,7 +206,7 @@ fsm DriverRecord
     rd_cap ∈ Bool = rd_prev
     rd_hn = (is_first_tick ? 0
         : (rd_cap ∧ _rd_st = 0) ? d_cap_int : _rd_hn)
-    ∀ (k, v) ∈ rd_hf : v = (is_first_tick ? 0 : (rd_cap ∧ _rd_st = 1 ∧ _rd_fi = k) ? d_cap_int : _v)
+    ∀ k ∈ {0..5} : rd_hf[k] = (is_first_tick ? 0 : (rd_cap ∧ _rd_st = 1 ∧ _rd_fi = k) ? d_cap_int : _rd_hf[k])
     rd_sort_cap ∈ Bool = (rd_cap ∧ _rd_st = 3)
     rd_ctor_cap ∈ Bool = (rd_cap ∧ _rd_st = 4)
     rd_acc_cap ∈ Bool = (rd_cap ∧ _rd_st = 5)
@@ -254,7 +254,7 @@ fsm DriverRecord
     RtRecName(s ↦ rc_f, i ↦ rd_eff_fi, name ↦ rdf_name)
     rd_hfu ∈ Seq(Int)
     #rd_hfu ≤ 6
-    ∀ (k, v) ∈ rd_hfu : v = ((rd_cap ∧ _rd_st = 1 ∧ _rd_fi = k) ? d_cap_int : _rd_hf[k])
+    ∀ k ∈ {0..5} : rd_hfu[k] = ((rd_cap ∧ _rd_st = 1 ∧ _rd_fi = k) ? d_cap_int : _rd_hf[k])
     rdt_0 ∈ String
     RtRecName(s ↦ rc_t, i ↦ 0, name ↦ rdt_0)
     rdt_1 ∈ String

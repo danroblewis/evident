@@ -276,4 +276,4 @@ fsm DriverCompose
         : (c_comp_call ∨ c_ty_call) ? 0
         : cw_vdone ? _cw_k + 1
         : _cw_k)
-    ∀ (k, e) ∈ cs : e.name = (is_first_tick ? "" : (cw_slot ∧ _cw_k = k) ? cw_slot_nm : _e.name)
+    ∀ k ∈ {0..5} : cs[k].name = (is_first_tick ? "" : (cw_slot ∧ _cw_k = k) ? cw_slot_nm : _cs[k].name)

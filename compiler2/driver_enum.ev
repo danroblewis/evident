@@ -139,7 +139,7 @@ fsm DriverEnum
 
     efs ∈ Seq(EnumFieldSlot)
     #efs ≤ 3
-    ∀ (k, e) ∈ efs : VariantFieldType(v ↦ ed_v, idx ↦ k, ty ↦ e.ty)
+    ∀ k ∈ {0..2} : VariantFieldType(v ↦ ed_v, idx ↦ k, ty ↦ efs[k].ty)
     ed_fr0 ∈ Int
     FieldSortSlot(enum_name ↦ _ed_name, ty ↦ efs[0].ty,
         int_sort_h ↦ z3sorts.isort, bool_sort_h ↦ z3sorts.bsort, string_sort_h ↦ z3sorts.ssort,
@@ -332,9 +332,9 @@ fsm DriverEnum
     uev_t_val ∈ Int = (ed_nullary ? f_ir1 : d_cap_int)
     uev ∈ Seq(UserEnumVariant)
     #uev ≤ 6
-    ∀ (k, e) ∈ uev : e.name = (is_first_tick ? "" : (uev_cap_d ∧ _ed_vidx = k) ? ed_vname : _e.name)
-    ∀ (k, e) ∈ uev : e.ctor = (is_first_tick ? 0 : (uev_cap_d ∧ _ed_vidx = k) ? d_cap_int : _e.ctor)
-    ∀ (k, e) ∈ uev : e.tester = (is_first_tick ? 0 : (uev_cap_t ∧ _ed_vidx = k) ? uev_t_val : _e.tester)
+    ∀ k ∈ {0..5} : uev[k].name = (is_first_tick ? "" : (uev_cap_d ∧ _ed_vidx = k) ? ed_vname : _uev[k].name)
+    ∀ k ∈ {0..5} : uev[k].ctor = (is_first_tick ? 0 : (uev_cap_d ∧ _ed_vidx = k) ? d_cap_int : _uev[k].ctor)
+    ∀ k ∈ {0..5} : uev[k].tester = (is_first_tick ? 0 : (uev_cap_t ∧ _ed_vidx = k) ? uev_t_val : _uev[k].tester)
 
     -- C5: user-variant field-0 ACCESSOR decls (match-pin payload
     -- binds over USER ctors). Same pend dance as the Result floor:
@@ -346,4 +346,4 @@ fsm DriverEnum
             ? _ed_vidx + 1
         : 0)
     uev_cap_a ∈ Bool = (_ed_act = 3 ∧ _ed_step = 4 ∧ _uev_acc_pend > 0)
-    ∀ (k, e) ∈ uev : e.acc = (is_first_tick ? 0 : (uev_cap_a ∧ _uev_acc_pend = k + 1) ? d_cap_int : _e.acc)
+    ∀ k ∈ {0..5} : uev[k].acc = (is_first_tick ? 0 : (uev_cap_a ∧ _uev_acc_pend = k + 1) ? d_cap_int : _uev[k].acc)

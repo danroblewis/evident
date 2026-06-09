@@ -266,19 +266,9 @@ items ∈ Seq(Int) = ⟨1, 2, 3⟩       -- literal
 xs ∈ Seq(Int) = a ++ b ++ ⟨c⟩       -- `++` flattens at load time
 #items = 3                          -- cardinality (also: string length)
 ∀ x ∈ items : x > 0                 -- element iteration
-∀ (k, e) ∈ items : …                -- indexed family: k = position, e = element
 ∀ (cur, nxt) ∈ coindexed(a, b) : …  -- parallel zip
 ∀ (a, b) ∈ edges(seq) : …           -- consecutive pairs
 ```
-
-Use bare element iteration (`∀ x ∈ xs`) whenever the body doesn't need
-the position; reach for the indexed family `∀ (k, e) ∈ xs` only when the
-index is data the body consumes — a cursor write (`(go ∧ _cur = k) ? v :
-_e.f`, where `_e` is the element's prev-tick carry dual) or a wire
-position passed to a claim (`i ↦ k`). On a bounded Seq all of these
-lower pre-oracle to per-slot scalars. `∀ k ∈ {0..N-1} : … xs[k] …` is a
-last resort — if the only use of `k` is `xs[k]`, it should have been an
-element form.
 
 **Bound it and everything is fast.** The Z3 sequence theory is
 semi-decidable only when a `Seq` is *unbounded*. Add a literal length
