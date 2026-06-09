@@ -544,3 +544,32 @@ driver_guard, driver_record, driver.ev ×1 each). The one sub-expression
 site (driver_broadcast.ev:64, the formatter inside an arg list with no
 output var) is left inline. Behavior change (composition, not the byte
 gate) — conformance + functionization gate.
+
+---
+
+## Pass 4 — RecField: the latent type behind the rv_* arrays
+
+The `rv_*` group in DriverRecVal was four parallel 6-wide scalar arrays
+(rv_f*/rv_t*/rv_k* + rv_seg*) — a hand-flattened `Seq` of a per-field
+record. Extracted the latent type:
+
+    type RecField(name ∈ String, ty ∈ String, kidx ∈ Int)
+        0 - 1 ≤ kidx ≤ 2     -- RtIdxOf: registry hit 0/1/2 or -1 miss
+
+(`ty`, not `type` — `type` is a reserved keyword, unusable as `.type`.)
+The three coindexed lookups collapse into one record per field:
+`rv_field0 ∈ RecField` with the two RtRecName probes + RtIdxOf writing
+`.name`/`.ty`/`.kidx`; use-sites read `rv_field0.kidx`/`.name` directly.
+
+**Perf note (the risk that didn't bite):** these records are PURE per-tick
+(not carried), built fresh each tick and accessed by field. Records emit
+as Z3 tuples; the worry was the hot loop falling off the fast path. It did
+NOT — functionization-gate GREEN (compiler stays 0.0 ms z3), because tuple
+construct + accessor are functionizable shapes. So a product type is fine
+in the hot loop where a `Seq` (≈250× slower) would not be. Conformance
+137/138. Test: rec_field_kidx_oob.ev (kidx out of [-1,2] → UNSAT).
+
+This is the conceptual flip from the C2Item destructuring: C2Item is a SUM
+(a payload exists only for some variants, so reading it needs match +
+default), whereas RecField is a PRODUCT (all fields always exist, so
+`.name`/`.ty`/`.kidx` are direct — no match, no default).

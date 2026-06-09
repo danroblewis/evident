@@ -1,0 +1,15 @@
+-- RecField invariant: -1 ≤ kidx ≤ 2 (RtIdxOf returns a registry hit 0/1/2
+-- or a -1 miss). A kidx of 5 is unrepresentable, so the tick is UNSAT
+-- (exit 2). Every field gets a covering assignment.
+--
+-- entry: main
+-- expect: exit = 2
+import "stdlib/kernel.ev"
+import "compiler2/driver_ir.ev"
+
+fsm main
+    f ∈ RecField
+    f.name = "x"
+    f.ty = "Int"
+    f.kidx = 5
+    effects ∈ Seq(Effect) = ⟨Exit(7)⟩
