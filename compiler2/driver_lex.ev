@@ -85,12 +85,6 @@ fsm DriverLex
         : (strlit_closing ? ""
         : _partial_strlit)))))
 
-    -- A1 (gap census): idents continue through digits — `t0`, `r_l1`,
-    -- `cs_t2` lex as single Idents (the legacy lexer's
-    -- is_ident_continue = alnum + `_`). A digit only STARTS an int
-    -- when no ident is collecting; an int finishing at an alpha char
-    -- pushes the IntLit and the ident starts the same tick
-    -- (`10x` → IntLit(10) + Ident("x"), oracle-probed).
     is_alnum ∈ Bool = (is_alpha ∨ is_dig)
     str_continuing ∈ Bool = (was_collecting_str ∧ is_alnum ∧ in_range ∧ ¬_in_strlit)
     str_finishing  ∈ Bool = (was_collecting_str ∧ ((¬is_alnum ∧ in_range) ∨ done))
@@ -179,8 +173,6 @@ fsm DriverLex
     k_cn ∈ Int
     k_ln ∈ Int
     k_pn ∈ Int
-    -- G2: the float ticks (the `.` re-entry and the fraction finish)
-    -- bypass the plan — their writes are driver rows.
     lxp_fi_op ∈ Bool = (finish_int_with_op ∧ (¬frac_enter) ∧ (¬float_fin))
     lxp_fi_only ∈ Bool = (finish_int_only ∧ (¬frac_enter) ∧ (¬float_fin))
     LexFtiPlan(lx_comment ↦ lx_comment, strlit_closing ↦ strlit_closing,

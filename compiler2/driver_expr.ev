@@ -58,9 +58,6 @@ claim C2AtomE(t ∈ Token, e ∈ Expr, ok ∈ Bool)
     c2a_tr  ∈ Bool = (t matches KwTrue)
     c2a_fa  ∈ Bool = (t matches KwFalse)
     c2a_sl  ∈ Bool = (t matches StringLit(_))
-    -- G2: a FloatLit atom (FtiTok's (scaled, digits, 0) packing)
-    -- becomes the `__real` call shape — the walker lowers it to ONE
-    -- Z3_mk_numeral("scaled/10^digits", Real) tick.
     c2a_fl  ∈ Bool = (t matches FloatLit(_, _, _))
     c2a_n ∈ Int = match t
         IntLit(n) ⇒ n
@@ -123,18 +120,11 @@ claim C2Prec(o ∈ Op, n ∈ Int, right ∈ Bool, chain ∈ Bool)
        : 0)
     right = pc_im
 
--- Operator-stack entries for the Pratt FSM. PrLP / PrQuest /
--- PrCall / PrIdx are floor markers (never auto-reduced; prec -1);
--- PrTern is the armed ternary (pops 3 operands); PrNot the prefix ¬
--- and PrHash the prefix `#` (each pops 1; PrHash reduces to
--- ECall1("str_len", e)); PrBin a binary operator (pops 2).
--- PrCall(name, k) carries the call head + the COMMA count so far —
--- argc at close is k+1 (the surface has no zero-arg calls).
--- PrIdx is the postfix-index floor: a `[` after a completed operand
--- pushes it (D3 — `last_results[0]`); the matching `]` pops base +
--- index into ECall2("__index", base, idx). `[` bumps pd like `(`,
--- so a `]` can never terminate the expression while a PrIdx is open.
--- PrNone is the empty-stack sentinel.
+-- Pratt operator stack. PrLP/PrQuest/PrCall/PrIdx are floor markers:
+-- never auto-reduced, prec -1. PrCall's Int payload is the COMMA count
+-- so far, NOT argc — argc at close is k+1 (no zero-arg calls exist).
+-- `[` bumps pd like `(`, so `]` can never terminate the expression
+-- while a PrIdx floor is open.
 enum PrOp =
     PrBin(Op)
     PrLP
@@ -199,9 +189,6 @@ claim C2PrattStep(toks ∈ TokenList, outs ∈ ExprList, ops ∈ PrOps,
     ps_tl2 ∈ TokenList = match ps_tl
         TLCons(_, r) ⇒ r
         TLNil ⇒ TLNil
-    -- deeper lookahead (C4): the `matches` postfix action consumes
-    -- up to 7 tokens (`matches Ctor ( _ , _ )`) in ONE action, so
-    -- the pattern shape is decided from positions 2..6.
     ps_nx2 ∈ Token = match ps_tl2
         TLCons(t, _) ⇒ t
         TLNil ⇒ EofTok
@@ -260,7 +247,6 @@ claim C2PrattStep(toks ∈ TokenList, outs ∈ ExprList, ops ∈ PrOps,
         ELCons(_, r) ⇒ r
         ELNil ⇒ ELNil
 
-    -- head-token classification
     ps_atom_e ∈ Expr
     ps_atom_ok ∈ Bool
     C2AtomE(t ↦ ps_hd, e ↦ ps_atom_e, ok ↦ ps_atom_ok)
@@ -281,10 +267,6 @@ claim C2PrattStep(toks ∈ TokenList, outs ∈ ExprList, ops ∈ PrOps,
         _ ⇒ ""
     ps_nx_lp ∈ Bool = (ps_nx matches LParen)
 
-    -- dot-fold (G1 records): in OPERATOR position, `. Ident` over an
-    -- EIdent top operand folds into the flattened dotted name
-    -- (`p` `.` `x` → EIdent("p.x")); chains fold left (`s.pos.x`).
-    -- The 2-token action mirrors the call head; nothing else changes.
     ps_o1_id ∈ Bool = (ps_o1 matches EIdent(_))
     ps_o1_nm ∈ String = match ps_o1
         EIdent(s6) ⇒ s6
@@ -294,21 +276,10 @@ claim C2PrattStep(toks ∈ TokenList, outs ∈ ExprList, ops ∈ PrOps,
         _ ⇒ ""
     ps_dotf ∈ Bool = ((¬expop) ∧ (ps_hd matches Dot)
         ∧ (ps_nx matches Ident(_)) ∧ ps_o1_id)
-    -- G2: `.field` over a NON-ident completed operand (e.g.
-    -- `groups[0].items`) folds to ECall2("__field", base, field) —
-    -- the walker lowers it to mk_app of the registry accessor.
     ps_o1_some ∈ Bool = (¬(outs matches ELNil))
     ps_dotf2 ∈ Bool = ((¬expop) ∧ (ps_hd matches Dot)
         ∧ (ps_nx matches Ident(_)) ∧ (¬ps_o1_id) ∧ ps_o1_some)
 
-    -- `matches` postfix (C4): in OPERATOR position (operand just
-    -- completed), `matches Ctor` / `matches Ctor(_)` /
-    -- `matches Ctor(_, _)` is consumed in ONE action (2/5/7 tokens)
-    -- and replaces the top operand with EMatches(ctor, top). It
-    -- binds tightest (applies to the completed operand directly) —
-    -- corpus scrutinees are atoms/paren groups. Inner binds are
-    -- wildcards in the whole corpus, so the names at positions 3/5
-    -- are not inspected.
     ps_is_kwm ∈ Bool = (ps_hd matches KwMatches)
     ps_mt_hd ∈ Bool = ((¬expop) ∧ ps_is_kwm ∧ (ps_nx matches Ident(_)))
     ps_mt_nm ∈ String = match ps_nx
@@ -330,7 +301,6 @@ claim C2PrattStep(toks ∈ TokenList, outs ∈ ExprList, ops ∈ PrOps,
     ps_in_p ∈ Int = (ps_is_q ? 2 : ps_in_p0)
     ps_in_right ∈ Bool = (ps_is_q ? true : ps_in_r0)
 
-    -- top-of-op-stack decomposition
     ps_top_op ∈ Op = match ps_top
         PrBin(o2) ⇒ o2
         _ ⇒ OpPlus
@@ -392,9 +362,6 @@ claim C2PrattStep(toks ∈ TokenList, outs ∈ ExprList, ops ∈ PrOps,
             ? EBinOp(OpConj, ps_o2, EBinOp(ps_top_op, ps_lr_r, ps_o1))
         : EBinOp(ps_top_op, ps_o2, ps_o1))
 
-    -- action selection (exactly one fires). A call head (Ident
-    -- followed by `(` in operand position) takes priority over the
-    -- plain atom shift of the same Ident.
     ps_call_key ∈ String
     FtiNameEntry(name ↦ ps_hd_nm, entry ↦ ps_call_key)
     ps_call_ok ∈ Bool = (index_of(calls, ps_call_key, 0) ≥ 0)
@@ -422,8 +389,6 @@ claim C2PrattStep(toks ∈ TokenList, outs ∈ ExprList, ops ∈ PrOps,
     ps_rp ∈ Bool = ((¬expop) ∧ ps_is_rp ∧ (pd > 0))
     ps_rp_close ∈ Bool = (ps_rp ∧ ps_top_lp)
     ps_rp_call ∈ Bool = (ps_rp ∧ ps_top_call)
-    -- postfix index (D3): `[` after a completed operand opens a
-    -- PrIdx floor; `]` over the PrIdx top closes it.
     ps_sh_idx ∈ Bool = ((¬expop) ∧ ps_is_lb)
     ps_rb ∈ Bool = ((¬expop) ∧ ps_is_rb ∧ (pd > 0))
     ps_rb_close ∈ Bool = (ps_rb ∧ ps_top_idx)
@@ -454,8 +419,6 @@ claim C2PrattStep(toks ∈ TokenList, outs ∈ ExprList, ops ∈ PrOps,
         : (ps_dotf ∨ ps_dotf2) ? ps_tl2
         : ps_consume ? ps_tl : toks)
 
-    -- call close: argc = comma count + 1; operands pop in reverse
-    -- (post-order — the top is the LAST arg).
     ps_argc ∈ Int = ps_tc_k + 1
     ps_call_e ∈ Expr = (ps_argc = 1 ? ECall1(ps_tc_nm, ps_o1)
         : ps_argc = 2 ? ECall2(ps_tc_nm, ps_o2, ps_o1)

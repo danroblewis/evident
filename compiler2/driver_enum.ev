@@ -68,9 +68,6 @@ fsm DriverEnum
     ed_h_f1 ∈ Int
     ed_h_f2 ∈ Int
 
-    -- Floor enum decls as parsed data (pinned body vars — the oracle
-    -- gap forbids ctor literals in slot bindings). The Effect floor
-    -- comes from translate2_ctor.ev's EffectEnumDecl.
     d_la_decl ∈ EnumDeclAst = EnumD("LibArg",
         EVCons(EVDeclP("ArgInt", EVFCons(EVFType("Int"), EVFNil)),
         EVCons(EVDeclP("ArgStr", EVFCons(EVFType("String"), EVFNil)),
@@ -84,9 +81,6 @@ fsm DriverEnum
         EVNil)))
     d_eff_decl ∈ EnumDeclAst
     EffectEnumDecl(decl ↦ d_eff_decl)
-    -- Result floor (D3): variant order matches the kernel's textual
-    -- prelude / tick.rs decode (NoResult, IntResult, StringResult,
-    -- RealResult, EofResult, ErrorResult).
     d_res_decl ∈ EnumDeclAst = EnumD("Result",
         EVCons(EVDecl("NoResult"),
         EVCons(EVDeclP("IntResult", EVFCons(EVFType("Int"), EVFNil)),
@@ -104,9 +98,6 @@ fsm DriverEnum
     d_res_vs ∈ EnumVariantList
     EnumVariantListOf(decl ↦ d_res_decl, vs ↦ d_res_vs)
 
-    -- Start triggers. Floor runs start when zstep first parks at 9
-    -- and after each completed floor run; the user run starts from
-    -- the pmode-4 collection (ec_start, defined with the dispatcher).
     ed_go_floor ∈ Bool = ((¬is_first_tick) ∧ (zstep = 9)
         ∧ (_ed_act = 0) ∧ (_ed_src < 4))
     ed_go ∈ Bool = (ed_go_floor ∨ ec_start)
@@ -138,9 +129,6 @@ fsm DriverEnum
         EVNoVariant ⇒ ""
     ed_nullary ∈ Bool = (ed_n = 0)
 
-    -- Field sort slots (FieldSortSlot + the driver's sort registry
-    -- for non-primitive field types — the translate2_ctor.ev header's
-    -- "driver registry" scope note).
     ed_ty0 ∈ String
     VariantFieldType(v ↦ ed_v, idx ↦ 0, ty ↦ ed_ty0)
     ed_ty1 ∈ String
@@ -186,7 +174,6 @@ fsm DriverEnum
     ed_pack01 ∈ Int
     SortRefsPack2(ref_lo ↦ ed_fr0, ref_hi ↦ ed_fr1, packed ↦ ed_pack01)
 
-    -- The step to RUN this tick (pure transition off last tick).
     ed_cur_act ∈ Int = (ed_go ? 1
         : _ed_act = 1 ?
             (_ed_step = 7 ? (ed_vs_nonempty ? 1 : 2) : 1)
@@ -211,8 +198,6 @@ fsm DriverEnum
     ed_done ∈ Bool = (_ed_act = 3 ∧ _ed_step = 4 ∧ (¬ed_vs_nonempty))
     ed_done_user ∈ Bool = (ed_done ∧ _ed_user)
 
-    -- State carry. The variant walk advances at act-1 step 7 and
-    -- act-3 step 4; the harvest walk restarts at act-2 step 5.
     ed_adv ∈ Bool = (ed_running ∧
         ((ed_cur_act = 1 ∧ ed_cur_step = 7)
         ∨ (ed_cur_act = 3 ∧ ed_cur_step = 4)))
@@ -244,7 +229,6 @@ fsm DriverEnum
         : (ed_cur_act = 1 ∧ ed_cur_step = 7) ? _ed_vidx + 1
         : _ed_nv)
 
-    -- Captures (keyed off the step that ran LAST tick).
     ed_h_name = (is_first_tick ? 0
         : (_ed_act = 1 ∧ _ed_step = 0) ? d_cap_int
         : (_ed_act = 2 ∧ _ed_step = 0) ? d_cap_int
@@ -258,7 +242,6 @@ fsm DriverEnum
     ed_h_f2 = (is_first_tick ? 0
         : (_ed_act = 1 ∧ _ed_step = 4) ? d_cap_int : _ed_h_f2)
 
-    -- Sort + floor-decl registers.
     la_sort ∈ Int
     sq_sort ∈ Int
     z_effsort ∈ Int
@@ -332,8 +315,6 @@ fsm DriverEnum
         : (_ed_act = 3 ∧ _ed_step = 4 ∧ _res_acc_pend = 2) ? d_cap_int
         : _z_sracc)
 
-    -- User-enum variant VALUE table (nullary variants of the one
-    -- supported user enum; `Red` in an expression resolves here).
     evt_cnt ∈ Int
     evt_n0 ∈ String
     evt_v0 ∈ Int

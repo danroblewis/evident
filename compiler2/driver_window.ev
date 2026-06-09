@@ -186,9 +186,6 @@ fsm DriverWindow
     wt7 = (is_first_tick ? 0 : f_cap ? f_ir14 : _wt7)
     wq7 = (is_first_tick ? 0 : f_cap ? f_ir15 : _wq7)
 
-    -- copy-tick effects: slot-aligned — a string-carrying slot emits
-    -- __cstr.copy of its just-captured pointer; every other slot a
-    -- getpid filler, so slot i's result is last_results[i] exactly.
     f_s0 ∈ Bool = (f_ir0 = 1 ∨ f_ir0 = 3)
     f_s1 ∈ Bool = (f_ir2 = 1 ∨ f_ir2 = 3)
     f_s2 ∈ Bool = (f_ir4 = 1 ∨ f_ir4 = 3)
@@ -251,7 +248,6 @@ fsm DriverWindow
         TLCons(f_tok3, TLCons(f_tok4, TLCons(f_tok5, TLCons(f_tok6,
         TLCons(f_tok7, TLNil))))))))
 
-    -- window views (head + lookahead, ≤ depth 5 inspected)
     ww_t0 ∈ Token = match _wtoks
         TLCons(t, _) ⇒ t
         TLNil ⇒ EofTok
@@ -298,14 +294,6 @@ fsm DriverWindow
         TLCons(t, _) ⇒ t
         TLNil ⇒ EofTok
 
-    -- per-mode lookahead need; gate + fetch trigger. pmode 4 only
-    -- reads tokens while COLLECTING variant names (the ED machine,
-    -- once started, consumes none); pmode 5 (effects elements) may
-    -- need the full window for the LibCall bites.
-    -- pmode 3/4 needs widen to 7 only when the WINDOW HEAD shows a
-    -- multi-token shape coming (`matches …` postfix / a payloaded
-    -- variant's `(`) — the refill refetches from tcur, so the
-    -- decision token is the same one the consumer will see.
     w_need ∈ Int = (¬in_parse ? 0
         : _pmode = 0 ? 3
         : _pmode = 1 ? (_rc_on ? 6 : 1)

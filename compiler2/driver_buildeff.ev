@@ -21,7 +21,6 @@
 -- driver_main via `..DriverBuildEff` immediately after `..DriverRecord`,
 -- so the emitted order — and the §9 byte-identity — is preserved.
 fsm DriverBuildEff
-    -- ED arena pointers.
     ed_fn_p ∈ Int = z_arena
     ed_fsort_p ∈ Int = z_arena + 24
     ed_sr_p ∈ Int = z_arena + 48
@@ -31,8 +30,6 @@ fsm DriverBuildEff
     ed_clists_p ∈ Int = z_arena + 144
     ed_qout_p ∈ Int = z_arena + 152
 
-    -- ED effects. Sym handles emitted at step k are captured at the
-    -- k+1 tick; the write batch uses the just-landed one directly.
     ed_f0u ∈ Int = (_ed_step = 2 ? d_cap_int : _ed_h_f0)
     ed_f1u ∈ Int = (_ed_step = 3 ? d_cap_int : _ed_h_f1)
     ed_f2u ∈ Int = (_ed_step = 4 ? d_cap_int : _ed_h_f2)
@@ -96,7 +93,6 @@ fsm DriverBuildEff
     ede_app0 ∈ Effect
     CtorAppStep(ctx_h ↦ z3ctx.ctx, ctor_decl_h ↦ d_cap_int, n_args ↦ 0,
         args_p ↦ 0, eff ↦ ede_app0)
-    -- Result-run harvest reads (D3): tester + accessor decls.
     ede_rdtest ∈ Effect
     BuildMemReadLong(addr ↦ ed_qout_p + 8, eff ↦ ede_rdtest)
     ede_rdacc ∈ Effect
@@ -129,15 +125,9 @@ fsm DriverBuildEff
         : ede_filler)
     ed_w5 ∈ Bool = (ed_cur_act = 1 ∧ ed_cur_step = 5)
     ed_w2 ∈ Bool = (ed_cur_act = 2 ∧ ed_cur_step = 2)
-    -- C4: a USER run's act-3 step 3 harvests the variant's TESTER
-    -- alongside the nullary value — a nullary variant's tick emits
-    -- ⟨mk_app, rdtest⟩ (value lands lr[0], tester lr[1]); a payload
-    -- variant's tick emits the single rdtest (tester lands lr[0],
-    -- the ed_eff1 row above).
     ed_w3u ∈ Bool = (ed_user ∧ ed_cur_act = 3 ∧ ed_cur_step = 3
         ∧ ed_nullary)
 
-    -- ZINIT effects (one per zstep).
     ze_cfg ∈ Effect
     BuildZ3MkConfig(eff ↦ ze_cfg)
     ze_ctx ∈ Effect
@@ -179,18 +169,8 @@ fsm DriverBuildEff
     BuildZ3MkTrue(ctx_h ↦ z3ctx.ctx, eff ↦ ze_true)
     ze_false ∈ Effect
     BuildZ3MkFalse(ctx_h ↦ z3ctx.ctx, eff ↦ ze_false)
-    -- FTI token buffer: 65536 entries × 32 bytes, calloc'd (zeroed
-    -- slots ⇒ deterministic nullary payloads + EofTok past the end).
-    -- Sized for real programs: compiler/sample.ev (6283 lines) lexes
-    -- to tens of thousands of tokens — the 4096 conformance-fixture
-    -- size overran the heap (resume point 12).
     ze_tbuf ∈ Effect = LibCall("libc", "calloc", ⟨ArgInt(65536), ArgInt(32)⟩)
-    -- FTI symtab handle buffer (B1): 8192 entries × 8 bytes — the
-    -- declared const's Z3_ast handle, indexed by decl order. Names
-    -- live in st_names (fixed-width Z3 String), not here. (sample.ev's
-    -- main alone binds 364 distinct idents; 1024 was fixture-sized.)
     ze_sbuf ∈ Effect = LibCall("libc", "calloc", ⟨ArgInt(8192), ArgInt(8)⟩)
-    -- D3 consts (zsteps 22-31).
     ze_lrarr ∈ Effect
     BuildZ3MkArraySort(ctx_h ↦ z3ctx.ctx, idx_sort_h ↦ z3sorts.isort,
         val_sort_h ↦ z_ressort, eff ↦ ze_lrarr)
@@ -220,13 +200,10 @@ fsm DriverBuildEff
     ze_lrassert ∈ Effect
     BuildZ3SolverAssert(ctx_h ↦ z3ctx.ctx, solver_h ↦ z3ctx.sol, ast_h ↦ z_lrge,
         eff ↦ ze_lrassert)
-    -- symtab pre-seed: slots 0/1 = last_results / is_first_tick
-    -- (st_names is initialized with the matching two records).
     ze_seed0 ∈ Effect
     BuildMemWriteLong(addr ↦ stbuf.base, value ↦ z_lastres, eff ↦ ze_seed0)
     ze_seed1 ∈ Effect
     BuildMemWriteLong(addr ↦ stbuf.base + 8, value ↦ z_ift, eff ↦ ze_seed1)
-    -- D2 additions (zsteps 32-34).
     ze_three ∈ Effect
     BuildZ3MkInt(ctx_h ↦ z3ctx.ctx, val ↦ 3, sort_h ↦ z3sorts.isort, eff ↦ ze_three)
     ze_four ∈ Effect
@@ -234,7 +211,6 @@ fsm DriverBuildEff
     ze_iarr ∈ Effect
     BuildZ3MkArraySort(ctx_h ↦ z3ctx.ctx, idx_sort_h ↦ z3sorts.isort,
         val_sort_h ↦ z3sorts.isort, eff ↦ ze_iarr)
-    -- E1 effects floor (zsteps 35-36).
     ze_ege ∈ Effect
     ze_ege_ok ∈ Bool
     ze_ege_nn ∈ Bool
@@ -243,7 +219,4 @@ fsm DriverBuildEff
     ze_eassert ∈ Effect
     BuildZ3SolverAssert(ctx_h ↦ z3ctx.ctx, solver_h ↦ z3ctx.sol, ast_h ↦ z_ege,
         eff ↦ ze_eassert)
-    -- F2 claim-index buffer (zstep 37). 2048 claims: sample.ev has
-    -- dozens-to-hundreds; 256 was fixture-sized (resume point 12).
     ze_cibuf ∈ Effect = LibCall("libc", "calloc", ⟨ArgInt(2048), ArgInt(8)⟩)
-

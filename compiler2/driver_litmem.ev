@@ -72,7 +72,6 @@ fsm DriverLitMem
     sq_name = (is_first_tick ? ""
         : (d_seq_mem ∧ (¬_sq_set)) ? c_dname
         : _sq_name)
-    -- G2: the registered seq var's ELEMENT record type (-1 = Int)
     sq_rt = (is_first_tick ? 0 - 1
         : (d_seq_mem ∧ (¬_sq_set)) ? c_sq_rt
         : _sq_rt)

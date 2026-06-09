@@ -27,9 +27,6 @@ fsm DriverSymLookup
     d_lk_pos ∈ Int = index_of(st_names, d_lk_key, 0)
     d_lk_found ∈ Bool = (d_lk_pos ≥ 0)
     d_lk_special ∈ Bool = (d_lkname = "true" ∨ d_lkname = "false")
-    -- F2: scoped resolution — a slot bind of the current frame is a
-    -- PURE handle push (d_ilb_*); an α-prefixed frame local
-    -- ("__cN_" ++ name) takes priority over the plain table.
     d_ilb_found ∈ Bool = ((d_lkname ≠ "") ∧ ((ilb_n0 = d_lkname)
         ∨ (ilb_n1 = d_lkname) ∨ (ilb_n2 = d_lkname)
         ∨ (ilb_n3 = d_lkname) ∨ (ilb_n4 = d_lkname)

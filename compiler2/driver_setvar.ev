@@ -17,11 +17,6 @@
 -- The Set(T) variable registry + pmode-14 set walk. Lifted into
 -- driver_main via `..DriverSetVar`.
 fsm DriverSetVar
-    -- ── G2: set-var registry (≤ 2 Set(T) vars) + the pmode-14
-    -- set-literal walk. A Set(T) membership registers (name, elem
-    -- type); `s = {a, b}` folds mk_set_add over mk_empty_set with
-    -- each element a C2RecVal ctor app, records the element names
-    -- (for ∀-over-set and cardinality), and pins the const.
     stv_cnt ∈ Int
     stv_n0 ∈ String
     stv_k0 ∈ Int
@@ -46,7 +41,6 @@ fsm DriverSetVar
     stv_k1 = (is_first_tick ? 0
         : (d_setmem ∧ _stv_cnt = 1) ? c_sq_rt : _stv_k1)
 
-    -- set-literal line: `name = {` with name a registered set var
     c_stv_idx ∈ Int = ((c_name ≠ "" ∧ (_il_pfx ++ c_name) = stv_n0) ? 0
         : (c_name ≠ "" ∧ (_il_pfx ++ c_name) = stv_n1) ? 1
         : (c_name ≠ "" ∧ c_name = stv_n0) ? 0
@@ -62,7 +56,6 @@ fsm DriverSetVar
         C2Process(EIdent(c_stv_idx = 0 ? stv_n0 : stv_n1)),
         C2ICons(C2MkEmptySet(c_stv_idx = 0 ? stv_k0 : stv_k1), C2INil))
 
-    -- pmode-14 element walk
     sv_act ∈ Bool = (in_parse ∧ (_pmode = 14) ∧ d_witems_nil ∧ tok_ready)
     stl_elem ∈ Bool = (sv_act ∧ (ww_t0 matches Ident(_)))
     stl_comma ∈ Bool = (sv_act ∧ (ww_t0 matches Comma))
@@ -94,7 +87,6 @@ fsm DriverSetVar
         : (stl_elem ∧ _sv_cur = 1) ? _stv_c1 + 1
         : _stv_c1)
 
-    -- `a ∈ items` — membership-in-set-var assert (no decl, no field)
     c_smem_idx ∈ Int = ((c_type_str ≠ "" ∧ ((_il_pfx ++ c_type_str) = stv_n0 ∨ c_type_str = stv_n0)) ? 0
         : (c_type_str ≠ "" ∧ ((_il_pfx ++ c_type_str) = stv_n1 ∨ c_type_str = stv_n1)) ? 1
         : 0 - 1)
@@ -107,8 +99,6 @@ fsm DriverSetVar
         C2ICons(C2RecVal(_il_pfx ++ c_name, c_smem_k),
         C2ICons(C2SelH, C2ICons(C2AssertTop, C2INil))))
 
-    -- `∀ x ∈ small : x ∈ big` — unroll over the source set's
-    -- RECORDED literal elements (≤ 3), asserting (select big e_j).
     qset_src ∈ Int = ((c_q_t3nm ≠ "" ∧ c_q_t3nm = stv_n0) ? 0
         : (c_q_t3nm ≠ "" ∧ c_q_t3nm = stv_n1) ? 1
         : 0 - 1)
@@ -160,9 +150,6 @@ fsm DriverSetVar
         : d_enter_sl ? 0
         : sl_done_inc ? _sl_cnt + 1
         : _sl_cnt)
-    -- G2: a composite seq's literal element (an IDENT naming a
-    -- frame-flattened record instance) builds as a ctor app over its
-    -- dotted consts (C2RecVal); Int seqs keep the plain Process.
     sl_e_nm ∈ String = match pr_sres
         EIdent(sen) ⇒ sen
         _ ⇒ ""
@@ -178,9 +165,7 @@ fsm DriverSetVar
         C2ICons(C2Process(EInt(_sl_cnt)),
         C2ICons(C2PinEq, C2ICons(C2AssertTop, C2INil))))
 
-    -- skip machine: walk one token per tick to the next top-level kw.
     d_skipl_nil ∈ Bool = (ww_t0 matches EofTok)
     d_skip_at_tlkw ∈ Bool = ((ww_t0 matches KwEnum) ∨ (ww_t0 matches KwClaim)
         ∨ (ww_t0 matches KwType) ∨ (ww_t0 matches KwFsm) ∨ (ww_t0 matches KwSchema))
     d_skip_stop ∈ Bool = (d_in_skip ∧ (d_skipl_nil ∨ d_skip_at_tlkw))
-

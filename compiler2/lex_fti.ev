@@ -74,10 +74,6 @@
 
 import "stdlib/kernel.ev"
 
--- Single-char token tag. Same classification as compiler/lexer.ev's
--- SingleCharTok, but yielding the stable integer tags from
--- stdlib/fti/token_stack.ev instead of a Token datatype value.
--- Pipe/Question/Hash/Colon tags 65-68 are appended there.
 claim LexCharTag(c ∈ String, tag ∈ Int, recognized ∈ Bool)
     tag = (c = "(" ? 5
         : c = ")" ? 6
@@ -122,9 +118,6 @@ claim LexCharTag(c ∈ String, tag ∈ Int, recognized ∈ Bool)
         ∨ c = "∧" ∨ c = "∨" ∨ c = "¬"
         ∨ c = "∀" ∨ c = "∃")
 
--- Keyword tag for a collected alpha run. tag = 1 means "not a
--- keyword": the run is an Ident and carries a string payload.
--- Mirrors compiler/lexer.ev's MaybeKeyword.
 claim LexKeywordTag(s ∈ String, tag ∈ Int)
     tag = (s = "claim" ? 15
         : s = "type" ? 16
@@ -142,12 +135,6 @@ claim LexKeywordTag(s ∈ String, tag ∈ Int)
         : s = "mapsto" ? 28
         : 1)
 
--- The per-tick token push-plan. Inputs are the fossil lexer's branch
--- bools (mutually exclusive after the lx_comment guard, same priority
--- order as the fossil `tokens` ternary) plus the PREVIOUS-tick
--- collection state (_partial_str / _partial_int / _partial_strlit —
--- the finishing token's content) and the FTI state. All body locals
--- lf_-prefixed (composition leaks body locals into the host).
 claim LexFtiPlan(lx_comment ∈ Bool, strlit_closing ∈ Bool,
                  fs_op ∈ Bool, fi_op ∈ Bool,
                  fs_only ∈ Bool, fi_only ∈ Bool, ch_only ∈ Bool,
@@ -174,10 +161,6 @@ claim LexFtiPlan(lx_comment ∈ Bool, strlit_closing ∈ Bool,
         : ch_only ? 1
         : 0)
 
-    -- negative-literal fold: the finishing IntLit overwrites a Minus
-    -- pushed just before it, unless the token before the Minus is
-    -- atom-shaped (IntLit=2 / Ident=1 / StringLit=3 / RParen=6 /
-    -- RBracket=70 — then `a - 3` is binary subtraction).
     lf_prev_atom ∈ Bool = (prev_tag = 1 ∨ prev_tag = 2
         ∨ prev_tag = 3 ∨ prev_tag = 6 ∨ prev_tag = 70)
     lf_fold ∈ Bool = ((kind = 2 ∨ kind = 6)

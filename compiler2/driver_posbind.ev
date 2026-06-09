@@ -25,22 +25,12 @@
 -- The pmode-12 positional-binding walk. Lifted into driver_main via
 -- `..DriverPosBind`.
 fsm DriverPosBind
-    -- ── G1: positional binding — `(e1, e2, e3) ∈ add` tuple-in,
-    -- `recv.add(args)` method calls (bare or dotted receiver),
-    -- statement calls `add(2, 3, mid)`, and `(args) ∈ recv.add`
-    -- method-tuple-in. Elements parse to HANDLES (Pratt kind 10);
-    -- a lone UNDECLARED ident element declares an Int const first
-    -- (arg inference — the oracle's mid:Int). The jump pushes a
-    -- fresh "__cN_" frame; the param-skip walk COLLECTS the
-    -- callee's param names (pn) and ips_done zips them with the
-    -- held handles into il_binds (receiver = first param).
     pt_st ∈ Int
     pt_callee ∈ String
     pc_k ∈ Int
     pj ∈ Bool
     pj_recv ∈ Bool
 
-    -- entry shapes (classify tick; comp/membership kinds take priority)
     pcl_t2nm ∈ String = match c_t2
         Ident(s) ⇒ s
         _ ⇒ ""
@@ -70,15 +60,10 @@ fsm DriverPosBind
     pcl_line ∈ Bool = (pcl_stmt ∨ pcl_meth ∨ pcl_tup)
     pcl_recv_items ∈ C2Items = C2ICons(C2Process(EIdent(pcl_recv_nm)), C2INil)
 
-    -- element walk (pt_st 0)
     pe_act ∈ Bool = (in_parse ∧ (_pmode = 12) ∧ (_pt_st = 0)
         ∧ d_witems_nil ∧ tok_ready)
     pt_comma ∈ Bool = (pe_act ∧ (ww_t0 matches Comma))
     pt_rp ∈ Bool = (pe_act ∧ (ww_t0 matches RParen))
-    -- G2: a TUPLE element `( atom , atom )` — one 5-token bite; its
-    -- two handles bind to the record param's FIELD NAMES at the zip
-    -- (tuple→record coercion), or the first handle binds a scalar
-    -- param (092's only-when-record contract).
     ptt_e0 ∈ Expr
     ptt_ok0 ∈ Bool
     C2AtomE(t ↦ ww_t1, e ↦ ptt_e0, ok ↦ ptt_ok0)
@@ -98,7 +83,6 @@ fsm DriverPosBind
         : _pt_tup)
     pt_ts = (is_first_tick ? 0 : pt_tup_b ? _pc_k : _pt_ts)
     pt_elem ∈ Bool = (pe_act ∧ (¬pt_comma) ∧ (¬pt_rp) ∧ (¬pt_tup_b))
-    -- close flavors
     ptc_w2nm ∈ String = match ww_t2
         Ident(s) ⇒ s
         _ ⇒ ""
@@ -122,7 +106,6 @@ fsm DriverPosBind
     BuildMemReadLong(addr ↦ cibuf.base + (8 * (ptc_pos / 32)), eff ↦ e_pcr)
     ptc_recv_items ∈ C2Items = C2ICons(C2Process(EIdent(ptc_w2nm)), C2INil)
 
-    -- capture + fire
     ptj_cap ∈ Bool = (in_parse ∧ (_pmode = 12) ∧ (_pt_st = 2))
     ptj_fire ∈ Bool = (in_parse ∧ (_pmode = 12) ∧ (_pt_st = 3)
         ∧ d_witems_nil)
@@ -158,8 +141,6 @@ fsm DriverPosBind
         : (pt_close ∧ ptc_tm) ? true
         : _pj_recv)
 
-    -- arg inference: a lone UNDECLARED ident element declares an
-    -- Int const (manifest field + carry, oracle parity)
     pi_nm ∈ String = match pr_sres
         EIdent(s) ⇒ s
         _ ⇒ ""
@@ -185,7 +166,6 @@ fsm DriverPosBind
         ? C2ICons(C2DeclConst(pi_dname, 0), C2INil)
         : C2ICons(C2Process(pr_sres), C2INil))
 
-    -- param-name collection during the param-skip walk
     pn_k ∈ Int
     pn_prev ∈ Int
     pn0 ∈ String
@@ -196,8 +176,6 @@ fsm DriverPosBind
     pn5 ∈ String
     pn_take ∈ Bool = (ips_skp ∧ (ww_t0 matches Ident(_))
         ∧ (_pn_prev = 1))
-    -- G2: each param's TYPE (the Ident after its `∈`) — needed to
-    -- decide tuple→record coercion at the zip.
     pty_take ∈ Bool = (ips_skp ∧ (ww_t0 matches OpIn)
         ∧ (ww_t1 matches Ident(_)) ∧ (_il_pd = 1))
     pty_nm ∈ String = match ww_t1
@@ -233,7 +211,6 @@ fsm DriverPosBind
     pn4 = (is_first_tick ? "" : (pn_take ∧ _pn_k = 4) ? pn_nm : _pn4)
     pn5 = (is_first_tick ? "" : (pn_take ∧ _pn_k = 5) ? pn_nm : _pn5)
 
-    -- zip at param-list end: pn names ↦ the held element handles
     pz_act ∈ Bool = (ips_done ∧ _pj)
     pz_v0 ∈ Int = (_pj_recv ? d_h_top
         : _pc_k = 1 ? d_h_top : _pc_k = 2 ? d_h_2nd
@@ -245,11 +222,6 @@ fsm DriverPosBind
         ? (_pc_k = 3 ? d_h_2nd : d_h_3rd)
         : (_pc_k = 3 ? d_h_top : d_h_2nd))
     pz_v3 ∈ Int = (_pj_recv ? d_h_2nd : d_h_top)
-    -- G2: tuple-aware zip. The tuple's two handles sit consecutively
-    -- in the push order at slot _pt_ts; a record-typed param binds
-    -- them to its first two FIELD NAMES, a scalar param binds the
-    -- FIRST handle only. Supported shapes (corpus): pc_k 2 ts 0,
-    -- pc_k 3 ts 0, pc_k 3 ts 1 (method receiver first), pc_k 1.
     pzt_pty ∈ String = (_pt_ts = 0 ? _pty0
         : _pt_ts = 1 ? _pty1
         : _pt_ts = 2 ? _pty2
@@ -266,7 +238,6 @@ fsm DriverPosBind
         : _pt_ts = 1 ? _pn1
         : _pt_ts = 2 ? _pn2
         : _pn3)
-    -- tuple handle pair (first pushed = deeper) per supported shape
     pzt_h0 ∈ Int = (_pc_k = 1 ? d_h_2nd
         : (_pc_k = 2 ∧ _pt_ts = 0) ? d_h_3rd
         : (_pc_k = 3 ∧ _pt_ts = 0) ? d_h_4th
@@ -309,8 +280,6 @@ fsm DriverPosBind
     d_pk_natseg ∈ C2Items = (_pk_nat
         ? C2ICons(C2NatBound, C2ICons(C2AssertTop, d_pk_pinseg))
         : d_pk_pinseg)
-    -- F2: a membership pin of a BOUND/already-declared name resolves
-    -- the existing handle instead of redeclaring (the dup head).
     d_pk_head ∈ C2Item = (_pk_nodecl ? C2Process(EIdent(_pk_pn))
         : C2DeclConst(_pk_name, _pk_sc))
     d_pratt_items ∈ C2Items = (pr_bad ? C2INil
@@ -327,14 +296,7 @@ fsm DriverPosBind
             : C2ICons(d_pk_head, d_pk_natseg))
         : gc_hit ? C2ICons(C2Process(gc_l), C2INil)
         : C2ICons(C2Process(pr_sres), C2ICons(C2AssertTop, C2INil)))
-    -- kind 3: the Exit argument closes with `)` — consume it; the
-    -- element walk (pmode 5) handles the following `,` / `⟩`.
-    -- kind 6: the guard ends at the chain's `?` — consume it.
-    -- kind 8: a slot value ends at the call's `,` / `)` — the call
-    -- walk (pmode 10) consumes those. On a malformed line skip one
-    -- token so the walk always progresses.
     d_done_cons ∈ Int = (pr_bad ? 1
         : _pk_kind = 3 ? 1
         : _pk_kind = 6 ? 1
         : 0)
-

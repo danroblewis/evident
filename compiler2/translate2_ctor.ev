@@ -74,14 +74,11 @@ import "stdlib/z3_datatypes.ev"
 
 -- ── Parsed-data peel claims (driver iteration) ──────────────────────────
 
--- EnumVariantListOf: project the variant list out of an EnumDeclAst.
 claim EnumVariantListOf(decl ∈ EnumDeclAst, vs ∈ EnumVariantList)
     vs = match decl
         EnumD(_, l) ⇒ l
         ENoEnum ⇒ EVNil
 
--- EnumVariantsHead: one-step peel of the variant list. The driver walks
--- the enum's variants one per FSM round with this.
 claim EnumVariantsHead(vs ∈ EnumVariantList, v ∈ EnumVariantDecl, rest ∈ EnumVariantList, nonempty ∈ Bool)
     nonempty = (vs matches EVCons(_, _))
     v = match vs
@@ -91,7 +88,6 @@ claim EnumVariantsHead(vs ∈ EnumVariantList, v ∈ EnumVariantDecl, rest ∈ E
         EVCons(_, t) ⇒ t
         EVNil ⇒ EVNil
 
--- VariantFieldsHead: one-step peel of a payload field list.
 claim VariantFieldsHead(fs ∈ EVFieldList, ty ∈ String, rest ∈ EVFieldList, nonempty ∈ Bool)
     nonempty = (fs matches EVFCons(_, _))
     vfh_f ∈ EVField = match fs
@@ -104,9 +100,6 @@ claim VariantFieldsHead(fs ∈ EVFieldList, ty ∈ String, rest ∈ EVFieldList,
         EVFCons(_, t) ⇒ t
         EVFNil ⇒ EVFNil
 
--- VariantFieldCount: payload arity, bounded ≤ 3 (the corpus arity —
--- same bound as the legacy VariantText; a wider variant is a driver
--- walk over VariantFieldsHead).
 claim VariantFieldCount(v ∈ EnumVariantDecl, n ∈ Int)
     vfc_fs ∈ EVFieldList = match v
         EVDeclP(_, fs) ⇒ fs
@@ -122,8 +115,6 @@ claim VariantFieldCount(v ∈ EnumVariantDecl, n ∈ Int)
     vfc_has2 ∈ Bool = (vfc_r2 matches EVFCons(_, _))
     n = (¬vfc_has0 ? 0 : ¬vfc_has1 ? 1 : ¬vfc_has2 ? 2 : 3)
 
--- VariantFieldType: the type-name string of payload field `idx` (0-2);
--- "" past the end.
 claim VariantFieldType(v ∈ EnumVariantDecl, idx ∈ Int, ty ∈ String)
     vft_fs ∈ EVFieldList = match v
         EVDeclP(_, fs) ⇒ fs
@@ -144,16 +135,12 @@ claim VariantFieldType(v ∈ EnumVariantDecl, idx ∈ Int, ty ∈ String)
 
 -- ── (a) Enum declaration steps ──────────────────────────────────────────
 
--- EnumSortSymStep: mk_string_symbol for the enum's sort name. One per
--- enum, fed to mk_datatypes' sort_names[] IN-array.
 claim EnumSortSymStep(ctx_h ∈ Int, decl ∈ EnumDeclAst, eff ∈ Effect)
     ess_name ∈ String = match decl
         EnumD(n, _) ⇒ n
         ENoEnum ⇒ ""
     BuildZ3MkStringSymbol(ctx_h ↦ ctx_h, name ↦ ess_name, eff ↦ eff)
 
--- VariantNameSymStep: mk_string_symbol for one variant's constructor
--- name.
 claim VariantNameSymStep(ctx_h ∈ Int, v ∈ EnumVariantDecl, eff ∈ Effect)
     vns_name ∈ String = match v
         EVDecl(n) ⇒ n
@@ -161,8 +148,6 @@ claim VariantNameSymStep(ctx_h ∈ Int, v ∈ EnumVariantDecl, eff ∈ Effect)
         EVNoVariant ⇒ ""
     BuildZ3MkStringSymbol(ctx_h ↦ ctx_h, name ↦ vns_name, eff ↦ eff)
 
--- VariantRecognizerSymStep: mk_string_symbol for the variant's tester,
--- named `is_<Variant>` (the spelling sugar_datatypes proved).
 claim VariantRecognizerSymStep(ctx_h ∈ Int, v ∈ EnumVariantDecl, eff ∈ Effect)
     vrs_name ∈ String = match v
         EVDecl(n) ⇒ n
@@ -171,9 +156,6 @@ claim VariantRecognizerSymStep(ctx_h ∈ Int, v ∈ EnumVariantDecl, eff ∈ Eff
     vrs_recog ∈ String = "is_" ++ vrs_name
     BuildZ3MkStringSymbol(ctx_h ↦ ctx_h, name ↦ vrs_recog, eff ↦ eff)
 
--- VariantFieldSymStep: mk_string_symbol for payload field `idx`'s
--- accessor, named `<Variant>__f<idx>` — the language's auto-accessor
--- convention (CLAUDE.md "Enums"), same as the legacy VariantText.
 claim VariantFieldSymStep(ctx_h ∈ Int, v ∈ EnumVariantDecl, idx ∈ Int, eff ∈ Effect)
     vfs_name ∈ String = match v
         EVDecl(n) ⇒ n
@@ -203,9 +185,6 @@ claim FieldSortSlot(
         : 0)
     ref_slot = (is_self ? self_sort_idx : 0)
 
--- SortRefsPack2: pack two 4-byte sort_refs into one write_long payload
--- (the width caveat — see header). write_long(refs_p + 8*j, packed)
--- fills unsigned slots 2j (ref_lo) and 2j+1 (ref_hi).
 claim SortRefsPack2(ref_lo ∈ Int, ref_hi ∈ Int, packed ∈ Int)
     packed = ref_lo + ref_hi * 4294967296
 
@@ -235,21 +214,6 @@ claim VariantMkConstructorStep(
         field_names_arr_p ↦ vmc_fn, field_sorts_arr_p ↦ vmc_fs,
         sort_refs_arr_p ↦ vmc_sr, eff ↦ eff)
 
--- Per-enum list / datatype-creation / harvest steps are the stdlib
--- claims directly — no enum-AST data to bind, so no wrapper here:
---   BuildZ3MkConstructorList(ctx, n_ctors, ctors_p)   one per enum
---   BuildZ3MkDatatypes(ctx, n_sorts, names_p, sorts_out_p, clists_p)
---   BuildMemReadLong(sorts_out_p + 8*i)               harvest each sort
--- (mutually-recursive enums = ONE BuildZ3MkDatatypes call with
--- n_sorts > 1; the cross-references are sort_refs indices, above).
-
--- VariantQueryStep: Z3_query_constructor for one variant after its
--- container went through mk_datatypes. The driver allocates one
--- out-block of 16 + 8·n_fields bytes at out_base_p:
---   ctor decl   OUT at out_base_p
---   tester decl OUT at out_base_p + 8
---   accessors   OUT-array at out_base_p + 16  (one slot per field)
--- and harvests each Z3_func_decl with BuildMemReadLong on later ticks.
 claim VariantQueryStep(ctx_h ∈ Int, ctor_h ∈ Int, v ∈ EnumVariantDecl, out_base_p ∈ Int, eff ∈ Effect)
     vq_n ∈ Int
     VariantFieldCount(v ↦ v, n ↦ vq_n)
@@ -260,30 +224,16 @@ claim VariantQueryStep(ctx_h ∈ Int, ctor_h ∈ Int, v ∈ EnumVariantDecl, out
 
 -- ── (b) Constructor application steps ───────────────────────────────────
 
--- CtorArgWriteStep: write argument `idx`'s HANDLE into the mk_app args
--- array. arg_h is any built Z3_ast — an atom, an arith tree, a nested
--- ctor app — the depth of the tree behind the handle is invisible here
--- (the header's by-construction argument).
 claim CtorArgWriteStep(args_p ∈ Int, idx ∈ Int, arg_h ∈ Int, eff ∈ Effect)
     caw_addr ∈ Int = args_p + 8 * idx
     BuildMemWriteLong(addr ↦ caw_addr, value ↦ arg_h, eff ↦ eff)
 
--- CtorAppStep: `Green(x)` → Z3_mk_app(green_decl, [x_h]). ctor_decl_h
--- is the decl harvested by VariantQueryStep; n_args slots at args_p
--- were written by CtorArgWriteStep on prior ticks. A nullary variant
--- value is n_args = 0 with args_p = 0. The SAME step applies a
--- harvested tester decl (1 arg → `((_ is Green) x)`) or accessor decl
--- (1 arg → field projection) — they are all just Z3_func_decls.
 claim CtorAppStep(ctx_h ∈ Int, ctor_decl_h ∈ Int, n_args ∈ Int, args_p ∈ Int, eff ∈ Effect)
     BuildZ3MkApp(ctx_h ↦ ctx_h, decl_h ↦ ctor_decl_h,
         num_args ↦ n_args, args_arr_p ↦ args_p, eff ↦ eff)
 
 -- ── (c) The Effect enum at this layer ───────────────────────────────────
 
--- EffectEnumDecl: the kernel's Effect-enum floor as parsed data, so the
--- driver declares it through the SAME steps as user enums. The
--- Seq(LibArg) field of LibCall resolves through the driver's sort
--- registry (see header scope note).
 claim EffectEnumDecl(decl ∈ EnumDeclAst)
     decl = EnumD("Effect",
         EVCons(EVDecl("ReadLine"),
@@ -296,9 +246,6 @@ claim EffectEnumDecl(decl ∈ EnumDeclAst)
         EVCons(EVDeclP("Exit", EVFCons(EVFType("Int"), EVFNil)),
         EVNil))))))
 
--- EffectCtorArity: payload arity of each kernel-native Effect variant —
--- the count the driver feeds to CtorAppStep when building an effects
--- value (e.g. Exit is mk_app(exit_decl, 1, [code_h])).
 claim EffectCtorArity(name ∈ String, n ∈ Int, known ∈ Bool)
     eca_rl ∈ Bool = (name = "ReadLine")
     eca_rf ∈ Bool = (name = "ReadFile")

@@ -22,14 +22,6 @@
 -- The G1 conditional-inline (`cond ⇒ ClaimName`) guarded-splice phase.
 -- Lifted into driver_main via `..DriverGuard`.
 fsm DriverGuard
-    -- ── G1: conditional inline `cond ⇒ ClaimName` — a standalone
-    -- line whose parsed root is (=> guard EIdent(Name)) with Name in
-    -- the claim index splices Name's body with every asserted
-    -- constraint wrapped in (=> guard …) — the oracle's shape.
-    -- The guard expression builds to a HANDLE first (its items run
-    -- under pmode 10, cw_st 3→4), then the jump fires with il_guard
-    -- armed; the matching frame pop disarms it. ONE active guard
-    -- (no nested guarded splices — zero corpus occurrences).
     gc_op ∈ Op
     gc_l ∈ Expr
     gc_r ∈ Expr

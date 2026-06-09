@@ -40,9 +40,6 @@ fsm DriverSymtab
     d_st_add ∈ Bool = (d_processing ∧ d_it_decl ∧ (_istep = 2))
     st_entry ∈ String
     FtiNameEntry(name ↦ d_dc_name, entry ↦ st_entry)
-    -- D3 pre-seed: slots 0/1 are last_results / is_first_tick (their
-    -- handles are written at zstep 31), so the two kernel-provided
-    -- names resolve like any declared const.
     d_seed_names ∈ String = ("|" ++ substr("last_results                               ", 0, 31)
         ++ "|" ++ substr("is_first_tick                               ", 0, 31))
     FtiNamedAppend(first ↦ is_first_tick, add ↦ d_st_add,
@@ -101,7 +98,6 @@ fsm DriverSymtab
         C2HCons(_, r) ⇒ r
         C2HNil ⇒ C2HNil
 
-    -- current work item.
     d_witems_nil ∈ Bool = match _witems
         C2INil ⇒ true
         _ ⇒ false
@@ -112,13 +108,8 @@ fsm DriverSymtab
         C2ICons(_, r) ⇒ r
         C2INil ⇒ C2INil
 
-    -- F2: the param-skip substate (il_ps) suppresses the classifier
-    -- until the callee's first-line param list is walked over.
     d_classify   ∈ Bool = (d_in_claim ∧ d_witems_nil ∧ tok_ready
         ∧ (_il_ps = 0) ∧ (¬_fl_on) ∧ (¬_rb_on))
-    -- items drain identically under the claim walk, the effects
-    -- element walk (pmode 5), the seq-literal walk (pmode 8), the
-    -- F1 group walk (pmode 9) and the F2 call walk (pmode 10)
     d_processing ∈ Bool = ((d_in_claim ∨ (in_parse ∧ (_pmode = 5))
         ∨ (in_parse ∧ (_pmode = 8)) ∨ (in_parse ∧ (_pmode = 9))
         ∨ (in_parse ∧ (_pmode = 10)) ∨ (in_parse ∧ (_pmode = 12))
@@ -211,4 +202,3 @@ fsm DriverSymtab
         C2RecVal(_, rk2) ⇒ rk2
         C2RecDecl(_, rk3) ⇒ rk3
         _ ⇒ 0
-

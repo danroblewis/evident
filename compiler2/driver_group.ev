@@ -60,11 +60,8 @@ fsm DriverGroup
         TLNil ⇒ TLNil
     pg_last ∈ Bool = (pg_tail matches TLNil)
 
-    -- group-end bookkeeping on the type tick: PARAM flavor also
-    -- consumes the separator (`,` next group / `)` list end).
     pg_ty_cons ∈ Int = (_pg_param ? 4 : 3)
     pg_ty_close ∈ Bool = (ww_t3 matches RParen)
-    -- where the walk goes when the current group is fully declared
     pg_group_done_mode ∈ Int = ((¬_pg_param) ? 2
         : _pg_close ? 2
         : 9)
@@ -103,4 +100,3 @@ fsm DriverGroup
             ? C2ICons(C2NatBound, C2ICons(C2AssertTop,
                 C2ICons(C2Drop, C2INil)))
             : C2ICons(C2Drop, C2INil)))
-

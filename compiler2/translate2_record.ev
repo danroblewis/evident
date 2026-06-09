@@ -47,17 +47,6 @@
 import "compiler/parser.ev"
 import "stdlib/kernel.ev"
 
--- ── RecordRecvBuildZ3: build the Z3_ast for a record-typed receiver
---    expression (the `r` in `r.x`, or either side of a record eq).
---    Same dispatch shape as translate_arith.ev's AtomBuildZ3, but a
---    record receiver can only be an EIdent — there is no record
---    literal Expr node, and EInt has no record meaning. The caller
---    supplies record_sort_h (harvested from Z3_mk_datatypes' OUT
---    array at type-declaration time) and sym_h (a prior
---    BuildZ3MkStringSymbol over the ident's name — reuse
---    translate_arith.ev's AtomIdentName to extract it). `ok` is true
---    iff e is an EIdent; on the false fallthrough eff is a no-op
---    Time call so the Effect literal stays well-formed.
 claim RecordRecvBuildZ3(
         ctx_h ∈ Int, record_sort_h ∈ Int, sym_h ∈ Int,
         e ∈ Expr, eff ∈ Effect, ok ∈ Bool)
@@ -68,16 +57,6 @@ claim RecordRecvBuildZ3(
             ⟨ArgInt(ctx_h), ArgInt(sym_h), ArgInt(record_sort_h)⟩)
         : LibCall("libc", "time", ⟨ArgInt(0)⟩))
 
--- ── RecordFieldAccessBuildZ3: field access `r.x` →
---    Z3_mk_app(accessor_decl, [r]). Handle inputs:
---      accessor_decl_h — the field's accessor Z3_func_decl, read from
---        Z3_query_constructor's accessors out-array at slot
---        8 * field_index (RecordEqPlan below computes the address).
---      recv_arg_p — a 1-slot (8-byte) caller buffer holding the
---        receiver's Z3_ast handle: one BuildMemWriteLong(recv_arg_p,
---        recv_h) phase before this one. The buffer is dead after the
---        call returns; the caller may reuse it for the next app.
---    Returns (next tick's IntResult): the `(x r)` Z3_ast handle.
 claim RecordFieldAccessBuildZ3(
         ctx_h, accessor_decl_h, recv_arg_p ∈ Int, eff ∈ Effect)
     eff = LibCall("libz3", "Z3_mk_app",
@@ -101,34 +80,10 @@ claim RecordLiteralBuildZ3(
         ⟨ArgInt(ctx_h), ArgInt(ctor_decl_h), ArgInt(n_fields),
          ArgInt(args_arr_p)⟩)
 
--- ── RecordFieldEqBuildZ3: one clause of the componentwise eq lift —
---    `(= (f a) (f b))` for a single field f. Handle inputs:
---      l_field_h / r_field_h — the two accessor-app Z3_ast handles
---        (each from a prior RecordFieldAccessBuildZ3 tick over the
---        same accessor decl, lhs and rhs receivers).
---    Returns: the per-field eq Z3_ast handle. The caller collects
---    one of these per field; the (and …) over them is the caller's
---    assembly via BuildZ3MkAnd (stdlib/z3_ops.ev) — see
---    RecordEqPlan's needs_and for when that fold is required at all.
 claim RecordFieldEqBuildZ3(ctx_h, l_field_h, r_field_h ∈ Int, eff ∈ Effect)
     eff = LibCall("libz3", "Z3_mk_eq",
         ⟨ArgInt(ctx_h), ArgInt(l_field_h), ArgInt(r_field_h)⟩)
 
--- ── RecordEqPlan: the walk plan for the componentwise lift — pure
---    bookkeeping, no effect. The caller supplies the record's field
---    count (n_fields, known from the type declaration it compiled
---    earlier) and the accessors out-array pointer it passed to
---    Z3_query_constructor; per field index idx the plan yields:
---      acc_slot_addr — accessors_arr_p + 8*idx: the address to
---        BuildMemReadLong this field's accessor decl from.
---      in_range — idx names a real field; the caller's FSM loops
---        while true.
---      is_last  — idx is the final field; after its eq node the
---        caller proceeds to assembly.
---      needs_and — n_fields > 1: the lift is an (and …) fold over
---        the per-field eqs (BuildZ3MkAnd over a caller-built array
---        of the eq handles). For a 1-field record the single eq
---        node IS the lift — no fold.
 claim RecordEqPlan(
         n_fields ∈ Int, accessors_arr_p ∈ Int, idx ∈ Int,
         acc_slot_addr ∈ Int, in_range ∈ Bool, is_last ∈ Bool,
@@ -138,11 +93,6 @@ claim RecordEqPlan(
     is_last = (idx = n_fields - 1)
     needs_and = (n_fields > 1)
 
--- ── translate2_record_probe: oracle-emittable smoke FSM. Exercises
---    the pure plan claim end-to-end (the Build* claims are covered by
---    tests/kernel/compiler2/record_fixture.ev, which needs a live Z3
---    context). Exit 0 iff RecordEqPlan's outputs are right for a
---    2-field record at idx 0/1/2 and a 1-field record needs no fold.
 claim translate2_record_probe
     addr0 ∈ Int
     in0, last0, and0 ∈ Bool

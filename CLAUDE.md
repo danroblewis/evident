@@ -564,10 +564,49 @@ independently revertible.
 ## Style for Evident source
 
 - Drop annotations the inference recovers.
-- Default to no comments. Add one only when *why* isn't obvious.
 - Record types over parallel Seqs.
 - Element-form iteration over index ranges.
 - A compact entry-point reads as wiring; logic lives in claims.
+
+### Comment rules
+
+Default: **no comments**. Evident has no signatures, visibility, or
+namespaces yet, so a few comment classes do work the language cannot —
+keep ONLY these:
+
+1. **Module contract headers** — `-- MODULE X` with
+   `CONSUMES / PRODUCES / MAINTAINS`. Composition is names-match, so a
+   module's interface is structurally invisible; the header IS the
+   interface.
+2. **Measured traps** — facts that cost an experiment to learn and whose
+   violation *compiles fine but explodes later* (the `≠`-disequality
+   perf cliff, latch ordering, frozen-oracle gaps). State the
+   measurement and date. These are the highest-value lines in the repo.
+3. **Cross-file encoding/wire facts** — fixed-width row formats, tag
+   tables, "result lands at last_results[base+N]" API contracts:
+   invariants that span files and live nowhere else.
+4. **One-line section banners** (`-- ── X ──`) in long files —
+   navigation; greppable.
+5. **Test headers** — `-- entry:` / `-- expect:` (parsed by runners) plus
+   a short purpose block; a fixture's header is its documentation.
+
+Never write:
+- a comment **restating the next line** (`cap ≥ 0 -- cap is at least 0`);
+- **history/narration** ("demoted in iter 2.5", "session UU") — that's
+  git's job, or `docs/`;
+- **code examples inside prose comments** — text-level tools (lints,
+  transforms) parse flattened source and a quoted `s ∈ Seq(Int)` in a
+  comment has triggered real false positives;
+- explanations of standard language semantics — that's this file's job.
+
+The best comment is one converted into a **checked construct**: a
+per-site bound-with-comment became `0 ≤ count ≤ cap` in the type body,
+where the kernel enforces it every tick. When a fact becomes expressible
+as an invariant or a test, move it there and delete the prose.
+
+Comment-only edits to `compiler2/` must hold the byte-identical emit
+gate (`scripts/driver-decomp-gate.sh`) — it proves the trim touched
+nothing real.
 
 ## Style for Rust source
 

@@ -77,40 +77,20 @@
 
 import "stdlib/kernel.ev"
 
--- ── (a) matches / ctor-arm test ──────────────────────────────────
--- `e matches C(_)` → Z3_mk_app(tester_decl, [e]) = ((_ is C) e).
--- Also the test half of a constructor arm in the match fold.
--- scrut_args_arr_p is the 1-slot args buffer holding the scrutinee
--- handle (see header). Returns a Bool-sorted Z3_ast handle.
 claim MatchesBuildZ3(ctx_h, tester_decl_h, scrut_args_arr_p ∈ Int, eff ∈ Effect)
     eff = LibCall("libz3", "Z3_mk_app",
         ⟨ArgInt(ctx_h), ArgInt(tester_decl_h), ArgInt(1),
          ArgInt(scrut_args_arr_p)⟩)
 
--- ── (b) one fold step of the match → nested-ite lowering ────────
--- Z3_mk_ite(test, rhs, else): wraps one arm around the running else
--- accumulator. test_h comes from MatchesBuildZ3 (ctor arm) or
--- MatchLitTestBuildZ3 (literal arm) on a prior tick; else_h is the
--- previous fold step's output (or the default arm's rhs handle on
--- the first step). Returns the new running else handle.
 claim MatchArmFoldBuildZ3(ctx_h, test_h, rhs_h, else_h ∈ Int, eff ∈ Effect)
     eff = LibCall("libz3", "Z3_mk_ite",
         ⟨ArgInt(ctx_h), ArgInt(test_h), ArgInt(rhs_h), ArgInt(else_h)⟩)
 
--- ── (c) payload binding ──────────────────────────────────────────
--- For `C(v) ⇒ rhs`: v's handle is Z3_mk_app(accessor_decl, [e]) =
--- `(b_val e)`. The driver substitutes this handle wherever rhs
--- mentions v. Same scrutinee args buffer as MatchesBuildZ3.
 claim MatchPayloadBuildZ3(ctx_h, accessor_decl_h, scrut_args_arr_p ∈ Int, eff ∈ Effect)
     eff = LibCall("libz3", "Z3_mk_app",
         ⟨ArgInt(ctx_h), ArgInt(accessor_decl_h), ArgInt(1),
          ArgInt(scrut_args_arr_p)⟩)
 
--- ── (d) literal-pattern arm test ─────────────────────────────────
--- `match n` with an Int/String literal pattern `5 ⇒ …` tests with
--- Z3_mk_eq(scrut, lit) instead of a tester app. lit_h is built by
--- the driver on a prior tick (BuildZ3MkInt / BuildZ3MkString /
--- BuildZ3MkNumeral). No args buffer — mk_eq is binary.
 claim MatchLitTestBuildZ3(ctx_h, scrut_h, lit_h ∈ Int, eff ∈ Effect)
     eff = LibCall("libz3", "Z3_mk_eq",
         ⟨ArgInt(ctx_h), ArgInt(scrut_h), ArgInt(lit_h)⟩)

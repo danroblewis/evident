@@ -16,7 +16,6 @@
 -- The parse-expr node decomposition. Lifted into driver_main via
 -- `..DriverExprDecomp`.
 fsm DriverExprDecomp
-    -- Expr-node decomposition via the pass claims.
     d_pe_is_int ∈ Bool = (d_pe matches EInt(_))
     d_pe_is_id  ∈ Bool = (d_pe matches EIdent(_))
     d_pe_is_str ∈ Bool = (d_pe matches EStr(_))
@@ -43,7 +42,6 @@ fsm DriverExprDecomp
     NotExprParts(e ↦ d_pe, inner ↦ d_pe_ni, is_not ↦ d_pe_is_not)
     d_pe_op_ne ∈ Bool = (d_pe_op matches OpNeq)
 
-    -- call-node decomposition (B3): name + up to 3 positional args.
     d_pe_is_c1 ∈ Bool = (d_pe matches ECall1(_, _))
     d_pe_is_c2 ∈ Bool = (d_pe matches ECall2(_, _, _))
     d_pe_is_c3 ∈ Bool = (d_pe matches ECall3(_, _, _, _))
@@ -79,9 +77,6 @@ fsm DriverExprDecomp
         : uev_n5 = d_cnm ? uev_d5
         : 0)
 
-    -- C4: `e matches Ctor` — mk_app of the harvested TESTER decl
-    -- (user variants + the IntResult/StringResult floor). A miss
-    -- pushes handle 0 (unbound-ident parity).
     d_pe_is_m ∈ Bool = (d_pe matches EMatches(_, _))
     d_m_nm ∈ String = match d_pe
         EMatches(mn, _) ⇒ mn

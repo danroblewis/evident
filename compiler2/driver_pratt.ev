@@ -104,7 +104,5 @@ fsm DriverPratt
         : d_enter_pratt ? c_pin_rtk
         : _pk_rec)
 
-    -- parse completion → build the line's work-item program.
     p_done ∈ Bool = (d_in_pratt ∧ pr_sdone)
     pr_bad ∈ Bool = (p_done ∧ (pr_sres matches ENoExpr))
-
