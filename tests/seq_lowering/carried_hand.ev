@@ -1,0 +1,35 @@
+-- Carried-append, hand-written in flat scalars (the target form of the
+-- bounded-Seq lowering). Must behave identically to carried_seqsrc.ev.
+-- expect: stdout = "len 0"
+-- expect: stdout = "len 1"
+-- expect: stdout = "len 2"
+-- expect: stdout = "len 3"
+-- expect: stdout = "done 4"
+-- expect: exit = 0
+import "stdlib/kernel.ev"
+
+claim main
+    xs_0 ∈ Int
+    xs_1 ∈ Int
+    xs_2 ∈ Int
+    xs_3 ∈ Int
+    xs_len ∈ Int
+    0 ≤ xs_len
+    _xs_0 ∈ Int
+    _xs_1 ∈ Int
+    _xs_2 ∈ Int
+    _xs_3 ∈ Int
+    _xs_len ∈ Int
+    xs_len ≤ 4
+    xs_0 = (is_first_tick ? 0 : (_xs_len = 0 ? 7 : _xs_0))
+    xs_1 = (is_first_tick ? 0 : (_xs_len = 1 ? 7 : _xs_1))
+    xs_2 = (is_first_tick ? 0 : (_xs_len = 2 ? 7 : _xs_2))
+    xs_3 = (is_first_tick ? 0 : (_xs_len = 3 ? 7 : _xs_3))
+    xs_len = (is_first_tick ? 0 : _xs_len + 1)
+
+    len ∈ Int = xs_len
+    msg ∈ String = "len " ++ str_from_int(len)
+
+    effects ∈ Seq(Effect) = (len ≥ 4
+        ? ⟨LibCall("libc", "puts", ⟨ArgStr("done " ++ str_from_int(len))⟩), Exit(0)⟩
+        : ⟨LibCall("libc", "puts", ⟨ArgStr(msg)⟩)⟩)

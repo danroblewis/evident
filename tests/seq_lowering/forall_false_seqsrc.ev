@@ -1,0 +1,9 @@
+-- ∀-all-positive, FALSE case (element 0 violates x>0). UNSAT → exit 2.
+-- expect: exit = 2
+import "stdlib/kernel.ev"
+
+claim main
+    xs ∈ Seq(Int) = ⟨3, 0, 1⟩
+    #xs ≤ 4
+    ∀ x ∈ xs : x > 0
+    effects ∈ Seq(Effect) = ⟨LibCall("libc", "puts", ⟨ArgStr("all positive")⟩), Exit(0)⟩

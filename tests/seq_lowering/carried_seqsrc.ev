@@ -1,0 +1,22 @@
+-- Carried-append bounded Seq, in the Seq surface.
+-- Appends 7 each tick; prints the running length; exits at length 4.
+-- expect: stdout = "len 0"
+-- expect: stdout = "len 1"
+-- expect: stdout = "len 2"
+-- expect: stdout = "len 3"
+-- expect: stdout = "done 4"
+-- expect: exit = 0
+import "stdlib/kernel.ev"
+
+claim main
+    xs ∈ Seq(Int)
+    _xs ∈ Seq(Int)
+    #xs ≤ 4
+    xs = (is_first_tick ? ⟨⟩ : _xs ++ ⟨7⟩)
+
+    len ∈ Int = #xs
+    msg ∈ String = "len " ++ str_from_int(len)
+
+    effects ∈ Seq(Effect) = (len ≥ 4
+        ? ⟨LibCall("libc", "puts", ⟨ArgStr("done " ++ str_from_int(len))⟩), Exit(0)⟩
+        : ⟨LibCall("libc", "puts", ⟨ArgStr(msg)⟩)⟩)

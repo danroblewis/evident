@@ -1,0 +1,10 @@
+-- Membership HIT: 7 ∈ xs with xs containing 7. SAT → prints + exit 0.
+-- expect: stdout = "member"
+-- expect: exit = 0
+import "stdlib/kernel.ev"
+
+claim main
+    xs ∈ Seq(Int) = ⟨3, 7, 1⟩
+    #xs ≤ 4
+    7 ∈ xs
+    effects ∈ Seq(Effect) = ⟨LibCall("libc", "puts", ⟨ArgStr("member")⟩), Exit(0)⟩

@@ -1,0 +1,10 @@
+-- ∀-all-positive, TRUE case. SAT → prints + exit 0.
+-- expect: stdout = "all positive"
+-- expect: exit = 0
+import "stdlib/kernel.ev"
+
+claim main
+    xs ∈ Seq(Int) = ⟨3, 7, 1⟩
+    #xs ≤ 4
+    ∀ x ∈ xs : x > 0
+    effects ∈ Seq(Effect) = ⟨LibCall("libc", "puts", ⟨ArgStr("all positive")⟩), Exit(0)⟩

@@ -1,0 +1,13 @@
+-- Membership MISS, hand-written flat target. UNSAT → exit 2.
+-- expect: exit = 2
+import "stdlib/kernel.ev"
+
+claim main
+    xs_0 ∈ Int = 3
+    xs_1 ∈ Int = 8
+    xs_2 ∈ Int = 1
+    xs_3 ∈ Int = 0
+    xs_len ∈ Int = 3
+    xs_len ≤ 4
+    (((0 < xs_len) ∧ (7 = xs_0)) ∨ ((1 < xs_len) ∧ (7 = xs_1)) ∨ ((2 < xs_len) ∧ (7 = xs_2)) ∨ ((3 < xs_len) ∧ (7 = xs_3)))
+    effects ∈ Seq(Effect) = ⟨LibCall("libc", "puts", ⟨ArgStr("member")⟩), Exit(0)⟩

@@ -1,0 +1,14 @@
+-- ∀-all-positive, TRUE case, hand-written flat target.
+-- expect: stdout = "all positive"
+-- expect: exit = 0
+import "stdlib/kernel.ev"
+
+claim main
+    xs_0 ∈ Int = 3
+    xs_1 ∈ Int = 7
+    xs_2 ∈ Int = 1
+    xs_3 ∈ Int = 0
+    xs_len ∈ Int = 3
+    xs_len ≤ 4
+    (((0 < xs_len) ⇒ (xs_0 > 0)) ∧ ((1 < xs_len) ⇒ (xs_1 > 0)) ∧ ((2 < xs_len) ⇒ (xs_2 > 0)) ∧ ((3 < xs_len) ⇒ (xs_3 > 0)))
+    effects ∈ Seq(Effect) = ⟨LibCall("libc", "puts", ⟨ArgStr("all positive")⟩), Exit(0)⟩

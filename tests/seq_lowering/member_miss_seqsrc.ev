@@ -1,0 +1,9 @@
+-- Membership MISS: 7 ∈ xs with xs NOT containing 7. UNSAT → exit 2.
+-- expect: exit = 2
+import "stdlib/kernel.ev"
+
+claim main
+    xs ∈ Seq(Int) = ⟨3, 8, 1⟩
+    #xs ≤ 4
+    7 ∈ xs
+    effects ∈ Seq(Effect) = ⟨LibCall("libc", "puts", ⟨ArgStr("member")⟩), Exit(0)⟩
