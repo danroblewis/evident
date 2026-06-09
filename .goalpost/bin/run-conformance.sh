@@ -26,7 +26,7 @@
 #
 # Usage: .goalpost/bin/run-conformance.sh
 #   env: EVIDENT_C2_TIMEOUT  (s/fixture, default 1800)
-#        EVIDENT_C2_JOBS     (parallel workers, default 8)
+#        EVIDENT_C2_JOBS     (parallel workers, default 16)
 #        GP_GLOBAL_TIMEOUT   (s/whole run, default 900 — bail + reap)
 
 set -u

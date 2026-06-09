@@ -23,7 +23,10 @@ GP_STAGE1="$GP_ART/compiler2-stage1.smt2"
 # the measures' consumers can see the cap that was used.
 GP_C2_TIMEOUT="${EVIDENT_C2_TIMEOUT:-1800}"          # s, per fixture compile via compiler2
 GP_RUN_TIMEOUT="${EVIDENT_C2_RUN_TIMEOUT:-240}"      # s, running an emitted unit
-GP_JOBS="${EVIDENT_C2_JOBS:-8}"
+# Default 16: measured on the 24-core/156GB dev box, 16 jobs ran the full
+# conformance corpus in 219s vs 420s at 8 (2026-06-09); kernel+Z3 peak
+# ~600MB/job, so 16 jobs ~ 10GB — far under RAM. Override: EVIDENT_C2_JOBS.
+GP_JOBS="${EVIDENT_C2_JOBS:-16}"
 
 gp_die() { echo "goalpost: $*" >&2; exit 2; }
 

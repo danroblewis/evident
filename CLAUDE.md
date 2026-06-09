@@ -540,7 +540,7 @@ regression. There is no `IMPL=bootstrap` anymore.
 ### The compiler2 conformance gate (the behavior gate for refactors)
 
 `.goalpost/bin/run-conformance.sh` compiles + runs all 138 fixtures
-through compiler2. A clean run is **~7 min** (8 jobs); it has a
+through compiler2. A clean run is **~4 min** (16 jobs; 219s measured); it has a
 **global 15-min wall cap** (`GP_GLOBAL_TIMEOUT`, default 900s) — if a
 change makes fixtures slow (e.g. the `≠`-disequality trap), it **bails
 and reaps the workers** instead of running for hours, and the artifact
