@@ -270,6 +270,24 @@ xs ∈ Seq(Int) = a ++ b ++ ⟨c⟩       -- `++` flattens at load time
 ∀ (a, b) ∈ edges(seq) : …           -- consecutive pairs
 ```
 
+**Bound it and everything is fast.** The Z3 sequence theory is
+semi-decidable only when a `Seq` is *unbounded*. Add a literal length
+bound (`#xs ≤ N`) and every construction — index, `∀`/`∃`, sortedness,
+prefix/suffix/contains/extract, the overlapping-chain ordering merge —
+lowers to cheap, decidable Array+len / bounded-quantifier form. There is
+no slow *operation*; there is only "is it bounded." See
+`docs/seq-bounded-catalog.md` (a verified support matrix) and the
+`tests/seq/` regression suite (39 Evident fixtures + 18 Z3 checks).
+
+> **⚠ FOOTGUN: Seq membership `x ∈ xs` is SILENTLY DROPPED.** The frozen
+> oracle cannot translate it — `x` never reaches the SMT, the constraint
+> vanishes, and the claim goes *vacuously SAT* with NO error (exit 0).
+> Use `∃ i ∈ {0..#xs-1} : xs[i] = x` instead. (`x ∈ Set(T)` is fine — the
+> drop is Seq-specific.) `scripts/lint-seq-membership.sh <flat.ev>` flags
+> the bad form loudly. The same is true of record-field access on a Seq
+> element (`e.from` in `∀ e ∈ edges`): also dropped — carry the fields as
+> `coindexed` parallel `Seq`s until the bounded-Seq lowering lands.
+
 ### Enums
 
 ```evident
