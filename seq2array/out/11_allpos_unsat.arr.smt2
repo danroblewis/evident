@@ -1,0 +1,8 @@
+(set-logic QF_AUFLIA)
+(declare-const s_arr (Array Int Int))
+(declare-const s_len Int)
+(assert (and (<= 0 s_len) (<= s_len 5)))
+(assert (>= s_len 1))
+(assert (and (=> (< 0 s_len) (> (select s_arr 0) 0)) (=> (< 1 s_len) (> (select s_arr 1) 0)) (=> (< 2 s_len) (> (select s_arr 2) 0)) (=> (< 3 s_len) (> (select s_arr 3) 0)) (=> (< 4 s_len) (> (select s_arr 4) 0))))
+(assert (<= (select s_arr 0) 0))
+(check-sat)

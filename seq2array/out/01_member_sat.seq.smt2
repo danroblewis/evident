@@ -1,0 +1,7 @@
+(declare-const s (Seq Int))
+(declare-const x Int)
+(assert (<= (seq.len s) 5))
+(assert (>= (seq.len s) 1))
+(assert (exists ((i Int)) (and (<= 0 i) (< i (seq.len s)) (= (seq.nth s i) x))))
+(assert (= x 42))
+(check-sat)

@@ -1,0 +1,8 @@
+(declare-const a (Seq Int))
+(declare-const b (Seq Int))
+(assert (<= (seq.len a) 3))
+(assert (<= (seq.len b) 3))
+(assert (= (seq.len a) 2))
+(assert (= (seq.len b) 3))
+(assert (= (seq.len (seq.++ a b)) 5))
+(check-sat)

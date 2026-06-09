@@ -1,0 +1,5 @@
+(declare-const s (Seq Int))
+(assert (<= (seq.len s) 6))
+(assert (= (seq.len s) 4))
+(assert (forall ((i Int)) (=> (and (<= 0 i) (< i (- (seq.len s) 1))) (<= (seq.nth s i) (seq.nth s (+ i 1))))))
+(check-sat)

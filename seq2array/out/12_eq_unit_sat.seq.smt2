@@ -1,0 +1,6 @@
+(declare-const s (Seq Int))
+(declare-const x Int)
+(assert (<= (seq.len s) 4))
+(assert (= s (seq.unit x)))
+(assert (= x 7))
+(check-sat)
