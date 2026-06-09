@@ -395,7 +395,8 @@ claim C2PrattStep(toks ∈ TokenList, outs ∈ ExprList, ops ∈ PrOps,
     -- action selection (exactly one fires). A call head (Ident
     -- followed by `(` in operand position) takes priority over the
     -- plain atom shift of the same Ident.
-    ps_call_key ∈ String = "|" ++ substr(ps_hd_nm ++ "                               ", 0, 31)
+    ps_call_key ∈ String
+    FtiNameEntry(name ↦ ps_hd_nm, entry ↦ ps_call_key)
     ps_call_ok ∈ Bool = (index_of(calls, ps_call_key, 0) ≥ 0)
     ps_sh_call ∈ Bool = (expop ∧ (ps_hd matches Ident(_)) ∧ ps_nx_lp
         ∧ ps_call_ok)

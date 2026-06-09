@@ -438,7 +438,8 @@ fsm driver_main
     -- when that dotted const exists; a registry-ctor call selects
     -- its field-index argument.
     rb_q_name ∈ String = _il_pfx ++ d_lkname ++ "." ++ rb_f
-    rb_q_key ∈ String = "|" ++ substr(rb_q_name ++ "                               ", 0, 31)
+    rb_q_key ∈ String
+    FtiNameEntry(name ↦ rb_q_name, entry ↦ rb_q_key)
     d_rb_hit ∈ Bool = (d_it_proc ∧ d_pe_is_id ∧ _rb_on
         ∧ (index_of(st_names, rb_q_key, 0) ≥ 0))
     d_rb_items ∈ C2Items = C2ICons(C2Process(EIdent(rb_q_name)), d_wtail)

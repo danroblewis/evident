@@ -22,7 +22,8 @@ fsm DriverSymLookup
     -- resolves via ONE __mem.read_long of st_base[idx] (pend=1 —
     -- the handle pushes next tick); enum-variant values (evt) and
     -- unknown names (handle 0, fossil parity) stay pure pushes.
-    d_lk_key ∈ String = "|" ++ substr(d_lkname ++ "                               ", 0, 31)
+    d_lk_key ∈ String
+    FtiNameEntry(name ↦ d_lkname, entry ↦ d_lk_key)
     d_lk_pos ∈ Int = index_of(st_names, d_lk_key, 0)
     d_lk_found ∈ Bool = (d_lk_pos ≥ 0)
     d_lk_special ∈ Bool = (d_lkname = "true" ∨ d_lkname = "false")
@@ -39,7 +40,8 @@ fsm DriverSymLookup
         : ilb_n3 = d_lkname ? ilb_h3
         : ilb_n4 = d_lkname ? ilb_h4
         : ilb_h5)
-    d_lk_pfx_key ∈ String = "|" ++ substr((_il_pfx ++ d_lkname) ++ "                               ", 0, 31)
+    d_lk_pfx_key ∈ String
+    FtiNameEntry(name ↦ (_il_pfx ++ d_lkname), entry ↦ d_lk_pfx_key)
     d_lk_pfx_pos ∈ Int = index_of(st_names, d_lk_pfx_key, 0)
     d_lk_pfx_on ∈ Bool = ((_il_pfx ≠ "") ∧ (d_lk_pfx_pos ≥ 0))
     d_lk_pos_eff ∈ Int = (d_lk_pfx_on ? d_lk_pfx_pos : d_lk_pos)

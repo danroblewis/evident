@@ -39,7 +39,8 @@ fsm DriverGuard
     gc_rnm ∈ String = match gc_r
         EIdent(s) ⇒ s
         _ ⇒ ""
-    gc_key ∈ String = "|" ++ substr(gc_rnm ++ "                               ", 0, 31)
+    gc_key ∈ String
+    FtiNameEntry(name ↦ gc_rnm, entry ↦ gc_key)
     gc_pos ∈ Int = index_of(ci_names, gc_key, 0)
     gc_hit ∈ Bool = (p_done ∧ (_pk_kind = 2) ∧ (¬pr_bad) ∧ gc_bin
         ∧ (gc_op matches OpImpl) ∧ (gc_rnm ≠ "") ∧ (gc_pos ≥ 0)
