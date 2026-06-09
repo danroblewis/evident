@@ -11,7 +11,8 @@
 --           the claim index, and the handle stack (justified §6.4).
 -- PRODUCES: the inline-frame stack (il_frames/il_binds/il_pfx/il_depth/
 --           il_cnt/il_tgt), the param-skip substate (il_ps/il_pd), the
---           slot-call walk (cw_st/cw_bare/cw_ty/cw_k/ts_pfx + cs_n0..n5),
+--           slot-call walk (cw_st/cw_bare/cw_ty/cw_k/ts_pfx + the cs
+--           slot-name registry),
 --           the current-frame binds peel (ilb_n0..n5 / ilb_h0..h5 — read
 --           by the classifier's no-redeclare rule), and the call-jump /
 --           frame-push-pop effects.
@@ -21,6 +22,8 @@
 --
 -- Claim-composition (slot-call + names-match `..` inlining). Lifted into
 -- driver_main via `..DriverCompose`.
+type CSlot(name ∈ String)
+
 fsm DriverCompose
     il_frames ∈ C2Frames
     il_binds ∈ C2Binds
@@ -35,12 +38,8 @@ fsm DriverCompose
     cw_ty ∈ Bool
     ts_pfx ∈ String
     cw_k ∈ Int
-    cs_n0 ∈ String
-    cs_n1 ∈ String
-    cs_n2 ∈ String
-    cs_n3 ∈ String
-    cs_n4 ∈ String
-    cs_n5 ∈ String
+    cs ∈ Seq(CSlot)
+    #cs ≤ 6
 
     ilb_n0 ∈ String = match _il_binds
         CBCons(n, _, _) ⇒ n
@@ -136,18 +135,18 @@ fsm DriverCompose
     b_h3 ∈ Int = (_cw_k = 4 ? d_h_top : _cw_k = 5 ? d_h_2nd : d_h_3rd)
     b_h4 ∈ Int = (_cw_k = 5 ? d_h_top : d_h_2nd)
     b_h5 ∈ Int = d_h_top
-    il_binds_new ∈ C2Binds = (_cw_k = 1 ? CBCons(_cs_n0, b_h0, CBNil)
-        : _cw_k = 2 ? CBCons(_cs_n0, b_h0, CBCons(_cs_n1, b_h1, CBNil))
-        : _cw_k = 3 ? CBCons(_cs_n0, b_h0, CBCons(_cs_n1, b_h1,
-            CBCons(_cs_n2, b_h2, CBNil)))
-        : _cw_k = 4 ? CBCons(_cs_n0, b_h0, CBCons(_cs_n1, b_h1,
-            CBCons(_cs_n2, b_h2, CBCons(_cs_n3, b_h3, CBNil))))
-        : _cw_k = 5 ? CBCons(_cs_n0, b_h0, CBCons(_cs_n1, b_h1,
-            CBCons(_cs_n2, b_h2, CBCons(_cs_n3, b_h3,
-            CBCons(_cs_n4, b_h4, CBNil)))))
-        : _cw_k = 6 ? CBCons(_cs_n0, b_h0, CBCons(_cs_n1, b_h1,
-            CBCons(_cs_n2, b_h2, CBCons(_cs_n3, b_h3,
-            CBCons(_cs_n4, b_h4, CBCons(_cs_n5, b_h5, CBNil))))))
+    il_binds_new ∈ C2Binds = (_cw_k = 1 ? CBCons(_cs[0].name, b_h0, CBNil)
+        : _cw_k = 2 ? CBCons(_cs[0].name, b_h0, CBCons(_cs[1].name, b_h1, CBNil))
+        : _cw_k = 3 ? CBCons(_cs[0].name, b_h0, CBCons(_cs[1].name, b_h1,
+            CBCons(_cs[2].name, b_h2, CBNil)))
+        : _cw_k = 4 ? CBCons(_cs[0].name, b_h0, CBCons(_cs[1].name, b_h1,
+            CBCons(_cs[2].name, b_h2, CBCons(_cs[3].name, b_h3, CBNil))))
+        : _cw_k = 5 ? CBCons(_cs[0].name, b_h0, CBCons(_cs[1].name, b_h1,
+            CBCons(_cs[2].name, b_h2, CBCons(_cs[3].name, b_h3,
+            CBCons(_cs[4].name, b_h4, CBNil)))))
+        : _cw_k = 6 ? CBCons(_cs[0].name, b_h0, CBCons(_cs[1].name, b_h1,
+            CBCons(_cs[2].name, b_h2, CBCons(_cs[3].name, b_h3,
+            CBCons(_cs[4].name, b_h4, CBCons(_cs[5].name, b_h5, CBNil))))))
         : CBNil)
     cw_pop_stk ∈ C2H = (_cw_k = 1 ? d_h_t1
         : _cw_k = 2 ? d_h_t2
@@ -158,32 +157,32 @@ fsm DriverCompose
         : d_hstk_in)
     il_pfx_new ∈ String = "__c" ++ str_from_int(_il_cnt) ++ "_"
     tyc_g5 ∈ C2Items = (_cw_k ≥ 6
-        ? C2ICons(C2DeclConst(_ts_pfx ++ _cs_n5, 0),
+        ? C2ICons(C2DeclConst(_ts_pfx ++ _cs[5].name, 0),
             C2ICons(C2PushH(b_h5), C2ICons(C2PinEq,
             C2ICons(C2AssertTop, C2INil))))
         : C2INil)
     tyc_g4 ∈ C2Items = (_cw_k ≥ 5
-        ? C2ICons(C2DeclConst(_ts_pfx ++ _cs_n4, 0),
+        ? C2ICons(C2DeclConst(_ts_pfx ++ _cs[4].name, 0),
             C2ICons(C2PushH(b_h4), C2ICons(C2PinEq,
             C2ICons(C2AssertTop, tyc_g5))))
         : tyc_g5)
     tyc_g3 ∈ C2Items = (_cw_k ≥ 4
-        ? C2ICons(C2DeclConst(_ts_pfx ++ _cs_n3, 0),
+        ? C2ICons(C2DeclConst(_ts_pfx ++ _cs[3].name, 0),
             C2ICons(C2PushH(b_h3), C2ICons(C2PinEq,
             C2ICons(C2AssertTop, tyc_g4))))
         : tyc_g4)
     tyc_g2 ∈ C2Items = (_cw_k ≥ 3
-        ? C2ICons(C2DeclConst(_ts_pfx ++ _cs_n2, 0),
+        ? C2ICons(C2DeclConst(_ts_pfx ++ _cs[2].name, 0),
             C2ICons(C2PushH(b_h2), C2ICons(C2PinEq,
             C2ICons(C2AssertTop, tyc_g3))))
         : tyc_g3)
     tyc_g1 ∈ C2Items = (_cw_k ≥ 2
-        ? C2ICons(C2DeclConst(_ts_pfx ++ _cs_n1, 0),
+        ? C2ICons(C2DeclConst(_ts_pfx ++ _cs[1].name, 0),
             C2ICons(C2PushH(b_h1), C2ICons(C2PinEq,
             C2ICons(C2AssertTop, tyc_g2))))
         : tyc_g2)
     tyc_items ∈ C2Items = (_cw_k ≥ 1
-        ? C2ICons(C2DeclConst(_ts_pfx ++ _cs_n0, 0),
+        ? C2ICons(C2DeclConst(_ts_pfx ++ _cs[0].name, 0),
             C2ICons(C2PushH(b_h0), C2ICons(C2PinEq,
             C2ICons(C2AssertTop, tyc_g1))))
         : C2INil)
@@ -277,9 +276,4 @@ fsm DriverCompose
         : (c_comp_call ∨ c_ty_call) ? 0
         : cw_vdone ? _cw_k + 1
         : _cw_k)
-    cs_n0 = (is_first_tick ? "" : (cw_slot ∧ _cw_k = 0) ? cw_slot_nm : _cs_n0)
-    cs_n1 = (is_first_tick ? "" : (cw_slot ∧ _cw_k = 1) ? cw_slot_nm : _cs_n1)
-    cs_n2 = (is_first_tick ? "" : (cw_slot ∧ _cw_k = 2) ? cw_slot_nm : _cs_n2)
-    cs_n3 = (is_first_tick ? "" : (cw_slot ∧ _cw_k = 3) ? cw_slot_nm : _cs_n3)
-    cs_n4 = (is_first_tick ? "" : (cw_slot ∧ _cw_k = 4) ? cw_slot_nm : _cs_n4)
-    cs_n5 = (is_first_tick ? "" : (cw_slot ∧ _cw_k = 5) ? cw_slot_nm : _cs_n5)
+    ∀ k ∈ {0..5} : cs[k].name = (is_first_tick ? "" : (cw_slot ∧ _cw_k = k) ? cw_slot_nm : _cs[k].name)

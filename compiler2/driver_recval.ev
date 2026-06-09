@@ -5,7 +5,7 @@
 -- PRODUCES: d_rv_items (the C2RecVal expansion — the record value as a
 --           ctor app over its flattened dotted-const segments) and
 --           d_rdc_items (the C2RecDecl expansion — the declarations of
---           those dotted consts), plus the rv_field*/rdc_* intermediates.
+--           those dotted consts), plus the rv_fields/rdc_sc intermediates.
 -- MAINTAINS: pure per-tick lowering, no carry. Both expansions handle
 --           ≤6 fields; a record-typed field recurses one C2RecVal /
 --           C2RecDecl level (the work-item walk is the recursion); a
@@ -19,48 +19,29 @@ fsm DriverRecVal
     d_rv_t ∈ String = (d_rv_k = 0 ? rt_e0.ftypes : d_rv_k = 1 ? rt_e1.ftypes : rt_e2.ftypes)
     d_rv_n ∈ Int = (d_rv_k = 0 ? rt_e0.nf : d_rv_k = 1 ? rt_e1.nf : rt_e2.nf)
     d_rv_ctor ∈ Int = (d_rv_k = 0 ? rt_e0.ctor : d_rv_k = 1 ? rt_e1.ctor : rt_e2.ctor)
-    rv_field0 ∈ RecField
-    RtRecName(s ↦ d_rv_f, i ↦ 0, name ↦ rv_field0.name)
-    RtRecName(s ↦ d_rv_t, i ↦ 0, name ↦ rv_field0.ty)
-    RtIdxOf(nm ↦ rv_field0.ty, e0 ↦ rt_e0, e1 ↦ rt_e1, e2 ↦ rt_e2, idx ↦ rv_field0.kidx)
-    rv_field1 ∈ RecField
-    RtRecName(s ↦ d_rv_f, i ↦ 1, name ↦ rv_field1.name)
-    RtRecName(s ↦ d_rv_t, i ↦ 1, name ↦ rv_field1.ty)
-    RtIdxOf(nm ↦ rv_field1.ty, e0 ↦ rt_e0, e1 ↦ rt_e1, e2 ↦ rt_e2, idx ↦ rv_field1.kidx)
-    rv_field2 ∈ RecField
-    RtRecName(s ↦ d_rv_f, i ↦ 2, name ↦ rv_field2.name)
-    RtRecName(s ↦ d_rv_t, i ↦ 2, name ↦ rv_field2.ty)
-    RtIdxOf(nm ↦ rv_field2.ty, e0 ↦ rt_e0, e1 ↦ rt_e1, e2 ↦ rt_e2, idx ↦ rv_field2.kidx)
-    rv_field3 ∈ RecField
-    RtRecName(s ↦ d_rv_f, i ↦ 3, name ↦ rv_field3.name)
-    RtRecName(s ↦ d_rv_t, i ↦ 3, name ↦ rv_field3.ty)
-    RtIdxOf(nm ↦ rv_field3.ty, e0 ↦ rt_e0, e1 ↦ rt_e1, e2 ↦ rt_e2, idx ↦ rv_field3.kidx)
-    rv_field4 ∈ RecField
-    RtRecName(s ↦ d_rv_f, i ↦ 4, name ↦ rv_field4.name)
-    RtRecName(s ↦ d_rv_t, i ↦ 4, name ↦ rv_field4.ty)
-    RtIdxOf(nm ↦ rv_field4.ty, e0 ↦ rt_e0, e1 ↦ rt_e1, e2 ↦ rt_e2, idx ↦ rv_field4.kidx)
-    rv_field5 ∈ RecField
-    RtRecName(s ↦ d_rv_f, i ↦ 5, name ↦ rv_field5.name)
-    RtRecName(s ↦ d_rv_t, i ↦ 5, name ↦ rv_field5.ty)
-    RtIdxOf(nm ↦ rv_field5.ty, e0 ↦ rt_e0, e1 ↦ rt_e1, e2 ↦ rt_e2, idx ↦ rv_field5.kidx)
-    rv_seg0 ∈ C2Item = (rv_field0.kidx ≥ 0
-        ? C2RecVal(d_rv_nm ++ "." ++ rv_field0.name, rv_field0.kidx)
-        : C2Process(EIdent(d_rv_nm ++ "." ++ rv_field0.name)))
-    rv_seg1 ∈ C2Item = (rv_field1.kidx ≥ 0
-        ? C2RecVal(d_rv_nm ++ "." ++ rv_field1.name, rv_field1.kidx)
-        : C2Process(EIdent(d_rv_nm ++ "." ++ rv_field1.name)))
-    rv_seg2 ∈ C2Item = (rv_field2.kidx ≥ 0
-        ? C2RecVal(d_rv_nm ++ "." ++ rv_field2.name, rv_field2.kidx)
-        : C2Process(EIdent(d_rv_nm ++ "." ++ rv_field2.name)))
-    rv_seg3 ∈ C2Item = (rv_field3.kidx ≥ 0
-        ? C2RecVal(d_rv_nm ++ "." ++ rv_field3.name, rv_field3.kidx)
-        : C2Process(EIdent(d_rv_nm ++ "." ++ rv_field3.name)))
-    rv_seg4 ∈ C2Item = (rv_field4.kidx ≥ 0
-        ? C2RecVal(d_rv_nm ++ "." ++ rv_field4.name, rv_field4.kidx)
-        : C2Process(EIdent(d_rv_nm ++ "." ++ rv_field4.name)))
-    rv_seg5 ∈ C2Item = (rv_field5.kidx ≥ 0
-        ? C2RecVal(d_rv_nm ++ "." ++ rv_field5.name, rv_field5.kidx)
-        : C2Process(EIdent(d_rv_nm ++ "." ++ rv_field5.name)))
+    rv_fields ∈ Seq(RecField)
+    #rv_fields ≤ 6
+    ∀ k ∈ {0..5} : RtRecName(s ↦ d_rv_f, i ↦ k, name ↦ rv_fields[k].name)
+    ∀ k ∈ {0..5} : RtRecName(s ↦ d_rv_t, i ↦ k, name ↦ rv_fields[k].ty)
+    ∀ k ∈ {0..5} : RtIdxOf(nm ↦ rv_fields[k].ty, e0 ↦ rt_e0, e1 ↦ rt_e1, e2 ↦ rt_e2, idx ↦ rv_fields[k].kidx)
+    rv_seg0 ∈ C2Item = (rv_fields[0].kidx ≥ 0
+        ? C2RecVal(d_rv_nm ++ "." ++ rv_fields[0].name, rv_fields[0].kidx)
+        : C2Process(EIdent(d_rv_nm ++ "." ++ rv_fields[0].name)))
+    rv_seg1 ∈ C2Item = (rv_fields[1].kidx ≥ 0
+        ? C2RecVal(d_rv_nm ++ "." ++ rv_fields[1].name, rv_fields[1].kidx)
+        : C2Process(EIdent(d_rv_nm ++ "." ++ rv_fields[1].name)))
+    rv_seg2 ∈ C2Item = (rv_fields[2].kidx ≥ 0
+        ? C2RecVal(d_rv_nm ++ "." ++ rv_fields[2].name, rv_fields[2].kidx)
+        : C2Process(EIdent(d_rv_nm ++ "." ++ rv_fields[2].name)))
+    rv_seg3 ∈ C2Item = (rv_fields[3].kidx ≥ 0
+        ? C2RecVal(d_rv_nm ++ "." ++ rv_fields[3].name, rv_fields[3].kidx)
+        : C2Process(EIdent(d_rv_nm ++ "." ++ rv_fields[3].name)))
+    rv_seg4 ∈ C2Item = (rv_fields[4].kidx ≥ 0
+        ? C2RecVal(d_rv_nm ++ "." ++ rv_fields[4].name, rv_fields[4].kidx)
+        : C2Process(EIdent(d_rv_nm ++ "." ++ rv_fields[4].name)))
+    rv_seg5 ∈ C2Item = (rv_fields[5].kidx ≥ 0
+        ? C2RecVal(d_rv_nm ++ "." ++ rv_fields[5].name, rv_fields[5].kidx)
+        : C2Process(EIdent(d_rv_nm ++ "." ++ rv_fields[5].name)))
     rv_tail ∈ C2Items = C2ICons(C2App(d_rv_ctor, d_rv_n), d_wtail)
     d_rv_items ∈ C2Items = (d_rv_n = 1
             ? C2ICons(rv_seg0, rv_tail)
@@ -77,39 +58,30 @@ fsm DriverRecVal
         : C2ICons(rv_seg0, C2ICons(rv_seg1, C2ICons(rv_seg2,
             C2ICons(rv_seg3, C2ICons(rv_seg4, C2ICons(rv_seg5,
             rv_tail)))))))
-    rdc_sc0 ∈ Int = (rv_field0.ty = "Bool" ? 1 : rv_field0.ty = "String" ? 3
-        : rv_field0.ty = "Real" ? 6 : 0)
-    rdc_sc1 ∈ Int = (rv_field1.ty = "Bool" ? 1 : rv_field1.ty = "String" ? 3
-        : rv_field1.ty = "Real" ? 6 : 0)
-    rdc_sc2 ∈ Int = (rv_field2.ty = "Bool" ? 1 : rv_field2.ty = "String" ? 3
-        : rv_field2.ty = "Real" ? 6 : 0)
-    rdc_sc3 ∈ Int = (rv_field3.ty = "Bool" ? 1 : rv_field3.ty = "String" ? 3
-        : rv_field3.ty = "Real" ? 6 : 0)
-    rdc_sc4 ∈ Int = (rv_field4.ty = "Bool" ? 1 : rv_field4.ty = "String" ? 3
-        : rv_field4.ty = "Real" ? 6 : 0)
-    rdc_sc5 ∈ Int = (rv_field5.ty = "Bool" ? 1 : rv_field5.ty = "String" ? 3
-        : rv_field5.ty = "Real" ? 6 : 0)
-    rdc_t5 ∈ C2Items = ((d_rv_n < 6 ∨ rv_field5.ty = "Seq(Int)") ? d_wtail
-        : rv_field5.kidx ≥ 0 ? C2ICons(C2RecDecl(d_rv_nm ++ "." ++ rv_field5.name, rv_field5.kidx), d_wtail)
-        : C2ICons(C2DeclConst(d_rv_nm ++ "." ++ rv_field5.name, rdc_sc5),
+    rdc_sc ∈ Seq(Int)
+    #rdc_sc ≤ 6
+    ∀ k ∈ {0..5} : rdc_sc[k] = (rv_fields[k].ty = "Bool" ? 1 : rv_fields[k].ty = "String" ? 3 : rv_fields[k].ty = "Real" ? 6 : 0)
+    rdc_t5 ∈ C2Items = ((d_rv_n < 6 ∨ rv_fields[5].ty = "Seq(Int)") ? d_wtail
+        : rv_fields[5].kidx ≥ 0 ? C2ICons(C2RecDecl(d_rv_nm ++ "." ++ rv_fields[5].name, rv_fields[5].kidx), d_wtail)
+        : C2ICons(C2DeclConst(d_rv_nm ++ "." ++ rv_fields[5].name, rdc_sc[5]),
             C2ICons(C2Drop, d_wtail)))
-    rdc_t4 ∈ C2Items = ((d_rv_n < 5 ∨ rv_field4.ty = "Seq(Int)") ? rdc_t5
-        : rv_field4.kidx ≥ 0 ? C2ICons(C2RecDecl(d_rv_nm ++ "." ++ rv_field4.name, rv_field4.kidx), rdc_t5)
-        : C2ICons(C2DeclConst(d_rv_nm ++ "." ++ rv_field4.name, rdc_sc4),
+    rdc_t4 ∈ C2Items = ((d_rv_n < 5 ∨ rv_fields[4].ty = "Seq(Int)") ? rdc_t5
+        : rv_fields[4].kidx ≥ 0 ? C2ICons(C2RecDecl(d_rv_nm ++ "." ++ rv_fields[4].name, rv_fields[4].kidx), rdc_t5)
+        : C2ICons(C2DeclConst(d_rv_nm ++ "." ++ rv_fields[4].name, rdc_sc[4]),
             C2ICons(C2Drop, rdc_t5)))
-    rdc_t3 ∈ C2Items = ((d_rv_n < 4 ∨ rv_field3.ty = "Seq(Int)") ? rdc_t4
-        : rv_field3.kidx ≥ 0 ? C2ICons(C2RecDecl(d_rv_nm ++ "." ++ rv_field3.name, rv_field3.kidx), rdc_t4)
-        : C2ICons(C2DeclConst(d_rv_nm ++ "." ++ rv_field3.name, rdc_sc3),
+    rdc_t3 ∈ C2Items = ((d_rv_n < 4 ∨ rv_fields[3].ty = "Seq(Int)") ? rdc_t4
+        : rv_fields[3].kidx ≥ 0 ? C2ICons(C2RecDecl(d_rv_nm ++ "." ++ rv_fields[3].name, rv_fields[3].kidx), rdc_t4)
+        : C2ICons(C2DeclConst(d_rv_nm ++ "." ++ rv_fields[3].name, rdc_sc[3]),
             C2ICons(C2Drop, rdc_t4)))
-    rdc_t2 ∈ C2Items = ((d_rv_n < 3 ∨ rv_field2.ty = "Seq(Int)") ? rdc_t3
-        : rv_field2.kidx ≥ 0 ? C2ICons(C2RecDecl(d_rv_nm ++ "." ++ rv_field2.name, rv_field2.kidx), rdc_t3)
-        : C2ICons(C2DeclConst(d_rv_nm ++ "." ++ rv_field2.name, rdc_sc2),
+    rdc_t2 ∈ C2Items = ((d_rv_n < 3 ∨ rv_fields[2].ty = "Seq(Int)") ? rdc_t3
+        : rv_fields[2].kidx ≥ 0 ? C2ICons(C2RecDecl(d_rv_nm ++ "." ++ rv_fields[2].name, rv_fields[2].kidx), rdc_t3)
+        : C2ICons(C2DeclConst(d_rv_nm ++ "." ++ rv_fields[2].name, rdc_sc[2]),
             C2ICons(C2Drop, rdc_t3)))
-    rdc_t1 ∈ C2Items = ((d_rv_n < 2 ∨ rv_field1.ty = "Seq(Int)") ? rdc_t2
-        : rv_field1.kidx ≥ 0 ? C2ICons(C2RecDecl(d_rv_nm ++ "." ++ rv_field1.name, rv_field1.kidx), rdc_t2)
-        : C2ICons(C2DeclConst(d_rv_nm ++ "." ++ rv_field1.name, rdc_sc1),
+    rdc_t1 ∈ C2Items = ((d_rv_n < 2 ∨ rv_fields[1].ty = "Seq(Int)") ? rdc_t2
+        : rv_fields[1].kidx ≥ 0 ? C2ICons(C2RecDecl(d_rv_nm ++ "." ++ rv_fields[1].name, rv_fields[1].kidx), rdc_t2)
+        : C2ICons(C2DeclConst(d_rv_nm ++ "." ++ rv_fields[1].name, rdc_sc[1]),
             C2ICons(C2Drop, rdc_t2)))
-    d_rdc_items ∈ C2Items = ((d_rv_n < 1 ∨ rv_field0.ty = "Seq(Int)") ? rdc_t1
-        : rv_field0.kidx ≥ 0 ? C2ICons(C2RecDecl(d_rv_nm ++ "." ++ rv_field0.name, rv_field0.kidx), rdc_t1)
-        : C2ICons(C2DeclConst(d_rv_nm ++ "." ++ rv_field0.name, rdc_sc0),
+    d_rdc_items ∈ C2Items = ((d_rv_n < 1 ∨ rv_fields[0].ty = "Seq(Int)") ? rdc_t1
+        : rv_fields[0].kidx ≥ 0 ? C2ICons(C2RecDecl(d_rv_nm ++ "." ++ rv_fields[0].name, rv_fields[0].kidx), rdc_t1)
+        : C2ICons(C2DeclConst(d_rv_nm ++ "." ++ rv_fields[0].name, rdc_sc[0]),
             C2ICons(C2Drop, rdc_t1)))

@@ -20,6 +20,15 @@
 -- driver_main via `..DriverEnum`, so its act/step/src walk + the sort and
 -- decl registers become driver_main's own carried state-fields. The big
 -- act/step table below is the machine's spec.
+
+-- One per-field slot row for the variant being declared: the field's
+-- type string plus its resolved sort handle and self-reference flag.
+-- `efs ∈ Seq(EnumFieldSlot)`, `#efs ≤ 3`, pure per-tick (no length) —
+-- lowered to flat scalars by scripts/lower-bounded-seq.sh pre-oracle.
+-- The ref slots stay the scalar ed_fr0/1/2: ed_fr2 + ed_pack01 are
+-- read by driver_buildeff.ev under those names.
+type EnumFieldSlot(ty ∈ String, sort ∈ Int, is_self ∈ Bool)
+
 fsm DriverEnum
     -- ── ED — the enum-declaration machine ────────────────────────
     -- ONE FSM declares any enum (parsed EnumDeclAst data) in the
@@ -128,47 +137,38 @@ fsm DriverEnum
         EVNoVariant ⇒ ""
     ed_nullary ∈ Bool = (ed_n = 0)
 
-    ed_ty0 ∈ String
-    VariantFieldType(v ↦ ed_v, idx ↦ 0, ty ↦ ed_ty0)
-    ed_ty1 ∈ String
-    VariantFieldType(v ↦ ed_v, idx ↦ 1, ty ↦ ed_ty1)
-    ed_ty2 ∈ String
-    VariantFieldType(v ↦ ed_v, idx ↦ 2, ty ↦ ed_ty2)
-    ed_fs0 ∈ Int
+    efs ∈ Seq(EnumFieldSlot)
+    #efs ≤ 3
+    ∀ k ∈ {0..2} : VariantFieldType(v ↦ ed_v, idx ↦ k, ty ↦ efs[k].ty)
     ed_fr0 ∈ Int
-    ed_fself0 ∈ Bool
-    FieldSortSlot(enum_name ↦ _ed_name, ty ↦ ed_ty0,
+    FieldSortSlot(enum_name ↦ _ed_name, ty ↦ efs[0].ty,
         int_sort_h ↦ z3sorts.isort, bool_sort_h ↦ z3sorts.bsort, string_sort_h ↦ z3sorts.ssort,
         self_sort_idx ↦ 0,
-        sort_slot ↦ ed_fs0, ref_slot ↦ ed_fr0, is_self ↦ ed_fself0)
-    ed_fs1 ∈ Int
+        sort_slot ↦ efs[0].sort, ref_slot ↦ ed_fr0, is_self ↦ efs[0].is_self)
     ed_fr1 ∈ Int
-    ed_fself1 ∈ Bool
-    FieldSortSlot(enum_name ↦ _ed_name, ty ↦ ed_ty1,
+    FieldSortSlot(enum_name ↦ _ed_name, ty ↦ efs[1].ty,
         int_sort_h ↦ z3sorts.isort, bool_sort_h ↦ z3sorts.bsort, string_sort_h ↦ z3sorts.ssort,
         self_sort_idx ↦ 0,
-        sort_slot ↦ ed_fs1, ref_slot ↦ ed_fr1, is_self ↦ ed_fself1)
-    ed_fs2 ∈ Int
+        sort_slot ↦ efs[1].sort, ref_slot ↦ ed_fr1, is_self ↦ efs[1].is_self)
     ed_fr2 ∈ Int
-    ed_fself2 ∈ Bool
-    FieldSortSlot(enum_name ↦ _ed_name, ty ↦ ed_ty2,
+    FieldSortSlot(enum_name ↦ _ed_name, ty ↦ efs[2].ty,
         int_sort_h ↦ z3sorts.isort, bool_sort_h ↦ z3sorts.bsort, string_sort_h ↦ z3sorts.ssort,
         self_sort_idx ↦ 0,
-        sort_slot ↦ ed_fs2, ref_slot ↦ ed_fr2, is_self ↦ ed_fself2)
-    ed_slot0 ∈ Int = ((ed_fs0 ≠ 0 ∨ ed_fself0) ? ed_fs0
-        : ed_ty0 = "Real" ? z3sorts.rsort
-        : ed_ty0 = "LibArg" ? la_sort
-        : ed_ty0 = "Seq(LibArg)" ? sq_sort
+        sort_slot ↦ efs[2].sort, ref_slot ↦ ed_fr2, is_self ↦ efs[2].is_self)
+    ed_slot0 ∈ Int = ((efs[0].sort ≠ 0 ∨ efs[0].is_self) ? efs[0].sort
+        : efs[0].ty = "Real" ? z3sorts.rsort
+        : efs[0].ty = "LibArg" ? la_sort
+        : efs[0].ty = "Seq(LibArg)" ? sq_sort
         : 0)
-    ed_slot1 ∈ Int = ((ed_fs1 ≠ 0 ∨ ed_fself1) ? ed_fs1
-        : ed_ty1 = "Real" ? z3sorts.rsort
-        : ed_ty1 = "LibArg" ? la_sort
-        : ed_ty1 = "Seq(LibArg)" ? sq_sort
+    ed_slot1 ∈ Int = ((efs[1].sort ≠ 0 ∨ efs[1].is_self) ? efs[1].sort
+        : efs[1].ty = "Real" ? z3sorts.rsort
+        : efs[1].ty = "LibArg" ? la_sort
+        : efs[1].ty = "Seq(LibArg)" ? sq_sort
         : 0)
-    ed_slot2 ∈ Int = ((ed_fs2 ≠ 0 ∨ ed_fself2) ? ed_fs2
-        : ed_ty2 = "Real" ? z3sorts.rsort
-        : ed_ty2 = "LibArg" ? la_sort
-        : ed_ty2 = "Seq(LibArg)" ? sq_sort
+    ed_slot2 ∈ Int = ((efs[2].sort ≠ 0 ∨ efs[2].is_self) ? efs[2].sort
+        : efs[2].ty = "Real" ? z3sorts.rsort
+        : efs[2].ty = "LibArg" ? la_sort
+        : efs[2].ty = "Seq(LibArg)" ? sq_sort
         : 0)
     ed_pack01 ∈ Int
     SortRefsPack2(ref_lo ↦ ed_fr0, ref_hi ↦ ed_fr1, packed ↦ ed_pack01)

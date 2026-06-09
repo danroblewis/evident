@@ -38,6 +38,8 @@
 import "compiler/parser.ev"
 import "stdlib/kernel.ev"
 
+type EqPlanSlot(addr ∈ Int, in_range ∈ Bool, is_last ∈ Bool, needs_and ∈ Bool)
+
 claim RecordRecvBuildZ3(
         ctx_h ∈ Int, record_sort_h ∈ Int, sym_h ∈ Int,
         e ∈ Expr, eff ∈ Effect, ok ∈ Bool)
@@ -78,23 +80,19 @@ claim RecordEqPlan(
     needs_and = (n_fields > 1)
 
 claim translate2_record_probe
-    addr0 ∈ Int
-    in0, last0, and0 ∈ Bool
+    plan ∈ Seq(EqPlanSlot)
+    #plan ≤ 3
     RecordEqPlan(n_fields ↦ 2, accessors_arr_p ↦ 1000, idx ↦ 0,
-        acc_slot_addr ↦ addr0, in_range ↦ in0, is_last ↦ last0,
-        needs_and ↦ and0)
+        acc_slot_addr ↦ plan[0].addr, in_range ↦ plan[0].in_range,
+        is_last ↦ plan[0].is_last, needs_and ↦ plan[0].needs_and)
 
-    addr1 ∈ Int
-    in1, last1, and1 ∈ Bool
     RecordEqPlan(n_fields ↦ 2, accessors_arr_p ↦ 1000, idx ↦ 1,
-        acc_slot_addr ↦ addr1, in_range ↦ in1, is_last ↦ last1,
-        needs_and ↦ and1)
+        acc_slot_addr ↦ plan[1].addr, in_range ↦ plan[1].in_range,
+        is_last ↦ plan[1].is_last, needs_and ↦ plan[1].needs_and)
 
-    addr2 ∈ Int
-    in2, last2, and2 ∈ Bool
     RecordEqPlan(n_fields ↦ 2, accessors_arr_p ↦ 1000, idx ↦ 2,
-        acc_slot_addr ↦ addr2, in_range ↦ in2, is_last ↦ last2,
-        needs_and ↦ and2)
+        acc_slot_addr ↦ plan[2].addr, in_range ↦ plan[2].in_range,
+        is_last ↦ plan[2].is_last, needs_and ↦ plan[2].needs_and)
 
     addr_s ∈ Int
     in_s, last_s, and_s ∈ Bool
@@ -102,9 +100,9 @@ claim translate2_record_probe
         acc_slot_addr ↦ addr_s, in_range ↦ in_s, is_last ↦ last_s,
         needs_and ↦ and_s)
 
-    plan_ok ∈ Bool = ((addr0 = 1000) ∧ in0 ∧ ¬last0 ∧ and0
-        ∧ (addr1 = 1008) ∧ in1 ∧ last1
-        ∧ ¬in2
+    plan_ok ∈ Bool = ((plan[0].addr = 1000) ∧ plan[0].in_range ∧ ¬plan[0].is_last ∧ plan[0].needs_and
+        ∧ (plan[1].addr = 1008) ∧ plan[1].in_range ∧ plan[1].is_last
+        ∧ ¬plan[2].in_range
         ∧ in_s ∧ last_s ∧ ¬and_s)
 
     effects ∈ Seq(Effect) = ⟨Exit(plan_ok ? 0 : 1)⟩

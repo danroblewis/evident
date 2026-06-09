@@ -23,6 +23,8 @@
 -- the field count, and the Z3 handles (sort / ctor decl / array sort /
 -- set sort / ≤ 6 accessor decls a0..a5).
 
+type RcParam(pname ∈ String)
+
 -- RtRecName: record i of a fixed-width string, trailing pad trimmed.
 claim RtRecName(s ∈ String, i ∈ Int, name ∈ String)
     rrn_raw ∈ String = substr(s, i * 32 + 1, 31)
@@ -82,9 +84,8 @@ fsm DriverRecord
     rc_on ∈ Bool
     rc_ok ∈ Bool
     rc_np ∈ Int
-    rc_p0 ∈ String
-    rc_p1 ∈ String
-    rc_p2 ∈ String
+    rc_p ∈ Seq(RcParam)
+    #rc_p ≤ 3
 
     rck ∈ Int = _rt_cnt - 1
     rc_name ∈ String = (rck = 0 ? rt_e0.name : rck = 1 ? rt_e1.name : rt_e2.name)
@@ -125,9 +126,9 @@ fsm DriverRecord
     rc_padv ∈ String = "                               "
     rcf_ty_norm ∈ String = (rcf_seq ? "Seq(Int)" : rcf_t2nm)
     rcf_rec_n ∈ String = "|" ++ substr(rcf_t0nm ++ rc_padv, 0, 31)
-    rcf_rec_p0 ∈ String = "|" ++ substr(_rc_p0 ++ rc_padv, 0, 31)
-    rcf_rec_p1 ∈ String = "|" ++ substr(_rc_p1 ++ rc_padv, 0, 31)
-    rcf_rec_p2 ∈ String = "|" ++ substr(_rc_p2 ++ rc_padv, 0, 31)
+    rcf_rec_p0 ∈ String = "|" ++ substr(_rc_p[0].pname ++ rc_padv, 0, 31)
+    rcf_rec_p1 ∈ String = "|" ++ substr(_rc_p[1].pname ++ rc_padv, 0, 31)
+    rcf_rec_p2 ∈ String = "|" ++ substr(_rc_p[2].pname ++ rc_padv, 0, 31)
     rcf_trec ∈ String = "|" ++ substr(rcf_ty_norm ++ rc_padv, 0, 31)
     rcf_lenrec ∈ String = "|" ++ substr((rcf_t0nm ++ "__len") ++ rc_padv, 0, 31)
     rcf_irec ∈ String = "|" ++ substr("Int" ++ rc_padv, 0, 31)
@@ -156,12 +157,7 @@ fsm DriverRecord
         : rcf_take ? 0
         : (rcf_pend ∧ _rc_np < 3) ? _rc_np + 1
         : _rc_np)
-    rc_p0 = (is_first_tick ? ""
-        : (rcf_pend ∧ _rc_np = 0) ? rcf_t0nm : _rc_p0)
-    rc_p1 = (is_first_tick ? ""
-        : (rcf_pend ∧ _rc_np = 1) ? rcf_t0nm : _rc_p1)
-    rc_p2 = (is_first_tick ? ""
-        : (rcf_pend ∧ _rc_np = 2) ? rcf_t0nm : _rc_p2)
+    ∀ k ∈ {0..2} : rc_p[k].pname = (is_first_tick ? "" : (rcf_pend ∧ _rc_np = k) ? rcf_t0nm : _rc_p[k].pname)
 
     rt_cnt = (is_first_tick ? 0 : rc_start ? _rt_cnt + 1 : _rt_cnt)
     rt_e0.name = (is_first_tick ? "" : (rc_start ∧ _rt_cnt = 0) ? d_cl_name : _rt_e0.name)
@@ -180,12 +176,8 @@ fsm DriverRecord
     rd_st ∈ Int
     rd_fi ∈ Int
     rd_hn ∈ Int
-    rd_hf0 ∈ Int
-    rd_hf1 ∈ Int
-    rd_hf2 ∈ Int
-    rd_hf3 ∈ Int
-    rd_hf4 ∈ Int
-    rd_hf5 ∈ Int
+    rd_hf ∈ Seq(Int)
+    #rd_hf ≤ 6
 
     rd_go ∈ Bool = (d_skip_stop ∧ _rc_on ∧ _rc_ok ∧ (rck ≥ 0)
         ∧ (rc_nf > 0))
@@ -214,18 +206,7 @@ fsm DriverRecord
     rd_cap ∈ Bool = rd_prev
     rd_hn = (is_first_tick ? 0
         : (rd_cap ∧ _rd_st = 0) ? d_cap_int : _rd_hn)
-    rd_hf0 = (is_first_tick ? 0
-        : (rd_cap ∧ _rd_st = 1 ∧ _rd_fi = 0) ? d_cap_int : _rd_hf0)
-    rd_hf1 = (is_first_tick ? 0
-        : (rd_cap ∧ _rd_st = 1 ∧ _rd_fi = 1) ? d_cap_int : _rd_hf1)
-    rd_hf2 = (is_first_tick ? 0
-        : (rd_cap ∧ _rd_st = 1 ∧ _rd_fi = 2) ? d_cap_int : _rd_hf2)
-    rd_hf3 = (is_first_tick ? 0
-        : (rd_cap ∧ _rd_st = 1 ∧ _rd_fi = 3) ? d_cap_int : _rd_hf3)
-    rd_hf4 = (is_first_tick ? 0
-        : (rd_cap ∧ _rd_st = 1 ∧ _rd_fi = 4) ? d_cap_int : _rd_hf4)
-    rd_hf5 = (is_first_tick ? 0
-        : (rd_cap ∧ _rd_st = 1 ∧ _rd_fi = 5) ? d_cap_int : _rd_hf5)
+    ∀ k ∈ {0..5} : rd_hf[k] = (is_first_tick ? 0 : (rd_cap ∧ _rd_st = 1 ∧ _rd_fi = k) ? d_cap_int : _rd_hf[k])
     rd_sort_cap ∈ Bool = (rd_cap ∧ _rd_st = 3)
     rd_ctor_cap ∈ Bool = (rd_cap ∧ _rd_st = 4)
     rd_acc_cap ∈ Bool = (rd_cap ∧ _rd_st = 5)
@@ -271,12 +252,9 @@ fsm DriverRecord
     rd_eff_fi ∈ Int = (rd_go ? 0 : rd_cur_fi)
     rdf_name ∈ String
     RtRecName(s ↦ rc_f, i ↦ rd_eff_fi, name ↦ rdf_name)
-    rd_hfu0 ∈ Int = ((rd_cap ∧ _rd_st = 1 ∧ _rd_fi = 0) ? d_cap_int : _rd_hf0)
-    rd_hfu1 ∈ Int = ((rd_cap ∧ _rd_st = 1 ∧ _rd_fi = 1) ? d_cap_int : _rd_hf1)
-    rd_hfu2 ∈ Int = ((rd_cap ∧ _rd_st = 1 ∧ _rd_fi = 2) ? d_cap_int : _rd_hf2)
-    rd_hfu3 ∈ Int = ((rd_cap ∧ _rd_st = 1 ∧ _rd_fi = 3) ? d_cap_int : _rd_hf3)
-    rd_hfu4 ∈ Int = ((rd_cap ∧ _rd_st = 1 ∧ _rd_fi = 4) ? d_cap_int : _rd_hf4)
-    rd_hfu5 ∈ Int = ((rd_cap ∧ _rd_st = 1 ∧ _rd_fi = 5) ? d_cap_int : _rd_hf5)
+    rd_hfu ∈ Seq(Int)
+    #rd_hfu ≤ 6
+    ∀ k ∈ {0..5} : rd_hfu[k] = ((rd_cap ∧ _rd_st = 1 ∧ _rd_fi = k) ? d_cap_int : _rd_hf[k])
     rdt_0 ∈ String
     RtRecName(s ↦ rc_t, i ↦ 0, name ↦ rdt_0)
     rdt_1 ∈ String
@@ -319,17 +297,17 @@ fsm DriverRecord
     rde_fsym ∈ Effect
     BuildZ3MkStringSymbol(ctx_h ↦ z3ctx.ctx, name ↦ rdf_name, eff ↦ rde_fsym)
     rde_wfn0 ∈ Effect
-    BuildMemWriteLong(addr ↦ rd_fn_p, value ↦ rd_hfu0, eff ↦ rde_wfn0)
+    BuildMemWriteLong(addr ↦ rd_fn_p, value ↦ rd_hfu[0], eff ↦ rde_wfn0)
     rde_wfn1 ∈ Effect
-    BuildMemWriteLong(addr ↦ rd_fn_p + 8, value ↦ rd_hfu1, eff ↦ rde_wfn1)
+    BuildMemWriteLong(addr ↦ rd_fn_p + 8, value ↦ rd_hfu[1], eff ↦ rde_wfn1)
     rde_wfn2 ∈ Effect
-    BuildMemWriteLong(addr ↦ rd_fn_p + 16, value ↦ rd_hfu2, eff ↦ rde_wfn2)
+    BuildMemWriteLong(addr ↦ rd_fn_p + 16, value ↦ rd_hfu[2], eff ↦ rde_wfn2)
     rde_wfn3 ∈ Effect
-    BuildMemWriteLong(addr ↦ rd_fn_p + 24, value ↦ rd_hfu3, eff ↦ rde_wfn3)
+    BuildMemWriteLong(addr ↦ rd_fn_p + 24, value ↦ rd_hfu[3], eff ↦ rde_wfn3)
     rde_wfn4 ∈ Effect
-    BuildMemWriteLong(addr ↦ rd_fn_p + 32, value ↦ rd_hfu4, eff ↦ rde_wfn4)
+    BuildMemWriteLong(addr ↦ rd_fn_p + 32, value ↦ rd_hfu[4], eff ↦ rde_wfn4)
     rde_wfn5 ∈ Effect
-    BuildMemWriteLong(addr ↦ rd_fn_p + 40, value ↦ rd_hfu5, eff ↦ rde_wfn5)
+    BuildMemWriteLong(addr ↦ rd_fn_p + 40, value ↦ rd_hfu[5], eff ↦ rde_wfn5)
     rde_wfs0 ∈ Effect
     BuildMemWriteLong(addr ↦ rd_fs_p, value ↦ rds_0, eff ↦ rde_wfs0)
     rde_wfs1 ∈ Effect
