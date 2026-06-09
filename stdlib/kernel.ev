@@ -10,11 +10,23 @@
 -- the int payload. No special-cased `exit` field anywhere.
 
 -- ── LibArg: argument shapes for the LibCall effect ──────────────
+--
+-- ArgRef(k) is the intra-tick handle chain (wave-5a blocker B1): it
+-- resolves to the result of effects[k] dispatched EARLIER in the SAME
+-- tick (k counts non-Exit effects from 0, the same indexing as next
+-- tick's last_results). An Int result feeds an int arg slot; a String
+-- result (ReadLine/ReadFile/__cstr) feeds a string slot. Referencing a
+-- not-yet-run effect (k ≥ the current position), or one that produced
+-- NoResult/EofResult/ErrorResult, makes THIS call's result an
+-- ErrorResult — same observable failure mode as any failed LibCall.
+-- With ArgRef even out-pointer C signatures compose in one tick:
+--   ⟨malloc(8), Z3_model_eval(…, ArgRef(0)), read_long(ArgRef(0))⟩
 
 enum LibArg =
     ArgInt(Int)
     ArgStr(String)
     ArgReal(Real)
+    ArgRef(Int)
 
 -- ── Effect: what the FSM emits per tick ─────────────────────────
 --
