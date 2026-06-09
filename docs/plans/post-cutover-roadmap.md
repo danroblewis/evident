@@ -136,3 +136,25 @@ sub-task. **Note the chicken-and-egg:** a compiler2 pass can lower bounded
 registries (compiled by the frozen oracle) until self-hosting closes the
 loop — so the registry cleanup is gated on this work, or done as interim
 `Array`+`len` until then.
+
+### Measured: carried registries resist records / Seq / passes alike (don't re-probe)
+Under the frozen oracle + functionizer (probed 2026-06-09), a *carried*
+collection of records or a *carried* `Seq`/Array+len cannot replace the
+hand-unrolled numbered scalars (`evt_n0..5`, `uev_*`, …) without a
+regression:
+- **Records as carried state** (`Seq(EnumVariantVal)` or 6 record slots) →
+  the oracle drops the `w_need` ternary (manifest already ~1505
+  state-fields; more carried field-consts tip the flatten/expand translator).
+- **`Seq` membership `∈` is dropped** by the oracle ("couldn't translate to
+  Bool") — and membership is the registry's core lookup. (`#`, `xs[i]`,
+  `∀`, `++` DO translate.)
+- **A carried `Seq` won't functionize** — "extract_program: an output had no
+  covering assignment", 9/9 residual, Z3 invoked every tick. Fatal in the
+  compiler's hot loop.
+So the numbered-scalar unroll is the ONLY carried-registry encoding that
+stays on the functionizer fast path today. The cleanups that DID land
+(`RecField`, `FtiNamedAppend`, `FtiNameEntry`) all apply to *pure per-tick*
+or *scalar-composition* shapes, never carried collections. The registry
+name-cleanup is therefore gated on this self-hosting pass-seam work (or an
+FTI-tape relocation à la the symbol table), not achievable as an interim
+Seq/Array swap.
