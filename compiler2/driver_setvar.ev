@@ -33,8 +33,8 @@ fsm DriverSetVar
     stv_cnt = (is_first_tick ? 0
         : (d_setmem ∧ _stv_cnt < 2) ? _stv_cnt + 1
         : _stv_cnt)
-    ∀ k ∈ {0..1} : stv[k].name = (is_first_tick ? "" : (d_setmem ∧ _stv_cnt = k) ? c_dname : _stv[k].name)
-    ∀ k ∈ {0..1} : stv[k].kidx = (is_first_tick ? 0 : (d_setmem ∧ _stv_cnt = k) ? c_sq_rt : _stv[k].kidx)
+    ∀ (k, e) ∈ stv : e.name = (is_first_tick ? "" : (d_setmem ∧ _stv_cnt = k) ? c_dname : _e.name)
+    ∀ (k, e) ∈ stv : e.kidx = (is_first_tick ? 0 : (d_setmem ∧ _stv_cnt = k) ? c_sq_rt : _e.kidx)
 
     c_stv_idx ∈ Int = ((c_name ≠ "" ∧ (_il_pfx ++ c_name) = stv[0].name) ? 0
         : (c_name ≠ "" ∧ (_il_pfx ++ c_name) = stv[1].name) ? 1
@@ -65,8 +65,8 @@ fsm DriverSetVar
     stl_close_items ∈ C2Items = C2ICons(C2PinEq,
         C2ICons(C2AssertTop, C2INil))
     stl_rec ∈ String = "|" ++ substr((_il_pfx ++ stl_enm) ++ rc_padv, 0, 31)
-    ∀ k ∈ {0..1} : stv[k].elems = (is_first_tick ? "" : (d_enter_stl ∧ c_stv_idx = k) ? "" : (stl_elem ∧ _sv_cur = k) ? _stv[k].elems ++ stl_rec : _stv[k].elems)
-    ∀ k ∈ {0..1} : stv[k].count = (is_first_tick ? 0 : (d_enter_stl ∧ c_stv_idx = k) ? 0 : (stl_elem ∧ _sv_cur = k) ? _stv[k].count + 1 : _stv[k].count)
+    ∀ (k, e) ∈ stv : e.elems = (is_first_tick ? "" : (d_enter_stl ∧ c_stv_idx = k) ? "" : (stl_elem ∧ _sv_cur = k) ? _e.elems ++ stl_rec : _e.elems)
+    ∀ (k, e) ∈ stv : e.count = (is_first_tick ? 0 : (d_enter_stl ∧ c_stv_idx = k) ? 0 : (stl_elem ∧ _sv_cur = k) ? _e.count + 1 : _e.count)
 
     c_smem_idx ∈ Int = ((c_type_str ≠ "" ∧ ((_il_pfx ++ c_type_str) = stv[0].name ∨ c_type_str = stv[0].name)) ? 0
         : (c_type_str ≠ "" ∧ ((_il_pfx ++ c_type_str) = stv[1].name ∨ c_type_str = stv[1].name)) ? 1
@@ -101,7 +101,7 @@ fsm DriverSetVar
     qset_tname ∈ String = (qset_tgt = 0 ? stv[0].name : stv[1].name)
     qset_enm ∈ Seq(QsetName)
     #qset_enm ≤ 3
-    ∀ k ∈ {0..2} : RtRecName(s ↦ qset_e, i ↦ k, name ↦ qset_enm[k].name)
+    ∀ (k, e) ∈ qset_enm : RtRecName(s ↦ qset_e, i ↦ k, name ↦ e.name)
     qset_seg2 ∈ C2Items = (qset_c ≥ 3
         ? C2ICons(C2Process(EIdent(qset_tname)),
             C2ICons(C2RecVal(qset_enm[2].name, qset_k),

@@ -21,9 +21,9 @@ fsm DriverRecVal
     d_rv_ctor ∈ Int = (d_rv_k = 0 ? rt_e0.ctor : d_rv_k = 1 ? rt_e1.ctor : rt_e2.ctor)
     rv_fields ∈ Seq(RecField)
     #rv_fields ≤ 6
-    ∀ k ∈ {0..5} : RtRecName(s ↦ d_rv_f, i ↦ k, name ↦ rv_fields[k].name)
-    ∀ k ∈ {0..5} : RtRecName(s ↦ d_rv_t, i ↦ k, name ↦ rv_fields[k].ty)
-    ∀ k ∈ {0..5} : RtIdxOf(nm ↦ rv_fields[k].ty, e0 ↦ rt_e0, e1 ↦ rt_e1, e2 ↦ rt_e2, idx ↦ rv_fields[k].kidx)
+    ∀ (k, e) ∈ rv_fields : RtRecName(s ↦ d_rv_f, i ↦ k, name ↦ e.name)
+    ∀ (k, e) ∈ rv_fields : RtRecName(s ↦ d_rv_t, i ↦ k, name ↦ e.ty)
+    ∀ (k, e) ∈ rv_fields : RtIdxOf(nm ↦ e.ty, e0 ↦ rt_e0, e1 ↦ rt_e1, e2 ↦ rt_e2, idx ↦ e.kidx)
     rv_seg0 ∈ C2Item = (rv_fields[0].kidx ≥ 0
         ? C2RecVal(d_rv_nm ++ "." ++ rv_fields[0].name, rv_fields[0].kidx)
         : C2Process(EIdent(d_rv_nm ++ "." ++ rv_fields[0].name)))
@@ -60,7 +60,7 @@ fsm DriverRecVal
             rv_tail)))))))
     rdc_sc ∈ Seq(Int)
     #rdc_sc ≤ 6
-    ∀ k ∈ {0..5} : rdc_sc[k] = (rv_fields[k].ty = "Bool" ? 1 : rv_fields[k].ty = "String" ? 3 : rv_fields[k].ty = "Real" ? 6 : 0)
+    ∀ (sc, f) ∈ coindexed(rdc_sc, rv_fields) : sc = (f.ty = "Bool" ? 1 : f.ty = "String" ? 3 : f.ty = "Real" ? 6 : 0)
     rdc_t5 ∈ C2Items = ((d_rv_n < 6 ∨ rv_fields[5].ty = "Seq(Int)") ? d_wtail
         : rv_fields[5].kidx ≥ 0 ? C2ICons(C2RecDecl(d_rv_nm ++ "." ++ rv_fields[5].name, rv_fields[5].kidx), d_wtail)
         : C2ICons(C2DeclConst(d_rv_nm ++ "." ++ rv_fields[5].name, rdc_sc[5]),
