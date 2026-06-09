@@ -1,12 +1,7 @@
--- DriverMatchPin isolation — scrutinee recognition + capture.
---
--- Drives a pmode-6 match line whose scrutinee is the plain ident `e`
--- (in_parse, pmode 6, tok_ready held; ww_t0 = Ident, el_head_name "e").
--- From state 0 the walk must recognize mp_s_id, advance mp_st 0→1, and
--- capture mp_scrut = "e". We exit reporting mp_scrut once mp_st = 1. If
--- the scrutinee recognizer, the state advance, or the capture regresses,
--- the walk never reaches state 1 with scrut "e".
---
+-- DriverMatchPin isolation — scrutinee recognition + capture: a pmode-6
+-- match line whose scrutinee is the plain ident `e` (ww_t0 = Ident,
+-- el_head_name "e"). From state 0 the walk must recognize mp_s_id,
+-- advance mp_st 0→1, and capture mp_scrut = "e"; reported once mp_st = 1.
 -- entry: main
 -- expect: stdout = "e"
 -- expect: exit = 0

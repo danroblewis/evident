@@ -1,31 +1,13 @@
--- stdlib/z3_readback.ev — the kernel's MODEL-READBACK walks as Evident
--- sugar (wave 5a, after blocker B1 landed).
---
--- Where z3_core.ev wraps ONE LibCall per claim, these wrap a WALK: a
--- chain of calls whose later args reference earlier results in the
--- same tick via ArgRef (stdlib/kernel.ev's LibArg). Each claim mirrors
--- one of kernel/src/tick.rs's readback primitives:
---
---   Z3DeclNameChain    ←  decode_sym        (app → decl → symbol → name)
---   Z3NumeralI64Chain  ←  decode_int_literal (numeral → i64, out-ptr)
---   Z3StringLeafChain  ←  decode_string_literal (string ast → bytes)
---   Z3ModelEvalChain   ←  the model_eval out-ptr crossing
---
--- `base` is the position of the chain's FIRST effect within this tick's
--- effects Seq (the same indexing as next tick's last_results) — pass it
--- so the chain's internal ArgRefs resolve no matter where the chain is
--- spliced. Results land at fixed offsets from `base`, noted per claim.
---
--- NOT in the universal import path (same rationale as z3_core.ev):
--- import this only from programs that read Z3 models back.
+-- stdlib/z3_readback.ev — tick.rs's model-readback walks as ArgRef
+-- chain sugar (wave 5a B1). `base` = the chain's first position in this
+-- tick's effects Seq (same indexing as next tick's last_results); each
+-- claim notes where its result lands relative to `base`. Import only
+-- from programs that read Z3 models back.
 
 import "stdlib/kernel.ev"
 
--- ── decode_sym: an application's constructor/op name ─────────────
--- tick.rs: Z3_get_app_decl → Z3_get_decl_name → Z3_get_symbol_string
--- (char*) → copy. Four effects; the NAME lands as the StringResult at
--- last_results[base + 3]. Works on any app: a datatype value's variant
--- name ("IntResult", "Exit"), an operator ("=", "+"), a const's name.
+-- decode_sym: app → its constructor/op NAME, StringResult at
+-- last_results[base + 3].
 claim Z3DeclNameChain(ctx_h ∈ Int, app_h ∈ Int, base ∈ Int,
         e0 ∈ Effect, e1 ∈ Effect, e2 ∈ Effect, e3 ∈ Effect)
     e0 = LibCall("libz3", "Z3_get_app_decl", ⟨ArgInt(ctx_h), ArgInt(app_h)⟩)
@@ -33,10 +15,8 @@ claim Z3DeclNameChain(ctx_h ∈ Int, app_h ∈ Int, base ∈ Int,
     e2 = LibCall("libz3", "Z3_get_symbol_string", ⟨ArgInt(ctx_h), ArgRef(base + 1)⟩)
     e3 = LibCall("__cstr", "copy", ⟨ArgRef(base + 2)⟩)
 
--- ── decode_int_literal: a numeral ast → its i64 value ────────────
--- tick.rs: Z3_get_numeral_int64(ctx, ast, *out) — an out-pointer
--- signature, crossed with a malloc'd slot. Three effects; the VALUE
--- lands as the IntResult at last_results[base + 2].
+-- decode_int_literal (out-ptr crossing): numeral → i64, IntResult at
+-- last_results[base + 2].
 claim Z3NumeralI64Chain(ctx_h ∈ Int, ast_h ∈ Int, base ∈ Int,
         e0 ∈ Effect, e1 ∈ Effect, e2 ∈ Effect)
     e0 = LibCall("libc", "malloc", ⟨ArgInt(8)⟩)
@@ -44,19 +24,16 @@ claim Z3NumeralI64Chain(ctx_h ∈ Int, ast_h ∈ Int, base ∈ Int,
         ⟨ArgInt(ctx_h), ArgInt(ast_h), ArgRef(base)⟩)
     e2 = LibCall("__mem", "read_long", ⟨ArgRef(base)⟩)
 
--- ── decode_string_literal: a string ast → its bytes ──────────────
--- tick.rs: Z3_get_string (char*, ctx-owned) → copy. Two effects; the
--- STRING lands as the StringResult at last_results[base + 1].
+-- decode_string_literal: string ast → StringResult at
+-- last_results[base + 1].
 claim Z3StringLeafChain(ctx_h ∈ Int, ast_h ∈ Int, base ∈ Int,
         e0 ∈ Effect, e1 ∈ Effect)
     e0 = LibCall("libz3", "Z3_get_string", ⟨ArgInt(ctx_h), ArgInt(ast_h)⟩)
     e1 = LibCall("__cstr", "copy", ⟨ArgRef(base)⟩)
 
--- ── model_eval: a term's value in a model, as an ast handle ──────
--- tick.rs: Z3_model_eval(ctx, model, t, completion, *out) — the other
--- out-pointer crossing. Three effects; the EVALUATED AST handle lands
--- as the IntResult at last_results[base + 2]. Feed it to
--- Z3NumeralI64Chain / Z3StringLeafChain / Z3DeclNameChain next tick.
+-- model_eval (out-ptr crossing): term's value in a model as an ast
+-- handle, IntResult at last_results[base + 2]; feed to a leaf chain
+-- next tick.
 claim Z3ModelEvalChain(ctx_h ∈ Int, model_h ∈ Int, term_h ∈ Int, base ∈ Int,
         e0 ∈ Effect, e1 ∈ Effect, e2 ∈ Effect)
     e0 = LibCall("libc", "malloc", ⟨ArgInt(8)⟩)
@@ -64,15 +41,11 @@ claim Z3ModelEvalChain(ctx_h ∈ Int, model_h ∈ Int, term_h ∈ Int, base ∈ 
         ⟨ArgInt(ctx_h), ArgInt(model_h), ArgInt(term_h), ArgInt(1), ArgRef(base)⟩)
     e2 = LibCall("__mem", "read_long", ⟨ArgRef(base)⟩)
 
--- ── child walk: an application's i-th argument ───────────────────
--- tick.rs: Z3_get_app_arg(ctx, app, i) — the recursion step of every
--- decode. One effect; the CHILD ast handle lands at last_results[base].
+-- the child-walk recursion step: app's i-th arg at last_results[base].
 claim Z3AppArgStep(ctx_h ∈ Int, app_h ∈ Int, i ∈ Int, eff ∈ Effect)
     eff = LibCall("libz3", "Z3_get_app_arg",
         ⟨ArgInt(ctx_h), ArgInt(app_h), ArgInt(i)⟩)
 
--- ── arity probe: an application's argument count ─────────────────
--- tick.rs: Z3_get_app_num_args. One effect; the COUNT lands at
--- last_results[base].
+-- arity at last_results[base].
 claim Z3AppNumArgsStep(ctx_h ∈ Int, app_h ∈ Int, eff ∈ Effect)
     eff = LibCall("libz3", "Z3_get_app_num_args", ⟨ArgInt(ctx_h), ArgInt(app_h)⟩)

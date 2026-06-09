@@ -1,15 +1,8 @@
--- Compiler driver, ReadFile path — end-to-end proof that the UTF-8
--- state-carry fix unblocks the real self-hosted driver (compiler/compiler.ev).
---
--- Identical pipeline to tests/kernel/test_compiler_driver_mvp.ev, except the
--- source is READ FROM DISK (the `∈`-containing file
--- /tmp/evident_compiler_readfile_input.ev) and state-carried across ticks via
--- the `_input` pair — exactly compiler/compiler.ev's shape. The MVP fixture
--- carries the source as a String *constant* (recomputed each tick, immune to
--- the carry bug); this one exercises the carry that the bug used to corrupt.
---
--- Source (on disk): "claim main\n    x ∈ Int = 5"  →  byte-for-byte the same
--- SMT-LIB the constant-input MVP emits:
+-- ReadFile path: same pipeline as test_compiler_driver_mvp.ev, but the
+-- source is read from disk (an `∈`-containing file) and state-carried
+-- across ticks via the `_input` pair — exactly compiler/compiler.ev's
+-- shape. This exercises the carry the UTF-8 state-carry bug used to
+-- corrupt (the MVP fixture's constant input was immune).
 --
 -- expect: stdout = ";; manifest: state-fields = x:Int"
 -- expect: stdout = ";; manifest: effects-name = effects"

@@ -1,11 +1,7 @@
 -- DriverQuant isolation — range-quantifier header classification.
---
--- Pins the line head to `∀ x ∈ { 0 .. 9 }` (OpForall Ident OpIn LBrace
--- IntLit Dot Dot IntLit). The module must classify c_q_rng = true and
--- decode c_q_lo = 0, c_q_hi = 9. We report c_q_hi gated on c_q_rng, so the
--- output is "9" only when the range header is recognized and its bound
--- decoded. A regression in the range recognizer or the bound decode
--- changes the output.
+-- Line head pinned to `∀ x ∈ { 0 .. 9 }`; the module must classify
+-- c_q_rng = true and decode c_q_lo = 0, c_q_hi = 9. Output is "9" only
+-- when the range header is recognized and its bound decoded.
 --
 -- entry: main
 -- expect: stdout = "9"

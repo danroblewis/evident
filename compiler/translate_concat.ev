@@ -1,33 +1,15 @@
 -- WIP: replaces bootstrap/runtime/src/runtime/desugar.rs. STATUS: C13 `++` Seq-concat flattening; per-pass fixture only.
 --
--- Mirrors runtime/src/runtime/desugar.rs's `desugar_seq_concat`: walks
--- an Expr tree and turns nested `EBinOp(OpConcat, …)` chains into a
--- single flat list of operands.
---
--- For C13 acceptance we handle a 2-level flatten (root + one nested
--- OpConcat). Deeper nesting is the "drive recursion via a work-stack
--- in the caller" extension — same pattern as test_ast_walker / the
--- subscriptions/pretty stack-FSMs documented in docs/self-hosting.md.
---
--- The shape is:
---   * `ConcatFlatten(e, out)` — if e is `EBinOp(OpConcat, l, r)`, returns
---     the flat list of leaves (one extra level deep via ConcatFlattenLeaf);
---     otherwise returns a singleton list `ELCons(e, ELNil)`.
---   * `ConcatFlattenLeaf(e, out)` — single-level flatten used as the
---     recursion-base. For an OpConcat node, returns `[l, r]`; for atoms,
---     `[e]`. (No further descent — the caller's work-stack drives any
---     deeper recursion.)
---   * `AppendList(a, b, out)` — bounded list append used to splice the
---     left- and right-child flat lists; the input `a` is bounded to two
---     elements (enough for a 2-level flatten where each child is itself
---     at most a single OpConcat).
+-- Mirrors `desugar_seq_concat`: turns nested `EBinOp(OpConcat, …)`
+-- chains into a single flat operand list. Handles a 2-level flatten
+-- (root + one nested OpConcat per child); deeper nesting is driven by
+-- a work-stack in the caller.
 
 import "compiler/parser.ev"
 
 -- ── List append ────────────────────────────────────────────────
--- Bounded ExprList concatenation. `a` is assumed to have length ≤ 2
--- (sufficient for a 2-level ConcatFlatten; deeper nesting goes through
--- a work-stack in the caller).
+-- Bounded ExprList concatenation: `a` MUST have length ≤ 2 — elements
+-- past the second are silently dropped.
 
 claim AppendList
     a ∈ ExprList
@@ -52,9 +34,7 @@ claim AppendList
         : ELCons(al_a_head, ELCons(al_atail_head, b))))
 
 -- ── Single-level leaf flatten ─────────────────────────────────
--- The recursion base: handle one OpConcat node without further
--- descent. For `EBinOp(OpConcat, l, r)` returns `[l, r]`; for any
--- other shape (EInt, EIdent, non-concat EBinOp, …) returns `[e]`.
+-- Recursion base: one OpConcat node, no further descent.
 
 claim ConcatFlattenLeaf
     e ∈ Expr
@@ -73,13 +53,9 @@ claim ConcatFlattenLeaf
         : ELCons(e, ELNil))
 
 -- ── Two-level flatten ─────────────────────────────────────────
--- Top-level ConcatFlatten. For an OpConcat node, dispatches each
--- child to ConcatFlattenLeaf (one more level) and appends the two
--- flat lists. For an atom, returns a singleton list.
---
--- Total depth handled: the root + one nested OpConcat per child =
--- the canonical (a ++ b) ++ c shape. Deeper nesting is driven by a
--- work-stack in the caller (test fixture pattern).
+-- Total depth handled: root + one nested OpConcat per child = the
+-- canonical (a ++ b) ++ c shape. Deeper nesting is the caller's
+-- work-stack.
 
 claim ConcatFlatten
     e ∈ Expr

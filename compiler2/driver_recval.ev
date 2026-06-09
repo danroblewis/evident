@@ -15,9 +15,6 @@
 -- The record value/decl expansion. Lifted into driver_main via
 -- `..DriverRecVal`.
 fsm DriverRecVal
-    -- G2: C2RecVal expansion — a record IDENT's value as a ctor app
-    -- over its flattened dotted consts; a record-typed FIELD recurses
-    -- through a nested C2RecVal (the walk itself is the recursion).
     d_rv_f ∈ String = (d_rv_k = 0 ? rt_e0.fnames : d_rv_k = 1 ? rt_e1.fnames : rt_e2.fnames)
     d_rv_t ∈ String = (d_rv_k = 0 ? rt_e0.ftypes : d_rv_k = 1 ? rt_e1.ftypes : rt_e2.ftypes)
     d_rv_n ∈ Int = (d_rv_k = 0 ? rt_e0.nf : d_rv_k = 1 ? rt_e1.nf : rt_e2.nf)
@@ -80,12 +77,6 @@ fsm DriverRecVal
         : C2ICons(rv_seg0, C2ICons(rv_seg1, C2ICons(rv_seg2,
             C2ICons(rv_seg3, C2ICons(rv_seg4, C2ICons(rv_seg5,
             rv_tail)))))))
-    -- G2: C2RecDecl expansion — declare the dotted consts of a
-    -- record INSTANCE from the registry (bare type jumps: first-line
-    -- params have no body memberships to declare them). Scalar
-    -- fields declare directly; record fields recurse one C2RecDecl
-    -- level; Seq fields skip (the body's own seq membership declares
-    -- them).
     rdc_sc0 ∈ Int = (rv_field0.ty = "Bool" ? 1 : rv_field0.ty = "String" ? 3
         : rv_field0.ty = "Real" ? 6 : 0)
     rdc_sc1 ∈ Int = (rv_field1.ty = "Bool" ? 1 : rv_field1.ty = "String" ? 3

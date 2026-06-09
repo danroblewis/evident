@@ -1,19 +1,8 @@
 -- Phase C14: SMT-LIB manifest header emission.
 --
--- Builds a hardcoded StateFieldList with two fields:
---
---     SFLCons(SField("count", "Int"),
---             SFLCons(SField("buf", "String"),
---                     SFLNil))
---
--- and invokes ManifestHeader with max_effects = 4. The resulting
--- single String embeds four `\n` separators; one puts produces all
--- five output lines (the kernel test driver compares against the
--- `-- expect:` lines joined with `\n`).
---
--- This is the Evident-side counterpart of runtime/src/emit.rs's
--- manifest-prefix emitter — the missing piece called out by Phase C
--- of docs/plans/completion-roadmap.md.
+-- Invokes ManifestHeader on a two-field StateFieldList with
+-- max_effects = 4. The result is a single String with four embedded
+-- `\n` separators; one puts produces all five manifest lines.
 --
 -- expect: stdout = ";; manifest: state-fields = count:Int buf:String"
 -- expect: stdout = ";; manifest: effects-name = effects"

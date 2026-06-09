@@ -1,10 +1,6 @@
 -- Coverage test: every Z3 operator that Evident currently exposes via
 -- surface syntax or named-call form. A failing test here points at a
--- Z3 op that's MISSING from the Evident surface — the gap goes to a
--- new translate_*.rs case in bootstrap (and eventually to a built-in
--- claim in compiler/sample.ev). Goal 1 closes when this file is
--- fully green AND any future Z3 op the user wants is one
--- translate_*.rs case away.
+-- Z3 op that's MISSING from the Evident surface.
 
 -- ── Equality / arithmetic / comparison (SMT-LIB: =, +, -, *, /, mod) ──
 

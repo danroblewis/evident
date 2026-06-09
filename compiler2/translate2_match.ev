@@ -1,14 +1,10 @@
 -- compiler2/translate2_match.ev — match / matches → Z3-AST builders.
 --
--- compiler2 P2 pass (docs/plans/z3-ast-compiler2-plan.md). Replaces
--- the TEXT-emitting compiler/translate_match.ev (kept as reference
--- semantics): instead of rendering "(ite ((_ is Ctor) e) …)" strings,
--- each claim here wraps exactly ONE libz3 builder call into an
--- `eff ∈ Effect` slot, and the value flowing between steps is a
--- Z3_ast handle (i64 in Int state), captured from IntResult on the
--- tick AFTER the effect runs. Same claim convention as
--- compiler/translate_arith.ev's BuildZ3 claims and the stdlib
--- z3_{core,ops,datatypes}.ev sugar.
+-- Replaces the TEXT-emitting compiler/translate_match.ev (kept as
+-- reference semantics): each claim wraps exactly ONE libz3 builder
+-- call into an `eff ∈ Effect` slot; the value flowing between steps
+-- is a Z3_ast handle (i64 in Int state), captured from IntResult on
+-- the tick AFTER the effect runs.
 --
 -- Prerequisites the DRIVER owns (all proven in
 -- tests/kernel/z3_datatypes/sugar_datatypes.ev):
@@ -61,13 +57,11 @@
 --       else_h := MatchArmFoldBuildZ3(test_h, rhs_i, else_h)
 --   result := else_h                                   (after arm 1)
 --
--- Each fold step is one claim invocation = one libcall = one FSM
--- tick (plus the test-building tick before it); the handle returned
--- by tick N's mk_ite is captured at tick N+1 and threaded back in as
--- the next (outer) arm's else_h. Because mk_ite needs all three
--- operand handles up front, BOTH the arm's rhs handle and the
--- running else handle must already exist — hence right-to-left:
--- the innermost else is a leaf of the nesting and is built first.
+-- Each fold step is one libcall = one FSM tick (plus the
+-- test-building tick before it); tick N's mk_ite handle is captured
+-- at tick N+1 and threaded back as the next (outer) arm's else_h.
+-- mk_ite needs all three operand handles up front — hence
+-- right-to-left: the innermost else is built first.
 --
 -- Payload binding: for an arm `C(v) ⇒ rhs` the bound var v is NOT a
 -- Z3 const — wherever rhs mentions v, the driver substitutes the
@@ -77,48 +71,27 @@
 
 import "stdlib/kernel.ev"
 
--- ── (a) matches / ctor-arm test ──────────────────────────────────
--- `e matches C(_)` → Z3_mk_app(tester_decl, [e]) = ((_ is C) e).
--- Also the test half of a constructor arm in the match fold.
--- scrut_args_arr_p is the 1-slot args buffer holding the scrutinee
--- handle (see header). Returns a Bool-sorted Z3_ast handle.
 claim MatchesBuildZ3(ctx_h, tester_decl_h, scrut_args_arr_p ∈ Int, eff ∈ Effect)
     eff = LibCall("libz3", "Z3_mk_app",
         ⟨ArgInt(ctx_h), ArgInt(tester_decl_h), ArgInt(1),
          ArgInt(scrut_args_arr_p)⟩)
 
--- ── (b) one fold step of the match → nested-ite lowering ────────
--- Z3_mk_ite(test, rhs, else): wraps one arm around the running else
--- accumulator. test_h comes from MatchesBuildZ3 (ctor arm) or
--- MatchLitTestBuildZ3 (literal arm) on a prior tick; else_h is the
--- previous fold step's output (or the default arm's rhs handle on
--- the first step). Returns the new running else handle.
 claim MatchArmFoldBuildZ3(ctx_h, test_h, rhs_h, else_h ∈ Int, eff ∈ Effect)
     eff = LibCall("libz3", "Z3_mk_ite",
         ⟨ArgInt(ctx_h), ArgInt(test_h), ArgInt(rhs_h), ArgInt(else_h)⟩)
 
--- ── (c) payload binding ──────────────────────────────────────────
--- For `C(v) ⇒ rhs`: v's handle is Z3_mk_app(accessor_decl, [e]) =
--- `(b_val e)`. The driver substitutes this handle wherever rhs
--- mentions v. Same scrutinee args buffer as MatchesBuildZ3.
 claim MatchPayloadBuildZ3(ctx_h, accessor_decl_h, scrut_args_arr_p ∈ Int, eff ∈ Effect)
     eff = LibCall("libz3", "Z3_mk_app",
         ⟨ArgInt(ctx_h), ArgInt(accessor_decl_h), ArgInt(1),
          ArgInt(scrut_args_arr_p)⟩)
 
--- ── (d) literal-pattern arm test ─────────────────────────────────
--- `match n` with an Int/String literal pattern `5 ⇒ …` tests with
--- Z3_mk_eq(scrut, lit) instead of a tester app. lit_h is built by
--- the driver on a prior tick (BuildZ3MkInt / BuildZ3MkString /
--- BuildZ3MkNumeral). No args buffer — mk_eq is binary.
 claim MatchLitTestBuildZ3(ctx_h, scrut_h, lit_h ∈ Int, eff ∈ Effect)
     eff = LibCall("libz3", "Z3_mk_eq",
         ⟨ArgInt(ctx_h), ArgInt(scrut_h), ArgInt(lit_h)⟩)
 
 -- ── Oracle-compile probe ─────────────────────────────────────────
--- Not a semantic test (the handles are dummies and the LibCall is
--- never emitted into `effects`); proves the file's claims survive
--- `evident-oracle emit` + composition inlining and the result runs.
+-- Not a semantic test (the handles are dummies); proves the claims
+-- survive oracle emit + composition inlining and the result runs.
 claim probe_translate2_match
     probe_eff ∈ Effect
     MatchesBuildZ3(ctx_h ↦ 1, tester_decl_h ↦ 2, scrut_args_arr_p ↦ 3,

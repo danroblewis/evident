@@ -27,50 +27,38 @@ fsm DriverMatchPin
     --   `_ ⇒`               wildcard arm head (2 tokens; ENDS the
     --                       match — later arms are dead, the legacy
     --                       fold rule)
-    -- C5: each arm BODY is a FULL Pratt expression — the head tick
-    -- latches (ctor, bind, is-wildcard) and re-enters the Pratt FSM
-    -- (pk_kind 4); the body expression ends at the first token that
-    -- cannot extend it (the next arm's head Ident / the next body
-    -- line / EOF). On body completion the previous PENDING arm
-    -- promotes into a tested slot and the finished arm becomes
-    -- pending; a wildcard body's completion FIRES the match.
-    -- The match also ends at the first non-arm-shaped head (the next
-    -- body line). The DEFAULT body is the wildcard's body, or — with
-    -- no wildcard — the LAST arm's body with its test dropped (the
-    -- legacy right-to-left fold contract, translate2_match.ev). At
-    -- most 2 TESTED arms (006's 3-arm match = 2 tested + default);
-    -- more bails the line. Lowering is the fossil's nested
-    -- ite-over-tester shape:
+    -- Each arm BODY is a full Pratt pass (pk_kind 4); on body
+    -- completion the previous PENDING arm promotes into a tested
+    -- slot, and a wildcard body's completion FIRES the match. The
+    -- match also ends at the first non-arm-shaped head. The DEFAULT
+    -- body is the wildcard's body, or — with no wildcard — the LAST
+    -- arm's body with its test dropped (the legacy right-to-left
+    -- fold contract, translate2_match.ev). At most 2 TESTED arms
+    -- (006's 3-arm match = 2 tested + default); more bails the line.
+    -- Lowering is the fossil's nested ite-over-tester shape:
     --   (ite ((_ is C1) scrut) b1 (ite ((_ is C2) scrut) b2 def))
-    -- C5 binds: a payload arm's bind name shadows ONLY within its
-    -- arm body — the items program brackets the body's C2Process
-    -- with C2BindScope(bind, accessor_decl)/C2BindEnd, and the
-    -- walker expands every in-scope EIdent(bind) leaf to the
-    -- accessor app over the scrutinee (mk_app(acc, scrut) — the
-    -- oracle's `(Ctor__f0 scrut)`; oracle-probed: a dropped-test
-    -- default arm's bind reads through the accessor too). Accessors
+    -- C5 binds: a payload arm's bind shadows ONLY within its arm
+    -- body — C2BindScope(bind, accessor_decl)/C2BindEnd bracket the
+    -- body's C2Process, and every in-scope EIdent(bind) leaf expands
+    -- to the accessor app over the scrutinee (the oracle's
+    -- `(Ctor__f0 scrut)`; oracle-probed: a dropped-test default
+    -- arm's bind reads through the accessor too). Testers/accessors
     -- resolve through the uev registry (field-0 decls, harvested by
     -- the ED machine's user run) + the IntResult/StringResult floor.
-    -- Testers resolve through uev + the floor as before.
     mp_st ∈ Int
     mp_name ∈ String
     mp_sc ∈ Int
     mp_lr ∈ Bool
     mp_idx ∈ Int
     mp_scrut ∈ String
-    -- arm-head latches (C5: the head tick latches these, then the
-    -- body parses through the Pratt FSM under pk_kind 4)
+    -- arm-head latches
     mp_ac ∈ String
     mp_ab ∈ String
     mp_awc ∈ Bool
-    -- pending arm (the most recent COMPLETED ctor arm — promoted to
-    -- a tested slot when a later arm's body completes, or becomes
-    -- the default at end)
     mp_pc ∈ String
     mp_pb ∈ String
     mp_pe ∈ Expr
     mp_hasp ∈ Bool
-    -- tested arm slots (promotion order = source order)
     mp_n ∈ Int
     mp_c1 ∈ String
     mp_bd1 ∈ String
@@ -92,7 +80,6 @@ fsm DriverMatchPin
     mp_w_t2s ∈ String = match ww_t2
         Ident(s) ⇒ s
         _ ⇒ ""
-    -- arm-HEAD detection (st 1; bodies parse via Pratt kind 4)
     mp_st1 ∈ Bool = (m_act ∧ (_mp_st = 1))
     mp_arm_pl_h ∈ Bool = (mp_st1 ∧ (ww_t0 matches Ident(_))
         ∧ (el_head_name ≠ "_")
@@ -115,7 +102,6 @@ fsm DriverMatchPin
     mp_bail ∈ Bool = (mp_s_bad ∨ mp_overflow ∨ mp_wc_over
         ∨ (mp_endt ∧ (¬_mp_hasp)))
 
-    -- arm-body completion (the kind-4 Pratt parse finished)
     mq_done ∈ Bool = (p_done ∧ (_pk_kind = 4))
     mq_wc ∈ Bool = (mq_done ∧ (¬pr_bad) ∧ _mp_awc)
     mq_arm ∈ Bool = (mq_done ∧ (¬pr_bad) ∧ (¬_mp_awc))
@@ -188,12 +174,6 @@ fsm DriverMatchPin
         : (mq_promote ∧ _mp_n = 1) ? _mp_pe
         : _mp_e2)
 
-    -- items program (built on the fire tick — an end-fire head tick
-    -- or a wildcard body's mq_wc completion tick). On a wildcard
-    -- fire the pending arm promotes COMBINATIONALLY into the last
-    -- tested slot; on an end fire the pending arm IS the default
-    -- (test dropped — and its bind, if any, still reads through the
-    -- accessor: oracle-probed).
     mp_v_n ∈ Int = (mq_wc ? (_mp_hasp ? _mp_n + 1 : _mp_n) : _mp_n)
     mp_v_c1 ∈ String = (_mp_n ≥ 1 ? _mp_c1 : _mp_pc)
     mp_v_b1 ∈ String = (_mp_n ≥ 1 ? _mp_bd1 : _mp_pb)
@@ -253,8 +233,6 @@ fsm DriverMatchPin
         C2ICons(C2AssertTop, C2INil))
     mp_tail_i1 ∈ C2Items = C2ICons(C2Ite, mp_tailE)
     mp_tail_i2 ∈ C2Items = C2ICons(C2Ite, C2ICons(C2Ite, mp_tailE))
-    -- default seg (innermost): full-expr body, bind-scoped when the
-    -- dropped-test pending arm carried a bind
     mp_dtail ∈ C2Items = (mp_v_n = 0 ? mp_tailE
         : mp_v_n = 1 ? mp_tail_i1
         : mp_tail_i2)
@@ -262,7 +240,6 @@ fsm DriverMatchPin
         ? C2ICons(C2BindScope(mp_v_db, mp_dacc),
             C2ICons(C2Process(mp_v_def), C2ICons(C2BindEnd, mp_dtail)))
         : C2ICons(C2Process(mp_v_def), mp_dtail))
-    -- arm 2 (only reached when mp_v_n = 2)
     mp_b2seg ∈ C2Items = ((mp_v_b2 ≠ "" ∧ mp_acc2 ≠ 0)
         ? C2ICons(C2BindScope(mp_v_b2, mp_acc2),
             C2ICons(C2Process(mp_v_e2), C2ICons(C2BindEnd, mp_defseg)))
@@ -274,7 +251,6 @@ fsm DriverMatchPin
             C2ICons(C2App(mp_t2, 1), mp_b2seg))))
         : C2ICons(C2Process(EIdent(_mp_scrut)),
             C2ICons(C2App(mp_t2, 1), mp_b2seg)))
-    -- arm 1
     mp_a1t ∈ C2Items = (mp_v_n ≥ 2 ? mp_c2seg : mp_defseg)
     mp_b1seg ∈ C2Items = ((mp_v_b1 ≠ "" ∧ mp_acc1 ≠ 0)
         ? C2ICons(C2BindScope(mp_v_b1, mp_acc1),
@@ -289,4 +265,3 @@ fsm DriverMatchPin
             C2ICons(C2App(mp_t1, 1), mp_b1seg)))
     mp_items ∈ C2Items = C2ICons(C2DeclConst(_mp_name, _mp_sc),
         (mp_v_n = 0 ? mp_defseg : mp_c1seg))
-

@@ -1,28 +1,11 @@
--- B9: match expressions + patterns.
---
--- Verifies the self-hosted parser AST now models `match` and that the
--- ParseMatch recognizer accepts a `KwMatch`-headed input with at
--- least two arms, producing an EMatch(scrutinee, arms).
---
--- The fixture mirrors ParsePassthrough's recognizer style: rather
--- than walking a token list across many ticks (the full FSM is
--- larger than what B9 ships), the test pre-builds the parts that a
--- multi-tick FSM would assemble and feeds them to ParseMatch:
---
---   head      = KwMatch
---   scrutinee = EIdent("e")            -- already-parsed `e`
---   arms      = ⟨MArm(MPCtor("Ok", ⟨MBName("v")⟩), EIdent("v")),
---               MArm(MPWildcard,                  EInt(0))⟩
---
--- After ParseMatch:
---   ok  = true
+-- Match expressions + patterns: the ParseMatch recognizer accepts a
+-- KwMatch-headed input (the test pre-builds the parts a multi-tick
+-- FSM would assemble), producing
 --   out = EMatch(EIdent("e"),
 --                MACons(MArm(MPCtor("Ok", MBCons(MBName("v"), MBNil)),
 --                            EIdent("v")),
 --                MACons(MArm(MPWildcard, EInt(0)), MANil)))
---
--- The test peels the result back apart and prints one diagnostic per
--- tick (step counter), exiting after the last one.
+-- then peels the result back apart, one diagnostic per tick.
 --
 -- expect: stdout = "saw kwmatch=true"
 -- expect: stdout = "two-arms=true"
@@ -69,7 +52,6 @@ claim main
     -- ── Peel the result back apart for verification ──────────────
     is_ematch ∈ Bool = (parsed matches EMatch(_, _))
 
-    -- Recover scrutinee + arm list from the EMatch.
     parsed_scrut ∈ Expr = match parsed
         EMatch(s, _) ⇒ s
         _ ⇒ ENoExpr
@@ -81,7 +63,6 @@ claim main
         EIdent(s) ⇒ s
         _ ⇒ "<no-ident>"
 
-    -- Split the arm list.
     a1 ∈ MatchArm = match parsed_arms
         MACons(a, _) ⇒ a
         MANil ⇒ MArm(MPWildcard, ENoExpr)
@@ -92,7 +73,6 @@ claim main
         MACons(a, _) ⇒ a
         MANil ⇒ MArm(MPWildcard, ENoExpr)
 
-    -- Arm 1 fields.
     a1_pat ∈ MatchPattern = match a1
         MArm(p, _) ⇒ p
     a1_body ∈ Expr = match a1
@@ -112,7 +92,6 @@ claim main
         EIdent(s) ⇒ s
         _ ⇒ "<no-ident>"
 
-    -- Arm 2 fields.
     a2_pat ∈ MatchPattern = match a2
         MArm(p, _) ⇒ p
     a2_body ∈ Expr = match a2

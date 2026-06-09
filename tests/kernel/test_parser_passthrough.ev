@@ -1,14 +1,7 @@
--- B7: pull-up passthrough body item.
---
--- Recognize a `..ClaimName` body item from a raw TokenList input
--- `⟨DotDot, Ident("MyClaim")⟩` by calling ParsePassthrough on the
--- head + next token. Verify ok=true and that the resulting
--- BodyItem is BIPassthrough("MyClaim").
---
--- This fixture pre-extracts head1 + head2 from the TokenList in
--- the body (rather than walking it across ticks) — the recognizer
--- shape is what B7 ships; multi-tick consumption is a later
--- sub-step. Each tick prints one diagnostic and exits.
+-- B7: pull-up passthrough body item. Recognize `..ClaimName` from
+-- ⟨DotDot, Ident("MyClaim")⟩ via ParsePassthrough on the head + next
+-- token; verify ok=true and BIPassthrough("MyClaim"). Heads are
+-- pre-extracted (no multi-tick walk); one diagnostic per tick.
 --
 -- expect: stdout = "saw dotdot=true"
 -- expect: stdout = "saw ident=true"
@@ -20,11 +13,8 @@ import "stdlib/kernel.ev"
 import "compiler/parser.ev"
 
 claim main
-    -- The hardcoded input. We don't carry it across ticks — this
-    -- test only verifies ParsePassthrough's recognition behavior.
     input ∈ TokenList = TLCons(DotDot, TLCons(Ident("MyClaim"), TLNil))
 
-    -- Extract head1 and head2 from the input.
     head1 ∈ Token = match input
         TLCons(t, _) ⇒ t
         TLNil ⇒ EofTok
@@ -37,27 +27,21 @@ claim main
         TLCons(t, _) ⇒ t
         TLNil ⇒ EofTok
 
-    -- Per-recognizer Bool intermediates so each line is verifiable.
     is_dd ∈ Bool
     IsDotDot(t ↦ head1, out ↦ is_dd)
     is_id ∈ Bool
     IsIdent(t ↦ head2, out ↦ is_id)
 
-    -- The composed parser.
     item ∈ BodyItem
     ok ∈ Bool
     ParsePassthrough(head1 ↦ head1, head2 ↦ head2, item ↦ item, ok ↦ ok)
 
-    -- Extract the passthrough name from the BodyItem result.
     name ∈ String = match item
         BIPassthrough(n) ⇒ n
         _ ⇒ ""
 
     is_passthrough ∈ Bool = (item matches BIPassthrough(_))
 
-    -- Per-tick label. We walk five ticks via a step counter so each
-    -- assertion gets its own puts call (and any failure surfaces
-    -- as a single mismatched expect line).
     step ∈ Int
     _step ∈ Int
     step = (is_first_tick ? 0 : _step + 1)

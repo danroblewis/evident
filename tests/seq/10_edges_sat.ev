@@ -1,5 +1,4 @@
--- C10 consecutive pairs ∀ (a,b) ∈ edges(xs) : P — adjacent elements of
--- a bounded seq. (Verified: this parses AND constrains.)
+-- C10 consecutive pairs ∀ (a,b) ∈ edges(xs) : P — adjacent elements of a bounded seq.
 -- entry: main
 -- expect: exit = 0
 import "stdlib/kernel.ev"

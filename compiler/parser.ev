@@ -2,37 +2,11 @@
 
 import "compiler/lexer.ev"
 
---
--- Tiny Expr AST for the binop-chain parser:
---   EInt(n)               — integer literal
---   EIdent(s)             — bare identifier
---   EBinOp(op, lhs, rhs)  — binary operation (Plus, Eq, …)
---
--- The Op enum names the binary operator. For now we just have one
--- operator (Plus); extending to others is a stdlib change.
-
--- Op variants mirror the binary operator tokens the lexer emits. The
--- precedence layer (see Precedence below) groups them into "high"
--- (multiplicative) and "low" (additive) for the precedence-climbing
--- parser FSM.
---
--- OpImpl is the logical `⇒` operator (lexer token: OpImplies). It
--- carries CLAUDE.md composition mechanism #7 — guarded invocation
--- `cond ⇒ ClaimName` parses as `EBinOp(OpImpl, cond, claim_call)`.
--- It has the lowest precedence in the binop ladder (n = 0, same as
--- Eq) — the Precedence claim below treats it as such. Wrapping a
--- compound consequent in parens is a documented user idiom (see the
--- "Boolean & precedence footguns" section in CLAUDE.md).
--- Grammar wave 2 adds the comparison + boolean-connective operators.
--- The corresponding operators exist as *lexer* Token variants
--- (Lt/Gt/OpLe/OpGe/OpNe/OpAnd/OpOr/OpImplies in compiler/lexer.ev) but
--- had no `Op` member, so `EBinOp(OpLt, …)` was unconstructable (the
--- blocked-translate-bool note in translate_bool.ev). Enum variant names
--- are globally unique, so the `Op` members can't reuse the Token names —
--- they take distinct spellings (OpLeq/OpGeq/OpNeq/OpConj/OpDisj). They
--- render to SMT-LIB in translate_bool.ev:
---   OpLt → "(< …)"   OpGt  → "(> …)"   OpLeq → "(<= …)"  OpGeq → "(>= …)"
---   OpNeq → "(not (= …))"   OpConj → "(and …)"   OpDisj → "(or …)"
+-- Op names the binary operators. Enum variant names are globally
+-- unique, so Op members can't reuse the lexer's Token names — the
+-- comparison/connective ops take distinct spellings
+-- (OpLeq/OpGeq/OpNeq/OpConj/OpDisj). Rendered to SMT-LIB in
+-- translate_bool.ev.
 enum Op =
     OpPlus
     OpMul
@@ -49,32 +23,16 @@ enum Op =
     OpConj
     OpDisj
 
--- Quantifier variants (B8) carry the bound variable name, the
--- range expression (the source to iterate over, e.g. `items`), and
--- the body expression. Mirrors the Rust AST's `Expr::Forall(vars,
--- range, body)` / `Expr::Exists(...)` in runtime/src/core/ast.rs,
--- restricted to the single-name shape (`∀ x ∈ S : body`); the
--- tuple-binding form (`∀ (a, b) ∈ coindexed(...) : ...`) is a
--- later sub-step.
--- Grammar wave 2 control/value forms:
---   ETernary(cond, then, else) — `cond ? then : else` → "(ite …)".
---     Mirrors runtime/src/core/ast.rs Expr::Ternary. The single most
---     used control form in the corpus (191×); the self-hosted compiler
---     is built on it (docs/plans/grammar-coverage-survey.md §1, §3).
---   ENot(e)  — unary `¬ e` → "(not e)".
---   EStr(s)  — ASCII string literal → SMT-LIB `"s"`.
--- Call forms (compiler2 gap census B3):
---   ECall1/2/3(name, args…) — builtin call syntax `f(a[, b[, c]])`,
---     fixed arity 1-3 (the corpus surface: substr/3, index_of/2-3,
---     char_at/2, str_len/1, str_from_int/1, str_contains/2,
---     starts_with/2, ends_with/2). `#e` parses to
---     ECall1("str_len", e). The arg vector is unrolled into three
---     fixed-arity variants (a 4-field payload is oracle-supported;
---     probed end-to-end 2026-06-07).
---   EMatches(ctor, e) — `e matches Ctor` / `e matches Ctor(_[, _])`
---     (compiler2 gap census C4): a Bool recognizer — the tester app
---     `((_ is Ctor) e)`. Corpus pattern binds are always `_`, so
---     only the ctor NAME is carried; no payload binding exists.
+-- Expr payload notes:
+--   EForall/EExists(var, range, body) — single-name shape only
+--     (`∀ x ∈ S : body`); tuple-binding is a later sub-step.
+--   ECall1/2/3(name, args…) — builtin calls, fixed arity 1-3. The arg
+--     vector is unrolled into fixed-arity variants (a 4-field payload
+--     is oracle-supported; probed end-to-end 2026-06-07). `#e` parses
+--     to ECall1("str_len", e).
+--   EMatches(ctor, e) — Bool recognizer `((_ is Ctor) e)`. Corpus
+--     pattern binds are always `_`, so only the ctor NAME is carried;
+--     no payload binding exists.
 enum Expr =
     EInt(Int)
     EIdent(String)
@@ -92,25 +50,14 @@ enum Expr =
     ENoExpr
 
 -- ── Match patterns (B9) ────────────────────────────────────────
--- Mirrors runtime/src/parser/patterns.rs's `parse_match_pattern`:
--- a head Ident is either a constructor (uppercase) with optional
--- parenthesized binds, or `_` for the wildcard arm.
---
--- B9 covers the simplest useful shape: a flat constructor with
--- single-name binds (no nested patterns yet, no literal-payload
--- comparisons). The Rust path recurses inside parens — that's a
--- staged extension later.
---
--- MPCtor(name, binds) — constructor pattern `Ctor(b1, b2, …)`.
--- MPWildcard          — the catch-all `_` arm.
+-- MPCtor(name, binds) — flat constructor pattern with single-name
+-- binds (no nested patterns, no literal-payload comparisons).
 enum MatchPattern =
     MPCtor(String, MatchBindList)
     MPWildcard
 
--- A single bind inside a constructor pattern. B9 only models the
--- "bind to a name" form; the `Ok(_)` underscore-skip case is a
--- later extension that needs an MBWildcard variant (and a match
--- arm in the translator that drops the bind).
+-- Only the bind-to-name form; `Ok(_)` underscore-skip needs a future
+-- MBWildcard variant.
 enum MatchBind =
     MBName(String)
 
@@ -118,9 +65,6 @@ enum MatchBindList =
     MBNil
     MBCons(MatchBind, MatchBindList)
 
--- A match arm is `pattern ⇒ body`. The body Expr is whatever
--- expression appears after `⇒`; the test fixture stays at the
--- atom level (EIdent, EInt) but the type admits any Expr.
 enum MatchArm =
     MArm(MatchPattern, Expr)
 
@@ -128,16 +72,13 @@ enum MatchArmList =
     MANil
     MACons(MatchArm, MatchArmList)
 
--- A Cons-shaped list of Exprs, used as a work stack when walking
--- an Expr tree across multiple FSM ticks. See test_ast_walker.ev
--- for the depth-first walker pattern.
 enum ExprList =
     ELNil
     ELCons(Expr, ExprList)
 
--- A work item for the AST→text translator. The work stack interleaves
--- "process this Expr" with "emit this literal text" so structural
--- characters like "(", " ", ")" can be queued between subtree visits.
+-- Work stack for the AST→text translator: interleaves "process this
+-- Expr" with "emit this literal text" so structural characters like
+-- "(", " ", ")" can be queued between subtree visits.
 enum WorkItem =
     WIProcess(Expr)
     WIEmit(String)
@@ -153,38 +94,17 @@ enum ImportStmt =
     BadImport(String)
 
 -- ── Type references (B3) ───────────────────────────────────────
--- The Rust parser carries types as opaque strings throughout the
--- AST: `"Int"` for a bare type, `"Seq(Int)"` for a compound, and
--- `"Edge<Rect>"` / `"Seq(Edge<Rect>)"` for generic instantiations
--- and their nestings (see runtime/src/core/ast.rs::BodyItem::Membership).
---
--- Mirroring that decision, `TypeRef` is a single-variant enum whose
--- payload is the fully-rendered type-name string. The Phase B3
--- self-hosted parser builds this string token-by-token in an
--- accumulator FSM (see tests/kernel/test_parser_types.ev).
---
--- TName(s) — the type name as a flat string. The accumulator handles
--- balancing nested `(`/`)` and `<`/`>` so the string round-trips
--- through later translator passes that key off the literal name.
--- TNoType — sentinel for "no type yet" / placeholder initialisations
--- (analogous to ENoExpr / WIEmit("") elsewhere in the parser).
+-- Types are carried as fully-rendered opaque strings ("Int",
+-- "Seq(Int)", "Edge<Rect>"), mirroring the Rust AST; later translator
+-- passes key off the literal name. TNoType is the placeholder
+-- sentinel (analogous to ENoExpr).
 enum TypeRef =
     TName(String)
     TNoType
 
 -- ── Type-name token rendering ──────────────────────────────────
--- Per-tick the type-parse FSM strips the head token off a TokenList
--- and asks: "what string does this token contribute to the final
--- type-name?" Mirrors the Rust parser's token→source-text mapping
--- in runtime/src/parser/types.rs: Ident → its payload, LParen → "(",
--- RParen → ")", Lt → "<", Gt → ">", Comma → ", ".
---
--- All other tokens (Newline, Indent, EofTok, …) terminate the
--- type — the FSM treats them as the "done" signal and does not
--- include them in the accumulated string.
---
--- The `is_type_tok` Bool is what the per-tick FSM consults to
--- decide "consume this token + continue" vs "halt".
+-- Non-type tokens (Newline/Indent/Eof…) terminate the type;
+-- `is_type_tok` is the FSM's consume-vs-halt signal.
 
 claim TypeTokenText
     t ∈ Token
@@ -209,12 +129,6 @@ claim TypeTokenText
     is_type_tok = (is_ident ∨ is_lparen ∨ is_rparen ∨ is_lt ∨ is_gt ∨ is_comma)
 
 -- ── Bracket-depth delta ───────────────────────────────────────
--- The FSM tracks paren/angle nesting so it can recognise "back to
--- depth 0" as the end of a generic / compound type. Open brackets
--- (`(`, `<`) increment depth by 1; close brackets (`)`, `>`)
--- decrement; everything else is 0. (Ident at depth 0 followed by
--- anything other than `(` or `<` is the bare-type halt case — handled
--- by the FSM itself, not by this claim.)
 
 claim BracketDelta
     t ∈ Token
@@ -224,8 +138,6 @@ claim BracketDelta
     d = (is_open ? 1 : (is_close ? 0 - 1 : 0))
 
 -- ── Token → Op classifier ───────────────────────────────────────
--- For a parser that handles binop tokens, this gives the operator
--- (or OpPlus as a placeholder if the token isn't an operator).
 
 -- Note: first-line claim params of enum type have a translator gap
 -- for `matches`/`match` (the param isn't put into env in a form the
@@ -249,11 +161,6 @@ claim TokenToOp
     is_binop = (is_plus ∨ is_minus ∨ is_star ∨ is_slash ∨ is_eq)
 
 -- ── Operator precedence (B1) ────────────────────────────────────
--- OpImpl (`⇒`) sits at the bottom (n = 0) alongside Eq. CLAUDE.md
--- documents `⇒` as binding tighter than `∧`/`∨` (which aren't in
--- this binop set yet) but looser than `=` in the wider language —
--- B10 only needs an AST shape, so we shelve `⇒` next to `=` and let
--- a future precedence-ladder revision re-rank them.
 claim Precedence
     op ∈ Op
     n ∈ Int
@@ -269,20 +176,16 @@ claim Precedence
 -- ── Enum declaration AST (B6) ───────────────────────────────────
 -- EVDecl(name)            — a nullary variant `Red` → "(Red)".
 -- EVDeclP(name, fields)   — a payload variant `Ok(Int)` → "(Ok (Ok__f0
---                           Int))" (grammar wave 3). Each field carries
---                           only its type-name string; the accessor name
---                           `<Variant>__f<N>` is synthesised by VariantText
---                           in translate.ev, mirroring the Rust path's
---                           accessor-naming convention
---                           (runtime/src/runtime/register_enums.rs).
+--                           Int))". Each field carries only its type-name
+--                           string; the accessor name `<Variant>__f<N>`
+--                           is synthesised by VariantText in translate.ev.
 enum EnumVariantDecl =
     EVDecl(String)
     EVDeclP(String, EVFieldList)
     EVNoVariant
 
--- A single payload field is its fully-rendered type-name string
--- (`"Int"`, `"String"`, …) — the same opaque-type-string decision as
--- TypeRef. EVFNone is the placeholder sentinel.
+-- A payload field is its fully-rendered type-name string (same
+-- opaque-type-string decision as TypeRef).
 enum EVField =
     EVFType(String)
     EVFNone
@@ -305,15 +208,8 @@ enum FrameList =
     FLCons(Expr, Op, FrameList)
 
 -- ── Claim-argument AST (B10: composition mechanism #5) ──────────
--- A claim-call argument is a `slot ↦ expr` pair. Slot is a String
--- (the parameter name). For the zero-arg call form (mechanism #4,
--- "names-match"), the ClaimArgList is just CANil — no explicit
--- mapsto args. For mechanism #5, the list is one CACons per
--- `slot ↦ value` pair on the call site.
---
--- The Rust parser's call-site shape lives in
--- runtime/src/parser/exprs.rs (parse_call_args) and lowers to
--- ECall(name, Vec<(String, Expr)>) — this is the AST mirror.
+-- CArg(slot, expr) — a `slot ↦ value` pair (slot = parameter name).
+-- The zero-arg names-match call form is just CANil.
 enum ClaimArg =
     CArg(String, Expr)
     CANoArg
@@ -323,39 +219,20 @@ enum ClaimArgList =
     CACons(ClaimArg, ClaimArgList)
 
 -- ── BodyItem AST (B4 + B7 + B10: composition mechanisms) ────────
--- The seven composition mechanisms from CLAUDE.md, mapped to
--- BodyItem variants (✓ = AST shape currently lands in the indicated
--- sub-step; the deferred parse-FSM productions come later):
+-- The seven composition mechanisms from CLAUDE.md, mapped to variants:
 --
---   #1  `variable ∈ TypeName`             — BIMembership(name, type)   ✓ (B4)
---   #2  `ClaimName` (bare body item)      — BIClaimCall(name, CANil)   ✓ (B10)
---   #3  `..ClaimName`                     — BIPassthrough(name)         ✓ (B7)
---   #4  Names-match composition           — BIClaimCall(name, CANil)   ✓ (B10)
---   #5  `ClaimName(slot ↦ value)`         — BIClaimCall(name, args)    ✓ (B10)
---   #6  `subclaim Name body…`             — BISubclaim(name, body)     ✓ (B10)
---   #7  `cond ⇒ ClaimName`                — BIConstraint(EBinOp(OpImpl,…)) ✓ (B10)
+--   #1  `variable ∈ TypeName`             — BIMembership(name, type)
+--   #2  `ClaimName` (bare body item)      — BIClaimCall(name, CANil)
+--   #3  `..ClaimName`                     — BIPassthrough(name)
+--   #4  Names-match composition           — BIClaimCall(name, CANil)
+--   #5  `ClaimName(slot ↦ value)`         — BIClaimCall(name, args)
+--   #6  `subclaim Name body…`             — BISubclaim(name, body)
+--   #7  `cond ⇒ ClaimName`                — BIConstraint(EBinOp(OpImpl,…))
 --
--- BIMembership(name, type_ref) — a `name ∈ Type` declaration
--- (mechanism #1), mirroring the Rust parser's
--- `BodyItem::Membership { name, type_name, pins }`
--- (runtime/src/core/ast.rs). The TypeRef payload carries the
--- fully-rendered type-name string (built by the B3 accumulator —
--- see TypeTokenText). Pins are NOT yet modeled here: the chained-
--- membership desugaring (`0 ≤ x ∈ Int ≤ 100`) emits a BIMembership
--- followed by separate BIConstraint items, exactly as the Rust
--- parser at runtime/src/parser/body_item.rs::try_parse_chained_membership
--- already does. Named-pins (`x ∈ Type(slot ↦ val)`) are a B5/later
--- extension.
---
--- BIClaimCall serves both mechanisms #2/#4 (when ClaimArgList is
--- CANil) and #5 (when there are CACons cells). The parse-side
--- discriminator is just "are there `slot ↦ value` tokens after the
--- bare name?" — collapsed at parse time.
---
--- BISubclaim's body is a BodyItemList — mutually recursive with
--- BodyItem to let nested subclaims contain further subclaims.
--- The forward reference works the same way as the LL/Cons example
--- in CLAUDE.md's "Enums" section.
+-- Pins are NOT modeled on BIMembership: chained membership
+-- (`0 ≤ x ∈ Int ≤ 100`) desugars to a BIMembership plus separate
+-- BIConstraint items, as the Rust parser already does. BISubclaim's
+-- body is a BodyItemList — mutually recursive with BodyItem.
 enum BodyItem =
     BIPassthrough(String)
     BIConstraint(Expr)
@@ -408,23 +285,9 @@ claim IsColon
     out = (t matches Colon)
 
 -- ── Quantifier parser (B8) ──────────────────────────────────────
--- Recognises the leading token sequence of a single-name quantifier:
---   ⟨OpForall, Ident(x), OpIn, Ident(src), Colon, …body…⟩    or
---   ⟨OpExists, Ident(x), OpIn, Ident(src), Colon, …body…⟩
---
--- Pre-extracted by the caller: the first four head tokens, plus the
--- already-parsed body Expr. `range_src` becomes an EIdent.
---
--- Mirrors runtime/src/parser/exprs.rs::parse_quantifier (single-name
--- branch). The tuple-binding branch + block-form body are future
--- sub-steps; this recogniser covers the inline `∀ x ∈ S : body`
--- shape — the canonical case in stdlib/.
---
--- Output:
---   ok=true  → expr is EForall(var, EIdent(src), body)
---                       or EExists(var, EIdent(src), body)
---   ok=false → expr is ENoExpr (the head4 didn't match the shape;
---                callers fall through to non-quantifier parsing).
+-- Single-name shape `∀/∃ x ∈ S : body` only. The caller pre-extracts
+-- the four head tokens and the already-parsed body Expr. ok=false →
+-- expr is ENoExpr; callers fall through to non-quantifier parsing.
 claim ParseQuantifier
     head1 ∈ Token
     head2 ∈ Token
@@ -475,40 +338,14 @@ claim ParsePassthrough
 
 -- ── Schema declarations (B5) ────────────────────────────────────
 --
--- The Rust parser at runtime/src/parser/schema.rs recognizes four
--- declaration keywords (`claim`, `type`, `schema`, `fsm`) and
--- produces the same `SchemaDecl` AST node with a `keyword`
--- discriminator. The shape on the wire is:
+-- Wire shape of a declaration:
 --
 --   <schema-kw> Ident(name) [type-params]? [(first-line-params)]?
 --   Newline Indent(n) <body-items…>
 --
--- where the body-items are BodyItem entries (BIMembership from B4,
--- BIPassthrough from B7, ClaimCall from B10, etc.).
---
--- This sub-step adds:
---   * Keyword — the four-variant enum naming which keyword opened
---     the declaration. The Rust side calls this Keyword too
---     (runtime/src/core/ast.rs::Keyword), with the same four
---     variants in the same order. (We prefix variants with `KK` so
---     they don't collide with the lexer's Kw* token variants.)
---   * BodyItemList — Cons-shaped list of BodyItems, used as the
---     SchemaDecl body field. Same shape as EnumVariantList /
---     TokenList: a recursive Cons-cell so it can be built across
---     ticks and walked by a downstream pass.
---   * SchemaDecl — the AST node itself. SDecl(kw, name, body) is the
---     success case; SNoDecl is the sentinel for "not yet" / "shape
---     didn't match" / placeholder. The variant name is SDecl rather
---     than `SchemaD` to avoid clashing with B6's EnumD naming.
---   * KeywordOfTok(t, kw, ok) — recognizer mapping a head token to
---     its Keyword. ok=false means "this token is not a schema
---     keyword" (kw is then a placeholder KKClaim).
---   * ParseSchemaHead(head1, head2, kw, name, ok) — recognizer for
---     the `<schema-kw> Ident` head sequence. ok=true iff head1 is
---     one of the four schema keywords AND head2 is an Ident. The
---     full multi-tick body consumer is a later sub-step; this is
---     the recognizer layer that mirrors ParsePassthrough /
---     ParseMembership.
+-- Keyword variants are KK-prefixed so they don't collide with the
+-- lexer's Kw* token variants. SNoDecl is the "shape didn't match"
+-- sentinel.
 
 enum Keyword =
     KKClaim
@@ -516,22 +353,15 @@ enum Keyword =
     KKSchema
     KKFsm
 
--- BodyItemList already declared by B10 (mutual recursion with BISubclaim).
-
 enum SchemaDecl =
     SDecl(Keyword, String, BodyItemList)
     SNoDecl
 
 -- KeywordOfTok: classify a head token as a schema-keyword.
---
--- Mirrors the `match self.bump()` in parse_schema_decl
--- (runtime/src/parser/schema.rs:59). Token::Claim → KKClaim, etc.
--- ok=false means "this token is not a schema keyword."
---
 -- Same vars-in-body shape as TokenToOp: first-line claim params of
--- enum type have a translator gap for `matches`/`match`, so all the
--- pattern-matching happens via per-variant Bool intermediates in the
--- body and the caller composes with names-match binding.
+-- enum type hit the translator gap for `matches`/`match`, so the
+-- pattern-matching lives in the body and callers compose with
+-- names-match binding.
 claim KeywordOfTok
     t ∈ Token
     kw ∈ Keyword
@@ -549,18 +379,6 @@ claim KeywordOfTok
 
 -- ParseSchemaHead: recognize `<schema-kw> Ident(name)` at the head
 -- of a token stream and emit the (Keyword, name) pair.
---
--- Inputs:
---   head1 — should be KwClaim/KwType/KwSchema/KwFsm for ok=true.
---   head2 — should be Ident(_) for ok=true.
---
--- Outputs:
---   kw    — the Keyword from head1 (KKClaim placeholder if !ok).
---   name  — the Ident payload from head2 ("" if !ok).
---   ok    — both head positions matched.
---
--- The multi-tick body consumer that wraps this recognizer is a
--- later sub-step; here we only handle the two-token head shape.
 claim ParseSchemaHead
     head1 ∈ Token
     head2 ∈ Token
@@ -580,24 +398,10 @@ claim ParseSchemaHead
     name = (ok ? ident_name : "")
 
 -- ── Membership body-item parser (B4) ────────────────────────────
---
--- Recognize the head sequence `Ident(name) ∈ <TypeRef tokens…>` and
--- emit a BIMembership(name, TName(type_str)). The TypeRef string is
--- accumulated by the caller's consumer FSM (Pattern 2 in
--- docs/plans/NEXT.md) using the B3 TypeTokenText helper.
---
--- This recognizer fires when:
---   head1 is Ident(_)
---   head2 is OpIn (`∈`)
---   type_str is non-empty (the FSM finished accumulating the type)
---
--- Shape mirrors ParsePassthrough: the FSM extracts the first two
--- tokens, dispatches the type-name accumulator across subsequent
--- ticks, then on the boundary token (Newline / Indent / Eof) it
--- calls ParseMembership with the captured name + accumulated type
--- string. The Rust parser's chained-membership desugaring (range
--- bounds) is folded in by the FSM as extra BIConstraint emits —
--- ParseMembership itself only handles the bare `x ∈ T` shape.
+-- The caller's FSM accumulates the type-name string (TypeTokenText)
+-- across ticks and invokes this on the boundary token. Chained-
+-- membership range bounds are folded in by the FSM as extra
+-- BIConstraint emits; this claim only handles the bare `x ∈ T` shape.
 claim ParseMembership
     head1 ∈ Token
     head2 ∈ Token
@@ -617,11 +421,8 @@ claim ParseMembership
     item = (ok ? BIMembership(name, TName(type_str)) : BINoItem)
 
 -- ── KwMatch recognizer ─────────────────────────────────────────
--- A separate-claim Bool-returning recognizer so the per-tick FSM in
--- the test fixture can ask "is this token a KwMatch?" the same way
--- it asks IsDotDot / IsIdent. The `matches` form is in the body
--- (not on a first-line param) to avoid the translator gap noted
--- above on TokenToOp.
+-- `matches` is in the body (not a first-line param) to avoid the
+-- translator gap noted on TokenToOp.
 
 claim IsKwMatch
     t ∈ Token
@@ -629,27 +430,9 @@ claim IsKwMatch
     out = (t matches KwMatch)
 
 -- ── Match-expression assembler (B9) ────────────────────────────
--- Given a `KwMatch` head, a pre-parsed scrutinee Expr, and a
--- pre-built MatchArmList (in encounter order), assemble an EMatch.
--- Mirrors the tail of runtime/src/parser/patterns.rs::parse_match:
--- once the arms vector has at least one arm, the function returns
--- `Expr::Match(scrutinee, arms)`. The B9 acceptance demands "at
--- least 2 arms", which we surface via the `has_two_arms` Bool — the
--- caller is responsible for collecting at least two arms before
--- invoking this claim; ParseMatch then signals `ok` iff the head
--- token is right AND the arm-list has length ≥ 2.
---
--- This recognizer mirrors ParsePassthrough's shape: it doesn't
--- consume tokens itself, it just composes pre-extracted parts.
--- The token-walking FSM lives in the test fixture (where it can
--- be inspected per-tick), the same way ParseEnum's FSM lives in
--- test_parser_enum.ev.
-
--- HasTwoArms: pattern-match the arm list once to check shape
--- `MACons(_, MACons(_, _))`. Used by ParseMatch to enforce the B9
--- "at least two arms" acceptance criterion without a recursive
--- length-counter (which would also tempt us to add Int arithmetic
--- inside a nested match — unnecessary for the acceptance check).
+-- Composes a pre-parsed scrutinee + pre-built MatchArmList into an
+-- EMatch; ok requires the KwMatch head AND ≥ 2 arms (HasTwoArms).
+-- The token-walking FSM lives in the caller.
 
 claim HasTwoArms
     arms ∈ MatchArmList

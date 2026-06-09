@@ -1,15 +1,8 @@
--- Conformance tests for the Cons/Nil enum SeqLit shorthand on
--- user-defined Cons-shaped enums.
---
+-- Conformance tests for the Cons/Nil enum SeqLit shorthand:
 -- `var = ⟨a, b, c⟩` where `var` is enum-typed and the enum has a
 -- 0-arity variant + a 2-arity self-recursive variant lowers to
--- `Cons(a, Cons(b, Cons(c, Nil)))`. After Phase 6.4 the runtime's
--- EffectList / ResultList / ArgList / StrList / IntList have all
--- moved to Seq(...); user-defined LinkedList-style enums are the
--- remaining Cons users, plus the runtime's PackedFieldList (which
--- gates on Seq-concatenation support; see plans/06-cons-removal).
+-- `Cons(a, Cons(b, Cons(c, Nil)))`.
 
--- User-defined Cons/Nil enum
 enum IntList = INil | ICons(Int, IntList)
 
 claim sat_user_intlist

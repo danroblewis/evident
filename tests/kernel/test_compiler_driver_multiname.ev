@@ -1,12 +1,7 @@
--- Grammar wave 4k, Item 1: multi-name decl `n1, n2 [, n3] ∈ T [pin]`.
---
--- A leading Comma after the first name means several names share one type
--- (and one optional pin/bound). The membership walk (compiler/parse_body.ev
--- MembershipStep, ms_is_multi) emits one declare-fun per name, and — when
--- a pin/bound follows the type — one assertion per name. Here:
---   `a, b ∈ Day`         → two bare decls (no pin)
---   `x, y, z ∈ Int < 5`  → three decls + three `(< _ 5)` bound asserts
--- See docs/plans/wave-4k-membership-walk-shapes.md.
+-- Multi-name decl `n1, n2 [, n3] ∈ T [pin]`: a leading Comma after the
+-- first name means several names share one type and one optional
+-- pin/bound. MembershipStep (ms_is_multi) emits one declare-fun per name
+-- and, when a pin/bound follows the type, one assertion per name.
 --
 -- expect: stdout = ";; manifest: state-fields = a:Day b:Day x:Int y:Int z:Int"
 -- expect: stdout = ";; manifest: effects-name = effects"

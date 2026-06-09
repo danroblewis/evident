@@ -1,13 +1,9 @@
 -- DriverWindow isolation — lookahead-need dispatch + fetch state machine.
---
--- Holds the window's cursor empty (tcur = wend = 0 ⇒ w_rem = 0) under an
--- active parse mode (in_parse, pmode 6 ⇒ w_need = 5). With need > rem the
--- module must raise fetch_go every idle tick and walk its fetch state
--- machine fmode 0→1→2; each time fmode reaches 2 a read burst completed.
--- We count completed bursts and exit at 3 — observing the pure fetch
--- sequencing scalar, no __mem arena needed (the rd_* read effects are not
--- scheduled). If the w_need dispatch table, the w_rem comparison, or the
--- fmode transition regresses, the burst counter never reaches 3.
+-- Cursor held empty (tcur = wend = 0 ⇒ w_rem = 0) under pmode 6
+-- (⇒ w_need = 5), so every idle tick raises fetch_go and walks fmode
+-- 0→1→2; each arrival at fmode 2 is a completed burst. Count bursts,
+-- exit at 3. Pure sequencing — no __mem arena needed (the rd_* read
+-- effects are not scheduled).
 --
 -- entry: main
 -- expect: stdout = "3"
@@ -19,15 +15,13 @@ import "compiler2/driver_ir.ev"
 import "compiler2/driver_window.ev"
 
 fsm main
-    -- The window's start gate + the mode it serves (pmode 6 ⇒ w_need 5).
     in_parse ∈ Bool
     in_parse = (is_first_tick ? true : _in_parse)
     pmode ∈ Int
     pmode = (is_first_tick ? 6 : _pmode)
-    -- Cursor held empty: w_rem = wend - tcur = 0 < w_need, so every idle
-    -- tick demands a fetch. These fields are declared by DriverWindow but
-    -- their transitions live in driver_main's cursor region (absent here),
-    -- so main pins them as held carries.
+    -- tcur/wend are declared by DriverWindow but their transitions live in
+    -- driver_main's cursor region (absent here), so main pins them as held
+    -- carries.
     tcur ∈ Int
     tcur = (is_first_tick ? 0 : _tcur)
     wend ∈ Int

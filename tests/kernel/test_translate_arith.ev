@@ -1,15 +1,8 @@
 -- C4: SMT-LIB arithmetic translation.
 --
--- Calls the ArithExprSmtlib claim from stdlib/translate_arith.ev on
--- three one-level binops covering the four arithmetic operators
--- (OpPlus + OpMul + OpSub; OpDiv is exercised in lang_tests). Each
--- tick prints the rendered string for one input and the test exits
--- after all three.
---
--- Inputs:
---   EBinOp(OpPlus, EInt(1), EInt(2))         → "(+ 1 2)"
---   EBinOp(OpMul,  EIdent("x"), EInt(3))     → "(* x 3)"
---   EBinOp(OpSub,  EIdent("a"), EIdent("b")) → "(- a b)"
+-- Drives ArithExprSmtlib (compiler/translate_arith.ev) on three
+-- one-level binops (OpPlus/OpMul/OpSub; OpDiv is exercised in
+-- lang_tests), printing one rendered string per tick.
 --
 -- expect: stdout = "(+ 1 2)"
 -- expect: stdout = "(* x 3)"

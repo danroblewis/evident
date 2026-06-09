@@ -1,48 +1,16 @@
 -- WIP: replaces bootstrap/runtime/src/translate/declare.rs. STATUS: C2 declare-fun emission for primitive memberships; per-pass fixture only.
 --
--- Mirrors runtime/src/translate/declare.rs at the SMT-LIB textual
--- level. For each primitive-typed membership in a schema body, emit
---
---   (declare-fun <name> () <type>)
---
--- This is the textual analogue of the Rust path's `Int::new_const`
--- (etc.) calls — the Rust runtime talks to Z3 through the API, but
--- the self-hosted compiler will be a translator that writes SMT-LIB
--- to disk for the kernel to feed to Z3.
---
--- Scope of this sub-step:
---   * `name ∈ Int`     → `(declare-fun name () Int)`
---   * `name ∈ String`  → `(declare-fun name () String)`
---   * `name ∈ Bool`    → `(declare-fun name () Bool)`
---   * `name ∈ Real`    → `(declare-fun name () Real)`
---
--- Out of scope (later sub-steps):
---   * `Nat` / `Pos` — primitive shape is the same, but the Rust path
---     also emits a `(assert (>= name 0))` / `(assert (> name 0))`
---     side-constraint. We split that into a separate sugar pass.
---   * `Seq(T)` / `Set(T)` — these expand to an array + length pair
---     in the Rust path; treat as composite (C7 / later).
---   * User datatypes / enums / nested schemas — recursion + the
---     datatype block (C1) need to land first.
+-- For each primitive-typed membership (Int/String/Bool/Real), emit
+-- `(declare-fun <name> () <type>)`. Nat/Pos side-constraints, Seq/Set,
+-- and user datatypes/enums are later sub-steps.
 --
 -- For anything outside the primitive set, DeclareFromMembership
--- returns `out=""` and `ok=false`. The caller is responsible for
--- consulting `ok` and not appending an empty line into its emit
--- buffer. (Sentinel-empty-string + companion Bool is the same shape
--- as ParseMembership / ParsePassthrough in stdlib/parser.ev.)
+-- returns `out=""` and `ok=false`. The caller must consult `ok` and
+-- not append an empty line into its emit buffer.
 
 import "compiler/parser.ev"
 
 -- ── DeclareFun: assemble the SMT-LIB declare-fun line ──────────
---
--- Given the variable name and the type-name string, emit the SMT-LIB
--- textual form. Pure string concatenation — no Z3 calls, no datatype
--- registry. The Rust counterpart for the Int branch is the
--- `Int::new_const(ctx, prefix)` call in declare_var_named.
---
--- The trailing `()` is the SMT-LIB way of saying "zero-arity":
--- declare-fun takes a signature `(declare-fun NAME (ARGS…) RETURN)`
--- and constants are functions with an empty argument list.
 
 claim DeclareFun
     name ∈ String
@@ -52,32 +20,19 @@ claim DeclareFun
 
 -- ── DeclareFromMembership: BodyItem → SMT-LIB line ─────────────
 --
--- Pattern-match a BodyItem; when it's a BIMembership(name, TName(t))
--- where t is a primitive type, hand the parts to DeclareFun and
--- emit the line. Otherwise out="" and ok=false.
---
--- Translator-gap notes (see TokenToOp in stdlib/parser.ev):
---   * First-line claim params of enum type don't currently put the
---     param into the translation env in a form usable by `match` /
---     `matches`. Workaround: extract via body-level `match` once
---     into a String + Bool, then compose downstream.
---   * The `is_prim` check uses string-equality on the type name
---     (the TName payload). Z3 string-equality on short literals is
---     cheap; the four-way fan-out is fine for now.
+-- Translator gap (see TokenToOp in stdlib/parser.ev): first-line
+-- claim params of enum type don't reach the translation env in a
+-- form usable by `match` / `matches`. Workaround: extract via
+-- body-level `match` once into a String + Bool, then compose.
 claim DeclareFromMembership
     item ∈ BodyItem
     out ∈ String
     ok ∈ Bool
 
-    -- Extract the membership name. Defaults to "" for non-membership
-    -- items; the `ok` Bool below is what callers consult.
     mname ∈ String = match item
         BIMembership(n, _) ⇒ n
         _ ⇒ ""
 
-    -- Extract the TypeRef from the membership, then the type-name
-    -- string out of the TName variant. Two-step because TypeRef is
-    -- its own enum (TName(String) | TNoType).
     mtref ∈ TypeRef = match item
         BIMembership(_, tr) ⇒ tr
         _ ⇒ TNoType
@@ -86,7 +41,6 @@ claim DeclareFromMembership
         TName(s) ⇒ s
         _ ⇒ ""
 
-    -- Discriminators.
     is_mem  ∈ Bool = (item matches BIMembership(_, _))
     is_int  ∈ Bool = (mtype = "Int")
     is_str  ∈ Bool = (mtype = "String")
@@ -96,7 +50,6 @@ claim DeclareFromMembership
 
     ok = (is_mem ∧ is_prim)
 
-    -- Build the line via DeclareFun when ok; "" otherwise.
     line ∈ String
     DeclareFun(name ↦ mname, type_str ↦ mtype, out ↦ line)
 

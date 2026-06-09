@@ -1,17 +1,8 @@
--- Multi-character identifier lexer (iter 3.4).
---
--- Walks "abc def\n", collecting alphabetic runs into Ident tokens.
--- Each tick either:
---   - extends the current run (continuing)
---   - starts a new run (starting)
---   - finalizes the previous run as Ident (finishing)
---   - emits a single-char token (char_only — none in this input)
---   - skips whitespace
---
--- The boundary tick (alpha-run followed by non-alpha) emits exactly one
--- Ident, NOT also a single-char token (because the boundary is whitespace).
--- The "always advance pos" + "emit multi-token-per-tick when needed"
--- pattern keeps the FSM state non-circular.
+-- Multi-character identifier lexer: walks "abc def\n", collecting
+-- alphabetic runs into Ident tokens. A boundary tick whose boundary
+-- is whitespace emits exactly one Ident, NOT also a single-char
+-- token. The "always advance pos" + "emit multi-token-per-tick when
+-- needed" pattern keeps the FSM state non-circular.
 --
 -- expect: stdout = "  start: a"
 -- expect: stdout = "  cont: b"

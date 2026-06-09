@@ -1,16 +1,7 @@
 -- C3: Boolean expression translation to SMT-LIB.
 --
--- Builds two hardcoded ASTs and runs each through BoolExprSmtlib
--- (stdlib/translate_bool.ev), printing the resulting SMT-LIB
--- s-expression:
---
---   EBinOp(OpEq,   EIdent("x"), EInt(5))      →  "(= x 5)"
---   EBinOp(OpImpl, EIdent("p"), EIdent("q"))  →  "(=> p q)"
---
--- Two-tick FSM driven by a step counter (same pattern as
--- test_parser_passthrough.ev). Each tick selects which expression to
--- translate via a `step`-keyed ternary, then prints the rendered
--- string via puts.
+-- Two-tick FSM: each tick runs one hardcoded AST through
+-- BoolExprSmtlib (compiler/translate_bool.ev) and prints the result.
 --
 -- expect: stdout = "(= x 5)"
 -- expect: stdout = "(=> p q)"
@@ -23,12 +14,10 @@ claim main
     _step ∈ Int
     step = (is_first_tick ? 0 : _step + 1)
 
-    -- Two hardcoded test expressions, selected by `step`.
     e_eq   ∈ Expr = EBinOp(OpEq,   EIdent("x"), EInt(5))
     e_impl ∈ Expr = EBinOp(OpImpl, EIdent("p"), EIdent("q"))
     e ∈ Expr = (step = 0 ? e_eq : e_impl)
 
-    -- Translate via the claim under test.
     out ∈ String
     ok  ∈ Bool
     BoolExprSmtlib(e ↦ e, out ↦ out, ok ↦ ok)

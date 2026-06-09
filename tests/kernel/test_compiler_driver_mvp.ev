@@ -1,48 +1,10 @@
--- MVP compiler driver — load-bearing end-to-end integration test.
---
--- This is the first Evident program that takes a `.ev` source *string*
--- and runs it through the WHOLE self-hosted pipeline — real lexing,
--- real parsing, real translation — to emit a valid `.smt2`. Nothing is
--- hardcoded as tokens or AST: the input below is a String literal that
--- gets lexed character-by-character (compiler/lexer.ev), the resulting
--- TokenList is parsed into a membership + pin (compiler/parser.ev), and
--- the parsed BodyItems are translated to SMT-LIB
--- (compiler/translate_declare.ev + translate_bool.ev) under a manifest
--- header (compiler/translate_manifest.ev). compiler/compiler.ev is the
--- same pipeline reading its input from /tmp/compiler-input.ev instead.
---
--- Pipeline shape (one multi-tick FSM, two phases):
---   * Phase LEX  — the consolidated-lexer accumulator FSM
---                  (test_consolidated_lexer.ev). One char per tick,
---                  prepending Tokens onto a TokenList cons-list carried
---                  via the _tokens state pair. Whitespace (incl. the
---                  newline + leading indent) separates tokens; for this
---                  single-claim/single-membership MVP no layout tokens
---                  are needed. Lex ticks emit a side-effect-free getpid
---                  so only the final .smt2 reaches stdout.
---   * Phase EMIT — the tick where the input is exhausted and all
---                  partials are flushed (`flush_done`). The complete
---                  (reverse-order) TokenList is in _tokens; we peel its
---                  heads, bind them to grammar roles via the parser's
---                  recognizers, translate, and `puts` the assembled
---                  .smt2, then Exit(0).
---
--- MVP grammar scope (documented restriction): exactly
---     <kw> Ident          -- claim head; name is unused by the manifest
---     Ident ∈ Type = Int  -- one primitive membership with an `= N` pin
--- The seven-token shape (KwClaim, Ident, Ident, OpIn, Ident, Eq,
--- IntLit) is parsed by role, not by hardcoded position semantics — the
--- name/type/pin all flow from the actually-lexed token payloads (change
--- the identifier in the input and the output tracks it).
---
--- Source: "claim main\n    x ∈ Int = 5"  →
---   ;; manifest: state-fields = x:Int
---   ;; manifest: effects-name = effects
---   ;; manifest: effect-enum-name = Effect
---   ;; manifest: result-enum-name = Result
---   ;; manifest: max-effects = 0
---   (declare-fun x () Int)
---   (assert (= x 5))
+-- MVP compiler driver — end-to-end: a `.ev` source String through the
+-- whole self-hosted pipeline (real lex, parse, translate) to a valid
+-- `.smt2`. Two phases: LEX (one char/tick, reverse-order TokenList in
+-- _tokens; lex ticks emit getpid so only the final .smt2 hits stdout),
+-- then EMIT on `flush_done` (peel heads, bind to grammar roles, puts,
+-- Exit(0)). Scope: the 7-token shape `<kw> Ident · Ident ∈ Type = IntLit`,
+-- parsed by role not position — name/type/pin flow from lexed payloads.
 --
 -- expect: stdout = ";; manifest: state-fields = x:Int"
 -- expect: stdout = ";; manifest: effects-name = effects"
@@ -124,8 +86,6 @@ claim main
             : _tokens))))))
 
     -- ── EMIT trigger ─────────────────────────────────────────────
-    -- The tick where input is exhausted and nothing is left to flush:
-    -- _tokens now holds the complete (reverse-order) TokenList.
     flush_done ∈ Bool = (done ∧ ¬was_collecting_str ∧ ¬was_collecting_int ∧ ¬is_first_tick)
 
     -- ── PARSE — peel the reverse-order TokenList into grammar roles ─
@@ -160,43 +120,34 @@ claim main
         TLCons(h, _) ⇒ h
         TLNil ⇒ EofTok
 
-    -- B3: type-name string from the type token (rh3 = Ident("Int")).
     type_str ∈ String
     type_is_type ∈ Bool
     TypeTokenText(t ↦ rh3, s ↦ type_str, is_type_tok ↦ type_is_type)
 
-    -- B4: recognise `Ident(name) ∈ <type>` → BIMembership(name, TName).
     mem_item ∈ BodyItem
     mem_ok ∈ Bool
     ParseMembership(head1 ↦ rh5, head2 ↦ rh4, type_str ↦ type_str,
                     item ↦ mem_item, ok ↦ mem_ok)
 
-    -- The membership name, pulled back out for the manifest + the pin.
     mem_name ∈ String = match mem_item
         BIMembership(n, _) ⇒ n
         _ ⇒ ""
 
-    -- The `= N` pin: rh2 = Eq, rh1 = IntLit(N). Build the constraint
-    -- Expr `EBinOp(OpEq, EIdent(name), EInt(N))` from the lexed parts.
     pin_val ∈ Int = match rh1
         IntLit(n) ⇒ n
         _ ⇒ 0 - 1
     pin_expr ∈ Expr = EBinOp(OpEq, EIdent(mem_name), EInt(pin_val))
 
     -- ── TRANSLATE ────────────────────────────────────────────────
-    -- C2: BIMembership → "(declare-fun x () Int)".
     declare_line ∈ String
     declare_ok ∈ Bool
     DeclareFromMembership(item ↦ mem_item, out ↦ declare_line, ok ↦ declare_ok)
 
-    -- C3: EBinOp(OpEq, …) → "(= x 5)", wrapped as an assert.
     eq_inner ∈ String
     eq_ok ∈ Bool
     BoolExprSmtlib(e ↦ pin_expr, out ↦ eq_inner, ok ↦ eq_ok)
     assert_line ∈ String = "(assert " ++ eq_inner ++ ")"
 
-    -- C14: the 5-line manifest header. One primitive state field, no
-    -- effects in the compiled program → max-effects = 0.
     fields ∈ StateFieldList = SFLCons(SField(mem_name, type_str), SFLNil)
     manifest ∈ String
     ManifestHeader(fields ↦ fields, max_effects ↦ 0, out ↦ manifest)

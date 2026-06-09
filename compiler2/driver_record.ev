@@ -29,9 +29,6 @@ claim RtRecName(s ∈ String, i ∈ Int, name ∈ String)
     rrn_sp ∈ Int = index_of(rrn_raw, " ", 0)
     name = substr(rrn_raw, 0, rrn_sp < 0 ? 31 : rrn_sp)
 
--- RtIdxOf: registry slot of a type name (-1 = miss). A slot whose
--- sort handle is still 0 (declaration not finished / abandoned)
--- does not match.
 claim RtIdxOf(nm ∈ String, e0 ∈ RecTypeEntry, e1 ∈ RecTypeEntry,
         e2 ∈ RecTypeEntry, idx ∈ Int)
     idx = ((nm ≠ "" ∧ nm = e0.name ∧ e0.sort ≠ 0) ? 0
@@ -39,11 +36,6 @@ claim RtIdxOf(nm ∈ String, e0 ∈ RecTypeEntry, e1 ∈ RecTypeEntry,
         : (nm ≠ "" ∧ nm = e2.name ∧ e2.sort ≠ 0) ? 2
         : 0 - 1)
 
--- RtSortOf: one field-type string → the Z3 sort handle slot for the
--- mk_tuple_sort field arrays. "Nat" is Int at sort level (the per-
--- instance ≥ 0 floor stays a frame-splice concern; datatype-element
--- Nat floors are descoped). Unknown → 0 (the collector rejects the
--- type before the RD machine ever runs on it).
 claim RtSortOf(ty ∈ String,
         int_h ∈ Int, bool_h ∈ Int, str_h ∈ Int, real_h ∈ Int,
         iarr_h ∈ Int,
@@ -59,8 +51,6 @@ claim RtSortOf(ty ∈ String,
         : (ty ≠ "" ∧ ty = e2.name) ? e2.sort
         : 0)
 
--- RtFieldAcc: accessor decl for a FIELD NAME, searched across all
--- three registry slots (first hit wins — the corpus is unambiguous).
 claim RtFieldAcc(fname ∈ String,
         e0 ∈ RecTypeEntry, e1 ∈ RecTypeEntry, e2 ∈ RecTypeEntry,
         acc ∈ Int)
@@ -84,22 +74,11 @@ claim RtFieldAcc(fname ∈ String,
         : 0)
 
 fsm DriverRecord
-    -- The SKIP pass collects each `type Name` top's fields (names +
-    -- types) into one of 3 registry slots; when the skip stops at
-    -- the next top-level keyword the RD machine (pmode 13) declares
-    -- the record as a Z3 datatype in ONE Z3_mk_tuple_sort call —
-    -- field accessors carry the PLAIN field names (x, y, duration) —
-    -- then harvests ctor decl + accessors + the (Array Int T) and
-    -- set (Array T Bool) sorts. A type whose fields don't all
-    -- resolve (generics, >6 fields, self-reference) abandons its
-    -- slot (sort stays 0 ⇒ every registry lookup misses ⇒ pure-G1
-    -- frame behavior).
     rt_cnt ∈ Int
     rt_e0 ∈ RecTypeEntry
     rt_e1 ∈ RecTypeEntry
     rt_e2 ∈ RecTypeEntry
 
-    -- collection state (active only during a type top's skip walk)
     rc_on ∈ Bool
     rc_ok ∈ Bool
     rc_np ∈ Int
@@ -198,11 +177,6 @@ fsm DriverRecord
     rt_e1.nf = (is_first_tick ? 0 : (rcf_ok ∧ rck = 1) ? _rt_e1.nf + rcf_cnt : _rt_e1.nf)
     rt_e2.nf = (is_first_tick ? 0 : (rcf_ok ∧ rck = 2) ? _rt_e2.nf + rcf_cnt : _rt_e2.nf)
 
-    -- RD machine (pmode 13): st 0 name sym · st 1 field syms (per
-    -- field) · st 2 the 12-slot write batch (6 fname syms + 6
-    -- fsorts; unused slots write 0) · st 3 mk_tuple_sort · st 4
-    -- read ctor decl · st 5 read accessors (per field) · st 6
-    -- mk_array_sort(Int, T) · st 7 mk_set_sort(T) · 8 done.
     rd_st ∈ Int
     rd_fi ∈ Int
     rd_hn ∈ Int
@@ -288,7 +262,6 @@ fsm DriverRecord
     rt_e2.a4 = (is_first_tick ? 0 : (rd_acc_cap ∧ rck = 2 ∧ _rd_fi = 4) ? d_cap_int : _rt_e2.a4)
     rt_e2.a5 = (is_first_tick ? 0 : (rd_acc_cap ∧ rck = 2 ∧ _rd_fi = 5) ? d_cap_int : _rt_e2.a5)
 
-    -- RD arena regions (free past the C2App args at +224..271)
     rd_fn_p ∈ Int = z_arena + 288
     rd_fs_p ∈ Int = z_arena + 336
     rd_ct_p ∈ Int = z_arena + 384

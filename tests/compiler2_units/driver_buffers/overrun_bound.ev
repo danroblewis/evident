@@ -1,18 +1,11 @@
 -- DriverBuffers isolation — the buffer-overrun regression.
---
 -- The driver's __mem-backed buffers (driver_lex's FTI token buffer,
--- guarded by `lx_count ∈ Int < 65534`, and the symbol table, guarded by
--- `st_cnt ∈ Int < 8192`) used to overrun: an unbounded append wrote past
--- the calloc'd end and the native kernel corrupted the heap / segfaulted.
--- The fix is a model-level bound: a `count ∈ Int < CAP` membership makes
--- the over-capacity tick UNSAT, so Z3 refuses it and the kernel halts
--- CLEANLY (exit 2) instead of overrunning.
---
--- This test reproduces that exact guard with a small cap (4): the count
--- appends 0,1,2,3 (one buffer slot per tick), then the 5th append would
--- be slot 4 — `cnt < 4` is violated, the tick is UNSAT, exit 2. If the
--- bound were dropped (the pre-fix overrun), the count would keep climbing
--- past the cap and never halt here. Drives count TO capacity, per §5.
+-- `lx_count ∈ Int < 65534`; symbol table, `st_cnt ∈ Int < 8192`) used
+-- to overrun: an unbounded append wrote past the calloc'd end and the
+-- native kernel corrupted the heap / segfaulted. The model-level
+-- `count ∈ Int < CAP` bound makes the over-capacity tick UNSAT, so the
+-- kernel halts CLEANLY (exit 2) instead of overrunning. Reproduced here
+-- with cap 4: appends 0..3; the 5th would violate `cnt < 4` → exit 2.
 --
 -- entry: main
 -- expect: stdout = "0"

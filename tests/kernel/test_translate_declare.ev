@@ -1,20 +1,9 @@
 -- C2: SMT-LIB declare-fun emission from BIMembership.
 --
--- Drive DeclareFromMembership across three hardcoded BodyItem inputs:
---   A) BIMembership("x", TName("Int"))     → ok=true,  out="(declare-fun x () Int)"
---   B) BIMembership("ok", TName("Bool"))   → ok=true,  out="(declare-fun ok () Bool)"
---   C) BIPassthrough("foo")                — non-membership; ok=false, out=""
---
--- Same per-tick stepping pattern as test_parser_passthrough /
--- test_parser_membership: a step counter walks a fixed label table,
--- one puts per tick. The final tick prints "[done]" then Exit(0).
---
--- The fixture verifies:
---   * DeclareFun on its own emits the expected SMT-LIB line.
---   * DeclareFromMembership returns ok=true for primitive Int/Bool
---     memberships and the line text matches DeclareFun byte-for-byte.
---   * DeclareFromMembership returns ok=false on a non-membership
---     BodyItem (BIPassthrough), with out="".
+-- Drives DeclareFromMembership on Int/Bool memberships (ok=true, the
+-- declare-fun line matches DeclareFun byte-for-byte) and on a
+-- non-membership BIPassthrough (ok=false, out=""), one diagnostic
+-- line per tick.
 --
 -- expect: stdout = "[start]"
 -- expect: stdout = "(declare-fun x () Int)"
@@ -29,26 +18,21 @@ import "stdlib/kernel.ev"
 import "compiler/translate_declare.ev"
 
 claim main
-    -- Case A: `x ∈ Int` → declare-fun line.
     a_item ∈ BodyItem = BIMembership("x", TName("Int"))
     a_out ∈ String
     a_ok ∈ Bool
     DeclareFromMembership(item ↦ a_item, out ↦ a_out, ok ↦ a_ok)
 
-    -- Case B: `ok ∈ Bool` → declare-fun line.
     b_item ∈ BodyItem = BIMembership("ok", TName("Bool"))
     b_out ∈ String
     b_ok ∈ Bool
     DeclareFromMembership(item ↦ b_item, out ↦ b_out, ok ↦ b_ok)
 
-    -- Case C: a passthrough — not a membership. ok=false, out="".
     c_item ∈ BodyItem = BIPassthrough("foo")
     c_out ∈ String
     c_ok ∈ Bool
     DeclareFromMembership(item ↦ c_item, out ↦ c_out, ok ↦ c_ok)
 
-    -- Per-tick diagnostic stepping. One puts per tick; the expected
-    -- lines above are emitted in order.
     step ∈ Int
     _step ∈ Int
     step = (is_first_tick ? 0 : _step + 1)

@@ -1,8 +1,5 @@
 -- Conformance tests for the `match` expression.
 --
--- Run with:
---     evident test tests/lang_tests/test_match.ev
---
 -- Translates to a nested Z3 ITE chain over constructor recognizers.
 -- v1 limitations:
 --   - Scrutinee must be a bare identifier (Var::EnumVar in env).
@@ -79,10 +76,9 @@ claim sat_nullary_to_nullary
         _   ⇒ false
     weekend = true
 
--- ── Phase 3.3: enum-typed pattern bindings ──────────────────────
--- A `match` arm can bind a payload field whose type is itself an
--- enum (cross-enum or self-recursive). The binding becomes a Var
--- usable in nested matches.
+-- ── Enum-typed pattern bindings ─────────────────────────────────
+-- An arm can bind a payload field whose type is itself an enum;
+-- the binding is usable in nested matches.
 
 enum Cell = Empty | Filled(Int)
 enum Pair = MakePair(Cell, Cell)

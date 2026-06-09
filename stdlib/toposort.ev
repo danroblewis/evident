@@ -1,10 +1,5 @@
 -- Topological sort as a constraint problem — generic over node type.
 --
--- `Edge<T>` carries a directed dependency between two nodes of type
--- `T`. `Toposort<T>` solves for a permutation of items where every
--- edge respects ordering. Domain types in, domain types out —
--- indices stay inside `position_of`, never at the interface.
---
 -- Interface:
 --   * `items ∈ Set(T)`        — the nodes (unordered).
 --   * `edges ∈ Seq(Edge<T>)`  — directed dependencies. Endpoints are
@@ -14,29 +9,13 @@
 --   * `sorted ∈ Seq(T)`       — items ordered so every edge
 --                                from→to has from appearing earlier.
 --
--- SAT iff the graph is acyclic; UNSAT iff a cycle exists.
---
--- Identity is by Z3 value equality on T. If two items are
--- structurally equal, they're the same vertex. Use distinct values
--- if you need to distinguish two otherwise-equal nodes.
+-- SAT iff the graph is acyclic; UNSAT iff a cycle exists. Identity
+-- is by Z3 value equality on T: structurally equal items are the
+-- same vertex — use distinct values to distinguish equal nodes.
 
 import "stdlib/combinatorics.ev"
 
 type Edge<T>(from, to ∈ T)
-
--- ── How this is encoded ──────────────────────────────────────────
---
--- Two clauses, almost reading as the math:
---   1. `sorted` is a permutation of `items` — delegated to
---      `Permutation<T>` (see stdlib/permutation.ev).
---   2. Every edge has `from`'s position in sorted < `to`'s.
---      `position_of(seq, x)` returns the index of x in seq
---      (chained-ITE under the hood); the comparison is the
---      partial-order constraint, one per edge, no nested
---      quantifiers.
---
--- Domain types in, domain types out — indices live entirely
--- inside `position_of` and never touch the interface.
 
 claim Toposort<T>(items ∈ Set(T), edges ∈ Seq(Edge<T>), sorted ∈ Seq(T))
     -- Cardinality pin surfaced here (not just inside Permutation) so

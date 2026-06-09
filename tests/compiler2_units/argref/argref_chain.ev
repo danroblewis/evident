@@ -1,9 +1,7 @@
--- ArgRef intra-tick handle chain (wave-5a B1). One tick chains three
--- calls: malloc(8) → write_long(ArgRef(0), 42) → read_long(ArgRef(0)) —
--- the second and third resolve ArgRef(0) to the malloc'd pointer DURING
--- the same tick. The next tick reads the chain's final result from
--- last_results[2] and exits with it. Before B1 this took three ticks
--- and two carried handles.
+-- ArgRef intra-tick handle chain: one tick chains
+-- malloc(8) → write_long(ArgRef(0), 42) → read_long(ArgRef(0));
+-- ArgRef(0) resolves to the malloc'd pointer DURING the tick. The next
+-- tick reads the chain's final result from last_results[2] and exits.
 --
 -- entry: main
 -- expect: exit = 42

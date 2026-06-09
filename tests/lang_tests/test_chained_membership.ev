@@ -1,12 +1,6 @@
--- Conformance tests for chained-membership syntax.
---
--- Run with:
---     evident test tests/lang_tests/test_chained_membership.ev
---
--- The chain detector at body-item level recognizes
---   `[a comp]* IDENT ∈ TypeName [comp b]*`
--- and desugars into one Membership plus one Constraint per
--- comparison pair. Multi-name shorthand `x, y, z ∈ Int < 5`
+-- Conformance tests for chained-membership syntax:
+-- `[a comp]* IDENT ∈ TypeName [comp b]*` desugars into one Membership
+-- plus one Constraint per comparison pair; multi-name `x, y, z ∈ Int < 5`
 -- emits per-name Memberships and per-name Constraints.
 
 -- ── Pin form: x ∈ Int = N ────────────────────────────────────────
@@ -119,11 +113,9 @@ claim sat_set_membership_in_expr
     pts ∈ Set(Int)
     x ∈ Int
     x = 2
-    -- The chain detector bails because `∧` follows the In, so this
-    -- parses as `(x ∈ pts) ∧ (x > 0)` — a single boolean constraint,
-    -- not a chained-membership decl.
+    -- Chain detector bails because `∧` follows the In: this parses as
+    -- `(x ∈ pts) ∧ (x > 0)`, one boolean constraint, not a chain decl.
     x ∈ pts ∧ x > 0
-    -- Make pts contain 2 so it satisfies.
     2 ∈ pts
 
 -- ── Regression: plain membership w/o trailing comp still works ──
@@ -135,8 +127,6 @@ claim sat_plain_membership
 -- ── Real type in chain ──────────────────────────────────────────
 
 claim sat_real_pin
-    -- The Real LRA path is separate from Int; verify the chain
-    -- works there too.
     r ∈ Real = 1
     r = 1
 

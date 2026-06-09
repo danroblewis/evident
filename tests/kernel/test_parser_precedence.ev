@@ -1,32 +1,9 @@
--- B1: multi-binop precedence in the self-hosted toy parser.
---
--- Extends the iter 3.11 toy parser (test_parser.ev) with a precedence
--- layer. Input TokenList encodes `1 + 2 * 3`; the parser must build
---
---   EBinOp(OpPlus, EInt(1), EBinOp(OpMul, EInt(2), EInt(3)))
---
--- — i.e. `*` binds tighter than `+`, matching the Rust parser's
--- precedence-climbing layer in runtime/src/parser/exprs.rs
--- (parse_muldiv called by parse_addsub).
---
--- Architecture: a precedence-climbing FSM carrying two "slots":
---   left           — fully-folded low-precedence accumulator
---   current        — high-precedence subtree currently being built
---   low_pending    — low-precedence op waiting between left & current
---   high_pending   — high-precedence op waiting for its right operand
+-- B1: multi-binop precedence. Input TokenList encodes `1 + 2 * 3`;
+-- the parser must build EBinOp(OpPlus, EInt(1), EBinOp(OpMul, EInt(2),
+-- EInt(3))) — `*` binds tighter than `+`. Precedence-climbing FSM slots:
+--   left / current — low-prec accumulator / high-prec subtree
+--   low_pending / high_pending — ops awaiting their right operand
 --   has_low/has_high/has_current — slot occupancy flags
---
--- Per-tick:
---   * on an int n:
---       has_high  → current = EBinOp(high_pending, current, EInt(n))
---       otherwise → current = EInt(n)
---   * on an op with precedence ≥ 2 (high, * /):
---       high_pending = op
---   * on an op with precedence ≤ 1 (low, + - =):
---       flush: left = has_low ? EBinOp(low_pending, left, current) : current
---       low_pending = op; clear current
---   * on TLNil:
---       final = has_low ? EBinOp(low_pending, left, current) : current
 --
 -- For `1 + 2 * 3` the trace is:
 --   tick 1 IntLit(1) → current=EInt(1)
@@ -35,10 +12,6 @@
 --   tick 4 Star      → high_pending=OpMul
 --   tick 5 IntLit(3) → current=EBinOp(OpMul, EInt(2), EInt(3))
 --   tick 6 TLNil     → final = EBinOp(OpPlus, EInt(1), EBinOp(OpMul, EInt(2), EInt(3)))
---
--- The final-tick diagnostic does a structural check of the result
--- (top is EBinOp(OpPlus, …), left is EInt(1), right is EBinOp(OpMul,
--- EInt(2), EInt(3))) and prints "tree: ok" if all hold.
 --
 -- expect: stdout = "[start]"
 -- expect: stdout = "saw int"
@@ -52,7 +25,6 @@ import "stdlib/kernel.ev"
 import "compiler/parser.ev"
 
 claim main
-    -- Input: 1 + 2 * 3
     initial ∈ TokenList = TLCons(IntLit(1), TLCons(Plus, TLCons(IntLit(2), TLCons(Star, TLCons(IntLit(3), TLNil)))))
 
     list  ∈ TokenList
@@ -111,14 +83,9 @@ claim main
     list = (is_first_tick ? initial : next_list)
 
     -- ── current slot update ──────────────────────────────────────
-    -- When we see an int and have a high-prec op pending, fold it
-    -- into the current subtree. Otherwise start a new current.
     folded_int ∈ Expr = EBinOp(_high_pending, _current, EInt(head_int))
     new_current_int ∈ Expr = (_has_high ? folded_int : EInt(head_int))
 
-    -- On a low-prec op: clear current. On a high-prec op: keep current
-    -- (it becomes the LHS of the deferred multiply). On a nil/EOF: keep
-    -- current so we can still inspect it for the final.
     new_current ∈ Expr = (is_int ? new_current_int : (is_low_op ? ENoExpr : _current))
 
     current = (is_first_tick ? ENoExpr : new_current)
@@ -128,17 +95,12 @@ claim main
     has_current = (is_first_tick ? false : new_has_current)
 
     -- ── high_pending / has_high slot update ──────────────────────
-    -- An int "consumes" the pending high-prec op. A new high-prec op
-    -- stashes itself. A low-prec op clears any leftover high.
     new_high_pending ∈ Op = (is_high_op ? head_op : _high_pending)
     new_has_high ∈ Bool = (is_int ? false : (is_high_op ? true : (is_low_op ? false : _has_high)))
     high_pending = (is_first_tick ? OpPlus : new_high_pending)
     has_high     = (is_first_tick ? false   : new_has_high)
 
     -- ── left / low_pending / has_low slot update ─────────────────
-    -- On a low-prec op: flush current into left.
-    --   has_low → left' = EBinOp(low_pending, left, current)
-    --   else    → left' = current
     flushed_left ∈ Expr = EBinOp(_low_pending, _left, _current)
     new_left_low ∈ Expr = (_has_low ? flushed_left : _current)
     new_left ∈ Expr = (is_low_op ? new_left_low : _left)
@@ -153,8 +115,6 @@ claim main
     final ∈ Expr = (_has_low ? final_assembled : _current)
 
     -- ── Structural check on the final ────────────────────────────
-    -- The expected tree is:
-    --   EBinOp(OpPlus, EInt(1), EBinOp(OpMul, EInt(2), EInt(3)))
     final_top_op ∈ Op = match final
         EBinOp(o, _, _) ⇒ o
         _ ⇒ OpPlus

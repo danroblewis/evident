@@ -1,23 +1,7 @@
--- B4: membership body items (`x ∈ Type`).
---
--- Recognize a `name ∈ Type` body item from an Ident(name) + OpIn
--- token pair plus an already-accumulated TypeRef string. The Rust
--- parser's recognizer lives at
--- runtime/src/parser/body_item.rs::parse_body_item (final block,
--- guarded by `Token::In`); the type-name accumulation it dispatches
--- to is what the B3 self-hosted accumulator (TypeTokenText) already
--- handles. This fixture wires those two halves together at the
--- recognizer level.
---
--- Pattern mirrors test_parser_passthrough.ev: hardcoded head1/head2
--- + per-tick diagnostic stepping a small phase counter. The type-
--- string side of the input is also hardcoded (the multi-tick type-
--- name accumulator is exercised by test_parser_types.ev). For each
--- of three shapes the fixture verifies recognizer Bool intermediates,
--- the extracted name, the BodyItem tag, and the round-tripped TypeRef
--- string.
---
--- Shapes covered:
+-- Membership body items (`x ∈ Type`): recognize an Ident(name) +
+-- OpIn token pair plus an already-accumulated TypeRef string, at the
+-- recognizer level (the multi-tick type-name accumulator is
+-- exercised by test_parser_types.ev). Shapes covered:
 --   x ∈ Int            → BIMembership("x", TName("Int"))
 --   count ∈ Seq(Int)   → BIMembership("count", TName("Seq(Int)"))
 --   bogus              → BINoItem (head1 is Plus, not Ident — ok=false)
@@ -44,16 +28,13 @@ claim main
     a_head2 ∈ Token = OpIn
     a_type  ∈ String = "Int"
 
-    -- Case B: `count ∈ Seq(Int)` (compound type, accumulated as the
-    -- full string the B3 accumulator would build).
+    -- Case B: `count ∈ Seq(Int)` — compound type as one string.
     b_head1 ∈ Token = Ident("count")
     b_type  ∈ String = "Seq(Int)"
 
-    -- Case C: `+ ∈ Int` — not a membership; head1 is Plus. Verifies
-    -- the recognizer returns ok=false and item=BINoItem.
+    -- Case C: `+ ∈ Int` — not a membership; head1 is Plus.
     c_head1 ∈ Token = Plus
 
-    -- Recognizer outputs for case A.
     a_is_id ∈ Bool
     IsIdent(t ↦ a_head1, out ↦ a_is_id)
     a_is_in ∈ Bool
@@ -74,7 +55,6 @@ claim main
         _ ⇒ ""
     a_is_mem ∈ Bool = (a_item matches BIMembership(_, _))
 
-    -- Recognizer outputs for case B (compound type).
     b_item ∈ BodyItem
     b_ok ∈ Bool
     ParseMembership(head1 ↦ b_head1, head2 ↦ a_head2, type_str ↦ b_type,
@@ -89,15 +69,12 @@ claim main
         TName(s) ⇒ s
         _ ⇒ ""
 
-    -- Recognizer outputs for case C (negative — not a membership).
     c_item ∈ BodyItem
     c_ok ∈ Bool
     ParseMembership(head1 ↦ c_head1, head2 ↦ a_head2, type_str ↦ a_type,
                     item ↦ c_item, ok ↦ c_ok)
     c_is_mem ∈ Bool = (c_item matches BIMembership(_, _))
 
-    -- Per-tick diagnostic stepping. One puts call per tick; the
-    -- expected lines above are emitted in order.
     step ∈ Int
     _step ∈ Int
     step = (is_first_tick ? 0 : _step + 1)

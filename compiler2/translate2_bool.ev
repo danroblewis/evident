@@ -1,44 +1,15 @@
 -- compiler2/translate2_bool.ev — Z3-AST-building claims for the
--- boolean + ternary translation surface. Compiler2 P2 (see
--- docs/plans/z3-ast-compiler2-plan.md); compiled by the oracle, so
+-- boolean + ternary translation surface. Compiled by the oracle, so
 -- FULL Evident — no fossil-subset discipline.
 --
--- ── The claim shape (same convention as translate_arith.ev) ──────
---
 -- Each claim describes ONE Z3-builder LibCall — the constraint on
--- `eff` for the current FSM step. The CALLER's FSM threads the
--- per-tick state (capture the previous tick's IntResult into a
--- handle var, choose which claim's `eff` to use this tick, advance
--- phase). This file does not own the walking strategy; it owns the
--- "which libcall builds this AST node" choice.
+-- `eff` for the current FSM step. The CALLER's FSM owns the walking
+-- strategy and threads the per-tick state. Semantics are one-to-one
+-- with compiler/translate_bool.ev + compiler/translate_ternary.ev
+-- (the reference renderers).
 --
--- The mapping is one-to-one with the legacy text spellings
--- (compiler/translate_bool.ev + compiler/translate_ternary.ev —
--- the reference SEMANTICS; those renderers stay untouched):
---
---   Legacy SMT-LIB text                  New libz3 call
---   ─────────────────────────────────    ─────────────────────────
---   OpEq    "(= l r)"                    Z3_mk_eq(ctx, l, r)
---   OpNeq   "(not (= l r))"              Z3_mk_eq then Z3_mk_not
---   OpLt    "(< l r)"                    Z3_mk_lt(ctx, l, r)
---   OpGt    "(> l r)"                    Z3_mk_gt(ctx, l, r)
---   OpLeq   "(<= l r)"                   Z3_mk_le(ctx, l, r)
---   OpGeq   "(>= l r)"                   Z3_mk_ge(ctx, l, r)
---   OpImpl  "(=> l r)"                   Z3_mk_implies(ctx, l, r)
---   OpConj  "(and l r)"                  Z3_mk_and(ctx, n, args[])
---   OpDisj  "(or l r)"                   Z3_mk_or(ctx, n, args[])
---   ENot    "(not e)"                    Z3_mk_not(ctx, e)
---   ETernary "(ite c t e)"               Z3_mk_ite(ctx, c, t, e)
---
--- xor / iff: NOT covered — the legacy pass has neither and the
--- parser's Op enum has no variants for them, so there is no parsed
--- node to translate. The sugar exists (stdlib/z3_ops.ev
--- BuildZ3MkXor / BuildZ3MkIff) for the day the Op surface grows.
---
--- The stdlib sugar names (stdlib/z3_ops.ev: BuildZ3MkEq/Lt/Gt/Le/
--- Ge/Implies/Not/And/Or/Ite) document the libcall shapes; per the
--- translate_arith.ev convention the claim bodies here spell the raw
--- LibCall so each claim is a self-contained node→effect choice.
+-- xor / iff: NOT covered — the parser's Op enum has no variants for
+-- them, so there is no parsed node to translate.
 --
 -- ── Array marshaling (OpConj / OpDisj) ──────────────────────────
 --
@@ -46,37 +17,30 @@
 -- The LibCall grammar has no array shape, so the CALLER's FSM
 -- mallocs an 8*num_args byte libc buffer (BuildMalloc), writes each
 -- operand handle into consecutive i64 slots (BuildMemWriteLong at
--- ptr, ptr+8, …), and passes the buffer pointer as args_arr_ptr —
--- exactly the ceremony ArithBinopBuildZ3 uses for add/sub/mul. The
--- comparison/implies claims are 2-arity C signatures and need no
--- buffer.
+-- ptr, ptr+8, …), and passes the buffer pointer as args_arr_ptr.
+-- The comparison/implies claims are 2-arity C signatures and need
+-- no buffer.
 --
 -- ── OpNeq is a two-step ─────────────────────────────────────────
 --
--- Z3 has no Z3_mk_neq. The legacy renderer lowered OpNeq as
--- "(not (= l r))"; here that is two libcalls across two FSM steps:
--- BoolCmpBuildZ3 emits the Z3_mk_eq and raises `needs_not`; the
--- caller captures the eq handle and follows with BoolNotBuildZ3 on
--- it. tests/kernel/compiler2/bool_fixture.ev drives exactly this.
+-- Z3 has no Z3_mk_neq: BoolCmpBuildZ3 emits the Z3_mk_eq and raises
+-- `needs_not`; the caller captures the eq handle and follows with
+-- BoolNotBuildZ3 on it across two FSM steps.
 --
 -- ── Refcounts ───────────────────────────────────────────────────
 --
 -- Every Z3_mk_* returns an AST at refcount 0. The caller SHOULD
 -- Z3_inc_ref each captured handle on its capture tick (the same
 -- tick the value first reads back from last_results — NOT before,
--- or the inc_ref pins a stale 0). See the fixture's phase schedule.
+-- or the inc_ref pins a stale 0).
 
 import "compiler/parser.ev"
 import "stdlib/kernel.ev"
 
 -- ── BoolCmpBuildZ3: pick the libcall for a 2-arity boolean binop
---    node (comparisons, equality, implication), given the operand
---    handles already built on prior ticks. `ok` is true iff op is
---    one of the seven supported operators. `needs_not` is true only
---    for OpNeq: the emitted call is Z3_mk_eq and the caller must
---    follow with BoolNotBuildZ3 on the captured handle (see header).
---    On the false fallthrough `eff` is a no-op Time call (so the
---    Effect literal is well-formed).
+--    node. `needs_not` is true only for OpNeq (caller follows with
+--    BoolNotBuildZ3 on the captured handle). On the ¬ok fallthrough
+--    `eff` is a no-op Time call (so the Effect literal is well-formed).
 claim BoolCmpBuildZ3(
         ctx_h ∈ Int, op ∈ Op,
         l_h ∈ Int, r_h ∈ Int,
@@ -110,12 +74,6 @@ claim BoolCmpBuildZ3(
             ⟨ArgInt(ctx_h), ArgInt(l_h), ArgInt(r_h)⟩)
         : LibCall("libc", "time", ⟨ArgInt(0)⟩))
 
--- ── BoolNaryBuildZ3: pick the libcall for an n-ary boolean
---    connective node (OpConj → Z3_mk_and, OpDisj → Z3_mk_or). Both
---    take `(ctx, num_args, args[])`: the caller pre-populates
---    args_arr_ptr — a malloc'd 8*num_args byte buffer with one i64
---    operand handle per slot (see the array-marshaling header note).
---    `ok` is true iff op is OpConj or OpDisj.
 claim BoolNaryBuildZ3(
         ctx_h ∈ Int, op ∈ Op,
         num_args ∈ Int, args_arr_ptr ∈ Int,
@@ -131,16 +89,12 @@ claim BoolNaryBuildZ3(
             ⟨ArgInt(ctx_h), ArgInt(num_args), ArgInt(args_arr_ptr)⟩)
         : LibCall("libc", "time", ⟨ArgInt(0)⟩))
 
--- ── BoolNotBuildZ3: the libcall for an ENot node — and the second
---    step of the OpNeq lowering — given the operand handle.
---    Unconditional: Z3_mk_not is unary, no discrimination needed.
 claim BoolNotBuildZ3(ctx_h ∈ Int, x_h ∈ Int, eff ∈ Effect)
     eff = LibCall("libz3", "Z3_mk_not",
         ⟨ArgInt(ctx_h), ArgInt(x_h)⟩)
 
--- ── TernaryBuildZ3: the libcall for an ETernary node, given the
---    three operand handles (cond must be Bool-sorted; then/else
---    same-sorted). Z3_mk_ite is fixed 3-arity, no args buffer.
+-- ── TernaryBuildZ3: Z3_mk_ite is fixed 3-arity, no args buffer
+--    (cond must be Bool-sorted; then/else same-sorted).
 --
 --    NULL-OPERAND GUARD (sample-ternary-crash-diagnosis.md): a 0 handle
 --    means a branch sub-expression never pushed a Z3 AST (e.g. an
@@ -148,8 +102,7 @@ claim BoolNotBuildZ3(ctx_h ∈ Int, x_h ∈ Int, eff ∈ Effect)
 --    derefs null in ast_manager::mk_app → SIGSEGV. A compiler must error
 --    NAMEABLY, not segfault: when any operand is 0 we halt the build
 --    with Exit(7) (the "ternary null operand" code) instead of calling
---    into Z3. Valid ternaries (all handles non-zero) are unaffected —
---    `bad` is false and the same mk_ite call is emitted.
+--    into Z3. Valid ternaries (all handles non-zero) are unaffected.
 claim TernaryBuildZ3(
         ctx_h ∈ Int, cond_h ∈ Int, then_h ∈ Int, else_h ∈ Int,
         eff ∈ Effect)
@@ -159,21 +112,11 @@ claim TernaryBuildZ3(
         : LibCall("libz3", "Z3_mk_ite",
             ⟨ArgInt(ctx_h), ArgInt(cond_h), ArgInt(then_h), ArgInt(else_h)⟩))
 
--- ── BoolOpIsArray: true iff the op's Z3 spelling takes an args
---    array (and/or) versus a 2-arity signature (everything else in
---    this pass). The caller's FSM uses this to decide whether the
---    malloc + write_long ceremony precedes the build step. Mirrors
---    translate_arith.ev's BinopIsArray.
 claim BoolOpIsArray(op ∈ Op, out ∈ Bool)
     is_and ∈ Bool = (op matches OpConj)
     is_or  ∈ Bool = (op matches OpDisj)
     out = (is_and ∨ is_or)
 
--- ── BoolExprBinopParts: decompose a one-level EBinOp into its
---    (op, lhs, rhs). Same shape as translate_arith.ev's
---    ArithExprBinopParts (distinct name so both passes can be
---    imported side by side). ENoExpr fallthrough gives OpPlus and
---    (ENoExpr, ENoExpr) so the constraints stay well-formed.
 claim BoolExprBinopParts(e ∈ Expr, op ∈ Op, lhs ∈ Expr, rhs ∈ Expr, is_binop ∈ Bool)
     is_binop = (e matches EBinOp(_, _, _))
     op = match e
@@ -186,14 +129,12 @@ claim BoolExprBinopParts(e ∈ Expr, op ∈ Op, lhs ∈ Expr, rhs ∈ Expr, is_b
         EBinOp(_, _, r) ⇒ r
         _ ⇒ ENoExpr
 
--- ── NotExprParts: decompose an ENot into its operand.
 claim NotExprParts(e ∈ Expr, inner ∈ Expr, is_not ∈ Bool)
     is_not = (e matches ENot(_))
     inner = match e
         ENot(x) ⇒ x
         _ ⇒ ENoExpr
 
--- ── TernaryExprParts: decompose an ETernary into (cond, then, else).
 claim TernaryExprParts(e ∈ Expr, cond_e ∈ Expr, then_e ∈ Expr, else_e ∈ Expr, is_tern ∈ Bool)
     is_tern = (e matches ETernary(_, _, _))
     cond_e = match e
@@ -206,11 +147,6 @@ claim TernaryExprParts(e ∈ Expr, cond_e ∈ Expr, then_e ∈ Expr, else_e ∈ 
         ETernary(_, _, el) ⇒ el
         _ ⇒ ENoExpr
 
--- ── Translate2BoolProbe: oracle-compile + kernel-run probe that the
---    file parses and the discrimination claims constrain correctly.
---    No libcalls dispatched — the build claims' eff outputs are
---    computed but only Exit reaches `effects`. Exit 0 iff every
---    discrimination below lands where it should.
 claim Translate2BoolProbe
     expr ∈ Expr = ETernary(
         EBinOp(OpConj,

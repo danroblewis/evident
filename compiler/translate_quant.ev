@@ -1,42 +1,17 @@
 -- WIP: replaces bootstrap/runtime/src/translate/exprs/quant.rs. STATUS: C6 single-name ∀/∃ inline expansion; per-pass fixture only.
 --
--- Mirrors runtime/src/translate/exprs/quant.rs (the single-name
--- inline `∀ x ∈ S : body` and `∃ x ∈ S : body` shapes the parser at
--- stdlib/parser.ev::ParseQuantifier already emits as
--- EForall(var, range, body) / EExists(var, range, body)).
---
--- This first sub-step emits the simplified, non-unrolled SMT-LIB form
---
+-- Emits the simplified, non-unrolled SMT-LIB forms
 --     (forall ((x Int)) (=> (>= x 0) <body_str>))
 --     (exists ((x Int)) (and (>= x 0) <body_str>))
---
--- where <body_str> is rendered by an atom-level helper (`BodyAtomStr`)
--- that handles `EIdent`, `EInt`, and the one binop the C6 test
--- fixture exercises: `EBinOp(OpEq, lhs, rhs)`. Range-unrolling for
--- pinned `{0..n-1}` shapes is a follow-up sub-step (the same enum
--- carries it; this file's `BodyAtomStr` is intentionally compact
--- so the canonical Rust mapping in quant.rs/range.rs has a clear
--- parity surface).
---
--- Out-of-subset Expr variants (EMatch, deep binops, EForall nested
--- in a body) set ok=false and out="" — the caller is then expected
--- to fall through to whatever fold consumes complex bodies.
+-- The range payload is intentionally ignored; range-unrolling for
+-- pinned `{0..n-1}` shapes is a follow-up sub-step. Out-of-subset
+-- Expr variants set ok=false and out="" — the caller falls through
+-- to whatever fold consumes complex bodies.
 
 import "compiler/parser.ev"
 
 -- ── Atom-level body rendering ──────────────────────────────────
--- Renders the body of a quantifier into its SMT-LIB string form.
--- C6's atom-level scope covers three Expr variants:
---   * EIdent(s)        → s
---   * EInt(n)          → str_from_int(n)
---   * EBinOp(OpEq,l,r) → "(= " ++ atom(l) ++ " " ++ atom(r) ++ ")"
---
--- For deeper trees the caller composes a real walker (the work-stack
--- pattern in test_translate_eq_ident.ev). This claim is the leaf
--- combiner those walkers fall back to, plus the standalone path the
--- C6 test exercises.
 
--- One level of binop nesting: render an EIdent/EInt leaf.
 claim BodyLeafStr
     e ∈ Expr
     out ∈ String
@@ -52,9 +27,6 @@ claim BodyLeafStr
         : is_int   ? str_from_int(int_n)
         : "")
 
--- A single binop (OpEq only) or a leaf. Composes BodyLeafStr on the
--- left + right sub-Exprs. Wider operator coverage is a follow-up;
--- OpEq is the one the C6 fixture exercises.
 claim BodyAtomStr
     e ∈ Expr
     out ∈ String
@@ -84,20 +56,6 @@ claim BodyAtomStr
     out = ((is_binop ∧ is_eq) ? eq_s : leaf_s)
 
 -- ── Quantifier SMT-LIB expansion (C6) ───────────────────────────
--- Top-level claim. For EForall / EExists with a single bound name
--- and an atom-level body, emit the simplified SMT-LIB form. Any
--- other Expr lands ok=false / out="".
---
--- Output shapes (mirrors runtime/src/translate/exprs/quant.rs's
--- non-unrolled fallback):
---
---     EForall("x", _, body) → "(forall ((x Int)) (=> (>= x 0) <body_s>))"
---     EExists("x", _, body) → "(exists ((x Int)) (and (>= x 0) <body_s>))"
---
--- Range-side (the `EIdent(src)` payload) is intentionally ignored
--- in this sub-step: the simplified form lets a downstream pass
--- specialise the guard once the range's shape (Int range,
--- Seq(T) walk, …) is known. Range-unroll lives in a C6.b follow-up.
 claim QuantSmtlib
     e ∈ Expr
     out ∈ String
@@ -128,31 +86,14 @@ claim QuantSmtlib
         : "")
 
 -- ── Recursive quantifier translation via a WorkItem work-stack ─────
---
--- QuantSmtlib above renders one level: a quantifier whose body is an
--- atom or a single OpEq binop. A real pass walks an arbitrary Expr
--- tree — a quantifier whose body is itself a nested binop, or even a
--- nested quantifier — and produces the fully nested SMT-LIB. That
--- walk is the depth-first work-stack from test_ast_walker.ev /
--- translate_arith.ev's ArithTranslateStep, driving one pop per tick.
---
--- The work-stack uses parser.ev's `WorkItem = WIProcess(Expr) |
--- WIEmit(String)` over a `WorkList` cons-list (head = top of stack),
--- exactly as ArithTranslateStep. A quantifier head expands to its
--- frame literals plus a WIProcess of the body; a binop head expands
--- to the operator's prefix form plus WIProcess of each operand; an
--- atom emits its token.
---
--- QuantTranslateStep is the per-tick transition. Expansions (head
--- first, onto `rest`):
+-- Per-tick transition over parser.ev's `WorkItem = WIProcess(Expr) |
+-- WIEmit(String)` on a `WorkList` cons-list (head = top of stack).
+-- Expansions (head first, onto `rest`):
 --   EForall(v, _, body) → "(forall ((v Int)) (=> (>= v 0) " P(body) "))"
 --   EExists(v, _, body) → "(exists ((v Int)) (and (>= v 0) " P(body) "))"
 --   EBinOp(op, l, r)    → "(" op_str " " P(l) " " P(r) ")"
 --   EInt(n)             → str_from_int(n)   (leaf, no push)
 --   EIdent(s)           → s                 (leaf, no push)
--- op_str covers the boolean/comparison operators a quantifier body
--- uses (OpEq → "=", OpImpl → "=>") plus the arithmetic operators so a
--- mixed body still renders.
 claim QuantTranslateStep(head ∈ WorkItem, rest ∈ WorkList, new_stack ∈ WorkList, emit ∈ String)
     is_emit ∈ Bool = (head matches WIEmit(_))
     emit_lit ∈ String = match head

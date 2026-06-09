@@ -1,22 +1,9 @@
--- Grammar wave 4t: BATCHED DATATYPES for forward/mutually-referencing
--- enums. Drives the multi-top-level pipeline (constant input) on TWO
--- enums where the FIRST references the SECOND, followed by a claim:
---   enum Expr = ELit(Int) | EOp(BinOp, Expr, Expr)   -- references BinOp
---   enum BinOp = OpAdd | OpSub | OpMul
---   claim foo
---       x ∈ Int = 5
---
--- The OLD per-enum form emitted `(declare-datatypes ((Expr 0)) …)` BEFORE
--- `(declare-datatypes ((BinOp 0)) …)`; z3 then errors "unknown sort
--- 'BinOp'" on the first block, dropping the Expr datatype AND every
--- assertion over it — so a contradictory `unsat_*` claim went vacuously
--- sat (the 11 unsat claims in tests/lang_tests/test_enums_mutual.ev). The
+-- BATCHED DATATYPES for forward/mutually-referencing enums (Expr→BinOp).
+-- The old per-enum form emitted Expr's block before BinOp's; z3 errors
+-- "unknown sort 'BinOp'", dropping the Expr datatype AND every assertion
+-- over it — contradictory `unsat_*` claims went vacuously sat. The
 -- batched form emits ALL enum sorts in ONE `(declare-datatypes (<sorts>)
--- (<bodies>))` block, making every sort mutually visible (mirrors
--- bootstrap's create_datatypes batch). This is the wave-4q machinery that
--- was in compiler/sample.ev + compiler/compiler.ev source but absent from
--- the (stale) built artifacts until wave 4t rebuilt them.
--- See docs/plans/wave-4t-multiline-enum-payload.md.
+-- (<bodies>))` block, making every sort mutually visible.
 --
 -- expect: stdout = ";; manifest: state-fields = x:Int"
 -- expect: stdout = ";; manifest: effects-name = effects"
@@ -79,10 +66,7 @@ claim main
     was_collecting_str ∈ Bool = (#_partial_str > 0)
     was_collecting_int ∈ Bool = (_partial_int ≥ 0)
 
-    -- ── String-literal mode (grammar wave 2; carried) ────────────
-    -- A `"` opens the mode, chars accumulate, the closing `"` emits a
-    -- StringLit token (escapes out of scope). While inside a string the
-    -- normal ident/int collectors are suppressed (¬_in_strlit guards).
+    -- ── String-literal mode (carried) ─────────────────────────────
     in_strlit  ∈ Bool
     _in_strlit ∈ Bool
     partial_strlit  ∈ String
@@ -169,38 +153,25 @@ claim main
         : (in_reverse ∧ (¬work_is_nil) ? TLCons(work_hd, _fwd)
         : _fwd)))
 
-    -- ══ TOP-LEVEL ITEM LOOP (grammar wave 4b) ═════════════════════
-    -- Phase 2 walks a SEQUENCE of top-level items (wave 3.5 handled
-    -- exactly one). A sub-mode `pmode` routes the forward stream
-    -- `_items` (initialised to `_fwd` once REVERSE completes):
-    --   0 DISPATCH — peek head(_items): KwEnum → enum (pmode 1); other
-    --                non-empty head → claim (pmode 2); empty → all_done
-    --                → EMIT.
+    -- ══ TOP-LEVEL ITEM LOOP ═══════════════════════════════════════
+    -- `pmode` routes the forward stream `_items` (init `_fwd`):
+    --   0 DISPATCH — peek head(_items): KwEnum → 1; other non-empty
+    --                head → 2; empty → all_done → EMIT.
     --   1 ENUM     — accumulate ONE enum's (declare-datatypes …) block
-    --                into `eacc`, stopping at the next top-level keyword
-    --                (or end of stream) rather than draining everything,
-    --                then return to DISPATCH with `items` advanced to the
-    --                remaining stream (the boundary keyword onward).
-    --   2 CLAIM    — the wave-1..4 membership walk; on completion return
-    --                to DISPATCH. In the real "N enum decls + 1 claim"
-    --                translation-unit shape the claim is the last item;
-    --                multi-claim selection (emit only the target claim,
-    --                skip the imported Build* sugar claims) is a
-    --                documented gap — see docs/plans/blocked-grammar-wave4b.md.
-    -- The emitted unit is: manifest header · accumulated enum datatype
-    -- blocks (`_eacc`) · the claim's is_first_tick decl + declares/asserts
-    -- (`_out`), mirroring bootstrap's datatypes-before-declares ordering.
+    --                into `eacc`, stopping at the next top-level keyword.
+    --   2 CLAIM    — membership walk; on completion return to DISPATCH.
+    -- Emit order: manifest header · enum datatype blocks · is_first_tick
+    -- decl + declares/asserts (`_out`) — datatypes MUST precede declares.
     pmode  ∈ Int
     _pmode ∈ Int
     items  ∈ TokenList
     _items ∈ TokenList
     eacc  ∈ String
     _eacc ∈ String
-    -- Batched-datatype accumulators (wave 4q/4t): ALL enums emit as ONE
-    -- `(declare-datatypes (<sorts>) (<bodies>))` block so a forward
-    -- reference between enums (here Expr→BinOp) resolves — SMT-LIB text
-    -- requires every referenced sort visible, and a single batch makes all
-    -- listed sorts mutually visible (mirrors bootstrap's create_datatypes).
+    -- Batched-datatype accumulators: ALL enums emit as ONE
+    -- `(declare-datatypes (<sorts>) (<bodies>))` block — SMT-LIB requires
+    -- every referenced sort visible, and a single batch makes all listed
+    -- sorts mutually visible.
     esorts  ∈ String
     _esorts ∈ String
     ebodies  ∈ String
@@ -256,11 +227,9 @@ claim main
     mem_card_seq ∈ Bool = ((r_t3 matches Eq) ∧ (r_t4 matches Hash))
     mem_is_seq ∈ Bool = (mem_compound_seq ∨ mem_card_seq)
 
-    -- Wave-4 constructor-application / nested-Seq RHS. CtorMembershipStep
-    -- self-discriminates (ok=true only for a ctor-app or a Seq of ctor-apps),
-    -- so `mem_is_ctor` is just its `ok` — it never hijacks a non-ctor line.
-    -- Given highest priority below: a `name ∈ Seq(T) = ⟨Ctor(…)…⟩` line is
-    -- ALSO `mem_is_seq` (compound type), but the ctor step must win.
+    -- CtorMembershipStep self-discriminates (ok=true only for a ctor-app or
+    -- a Seq of ctor-apps). Priority matters: a `name ∈ Seq(T) = ⟨Ctor(…)…⟩`
+    -- line is ALSO `mem_is_seq` (compound type), but the ctor step must win.
     cts_decl ∈ String
     cts_assert ∈ String
     cts_field ∈ String
@@ -330,9 +299,8 @@ claim main
         : (in_claim_run ∧ sel_ok ? (sel_field = "" ? _fstr : (_fstr = "" ? sel_field : _fstr ++ " " ++ sel_field))
         : _fstr)))
 
-    -- is_first_tick auto-inject guard: track whether the source declared
-    -- is_first_tick during the parse walk (mirrors bootstrap emit's
-    -- ensure_is_first_tick_decl, which prepends the decl only when absent).
+    -- Track whether the source declared is_first_tick; the decl is
+    -- prepended only when absent.
     ift  ∈ Bool
     _ift ∈ Bool
     ift = (is_first_tick ? false
@@ -397,22 +365,16 @@ claim main
     e7 ∈ Bool = (_ephase = 7)
     e8 ∈ Bool = (_ephase = 8)
 
-    -- A top-level keyword at the enum head ends THIS enum (the next item
-    -- starts there). This is the wave-4b multi-item stop: instead of
-    -- draining the whole forward list, the enum machine halts at the next
+    -- A top-level keyword ends THIS enum: the machine halts at the next
     -- enum/claim/type/fsm/schema and leaves the remaining stream in `_plist`.
     p_is_tlkw ∈ Bool = ((ptok matches KwEnum) ∨ (ptok matches KwClaim)
         ∨ (ptok matches KwType) ∨ (ptok matches KwFsm) ∨ (ptok matches KwSchema))
 
-    -- A variant is pending (name read, awaiting boundary) in e5 or e8.
     have_pending ∈ Bool = (e5 ∨ e8)
     at_boundary  ∈ Bool = (p_is_pipe ∨ plist_nil ∨ p_is_tlkw)
     finalize     ∈ Bool = (in_enum_run ∧ have_pending ∧ at_boundary)
-    -- This enum is complete: pending variant + we are at the end of the
-    -- stream or the next top-level keyword (NOT a `|`, which continues it).
     enum_done    ∈ Bool = (in_enum_run ∧ have_pending ∧ (plist_nil ∨ p_is_tlkw))
 
-    -- Reconstruct the EnumVariantDecl from the carried slots and render.
     cur_fields ∈ EVFieldList = (_fcount = 0 ? EVFNil
         : _fcount = 1 ? EVFCons(EVFType(_fA), EVFNil)
         : _fcount = 2 ? EVFCons(EVFType(_fA), EVFCons(EVFType(_fB), EVFNil))
@@ -423,7 +385,6 @@ claim main
 
     new_body ∈ String = (finalize ? (_first_v ? rendered : _body ++ " " ++ rendered) : _body)
 
-    -- ephase transition.
     next_ephase ∈ Int = (e1 ∧ p_is_enum ? 2
         : e2 ∧ p_is_ident ? 3
         : e3 ∧ p_is_eq ? 4
@@ -439,10 +400,8 @@ claim main
     starting_variant ∈ Bool = (e4 ∧ p_is_ident)
     adding_field     ∈ Bool = (e6 ∧ p_is_ident)
 
-    -- State carry for the enum-parse sub-machine. `enter_enum` (re)inits
-    -- it for each enum item; `in_enum_run` advances it; `enum_done` halts
-    -- it at the boundary (without consuming the boundary keyword: plist is
-    -- left pointing AT it so DISPATCH picks up the next item there).
+    -- `enum_done` halts WITHOUT consuming the boundary keyword: `plist` is
+    -- left pointing AT it so DISPATCH picks up the next item there.
     plist   = (is_first_tick ? TLNil
         : (enter_enum ? _items
         : (in_enum_run ∧ (¬enum_done) ∧ (¬plist_nil) ? ptail
@@ -476,21 +435,14 @@ claim main
     fB = (is_first_tick ? "" : (enter_enum ? "" : (in_enum_run ∧ adding_field ∧ (_fcount = 1) ? p_id : _fB)))
     fC = (is_first_tick ? "" : (enter_enum ? "" : (in_enum_run ∧ adding_field ∧ (_fcount = 2) ? p_id : _fC)))
 
-    -- The (declare-datatypes …) block for the enum that just finished.
     grouped_body ∈ String = "(" ++ new_body ++ ")"
     cur_enum_decl ∈ EnumDeclAst = EnumD(_ename, EVNil)
     enum_block ∈ String
     EnumDeclSmtlib(decl ↦ cur_enum_decl, body_str ↦ grouped_body, out ↦ enum_block)
 
-    -- Batched form (wave 4q/4t): this enum's `(Name 0)` sort decl + its body
-    -- (`((Ctor …) …)`) appended into the shared batch. No Seq(T) payload in
-    -- this fixture, so no `__SeqOf_T` helper sort.
     this_sorts ∈ String = "(" ++ _ename ++ " 0) "
     this_bodies ∈ String = grouped_body ++ " "
 
-    -- Accumulators (persist across items): enum datatype blocks, and the
-    -- remaining top-level stream. `eacc` only grows on `enum_done`; `items`
-    -- advances at the parse start, each enum boundary, and the claim end.
     -- `eacc` is retained (dead) for backward compatibility; `datatypes`
     -- reads the batched `esorts`/`ebodies`.
     eacc = (is_first_tick ? ""
@@ -523,8 +475,6 @@ claim main
         : 3))))
 
     -- ── EMIT ──────────────────────────────────────────────────────
-    -- The DISPATCH tick that finds the item stream empty assembles and
-    -- `puts` the full translation unit, then Exit(0).
     emit_now ∈ Bool = all_done
 
     manifest ∈ String = (";; manifest: state-fields = " ++ _fstr ++ "\n"

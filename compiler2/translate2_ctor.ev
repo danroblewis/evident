@@ -1,15 +1,10 @@
 -- compiler2/translate2_ctor.ev — P2: enum/datatype declaration + constructor
 -- application as Z3-AST-building per-STEP claims.
 --
--- ── Architecture (the compiler2 convention) ─────────────────────────────
---
--- Each claim binds parsed enum data (parser.ev's EnumDeclAst /
--- EnumVariantDecl / EVFieldList) to ONE Z3-builder LibCall — the `eff`
--- for one FSM tick. The DRIVER owns the walking strategy: it sequences
--- these steps one libcall per tick (every libcall's return lands in
--- `last_results` on the NEXT tick), captures handles into Int state,
--- and threads them into the next step. Same separation as
--- compiler/translate_arith.ev's BuildZ3 claims; same proven C-API
+-- Each claim binds parsed enum data to ONE Z3-builder LibCall — the
+-- `eff` for one FSM tick. The DRIVER owns the walking strategy: one
+-- libcall per tick (every libcall's return lands in `last_results` on
+-- the NEXT tick), handles captured into Int state. Same proven C-API
 -- sequence as tests/kernel/z3_datatypes/sugar_datatypes.ev:
 --
 --   mk_string_symbol (per variant: name + recognizer + one per field)
@@ -19,18 +14,9 @@
 --     → query_constructor (per variant: ctor decl / tester / accessors)
 --     → mk_app (apply the harvested decls)
 --
--- ── Why the legacy Exit(3+4) bug class disappears BY CONSTRUCTION ──────
---
--- The legacy pass (compiler/translate_ctor.ev) rendered constructor
--- application as TEXT via depth-unrolled RenderExprL0/L1/L2/L3: each
--- level only recognised children one level shallower, so a compound
--- argument below the unroll floor — `Exit(3 + 4)`, an arith binop where
--- L0 expects an atom — silently rendered as the empty string and the
--- constraint dropped (`(assert (= eff ))`). Here a constructor argument
--- is a Z3_ast HANDLE (an Int). Whatever pass built that node — arith,
--- bool, a nested ctor app, a quantifier — its handle is the same i64,
--- and CtorAppStep neither knows nor cares how deep the tree behind it
--- is. There is no renderer to be incomplete: compound args come free.
+-- Constructor arguments here are Z3_ast HANDLES (i64), so compound
+-- args (`Exit(3 + 4)`) come free — unlike the legacy text renderer,
+-- which silently dropped sub-expressions below its unroll floor.
 --
 -- ── Recursive / mutually-recursive enums: sort_refs mechanics ──────────
 --
@@ -39,10 +25,9 @@
 -- A field whose type is one of the datatypes being declared in the SAME
 -- Z3_mk_datatypes call gets sorts[i] = 0 and sort_refs[i] = the index
 -- of that datatype in the call's sort list. Single recursion
--- (enum LL = Nil | Cons(Int, LL)) is the one-sort case: the LL field
--- gets sorts[1] = 0, sort_refs[1] = 0. Mutual recursion
--- (enum A = X(B) ; enum B = Y(A)) is the same mechanism with n_sorts =
--- 2 and cross-indices: A's B-field gets ref 1, B's A-field gets ref 0.
+-- (enum LL = Nil | Cons(Int, LL)): the LL field gets sorts[1] = 0,
+-- sort_refs[1] = 0. Mutual recursion (enum A = X(B) ; enum B = Y(A)):
+-- same mechanism, n_sorts = 2 with cross-indices.
 --
 -- WIDTH CAVEAT (from stdlib/z3_datatypes.ev): sort_refs[] slots are
 -- 4 bytes, but __mem only has write_long (8 bytes). One write_long at
@@ -50,22 +35,6 @@
 -- driver packs TWO refs per write: SortRefsPack2(lo, hi) = lo + hi·2³².
 -- For a single-field constructor write_long(refs_p, ref) is exactly
 -- right. field_names[] / sorts[] are unaffected (pointer-wide).
---
--- ── The Effect enum is just a datatype at this layer ───────────────────
---
--- The kernel manifest's effect-enum (ReadLine / ReadFile / WriteFile /
--- LibCall / Exit) has no special status here: EffectEnumDecl below is
--- its parsed EnumDeclAst, and the driver declares it through the same
--- step claims as any user enum. `Exit(code)` in a user program is
--- CtorAppStep on the harvested Exit decl with a code HANDLE — which,
--- per the section above, may be any built node (Exit(3 + 4) included).
---
--- Field-sort resolution scope: FieldSortSlot maps primitive field types
--- (Int / Bool / String) to driver-cached sort handles and self-references
--- to (0, ref). Non-primitive non-self field types (another enum, a Seq
--- sort — e.g. LibCall's Seq(LibArg)) resolve through the DRIVER's sort
--- registry; that registry is P3 wiring, not per-step shape, so it lives
--- with the driver.
 
 import "compiler/parser.ev"
 import "stdlib/z3_ast.ev"
@@ -74,14 +43,11 @@ import "stdlib/z3_datatypes.ev"
 
 -- ── Parsed-data peel claims (driver iteration) ──────────────────────────
 
--- EnumVariantListOf: project the variant list out of an EnumDeclAst.
 claim EnumVariantListOf(decl ∈ EnumDeclAst, vs ∈ EnumVariantList)
     vs = match decl
         EnumD(_, l) ⇒ l
         ENoEnum ⇒ EVNil
 
--- EnumVariantsHead: one-step peel of the variant list. The driver walks
--- the enum's variants one per FSM round with this.
 claim EnumVariantsHead(vs ∈ EnumVariantList, v ∈ EnumVariantDecl, rest ∈ EnumVariantList, nonempty ∈ Bool)
     nonempty = (vs matches EVCons(_, _))
     v = match vs
@@ -91,7 +57,6 @@ claim EnumVariantsHead(vs ∈ EnumVariantList, v ∈ EnumVariantDecl, rest ∈ E
         EVCons(_, t) ⇒ t
         EVNil ⇒ EVNil
 
--- VariantFieldsHead: one-step peel of a payload field list.
 claim VariantFieldsHead(fs ∈ EVFieldList, ty ∈ String, rest ∈ EVFieldList, nonempty ∈ Bool)
     nonempty = (fs matches EVFCons(_, _))
     vfh_f ∈ EVField = match fs
@@ -104,9 +69,6 @@ claim VariantFieldsHead(fs ∈ EVFieldList, ty ∈ String, rest ∈ EVFieldList,
         EVFCons(_, t) ⇒ t
         EVFNil ⇒ EVFNil
 
--- VariantFieldCount: payload arity, bounded ≤ 3 (the corpus arity —
--- same bound as the legacy VariantText; a wider variant is a driver
--- walk over VariantFieldsHead).
 claim VariantFieldCount(v ∈ EnumVariantDecl, n ∈ Int)
     vfc_fs ∈ EVFieldList = match v
         EVDeclP(_, fs) ⇒ fs
@@ -122,8 +84,6 @@ claim VariantFieldCount(v ∈ EnumVariantDecl, n ∈ Int)
     vfc_has2 ∈ Bool = (vfc_r2 matches EVFCons(_, _))
     n = (¬vfc_has0 ? 0 : ¬vfc_has1 ? 1 : ¬vfc_has2 ? 2 : 3)
 
--- VariantFieldType: the type-name string of payload field `idx` (0-2);
--- "" past the end.
 claim VariantFieldType(v ∈ EnumVariantDecl, idx ∈ Int, ty ∈ String)
     vft_fs ∈ EVFieldList = match v
         EVDeclP(_, fs) ⇒ fs
@@ -144,16 +104,12 @@ claim VariantFieldType(v ∈ EnumVariantDecl, idx ∈ Int, ty ∈ String)
 
 -- ── (a) Enum declaration steps ──────────────────────────────────────────
 
--- EnumSortSymStep: mk_string_symbol for the enum's sort name. One per
--- enum, fed to mk_datatypes' sort_names[] IN-array.
 claim EnumSortSymStep(ctx_h ∈ Int, decl ∈ EnumDeclAst, eff ∈ Effect)
     ess_name ∈ String = match decl
         EnumD(n, _) ⇒ n
         ENoEnum ⇒ ""
     BuildZ3MkStringSymbol(ctx_h ↦ ctx_h, name ↦ ess_name, eff ↦ eff)
 
--- VariantNameSymStep: mk_string_symbol for one variant's constructor
--- name.
 claim VariantNameSymStep(ctx_h ∈ Int, v ∈ EnumVariantDecl, eff ∈ Effect)
     vns_name ∈ String = match v
         EVDecl(n) ⇒ n
@@ -161,8 +117,6 @@ claim VariantNameSymStep(ctx_h ∈ Int, v ∈ EnumVariantDecl, eff ∈ Effect)
         EVNoVariant ⇒ ""
     BuildZ3MkStringSymbol(ctx_h ↦ ctx_h, name ↦ vns_name, eff ↦ eff)
 
--- VariantRecognizerSymStep: mk_string_symbol for the variant's tester,
--- named `is_<Variant>` (the spelling sugar_datatypes proved).
 claim VariantRecognizerSymStep(ctx_h ∈ Int, v ∈ EnumVariantDecl, eff ∈ Effect)
     vrs_name ∈ String = match v
         EVDecl(n) ⇒ n
@@ -171,9 +125,6 @@ claim VariantRecognizerSymStep(ctx_h ∈ Int, v ∈ EnumVariantDecl, eff ∈ Eff
     vrs_recog ∈ String = "is_" ++ vrs_name
     BuildZ3MkStringSymbol(ctx_h ↦ ctx_h, name ↦ vrs_recog, eff ↦ eff)
 
--- VariantFieldSymStep: mk_string_symbol for payload field `idx`'s
--- accessor, named `<Variant>__f<idx>` — the language's auto-accessor
--- convention (CLAUDE.md "Enums"), same as the legacy VariantText.
 claim VariantFieldSymStep(ctx_h ∈ Int, v ∈ EnumVariantDecl, idx ∈ Int, eff ∈ Effect)
     vfs_name ∈ String = match v
         EVDecl(n) ⇒ n
@@ -183,12 +134,12 @@ claim VariantFieldSymStep(ctx_h ∈ Int, v ∈ EnumVariantDecl, idx ∈ Int, eff
     BuildZ3MkStringSymbol(ctx_h ↦ ctx_h, name ↦ vfs_acc, eff ↦ eff)
 
 -- FieldSortSlot: resolve one payload field's (sorts[i], sort_refs[i])
--- pair. Self-reference (ty = the enum being declared) → (0, self_sort_idx)
--- per the sort_refs mechanics in the header; primitives map to the
--- driver's cached sort handles with ref 0 (ignored by Z3 when
--- sorts[i] ≠ 0). Unknown types also yield (0, self_sort_idx ⊥ 0) only
--- when self — otherwise (0, 0) with is_self false, which the driver
--- must resolve from its own sort registry before writing the slot.
+-- pair. Self-reference → (0, self_sort_idx) per the header mechanics;
+-- primitives map to the driver's cached sort handles with ref 0
+-- (ignored by Z3 when sorts[i] ≠ 0). Non-primitive non-self types
+-- (another enum, a Seq sort — e.g. LibCall's Seq(LibArg)) come out
+-- (0, 0) with is_self false — the DRIVER must resolve them from its
+-- own sort registry before writing the slot.
 claim FieldSortSlot(
         enum_name ∈ String, ty ∈ String,
         int_sort_h ∈ Int, bool_sort_h ∈ Int, string_sort_h ∈ Int,
@@ -203,17 +154,13 @@ claim FieldSortSlot(
         : 0)
     ref_slot = (is_self ? self_sort_idx : 0)
 
--- SortRefsPack2: pack two 4-byte sort_refs into one write_long payload
--- (the width caveat — see header). write_long(refs_p + 8*j, packed)
--- fills unsigned slots 2j (ref_lo) and 2j+1 (ref_hi).
 claim SortRefsPack2(ref_lo ∈ Int, ref_hi ∈ Int, packed ∈ Int)
     packed = ref_lo + ref_hi * 4294967296
 
 -- VariantMkConstructorStep: the Z3_mk_constructor call for one variant.
--- Field arity comes from the parsed variant itself; for a nullary
--- variant the three array pointers are forced to 0 (the C API's null
--- contract, proven by sugar_datatypes phase 10), so the driver may pass
--- its arena pointers unconditionally.
+-- For a nullary variant the three array pointers are forced to 0 (the
+-- C API's null contract, proven by sugar_datatypes phase 10), so the
+-- driver may pass its arena pointers unconditionally.
 -- The driver must have populated, on PRIOR ticks:
 --   fnames_p — n write_long slots, each a VariantFieldSymStep handle
 --   fsorts_p — n write_long slots, each a FieldSortSlot sort_slot
@@ -235,21 +182,6 @@ claim VariantMkConstructorStep(
         field_names_arr_p ↦ vmc_fn, field_sorts_arr_p ↦ vmc_fs,
         sort_refs_arr_p ↦ vmc_sr, eff ↦ eff)
 
--- Per-enum list / datatype-creation / harvest steps are the stdlib
--- claims directly — no enum-AST data to bind, so no wrapper here:
---   BuildZ3MkConstructorList(ctx, n_ctors, ctors_p)   one per enum
---   BuildZ3MkDatatypes(ctx, n_sorts, names_p, sorts_out_p, clists_p)
---   BuildMemReadLong(sorts_out_p + 8*i)               harvest each sort
--- (mutually-recursive enums = ONE BuildZ3MkDatatypes call with
--- n_sorts > 1; the cross-references are sort_refs indices, above).
-
--- VariantQueryStep: Z3_query_constructor for one variant after its
--- container went through mk_datatypes. The driver allocates one
--- out-block of 16 + 8·n_fields bytes at out_base_p:
---   ctor decl   OUT at out_base_p
---   tester decl OUT at out_base_p + 8
---   accessors   OUT-array at out_base_p + 16  (one slot per field)
--- and harvests each Z3_func_decl with BuildMemReadLong on later ticks.
 claim VariantQueryStep(ctx_h ∈ Int, ctor_h ∈ Int, v ∈ EnumVariantDecl, out_base_p ∈ Int, eff ∈ Effect)
     vq_n ∈ Int
     VariantFieldCount(v ↦ v, n ↦ vq_n)
@@ -260,30 +192,16 @@ claim VariantQueryStep(ctx_h ∈ Int, ctor_h ∈ Int, v ∈ EnumVariantDecl, out
 
 -- ── (b) Constructor application steps ───────────────────────────────────
 
--- CtorArgWriteStep: write argument `idx`'s HANDLE into the mk_app args
--- array. arg_h is any built Z3_ast — an atom, an arith tree, a nested
--- ctor app — the depth of the tree behind the handle is invisible here
--- (the header's by-construction argument).
 claim CtorArgWriteStep(args_p ∈ Int, idx ∈ Int, arg_h ∈ Int, eff ∈ Effect)
     caw_addr ∈ Int = args_p + 8 * idx
     BuildMemWriteLong(addr ↦ caw_addr, value ↦ arg_h, eff ↦ eff)
 
--- CtorAppStep: `Green(x)` → Z3_mk_app(green_decl, [x_h]). ctor_decl_h
--- is the decl harvested by VariantQueryStep; n_args slots at args_p
--- were written by CtorArgWriteStep on prior ticks. A nullary variant
--- value is n_args = 0 with args_p = 0. The SAME step applies a
--- harvested tester decl (1 arg → `((_ is Green) x)`) or accessor decl
--- (1 arg → field projection) — they are all just Z3_func_decls.
 claim CtorAppStep(ctx_h ∈ Int, ctor_decl_h ∈ Int, n_args ∈ Int, args_p ∈ Int, eff ∈ Effect)
     BuildZ3MkApp(ctx_h ↦ ctx_h, decl_h ↦ ctor_decl_h,
         num_args ↦ n_args, args_arr_p ↦ args_p, eff ↦ eff)
 
 -- ── (c) The Effect enum at this layer ───────────────────────────────────
 
--- EffectEnumDecl: the kernel's Effect-enum floor as parsed data, so the
--- driver declares it through the SAME steps as user enums. The
--- Seq(LibArg) field of LibCall resolves through the driver's sort
--- registry (see header scope note).
 claim EffectEnumDecl(decl ∈ EnumDeclAst)
     decl = EnumD("Effect",
         EVCons(EVDecl("ReadLine"),
@@ -296,9 +214,6 @@ claim EffectEnumDecl(decl ∈ EnumDeclAst)
         EVCons(EVDeclP("Exit", EVFCons(EVFType("Int"), EVFNil)),
         EVNil))))))
 
--- EffectCtorArity: payload arity of each kernel-native Effect variant —
--- the count the driver feeds to CtorAppStep when building an effects
--- value (e.g. Exit is mk_app(exit_decl, 1, [code_h])).
 claim EffectCtorArity(name ∈ String, n ∈ Int, known ∈ Bool)
     eca_rl ∈ Bool = (name = "ReadLine")
     eca_rf ∈ Bool = (name = "ReadFile")

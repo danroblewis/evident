@@ -1,19 +1,10 @@
 -- Phase A1: Unicode operator recognition (∈, ⇒, ⟨, ⟩, ↦, ≤, ≥, ≠,
--- ∧, ∨, ¬, ∀, ∃).
+-- ∧, ∨, ¬, ∀, ∃) — walks 13 single-char Unicode ops through
+-- SingleCharTok, emitting each operator's semantic label.
 --
--- Walks a hardcoded string of 13 single-char Unicode operators.
--- For each char, calls SingleCharTok and emits the operator's
--- semantic label. Halts on end-of-input.
---
--- The input is a String constant baked into the program — no file
--- read needed, so the first tick walks position 0 directly. The
--- multi-byte UTF-8 codepoint extraction works because the
--- runtime's `substr` lowers to Z3's `seq.extract` on a string
--- treated as a codepoint sequence; each Unicode op is one
--- codepoint, so `substr(s, i, 1)` yields exactly one logical char.
---
--- This is the acceptance test for Phase A1 of the completion
--- roadmap (see docs/plans/completion-roadmap.md).
+-- Multi-byte UTF-8 extraction works because `substr` lowers to Z3's
+-- `seq.extract` over a CODEPOINT sequence — each op is one codepoint,
+-- so `substr(s, i, 1)` yields exactly one logical char.
 --
 -- expect: stdout = "IN"
 -- expect: stdout = "IMPLIES"
@@ -48,10 +39,8 @@ claim main
 
     done ∈ Bool = (pos ≥ #input)
 
-    -- Drive the label off the Token variant emitted by SingleCharTok
-    -- (not off cur_char directly) — that's what verifies the lexer
-    -- mapping rather than the substr extraction. `matches` works as
-    -- a recognizer; one per variant.
+    -- Drive the label off the Token variant, not cur_char — that's
+    -- what verifies the lexer mapping rather than the substr.
     is_in       ∈ Bool = (op_tok matches OpIn)
     is_implies  ∈ Bool = (op_tok matches OpImplies)
     is_sopen    ∈ Bool = (op_tok matches OpSeqOpen)

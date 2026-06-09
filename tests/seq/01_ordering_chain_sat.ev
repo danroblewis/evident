@@ -1,6 +1,5 @@
--- A1 ordering chain. The position of an element in ⟨a,b,c⟩ encodes
--- its rank; the chain a<b<c is a per-adjacent-pair index constraint
--- on a BOUNDED seq (#xs=3). SAT: a=1, c=10 leaves room for b.
+-- A1 ordering chain a<b<c as adjacent-pair index constraints on a
+-- bounded seq. SAT: a=1, c=10 leaves room for b.
 -- entry: main
 -- expect: exit = 0
 import "stdlib/kernel.ev"

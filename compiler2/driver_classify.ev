@@ -26,9 +26,6 @@
 -- Token window → per-line classification + dispatch decision. Lifted into
 -- driver_main via `..DriverClassify`.
 fsm DriverClassify
-    -- ── LINE CLASSIFIER (pure; runs when witems is empty) ─────────
-    -- Reads the shared window: c_t0..c_t4 = ww_t0..ww_t4 (lookahead
-    -- need 5). Consumption is cursor arithmetic via dcons below.
     c_rem_nil ∈ Bool = (ww_t0 matches EofTok)
     c_t0 ∈ Token = ww_t0
     c_t1 ∈ Token = ww_t1
@@ -45,9 +42,7 @@ fsm DriverClassify
 
     c_is_mem ∈ Bool = (c_t1 matches OpIn)
     c_is_nmem ∈ Bool = (c_t1 matches OpNotIn)
-    -- E1: `_`-prefixed membership = an explicit carry declaration.
     c_is_carry ∈ Bool = (substr(c_name, 0, 1) = "_")
-    -- F1: a multi-name group head (`x, y, z ∈ Nat` — body form).
     c_mn_line ∈ Bool = (c_t0_is_ident ∧ (c_t1 matches Comma)
         ∧ (c_t2 matches Ident(_)))
     c_eff_line ∈ Bool = (c_is_mem ∧ (c_name = "effects"))
@@ -55,10 +50,6 @@ fsm DriverClassify
         Ident(s) ⇒ s
         _ ⇒ ""
     c_is_nat ∈ Bool = (c_type_str = "Nat")
-    -- sort class: 0 Int (incl Nat) · 1 Bool · 2 the user enum ·
-    -- 3 String · 4 the Result floor · 5 Seq(Int) (D2) · 6 Real (G2)
-    -- · 10+k (Array Int T_k) composite seq · 20+k (Array T_k Bool)
-    -- composite set (G2 record registry slots)
     c_sc ∈ Int = (c_type_str = "Bool" ? 1
         : (_ue_done ∧ (c_type_str = _ue_name)) ? 2
         : c_type_str = "String" ? 3
@@ -66,15 +57,9 @@ fsm DriverClassify
         : c_type_str = "Seq" ? 5
         : c_type_str = "Real" ? 6
         : 0)
-    -- D2: Seq(Int) membership (`s ∈ Seq ( Int )` — 6 tokens) and
-    -- the registered-var seq literal line (`s = ⟨…⟩` — pmode 8).
     c_sq_ty ∈ String = match ww_t4
         Ident(s) ⇒ s
         _ ⇒ ""
-    -- G2: composite Seq/Set memberships — the element type resolves
-    -- in the record registry. `xs ∈ Seq(T)` declares the array const
-    -- of (Array Int T) + xs__len; `xs ∈ Set(T)` declares ONE const
-    -- of the set sort (Array T Bool), no __len.
     c_sq_rt ∈ Int
     RtIdxOf(nm ↦ c_sq_ty, e0 ↦ rt_e0, e1 ↦ rt_e1, e2 ↦ rt_e2,
         idx ↦ c_sq_rt)
@@ -86,12 +71,8 @@ fsm DriverClassify
         ∧ (ww_t5 matches RParen))
     c_seqlit_line ∈ Bool = (c_t0_is_ident ∧ (c_t1 matches Eq)
         ∧ (c_t2 matches OpSeqOpen) ∧ _sq_set ∧ (c_name = _sq_name))
-    -- D2: a conditional effects RHS (`= (` instead of `= ⟨`)
     c_eff_cond ∈ Bool = (c_eff_line ∧ (ww_t7 matches LParen))
     c_pinned ∈ Bool = (c_is_mem ∧ (¬c_eff_line) ∧ (c_t3 matches Eq))
-    -- set-membership lines (C2: 041/042/062): `x ∈ {…}` / `x ∉ {…}`
-    -- enter the set walk (pmode 7); match-pin lines (D3:
-    -- `name ∈ Type = match …`) enter the match walk (pmode 6).
     c_set_line ∈ Bool = ((c_is_mem ∨ c_is_nmem) ∧ (c_t2 matches LBrace))
     c_match_line ∈ Bool = (c_is_mem ∧ (¬c_eff_line) ∧ c_pinned
         ∧ (c_t4 matches KwMatch))
@@ -103,22 +84,11 @@ fsm DriverClassify
     c_bnd_ok ∈ Bool
     C2AtomE(t ↦ c_t4, e ↦ c_bnd_e, ok ↦ c_bnd_ok)
 
-    -- Lines needing an expression parsed (membership pins, the
-    -- effects literal's Exit argument, and every standalone
-    -- constraint / bare-equality line) enter the Pratt FSM
-    -- (pmode 3); plain / bounded memberships build items directly.
     c_can_expr ∈ Bool = (c_t0_is_ident ∨ (c_t0 matches IntLit(_))
         ∨ (c_t0 matches OpNot) ∨ (c_t0 matches LParen)
         ∨ (c_t0 matches KwTrue) ∨ (c_t0 matches KwFalse)
         ∨ (c_t0 matches Hash))
 
-    -- ── F2: composition-line detection ────────────────────────────
-    -- Three head shapes, all requiring the name to resolve in the
-    -- claim index: `Name ( slot ↦ …` (slot call), `..Name`
-    -- (passthrough splice — Dot Dot Ident), and a bare `Name` line
-    -- (names-match splice). Slot values are full Pratt expressions;
-    -- bare/`..` splice with the CURRENT scope (no fresh binds, no
-    -- fresh prefix). Depth caps at 8.
     c_dd_shape ∈ Bool = ((c_t0 matches Dot) ∧ (c_t1 matches Dot)
         ∧ (c_t2 matches Ident(_)))
     c_dd_nm ∈ String = match c_t2
@@ -131,9 +101,6 @@ fsm DriverClassify
     c_comp_found ∈ Bool = ((c_comp_pos ≥ 0) ∧ (c_comp_nm ≠ ""))
     c_dd_head ∈ Bool = (c_dd_shape ∧ c_comp_found ∧ (_il_depth < 8))
 
-    -- line-end SHAPE (EOF / next top-level decl / a head that can't
-    -- start a body line): at depth 0 it ends the walk; inside an
-    -- inline frame it POPS back to the caller.
     d_line_end ∈ Bool = (c_rem_nil ∨ c_t0_is_tlkw
         ∨ ((¬c_can_expr) ∧ (¬c_dd_head) ∧ (¬c_strin_line)
             ∧ (¬c_q_line)))
@@ -149,11 +116,6 @@ fsm DriverClassify
         ∧ (¬(c_t1 matches Comma)) ∧ (_il_depth < 8))
     c_comp_dd ∈ Bool = (d_classify ∧ c_dd_head)
     c_comp_line ∈ Bool = (c_comp_call ∨ c_comp_bare ∨ c_comp_dd)
-    -- the effects literal enters the ELEMENT walk (pmode 5) after
-    -- its 8-token head — `effects ∈ Seq ( Effect ) = ⟨` (plain
-    -- literal) or `effects ∈ Seq ( Effect ) = (` (D2 conditional
-    -- chain); element bodies re-enter the Pratt FSM per Exit
-    -- argument, branch guards per pk_kind 6.
     d_enter_el ∈ Bool = (d_classify ∧ (¬d_line_end) ∧ c_eff_line)
     d_enter_set ∈ Bool = (d_classify ∧ (¬d_line_end) ∧ c_set_line)
     d_enter_match ∈ Bool = (d_classify ∧ (¬d_line_end)
@@ -161,9 +123,6 @@ fsm DriverClassify
     d_seq_mem ∈ Bool = (d_classify ∧ (¬d_line_end) ∧ c_seq_line)
     d_enter_sl ∈ Bool = (d_classify ∧ (¬d_line_end) ∧ (¬c_is_mem)
         ∧ (¬c_is_nmem) ∧ c_seqlit_line)
-    -- F1: a body multi-name group enters the pmode-9 group walk
-    -- (no top-level comma exists in expression grammar, so the
-    -- `Ident , Ident` head is unambiguous).
     d_enter_mn ∈ Bool = (d_classify ∧ (¬d_line_end) ∧ c_mn_line
         ∧ (¬c_seqlit_line))
     d_enter_pratt0 ∈ Bool = (d_classify ∧ (¬d_line_end)
@@ -176,11 +135,6 @@ fsm DriverClassify
     d_enter_pratt ∈ Bool = (d_enter_pratt0 ∨ el_exit_enter
         ∨ el_g_enter ∨ mp_benter ∨ sl_e_enter ∨ cw_slot
         ∨ q_close ∨ d_enter_qs ∨ pt_elem)
-    -- tokens consumed before the expression starts: a pin's
-    -- `name ∈ Type =` is 4; an element's `Exit (` is 2; a match
-    -- arm's payload head `Ctor ( b ) ⇒` is 5, nullary/wildcard
-    -- heads 2; guards and seq elements start at the expression;
-    -- standalone constraint / bare-equality lines likewise.
     d_pratt_cons0 ∈ Int = (el_exit_enter ? 2
         : el_g_enter ? 0
         : mp_benter ? ((mp_take ∧ mp_arm_pl_h) ? 5 : 2)
@@ -199,7 +153,6 @@ fsm DriverClassify
         : d_enter_qs ? 9
         : pt_elem ? 10
         : c_pinned ? 1 : 2)
-    -- qstop: only guard parses stop at a top-level `?`
     pq_qstop ∈ Bool
     pq_qstop = (is_first_tick ? false
         : d_enter_pratt ? el_g_enter
@@ -212,14 +165,6 @@ fsm DriverClassify
     c_natseg ∈ C2Items = (c_is_nat
         ? C2ICons(C2NatBound, C2ICons(C2AssertTop, c_tailseg))
         : c_tailseg)
-    -- F2: declared names are α-scoped — inside a slot-call frame
-    -- the decl name is prefix ++ name ("__cN_"); bare splices and
-    -- depth 0 have prefix "". A membership whose name is BOUND (a
-    -- slot of the current frame) or already DECLARED under the
-    -- scoped name does NOT redeclare: it resolves the existing
-    -- handle (the dup head) and re-applies any bound — that is what
-    -- keeps names-match splices (`..Base`, bare `IsPositive`) from
-    -- emitting duplicate declares/manifest fields/carry lines.
     c_chk_name ∈ String = _il_pfx ++ c_name
     c_dname ∈ String = c_chk_name
     c_chk_key ∈ String
@@ -246,13 +191,6 @@ fsm DriverClassify
         C2ICons(C2AssertTop, C2INil))))
     d_enter_si ∈ Bool = (d_classify ∧ (¬d_line_end) ∧ c_strin_line)
 
-    -- ── G1: type splice — a membership whose TYPE name resolves in
-    -- the claim/type index splices the type body with prefix
-    -- "name." (fields flatten to dotted consts — oracle parity:
-    -- f.p, s.rects). `f ∈ Foo (p ↦ 5)` runs the pmode-10 slot walk
-    -- first (params bind at the use site); `p ∈ Point` jumps direct.
-    -- Inside a type frame (prefix ends with ".") memberships are NOT
-    -- manifest state fields and get no textual carry (oracle parity).
     c_ty_key ∈ String
     FtiNameEntry(name ↦ c_type_str, entry ↦ c_ty_key)
     c_ty_pos ∈ Int = index_of(ci_names, c_ty_key, 0)
@@ -270,4 +208,3 @@ fsm DriverClassify
     c_in_ty ∈ Bool = ((#_il_pfx > 0)
         ∧ (substr(_il_pfx, #_il_pfx - 1, 1) = "."))
     c_cur_pos ∈ Int = (c_ty_line ? c_ty_pos : c_comp_pos)
-

@@ -1,17 +1,8 @@
--- Grammar wave 2, item 4: a membership pinned by an ASCII STRING literal.
---
--- The driver's consolidated lexer gains a string-literal mode (mirrors
--- tests/kernel/test_string_lit.ev's mode FSM, minus escapes which are out
--- of wave-2 scope): a `"` opens the mode, subsequent chars accumulate,
--- the closing `"` emits StringLit(_partial_strlit). AtomSmtlib (extended
--- in wave 2) renders EStr(s) → the SMT-LIB `"s"` literal (ASCII
--- pass-through; non-ASCII escaping is out of scope). Nothing is hardcoded
--- — the String is lexed character-by-character. See
--- docs/plans/grammar-wave2.md.
---
--- Source: "claim foo\n    s ∈ String = \"hello\"\n"  →
---   (declare-fun s () String)
---   (assert (= s "hello"))
+-- Membership pinned by an ASCII STRING literal: the lexer gains a
+-- string-literal mode (`"` opens, chars accumulate, closing `"` emits
+-- StringLit; escapes out of scope). AtomSmtlib renders EStr(s) → the
+-- SMT-LIB `"s"` literal (ASCII pass-through; non-ASCII escaping out of
+-- scope).
 --
 -- expect: stdout = ";; manifest: state-fields = s:String"
 -- expect: stdout = ";; manifest: effects-name = effects"
@@ -86,7 +77,6 @@ claim main
         : (strlit_closing ? ""
         : _partial_strlit))))
 
-    -- Normal ident/int collection is suppressed while inside a string.
     str_continuing ∈ Bool = (was_collecting_str ∧ is_alpha ∧ in_range ∧ ¬_in_strlit)
     str_finishing  ∈ Bool = (was_collecting_str ∧ ((¬is_alpha ∧ in_range) ∨ done))
     str_starting   ∈ Bool = ((¬was_collecting_str) ∧ is_alpha ∧ in_range ∧ ¬_in_strlit)

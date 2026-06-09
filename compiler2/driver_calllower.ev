@@ -28,7 +28,6 @@ fsm DriverCallLower
     -- emits `(str.indexof s sub 0)`). str_from_int expands to the
     -- oracle's negative-safe composite
     -- (ite (>= e 0) (str.from_int e) (str.++ "-" (str.from_int (- 0 e)))).
-    -- An unknown call name pushes handle 0 (unbound-ident parity).
     d_sfi_items ∈ C2Items = C2ICons(C2Process(d_ca0),
         C2ICons(C2Process(EInt(0)),
         C2ICons(C2Op(OpGeq),
@@ -41,16 +40,11 @@ fsm DriverCallLower
         C2ICons(C2StrOp("int_to_str", 1),
         C2ICons(C2Op(OpConcat),
         C2ICons(C2Ite, d_wtail))))))))))))
-    -- D2: `#` / str_len over the registered Seq var resolves to its
-    -- companion __len const (per-sort dispatch), not str.len.
     d_ca0_nm ∈ String = match d_ca0
         EIdent(can) ⇒ can
         _ ⇒ ""
     d_sl_seq ∈ Bool = (_sq_set ∧ ((d_ca0_nm = _sq_name)
         ∨ ((_il_pfx ++ d_ca0_nm) = _sq_name)))
-    -- G2: `#setvar` — cardinality over the RECORDED literal: 1 elem
-    -- → 1; 2 elems → (ite (= e0 e1) 1 2); ≥ 3 → the literal count
-    -- (corpus sets pin their elements pairwise-distinct).
     d_sl_setk ∈ Int = ((d_ca0_nm ≠ "" ∧ ((d_ca0_nm = stv_n0)
             ∨ ((_il_pfx ++ d_ca0_nm) = stv_n0))) ? 0
         : (d_ca0_nm ≠ "" ∧ ((d_ca0_nm = stv_n1)
@@ -84,18 +78,12 @@ fsm DriverCallLower
             ? C2ICons(C2Process(d_ca0),
                 C2ICons(C2App(d_ctor_d, 1), d_wtail))
         : C2ICons(C2PushH(0), d_wtail))
-    -- G2: `__real` (the FloatLit atom) → one mk_numeral tick.
     d_rl_s ∈ Int = match d_ca0
         EInt(n) ⇒ n
         _ ⇒ 0
     d_rl_d ∈ Int = match d_ca1
         EInt(n) ⇒ n
         _ ⇒ 0
-    -- G2: `__field` (postfix `.name` over a non-ident operand —
-    -- seq-of-composite chains like `groups[0].items`) → process the
-    -- base, then ONE mk_app of the accessor decl resolved by FIELD
-    -- NAME across the record registry (first hit wins; the corpus
-    -- is unambiguous).
     d_fld_nm ∈ String = match d_ca1
         EIdent(s) ⇒ s
         _ ⇒ ""

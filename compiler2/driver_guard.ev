@@ -14,22 +14,9 @@
 --           disarmed by the matching frame pop. ONE active guard at a
 --           time (no nested guarded splices — zero corpus occurrences).
 --
--- INTERFACE WIDTH: ~14 external reads (>8) — JUSTIFIED per §6.4: a
--- guarded composition jump inherently couples the parse result it
--- recognizes, the claim index it resolves the callee in, and the
--- inline-frame stack it arms/disarms the guard against.
---
--- The G1 conditional-inline (`cond ⇒ ClaimName`) guarded-splice phase.
+-- The conditional-inline (`cond ⇒ ClaimName`) guarded-splice phase.
 -- Lifted into driver_main via `..DriverGuard`.
 fsm DriverGuard
-    -- ── G1: conditional inline `cond ⇒ ClaimName` — a standalone
-    -- line whose parsed root is (=> guard EIdent(Name)) with Name in
-    -- the claim index splices Name's body with every asserted
-    -- constraint wrapped in (=> guard …) — the oracle's shape.
-    -- The guard expression builds to a HANDLE first (its items run
-    -- under pmode 10, cw_st 3→4), then the jump fires with il_guard
-    -- armed; the matching frame pop disarms it. ONE active guard
-    -- (no nested guarded splices — zero corpus occurrences).
     gc_op ∈ Op
     gc_l ∈ Expr
     gc_r ∈ Expr

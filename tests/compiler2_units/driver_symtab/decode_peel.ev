@@ -1,10 +1,7 @@
 -- DriverSymtab isolation — handle-stack peel + work-item discriminator.
---
--- Pins the handle stack to ⟨99, 7⟩ and the work-item list to one
--- C2DeclConst("x", 0). The module must peel d_h_top = 99, d_h_2nd = 7 and
--- decode the current work item to d_it_decl = true. verdict = 1*(top=99)
--- + 2*(2nd=7) + 4*d_it_decl = 7. Exercises the C2H stack decode and the
--- C2Item opcode discriminator; either regressing changes the verdict.
+-- Handle stack pinned to ⟨99, 7⟩, work items to one C2DeclConst("x", 0).
+-- Must peel d_h_top = 99, d_h_2nd = 7 and decode d_it_decl = true.
+-- verdict = 1*(top=99) + 2*(2nd=7) + 4*d_it_decl = 7.
 --
 -- entry: main
 -- expect: stdout = "7"

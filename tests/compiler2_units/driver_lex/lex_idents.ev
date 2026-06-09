@@ -1,13 +1,7 @@
--- DriverLex isolation — happy path: lex two idents separated by ws.
---
--- Drives the real DriverLex scan FSM standalone over input "ab cd": the
--- module's char-class + collection logic must produce exactly two Ident
--- tokens, so lx_count settles at 2 by the time lex_done fires. The token
--- buffer writes (w_*) are NOT scheduled into effects, so no __mem/Z3
--- arena is needed — we observe the pure scan cursor (lx_count) directly.
--- If the scan logic regresses (miscounts, fails to advance, mis-collects)
--- this count changes and the test fails.
---
+-- DriverLex isolation — happy path: lex two idents from "ab cd"; the
+-- scan must produce exactly two Ident tokens (tbuf.count = 2 at
+-- lex_done). The token-buffer writes (w_*) are NOT scheduled into
+-- effects, so no __mem/Z3 arena is needed — we read the cursor directly.
 -- entry: main
 -- expect: stdout = "2"
 -- expect: exit = 0
@@ -18,9 +12,8 @@ import "compiler2/driver_ir.ev"
 import "compiler2/driver_lex.ev"
 
 fsm main
-    -- DriverLex reads _zstep/_got_path (its start gate) — these are
-    -- carries it does not own, so main owns them and holds them past
-    -- the gate (zstep ≥ 38, got_path) for the whole run.
+    -- _zstep/_got_path are DriverLex's start gate — carries it does not
+    -- own, so main owns them and holds them past the gate all run.
     zstep   ∈ Int
     zstep   = (is_first_tick ? 38 : _zstep)
     got_path ∈ Bool

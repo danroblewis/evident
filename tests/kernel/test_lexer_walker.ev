@@ -1,9 +1,5 @@
 -- Self-hosted lexer walker: walks "(4+2)" char-by-char and classifies each.
 --
--- This is the foundation of iter 3.x self-hosting: text processing is
--- expressible in pure Evident, running on the kernel via multi-tick state
--- evolution. The Token enum + character predicates live in stdlib/lexer.ev.
---
 -- expect: stdout = "op: ("
 -- expect: stdout = "digit: 4"
 -- expect: stdout = "op: +"

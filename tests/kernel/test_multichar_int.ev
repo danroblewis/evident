@@ -1,17 +1,9 @@
--- Multi-character integer literals (iter 3.5).
---
--- Walks "12+345\n" and emits ⟨IntLit(345), Plus, IntLit(12)⟩ in the
--- TokenList. Uses an Int accumulator (`partial_int`) instead of a String
--- partial, avoiding the missing `str_to_int` runtime function.
---
--- Accumulator semantics:
---   _partial_int = -1 → not in a digit run
---   continuing  → partial_int = _partial_int * 10 + DigitToInt(cur_char)
---   starting    → partial_int = DigitToInt(cur_char)
---   else        → partial_int = -1
---
--- The boundary tick (digits → operator) emits TWO tokens (IntLit + op)
--- via nested TLCons.
+-- Multi-character integer literals: walks "12+345\n" and emits
+-- ⟨IntLit(345), Plus, IntLit(12)⟩ in the TokenList. Uses an Int
+-- accumulator instead of a String partial — there is no `str_to_int`
+-- runtime function. Sentinel: _partial_int = -1 means "not in a
+-- digit run". The boundary tick (digits → operator) emits TWO
+-- tokens (IntLit + op) via nested TLCons.
 --
 -- expect: stdout = "  start: 1"
 -- expect: stdout = "  cont: 2"

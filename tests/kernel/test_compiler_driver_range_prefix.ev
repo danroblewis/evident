@@ -1,16 +1,9 @@
--- Grammar wave 4l, Item 2: range-prefix `lit cmp name [∈ T] [cmp atom]`.
---
--- A body line whose HEAD is a literal + comparison BEFORE the name never
+-- Range-prefix `lit cmp name [∈ T] [cmp atom]`: a head literal never
 -- reaches the membership walk's `is_name` head check, so MembershipStep
 -- grows a head-is-literal discriminator (ms_is_rangepfx). The prefix
--- `lit cmp name` lowers to `(cmp lit name)`, the suffix `name cmp atom` to
--- `(cmp name atom)` — mirroring bootstrap's chained-membership desugar
--- (parser/body_item.rs try_parse_chained_membership). Four sub-cases:
---   `0 < a ∈ Int`        prefix only, typed   → decl + `(< 0 a)`
---   `b ∈ Int < 5`        suffix only (wave 4k chain) → decl + `(< b 5)`
---   `0 < c ∈ Int < 10`   two-sided, typed     → decl + `(< 0 c)` + `(< c 10)`
---   `0 < d ≤ 100`        bare double-bound (prior decl) → `(< 0 d)` + `(<= d 100)`
--- See docs/plans/wave-4k-membership-walk-shapes.md (Remaining gaps).
+-- `lit cmp name` lowers to `(cmp lit name)`, the suffix to
+-- `(cmp name atom)`; a bare double-bound (`0 < d ≤ 100`) asserts against
+-- a prior decl.
 --
 -- expect: stdout = ";; manifest: state-fields = a:Int b:Int c:Int d:Int"
 -- expect: stdout = ";; manifest: effects-name = effects"

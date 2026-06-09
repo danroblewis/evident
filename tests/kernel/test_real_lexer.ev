@@ -1,13 +1,6 @@
 -- Real self-hosted lexer: walks "(4+2)" one char per tick, building a
--- TokenList of tokens via Datatype state carry (iter 3.2).
---
--- Validates that text processing + structured-data-carry both work on
--- the kernel, the two foundations of self-hosting.
---
--- Output line per character:
---   "  emit: <char>" for digits / operators / alpha
---   "  skip" for whitespace
---   "[eof]" when past the end
+-- TokenList via Datatype state carry. Validates text processing +
+-- structured-data-carry, the two foundations of self-hosting.
 --
 -- expect: stdout = "  emit: ("
 -- expect: stdout = "  emit: 4"

@@ -1,12 +1,7 @@
--- Wave 5c+ codegen Option X proof: Evident emits assembly text,
--- shells out to `as` + `ld` to produce a .dylib, dlopens it,
--- calls the function via libffi, and checks the result.
---
--- This is the "no Rust beyond a minimal kernel" codegen story
--- working end-to-end from Evident source.
---
--- The generated function (arm64): a trivial `trivial_add(): i64`
--- that returns 42.
+-- Codegen Option X proof: Evident emits assembly text, shells out to
+-- clang to produce a .dylib, dlopens it, calls the function via
+-- libffi, and checks the result. Generated arm64 function:
+-- trivial_add(): i64 returning 42.
 --
 -- Layout:
 --   0  WriteFile("/tmp/evt_codegen_x.s", "<arm64 asm>")

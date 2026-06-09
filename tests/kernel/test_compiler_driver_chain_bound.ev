@@ -1,15 +1,8 @@
--- Grammar wave 4k, Items 3+4: chained suffix bound `name ∈ T cmp atom`
--- and bare comparison `name cmp atom`.
---
--- After `name ∈ Type`, a trailing comparison (`< N`, `≤ N`, `> N`, `≥ N`,
--- `≠ N`) bounds the just-declared name: emit the decl AND a bound assert
--- (compiler/parse_body.ev MembershipStep, ms_is_chain). `≠` lowers to
--- `(not (= name N))`. A standalone `name cmp atom` line (no `∈`) is a
--- bare constraint on a prior decl (ms_is_bare, widened to orderings).
---   `pos_x ∈ Int < 100` → decl + `(< pos_x 100)`
---   `pos_y ∈ Int ≠ 0`   → decl + `(not (= pos_y 0))`
---   `r ∈ Int` · `r < 10`→ decl, then bare `(< r 10)`
--- See docs/plans/wave-4k-membership-walk-shapes.md.
+-- Compiler driver fixture: chained suffix bound `name ∈ T cmp atom`
+-- and bare comparison `name cmp atom`. A trailing comparison after
+-- `name ∈ Type` emits the decl AND a bound assert (ms_is_chain); `≠`
+-- lowers to `(not (= name N))`. A standalone `name cmp atom` line
+-- (no `∈`) is a bare constraint on a prior decl (ms_is_bare).
 --
 -- expect: stdout = ";; manifest: state-fields = pos_x:Int pos_y:Int r:Int"
 -- expect: stdout = ";; manifest: effects-name = effects"

@@ -1,14 +1,11 @@
--- compiler/parse_body_match.ev — grammar wave 3.5: match memberships.
---
--- A sibling of parse_body.ev's MembershipStep / parse_body_seq.ev's
--- SeqMembershipStep, specialised for a membership whose pin RHS is a
--- bounded `match` expression — the dominant `match last_results[0]`
--- shape in compiler.ev (one constructor arm with single-name binds +
+-- compiler/parse_body_match.ev — match memberships: a sibling of
+-- parse_body.ev's MembershipStep, specialised for a membership whose pin
+-- RHS is a bounded `match` expression — the dominant `match
+-- last_results[0]` shape (one constructor arm with single-name binds +
 -- one wildcard arm). Kept as a SEPARATE claim so the scalar
--- MembershipStep (and every wave-1/2 fixture depending on its
--- byte-identical output) is untouched, and so the canonical driver
+-- MembershipStep's byte-identical output is untouched, and so the driver
 -- (compiler/compiler.ev) can dispatch to it per-membership without a
--- multi-tick sub-walk. See docs/plans/grammar-wave3.5.md.
+-- multi-tick sub-walk.
 --
 -- The single membership shape consumed (head = `Ident(name)`):
 --
@@ -18,9 +15,6 @@
 --
 -- which the consolidated (newline-agnostic) lexer flattens to the
 -- fixed 15-token run:
---
---   Ident(name) ∈ Ident(Type) = match Ident(scrut)
---     Ident(Ctor) ( Ident(bind) ) ⇒ <body1> Ident(_) ⇒ <body2>
 --
 --   0:name 1:∈ 2:Type 3:= 4:match 5:scrut 6:Ctor 7:( 8:bind 9:)
 --   10:⇒ 11:body1 12:_ 13:⇒ 14:body2
@@ -32,17 +26,14 @@
 --   (declare-fun name () Type)
 --   (assert (= name (ite ((_ is Ctor) scrut) body1 body2)))
 --
--- The ITE is assembled INLINE from the peeled tokens, the same way
--- parse_body.ev's MembershipStep assembles `((_ is Ctor) scrut)` for the
--- `matches` recognizer. We deliberately do NOT compose translate_match.ev's
--- MatchArmSmtlib / ExprAsText here: those `match` on a claim param of enum
--- type whose value is a constructed payload (`match arm` over `MArm(_, b)`),
--- a bootstrap translator gap (the constraint is silently dropped — see
--- docs/plans/grammar-wave3.5.md). Matching on the lexer TOKENS instead
--- (`mt_t11 matches IntLit(_)`) is the proven MembershipStep shape and emits
--- the identical string. All locals are `mt_`-prefixed (cf. parse_body.ev's
--- `ms_` / parse_body_seq.ev's `sq_`) per
--- [[project_claim_composition_leaks_body_locals]].
+-- The ITE is assembled INLINE from the peeled tokens. We deliberately do
+-- NOT compose translate_match.ev's MatchArmSmtlib / ExprAsText here:
+-- those `match` on a claim param of enum type whose value is a
+-- constructed payload (`match arm` over `MArm(_, b)`), a translator gap —
+-- the constraint is SILENTLY DROPPED. Matching on the lexer TOKENS
+-- instead (`mt_t11 matches IntLit(_)`) is the proven MembershipStep shape
+-- and emits the identical string. All locals are `mt_`-prefixed (cf.
+-- `ms_` / `sq_`) per [[project_claim_composition_leaks_body_locals]].
 
 import "compiler/lexer.ev"
 import "compiler/parser.ev"
@@ -70,7 +61,6 @@ claim MatchMembershipStep
     rest ∈ TokenList
     ok ∈ Bool
 
-    -- Peel fifteen tokens (and the tail after the 15th).
     mt_t0 ∈ Token
     TLHdM(l ↦ rem, out ↦ mt_t0)
     mt_l1 ∈ TokenList
@@ -151,10 +141,9 @@ claim MatchMembershipStep
         Ident(s) ⇒ s
         _ ⇒ ""
 
-    -- Arm body atoms (IntLit or Ident) rendered to their SMT-LIB token.
-    -- body1 = t11, body2 = t14. (mt_bind is unused in the rendered output —
-    -- translate_match.ev's contract renders binds only via the pattern's
-    -- accessor, deferred to wave 4; the wildcard/ctor bodies are atoms.)
+    -- Arm bodies (body1 = t11, body2 = t14) are atoms (IntLit or Ident),
+    -- rendered to their SMT-LIB token. mt_bind is unused in the rendered
+    -- output — binds render only via the pattern's accessor (deferred).
     mt_b1_int ∈ Int = match mt_t11
         IntLit(n) ⇒ n
         _ ⇒ 0
@@ -170,7 +159,6 @@ claim MatchMembershipStep
         _ ⇒ ""
     mt_b2_str ∈ String = (mt_t14 matches IntLit(_) ? str_from_int(mt_b2_int) : mt_b2_id)
 
-    -- Nested ITE (one ctor arm + wildcard else), translate_match.ev's shape.
     mt_ite_str ∈ String = ("(ite ((_ is " ++ mt_ctor ++ ") " ++ mt_scrut ++ ") "
         ++ mt_b1_str ++ " " ++ mt_b2_str ++ ")")
 

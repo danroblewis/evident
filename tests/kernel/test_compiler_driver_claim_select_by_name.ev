@@ -1,13 +1,9 @@
--- Grammar wave 4j: claim selection BY NAME. This fixture is
--- compiler/compiler.ev with its ReadFile input seed inlined as a
--- 2-claim source string (`claim alpha … claim beta …`) and the
--- target-claim selector (normally /tmp/compiler-target-claim.txt,
--- read into last_results[1]) inlined as the constant "beta". The
--- driver SKIPS the non-target claim `alpha` and translates ONLY
--- `beta`, so the emitted body is `y`'s decl + `y = 2` assertion —
--- proving per-claim selection works (the capability the self-hosted
--- `sample` verb needs). With no target the driver reverts to "last
--- bare-head wins"; see test_compiler_driver_claim_selection.ev.
+-- Claim selection BY NAME: compiler/compiler.ev with the source
+-- inlined as a 2-claim string and the target-claim selector (normally
+-- /tmp/compiler-target-claim.txt → last_results[1]) inlined as "beta".
+-- The driver SKIPS `alpha` and translates ONLY `beta`. With no target
+-- it reverts to "last bare-head wins"; see
+-- test_compiler_driver_claim_selection.ev.
 --
 -- expect: stdout = ";; manifest: state-fields = y:Int"
 -- expect: stdout = ";; manifest: effects-name = effects"
@@ -22,71 +18,6 @@
 -- expect: stdout = "(declare-fun y () Int)"
 -- expect: stdout = "(assert (= y 2))"
 -- expect: exit = 0
--- compiler/compiler.ev — the self-hosted compiler driver.
---
--- This is the top-level program the whole project is building toward:
--- an Evident program that reads a `.ev` source file from disk, runs it
--- through lex → parse → translate, and emits the corresponding `.smt2`
--- to stdout. When compiled once via bootstrap to `compiler.smt2`, the
--- kernel runs THIS to compile every other `.ev` file, and bootstrap/
--- has no further role (see CLAUDE.md, "The architecture, in one
--- paragraph").
---
--- It composes the per-pass pieces that already exist:
---   compiler/lexer.ev            — char classifiers + Token enum
---   compiler/parser.ev           — Token/Expr/BodyItem AST + recognizers
---   compiler/parse_body.ev       — MembershipStep: one scalar membership / tick
---   compiler/parse_body_seq.ev   — SeqMembershipStep: one Seq membership / tick
---   compiler/parse_body_match.ev — MatchMembershipStep: one match membership / tick
---   compiler/translate.ev        — enum → (declare-datatypes …) (VariantText / EnumDeclSmtlib)
---   compiler/translate_declare.ev — BIMembership → (declare-fun …)
---   compiler/translate_arith.ev   — pin RHS Expr → SMT-LIB (atom / binop)
---   compiler/translate_match.ev   — match arm → nested ite
---   compiler/translate_seq.ev     — Seq surface → Z3 sequence theory
---
--- Nothing is hardcoded as tokens or AST: the source text is read from
--- disk and lexed character-by-character; the parse + translate flow
--- from the actually-lexed token payloads.
---
--- Pipeline shape — ONE multi-tick FSM, four phases keyed off `phase`:
---   * 0 LEX     — the consolidated-lexer accumulator FSM. One char per
---                 tick, prepending Tokens onto a (reverse-order) cons
---                 list carried in `_tokens`.
---   * 1 REVERSE — once lexing is done, pop the reverse list head and
---                 push it onto `fwd`, yielding forward (source) order.
---   * 2 PARSE   — TOP-LEVEL HEAD-TOKEN DISPATCH (grammar wave 3.5): the
---                 forward list's head token decides the program shape,
---                 mirroring bootstrap's program.rs (each top-level item is
---                 one of claim/type/schema/fsm/enum/import dispatched by
---                 head token).
---                   · `KwEnum`  → the enum-decl parse machine: walk the
---                     forward tokens ONE TOKEN PER TICK with an enum-parse
---                     state machine (ephase 1..8), building each variant
---                     and rendering it via translate.ev's VariantText.
---                   · otherwise → a claim head (`<kw> Ident`): drop the
---                     2-token head, walk the forward token list ONE
---                     MEMBERSHIP PER TICK, dispatching each membership by
---                     shape to MembershipStep (scalar), SeqMembershipStep
---                     (Seq), or MatchMembershipStep (match), accumulating
---                     the declare/assert lines (`out`) and the manifest
---                     state-fields (`fstr`).
---   * 3 EMIT    — the tick the parse walk drains: for a claim, assemble the
---                 manifest header + body and `puts` the .smt2; for an enum,
---                 assemble the (declare-datatypes …) block. Then Exit(0).
---
--- Grammar scope (docs/plans/grammar-wave1.md + wave2.md + wave3.md +
--- wave3.5.md): a claim head plus N memberships, each optionally pinned —
--- scalar/arith/comparison/boolean/ternary/string pins (waves 1–2), the
--- `= <atom> matches Ctor(_)` recognizer (wave 3), and — integrated into
--- this monolithic driver in wave 3.5 — a top-level `enum` declaration, a
--- `= match scrut { Ctor(b) ⇒ … ; _ ⇒ … }` membership pin (→ nested ite),
--- and `Seq(T)` memberships (⟨…⟩ literal / `++` concat / `#` cardinality).
--- is_first_tick is auto-injected and `_<name>` carry vars are excluded
--- from the manifest state-fields. Quantifier / subclaim / `..` / generics
--- and multi-top-level-item files are later waves.
---
--- Input path: /tmp/compiler-input.ev (read on the first tick via the
--- ReadFile effect; the consolidated-lexer last_results[0] pattern).
 
 import "stdlib/kernel.ev"
 import "compiler/lexer.ev"
@@ -113,14 +44,10 @@ claim main
         _ ⇒ "<no-read>"
     input = (is_first_tick ? "" : (_input = "" ? "claim alpha\n    x ∈ Int\n    x = 1\nclaim beta\n    y ∈ Int\n    y = 2\n" : _input))
 
-    -- ── TARGET CLAIM — optional claim-name selector (wave 4j) ─────
-    -- A SECOND ReadFile on the first tick reads /tmp/compiler-target-claim.txt
-    -- into last_results[1]. When that file holds a claim name, only the
-    -- matching bare-head claim is translated (the rest are skipped); when
-    -- it is absent/empty the ReadFile yields an ErrorResult, the match
-    -- below falls to "", and the dispatch reverts to the corpus
-    -- convention (last bare-head claim wins). This is what lets the
-    -- `sample` wrapper emit a SPECIFIC claim's constraints per file.
+    -- ── TARGET CLAIM — optional claim-name selector ───────────────
+    -- The second first-tick ReadFile lands at last_results[1]. A claim
+    -- name there selects the one claim to translate; absent/empty
+    -- yields ErrorResult → "" → "last bare-head claim wins" fallback.
     target  ∈ String
     _target ∈ String
     target_read ∈ String = match last_results[1]
@@ -130,10 +57,6 @@ claim main
     has_target ∈ Bool = (target ≠ "")
 
     -- ── LEX state (consolidated-lexer FSM, reverse-order tokens) ──
-    -- `pos` advances by a state-computed `next_pos` (wave 4f bulk-skip)
-    -- instead of a fixed +1: a whitespace run or a `--` line comment is
-    -- consumed in ONE tick. `next_pos` is computed below, after the char
-    -- classifications it depends on.
     pos  ∈ Int
     _pos ∈ Int
     next_pos  ∈ Int
@@ -167,10 +90,7 @@ claim main
     was_collecting_str ∈ Bool = (#_partial_str > 0)
     was_collecting_int ∈ Bool = (_partial_int ≥ 0)
 
-    -- ── String-literal mode (grammar wave 2; carried) ────────────
-    -- A `"` opens the mode, chars accumulate, the closing `"` emits a
-    -- StringLit token (escapes out of scope). While inside a string the
-    -- normal ident/int collectors are suppressed (¬_in_strlit guards).
+    -- ── String-literal mode (carried; escapes out of scope) ──────
     in_strlit  ∈ Bool
     _in_strlit ∈ Bool
     partial_strlit  ∈ String
@@ -227,22 +147,16 @@ claim main
     has_input ∈ Bool = (#input > 0)
     lex_done ∈ Bool = (done ∧ ¬was_collecting_str ∧ ¬was_collecting_int ∧ ¬_in_strlit ∧ has_input)
 
-    -- ── BULK-SKIP (wave 4f): whitespace runs + `--` line comments ──
-    -- The wave-4e diagnostic (docs/plans/grammar-wave4e-perf-diagnostic.md,
-    -- §5) found per-tick Z3 cost is flat ~490 ms and irreducible at the
-    -- compiler.ev level, so total wall = per-tick × tick-count and tick
-    -- count is the only lever. LEX was ~1 tick/char; a real .ev file is
-    -- mostly whitespace + comments. We collapse those runs into one tick.
-    --
-    -- A whitespace run: WsRunLen returns the run length (capped 16); we
-    -- jump past it. A lone separating space gives adv=1 (== old +1), so
-    -- the token stream is byte-identical — only the tick count drops.
-    --
-    -- A `--` line comment (cur='-' ∧ next='-', at top level): jump to the
-    -- next '\n' (via index_of) — or to end-of-input if none. This also
-    -- closes the wave-4d Blocker-1 correctness gap (the lexer had no
-    -- comment mode). Both skips fire only OUTSIDE a string literal and not
-    -- mid-token, so they never swallow a real token boundary.
+    -- ── BULK-SKIP: whitespace runs + `--` line comments ───────────
+    -- Measured (wave-4e diagnostic, docs/plans/grammar-wave4e-perf-
+    -- diagnostic.md §5): per-tick Z3 cost is flat ~490 ms and
+    -- irreducible at this level, so wall = per-tick × tick-count and
+    -- tick count is the only lever. Collapse a ws run (WsRunLen,
+    -- capped 16) or a `--` comment (jump to next '\n', or EOI) into
+    -- ONE tick; a lone space gives adv=1 == the old +1, so the token
+    -- stream is byte-identical. Both skips fire only OUTSIDE a string
+    -- literal and never mid-token, so they never swallow a real token
+    -- boundary.
     lx_next_char ∈ String = substr(input, pos + 1, 1)
     lx_collecting ∈ Bool = (was_collecting_str ∨ was_collecting_int)
     lx_is_dash    ∈ Bool = (cur_char = "-")
@@ -289,27 +203,18 @@ claim main
         : (in_reverse ∧ (¬work_is_nil) ? TLCons(work_hd, _fwd)
         : _fwd)))
 
-    -- ══ TOP-LEVEL ITEM LOOP (grammar wave 4b) ═════════════════════
-    -- Phase 2 walks a SEQUENCE of top-level items (wave 3.5 handled
-    -- exactly one). A sub-mode `pmode` routes the forward stream
-    -- `_items` (initialised to `_fwd` once REVERSE completes):
-    --   0 DISPATCH — peek head(_items): KwEnum → enum (pmode 1); other
-    --                non-empty head → claim (pmode 2); empty → all_done
-    --                → EMIT.
+    -- ══ TOP-LEVEL ITEM LOOP ═══════════════════════════════════════
+    -- Phase 2 walks a SEQUENCE of top-level items; sub-mode `pmode`
+    -- routes the forward stream `_items` (init `_fwd` after REVERSE):
+    --   0 DISPATCH — peek head(_items): KwEnum → 1; other non-empty
+    --                head → claim (2); empty → all_done → EMIT.
     --   1 ENUM     — accumulate ONE enum's (declare-datatypes …) block
-    --                into `eacc`, stopping at the next top-level keyword
-    --                (or end of stream) rather than draining everything,
-    --                then return to DISPATCH with `items` advanced to the
-    --                remaining stream (the boundary keyword onward).
-    --   2 CLAIM    — the wave-1..4 membership walk; on completion return
-    --                to DISPATCH. In the real "N enum decls + 1 claim"
-    --                translation-unit shape the claim is the last item;
-    --                multi-claim selection (emit only the target claim,
-    --                skip the imported Build* sugar claims) is a
-    --                documented gap — see docs/plans/blocked-grammar-wave4b.md.
-    -- The emitted unit is: manifest header · accumulated enum datatype
-    -- blocks (`_eacc`) · the claim's is_first_tick decl + declares/asserts
-    -- (`_out`), mirroring bootstrap's datatypes-before-declares ordering.
+    --                into `eacc`, stopping at the next top-level
+    --                keyword, then back to DISPATCH.
+    --   2 CLAIM    — the membership walk; on completion → DISPATCH.
+    -- Emitted unit: manifest header · enum datatype blocks (`_eacc`) ·
+    -- is_first_tick decl + declares/asserts (`_out`) — datatypes
+    -- before declares.
     pmode  ∈ Int
     _pmode ∈ Int
     items  ∈ TokenList
@@ -324,25 +229,20 @@ claim main
         _ ⇒ false
     head_is_enum ∈ Bool = (items_hd matches KwEnum)
 
-    -- A parametrized claim head is `<kw> Ident ( … )` — the token after the
-    -- name is a LParen (wave 4g, Blocker 3). Such claims are the imported
-    -- `Build*` sugar helpers; bootstrap's emit translates ONLY the target
-    -- claim (the one passed to `emit`), inlining the helpers into it. We
-    -- have no claim-name argument (the source is read from disk), so we use
-    -- the corpus convention: the entry-point claim has NO first-line params,
-    -- the helpers all do. So a parametrized claim is SKIPPED outright (its
-    -- tokens consumed, no declares/asserts emitted); a bare-head claim is
-    -- translated. `out`/`fstr` reset on each enter_claim, so when several
-    -- bare-head claims appear the LAST one wins — the file's target claim.
+    -- A parametrized claim head is `<kw> Ident ( … )` — these are the
+    -- imported `Build*` sugar helpers. Corpus convention: the
+    -- entry-point claim has NO first-line params, the helpers all do —
+    -- so a parametrized claim is SKIPPED outright (tokens consumed,
+    -- nothing emitted); a bare-head claim is translated. `out`/`fstr`
+    -- reset on each enter_claim, so the LAST bare-head claim wins.
     item_after_name ∈ Token
     TLHd(l ↦ items_d2, out ↦ item_after_name)
     claim_is_param ∈ Bool = (item_after_name matches LParen)
 
-    -- Claim-name selection (wave 4j): the token after the head keyword
-    -- (head of items_d1) is this claim's name. When a target name was
-    -- read (has_target), only the matching bare-head claim is translated;
-    -- the rest join the skip path. With no target, name_matches is unused
-    -- and dispatch reverts to "last bare-head wins" (backward compat).
+    -- Claim-name selection: the token after the head keyword is this
+    -- claim's name. With a target, only the matching bare-head claim
+    -- is translated (the rest skip); with none, dispatch reverts to
+    -- "last bare-head wins".
     claim_name_tok ∈ Token
     TLHd(l ↦ items_d1, out ↦ claim_name_tok)
     claim_name ∈ String = match claim_name_tok
@@ -396,11 +296,10 @@ claim main
     mem_card_seq ∈ Bool = ((r_t3 matches Eq) ∧ (r_t4 matches Hash))
     mem_is_seq ∈ Bool = (mem_compound_seq ∨ mem_card_seq)
 
-    -- Wave-4 constructor-application / nested-Seq RHS. CtorMembershipStep
-    -- self-discriminates (ok=true only for a ctor-app or a Seq of ctor-apps),
-    -- so `mem_is_ctor` is just its `ok` — it never hijacks a non-ctor line.
-    -- Given highest priority below: a `name ∈ Seq(T) = ⟨Ctor(…)…⟩` line is
-    -- ALSO `mem_is_seq` (compound type), but the ctor step must win.
+    -- CtorMembershipStep self-discriminates (ok=true only for a
+    -- ctor-app or a Seq of ctor-apps) — it never hijacks a non-ctor
+    -- line. Given highest priority below: a `name ∈ Seq(T) = ⟨Ctor(…)…⟩`
+    -- line is ALSO `mem_is_seq` (compound type), but the ctor step must win.
     cts_decl ∈ String
     cts_assert ∈ String
     cts_field ∈ String
@@ -475,21 +374,18 @@ claim main
         : (in_claim_run ∧ sel_ok ? (sel_field = "" ? _fstr : (_fstr = "" ? sel_field : _fstr ++ " " ++ sel_field))
         : _fstr)))
 
-    -- max-effects accumulator: the maximum effects-literal length seen across
-    -- the whole program (bootstrap uses a fixed cap of 16 — see
-    -- bootstrap/runtime/src/emit.rs:25,134; we derive a tight bound per the
-    -- wave-4c task. Both are kernel-correct as long as the value ≥ the runtime
-    -- effects length, which a single literal binding guarantees). Persists
-    -- across items (program-global), so it is NOT reset on enter_claim.
+    -- max-effects accumulator: the max effects-literal length seen
+    -- program-wide. Kernel-correct as long as the value ≥ the runtime
+    -- effects length, which a single literal binding guarantees.
+    -- Program-global: NOT reset on enter_claim.
     mxe  ∈ Int
     _mxe ∈ Int
     mxe = (is_first_tick ? 0
         : (in_claim_run ∧ sel_ok ? (sel_eff > _mxe ? sel_eff : _mxe)
         : _mxe))
 
-    -- is_first_tick auto-inject guard: track whether the source declared
-    -- is_first_tick during the parse walk (mirrors bootstrap emit's
-    -- ensure_is_first_tick_decl, which prepends the decl only when absent).
+    -- Track whether the source declared is_first_tick; the decl is
+    -- prepended at emit only when absent.
     ift  ∈ Bool
     _ift ∈ Bool
     ift = (is_first_tick ? false
@@ -523,21 +419,17 @@ claim main
     _fB ∈ String
     fC  ∈ String
     _fC ∈ String
-    -- Compound field-type accumulator (wave 4g, Blocker 2): a payload
-    -- field type may be multi-token (`Seq(LibArg)`, `Map(Int, Int)`), so
-    -- e6 now ACCUMULATES the type string with bracket-depth tracking
-    -- (reusing parser.ev::TypeTokenText + BracketDelta) instead of reading
-    -- a single Ident. `ftacc` holds the in-progress type text; `fdepth`
-    -- the `(`/`<` nesting depth. A field is COMMITTED when a Comma (→ next
-    -- field) or RParen (→ close ctor) is seen at depth 0.
+    -- Compound field-type accumulator: a payload field type may be
+    -- multi-token (`Seq(LibArg)`), so e6 accumulates the type string
+    -- with bracket-depth tracking; a field COMMITS on a Comma or
+    -- RParen at depth 0. `ftacc` = in-progress text, `fdepth` = depth.
     ftacc  ∈ String
     _ftacc ∈ String
     fdepth  ∈ Int
     _fdepth ∈ Int
-    -- The Seq-payload element type seen in this enum (e.g. "LibArg" for
+    -- The Seq-payload element type seen in this enum ("LibArg" for
     -- `Seq(LibArg)`), used to emit the `__SeqOf_T` Cons helper datatype
-    -- before the enum block. At most one distinct Seq element type per
-    -- enum in the corpus (Effect's Seq(LibArg)); the last one wins.
+    -- before the enum block; at most one per enum, last one wins.
     seqelt  ∈ String
     _seqelt ∈ String
 
@@ -562,8 +454,7 @@ claim main
         Ident(s) ⇒ s
         _ ⇒ ""
 
-    -- Per-tick field-type contribution + bracket-depth delta for the e6
-    -- compound-type accumulator (wave 4g).
+    -- Per-tick field-type text + bracket-depth delta for the e6 accumulator.
     p_bd ∈ Int
     BracketDelta(t ↦ ptok, d ↦ p_bd)
     p_tt ∈ String
@@ -579,27 +470,20 @@ claim main
     e7 ∈ Bool = (_ephase = 7)
     e8 ∈ Bool = (_ephase = 8)
 
-    -- A top-level keyword at the enum head ends THIS enum (the next item
-    -- starts there). This is the wave-4b multi-item stop: instead of
-    -- draining the whole forward list, the enum machine halts at the next
-    -- enum/claim/type/fsm/schema and leaves the remaining stream in `_plist`.
+    -- A top-level keyword at the enum head ends THIS enum: the machine
+    -- halts there and leaves the remaining stream in `_plist`.
     p_is_tlkw ∈ Bool = ((ptok matches KwEnum) ∨ (ptok matches KwClaim)
         ∨ (ptok matches KwType) ∨ (ptok matches KwFsm) ∨ (ptok matches KwSchema))
 
-    -- A variant is pending (name read, awaiting boundary) in e5 or e8.
-    -- Variants are separated by `|` (Pipe) OR by a newline (the consolidated
-    -- lexer emits NO Newline token, so a newline-separated next variant
-    -- shows up as a bare Ident while pending — wave 4g). An Ident while
-    -- pending therefore BOTH finalizes the current variant and starts the
-    -- next one in the same tick.
+    -- Variants separate on `|` OR newline — but the lexer emits NO
+    -- Newline token, so a newline-separated next variant shows up as a
+    -- bare Ident while pending (e5/e8); that Ident BOTH finalizes the
+    -- current variant and starts the next one in the same tick.
     have_pending ∈ Bool = (e5 ∨ e8)
     at_boundary  ∈ Bool = (p_is_pipe ∨ plist_nil ∨ p_is_tlkw ∨ (have_pending ∧ p_is_ident))
     finalize     ∈ Bool = (in_enum_run ∧ have_pending ∧ at_boundary)
-    -- This enum is complete: pending variant + we are at the end of the
-    -- stream or the next top-level keyword (NOT a `|`, which continues it).
     enum_done    ∈ Bool = (in_enum_run ∧ have_pending ∧ (plist_nil ∨ p_is_tlkw))
 
-    -- Reconstruct the EnumVariantDecl from the carried slots and render.
     cur_fields ∈ EVFieldList = (_fcount = 0 ? EVFNil
         : _fcount = 1 ? EVFCons(EVFType(_fA), EVFNil)
         : _fcount = 2 ? EVFCons(EVFType(_fA), EVFCons(EVFType(_fB), EVFNil))
@@ -610,16 +494,10 @@ claim main
 
     new_body ∈ String = (finalize ? (_first_v ? rendered : _body ++ " " ++ rendered) : _body)
 
-    -- A payload field is COMMITTED when, in e6 at bracket-depth 0, we hit a
-    -- Comma (next field) or RParen (close ctor). Otherwise the e6 token is
-    -- accumulated into the compound type string (wave 4g).
     committing_field ∈ Bool = (in_enum_run ∧ e6 ∧ (_fdepth = 0) ∧ (p_is_comma ∨ p_is_rp))
 
-    -- ephase transition. e6 is now a SELF-LOOPING accumulator: it stays in
-    -- e6 while reading a (possibly compound) field type and on a Comma
-    -- commit (next field), and exits to e8 only on a depth-0 RParen commit.
-    -- e5/e8 + Ident is the newline-separated next-variant case (→ e5, the
-    -- new variant's after-name state).
+    -- e6 self-loops while accumulating a field type and on a Comma
+    -- commit; it exits to e8 only on a depth-0 RParen commit.
     next_ephase ∈ Int = (e1 ∧ p_is_enum ? 2
         : e2 ∧ p_is_ident ? 3
         : e3 ∧ p_is_eq ? 4
@@ -632,14 +510,11 @@ claim main
         : e8 ∧ p_is_ident ? 5
         : _ephase)
 
-    -- A new variant starts on an Ident in e4 (after `=`/`|`) OR on an Ident
-    -- while a variant is pending (e5/e8 — newline-separated).
     starting_variant ∈ Bool = ((e4 ∨ e5 ∨ e8) ∧ p_is_ident)
 
-    -- State carry for the enum-parse sub-machine. `enter_enum` (re)inits
-    -- it for each enum item; `in_enum_run` advances it; `enum_done` halts
-    -- it at the boundary (without consuming the boundary keyword: plist is
-    -- left pointing AT it so DISPATCH picks up the next item there).
+    -- `enter_enum` (re)inits per enum item; `enum_done` halts WITHOUT
+    -- consuming the boundary keyword — plist is left pointing AT it so
+    -- DISPATCH picks up the next item there.
     plist   = (is_first_tick ? TLNil
         : (enter_enum ? _items
         : (in_enum_run ∧ (¬enum_done) ∧ (¬plist_nil) ? ptail
@@ -673,9 +548,6 @@ claim main
     fB = (is_first_tick ? "" : (enter_enum ? "" : (in_enum_run ∧ starting_variant ? "" : (in_enum_run ∧ committing_field ∧ (_fcount = 1) ? _ftacc : _fB))))
     fC = (is_first_tick ? "" : (enter_enum ? "" : (in_enum_run ∧ starting_variant ? "" : (in_enum_run ∧ committing_field ∧ (_fcount = 2) ? _ftacc : _fC))))
 
-    -- Compound field-type accumulator carries (wave 4g). `ftacc` resets per
-    -- variant (starting_variant) and on each field commit; in e6 it grows
-    -- by the per-token type text unless this token commits the field.
     ftacc = (is_first_tick ? ""
         : (enter_enum ? ""
         : (in_enum_run ∧ starting_variant ? ""
@@ -696,15 +568,13 @@ claim main
         : (in_enum_run ∧ committing_field ∧ commit_is_seq ? commit_elt
         : _seqelt)))
 
-    -- Variant-signature table (wave 4h, Item 1). For every payload field of
-    -- type `Seq(T)` we record one `<ctor>#<idx>#<T>;` entry. The renderer
-    -- (translate_ctor.ev::EltHintLookup) queries it by ctor name + arg index
-    -- to lower a Seq VALUE in constructor-argument position to the
-    -- `__Cell_T`/`__Empty_T` Cons form (Blocker 2c —
-    -- docs/plans/blocked-grammar-wave4g.md). At commit time `_cur_name` is
-    -- the variant name and `_fcount` the (0-based) index of the field being
-    -- committed. Program-global: accumulates across all enums, NOT reset on
-    -- enter_enum (the table must be complete before the claim phase renders).
+    -- Variant-signature table: one `<ctor>#<idx>#<T>;` entry per
+    -- Seq(T) payload field. translate_ctor.ev::EltHintLookup queries it
+    -- by ctor name + (0-based) arg index to lower a Seq VALUE in
+    -- constructor-argument position to the `__Cell_T`/`__Empty_T` Cons
+    -- form. At commit time `_cur_name`/`_fcount` are the variant name /
+    -- field index. Program-global: NOT reset on enter_enum (must be
+    -- complete before the claim phase renders).
     sigtab  ∈ String
     _sigtab ∈ String
     sigtab_entry ∈ String = _cur_name ++ "#" ++ str_from_int(_fcount) ++ "#" ++ commit_elt ++ ";"
@@ -712,17 +582,15 @@ claim main
         : (in_enum_run ∧ committing_field ∧ commit_is_seq ? _sigtab ++ sigtab_entry
         : _sigtab))
 
-    -- The (declare-datatypes …) block for the enum that just finished.
     grouped_body ∈ String = "(" ++ new_body ++ ")"
     cur_enum_decl ∈ EnumDeclAst = EnumD(_ename, EVNil)
     enum_block ∈ String
     EnumDeclSmtlib(decl ↦ cur_enum_decl, body_str ↦ grouped_body, out ↦ enum_block)
 
-    -- Prepend the `__SeqOf_T` Cons helper datatype when this enum has a
-    -- Seq(T) payload (wave 4g, Blocker 2) — it must precede the enum that
-    -- references it, matching bootstrap's stage ordering. `Result` is
-    -- skipped entirely: the kernel always pins it and the EMIT prelude
-    -- already declares it (bootstrap dedups it the same way).
+    -- Prepend the `__SeqOf_T` Cons helper when this enum has a Seq(T)
+    -- payload — it must precede the enum that references it. `Result`
+    -- is skipped entirely: the kernel always pins it and the EMIT
+    -- prelude already declares it.
     helper_block ∈ String
     SeqHelperBlock(shb_elt ↦ _seqelt, shb_out ↦ helper_block)
     full_enum_block ∈ String = (_seqelt = "" ? enum_block : helper_block ++ "\n" ++ enum_block)
@@ -736,11 +604,10 @@ claim main
             : (_eacc = "" ? full_enum_block : _eacc ++ "\n" ++ full_enum_block))
         : _eacc))
     -- ══════════════════════════════════════════════════════════════
-    -- CLAIM-SKIP sub-machine (pmode 3): drop a parametrized helper claim
+    -- CLAIM-SKIP sub-machine (pmode 3): drop a non-target claim
     -- ══════════════════════════════════════════════════════════════
-    -- Walk one token per tick from just past the skipped claim's keyword,
-    -- halting at the next top-level keyword (or end of stream), then return
-    -- to DISPATCH with `items` pointing AT that keyword. Emits nothing.
+    -- One token per tick, halting at the next top-level keyword (or
+    -- end), then back to DISPATCH with `items` pointing AT it.
     skipl  ∈ TokenList
     _skipl ∈ TokenList
     skipl_hd ∈ Token
@@ -782,8 +649,6 @@ claim main
         : 3))))
 
     -- ── EMIT ──────────────────────────────────────────────────────
-    -- The DISPATCH tick that finds the item stream empty assembles and
-    -- `puts` the full translation unit, then Exit(0).
     emit_now ∈ Bool = all_done
 
     manifest ∈ String = (";; manifest: state-fields = " ++ _fstr ++ "\n"
@@ -794,16 +659,12 @@ claim main
     ift_decl ∈ String = (_ift ? "" : "(declare-fun is_first_tick () Bool)\n")
     datatypes ∈ String = (_eacc = "" ? "" : _eacc ++ "\n")
 
-    -- ── EMIT PRELUDE (wave 4d) ─────────────────────────────────────
+    -- ── EMIT PRELUDE ──────────────────────────────────────────────
     -- The kernel ALWAYS pins `last_results__len` and decodes
-    -- `last_results` as an `(Array Int Result)` (kernel/src/tick.rs).
-    -- Bootstrap hand-writes this in emit.rs `result_and_last_results_decls`
-    -- (the Result datatype + `last_results` array) plus the
-    -- `last_results__len` decl + `(>= last_results__len 0)` assert that
-    -- the injected `last_results ∈ Seq(Result)` membership produces. The
-    -- self-hosted EMIT phase produces none of it, so we emit a fixed
-    -- prelude mirroring bootstrap's exact output, between the manifest
-    -- and the enum datatype / body declares.
+    -- `last_results` as an `(Array Int Result)` (kernel/src/tick.rs);
+    -- the parse walk produces none of those decls, so a fixed prelude
+    -- (Result datatype + last_results decls + len ≥ 0 assert) is
+    -- emitted between the manifest and the datatype / body declares.
     prelude ∈ String = ("(declare-datatypes ((Result 0)) (((NoResult) (IntResult (IntResult__f0 Int)) (StringResult (StringResult__f0 String)) (RealResult (RealResult__f0 Real)) (EofResult) (ErrorResult (ErrorResult__f0 String)))))\n"
         ++ "(declare-fun last_results () (Array Int Result))\n"
         ++ "(declare-fun last_results__len () Int)\n"

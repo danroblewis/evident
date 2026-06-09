@@ -1,12 +1,7 @@
 -- DriverEmit isolation — the EMIT program counter walks once done.
---
--- The EMIT phase parks at estep = −1 until d_all_done, then steps
--- 0→1→2→…→5 (capped) one per tick — solver-to-string, cstr-copy,
--- render-capture, then the free+puts+Exit row. We hold d_all_done true
--- and let estep drive the exit at ≥ 5, reporting estep. If the counter
--- fails to launch (d_all_done gate) or miscaps, it never reaches 5 (the
--- fixture times out) or reports the wrong value.
---
+-- estep parks at −1 until d_all_done, then steps 0→1→…→5 (capped), one
+-- per tick: solver-to-string, cstr-copy, render-capture, then the
+-- free+puts+Exit row. d_all_done held true; exit at estep ≥ 5.
 -- entry: main
 -- expect: stdout = "5"
 -- expect: exit = 0

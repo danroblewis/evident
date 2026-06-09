@@ -1,20 +1,8 @@
--- Grammar wave 2, item 5: is_first_tick auto-inject + `_<name>` state
--- carry recognition.
---
--- Mirrors bootstrap/runtime/src/emit.rs: `is_first_tick` is auto-injected
--- (a `(declare-fun is_first_tick () Bool)` prepended to the body) when the
--- source doesn't declare it, and is NOT a manifest state-field. A
--- `_<name>` membership is the previous-tick carry of `<name>`: it gets a
--- declare-fun like any membership, but `discover_state_fields` excludes
--- `_`-prefixed names (and is_first_tick) from the manifest state-fields
--- line. MembershipStep emits "" for the field of a carry/is_first_tick
--- name; the driver tracks whether is_first_tick was declared and injects
--- only when absent. Nothing is hardcoded — the String is lexed
--- character-by-character. See docs/plans/grammar-wave2.md.
---
--- Source: "claim foo\n    count ∈ Int\n    _count ∈ Int\n"  →
---   state-fields lists only `count:Int` (NOT `_count`)
---   is_first_tick declared (auto-injected), both count and _count declared
+-- is_first_tick auto-inject + `_<name>` carry recognition: a `_<name>`
+-- membership (the previous-tick carry) gets a declare-fun like any
+-- membership but is excluded — along with is_first_tick — from the
+-- manifest state-fields; MembershipStep emits "" for its field. The
+-- driver injects the is_first_tick decl only when the source lacks it.
 --
 -- expect: stdout = ";; manifest: state-fields = count:Int"
 -- expect: stdout = ";; manifest: effects-name = effects"

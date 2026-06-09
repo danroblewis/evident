@@ -2,24 +2,13 @@
 -- the lexer TokenList, for claim-composition slot values (the port of
 -- bootstrap's expr_as_var compound-expression branch, commit c817c6c).
 --
--- bootstrap/runtime/src/translate/exprs/mapping.rs::expr_as_var accepted
--- a compound expression as a `slot ↦ value` binding by trying the scalar
--- translators in order (bool first — its operators are the most
--- distinctive — then int/real/string). The self-hosted walk needs the
--- same capability at the TOKEN level: render the value tokens of
---
---   Helper(p ↦ (x > 3), out ↦ result)
---   Helper(n ↦ (a * (b + 1)), out ↦ r)
---   Helper(n ↦ (c ? t : (0 - x)), out ↦ r)
---
--- to their SMT-LIB text — `(> x 3)`, `(* a (+ b 1))`,
--- `(ite c t (- 0 x))` — so the call-site inliner (CallArgsStep +
--- the driver's pmode-4 splice in compiler/sample.ev) can substitute the
--- rendered text for the callee's parameter names. The operator spelling
--- is sort-agnostic in SMT-LIB text (`>`/`and`/`+`/`ite` work for every
--- scalar sort), so "try bool then int then real then string" collapses
--- to a single token-shape renderer here — same first-success semantics,
--- one pass.
+-- Renders slot-value tokens like `(c ? t : (0 - x))` to SMT-LIB text
+-- (`(ite c t (- 0 x))`) so the call-site inliner (CallArgsStep + the
+-- driver's pmode-4 splice in compiler/sample.ev) can substitute the
+-- rendered text for the callee's parameter names. SMT-LIB operator
+-- spelling is sort-agnostic, so bootstrap's "try bool then int then
+-- real then string" collapses to a single token-shape renderer —
+-- same first-success semantics, one pass.
 --
 -- Like RenderExprL0/L1/L2/L3 (translate_ctor.ev), claims cannot
 -- self-recurse, so the recursion is DEPTH-UNROLLED:

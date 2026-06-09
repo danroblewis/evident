@@ -1,19 +1,8 @@
--- Consolidated self-hosted lexer (iter 3.8).
---
--- Combines all prior lexer features into one program:
---   - Multi-char identifiers (iter 3.4)
---   - Multi-char integer literals via accumulator (iter 3.5)
---   - Keyword recognition (iter 3.6)
---   - Comment skipping with mode state (iter 3.7)
---   - Single-char operators
---
--- Input: "claim x = 1\n"
--- Expected lexed tokens (after Cons-list reversal):
---   KwClaim, Ident("x"), Eq, IntLit(1)
---
--- Diagnostic output uses compact labels (KW/ID/INT/OP) per emitted
--- token, "?" for in-progress collection states, "-" for whitespace
--- skips.
+-- Consolidated self-hosted lexer: multi-char idents, int-literal
+-- accumulator, keyword recognition, comment skipping (mode state),
+-- single-char operators. Input "claim x = 1\n" → KwClaim, Ident("x"),
+-- Eq, IntLit(1) after Cons-list reversal. Diagnostic labels: KW/ID/INT/OP
+-- per emitted token, "?" in-progress collection, "-" whitespace skip.
 --
 -- expect: stdout = "  ?"
 -- expect: stdout = "  ?"

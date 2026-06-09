@@ -1,25 +1,9 @@
 -- C12: type-inference from Expr RHS.
 --
--- Exercises stdlib/translate_infer.ev's InferType recognizer over
--- four canonical RHS shapes drawn from CLAUDE.md's type-inference
--- examples:
---
---   Case A: EBinOp(OpEq,   EIdent("x"), EInt(5)) → "Bool" (ok)
---           Mirrors `ok = (x = 5)` — the lhs-eq → Bool case is the
---           headline shape from inject_lhs_eq_types.
---   Case B: EBinOp(OpPlus, EInt(1),     EInt(2)) → "Int"  (ok)
---           Mirrors `mid = (1 + 2)` — arithmetic RHS recovers to Int.
---   Case C: EInt(42)                              → "Int"  (ok)
---           Mirrors `x = 42` — bare literal still recovers (CLAUDE.md
---           keeps literal pins as "explicit", but the RHS shape
---           itself encodes the type for downstream check purposes).
---   Case D: EIdent("foo")                          → ok=false
---           Mirrors `r = foo` where `foo`'s type is opaque without a
---           whole-program lookup; the per-Expr probe correctly defers.
---
--- Pattern follows test_parser_membership.ev: one puts per tick driven
--- by a small `step` counter; final tick emits the [done] marker and
--- exits 0.
+-- Exercises InferType over four canonical RHS shapes: eq-binop → Bool,
+-- arith-binop → Int, bare int literal → Int, bare EIdent → ok=false
+-- (an identifier's type is opaque without a whole-program lookup, so
+-- the per-Expr probe defers). One puts per tick.
 --
 -- expect: stdout = "[start]"
 -- expect: stdout = "A_ok=true"
@@ -36,31 +20,26 @@ import "stdlib/kernel.ev"
 import "compiler/translate_infer.ev"
 
 claim main
-    -- Case A: name = (x = 5) → Bool
     a_rhs ∈ Expr = EBinOp(OpEq, EIdent("x"), EInt(5))
     a_inferred ∈ String
     a_ok ∈ Bool
     InferType(rhs ↦ a_rhs, inferred ↦ a_inferred, ok ↦ a_ok)
 
-    -- Case B: name = (1 + 2) → Int
     b_rhs ∈ Expr = EBinOp(OpPlus, EInt(1), EInt(2))
     b_inferred ∈ String
     b_ok ∈ Bool
     InferType(rhs ↦ b_rhs, inferred ↦ b_inferred, ok ↦ b_ok)
 
-    -- Case C: name = 42 → Int
     c_rhs ∈ Expr = EInt(42)
     c_inferred ∈ String
     c_ok ∈ Bool
     InferType(rhs ↦ c_rhs, inferred ↦ c_inferred, ok ↦ c_ok)
 
-    -- Case D: name = foo → ok=false (no per-Expr inference)
     d_rhs ∈ Expr = EIdent("foo")
     d_inferred ∈ String
     d_ok ∈ Bool
     InferType(rhs ↦ d_rhs, inferred ↦ d_inferred, ok ↦ d_ok)
 
-    -- Per-tick diagnostic stepping. One puts per tick.
     step ∈ Int
     _step ∈ Int
     step = (is_first_tick ? 0 : _step + 1)

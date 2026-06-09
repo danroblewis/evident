@@ -22,32 +22,12 @@
 -- Claim-composition (slot-call + names-match `..` inlining). Lifted into
 -- driver_main via `..DriverCompose`.
 fsm DriverCompose
-    -- ── F2: composition inlining (call walk + inline frames) ──────
-    -- A composition line jumps the token cursor into the callee's
-    -- body (located via the claim index) and the NORMAL classifier
-    -- walks it; the body's end (next top-level keyword / EOF) pops
-    -- the frame back to the caller. Slot calls
-    -- (`Helper(slot ↦ value, …)`, pmode 10) Pratt-parse each slot
-    -- value to a HANDLE (pk_kind 8 — values are arbitrary
-    -- expressions); the handles accumulate on hstk and bind into a
-    -- C2Binds table on the `)` fire tick; callee body locals
-    -- α-rename under the "__cN_" call-site prefix. Bare `Name` and
-    -- `..Name` splices inherit the CURRENT scope (no binds, no
-    -- fresh prefix) — names-match. Caps: 4 slots/call (corpus
-    -- single-line max is 6, one multi-line 8-slot site — widening
-    -- is mechanical: deeper stack views + cs slots), depth 8
-    -- (corpus reaches ≥ 5).
     il_frames ∈ C2Frames
     il_binds ∈ C2Binds
     il_pfx ∈ String
     il_depth ∈ Int
     il_cnt ∈ Int
     il_tgt ∈ Int
-    -- param-skip: a jump lands on the token after `claim Name`; a
-    -- `(` there is the callee's first-line param list — consumed
-    -- one token per tick to its matching `)` (il_pd tracks nesting
-    -- for Seq(...) param types). Slot params bind at the call site,
-    -- so the list itself carries nothing the frame needs.
     il_ps ∈ Int
     il_pd ∈ Int
     cw_st ∈ Int
@@ -62,7 +42,6 @@ fsm DriverCompose
     cs_n4 ∈ String
     cs_n5 ∈ String
 
-    -- current-frame binds peel (≤ 4 entries)
     ilb_n0 ∈ String = match _il_binds
         CBCons(n, _, _) ⇒ n
         CBNil ⇒ ""
@@ -115,7 +94,6 @@ fsm DriverCompose
         CBCons(_, h, _) ⇒ h
         CBNil ⇒ 0
 
-    -- suspended-frame head peel
     fr_ret ∈ Int = match _il_frames
         CFCons(r, _, _, _) ⇒ r
         CFNil ⇒ 0
@@ -129,13 +107,10 @@ fsm DriverCompose
         CFCons(_, _, _, t) ⇒ t
         CFNil ⇒ CFNil
 
-    -- the classify tick of a composition line emits the callee
-    -- body-cursor read (capture lands next tick)
     il_rdcur ∈ Bool = (c_comp_line ∨ c_ty_line)
     e_cir ∈ Effect
     BuildMemReadLong(addr ↦ cibuf.base + (8 * (c_cur_pos / 32)), eff ↦ e_cir)
 
-    -- pmode 10 dispatch
     d_in_cw0 ∈ Bool = (in_parse ∧ (_pmode = 10) ∧ (_cw_st = 0))
     cw_cap ∈ Bool = (d_in_cw0 ∧ (¬_cw_bare))
     cw_bjump ∈ Bool = (d_in_cw0 ∧ _cw_bare)
@@ -151,8 +126,6 @@ fsm DriverCompose
         Ident(s) ⇒ s
         _ ⇒ ""
 
-    -- fire: pop the k slot-value handles (post-order — the stack
-    -- top is the LAST slot's value) into the new frame's binds
     b_h0 ∈ Int = (_cw_k = 1 ? d_h_top : _cw_k = 2 ? d_h_2nd
         : _cw_k = 3 ? d_h_3rd : _cw_k = 4 ? d_h_4th
         : _cw_k = 5 ? d_h_5th : d_h_6th)
@@ -184,11 +157,6 @@ fsm DriverCompose
         : _cw_k = 6 ? d_h_t6
         : d_hstk_in)
     il_pfx_new ∈ String = "__c" ++ str_from_int(_il_cnt) ++ "_"
-    -- G2: a TYPE slot call (`a ∈ Item (id ↦ 1, kind ↦ 0)`) also
-    -- DECLARES + PINS each param as a dotted const (a.id = 1) —
-    -- record instances used as set/seq literal elements need real
-    -- consts, not just frame binds. Sat-equivalent to the G1
-    -- substitution semantics.
     tyc_g5 ∈ C2Items = (_cw_k ≥ 6
         ? C2ICons(C2DeclConst(_ts_pfx ++ _cs_n5, 0),
             C2ICons(C2PushH(b_h5), C2ICons(C2PinEq,
@@ -219,16 +187,12 @@ fsm DriverCompose
             C2ICons(C2PushH(b_h0), C2ICons(C2PinEq,
             C2ICons(C2AssertTop, tyc_g1))))
         : C2INil)
-    -- G2: a BARE type jump declares the registry fields (first-line
-    -- params have no body memberships); record fields recurse one
-    -- C2RecDecl level.
     tsb_items ∈ C2Items = C2ICons(C2RecDecl(_ts_nm, _ts_k), C2INil)
 
     il_jump ∈ Bool = (cw_fire ∨ cw_bjump ∨ gj_fire ∨ ptj_fire)
     il_tgt_v ∈ Int = (cw_bjump ? d_cap_int : _il_tgt)
     il_ret_v ∈ Int = (cw_fire ? _tcur + 1 : _tcur)
 
-    -- param-skip actions (pmode 2, gating the classifier off)
     ips_act ∈ Bool = (in_parse ∧ (_pmode = 2) ∧ d_witems_nil
         ∧ tok_ready ∧ (_il_ps > 0))
     ips_chk ∈ Bool = (ips_act ∧ (_il_ps = 1))
@@ -319,4 +283,3 @@ fsm DriverCompose
     cs_n3 = (is_first_tick ? "" : (cw_slot ∧ _cw_k = 3) ? cw_slot_nm : _cs_n3)
     cs_n4 = (is_first_tick ? "" : (cw_slot ∧ _cw_k = 4) ? cw_slot_nm : _cs_n4)
     cs_n5 = (is_first_tick ? "" : (cw_slot ∧ _cw_k = 5) ? cw_slot_nm : _cs_n5)
-

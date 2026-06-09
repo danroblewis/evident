@@ -97,14 +97,12 @@ fsm DriverPratt
     pk_nat = (is_first_tick ? false : d_enter_pratt ? c_is_nat : _pk_nat)
     pk_nodecl = (is_first_tick ? false : d_enter_pratt ? c_nodecl : _pk_nodecl)
     pk_pn = (is_first_tick ? "" : d_enter_pratt ? c_pn : _pk_pn)
-    -- G2: record-pinned membership (`offset_pos ∈ IVec2 = <expr>`)
+    -- record-pinned membership (`offset_pos ∈ IVec2 = <expr>`)
     -- arms the rb broadcast loop at parse completion.
     c_pin_rtk ∈ Int = ((c_pinned ∧ c_is_mem) ? c_ty_rtk : 0 - 1)
     pk_rec = (is_first_tick ? 0 - 1
         : d_enter_pratt ? c_pin_rtk
         : _pk_rec)
 
-    -- parse completion → build the line's work-item program.
     p_done ∈ Bool = (d_in_pratt ∧ pr_sdone)
     pr_bad ∈ Bool = (p_done ∧ (pr_sres matches ENoExpr))
-

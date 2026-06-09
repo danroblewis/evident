@@ -1,15 +1,4 @@
 -- WIP: replaces bootstrap/runtime/src/lexer.rs. STATUS: token enum + per-char classifier; not yet driven on real .ev files.
---
--- Tokens for a minimal subset of Evident:
---   Ident(s)  — a bare-identifier run
---   IntLit(n) — a digit run, interpreted as decimal
---   LParen / RParen / Comma / Plus / Eq
---   EofTok    — end of input
---   ErrTok(s) — lex error
---
--- The full Evident lexer (Unicode operators ∈/⇒/⟨⟩, string literals,
--- keyword recognition, comment skipping, …) will follow once the
--- toy lexer architecture is validated.
 
 enum Token =
     Ident(String)
@@ -24,16 +13,13 @@ enum Token =
     RParen
     Comma
     Plus
-    -- Multiplicative / additive single-char operators (B2 + B1).
     Star
     Slash
     Minus
     Eq
     EofTok
     ErrTok(String)
-    -- Keyword tokens (recognized post-collection). The Rust lexer's
-    -- keyword_or_ident table (runtime/src/lexer.rs) dispatches the
-    -- same set; this enum mirrors it 1:1.
+    -- Keyword tokens (recognized post-collection).
     KwClaim
     KwType
     KwSchema
@@ -48,7 +34,7 @@ enum Token =
     KwTrue
     KwFalse
     KwMapsTo
-    -- Unicode operators (Phase A1).
+    -- Unicode operators.
     OpIn
     OpImplies
     OpSeqOpen
@@ -62,15 +48,9 @@ enum Token =
     OpNot
     OpForall
     OpExists
-    -- Two-char ASCII operators (Phase A2) and their single-char
-    -- counterparts. The Rust lexer in runtime/src/lexer.rs treats
-    -- each of these as a single token:
-    --   `++` → PlusPlus
-    --   `=>` → OpImplies (ASCII alias for ⇒)
-    --   `<=` → OpLe     (ASCII alias for ≤)
-    --   `>=` → OpGe     (ASCII alias for ≥)
-    --   `!=` → OpNe     (ASCII alias for ≠)
-    --   `..` → DotDot
+    -- Two-char ASCII operators, each lexed as a single token:
+    --   `++` → PlusPlus · `=>` → OpImplies · `<=` → OpLe
+    --   `>=` → OpGe · `!=` → OpNe · `..` → DotDot
     -- Lt/Gt/Dot are the single-char fallbacks when the lookahead
     -- says it's NOT the two-char form.
     PlusPlus
@@ -78,32 +58,21 @@ enum Token =
     Lt
     Gt
     Dot
-    -- Enum-variant separator `|`. The Rust lexer emits this for enum
-    -- declarations like `enum Color = Red | Green | Blue`.
+    -- `|` — enum-variant separator.
     Pipe
-    -- `?` — ternary condition/arm separator (grammar wave 2). The Rust
-    -- lexer emits Question for the `?` in `cond ? then : else`
-    -- (runtime/src/lexer.rs); paired with the existing Colon token it
-    -- lets the self-hosted driver lex a ternary pin RHS.
+    -- `?` — ternary condition/arm separator (paired with Colon).
     Question
-    -- `#` — cardinality / length prefix (grammar wave 3). The Rust lexer
-    -- emits Hash for the `#` in `#xs` (sequence length / string length);
-    -- the self-hosted Seq driver lowers `#xs` to `(seq.len xs)`.
+    -- `#` — cardinality / length prefix.
     Hash
-    -- `:` — quantifier body separator (Phase B8). The Rust lexer emits
-    -- Colon for the `:` between the range and body in `∀ x ∈ S : body`
-    -- (runtime/src/lexer.rs).
+    -- `:` — quantifier body separator (`∀ x ∈ S : body`).
     Colon
-    -- Indexing + set-literal tokens (gap census D3 + C2): `[` / `]`
-    -- for `last_results[0]` indexing, `{` / `}` for set literals
-    -- (`x ∈ {2, 4, 6}`), and `∉` for negated set membership.
+    -- `[`/`]` indexing, `{`/`}` set literals, `∉` negated set membership.
     LBracket
     RBracket
     LBrace
     RBrace
     OpNotIn
-    -- Layout tokens (Phase A6). The Rust lexer at
-    -- runtime/src/lexer.rs models indentation with TWO variants:
+    -- Layout tokens. Indentation is modeled with TWO variants:
     --   * Newline    — emitted at every '\n' outside a paren group
     --   * Indent(Int) — emitted ONCE per non-blank, non-comment line,
     --                   carrying that line's leading-space column count
@@ -111,34 +80,27 @@ enum Token =
     --                   comment-only lines emit no Indent. Inside any
     --                   open paren group ((), {}, [], ⟨⟩) both tokens
     --                   are suppressed so expressions can span lines.
-    -- This is NOT a Python-style Indent/Dedent-stack model — the
-    -- parser compares Indent(n) values directly to decide body-block
-    -- membership (runtime/src/parser/schema.rs::parse_indented_body).
+    -- This is NOT a Python-style Indent/Dedent-stack model — the parser
+    -- compares Indent(n) values directly to decide body-block membership.
     -- There is no Dedent token; "leaving a block" is just an Indent(n)
     -- whose n is smaller than the block's chosen indent level.
     Newline
     Indent(Int)
 
--- A `TokenList` is the output of the lexer. Cons-cell shape so a
--- self-hosted parser can pattern-match by head/tail.
+-- The lexer's output. Cons-cell shape so a parser can match head/tail.
 enum TokenList =
     TLNil
     TLCons(Token, TokenList)
 
 -- ── Character predicates ───────────────────────────────────────
--- Each takes a single-char String and returns a Bool. We use
--- string equality for the alphabet; this is wasteful for large
--- alphabets but transparent and self-hosted.
 
 claim IsDigitChar(c ∈ String, out ∈ Bool)
     out = (c = "0" ∨ c = "1" ∨ c = "2" ∨ c = "3" ∨ c = "4"
          ∨ c = "5" ∨ c = "6" ∨ c = "7" ∨ c = "8" ∨ c = "9")
 
--- Underscore counts as an identifier char (grammar wave 2): Evident
--- names like `is_first_tick`, `partial_str`, and the `_<name>`
--- state-carry vars contain `_`, matching the Rust lexer's ident class
--- (runtime/src/lexer.rs). Without it, `_count` lexes as ErrTok("_") +
--- Ident("count") and the state-carry pairing can't be recognised.
+-- Underscore counts as an identifier char: without it `_count` lexes as
+-- ErrTok("_") + Ident("count") and the `_<name>` state-carry pairing
+-- can't be recognised.
 claim IsAlphaChar(c ∈ String, out ∈ Bool)
     out = (c = "_"
          ∨ c = "a" ∨ c = "b" ∨ c = "c" ∨ c = "d" ∨ c = "e"
@@ -160,7 +122,6 @@ claim IsWhitespace(c ∈ String, out ∈ Bool)
     out = (c = " " ∨ c = "\t" ∨ c = "\n" ∨ c = "")
 
 -- ── Digit character → Int value ────────────────────────────────
--- Inverse of str_from_int for single ASCII digits.
 
 claim DigitToInt(c ∈ String, n ∈ Int)
     n = (c = "0" ? 0
@@ -176,8 +137,6 @@ claim DigitToInt(c ∈ String, n ∈ Int)
        : 0 - 1)
 
 -- ── Keyword recognition ─────────────────────────────────────────
--- Given a collected alphabetic run, produce either the corresponding
--- Kw* token or Ident(s).
 
 claim MaybeKeyword(s ∈ String, t ∈ Token)
     t = (s = "claim"    ? KwClaim
@@ -237,18 +196,8 @@ claim SingleCharTok(c ∈ String, t ∈ Token, recognized ∈ Bool)
                 ∨ c = "∀" ∨ c = "∃")
 
 -- ── Two-char ASCII operator recognition ───────────────────────
--- Given the current AND next character, decide whether they form
--- a two-char operator. If recognized=true, the caller emits `t`
--- and advances pos by 2. Otherwise the caller falls back to
--- SingleCharTok on the current character (advance by 1).
---
--- Mirrors runtime/src/lexer.rs's peek-ahead branches:
---   "+","+" → PlusPlus
---   "=",">" → OpImplies
---   "<","=" → OpLe
---   ">","=" → OpGe
---   "!","=" → OpNe
---   ".","." → DotDot
+-- If recognized=true, the caller emits `t` and advances pos by 2;
+-- otherwise it falls back to SingleCharTok on c1 (advance by 1).
 
 claim MaybeTwoCharOp(c1 ∈ String, c2 ∈ String, t ∈ Token, recognized ∈ Bool)
     is_plus_plus  ∈ Bool = ((c1 = "+") ∧ (c2 = "+"))
@@ -266,25 +215,15 @@ claim MaybeTwoCharOp(c1 ∈ String, c2 ∈ String, t ∈ Token, recognized ∈ B
         : ErrTok(c1))
     recognized = (is_plus_plus ∨ is_implies ∨ is_le ∨ is_ge ∨ is_ne ∨ is_dotdot)
 
--- ── String-literal helpers (Phase A3) ──────────────────────────
--- IsQuote: recognise the `"` delimiter that opens/closes a string
--- literal. A separate predicate keeps the per-tick FSM body
--- declarative (mirrors IsAlphaChar / IsDigitChar).
+-- ── String-literal helpers ──────────────────────────────────────
 claim IsQuote(c ∈ String, out ∈ Bool)
     out = (c = "\"")
 
--- IsBackslash: recognise the `\` escape lead-in inside a string
--- literal. Used to transition from in-string mode to
--- escape-pending mode.
 claim IsBackslash(c ∈ String, out ∈ Bool)
     out = (c = "\\")
 
--- EscapeChar: translate the character following `\` into the
--- character that appears in the string contents. Mirrors the four
--- escapes the Rust lexer accepts (runtime/src/lexer.rs):
---   \n → newline, \t → tab, \" → quote, \\ → backslash.
--- Anything else passes through unchanged (the per-tick FSM can
--- decide whether to treat that as an error).
+-- EscapeChar: `\`-escape → string-contents char; anything else passes
+-- through unchanged.
 claim EscapeChar(c ∈ String, out ∈ String)
     out = (c = "n"  ? "\n"
         : (c = "t"  ? "\t"
@@ -292,10 +231,7 @@ claim EscapeChar(c ∈ String, out ∈ String)
         : (c = "\\" ? "\\"
         : c))))
 
--- ── Float-literal accumulator helpers (Phase A4) ─────────────────
--- The full mode-state accumulator lives in test fixtures; these are
--- the trivial wrappers callers compose to extend an int accumulator
--- with a decimal-point arm.
+-- ── Float-literal accumulator helpers ────────────────────────────
 
 claim DigitAccumulate(prev ∈ Int, c ∈ String, n ∈ Int)
     dv ∈ Int
@@ -305,44 +241,27 @@ claim DigitAccumulate(prev ∈ Int, c ∈ String, n ∈ Int)
 claim IsDecimalPoint(c ∈ String, out ∈ Bool)
     out = (c = ".")
 
--- ── Indentation helpers (Phase A6) ─────────────────────────────
--- The Rust lexer (runtime/src/lexer.rs, lines 102-135) counts the
--- column of the first non-whitespace character on each new line:
---   ' '  → +1
---   '\t' → +4
--- A line whose first non-whitespace char is '\n' (blank line) or
--- '-' followed by '-' (comment) emits NO Indent token and resumes
--- at_line_start=true for the next line. All other lines emit an
--- `Indent(n)` token carrying that column count BEFORE the line's
--- content tokens.
+-- ── Indentation helpers ────────────────────────────────────────
+-- The `Indent(n)` token is emitted BEFORE the line's content tokens.
 --
--- IndentWidth: column-cost of a single whitespace char. 0 for
--- non-indent chars so a caller's accumulator update reads as a flat
--- `cur_indent + width` regardless of what `cur_char` actually is.
+-- IndentWidth: column-cost of a single whitespace char (' ' → 1,
+-- '\t' → 4). 0 for non-indent chars so a caller's accumulator update
+-- reads as a flat `cur_indent + width`.
 
 claim IndentWidth(c ∈ String, w ∈ Int)
     w = (c = " "  ? 1
        : c = "\t" ? 4
        : 0)
 
--- IsIndentChar: true iff the char counts toward indentation. A
--- separate predicate so the per-tick FSM's mode-transition logic
--- (stay-in-leading-whitespace vs leave-the-leading-whitespace) can
--- read as one Bool comparison.
+-- IsIndentChar: true iff the char counts toward indentation.
 
 claim IsIndentChar(c ∈ String, out ∈ Bool)
     out = (c = " " ∨ c = "\t")
 
--- IsBlankLineHead: true iff the char at line-start position (after
--- any leading whitespace was already stripped) means "this line
--- emits no Indent token." Matches the Rust lexer's two early
--- returns at runtime/src/lexer.rs:113 (newline) and :118 (comment
--- lead, when next char is also '-').
---
--- The caller passes the FIRST non-whitespace char of the line. The
--- second arg (`next_after`) is the char after that, used only to
--- distinguish a single '-' (token: Minus, line is NOT blank) from
--- '--' (comment, line IS blank for indent purposes).
+-- IsBlankLineHead: true iff the line emits no Indent token. The caller
+-- passes the FIRST non-whitespace char of the line; `next_after` is the
+-- char after that, used only to distinguish a single '-' (Minus, line
+-- is NOT blank) from '--' (comment, line IS blank for indent purposes).
 
 claim IsBlankLineHead(c ∈ String, next_after ∈ String, out ∈ Bool)
     is_eol     ∈ Bool = (c = "\n")
@@ -350,21 +269,16 @@ claim IsBlankLineHead(c ∈ String, next_after ∈ String, out ∈ Bool)
     is_eof     ∈ Bool = (c = "")
     out = (is_eol ∨ is_comment ∨ is_eof)
 
--- ── Whitespace-run length (grammar wave 4f — bulk-skip) ─────────
--- Given the source `s` and a position `p` whose own char is whitespace,
--- return `adv` = the count of consecutive whitespace chars starting at
--- `p`, capped at 16. The lex driver advances `pos` by `adv` in ONE tick
--- instead of one char per tick, collapsing indentation / blank-line runs
--- (the wave-4e diagnostic, docs/plans/grammar-wave4e-perf-diagnostic.md,
--- §5: "tick count is the only compiler-side lever"). `adv` ≥ 1 always —
--- the caller only consults it when s[p] is itself whitespace, so a lone
--- separating space yields adv=1, IDENTICAL to the old per-char advance.
--- That is what keeps the emitted token stream byte-identical: whitespace
--- never produces a token, so visiting fewer of its positions changes
--- nothing but the tick count. "" (past end-of-input) counts as whitespace
--- so a trailing run walks cleanly to EOF. All locals are wr_-prefixed to
--- avoid the composition body-local leak (see CLAUDE.md / memory:
--- project_claim_composition_leaks_body_locals).
+-- ── Whitespace-run length (bulk-skip) ───────────────────────────
+-- adv = count of consecutive whitespace chars starting at `p`, capped
+-- at 16; the lex driver advances `pos` by `adv` in ONE tick. `adv` ≥ 1
+-- always — the caller only consults it when s[p] is itself whitespace,
+-- so a lone separating space yields adv=1, IDENTICAL to the old
+-- per-char advance; whitespace never produces a token, so the emitted
+-- token stream stays byte-identical. "" (past end-of-input) counts as
+-- whitespace so a trailing run walks cleanly to EOF. All locals are
+-- wr_-prefixed to avoid the composition body-local leak
+-- (project_claim_composition_leaks_body_locals).
 claim WsRunLen(s ∈ String, p ∈ Int, adv ∈ Int)
     wr_c1  ∈ String = substr(s, p + 1, 1)
     wr_c2  ∈ String = substr(s, p + 2, 1)

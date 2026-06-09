@@ -1,16 +1,7 @@
 -- DriverEnum isolation — the four Effect-floor enum runs walk to completion.
---
--- Drives the real ED machine standalone with its start gate held open
--- (zstep parked at 9, no user enum). With the floor enum decls supplied as
--- pinned data, the machine must declare LibArg (src 0), __SeqOf_LibArg
--- (1), Effect (2) and Result (3) in turn, advancing ed_src each time a run
--- completes, until it idles at ed_src = 4. The Z3 build effects are NOT
--- scheduled into effects (no arena needed) — we observe the pure act/step/
--- src walk scalar directly, exactly as driver_lex's test reads lx_count.
--- If the act/step transition table or the floor-run sequencing regresses
--- (a run stalls, miscounts variants, or fails to advance src) the machine
--- never reaches src 4 and this test times out / reports the wrong count.
---
+-- zstep held at 9 keeps ed_go_floor firing; the machine declares LibArg
+-- (src 0), __SeqOf_LibArg (1), Effect (2), Result (3), advancing ed_src
+-- per run until it idles at 4. Z3 build effects not scheduled (no arena).
 -- entry: main
 -- expect: stdout = "4"
 -- expect: exit = 0
@@ -21,11 +12,8 @@ import "compiler2/driver_ir.ev"
 import "compiler2/driver_enum.ev"
 
 fsm main
-    -- DriverEnum's start gate: zstep held at 9 keeps ed_go_floor firing
-    -- run-after-run until ed_src reaches 4.
     zstep ∈ Int
     zstep = (is_first_tick ? 9 : _zstep)
-    -- No user enum on this run — the floor path only.
     ec_start ∈ Bool = false
     ec_list_n ∈ EnumVariantList = EVNil
     ue_name ∈ String

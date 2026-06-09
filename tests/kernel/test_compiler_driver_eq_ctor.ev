@@ -1,17 +1,8 @@
--- Grammar wave 4p: bare `name = Ctor(args)` equality after a prior membership.
---
--- A line whose operator is `=` (not `∈`) whose RHS is a CONSTRUCTOR
--- APPLICATION constrains a name an earlier `name ∈ EnumType` membership
--- already declared. The wave-4j bare path only handled atom RHS, dropping
--- the `(args)` and emitting `(= name Ctor)`; the wave-4o driver mis-routed
--- it to SeqMembershipStep (t3=LParen) and dropped the constraint entirely.
---
--- This wave (4p) makes CtorMembershipStep self-discriminate the bare form
--- (`bare ↦ true`) and render the RHS through translate_ctor.ev's
--- RenderExprToks, emitting a single `(assert (= name <rhs>))` with no decl
--- and no manifest field. Exercised here in ISOLATION on hand-built
--- TokenLists (the driver wiring is covered by the lang seam). See
--- compiler/parse_body_ctor.ev (cs_bare_ctor) and docs/plans/wave-4p-equality-rhs-complex.md.
+-- Bare `name = Ctor(args)` equality after a prior membership, exercised in
+-- ISOLATION on hand-built TokenLists. Pins two regressions: the bare path
+-- dropping `(args)` (emitting `(= name Ctor)`), and the driver mis-routing
+-- the line to SeqMembershipStep (t3=LParen), dropping it entirely.
+-- CtorMembershipStep self-discriminates the bare form (`bare ↦ true`).
 --
 -- expect: stdout = "(assert (= r (Ok 5)))"
 -- expect: stdout = "(assert (= e (Exit 0)))"

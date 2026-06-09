@@ -1,8 +1,6 @@
--- FtiBuffer memory-safety invariant: `count ≤ cap`. A write cursor past
--- the region's capacity (count = 3000 into a 2048-slot buffer) is an
--- overrun — the tick is UNSAT (exit 2), so the kernel halts instead of
--- writing out of region. This is the FTI memory-safety contract the
--- roadmap calls for, now enforced by the type itself every tick.
+-- FtiBuffer memory-safety invariant `count ≤ cap`: a cursor past capacity
+-- (3000 into a 2048-slot buffer) is an overrun — UNSAT (exit 2), the
+-- kernel halts instead of writing out of region.
 --
 -- entry: main
 -- expect: exit = 2

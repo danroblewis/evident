@@ -18,7 +18,7 @@
 -- The FTI symbol table + work-item decode layer. Lifted into driver_main
 -- via `..DriverSymtab`.
 fsm DriverSymtab
-    -- ── FTI symbol table (B1: corpus scale, 1024 entries) ─────────
+    -- ── FTI symbol table ─────────
     -- Handles live in the calloc'd st_base buffer (8 bytes/entry,
     -- decl order); names live in st_names, a Z3 String of
     -- fixed-width 32-byte records: "|" ++ name padded to 31 with
@@ -28,21 +28,11 @@ fsm DriverSymtab
     -- idx = index_of(st_names, key) / 32; the handle is then ONE
     -- __mem.read_long through the pend=1 capture path. Names longer
     -- than 31 chars would truncate-alias (corpus max is 21).
-    -- A decl appends at C2DeclConst istep 2: the const handle (in
-    -- tmp) is written to st_base[st_cnt], the name record appends to
-    -- st_names, and the handle pushes onto hstk purely — all on the
-    -- same tick, so a decl is visible to every later lookup tick.
-    -- FTI bounds constraint: st_base holds 8192 symtab handle entries.
-    -- st_cnt < 8192 makes a declare past the buffer end UNSAT (the model
-    -- refuses it) rather than a native overrun.
     stbuf.count < 8192
     st_names ∈ String
     d_st_add ∈ Bool = (d_processing ∧ d_it_decl ∧ (_istep = 2))
     st_entry ∈ String
     FtiNameEntry(name ↦ d_dc_name, entry ↦ st_entry)
-    -- D3 pre-seed: slots 0/1 are last_results / is_first_tick (their
-    -- handles are written at zstep 31), so the two kernel-provided
-    -- names resolve like any declared const.
     d_seed_names ∈ String = ("|" ++ substr("last_results                               ", 0, 31)
         ++ "|" ++ substr("is_first_tick                               ", 0, 31))
     FtiNamedAppend(first ↦ is_first_tick, add ↦ d_st_add,
@@ -50,7 +40,7 @@ fsm DriverSymtab
         init_count ↦ 2, seed_names ↦ d_seed_names, entry ↦ st_entry,
         count ↦ stbuf.count, names ↦ st_names)
 
-    -- saw flags (D3): a user constraint mentioned last_results /
+    -- saw flags: a user constraint mentioned last_results /
     -- is_first_tick — the serialized solver body then carries their
     -- declares (+ the Result datatype for last_results), so the
     -- textual prelude must drop the duplicates.
@@ -101,7 +91,6 @@ fsm DriverSymtab
         C2HCons(_, r) ⇒ r
         C2HNil ⇒ C2HNil
 
-    -- current work item.
     d_witems_nil ∈ Bool = match _witems
         C2INil ⇒ true
         _ ⇒ false
@@ -112,13 +101,8 @@ fsm DriverSymtab
         C2ICons(_, r) ⇒ r
         C2INil ⇒ C2INil
 
-    -- F2: the param-skip substate (il_ps) suppresses the classifier
-    -- until the callee's first-line param list is walked over.
     d_classify   ∈ Bool = (d_in_claim ∧ d_witems_nil ∧ tok_ready
         ∧ (_il_ps = 0) ∧ (¬_fl_on) ∧ (¬_rb_on))
-    -- items drain identically under the claim walk, the effects
-    -- element walk (pmode 5), the seq-literal walk (pmode 8), the
-    -- F1 group walk (pmode 9) and the F2 call walk (pmode 10)
     d_processing ∈ Bool = ((d_in_claim ∨ (in_parse ∧ (_pmode = 5))
         ∨ (in_parse ∧ (_pmode = 8)) ∨ (in_parse ∧ (_pmode = 9))
         ∨ (in_parse ∧ (_pmode = 10)) ∨ (in_parse ∧ (_pmode = 12))
@@ -211,4 +195,3 @@ fsm DriverSymtab
         C2RecVal(_, rk2) ⇒ rk2
         C2RecDecl(_, rk3) ⇒ rk3
         _ ⇒ 0
-

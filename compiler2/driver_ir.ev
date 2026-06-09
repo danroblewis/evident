@@ -8,30 +8,21 @@
 import "compiler/parser.ev"
 
 -- ── FTI buffers: base + write cursor + capacity travel together ────
--- The recurring base+cursor+cap triple behind every FTI-resident buffer
--- (the token buffer, the symbol table, the claim index). `base` is the
--- calloc'd region start (pinned once during zinit); `count` is the
--- append cursor (carried); `cap` is the region's slot capacity (pinned).
--- The `0 ≤ count ≤ cap` invariant lifts the per-site capacity bound into
--- the type — the cursor-in-region memory-safety contract, now checked
--- every tick for every buffer rather than ad-hoc at each use-site. Plain
--- bounds like these functionize for free (see the Z3SolverCtx note for
--- the kind of invariant this type deliberately does NOT carry).
+-- The base+cursor+cap triple behind every FTI-resident buffer (token
+-- buffer, symbol table, claim index): `base` = calloc'd region start
+-- (pinned once during zinit), `count` = append cursor (carried),
+-- `cap` = slot capacity (pinned). An overrun makes the tick UNSAT —
+-- the kernel halts instead of writing out of region. Plain bounds
+-- functionize for free (see the Z3SolverCtx perf note).
 type FtiBuffer(base ∈ Int, count ∈ Int, cap ∈ Int)
-    base ≥ 0           -- a calloc'd region start, never negative
-    cap  ≥ 0           -- the region holds `cap` slots
-    0 ≤ count ≤ cap    -- the write cursor never passes the last slot;
-                       -- an overrun makes the tick UNSAT, halting the
-                       -- kernel instead of writing out of region
+    base ≥ 0
+    cap  ≥ 0
+    0 ≤ count ≤ cap
 
 -- ── Named FTI buffer append: cursor + parallel name registry ──────
--- The shared "append a named row" step behind every FTI buffer that
--- keeps a companion name string (the symbol table's `st_names`, the
--- claim index's `ci_names`): on the `add` gate, the cursor climbs by 1
--- and `entry` is concatenated onto the names registry; off the gate
--- both hold; on the first tick both seed. One tested definition instead
--- of a copy per consumer. Compose with the buffer's cursor + names as
--- outputs, e.g. `count ↦ stbuf.count, names ↦ st_names`.
+-- The shared "append a named row" step behind every FTI buffer with a
+-- companion name string (the symbol table's `st_names`, the claim
+-- index's `ci_names`).
 claim FtiNamedAppend(first ∈ Bool, add ∈ Bool, prev_count ∈ Int,
         prev_names ∈ String, init_count ∈ Int, seed_names ∈ String,
         entry ∈ String, count ∈ Int, names ∈ String)
@@ -41,20 +32,13 @@ claim FtiNamedAppend(first ∈ Bool, add ∈ Bool, prev_count ∈ Int,
 -- ── FTI name-registry entry: a fixed-width 32-byte "|name<pad>" row ─
 -- Every name registry stores fixed-width rows: a "|" delimiter then the
 -- name padded/truncated to 31 chars, so row N lives at a known offset.
--- The same formatter behind the symbol table's `st_entry` and the claim
--- index's `ci_entry`. Feed the resulting `entry` to FtiNamedAppend.
 claim FtiNameEntry(name ∈ String, entry ∈ String)
     entry = "|" ++ substr(name ++ "                               ", 0, 31)
 
 -- ── Z3 solver lifecycle: the three handles created together at boot ─
--- cfg → ctx → sol: the Z3 config, the context derived from it, and the
--- solver derived from the context (zinit zsteps 1/2/3). They travel as
--- one unit — every Build*Z3 effect threads `ctx`, asserts go through
--- `sol`. Pinned once during zinit, carried thereafter.
---
--- The lifecycle invariant `sol > 0 ⇒ (ctx > 0 ∧ cfg > 0)` binds the
--- relationship: a live solver implies a live context and config. It is
--- vacuous during boot (all 0) and enforced once the handles latch.
+-- cfg → ctx → sol (zinit zsteps 1/2/3). Pinned once during zinit,
+-- carried thereafter; every Build*Z3 effect threads `ctx`, asserts go
+-- through `sol`.
 --
 -- PERF NOTE — the liveness test MUST be `> 0`, not `≠ 0`. Disequality is
 -- non-convex (Z3 reads `x ≠ 0` as `x < 0 ∨ x > 0` and case-splits), and on
@@ -70,11 +54,6 @@ type Z3SolverCtx(cfg ∈ Int, ctx ∈ Int, sol ∈ Int)
     sol ≥ 0
     sol > 0 ⇒ (ctx > 0 ∧ cfg > 0)
 
--- ── Z3 base sorts: the four primitive sort handles made at boot ────
--- Int / Bool / String / Real sort handles (zinit zsteps 5/6/7/8). Every
--- type-directed Build*Z3 step picks one of these by the field/atom type
--- string. Pinned once during zinit, carried thereafter, and (like the
--- solver triple) driven every tick so all four stay live.
 type Z3Sorts(isort ∈ Int, bsort ∈ Int, ssort ∈ Int, rsort ∈ Int)
     isort ≥ 0
     bsort ≥ 0
@@ -84,10 +63,6 @@ type Z3Sorts(isort ∈ Int, bsort ∈ Int, ssort ∈ Int, rsort ∈ Int)
     -- are live (convex `> 0` test — see the Z3SolverCtx perf note).
     rsort > 0 ⇒ (isort > 0 ∧ bsort > 0 ∧ ssort > 0)
 
--- ── Z3 numeral cache: the small int constants 0..4 made once at boot ─
--- effects-array indices and lengths only ever need 0..4, so zinit makes
--- those five Z3 int-numeral handles once (zsteps 16/17/18/33/34) instead
--- of re-minting them per use. Pinned once, carried, driven every tick.
 type Z3Numerals(zero ∈ Int, one ∈ Int, two ∈ Int, three ∈ Int, four ∈ Int)
     zero  ≥ 0
     one   ≥ 0
@@ -108,17 +83,8 @@ type Z3Numerals(zero ∈ Int, one ∈ Int, two ∈ Int, three ∈ Int, four ∈ 
 type RecTypeEntry(name ∈ String, fnames ∈ String, ftypes ∈ String,
     nf ∈ Int, sort ∈ Int, ctor ∈ Int, asort ∈ Int, ssort ∈ Int,
     a0 ∈ Int, a1 ∈ Int, a2 ∈ Int, a3 ∈ Int, a4 ∈ Int, a5 ∈ Int)
-    -- a registry slot holds 0 fields (empty) up to 6 (a0..a5 are the
-    -- ≤6 field-accessor decls — the registry's hard structural bound).
     0 ≤ nf ≤ 6
 
--- ── One field of a record being lowered ───────────────────────────
--- A single field of a `RecTypeEntry`, decoded for the C2RecVal/C2RecDecl
--- expansion: `name` (the field name), `type` (its type string), and
--- `kidx` (the field type's slot in the record-type registry — 0/1/2 if
--- the field is itself a record, −1 if scalar/Seq). Replaces the parallel
--- rv_f*/rv_t*/rv_k* scalar arrays with a record so the expansion reads
--- `f.name`/`f.type`/`f.kidx` instead of three coindexed lookups.
 type RecField(name ∈ String, ty ∈ String, kidx ∈ Int)
     -- kidx is RtIdxOf's result: a registry hit (0/1/2) or a miss (−1).
     -- (`ty`, not `type`: `type` is a reserved keyword, unusable as `.type`.)
@@ -158,23 +124,14 @@ enum C2Items =
     C2INil
     C2ICons(C2Item, C2Items)
 
--- Handle stack (Z3_ast handles, post-order operand order).
 enum C2H =
     C2HNil
     C2HCons(Int, C2H)
 
--- ── F2: composition-inline frames ─────────────────────────────────
--- A slot-call binding table: slot name → the CALLER's value HANDLE
--- (built by the Pratt FSM + walker before the jump — values may be
--- arbitrary expressions). ≤ 4 entries per call.
 enum C2Binds =
     CBNil
     CBCons(String, Int, C2Binds)
 
--- The suspended-frame stack: (return cursor, saved α-prefix, saved
--- binds, rest). A slot call pushes the CURRENT (pfx, binds) and
--- installs fresh ones; a bare names-match inline pushes and KEEPS
--- them (pure splice). Depth ≤ 8.
 enum C2Frames =
     CFNil
     CFCons(Int, String, C2Binds, C2Frames)

@@ -1,16 +1,9 @@
--- CRLF normalization (Phase A7).
---
--- Walks input "a\r\nb\n" (Windows-style line endings). The lexer must
--- treat '\r' as whitespace just like '\n' / ' ' / '\t', so the token
--- stream is exactly two idents: ⟨Ident("a"), Ident("b")⟩.
---
--- The Evident lexer (runtime/src/lexer.rs) does NOT support the "\r"
--- escape in source strings, but a raw CR byte (0x0d) inside a "..."
--- literal IS accepted (treated as an ordinary char). stdlib/lexer.ev
--- exploits this: its IsWhitespace claim has c = "\r" written with a
--- literal CR, so CRLF inputs lex equivalently to LF inputs without a
--- preprocessing pass.
---
+-- CRLF normalization (Phase A7): walks "a\r\nb\n"; the lexer must treat
+-- '\r' as whitespace, so the token stream is ⟨Ident("a"), Ident("b")⟩.
+-- TRAP: the Evident lexer does NOT support the "\r" escape in source
+-- strings, but a raw CR byte (0x0d) inside a "..." literal IS accepted.
+-- stdlib/lexer.ev exploits this: IsWhitespace's c = "\r" is a literal CR,
+-- so CRLF inputs lex equivalently to LF without a preprocessing pass.
 -- expect: stdout = "  start: a"
 -- expect: stdout = "ident: a"
 -- expect: stdout = "  skip"

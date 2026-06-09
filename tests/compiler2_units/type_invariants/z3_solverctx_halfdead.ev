@@ -1,8 +1,7 @@
 -- Z3SolverCtx lifecycle invariant: `sol > 0 ⇒ (ctx > 0 ∧ cfg > 0)`.
--- A live solver (sol = 5) with a null context (ctx = 0) is an impossible
--- lifecycle state — a solver cannot exist without its context — so the
--- tick is UNSAT (exit 2). (Written with `> 0`, not `≠ 0`: convex, so it
--- functionizes — see scripts/functionization-gate.sh.)
+-- A live solver with a null context is impossible → UNSAT (exit 2).
+-- (Written with `> 0`, not `≠ 0`: convex, so it functionizes — see
+-- scripts/functionization-gate.sh.)
 --
 -- entry: main
 -- expect: exit = 2

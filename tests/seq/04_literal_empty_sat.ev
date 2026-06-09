@@ -1,5 +1,5 @@
--- B4 literal and empty. ⟨⟩ has length 0; a pinned literal exposes each
--- slot by index. Both are bounded by construction. SAT → exit 0.
+-- B4 literal and empty seqs, bounded by construction; a pinned
+-- literal exposes each slot by index. SAT → exit 0.
 -- entry: main
 -- expect: exit = 0
 import "stdlib/kernel.ev"

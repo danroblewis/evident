@@ -1,25 +1,11 @@
--- Phase B3: type-name parsing (TypeName, Seq(T), Edge<T>).
+-- Phase B3: type-name parsing. Types are carried as opaque strings;
+-- a multi-tick FSM walks a TokenList head-by-head, accumulating the
+-- type-name into a String and flushing/resetting on a Newline boundary.
+-- Inputs cover all four type shapes: "Int", "Seq(Int)", "Edge<Rect>",
+-- "Seq(Edge<Rect>)".
 --
--- The Rust parser carries types as opaque strings throughout the
--- AST (`"Int"`, `"Seq(Int)"`, `"Edge<Rect>"`,
--- `"Seq(Edge<Rect>)"`). See runtime/src/parser/types.rs.
---
--- This fixture is the self-hosted analogue: a multi-tick consumer
--- FSM that walks a TokenList head-by-head and accumulates the
--- type-name into a String. When the head is a non-type token
--- (Newline), the FSM emits the accumulated string and resets the
--- accumulator for the next type stream.
---
--- Inputs (all four type shapes the Rust parser distinguishes):
---   Ident("Int") · Newline                                   → "Int"
---   Ident("Seq") · LParen · Ident("Int") · RParen · Newline  → "Seq(Int)"
---   Ident("Edge") · Lt · Ident("Rect") · Gt · Newline        → "Edge<Rect>"
---   Ident("Seq") · LParen · Ident("Edge") · Lt · Ident("Rect")
---       · Gt · RParen · Newline                              → "Seq(Edge<Rect>)"
---
--- Token-to-fragment mapping is owned by TypeTokenText in
--- stdlib/parser.ev: Ident → its payload, LParen → "(", RParen → ")",
--- Lt → "<", Gt → ">", Comma → ", ".
+-- Token-to-fragment mapping is owned by TypeTokenText: Ident → its
+-- payload, LParen → "(", RParen → ")", Lt → "<", Gt → ">", Comma → ", ".
 --
 -- expect: stdout = "[start]"
 -- expect: stdout = "  step"
@@ -48,12 +34,8 @@ import "stdlib/kernel.ev"
 import "compiler/parser.ev"
 
 claim main
-    -- Four type-token streams concatenated end-to-end. Each input is
-    -- terminated by a Newline so the consumer can recognise the
-    -- "type complete" boundary regardless of bracket nesting depth.
-    -- Token streams built in chunks to keep individual expressions
-    -- under the parser's call-depth limit. Each `case_N` block
-    -- ends with the Newline boundary the consumer keys off.
+    -- Four Newline-terminated type-token streams, built in chunks to
+    -- keep individual expressions under the parser's call-depth limit.
     case_d ∈ TokenList = TLCons(Ident("Seq"), TLCons(LParen, TLCons(Ident("Edge"), TLCons(Lt, TLCons(Ident("Rect"), TLCons(Gt, TLCons(RParen, TLCons(Newline, TLNil))))))))
     case_c ∈ TokenList = TLCons(Ident("Edge"), TLCons(Lt, TLCons(Ident("Rect"), TLCons(Gt, TLCons(Newline, case_d)))))
     case_b ∈ TokenList = TLCons(Ident("Seq"), TLCons(LParen, TLCons(Ident("Int"), TLCons(RParen, TLCons(Newline, case_c)))))
@@ -63,8 +45,6 @@ claim main
     list  ∈ TokenList
     _list ∈ TokenList
 
-    -- The currently-accumulating type-name string. Carries across
-    -- ticks; flushes (to label) and resets when a Newline is seen.
     accum  ∈ String
     _accum ∈ String
 
@@ -80,33 +60,18 @@ claim main
         TLNil ⇒ true
         _ ⇒ false
 
-    -- Per-token contribution to the accumulated string + whether the
-    -- token is part of a type at all. Newline / EofTok are NOT type
-    -- tokens, so they trigger a flush.
     tok_str ∈ String
     is_type_tok ∈ Bool
     TypeTokenText(t ↦ head_tok, s ↦ tok_str, is_type_tok ↦ is_type_tok)
 
-    -- Newline = "this input is done, flush" boundary.
     is_newline ∈ Bool = (head_tok matches Newline)
 
-    -- Update accumulated string:
-    --   first tick    → empty (initialisation)
-    --   newline seen  → reset to empty for the next case
-    --   type token    → append its fragment
-    --   anything else → unchanged
     accum = (is_first_tick ? "" : (is_newline ? "" : (is_type_tok ? _accum ++ tok_str : _accum)))
 
-    -- The list pointer advances every non-bootstrap tick.
     list = (is_first_tick ? initial : tail_list)
 
-    -- Diagnostic label:
-    --   tick 0          → "[start]"
-    --   end of input    → "[done]"
-    --   on Newline      → emit the accumulated string (one input just
-    --                     completed). Use the previous tick's _accum
-    --                     because this tick already saw the newline.
-    --   otherwise       → "  step" (one token consumed; no flush)
+    -- On Newline emit the PREVIOUS tick's _accum — this tick already
+    -- consumed the newline.
     label ∈ String = (is_first_tick ? "[start]" : (is_nil ? "[done]" : (is_newline ? _accum : "  step")))
 
     effects ∈ Seq(Effect) = (is_nil ? ⟨LibCall("libc", "puts", ⟨ArgStr(label)⟩), Exit(0)⟩ : ⟨LibCall("libc", "puts", ⟨ArgStr(label)⟩)⟩)

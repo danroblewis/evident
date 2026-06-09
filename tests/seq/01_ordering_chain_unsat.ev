@@ -1,5 +1,4 @@
--- A1 ordering chain, contradictory. Chain a<b<c plus a>c is UNSAT
--- → kernel solve fails → exit 2.
+-- A1 ordering chain, contradictory: a<b<c plus a>c → UNSAT → exit 2.
 -- entry: main
 -- expect: exit = 2
 import "stdlib/kernel.ev"

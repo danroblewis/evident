@@ -1,20 +1,6 @@
--- Token list serializer (iter 3.9): consumes a TokenList one element
--- per tick and prints each token's textual form.
---
--- Inverse of the lexer accumulator pattern. The lexer takes String
--- input → builds TokenList; the serializer takes TokenList input →
--- emits String output. Together they form the round-trip path that
--- a compiler's lex/pretty-print pair occupies.
---
--- State: the remaining TokenList. Each tick:
---   - Pull the head token from _list via `match`
---   - Tail becomes the next tick's list
---   - Print the head's textual representation
---   - Halt when the carried _list is TLNil
---
--- The match-on-Datatype-state pattern shown here (via `match _list`
--- in three places) is the parser's primary building block: consume
--- one node per tick, branch on its variant.
+-- Token list serializer: consumes a TokenList one element per tick
+-- and prints each token's textual form — the inverse of the lexer
+-- accumulator pattern. Halts when the carried _list is TLNil.
 --
 -- expect: stdout = "[start]"
 -- expect: stdout = "claim"

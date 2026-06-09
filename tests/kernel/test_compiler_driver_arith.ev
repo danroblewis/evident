@@ -1,19 +1,7 @@
--- Grammar wave 1, shape 2: memberships with EXPRESSION pins (a literal
--- pin and a one-level arithmetic binop pin).
---
--- Same generalised, lex → reverse → walk driver as
--- test_compiler_driver_multi_member.ev, but here each membership carries
--- an `= <expr>` pin. MembershipStep composes compiler/translate_arith.ev
--- (ArithExprSmtlib / AtomSmtlib) to translate the RHS, so the literal pin
--- `= 1` emits `(assert (= x 1))` and the binop pin `= x + 2` emits
--- `(assert (= y (+ x 2)))`. Nothing is hardcoded — the String is lexed
--- character-by-character. See docs/plans/grammar-wave1.md.
---
--- Source: "claim bar\n    x ∈ Int = 1\n    y ∈ Int = x + 2\n"  →
---   (declare-fun x () Int)
---   (assert (= x 1))
---   (declare-fun y () Int)
---   (assert (= y (+ x 2)))
+-- Compiler driver fixture: memberships with EXPRESSION pins (a literal
+-- pin and a one-level arithmetic binop pin). Lex → reverse → walk
+-- driver; MembershipStep routes each `= <expr>` pin through
+-- ArithExprSmtlib/AtomSmtlib. The String is lexed char-by-char.
 --
 -- expect: stdout = ";; manifest: state-fields = x:Int y:Int"
 -- expect: stdout = ";; manifest: effects-name = effects"

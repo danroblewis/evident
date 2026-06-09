@@ -1,19 +1,7 @@
--- D3 pipeline-driver fixture (proof-of-concept).
---
--- The endgame (Phase D2) is an Evident program that imports
---    stdlib/lexer.ev + parser.ev + translate_*.ev
--- and runs lex → parse → translate on a `.ev` input string, emitting
--- a valid `.smt2` to stdout. That program does not exist yet — see
--- docs/plans/completion-roadmap.md, Phase D.
---
--- For D3 (the CLI seam), this fixture is the stand-in pipeline. It
--- carries a small hard-coded AST through to SMT-LIB emission and
--- prints a minimal but valid SMT-LIB fragment to stdout. The shape
--- (header + declarations + asserts + check-sat) is what the real
--- self-hosted pipeline will produce; here the input is wired in.
---
--- AST: schema S with a single membership `x ∈ Int = 1`. Translates
--- to a SMT-LIB program with one `declare-fun` and one `assert (= x 1)`.
+-- D3 pipeline-driver fixture (proof-of-concept): stand-in for the
+-- real lex → parse → translate pipeline. Prints a minimal but valid
+-- SMT-LIB fragment (header + declare + assert + check-sat) for the
+-- hardwired membership `x ∈ Int = 1`.
 --
 -- expect: stdout = "; evident-self pipeline (proof-of-concept)"
 -- expect: stdout = "(declare-fun x () Int)"

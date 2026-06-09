@@ -1,11 +1,7 @@
 -- DriverSetVar isolation — Set(T) registry append + name capture.
---
--- Drives a set-membership classification (d_classify, c_setmem_line held,
--- not at line end) so d_setmem fires and the ≤2-entry Set registry
--- appends. With c_dname = "myset", stv_cnt climbs 0→1→2 (capped) and
--- stv_n0 captures "myset". Exit when stv_cnt = 2, reporting stv_n0. A
--- regression in the set recognizer, the bounded counter, or the name
--- capture changes the result.
+-- c_setmem_line held under d_classify (not at line end) so d_setmem
+-- fires and the ≤2-entry Set registry appends: stv_cnt climbs 0→1→2
+-- (capped), stv_n0 captures c_dname = "myset". Exit at stv_cnt = 2.
 --
 -- entry: main
 -- expect: stdout = "myset"

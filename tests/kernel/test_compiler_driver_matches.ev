@@ -1,16 +1,6 @@
--- Grammar wave 3, item 3: a membership pinned by an `e matches Ctor(_)`
--- constructor recognizer.
---
--- The source is lexed character-by-character (nothing hardcoded);
--- MembershipStep (parse_body.ev) recognises the `<atom> matches Ctor(_)`
--- token shape after a `=` pin and lowers it to a Z3 datatype tester
--- `((_ is Ctor) <scrutinee>)` — the sibling of the match-arm lowering in
--- compiler/translate_match.ev. See docs/plans/grammar-wave3.md and
--- docs/plans/grammar-coverage-survey.md §3.
---
--- Source: "claim foo\n    is_ok ∈ Bool = e matches Ok(_)\n"  →
---   (declare-fun is_ok () Bool)
---   (assert (= is_ok ((_ is Ok) e)))
+-- Membership pinned by an `e matches Ctor(_)` constructor recognizer:
+-- MembershipStep lowers the `<atom> matches Ctor(_)` token shape after a
+-- `=` pin to a Z3 datatype tester `((_ is Ctor) <scrutinee>)`.
 --
 -- expect: stdout = ";; manifest: state-fields = is_ok:Bool"
 -- expect: stdout = ";; manifest: effects-name = effects"

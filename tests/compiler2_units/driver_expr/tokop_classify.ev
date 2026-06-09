@@ -1,9 +1,6 @@
--- DriverExpr isolation — boundary: token→Op classification (C2TokOp),
--- including the unrecognized boundary. `*` ↦ OpMul (rec), `++` ↦ OpConcat
--- (rec, the 2-char concat op), and a non-operator token (IntLit) ↦ rec
--- false. If the classifier mis-maps an op or wrongly marks a literal as
--- an operator, `ok` goes false and this prints BAD.
---
+-- DriverExpr isolation — token→Op classification (C2TokOp), including
+-- the unrecognized boundary: `*` ↦ OpMul, `++` ↦ OpConcat (the 2-char
+-- concat op), and a non-operator token (IntLit) ↦ rec false.
 -- entry: main
 -- expect: stdout = "ok"
 -- expect: exit = 0

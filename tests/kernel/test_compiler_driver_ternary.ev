@@ -1,20 +1,6 @@
--- Grammar wave 2, item 1: a membership pinned by a TERNARY expression.
---
--- Ternary is the single highest-value wave-2 gap (191 corpus uses, a
--- self-host blocker — docs/plans/grammar-coverage-survey.md §1, §3) and
--- had no dedicated translator before (survey Open Q #3). The new
--- compiler/translate_ternary.ev lowers ETernary(c,t,e) → "(ite c t e)".
---
--- Same generalised lex → reverse → walk driver as
--- test_compiler_driver_arith.ev; MembershipStep peels the 9-token ternary
--- pin `= c ? t : e`, builds ETernary, and renders it. Nothing is
--- hardcoded — the String is lexed character-by-character. See
--- docs/plans/grammar-wave2.md.
---
--- Source: "claim foo\n    x ∈ Int = 1 ? 2 : 3\n"  →
---   (declare-fun is_first_tick () Bool)   (auto-injected)
---   (declare-fun x () Int)
---   (assert (= x (ite 1 2 3)))
+-- Membership pinned by a TERNARY expression: MembershipStep peels the
+-- 9-token pin `= c ? t : e`, builds ETernary(c,t,e), and
+-- translate_ternary.ev lowers it → "(ite c t e)".
 --
 -- expect: stdout = ";; manifest: state-fields = x:Int"
 -- expect: stdout = ";; manifest: effects-name = effects"

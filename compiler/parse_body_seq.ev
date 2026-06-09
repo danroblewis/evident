@@ -1,11 +1,9 @@
--- compiler/parse_body_seq.ev — grammar wave 3, item 4: Seq memberships.
---
--- A sibling of parse_body.ev's MembershipStep specialised for the Seq
--- surface (compound `Seq(T)` type, ⟨…⟩ literal, `++` concat, `#`
--- cardinality). Kept as a SEPARATE claim so the scalar MembershipStep
--- (and every wave-1/2 fixture that depends on its byte-identical output)
--- is untouched. Composes compiler/translate_seq.ev's RenderSeqUnit /
--- SeqLenSmtlib helpers. See docs/plans/grammar-wave3.md.
+-- compiler/parse_body_seq.ev — Seq memberships: a sibling of
+-- parse_body.ev's MembershipStep specialised for the Seq surface
+-- (compound `Seq(T)` type, ⟨…⟩ literal, `++` concat, `#` cardinality).
+-- Kept as a SEPARATE claim so the scalar MembershipStep's byte-identical
+-- output is untouched. Composes compiler/translate_seq.ev's
+-- RenderSeqUnit / SeqLenSmtlib helpers.
 --
 -- The three membership shapes consumed (head = `Ident(name)`):
 --
@@ -13,10 +11,9 @@
 --   name ∈ Seq(Int) = lhs ++ ⟨d⟩    -- concat (Ident ++ 1-elt literal)
 --   name ∈ Int      = #src          -- cardinality
 --
--- SMT-LIB targets — grammar wave 4c: bootstrap's `(Array Int T) + __len`
--- encoding (the kernel-runnable form; see compiler/translate_ctor.ev's
--- SeqArrayBlock and docs/plans/blocked-grammar-wave4b.md blocker 0), NOT
--- Z3 sequence theory:
+-- SMT-LIB targets — the `(Array Int T) + __len` encoding (the
+-- kernel-runnable form; see compiler/translate_ctor.ev's SeqArrayBlock),
+-- NOT Z3 sequence theory:
 --
 --   (declare-fun name () (Array Int Int))
 --   (declare-fun name__len () Int)
@@ -28,8 +25,8 @@
 --
 -- The consolidated driver lexer is single-char (no MaybeTwoCharOp), so
 -- `++` arrives as two `Plus` tokens — detected as t8=Plus ∧ t9=Plus.
--- Element count is bounded at ≤3 (the corpus/test arity); a wider
--- literal needs the SeqConcatStep work-stack walk (translate_seq.ev).
+-- Element count is bounded at ≤3; a wider literal needs the
+-- SeqConcatStep work-stack walk (translate_seq.ev).
 
 import "compiler/lexer.ev"
 import "compiler/parser.ev"
@@ -59,7 +56,6 @@ claim SeqMembershipStep
     rest ∈ TokenList
     ok ∈ Bool
 
-    -- Peel up to fourteen tokens.
     sq_t0 ∈ Token
     TLHdS(l ↦ rem, out ↦ sq_t0)
     sq_l1 ∈ TokenList
@@ -205,12 +201,10 @@ claim SeqMembershipStep
         : sq_n = 2 ? "(seq.++ " ++ sq_u0 ++ " " ++ sq_u1 ++ ")"
         : "(seq.++ " ++ sq_u0 ++ " " ++ sq_u1 ++ " " ++ sq_u2 ++ ")")
 
-    -- ── grammar wave 4c: Array+len encoding for top-level Seq state fields ──
-    -- The Seq surface lowers to bootstrap's `(Array Int T) + __len` form (the
-    -- shape the kernel's tick loop reads back), NOT Z3 sequence theory. The
-    -- seq.++ strings above (sq_card_str / sq_concat_str / sq_lit_str and the
-    -- RenderSeqUnit pieces) are now unused; the membership emit uses the array
-    -- form below.
+    -- ── Array+len encoding for top-level Seq state fields ──
+    -- The membership emit uses the array form below (the shape the kernel's
+    -- tick loop reads back); the seq.++ strings above (sq_card_str /
+    -- sq_concat_str / sq_lit_str and the RenderSeqUnit pieces) are UNUSED.
 
     -- Literal `⟨…⟩` → SeqArrayBlock: a length pin plus per-index (select)
     -- asserts. The `⟨` is at sq_t7 (head of sq_l7).
@@ -224,7 +218,7 @@ claim SeqMembershipStep
         elen ↦ sq_ab_elen, ok ↦ sq_ab_ok, sigtab ↦ "")
 
     -- Concat `base ++ ⟨e⟩` → store `e` onto base's array at `base__len`,
-    -- length `base__len + 1` (bootstrap translate_seq_value's `++` arm).
+    -- length `base__len + 1`.
     sq_ce_str ∈ String = (sq_t11 matches IntLit(_) ? str_from_int(sq_ce_int) : sq_ce_id)
     sq_concat_decl ∈ String = "(declare-fun " ++ sq_name ++ " () (Array Int " ++ sq_inner_ty ++ "))\n(declare-fun " ++ sq_name ++ "__len () Int)"
     sq_concat_arr ∈ String = "(assert (= " ++ sq_name ++ " (store " ++ sq_concat_lhs ++ " (+ " ++ sq_concat_lhs ++ "__len 0) " ++ sq_ce_str ++ ")))"

@@ -1,12 +1,7 @@
--- DriverLitMem isolation — the seq-literal registry latches once.
---
--- Drives a `s ∈ Seq(Int)` membership (d_seq_mem) with the classifier
--- name c_dname = "myseq" on the capture tick, then KEEPS d_seq_mem true
--- with a DIFFERENT name ("other") on later ticks. The pmode-8 registry
--- must latch exactly ONE seq var on first sight: sq_name = "myseq" and
--- must NOT be overwritten by the later "other". We report sq_name. If
--- the latch-once guard (¬_sq_set) regresses, sq_name becomes "other".
---
+-- DriverLitMem isolation — the seq-literal registry latches once:
+-- d_seq_mem held every tick with c_dname "myseq" on the capture tick,
+-- "other" after. The pmode-8 registry must latch sq_name = "myseq" on
+-- first sight; if the latch-once guard (¬_sq_set) regresses it's "other".
 -- entry: main
 -- expect: stdout = "myseq"
 -- expect: exit = 0
@@ -19,7 +14,6 @@ import "compiler2/driver_litmem.ev"
 fsm main
     tc ∈ Int
     tc = (is_first_tick ? 0 : _tc + 1)
-    -- seq membership, present every tick; name changes after capture.
     d_seq_mem ∈ Bool
     d_seq_mem = (is_first_tick ? true : _d_seq_mem)
     c_dname ∈ String = (tc ≤ 1 ? "myseq" : "other")

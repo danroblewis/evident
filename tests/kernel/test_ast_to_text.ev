@@ -1,25 +1,7 @@
--- AST → text translator (iter 3.13) — THE THIRD COMPILER STAGE.
---
--- Walks `EBinOp(OpPlus, EBinOp(OpPlus, EInt(1), EInt(2)), EInt(3))`
--- and emits the SMT-LIB prefix form `(+ (+ 1 2) 3)`.
---
--- Architecture: a WorkList stack of WorkItem values. Each item is
--- either:
---   WIProcess(Expr) — visit the Expr (emit and/or push children)
---   WIEmit(String)  — emit a literal text chunk
---
--- For Process(EBinOp(_, l, r)): emit "(+ ", push [Process(l),
--- Emit(" "), Process(r), Emit(")")] onto the stack. The structural
--- text gets interleaved correctly between subtree visits.
---
--- Output is accumulated into `output_str` across ticks; printed on
--- the final tick (stack empty).
---
--- This is the third compiler stage demonstrated as an FSM:
---   Lexer  (iter 3.1-3.9):  Text → TokenList via accumulator pattern
---   Parser (iter 3.11):     TokenList → Expr via state-carry consumer
---   Translator (this iter): Expr → SMT-LIB text via work-stack walker
--- All three run on the kernel; self-hosting is structurally complete.
+-- AST → text translator: walks EBinOp(OpPlus, EBinOp(OpPlus, EInt(1),
+-- EInt(2)), EInt(3)) via a WorkItem stack — WIProcess(Expr) = visit
+-- node, WIEmit(String) = literal text chunk — emitting the SMT-LIB
+-- prefix form "(+ (+ 1 2) 3)" accumulated in output_str across ticks.
 --
 -- expect: stdout = "[translating]"
 -- expect: stdout = "  step"

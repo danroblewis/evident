@@ -1,19 +1,12 @@
--- Recursive match translation: walk a whole MatchArmList to a nested
--- `ite` chain in one traversal via a match-specialised work-stack (the
--- test_ast_walker.ev depth-first pattern, with a cons-list that carries
--- arm-lists + bodies since parser.ev's WorkItem carries only an Expr),
--- driving compiler/translate_match.ev's MatchTranslateStep once per tick.
---
--- Input (the arms of `match e { Some(_) ⇒ 1 ; _ ⇒ 0 }`, scrutinee "e"):
---   MACons(MArm(MPCtor("Some", MBNil), EInt(1)),
---   MACons(MArm(MPWildcard,            EInt(0)), MANil))
+-- Recursive match translation: walk a MatchArmList to a nested `ite`
+-- chain via a match-specialised work-stack, driving
+-- compiler/translate_match.ev's MatchTranslateStep once per tick.
 --
 -- Pop sequence:
 --   MWArms[Some⇒1, _⇒0] → "(ite ((_ is Some) e) " MWBody(1) " " MWArms[_⇒0] ")"
 --   MWBody(1)           → "1"
 --   MWArms[_⇒0]         → MWBody(0)  (wildcard = innermost else)
 --   MWBody(0)           → "0"
--- yielding "(ite ((_ is Some) e) 1 0)".
 --
 -- expect: stdout = "(ite ((_ is Some) e) 1 0)"
 -- expect: exit = 0

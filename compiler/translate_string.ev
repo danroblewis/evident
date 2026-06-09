@@ -1,29 +1,9 @@
 -- WIP: replaces bootstrap/runtime/src/translate/exprs/string_ops.rs. STATUS: C10 string operators → Z3 str.* prefix forms; per-pass fixture only.
 --
--- Mirrors `runtime/src/translate/exprs/string_ops.rs`, which maps
--- Evident string operators to Z3's string theory (`(str.*)` forms).
--- Each Build* claim here constructs the prefix-form SMT-LIB string
--- for one operator. Inputs are pre-rendered SMT-LIB fragments
--- (identifiers, ints, or quoted string literals); `out` is the
--- composed parenthesized form a translator would emit.
---
---   StrLenSmtlib(name, out)
---     out = "(str.len " ++ name ++ ")"
---
---   StrConcatSmtlib(lhs, rhs, out)
---     out = "(str.++ " ++ lhs ++ " " ++ rhs ++ ")"
---
---   StrSubstrSmtlib(name, start, len, out)
---     out = "(str.substr " ++ name ++ " " ++ start ++ " " ++ len ++ ")"
---
---   StrPrefixSmtlib(prefix, name, out)
---     out = "(str.prefixof " ++ prefix ++ " " ++ name ++ ")"
---
 -- Pure string-builder claims — no Z3 datatype machinery, no FSM
--- carry. Caller supplies inputs as already-rendered SMT-LIB
--- fragments (identifiers like "s", numerals like "0", or quoted
--- string literals like "\"hi\"") and reads out the composed
--- prefix-form expression.
+-- carry. Inputs are already-rendered SMT-LIB fragments (identifiers,
+-- numerals, or quoted string literals); `out` is the composed
+-- prefix-form `(str.*)` expression.
 
 claim StrLenSmtlib(name ∈ String, out ∈ String)
     out = "(str.len " ++ name ++ ")"

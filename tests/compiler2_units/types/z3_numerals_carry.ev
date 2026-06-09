@@ -1,10 +1,7 @@
--- Z3Numerals carry — the cached 0..4 int-numeral handles travel across ticks.
---
--- Mirrors the real zinit numeral cache: a step counter latches each
--- numeral handle once at its named step, then holds. Proves the autocarry
--- transform synthesizes the record dual `_z3nums ∈ Z3Numerals` so each
--- field's latched value persists. If the dual is not synthesized, a
--- latched field resets and the final line is wrong.
+-- Z3Numerals carry — the cached 0..4 int-numeral handles travel across
+-- ticks (mirrors the real zinit numeral cache): each handle latches once
+-- at its step, then holds. Autocarry must synthesize `_z3nums ∈ Z3Numerals`;
+-- without the dual a latched field resets and the final line is wrong.
 --
 -- entry: main
 -- expect: stdout = "0/0/0/0/0"

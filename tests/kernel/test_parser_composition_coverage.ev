@@ -1,22 +1,11 @@
--- B10: composition-mechanisms parse-side coverage check.
---
--- CLAUDE.md's "Composition mechanisms" section enumerates seven
--- ways to inline one schema into another's body. B10 establishes
--- the AST shapes that future parse-FSM sub-steps will produce —
--- this fixture verifies the shapes round-trip through a
--- construct-then-recognize loop.
---
--- Coverage on this branch:
---   #2 / #4 bare-claim and names-match → BIClaimCall(name, CANil)
---   #3      `..ClaimName`              → BIPassthrough(name)
---   #5      `ClaimName(slot ↦ value)`  → BIClaimCall(name, CACons …)
---   #6      `subclaim Name body…`      → BISubclaim(name, BodyItemList)
---   #7      `cond ⇒ ClaimName`         → BIConstraint(EBinOp(OpImpl, …))
---
--- The fixture builds one value of each new variant, then pattern-matches
--- on it to extract a discriminator and the carried name (or operator
--- tag, for #7). The expected output is one diagnostic per mechanism
--- followed by an Exit(0) banner.
+-- Composition-mechanisms parse-side coverage: builds one BodyItem of
+-- each variant, then pattern-matches to extract a discriminator and
+-- the carried name (or operator tag). AST shapes:
+--   bare-claim / names-match  → BIClaimCall(name, CANil)
+--   `..ClaimName`             → BIPassthrough(name)
+--   `ClaimName(slot ↦ value)` → BIClaimCall(name, CACons …)
+--   `subclaim Name body…`     → BISubclaim(name, BodyItemList)
+--   `cond ⇒ ClaimName`        → BIConstraint(EBinOp(OpImpl, …))
 --
 -- expect: stdout = "passthrough:Logger"
 -- expect: stdout = "claim-call:Counter"
@@ -30,25 +19,18 @@ import "compiler/parser.ev"
 
 claim main
     -- ── Construct one BodyItem of each new variant ────────────────
-    -- Mechanism #3 (passthrough): `..Logger`
     bi_pass ∈ BodyItem = BIPassthrough("Logger")
 
-    -- Mechanism #2/#4 (bare claim name, zero-arg names-match call): `Counter`
     bi_call ∈ BodyItem = BIClaimCall("Counter", CANil)
 
-    -- Mechanism #5 (mapsto args): `Adder(lhs ↦ 5)`
     one_arg ∈ ClaimArg = CArg("lhs", EInt(5))
     args ∈ ClaimArgList = CACons(one_arg, CANil)
     bi_mapsto ∈ BodyItem = BIClaimCall("Adder", args)
 
-    -- Mechanism #6 (nested subclaim): `subclaim Inner` with one trivial body item
     inner_body ∈ BodyItemList = BILCons(BIConstraint(EInt(1)), BILNil)
     bi_sub ∈ BodyItem = BISubclaim("Inner", inner_body)
 
-    -- Mechanism #7 (guarded): `cond ⇒ Foo` parses as an EBinOp(OpImpl, …).
-    -- We construct a contrived `1 ⇒ 2` value to verify OpImpl serializes
-    -- through; a real parser would put `EIdent("Foo")` (or a future
-    -- ECall node) on the RHS.
+    -- Contrived `1 ⇒ 2` stands in for `cond ⇒ Foo`; only OpImpl matters.
     impl_expr ∈ Expr = EBinOp(OpImpl, EInt(1), EInt(2))
     bi_guard ∈ BodyItem = BIConstraint(impl_expr)
 
@@ -65,7 +47,6 @@ claim main
         BIClaimCall(n, _) ⇒ n
         _ ⇒ "<?>"
 
-    -- Pull the args off, then the first slot name.
     mapsto_args ∈ ClaimArgList = match bi_mapsto
         BIClaimCall(_, a) ⇒ a
         _ ⇒ CANil
@@ -82,8 +63,6 @@ claim main
         BISubclaim(n, _) ⇒ n
         _ ⇒ "<?>"
 
-    -- For the guarded variant, dig into the BIConstraint's Expr and
-    -- confirm the top-level Op is OpImpl.
     guard_expr ∈ Expr = match bi_guard
         BIConstraint(e) ⇒ e
         _ ⇒ ENoExpr

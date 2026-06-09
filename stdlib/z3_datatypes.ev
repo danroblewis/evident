@@ -1,9 +1,8 @@
 -- stdlib/z3_datatypes.ev — Z3 datatype + quantifier sugar (inventory §7 + §9).
 --
--- Separate file for the same reason stdlib/z3_ast.ev is: keeping these
--- claims out of the universal stdlib/kernel.ev import keeps the seam's
--- per-fixture compile time + memory bounded. Import this file only from
--- programs that build datatypes / quantifiers through the C API.
+-- NOT in the universal import path (same seam compile-memory rationale
+-- as stdlib/z3_ast.ev's header): import only from programs that build
+-- datatypes / quantifiers through the C API.
 --
 -- Pointer model: every Z3 handle (Z3_symbol, Z3_constructor,
 -- Z3_constructor_list, Z3_sort, Z3_func_decl, Z3_ast) is an opaque i64
@@ -13,22 +12,16 @@
 --
 -- ── The N-slot i64 handle-array pattern ──────────────────────────
 --
--- compiler/translate_arith.ev's caller builds 2-slot (16-byte) arg
--- arrays for Z3_mk_add/sub/mul like this (one FSM phase per line,
--- because every libcall result is only readable on the NEXT tick):
+-- One FSM phase per line, because every libcall result is only
+-- readable on the NEXT tick:
 --
---   phase k  : LibCall("libc", "malloc", ⟨ArgInt(16)⟩)         → buf
---   phase k+1: LibCall("__mem", "write_long",
---                  ⟨ArgInt(buf),     ArgInt(handle_0)⟩)
---   phase k+2: LibCall("__mem", "write_long",
---                  ⟨ArgInt(buf + 8), ArgInt(handle_1)⟩)
---   phase k+3: the consuming libz3 call, passing ArgInt(buf)
+--   phase k  : LibCall("libc", "malloc", ⟨ArgInt(8 * N)⟩)       → buf
+--   phase k+i: LibCall("__mem", "write_long",
+--                  ⟨ArgInt(buf + 8*(i-1)), ArgInt(handle_i)⟩)   i = 1..N
+--   phase k+N+1: the consuming libz3 call, passing ArgInt(buf)
 --
--- The N-slot generalization is the same shape, no new kernel
--- capability needed: malloc(8 * N), then N write_long phases at
--- buf + 8*i for i in 0..N-1, then the consuming call. Out-arrays
--- invert it: malloc(8 * N), pass ArgInt(buf) to the call that
--- fills it, then N read_long phases at buf + 8*i to harvest.
+-- Out-arrays invert it: malloc(8 * N), pass ArgInt(buf) to the call
+-- that fills it, then N read_long phases at buf + 8*i to harvest.
 --
 -- WIDTH CAVEAT (sort_refs): Z3_mk_constructor's `unsigned sort_refs[]`
 -- is an array of 4-byte unsigneds, NOT 8-byte handles. __mem only has
@@ -120,16 +113,15 @@ claim BuildZ3QueryConstructor(
 
 -- ── §8 companions: applying the harvested decls ──────────────────
 
--- Z3_mk_app sugar lives in stdlib/z3_core.ev (claim names are global;
--- the duplicate that briefly lived here was removed at merge time).
+-- Z3_mk_app sugar lives in stdlib/z3_core.ev (claim names are global —
+-- do NOT re-declare it here; a duplicate collided once already).
 -- Usage with the decls harvested by Z3_query_constructor:
 -- MkApp(ctor_decl, [v…]) builds the variant value,
 -- MkApp(tester_decl, [x]) builds ((_ is Ctor) x),
 -- MkApp(accessor_decl, [x]) projects a field.
 
 -- Z3_simplify(ctx, ast) → Z3_ast. Rewrites accessor-of-constructor
--- (green_val(Green(7)) → 7) and friends; the proof fixture uses it
--- to collapse the accessor app before pretty-printing.
+-- (green_val(Green(7)) → 7) and friends.
 claim BuildZ3Simplify(ctx_h, ast_h ∈ Int, eff ∈ Effect)
     eff = LibCall("libz3", "Z3_simplify", ⟨ArgInt(ctx_h), ArgInt(ast_h)⟩)
 
@@ -168,8 +160,6 @@ claim BuildZ3MkExistsConst(
 -- ── __mem out-array harvest helper ───────────────────────────────
 
 -- __mem.read_long(addr) → IntResult(*(long*)addr). The OUT-array
--- inverse of BuildMemWriteLong (stdlib/z3_ast.ev): after a call
--- fills an out-array, one read_long phase per 8-byte slot recovers
--- the handles.
+-- inverse of BuildMemWriteLong: one read_long phase per 8-byte slot.
 claim BuildMemReadLong(addr ∈ Int, eff ∈ Effect)
     eff = LibCall("__mem", "read_long", ⟨ArgInt(addr)⟩)

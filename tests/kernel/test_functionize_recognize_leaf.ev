@@ -1,18 +1,10 @@
--- Wave 5c — Evident-source proof of the recognizer LEAF case:
--- given a Z3 assertion AST, classify whether it's the canonical
--- scalar-step shape `(= <uninterp-const> <expr>)`.
---
--- The full recognizer is a stack-FSM walk over many assertions
--- doing many such classifications. This fixture proves the
--- foundational call: from Evident source, an FSM can drive libz3
--- to ask "what kind of decl is this AST?" and branch on the
--- answer.
---
--- The probe formula: `(declare-const x Int) (assert (= x 42))`.
--- We expect: classifier returns "scalar step bound to x".
--- Encoded as exit code: 0 = recognized as scalar-eq, 1 = wasn't
--- Eq decl_kind, 2 = LHS not uninterpreted, 3 = unexpected
--- handle 0.
+-- Recognizer LEAF case: given a Z3 assertion AST, classify whether it
+-- is the canonical scalar-step shape `(= <uninterp-const> <expr>)` —
+-- proves an Evident FSM can drive libz3 to ask "what kind of decl is
+-- this AST?" and branch on the answer.
+-- Probe: `(declare-const x Int) (assert (= x 42))`. Exit code: 0 =
+-- recognized scalar-eq, 1 = not Eq decl_kind, 2 = LHS not
+-- uninterpreted, 3 = unexpected handle 0.
 --
 -- Layout:
 --   0  MkConfig

@@ -1,27 +1,10 @@
--- Wave 5a pivot proof: drive compiler/translate_arith.ev's new
--- BuildZ3*-emitting shape end-to-end. The FSM:
---   1. Builds Z3 lifecycle (config, context, int_sort, int_inc_ref).
---   2. For the hardcoded AST `3 + 4 * 5`, builds three Z3_mk_int
---      handles (one per atom).
---   3. Allocates a 16-byte args buffer for the `*` binop, writes the
---      two operand handles, calls Z3_mk_mul → mul_h.
---   4. Allocates a second args buffer for the `+` binop, writes 3's
---      handle and mul_h, calls Z3_mk_add → add_h.
---   5. Calls Z3_ast_to_string(ctx, add_h) → const char* (i64).
---   6. Calls __cstr.copy(ptr) → StringResult.
---   7. Compares to "(+ 3 (* 4 5))" (Z3's canonical form).
---   8. Exits 0 iff equal; else exit codes 4..6 surface what diverged.
---
--- The Evident-source claim selections come from
--- compiler/translate_arith.ev's AtomBuildZ3 and ArithBinopBuildZ3 —
--- this fixture inlines their constraints rather than calling them
--- via Schema(slot ↦ ...) so the FSM stays one schema and the seam
--- has the simplest shape to compile.
+-- Wave 5a pivot proof: build `3 + 4 * 5` through libz3 LibCalls,
+-- render via Z3_ast_to_string + __cstr.copy, compare to
+-- "(+ 3 (* 4 5))" (Z3's canonical form); exit 0 iff equal, else
+-- exit codes 4..6 surface what diverged.
 --
 -- The FSM is intentionally MULTI-TICK because every libz3 call's
--- return handle arrives in last_results on the NEXT tick. See
--- tests/kernel/test_z3_libcall_solve.ev for the matching wave-5a
--- pattern (cfg/ctx/sol/vec/ast captures across ticks).
+-- return handle arrives in last_results on the NEXT tick.
 --
 -- expect: stdout = ""
 -- expect: exit = 0
@@ -29,14 +12,11 @@
 import "stdlib/kernel.ev"
 
 claim main
-    -- Phase counter: tick N runs phase (N - 1) for N > 0; first
-    -- tick is phase 0.
     phase  ∈ Int
     _phase ∈ Int
     phase = (is_first_tick ? 0 : _phase + 1)
 
-    -- ── Captured handles. Each is initialised to 0, set to
-    --    last_results[0] on its capture tick, otherwise carried.
+    -- ── Captured handles ──
 
     cfg_h ∈ Int
     _cfg_h ∈ Int
@@ -80,7 +60,6 @@ claim main
         _ ⇒ 0
     n5_h = (is_first_tick ? 0 : phase = 6 ? n5_cap : _n5_h)
 
-    -- Buffer for the `*` binop: malloc 16 bytes.
     mul_buf ∈ Int
     _mul_buf ∈ Int
     mul_buf_cap ∈ Int = match last_results[0]
@@ -98,7 +77,6 @@ claim main
         _ ⇒ 0
     mul_h = (is_first_tick ? 0 : phase = 10 ? mul_h_cap : _mul_h)
 
-    -- Buffer for the `+` binop.
     add_buf ∈ Int
     _add_buf ∈ Int
     add_buf_cap ∈ Int = match last_results[0]
@@ -106,8 +84,6 @@ claim main
         _ ⇒ 0
     add_buf = (is_first_tick ? 0 : phase = 12 ? add_buf_cap : _add_buf)
 
-    -- Z3_mk_add runs on phase 14; capture on 15, same tick as its
-    -- inc_ref.
     add_h ∈ Int
     _add_h ∈ Int
     add_h_cap ∈ Int = match last_results[0]
@@ -115,8 +91,6 @@ claim main
         _ ⇒ 0
     add_h = (is_first_tick ? 0 : phase = 15 ? add_h_cap : _add_h)
 
-    -- Z3_ast_to_string runs on phase 16 → char* captured on 17, the
-    -- tick __cstr.copy consumes it.
     str_ptr ∈ Int
     _str_ptr ∈ Int
     str_ptr_cap ∈ Int = match last_results[0]
@@ -124,8 +98,6 @@ claim main
         _ ⇒ 0
     str_ptr = (is_first_tick ? 0 : phase = 17 ? str_ptr_cap : _str_ptr)
 
-    -- __cstr.copy runs on phase 17 → String captured on 18, the tick
-    -- the verdict Exit fires.
     rendered ∈ String
     _rendered ∈ String
     rendered_cap ∈ String = match last_results[0]
