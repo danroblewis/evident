@@ -301,7 +301,12 @@ no slow *operation*; there is only "is it bounded." See
 > (`∀ k : xs[k].f = (…ternary…)`) are assignments and are fine. Rule:
 > every output variable needs one covering `=` assignment; `⇒`/`∨` may
 > only appear *inside* its right-hand expression, never as the thing
-> that defines it.
+> that defines it. **Exception — the bounded-Seq pair form is safe to
+> write:** on a transform-lowered Seq, `scripts/lower-bounded-seq.sh`
+> recognizes the `∀`-pin + `¬∃`-default PAIR and lowers it to the
+> covered chain itself (first-match-wins; keys must be unique), so the
+> pretty surface stays. A LONE pin or default still emits the bare
+> form — the trap applies in full.
 
 ### Enums
 
