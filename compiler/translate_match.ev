@@ -1,34 +1,14 @@
 -- WIP: replaces bootstrap/runtime/src/translate/exprs/match_expr.rs. STATUS: C8 match → nested ITE over constructor testers; per-pass fixture only.
 --
--- The Rust translator at runtime/src/translate/exprs/match_expr.rs
--- lowers `match e { Ctor(b) ⇒ body ; _ ⇒ fallback }` into nested
--- Z3 `ite` calls over constructor-recognizer testers:
---
---     (ite ((_ is Ctor) e) <body> <fallback>)
---
--- A multi-arm match folds bottom-up: starting from the last (wildcard)
--- arm as the trailing `else`, each non-wildcard arm wraps `rest` in
--- one more `(ite ((_ is <CtorName>) <scrutinee>) <body> <rest>)`.
---
--- This file ports the per-arm step of that fold. The caller drives
--- the fold across arms (e.g. via an FSM stack like the AST→text
--- walker in test_ast_to_text.ev), invoking MatchArmSmtlib once per
--- arm with the running `rest` accumulator.
+-- Lowers `match` to nested `(ite ((_ is Ctor) <scrutinee>) <body> <rest>)`,
+-- folded bottom-up from the wildcard arm as the trailing else.
 
 import "compiler/parser.ev"
 
 -- ── Expr → SMT-LIB string (minimal body subset) ────────────────
--- For C8 we only render the Expr-as-body shapes the test fixture
--- exercises: integer literals (`EInt(n)`) and bare identifiers
--- (`EIdent(s)`). Other Expr cases fall through to the empty string.
--- A richer body translator (binops, nested matches) is a downstream
--- sub-step — for the C8 acceptance the wrapped body is always an
--- atom because the fold's caller can substitute a fully-rendered
--- body string itself if needed.
---
--- Vars-in-body shape (see NEXT.md: first-line claim params of enum
--- type don't translate `matches`/`match` correctly when called via
--- names-match composition).
+-- Trap (see NEXT.md): first-line claim params of enum type don't
+-- translate `matches`/`match` correctly when called via names-match
+-- composition.
 
 claim ExprAsText
     e ∈ Expr
@@ -46,8 +26,7 @@ claim ExprAsText
         : "")
 
 -- ── Pattern's constructor name (or "" for wildcards) ───────────
--- MPCtor(name, _) → name. MPWildcard → "" (used by the caller as
--- the "this is the else arm" signal).
+-- "" is the caller's "this is the else arm" signal.
 
 claim PatternCtorName
     p ∈ MatchPattern
@@ -59,18 +38,10 @@ claim PatternCtorName
     name = (is_ctor ? pcn_name_local : "")
 
 -- ── MatchArmSmtlib: wrap one arm around `rest` ─────────────────
--- For a constructor arm `MArm(MPCtor(name, _), body)`:
---   out = "(ite ((_ is <name>) <scrutinee>) <body_str> <rest>)"
--- For the wildcard arm `MArm(MPWildcard, body)`:
---   out = body_str
--- (i.e. the wildcard becomes the innermost else branch — `rest`
--- is ignored, since the caller seeds `rest` with the wildcard's
--- own body_str the first time round.)
---
--- Composition: the caller folds arms back-to-front. First call
--- passes the wildcard arm with rest="" (the resulting out becomes
--- the new rest). Each subsequent call passes the next constructor
--- arm with the previous out as rest.
+-- Caller protocol: fold arms back-to-front. First call passes the
+-- wildcard arm with rest="" (its body becomes the innermost else;
+-- rest is ignored); each subsequent call passes the next
+-- constructor arm with the previous out as rest.
 
 claim MatchArmSmtlib
     scrutinee ∈ String
@@ -95,26 +66,14 @@ claim MatchArmSmtlib
         : "(ite ((_ is " ++ mas_ctor ++ ") " ++ scrutinee ++ ") " ++ mas_body_str ++ " " ++ rest ++ ")")
 
 -- ── Recursive match translation via a work-stack ───────────────────
---
--- MatchArmSmtlib above wraps ONE arm given an already-rendered `rest`
--- string; the caller had to drive the back-to-front fold itself. A
--- real pass walks the whole `MatchArmList` and emits the fully nested
--- `ite` chain in one traversal. That walk is the depth-first
--- work-stack from ArithTranslateStep — but parser.ev's `WorkItem`
--- carries only an `Expr`, and the match fold's stack must also carry
--- the remaining `MatchArmList` and per-arm bodies. So this pass uses a
--- match-specialised cons-list (the same shape as `WorkList`, the
--- in-Evident-cons-list tool the architecture-invariants doc prescribes
--- for bounded AST traversal), not the generic `WorkItem`.
---
--- A pre-order walk of the arms emits the chain directly:
+-- Uses a match-specialised cons-list, not parser.ev's `WorkItem` —
+-- WorkItem carries only an `Expr`, and this stack must also carry the
+-- remaining `MatchArmList`. Pre-order expansion table:
 --   MWArms(MACons(MArm(MPCtor(name,_), body), more)) expands to
 --     "(ite ((_ is name) <scrut>) " <MWBody(body)> " " <MWArms(more)> ")"
 --   MWArms(MACons(MArm(MPWildcard, body), _))     expands to <MWBody(body)>
---     (the wildcard is the innermost else; trailing arms are dropped,
---      mirroring MatchArmSmtlib's "wildcard becomes the else branch")
---   MWBody(EInt n)/MWBody(EIdent s) emit the atom token (via ExprAsText's
---      shape, inlined here so the step is self-contained).
+--     (wildcard is the innermost else; trailing arms are dropped)
+--   MWBody(EInt n)/MWBody(EIdent s) emit the atom token.
 enum MatchWork =
     MWArms(MatchArmList)
     MWBody(Expr)

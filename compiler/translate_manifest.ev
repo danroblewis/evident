@@ -1,13 +1,7 @@
 -- WIP: replaces bootstrap/runtime/src/emit.rs. STATUS: C14 five-line SMT-LIB manifest header emission; per-pass fixture only.
--- emission (Phase C14).
 --
--- The Rust side at runtime/src/emit.rs emits a five-line ;; manifest:
--- prefix to every kernel-runnable .smt2. The kernel parses these
--- lines in fixed order before invoking Z3 (see
--- docs/plans/kernel-input-spec.md). This file reproduces that
--- header in Evident.
---
--- Wire-format reminder:
+-- The kernel parses these lines in fixed order before invoking Z3
+-- (see docs/plans/kernel-input-spec.md). Wire format:
 --
 --     ;; manifest: state-fields = name1:Type1 name2:Type2 …
 --     ;; manifest: effects-name = effects
@@ -19,39 +13,30 @@
 -- the names `effects` / `Effect` / `Result`); only the first
 -- (state-fields list) and last (max-effects bound) vary per program.
 --
--- ManifestHeader is one-shot: given the StateFieldList + the
--- max-effects bound, it emits the full 5-line String with embedded
--- newlines. List-walking is a bounded unroll over up to 4 fields
--- (mirrors HasTwoArms in stdlib/parser.ev: recursive claims can't
--- constrain outputs yet — see docs/design/self-hosting-inventory.md
--- tier 2). Growing the unroll depth or replacing it with a
--- multi-tick accumulator is a future step.
---
--- Decomposition: each level of the unroll has its OWN claim so the
--- match arms are top-level (newline + indented arms is the syntax
--- the parser accepts; inline `(match … ⇒ …)` is not).
+-- List-walking is a bounded unroll over up to 4 fields — recursive
+-- claims can't constrain outputs yet (see
+-- docs/design/self-hosting-inventory.md tier 2). Each unroll level
+-- is its OWN claim because match arms must be top-level (newline +
+-- indented arms); inline `(match … ⇒ …)` is not accepted by the
+-- parser.
 
 -- ── StateField + StateFieldList ─────────────────────────────────
 --
--- One state field = a (name, type-name) pair. The kernel reads
--- name back from the post-solve model, asserts `_name = <prev>` on
--- the next tick (see runtime/src/runtime/inject.rs + the spec's
--- "State carry across ticks" section). The type-name is the bare
--- string the kernel-input-spec admits: `Int`, `Bool`, `Real`,
+-- One state field = a (name, type-name) pair. The type-name is the
+-- bare string the kernel-input-spec admits: `Int`, `Bool`, `Real`,
 -- `String`, or a user-declared Datatype name.
 
 enum StateField =
     SField(String, String)
 
--- Cons-list of state fields, in declaration order (which is the
--- order they appear on the `;; manifest: state-fields` line).
+-- Cons-list of state fields, in declaration order (the order they
+-- appear on the `;; manifest: state-fields` line).
 enum StateFieldList =
     SFLNil
     SFLCons(StateField, StateFieldList)
 
 -- ── RenderField ─────────────────────────────────────────────────
--- One field → `name:Type`. Single top-level match on the field
--- constructor.
+-- One field → `name:Type`.
 
 claim RenderField
     f ∈ StateField
@@ -60,10 +45,9 @@ claim RenderField
         SField(n, t) ⇒ n ++ ":" ++ t
 
 -- ── HeadField / TailList helpers ────────────────────────────────
--- Pull the head and tail off a StateFieldList. On SFLNil the head
--- is a sentinel SField("", "") which renders as ":" — caller is
--- expected to gate on `is_nil` before consuming the head value.
--- The tail of SFLNil is SFLNil (idempotent on the empty list).
+-- On SFLNil the head is a sentinel SField("", "") which renders as
+-- ":" — caller is expected to gate on `is_nil` before consuming the
+-- head value. The tail of SFLNil is SFLNil.
 
 claim HeadField
     fields ∈ StateFieldList
@@ -88,9 +72,6 @@ claim IsNil
 
 -- ── RenderFieldList ─────────────────────────────────────────────
 -- Bounded unroll: handles 0..4 fields, joined by single spaces.
--- Each depth peels one cons cell off the head, renders it, and
--- prepends a space separator for all but the first.
---
 -- Past depth 4 the list is silently truncated. Real programs
 -- needing more should grow this unroll or switch to a multi-tick
 -- FSM (test_ast_walker.ev shape).
@@ -99,7 +80,7 @@ claim RenderFieldList
     fields ∈ StateFieldList
     out ∈ String
 
-    -- Depth 0: the head field of the input list.
+    -- Depth 0.
     h0 ∈ StateField
     HeadField(fields ↦ fields, out ↦ h0)
     s0 ∈ String
@@ -137,10 +118,6 @@ claim RenderFieldList
     nil3 ∈ Bool
     IsNil(fields ↦ rest2, out ↦ nil3)
 
-    -- Concatenate with single-space separators, dropping every
-    -- depth at or after the first SFLNil. The ternary chain
-    -- below reads top-down: empty list → ""; one field → s0; two
-    -- fields → "s0 s1"; three → "s0 s1 s2"; four → "s0 s1 s2 s3".
     out = (nil0 ? ""
         : (nil1 ? s0
         : (nil2 ? s0 ++ " " ++ s1
@@ -148,15 +125,8 @@ claim RenderFieldList
         : s0 ++ " " ++ s1 ++ " " ++ s2 ++ " " ++ s3))))
 
 -- ── ManifestHeader ──────────────────────────────────────────────
--- Assemble the full 5-line header. The middle three lines are
--- constants (the wire protocol pins them); only the first
--- (state-fields list) and last (max-effects bound) vary.
---
--- Newlines are embedded directly; a single `puts(out)` produces
--- the whole header at once, which the kernel test driver
--- (scripts/run-kernel-tests.py) compares against the `-- expect:
--- stdout = …` lines joined with `\n`. max_effects → str via
--- str_from_int.
+-- Assemble the full 5-line header. Newlines are embedded directly;
+-- a single `puts(out)` produces the whole header at once.
 
 claim ManifestHeader
     fields ∈ StateFieldList

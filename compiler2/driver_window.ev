@@ -27,7 +27,7 @@
 -- writes (FloatLit, PlusPlus, DotDot, ErrTok, Newline, Indent) and
 -- the calloc'd 0 past the EofTok sentinel decode to EofTok.
 claim FtiTok(tag ∈ Int, p0 ∈ Int, s ∈ String, t ∈ Token)
-    -- G2: FloatLit rides ONE payload slot — p0 = scaled·8 + digits
+    -- FloatLit rides ONE payload slot — p0 = scaled·8 + digits
     -- (3.14 → 314·8+2). Decoded as FloatLit(scaled, digits, 0): the
     -- driver's C2AtomE turns it into the `__real` call shape; the
     -- parser.ev (whole, frac, digs) reading never runs here.
@@ -87,13 +87,9 @@ claim FtiTok(tag ∈ Int, p0 ∈ Int, s ∈ String, t ∈ Token)
 
 fsm DriverWindow
     -- ── TOKEN WINDOW (FTI cursor + 8-token decoded window) ────────
-    -- The parse phases never hold an unbounded TokenList: tcur is
-    -- the absolute index of the next unconsumed token; wtoks is a
-    -- decoded window of the 8 buffer entries starting at tcur
-    -- (entries past the sentinel decode to EofTok); wend is the
-    -- buffer index one past the fetched coverage. A consumer may
-    -- only act when the window holds its lookahead need (w_need);
-    -- otherwise the 3-tick fetch burst refills from tcur.
+    -- tcur = absolute index of the next unconsumed token; wend = one
+    -- past the fetched coverage; wtoks = the 8 entries decoded from
+    -- tcur (past-sentinel ⇒ EofTok).
     tcur ∈ Int
     wend ∈ Int
     fmode ∈ Int

@@ -1,14 +1,9 @@
--- Grammar wave 2, item 2: memberships pinned by COMPARISON expressions.
---
--- compiler/translate_bool.ev's BoolExprSmtlib, widened in wave 2, lowers
--- the comparison operators (lexer single-char Unicode tokens) to SMT-LIB:
+-- Compiler driver fixture: memberships pinned by COMPARISON expressions.
+-- BoolExprSmtlib lowers
 --   <  → "(< l r)"   ≤ → "(<= l r)"   > → "(> l r)"   ≥ → "(>= l r)"
 --   ≠  → "(not (= l r))"   (negated equality, per spec)
 -- MembershipStep recognises the operator at the t5 position and routes
--- the EBinOp through BoolExprSmtlib. Nothing is hardcoded — the String
--- is lexed character-by-character. See docs/plans/grammar-wave2.md.
---
--- Source: "claim foo\n    a ∈ Bool = x < 5\n …(≤ > ≥ ≠)…\n"
+-- the EBinOp through BoolExprSmtlib.
 --
 -- expect: stdout = ";; manifest: state-fields = a:Bool b:Bool c:Bool d:Bool e:Bool"
 -- expect: stdout = ";; manifest: effects-name = effects"

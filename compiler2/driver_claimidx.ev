@@ -26,18 +26,15 @@ claim C2ChainLvl(tail ∈ C2Items, out ∈ C2Items)
 
 fsm DriverClaimIdx
     -- ── F2: the claim index ───────────────────────────────────────
-    -- Built during the skip pass: every skipped `claim Name …` top
-    -- records its name (ci_names — fixed-width 32-byte records, the
-    -- B1 st_names pattern) and its body-start cursor (_tcur + 2 —
-    -- the token after `claim Name`, which is `(` for parametrized
-    -- claims; the call-time param-skip walks over it). Cursors live
-    -- in the ci_base buffer (256 × 8 bytes), written one per skipped
-    -- claim on the skip-entry tick. Composition can only call claims
-    -- that PRECEDE the call site textually (one-pass index — true
-    -- for the corpus: stdlib then helpers then main).
-    -- FTI bounds constraint: ci_base holds 2048 claim-index entries.
-    -- ci_cnt < 2048 makes an index past the buffer end UNSAT (the model
-    -- refuses it) rather than a native overrun.
+    -- ci_names: fixed-width 32-byte name records (the B1 st_names
+    -- pattern). Cursors live in the ci_base buffer (256 × 8 bytes),
+    -- one per skipped claim, value = _tcur + 2 — the token after
+    -- `claim Name`, which is `(` for parametrized claims (the
+    -- call-time param-skip walks over it). Composition can only call
+    -- claims that PRECEDE the call site textually (one-pass index —
+    -- true for the corpus: stdlib then helpers then main).
+    -- ci_cnt < 2048 makes an index past the buffer end UNSAT (the
+    -- model refuses it) rather than a native overrun.
     cibuf.count < 2048
     ci_names ∈ String
     ci_add ∈ Bool = (d_enter_skip

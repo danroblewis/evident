@@ -1,13 +1,8 @@
--- Grammar wave 4p: standalone `matches` predicate `scrut matches Ctor(_)`.
---
--- A bare boolean-constraint line `c matches Green` / `s matches Circle(_)`
--- lowers to a Z3 datatype recognizer `((_ is Green) c)`. Before this wave the
--- driver mis-read it as a lone composition name and silently dropped the
--- predicate (so `unsat_matches_*` reported sat). CtorMembershipStep now
--- self-discriminates the bare-matches shape (cs_bare_matches), rendering the
--- `Ctor(payload)` only to advance past it and emitting the recognizer.
--- Exercised here in ISOLATION on hand-built TokenLists. See
--- compiler/parse_body_ctor.ev (cs_bare_matches) and docs/plans/wave-4p-equality-rhs-complex.md.
+-- Standalone `matches` predicate `scrut matches Ctor(_)` lowers to the Z3
+-- recognizer `((_ is Green) c)`. Pins the regression where the driver
+-- mis-read it as a lone composition name and silently dropped the predicate
+-- (so `unsat_matches_*` reported sat). Exercised in ISOLATION on hand-built
+-- TokenLists (cs_bare_matches).
 --
 -- expect: stdout = "(assert ((_ is Green) c))"
 -- expect: stdout = "(assert ((_ is Circle) s))"

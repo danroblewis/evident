@@ -1,11 +1,7 @@
--- DriverGroup isolation — multi-name collect recognizer.
---
--- Drives the pmode-9 group walk in collect state 0 (pg_active) with the
--- window head `x ,` (Ident Comma). The module must be active (pg_collect)
--- and recognize the multi-name continuation (pg_take2). verdict =
--- 1*pg_collect + 2*pg_take2 = 3. A regression in the group gate or the
--- name-continuation recognizer changes the verdict.
---
+-- DriverGroup isolation — multi-name collect recognizer: pmode-9 group
+-- walk in collect state 0 (pg_active) with window head `x ,` must be
+-- active (pg_collect) and recognize the multi-name continuation
+-- (pg_take2). verdict = 1*pg_collect + 2*pg_take2 = 3.
 -- entry: main
 -- expect: stdout = "3"
 -- expect: exit = 0

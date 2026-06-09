@@ -1,13 +1,9 @@
 -- DriverWorkitems / TernaryBuildZ3 isolation — the ternary null-operand
--- regression (sample-ternary-crash-diagnosis.md).
---
--- The C2Ite build step calls TernaryBuildZ3 with the top three handle-
--- stack entries. When a branch sub-expression never pushed a Z3 AST its
--- handle is 0; the OLD code passed 0 straight to Z3_mk_ite, which derefs
--- null and SIGSEGVs (exit 139). The guard must instead halt NAMEABLY:
--- a 0 operand ⇒ Exit(7). This test feeds a null `then_h` and asserts the
--- kernel exits 7 cleanly — if the guard regressed, the kernel would pass
--- 0 to Z3_mk_ite and crash (a non-7 / signal exit), failing the test.
+-- regression (sample-ternary-crash-diagnosis.md). A branch sub-expression
+-- that never pushed a Z3 AST leaves handle 0; the OLD code passed 0
+-- straight to Z3_mk_ite, which derefs null and SIGSEGVs (exit 139). The
+-- guard must instead halt NAMEABLY: a 0 operand ⇒ Exit(7). Feeds a null
+-- `then_h` and asserts the kernel exits 7 cleanly.
 --
 -- entry: main
 -- expect: exit = 7

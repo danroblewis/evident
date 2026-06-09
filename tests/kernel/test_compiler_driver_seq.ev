@@ -1,18 +1,6 @@
--- Grammar wave 3, item 4: Seq memberships — ⟨…⟩ literal, `++` concat,
--- and `#` cardinality.
---
--- The source is lexed character-by-character (nothing hardcoded), reversed
--- to forward order, the `claim Ident` head dropped, then memberships are
--- walked ONE PER TICK by compiler/parse_body_seq.ev's SeqMembershipStep,
--- which (grammar wave 4c) lowers the Seq surface to bootstrap's
--- (Array Int T) + __len encoding via compiler/translate_ctor.ev's
--- SeqArrayBlock. See docs/plans/grammar-wave4c.md and
--- docs/plans/grammar-coverage-survey.md §3.
---
--- Source (3 memberships):
---   xs ∈ Seq(Int) = ⟨1, 2, 3⟩
---   ys ∈ Seq(Int) = xs ++ ⟨4⟩
---   n  ∈ Int      = #xs
+-- Seq memberships — ⟨…⟩ literal, `++` concat, `#` cardinality — walked
+-- one per tick by SeqMembershipStep, which lowers the Seq surface to
+-- bootstrap's (Array Int T) + __len encoding (SeqArrayBlock).
 --
 -- expect: stdout = ";; manifest: state-fields = xs:Seq(Int) ys:Seq(Int) n:Int"
 -- expect: stdout = ";; manifest: effects-name = effects"

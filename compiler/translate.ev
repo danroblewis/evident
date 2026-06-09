@@ -1,50 +1,15 @@
 -- WIP: replaces bootstrap/runtime/src/translate/datatypes.rs. STATUS: C1 enum → SMT-LIB datatype declarations; per-pass fixture only.
 --
--- This file is the "Phase C" stage of the self-hosted compiler. Each
--- sub-step of the completion roadmap adds claims to this file:
---
---   C1 — Z3 datatype declarations (this commit): enum → SMT-LIB
---        (declare-datatypes ...) block.
---   C2 — Per-primitive variable declarations.
---   C3 — Boolean / arithmetic expression translation.
---   …  — see docs/plans/completion-roadmap.md for the full list.
---
--- The Rust counterpart lives in runtime/src/translate/ and
--- runtime/src/runtime/register_enums.rs. As each sub-step lands,
--- callers swap from Rust to the corresponding claim here.
---
 -- ── Phase C1 — enum → (declare-datatypes ...) ─────────────────────
 --
--- For an Evident enum like
---
---     enum Color = Red | Green | Blue
---
--- the Rust path at runtime/src/runtime/register_enums.rs emits the
--- equivalent of
+-- `enum Color = Red | Green | Blue` renders as
 --
 --     (declare-datatypes ((Color 0))
 --       (((Red) (Green) (Blue))))
 --
--- C1 mirrors that path on the simple-variant shape (no payload list
--- on variants — EVDecl(String) carries only a name; payload-carrying
--- variants like `Ident(String)` are a later C-phase extension).
---
--- The translator splits into three concerns:
---
---   1. EnumDeclPrefix(name, out)  — render the fixed header chunk
---                                    "(declare-datatypes ((Name 0)) ("
---   2. VariantText(decl, out)     — render one variant, e.g. "(Red)"
---   3. EnumDeclSmtlib(decl,        — wrap the variant list with the
---                    body, out)      outer header / footer, given a
---                                    pre-assembled variants string
---                                    (see body_str in the test
---                                    fixture's walker FSM).
---
--- The "walk the EnumVariantList and concatenate" step is a work-stack
--- FSM in the caller (test fixture for C1; later a top-level driver
--- claim once the full pipeline is wired). That mirrors the pattern
--- used in test_ast_to_text.ev — single-tick AST primitives, multi-tick
--- list walking. See docs/plans/NEXT.md "Pattern 2: work-stack walker".
+-- This file holds the single-tick rendering claims; the "walk the
+-- EnumVariantList and concatenate" step is a work-stack FSM in the
+-- caller.
 
 import "compiler/parser.ev"
 
@@ -86,8 +51,8 @@ claim FieldSortName
 
 -- SeqHelperBlock — the `(declare-datatypes ((__SeqOf_T 0)) …)` Cons helper
 -- block for a Seq-payload element type T, byte-identical to bootstrap's
--- generate_internal_cons_helpers output. `elt` is the (non-empty) element
--- type name; an empty `elt` yields the empty string (no helper needed).
+-- generate_internal_cons_helpers output. Empty `elt` yields the empty
+-- string (no helper needed).
 claim SeqHelperBlock
     shb_elt ∈ String
     shb_out ∈ String
@@ -95,25 +60,12 @@ claim SeqHelperBlock
         : "(declare-datatypes ((__SeqOf_" ++ shb_elt ++ " 0)) (((__Empty_" ++ shb_elt
           ++ ") (__Cell_" ++ shb_elt ++ " (head " ++ shb_elt ++ ") (tail __SeqOf_" ++ shb_elt ++ ")))))")
 
--- VariantText — render one EnumVariantDecl as its SMT-LIB form.
---
--- For C1 the only supported shape is EVDecl(name), which produces
---     "(name)"   — a paren-wrapped zero-arity constructor.
---
--- EVNoVariant (the sentinel for "no variant yet" — same role as
--- ENoExpr / SNoDecl) renders as the empty string so the caller's
--- accumulator can no-op on it.
---
--- Payload-carrying variants (a later sub-step) will require extending
--- EnumVariantDecl to carry a field list and updating this claim to
--- emit `(name (name__f0 Type) …)` per the Rust path's accessor
--- naming convention.
--- For a payload variant `Ok(Int)` the SMT-LIB form names a synthesised
--- accessor per field: `(Ok (Ok__f0 Int))`, `(Pair (Pair__f0 Int)
--- (Pair__f1 Int))`. Field rendering is bounded at ≤3 fields here — the
--- widest payload arity in the corpus (EBinOp(Op,Expr,Expr),
--- FloatLit(Int,Int,Int)); a wider variant would need a per-field walk
--- (the same shape as the variant-list walk one level up).
+-- VariantText — render one EnumVariantDecl as its SMT-LIB form:
+-- EVDecl(name) → "(name)"; EVDeclP → "(Ok (Ok__f0 Int))" with a
+-- synthesised `<name>__f<N>` accessor per field (the Rust path's
+-- accessor-naming convention). Field rendering is bounded at ≤3
+-- fields — the widest payload arity in the corpus; a wider variant
+-- would need a per-field walk.
 claim VariantText
     v ∈ EnumVariantDecl
     out ∈ String
@@ -128,7 +80,6 @@ claim VariantText
         EVDeclP(_, fs) ⇒ fs
         _ ⇒ EVFNil
 
-    -- Peel up to three fields off the list.
     vt_f0 ∈ EVField = match vt_fields
         EVFCons(f, _) ⇒ f
         EVFNil ⇒ EVFNone
@@ -158,9 +109,6 @@ claim VariantText
         EVFType(s) ⇒ s
         EVFNone ⇒ ""
 
-    -- Map each raw field-type string to its accessor SORT name, so a
-    -- `Seq(T)` payload renders with the `__SeqOf_T` Cons-helper sort
-    -- (wave 4g, Blocker 2); identity for primitives / plain enums.
     vt_s0 ∈ String
     FieldSortName(fsn_ty ↦ vt_t0, fsn_out ↦ vt_s0)
     vt_s1 ∈ String
@@ -176,33 +124,15 @@ claim VariantText
         : is_declp ? "(" ++ name ++ vt_a0 ++ vt_a1 ++ vt_a2 ++ ")"
         : "")
 
--- EnumDeclPrefix — the fixed header `(declare-datatypes ((Name 0)) (`
--- preceding the variant list. Pulled out as its own claim so the
--- caller (or a future top-level pipeline driver) can request it
--- separately from the variant-list assembly.
 claim EnumDeclPrefix
     name ∈ String
     out ∈ String
     out = "(declare-datatypes ((" ++ name ++ " 0)) ("
 
 -- EnumDeclSmtlib — assemble the full `(declare-datatypes ...)` block.
---
--- Inputs:
---   decl     — the EnumDeclAst. For C1 only the EnumD(name, _) shape
---              produces output; ENoEnum returns the empty string.
---   body_str — the pre-assembled variant-list payload, e.g.
---              "(Red) (Green) (Blue)". The caller is responsible for
---              walking the EnumVariantList and concatenating
---              VariantText results with single-space separators (see
---              test_translate_datatype.ev's walker FSM).
---
--- Output:
---   out      — the complete SMT-LIB block, terminated with "))" to
---              close the outer paren wrapping the variant list and
---              the (declare-datatypes) form itself.
---
--- Mirrors the Rust path at runtime/src/runtime/register_enums.rs (the
--- DatatypeBuilder::finish() invocation) for the simple-variant case.
+-- `body_str` is the pre-assembled variant-list payload, e.g.
+-- "(Red) (Green) (Blue)" — the caller walks the EnumVariantList and
+-- concatenates VariantText results with single-space separators.
 claim EnumDeclSmtlib
     decl ∈ EnumDeclAst
     body_str ∈ String

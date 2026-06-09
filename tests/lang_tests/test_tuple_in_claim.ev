@@ -1,12 +1,7 @@
--- Tuple-in-claim membership: `(a, b, c) ∈ claim_name` is the
--- relational reading of a positional claim invocation. The tuple
--- elements bind positionally to the claim's parameters (same
--- arity-matched binding as `claim_name(a, b, c)` and as
--- `claim_name (p1 ↦ a, p2 ↦ b, p3 ↦ c)`).
---
--- The three invocation forms are equivalent at the constraint
--- level: each produces the same conjunction of body items with
--- the same slot-to-value mapping.
+-- Tuple-in-claim membership: `(a, b, c) ∈ claim_name` binds the tuple
+-- elements positionally to the claim's parameters — equivalent at the
+-- constraint level to `claim_name(a, b, c)` and to
+-- `claim_name (p1 ↦ a, p2 ↦ b, p3 ↦ c)`.
 
 -- ── A simple 2-parameter relational claim ─────────────────────
 
@@ -14,7 +9,6 @@ claim add_one(x, y ∈ Int)
     y = x + 1
 
 
--- Tuple form pins the relation; b is forced to a + 1.
 claim sat_tuple_pins_output
     a ∈ Int
     b ∈ Int
@@ -22,7 +16,6 @@ claim sat_tuple_pins_output
     (a, b) ∈ add_one
     b = 6
 
--- Equivalent: positional form binds the same way.
 claim sat_positional_equivalence
     a ∈ Int
     b ∈ Int
@@ -30,8 +23,6 @@ claim sat_positional_equivalence
     add_one(a, b)
     b = 6
 
--- Tuple form runs the relation backwards too: given the output,
--- the solver finds the input.
 claim sat_tuple_runs_backwards
     a ∈ Int
     b ∈ Int
@@ -39,7 +30,6 @@ claim sat_tuple_runs_backwards
     b = 42
     a = 41
 
--- Wrong output value contradicts the relation.
 claim unsat_tuple_wrong_output
     a ∈ Int
     b ∈ Int
@@ -52,8 +42,6 @@ claim unsat_tuple_wrong_output
 
 claim describe(n ∈ Int, prefix ∈ String, big ∈ Bool)
     big = (n > 100)
-    -- (prefix is unconstrained by the body — caller pins or
-    -- the solver picks anything String.)
 
 claim sat_three_arity
     n ∈ Int
@@ -61,7 +49,7 @@ claim sat_three_arity
     big ∈ Bool
     n = 250
     (n, prefix, big) ∈ describe
-    big = true   -- forced by the body since 250 > 100
+    big = true
 
 
 -- ── Subclaim invocation via tuple-in form ─────────────────────

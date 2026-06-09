@@ -1,11 +1,7 @@
--- Z3Sorts carry — the four base-sort handles travel across ticks.
---
--- Mirrors the real zinit latch bank: a step counter latches each sort
--- handle once at its named step, then holds. Proves the autocarry
--- transform synthesizes the record dual `_z3sorts ∈ Z3Sorts` so each
--- field's latched value persists (isort latched at step 1 must still
--- read 5 at step 4, bsort/ssort/rsort likewise). If the record dual is
--- not synthesized, a latched field resets and the final line is wrong.
+-- Z3Sorts carry — the four base-sort handles travel across ticks (mirrors
+-- the real zinit latch bank): each handle latches once at its step, then
+-- holds. Autocarry must synthesize `_z3sorts ∈ Z3Sorts`; without the dual
+-- a latched field resets and the final line is wrong.
 --
 -- entry: main
 -- expect: stdout = "0/0/0/0"

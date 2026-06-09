@@ -1,17 +1,7 @@
--- Grammar wave 3, item 1: a top-level `enum` declaration (incl. payload
--- variants) → SMT-LIB `(declare-datatypes …)`.
---
--- Nothing is hardcoded as tokens/AST: the source string is lexed
--- character-by-character (the consolidated-lexer FSM shared with
--- compiler.ev / the wave-2 fixtures), reversed to forward order, then
--- walked ONE TOKEN PER TICK by an enum-parse state machine that builds
--- each variant and renders it via compiler/translate.ev's VariantText
--- (the C1 pass), accumulating the variant-group string. The final
--- (declare-datatypes …) block is assembled by EnumDeclSmtlib.
--- See docs/plans/grammar-wave3.md and docs/plans/grammar-coverage-survey.md §3.
---
--- Source: "enum Box = Pair(Int, Int) | Empty\n" exercises a 2-field
--- payload variant AND a nullary variant in one enum.
+-- Top-level `enum` declaration → SMT-LIB `(declare-datatypes …)`.
+-- Source exercises a 2-field payload variant AND a nullary variant
+-- in one enum; nothing is hardcoded as tokens/AST (lexed char-by-char,
+-- one token per tick through the enum-parse machine).
 --
 -- expect: stdout = "(declare-datatypes ((Box 0)) (((Pair (Pair__f0 Int) (Pair__f1 Int)) (Empty))))"
 -- expect: exit = 0
@@ -174,12 +164,10 @@ claim main
     e7 ∈ Bool = (_ephase = 7)
     e8 ∈ Bool = (_ephase = 8)
 
-    -- A variant is pending (name read, awaiting boundary) in e5 or e8.
     have_pending ∈ Bool = (e5 ∨ e8)
     at_boundary  ∈ Bool = (p_is_pipe ∨ plist_nil)
     finalize     ∈ Bool = (in_parse ∧ have_pending ∧ at_boundary)
 
-    -- Reconstruct the EnumVariantDecl from the carried slots and render.
     cur_fields ∈ EVFieldList = (_fcount = 0 ? EVFNil
         : _fcount = 1 ? EVFCons(EVFType(_fA), EVFNil)
         : _fcount = 2 ? EVFCons(EVFType(_fA), EVFCons(EVFType(_fB), EVFNil))
@@ -190,7 +178,6 @@ claim main
 
     new_body ∈ String = (finalize ? (_first_v ? rendered : _body ++ " " ++ rendered) : _body)
 
-    -- ephase transition.
     next_ephase ∈ Int = (e1 ∧ p_is_enum ? 2
         : e2 ∧ p_is_ident ? 3
         : e3 ∧ p_is_eq ? 4
@@ -206,7 +193,6 @@ claim main
     starting_variant ∈ Bool = (e4 ∧ p_is_ident)
     adding_field     ∈ Bool = (e6 ∧ p_is_ident)
 
-    -- State carry for the parse machine.
     plist   = (is_first_tick ? TLNil : (entering_parse ? _fwd : (in_parse ∧ (¬plist_nil) ? ptail : _plist)))
     ephase  = (is_first_tick ? 1 : (entering_parse ? 1 : (in_parse ? next_ephase : _ephase)))
     ename   = (is_first_tick ? "" : (in_parse ∧ e2 ∧ p_is_ident ? p_id : _ename))

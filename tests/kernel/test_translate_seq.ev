@@ -1,13 +1,6 @@
--- C7: SMT-LIB Seq operations (literal/len/index).
---
--- Drives the three helpers in stdlib/translate_seq.ev with the
--- minimal-shape inputs documented in their headers, then prints
--- one rendered SMT-LIB string per tick.
---
--- SeqLenSmtlib("xs")                           → "(seq.len xs)"
--- SeqIndexSmtlib("xs", "0")                    → "(seq.nth xs 0)"
--- SeqLitSmtlib(ELCons(EInt(1), ELCons(EInt(2), -- "(seq.++ (seq.unit 1)
---             ELNil)))                                       (seq.unit 2))"
+-- C7: SMT-LIB Seq operations (literal/len/index) — drives
+-- SeqLenSmtlib / SeqIndexSmtlib / SeqLitSmtlib and prints one
+-- rendered SMT-LIB string per tick.
 --
 -- expect: stdout = "(seq.len xs)"
 -- expect: stdout = "(seq.nth xs 0)"

@@ -1,18 +1,9 @@
--- ISOLATION test for grammar wave 4h: a Seq(T) VALUE in constructor-
--- argument position lowers to the `__Cell_T`/`__Empty_T` Cons form
--- (Blocker 2c — docs/plans/blocked-grammar-wave4g.md). Drives
--- compiler/translate_ctor.ev's RenderExprToks on hand-built TokenLists.
---
--- The element-type hint reaches the Seq renderer two ways, both checked:
---   · directly, via RenderExprToks' `in_hint` (the Seq IS the rendered
---     expression and its element type is known by the caller), and
---   · indirectly, via `sigtab` (the variant-signature table) when the Seq
---     is the argument of a constructor application — the renderer looks up
---     the ctor's field type and threads the element type down.
---
--- The 1-element + empty Cons forms are byte-identical to bootstrap's
--- `evident emit` (verified):
---   (= eff (LibCall "libc" "puts" (__Cell_LibArg (ArgStr "hi") __Empty_LibArg)))
+-- ISOLATION: a Seq(T) VALUE in constructor-argument position lowers to
+-- the `__Cell_T`/`__Empty_T` Cons form. Drives RenderExprToks on
+-- hand-built TokenLists. The element-type hint reaches the renderer two
+-- ways, both checked: directly via `in_hint`, and via `sigtab` (the
+-- variant-signature table) when the Seq is a ctor argument. Cons forms
+-- verified byte-identical to bootstrap's `evident emit`.
 --
 -- expect: stdout = "(__Cell_LibArg (ArgStr "hi") __Empty_LibArg)"
 -- expect: stdout = "(LibCall "libc" "puts" (__Cell_LibArg (ArgStr "hi") __Empty_LibArg))"

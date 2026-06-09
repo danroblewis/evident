@@ -1,36 +1,7 @@
--- D2: full pipeline (lex → parse → translate → SMT-LIB).
---
--- End-to-end smoke test that composes the Phase-A/B/C stdlib pieces
--- into a single program emitting a `.smt2`-shaped output for a tiny
--- hardcoded input source: `x ∈ Int`.
---
--- Per docs/plans/completion-roadmap.md (Phase D2): "Full pipeline:
--- lex + parse + translate + write `.smt2`. End-to-end smoke test."
---
--- The pipeline runs stage-by-stage, all in one tick:
---
---   1. LEX  — a TokenList that mirrors what stdlib/lexer.ev would
---             produce for the source string `"x ∈ Int"`:
---               TLCons(Ident("x"),
---                      TLCons(OpIn,
---                             TLCons(Ident("Int"), TLNil)))
---   2. PARSE — head-tokens fed to ParseMembership (B4 recogniser).
---              The TypeRef string accumulated via TypeTokenText (B3)
---              applied to head3. Output: BIMembership("x", TName("Int")).
---   3. TRANSLATE — DeclareFromMembership (C2) turns the BodyItem into
---                  `(declare-fun x () Int)`. ManifestHeader (C14)
---                  produces the wire-protocol 5-line prefix.
---   4. EMIT — manifest header ++ "\n" ++ declare-fun line, one puts.
---
--- Choice: tokens are constructed directly rather than driven through
--- a full source-string lexer (per the D2 invariant: "If full-source
--- lexing is too brittle, hardcode the BodyItem AST and demonstrate
--- the translate composition"). The B3-B7 lexer FSM is plumbed by
--- existing fixtures (test_lexer_walker, test_consolidated_lexer); the
--- *D2* contract is "lex+parse+translate composes," which the post-lex
--- token form demonstrates. Building a TokenList and peeling head
--- tokens reproduces the parser-consumes-lexer-output boundary that
--- the Rust runtime crosses at the Vec<Token> hand-off.
+-- D2: full pipeline (lex → parse → translate → SMT-LIB) smoke test,
+-- all in one tick, for the hardcoded post-lex tokens of `x ∈ Int`:
+-- ParseMembership (B4) + TypeTokenText (B3) → DeclareFromMembership
+-- (C2) + ManifestHeader (C14) → one puts.
 --
 -- Naming note: the parse-stage locals are prefixed `tok_` (tok_head1,
 -- tok_rest1, …) to avoid colliding with the internal `rest0..rest2`
@@ -51,19 +22,11 @@ import "compiler/translate_manifest.ev"
 
 claim main
     -- ── LEX ──────────────────────────────────────────────────────
-    -- Hardcoded TokenList mirroring `stdlib/lexer.ev` output for the
-    -- source `"x ∈ Int"`. The actual char-by-char lexer FSM is
-    -- exercised by test_lexer_walker.ev / test_consolidated_lexer.ev;
-    -- this fixture starts from its output to keep the focus on the
-    -- parse → translate composition.
     tokens ∈ TokenList = TLCons(Ident("x"),
                                 TLCons(OpIn,
                                        TLCons(Ident("Int"), TLNil)))
 
     -- ── PARSE — extract head tokens from the TokenList ───────────
-    -- A real recursive-descent parser walks the TokenList per-tick;
-    -- here we pull the first three heads directly because the shape
-    -- is fixed (Ident, OpIn, Ident).
     tok_head1 ∈ Token = match tokens
         TLCons(t1, _) ⇒ t1
         TLNil ⇒ EofTok
@@ -80,35 +43,25 @@ claim main
         TLCons(t3, _) ⇒ t3
         TLNil ⇒ EofTok
 
-    -- B3: render the type-name token (`Ident("Int")` → "Int"). The
-    -- multi-token accumulator for compound types (Seq(Int)) is
-    -- exercised by test_parser_types.ev — for a bare Ident, one
-    -- TypeTokenText call is enough.
     type_str ∈ String
     is_type_tok ∈ Bool
     TypeTokenText(t ↦ tok_head3, s ↦ type_str, is_type_tok ↦ is_type_tok)
 
-    -- B4: recognise `Ident(name) ∈ <type>` as BIMembership(name, TName(t)).
     item ∈ BodyItem
     parse_ok ∈ Bool
     ParseMembership(head1 ↦ tok_head1, head2 ↦ tok_head2, type_str ↦ type_str,
                     item ↦ item, ok ↦ parse_ok)
 
     -- ── TRANSLATE ────────────────────────────────────────────────
-    -- C2: turn the BodyItem into a `(declare-fun NAME () TYPE)` line.
     declare_line ∈ String
     declare_ok ∈ Bool
     DeclareFromMembership(item ↦ item, out ↦ declare_line, ok ↦ declare_ok)
 
-    -- C14: emit the 5-line manifest header. The state-fields list
-    -- carries the parsed declaration — same shape `runtime/src/emit.rs`
-    -- would produce for a one-variable program.
     state_fields ∈ StateFieldList = SFLCons(SField("x", "Int"), SFLNil)
     manifest ∈ String
     ManifestHeader(fields ↦ state_fields, max_effects ↦ 1, out ↦ manifest)
 
     -- ── EMIT ─────────────────────────────────────────────────────
-    -- Compose the `.smt2`-shaped output: manifest header + declare-fun.
     smtlib ∈ String = manifest ++ "\n" ++ declare_line
 
     effects ∈ Seq(Effect) = ⟨

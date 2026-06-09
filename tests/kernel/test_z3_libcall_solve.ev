@@ -1,8 +1,5 @@
--- Wave 5a — Z3-as-library FTI proof: drive Z3 from an Evident FSM
--- via the new BuildZ3* sugar (stdlib/kernel.ev). Source-level
--- equivalent of tests/kernel/wave-5a/z3_solve_x42.smt2 (the
--- hand-written .smt2 proof). When this compiles and runs to exit
--- 0, wave 5a's Evident-source loop is closed.
+-- Z3-as-library FTI proof: drive Z3 from an Evident FSM via
+-- LibCall("libz3", …).
 --
 -- The FSM is multi-tick because every Z3 call's return handle
 -- arrives in `last_results` on the NEXT tick (the libcall.rs

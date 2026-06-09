@@ -1,11 +1,5 @@
 -- Conformance tests for the ternary operator `cond ? a : b`.
---
--- Run with:
---     evident test tests/lang_tests/test_ternary.ev
---
--- Translates to Z3's ITE for whichever sort the branches share
--- (Int, Real, Bool, String, enum Datatype).
---
+-- Translates to Z3's ITE for whichever sort the branches share.
 -- Precedence: ternary sits between ⇒ and ∨, right-associative.
 
 -- ── Int branches ─────────────────────────────────────────────────
@@ -64,7 +58,6 @@ claim sat_enum_picks_else
 
 -- ── Nesting (right-associative) ─────────────────────────────────
 -- `a ? 1 : c ? 2 : 3`  =  `a ? 1 : (c ? 2 : 3)`
--- a=false, c=true → reaches the inner-then → 2.
 
 claim sat_right_associative
     x ∈ Int

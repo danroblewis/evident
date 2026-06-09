@@ -1,12 +1,7 @@
--- Z3SolverCtx carry — the cfg/ctx/sol lifecycle triple travels across ticks.
---
--- Mirrors the real zinit latch bank: a step counter latches each handle
--- once at its named step, then holds. Proves the autocarry transform
--- synthesizes the record dual `_z3ctx ∈ Z3SolverCtx` so each field's
--- latched value persists on later ticks (cfg pinned at step 1 must still
--- read 100 at step 3, ctx at step 2 must still read 200, sol latches last).
--- If the record dual is not synthesized, a latched field would reset and
--- the final line would not read "100/200/300".
+-- Z3SolverCtx carry — the cfg/ctx/sol lifecycle triple travels across
+-- ticks (mirrors the real zinit latch bank): each handle latches once at
+-- its step, then holds. Autocarry must synthesize `_z3ctx ∈ Z3SolverCtx`;
+-- without the dual a latched field resets and the final line is wrong.
 --
 -- entry: main
 -- expect: stdout = "11/0/0"

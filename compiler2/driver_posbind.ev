@@ -8,10 +8,8 @@
 --           inline-frame state (il_pfx/il_depth/il_pd/ilb_n*), the
 --           enum value table (evt_n*), the record registry (rt_n*/rt_f*/
 --           rt_sort*), the Pratt result (p_done/pr_bad/pr_sres/pk_*), and
---           z_exitdecl. Wide by nature: positional `(e1,..) ∈ Claim`
---           binding resolves the callee in the index, parses each element
---           via the Pratt stack, and binds against the callee's params —
---           it inherently touches all three (justified §6.4).
+--           z_exitdecl. (Width justified §6.4: positional binding
+--           inherently touches index + Pratt stack + callee params.)
 -- PRODUCES: the pmode-12 positional-binding walk (pt_st/pc_k/pj/pt_tup/
 --           pt_ts/pt_callee + the tuple-element recognizers pt_tup_b/
 --           pt_comma/pt_rp + ptt_*), the ips_* param-skip substate, the

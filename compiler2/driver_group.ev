@@ -18,15 +18,12 @@
 fsm DriverGroup
     -- ── F1: pmode-9 GROUP walk (first-line param lists + body
     -- multi-name memberships) ─────────────────────────────────────
-    -- Two flavors share one FSM. PARAM (`claim main(a, b ∈ Int,
-    -- ok ∈ Bool)`): groups separated by `,`, list closed by `)`.
-    -- BODY (`x, y, z ∈ Nat`): one group, no separator after the
-    -- type. Collect substate (pg_st 0): one `Ident ,` per tick
-    -- pushes the name; the `Ident ∈ Type` tick declares the LAST
-    -- name through the classifier's own c_mem_items/c_field/c_cdecl
-    -- (same window positions as a plain membership) and latches the
-    -- group type. Drain substate (pg_st 1): one pending name per
-    -- tick declares through pg_drain_items with the latched type.
+    -- Collect substate (pg_st 0): one `Ident ,` per tick pushes the
+    -- name; the `Ident ∈ Type` tick declares the LAST name through
+    -- the classifier's own c_mem_items/c_field/c_cdecl (same window
+    -- positions as a plain membership) and latches the group type.
+    -- Drain substate (pg_st 1): one pending name per tick declares
+    -- through pg_drain_items with the latched type.
     -- Scalar types only (Int/Nat/Bool/String/Result/the user enum);
     -- Seq(...) params and bounds/pins on group lines are descoped
     -- (zero corpus occurrences of either).

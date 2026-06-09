@@ -1,21 +1,11 @@
 -- Recursive Boolean translation: walk a nested Boolean binop tree to
--- fully nested SMT-LIB via a WorkItem work-stack (the
--- test_ast_walker.ev depth-first pattern), driving
--- compiler/translate_bool.ev's BoolTranslateStep once per tick.
+-- fully nested SMT-LIB via a WorkItem work-stack, driving
+-- BoolTranslateStep once per tick.
 --
--- The task's target shape is `(and (or x y) z)`, but ∧ / ∨ are not
--- representable: the parser's `Op` enum (compiler/parser.ev, frozen)
--- has no OpAnd / OpOr variant — see docs/plans/blocked-translate-bool.md.
--- This fixture proves the identical recursive machinery on the Boolean
--- operators the `Op` enum DOES carry (OpImpl → "=>", OpEq → "="):
---
---   EBinOp(OpImpl, EBinOp(OpEq, EIdent("x"), EIdent("y")), EIdent("z"))
---
--- Pop sequence:
---   P(=> (= x y) z) → "(" "=>" " " P(= x y) " " P(z) ")"
---   P(= x y)        → "(" "=" " " P(x) " " P(y) ")"
---   leaves emit "x" / "y" / "z"
--- yielding "(=> (= x y) z)".
+-- The natural target `(and (or x y) z)` is not representable: the
+-- parser's `Op` enum (compiler/parser.ev, frozen) has no OpAnd / OpOr
+-- variant — see docs/plans/blocked-translate-bool.md. This proves the
+-- same machinery on the ops it DOES carry (OpImpl → "=>", OpEq → "=").
 --
 -- expect: stdout = "(=> (= x y) z)"
 -- expect: exit = 0

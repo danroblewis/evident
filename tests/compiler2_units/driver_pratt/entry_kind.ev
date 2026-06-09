@@ -1,11 +1,7 @@
 -- DriverPratt isolation — entry-kind latch.
---
--- Drives the pmode-3 Pratt entry (in_parse, pmode 3, tok_ready, with
--- d_enter_pratt held and the entry kind d_pratt_kind0 = 5). The module
--- must latch pk_kind = 5 (the parse-kind that selects which consumer the
--- result returns to). We report pk_kind. A regression in the entry latch
--- changes it. (The full shift/reduce parse needs a fed token window; this
--- fixture exercises the entry/kind wiring in isolation.)
+-- pmode-3 Pratt entry with d_enter_pratt held and d_pratt_kind0 = 5: the
+-- module must latch pk_kind = 5 (which consumer the result returns to).
+-- Full shift/reduce needs a fed token window; this is entry wiring only.
 --
 -- entry: main
 -- expect: stdout = "5"

@@ -28,7 +28,6 @@ fsm DriverCallLower
     -- emits `(str.indexof s sub 0)`). str_from_int expands to the
     -- oracle's negative-safe composite
     -- (ite (>= e 0) (str.from_int e) (str.++ "-" (str.from_int (- 0 e)))).
-    -- An unknown call name pushes handle 0 (unbound-ident parity).
     d_sfi_items ∈ C2Items = C2ICons(C2Process(d_ca0),
         C2ICons(C2Process(EInt(0)),
         C2ICons(C2Op(OpGeq),

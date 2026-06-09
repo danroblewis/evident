@@ -1,21 +1,6 @@
--- AST tree walker (iter 3.12).
---
--- Walks `EBinOp(OpPlus, EBinOp(OpPlus, EInt(1), EInt(2)), EInt(3))`
--- depth-first via a work-stack, prints each visited node, counts
--- the EInt leaves.
---
--- Architecture: an ExprList "work stack" carried as Datatype state
--- across ticks. Each tick pops the head, classifies via `match` +
--- `matches`, pushes children for compound nodes. Halt when stack
--- is empty.
---
--- This is the foundation for any AST → text translator:
---   - AST → SMT-LIB (iter 3.13)
---   - AST → pretty-printed source
---   - AST → traversal-based analyses (count nodes, find names, …)
---
--- For "(1+2)+3" the depth-first walk visits:
---   EBinOp (root) → EBinOp (left subtree) → EInt(1) → EInt(2) → EInt(3)
+-- AST tree walker: depth-first over EBinOp(OpPlus, EBinOp(OpPlus,
+-- EInt(1), EInt(2)), EInt(3)) via an ExprList work-stack carried as
+-- Datatype state; prints each visited node, counts the EInt leaves.
 --
 -- expect: stdout = "[start]"
 -- expect: stdout = "binop"

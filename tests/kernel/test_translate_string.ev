@@ -1,13 +1,6 @@
--- C10: SMT-LIB string operations.
---
--- Exercises the four Build* claims in stdlib/translate_string.ev,
--- each binding `out` to the prefix-form SMT-LIB expression a
--- translator would emit for one Z3 str.* builtin.
---
---   StrLenSmtlib("s")                  → (str.len s)
---   StrConcatSmtlib("a", "b")          → (str.++ a b)
---   StrSubstrSmtlib("s", "0", "3")     → (str.substr s 0 3)
---   StrPrefixSmtlib("\"hi\"", "msg")   → (str.prefixof "hi" msg)
+-- C10: SMT-LIB string operations — exercises the four claims in
+-- compiler/translate_string.ev, each binding `out` to the prefix-form
+-- SMT-LIB expression for one Z3 str.* builtin.
 --
 -- expect: stdout = "(str.len s)"
 -- expect: stdout = "(str.++ a b)"

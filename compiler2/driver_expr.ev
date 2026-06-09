@@ -164,9 +164,6 @@ enum PrOps =
 -- terminates; a `,` only continues when cd > 0).
 -- A token that can't start an operand while expop holds is a
 -- malformed line: done fires with sres = ENoExpr.
--- The driver runs this once per tick under pmode = 3;
--- tests/kernel/compiler2/pratt_fixture.ev runs the same claim
--- standalone.
 -- qstop (D2): when set, a `?` at top level (pd = 0, qd = 0) in
 -- operator position TERMINATES the expression instead of arming a
 -- ternary — the conditional-effects chain walk parses its branch

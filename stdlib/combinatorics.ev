@@ -4,15 +4,6 @@
 -- mathematical typing — the runtime tracks both.
 
 -- ── Permutation ──────────────────────────────────────────────
---
--- `p` is a permutation of the set `s` — same elements, in some order.
--- Asserts:
---   * `#s = #p` — same cardinality.
---   * `distinct(p)` — the sequence has no duplicates (sets don't have
---     duplicates by construction, so we only assert it on the seq).
---   * `∀ x ∈ p : x ∈ s` — every element of the sequence comes from
---     the set. With matching cardinality + distinctness, this pins
---     `p` to an ordering of `s`'s elements.
 
 claim Permutation<T>(s ∈ Set(T), p ∈ Seq(T))
     #s = #p
@@ -20,9 +11,6 @@ claim Permutation<T>(s ∈ Set(T), p ∈ Seq(T))
     ∀ x ∈ p : x ∈ s
 
 -- ── Combination ──────────────────────────────────────────────
---
--- `c` is a combination of `of` — a subset. Order doesn't matter (both
--- are Sets), duplicates don't exist by definition. Just subset.
 
 claim Combination<T>(c ∈ Set(T), of ∈ Set(T))
     ∀ x ∈ c : x ∈ of
@@ -49,7 +37,6 @@ claim sat_p_picks_some_permutation
     s = {10, 20, 30}
     #p = 3
     Permutation<Int>(s, p)
-    -- Z3 picks some ordering of {10, 20, 30} for p.
 
 claim unsat_different_elements
     s ∈ Set(Int)

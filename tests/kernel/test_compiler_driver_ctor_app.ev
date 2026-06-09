@@ -1,11 +1,8 @@
--- Grammar wave 4, item 1: CONSTRUCTOR APPLICATION in expression position.
--- Drives the UNMODIFIED compiler/compiler.ev pipeline (constant input) on a
--- scalar membership whose RHS is an enum-variant application `Exit(0)`. The
--- variant name becomes the SMT-LIB datatype constructor head:
---   e ∈ Effect = Exit(0)   →   (assert (= e (Exit 0)))
--- Dispatched by the driver's `mem_is_ctor` discriminator to
--- CtorMembershipStep → compiler/translate_ctor.ev's RenderExprToks.
--- See docs/plans/grammar-wave4.md.
+-- CONSTRUCTOR APPLICATION in expression position: the unmodified
+-- compiler/compiler.ev pipeline (constant input) on a scalar
+-- membership whose RHS is `Exit(0)` — the variant name becomes the
+-- SMT-LIB datatype constructor head: `(assert (= e (Exit 0)))`.
+-- Dispatched by `mem_is_ctor` to CtorMembershipStep → RenderExprToks.
 --
 -- expect: stdout = ";; manifest: state-fields = e:Effect"
 -- expect: stdout = ";; manifest: effects-name = effects"
@@ -67,10 +64,7 @@ claim main
     was_collecting_str ∈ Bool = (#_partial_str > 0)
     was_collecting_int ∈ Bool = (_partial_int ≥ 0)
 
-    -- ── String-literal mode (grammar wave 2; carried) ────────────
-    -- A `"` opens the mode, chars accumulate, the closing `"` emits a
-    -- StringLit token (escapes out of scope). While inside a string the
-    -- normal ident/int collectors are suppressed (¬_in_strlit guards).
+    -- ── String-literal mode (carried; escapes out of scope) ──────
     in_strlit  ∈ Bool
     _in_strlit ∈ Bool
     partial_strlit  ∈ String
@@ -157,10 +151,9 @@ claim main
         : (in_reverse ∧ (¬work_is_nil) ? TLCons(work_hd, _fwd)
         : _fwd)))
 
-    -- ── TOP-LEVEL HEAD-TOKEN DISPATCH (wave 3.5) ──────────────────
-    -- `_fwd` is read-only once REVERSE completes; its head token decides
-    -- the program shape. `KwEnum` → enum-decl machine; otherwise a
-    -- claim head, walked as memberships.
+    -- ── TOP-LEVEL HEAD-TOKEN DISPATCH ─────────────────────────────
+    -- Head token decides the program shape: `KwEnum` → enum-decl
+    -- machine; otherwise a claim head, walked as memberships.
     prog_head ∈ Token
     TLHd(l ↦ _fwd, out ↦ prog_head)
     is_enum_program ∈ Bool = (prog_head matches KwEnum)
@@ -201,11 +194,10 @@ claim main
     mem_card_seq ∈ Bool = ((r_t3 matches Eq) ∧ (r_t4 matches Hash))
     mem_is_seq ∈ Bool = (mem_compound_seq ∨ mem_card_seq)
 
-    -- Wave-4 constructor-application / nested-Seq RHS. CtorMembershipStep
-    -- self-discriminates (ok=true only for a ctor-app or a Seq of ctor-apps),
-    -- so `mem_is_ctor` is just its `ok` — it never hijacks a non-ctor line.
-    -- Given highest priority below: a `name ∈ Seq(T) = ⟨Ctor(…)…⟩` line is
-    -- ALSO `mem_is_seq` (compound type), but the ctor step must win.
+    -- CtorMembershipStep self-discriminates (ok=true only for a
+    -- ctor-app or a Seq of ctor-apps) — it never hijacks a non-ctor
+    -- line. Given highest priority below: a `name ∈ Seq(T) = ⟨Ctor(…)…⟩`
+    -- line is ALSO `mem_is_seq` (compound type), but the ctor step must win.
     cts_decl ∈ String
     cts_assert ∈ String
     cts_field ∈ String
@@ -273,9 +265,8 @@ claim main
         : (in_parse ∧ (¬is_enum_program) ∧ sel_ok ? (sel_field = "" ? _fstr : (_fstr = "" ? sel_field : _fstr ++ " " ++ sel_field))
         : _fstr)))
 
-    -- is_first_tick auto-inject guard: track whether the source declared
-    -- is_first_tick during the parse walk (mirrors bootstrap emit's
-    -- ensure_is_first_tick_decl, which prepends the decl only when absent).
+    -- Track whether the source declared is_first_tick; the decl is
+    -- prepended at emit only when absent.
     ift  ∈ Bool
     _ift ∈ Bool
     ift = (is_first_tick ? false
@@ -340,12 +331,10 @@ claim main
     e7 ∈ Bool = (_ephase = 7)
     e8 ∈ Bool = (_ephase = 8)
 
-    -- A variant is pending (name read, awaiting boundary) in e5 or e8.
     have_pending ∈ Bool = (e5 ∨ e8)
     at_boundary  ∈ Bool = (p_is_pipe ∨ plist_nil)
     finalize     ∈ Bool = (in_parse ∧ is_enum_program ∧ have_pending ∧ at_boundary)
 
-    -- Reconstruct the EnumVariantDecl from the carried slots and render.
     cur_fields ∈ EVFieldList = (_fcount = 0 ? EVFNil
         : _fcount = 1 ? EVFCons(EVFType(_fA), EVFNil)
         : _fcount = 2 ? EVFCons(EVFType(_fA), EVFCons(EVFType(_fB), EVFNil))
@@ -356,7 +345,6 @@ claim main
 
     new_body ∈ String = (finalize ? (_first_v ? rendered : _body ++ " " ++ rendered) : _body)
 
-    -- ephase transition.
     next_ephase ∈ Int = (e1 ∧ p_is_enum ? 2
         : e2 ∧ p_is_ident ? 3
         : e3 ∧ p_is_eq ? 4
@@ -372,7 +360,6 @@ claim main
     starting_variant ∈ Bool = (e4 ∧ p_is_ident)
     adding_field     ∈ Bool = (e6 ∧ p_is_ident)
 
-    -- State carry for the enum-parse machine (gated on is_enum_program).
     plist   = (is_first_tick ? TLNil : (entering_parse ∧ is_enum_program ? _fwd : (in_parse ∧ is_enum_program ∧ (¬plist_nil) ? ptail : _plist)))
     ephase  = (is_first_tick ? 1 : (entering_parse ∧ is_enum_program ? 1 : (in_parse ∧ is_enum_program ? next_ephase : _ephase)))
     ename   = (is_first_tick ? "" : (in_parse ∧ is_enum_program ∧ e2 ∧ p_is_ident ? p_id : _ename))
@@ -399,7 +386,6 @@ claim main
     emit_now_enum  ∈ Bool = (is_enum_program ∧ (¬is_first_tick) ∧ (_phase = 2) ∧ plist_nil)
     emit_now ∈ Bool = (emit_now_claim ∨ emit_now_enum)
 
-    -- Claim emission: manifest header + declares/asserts.
     manifest ∈ String = (";; manifest: state-fields = " ++ _fstr ++ "\n"
         ++ ";; manifest: effects-name = effects\n"
         ++ ";; manifest: effect-enum-name = Effect\n"
@@ -408,7 +394,6 @@ claim main
     ift_decl ∈ String = (_ift ? "" : "(declare-fun is_first_tick () Bool)\n")
     claim_smtlib ∈ String = manifest ++ "\n" ++ ift_decl ++ _out
 
-    -- Enum emission: the (declare-datatypes …) block.
     grouped_body ∈ String = "(" ++ new_body ++ ")"
     final_decl ∈ EnumDeclAst = EnumD(_ename, EVNil)
     enum_smtlib ∈ String

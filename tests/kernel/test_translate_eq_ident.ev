@@ -1,17 +1,9 @@
--- AST → text translator: operator + identifier fidelity (iter 3.14).
+-- AST → text translator: operator + identifier fidelity.
 --
--- Extends the iter 3.13 translator demonstration. The original
--- (test_ast_to_text.ev) always emitted "(+ " for any binop and had no
--- EIdent arm — so a parsed `x = 1` would mis-translate to `(+ ...)`.
---
--- This fixture walks `EBinOp(OpEq, EIdent("x"), EInt(1))` and emits the
--- SMT-LIB prefix form `(= x 1)`, proving the translator now respects:
---   • the actual Op stored in the EBinOp (OpEq → "(= "), and
---   • EIdent leaves (emit the identifier string directly).
---
--- Same work-stack architecture as iter 3.13: a WorkList of WorkItem
--- (WIProcess(Expr) | WIEmit(String)). For a binop, push
--- [Process(left), Emit(" "), Process(right), Emit(")")].
+-- Walks `EBinOp(OpEq, EIdent("x"), EInt(1))` to `(= x 1)` via a
+-- WorkItem work-stack, proving the translator respects the actual Op
+-- (OpEq → "(= ") and EIdent leaves — the earlier walker hardcoded
+-- "(+ " for any binop and had no EIdent arm.
 --
 -- expect: stdout = "[translating]"
 -- expect: stdout = "  step"

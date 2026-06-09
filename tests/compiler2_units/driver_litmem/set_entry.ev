@@ -1,12 +1,7 @@
--- DriverLitMem isolation — the set-literal walk entry latches.
---
--- Drives a `x ∉ { … }` membership entry (d_enter_set, one-shot at
--- tc = 1) with classifier name c_name = "x" and the negated-membership
--- flag c_is_nmem true. The pmode-7 set walk must latch ms_name = "x"
--- and ms_neg = true on entry and hold them. We report "<name>/<sign>".
--- If the entry latches regress, the name or the ∉ sign is wrong (the
--- ∉ sign drives whether the folded Expr is C2Not-wrapped at assert).
---
+-- DriverLitMem isolation — set-literal walk entry latches: a one-shot
+-- `x ∉ { … }` entry (d_enter_set at tc = 1, c_name "x", c_is_nmem true)
+-- must latch ms_name = "x" / ms_neg = true and hold them. Reports
+-- "<name>/<sign>"; the ∉ sign drives C2Not-wrapping of the folded Expr.
 -- entry: main
 -- expect: stdout = "x/neg"
 -- expect: exit = 0

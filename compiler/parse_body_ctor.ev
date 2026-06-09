@@ -1,20 +1,15 @@
--- compiler/parse_body_ctor.ev — grammar wave 4, items 1+2.
---
--- A sibling of parse_body.ev's MembershipStep / parse_body_seq.ev's
--- SeqMembershipStep, specialised for a membership whose RHS is a
--- CONSTRUCTOR APPLICATION or a Seq literal of constructor applications.
--- Kept as a SEPARATE claim so the scalar MembershipStep, the
--- SeqMembershipStep, and every wave-1/2/3/3.5 fixture that depends on
--- their byte-identical output are completely untouched — the driver
--- dispatches to CtorMembershipStep only when its `ok` fires (see
+-- compiler/parse_body_ctor.ev — memberships whose RHS is a CONSTRUCTOR
+-- APPLICATION or a Seq literal of constructor applications. Kept as a
+-- SEPARATE claim so MembershipStep / SeqMembershipStep keep byte-identical
+-- output; the driver dispatches here only when `ok` fires (see
 -- compiler/compiler.ev, the `mem_is_ctor` discriminator).
 --
--- Two membership shapes consumed (head = `Ident(name)`):
+-- Shapes consumed (head = `Ident(name)`):
 --
 --   name ∈ Effect      = Exit(0)              -- scalar, ctor-app RHS
 --   name ∈ Seq(Effect) = ⟨Exit(0), Exit(1)⟩   -- compound Seq, ctor-app elems
 --
--- SMT-LIB targets (the RHS is rendered by compiler/translate_ctor.ev's
+-- SMT-LIB targets (RHS rendered by compiler/translate_ctor.ev's
 -- RenderExprToks; the variant name becomes the datatype constructor head):
 --
 --   (declare-fun name () Effect)
@@ -22,8 +17,7 @@
 --   (declare-fun effects () (Seq Effect))
 --   (assert (= effects (seq.++ (seq.unit (Exit 0)) (seq.unit (Exit 1)))))
 --
--- Discrimination (peek t3 / t4 / t5 … off `rem`, same idea as the driver's
--- per-membership shape peek):
+-- Discrimination (peek t3 / t4 / t5 … off `rem`):
 --   scalar ctor : t3=Eq, t4=Ident, t5=LParen
 --   seq complex : t3=LParen (compound `Seq(T)`), t6=Eq, t7=⟨, and the first
 --                 element is a ctor head (t8=Ident, t9=LParen) or a nested ⟨.
@@ -44,21 +38,17 @@ claim CtorMembershipStep
     ok ∈ Bool
     eff_len ∈ Int
     -- True when this line is the BARE form `name = Ctor(…)` (a constraint
-    -- on a name a PRIOR membership already declared), as opposed to the
-    -- declaring `name ∈ Type = Ctor(…)` form. The driver uses this to set
-    -- pinned=false so the single assertion (carried in `decl`) is emitted
-    -- without an empty-decl leading newline — exactly like MembershipStep's
-    -- bare-atom path (wave 4j, `ms_is_bare`). This wave (4p) generalises
-    -- that path to a constructor-application RHS.
+    -- on a name a PRIOR membership already declared). The driver uses this
+    -- to set pinned=false so the single assertion (carried in `decl`) is
+    -- emitted without an empty-decl leading newline — exactly like
+    -- MembershipStep's bare-atom path (`ms_is_bare`).
     bare ∈ Bool
-    -- The program's variant-signature table (wave 4h): threaded to the RHS
-    -- renderer so a Seq(T) payload in constructor-argument position lowers
-    -- to the `__Cell_T`/`__Empty_T` Cons form. Empty (`""`) keeps the Z3
-    -- seq-theory form — the behaviour before this wave.
+    -- The program's variant-signature table: threaded to the RHS renderer
+    -- so a Seq(T) payload in constructor-argument position lowers to the
+    -- `__Cell_T`/`__Empty_T` Cons form. Empty (`""`) keeps the Z3
+    -- seq-theory form.
     sigtab ∈ String
 
-    -- Peel the head tokens (name ∈ Type [= …]) — up to ten, enough to see
-    -- a compound `Seq(T) =` head and the first RHS token.
     cs_t0 ∈ Token
     TLHdC(l ↦ rem, out ↦ cs_t0)
     cs_l1 ∈ TokenList
@@ -106,26 +96,21 @@ claim CtorMembershipStep
     -- Scalar ctor app: `name ∈ Type = Ctor(…)`.
     cs_scalar_ctor ∈ Bool = ((cs_t3 matches Eq) ∧ (cs_t4 matches Ident(_)) ∧ (cs_t5 matches LParen))
 
-    -- Bare ctor app: `name = Ctor(…)` — t1=Eq, t2=ctor Ident, t3=LParen. A
-    -- constraint on an already-declared name (sibling of the scalar form,
-    -- minus the `∈ Type` prefix). The RHS starts one token earlier (cs_l2,
-    -- the ctor name) than the scalar form (cs_l4). Mutually exclusive with
-    -- cs_scalar_ctor (which needs t3=Eq) and cs_seq_complex (which needs
-    -- t6=Eq). NOTE the discriminator order matters in the driver: a bare
+    -- Bare ctor app: `name = Ctor(…)` — t1=Eq, t2=ctor Ident, t3=LParen.
+    -- RHS starts one token earlier (cs_l2) than the scalar form (cs_l4).
+    -- NOTE the discriminator order matters in the driver: a bare
     -- `name = Ctor(…)` has t3=LParen, which the driver would otherwise route
     -- to SeqMembershipStep (mem_compound_seq); making this step's `ok` fire
     -- gives it priority (mem_is_ctor is checked first).
     cs_bare_ctor ∈ Bool = ((cs_t1 matches Eq) ∧ (cs_t2 matches Ident(_)) ∧ (cs_t3 matches LParen))
 
-    -- Bare `matches` predicate: `scrut matches Ctor(_)` / `scrut matches Nullary`
-    -- as a STANDALONE boolean constraint (t1=KwMatches, t2=ctor Ident). Lowers
-    -- to a Z3 datatype recognizer `((_ is Ctor) scrut)` — the sibling of the
-    -- `name = atom matches Ctor` form already handled in MembershipStep. The
-    -- payload binds (`(_)`, `(_, _)`, or a name) are IGNORED in matches-as-Bool
-    -- form; we render the `Ctor(payload)` part purely to advance past it (its
-    -- rest), then discard the rendered text and emit the recognizer instead.
-    -- Without this, MembershipStep mis-reads the line as a lone composition
-    -- name and silently drops the predicate (wave-4p bug class).
+    -- Bare `matches` predicate: `scrut matches Ctor(_)` as a STANDALONE
+    -- boolean constraint (t1=KwMatches, t2=ctor Ident) → Z3 recognizer
+    -- `((_ is Ctor) scrut)`. Payload binds are IGNORED in matches-as-Bool
+    -- form; the `Ctor(payload)` part is rendered purely to advance past it
+    -- (rest), the rendered text discarded. Without this, MembershipStep
+    -- mis-reads the line as a lone composition name and silently drops the
+    -- predicate.
     cs_bare_matches ∈ Bool = ((cs_t1 matches KwMatches) ∧ (cs_t2 matches Ident(_)))
 
     -- Compound Seq with complex (ctor / nested-seq) first element:
@@ -150,17 +135,15 @@ claim CtorMembershipStep
     cs_src_ty ∈ String = (cs_scalar_ctor ? cs_scalar_ty : cs_outer_ty ++ "(" ++ cs_inner_ty ++ ")")
     cs_smt_ty ∈ String = (cs_scalar_ctor ? cs_scalar_ty : "(" ++ cs_outer_ty ++ " " ++ cs_inner_ty ++ ")")
 
-    -- The constructor-application RHS renders through the Z3 seq-theory
-    -- expression renderer (RenderExprToks). The RHS starts at a DIFFERENT
-    -- token depending on the shape:
+    -- RHS start by shape:
     --   scalar `name ∈ Type = Ctor(…)`  → t4 (cs_l4), the ctor name after `=`
     --   bare   `name = Ctor(…)`         → t2 (cs_l2)
     --   bare   `name matches Ctor(…)`   → t2 (cs_l2), rendered only to find
     --                                      where the pattern ends (out unused)
-    -- A SINGLE conditional call keeps the per-claim state flat (RenderExprToks
-    -- is the heaviest claim here, ~6× per depth level; sample.smt2 instantiates
-    -- this step per membership across every claim at once, so a second call
-    -- would materially bloat the model — see docs/plans/wave-4m / wave-4p).
+    -- A SINGLE conditional RenderExprToks call keeps the per-claim state
+    -- flat: it is the heaviest claim here (~6× per depth level), and
+    -- sample.smt2 instantiates this step per membership across every claim
+    -- at once, so a second call would materially bloat the model.
     cs_rhs_start ∈ TokenList = ((cs_bare_ctor ∨ cs_bare_matches) ? cs_l2 : cs_l4)
     cs_cx_out ∈ String
     cs_cx_rest ∈ TokenList
@@ -169,16 +152,15 @@ claim CtorMembershipStep
 
     cs_bare_assert ∈ String = "(assert (= " ++ cs_name ++ " " ++ cs_cx_out ++ "))"
 
-    -- Bare-matches recognizer is built from the ctor name (cs_t2); the rendered
-    -- text (cs_cx_out) is ignored — only cs_cx_rest (where the pattern ends) is.
+    -- Recognizer built from the ctor name (cs_t2); cs_cx_out is ignored.
     cs_bm_ctor ∈ String = match cs_t2
         Ident(s) ⇒ s
         _ ⇒ ""
     cs_bm_assert ∈ String = "(assert ((_ is " ++ cs_bm_ctor ++ ") " ++ cs_name ++ "))"
 
-    -- Compound Seq STATE field → bootstrap's `(Array Int T) + __len` encoding
-    -- (the kernel-runnable form; see compiler/translate_ctor.ev's SeqArrayBlock
-    -- and docs/plans/blocked-grammar-wave4b.md blocker 0). RHS starts at the `⟨`.
+    -- Compound Seq STATE field → the `(Array Int T) + __len` encoding (the
+    -- kernel-runnable form; see compiler/translate_ctor.ev's SeqArrayBlock).
+    -- RHS starts at the `⟨`.
     cs_arr_decl ∈ String
     cs_arr_assert ∈ String
     cs_arr_rest ∈ TokenList
@@ -189,9 +171,7 @@ claim CtorMembershipStep
         elen ↦ cs_arr_elen, ok ↦ cs_arr_ok, sigtab ↦ sigtab)
 
     -- `_<name>` carry vars, is_first_tick, and the kernel channels `effects` /
-    -- `last_results` are not manifest state fields (mirrors bootstrap
-    -- emit::discover_state_fields, which skips effects/last_results — see
-    -- bootstrap/runtime/src/emit.rs:500).
+    -- `last_results` are not manifest state fields.
     cs_first_ch ∈ String = substr(cs_name, 0, 1)
     cs_is_carry ∈ Bool = ((cs_first_ch = "_") ∨ (cs_name = "is_first_tick")
         ∨ (cs_name = "effects") ∨ (cs_name = "last_results"))
@@ -200,9 +180,7 @@ claim CtorMembershipStep
     DeclareFun(name ↦ cs_name, type_str ↦ cs_smt_ty, out ↦ cs_scalar_decl)
     cs_scalar_assert ∈ String = "(assert (= " ++ cs_name ++ " " ++ cs_cx_out ++ "))"
 
-    -- Bare form carries its single assertion in `decl` (assertln="") with the
-    -- driver setting pinned=false — so the chunk is exactly the assertion, no
-    -- empty-decl leading newline (mirrors MembershipStep's bare-atom path).
+    -- Bare form carries its single assertion in `decl` (assertln="").
     decl = (cs_bare_matches ? cs_bm_assert : cs_bare_ctor ? cs_bare_assert : cs_scalar_ctor ? cs_scalar_decl : cs_arr_decl)
     assertln = ((cs_bare_ctor ∨ cs_bare_matches) ? "" : cs_scalar_ctor ? cs_scalar_assert : cs_arr_assert)
     field = ((cs_is_carry ∨ cs_bare_ctor ∨ cs_bare_matches) ? "" : cs_name ++ ":" ++ cs_src_ty)

@@ -112,7 +112,6 @@ fsm DriverEnum
         : _ed_src = 2 ? "Effect"
         : "Result")
 
-    -- Current variant (head of the remaining list) + its shape.
     -- The START tick already runs step 0 (the first variant's name
     -- sym), so the peel must see the NEW list on that tick.
     ed_vs_eff ∈ EnumVariantList = (ed_go ? ed_go_vs : _ed_vs)

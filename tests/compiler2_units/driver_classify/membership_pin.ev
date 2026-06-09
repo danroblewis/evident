@@ -1,16 +1,7 @@
 -- DriverClassify isolation — classify a pinned-membership line.
---
--- Pins the decoded window to the 5 tokens of `x ∈ Int = 5`
--- (Ident OpIn Ident Eq IntLit) with empty registries and depth-0 frame
--- state, then reads three classification outputs the dispatcher keys on:
---   c_is_mem      (ww_t1 = OpIn)        → true
---   c_pinned      (c_t3 = Eq)           → true
---   d_enter_pratt0 (a plain pin enters the Pratt FSM) → true
--- encoded as verdict = is_mem + 2*pinned + 4*enter_pratt0 = 7. If the
--- classifier's membership/pin detection or the (long) Pratt-entry guard
--- regresses, the verdict changes. No DriverWindow needed — the window
--- head views ww_t0..ww_t7 are pinned directly.
---
+-- Window pinned to `x ∈ Int = 5` (Ident OpIn Ident Eq IntLit), empty
+-- registries, depth-0 frame; ww_t0..ww_t7 pinned directly (no
+-- DriverWindow). verdict = c_is_mem + 2*c_pinned + 4*d_enter_pratt0 = 7.
 -- entry: main
 -- expect: stdout = "7"
 -- expect: exit = 0
@@ -23,7 +14,6 @@ import "compiler2/driver_record.ev"
 import "compiler2/driver_classify.ev"
 
 fsm main
-    -- The line: x ∈ Int = 5  (everything past token 4 is the sentinel).
     ww_t0 ∈ Token
     ww_t0 = (is_first_tick ? Ident("x") : _ww_t0)
     ww_t1 ∈ Token
@@ -40,11 +30,8 @@ fsm main
     ww_t6 = (is_first_tick ? EofTok : _ww_t6)
     ww_t7 ∈ Token
     ww_t7 = (is_first_tick ? EofTok : _ww_t7)
-    -- classify-mode gate held open.
     d_classify ∈ Bool
     d_classify = (is_first_tick ? true : _d_classify)
-    -- empty registries + depth-0 frame (no claim index, no symtab, no
-    -- record types, no inline frame).
     ci_names ∈ String
     ci_names = (is_first_tick ? "" : _ci_names)
     st_names ∈ String

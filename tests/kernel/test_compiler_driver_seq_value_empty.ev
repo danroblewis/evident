@@ -1,12 +1,7 @@
--- ISOLATION test for grammar wave 4h: an EMPTY Seq literal `⟨⟩` in a
--- Seq(T) payload position lowers to `__Empty_T` (Blocker 2c —
--- docs/plans/blocked-grammar-wave4g.md), while an `⟨⟩` with NO element-type
--- hint keeps the Z3 seq-theory empty form (the in-expression default,
--- unchanged). Drives compiler/translate_ctor.ev's RenderExprToks on
--- hand-built TokenLists.
---
--- The empty-Cons form is byte-identical to bootstrap's `evident emit`
--- (verified): (= eff2 (LibCall "libc" "puts" __Empty_LibArg)).
+-- ISOLATION: an EMPTY Seq literal `⟨⟩` in a Seq(T) payload position
+-- lowers to `__Empty_T`, while `⟨⟩` with NO element-type hint keeps the
+-- Z3 seq-theory empty form. Drives RenderExprToks on hand-built
+-- TokenLists. Verified byte-identical to bootstrap's `evident emit`.
 --
 -- expect: stdout = "__Empty_LibArg"
 -- expect: stdout = "(LibCall "libc" "puts" __Empty_LibArg)"

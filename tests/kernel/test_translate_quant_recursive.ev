@@ -1,16 +1,11 @@
--- Recursive quantifier translation: walk an EForall whose body is a
--- nested binop to fully nested SMT-LIB via a WorkItem work-stack (the
--- test_ast_walker.ev depth-first pattern), driving
--- compiler/translate_quant.ev's QuantTranslateStep once per tick.
---
--- Input AST:
---   EForall("x", EIdent("items"), EBinOp(OpEq, EIdent("x"), EInt(0)))
+-- Recursive quantifier translation: walk an EForall with a nested
+-- binop body to fully nested SMT-LIB via a WorkItem work-stack,
+-- driving compiler/translate_quant.ev's QuantTranslateStep once per tick.
 --
 -- Pop sequence:
 --   P(forall) → "(forall ((x Int)) (=> (>= x 0) " P(= x 0) "))"
 --   P(= x 0)  → "(" "=" " " P(x) " " P(0) ")"
 --   leaves emit "x" / "0"
--- yielding "(forall ((x Int)) (=> (>= x 0) (= x 0)))".
 --
 -- expect: stdout = "(forall ((x Int)) (=> (>= x 0) (= x 0)))"
 -- expect: exit = 0

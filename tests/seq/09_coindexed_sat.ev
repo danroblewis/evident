@@ -1,5 +1,4 @@
--- C9 coindexed/zip ∀ (a,b) ∈ coindexed(xs,ys) : P — parallel walk of
--- two bounded seqs. (Verified: this parses AND constrains.)
+-- C9 coindexed/zip ∀ (a,b) ∈ coindexed(xs,ys) : P — parallel walk of two bounded seqs.
 -- entry: main
 -- expect: exit = 0
 import "stdlib/kernel.ev"

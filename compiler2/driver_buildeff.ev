@@ -15,9 +15,7 @@
 --           carries) — a pure constructor bank the single effects-writer
 --           indexes by zstep / ed_cur_step. It owns no FSM state.
 --
--- The enum-decl + Z3-lifecycle build-effect bank. Split out of the
--- former 578-line DriverRecord fsm (these effect banks were squatting in
--- it but belong to the DriverEnum / DriverZInit concerns); lifted into
+-- The enum-decl + Z3-lifecycle build-effect bank. Lifted into
 -- driver_main via `..DriverBuildEff` immediately after `..DriverRecord`,
 -- so the emitted order — and the §9 byte-identity — is preserved.
 fsm DriverBuildEff

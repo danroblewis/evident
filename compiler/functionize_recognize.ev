@@ -1,23 +1,14 @@
 -- Wave 5c — seed of the Evident-side functionizer recognizer.
 --
--- NOT YET FUNCTIONAL. This file lands the SHAPE that the
--- recognizer will grow into, exercising the new wave-5c libz3
--- sugar (stdlib/kernel.ev: BuildZ3GetAstKind, BuildZ3ToApp,
--- BuildZ3GetAppDecl, BuildZ3GetDeclKind, BuildZ3GetAppNumArgs,
--- BuildZ3GetAppArg) and naming the decl_kind constants the
--- recognizer needs to discriminate on.
---
+-- NOT YET FUNCTIONAL. Lands the SHAPE the recognizer will grow into and
+-- names the decl_kind constants it discriminates on.
 -- Plan: docs/plans/wave-5c-functionizer-in-evident.md §1.
--- Sketch a single AST classifier — the "leaf step" the
--- stack-FSM walk will compose.
 
 import "stdlib/kernel.ev"
 
--- ── Z3_decl_kind enum constants we'll discriminate on ──────────
--- (from z3_api.h; the integer values are the C enum positions
--- and are stable across Z3 releases.) These let an Evident FSM
--- branch on the int return from Z3_get_decl_kind without
--- needing a name-string lookup at every step.
+-- ── Z3_decl_kind enum constants ─────────────────────────────────
+-- From z3_api.h; the integer values are the C enum positions and are
+-- stable across Z3 releases.
 
 claim Z3DeclKind_OpTrue(out ∈ Int)
     out = 256          -- Z3_OP_TRUE
@@ -71,8 +62,6 @@ claim Z3DeclKind_OpStore(out ∈ Int)
     out = 769          -- Z3_OP_STORE
 
 -- ── StepShape: which functionize/jit.rs StepBody shape applies ─
--- (Rough sketch; the real recognizer will use a richer enum once
--- it grows children.)
 
 enum StepShape =
     StepScalar       -- Scalar(Z3_ast)  — a single equality body
@@ -80,16 +69,9 @@ enum StepShape =
     StepGuarded      -- Guarded(Vec<Branch>) — branching equality
     StepUnknown      -- recognizer refused; falls through to Z3
 
--- ── ClassifyByDeclKind: a 1-shot classifier for the recognizer's
---    leaf step. Maps the integer decl_kind returned by libz3 to
---    the broad step shape that's emerging.
---
--- This is the lowest-level building block. The actual recognizer
--- (per wave-5c §1) is a stack-FSM walk that drives Z3_get_app_arg
--- to push children, calls THIS to classify each, and binds the
--- result into the program's Step list. That walk is the next
--- session's work; here we just prove the leaf classification
--- compiles + the decl_kind constants resolve.
+-- ── ClassifyByDeclKind: leaf classifier — libz3 decl_kind → shape ─
+-- The real recognizer is a stack-FSM walk that drives Z3_get_app_arg
+-- to push children and calls THIS to classify each.
 
 claim ClassifyByDeclKind
     decl_kind ∈ Int
@@ -106,10 +88,8 @@ claim ClassifyByDeclKind
     store_kind ∈ Int
     Z3DeclKind_OpStore(out ↦ store_kind)
 
-    -- Equality is the canonical scalar step body shape (RHS bound
-    -- to LHS). And-of-equalities is the seq/guarded carrier
-    -- depending on what's under it — defer to StepUnknown here;
-    -- the real recognizer descends.
+    -- And-of-equalities is the seq/guarded carrier depending on what's
+    -- under it — defer to StepUnknown here; the real recognizer descends.
     out = (decl_kind = eq_kind ? StepScalar
         : decl_kind = ite_kind ? StepGuarded
         : decl_kind = select_kind ? StepSeq

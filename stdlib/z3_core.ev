@@ -1,16 +1,11 @@
 -- stdlib/z3_core.ev — core Z3-builder sugar: sorts, decls, apps,
--- numerals, serialization, refcounts.
---
--- Fills in the §1/§2/§10/§12 rows of docs/plans/z3-sugar-inventory.md
--- that stdlib/kernel.ev and stdlib/z3_ast.ev don't already cover.
--- Same shape discipline as those files: each claim wraps exactly one
--- LibCall("libz3", "<fn>", …) into an `eff ∈ Effect` slot; handles
--- round-trip as i64 through ArgInt/IntResult.
+-- numerals, serialization, refcounts. Handles round-trip as i64
+-- through ArgInt/IntResult.
 --
 -- NOT in the universal import path (same rationale as z3_ast.ev's
 -- header): import this only from programs that build Z3 models.
 --
--- Already elsewhere — do not re-declare here:
+-- Already elsewhere — do not re-declare here (claim names are global):
 --   stdlib/kernel.ev: BuildZ3MkConfig/MkContext/DelConfig/DelContext/
 --     MkSolver/ParseSmtlib2String/AstVectorSize/AstVectorGet/
 --     SolverAssert/SolverCheck + introspection + tactic sugar.
@@ -19,36 +14,33 @@
 --     BuildZ3AstToString, BuildZ3IncRef, BuildMalloc, BuildFree,
 --     BuildMemWriteLong, BuildCstrCopy.
 --
--- Refcount discipline (inventory §12): every Z3_mk_* returns an AST
--- at refcount 0; the caller SHOULD inc_ref the handle on the tick
--- after capture (wave-5a learned this the hard way). Solver /
--- ast_vector handles have their own inc/dec pairs (wrapped below).
+-- Refcount discipline: every Z3_mk_* returns an AST at refcount 0;
+-- the caller SHOULD inc_ref the handle on the tick after capture.
+-- Solver / ast_vector handles have their own inc/dec pairs (below).
 --
 -- Pointer-array params (Z3_mk_func_decl's domain[], Z3_mk_app's
 -- args[]): the CALLER builds the array — BuildMalloc(8 * n) then one
--- BuildMemWriteLong per slot (see tests/kernel/z3_core/sugar_core.ev
--- for the canonical phase sequence) — and passes the buffer pointer
--- + count here as Ints. The C ABI takes the count BEFORE the array
--- pointer; the claim params follow the C order.
+-- BuildMemWriteLong per slot — and passes the buffer pointer + count
+-- as Ints. The C ABI takes the count BEFORE the array pointer; the
+-- claim params follow the C order.
 
 import "stdlib/kernel.ev"
 
 -- ── §1 Sorts ─────────────────────────────────────────────────────
 
--- Z3_mk_bool_sort(ctx) → Z3_sort handle. Nullary; cache at FSM init.
+-- Z3_mk_bool_sort(ctx) → Z3_sort handle.
 claim BuildZ3MkBoolSort(ctx_h ∈ Int, eff ∈ Effect)
     eff = LibCall("libz3", "Z3_mk_bool_sort", ⟨ArgInt(ctx_h)⟩)
 
--- Z3_mk_real_sort(ctx) → Z3_sort handle. Nullary; cache.
+-- Z3_mk_real_sort(ctx) → Z3_sort handle.
 claim BuildZ3MkRealSort(ctx_h ∈ Int, eff ∈ Effect)
     eff = LibCall("libz3", "Z3_mk_real_sort", ⟨ArgInt(ctx_h)⟩)
 
--- Z3_mk_string_sort(ctx) → Z3_sort handle. Nullary; cache.
+-- Z3_mk_string_sort(ctx) → Z3_sort handle.
 claim BuildZ3MkStringSort(ctx_h ∈ Int, eff ∈ Effect)
     eff = LibCall("libz3", "Z3_mk_string_sort", ⟨ArgInt(ctx_h)⟩)
 
--- Z3_mk_array_sort(ctx, domain, range) → Z3_sort handle. For the
--- compiler's `(Array Int Effect)` shapes.
+-- Z3_mk_array_sort(ctx, domain, range) → Z3_sort handle.
 claim BuildZ3MkArraySort(ctx_h, idx_sort_h, val_sort_h ∈ Int, eff ∈ Effect)
     eff = LibCall("libz3", "Z3_mk_array_sort",
         ⟨ArgInt(ctx_h), ArgInt(idx_sort_h), ArgInt(val_sort_h)⟩)
@@ -76,17 +68,16 @@ claim BuildZ3MkApp(ctx_h, decl_h, num_args, args_arr_p ∈ Int, eff ∈ Effect)
          ArgInt(args_arr_p)⟩)
 
 -- Z3_mk_numeral(ctx, numeral_cstr, sort) → Z3_ast. String form
--- supports arbitrary precision; for small ints prefer BuildZ3MkInt
--- (stdlib/z3_ast.ev).
+-- supports arbitrary precision.
 claim BuildZ3MkNumeral(ctx_h ∈ Int, num ∈ String, sort_h ∈ Int, eff ∈ Effect)
     eff = LibCall("libz3", "Z3_mk_numeral",
         ⟨ArgInt(ctx_h), ArgStr(num), ArgInt(sort_h)⟩)
 
--- Z3_mk_true(ctx) → Z3_ast. Nullary.
+-- Z3_mk_true(ctx) → Z3_ast.
 claim BuildZ3MkTrue(ctx_h ∈ Int, eff ∈ Effect)
     eff = LibCall("libz3", "Z3_mk_true", ⟨ArgInt(ctx_h)⟩)
 
--- Z3_mk_false(ctx) → Z3_ast. Nullary.
+-- Z3_mk_false(ctx) → Z3_ast.
 claim BuildZ3MkFalse(ctx_h ∈ Int, eff ∈ Effect)
     eff = LibCall("libz3", "Z3_mk_false", ⟨ArgInt(ctx_h)⟩)
 
@@ -118,7 +109,7 @@ claim BuildZ3DecRef(ctx_h, ast_h ∈ Int, eff ∈ Effect)
     eff = LibCall("libz3", "Z3_dec_ref", ⟨ArgInt(ctx_h), ArgInt(ast_h)⟩)
 
 -- Z3_solver_inc_ref(ctx, solver) — pin a solver handle past the
--- current tick (matches test_z3_libcall_solve.ev's phase 3).
+-- current tick.
 claim BuildZ3SolverIncRef(ctx_h, solver_h ∈ Int, eff ∈ Effect)
     eff = LibCall("libz3", "Z3_solver_inc_ref",
         ⟨ArgInt(ctx_h), ArgInt(solver_h)⟩)

@@ -1,16 +1,5 @@
--- C6: SMT-LIB quantifier expansion (∀ / ∃).
---
--- Mirrors the simplified non-unrolled fallback of
--- runtime/src/translate/exprs/quant.rs. The driver assembles the
--- AST shape parser/B8 emits — EForall(var, EIdent(src), body) — and
--- pipes it through `QuantSmtlib`. Expected output is the canonical
--- SMT-LIB form CLAUDE.md documents:
---
---   (forall ((x Int)) (=> (>= x 0) (= x 0)))
---
--- The body is an OpEq binop over EIdent/EInt leaves — the atom-level
--- coverage the C6 task pins. Deeper-tree bodies (nested binops,
--- match-arms, multi-variable quantifiers) are downstream sub-steps.
+-- C6: SMT-LIB quantifier expansion (∀ / ∃) — pipes an
+-- EForall(var, EIdent(src), body) AST through QuantSmtlib.
 --
 -- expect: stdout = "ok=true"
 -- expect: stdout = "(forall ((x Int)) (=> (>= x 0) (= x 0)))"

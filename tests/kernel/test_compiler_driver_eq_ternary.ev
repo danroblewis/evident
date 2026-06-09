@@ -1,12 +1,7 @@
--- Grammar wave 4p: bare parenthesised ternary `name = (cond ? then : else)`.
---
--- After a prior `name ∈ Type`, a line `x = (flag ? 7 : 99)` is a constraint
--- on the already-declared name whose RHS is a single-level ternary in parens.
--- The wave-4j bare path only handled atom RHS; it read t2=LParen as the RHS
--- atom and emitted `(= x )` (constraint dropped). This wave lowers it to a
--- Z3 if-then-else: `(assert (= x (ite flag 7 99)))`. Exercised here in
--- ISOLATION on a hand-built TokenList through MembershipStep. See
--- compiler/parse_body.ev (ms_is_barety) and docs/plans/wave-4p-equality-rhs-complex.md.
+-- Bare parenthesised ternary `name = (cond ? then : else)` lowers to a Z3
+-- ite. Pins the regression where the bare path read t2=LParen as the RHS
+-- atom and emitted `(= x )` (constraint dropped). Exercised in ISOLATION on
+-- a hand-built TokenList through MembershipStep (ms_is_barety).
 --
 -- expect: stdout = "(assert (= x (ite flag 7 99)))"
 -- expect: exit = 0
@@ -34,8 +29,7 @@ claim main
     MembershipStep(rem ↦ toks, decl ↦ decl, assertln ↦ assert_s, field ↦ field,
         pinned ↦ pinned, rest ↦ rest, ok ↦ ok, saw_ift ↦ saw_ift)
 
-    -- single tick: print the one rendered line then exit (referencing
-    -- is_first_tick so emit injects its decl for the kernel).
+    -- phase references is_first_tick so emit injects its decl for the kernel.
     phase  ∈ Int
     _phase ∈ Int
     phase = (is_first_tick ? 0 : _phase + 1)

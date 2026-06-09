@@ -1,12 +1,7 @@
 -- Phase 0 proof, file 2 of 2: cross-file fsm composition carries.
---
--- main imports the carry-owning CounterMod from a SEPARATE file and
--- slot-binds it (count ↦ n). The flatten-first pipeline must:
---   1. flatten resolves the import → one translation unit,
---   2. expand-fsm-autocarry injects `_n ↦ _count` and synthesizes
---      `_count ∈ Int` in main,
--- so the kernel carries `count` across ticks and this prints 0,1,2.
--- If cross-file carry injection failed, count would not advance.
+-- main slot-binds CounterMod (count ↦ n) from a SEPARATE file: flatten
+-- resolves the import, expand-fsm-autocarry injects `_n ↦ _count` and
+-- synthesizes `_count ∈ Int`, so count carries and prints 0,1,2.
 --
 -- entry: main
 -- expect: stdout = "0"

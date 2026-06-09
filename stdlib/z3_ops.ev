@@ -1,25 +1,18 @@
 -- stdlib/z3_ops.ev — Z3 arithmetic + boolean builder sugar
--- (z3-sugar-inventory.md §3 + §4).
+-- (z3-sugar-inventory.md §3 + §4). One claim per Z3 C function;
+-- each is a single LibCall("libz3", …) into `eff`. Every handle is
+-- an opaque Int; every return arrives in `last_results` on the
+-- NEXT tick.
 --
--- Completes the operator set started in stdlib/z3_ast.ev, which
--- already owns the array-form Z3_mk_add / Z3_mk_sub / Z3_mk_mul
--- and the binary Z3_mk_div (plus the libc/__mem marshaling
--- helpers). This file adds the rest of §3 (mod, rem, power,
--- unary_minus, lt, gt, le, ge) and all of §4 (eq, distinct, not,
--- and, or, xor, iff, implies, ite). One claim per Z3 C function;
--- each is a single LibCall("libz3", …) into `eff`.
---
--- Kept out of stdlib/kernel.ev for the same reason z3_ast.ev is:
--- kernel.ev is in every program's import path, and growing it
--- pushes the seam's per-fixture compile past its memory budget.
--- Import this file only from programs that build Z3 ASTs.
+-- Kept out of stdlib/kernel.ev: kernel.ev is in every program's
+-- import path, and growing it pushes the seam's per-fixture
+-- compile past its memory budget. Import this file only from
+-- programs that build Z3 ASTs.
 --
 -- Array-form ops (and, or, distinct — like add/sub/mul) take
 -- (ctx_h, num_args, args_arr_ptr): the caller mallocs an
 -- 8*num_args byte buffer and writes each operand handle with
--- __mem.write_long (see z3_ast.ev's BuildMalloc /
--- BuildMemWriteLong and tests/kernel/test_translate_arith_via_z3.ev
--- for the marshaling pattern).
+-- __mem.write_long (z3_ast.ev's BuildMalloc / BuildMemWriteLong).
 --
 -- Refcount model: leak-until-Z3_del_context (wave-5a §3 option 1).
 -- Each captured handle SHOULD be Z3_inc_ref'd on the tick after
@@ -30,91 +23,74 @@ import "stdlib/z3_ast.ev"
 
 -- ── §3 arithmetic — binary / unary builders ───────────────────
 
--- Z3_mk_mod(ctx, l, r) → Z3_ast (integer modulus).
 claim BuildZ3MkMod(ctx_h ∈ Int, l_h ∈ Int, r_h ∈ Int, eff ∈ Effect)
     eff = LibCall("libz3", "Z3_mk_mod",
         ⟨ArgInt(ctx_h), ArgInt(l_h), ArgInt(r_h)⟩)
 
--- Z3_mk_rem(ctx, l, r) → Z3_ast (integer remainder).
 claim BuildZ3MkRem(ctx_h ∈ Int, l_h ∈ Int, r_h ∈ Int, eff ∈ Effect)
     eff = LibCall("libz3", "Z3_mk_rem",
         ⟨ArgInt(ctx_h), ArgInt(l_h), ArgInt(r_h)⟩)
 
--- Z3_mk_power(ctx, l, r) → Z3_ast (l raised to r).
 claim BuildZ3MkPower(ctx_h ∈ Int, l_h ∈ Int, r_h ∈ Int, eff ∈ Effect)
     eff = LibCall("libz3", "Z3_mk_power",
         ⟨ArgInt(ctx_h), ArgInt(l_h), ArgInt(r_h)⟩)
 
--- Z3_mk_unary_minus(ctx, x) → Z3_ast (arithmetic negation).
 claim BuildZ3MkUnaryMinus(ctx_h ∈ Int, x_h ∈ Int, eff ∈ Effect)
     eff = LibCall("libz3", "Z3_mk_unary_minus",
         ⟨ArgInt(ctx_h), ArgInt(x_h)⟩)
 
 -- ── §3 arithmetic — comparisons ───────────────────────────────
 
--- Z3_mk_lt(ctx, l, r) → Z3_ast (Bool: l < r).
 claim BuildZ3MkLt(ctx_h ∈ Int, l_h ∈ Int, r_h ∈ Int, eff ∈ Effect)
     eff = LibCall("libz3", "Z3_mk_lt",
         ⟨ArgInt(ctx_h), ArgInt(l_h), ArgInt(r_h)⟩)
 
--- Z3_mk_gt(ctx, l, r) → Z3_ast (Bool: l > r).
 claim BuildZ3MkGt(ctx_h ∈ Int, l_h ∈ Int, r_h ∈ Int, eff ∈ Effect)
     eff = LibCall("libz3", "Z3_mk_gt",
         ⟨ArgInt(ctx_h), ArgInt(l_h), ArgInt(r_h)⟩)
 
--- Z3_mk_le(ctx, l, r) → Z3_ast (Bool: l ≤ r).
 claim BuildZ3MkLe(ctx_h ∈ Int, l_h ∈ Int, r_h ∈ Int, eff ∈ Effect)
     eff = LibCall("libz3", "Z3_mk_le",
         ⟨ArgInt(ctx_h), ArgInt(l_h), ArgInt(r_h)⟩)
 
--- Z3_mk_ge(ctx, l, r) → Z3_ast (Bool: l ≥ r).
 claim BuildZ3MkGe(ctx_h ∈ Int, l_h ∈ Int, r_h ∈ Int, eff ∈ Effect)
     eff = LibCall("libz3", "Z3_mk_ge",
         ⟨ArgInt(ctx_h), ArgInt(l_h), ArgInt(r_h)⟩)
 
 -- ── §4 boolean ────────────────────────────────────────────────
 
--- Z3_mk_eq(ctx, l, r) → Z3_ast (Bool: l = r; sort-polymorphic).
 claim BuildZ3MkEq(ctx_h ∈ Int, l_h ∈ Int, r_h ∈ Int, eff ∈ Effect)
     eff = LibCall("libz3", "Z3_mk_eq",
         ⟨ArgInt(ctx_h), ArgInt(l_h), ArgInt(r_h)⟩)
 
--- Z3_mk_distinct(ctx, num_args, args[]) → Z3_ast (pairwise ≠).
 claim BuildZ3MkDistinct(ctx_h ∈ Int, num_args ∈ Int, args_arr_ptr ∈ Int, eff ∈ Effect)
     eff = LibCall("libz3", "Z3_mk_distinct",
         ⟨ArgInt(ctx_h), ArgInt(num_args), ArgInt(args_arr_ptr)⟩)
 
--- Z3_mk_not(ctx, x) → Z3_ast (Bool negation).
 claim BuildZ3MkNot(ctx_h ∈ Int, x_h ∈ Int, eff ∈ Effect)
     eff = LibCall("libz3", "Z3_mk_not",
         ⟨ArgInt(ctx_h), ArgInt(x_h)⟩)
 
--- Z3_mk_and(ctx, num_args, args[]) → Z3_ast (n-ary conjunction).
 claim BuildZ3MkAnd(ctx_h ∈ Int, num_args ∈ Int, args_arr_ptr ∈ Int, eff ∈ Effect)
     eff = LibCall("libz3", "Z3_mk_and",
         ⟨ArgInt(ctx_h), ArgInt(num_args), ArgInt(args_arr_ptr)⟩)
 
--- Z3_mk_or(ctx, num_args, args[]) → Z3_ast (n-ary disjunction).
 claim BuildZ3MkOr(ctx_h ∈ Int, num_args ∈ Int, args_arr_ptr ∈ Int, eff ∈ Effect)
     eff = LibCall("libz3", "Z3_mk_or",
         ⟨ArgInt(ctx_h), ArgInt(num_args), ArgInt(args_arr_ptr)⟩)
 
--- Z3_mk_xor(ctx, l, r) → Z3_ast (Bool exclusive-or).
 claim BuildZ3MkXor(ctx_h ∈ Int, l_h ∈ Int, r_h ∈ Int, eff ∈ Effect)
     eff = LibCall("libz3", "Z3_mk_xor",
         ⟨ArgInt(ctx_h), ArgInt(l_h), ArgInt(r_h)⟩)
 
--- Z3_mk_iff(ctx, l, r) → Z3_ast (Bool bi-implication).
 claim BuildZ3MkIff(ctx_h ∈ Int, l_h ∈ Int, r_h ∈ Int, eff ∈ Effect)
     eff = LibCall("libz3", "Z3_mk_iff",
         ⟨ArgInt(ctx_h), ArgInt(l_h), ArgInt(r_h)⟩)
 
--- Z3_mk_implies(ctx, l, r) → Z3_ast (Bool implication).
 claim BuildZ3MkImplies(ctx_h ∈ Int, l_h ∈ Int, r_h ∈ Int, eff ∈ Effect)
     eff = LibCall("libz3", "Z3_mk_implies",
         ⟨ArgInt(ctx_h), ArgInt(l_h), ArgInt(r_h)⟩)
 
--- Z3_mk_ite(ctx, cond, then, else) → Z3_ast (if-then-else term).
 claim BuildZ3MkIte(ctx_h ∈ Int, cond_h ∈ Int, then_h ∈ Int, else_h ∈ Int, eff ∈ Effect)
     eff = LibCall("libz3", "Z3_mk_ite",
         ⟨ArgInt(ctx_h), ArgInt(cond_h), ArgInt(then_h), ArgInt(else_h)⟩)

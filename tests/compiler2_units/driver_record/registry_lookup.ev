@@ -1,14 +1,8 @@
 -- DriverRecord isolation — the registry read layer (RtIdxOf/RtSortOf).
---
--- RtIdxOf resolves a type name to its registry slot, and the "slot with
--- sort handle 0 is unfinished ⇒ never matches" invariant. RtSortOf maps a
--- field-type string to its Z3 sort handle (Nat aliases Int; a user type
--- resolves to its slot's sort; unknown ⇒ 0). If a lookup mis-resolves or
--- the unfinished-slot guard regresses, `ok` goes false and this prints BAD.
---
--- The registry is now a fixed ×3 array of RecTypeEntry records; each probe
--- takes the three slot records (e0/e1/e2). The slots are pinned here
--- (name + sort are the only fields these two probes read).
+-- RtIdxOf: type name → registry slot, with the "slot whose sort handle
+-- is 0 is unfinished ⇒ never matches" invariant. RtSortOf: field-type
+-- string → Z3 sort handle (Nat aliases Int; user type → its slot's sort;
+-- unknown ⇒ 0). Registry is a fixed ×3 array of RecTypeEntry slots.
 --
 -- entry: main
 -- expect: stdout = "ok"
@@ -18,29 +12,21 @@ import "compiler2/driver_ir.ev"
 import "compiler2/driver_record.ev"
 
 claim main
-    -- Registry: slot 0 = Point (sort 7, finished), slot 1 = Color
-    -- (sort 9, finished), slot 2 = empty.
     e0 ∈ RecTypeEntry(name ↦ "Point", sort ↦ 7)
     e1 ∈ RecTypeEntry(name ↦ "Color", sort ↦ 9)
     e2 ∈ RecTypeEntry(name ↦ "", sort ↦ 0)
-    -- Same registry, but slot 0 UNFINISHED (sort 0) for the miss case.
+    -- Slot 0 UNFINISHED (sort 0) for the name-present-but-unfinished miss.
     eu0 ∈ RecTypeEntry(name ↦ "Point", sort ↦ 0)
 
-    -- RtIdxOf: "Point" is slot 0 (sort handle 7, finished) → 0.
     i_pt ∈ Int
     RtIdxOf(nm ↦ "Point", e0 ↦ e0, e1 ↦ e1, e2 ↦ e2, idx ↦ i_pt)
-    -- "Color" is slot 1 → 1.
     i_co ∈ Int
     RtIdxOf(nm ↦ "Color", e0 ↦ e0, e1 ↦ e1, e2 ↦ e2, idx ↦ i_co)
-    -- "Point" name present but its slot is UNFINISHED (sort 0) → miss (-1).
     i_un ∈ Int
     RtIdxOf(nm ↦ "Point", e0 ↦ eu0, e1 ↦ e1, e2 ↦ e2, idx ↦ i_un)
-    -- absent name → miss (-1).
     i_miss ∈ Int
     RtIdxOf(nm ↦ "Zzz", e0 ↦ e0, e1 ↦ e1, e2 ↦ e2, idx ↦ i_miss)
 
-    -- RtSortOf: Int → int_h(11); Nat aliases Int → 11; user "Color" → s1(9);
-    -- unknown → 0.
     so_int ∈ Int
     RtSortOf(ty ↦ "Int", int_h ↦ 11, bool_h ↦ 12, str_h ↦ 13, real_h ↦ 14,
         iarr_h ↦ 15, e0 ↦ e0, e1 ↦ e1, e2 ↦ e2, sort ↦ so_int)

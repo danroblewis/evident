@@ -1,40 +1,12 @@
 -- WIP: replaces bootstrap/runtime/src/translate/exprs/seq_eq.rs. STATUS: C7 Seq surface → Z3 sequence theory; per-pass fixture only.
 --
--- Maps Evident's Seq surface to Z3's sequence theory:
---
---   ⟨a, b, c⟩  → (seq.++ (seq.unit a) (seq.unit b) (seq.unit c))
---   xs = ys    → (= xs ys)               -- delegated to generic eq translation
---   xs[i]      → (seq.nth xs i)
---   #xs        → (seq.len xs)
---
--- The three helpers here are pure translation claims: they take an
--- already-parsed shape (a name string, an index string, or an
--- ExprList of atomic literals) and return the SMT-LIB rendering as
--- a string. They mirror what `runtime/src/translate/exprs/seq_eq.rs`
--- emits on the Rust side.
---
--- Multi-element SeqLit walking (the unbounded-N case) is the same
--- pattern as the work-stack walkers in test_ast_walker.ev /
--- test_ast_to_text.ev: the FSM consumer pops a head cell, dispatches
--- to RenderSeqUnit for the unit emission, and accumulates the
--- pieces. The helpers below assemble the bounded shapes that the
--- B-phase AST already produces (empty, 1-item, 2-item), which
--- covers the test fixtures and the small literals in stdlib.
+-- Pure translation claims: already-parsed shapes (a name string, an
+-- index string, or an ExprList of atomic literals) in, Z3
+-- sequence-theory SMT-LIB strings out.
 
 import "compiler/parser.ev"
 
 -- ── Render one atomic Expr as `(seq.unit <X>)` ─────────────────
---
--- The B-phase Expr AST has EInt(n), EIdent(s), and EBinOp(…). For
--- a literal sequence like ⟨1, 2, 3⟩ the elements parse as EInt,
--- and for ⟨a, b, c⟩ they parse as EIdent. RenderSeqUnit covers
--- both atomic shapes; a compound subexpression would need the full
--- translator (Phase C3+).
---
--- The match pattern doesn't reach EBinOp here — only the two
--- atomic-arity variants we actually emit for. ENoExpr falls through
--- to "<nyi>" as a visible diagnostic if the caller hands us a
--- shape we don't yet render.
 
 claim RenderSeqUnit
     e ∈ Expr
@@ -57,11 +29,6 @@ claim RenderSeqUnit
     out = "(seq.unit " ++ atom_str ++ ")"
 
 -- ── #xs  →  (seq.len xs) ───────────────────────────────────────
---
--- The Rust path renders `#xs` directly to `(seq.len <translated>)`
--- — see runtime/src/translate/exprs/scalar.rs (the Card arm).
--- Here we take an already-rendered name (the result of an earlier
--- translator pass) and wrap it.
 
 claim SeqLenSmtlib
     name ∈ String
@@ -69,10 +36,6 @@ claim SeqLenSmtlib
     out = "(seq.len " ++ name ++ ")"
 
 -- ── xs[i]  →  (seq.nth xs i) ───────────────────────────────────
---
--- Indexed access lowers to Z3's `seq.nth`. The name and index are
--- already-translated strings; this claim just glues them together
--- in prefix form.
 
 claim SeqIndexSmtlib
     name ∈ String
@@ -81,23 +44,11 @@ claim SeqIndexSmtlib
     out = "(seq.nth " ++ name ++ " " ++ idx ++ ")"
 
 -- ── ⟨ … ⟩  →  (seq.++ (seq.unit a) (seq.unit b) …) ─────────────
---
--- Walks an ExprList of atomic literals and emits the Z3 sequence
--- literal. For an empty list, Z3 needs an explicit element-sort,
--- so we emit `(as seq.empty (Seq Int))` as the placeholder (the
--- caller is expected to fix up the element sort once it's threaded
--- through; this matches the Rust default for `⟨⟩`).
---
--- The bounded-shape match below covers the three cases that
--- actually appear in current `stdlib/` literals and test fixtures:
---   ELNil                              → (as seq.empty (Seq Int))
---   ELCons(e1, ELNil)                  → (seq.unit e1)
---   ELCons(e1, ELCons(e2, ELNil))      → (seq.++ (seq.unit e1) (seq.unit e2))
---
--- N≥3 element literals are the same shape as the AST walker tests:
--- a multi-tick consumer FSM that pops one cell per tick, calls
--- RenderSeqUnit, and accumulates into an output string. That FSM
--- belongs to the pipeline integration step (Phase D), not here.
+-- Empty literal: Z3 needs an explicit element-sort, so this emits
+-- `(as seq.empty (Seq Int))` — Int is a placeholder the caller must
+-- fix up once the element sort is threaded through (matches the Rust
+-- default for `⟨⟩`). Covers only the ≤2-element bounded shapes; N≥3
+-- is the work-stack walker's job (SeqConcatStep).
 
 claim SeqLitSmtlib
     items ∈ ExprList
@@ -135,20 +86,8 @@ claim SeqLitSmtlib
         : "<nyi>")
 
 -- ── Recursive seq-concat translation via a WorkItem work-stack ─────
---
--- SeqLitSmtlib above renders a bounded (≤2 element) literal. A real
--- pass walks an arbitrary nest of `++` concatenations and emits the
--- fully nested Z3 sequence form. `⟨1⟩ ++ ⟨2, 3⟩` desugars (`++`
--- flattens, `⟨2,3⟩ = ⟨2⟩ ++ ⟨3⟩`) to the concat tree
---   EBinOp(OpConcat, EInt(1), EBinOp(OpConcat, EInt(2), EInt(3)))
--- whose translation is
---   (seq.++ (seq.unit 1) (seq.++ (seq.unit 2) (seq.unit 3)))
---
--- The walk is the same depth-first work-stack as ArithTranslateStep,
--- over parser.ev's `WorkItem = WIProcess(Expr) | WIEmit(String)`. A
--- concat binop expands to `(seq.++ <P(l)> <P(r)>)`; an atom leaf emits
--- `(seq.unit <token>)`. (Empty/other shapes emit the bounded helper's
--- "<nyi>" sentinel so a mis-seeded stack is visible.)
+-- Depth-first walk over arbitrary `++` concat nests; same work-stack
+-- shape as ArithTranslateStep over parser.ev's WorkItem/WorkList.
 claim SeqConcatStep(head ∈ WorkItem, rest ∈ WorkList, new_stack ∈ WorkList, emit ∈ String)
     is_emit ∈ Bool = (head matches WIEmit(_))
     emit_lit ∈ String = match head
@@ -180,9 +119,6 @@ claim SeqConcatStep(head ∈ WorkItem, rest ∈ WorkList, new_stack ∈ WorkList
         EBinOp(_, _, r) ⇒ r
         _ ⇒ ENoExpr
 
-    -- A WIEmit head contributes its literal; an atom contributes its
-    -- `(seq.unit X)` rendering; a concat binop contributes nothing this
-    -- tick (its "(seq.++ " arrives as a pushed WIEmit on the next pop).
     unit_str ∈ String = (is_int ? "(seq.unit " ++ str_from_int(int_val) ++ ")"
         : is_ident ? "(seq.unit " ++ ident_val ++ ")"
         : "<nyi>")

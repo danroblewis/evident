@@ -1,14 +1,8 @@
--- Grammar wave 2, item 3: memberships pinned by BOOLEAN CONNECTIVES.
---
--- compiler/translate_bool.ev's BoolExprSmtlib, widened in wave 2, lowers
--- the boolean connectives (lexer single-char Unicode tokens):
+-- Compiler driver fixture: memberships pinned by BOOLEAN CONNECTIVES.
+-- BoolExprSmtlib lowers
 --   ∧ → "(and l r)"   ∨ → "(or l r)"   ⇒ → "(=> l r)"   ¬ e → "(not e)"
--- MembershipStep recognises ∧/∨/⇒ at the t5 binop position and the unary
--- ¬ at t4 (an ENot), routing both through BoolExprSmtlib. Nothing is
--- hardcoded — the String is lexed character-by-character. See
--- docs/plans/grammar-wave2.md.
---
--- Source: "claim foo\n    p ∈ Bool = x ∧ y\n …(∨ ⇒ ¬)…\n"
+-- MembershipStep recognises ∧/∨/⇒ at the t5 binop position and the
+-- unary ¬ at t4 (an ENot), routing both through BoolExprSmtlib.
 --
 -- expect: stdout = ";; manifest: state-fields = p:Bool q:Bool r:Bool s:Bool"
 -- expect: stdout = ";; manifest: effects-name = effects"

@@ -1,19 +1,6 @@
--- Grammar wave 1, shape 1: a claim body with MULTIPLE memberships.
---
--- The MVP driver handled exactly one membership + one `= N` pin, parsed
--- by peeling fixed token positions in a single emit tick. This fixture
--- proves the generalised driver: lex the source to a (reverse) TokenList,
--- reverse it to forward order, then walk it ONE MEMBERSHIP PER TICK with
--- compiler/parse_body.ev's MembershipStep, emitting a declare-fun per
--- membership. Nothing is hardcoded as tokens/AST — the String below is
--- lexed character-by-character (see compiler/compiler.ev for the same
--- pipeline reading its input from disk). See docs/plans/grammar-wave1.md.
---
--- Source: "claim foo\n    x ∈ Int\n    y ∈ Int\n"  →
---   ;; manifest: state-fields = x:Int y:Int
---   ;; (… fixed manifest lines …)
---   (declare-fun x () Int)
---   (declare-fun y () Int)
+-- Claim body with MULTIPLE memberships, walked ONE MEMBERSHIP PER TICK
+-- by MembershipStep (one declare-fun each). Nothing is hardcoded as
+-- tokens/AST — the source string is lexed character-by-character.
 --
 -- expect: stdout = ";; manifest: state-fields = x:Int y:Int"
 -- expect: stdout = ";; manifest: effects-name = effects"

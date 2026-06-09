@@ -2,16 +2,12 @@
 -- bindings (composition mechanism #5), including EXPRESSION values:
 --
 --   AcceptBool(p ↦ (x > 3), out ↦ result)
---   AcceptInt(n ↦ (a + b), out ↦ r)
---   BuildPrintln(s ↦ "hi", eff ↦ eff)
 --
--- This is the self-hosted port of bootstrap's expr_as_var (commit
--- c817c6c): a slot's bound value may be an atom (name / literal) or a
--- compound scalar expression. CallArgsStep parses the call site off the
--- front of `rem`, renders each value via SPrim2
--- (compiler/translate_scalar_expr.ev), and returns a substitution table
--- the driver's pmode-4 inliner applies while splicing the callee's body
--- tokens into the walk (compiler/sample.ev).
+-- A slot's bound value may be an atom (name / literal) or a compound
+-- scalar expression. CallArgsStep parses the call site off the front of
+-- `rem`, renders each value via SPrim2 (compiler/translate_scalar_expr.ev),
+-- and returns a substitution table the driver's pmode-4 inliner applies
+-- while splicing the callee's body tokens into the walk (compiler/sample.ev).
 --
 -- Table format: one `|<slot>#<rendered>;` entry per binding, e.g.
 --   |p#(> x 3);|out#result;
@@ -35,7 +31,6 @@ claim CallArgsStep
     rest ∈ TokenList
     ok ∈ Bool
 
-    -- Head shape: Ident "(" Ident "↦" …
     ca_t0 ∈ Token
     TLHdC(l ↦ rem, out ↦ ca_t0)
     ca_l1 ∈ TokenList
@@ -62,7 +57,6 @@ claim CallArgsStep
         Ident(s) ⇒ s
         _ ⇒ ""
 
-    -- Binding 1 value.
     ca_v1o ∈ String
     ca_v1r ∈ TokenList
     ca_v1k ∈ Bool
@@ -72,7 +66,6 @@ claim CallArgsStep
     ca_d1_close ∈ Bool = (ca_d1 matches RParen)
     ca_d1_comma ∈ Bool = (ca_d1 matches Comma)
 
-    -- Binding 2: `, Ident ↦ value`.
     ca_b2 ∈ TokenList
     TLTlC(l ↦ ca_v1r, out ↦ ca_b2)
     ca_t4 ∈ Token
@@ -96,7 +89,6 @@ claim CallArgsStep
     ca_d2_close ∈ Bool = (ca_d2 matches RParen)
     ca_d2_comma ∈ Bool = (ca_d2 matches Comma)
 
-    -- Binding 3: `, Ident ↦ value`.
     ca_b3 ∈ TokenList
     TLTlC(l ↦ ca_v2r, out ↦ ca_b3)
     ca_t6 ∈ Token

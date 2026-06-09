@@ -1,11 +1,4 @@
--- Conformance tests for Stage 0a enums (nullary variants only).
---
--- Run with:
---     evident test tests/lang_tests/test_enums_basic.ev
---
--- Nullary variants pre-populate env at evaluate time so bare
--- identifiers (`Mon`, `Tue`, …) resolve as enum constants. Equality
--- and inequality dispatch via Z3 _eq on the underlying datatype.
+-- Conformance tests for enums with nullary variants only.
 
 enum Day = Mon | Tue | Wed | Thu | Fri | Sat | Sun
 

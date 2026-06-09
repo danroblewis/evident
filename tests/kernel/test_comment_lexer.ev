@@ -1,19 +1,7 @@
--- Comment skipping (iter 3.7).
---
--- Walks "x = 5 -- this is a comment\ny = 7\n" and skips the "--" line
--- comment. Uses a `mode` state field: 0 = normal, 1 = inside comment.
---
--- Mode transitions:
---   Mode 0 → Mode 1 when cur_char = "-" AND next_char = "-"
---   Mode 1 → Mode 0 when cur_char = "\n"
---   Else: stay in current mode
---
--- This generalises: any context-sensitive lexer mode (string literal,
--- nested block comment, raw string, …) uses the same pattern.
---
--- The diagnostic output prints what each tick saw; the actual lex of
--- the comment line is 19 ticks of "(in-comment)" (one per char of
--- " this is a comment").
+-- Comment skipping: walks "x = 5 -- this is a comment\ny = 7\n" and
+-- skips the "--" line comment. `mode` state: 0 = normal, 1 = inside
+-- comment; enters on "-"+"-" lookahead, exits on "\n". The 19
+-- "(in-comment)" ticks are one per char of " this is a comment".
 --
 -- expect: stdout = "ch: x"
 -- expect: stdout = "  ws"

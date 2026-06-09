@@ -1,25 +1,9 @@
 -- Tests for binding an EXPRESSION (not just a variable name or literal)
--- to a claim-composition slot via `↦`. Currently failing.
---
--- The pattern under test:
---
---     claim Helper(p ∈ Bool, out ∈ Bool)
---         out = p
---
---     claim sat_passes_expr
---         x ∈ Int = 5
---         result ∈ Bool
---         Helper(p ↦ (x > 3), out ↦ result)
---         result = true
---
--- Today every slot binding in the corpus is `slot ↦ name` or `slot ↦
--- literal` — there is zero exercise of `slot ↦ (some expression)`.
--- Compiler.smt2 doesn't recognize an expression on the RHS of `↦`, so
--- these claims either drop the binding entirely (sat tests become
--- vacuously sat or unsat for the wrong reason) or fail to compile.
---
--- All `sat_*` tests below should be sat; all `unsat_*` should be unsat.
--- A red bar against any of them is the gap this file is meant to flag.
+-- to a claim-composition slot via `↦`. Currently failing: compiler.smt2
+-- doesn't recognize an expression on the RHS of `↦`, so these claims
+-- either drop the binding entirely (sat tests become vacuously sat or
+-- unsat for the wrong reason) or fail to compile. A red bar against any
+-- of them is the gap this file is meant to flag.
 
 -- ── Bool expression in a Bool slot ──────────────────────────────
 
@@ -92,8 +76,7 @@ claim sat_pass_negation
     AcceptBool(p ↦ (¬(x > 10)), out ↦ result)
     result = true
 
--- ── Nested expression: composition's slot value is itself an
---    expression that includes a sub-expression ──────────────────
+-- ── Nested expression in a slot ─────────────────────────────────
 
 claim sat_pass_nested_arith
     a ∈ Int = 2

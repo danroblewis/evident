@@ -1,15 +1,10 @@
 -- compiler2/translate2_ctor.ev — P2: enum/datatype declaration + constructor
 -- application as Z3-AST-building per-STEP claims.
 --
--- ── Architecture (the compiler2 convention) ─────────────────────────────
---
--- Each claim binds parsed enum data (parser.ev's EnumDeclAst /
--- EnumVariantDecl / EVFieldList) to ONE Z3-builder LibCall — the `eff`
--- for one FSM tick. The DRIVER owns the walking strategy: it sequences
--- these steps one libcall per tick (every libcall's return lands in
--- `last_results` on the NEXT tick), captures handles into Int state,
--- and threads them into the next step. Same separation as
--- compiler/translate_arith.ev's BuildZ3 claims; same proven C-API
+-- Each claim binds parsed enum data to ONE Z3-builder LibCall — the
+-- `eff` for one FSM tick. The DRIVER owns the walking strategy: one
+-- libcall per tick (every libcall's return lands in `last_results` on
+-- the NEXT tick), handles captured into Int state. Same proven C-API
 -- sequence as tests/kernel/z3_datatypes/sugar_datatypes.ev:
 --
 --   mk_string_symbol (per variant: name + recognizer + one per field)
@@ -19,18 +14,9 @@
 --     → query_constructor (per variant: ctor decl / tester / accessors)
 --     → mk_app (apply the harvested decls)
 --
--- ── Why the legacy Exit(3+4) bug class disappears BY CONSTRUCTION ──────
---
--- The legacy pass (compiler/translate_ctor.ev) rendered constructor
--- application as TEXT via depth-unrolled RenderExprL0/L1/L2/L3: each
--- level only recognised children one level shallower, so a compound
--- argument below the unroll floor — `Exit(3 + 4)`, an arith binop where
--- L0 expects an atom — silently rendered as the empty string and the
--- constraint dropped (`(assert (= eff ))`). Here a constructor argument
--- is a Z3_ast HANDLE (an Int). Whatever pass built that node — arith,
--- bool, a nested ctor app, a quantifier — its handle is the same i64,
--- and CtorAppStep neither knows nor cares how deep the tree behind it
--- is. There is no renderer to be incomplete: compound args come free.
+-- Constructor arguments here are Z3_ast HANDLES (i64), so compound
+-- args (`Exit(3 + 4)`) come free — unlike the legacy text renderer,
+-- which silently dropped sub-expressions below its unroll floor.
 --
 -- ── Recursive / mutually-recursive enums: sort_refs mechanics ──────────
 --
@@ -39,10 +25,9 @@
 -- A field whose type is one of the datatypes being declared in the SAME
 -- Z3_mk_datatypes call gets sorts[i] = 0 and sort_refs[i] = the index
 -- of that datatype in the call's sort list. Single recursion
--- (enum LL = Nil | Cons(Int, LL)) is the one-sort case: the LL field
--- gets sorts[1] = 0, sort_refs[1] = 0. Mutual recursion
--- (enum A = X(B) ; enum B = Y(A)) is the same mechanism with n_sorts =
--- 2 and cross-indices: A's B-field gets ref 1, B's A-field gets ref 0.
+-- (enum LL = Nil | Cons(Int, LL)): the LL field gets sorts[1] = 0,
+-- sort_refs[1] = 0. Mutual recursion (enum A = X(B) ; enum B = Y(A)):
+-- same mechanism, n_sorts = 2 with cross-indices.
 --
 -- WIDTH CAVEAT (from stdlib/z3_datatypes.ev): sort_refs[] slots are
 -- 4 bytes, but __mem only has write_long (8 bytes). One write_long at
@@ -50,22 +35,6 @@
 -- driver packs TWO refs per write: SortRefsPack2(lo, hi) = lo + hi·2³².
 -- For a single-field constructor write_long(refs_p, ref) is exactly
 -- right. field_names[] / sorts[] are unaffected (pointer-wide).
---
--- ── The Effect enum is just a datatype at this layer ───────────────────
---
--- The kernel manifest's effect-enum (ReadLine / ReadFile / WriteFile /
--- LibCall / Exit) has no special status here: EffectEnumDecl below is
--- its parsed EnumDeclAst, and the driver declares it through the same
--- step claims as any user enum. `Exit(code)` in a user program is
--- CtorAppStep on the harvested Exit decl with a code HANDLE — which,
--- per the section above, may be any built node (Exit(3 + 4) included).
---
--- Field-sort resolution scope: FieldSortSlot maps primitive field types
--- (Int / Bool / String) to driver-cached sort handles and self-references
--- to (0, ref). Non-primitive non-self field types (another enum, a Seq
--- sort — e.g. LibCall's Seq(LibArg)) resolve through the DRIVER's sort
--- registry; that registry is P3 wiring, not per-step shape, so it lives
--- with the driver.
 
 import "compiler/parser.ev"
 import "stdlib/z3_ast.ev"
@@ -165,12 +134,12 @@ claim VariantFieldSymStep(ctx_h ∈ Int, v ∈ EnumVariantDecl, idx ∈ Int, eff
     BuildZ3MkStringSymbol(ctx_h ↦ ctx_h, name ↦ vfs_acc, eff ↦ eff)
 
 -- FieldSortSlot: resolve one payload field's (sorts[i], sort_refs[i])
--- pair. Self-reference (ty = the enum being declared) → (0, self_sort_idx)
--- per the sort_refs mechanics in the header; primitives map to the
--- driver's cached sort handles with ref 0 (ignored by Z3 when
--- sorts[i] ≠ 0). Unknown types also yield (0, self_sort_idx ⊥ 0) only
--- when self — otherwise (0, 0) with is_self false, which the driver
--- must resolve from its own sort registry before writing the slot.
+-- pair. Self-reference → (0, self_sort_idx) per the header mechanics;
+-- primitives map to the driver's cached sort handles with ref 0
+-- (ignored by Z3 when sorts[i] ≠ 0). Non-primitive non-self types
+-- (another enum, a Seq sort — e.g. LibCall's Seq(LibArg)) come out
+-- (0, 0) with is_self false — the DRIVER must resolve them from its
+-- own sort registry before writing the slot.
 claim FieldSortSlot(
         enum_name ∈ String, ty ∈ String,
         int_sort_h ∈ Int, bool_sort_h ∈ Int, string_sort_h ∈ Int,
@@ -189,10 +158,9 @@ claim SortRefsPack2(ref_lo ∈ Int, ref_hi ∈ Int, packed ∈ Int)
     packed = ref_lo + ref_hi * 4294967296
 
 -- VariantMkConstructorStep: the Z3_mk_constructor call for one variant.
--- Field arity comes from the parsed variant itself; for a nullary
--- variant the three array pointers are forced to 0 (the C API's null
--- contract, proven by sugar_datatypes phase 10), so the driver may pass
--- its arena pointers unconditionally.
+-- For a nullary variant the three array pointers are forced to 0 (the
+-- C API's null contract, proven by sugar_datatypes phase 10), so the
+-- driver may pass its arena pointers unconditionally.
 -- The driver must have populated, on PRIOR ticks:
 --   fnames_p — n write_long slots, each a VariantFieldSymStep handle
 --   fsorts_p — n write_long slots, each a FieldSortSlot sort_slot

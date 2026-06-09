@@ -1,13 +1,7 @@
 -- DriverCompose isolation — slot-call name capture through cw_st.
---
--- Drives the pmode-10 slot-call walk: with in_parse/pmode 10 held and the
--- frame idle (cw_st 0, cw_bare false), cw_cap advances cw_st 0→1; on the
--- next tick d_in_cw1 is live and the window head `p ↦` (Ident, OpMapsto)
--- makes cw_slot fire, capturing cw_slot_nm into cs_n0 (slot index 0). We
--- exit reporting cs_n0 — it must read "p". This exercises the cw_st state
--- machine, the slot recognizer, the slot-name decode, and the cs_n0 write
--- path together; any of them regressing changes the captured name.
---
+-- pmode-10 held, frame idle: tick 1, cw_cap advances cw_st 0→1; tick 2,
+-- d_in_cw1 is live and the window head `p ↦` (Ident, OpMapsto) fires
+-- cw_slot, capturing cw_slot_nm into cs_n0 (slot index 0). Must read "p".
 -- entry: main
 -- expect: stdout = "p"
 -- expect: exit = 0

@@ -8,30 +8,21 @@
 import "compiler/parser.ev"
 
 -- ── FTI buffers: base + write cursor + capacity travel together ────
--- The recurring base+cursor+cap triple behind every FTI-resident buffer
--- (the token buffer, the symbol table, the claim index). `base` is the
--- calloc'd region start (pinned once during zinit); `count` is the
--- append cursor (carried); `cap` is the region's slot capacity (pinned).
--- The `0 ≤ count ≤ cap` invariant lifts the per-site capacity bound into
--- the type — the cursor-in-region memory-safety contract, now checked
--- every tick for every buffer rather than ad-hoc at each use-site. Plain
--- bounds like these functionize for free (see the Z3SolverCtx note for
--- the kind of invariant this type deliberately does NOT carry).
+-- The base+cursor+cap triple behind every FTI-resident buffer (token
+-- buffer, symbol table, claim index): `base` = calloc'd region start
+-- (pinned once during zinit), `count` = append cursor (carried),
+-- `cap` = slot capacity (pinned). An overrun makes the tick UNSAT —
+-- the kernel halts instead of writing out of region. Plain bounds
+-- functionize for free (see the Z3SolverCtx perf note).
 type FtiBuffer(base ∈ Int, count ∈ Int, cap ∈ Int)
-    base ≥ 0           -- a calloc'd region start, never negative
+    base ≥ 0
     cap  ≥ 0
-    0 ≤ count ≤ cap    -- the write cursor never passes the last slot;
-                       -- an overrun makes the tick UNSAT, halting the
-                       -- kernel instead of writing out of region
+    0 ≤ count ≤ cap
 
 -- ── Named FTI buffer append: cursor + parallel name registry ──────
--- The shared "append a named row" step behind every FTI buffer that
--- keeps a companion name string (the symbol table's `st_names`, the
--- claim index's `ci_names`): on the `add` gate, the cursor climbs by 1
--- and `entry` is concatenated onto the names registry; off the gate
--- both hold; on the first tick both seed. One tested definition instead
--- of a copy per consumer. Compose with the buffer's cursor + names as
--- outputs, e.g. `count ↦ stbuf.count, names ↦ st_names`.
+-- The shared "append a named row" step behind every FTI buffer with a
+-- companion name string (the symbol table's `st_names`, the claim
+-- index's `ci_names`).
 claim FtiNamedAppend(first ∈ Bool, add ∈ Bool, prev_count ∈ Int,
         prev_names ∈ String, init_count ∈ Int, seed_names ∈ String,
         entry ∈ String, count ∈ Int, names ∈ String)
@@ -41,20 +32,13 @@ claim FtiNamedAppend(first ∈ Bool, add ∈ Bool, prev_count ∈ Int,
 -- ── FTI name-registry entry: a fixed-width 32-byte "|name<pad>" row ─
 -- Every name registry stores fixed-width rows: a "|" delimiter then the
 -- name padded/truncated to 31 chars, so row N lives at a known offset.
--- The same formatter behind the symbol table's `st_entry` and the claim
--- index's `ci_entry`. Feed the resulting `entry` to FtiNamedAppend.
 claim FtiNameEntry(name ∈ String, entry ∈ String)
     entry = "|" ++ substr(name ++ "                               ", 0, 31)
 
 -- ── Z3 solver lifecycle: the three handles created together at boot ─
--- cfg → ctx → sol: the Z3 config, the context derived from it, and the
--- solver derived from the context (zinit zsteps 1/2/3). They travel as
--- one unit — every Build*Z3 effect threads `ctx`, asserts go through
--- `sol`. Pinned once during zinit, carried thereafter.
---
--- The lifecycle invariant `sol > 0 ⇒ (ctx > 0 ∧ cfg > 0)` binds the
--- relationship: a live solver implies a live context and config. It is
--- vacuous during boot (all 0) and enforced once the handles latch.
+-- cfg → ctx → sol (zinit zsteps 1/2/3). Pinned once during zinit,
+-- carried thereafter; every Build*Z3 effect threads `ctx`, asserts go
+-- through `sol`.
 --
 -- PERF NOTE — the liveness test MUST be `> 0`, not `≠ 0`. Disequality is
 -- non-convex (Z3 reads `x ≠ 0` as `x < 0 ∨ x > 0` and case-splits), and on

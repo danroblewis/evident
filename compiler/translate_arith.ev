@@ -3,19 +3,12 @@
 --
 -- ── The architectural pivot ─────────────────────────────────────
 --
--- Before the pivot (and in every other compiler/translate_*.ev today),
--- translation produced SMT-LIB TEXT via string concatenation:
---
---   "(" ++ op_str ++ " " ++ lhs_str ++ " " ++ rhs_str ++ ")"
---
--- That means the file knows SMT-LIB's grammar — paren placement,
--- operator spelling, escape rules. Wave 5a proved Evident can drive
--- libz3 directly via BuildZ3* sugar (stdlib/kernel.ev): the FSM emits
--- LibCall effects, the kernel invokes Z3_mk_add / Z3_mk_int / etc.,
--- and the return is a `Z3_ast` handle (i64) carried in the next tick's
--- `last_results`. So the pass output for an arithmetic expression is no
--- longer a String — it's a Z3_ast handle. Z3 itself does the printing
--- (Z3_ast_to_string) when text is needed at end-of-pipeline.
+-- Every other compiler/translate_*.ev pass emits SMT-LIB TEXT; the
+-- wave-5a claims here emit LibCall effects instead. The kernel invokes
+-- Z3_mk_add / Z3_mk_int / etc., and the return is a `Z3_ast` handle
+-- (i64) carried in the next tick's `last_results` — the pass output is
+-- a handle, not a String. Z3 itself prints (Z3_ast_to_string) when
+-- text is needed at end-of-pipeline.
 --
 -- See docs/plans/wave-5a-z3-in-evident.md (especially §3 on refcounting
 -- and §4 on sugar shapes) and tests/kernel/test_z3_libcall_solve.ev
@@ -25,10 +18,8 @@
 --
 -- Each claim describes ONE Z3-builder LibCall — the constraint on
 -- `eff` for the current FSM step. The CALLER's FSM threads the
--- per-tick state (capture the previous tick's IntResult into a
--- handle var, choose which claim's `eff` to use this tick, advance
--- phase). This file does not own the walking strategy; it owns the
--- "which libcall builds this AST node" choice.
+-- per-tick state; this file owns the "which libcall builds this AST
+-- node" choice, not the walking strategy.
 --
 -- The mapping is one-to-one with the old SMT-LIB spellings:
 --
@@ -41,11 +32,10 @@
 --   "(* <lhs> <rhs>)"                    Z3_mk_mul(ctx, 2, args)
 --   "(div <lhs> <rhs>)"                  Z3_mk_div(ctx, lhs, rhs)
 --
--- Reading the rendered text back out (for, say, asserting on the
--- output in a test fixture) is two extra libcalls — Z3_ast_to_string
--- to get a `const char *` then __cstr.copy(ptr) to recover the bytes
--- as an Evident String. See BuildZ3AstToString / BuildCstrCopy in
--- stdlib/kernel.ev for the wrappers.
+-- Reading the rendered text back out is two extra libcalls —
+-- Z3_ast_to_string for the `const char *`, then __cstr.copy(ptr) to
+-- recover the bytes as an Evident String (BuildZ3AstToString /
+-- BuildCstrCopy in stdlib/kernel.ev).
 --
 -- ── Array marshaling note ───────────────────────────────────────
 --
@@ -64,10 +54,9 @@ import "stdlib/kernel.ev"
 -- ── AtomBuildZ3: pick the libcall that builds the Z3_ast for an
 --    atomic Expr (EInt or EIdent). The caller supplies the cached
 --    int_sort_h (one BuildZ3MkIntSort at FSM init) and — for the
---    EIdent case — a sym_h obtained from a prior BuildZ3MkStringSymbol
---    call with the ident's name. `ok` is true iff the Expr is one
---    of the two supported atoms; on the false fallthrough `eff` is a
---    no-op Time call (so the Effect literal is well-formed).
+--    EIdent case — a sym_h from a prior BuildZ3MkStringSymbol call.
+--    On the ok=false fallthrough `eff` is a no-op Time call (so the
+--    Effect literal is well-formed).
 claim AtomBuildZ3(ctx_h ∈ Int, int_sort_h ∈ Int, sym_h ∈ Int, e ∈ Expr, eff ∈ Effect, ok ∈ Bool)
     is_int   ∈ Bool = (e matches EInt(_))
     is_ident ∈ Bool = (e matches EIdent(_))
@@ -83,21 +72,18 @@ claim AtomBuildZ3(ctx_h ∈ Int, int_sort_h ∈ Int, sym_h ∈ Int, e ∈ Expr, 
             ⟨ArgInt(ctx_h), ArgInt(sym_h), ArgInt(int_sort_h)⟩)
         : LibCall("libc", "time", ⟨ArgInt(0)⟩))
 
--- ── AtomIdentName: extract the name from an EIdent so the caller's
---    FSM can feed it to BuildZ3MkStringSymbol. EInt and ENoExpr fall
---    through to "".
+-- ── AtomIdentName: extract the EIdent name for BuildZ3MkStringSymbol;
+--    "" otherwise.
 claim AtomIdentName(e ∈ Expr, name ∈ String)
     name = match e
         EIdent(s) ⇒ s
         _ ⇒ ""
 
--- ── ArithBinopBuildZ3: pick the libcall that builds the Z3_ast for a
---    one-level arithmetic binop, given the operand handles already
---    built on prior ticks. For OpPlus/OpSub/OpMul the caller must
---    pre-populate args_arr_ptr (a 16-byte buffer with two i64 slots,
---    each holding one operand handle); for OpDiv args_arr_ptr is
---    ignored (Z3_mk_div is binary). `ok` is true iff op is one of
---    the four arithmetic operators.
+-- ── ArithBinopBuildZ3: pick the libcall for a one-level arithmetic
+--    binop, given operand handles built on prior ticks. For
+--    OpPlus/OpSub/OpMul the caller must pre-populate args_arr_ptr
+--    (a 16-byte buffer with two i64 slots, one operand handle each);
+--    for OpDiv args_arr_ptr is ignored (Z3_mk_div is binary).
 claim ArithBinopBuildZ3(
         ctx_h ∈ Int, op ∈ Op,
         l_h ∈ Int, r_h ∈ Int, args_arr_ptr ∈ Int,
@@ -122,9 +108,8 @@ claim ArithBinopBuildZ3(
         : LibCall("libc", "time", ⟨ArgInt(0)⟩))
 
 -- ── BinopIsArray: true iff the binop's Z3 spelling takes an args
---    array (Z3_mk_add/sub/mul) versus a binary signature (Z3_mk_div).
---    The caller's FSM uses this to skip the malloc + write_long
---    ceremony when op is OpDiv.
+--    array (add/sub/mul) vs binary (div); lets the caller skip the
+--    malloc + write_long ceremony for OpDiv.
 claim BinopIsArray(op ∈ Op, out ∈ Bool)
     is_plus ∈ Bool = (op matches OpPlus)
     is_sub  ∈ Bool = (op matches OpSub)
@@ -132,11 +117,7 @@ claim BinopIsArray(op ∈ Op, out ∈ Bool)
     out = (is_plus ∨ is_sub ∨ is_mul)
 
 -- ── ArithExprBinopParts: decompose a one-level EBinOp into its
---    (op, lhs, rhs). Caller uses this to drive the per-binop FSM
---    sequence: build lhs handle, build rhs handle, then build the
---    binop with both. Mirrors the destructuring the old
---    ArithExprSmtlib did inline. ENoExpr fallthrough gives OpPlus
---    and (ENoExpr, ENoExpr) so the constraints stay well-formed.
+--    (op, lhs, rhs).
 claim ArithExprBinopParts(e ∈ Expr, op ∈ Op, lhs ∈ Expr, rhs ∈ Expr, is_binop ∈ Bool)
     is_binop = (e matches EBinOp(_, _, _))
     op = match e
@@ -151,31 +132,17 @@ claim ArithExprBinopParts(e ∈ Expr, op ∈ Op, lhs ∈ Expr, rhs ∈ Expr, is_
 
 -- ── Recursive arithmetic translation via a WorkItem work-stack ─────
 --
--- The atomic claims above handle one node at a time. Walking an
--- arbitrary Expr tree like `3 + 4 * 5` is a depth-first traversal
--- driven by a work-stack carried across FSM ticks. The work-stack
--- here is a stack of WorkItem (parser.ev's WIProcess / WIEmit) cons-
--- list — same shape the SMT-LIB text variant used. The semantics
--- differ at the leaves: instead of emitting STRING fragments, each
--- step emits a LibCall EFFECT, and the FSM stitches the resulting
--- handles together via a parallel handle stack.
---
--- A `WIProcess(EBinOp(op, l, r))` step expands the top of the stack
--- to push the operands (head-first), so a pre-order pop sequence
--- evaluates l, then r, then the binop builder. The caller's FSM
--- captures each tick's returned IntResult, treats it as a Z3_ast
--- handle, and pushes onto the handle stack; a WIBuild marker
--- (carrying op) tells the FSM to pop two handles, build the binop,
--- and push its handle.
---
--- This file's contribution is the per-step transition (which Effect
--- to emit and how to reshape the work-stack); the handle stack
--- bookkeeping lives in the caller's FSM (the same separation
--- ArithTranslateStep used for the text variant).
---
--- For an MVP the caller can bypass the full work-stack and use the
--- atomic claims directly when the Expr depth is bounded — that's the
--- pattern test_translate_arith_via_z3.ev uses.
+-- Depth-first walk over an Expr tree, carried across FSM ticks on a
+-- WorkItem cons-list. Each leaf step emits a LibCall EFFECT; the
+-- caller's FSM captures each tick's returned IntResult as a Z3_ast
+-- handle on a parallel handle stack. A `WIProcess(EBinOp(op, l, r))`
+-- expands the stack head-first, so pops evaluate l, then r, then a
+-- WIEmit op marker telling the FSM to pop two handles and run
+-- ArithBinopBuildZ3. This file owns the per-step transition (which
+-- Effect + how to reshape the stack); the handle-stack bookkeeping
+-- lives in the caller. For bounded Expr depth the caller can bypass
+-- the work-stack and use the atomic claims directly
+-- (test_translate_arith_via_z3.ev).
 
 claim ArithTranslateStepZ3(
         ctx_h ∈ Int, int_sort_h ∈ Int, sym_h ∈ Int,
@@ -205,12 +172,9 @@ claim ArithTranslateStepZ3(
         EBinOp(_, _, r) ⇒ r
         _ ⇒ ENoExpr
 
-    -- A WIProcess of a leaf atom emits the corresponding builder; a
-    -- WIProcess of a binop emits nothing this tick — it just expands
-    -- the work-stack so subsequent ticks build the operands and then
-    -- the binop. A WIEmit marker is consumed by the FSM's handle-
-    -- stack bookkeeping (signaled via want_emit + the head literal),
-    -- not by an Effect.
+    -- A WIEmit marker is consumed by the FSM's handle-stack
+    -- bookkeeping (signaled via want_emit + the head literal), not by
+    -- an Effect; a binop WIProcess emits nothing this tick either.
     want_emit = is_emit
 
     eff = (is_int
@@ -221,14 +185,10 @@ claim ArithTranslateStepZ3(
             ⟨ArgInt(ctx_h), ArgInt(sym_h), ArgInt(int_sort_h)⟩)
         : LibCall("libc", "time", ⟨ArgInt(0)⟩))
 
-    -- Stack reshape mirrors the text variant: a binop becomes a
-    -- 7-item run "WIEmit(op_marker) WIProcess(lhs) WIProcess(rhs)
-    -- ... ", but the FSM only needs the op marker after the two
-    -- operands have produced handles. We re-use the WIEmit head as
-    -- "after both operands, build the binop" by encoding op as the
-    -- string ("+", "-", "*", "div"). The caller's FSM reads the
-    -- emit literal and runs ArithBinopBuildZ3 with the popped
-    -- handles + the matching args buffer.
+    -- The "build the binop after both operands" marker is a WIEmit
+    -- whose literal encodes op as the string "+", "-", "*", or "div".
+    -- The caller's FSM reads the emit literal and runs
+    -- ArithBinopBuildZ3 with the popped handles + matching args buffer.
     is_plus ∈ Bool = (op matches OpPlus)
     is_sub  ∈ Bool = (op matches OpSub)
     is_mul  ∈ Bool = (op matches OpMul)
@@ -247,15 +207,11 @@ claim ArithTranslateStepZ3(
 
 -- ── Legacy SMT-LIB-text claims (kept for other passes) ────────────
 --
--- The pivot above is one-step migration of the arith arm to libz3
--- AST builders. But every OTHER pass in compiler/translate_*.ev
--- (parse_body.ev, translate_quant.ev, translate_ternary.ev,
--- translate_seq.ev, translate_ctor.ev, translate_match.ev,
--- translate_bool.ev) still composes the text-emitting names below.
--- Removing them would break those passes; per the task constraints
--- ("Do not touch other translate_*.ev files in this session") we
--- keep them as a parallel surface until each pass is migrated. New
--- code MUST prefer the BuildZ3-emitting claims above.
+-- Every OTHER pass in compiler/translate_*.ev (parse_body.ev,
+-- translate_quant/ternary/seq/ctor/match/bool.ev) still composes the
+-- text-emitting names below; removing them breaks those passes. They
+-- stay as a parallel surface until each pass is migrated. New code
+-- MUST prefer the BuildZ3-emitting claims above.
 
 -- AtomSmtlib: render an EInt/EIdent/EStr leaf to its SMT-LIB token.
 claim AtomSmtlib(e ∈ Expr, out ∈ String, ok ∈ Bool)
@@ -315,9 +271,8 @@ claim ArithExprSmtlib(e ∈ Expr, out ∈ String, ok ∈ Bool)
     out = (ok ? "(" ++ op_str_x ++ " " ++ lhs_str_x ++ " " ++ rhs_str_x ++ ")" : "")
 
 -- ArithTranslateStep: the per-tick transition for a depth-first AST
--- walker that emits SMT-LIB text. See the long comment in the
--- pre-pivot version of this file (now in git history) for the work-
--- stack semantics.
+-- walker that emits SMT-LIB text (pre-pivot semantics; see git history
+-- for the work-stack narration).
 claim ArithTranslateStep(head ∈ WorkItem, rest ∈ WorkList, new_stack ∈ WorkList, emit ∈ String)
     is_emit_t ∈ Bool = (head matches WIEmit(_))
     emit_lit_t ∈ String = match head

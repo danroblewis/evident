@@ -1,11 +1,8 @@
--- Wave 5b — drive libffi (ffi_prep_cif + ffi_call) directly from
--- an Evident FSM, without going through the kernel's built-in
--- LibCall dispatch for the actual target. This proves the
--- trampoline-in-Evident path: Evident builds the CIF, gets a
--- function pointer, invokes ffi_call, reads the result back.
---
--- Target call: `getpid()` from libc — no args, returns pid_t (i32).
--- Result must be > 0 for the test to pass.
+-- Drive libffi (ffi_prep_cif + ffi_call) directly from an Evident FSM,
+-- bypassing the kernel's built-in LibCall dispatch for the target:
+-- Evident builds the CIF, resolves the fn pointer, invokes ffi_call,
+-- reads the result. Target: getpid() from libc (no args, returns
+-- pid_t i32); pid must be > 0 to pass.
 --
 -- Layout:
 --   tick 0  malloc(48)                                ── cif buffer

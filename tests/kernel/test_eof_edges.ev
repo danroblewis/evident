@@ -1,15 +1,7 @@
--- EOF-edge handling (Phase A7).
---
--- Walks input "abc" (NO trailing whitespace, NO newline) and verifies
--- the final ident is still emitted before halt. Same fsm shape as
--- test_multichar_ident.ev — the difference is the input file has no
--- terminator, so the `done ∨ ¬is_alpha` finish path is the ONLY way the
--- final token gets flushed.
---
--- The Rust lexer (runtime/src/lexer.rs) has equivalent semantics: a
--- digit/ident run at EOF flushes one final token before the lexer
--- terminates. This test pins the self-hosted lexer to the same contract.
---
+-- EOF-edge handling (Phase A7): walks "abc" (NO trailing whitespace or
+-- newline) and verifies the final ident still flushes before halt —
+-- the `done ∨ ¬is_alpha` finish path is the ONLY flush route. Pins the
+-- self-hosted lexer to the Rust lexer's flush-at-EOF contract.
 -- expect: stdout = "  start: a"
 -- expect: stdout = "  cont: b"
 -- expect: stdout = "  cont: c"

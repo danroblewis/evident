@@ -1,13 +1,7 @@
--- DriverZInit isolation — the zstep counter advances and a handle
--- latches at its named step.
---
--- Drives the Z3-lifecycle latch bank standalone with the ED hold
--- released (ed_act 0, ed_src 4 ⇒ ed_hold false), so zstep is free to
--- climb −2,−1,0,1,… one per tick. The int-sort handle z3sorts.isort must
--- capture d_cap_int (driven to 42) at EXACTLY zstep = 5 and hold it
--- thereafter. We let zstep itself drive the exit (≥ 6) and report
--- z3sorts.isort. If the counter skips/stalls, or the latch reads the wrong
--- step, z3sorts.isort stays 0 (or never reaches the exit) and this fails.
+-- DriverZInit isolation — zstep climbs −2,−1,0,1,… one per tick with the
+-- ED hold released (ed_act 0, ed_src 4 ⇒ ed_hold false). z3sorts.isort
+-- must latch d_cap_int (42) at EXACTLY zstep = 5 and hold; zstep ≥ 6
+-- drives the exit. A skipped step or wrong-step latch ⇒ isort stays 0.
 --
 -- entry: main
 -- expect: stdout = "42"
@@ -17,18 +11,15 @@ import "compiler2/driver_ir.ev"
 import "compiler2/driver_zinit.ev"
 
 fsm main
-    -- ED hold released: ed_hold = (ed_act ≠ 0 ∨ ed_src < 4) = false.
     ed_act ∈ Int
     ed_act = (is_first_tick ? 0 : _ed_act)
     ed_src ∈ Int
     ed_src = (is_first_tick ? 4 : _ed_src)
-    -- The per-tick IntResult capture the bank latches; held live at 42.
     d_cap_int ∈ Int
     d_cap_int = (is_first_tick ? 42 : _d_cap_int)
     ..DriverZInit
-    -- DriverZInit pins the FtiBuffer bases (tbuf/cibuf) but their write
-    -- cursors are driven by DriverLex/DriverClaimIdx, absent here; stub
-    -- the counts so the carried record fields have a covering assignment.
+    -- Cursors normally driven by DriverLex/DriverClaimIdx (absent here);
+    -- stub them so the carried record fields have a covering assignment.
     tbuf.count = (is_first_tick ? 0 : _tbuf.count)
     stbuf.count = (is_first_tick ? 0 : _stbuf.count)
     cibuf.count = (is_first_tick ? 0 : _cibuf.count)

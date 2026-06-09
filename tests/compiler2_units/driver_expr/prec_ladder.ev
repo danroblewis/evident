@@ -1,9 +1,6 @@
 -- DriverExpr isolation — happy path: the oracle-verified precedence
 -- ladder (C2Prec). ⇒ is 1 and right-assoc; ∨ 3; ∧ 4; the comparison
--- ops fold at 5 (chain=true); + - 6; * / 7. If the ladder is reordered
--- or an op's level/assoc/chain flag regresses, `ok` goes false and this
--- prints BAD.
---
+-- ops fold at 5 (chain=true); + - 6; * / 7.
 -- entry: main
 -- expect: stdout = "ok"
 -- expect: exit = 0

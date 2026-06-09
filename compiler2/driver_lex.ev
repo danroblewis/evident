@@ -54,13 +54,12 @@ fsm DriverLex
     in_strlit  ∈ Bool
     partial_strlit  ∈ String
 
-    -- A2 (gap census): escape-pending mode. `\` inside a strlit
-    -- appends nothing and arms esc_pend; the NEXT char appends its
-    -- EscapeChar translation (\t \n \" \\ → the real byte — the
-    -- legacy lexer's table, runtime/src/lexer.rs). An escaped quote
-    -- does NOT close the literal. Unknown escapes pass the char
-    -- through (the oracle lex-errors; the driver has no error
-    -- channel — the corpus only carries the four).
+    -- Escape-pending mode: `\` inside a strlit appends nothing and
+    -- arms esc_pend; the NEXT char appends its EscapeChar translation
+    -- (\t \n \" \\ → the real byte). An escaped quote does NOT close
+    -- the literal. Unknown escapes pass the char through (the oracle
+    -- lex-errors; the driver has no error channel — the corpus only
+    -- carries the four).
     is_bs ∈ Bool
     IsBackslash(c ↦ cur_char, out ↦ is_bs)
     esc_tr ∈ String
@@ -94,7 +93,7 @@ fsm DriverLex
     int_finishing  ∈ Bool = (was_collecting_int ∧ ((¬is_dig ∧ in_range) ∨ done))
     int_starting   ∈ Bool = ((¬was_collecting_int) ∧ (¬was_collecting_str) ∧ is_dig ∧ in_range ∧ ¬_in_strlit)
 
-    -- G2: FloatLit — `3.14`. An int collecting into `.`-then-digit
+    -- FloatLit — `3.14`. An int collecting into `.`-then-digit
     -- latches the whole part and re-enters int collection for the
     -- fraction (lx_fr armed); the fraction finishing writes ONE
     -- FloatLit token (tag 4, p0 = scaled·8 + digits) — plus the

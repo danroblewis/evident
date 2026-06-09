@@ -1,12 +1,9 @@
--- Real multi-tick I/O: read a file, write its contents back, puts confirmation.
---
--- Setup (in the test driver): write "Hello from the file!\n" to
+-- Multi-tick I/O: read a file, write contents back, puts confirmation.
+-- Setup (test driver): writes "Hello from the file!\n" to
 -- /tmp/evident_kernel_io_input.txt before running.
---
 -- Tick 0: ReadFile → StringResult(contents) into last_results
 -- Tick 1: extract contents via match, WriteFile out
 -- Tick 2: puts "wrote it", Exit(0)
---
 -- expect: stdout = "wrote it"
 -- expect: exit = 0
 import "stdlib/kernel.ev"

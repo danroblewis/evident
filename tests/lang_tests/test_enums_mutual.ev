@@ -1,13 +1,7 @@
--- Conformance tests for Stage 0c: forward refs, mutual recursion,
--- multi-line variant syntax.
---
--- Run with:
---     evident test tests/lang_tests/test_enums_mutual.ev
---
--- All enums in a single load go through Z3's create_datatypes
--- batched build, so any enum can reference any other in this
--- file's payload positions — including itself, ones declared
--- later, or in cycles (Expr ↔ Stmt).
+-- Conformance tests for enum forward refs, mutual recursion, and
+-- multi-line variant syntax. All enums in a single load go through
+-- Z3's create_datatypes batched build, so any enum can reference any
+-- other — itself, ones declared later, or cycles (Expr ↔ Stmt).
 
 -- ── Forward reference: Expr declared first, references BinOp ────
 
@@ -209,10 +203,7 @@ claim sat_hybrid_pipe_and_newline
     h ∈ HybridLayout
     h = C
 
--- ── Cross-batch reference: enum in one load referring to one
---    declared in a previous load is exercised by the import path
---    in earlier files. (Both ast.ev and the test file's imports
---    cover this implicitly.) Spot-check it explicitly:
+-- ── Cross-batch reference spot-check ────────────────────────────
 
 enum LocalRef = LRA | LRB
 

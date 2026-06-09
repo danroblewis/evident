@@ -1,14 +1,11 @@
 -- compiler2/lex_fti.ev — FTI lexer: token push-plan claims.
 --
--- SPIKE (standalone proof; see tests/kernel/compiler2/lex_fti_fixture.ev).
--- Replaces the driver's TokenList cons-list accumulation with the FTI
--- token buffer from docs/plans/sample-ev-fti-pivot.md: ONE calloc'd
--- region, one 32-byte entry (4 i64 slots) per token, written via
--- `__mem.write_long` at `base + count*32`. The Z3-carried lexer state
--- is `tokens_base ∈ Int` + `tokens_count ∈ Int` (+ two cached tag Ints
--- for the negative-literal fold + one pending-pointer Int) — never a
--- TokenList. Tokens land in APPEND (source) order, so the driver's
--- whole REVERSE phase becomes dead weight: no pop loop, phase 0 → 2.
+-- FTI token buffer: ONE calloc'd region, one 32-byte entry (4 i64
+-- slots) per token, written via `__mem.write_long` at
+-- `base + count*32`. The Z3-carried lexer state is `tokens_base ∈ Int`
+-- + `tokens_count ∈ Int` (+ two cached tag Ints for the
+-- negative-literal fold + one pending-pointer Int) — never a
+-- TokenList. Tokens land in APPEND (source) order.
 --
 -- ── Entry encoding (mirrors stdlib/fti/token_stack.ev) ─────────────
 --   slot 0 (+0):  tag      — TokenTag_* integer discriminator
@@ -26,27 +23,20 @@
 -- pointer arrives in tick T+1's last_results[0] and is written into
 -- the entry's slot 1 by a write_long emitted at T+1 (`pend` carries
 -- the slot-1 address across the tick; -1 = nothing pending). The
--- fossil lexer's branch structure guarantees two string-carrying
--- tokens never finish on consecutive ticks, so a strdup tick never
+-- lexer's branch structure guarantees two string-carrying tokens
+-- never finish on consecutive ticks, so a strdup tick never
 -- coincides with a pending write — strdup is always effects[0].
 -- v1 leaks the strdup'd strings until process exit (same stance as
 -- stdlib/fti/token_stack.ev).
 --
 -- ── Host contract ──────────────────────────────────────────────────
--- The host FSM (compiler2/driver.ev's LEX section; the fixture
--- mirrors it) keeps the per-char scanner
--- (pos/partial_str/partial_int/in_strlit/partial_strlit/esc_pend and
--- the branch bools), binds LexFtiPlan once per tick, and:
---
--- Gap-census A1/A2 live in the HOST scanner, not in this plan: ident
--- collection continues through digits (`t0` is ONE Ident — legacy
--- is_ident_continue = alnum + `_`; an int finishing at an alpha char
--- is fi_only, so `10x` → IntLit(10) + Ident("x")), and strlit
--- collection has an escape-pending mode (\t \n \" \\ append the
--- TRANSLATED byte via compiler/lexer.ev's EscapeChar, so
--- partial_strlit — and therefore str0's strdup payload — carries the
--- real byte, matching the legacy lexer runtime/src/lexer.rs).
--- The plan claims below are unchanged by A1/A2.
+-- The host FSM (compiler2/driver.ev's LEX section) keeps the per-char
+-- scanner state and binds LexFtiPlan once per tick. Scanner rules this
+-- plan assumes: ident collection continues through digits
+-- (is_ident_continue = alnum + `_`; an int finishing at an alpha char
+-- is fi_only, so `10x` → IntLit(10) + Ident("x")), and strlit escapes
+-- (\t \n \" \\) append the TRANSLATED byte, so str0's strdup payload
+-- carries the real byte. The host also:
 --   · carries count/last_tag/prev_tag/pend as Int state, assigning
 --     count ← count_n, last_tag ← last_n, prev_tag ← prev_n,
 --     pend ← (kind = 3 ∨ kind = 5 ? a_p0 : -1);
@@ -64,11 +54,10 @@
 --     w(base + count*32, 13) — NOT counted in tokens_count — and
 --     flushes any pending write.
 --
--- The negative-literal fold (driver.ev P3b: `= -3` → IntLit(-3),
--- `10 - 13` stays binary) is decided HERE from the cached
--- last_tag/prev_tag pair instead of peeking the cons list: when the
--- fold fires, the IntLit OVERWRITES the already-written Minus entry
--- at count-1 (count_n then grows by one less).
+-- The negative-literal fold (`= -3` → IntLit(-3), `10 - 13` stays
+-- binary) is decided here from the cached last_tag/prev_tag pair:
+-- when the fold fires, the IntLit OVERWRITES the already-written
+-- Minus entry at count-1 (count_n then grows by one less).
 --
 -- Downstream (parser-side) contract: docs/plans/fti-lexer-notes.md.
 

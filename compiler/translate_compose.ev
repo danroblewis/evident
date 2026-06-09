@@ -1,44 +1,16 @@
 -- WIP: replaces bootstrap/runtime/src/translate/inline/mod.rs. STATUS: C5 claim-composition inline (one level deep); per-pass fixture only.
 --
--- The seven composition mechanisms (CLAUDE.md) all ultimately inline a
--- claim's body into the calling claim's translation. The Rust side at
--- runtime/src/translate/inline/*.rs handles this end-to-end (name
--- resolution, environment binding, body splicing).
---
--- For C5 we cover the most foundational two BodyItem flavours at the
--- *translation* surface:
---
---   #3       `..ClaimName`            — BIPassthrough(name)
---   #2/#4/#5 bare / names / mapsto    — BIClaimCall(name, _)
---
--- Both lower to a placeholder marker string of the form
---   ;; inline <name>
---   ;; call <name>
--- which the downstream Rust lookup pass replaces with the fully-inlined
--- body. The point of the Evident-side claim is to drive the dispatch:
--- recognise *which* body-item shape is at hand and emit the matching
--- marker. Membership / Constraint / Subclaim items are handled by
--- sibling claims (C2 / C3 / etc.) — for those, ComposeInline reports
--- ok=false so the caller's FSM can route them elsewhere.
---
--- This mirrors runtime/src/translate/inline/dispatch.rs's `resolve_call`
--- discriminator at the AST level: the Evident-side just emits a marker
--- the Rust resolver fills in. End-state (when generics + scoping land
--- in stdlib/) the marker becomes a full inline-body emission.
+-- Lowers the two foundational BodyItem flavours to placeholder markers:
+--   #3       `..ClaimName`            — BIPassthrough(name) → ";; inline <name>"
+--   #2/#4/#5 bare / names / mapsto    — BIClaimCall(name, _) → ";; call <name>"
+-- The downstream Rust lookup pass (runtime/src/translate/inline/
+-- dispatch.rs's `resolve_call`) replaces the marker with the
+-- fully-inlined body. Membership / Constraint / Subclaim items report
+-- ok=false so the caller routes them to sibling passes (C2 / C3 / …).
 
 import "compiler/parser.ev"
 
 -- ── ComposeInline ──────────────────────────────────────────────────
--- Recognise a BodyItem and emit the translation marker for it.
---
--- For the *Passthrough* and *ClaimCall* variants the result is a
--- one-line SMT-LIB comment naming the target claim; the Rust shim
--- resolves the name to a body and splices the inlined translation in
--- place of the marker. For every other BodyItem variant (Membership,
--- Constraint, Subclaim, NoItem) ok=false and `inlined` is the empty
--- string — the caller is responsible for dispatching those through
--- C2 / C3 / future passes.
---
 -- Vars-in-body shape (see TokenToOp in parser.ev): the per-variant
 -- Bool recognizers need the item value on the constraint side, not as
 -- a first-line param, to avoid the translator gap for

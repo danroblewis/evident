@@ -1,54 +1,20 @@
 -- WIP: replaces bootstrap/runtime/src/runtime/generics.rs. STATUS: C11 generic monomorphization (type-param substitution); per-pass fixture only.
 --
--- Self-hosts the type-parameter substitution that
--- `runtime/src/runtime/generics.rs` performs on a generic claim's
--- body when it's instantiated with a concrete type argument. For:
---
---     claim Toposort<T>
---         items ∈ Seq(T)
---         edges ∈ Seq(Edge<T>)
---
--- instantiated as `Toposort<Rect>`, the recognized membership types
--- (carried in the AST as opaque TypeRef strings by stdlib/parser.ev's
--- TName(s) variant) are rewritten:
---
---     "Seq(T)"      → "Seq(Rect)"
---     "Edge<T>"     → "Edge<Rect>"
---     "Seq(Edge<T>)" → "Seq(Edge<Rect>)"
---
--- The Rust side calls `String::replacen(p, a, 1)` once per
--- (param, arg) pair — see generics.rs::subst_type_name. We mirror
--- that with Evident's `replace(text, src, dst)` string builtin
--- (str.replace at the Z3 level — also first-occurrence-only). For
--- C11 acceptance this is the same naive substring replace as the
+-- Type-parameter substitution on the AST's opaque TName(s) type
+-- strings: "Seq(T)" → "Seq(Rect)", "Edge<T>" → "Edge<Rect>". Uses
+-- Evident's `replace` (str.replace at the Z3 level — also
+-- first-occurrence-only), the same naive substring replace as the
 -- Rust side: a `T` parameter would clobber the leading "T" of a
 -- type called "Tree" — exactly the documented Rust-side limitation.
--- A token-aware substitution is a later refinement; see the
--- C11 commit message for the limitation note.
+-- A token-aware substitution is a later refinement.
 
 import "compiler/parser.ev"
 
 -- SubstType: replace the type-parameter name `param` with the
--- concrete-type string `concrete` inside the TypeRef `t`.
---
--- Inputs:
---   t        — the TypeRef payload from a BIMembership / similar
---              AST slot. TName(s) is the only payload-carrying
---              variant; TNoType passes through unchanged.
---   param    — the type-parameter name (e.g. "T").
---   concrete — the concrete type to substitute (e.g. "Rect").
---
--- Output:
---   out — the substituted TypeRef. For TName(s), `out` is
---         TName(replace(s, param, concrete)); for TNoType, it's
---         TNoType.
---
--- Mirrors the per-membership step of
--- runtime/src/runtime/generics.rs::apply_substitution_to_body
--- (the `BodyItem::Membership { type_name, .. } => …` arm). The
--- iterating-over-(param, arg)-pairs wrapper and the
--- recurse-into-SubclaimDecl wrapper are later sub-steps; this
--- claim is the leaf substitution that each pair-iteration calls.
+-- concrete-type string `concrete` inside the TypeRef `t`. TNoType
+-- passes through unchanged. The (param, arg)-pair iteration and the
+-- recurse-into-SubclaimDecl wrappers are later sub-steps; this claim
+-- is the leaf substitution each pair-iteration calls.
 claim SubstType
     t ∈ TypeRef
     param ∈ String

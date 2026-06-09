@@ -54,7 +54,6 @@ claim sat_matches_in_implication_antecedent
     out ∈ Int
     s = Triangle(3, 4)
     s matches Triangle(_, _) ⇒ out = 99
-    -- if it didn't match, out would be unconstrained
     out = 99
 
 claim sat_matches_wildcard_pattern_always_true
@@ -65,7 +64,4 @@ claim sat_matches_wildcard_pattern_always_true
 claim sat_matches_payload_binds_treated_as_wildcards
     s ∈ Shape
     s = Circle(99)
-    -- `n` here is a binding name in pattern position, but in
-    -- matches-as-Bool form it's treated as a wildcard. This is
-    -- equivalent to `s matches Circle(_)`.
     s matches Circle(n)

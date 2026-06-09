@@ -1,9 +1,8 @@
--- The z3_readback.ev sugar, end-to-end: tick.rs's decode walks driven
--- from Evident. Builds (= x 42), then USES THE SUGAR to introspect the
--- ast (Z3DeclNameChain → the op name "="; Z3AppNumArgsStep → 2), solve,
--- read the model (Z3ModelEvalChain), and decode the numeral
--- (Z3NumeralI64Chain) — exiting with the model's value, gated on every
--- introspection result being right.
+-- The z3_readback.ev sugar, end-to-end: builds (= x 42), introspects
+-- the ast via the sugar (Z3DeclNameChain → the op name "=";
+-- Z3AppNumArgsStep → 2), solves, reads the model (Z3ModelEvalChain),
+-- decodes the numeral (Z3NumeralI64Chain) — exiting with the model's
+-- value, gated on every introspection result being right.
 --
 --   tick 0  lifecycle chain (cfg → ctx → solver → inc_ref)
 --   tick 1  build + assert (= x 42), one chained tick

@@ -27,39 +27,31 @@ fsm DriverMatchPin
     --   `_ ⇒`               wildcard arm head (2 tokens; ENDS the
     --                       match — later arms are dead, the legacy
     --                       fold rule)
-    -- C5: each arm BODY is a FULL Pratt expression — the head tick
-    -- latches (ctor, bind, is-wildcard) and re-enters the Pratt FSM
-    -- (pk_kind 4); the body expression ends at the first token that
-    -- cannot extend it (the next arm's head Ident / the next body
-    -- line / EOF). On body completion the previous PENDING arm
-    -- promotes into a tested slot and the finished arm becomes
-    -- pending; a wildcard body's completion FIRES the match.
-    -- The match also ends at the first non-arm-shaped head (the next
-    -- body line). The DEFAULT body is the wildcard's body, or — with
-    -- no wildcard — the LAST arm's body with its test dropped (the
-    -- legacy right-to-left fold contract, translate2_match.ev). At
-    -- most 2 TESTED arms (006's 3-arm match = 2 tested + default);
-    -- more bails the line. Lowering is the fossil's nested
-    -- ite-over-tester shape:
+    -- Each arm BODY is a full Pratt pass (pk_kind 4); on body
+    -- completion the previous PENDING arm promotes into a tested
+    -- slot, and a wildcard body's completion FIRES the match. The
+    -- match also ends at the first non-arm-shaped head. The DEFAULT
+    -- body is the wildcard's body, or — with no wildcard — the LAST
+    -- arm's body with its test dropped (the legacy right-to-left
+    -- fold contract, translate2_match.ev). At most 2 TESTED arms
+    -- (006's 3-arm match = 2 tested + default); more bails the line.
+    -- Lowering is the fossil's nested ite-over-tester shape:
     --   (ite ((_ is C1) scrut) b1 (ite ((_ is C2) scrut) b2 def))
-    -- C5 binds: a payload arm's bind name shadows ONLY within its
-    -- arm body — the items program brackets the body's C2Process
-    -- with C2BindScope(bind, accessor_decl)/C2BindEnd, and the
-    -- walker expands every in-scope EIdent(bind) leaf to the
-    -- accessor app over the scrutinee (mk_app(acc, scrut) — the
-    -- oracle's `(Ctor__f0 scrut)`; oracle-probed: a dropped-test
-    -- default arm's bind reads through the accessor too). Accessors
+    -- C5 binds: a payload arm's bind shadows ONLY within its arm
+    -- body — C2BindScope(bind, accessor_decl)/C2BindEnd bracket the
+    -- body's C2Process, and every in-scope EIdent(bind) leaf expands
+    -- to the accessor app over the scrutinee (the oracle's
+    -- `(Ctor__f0 scrut)`; oracle-probed: a dropped-test default
+    -- arm's bind reads through the accessor too). Testers/accessors
     -- resolve through the uev registry (field-0 decls, harvested by
     -- the ED machine's user run) + the IntResult/StringResult floor.
-    -- Testers resolve through uev + the floor as before.
     mp_st ∈ Int
     mp_name ∈ String
     mp_sc ∈ Int
     mp_lr ∈ Bool
     mp_idx ∈ Int
     mp_scrut ∈ String
-    -- arm-head latches (C5: the head tick latches these, then the
-    -- body parses through the Pratt FSM under pk_kind 4)
+    -- arm-head latches
     mp_ac ∈ String
     mp_ab ∈ String
     mp_awc ∈ Bool

@@ -1,14 +1,7 @@
--- Grammar wave 4k, Item 2: implication body line `LHS ⇒ RHS`.
---
--- A line `name op atom ⇒ name2 op2 atom2` lowers to a single
--- `(assert (=> <lhs> <rhs>))` (compiler/parse_body.ev MembershipStep,
--- ms_is_impl) — detected by OpImplies at t3, taking priority over the
--- bare-`=` path (which alone would consume `today = Sat` and drop the
--- consequent — the wave-4j Wall-2 bug). `true`/`false` lex as KwTrue/
--- KwFalse and render as the SMT-LIB Bool literals.
---   `today = Sat ⇒ is_weekend = true`
---     → (assert (=> (= today Sat) (= is_weekend true)))
--- See docs/plans/wave-4k-membership-walk-shapes.md.
+-- Implication body line `LHS ⇒ RHS` lowers to `(assert (=> <lhs> <rhs>))`
+-- (ms_is_impl, detected by OpImplies at t3). MUST take priority over the
+-- bare-`=` path, which alone would consume `today = Sat` and drop the
+-- consequent. `true`/`false` lex as KwTrue/KwFalse → SMT-LIB Bool literals.
 --
 -- expect: stdout = ";; manifest: state-fields = today:Day is_weekend:Bool"
 -- expect: stdout = ";; manifest: effects-name = effects"

@@ -1,7 +1,7 @@
 -- Datatype state carry: build a TokenList incrementally over 4 ticks.
--- Validates iter 3.2: the kernel can decode a Datatype value from the
--- model, recursively walk its payload, and re-emit it as an SMT-LIB
--- literal for the next tick's `_state` carry.
+-- The kernel must decode a Datatype value from the model, recursively
+-- walk its payload, and re-emit it as an SMT-LIB literal for the next
+-- tick's `_state` carry.
 --
 -- expect: stdout = "init"
 -- expect: stdout = "pushed LParen"

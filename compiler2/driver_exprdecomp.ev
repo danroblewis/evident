@@ -63,12 +63,10 @@ fsm DriverExprDecomp
         ECall3(_, _, _, cc3) ⇒ cc3
         _ ⇒ ENoExpr
 
-    -- C3: ctor-application dispatch — a call whose name resolves in
-    -- the user-enum decl registry lowers to C2App(decl, argc) over
-    -- the processed args (mk_app; compound args are handles, so the
-    -- legacy dropped-Exit(3+4) class is impossible by construction).
-    -- Checked BEFORE the builtin fallthrough (no collision: builtins
-    -- are lowercase, variants capitalized).
+    -- C3: ctor-application dispatch — checked BEFORE the builtin
+    -- fallthrough (no collision: builtins lowercase, variants
+    -- capitalized). Compound args are handles, so the legacy
+    -- dropped-Exit(3+4) class is impossible by construction.
     d_ctor_d ∈ Int = (uev_n0 = d_cnm ? uev_d0
         : uev_n1 = d_cnm ? uev_d1
         : uev_n2 = d_cnm ? uev_d2

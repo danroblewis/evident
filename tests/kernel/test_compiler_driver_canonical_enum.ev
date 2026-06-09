@@ -1,76 +1,10 @@
--- Grammar wave 3.5, CANONICAL: a top-level `enum` declaration driven by the
--- UNMODIFIED compiler/compiler.ev pipeline (constant input instead of the
--- ReadFile seed). Proves the top-level head-token dispatch (KwEnum → enum
--- machine) integrated into the monolithic driver, not just the per-pass
--- mechanics of the wave-3 dedicated fixture. See docs/plans/grammar-wave3.5.md.
+-- CANONICAL: a top-level `enum` declaration driven by the unmodified
+-- compiler/compiler.ev pipeline (constant input), proving the
+-- top-level head-token dispatch (KwEnum → enum machine) integrated
+-- into the monolithic driver.
 --
 -- expect: stdout = "(declare-datatypes ((Box 0)) (((Pair (Pair__f0 Int) (Pair__f1 Int)) (Empty))))"
 -- expect: exit = 0
--- compiler/compiler.ev — the self-hosted compiler driver.
---
--- This is the top-level program the whole project is building toward:
--- an Evident program that reads a `.ev` source file from disk, runs it
--- through lex → parse → translate, and emits the corresponding `.smt2`
--- to stdout. When compiled once via bootstrap to `compiler.smt2`, the
--- kernel runs THIS to compile every other `.ev` file, and bootstrap/
--- has no further role (see CLAUDE.md, "The architecture, in one
--- paragraph").
---
--- It composes the per-pass pieces that already exist:
---   compiler/lexer.ev            — char classifiers + Token enum
---   compiler/parser.ev           — Token/Expr/BodyItem AST + recognizers
---   compiler/parse_body.ev       — MembershipStep: one scalar membership / tick
---   compiler/parse_body_seq.ev   — SeqMembershipStep: one Seq membership / tick
---   compiler/parse_body_match.ev — MatchMembershipStep: one match membership / tick
---   compiler/translate.ev        — enum → (declare-datatypes …) (VariantText / EnumDeclSmtlib)
---   compiler/translate_declare.ev — BIMembership → (declare-fun …)
---   compiler/translate_arith.ev   — pin RHS Expr → SMT-LIB (atom / binop)
---   compiler/translate_match.ev   — match arm → nested ite
---   compiler/translate_seq.ev     — Seq surface → Z3 sequence theory
---
--- Nothing is hardcoded as tokens or AST: the source text is read from
--- disk and lexed character-by-character; the parse + translate flow
--- from the actually-lexed token payloads.
---
--- Pipeline shape — ONE multi-tick FSM, four phases keyed off `phase`:
---   * 0 LEX     — the consolidated-lexer accumulator FSM. One char per
---                 tick, prepending Tokens onto a (reverse-order) cons
---                 list carried in `_tokens`.
---   * 1 REVERSE — once lexing is done, pop the reverse list head and
---                 push it onto `fwd`, yielding forward (source) order.
---   * 2 PARSE   — TOP-LEVEL HEAD-TOKEN DISPATCH (grammar wave 3.5): the
---                 forward list's head token decides the program shape,
---                 mirroring bootstrap's program.rs (each top-level item is
---                 one of claim/type/schema/fsm/enum/import dispatched by
---                 head token).
---                   · `KwEnum`  → the enum-decl parse machine: walk the
---                     forward tokens ONE TOKEN PER TICK with an enum-parse
---                     state machine (ephase 1..8), building each variant
---                     and rendering it via translate.ev's VariantText.
---                   · otherwise → a claim head (`<kw> Ident`): drop the
---                     2-token head, walk the forward token list ONE
---                     MEMBERSHIP PER TICK, dispatching each membership by
---                     shape to MembershipStep (scalar), SeqMembershipStep
---                     (Seq), or MatchMembershipStep (match), accumulating
---                     the declare/assert lines (`out`) and the manifest
---                     state-fields (`fstr`).
---   * 3 EMIT    — the tick the parse walk drains: for a claim, assemble the
---                 manifest header + body and `puts` the .smt2; for an enum,
---                 assemble the (declare-datatypes …) block. Then Exit(0).
---
--- Grammar scope (docs/plans/grammar-wave1.md + wave2.md + wave3.md +
--- wave3.5.md): a claim head plus N memberships, each optionally pinned —
--- scalar/arith/comparison/boolean/ternary/string pins (waves 1–2), the
--- `= <atom> matches Ctor(_)` recognizer (wave 3), and — integrated into
--- this monolithic driver in wave 3.5 — a top-level `enum` declaration, a
--- `= match scrut { Ctor(b) ⇒ … ; _ ⇒ … }` membership pin (→ nested ite),
--- and `Seq(T)` memberships (⟨…⟩ literal / `++` concat / `#` cardinality).
--- is_first_tick is auto-injected and `_<name>` carry vars are excluded
--- from the manifest state-fields. Quantifier / subclaim / `..` / generics
--- and multi-top-level-item files are later waves.
---
--- Input path: /tmp/compiler-input.ev (read on the first tick via the
--- ReadFile effect; the consolidated-lexer last_results[0] pattern).
 
 import "stdlib/kernel.ev"
 import "compiler/lexer.ev"
@@ -123,10 +57,7 @@ claim main
     was_collecting_str ∈ Bool = (#_partial_str > 0)
     was_collecting_int ∈ Bool = (_partial_int ≥ 0)
 
-    -- ── String-literal mode (grammar wave 2; carried) ────────────
-    -- A `"` opens the mode, chars accumulate, the closing `"` emits a
-    -- StringLit token (escapes out of scope). While inside a string the
-    -- normal ident/int collectors are suppressed (¬_in_strlit guards).
+    -- ── String-literal mode (carried; escapes out of scope) ──────
     in_strlit  ∈ Bool
     _in_strlit ∈ Bool
     partial_strlit  ∈ String
@@ -183,12 +114,11 @@ claim main
     has_input ∈ Bool = (#input > 0)
     lex_done ∈ Bool = (done ∧ ¬was_collecting_str ∧ ¬was_collecting_int ∧ ¬_in_strlit ∧ has_input)
 
-    -- ── BULK-SKIP (wave 4f): whitespace runs + `--` line comments ──
-    -- Mirrors compiler/compiler.ev's lex driver (docs/plans/grammar-wave4f.md):
-    -- collapse a whitespace run (WsRunLen, capped 16) or a `--` line comment
-    -- (jump to the next '\n' via index_of) into ONE tick. A lone separating
-    -- space gives adv=1 == the old +1, so the token stream is byte-identical
-    -- — only the tick count drops.
+    -- ── BULK-SKIP: whitespace runs + `--` line comments ───────────
+    -- Collapse a ws run (WsRunLen, capped 16) or a `--` comment (jump
+    -- to the next '\n') into ONE tick. A lone separating space gives
+    -- adv=1 == the old +1, so the token stream is byte-identical —
+    -- only the tick count drops.
     lx_next_char ∈ String = substr(input, pos + 1, 1)
     lx_collecting ∈ Bool = (was_collecting_str ∨ was_collecting_int)
     lx_is_dash    ∈ Bool = (cur_char = "-")
@@ -235,10 +165,9 @@ claim main
         : (in_reverse ∧ (¬work_is_nil) ? TLCons(work_hd, _fwd)
         : _fwd)))
 
-    -- ── TOP-LEVEL HEAD-TOKEN DISPATCH (wave 3.5) ──────────────────
-    -- `_fwd` is read-only once REVERSE completes; its head token decides
-    -- the program shape. `KwEnum` → enum-decl machine; otherwise a
-    -- claim head, walked as memberships.
+    -- ── TOP-LEVEL HEAD-TOKEN DISPATCH ─────────────────────────────
+    -- Head token decides the program shape: `KwEnum` → enum-decl
+    -- machine; otherwise a claim head, walked as memberships.
     prog_head ∈ Token
     TLHd(l ↦ _fwd, out ↦ prog_head)
     is_enum_program ∈ Bool = (prog_head matches KwEnum)
@@ -337,9 +266,8 @@ claim main
         : (in_parse ∧ (¬is_enum_program) ∧ sel_ok ? (sel_field = "" ? _fstr : (_fstr = "" ? sel_field : _fstr ++ " " ++ sel_field))
         : _fstr)))
 
-    -- is_first_tick auto-inject guard: track whether the source declared
-    -- is_first_tick during the parse walk (mirrors bootstrap emit's
-    -- ensure_is_first_tick_decl, which prepends the decl only when absent).
+    -- Track whether the source declared is_first_tick; the decl is
+    -- prepended at emit only when absent.
     ift  ∈ Bool
     _ift ∈ Bool
     ift = (is_first_tick ? false
@@ -404,12 +332,10 @@ claim main
     e7 ∈ Bool = (_ephase = 7)
     e8 ∈ Bool = (_ephase = 8)
 
-    -- A variant is pending (name read, awaiting boundary) in e5 or e8.
     have_pending ∈ Bool = (e5 ∨ e8)
     at_boundary  ∈ Bool = (p_is_pipe ∨ plist_nil)
     finalize     ∈ Bool = (in_parse ∧ is_enum_program ∧ have_pending ∧ at_boundary)
 
-    -- Reconstruct the EnumVariantDecl from the carried slots and render.
     cur_fields ∈ EVFieldList = (_fcount = 0 ? EVFNil
         : _fcount = 1 ? EVFCons(EVFType(_fA), EVFNil)
         : _fcount = 2 ? EVFCons(EVFType(_fA), EVFCons(EVFType(_fB), EVFNil))
@@ -420,7 +346,6 @@ claim main
 
     new_body ∈ String = (finalize ? (_first_v ? rendered : _body ++ " " ++ rendered) : _body)
 
-    -- ephase transition.
     next_ephase ∈ Int = (e1 ∧ p_is_enum ? 2
         : e2 ∧ p_is_ident ? 3
         : e3 ∧ p_is_eq ? 4
@@ -436,7 +361,6 @@ claim main
     starting_variant ∈ Bool = (e4 ∧ p_is_ident)
     adding_field     ∈ Bool = (e6 ∧ p_is_ident)
 
-    -- State carry for the enum-parse machine (gated on is_enum_program).
     plist   = (is_first_tick ? TLNil : (entering_parse ∧ is_enum_program ? _fwd : (in_parse ∧ is_enum_program ∧ (¬plist_nil) ? ptail : _plist)))
     ephase  = (is_first_tick ? 1 : (entering_parse ∧ is_enum_program ? 1 : (in_parse ∧ is_enum_program ? next_ephase : _ephase)))
     ename   = (is_first_tick ? "" : (in_parse ∧ is_enum_program ∧ e2 ∧ p_is_ident ? p_id : _ename))
@@ -463,7 +387,6 @@ claim main
     emit_now_enum  ∈ Bool = (is_enum_program ∧ (¬is_first_tick) ∧ (_phase = 2) ∧ plist_nil)
     emit_now ∈ Bool = (emit_now_claim ∨ emit_now_enum)
 
-    -- Claim emission: manifest header + declares/asserts.
     manifest ∈ String = (";; manifest: state-fields = " ++ _fstr ++ "\n"
         ++ ";; manifest: effects-name = effects\n"
         ++ ";; manifest: effect-enum-name = Effect\n"
@@ -472,7 +395,6 @@ claim main
     ift_decl ∈ String = (_ift ? "" : "(declare-fun is_first_tick () Bool)\n")
     claim_smtlib ∈ String = manifest ++ "\n" ++ ift_decl ++ _out
 
-    -- Enum emission: the (declare-datatypes …) block.
     grouped_body ∈ String = "(" ++ new_body ++ ")"
     final_decl ∈ EnumDeclAst = EnumD(_ename, EVNil)
     enum_smtlib ∈ String

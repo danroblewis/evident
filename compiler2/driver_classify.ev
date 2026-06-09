@@ -101,9 +101,6 @@ fsm DriverClassify
     c_comp_found ∈ Bool = ((c_comp_pos ≥ 0) ∧ (c_comp_nm ≠ ""))
     c_dd_head ∈ Bool = (c_dd_shape ∧ c_comp_found ∧ (_il_depth < 8))
 
-    -- line-end SHAPE (EOF / next top-level decl / a head that can't
-    -- start a body line): at depth 0 it ends the walk; inside an
-    -- inline frame it POPS back to the caller.
     d_line_end ∈ Bool = (c_rem_nil ∨ c_t0_is_tlkw
         ∨ ((¬c_can_expr) ∧ (¬c_dd_head) ∧ (¬c_strin_line)
             ∧ (¬c_q_line)))

@@ -1,22 +1,7 @@
--- Recursive arithmetic translation: walk an arbitrary Expr tree to
--- nested SMT-LIB via a WorkItem work-stack (the test_ast_walker.ev
--- depth-first pattern), driving compiler/translate_arith.ev's
--- ArithTranslateStep claim once per tick.
---
--- Input AST (3 deep):
---   EBinOp(OpPlus, EBinOp(OpMul, EInt(1), EInt(2)), EInt(3))
---
--- The host carries a `WorkList` stack and a `String` output accumulator
--- across ticks. Each non-initial tick pops the head WorkItem, asks the
--- step claim for the text it emits and the reshaped stack, and appends
--- the text to the accumulator. When the stack empties, the accumulated
--- SMT-LIB is printed and the FSM exits.
---
--- Pop sequence for the tree:
---   P(+) → "(" "+" " " P(*) " " P(3) ")"
---   P(*) → "(" "*" " " P(1) " " P(2) ")"
---   leaves emit "1" / "2" / "3"
--- yielding "(+ (* 1 2) 3)".
+-- Recursive arithmetic translation: walk an Expr tree to nested
+-- SMT-LIB via a WorkItem work-stack, driving ArithTranslateStep once
+-- per tick; the host carries the stack + a String accumulator and
+-- prints "(+ (* 1 2) 3)" when the stack drains.
 --
 -- expect: stdout = "(+ (* 1 2) 3)"
 -- expect: exit = 0
@@ -51,9 +36,7 @@ claim main
 
     done ∈ Bool = (¬is_first_tick ∧ is_empty)
 
-    -- The output line is printed once, when the work-stack drains. Every
-    -- other tick advances with a side-effect-free getpid (the
-    -- tick-advance-without-stdout idiom from test_multi_tick.ev); a fully
+    -- Non-final ticks advance with a side-effect-free getpid: a fully
     -- empty effects Seq leaves the `effects` array unconstrained and the
     -- kernel can't find it in the model.
     effects ∈ Seq(Effect) = (done

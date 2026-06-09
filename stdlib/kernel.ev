@@ -29,12 +29,10 @@ enum LibArg =
 -- pattern-matches by name. See kernel-input-spec.md "Effect
 -- dispatch" for the full table.
 --
---   Println / Print     → stdout (with / without trailing newline)
 --   ReadLine            → one line from stdin (EofResult at EOF)
 --   ReadFile(path)      → file contents as StringResult / ErrorResult
 --   WriteFile(p, c)     → NoResult / ErrorResult
 --   LibCall(lib,fn,as)  → dlopen+dlsym+libffi, return per C type
---   Time                → Unix ms since epoch (IntResult)
 --   Exit(code)          → halt the process with code; short-circuits
 --                         remaining effects in the Seq
 
@@ -44,13 +42,10 @@ enum Effect =
     WriteFile(String, String)
     LibCall(String, String, Seq(LibArg))
     Exit(Int)
-    -- Demoted to LibCall sugar (see Build* claims below):
-    --   Println(s)  → LibCall("libc", "puts", ⟨ArgStr(s)⟩)
-    --   Print(s)    → LibCall("libc", "write", ⟨ArgInt(1), ArgStr(s), ArgInt(#s)⟩)
-    --   Time        → LibCall("libc", "time", ⟨ArgInt(0)⟩)
+    -- Println/Print/Time are LibCall sugar (Build* claims below).
     -- ReadLine/ReadFile/WriteFile remain built-in: the libc fgets/
     -- read/write equivalents need fd handles / mutable buffers we
-    -- don't yet have types for. Will demote with iter 2.7+.
+    -- don't yet have types for.
 
 -- ── Result: what the kernel feeds back as last_results ──────────
 --
@@ -71,10 +66,6 @@ enum Result =
     ErrorResult(String)
 
 -- ── Sugar claims for common effect builders ─────────────────────
---
--- These let the FSM author write `Println("hi", eff)` instead of
--- `eff = Println("hi")`. Optional; the constructor application
--- form always works.
 
 claim BuildPrintln(s ∈ String, eff ∈ Effect)
     eff = LibCall("libc", "puts", ⟨ArgStr(s)⟩)
@@ -94,13 +85,11 @@ claim BuildWriteFile(path ∈ String, contents ∈ String, eff ∈ Effect)
 claim BuildExit(code ∈ Int, eff ∈ Effect)
     eff = Exit(code)
 
--- ── Wave 5a — libz3 lifecycle sugar (Z3-as-library FTI) ──────────
--- These wrap `LibCall("libz3", "...")` for the calls that a 2-tick
--- "build a tiny model, solve it, read sat" FSM needs. Pointer
--- handles round-trip as i64 through ArgInt/IntResult (the kernel's
--- libcall.rs already treats them as i64). See
--- docs/plans/wave-5a-z3-in-evident.md §1+§4 for the API surface
--- and the leak-until-DelContext refcount model.
+-- ── libz3 lifecycle sugar ────────────────────────────────────────
+-- Pointer handles round-trip as i64 through ArgInt/IntResult (the
+-- kernel's libcall.rs already treats them as i64). See
+-- docs/plans/wave-5a-z3-in-evident.md for the API surface and the
+-- leak-until-DelContext refcount model.
 
 -- Z3_mk_config() → Z3_config handle (IntResult). No args.
 claim BuildZ3MkConfig(eff ∈ Effect)
@@ -153,12 +142,7 @@ claim BuildZ3SolverAssert(ctx_h, solver_h, ast_h ∈ Int, eff ∈ Effect)
 claim BuildZ3SolverCheck(ctx_h, solver_h ∈ Int, eff ∈ Effect)
     eff = LibCall("libz3", "Z3_solver_check", ⟨ArgInt(ctx_h), ArgInt(solver_h)⟩)
 
--- ── Wave 5c — Z3 tactic + AST introspection sugar ───────────────
--- These are the libz3 calls the functionizer-recognizer (a
--- stack-FSM walk over Z3 ASTs) needs in addition to the lifecycle
--- ones above. See docs/plans/wave-5c-functionizer-in-evident.md §1
--- ("Sketch: MatchFunctionizableStep") and §-roadmap step 1.
---
+-- ── Z3 tactic + AST introspection sugar ──────────────────────────
 -- A Z3 AST is an opaque Int handle here; libz3 functions classify
 -- it (get_ast_kind, get_decl_kind, get_app_num_args, get_app_arg)
 -- so an Evident FSM can branch on integer return codes.
@@ -203,8 +187,7 @@ claim BuildZ3GoalAssert(ctx_h, goal_h, ast_h ∈ Int, eff ∈ Effect)
         ⟨ArgInt(ctx_h), ArgInt(goal_h), ArgInt(ast_h)⟩)
 
 -- Z3_mk_tactic(ctx, name_cstr) → Z3_tactic handle. The name is a
--- C string identifying the tactic ("simplify", "propagate-values",
--- etc.). Strings marshal through ArgStr.
+-- C string identifying the tactic ("simplify", "propagate-values", …).
 claim BuildZ3MkTactic(ctx_h ∈ Int, name ∈ String, eff ∈ Effect)
     eff = LibCall("libz3", "Z3_mk_tactic", ⟨ArgInt(ctx_h), ArgStr(name)⟩)
 
@@ -218,14 +201,13 @@ claim BuildZ3TacticApply(ctx_h, tactic_h, goal_h ∈ Int, eff ∈ Effect)
     eff = LibCall("libz3", "Z3_tactic_apply",
         ⟨ArgInt(ctx_h), ArgInt(tactic_h), ArgInt(goal_h)⟩)
 
--- ── Wave 5b — libffi-in-Evident (Path A) sugar ───────────────────
+-- ── __dlsym + libffi sugar ───────────────────────────────────────
 -- The kernel's __dlsym pseudo-library resolves the address of a
 -- named symbol WITHOUT calling it. This lets an Evident FSM call
 -- libffi's own ffi_prep_cif/ffi_call with the addresses of data
 -- symbols like ffi_type_sint64 / ffi_type_pointer (which the
 -- generic LibCall path can't return because it always invokes the
--- symbol it resolves). See docs/plans/wave-5b-trampoline-ffi-in-
--- evident.md §2.
+-- symbol it resolves).
 
 -- __dlsym addr(lib, sym) → i64 pointer
 claim BuildDlsymAddr(lib ∈ String, sym ∈ String, eff ∈ Effect)

@@ -22,10 +22,7 @@
 -- The G2 record-pin BROADCAST loop. Lifted into driver_main via
 -- `..DriverBroadcast`.
 fsm DriverBroadcast
-    -- ── G2: rb — the record-pin BROADCAST loop. A membership pinned
-    -- to a record expression re-walks the parsed body once per FIELD
-    -- of the record type: `offset_pos ∈ IVec2 = pos + IVec2(10, 20)`
-    -- becomes per-field declare+pin (s.offset_pos.x = s.pos.x + 10).
+    -- ── G2: rb — the record-pin BROADCAST loop ──
     -- During a re-walk, an IDENT whose field-qualified dotted name
     -- resolves in the symtab reads through it, and a REGISTRY-ctor
     -- call (`IVec2(10, 20)`) selects its field-index argument.

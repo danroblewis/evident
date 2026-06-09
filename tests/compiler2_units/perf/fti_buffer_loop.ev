@@ -1,9 +1,7 @@
--- FTI perf/functionization probe: FtiBuffer's `0 ≤ count ≤ cap` invariant
--- is re-checked every tick. Climb count to 800 (≈800 ticks) and Exit. The
--- gate asserts the run stays fully functionized (≈0 ms z3) and under a
--- wall ceiling — if a future invariant falls to Z3 (e.g. a `≠`), z3 ms
--- and wall time blow up and this fixture catches it. Each non-final tick
--- emits a cheap pure libcall (abs) so effects always has a model.
+-- FTI perf probe: FtiBuffer's `0 ≤ count ≤ cap` is re-checked every tick;
+-- climb count to 800 and Exit. Must stay fully functionized (≈0 ms z3) —
+-- an invariant falling to Z3 (e.g. a `≠`) blows z3/wall time; gate catches it.
+-- Non-final ticks emit a cheap pure libcall (abs) so effects has a model.
 --
 -- entry: main
 -- expect: exit = 0

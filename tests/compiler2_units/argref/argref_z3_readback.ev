@@ -1,18 +1,13 @@
--- The wave-5a proof: a Z3 MODEL-READBACK WALK written in Evident.
---
--- This program builds its own auxiliary Z3 model (x = 42), solves it,
--- and READS THE MODEL BACK — the half of wave 5a that was "BLOCKED on
--- B1 (intra-tick handle chaining) + B2 (char* → String)". With ArgRef
--- both are expressible; even Z3's OUT-POINTER signatures compose:
---
+-- A Z3 model-readback walk written in Evident: builds an auxiliary Z3
+-- model (x = 42), solves it, and reads the model back. Intra-tick
+-- ArgRef chains compose even Z3's OUT-POINTER signatures:
 --   ⟨malloc(8), Z3_model_eval(…, ArgRef(slot)), read_long(ArgRef(slot))⟩
 --
--- Tick map (each tick's chain was previously one tick PER CALL):
+-- Tick map:
 --   0  lifecycle: mk_config → mk_context(ArgRef 0) → mk_solver(ArgRef 1)
 --      → solver_inc_ref — 4 calls, one tick.
---   1  capture ctx/sol; build + assert `x = 42` exactly as fti-z3.md §3
---      sketched it: int_sort, symbol "x", const, int 42, eq, assert —
---      6 calls, one tick.
+--   1  capture ctx/sol; build + assert `x = 42`: int_sort, symbol "x",
+--      const, int 42, eq, assert — 6 calls, one tick.
 --   2  capture x's AST; solver_check.
 --   3  capture sat (must be 1); readback chain: get_model → model_inc_ref
 --      → malloc out-slot → model_eval(…, out) → read_long(out) →

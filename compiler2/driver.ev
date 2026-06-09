@@ -1,4 +1,4 @@
--- compiler2/driver.ev — P3a: the compiler2 driver skeleton.
+-- compiler2/driver.ev — the compiler2 driver.
 --
 -- An Evident program that, run under the kernel, COMPILES a small .ev
 -- file end-to-end by building Z3 ASTs in memory (the compiler2
@@ -6,28 +6,26 @@
 -- concatenating SMT-LIB text (the fossil's approach, and the source
 -- of its dropped-compound-expression bug class).
 --
--- Wire protocol (wave 4o, same as compiler.smt2):
+-- Wire protocol (same as compiler.smt2):
 --   stdin line 1 = flattened source path, line 2 = target claim name.
 --   tick 0: ReadLine ×2 · tick 1: ReadFile(path) · output: the .smt2
 --   translation unit on stdout via puts, then Exit(0).
 --
--- Pipeline:
---   INPUT   ticks 0-1 (fossil's wave-4o block, verbatim).
+-- Pipeline (tick map):
+--   INPUT   ticks 0-1.
 --   ZINIT   ticks 2-33: Z3 lifecycle (config/context/solver/sorts) +
 --           the Effect datatype declared IN THE BUILD CONTEXT via
 --           translate2_ctor.ev's step claims + the `effects` /
---           `effects__len` consts + cached 0/1 numerals + the FTI
+--           `effects__len` consts + cached numerals + the FTI
 --           token buffer (calloc'd; 32 bytes/token).
---   LEX     the fossil's per-char scanner FSM (one token per tick,
---           whitespace/comment bulk-skip) feeding compiler2/
---           lex_fti.ev's LexFtiPlan: tokens are written to the FTI
---           buffer in APPEND (source) order via __mem.write_long;
---           string payloads (Ident/StringLit) are strdup'd char*s.
---           Z3-carried lexer state = five Ints (tbase, lx_count,
---           lx_last, lx_prev, lx_pend) — no TokenList anywhere.
---           The old REVERSE pop loop is GONE (P3d): append order
---           makes it dead weight; phase goes 0 → 2 directly, after
---           flushing any pending string write + the EofTok sentinel.
+--   LEX     one token per tick (whitespace/comment bulk-skip):
+--           tokens are written to the FTI buffer in APPEND (source)
+--           order via __mem.write_long; string payloads
+--           (Ident/StringLit) are strdup'd char*s. Z3-carried lexer
+--           state = five Ints (tbase, lx_count, lx_last, lx_prev,
+--           lx_pend) — no TokenList anywhere; phase goes 0 → 2
+--           directly, after flushing any pending string write + the
+--           EofTok sentinel.
 --   FETCH   the parse phases read tokens through a sliding 8-token
 --           decoded window (wtoks, head = token tcur). A refill is
 --           a 3-tick burst: 16 __mem.read_long (8 tags + 8
@@ -46,12 +44,7 @@
 --           (pmode 3, one parser action per tick) to an Expr, which
 --           becomes a work-item program (C2Items); subsequent ticks run
 --           one item micro-step per tick, each step one Z3-builder
---           LibCall, dispatching per-node choices to the pass claims:
---             arith binop  → translate_arith.ev  ArithBinopBuildZ3
---             cmp/eq       → translate2_bool.ev  BoolCmpBuildZ3
---             ∧/∨ (n-ary)  → translate2_bool.ev  BoolNaryBuildZ3
---             ternary      → translate2_bool.ev  TernaryBuildZ3
---             ctor app     → translate2_ctor.ev  CtorArgWriteStep/CtorAppStep
+--           LibCall dispatched to the pass claims.
 --           Built handles live on a parallel handle stack (C2H);
 --           captures follow the PROVEN discipline: a builder's result
 --           is read from last_results on the NEXT tick (the `pend`
@@ -61,106 +54,50 @@
 --           → manifest header + Result/last_results textual prelude +
 --           the solver body → puts → Exit(0).
 --
--- Scope (P3a skeleton + P3b widening + P3c Pratt parser — enough for
--- the census arithmetic/comparison/logic/implies/ternary classes,
--- NOT the full language; see docs/plans/compiler2-driver-notes.md):
---   · scalar memberships `x ∈ Int|Nat|Bool [= pin | < bound]`
---   · GENERAL expressions everywhere an expression is parsed (pins,
---     bare `name = <expr>` lines, standalone constraint lines, the
---     effects literal's Exit argument): the P3b bounded shape
---     parsers (C2ParseExpr / C2ParseCons) are REPLACED by a Pratt /
---     shunting-yard FSM (C2PrattStep, pmode 3 — one shift or one
---     reduce per tick) with arbitrary nesting/parens, all binary
---     ops (+ - * / = < > ≤ ≥ ≠ ∧ ∨ ⇒), unary ¬, ternary ?:,
---     chained comparisons (`0 < x < 5` → conjunction; `=` is a
---     chain member, matching the legacy parser), and the
---     oracle-verified precedence ladder (see C2Prec)
---   · `true` / `false` atoms (cached Z3_mk_true/false handles)
---   · negative int literals (sign folded at lex time when the Minus
---     has no atom before it)
---   · effects literals with 0-4 elements (P3e, widened D2):
---     `⟨Exit(<expr>)⟩`, `⟨LibCall("lib","fn",⟨ArgStr(<lit-or-ident>)⟩),
---     Exit(<expr>)⟩`, the empty `⟨⟩`, and LibCall's empty-args
---     `⟨⟩` (the getpid shape) — Exit args go through the Pratt FSM;
---     LibCall elements parse as a fixed two-bite shape (pmode 5)
---   · CONDITIONAL EFFECTS (D2): the corpus's nested-ternary chain
---     `effects ∈ Seq(Effect) = (g1 ? ⟨…⟩ : (g2 ? ⟨…⟩ : ⟨…⟩))` —
---     guards are full Pratt expressions (terminated at the chain's
---     `?` via qstop); each branch's select/len eqs fold into a
---     conjunction HANDLE and the chain end emits the oracle's
---     nested `(and (=> g B) (=> (not g) T))` guard tree (≤ 4
---     guards / 5 branches; then-branches must be literals,
---     chains nest in else position only — the corpus shape)
+-- Scope (the census arithmetic/comparison/logic/implies/ternary
+-- classes, NOT the full language; see
+-- docs/plans/compiler2-driver-notes.md). Limits and parity facts:
+--   · GENERAL expressions everywhere an expression is parsed, via a
+--     Pratt FSM (pmode 3 — one shift or one reduce per tick): all
+--     binary ops, unary ¬, ternary ?:, chained comparisons
+--     (`0 < x < 5` → conjunction; `=` is a chain member, matching
+--     the legacy parser), the oracle-verified precedence ladder
+--     (see C2Prec)
 --   · OpNeq lowers as mk_eq + mk_not (C2Not item); ENot likewise
---   · the build-context Effect floor is FULL (P3e): LibArg,
---     __SeqOf_LibArg, and all five Effect variants are declared by
---     the ED machine (translate2_ctor.ev's step claims) at ZINIT
---   · USER ENUMS (P3e, payloads C3): one enum per compile
---     (`enum Color = Red | Green | Blue`,
---     `enum E = A | B(Int) | C(Int, String)` — payload variants up
---     to TWO fields of Int/Bool/String/Real/self) — declared in the
---     build context via the same ED machine at parse time; nullary
---     variant values resolve in expressions; enum-typed memberships
---     declare consts of the enum sort and land in the manifest as
---     `name:Enum`
---   · CTOR APPLICATIONS (C3): `B(7)`, `B(3 + 4)`, `Cons(1, Nil)` as
---     EXPRESSIONS — a call whose name resolves in the user-enum
---     registry (per-variant ctor decls harvested by the ED machine)
---     lowers to C2App(decl, argc) = mk_app; compound args come free
---     (they are handles — the legacy dropped-Exit(3+4) bug class
---     cannot exist here)
---   · MATCHES RECOGNIZERS (C4): `e matches B(_)` / `e matches A` as
---     Bool expressions anywhere — parsed in the Pratt FSM as a
---     postfix action (consumes `matches Ctor[(_[, _])]`, builds
---     EMatches(ctor, e)), lowered to mk_app of the harvested tester
---     decl (user variants + the IntResult/StringResult floor)
---   · N-ARM MATCH-PIN (C4 gate, C5 binds + expr bodies): pmode 6 —
---     up to 2 TESTED arms + a default (wildcard arm or the last
---     arm, test dropped, per the legacy fold rule); arm patterns
---     are nullary ctors or 1-payload-bind ctors; arm BODIES are
---     full Pratt expressions (each body re-enters the Pratt FSM,
---     pk_kind 4); a payload bind shadows ONLY within its arm body,
---     where it reads through the harvested accessor decl as
---     mk_app(acc, scrut) — user enums (uev registry) AND the
---     IntResult/StringResult floor
---   · String memberships/pins, string literals, `++` (str.++)
---   · STRING BUILTIN CALL SYNTAX (B3): `f(a[, b[, c]])` parses in
---     the Pratt FSM via a PrCall operator-stack floor marker (an
---     Ident in operand position followed by `(` shifts name + paren
---     in one 2-token action; `,` reduces to the call floor then
---     bumps its arg count; `)` over the floor builds ECall1/2/3).
---     `#e` is a prec-8 prefix op (PrHash) reducing to
---     ECall1("str_len", e). The walker lowers calls to
---     translate2_seq.ev's StrOpBuildZ3 table (substr / char_at /
---     index_of 2-3 / str_contains / starts_with / ends_with) +
---     BuildZ3MkSeqLength for str_len/`#`; str_from_int expands to
---     the oracle's ite composite
+--   · effects literals: 0-4 elements — Exit args go through the
+--     Pratt FSM; LibCall elements parse as a fixed two-bite shape
+--     (pmode 5)
+--   · CONDITIONAL EFFECTS: the corpus's nested-ternary chain only —
+--     guards are full Pratt expressions terminated at the chain's
+--     `?` via qstop; each branch's select/len eqs fold into a
+--     conjunction HANDLE and the chain end emits the oracle's nested
+--     `(and (=> g B) (=> (not g) T))` guard tree. ≤ 4 guards /
+--     5 branches; then-branches must be literals; chains nest in
+--     else position only
+--   · USER ENUMS: ONE enum per compile; payload variants up to TWO
+--     fields of Int/Bool/String/Real/self (the 8-token window caps
+--     collection at 2); enum-typed memberships land in the manifest
+--     as `name:Enum`
+--   · ctor applications lower to C2App(decl, argc) = mk_app;
+--     compound args are handles — the legacy dropped-Exit(3+4) bug
+--     class cannot exist here
+--   · N-ARM MATCH-PIN (pmode 6): up to 2 TESTED arms + a default
+--     (wildcard arm or the last arm, test dropped, per the legacy
+--     fold rule); arm patterns are nullary ctors or 1-payload-bind
+--     ctors; a payload bind shadows ONLY within its arm body, where
+--     it reads through the harvested accessor decl as
+--     mk_app(acc, scrut) — user enums AND the IntResult/StringResult
+--     floor
+--   · string builtin calls lower to translate2_seq.ev's StrOpBuildZ3
+--     table; str_from_int expands to the oracle's ite composite
 --     `(ite (>= e 0) (str.from_int e) (str.++ "-" (str.from_int (- 0 e))))`;
 --     an unknown call name pushes handle 0 (unbound-ident parity)
---   · symbol table: FTI buffer at corpus scale (B1) — 1024 handle
---     slots in a calloc'd buffer + fixed-width-32 name records in a
---     Z3 String; lookup = pure index_of/32 + one __mem.read_long.
---     Enum-value table: 6. Slots 0/1 pre-seeded with the
---     kernel-provided last_results / is_first_tick consts (D3).
---   · D3: the Result floor is a FOURTH ED run (sort + the
---     IntResult/StringResult tester+accessor decls harvested);
---     last_results ((Array Int Result)) / last_results__len /
---     is_first_tick are build-context consts; `e[i]` parses as a
---     PrIdx postfix floor in the Pratt FSM → ECall2("__index") →
---     C2SelH (mk_select); a RESTRICTED match-pin shape
---     `name ∈ Type = match scrut · Ctor(b) ⇒ atom · _ ⇒ atom`
---     (scrut = ident | last_results[i]; Ctor ∈ {IntResult,
---     StringResult}) lowers to the fossil's tester/accessor ite
---   · C2: set-literal memberships `x ∈ {…}` / `x ∉ {…}` (int
---     elements, any count, ⟨⟩ empty → false) or-fold one element
---     per tick and assert at the closing brace
---   · USER Seq(Int) VALUES (D2: 051/052/057/065): `s ∈ Seq(Int)`
---     memberships (array const + `s__len` + the ≥0 floor, manifest
---     `s:Seq(Int)`, two carry declares), `s = ⟨e0, e1, …⟩` literal
---     lines (pmode 8 — one full-Pratt element per tick, select-eq
---     per element + len-eq at close), `#s` → the s__len const,
---     `s[i]` via the existing PrIdx/SelH path; ONE registered seq
---     var per compile
+--   · symbol table: 1024 handle slots in a calloc'd buffer +
+--     fixed-width-32 name records in a Z3 String; lookup = pure
+--     index_of/32 + one __mem.read_long. Enum-value table: 6.
+--     Slots 0/1 pre-seeded with the kernel-provided last_results /
+--     is_first_tick consts.
+--   · ONE registered Seq var per compile
 --   · STATE CARRIES (E1): `_name ∈ Type` memberships are explicit
 --     carry declarations (the corpus idiom; the oracle REQUIRES the
 --     explicit membership — an unbound `_count` mention is a dropped
@@ -170,40 +107,22 @@
 --     carry declare out of cdstr (the serialization now carries it).
 --     `(assert (>= effects__len 0))` floor at ZINIT (zsteps 35-36),
 --     oracle parity.
---   · FIRST-LINE PARAM LISTS + MULTI-NAME GROUPS (F1): the pmode-9
---     group walk — a parametrized TARGET claim's params and body
---     `x, y, z ∈ Nat` lines declare each name as a typed const
---     (decl + manifest field + carry declare, like memberships);
---     multi-name groups collect one name per tick and drain one
---     decl per tick with the latched group type. Scalar types only.
---   · CLAIM-CALL COMPOSITION (F2): `Helper(slot ↦ value, …)` body
---     lines, bare `Helper` lines and `..Helper` passthroughs INLINE
---     the callee's body through the normal classifier/walker. The
---     skip pass builds a claim index (name → body-start cursor in
---     the FTI buffer); a composition line reads the cursor, parses
---     each slot value through the Pratt FSM to a HANDLE (pk_kind 8
---     — values are arbitrary expressions), pushes an inline frame
---     (return cursor + binds + α-prefix; depth ≤ 8, slots ≤ 4) and
---     jumps; the body's end pops. Slot-call body locals α-rename
---     under "__cN_" (per call site); bare/`..` splices are
---     names-match (inherit scope, no renaming). Memberships of
---     bound or already-declared names resolve instead of
---     redeclaring (no duplicate declares/fields/carries).
---   · G1 (2026-06-08): RECORD TYPE SPLICES (`type Name` indexed by
---     the skip pass; `p ∈ Point` / `f ∈ Foo (p ↦ 5)` flatten fields
---     to dotted consts under prefix "name." — Pratt dot-fold reads
---     them back; type-frame memberships are not state fields),
---     CONDITIONAL INLINE (`cond ⇒ ClaimName` — guard handle +
---     il_guard-wrapped asserts; the Pratt call-head shift is now
---     whitelist-gated so a claim name before a `(`-headed line no
---     longer parses as a call), BOUNDED QUANTIFIERS
---     (`∀|∃ v ∈ {lo..hi} : body`, `∀ v ∈ seq : body` — one Pratt
---     body parse + the fl re-walk loop), POSITIONAL BINDING
---     (`(a, b, c) ∈ add`, `recv.add(args)`, `add(args)` statement
---     calls, `(args) ∈ recv.add` — param names harvested by the
---     param-skip walk, zipped at ips_done; lone undeclared ident
---     args declare Int consts — arg inference), infix contains
---     (`"lit" ∈ s`), replace() → str.replace, slot width 6.
+--   · multi-name groups (pmode 9): scalar types only
+--   · CLAIM-CALL COMPOSITION: the skip pass builds a claim index
+--     (name → body-start cursor in the FTI buffer); a composition
+--     line parses each slot value to a HANDLE, pushes an inline
+--     frame (return cursor + binds + α-prefix; depth ≤ 8, slots ≤ 4,
+--     slot width 6) and jumps. Slot-call body locals α-rename under
+--     "__cN_" (per call site); bare/`..` splices are names-match
+--     (inherit scope, no renaming). Memberships of bound or
+--     already-declared names resolve instead of redeclaring (no
+--     duplicate declares/fields/carries)
+--   · record type splices flatten fields to dotted consts under
+--     prefix "name." (Pratt dot-fold reads them back; type-frame
+--     memberships are not state fields); the Pratt call-head shift
+--     is whitelist-gated so a claim name before a `(`-headed line
+--     no longer parses as a call; positional-binding lone undeclared
+--     ident args declare Int consts (arg inference)
 --   · NOT covered: Real membership / float literals (021 — needs
 --     FloatLit lexing in this FSM + mk_numeral), match as a general
 --     EXPRESSION (only the pmode-6 match-pin shape; bare `y = match`

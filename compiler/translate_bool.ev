@@ -1,20 +1,7 @@
 -- WIP: replaces bootstrap/runtime/src/translate/exprs/bool.rs. STATUS: C3 Boolean expression atoms → SMT-LIB; per-pass fixture only.
--- to SMT-LIB.
 --
--- The Rust side at runtime/src/translate/exprs/bool.rs translates an
--- Evident Bool expression to its SMT-LIB s-expression. This file
--- self-hosts the atom-level shape of that translator for the parser's
--- current Expr surface (EInt / EIdent / EBinOp(Op, _, _)).
---
--- Operator coverage in this sub-step:
---   • EBinOp(OpEq,   l, r)  →  "(= <l> <r>)"
---   • EBinOp(OpImpl, l, r)  →  "(=> <l> <r>)"
---
--- Other shapes (∧/∨/¬/≠/</≤/∈) and nested binops are deferred — the
--- recursive walker pattern lives in test_ast_to_text.ev and
--- test_translate_eq_ident.ev. This file ships the atom-level
--- recognizer/renderer claims so the parser's two-arg, atomic-payload
--- Boolean shape compiles with a single ParseMembership-style call.
+-- Self-hosts the atom-level shape of the Bool-expression translator for
+-- the parser's current Expr surface (EInt / EIdent / EBinOp(Op, _, _)).
 --
 -- Pattern mirrors TokenToOp (parser.ev): enum-typed claim params are
 -- declared in the body (not on the first line) because the translator
@@ -24,17 +11,8 @@
 import "compiler/parser.ev"
 
 -- ── ExprAtomSmtlib ──────────────────────────────────────────────
--- Render a single leaf Expr (EInt or EIdent) to its SMT-LIB text.
---   EInt(n)    → str_from_int(n)
---   EIdent(s)  → s
--- For any non-atom Expr, ok=false and out="" — the outer renderer is
--- responsible for handling those shapes (work-stack walker; see
--- test_translate_eq_ident.ev for the pattern).
---
--- Same vars-in-body shape as TokenToOp / KeywordOfTok: the first-line
--- claim param `e` is of enum type Expr, so the recognizers and
--- payload extractors live in the body and the caller composes via
--- names-match binding.
+-- Render a single leaf Expr to its SMT-LIB text. For any non-atom
+-- Expr, ok=false and out="" — the outer renderer handles those shapes.
 
 claim ExprAtomSmtlib
     e ∈ Expr
@@ -66,31 +44,9 @@ claim ExprAtomSmtlib
         : "")
 
 -- ── BoolExprSmtlib ──────────────────────────────────────────────
--- Translate a Boolean EBinOp(Op, lhs, rhs) where lhs and rhs are
--- atom-level (EInt / EIdent) to its SMT-LIB s-expression.
---
---   EBinOp(OpEq,   l, r)  →  "(= <l> <r>)"
---   EBinOp(OpImpl, l, r)  →  "(=> <l> <r>)"
---
--- ok=true iff:
---   • the head Op is OpEq or OpImpl, AND
---   • both lhs and rhs render as atoms.
---
--- For any other shape (non-binop, unsupported Op, non-atom child),
--- ok=false and out="". The caller can branch on ok to fall through
--- to a more general renderer (the work-stack walker in
--- test_translate_eq_ident.ev for nested cases).
-
--- Grammar wave 2 widens this to the full comparison + boolean-connective
--- operator set plus the unary `¬` (ENot):
---   OpEq → "(= l r)"      OpImpl → "(=> l r)"
---   OpLt → "(< l r)"      OpGt   → "(> l r)"
---   OpLeq → "(<= l r)"    OpGeq  → "(>= l r)"
---   OpNeq → "(not (= l r))"   (lowered as negated equality, per spec)
---   OpConj → "(and l r)"  OpDisj → "(or l r)"
---   ENot(e) → "(not e)"
--- All operands are rendered with ExprAtomSmtlib, so the wave-2 surface is
--- one-level (atom operands); nested trees ride the work-stack walker.
+-- One-level Boolean render: operands must be atoms (ExprAtomSmtlib);
+-- nested trees ride the work-stack walker. OpNeq lowers as negated
+-- equality `(not (= l r))`, per spec. Any other shape: ok=false, out="".
 claim BoolExprSmtlib
     e ∈ Expr
     out ∈ String
@@ -162,16 +118,8 @@ claim BoolExprSmtlib
 
 -- ── Recursive Boolean translation via a WorkItem work-stack ────────
 --
--- BoolExprSmtlib above renders one level: a Boolean binop whose
--- operands are atoms. A real pass walks an arbitrary tree of nested
--- Boolean binops and produces the fully nested SMT-LIB. That walk is
--- the depth-first work-stack from ArithTranslateStep, over parser.ev's
--- `WorkItem = WIProcess(Expr) | WIEmit(String)`.
---
--- A Boolean binop `EBinOp(op, l, r)` expands (head-first onto `rest`)
--- to "(" op_str " " P(l) " " P(r) ")"; an atom emits its token. The
--- operators this step renders are the Boolean/comparison ones the
--- parser's `Op` enum carries: OpEq → "=", OpImpl → "=>".
+-- Depth-first work-stack walk (ArithTranslateStep pattern) over
+-- parser.ev's `WorkItem = WIProcess(Expr) | WIEmit(String)`.
 --
 -- BLOCKER (see docs/plans/blocked-translate-bool.md): the canonical
 -- Boolean operators ∧ / ∨ / ¬ are NOT representable in the AST this

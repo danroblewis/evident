@@ -1,11 +1,7 @@
--- DriverGuard isolation — the guard arms when the jump fires.
---
--- Drives the composition jump-fire condition (in_parse, pmode 10,
--- cw_st 4, witems nil) with a guard handle on the inline-frame top
--- (d_h_top = 99) and no reset/unguard. The guarded-splice phase must
--- latch il_guard ← 99 on the fire tick. We report il_guard. If the
--- fire condition or the arm latch regresses, il_guard stays 0.
---
+-- DriverGuard isolation — guard arms when the jump fires: drive the
+-- composition jump-fire condition (in_parse, pmode 10, cw_st 4, witems
+-- nil) with inline-frame-top guard handle d_h_top = 99 and no
+-- reset/unguard; the splice phase must latch il_guard ← 99 on the fire tick.
 -- entry: main
 -- expect: stdout = "99"
 -- expect: exit = 0
@@ -17,8 +13,6 @@ import "compiler2/driver_ir.ev"
 import "compiler2/driver_guard.ev"
 
 fsm main
-    -- Jump-fire gate: pmode-10 composition walk in cw_st 4 with the
-    -- callee's items consumed (witems nil).
     in_parse ∈ Bool
     in_parse = (is_first_tick ? true : _in_parse)
     pmode ∈ Int

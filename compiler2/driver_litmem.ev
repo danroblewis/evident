@@ -13,19 +13,10 @@
 --           latches exactly one registered seq var (name + element
 --           record type, −1 = Int) on first sight.
 --
--- INTERFACE WIDTH: ~10 external reads (slightly >8) — JUSTIFIED §6.4:
--- two literal-collection membership shapes share the parse gate + the
--- classifier's per-line name/sort views; splitting them would duplicate
--- that shared read surface across two <40-line stubs (the §3 anti-pattern).
---
 -- The pmode-7/8 literal-collection membership walks. Lifted into
 -- driver_main via `..DriverLitMem`.
 fsm DriverLitMem
     -- ── pmode 7: set-literal membership walk (C2: 041/042/062) ────
-    -- `x ∈ { a, b, … }` / `x ∉ { … }` — one int element per tick,
-    -- or-folded into an Expr; the closing `}` asserts it (wrapped in
-    -- C2Not for ∉). The empty set lowers to `false` (062: `x ∈ {}`
-    -- is UNSAT by construction).
     ms_name ∈ String
     ms_neg ∈ Bool
     ms_e ∈ Expr
@@ -55,16 +46,14 @@ fsm DriverLitMem
     -- `s ∈ Seq(Int)` declares TWO consts — `s : (Array Int Int)` and
     -- `s__len : Int` with the `(>= s__len 0)` floor (the oracle's
     -- exact decl shape; manifest `s:Seq(Int)`, two carry declares).
-    -- `s = ⟨e0, e1, …⟩` walks one full-Pratt element per `,`
-    -- (pk_kind 7), asserting `(= (select s i) e_i)` per element and
-    -- `(= s__len n)` at the closing `⟩` — all through EXISTING items
-    -- (symtab reads of s / s__len + SelH + PinEq). NOTE: the oracle
-    -- emits a degenerate `(= n n)` here (it substitutes a recorded
+    -- The literal walk asserts `(= (select s i) e_i)` per element and
+    -- `(= s__len n)` at the closing `⟩`. NOTE: the oracle emits a
+    -- degenerate `(= n n)` for the length (it substitutes a recorded
     -- length for `#s`); the driver pins s__len for real — sat-equal
     -- on every census fixture, and 065's contradiction still lowers
-    -- to UNSAT ((= s__len 3) ∧ (= s__len 5)). `#s` lowers to the
-    -- s__len const (per-sort `#` dispatch), not str.len. One
-    -- registered seq var per compile (the census surface).
+    -- to UNSAT. `#s` lowers to the s__len const (per-sort `#`
+    -- dispatch), not str.len. One registered seq var per compile
+    -- (the census surface).
     sq_set ∈ Bool
     sq_name ∈ String
     sq_rt ∈ Int

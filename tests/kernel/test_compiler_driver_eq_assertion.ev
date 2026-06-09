@@ -1,17 +1,7 @@
--- Grammar wave 4j: bare `name = expr` assertion after a prior membership.
---
--- A line whose operator is `=` / `≠` (not `∈`) constrains a name that an
--- earlier `name ∈ Type` membership already declared; it is NOT a new
--- declaration. The pre-4j MembershipStep mis-read the RHS atom as the
--- *type*, emitting `(declare-fun a () b)` instead of `(assert (= a b))`
--- (and polluting the manifest state-fields). This fixture pins the fix:
--- the third line `a = b` lowers to a single assertion with no new decl
--- and no manifest field. See compiler/parse_body.ev (ms_is_bare).
---
--- Source: "claim foo\n    a ∈ Int\n    b ∈ Int\n    a = b\n"  →
---   (declare-fun a () Int)
---   (declare-fun b () Int)
---   (assert (= a b))
+-- Bare `name = expr` assertion after a prior membership: `=`/`≠` (not `∈`)
+-- constrains an already-declared name — NOT a new declaration. Pins the
+-- regression where MembershipStep mis-read the RHS atom as the *type*,
+-- emitting `(declare-fun a () b)` and polluting state-fields (ms_is_bare).
 --
 -- expect: stdout = ";; manifest: state-fields = a:Int b:Int"
 -- expect: stdout = ";; manifest: effects-name = effects"

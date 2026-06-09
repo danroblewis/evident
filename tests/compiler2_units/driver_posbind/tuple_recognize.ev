@@ -1,11 +1,7 @@
 -- DriverPosBind isolation — tuple-element recognizer + atom parse.
---
--- Drives a pmode-12 positional walk in state 0 (pe_act) with the window
--- holding a tuple element `( 5 , 7 )` (LParen IntLit Comma IntLit RParen).
--- The module must parse both atoms (ptt_ok0) and recognize the 5-token
--- tuple bite (pt_tup_b). verdict = 1*pt_tup_b + 2*ptt_ok0 = 3. Exercises
--- the tuple recognizer and the element atom parse (C2AtomE); either
--- regressing changes the verdict.
+-- pmode-12 positional walk, window = `( 5 , 7 )`. Must parse both atoms
+-- (ptt_ok0) and recognize the 5-token tuple bite (pt_tup_b).
+-- verdict = 1*pt_tup_b + 2*ptt_ok0 = 3.
 --
 -- entry: main
 -- expect: stdout = "3"

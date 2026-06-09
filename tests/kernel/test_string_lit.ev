@@ -1,29 +1,13 @@
 -- Phase A3: String-literal recognition with `\n` / `\t` / `\"` / `\\`
--- escapes. Mode-state FSM (mirrors test_comment_lexer):
+-- escapes. Mode-state FSM dispatched off the previous tick's mode:
+--   mode 0 — normal · mode 1 — in string · mode 2 — escape pending
+--   (0,`"`) → open; (1,`"`) → close, emit StringLit(_partial);
+--   (1,`\`) → esc; (1,other) → append; (2,any) → append EscapeChar, mode 1
 --
---   mode 0 — normal (outside string)
---   mode 1 — inside string, no escape pending
---   mode 2 — inside string, last char was `\` (escape pending)
---
--- Transitions, dispatched off the previous tick's mode (`_mode`)
--- so each tick reacts to the character seen at `pos`:
---
---   (mode 0, `"`)           → open:     mode 1, partial = ""
---   (mode 1, `"`)           → close:    mode 0, emit StringLit(_partial)
---   (mode 1, `\`)           → esc:      mode 2
---   (mode 1, other char)    → append:   partial = _partial ++ cur_char
---   (mode 2, any char)      → esc-end:  partial = _partial ++ EscapeChar(cur_char),
---                                       mode 1
---
--- Input ("\"hi\\nx\"" with Evident's source escapes applied) is
--- the 7-char string  "hi\nx"  — quote, h, i, backslash, n, x,
--- quote. The lexer's literal output is the 4-char string  hi<NL>x
--- (the `\n` escape produces a real newline).
---
--- Per-tick label says what the FSM did. On close we also print
--- the length of the just-emitted string so the assertion is on
--- a printable ASCII integer instead of "hi<NL>x" (newline in
--- puts would split the line in the captured stdout).
+-- Input (after Evident's source escapes) is the 7-char  "hi\nx"  —
+-- quote, h, i, backslash, n, x, quote; the lexed literal is the 4-char
+-- hi<NL>x. On close we print the LENGTH, not the value — the real
+-- newline in puts would split the line in the captured stdout.
 --
 -- expect: stdout = "open"
 -- expect: stdout = "char"
@@ -61,38 +45,31 @@ claim main
 
     done ∈ Bool = (pos ≥ #input)
 
-    -- Dispatch off the PREVIOUS tick's mode + the CURRENT char.
-    -- _mode = 0: normal; _mode = 1: in-string; _mode = 2: escape pending.
     in_normal  ∈ Bool = (_mode = 0)
     in_string  ∈ Bool = (_mode = 1)
     in_escape  ∈ Bool = (_mode = 2)
 
-    -- Five mutually-exclusive actions (given ¬done):
     do_open      ∈ Bool = (in_normal ∧ is_quote ∧ ¬done)
     do_close     ∈ Bool = (in_string ∧ is_quote ∧ ¬done)
     do_esc_start ∈ Bool = (in_string ∧ is_bs ∧ ¬done)
     do_esc_end   ∈ Bool = (in_escape ∧ ¬done)
     do_append    ∈ Bool = (in_string ∧ ¬is_quote ∧ ¬is_bs ∧ ¬done)
 
-    -- Mode transitions. _mode defaults to 0 on tick 0 so the
-    -- "normal" branch handles the opening quote at pos 0 naturally;
-    -- no special-case for is_first_tick is needed.
+    -- _mode defaults to 0 on tick 0, so the "normal" branch handles the
+    -- opening quote at pos 0 with no is_first_tick special-case.
     mode = (do_open      ? 1
         : (do_close     ? 0
         : (do_esc_start ? 2
         : (do_esc_end   ? 1
         : _mode))))
 
-    -- Partial accumulator. On open we reset; on append/esc-end we
-    -- extend; on close we reset (the value just emitted is captured
-    -- on the close tick from _partial).
     partial = (do_open    ? ""
         : (do_close   ? ""
         : (do_append  ? _partial ++ cur_char
         : (do_esc_end ? _partial ++ esc_char
         : _partial))))
 
-    -- Output token list (Cons-prepended, so reverse-time-order).
+    -- Token list is Cons-prepended, so reverse-time-order.
     tokens  ∈ TokenList
     _tokens ∈ TokenList
     emitted_tok ∈ Token = StringLit(_partial)

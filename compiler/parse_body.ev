@@ -1,28 +1,16 @@
--- compiler/parse_body.ev — grammar wave 1: one-membership-per-tick
--- parse + translate step for a claim body.
+-- compiler/parse_body.ev — one-membership-per-tick parse + translate
+-- step for a claim body.
 --
--- The MVP driver (compiler/compiler.ev) handled exactly ONE membership
--- with an `= N` literal pin, parsed by peeling fixed token positions in
--- a single emit tick. That doesn't generalise: a claim body has an
--- arbitrary number of memberships, each 3 / 5 / 7 tokens wide depending
--- on whether it carries a pin and whether the pin is a literal or a
--- one-level arithmetic binop.
+-- MembershipStep consumes one membership off the front of a FORWARD
+-- token list, so the driver's parse phase is a plain work-list walk.
 --
--- This file factors the "consume one membership off the front of a
--- FORWARD token list" transition into a single claim, MembershipStep,
--- so the driver's parse phase is a plain work-list walk (one membership
--- per tick) — the same shape as test_translate_arith_recursive.ev's
--- per-tick ArithTranslateStep, but over a TokenList instead of a
--- WorkList. See docs/plans/grammar-wave1.md for the phase breakdown.
---
--- Wave-1 grammar consumed by MembershipStep (head = `Ident(name)`):
+-- Base grammar consumed by MembershipStep (head = `Ident(name)`):
 --
 --   Ident(name) ∈ Ident(type)                       -- 3 tokens, no pin
 --   Ident(name) ∈ Ident(type) = <atom>              -- 5 tokens
 --   Ident(name) ∈ Ident(type) = <atom> <op> <atom>  -- 7 tokens (arith)
 --
--- where <atom> is IntLit(n) | Ident(s) and <op> is +,-,*,/.  Anything
--- else (enum / match / quantifier / nested pin) is a later wave.
+-- where <atom> is IntLit(n) | Ident(s) and <op> is +,-,*,/.
 
 import "compiler/lexer.ev"
 import "compiler/parser.ev"
@@ -32,9 +20,8 @@ import "compiler/translate_bool.ev"
 import "compiler/translate_ternary.ev"
 
 -- ── TokenList head / tail ───────────────────────────────────────
--- Sentinel EofTok / TLNil on the empty list, exactly like the inline
--- `match` peels in the MVP driver. Callers gate on the `ok` Bool that
--- MembershipStep derives from the head token, not on these sentinels.
+-- Sentinel EofTok / TLNil on the empty list. Callers gate on the `ok`
+-- Bool MembershipStep derives from the head token, not on these sentinels.
 
 claim TLHd
     l ∈ TokenList
@@ -62,9 +49,6 @@ claim TLTl
 --   pinned   — whether a `= …` pin was present
 --   rest     — `rem` with this membership's 3/5/7 tokens dropped
 --   ok       — head token is an Ident (a membership is actually present)
---
--- The pin RHS is translated by composing translate_arith.ev:
--- ArithExprSmtlib for the binop form, AtomSmtlib for a bare atom.
 claim MembershipStep
     rem ∈ TokenList
     decl ∈ String
@@ -76,9 +60,9 @@ claim MembershipStep
     saw_ift ∈ Bool
 
     -- Peel up to nine tokens (and the tails after 3 / 5 / 6 / 7 / 9).
-    -- Wave-2 pin RHS widths: bare atom / string (5: name ∈ T = x),
-    -- unary not (6: name ∈ T = ¬ x), binop (7: name ∈ T = a op b),
-    -- ternary (9: name ∈ T = c ? t : e).
+    -- Pin RHS widths: bare atom / string (5: name ∈ T = x), unary not
+    -- (6: name ∈ T = ¬ x), binop (7: name ∈ T = a op b), ternary
+    -- (9: name ∈ T = c ? t : e).
     t0 ∈ Token
     TLHd(l ↦ rem, out ↦ t0)
     l1 ∈ TokenList
@@ -130,15 +114,11 @@ claim MembershipStep
         _ ⇒ ""
     has_eq ∈ Bool = (t3 matches Eq)
 
-    -- ── Item 3 (wave 4l): `Nat` → `Int` + `(>= name 0)` ────────────
-    -- `Nat` is not a Z3 sort; bootstrap (declare.rs) declares an Int const
-    -- and pushes a `>= 0` post-constraint. We map the SORT used in the decl
-    -- (Nat→Int) and emit the non-negativity assertion, layered ON TOP of
-    -- whatever the normal/chain/pin path already produces (so `n ∈ Nat < 50`
-    -- yields decl + `(>= n 0)` + `(< n 50)`). Gated on t1=∈ so it only
-    -- fires for the `name ∈ Type …` shapes (not bare/multi/impl, whose t2
-    -- is not a type token). The manifest field also uses Int (a Nat var is
-    -- an IntVar — bootstrap emit.rs discover_state_fields).
+    -- ── `Nat` → `Int` + `(>= name 0)` ──────────────────────────────
+    -- `Nat` is not a Z3 sort: map the decl sort Nat→Int and emit the
+    -- non-negativity assertion, layered ON TOP of whatever the
+    -- normal/chain/pin path already produces. Gated on t1=∈ so it only
+    -- fires for `name ∈ Type …` shapes. The manifest field also uses Int.
     ms_is_nat ∈ Bool = ((type_str = "Nat") ∧ (t1 matches OpIn))
     ms_sort ∈ String = (ms_is_nat ? "Int" : type_str)
     ms_nat_assert ∈ String = "(assert (>= " ++ name ++ " 0))"
@@ -191,13 +171,11 @@ claim MembershipStep
         _ ⇒ ""
     ms_atom8 ∈ Expr = (ms_a8_is_int ? EInt(ms_a8_int) : EIdent(ms_a8_id))
 
-    -- String-literal RHS (t4 is a StringLit).
     ms_str_val ∈ String = match t4
         StringLit(s) ⇒ s
         _ ⇒ ""
 
-    -- Pin operator (t5). Arithmetic continues a binop, as do the wave-2
-    -- comparison + boolean-connective operators.
+    -- Pin operator (t5).
     ms_is_plus  ∈ Bool = (t5 matches Plus)
     ms_is_minus ∈ Bool = (t5 matches Minus)
     ms_is_star  ∈ Bool = (t5 matches Star)
@@ -237,22 +215,18 @@ claim MembershipStep
 
     ms_is_string  ∈ Bool = (has_eq ∧ ms_t4_is_str)
     ms_is_not     ∈ Bool = (has_eq ∧ ms_t4_is_not)
-    -- `<atom> matches Ctor(_)` (grammar wave 3, item 3): a constructor
-    -- recognizer. t4=scrutinee atom, t5=KwMatches, t6=Ctor ident, then
-    -- `( _ )`. Lowers to a Z3 tester `((_ is Ctor) <scrutinee>)`, the
-    -- sibling of match-arm lowering in compiler/translate_match.ev.
+    -- `<atom> matches Ctor(_)`: t4=scrutinee atom, t5=KwMatches, t6=Ctor
+    -- ident, then `( _ )`. Lowers to a Z3 tester `((_ is Ctor) <scrutinee>)`.
     ms_is_matches ∈ Bool = (has_eq ∧ ms_t4_is_atom ∧ ms_t5_is_matches)
     ms_is_ternary ∈ Bool = (has_eq ∧ ms_t4_is_atom ∧ ms_t5_is_q)
     ms_is_binop   ∈ Bool = (has_eq ∧ ms_t4_is_atom ∧ ms_is_op)
 
-    -- matches scrutinee (t4 atom) + constructor name (t6 Ident).
     ms_scrut_str ∈ String = (ms_a1_is_int ? str_from_int(ms_a1_int) : ms_a1_id)
     ms_ctor_name ∈ String = match t6
         Ident(s) ⇒ s
         _ ⇒ ""
     ms_matches_str ∈ String = "((_ is " ++ ms_ctor_name ++ ") " ++ ms_scrut_str ++ ")"
 
-    -- RHS Expr per shape.
     ms_rhs_expr ∈ Expr = (ms_is_string ? EStr(ms_str_val)
         : ms_is_not ? ENot(ms_atom5)
         : ms_is_ternary ? ETernary(ms_atom1, ms_atom2, ms_atom8)
@@ -283,28 +257,18 @@ claim MembershipStep
         : ms_atom_str)
 
     -- Manifest field: `_<name>` carry vars and the auto-injected
-    -- is_first_tick are NOT first-class state fields (mirrors
-    -- bootstrap/runtime/src/emit.rs::discover_state_fields), so they
-    -- contribute "" — the driver skips empty fields.
+    -- is_first_tick are NOT state fields — they contribute "" and the
+    -- driver skips empty fields.
     ms_first_ch ∈ String = substr(name, 0, 1)
     ms_is_carry ∈ Bool = ((ms_first_ch = "_") ∨ (name = "is_first_tick"))
 
-    -- ── Bare assertion: `name = rhs` / `name ≠ rhs` ────────────────
-    -- When the operator at t1 is `=` / `≠` (NOT `∈`), this line is a
-    -- constraint on a name a PRIOR membership already declared — not a
-    -- new declaration. The earlier path mis-read t2 as the *type*,
-    -- emitting `(declare-fun name () <rhs>)` (wave 4j bug). Here the RHS
-    -- is a single atom at t2 (IntLit / Ident / StringLit), lowered via
-    -- AtomSmtlib; `≠` negates the equality (matches bootstrap's
-    -- translate_bool OpNeq → `(not (= l r))`). The whole line becomes a
-    -- single `decl` chunk (the assertion) with no manifest field and
-    -- pinned=false, so the driver's `chunk = pinned ? decl+assert : decl`
-    -- emits exactly the one assertion line.
-    -- A bare line is `name cmp atom` for any comparison cmp (=, ≠, <, >,
-    -- ≤, ≥) — a constraint on a name a prior membership declared. Extended
-    -- in wave 4k from just `=`/`≠` to the ordering comparisons (lang's
-    -- `r < 10`). Excludes the implication shape (t3=⇒), which carries its
-    -- own LHS/RHS handling below.
+    -- ── Bare assertion: `name cmp atom` (=, ≠, <, >, ≤, ≥) ─────────
+    -- A constraint on a name a PRIOR membership already declared — not a
+    -- new declaration. The RHS is a single atom at t2; `≠` lowers to
+    -- `(not (= l r))`. The line becomes a single `decl` chunk (the
+    -- assertion) with no manifest field and pinned=false, so the driver's
+    -- `chunk = pinned ? decl+assert : decl` emits exactly the one
+    -- assertion line. Excludes the implication shape (t3=⇒), handled below.
     ms_t1_is_eq ∈ Bool = (t1 matches Eq)
     ms_t1_is_ne ∈ Bool = (t1 matches OpNe)
     ms_t1_is_lt ∈ Bool = (t1 matches Lt)
@@ -329,9 +293,9 @@ claim MembershipStep
     ms_bare_cmp ∈ String = (ms_t1_is_eq ? "=" : ms_t1_is_lt ? "<"
         : ms_t1_is_gt ? ">" : ms_t1_is_le ? "<=" : ms_t1_is_ge ? ">=" : "=")
     -- Negative-int RHS: `name cmp -N` lexes as Minus(t2) IntLit(N)(t3); the
-    -- atom helpers see only t2=Minus (→ ""), dropping the value (wave 4p).
-    -- SMT-LIB negatives are `(- N)`. The literal consumes one extra token, so
-    -- the bare rest advances to l4 (handled in the rest selector below).
+    -- atom helpers see only t2=Minus (→ ""), dropping the value. SMT-LIB
+    -- negatives are `(- N)`. The literal consumes one extra token, so the
+    -- bare rest advances to l4 (in the rest selector below).
     ms_bare_neg ∈ Bool = (ms_is_bare ∧ (t2 matches Minus) ∧ (t3 matches IntLit(_)))
     ms_neg_int ∈ Int = match t3
         IntLit(n) ⇒ n
@@ -341,12 +305,10 @@ claim MembershipStep
         ? "(assert (not (= " ++ name ++ " " ++ ms_bare_rhs ++ ")))"
         : "(assert (" ++ ms_bare_cmp ++ " " ++ name ++ " " ++ ms_bare_rhs ++ "))")
 
-    -- ── Per-token atom → SMT-LIB string (wave 4k) ──────────────────
-    -- The bare/implication/chain/multi-name shapes below all need a token
-    -- at a fixed slot lowered to its SMT-LIB atom text. Unlike the Expr
-    -- machinery above these also handle the Bool keyword literals
-    -- (`true`/`false` lex as KwTrue/KwFalse, NOT Ident) — the bare path
-    -- previously dropped them (rendering `(= is_weekend )`).
+    -- ── Per-token atom → SMT-LIB string ─────────────────────────────
+    -- Unlike the Expr machinery above, these handle the Bool keyword
+    -- literals (`true`/`false` lex as KwTrue/KwFalse, NOT Ident) — the
+    -- bare path previously dropped them (rendering `(= is_weekend )`).
     ms_s_t2 ∈ String = (ms_b2_is_int ? str_from_int(ms_b2_int)
         : (t2 matches KwTrue)  ? "true"
         : (t2 matches KwFalse) ? "false"
@@ -361,9 +323,7 @@ claim MembershipStep
         : (t6 matches KwFalse) ? "false"
         : ms_a2_id)
 
-    -- t3 / t5 / t7 atom text (wave 4p, bare parenthesised ternary). Handle
-    -- IntLit / Ident / StringLit / Bool keywords so the ITE branches render
-    -- for int, string, bool and enum-nullary branch values.
+    -- t3 / t5 / t7 atom text for the bare parenthesised ternary.
     ms_t3_is_int ∈ Bool = (t3 matches IntLit(_))
     ms_t3_int ∈ Int = match t3
         IntLit(n) ⇒ n
@@ -404,27 +364,21 @@ claim MembershipStep
         : ms_t7_id)
 
     -- ── Bare parenthesised ternary: `name = ( cond ? then : else )` ──
-    -- A constraint on an already-declared name whose RHS is a single-level
-    -- ternary wrapped in parens (the surface the lang corpus uses, e.g.
-    -- `x = (flag ? 7 : 99)`). t2=LParen, single-token cond at t3, t4=Question,
-    -- then at t5, t6=Colon, else at t7, t8=RParen. Lowers to
-    -- `(assert (= name (ite cond then else)))`. Compound conditions
-    -- (`n > 3 ?`) and nested else-ternary are out of scope here (the corpus's
-    -- failing case is the simple form; the sat nested/comparison cases pass
-    -- trivially). Takes priority over the atom bare-`=` path below.
+    -- t2=LParen, single-token cond at t3, t4=Question, then at t5,
+    -- t6=Colon, else at t7, t8=RParen → `(assert (= name (ite …)))`.
+    -- Compound conditions and nested else-ternary are out of scope.
+    -- Takes priority over the atom bare-`=` path below.
     ms_bt_open ∈ Bool = (t2 matches LParen)
     ms_bt_q ∈ Bool = (t4 matches Question)
     ms_is_barety ∈ Bool = (is_name ∧ ms_t1_is_eq ∧ ms_bt_open ∧ ms_bt_q)
     ms_barety_assert ∈ String = "(assert (= " ++ name ++ " (ite " ++ ms_s_t3 ++ " " ++ ms_s_t5 ++ " " ++ ms_s_t7 ++ ")))"
 
-    -- ── Item 2: implication `LHS ⇒ RHS` ────────────────────────────
-    -- A body line `name op atom ⇒ name2 op2 atom2` lowers to a single
-    -- `(assert (=> <lhs> <rhs>))`. Detected by OpImplies at t3; takes
-    -- priority over the bare-`=` path (which would otherwise consume just
-    -- `name = atom` and leave `⇒ …` dangling — the wave-4j Wall-2 bug).
+    -- ── Implication `LHS ⇒ RHS` ─────────────────────────────────────
+    -- `name op atom ⇒ name2 op2 atom2` → `(assert (=> <lhs> <rhs>))`.
+    -- Detected by OpImplies at t3; takes priority over the bare-`=` path,
+    -- which would otherwise consume `name = atom` and leave `⇒ …` dangling.
     -- LHS = (t0 name, t1 op, t2 atom); RHS = (t4 name, t5 op, t6 atom).
-    -- Compound/parenthesised consequents are out of scope (the corpus
-    -- uses the atom-op-atom shape — test_enums_basic is_weekend_rule).
+    -- Compound/parenthesised consequents are out of scope.
     ms_is_implln ∈ Bool = (is_name ∧ (t3 matches OpImplies))
     ms_l_is_eq ∈ Bool = ms_t1_is_eq
     ms_l_is_ne ∈ Bool = ms_t1_is_ne
@@ -450,11 +404,9 @@ claim MembershipStep
         : "(" ++ ms_r_cmp ++ " " ++ ms_s_t4 ++ " " ++ ms_s_t6 ++ ")")
     ms_impl_assert ∈ String = "(assert (=> " ++ ms_lhs_impl ++ " " ++ ms_rhs_impl ++ "))"
 
-    -- ── Item 3/4: chained suffix bound `name ∈ T cmp atom` ──────────
-    -- After `name ∈ Type`, a trailing comparison (`< N`, `≤ N`, `> N`,
-    -- `≥ N`, `≠ N`) at t3 bounds the just-declared name. Emits the decl
-    -- AND a bound assertion (pinned=true → driver concatenates them).
-    -- `≠` lowers to `(not (= name N))` (matches translate_bool OpNeq).
+    -- ── Chained suffix bound `name ∈ T cmp atom` ────────────────────
+    -- A trailing comparison at t3 bounds the just-declared name: the decl
+    -- AND a bound assertion (pinned=true). `≠` lowers to `(not (= name N))`.
     ms_c_is_lt ∈ Bool = (t3 matches Lt)
     ms_c_is_gt ∈ Bool = (t3 matches Gt)
     ms_c_is_le ∈ Bool = (t3 matches OpLe)
@@ -469,13 +421,11 @@ claim MembershipStep
         ? "(assert (not (= " ++ name ++ " " ++ ms_s_t4 ++ ")))"
         : "(assert (" ++ ms_c_cmp ++ " " ++ name ++ " " ++ ms_s_t4 ++ "))")
 
-    -- ── Item 1: multi-name decl `n1, n2 [, n3] ∈ T [pin]` ──────────
-    -- A leading Comma at t1 means several names share one type (and one
-    -- optional pin/bound). 2-name: t2=n2, t3=∈, t4=type, [t5 op t6].
-    -- 3-name: t3=Comma, t4=n3, t5=∈, t6=type, [t7 op t8]. Emits one
-    -- declare-fun per name plus, when pinned, one assertion per name.
-    -- The range-prefix form (`0 < a, b ∈ …`) is a separate (head-is-lit)
-    -- shape — see docs/plans/wave-4k-membership-walk-shapes.md.
+    -- ── Multi-name decl `n1, n2 [, n3] ∈ T [pin]` ──────────────────
+    -- 2-name: t2=n2, t3=∈, t4=type, [t5 op t6]. 3-name: t3=Comma, t4=n3,
+    -- t5=∈, t6=type, [t7 op t8]. One declare-fun per name plus, when
+    -- pinned, one assertion per name. The range-prefix form (`0 < a, b ∈ …`)
+    -- is a separate (head-is-lit) shape.
     ms_is_multi ∈ Bool = (is_name ∧ (t1 matches Comma))
     ms_mn_3 ∈ Bool = (ms_is_multi ∧ (t3 matches Comma))
     ms_n2 ∈ String = match t2
@@ -534,38 +484,22 @@ claim MembershipStep
     ms_mn_rest ∈ TokenList = (ms_mn_3 ? (ms_mn_pinned ? l9 : l7)
         : (ms_mn_pinned ? l7 : l5))
 
-    -- ── Item 5: bare `ClaimName` composition line — DETECTION ONLY ──
-    -- A lone Ident body line (`is_weekend_rule`, `bounded_score`) whose
-    -- next token is NOT an operator we recognise is composition mechanism
-    -- #2/#4 (names-match inline of another claim's body). The FULL inline
-    -- needs the caller's body-locals to unify with the named claim's body
-    -- tokens — which live in another claim, not in this `rem`. MembershipStep
-    -- only sees the current claim's `rem`, so it CANNOT inline; that is a
-    -- driver-level (compiler.ev) claim-table scan of `_fwd` — see
-    -- docs/plans/wave-4k-membership-walk-shapes.md, Item 5.
-    --
-    -- What this DOES do: cleanly consume the lone name (rest=l1, no decl,
-    -- no field) so the line no longer corrupts the walk (the pre-4k path
-    -- mis-read it as `name ∈ <next-token>` and emitted `(declare-fun name
-    -- () )`, derailing every subsequent membership). The composed claim's
-    -- CONSTRAINTS are dropped — a documented wrong-verdict for composition
-    -- claims until the driver inliner lands.
+    -- ── Bare `ClaimName` composition line — DETECTION ONLY ──────────
+    -- MembershipStep only sees the current claim's `rem`, so it CANNOT
+    -- inline the named claim's body — that is the driver's `_fwd` scan
+    -- (compiler.ev, pmode 4). Here we cleanly consume the lone name
+    -- (rest=l1, no decl, no field) so the line doesn't corrupt the walk
+    -- (a mis-read as `name ∈ <next-token>` derails every later membership).
     ms_is_lone ∈ Bool = (is_name ∧ (¬ms_t1_is_in) ∧ (¬(t1 matches Comma))
         ∧ (¬ms_t1_is_cmp) ∧ (¬ms_is_implln))
 
-    -- ── Item 2 (wave 4l): range-prefix `lit cmp name [∈ T] [cmp atom]` ──
-    -- A body line whose HEAD is a literal + comparison, BEFORE the name:
+    -- ── Range-prefix `lit cmp name [∈ T] [cmp atom]` ────────────────
     --   `0 < x ∈ Int < 10`   declare x:Int, assert `(< 0 x)` and `(< x 10)`
     --   `0 < x ∈ Int`        declare + lower bound only
     --   `0 ≤ score ≤ 100`    no decl (prior name); two bound asserts
-    -- The membership walk's head check is `is_name`, false here (t0 is an
-    -- IntLit), so this never reaches the normal/chain paths — it needs its
-    -- own head-is-literal discriminator. The prefix `lit cmp name` lowers to
-    -- `(cmp lit name)` and the suffix `name cmp atom` to `(cmp name atom)`,
-    -- mirroring bootstrap's chained-membership desugar (body_item.rs:
-    -- `try_parse_chained_membership`, one Constraint per op with var_idx in
-    -- the middle). `∈ Nat` desugars to Int + `(>= name 0)` (Item 3 applied
-    -- to the range form).
+    -- t0 is an IntLit, so `is_name` is false and this needs its own
+    -- head-is-literal discriminator. The prefix lowers to `(cmp lit name)`,
+    -- the suffix to `(cmp name atom)`. `∈ Nat` desugars to Int + `(>= name 0)`.
     ms_t0_is_int ∈ Bool = (t0 matches IntLit(_))
     ms_t0_int ∈ Int = match t0
         IntLit(n) ⇒ n
@@ -582,12 +516,10 @@ claim MembershipStep
     ms_is_rangepfx ∈ Bool = (ms_t0_is_int ∧ ms_p_is_cmp ∧ ms_rp_t2_name)
     ms_rp_typed ∈ Bool = (ms_is_rangepfx ∧ (t3 matches OpIn))
 
-    -- Prefix assertion `(cmp lit name)`.
     ms_p_cmp ∈ String = (ms_p_is_lt ? "<" : ms_p_is_gt ? ">"
         : ms_p_is_le ? "<=" : ms_p_is_ge ? ">=" : "<")
     ms_rp_pfx_assert ∈ String = ("(assert (" ++ ms_p_cmp ++ " " ++ str_from_int(ms_t0_int) ++ " " ++ ms_rp_name ++ "))")
 
-    -- Typed form: type at t4, Nat-mapped sort + non-negativity post.
     ms_rp_type ∈ String = match t4
         Ident(s) ⇒ s
         _ ⇒ ""
@@ -618,9 +550,8 @@ claim MembershipStep
         ? str_from_int(ms_rp_sfx_atom_int) : ms_rp_sfx_atom_id)
     ms_rp_sfx_assert ∈ String = ("(assert (" ++ ms_rp_s_cmp ++ " " ++ ms_rp_name ++ " " ++ ms_rp_sfx_atomstr ++ "))")
 
-    -- Assemble the range-prefix outputs. Assertion order mirrors bootstrap:
-    -- declare-post (Nat `>= 0`) first, then the body constraints in op order
-    -- (prefix, suffix).
+    -- Assertion order: declare-post (Nat `>= 0`) first, then the body
+    -- constraints in op order (prefix, suffix).
     ms_rp_nat_pre ∈ String = (ms_rp_typed ∧ ms_rp_is_nat ? ms_rp_nat_assert ++ "\n" : "")
     ms_rp_sfx_part ∈ String = (ms_rp_has_sfx ? "\n" ++ ms_rp_sfx_assert : "")
     ms_rp_asserts ∈ String = ms_rp_nat_pre ++ ms_rp_pfx_assert ++ ms_rp_sfx_part
@@ -635,8 +566,7 @@ claim MembershipStep
     -- ordering is explicit so a future shape addition can't silently re-route.
     ms_decl_normal ∈ String
     DeclareFun(name ↦ name, type_str ↦ ms_sort, out ↦ ms_decl_normal)
-    -- Base (pre-Nat) assertion + pinned for the `name ∈ Type …` shapes; the
-    -- Nat layer (Item 3) prepends `(>= name 0)` and forces pinned=true so the
+    -- The Nat layer prepends `(>= name 0)` and forces pinned=true so the
     -- driver emits decl + asserts even for a plain `n ∈ Nat`.
     ms_base_assert ∈ String = (ms_is_implln ? ""
         : ms_is_multi ? ms_mn_assert

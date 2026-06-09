@@ -1,13 +1,5 @@
--- Conformance tests for Stage 0b enums (variants with payloads,
--- including self-recursion).
---
--- Run with:
---     evident test tests/lang_tests/test_enums_payload.ev
---
--- Payload variants store a Var::EnumCtor in env at evaluate time;
--- `Variant(arg, …)` parses as Expr::Call which the translator
--- spots and applies via the constructor. Recursive payloads
--- nest naturally — the recursion lives in the Z3 datatype.
+-- Conformance tests for enum variants with payloads, including
+-- self-recursion (the recursion lives in the Z3 datatype).
 
 enum Result = Ok(Int) | Err(String)
 enum Maybe = None | Some(Int)
@@ -98,7 +90,6 @@ claim unsat_nil_vs_cons
 claim is_ok_value
     r ∈ Result
     n ∈ Int
-    -- Pin the result to Ok(n) to expose the payload.
     r = Ok(n)
 
 claim sat_ok_via_subclaim

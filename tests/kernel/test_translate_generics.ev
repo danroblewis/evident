@@ -1,23 +1,10 @@
 -- Phase C11: generic monomorphization (T → Rect TypeRef substitution).
 --
--- Self-hosted analogue of runtime/src/runtime/generics.rs's
--- per-membership substitution step. For a generic claim like
+-- Wires three SubstType invocations (Seq(T) → Seq(Rect),
+-- Edge<T> → Edge<Rect>, TNoType passthrough), one puts per tick.
 --
---     claim Toposort<T>
---         items ∈ Seq(T)
---         edges ∈ Seq(Edge<T>)
---
--- instantiated as Toposort<Rect>, the Rust side rewrites the
--- TypeRef payloads carried in each BIMembership AST node:
---
---     "Seq(T)"   → "Seq(Rect)"
---     "Edge<T>"  → "Edge<Rect>"
---
--- This fixture wires three SubstType invocations and prints the
--- substituted type-name string each tick, plus a passthrough
--- check for TNoType. Limitation (same as the Rust side): the
--- substring replace is naive — a `T` parameter would clobber the
--- leading "T" of "Tree". A token-aware replace is a later
+-- Limitation: the substring replace is naive — a `T` parameter would
+-- clobber the leading "T" of "Tree". A token-aware replace is a later
 -- refinement; this is enough for the C11 acceptance corpus.
 --
 -- expect: stdout = "[start]"
@@ -30,7 +17,6 @@ import "stdlib/kernel.ev"
 import "compiler/translate_generics.ev"
 
 claim main
-    -- Case A: `Seq(T)` with T ↦ Rect → `Seq(Rect)`.
     a_in  ∈ TypeRef = TName("Seq(T)")
     a_out ∈ TypeRef
     SubstType(t ↦ a_in, param ↦ "T", concrete ↦ "Rect", out ↦ a_out)
@@ -38,7 +24,6 @@ claim main
         TName(s) ⇒ s
         _ ⇒ "<no-type>"
 
-    -- Case B: `Edge<T>` with T ↦ Rect → `Edge<Rect>`.
     b_in  ∈ TypeRef = TName("Edge<T>")
     b_out ∈ TypeRef
     SubstType(t ↦ b_in, param ↦ "T", concrete ↦ "Rect", out ↦ b_out)
@@ -46,19 +31,12 @@ claim main
         TName(s) ⇒ s
         _ ⇒ "<no-type>"
 
-    -- Case C: TNoType passes through to TNoType.
     c_in  ∈ TypeRef = TNoType
     c_out ∈ TypeRef
     SubstType(t ↦ c_in, param ↦ "T", concrete ↦ "Rect", out ↦ c_out)
     c_is_no ∈ Bool = (c_out matches TNoType)
     c_str ∈ String = (c_is_no ? "TNoType" : "<not-no-type>")
 
-    -- Per-tick diagnostic stepping. One puts per tick:
-    --   step 0 → "[start]"
-    --   step 1 → Case A substituted string
-    --   step 2 → Case B substituted string
-    --   step 3 → Case C passthrough label
-    --   step 4 → "[done]" + Exit(0)
     step ∈ Int
     _step ∈ Int
     step = (is_first_tick ? 0 : _step + 1)

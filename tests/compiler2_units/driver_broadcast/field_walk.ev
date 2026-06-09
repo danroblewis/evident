@@ -1,12 +1,8 @@
 -- DriverBroadcast isolation — the per-field broadcast walk.
---
--- Drives a record-pinned membership completion (p_done with pk_kind 1,
--- pk_rec 0, not bad) on one tick, then holds the claim-walk dispatch
--- gate open with a 2-field record (rt_nf0 = 2). The broadcast must arm
--- (rb_on), reset rb_fi to 0, then step it 0→1→2 one field per tick and
--- disarm at the last field. We report rb_fi after the walk settles.
--- If the loop miscounts fields, stalls, or fails to arm/disarm, rb_fi is
--- not 2 and this fails.
+-- Drives a record-pinned membership completion on one tick, holds the
+-- claim-walk dispatch gate open with a 2-field record; the broadcast
+-- must arm, reset rb_fi to 0, step 0→1→2 one field per tick, and
+-- disarm at the last field. Reports rb_fi after the walk settles.
 --
 -- entry: main
 -- expect: stdout = "2"
@@ -18,10 +14,8 @@ import "compiler2/driver_record.ev"
 import "compiler2/driver_broadcast.ev"
 
 fsm main
-    -- tick counter to time the one-shot entry and the exit.
     tc ∈ Int
     tc = (is_first_tick ? 0 : _tc + 1)
-    -- Record-pin completion fires once, at tc = 1.
     p_done ∈ Bool = (tc = 1)
     pk_kind ∈ Int
     pk_kind = (is_first_tick ? 1 : _pk_kind)

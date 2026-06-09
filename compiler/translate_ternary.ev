@@ -4,28 +4,14 @@
 -- "Wave 2"). No dedicated translator existed before (survey Open Q #3); this
 -- is that pass.
 --
--- An Evident ternary `c ? t : e` parses to ETernary(c, t, e)
--- (compiler/parser.ev) and lowers to the SMT-LIB if-then-else form:
---
---   ETernary(c, t, e)  →  "(ite <c> <t> <e>)"
---
--- This maps directly onto the functionizer's `ite` shape category
+-- `(ite …)` maps directly onto the functionizer's `ite` shape category
 -- (docs/plans/architecture-invariants.md §functionizability), so a ternary
 -- pin extracts as an ITE rather than falling through to Z3.
---
--- Shape mirrors translate_arith.ev: a one-level renderer (TernaryExprSmtlib,
--- atom operands) for the wave-2 pin surface, plus a depth-first work-stack
--- step (TernaryTranslateStep) for the arbitrary-nesting case, identical in
--- structure to ArithTranslateStep / BoolTranslateStep.
 
 import "compiler/parser.ev"
 import "compiler/translate_arith.ev"
 
 -- ── TernaryExprSmtlib ───────────────────────────────────────────
--- Render a one-level ETernary whose three operands are atoms
--- (EInt / EIdent / EStr) to "(ite <c> <t> <e>)". For any other shape
--- ok=false, out="" — the caller branches on ok (work-stack walker for
--- nested cases). Operands are rendered by composing AtomSmtlib.
 claim TernaryExprSmtlib
     e ∈ Expr
     out ∈ String
@@ -57,12 +43,6 @@ claim TernaryExprSmtlib
     out = (ok ? "(ite " ++ cond_text ++ " " ++ then_text ++ " " ++ else_text ++ ")" : "")
 
 -- ── Recursive ternary translation via a WorkItem work-stack ─────
--- The depth-first analogue of TernaryExprSmtlib, mirroring
--- ArithTranslateStep: an ETernary head expands (head-first onto `rest`)
--- to the seven items
---   "(ite " WIProcess(c) " " WIProcess(t) " " WIProcess(e) ")"
--- so a pre-order pop emits "(ite " first, then recurses into each operand.
--- Atoms emit their token; a WIEmit head contributes its literal.
 claim TernaryTranslateStep(head ∈ WorkItem, rest ∈ WorkList, new_stack ∈ WorkList, emit ∈ String)
     is_emit ∈ Bool = (head matches WIEmit(_))
     emit_lit ∈ String = match head

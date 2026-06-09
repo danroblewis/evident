@@ -1,34 +1,9 @@
 -- Phase A2: Two-char ASCII operator recognition
 -- (++, =>, <=, >=, !=, ..) with peek-ahead and single-char fallback.
 --
--- Walks a hardcoded ASCII string. At each position the FSM:
---   1. reads cur_char  = input[pos]
---   2. reads next_char = input[pos+1]
---   3. asks MaybeTwoCharOp(cur, next) — if recognized, emits the
---      two-char token's label AND advances pos by 2 next tick.
---   4. else asks SingleCharTok(cur) and emits its label, advancing
---      pos by 1.
---
--- The input mixes recognized two-char ops with their single-char
--- fall-through neighbours so both code paths fire:
---   "++=><=>=!=..<>."
---    ^^|^|^^|^^|^^|^^^
---    | | |  |  |  ||||
---    | | |  |  |  ||| `.` Dot      (single, lookahead is EOF)
---    | | |  |  |  || `>` Gt        (single, lookahead is `.`)
---    | | |  |  |  | `<` Lt         (single, lookahead is `>`)
---    | | |  |  |  `..` DotDot      (two-char)
---    | | |  |  `!=` OpNe           (two-char)
---    | | |  `>=` OpGe              (two-char)
---    | | `<=` OpLe                 (two-char)
---    | `=>` OpImplies              (two-char)
---    `++` PlusPlus                 (two-char)
---
--- Tokens emitted, in order:
---   PlusPlus, Implies, Le, Ge, Ne, DotDot, Lt, Gt, Dot, [eof]
---
--- This is the acceptance test for Phase A2 of the completion
--- roadmap (see docs/plans/completion-roadmap.md).
+-- Input segments as "++ => <= >= != .. < > ." — the two-char ops,
+-- then single-char fall-throughs (`<` with lookahead `>`, `>` with
+-- lookahead `.`, `.` with lookahead EOF) so both paths fire.
 --
 -- expect: stdout = "PLUSPLUS"
 -- expect: stdout = "IMPLIES"
@@ -49,8 +24,8 @@ claim main
 
     pos  ∈ Int
     _pos ∈ Int
-    -- step is set by the previous tick's recognition: 2 if a
-    -- two-char op was emitted, 1 otherwise. On tick 0, pos = 0.
+    -- _step is the PREVIOUS tick's recognition: 2 if it emitted a
+    -- two-char op, 1 otherwise.
     _step ∈ Int
     pos = (is_first_tick ? 0 : _pos + _step)
 
@@ -65,14 +40,13 @@ claim main
     single_recognized ∈ Bool
     SingleCharTok(c ↦ cur_char, t ↦ single_tok, recognized ↦ single_recognized)
 
-    -- Pick the right token + step.
     emit_tok ∈ Token = (two_recognized ? two_tok : single_tok)
     step ∈ Int = (two_recognized ? 2 : 1)
 
     done ∈ Bool = (pos ≥ #input)
 
-    -- Recognizers for every variant we emit. Drive the label off
-    -- the token to verify the lexer mapping, not the substr.
+    -- Drive the label off the Token variant, not the substr — that's
+    -- what verifies the lexer mapping.
     is_plusplus ∈ Bool = (emit_tok matches PlusPlus)
     is_implies  ∈ Bool = (emit_tok matches OpImplies)
     is_le       ∈ Bool = (emit_tok matches OpLe)

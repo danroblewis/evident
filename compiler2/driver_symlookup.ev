@@ -17,11 +17,6 @@
 -- The symbol-table / name resolution. Lifted into driver_main via
 -- `..DriverSymLookup`.
 fsm DriverSymLookup
-    -- symbol-table lookup. true/false resolve purely to the cached
-    -- Z3_mk_true/Z3_mk_false handles; a name found in st_names
-    -- resolves via ONE __mem.read_long of st_base[idx] (pend=1 —
-    -- the handle pushes next tick); enum-variant values (evt) and
-    -- unknown names (handle 0, fossil parity) stay pure pushes.
     d_lk_key ∈ String
     FtiNameEntry(name ↦ d_lkname, entry ↦ d_lk_key)
     d_lk_pos ∈ Int = index_of(st_names, d_lk_key, 0)

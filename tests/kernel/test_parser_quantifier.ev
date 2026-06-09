@@ -1,15 +1,7 @@
--- B8: quantifier parsing (`∀ x ∈ items : x = 0`).
---
--- Recognises the leading 4-token shape ⟨OpForall, Ident("x"), OpIn,
--- Ident("items"), Colon, …⟩ via ParseQuantifier. The body Expr is
--- pre-built (EBinOp(OpEq, EIdent("x"), EInt(0))) — composing it from
--- a continuing TokenList walk is a later sub-step.
---
--- This fixture pre-extracts the four head tokens from the TokenList
--- in the body (mirrors test_parser_passthrough.ev's recognizer shape).
--- We verify per-tick that each head matches its predicate, then that
--- the composed ParseQuantifier emits ok=true, the right var name, the
--- right range identifier, and the EForall variant tag.
+-- B8: quantifier parsing (`∀ x ∈ items : x = 0`). Recognises the
+-- 4-token head ⟨OpForall, Ident("x"), OpIn, Ident("items")⟩ via
+-- ParseQuantifier with a pre-built body Expr; verifies ok=true, the
+-- var name, the range identifier, and the EForall variant tag.
 --
 -- expect: stdout = "is_forall=true"
 -- expect: stdout = "is_var_id=true"
@@ -24,14 +16,12 @@ import "stdlib/kernel.ev"
 import "compiler/parser.ev"
 
 claim main
-    -- Token-list shape: ⟨OpForall, Ident("x"), OpIn, Ident("items"), Colon⟩
     input ∈ TokenList = TLCons(OpForall,
         TLCons(Ident("x"),
         TLCons(OpIn,
         TLCons(Ident("items"),
         TLCons(Colon, TLNil)))))
 
-    -- Pre-extract the first four head tokens.
     head1 ∈ Token = match input
         TLCons(t, _) ⇒ t
         TLNil ⇒ EofTok
@@ -57,10 +47,8 @@ claim main
         TLCons(t, _) ⇒ t
         TLNil ⇒ EofTok
 
-    -- Pre-built body Expr: x = 0.
     body_expr ∈ Expr = EBinOp(OpEq, EIdent("x"), EInt(0))
 
-    -- Per-recognizer Bool intermediates so each line is verifiable.
     is_forall ∈ Bool
     IsForall(t ↦ head1, out ↦ is_forall)
     is_var_id ∈ Bool
@@ -70,16 +58,14 @@ claim main
     is_src_id ∈ Bool
     IsIdent(t ↦ head4, out ↦ is_src_id)
 
-    -- The composed parser.
     expr ∈ Expr
     ok ∈ Bool
     ParseQuantifier(head1 ↦ head1, head2 ↦ head2, head3 ↦ head3,
         head4 ↦ head4, body ↦ body_expr, expr ↦ expr, ok ↦ ok)
 
-    -- Extract the bound-var name + range identifier from the result.
-    -- Distinct names from ParseQuantifier's internals (var_name /
-    -- src_name / range_expr) to avoid name collisions when the claim's
-    -- body inlines into the caller's namespace.
+    -- out_* names are kept distinct from ParseQuantifier's internals
+    -- (var_name / src_name / range_expr) to avoid name collisions when
+    -- the claim's body inlines into the caller's namespace.
     out_var ∈ String = match expr
         EForall(n, _, _) ⇒ n
         EExists(n, _, _) ⇒ n
@@ -96,7 +82,6 @@ claim main
 
     is_forall_tag ∈ Bool = (expr matches EForall(_, _, _))
 
-    -- Per-tick step counter to print one diagnostic per tick.
     step ∈ Int
     _step ∈ Int
     step = (is_first_tick ? 0 : _step + 1)

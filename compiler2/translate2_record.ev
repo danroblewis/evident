@@ -1,17 +1,13 @@
 -- compiler2/translate2_record.ev — Z3-AST builders for the record
--- surface. P2 of docs/plans/z3-ast-compiler2-plan.md; supersedes the
--- string pass compiler/translate_record.ev (kept as reference
--- semantics only — its RecordCtorSmtlib / RecordEqSmtlib bodies show
--- what each claim here must mean).
+-- surface (P2 of docs/plans/z3-ast-compiler2-plan.md; reference
+-- semantics: legacy compiler/translate_record.ev).
 --
 -- ── The claim shape (same contract as compiler/translate_arith.ev) ─
 --
 -- Each claim describes ONE Z3-builder LibCall — the constraint on
--- `eff` for the current FSM step. The CALLER's FSM threads the
--- per-tick state (capture the previous tick's IntResult into a
--- handle var, choose which claim's `eff` to use this tick, advance
--- phase). This file does not own the walking strategy; it owns the
--- "which libcall builds this record node" choice.
+-- `eff` for the current FSM step. The CALLER's FSM threads per-tick
+-- state (capture the prior IntResult into a handle var, choose which
+-- claim's `eff` fires this tick, advance phase).
 --
 -- ── Handle provenance ──────────────────────────────────────────────
 --
@@ -22,27 +18,22 @@
 --     TYPE-DECLARATION time: after Z3_mk_datatypes creates the record
 --     sort, one Z3_query_constructor call fills caller-allocated
 --     out-slots with the constructor decl, the tester decl, and an
---     accessors out-array of n_fields 8-byte slots (declaration
---     order). The caller harvests each with __mem.read_long and
---     carries them as Int state. See
---     tests/kernel/z3_datatypes/sugar_datatypes.ev phases 22-24 for
---     the proven sequence, stdlib/z3_datatypes.ev for the sugar.
+--     accessors out-array of n_fields 8-byte slots (DECLARATION
+--     order); harvest each with __mem.read_long, carry as Int state.
+--     Proven sequence: tests/kernel/z3_datatypes/sugar_datatypes.ev
+--     phases 22-24; sugar: stdlib/z3_datatypes.ev.
 --
 --   record_sort_h — the Z3_sort handle read from Z3_mk_datatypes'
 --     sorts OUT-array.
 --
 --   *_arr_p — caller-built libc buffers of 8-byte handle slots
 --     (BuildMalloc(8*n) + one BuildMemWriteLong per slot, one FSM
---     phase each; pattern documented in stdlib/z3_datatypes.ev).
+--     phase each).
 --
--- The SMT-LIB correspondence (per legacy translate_record.ev): a Z3
--- datatype accessor is a function, so `r.x` is `(x r)` — one
--- Z3_mk_app of the accessor decl over the record value. A record
--- literal `IVec2(1, 2)` is `(IVec2 1 2)` — one Z3_mk_app of the
--- constructor decl over the field values. The componentwise eq lift
--- `a = b` is `(and (= (x a) (x b)) (= (y a) (y b)))` — per-field
--- accessor apps + eqs from the claims here, the (and …) fold from
--- BuildZ3MkAnd (stdlib/z3_ops.ev) assembled by the CALLER.
+-- SMT-LIB correspondence: `r.x` is `(x r)` — one Z3_mk_app of the
+-- accessor decl; a record literal is one Z3_mk_app of the ctor decl;
+-- the componentwise eq lift's (and …) fold over per-field eqs is
+-- assembled by the CALLER via BuildZ3MkAnd (stdlib/z3_ops.ev).
 
 import "compiler/parser.ev"
 import "stdlib/kernel.ev"
@@ -63,17 +54,10 @@ claim RecordFieldAccessBuildZ3(
         ⟨ArgInt(ctx_h), ArgInt(accessor_decl_h), ArgInt(1),
          ArgInt(recv_arg_p)⟩)
 
--- ── RecordLiteralBuildZ3: record literal `IVec2(1, 2)` →
---    Z3_mk_app(ctor_decl, [args…]). Handle inputs:
---      ctor_decl_h — the constructor Z3_func_decl from
---        Z3_query_constructor's ctor_decl out-slot.
---      n_fields — the record's declared field count; must equal the
---        n_fields the type was declared with (Z3 errors otherwise).
---      args_arr_p — a caller buffer of n_fields 8-byte slots holding
---        the field-value Z3_ast handles in DECLARATION order (each
---        value built on a prior tick by the scalar passes; one
---        BuildMemWriteLong phase per slot).
---    Returns: the `(IVec2 1 2)` Z3_ast handle.
+-- ── RecordLiteralBuildZ3: literal → Z3_mk_app(ctor_decl, args) ────
+--    n_fields must equal the count the type was declared with (Z3
+--    errors otherwise); args_arr_p holds the field-value Z3_ast
+--    handles in DECLARATION order, one 8-byte slot each.
 claim RecordLiteralBuildZ3(
         ctx_h, ctor_decl_h, n_fields, args_arr_p ∈ Int, eff ∈ Effect)
     eff = LibCall("libz3", "Z3_mk_app",

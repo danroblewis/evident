@@ -1,13 +1,8 @@
--- Grammar wave 4l, Item 3: `Nat` → `Int` + `(>= name 0)` desugar.
---
--- `Nat` is not a Z3 sort; bootstrap (translate/declare.rs) declares an Int
--- const and pushes a `>= 0` post-constraint (manifest field is Int — a Nat
--- var is an IntVar). MembershipStep maps the decl sort Nat→Int and prepends
--- `(assert (>= name 0))` to whatever the normal/chain/pin path emits, so
--- `n ∈ Nat < 50` reuses the wave-4k chain tail for the `< 50` bound.
---   `score ∈ Nat`    → decl Int + `(>= score 0)`
---   `n ∈ Nat < 50`   → decl Int + `(>= n 0)` + `(< n 50)`
--- See docs/plans/wave-4k-membership-walk-shapes.md (Remaining gaps).
+-- `Nat` → `Int` + `(>= name 0)` desugar: Nat is not a Z3 sort — the
+-- manifest field is Int (a Nat var is an IntVar). MembershipStep maps
+-- the decl sort Nat→Int and prepends `(assert (>= name 0))` to whatever
+-- the normal/chain/pin path emits, so `n ∈ Nat < 50` reuses the chain
+-- tail for the `< 50` bound.
 --
 -- expect: stdout = ";; manifest: state-fields = score:Int n:Int"
 -- expect: stdout = ";; manifest: effects-name = effects"

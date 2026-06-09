@@ -1,34 +1,19 @@
--- compiler/translate_ctor.ev — grammar wave 4, items 1+2: constructor
--- application + nested Seq literals in EXPRESSION position.
---
--- Wave 3 added enum *declarations* (translate.ev). This file adds enum
--- *use*: a variant applied with arguments in expression position. SMT-LIB
--- form — the variant name is the datatype constructor, payload args are
--- positional:
+-- compiler/translate_ctor.ev — constructor application + nested Seq
+-- literals in EXPRESSION position. SMT-LIB form — the variant name is
+-- the datatype constructor, payload args are positional:
 --
 --   Exit(0)                          → (Exit 0)
---   Ok(5)                            → (Ok 5)
 --   ArgStr("hi")                     → (ArgStr "hi")
 --   LibCall("libc","puts",⟨a⟩)       → (LibCall "libc" "puts" (seq.unit a))
 --   ⟨Exit(0), Exit(1)⟩               → (seq.++ (seq.unit (Exit 0)) (seq.unit (Exit 1)))
 --
--- This mirrors bootstrap's datatype-constructor lowering (the head is the
--- variant name, the operands are the translated payload args), and the Seq
--- literal lowering already used by compiler/translate_seq.ev (seq.unit /
--- seq.++).
---
--- The renderer is a RECURSIVE-DESCENT expression renderer over the lexer
--- TokenList. Evident claims can't self-recurse, so the recursion is
--- expressed as DEPTH-UNROLLED levels: RenderExprL0 (atoms only),
--- RenderExprL1 (a constructor / seq whose children are L0), RenderExprL2
--- (children are L1). The top level exposed to the driver, RenderExprToks,
--- is L2 — enough for the wave-4 required shapes (a constructor whose args
--- are atoms; a Seq of such constructors). Deeper nests (e.g. the flattened
--- test_hello, a Seq → ctor → Seq → ctor → atom of depth ~4) need more
--- levels; adding RenderExprL3/L4 is mechanical but the constraint count
--- grows ~3× per level (wave 4s: each level shares ONE 3-wide child chain
--- across the ctor and Seq paths, formerly 6), so we stop at the depth the
--- required fixtures need and document the gap (see docs/plans/grammar-wave4.md).
+-- Recursive-descent expression renderer over the lexer TokenList.
+-- Evident claims can't self-recurse, so the recursion is DEPTH-UNROLLED:
+-- RenderExprL0 (atoms only) → L1 → L2 → L3, each level's children one
+-- level down. Adding a level is mechanical but the constraint count
+-- grows ~3× per level, so we stop at the depth the required fixtures
+-- need; deeper nests are the token work-stack walker (see
+-- docs/plans/grammar-wave4.md).
 --
 -- Each level consumes ONE expression off the front of `toks` and returns:
 --   out  — the SMT-LIB rendering
@@ -38,7 +23,7 @@
 -- Bounded arity: a constructor's argument list and a Seq literal's element
 -- list are each capped at 3 (the corpus arity: LibCall has 3 args, the
 -- effect literals ≤3 elements). A wider list is the unbounded work-stack
--- walk (see translate_seq.ev's SeqConcatStep) — a later wave.
+-- walk (see translate_seq.ev's SeqConcatStep).
 
 import "compiler/lexer.ev"
 import "compiler/parser.ev"
@@ -60,11 +45,8 @@ claim TLTlC
         TLNil ⇒ TLNil
 
 -- ── AtomTokRenderC: render a single leaf token ─────────────────────────
---   IntLit(n)    → str_from_int(n)
---   StringLit(s) → "s"  (ASCII pass-through, mirroring AtomSmtlib)
---   Ident(s)     → s    (a bare name, e.g. a nullary variant like ReadLine)
--- The caller is responsible for NOT treating an Ident that is followed by
--- `(` as an atom — that is a constructor head, handled one level up.
+-- The caller MUST NOT treat an Ident that is followed by `(` as an
+-- atom — that is a constructor head, handled one level up.
 claim AtomTokRenderC
     t ∈ Token
     out ∈ String
@@ -87,17 +69,16 @@ claim AtomTokRenderC
         : at_is_id ? at_idv
         : "")
 
--- ── EltHintLookup: variant-signature table query (grammar wave 4h) ─────
+-- ── EltHintLookup: variant-signature table query ───────────────────────
 -- A Seq(T) VALUE in constructor-argument position must lower to the
 -- `__Cell_T`/`__Empty_T` Cons form (bootstrap's
 -- register_enums.rs::generate_internal_cons_helpers types the accessor
 -- `__SeqOf_T`, so the seq-theory `(seq.unit …)` form is a sort mismatch —
--- see docs/plans/blocked-grammar-wave4g.md). The renderer is otherwise
--- element-type-agnostic; the driver threads the program's variant
--- signatures in as `sigtab`, a flat string of `<ctor>#<idx>#<elt>;`
--- entries (one per Seq-typed payload field). EltHintLookup returns the
--- element type `T` for a given constructor + argument index, or "" when
--- that position is not a Seq payload.
+-- see docs/plans/blocked-grammar-wave4g.md). The driver threads the
+-- program's variant signatures in as `sigtab`, a flat string of
+-- `<ctor>#<idx>#<elt>;` entries (one per Seq-typed payload field).
+-- Returns the element type `T` for a given constructor + argument
+-- index, or "" when that position is not a Seq payload.
 --
 -- All locals are `eh_`-prefixed (composition body-local name leak —
 -- memory: project_claim_composition_leaks_body_locals).
@@ -115,18 +96,13 @@ claim EltHintLookup
     eh_out = (eh_found ? substr(eh_tab, eh_vstart, eh_vlen) : "")
 
 -- ── ListThread3: join up to 3 already-rendered children ────────────────
--- Given the start-of-list token list `a0` (the tokens right after an open
--- delimiter `(` or `⟨`) and three child renders (each child already
--- composed by the caller, on a0 / after-first-comma / after-second-comma),
--- determine the element count from the comma-after-each-child signal and
--- assemble both joinings:
+-- `a0` = tokens right after the open delimiter (`(` or `⟨`). Element
+-- count comes from the comma-after-each-child signal: a Comma at a
+-- child's `rest` head means another element follows; `n` stops at the
+-- first child that is not-ok or not-followed-by-a-comma. Assembles:
 --   args_joined — space-separated, for a constructor's argument list
---   seq_wrapped — (seq.++ (seq.unit …) …), for a Seq literal's elements
+--   seq_wrapped — Seq-literal form (Cons when elt_hint ≠ "", else seq-theory)
 -- and the token list right after the closing delimiter (`)` or `⟩`).
---
--- Comma detection reads each child's `rest` head: a Comma there means
--- another element follows. `n` stops at the first child that is either
--- not-ok or not-followed-by-a-comma.
 claim ListThread3
     a0 ∈ TokenList
     o1 ∈ String
@@ -142,10 +118,8 @@ claim ListThread3
     args_joined ∈ String
     seq_wrapped ∈ String
     after_close ∈ TokenList
-    -- Element-type hint (grammar wave 4h): when non-empty, this Seq is a
-    -- `Seq(elt_hint)` payload and renders to the `__Cell_<elt_hint>` Cons
-    -- form instead of the Z3 seq-theory form. Empty → seq-theory (the
-    -- in-expression Seq-literal default, unchanged).
+    -- Non-empty: this Seq is a `Seq(elt_hint)` payload → `__Cell_<elt_hint>`
+    -- Cons form. Empty → Z3 seq-theory form (the in-expression default).
     elt_hint ∈ String
 
     lt_r1h ∈ Token
@@ -175,7 +149,7 @@ claim ListThread3
     seq_wrapped = (lt_use_cons ? lt_cons : lt_seq_theory)
 
     -- The token list AT the closing delimiter is the last counted child's
-    -- rest (or a0 itself when the list is empty), and after_close skips it.
+    -- rest (or a0 when the list is empty); after_close skips it.
     lt_close ∈ TokenList = (n = 0 ? a0 : n = 1 ? r1 : n = 2 ? r2 : r3)
     TLTlC(l ↦ lt_close, out ↦ after_close)
 
@@ -216,9 +190,9 @@ claim RenderExprL1
     out ∈ String
     rest ∈ TokenList
     ok ∈ Bool
-    -- Seq element-type hint (wave 4h): non-empty when THIS position is a
-    -- `Seq(in_hint)` payload. L1's children are atoms (L0), so only L1's own
-    -- Seq path consumes it; no `sigtab` needed (no ctor-arg lookup at L1).
+    -- Non-empty when THIS position is a `Seq(in_hint)` payload. L1's
+    -- children are atoms (L0), so only L1's own Seq path consumes it; no
+    -- `sigtab` needed (no ctor-arg lookup at L1).
     in_hint ∈ String
 
     l1_h0 ∈ Token
@@ -236,17 +210,14 @@ claim RenderExprL1
         Ident(s) ⇒ s
         _ ⇒ ""
 
-    -- Atom fallback (a bare leaf at the head).
     l1_atom_out ∈ String
     l1_atom_ok ∈ Bool
     AtomTokRenderC(t ↦ l1_h0, out ↦ l1_atom_out, ok ↦ l1_atom_ok)
 
-    -- Wave 4s: a node is EITHER a ctor OR a Seq, so the ctor-arg child chain
-    -- (seeded after `(`) and the Seq-element child chain (seeded after `⟨`)
-    -- are never both live. Pre-select the seed token-list and the
-    -- ListThread3 element hint, then run ONE 3-wide child chain instead of
-    -- two (6→3 child fan-out). The `out`/`rest` selection below still picks
-    -- the ctor- vs Seq-shaped assembly, so emitted output is unchanged.
+    -- A node is EITHER a ctor OR a Seq, so the two child chains are never
+    -- both live: pre-select the seed token-list and the ListThread3 hint,
+    -- then run ONE 3-wide child chain instead of two (6→3 child fan-out;
+    -- emitted output unchanged).
     l1_seed ∈ TokenList = (l1_is_ctor ? l1_after_lp : l1_t0)
     l1_hint ∈ String    = (l1_is_ctor ? "" : in_hint)
 
@@ -294,9 +265,9 @@ claim RenderExprL2
     out ∈ String
     rest ∈ TokenList
     ok ∈ Bool
-    -- wave 4h: `sigtab` = the program's variant-signature table (for
-    -- looking up THIS ctor's per-argument Seq element types); `in_hint` =
-    -- THIS position's own Seq element type (used when the head is `⟨`).
+    -- `sigtab` = the program's variant-signature table (THIS ctor's
+    -- per-argument Seq element types); `in_hint` = THIS position's own
+    -- Seq element type (used when the head is `⟨`).
     sigtab ∈ String
     in_hint ∈ String
 
@@ -319,9 +290,8 @@ claim RenderExprL2
     l2_atom_ok ∈ Bool
     AtomTokRenderC(t ↦ l2_h0, out ↦ l2_atom_out, ok ↦ l2_atom_ok)
 
-    -- Per-argument Seq element-type hints for this ctor's args (wave 4h):
-    -- a non-empty hint at index i means arg i is a `Seq(<hint>)` payload,
-    -- so a Seq literal there renders to the `__Cell` Cons form.
+    -- Non-empty hint at index i ⇒ arg i is a `Seq(<hint>)` payload, so a
+    -- Seq literal there renders to the `__Cell` Cons form.
     l2_ah0 ∈ String
     EltHintLookup(eh_tab ↦ sigtab, eh_ctor ↦ l2_ctor_name, eh_idx ↦ 0, eh_out ↦ l2_ah0)
     l2_ah1 ∈ String
@@ -329,11 +299,9 @@ claim RenderExprL2
     l2_ah2 ∈ String
     EltHintLookup(eh_tab ↦ sigtab, eh_ctor ↦ l2_ctor_name, eh_idx ↦ 2, eh_out ↦ l2_ah2)
 
-    -- Wave 4s: shared 3-wide child chain (6→3 fan-out). The ctor path feeds
-    -- each child its per-argument Seq hint (l2_ah0/1/2); the Seq path feeds
-    -- "" to every child and threads its own `in_hint` into ListThread3.
-    -- Pre-select per-child hint + seed + ListThread3 hint so a node renders
-    -- through ONE child chain.
+    -- Shared 3-wide child chain (6→3 fan-out). The ctor path feeds each
+    -- child its per-argument Seq hint; the Seq path feeds "" to every
+    -- child and threads its own `in_hint` into ListThread3.
     l2_seed ∈ TokenList = (l2_is_ctor ? l2_after_lp : l2_t0)
     l2_hint ∈ String    = (l2_is_ctor ? "" : in_hint)
     l2_ch0 ∈ String     = (l2_is_ctor ? l2_ah0 : "")
@@ -375,24 +343,18 @@ claim RenderExprL2
     rest = (l2_is_ctor ? l2_close : l2_is_seq ? l2_close : l2_t0)
 
 -- ══════════════════════════════════════════════════════════════════════
--- RenderExprL3 — a constructor / Seq whose children are L2 (grammar wave 4b).
+-- RenderExprL3 — a constructor / Seq whose children are L2.
 -- ══════════════════════════════════════════════════════════════════════
--- Structurally identical to L1/L2, but the per-child renders compose
--- RenderExprL2. This is the depth the wave-4b fixture needs: a constructor
--- whose argument is a Seq whose element is a constructor of atoms —
---   LibCall("libc", "puts", ⟨ArgStr("hi")⟩)
---     →  (LibCall "libc" "puts" (seq.unit (ArgStr "hi")))
--- i.e. ctor(L3) → Seq(L2) → ctor(L1) → atom(L0). Adding a level is purely
--- mechanical; the constraint count grows ~3× per level (wave 4s shared
--- fan-out), so L3 is the stopping point for the named fixture. A `⟨L3-ctor, …⟩` outer Seq (the
--- full flattened test_hello effects literal, L4) and arbitrary depth are
--- the token work-stack walker — see docs/plans/grammar-wave4b.md.
+-- Deepest built level: ctor(L3) → Seq(L2) → ctor(L1) → atom(L0).
+-- Constraint count grows ~3× per level, so L3 is the stopping point; an
+-- outer `⟨L3-ctor, …⟩` Seq and arbitrary depth are the token work-stack
+-- walker — see docs/plans/grammar-wave4b.md.
 claim RenderExprL3
     toks ∈ TokenList
     out ∈ String
     rest ∈ TokenList
     ok ∈ Bool
-    -- wave 4h hint threading (see RenderExprL2).
+    -- hint threading (see RenderExprL2).
     sigtab ∈ String
     in_hint ∈ String
 
@@ -415,7 +377,6 @@ claim RenderExprL3
     l3_atom_ok ∈ Bool
     AtomTokRenderC(t ↦ l3_h0, out ↦ l3_atom_out, ok ↦ l3_atom_ok)
 
-    -- Per-argument Seq element-type hints for this ctor (wave 4h).
     l3_ah0 ∈ String
     EltHintLookup(eh_tab ↦ sigtab, eh_ctor ↦ l3_ctor_name, eh_idx ↦ 0, eh_out ↦ l3_ah0)
     l3_ah1 ∈ String
@@ -423,8 +384,7 @@ claim RenderExprL3
     l3_ah2 ∈ String
     EltHintLookup(eh_tab ↦ sigtab, eh_ctor ↦ l3_ctor_name, eh_idx ↦ 2, eh_out ↦ l3_ah2)
 
-    -- Wave 4s: shared 3-wide child chain (6→3 fan-out), analogous to L2 but
-    -- threading `sigtab` to each L2 child.
+    -- Shared 3-wide child chain (see L2), threading `sigtab` to each child.
     l3_seed ∈ TokenList = (l3_is_ctor ? l3_after_lp : l3_t0)
     l3_hint ∈ String    = (l3_is_ctor ? "" : in_hint)
     l3_ch0 ∈ String     = (l3_is_ctor ? l3_ah0 : "")
@@ -466,37 +426,31 @@ claim RenderExprL3
     rest = (l3_is_ctor ? l3_close : l3_is_seq ? l3_close : l3_t0)
 
 -- ── RenderExprToks: the level exposed to the driver ────────────────────
--- Aliases L3 (the deepest built level). A membership whose RHS is a
--- constructor application or a Seq literal of constructor applications
--- renders through here.
+-- Aliases L3 (the deepest built level).
 claim RenderExprToks
     toks ∈ TokenList
     out ∈ String
     rest ∈ TokenList
     ok ∈ Bool
-    -- wave 4h: `sigtab` = program variant-signature table; `in_hint` = this
+    -- `sigtab` = program variant-signature table; `in_hint` = this
     -- expression's own Seq element type (empty for a top-level expression).
     sigtab ∈ String
     in_hint ∈ String
     RenderExprL3(toks ↦ toks, out ↦ out, rest ↦ rest, ok ↦ ok, sigtab ↦ sigtab, in_hint ↦ in_hint)
 
 -- ══════════════════════════════════════════════════════════════════════
--- SeqArrayBlock — grammar wave 4c, item 1: a TOP-LEVEL Seq STATE field
--- lowered to bootstrap's `(Array Int T) + __len` encoding (NOT Z3 sequence
--- theory). This is the encoding the kernel's tick loop actually consumes:
--- `read_seq_var` reads `<name>__len` and decodes each element via
--- `(select <name> i)` — see bootstrap/runtime/src/translate/exprs/seq_eq.rs
--- (`translate_seq_lit_for_var`: pins `len._eq(N)` and per-index
--- `arr.select(i)._eq(elem)`) and docs/plans/blocked-grammar-wave4b.md
--- (blocker 0). The Z3 seq-theory form (seq.++ / seq.unit, in RenderExprL*)
--- stays for IN-EXPRESSION Seq literals (e.g. a ctor's Seq payload); only
--- the OUTER state-field Seq uses Array+len.
+-- SeqArrayBlock — a TOP-LEVEL Seq STATE field lowered to bootstrap's
+-- `(Array Int T) + __len` encoding (NOT Z3 sequence theory). This is
+-- the encoding the kernel's tick loop actually consumes: `read_seq_var`
+-- reads `<name>__len` and decodes each element via `(select <name> i)`
+-- — see bootstrap/runtime/src/translate/exprs/seq_eq.rs and
+-- docs/plans/blocked-grammar-wave4b.md (blocker 0). The Z3 seq-theory
+-- form (RenderExprL*) stays for IN-EXPRESSION Seq literals (e.g. a
+-- ctor's Seq payload); only the OUTER state-field Seq uses Array+len.
 --
--- Because each element is rendered FLAT (one `(select name i) = <elem>`
--- assert) rather than nested into a single expression, the outer Seq no
--- longer costs a depth-unroll level: a `⟨L3-ctor, …⟩` outer literal (the
--- former "L4", blocker 4) is handled here at the element granularity by
--- rendering each element with RenderExprToks (= L3).
+-- Each element renders FLAT (one `(select name i) = <elem>` assert), so
+-- the outer Seq costs no depth-unroll level: elements render with
+-- RenderExprToks (= L3).
 --
 -- Input `toks` starts AT the `⟨`. Elements bounded at ≤3 (the corpus
 -- arity); a wider literal needs the work-stack walk (translate_seq.ev).
@@ -514,11 +468,10 @@ claim SeqArrayBlock
     rest ∈ TokenList
     elen ∈ Int
     ok ∈ Bool
-    -- wave 4h: the program variant-signature table, threaded to each
-    -- element render so a Seq(T) payload INSIDE an element ctor (e.g. the
-    -- `⟨ArgStr(…)⟩` arg of `LibCall`) lowers to the `__Cell` Cons form. The
-    -- OUTER state-field Seq itself stays the Array+len encoding (`in_hint`
-    -- on the element renders is empty — an element is not a Seq position).
+    -- Threaded to each element render so a Seq(T) payload INSIDE an
+    -- element ctor lowers to the `__Cell` Cons form. The OUTER state-field
+    -- Seq itself stays Array+len (`in_hint` on the element renders is
+    -- empty — an element is not a Seq position).
     sigtab ∈ String
 
     sab_h0 ∈ Token
@@ -527,8 +480,6 @@ claim SeqArrayBlock
     TLTlC(l ↦ toks, out ↦ sab_after)
     sab_is_seq ∈ Bool = (sab_h0 matches OpSeqOpen)
 
-    -- Render up to 3 elements (each a full L3 expression), threading each
-    -- element's `rest` past a separating Comma to the next.
     sab_o1 ∈ String
     sab_r1 ∈ TokenList
     sab_k1 ∈ Bool
@@ -547,7 +498,7 @@ claim SeqArrayBlock
     RenderExprToks(toks ↦ sab_a2, out ↦ sab_o3, rest ↦ sab_r3, ok ↦ sab_k3, sigtab ↦ sigtab, in_hint ↦ "")
 
     -- Element count from the comma-after-each-element signal (mirrors
-    -- ListThread3's `n`): stop at the first element not followed by a comma.
+    -- ListThread3's `n`).
     sab_r1h ∈ Token
     TLHdC(l ↦ sab_r1, out ↦ sab_r1h)
     sab_c1 ∈ Bool = (sab_k1 ∧ (sab_r1h matches Comma))

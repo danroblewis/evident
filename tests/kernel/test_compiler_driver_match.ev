@@ -1,23 +1,8 @@
--- Grammar wave 3, item 2: a `match` expression as a membership pin RHS,
--- lowered to nested ITE over constructor testers.
---
--- The source is lexed character-by-character (nothing hardcoded), reversed
--- to forward order, the `claim Ident` head dropped, then the membership's
--- match arms are parsed (bounded: one ctor arm + one wildcard arm — the
--- dominant `match last_results[0]` shape in compiler.ev) into a
--- MatchArmList. The nested ITE is produced by walking that arm list with
--- compiler/translate_match.ev's MatchTranslateStep work-stack, ONE pop per
--- tick. See docs/plans/grammar-wave3.md and grammar-coverage-survey.md §3.
---
--- This mirrors translate_match.ev's contract exactly: the wildcard arm is
--- the innermost else, and binds render as their NAME (translate_match does
--- not substitute the payload accessor — that is a bootstrap-only refinement
--- noted in grammar-wave3.md, out of this wave's "compose the pass" scope).
---
--- Source:
---   n ∈ Int = match e
---       Ok(v) ⇒ v
---       _ ⇒ 0
+-- `match` expression as a membership pin RHS, lowered to nested ITE over
+-- constructor testers. Bounded peel: one ctor arm + one wildcard arm
+-- (`n ∈ Int = match e / Ok(v) ⇒ v / _ ⇒ 0`). Per translate_match.ev's
+-- contract the wildcard arm is the innermost else, and binds render as
+-- their NAME — the payload accessor is NOT substituted.
 --
 -- expect: stdout = ";; manifest: state-fields = n:Int"
 -- expect: stdout = ";; manifest: effects-name = effects"

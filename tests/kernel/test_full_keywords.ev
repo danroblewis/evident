@@ -1,22 +1,12 @@
--- Full keyword set (A5).
---
--- Walks every keyword the Rust lexer recognises through MaybeKeyword
--- and confirms each one classifies to its Kw* variant. The 7 existing
--- keywords (claim/type/schema/fsm/enum/import/match) get the same
--- coverage they had under test_keyword_lexer; the 7 newly-added ones
--- (subclaim/external/matches/in/true/false/mapsto) are the actual
--- A5 acceptance signal.
---
--- Per-letter ticks emit "  start" / "  cont"; the boundary tick (space
--- or trailing \n) classifies the collected `_partial` via MaybeKeyword
--- and emits "kw: <name>" for keywords or "ident: <name>" for
--- non-keywords (none expected here — every word is a keyword).
+-- Full keyword set (A5): walks every keyword the Rust lexer recognises
+-- through MaybeKeyword and confirms each classifies to its Kw* variant;
+-- the 7 newly-added (subclaim/external/matches/in/true/false/mapsto)
+-- are the A5 acceptance signal.
 --
 -- Word lengths (in input order, sum=73):
 --   claim 5, type 4, schema 6, fsm 3, enum 4, import 6, match 5,
 --   subclaim 8, external 8, matches 7, in 2, true 4, false 5, mapsto 6
--- Per-tick: word_len letter ticks + 1 boundary tick = word_len + 1.
--- Plus one [eof] tick at the end.
+-- Per-tick: word_len letter ticks + 1 boundary tick; plus one [eof] tick.
 --
 -- expect: stdout = "  start"
 -- expect: stdout = "  cont"
@@ -154,9 +144,8 @@ claim main
 
     halting ∈ Bool = (done ∧ ¬was_collecting)
 
-    -- Every word in our input is a keyword; "ident:" branch stays as
-    -- a fallback so a regression (keyword misclassifying as Ident)
-    -- shows up as a label mismatch instead of silently passing.
+    -- Every input word is a keyword; the "ident:" fallback stays so a
+    -- keyword misclassifying as Ident fails loudly as a label mismatch.
     is_kw ∈ Bool = ((_partial = "claim")    ∨ (_partial = "type")
                   ∨ (_partial = "schema")  ∨ (_partial = "fsm")
                   ∨ (_partial = "enum")    ∨ (_partial = "import")
