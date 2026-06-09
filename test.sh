@@ -15,6 +15,10 @@
 #   5. tests/kernel/*.ev — drive each via `evident emit` + `kernel`, assert
 #      stdout + exit code match `-- expect:` header comments.
 #   6. seam smoke (tests/seam/) — regression test for the self-hosted path.
+#   7. bounded-Seq catalog (tests/seq/ + tests/seq/z3/) — the verified
+#      Seq-surface regression suite (docs/seq-bounded-catalog.md).
+#   8. functionization gate (scripts/functionization-gate.sh) — perf
+#      regression guard: compiler + FTI fixtures stay ~0 ms z3.
 #
 # Usage:
 #   ./test.sh                   # all phases
@@ -128,6 +132,36 @@ if [ "$RUST_ONLY" -eq 0 ] && [ "$CONFORMANCE_ONLY" -eq 0 ] && [ "$LANG_ONLY" -eq
         fi
         echo
     fi
+fi
+
+# ── Phase 7: bounded-Seq construction catalog (tests/seq/) ──────────
+# 39 fixtures locking the verified Seq surface (ordering merge, ∀/∃,
+# sortedness, prefix/suffix/contains, …) + 18 Z3 bounded-encoding
+# checks. Guards "our preferred Seq grammar still works" as the
+# encoding evolves. See docs/seq-bounded-catalog.md.
+if [ "$RUST_ONLY" -eq 0 ] && [ "$CONFORMANCE_ONLY" -eq 0 ] && [ "$LANG_ONLY" -eq 0 ] && [ "$KERNEL_ONLY" -eq 0 ]; then
+    phase "Phase 7: bounded-Seq catalog (tests/seq/)"
+    if bash tests/seq/run.sh 2>&1 | tee /tmp/evident-seq.log \
+       && bash tests/seq/z3/run.sh 2>&1 | tee -a /tmp/evident-seq.log ; then
+        ok "seq_catalog"
+    else
+        fail "seq_catalog"; failures+=("seq_catalog")
+    fi
+    echo
+fi
+
+# ── Phase 8: functionization gate (perf regression guard) ───────────
+# Asserts the compiler + the FTI perf fixtures stay near-zero `ms z3`
+# (catches the ≠-disequality class: a constraint falling off the
+# functionizer fast path turns ~7-min conformance into a timeout).
+if [ "$RUST_ONLY" -eq 0 ] && [ "$CONFORMANCE_ONLY" -eq 0 ] && [ "$LANG_ONLY" -eq 0 ] && [ "$KERNEL_ONLY" -eq 0 ]; then
+    phase "Phase 8: functionization gate (scripts/functionization-gate.sh)"
+    if scripts/functionization-gate.sh 2>&1 | tee /tmp/evident-fzgate.log ; then
+        ok "functionization_gate"
+    else
+        fail "functionization_gate"; failures+=("functionization_gate")
+    fi
+    echo
 fi
 
 elapsed=$(( $(date +%s) - started ))
