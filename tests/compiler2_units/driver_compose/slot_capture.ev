@@ -1,7 +1,7 @@
 -- DriverCompose isolation — slot-call name capture through cw_st.
 -- pmode-10 held, frame idle: tick 1, cw_cap advances cw_st 0→1; tick 2,
 -- d_in_cw1 is live and the window head `p ↦` (Ident, OpMapsto) fires
--- cw_slot, capturing cw_slot_nm into cs_n0 (slot index 0). Must read "p".
+-- cw_slot, capturing cw_slot_nm into cs[0].name (slot index 0). Must read "p".
 -- entry: main
 -- expect: stdout = "p"
 -- expect: exit = 0
@@ -116,7 +116,7 @@ fsm main
     tcur ∈ Int
     tcur = (is_first_tick ? 0 : _tcur)
     ..DriverCompose
-    captured ∈ Bool = (cs_n0 = "p")
+    captured ∈ Bool = (cs[0].name = "p")
     effects ∈ Seq(Effect) = (captured
-        ? ⟨LibCall("libc", "puts", ⟨ArgStr(cs_n0)⟩), Exit(0)⟩
+        ? ⟨LibCall("libc", "puts", ⟨ArgStr(cs[0].name)⟩), Exit(0)⟩
         : ⟨LibCall("libc", "getpid", ⟨⟩)⟩)

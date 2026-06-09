@@ -22,6 +22,8 @@
 --
 -- The pmode-12 positional-binding walk. Lifted into driver_main via
 -- `..DriverPosBind`.
+type PbStr(s ∈ String)
+
 fsm DriverPosBind
     pt_st ∈ Int
     pt_callee ∈ String
@@ -164,12 +166,8 @@ fsm DriverPosBind
 
     pn_k ∈ Int
     pn_prev ∈ Int
-    pn0 ∈ String
-    pn1 ∈ String
-    pn2 ∈ String
-    pn3 ∈ String
-    pn4 ∈ String
-    pn5 ∈ String
+    pn ∈ Seq(PbStr)
+    #pn ≤ 6
     pn_take ∈ Bool = (ips_skp ∧ (ww_t0 matches Ident(_))
         ∧ (_pn_prev = 1))
     pty_take ∈ Bool = (ips_skp ∧ (ww_t0 matches OpIn)
@@ -177,18 +175,9 @@ fsm DriverPosBind
     pty_nm ∈ String = match ww_t1
         Ident(s) ⇒ s
         _ ⇒ ""
-    pty0 ∈ String
-    pty1 ∈ String
-    pty2 ∈ String
-    pty3 ∈ String
-    pty0 = (is_first_tick ? "" : il_jump ? ""
-        : (pty_take ∧ _pn_k = 1) ? pty_nm : _pty0)
-    pty1 = (is_first_tick ? "" : il_jump ? ""
-        : (pty_take ∧ _pn_k = 2) ? pty_nm : _pty1)
-    pty2 = (is_first_tick ? "" : il_jump ? ""
-        : (pty_take ∧ _pn_k = 3) ? pty_nm : _pty2)
-    pty3 = (is_first_tick ? "" : il_jump ? ""
-        : (pty_take ∧ _pn_k = 4) ? pty_nm : _pty3)
+    pty ∈ Seq(PbStr)
+    #pty ≤ 4
+    ∀ k ∈ {0..3} : pty[k].s = (is_first_tick ? "" : il_jump ? "" : (pty_take ∧ _pn_k = k + 1) ? pty_nm : _pty[k].s)
     pn_nm ∈ String = match ww_t0
         Ident(s) ⇒ s
         _ ⇒ ""
@@ -200,12 +189,7 @@ fsm DriverPosBind
         : il_jump ? 0
         : pn_take ? _pn_k + 1
         : _pn_k)
-    pn0 = (is_first_tick ? "" : (pn_take ∧ _pn_k = 0) ? pn_nm : _pn0)
-    pn1 = (is_first_tick ? "" : (pn_take ∧ _pn_k = 1) ? pn_nm : _pn1)
-    pn2 = (is_first_tick ? "" : (pn_take ∧ _pn_k = 2) ? pn_nm : _pn2)
-    pn3 = (is_first_tick ? "" : (pn_take ∧ _pn_k = 3) ? pn_nm : _pn3)
-    pn4 = (is_first_tick ? "" : (pn_take ∧ _pn_k = 4) ? pn_nm : _pn4)
-    pn5 = (is_first_tick ? "" : (pn_take ∧ _pn_k = 5) ? pn_nm : _pn5)
+    ∀ k ∈ {0..5} : pn[k].s = (is_first_tick ? "" : (pn_take ∧ _pn_k = k) ? pn_nm : _pn[k].s)
 
     pz_act ∈ Bool = (ips_done ∧ _pj)
     pz_v0 ∈ Int = (_pj_recv ? d_h_top
@@ -218,10 +202,10 @@ fsm DriverPosBind
         ? (_pc_k = 3 ? d_h_2nd : d_h_3rd)
         : (_pc_k = 3 ? d_h_top : d_h_2nd))
     pz_v3 ∈ Int = (_pj_recv ? d_h_2nd : d_h_top)
-    pzt_pty ∈ String = (_pt_ts = 0 ? _pty0
-        : _pt_ts = 1 ? _pty1
-        : _pt_ts = 2 ? _pty2
-        : _pty3)
+    pzt_pty ∈ String = (_pt_ts = 0 ? _pty[0].s
+        : _pt_ts = 1 ? _pty[1].s
+        : _pt_ts = 2 ? _pty[2].s
+        : _pty[3].s)
     pzt_k ∈ Int
     RtIdxOf(nm ↦ pzt_pty, e0 ↦ rt_e0, e1 ↦ rt_e1, e2 ↦ rt_e2,
         idx ↦ pzt_k)
@@ -230,10 +214,10 @@ fsm DriverPosBind
     RtRecName(s ↦ pzt_fs, i ↦ 0, name ↦ pzt_f0)
     pzt_f1 ∈ String
     RtRecName(s ↦ pzt_fs, i ↦ 1, name ↦ pzt_f1)
-    pzt_pn ∈ String = (_pt_ts = 0 ? _pn0
-        : _pt_ts = 1 ? _pn1
-        : _pt_ts = 2 ? _pn2
-        : _pn3)
+    pzt_pn ∈ String = (_pt_ts = 0 ? _pn[0].s
+        : _pt_ts = 1 ? _pn[1].s
+        : _pt_ts = 2 ? _pn[2].s
+        : _pn[3].s)
     pzt_h0 ∈ Int = (_pc_k = 1 ? d_h_2nd
         : (_pc_k = 2 ∧ _pt_ts = 0) ? d_h_3rd
         : (_pc_k = 3 ∧ _pt_ts = 0) ? d_h_4th
@@ -247,18 +231,18 @@ fsm DriverPosBind
             CBCons(pzt_pn ++ "." ++ pzt_f1, pzt_h1, CBNil))
         : CBCons(pzt_pn, pzt_h0, CBNil))
     pzt_app1 ∈ C2Binds = (_pc_k = 2
-        ? CBCons(_pn1, d_h_top, pzt_tb)
+        ? CBCons(_pn[1].s, d_h_top, pzt_tb)
         : _pc_k = 3
         ? (_pt_ts = 0
-            ? CBCons(_pn1, d_h_2nd, CBCons(_pn2, d_h_top, pzt_tb))
-            : CBCons(_pn0, d_h_4th, CBCons(_pn2, d_h_top, pzt_tb)))
+            ? CBCons(_pn[1].s, d_h_2nd, CBCons(_pn[2].s, d_h_top, pzt_tb))
+            : CBCons(_pn[0].s, d_h_4th, CBCons(_pn[2].s, d_h_top, pzt_tb)))
         : pzt_tb)
-    pz_binds_nt ∈ C2Binds = (_pc_k = 1 ? CBCons(_pn0, pz_v0, CBNil)
-        : _pc_k = 2 ? CBCons(_pn0, pz_v0, CBCons(_pn1, pz_v1, CBNil))
-        : _pc_k = 3 ? CBCons(_pn0, pz_v0, CBCons(_pn1, pz_v1,
-            CBCons(_pn2, pz_v2, CBNil)))
-        : _pc_k = 4 ? CBCons(_pn0, pz_v0, CBCons(_pn1, pz_v1,
-            CBCons(_pn2, pz_v2, CBCons(_pn3, pz_v3, CBNil))))
+    pz_binds_nt ∈ C2Binds = (_pc_k = 1 ? CBCons(_pn[0].s, pz_v0, CBNil)
+        : _pc_k = 2 ? CBCons(_pn[0].s, pz_v0, CBCons(_pn[1].s, pz_v1, CBNil))
+        : _pc_k = 3 ? CBCons(_pn[0].s, pz_v0, CBCons(_pn[1].s, pz_v1,
+            CBCons(_pn[2].s, pz_v2, CBNil)))
+        : _pc_k = 4 ? CBCons(_pn[0].s, pz_v0, CBCons(_pn[1].s, pz_v1,
+            CBCons(_pn[2].s, pz_v2, CBCons(_pn[3].s, pz_v3, CBNil))))
         : CBNil)
     pz_binds ∈ C2Binds = (_pt_tup ? pzt_app1 : pz_binds_nt)
     pz_pop ∈ C2H = (_pt_tup

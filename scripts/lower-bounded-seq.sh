@@ -178,7 +178,7 @@ function subst_exists(txt,    pos, a, st, en, depth, j, ch, inner, bvar, sname, 
             sname = substr(sname, RSTART + 5, RLENGTH - 8)
             sub(/^#/, "", sname)
         } else if (match(inner, /\{0\.\.[0-9]+\}/)) {
-            lit_hi = substr(inner, RSTART + 5, RLENGTH - 6) + 0
+            lit_hi = substr(inner, RSTART + 4, RLENGTH - 5) + 0
             sname = ""
         } else return txt
         pred = inner; sub(/^[^:]*:[ \t]*/, "", pred)

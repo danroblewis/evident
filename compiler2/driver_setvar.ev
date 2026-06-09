@@ -16,6 +16,13 @@
 --
 -- The Set(T) variable registry + pmode-14 set walk. Lifted into
 -- driver_main via `..DriverSetVar`.
+
+-- One row of the quantifier-over-set element-name projection: the i-th
+-- element name unpacked from a SetVar's packed `elems` string.
+-- Used as a Seq(QsetName) bounded to 3 rows, lowered pre-oracle by
+-- scripts/lower-bounded-seq.sh.
+type QsetName(name ∈ String)
+
 fsm DriverSetVar
     stv_cnt ∈ Int
     stv ∈ Seq(SetVar)
@@ -92,25 +99,22 @@ fsm DriverSetVar
     qset_c ∈ Int = (qset_src = 0 ? stv[0].count : stv[1].count)
     qset_k ∈ Int = (qset_src = 0 ? stv[0].kidx : stv[1].kidx)
     qset_tname ∈ String = (qset_tgt = 0 ? stv[0].name : stv[1].name)
-    qset_e0nm ∈ String
-    RtRecName(s ↦ qset_e, i ↦ 0, name ↦ qset_e0nm)
-    qset_e1nm ∈ String
-    RtRecName(s ↦ qset_e, i ↦ 1, name ↦ qset_e1nm)
-    qset_e2nm ∈ String
-    RtRecName(s ↦ qset_e, i ↦ 2, name ↦ qset_e2nm)
+    qset_enm ∈ Seq(QsetName)
+    #qset_enm ≤ 3
+    ∀ k ∈ {0..2} : RtRecName(s ↦ qset_e, i ↦ k, name ↦ qset_enm[k].name)
     qset_seg2 ∈ C2Items = (qset_c ≥ 3
         ? C2ICons(C2Process(EIdent(qset_tname)),
-            C2ICons(C2RecVal(qset_e2nm, qset_k),
+            C2ICons(C2RecVal(qset_enm[2].name, qset_k),
             C2ICons(C2SelH, C2ICons(C2AssertTop, C2INil))))
         : C2INil)
     qset_seg1 ∈ C2Items = (qset_c ≥ 2
         ? C2ICons(C2Process(EIdent(qset_tname)),
-            C2ICons(C2RecVal(qset_e1nm, qset_k),
+            C2ICons(C2RecVal(qset_enm[1].name, qset_k),
             C2ICons(C2SelH, C2ICons(C2AssertTop, qset_seg2))))
         : qset_seg2)
     qset_items ∈ C2Items = (qset_c ≥ 1
         ? C2ICons(C2Process(EIdent(qset_tname)),
-            C2ICons(C2RecVal(qset_e0nm, qset_k),
+            C2ICons(C2RecVal(qset_enm[0].name, qset_k),
             C2ICons(C2SelH, C2ICons(C2AssertTop, qset_seg1))))
         : qset_seg1)
 

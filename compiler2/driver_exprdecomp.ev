@@ -67,9 +67,13 @@ fsm DriverExprDecomp
     -- fallthrough (no collision: builtins lowercase, variants
     -- capitalized). Compound args are handles, so the legacy
     -- dropped-Exit(3+4) class is impossible by construction.
-    d_ctor_d ∈ Int
-    ∀ k ∈ {0..5} : ((uev[k].name = d_cnm) ⇒ (d_ctor_d = uev[k].ctor))
-    (¬(∃ i ∈ {0..5} : uev[i].name = d_cnm)) ⇒ (d_ctor_d = 0)
+    d_ctor_d ∈ Int = (uev[0].name = d_cnm ? uev[0].ctor
+        : uev[1].name = d_cnm ? uev[1].ctor
+        : uev[2].name = d_cnm ? uev[2].ctor
+        : uev[3].name = d_cnm ? uev[3].ctor
+        : uev[4].name = d_cnm ? uev[4].ctor
+        : uev[5].name = d_cnm ? uev[5].ctor
+        : 0)
 
     d_pe_is_m ∈ Bool = (d_pe matches EMatches(_, _))
     d_m_nm ∈ String = match d_pe
@@ -78,12 +82,15 @@ fsm DriverExprDecomp
     d_m_in ∈ Expr = match d_pe
         EMatches(_, me) ⇒ me
         _ ⇒ ENoExpr
-    d_m_t_uev ∈ Int
-    ∀ k ∈ {0..5} : ((uev[k].name = d_m_nm) ⇒ (d_m_t_uev = uev[k].tester))
-    (¬(∃ i ∈ {0..5} : uev[i].name = d_m_nm)) ⇒ (d_m_t_uev = 0)
     d_m_t ∈ Int = (d_m_nm = "IntResult" ? z_irtest
         : d_m_nm = "StringResult" ? z_srtest
-        : d_m_t_uev)
+        : uev[0].name = d_m_nm ? uev[0].tester
+        : uev[1].name = d_m_nm ? uev[1].tester
+        : uev[2].name = d_m_nm ? uev[2].tester
+        : uev[3].name = d_m_nm ? uev[3].tester
+        : uev[4].name = d_m_nm ? uev[4].tester
+        : uev[5].name = d_m_nm ? uev[5].tester
+        : 0)
     d_m_items ∈ C2Items = (d_m_t ≠ 0
         ? C2ICons(C2Process(d_m_in), C2ICons(C2App(d_m_t, 1), d_wtail))
         : C2ICons(C2PushH(0), d_wtail))

@@ -39,11 +39,14 @@ fsm DriverSymLookup
     d_lk_pos_eff ∈ Int = (d_lk_pfx_on ? d_lk_pfx_pos : d_lk_pos)
     d_lk_found2 ∈ Bool = (d_lk_pfx_on ∨ d_lk_found)
     d_lk_pure ∈ Bool = (d_lk_special ∨ (¬d_lk_found2))
-    d_lk_evt ∈ Int
-    ∀ k ∈ {0..5} : ((evt[k].name = d_lkname) ⇒ (d_lk_evt = evt[k].value))
-    (¬(∃ i ∈ {0..#evt-1} : evt[i].name = d_lkname)) ⇒ (d_lk_evt = 0)
     d_lk ∈ Int = (d_lkname = "true" ? z_true
         : d_lkname = "false" ? z_false
-        : d_lk_evt)
+        : evt[0].name = d_lkname ? evt[0].value
+        : evt[1].name = d_lkname ? evt[1].value
+        : evt[2].name = d_lkname ? evt[2].value
+        : evt[3].name = d_lkname ? evt[3].value
+        : evt[4].name = d_lkname ? evt[4].value
+        : evt[5].name = d_lkname ? evt[5].value
+        : 0)
     d_eff_stread ∈ Effect
     BuildMemReadLong(addr ↦ stbuf.base + (8 * (d_lk_pos_eff / 32)), eff ↦ d_eff_stread)

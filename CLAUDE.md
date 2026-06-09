@@ -288,6 +288,21 @@ no slow *operation*; there is only "is it bounded." See
 > element (`e.from` in `∀ e ∈ edges`): also dropped — carry the fields as
 > `coindexed` parallel `Seq`s until the bounded-Seq lowering lands.
 
+> **⚠ PERF TRAP: outputs must be COVERED, never implication-defined**
+> (measured 2026-06-09). Defining a value by guarded pins —
+> `∀ k : ((xs[k].name = key) ⇒ (out = xs[k].val))` plus a `¬∃ ⇒ default`
+> — reads beautifully but emits *bare disjunctive constraints*: the
+> functionizer extracts per-output assignments and cannot extract a bare
+> `(A ∨ B)`, so every such line goes Z3-residual and the hot loop dies
+> (fixture-001: 19 s → >300 s timeout with seven of them). The COVERED
+> form of a keyed projection is the ternary select chain
+> `out = (xs[0].name = key ? xs[0].val : … : default)` — same semantics,
+> functionizes. ∀-instantiated *equality writes*
+> (`∀ k : xs[k].f = (…ternary…)`) are assignments and are fine. Rule:
+> every output variable needs one covering `=` assignment; `⇒`/`∨` may
+> only appear *inside* its right-hand expression, never as the thing
+> that defines it.
+
 ### Enums
 
 ```evident
