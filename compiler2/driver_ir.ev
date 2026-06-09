@@ -112,6 +112,18 @@ type RecTypeEntry(name ∈ String, fnames ∈ String, ftypes ∈ String,
     -- ≤6 field-accessor decls — the registry's hard structural bound).
     0 ≤ nf ≤ 6
 
+-- ── One field of a record being lowered ───────────────────────────
+-- A single field of a `RecTypeEntry`, decoded for the C2RecVal/C2RecDecl
+-- expansion: `name` (the field name), `type` (its type string), and
+-- `kidx` (the field type's slot in the record-type registry — 0/1/2 if
+-- the field is itself a record, −1 if scalar/Seq). Replaces the parallel
+-- rv_f*/rv_t*/rv_k* scalar arrays with a record so the expansion reads
+-- `f.name`/`f.type`/`f.kidx` instead of three coindexed lookups.
+type RecField(name ∈ String, ty ∈ String, kidx ∈ Int)
+    -- kidx is RtIdxOf's result: a registry hit (0/1/2) or a miss (−1).
+    -- (`ty`, not `type`: `type` is a reserved keyword, unusable as `.type`.)
+    0 - 1 ≤ kidx ≤ 2
+
 -- ── Work items: one line of claim body = one small program ────────
 enum C2Item =
     C2Process(Expr)
