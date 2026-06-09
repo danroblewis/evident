@@ -64,7 +64,8 @@ claim RtSortOf(ty ∈ String,
 claim RtFieldAcc(fname ∈ String,
         e0 ∈ RecTypeEntry, e1 ∈ RecTypeEntry, e2 ∈ RecTypeEntry,
         acc ∈ Int)
-    rfa_key ∈ String = "|" ++ substr(fname ++ "                               ", 0, 31)
+    rfa_key ∈ String
+    FtiNameEntry(name ↦ fname, entry ↦ rfa_key)
     rfa_p0 ∈ Int = index_of(e0.fnames, rfa_key, 0)
     rfa_p1 ∈ Int = index_of(e1.fnames, rfa_key, 0)
     rfa_p2 ∈ Int = index_of(e2.fnames, rfa_key, 0)

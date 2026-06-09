@@ -533,3 +533,14 @@ rb_q_key in the lookup/re-walk paths). Replace each with
 `FtiNameEntry(name ↦ x, entry ↦ …)` — a behavior change (composition),
 gated by conformance + functionization, NOT the byte gate. Do as its own
 batch.
+
+### Batch 3 — FtiNameEntry reuse sweep (repo-wide, non-byte-identical)
+The 32-byte `"|name<pad>"` formatter was open-coded in 15 places across 8
+files. Converted all 14 standalone-assignment sites to compose the
+`FtiNameEntry` claim — `X ∈ String ; FtiNameEntry(name ↦ <name>, entry ↦ X)`
+— so the registry-row format lives in ONE tested claim
+(driver_classify ×3, driver_posbind ×5, driver_symlookup ×2, driver_expr,
+driver_guard, driver_record, driver.ev ×1 each). The one sub-expression
+site (driver_broadcast.ev:64, the formatter inside an arg list with no
+output var) is left inline. Behavior change (composition, not the byte
+gate) — conformance + functionization gate.

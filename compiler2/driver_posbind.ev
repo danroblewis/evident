@@ -50,12 +50,14 @@ fsm DriverPosBind
     pcl_stmt ∈ Bool = (d_classify ∧ (¬d_line_end) ∧ c_t0_is_ident
         ∧ (c_t1 matches LParen) ∧ (¬(c_t3 matches OpMapsto))
         ∧ c_comp_found ∧ (¬c_dd_shape) ∧ (_il_depth < 8))
-    pcl_m1key ∈ String = "|" ++ substr(pcl_t2nm ++ "                               ", 0, 31)
+    pcl_m1key ∈ String
+    FtiNameEntry(name ↦ pcl_t2nm, entry ↦ pcl_m1key)
     pcl_m1 ∈ Bool = (d_classify ∧ (¬d_line_end) ∧ c_t0_is_ident
         ∧ (c_t1 matches Dot) ∧ (c_t2 matches Ident(_))
         ∧ (c_t3 matches LParen)
         ∧ (index_of(ci_names, pcl_m1key, 0) ≥ 0) ∧ (_il_depth < 8))
-    pcl_m2key ∈ String = "|" ++ substr(pcl_t4nm ++ "                               ", 0, 31)
+    pcl_m2key ∈ String
+    FtiNameEntry(name ↦ pcl_t4nm, entry ↦ pcl_m2key)
     pcl_m2 ∈ Bool = (d_classify ∧ (¬d_line_end) ∧ c_t0_is_ident
         ∧ (c_t1 matches Dot) ∧ (c_t2 matches Ident(_))
         ∧ (c_t3 matches Dot) ∧ (c_t4 matches Ident(_))
@@ -110,7 +112,8 @@ fsm DriverPosBind
     ptc_t ∈ Bool = (pt_rp ∧ (_pt_callee = "") ∧ (ww_t1 matches OpIn)
         ∧ (ww_t2 matches Ident(_)) ∧ (¬ptc_tm))
     ptc_nm ∈ String = (ptc_n ? _pt_callee : ptc_tm ? ptc_w4nm : ptc_w2nm)
-    ptc_key ∈ String = "|" ++ substr(ptc_nm ++ "                               ", 0, 31)
+    ptc_key ∈ String
+    FtiNameEntry(name ↦ ptc_nm, entry ↦ ptc_key)
     ptc_pos ∈ Int = index_of(ci_names, ptc_key, 0)
     ptc_ok ∈ Bool = ((ptc_n ∨ ptc_t ∨ ptc_tm) ∧ (ptc_pos ≥ 0))
     pt_close ∈ Bool = ptc_ok
@@ -160,8 +163,10 @@ fsm DriverPosBind
     pi_nm ∈ String = match pr_sres
         EIdent(s) ⇒ s
         _ ⇒ ""
-    pi_skey ∈ String = "|" ++ substr((_il_pfx ++ pi_nm) ++ "                               ", 0, 31)
-    pi_pkey ∈ String = "|" ++ substr(pi_nm ++ "                               ", 0, 31)
+    pi_skey ∈ String
+    FtiNameEntry(name ↦ (_il_pfx ++ pi_nm), entry ↦ pi_skey)
+    pi_pkey ∈ String
+    FtiNameEntry(name ↦ pi_nm, entry ↦ pi_pkey)
     pi_evt ∈ Bool = ((evt_n0 = pi_nm) ∨ (evt_n1 = pi_nm)
         ∨ (evt_n2 = pi_nm) ∨ (evt_n3 = pi_nm) ∨ (evt_n4 = pi_nm)
         ∨ (evt_n5 = pi_nm))
