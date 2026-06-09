@@ -173,16 +173,21 @@ function subst_exists(txt,    pos, a, st, en, depth, j, ch, inner, bvar, sname, 
         if (en == 0) return txt
         inner = substr(txt, st + 1, en - st - 1)     # ∃ i ∈ {0..#xs-1} : P
         bvar = inner; sub(/^[ \t]*∃[ \t]*/, "", bvar); sub(/[ \t]*∈.*$/, "", bvar); bvar = trim(bvar)
-        sname = inner
-        if (!match(sname, /\{0\.\.#[A-Za-z_][A-Za-z0-9_]*-1\}/)) return txt
-        sname = substr(sname, RSTART + 5, RLENGTH - 8)   # strip {0..# and -1}
-        sub(/^#/, "", sname)
+        sname = inner; lit_hi = -1
+        if (match(sname, /\{0\.\.#[A-Za-z_][A-Za-z0-9_]*-1\}/)) {
+            sname = substr(sname, RSTART + 5, RLENGTH - 8)
+            sub(/^#/, "", sname)
+        } else if (match(inner, /\{0\.\.[0-9]+\}/)) {
+            lit_hi = substr(inner, RSTART + 5, RLENGTH - 6) + 0
+            sname = ""
+        } else return txt
         pred = inner; sub(/^[^:]*:[ \t]*/, "", pred)
-        if (!(sname in gbnd)) return txt
-        Nn = gbnd[sname]; out2 = ""
+        if (lit_hi < 0 && !(sname in gbnd)) return txt
+        Nn = (lit_hi >= 0 ? lit_hi + 1 : gbnd[sname]); out2 = ""
         for (k = 0; k < Nn; k++) {
             pk = subst_tok(pred, bvar, k)
-            out2 = out2 (k ? " ∨ " : "") "((" k " < " sname "_len) ∧ (" pk "))"
+            if (lit_hi >= 0) out2 = out2 (k ? " ∨ " : "") "(" pk ")"
+            else out2 = out2 (k ? " ∨ " : "") "((" k " < " sname "_len) ∧ (" pk "))"
         }
         repl = "(" out2 ")"
         txt = substr(txt, 1, st - 1) repl substr(txt, en + 1)
