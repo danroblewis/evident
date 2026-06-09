@@ -199,3 +199,33 @@ full replacement of the kernel's own Z3 wrapper is BLOCKED.
 useful, unblocks programs that solve; matches `fti-z3.md`). Treat the
 kernel-Z3-removal as gated on B1+B2 and scoped by B3 — a separate,
 user-approved kernel-extension wave, not a transcription wave.
+
+---
+
+## Status update (2026-06-09): B1 + B2 LANDED — the readback half is open
+
+- **B2 (char* → String)** had already landed as the `__cstr.copy(ptr) →
+  StringResult` pseudo-library in `kernel/src/libcall.rs`.
+- **B1 (intra-tick handle chaining)** is now landed as `ArgRef(Int)`:
+  a 4th `LibArg` variant (stdlib/kernel.ev) resolving to the result of
+  effects[k] dispatched earlier in the SAME tick (same indexing as next
+  tick's last_results). The dispatcher resolves refs against its per-tick
+  results vec on both the Z3 and functionized paths; a forward/out-of-range
+  ref or a ref to a No/Eof/Error result yields an ErrorResult (the same
+  observable failure as any failed LibCall) — never a crash. The frozen
+  oracle compiles the 4-variant enum from source unchanged.
+- **Bonus over the plan:** B1 + `__mem` covers OUT-POINTER signatures
+  too, which §5 didn't anticipate —
+  `⟨malloc(8), Z3_model_eval(…, ArgRef(slot)), read_long(ArgRef(slot))⟩`
+  crosses `Z3_ast*`/`int64_t*` outs without any new kernel shape.
+- **Proof:** `tests/kernel/test_argref_z3_readback.ev` — a complete
+  model-readback walk in Evident (lifecycle ×4 chained in one tick;
+  build+assert `x = 42` ×6 in one tick, exactly the §"Sub-problem 3"
+  example; solver_check; get_model → model_eval → get_numeral_int64
+  ×8 in one tick) exits with the model's value, 42. Companions:
+  `test_argref_chain.ev` (the minimal malloc/write/read chain) and
+  `test_argref_error.ev` (forward ref → ErrorResult, observable).
+- **Still open:** the compiler2 stage-1 floor (DriverEnum/BuildEff)
+  declares a hardcoded 3-variant LibArg, so user programs compiled VIA
+  COMPILER2 can't use ArgRef until that floor grows the variant — a
+  compiler2/*.ev follow-up. The B3 ceiling stands as written.

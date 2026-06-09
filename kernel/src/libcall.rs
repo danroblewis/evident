@@ -25,11 +25,18 @@ use libffi::middle::{Arg, Cif, CodePtr, Type};
 use libloading::os::unix::Library;
 
 /// Argument value for one libffi call.
+///
+/// `Ref(k)` is the intra-tick handle chain (wave-5a blocker B1): it names
+/// the result of effects[k] dispatched earlier in the SAME tick. The tick
+/// dispatcher resolves every `Ref` against its accumulated per-tick results
+/// (the same vec that becomes next tick's `last_results`) BEFORE calling
+/// `call()`; a `Ref` reaching `call()` unresolved is a kernel bug.
 #[derive(Debug, Clone)]
 pub enum LibArg {
     Int(i64),
     Str(String),
     Real(f64),
+    Ref(i64),
 }
 
 /// Return value from one libcall. The historical assumption is "everything
@@ -89,6 +96,12 @@ pub fn call(lib_name: &str, fn_name: &str, args: &[LibArg]) -> Result<LibRet, St
     if EFFECT_TRACE.load(std::sync::atomic::Ordering::Relaxed) {
         let n = EFFECT_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         eprintln!("[eff {n}] {lib_name}::{fn_name}({args:?})");
+    }
+    // The dispatcher resolves ArgRef before calling; enforce that here so
+    // the unreachable!() arms below are genuinely unreachable.
+    if args.iter().any(|a| matches!(a, LibArg::Ref(_))) {
+        return Err("unresolved ArgRef reached libcall::call (kernel bug: \
+                    the dispatcher must resolve refs first)".to_string());
     }
     // `__mem`: the minimal pointer-deref escape hatch the FTI honesty audit
     // (task #23) requires. An honest FTI keeps its data in libc-`malloc`'d
@@ -164,6 +177,7 @@ pub fn call(lib_name: &str, fn_name: &str, args: &[LibArg]) -> Result<LibRet, St
         LibArg::Int(_)  => Type::i64(),
         LibArg::Str(_)  => Type::pointer(),
         LibArg::Real(_) => Type::f64(),
+        LibArg::Ref(_)  => unreachable!("ArgRef resolved by the dispatcher"),
     }).collect();
     let cif = Cif::new(arg_types.into_iter(), Type::i64());
 
@@ -183,6 +197,7 @@ pub fn call(lib_name: &str, fn_name: &str, args: &[LibArg]) -> Result<LibRet, St
                 storage.cstrings.push(cs);
             }
             LibArg::Real(r) => storage.reals.push(*r),
+            LibArg::Ref(_)  => unreachable!("ArgRef resolved by the dispatcher"),
         }
     }
 
@@ -216,6 +231,7 @@ pub fn call(lib_name: &str, fn_name: &str, args: &[LibArg]) -> Result<LibRet, St
                 real_idx += 1;
                 ffi_args.push(Arg::new(r));
             }
+            LibArg::Ref(_)  => unreachable!("ArgRef resolved by the dispatcher"),
         }
     }
 

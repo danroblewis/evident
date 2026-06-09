@@ -479,7 +479,7 @@ unsafe fn run_inner(src: &str, manifest: &Manifest) -> Result<u8, String> {
                     let mut exit_code: Option<u8> = None;
                     let mut new_results: Vec<Res> = Vec::new();
                     for eff in run.effects.iter().take(manifest.max_effects) {
-                        match dispatch_effect_sv(eff)? {
+                        match dispatch_effect_sv(eff, &new_results)? {
                             EffectOutcome::Continue(r) => new_results.push(r),
                             EffectOutcome::Exit(code) => { exit_code = Some(code); break; }
                         }
@@ -634,7 +634,7 @@ unsafe fn run_inner(src: &str, manifest: &Manifest) -> Result<u8, String> {
             if !ok {
                 return Err(format!("model eval failed for effects[{i}]"));
             }
-            match dispatch_effect(ctx, eval_out)? {
+            match dispatch_effect(ctx, eval_out, &new_results)? {
                 EffectOutcome::Continue(r) => { new_results.push(r); }
                 EffectOutcome::Exit(code)  => { exit_code = Some(code); break; }
             }
@@ -1091,7 +1091,7 @@ enum EffectOutcome {
     Exit(u8),
 }
 
-unsafe fn dispatch_effect(ctx: Z3_context, eff: Z3_ast) -> Result<EffectOutcome, String> {
+unsafe fn dispatch_effect(ctx: Z3_context, eff: Z3_ast, tick_results: &[Res]) -> Result<EffectOutcome, String> {
     let app = Z3_to_app(ctx, eff);
     if app.is_null() {
         return Err(format!("effect is not an application: {}", ast_to_string(ctx, eff)));
@@ -1100,7 +1100,7 @@ unsafe fn dispatch_effect(ctx: Z3_context, eff: Z3_ast) -> Result<EffectOutcome,
     let sym = Z3_get_decl_name(ctx, decl);
     let name = decode_sym(ctx, sym);
 
-    let out = dispatch_effect_named(ctx, app, &name);
+    let out = dispatch_effect_named(ctx, app, &name, tick_results);
     if std::env::var("EVIDENT_PHASE_TRACE").ok().as_deref() == Some("1") {
         let summary = match &out {
             Ok(EffectOutcome::Continue(Res::Str(s))) => {
@@ -1116,7 +1116,7 @@ unsafe fn dispatch_effect(ctx: Z3_context, eff: Z3_ast) -> Result<EffectOutcome,
     out
 }
 
-unsafe fn dispatch_effect_named(ctx: Z3_context, app: Z3_app, name: &str) -> Result<EffectOutcome, String> {
+unsafe fn dispatch_effect_named(ctx: Z3_context, app: Z3_app, name: &str, tick_results: &[Res]) -> Result<EffectOutcome, String> {
     match name {
         // Println, Print, Time were here in iter 1; demoted to LibCall
         // sugar in iter 2.5+. See stdlib/kernel.ev → BuildPrintln /
@@ -1167,7 +1167,10 @@ unsafe fn dispatch_effect_named(ctx: Z3_context, app: Z3_app, name: &str) -> Res
             let args_ast = Z3_get_app_arg(ctx, app, 2);
             let lib = decode_string_literal(ctx, lib_ast)?;
             let func = decode_string_literal(ctx, fn_ast)?;
-            let args = decode_libargs(ctx, args_ast)?;
+            let mut args = decode_libargs(ctx, args_ast)?;
+            if let Err(e) = resolve_arg_refs(&mut args, tick_results) {
+                return Ok(EffectOutcome::Continue(Res::Error(format!("LibCall({lib}, {func}): {e}"))));
+            }
             match crate::libcall::call(&lib, &func, &args) {
                 Ok(crate::libcall::LibRet::Int(ret)) => Ok(EffectOutcome::Continue(Res::Int(ret))),
                 Ok(crate::libcall::LibRet::Str(s))   => Ok(EffectOutcome::Continue(Res::Str(s))),
@@ -1441,8 +1444,45 @@ unsafe fn decode_libarg(ctx: Z3_context, ast: Z3_ast) -> Result<crate::libcall::
         "ArgInt"  => Ok(LibArg::Int(decode_int_literal(ctx, arg0)?)),
         "ArgStr"  => Ok(LibArg::Str(decode_string_literal(ctx, arg0)?)),
         "ArgReal" => Ok(LibArg::Real(decode_real_literal(ctx, arg0)?)),
+        "ArgRef"  => Ok(LibArg::Ref(decode_int_literal(ctx, arg0)?)),
         other     => Err(format!("unknown LibArg variant `{other}`")),
     }
+}
+
+/// Resolve every `ArgRef(k)` in `args` against this tick's already-dispatched
+/// results (wave-5a B1: intra-tick handle chaining). `k` indexes the per-tick
+/// results vec — the same indexing as next tick's `last_results` — so an
+/// ArgRef may only name an effect EARLIER in the same `effects` Seq. An Int
+/// result feeds an int slot, a Str result a string slot, a Real a real slot;
+/// a forward/out-of-range ref or a ref to a NoResult/Eof/Error result is an
+/// error (the LibCall arms surface it as ErrorResult, the same observable
+/// failure mode as any failed libcall).
+fn resolve_arg_refs(
+    args: &mut [crate::libcall::LibArg],
+    tick_results: &[Res],
+) -> Result<(), String> {
+    use crate::libcall::LibArg;
+    for a in args.iter_mut() {
+        if let LibArg::Ref(k) = a {
+            let k = *k;
+            let r = usize::try_from(k)
+                .ok()
+                .and_then(|i| tick_results.get(i))
+                .ok_or_else(|| format!(
+                    "ArgRef({k}) is out of range — only {} effect(s) have run this \
+                     tick; an ArgRef may only reference an earlier effect in the \
+                     same effects Seq", tick_results.len()))?;
+            *a = match r {
+                Res::Int(n)  => LibArg::Int(*n),
+                Res::Str(s)  => LibArg::Str(s.clone()),
+                Res::Real(x) => LibArg::Real(*x),
+                Res::No        => return Err(format!("ArgRef({k}): effect {k} produced NoResult")),
+                Res::Eof       => return Err(format!("ArgRef({k}): effect {k} produced EofResult")),
+                Res::Error(e)  => return Err(format!("ArgRef({k}): effect {k} failed: {e}")),
+            };
+        }
+    }
+    Ok(())
 }
 
 unsafe fn decode_real_literal(ctx: Z3_context, ast: Z3_ast) -> Result<f64, String> {
@@ -1658,7 +1698,7 @@ pub(crate) unsafe fn solve_tick_sv(
 /// Dispatch a single effect given as a decoded `Sv::Datatype` (the
 /// functionizer fast path's effect representation). Mirrors `dispatch_effect`
 /// (which works off a Z3 `Z3_ast`); kept in lockstep with it.
-fn dispatch_effect_sv(eff: &Sv) -> Result<EffectOutcome, String> {
+fn dispatch_effect_sv(eff: &Sv, tick_results: &[Res]) -> Result<EffectOutcome, String> {
     let Sv::Datatype(name, fields) = eff else {
         return Err(format!("effect is not a datatype value: {eff:?}"));
     };
@@ -1702,7 +1742,10 @@ fn dispatch_effect_sv(eff: &Sv) -> Result<EffectOutcome, String> {
         "LibCall" => {
             let lib = sv_str(fields.first())?;
             let func = sv_str(fields.get(1))?;
-            let args = decode_libargs_sv(fields.get(2))?;
+            let mut args = decode_libargs_sv(fields.get(2))?;
+            if let Err(e) = resolve_arg_refs(&mut args, tick_results) {
+                return Ok(EffectOutcome::Continue(Res::Error(format!("LibCall({lib}, {func}): {e}"))));
+            }
             match crate::libcall::call(&lib, &func, &args) {
                 Ok(crate::libcall::LibRet::Int(ret)) => Ok(EffectOutcome::Continue(Res::Int(ret))),
                 Ok(crate::libcall::LibRet::Str(s))   => Ok(EffectOutcome::Continue(Res::Str(s))),
@@ -1736,6 +1779,7 @@ fn decode_libargs_sv(v: Option<&Sv>) -> Result<Vec<crate::libcall::LibArg>, Stri
                         ("ArgInt", Some(Sv::Int(n))) => LibArg::Int(*n),
                         ("ArgStr", Some(Sv::Str(s))) => LibArg::Str(s.clone()),
                         ("ArgReal", Some(Sv::Real(r))) => LibArg::Real(*r),
+                        ("ArgRef", Some(Sv::Int(n))) => LibArg::Ref(*n),
                         _ => return Err(format!("unknown LibArg variant {v}")),
                     },
                     other => return Err(format!("LibArg cell head not a datatype: {other:?}")),

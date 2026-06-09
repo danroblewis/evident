@@ -1,0 +1,18 @@
+-- ArgRef error path: a forward/out-of-range reference (ArgRef(5) when no
+-- effect has run yet this tick) must NOT crash the kernel — it makes THAT
+-- call's result an ErrorResult, the same observable failure mode as any
+-- failed LibCall. The next tick observes the ErrorResult and exits 7.
+--
+-- entry: main
+-- expect: exit = 7
+import "stdlib/kernel.ev"
+
+fsm main
+    tick ∈ Int
+    tick = (is_first_tick ? 0 : _tick + 1)
+    code ∈ Int = match last_results[0]
+        ErrorResult(_) ⇒ 7
+        _ ⇒ 1
+    effects ∈ Seq(Effect) = (tick = 0
+        ? ⟨LibCall("__mem", "read_long", ⟨ArgRef(5)⟩)⟩
+        : ⟨Exit(code)⟩)

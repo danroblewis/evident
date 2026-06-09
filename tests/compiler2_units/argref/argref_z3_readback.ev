@@ -1,0 +1,80 @@
+-- The wave-5a proof: a Z3 MODEL-READBACK WALK written in Evident.
+--
+-- This program builds its own auxiliary Z3 model (x = 42), solves it,
+-- and READS THE MODEL BACK — the half of wave 5a that was "BLOCKED on
+-- B1 (intra-tick handle chaining) + B2 (char* → String)". With ArgRef
+-- both are expressible; even Z3's OUT-POINTER signatures compose:
+--
+--   ⟨malloc(8), Z3_model_eval(…, ArgRef(slot)), read_long(ArgRef(slot))⟩
+--
+-- Tick map (each tick's chain was previously one tick PER CALL):
+--   0  lifecycle: mk_config → mk_context(ArgRef 0) → mk_solver(ArgRef 1)
+--      → solver_inc_ref — 4 calls, one tick.
+--   1  capture ctx/sol; build + assert `x = 42` exactly as fti-z3.md §3
+--      sketched it: int_sort, symbol "x", const, int 42, eq, assert —
+--      6 calls, one tick.
+--   2  capture x's AST; solver_check.
+--   3  capture sat (must be 1); readback chain: get_model → model_inc_ref
+--      → malloc out-slot → model_eval(…, out) → read_long(out) →
+--      malloc slot2 → get_numeral_int64(eval'd, slot2) → read_long(slot2)
+--      — 8 calls, one tick, two out-pointer signatures crossed.
+--   4  capture the decoded numeral; Exit with it.
+--
+-- entry: main
+-- expect: exit = 42
+import "stdlib/kernel.ev"
+
+fsm main
+    tick ∈ Int
+    tick = (is_first_tick ? 0 : _tick + 1)
+
+    lr0 ∈ Int = match last_results[0]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+    lr1 ∈ Int = match last_results[1]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+    lr2 ∈ Int = match last_results[2]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+    lr7 ∈ Int = match last_results[7]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+
+    zctx ∈ Int
+    zctx = (is_first_tick ? 0 : tick = 1 ? lr1 : _zctx)
+    zsol ∈ Int
+    zsol = (is_first_tick ? 0 : tick = 1 ? lr2 : _zsol)
+    zx ∈ Int
+    zx = (is_first_tick ? 0 : tick = 2 ? lr2 : _zx)
+    zsat ∈ Int
+    zsat = (is_first_tick ? 0 : tick = 3 ? lr0 : _zsat)
+    zval ∈ Int
+    zval = (is_first_tick ? 0 : tick = 4 ? lr7 : _zval)
+
+    effects ∈ Seq(Effect) = (tick = 0
+        ? ⟨LibCall("libz3", "Z3_mk_config", ⟨⟩),
+           LibCall("libz3", "Z3_mk_context", ⟨ArgRef(0)⟩),
+           LibCall("libz3", "Z3_mk_solver", ⟨ArgRef(1)⟩),
+           LibCall("libz3", "Z3_solver_inc_ref", ⟨ArgRef(1), ArgRef(2)⟩)⟩
+        : tick = 1
+        ? ⟨LibCall("libz3", "Z3_mk_int_sort", ⟨ArgInt(zctx)⟩),
+           LibCall("libz3", "Z3_mk_string_symbol", ⟨ArgInt(zctx), ArgStr("x")⟩),
+           LibCall("libz3", "Z3_mk_const", ⟨ArgInt(zctx), ArgRef(1), ArgRef(0)⟩),
+           LibCall("libz3", "Z3_mk_int", ⟨ArgInt(zctx), ArgInt(42), ArgRef(0)⟩),
+           LibCall("libz3", "Z3_mk_eq", ⟨ArgInt(zctx), ArgRef(2), ArgRef(3)⟩),
+           LibCall("libz3", "Z3_solver_assert", ⟨ArgInt(zctx), ArgInt(zsol), ArgRef(4)⟩)⟩
+        : tick = 2
+        ? ⟨LibCall("libz3", "Z3_solver_check", ⟨ArgInt(zctx), ArgInt(zsol)⟩)⟩
+        : tick = 3
+        ? (zsat = 1
+            ? ⟨LibCall("libz3", "Z3_solver_get_model", ⟨ArgInt(zctx), ArgInt(zsol)⟩),
+               LibCall("libz3", "Z3_model_inc_ref", ⟨ArgInt(zctx), ArgRef(0)⟩),
+               LibCall("libc", "malloc", ⟨ArgInt(8)⟩),
+               LibCall("libz3", "Z3_model_eval", ⟨ArgInt(zctx), ArgRef(0), ArgInt(zx), ArgInt(1), ArgRef(2)⟩),
+               LibCall("__mem", "read_long", ⟨ArgRef(2)⟩),
+               LibCall("libc", "malloc", ⟨ArgInt(8)⟩),
+               LibCall("libz3", "Z3_get_numeral_int64", ⟨ArgInt(zctx), ArgRef(4), ArgRef(5)⟩),
+               LibCall("__mem", "read_long", ⟨ArgRef(5)⟩)⟩
+            : ⟨Exit(9)⟩)
+        : ⟨Exit(zval)⟩)
