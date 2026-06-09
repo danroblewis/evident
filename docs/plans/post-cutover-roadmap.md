@@ -83,3 +83,56 @@ session that just wants to ship the cutover should focus on
 The feasibility plans are durable reference; the actual ordering of
 phase work will follow what unblocks the most LOC reduction per
 session.
+
+---
+
+## Self-hosting deliverable: reify the AST + a pass phase (host passes in Evident again)
+
+**Decision (2026-06-09):** the compiler-pass infrastructure that used to
+live in `stdlib/passes/*.ev` — self-hosted AST→AST transforms (`desugar`,
+`generics`, `validate`, `seq_chains`, …) — should be **rebuilt as part of
+self-hosting**, in `compiler2/passes/`, not as transitional shell scripts
+and not as a one-off bolt-on.
+
+### Why this is a self-hosting item, not a refactor
+compiler2 today is a **streaming translator**: it fuses parse → lower →
+translate, lowering each body line straight into the `C2Items` work-item
+stream. It never reifies a full `BodyItemList`/`SchemaDecl` AST (only
+transient `Expr` payloads of single work-items), so there is **no
+parse/passes/translate seam** for a pass to slot into. The old design
+*had* that seam (in the deleted bootstrap Rust): parse → marshal AST →
+run pass-programs (driven by a `run()` nested-FSM-to-fixed-point driver)
+→ translate. Reviving passes means re-introducing that seam.
+
+### What survives / what's gone
+- LIVE: the AST mirror — `compiler/parser.ev` still defines the cons-list
+  `Expr`/`ExprList`/`BodyItem`/`BodyItemList`/`SchemaDecl` enums, and
+  compiler2 parses into them.
+- LIVE: the pass template — `git show <pre-deletion>:stdlib/passes/seq_chains.ev`
+  is the canonical shape: a `fsm` stack-machine (Seed→Step→Done) that pops
+  the AST list head, transforms, recurses on the tail, with inline `claim`
+  unit tests that seed an AST and assert the output. `desugar.ev` is a
+  Seq-concat *flattening* pass — the closest precedent to a bounded-Seq
+  lowering. Discipline: Evident owns the recursion; string-leaf keying
+  stays out of the per-tick solve (the Z3 string-theory blow-up).
+- GONE: the `run()` driver (nested-FSM-to-fixed-point), the AST↔Value
+  marshaler (Rust), and the orchestrator that staged parse→passes→translate.
+
+### The deliverable
+Give compiler2 a real phase structure — `parse → reify BodyItemList AST →
+run passes → lower → emit` — and a place for passes (`compiler2/passes/`).
+The first citizens:
+- **bounded-`Seq` → `Array`+`len` / unrolled-finite** lowering. PoC proved
+  the lowering is sound + byte-identical (the `seq2array` experiment, and
+  the slice-1 `lower-bounded-seq.sh` round-trip). It belongs here, not in
+  a `scripts/*.sh` text transform.
+- the old `desugar`/`generics`/`validate` family, ported onto the new seam.
+
+Either re-add a minimal `run()` kernel capability (clean standalone
+`AST → AST` pass-programs, the proven model) or express passes as phases
+inside compiler2's tick loop — that execution-model choice is the first
+sub-task. **Note the chicken-and-egg:** a compiler2 pass can lower bounded
+`Seq`s in *user programs* immediately, but cannot touch compiler2's *own*
+registries (compiled by the frozen oracle) until self-hosting closes the
+loop — so the registry cleanup is gated on this work, or done as interim
+`Array`+`len` until then.
