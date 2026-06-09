@@ -35,6 +35,18 @@
 #   member  y ∈ xs         (Int only)      → len-guarded ∨-unroll
 #   ∃       (∃ i ∈ {0..#xs-1} : P)         → ((0<xs_len)∧(P[i:=0])) ∨ …
 #           (P may use xs[i] / xs[i].f — substituted per slot)
+#   keyed projection (the PAIR, recognized together):
+#           ∀ k ∈ {0..K} : ((xs[k].F = KEY) ⇒ (OUT = xs[k].V))
+#           (¬(∃ i ∈ {0..K} : xs[i].F = KEY)) ⇒ (OUT = DEF)
+#           → OUT = (xs_0_F = KEY ? xs_0_V : … : DEF)
+#           The covered select chain — implication-pins alone are bare
+#           disjunctions the functionizer cannot extract (measured
+#           2026-06-09: hot-loop fatal), so the PAIR lowers to the
+#           chain. Semantics note: the chain is FIRST-match-wins where
+#           the constraint reading pins ALL matches (UNSAT on
+#           duplicates) — use only where keys are unique. A lone pin
+#           or lone default falls through to the bare forms (the
+#           CLAUDE.md covered-output trap applies).
 #   index   xs[k] / xs[k].f (k literal)    → xs_k / xs_k_f   (anywhere)
 #   card    #xs                            → xs_len          (anywhere)
 #
@@ -251,10 +263,43 @@ END {
             v  = code; sub(/^.*≤[ \t]*/, "", v); sub(/[ \t]*$/, "", v)
             boundN[cur, nm] = v
         }
+        # keyed-projection PIN:
+        #   ∀ k ∈ {0..K} : ((xs[k].F = KEY) ⇒ (OUT = xs[k].V))
+        if (code ~ /^[ \t]*∀[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*∈[ \t]*\{0\.\.[0-9]+\}[ \t]*:[ \t]*\(\([A-Za-z_][A-Za-z0-9_]*\[[A-Za-z_][A-Za-z0-9_]*\]\.[A-Za-z_][A-Za-z0-9_]*[ \t]*=[ \t]*[A-Za-z_][A-Za-z0-9_]*\)[ \t]*⇒[ \t]*\([A-Za-z_][A-Za-z0-9_]*[ \t]*=[ \t]*[A-Za-z_][A-Za-z0-9_]*\[[A-Za-z_][A-Za-z0-9_]*\]\.[A-Za-z_][A-Za-z0-9_]*\)\)[ \t]*$/) {
+            t1 = code
+            match(t1, /\{0\.\.[0-9]+\}/)
+            pHi = substr(t1, RSTART + 4, RLENGTH - 5) + 0
+            sub(/^[^:]*:[ \t]*\(\(/, "", t1)          # xs[k].F = KEY) ⇒ (OUT = xs[k].V))
+            pSeq = t1; sub(/\[.*$/, "", pSeq)
+            pF = t1; sub(/^[^.]*\./, "", pF); sub(/[ \t]*=.*$/, "", pF)
+            pKey = t1; sub(/^[^=]*=[ \t]*/, "", pKey); sub(/\).*$/, "", pKey); gsub(/[ \t]/, "", pKey)
+            t2 = code; sub(/^.*⇒[ \t]*\(/, "", t2)     # OUT = xs[k].V))
+            pOut = t2; sub(/[ \t]*=.*$/, "", pOut)
+            pV = t2; sub(/^[^.]*\./, "", pV); sub(/\).*$/, "", pV); gsub(/[ \t]/, "", pV)
+            projSeq[cur, pOut] = pSeq; projF[cur, pOut] = pF
+            projKey[cur, pOut] = pKey; projV[cur, pOut] = pV
+            projHi[cur, pOut] = pHi; projPinLine[cur, pOut] = i
+        }
+        # keyed-projection DEFAULT:
+        #   (¬(∃ i ∈ {0..K} : xs[i].F = KEY)) ⇒ (OUT = DEF)
+        if (code ~ /^[ \t]*\(¬\(∃[ \t]/ && code ~ /⇒[ \t]*\([A-Za-z_][A-Za-z0-9_]*[ \t]*=[ \t]*[^)]*\)[ \t]*$/) {
+            t3 = code; sub(/^.*⇒[ \t]*\(/, "", t3)
+            dOut = t3; sub(/[ \t]*=.*$/, "", dOut)
+            dDef = t3; sub(/^[^=]*=[ \t]*/, "", dDef); sub(/\)[ \t]*$/, "", dDef)
+            projDef[cur, dOut] = dDef; projDefLine[cur, dOut] = i
+        }
     }
     for (k in seqDecl) {
         split(k, kp, SUBSEP); F = kp[1]; nm = kp[2]
         if ((F SUBSEP nm) in boundN) { bnd[F, nm] = boundN[F, nm]; gbnd[nm] = boundN[F, nm] }
+    }
+    # pre-mark paired projection defaults for dropping (order-independent:
+    # the default may precede its pin in source)
+    for (po in projPinLine) {
+        if (po in projDef) {
+            split(po, pp, SUBSEP)
+            dropLine[pp[1], "_pinline_" projDefLine[pp[1], pp[2]]] = 1
+        }
     }
 
     # field plan per registered seq: for Int, one unnamed slot
@@ -403,6 +448,26 @@ END {
                 continue
             }
         }
+
+        # keyed-projection pair → the covered select chain
+        if ((F, "_pinline_" i) in dropLine) { continue }
+        emitted_proj = 0
+        for (po in projPinLine) {
+            split(po, pp, SUBSEP)
+            if (pp[1] != F) continue
+            out = pp[2]
+            if (projPinLine[F, out] == i && (F SUBSEP out) in projDef) {
+                sq = projSeq[F, out]; ff = projF[F, out]; ky = projKey[F, out]
+                vv = projV[F, out]; hh = projHi[F, out]; dd = projDef[F, out]
+                chain = ""
+                for (k = 0; k <= hh; k++)
+                    chain = chain sq "_" k "_" ff " = " ky " ? " sq "_" k "_" vv "\n" ind "    : "
+                O[++on] = ind out " = (" chain dd ")"
+                emitted_proj = 1
+                break
+            }
+        }
+        if (emitted_proj) continue
 
         # the bound directive of a len-less seq vanishes (nothing to bound)
         if (code ~ /^[ \t]*#[A-Za-z][A-Za-z0-9_]*[ \t]*≤[ \t]*[0-9]+[ \t]*$/) {

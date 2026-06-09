@@ -121,11 +121,22 @@ run pass-programs (driven by a `run()` nested-FSM-to-fixed-point driver)
 ### The deliverable
 Give compiler2 a real phase structure — `parse → reify BodyItemList AST →
 run passes → lower → emit` — and a place for passes (`compiler2/passes/`).
-The first citizens:
-- **bounded-`Seq` → `Array`+`len` / unrolled-finite** lowering. PoC proved
-  the lowering is sound + byte-identical (the `seq2array` experiment, and
-  the slice-1 `lower-bounded-seq.sh` round-trip). It belongs here, not in
-  a `scripts/*.sh` text transform.
+The first citizens are the two shell transforms that today run pre-oracle
+in `flatten-evident.sh` (both carry `# TODO: rewrite in Evident` headers
+pointing here — they are interim by charter, not by accident):
+- **`scripts/expand-fsm-autocarry.sh`** — `fsm` → `claim` + `_x` carry-dual
+  synthesis + composition threading.
+- **`scripts/lower-bounded-seq.sh`** — bounded-`Seq` → flat-scalar lowering.
+  No longer a PoC: as of 2026-06-09 it is the production encoding of every
+  compiler2 registry (evt/uev/stv + 13 more families), with a real rule
+  inventory the Evident port must reach parity with: decl/dual/literal/
+  append/hold, range-`∀` slot instantiation, len-guarded + literal-range
+  `∃`, index/card substitution, Int `∀`/membership unrolls, the
+  **keyed-projection pair** (`∀`-pin + `¬∃`-default → covered select chain;
+  the functionizer-safe lowering of registry lookups), and the loud
+  completeness check. Conformance for the port: `tests/compiler2_units/
+  seq_lowering/` + `tests/seq/` + byte-identical flatten output on
+  `compiler2/driver.ev`.
 - the old `desugar`/`generics`/`validate` family, ported onto the new seam.
 
 Either re-add a minimal `run()` kernel capability (clean standalone
@@ -152,9 +163,15 @@ regression:
   covering assignment", 9/9 residual, Z3 invoked every tick. Fatal in the
   compiler's hot loop.
 So the numbered-scalar unroll is the ONLY carried-registry encoding that
-stays on the functionizer fast path today. The cleanups that DID land
-(`RecField`, `FtiNamedAppend`, `FtiNameEntry`) all apply to *pure per-tick*
-or *scalar-composition* shapes, never carried collections. The registry
-name-cleanup is therefore gated on this self-hosting pass-seam work (or an
-FTI-tape relocation à la the symbol table), not achievable as an interim
-Seq/Array swap.
+stays on the functionizer fast path today.
+
+**Resolution (2026-06-09, later the same day):** the registry cleanup DID
+land — not by changing the encoding, but by putting the unroll behind a
+pre-oracle source transform. `scripts/lower-bounded-seq.sh` lets the
+source say `evt ∈ Seq(EnumVariantVal)` / `∀ k ∈ {0..5} : …` while the
+oracle still sees the numbered scalars. The measured walls above are
+walls of the *oracle-visible encoding*, and they stand; the *surface* is
+free. What remains for this roadmap item is debt relocation: the
+transform is ~450 lines of awk, and self-hosting means porting it (and
+`expand-fsm-autocarry.sh`) into `compiler2/passes/` per the deliverable
+above.
