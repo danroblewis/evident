@@ -185,26 +185,26 @@ fsm DriverMatchPin
     mp_v_db ∈ String = (mq_wc ? "" : _mp_pb)
     mp_v_dc ∈ String = (mq_wc ? "" : _mp_pc)
     mp_t1_uev ∈ Int
-    ∀ k ∈ {0..5} : ((uev[k].name = mp_v_c1) ⇒ (mp_t1_uev = uev[k].tester))
-    (¬(∃ i ∈ {0..5} : uev[i].name = mp_v_c1)) ⇒ (mp_t1_uev = 0)
+    ∀ e ∈ uev : ((e.name = mp_v_c1) ⇒ (mp_t1_uev = e.tester))
+    (¬(∃ e ∈ uev : e.name = mp_v_c1)) ⇒ (mp_t1_uev = 0)
     mp_t1 ∈ Int = (mp_v_c1 = "IntResult" ? z_irtest
         : mp_v_c1 = "StringResult" ? z_srtest
         : mp_t1_uev)
     mp_t2_uev ∈ Int
-    ∀ k ∈ {0..5} : ((uev[k].name = mp_v_c2) ⇒ (mp_t2_uev = uev[k].tester))
-    (¬(∃ i ∈ {0..5} : uev[i].name = mp_v_c2)) ⇒ (mp_t2_uev = 0)
+    ∀ e ∈ uev : ((e.name = mp_v_c2) ⇒ (mp_t2_uev = e.tester))
+    (¬(∃ e ∈ uev : e.name = mp_v_c2)) ⇒ (mp_t2_uev = 0)
     mp_t2 ∈ Int = (mp_v_c2 = "IntResult" ? z_irtest
         : mp_v_c2 = "StringResult" ? z_srtest
         : mp_t2_uev)
     mp_acc1_uev ∈ Int
-    ∀ k ∈ {0..5} : ((uev[k].name = mp_v_c1) ⇒ (mp_acc1_uev = uev[k].acc))
-    (¬(∃ i ∈ {0..5} : uev[i].name = mp_v_c1)) ⇒ (mp_acc1_uev = 0)
+    ∀ e ∈ uev : ((e.name = mp_v_c1) ⇒ (mp_acc1_uev = e.acc))
+    (¬(∃ e ∈ uev : e.name = mp_v_c1)) ⇒ (mp_acc1_uev = 0)
     mp_acc1 ∈ Int = (mp_v_c1 = "IntResult" ? z_iracc
         : mp_v_c1 = "StringResult" ? z_sracc
         : mp_acc1_uev)
     mp_acc2_uev ∈ Int
-    ∀ k ∈ {0..5} : ((uev[k].name = mp_v_c2) ⇒ (mp_acc2_uev = uev[k].acc))
-    (¬(∃ i ∈ {0..5} : uev[i].name = mp_v_c2)) ⇒ (mp_acc2_uev = 0)
+    ∀ e ∈ uev : ((e.name = mp_v_c2) ⇒ (mp_acc2_uev = e.acc))
+    (¬(∃ e ∈ uev : e.name = mp_v_c2)) ⇒ (mp_acc2_uev = 0)
     mp_acc2 ∈ Int = (mp_v_c2 = "IntResult" ? z_iracc
         : mp_v_c2 = "StringResult" ? z_sracc
         : mp_acc2_uev)

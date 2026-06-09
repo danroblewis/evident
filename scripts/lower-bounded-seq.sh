@@ -31,11 +31,18 @@
 #             xs_k[_fj] = (is_first_tick ? def : (G ∧ _xs_len = k) ? e : _xs_k[_fj])
 #             xs_len    = (is_first_tick ? 0   : G ? _xs_len + 1 : _xs_len)
 #           (unguarded form: G ≡ true, emitted without the guard conjunct)
-#   ∀       ∀ x ∈ xs : P   (Int only)      → len-guarded ∧-unroll
+#   ∀       ∀ x ∈ xs : P   (Int or record) → len-guarded ∧-unroll
+#           (record element: P uses x.f, substituted per slot)
 #   member  y ∈ xs         (Int only)      → len-guarded ∨-unroll
-#   ∃       (∃ i ∈ {0..#xs-1} : P)         → ((0<xs_len)∧(P[i:=0])) ∨ …
-#           (P may use xs[i] / xs[i].f — substituted per slot)
-#   keyed projection (the PAIR, recognized together):
+#   ∃       (∃ i ∈ {0..#xs-1} : P) / (∃ e ∈ xs : P)
+#           → ((0<xs_len)∧(P[slot 0])) ∨ …
+#           (P may use xs[i] / xs[i].f / e.f — substituted per slot)
+#   keyed projection (the PAIR, recognized together). Element form
+#   (preferred — quantifies over OCCUPIED slots, len-guarded):
+#           ∀ e ∈ xs : ((e.F = KEY) ⇒ (OUT = e.V))
+#           (¬(∃ e ∈ xs : e.F = KEY)) ⇒ (OUT = DEF)
+#           → OUT = (((0 < xs_len) ∧ (xs_0_F = KEY)) ? xs_0_V : … : DEF)
+#   index form (covers ALL slots, no len guard):
 #           ∀ k ∈ {0..K} : ((xs[k].F = KEY) ⇒ (OUT = xs[k].V))
 #           (¬(∃ i ∈ {0..K} : xs[i].F = KEY)) ⇒ (OUT = DEF)
 #           → OUT = (xs_0_F = KEY ? xs_0_V : … : DEF)
@@ -185,20 +192,28 @@ function subst_exists(txt,    pos, a, st, en, depth, j, ch, inner, bvar, sname, 
         if (en == 0) return txt
         inner = substr(txt, st + 1, en - st - 1)     # ∃ i ∈ {0..#xs-1} : P
         bvar = inner; sub(/^[ \t]*∃[ \t]*/, "", bvar); sub(/[ \t]*∈.*$/, "", bvar); bvar = trim(bvar)
-        sname = inner; lit_hi = -1
+        sname = inner; lit_hi = -1; elem_form = 0
         if (match(sname, /\{0\.\.#[A-Za-z_][A-Za-z0-9_]*-1\}/)) {
             sname = substr(sname, RSTART + 5, RLENGTH - 8)
             sub(/^#/, "", sname)
         } else if (match(inner, /\{0\.\.[0-9]+\}/)) {
             lit_hi = substr(inner, RSTART + 4, RLENGTH - 5) + 0
             sname = ""
-        } else return txt
+        } else {
+            # element form: ∃ e ∈ xs : P   (P uses e / e.f)
+            sname = inner; sub(/^[ \t]*∃[ \t]*[A-Za-z_][A-Za-z0-9_]*[ \t]*∈[ \t]*/, "", sname)
+            sub(/[ \t]*:.*$/, "", sname); sname = trim(sname)
+            if (sname !~ /^[A-Za-z_][A-Za-z0-9_]*$/ || !(sname in gbnd)) return txt
+            elem_form = 1
+        }
         pred = inner; sub(/^[^:]*:[ \t]*/, "", pred)
         if (lit_hi < 0 && !(sname in gbnd)) return txt
         Nn = (lit_hi >= 0 ? lit_hi + 1 : gbnd[sname]); out2 = ""
         for (k = 0; k < Nn; k++) {
-            pk = subst_tok(pred, bvar, k)
-            if (lit_hi >= 0) out2 = out2 (k ? " ∨ " : "") "(" pk ")"
+            if (elem_form) pk = subst_index(subst_tok(pred, bvar, sname "[" k "]"))
+            else           pk = subst_tok(pred, bvar, k)
+            if (lit_hi >= 0 || (elem_form && !(sname in hasLen)))
+                out2 = out2 (k ? " ∨ " : "") "(" pk ")"
             else out2 = out2 (k ? " ∨ " : "") "((" k " < " sname "_len) ∧ (" pk "))"
         }
         repl = "(" out2 ")"
@@ -280,6 +295,28 @@ END {
             projKey[cur, pOut] = pKey; projV[cur, pOut] = pV
             projHi[cur, pOut] = pHi; projPinLine[cur, pOut] = i
         }
+        # keyed-projection PIN, element form (preferred — occupied slots only):
+        #   ∀ e ∈ xs : ((e.F = KEY) ⇒ (OUT = e.V))
+        if (code ~ /^[ \t]*∀[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*∈[ \t]*[A-Za-z_][A-Za-z0-9_]*[ \t]*:[ \t]*\(\([A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*[ \t]*=[ \t]*[A-Za-z_][A-Za-z0-9_]*\)[ \t]*⇒[ \t]*\([A-Za-z_][A-Za-z0-9_]*[ \t]*=[ \t]*[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*\)\)[ \t]*$/) {
+            t1 = code
+            ev = t1; sub(/^[ \t]*∀[ \t]*/, "", ev); sub(/[ \t]*∈.*$/, "", ev); ev = trim(ev)
+            sq2 = t1; sub(/^[ \t]*∀[ \t]*[A-Za-z_][A-Za-z0-9_]*[ \t]*∈[ \t]*/, "", sq2)
+            sub(/[ \t]*:.*$/, "", sq2); sq2 = trim(sq2)
+            t1b = t1; sub(/^[^:]*:[ \t]*\(\(/, "", t1b)   # e.F = KEY) ⇒ (OUT = e.V))
+            eb = t1b; sub(/\..*$/, "", eb)
+            pF = t1b; sub(/^[^.]*\./, "", pF); sub(/[ \t]*=.*$/, "", pF)
+            pKey = t1b; sub(/^[^=]*=[ \t]*/, "", pKey); sub(/\).*$/, "", pKey); gsub(/[ \t]/, "", pKey)
+            t2 = code; sub(/^.*⇒[ \t]*\(/, "", t2)        # OUT = e.V))
+            pOut = t2; sub(/[ \t]*=.*$/, "", pOut)
+            ev2 = t2; sub(/^[^=]*=[ \t]*/, "", ev2); sub(/\..*$/, "", ev2); gsub(/[ \t]/, "", ev2)
+            pV = t2; sub(/^[^.]*\./, "", pV); sub(/\).*$/, "", pV); gsub(/[ \t]/, "", pV)
+            if (eb == ev && ev2 == ev) {
+                projSeq[cur, pOut] = sq2; projF[cur, pOut] = pF
+                projKey[cur, pOut] = pKey; projV[cur, pOut] = pV
+                projHi[cur, pOut] = -1; projPinLine[cur, pOut] = i
+                projElem[cur, pOut] = 1
+            }
+        }
         # keyed-projection DEFAULT:
         #   (¬(∃ i ∈ {0..K} : xs[i].F = KEY)) ⇒ (OUT = DEF)
         if (code ~ /^[ \t]*\(¬\(∃[ \t]/ && code ~ /⇒[ \t]*\([A-Za-z_][A-Za-z0-9_]*[ \t]*=[ \t]*[^)]*\)[ \t]*$/) {
@@ -299,6 +336,7 @@ END {
         if (po in projDef) {
             split(po, pp, SUBSEP)
             dropLine[pp[1], "_pinline_" projDefLine[pp[1], pp[2]]] = 1
+            pinPaired[pp[1], projPinLine[pp[1], pp[2]]] = 1
         }
     }
 
@@ -434,6 +472,23 @@ END {
                 O[++on] = ind "(" out ")"
                 continue
             }
+            # record element iteration  `∀ e ∈ xs : P` (P uses e.f) —
+            # len-guarded ∧-unroll. NOTE: an UNPAIRED projection pin lands
+            # here and emits bare implications (the covered-output trap);
+            # the paired form is lowered to the chain above.
+            if ((sname in gbnd) && elemOf[sname] != "Int" &&
+                !((F SUBSEP i) in pinPaired)) {
+                Nn = gbnd[sname]; out = ""
+                for (k = 0; k < Nn; k++) {
+                    pk = subst_index(subst_tok(pred, bvar, sname "[" k "]"))
+                    if (sname in hasLen)
+                        out = out (k ? " ∧ " : "") "((" k " < " sname "_len) ⇒ (" pk "))"
+                    else
+                        out = out (k ? " ∧ " : "") "(" pk ")"
+                }
+                O[++on] = ind "(" out ")"
+                continue
+            }
         }
 
         # whole-line Int membership  `y ∈ xs`
@@ -459,9 +514,21 @@ END {
             if (projPinLine[F, out] == i && (F SUBSEP out) in projDef) {
                 sq = projSeq[F, out]; ff = projF[F, out]; ky = projKey[F, out]
                 vv = projV[F, out]; hh = projHi[F, out]; dd = projDef[F, out]
+                pel = ((F SUBSEP out) in projElem)
+                if (pel) {
+                    if (!(sq in gbnd)) continue   # unregistered seq: fall through
+                    hh = gbnd[sq] - 1
+                }
                 chain = ""
-                for (k = 0; k <= hh; k++)
-                    chain = chain sq "_" k "_" ff " = " ky " ? " sq "_" k "_" vv "\n" ind "    : "
+                for (k = 0; k <= hh; k++) {
+                    # len-guard element-form conditions only when the seq HAS
+                    # a len (length-less slot registries have no xs_len const)
+                    if (pel && (sq in hasLen))
+                        cnd = "((" k " < " sq "_len) ∧ (" sq "_" k "_" ff " = " ky "))"
+                    else
+                        cnd = sq "_" k "_" ff " = " ky
+                    chain = chain cnd " ? " sq "_" k "_" vv "\n" ind "    : "
+                }
                 O[++on] = ind out " = (" chain dd ")"
                 emitted_proj = 1
                 break

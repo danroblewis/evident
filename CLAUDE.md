@@ -284,9 +284,12 @@ no slow *operation*; there is only "is it bounded." See
 > vanishes, and the claim goes *vacuously SAT* with NO error (exit 0).
 > Use `∃ i ∈ {0..#xs-1} : xs[i] = x` instead. (`x ∈ Set(T)` is fine — the
 > drop is Seq-specific.) `scripts/lint-seq-membership.sh <flat.ev>` flags
-> the bad form loudly. The same is true of record-field access on a Seq
-> element (`e.from` in `∀ e ∈ edges`): also dropped — carry the fields as
-> `coindexed` parallel `Seq`s until the bounded-Seq lowering lands.
+> the bad form loudly. Record-field access on a Seq element (`e.from` in
+> `∀ e ∈ edges`) is also oracle-dropped — BUT on a **bounded** Seq
+> (`#xs ≤ N`, registered by `scripts/lower-bounded-seq.sh`) the element
+> forms `∀ e ∈ xs : …e.f…` and `(∃ e ∈ xs : …e.f…)` are lowered
+> pre-oracle and work fine; they are the preferred surface. Only an
+> UNBOUNDED Seq still needs `coindexed` parallel `Seq`s.
 
 > **⚠ PERF TRAP: outputs must be COVERED, never implication-defined**
 > (measured 2026-06-09). Defining a value by guarded pins —
@@ -305,8 +308,17 @@ no slow *operation*; there is only "is it bounded." See
 > write:** on a transform-lowered Seq, `scripts/lower-bounded-seq.sh`
 > recognizes the `∀`-pin + `¬∃`-default PAIR and lowers it to the
 > covered chain itself (first-match-wins; keys must be unique), so the
-> pretty surface stays. A LONE pin or default still emits the bare
-> form — the trap applies in full.
+> pretty surface stays. Preferred (element form, occupied slots only):
+>
+> ```evident
+> ∀ e ∈ xs : ((e.name = key) ⇒ (out = e.val))
+> (¬(∃ e ∈ xs : e.name = key)) ⇒ (out = default)
+> ```
+>
+> The index form (`∀ k ∈ {0..N-1} : ((xs[k].name = key) ⇒ …` with a
+> `{0..N-1}` or `{0..#xs-1}` default) also lowers, covering ALL slots
+> unguarded. A LONE pin or default still emits the bare form — the
+> trap applies in full.
 
 ### Enums
 

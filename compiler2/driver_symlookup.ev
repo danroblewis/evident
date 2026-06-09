@@ -40,8 +40,8 @@ fsm DriverSymLookup
     d_lk_found2 ∈ Bool = (d_lk_pfx_on ∨ d_lk_found)
     d_lk_pure ∈ Bool = (d_lk_special ∨ (¬d_lk_found2))
     d_lk_evt ∈ Int
-    ∀ k ∈ {0..5} : ((evt[k].name = d_lkname) ⇒ (d_lk_evt = evt[k].value))
-    (¬(∃ i ∈ {0..#evt-1} : evt[i].name = d_lkname)) ⇒ (d_lk_evt = 0)
+    ∀ e ∈ evt : ((e.name = d_lkname) ⇒ (d_lk_evt = e.value))
+    (¬(∃ e ∈ evt : e.name = d_lkname)) ⇒ (d_lk_evt = 0)
     d_lk ∈ Int = (d_lkname = "true" ? z_true
         : d_lkname = "false" ? z_false
         : d_lk_evt)
