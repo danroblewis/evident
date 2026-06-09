@@ -1,0 +1,107 @@
+-- The z3_readback.ev sugar, end-to-end: tick.rs's decode walks driven
+-- from Evident. Builds (= x 42), then USES THE SUGAR to introspect the
+-- ast (Z3DeclNameChain → the op name "="; Z3AppNumArgsStep → 2), solve,
+-- read the model (Z3ModelEvalChain), and decode the numeral
+-- (Z3NumeralI64Chain) — exiting with the model's value, gated on every
+-- introspection result being right.
+--
+--   tick 0  lifecycle chain (cfg → ctx → solver → inc_ref)
+--   tick 1  build + assert (= x 42), one chained tick
+--   tick 2  Z3DeclNameChain(eq) ++ Z3AppNumArgsStep(eq) ++ solver_check
+--   tick 3  gate (op = "=", nargs = 2, sat = 1); get_model + inc_ref
+--   tick 4  Z3ModelEvalChain(model, x)
+--   tick 5  Z3NumeralI64Chain(eval'd ast)
+--   tick 6  Exit(42)
+--
+-- entry: main
+-- expect: exit = 42
+import "stdlib/kernel.ev"
+import "stdlib/z3_readback.ev"
+
+fsm main
+    tick ∈ Int
+    tick = (is_first_tick ? 0 : _tick + 1)
+
+    lr0 ∈ Int = match last_results[0]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+    lr1 ∈ Int = match last_results[1]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+    lr2 ∈ Int = match last_results[2]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+    lr4 ∈ Int = match last_results[4]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+    lr5 ∈ Int = match last_results[5]
+        IntResult(n) ⇒ n
+        _ ⇒ 0
+    lr3s ∈ String = match last_results[3]
+        StringResult(s) ⇒ s
+        _ ⇒ ""
+
+    zctx ∈ Int
+    zctx = (is_first_tick ? 0 : tick = 1 ? lr1 : _zctx)
+    zsol ∈ Int
+    zsol = (is_first_tick ? 0 : tick = 1 ? lr2 : _zsol)
+    zx ∈ Int
+    zx = (is_first_tick ? 0 : tick = 2 ? lr2 : _zx)
+    zeq ∈ Int
+    zeq = (is_first_tick ? 0 : tick = 2 ? lr4 : _zeq)
+    ok ∈ Bool
+    ok = (is_first_tick ? false
+        : tick = 3 ? (lr3s = "=" ∧ lr4 = 2 ∧ lr5 = 1)
+        : _ok)
+    zmodel ∈ Int
+    zmodel = (is_first_tick ? 0 : tick = 4 ? lr0 : _zmodel)
+    zvast ∈ Int
+    zvast = (is_first_tick ? 0 : tick = 5 ? lr2 : _zvast)
+    zval ∈ Int
+    zval = (is_first_tick ? 0 : tick = 6 ? lr2 : _zval)
+
+    -- the sugar's effect slots
+    dn0 ∈ Effect
+    dn1 ∈ Effect
+    dn2 ∈ Effect
+    dn3 ∈ Effect
+    Z3DeclNameChain(ctx_h ↦ zctx, app_h ↦ zeq, base ↦ 0,
+        e0 ↦ dn0, e1 ↦ dn1, e2 ↦ dn2, e3 ↦ dn3)
+    na ∈ Effect
+    Z3AppNumArgsStep(ctx_h ↦ zctx, app_h ↦ zeq, eff ↦ na)
+    me0 ∈ Effect
+    me1 ∈ Effect
+    me2 ∈ Effect
+    Z3ModelEvalChain(ctx_h ↦ zctx, model_h ↦ zmodel, term_h ↦ zx, base ↦ 0,
+        e0 ↦ me0, e1 ↦ me1, e2 ↦ me2)
+    ni0 ∈ Effect
+    ni1 ∈ Effect
+    ni2 ∈ Effect
+    Z3NumeralI64Chain(ctx_h ↦ zctx, ast_h ↦ zvast, base ↦ 0,
+        e0 ↦ ni0, e1 ↦ ni1, e2 ↦ ni2)
+
+    effects ∈ Seq(Effect) = (tick = 0
+        ? ⟨LibCall("libz3", "Z3_mk_config", ⟨⟩),
+           LibCall("libz3", "Z3_mk_context", ⟨ArgRef(0)⟩),
+           LibCall("libz3", "Z3_mk_solver", ⟨ArgRef(1)⟩),
+           LibCall("libz3", "Z3_solver_inc_ref", ⟨ArgRef(1), ArgRef(2)⟩)⟩
+        : tick = 1
+        ? ⟨LibCall("libz3", "Z3_mk_int_sort", ⟨ArgInt(zctx)⟩),
+           LibCall("libz3", "Z3_mk_string_symbol", ⟨ArgInt(zctx), ArgStr("x")⟩),
+           LibCall("libz3", "Z3_mk_const", ⟨ArgInt(zctx), ArgRef(1), ArgRef(0)⟩),
+           LibCall("libz3", "Z3_mk_int", ⟨ArgInt(zctx), ArgInt(42), ArgRef(0)⟩),
+           LibCall("libz3", "Z3_mk_eq", ⟨ArgInt(zctx), ArgRef(2), ArgRef(3)⟩),
+           LibCall("libz3", "Z3_solver_assert", ⟨ArgInt(zctx), ArgInt(zsol), ArgRef(4)⟩)⟩
+        : tick = 2
+        ? ⟨dn0, dn1, dn2, dn3, na,
+           LibCall("libz3", "Z3_solver_check", ⟨ArgInt(zctx), ArgInt(zsol)⟩)⟩
+        : tick = 3
+        ? (ok
+            ? ⟨LibCall("libz3", "Z3_solver_get_model", ⟨ArgInt(zctx), ArgInt(zsol)⟩),
+               LibCall("libz3", "Z3_model_inc_ref", ⟨ArgInt(zctx), ArgRef(0)⟩)⟩
+            : ⟨Exit(9)⟩)
+        : tick = 4
+        ? ⟨me0, me1, me2⟩
+        : tick = 5
+        ? ⟨ni0, ni1, ni2⟩
+        : ⟨Exit(zval)⟩)
