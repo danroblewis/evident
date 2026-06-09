@@ -6,7 +6,7 @@
 --           handle stack (d_h_top/2nd/.. + d_h_t*), the claim index
 --           (ci_base, ci_names), the symbol table (st_names), the
 --           inline-frame state (il_pfx/il_depth/il_pd/ilb_n*), the
---           enum value table (evt_n*), the record registry (rt_n*/rt_f*/
+--           enum value table (evt), the record registry (rt_n*/rt_f*/
 --           rt_sort*), the Pratt result (p_done/pr_bad/pr_sres/pk_*), and
 --           z_exitdecl. (Width justified §6.4: positional binding
 --           inherently touches index + Pratt stack + callee params.)
@@ -146,9 +146,7 @@ fsm DriverPosBind
     FtiNameEntry(name ↦ (_il_pfx ++ pi_nm), entry ↦ pi_skey)
     pi_pkey ∈ String
     FtiNameEntry(name ↦ pi_nm, entry ↦ pi_pkey)
-    pi_evt ∈ Bool = ((evt_n0 = pi_nm) ∨ (evt_n1 = pi_nm)
-        ∨ (evt_n2 = pi_nm) ∨ (evt_n3 = pi_nm) ∨ (evt_n4 = pi_nm)
-        ∨ (evt_n5 = pi_nm))
+    pi_evt ∈ Bool = (∃ i ∈ {0..#evt-1} : evt[i].name = pi_nm)
     pi_ilb ∈ Bool = ((ilb_n0 = pi_nm) ∨ (ilb_n1 = pi_nm)
         ∨ (ilb_n2 = pi_nm) ∨ (ilb_n3 = pi_nm) ∨ (ilb_n4 = pi_nm)
         ∨ (ilb_n5 = pi_nm))

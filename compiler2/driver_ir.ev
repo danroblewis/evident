@@ -90,6 +90,12 @@ type RecField(name ∈ String, ty ∈ String, kidx ∈ Int)
     -- (`ty`, not `type`: `type` is a reserved keyword, unusable as `.type`.)
     0 - 1 ≤ kidx ≤ 2
 
+-- One row of the user-enum VALUE table: a nullary variant's name and
+-- the Z3 handle of its constant. Used as `evt ∈ Seq(EnumVariantVal)` with
+-- `#evt ≤ 6` — the bounded-Seq lowering (scripts/lower-bounded-seq.sh)
+-- flattens it to scalars pre-oracle, so the oracle never sees the Seq.
+type EnumVariantVal(name ∈ String, value ∈ Int)
+
 -- ── Work items: one line of claim body = one small program ────────
 enum C2Item =
     C2Process(Expr)

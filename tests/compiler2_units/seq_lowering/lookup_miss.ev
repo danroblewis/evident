@@ -1,0 +1,20 @@
+-- The ∃ lookup respects the length guard: slots past xs_len never match.
+-- Only ("1",10) is appended; the "2" lookup misses → exit 9.
+--
+-- entry: main
+-- expect: exit = 9
+import "stdlib/kernel.ev"
+
+type Pair(name ∈ String, value ∈ Int)
+
+fsm main
+    tick ∈ Int
+    tick = (is_first_tick ? 0 : _tick + 1)
+    add ∈ Bool = (tick = 1)
+    xs ∈ Seq(Pair)
+    #xs ≤ 3
+    xs = (is_first_tick ? ⟨⟩ : add ? _xs ++ ⟨Pair("1", 10)⟩ : _xs)
+    hit ∈ Bool = (∃ i ∈ {0..#xs-1} : xs[i].name = "2")
+    effects ∈ Seq(Effect) = (tick ≥ 2
+        ? ⟨Exit(hit ? 1 : 9)⟩
+        : ⟨LibCall("libc","abs",⟨ArgInt(1)⟩)⟩)
