@@ -208,15 +208,12 @@ fsm DriverMatchPin
     mp_acc2 ∈ Int = (mp_v_c2 = "IntResult" ? z_iracc
         : mp_v_c2 = "StringResult" ? z_sracc
         : mp_acc2_uev)
+    mp_dacc_uev ∈ Int
+    ∀ e ∈ uev : ((e.name = mp_v_dc) ⇒ (mp_dacc_uev = e.acc))
+    (¬(∃ e ∈ uev : e.name = mp_v_dc)) ⇒ (mp_dacc_uev = 0)
     mp_dacc ∈ Int = (mp_v_dc = "IntResult" ? z_iracc
         : mp_v_dc = "StringResult" ? z_sracc
-        : uev[0].name = mp_v_dc ? uev[0].acc
-        : uev[1].name = mp_v_dc ? uev[1].acc
-        : uev[2].name = mp_v_dc ? uev[2].acc
-        : uev[3].name = mp_v_dc ? uev[3].acc
-        : uev[4].name = mp_v_dc ? uev[4].acc
-        : uev[5].name = mp_v_dc ? uev[5].acc
-        : 0)
+        : mp_dacc_uev)
     mp_tailE ∈ C2Items = C2ICons(C2PinEq,
         C2ICons(C2AssertTop, C2INil))
     mp_tail_i1 ∈ C2Items = C2ICons(C2Ite, mp_tailE)

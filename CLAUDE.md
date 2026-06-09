@@ -270,6 +270,30 @@ xs ∈ Seq(Int) = a ++ b ++ ⟨c⟩       -- `++` flattens at load time
 ∀ (a, b) ∈ edges(seq) : …           -- consecutive pairs
 ```
 
+**The registry pattern — allocate by position, everything else by key.**
+A carried registry (a bounded `Seq` of records filled over time) has
+exactly one legitimately positional operation: **allocation** — placing
+a new entry means choosing one slot among identical empties, which is
+what a cursor is. Every other operation keys on a unique field:
+
+```evident
+∀ k ∈ {0..5} : xs[k].name = (… (alloc ∧ _cur = k) ? new_nm …)   -- alloc: positional, honest
+∀ e ∈ xs : e.val = (… (upd ∧ _e.name = key) ? v : _e.val)       -- update: BY KEY, no index
+∀ e ∈ xs : ((e.name = key) ⇒ (out = e.val))                     -- read: keyed projection
+```
+
+`_e` is the element's prev-tick carry dual (the fsm `_x` convention
+applied to the bound element). Never store an index as FSM state to
+identify an entry — store the key (`sv_cur_nm ∈ String`, not
+`sv_cur ∈ Int`); an index-valued lookup (`idx = (name = xs[0].name ? 0
+: …)`) is the index-in-interface idiom — write a keyed projection
+instead. Each field needs exactly ONE covering write: an `++`-append
+covers every field of its slot, so a seq with later field updates must
+allocate per-field, never by append. `∀ k ∈ {0..N-1}` survives only
+where the position is the meaning: allocation cursors, wire positions
+passed to claims (`i ↦ k`), positional-parameter slots, order-sensitive
+folds.
+
 **Bound it and everything is fast.** The Z3 sequence theory is
 semi-decidable only when a `Seq` is *unbounded*. Add a literal length
 bound (`#xs ≤ N`) and every construction — index, `∀`/`∃`, sortedness,

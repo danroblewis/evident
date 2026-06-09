@@ -295,6 +295,16 @@ END {
             projKey[cur, pOut] = pKey; projV[cur, pOut] = pV
             projHi[cur, pOut] = pHi; projPinLine[cur, pOut] = i
         }
+        # element-∀ carry detection: `∀ e ∈ xs : … _e …` implies xs carries,
+        # but autocarry cannot see that `_e` is `_xs` — synthesize the dual
+        # decls at the main decl site (PASS 2) when autocarry did not.
+        if (code ~ /^[ \t]*∀[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*∈[ \t]*[A-Za-z_][A-Za-z0-9_]*[ \t]*:/) {
+            tb = code; sub(/^[ \t]*∀[ \t]*/, "", tb)
+            tev = tb; sub(/[ \t]*∈.*$/, "", tev); tev = trim(tev)
+            tsn = tb; sub(/^[A-Za-z0-9_]*[ \t]*∈[ \t]*/, "", tsn); sub(/[ \t]*:.*$/, "", tsn); tsn = trim(tsn)
+            tpr = tb; sub(/^[^:]*:[ \t]*/, "", tpr)
+            if (tpr ~ ("(^|[^A-Za-z0-9_])_" tev "([^A-Za-z0-9_]|$)")) gElemDual[tsn] = 1
+        }
         # keyed-projection PIN, element form (preferred — occupied slots only):
         #   ∀ e ∈ xs : ((e.F = KEY) ⇒ (OUT = e.V))
         if (code ~ /^[ \t]*∀[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*∈[ \t]*[A-Za-z_][A-Za-z0-9_]*[ \t]*:[ \t]*\(\([A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*[ \t]*=[ \t]*[A-Za-z_][A-Za-z0-9_]*\)[ \t]*⇒[ \t]*\([A-Za-z_][A-Za-z0-9_]*[ \t]*=[ \t]*[A-Za-z_][A-Za-z0-9_]*\.[A-Za-z_][A-Za-z0-9_]*\)\)[ \t]*$/) {
@@ -386,6 +396,15 @@ END {
                     O[++on] = ind "0 ≤ " nm "_len"
                 }
             }
+            # element-∀ `_e` carry with no autocarry-synthesized dual decl
+            if ((nm in gElemDual) && !((F SUBSEP nm) in dualDecl)) {
+                for (k = 0; k < Nn; k++) {
+                    if (el == "Int") O[++on] = ind "_" nm "_" k " ∈ Int"
+                    else for (j = 1; j <= tnf[el]; j++)
+                        O[++on] = ind "_" nm "_" k "_" tfield[el, j] " ∈ " ttype[el, j]
+                }
+                if (nm in hasLen) O[++on] = ind "_" nm "_len ∈ Int"
+            }
             continue
         }
 
@@ -472,21 +491,28 @@ END {
                 O[++on] = ind "(" out ")"
                 continue
             }
-            # record element iteration  `∀ e ∈ xs : P` (P uses e.f) —
-            # len-guarded ∧-unroll. NOTE: an UNPAIRED projection pin lands
-            # here and emits bare implications (the covered-output trap);
-            # the paired form is lowered to the chain above.
+            # record element iteration  `∀ e ∈ xs : P` (P uses e.f; `_e.f`
+            # is the element prev-tick carry dual, per the fsm `_x`
+            # convention). Equality writes (`e.f = …`) emit one UNGUARDED
+            # assignment line per slot — a keyed write must cover every
+            # slot every tick; pure constraints emit len-guarded per-slot
+            # lines. NOTE: an UNPAIRED projection pin lands here and emits
+            # bare implications (the covered-output trap); the paired form
+            # is lowered to the chain above.
             if ((sname in gbnd) && elemOf[sname] != "Int" &&
                 !((F SUBSEP i) in pinPaired)) {
-                Nn = gbnd[sname]; out = ""
+                Nn = gbnd[sname]
+                is_write = (pred ~ ("^" bvar "\\.[A-Za-z_][A-Za-z0-9_]*[ \t]*="))
                 for (k = 0; k < Nn; k++) {
-                    pk = subst_index(subst_tok(pred, bvar, sname "[" k "]"))
-                    if (sname in hasLen)
-                        out = out (k ? " ∧ " : "") "((" k " < " sname "_len) ⇒ (" pk "))"
+                    pk = subst_tok(pred, "_" bvar, "_" sname "[" k "]")
+                    pk = subst_tok(pk, bvar, sname "[" k "]")
+                    pk = subst_index(pk)
+                    pk = subst_card(pk)
+                    if (is_write || !(sname in hasLen))
+                        O[++on] = ind pk
                     else
-                        out = out (k ? " ∧ " : "") "(" pk ")"
+                        O[++on] = ind "((" k " < " sname "_len) ⇒ (" pk "))"
                 }
-                O[++on] = ind "(" out ")"
                 continue
             }
         }
