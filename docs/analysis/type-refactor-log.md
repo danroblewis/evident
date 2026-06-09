@@ -573,3 +573,29 @@ This is the conceptual flip from the C2Item destructuring: C2Item is a SUM
 (a payload exists only for some variants, so reading it needs match +
 default), whereas RecField is a PRODUCT (all fields always exist, so
 `.name`/`.ty`/`.kidx` are direct — no match, no default).
+
+---
+
+## Pass 5 — carried-registry types hit the oracle w_need wall (BLOCKED)
+
+Attempted `evt_* → EnumVariantVal(name, value)` — a 2-field, 6-slot
+CARRIED registry in driver_enum.ev, structurally identical to the working
+3-slot `RecTypeEntry`. Autocarry synthesized the `_evt_slot0..5 ∈
+EnumVariantVal` duals correctly (verified in the flattened unit). But the
+oracle then **dropped an UNRELATED constraint** — the `w_need` token-window
+ternary in driver_main — with "couldn't translate to Bool". Same with the
+`value ≥ 0` invariant removed, so it's the carried record itself, not the
+invariant.
+
+**Diagnosis:** the manifest already carries **1505 state-fields**. Adding 6
+EnumVariantVal records (~24 more carried field-consts incl. duals) tips the
+oracle's flatten/expand translator over the edge on the big `w_need`
+ternary — the known "w_need drop in the lift path" fragility (STATE.md §7).
+`RecTypeEntry` escapes it (only 3 slots, added when the manifest was
+smaller); `RecField` escapes it (PURE, not carried → no state-fields).
+
+**Conclusion:** the remaining latent types (`EnumVariantVal`/`evt`,
+`UserEnumVariant`/`uev`, `SetVar`/`stv`) are all CARRIED registries and
+hit the same frozen-oracle wall. They are **BLOCKED until the oracle is
+rebuilt** (forbidden for this work) or compiler2 self-hosts. Pure latent
+types remain extractable; carried ones do not, for now. Reverted cleanly.
