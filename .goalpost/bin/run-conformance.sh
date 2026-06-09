@@ -19,9 +19,15 @@
 # Expensive (minutes per fixture today). Run it from CI / a cron / by
 # hand; the measure scripts only parse the artifact.
 #
+# A clean run is ~7 min. There is a GLOBAL wall cap (GP_GLOBAL_TIMEOUT,
+# default 900s = 15 min): if a change makes fixtures slow it BAILS rather
+# than running for hours — kills the run's process group + the orphaned
+# stage1 compiles, marks the artifact `bailed:true`, and exits 1.
+#
 # Usage: .goalpost/bin/run-conformance.sh
-#   env: EVIDENT_C2_TIMEOUT (s/fixture, default 1800)
-#        EVIDENT_C2_JOBS    (parallel workers, default 8)
+#   env: EVIDENT_C2_TIMEOUT  (s/fixture, default 1800)
+#        EVIDENT_C2_JOBS     (parallel workers, default 8)
+#        GP_GLOBAL_TIMEOUT   (s/whole run, default 900 — bail + reap)
 
 set -u
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
@@ -80,12 +86,42 @@ gp_require_tools
 gp_build_stage1
 export GP_STAGE1 GP_C2_TIMEOUT
 
-VDIR="$(mktemp -d)"; trap 'rm -rf "$VDIR"' EXIT
+VDIR="$(mktemp -d)"; WORKLIST="$(mktemp)"; trap 'rm -rf "$VDIR" "$WORKLIST"' EXIT
 started="$(gp_now)"
 
 ls -d "$FEATURES"/[0-9]*/ | while read -r d; do
     [ -f "$d/source.ev" ] && printf '%s\n' "${d%/}"
-done | xargs -P "$GP_JOBS" -I {} "${BASH_SOURCE[0]}" --one {} "$VDIR"
+done > "$WORKLIST"
+
+# Global wall cap (default 15 min). A clean run is ~7 min; a change that
+# makes fixtures slow (e.g. the `≠`-disequality functionizer trap) must
+# NOT run for hours. Run xargs in its OWN process group (setsid) so the
+# watchdog can kill the WHOLE group — xargs + every worker + their stage1
+# compiles — in one shot; a plain `timeout` would signal only xargs and
+# leave the grandchild compiles running (runaway memory).
+GP_GLOBAL_TIMEOUT="${GP_GLOBAL_TIMEOUT:-900}"
+BAILED=0
+setsid xargs -a "$WORKLIST" -P "$GP_JOBS" -I {} "${BASH_SOURCE[0]}" --one {} "$VDIR" &
+XPID=$!
+( sleep "$GP_GLOBAL_TIMEOUT"; kill -TERM -"$XPID" 2>/dev/null; sleep 8; kill -KILL -"$XPID" 2>/dev/null ) &
+WATCH=$!
+wait "$XPID" 2>/dev/null; xrc=$?
+kill "$WATCH" 2>/dev/null; wait "$WATCH" 2>/dev/null || true
+if [ "$xrc" -ge 124 ]; then
+    BAILED=1
+    # `wait` returns when xargs dies from SIGTERM, before workers that
+    # ignored TERM are gone — SIGKILL the whole group to be sure.
+    kill -KILL -"$XPID" 2>/dev/null || true
+    # Belt-and-suspenders: the per-fixture `timeout` puts each kernel in
+    # its OWN process group, so the group-kill above can miss the stage1
+    # compiles. Reap by this run's UNIQUE temp paths (VDIR in worker argv,
+    # GP_STAGE1 in kernel argv) — neither appears in the main script's argv,
+    # so this cannot signal ourselves.
+    sleep 1
+    pkill -9 -f -- "$VDIR" 2>/dev/null || true
+    [ -n "${GP_STAGE1:-}" ] && pkill -9 -f -- "$GP_STAGE1" 2>/dev/null || true
+    echo "run-conformance: GLOBAL TIMEOUT after ${GP_GLOBAL_TIMEOUT}s — bailed, killed the run's process group + stage1 compiles" >&2
+fi
 
 total=0; passed=0; failed=0; timeouts=0
 failures="[]"
@@ -109,11 +145,15 @@ jq -n \
     --argjson failed "$failed" \
     --argjson timeouts "$timeouts" \
     --argjson cap "$GP_C2_TIMEOUT" \
+    --argjson bailed "$BAILED" \
     --arg builder "$(gp_stage1_builder)" \
     --argjson failures "$failures" \
     '{ts:$ts, corpus:"conformance", total:$total, passed:$passed,
       failed:$failed, timeouts:$timeouts, per_fixture_timeout_s:$cap,
-      wall_s:($ts-$started), stage1_builder:$builder, failures:$failures}' \
+      bailed:($bailed==1), wall_s:($ts-$started),
+      stage1_builder:$builder, failures:$failures}' \
     > "$OUT_JSON"
 
-echo "wrote $OUT_JSON  ($passed/$total passed, $failed failed, $timeouts timed out)"
+echo "wrote $OUT_JSON  ($passed/$total passed, $failed failed, $timeouts timed out$([ "$BAILED" = 1 ] && echo ', BAILED on global timeout'))"
+[ "$BAILED" = 1 ] && exit 1
+exit 0
