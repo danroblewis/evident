@@ -1,0 +1,58 @@
+-- MODULE DriverSymLookup
+-- CONSUMES: the lookup name d_lkname, the symbol-table name registry
+--           (st_names) + base (stbuf.base), the inline-frame slot-bind
+--           registry (ilb_n*/ilb_h*), the import/inline prefix (_il_pfx),
+--           the enum-variant value registry (evt_n*/evt_v*), and the cached
+--           z_true/z_false handles.
+-- PRODUCES: name resolution — d_lk_key/d_lk_pos/d_lk_found(2)/d_lk_pos_eff,
+--           the prefix-scoped variants (d_lk_pfx_*), the frame slot-bind hit
+--           (d_ilb_found/d_ilb_h), d_lk_special/d_lk_pure, the resolved
+--           pure-push handle d_lk, and the symtab read effect d_eff_stread.
+-- MAINTAINS: pure per-tick resolution, no carry. true/false resolve to the
+--           cached handles; a name found in st_names reads st_base[idx]
+--           (pend=1, the handle pushes next tick); an α-prefixed frame
+--           local takes priority over the plain table; unknown names stay
+--           handle 0 (fossil parity).
+--
+-- The symbol-table / name resolution. Lifted into driver_main via
+-- `..DriverSymLookup`.
+fsm DriverSymLookup
+    -- symbol-table lookup. true/false resolve purely to the cached
+    -- Z3_mk_true/Z3_mk_false handles; a name found in st_names
+    -- resolves via ONE __mem.read_long of st_base[idx] (pend=1 —
+    -- the handle pushes next tick); enum-variant values (evt) and
+    -- unknown names (handle 0, fossil parity) stay pure pushes.
+    d_lk_key ∈ String = "|" ++ substr(d_lkname ++ "                               ", 0, 31)
+    d_lk_pos ∈ Int = index_of(st_names, d_lk_key, 0)
+    d_lk_found ∈ Bool = (d_lk_pos ≥ 0)
+    d_lk_special ∈ Bool = (d_lkname = "true" ∨ d_lkname = "false")
+    -- F2: scoped resolution — a slot bind of the current frame is a
+    -- PURE handle push (d_ilb_*); an α-prefixed frame local
+    -- ("__cN_" ++ name) takes priority over the plain table.
+    d_ilb_found ∈ Bool = ((d_lkname ≠ "") ∧ ((ilb_n0 = d_lkname)
+        ∨ (ilb_n1 = d_lkname) ∨ (ilb_n2 = d_lkname)
+        ∨ (ilb_n3 = d_lkname) ∨ (ilb_n4 = d_lkname)
+        ∨ (ilb_n5 = d_lkname)))
+    d_ilb_h ∈ Int = (ilb_n0 = d_lkname ? ilb_h0
+        : ilb_n1 = d_lkname ? ilb_h1
+        : ilb_n2 = d_lkname ? ilb_h2
+        : ilb_n3 = d_lkname ? ilb_h3
+        : ilb_n4 = d_lkname ? ilb_h4
+        : ilb_h5)
+    d_lk_pfx_key ∈ String = "|" ++ substr((_il_pfx ++ d_lkname) ++ "                               ", 0, 31)
+    d_lk_pfx_pos ∈ Int = index_of(st_names, d_lk_pfx_key, 0)
+    d_lk_pfx_on ∈ Bool = ((_il_pfx ≠ "") ∧ (d_lk_pfx_pos ≥ 0))
+    d_lk_pos_eff ∈ Int = (d_lk_pfx_on ? d_lk_pfx_pos : d_lk_pos)
+    d_lk_found2 ∈ Bool = (d_lk_pfx_on ∨ d_lk_found)
+    d_lk_pure ∈ Bool = (d_lk_special ∨ (¬d_lk_found2))
+    d_lk ∈ Int = (d_lkname = "true" ? z_true
+        : d_lkname = "false" ? z_false
+        : evt_n0 = d_lkname ? evt_v0
+        : evt_n1 = d_lkname ? evt_v1
+        : evt_n2 = d_lkname ? evt_v2
+        : evt_n3 = d_lkname ? evt_v3
+        : evt_n4 = d_lkname ? evt_v4
+        : evt_n5 = d_lkname ? evt_v5
+        : 0)
+    d_eff_stread ∈ Effect
+    BuildMemReadLong(addr ↦ stbuf.base + (8 * (d_lk_pos_eff / 32)), eff ↦ d_eff_stread)

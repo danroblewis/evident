@@ -515,3 +515,21 @@ unchanged, conformance held 137/138 + functionization GREEN.
   arithmetic, per-item build-effect dispatch) — genuinely interdependent;
   forcing it into modules creates the weak-interface anti-pattern. This is
   the honest floor, same conclusion as the original decomposition.
+
+### Batch 2 — call lowering + name resolution (byte-identical)
+- **`DriverCallLower`** (~131 lines, pure) — the builtin/ctor call lowering
+  (d_c1/c2/c3_items: str ops, __real/__field/__index, cardinality, ctor
+  apps by arity).
+- **`DriverSymLookup`** (~39 lines, pure) — symbol-table / name resolution
+  (d_lk_*/d_ilb_*/d_lk/d_eff_stread: true/false → cached handles, st_names
+  hit → st_base read, frame slot-binds, enum-variant values).
+
+`driver.ev` 1303 → 1139 lines. Both byte-identical (decomp gate), 137/138.
+
+### Follow-up: FtiNameEntry reuse sweep (non-byte-identical)
+The 32-byte `"|name<pad>"` formatter `"|" ++ substr(x ++ <31 spaces>, 0,
+31)` still appears INLINE several more times (d_lk_key, d_lk_pfx_key,
+rb_q_key in the lookup/re-walk paths). Replace each with
+`FtiNameEntry(name ↦ x, entry ↦ …)` — a behavior change (composition),
+gated by conformance + functionization, NOT the byte gate. Do as its own
+batch.
