@@ -1,0 +1,136 @@
+-- MODULE DriverRecVal
+-- CONSUMES: a record-instance work item — d_rv_k (the registry slot index
+--           0/1/2), d_rv_nm (the instance name), d_wtail (the rest of the
+--           work-item program), and the record-type registry rt_e0/e1/e2.
+-- PRODUCES: d_rv_items (the C2RecVal expansion — the record value as a
+--           ctor app over its flattened dotted-const segments) and
+--           d_rdc_items (the C2RecDecl expansion — the declarations of
+--           those dotted consts), plus the rv_*/rdc_* intermediates.
+-- MAINTAINS: pure per-tick lowering, no carry. Both expansions handle
+--           ≤6 fields; a record-typed field recurses one C2RecVal /
+--           C2RecDecl level (the work-item walk is the recursion); a
+--           Seq(Int) field is skipped in the decl (its own seq membership
+--           declares it).
+--
+-- The record value/decl expansion. Lifted into driver_main via
+-- `..DriverRecVal`.
+fsm DriverRecVal
+    -- G2: C2RecVal expansion — a record IDENT's value as a ctor app
+    -- over its flattened dotted consts; a record-typed FIELD recurses
+    -- through a nested C2RecVal (the walk itself is the recursion).
+    d_rv_f ∈ String = (d_rv_k = 0 ? rt_e0.fnames : d_rv_k = 1 ? rt_e1.fnames : rt_e2.fnames)
+    d_rv_t ∈ String = (d_rv_k = 0 ? rt_e0.ftypes : d_rv_k = 1 ? rt_e1.ftypes : rt_e2.ftypes)
+    d_rv_n ∈ Int = (d_rv_k = 0 ? rt_e0.nf : d_rv_k = 1 ? rt_e1.nf : rt_e2.nf)
+    d_rv_ctor ∈ Int = (d_rv_k = 0 ? rt_e0.ctor : d_rv_k = 1 ? rt_e1.ctor : rt_e2.ctor)
+    rv_f0 ∈ String
+    RtRecName(s ↦ d_rv_f, i ↦ 0, name ↦ rv_f0)
+    rv_f1 ∈ String
+    RtRecName(s ↦ d_rv_f, i ↦ 1, name ↦ rv_f1)
+    rv_f2 ∈ String
+    RtRecName(s ↦ d_rv_f, i ↦ 2, name ↦ rv_f2)
+    rv_f3 ∈ String
+    RtRecName(s ↦ d_rv_f, i ↦ 3, name ↦ rv_f3)
+    rv_f4 ∈ String
+    RtRecName(s ↦ d_rv_f, i ↦ 4, name ↦ rv_f4)
+    rv_f5 ∈ String
+    RtRecName(s ↦ d_rv_f, i ↦ 5, name ↦ rv_f5)
+    rv_t0 ∈ String
+    RtRecName(s ↦ d_rv_t, i ↦ 0, name ↦ rv_t0)
+    rv_t1 ∈ String
+    RtRecName(s ↦ d_rv_t, i ↦ 1, name ↦ rv_t1)
+    rv_t2 ∈ String
+    RtRecName(s ↦ d_rv_t, i ↦ 2, name ↦ rv_t2)
+    rv_t3 ∈ String
+    RtRecName(s ↦ d_rv_t, i ↦ 3, name ↦ rv_t3)
+    rv_t4 ∈ String
+    RtRecName(s ↦ d_rv_t, i ↦ 4, name ↦ rv_t4)
+    rv_t5 ∈ String
+    RtRecName(s ↦ d_rv_t, i ↦ 5, name ↦ rv_t5)
+    rv_k0 ∈ Int
+    RtIdxOf(nm ↦ rv_t0, e0 ↦ rt_e0, e1 ↦ rt_e1, e2 ↦ rt_e2, idx ↦ rv_k0)
+    rv_k1 ∈ Int
+    RtIdxOf(nm ↦ rv_t1, e0 ↦ rt_e0, e1 ↦ rt_e1, e2 ↦ rt_e2, idx ↦ rv_k1)
+    rv_k2 ∈ Int
+    RtIdxOf(nm ↦ rv_t2, e0 ↦ rt_e0, e1 ↦ rt_e1, e2 ↦ rt_e2, idx ↦ rv_k2)
+    rv_k3 ∈ Int
+    RtIdxOf(nm ↦ rv_t3, e0 ↦ rt_e0, e1 ↦ rt_e1, e2 ↦ rt_e2, idx ↦ rv_k3)
+    rv_k4 ∈ Int
+    RtIdxOf(nm ↦ rv_t4, e0 ↦ rt_e0, e1 ↦ rt_e1, e2 ↦ rt_e2, idx ↦ rv_k4)
+    rv_k5 ∈ Int
+    RtIdxOf(nm ↦ rv_t5, e0 ↦ rt_e0, e1 ↦ rt_e1, e2 ↦ rt_e2, idx ↦ rv_k5)
+    rv_seg0 ∈ C2Item = (rv_k0 ≥ 0
+        ? C2RecVal(d_rv_nm ++ "." ++ rv_f0, rv_k0)
+        : C2Process(EIdent(d_rv_nm ++ "." ++ rv_f0)))
+    rv_seg1 ∈ C2Item = (rv_k1 ≥ 0
+        ? C2RecVal(d_rv_nm ++ "." ++ rv_f1, rv_k1)
+        : C2Process(EIdent(d_rv_nm ++ "." ++ rv_f1)))
+    rv_seg2 ∈ C2Item = (rv_k2 ≥ 0
+        ? C2RecVal(d_rv_nm ++ "." ++ rv_f2, rv_k2)
+        : C2Process(EIdent(d_rv_nm ++ "." ++ rv_f2)))
+    rv_seg3 ∈ C2Item = (rv_k3 ≥ 0
+        ? C2RecVal(d_rv_nm ++ "." ++ rv_f3, rv_k3)
+        : C2Process(EIdent(d_rv_nm ++ "." ++ rv_f3)))
+    rv_seg4 ∈ C2Item = (rv_k4 ≥ 0
+        ? C2RecVal(d_rv_nm ++ "." ++ rv_f4, rv_k4)
+        : C2Process(EIdent(d_rv_nm ++ "." ++ rv_f4)))
+    rv_seg5 ∈ C2Item = (rv_k5 ≥ 0
+        ? C2RecVal(d_rv_nm ++ "." ++ rv_f5, rv_k5)
+        : C2Process(EIdent(d_rv_nm ++ "." ++ rv_f5)))
+    rv_tail ∈ C2Items = C2ICons(C2App(d_rv_ctor, d_rv_n), d_wtail)
+    d_rv_items ∈ C2Items = (d_rv_n = 1
+            ? C2ICons(rv_seg0, rv_tail)
+        : d_rv_n = 2
+            ? C2ICons(rv_seg0, C2ICons(rv_seg1, rv_tail))
+        : d_rv_n = 3
+            ? C2ICons(rv_seg0, C2ICons(rv_seg1, C2ICons(rv_seg2, rv_tail)))
+        : d_rv_n = 4
+            ? C2ICons(rv_seg0, C2ICons(rv_seg1, C2ICons(rv_seg2,
+                C2ICons(rv_seg3, rv_tail))))
+        : d_rv_n = 5
+            ? C2ICons(rv_seg0, C2ICons(rv_seg1, C2ICons(rv_seg2,
+                C2ICons(rv_seg3, C2ICons(rv_seg4, rv_tail)))))
+        : C2ICons(rv_seg0, C2ICons(rv_seg1, C2ICons(rv_seg2,
+            C2ICons(rv_seg3, C2ICons(rv_seg4, C2ICons(rv_seg5,
+            rv_tail)))))))
+    -- G2: C2RecDecl expansion — declare the dotted consts of a
+    -- record INSTANCE from the registry (bare type jumps: first-line
+    -- params have no body memberships to declare them). Scalar
+    -- fields declare directly; record fields recurse one C2RecDecl
+    -- level; Seq fields skip (the body's own seq membership declares
+    -- them).
+    rdc_sc0 ∈ Int = (rv_t0 = "Bool" ? 1 : rv_t0 = "String" ? 3
+        : rv_t0 = "Real" ? 6 : 0)
+    rdc_sc1 ∈ Int = (rv_t1 = "Bool" ? 1 : rv_t1 = "String" ? 3
+        : rv_t1 = "Real" ? 6 : 0)
+    rdc_sc2 ∈ Int = (rv_t2 = "Bool" ? 1 : rv_t2 = "String" ? 3
+        : rv_t2 = "Real" ? 6 : 0)
+    rdc_sc3 ∈ Int = (rv_t3 = "Bool" ? 1 : rv_t3 = "String" ? 3
+        : rv_t3 = "Real" ? 6 : 0)
+    rdc_sc4 ∈ Int = (rv_t4 = "Bool" ? 1 : rv_t4 = "String" ? 3
+        : rv_t4 = "Real" ? 6 : 0)
+    rdc_sc5 ∈ Int = (rv_t5 = "Bool" ? 1 : rv_t5 = "String" ? 3
+        : rv_t5 = "Real" ? 6 : 0)
+    rdc_t5 ∈ C2Items = ((d_rv_n < 6 ∨ rv_t5 = "Seq(Int)") ? d_wtail
+        : rv_k5 ≥ 0 ? C2ICons(C2RecDecl(d_rv_nm ++ "." ++ rv_f5, rv_k5), d_wtail)
+        : C2ICons(C2DeclConst(d_rv_nm ++ "." ++ rv_f5, rdc_sc5),
+            C2ICons(C2Drop, d_wtail)))
+    rdc_t4 ∈ C2Items = ((d_rv_n < 5 ∨ rv_t4 = "Seq(Int)") ? rdc_t5
+        : rv_k4 ≥ 0 ? C2ICons(C2RecDecl(d_rv_nm ++ "." ++ rv_f4, rv_k4), rdc_t5)
+        : C2ICons(C2DeclConst(d_rv_nm ++ "." ++ rv_f4, rdc_sc4),
+            C2ICons(C2Drop, rdc_t5)))
+    rdc_t3 ∈ C2Items = ((d_rv_n < 4 ∨ rv_t3 = "Seq(Int)") ? rdc_t4
+        : rv_k3 ≥ 0 ? C2ICons(C2RecDecl(d_rv_nm ++ "." ++ rv_f3, rv_k3), rdc_t4)
+        : C2ICons(C2DeclConst(d_rv_nm ++ "." ++ rv_f3, rdc_sc3),
+            C2ICons(C2Drop, rdc_t4)))
+    rdc_t2 ∈ C2Items = ((d_rv_n < 3 ∨ rv_t2 = "Seq(Int)") ? rdc_t3
+        : rv_k2 ≥ 0 ? C2ICons(C2RecDecl(d_rv_nm ++ "." ++ rv_f2, rv_k2), rdc_t3)
+        : C2ICons(C2DeclConst(d_rv_nm ++ "." ++ rv_f2, rdc_sc2),
+            C2ICons(C2Drop, rdc_t3)))
+    rdc_t1 ∈ C2Items = ((d_rv_n < 2 ∨ rv_t1 = "Seq(Int)") ? rdc_t2
+        : rv_k1 ≥ 0 ? C2ICons(C2RecDecl(d_rv_nm ++ "." ++ rv_f1, rv_k1), rdc_t2)
+        : C2ICons(C2DeclConst(d_rv_nm ++ "." ++ rv_f1, rdc_sc1),
+            C2ICons(C2Drop, rdc_t2)))
+    d_rdc_items ∈ C2Items = ((d_rv_n < 1 ∨ rv_t0 = "Seq(Int)") ? rdc_t1
+        : rv_k0 ≥ 0 ? C2ICons(C2RecDecl(d_rv_nm ++ "." ++ rv_f0, rv_k0), rdc_t1)
+        : C2ICons(C2DeclConst(d_rv_nm ++ "." ++ rv_f0, rdc_sc0),
+            C2ICons(C2Drop, rdc_t1)))

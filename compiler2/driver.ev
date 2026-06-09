@@ -254,6 +254,9 @@ import "compiler2/driver_guard.ev"
 import "compiler2/driver_litmem.ev"
 import "compiler2/driver_buildeff.ev"
 import "compiler2/driver_emit.ev"
+import "compiler2/driver_input.ev"
+import "compiler2/driver_recval.ev"
+import "compiler2/driver_exprdecomp.ev"
 
 import "compiler2/driver_ir.ev"
 
@@ -269,27 +272,8 @@ import "compiler2/driver_ir.ev"
 
 
 fsm driver_main
-    -- ── INPUT — per-process source path via stdin (wave 4o) ──────
-    got_path  ∈ Bool
-    got_path = (is_first_tick ? false : true)
-
-    src_path  ∈ String
-    path_read ∈ String = match last_results[0]
-        StringResult(s) ⇒ s
-        _ ⇒ ""
-    src_path = (is_first_tick ? "" : ((¬_got_path) ? path_read : _src_path))
-
-    input  ∈ String
-    content_read ∈ String = match last_results[0]
-        StringResult(s) ⇒ s
-        _ ⇒ "<no-read>"
-    input = (is_first_tick ? "" : ((¬_got_path) ? "" : (_input = "" ? content_read : _input)))
-
-    target  ∈ String
-    target_read ∈ String = match last_results[1]
-        StringResult(s) ⇒ s
-        _ ⇒ ""
-    target = (is_first_tick ? "" : ((¬_got_path) ? target_read : _target))
+    -- ── INPUT — per-process source path (see compiler2/driver_input.ev) ──
+    ..DriverInput
 
     -- Shared per-tick result captures.
     d_cap_int ∈ Int = match last_results[0]
@@ -390,211 +374,11 @@ fsm driver_main
 
     -- ── FTI symbol table + work-item decode (see compiler2/driver_symtab.ev) ──
     ..DriverSymtab
-    -- G2: C2RecVal expansion — a record IDENT's value as a ctor app
-    -- over its flattened dotted consts; a record-typed FIELD recurses
-    -- through a nested C2RecVal (the walk itself is the recursion).
-    d_rv_f ∈ String = (d_rv_k = 0 ? rt_e0.fnames : d_rv_k = 1 ? rt_e1.fnames : rt_e2.fnames)
-    d_rv_t ∈ String = (d_rv_k = 0 ? rt_e0.ftypes : d_rv_k = 1 ? rt_e1.ftypes : rt_e2.ftypes)
-    d_rv_n ∈ Int = (d_rv_k = 0 ? rt_e0.nf : d_rv_k = 1 ? rt_e1.nf : rt_e2.nf)
-    d_rv_ctor ∈ Int = (d_rv_k = 0 ? rt_e0.ctor : d_rv_k = 1 ? rt_e1.ctor : rt_e2.ctor)
-    rv_f0 ∈ String
-    RtRecName(s ↦ d_rv_f, i ↦ 0, name ↦ rv_f0)
-    rv_f1 ∈ String
-    RtRecName(s ↦ d_rv_f, i ↦ 1, name ↦ rv_f1)
-    rv_f2 ∈ String
-    RtRecName(s ↦ d_rv_f, i ↦ 2, name ↦ rv_f2)
-    rv_f3 ∈ String
-    RtRecName(s ↦ d_rv_f, i ↦ 3, name ↦ rv_f3)
-    rv_f4 ∈ String
-    RtRecName(s ↦ d_rv_f, i ↦ 4, name ↦ rv_f4)
-    rv_f5 ∈ String
-    RtRecName(s ↦ d_rv_f, i ↦ 5, name ↦ rv_f5)
-    rv_t0 ∈ String
-    RtRecName(s ↦ d_rv_t, i ↦ 0, name ↦ rv_t0)
-    rv_t1 ∈ String
-    RtRecName(s ↦ d_rv_t, i ↦ 1, name ↦ rv_t1)
-    rv_t2 ∈ String
-    RtRecName(s ↦ d_rv_t, i ↦ 2, name ↦ rv_t2)
-    rv_t3 ∈ String
-    RtRecName(s ↦ d_rv_t, i ↦ 3, name ↦ rv_t3)
-    rv_t4 ∈ String
-    RtRecName(s ↦ d_rv_t, i ↦ 4, name ↦ rv_t4)
-    rv_t5 ∈ String
-    RtRecName(s ↦ d_rv_t, i ↦ 5, name ↦ rv_t5)
-    rv_k0 ∈ Int
-    RtIdxOf(nm ↦ rv_t0, e0 ↦ rt_e0, e1 ↦ rt_e1, e2 ↦ rt_e2, idx ↦ rv_k0)
-    rv_k1 ∈ Int
-    RtIdxOf(nm ↦ rv_t1, e0 ↦ rt_e0, e1 ↦ rt_e1, e2 ↦ rt_e2, idx ↦ rv_k1)
-    rv_k2 ∈ Int
-    RtIdxOf(nm ↦ rv_t2, e0 ↦ rt_e0, e1 ↦ rt_e1, e2 ↦ rt_e2, idx ↦ rv_k2)
-    rv_k3 ∈ Int
-    RtIdxOf(nm ↦ rv_t3, e0 ↦ rt_e0, e1 ↦ rt_e1, e2 ↦ rt_e2, idx ↦ rv_k3)
-    rv_k4 ∈ Int
-    RtIdxOf(nm ↦ rv_t4, e0 ↦ rt_e0, e1 ↦ rt_e1, e2 ↦ rt_e2, idx ↦ rv_k4)
-    rv_k5 ∈ Int
-    RtIdxOf(nm ↦ rv_t5, e0 ↦ rt_e0, e1 ↦ rt_e1, e2 ↦ rt_e2, idx ↦ rv_k5)
-    rv_seg0 ∈ C2Item = (rv_k0 ≥ 0
-        ? C2RecVal(d_rv_nm ++ "." ++ rv_f0, rv_k0)
-        : C2Process(EIdent(d_rv_nm ++ "." ++ rv_f0)))
-    rv_seg1 ∈ C2Item = (rv_k1 ≥ 0
-        ? C2RecVal(d_rv_nm ++ "." ++ rv_f1, rv_k1)
-        : C2Process(EIdent(d_rv_nm ++ "." ++ rv_f1)))
-    rv_seg2 ∈ C2Item = (rv_k2 ≥ 0
-        ? C2RecVal(d_rv_nm ++ "." ++ rv_f2, rv_k2)
-        : C2Process(EIdent(d_rv_nm ++ "." ++ rv_f2)))
-    rv_seg3 ∈ C2Item = (rv_k3 ≥ 0
-        ? C2RecVal(d_rv_nm ++ "." ++ rv_f3, rv_k3)
-        : C2Process(EIdent(d_rv_nm ++ "." ++ rv_f3)))
-    rv_seg4 ∈ C2Item = (rv_k4 ≥ 0
-        ? C2RecVal(d_rv_nm ++ "." ++ rv_f4, rv_k4)
-        : C2Process(EIdent(d_rv_nm ++ "." ++ rv_f4)))
-    rv_seg5 ∈ C2Item = (rv_k5 ≥ 0
-        ? C2RecVal(d_rv_nm ++ "." ++ rv_f5, rv_k5)
-        : C2Process(EIdent(d_rv_nm ++ "." ++ rv_f5)))
-    rv_tail ∈ C2Items = C2ICons(C2App(d_rv_ctor, d_rv_n), d_wtail)
-    d_rv_items ∈ C2Items = (d_rv_n = 1
-            ? C2ICons(rv_seg0, rv_tail)
-        : d_rv_n = 2
-            ? C2ICons(rv_seg0, C2ICons(rv_seg1, rv_tail))
-        : d_rv_n = 3
-            ? C2ICons(rv_seg0, C2ICons(rv_seg1, C2ICons(rv_seg2, rv_tail)))
-        : d_rv_n = 4
-            ? C2ICons(rv_seg0, C2ICons(rv_seg1, C2ICons(rv_seg2,
-                C2ICons(rv_seg3, rv_tail))))
-        : d_rv_n = 5
-            ? C2ICons(rv_seg0, C2ICons(rv_seg1, C2ICons(rv_seg2,
-                C2ICons(rv_seg3, C2ICons(rv_seg4, rv_tail)))))
-        : C2ICons(rv_seg0, C2ICons(rv_seg1, C2ICons(rv_seg2,
-            C2ICons(rv_seg3, C2ICons(rv_seg4, C2ICons(rv_seg5,
-            rv_tail)))))))
-    -- G2: C2RecDecl expansion — declare the dotted consts of a
-    -- record INSTANCE from the registry (bare type jumps: first-line
-    -- params have no body memberships to declare them). Scalar
-    -- fields declare directly; record fields recurse one C2RecDecl
-    -- level; Seq fields skip (the body's own seq membership declares
-    -- them).
-    rdc_sc0 ∈ Int = (rv_t0 = "Bool" ? 1 : rv_t0 = "String" ? 3
-        : rv_t0 = "Real" ? 6 : 0)
-    rdc_sc1 ∈ Int = (rv_t1 = "Bool" ? 1 : rv_t1 = "String" ? 3
-        : rv_t1 = "Real" ? 6 : 0)
-    rdc_sc2 ∈ Int = (rv_t2 = "Bool" ? 1 : rv_t2 = "String" ? 3
-        : rv_t2 = "Real" ? 6 : 0)
-    rdc_sc3 ∈ Int = (rv_t3 = "Bool" ? 1 : rv_t3 = "String" ? 3
-        : rv_t3 = "Real" ? 6 : 0)
-    rdc_sc4 ∈ Int = (rv_t4 = "Bool" ? 1 : rv_t4 = "String" ? 3
-        : rv_t4 = "Real" ? 6 : 0)
-    rdc_sc5 ∈ Int = (rv_t5 = "Bool" ? 1 : rv_t5 = "String" ? 3
-        : rv_t5 = "Real" ? 6 : 0)
-    rdc_t5 ∈ C2Items = ((d_rv_n < 6 ∨ rv_t5 = "Seq(Int)") ? d_wtail
-        : rv_k5 ≥ 0 ? C2ICons(C2RecDecl(d_rv_nm ++ "." ++ rv_f5, rv_k5), d_wtail)
-        : C2ICons(C2DeclConst(d_rv_nm ++ "." ++ rv_f5, rdc_sc5),
-            C2ICons(C2Drop, d_wtail)))
-    rdc_t4 ∈ C2Items = ((d_rv_n < 5 ∨ rv_t4 = "Seq(Int)") ? rdc_t5
-        : rv_k4 ≥ 0 ? C2ICons(C2RecDecl(d_rv_nm ++ "." ++ rv_f4, rv_k4), rdc_t5)
-        : C2ICons(C2DeclConst(d_rv_nm ++ "." ++ rv_f4, rdc_sc4),
-            C2ICons(C2Drop, rdc_t5)))
-    rdc_t3 ∈ C2Items = ((d_rv_n < 4 ∨ rv_t3 = "Seq(Int)") ? rdc_t4
-        : rv_k3 ≥ 0 ? C2ICons(C2RecDecl(d_rv_nm ++ "." ++ rv_f3, rv_k3), rdc_t4)
-        : C2ICons(C2DeclConst(d_rv_nm ++ "." ++ rv_f3, rdc_sc3),
-            C2ICons(C2Drop, rdc_t4)))
-    rdc_t2 ∈ C2Items = ((d_rv_n < 3 ∨ rv_t2 = "Seq(Int)") ? rdc_t3
-        : rv_k2 ≥ 0 ? C2ICons(C2RecDecl(d_rv_nm ++ "." ++ rv_f2, rv_k2), rdc_t3)
-        : C2ICons(C2DeclConst(d_rv_nm ++ "." ++ rv_f2, rdc_sc2),
-            C2ICons(C2Drop, rdc_t3)))
-    rdc_t1 ∈ C2Items = ((d_rv_n < 2 ∨ rv_t1 = "Seq(Int)") ? rdc_t2
-        : rv_k1 ≥ 0 ? C2ICons(C2RecDecl(d_rv_nm ++ "." ++ rv_f1, rv_k1), rdc_t2)
-        : C2ICons(C2DeclConst(d_rv_nm ++ "." ++ rv_f1, rdc_sc1),
-            C2ICons(C2Drop, rdc_t2)))
-    d_rdc_items ∈ C2Items = ((d_rv_n < 1 ∨ rv_t0 = "Seq(Int)") ? rdc_t1
-        : rv_k0 ≥ 0 ? C2ICons(C2RecDecl(d_rv_nm ++ "." ++ rv_f0, rv_k0), rdc_t1)
-        : C2ICons(C2DeclConst(d_rv_nm ++ "." ++ rv_f0, rdc_sc0),
-            C2ICons(C2Drop, rdc_t1)))
+    -- ── C2RecVal/C2RecDecl expansion (see compiler2/driver_recval.ev) ──
+    ..DriverRecVal
 
-    -- Expr-node decomposition via the pass claims.
-    d_pe_is_int ∈ Bool = (d_pe matches EInt(_))
-    d_pe_is_id  ∈ Bool = (d_pe matches EIdent(_))
-    d_pe_is_str ∈ Bool = (d_pe matches EStr(_))
-    d_pe_str ∈ String = match d_pe
-        EStr(s) ⇒ s
-        _ ⇒ ""
-    d_lkname ∈ String = match d_pe
-        EIdent(s) ⇒ s
-        _ ⇒ ""
-    d_pe_op ∈ Op
-    d_pe_l ∈ Expr
-    d_pe_r ∈ Expr
-    d_pe_is_bin ∈ Bool
-    BoolExprBinopParts(e ↦ d_pe, op ↦ d_pe_op, lhs ↦ d_pe_l,
-        rhs ↦ d_pe_r, is_binop ↦ d_pe_is_bin)
-    d_pe_c ∈ Expr
-    d_pe_t ∈ Expr
-    d_pe_e ∈ Expr
-    d_pe_is_tern ∈ Bool
-    TernaryExprParts(e ↦ d_pe, cond_e ↦ d_pe_c, then_e ↦ d_pe_t,
-        else_e ↦ d_pe_e, is_tern ↦ d_pe_is_tern)
-    d_pe_ni ∈ Expr
-    d_pe_is_not ∈ Bool
-    NotExprParts(e ↦ d_pe, inner ↦ d_pe_ni, is_not ↦ d_pe_is_not)
-    d_pe_op_ne ∈ Bool = (d_pe_op matches OpNeq)
-
-    -- call-node decomposition (B3): name + up to 3 positional args.
-    d_pe_is_c1 ∈ Bool = (d_pe matches ECall1(_, _))
-    d_pe_is_c2 ∈ Bool = (d_pe matches ECall2(_, _, _))
-    d_pe_is_c3 ∈ Bool = (d_pe matches ECall3(_, _, _, _))
-    d_cnm ∈ String = match d_pe
-        ECall1(cn1, _) ⇒ cn1
-        ECall2(cn2, _, _) ⇒ cn2
-        ECall3(cn3, _, _, _) ⇒ cn3
-        _ ⇒ ""
-    d_ca0 ∈ Expr = match d_pe
-        ECall1(_, ca1) ⇒ ca1
-        ECall2(_, ca2, _) ⇒ ca2
-        ECall3(_, ca3, _, _) ⇒ ca3
-        _ ⇒ ENoExpr
-    d_ca1 ∈ Expr = match d_pe
-        ECall2(_, _, cb2) ⇒ cb2
-        ECall3(_, _, cb3, _) ⇒ cb3
-        _ ⇒ ENoExpr
-    d_ca2 ∈ Expr = match d_pe
-        ECall3(_, _, _, cc3) ⇒ cc3
-        _ ⇒ ENoExpr
-
-    -- C3: ctor-application dispatch — a call whose name resolves in
-    -- the user-enum decl registry lowers to C2App(decl, argc) over
-    -- the processed args (mk_app; compound args are handles, so the
-    -- legacy dropped-Exit(3+4) class is impossible by construction).
-    -- Checked BEFORE the builtin fallthrough (no collision: builtins
-    -- are lowercase, variants capitalized).
-    d_ctor_d ∈ Int = (uev_n0 = d_cnm ? uev_d0
-        : uev_n1 = d_cnm ? uev_d1
-        : uev_n2 = d_cnm ? uev_d2
-        : uev_n3 = d_cnm ? uev_d3
-        : uev_n4 = d_cnm ? uev_d4
-        : uev_n5 = d_cnm ? uev_d5
-        : 0)
-
-    -- C4: `e matches Ctor` — mk_app of the harvested TESTER decl
-    -- (user variants + the IntResult/StringResult floor). A miss
-    -- pushes handle 0 (unbound-ident parity).
-    d_pe_is_m ∈ Bool = (d_pe matches EMatches(_, _))
-    d_m_nm ∈ String = match d_pe
-        EMatches(mn, _) ⇒ mn
-        _ ⇒ ""
-    d_m_in ∈ Expr = match d_pe
-        EMatches(_, me) ⇒ me
-        _ ⇒ ENoExpr
-    d_m_t ∈ Int = (d_m_nm = "IntResult" ? z_irtest
-        : d_m_nm = "StringResult" ? z_srtest
-        : uev_n0 = d_m_nm ? uev_t0
-        : uev_n1 = d_m_nm ? uev_t1
-        : uev_n2 = d_m_nm ? uev_t2
-        : uev_n3 = d_m_nm ? uev_t3
-        : uev_n4 = d_m_nm ? uev_t4
-        : uev_n5 = d_m_nm ? uev_t5
-        : 0)
-    d_m_items ∈ C2Items = (d_m_t ≠ 0
-        ? C2ICons(C2Process(d_m_in), C2ICons(C2App(d_m_t, 1), d_wtail))
-        : C2ICons(C2PushH(0), d_wtail))
+    -- ── parse-expr node decomposition (see compiler2/driver_exprdecomp.ev) ──
+    ..DriverExprDecomp
 
     -- B3 lowering: the legacy surface table (the pinned
     -- bootstrap string_ops.rs dispatch, re-probed against the

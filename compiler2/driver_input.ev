@@ -1,0 +1,38 @@
+-- MODULE DriverInput
+-- CONSUMES: the per-tick libc read results (last_results[0] = the source
+--           path on the first read, then the file content; last_results[1]
+--           = the target claim name), is_first_tick, and its own carries
+--           (_got_path, _src_path, _input, _target).
+-- PRODUCES: got_path (whether the path-read tick has passed), src_path
+--           (the source file path), input (the file content to compile),
+--           and target (the claim name to compile) — all carried, and all
+--           consumed downstream (driver_lex reads got_path/input;
+--           driver_enum/driver_broadcast read target).
+-- MAINTAINS: tick 0 seeds empty/false; the first post-init tick
+--           (¬_got_path) reads the path + target from the libc results;
+--           every later tick holds. `input` fills from the content read
+--           on the path tick, then holds.
+--
+-- The per-process stdin input reader. Lifted into driver_main via
+-- `..DriverInput`.
+fsm DriverInput
+    got_path  ∈ Bool
+    got_path = (is_first_tick ? false : true)
+
+    src_path  ∈ String
+    path_read ∈ String = match last_results[0]
+        StringResult(s) ⇒ s
+        _ ⇒ ""
+    src_path = (is_first_tick ? "" : ((¬_got_path) ? path_read : _src_path))
+
+    input  ∈ String
+    content_read ∈ String = match last_results[0]
+        StringResult(s) ⇒ s
+        _ ⇒ "<no-read>"
+    input = (is_first_tick ? "" : ((¬_got_path) ? "" : (_input = "" ? content_read : _input)))
+
+    target  ∈ String
+    target_read ∈ String = match last_results[1]
+        StringResult(s) ⇒ s
+        _ ⇒ ""
+    target = (is_first_tick ? "" : ((¬_got_path) ? target_read : _target))

@@ -489,3 +489,29 @@ after the "|"). Functionization gate GREEN.
 - The `d_seed_names` literal in `driver_symtab` is two FtiNameEntry-shaped
   rows for the kernel pre-seed names; rebuildable from two FtiNameEntry
   calls, but the literal reads clearly as-is.
+
+---
+
+## Phase 2 — driver_main residual extraction (byte-identical lifts)
+
+Continuing the sub-FSM/subclaim decomposition of the 1272-line
+`driver_main` residual. Each block lifted via `..Module` (names-match
+inline), verified byte-identical by `scripts/driver-decomp-gate.sh`
+(__callN-normalized emit == frozen baseline) — so behavior is provably
+unchanged, conformance held 137/138 + functionization GREEN.
+
+| Module | Lines | Kind | What |
+|---|---|---|---|
+| `DriverInput` | ~20 | carry sub-FSM | the per-process stdin source-path/target reader (got_path/src_path/input/target) |
+| `DriverRecVal` | ~120 | pure | C2RecVal/C2RecDecl record value+decl expansion (the single biggest residual block) |
+| `DriverExprDecomp` | ~85 | pure | parse-expr node decomposition (d_pe_* kind flags/payloads, call shape, ctor dispatch, `matches` lowering) |
+
+`driver.ev` 1519 → 1303 lines; `driver_main` residual −~225.
+
+### Remaining residual targets (noted)
+- **String-op / call lowering** (the B3 `d_sfi_items` surface-table block
+  after DriverExprDecomp) — more pure lowering, extractable next.
+- **The coupled engine** (state transitions, token-consumption cursor
+  arithmetic, per-item build-effect dispatch) — genuinely interdependent;
+  forcing it into modules creates the weak-interface anti-pattern. This is
+  the honest floor, same conclusion as the original decomposition.

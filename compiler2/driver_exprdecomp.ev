@@ -1,0 +1,103 @@
+-- MODULE DriverExprDecomp
+-- CONSUMES: the current parse-expr node d_pe, the work-item tail d_wtail,
+--           the user-enum-variant registry (uev_n0..5 / uev_d0..5 /
+--           uev_t0..5), and the floor tester decls z_irtest / z_srtest.
+-- PRODUCES: the decomposed views of d_pe used by the work-item lowering —
+--           the node-kind flags + payloads (d_pe_is_int/id/str/bin/tern/
+--           not/m, d_pe_str, d_lkname, d_pe_op/l/r/c/t/e/ni, d_pe_op_ne),
+--           the call shape (d_pe_is_c1/c2/c3, d_cnm, d_ca0/1/2), the
+--           ctor-dispatch decl (d_ctor_d), and the `matches` lowering
+--           (d_m_nm, d_m_in, d_m_t, d_m_items).
+-- MAINTAINS: pure per-tick decomposition, no carry. The ctor dispatch is
+--           checked before the builtin fallthrough (no collision: builtins
+--           lowercase, variants capitalized); a `matches` miss pushes
+--           handle 0 (unbound-ident parity).
+--
+-- The parse-expr node decomposition. Lifted into driver_main via
+-- `..DriverExprDecomp`.
+fsm DriverExprDecomp
+    -- Expr-node decomposition via the pass claims.
+    d_pe_is_int ∈ Bool = (d_pe matches EInt(_))
+    d_pe_is_id  ∈ Bool = (d_pe matches EIdent(_))
+    d_pe_is_str ∈ Bool = (d_pe matches EStr(_))
+    d_pe_str ∈ String = match d_pe
+        EStr(s) ⇒ s
+        _ ⇒ ""
+    d_lkname ∈ String = match d_pe
+        EIdent(s) ⇒ s
+        _ ⇒ ""
+    d_pe_op ∈ Op
+    d_pe_l ∈ Expr
+    d_pe_r ∈ Expr
+    d_pe_is_bin ∈ Bool
+    BoolExprBinopParts(e ↦ d_pe, op ↦ d_pe_op, lhs ↦ d_pe_l,
+        rhs ↦ d_pe_r, is_binop ↦ d_pe_is_bin)
+    d_pe_c ∈ Expr
+    d_pe_t ∈ Expr
+    d_pe_e ∈ Expr
+    d_pe_is_tern ∈ Bool
+    TernaryExprParts(e ↦ d_pe, cond_e ↦ d_pe_c, then_e ↦ d_pe_t,
+        else_e ↦ d_pe_e, is_tern ↦ d_pe_is_tern)
+    d_pe_ni ∈ Expr
+    d_pe_is_not ∈ Bool
+    NotExprParts(e ↦ d_pe, inner ↦ d_pe_ni, is_not ↦ d_pe_is_not)
+    d_pe_op_ne ∈ Bool = (d_pe_op matches OpNeq)
+
+    -- call-node decomposition (B3): name + up to 3 positional args.
+    d_pe_is_c1 ∈ Bool = (d_pe matches ECall1(_, _))
+    d_pe_is_c2 ∈ Bool = (d_pe matches ECall2(_, _, _))
+    d_pe_is_c3 ∈ Bool = (d_pe matches ECall3(_, _, _, _))
+    d_cnm ∈ String = match d_pe
+        ECall1(cn1, _) ⇒ cn1
+        ECall2(cn2, _, _) ⇒ cn2
+        ECall3(cn3, _, _, _) ⇒ cn3
+        _ ⇒ ""
+    d_ca0 ∈ Expr = match d_pe
+        ECall1(_, ca1) ⇒ ca1
+        ECall2(_, ca2, _) ⇒ ca2
+        ECall3(_, ca3, _, _) ⇒ ca3
+        _ ⇒ ENoExpr
+    d_ca1 ∈ Expr = match d_pe
+        ECall2(_, _, cb2) ⇒ cb2
+        ECall3(_, _, cb3, _) ⇒ cb3
+        _ ⇒ ENoExpr
+    d_ca2 ∈ Expr = match d_pe
+        ECall3(_, _, _, cc3) ⇒ cc3
+        _ ⇒ ENoExpr
+
+    -- C3: ctor-application dispatch — a call whose name resolves in
+    -- the user-enum decl registry lowers to C2App(decl, argc) over
+    -- the processed args (mk_app; compound args are handles, so the
+    -- legacy dropped-Exit(3+4) class is impossible by construction).
+    -- Checked BEFORE the builtin fallthrough (no collision: builtins
+    -- are lowercase, variants capitalized).
+    d_ctor_d ∈ Int = (uev_n0 = d_cnm ? uev_d0
+        : uev_n1 = d_cnm ? uev_d1
+        : uev_n2 = d_cnm ? uev_d2
+        : uev_n3 = d_cnm ? uev_d3
+        : uev_n4 = d_cnm ? uev_d4
+        : uev_n5 = d_cnm ? uev_d5
+        : 0)
+
+    -- C4: `e matches Ctor` — mk_app of the harvested TESTER decl
+    -- (user variants + the IntResult/StringResult floor). A miss
+    -- pushes handle 0 (unbound-ident parity).
+    d_pe_is_m ∈ Bool = (d_pe matches EMatches(_, _))
+    d_m_nm ∈ String = match d_pe
+        EMatches(mn, _) ⇒ mn
+        _ ⇒ ""
+    d_m_in ∈ Expr = match d_pe
+        EMatches(_, me) ⇒ me
+        _ ⇒ ENoExpr
+    d_m_t ∈ Int = (d_m_nm = "IntResult" ? z_irtest
+        : d_m_nm = "StringResult" ? z_srtest
+        : uev_n0 = d_m_nm ? uev_t0
+        : uev_n1 = d_m_nm ? uev_t1
+        : uev_n2 = d_m_nm ? uev_t2
+        : uev_n3 = d_m_nm ? uev_t3
+        : uev_n4 = d_m_nm ? uev_t4
+        : uev_n5 = d_m_nm ? uev_t5
+        : 0)
+    d_m_items ∈ C2Items = (d_m_t ≠ 0
+        ? C2ICons(C2Process(d_m_in), C2ICons(C2App(d_m_t, 1), d_wtail))
+        : C2ICons(C2PushH(0), d_wtail))
