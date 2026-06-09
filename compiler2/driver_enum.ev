@@ -330,42 +330,11 @@ fsm DriverEnum
     uev_cap_d ∈ Bool = (_ed_act = 3 ∧ _ed_step = 2 ∧ _ed_user)
     uev_cap_t ∈ Bool = (_ed_act = 3 ∧ _ed_step = 3 ∧ _ed_user)
     uev_t_val ∈ Int = (ed_nullary ? f_ir1 : d_cap_int)
-    uev_n0 ∈ String
-    uev_d0 ∈ Int
-    uev_t0 ∈ Int
-    uev_n1 ∈ String
-    uev_d1 ∈ Int
-    uev_t1 ∈ Int
-    uev_n2 ∈ String
-    uev_d2 ∈ Int
-    uev_t2 ∈ Int
-    uev_n3 ∈ String
-    uev_d3 ∈ Int
-    uev_t3 ∈ Int
-    uev_n4 ∈ String
-    uev_d4 ∈ Int
-    uev_t4 ∈ Int
-    uev_n5 ∈ String
-    uev_d5 ∈ Int
-    uev_t5 ∈ Int
-    uev_n0 = (is_first_tick ? "" : (uev_cap_d ∧ _ed_vidx = 0) ? ed_vname : _uev_n0)
-    uev_d0 = (is_first_tick ? 0 : (uev_cap_d ∧ _ed_vidx = 0) ? d_cap_int : _uev_d0)
-    uev_t0 = (is_first_tick ? 0 : (uev_cap_t ∧ _ed_vidx = 0) ? uev_t_val : _uev_t0)
-    uev_n1 = (is_first_tick ? "" : (uev_cap_d ∧ _ed_vidx = 1) ? ed_vname : _uev_n1)
-    uev_d1 = (is_first_tick ? 0 : (uev_cap_d ∧ _ed_vidx = 1) ? d_cap_int : _uev_d1)
-    uev_t1 = (is_first_tick ? 0 : (uev_cap_t ∧ _ed_vidx = 1) ? uev_t_val : _uev_t1)
-    uev_n2 = (is_first_tick ? "" : (uev_cap_d ∧ _ed_vidx = 2) ? ed_vname : _uev_n2)
-    uev_d2 = (is_first_tick ? 0 : (uev_cap_d ∧ _ed_vidx = 2) ? d_cap_int : _uev_d2)
-    uev_t2 = (is_first_tick ? 0 : (uev_cap_t ∧ _ed_vidx = 2) ? uev_t_val : _uev_t2)
-    uev_n3 = (is_first_tick ? "" : (uev_cap_d ∧ _ed_vidx = 3) ? ed_vname : _uev_n3)
-    uev_d3 = (is_first_tick ? 0 : (uev_cap_d ∧ _ed_vidx = 3) ? d_cap_int : _uev_d3)
-    uev_t3 = (is_first_tick ? 0 : (uev_cap_t ∧ _ed_vidx = 3) ? uev_t_val : _uev_t3)
-    uev_n4 = (is_first_tick ? "" : (uev_cap_d ∧ _ed_vidx = 4) ? ed_vname : _uev_n4)
-    uev_d4 = (is_first_tick ? 0 : (uev_cap_d ∧ _ed_vidx = 4) ? d_cap_int : _uev_d4)
-    uev_t4 = (is_first_tick ? 0 : (uev_cap_t ∧ _ed_vidx = 4) ? uev_t_val : _uev_t4)
-    uev_n5 = (is_first_tick ? "" : (uev_cap_d ∧ _ed_vidx = 5) ? ed_vname : _uev_n5)
-    uev_d5 = (is_first_tick ? 0 : (uev_cap_d ∧ _ed_vidx = 5) ? d_cap_int : _uev_d5)
-    uev_t5 = (is_first_tick ? 0 : (uev_cap_t ∧ _ed_vidx = 5) ? uev_t_val : _uev_t5)
+    uev ∈ Seq(UserEnumVariant)
+    #uev ≤ 6
+    ∀ k ∈ {0..5} : uev[k].name = (is_first_tick ? "" : (uev_cap_d ∧ _ed_vidx = k) ? ed_vname : _uev[k].name)
+    ∀ k ∈ {0..5} : uev[k].ctor = (is_first_tick ? 0 : (uev_cap_d ∧ _ed_vidx = k) ? d_cap_int : _uev[k].ctor)
+    ∀ k ∈ {0..5} : uev[k].tester = (is_first_tick ? 0 : (uev_cap_t ∧ _ed_vidx = k) ? uev_t_val : _uev[k].tester)
 
     -- C5: user-variant field-0 ACCESSOR decls (match-pin payload
     -- binds over USER ctors). Same pend dance as the Result floor:
@@ -377,15 +346,4 @@ fsm DriverEnum
             ? _ed_vidx + 1
         : 0)
     uev_cap_a ∈ Bool = (_ed_act = 3 ∧ _ed_step = 4 ∧ _uev_acc_pend > 0)
-    uev_a0 ∈ Int
-    uev_a1 ∈ Int
-    uev_a2 ∈ Int
-    uev_a3 ∈ Int
-    uev_a4 ∈ Int
-    uev_a5 ∈ Int
-    uev_a0 = (is_first_tick ? 0 : (uev_cap_a ∧ _uev_acc_pend = 1) ? d_cap_int : _uev_a0)
-    uev_a1 = (is_first_tick ? 0 : (uev_cap_a ∧ _uev_acc_pend = 2) ? d_cap_int : _uev_a1)
-    uev_a2 = (is_first_tick ? 0 : (uev_cap_a ∧ _uev_acc_pend = 3) ? d_cap_int : _uev_a2)
-    uev_a3 = (is_first_tick ? 0 : (uev_cap_a ∧ _uev_acc_pend = 4) ? d_cap_int : _uev_a3)
-    uev_a4 = (is_first_tick ? 0 : (uev_cap_a ∧ _uev_acc_pend = 5) ? d_cap_int : _uev_a4)
-    uev_a5 = (is_first_tick ? 0 : (uev_cap_a ∧ _uev_acc_pend = 6) ? d_cap_int : _uev_a5)
+    ∀ k ∈ {0..5} : uev[k].acc = (is_first_tick ? 0 : (uev_cap_a ∧ _uev_acc_pend = k + 1) ? d_cap_int : _uev[k].acc)

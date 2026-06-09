@@ -96,6 +96,18 @@ type RecField(name ∈ String, ty ∈ String, kidx ∈ Int)
 -- flattens it to scalars pre-oracle, so the oracle never sees the Seq.
 type EnumVariantVal(name ∈ String, value ∈ Int)
 
+-- One row of the user-enum DECL registry: variant name, ctor func_decl,
+-- tester decl, field-0 accessor decl. `uev ∈ Seq(UserEnumVariant)`,
+-- lowered by the bounded-Seq pass; rows are written by INDEX (the ED
+-- machine's _ed_vidx / acc-pend walk), so the registry has no length.
+type UserEnumVariant(name ∈ String, ctor ∈ Int, tester ∈ Int, acc ∈ Int)
+
+-- One row of the Set(T)-variable registry: var name, the element type's
+-- registry slot (kidx), the packed 32-byte-row element-name string, and
+-- the element count. `stv ∈ Seq(SetVar)`; rows written by index
+-- (_stv_cnt / c_stv_idx / _sv_cur), so no length.
+type SetVar(name ∈ String, kidx ∈ Int, elems ∈ String, count ∈ Int)
+
 -- ── Work items: one line of claim body = one small program ────────
 enum C2Item =
     C2Process(Expr)
