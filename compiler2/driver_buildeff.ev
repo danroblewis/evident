@@ -46,12 +46,9 @@ fsm DriverBuildEff
     enumtab_p ∈ Int = z_arena + 2560
     acctab_p ∈ Int = z_arena + 2816
 
-    enum_fsym0_now ∈ Int = (_enum_step = 2 ? cap_int : _enum_h_field0)
-    enum_fsym1_now ∈ Int = (_enum_step = 3 ? cap_int : _enum_h_field1)
-    enum_fsym2_now ∈ Int = (_enum_step = 4 ? cap_int : _enum_h_field2)
-    enum_fsym3_now ∈ Int = (_enum_step = 5 ? cap_int : _enum_h_field3)
-    enum_fsym4_now ∈ Int = (_enum_step = 6 ? cap_int : _enum_h_field4)
-    enum_fsym5_now ∈ Int = (_enum_step = 7 ? cap_int : _enum_h_field5)
+    enum_fsyms_now ∈ Seq(Int)
+    #enum_fsyms_now ≤ 6
+    ∀ k ∈ {0..5} : enum_fsyms_now[k] = (_enum_step = 2 + k ? cap_int : _enum_h_fields[k])
     enum_namesym ∈ Effect
     VariantNameSymStep(ctx_h ↦ z3ctx.ctx, v ↦ enum_variant, eff ↦ enum_namesym)
     enum_recogsym ∈ Effect
@@ -66,17 +63,17 @@ fsm DriverBuildEff
     enum_tabread_f ∈ Effect
     BuildMemReadLong(addr ↦ enumtab_p + 8 * (enum_fld_tabpos / 32), eff ↦ enum_tabread_f)
     enum_write_fn0 ∈ Effect
-    BuildMemWriteLong(addr ↦ enum_fnames_p, value ↦ enum_fsym0_now, eff ↦ enum_write_fn0)
+    BuildMemWriteLong(addr ↦ enum_fnames_p, value ↦ enum_fsyms_now[0], eff ↦ enum_write_fn0)
     enum_write_fn1 ∈ Effect
-    BuildMemWriteLong(addr ↦ enum_fnames_p + 8, value ↦ enum_fsym1_now, eff ↦ enum_write_fn1)
+    BuildMemWriteLong(addr ↦ enum_fnames_p + 8, value ↦ enum_fsyms_now[1], eff ↦ enum_write_fn1)
     enum_write_fn2 ∈ Effect
-    BuildMemWriteLong(addr ↦ enum_fnames_p + 16, value ↦ enum_fsym2_now, eff ↦ enum_write_fn2)
+    BuildMemWriteLong(addr ↦ enum_fnames_p + 16, value ↦ enum_fsyms_now[2], eff ↦ enum_write_fn2)
     enum_write_fn3 ∈ Effect
-    BuildMemWriteLong(addr ↦ enum_fnames_p + 24, value ↦ enum_fsym3_now, eff ↦ enum_write_fn3)
+    BuildMemWriteLong(addr ↦ enum_fnames_p + 24, value ↦ enum_fsyms_now[3], eff ↦ enum_write_fn3)
     enum_write_fn4 ∈ Effect
-    BuildMemWriteLong(addr ↦ enum_fnames_p + 32, value ↦ enum_fsym4_now, eff ↦ enum_write_fn4)
+    BuildMemWriteLong(addr ↦ enum_fnames_p + 32, value ↦ enum_fsyms_now[4], eff ↦ enum_write_fn4)
     enum_write_fn5 ∈ Effect
-    BuildMemWriteLong(addr ↦ enum_fnames_p + 40, value ↦ enum_fsym5_now, eff ↦ enum_write_fn5)
+    BuildMemWriteLong(addr ↦ enum_fnames_p + 40, value ↦ enum_fsyms_now[5], eff ↦ enum_write_fn5)
     enum_write_fs0 ∈ Effect
     BuildMemWriteLong(addr ↦ enum_fsorts_p, value ↦ field_slots[0].sort, eff ↦ enum_write_fs0)
     enum_write_fs1 ∈ Effect

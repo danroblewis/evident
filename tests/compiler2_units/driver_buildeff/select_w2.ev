@@ -25,12 +25,9 @@ fsm main
     cap_int = (is_first_tick ? 0 : _cap_int)
     field_ref2 ∈ Int
     field_ref2 = (is_first_tick ? 0 : _field_ref2)
-    enum_h_field0 ∈ Int
-    enum_h_field0 = (is_first_tick ? 0 : _enum_h_field0)
-    enum_h_field1 ∈ Int
-    enum_h_field1 = (is_first_tick ? 0 : _enum_h_field1)
-    enum_h_field2 ∈ Int
-    enum_h_field2 = (is_first_tick ? 0 : _enum_h_field2)
+    enum_h_fields ∈ Seq(Int)
+    #enum_h_fields ≤ 6
+    ∀ k ∈ {0..5} : enum_h_fields[k] = (is_first_tick ? 0 : _enum_h_fields[k])
     enum_h_name ∈ Int
     enum_h_name = (is_first_tick ? 0 : _enum_h_name)
     enum_h_recog ∈ Int
@@ -103,12 +100,6 @@ fsm main
     enum_decl_name = (is_first_tick ? "" : _enum_decl_name)
     op_geq ∈ Op = OpGeq
     enum_variant ∈ EnumVariantDecl = EVNoVariant
-    enum_h_field3 ∈ Int
-    enum_h_field3 = (is_first_tick ? 0 : _enum_h_field3)
-    enum_h_field4 ∈ Int
-    enum_h_field4 = (is_first_tick ? 0 : _enum_h_field4)
-    enum_h_field5 ∈ Int
-    enum_h_field5 = (is_first_tick ? 0 : _enum_h_field5)
     refs_packed23 ∈ Int
     refs_packed23 = (is_first_tick ? 0 : _refs_packed23)
     refs_packed45 ∈ Int
