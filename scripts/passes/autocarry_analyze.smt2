@@ -1,4 +1,4 @@
-;; manifest: state-fields = acc_a:String body:String callee:String claim_bare:String claim_name:String code:String cur_a:Int cur_b:Int eff_nop:Effect eff_out:Effect hdr_fl:Int hdr_pend:String hdr_seg:Int hdr_slots:String hdr_ty:String in_fsm:Int line:String line_no:Int phase:Int tk_acc_now:String tk_base:String tk_bind_now:Bool tk_ce_done:Bool tk_ce_f1:Int tk_ce_gt:Int tk_ce_mark:Bool tk_ce_o1:Int tk_ce_on:Bool tk_ce_run:Bool tk_ce_x:String tk_cline:String tk_code_now:String tk_consume:Bool tk_cs_code:String tk_cs_dd:Int tk_cs_done:Bool tk_cs_p:Int tk_cs_q:Bool tk_cs_qq:Int tk_d0:Int tk_emit_rec:Bool tk_enter_call:Bool tk_enter_ce:Bool tk_enter_ce_eof:Bool tk_eof_now:Bool tk_exit_now:Bool tk_fld:String tk_h_b:Int tk_h_base:String tk_h_bnd:Bool tk_h_bs:Int tk_h_c:Int tk_h_close:Bool tk_h_comma:Bool tk_h_done:Bool tk_h_end:Bool tk_h_ep:Int tk_h_fl1:Bool tk_h_fl_run:Bool tk_h_fnm:String tk_h_hp:Int tk_h_m:Int tk_h_ne:Int tk_h_nm:String tk_h_none:Bool tk_h_ns:Int tk_h_o:Int tk_h_open:Bool tk_h_pend1:String tk_h_scan:Bool tk_h_sp:Int tk_h_t0:Int tk_h_tail:String tk_h_tb:Int tk_h_te:Int tk_h_typed:Bool tk_h_us:Bool tk_hdr_code:String tk_hdr_fsm:Bool tk_hdr_go:Bool tk_hdr_lp:Int tk_hdr_name:String tk_ie:Int tk_ie2:Int tk_in_body:Bool tk_is_bare:Bool tk_is_call:Bool tk_is_ment:Bool tk_is_top:Bool tk_lp_ready:Bool tk_m:Int tk_need_code:Bool tk_nm_start:Int tk_nn:Int tk_pb:Int tk_ph:Int tk_q0:Int tk_quick:Bool tk_read_go:Bool tk_rec:String tk_rec_fsm:Bool tk_reof:Bool tk_rest:String tk_rline:String tk_sb:Int tk_scan3_done:Bool tk_slot:String tk_ss:Int tk_strip_go:Bool tk_switch_now:Bool tk_t0:Int tk_te:Int tk_v0:Int tk_va:Int tk_val_ok:Bool tk_ve:Int tk_ws:Int
+;; manifest: state-fields = body:String callee:String claim_bare:String claim_name:String code:String cur_a:Int cur_b:Int eff_nop:Effect eff_out:Effect hdr_fl:Int hdr_pend:String hdr_seg:Int hdr_ty:String in_fsm:Int line:String line_no:Int phase:Int s_open:Bool tk_base:String tk_bind_now:Bool tk_ce_done:Bool tk_ce_f1:Int tk_ce_gt:Int tk_ce_mark:Bool tk_ce_o1:Int tk_ce_on:Bool tk_ce_run:Bool tk_ce_x:String tk_cline:String tk_code_now:String tk_consume:Bool tk_cs_code:String tk_cs_dd:Int tk_cs_done:Bool tk_cs_p:Int tk_cs_q:Bool tk_cs_qq:Int tk_d0:Int tk_emit_rec:Bool tk_enter_call:Bool tk_enter_ce:Bool tk_enter_ce_eof:Bool tk_eof_now:Bool tk_exit_now:Bool tk_fld:String tk_h_b:Int tk_h_base:String tk_h_bnd:Bool tk_h_bs:Int tk_h_c:Int tk_h_close:Bool tk_h_comma:Bool tk_h_done:Bool tk_h_end:Bool tk_h_ep:Int tk_h_fl1:Bool tk_h_fl_run:Bool tk_h_fnm:String tk_h_hp:Int tk_h_m:Int tk_h_ne:Int tk_h_nm:String tk_h_none:Bool tk_h_ns:Int tk_h_o:Int tk_h_open:Bool tk_h_pend1:String tk_h_scan:Bool tk_h_sp:Int tk_h_t0:Int tk_h_tail:String tk_h_tb:Int tk_h_te:Int tk_h_typed:Bool tk_h_us:Bool tk_hdr_code:String tk_hdr_fsm:Bool tk_hdr_go:Bool tk_hdr_lp:Int tk_hdr_name:String tk_ie:Int tk_ie2:Int tk_in_body:Bool tk_is_bare:Bool tk_is_call:Bool tk_is_ment:Bool tk_is_top:Bool tk_lp_ready:Bool tk_m:Int tk_need_code:Bool tk_nm_start:Int tk_nn:Int tk_pb:Int tk_ph:Int tk_q0:Int tk_quick:Bool tk_read_go:Bool tk_rec:String tk_rec_fsm:Bool tk_reof:Bool tk_rest:String tk_rline:String tk_sb:Int tk_scan3_done:Bool tk_slot:String tk_ss:Int tk_strip_go:Bool tk_switch_now:Bool tk_t0:Int tk_te:Int tk_v0:Int tk_va:Int tk_val_ok:Bool tk_ve:Int tk_ws:Int
 ;; manifest: effects-name = effects
 ;; manifest: effect-enum-name = Effect
 ;; manifest: result-enum-name = Result
@@ -66,8 +66,6 @@
 (declare-fun tk_ve () Int)
 (declare-fun tk_va () Int)
 (declare-fun tk_val_ok () Bool)
-(declare-fun _acc_a () String)
-(declare-fun tk_acc_now () String)
 (declare-fun tk_ce_on () Bool)
 (declare-fun _claim_bare () String)
 (declare-fun tk_ce_done () Bool)
@@ -143,10 +141,9 @@
 (declare-fun hdr_seg () Int)
 (declare-fun hdr_fl () Int)
 (declare-fun hdr_pend () String)
-(declare-fun _hdr_slots () String)
-(declare-fun hdr_slots () String)
 (declare-fun hdr_ty () String)
-(declare-fun acc_a () String)
+(declare-fun _s_open () Bool)
+(declare-fun s_open () Bool)
 (declare-fun eff_nop () Effect)
 (declare-fun tk_rec_fsm () Bool)
 (declare-fun tk_rec () String)
@@ -2686,9 +2683,6 @@
                     (= (str.at code tk_va) ",")
                     (= (str.at code tk_va) ")")))))
   (= tk_val_ok a!1)))
-(assert (= tk_acc_now
-   (str.++ (ite (= tk_ph 3) _acc_a "")
-           (ite tk_bind_now (str.++ "\u{2982}" tk_slot) ""))))
 (assert (= tk_ce_on (or (= tk_ph 4) (= tk_ph 14))))
 (assert (= tk_ce_done (and tk_ce_on (>= _cur_a (str.len _claim_bare)))))
 (assert (= tk_ce_run (and tk_ce_on (not tk_ce_done))))
@@ -3571,16 +3565,13 @@
                           tk_h_tail
                           (ite tk_h_bnd tk_h_pend1 _hdr_pend))))))
   (= hdr_pend a!1)))
-(assert (let ((a!1 (ite (and tk_h_bnd (not (= tk_h_nm "")))
-                (str.++ _hdr_slots "\u{2982}" tk_h_nm)
-                _hdr_slots)))
-  (= hdr_slots (ite is_first_tick "" (ite tk_hdr_go "" a!1)))))
 (assert (= hdr_ty
    (ite is_first_tick "" (ite tk_h_fl1 (ite tk_h_typed tk_h_base "") _hdr_ty))))
-(assert (let ((a!1 (ite is_first_tick
-                ""
-                (ite tk_enter_call "" (ite (= tk_ph 3) tk_acc_now _acc_a)))))
-  (= acc_a a!1)))
+(assert (let ((a!1 (or tk_bind_now (and tk_h_bnd (not (= tk_h_nm ""))))))
+(let ((a!2 (ite (or tk_enter_call tk_hdr_go)
+                false
+                (ite a!1 true (ite (or tk_scan3_done tk_h_done) false _s_open)))))
+  (= s_open (ite is_first_tick false a!2)))))
 (assert (= eff_nop (LibCall "libc" "getpid" __Empty_LibArg)))
 (assert (= tk_rec_fsm (and tk_switch_now tk_hdr_fsm)))
 (assert (let ((a!1 (ite (>= _line_no 0)
@@ -3604,24 +3595,24 @@
                    _claim_name
                    "\u{2982}"
                    a!2
-                   "\u{2982}"))
+                   "\u{2982}"
+                   "\u{a}"
+                   (ite _s_open "S" (str.++ "S\u{2770}" a!2 "\u{2771}"))
+                   "\u{2982}"
+                   tk_slot))
       (a!5 (str.++ "C"
                    (str.substr _claim_bare _cur_a (- (+ tk_ce_gt 1) _cur_a))
                    a!4
                    "\u{2982}")))
-(let ((a!6 (ite (and tk_scan3_done (not (= tk_acc_now "")))
-                (str.++ "S\u{2770}"
-                        a!2
-                        "\u{2771}"
-                        tk_acc_now
-                        "\u{2982}\u{2771}")
-                (ite tk_ce_mark a!5 ""))))
-(let ((a!7 (ite (and tk_h_done (not (= _hdr_slots "")))
-                (str.++ "S\u{2770}"
-                        a!1
-                        "\u{2771}"
-                        _hdr_slots
-                        "\u{2982}\u{2771}")
+(let ((a!6 (ite tk_is_ment
+                (str.++ "M\u{2768}" tk_fld "\u{2982}" _claim_name "\u{2769}")
+                (ite tk_bind_now
+                     a!3
+                     (ite (and tk_scan3_done _s_open)
+                          "S\u{2982}\u{2771}"
+                          (ite tk_ce_mark a!5 ""))))))
+(let ((a!7 (ite (and tk_h_done _s_open)
+                "S\u{2982}\u{2771}"
                 (ite tk_is_bare
                      (str.++ (str.++ "B\u{27e8}" _claim_name ".")
                              tk_fld
@@ -3630,14 +3621,13 @@
                              "\u{2982}"
                              a!2
                              "\u{2982}")
-                     (ite tk_is_ment
-                          (str.++ "M\u{2768}"
-                                  tk_fld
-                                  "\u{2982}"
-                                  _claim_name
-                                  "\u{2769}")
-                          (ite tk_bind_now a!3 a!6))))))
-(let ((a!8 (ite tk_rec_fsm
+                     a!6))))
+(let ((a!8 (ite (and tk_h_bnd (not (= tk_h_nm "")))
+                (str.++ (ite _s_open "S" (str.++ "S\u{2770}" a!1 "\u{2771}"))
+                        "\u{2982}"
+                        tk_h_nm)
+                a!7)))
+(let ((a!9 (ite tk_rec_fsm
                 (str.++ "F\u{27e8}" tk_hdr_name "\u{27e9}")
                 (ite tk_h_fl_run
                      (str.++ (str.++ "B\u{27e8}" _claim_name ".")
@@ -3657,8 +3647,8 @@
                              "\u{2982}"
                              a!1
                              "\u{2982}")
-                     a!7))))
-  (= tk_rec a!8)))))))
+                     a!8))))
+  (= tk_rec a!9))))))))
 (assert (= tk_emit_rec (not (= tk_rec ""))))
 (assert (= eff_out
    (LibCall "libc" "puts" (__Cell_LibArg (ArgStr tk_rec) __Empty_LibArg))))
@@ -3693,7 +3683,6 @@
   (and (=> is_first_tick a!1) a!8))))))
 (declare-fun _eff_nop () Effect)
 (declare-fun _eff_out () Effect)
-(declare-fun _tk_acc_now () String)
 (declare-fun _tk_base () String)
 (declare-fun _tk_bind_now () Bool)
 (declare-fun _tk_ce_done () Bool)

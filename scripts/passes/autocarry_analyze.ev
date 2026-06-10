@@ -7,7 +7,11 @@
 --           starting "∈ " = header-dual candidate, payload after ∈) ·
 --           S❰callline❱⦂slot⦂…⦂❱ (the call's have-set; for an fsm
 --           header line, the header's own param names — explicit `_x`
---           params suppress the dual exactly like a call's `_x` slot) ·
+--           params suppress the dual exactly like a call's `_x` slot;
+--           STREAMED in pieces, one "S…⦂slot" line as each slot is
+--           discovered and a closing "S⦂❱" line — fix concatenates S
+--           payloads, so the assembled registry bytes are identical
+--           to the one-line form) ·
 --           C⟨F.x⟩base⦂ (body-reference carry marks) ·
 --           M❨Callee⦂F❩ (bare mention of Callee inside fsm F).
 -- MAINTAINS: parity with scripts/expand-fsm-autocarry.sh pass 1 — bare
@@ -42,11 +46,10 @@ fsm autocarry_analyze
     claim_bare ∈ String
     cur_a ∈ Int
     cur_b ∈ Int
-    acc_a ∈ String
+    s_open ∈ Bool
     hdr_seg ∈ Int
     hdr_fl ∈ Int
     hdr_pend ∈ String
-    hdr_slots ∈ String
     hdr_ty ∈ String
 
     tk_ph ∈ Int = (is_first_tick ? 0 : _phase)
@@ -184,7 +187,6 @@ fsm autocarry_analyze
     tk_val_ok ∈ Bool = (tk_bind_now ∧ tk_ve > tk_v0
         ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ", char_at(code, tk_v0))
         ∧ (tk_va ≥ #code ∨ (char_at(code, tk_va) = ",") ∨ (char_at(code, tk_va) = ")")))
-    tk_acc_now ∈ String = ((tk_ph = 3 ? _acc_a : "") ++ (tk_bind_now ? "⦂" ++ tk_slot : ""))
 
     -- ── phases 4/14: claim end — scan body for `_x` per bare field ──
     tk_ce_on ∈ Bool = (tk_ph = 4 ∨ tk_ph = 14)
@@ -321,17 +323,14 @@ fsm autocarry_analyze
         : tk_h_fl_run ? tk_h_tail
         : tk_h_bnd ? tk_h_pend1
         : _hdr_pend)
-    hdr_slots = (is_first_tick ? ""
-        : tk_hdr_go ? ""
-        : tk_h_bnd ∧ ¬(tk_h_nm = "") ? _hdr_slots ++ "⦂" ++ tk_h_nm
-        : _hdr_slots)
     hdr_ty = (is_first_tick ? ""
         : tk_h_fl1 ? (tk_h_typed ? tk_h_base : "")
         : _hdr_ty)
-    acc_a = (is_first_tick ? ""
-        : tk_enter_call ? ""
-        : tk_ph = 3 ? tk_acc_now
-        : _acc_a)
+    s_open = (is_first_tick ? false
+        : tk_enter_call ∨ tk_hdr_go ? false
+        : tk_bind_now ∨ (tk_h_bnd ∧ ¬(tk_h_nm = "")) ? true
+        : tk_scan3_done ∨ tk_h_done ? false
+        : _s_open)
 
     -- ── effects: stream one registry record per discovery tick ──
     eff_nop ∈ Effect
@@ -341,13 +340,16 @@ fsm autocarry_analyze
         : tk_h_fl_run ? "B⟨" ++ _claim_name ++ "." ++ tk_h_fnm ++ "⟩" ++ _hdr_ty ++ "⦂0⦂"
           ++ "\n" ++ "D❲" ++ _claim_name ++ "⦂" ++ tk_h_fnm ++ "❳∈ " ++ _hdr_ty
           ++ "⦂" ++ _claim_name ++ "⦂" ++ str_from_int(_line_no) ++ "⦂"
-        : tk_h_done ∧ ¬(_hdr_slots = "") ? "S❰" ++ str_from_int(_line_no) ++ "❱" ++ _hdr_slots ++ "⦂❱"
+        : tk_h_bnd ∧ ¬(tk_h_nm = "")
+        ? (_s_open ? "S" : "S❰" ++ str_from_int(_line_no) ++ "❱") ++ "⦂" ++ tk_h_nm
+        : tk_h_done ∧ _s_open ? "S⦂❱"
         : tk_is_bare ? "B⟨" ++ _claim_name ++ "." ++ tk_fld ++ "⟩" ++ tk_base ++ "⦂" ++ str_from_int(tk_nn) ++ "⦂"
         : tk_is_ment ? "M❨" ++ tk_fld ++ "⦂" ++ _claim_name ++ "❩"
         : tk_bind_now ? "D❲" ++ _callee ++ "⦂" ++ tk_slot ++ "❳"
           ++ (tk_val_ok ? substr(code, tk_v0, tk_ve - tk_v0) : "0")
           ++ "⦂" ++ _claim_name ++ "⦂" ++ str_from_int(tk_nn) ++ "⦂"
-        : tk_scan3_done ∧ ¬(tk_acc_now = "") ? "S❰" ++ str_from_int(tk_nn) ++ "❱" ++ tk_acc_now ++ "⦂❱"
+          ++ "\n" ++ (_s_open ? "S" : "S❰" ++ str_from_int(tk_nn) ++ "❱") ++ "⦂" ++ tk_slot
+        : tk_scan3_done ∧ _s_open ? "S⦂❱"
         : tk_ce_mark ? "C" ++ substr(_claim_bare, _cur_a, tk_ce_gt + 1 - _cur_a)
           ++ substr(_claim_bare, tk_ce_gt + 1, index_of(_claim_bare, "⦂", tk_ce_gt) - tk_ce_gt - 1) ++ "⦂"
         : "")
