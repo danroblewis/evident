@@ -1,26 +1,24 @@
 -- MODULE autocarry_analyze — stage A of the fsm autocarry pass.
 -- CONSUMES: the flattened (pre-autocarry) source on stdin until EOF.
--- PRODUCES: two stdout lines for autocarry_apply — line 1 = insert
---           registry, line 2 = inject registry ("⟦<line>⟧<payload>"
---           records sorted by source line number; see autocarry_apply).
--- MAINTAINS: parity with scripts/expand-fsm-autocarry.sh — same carry
---            rules: carry(F, x) iff x has a bare decl `x ∈ T` in fsm F
---            and (token `_x` occurs in F's comment-stripped body, or F
---            binds x into a carried slot of a registered fsm), to a
---            fixpoint; inserts are `_x ∈ base(T)`; injects append
---            `, _slot ↦ _val` per carried slot-binding without an
---            explicit `_slot` binding.
--- Internal registries (carried strings; idents never contain the glyph
--- delimiters):
---   fsm_set   ⟨F⟩…
---   bare_reg  ⟨F.x⟩base⦂declline⦂…
---   bind_reg  ❲Callee⦂slot❳val⦂F⦂callline⦂…   (val "0" = non-bare)
---   slot_reg  ❰callline❱⦂slot⦂slot⦂❱…          (the call's have-set)
---   carry_reg ⟨F.x⟩base⦂…
---   work_list ⟨F.x⟩…
+-- PRODUCES: a stream of registry records for autocarry_fix, one per
+--           line, tagged by kind: F⟨fsm⟩ · B⟨F.x⟩base⦂declline⦂ ·
+--           D❲Callee⦂slot❳val⦂F⦂callline⦂ (val "0" = non-bare) ·
+--           S❰callline❱⦂slot⦂…⦂❱ (the call's have-set) ·
+--           C⟨F.x⟩base⦂ (body-reference carry marks).
+-- MAINTAINS: parity with scripts/expand-fsm-autocarry.sh pass 1 — bare
+--            decls, call bindings, and the body-reference carry marks
+--            (carry(F, x) when token `_x` occurs in F's comment-stripped
+--            body); the call-direction fixpoint runs in autocarry_fix.
+-- Call bindings are read by ↦-jump (slot = the word backward of each ↦,
+-- preceded by "(" or ","; val = the word forward, followed by "," / ")" /
+-- EOL), not by awk's top-level comma segmentation — exotic shapes
+-- (nested ↦ inside a binding value, two calls on one line) can diverge;
+-- the byte-identical corpus gate is the arbiter.
 -- Phases: 1 read line · 2 comment scan · 3 call scan · 4/14 claim end
--- (→ read / → drain) · 5 worklist drain · 6 insert walk · 7 inject walk
--- · 8/9 emit. cur_a/cur_b/cur_c are the per-phase scan cursors.
+-- (→ read / → exit) · 13 exit.
+-- Transient locals are `_t_`-named: the kernel carries every plain
+-- top-level primitive membership across ticks, and an un-carried local
+-- costs measurably less per tick (measured 2026-06-10).
 import "stdlib/kernel.ev"
 import "scripts/passes/autocarry_lib.ev"
 
@@ -33,323 +31,231 @@ fsm autocarry_analyze
     claim_name ∈ String
     callee ∈ String
     body ∈ String
-    fsm_set ∈ String
-    bare_reg ∈ String
-    bind_reg ∈ String
-    slot_reg ∈ String
-    carry_reg ∈ String
-    work_list ∈ String
-    ins_out ∈ String
-    inj_out ∈ String
-    bare_mark ∈ Int
+    claim_bare ∈ String
     cur_a ∈ Int
     cur_b ∈ Int
-    cur_c ∈ Int
     acc_a ∈ String
-    acc_b ∈ String
 
-    ph ∈ Int = (is_first_tick ? 0 : _phase)
-    rline ∈ String = match last_results[1]
+    _t_ph ∈ Int = (is_first_tick ? 0 : _phase)
+    _t_rline ∈ String = match last_results[1]
         StringResult(s) ⇒ s
         _ ⇒ ""
-    reof ∈ Bool = match last_results[1]
+    _t_reof ∈ Bool = match last_results[1]
         EofResult ⇒ true
         _ ⇒ false
-    consume ∈ Bool = (ph = 1 ∧ ¬reof)
-    eof_now ∈ Bool = (ph = 1 ∧ reof)
-    nn ∈ Int = (is_first_tick ? 0 : consume ? _line_no + 1 : _line_no)
-    cline ∈ String = (consume ? rline : _line)
+    _t_consume ∈ Bool = (_t_ph = 1 ∧ ¬_t_reof)
+    _t_eof_now ∈ Bool = (_t_ph = 1 ∧ _t_reof)
+    _t_nn ∈ Int = (is_first_tick ? 0 : _t_consume ? _line_no + 1 : _line_no)
+    _t_cline ∈ String = (_t_consume ? _t_rline : _line)
 
     -- ── top-level declaration detection (raw line, column-0 keyword) ──
-    hdr_fsm ∈ Bool = (starts_with(cline, "fsm ") ∨ starts_with(cline, "fsm\t"))
-    is_top ∈ Bool = (hdr_fsm
-        ∨ starts_with(cline, "claim ") ∨ starts_with(cline, "claim\t")
-        ∨ starts_with(cline, "type ") ∨ starts_with(cline, "type\t")
-        ∨ starts_with(cline, "schema ") ∨ starts_with(cline, "schema\t")
-        ∨ starts_with(cline, "enum ") ∨ starts_with(cline, "enum\t")
-        ∨ starts_with(cline, "import ") ∨ starts_with(cline, "import\t"))
-    nm_start ∈ Int
-    AcWsSkip(s ↦ (hdr_fsm ? cline : ""), from ↦ 3, out ↦ nm_start)
-    nm_sp ∈ Int = (hdr_fsm ? index_of(cline, " ", nm_start) : -1)
-    nm_tb ∈ Int = (hdr_fsm ? index_of(cline, "\t", nm_start) : -1)
-    nm_lp ∈ Int = (hdr_fsm ? index_of(cline, "(", nm_start) : -1)
-    nm_lt ∈ Int = (hdr_fsm ? index_of(cline, "<", nm_start) : -1)
-    nm_e1 ∈ Int = (nm_sp < 0 ? #cline : nm_sp)
-    nm_e2 ∈ Int = (nm_tb ≥ 0 ∧ nm_tb < nm_e1 ? nm_tb : nm_e1)
-    nm_e3 ∈ Int = (nm_lp ≥ 0 ∧ nm_lp < nm_e2 ? nm_lp : nm_e2)
-    nm_end ∈ Int = (nm_lt ≥ 0 ∧ nm_lt < nm_e3 ? nm_lt : nm_e3)
-    hdr_name ∈ String = (hdr_fsm ? substr(cline, nm_start, nm_end - nm_start) : "")
+    _t_hdr_fsm ∈ Bool = (char_at(_t_cline, 0) = "f" ? (starts_with(_t_cline, "fsm ") ∨ starts_with(_t_cline, "fsm\t")) : false)
+    _t_is_top ∈ Bool = (¬(#_t_cline ≥ 1 ∧ str_contains("cftsei", char_at(_t_cline, 0))) ? false
+        : (_t_hdr_fsm
+        ∨ starts_with(_t_cline, "claim ") ∨ starts_with(_t_cline, "claim\t")
+        ∨ starts_with(_t_cline, "type ") ∨ starts_with(_t_cline, "type\t")
+        ∨ starts_with(_t_cline, "schema ") ∨ starts_with(_t_cline, "schema\t")
+        ∨ starts_with(_t_cline, "enum ") ∨ starts_with(_t_cline, "enum\t")
+        ∨ starts_with(_t_cline, "import ") ∨ starts_with(_t_cline, "import\t")))
+    _t_nm_start ∈ Int
+    AcWsSkip(s ↦ (_t_hdr_fsm ? _t_cline : ""), from ↦ 3, out ↦ _t_nm_start)
+    -- name ends at the first of " " "\t" "(" "<" (or EOL)
+    _t_hdr_name ∈ String = (_t_hdr_fsm
+        ? substr(_t_cline, _t_nm_start,
+            ((index_of(_t_cline, "<", _t_nm_start) ≥ 0
+              ∧ (index_of(_t_cline, "<", _t_nm_start) <
+                 ((index_of(_t_cline, "(", _t_nm_start) ≥ 0
+                   ∧ (index_of(_t_cline, "(", _t_nm_start) <
+                      ((index_of(_t_cline, "\t", _t_nm_start) ≥ 0
+                        ∧ (index_of(_t_cline, "\t", _t_nm_start) <
+                           (index_of(_t_cline, " ", _t_nm_start) < 0 ? #_t_cline : index_of(_t_cline, " ", _t_nm_start))))
+                       ? index_of(_t_cline, "\t", _t_nm_start)
+                       : (index_of(_t_cline, " ", _t_nm_start) < 0 ? #_t_cline : index_of(_t_cline, " ", _t_nm_start)))))
+                  ? index_of(_t_cline, "(", _t_nm_start)
+                  : ((index_of(_t_cline, "\t", _t_nm_start) ≥ 0
+                      ∧ (index_of(_t_cline, "\t", _t_nm_start) <
+                         (index_of(_t_cline, " ", _t_nm_start) < 0 ? #_t_cline : index_of(_t_cline, " ", _t_nm_start))))
+                     ? index_of(_t_cline, "\t", _t_nm_start)
+                     : (index_of(_t_cline, " ", _t_nm_start) < 0 ? #_t_cline : index_of(_t_cline, " ", _t_nm_start))))))
+             ? index_of(_t_cline, "<", _t_nm_start)
+             : ((index_of(_t_cline, "(", _t_nm_start) ≥ 0
+                 ∧ (index_of(_t_cline, "(", _t_nm_start) <
+                    ((index_of(_t_cline, "\t", _t_nm_start) ≥ 0
+                      ∧ (index_of(_t_cline, "\t", _t_nm_start) <
+                         (index_of(_t_cline, " ", _t_nm_start) < 0 ? #_t_cline : index_of(_t_cline, " ", _t_nm_start))))
+                     ? index_of(_t_cline, "\t", _t_nm_start)
+                     : (index_of(_t_cline, " ", _t_nm_start) < 0 ? #_t_cline : index_of(_t_cline, " ", _t_nm_start)))))
+                ? index_of(_t_cline, "(", _t_nm_start)
+                : ((index_of(_t_cline, "\t", _t_nm_start) ≥ 0
+                    ∧ (index_of(_t_cline, "\t", _t_nm_start) <
+                       (index_of(_t_cline, " ", _t_nm_start) < 0 ? #_t_cline : index_of(_t_cline, " ", _t_nm_start))))
+                   ? index_of(_t_cline, "\t", _t_nm_start)
+                   : (index_of(_t_cline, " ", _t_nm_start) < 0 ? #_t_cline : index_of(_t_cline, " ", _t_nm_start)))))
+            - _t_nm_start)
+        : "")
 
     -- ── comment strip: quick path + one scan event per tick ──
-    need_code ∈ Bool = (consume ∧ ¬is_top ∧ _in_fsm = 1)
-    d0 ∈ Int = (need_code ∨ ph = 2 ? index_of(cline, "--") : -1)
-    q0 ∈ Int = (need_code ∨ ph = 2 ? index_of(cline, "\"") : -1)
-    quick ∈ Bool = (d0 < 0 ∨ q0 < 0 ∨ q0 > d0)
-    strip_go ∈ Bool = ((need_code ∧ ¬quick) ∨ ph = 2)
-    cs_dd, cs_qq ∈ Int
-    cs_p ∈ Int
-    cs_q, cs_done ∈ Bool
-    cs_code ∈ String
-    AcCommentStep(s ↦ cline, p0 ↦ (ph = 2 ? _cur_a : q0 + 1), q0 ↦ (ph = 2 ? _cur_b = 1 : true), done0 ↦ ¬strip_go, code0 ↦ "", dd ↦ cs_dd, qq ↦ cs_qq, p1 ↦ cs_p, q1 ↦ cs_q, done1 ↦ cs_done, code1 ↦ cs_code)
-    lp_ready ∈ Bool = (consume ? (¬need_code ∨ quick ∨ cs_done) : ph = 2 ∧ cs_done)
-    code_now ∈ String = (need_code ∧ quick
-        ? (d0 < 0 ? cline : substr(cline, 0, d0))
-        : strip_go ∧ cs_done ? cs_code : "")
+    _t_need_code ∈ Bool = (_t_consume ∧ ¬_t_is_top ∧ _in_fsm = 1)
+    _t_d0 ∈ Int = (_t_need_code ∨ _t_ph = 2 ? index_of(_t_cline, "--") : -1)
+    _t_q0 ∈ Int = (_t_need_code ∨ _t_ph = 2 ? index_of(_t_cline, "\"") : -1)
+    _t_quick ∈ Bool = (_t_d0 < 0 ∨ _t_q0 < 0 ∨ _t_q0 > _t_d0)
+    _t_strip_go ∈ Bool = ((_t_need_code ∧ ¬_t_quick) ∨ _t_ph = 2)
+    _t_cs_dd, _t_cs_qq ∈ Int
+    _t_cs_p ∈ Int
+    _t_cs_q, _t_cs_done ∈ Bool
+    _t_cs_code ∈ String
+    AcCommentStep(s ↦ _t_cline, p0 ↦ (_t_ph = 2 ? _cur_a : _t_q0 + 1), q0 ↦ (_t_ph = 2 ? (_cur_b = 1) : true), done0 ↦ ¬_t_strip_go, code0 ↦ "", dd ↦ _t_cs_dd, qq ↦ _t_cs_qq, p1 ↦ _t_cs_p, q1 ↦ _t_cs_q, done1 ↦ _t_cs_done, code1 ↦ _t_cs_code)
+    _t_lp_ready ∈ Bool = (_t_consume ? (¬_t_need_code ∨ _t_quick ∨ _t_cs_done) : _t_ph = 2 ∧ _t_cs_done)
+    _t_code_now ∈ String = (_t_need_code ∧ _t_quick
+        ? (_t_d0 < 0 ? _t_cline : substr(_t_cline, 0, _t_d0))
+        : _t_strip_go ∧ _t_cs_done ? _t_cs_code : "")
 
     -- ── body-line analysis (bare field decl / composition call) ──
-    in_body ∈ Bool = (lp_ready ∧ ¬is_top ∧ _in_fsm = 1)
-    ws ∈ Int
-    AcWsSkip(s ↦ code_now, from ↦ 0, out ↦ ws)
-    ie ∈ Int
-    AcWordEnd(s ↦ code_now, from ↦ ws, out ↦ ie)
-    ie2 ∈ Int
-    AcWsSkip(s ↦ code_now, from ↦ ie, out ↦ ie2)
-    alpha_ok ∈ Bool = (ie > ws ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ", char_at(code_now, ws)))
-    pin_ch ∈ String = char_at(code_now, ie2)
-    is_bare ∈ Bool = (in_body ∧ alpha_ok ∧ pin_ch = "∈"
-        ∧ #code_now - ie2 - 1 ≥ 1
-        ∧ ¬str_contains(substr(code_now, ie2 + 1, #code_now - ie2 - 1), "="))
-    is_call ∈ Bool = (in_body ∧ alpha_ok ∧ pin_ch = "(")
-    fld ∈ String = substr(code_now, ws, ie - ws)
-    rest ∈ String = (is_bare ? substr(code_now, ie2 + 1, #code_now - ie2 - 1) : "")
-    t0 ∈ Int
-    AcWsSkip(s ↦ rest, from ↦ 0, out ↦ t0)
-    te ∈ Int
-    AcTrimEnd(s ↦ rest, out ↦ te)
-    typ ∈ String = (te > t0 ? substr(rest, t0, te - t0) : "")
-    ty_sp ∈ Int = index_of(typ, " ")
-    ty_tb ∈ Int = index_of(typ, "\t")
-    ty_cut ∈ Int = (ty_sp < 0 ? (ty_tb < 0 ? #typ : ty_tb) : (ty_tb ≥ 0 ∧ ty_tb < ty_sp ? ty_tb : ty_sp))
-    base ∈ String = substr(typ, 0, ty_cut)
+    _t_in_body ∈ Bool = (_t_lp_ready ∧ ¬_t_is_top ∧ _in_fsm = 1)
+    _t_ws ∈ Int
+    AcWsSkip(s ↦ _t_code_now, from ↦ 0, out ↦ _t_ws)
+    _t_ie ∈ Int
+    AcWordEnd(s ↦ _t_code_now, from ↦ _t_ws, out ↦ _t_ie)
+    _t_ie2 ∈ Int
+    AcWsSkip(s ↦ _t_code_now, from ↦ _t_ie, out ↦ _t_ie2)
+    _t_is_bare ∈ Bool = (_t_in_body ∧ _t_ie > _t_ws
+        ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ", char_at(_t_code_now, _t_ws))
+        ∧ (char_at(_t_code_now, _t_ie2) = "∈")
+        ? (#_t_code_now - _t_ie2 - 1 ≥ 1
+           ∧ ¬str_contains(substr(_t_code_now, _t_ie2 + 1, #_t_code_now - _t_ie2 - 1), "="))
+        : false)
+    _t_is_call ∈ Bool = (_t_in_body ∧ _t_ie > _t_ws
+        ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ", char_at(_t_code_now, _t_ws))
+        ∧ (char_at(_t_code_now, _t_ie2) = "("))
+    _t_fld ∈ String = substr(_t_code_now, _t_ws, _t_ie - _t_ws)
+    _t_rest ∈ String = (_t_is_bare ? substr(_t_code_now, _t_ie2 + 1, #_t_code_now - _t_ie2 - 1) : "")
+    _t_t0 ∈ Int
+    AcWsSkip(s ↦ _t_rest, from ↦ 0, out ↦ _t_t0)
+    _t_te ∈ Int
+    AcTrimEnd(s ↦ _t_rest, out ↦ _t_te)
+    -- base = the type text cut at its first " " or "\t"
+    _t_base ∈ String = (_t_te > _t_t0
+        ? substr(_t_rest, _t_t0,
+            ((index_of(substr(_t_rest, _t_t0, _t_te - _t_t0), " ") < 0
+              ∧ index_of(substr(_t_rest, _t_t0, _t_te - _t_t0), "\t") < 0)
+             ? _t_te - _t_t0
+             : (index_of(substr(_t_rest, _t_t0, _t_te - _t_t0), " ") < 0
+                ? index_of(substr(_t_rest, _t_t0, _t_te - _t_t0), "\t")
+                : (index_of(substr(_t_rest, _t_t0, _t_te - _t_t0), "\t") ≥ 0
+                   ∧ index_of(substr(_t_rest, _t_t0, _t_te - _t_t0), "\t") < index_of(substr(_t_rest, _t_t0, _t_te - _t_t0), " ")
+                   ? index_of(substr(_t_rest, _t_t0, _t_te - _t_t0), "\t")
+                   : index_of(substr(_t_rest, _t_t0, _t_te - _t_t0), " ")))))
+        : "")
 
-    -- ── phase 3: call scan, one paren/comma event per tick ──
-    e_no ∈ Int = (ph = 3 ? index_of(code, "(", _cur_a) : -1)
-    e_cl ∈ Int = (ph = 3 ? index_of(code, ")", _cur_a) : -1)
-    e_cm ∈ Int = (ph = 3 ? index_of(code, ",", _cur_a) : -1)
-    open_first ∈ Bool = (e_no ≥ 0 ∧ (e_cl < 0 ∨ e_no < e_cl) ∧ (e_cm < 0 ∨ e_no < e_cm))
-    close_first ∈ Bool = (¬open_first ∧ e_cl ≥ 0 ∧ (e_cm < 0 ∨ e_cl < e_cm))
-    comma_first ∈ Bool = (¬open_first ∧ ¬close_first ∧ e_cm ≥ 0)
-    none_left ∈ Bool = (ph = 3 ∧ e_no < 0 ∧ e_cl < 0 ∧ e_cm < 0)
-    seg_now ∈ Bool = (ph = 3 ∧ (none_left ∨ ((close_first ∨ comma_first) ∧ _cur_b = 1)))
-    scan3_done ∈ Bool = (ph = 3 ∧ (none_left ∨ (close_first ∧ _cur_b = 1)))
-    seg ∈ String = (seg_now ? substr(code, _cur_c, (none_left ? #code : close_first ? e_cl : e_cm) - _cur_c) : "")
-    h1 ∈ Int = index_of(seg, "↦")
-    h2 ∈ Int = (h1 ≥ 0 ? index_of(seg, "↦", h1 + 1) : -1)
-    h3 ∈ Int = (h2 ≥ 0 ? index_of(seg, "↦", h2 + 1) : -1)
-    h4 ∈ Int = (h3 ≥ 0 ? index_of(seg, "↦", h3 + 1) : -1)
-    h5 ∈ Int = (h4 ≥ 0 ? index_of(seg, "↦", h4 + 1) : -1)
-    hL ∈ Int = (h5 ≥ 0 ? h5 : h4 ≥ 0 ? h4 : h3 ≥ 0 ? h3 : h2 ≥ 0 ? h2 : h1)
-    slot_s ∈ Int
-    AcWsSkip(s ↦ seg, from ↦ 0, out ↦ slot_s)
-    slot_e ∈ Int
-    AcWordEnd(s ↦ seg, from ↦ slot_s, out ↦ slot_e)
-    slot_gap ∈ Int
-    AcWsSkip(s ↦ seg, from ↦ slot_e, out ↦ slot_gap)
-    slot_ok ∈ Bool = (h1 ≥ 0 ∧ slot_e > slot_s ∧ slot_gap = h1)
-    slot ∈ String = (slot_ok ? substr(seg, slot_s, slot_e - slot_s) : "")
-    v0 ∈ Int
-    AcWsSkip(s ↦ seg, from ↦ hL + 1, out ↦ v0)
-    ve ∈ Int
-    AcWordEnd(s ↦ seg, from ↦ v0, out ↦ ve)
-    vte ∈ Int
-    AcTrimEnd(s ↦ seg, out ↦ vte)
-    val_bare ∈ Bool = (slot_ok ∧ ve = vte ∧ v0 < vte
-        ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ", char_at(seg, v0)))
-    bind_now ∈ Bool = (seg_now ∧ slot_ok)
-    acc_now ∈ String = ((ph = 3 ? _acc_a : "") ++ (bind_now ? "⦂" ++ slot : ""))
+    -- ── phase 3: call scan — jump ↦ to ↦, one binding per tick ──
+    _t_m ∈ Int = (_t_ph = 3 ? index_of(code, "↦", _cur_a) : -1)
+    _t_scan3_done ∈ Bool = (_t_ph = 3 ∧ _t_m < 0)
+    _t_sb ∈ Int
+    AcWsBack(s ↦ code, from ↦ _t_m, out ↦ _t_sb)
+    _t_ss ∈ Int
+    AcWordBack(s ↦ code, from ↦ _t_sb, out ↦ _t_ss)
+    _t_pb ∈ Int
+    AcWsBack(s ↦ code, from ↦ _t_ss, out ↦ _t_pb)
+    _t_bind_now ∈ Bool = (_t_ph = 3 ∧ _t_m ≥ 0 ∧ _t_ss < _t_sb
+        ∧ ((char_at(code, _t_pb - 1) = "(") ∨ (char_at(code, _t_pb - 1) = ",")))
+    _t_slot ∈ String = (_t_bind_now ? substr(code, _t_ss, _t_sb - _t_ss) : "")
+    _t_v0 ∈ Int
+    AcWsSkip(s ↦ code, from ↦ (_t_m ≥ 0 ? _t_m + 1 : #code), out ↦ _t_v0)
+    _t_ve ∈ Int
+    AcWordEnd(s ↦ code, from ↦ _t_v0, out ↦ _t_ve)
+    _t_va ∈ Int
+    AcWsSkip(s ↦ code, from ↦ _t_ve, out ↦ _t_va)
+    _t_val_ok ∈ Bool = (_t_bind_now ∧ _t_ve > _t_v0
+        ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ", char_at(code, _t_v0))
+        ∧ (_t_va ≥ #code ∨ (char_at(code, _t_va) = ",") ∨ (char_at(code, _t_va) = ")")))
+    _t_acc_now ∈ String = ((_t_ph = 3 ? _acc_a : "") ++ (_t_bind_now ? "⦂" ++ _t_slot : ""))
 
     -- ── phases 4/14: claim end — scan body for `_x` per bare field ──
-    ce_on ∈ Bool = (ph = 4 ∨ ph = 14)
-    ce_done ∈ Bool = (ce_on ∧ _cur_a ≥ #_bare_reg)
-    ce_run ∈ Bool = (ce_on ∧ ¬ce_done)
-    ce_dot ∈ Int = (ce_run ? index_of(_bare_reg, ".", _cur_a) : 0)
-    ce_gt ∈ Int = (ce_run ? index_of(_bare_reg, "⟩", _cur_a) : 0)
-    ce_x ∈ String = (ce_run ? substr(_bare_reg, ce_dot + 1, ce_gt - ce_dot - 1) : "")
-    ce_c1 ∈ Int = (ce_run ? index_of(_bare_reg, "⦂", ce_gt) : 0)
-    ce_c2 ∈ Int = (ce_run ? index_of(_bare_reg, "⦂", ce_c1 + 1) : 0)
-    bp1_pos, bp1_o ∈ Int
-    bp1_f ∈ Int
-    AcBodyProbe(body ↦ _body, needle ↦ "_" ++ ce_x, nlen ↦ #ce_x + 1, o0 ↦ _cur_b, f0 ↦ (ce_run ? -2 : -1), pos ↦ bp1_pos, o1 ↦ bp1_o, f1 ↦ bp1_f)
-    bp2_pos, bp2_o ∈ Int
-    bp2_f ∈ Int
-    AcBodyProbe(body ↦ _body, needle ↦ "_" ++ ce_x, nlen ↦ #ce_x + 1, o0 ↦ bp1_o, f0 ↦ bp1_f, pos ↦ bp2_pos, o1 ↦ bp2_o, f1 ↦ bp2_f)
-    bp3_pos, bp3_o ∈ Int
-    bp3_f ∈ Int
-    AcBodyProbe(body ↦ _body, needle ↦ "_" ++ ce_x, nlen ↦ #ce_x + 1, o0 ↦ bp2_o, f0 ↦ bp2_f, pos ↦ bp3_pos, o1 ↦ bp3_o, f1 ↦ bp3_f)
-    ce_key ∈ String = (ce_run ? substr(_bare_reg, _cur_a, ce_gt + 1 - _cur_a) : "")
-    ce_hit ∈ Bool = (ce_run ∧ bp3_f ≥ 0)
-    ce_mark ∈ Bool = (ce_hit ∧ ¬str_contains(_carry_reg, ce_key))
-    ce_base ∈ String = (ce_mark ? substr(_bare_reg, ce_gt + 1, ce_c1 - ce_gt - 1) : "")
-    ce_next ∈ Bool = (ce_run ∧ (bp3_f ≥ 0 ∨ bp3_f = -1))
-
-    -- ── phase 5: worklist drain (call-direction carry propagation) ──
-    dr_done ∈ Bool = (ph = 5 ∧ _cur_a ≥ #_work_list)
-    dr_run ∈ Bool = (ph = 5 ∧ ¬dr_done)
-    dr_dot ∈ Int = (dr_run ? index_of(_work_list, ".", _cur_a) : 0)
-    dr_gt ∈ Int = (dr_run ? index_of(_work_list, "⟩", _cur_a) : 0)
-    dr_f ∈ String = (dr_run ? substr(_work_list, _cur_a + 1, dr_dot - _cur_a - 1) : "")
-    dr_x ∈ String = (dr_run ? substr(_work_list, dr_dot + 1, dr_gt - dr_dot - 1) : "")
-    dr_fsm_ok ∈ Bool = (dr_run ∧ str_contains(_fsm_set, "⟨" ++ dr_f ++ "⟩"))
-    dr_m ∈ Int = (dr_fsm_ok ? index_of(_bind_reg, "❲" ++ dr_f ++ "⦂" ++ dr_x ++ "❳", _cur_b) : -1)
-    dr_vs ∈ Int = (dr_m ≥ 0 ? dr_m + #dr_f + #dr_x + 3 : 0)
-    dr_vc ∈ Int = (dr_m ≥ 0 ? index_of(_bind_reg, "⦂", dr_vs) : 0)
-    dr_val ∈ String = (dr_m ≥ 0 ? substr(_bind_reg, dr_vs, dr_vc - dr_vs) : "0")
-    dr_fc ∈ Int = (dr_m ≥ 0 ? index_of(_bind_reg, "⦂", dr_vc + 1) : 0)
-    dr_f2 ∈ String = (dr_m ≥ 0 ? substr(_bind_reg, dr_vc + 1, dr_fc - dr_vc - 1) : "")
-    dr_bkey ∈ String = ("⟨" ++ dr_f2 ++ "." ++ dr_val ++ "⟩")
-    dr_bp ∈ Int = (dr_m ≥ 0 ∧ ¬(dr_val = "0") ? index_of(_bare_reg, dr_bkey) : -1)
-    dr_new ∈ Bool = (dr_bp ≥ 0 ∧ ¬str_contains(_carry_reg, dr_bkey))
-    dr_bc ∈ Int = (dr_new ? index_of(_bare_reg, "⦂", dr_bp + #dr_bkey) : 0)
-    dr_base ∈ String = (dr_new ? substr(_bare_reg, dr_bp + #dr_bkey, dr_bc - dr_bp - #dr_bkey) : "")
-    dr_item_done ∈ Bool = (dr_run ∧ (¬dr_fsm_ok ∨ dr_m < 0))
-
-    -- ── phase 6: insert walk over bare_reg × carry_reg ──
-    iw_done ∈ Bool = (ph = 6 ∧ _cur_a ≥ #_bare_reg)
-    iw_run ∈ Bool = (ph = 6 ∧ ¬iw_done)
-    iw_dot ∈ Int = (iw_run ? index_of(_bare_reg, ".", _cur_a) : 0)
-    iw_gt ∈ Int = (iw_run ? index_of(_bare_reg, "⟩", _cur_a) : 0)
-    iw_key ∈ String = (iw_run ? substr(_bare_reg, _cur_a, iw_gt + 1 - _cur_a) : "")
-    iw_x ∈ String = (iw_run ? substr(_bare_reg, iw_dot + 1, iw_gt - iw_dot - 1) : "")
-    iw_c1 ∈ Int = (iw_run ? index_of(_bare_reg, "⦂", iw_gt) : 0)
-    iw_c2 ∈ Int = (iw_run ? index_of(_bare_reg, "⦂", iw_c1 + 1) : 0)
-    iw_ln ∈ String = (iw_run ? substr(_bare_reg, iw_c1 + 1, iw_c2 - iw_c1 - 1) : "")
-    iw_cp ∈ Int = (iw_run ? index_of(_carry_reg, iw_key) : -1)
-    iw_isc ∈ Bool = (iw_cp ≥ 0)
-    iw_bc ∈ Int = (iw_isc ? index_of(_carry_reg, "⦂", iw_cp + #iw_key) : 0)
-    iw_base ∈ String = (iw_isc ? substr(_carry_reg, iw_cp + #iw_key, iw_bc - iw_cp - #iw_key) : "")
-
-    -- ── phase 7: inject walk over bind_reg call groups ──
-    jw_done ∈ Bool = (ph = 7 ∧ _cur_a ≥ #_bind_reg)
-    jw_run ∈ Bool = (ph = 7 ∧ ¬jw_done)
-    jw_cA ∈ Int = (jw_run ? index_of(_bind_reg, "⦂", _cur_a) : 0)
-    jw_brk ∈ Int = (jw_run ? index_of(_bind_reg, "❳", _cur_a) : 0)
-    jw_sub ∈ String = (jw_run ? substr(_bind_reg, _cur_a + 1, jw_cA - _cur_a - 1) : "")
-    jw_slot ∈ String = (jw_run ? substr(_bind_reg, jw_cA + 1, jw_brk - jw_cA - 1) : "")
-    jw_vc ∈ Int = (jw_run ? index_of(_bind_reg, "⦂", jw_brk) : 0)
-    jw_val ∈ String = (jw_run ? substr(_bind_reg, jw_brk + 1, jw_vc - jw_brk - 1) : "0")
-    jw_fc ∈ Int = (jw_run ? index_of(_bind_reg, "⦂", jw_vc + 1) : 0)
-    jw_nc ∈ Int = (jw_run ? index_of(_bind_reg, "⦂", jw_fc + 1) : 0)
-    jw_ln ∈ String = (jw_run ? substr(_bind_reg, jw_fc + 1, jw_nc - jw_fc - 1) : "")
-    jw_newgrp ∈ Bool = (jw_run ∧ ¬(jw_ln = _acc_b))
-    jw_flush ∈ Bool = ((jw_newgrp ∨ jw_done) ∧ ¬(_acc_a = "") ∧ (ph = 7))
-    jw_hp ∈ Int = (jw_run ? index_of(_slot_reg, "❰" ++ jw_ln ++ "❱") : -1)
-    jw_hs ∈ Int = (jw_hp ≥ 0 ? jw_hp + #jw_ln + 2 : 0)
-    jw_he ∈ Int = (jw_hp ≥ 0 ? index_of(_slot_reg, "❱", jw_hs) : 0)
-    jw_have ∈ Bool = (jw_hp ≥ 0
-        ∧ str_contains(substr(_slot_reg, jw_hs, jw_he - jw_hs), "⦂_" ++ jw_slot ++ "⦂"))
-    jw_give ∈ Bool = (jw_run ∧ ¬(jw_val = "0") ∧ ¬jw_have
-        ∧ str_contains(_fsm_set, "⟨" ++ jw_sub ++ "⟩")
-        ∧ str_contains(_carry_reg, "⟨" ++ jw_sub ++ "." ++ jw_slot ++ "⟩"))
+    _t_ce_on ∈ Bool = (_t_ph = 4 ∨ _t_ph = 14)
+    _t_ce_done ∈ Bool = (_t_ce_on ∧ _cur_a ≥ #_claim_bare)
+    _t_ce_run ∈ Bool = (_t_ce_on ∧ ¬_t_ce_done)
+    _t_ce_gt ∈ Int = (_t_ce_run ? index_of(_claim_bare, "⟩", _cur_a) : 0)
+    _t_ce_x ∈ String = (_t_ce_run
+        ? substr(_claim_bare, index_of(_claim_bare, ".", _cur_a) + 1, _t_ce_gt - index_of(_claim_bare, ".", _cur_a) - 1)
+        : "")
+    _t_ce_o1, _t_ce_f1 ∈ Int
+    AcBodyScan3(body ↦ _body, needle ↦ "_" ++ _t_ce_x, nlen ↦ #_t_ce_x + 1, o0 ↦ _cur_b, act ↦ _t_ce_run, o1 ↦ _t_ce_o1, f1 ↦ _t_ce_f1)
+    _t_ce_mark ∈ Bool = (_t_ce_run ∧ _t_ce_f1 ≥ 0)
 
     -- ── transitions ──
-    enter_call ∈ Bool = is_call
-    enter_ce ∈ Bool = (lp_ready ∧ is_top ∧ _in_fsm = 1)
-    enter_ce_eof ∈ Bool = (eof_now ∧ _in_fsm = 1)
-    switch_now ∈ Bool = ((lp_ready ∧ is_top ∧ _in_fsm = 0) ∨ (ph = 4 ∧ ce_done))
+    _t_enter_call ∈ Bool = _t_is_call
+    _t_enter_ce ∈ Bool = (_t_lp_ready ∧ _t_is_top ∧ _in_fsm = 1)
+    _t_enter_ce_eof ∈ Bool = (_t_eof_now ∧ _in_fsm = 1)
+    _t_switch_now ∈ Bool = ((_t_lp_ready ∧ _t_is_top ∧ _in_fsm = 0) ∨ (_t_ph = 4 ∧ _t_ce_done))
 
     phase = (is_first_tick ? 1
-        : eof_now ? (_in_fsm = 1 ? 14 : 5)
-        : lp_ready ? (is_top ? (_in_fsm = 1 ? 4 : 1) : is_call ? 3 : 1)
-        : consume ? 2
-        : ph = 2 ? 2
-        : ph = 3 ? (scan3_done ? 1 : 3)
-        : ph = 4 ? (ce_done ? 1 : 4)
-        : ph = 14 ? (ce_done ? 5 : 14)
-        : ph = 5 ? (dr_done ? 6 : 5)
-        : ph = 6 ? (iw_done ? 7 : 6)
-        : ph = 7 ? (jw_done ? 8 : 7)
-        : ph = 8 ? 9
-        : 9)
-    line_no = (is_first_tick ? 0 : nn)
-    line = (is_first_tick ? "" : consume ? rline : _line)
-    code = (is_first_tick ? "" : lp_ready ? code_now : _code)
-    claim_name = (is_first_tick ? "" : switch_now ? (hdr_fsm ? hdr_name : "") : _claim_name)
-    in_fsm = (is_first_tick ? 0 : switch_now ? (hdr_fsm ? 1 : 0) : _in_fsm)
-    callee = (is_first_tick ? "" : enter_call ? fld : _callee)
+        : _t_eof_now ? (_in_fsm = 1 ? 14 : 13)
+        : _t_lp_ready ? (_t_is_top ? (_in_fsm = 1 ? 4 : 1) : _t_is_call ? 3 : 1)
+        : _t_consume ? 2
+        : _t_ph = 2 ? 2
+        : _t_ph = 3 ? (_t_scan3_done ? 1 : 3)
+        : _t_ph = 4 ? (_t_ce_done ? 1 : 4)
+        : _t_ph = 14 ? (_t_ce_done ? 13 : 14)
+        : 13)
+    line_no = (is_first_tick ? 0 : _t_nn)
+    line = (is_first_tick ? "" : _t_consume ? _t_rline : _line)
+    code = (is_first_tick ? "" : _t_lp_ready ? _t_code_now : _code)
+    claim_name = (is_first_tick ? "" : _t_switch_now ? (_t_hdr_fsm ? _t_hdr_name : "") : _claim_name)
+    in_fsm = (is_first_tick ? 0 : _t_switch_now ? (_t_hdr_fsm ? 1 : 0) : _in_fsm)
+    callee = (is_first_tick ? "" : _t_enter_call ? _t_fld : _callee)
     body = (is_first_tick ? "\n"
-        : switch_now ? "\n"
-        : in_body ? _body ++ code_now ++ "\n"
+        : _t_switch_now ? "\n"
+        : _t_in_body ? _body ++ _t_code_now ++ "\n"
         : _body)
-    fsm_set = (is_first_tick ? "" : switch_now ∧ hdr_fsm ? _fsm_set ++ "⟨" ++ hdr_name ++ "⟩" : _fsm_set)
-    bare_reg = (is_first_tick ? "" : is_bare
-        ? _bare_reg ++ "⟨" ++ _claim_name ++ "." ++ fld ++ "⟩" ++ base ++ "⦂" ++ str_from_int(nn) ++ "⦂"
-        : _bare_reg)
-    bind_reg = (is_first_tick ? "" : bind_now
-        ? _bind_reg ++ "❲" ++ _callee ++ "⦂" ++ slot ++ "❳"
-          ++ (val_bare ? substr(seg, v0, ve - v0) : "0")
-          ++ "⦂" ++ _claim_name ++ "⦂" ++ str_from_int(nn) ++ "⦂"
-        : _bind_reg)
-    slot_reg = (is_first_tick ? "" : scan3_done ∧ ¬(acc_now = "")
-        ? _slot_reg ++ "❰" ++ str_from_int(nn) ++ "❱" ++ acc_now ++ "⦂❱"
-        : _slot_reg)
-    carry_reg = (is_first_tick ? ""
-        : ce_mark ? _carry_reg ++ ce_key ++ ce_base ++ "⦂"
-        : dr_new ? _carry_reg ++ dr_bkey ++ dr_base ++ "⦂"
-        : _carry_reg)
-    work_list = (is_first_tick ? ""
-        : ce_mark ? _work_list ++ ce_key
-        : dr_new ? _work_list ++ dr_bkey
-        : _work_list)
-    ins_out = (is_first_tick ? "" : iw_run ∧ iw_isc
-        ? _ins_out ++ "⟦" ++ iw_ln ++ "⟧_" ++ iw_x ++ " ∈ " ++ iw_base
-        : _ins_out)
-    inj_out = (is_first_tick ? "" : jw_flush
-        ? _inj_out ++ "⟦" ++ _acc_b ++ "⟧" ++ _acc_a
-        : _inj_out)
-    bare_mark = (is_first_tick ? 0 : switch_now ? #_bare_reg : _bare_mark)
+    claim_bare = (is_first_tick ? ""
+        : _t_switch_now ? ""
+        : _t_is_bare
+        ? _claim_bare ++ "⟨" ++ _claim_name ++ "." ++ _t_fld ++ "⟩" ++ _t_base ++ "⦂" ++ str_from_int(_t_nn) ++ "⦂"
+        : _claim_bare)
     cur_a = (is_first_tick ? 0
-        : enter_ce ∨ enter_ce_eof ? _bare_mark
-        : eof_now ? 0
-        : enter_call ? ie2 + 1
-        : consume ∧ ¬lp_ready ? cs_p
-        : ph = 2 ∧ ¬lp_ready ? cs_p
-        : ph = 3 ? (open_first ? e_no + 1 : close_first ? e_cl + 1 : comma_first ? e_cm + 1 : #code)
-        : ce_run ? (ce_next ? ce_c2 + 1 : _cur_a)
-        : ph = 4 ∧ ce_done ? 0
-        : ph = 14 ∧ ce_done ? 0
-        : dr_run ? (dr_item_done ? dr_gt + 1 : _cur_a)
-        : ph = 5 ∧ dr_done ? 0
-        : iw_run ? iw_c2 + 1
-        : ph = 6 ∧ iw_done ? 0
-        : jw_run ? jw_nc + 1
+        : _t_enter_ce ∨ _t_enter_ce_eof ? 0
+        : _t_enter_call ? _t_ie2 + 1
+        : _t_consume ∧ ¬_t_lp_ready ? _t_cs_p
+        : _t_ph = 2 ∧ ¬_t_lp_ready ? _t_cs_p
+        : _t_ph = 3 ? (_t_m ≥ 0 ? _t_m + 1 : _cur_a)
+        : _t_ce_run ? (_t_ce_f1 > -2
+            ? index_of(_claim_bare, "⦂", index_of(_claim_bare, "⦂", _t_ce_gt) + 1) + 1
+            : _cur_a)
         : _cur_a)
     cur_b = (is_first_tick ? 0
-        : enter_ce ∨ enter_ce_eof ? 0
-        : eof_now ? 0
-        : enter_call ? 1
-        : consume ∧ ¬lp_ready ? (cs_q ? 1 : 0)
-        : ph = 2 ∧ ¬lp_ready ? (cs_q ? 1 : 0)
-        : ph = 3 ? (open_first ? _cur_b + 1 : close_first ? _cur_b - 1 : _cur_b)
-        : ce_run ? (ce_next ? 0 : bp3_o)
-        : ph = 4 ∧ ce_done ? 0
-        : ph = 14 ∧ ce_done ? 0
-        : dr_run ? (dr_item_done ? 0 : dr_m + 1)
+        : _t_enter_ce ∨ _t_enter_ce_eof ? 0
+        : _t_enter_call ? 1
+        : _t_consume ∧ ¬_t_lp_ready ? (_t_cs_q ? 1 : 0)
+        : _t_ph = 2 ∧ ¬_t_lp_ready ? (_t_cs_q ? 1 : 0)
+        : _t_ce_run ? (_t_ce_f1 > -2 ? 0 : _t_ce_o1)
         : _cur_b)
-    cur_c = (is_first_tick ? 0
-        : enter_call ? ie2 + 1
-        : ph = 3 ∧ comma_first ∧ _cur_b = 1 ? e_cm + 1
-        : _cur_c)
     acc_a = (is_first_tick ? ""
-        : enter_call ? ""
-        : ph = 3 ? acc_now
-        : ph = 5 ∧ dr_done ? ""
-        : jw_newgrp ? (jw_give ? ", _" ++ jw_slot ++ " ↦ _" ++ jw_val : "")
-        : jw_run ∧ jw_give ? _acc_a ++ ", _" ++ jw_slot ++ " ↦ _" ++ jw_val
+        : _t_enter_call ? ""
+        : _t_ph = 3 ? _t_acc_now
         : _acc_a)
-    acc_b = (is_first_tick ? ""
-        : ph = 5 ∧ dr_done ? ""
-        : jw_run ? jw_ln
-        : _acc_b)
 
-    -- ── effects ──
+    -- ── effects: stream one registry record per discovery tick ──
     eff_nop ∈ Effect
     eff_nop = LibCall("libc", "getpid", ⟨⟩)
+    _t_rec_fsm ∈ Bool = (_t_switch_now ∧ _t_hdr_fsm)
+    _t_rec ∈ String = (_t_rec_fsm ? "F⟨" ++ _t_hdr_name ++ "⟩"
+        : _t_is_bare ? "B⟨" ++ _claim_name ++ "." ++ _t_fld ++ "⟩" ++ _t_base ++ "⦂" ++ str_from_int(_t_nn) ++ "⦂"
+        : _t_bind_now ? "D❲" ++ _callee ++ "⦂" ++ _t_slot ++ "❳"
+          ++ (_t_val_ok ? substr(code, _t_v0, _t_ve - _t_v0) : "0")
+          ++ "⦂" ++ _claim_name ++ "⦂" ++ str_from_int(_t_nn) ++ "⦂"
+        : _t_scan3_done ∧ ¬(_t_acc_now = "") ? "S❰" ++ str_from_int(_t_nn) ++ "❱" ++ _t_acc_now ++ "⦂❱"
+        : _t_ce_mark ? "C" ++ substr(_claim_bare, _cur_a, _t_ce_gt + 1 - _cur_a)
+          ++ substr(_claim_bare, _t_ce_gt + 1, index_of(_claim_bare, "⦂", _t_ce_gt) - _t_ce_gt - 1) ++ "⦂"
+        : "")
+    _t_emit_rec ∈ Bool = (¬(_t_rec = ""))
     eff_out ∈ Effect
-    BuildPrintln(s ↦ (ph = 8 ? _ins_out : _inj_out), eff ↦ eff_out)
-    read_go ∈ Bool = ((lp_ready ∧ ¬is_call ∧ ¬enter_ce) ∨ (ph = 3 ∧ scan3_done) ∨ (ph = 4 ∧ ce_done))
+    BuildPrintln(s ↦ _t_rec, eff ↦ eff_out)
+    _t_read_go ∈ Bool = ((_t_lp_ready ∧ ¬_t_is_call ∧ ¬_t_enter_ce) ∨ (_t_ph = 3 ∧ _t_scan3_done) ∨ (_t_ph = 4 ∧ _t_ce_done))
+    _t_exit_now ∈ Bool = (_t_ph = 13)
 
     effects ∈ Seq(Effect) = (is_first_tick ? ⟨eff_nop, ReadLine⟩
-        : ph = 8 ? ⟨eff_out, eff_nop⟩
-        : ph = 9 ? ⟨eff_out, Exit(0)⟩
-        : read_go ? ⟨eff_nop, ReadLine⟩
+        : _t_exit_now ? ⟨Exit(0), eff_nop⟩
+        : _t_emit_rec ∧ _t_read_go ? ⟨eff_out, ReadLine⟩
+        : _t_emit_rec ? ⟨eff_out, eff_nop⟩
+        : _t_read_go ? ⟨eff_nop, ReadLine⟩
         : ⟨eff_nop, eff_nop⟩)
