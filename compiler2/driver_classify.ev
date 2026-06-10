@@ -2,11 +2,11 @@
 -- CONSUMES: the decoded token window head views (tok0..tok7), the
 --           classify-mode gate (classify_now), the claim/type index
 --           (claimidx_names) + symbol table (sym_names), the inline-frame state
---           (_frame_depth, _scope_prefix, bind_n0..n5), the record registry
+--           (_frame_depth, _scope_prefix, bind_n0..n5, _join_hdr), the record registry
 --           (recs .name / .sort), the user-enum + seq-var carries
 --           (_user_enum_done, _user_enum_name, _seqvar_set, _seqvar_name), and the sibling
 --           sub-walks' per-line enter signals (efflit_*/arm_*/seqlit_*/callw_slot/
---           qrange_close/pos_elem) that fold into enter_pratt. Wide by nature: this
+--           callw_pun/qrange_close/pos_elem) that fold into enter_pratt. Wide by nature: this
 --           is the central dispatch brain — it inspects the whole window
 --           against every other subsystem's entry condition (justified
 --           §6.4).
@@ -21,7 +21,10 @@
 --           registries (no own carried state beyond pratt_qstop); a name
 --           that is bound or already declared (no_decl) resolves the
 --           existing handle instead of redeclaring — the rule that keeps
---           names-match splices from emitting duplicate decls.
+--           names-match splices from emitting duplicate decls. name_outer
+--           pass-down is gated by the frame join-set (_join_hdr): inside a
+--           headered callee only its header names may resolve outer
+--           (claim-headers plan; fixtures 142-148).
 --
 -- Token window → per-line classification + dispatch decision. Lifted into
 -- driver_main via `..DriverClassify`.
@@ -133,12 +136,13 @@ fsm DriverClassify
         ∧ (line_pinned ∨ (¬line_is_mem)))
     enter_pratt ∈ Bool = (enter_pratt_line ∨ efflit_exit_enter
         ∨ efflit_guard_enter ∨ arm_body_enter ∨ seqlit_elem_enter ∨ callw_slot
-        ∨ qrange_close ∨ enter_qseq ∨ pos_elem)
+        ∨ callw_pun ∨ qrange_close ∨ enter_qseq ∨ pos_elem)
     pratt_enter_consume ∈ Int = (efflit_exit_enter ? 2
         : efflit_guard_enter ? 0
         : arm_body_enter ? ((arm_take ∧ arm_payload_head) ? 5 : 2)
         : seqlit_elem_enter ? 0
         : callw_slot ? 2
+        : callw_pun ? 0
         : qrange_close ? 2
         : enter_qseq ? (q_seq_dotted ? 7 : 5)
         : pos_elem ? 0
@@ -148,6 +152,7 @@ fsm DriverClassify
         : arm_body_enter ? 4
         : seqlit_elem_enter ? 7
         : callw_slot ? 8
+        : callw_pun ? 8
         : qrange_close ? 9
         : enter_qseq ? 9
         : pos_elem ? 10
@@ -175,7 +180,8 @@ fsm DriverClassify
     bare_key ∈ String
     FtiNameEntry(name ↦ line_name, entry ↦ bare_key)
     name_outer ∈ Bool = ((line_name ≠ "") ∧ (substr(_scope_prefix, 0, 3) = "__c")
-        ∧ (index_of(sym_names, bare_key, 0) ≥ 0))
+        ∧ (index_of(sym_names, bare_key, 0) ≥ 0)
+        ∧ ((_join_hdr = "*") ∨ (index_of(_join_hdr, "|" ++ line_name ++ "|", 0) ≥ 0)))
     no_decl ∈ Bool = (name_bound ∨ name_dup ∨ name_outer)
     resolved_name ∈ String = ((name_bound ∨ name_outer) ? line_name : line_dname)
     mem_head_item ∈ C2Item = (no_decl ? C2Process(EIdent(resolved_name))

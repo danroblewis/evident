@@ -495,6 +495,7 @@ fsm driver_main
         : setlit_close ? setlit_close_items
         : (callw_fire ∧ _callw_is_type) ? type_pin_items
         : (callw_bare_jump ∧ _callw_is_type ∧ (_type_slot ≥ 0)) ? type_recdecl_items
+        : pskip_decl_fire ? pskip_decl_items
         : group_ty_tick ? mem_items
         : group_drain ? group_drain_items
         : (pos_close ∧ close_recv_method) ? close_recv_items

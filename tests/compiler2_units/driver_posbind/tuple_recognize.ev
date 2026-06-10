@@ -91,6 +91,20 @@ fsm main
     guard_hit = (is_first_tick ? false : _guard_hit)
     guard_lhs ∈ Expr
     guard_lhs = (is_first_tick ? EInt(0) : _guard_lhs)
+    guard_on ∈ Bool
+    guard_on = (is_first_tick ? false : _guard_on)
+    guard_depth ∈ Int
+    guard_depth = (is_first_tick ? 0 : _guard_depth)
+    callw_hide ∈ Bool
+    callw_hide = (is_first_tick ? false : _callw_hide)
+    callw_bare ∈ Bool
+    callw_bare = (is_first_tick ? false : _callw_bare)
+    callw_is_type ∈ Bool
+    callw_is_type = (is_first_tick ? false : _callw_is_type)
+    user_enum_done ∈ Bool
+    user_enum_done = (is_first_tick ? false : _user_enum_done)
+    user_enum_name ∈ String
+    user_enum_name = (is_first_tick ? "" : _user_enum_name)
     idx ∈ String
     idx = (is_first_tick ? "" : _idx)
     frame_depth ∈ Int
