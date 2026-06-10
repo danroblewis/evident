@@ -1,7 +1,7 @@
 -- DriverPosBind isolation — tuple-element recognizer + atom parse.
--- pmode-12 positional walk, window = `( 5 , 7 )`. Must parse both atoms
--- (ptt_ok0) and recognize the 5-token tuple bite (pt_tup_b).
--- verdict = 1*pt_tup_b + 2*ptt_ok0 = 3.
+-- parse_mode-12 positional walk, window = `( 5 , 7 )`. Must parse both atoms
+-- (tuparg_ok0) and recognize the 5-token tuple bite (tuple_bite).
+-- verdict = 1*tuple_bite + 2*tuparg_ok0 = 3.
 --
 -- entry: main
 -- expect: stdout = "3"
@@ -19,155 +19,155 @@ import "compiler2/driver_posbind.ev"
 fsm main
     in_parse ∈ Bool
     in_parse = (is_first_tick ? true : _in_parse)
-    pmode ∈ Int
-    pmode = (is_first_tick ? 12 : _pmode)
+    parse_mode ∈ Int
+    parse_mode = (is_first_tick ? 12 : _parse_mode)
     tok_ready ∈ Bool
     tok_ready = (is_first_tick ? true : _tok_ready)
-    d_witems_nil ∈ Bool
-    d_witems_nil = (is_first_tick ? true : _d_witems_nil)
-    ww_t0 ∈ Token
-    ww_t0 = (is_first_tick ? LParen : _ww_t0)
-    ww_t1 ∈ Token
-    ww_t1 = (is_first_tick ? IntLit(5) : _ww_t1)
-    ww_t2 ∈ Token
-    ww_t2 = (is_first_tick ? Comma : _ww_t2)
-    ww_t3 ∈ Token
-    ww_t3 = (is_first_tick ? IntLit(7) : _ww_t3)
-    ww_t4 ∈ Token
-    ww_t4 = (is_first_tick ? RParen : _ww_t4)
-    c_comp_found ∈ Bool
-    c_comp_found = (is_first_tick ? false : _c_comp_found)
-    c_dd_shape ∈ Bool
-    c_dd_shape = (is_first_tick ? false : _c_dd_shape)
-    c_name ∈ String
-    c_name = (is_first_tick ? "" : _c_name)
-    c_t0 ∈ Token
-    c_t0 = (is_first_tick ? EofTok : _c_t0)
-    c_t0_is_ident ∈ Bool
-    c_t0_is_ident = (is_first_tick ? false : _c_t0_is_ident)
-    c_t1 ∈ Token
-    c_t1 = (is_first_tick ? EofTok : _c_t1)
-    c_t2 ∈ Token
-    c_t2 = (is_first_tick ? EofTok : _c_t2)
-    c_t3 ∈ Token
-    c_t3 = (is_first_tick ? EofTok : _c_t3)
-    c_t4 ∈ Token
-    c_t4 = (is_first_tick ? EofTok : _c_t4)
-    cibuf ∈ FtiBuffer
-    cibuf.base = (is_first_tick ? 0 : _cibuf.base)
-    cibuf.count = (is_first_tick ? 0 : _cibuf.count)
-    ci_names ∈ String
-    ci_names = (is_first_tick ? "" : _ci_names)
-    cw_reset ∈ Bool
-    cw_reset = (is_first_tick ? false : _cw_reset)
-    d_classify ∈ Bool
-    d_classify = (is_first_tick ? false : _d_classify)
-    d_h_2nd ∈ Int
-    d_h_2nd = (is_first_tick ? 0 : _d_h_2nd)
-    d_h_3rd ∈ Int
-    d_h_3rd = (is_first_tick ? 0 : _d_h_3rd)
-    d_h_4th ∈ Int
-    d_h_4th = (is_first_tick ? 0 : _d_h_4th)
-    d_h_t1 ∈ C2H
-    d_h_t1 = (is_first_tick ? C2HNil : _d_h_t1)
-    d_h_t2 ∈ C2H
-    d_h_t2 = (is_first_tick ? C2HNil : _d_h_t2)
-    d_h_t3 ∈ C2H
-    d_h_t3 = (is_first_tick ? C2HNil : _d_h_t3)
-    d_h_t4 ∈ C2H
-    d_h_t4 = (is_first_tick ? C2HNil : _d_h_t4)
-    d_h_t5 ∈ C2H
-    d_h_t5 = (is_first_tick ? C2HNil : _d_h_t5)
-    d_h_top ∈ Int
-    d_h_top = (is_first_tick ? 0 : _d_h_top)
-    d_hstk_in ∈ C2H
-    d_hstk_in = (is_first_tick ? C2HNil : _d_hstk_in)
-    d_line_end ∈ Bool
-    d_line_end = (is_first_tick ? false : _d_line_end)
-    evt ∈ Seq(EnumVariantVal)
-    #evt ≤ 6
-    evt = (is_first_tick ? ⟨⟩ : _evt)
-    gc_hit ∈ Bool
-    gc_hit = (is_first_tick ? false : _gc_hit)
-    gc_l ∈ Expr
-    gc_l = (is_first_tick ? EInt(0) : _gc_l)
+    work_nil ∈ Bool
+    work_nil = (is_first_tick ? true : _work_nil)
+    tok0 ∈ Token
+    tok0 = (is_first_tick ? LParen : _tok0)
+    tok1 ∈ Token
+    tok1 = (is_first_tick ? IntLit(5) : _tok1)
+    tok2 ∈ Token
+    tok2 = (is_first_tick ? Comma : _tok2)
+    tok3 ∈ Token
+    tok3 = (is_first_tick ? IntLit(7) : _tok3)
+    tok4 ∈ Token
+    tok4 = (is_first_tick ? RParen : _tok4)
+    comp_found ∈ Bool
+    comp_found = (is_first_tick ? false : _comp_found)
+    dotdot_shape ∈ Bool
+    dotdot_shape = (is_first_tick ? false : _dotdot_shape)
+    line_name ∈ String
+    line_name = (is_first_tick ? "" : _line_name)
+    line_t0 ∈ Token
+    line_t0 = (is_first_tick ? EofTok : _line_t0)
+    line_t0_ident ∈ Bool
+    line_t0_ident = (is_first_tick ? false : _line_t0_ident)
+    line_t1 ∈ Token
+    line_t1 = (is_first_tick ? EofTok : _line_t1)
+    line_t2 ∈ Token
+    line_t2 = (is_first_tick ? EofTok : _line_t2)
+    line_t3 ∈ Token
+    line_t3 = (is_first_tick ? EofTok : _line_t3)
+    line_t4 ∈ Token
+    line_t4 = (is_first_tick ? EofTok : _line_t4)
+    claimidx_buf ∈ FtiBuffer
+    claimidx_buf.base = (is_first_tick ? 0 : _claimidx_buf.base)
+    claimidx_buf.count = (is_first_tick ? 0 : _claimidx_buf.count)
+    claimidx_names ∈ String
+    claimidx_names = (is_first_tick ? "" : _claimidx_names)
+    callw_reset ∈ Bool
+    callw_reset = (is_first_tick ? false : _callw_reset)
+    classify_now ∈ Bool
+    classify_now = (is_first_tick ? false : _classify_now)
+    h_2nd ∈ Int
+    h_2nd = (is_first_tick ? 0 : _h_2nd)
+    h_3rd ∈ Int
+    h_3rd = (is_first_tick ? 0 : _h_3rd)
+    h_4th ∈ Int
+    h_4th = (is_first_tick ? 0 : _h_4th)
+    h_tail1 ∈ C2H
+    h_tail1 = (is_first_tick ? C2HNil : _h_tail1)
+    h_tail2 ∈ C2H
+    h_tail2 = (is_first_tick ? C2HNil : _h_tail2)
+    h_tail3 ∈ C2H
+    h_tail3 = (is_first_tick ? C2HNil : _h_tail3)
+    h_tail4 ∈ C2H
+    h_tail4 = (is_first_tick ? C2HNil : _h_tail4)
+    h_tail5 ∈ C2H
+    h_tail5 = (is_first_tick ? C2HNil : _h_tail5)
+    h_top ∈ Int
+    h_top = (is_first_tick ? 0 : _h_top)
+    stack_in ∈ C2H
+    stack_in = (is_first_tick ? C2HNil : _stack_in)
+    line_end ∈ Bool
+    line_end = (is_first_tick ? false : _line_end)
+    enum_values ∈ Seq(EnumVariantVal)
+    #enum_values ≤ 6
+    enum_values = (is_first_tick ? ⟨⟩ : _enum_values)
+    guard_hit ∈ Bool
+    guard_hit = (is_first_tick ? false : _guard_hit)
+    guard_lhs ∈ Expr
+    guard_lhs = (is_first_tick ? EInt(0) : _guard_lhs)
     idx ∈ String
     idx = (is_first_tick ? "" : _idx)
-    il_depth ∈ Int
-    il_depth = (is_first_tick ? 0 : _il_depth)
-    il_jump ∈ Bool
-    il_jump = (is_first_tick ? false : _il_jump)
-    il_pd ∈ Int
-    il_pd = (is_first_tick ? 0 : _il_pd)
-    il_pfx ∈ String
-    il_pfx = (is_first_tick ? "" : _il_pfx)
-    ilb_n0 ∈ String
-    ilb_n0 = (is_first_tick ? "" : _ilb_n0)
-    ilb_n1 ∈ String
-    ilb_n1 = (is_first_tick ? "" : _ilb_n1)
-    ilb_n2 ∈ String
-    ilb_n2 = (is_first_tick ? "" : _ilb_n2)
-    ilb_n3 ∈ String
-    ilb_n3 = (is_first_tick ? "" : _ilb_n3)
-    ilb_n4 ∈ String
-    ilb_n4 = (is_first_tick ? "" : _ilb_n4)
-    ilb_n5 ∈ String
-    ilb_n5 = (is_first_tick ? "" : _ilb_n5)
-    ips_done ∈ Bool
-    ips_done = (is_first_tick ? false : _ips_done)
-    ips_off ∈ Bool
-    ips_off = (is_first_tick ? false : _ips_off)
-    ips_open ∈ Bool
-    ips_open = (is_first_tick ? false : _ips_open)
-    ips_skp ∈ Bool
-    ips_skp = (is_first_tick ? false : _ips_skp)
-    mp_items ∈ C2Items
-    mp_items = (is_first_tick ? C2INil : _mp_items)
-    mq_wc ∈ Bool
-    mq_wc = (is_first_tick ? false : _mq_wc)
+    frame_depth ∈ Int
+    frame_depth = (is_first_tick ? 0 : _frame_depth)
+    frame_jump ∈ Bool
+    frame_jump = (is_first_tick ? false : _frame_jump)
+    param_depth ∈ Int
+    param_depth = (is_first_tick ? 0 : _param_depth)
+    scope_prefix ∈ String
+    scope_prefix = (is_first_tick ? "" : _scope_prefix)
+    bind_n0 ∈ String
+    bind_n0 = (is_first_tick ? "" : _bind_n0)
+    bind_n1 ∈ String
+    bind_n1 = (is_first_tick ? "" : _bind_n1)
+    bind_n2 ∈ String
+    bind_n2 = (is_first_tick ? "" : _bind_n2)
+    bind_n3 ∈ String
+    bind_n3 = (is_first_tick ? "" : _bind_n3)
+    bind_n4 ∈ String
+    bind_n4 = (is_first_tick ? "" : _bind_n4)
+    bind_n5 ∈ String
+    bind_n5 = (is_first_tick ? "" : _bind_n5)
+    pskip_done ∈ Bool
+    pskip_done = (is_first_tick ? false : _pskip_done)
+    pskip_off ∈ Bool
+    pskip_off = (is_first_tick ? false : _pskip_off)
+    pskip_open ∈ Bool
+    pskip_open = (is_first_tick ? false : _pskip_open)
+    pskip_run ∈ Bool
+    pskip_run = (is_first_tick ? false : _pskip_run)
+    match_items ∈ C2Items
+    match_items = (is_first_tick ? C2INil : _match_items)
+    wc_body_done ∈ Bool
+    wc_body_done = (is_first_tick ? false : _wc_body_done)
     name ∈ String
     name = (is_first_tick ? "" : _name)
-    p_done ∈ Bool
-    p_done = (is_first_tick ? false : _p_done)
-    pk_kind ∈ Int
-    pk_kind = (is_first_tick ? 0 : _pk_kind)
-    pk_name ∈ String
-    pk_name = (is_first_tick ? "" : _pk_name)
-    pk_nat ∈ Bool
-    pk_nat = (is_first_tick ? false : _pk_nat)
-    pk_nodecl ∈ Bool
-    pk_nodecl = (is_first_tick ? false : _pk_nodecl)
-    pk_pn ∈ String
-    pk_pn = (is_first_tick ? "" : _pk_pn)
-    pk_rec ∈ Int
-    pk_rec = (is_first_tick ? 0 : _pk_rec)
-    pk_sc ∈ Int
-    pk_sc = (is_first_tick ? 0 : _pk_sc)
-    pr_bad ∈ Bool
-    pr_bad = (is_first_tick ? false : _pr_bad)
-    pr_sres ∈ Expr
-    pr_sres = (is_first_tick ? EInt(0) : _pr_sres)
-    rt_e0 ∈ RecTypeEntry(name ↦ "", fnames ↦ "", ftypes ↦ "", nf ↦ 0,
+    pratt_done ∈ Bool
+    pratt_done = (is_first_tick ? false : _pratt_done)
+    pratt_kind ∈ Int
+    pratt_kind = (is_first_tick ? 0 : _pratt_kind)
+    pratt_decl_name ∈ String
+    pratt_decl_name = (is_first_tick ? "" : _pratt_decl_name)
+    pratt_nat ∈ Bool
+    pratt_nat = (is_first_tick ? false : _pratt_nat)
+    pratt_nodecl ∈ Bool
+    pratt_nodecl = (is_first_tick ? false : _pratt_nodecl)
+    pratt_pin_name ∈ String
+    pratt_pin_name = (is_first_tick ? "" : _pratt_pin_name)
+    pratt_rec_slot ∈ Int
+    pratt_rec_slot = (is_first_tick ? 0 : _pratt_rec_slot)
+    pratt_sort ∈ Int
+    pratt_sort = (is_first_tick ? 0 : _pratt_sort)
+    pratt_bad ∈ Bool
+    pratt_bad = (is_first_tick ? false : _pratt_bad)
+    pratt_result ∈ Expr
+    pratt_result = (is_first_tick ? EInt(0) : _pratt_result)
+    rec0 ∈ RecTypeEntry(name ↦ "", fnames ↦ "", ftypes ↦ "", n_fields ↦ 0,
         sort ↦ 0, ctor ↦ 0, asort ↦ 0, ssort ↦ 0,
-        a0 ↦ 0, a1 ↦ 0, a2 ↦ 0, a3 ↦ 0, a4 ↦ 0, a5 ↦ 0)
-    rt_e1 ∈ RecTypeEntry(name ↦ "", fnames ↦ "", ftypes ↦ "", nf ↦ 0,
+        acc0 ↦ 0, acc1 ↦ 0, acc2 ↦ 0, acc3 ↦ 0, acc4 ↦ 0, acc5 ↦ 0)
+    rec1 ∈ RecTypeEntry(name ↦ "", fnames ↦ "", ftypes ↦ "", n_fields ↦ 0,
         sort ↦ 0, ctor ↦ 0, asort ↦ 0, ssort ↦ 0,
-        a0 ↦ 0, a1 ↦ 0, a2 ↦ 0, a3 ↦ 0, a4 ↦ 0, a5 ↦ 0)
-    rt_e2 ∈ RecTypeEntry(name ↦ "", fnames ↦ "", ftypes ↦ "", nf ↦ 0,
+        acc0 ↦ 0, acc1 ↦ 0, acc2 ↦ 0, acc3 ↦ 0, acc4 ↦ 0, acc5 ↦ 0)
+    rec2 ∈ RecTypeEntry(name ↦ "", fnames ↦ "", ftypes ↦ "", n_fields ↦ 0,
         sort ↦ 0, ctor ↦ 0, asort ↦ 0, ssort ↦ 0,
-        a0 ↦ 0, a1 ↦ 0, a2 ↦ 0, a3 ↦ 0, a4 ↦ 0, a5 ↦ 0)
-    sl_elem_items ∈ C2Items
-    sl_elem_items = (is_first_tick ? C2INil : _sl_elem_items)
-    st_names ∈ String
-    st_names = (is_first_tick ? "" : _st_names)
-    ww_t5 ∈ Token
-    ww_t5 = (is_first_tick ? EofTok : _ww_t5)
-    z_exitdecl ∈ Int
-    z_exitdecl = (is_first_tick ? 0 : _z_exitdecl)
-    el_seleq_item ∈ C2Item
-    el_seleq_item = (is_first_tick ? C2Drop : _el_seleq_item)
+        acc0 ↦ 0, acc1 ↦ 0, acc2 ↦ 0, acc3 ↦ 0, acc4 ↦ 0, acc5 ↦ 0)
+    seqlit_elem_items ∈ C2Items
+    seqlit_elem_items = (is_first_tick ? C2INil : _seqlit_elem_items)
+    sym_names ∈ String
+    sym_names = (is_first_tick ? "" : _sym_names)
+    tok5 ∈ Token
+    tok5 = (is_first_tick ? EofTok : _tok5)
+    z_exit_decl ∈ Int
+    z_exit_decl = (is_first_tick ? 0 : _z_exit_decl)
+    efflit_sel_eq ∈ C2Item
+    efflit_sel_eq = (is_first_tick ? C2Drop : _efflit_sel_eq)
     ..DriverPosBind
-    verdict ∈ Int = ((pt_tup_b ? 1 : 0) + (ptt_ok0 ? 2 : 0))
+    verdict ∈ Int = ((tuple_bite ? 1 : 0) + (tuparg_ok0 ? 2 : 0))
     v_msg ∈ String = str_from_int(verdict)
     effects ∈ Seq(Effect) = ((¬is_first_tick)
         ? ⟨LibCall("libc", "puts", ⟨ArgStr(v_msg)⟩), Exit(0)⟩

@@ -1,7 +1,7 @@
--- DriverCompose isolation — slot-call name capture through cw_st.
--- pmode-10 held, frame idle: tick 1, cw_cap advances cw_st 0→1; tick 2,
--- d_in_cw1 is live and the window head `p ↦` (Ident, OpMapsto) fires
--- cw_slot, capturing cw_slot_nm into cs[0].name (slot index 0). Must read "p".
+-- DriverCompose isolation — slot-call name capture through callw_st.
+-- parse_mode-10 held, frame idle: tick 1, callw_cap advances callw_st 0→1; tick 2,
+-- in_callw1 is live and the window head `p ↦` (Ident, OpMapsto) fires
+-- callw_slot, capturing slot_name_tok into slot_names[0].name (slot index 0). Must read "p".
 -- entry: main
 -- expect: stdout = "p"
 -- expect: exit = 0
@@ -15,108 +15,108 @@ import "compiler2/driver_record.ev"
 import "compiler2/driver_compose.ev"
 
 fsm main
-    pmode ∈ Int
-    pmode = (is_first_tick ? 10 : _pmode)
+    parse_mode ∈ Int
+    parse_mode = (is_first_tick ? 10 : _parse_mode)
     in_parse ∈ Bool
     in_parse = (is_first_tick ? true : _in_parse)
-    d_witems_nil ∈ Bool
-    d_witems_nil = (is_first_tick ? true : _d_witems_nil)
+    work_nil ∈ Bool
+    work_nil = (is_first_tick ? true : _work_nil)
     tok_ready ∈ Bool
     tok_ready = (is_first_tick ? true : _tok_ready)
-    ww_t0 ∈ Token
-    ww_t0 = (is_first_tick ? Ident("p") : _ww_t0)
-    ww_t1 ∈ Token
-    ww_t1 = (is_first_tick ? OpMapsto : _ww_t1)
-    c_comp_bare ∈ Bool
-    c_comp_bare = (is_first_tick ? false : _c_comp_bare)
-    c_comp_call ∈ Bool
-    c_comp_call = (is_first_tick ? false : _c_comp_call)
-    c_comp_dd ∈ Bool
-    c_comp_dd = (is_first_tick ? false : _c_comp_dd)
-    c_comp_line ∈ Bool
-    c_comp_line = (is_first_tick ? false : _c_comp_line)
-    c_cur_pos ∈ Int
-    c_cur_pos = (is_first_tick ? 0 : _c_cur_pos)
-    c_name ∈ String
-    c_name = (is_first_tick ? "" : _c_name)
-    c_ty_bare ∈ Bool
-    c_ty_bare = (is_first_tick ? false : _c_ty_bare)
-    c_ty_call ∈ Bool
-    c_ty_call = (is_first_tick ? false : _c_ty_call)
-    c_ty_line ∈ Bool
-    c_ty_line = (is_first_tick ? false : _c_ty_line)
-    c_type_str ∈ String
-    c_type_str = (is_first_tick ? "" : _c_type_str)
-    cibuf ∈ FtiBuffer
-    cibuf.base = (is_first_tick ? 0 : _cibuf.base)
-    cibuf.count = (is_first_tick ? 0 : _cibuf.count)
-    d_cap_int ∈ Int
-    d_cap_int = (is_first_tick ? 0 : _d_cap_int)
-    d_enter_claim ∈ Bool
-    d_enter_claim = (is_first_tick ? false : _d_enter_claim)
-    d_enter_claimp ∈ Bool
-    d_enter_claimp = (is_first_tick ? false : _d_enter_claimp)
-    d_h_2nd ∈ Int
-    d_h_2nd = (is_first_tick ? 0 : _d_h_2nd)
-    d_h_3rd ∈ Int
-    d_h_3rd = (is_first_tick ? 0 : _d_h_3rd)
-    d_h_4th ∈ Int
-    d_h_4th = (is_first_tick ? 0 : _d_h_4th)
-    d_h_5th ∈ Int
-    d_h_5th = (is_first_tick ? 0 : _d_h_5th)
-    d_h_6th ∈ Int
-    d_h_6th = (is_first_tick ? 0 : _d_h_6th)
-    d_h_t1 ∈ C2H
-    d_h_t1 = (is_first_tick ? C2HNil : _d_h_t1)
-    d_h_t2 ∈ C2H
-    d_h_t2 = (is_first_tick ? C2HNil : _d_h_t2)
-    d_h_t3 ∈ C2H
-    d_h_t3 = (is_first_tick ? C2HNil : _d_h_t3)
-    d_h_t4 ∈ C2H
-    d_h_t4 = (is_first_tick ? C2HNil : _d_h_t4)
-    d_h_t5 ∈ C2H
-    d_h_t5 = (is_first_tick ? C2HNil : _d_h_t5)
-    d_h_t6 ∈ C2H
-    d_h_t6 = (is_first_tick ? C2HNil : _d_h_t6)
-    d_h_top ∈ Int
-    d_h_top = (is_first_tick ? 0 : _d_h_top)
-    d_hstk_in ∈ C2H
-    d_hstk_in = (is_first_tick ? C2HNil : _d_hstk_in)
-    gc_hit ∈ Bool
-    gc_hit = (is_first_tick ? false : _gc_hit)
-    gj_cap ∈ Bool
-    gj_cap = (is_first_tick ? false : _gj_cap)
-    gj_fire ∈ Bool
-    gj_fire = (is_first_tick ? false : _gj_fire)
-    il_pop ∈ Bool
-    il_pop = (is_first_tick ? false : _il_pop)
-    p_done ∈ Bool
-    p_done = (is_first_tick ? false : _p_done)
-    pk_kind ∈ Int
-    pk_kind = (is_first_tick ? 0 : _pk_kind)
-    pr_bad ∈ Bool
-    pr_bad = (is_first_tick ? false : _pr_bad)
-    ptj_cap ∈ Bool
-    ptj_cap = (is_first_tick ? false : _ptj_cap)
-    ptj_fire ∈ Bool
-    ptj_fire = (is_first_tick ? false : _ptj_fire)
-    pz_act ∈ Bool
-    pz_act = (is_first_tick ? false : _pz_act)
-    pz_binds ∈ C2Binds
-    pz_binds = (is_first_tick ? CBNil : _pz_binds)
-    rt_e0 ∈ RecTypeEntry(name ↦ "", fnames ↦ "", ftypes ↦ "", nf ↦ 0,
+    tok0 ∈ Token
+    tok0 = (is_first_tick ? Ident("p") : _tok0)
+    tok1 ∈ Token
+    tok1 = (is_first_tick ? OpMapsto : _tok1)
+    comp_bare ∈ Bool
+    comp_bare = (is_first_tick ? false : _comp_bare)
+    comp_call ∈ Bool
+    comp_call = (is_first_tick ? false : _comp_call)
+    comp_dotdot ∈ Bool
+    comp_dotdot = (is_first_tick ? false : _comp_dotdot)
+    comp_line ∈ Bool
+    comp_line = (is_first_tick ? false : _comp_line)
+    callee_pos ∈ Int
+    callee_pos = (is_first_tick ? 0 : _callee_pos)
+    line_name ∈ String
+    line_name = (is_first_tick ? "" : _line_name)
+    tymem_bare ∈ Bool
+    tymem_bare = (is_first_tick ? false : _tymem_bare)
+    tymem_call ∈ Bool
+    tymem_call = (is_first_tick ? false : _tymem_call)
+    tymem_line ∈ Bool
+    tymem_line = (is_first_tick ? false : _tymem_line)
+    line_ty_name ∈ String
+    line_ty_name = (is_first_tick ? "" : _line_ty_name)
+    claimidx_buf ∈ FtiBuffer
+    claimidx_buf.base = (is_first_tick ? 0 : _claimidx_buf.base)
+    claimidx_buf.count = (is_first_tick ? 0 : _claimidx_buf.count)
+    cap_int ∈ Int
+    cap_int = (is_first_tick ? 0 : _cap_int)
+    enter_claim ∈ Bool
+    enter_claim = (is_first_tick ? false : _enter_claim)
+    enter_claim_params ∈ Bool
+    enter_claim_params = (is_first_tick ? false : _enter_claim_params)
+    h_2nd ∈ Int
+    h_2nd = (is_first_tick ? 0 : _h_2nd)
+    h_3rd ∈ Int
+    h_3rd = (is_first_tick ? 0 : _h_3rd)
+    h_4th ∈ Int
+    h_4th = (is_first_tick ? 0 : _h_4th)
+    h_5th ∈ Int
+    h_5th = (is_first_tick ? 0 : _h_5th)
+    h_6th ∈ Int
+    h_6th = (is_first_tick ? 0 : _h_6th)
+    h_tail1 ∈ C2H
+    h_tail1 = (is_first_tick ? C2HNil : _h_tail1)
+    h_tail2 ∈ C2H
+    h_tail2 = (is_first_tick ? C2HNil : _h_tail2)
+    h_tail3 ∈ C2H
+    h_tail3 = (is_first_tick ? C2HNil : _h_tail3)
+    h_tail4 ∈ C2H
+    h_tail4 = (is_first_tick ? C2HNil : _h_tail4)
+    h_tail5 ∈ C2H
+    h_tail5 = (is_first_tick ? C2HNil : _h_tail5)
+    h_tail6 ∈ C2H
+    h_tail6 = (is_first_tick ? C2HNil : _h_tail6)
+    h_top ∈ Int
+    h_top = (is_first_tick ? 0 : _h_top)
+    stack_in ∈ C2H
+    stack_in = (is_first_tick ? C2HNil : _stack_in)
+    guard_hit ∈ Bool
+    guard_hit = (is_first_tick ? false : _guard_hit)
+    guard_jump_cap ∈ Bool
+    guard_jump_cap = (is_first_tick ? false : _guard_jump_cap)
+    guard_jump_fire ∈ Bool
+    guard_jump_fire = (is_first_tick ? false : _guard_jump_fire)
+    frame_pop ∈ Bool
+    frame_pop = (is_first_tick ? false : _frame_pop)
+    pratt_done ∈ Bool
+    pratt_done = (is_first_tick ? false : _pratt_done)
+    pratt_kind ∈ Int
+    pratt_kind = (is_first_tick ? 0 : _pratt_kind)
+    pratt_bad ∈ Bool
+    pratt_bad = (is_first_tick ? false : _pratt_bad)
+    posjump_cap ∈ Bool
+    posjump_cap = (is_first_tick ? false : _posjump_cap)
+    posjump_fire ∈ Bool
+    posjump_fire = (is_first_tick ? false : _posjump_fire)
+    bindzip_act ∈ Bool
+    bindzip_act = (is_first_tick ? false : _bindzip_act)
+    bindzip_binds ∈ C2Binds
+    bindzip_binds = (is_first_tick ? CBNil : _bindzip_binds)
+    rec0 ∈ RecTypeEntry(name ↦ "", fnames ↦ "", ftypes ↦ "", n_fields ↦ 0,
         sort ↦ 0, ctor ↦ 0, asort ↦ 0, ssort ↦ 0,
-        a0 ↦ 0, a1 ↦ 0, a2 ↦ 0, a3 ↦ 0, a4 ↦ 0, a5 ↦ 0)
-    rt_e1 ∈ RecTypeEntry(name ↦ "", fnames ↦ "", ftypes ↦ "", nf ↦ 0,
+        acc0 ↦ 0, acc1 ↦ 0, acc2 ↦ 0, acc3 ↦ 0, acc4 ↦ 0, acc5 ↦ 0)
+    rec1 ∈ RecTypeEntry(name ↦ "", fnames ↦ "", ftypes ↦ "", n_fields ↦ 0,
         sort ↦ 0, ctor ↦ 0, asort ↦ 0, ssort ↦ 0,
-        a0 ↦ 0, a1 ↦ 0, a2 ↦ 0, a3 ↦ 0, a4 ↦ 0, a5 ↦ 0)
-    rt_e2 ∈ RecTypeEntry(name ↦ "", fnames ↦ "", ftypes ↦ "", nf ↦ 0,
+        acc0 ↦ 0, acc1 ↦ 0, acc2 ↦ 0, acc3 ↦ 0, acc4 ↦ 0, acc5 ↦ 0)
+    rec2 ∈ RecTypeEntry(name ↦ "", fnames ↦ "", ftypes ↦ "", n_fields ↦ 0,
         sort ↦ 0, ctor ↦ 0, asort ↦ 0, ssort ↦ 0,
-        a0 ↦ 0, a1 ↦ 0, a2 ↦ 0, a3 ↦ 0, a4 ↦ 0, a5 ↦ 0)
-    tcur ∈ Int
-    tcur = (is_first_tick ? 0 : _tcur)
+        acc0 ↦ 0, acc1 ↦ 0, acc2 ↦ 0, acc3 ↦ 0, acc4 ↦ 0, acc5 ↦ 0)
+    tok_cur ∈ Int
+    tok_cur = (is_first_tick ? 0 : _tok_cur)
     ..DriverCompose
-    captured ∈ Bool = (cs[0].name = "p")
+    captured ∈ Bool = (slot_names[0].name = "p")
     effects ∈ Seq(Effect) = (captured
-        ? ⟨LibCall("libc", "puts", ⟨ArgStr(cs[0].name)⟩), Exit(0)⟩
+        ? ⟨LibCall("libc", "puts", ⟨ArgStr(slot_names[0].name)⟩), Exit(0)⟩
         : ⟨LibCall("libc", "getpid", ⟨⟩)⟩)

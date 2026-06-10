@@ -1,7 +1,7 @@
--- DriverMatchPin isolation — scrutinee recognition + capture: a pmode-6
--- match line whose scrutinee is the plain ident `e` (ww_t0 = Ident,
--- el_head_name "e"). From state 0 the walk must recognize mp_s_id,
--- advance mp_st 0→1, and capture mp_scrut = "e"; reported once mp_st = 1.
+-- DriverMatchPin isolation — scrutinee recognition + capture: a parse_mode-6
+-- match line whose scrutinee is the plain ident `e` (tok0 = Ident,
+-- head_ident "e"). From state 0 the walk must recognize scrut_ident,
+-- advance match_st 0→1, and capture match_scrut = "e"; reported once match_st = 1.
 -- entry: main
 -- expect: stdout = "e"
 -- expect: exit = 0
@@ -14,49 +14,49 @@ import "compiler2/driver_matchpin.ev"
 fsm main
     in_parse ∈ Bool
     in_parse = (is_first_tick ? true : _in_parse)
-    pmode ∈ Int
-    pmode = (is_first_tick ? 6 : _pmode)
+    parse_mode ∈ Int
+    parse_mode = (is_first_tick ? 6 : _parse_mode)
     tok_ready ∈ Bool
     tok_ready = (is_first_tick ? true : _tok_ready)
-    ww_t0 ∈ Token
-    ww_t0 = (is_first_tick ? Ident("e") : _ww_t0)
-    el_head_name ∈ String
-    el_head_name = (is_first_tick ? "e" : _el_head_name)
-    c_dname ∈ String
-    c_dname = (is_first_tick ? "" : _c_dname)
-    c_sc ∈ Int
-    c_sc = (is_first_tick ? 0 : _c_sc)
-    d_enter_match ∈ Bool
-    d_enter_match = (is_first_tick ? false : _d_enter_match)
-    p_done ∈ Bool
-    p_done = (is_first_tick ? false : _p_done)
-    pk_kind ∈ Int
-    pk_kind = (is_first_tick ? 0 : _pk_kind)
-    pr_bad ∈ Bool
-    pr_bad = (is_first_tick ? false : _pr_bad)
-    pr_sres ∈ Expr
-    pr_sres = (is_first_tick ? EInt(0) : _pr_sres)
-    uev ∈ Seq(UserEnumVariant)
-    #uev ≤ 6
-    uev = (is_first_tick ? ⟨⟩ : _uev)
-    ww_t1 ∈ Token
-    ww_t1 = (is_first_tick ? EofTok : _ww_t1)
-    ww_t2 ∈ Token
-    ww_t2 = (is_first_tick ? EofTok : _ww_t2)
-    ww_t3 ∈ Token
-    ww_t3 = (is_first_tick ? EofTok : _ww_t3)
-    ww_t4 ∈ Token
-    ww_t4 = (is_first_tick ? EofTok : _ww_t4)
-    z_iracc ∈ Int
-    z_iracc = (is_first_tick ? 0 : _z_iracc)
-    z_irtest ∈ Int
-    z_irtest = (is_first_tick ? 0 : _z_irtest)
-    z_sracc ∈ Int
-    z_sracc = (is_first_tick ? 0 : _z_sracc)
-    z_srtest ∈ Int
-    z_srtest = (is_first_tick ? 0 : _z_srtest)
+    tok0 ∈ Token
+    tok0 = (is_first_tick ? Ident("e") : _tok0)
+    head_ident ∈ String
+    head_ident = (is_first_tick ? "e" : _head_ident)
+    line_dname ∈ String
+    line_dname = (is_first_tick ? "" : _line_dname)
+    line_sort ∈ Int
+    line_sort = (is_first_tick ? 0 : _line_sort)
+    enter_match ∈ Bool
+    enter_match = (is_first_tick ? false : _enter_match)
+    pratt_done ∈ Bool
+    pratt_done = (is_first_tick ? false : _pratt_done)
+    pratt_kind ∈ Int
+    pratt_kind = (is_first_tick ? 0 : _pratt_kind)
+    pratt_bad ∈ Bool
+    pratt_bad = (is_first_tick ? false : _pratt_bad)
+    pratt_result ∈ Expr
+    pratt_result = (is_first_tick ? EInt(0) : _pratt_result)
+    user_variants ∈ Seq(UserEnumVariant)
+    #user_variants ≤ 6
+    user_variants = (is_first_tick ? ⟨⟩ : _user_variants)
+    tok1 ∈ Token
+    tok1 = (is_first_tick ? EofTok : _tok1)
+    tok2 ∈ Token
+    tok2 = (is_first_tick ? EofTok : _tok2)
+    tok3 ∈ Token
+    tok3 = (is_first_tick ? EofTok : _tok3)
+    tok4 ∈ Token
+    tok4 = (is_first_tick ? EofTok : _tok4)
+    z_intres_acc ∈ Int
+    z_intres_acc = (is_first_tick ? 0 : _z_intres_acc)
+    z_intres_test ∈ Int
+    z_intres_test = (is_first_tick ? 0 : _z_intres_test)
+    z_strres_acc ∈ Int
+    z_strres_acc = (is_first_tick ? 0 : _z_strres_acc)
+    z_strres_test ∈ Int
+    z_strres_test = (is_first_tick ? 0 : _z_strres_test)
     ..DriverMatchPin
-    ready ∈ Bool = (mp_st = 1)
+    ready ∈ Bool = (match_st = 1)
     effects ∈ Seq(Effect) = (ready
-        ? ⟨LibCall("libc", "puts", ⟨ArgStr(mp_scrut)⟩), Exit(0)⟩
+        ? ⟨LibCall("libc", "puts", ⟨ArgStr(match_scrut)⟩), Exit(0)⟩
         : ⟨LibCall("libc", "getpid", ⟨⟩)⟩)

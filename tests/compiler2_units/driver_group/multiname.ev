@@ -1,7 +1,7 @@
--- DriverGroup isolation — multi-name collect recognizer: pmode-9 group
--- walk in collect state 0 (pg_active) with window head `x ,` must be
--- active (pg_collect) and recognize the multi-name continuation
--- (pg_take2). verdict = 1*pg_collect + 2*pg_take2 = 3.
+-- DriverGroup isolation — multi-name collect recognizer: parse_mode-9 group
+-- walk in collect state 0 (group_active) with window head `x ,` must be
+-- active (group_collect) and recognize the multi-name continuation
+-- (group_take2). verdict = 1*group_collect + 2*group_take2 = 3.
 -- entry: main
 -- expect: stdout = "3"
 -- expect: exit = 0
@@ -14,34 +14,34 @@ import "compiler2/driver_group.ev"
 fsm main
     in_parse ∈ Bool
     in_parse = (is_first_tick ? true : _in_parse)
-    pmode ∈ Int
-    pmode = (is_first_tick ? 9 : _pmode)
+    parse_mode ∈ Int
+    parse_mode = (is_first_tick ? 9 : _parse_mode)
     tok_ready ∈ Bool
     tok_ready = (is_first_tick ? true : _tok_ready)
-    d_witems_nil ∈ Bool
-    d_witems_nil = (is_first_tick ? true : _d_witems_nil)
-    ww_t0 ∈ Token
-    ww_t0 = (is_first_tick ? Ident("x") : _ww_t0)
-    ww_t1 ∈ Token
-    ww_t1 = (is_first_tick ? Comma : _ww_t1)
-    c_is_mem ∈ Bool
-    c_is_mem = (is_first_tick ? false : _c_is_mem)
-    c_is_nat ∈ Bool
-    c_is_nat = (is_first_tick ? false : _c_is_nat)
-    c_sc ∈ Int
-    c_sc = (is_first_tick ? 0 : _c_sc)
-    c_t0 ∈ Token
-    c_t0 = (is_first_tick ? EofTok : _c_t0)
-    c_tyname ∈ String
-    c_tyname = (is_first_tick ? "" : _c_tyname)
-    d_enter_claimp ∈ Bool
-    d_enter_claimp = (is_first_tick ? false : _d_enter_claimp)
-    d_enter_mn ∈ Bool
-    d_enter_mn = (is_first_tick ? false : _d_enter_mn)
-    ww_t3 ∈ Token
-    ww_t3 = (is_first_tick ? EofTok : _ww_t3)
+    work_nil ∈ Bool
+    work_nil = (is_first_tick ? true : _work_nil)
+    tok0 ∈ Token
+    tok0 = (is_first_tick ? Ident("x") : _tok0)
+    tok1 ∈ Token
+    tok1 = (is_first_tick ? Comma : _tok1)
+    line_is_mem ∈ Bool
+    line_is_mem = (is_first_tick ? false : _line_is_mem)
+    line_is_nat ∈ Bool
+    line_is_nat = (is_first_tick ? false : _line_is_nat)
+    line_sort ∈ Int
+    line_sort = (is_first_tick ? 0 : _line_sort)
+    line_t0 ∈ Token
+    line_t0 = (is_first_tick ? EofTok : _line_t0)
+    mem_tyname ∈ String
+    mem_tyname = (is_first_tick ? "" : _mem_tyname)
+    enter_claim_params ∈ Bool
+    enter_claim_params = (is_first_tick ? false : _enter_claim_params)
+    enter_multiname ∈ Bool
+    enter_multiname = (is_first_tick ? false : _enter_multiname)
+    tok3 ∈ Token
+    tok3 = (is_first_tick ? EofTok : _tok3)
     ..DriverGroup
-    verdict ∈ Int = ((pg_collect ? 1 : 0) + (pg_take2 ? 2 : 0))
+    verdict ∈ Int = ((group_collect ? 1 : 0) + (group_take2 ? 2 : 0))
     v_msg ∈ String = str_from_int(verdict)
     effects ∈ Seq(Effect) = ((¬is_first_tick)
         ? ⟨LibCall("libc", "puts", ⟨ArgStr(v_msg)⟩), Exit(0)⟩

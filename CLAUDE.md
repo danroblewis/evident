@@ -284,8 +284,8 @@ what a cursor is. Every other operation keys on a unique field:
 
 `_e` is the element's prev-tick carry dual (the fsm `_x` convention
 applied to the bound element). Never store an index as FSM state to
-identify an entry — store the key (`sv_cur_nm ∈ String`, not
-`sv_cur ∈ Int`); an index-valued lookup (`idx = (name = xs[0].name ? 0
+identify an entry — store the key (`setvar_cur_name ∈ String`, not
+`setvar_cur ∈ Int`); an index-valued lookup (`idx = (name = xs[0].name ? 0
 : …)`) is the index-in-interface idiom — write a keyed projection
 instead. Each field needs exactly ONE covering write: an `++`-append
 covers every field of its slot, so a seq with later field updates must

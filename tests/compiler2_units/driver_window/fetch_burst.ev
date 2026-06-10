@@ -1,7 +1,7 @@
 -- DriverWindow isolation — lookahead-need dispatch + fetch state machine.
--- Cursor held empty (tcur = wend = 0 ⇒ w_rem = 0) under pmode 6
--- (⇒ w_need = 5), so every idle tick raises fetch_go and walks fmode
--- 0→1→2; each arrival at fmode 2 is a completed burst. Count bursts,
+-- Cursor held empty (tok_cur = fetch_end = 0 ⇒ win_avail = 0) under parse_mode 6
+-- (⇒ win_need = 5), so every idle tick raises fetch_go and walks fetch_mode
+-- 0→1→2; each arrival at fetch_mode 2 is a completed burst. Count bursts,
 -- exit at 3. Pure sequencing — no __mem arena needed (the rd_* read
 -- effects are not scheduled).
 --
@@ -17,35 +17,35 @@ import "compiler2/driver_window.ev"
 fsm main
     in_parse ∈ Bool
     in_parse = (is_first_tick ? true : _in_parse)
-    pmode ∈ Int
-    pmode = (is_first_tick ? 6 : _pmode)
-    -- tcur/wend are declared by DriverWindow but their transitions live in
+    parse_mode ∈ Int
+    parse_mode = (is_first_tick ? 6 : _parse_mode)
+    -- tok_cur/fetch_end are declared by DriverWindow but their transitions live in
     -- driver_main's cursor region (absent here), so main pins them as held
     -- carries.
-    tcur ∈ Int
-    tcur = (is_first_tick ? 0 : _tcur)
-    wend ∈ Int
-    wend = (is_first_tick ? 0 : _wend)
-    wtoks ∈ TokenList
-    wtoks = (is_first_tick ? TLNil : _wtoks)
-    tbuf ∈ FtiBuffer
-    tbuf.base = (is_first_tick ? 0 : _tbuf.base)
-    tbuf.count = (is_first_tick ? 0 : _tbuf.count)
-    -- Sub-state carries read only by non-pmode-6 w_need branches; held so
+    tok_cur ∈ Int
+    tok_cur = (is_first_tick ? 0 : _tok_cur)
+    fetch_end ∈ Int
+    fetch_end = (is_first_tick ? 0 : _fetch_end)
+    win_toks ∈ TokenList
+    win_toks = (is_first_tick ? TLNil : _win_toks)
+    tok_buf ∈ FtiBuffer
+    tok_buf.base = (is_first_tick ? 0 : _tok_buf.base)
+    tok_buf.count = (is_first_tick ? 0 : _tok_buf.count)
+    -- Sub-state carries read only by non-parse_mode-6 win_need branches; held so
     -- the names resolve.
-    rc_on ∈ Bool
-    rc_on = (is_first_tick ? false : _rc_on)
-    ed_act ∈ Int
-    ed_act = (is_first_tick ? 0 : _ed_act)
-    cw_st ∈ Int
-    cw_st = (is_first_tick ? 0 : _cw_st)
-    pt_st ∈ Int
-    pt_st = (is_first_tick ? 0 : _pt_st)
-    d_witems_nil ∈ Bool
-    d_witems_nil = (is_first_tick ? true : _d_witems_nil)
+    rec_collect_on ∈ Bool
+    rec_collect_on = (is_first_tick ? false : _rec_collect_on)
+    enum_act ∈ Int
+    enum_act = (is_first_tick ? 0 : _enum_act)
+    callw_st ∈ Int
+    callw_st = (is_first_tick ? 0 : _callw_st)
+    posbind_st ∈ Int
+    posbind_st = (is_first_tick ? 0 : _posbind_st)
+    work_nil ∈ Bool
+    work_nil = (is_first_tick ? true : _work_nil)
     ..DriverWindow
     bursts ∈ Int
-    bursts = (is_first_tick ? 0 : (_fmode = 2 ? _bursts + 1 : _bursts))
+    bursts = (is_first_tick ? 0 : (_fetch_mode = 2 ? _bursts + 1 : _bursts))
     b_msg ∈ String = str_from_int(bursts)
     effects ∈ Seq(Effect) = (bursts = 3
         ? ⟨LibCall("libc", "puts", ⟨ArgStr(b_msg)⟩), Exit(0)⟩

@@ -12,7 +12,7 @@
 --           pairs. No FSM carry of its own — these are pure helper claims.
 --
 -- Tokens → expression tree (precedence-climbing Pratt, incl. ternary).
--- The driver's parse FSM (driver_main, pmode 3) drives C2PrattStep one
+-- The driver's parse FSM (driver_main, parse_mode 3) drives C2PrattStep one
 -- action per tick over the shared token window; these claims are the
 -- pure folding core it calls. Owns the ternary PARSE path (the C2Ite
 -- handle-stack underflow bug lives downstream in the build step, not here).

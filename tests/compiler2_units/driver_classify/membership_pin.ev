@@ -1,7 +1,7 @@
 -- DriverClassify isolation — classify a pinned-membership line.
 -- Window pinned to `x ∈ Int = 5` (Ident OpIn Ident Eq IntLit), empty
--- registries, depth-0 frame; ww_t0..ww_t7 pinned directly (no
--- DriverWindow). verdict = c_is_mem + 2*c_pinned + 4*d_enter_pratt0 = 7.
+-- registries, depth-0 frame; tok0..tok7 pinned directly (no
+-- DriverWindow). verdict = line_is_mem + 2*line_pinned + 4*enter_pratt_line = 7.
 -- entry: main
 -- expect: stdout = "7"
 -- expect: exit = 0
@@ -14,101 +14,101 @@ import "compiler2/driver_record.ev"
 import "compiler2/driver_classify.ev"
 
 fsm main
-    ww_t0 ∈ Token
-    ww_t0 = (is_first_tick ? Ident("x") : _ww_t0)
-    ww_t1 ∈ Token
-    ww_t1 = (is_first_tick ? OpIn : _ww_t1)
-    ww_t2 ∈ Token
-    ww_t2 = (is_first_tick ? Ident("Int") : _ww_t2)
-    ww_t3 ∈ Token
-    ww_t3 = (is_first_tick ? Eq : _ww_t3)
-    ww_t4 ∈ Token
-    ww_t4 = (is_first_tick ? IntLit(5) : _ww_t4)
-    ww_t5 ∈ Token
-    ww_t5 = (is_first_tick ? EofTok : _ww_t5)
-    ww_t6 ∈ Token
-    ww_t6 = (is_first_tick ? EofTok : _ww_t6)
-    ww_t7 ∈ Token
-    ww_t7 = (is_first_tick ? EofTok : _ww_t7)
-    d_classify ∈ Bool
-    d_classify = (is_first_tick ? true : _d_classify)
-    ci_names ∈ String
-    ci_names = (is_first_tick ? "" : _ci_names)
-    st_names ∈ String
-    st_names = (is_first_tick ? "" : _st_names)
-    il_depth ∈ Int
-    il_depth = (is_first_tick ? 0 : _il_depth)
-    il_pfx ∈ String
-    il_pfx = (is_first_tick ? "" : _il_pfx)
-    ilb_n0 ∈ String
-    ilb_n0 = (is_first_tick ? "" : _ilb_n0)
-    ilb_n1 ∈ String
-    ilb_n1 = (is_first_tick ? "" : _ilb_n1)
-    ilb_n2 ∈ String
-    ilb_n2 = (is_first_tick ? "" : _ilb_n2)
-    ilb_n3 ∈ String
-    ilb_n3 = (is_first_tick ? "" : _ilb_n3)
-    ilb_n4 ∈ String
-    ilb_n4 = (is_first_tick ? "" : _ilb_n4)
-    ilb_n5 ∈ String
-    ilb_n5 = (is_first_tick ? "" : _ilb_n5)
-    rt_e0 ∈ RecTypeEntry(name ↦ "", fnames ↦ "", ftypes ↦ "", nf ↦ 0,
+    tok0 ∈ Token
+    tok0 = (is_first_tick ? Ident("x") : _tok0)
+    tok1 ∈ Token
+    tok1 = (is_first_tick ? OpIn : _tok1)
+    tok2 ∈ Token
+    tok2 = (is_first_tick ? Ident("Int") : _tok2)
+    tok3 ∈ Token
+    tok3 = (is_first_tick ? Eq : _tok3)
+    tok4 ∈ Token
+    tok4 = (is_first_tick ? IntLit(5) : _tok4)
+    tok5 ∈ Token
+    tok5 = (is_first_tick ? EofTok : _tok5)
+    tok6 ∈ Token
+    tok6 = (is_first_tick ? EofTok : _tok6)
+    tok7 ∈ Token
+    tok7 = (is_first_tick ? EofTok : _tok7)
+    classify_now ∈ Bool
+    classify_now = (is_first_tick ? true : _classify_now)
+    claimidx_names ∈ String
+    claimidx_names = (is_first_tick ? "" : _claimidx_names)
+    sym_names ∈ String
+    sym_names = (is_first_tick ? "" : _sym_names)
+    frame_depth ∈ Int
+    frame_depth = (is_first_tick ? 0 : _frame_depth)
+    scope_prefix ∈ String
+    scope_prefix = (is_first_tick ? "" : _scope_prefix)
+    bind_n0 ∈ String
+    bind_n0 = (is_first_tick ? "" : _bind_n0)
+    bind_n1 ∈ String
+    bind_n1 = (is_first_tick ? "" : _bind_n1)
+    bind_n2 ∈ String
+    bind_n2 = (is_first_tick ? "" : _bind_n2)
+    bind_n3 ∈ String
+    bind_n3 = (is_first_tick ? "" : _bind_n3)
+    bind_n4 ∈ String
+    bind_n4 = (is_first_tick ? "" : _bind_n4)
+    bind_n5 ∈ String
+    bind_n5 = (is_first_tick ? "" : _bind_n5)
+    rec0 ∈ RecTypeEntry(name ↦ "", fnames ↦ "", ftypes ↦ "", n_fields ↦ 0,
         sort ↦ 0, ctor ↦ 0, asort ↦ 0, ssort ↦ 0,
-        a0 ↦ 0, a1 ↦ 0, a2 ↦ 0, a3 ↦ 0, a4 ↦ 0, a5 ↦ 0)
-    rt_e1 ∈ RecTypeEntry(name ↦ "", fnames ↦ "", ftypes ↦ "", nf ↦ 0,
+        acc0 ↦ 0, acc1 ↦ 0, acc2 ↦ 0, acc3 ↦ 0, acc4 ↦ 0, acc5 ↦ 0)
+    rec1 ∈ RecTypeEntry(name ↦ "", fnames ↦ "", ftypes ↦ "", n_fields ↦ 0,
         sort ↦ 0, ctor ↦ 0, asort ↦ 0, ssort ↦ 0,
-        a0 ↦ 0, a1 ↦ 0, a2 ↦ 0, a3 ↦ 0, a4 ↦ 0, a5 ↦ 0)
-    rt_e2 ∈ RecTypeEntry(name ↦ "", fnames ↦ "", ftypes ↦ "", nf ↦ 0,
+        acc0 ↦ 0, acc1 ↦ 0, acc2 ↦ 0, acc3 ↦ 0, acc4 ↦ 0, acc5 ↦ 0)
+    rec2 ∈ RecTypeEntry(name ↦ "", fnames ↦ "", ftypes ↦ "", n_fields ↦ 0,
         sort ↦ 0, ctor ↦ 0, asort ↦ 0, ssort ↦ 0,
-        a0 ↦ 0, a1 ↦ 0, a2 ↦ 0, a3 ↦ 0, a4 ↦ 0, a5 ↦ 0)
+        acc0 ↦ 0, acc1 ↦ 0, acc2 ↦ 0, acc3 ↦ 0, acc4 ↦ 0, acc5 ↦ 0)
     -- user-enum + seq-var carries (no user enum, no registered seq).
-    ue_done ∈ Bool
-    ue_done = (is_first_tick ? false : _ue_done)
-    ue_name ∈ String
-    ue_name = (is_first_tick ? "" : _ue_name)
-    sq_set ∈ Bool
-    sq_set = (is_first_tick ? false : _sq_set)
-    sq_name ∈ String
-    sq_name = (is_first_tick ? "" : _sq_name)
+    user_enum_done ∈ Bool
+    user_enum_done = (is_first_tick ? false : _user_enum_done)
+    user_enum_name ∈ String
+    user_enum_name = (is_first_tick ? "" : _user_enum_name)
+    seqvar_set ∈ Bool
+    seqvar_set = (is_first_tick ? false : _seqvar_set)
+    seqvar_name ∈ String
+    seqvar_name = (is_first_tick ? "" : _seqvar_name)
     -- sibling sub-walk enter signals (none active in this isolation).
-    el_exit_enter ∈ Bool
-    el_exit_enter = (is_first_tick ? false : _el_exit_enter)
-    el_g_enter ∈ Bool
-    el_g_enter = (is_first_tick ? false : _el_g_enter)
-    mp_benter ∈ Bool
-    mp_benter = (is_first_tick ? false : _mp_benter)
-    sl_e_enter ∈ Bool
-    sl_e_enter = (is_first_tick ? false : _sl_e_enter)
-    cw_slot ∈ Bool
-    cw_slot = (is_first_tick ? false : _cw_slot)
-    q_close ∈ Bool
-    q_close = (is_first_tick ? false : _q_close)
-    d_enter_qs ∈ Bool
-    d_enter_qs = (is_first_tick ? false : _d_enter_qs)
-    pt_elem ∈ Bool
-    pt_elem = (is_first_tick ? false : _pt_elem)
+    efflit_exit_enter ∈ Bool
+    efflit_exit_enter = (is_first_tick ? false : _efflit_exit_enter)
+    efflit_guard_enter ∈ Bool
+    efflit_guard_enter = (is_first_tick ? false : _efflit_guard_enter)
+    arm_body_enter ∈ Bool
+    arm_body_enter = (is_first_tick ? false : _arm_body_enter)
+    seqlit_elem_enter ∈ Bool
+    seqlit_elem_enter = (is_first_tick ? false : _seqlit_elem_enter)
+    callw_slot ∈ Bool
+    callw_slot = (is_first_tick ? false : _callw_slot)
+    qrange_close ∈ Bool
+    qrange_close = (is_first_tick ? false : _qrange_close)
+    enter_qseq ∈ Bool
+    enter_qseq = (is_first_tick ? false : _enter_qseq)
+    pos_elem ∈ Bool
+    pos_elem = (is_first_tick ? false : _pos_elem)
     -- other line-shape flags this block reads but does not define.
-    c_q_line ∈ Bool
-    c_q_line = (is_first_tick ? false : _c_q_line)
-    c_q_rng ∈ Bool
-    c_q_rng = (is_first_tick ? false : _c_q_rng)
-    c_q_seq ∈ Bool
-    c_q_seq = (is_first_tick ? false : _c_q_seq)
-    c_setlit_line ∈ Bool
-    c_setlit_line = (is_first_tick ? false : _c_setlit_line)
-    pcl_line ∈ Bool
-    pcl_line = (is_first_tick ? false : _pcl_line)
-    d_enter_qset ∈ Bool
-    d_enter_qset = (is_first_tick ? false : _d_enter_qset)
-    c_q_s2 ∈ Bool
-    c_q_s2 = (is_first_tick ? false : _c_q_s2)
-    mp_take ∈ Bool
-    mp_take = (is_first_tick ? false : _mp_take)
-    mp_arm_pl_h ∈ Bool
-    mp_arm_pl_h = (is_first_tick ? false : _mp_arm_pl_h)
+    q_line ∈ Bool
+    q_line = (is_first_tick ? false : _q_line)
+    q_range ∈ Bool
+    q_range = (is_first_tick ? false : _q_range)
+    q_over_seq ∈ Bool
+    q_over_seq = (is_first_tick ? false : _q_over_seq)
+    setlit_line ∈ Bool
+    setlit_line = (is_first_tick ? false : _setlit_line)
+    posbind_line ∈ Bool
+    posbind_line = (is_first_tick ? false : _posbind_line)
+    enter_qset ∈ Bool
+    enter_qset = (is_first_tick ? false : _enter_qset)
+    q_seq_dotted ∈ Bool
+    q_seq_dotted = (is_first_tick ? false : _q_seq_dotted)
+    arm_take ∈ Bool
+    arm_take = (is_first_tick ? false : _arm_take)
+    arm_payload_head ∈ Bool
+    arm_payload_head = (is_first_tick ? false : _arm_payload_head)
     ..DriverClassify
-    verdict ∈ Int = ((c_is_mem ? 1 : 0) + (c_pinned ? 2 : 0)
-        + (d_enter_pratt0 ? 4 : 0))
+    verdict ∈ Int = ((line_is_mem ? 1 : 0) + (line_pinned ? 2 : 0)
+        + (enter_pratt_line ? 4 : 0))
     v_msg ∈ String = str_from_int(verdict)
     effects ∈ Seq(Effect) = ((¬is_first_tick)
         ? ⟨LibCall("libc", "puts", ⟨ArgStr(v_msg)⟩), Exit(0)⟩

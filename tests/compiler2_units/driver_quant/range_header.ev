@@ -1,6 +1,6 @@
 -- DriverQuant isolation — range-quantifier header classification.
 -- Line head pinned to `∀ x ∈ { 0 .. 9 }`; the module must classify
--- c_q_rng = true and decode c_q_lo = 0, c_q_hi = 9. Output is "9" only
+-- q_range = true and decode q_lo = 0, q_hi = 9. Output is "9" only
 -- when the range header is recognized and its bound decoded.
 --
 -- entry: main
@@ -14,69 +14,69 @@ import "compiler2/driver_record.ev"
 import "compiler2/driver_quant.ev"
 
 fsm main
-    c_t0 ∈ Token
-    c_t0 = (is_first_tick ? OpForall : _c_t0)
-    c_t1 ∈ Token
-    c_t1 = (is_first_tick ? Ident("x") : _c_t1)
-    c_t2 ∈ Token
-    c_t2 = (is_first_tick ? OpIn : _c_t2)
-    c_t3 ∈ Token
-    c_t3 = (is_first_tick ? LBrace : _c_t3)
-    c_t4 ∈ Token
-    c_t4 = (is_first_tick ? IntLit(0) : _c_t4)
-    ww_t5 ∈ Token
-    ww_t5 = (is_first_tick ? Dot : _ww_t5)
-    ww_t6 ∈ Token
-    ww_t6 = (is_first_tick ? Dot : _ww_t6)
-    ww_t7 ∈ Token
-    ww_t7 = (is_first_tick ? IntLit(9) : _ww_t7)
-    d_classify ∈ Bool
-    d_classify = (is_first_tick ? false : _d_classify)
-    d_enter_qset ∈ Bool
-    d_enter_qset = (is_first_tick ? false : _d_enter_qset)
-    d_in_claim ∈ Bool
-    d_in_claim = (is_first_tick ? false : _d_in_claim)
-    d_line_end ∈ Bool
-    d_line_end = (is_first_tick ? false : _d_line_end)
-    d_witems_nil ∈ Bool
-    d_witems_nil = (is_first_tick ? false : _d_witems_nil)
-    gc_bin ∈ Bool
-    gc_bin = (is_first_tick ? false : _gc_bin)
-    gc_l ∈ Expr
-    gc_l = (is_first_tick ? EInt(0) : _gc_l)
-    gc_op ∈ Op
-    gc_op = (is_first_tick ? OpPlus : _gc_op)
-    gc_r ∈ Expr
-    gc_r = (is_first_tick ? EInt(0) : _gc_r)
-    il_pfx ∈ String
-    il_pfx = (is_first_tick ? "" : _il_pfx)
-    il_ps ∈ Int
-    il_ps = (is_first_tick ? 0 : _il_ps)
+    line_t0 ∈ Token
+    line_t0 = (is_first_tick ? OpForall : _line_t0)
+    line_t1 ∈ Token
+    line_t1 = (is_first_tick ? Ident("x") : _line_t1)
+    line_t2 ∈ Token
+    line_t2 = (is_first_tick ? OpIn : _line_t2)
+    line_t3 ∈ Token
+    line_t3 = (is_first_tick ? LBrace : _line_t3)
+    line_t4 ∈ Token
+    line_t4 = (is_first_tick ? IntLit(0) : _line_t4)
+    tok5 ∈ Token
+    tok5 = (is_first_tick ? Dot : _tok5)
+    tok6 ∈ Token
+    tok6 = (is_first_tick ? Dot : _tok6)
+    tok7 ∈ Token
+    tok7 = (is_first_tick ? IntLit(9) : _tok7)
+    classify_now ∈ Bool
+    classify_now = (is_first_tick ? false : _classify_now)
+    enter_qset ∈ Bool
+    enter_qset = (is_first_tick ? false : _enter_qset)
+    in_claim ∈ Bool
+    in_claim = (is_first_tick ? false : _in_claim)
+    line_end ∈ Bool
+    line_end = (is_first_tick ? false : _line_end)
+    work_nil ∈ Bool
+    work_nil = (is_first_tick ? false : _work_nil)
+    guard_is_binop ∈ Bool
+    guard_is_binop = (is_first_tick ? false : _guard_is_binop)
+    guard_lhs ∈ Expr
+    guard_lhs = (is_first_tick ? EInt(0) : _guard_lhs)
+    guard_op ∈ Op
+    guard_op = (is_first_tick ? OpPlus : _guard_op)
+    guard_rhs ∈ Expr
+    guard_rhs = (is_first_tick ? EInt(0) : _guard_rhs)
+    scope_prefix ∈ String
+    scope_prefix = (is_first_tick ? "" : _scope_prefix)
+    param_skip ∈ Int
+    param_skip = (is_first_tick ? 0 : _param_skip)
     in_parse ∈ Bool
     in_parse = (is_first_tick ? false : _in_parse)
-    p_done ∈ Bool
-    p_done = (is_first_tick ? false : _p_done)
-    pk_kind ∈ Int
-    pk_kind = (is_first_tick ? 0 : _pk_kind)
-    pmode ∈ Int
-    pmode = (is_first_tick ? 0 : _pmode)
-    pr_bad ∈ Bool
-    pr_bad = (is_first_tick ? false : _pr_bad)
-    pr_sres ∈ Expr
-    pr_sres = (is_first_tick ? EInt(0) : _pr_sres)
-    sq_name ∈ String
-    sq_name = (is_first_tick ? "" : _sq_name)
-    sq_set ∈ Bool
-    sq_set = (is_first_tick ? false : _sq_set)
+    pratt_done ∈ Bool
+    pratt_done = (is_first_tick ? false : _pratt_done)
+    pratt_kind ∈ Int
+    pratt_kind = (is_first_tick ? 0 : _pratt_kind)
+    parse_mode ∈ Int
+    parse_mode = (is_first_tick ? 0 : _parse_mode)
+    pratt_bad ∈ Bool
+    pratt_bad = (is_first_tick ? false : _pratt_bad)
+    pratt_result ∈ Expr
+    pratt_result = (is_first_tick ? EInt(0) : _pratt_result)
+    seqvar_name ∈ String
+    seqvar_name = (is_first_tick ? "" : _seqvar_name)
+    seqvar_set ∈ Bool
+    seqvar_set = (is_first_tick ? false : _seqvar_set)
     tok_ready ∈ Bool
     tok_ready = (is_first_tick ? false : _tok_ready)
-    ww_t0 ∈ Token
-    ww_t0 = (is_first_tick ? EofTok : _ww_t0)
-    ww_t1 ∈ Token
-    ww_t1 = (is_first_tick ? EofTok : _ww_t1)
+    tok0 ∈ Token
+    tok0 = (is_first_tick ? EofTok : _tok0)
+    tok1 ∈ Token
+    tok1 = (is_first_tick ? EofTok : _tok1)
     ..DriverQuant
-    ok ∈ Bool = c_q_rng
-    msg ∈ String = str_from_int(c_q_hi)
+    ok ∈ Bool = q_range
+    msg ∈ String = str_from_int(q_hi)
     effects ∈ Seq(Effect) = (ok
         ? ⟨LibCall("libc", "puts", ⟨ArgStr(msg)⟩), Exit(0)⟩
         : ⟨LibCall("libc", "getpid", ⟨⟩)⟩)

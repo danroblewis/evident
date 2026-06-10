@@ -1,5 +1,5 @@
--- RecTypeEntry invariant: `0 ≤ nf ≤ 6` — the registry's hard structural
--- bound (a0..a5 are the ≤6 field-accessor decls). A slot claiming 7
+-- RecTypeEntry invariant: `0 ≤ n_fields ≤ 6` — the registry's hard structural
+-- bound (acc0..acc5 are the ≤6 field-accessor decls). A slot claiming 7
 -- fields cannot be represented, so the tick is UNSAT (exit 2). Every
 -- field gets a covering assignment (the carried-record guardrail).
 --
@@ -13,15 +13,15 @@ fsm main
     e.name = ""
     e.fnames = ""
     e.ftypes = ""
-    e.nf = 7
+    e.n_fields = 7
     e.sort = 0
     e.ctor = 0
     e.asort = 0
     e.ssort = 0
-    e.a0 = 0
-    e.a1 = 0
-    e.a2 = 0
-    e.a3 = 0
-    e.a4 = 0
-    e.a5 = 0
+    e.acc0 = 0
+    e.acc1 = 0
+    e.acc2 = 0
+    e.acc3 = 0
+    e.acc4 = 0
+    e.acc5 = 0
     effects ∈ Seq(Effect) = ⟨Exit(7)⟩

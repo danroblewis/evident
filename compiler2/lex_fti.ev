@@ -21,7 +21,7 @@
 -- A string-carrying token finishing at tick T emits
 -- `LibCall("libc","strdup",⟨ArgStr(s)⟩)` as effects[0] of tick T; the
 -- pointer arrives in tick T+1's last_results[0] and is written into
--- the entry's slot 1 by a write_long emitted at T+1 (`pend` carries
+-- the entry's slot 1 by a write_long emitted at T+1 (`capture_pend` carries
 -- the slot-1 address across the tick; -1 = nothing pending). The
 -- lexer's branch structure guarantees two string-carrying tokens
 -- never finish on consecutive ticks, so a strdup tick never
@@ -37,9 +37,9 @@
 -- is fi_only, so `10x` → IntLit(10) + Ident("x")), and strlit escapes
 -- (\t \n \" \\) append the TRANSLATED byte, so str0's strdup payload
 -- carries the real byte. The host also:
---   · carries count/last_tag/prev_tag/pend as Int state, assigning
+--   · carries count/last_tag/prev_tag/capture_pend as Int state, assigning
 --     count ← count_n, last_tag ← last_n, prev_tag ← prev_n,
---     pend ← (kind = 3 ∨ kind = 5 ? a_p0 : -1);
+--     capture_pend ← (kind = 3 ∨ kind = 5 ? a_p0 : -1);
 --   · assembles effects from `kind` (w(a,v) = __mem.write_long):
 --       0  no token       —             (pending write / filler only)
 --       1  one nullary    ⟨w(a_tag0,tag0)⟩
@@ -48,7 +48,7 @@
 --       4  keyword + op   ⟨w(a_tag0,tag0), w(a_tag1,tag1)⟩
 --       5  ident + op     ⟨strdup(str0), w(a_tag0,tag0), w(a_tag1,tag1)⟩
 --       6  IntLit + op    ⟨w(a_tag0,tag0), w(a_p0,p0), w(a_tag1,tag1)⟩
---     prepending ⟨w(pend, last_results[0])⟩ when pend ≥ 0 (only
+--     prepending ⟨w(capture_pend, last_results[0])⟩ when capture_pend ≥ 0 (only
 --     possible alongside kinds 0 and 1);
 --   · on the lex_done tick writes the EofTok sentinel
 --     w(base + count*32, 13) — NOT counted in tokens_count — and
@@ -124,7 +124,7 @@ claim LexKeywordTag(s ∈ String, tag ∈ Int)
         : s = "mapsto" ? 28
         : 1)
 
-claim LexFtiPlan(lx_comment ∈ Bool, strlit_closing ∈ Bool,
+claim LexFtiPlan(at_comment ∈ Bool, strlit_closing ∈ Bool,
                  fs_op ∈ Bool, fi_op ∈ Bool,
                  fs_only ∈ Bool, fi_only ∈ Bool, ch_only ∈ Bool,
                  cur_char ∈ String, partial_str ∈ String,
@@ -134,43 +134,43 @@ claim LexFtiPlan(lx_comment ∈ Bool, strlit_closing ∈ Bool,
                  kind ∈ Int, tag0 ∈ Int, p0 ∈ Int, str0 ∈ String,
                  tag1 ∈ Int, a_tag0 ∈ Int, a_p0 ∈ Int, a_tag1 ∈ Int,
                  count_n ∈ Int, last_n ∈ Int, prev_n ∈ Int)
-    lf_ctag ∈ Int
-    lf_crec ∈ Bool
-    LexCharTag(c ↦ cur_char, tag ↦ lf_ctag, recognized ↦ lf_crec)
-    lf_ktag ∈ Int
-    LexKeywordTag(s ↦ partial_str, tag ↦ lf_ktag)
-    lf_kw_ident ∈ Bool = (lf_ktag = 1)
+    cur_char_tag ∈ Int
+    cur_char_isop ∈ Bool
+    LexCharTag(c ↦ cur_char, tag ↦ cur_char_tag, recognized ↦ cur_char_isop)
+    keyword_tag ∈ Int
+    LexKeywordTag(s ↦ partial_str, tag ↦ keyword_tag)
+    is_plain_ident ∈ Bool = (keyword_tag = 1)
 
-    kind = (lx_comment ? 0
+    kind = (at_comment ? 0
         : strlit_closing ? 3
-        : fs_op ? (lf_kw_ident ? 5 : 4)
+        : fs_op ? (is_plain_ident ? 5 : 4)
         : fi_op ? 6
-        : fs_only ? (lf_kw_ident ? 3 : 1)
+        : fs_only ? (is_plain_ident ? 3 : 1)
         : fi_only ? 2
         : ch_only ? 1
         : 0)
 
-    lf_prev_atom ∈ Bool = (prev_tag = 1 ∨ prev_tag = 2
+    prev_is_atom ∈ Bool = (prev_tag = 1 ∨ prev_tag = 2
         ∨ prev_tag = 3 ∨ prev_tag = 6 ∨ prev_tag = 70)
-    lf_fold ∈ Bool = ((kind = 2 ∨ kind = 6)
-        ∧ (last_tag = 11) ∧ (¬lf_prev_atom))
+    neg_fold ∈ Bool = ((kind = 2 ∨ kind = 6)
+        ∧ (last_tag = 11) ∧ (¬prev_is_atom))
 
-    lf_e0 ∈ Int = (lf_fold ? count - 1 : count)
-    a_tag0 = base + (lf_e0 * 32)
+    entry_idx ∈ Int = (neg_fold ? count - 1 : count)
+    a_tag0 = base + (entry_idx * 32)
     a_p0 = a_tag0 + 8
-    a_tag1 = base + ((lf_e0 + 1) * 32)
+    a_tag1 = base + ((entry_idx + 1) * 32)
 
     tag0 = (strlit_closing ? 3
         : (kind = 2 ∨ kind = 6) ? 2
-        : ch_only ? lf_ctag
-        : lf_ktag)
-    p0 = (lf_fold ? 0 - partial_int : partial_int)
+        : ch_only ? cur_char_tag
+        : keyword_tag)
+    p0 = (neg_fold ? 0 - partial_int : partial_int)
     str0 = (strlit_closing ? partial_strlit : partial_str)
-    tag1 = lf_ctag
+    tag1 = cur_char_tag
 
     count_n = (kind = 0 ? count
-        : (kind = 2 ∧ lf_fold) ? count
-        : (kind = 6 ∧ lf_fold) ? count + 1
+        : (kind = 2 ∧ neg_fold) ? count
+        : (kind = 6 ∧ neg_fold) ? count + 1
         : (kind = 4 ∨ kind = 5 ∨ kind = 6) ? count + 2
         : count + 1)
     last_n = (kind = 0 ? last_tag
@@ -178,5 +178,5 @@ claim LexFtiPlan(lx_comment ∈ Bool, strlit_closing ∈ Bool,
         : tag0)
     prev_n = (kind = 0 ? prev_tag
         : (kind = 4 ∨ kind = 5 ∨ kind = 6) ? tag0
-        : lf_fold ? prev_tag
+        : neg_fold ? prev_tag
         : last_tag)

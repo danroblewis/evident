@@ -21,8 +21,8 @@ type FtiBuffer(base ∈ Int, count ∈ Int, cap ∈ Int)
 
 -- ── Named FTI buffer append: cursor + parallel name registry ──────
 -- The shared "append a named row" step behind every FTI buffer with a
--- companion name string (the symbol table's `st_names`, the claim
--- index's `ci_names`).
+-- companion name string (the symbol table's `sym_names`, the claim
+-- index's `claimidx_names`).
 claim FtiNamedAppend(first ∈ Bool, add ∈ Bool, prev_count ∈ Int,
         prev_names ∈ String, init_count ∈ Int, seed_names ∈ String,
         entry ∈ String, count ∈ Int, names ∈ String)
@@ -76,14 +76,14 @@ type Z3Numerals(zero ∈ Int, one ∈ Int, two ∈ Int, three ∈ Int, four ∈ 
 -- ── Record-type registry entry: one registered `type Name(...)` ─────
 -- One slot of the record-type registry (DriverRecord builds ≤3). name =
 -- the type name; fnames/ftypes = the fixed-width 32-byte "|field<pad31>"
--- record strings (field names / normalized types); nf = field count;
+-- record strings (field names / normalized types); n_fields = field count;
 -- sort/ctor/asort/ssort = the Z3 tuple sort + ctor decl + (Array Int T) /
--- (Set T) handles; a0..a5 = the ≤6 field-accessor decls. A slot whose
+-- (Set T) handles; acc0..acc5 = the ≤6 field-accessor decls. A slot whose
 -- `sort` is still 0 is "not finished" and never matches a registry lookup.
 type RecTypeEntry(name ∈ String, fnames ∈ String, ftypes ∈ String,
-    nf ∈ Int, sort ∈ Int, ctor ∈ Int, asort ∈ Int, ssort ∈ Int,
-    a0 ∈ Int, a1 ∈ Int, a2 ∈ Int, a3 ∈ Int, a4 ∈ Int, a5 ∈ Int)
-    0 ≤ nf ≤ 6
+    n_fields ∈ Int, sort ∈ Int, ctor ∈ Int, asort ∈ Int, ssort ∈ Int,
+    acc0 ∈ Int, acc1 ∈ Int, acc2 ∈ Int, acc3 ∈ Int, acc4 ∈ Int, acc5 ∈ Int)
+    0 ≤ n_fields ≤ 6
 
 type RecField(name ∈ String, ty ∈ String, kidx ∈ Int)
     -- kidx is RtIdxOf's result: a registry hit (0/1/2) or a miss (−1).
@@ -91,21 +91,21 @@ type RecField(name ∈ String, ty ∈ String, kidx ∈ Int)
     0 - 1 ≤ kidx ≤ 2
 
 -- One row of the user-enum VALUE table: a nullary variant's name and
--- the Z3 handle of its constant. Used as `evt ∈ Seq(EnumVariantVal)` with
--- `#evt ≤ 6` — the bounded-Seq lowering (scripts/lower-bounded-seq.sh)
+-- the Z3 handle of its constant. Used as `enum_values ∈ Seq(EnumVariantVal)` with
+-- `#enum_values ≤ 6` — the bounded-Seq lowering (scripts/lower-bounded-seq.sh)
 -- flattens it to scalars pre-oracle, so the oracle never sees the Seq.
 type EnumVariantVal(name ∈ String, value ∈ Int)
 
 -- One row of the user-enum DECL registry: variant name, ctor func_decl,
--- tester decl, field-0 accessor decl. `uev ∈ Seq(UserEnumVariant)`,
+-- tester decl, field-0 accessor decl. `user_variants ∈ Seq(UserEnumVariant)`,
 -- lowered by the bounded-Seq pass; rows are written by INDEX (the ED
--- machine's _ed_vidx / acc-pend walk), so the registry has no length.
+-- machine's _enum_vidx / acc-capture_pend walk), so the registry has no length.
 type UserEnumVariant(name ∈ String, ctor ∈ Int, tester ∈ Int, acc ∈ Int)
 
 -- One row of the Set(T)-variable registry: var name, the element type's
 -- registry slot (kidx), the packed 32-byte-row element-name string, and
--- the element count. `stv ∈ Seq(SetVar)`; rows written by index
--- (_stv_cnt / c_stv_idx / _sv_cur), so no length.
+-- the element count. `set_vars ∈ Seq(SetVar)`; rows written by index
+-- (_setvar_count / setvar_idx / _setvar_cur), so no length.
 type SetVar(name ∈ String, kidx ∈ Int, elems ∈ String, count ∈ Int)
 
 -- ── Work items: one line of claim body = one small program ────────

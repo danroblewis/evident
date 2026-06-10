@@ -1,6 +1,6 @@
 -- DriverPratt isolation — entry-kind latch.
--- pmode-3 Pratt entry with d_enter_pratt held and d_pratt_kind0 = 5: the
--- module must latch pk_kind = 5 (which consumer the result returns to).
+-- parse_mode-3 Pratt entry with enter_pratt held and pratt_enter_kind = 5: the
+-- module must latch pratt_kind = 5 (which consumer the result returns to).
 -- Full shift/reduce needs a fed token window; this is entry wiring only.
 --
 -- entry: main
@@ -16,50 +16,50 @@ import "compiler2/driver_pratt.ev"
 fsm main
     in_parse ∈ Bool
     in_parse = (is_first_tick ? true : _in_parse)
-    pmode ∈ Int
-    pmode = (is_first_tick ? 3 : _pmode)
+    parse_mode ∈ Int
+    parse_mode = (is_first_tick ? 3 : _parse_mode)
     tok_ready ∈ Bool
     tok_ready = (is_first_tick ? true : _tok_ready)
-    d_enter_pratt ∈ Bool
-    d_enter_pratt = (is_first_tick ? true : _d_enter_pratt)
-    d_pratt_kind0 ∈ Int
-    d_pratt_kind0 = (is_first_tick ? 5 : _d_pratt_kind0)
-    c_dname ∈ String
-    c_dname = (is_first_tick ? "" : _c_dname)
-    c_is_mem ∈ Bool
-    c_is_mem = (is_first_tick ? false : _c_is_mem)
-    c_is_nat ∈ Bool
-    c_is_nat = (is_first_tick ? false : _c_is_nat)
-    c_nodecl ∈ Bool
-    c_nodecl = (is_first_tick ? false : _c_nodecl)
-    c_pinned ∈ Bool
-    c_pinned = (is_first_tick ? false : _c_pinned)
-    c_pn ∈ String
-    c_pn = (is_first_tick ? "" : _c_pn)
-    c_sc ∈ Int
-    c_sc = (is_first_tick ? 0 : _c_sc)
-    c_ty_rtk ∈ Int
-    c_ty_rtk = (is_first_tick ? 0 : _c_ty_rtk)
-    pq_qstop ∈ Bool
-    pq_qstop = (is_first_tick ? false : _pq_qstop)
-    rt_e0 ∈ RecTypeEntry(name ↦ "", fnames ↦ "", ftypes ↦ "", nf ↦ 0,
+    enter_pratt ∈ Bool
+    enter_pratt = (is_first_tick ? true : _enter_pratt)
+    pratt_enter_kind ∈ Int
+    pratt_enter_kind = (is_first_tick ? 5 : _pratt_enter_kind)
+    line_dname ∈ String
+    line_dname = (is_first_tick ? "" : _line_dname)
+    line_is_mem ∈ Bool
+    line_is_mem = (is_first_tick ? false : _line_is_mem)
+    line_is_nat ∈ Bool
+    line_is_nat = (is_first_tick ? false : _line_is_nat)
+    no_decl ∈ Bool
+    no_decl = (is_first_tick ? false : _no_decl)
+    line_pinned ∈ Bool
+    line_pinned = (is_first_tick ? false : _line_pinned)
+    resolved_name ∈ String
+    resolved_name = (is_first_tick ? "" : _resolved_name)
+    line_sort ∈ Int
+    line_sort = (is_first_tick ? 0 : _line_sort)
+    type_rec_slot ∈ Int
+    type_rec_slot = (is_first_tick ? 0 : _type_rec_slot)
+    pratt_qstop ∈ Bool
+    pratt_qstop = (is_first_tick ? false : _pratt_qstop)
+    rec0 ∈ RecTypeEntry(name ↦ "", fnames ↦ "", ftypes ↦ "", n_fields ↦ 0,
         sort ↦ 0, ctor ↦ 0, asort ↦ 0, ssort ↦ 0,
-        a0 ↦ 0, a1 ↦ 0, a2 ↦ 0, a3 ↦ 0, a4 ↦ 0, a5 ↦ 0)
-    rt_e1 ∈ RecTypeEntry(name ↦ "", fnames ↦ "", ftypes ↦ "", nf ↦ 0,
+        acc0 ↦ 0, acc1 ↦ 0, acc2 ↦ 0, acc3 ↦ 0, acc4 ↦ 0, acc5 ↦ 0)
+    rec1 ∈ RecTypeEntry(name ↦ "", fnames ↦ "", ftypes ↦ "", n_fields ↦ 0,
         sort ↦ 0, ctor ↦ 0, asort ↦ 0, ssort ↦ 0,
-        a0 ↦ 0, a1 ↦ 0, a2 ↦ 0, a3 ↦ 0, a4 ↦ 0, a5 ↦ 0)
-    rt_e2 ∈ RecTypeEntry(name ↦ "", fnames ↦ "", ftypes ↦ "", nf ↦ 0,
+        acc0 ↦ 0, acc1 ↦ 0, acc2 ↦ 0, acc3 ↦ 0, acc4 ↦ 0, acc5 ↦ 0)
+    rec2 ∈ RecTypeEntry(name ↦ "", fnames ↦ "", ftypes ↦ "", n_fields ↦ 0,
         sort ↦ 0, ctor ↦ 0, asort ↦ 0, ssort ↦ 0,
-        a0 ↦ 0, a1 ↦ 0, a2 ↦ 0, a3 ↦ 0, a4 ↦ 0, a5 ↦ 0)
+        acc0 ↦ 0, acc1 ↦ 0, acc2 ↦ 0, acc3 ↦ 0, acc4 ↦ 0, acc5 ↦ 0)
     toks ∈ TokenList
     toks = (is_first_tick ? TLNil : _toks)
-    uev ∈ Seq(UserEnumVariant)
-    #uev ≤ 6
-    uev = (is_first_tick ? ⟨⟩ : _uev)
-    wtoks ∈ TokenList
-    wtoks = (is_first_tick ? TLNil : _wtoks)
+    user_variants ∈ Seq(UserEnumVariant)
+    #user_variants ≤ 6
+    user_variants = (is_first_tick ? ⟨⟩ : _user_variants)
+    win_toks ∈ TokenList
+    win_toks = (is_first_tick ? TLNil : _win_toks)
     ..DriverPratt
-    msg ∈ String = str_from_int(pk_kind)
+    msg ∈ String = str_from_int(pratt_kind)
     effects ∈ Seq(Effect) = ((¬is_first_tick)
         ? ⟨LibCall("libc", "puts", ⟨ArgStr(msg)⟩), Exit(0)⟩
         : ⟨LibCall("libc", "getpid", ⟨⟩)⟩)

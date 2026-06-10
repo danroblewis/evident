@@ -1,14 +1,14 @@
 -- MODULE DriverCallLower
--- CONSUMES: the decomposed call (d_cnm, d_ca0/1/2), the ctor-dispatch decl
---           (d_ctor_d), the lookup name d_lkname, the work tail d_wtail,
+-- CONSUMES: the decomposed call (call_name, call_arg0/1/2), the ctor-dispatch decl
+--           (ctor_decl), the lookup name lookup_name, the work tail work_tail,
 --           the cached zero numeral (z3nums.zero), the record-type registry
---           (rt_e0/e1/e2) + its RtRecName/RtFieldAcc probes, and the set-var
---           registry carries (_sq_set/_sq_name/_il_pfx, stv_*).
--- PRODUCES: the per-arity builtin/ctor lowering — d_c1_items (str_len /
---           str_from_int / 1-arg ctor; incl. d_sfi_items, d_sl_*/d_card_*
---           cardinality), d_c2_items (__real/__field/__index/char_at/
+--           (rec0/e1/e2) + its RtRecName/RtFieldAcc probes, and the set-var
+--           registry carries (_seqvar_set/_seqvar_name/_scope_prefix, stv_*).
+-- PRODUCES: the per-arity builtin/ctor lowering — call1_items (str_len /
+--           str_from_int / 1-arg ctor; incl. str_from_int_items, d_sl_*/d_card_*
+--           cardinality), call2_items (__real/__field/__index/char_at/
 --           index_of/str_contains/starts_with/ends_with / 2-arg ctor), and
---           d_c3_items (replace/substr/index_of / 3-arg ctor).
+--           call3_items (replace/substr/index_of / 3-arg ctor).
 -- MAINTAINS: pure per-tick lowering, no carry. starts_with/ends_with
 --           process args in SWAPPED order to line up StrOpBuildZ3's operand
 --           order; an unknown call name pushes handle 0 (unbound-ident
@@ -28,118 +28,118 @@ fsm DriverCallLower
     -- emits `(str.indexof s sub 0)`). str_from_int expands to the
     -- oracle's negative-safe composite
     -- (ite (>= e 0) (str.from_int e) (str.++ "-" (str.from_int (- 0 e)))).
-    d_sfi_items ∈ C2Items = C2ICons(C2Process(d_ca0),
+    str_from_int_items ∈ C2Items = C2ICons(C2Process(call_arg0),
         C2ICons(C2Process(EInt(0)),
         C2ICons(C2Op(OpGeq),
-        C2ICons(C2Process(d_ca0),
+        C2ICons(C2Process(call_arg0),
         C2ICons(C2StrOp("int_to_str", 1),
         C2ICons(C2Process(EStr("-")),
         C2ICons(C2Process(EInt(0)),
-        C2ICons(C2Process(d_ca0),
+        C2ICons(C2Process(call_arg0),
         C2ICons(C2Op(OpSub),
         C2ICons(C2StrOp("int_to_str", 1),
         C2ICons(C2Op(OpConcat),
-        C2ICons(C2Ite, d_wtail))))))))))))
-    d_ca0_nm ∈ String = match d_ca0
+        C2ICons(C2Ite, work_tail))))))))))))
+    call_arg0_name ∈ String = match call_arg0
         EIdent(can) ⇒ can
         _ ⇒ ""
-    d_sl_seq ∈ Bool = (_sq_set ∧ ((d_ca0_nm = _sq_name)
-        ∨ ((_il_pfx ++ d_ca0_nm) = _sq_name)))
-    d_sl_bare_hit ∈ Bool = (d_ca0_nm ≠ "" ∧ (∃ e ∈ stv : e.name = d_ca0_nm))
-    d_sl_pfx_hit ∈ Bool = (d_ca0_nm ≠ "" ∧ (∃ e ∈ stv : e.name = _il_pfx ++ d_ca0_nm))
-    d_sl_set ∈ Bool = (d_sl_bare_hit ∨ d_sl_pfx_hit)
-    d_sl_nm ∈ String = (d_sl_bare_hit ? d_ca0_nm
-        : d_sl_pfx_hit ? _il_pfx ++ d_ca0_nm
+    len_of_seqvar ∈ Bool = (_seqvar_set ∧ ((call_arg0_name = _seqvar_name)
+        ∨ ((_scope_prefix ++ call_arg0_name) = _seqvar_name)))
+    len_set_bare_hit ∈ Bool = (call_arg0_name ≠ "" ∧ (∃ e ∈ set_vars : e.name = call_arg0_name))
+    len_set_pfx_hit ∈ Bool = (call_arg0_name ≠ "" ∧ (∃ e ∈ set_vars : e.name = _scope_prefix ++ call_arg0_name))
+    len_of_setvar ∈ Bool = (len_set_bare_hit ∨ len_set_pfx_hit)
+    len_set_name ∈ String = (len_set_bare_hit ? call_arg0_name
+        : len_set_pfx_hit ? _scope_prefix ++ call_arg0_name
         : "")
-    d_slc_e ∈ String
-    ∀ e ∈ stv : ((e.name = d_sl_nm) ⇒ (d_slc_e = e.elems))
-    (¬(∃ e ∈ stv : e.name = d_sl_nm)) ⇒ (d_slc_e = "")
-    d_slc_c ∈ Int
-    ∀ e ∈ stv : ((e.name = d_sl_nm) ⇒ (d_slc_c = e.count))
-    (¬(∃ e ∈ stv : e.name = d_sl_nm)) ⇒ (d_slc_c = 0)
-    d_slc_k ∈ Int
-    ∀ e ∈ stv : ((e.name = d_sl_nm) ⇒ (d_slc_k = e.kidx))
-    (¬(∃ e ∈ stv : e.name = d_sl_nm)) ⇒ (d_slc_k = 0)
-    d_slc_e0 ∈ String
-    RtRecName(s ↦ d_slc_e, i ↦ 0, name ↦ d_slc_e0)
-    d_slc_e1 ∈ String
-    RtRecName(s ↦ d_slc_e, i ↦ 1, name ↦ d_slc_e1)
-    d_card_items ∈ C2Items = (d_slc_c = 1
-            ? C2ICons(C2Process(EInt(1)), d_wtail)
-        : d_slc_c = 2
-            ? C2ICons(C2RecVal(d_slc_e0, d_slc_k),
-                C2ICons(C2RecVal(d_slc_e1, d_slc_k),
+    card_elems ∈ String
+    ∀ e ∈ set_vars : ((e.name = len_set_name) ⇒ (card_elems = e.elems))
+    (¬(∃ e ∈ set_vars : e.name = len_set_name)) ⇒ (card_elems = "")
+    card_count ∈ Int
+    ∀ e ∈ set_vars : ((e.name = len_set_name) ⇒ (card_count = e.count))
+    (¬(∃ e ∈ set_vars : e.name = len_set_name)) ⇒ (card_count = 0)
+    card_slot ∈ Int
+    ∀ e ∈ set_vars : ((e.name = len_set_name) ⇒ (card_slot = e.kidx))
+    (¬(∃ e ∈ set_vars : e.name = len_set_name)) ⇒ (card_slot = 0)
+    card_elt0 ∈ String
+    RtRecName(s ↦ card_elems, i ↦ 0, name ↦ card_elt0)
+    card_elt1 ∈ String
+    RtRecName(s ↦ card_elems, i ↦ 1, name ↦ card_elt1)
+    card_items ∈ C2Items = (card_count = 1
+            ? C2ICons(C2Process(EInt(1)), work_tail)
+        : card_count = 2
+            ? C2ICons(C2RecVal(card_elt0, card_slot),
+                C2ICons(C2RecVal(card_elt1, card_slot),
                 C2ICons(C2Op(OpEq),
                 C2ICons(C2Process(EInt(1)),
                 C2ICons(C2Process(EInt(2)),
-                C2ICons(C2Ite, d_wtail))))))
-        : C2ICons(C2Process(EInt(d_slc_c)), d_wtail))
-    d_c1_items ∈ C2Items = (d_cnm = "str_len"
-            ? (d_sl_seq
-                ? C2ICons(C2Process(EIdent(_sq_name ++ "__len")), d_wtail)
-                : d_sl_set
-                ? d_card_items
-                : C2ICons(C2Process(d_ca0), C2ICons(C2StrOp("len", 1), d_wtail)))
-        : d_cnm = "str_from_int" ? d_sfi_items
-        : d_ctor_d ≠ 0
-            ? C2ICons(C2Process(d_ca0),
-                C2ICons(C2App(d_ctor_d, 1), d_wtail))
-        : C2ICons(C2PushH(0), d_wtail))
-    d_rl_s ∈ Int = match d_ca0
+                C2ICons(C2Ite, work_tail))))))
+        : C2ICons(C2Process(EInt(card_count)), work_tail))
+    call1_items ∈ C2Items = (call_name = "str_len"
+            ? (len_of_seqvar
+                ? C2ICons(C2Process(EIdent(_seqvar_name ++ "__len")), work_tail)
+                : len_of_setvar
+                ? card_items
+                : C2ICons(C2Process(call_arg0), C2ICons(C2StrOp("len", 1), work_tail)))
+        : call_name = "str_from_int" ? str_from_int_items
+        : ctor_decl ≠ 0
+            ? C2ICons(C2Process(call_arg0),
+                C2ICons(C2App(ctor_decl, 1), work_tail))
+        : C2ICons(C2PushH(0), work_tail))
+    real_arg_scaled ∈ Int = match call_arg0
         EInt(n) ⇒ n
         _ ⇒ 0
-    d_rl_d ∈ Int = match d_ca1
+    real_arg_digits ∈ Int = match call_arg1
         EInt(n) ⇒ n
         _ ⇒ 0
-    d_fld_nm ∈ String = match d_ca1
+    field_arg_name ∈ String = match call_arg1
         EIdent(s) ⇒ s
         _ ⇒ ""
-    d_fld_acc ∈ Int
-    RtFieldAcc(fname ↦ d_fld_nm,
-        e0 ↦ rt_e0, e1 ↦ rt_e1, e2 ↦ rt_e2,
-        acc ↦ d_fld_acc)
-    d_c2_items ∈ C2Items = (d_cnm = "__real"
-            ? C2ICons(C2Real(d_rl_s, d_rl_d), d_wtail)
-        : d_cnm = "__field"
-            ? C2ICons(C2Process(d_ca0),
-                C2ICons(C2App(d_fld_acc, 1), d_wtail))
-        : d_cnm = "__index"
-            ? C2ICons(C2Process(d_ca0), C2ICons(C2Process(d_ca1),
-                C2ICons(C2SelH, d_wtail)))
-        : d_cnm = "char_at"
-            ? C2ICons(C2Process(d_ca0), C2ICons(C2Process(d_ca1),
-                C2ICons(C2StrOp("char_at", 2), d_wtail)))
-        : d_cnm = "index_of"
-            ? C2ICons(C2Process(d_ca0), C2ICons(C2Process(d_ca1),
+    field_arg_acc ∈ Int
+    RtFieldAcc(fname ↦ field_arg_name,
+        e0 ↦ rec0, e1 ↦ rec1, e2 ↦ rec2,
+        acc ↦ field_arg_acc)
+    call2_items ∈ C2Items = (call_name = "__real"
+            ? C2ICons(C2Real(real_arg_scaled, real_arg_digits), work_tail)
+        : call_name = "__field"
+            ? C2ICons(C2Process(call_arg0),
+                C2ICons(C2App(field_arg_acc, 1), work_tail))
+        : call_name = "__index"
+            ? C2ICons(C2Process(call_arg0), C2ICons(C2Process(call_arg1),
+                C2ICons(C2SelH, work_tail)))
+        : call_name = "char_at"
+            ? C2ICons(C2Process(call_arg0), C2ICons(C2Process(call_arg1),
+                C2ICons(C2StrOp("char_at", 2), work_tail)))
+        : call_name = "index_of"
+            ? C2ICons(C2Process(call_arg0), C2ICons(C2Process(call_arg1),
                 C2ICons(C2PushH(z3nums.zero),
-                C2ICons(C2StrOp("indexof", 3), d_wtail))))
-        : d_cnm = "str_contains"
-            ? C2ICons(C2Process(d_ca0), C2ICons(C2Process(d_ca1),
-                C2ICons(C2StrOp("contains", 2), d_wtail)))
-        : d_cnm = "starts_with"
-            ? C2ICons(C2Process(d_ca1), C2ICons(C2Process(d_ca0),
-                C2ICons(C2StrOp("prefixof", 2), d_wtail)))
-        : d_cnm = "ends_with"
-            ? C2ICons(C2Process(d_ca1), C2ICons(C2Process(d_ca0),
-                C2ICons(C2StrOp("suffixof", 2), d_wtail)))
-        : d_ctor_d ≠ 0
-            ? C2ICons(C2Process(d_ca0), C2ICons(C2Process(d_ca1),
-                C2ICons(C2App(d_ctor_d, 2), d_wtail)))
-        : C2ICons(C2PushH(0), d_wtail))
-    d_c3_items ∈ C2Items = (d_cnm = "replace"
-            ? C2ICons(C2Process(d_ca0), C2ICons(C2Process(d_ca1),
-                C2ICons(C2Process(d_ca2),
-                C2ICons(C2StrOp("replace", 3), d_wtail))))
-        : d_cnm = "substr"
-            ? C2ICons(C2Process(d_ca0), C2ICons(C2Process(d_ca1),
-                C2ICons(C2Process(d_ca2),
-                C2ICons(C2StrOp("substr", 3), d_wtail))))
-        : d_cnm = "index_of"
-            ? C2ICons(C2Process(d_ca0), C2ICons(C2Process(d_ca1),
-                C2ICons(C2Process(d_ca2),
-                C2ICons(C2StrOp("indexof", 3), d_wtail))))
-        : d_ctor_d ≠ 0
-            ? C2ICons(C2Process(d_ca0), C2ICons(C2Process(d_ca1),
-                C2ICons(C2Process(d_ca2),
-                C2ICons(C2App(d_ctor_d, 3), d_wtail))))
-        : C2ICons(C2PushH(0), d_wtail))
+                C2ICons(C2StrOp("indexof", 3), work_tail))))
+        : call_name = "str_contains"
+            ? C2ICons(C2Process(call_arg0), C2ICons(C2Process(call_arg1),
+                C2ICons(C2StrOp("contains", 2), work_tail)))
+        : call_name = "starts_with"
+            ? C2ICons(C2Process(call_arg1), C2ICons(C2Process(call_arg0),
+                C2ICons(C2StrOp("prefixof", 2), work_tail)))
+        : call_name = "ends_with"
+            ? C2ICons(C2Process(call_arg1), C2ICons(C2Process(call_arg0),
+                C2ICons(C2StrOp("suffixof", 2), work_tail)))
+        : ctor_decl ≠ 0
+            ? C2ICons(C2Process(call_arg0), C2ICons(C2Process(call_arg1),
+                C2ICons(C2App(ctor_decl, 2), work_tail)))
+        : C2ICons(C2PushH(0), work_tail))
+    call3_items ∈ C2Items = (call_name = "replace"
+            ? C2ICons(C2Process(call_arg0), C2ICons(C2Process(call_arg1),
+                C2ICons(C2Process(call_arg2),
+                C2ICons(C2StrOp("replace", 3), work_tail))))
+        : call_name = "substr"
+            ? C2ICons(C2Process(call_arg0), C2ICons(C2Process(call_arg1),
+                C2ICons(C2Process(call_arg2),
+                C2ICons(C2StrOp("substr", 3), work_tail))))
+        : call_name = "index_of"
+            ? C2ICons(C2Process(call_arg0), C2ICons(C2Process(call_arg1),
+                C2ICons(C2Process(call_arg2),
+                C2ICons(C2StrOp("indexof", 3), work_tail))))
+        : ctor_decl ≠ 0
+            ? C2ICons(C2Process(call_arg0), C2ICons(C2Process(call_arg1),
+                C2ICons(C2Process(call_arg2),
+                C2ICons(C2App(ctor_decl, 3), work_tail))))
+        : C2ICons(C2PushH(0), work_tail))

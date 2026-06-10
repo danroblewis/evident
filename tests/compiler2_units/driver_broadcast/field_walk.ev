@@ -1,8 +1,8 @@
 -- DriverBroadcast isolation — the per-field broadcast walk.
 -- Drives a record-pinned membership completion on one tick, holds the
 -- claim-walk dispatch gate open with a 2-field record; the broadcast
--- must arm, reset rb_fi to 0, step 0→1→2 one field per tick, and
--- disarm at the last field. Reports rb_fi after the walk settles.
+-- must arm, reset bcast_field_i to 0, step 0→1→2 one field per tick, and
+-- disarm at the last field. Reports bcast_field_i after the walk settles.
 --
 -- entry: main
 -- expect: stdout = "2"
@@ -16,40 +16,40 @@ import "compiler2/driver_broadcast.ev"
 fsm main
     tc ∈ Int
     tc = (is_first_tick ? 0 : _tc + 1)
-    p_done ∈ Bool = (tc = 1)
-    pk_kind ∈ Int
-    pk_kind = (is_first_tick ? 1 : _pk_kind)
-    pk_rec ∈ Int
-    pk_rec = (is_first_tick ? 0 : _pk_rec)
-    pr_bad ∈ Bool
-    pr_bad = (is_first_tick ? false : _pr_bad)
-    pk_name ∈ String
-    pk_name = (is_first_tick ? "p" : _pk_name)
-    pr_sres ∈ Expr
-    pr_sres = (is_first_tick ? ENoExpr : _pr_sres)
+    pratt_done ∈ Bool = (tc = 1)
+    pratt_kind ∈ Int
+    pratt_kind = (is_first_tick ? 1 : _pratt_kind)
+    pratt_rec_slot ∈ Int
+    pratt_rec_slot = (is_first_tick ? 0 : _pratt_rec_slot)
+    pratt_bad ∈ Bool
+    pratt_bad = (is_first_tick ? false : _pratt_bad)
+    pratt_decl_name ∈ String
+    pratt_decl_name = (is_first_tick ? "p" : _pratt_decl_name)
+    pratt_result ∈ Expr
+    pratt_result = (is_first_tick ? ENoExpr : _pratt_result)
     -- Claim-walk dispatch gate: held open so the broadcast can step.
-    d_in_claim ∈ Bool
-    d_in_claim = (is_first_tick ? true : _d_in_claim)
-    d_witems_nil ∈ Bool
-    d_witems_nil = (is_first_tick ? true : _d_witems_nil)
-    il_ps ∈ Int
-    il_ps = (is_first_tick ? 0 : _il_ps)
+    in_claim ∈ Bool
+    in_claim = (is_first_tick ? true : _in_claim)
+    work_nil ∈ Bool
+    work_nil = (is_first_tick ? true : _work_nil)
+    param_skip ∈ Int
+    param_skip = (is_first_tick ? 0 : _param_skip)
     tok_ready ∈ Bool
     tok_ready = (is_first_tick ? true : _tok_ready)
     -- A 2-field record type at registry slot 0.
-    rt_e0 ∈ RecTypeEntry(name ↦ "", fnames ↦ "", ftypes ↦ "", nf ↦ 2,
+    rec0 ∈ RecTypeEntry(name ↦ "", fnames ↦ "", ftypes ↦ "", n_fields ↦ 2,
         sort ↦ 0, ctor ↦ 0, asort ↦ 0, ssort ↦ 0,
-        a0 ↦ 0, a1 ↦ 0, a2 ↦ 0, a3 ↦ 0, a4 ↦ 0, a5 ↦ 0)
-    rt_e1 ∈ RecTypeEntry(name ↦ "", fnames ↦ "", ftypes ↦ "", nf ↦ 0,
+        acc0 ↦ 0, acc1 ↦ 0, acc2 ↦ 0, acc3 ↦ 0, acc4 ↦ 0, acc5 ↦ 0)
+    rec1 ∈ RecTypeEntry(name ↦ "", fnames ↦ "", ftypes ↦ "", n_fields ↦ 0,
         sort ↦ 0, ctor ↦ 0, asort ↦ 0, ssort ↦ 0,
-        a0 ↦ 0, a1 ↦ 0, a2 ↦ 0, a3 ↦ 0, a4 ↦ 0, a5 ↦ 0)
-    rt_e2 ∈ RecTypeEntry(name ↦ "", fnames ↦ "", ftypes ↦ "", nf ↦ 0,
+        acc0 ↦ 0, acc1 ↦ 0, acc2 ↦ 0, acc3 ↦ 0, acc4 ↦ 0, acc5 ↦ 0)
+    rec2 ∈ RecTypeEntry(name ↦ "", fnames ↦ "", ftypes ↦ "", n_fields ↦ 0,
         sort ↦ 0, ctor ↦ 0, asort ↦ 0, ssort ↦ 0,
-        a0 ↦ 0, a1 ↦ 0, a2 ↦ 0, a3 ↦ 0, a4 ↦ 0, a5 ↦ 0)
-    st_names ∈ String
-    st_names = (is_first_tick ? "" : _st_names)
+        acc0 ↦ 0, acc1 ↦ 0, acc2 ↦ 0, acc3 ↦ 0, acc4 ↦ 0, acc5 ↦ 0)
+    sym_names ∈ String
+    sym_names = (is_first_tick ? "" : _sym_names)
     ..DriverBroadcast
-    fi_msg ∈ String = str_from_int(rb_fi)
+    fi_msg ∈ String = str_from_int(bcast_field_i)
     effects ∈ Seq(Effect) = (tc ≥ 5
         ? ⟨LibCall("libc", "puts", ⟨ArgStr(fi_msg)⟩), Exit(0)⟩
         : ⟨LibCall("libc", "getpid", ⟨⟩)⟩)

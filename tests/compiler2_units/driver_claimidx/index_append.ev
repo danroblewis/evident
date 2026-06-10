@@ -1,6 +1,6 @@
 -- DriverClaimIdx isolation — claim-index append counter.
--- Skip pass held with a claim head (d_head_is_claim, ww_t1 an Ident) so
--- ci_add fires each tick; exit when the count reaches 3. The
+-- Skip pass held with a claim head (head_is_claim, tok1 an Ident) so
+-- claimidx_add fires each tick; exit when the count reaches 3. The
 -- BuildMemWriteLong index-write effect is not scheduled (no arena).
 -- entry: main
 -- expect: stdout = "3"
@@ -15,56 +15,56 @@ import "compiler2/driver_expr.ev"
 import "compiler2/driver_claimidx.ev"
 
 fsm main
-    d_enter_skip ∈ Bool
-    d_enter_skip = (is_first_tick ? true : _d_enter_skip)
-    d_head_is_claim ∈ Bool
-    d_head_is_claim = (is_first_tick ? true : _d_head_is_claim)
-    ww_t1 ∈ Token
-    ww_t1 = (is_first_tick ? Ident("x") : _ww_t1)
-    d_cl_name ∈ String
-    d_cl_name = (is_first_tick ? "x" : _d_cl_name)
-    c_eff_cond ∈ Bool
-    c_eff_cond = (is_first_tick ? false : _c_eff_cond)
-    cibuf ∈ FtiBuffer
-    cibuf.base = (is_first_tick ? 0 : _cibuf.base)
-    d_enter_edecl ∈ Bool
-    d_enter_edecl = (is_first_tick ? false : _d_enter_edecl)
-    d_enter_el ∈ Bool
-    d_enter_el = (is_first_tick ? false : _d_enter_el)
-    d_witems_nil ∈ Bool
-    d_witems_nil = (is_first_tick ? false : _d_witems_nil)
-    ed_act ∈ Int
-    ed_act = (is_first_tick ? 0 : _ed_act)
-    ed_done_user ∈ Bool
-    ed_done_user = (is_first_tick ? false : _ed_done_user)
+    enter_skip ∈ Bool
+    enter_skip = (is_first_tick ? true : _enter_skip)
+    head_is_claim ∈ Bool
+    head_is_claim = (is_first_tick ? true : _head_is_claim)
+    tok1 ∈ Token
+    tok1 = (is_first_tick ? Ident("x") : _tok1)
+    decl_name ∈ String
+    decl_name = (is_first_tick ? "x" : _decl_name)
+    effects_cond ∈ Bool
+    effects_cond = (is_first_tick ? false : _effects_cond)
+    claimidx_buf ∈ FtiBuffer
+    claimidx_buf.base = (is_first_tick ? 0 : _claimidx_buf.base)
+    enter_enum_decl ∈ Bool
+    enter_enum_decl = (is_first_tick ? false : _enter_enum_decl)
+    enter_efflit ∈ Bool
+    enter_efflit = (is_first_tick ? false : _enter_efflit)
+    work_nil ∈ Bool
+    work_nil = (is_first_tick ? false : _work_nil)
+    enum_act ∈ Int
+    enum_act = (is_first_tick ? 0 : _enum_act)
+    enum_done_user ∈ Bool
+    enum_done_user = (is_first_tick ? false : _enum_done_user)
     in_parse ∈ Bool
     in_parse = (is_first_tick ? false : _in_parse)
-    p_done ∈ Bool
-    p_done = (is_first_tick ? false : _p_done)
-    pk_kind ∈ Int
-    pk_kind = (is_first_tick ? 0 : _pk_kind)
-    pmode ∈ Int
-    pmode = (is_first_tick ? 0 : _pmode)
-    pr_bad ∈ Bool
-    pr_bad = (is_first_tick ? false : _pr_bad)
-    tcur ∈ Int
-    tcur = (is_first_tick ? 0 : _tcur)
+    pratt_done ∈ Bool
+    pratt_done = (is_first_tick ? false : _pratt_done)
+    pratt_kind ∈ Int
+    pratt_kind = (is_first_tick ? 0 : _pratt_kind)
+    parse_mode ∈ Int
+    parse_mode = (is_first_tick ? 0 : _parse_mode)
+    pratt_bad ∈ Bool
+    pratt_bad = (is_first_tick ? false : _pratt_bad)
+    tok_cur ∈ Int
+    tok_cur = (is_first_tick ? 0 : _tok_cur)
     tok_ready ∈ Bool
     tok_ready = (is_first_tick ? false : _tok_ready)
-    ue_name ∈ String
-    ue_name = (is_first_tick ? "" : _ue_name)
-    ww_t0 ∈ Token
-    ww_t0 = (is_first_tick ? EofTok : _ww_t0)
-    ww_t2 ∈ Token
-    ww_t2 = (is_first_tick ? EofTok : _ww_t2)
-    ww_t3 ∈ Token
-    ww_t3 = (is_first_tick ? EofTok : _ww_t3)
-    ww_t4 ∈ Token
-    ww_t4 = (is_first_tick ? EofTok : _ww_t4)
-    ww_t5 ∈ Token
-    ww_t5 = (is_first_tick ? EofTok : _ww_t5)
-    ww_t6 ∈ Token
-    ww_t6 = (is_first_tick ? EofTok : _ww_t6)
+    user_enum_name ∈ String
+    user_enum_name = (is_first_tick ? "" : _user_enum_name)
+    tok0 ∈ Token
+    tok0 = (is_first_tick ? EofTok : _tok0)
+    tok2 ∈ Token
+    tok2 = (is_first_tick ? EofTok : _tok2)
+    tok3 ∈ Token
+    tok3 = (is_first_tick ? EofTok : _tok3)
+    tok4 ∈ Token
+    tok4 = (is_first_tick ? EofTok : _tok4)
+    tok5 ∈ Token
+    tok5 = (is_first_tick ? EofTok : _tok5)
+    tok6 ∈ Token
+    tok6 = (is_first_tick ? EofTok : _tok6)
     z_argint_decl ∈ Int
     z_argint_decl = (is_first_tick ? 0 : _z_argint_decl)
     z_argstr_decl ∈ Int
@@ -73,10 +73,10 @@ fsm main
     z_cell_decl = (is_first_tick ? 0 : _z_cell_decl)
     z_empty_val ∈ Int
     z_empty_val = (is_first_tick ? 0 : _z_empty_val)
-    z_lc_decl ∈ Int
-    z_lc_decl = (is_first_tick ? 0 : _z_lc_decl)
+    z_libcall_decl ∈ Int
+    z_libcall_decl = (is_first_tick ? 0 : _z_libcall_decl)
     ..DriverClaimIdx
-    c_msg ∈ String = str_from_int(cibuf.count)
-    effects ∈ Seq(Effect) = ((cibuf.count = 3)
+    c_msg ∈ String = str_from_int(claimidx_buf.count)
+    effects ∈ Seq(Effect) = ((claimidx_buf.count = 3)
         ? ⟨LibCall("libc", "puts", ⟨ArgStr(c_msg)⟩), Exit(0)⟩
         : ⟨LibCall("libc", "getpid", ⟨⟩)⟩)

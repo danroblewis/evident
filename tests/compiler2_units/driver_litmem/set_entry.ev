@@ -1,6 +1,6 @@
 -- DriverLitMem isolation — set-literal walk entry latches: a one-shot
--- `x ∉ { … }` entry (d_enter_set at tc = 1, c_name "x", c_is_nmem true)
--- must latch ms_name = "x" / ms_neg = true and hold them. Reports
+-- `x ∉ { … }` entry (enter_intset at tc = 1, line_name "x", line_is_notmem true)
+-- must latch intset_name = "x" / intset_neg = true and hold them. Reports
 -- "<name>/<sign>"; the ∉ sign drives C2Not-wrapping of the folded Expr.
 -- entry: main
 -- expect: stdout = "x/neg"
@@ -14,28 +14,28 @@ import "compiler2/driver_litmem.ev"
 fsm main
     tc ∈ Int
     tc = (is_first_tick ? 0 : _tc + 1)
-    d_enter_set ∈ Bool = (tc = 1)
-    c_name ∈ String
-    c_name = (is_first_tick ? "x" : _c_name)
-    c_is_nmem ∈ Bool
-    c_is_nmem = (is_first_tick ? true : _c_is_nmem)
-    -- pmode-7 walk gate + pmode-8 inputs the lifted module reads (inert).
+    enter_intset ∈ Bool = (tc = 1)
+    line_name ∈ String
+    line_name = (is_first_tick ? "x" : _line_name)
+    line_is_notmem ∈ Bool
+    line_is_notmem = (is_first_tick ? true : _line_is_notmem)
+    -- parse_mode-7 walk gate + parse_mode-8 inputs the lifted module reads (inert).
     in_parse ∈ Bool
     in_parse = (is_first_tick ? false : _in_parse)
-    pmode ∈ Int
-    pmode = (is_first_tick ? 0 : _pmode)
+    parse_mode ∈ Int
+    parse_mode = (is_first_tick ? 0 : _parse_mode)
     tok_ready ∈ Bool
     tok_ready = (is_first_tick ? false : _tok_ready)
-    ww_t0 ∈ Token
-    ww_t0 = (is_first_tick ? EofTok : _ww_t0)
-    d_seq_mem ∈ Bool
-    d_seq_mem = (is_first_tick ? false : _d_seq_mem)
-    c_dname ∈ String
-    c_dname = (is_first_tick ? "" : _c_dname)
-    c_sq_rt ∈ Int
-    c_sq_rt = (is_first_tick ? 0 - 1 : _c_sq_rt)
+    tok0 ∈ Token
+    tok0 = (is_first_tick ? EofTok : _tok0)
+    enter_seqmem ∈ Bool
+    enter_seqmem = (is_first_tick ? false : _enter_seqmem)
+    line_dname ∈ String
+    line_dname = (is_first_tick ? "" : _line_dname)
+    seq_elt_slot ∈ Int
+    seq_elt_slot = (is_first_tick ? 0 - 1 : _seq_elt_slot)
     ..DriverLitMem
-    e_msg ∈ String = ms_name ++ "/" ++ (ms_neg ? "neg" : "pos")
+    e_msg ∈ String = intset_name ++ "/" ++ (intset_neg ? "neg" : "pos")
     effects ∈ Seq(Effect) = (tc ≥ 2
         ? ⟨LibCall("libc", "puts", ⟨ArgStr(e_msg)⟩), Exit(0)⟩
         : ⟨LibCall("libc", "getpid", ⟨⟩)⟩)
