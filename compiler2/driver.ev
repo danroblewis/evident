@@ -282,7 +282,75 @@ fsm driver_main
     tmp_handle = (is_first_tick ? 0 : tmp_in)
 
     -- ── FTI symbol table + work-item decode (see compiler2/driver_symtab.ev) ──
-    ..DriverSymtab
+    -- Bare mention against its header: these declarations ARE the
+    -- symbol-table / work-item-decode interface; the carried sym_names
+    -- (+ sym_buf.count, written via FtiNamedAppend) stay manifest-visible;
+    -- sym_add/sym_entry/sym_seed_names/work_head are per-call-site internal.
+    sym_names ∈ String
+    saw_lastres ∈ Bool
+    saw_first_tick ∈ Bool
+    h_top ∈ Int
+    h_tail1 ∈ C2H
+    h_2nd ∈ Int
+    h_tail2 ∈ C2H
+    h_3rd ∈ Int
+    h_tail3 ∈ C2H
+    h_4th ∈ Int
+    h_tail4 ∈ C2H
+    h_5th ∈ Int
+    h_tail5 ∈ C2H
+    h_6th ∈ Int
+    h_tail6 ∈ C2H
+    work_nil ∈ Bool
+    work_tail ∈ C2Items
+    classify_now ∈ Bool
+    processing ∈ Bool
+    it_process ∈ Bool
+    it_op ∈ Bool
+    it_ite ∈ Bool
+    it_not ∈ Bool
+    it_decl ∈ Bool
+    it_natbound ∈ Bool
+    it_pin_eq ∈ Bool
+    it_assert ∈ Bool
+    it_drop ∈ Bool
+    it_push_h ∈ Bool
+    it_app ∈ Bool
+    it_select_eq ∈ Bool
+    it_len_eq ∈ Bool
+    it_strop ∈ Bool
+    it_sel_h ∈ Bool
+    it_sel_eq_h ∈ Bool
+    it_len_eq_h ∈ Bool
+    it_dup3 ∈ Bool
+    it_swap ∈ Bool
+    it_rot3 ∈ Bool
+    it_bind_scope ∈ Bool
+    it_bind_end ∈ Bool
+    it_real ∈ Bool
+    it_empty_set ∈ Bool
+    it_set_add ∈ Bool
+    it_rec_val ∈ Bool
+    it_rec_decl ∈ Bool
+    cur_expr ∈ Expr
+    cur_op ∈ Op
+    decl_const_name ∈ String
+    decl_const_sort ∈ Int
+    push_h_val ∈ Int
+    app_decl ∈ Int
+    app_argc ∈ Int
+    sel_idx ∈ Int
+    len_lit ∈ Int
+    bind_name ∈ String
+    bind_acc ∈ Int
+    strop_name ∈ String
+    strop_argc ∈ Int
+    real_scaled ∈ Int
+    real_digits ∈ Int
+    empty_set_slot ∈ Int
+    recval_name ∈ String
+    recval_slot ∈ Int
+    DriverSymtab
     -- ── C2RecVal/C2RecDecl expansion (see compiler2/driver_recval.ev) ──
     -- Bare mention against its header: recval_slot/recval_name (decoded
     -- by DriverSymtab) join in; recval_items/recval_decl_items join out;
