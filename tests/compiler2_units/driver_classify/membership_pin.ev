@@ -30,12 +30,12 @@ fsm main
     tok6 = (is_first_tick ? EofTok : _tok6)
     tok7 ∈ Token
     tok7 = (is_first_tick ? EofTok : _tok7)
-    d_classify ∈ Bool
-    d_classify = (is_first_tick ? true : _d_classify)
+    classify_now ∈ Bool
+    classify_now = (is_first_tick ? true : _classify_now)
     ci_names ∈ String
     ci_names = (is_first_tick ? "" : _ci_names)
-    st_names ∈ String
-    st_names = (is_first_tick ? "" : _st_names)
+    sym_names ∈ String
+    sym_names = (is_first_tick ? "" : _sym_names)
     il_depth ∈ Int
     il_depth = (is_first_tick ? 0 : _il_depth)
     il_pfx ∈ String

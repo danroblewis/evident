@@ -1,7 +1,7 @@
 -- MODULE DriverClassify
 -- CONSUMES: the decoded token window head views (tok0..tok7), the
---           classify-mode gate (d_classify), the claim/type index
---           (ci_names) + symbol table (st_names), the inline-frame state
+--           classify-mode gate (classify_now), the claim/type index
+--           (ci_names) + symbol table (sym_names), the inline-frame state
 --           (_il_depth, _il_pfx, ilb_n0..n5), the record registry
 --           (rec0..2 .name / .sort), the user-enum + seq-var carries
 --           (_ue_done, _ue_name, _sq_set, _sq_name), and the sibling
@@ -104,28 +104,28 @@ fsm DriverClassify
     d_line_end ∈ Bool = (c_rem_nil ∨ c_t0_is_tlkw
         ∨ ((¬c_can_expr) ∧ (¬c_dd_head) ∧ (¬c_strin_line)
             ∧ (¬c_q_line)))
-    d_claim_end ∈ Bool = (d_classify ∧ d_line_end ∧ (_il_depth = 0))
-    il_pop ∈ Bool = (d_classify ∧ d_line_end ∧ (_il_depth > 0))
+    d_claim_end ∈ Bool = (classify_now ∧ d_line_end ∧ (_il_depth = 0))
+    il_pop ∈ Bool = (classify_now ∧ d_line_end ∧ (_il_depth > 0))
 
-    c_comp_call ∈ Bool = (d_classify ∧ (¬d_line_end) ∧ c_t0_is_ident
+    c_comp_call ∈ Bool = (classify_now ∧ (¬d_line_end) ∧ c_t0_is_ident
         ∧ (c_t1 matches LParen) ∧ (c_t3 matches OpMapsto)
         ∧ c_comp_found ∧ (_il_depth < 8))
-    c_comp_bare ∈ Bool = (d_classify ∧ (¬d_line_end) ∧ c_t0_is_ident
+    c_comp_bare ∈ Bool = (classify_now ∧ (¬d_line_end) ∧ c_t0_is_ident
         ∧ c_comp_found ∧ (¬(c_t1 matches LParen))
         ∧ (¬c_is_mem) ∧ (¬c_is_nmem) ∧ (¬(c_t1 matches Eq))
         ∧ (¬(c_t1 matches Comma)) ∧ (_il_depth < 8))
-    c_comp_dd ∈ Bool = (d_classify ∧ c_dd_head)
+    c_comp_dd ∈ Bool = (classify_now ∧ c_dd_head)
     c_comp_line ∈ Bool = (c_comp_call ∨ c_comp_bare ∨ c_comp_dd)
-    d_enter_el ∈ Bool = (d_classify ∧ (¬d_line_end) ∧ c_eff_line)
-    d_enter_set ∈ Bool = (d_classify ∧ (¬d_line_end) ∧ c_set_line)
-    d_enter_match ∈ Bool = (d_classify ∧ (¬d_line_end)
+    d_enter_el ∈ Bool = (classify_now ∧ (¬d_line_end) ∧ c_eff_line)
+    d_enter_set ∈ Bool = (classify_now ∧ (¬d_line_end) ∧ c_set_line)
+    d_enter_match ∈ Bool = (classify_now ∧ (¬d_line_end)
         ∧ (¬c_set_line) ∧ c_match_line)
-    d_seq_mem ∈ Bool = (d_classify ∧ (¬d_line_end) ∧ c_seq_line)
-    d_enter_sl ∈ Bool = (d_classify ∧ (¬d_line_end) ∧ (¬c_is_mem)
+    d_seq_mem ∈ Bool = (classify_now ∧ (¬d_line_end) ∧ c_seq_line)
+    d_enter_sl ∈ Bool = (classify_now ∧ (¬d_line_end) ∧ (¬c_is_mem)
         ∧ (¬c_is_nmem) ∧ c_seqlit_line)
-    d_enter_mn ∈ Bool = (d_classify ∧ (¬d_line_end) ∧ c_mn_line
+    d_enter_mn ∈ Bool = (classify_now ∧ (¬d_line_end) ∧ c_mn_line
         ∧ (¬c_seqlit_line))
-    d_enter_pratt0 ∈ Bool = (d_classify ∧ (¬d_line_end)
+    d_enter_pratt0 ∈ Bool = (classify_now ∧ (¬d_line_end)
         ∧ (¬c_eff_line) ∧ (¬c_set_line) ∧ (¬c_match_line)
         ∧ (¬c_seq_line) ∧ (¬c_seqlit_line) ∧ (¬c_mn_line)
         ∧ (¬c_comp_line) ∧ (¬c_strin_line) ∧ (¬c_ty_line)
@@ -169,7 +169,7 @@ fsm DriverClassify
     c_dname ∈ String = c_chk_name
     c_chk_key ∈ String
     FtiNameEntry(name ↦ c_chk_name, entry ↦ c_chk_key)
-    c_dup ∈ Bool = (index_of(st_names, c_chk_key, 0) ≥ 0)
+    c_dup ∈ Bool = (index_of(sym_names, c_chk_key, 0) ≥ 0)
     c_bnd ∈ Bool = ((c_name ≠ "") ∧ ((ilb_n0 = c_name) ∨ (ilb_n1 = c_name)
         ∨ (ilb_n2 = c_name) ∨ (ilb_n3 = c_name) ∨ (ilb_n4 = c_name)
         ∨ (ilb_n5 = c_name)))
@@ -189,7 +189,7 @@ fsm DriverClassify
         C2ICons(C2Process(EStr(c_si_lit)),
         C2ICons(C2StrOp("contains", 2),
         C2ICons(C2AssertTop, C2INil))))
-    d_enter_si ∈ Bool = (d_classify ∧ (¬d_line_end) ∧ c_strin_line)
+    d_enter_si ∈ Bool = (classify_now ∧ (¬d_line_end) ∧ c_strin_line)
 
     c_ty_key ∈ String
     FtiNameEntry(name ↦ c_type_str, entry ↦ c_ty_key)
@@ -198,10 +198,10 @@ fsm DriverClassify
         ∧ (c_type_str ≠ "Int") ∧ (c_type_str ≠ "Nat")
         ∧ (c_type_str ≠ "Seq") ∧ (c_type_str ≠ "")
         ∧ (¬c_strin_line) ∧ (c_ty_pos ≥ 0))
-    c_ty_call ∈ Bool = (d_classify ∧ (¬d_line_end) ∧ c_ty_found
+    c_ty_call ∈ Bool = (classify_now ∧ (¬d_line_end) ∧ c_ty_found
         ∧ (c_t3 matches LParen) ∧ (c_t4 matches Ident(_))
         ∧ (tok5 matches OpMapsto) ∧ (_il_depth < 8))
-    c_ty_bare ∈ Bool = (d_classify ∧ (¬d_line_end) ∧ c_ty_found
+    c_ty_bare ∈ Bool = (classify_now ∧ (¬d_line_end) ∧ c_ty_found
         ∧ (¬(c_t3 matches LParen)) ∧ (¬c_pinned) ∧ (¬c_bound)
         ∧ (_il_depth < 8))
     c_ty_line ∈ Bool = (c_ty_call ∨ c_ty_bare)

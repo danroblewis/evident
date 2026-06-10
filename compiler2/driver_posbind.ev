@@ -1,10 +1,10 @@
 -- MODULE DriverPosBind
 -- CONSUMES: the composition-line precheck (pcl_*) + classifier head views
 --           (c_name, c_t0..t4, c_dd_shape, c_comp_found, c_line_end,
---           d_classify, d_line_end), the window head (tok0..tok5), the
---           parse gate (in_parse, _pmode, tok_ready, d_witems_nil), the
---           handle stack (d_h_top/2nd/.. + d_h_t*), the claim index
---           (ci_base, ci_names), the symbol table (st_names), the
+--           classify_now, d_line_end), the window head (tok0..tok5), the
+--           parse gate (in_parse, _pmode, tok_ready, work_nil), the
+--           handle stack (h_top/2nd/.. + d_h_t*), the claim index
+--           (ci_base, ci_names), the symbol table (sym_names), the
 --           inline-frame state (il_pfx/il_depth/il_pd/ilb_n*), the
 --           enum value table (enum_values), the record registry (rt_n*/rt_f*/
 --           rt_sort*), the Pratt result (p_done/pr_bad/pr_sres/pk_*), and
@@ -37,31 +37,31 @@ fsm DriverPosBind
     pcl_t4nm ∈ String = match c_t4
         Ident(s) ⇒ s
         _ ⇒ ""
-    pcl_stmt ∈ Bool = (d_classify ∧ (¬d_line_end) ∧ c_t0_is_ident
+    pcl_stmt ∈ Bool = (classify_now ∧ (¬d_line_end) ∧ c_t0_is_ident
         ∧ (c_t1 matches LParen) ∧ (¬(c_t3 matches OpMapsto))
         ∧ c_comp_found ∧ (¬c_dd_shape) ∧ (_il_depth < 8))
     pcl_m1key ∈ String
     FtiNameEntry(name ↦ pcl_t2nm, entry ↦ pcl_m1key)
-    pcl_m1 ∈ Bool = (d_classify ∧ (¬d_line_end) ∧ c_t0_is_ident
+    pcl_m1 ∈ Bool = (classify_now ∧ (¬d_line_end) ∧ c_t0_is_ident
         ∧ (c_t1 matches Dot) ∧ (c_t2 matches Ident(_))
         ∧ (c_t3 matches LParen)
         ∧ (index_of(ci_names, pcl_m1key, 0) ≥ 0) ∧ (_il_depth < 8))
     pcl_m2key ∈ String
     FtiNameEntry(name ↦ pcl_t4nm, entry ↦ pcl_m2key)
-    pcl_m2 ∈ Bool = (d_classify ∧ (¬d_line_end) ∧ c_t0_is_ident
+    pcl_m2 ∈ Bool = (classify_now ∧ (¬d_line_end) ∧ c_t0_is_ident
         ∧ (c_t1 matches Dot) ∧ (c_t2 matches Ident(_))
         ∧ (c_t3 matches Dot) ∧ (c_t4 matches Ident(_))
         ∧ (tok5 matches LParen)
         ∧ (index_of(ci_names, pcl_m2key, 0) ≥ 0) ∧ (_il_depth < 8))
     pcl_meth ∈ Bool = (pcl_m1 ∨ pcl_m2)
     pcl_recv_nm ∈ String = (pcl_m2 ? (c_name ++ "." ++ pcl_t2nm) : c_name)
-    pcl_tup ∈ Bool = (d_classify ∧ (¬d_line_end) ∧ (c_t0 matches LParen)
+    pcl_tup ∈ Bool = (classify_now ∧ (¬d_line_end) ∧ (c_t0 matches LParen)
         ∧ (c_t2 matches Comma) ∧ (_il_depth < 8))
     pcl_line ∈ Bool = (pcl_stmt ∨ pcl_meth ∨ pcl_tup)
     pcl_recv_items ∈ C2Items = C2ICons(C2Process(EIdent(pcl_recv_nm)), C2INil)
 
     pe_act ∈ Bool = (in_parse ∧ (_pmode = 12) ∧ (_pt_st = 0)
-        ∧ d_witems_nil ∧ tok_ready)
+        ∧ work_nil ∧ tok_ready)
     pt_comma ∈ Bool = (pe_act ∧ (tok0 matches Comma))
     pt_rp ∈ Bool = (pe_act ∧ (tok0 matches RParen))
     ptt_e0 ∈ Expr
@@ -108,7 +108,7 @@ fsm DriverPosBind
 
     ptj_cap ∈ Bool = (in_parse ∧ (_pmode = 12) ∧ (_pt_st = 2))
     ptj_fire ∈ Bool = (in_parse ∧ (_pmode = 12) ∧ (_pt_st = 3)
-        ∧ d_witems_nil)
+        ∧ work_nil)
 
     pt_st = (is_first_tick ? 0
         : pcl_line ? 0
@@ -154,8 +154,8 @@ fsm DriverPosBind
         ∨ (ilb_n5 = pi_nm))
     pi_unres ∈ Bool = ((pi_nm ≠ "") ∧ (pi_nm ≠ "true")
         ∧ (pi_nm ≠ "false") ∧ (¬pi_evt) ∧ (¬pi_ilb)
-        ∧ (index_of(st_names, pi_skey, 0) < 0)
-        ∧ (index_of(st_names, pi_pkey, 0) < 0))
+        ∧ (index_of(sym_names, pi_skey, 0) < 0)
+        ∧ (index_of(sym_names, pi_pkey, 0) < 0))
     pi_decl ∈ Bool = (pi_done ∧ pi_unres)
     pi_dname ∈ String = _il_pfx ++ pi_nm
     pi_field ∈ String = pi_dname ++ ":Int"
@@ -192,16 +192,16 @@ fsm DriverPosBind
     ∀ k ∈ {0..5} : pn[k].s = (is_first_tick ? "" : (pn_take ∧ _pn_k = k) ? pn_nm : _pn[k].s)
 
     pz_act ∈ Bool = (ips_done ∧ _pj)
-    pz_v0 ∈ Int = (_pj_recv ? d_h_top
-        : _pc_k = 1 ? d_h_top : _pc_k = 2 ? d_h_2nd
-        : _pc_k = 3 ? d_h_3rd : d_h_4th)
+    pz_v0 ∈ Int = (_pj_recv ? h_top
+        : _pc_k = 1 ? h_top : _pc_k = 2 ? h_2nd
+        : _pc_k = 3 ? h_3rd : h_4th)
     pz_v1 ∈ Int = (_pj_recv
-        ? (_pc_k = 2 ? d_h_2nd : _pc_k = 3 ? d_h_3rd : d_h_4th)
-        : (_pc_k = 2 ? d_h_top : _pc_k = 3 ? d_h_2nd : d_h_3rd))
+        ? (_pc_k = 2 ? h_2nd : _pc_k = 3 ? h_3rd : h_4th)
+        : (_pc_k = 2 ? h_top : _pc_k = 3 ? h_2nd : h_3rd))
     pz_v2 ∈ Int = (_pj_recv
-        ? (_pc_k = 3 ? d_h_2nd : d_h_3rd)
-        : (_pc_k = 3 ? d_h_top : d_h_2nd))
-    pz_v3 ∈ Int = (_pj_recv ? d_h_2nd : d_h_top)
+        ? (_pc_k = 3 ? h_2nd : h_3rd)
+        : (_pc_k = 3 ? h_top : h_2nd))
+    pz_v3 ∈ Int = (_pj_recv ? h_2nd : h_top)
     pzt_pty ∈ String = (_pt_ts = 0 ? _pty[0].s
         : _pt_ts = 1 ? _pty[1].s
         : _pt_ts = 2 ? _pty[2].s
@@ -218,24 +218,24 @@ fsm DriverPosBind
         : _pt_ts = 1 ? _pn[1].s
         : _pt_ts = 2 ? _pn[2].s
         : _pn[3].s)
-    pzt_h0 ∈ Int = (_pc_k = 1 ? d_h_2nd
-        : (_pc_k = 2 ∧ _pt_ts = 0) ? d_h_3rd
-        : (_pc_k = 3 ∧ _pt_ts = 0) ? d_h_4th
-        : d_h_3rd)
-    pzt_h1 ∈ Int = (_pc_k = 1 ? d_h_top
-        : (_pc_k = 2 ∧ _pt_ts = 0) ? d_h_2nd
-        : (_pc_k = 3 ∧ _pt_ts = 0) ? d_h_3rd
-        : d_h_2nd)
+    pzt_h0 ∈ Int = (_pc_k = 1 ? h_2nd
+        : (_pc_k = 2 ∧ _pt_ts = 0) ? h_3rd
+        : (_pc_k = 3 ∧ _pt_ts = 0) ? h_4th
+        : h_3rd)
+    pzt_h1 ∈ Int = (_pc_k = 1 ? h_top
+        : (_pc_k = 2 ∧ _pt_ts = 0) ? h_2nd
+        : (_pc_k = 3 ∧ _pt_ts = 0) ? h_3rd
+        : h_2nd)
     pzt_tb ∈ C2Binds = (pzt_k ≥ 0
         ? CBCons(pzt_pn ++ "." ++ pzt_f0, pzt_h0,
             CBCons(pzt_pn ++ "." ++ pzt_f1, pzt_h1, CBNil))
         : CBCons(pzt_pn, pzt_h0, CBNil))
     pzt_app1 ∈ C2Binds = (_pc_k = 2
-        ? CBCons(_pn[1].s, d_h_top, pzt_tb)
+        ? CBCons(_pn[1].s, h_top, pzt_tb)
         : _pc_k = 3
         ? (_pt_ts = 0
-            ? CBCons(_pn[1].s, d_h_2nd, CBCons(_pn[2].s, d_h_top, pzt_tb))
-            : CBCons(_pn[0].s, d_h_4th, CBCons(_pn[2].s, d_h_top, pzt_tb)))
+            ? CBCons(_pn[1].s, h_2nd, CBCons(_pn[2].s, h_top, pzt_tb))
+            : CBCons(_pn[0].s, h_4th, CBCons(_pn[2].s, h_top, pzt_tb)))
         : pzt_tb)
     pz_binds_nt ∈ C2Binds = (_pc_k = 1 ? CBCons(_pn[0].s, pz_v0, CBNil)
         : _pc_k = 2 ? CBCons(_pn[0].s, pz_v0, CBCons(_pn[1].s, pz_v1, CBNil))
@@ -246,14 +246,14 @@ fsm DriverPosBind
         : CBNil)
     pz_binds ∈ C2Binds = (_pt_tup ? pzt_app1 : pz_binds_nt)
     pz_pop ∈ C2H = (_pt_tup
-        ? (_pc_k = 1 ? d_h_t2
-            : _pc_k = 2 ? d_h_t3
-            : _pc_k = 3 ? d_h_t4
-            : d_h_t5)
-        : _pc_k = 1 ? d_h_t1
-        : _pc_k = 2 ? d_h_t2
-        : _pc_k = 3 ? d_h_t3
-        : _pc_k = 4 ? d_h_t4
+        ? (_pc_k = 1 ? h_tail2
+            : _pc_k = 2 ? h_tail3
+            : _pc_k = 3 ? h_tail4
+            : h_tail5)
+        : _pc_k = 1 ? h_tail1
+        : _pc_k = 2 ? h_tail2
+        : _pc_k = 3 ? h_tail3
+        : _pc_k = 4 ? h_tail4
         : d_hstk_in)
     d_pk_pinseg ∈ C2Items = C2ICons(C2Process(pr_sres),
         C2ICons(C2PinEq, C2ICons(C2AssertTop, C2INil)))

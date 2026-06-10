@@ -41,8 +41,8 @@ fsm main
     cw_st = (is_first_tick ? 0 : _cw_st)
     pt_st ∈ Int
     pt_st = (is_first_tick ? 0 : _pt_st)
-    d_witems_nil ∈ Bool
-    d_witems_nil = (is_first_tick ? true : _d_witems_nil)
+    work_nil ∈ Bool
+    work_nil = (is_first_tick ? true : _work_nil)
     ..DriverWindow
     bursts ∈ Int
     bursts = (is_first_tick ? 0 : (_fetch_mode = 2 ? _bursts + 1 : _bursts))

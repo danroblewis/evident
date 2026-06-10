@@ -2,7 +2,7 @@
 -- CONSUMES: the classifier set-line flags (c_set_line, c_setmem_line,
 --           c_is_mem/c_is_nmem, c_dname, c_name, c_type_str, c_sq_rt,
 --           the quantifier-set views c_q_*), the classify gate
---           (d_classify, d_line_end, d_enter_sl, d_in_skip), the window
+--           (classify_now, d_line_end, d_enter_sl, d_in_skip), the window
 --           head (tok0/tok5..t7), the registered-seq carries (sq_name/
 --           sq_rt), the inline-frame prefix (il_pfx), the parse gate, and
 --           the Pratt result (p_done/pr_bad/pr_sres/pk_kind).
@@ -29,7 +29,7 @@ fsm DriverSetVar
     #stv ≤ 2
     sv_cur ∈ Int
 
-    d_setmem ∈ Bool = (d_classify ∧ (¬d_line_end) ∧ c_setmem_line)
+    d_setmem ∈ Bool = (classify_now ∧ (¬d_line_end) ∧ c_setmem_line)
     stv_cnt = (is_first_tick ? 0
         : (d_setmem ∧ _stv_cnt < 2) ? _stv_cnt + 1
         : _stv_cnt)
@@ -43,7 +43,7 @@ fsm DriverSetVar
         : 0 - 1)
     c_setlit_line ∈ Bool = (c_t0_is_ident ∧ (c_t1 matches Eq)
         ∧ (c_t2 matches LBrace) ∧ (c_stv_idx ≥ 0))
-    d_enter_stl ∈ Bool = (d_classify ∧ (¬d_line_end) ∧ (¬c_is_mem)
+    d_enter_stl ∈ Bool = (classify_now ∧ (¬d_line_end) ∧ (¬c_is_mem)
         ∧ (¬c_is_nmem) ∧ c_setlit_line)
     sv_cur = (is_first_tick ? 0 : d_enter_stl ? c_stv_idx : _sv_cur)
     sv_k ∈ Int = (_sv_cur = 0 ? stv[0].kidx : stv[1].kidx)
@@ -51,7 +51,7 @@ fsm DriverSetVar
         C2Process(EIdent(c_stv_idx = 0 ? stv[0].name : stv[1].name)),
         C2ICons(C2MkEmptySet(c_stv_idx = 0 ? stv[0].kidx : stv[1].kidx), C2INil))
 
-    sv_act ∈ Bool = (in_parse ∧ (_pmode = 14) ∧ d_witems_nil ∧ tok_ready)
+    sv_act ∈ Bool = (in_parse ∧ (_pmode = 14) ∧ work_nil ∧ tok_ready)
     stl_elem ∈ Bool = (sv_act ∧ (tok0 matches Ident(_)))
     stl_comma ∈ Bool = (sv_act ∧ (tok0 matches Comma))
     stl_close ∈ Bool = (sv_act ∧ (tok0 matches RBrace))
@@ -72,7 +72,7 @@ fsm DriverSetVar
         : (c_type_str ≠ "" ∧ ((_il_pfx ++ c_type_str) = stv[1].name ∨ c_type_str = stv[1].name)) ? 1
         : 0 - 1)
     c_smem_line ∈ Bool = (c_is_mem ∧ (¬c_eff_line) ∧ (c_smem_idx ≥ 0))
-    d_enter_smem ∈ Bool = (d_classify ∧ (¬d_line_end) ∧ (¬c_set_line)
+    d_enter_smem ∈ Bool = (classify_now ∧ (¬d_line_end) ∧ (¬c_set_line)
         ∧ c_smem_line)
     c_smem_set ∈ String = (c_smem_idx = 0 ? stv[0].name : stv[1].name)
     c_smem_k ∈ Int = (c_smem_idx = 0 ? stv[0].kidx : stv[1].kidx)
@@ -92,7 +92,7 @@ fsm DriverSetVar
     qset_tgt ∈ Int = ((qset_b_tgtnm ≠ "" ∧ qset_b_tgtnm = stv[0].name) ? 0
         : (qset_b_tgtnm ≠ "" ∧ qset_b_tgtnm = stv[1].name) ? 1
         : 0 - 1)
-    d_enter_qset ∈ Bool = (d_classify ∧ (¬d_line_end) ∧ c_q_s1
+    d_enter_qset ∈ Bool = (classify_now ∧ (¬d_line_end) ∧ c_q_s1
         ∧ (¬c_q_ex) ∧ (qset_src ≥ 0) ∧ (qset_tgt ≥ 0)
         ∧ (qset_b_var = c_q_var) ∧ (tok6 matches OpIn))
     qset_e ∈ String = (qset_src = 0 ? stv[0].elems : stv[1].elems)
@@ -119,7 +119,7 @@ fsm DriverSetVar
         : qset_seg1)
 
     sl_cnt ∈ Int
-    d_in_sl ∈ Bool = (in_parse ∧ (_pmode = 8) ∧ d_witems_nil ∧ tok_ready)
+    d_in_sl ∈ Bool = (in_parse ∧ (_pmode = 8) ∧ work_nil ∧ tok_ready)
     sl_close ∈ Bool = (d_in_sl ∧ (tok0 matches OpSeqClose))
     sl_comma ∈ Bool = (d_in_sl ∧ (tok0 matches Comma))
     sl_e_enter ∈ Bool = (d_in_sl ∧ (¬sl_close) ∧ (¬sl_comma))

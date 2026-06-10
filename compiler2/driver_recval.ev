@@ -1,6 +1,6 @@
 -- MODULE DriverRecVal
 -- CONSUMES: a record-instance work item — recval_slot (the registry slot index
---           0/1/2), recval_name (the instance name), d_wtail (the rest of the
+--           0/1/2), recval_name (the instance name), work_tail (the rest of the
 --           work-item program), and the record-type registry rec0/e1/e2.
 -- PRODUCES: recval_items (the C2RecVal expansion — the record value as a
 --           ctor app over its flattened dotted-const segments) and
@@ -42,7 +42,7 @@ fsm DriverRecVal
     recval_seg5 ∈ C2Item = (recval_fields[5].kidx ≥ 0
         ? C2RecVal(recval_name ++ "." ++ recval_fields[5].name, recval_fields[5].kidx)
         : C2Process(EIdent(recval_name ++ "." ++ recval_fields[5].name)))
-    recval_tail ∈ C2Items = C2ICons(C2App(recval_ctor, recval_nf), d_wtail)
+    recval_tail ∈ C2Items = C2ICons(C2App(recval_ctor, recval_nf), work_tail)
     recval_items ∈ C2Items = (recval_nf = 1
             ? C2ICons(recval_seg0, recval_tail)
         : recval_nf = 2
@@ -61,10 +61,10 @@ fsm DriverRecVal
     recval_sortcodes ∈ Seq(Int)
     #recval_sortcodes ≤ 6
     ∀ k ∈ {0..5} : recval_sortcodes[k] = (recval_fields[k].ty = "Bool" ? 1 : recval_fields[k].ty = "String" ? 3 : recval_fields[k].ty = "Real" ? 6 : 0)
-    recval_dtail5 ∈ C2Items = ((recval_nf < 6 ∨ recval_fields[5].ty = "Seq(Int)") ? d_wtail
-        : recval_fields[5].kidx ≥ 0 ? C2ICons(C2RecDecl(recval_name ++ "." ++ recval_fields[5].name, recval_fields[5].kidx), d_wtail)
+    recval_dtail5 ∈ C2Items = ((recval_nf < 6 ∨ recval_fields[5].ty = "Seq(Int)") ? work_tail
+        : recval_fields[5].kidx ≥ 0 ? C2ICons(C2RecDecl(recval_name ++ "." ++ recval_fields[5].name, recval_fields[5].kidx), work_tail)
         : C2ICons(C2DeclConst(recval_name ++ "." ++ recval_fields[5].name, recval_sortcodes[5]),
-            C2ICons(C2Drop, d_wtail)))
+            C2ICons(C2Drop, work_tail)))
     recval_dtail4 ∈ C2Items = ((recval_nf < 5 ∨ recval_fields[4].ty = "Seq(Int)") ? recval_dtail5
         : recval_fields[4].kidx ≥ 0 ? C2ICons(C2RecDecl(recval_name ++ "." ++ recval_fields[4].name, recval_fields[4].kidx), recval_dtail5)
         : C2ICons(C2DeclConst(recval_name ++ "." ++ recval_fields[4].name, recval_sortcodes[4]),

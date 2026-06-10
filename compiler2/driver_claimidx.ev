@@ -2,7 +2,7 @@
 -- CONSUMES: the skip-pass entry (d_enter_skip) + the window head views
 --           (tok0..tok6), the claim head shape (d_head_is_claim,
 --           d_cl_name), the parse gate (in_parse, _pmode, tok_ready,
---           d_witems_nil), the pmode-4 enum-collection signals
+--           work_nil), the pmode-4 enum-collection signals
 --           (d_enter_edecl, enum_act, enum_done_user, ue_name) + floor decl
 --           handles (z_*_decl/z_empty_val), the Pratt result (p_done,
 --           pr_bad, pk_kind), and the claim-index buffer base (ci_base).
@@ -26,7 +26,7 @@ claim C2ChainLvl(tail ∈ C2Items, out ∈ C2Items)
 
 fsm DriverClaimIdx
     -- ── F2: the claim index ───────────────────────────────────────
-    -- ci_names: fixed-width 32-byte name records (the B1 st_names
+    -- ci_names: fixed-width 32-byte name records (the B1 sym_names
     -- pattern). Cursors live in the ci_base buffer (256 × 8 bytes),
     -- one per skipped claim, value = _tok_cur + 2 — the token after
     -- `claim Name`, which is `(` for parametrized claims (the
@@ -114,7 +114,7 @@ fsm DriverClaimIdx
     ch_pd ∈ Int
     ch_n ∈ Int
 
-    d_in_el ∈ Bool = (in_parse ∧ (_pmode = 5) ∧ d_witems_nil ∧ tok_ready)
+    d_in_el ∈ Bool = (in_parse ∧ (_pmode = 5) ∧ work_nil ∧ tok_ready)
     el_w_t2s ∈ String = match tok2
         StringLit(s) ⇒ s
         _ ⇒ ""

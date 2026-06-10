@@ -2,7 +2,7 @@
 -- CONSUMES: the classifier line-head views (c_t0..c_t4) + the window
 --           lookahead (tok5..tok7), the registered-seq carries (_sq_set,
 --           _sq_name, _sq_len), the record registry (rt_* via RtIdxOf),
---           the classify gate (d_classify, d_line_end), and the parse
+--           the classify gate (classify_now, d_line_end), and the parse
 --           cursor for the body re-walk.
 -- PRODUCES: the bounded-quantifier line classification (c_q_hd/c_q_line/
 --           c_q_rng/c_q_seq/c_q_var/c_q_lo/c_q_hi/c_q_s1/c_q_s2/…) + the
@@ -47,13 +47,13 @@ fsm DriverQuant
     c_q_seqnm0 ∈ String = (c_q_s2 ? (c_q_t3nm ++ "." ++ c_q_t5nm) : c_q_t3nm)
     c_q_seqnm ∈ String = (((_il_pfx ++ c_q_seqnm0) = _sq_name)
         ? _sq_name : c_q_seqnm0)
-    d_enter_qr ∈ Bool = (d_classify ∧ (¬d_line_end) ∧ c_q_rng)
-    d_enter_qs ∈ Bool = (d_classify ∧ (¬d_line_end) ∧ (¬c_q_rng)
+    d_enter_qr ∈ Bool = (classify_now ∧ (¬d_line_end) ∧ c_q_rng)
+    d_enter_qs ∈ Bool = (classify_now ∧ (¬d_line_end) ∧ (¬c_q_rng)
         ∧ c_q_seq ∧ _sq_set ∧ (¬d_enter_qset))
 
     -- pmode 11: the range head's `} :` close (the 8-token classify
     -- bite latched lo/hi; the brace close enters the body parse)
-    q_act ∈ Bool = (in_parse ∧ (_pmode = 11) ∧ d_witems_nil ∧ tok_ready)
+    q_act ∈ Bool = (in_parse ∧ (_pmode = 11) ∧ work_nil ∧ tok_ready)
     q_close ∈ Bool = (q_act ∧ (tok0 matches RBrace)
         ∧ (tok1 matches Colon))
     q_bail ∈ Bool = (q_act ∧ (¬q_close))
@@ -69,7 +69,7 @@ fsm DriverQuant
     fl_nx ∈ Int
     fl_v ∈ Int
     fq_done ∈ Bool = (p_done ∧ (_pk_kind = 9) ∧ (¬pr_bad))
-    fx_disp ∈ Bool = (d_in_claim ∧ _fl_on ∧ d_witems_nil
+    fx_disp ∈ Bool = (d_in_claim ∧ _fl_on ∧ work_nil
         ∧ (_il_ps = 0) ∧ tok_ready)
     fx_more ∈ Bool = (fx_disp ∧ (_fl_nx ≤ _fl_hi))
     fx_fin ∈ Bool = (fx_disp ∧ (_fl_nx > _fl_hi))

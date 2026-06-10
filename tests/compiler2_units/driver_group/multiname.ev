@@ -18,8 +18,8 @@ fsm main
     pmode = (is_first_tick ? 9 : _pmode)
     tok_ready ∈ Bool
     tok_ready = (is_first_tick ? true : _tok_ready)
-    d_witems_nil ∈ Bool
-    d_witems_nil = (is_first_tick ? true : _d_witems_nil)
+    work_nil ∈ Bool
+    work_nil = (is_first_tick ? true : _work_nil)
     tok0 ∈ Token
     tok0 = (is_first_tick ? Ident("x") : _tok0)
     tok1 ∈ Token

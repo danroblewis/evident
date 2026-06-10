@@ -19,8 +19,8 @@ fsm main
     pmode = (is_first_tick ? 10 : _pmode)
     in_parse ∈ Bool
     in_parse = (is_first_tick ? true : _in_parse)
-    d_witems_nil ∈ Bool
-    d_witems_nil = (is_first_tick ? true : _d_witems_nil)
+    work_nil ∈ Bool
+    work_nil = (is_first_tick ? true : _work_nil)
     tok_ready ∈ Bool
     tok_ready = (is_first_tick ? true : _tok_ready)
     tok0 ∈ Token
@@ -56,30 +56,30 @@ fsm main
     d_enter_claim = (is_first_tick ? false : _d_enter_claim)
     d_enter_claimp ∈ Bool
     d_enter_claimp = (is_first_tick ? false : _d_enter_claimp)
-    d_h_2nd ∈ Int
-    d_h_2nd = (is_first_tick ? 0 : _d_h_2nd)
-    d_h_3rd ∈ Int
-    d_h_3rd = (is_first_tick ? 0 : _d_h_3rd)
-    d_h_4th ∈ Int
-    d_h_4th = (is_first_tick ? 0 : _d_h_4th)
-    d_h_5th ∈ Int
-    d_h_5th = (is_first_tick ? 0 : _d_h_5th)
-    d_h_6th ∈ Int
-    d_h_6th = (is_first_tick ? 0 : _d_h_6th)
-    d_h_t1 ∈ C2H
-    d_h_t1 = (is_first_tick ? C2HNil : _d_h_t1)
-    d_h_t2 ∈ C2H
-    d_h_t2 = (is_first_tick ? C2HNil : _d_h_t2)
-    d_h_t3 ∈ C2H
-    d_h_t3 = (is_first_tick ? C2HNil : _d_h_t3)
-    d_h_t4 ∈ C2H
-    d_h_t4 = (is_first_tick ? C2HNil : _d_h_t4)
-    d_h_t5 ∈ C2H
-    d_h_t5 = (is_first_tick ? C2HNil : _d_h_t5)
-    d_h_t6 ∈ C2H
-    d_h_t6 = (is_first_tick ? C2HNil : _d_h_t6)
-    d_h_top ∈ Int
-    d_h_top = (is_first_tick ? 0 : _d_h_top)
+    h_2nd ∈ Int
+    h_2nd = (is_first_tick ? 0 : _h_2nd)
+    h_3rd ∈ Int
+    h_3rd = (is_first_tick ? 0 : _h_3rd)
+    h_4th ∈ Int
+    h_4th = (is_first_tick ? 0 : _h_4th)
+    h_5th ∈ Int
+    h_5th = (is_first_tick ? 0 : _h_5th)
+    h_6th ∈ Int
+    h_6th = (is_first_tick ? 0 : _h_6th)
+    h_tail1 ∈ C2H
+    h_tail1 = (is_first_tick ? C2HNil : _h_tail1)
+    h_tail2 ∈ C2H
+    h_tail2 = (is_first_tick ? C2HNil : _h_tail2)
+    h_tail3 ∈ C2H
+    h_tail3 = (is_first_tick ? C2HNil : _h_tail3)
+    h_tail4 ∈ C2H
+    h_tail4 = (is_first_tick ? C2HNil : _h_tail4)
+    h_tail5 ∈ C2H
+    h_tail5 = (is_first_tick ? C2HNil : _h_tail5)
+    h_tail6 ∈ C2H
+    h_tail6 = (is_first_tick ? C2HNil : _h_tail6)
+    h_top ∈ Int
+    h_top = (is_first_tick ? 0 : _h_top)
     d_hstk_in ∈ C2H
     d_hstk_in = (is_first_tick ? C2HNil : _d_hstk_in)
     gc_hit ∈ Bool

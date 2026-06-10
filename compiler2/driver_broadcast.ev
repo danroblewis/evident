@@ -2,8 +2,8 @@
 -- CONSUMES: the parse result (p_done, _pk_kind, pr_bad, _pk_rec,
 --           _pk_name, pr_sres), the pinned record type's field
 --           registry (rec0..2 .n_fields / .fnames), the claim-walk dispatch
---           gate (d_in_claim, d_witems_nil, _il_ps, tok_ready), and
---           the symbol-table name index (st_names).
+--           gate (d_in_claim, work_nil, _il_ps, tok_ready), and
+--           the symbol-table name index (sym_names).
 -- PRODUCES: the record-pin broadcast loop state (rb_on/rb_k/rb_nm/
 --           rb_body/rb_fi/rb_v) and the per-field re-walk emission
 --           (rb_dname, rb_dup, rb_head, rbx_items) consumed by the
@@ -36,7 +36,7 @@ fsm DriverBroadcast
         ∧ (_pk_rec ≥ 0))
     rb_nf ∈ Int = (_rb_k = 0 ? rec0.n_fields : _rb_k = 1 ? rec1.n_fields : rec2.n_fields)
     rb_fs ∈ String = (_rb_k = 0 ? rec0.fnames : _rb_k = 1 ? rec1.fnames : rec2.fnames)
-    rbx_disp ∈ Bool = (d_in_claim ∧ _rb_on ∧ d_witems_nil
+    rbx_disp ∈ Bool = (d_in_claim ∧ _rb_on ∧ work_nil
         ∧ (_il_ps = 0) ∧ tok_ready)
     rbx_more ∈ Bool = (rbx_disp ∧ (_rb_fi < rb_nf))
     rbx_fin ∈ Bool = (rbx_disp ∧ (_rb_fi ≥ rb_nf))
@@ -57,7 +57,7 @@ fsm DriverBroadcast
     rbx_f ∈ String
     RtRecName(s ↦ rb_fs, i ↦ _rb_fi, name ↦ rbx_f)
     rb_dname ∈ String = _rb_nm ++ "." ++ rbx_f
-    rb_dup ∈ Bool = (index_of(st_names,
+    rb_dup ∈ Bool = (index_of(sym_names,
         "|" ++ substr(rb_dname ++ "                               ", 0, 31),
         0) ≥ 0)
     rb_head ∈ C2Item = (rb_dup ? C2Process(EIdent(rb_dname))

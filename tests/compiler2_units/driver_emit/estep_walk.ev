@@ -26,10 +26,10 @@ fsm main
     z3ctx.sol = (is_first_tick ? 0 : _z3ctx.sol)
     fstr ∈ String
     fstr = (is_first_tick ? "" : _fstr)
-    saw_lr ∈ Bool
-    saw_lr = (is_first_tick ? false : _saw_lr)
-    saw_ift ∈ Bool
-    saw_ift = (is_first_tick ? false : _saw_ift)
+    saw_lastres ∈ Bool
+    saw_lastres = (is_first_tick ? false : _saw_lastres)
+    saw_first_tick ∈ Bool
+    saw_first_tick = (is_first_tick ? false : _saw_first_tick)
     cdstr ∈ String
     cdstr = (is_first_tick ? "" : _cdstr)
     tok_buf ∈ FtiBuffer
@@ -42,7 +42,7 @@ fsm main
     claimidx_buf.base = (is_first_tick ? 0 : _claimidx_buf.base)
     claimidx_buf.count = (is_first_tick ? 0 : _claimidx_buf.count)
     -- DriverEmit's d_prelude string literal contains the text
-    -- "last_results", which trips the oracle's saw_lr heuristic and
+    -- "last_results", which trips the oracle's saw_lastres heuristic and
     -- suppresses the genuine `last_results` declaration. A real read
     -- forces it back into the build context so the kernel's per-tick
     -- result carry resolves (otherwise: "unknown constant last_results").

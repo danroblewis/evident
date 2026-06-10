@@ -1,5 +1,5 @@
 -- DriverSetVar isolation — Set(T) registry append + name capture.
--- c_setmem_line held under d_classify (not at line end) so d_setmem
+-- c_setmem_line held under classify_now (not at line end) so d_setmem
 -- fires and the ≤2-entry Set registry appends: stv_cnt climbs 0→1→2
 -- (capped), stv[0].name captures c_dname = "myset". Exit at stv_cnt = 2.
 --
@@ -14,8 +14,8 @@ import "compiler2/driver_record.ev"
 import "compiler2/driver_setvar.ev"
 
 fsm main
-    d_classify ∈ Bool
-    d_classify = (is_first_tick ? true : _d_classify)
+    classify_now ∈ Bool
+    classify_now = (is_first_tick ? true : _classify_now)
     c_setmem_line ∈ Bool
     c_setmem_line = (is_first_tick ? true : _c_setmem_line)
     d_line_end ∈ Bool
@@ -54,8 +54,8 @@ fsm main
     d_enter_sl = (is_first_tick ? false : _d_enter_sl)
     d_in_skip ∈ Bool
     d_in_skip = (is_first_tick ? false : _d_in_skip)
-    d_witems_nil ∈ Bool
-    d_witems_nil = (is_first_tick ? false : _d_witems_nil)
+    work_nil ∈ Bool
+    work_nil = (is_first_tick ? false : _work_nil)
     il_pfx ∈ String
     il_pfx = (is_first_tick ? "" : _il_pfx)
     in_parse ∈ Bool

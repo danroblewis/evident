@@ -1,8 +1,8 @@
 -- MODULE DriverEmit
 -- CONSUMES: the all-done signal (d_all_done) + per-tick captures
 --           (d_cap_int/d_cap_str), the Z3 solver handles (z3ctx.ctx/z3ctx.sol),
---           the rendered-unit inputs (_fstr manifest fields, _saw_lr/
---           _saw_ift prelude gates, cdstr carry declares), and the arena
+--           the rendered-unit inputs (_fstr manifest fields, _saw_lastres/
+--           _saw_first_tick prelude gates, cdstr carry declares), and the arena
 --           buffer bases (tbase/st_base/ci_base).
 -- PRODUCES: the EMIT program counter (estep) + its captures (sptr/
 --           rendered), the translation-unit string (d_manifest/
@@ -44,10 +44,10 @@ fsm DriverEmit
         ++ ";; manifest: effect-enum-name = Effect\n"
         ++ ";; manifest: result-enum-name = Result\n"
         ++ ";; manifest: max-effects = 16")
-    d_prelude ∈ String = ((_saw_lr ? ""
+    d_prelude ∈ String = ((_saw_lastres ? ""
             : "(declare-datatypes ((Result 0)) (((NoResult) (IntResult (IntResult__f0 Int)) (StringResult (StringResult__f0 String)) (RealResult (RealResult__f0 Real)) (EofResult) (ErrorResult (ErrorResult__f0 String)))))\n"
               ++ "(declare-fun last_results () (Array Int Result))\n")
-        ++ (_saw_ift ? "" : "(declare-fun is_first_tick () Bool)\n"))
+        ++ (_saw_first_tick ? "" : "(declare-fun is_first_tick () Bool)\n"))
     d_unit ∈ String = d_manifest ++ "\n\n" ++ d_prelude ++ rendered ++ cdstr
 
     e_puts ∈ Effect

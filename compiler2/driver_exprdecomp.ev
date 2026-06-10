@@ -1,13 +1,13 @@
 -- MODULE DriverExprDecomp
--- CONSUMES: the current parse-expr node d_pe, the work-item tail d_wtail,
+-- CONSUMES: the current parse-expr node cur_expr, the work-item tail work_tail,
 --           the user-enum-variant registry (user_variants[0].name..5 / user_variants[0].ctor..5 /
 --           user_variants[0].tester..5), and the floor tester decls z_intres_test / z_strres_test.
--- PRODUCES: the decomposed views of d_pe used by the work-item lowering —
---           the node-kind flags + payloads (d_pe_is_int/id/str/bin/tern/
---           not/m, d_pe_str, d_lkname, d_pe_op/l/r/c/t/e/ni, d_pe_op_ne),
---           the call shape (d_pe_is_c1/c2/c3, d_cnm, d_ca0/1/2), the
---           ctor-dispatch decl (d_ctor_d), and the `matches` lowering
---           (d_m_nm, d_m_in, d_m_t, d_m_items).
+-- PRODUCES: the decomposed views of cur_expr used by the work-item lowering —
+--           the node-kind flags + payloads (expr_is_int/id/str/bin/tern/
+--           not/m, expr_str_val, lookup_name, expr_op/l/r/c/t/e/ni, expr_op_is_neq),
+--           the call shape (expr_is_call1/c2/c3, call_name, call_arg0/1/2), the
+--           ctor-dispatch decl (ctor_decl), and the `matches` lowering
+--           (matches_name, matches_scrut, matches_tester, matches_items).
 -- MAINTAINS: pure per-tick decomposition, no carry. The ctor dispatch is
 --           checked before the builtin fallthrough (no collision: builtins
 --           lowercase, variants capitalized); a `matches` miss pushes
@@ -16,50 +16,50 @@
 -- The parse-expr node decomposition. Lifted into driver_main via
 -- `..DriverExprDecomp`.
 fsm DriverExprDecomp
-    d_pe_is_int ∈ Bool = (d_pe matches EInt(_))
-    d_pe_is_id  ∈ Bool = (d_pe matches EIdent(_))
-    d_pe_is_str ∈ Bool = (d_pe matches EStr(_))
-    d_pe_str ∈ String = match d_pe
+    expr_is_int ∈ Bool = (cur_expr matches EInt(_))
+    expr_is_ident  ∈ Bool = (cur_expr matches EIdent(_))
+    expr_is_str ∈ Bool = (cur_expr matches EStr(_))
+    expr_str_val ∈ String = match cur_expr
         EStr(s) ⇒ s
         _ ⇒ ""
-    d_lkname ∈ String = match d_pe
+    lookup_name ∈ String = match cur_expr
         EIdent(s) ⇒ s
         _ ⇒ ""
-    d_pe_op ∈ Op
-    d_pe_l ∈ Expr
-    d_pe_r ∈ Expr
-    d_pe_is_bin ∈ Bool
-    BoolExprBinopParts(e ↦ d_pe, op ↦ d_pe_op, lhs ↦ d_pe_l,
-        rhs ↦ d_pe_r, is_binop ↦ d_pe_is_bin)
-    d_pe_c ∈ Expr
-    d_pe_t ∈ Expr
-    d_pe_e ∈ Expr
-    d_pe_is_tern ∈ Bool
-    TernaryExprParts(e ↦ d_pe, cond_e ↦ d_pe_c, then_e ↦ d_pe_t,
-        else_e ↦ d_pe_e, is_tern ↦ d_pe_is_tern)
-    d_pe_ni ∈ Expr
-    d_pe_is_not ∈ Bool
-    NotExprParts(e ↦ d_pe, inner ↦ d_pe_ni, is_not ↦ d_pe_is_not)
-    d_pe_op_ne ∈ Bool = (d_pe_op matches OpNeq)
+    expr_op ∈ Op
+    expr_lhs ∈ Expr
+    expr_rhs ∈ Expr
+    expr_is_binop ∈ Bool
+    BoolExprBinopParts(e ↦ cur_expr, op ↦ expr_op, lhs ↦ expr_lhs,
+        rhs ↦ expr_rhs, is_binop ↦ expr_is_binop)
+    expr_cond ∈ Expr
+    expr_then ∈ Expr
+    expr_else ∈ Expr
+    expr_is_ternary ∈ Bool
+    TernaryExprParts(e ↦ cur_expr, cond_e ↦ expr_cond, then_e ↦ expr_then,
+        else_e ↦ expr_else, is_tern ↦ expr_is_ternary)
+    expr_not_inner ∈ Expr
+    expr_is_not ∈ Bool
+    NotExprParts(e ↦ cur_expr, inner ↦ expr_not_inner, is_not ↦ expr_is_not)
+    expr_op_is_neq ∈ Bool = (expr_op matches OpNeq)
 
-    d_pe_is_c1 ∈ Bool = (d_pe matches ECall1(_, _))
-    d_pe_is_c2 ∈ Bool = (d_pe matches ECall2(_, _, _))
-    d_pe_is_c3 ∈ Bool = (d_pe matches ECall3(_, _, _, _))
-    d_cnm ∈ String = match d_pe
+    expr_is_call1 ∈ Bool = (cur_expr matches ECall1(_, _))
+    expr_is_call2 ∈ Bool = (cur_expr matches ECall2(_, _, _))
+    expr_is_call3 ∈ Bool = (cur_expr matches ECall3(_, _, _, _))
+    call_name ∈ String = match cur_expr
         ECall1(cn1, _) ⇒ cn1
         ECall2(cn2, _, _) ⇒ cn2
         ECall3(cn3, _, _, _) ⇒ cn3
         _ ⇒ ""
-    d_ca0 ∈ Expr = match d_pe
+    call_arg0 ∈ Expr = match cur_expr
         ECall1(_, ca1) ⇒ ca1
         ECall2(_, ca2, _) ⇒ ca2
         ECall3(_, ca3, _, _) ⇒ ca3
         _ ⇒ ENoExpr
-    d_ca1 ∈ Expr = match d_pe
+    call_arg1 ∈ Expr = match cur_expr
         ECall2(_, _, cb2) ⇒ cb2
         ECall3(_, _, cb3, _) ⇒ cb3
         _ ⇒ ENoExpr
-    d_ca2 ∈ Expr = match d_pe
+    call_arg2 ∈ Expr = match cur_expr
         ECall3(_, _, _, cc3) ⇒ cc3
         _ ⇒ ENoExpr
 
@@ -67,30 +67,30 @@ fsm DriverExprDecomp
     -- fallthrough (no collision: builtins lowercase, variants
     -- capitalized). Compound args are handles, so the legacy
     -- dropped-Exit(3+4) class is impossible by construction.
-    d_ctor_d ∈ Int = (user_variants[0].name = d_cnm ? user_variants[0].ctor
-        : user_variants[1].name = d_cnm ? user_variants[1].ctor
-        : user_variants[2].name = d_cnm ? user_variants[2].ctor
-        : user_variants[3].name = d_cnm ? user_variants[3].ctor
-        : user_variants[4].name = d_cnm ? user_variants[4].ctor
-        : user_variants[5].name = d_cnm ? user_variants[5].ctor
+    ctor_decl ∈ Int = (user_variants[0].name = call_name ? user_variants[0].ctor
+        : user_variants[1].name = call_name ? user_variants[1].ctor
+        : user_variants[2].name = call_name ? user_variants[2].ctor
+        : user_variants[3].name = call_name ? user_variants[3].ctor
+        : user_variants[4].name = call_name ? user_variants[4].ctor
+        : user_variants[5].name = call_name ? user_variants[5].ctor
         : 0)
 
-    d_pe_is_m ∈ Bool = (d_pe matches EMatches(_, _))
-    d_m_nm ∈ String = match d_pe
+    expr_is_matches ∈ Bool = (cur_expr matches EMatches(_, _))
+    matches_name ∈ String = match cur_expr
         EMatches(mn, _) ⇒ mn
         _ ⇒ ""
-    d_m_in ∈ Expr = match d_pe
+    matches_scrut ∈ Expr = match cur_expr
         EMatches(_, me) ⇒ me
         _ ⇒ ENoExpr
-    d_m_t ∈ Int = (d_m_nm = "IntResult" ? z_intres_test
-        : d_m_nm = "StringResult" ? z_strres_test
-        : user_variants[0].name = d_m_nm ? user_variants[0].tester
-        : user_variants[1].name = d_m_nm ? user_variants[1].tester
-        : user_variants[2].name = d_m_nm ? user_variants[2].tester
-        : user_variants[3].name = d_m_nm ? user_variants[3].tester
-        : user_variants[4].name = d_m_nm ? user_variants[4].tester
-        : user_variants[5].name = d_m_nm ? user_variants[5].tester
+    matches_tester ∈ Int = (matches_name = "IntResult" ? z_intres_test
+        : matches_name = "StringResult" ? z_strres_test
+        : user_variants[0].name = matches_name ? user_variants[0].tester
+        : user_variants[1].name = matches_name ? user_variants[1].tester
+        : user_variants[2].name = matches_name ? user_variants[2].tester
+        : user_variants[3].name = matches_name ? user_variants[3].tester
+        : user_variants[4].name = matches_name ? user_variants[4].tester
+        : user_variants[5].name = matches_name ? user_variants[5].tester
         : 0)
-    d_m_items ∈ C2Items = (d_m_t ≠ 0
-        ? C2ICons(C2Process(d_m_in), C2ICons(C2App(d_m_t, 1), d_wtail))
-        : C2ICons(C2PushH(0), d_wtail))
+    matches_items ∈ C2Items = (matches_tester ≠ 0
+        ? C2ICons(C2Process(matches_scrut), C2ICons(C2App(matches_tester, 1), work_tail))
+        : C2ICons(C2PushH(0), work_tail))

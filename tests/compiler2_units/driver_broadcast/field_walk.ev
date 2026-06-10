@@ -30,8 +30,8 @@ fsm main
     -- Claim-walk dispatch gate: held open so the broadcast can step.
     d_in_claim ∈ Bool
     d_in_claim = (is_first_tick ? true : _d_in_claim)
-    d_witems_nil ∈ Bool
-    d_witems_nil = (is_first_tick ? true : _d_witems_nil)
+    work_nil ∈ Bool
+    work_nil = (is_first_tick ? true : _work_nil)
     il_ps ∈ Int
     il_ps = (is_first_tick ? 0 : _il_ps)
     tok_ready ∈ Bool
@@ -46,8 +46,8 @@ fsm main
     rec2 ∈ RecTypeEntry(name ↦ "", fnames ↦ "", ftypes ↦ "", n_fields ↦ 0,
         sort ↦ 0, ctor ↦ 0, asort ↦ 0, ssort ↦ 0,
         acc0 ↦ 0, acc1 ↦ 0, acc2 ↦ 0, acc3 ↦ 0, acc4 ↦ 0, acc5 ↦ 0)
-    st_names ∈ String
-    st_names = (is_first_tick ? "" : _st_names)
+    sym_names ∈ String
+    sym_names = (is_first_tick ? "" : _sym_names)
     ..DriverBroadcast
     fi_msg ∈ String = str_from_int(rb_fi)
     effects ∈ Seq(Effect) = (tc ≥ 5

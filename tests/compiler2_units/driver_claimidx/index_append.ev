@@ -31,8 +31,8 @@ fsm main
     d_enter_edecl = (is_first_tick ? false : _d_enter_edecl)
     d_enter_el ∈ Bool
     d_enter_el = (is_first_tick ? false : _d_enter_el)
-    d_witems_nil ∈ Bool
-    d_witems_nil = (is_first_tick ? false : _d_witems_nil)
+    work_nil ∈ Bool
+    work_nil = (is_first_tick ? false : _work_nil)
     enum_act ∈ Int
     enum_act = (is_first_tick ? 0 : _enum_act)
     enum_done_user ∈ Bool

@@ -30,16 +30,16 @@ fsm main
     tok6 = (is_first_tick ? Dot : _tok6)
     tok7 ∈ Token
     tok7 = (is_first_tick ? IntLit(9) : _tok7)
-    d_classify ∈ Bool
-    d_classify = (is_first_tick ? false : _d_classify)
+    classify_now ∈ Bool
+    classify_now = (is_first_tick ? false : _classify_now)
     d_enter_qset ∈ Bool
     d_enter_qset = (is_first_tick ? false : _d_enter_qset)
     d_in_claim ∈ Bool
     d_in_claim = (is_first_tick ? false : _d_in_claim)
     d_line_end ∈ Bool
     d_line_end = (is_first_tick ? false : _d_line_end)
-    d_witems_nil ∈ Bool
-    d_witems_nil = (is_first_tick ? false : _d_witems_nil)
+    work_nil ∈ Bool
+    work_nil = (is_first_tick ? false : _work_nil)
     gc_bin ∈ Bool
     gc_bin = (is_first_tick ? false : _gc_bin)
     gc_l ∈ Expr

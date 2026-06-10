@@ -2,8 +2,8 @@
 -- CONSUMES: the parsed root (pr_sres) + parse-done signal (p_done,
 --           _pk_kind, pr_bad), the claim index (ci_names, ci_base),
 --           the pmode-10 composition-walk state (in_parse, _pmode,
---           _cw_st, cw_reset, d_witems_nil), and the inline-frame
---           stack views (il_pop, _il_depth, d_h_top).
+--           _cw_st, cw_reset, work_nil), and the inline-frame
+--           stack views (il_pop, _il_depth, h_top).
 -- PRODUCES: the guard recognizer (gc_op/gc_l/gc_r/gc_bin/gc_rnm/gc_key/
 --           gc_pos/gc_hit), the claim-body fetch effect (e_gcr), the
 --           jump capture/fire signals (gj_cap/gj_fire/gj_unguard), and
@@ -36,13 +36,13 @@ fsm DriverGuard
     BuildMemReadLong(addr ↦ claimidx_buf.base + (8 * (gc_pos / 32)), eff ↦ e_gcr)
     gj_cap ∈ Bool = (in_parse ∧ (_pmode = 10) ∧ (_cw_st = 3))
     gj_fire ∈ Bool = (in_parse ∧ (_pmode = 10) ∧ (_cw_st = 4)
-        ∧ d_witems_nil)
+        ∧ work_nil)
     il_guard ∈ Int
     il_gd ∈ Int
     gj_unguard ∈ Bool = (il_pop ∧ (_il_depth = _il_gd))
     il_guard = (is_first_tick ? 0
         : cw_reset ? 0
-        : gj_fire ? d_h_top
+        : gj_fire ? h_top
         : gj_unguard ? 0
         : _il_guard)
     il_gd = (is_first_tick ? 0
