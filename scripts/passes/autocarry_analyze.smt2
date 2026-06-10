@@ -1,4 +1,4 @@
-;; manifest: state-fields = body:String callee:String claim_bare:String claim_name:String code:String cur_a:Int cur_b:Int eff_nop:Effect eff_out:Effect eff_ov_msg:Effect hdr_fl:Int hdr_pend_0:String hdr_pend_1:String hdr_pend_10:String hdr_pend_11:String hdr_pend_12:String hdr_pend_13:String hdr_pend_14:String hdr_pend_15:String hdr_pend_2:String hdr_pend_3:String hdr_pend_4:String hdr_pend_5:String hdr_pend_6:String hdr_pend_7:String hdr_pend_8:String hdr_pend_9:String hdr_seg:Int hdr_ty:String hp_i:Int hp_n:Int in_fsm:Int line:String line_no:Int phase:Int s_open:Bool tk_base:String tk_bind_now:Bool tk_ce_done:Bool tk_ce_f1:Int tk_ce_gt:Int tk_ce_mark:Bool tk_ce_o1:Int tk_ce_on:Bool tk_ce_run:Bool tk_ce_x:String tk_cline:String tk_code_now:String tk_consume:Bool tk_cs_code:String tk_cs_dd:Int tk_cs_done:Bool tk_cs_p:Int tk_cs_q:Bool tk_cs_qq:Int tk_d0:Int tk_emit_rec:Bool tk_enter_call:Bool tk_enter_ce:Bool tk_enter_ce_eof:Bool tk_eof_now:Bool tk_exit_now:Bool tk_fld:String tk_h_add:Bool tk_h_b:Int tk_h_base:String tk_h_bnd:Bool tk_h_bs:Int tk_h_c:Int tk_h_close:Bool tk_h_comma:Bool tk_h_done:Bool tk_h_end:Bool tk_h_ep:Int tk_h_fl1:Bool tk_h_fl_run:Bool tk_h_fnm:String tk_h_last:Bool tk_h_m:Int tk_h_ne:Int tk_h_nm:String tk_h_none:Bool tk_h_ns:Int tk_h_o:Int tk_h_open:Bool tk_h_ovp:Bool tk_h_scan:Bool tk_h_sp:Int tk_h_t0:Int tk_h_tb:Int tk_h_te:Int tk_h_typed:Bool tk_h_us:Bool tk_hdr_code:String tk_hdr_fsm:Bool tk_hdr_go:Bool tk_hdr_lp:Int tk_hdr_name:String tk_ie:Int tk_ie2:Int tk_in_body:Bool tk_is_bare:Bool tk_is_call:Bool tk_is_ment:Bool tk_is_top:Bool tk_lp_ready:Bool tk_m:Int tk_need_code:Bool tk_nm_start:Int tk_nn:Int tk_pb:Int tk_ph:Int tk_q0:Int tk_quick:Bool tk_read_go:Bool tk_rec:String tk_rec_fsm:Bool tk_reof:Bool tk_rest:String tk_rline:String tk_sb:Int tk_scan3_done:Bool tk_slot:String tk_ss:Int tk_strip_go:Bool tk_switch_now:Bool tk_t0:Int tk_te:Int tk_v0:Int tk_va:Int tk_val_ok:Bool tk_ve:Int tk_ws:Int
+;; manifest: state-fields = body:String callee:String claim_bare:String claim_name:String code:String cur_a:Int cur_b:Int eff_nop:Effect eff_out:Effect eff_ov_exit:Effect eff_ov_msg:Effect hdr_fl:Int hdr_pend_0:String hdr_pend_1:String hdr_pend_10:String hdr_pend_11:String hdr_pend_12:String hdr_pend_13:String hdr_pend_14:String hdr_pend_15:String hdr_pend_2:String hdr_pend_3:String hdr_pend_4:String hdr_pend_5:String hdr_pend_6:String hdr_pend_7:String hdr_pend_8:String hdr_pend_9:String hdr_seg:Int hdr_ty:String hp_i:Int hp_n:Int in_fsm:Int line:String line_no:Int phase:Int s_open:Bool tk_base:String tk_bind_now:Bool tk_cb_add:String tk_ce_done:Bool tk_ce_f1:Int tk_ce_gt:Int tk_ce_mark:Bool tk_ce_o1:Int tk_ce_on:Bool tk_ce_run:Bool tk_ce_x:String tk_cline:String tk_code_now:String tk_consume:Bool tk_cs_code:String tk_cs_dd:Int tk_cs_done:Bool tk_cs_p:Int tk_cs_q:Bool tk_cs_qq:Int tk_d0:Int tk_emit_rec:Bool tk_enter_call:Bool tk_enter_ce:Bool tk_enter_ce_eof:Bool tk_eof_now:Bool tk_exit_now:Bool tk_fld:String tk_h_add:Bool tk_h_b:Int tk_h_base:String tk_h_bnd:Bool tk_h_bs:Int tk_h_c:Int tk_h_close:Bool tk_h_comma:Bool tk_h_done:Bool tk_h_end:Bool tk_h_ep:Int tk_h_fl1:Bool tk_h_fl_run:Bool tk_h_fnm:String tk_h_last:Bool tk_h_m:Int tk_h_ne:Int tk_h_nm:String tk_h_none:Bool tk_h_ns:Int tk_h_o:Int tk_h_open:Bool tk_h_ovp:Bool tk_h_scan:Bool tk_h_sp:Int tk_h_t0:Int tk_h_tb:Int tk_h_te:Int tk_h_typed:Bool tk_h_us:Bool tk_hdr_code:String tk_hdr_fsm:Bool tk_hdr_go:Bool tk_hdr_lp:Int tk_hdr_name:String tk_ie:Int tk_ie2:Int tk_in_body:Bool tk_is_bare:Bool tk_is_call:Bool tk_is_ment:Bool tk_is_top:Bool tk_lp_ready:Bool tk_m:Int tk_need_code:Bool tk_nm_start:Int tk_nn:Int tk_ov_any:Bool tk_ov_body:Bool tk_ov_cb:Bool tk_ov_code:Int tk_ov_line:Bool tk_ov_msg:String tk_pb:Int tk_ph:Int tk_q0:Int tk_quick:Bool tk_read_go:Bool tk_rec:String tk_rec_fsm:Bool tk_reof:Bool tk_rest:String tk_rline:String tk_sb:Int tk_scan3_done:Bool tk_slot:String tk_ss:Int tk_strip_go:Bool tk_switch_now:Bool tk_t0:Int tk_te:Int tk_v0:Int tk_va:Int tk_val_ok:Bool tk_ve:Int tk_ws:Int
 ;; manifest: effects-name = effects
 ;; manifest: effect-enum-name = Effect
 ;; manifest: result-enum-name = Result
@@ -10,6 +10,13 @@
 (declare-datatypes ((Effect 0)) (((ReadLine) (ReadFile (ReadFile__f0 String)) (WriteFile (WriteFile__f0 String) (WriteFile__f1 String)) (LibCall (LibCall__f0 String) (LibCall__f1 String) (LibCall__f2 __SeqOf_LibArg)) (Exit (Exit__f0 Int)))))
 (declare-fun effects__len () Int)
 (declare-fun last_results__len () Int)
+(declare-fun line () String)
+(declare-fun code () String)
+(declare-fun claim_name () String)
+(declare-fun callee () String)
+(declare-fun body () String)
+(declare-fun claim_bare () String)
+(declare-fun hdr_ty () String)
 (declare-fun _phase () Int)
 (declare-fun is_first_tick () Bool)
 (declare-fun tk_ph () Int)
@@ -18,6 +25,7 @@
 (declare-fun tk_reof () Bool)
 (declare-fun tk_consume () Bool)
 (declare-fun tk_eof_now () Bool)
+(declare-fun tk_ov_line () Bool)
 (declare-fun _line_no () Int)
 (declare-fun tk_nn () Int)
 (declare-fun _line () String)
@@ -54,7 +62,6 @@
 (declare-fun tk_t0 () Int)
 (declare-fun tk_te () Int)
 (declare-fun tk_base () String)
-(declare-fun code () String)
 (declare-fun tk_m () Int)
 (declare-fun tk_scan3_done () Bool)
 (declare-fun tk_sb () Int)
@@ -144,15 +151,13 @@
 (declare-fun tk_enter_ce_eof () Bool)
 (declare-fun phase () Int)
 (declare-fun line_no () Int)
-(declare-fun line () String)
 (declare-fun _claim_name () String)
-(declare-fun claim_name () String)
 (declare-fun in_fsm () Int)
 (declare-fun _callee () String)
-(declare-fun callee () String)
-(declare-fun body () String)
+(declare-fun tk_ov_body () Bool)
 (declare-fun _hdr_ty () String)
-(declare-fun claim_bare () String)
+(declare-fun tk_cb_add () String)
+(declare-fun tk_ov_cb () Bool)
 (declare-fun cur_a () Int)
 (declare-fun cur_b () Int)
 (declare-fun hdr_seg () Int)
@@ -175,7 +180,6 @@
 (declare-fun _hdr_pend_15 () String)
 (declare-fun hp_n () Int)
 (declare-fun hp_i () Int)
-(declare-fun hdr_ty () String)
 (declare-fun _s_open () Bool)
 (declare-fun s_open () Bool)
 (declare-fun eff_nop () Effect)
@@ -183,12 +187,23 @@
 (declare-fun tk_rec () String)
 (declare-fun tk_emit_rec () Bool)
 (declare-fun eff_out () Effect)
+(declare-fun tk_ov_any () Bool)
+(declare-fun tk_ov_code () Int)
+(declare-fun tk_ov_msg () String)
 (declare-fun eff_ov_msg () Effect)
+(declare-fun eff_ov_exit () Effect)
 (declare-fun tk_read_go () Bool)
 (declare-fun tk_exit_now () Bool)
 (declare-fun effects () (Array Int Effect))
 (assert (>= effects__len 0))
 (assert (>= last_results__len 0))
+(assert (<= (str.len line) 2000))
+(assert (<= (str.len code) 2000))
+(assert (<= (str.len claim_name) 2000))
+(assert (<= (str.len callee) 2000))
+(assert (<= (str.len body) 150000))
+(assert (<= (str.len claim_bare) 16500))
+(assert (<= (str.len hdr_ty) 2000))
 (assert (= tk_ph (ite is_first_tick 0 _phase)))
 (assert (= tk_rline
    (ite ((_ is StringResult) (select last_results 1))
@@ -197,8 +212,9 @@
 (assert (= tk_reof (ite ((_ is EofResult) (select last_results 1)) true false)))
 (assert (= tk_consume (and (= tk_ph 1) (not tk_reof))))
 (assert (= tk_eof_now (and (= tk_ph 1) tk_reof)))
+(assert (= tk_ov_line (and tk_consume (> (str.len tk_rline) 2000))))
 (assert (= tk_nn (ite is_first_tick 0 (ite tk_consume (+ _line_no 1) _line_no))))
-(assert (= tk_cline (ite tk_consume tk_rline _line)))
+(assert (= tk_cline (ite tk_consume (ite tk_ov_line "" tk_rline) _line)))
 (assert (= tk_hdr_fsm
    (ite (= (str.at tk_cline 0) "f")
         (or (str.prefixof "fsm " tk_cline) (str.prefixof "fsm\u{9}" tk_cline))
@@ -3515,7 +3531,8 @@
 (let ((a!4 (ite is_first_tick 1 (ite tk_eof_now (ite (= _in_fsm 1) 14 13) a!3))))
   (= phase a!4))))))
 (assert (= line_no (ite is_first_tick 0 tk_nn)))
-(assert (= line (ite is_first_tick "" (ite tk_consume tk_rline _line))))
+(assert (= line
+   (ite is_first_tick "" (ite tk_consume (ite tk_ov_line "" tk_rline) _line))))
 (assert (= code (ite is_first_tick "" (ite tk_lp_ready tk_code_now _code))))
 (assert (= claim_name
    (ite is_first_tick
@@ -3524,31 +3541,41 @@
 (assert (= in_fsm
    (ite is_first_tick 0 (ite tk_switch_now (ite tk_hdr_fsm 1 0) _in_fsm))))
 (assert (= callee (ite is_first_tick "" (ite tk_enter_call tk_fld _callee))))
-(assert (let ((a!1 (ite is_first_tick
+(assert (let ((a!1 (and tk_in_body
+                (> (+ (str.len _body) (str.len tk_code_now) 1) 150000))))
+  (= tk_ov_body a!1)))
+(assert (let ((a!1 (ite tk_switch_now
                 "\u{a}"
-                (ite tk_switch_now
-                     "\u{a}"
-                     (ite tk_in_body (str.++ _body tk_code_now "\u{a}") _body)))))
-  (= body a!1)))
+                (ite (and tk_in_body (not tk_ov_body))
+                     (str.++ _body tk_code_now "\u{a}")
+                     _body))))
+  (= body (ite is_first_tick "\u{a}" a!1))))
 (assert (let ((a!1 (ite (>= tk_nn 0)
                 (str.from_int tk_nn)
                 (str.++ "-" (str.from_int (- 0 tk_nn))))))
 (let ((a!2 (ite tk_h_fl_run
-                (str.++ (str.++ _claim_bare "\u{27e8}" _claim_name ".")
+                (str.++ (str.++ "\u{27e8}" _claim_name ".")
                         tk_h_fnm
                         "\u{27e9}"
                         _hdr_ty
                         "\u{2982}0\u{2982}")
                 (ite tk_is_bare
-                     (str.++ (str.++ _claim_bare "\u{27e8}" _claim_name ".")
+                     (str.++ (str.++ "\u{27e8}" _claim_name ".")
                              tk_fld
                              "\u{27e9}"
                              tk_base
                              "\u{2982}"
                              a!1
                              "\u{2982}")
-                     _claim_bare))))
-  (= claim_bare (ite is_first_tick "" (ite tk_switch_now "" a!2))))))
+                     ""))))
+  (= tk_cb_add a!2))))
+(assert (let ((a!1 (and (not (= tk_cb_add ""))
+                (> (+ (str.len _claim_bare) (str.len tk_cb_add)) 16500))))
+  (= tk_ov_cb a!1)))
+(assert (let ((a!1 (ite (and (not (= tk_cb_add "")) (not tk_ov_cb))
+                (str.++ _claim_bare tk_cb_add)
+                _claim_bare)))
+  (= claim_bare (ite is_first_tick "" (ite tk_switch_now "" a!1)))))
 (assert (let ((a!1 (ite tk_h_open
                 (+ tk_h_o 1)
                 (ite tk_h_close
@@ -3725,30 +3752,17 @@
                      (ite (and tk_scan3_done _s_open)
                           "S\u{2982}\u{2771}"
                           (ite tk_ce_mark a!5 ""))))))
-(let ((a!7 (ite (and tk_h_done _s_open)
-                "S\u{2982}\u{2771}"
-                (ite tk_is_bare
-                     (str.++ (str.++ "B\u{27e8}" _claim_name ".")
-                             tk_fld
-                             "\u{27e9}"
-                             tk_base
-                             "\u{2982}"
-                             a!2
-                             "\u{2982}")
-                     a!6))))
-(let ((a!8 (ite (and tk_h_bnd (not (= tk_h_nm "")))
+(let ((a!7 (ite (and tk_h_bnd (not (= tk_h_nm "")))
                 (str.++ (ite _s_open "S" (str.++ "S\u{2770}" a!1 "\u{2771}"))
                         "\u{2982}"
                         tk_h_nm)
-                a!7)))
-(let ((a!9 (ite tk_rec_fsm
+                (ite (and tk_h_done _s_open)
+                     "S\u{2982}\u{2771}"
+                     (ite tk_is_bare (str.++ "B" tk_cb_add) a!6)))))
+(let ((a!8 (ite tk_rec_fsm
                 (str.++ "F\u{27e8}" tk_hdr_name "\u{27e9}")
                 (ite tk_h_fl_run
-                     (str.++ (str.++ "B\u{27e8}" _claim_name ".")
-                             tk_h_fnm
-                             "\u{27e9}"
-                             _hdr_ty
-                             "\u{2982}0\u{2982}"
+                     (str.++ (str.++ "B" tk_cb_add)
                              "\u{a}"
                              "D\u{2772}"
                              _claim_name
@@ -3761,15 +3775,26 @@
                              "\u{2982}"
                              a!1
                              "\u{2982}")
-                     a!8))))
-  (= tk_rec a!9))))))))
+                     a!7))))
+  (= tk_rec a!8)))))))
 (assert (= tk_emit_rec (not (= tk_rec ""))))
 (assert (= eff_out
    (LibCall "libc" "puts" (__Cell_LibArg (ArgStr tk_rec) __Empty_LibArg))))
-(assert (let ((a!1 (__Cell_LibArg (ArgStr "autocarry_analyze: header name pool overflow (cap 16, exit 64)\u{a}")
-                          (__Cell_LibArg (ArgInt (str.len "autocarry_analyze: header name pool overflow (cap 16, exit 64)\u{a}"))
+(assert (= tk_ov_any (or tk_ov_line tk_ov_body tk_ov_cb tk_h_ovp)))
+(assert (= tk_ov_code (ite tk_ov_line 61 (ite tk_ov_body 62 (ite tk_ov_cb 63 64)))))
+(assert (= tk_ov_msg
+   (ite tk_ov_line
+        "autocarry_analyze: input line too long (cap 2000, exit 61)\u{a}"
+        (ite tk_ov_body
+             "autocarry_analyze: claim body buffer overflow (cap 150000, exit 62)\u{a}"
+             (ite tk_ov_cb
+                  "autocarry_analyze: bare-decl registry overflow (cap 16500, exit 63)\u{a}"
+                  "autocarry_analyze: header name pool overflow (cap 16, exit 64)\u{a}")))))
+(assert (let ((a!1 (__Cell_LibArg (ArgStr tk_ov_msg)
+                          (__Cell_LibArg (ArgInt (str.len tk_ov_msg))
                                          __Empty_LibArg))))
   (= eff_ov_msg (LibCall "libc" "write" (__Cell_LibArg (ArgInt 2) a!1)))))
+(assert (= eff_ov_exit (Exit tk_ov_code)))
 (assert (= tk_read_go
    (or (and tk_lp_ready (not tk_is_call) (not tk_enter_ce) (not tk_hdr_go))
        (and (= tk_ph 3) tk_scan3_done)
@@ -3779,10 +3804,10 @@
 (assert (let ((a!1 (and (= effects__len 2)
                 (= (select effects 0) eff_nop)
                 (= (select effects 1) ReadLine)))
-      (a!2 (=> tk_h_ovp
+      (a!2 (=> tk_ov_any
                (and (= effects__len 2)
                     (= (select effects 0) eff_ov_msg)
-                    (= (select effects 1) (Exit 64)))))
+                    (= (select effects 1) eff_ov_exit))))
       (a!3 (=> tk_exit_now
                (and (= effects__len 2)
                     (= (select effects 0) (Exit 0))
@@ -3801,13 +3826,15 @@
                     (= (select effects 1) eff_nop)))))
 (let ((a!7 (and a!5 (=> (not tk_emit_rec) (and (=> tk_read_go a!1) a!6)))))
 (let ((a!8 (and a!4 (=> (not (and tk_emit_rec tk_read_go)) a!7))))
-(let ((a!9 (=> (not tk_h_ovp) (and a!3 (=> (not tk_exit_now) a!8)))))
+(let ((a!9 (=> (not tk_ov_any) (and a!3 (=> (not tk_exit_now) a!8)))))
   (and (=> is_first_tick a!1) (=> (not is_first_tick) (and a!2 a!9))))))))
 (declare-fun _eff_nop () Effect)
 (declare-fun _eff_out () Effect)
+(declare-fun _eff_ov_exit () Effect)
 (declare-fun _eff_ov_msg () Effect)
 (declare-fun _tk_base () String)
 (declare-fun _tk_bind_now () Bool)
+(declare-fun _tk_cb_add () String)
 (declare-fun _tk_ce_done () Bool)
 (declare-fun _tk_ce_f1 () Int)
 (declare-fun _tk_ce_gt () Int)
@@ -3880,6 +3907,12 @@
 (declare-fun _tk_need_code () Bool)
 (declare-fun _tk_nm_start () Int)
 (declare-fun _tk_nn () Int)
+(declare-fun _tk_ov_any () Bool)
+(declare-fun _tk_ov_body () Bool)
+(declare-fun _tk_ov_cb () Bool)
+(declare-fun _tk_ov_code () Int)
+(declare-fun _tk_ov_line () Bool)
+(declare-fun _tk_ov_msg () String)
 (declare-fun _tk_pb () Int)
 (declare-fun _tk_ph () Int)
 (declare-fun _tk_q0 () Int)

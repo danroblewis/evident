@@ -28,9 +28,13 @@
 -- the byte-identical corpus gate is the arbiter.
 -- Phases: 1 read line · 2 comment scan · 3 call scan · 4/14 claim end
 -- (→ read / → exit) · 5 fsm header param scan · 13 exit.
--- Transient locals are `tk_`-named: the kernel carries every plain
--- top-level primitive membership across ticks, and an un-carried local
--- costs measurably less per tick (measured 2026-06-10).
+-- EXIT CODES (overflow guards — every carried buffer/registry is
+-- statically bounded, FSMs stay finite): 61 input line > 2000 chars ·
+-- 62 claim body buffer > 150000 · 63 bare-decl registry > 16500 ·
+-- 64 header name pool > 16 entries. Caps ≥ 4x the corpus maxima
+-- measured 2026-06-10 (line 391 · body 36287 · bare 4120 · pool 1).
+-- Per-tick intermediates are `tk_`-prefixed ordinary carried variables
+-- (the `_` namespace is carry duals only — operator ruling 2026-06-10).
 import "stdlib/kernel.ev"
 import "scripts/passes/autocarry_lib.ev"
 
@@ -39,11 +43,17 @@ fsm autocarry_analyze
     line_no ∈ Int
     in_fsm ∈ Int
     line ∈ String
+    #line ≤ 2000
     code ∈ String
+    #code ≤ 2000
     claim_name ∈ String
+    #claim_name ≤ 2000
     callee ∈ String
+    #callee ≤ 2000
     body ∈ String
+    #body ≤ 150000
     claim_bare ∈ String
+    #claim_bare ≤ 16500
     cur_a ∈ Int
     cur_b ∈ Int
     s_open ∈ Bool
@@ -54,6 +64,7 @@ fsm autocarry_analyze
     hp_n ∈ Int
     hp_i ∈ Int
     hdr_ty ∈ String
+    #hdr_ty ≤ 2000
 
     tk_ph ∈ Int = (is_first_tick ? 0 : _phase)
     tk_rline ∈ String = match last_results[1]
@@ -64,8 +75,9 @@ fsm autocarry_analyze
         _ ⇒ false
     tk_consume ∈ Bool = (tk_ph = 1 ∧ ¬tk_reof)
     tk_eof_now ∈ Bool = (tk_ph = 1 ∧ tk_reof)
+    tk_ov_line ∈ Bool = (tk_consume ∧ #tk_rline > 2000)
     tk_nn ∈ Int = (is_first_tick ? 0 : tk_consume ? _line_no + 1 : _line_no)
-    tk_cline ∈ String = (tk_consume ? tk_rline : _line)
+    tk_cline ∈ String = (tk_consume ? (tk_ov_line ? "" : tk_rline) : _line)
 
     -- ── top-level declaration detection (raw line, column-0 keyword) ──
     tk_hdr_fsm ∈ Bool = (char_at(tk_cline, 0) = "f" ? (starts_with(tk_cline, "fsm ") ∨ starts_with(tk_cline, "fsm\t")) : false)
@@ -268,21 +280,23 @@ fsm autocarry_analyze
         : tk_ph = 14 ? (tk_ce_done ? 13 : 14)
         : 13)
     line_no = (is_first_tick ? 0 : tk_nn)
-    line = (is_first_tick ? "" : tk_consume ? tk_rline : _line)
+    line = (is_first_tick ? "" : tk_consume ? (tk_ov_line ? "" : tk_rline) : _line)
     code = (is_first_tick ? "" : tk_lp_ready ? tk_code_now : _code)
     claim_name = (is_first_tick ? "" : tk_switch_now ? (tk_hdr_fsm ? tk_hdr_name : "") : _claim_name)
     in_fsm = (is_first_tick ? 0 : tk_switch_now ? (tk_hdr_fsm ? 1 : 0) : _in_fsm)
     callee = (is_first_tick ? "" : tk_enter_call ? tk_fld : _callee)
+    tk_ov_body ∈ Bool = (tk_in_body ∧ #_body + #tk_code_now + 1 > 150000)
     body = (is_first_tick ? "\n"
         : tk_switch_now ? "\n"
-        : tk_in_body ? _body ++ tk_code_now ++ "\n"
+        : tk_in_body ∧ ¬tk_ov_body ? _body ++ tk_code_now ++ "\n"
         : _body)
+    tk_cb_add ∈ String = (tk_h_fl_run ? "⟨" ++ _claim_name ++ "." ++ tk_h_fnm ++ "⟩" ++ _hdr_ty ++ "⦂0⦂"
+        : tk_is_bare ? "⟨" ++ _claim_name ++ "." ++ tk_fld ++ "⟩" ++ tk_base ++ "⦂" ++ str_from_int(tk_nn) ++ "⦂"
+        : "")
+    tk_ov_cb ∈ Bool = (¬(tk_cb_add = "") ∧ #_claim_bare + #tk_cb_add > 16500)
     claim_bare = (is_first_tick ? ""
         : tk_switch_now ? ""
-        : tk_h_fl_run
-        ? _claim_bare ++ "⟨" ++ _claim_name ++ "." ++ tk_h_fnm ++ "⟩" ++ _hdr_ty ++ "⦂0⦂"
-        : tk_is_bare
-        ? _claim_bare ++ "⟨" ++ _claim_name ++ "." ++ tk_fld ++ "⟩" ++ tk_base ++ "⦂" ++ str_from_int(tk_nn) ++ "⦂"
+        : ¬(tk_cb_add = "") ∧ ¬tk_ov_cb ? _claim_bare ++ tk_cb_add
         : _claim_bare)
     cur_a = (is_first_tick ? 0
         : tk_hdr_go ? tk_hdr_lp + 1
@@ -345,13 +359,13 @@ fsm autocarry_analyze
     eff_nop = LibCall("libc", "getpid", ⟨⟩)
     tk_rec_fsm ∈ Bool = (tk_switch_now ∧ tk_hdr_fsm)
     tk_rec ∈ String = (tk_rec_fsm ? "F⟨" ++ tk_hdr_name ++ "⟩"
-        : tk_h_fl_run ? "B⟨" ++ _claim_name ++ "." ++ tk_h_fnm ++ "⟩" ++ _hdr_ty ++ "⦂0⦂"
+        : tk_h_fl_run ? "B" ++ tk_cb_add
           ++ "\n" ++ "D❲" ++ _claim_name ++ "⦂" ++ tk_h_fnm ++ "❳∈ " ++ _hdr_ty
           ++ "⦂" ++ _claim_name ++ "⦂" ++ str_from_int(_line_no) ++ "⦂"
         : tk_h_bnd ∧ ¬(tk_h_nm = "")
         ? (_s_open ? "S" : "S❰" ++ str_from_int(_line_no) ++ "❱") ++ "⦂" ++ tk_h_nm
         : tk_h_done ∧ _s_open ? "S⦂❱"
-        : tk_is_bare ? "B⟨" ++ _claim_name ++ "." ++ tk_fld ++ "⟩" ++ tk_base ++ "⦂" ++ str_from_int(tk_nn) ++ "⦂"
+        : tk_is_bare ? "B" ++ tk_cb_add
         : tk_is_ment ? "M❨" ++ tk_fld ++ "⦂" ++ _claim_name ++ "❩"
         : tk_bind_now ? "D❲" ++ _callee ++ "⦂" ++ tk_slot ++ "❳"
           ++ (tk_val_ok ? substr(code, tk_v0, tk_ve - tk_v0) : "0")
@@ -364,13 +378,21 @@ fsm autocarry_analyze
     tk_emit_rec ∈ Bool = (¬(tk_rec = ""))
     eff_out ∈ Effect
     BuildPrintln(s ↦ tk_rec, eff ↦ eff_out)
+    tk_ov_any ∈ Bool = (tk_ov_line ∨ tk_ov_body ∨ tk_ov_cb ∨ tk_h_ovp)
+    tk_ov_code ∈ Int = (tk_ov_line ? 61 : tk_ov_body ? 62 : tk_ov_cb ? 63 : 64)
+    tk_ov_msg ∈ String = (tk_ov_line ? "autocarry_analyze: input line too long (cap 2000, exit 61)\n"
+        : tk_ov_body ? "autocarry_analyze: claim body buffer overflow (cap 150000, exit 62)\n"
+        : tk_ov_cb ? "autocarry_analyze: bare-decl registry overflow (cap 16500, exit 63)\n"
+        : "autocarry_analyze: header name pool overflow (cap 16, exit 64)\n")
     eff_ov_msg ∈ Effect
-    BuildEprint(s ↦ "autocarry_analyze: header name pool overflow (cap 16, exit 64)\n", eff ↦ eff_ov_msg)
+    BuildEprint(s ↦ tk_ov_msg, eff ↦ eff_ov_msg)
+    eff_ov_exit ∈ Effect
+    BuildExit(code ↦ tk_ov_code, eff ↦ eff_ov_exit)
     tk_read_go ∈ Bool = ((tk_lp_ready ∧ ¬tk_is_call ∧ ¬tk_enter_ce ∧ ¬tk_hdr_go) ∨ (tk_ph = 3 ∧ tk_scan3_done) ∨ (tk_ph = 4 ∧ tk_ce_done ∧ ¬tk_hdr_go) ∨ tk_h_done)
     tk_exit_now ∈ Bool = (tk_ph = 13)
 
     effects ∈ Seq(Effect) = (is_first_tick ? ⟨eff_nop, ReadLine⟩
-        : tk_h_ovp ? ⟨eff_ov_msg, Exit(64)⟩
+        : tk_ov_any ? ⟨eff_ov_msg, eff_ov_exit⟩
         : tk_exit_now ? ⟨Exit(0), eff_nop⟩
         : tk_emit_rec ∧ tk_read_go ? ⟨eff_out, ReadLine⟩
         : tk_emit_rec ? ⟨eff_out, eff_nop⟩
