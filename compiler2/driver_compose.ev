@@ -144,28 +144,30 @@ fsm DriverCompose
         Ident(s) ⇒ s
         _ ⇒ ""
 
-    slot_h0 ∈ Int = (_slot_count = 1 ? h_top : _slot_count = 2 ? h_2nd
+    slot_handles ∈ Seq(Int)
+    #slot_handles ≤ 6
+    slot_handles[0] = (_slot_count = 1 ? h_top : _slot_count = 2 ? h_2nd
         : _slot_count = 3 ? h_3rd : _slot_count = 4 ? h_4th
         : _slot_count = 5 ? h_5th : h_6th)
-    slot_h1 ∈ Int = (_slot_count = 2 ? h_top : _slot_count = 3 ? h_2nd
+    slot_handles[1] = (_slot_count = 2 ? h_top : _slot_count = 3 ? h_2nd
         : _slot_count = 4 ? h_3rd : _slot_count = 5 ? h_4th : h_5th)
-    slot_h2 ∈ Int = (_slot_count = 3 ? h_top : _slot_count = 4 ? h_2nd
+    slot_handles[2] = (_slot_count = 3 ? h_top : _slot_count = 4 ? h_2nd
         : _slot_count = 5 ? h_3rd : h_4th)
-    slot_h3 ∈ Int = (_slot_count = 4 ? h_top : _slot_count = 5 ? h_2nd : h_3rd)
-    slot_h4 ∈ Int = (_slot_count = 5 ? h_top : h_2nd)
-    slot_h5 ∈ Int = h_top
-    binds_new ∈ C2Binds = (_slot_count = 1 ? CBCons(_slot_names[0].name, slot_h0, CBNil)
-        : _slot_count = 2 ? CBCons(_slot_names[0].name, slot_h0, CBCons(_slot_names[1].name, slot_h1, CBNil))
-        : _slot_count = 3 ? CBCons(_slot_names[0].name, slot_h0, CBCons(_slot_names[1].name, slot_h1,
-            CBCons(_slot_names[2].name, slot_h2, CBNil)))
-        : _slot_count = 4 ? CBCons(_slot_names[0].name, slot_h0, CBCons(_slot_names[1].name, slot_h1,
-            CBCons(_slot_names[2].name, slot_h2, CBCons(_slot_names[3].name, slot_h3, CBNil))))
-        : _slot_count = 5 ? CBCons(_slot_names[0].name, slot_h0, CBCons(_slot_names[1].name, slot_h1,
-            CBCons(_slot_names[2].name, slot_h2, CBCons(_slot_names[3].name, slot_h3,
-            CBCons(_slot_names[4].name, slot_h4, CBNil)))))
-        : _slot_count = 6 ? CBCons(_slot_names[0].name, slot_h0, CBCons(_slot_names[1].name, slot_h1,
-            CBCons(_slot_names[2].name, slot_h2, CBCons(_slot_names[3].name, slot_h3,
-            CBCons(_slot_names[4].name, slot_h4, CBCons(_slot_names[5].name, slot_h5, CBNil))))))
+    slot_handles[3] = (_slot_count = 4 ? h_top : _slot_count = 5 ? h_2nd : h_3rd)
+    slot_handles[4] = (_slot_count = 5 ? h_top : h_2nd)
+    slot_handles[5] = h_top
+    binds_new ∈ C2Binds = (_slot_count = 1 ? CBCons(_slot_names[0].name, slot_handles[0], CBNil)
+        : _slot_count = 2 ? CBCons(_slot_names[0].name, slot_handles[0], CBCons(_slot_names[1].name, slot_handles[1], CBNil))
+        : _slot_count = 3 ? CBCons(_slot_names[0].name, slot_handles[0], CBCons(_slot_names[1].name, slot_handles[1],
+            CBCons(_slot_names[2].name, slot_handles[2], CBNil)))
+        : _slot_count = 4 ? CBCons(_slot_names[0].name, slot_handles[0], CBCons(_slot_names[1].name, slot_handles[1],
+            CBCons(_slot_names[2].name, slot_handles[2], CBCons(_slot_names[3].name, slot_handles[3], CBNil))))
+        : _slot_count = 5 ? CBCons(_slot_names[0].name, slot_handles[0], CBCons(_slot_names[1].name, slot_handles[1],
+            CBCons(_slot_names[2].name, slot_handles[2], CBCons(_slot_names[3].name, slot_handles[3],
+            CBCons(_slot_names[4].name, slot_handles[4], CBNil)))))
+        : _slot_count = 6 ? CBCons(_slot_names[0].name, slot_handles[0], CBCons(_slot_names[1].name, slot_handles[1],
+            CBCons(_slot_names[2].name, slot_handles[2], CBCons(_slot_names[3].name, slot_handles[3],
+            CBCons(_slot_names[4].name, slot_handles[4], CBCons(_slot_names[5].name, slot_handles[5], CBNil))))))
         : CBNil)
     callw_pop_stack ∈ C2H = (_slot_count = 1 ? h_tail1
         : _slot_count = 2 ? h_tail2
@@ -175,36 +177,15 @@ fsm DriverCompose
         : _slot_count = 6 ? h_tail6
         : stack_in)
     prefix_new ∈ String = "__c" ++ str_from_int(_call_count) ++ "_"
-    type_pin_g5 ∈ C2Items = (_slot_count ≥ 6
-        ? C2ICons(C2DeclConst(_type_prefix ++ _slot_names[5].name, 0),
-            C2ICons(C2PushH(slot_h5), C2ICons(C2PinEq,
-            C2ICons(C2AssertTop, C2INil))))
-        : C2INil)
-    type_pin_g4 ∈ C2Items = (_slot_count ≥ 5
-        ? C2ICons(C2DeclConst(_type_prefix ++ _slot_names[4].name, 0),
-            C2ICons(C2PushH(slot_h4), C2ICons(C2PinEq,
-            C2ICons(C2AssertTop, type_pin_g5))))
-        : type_pin_g5)
-    type_pin_g3 ∈ C2Items = (_slot_count ≥ 4
-        ? C2ICons(C2DeclConst(_type_prefix ++ _slot_names[3].name, 0),
-            C2ICons(C2PushH(slot_h3), C2ICons(C2PinEq,
-            C2ICons(C2AssertTop, type_pin_g4))))
-        : type_pin_g4)
-    type_pin_g2 ∈ C2Items = (_slot_count ≥ 3
-        ? C2ICons(C2DeclConst(_type_prefix ++ _slot_names[2].name, 0),
-            C2ICons(C2PushH(slot_h2), C2ICons(C2PinEq,
-            C2ICons(C2AssertTop, type_pin_g3))))
-        : type_pin_g3)
-    type_pin_g1 ∈ C2Items = (_slot_count ≥ 2
-        ? C2ICons(C2DeclConst(_type_prefix ++ _slot_names[1].name, 0),
-            C2ICons(C2PushH(slot_h1), C2ICons(C2PinEq,
-            C2ICons(C2AssertTop, type_pin_g2))))
-        : type_pin_g2)
-    type_pin_items ∈ C2Items = (_slot_count ≥ 1
-        ? C2ICons(C2DeclConst(_type_prefix ++ _slot_names[0].name, 0),
-            C2ICons(C2PushH(slot_h0), C2ICons(C2PinEq,
-            C2ICons(C2AssertTop, type_pin_g1))))
-        : C2INil)
+    type_pin_suffixes ∈ Seq(C2Items)
+    #type_pin_suffixes ≤ 7
+    type_pin_suffixes[6] = C2INil
+    ∀ k ∈ {0..5} : type_pin_suffixes[k] = (_slot_count ≥ k + 1
+        ? C2ICons(C2DeclConst(_type_prefix ++ _slot_names[k].name, 0),
+            C2ICons(C2PushH(slot_handles[k]), C2ICons(C2PinEq,
+            C2ICons(C2AssertTop, type_pin_suffixes[k + 1]))))
+        : type_pin_suffixes[k + 1])
+    type_pin_items ∈ C2Items = type_pin_suffixes[0]
     type_recdecl_items ∈ C2Items = C2ICons(C2RecDecl(_type_inst_name, _type_slot), C2INil)
 
     frame_jump ∈ Bool = (callw_fire ∨ callw_bare_jump ∨ guard_jump_fire ∨ posjump_fire)

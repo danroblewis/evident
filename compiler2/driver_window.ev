@@ -9,8 +9,9 @@
 --           views), the per-tick lookahead need (win_need), the fetch gate
 --           (tok_ready / fetch_go), the fetch state machine (fetch_mode 0→1→2),
 --           the read-burst effects (read_tag0..read_pay7) and the latched
---           tag/payload registers (wt*/wq*) + the last_results int/string
---           decoders (f_ir*/f_sr*) and copy effects (cp*).
+--           tag/payload registers (lat_tags/lat_pays) + the last_results
+--           int/string decoders (res_int0..15/res_strs) and copy effects
+--           (copy_eff0..7).
 -- MAINTAINS: a consumer acts only when win_avail ≥ win_need (else a 3-tick fetch
 --           burst refills from tok_cur); the window never holds an unbounded
 --           TokenList — exactly 8 entries decoded from the buffer, entries
@@ -85,6 +86,20 @@ claim FtiTok(tag ∈ Int, p0 ∈ Int, s ∈ String, t ∈ Token)
        : tag = 73 ? OpNotIn
        : EofTok)
 
+-- last_results[slot] StringResult payload ("" on anything else).
+claim FtiResStr(slot ∈ Int, s ∈ String)
+    s = match last_results[slot]
+        StringResult(v) ⇒ v
+        _ ⇒ ""
+
+-- The fetch latch: on cap, capture last_results[slot]'s IntResult
+-- payload; otherwise hold prev (0 on tick 0).
+claim FtiLatch(slot ∈ Int, cap ∈ Bool, prev ∈ Int, cur ∈ Int)
+    fresh ∈ Int = match last_results[slot]
+        IntResult(v) ⇒ v
+        _ ⇒ 0
+    cur = (is_first_tick ? 0 : cap ? fresh : prev)
+
 fsm DriverWindow
     -- ── TOKEN WINDOW (FTI cursor + 8-token decoded window) ────────
     -- tok_cur = absolute index of the next unconsumed token; fetch_end = one
@@ -97,23 +112,12 @@ fsm DriverWindow
 
     win_avail ∈ Int = _fetch_end - _tok_cur
 
-    -- latched tags/payloads between the read tick and the copy tick
-    lat_tag0 ∈ Int
-    lat_tag1 ∈ Int
-    lat_tag2 ∈ Int
-    lat_tag3 ∈ Int
-    lat_tag4 ∈ Int
-    lat_tag5 ∈ Int
-    lat_tag6 ∈ Int
-    lat_tag7 ∈ Int
-    lat_pay0 ∈ Int
-    lat_pay1 ∈ Int
-    lat_pay2 ∈ Int
-    lat_pay3 ∈ Int
-    lat_pay4 ∈ Int
-    lat_pay5 ∈ Int
-    lat_pay6 ∈ Int
-    lat_pay7 ∈ Int
+    -- latched tags/payloads between the read tick and the copy tick;
+    -- window entry k's (tag, payload) lands at last_results[2k]/[2k+1]
+    lat_tags ∈ Seq(Int)
+    #lat_tags ≤ 8
+    lat_pays ∈ Seq(Int)
+    #lat_pays ≤ 8
 
     res_int0 ∈ Int = match last_results[0]
         IntResult(n) ⇒ n
@@ -165,22 +169,8 @@ fsm DriverWindow
         _ ⇒ 0
 
     fetch_cap ∈ Bool = (_fetch_mode = 1)
-    lat_tag0 = (is_first_tick ? 0 : fetch_cap ? res_int0 : _lat_tag0)
-    lat_pay0 = (is_first_tick ? 0 : fetch_cap ? res_int1 : _lat_pay0)
-    lat_tag1 = (is_first_tick ? 0 : fetch_cap ? res_int2 : _lat_tag1)
-    lat_pay1 = (is_first_tick ? 0 : fetch_cap ? res_int3 : _lat_pay1)
-    lat_tag2 = (is_first_tick ? 0 : fetch_cap ? res_int4 : _lat_tag2)
-    lat_pay2 = (is_first_tick ? 0 : fetch_cap ? res_int5 : _lat_pay2)
-    lat_tag3 = (is_first_tick ? 0 : fetch_cap ? res_int6 : _lat_tag3)
-    lat_pay3 = (is_first_tick ? 0 : fetch_cap ? res_int7 : _lat_pay3)
-    lat_tag4 = (is_first_tick ? 0 : fetch_cap ? res_int8 : _lat_tag4)
-    lat_pay4 = (is_first_tick ? 0 : fetch_cap ? res_int9 : _lat_pay4)
-    lat_tag5 = (is_first_tick ? 0 : fetch_cap ? res_int10 : _lat_tag5)
-    lat_pay5 = (is_first_tick ? 0 : fetch_cap ? res_int11 : _lat_pay5)
-    lat_tag6 = (is_first_tick ? 0 : fetch_cap ? res_int12 : _lat_tag6)
-    lat_pay6 = (is_first_tick ? 0 : fetch_cap ? res_int13 : _lat_pay6)
-    lat_tag7 = (is_first_tick ? 0 : fetch_cap ? res_int14 : _lat_tag7)
-    lat_pay7 = (is_first_tick ? 0 : fetch_cap ? res_int15 : _lat_pay7)
+    ∀ k ∈ {0..7} : FtiLatch(slot ↦ 2*k, cap ↦ fetch_cap, prev ↦ _lat_tags[k], cur ↦ lat_tags[k])
+    ∀ k ∈ {0..7} : FtiLatch(slot ↦ 2*k + 1, cap ↦ fetch_cap, prev ↦ _lat_pays[k], cur ↦ lat_pays[k])
 
     is_str0 ∈ Bool = (res_int0 = 1 ∨ res_int0 = 3)
     is_str1 ∈ Bool = (res_int2 = 1 ∨ res_int2 = 3)
@@ -199,50 +189,18 @@ fsm DriverWindow
     copy_eff6 ∈ Effect = (is_str6 ? LibCall("__cstr", "copy", ⟨ArgInt(res_int13)⟩) : LibCall("libc", "getpid", ⟨⟩))
     copy_eff7 ∈ Effect = (is_str7 ? LibCall("__cstr", "copy", ⟨ArgInt(res_int15)⟩) : LibCall("libc", "getpid", ⟨⟩))
 
-    res_str0 ∈ String = match last_results[0]
-        StringResult(s) ⇒ s
-        _ ⇒ ""
-    res_str1 ∈ String = match last_results[1]
-        StringResult(s) ⇒ s
-        _ ⇒ ""
-    res_str2 ∈ String = match last_results[2]
-        StringResult(s) ⇒ s
-        _ ⇒ ""
-    res_str3 ∈ String = match last_results[3]
-        StringResult(s) ⇒ s
-        _ ⇒ ""
-    res_str4 ∈ String = match last_results[4]
-        StringResult(s) ⇒ s
-        _ ⇒ ""
-    res_str5 ∈ String = match last_results[5]
-        StringResult(s) ⇒ s
-        _ ⇒ ""
-    res_str6 ∈ String = match last_results[6]
-        StringResult(s) ⇒ s
-        _ ⇒ ""
-    res_str7 ∈ String = match last_results[7]
-        StringResult(s) ⇒ s
-        _ ⇒ ""
+    res_strs ∈ Seq(String)
+    #res_strs ≤ 8
+    ∀ k ∈ {0..7} : FtiResStr(slot ↦ k, s ↦ res_strs[k])
 
-    dec_tok0 ∈ Token
-    FtiTok(tag ↦ _lat_tag0, p0 ↦ _lat_pay0, s ↦ res_str0, t ↦ dec_tok0)
-    dec_tok1 ∈ Token
-    FtiTok(tag ↦ _lat_tag1, p0 ↦ _lat_pay1, s ↦ res_str1, t ↦ dec_tok1)
-    dec_tok2 ∈ Token
-    FtiTok(tag ↦ _lat_tag2, p0 ↦ _lat_pay2, s ↦ res_str2, t ↦ dec_tok2)
-    dec_tok3 ∈ Token
-    FtiTok(tag ↦ _lat_tag3, p0 ↦ _lat_pay3, s ↦ res_str3, t ↦ dec_tok3)
-    dec_tok4 ∈ Token
-    FtiTok(tag ↦ _lat_tag4, p0 ↦ _lat_pay4, s ↦ res_str4, t ↦ dec_tok4)
-    dec_tok5 ∈ Token
-    FtiTok(tag ↦ _lat_tag5, p0 ↦ _lat_pay5, s ↦ res_str5, t ↦ dec_tok5)
-    dec_tok6 ∈ Token
-    FtiTok(tag ↦ _lat_tag6, p0 ↦ _lat_pay6, s ↦ res_str6, t ↦ dec_tok6)
-    dec_tok7 ∈ Token
-    FtiTok(tag ↦ _lat_tag7, p0 ↦ _lat_pay7, s ↦ res_str7, t ↦ dec_tok7)
-    win_rebuilt ∈ TokenList = TLCons(dec_tok0, TLCons(dec_tok1, TLCons(dec_tok2,
-        TLCons(dec_tok3, TLCons(dec_tok4, TLCons(dec_tok5, TLCons(dec_tok6,
-        TLCons(dec_tok7, TLNil))))))))
+    dec_toks ∈ Seq(Token)
+    #dec_toks ≤ 8
+    ∀ k ∈ {0..7} : FtiTok(tag ↦ _lat_tags[k], p0 ↦ _lat_pays[k], s ↦ res_strs[k], t ↦ dec_toks[k])
+    win_suffixes ∈ Seq(TokenList)
+    #win_suffixes ≤ 9
+    win_suffixes[8] = TLNil
+    ∀ k ∈ {0..7} : win_suffixes[k] = TLCons(dec_toks[k], win_suffixes[k + 1])
+    win_rebuilt ∈ TokenList = win_suffixes[0]
 
     tok0 ∈ Token = match _win_toks
         TLCons(t, _) ⇒ t

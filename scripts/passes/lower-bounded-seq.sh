@@ -15,17 +15,20 @@
 # functionize and carry for free. The transform makes the bounded-Seq
 # SURFACE compilable without the oracle ever seeing a Seq.
 #
-# OPT-IN GATE: a Seq is lowered iff its decl `xs ∈ Seq(Int)` / `xs ∈ Seq(R)`
-# (R a record `type`) has a literal bound `#xs ≤ N` in the SAME claim.
-# Unbounded Seqs (`Seq(Effect)`, …) pass through verbatim. Decls register
-# GLOBALLY, so use-sites in other claims (names-match composition) lower too.
+# OPT-IN GATE: a Seq is lowered iff its decl `xs ∈ Seq(El)` — El one of
+# Int/String/Bool, a record `type`, or an `enum` — has a literal bound
+# `#xs ≤ N` in the SAME claim. Unbounded Seqs pass through verbatim.
+# Decls register GLOBALLY, so use-sites in other claims (names-match
+# composition) lower too.
 #
 # REWRITE RULES (xs bounded by N; record R with fields f1..fm, zero-defaults
-# Int→0 / String→"" / Bool→false):
+# Int→0 / String→"" / Bool→false; enum elements have NO zero default — see
+# the refusals below):
 #   decl    xs ∈ Seq(Int)                  → xs_0..xs_{N-1} ∈ Int ; xs_len ∈ Int ; 0 ≤ xs_len
+#           (String/Bool/enum elements: same shape, slots typed El)
 #           xs ∈ Seq(R)                    → xs_k_fj ∈ Tj …       ; xs_len ∈ Int ; 0 ≤ xs_len
 #   dual    _xs ∈ Seq(…)                   → the matching _ decls (no bound line)
-#   literal xs = ⟨a,b⟩ (Int only)          → slot pins + xs_len = 2
+#   literal xs = ⟨a,b⟩ (scalar elements)   → slot pins + xs_len = 2
 #   append  xs = (is_first_tick ? ⟨⟩ : [G ?] _xs ++ ⟨v | R(e1..em)⟩ [: _xs])
 #           → per slot k (per field j):
 #             xs_k[_fj] = (is_first_tick ? def : (G ∧ _xs_len = k) ? e : _xs_k[_fj])
@@ -80,7 +83,32 @@
 #           member. `effects` is exempt (kernel multi-writer rule); a
 #           LONE scalar guarded pin with no default passes through bare.
 #   index   xs[k] / xs[k].f (k literal)    → xs_k / xs_k_f   (anywhere)
+#           Literal index ARITHMETIC folds: xs[2*3 + 1] → xs_7 (+ - *
+#           over integer literals only — the shape a range-∀'s bound-var
+#           substitution leaves behind, so `xs[k + 1]` / `xs[2*k]` work
+#           under ∀; a runtime-variable arithmetic index stays
+#           unsupported and fails the completeness check loudly).
 #   card    #xs                            → xs_len          (anywhere)
+#   fold (the bounded Seq→cons / Seq→String fold, W2). NOT a new form —
+#   the composition of the rules above: an accumulator Seq holds the
+#   partial folds; a range-∀ indexed recurrence steps it; the terminal
+#   slot is the result. Order-sensitive folds are exactly where the
+#   index range IS the subject (purism §3.1):
+#           joins ∈ Seq(String) ; #joins ≤ N+1
+#           joins[0] = ""
+#           ∀ k ∈ {0..N-1} : joins[k + 1] = joins[k] ++ "|" ++ xs[k].name
+#           out = joins[N]
+#   (cons builds run as SUFFIX recurrences: sfx[N] = Nil; sfx[k] =
+#   guard ? Cons(xs[k], sfx[k + 1]) : sfx[k + 1]; out = sfx[0] — the
+#   accumulator element type is the cons enum, lowered to per-slot
+#   enum-typed consts.) A range-∀ body may span lines; continuation
+#   lines join on balanced parens.
+#
+# LOUD REFUSALS (exit 1), enum elements: the hold / carried-append /
+# ⟨…⟩-literal forms need a zero default for empty slots and enums have
+# none — an enum-element Seq supports decl, literal/folded index,
+# dynamic-index select, and range-∀ instantiation only; build it with an
+# indexed recurrence (xs[k] = …) instead.
 #
 # COMPLETENESS CHECK: after rewriting, any surviving bare `xs` / `_xs`
 # token for a registered Seq is an unsupported use — the pass FAILS LOUDLY
@@ -117,13 +145,16 @@ function seq_inside(s,    a, b) {
     b = index(s, "⟩"); if (b == 0) return "\x01"
     return substr(s, a + 3, b - (a + 3))
 }
-function split_commas(s, arr,    p, ch, depth, cur, n) {
-    depth = 0; cur = ""; n = 0
+function split_commas(s, arr,    p, ch, depth, cur, n, instr) {
+    depth = 0; cur = ""; n = 0; instr = 0
     for (p = 1; p <= length(s); p++) {
         ch = substr(s, p, 1)
-        if (ch == "(") depth++
-        else if (ch == ")") depth--
-        if (ch == "," && depth == 0) { arr[++n] = cur; cur = ""; continue }
+        if (ch == "\"") instr = !instr
+        if (!instr) {
+            if (ch == "(") depth++
+            else if (ch == ")") depth--
+            if (ch == "," && depth == 0) { arr[++n] = cur; cur = ""; continue }
+        }
         cur = cur ch
     }
     arr[++n] = cur
@@ -134,6 +165,40 @@ function zdef(t) {
     if (t == "String") return "\"\""
     if (t == "Bool")   return "false"
     return "0"
+}
+# element kind of a registrable Seq element type: "scalar" (Int/String/
+# Bool — has a zero default), "record" (a `type`), "enum", "" otherwise.
+function elem_kind(el) {
+    if (el == "Int" || el == "String" || el == "Bool") return "scalar"
+    if (el in enums) return "enum"
+    if (el in tnf) return "record"     # AFTER enums: numeric tnf[el] reads
+                                       # auto-vivify keys (awk), enums first
+    return ""
+}
+# evaluate + - * over INTEGER LITERALS ("2*3 + 1" → "7"); "" if the
+# text is not such an expression (idents, parens, negatives, …).
+function idx_eval(s,    i, c, num, toks, nt, v2, j, total) {
+    gsub(/[ \t]/, "", s)
+    if (s !~ /^[0-9]/ || s ~ /[^0-9+*\-]/) return ""
+    nt = 0; num = ""
+    for (i = 1; i <= length(s); i++) {
+        c = substr(s, i, 1)
+        if (c ~ /[0-9]/) { num = num c; continue }
+        if (num == "") return ""
+        toks[++nt] = num; toks[++nt] = c; num = ""
+    }
+    if (num == "") return ""
+    toks[++nt] = num
+    j = 0
+    for (i = 1; i <= nt; i++) {
+        if (toks[i] == "*") { v2[j] = v2[j] * toks[i + 1]; i++ }
+        else v2[++j] = toks[i]
+    }
+    total = v2[1] + 0
+    for (i = 2; i < j; i += 2)
+        total = (v2[i] == "+" ? total + v2[i + 1] : total - v2[i + 1])
+    if (total < 0) return ""
+    return total ""
 }
 function fam_norm(s) { gsub(/[ \t]/, "", s); return s }
 # end index of the balanced paren group starting at i (s[i] must be an
@@ -251,8 +316,9 @@ function subst_card(txt,    out, i, c, j, nm) {
     return out
 }
 # xs[INT] / xs[INT].field → xs_INT / xs_INT_field for registered xs
-# (also their _xs duals). Literal index only.
-function subst_index(txt,    out, i, c, tok, isid, rest, idx, fld, m, base) {
+# (also their _xs duals). Literal index, incl. literal arithmetic
+# (xs[2*3 + 1] → xs_7 — what a range-∀ substitution leaves behind).
+function subst_index(txt,    out, i, c, tok, isid, rest, idx, fld, m, base, cb) {
     out = ""; tok = ""
     for (i = 1; i <= length(txt); i++) {
         c = substr(txt, i, 1)
@@ -262,9 +328,10 @@ function subst_index(txt,    out, i, c, tok, isid, rest, idx, fld, m, base) {
             base = tok; sub(/^_/, "", base)
             if (base in gbnd) {
                 rest = substr(txt, i + 1)
-                if (match(rest, /^[0-9]+\]/)) {
-                    idx = substr(rest, 1, RLENGTH - 1)
-                    i = i + RLENGTH
+                cb = index(rest, "]")
+                idx = (cb > 0 ? idx_eval(substr(rest, 1, cb - 1)) : "")
+                if (idx != "") {
+                    i = i + cb
                     fld = ""
                     if (substr(txt, i + 1, 1) == "." &&
                         match(substr(txt, i + 2), /^[A-Za-z_][A-Za-z0-9_]*/)) {
@@ -427,9 +494,10 @@ function emit_field_hold(pfx, el, j, ind,    fn, ft, m, M) {
 END {
     N = NR
 
-    # ── PASS 0: record types — type R(f1 ∈ T1, f2 ∈ T2, …) ──────────────
+    # ── PASS 0: record types — type R(f1 ∈ T1, f2 ∈ T2, …) — and enums ──
     for (i = 1; i <= N; i++) {
         s = strip_comment(L[i])
+        if (s ~ /^enum[ \t]+[A-Za-z_][A-Za-z0-9_]*/) { enums[decl_name(s)] = 1; continue }
         if (s !~ /^type[ \t]+[A-Za-z_][A-Za-z0-9_]*\(/) continue
         tn = decl_name(s)
         inner = s; sub(/^[^(]*\(/, "", inner); sub(/\)[^)]*$/, "", inner)
@@ -477,7 +545,7 @@ END {
         if (code ~ /^[ \t]*_?[A-Za-z][A-Za-z0-9_]*[ \t]*∈[ \t]*Seq\([A-Za-z_][A-Za-z0-9_]*\)/) {
             el = code; sub(/^[^∈]*∈[ \t]*Seq\(/, "", el); sub(/\).*$/, "", el)
             nm = lead_ident(code)
-            if (el == "Int" || (el in tnf)) {
+            if (elem_kind(el) != "") {
                 if (nm ~ /^_/) { dualDecl[cur, substr(nm, 2)] = 1 }
                 else           { seqDecl[cur, nm] = 1; elemOf[nm] = el }
             }
@@ -605,7 +673,7 @@ END {
     # dynamic-index select chains
     for (nm in gbnd) {
         el = elemOf[nm]
-        if (el == "" || el == "Int") continue
+        if (elem_kind(el) != "record") continue
         for (j = 1; j <= tnf[el]; j++) {
             fn = tfield[el, j]
             if (ttype[el, j] == "Seq(Int)" && (el SUBSEP fn) in fbound) {
@@ -720,9 +788,31 @@ END {
     for (i = 1; i <= N; i++) {
         s = L[i]; F = claimOf[i]
         if (F == "" || is_top_decl(s)) { O[++on] = s; continue }
+        if (i in joinSkip) continue
         code = strip_comment(s)
         ind = indent_of(s)
         nm = lead_ident(code)
+
+        # range-∀ with a multi-line body (the fold shape): join the
+        # continuation lines on balanced parens — but ONLY when the
+        # joined body touches a registered seq; anything else keeps its
+        # original lines.
+        if (code ~ /^[ \t]*∀[ \t].*∈[ \t]*\{[0-9]+\.\.[0-9]+\}[ \t]*:/ && fam_open(code) > 0) {
+            jt = code; jl = i
+            while (jl < N && fam_open(jt) > 0 && !is_top_decl(L[jl + 1])) {
+                jl++; jt = jt " " trim(strip_comment(L[jl]))
+            }
+            if (fam_open(jt) == 0) {
+                touches = 0
+                jb = jt; sub(/^[^:]*:[ \t]*/, "", jb)
+                for (g in gbnd)
+                    if (index(jb, g "[") > 0 || index(jb, "_" g "[") > 0) { touches = 1; break }
+                if (touches) {
+                    code = jt
+                    for (q = i + 1; q <= jl; q++) joinSkip[q] = 1
+                }
+            }
+        }
 
         # guarded pin family → the covered select chain (emitted at the
         # first member line; every other member/default line drops)
@@ -756,7 +846,7 @@ END {
         if (nm ~ /^_/ && (substr(nm, 2) in gbnd) && code ~ /∈[ \t]*Seq\(/) {
             base = substr(nm, 2); Nn = gbnd[base]; el = elemOf[base]
             for (k = 0; k < Nn; k++) {
-                if (el == "Int") O[++on] = ind "_" base "_" k " ∈ Int"
+                if (elem_kind(el) != "record") O[++on] = ind "_" base "_" k " ∈ " el
                 else for (j = 1; j <= tnf[el]; j++)
                     emit_field_decl("_" base "_" k, el, j, ind)
             }
@@ -768,15 +858,19 @@ END {
         if ((nm in gbnd) && (F SUBSEP nm) in bnd && code ~ /^[ \t]*[A-Za-z][A-Za-z0-9_]*[ \t]*∈[ \t]*Seq\(/) {
             Nn = gbnd[nm]; el = elemOf[nm]
             inside = seq_inside(code)
-            if (el == "Int" && inside != "\x01") {
+            if (inside != "\x01" && elem_kind(el) != "scalar") {
+                printf("lower-bounded-seq: line %d: ⟨…⟩ literal on %s-element Seq `%s` — %s elements have no zero default for the empty slots; build it with an indexed recurrence (xs[k] = …) instead:\n    %s\n", i, (elem_kind(el) == "enum" ? "an enum" : "a record"), nm, elem_kind(el), trim(code)) > "/dev/stderr"
+                exit 1
+            }
+            if (elem_kind(el) == "scalar" && inside != "\x01") {
                 ne = split_commas(inside, els)
                 if (trim(inside) == "") ne = 0
                 for (k = 0; k < Nn; k++)
-                    O[++on] = ind nm "_" k " ∈ Int = " (k < ne ? trim(els[k+1]) : "0")
+                    O[++on] = ind nm "_" k " ∈ " el " = " (k < ne ? trim(els[k+1]) : zdef(el))
                 O[++on] = ind nm "_len ∈ Int = " ne
             } else {
                 for (k = 0; k < Nn; k++) {
-                    if (el == "Int") O[++on] = ind nm "_" k " ∈ Int"
+                    if (elem_kind(el) != "record") O[++on] = ind nm "_" k " ∈ " el
                     else for (j = 1; j <= tnf[el]; j++)
                         emit_field_decl(nm "_" k, el, j, ind)
                 }
@@ -788,7 +882,7 @@ END {
             # element-∀ `_e` carry with no autocarry-synthesized dual decl
             if ((nm in gElemDual) && !((F SUBSEP nm) in dualDecl)) {
                 for (k = 0; k < Nn; k++) {
-                    if (el == "Int") O[++on] = ind "_" nm "_" k " ∈ Int"
+                    if (elem_kind(el) != "record") O[++on] = ind "_" nm "_" k " ∈ " el
                     else for (j = 1; j <= tnf[el]; j++)
                         emit_field_decl("_" nm "_" k, el, j, ind)
                 }
@@ -801,8 +895,12 @@ END {
         if ((nm in gbnd) &&
             code ~ /^[ \t]*[A-Za-z][A-Za-z0-9_]*[ \t]*=[ \t]*\([ \t]*is_first_tick[ \t]*\?[ \t]*⟨⟩[ \t]*:[ \t]*_[A-Za-z][A-Za-z0-9_]*[ \t]*\)[ \t]*$/) {
             Nn = gbnd[nm]; el = elemOf[nm]
+            if (elem_kind(el) == "enum") {
+                printf("lower-bounded-seq: line %d: carried hold on enum-element Seq `%s` — enum elements have no zero default; write an indexed recurrence (xs[k] = …) instead:\n    %s\n", i, nm, trim(code)) > "/dev/stderr"
+                exit 1
+            }
             for (k = 0; k < Nn; k++) {
-                if (el == "Int") O[++on] = ind nm "_" k " = (is_first_tick ? 0 : _" nm "_" k ")"
+                if (elem_kind(el) == "scalar") O[++on] = ind nm "_" k " = (is_first_tick ? " zdef(el) " : _" nm "_" k ")"
                 else for (j = 1; j <= tnf[el]; j++)
                     emit_field_hold(nm "_" k, el, j, ind)
             }
@@ -816,6 +914,10 @@ END {
             code ~ /^[ \t]*[A-Za-z][A-Za-z0-9_]*[ \t]*=[ \t]*\([ \t]*is_first_tick[ \t]*\?[ \t]*⟨⟩[ \t]*:/ &&
             index(code, "++") > 0) {
             Nn = gbnd[nm]; el = elemOf[nm]
+            if (elem_kind(el) == "enum") {
+                printf("lower-bounded-seq: line %d: carried append on enum-element Seq `%s` — enum elements have no zero default; write an indexed recurrence (xs[k] = …) instead:\n    %s\n", i, nm, trim(code)) > "/dev/stderr"
+                exit 1
+            }
             # text between the first `:` and `_xs ++`
             mid = code
             sub(/^[^:]*:[ \t]*/, "", mid)                # after ⟨⟩ :
@@ -831,10 +933,10 @@ END {
                 na = split_commas(args, aexp)
             }
             for (k = 0; k < Nn; k++) {
-                if (el == "Int") {
+                if (elem_kind(el) == "scalar") {
                     v = trim(inner)
                     cond = (guard == "" ? "_" nm "_len = " k : "(" guard " ∧ _" nm "_len = " k ")")
-                    O[++on] = ind nm "_" k " = (is_first_tick ? 0 : " cond " ? " v " : _" nm "_" k ")"
+                    O[++on] = ind nm "_" k " = (is_first_tick ? " zdef(el) " : " cond " ? " v " : _" nm "_" k ")"
                 } else {
                     for (j = 1; j <= tnf[el]; j++) {
                         fn = tfield[el, j]; dv = zdef(ttype[el, j]); ev = trim(aexp[j])
@@ -850,15 +952,19 @@ END {
             continue
         }
 
-        # plain Int literal assignment  `xs = ⟨a,b,c⟩`
-        if ((nm in gbnd) && elemOf[nm] == "Int" &&
+        # plain scalar literal assignment  `xs = ⟨a,b,c⟩`
+        if ((nm in gbnd) &&
             code ~ /^[ \t]*[A-Za-z][A-Za-z0-9_]*[ \t]*=[ \t]*⟨.*⟩[ \t]*$/) {
-            Nn = gbnd[nm]
+            if (elem_kind(elemOf[nm]) != "scalar") {
+                printf("lower-bounded-seq: line %d: ⟨…⟩ literal on %s-element Seq `%s` — no zero default for the empty slots; write an indexed recurrence (xs[k] = …) instead:\n    %s\n", i, (elem_kind(elemOf[nm]) == "enum" ? "an enum" : "a record"), nm, trim(code)) > "/dev/stderr"
+                exit 1
+            }
+            Nn = gbnd[nm]; el = elemOf[nm]
             inside = seq_inside(code)
             ne = split_commas(inside, els)
             if (trim(inside) == "") ne = 0
             for (k = 0; k < Nn; k++)
-                O[++on] = ind nm "_" k " = " (k < ne ? trim(els[k+1]) : "0")
+                O[++on] = ind nm "_" k " = " (k < ne ? trim(els[k+1]) : zdef(el))
             O[++on] = ind nm "_len = " ne
             continue
         }
@@ -869,7 +975,7 @@ END {
             bvar = body; sub(/[ \t]*∈.*$/, "", bvar); bvar = trim(bvar)
             sname = body; sub(/^[^∈]*∈[ \t]*/, "", sname); sub(/[ \t]*:.*$/, "", sname); sname = trim(sname)
             pred = body; sub(/^[^:]*:[ \t]*/, "", pred)
-            if ((sname in gbnd) && elemOf[sname] == "Int") {
+            if ((sname in gbnd) && elem_kind(elemOf[sname]) == "scalar") {
                 Nn = gbnd[sname]; out = ""
                 for (k = 0; k < Nn; k++) {
                     pk = subst_tok(pred, bvar, sname "_" k)
