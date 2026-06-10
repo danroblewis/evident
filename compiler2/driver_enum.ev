@@ -315,7 +315,7 @@ fsm DriverEnum
         : _z_strres_acc)
 
     enum_values ∈ Seq(EnumVariantVal)
-    #enum_values ≤ 6
+    #enum_values ≤ 128
     enum_values_add ∈ Bool = (enum_val_cap ∧ _enum_is_user)
     enum_values = (is_first_tick ? ⟨⟩ : enum_values_add ? _enum_values ++ ⟨EnumVariantVal(enum_vname, cap_int)⟩ : _enum_values)
 
@@ -330,10 +330,22 @@ fsm DriverEnum
     variant_cap_decl ∈ Bool = (_enum_act = 3 ∧ _enum_step = 2 ∧ _enum_is_user)
     variant_cap_tester ∈ Bool = (_enum_act = 3 ∧ _enum_step = 3 ∧ _enum_is_user)
     variant_tester_val ∈ Int = (enum_nullary ? res_int1 : cap_int)
+    -- Registry slots allocate by a GLOBAL cursor (variant_alloc), never the
+    -- per-enum enum_vidx: vidx resets on each `enum_go`, so positional
+    -- writes at vidx collide across enums (the 2nd enum's variant 0
+    -- overwrites the 1st's). Reads are name-keyed (names are globally
+    -- unique), so the registry must hold EVERY user variant at once —
+    -- sample.ev carries 142 across 31 enums (census 2026-06-10).
+    variant_alloc ∈ Int
+    variant_alloc = (is_first_tick ? 0 : variant_cap_decl ? _variant_alloc + 1 : _variant_alloc)
+    variant_names ∈ String
+    variant_names = (is_first_tick ? ""
+        : variant_cap_decl ? (_variant_names ++ "|" ++ substr(enum_vname ++ "                               ", 0, 31))
+        : _variant_names)
     user_variants ∈ Seq(UserEnumVariant)
-    #user_variants ≤ 6
-    ∀ k ∈ {0..5} : user_variants[k].name = (is_first_tick ? "" : (variant_cap_decl ∧ _enum_vidx = k) ? enum_vname : _user_variants[k].name)
-    ∀ k ∈ {0..5} : user_variants[k].ctor = (is_first_tick ? 0 : (variant_cap_decl ∧ _enum_vidx = k) ? cap_int : _user_variants[k].ctor)
+    #user_variants ≤ 160
+    ∀ k ∈ {0..159} : user_variants[k].name = (is_first_tick ? "" : (variant_cap_decl ∧ _variant_alloc = k) ? enum_vname : _user_variants[k].name)
+    ∀ k ∈ {0..159} : user_variants[k].ctor = (is_first_tick ? 0 : (variant_cap_decl ∧ _variant_alloc = k) ? cap_int : _user_variants[k].ctor)
     ∀ e ∈ user_variants : e.tester = (is_first_tick ? 0 : (variant_cap_tester ∧ _e.name = enum_vname) ? variant_tester_val : _e.tester)
 
     -- C5: user-variant field-0 ACCESSOR decls (match-pin payload

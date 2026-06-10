@@ -22,7 +22,12 @@ fsm DriverBuildEff
     enum_fnames_p ∈ Int = z_arena
     enum_fsorts_p ∈ Int = z_arena + 24
     enum_srefs_p ∈ Int = z_arena + 48
-    enum_ctors_p ∈ Int = z_arena + 64
+    -- ctor-handle array: 128 slots at +512..+1536 (sample.ev's widest
+    -- enum, Token, has 57 variants). It cannot live in the low arena:
+    -- at the old +64 it had 8 slots before clobbering enum_sortnames_p
+    -- at +128 — variant 9+ corrupted that slot and Z3_query_constructor
+    -- failed EINVAL (bisected 2026-06-10: 7 variants ok, 10 fail).
+    enum_ctors_p ∈ Int = z_arena + 512
     enum_sortnames_p ∈ Int = z_arena + 128
     enum_sortsout_p ∈ Int = z_arena + 136
     enum_clists_p ∈ Int = z_arena + 144
@@ -143,7 +148,7 @@ fsm DriverBuildEff
     zinit_rsort ∈ Effect
     BuildZ3MkRealSort(ctx_h ↦ z3ctx.ctx, eff ↦ zinit_rsort)
     zinit_arena ∈ Effect
-    BuildMalloc(n_bytes ↦ 512, eff ↦ zinit_arena)
+    BuildMalloc(n_bytes ↦ 2048, eff ↦ zinit_arena)
     zinit_arrsort ∈ Effect
     BuildZ3MkArraySort(ctx_h ↦ z3ctx.ctx, idx_sort_h ↦ z3sorts.isort,
         val_sort_h ↦ z_effect_sort, eff ↦ zinit_arrsort)
