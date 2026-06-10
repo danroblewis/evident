@@ -77,6 +77,24 @@ pub(super) fn inline_tuple_in_claim(
     isolate_helper_locals(&claim.body, &mut inner, claim.param_count);
     let slot_set: std::collections::HashSet<String> =
         mappings.iter().map(|m| m.slot.clone()).collect();
+    // Header-as-interface explicit-only rule (claim-headers plan):
+    // positional binding is a mapping form, so header slots beyond the
+    // supplied args become fresh internals instead of joining the
+    // parent env. Header-less claims (param_count == 0) unchanged.
+    if claim.param_count > 0 {
+        for item in claim.body.iter().take(claim.param_count) {
+            if let BodyItem::Membership { name: vname, .. } = item {
+                if !slot_set.contains(vname) {
+                    inner.remove(vname);
+                    let slot_prefix = format!("{}.", vname);
+                    let dotted: Vec<String> = inner.keys()
+                        .filter(|k| k.starts_with(&slot_prefix))
+                        .cloned().collect();
+                    for k in dotted { inner.remove(&k); }
+                }
+            }
+        }
+    }
     for m in &mappings {
         let bound = resolve_mapping(&m.slot, &m.value, ctx, env, schemas);
         if bound.is_empty() {
@@ -167,6 +185,24 @@ pub(super) fn inline_positional_call(
     isolate_helper_locals(&claim.body, &mut inner, claim.param_count);
     let slot_set: std::collections::HashSet<String> =
         mappings.iter().map(|m| m.slot.clone()).collect();
+    // Header-as-interface explicit-only rule (claim-headers plan):
+    // positional binding is a mapping form, so header slots beyond the
+    // supplied args become fresh internals instead of joining the
+    // parent env. Header-less claims (param_count == 0) unchanged.
+    if claim.param_count > 0 {
+        for item in claim.body.iter().take(claim.param_count) {
+            if let BodyItem::Membership { name: vname, .. } = item {
+                if !slot_set.contains(vname) {
+                    inner.remove(vname);
+                    let slot_prefix = format!("{}.", vname);
+                    let dotted: Vec<String> = inner.keys()
+                        .filter(|k| k.starts_with(&slot_prefix))
+                        .cloned().collect();
+                    for k in dotted { inner.remove(&k); }
+                }
+            }
+        }
+    }
     for m in &mappings {
         let bound = resolve_mapping(&m.slot, &m.value, ctx, env, schemas);
         if bound.is_empty() {
@@ -268,6 +304,31 @@ pub(super) fn inline_claim_call(
     let mut inner = env.clone();
     let slot_set: std::collections::HashSet<String> =
         mappings.iter().map(|m| m.slot.clone()).collect();
+    // Header-as-interface (docs/plans/claim-headers-interface.md;
+    // fixtures 142..148): first-line params are the claim's declared
+    // interface. With a header, body memberships NEVER join the parent
+    // (per-call fresh — generalizes the 139/140/141 hiding fix to
+    // coincidental parent names), and any mapping is explicit-only:
+    // unmapped header slots become fresh internals. A bare mention
+    // (no mappings) joins on header names only. Header-less claims
+    // (param_count == 0) keep the pre-header semantics exactly.
+    if claim.param_count > 0 {
+        isolate_helper_locals(&claim.body, &mut inner, claim.param_count);
+        if !mappings.is_empty() {
+            for item in claim.body.iter().take(claim.param_count) {
+                if let BodyItem::Membership { name: vname, .. } = item {
+                    if !slot_set.contains(vname) {
+                        inner.remove(vname);
+                        let slot_prefix = format!("{}.", vname);
+                        let dotted: Vec<String> = inner.keys()
+                            .filter(|k| k.starts_with(&slot_prefix))
+                            .cloned().collect();
+                        for k in dotted { inner.remove(&k); }
+                    }
+                }
+            }
+        }
+    }
     for m in mappings {
         let bound = resolve_mapping(&m.slot, &m.value, ctx, env, schemas);
         if bound.is_empty() {

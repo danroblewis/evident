@@ -217,8 +217,18 @@ impl Parser {
                                     other => return Err(ParseError(format!(
                                         "expected mapping slot name, got {:?}", other))),
                                 };
-                                self.eat(&Token::MapsTo)?;
-                                let value = self.parse_expr()?;
+                                // Punning: a lone slot name in a mapping list
+                                // stands for `slot ↦ slot` (claim-headers plan,
+                                // docs/plans/claim-headers-interface.md; fixture
+                                // 146-punning-binds-unsat). Note a pun cannot be
+                                // the FIRST element — the list is recognized as
+                                // a mapping list by `Ident ↦` at its head.
+                                let value = if matches!(self.peek(), Token::MapsTo) {
+                                    self.bump();
+                                    self.parse_expr()?
+                                } else {
+                                    Expr::Identifier(slot.clone())
+                                };
                                 mappings.push(crate::core::ast::Mapping { slot, value });
                                 if matches!(self.peek(), Token::Comma) { self.bump(); continue; }
                                 break;
