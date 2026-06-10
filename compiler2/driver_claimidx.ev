@@ -72,17 +72,24 @@ fsm DriverClaimIdx
     vf_t2 ∈ String
     vf_t3 ∈ String
     vf_t4 ∈ String
+    -- Variant separators: `|` or a bare following Ident (the newline-
+    -- separated enum form — newlines don't survive lexing, and every
+    -- top-level decl head is a KEYWORD token, so a trailing Ident can
+    -- only be the next variant).
     vf_head ∈ Bool = (variant_walk_on ∧ (_vf_st = 0))
     vf_fields ∈ Bool = (variant_walk_on ∧ (_vf_st = 1))
-    vh_nullary_more ∈ Bool = (vf_head ∧ variant_name_ok ∧ (tok1 matches Pipe))
+    vh_nullary_more ∈ Bool = (vf_head ∧ variant_name_ok
+        ∧ ((tok1 matches Pipe) ∨ (tok1 matches Ident(_))))
     vh_open ∈ Bool = (vf_head ∧ variant_name_ok ∧ (tok1 matches LParen))
     vh_nullary_end ∈ Bool = (vf_head ∧ variant_name_ok
-        ∧ (¬(tok1 matches Pipe)) ∧ (¬(tok1 matches LParen)))
+        ∧ (¬(tok1 matches Pipe)) ∧ (¬(tok1 matches LParen))
+        ∧ (¬(tok1 matches Ident(_))))
     vfield_ty ∈ String = variant_name
     vfield_more ∈ Bool = (vf_fields ∧ variant_name_ok ∧ (tok1 matches Comma)
         ∧ (_vf_n < 5))
     vfield_close ∈ Bool = (vf_fields ∧ variant_name_ok ∧ (tok1 matches RParen))
-    vfield_close_more ∈ Bool = (vfield_close ∧ (tok2 matches Pipe))
+    vfield_close_more ∈ Bool = (vfield_close
+        ∧ ((tok2 matches Pipe) ∨ (tok2 matches Ident(_))))
     -- A payload field that is not `Ty ,` / `Ty )`, or a 7th field, is an
     -- UNSUPPORTED VARIANT SHAPE. The old silent bail dropped the whole
     -- enum decl and the failure surfaced ~900s later as a 0-handle
@@ -121,11 +128,11 @@ fsm DriverClaimIdx
     variant_decl ∈ EnumVariantDecl = (vfield_close
         ? EVDeclP(_vf_pend, variant_fields)
         : EVDecl(variant_name))
-    variant_consume ∈ Int = (vh_nullary_more ? 2
+    variant_consume ∈ Int = (vh_nullary_more ? ((tok1 matches Pipe) ? 2 : 1)
         : vh_open ? 2
         : vh_nullary_end ? 1
         : vfield_more ? 2
-        : vfield_close_more ? 3
+        : vfield_close_more ? ((tok2 matches Pipe) ? 3 : 2)
         : vfield_close ? 2
         : 1)
     variant_act ∈ Bool = (vh_nullary_more ∨ vh_open ∨ vh_nullary_end
