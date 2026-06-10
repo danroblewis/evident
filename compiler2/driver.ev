@@ -246,7 +246,78 @@ fsm driver_main
     in_parse       ∈ Bool = (_phase = 2)
 
     -- ── TOKEN WINDOW (see compiler2/driver_window.ev) ────────────
-    ..DriverWindow
+    -- Bare mention against its header: these fifty-two declarations ARE
+    -- the window interface (decoded views + consumption tails + fetch
+    -- gate + read/copy effect slots + the shared res_int0..5 decoders +
+    -- the carried cursor); its other names are per-call-site internals.
+    tok_cur ∈ Int
+    fetch_end ∈ Int
+    fetch_mode ∈ Int
+    win_toks ∈ TokenList
+    tok0 ∈ Token
+    tok1 ∈ Token
+    tok2 ∈ Token
+    tok3 ∈ Token
+    tok4 ∈ Token
+    tok5 ∈ Token
+    tok6 ∈ Token
+    tok7 ∈ Token
+    win_rest1 ∈ TokenList
+    win_rest2 ∈ TokenList
+    win_rest3 ∈ TokenList
+    win_rest4 ∈ TokenList
+    win_rest5 ∈ TokenList
+    win_rest6 ∈ TokenList
+    win_rest7 ∈ TokenList
+    win_rebuilt ∈ TokenList
+    tok_ready ∈ Bool
+    fetch_go ∈ Bool
+    res_int0 ∈ Int
+    res_int1 ∈ Int
+    res_int2 ∈ Int
+    res_int3 ∈ Int
+    res_int4 ∈ Int
+    res_int5 ∈ Int
+    read_tag0 ∈ Effect
+    read_tag1 ∈ Effect
+    read_tag2 ∈ Effect
+    read_tag3 ∈ Effect
+    read_tag4 ∈ Effect
+    read_tag5 ∈ Effect
+    read_tag6 ∈ Effect
+    read_tag7 ∈ Effect
+    read_pay0 ∈ Effect
+    read_pay1 ∈ Effect
+    read_pay2 ∈ Effect
+    read_pay3 ∈ Effect
+    read_pay4 ∈ Effect
+    read_pay5 ∈ Effect
+    read_pay6 ∈ Effect
+    read_pay7 ∈ Effect
+    copy_eff0 ∈ Effect
+    copy_eff1 ∈ Effect
+    copy_eff2 ∈ Effect
+    copy_eff3 ∈ Effect
+    copy_eff4 ∈ Effect
+    copy_eff5 ∈ Effect
+    copy_eff6 ∈ Effect
+    copy_eff7 ∈ Effect
+    -- The fetch-latch registers: carried bounded Seqs must be top-level
+    -- memberships with their write here (the seq lowering does not
+    -- rewrite fsm headers, and autocarry only marks a carry where the
+    -- declaring claim's own body references the dual), so the latch
+    -- lives with the cursor; window entry k's (tag, payload) lands at
+    -- last_results[2k]/[2k+1] on the fetch_cap tick and the window
+    -- reads the registers back through names-match (see DriverWindow's
+    -- MAINTAINS).
+    lat_tags ∈ Seq(Int)
+    #lat_tags ≤ 8
+    lat_pays ∈ Seq(Int)
+    #lat_pays ≤ 8
+    fetch_cap ∈ Bool = (_fetch_mode = 1)
+    ∀ k ∈ {0..7} : FtiLatch(slot ↦ 2*k, cap ↦ fetch_cap, prev ↦ _lat_tags[k], cur ↦ lat_tags[k])
+    ∀ k ∈ {0..7} : FtiLatch(slot ↦ 2*k + 1, cap ↦ fetch_cap, prev ↦ _lat_pays[k], cur ↦ lat_pays[k])
+    DriverWindow
 
     -- ── PARSE dispatch (parse_mode 0 dispatch · 1 skip · 2 claim) ──────
     -- All modes read the shared token window; "nil" = EofTok head
