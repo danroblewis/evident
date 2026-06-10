@@ -407,7 +407,14 @@ fsm driver_main
     ..DriverCallLower
 
     -- ── symbol-table / name resolution (see compiler2/driver_symlookup.ev) ──
-    ..DriverSymLookup
+    -- Bare mention against its header: these five declarations ARE the
+    -- name-resolution interface; its other names are per-call-site internals.
+    bound_found ∈ Bool
+    bound_handle ∈ Int
+    lookup_pure ∈ Bool
+    lookup_handle ∈ Int
+    eff_sym_read ∈ Effect
+    DriverSymLookup
 
     bind_scope_on ∈ Bool
     bind_scope_name ∈ String
