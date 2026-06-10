@@ -21,8 +21,8 @@ fsm main
     enum_act_now = (is_first_tick ? 2 : _enum_act_now)
     enum_step_now ∈ Int
     enum_step_now = (is_first_tick ? 2 : _enum_step_now)
-    d_cap_int ∈ Int
-    d_cap_int = (is_first_tick ? 0 : _d_cap_int)
+    cap_int ∈ Int
+    cap_int = (is_first_tick ? 0 : _cap_int)
     field_ref2 ∈ Int
     field_ref2 = (is_first_tick ? 0 : _field_ref2)
     enum_h_field0 ∈ Int
@@ -107,7 +107,7 @@ fsm main
     enum_is_user = (is_first_tick ? false : _enum_is_user)
     enum_decl_name ∈ String
     enum_decl_name = (is_first_tick ? "" : _enum_decl_name)
-    d_op_geq ∈ Op = OpGeq
+    op_geq ∈ Op = OpGeq
     enum_variant ∈ EnumVariantDecl = EVNoVariant
     ..DriverBuildEff
     sel ∈ String = (enum_wbatch5 ? "1" : "0") ++ "/" ++ (enum_wbatch2 ? "1" : "0") ++ "/" ++ (enum_wbatch3u ? "1" : "0")

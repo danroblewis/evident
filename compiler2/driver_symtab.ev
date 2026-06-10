@@ -1,19 +1,19 @@
 -- MODULE DriverSymtab
--- CONSUMES: the current work-item list (witems) + the handle stack
---           (d_hstk_in), the parse gate (in_parse, _pmode, tok_ready),
---           the decl-context flags (d_in_claim, qloop_on, bcast_on, param_skip),
---           the lookup-read signal (d_lk_read, lookup_name), the micro-step
---           cursor (_istep), and the kernel last_results floor.
+-- CONSUMES: the current work-item list (work_items) + the handle stack
+--           (stack_in), the parse gate (in_parse, _parse_mode, tok_ready),
+--           the decl-context flags (in_claim, qloop_on, bcast_on, param_skip),
+--           the lookup-read signal (lookup_read, lookup_name), the micro-step
+--           cursor (_item_step), and the kernel last_results floor.
 -- PRODUCES: the FTI symbol table (st_cnt, sym_names) + its append on a
 --           C2DeclConst, the saw_lastres/saw_first_tick duplicate-suppression flags,
---           the post-pend handle-stack views (h_top/2nd/3rd/4th/5th/6th
+--           the post-capture_pend handle-stack views (h_top/2nd/3rd/4th/5th/6th
 --           + the C2H tails), the current work-item (work_head) and its
 --           per-opcode discriminators (it_process/op/ite/.../recv/recd),
 --           and the C2RecVal/C2RecDecl head decode (recval_name/recval_slot).
 -- MAINTAINS: st_cnt < 8192 (a declare past the buffer end is UNSAT, not a
 --           native overrun); the 32-byte "|name<pad31>" record layout so
 --           a name lookup is pure index_of arithmetic; one decl appended
---           per C2DeclConst istep-2 tick, visible to every later lookup.
+--           per C2DeclConst item_step-2 tick, visible to every later lookup.
 --
 -- The FTI symbol table + work-item decode layer. Lifted into driver_main
 -- via `..DriverSymtab`.
@@ -26,11 +26,11 @@ fsm DriverSymtab
     -- alnum/underscore, padding is spaces), so every index_of match
     -- is 32-aligned and lookup is pure arithmetic:
     -- idx = index_of(sym_names, key) / 32; the handle is then ONE
-    -- __mem.read_long through the pend=1 capture path. Names longer
+    -- __mem.read_long through the capture_pend=1 capture path. Names longer
     -- than 31 chars would truncate-alias (corpus max is 21).
     sym_buf.count < 8192
     sym_names ∈ String
-    sym_add ∈ Bool = (processing ∧ it_decl ∧ (_istep = 2))
+    sym_add ∈ Bool = (processing ∧ it_decl ∧ (_item_step = 2))
     sym_entry ∈ String
     FtiNameEntry(name ↦ decl_const_name, entry ↦ sym_entry)
     sym_seed_names ∈ String = ("|" ++ substr("last_results                               ", 0, 31)
@@ -46,18 +46,18 @@ fsm DriverSymtab
     -- textual prelude must drop the duplicates.
     saw_lastres ∈ Bool
     saw_lastres = (is_first_tick ? false
-        : (d_lk_read ∧ lookup_name = "last_results") ? true
+        : (lookup_read ∧ lookup_name = "last_results") ? true
         : _saw_lastres)
     saw_first_tick ∈ Bool
     saw_first_tick = (is_first_tick ? false
-        : (d_lk_read ∧ lookup_name = "is_first_tick") ? true
+        : (lookup_read ∧ lookup_name = "is_first_tick") ? true
         : _saw_first_tick)
 
-    -- handle-stack views (post pend application).
-    h_top ∈ Int = match d_hstk_in
+    -- handle-stack views (post capture_pend application).
+    h_top ∈ Int = match stack_in
         C2HCons(h, _) ⇒ h
         C2HNil ⇒ 0
-    h_tail1 ∈ C2H = match d_hstk_in
+    h_tail1 ∈ C2H = match stack_in
         C2HCons(_, r) ⇒ r
         C2HNil ⇒ C2HNil
     h_2nd ∈ Int = match h_tail1
@@ -91,22 +91,22 @@ fsm DriverSymtab
         C2HCons(_, r) ⇒ r
         C2HNil ⇒ C2HNil
 
-    work_nil ∈ Bool = match _witems
+    work_nil ∈ Bool = match _work_items
         C2INil ⇒ true
         _ ⇒ false
-    work_head ∈ C2Item = match _witems
+    work_head ∈ C2Item = match _work_items
         C2ICons(h, _) ⇒ h
         C2INil ⇒ C2Drop
-    work_tail ∈ C2Items = match _witems
+    work_tail ∈ C2Items = match _work_items
         C2ICons(_, r) ⇒ r
         C2INil ⇒ C2INil
 
-    classify_now   ∈ Bool = (d_in_claim ∧ work_nil ∧ tok_ready
+    classify_now   ∈ Bool = (in_claim ∧ work_nil ∧ tok_ready
         ∧ (_param_skip = 0) ∧ (¬_qloop_on) ∧ (¬_bcast_on))
-    processing ∈ Bool = ((d_in_claim ∨ (in_parse ∧ (_pmode = 5))
-        ∨ (in_parse ∧ (_pmode = 8)) ∨ (in_parse ∧ (_pmode = 9))
-        ∨ (in_parse ∧ (_pmode = 10)) ∨ (in_parse ∧ (_pmode = 12))
-        ∨ (in_parse ∧ (_pmode = 14)))
+    processing ∈ Bool = ((in_claim ∨ (in_parse ∧ (_parse_mode = 5))
+        ∨ (in_parse ∧ (_parse_mode = 8)) ∨ (in_parse ∧ (_parse_mode = 9))
+        ∨ (in_parse ∧ (_parse_mode = 10)) ∨ (in_parse ∧ (_parse_mode = 12))
+        ∨ (in_parse ∧ (_parse_mode = 14)))
         ∧ (¬work_nil))
 
     it_process    ∈ Bool = (work_head matches C2Process(_))

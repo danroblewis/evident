@@ -1,5 +1,5 @@
 -- DriverClaimIdx isolation — claim-index append counter.
--- Skip pass held with a claim head (d_head_is_claim, tok1 an Ident) so
+-- Skip pass held with a claim head (head_is_claim, tok1 an Ident) so
 -- claimidx_add fires each tick; exit when the count reaches 3. The
 -- BuildMemWriteLong index-write effect is not scheduled (no arena).
 -- entry: main
@@ -15,20 +15,20 @@ import "compiler2/driver_expr.ev"
 import "compiler2/driver_claimidx.ev"
 
 fsm main
-    d_enter_skip ∈ Bool
-    d_enter_skip = (is_first_tick ? true : _d_enter_skip)
-    d_head_is_claim ∈ Bool
-    d_head_is_claim = (is_first_tick ? true : _d_head_is_claim)
+    enter_skip ∈ Bool
+    enter_skip = (is_first_tick ? true : _enter_skip)
+    head_is_claim ∈ Bool
+    head_is_claim = (is_first_tick ? true : _head_is_claim)
     tok1 ∈ Token
     tok1 = (is_first_tick ? Ident("x") : _tok1)
-    d_cl_name ∈ String
-    d_cl_name = (is_first_tick ? "x" : _d_cl_name)
+    decl_name ∈ String
+    decl_name = (is_first_tick ? "x" : _decl_name)
     effects_cond ∈ Bool
     effects_cond = (is_first_tick ? false : _effects_cond)
     claimidx_buf ∈ FtiBuffer
     claimidx_buf.base = (is_first_tick ? 0 : _claimidx_buf.base)
-    d_enter_edecl ∈ Bool
-    d_enter_edecl = (is_first_tick ? false : _d_enter_edecl)
+    enter_enum_decl ∈ Bool
+    enter_enum_decl = (is_first_tick ? false : _enter_enum_decl)
     enter_efflit ∈ Bool
     enter_efflit = (is_first_tick ? false : _enter_efflit)
     work_nil ∈ Bool
@@ -43,16 +43,16 @@ fsm main
     pratt_done = (is_first_tick ? false : _pratt_done)
     pratt_kind ∈ Int
     pratt_kind = (is_first_tick ? 0 : _pratt_kind)
-    pmode ∈ Int
-    pmode = (is_first_tick ? 0 : _pmode)
+    parse_mode ∈ Int
+    parse_mode = (is_first_tick ? 0 : _parse_mode)
     pratt_bad ∈ Bool
     pratt_bad = (is_first_tick ? false : _pratt_bad)
     tok_cur ∈ Int
     tok_cur = (is_first_tick ? 0 : _tok_cur)
     tok_ready ∈ Bool
     tok_ready = (is_first_tick ? false : _tok_ready)
-    ue_name ∈ String
-    ue_name = (is_first_tick ? "" : _ue_name)
+    user_enum_name ∈ String
+    user_enum_name = (is_first_tick ? "" : _user_enum_name)
     tok0 ∈ Token
     tok0 = (is_first_tick ? EofTok : _tok0)
     tok2 ∈ Token

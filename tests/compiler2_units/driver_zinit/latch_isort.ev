@@ -1,6 +1,6 @@
 -- DriverZInit isolation — zstep climbs −2,−1,0,1,… one per tick with the
 -- ED hold released (enum_act 0, enum_src 4 ⇒ enum_hold false). z3sorts.isort
--- must latch d_cap_int (42) at EXACTLY zstep = 5 and hold; zstep ≥ 6
+-- must latch cap_int (42) at EXACTLY zstep = 5 and hold; zstep ≥ 6
 -- drives the exit. A skipped step or wrong-step latch ⇒ isort stays 0.
 --
 -- entry: main
@@ -15,8 +15,8 @@ fsm main
     enum_act = (is_first_tick ? 0 : _enum_act)
     enum_src ∈ Int
     enum_src = (is_first_tick ? 4 : _enum_src)
-    d_cap_int ∈ Int
-    d_cap_int = (is_first_tick ? 42 : _d_cap_int)
+    cap_int ∈ Int
+    cap_int = (is_first_tick ? 42 : _cap_int)
     ..DriverZInit
     -- Cursors normally driven by DriverLex/DriverClaimIdx (absent here);
     -- stub them so the carried record fields have a covering assignment.

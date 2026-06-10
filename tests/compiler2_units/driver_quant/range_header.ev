@@ -34,8 +34,8 @@ fsm main
     classify_now = (is_first_tick ? false : _classify_now)
     enter_qset ∈ Bool
     enter_qset = (is_first_tick ? false : _enter_qset)
-    d_in_claim ∈ Bool
-    d_in_claim = (is_first_tick ? false : _d_in_claim)
+    in_claim ∈ Bool
+    in_claim = (is_first_tick ? false : _in_claim)
     line_end ∈ Bool
     line_end = (is_first_tick ? false : _line_end)
     work_nil ∈ Bool
@@ -58,8 +58,8 @@ fsm main
     pratt_done = (is_first_tick ? false : _pratt_done)
     pratt_kind ∈ Int
     pratt_kind = (is_first_tick ? 0 : _pratt_kind)
-    pmode ∈ Int
-    pmode = (is_first_tick ? 0 : _pmode)
+    parse_mode ∈ Int
+    parse_mode = (is_first_tick ? 0 : _parse_mode)
     pratt_bad ∈ Bool
     pratt_bad = (is_first_tick ? false : _pratt_bad)
     pratt_result ∈ Expr

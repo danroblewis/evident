@@ -2,19 +2,19 @@
 -- CONSUMES: the classifier set-line flags (intset_line, setmem_decl_line,
 --           line_is_mem/line_is_notmem, line_dname, line_name, line_ty_name, seq_elt_slot,
 --           the quantifier-set views c_q_*), the classify gate
---           (classify_now, line_end, enter_seqlit, d_in_skip), the window
+--           (classify_now, line_end, enter_seqlit, in_skip), the window
 --           head (tok0/tok5..t7), the registered-seq carries (seqvar_name/
 --           seqvar_slot), the inline-frame prefix (scope_prefix), the parse gate, and
 --           the Pratt result (pratt_done/pratt_bad/pratt_result/pratt_kind).
 -- PRODUCES: the ≤2-entry Set(T) variable registry (setvar_count/stv_n*/stv_k*/
---           stv_e*/stv_c*), the pmode-14 set-literal element walk
+--           stv_e*/stv_c*), the parse_mode-14 set-literal element walk
 --           (seqlit_count + the C2MkEmptySet/C2SetAdd item runs), and the
 --           quantifier-over-set element bookkeeping (qset_*).
 -- MAINTAINS: ≤2 registered Set(T) vars; a set var declares ONE const of
 --           the set sort (Array T Bool) with no __len; set elements add
 --           via C2SetAdd over the empty-set const.
 --
--- The Set(T) variable registry + pmode-14 set walk. Lifted into
+-- The Set(T) variable registry + parse_mode-14 set walk. Lifted into
 -- driver_main via `..DriverSetVar`.
 
 -- One row of the quantifier-over-set element-name projection: the i-th
@@ -51,7 +51,7 @@ fsm DriverSetVar
         C2Process(EIdent(setvar_idx = 0 ? set_vars[0].name : set_vars[1].name)),
         C2ICons(C2MkEmptySet(setvar_idx = 0 ? set_vars[0].kidx : set_vars[1].kidx), C2INil))
 
-    setlit_act ∈ Bool = (in_parse ∧ (_pmode = 14) ∧ work_nil ∧ tok_ready)
+    setlit_act ∈ Bool = (in_parse ∧ (_parse_mode = 14) ∧ work_nil ∧ tok_ready)
     setlit_elem ∈ Bool = (setlit_act ∧ (tok0 matches Ident(_)))
     setlit_comma ∈ Bool = (setlit_act ∧ (tok0 matches Comma))
     setlit_close ∈ Bool = (setlit_act ∧ (tok0 matches RBrace))
@@ -119,7 +119,7 @@ fsm DriverSetVar
         : qset_seg1)
 
     seqlit_count ∈ Int
-    in_seqlit ∈ Bool = (in_parse ∧ (_pmode = 8) ∧ work_nil ∧ tok_ready)
+    in_seqlit ∈ Bool = (in_parse ∧ (_parse_mode = 8) ∧ work_nil ∧ tok_ready)
     seqlit_close ∈ Bool = (in_seqlit ∧ (tok0 matches OpSeqClose))
     seqlit_comma ∈ Bool = (in_seqlit ∧ (tok0 matches Comma))
     seqlit_elem_enter ∈ Bool = (in_seqlit ∧ (¬seqlit_close) ∧ (¬seqlit_comma))
@@ -146,4 +146,4 @@ fsm DriverSetVar
     skip_at_eof ∈ Bool = (tok0 matches EofTok)
     skip_at_kw ∈ Bool = ((tok0 matches KwEnum) ∨ (tok0 matches KwClaim)
         ∨ (tok0 matches KwType) ∨ (tok0 matches KwFsm) ∨ (tok0 matches KwSchema))
-    skip_stop ∈ Bool = (d_in_skip ∧ (skip_at_eof ∨ skip_at_kw))
+    skip_stop ∈ Bool = (in_skip ∧ (skip_at_eof ∨ skip_at_kw))

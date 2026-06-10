@@ -1,6 +1,6 @@
 -- DriverLitMem isolation — the seq-literal registry latches once:
 -- enter_seqmem held every tick with line_dname "myseq" on the capture tick,
--- "other" after. The pmode-8 registry must latch seqvar_name = "myseq" on
+-- "other" after. The parse_mode-8 registry must latch seqvar_name = "myseq" on
 -- first sight; if the latch-once guard (¬_seqvar_set) regresses it's "other".
 -- entry: main
 -- expect: stdout = "myseq"
@@ -19,11 +19,11 @@ fsm main
     line_dname ∈ String = (tc ≤ 1 ? "myseq" : "other")
     seq_elt_slot ∈ Int
     seq_elt_slot = (is_first_tick ? 0 - 1 : _seq_elt_slot)
-    -- pmode-7 set-walk inputs the lifted module also reads (inert here).
+    -- parse_mode-7 set-walk inputs the lifted module also reads (inert here).
     in_parse ∈ Bool
     in_parse = (is_first_tick ? false : _in_parse)
-    pmode ∈ Int
-    pmode = (is_first_tick ? 0 : _pmode)
+    parse_mode ∈ Int
+    parse_mode = (is_first_tick ? 0 : _parse_mode)
     tok_ready ∈ Bool
     tok_ready = (is_first_tick ? false : _tok_ready)
     tok0 ∈ Token

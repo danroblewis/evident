@@ -1,4 +1,4 @@
--- DriverGroup isolation — multi-name collect recognizer: pmode-9 group
+-- DriverGroup isolation — multi-name collect recognizer: parse_mode-9 group
 -- walk in collect state 0 (group_active) with window head `x ,` must be
 -- active (group_collect) and recognize the multi-name continuation
 -- (group_take2). verdict = 1*group_collect + 2*group_take2 = 3.
@@ -14,8 +14,8 @@ import "compiler2/driver_group.ev"
 fsm main
     in_parse ∈ Bool
     in_parse = (is_first_tick ? true : _in_parse)
-    pmode ∈ Int
-    pmode = (is_first_tick ? 9 : _pmode)
+    parse_mode ∈ Int
+    parse_mode = (is_first_tick ? 9 : _parse_mode)
     tok_ready ∈ Bool
     tok_ready = (is_first_tick ? true : _tok_ready)
     work_nil ∈ Bool
@@ -34,8 +34,8 @@ fsm main
     line_t0 = (is_first_tick ? EofTok : _line_t0)
     mem_tyname ∈ String
     mem_tyname = (is_first_tick ? "" : _mem_tyname)
-    d_enter_claimp ∈ Bool
-    d_enter_claimp = (is_first_tick ? false : _d_enter_claimp)
+    enter_claim_params ∈ Bool
+    enter_claim_params = (is_first_tick ? false : _enter_claim_params)
     enter_multiname ∈ Bool
     enter_multiname = (is_first_tick ? false : _enter_multiname)
     tok3 ∈ Token

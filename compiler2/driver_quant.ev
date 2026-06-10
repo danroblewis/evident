@@ -51,9 +51,9 @@ fsm DriverQuant
     enter_qseq ∈ Bool = (classify_now ∧ (¬line_end) ∧ (¬q_range)
         ∧ q_over_seq ∧ _seqvar_set ∧ (¬enter_qset))
 
-    -- pmode 11: the range head's `} :` close (the 8-token classify
+    -- parse_mode 11: the range head's `} :` close (the 8-token classify
     -- bite latched lo/hi; the brace close enters the body parse)
-    qrange_act ∈ Bool = (in_parse ∧ (_pmode = 11) ∧ work_nil ∧ tok_ready)
+    qrange_act ∈ Bool = (in_parse ∧ (_parse_mode = 11) ∧ work_nil ∧ tok_ready)
     qrange_close ∈ Bool = (qrange_act ∧ (tok0 matches RBrace)
         ∧ (tok1 matches Colon))
     qrange_bail ∈ Bool = (qrange_act ∧ (¬qrange_close))
@@ -69,7 +69,7 @@ fsm DriverQuant
     qloop_next ∈ Int
     qloop_cur ∈ Int
     qbody_done ∈ Bool = (pratt_done ∧ (_pratt_kind = 9) ∧ (¬pratt_bad))
-    qexp_disp ∈ Bool = (d_in_claim ∧ _qloop_on ∧ work_nil
+    qexp_disp ∈ Bool = (in_claim ∧ _qloop_on ∧ work_nil
         ∧ (_param_skip = 0) ∧ tok_ready)
     qexp_more ∈ Bool = (qexp_disp ∧ (_qloop_next ≤ _qloop_hi))
     qexp_fin ∈ Bool = (qexp_disp ∧ (_qloop_next > _qloop_hi))

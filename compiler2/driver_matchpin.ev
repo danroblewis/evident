@@ -2,12 +2,12 @@
 -- CONSUMES: the match-line enter signal (enter_match) + the classified
 --           name/sort (line_dname, line_sort), the window head views
 --           (tok0..tok4) + the line head name (head_ident), the parse
---           gate (in_parse, _pmode, tok_ready), the Pratt result
+--           gate (in_parse, _parse_mode, tok_ready), the Pratt result
 --           (pratt_done, pratt_bad, pratt_result, pratt_kind), and the user-enum + Result
 --           variant registries (uev_n*/uev_t*/uev_a*, z_intres_test/z_strres_test/
 --           z_intres_acc/z_strres_acc) the arms resolve their ctor/tester/accessor
 --           handles against.
--- PRODUCES: the pmode-6 match-pin walk state (match_st/match_name/match_sort/match_scrut_lr/
+-- PRODUCES: the parse_mode-6 match-pin walk state (match_st/match_name/match_sort/match_scrut_lr/
 --           match_scrut_idx/match_scrut + the per-arm recognizers mp_arm_*), and the
 --           lowered match work-items (the C2App tester / C2BindScope arm
 --           body item runs) consumed by the interpreter.
@@ -16,10 +16,10 @@
 --           head (payload 5-token / nullary 2-token / wildcard) emits one
 --           item run, with payload binds α-scoped under the arm.
 --
--- The pmode-6 match-pin walk (D3 match lowering). Lifted into driver_main
+-- The parse_mode-6 match-pin walk (D3 match lowering). Lifted into driver_main
 -- via `..DriverMatchPin`.
 fsm DriverMatchPin
-    -- ── pmode 6: match-pin walk (D3 · C4 n-arm · C5 binds+exprs) ──
+    -- ── parse_mode 6: match-pin walk (D3 · C4 n-arm · C5 binds+exprs) ──
     -- `name ∈ Type = match <scrut>` + up to THREE arms. scrut is a
     -- plain ident or `last_results [ <int> ]`. Arm HEADS:
     --   `Ctor ( bind ) ⇒`   payload arm head (5 tokens)
@@ -67,7 +67,7 @@ fsm DriverMatchPin
     arm2_bind ∈ String
     arm2_expr ∈ Expr
 
-    match_act ∈ Bool = (in_parse ∧ (_pmode = 6) ∧ tok_ready)
+    match_act ∈ Bool = (in_parse ∧ (_parse_mode = 6) ∧ tok_ready)
     scrut_lastres ∈ Bool = (match_act ∧ (_match_st = 0)
         ∧ (head_ident = "last_results") ∧ (tok1 matches LBracket)
         ∧ (tok2 matches IntLit(_)) ∧ (tok3 matches RBracket))

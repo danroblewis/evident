@@ -28,8 +28,8 @@ fsm main
     pratt_result ∈ Expr
     pratt_result = (is_first_tick ? ENoExpr : _pratt_result)
     -- Claim-walk dispatch gate: held open so the broadcast can step.
-    d_in_claim ∈ Bool
-    d_in_claim = (is_first_tick ? true : _d_in_claim)
+    in_claim ∈ Bool
+    in_claim = (is_first_tick ? true : _in_claim)
     work_nil ∈ Bool
     work_nil = (is_first_tick ? true : _work_nil)
     param_skip ∈ Int

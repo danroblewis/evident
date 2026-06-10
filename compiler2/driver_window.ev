@@ -1,6 +1,6 @@
 -- MODULE DriverWindow
 -- CONSUMES: the parse-phase gate (in_parse), the active parse mode + the
---           consumer sub-state carries that set lookahead need (_pmode,
+--           consumer sub-state carries that set lookahead need (_parse_mode,
 --           _rec_collect_on, _enum_act, work_nil, _callw_st, _posbind_st), the FTI token
 --           buffer base (tbase) + the per-tick libc read results
 --           (last_results), and its own carried cursor (_tok_cur/_fetch_end/
@@ -291,20 +291,20 @@ fsm DriverWindow
         TLNil ⇒ EofTok
 
     win_need ∈ Int = (¬in_parse ? 0
-        : _pmode = 0 ? 3
-        : _pmode = 1 ? (_rec_collect_on ? 6 : 1)
-        : _pmode = 3 ? ((tok0 matches KwMatches) ? 7 : 2)
-        : _pmode = 4 ? (_enum_act = 0
+        : _parse_mode = 0 ? 3
+        : _parse_mode = 1 ? (_rec_collect_on ? 6 : 1)
+        : _parse_mode = 3 ? ((tok0 matches KwMatches) ? 7 : 2)
+        : _parse_mode = 4 ? (_enum_act = 0
             ? ((tok1 matches LParen) ? 7 : 2) : 0)
-        : _pmode = 5 ? (work_nil ? 8 : 0)
-        : _pmode = 6 ? 5
-        : _pmode = 7 ? 2
-        : _pmode = 8 ? (work_nil ? 1 : 0)
-        : _pmode = 10 ? ((_callw_st = 1 ∧ work_nil) ? 2 : 0)
-        : _pmode = 11 ? 2
-        : _pmode = 12 ? ((_posbind_st = 0 ∧ work_nil) ? 5 : 0)
-        : _pmode = 13 ? 0
-        : _pmode = 14 ? (work_nil ? 2 : 0)
+        : _parse_mode = 5 ? (work_nil ? 8 : 0)
+        : _parse_mode = 6 ? 5
+        : _parse_mode = 7 ? 2
+        : _parse_mode = 8 ? (work_nil ? 1 : 0)
+        : _parse_mode = 10 ? ((_callw_st = 1 ∧ work_nil) ? 2 : 0)
+        : _parse_mode = 11 ? 2
+        : _parse_mode = 12 ? ((_posbind_st = 0 ∧ work_nil) ? 5 : 0)
+        : _parse_mode = 13 ? 0
+        : _parse_mode = 14 ? (work_nil ? 2 : 0)
         : work_nil ? 8
         : 0)
     tok_ready ∈ Bool = ((_fetch_mode = 0) ∧ (win_need > 0) ∧ (win_avail ≥ win_need))

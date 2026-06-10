@@ -1,11 +1,11 @@
 -- MODULE DriverLitMem
--- CONSUMES: the parse gate (in_parse, _pmode, tok_ready), the decoded
+-- CONSUMES: the parse gate (in_parse, _parse_mode, tok_ready), the decoded
 --           window head (tok0), the set-literal entry + classifier
 --           views (enter_intset, line_name, line_is_notmem), and the seq-literal
 --           entry + classifier views (enter_seqmem, line_dname, seq_elt_slot).
--- PRODUCES: the pmode-7 set-literal walk state (intset_name/intset_neg/intset_expr +
+-- PRODUCES: the parse_mode-7 set-literal walk state (intset_name/intset_neg/intset_expr +
 --           intset_body/intset_items, the or-folded membership Expr and its
---           assert program) and the pmode-8 seq-literal registry latch
+--           assert program) and the parse_mode-8 seq-literal registry latch
 --           (seqvar_set/seqvar_name/seqvar_slot — the one registered Seq(Int) var).
 -- MAINTAINS: a `x ∈ {a,b,…}` line or-folds one int element per tick
 --           into an Expr, asserted (C2Not-wrapped for ∉) at the closing
@@ -13,15 +13,15 @@
 --           latches exactly one registered seq var (name + element
 --           record type, −1 = Int) on first sight.
 --
--- The pmode-7/8 literal-collection membership walks. Lifted into
+-- The parse_mode-7/8 literal-collection membership walks. Lifted into
 -- driver_main via `..DriverLitMem`.
 fsm DriverLitMem
-    -- ── pmode 7: set-literal membership walk (C2: 041/042/062) ────
+    -- ── parse_mode 7: set-literal membership walk (C2: 041/042/062) ────
     intset_name ∈ String
     intset_neg ∈ Bool
     intset_expr ∈ Expr
 
-    intset_act ∈ Bool = (in_parse ∧ (_pmode = 7) ∧ tok_ready)
+    intset_act ∈ Bool = (in_parse ∧ (_parse_mode = 7) ∧ tok_ready)
     intset_elem ∈ Bool = (intset_act ∧ (tok0 matches IntLit(_)))
     intset_close ∈ Bool = (intset_act ∧ (tok0 matches RBrace))
     intset_bad ∈ Bool = (intset_act ∧ (¬intset_elem) ∧ (¬intset_close))
@@ -42,7 +42,7 @@ fsm DriverLitMem
         (_intset_neg ? C2ICons(C2Not, C2ICons(C2AssertTop, C2INil))
             : C2ICons(C2AssertTop, C2INil)))
 
-    -- ── pmode 8: user Seq(Int) literal walk (D2: 051/052/057/065) ──
+    -- ── parse_mode 8: user Seq(Int) literal walk (D2: 051/052/057/065) ──
     -- `s ∈ Seq(Int)` declares TWO consts — `s : (Array Int Int)` and
     -- `s__len : Int` with the `(>= s__len 0)` floor (the oracle's
     -- exact decl shape; manifest `s:Seq(Int)`, two carry declares).

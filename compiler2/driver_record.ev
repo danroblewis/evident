@@ -1,7 +1,7 @@
 -- MODULE DriverRecord
 -- CONSUMES: the parse cursor/window + skip-pass record collection (the
 --           `type Name(...)` tops), the Z3 base-sort handles (int/bool/
---           str/real/iarr), d_cap_int captures, and the pmode-13 RD gate.
+--           str/real/iarr), cap_int captures, and the parse_mode-13 RD gate.
 -- PRODUCES: the record-type registry (≤3 types): per-type Z3 tuple sort,
 --           ctor decl, array/set sorts, ≤6 accessor decls, the fixed-width
 --           field-name/type record strings, and the RD machine's build
@@ -95,7 +95,7 @@ fsm DriverRecord
     rec_cur_sort ∈ Int = (rec_slot = 0 ? rec0.sort : rec_slot = 1 ? rec1.sort : rec2.sort)
 
     rec_start ∈ Bool = (claimidx_add ∧ (tok0 matches KwType) ∧ (_rec_count < 3))
-    rec_collecting ∈ Bool = (d_in_skip ∧ (¬skip_stop) ∧ _rec_collect_on)
+    rec_collecting ∈ Bool = (in_skip ∧ (¬skip_stop) ∧ _rec_collect_on)
     field_name_tok ∈ String = match tok0
         Ident(s) ⇒ s
         _ ⇒ ""
@@ -160,9 +160,9 @@ fsm DriverRecord
     ∀ k ∈ {0..2} : rec_params[k].pname = (is_first_tick ? "" : (field_pending ∧ _rec_param_n = k) ? field_name_tok : _rec_params[k].pname)
 
     rec_count = (is_first_tick ? 0 : rec_start ? _rec_count + 1 : _rec_count)
-    rec0.name = (is_first_tick ? "" : (rec_start ∧ _rec_count = 0) ? d_cl_name : _rec0.name)
-    rec1.name = (is_first_tick ? "" : (rec_start ∧ _rec_count = 1) ? d_cl_name : _rec1.name)
-    rec2.name = (is_first_tick ? "" : (rec_start ∧ _rec_count = 2) ? d_cl_name : _rec2.name)
+    rec0.name = (is_first_tick ? "" : (rec_start ∧ _rec_count = 0) ? decl_name : _rec0.name)
+    rec1.name = (is_first_tick ? "" : (rec_start ∧ _rec_count = 1) ? decl_name : _rec1.name)
+    rec2.name = (is_first_tick ? "" : (rec_start ∧ _rec_count = 2) ? decl_name : _rec2.name)
     rec0.fnames = (is_first_tick ? "" : (field_ok ∧ rec_slot = 0) ? _rec0.fnames ++ field_rows_names : _rec0.fnames)
     rec1.fnames = (is_first_tick ? "" : (field_ok ∧ rec_slot = 1) ? _rec1.fnames ++ field_rows_names : _rec1.fnames)
     rec2.fnames = (is_first_tick ? "" : (field_ok ∧ rec_slot = 2) ? _rec2.fnames ++ field_rows_names : _rec2.fnames)
@@ -181,7 +181,7 @@ fsm DriverRecord
 
     recdecl_go ∈ Bool = (skip_stop ∧ _rec_collect_on ∧ _rec_collect_ok ∧ (rec_slot ≥ 0)
         ∧ (rec_cur_nf > 0))
-    recdecl_prev ∈ Bool = (_pmode = 13)
+    recdecl_prev ∈ Bool = (_parse_mode = 13)
     recdecl_st_now ∈ Int = (recdecl_go ? 0
         : (¬recdecl_prev) ? 8
         : _recdecl_st = 0 ? 1
@@ -205,43 +205,43 @@ fsm DriverRecord
 
     recdecl_cap ∈ Bool = recdecl_prev
     recdecl_h_name = (is_first_tick ? 0
-        : (recdecl_cap ∧ _recdecl_st = 0) ? d_cap_int : _recdecl_h_name)
-    ∀ k ∈ {0..5} : recdecl_h_fields[k] = (is_first_tick ? 0 : (recdecl_cap ∧ _recdecl_st = 1 ∧ _recdecl_field_i = k) ? d_cap_int : _recdecl_h_fields[k])
+        : (recdecl_cap ∧ _recdecl_st = 0) ? cap_int : _recdecl_h_name)
+    ∀ k ∈ {0..5} : recdecl_h_fields[k] = (is_first_tick ? 0 : (recdecl_cap ∧ _recdecl_st = 1 ∧ _recdecl_field_i = k) ? cap_int : _recdecl_h_fields[k])
     recdecl_sort_cap ∈ Bool = (recdecl_cap ∧ _recdecl_st = 3)
     recdecl_ctor_cap ∈ Bool = (recdecl_cap ∧ _recdecl_st = 4)
     recdecl_acc_cap ∈ Bool = (recdecl_cap ∧ _recdecl_st = 5)
     recdecl_asort_cap ∈ Bool = (recdecl_cap ∧ _recdecl_st = 6)
     recdecl_ssort_cap ∈ Bool = (recdecl_cap ∧ _recdecl_st = 7)
-    rec0.sort = (is_first_tick ? 0 : (recdecl_sort_cap ∧ rec_slot = 0) ? d_cap_int : _rec0.sort)
-    rec1.sort = (is_first_tick ? 0 : (recdecl_sort_cap ∧ rec_slot = 1) ? d_cap_int : _rec1.sort)
-    rec2.sort = (is_first_tick ? 0 : (recdecl_sort_cap ∧ rec_slot = 2) ? d_cap_int : _rec2.sort)
-    rec0.ctor = (is_first_tick ? 0 : (recdecl_ctor_cap ∧ rec_slot = 0) ? d_cap_int : _rec0.ctor)
-    rec1.ctor = (is_first_tick ? 0 : (recdecl_ctor_cap ∧ rec_slot = 1) ? d_cap_int : _rec1.ctor)
-    rec2.ctor = (is_first_tick ? 0 : (recdecl_ctor_cap ∧ rec_slot = 2) ? d_cap_int : _rec2.ctor)
-    rec0.asort = (is_first_tick ? 0 : (recdecl_asort_cap ∧ rec_slot = 0) ? d_cap_int : _rec0.asort)
-    rec1.asort = (is_first_tick ? 0 : (recdecl_asort_cap ∧ rec_slot = 1) ? d_cap_int : _rec1.asort)
-    rec2.asort = (is_first_tick ? 0 : (recdecl_asort_cap ∧ rec_slot = 2) ? d_cap_int : _rec2.asort)
-    rec0.ssort = (is_first_tick ? 0 : (recdecl_ssort_cap ∧ rec_slot = 0) ? d_cap_int : _rec0.ssort)
-    rec1.ssort = (is_first_tick ? 0 : (recdecl_ssort_cap ∧ rec_slot = 1) ? d_cap_int : _rec1.ssort)
-    rec2.ssort = (is_first_tick ? 0 : (recdecl_ssort_cap ∧ rec_slot = 2) ? d_cap_int : _rec2.ssort)
-    rec0.acc0 = (is_first_tick ? 0 : (recdecl_acc_cap ∧ rec_slot = 0 ∧ _recdecl_field_i = 0) ? d_cap_int : _rec0.acc0)
-    rec0.acc1 = (is_first_tick ? 0 : (recdecl_acc_cap ∧ rec_slot = 0 ∧ _recdecl_field_i = 1) ? d_cap_int : _rec0.acc1)
-    rec0.acc2 = (is_first_tick ? 0 : (recdecl_acc_cap ∧ rec_slot = 0 ∧ _recdecl_field_i = 2) ? d_cap_int : _rec0.acc2)
-    rec0.acc3 = (is_first_tick ? 0 : (recdecl_acc_cap ∧ rec_slot = 0 ∧ _recdecl_field_i = 3) ? d_cap_int : _rec0.acc3)
-    rec0.acc4 = (is_first_tick ? 0 : (recdecl_acc_cap ∧ rec_slot = 0 ∧ _recdecl_field_i = 4) ? d_cap_int : _rec0.acc4)
-    rec0.acc5 = (is_first_tick ? 0 : (recdecl_acc_cap ∧ rec_slot = 0 ∧ _recdecl_field_i = 5) ? d_cap_int : _rec0.acc5)
-    rec1.acc0 = (is_first_tick ? 0 : (recdecl_acc_cap ∧ rec_slot = 1 ∧ _recdecl_field_i = 0) ? d_cap_int : _rec1.acc0)
-    rec1.acc1 = (is_first_tick ? 0 : (recdecl_acc_cap ∧ rec_slot = 1 ∧ _recdecl_field_i = 1) ? d_cap_int : _rec1.acc1)
-    rec1.acc2 = (is_first_tick ? 0 : (recdecl_acc_cap ∧ rec_slot = 1 ∧ _recdecl_field_i = 2) ? d_cap_int : _rec1.acc2)
-    rec1.acc3 = (is_first_tick ? 0 : (recdecl_acc_cap ∧ rec_slot = 1 ∧ _recdecl_field_i = 3) ? d_cap_int : _rec1.acc3)
-    rec1.acc4 = (is_first_tick ? 0 : (recdecl_acc_cap ∧ rec_slot = 1 ∧ _recdecl_field_i = 4) ? d_cap_int : _rec1.acc4)
-    rec1.acc5 = (is_first_tick ? 0 : (recdecl_acc_cap ∧ rec_slot = 1 ∧ _recdecl_field_i = 5) ? d_cap_int : _rec1.acc5)
-    rec2.acc0 = (is_first_tick ? 0 : (recdecl_acc_cap ∧ rec_slot = 2 ∧ _recdecl_field_i = 0) ? d_cap_int : _rec2.acc0)
-    rec2.acc1 = (is_first_tick ? 0 : (recdecl_acc_cap ∧ rec_slot = 2 ∧ _recdecl_field_i = 1) ? d_cap_int : _rec2.acc1)
-    rec2.acc2 = (is_first_tick ? 0 : (recdecl_acc_cap ∧ rec_slot = 2 ∧ _recdecl_field_i = 2) ? d_cap_int : _rec2.acc2)
-    rec2.acc3 = (is_first_tick ? 0 : (recdecl_acc_cap ∧ rec_slot = 2 ∧ _recdecl_field_i = 3) ? d_cap_int : _rec2.acc3)
-    rec2.acc4 = (is_first_tick ? 0 : (recdecl_acc_cap ∧ rec_slot = 2 ∧ _recdecl_field_i = 4) ? d_cap_int : _rec2.acc4)
-    rec2.acc5 = (is_first_tick ? 0 : (recdecl_acc_cap ∧ rec_slot = 2 ∧ _recdecl_field_i = 5) ? d_cap_int : _rec2.acc5)
+    rec0.sort = (is_first_tick ? 0 : (recdecl_sort_cap ∧ rec_slot = 0) ? cap_int : _rec0.sort)
+    rec1.sort = (is_first_tick ? 0 : (recdecl_sort_cap ∧ rec_slot = 1) ? cap_int : _rec1.sort)
+    rec2.sort = (is_first_tick ? 0 : (recdecl_sort_cap ∧ rec_slot = 2) ? cap_int : _rec2.sort)
+    rec0.ctor = (is_first_tick ? 0 : (recdecl_ctor_cap ∧ rec_slot = 0) ? cap_int : _rec0.ctor)
+    rec1.ctor = (is_first_tick ? 0 : (recdecl_ctor_cap ∧ rec_slot = 1) ? cap_int : _rec1.ctor)
+    rec2.ctor = (is_first_tick ? 0 : (recdecl_ctor_cap ∧ rec_slot = 2) ? cap_int : _rec2.ctor)
+    rec0.asort = (is_first_tick ? 0 : (recdecl_asort_cap ∧ rec_slot = 0) ? cap_int : _rec0.asort)
+    rec1.asort = (is_first_tick ? 0 : (recdecl_asort_cap ∧ rec_slot = 1) ? cap_int : _rec1.asort)
+    rec2.asort = (is_first_tick ? 0 : (recdecl_asort_cap ∧ rec_slot = 2) ? cap_int : _rec2.asort)
+    rec0.ssort = (is_first_tick ? 0 : (recdecl_ssort_cap ∧ rec_slot = 0) ? cap_int : _rec0.ssort)
+    rec1.ssort = (is_first_tick ? 0 : (recdecl_ssort_cap ∧ rec_slot = 1) ? cap_int : _rec1.ssort)
+    rec2.ssort = (is_first_tick ? 0 : (recdecl_ssort_cap ∧ rec_slot = 2) ? cap_int : _rec2.ssort)
+    rec0.acc0 = (is_first_tick ? 0 : (recdecl_acc_cap ∧ rec_slot = 0 ∧ _recdecl_field_i = 0) ? cap_int : _rec0.acc0)
+    rec0.acc1 = (is_first_tick ? 0 : (recdecl_acc_cap ∧ rec_slot = 0 ∧ _recdecl_field_i = 1) ? cap_int : _rec0.acc1)
+    rec0.acc2 = (is_first_tick ? 0 : (recdecl_acc_cap ∧ rec_slot = 0 ∧ _recdecl_field_i = 2) ? cap_int : _rec0.acc2)
+    rec0.acc3 = (is_first_tick ? 0 : (recdecl_acc_cap ∧ rec_slot = 0 ∧ _recdecl_field_i = 3) ? cap_int : _rec0.acc3)
+    rec0.acc4 = (is_first_tick ? 0 : (recdecl_acc_cap ∧ rec_slot = 0 ∧ _recdecl_field_i = 4) ? cap_int : _rec0.acc4)
+    rec0.acc5 = (is_first_tick ? 0 : (recdecl_acc_cap ∧ rec_slot = 0 ∧ _recdecl_field_i = 5) ? cap_int : _rec0.acc5)
+    rec1.acc0 = (is_first_tick ? 0 : (recdecl_acc_cap ∧ rec_slot = 1 ∧ _recdecl_field_i = 0) ? cap_int : _rec1.acc0)
+    rec1.acc1 = (is_first_tick ? 0 : (recdecl_acc_cap ∧ rec_slot = 1 ∧ _recdecl_field_i = 1) ? cap_int : _rec1.acc1)
+    rec1.acc2 = (is_first_tick ? 0 : (recdecl_acc_cap ∧ rec_slot = 1 ∧ _recdecl_field_i = 2) ? cap_int : _rec1.acc2)
+    rec1.acc3 = (is_first_tick ? 0 : (recdecl_acc_cap ∧ rec_slot = 1 ∧ _recdecl_field_i = 3) ? cap_int : _rec1.acc3)
+    rec1.acc4 = (is_first_tick ? 0 : (recdecl_acc_cap ∧ rec_slot = 1 ∧ _recdecl_field_i = 4) ? cap_int : _rec1.acc4)
+    rec1.acc5 = (is_first_tick ? 0 : (recdecl_acc_cap ∧ rec_slot = 1 ∧ _recdecl_field_i = 5) ? cap_int : _rec1.acc5)
+    rec2.acc0 = (is_first_tick ? 0 : (recdecl_acc_cap ∧ rec_slot = 2 ∧ _recdecl_field_i = 0) ? cap_int : _rec2.acc0)
+    rec2.acc1 = (is_first_tick ? 0 : (recdecl_acc_cap ∧ rec_slot = 2 ∧ _recdecl_field_i = 1) ? cap_int : _rec2.acc1)
+    rec2.acc2 = (is_first_tick ? 0 : (recdecl_acc_cap ∧ rec_slot = 2 ∧ _recdecl_field_i = 2) ? cap_int : _rec2.acc2)
+    rec2.acc3 = (is_first_tick ? 0 : (recdecl_acc_cap ∧ rec_slot = 2 ∧ _recdecl_field_i = 3) ? cap_int : _rec2.acc3)
+    rec2.acc4 = (is_first_tick ? 0 : (recdecl_acc_cap ∧ rec_slot = 2 ∧ _recdecl_field_i = 4) ? cap_int : _rec2.acc4)
+    rec2.acc5 = (is_first_tick ? 0 : (recdecl_acc_cap ∧ rec_slot = 2 ∧ _recdecl_field_i = 5) ? cap_int : _rec2.acc5)
 
     recdecl_fnames_p ∈ Int = z_arena + 288
     recdecl_fsorts_p ∈ Int = z_arena + 336
@@ -254,7 +254,7 @@ fsm DriverRecord
     RtRecName(s ↦ rec_cur_fnames, i ↦ recdecl_eff_fi, name ↦ recdecl_fname)
     recdecl_h_fields_now ∈ Seq(Int)
     #recdecl_h_fields_now ≤ 6
-    ∀ k ∈ {0..5} : recdecl_h_fields_now[k] = ((recdecl_cap ∧ _recdecl_st = 1 ∧ _recdecl_field_i = k) ? d_cap_int : _recdecl_h_fields[k])
+    ∀ k ∈ {0..5} : recdecl_h_fields_now[k] = ((recdecl_cap ∧ _recdecl_st = 1 ∧ _recdecl_field_i = k) ? cap_int : _recdecl_h_fields[k])
     recdecl_ty0 ∈ String
     RtRecName(s ↦ rec_cur_ftypes, i ↦ 0, name ↦ recdecl_ty0)
     recdecl_ty1 ∈ String

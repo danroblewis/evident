@@ -21,7 +21,7 @@
 -- A string-carrying token finishing at tick T emits
 -- `LibCall("libc","strdup",⟨ArgStr(s)⟩)` as effects[0] of tick T; the
 -- pointer arrives in tick T+1's last_results[0] and is written into
--- the entry's slot 1 by a write_long emitted at T+1 (`pend` carries
+-- the entry's slot 1 by a write_long emitted at T+1 (`capture_pend` carries
 -- the slot-1 address across the tick; -1 = nothing pending). The
 -- lexer's branch structure guarantees two string-carrying tokens
 -- never finish on consecutive ticks, so a strdup tick never
@@ -37,9 +37,9 @@
 -- is fi_only, so `10x` → IntLit(10) + Ident("x")), and strlit escapes
 -- (\t \n \" \\) append the TRANSLATED byte, so str0's strdup payload
 -- carries the real byte. The host also:
---   · carries count/last_tag/prev_tag/pend as Int state, assigning
+--   · carries count/last_tag/prev_tag/capture_pend as Int state, assigning
 --     count ← count_n, last_tag ← last_n, prev_tag ← prev_n,
---     pend ← (kind = 3 ∨ kind = 5 ? a_p0 : -1);
+--     capture_pend ← (kind = 3 ∨ kind = 5 ? a_p0 : -1);
 --   · assembles effects from `kind` (w(a,v) = __mem.write_long):
 --       0  no token       —             (pending write / filler only)
 --       1  one nullary    ⟨w(a_tag0,tag0)⟩
@@ -48,7 +48,7 @@
 --       4  keyword + op   ⟨w(a_tag0,tag0), w(a_tag1,tag1)⟩
 --       5  ident + op     ⟨strdup(str0), w(a_tag0,tag0), w(a_tag1,tag1)⟩
 --       6  IntLit + op    ⟨w(a_tag0,tag0), w(a_p0,p0), w(a_tag1,tag1)⟩
---     prepending ⟨w(pend, last_results[0])⟩ when pend ≥ 0 (only
+--     prepending ⟨w(capture_pend, last_results[0])⟩ when capture_pend ≥ 0 (only
 --     possible alongside kinds 0 and 1);
 --   · on the lex_done tick writes the EofTok sentinel
 --     w(base + count*32, 13) — NOT counted in tokens_count — and

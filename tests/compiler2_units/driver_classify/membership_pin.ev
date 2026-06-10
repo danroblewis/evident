@@ -62,10 +62,10 @@ fsm main
         sort ↦ 0, ctor ↦ 0, asort ↦ 0, ssort ↦ 0,
         acc0 ↦ 0, acc1 ↦ 0, acc2 ↦ 0, acc3 ↦ 0, acc4 ↦ 0, acc5 ↦ 0)
     -- user-enum + seq-var carries (no user enum, no registered seq).
-    ue_done ∈ Bool
-    ue_done = (is_first_tick ? false : _ue_done)
-    ue_name ∈ String
-    ue_name = (is_first_tick ? "" : _ue_name)
+    user_enum_done ∈ Bool
+    user_enum_done = (is_first_tick ? false : _user_enum_done)
+    user_enum_name ∈ String
+    user_enum_name = (is_first_tick ? "" : _user_enum_name)
     seqvar_set ∈ Bool
     seqvar_set = (is_first_tick ? false : _seqvar_set)
     seqvar_name ∈ String

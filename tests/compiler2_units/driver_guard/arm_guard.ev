@@ -1,5 +1,5 @@
 -- DriverGuard isolation — guard arms when the jump fires: drive the
--- composition jump-fire condition (in_parse, pmode 10, callw_st 4, witems
+-- composition jump-fire condition (in_parse, parse_mode 10, callw_st 4, work_items
 -- nil) with inline-frame-top guard handle h_top = 99 and no
 -- reset/unguard; the splice phase must latch guard_handle ← 99 on the fire tick.
 -- entry: main
@@ -15,8 +15,8 @@ import "compiler2/driver_guard.ev"
 fsm main
     in_parse ∈ Bool
     in_parse = (is_first_tick ? true : _in_parse)
-    pmode ∈ Int
-    pmode = (is_first_tick ? 10 : _pmode)
+    parse_mode ∈ Int
+    parse_mode = (is_first_tick ? 10 : _parse_mode)
     callw_st ∈ Int
     callw_st = (is_first_tick ? 4 : _callw_st)
     work_nil ∈ Bool

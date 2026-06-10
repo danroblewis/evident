@@ -99,7 +99,7 @@ type EnumVariantVal(name ∈ String, value ∈ Int)
 -- One row of the user-enum DECL registry: variant name, ctor func_decl,
 -- tester decl, field-0 accessor decl. `user_variants ∈ Seq(UserEnumVariant)`,
 -- lowered by the bounded-Seq pass; rows are written by INDEX (the ED
--- machine's _enum_vidx / acc-pend walk), so the registry has no length.
+-- machine's _enum_vidx / acc-capture_pend walk), so the registry has no length.
 type UserEnumVariant(name ∈ String, ctor ∈ Int, tester ∈ Int, acc ∈ Int)
 
 -- One row of the Set(T)-variable registry: var name, the element type's

@@ -1,9 +1,9 @@
 -- MODULE DriverEnum
 -- CONSUMES: the ZINIT start gate (zstep parked at 9), the Z3 base-sort
 --           handles (z3sorts.isort/z3sorts.bsort/z3sorts.ssort/z3sorts.rsort) + the int-result-1
---           value res_int1, d_cap_int (last libc capture), and the user-enum
+--           value res_int1, cap_int (last libc capture), and the user-enum
 --           collection signals from the parse dispatcher (enum_start,
---           variant_list_now, _ue_name, _enum_is_user).
+--           variant_list_now, _user_enum_name, _enum_is_user).
 -- PRODUCES: the Effect-floor + user-enum datatype machine's outputs — the
 --           sort registers (libarg_sort/seqarg_sort/z_effect_sort/z_result_sort/user_enum_sort),
 --           the floor ctor/tester/accessor decls (z_exit_decl/z_libcall_decl/
@@ -36,7 +36,7 @@ fsm DriverEnum
     -- harvests each variant's ctor func_decl + (nullary) value.
     -- It runs FIVE times: four ZINIT floor runs (enum_src 0 LibArg,
     -- 1 __SeqOf_LibArg, 2 Effect, 3 Result — zstep holds at 9) and
-    -- once per USER enum at parse time (pmode 4, enum_is_user). The
+    -- once per USER enum at parse time (parse_mode 4, enum_is_user). The
     -- Result run (D3) additionally harvests the IntResult /
     -- StringResult tester + accessor decls (acts 3 steps 3-4 read
     -- qout+8 / qout+16 instead of fillers).
@@ -115,7 +115,7 @@ fsm DriverEnum
         : _enum_src = 1 ? seqarg_variants
         : _enum_src = 2 ? effect_variants
         : result_variants)
-    enum_go_name ∈ String = (enum_start ? _ue_name
+    enum_go_name ∈ String = (enum_start ? _user_enum_name
         : _enum_src = 0 ? "LibArg"
         : _enum_src = 1 ? "__SeqOf_LibArg"
         : _enum_src = 2 ? "Effect"
@@ -229,17 +229,17 @@ fsm DriverEnum
         : _enum_n_variants)
 
     enum_h_name = (is_first_tick ? 0
-        : (_enum_act = 1 ∧ _enum_step = 0) ? d_cap_int
-        : (_enum_act = 2 ∧ _enum_step = 0) ? d_cap_int
+        : (_enum_act = 1 ∧ _enum_step = 0) ? cap_int
+        : (_enum_act = 2 ∧ _enum_step = 0) ? cap_int
         : _enum_h_name)
     enum_h_recog = (is_first_tick ? 0
-        : (_enum_act = 1 ∧ _enum_step = 1) ? d_cap_int : _enum_h_recog)
+        : (_enum_act = 1 ∧ _enum_step = 1) ? cap_int : _enum_h_recog)
     enum_h_field0 = (is_first_tick ? 0
-        : (_enum_act = 1 ∧ _enum_step = 2) ? d_cap_int : _enum_h_field0)
+        : (_enum_act = 1 ∧ _enum_step = 2) ? cap_int : _enum_h_field0)
     enum_h_field1 = (is_first_tick ? 0
-        : (_enum_act = 1 ∧ _enum_step = 3) ? d_cap_int : _enum_h_field1)
+        : (_enum_act = 1 ∧ _enum_step = 3) ? cap_int : _enum_h_field1)
     enum_h_field2 = (is_first_tick ? 0
-        : (_enum_act = 1 ∧ _enum_step = 4) ? d_cap_int : _enum_h_field2)
+        : (_enum_act = 1 ∧ _enum_step = 4) ? cap_int : _enum_h_field2)
 
     libarg_sort ∈ Int
     seqarg_sort ∈ Int
@@ -248,36 +248,36 @@ fsm DriverEnum
     user_enum_sort ∈ Int
     enum_sort_cap ∈ Bool = (_enum_act = 2 ∧ _enum_step = 4)
     libarg_sort = (is_first_tick ? 0
-        : (enum_sort_cap ∧ (¬_enum_is_user) ∧ _enum_src = 0) ? d_cap_int : _libarg_sort)
+        : (enum_sort_cap ∧ (¬_enum_is_user) ∧ _enum_src = 0) ? cap_int : _libarg_sort)
     seqarg_sort = (is_first_tick ? 0
-        : (enum_sort_cap ∧ (¬_enum_is_user) ∧ _enum_src = 1) ? d_cap_int : _seqarg_sort)
+        : (enum_sort_cap ∧ (¬_enum_is_user) ∧ _enum_src = 1) ? cap_int : _seqarg_sort)
     z_effect_sort = (is_first_tick ? 0
-        : (enum_sort_cap ∧ (¬_enum_is_user) ∧ _enum_src = 2) ? d_cap_int : _z_effect_sort)
+        : (enum_sort_cap ∧ (¬_enum_is_user) ∧ _enum_src = 2) ? cap_int : _z_effect_sort)
     z_result_sort = (is_first_tick ? 0
-        : (enum_sort_cap ∧ (¬_enum_is_user) ∧ _enum_src = 3) ? d_cap_int : _z_result_sort)
+        : (enum_sort_cap ∧ (¬_enum_is_user) ∧ _enum_src = 3) ? cap_int : _z_result_sort)
     user_enum_sort = (is_first_tick ? 0
-        : (enum_sort_cap ∧ _enum_is_user) ? d_cap_int : _user_enum_sort)
+        : (enum_sort_cap ∧ _enum_is_user) ? cap_int : _user_enum_sort)
 
     enum_decl_cap ∈ Bool = (_enum_act = 3 ∧ _enum_step = 2)
     z_exit_decl ∈ Int
     z_exit_decl = (is_first_tick ? 0
-        : (enum_decl_cap ∧ enum_vname = "Exit") ? d_cap_int : _z_exit_decl)
+        : (enum_decl_cap ∧ enum_vname = "Exit") ? cap_int : _z_exit_decl)
     z_libcall_decl ∈ Int
     z_libcall_decl = (is_first_tick ? 0
-        : (enum_decl_cap ∧ enum_vname = "LibCall") ? d_cap_int : _z_libcall_decl)
+        : (enum_decl_cap ∧ enum_vname = "LibCall") ? cap_int : _z_libcall_decl)
     z_argstr_decl ∈ Int
     z_argstr_decl = (is_first_tick ? 0
-        : (enum_decl_cap ∧ enum_vname = "ArgStr") ? d_cap_int : _z_argstr_decl)
+        : (enum_decl_cap ∧ enum_vname = "ArgStr") ? cap_int : _z_argstr_decl)
     z_argint_decl ∈ Int
     z_argint_decl = (is_first_tick ? 0
-        : (enum_decl_cap ∧ enum_vname = "ArgInt") ? d_cap_int : _z_argint_decl)
+        : (enum_decl_cap ∧ enum_vname = "ArgInt") ? cap_int : _z_argint_decl)
     z_cell_decl ∈ Int
     z_cell_decl = (is_first_tick ? 0
-        : (enum_decl_cap ∧ enum_vname = "__Cell_LibArg") ? d_cap_int : _z_cell_decl)
+        : (enum_decl_cap ∧ enum_vname = "__Cell_LibArg") ? cap_int : _z_cell_decl)
     enum_val_cap ∈ Bool = (_enum_act = 3 ∧ _enum_step = 3 ∧ enum_nullary)
     z_empty_val ∈ Int
     z_empty_val = (is_first_tick ? 0
-        : (enum_val_cap ∧ enum_vname = "__Empty_LibArg") ? d_cap_int : _z_empty_val)
+        : (enum_val_cap ∧ enum_vname = "__Empty_LibArg") ? cap_int : _z_empty_val)
 
     -- Result-floor tester + accessor decls (D3). During the Result
     -- run (enum_src 3) a payload variant's act-3 steps 3/4 read the
@@ -293,11 +293,11 @@ fsm DriverEnum
     z_intres_test ∈ Int
     z_intres_test = (is_first_tick ? 0
         : (_enum_act = 3 ∧ _enum_step = 3 ∧ result_run ∧ enum_vname = "IntResult")
-            ? d_cap_int : _z_intres_test)
+            ? cap_int : _z_intres_test)
     z_strres_test ∈ Int
     z_strres_test = (is_first_tick ? 0
         : (_enum_act = 3 ∧ _enum_step = 3 ∧ result_run ∧ enum_vname = "StringResult")
-            ? d_cap_int : _z_strres_test)
+            ? cap_int : _z_strres_test)
     result_acc_pend ∈ Int
     result_acc_pend = (is_first_tick ? 0
         : (enum_act_now = 3 ∧ enum_step_now = 4 ∧ result_harvest)
@@ -307,17 +307,17 @@ fsm DriverEnum
         : 0)
     z_intres_acc ∈ Int
     z_intres_acc = (is_first_tick ? 0
-        : (_enum_act = 3 ∧ _enum_step = 4 ∧ _result_acc_pend = 1) ? d_cap_int
+        : (_enum_act = 3 ∧ _enum_step = 4 ∧ _result_acc_pend = 1) ? cap_int
         : _z_intres_acc)
     z_strres_acc ∈ Int
     z_strres_acc = (is_first_tick ? 0
-        : (_enum_act = 3 ∧ _enum_step = 4 ∧ _result_acc_pend = 2) ? d_cap_int
+        : (_enum_act = 3 ∧ _enum_step = 4 ∧ _result_acc_pend = 2) ? cap_int
         : _z_strres_acc)
 
     enum_values ∈ Seq(EnumVariantVal)
     #enum_values ≤ 6
     enum_values_add ∈ Bool = (enum_val_cap ∧ _enum_is_user)
-    enum_values = (is_first_tick ? ⟨⟩ : enum_values_add ? _enum_values ++ ⟨EnumVariantVal(enum_vname, d_cap_int)⟩ : _enum_values)
+    enum_values = (is_first_tick ? ⟨⟩ : enum_values_add ? _enum_values ++ ⟨EnumVariantVal(enum_vname, cap_int)⟩ : _enum_values)
 
     -- User-enum variant DECL registry (C3/C4): per variant (indexed
     -- by enum_vidx — the harvest visits variants in declaration
@@ -329,15 +329,15 @@ fsm DriverEnum
     -- batch, lr[0] of the payload variant's single rdtest.
     variant_cap_decl ∈ Bool = (_enum_act = 3 ∧ _enum_step = 2 ∧ _enum_is_user)
     variant_cap_tester ∈ Bool = (_enum_act = 3 ∧ _enum_step = 3 ∧ _enum_is_user)
-    variant_tester_val ∈ Int = (enum_nullary ? res_int1 : d_cap_int)
+    variant_tester_val ∈ Int = (enum_nullary ? res_int1 : cap_int)
     user_variants ∈ Seq(UserEnumVariant)
     #user_variants ≤ 6
     ∀ k ∈ {0..5} : user_variants[k].name = (is_first_tick ? "" : (variant_cap_decl ∧ _enum_vidx = k) ? enum_vname : _user_variants[k].name)
-    ∀ k ∈ {0..5} : user_variants[k].ctor = (is_first_tick ? 0 : (variant_cap_decl ∧ _enum_vidx = k) ? d_cap_int : _user_variants[k].ctor)
+    ∀ k ∈ {0..5} : user_variants[k].ctor = (is_first_tick ? 0 : (variant_cap_decl ∧ _enum_vidx = k) ? cap_int : _user_variants[k].ctor)
     ∀ k ∈ {0..5} : user_variants[k].tester = (is_first_tick ? 0 : (variant_cap_tester ∧ _enum_vidx = k) ? variant_tester_val : _user_variants[k].tester)
 
     -- C5: user-variant field-0 ACCESSOR decls (match-pin payload
-    -- binds over USER ctors). Same pend dance as the Result floor:
+    -- binds over USER ctors). Same capture_pend dance as the Result floor:
     -- the rdacc emitted on the step-4 (advance) tick lands AFTER the
     -- variant walk moved on, so variant_acc_pend carries vidx + 1.
     variant_acc_pend ∈ Int
@@ -346,4 +346,4 @@ fsm DriverEnum
             ? _enum_vidx + 1
         : 0)
     variant_cap_acc ∈ Bool = (_enum_act = 3 ∧ _enum_step = 4 ∧ _variant_acc_pend > 0)
-    ∀ k ∈ {0..5} : user_variants[k].acc = (is_first_tick ? 0 : (variant_cap_acc ∧ _variant_acc_pend = k + 1) ? d_cap_int : _user_variants[k].acc)
+    ∀ k ∈ {0..5} : user_variants[k].acc = (is_first_tick ? 0 : (variant_cap_acc ∧ _variant_acc_pend = k + 1) ? cap_int : _user_variants[k].acc)

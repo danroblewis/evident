@@ -1,5 +1,5 @@
 -- DriverPratt isolation — entry-kind latch.
--- pmode-3 Pratt entry with enter_pratt held and pratt_enter_kind = 5: the
+-- parse_mode-3 Pratt entry with enter_pratt held and pratt_enter_kind = 5: the
 -- module must latch pratt_kind = 5 (which consumer the result returns to).
 -- Full shift/reduce needs a fed token window; this is entry wiring only.
 --
@@ -16,8 +16,8 @@ import "compiler2/driver_pratt.ev"
 fsm main
     in_parse ∈ Bool
     in_parse = (is_first_tick ? true : _in_parse)
-    pmode ∈ Int
-    pmode = (is_first_tick ? 3 : _pmode)
+    parse_mode ∈ Int
+    parse_mode = (is_first_tick ? 3 : _parse_mode)
     tok_ready ∈ Bool
     tok_ready = (is_first_tick ? true : _tok_ready)
     enter_pratt ∈ Bool

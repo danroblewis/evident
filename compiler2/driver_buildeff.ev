@@ -3,7 +3,7 @@
 --           sorts/consts from DriverZInit), the enum-decl machine's
 --           per-step state (enum_variant, enum_act_now/enum_step_now, the ed_h_*/
 --           ed_slot*/refs_packed01 field captures, the arena base z_arena),
---           and d_cap_int.
+--           and cap_int.
 -- PRODUCES: the pure per-step Z3 effect constructors selected by the
 --           effects schedule: (a) the enum-datatype declaration bank
 --           (ede_*/edw_* + the enum_step_eff/enum_wbatch5/enum_wbatch2/enum_wbatch3u selectors that
@@ -28,9 +28,9 @@ fsm DriverBuildEff
     enum_clists_p ∈ Int = z_arena + 144
     enum_query_p ∈ Int = z_arena + 152
 
-    enum_fsym0_now ∈ Int = (_enum_step = 2 ? d_cap_int : _enum_h_field0)
-    enum_fsym1_now ∈ Int = (_enum_step = 3 ? d_cap_int : _enum_h_field1)
-    enum_fsym2_now ∈ Int = (_enum_step = 4 ? d_cap_int : _enum_h_field2)
+    enum_fsym0_now ∈ Int = (_enum_step = 2 ? cap_int : _enum_h_field0)
+    enum_fsym1_now ∈ Int = (_enum_step = 3 ? cap_int : _enum_h_field1)
+    enum_fsym2_now ∈ Int = (_enum_step = 4 ? cap_int : _enum_h_field2)
     enum_namesym ∈ Effect
     VariantNameSymStep(ctx_h ↦ z3ctx.ctx, v ↦ enum_variant, eff ↦ enum_namesym)
     enum_recogsym ∈ Effect
@@ -63,7 +63,7 @@ fsm DriverBuildEff
         fnames_p ↦ enum_fnames_p, fsorts_p ↦ enum_fsorts_p, srefs_p ↦ enum_srefs_p,
         eff ↦ enum_mk_ctor)
     enum_write_ctor ∈ Effect
-    BuildMemWriteLong(addr ↦ enum_ctors_p + (8 * _enum_vidx), value ↦ d_cap_int,
+    BuildMemWriteLong(addr ↦ enum_ctors_p + (8 * _enum_vidx), value ↦ cap_int,
         eff ↦ enum_write_ctor)
     enum_sortsym_decl ∈ EnumDeclAst = EnumD(_enum_decl_name, EVNil)
     enum_sortsym ∈ Effect
@@ -74,7 +74,7 @@ fsm DriverBuildEff
     enum_write_name ∈ Effect
     BuildMemWriteLong(addr ↦ enum_sortnames_p, value ↦ enum_h_name, eff ↦ enum_write_name)
     enum_write_clist ∈ Effect
-    BuildMemWriteLong(addr ↦ enum_clists_p, value ↦ d_cap_int, eff ↦ enum_write_clist)
+    BuildMemWriteLong(addr ↦ enum_clists_p, value ↦ cap_int, eff ↦ enum_write_clist)
     enum_mk_datatype ∈ Effect
     BuildZ3MkDatatypes(ctx_h ↦ z3ctx.ctx, n_sorts ↦ 1,
         sort_names_arr_p ↦ enum_sortnames_p, sorts_out_arr_p ↦ enum_sortsout_p,
@@ -84,12 +84,12 @@ fsm DriverBuildEff
     enum_read_ctor ∈ Effect
     BuildMemReadLong(addr ↦ enum_ctors_p + (8 * _enum_vidx), eff ↦ enum_read_ctor)
     enum_query ∈ Effect
-    VariantQueryStep(ctx_h ↦ z3ctx.ctx, ctor_h ↦ d_cap_int, v ↦ enum_variant,
+    VariantQueryStep(ctx_h ↦ z3ctx.ctx, ctor_h ↦ cap_int, v ↦ enum_variant,
         out_base_p ↦ enum_query_p, eff ↦ enum_query)
     enum_read_decl ∈ Effect
     BuildMemReadLong(addr ↦ enum_query_p, eff ↦ enum_read_decl)
     enum_app0 ∈ Effect
-    CtorAppStep(ctx_h ↦ z3ctx.ctx, ctor_decl_h ↦ d_cap_int, n_args ↦ 0,
+    CtorAppStep(ctx_h ↦ z3ctx.ctx, ctor_decl_h ↦ cap_int, n_args ↦ 0,
         args_p ↦ 0, eff ↦ enum_app0)
     enum_read_tester ∈ Effect
     BuildMemReadLong(addr ↦ enum_query_p + 8, eff ↦ enum_read_tester)
@@ -193,7 +193,7 @@ fsm DriverBuildEff
     zinit_lastres_ge ∈ Effect
     zinit_lastres_ge_ok ∈ Bool
     zinit_lastres_ge_nn ∈ Bool
-    BoolCmpBuildZ3(ctx_h ↦ z3ctx.ctx, op ↦ d_op_geq, l_h ↦ z_lastres_len,
+    BoolCmpBuildZ3(ctx_h ↦ z3ctx.ctx, op ↦ op_geq, l_h ↦ z_lastres_len,
         r_h ↦ z3nums.zero, eff ↦ zinit_lastres_ge, ok ↦ zinit_lastres_ge_ok, needs_not ↦ zinit_lastres_ge_nn)
     zinit_lastres_assert ∈ Effect
     BuildZ3SolverAssert(ctx_h ↦ z3ctx.ctx, solver_h ↦ z3ctx.sol, ast_h ↦ z_lastres_ge,
@@ -212,7 +212,7 @@ fsm DriverBuildEff
     zinit_efflen_ge ∈ Effect
     zinit_efflen_ge_ok ∈ Bool
     zinit_efflen_ge_nn ∈ Bool
-    BoolCmpBuildZ3(ctx_h ↦ z3ctx.ctx, op ↦ d_op_geq, l_h ↦ z_efflen,
+    BoolCmpBuildZ3(ctx_h ↦ z3ctx.ctx, op ↦ op_geq, l_h ↦ z_efflen,
         r_h ↦ z3nums.zero, eff ↦ zinit_efflen_ge, ok ↦ zinit_efflen_ge_ok, needs_not ↦ zinit_efflen_ge_nn)
     zinit_efflen_assert ∈ Effect
     BuildZ3SolverAssert(ctx_h ↦ z3ctx.ctx, solver_h ↦ z3ctx.sol, ast_h ↦ z_efflen_ge,

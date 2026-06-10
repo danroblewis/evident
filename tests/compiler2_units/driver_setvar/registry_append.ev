@@ -52,8 +52,8 @@ fsm main
     line_ty_name = (is_first_tick ? "" : _line_ty_name)
     enter_seqlit ∈ Bool
     enter_seqlit = (is_first_tick ? false : _enter_seqlit)
-    d_in_skip ∈ Bool
-    d_in_skip = (is_first_tick ? false : _d_in_skip)
+    in_skip ∈ Bool
+    in_skip = (is_first_tick ? false : _in_skip)
     work_nil ∈ Bool
     work_nil = (is_first_tick ? false : _work_nil)
     scope_prefix ∈ String
@@ -66,8 +66,8 @@ fsm main
     pratt_done = (is_first_tick ? false : _pratt_done)
     pratt_kind ∈ Int
     pratt_kind = (is_first_tick ? 0 : _pratt_kind)
-    pmode ∈ Int
-    pmode = (is_first_tick ? 0 : _pmode)
+    parse_mode ∈ Int
+    parse_mode = (is_first_tick ? 0 : _parse_mode)
     pratt_bad ∈ Bool
     pratt_bad = (is_first_tick ? false : _pratt_bad)
     pratt_result ∈ Expr

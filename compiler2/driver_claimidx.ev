@@ -1,15 +1,15 @@
 -- MODULE DriverClaimIdx
--- CONSUMES: the skip-pass entry (d_enter_skip) + the window head views
---           (tok0..tok6), the claim head shape (d_head_is_claim,
---           d_cl_name), the parse gate (in_parse, _pmode, tok_ready,
---           work_nil), the pmode-4 enum-collection signals
---           (d_enter_edecl, enum_act, enum_done_user, ue_name) + floor decl
+-- CONSUMES: the skip-pass entry (enter_skip) + the window head views
+--           (tok0..tok6), the claim head shape (head_is_claim,
+--           decl_name), the parse gate (in_parse, _parse_mode, tok_ready,
+--           work_nil), the parse_mode-4 enum-collection signals
+--           (enter_enum_decl, enum_act, enum_done_user, user_enum_name) + floor decl
 --           handles (z_*_decl/z_empty_val), the Pratt result (pratt_done,
 --           pratt_bad, pratt_kind), and the claim-index buffer base (ci_base).
 -- PRODUCES: the claim/type index (ci_cnt, claimidx_names) + its per-skip append
---           effect (eff_claimidx_write), the pmode-4 user-enum variant collection
+--           effect (eff_claimidx_write), the parse_mode-4 user-enum variant collection
 --           (variant_take/enum_start/variant_decl/variant_list/variant_list_now + the variant shape
---           classifiers ec_*), and the pmode-5 effects-literal / D2
+--           classifiers ec_*), and the parse_mode-5 effects-literal / D2
 --           conditional-chain element walk dispatch.
 -- MAINTAINS: ci_cnt < 2048 (an index past the buffer end is UNSAT, not a
 --           native overrun); one claim recorded per skip-entry tick in
@@ -37,11 +37,11 @@ fsm DriverClaimIdx
     -- model refuses it) rather than a native overrun.
     claimidx_buf.count < 2048
     claimidx_names ∈ String
-    claimidx_add ∈ Bool = (d_enter_skip
-        ∧ (d_head_is_claim ∨ (tok0 matches KwType))
+    claimidx_add ∈ Bool = (enter_skip
+        ∧ (head_is_claim ∨ (tok0 matches KwType))
         ∧ (tok1 matches Ident(_)))
     claimidx_entry ∈ String
-    FtiNameEntry(name ↦ d_cl_name, entry ↦ claimidx_entry)
+    FtiNameEntry(name ↦ decl_name, entry ↦ claimidx_entry)
     FtiNamedAppend(first ↦ is_first_tick, add ↦ claimidx_add,
         prev_count ↦ _claimidx_buf.count, prev_names ↦ _claimidx_names,
         init_count ↦ 0, seed_names ↦ "", entry ↦ claimidx_entry,
@@ -50,14 +50,14 @@ fsm DriverClaimIdx
     BuildMemWriteLong(addr ↦ claimidx_buf.base + (8 * _claimidx_buf.count), value ↦ _tok_cur + 2,
         eff ↦ eff_claimidx_write)
 
-    -- pmode 4 collection: one variant per tick — `Vname [|]` or a
+    -- parse_mode 4 collection: one variant per tick — `Vname [|]` or a
     -- PAYLOADED `Vname ( Ty [, Ty] ) [|]` (C3; up to TWO fields of
     -- Int/Bool/String/Real/self — a third field would need a
     -- 9-token lookahead past the 8-token window; an unknown field
     -- type would mis-resolve to sort 0). Prepend-accumulated (the
     -- declared variant order is REVERSED vs source — harmless:
     -- declaration and harvest peel the same list).
-    variant_walk_on ∈ Bool = (in_parse ∧ (_pmode = 4) ∧ (_enum_act = 0)
+    variant_walk_on ∈ Bool = (in_parse ∧ (_parse_mode = 4) ∧ (_enum_act = 0)
         ∧ (¬enum_done_user) ∧ tok_ready)
     variant_name ∈ String = match tok0
         Ident(s) ⇒ s
@@ -72,9 +72,9 @@ fsm DriverClaimIdx
         Ident(s) ⇒ s
         _ ⇒ ""
     variant_ty0_ok ∈ Bool = (variant_ty0 = "Int" ∨ variant_ty0 = "Bool"
-        ∨ variant_ty0 = "String" ∨ variant_ty0 = "Real" ∨ variant_ty0 = _ue_name)
+        ∨ variant_ty0 = "String" ∨ variant_ty0 = "Real" ∨ variant_ty0 = _user_enum_name)
     variant_ty1_ok ∈ Bool = (variant_ty1 = "Int" ∨ variant_ty1 = "Bool"
-        ∨ variant_ty1 = "String" ∨ variant_ty1 = "Real" ∨ variant_ty1 = _ue_name)
+        ∨ variant_ty1 = "String" ∨ variant_ty1 = "Real" ∨ variant_ty1 = _user_enum_name)
     variant_pay1 ∈ Bool = (variant_payload ∧ (tok2 matches Ident(_)) ∧ variant_ty0_ok
         ∧ (tok3 matches RParen))
     variant_pay2 ∈ Bool = (variant_payload ∧ (tok2 matches Ident(_)) ∧ variant_ty0_ok
@@ -101,7 +101,7 @@ fsm DriverClaimIdx
     variant_list_now ∈ EnumVariantList = (variant_take
         ? EVCons(variant_decl, _variant_list) : _variant_list)
     variant_list = (is_first_tick ? EVNil
-        : d_enter_edecl ? EVNil
+        : enter_enum_decl ? EVNil
         : variant_take ? variant_list_now
         : _variant_list)
 
@@ -114,7 +114,7 @@ fsm DriverClaimIdx
     chain_pdepth ∈ Int
     chain_n ∈ Int
 
-    in_efflit ∈ Bool = (in_parse ∧ (_pmode = 5) ∧ work_nil ∧ tok_ready)
+    in_efflit ∈ Bool = (in_parse ∧ (_parse_mode = 5) ∧ work_nil ∧ tok_ready)
     efflit_t2_str ∈ String = match tok2
         StringLit(s) ⇒ s
         _ ⇒ ""

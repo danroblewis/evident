@@ -1,9 +1,9 @@
 -- MODULE DriverPratt
--- CONSUMES: the parse gate (in_parse, _pmode, tok_ready), the decoded
+-- CONSUMES: the parse gate (in_parse, _parse_mode, tok_ready), the decoded
 --           window (tok0.. via the shared views), the Pratt-entry cons/
 --           kind (pratt_enter_consume/pratt_enter_kind) + the qstop flag, and its
 --           own carried Pratt stack/cursor.
--- PRODUCES: the pmode-3 Pratt expression-parser state (pk_st/pratt_kind/
+-- PRODUCES: the parse_mode-3 Pratt expression-parser state (pk_st/pratt_kind/
 --           pratt_decl_name/pratt_rec_slot/pratt_sort/pratt_pin_name/pratt_nat/pratt_nodecl + pratt_result/pratt_bad/
 --           pratt_done), driving one shift/reduce micro-step per tick via
 --           C2PrattStep and yielding the parsed Expr (pratt_result) on pratt_done.
@@ -11,11 +11,11 @@
 --           element/guard/arm/slot/seq/quantifier/positional); the result
 --           handle/Expr lands on pratt_done for the consumer that entered it.
 --
--- The pmode-3 Pratt FSM (expression parser). Lifted into driver_main via
+-- The parse_mode-3 Pratt FSM (expression parser). Lifted into driver_main via
 -- `..DriverPratt`.
 fsm DriverPratt
-    -- ── PRATT FSM state (pmode 3; reads the shared window) ────────
-    in_pratt ∈ Bool = (in_parse ∧ (_pmode = 3) ∧ tok_ready)
+    -- ── PRATT FSM state (parse_mode 3; reads the shared window) ────────
+    in_pratt ∈ Bool = (in_parse ∧ (_parse_mode = 3) ∧ tok_ready)
 
     pratt_out ∈ ExprList
     pratt_ops ∈ PrOps

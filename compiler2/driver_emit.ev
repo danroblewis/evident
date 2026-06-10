@@ -1,16 +1,16 @@
 -- MODULE DriverEmit
--- CONSUMES: the all-done signal (d_all_done) + per-tick captures
---           (d_cap_int/d_cap_str), the Z3 solver handles (z3ctx.ctx/z3ctx.sol),
---           the rendered-unit inputs (_fstr manifest fields, _saw_lastres/
---           _saw_first_tick prelude gates, cdstr carry declares), and the arena
+-- CONSUMES: the all-done signal (parse_done) + per-tick captures
+--           (cap_int/cap_str), the Z3 solver handles (z3ctx.ctx/z3ctx.sol),
+--           the rendered-unit inputs (_manifest_fields manifest fields, _saw_lastres/
+--           _saw_first_tick prelude gates, carry_decls carry declares), and the arena
 --           buffer bases (tbase/st_base/ci_base).
--- PRODUCES: the EMIT program counter (estep) + its captures (sptr/
---           rendered), the translation-unit string (d_manifest/
---           d_prelude/d_unit), and the emit effects (e_s2s/e_copy/
---           e_puts/e_free_*) the driver_main effects schedule selects
---           once estep ≥ 0.
--- MAINTAINS: estep runs −1→0→…→5 once d_all_done — walking solver-to-
---           string (estep 0) → cstr-copy of the rendered unit (1) →
+-- PRODUCES: the EMIT program counter (emit_step) + its captures (unit_ptr/
+--           rendered), the translation-unit string (manifest_txt/
+--           prelude_txt/unit_txt), and the emit effects (eff_solver_str/eff_copy_unit/
+--           eff_print_unit/e_free_*) the driver_main effects schedule selects
+--           once emit_step ≥ 0.
+-- MAINTAINS: emit_step runs −1→0→…→5 once parse_done — walking solver-to-
+--           string (emit_step 0) → cstr-copy of the rendered unit (1) →
 --           render capture (2) → free buffers + puts + Exit(0) (≥2).
 --
 -- The EMIT rendering phase: serialize the solver, assemble the manifest+
@@ -23,35 +23,35 @@
 -- driver_main via `..DriverEmit`.
 fsm DriverEmit
     -- ── EMIT ──────────────────────────────────────────────────────
-    estep  ∈ Int
-    estep = (is_first_tick ? 0 - 1
-        : _estep ≥ 0 ? (_estep < 5 ? _estep + 1 : _estep)
-        : d_all_done ? 0
+    emit_step  ∈ Int
+    emit_step = (is_first_tick ? 0 - 1
+        : _emit_step ≥ 0 ? (_emit_step < 5 ? _emit_step + 1 : _emit_step)
+        : parse_done ? 0
         : 0 - 1)
 
-    sptr  ∈ Int
-    sptr = (is_first_tick ? 0 : estep = 1 ? d_cap_int : _sptr)
+    unit_ptr  ∈ Int
+    unit_ptr = (is_first_tick ? 0 : emit_step = 1 ? cap_int : _unit_ptr)
     rendered  ∈ String
-    rendered = (is_first_tick ? "" : estep = 2 ? d_cap_str : _rendered)
+    rendered = (is_first_tick ? "" : emit_step = 2 ? cap_str : _rendered)
 
-    e_s2s ∈ Effect
-    BuildZ3SolverToString(ctx_h ↦ z3ctx.ctx, solver_h ↦ z3ctx.sol, eff ↦ e_s2s)
-    e_copy ∈ Effect
-    BuildCstrCopy(addr ↦ sptr, eff ↦ e_copy)
+    eff_solver_str ∈ Effect
+    BuildZ3SolverToString(ctx_h ↦ z3ctx.ctx, solver_h ↦ z3ctx.sol, eff ↦ eff_solver_str)
+    eff_copy_unit ∈ Effect
+    BuildCstrCopy(addr ↦ unit_ptr, eff ↦ eff_copy_unit)
 
-    d_manifest ∈ String = (";; manifest: state-fields = " ++ _fstr ++ "\n"
+    manifest_txt ∈ String = (";; manifest: state-fields = " ++ _manifest_fields ++ "\n"
         ++ ";; manifest: effects-name = effects\n"
         ++ ";; manifest: effect-enum-name = Effect\n"
         ++ ";; manifest: result-enum-name = Result\n"
         ++ ";; manifest: max-effects = 16")
-    d_prelude ∈ String = ((_saw_lastres ? ""
+    prelude_txt ∈ String = ((_saw_lastres ? ""
             : "(declare-datatypes ((Result 0)) (((NoResult) (IntResult (IntResult__f0 Int)) (StringResult (StringResult__f0 String)) (RealResult (RealResult__f0 Real)) (EofResult) (ErrorResult (ErrorResult__f0 String)))))\n"
               ++ "(declare-fun last_results () (Array Int Result))\n")
         ++ (_saw_first_tick ? "" : "(declare-fun is_first_tick () Bool)\n"))
-    d_unit ∈ String = d_manifest ++ "\n\n" ++ d_prelude ++ rendered ++ cdstr
+    unit_txt ∈ String = manifest_txt ++ "\n\n" ++ prelude_txt ++ rendered ++ carry_decls
 
-    e_puts ∈ Effect
-    BuildPrintln(s ↦ d_unit, eff ↦ e_puts)
-    e_free_tbuf ∈ Effect = LibCall("libc", "free", ⟨ArgInt(tok_buf.base)⟩)
-    e_free_sbuf ∈ Effect = LibCall("libc", "free", ⟨ArgInt(sym_buf.base)⟩)
-    e_free_cibuf ∈ Effect = LibCall("libc", "free", ⟨ArgInt(claimidx_buf.base)⟩)
+    eff_print_unit ∈ Effect
+    BuildPrintln(s ↦ unit_txt, eff ↦ eff_print_unit)
+    eff_free_tokbuf ∈ Effect = LibCall("libc", "free", ⟨ArgInt(tok_buf.base)⟩)
+    eff_free_symbuf ∈ Effect = LibCall("libc", "free", ⟨ArgInt(sym_buf.base)⟩)
+    eff_free_claimbuf ∈ Effect = LibCall("libc", "free", ⟨ArgInt(claimidx_buf.base)⟩)

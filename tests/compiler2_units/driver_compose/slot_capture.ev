@@ -1,5 +1,5 @@
 -- DriverCompose isolation — slot-call name capture through callw_st.
--- pmode-10 held, frame idle: tick 1, callw_cap advances callw_st 0→1; tick 2,
+-- parse_mode-10 held, frame idle: tick 1, callw_cap advances callw_st 0→1; tick 2,
 -- in_callw1 is live and the window head `p ↦` (Ident, OpMapsto) fires
 -- callw_slot, capturing slot_name_tok into slot_names[0].name (slot index 0). Must read "p".
 -- entry: main
@@ -15,8 +15,8 @@ import "compiler2/driver_record.ev"
 import "compiler2/driver_compose.ev"
 
 fsm main
-    pmode ∈ Int
-    pmode = (is_first_tick ? 10 : _pmode)
+    parse_mode ∈ Int
+    parse_mode = (is_first_tick ? 10 : _parse_mode)
     in_parse ∈ Bool
     in_parse = (is_first_tick ? true : _in_parse)
     work_nil ∈ Bool
@@ -50,12 +50,12 @@ fsm main
     claimidx_buf ∈ FtiBuffer
     claimidx_buf.base = (is_first_tick ? 0 : _claimidx_buf.base)
     claimidx_buf.count = (is_first_tick ? 0 : _claimidx_buf.count)
-    d_cap_int ∈ Int
-    d_cap_int = (is_first_tick ? 0 : _d_cap_int)
-    d_enter_claim ∈ Bool
-    d_enter_claim = (is_first_tick ? false : _d_enter_claim)
-    d_enter_claimp ∈ Bool
-    d_enter_claimp = (is_first_tick ? false : _d_enter_claimp)
+    cap_int ∈ Int
+    cap_int = (is_first_tick ? 0 : _cap_int)
+    enter_claim ∈ Bool
+    enter_claim = (is_first_tick ? false : _enter_claim)
+    enter_claim_params ∈ Bool
+    enter_claim_params = (is_first_tick ? false : _enter_claim_params)
     h_2nd ∈ Int
     h_2nd = (is_first_tick ? 0 : _h_2nd)
     h_3rd ∈ Int
@@ -80,8 +80,8 @@ fsm main
     h_tail6 = (is_first_tick ? C2HNil : _h_tail6)
     h_top ∈ Int
     h_top = (is_first_tick ? 0 : _h_top)
-    d_hstk_in ∈ C2H
-    d_hstk_in = (is_first_tick ? C2HNil : _d_hstk_in)
+    stack_in ∈ C2H
+    stack_in = (is_first_tick ? C2HNil : _stack_in)
     guard_hit ∈ Bool
     guard_hit = (is_first_tick ? false : _guard_hit)
     guard_jump_cap ∈ Bool

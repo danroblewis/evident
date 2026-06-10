@@ -2,7 +2,7 @@
 -- CONSUMES: the composition-line precheck (pcl_*) + classifier head views
 --           (line_name, line_t0..t4, dotdot_shape, comp_found, c_line_end,
 --           classify_now, line_end), the window head (tok0..tok5), the
---           parse gate (in_parse, _pmode, tok_ready, work_nil), the
+--           parse gate (in_parse, _parse_mode, tok_ready, work_nil), the
 --           handle stack (h_top/2nd/.. + d_h_t*), the claim index
 --           (ci_base, claimidx_names), the symbol table (sym_names), the
 --           inline-frame state (scope_prefix/frame_depth/param_depth/ilb_n*), the
@@ -10,7 +10,7 @@
 --           rt_sort*), the Pratt result (pratt_done/pratt_bad/pratt_result/pk_*), and
 --           z_exit_decl. (Width justified §6.4: positional binding
 --           inherently touches index + Pratt stack + callee params.)
--- PRODUCES: the pmode-12 positional-binding walk (posbind_st/pos_argc/posjump_armed/has_tuple/
+-- PRODUCES: the parse_mode-12 positional-binding walk (posbind_st/pos_argc/posjump_armed/has_tuple/
 --           tuple_pos/pos_callee + the tuple-element recognizers tuple_bite/
 --           pos_comma/pos_rparen + ptt_*), the ips_* param-skip substate, the
 --           pz_* zip/bind stage, and the lowered C2App/C2DeclConst item
@@ -20,7 +20,7 @@
 --           params positionally (tuple→record field coercion for record
 --           params); declared element idents α-scope under the frame.
 --
--- The pmode-12 positional-binding walk. Lifted into driver_main via
+-- The parse_mode-12 positional-binding walk. Lifted into driver_main via
 -- `..DriverPosBind`.
 type PbStr(s ∈ String)
 
@@ -60,7 +60,7 @@ fsm DriverPosBind
     posbind_line ∈ Bool = (call_stmt ∨ method_call ∨ tuple_line)
     recv_items ∈ C2Items = C2ICons(C2Process(EIdent(recv_name)), C2INil)
 
-    poselem_act ∈ Bool = (in_parse ∧ (_pmode = 12) ∧ (_posbind_st = 0)
+    poselem_act ∈ Bool = (in_parse ∧ (_parse_mode = 12) ∧ (_posbind_st = 0)
         ∧ work_nil ∧ tok_ready)
     pos_comma ∈ Bool = (poselem_act ∧ (tok0 matches Comma))
     pos_rparen ∈ Bool = (poselem_act ∧ (tok0 matches RParen))
@@ -106,8 +106,8 @@ fsm DriverPosBind
     BuildMemReadLong(addr ↦ claimidx_buf.base + (8 * (close_pos / 32)), eff ↦ eff_posbind_read)
     close_recv_items ∈ C2Items = C2ICons(C2Process(EIdent(close_t2_name)), C2INil)
 
-    posjump_cap ∈ Bool = (in_parse ∧ (_pmode = 12) ∧ (_posbind_st = 2))
-    posjump_fire ∈ Bool = (in_parse ∧ (_pmode = 12) ∧ (_posbind_st = 3)
+    posjump_cap ∈ Bool = (in_parse ∧ (_parse_mode = 12) ∧ (_posbind_st = 2))
+    posjump_fire ∈ Bool = (in_parse ∧ (_parse_mode = 12) ∧ (_posbind_st = 3)
         ∧ work_nil)
 
     posbind_st = (is_first_tick ? 0
@@ -254,7 +254,7 @@ fsm DriverPosBind
         : _pos_argc = 2 ? h_tail2
         : _pos_argc = 3 ? h_tail3
         : _pos_argc = 4 ? h_tail4
-        : d_hstk_in)
+        : stack_in)
     pin_seg ∈ C2Items = C2ICons(C2Process(pratt_result),
         C2ICons(C2PinEq, C2ICons(C2AssertTop, C2INil)))
     nat_seg ∈ C2Items = (_pratt_nat

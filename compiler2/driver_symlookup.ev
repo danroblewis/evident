@@ -10,7 +10,7 @@
 --           pure-push handle lookup_handle, and the symtab read effect eff_sym_read.
 -- MAINTAINS: pure per-tick resolution, no carry. true/false resolve to the
 --           cached handles; a name found in sym_names reads st_base[idx]
---           (pend=1, the handle pushes next tick); an α-prefixed frame
+--           (capture_pend=1, the handle pushes next tick); an α-prefixed frame
 --           local takes priority over the plain table; unknown names stay
 --           handle 0 (fossil parity).
 --

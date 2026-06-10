@@ -16,8 +16,8 @@ fsm main
     zstep = (is_first_tick ? 9 : _zstep)
     enum_start ∈ Bool = false
     variant_list_now ∈ EnumVariantList = EVNil
-    ue_name ∈ String
-    ue_name = (is_first_tick ? "" : _ue_name)
+    user_enum_name ∈ String
+    user_enum_name = (is_first_tick ? "" : _user_enum_name)
     -- Bus values the machine reads as plain handles; held live so they
     -- stay in every tick's model (a pinned `= const` simplifies out and
     -- the kernel's state carry then can't find the field).
@@ -28,8 +28,8 @@ fsm main
     z3sorts.bsort = (is_first_tick ? 0 : _z3sorts.bsort)
     z3sorts.ssort = (is_first_tick ? 0 : _z3sorts.ssort)
     z3sorts.rsort = (is_first_tick ? 0 : _z3sorts.rsort)
-    d_cap_int ∈ Int
-    d_cap_int = (is_first_tick ? 0 : _d_cap_int)
+    cap_int ∈ Int
+    cap_int = (is_first_tick ? 0 : _cap_int)
     ..DriverEnum
     src_msg ∈ String = str_from_int(enum_src)
     effects ∈ Seq(Effect) = (enum_src = 4

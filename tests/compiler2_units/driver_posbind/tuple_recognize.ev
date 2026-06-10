@@ -1,5 +1,5 @@
 -- DriverPosBind isolation — tuple-element recognizer + atom parse.
--- pmode-12 positional walk, window = `( 5 , 7 )`. Must parse both atoms
+-- parse_mode-12 positional walk, window = `( 5 , 7 )`. Must parse both atoms
 -- (tuparg_ok0) and recognize the 5-token tuple bite (tuple_bite).
 -- verdict = 1*tuple_bite + 2*tuparg_ok0 = 3.
 --
@@ -19,8 +19,8 @@ import "compiler2/driver_posbind.ev"
 fsm main
     in_parse ∈ Bool
     in_parse = (is_first_tick ? true : _in_parse)
-    pmode ∈ Int
-    pmode = (is_first_tick ? 12 : _pmode)
+    parse_mode ∈ Int
+    parse_mode = (is_first_tick ? 12 : _parse_mode)
     tok_ready ∈ Bool
     tok_ready = (is_first_tick ? true : _tok_ready)
     work_nil ∈ Bool
@@ -80,8 +80,8 @@ fsm main
     h_tail5 = (is_first_tick ? C2HNil : _h_tail5)
     h_top ∈ Int
     h_top = (is_first_tick ? 0 : _h_top)
-    d_hstk_in ∈ C2H
-    d_hstk_in = (is_first_tick ? C2HNil : _d_hstk_in)
+    stack_in ∈ C2H
+    stack_in = (is_first_tick ? C2HNil : _stack_in)
     line_end ∈ Bool
     line_end = (is_first_tick ? false : _line_end)
     enum_values ∈ Seq(EnumVariantVal)

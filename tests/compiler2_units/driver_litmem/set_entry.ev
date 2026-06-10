@@ -19,11 +19,11 @@ fsm main
     line_name = (is_first_tick ? "x" : _line_name)
     line_is_notmem ∈ Bool
     line_is_notmem = (is_first_tick ? true : _line_is_notmem)
-    -- pmode-7 walk gate + pmode-8 inputs the lifted module reads (inert).
+    -- parse_mode-7 walk gate + parse_mode-8 inputs the lifted module reads (inert).
     in_parse ∈ Bool
     in_parse = (is_first_tick ? false : _in_parse)
-    pmode ∈ Int
-    pmode = (is_first_tick ? 0 : _pmode)
+    parse_mode ∈ Int
+    parse_mode = (is_first_tick ? 0 : _parse_mode)
     tok_ready ∈ Bool
     tok_ready = (is_first_tick ? false : _tok_ready)
     tok0 ∈ Token
