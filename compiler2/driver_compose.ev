@@ -9,7 +9,7 @@
 --           during pskip (posbind's param_names/_param_count), the active-
 --           guard state (guard_on, _guard_depth), and the sibling fire/cap
 --           signals (guard_hit, guard_jump_*, posjump_*, the bindzip
---           staging columns bz_count/bz_names/bz_handles,
+--           staging column bindzip_binds/bindzip_count,
 --           pratt_done, pratt_bad, enter_claim*).
 --           Wide by nature: a call jump couples the classifier decision,
 --           the claim index, and the handle stack (justified §6.4).
@@ -175,39 +175,38 @@ fsm DriverCompose
         : frame_jump ? CFCons(frame_ret_now, _scope_prefix, _bind_base, _bind_top, _join_hdr, _frames)
         : frame_pop ? frames_tail
         : _frames)
-    -- ── bind tape: this tick's new binds, staged as columns ────────
+    -- ── bind tape: this tick's new binds, staged in bind_stage ─────
     -- A slot call lands _slot_count of them (slot_names/slot_handles);
-    -- a positional close lands bz_count (posbind's bz_* columns). They
-    -- append at _bind_top; the new window is [_bind_top, bind_top).
-    bind_wn ∈ Int = (callw_fire ? _slot_count : bindzip_act ? bz_count : 0)
-    bw_names ∈ Seq(String)
-    #bw_names ≤ 6
-    bw_handles ∈ Seq(Int)
-    #bw_handles ≤ 6
-    ∀ j ∈ {0..5} : bw_names[j] = (callw_fire ? _slot_names[j].name : bz_names[j])
-    ∀ j ∈ {0..5} : bw_handles[j] = (callw_fire ? slot_handles[j] : bz_handles[j])
+    -- a positional close lands bindzip_count (posbind's bindzip_binds
+    -- column). They append at _bind_top; the new window is
+    -- [_bind_top, bind_top).
+    bind_stage_count ∈ Int = (callw_fire ? _slot_count : bindzip_act ? bindzip_count : 0)
+    bind_stage ∈ Seq(Bind)
+    #bind_stage ≤ 6
+    ∀ j ∈ {0..5} : bind_stage[j].name = (callw_fire ? _slot_names[j].name : bindzip_binds[j].name)
+    ∀ j ∈ {0..5} : bind_stage[j].handle = (callw_fire ? slot_handles[j] : bindzip_binds[j].handle)
     binds_clear ∈ Bool = (is_first_tick ∨ callw_reset)
     ∀ k ∈ {0..11} : binds[k].name = (binds_clear ? ""
-        : ((bind_wn ≥ 1) ∧ (_bind_top + 0 = k)) ? bw_names[0]
-        : ((bind_wn ≥ 2) ∧ (_bind_top + 1 = k)) ? bw_names[1]
-        : ((bind_wn ≥ 3) ∧ (_bind_top + 2 = k)) ? bw_names[2]
-        : ((bind_wn ≥ 4) ∧ (_bind_top + 3 = k)) ? bw_names[3]
-        : ((bind_wn ≥ 5) ∧ (_bind_top + 4 = k)) ? bw_names[4]
-        : ((bind_wn ≥ 6) ∧ (_bind_top + 5 = k)) ? bw_names[5]
+        : ((bind_stage_count ≥ 1) ∧ (_bind_top + 0 = k)) ? bind_stage[0].name
+        : ((bind_stage_count ≥ 2) ∧ (_bind_top + 1 = k)) ? bind_stage[1].name
+        : ((bind_stage_count ≥ 3) ∧ (_bind_top + 2 = k)) ? bind_stage[2].name
+        : ((bind_stage_count ≥ 4) ∧ (_bind_top + 3 = k)) ? bind_stage[3].name
+        : ((bind_stage_count ≥ 5) ∧ (_bind_top + 4 = k)) ? bind_stage[4].name
+        : ((bind_stage_count ≥ 6) ∧ (_bind_top + 5 = k)) ? bind_stage[5].name
         : _binds[k].name)
     ∀ k ∈ {0..11} : binds[k].handle = (binds_clear ? 0
-        : ((bind_wn ≥ 1) ∧ (_bind_top + 0 = k)) ? bw_handles[0]
-        : ((bind_wn ≥ 2) ∧ (_bind_top + 1 = k)) ? bw_handles[1]
-        : ((bind_wn ≥ 3) ∧ (_bind_top + 2 = k)) ? bw_handles[2]
-        : ((bind_wn ≥ 4) ∧ (_bind_top + 3 = k)) ? bw_handles[3]
-        : ((bind_wn ≥ 5) ∧ (_bind_top + 4 = k)) ? bw_handles[4]
-        : ((bind_wn ≥ 6) ∧ (_bind_top + 5 = k)) ? bw_handles[5]
+        : ((bind_stage_count ≥ 1) ∧ (_bind_top + 0 = k)) ? bind_stage[0].handle
+        : ((bind_stage_count ≥ 2) ∧ (_bind_top + 1 = k)) ? bind_stage[1].handle
+        : ((bind_stage_count ≥ 3) ∧ (_bind_top + 2 = k)) ? bind_stage[2].handle
+        : ((bind_stage_count ≥ 4) ∧ (_bind_top + 3 = k)) ? bind_stage[3].handle
+        : ((bind_stage_count ≥ 5) ∧ (_bind_top + 4 = k)) ? bind_stage[4].handle
+        : ((bind_stage_count ≥ 6) ∧ (_bind_top + 5 = k)) ? bind_stage[5].handle
         : _binds[k].handle)
     bind_top = (is_first_tick ? 0
         : callw_reset ? 0
         : callw_fire ? _bind_top + _slot_count
         : posjump_fire ? _bind_top
-        : bindzip_act ? _bind_top + bz_count
+        : bindzip_act ? _bind_top + bindzip_count
         : frame_pop ? frame_btop
         : _bind_top)
     bind_base = (is_first_tick ? 0
@@ -217,9 +216,8 @@ fsm DriverCompose
         : bindzip_act ? _bind_base
         : frame_pop ? frame_bbase
         : _bind_base)
-    0 ≤ bind_base
-    bind_base ≤ bind_top
-    bind_top ≤ 12
+    0 ≤ bind_base ≤ bind_top ≤ 12
+    ∀ e ∈ binds : e.handle ≥ 0
     scope_prefix = (is_first_tick ? ""
         : callw_reset ? ""
         : callw_fire ? (_callw_is_type ? _type_prefix : prefix_new)

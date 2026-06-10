@@ -103,13 +103,11 @@ fsm main
     posjump_fire = (is_first_tick ? false : _posjump_fire)
     bindzip_act ∈ Bool
     bindzip_act = (is_first_tick ? false : _bindzip_act)
-    bz_count ∈ Int = 0
-    bz_names ∈ Seq(String)
-    #bz_names ≤ 6
-    ∀ k ∈ {0..5} : bz_names[k] = ""
-    bz_handles ∈ Seq(Int)
-    #bz_handles ≤ 6
-    ∀ k ∈ {0..5} : bz_handles[k] = 0
+    bindzip_count ∈ Int = 0
+    bindzip_binds ∈ Seq(Bind)
+    #bindzip_binds ≤ 6
+    ∀ k ∈ {0..5} : bindzip_binds[k].name = ""
+    ∀ k ∈ {0..5} : bindzip_binds[k].handle = 0
     recs ∈ Seq(RecTypeEntry)
     #recs ≤ 3
     ∀ e ∈ recs : e.name = ""
