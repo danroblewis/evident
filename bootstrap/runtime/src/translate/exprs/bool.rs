@@ -179,8 +179,17 @@ pub(crate) fn translate_bool<'ctx>(
                     Some(Bool::from_bool(ctx, true)),
                 // Tests outer variant tag only; nested sub-patterns ignored.
                 MatchPattern::Ctor { name, .. } => {
+                    // The scrutinee is an Identifier, BARE OR DOTTED. A dotted
+                    // name (`c.t`) is record-field access: `declare_var_named`
+                    // flattens an enum-typed record field into an env entry
+                    // keyed by the dotted name, so `env.get("c.t")` is the
+                    // field's EnumVar. (Pre-fix this arm guarded on
+                    // `!n.contains('.')` and dropped field-access scrutinees
+                    // vacuously-SAT — context-bundles.md gap, fixture 155.)
+                    // The `Var::EnumVar` match below is the real gate: a
+                    // non-enum scrutinee still falls to `_ => return None`.
                     let scr_name = match e.as_ref() {
-                        Expr::Identifier(n) if !n.contains('.') => n,
+                        Expr::Identifier(n) => n,
                         _ => return None,
                     };
                     let (scr_dt, dt) = match env.get(scr_name)? {
