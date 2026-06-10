@@ -149,3 +149,29 @@ registry. The gap census called this C1 and sized it L — that estimate
 stands. The ~0.5 ms/tick interp throughput item is the *second* wall
 behind it (a full-sample compile at current speed is ~20+ min even
 once it compiles).
+
+## CORRECTION to the v2 conclusion (2026-06-10, post-bisect)
+
+The "tick-budget wall" reading above was WRONG: v2 exited rc=7 (the
+TernaryBuildZ3 zero-handle guard), not via tick exhaustion (which exits
+3 with a stderr line; v2 had neither). Nine probe fixtures bisected the
+zero handle to THREE stacked silent grammar gaps in compiler2:
+
+  A. ONE user enum per program (enum #2+ silently dropped to skip;
+     sample.ev has 31). Conformance never exercises two user enums —
+     how 137/138 stayed green over this.
+  B. variant payload arity ≤ 2 (8-token window).
+  C. payload types whitelisted to Int/Bool/String/Real/self — no
+     per-enum sort registry, no mutual-recursion datatype build.
+     33/157 sample.ev variants need B and/or C.
+
+All three are now LOUD (variant_unsupported → Exit 8; enum_decl_second
+→ Exit 9, named puts at the parse site; known-failing repros in
+tests/seam/known-failing/). repro_deep.ev compiles on the widened
+registries.
+
+The interp-throughput cost (~0.5 ms/tick, 90% func) stands as a real,
+twice-measured cost — it is why even REACHING enum #2 takes ~990 s —
+but the sample rung's primary blocker is GRAMMAR: compiler2 needs
+multi-enum support, arity>2 payloads, and a per-enum sort registry.
+Throughput is the multiplier; grammar is the gate.
