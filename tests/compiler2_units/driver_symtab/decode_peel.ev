@@ -25,8 +25,8 @@ fsm main
     lookup_name = (is_first_tick ? "" : _lookup_name)
     fl_on ∈ Bool
     fl_on = (is_first_tick ? false : _fl_on)
-    il_ps ∈ Int
-    il_ps = (is_first_tick ? 0 : _il_ps)
+    param_skip ∈ Int
+    param_skip = (is_first_tick ? 0 : _param_skip)
     in_parse ∈ Bool
     in_parse = (is_first_tick ? false : _in_parse)
     istep ∈ Int

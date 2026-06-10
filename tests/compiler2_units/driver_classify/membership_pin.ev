@@ -36,22 +36,22 @@ fsm main
     claimidx_names = (is_first_tick ? "" : _claimidx_names)
     sym_names ∈ String
     sym_names = (is_first_tick ? "" : _sym_names)
-    il_depth ∈ Int
-    il_depth = (is_first_tick ? 0 : _il_depth)
-    il_pfx ∈ String
-    il_pfx = (is_first_tick ? "" : _il_pfx)
-    ilb_n0 ∈ String
-    ilb_n0 = (is_first_tick ? "" : _ilb_n0)
-    ilb_n1 ∈ String
-    ilb_n1 = (is_first_tick ? "" : _ilb_n1)
-    ilb_n2 ∈ String
-    ilb_n2 = (is_first_tick ? "" : _ilb_n2)
-    ilb_n3 ∈ String
-    ilb_n3 = (is_first_tick ? "" : _ilb_n3)
-    ilb_n4 ∈ String
-    ilb_n4 = (is_first_tick ? "" : _ilb_n4)
-    ilb_n5 ∈ String
-    ilb_n5 = (is_first_tick ? "" : _ilb_n5)
+    frame_depth ∈ Int
+    frame_depth = (is_first_tick ? 0 : _frame_depth)
+    scope_prefix ∈ String
+    scope_prefix = (is_first_tick ? "" : _scope_prefix)
+    bind_n0 ∈ String
+    bind_n0 = (is_first_tick ? "" : _bind_n0)
+    bind_n1 ∈ String
+    bind_n1 = (is_first_tick ? "" : _bind_n1)
+    bind_n2 ∈ String
+    bind_n2 = (is_first_tick ? "" : _bind_n2)
+    bind_n3 ∈ String
+    bind_n3 = (is_first_tick ? "" : _bind_n3)
+    bind_n4 ∈ String
+    bind_n4 = (is_first_tick ? "" : _bind_n4)
+    bind_n5 ∈ String
+    bind_n5 = (is_first_tick ? "" : _bind_n5)
     rec0 ∈ RecTypeEntry(name ↦ "", fnames ↦ "", ftypes ↦ "", n_fields ↦ 0,
         sort ↦ 0, ctor ↦ 0, asort ↦ 0, ssort ↦ 0,
         acc0 ↦ 0, acc1 ↦ 0, acc2 ↦ 0, acc3 ↦ 0, acc4 ↦ 0, acc5 ↦ 0)
@@ -79,8 +79,8 @@ fsm main
     mp_benter = (is_first_tick ? false : _mp_benter)
     sl_e_enter ∈ Bool
     sl_e_enter = (is_first_tick ? false : _sl_e_enter)
-    cw_slot ∈ Bool
-    cw_slot = (is_first_tick ? false : _cw_slot)
+    callw_slot ∈ Bool
+    callw_slot = (is_first_tick ? false : _callw_slot)
     q_close ∈ Bool
     q_close = (is_first_tick ? false : _q_close)
     d_enter_qs ∈ Bool

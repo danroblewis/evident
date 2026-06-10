@@ -32,8 +32,8 @@ fsm main
     d_in_claim = (is_first_tick ? true : _d_in_claim)
     work_nil ∈ Bool
     work_nil = (is_first_tick ? true : _work_nil)
-    il_ps ∈ Int
-    il_ps = (is_first_tick ? 0 : _il_ps)
+    param_skip ∈ Int
+    param_skip = (is_first_tick ? 0 : _param_skip)
     tok_ready ∈ Bool
     tok_ready = (is_first_tick ? true : _tok_ready)
     -- A 2-field record type at registry slot 0.

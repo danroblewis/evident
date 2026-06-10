@@ -6,14 +6,14 @@
 --           d_cap_int, the parse gate (in_parse, _pmode, tok_ready,
 --           work_nil), the line-pop signal (il_pop), the record
 --           registry (rt_n*/rt_sort*), and the sibling fire/cap signals
---           (gc_hit, gj_*, ptj_*, pz_*, p_done, pr_bad, d_enter_claim*).
+--           (guard_hit, gj_*, ptj_*, pz_*, p_done, pr_bad, d_enter_claim*).
 --           Wide by nature: a call jump couples the classifier decision,
 --           the claim index, and the handle stack (justified §6.4).
--- PRODUCES: the inline-frame stack (il_frames/il_binds/il_pfx/il_depth/
---           il_cnt/il_tgt), the param-skip substate (il_ps/il_pd), the
---           slot-call walk (cw_st/cw_bare/cw_ty/cw_k/ts_pfx + the cs
+-- PRODUCES: the inline-frame stack (frames/binds/scope_prefix/frame_depth/
+--           call_count/jump_target), the param-skip substate (param_skip/param_depth), the
+--           slot-call walk (callw_st/callw_bare/callw_is_type/slot_count/type_prefix + the slot_names
 --           slot-name registry),
---           the current-frame binds peel (ilb_n0..n5 / ilb_h0..h5 — read
+--           the current-frame binds peel (bind_n0..n5 / bind_h0..h5 — read
 --           by the classifier's no-redeclare rule), and the call-jump /
 --           frame-push-pop effects.
 -- MAINTAINS: ≤4 binds per call, depth ≤8; a bare/`..` splice inherits the
@@ -25,255 +25,255 @@
 type CSlot(name ∈ String)
 
 fsm DriverCompose
-    il_frames ∈ C2Frames
-    il_binds ∈ C2Binds
-    il_pfx ∈ String
-    il_depth ∈ Int
-    il_cnt ∈ Int
-    il_tgt ∈ Int
-    il_ps ∈ Int
-    il_pd ∈ Int
-    cw_st ∈ Int
-    cw_bare ∈ Bool
-    cw_ty ∈ Bool
-    ts_pfx ∈ String
-    cw_k ∈ Int
-    cs ∈ Seq(CSlot)
-    #cs ≤ 6
+    frames ∈ C2Frames
+    binds ∈ C2Binds
+    scope_prefix ∈ String
+    frame_depth ∈ Int
+    call_count ∈ Int
+    jump_target ∈ Int
+    param_skip ∈ Int
+    param_depth ∈ Int
+    callw_st ∈ Int
+    callw_bare ∈ Bool
+    callw_is_type ∈ Bool
+    type_prefix ∈ String
+    slot_count ∈ Int
+    slot_names ∈ Seq(CSlot)
+    #slot_names ≤ 6
 
-    ilb_n0 ∈ String = match _il_binds
+    bind_n0 ∈ String = match _binds
         CBCons(n, _, _) ⇒ n
         CBNil ⇒ ""
-    ilb_h0 ∈ Int = match _il_binds
+    bind_h0 ∈ Int = match _binds
         CBCons(_, h, _) ⇒ h
         CBNil ⇒ 0
-    ilb_t0 ∈ C2Binds = match _il_binds
+    bind_tail0 ∈ C2Binds = match _binds
         CBCons(_, _, r) ⇒ r
         CBNil ⇒ CBNil
-    ilb_n1 ∈ String = match ilb_t0
+    bind_n1 ∈ String = match bind_tail0
         CBCons(n, _, _) ⇒ n
         CBNil ⇒ ""
-    ilb_h1 ∈ Int = match ilb_t0
+    bind_h1 ∈ Int = match bind_tail0
         CBCons(_, h, _) ⇒ h
         CBNil ⇒ 0
-    ilb_t1 ∈ C2Binds = match ilb_t0
+    bind_tail1 ∈ C2Binds = match bind_tail0
         CBCons(_, _, r) ⇒ r
         CBNil ⇒ CBNil
-    ilb_n2 ∈ String = match ilb_t1
+    bind_n2 ∈ String = match bind_tail1
         CBCons(n, _, _) ⇒ n
         CBNil ⇒ ""
-    ilb_h2 ∈ Int = match ilb_t1
+    bind_h2 ∈ Int = match bind_tail1
         CBCons(_, h, _) ⇒ h
         CBNil ⇒ 0
-    ilb_t2 ∈ C2Binds = match ilb_t1
+    bind_tail2 ∈ C2Binds = match bind_tail1
         CBCons(_, _, r) ⇒ r
         CBNil ⇒ CBNil
-    ilb_n3 ∈ String = match ilb_t2
+    bind_n3 ∈ String = match bind_tail2
         CBCons(n, _, _) ⇒ n
         CBNil ⇒ ""
-    ilb_h3 ∈ Int = match ilb_t2
+    bind_h3 ∈ Int = match bind_tail2
         CBCons(_, h, _) ⇒ h
         CBNil ⇒ 0
-    ilb_t3 ∈ C2Binds = match ilb_t2
+    bind_tail3 ∈ C2Binds = match bind_tail2
         CBCons(_, _, r) ⇒ r
         CBNil ⇒ CBNil
-    ilb_n4 ∈ String = match ilb_t3
+    bind_n4 ∈ String = match bind_tail3
         CBCons(n, _, _) ⇒ n
         CBNil ⇒ ""
-    ilb_h4 ∈ Int = match ilb_t3
+    bind_h4 ∈ Int = match bind_tail3
         CBCons(_, h, _) ⇒ h
         CBNil ⇒ 0
-    ilb_t4 ∈ C2Binds = match ilb_t3
+    bind_tail4 ∈ C2Binds = match bind_tail3
         CBCons(_, _, r) ⇒ r
         CBNil ⇒ CBNil
-    ilb_n5 ∈ String = match ilb_t4
+    bind_n5 ∈ String = match bind_tail4
         CBCons(n, _, _) ⇒ n
         CBNil ⇒ ""
-    ilb_h5 ∈ Int = match ilb_t4
+    bind_h5 ∈ Int = match bind_tail4
         CBCons(_, h, _) ⇒ h
         CBNil ⇒ 0
 
-    fr_ret ∈ Int = match _il_frames
+    frame_ret ∈ Int = match _frames
         CFCons(r, _, _, _) ⇒ r
         CFNil ⇒ 0
-    fr_pfx ∈ String = match _il_frames
+    frame_prefix ∈ String = match _frames
         CFCons(_, p, _, _) ⇒ p
         CFNil ⇒ ""
-    fr_bnd ∈ C2Binds = match _il_frames
+    frame_binds ∈ C2Binds = match _frames
         CFCons(_, _, b, _) ⇒ b
         CFNil ⇒ CBNil
-    fr_tl ∈ C2Frames = match _il_frames
+    frames_tail ∈ C2Frames = match _frames
         CFCons(_, _, _, t) ⇒ t
         CFNil ⇒ CFNil
 
-    il_rdcur ∈ Bool = (c_comp_line ∨ c_ty_line)
-    e_cir ∈ Effect
-    BuildMemReadLong(addr ↦ claimidx_buf.base + (8 * (c_cur_pos / 32)), eff ↦ e_cir)
+    read_callee_cursor ∈ Bool = (c_comp_line ∨ c_ty_line)
+    eff_claimidx_read ∈ Effect
+    BuildMemReadLong(addr ↦ claimidx_buf.base + (8 * (c_cur_pos / 32)), eff ↦ eff_claimidx_read)
 
-    d_in_cw0 ∈ Bool = (in_parse ∧ (_pmode = 10) ∧ (_cw_st = 0))
-    cw_cap ∈ Bool = (d_in_cw0 ∧ (¬_cw_bare))
-    cw_bjump ∈ Bool = (d_in_cw0 ∧ _cw_bare)
-    d_in_cw1 ∈ Bool = (in_parse ∧ (_pmode = 10) ∧ (_cw_st = 1)
+    in_callw0 ∈ Bool = (in_parse ∧ (_pmode = 10) ∧ (_callw_st = 0))
+    callw_cap ∈ Bool = (in_callw0 ∧ (¬_callw_bare))
+    callw_bare_jump ∈ Bool = (in_callw0 ∧ _callw_bare)
+    in_callw1 ∈ Bool = (in_parse ∧ (_pmode = 10) ∧ (_callw_st = 1)
         ∧ work_nil ∧ tok_ready)
-    cw_slot ∈ Bool = (d_in_cw1 ∧ (tok0 matches Ident(_))
-        ∧ (tok1 matches OpMapsto) ∧ (_cw_k < 6))
-    cw_comma ∈ Bool = (d_in_cw1 ∧ (tok0 matches Comma))
-    cw_fire ∈ Bool = (d_in_cw1 ∧ (tok0 matches RParen))
-    cw_bail ∈ Bool = (d_in_cw1 ∧ (¬cw_slot) ∧ (¬cw_comma) ∧ (¬cw_fire))
-    cw_vdone ∈ Bool = (p_done ∧ (¬pr_bad) ∧ (_pk_kind = 8))
-    cw_slot_nm ∈ String = match tok0
+    callw_slot ∈ Bool = (in_callw1 ∧ (tok0 matches Ident(_))
+        ∧ (tok1 matches OpMapsto) ∧ (_slot_count < 6))
+    callw_comma ∈ Bool = (in_callw1 ∧ (tok0 matches Comma))
+    callw_fire ∈ Bool = (in_callw1 ∧ (tok0 matches RParen))
+    callw_bail ∈ Bool = (in_callw1 ∧ (¬callw_slot) ∧ (¬callw_comma) ∧ (¬callw_fire))
+    slot_val_done ∈ Bool = (p_done ∧ (¬pr_bad) ∧ (_pk_kind = 8))
+    slot_name_tok ∈ String = match tok0
         Ident(s) ⇒ s
         _ ⇒ ""
 
-    b_h0 ∈ Int = (_cw_k = 1 ? h_top : _cw_k = 2 ? h_2nd
-        : _cw_k = 3 ? h_3rd : _cw_k = 4 ? h_4th
-        : _cw_k = 5 ? h_5th : h_6th)
-    b_h1 ∈ Int = (_cw_k = 2 ? h_top : _cw_k = 3 ? h_2nd
-        : _cw_k = 4 ? h_3rd : _cw_k = 5 ? h_4th : h_5th)
-    b_h2 ∈ Int = (_cw_k = 3 ? h_top : _cw_k = 4 ? h_2nd
-        : _cw_k = 5 ? h_3rd : h_4th)
-    b_h3 ∈ Int = (_cw_k = 4 ? h_top : _cw_k = 5 ? h_2nd : h_3rd)
-    b_h4 ∈ Int = (_cw_k = 5 ? h_top : h_2nd)
-    b_h5 ∈ Int = h_top
-    il_binds_new ∈ C2Binds = (_cw_k = 1 ? CBCons(_cs[0].name, b_h0, CBNil)
-        : _cw_k = 2 ? CBCons(_cs[0].name, b_h0, CBCons(_cs[1].name, b_h1, CBNil))
-        : _cw_k = 3 ? CBCons(_cs[0].name, b_h0, CBCons(_cs[1].name, b_h1,
-            CBCons(_cs[2].name, b_h2, CBNil)))
-        : _cw_k = 4 ? CBCons(_cs[0].name, b_h0, CBCons(_cs[1].name, b_h1,
-            CBCons(_cs[2].name, b_h2, CBCons(_cs[3].name, b_h3, CBNil))))
-        : _cw_k = 5 ? CBCons(_cs[0].name, b_h0, CBCons(_cs[1].name, b_h1,
-            CBCons(_cs[2].name, b_h2, CBCons(_cs[3].name, b_h3,
-            CBCons(_cs[4].name, b_h4, CBNil)))))
-        : _cw_k = 6 ? CBCons(_cs[0].name, b_h0, CBCons(_cs[1].name, b_h1,
-            CBCons(_cs[2].name, b_h2, CBCons(_cs[3].name, b_h3,
-            CBCons(_cs[4].name, b_h4, CBCons(_cs[5].name, b_h5, CBNil))))))
+    slot_h0 ∈ Int = (_slot_count = 1 ? h_top : _slot_count = 2 ? h_2nd
+        : _slot_count = 3 ? h_3rd : _slot_count = 4 ? h_4th
+        : _slot_count = 5 ? h_5th : h_6th)
+    slot_h1 ∈ Int = (_slot_count = 2 ? h_top : _slot_count = 3 ? h_2nd
+        : _slot_count = 4 ? h_3rd : _slot_count = 5 ? h_4th : h_5th)
+    slot_h2 ∈ Int = (_slot_count = 3 ? h_top : _slot_count = 4 ? h_2nd
+        : _slot_count = 5 ? h_3rd : h_4th)
+    slot_h3 ∈ Int = (_slot_count = 4 ? h_top : _slot_count = 5 ? h_2nd : h_3rd)
+    slot_h4 ∈ Int = (_slot_count = 5 ? h_top : h_2nd)
+    slot_h5 ∈ Int = h_top
+    binds_new ∈ C2Binds = (_slot_count = 1 ? CBCons(_slot_names[0].name, slot_h0, CBNil)
+        : _slot_count = 2 ? CBCons(_slot_names[0].name, slot_h0, CBCons(_slot_names[1].name, slot_h1, CBNil))
+        : _slot_count = 3 ? CBCons(_slot_names[0].name, slot_h0, CBCons(_slot_names[1].name, slot_h1,
+            CBCons(_slot_names[2].name, slot_h2, CBNil)))
+        : _slot_count = 4 ? CBCons(_slot_names[0].name, slot_h0, CBCons(_slot_names[1].name, slot_h1,
+            CBCons(_slot_names[2].name, slot_h2, CBCons(_slot_names[3].name, slot_h3, CBNil))))
+        : _slot_count = 5 ? CBCons(_slot_names[0].name, slot_h0, CBCons(_slot_names[1].name, slot_h1,
+            CBCons(_slot_names[2].name, slot_h2, CBCons(_slot_names[3].name, slot_h3,
+            CBCons(_slot_names[4].name, slot_h4, CBNil)))))
+        : _slot_count = 6 ? CBCons(_slot_names[0].name, slot_h0, CBCons(_slot_names[1].name, slot_h1,
+            CBCons(_slot_names[2].name, slot_h2, CBCons(_slot_names[3].name, slot_h3,
+            CBCons(_slot_names[4].name, slot_h4, CBCons(_slot_names[5].name, slot_h5, CBNil))))))
         : CBNil)
-    cw_pop_stk ∈ C2H = (_cw_k = 1 ? h_tail1
-        : _cw_k = 2 ? h_tail2
-        : _cw_k = 3 ? h_tail3
-        : _cw_k = 4 ? h_tail4
-        : _cw_k = 5 ? h_tail5
-        : _cw_k = 6 ? h_tail6
+    callw_pop_stack ∈ C2H = (_slot_count = 1 ? h_tail1
+        : _slot_count = 2 ? h_tail2
+        : _slot_count = 3 ? h_tail3
+        : _slot_count = 4 ? h_tail4
+        : _slot_count = 5 ? h_tail5
+        : _slot_count = 6 ? h_tail6
         : d_hstk_in)
-    il_pfx_new ∈ String = "__c" ++ str_from_int(_il_cnt) ++ "_"
-    tyc_g5 ∈ C2Items = (_cw_k ≥ 6
-        ? C2ICons(C2DeclConst(_ts_pfx ++ _cs[5].name, 0),
-            C2ICons(C2PushH(b_h5), C2ICons(C2PinEq,
+    prefix_new ∈ String = "__c" ++ str_from_int(_call_count) ++ "_"
+    type_pin_g5 ∈ C2Items = (_slot_count ≥ 6
+        ? C2ICons(C2DeclConst(_type_prefix ++ _slot_names[5].name, 0),
+            C2ICons(C2PushH(slot_h5), C2ICons(C2PinEq,
             C2ICons(C2AssertTop, C2INil))))
         : C2INil)
-    tyc_g4 ∈ C2Items = (_cw_k ≥ 5
-        ? C2ICons(C2DeclConst(_ts_pfx ++ _cs[4].name, 0),
-            C2ICons(C2PushH(b_h4), C2ICons(C2PinEq,
-            C2ICons(C2AssertTop, tyc_g5))))
-        : tyc_g5)
-    tyc_g3 ∈ C2Items = (_cw_k ≥ 4
-        ? C2ICons(C2DeclConst(_ts_pfx ++ _cs[3].name, 0),
-            C2ICons(C2PushH(b_h3), C2ICons(C2PinEq,
-            C2ICons(C2AssertTop, tyc_g4))))
-        : tyc_g4)
-    tyc_g2 ∈ C2Items = (_cw_k ≥ 3
-        ? C2ICons(C2DeclConst(_ts_pfx ++ _cs[2].name, 0),
-            C2ICons(C2PushH(b_h2), C2ICons(C2PinEq,
-            C2ICons(C2AssertTop, tyc_g3))))
-        : tyc_g3)
-    tyc_g1 ∈ C2Items = (_cw_k ≥ 2
-        ? C2ICons(C2DeclConst(_ts_pfx ++ _cs[1].name, 0),
-            C2ICons(C2PushH(b_h1), C2ICons(C2PinEq,
-            C2ICons(C2AssertTop, tyc_g2))))
-        : tyc_g2)
-    tyc_items ∈ C2Items = (_cw_k ≥ 1
-        ? C2ICons(C2DeclConst(_ts_pfx ++ _cs[0].name, 0),
-            C2ICons(C2PushH(b_h0), C2ICons(C2PinEq,
-            C2ICons(C2AssertTop, tyc_g1))))
+    type_pin_g4 ∈ C2Items = (_slot_count ≥ 5
+        ? C2ICons(C2DeclConst(_type_prefix ++ _slot_names[4].name, 0),
+            C2ICons(C2PushH(slot_h4), C2ICons(C2PinEq,
+            C2ICons(C2AssertTop, type_pin_g5))))
+        : type_pin_g5)
+    type_pin_g3 ∈ C2Items = (_slot_count ≥ 4
+        ? C2ICons(C2DeclConst(_type_prefix ++ _slot_names[3].name, 0),
+            C2ICons(C2PushH(slot_h3), C2ICons(C2PinEq,
+            C2ICons(C2AssertTop, type_pin_g4))))
+        : type_pin_g4)
+    type_pin_g2 ∈ C2Items = (_slot_count ≥ 3
+        ? C2ICons(C2DeclConst(_type_prefix ++ _slot_names[2].name, 0),
+            C2ICons(C2PushH(slot_h2), C2ICons(C2PinEq,
+            C2ICons(C2AssertTop, type_pin_g3))))
+        : type_pin_g3)
+    type_pin_g1 ∈ C2Items = (_slot_count ≥ 2
+        ? C2ICons(C2DeclConst(_type_prefix ++ _slot_names[1].name, 0),
+            C2ICons(C2PushH(slot_h1), C2ICons(C2PinEq,
+            C2ICons(C2AssertTop, type_pin_g2))))
+        : type_pin_g2)
+    type_pin_items ∈ C2Items = (_slot_count ≥ 1
+        ? C2ICons(C2DeclConst(_type_prefix ++ _slot_names[0].name, 0),
+            C2ICons(C2PushH(slot_h0), C2ICons(C2PinEq,
+            C2ICons(C2AssertTop, type_pin_g1))))
         : C2INil)
-    tsb_items ∈ C2Items = C2ICons(C2RecDecl(_ts_nm, _ts_k), C2INil)
+    type_recdecl_items ∈ C2Items = C2ICons(C2RecDecl(_type_inst_name, _type_slot), C2INil)
 
-    il_jump ∈ Bool = (cw_fire ∨ cw_bjump ∨ gj_fire ∨ ptj_fire)
-    il_tgt_v ∈ Int = (cw_bjump ? d_cap_int : _il_tgt)
-    il_ret_v ∈ Int = (cw_fire ? _tok_cur + 1 : _tok_cur)
+    frame_jump ∈ Bool = (callw_fire ∨ callw_bare_jump ∨ guard_jump_fire ∨ ptj_fire)
+    jump_target_now ∈ Int = (callw_bare_jump ? d_cap_int : _jump_target)
+    frame_ret_now ∈ Int = (callw_fire ? _tok_cur + 1 : _tok_cur)
 
-    ips_act ∈ Bool = (in_parse ∧ (_pmode = 2) ∧ work_nil
-        ∧ tok_ready ∧ (_il_ps > 0))
-    ips_chk ∈ Bool = (ips_act ∧ (_il_ps = 1))
-    ips_open ∈ Bool = (ips_chk ∧ (tok0 matches LParen))
-    ips_off ∈ Bool = (ips_chk ∧ (¬(tok0 matches LParen)))
-    ips_skp ∈ Bool = (ips_act ∧ (_il_ps = 2))
-    ips_done ∈ Bool = (ips_skp ∧ (tok0 matches RParen) ∧ (_il_pd = 1))
+    pskip_act ∈ Bool = (in_parse ∧ (_pmode = 2) ∧ work_nil
+        ∧ tok_ready ∧ (_param_skip > 0))
+    pskip_check ∈ Bool = (pskip_act ∧ (_param_skip = 1))
+    pskip_open ∈ Bool = (pskip_check ∧ (tok0 matches LParen))
+    pskip_off ∈ Bool = (pskip_check ∧ (¬(tok0 matches LParen)))
+    pskip_run ∈ Bool = (pskip_act ∧ (_param_skip = 2))
+    pskip_done ∈ Bool = (pskip_run ∧ (tok0 matches RParen) ∧ (_param_depth = 1))
 
-    cw_reset ∈ Bool = (d_enter_claim ∨ d_enter_claimp)
-    il_frames = (is_first_tick ? CFNil
-        : cw_reset ? CFNil
-        : il_jump ? CFCons(il_ret_v, _il_pfx, _il_binds, _il_frames)
-        : il_pop ? fr_tl
-        : _il_frames)
-    il_binds = (is_first_tick ? CBNil
-        : cw_reset ? CBNil
-        : cw_fire ? il_binds_new
+    callw_reset ∈ Bool = (d_enter_claim ∨ d_enter_claimp)
+    frames = (is_first_tick ? CFNil
+        : callw_reset ? CFNil
+        : frame_jump ? CFCons(frame_ret_now, _scope_prefix, _binds, _frames)
+        : il_pop ? frames_tail
+        : _frames)
+    binds = (is_first_tick ? CBNil
+        : callw_reset ? CBNil
+        : callw_fire ? binds_new
         : ptj_fire ? CBNil
         : pz_act ? pz_binds
-        : il_pop ? fr_bnd
-        : _il_binds)
-    il_pfx = (is_first_tick ? ""
-        : cw_reset ? ""
-        : cw_fire ? (_cw_ty ? _ts_pfx : il_pfx_new)
-        : (cw_bjump ∧ _cw_ty) ? _ts_pfx
-        : ptj_fire ? il_pfx_new
-        : il_pop ? fr_pfx
-        : _il_pfx)
-    il_depth = (is_first_tick ? 0
-        : cw_reset ? 0
-        : il_jump ? _il_depth + 1
-        : il_pop ? _il_depth - 1
-        : _il_depth)
-    il_cnt = (is_first_tick ? 1
-        : cw_reset ? 1
-        : (cw_fire ∧ (¬_cw_ty)) ? _il_cnt + 1
-        : ptj_fire ? _il_cnt + 1
-        : _il_cnt)
-    il_tgt = (is_first_tick ? 0
-        : (cw_cap ∨ gj_cap ∨ ptj_cap) ? d_cap_int
-        : _il_tgt)
-    il_ps = (is_first_tick ? 0
-        : il_jump ? 1
-        : ips_open ? 2
-        : (ips_off ∨ ips_done) ? 0
-        : _il_ps)
-    il_pd = (is_first_tick ? 0
-        : ips_open ? 1
-        : ips_skp ? ((tok0 matches LParen) ? _il_pd + 1
-            : (tok0 matches RParen) ? _il_pd - 1
-            : _il_pd)
-        : _il_pd)
-    cw_st = (is_first_tick ? 0
+        : il_pop ? frame_binds
+        : _binds)
+    scope_prefix = (is_first_tick ? ""
+        : callw_reset ? ""
+        : callw_fire ? (_callw_is_type ? _type_prefix : prefix_new)
+        : (callw_bare_jump ∧ _callw_is_type) ? _type_prefix
+        : ptj_fire ? prefix_new
+        : il_pop ? frame_prefix
+        : _scope_prefix)
+    frame_depth = (is_first_tick ? 0
+        : callw_reset ? 0
+        : frame_jump ? _frame_depth + 1
+        : il_pop ? _frame_depth - 1
+        : _frame_depth)
+    call_count = (is_first_tick ? 1
+        : callw_reset ? 1
+        : (callw_fire ∧ (¬_callw_is_type)) ? _call_count + 1
+        : ptj_fire ? _call_count + 1
+        : _call_count)
+    jump_target = (is_first_tick ? 0
+        : (callw_cap ∨ guard_jump_cap ∨ ptj_cap) ? d_cap_int
+        : _jump_target)
+    param_skip = (is_first_tick ? 0
+        : frame_jump ? 1
+        : pskip_open ? 2
+        : (pskip_off ∨ pskip_done) ? 0
+        : _param_skip)
+    param_depth = (is_first_tick ? 0
+        : pskip_open ? 1
+        : pskip_run ? ((tok0 matches LParen) ? _param_depth + 1
+            : (tok0 matches RParen) ? _param_depth - 1
+            : _param_depth)
+        : _param_depth)
+    callw_st = (is_first_tick ? 0
         : (c_comp_line ∨ c_ty_line) ? 0
-        : gc_hit ? 3
-        : gj_cap ? 4
-        : cw_cap ? 1
-        : _cw_st)
-    cw_bare = (is_first_tick ? false
+        : guard_hit ? 3
+        : guard_jump_cap ? 4
+        : callw_cap ? 1
+        : _callw_st)
+    callw_bare = (is_first_tick ? false
         : (c_comp_call ∨ c_ty_call) ? false
         : (c_comp_bare ∨ c_comp_dd ∨ c_ty_bare) ? true
-        : _cw_bare)
-    cw_ty = (is_first_tick ? false
+        : _callw_bare)
+    callw_is_type = (is_first_tick ? false
         : c_ty_line ? true
         : c_comp_line ? false
-        : _cw_ty)
-    ts_pfx = (is_first_tick ? ""
-        : c_ty_line ? (_il_pfx ++ c_name ++ ".")
-        : _ts_pfx)
-    ts_k ∈ Int
-    ts_nm ∈ String
-    c_ty_rtk ∈ Int
+        : _callw_is_type)
+    type_prefix = (is_first_tick ? ""
+        : c_ty_line ? (_scope_prefix ++ c_name ++ ".")
+        : _type_prefix)
+    type_slot ∈ Int
+    type_inst_name ∈ String
+    type_rec_slot ∈ Int
     RtIdxOf(nm ↦ c_type_str, e0 ↦ rec0, e1 ↦ rec1, e2 ↦ rec2,
-        idx ↦ c_ty_rtk)
-    ts_k = (is_first_tick ? 0 - 1
-        : c_ty_line ? c_ty_rtk
-        : _ts_k)
-    ts_nm = (is_first_tick ? ""
-        : c_ty_line ? (_il_pfx ++ c_name)
-        : _ts_nm)
-    cw_k = (is_first_tick ? 0
+        idx ↦ type_rec_slot)
+    type_slot = (is_first_tick ? 0 - 1
+        : c_ty_line ? type_rec_slot
+        : _type_slot)
+    type_inst_name = (is_first_tick ? ""
+        : c_ty_line ? (_scope_prefix ++ c_name)
+        : _type_inst_name)
+    slot_count = (is_first_tick ? 0
         : (c_comp_call ∨ c_ty_call) ? 0
-        : cw_vdone ? _cw_k + 1
-        : _cw_k)
-    ∀ k ∈ {0..5} : cs[k].name = (is_first_tick ? "" : (cw_slot ∧ _cw_k = k) ? cw_slot_nm : _cs[k].name)
+        : slot_val_done ? _slot_count + 1
+        : _slot_count)
+    ∀ k ∈ {0..5} : slot_names[k].name = (is_first_tick ? "" : (callw_slot ∧ _slot_count = k) ? slot_name_tok : _slot_names[k].name)

@@ -5,7 +5,7 @@
 --           parse gate (in_parse, _pmode, tok_ready, work_nil), the
 --           handle stack (h_top/2nd/.. + d_h_t*), the claim index
 --           (ci_base, claimidx_names), the symbol table (sym_names), the
---           inline-frame state (il_pfx/il_depth/il_pd/ilb_n*), the
+--           inline-frame state (scope_prefix/frame_depth/param_depth/ilb_n*), the
 --           enum value table (enum_values), the record registry (rt_n*/rt_f*/
 --           rt_sort*), the Pratt result (p_done/pr_bad/pr_sres/pk_*), and
 --           z_exit_decl. (Width justified §6.4: positional binding
@@ -39,24 +39,24 @@ fsm DriverPosBind
         _ ⇒ ""
     pcl_stmt ∈ Bool = (classify_now ∧ (¬d_line_end) ∧ c_t0_is_ident
         ∧ (c_t1 matches LParen) ∧ (¬(c_t3 matches OpMapsto))
-        ∧ c_comp_found ∧ (¬c_dd_shape) ∧ (_il_depth < 8))
+        ∧ c_comp_found ∧ (¬c_dd_shape) ∧ (_frame_depth < 8))
     pcl_m1key ∈ String
     FtiNameEntry(name ↦ pcl_t2nm, entry ↦ pcl_m1key)
     pcl_m1 ∈ Bool = (classify_now ∧ (¬d_line_end) ∧ c_t0_is_ident
         ∧ (c_t1 matches Dot) ∧ (c_t2 matches Ident(_))
         ∧ (c_t3 matches LParen)
-        ∧ (index_of(claimidx_names, pcl_m1key, 0) ≥ 0) ∧ (_il_depth < 8))
+        ∧ (index_of(claimidx_names, pcl_m1key, 0) ≥ 0) ∧ (_frame_depth < 8))
     pcl_m2key ∈ String
     FtiNameEntry(name ↦ pcl_t4nm, entry ↦ pcl_m2key)
     pcl_m2 ∈ Bool = (classify_now ∧ (¬d_line_end) ∧ c_t0_is_ident
         ∧ (c_t1 matches Dot) ∧ (c_t2 matches Ident(_))
         ∧ (c_t3 matches Dot) ∧ (c_t4 matches Ident(_))
         ∧ (tok5 matches LParen)
-        ∧ (index_of(claimidx_names, pcl_m2key, 0) ≥ 0) ∧ (_il_depth < 8))
+        ∧ (index_of(claimidx_names, pcl_m2key, 0) ≥ 0) ∧ (_frame_depth < 8))
     pcl_meth ∈ Bool = (pcl_m1 ∨ pcl_m2)
     pcl_recv_nm ∈ String = (pcl_m2 ? (c_name ++ "." ++ pcl_t2nm) : c_name)
     pcl_tup ∈ Bool = (classify_now ∧ (¬d_line_end) ∧ (c_t0 matches LParen)
-        ∧ (c_t2 matches Comma) ∧ (_il_depth < 8))
+        ∧ (c_t2 matches Comma) ∧ (_frame_depth < 8))
     pcl_line ∈ Bool = (pcl_stmt ∨ pcl_meth ∨ pcl_tup)
     pcl_recv_items ∈ C2Items = C2ICons(C2Process(EIdent(pcl_recv_nm)), C2INil)
 
@@ -131,9 +131,9 @@ fsm DriverPosBind
         : (pt_close ∧ ptc_tm) ? _pc_k + 1
         : _pc_k)
     pj = (is_first_tick ? false
-        : cw_reset ? false
+        : callw_reset ? false
         : ptj_fire ? true
-        : (pz_act ∨ ips_off) ? false
+        : (pz_act ∨ pskip_off) ? false
         : _pj)
     pj_recv = (is_first_tick ? false
         : pcl_meth ? false
@@ -145,19 +145,19 @@ fsm DriverPosBind
         EIdent(s) ⇒ s
         _ ⇒ ""
     pi_skey ∈ String
-    FtiNameEntry(name ↦ (_il_pfx ++ pi_nm), entry ↦ pi_skey)
+    FtiNameEntry(name ↦ (_scope_prefix ++ pi_nm), entry ↦ pi_skey)
     pi_pkey ∈ String
     FtiNameEntry(name ↦ pi_nm, entry ↦ pi_pkey)
     pi_evt ∈ Bool = (∃ i ∈ {0..#enum_values-1} : enum_values[i].name = pi_nm)
-    pi_ilb ∈ Bool = ((ilb_n0 = pi_nm) ∨ (ilb_n1 = pi_nm)
-        ∨ (ilb_n2 = pi_nm) ∨ (ilb_n3 = pi_nm) ∨ (ilb_n4 = pi_nm)
-        ∨ (ilb_n5 = pi_nm))
+    pi_ilb ∈ Bool = ((bind_n0 = pi_nm) ∨ (bind_n1 = pi_nm)
+        ∨ (bind_n2 = pi_nm) ∨ (bind_n3 = pi_nm) ∨ (bind_n4 = pi_nm)
+        ∨ (bind_n5 = pi_nm))
     pi_unres ∈ Bool = ((pi_nm ≠ "") ∧ (pi_nm ≠ "true")
         ∧ (pi_nm ≠ "false") ∧ (¬pi_evt) ∧ (¬pi_ilb)
         ∧ (index_of(sym_names, pi_skey, 0) < 0)
         ∧ (index_of(sym_names, pi_pkey, 0) < 0))
     pi_decl ∈ Bool = (pi_done ∧ pi_unres)
-    pi_dname ∈ String = _il_pfx ++ pi_nm
+    pi_dname ∈ String = _scope_prefix ++ pi_nm
     pi_field ∈ String = pi_dname ++ ":Int"
     pi_cdecl ∈ String = "(declare-fun _" ++ pi_dname ++ " () Int)\n"
     pi_items ∈ C2Items = (pi_decl
@@ -168,30 +168,30 @@ fsm DriverPosBind
     pn_prev ∈ Int
     pn ∈ Seq(PbStr)
     #pn ≤ 6
-    pn_take ∈ Bool = (ips_skp ∧ (tok0 matches Ident(_))
+    pn_take ∈ Bool = (pskip_run ∧ (tok0 matches Ident(_))
         ∧ (_pn_prev = 1))
-    pty_take ∈ Bool = (ips_skp ∧ (tok0 matches OpIn)
-        ∧ (tok1 matches Ident(_)) ∧ (_il_pd = 1))
+    pty_take ∈ Bool = (pskip_run ∧ (tok0 matches OpIn)
+        ∧ (tok1 matches Ident(_)) ∧ (_param_depth = 1))
     pty_nm ∈ String = match tok1
         Ident(s) ⇒ s
         _ ⇒ ""
     pty ∈ Seq(PbStr)
     #pty ≤ 4
-    ∀ k ∈ {0..3} : pty[k].s = (is_first_tick ? "" : il_jump ? "" : (pty_take ∧ _pn_k = k + 1) ? pty_nm : _pty[k].s)
+    ∀ k ∈ {0..3} : pty[k].s = (is_first_tick ? "" : frame_jump ? "" : (pty_take ∧ _pn_k = k + 1) ? pty_nm : _pty[k].s)
     pn_nm ∈ String = match tok0
         Ident(s) ⇒ s
         _ ⇒ ""
     pn_prev = (is_first_tick ? 0
-        : ips_open ? 1
-        : ips_skp ? (((tok0 matches Comma) ∧ (_il_pd = 1)) ? 1 : 0)
+        : pskip_open ? 1
+        : pskip_run ? (((tok0 matches Comma) ∧ (_param_depth = 1)) ? 1 : 0)
         : _pn_prev)
     pn_k = (is_first_tick ? 0
-        : il_jump ? 0
+        : frame_jump ? 0
         : pn_take ? _pn_k + 1
         : _pn_k)
     ∀ k ∈ {0..5} : pn[k].s = (is_first_tick ? "" : (pn_take ∧ _pn_k = k) ? pn_nm : _pn[k].s)
 
-    pz_act ∈ Bool = (ips_done ∧ _pj)
+    pz_act ∈ Bool = (pskip_done ∧ _pj)
     pz_v0 ∈ Int = (_pj_recv ? h_top
         : _pc_k = 1 ? h_top : _pc_k = 2 ? h_2nd
         : _pc_k = 3 ? h_3rd : h_4th)
@@ -274,7 +274,7 @@ fsm DriverPosBind
         : _pk_kind = 10 ? pi_items
         : _pk_kind = 1 ? (_pk_rec ≥ 0 ? C2INil
             : C2ICons(d_pk_head, d_pk_natseg))
-        : gc_hit ? C2ICons(C2Process(gc_l), C2INil)
+        : guard_hit ? C2ICons(C2Process(guard_lhs), C2INil)
         : C2ICons(C2Process(pr_sres), C2ICons(C2AssertTop, C2INil)))
     d_done_cons ∈ Int = (pr_bad ? 1
         : _pk_kind = 3 ? 1

@@ -99,7 +99,7 @@ fsm DriverPratt
     pk_pn = (is_first_tick ? "" : d_enter_pratt ? c_pn : _pk_pn)
     -- record-pinned membership (`offset_pos ∈ IVec2 = <expr>`)
     -- arms the rb broadcast loop at parse completion.
-    c_pin_rtk ∈ Int = ((c_pinned ∧ c_is_mem) ? c_ty_rtk : 0 - 1)
+    c_pin_rtk ∈ Int = ((c_pinned ∧ c_is_mem) ? type_rec_slot : 0 - 1)
     pk_rec = (is_first_tick ? 0 - 1
         : d_enter_pratt ? c_pin_rtk
         : _pk_rec)

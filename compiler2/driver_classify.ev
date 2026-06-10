@@ -2,10 +2,10 @@
 -- CONSUMES: the decoded token window head views (tok0..tok7), the
 --           classify-mode gate (classify_now), the claim/type index
 --           (claimidx_names) + symbol table (sym_names), the inline-frame state
---           (_il_depth, _il_pfx, ilb_n0..n5), the record registry
+--           (_frame_depth, _scope_prefix, bind_n0..n5), the record registry
 --           (rec0..2 .name / .sort), the user-enum + seq-var carries
 --           (_ue_done, _ue_name, _sq_set, _sq_name), and the sibling
---           sub-walks' per-line enter signals (el_*/mp_*/sl_*/cw_slot/
+--           sub-walks' per-line enter signals (el_*/mp_*/sl_*/callw_slot/
 --           q_*/pt_*) that fold into d_enter_pratt. Wide by nature: this
 --           is the central dispatch brain — it inspects the whole window
 --           against every other subsystem's entry condition (justified
@@ -99,21 +99,21 @@ fsm DriverClassify
     FtiNameEntry(name ↦ c_comp_nm, entry ↦ c_comp_key)
     c_comp_pos ∈ Int = index_of(claimidx_names, c_comp_key, 0)
     c_comp_found ∈ Bool = ((c_comp_pos ≥ 0) ∧ (c_comp_nm ≠ ""))
-    c_dd_head ∈ Bool = (c_dd_shape ∧ c_comp_found ∧ (_il_depth < 8))
+    c_dd_head ∈ Bool = (c_dd_shape ∧ c_comp_found ∧ (_frame_depth < 8))
 
     d_line_end ∈ Bool = (c_rem_nil ∨ c_t0_is_tlkw
         ∨ ((¬c_can_expr) ∧ (¬c_dd_head) ∧ (¬c_strin_line)
             ∧ (¬c_q_line)))
-    d_claim_end ∈ Bool = (classify_now ∧ d_line_end ∧ (_il_depth = 0))
-    il_pop ∈ Bool = (classify_now ∧ d_line_end ∧ (_il_depth > 0))
+    d_claim_end ∈ Bool = (classify_now ∧ d_line_end ∧ (_frame_depth = 0))
+    il_pop ∈ Bool = (classify_now ∧ d_line_end ∧ (_frame_depth > 0))
 
     c_comp_call ∈ Bool = (classify_now ∧ (¬d_line_end) ∧ c_t0_is_ident
         ∧ (c_t1 matches LParen) ∧ (c_t3 matches OpMapsto)
-        ∧ c_comp_found ∧ (_il_depth < 8))
+        ∧ c_comp_found ∧ (_frame_depth < 8))
     c_comp_bare ∈ Bool = (classify_now ∧ (¬d_line_end) ∧ c_t0_is_ident
         ∧ c_comp_found ∧ (¬(c_t1 matches LParen))
         ∧ (¬c_is_mem) ∧ (¬c_is_nmem) ∧ (¬(c_t1 matches Eq))
-        ∧ (¬(c_t1 matches Comma)) ∧ (_il_depth < 8))
+        ∧ (¬(c_t1 matches Comma)) ∧ (_frame_depth < 8))
     c_comp_dd ∈ Bool = (classify_now ∧ c_dd_head)
     c_comp_line ∈ Bool = (c_comp_call ∨ c_comp_bare ∨ c_comp_dd)
     d_enter_el ∈ Bool = (classify_now ∧ (¬d_line_end) ∧ c_eff_line)
@@ -133,13 +133,13 @@ fsm DriverClassify
         ∧ (¬c_setlit_line) ∧ (¬d_enter_qset)
         ∧ (c_pinned ∨ (¬c_is_mem)))
     d_enter_pratt ∈ Bool = (d_enter_pratt0 ∨ efflit_exit_enter
-        ∨ efflit_guard_enter ∨ mp_benter ∨ sl_e_enter ∨ cw_slot
+        ∨ efflit_guard_enter ∨ mp_benter ∨ sl_e_enter ∨ callw_slot
         ∨ q_close ∨ d_enter_qs ∨ pt_elem)
     d_pratt_cons0 ∈ Int = (efflit_exit_enter ? 2
         : efflit_guard_enter ? 0
         : mp_benter ? ((mp_take ∧ mp_arm_pl_h) ? 5 : 2)
         : sl_e_enter ? 0
-        : cw_slot ? 2
+        : callw_slot ? 2
         : q_close ? 2
         : d_enter_qs ? (c_q_s2 ? 7 : 5)
         : pt_elem ? 0
@@ -148,7 +148,7 @@ fsm DriverClassify
         : efflit_guard_enter ? 6
         : mp_benter ? 4
         : sl_e_enter ? 7
-        : cw_slot ? 8
+        : callw_slot ? 8
         : q_close ? 9
         : d_enter_qs ? 9
         : pt_elem ? 10
@@ -165,14 +165,14 @@ fsm DriverClassify
     c_natseg ∈ C2Items = (c_is_nat
         ? C2ICons(C2NatBound, C2ICons(C2AssertTop, c_tailseg))
         : c_tailseg)
-    c_chk_name ∈ String = _il_pfx ++ c_name
+    c_chk_name ∈ String = _scope_prefix ++ c_name
     c_dname ∈ String = c_chk_name
     c_chk_key ∈ String
     FtiNameEntry(name ↦ c_chk_name, entry ↦ c_chk_key)
     c_dup ∈ Bool = (index_of(sym_names, c_chk_key, 0) ≥ 0)
-    c_bnd ∈ Bool = ((c_name ≠ "") ∧ ((ilb_n0 = c_name) ∨ (ilb_n1 = c_name)
-        ∨ (ilb_n2 = c_name) ∨ (ilb_n3 = c_name) ∨ (ilb_n4 = c_name)
-        ∨ (ilb_n5 = c_name)))
+    c_bnd ∈ Bool = ((c_name ≠ "") ∧ ((bind_n0 = c_name) ∨ (bind_n1 = c_name)
+        ∨ (bind_n2 = c_name) ∨ (bind_n3 = c_name) ∨ (bind_n4 = c_name)
+        ∨ (bind_n5 = c_name)))
     c_nodecl ∈ Bool = (c_bnd ∨ c_dup)
     c_pn ∈ String = (c_bnd ? c_name : c_dname)
     c_mem_head ∈ C2Item = (c_nodecl ? C2Process(EIdent(c_pn))
@@ -200,11 +200,11 @@ fsm DriverClassify
         ∧ (¬c_strin_line) ∧ (c_ty_pos ≥ 0))
     c_ty_call ∈ Bool = (classify_now ∧ (¬d_line_end) ∧ c_ty_found
         ∧ (c_t3 matches LParen) ∧ (c_t4 matches Ident(_))
-        ∧ (tok5 matches OpMapsto) ∧ (_il_depth < 8))
+        ∧ (tok5 matches OpMapsto) ∧ (_frame_depth < 8))
     c_ty_bare ∈ Bool = (classify_now ∧ (¬d_line_end) ∧ c_ty_found
         ∧ (¬(c_t3 matches LParen)) ∧ (¬c_pinned) ∧ (¬c_bound)
-        ∧ (_il_depth < 8))
+        ∧ (_frame_depth < 8))
     c_ty_line ∈ Bool = (c_ty_call ∨ c_ty_bare)
-    c_in_ty ∈ Bool = ((#_il_pfx > 0)
-        ∧ (substr(_il_pfx, #_il_pfx - 1, 1) = "."))
+    c_in_ty ∈ Bool = ((#_scope_prefix > 0)
+        ∧ (substr(_scope_prefix, #_scope_prefix - 1, 1) = "."))
     c_cur_pos ∈ Int = (c_ty_line ? c_ty_pos : c_comp_pos)

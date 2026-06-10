@@ -40,18 +40,18 @@ fsm main
     d_line_end = (is_first_tick ? false : _d_line_end)
     work_nil ∈ Bool
     work_nil = (is_first_tick ? false : _work_nil)
-    gc_bin ∈ Bool
-    gc_bin = (is_first_tick ? false : _gc_bin)
-    gc_l ∈ Expr
-    gc_l = (is_first_tick ? EInt(0) : _gc_l)
-    gc_op ∈ Op
-    gc_op = (is_first_tick ? OpPlus : _gc_op)
-    gc_r ∈ Expr
-    gc_r = (is_first_tick ? EInt(0) : _gc_r)
-    il_pfx ∈ String
-    il_pfx = (is_first_tick ? "" : _il_pfx)
-    il_ps ∈ Int
-    il_ps = (is_first_tick ? 0 : _il_ps)
+    guard_is_binop ∈ Bool
+    guard_is_binop = (is_first_tick ? false : _guard_is_binop)
+    guard_lhs ∈ Expr
+    guard_lhs = (is_first_tick ? EInt(0) : _guard_lhs)
+    guard_op ∈ Op
+    guard_op = (is_first_tick ? OpPlus : _guard_op)
+    guard_rhs ∈ Expr
+    guard_rhs = (is_first_tick ? EInt(0) : _guard_rhs)
+    scope_prefix ∈ String
+    scope_prefix = (is_first_tick ? "" : _scope_prefix)
+    param_skip ∈ Int
+    param_skip = (is_first_tick ? 0 : _param_skip)
     in_parse ∈ Bool
     in_parse = (is_first_tick ? false : _in_parse)
     p_done ∈ Bool

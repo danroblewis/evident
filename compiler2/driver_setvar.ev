@@ -4,7 +4,7 @@
 --           the quantifier-set views c_q_*), the classify gate
 --           (classify_now, d_line_end, d_enter_sl, d_in_skip), the window
 --           head (tok0/tok5..t7), the registered-seq carries (sq_name/
---           sq_rt), the inline-frame prefix (il_pfx), the parse gate, and
+--           sq_rt), the inline-frame prefix (scope_prefix), the parse gate, and
 --           the Pratt result (p_done/pr_bad/pr_sres/pk_kind).
 -- PRODUCES: the ≤2-entry Set(T) variable registry (stv_cnt/stv_n*/stv_k*/
 --           stv_e*/stv_c*), the pmode-14 set-literal element walk
@@ -36,8 +36,8 @@ fsm DriverSetVar
     ∀ k ∈ {0..1} : stv[k].name = (is_first_tick ? "" : (d_setmem ∧ _stv_cnt = k) ? c_dname : _stv[k].name)
     ∀ k ∈ {0..1} : stv[k].kidx = (is_first_tick ? 0 : (d_setmem ∧ _stv_cnt = k) ? c_sq_rt : _stv[k].kidx)
 
-    c_stv_idx ∈ Int = ((c_name ≠ "" ∧ (_il_pfx ++ c_name) = stv[0].name) ? 0
-        : (c_name ≠ "" ∧ (_il_pfx ++ c_name) = stv[1].name) ? 1
+    c_stv_idx ∈ Int = ((c_name ≠ "" ∧ (_scope_prefix ++ c_name) = stv[0].name) ? 0
+        : (c_name ≠ "" ∧ (_scope_prefix ++ c_name) = stv[1].name) ? 1
         : (c_name ≠ "" ∧ c_name = stv[0].name) ? 0
         : (c_name ≠ "" ∧ c_name = stv[1].name) ? 1
         : 0 - 1)
@@ -60,16 +60,16 @@ fsm DriverSetVar
         Ident(s) ⇒ s
         _ ⇒ ""
     stl_elem_items ∈ C2Items = C2ICons(
-        C2RecVal(_il_pfx ++ stl_enm, sv_k),
+        C2RecVal(_scope_prefix ++ stl_enm, sv_k),
         C2ICons(C2SetAdd, C2INil))
     stl_close_items ∈ C2Items = C2ICons(C2PinEq,
         C2ICons(C2AssertTop, C2INil))
-    stl_rec ∈ String = "|" ++ substr((_il_pfx ++ stl_enm) ++ rec_pad31, 0, 31)
+    stl_rec ∈ String = "|" ++ substr((_scope_prefix ++ stl_enm) ++ rec_pad31, 0, 31)
     ∀ k ∈ {0..1} : stv[k].elems = (is_first_tick ? "" : (d_enter_stl ∧ c_stv_idx = k) ? "" : (stl_elem ∧ _sv_cur = k) ? _stv[k].elems ++ stl_rec : _stv[k].elems)
     ∀ k ∈ {0..1} : stv[k].count = (is_first_tick ? 0 : (d_enter_stl ∧ c_stv_idx = k) ? 0 : (stl_elem ∧ _sv_cur = k) ? _stv[k].count + 1 : _stv[k].count)
 
-    c_smem_idx ∈ Int = ((c_type_str ≠ "" ∧ ((_il_pfx ++ c_type_str) = stv[0].name ∨ c_type_str = stv[0].name)) ? 0
-        : (c_type_str ≠ "" ∧ ((_il_pfx ++ c_type_str) = stv[1].name ∨ c_type_str = stv[1].name)) ? 1
+    c_smem_idx ∈ Int = ((c_type_str ≠ "" ∧ ((_scope_prefix ++ c_type_str) = stv[0].name ∨ c_type_str = stv[0].name)) ? 0
+        : (c_type_str ≠ "" ∧ ((_scope_prefix ++ c_type_str) = stv[1].name ∨ c_type_str = stv[1].name)) ? 1
         : 0 - 1)
     c_smem_line ∈ Bool = (c_is_mem ∧ (¬c_eff_line) ∧ (c_smem_idx ≥ 0))
     d_enter_smem ∈ Bool = (classify_now ∧ (¬d_line_end) ∧ (¬c_set_line)
@@ -77,7 +77,7 @@ fsm DriverSetVar
     c_smem_set ∈ String = (c_smem_idx = 0 ? stv[0].name : stv[1].name)
     c_smem_k ∈ Int = (c_smem_idx = 0 ? stv[0].kidx : stv[1].kidx)
     c_smem_items ∈ C2Items = C2ICons(C2Process(EIdent(c_smem_set)),
-        C2ICons(C2RecVal(_il_pfx ++ c_name, c_smem_k),
+        C2ICons(C2RecVal(_scope_prefix ++ c_name, c_smem_k),
         C2ICons(C2SelH, C2ICons(C2AssertTop, C2INil))))
 
     qset_src ∈ Int = ((c_q_t3nm ≠ "" ∧ c_q_t3nm = stv[0].name) ? 0
@@ -132,7 +132,7 @@ fsm DriverSetVar
         EIdent(sen) ⇒ sen
         _ ⇒ ""
     sl_e_item ∈ C2Item = ((_sq_rt ≥ 0 ∧ (pr_sres matches EIdent(_)))
-        ? C2RecVal(_il_pfx ++ sl_e_nm, _sq_rt)
+        ? C2RecVal(_scope_prefix ++ sl_e_nm, _sq_rt)
         : C2Process(pr_sres))
     sl_elem_items ∈ C2Items = C2ICons(C2Process(EIdent(_sq_name)),
         C2ICons(C2Process(EInt(_sl_cnt)),

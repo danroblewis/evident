@@ -1,7 +1,7 @@
--- DriverCompose isolation — slot-call name capture through cw_st.
--- pmode-10 held, frame idle: tick 1, cw_cap advances cw_st 0→1; tick 2,
--- d_in_cw1 is live and the window head `p ↦` (Ident, OpMapsto) fires
--- cw_slot, capturing cw_slot_nm into cs[0].name (slot index 0). Must read "p".
+-- DriverCompose isolation — slot-call name capture through callw_st.
+-- pmode-10 held, frame idle: tick 1, callw_cap advances callw_st 0→1; tick 2,
+-- in_callw1 is live and the window head `p ↦` (Ident, OpMapsto) fires
+-- callw_slot, capturing slot_name_tok into slot_names[0].name (slot index 0). Must read "p".
 -- entry: main
 -- expect: stdout = "p"
 -- expect: exit = 0
@@ -82,12 +82,12 @@ fsm main
     h_top = (is_first_tick ? 0 : _h_top)
     d_hstk_in ∈ C2H
     d_hstk_in = (is_first_tick ? C2HNil : _d_hstk_in)
-    gc_hit ∈ Bool
-    gc_hit = (is_first_tick ? false : _gc_hit)
-    gj_cap ∈ Bool
-    gj_cap = (is_first_tick ? false : _gj_cap)
-    gj_fire ∈ Bool
-    gj_fire = (is_first_tick ? false : _gj_fire)
+    guard_hit ∈ Bool
+    guard_hit = (is_first_tick ? false : _guard_hit)
+    guard_jump_cap ∈ Bool
+    guard_jump_cap = (is_first_tick ? false : _guard_jump_cap)
+    guard_jump_fire ∈ Bool
+    guard_jump_fire = (is_first_tick ? false : _guard_jump_fire)
     il_pop ∈ Bool
     il_pop = (is_first_tick ? false : _il_pop)
     p_done ∈ Bool
@@ -116,7 +116,7 @@ fsm main
     tok_cur ∈ Int
     tok_cur = (is_first_tick ? 0 : _tok_cur)
     ..DriverCompose
-    captured ∈ Bool = (cs[0].name = "p")
+    captured ∈ Bool = (slot_names[0].name = "p")
     effects ∈ Seq(Effect) = (captured
-        ? ⟨LibCall("libc", "puts", ⟨ArgStr(cs[0].name)⟩), Exit(0)⟩
+        ? ⟨LibCall("libc", "puts", ⟨ArgStr(slot_names[0].name)⟩), Exit(0)⟩
         : ⟨LibCall("libc", "getpid", ⟨⟩)⟩)

@@ -38,8 +38,8 @@ fsm main
     c_pn = (is_first_tick ? "" : _c_pn)
     c_sc ∈ Int
     c_sc = (is_first_tick ? 0 : _c_sc)
-    c_ty_rtk ∈ Int
-    c_ty_rtk = (is_first_tick ? 0 : _c_ty_rtk)
+    type_rec_slot ∈ Int
+    type_rec_slot = (is_first_tick ? 0 : _type_rec_slot)
     pq_qstop ∈ Bool
     pq_qstop = (is_first_tick ? false : _pq_qstop)
     rec0 ∈ RecTypeEntry(name ↦ "", fnames ↦ "", ftypes ↦ "", n_fields ↦ 0,

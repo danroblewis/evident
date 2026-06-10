@@ -1,7 +1,7 @@
 -- MODULE DriverSymLookup
 -- CONSUMES: the lookup name lookup_name, the symbol-table name registry
 --           (sym_names) + base (sym_buf.base), the inline-frame slot-bind
---           registry (ilb_n*/ilb_h*), the import/inline prefix (_il_pfx),
+--           registry (ilb_n*/ilb_h*), the import/inline prefix (_scope_prefix),
 --           the enum-variant value registry (enum_values, a bounded Seq), and the cached
 --           z_true/z_false handles.
 -- PRODUCES: name resolution — lookup_key/lookup_pos/lookup_found(2)/lookup_pos_now,
@@ -22,20 +22,20 @@ fsm DriverSymLookup
     lookup_pos ∈ Int = index_of(sym_names, lookup_key, 0)
     lookup_found ∈ Bool = (lookup_pos ≥ 0)
     lookup_special ∈ Bool = (lookup_name = "true" ∨ lookup_name = "false")
-    bound_found ∈ Bool = ((lookup_name ≠ "") ∧ ((ilb_n0 = lookup_name)
-        ∨ (ilb_n1 = lookup_name) ∨ (ilb_n2 = lookup_name)
-        ∨ (ilb_n3 = lookup_name) ∨ (ilb_n4 = lookup_name)
-        ∨ (ilb_n5 = lookup_name)))
-    bound_handle ∈ Int = (ilb_n0 = lookup_name ? ilb_h0
-        : ilb_n1 = lookup_name ? ilb_h1
-        : ilb_n2 = lookup_name ? ilb_h2
-        : ilb_n3 = lookup_name ? ilb_h3
-        : ilb_n4 = lookup_name ? ilb_h4
-        : ilb_h5)
+    bound_found ∈ Bool = ((lookup_name ≠ "") ∧ ((bind_n0 = lookup_name)
+        ∨ (bind_n1 = lookup_name) ∨ (bind_n2 = lookup_name)
+        ∨ (bind_n3 = lookup_name) ∨ (bind_n4 = lookup_name)
+        ∨ (bind_n5 = lookup_name)))
+    bound_handle ∈ Int = (bind_n0 = lookup_name ? bind_h0
+        : bind_n1 = lookup_name ? bind_h1
+        : bind_n2 = lookup_name ? bind_h2
+        : bind_n3 = lookup_name ? bind_h3
+        : bind_n4 = lookup_name ? bind_h4
+        : bind_h5)
     lookup_pfx_key ∈ String
-    FtiNameEntry(name ↦ (_il_pfx ++ lookup_name), entry ↦ lookup_pfx_key)
+    FtiNameEntry(name ↦ (_scope_prefix ++ lookup_name), entry ↦ lookup_pfx_key)
     lookup_pfx_pos ∈ Int = index_of(sym_names, lookup_pfx_key, 0)
-    lookup_pfx_hit ∈ Bool = ((_il_pfx ≠ "") ∧ (lookup_pfx_pos ≥ 0))
+    lookup_pfx_hit ∈ Bool = ((_scope_prefix ≠ "") ∧ (lookup_pfx_pos ≥ 0))
     lookup_pos_now ∈ Int = (lookup_pfx_hit ? lookup_pfx_pos : lookup_pos)
     lookup_found2 ∈ Bool = (lookup_pfx_hit ∨ lookup_found)
     lookup_pure ∈ Bool = (lookup_special ∨ (¬lookup_found2))

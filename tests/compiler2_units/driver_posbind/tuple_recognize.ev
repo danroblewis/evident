@@ -58,8 +58,8 @@ fsm main
     claimidx_buf.count = (is_first_tick ? 0 : _claimidx_buf.count)
     claimidx_names ∈ String
     claimidx_names = (is_first_tick ? "" : _claimidx_names)
-    cw_reset ∈ Bool
-    cw_reset = (is_first_tick ? false : _cw_reset)
+    callw_reset ∈ Bool
+    callw_reset = (is_first_tick ? false : _callw_reset)
     classify_now ∈ Bool
     classify_now = (is_first_tick ? false : _classify_now)
     h_2nd ∈ Int
@@ -87,40 +87,40 @@ fsm main
     enum_values ∈ Seq(EnumVariantVal)
     #enum_values ≤ 6
     enum_values = (is_first_tick ? ⟨⟩ : _enum_values)
-    gc_hit ∈ Bool
-    gc_hit = (is_first_tick ? false : _gc_hit)
-    gc_l ∈ Expr
-    gc_l = (is_first_tick ? EInt(0) : _gc_l)
+    guard_hit ∈ Bool
+    guard_hit = (is_first_tick ? false : _guard_hit)
+    guard_lhs ∈ Expr
+    guard_lhs = (is_first_tick ? EInt(0) : _guard_lhs)
     idx ∈ String
     idx = (is_first_tick ? "" : _idx)
-    il_depth ∈ Int
-    il_depth = (is_first_tick ? 0 : _il_depth)
-    il_jump ∈ Bool
-    il_jump = (is_first_tick ? false : _il_jump)
-    il_pd ∈ Int
-    il_pd = (is_first_tick ? 0 : _il_pd)
-    il_pfx ∈ String
-    il_pfx = (is_first_tick ? "" : _il_pfx)
-    ilb_n0 ∈ String
-    ilb_n0 = (is_first_tick ? "" : _ilb_n0)
-    ilb_n1 ∈ String
-    ilb_n1 = (is_first_tick ? "" : _ilb_n1)
-    ilb_n2 ∈ String
-    ilb_n2 = (is_first_tick ? "" : _ilb_n2)
-    ilb_n3 ∈ String
-    ilb_n3 = (is_first_tick ? "" : _ilb_n3)
-    ilb_n4 ∈ String
-    ilb_n4 = (is_first_tick ? "" : _ilb_n4)
-    ilb_n5 ∈ String
-    ilb_n5 = (is_first_tick ? "" : _ilb_n5)
-    ips_done ∈ Bool
-    ips_done = (is_first_tick ? false : _ips_done)
-    ips_off ∈ Bool
-    ips_off = (is_first_tick ? false : _ips_off)
-    ips_open ∈ Bool
-    ips_open = (is_first_tick ? false : _ips_open)
-    ips_skp ∈ Bool
-    ips_skp = (is_first_tick ? false : _ips_skp)
+    frame_depth ∈ Int
+    frame_depth = (is_first_tick ? 0 : _frame_depth)
+    frame_jump ∈ Bool
+    frame_jump = (is_first_tick ? false : _frame_jump)
+    param_depth ∈ Int
+    param_depth = (is_first_tick ? 0 : _param_depth)
+    scope_prefix ∈ String
+    scope_prefix = (is_first_tick ? "" : _scope_prefix)
+    bind_n0 ∈ String
+    bind_n0 = (is_first_tick ? "" : _bind_n0)
+    bind_n1 ∈ String
+    bind_n1 = (is_first_tick ? "" : _bind_n1)
+    bind_n2 ∈ String
+    bind_n2 = (is_first_tick ? "" : _bind_n2)
+    bind_n3 ∈ String
+    bind_n3 = (is_first_tick ? "" : _bind_n3)
+    bind_n4 ∈ String
+    bind_n4 = (is_first_tick ? "" : _bind_n4)
+    bind_n5 ∈ String
+    bind_n5 = (is_first_tick ? "" : _bind_n5)
+    pskip_done ∈ Bool
+    pskip_done = (is_first_tick ? false : _pskip_done)
+    pskip_off ∈ Bool
+    pskip_off = (is_first_tick ? false : _pskip_off)
+    pskip_open ∈ Bool
+    pskip_open = (is_first_tick ? false : _pskip_open)
+    pskip_run ∈ Bool
+    pskip_run = (is_first_tick ? false : _pskip_run)
     mp_items ∈ C2Items
     mp_items = (is_first_tick ? C2INil : _mp_items)
     mq_wc ∈ Bool

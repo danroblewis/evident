@@ -2,52 +2,52 @@
 -- CONSUMES: the parsed root (pr_sres) + parse-done signal (p_done,
 --           _pk_kind, pr_bad), the claim index (claimidx_names, ci_base),
 --           the pmode-10 composition-walk state (in_parse, _pmode,
---           _cw_st, cw_reset, work_nil), and the inline-frame
---           stack views (il_pop, _il_depth, h_top).
--- PRODUCES: the guard recognizer (gc_op/gc_l/gc_r/gc_bin/gc_rnm/gc_key/
---           gc_pos/gc_hit), the claim-body fetch effect (e_gcr), the
---           jump capture/fire signals (gj_cap/gj_fire/gj_unguard), and
---           the active-guard carry (il_guard/il_gd) + d_guard_on flag.
+--           _callw_st, callw_reset, work_nil), and the inline-frame
+--           stack views (il_pop, _frame_depth, h_top).
+-- PRODUCES: the guard recognizer (guard_op/guard_lhs/guard_rhs/guard_is_binop/guard_callee/guard_key/
+--           guard_pos/guard_hit), the claim-body fetch effect (eff_guard_read), the
+--           jump capture/fire signals (guard_jump_cap/guard_jump_fire/guard_off), and
+--           the active-guard carry (guard_handle/guard_depth) + guard_on flag.
 -- MAINTAINS: a `cond ⇒ ClaimName` line splices Name's body with every
 --           asserted constraint wrapped in (=> guard …); the guard is
---           armed when the jump fires (il_guard ← the guard handle) and
+--           armed when the jump fires (guard_handle ← the guard handle) and
 --           disarmed by the matching frame pop. ONE active guard at a
 --           time (no nested guarded splices — zero corpus occurrences).
 --
 -- The conditional-inline (`cond ⇒ ClaimName`) guarded-splice phase.
 -- Lifted into driver_main via `..DriverGuard`.
 fsm DriverGuard
-    gc_op ∈ Op
-    gc_l ∈ Expr
-    gc_r ∈ Expr
-    gc_bin ∈ Bool
-    BoolExprBinopParts(e ↦ pr_sres, op ↦ gc_op, lhs ↦ gc_l,
-        rhs ↦ gc_r, is_binop ↦ gc_bin)
-    gc_rnm ∈ String = match gc_r
+    guard_op ∈ Op
+    guard_lhs ∈ Expr
+    guard_rhs ∈ Expr
+    guard_is_binop ∈ Bool
+    BoolExprBinopParts(e ↦ pr_sres, op ↦ guard_op, lhs ↦ guard_lhs,
+        rhs ↦ guard_rhs, is_binop ↦ guard_is_binop)
+    guard_callee ∈ String = match guard_rhs
         EIdent(s) ⇒ s
         _ ⇒ ""
-    gc_key ∈ String
-    FtiNameEntry(name ↦ gc_rnm, entry ↦ gc_key)
-    gc_pos ∈ Int = index_of(claimidx_names, gc_key, 0)
-    gc_hit ∈ Bool = (p_done ∧ (_pk_kind = 2) ∧ (¬pr_bad) ∧ gc_bin
-        ∧ (gc_op matches OpImpl) ∧ (gc_rnm ≠ "") ∧ (gc_pos ≥ 0)
-        ∧ (_il_depth < 8))
-    e_gcr ∈ Effect
-    BuildMemReadLong(addr ↦ claimidx_buf.base + (8 * (gc_pos / 32)), eff ↦ e_gcr)
-    gj_cap ∈ Bool = (in_parse ∧ (_pmode = 10) ∧ (_cw_st = 3))
-    gj_fire ∈ Bool = (in_parse ∧ (_pmode = 10) ∧ (_cw_st = 4)
+    guard_key ∈ String
+    FtiNameEntry(name ↦ guard_callee, entry ↦ guard_key)
+    guard_pos ∈ Int = index_of(claimidx_names, guard_key, 0)
+    guard_hit ∈ Bool = (p_done ∧ (_pk_kind = 2) ∧ (¬pr_bad) ∧ guard_is_binop
+        ∧ (guard_op matches OpImpl) ∧ (guard_callee ≠ "") ∧ (guard_pos ≥ 0)
+        ∧ (_frame_depth < 8))
+    eff_guard_read ∈ Effect
+    BuildMemReadLong(addr ↦ claimidx_buf.base + (8 * (guard_pos / 32)), eff ↦ eff_guard_read)
+    guard_jump_cap ∈ Bool = (in_parse ∧ (_pmode = 10) ∧ (_callw_st = 3))
+    guard_jump_fire ∈ Bool = (in_parse ∧ (_pmode = 10) ∧ (_callw_st = 4)
         ∧ work_nil)
-    il_guard ∈ Int
-    il_gd ∈ Int
-    gj_unguard ∈ Bool = (il_pop ∧ (_il_depth = _il_gd))
-    il_guard = (is_first_tick ? 0
-        : cw_reset ? 0
-        : gj_fire ? h_top
-        : gj_unguard ? 0
-        : _il_guard)
-    il_gd = (is_first_tick ? 0
-        : cw_reset ? 0
-        : gj_fire ? _il_depth + 1
-        : gj_unguard ? 0
-        : _il_gd)
-    d_guard_on ∈ Bool = (_il_guard ≠ 0)
+    guard_handle ∈ Int
+    guard_depth ∈ Int
+    guard_off ∈ Bool = (il_pop ∧ (_frame_depth = _guard_depth))
+    guard_handle = (is_first_tick ? 0
+        : callw_reset ? 0
+        : guard_jump_fire ? h_top
+        : guard_off ? 0
+        : _guard_handle)
+    guard_depth = (is_first_tick ? 0
+        : callw_reset ? 0
+        : guard_jump_fire ? _frame_depth + 1
+        : guard_off ? 0
+        : _guard_depth)
+    guard_on ∈ Bool = (_guard_handle ≠ 0)

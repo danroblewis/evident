@@ -3,7 +3,7 @@
 --           (ctor_decl), the lookup name lookup_name, the work tail work_tail,
 --           the cached zero numeral (z3nums.zero), the record-type registry
 --           (rec0/e1/e2) + its RtRecName/RtFieldAcc probes, and the set-var
---           registry carries (_sq_set/_sq_name/_il_pfx, stv_*).
+--           registry carries (_sq_set/_sq_name/_scope_prefix, stv_*).
 -- PRODUCES: the per-arity builtin/ctor lowering — call1_items (str_len /
 --           str_from_int / 1-arg ctor; incl. str_from_int_items, d_sl_*/d_card_*
 --           cardinality), call2_items (__real/__field/__index/char_at/
@@ -44,11 +44,11 @@ fsm DriverCallLower
         EIdent(can) ⇒ can
         _ ⇒ ""
     len_of_seqvar ∈ Bool = (_sq_set ∧ ((call_arg0_name = _sq_name)
-        ∨ ((_il_pfx ++ call_arg0_name) = _sq_name)))
+        ∨ ((_scope_prefix ++ call_arg0_name) = _sq_name)))
     len_set_slot ∈ Int = ((call_arg0_name ≠ "" ∧ ((call_arg0_name = stv[0].name)
-            ∨ ((_il_pfx ++ call_arg0_name) = stv[0].name))) ? 0
+            ∨ ((_scope_prefix ++ call_arg0_name) = stv[0].name))) ? 0
         : (call_arg0_name ≠ "" ∧ ((call_arg0_name = stv[1].name)
-            ∨ ((_il_pfx ++ call_arg0_name) = stv[1].name))) ? 1
+            ∨ ((_scope_prefix ++ call_arg0_name) = stv[1].name))) ? 1
         : 0 - 1)
     card_elems ∈ String = (len_set_slot = 0 ? stv[0].elems : stv[1].elems)
     card_count ∈ Int = (len_set_slot = 0 ? stv[0].count : stv[1].count)

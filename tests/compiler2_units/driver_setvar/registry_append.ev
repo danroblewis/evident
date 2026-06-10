@@ -56,8 +56,8 @@ fsm main
     d_in_skip = (is_first_tick ? false : _d_in_skip)
     work_nil ∈ Bool
     work_nil = (is_first_tick ? false : _work_nil)
-    il_pfx ∈ String
-    il_pfx = (is_first_tick ? "" : _il_pfx)
+    scope_prefix ∈ String
+    scope_prefix = (is_first_tick ? "" : _scope_prefix)
     in_parse ∈ Bool
     in_parse = (is_first_tick ? false : _in_parse)
     name ∈ String

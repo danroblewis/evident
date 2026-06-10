@@ -321,7 +321,7 @@ fsm driver_main
         C2ICons(C2Process(EInt(_fl_v)),
         C2ICons(C2SelH,
         C2ICons(C2App(d_vb_acc, 1), work_tail))))
-    rb_q_name ∈ String = _il_pfx ++ lookup_name ++ "." ++ rb_f
+    rb_q_name ∈ String = _scope_prefix ++ lookup_name ++ "." ++ rb_f
     rb_q_key ∈ String
     FtiNameEntry(name ↦ rb_q_name, entry ↦ rb_q_key)
     d_rb_hit ∈ Bool = (it_process ∧ expr_is_ident ∧ _rb_on
@@ -430,7 +430,7 @@ fsm driver_main
         : it_ite ? 3
         : it_not ? 1
         : it_pin_eq ? 2
-        : it_assert ? (d_guard_on ? (_istep = 1 ? 1 : 0) : 1)
+        : it_assert ? (guard_on ? (_istep = 1 ? 1 : 0) : 1)
         : it_drop ? 1
         : it_app ? (_istep = app_argc ? app_argc : 0)
         : it_select_eq ? (_istep = 1 ? 1 : 0)
@@ -456,8 +456,8 @@ fsm driver_main
 
     hstk = (is_first_tick ? C2HNil
         : (d_enter_claim ∨ d_enter_claimp) ? C2HNil
-        : cw_fire ? cw_pop_stk
-        : gj_fire ? h_tail1
+        : callw_fire ? callw_pop_stack
+        : guard_jump_fire ? h_tail1
         : pz_act ? pz_pop
         : d_ilb_push ? C2HCons(bound_handle, d_hstk_in)
         : d_push_ident ? C2HCons(lookup_handle, d_hstk_in)
@@ -488,8 +488,8 @@ fsm driver_main
         : sl_close ? sl_close_items
         : stl_elem ? stl_elem_items
         : stl_close ? stl_close_items
-        : (cw_fire ∧ _cw_ty) ? tyc_items
-        : (cw_bjump ∧ _cw_ty ∧ (_ts_k ≥ 0)) ? tsb_items
+        : (callw_fire ∧ _callw_is_type) ? type_pin_items
+        : (callw_bare_jump ∧ _callw_is_type ∧ (_type_slot ≥ 0)) ? type_recdecl_items
         : pg_ty_tick ? c_mem_items
         : pg_drain ? pg_drain_items
         : (pt_close ∧ ptc_tm) ? ptc_recv_items
@@ -521,12 +521,12 @@ fsm driver_main
         : it_select_eq ? (_istep = 2 ? work_tail : _witems)
         : it_sel_eq_h ? (_istep = 1 ? work_tail : _witems)
         : it_len_eq ? (_istep = 1 ? work_tail : _witems)
-        : it_assert ? ((d_guard_on ∧ (_istep = 0)) ? _witems : work_tail)
+        : it_assert ? ((guard_on ∧ (_istep = 0)) ? _witems : work_tail)
         : work_tail)
 
     d_multi_cont ∈ Bool = (processing ∧
         ((it_op ∧ d_op_arr ∧ (_istep < 2))
-        ∨ (it_assert ∧ d_guard_on ∧ (_istep < 1))
+        ∨ (it_assert ∧ guard_on ∧ (_istep < 1))
         ∨ (it_decl ∧ (_istep < 2))
         ∨ (it_app ∧ (_istep < app_argc))
         ∨ (it_select_eq ∧ (_istep < 2))
@@ -545,7 +545,7 @@ fsm driver_main
         : it_decl ? (_istep = 2 ? 0 : 2)
         : it_natbound ? 1
         : it_pin_eq ? 1
-        : it_assert ? ((d_guard_on ∧ (_istep = 0)) ? 2 : 0)
+        : it_assert ? ((guard_on ∧ (_istep = 0)) ? 2 : 0)
         : it_app ? (_istep = app_argc ? 1 : 0)
         : it_select_eq ? ((_istep = 0 ∨ _istep = 1) ? 2 : 0)
         : it_sel_eq_h ? (_istep = 0 ? 2 : 1)
@@ -606,20 +606,20 @@ fsm driver_main
         : pt_comma ? 1
         : pt_tup_b ? 5
         : (pt_close ∨ pt_bail) ? (ptc_tm ? 5 : (ptc_t ∨ (pt_bail ∧ (tok1 matches OpIn))) ? 3 : 1)
-        : (cw_comma ∨ cw_fire ∨ cw_bail) ? 1
-        : (ips_open ∨ ips_skp) ? 1
+        : (callw_comma ∨ callw_fire ∨ callw_bail) ? 1
+        : (pskip_open ∨ pskip_run) ? 1
         : d_enter_pratt ? d_pratt_cons0
         : d_mem_line ? d_mem_cons
         : p_done ? d_done_cons
         : (d_in_pratt ∧ (pr_scons ≥ 1)) ? pr_scons
         : 0)
     tok_cur = (is_first_tick ? 0
-        : il_jump ? il_tgt_v
-        : il_pop ? fr_ret
+        : frame_jump ? jump_target_now
+        : il_pop ? frame_ret
         : _tok_cur + dcons)
     fetch_end = (is_first_tick ? 0
-        : il_jump ? il_tgt_v
-        : il_pop ? fr_ret
+        : frame_jump ? jump_target_now
+        : il_pop ? frame_ret
         : _fetch_mode = 2 ? _tok_cur + 8 : _fetch_end)
     w_after ∈ TokenList = (dcons = 0 ? _win_toks
         : dcons = 1 ? win_rest1
@@ -631,7 +631,7 @@ fsm driver_main
         : dcons = 7 ? win_rest7
         : TLNil)
     win_toks = (is_first_tick ? TLNil
-        : (il_jump ∨ il_pop) ? TLNil
+        : (frame_jump ∨ il_pop) ? TLNil
         : _fetch_mode = 2 ? win_rebuilt
         : w_after)
 
@@ -677,9 +677,9 @@ fsm driver_main
         : d_skip_stop ? 0
         : d_claim_end ? 0
         : (c_comp_line ∨ c_ty_line) ? 10
-        : gc_hit ? 10
-        : gj_fire ? 2
-        : (cw_bjump ∨ cw_fire ∨ cw_bail) ? 2
+        : guard_hit ? 10
+        : guard_jump_fire ? 2
+        : (callw_bare_jump ∨ callw_fire ∨ callw_bail) ? 2
         : d_enter_qr ? 11
         : q_bail ? 2
         : pcl_line ? 12
@@ -787,7 +787,7 @@ fsm driver_main
     d_eff_gimpl ∈ Effect
     d_gimp_ok ∈ Bool
     d_gimp_nn ∈ Bool
-    BoolCmpBuildZ3(ctx_h ↦ z3ctx.ctx, op ↦ d_op_impl, l_h ↦ _il_guard,
+    BoolCmpBuildZ3(ctx_h ↦ z3ctx.ctx, op ↦ d_op_impl, l_h ↦ _guard_handle,
         r_h ↦ h_top, eff ↦ d_eff_gimpl, ok ↦ d_gimp_ok,
         needs_not ↦ d_gimp_nn)
     d_eff_natge ∈ Effect
@@ -880,7 +880,7 @@ fsm driver_main
             : d_eff_stwr)
         : it_natbound ? d_eff_natge
         : it_pin_eq ? d_eff_pineq
-        : it_assert ? (d_guard_on
+        : it_assert ? (guard_on
             ? (_istep = 0 ? d_eff_gimpl : d_eff_asserttmp)
             : d_eff_assert)
         : it_app ? (_istep < app_argc ? d_eff_caw : d_eff_app)
@@ -956,8 +956,8 @@ fsm driver_main
             read_tag7, read_pay7⟩
         : _fetch_mode = 1 ? ⟨copy_eff0, copy_eff1, copy_eff2, copy_eff3, copy_eff4, copy_eff5, copy_eff6, copy_eff7⟩
         : claimidx_add ? ⟨eff_claimidx_write⟩
-        : il_rdcur ? ⟨e_cir⟩
-        : gc_hit ? ⟨e_gcr⟩
+        : read_callee_cursor ? ⟨eff_claimidx_read⟩
+        : guard_hit ? ⟨eff_guard_read⟩
         : pt_close ? ⟨e_pcr⟩
         : recdecl_active ? (recdecl_eff_st = 2
             ? ⟨recdecl_write_fn0, recdecl_write_fn1, recdecl_write_fn2, recdecl_write_fn3, recdecl_write_fn4,

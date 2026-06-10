@@ -37,8 +37,8 @@ fsm main
     rec_collect_on = (is_first_tick ? false : _rec_collect_on)
     enum_act ∈ Int
     enum_act = (is_first_tick ? 0 : _enum_act)
-    cw_st ∈ Int
-    cw_st = (is_first_tick ? 0 : _cw_st)
+    callw_st ∈ Int
+    callw_st = (is_first_tick ? 0 : _callw_st)
     pt_st ∈ Int
     pt_st = (is_first_tick ? 0 : _pt_st)
     work_nil ∈ Bool
