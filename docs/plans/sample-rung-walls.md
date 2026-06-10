@@ -149,3 +149,15 @@ registry. The gap census called this C1 and sized it L — that estimate
 stands. The ~0.5 ms/tick interp throughput item is the *second* wall
 behind it (a full-sample compile at current speed is ~20+ min even
 once it compiles).
+
+## v5 datum (2026-06-10 06:10): registry WIDTH is a throughput multiplier
+
+The guard-demo run (default 100k tick limit, widened-registry stage1)
+measured **6.7 ms/tick vs v2's 0.5 ms/tick — 13× slower per tick at the
+same ~2978 step count**. The widening (user_variants 6→160 slots) deepens
+the per-slot select chains inside each step; per-step interp cost scales
+with chain depth. Consequence for the multi-enum grammar work: the
+per-enum sort registry must NOT be a wide flat slot family — a tape-side
+(FTI) registry or a narrow per-enum window is required. (The full-sample
+Exit(9) demo remains undemonstrated — it now needs ~150k+ ticks at this
+speed; the guard logic is probe-proven instead.)
