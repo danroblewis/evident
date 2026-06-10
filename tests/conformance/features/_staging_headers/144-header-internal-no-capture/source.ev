@@ -1,0 +1,10 @@
+import "stdlib/kernel.ev"
+claim PickOut(out ∈ Int)
+    name ∈ String
+    name = "internal"
+    out = 1
+claim main
+    name ∈ String = "x"
+    out ∈ Int
+    PickOut
+    effects ∈ Seq(Effect) = ⟨Exit(0)⟩
