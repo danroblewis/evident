@@ -480,7 +480,65 @@ fsm driver_main
     op_is_nary ∈ Bool = (op_arith_nary ∨ op_bool_nary ∨ op_is_concat)
 
     -- ── LINE CLASSIFIER + dispatch (see compiler2/driver_classify.ev) ──
-    ..DriverClassify
+    -- Bare mention against its header: these declarations ARE the
+    -- central dispatch interface (the per-line classification flags,
+    -- dispatch enter signals, and Pratt entry cons/kind). Only
+    -- pratt_qstop carries; the rest is a pure window function.
+    line_t0 ∈ Token
+    line_t1 ∈ Token
+    line_t2 ∈ Token
+    line_t3 ∈ Token
+    line_t4 ∈ Token
+    line_t0_ident ∈ Bool
+    line_name ∈ String
+    line_is_mem ∈ Bool
+    line_is_notmem ∈ Bool
+    line_is_carry ∈ Bool
+    effects_line ∈ Bool
+    line_ty_name ∈ String
+    line_is_nat ∈ Bool
+    line_sort ∈ Int
+    seq_elt_slot ∈ Int
+    setmem_decl_line ∈ Bool
+    effects_cond ∈ Bool
+    line_pinned ∈ Bool
+    intset_line ∈ Bool
+    line_bounded ∈ Bool
+    dotdot_shape ∈ Bool
+    comp_found ∈ Bool
+    line_end ∈ Bool
+    claim_end ∈ Bool
+    frame_pop ∈ Bool
+    comp_call ∈ Bool
+    comp_bare ∈ Bool
+    comp_dotdot ∈ Bool
+    comp_line ∈ Bool
+    enter_efflit ∈ Bool
+    enter_intset ∈ Bool
+    enter_match ∈ Bool
+    enter_seqmem ∈ Bool
+    enter_seqlit ∈ Bool
+    enter_multiname ∈ Bool
+    enter_pratt_line ∈ Bool
+    enter_pratt ∈ Bool
+    pratt_enter_consume ∈ Int
+    pratt_enter_kind ∈ Int
+    pratt_qstop ∈ Bool
+    line_dname ∈ String
+    scoped_key ∈ String
+    name_outer ∈ Bool
+    no_decl ∈ Bool
+    resolved_name ∈ String
+    mem_items ∈ C2Items
+    strin_line ∈ Bool
+    strin_items ∈ C2Items
+    enter_strin ∈ Bool
+    tymem_call ∈ Bool
+    tymem_bare ∈ Bool
+    tymem_line ∈ Bool
+    in_type_frame ∈ Bool
+    callee_pos ∈ Int
+    DriverClassify
     -- ── G1: bounded quantifier (see compiler2/driver_quant.ev) ──
     -- Bare mention against its header: these twenty-seven declarations
     -- ARE the bounded-quantifier interface; its other names are
