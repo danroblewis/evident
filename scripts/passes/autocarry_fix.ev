@@ -17,24 +17,51 @@
 --            `, _slot ↦ _val` per carried slot-binding without an
 --            explicit `_slot` binding already present, or
 --            `, _slot ∈ base` for a header-dual record (val "∈ base").
+-- EXIT CODES (overflow guards — every carried registry is statically
+-- bounded so a runaway input fails loud instead of silently truncating).
+-- The fsm-name set is a bounded Seq(String) (equality-membership keyed,
+-- so it lowers to a len-guarded slot unroll); the remaining registries are
+-- char-offset-parsed accumulators kept as length-bounded Strings (a
+-- Seq-of-records form would force a per-tick N-way ∃-unroll over 500+
+-- slots and blow the ≤1 s pass budget — see passes-in-evident-walls.md):
+--   70 bare-decl registry > 82500 · 71 fsm-name set > 104 entries ·
+--   72 call-bind registry > 102500 · 73 slot-have registry > 17500 ·
+--   74 bare-mention registry > 2000 · 75 carry registry > 30500 ·
+--   76 worklist > 25000 · 77 insert-script > 24500 · 78 inject-script >
+--   1000 · 79 injection accumulator > 4000. Caps ≥ 4x the corpus maxima
+--   (driver.ev, measured 2026-06-10: fsm 26 · bare 20596 · bind 25619 ·
+--   slot 4321 · ment 29 · carry 7601 · work 6187 · ins 6051 · inj 125 ·
+--   acc <4).
 import "stdlib/kernel.ev"
 import "scripts/passes/autocarry_lib.ev"
 
 fsm autocarry_fix
     phase ∈ Int
-    fsm_set ∈ String
+    fsm_set ∈ Seq(String)
+    #fsm_set ≤ 104
+    fs_n ∈ Int
     bare_reg ∈ String
+    #bare_reg ≤ 82500
     bind_reg ∈ String
+    #bind_reg ≤ 102500
     slot_reg ∈ String
+    #slot_reg ≤ 17500
     ment_reg ∈ String
+    #ment_reg ≤ 2000
     carry_reg ∈ String
+    #carry_reg ≤ 30500
     work_list ∈ String
+    #work_list ≤ 25000
     ins_out ∈ String
+    #ins_out ≤ 24500
     inj_out ∈ String
+    #inj_out ≤ 1000
     cur_a ∈ Int
     cur_b ∈ Int
     acc_a ∈ String
+    #acc_a ≤ 4000
     acc_b ∈ String
+    #acc_b ≤ 4000
 
     tk_ph ∈ Int = (is_first_tick ? 0 : _phase)
     tk_rline ∈ String = match last_results[1]
@@ -55,7 +82,8 @@ fsm autocarry_fix
     tk_dr_gt ∈ Int = (tk_fx_run ? index_of(_work_list, "⟩", _cur_a) : 0)
     tk_dr_f ∈ String = (tk_fx_run ? substr(_work_list, _cur_a + 1, tk_dr_dot - _cur_a - 1) : "")
     tk_dr_x ∈ String = (tk_fx_run ? substr(_work_list, tk_dr_dot + 1, tk_dr_gt - tk_dr_dot - 1) : "")
-    tk_dr_fsm_ok ∈ Bool = (tk_dr_run ∧ str_contains(_fsm_set, "⟨" ++ tk_dr_f ++ "⟩"))
+    tk_dr_fkey ∈ String = (tk_fx_run ? "⟨" ++ tk_dr_f ++ "⟩" : "")
+    tk_dr_fsm_ok ∈ Bool = (tk_dr_run ∧ (∃ e ∈ fsm_set : e = tk_dr_fkey))
     tk_dr_m ∈ Int = (tk_dr_fsm_ok ? index_of(_bind_reg, "❲" ++ tk_dr_f ++ "⦂" ++ tk_dr_x ++ "❳", _cur_b) : -1)
     tk_dr_vs ∈ Int = (tk_dr_m ≥ 0 ? tk_dr_m + #tk_dr_f + #tk_dr_x + 3 : 0)
     tk_dr_vc ∈ Int = (tk_dr_m ≥ 0 ? index_of(_bind_reg, "⦂", tk_dr_vs) : 0)
@@ -117,8 +145,9 @@ fsm autocarry_fix
         ∧ str_contains(substr(_slot_reg, tk_jw_hp + #tk_jw_ln + 2,
             index_of(_slot_reg, "❱", tk_jw_hp + #tk_jw_ln + 2) - tk_jw_hp - #tk_jw_ln - 2),
             "⦂_" ++ tk_jw_slot ++ "⦂"))
+    tk_jw_fkey ∈ String = (tk_jw_run ? "⟨" ++ tk_jw_sub ++ "⟩" : "")
     tk_jw_give ∈ Bool = (tk_jw_run ∧ ¬(tk_jw_val = "0") ∧ ¬tk_jw_have
-        ∧ str_contains(_fsm_set, "⟨" ++ tk_jw_sub ++ "⟩")
+        ∧ (∃ e ∈ fsm_set : e = tk_jw_fkey)
         ∧ str_contains(_carry_reg, "⟨" ++ tk_jw_sub ++ "." ++ tk_jw_slot ++ "⟩"))
     tk_jw_hdr ∈ Bool = (tk_jw_run ∧ char_at(_bind_reg, tk_jw_brk + 1) = "∈")
     tk_jw_add ∈ String = (tk_jw_hdr
@@ -133,35 +162,53 @@ fsm autocarry_fix
         : tk_ph = 9 ? (tk_jw_done ? 10 : 9)
         : tk_ph = 10 ? 11
         : 11)
-    fsm_set = (is_first_tick ? "" : tk_kind = "F" ? _fsm_set ++ tk_payload : _fsm_set)
-    bare_reg = (is_first_tick ? "" : tk_kind = "B" ? _bare_reg ++ tk_payload : _bare_reg)
-    bind_reg = (is_first_tick ? "" : tk_kind = "D" ? _bind_reg ++ tk_payload : _bind_reg)
-    slot_reg = (is_first_tick ? "" : tk_kind = "S" ? _slot_reg ++ tk_payload : _slot_reg)
-    ment_reg = (is_first_tick ? "" : tk_kind = "M" ? _ment_reg ++ tk_payload : _ment_reg)
-    carry_reg = (is_first_tick ? ""
-        : tk_kind = "C" ? _carry_reg ++ tk_payload
+    tk_ov_fs ∈ Bool = (tk_kind = "F" ∧ _fs_n ≥ 104)
+    fsm_set = (is_first_tick ? ⟨⟩ : tk_kind = "F" ∧ ¬tk_ov_fs ? _fsm_set ++ ⟨tk_payload⟩ : _fsm_set)
+    fs_n = (is_first_tick ? 0 : tk_kind = "F" ∧ ¬tk_ov_fs ? _fs_n + 1 : _fs_n)
+    tk_ov_bare ∈ Bool = (tk_kind = "B" ∧ #_bare_reg + #tk_payload > 82500)
+    bare_reg = (is_first_tick ? "" : tk_kind = "B" ∧ ¬tk_ov_bare ? _bare_reg ++ tk_payload : _bare_reg)
+    tk_ov_bind ∈ Bool = (tk_kind = "D" ∧ #_bind_reg + #tk_payload > 102500)
+    bind_reg = (is_first_tick ? "" : tk_kind = "D" ∧ ¬tk_ov_bind ? _bind_reg ++ tk_payload : _bind_reg)
+    tk_ov_slot ∈ Bool = (tk_kind = "S" ∧ #_slot_reg + #tk_payload > 17500)
+    slot_reg = (is_first_tick ? "" : tk_kind = "S" ∧ ¬tk_ov_slot ? _slot_reg ++ tk_payload : _slot_reg)
+    tk_ov_ment ∈ Bool = (tk_kind = "M" ∧ #_ment_reg + #tk_payload > 2000)
+    ment_reg = (is_first_tick ? "" : tk_kind = "M" ∧ ¬tk_ov_ment ? _ment_reg ++ tk_payload : _ment_reg)
+    tk_cr_add ∈ String = (tk_kind = "C" ? tk_payload
         : tk_dr_new
-        ? _carry_reg ++ tk_dr_bkey
+        ? tk_dr_bkey
           ++ substr(_bare_reg, tk_dr_bp + #tk_dr_bkey,
               index_of(_bare_reg, "⦂", tk_dr_bp + #tk_dr_bkey) - tk_dr_bp - #tk_dr_bkey) ++ "⦂"
         : tk_mn_new
-        ? _carry_reg ++ tk_mn_bkey
+        ? tk_mn_bkey
           ++ substr(_bare_reg, tk_mn_bp + #tk_mn_bkey,
               index_of(_bare_reg, "⦂", tk_mn_bp + #tk_mn_bkey) - tk_mn_bp - #tk_mn_bkey) ++ "⦂"
+        : "")
+    tk_ov_carry ∈ Bool = (¬(tk_cr_add = "") ∧ #_carry_reg + #tk_cr_add > 30500)
+    carry_reg = (is_first_tick ? ""
+        : ¬(tk_cr_add = "") ∧ ¬tk_ov_carry ? _carry_reg ++ tk_cr_add
         : _carry_reg)
+    tk_wl_add ∈ String = (tk_kind = "C" ? substr(tk_payload, 0, index_of(tk_payload, "⟩") + 1)
+        : tk_dr_new ? tk_dr_bkey
+        : tk_mn_new ? tk_mn_bkey
+        : "")
+    tk_ov_work ∈ Bool = (¬(tk_wl_add = "") ∧ #_work_list + #tk_wl_add > 25000)
     work_list = (is_first_tick ? ""
-        : tk_kind = "C" ? _work_list ++ substr(tk_payload, 0, index_of(tk_payload, "⟩") + 1)
-        : tk_dr_new ? _work_list ++ tk_dr_bkey
-        : tk_mn_new ? _work_list ++ tk_mn_bkey
+        : ¬(tk_wl_add = "") ∧ ¬tk_ov_work ? _work_list ++ tk_wl_add
         : _work_list)
-    ins_out = (is_first_tick ? "" : tk_iw_run ∧ tk_iw_isc ∧ ¬tk_iw_ln0
-        ? _ins_out ++ "⟦" ++ substr(_bare_reg, tk_iw_c1 + 1, tk_iw_c2 - tk_iw_c1 - 1) ++ "⟧_"
+    tk_iw_add ∈ String = (tk_iw_run ∧ tk_iw_isc ∧ ¬tk_iw_ln0
+        ? "⟦" ++ substr(_bare_reg, tk_iw_c1 + 1, tk_iw_c2 - tk_iw_c1 - 1) ++ "⟧_"
           ++ tk_iw_x ++ " ∈ "
           ++ substr(_carry_reg, tk_iw_cp + #tk_iw_key,
               index_of(_carry_reg, "⦂", tk_iw_cp + #tk_iw_key) - tk_iw_cp - #tk_iw_key)
+        : "")
+    tk_ov_ins ∈ Bool = (¬(tk_iw_add = "") ∧ #_ins_out + #tk_iw_add > 24500)
+    ins_out = (is_first_tick ? ""
+        : ¬(tk_iw_add = "") ∧ ¬tk_ov_ins ? _ins_out ++ tk_iw_add
         : _ins_out)
-    inj_out = (is_first_tick ? "" : tk_jw_flush
-        ? _inj_out ++ "⟦" ++ _acc_b ++ "⟧" ++ _acc_a
+    tk_inj_add ∈ String = (tk_jw_flush ? "⟦" ++ _acc_b ++ "⟧" ++ _acc_a : "")
+    tk_ov_inj ∈ Bool = (tk_jw_flush ∧ #_inj_out + #tk_inj_add > 1000)
+    inj_out = (is_first_tick ? ""
+        : tk_jw_flush ∧ ¬tk_ov_inj ? _inj_out ++ tk_inj_add
         : _inj_out)
     cur_a = (is_first_tick ? 0
         : tk_ph = 1 ? 0
@@ -177,23 +224,45 @@ fsm autocarry_fix
         : tk_dr_run ? (tk_dr_item_done ? 0 : tk_dr_m + 1)
         : tk_ph = 6 ? (tk_mn_done ? 0 : tk_mn_p + 1)
         : _cur_b)
+    tk_ov_acca ∈ Bool = (tk_jw_run ∧ ¬tk_jw_newgrp ∧ tk_jw_give ∧ #_acc_a + #tk_jw_add > 4000)
     acc_a = (is_first_tick ? ""
         : tk_ph = 7 ? ""
         : tk_jw_newgrp ? (tk_jw_give ? tk_jw_add : "")
-        : tk_jw_run ∧ tk_jw_give ? _acc_a ++ tk_jw_add
+        : tk_jw_run ∧ tk_jw_give ∧ ¬tk_ov_acca ? _acc_a ++ tk_jw_add
         : _acc_a)
+    tk_ov_accb ∈ Bool = (tk_jw_run ∧ #tk_jw_ln > 4000)
     acc_b = (is_first_tick ? ""
         : tk_ph = 7 ? ""
-        : tk_jw_run ? tk_jw_ln
+        : tk_jw_run ∧ ¬tk_ov_accb ? tk_jw_ln
         : _acc_b)
 
     eff_nop ∈ Effect
     eff_nop = LibCall("libc", "getpid", ⟨⟩)
     eff_out ∈ Effect
     BuildPrintln(s ↦ (tk_ph = 10 ? _ins_out : _inj_out), eff ↦ eff_out)
+    tk_ov_any ∈ Bool = (tk_ov_fs ∨ tk_ov_bare ∨ tk_ov_bind ∨ tk_ov_slot ∨ tk_ov_ment
+        ∨ tk_ov_carry ∨ tk_ov_work ∨ tk_ov_ins ∨ tk_ov_inj ∨ tk_ov_acca ∨ tk_ov_accb)
+    tk_ov_code ∈ Int = (tk_ov_fs ? 71 : tk_ov_bare ? 70 : tk_ov_bind ? 72 : tk_ov_slot ? 73
+        : tk_ov_ment ? 74 : tk_ov_carry ? 75 : tk_ov_work ? 76 : tk_ov_ins ? 77
+        : tk_ov_inj ? 78 : 79)
+    tk_ov_msg ∈ String = (tk_ov_fs ? "autocarry_fix: fsm-name registry overflow (cap 104, exit 71)\n"
+        : tk_ov_bare ? "autocarry_fix: bare-decl registry overflow (cap 82500, exit 70)\n"
+        : tk_ov_bind ? "autocarry_fix: call-bind registry overflow (cap 102500, exit 72)\n"
+        : tk_ov_slot ? "autocarry_fix: slot-have registry overflow (cap 17500, exit 73)\n"
+        : tk_ov_ment ? "autocarry_fix: bare-mention registry overflow (cap 2000, exit 74)\n"
+        : tk_ov_carry ? "autocarry_fix: carry registry overflow (cap 30500, exit 75)\n"
+        : tk_ov_work ? "autocarry_fix: worklist overflow (cap 25000, exit 76)\n"
+        : tk_ov_ins ? "autocarry_fix: insert-script overflow (cap 24500, exit 77)\n"
+        : tk_ov_inj ? "autocarry_fix: inject-script overflow (cap 1000, exit 78)\n"
+        : "autocarry_fix: injection-accumulator overflow (cap 4000, exit 79)\n")
+    eff_ov_msg ∈ Effect
+    BuildEprint(s ↦ tk_ov_msg, eff ↦ eff_ov_msg)
+    eff_ov_exit ∈ Effect
+    BuildExit(code ↦ tk_ov_code, eff ↦ eff_ov_exit)
     tk_read_go ∈ Bool = (tk_ph = 1 ∧ ¬tk_reof)
 
     effects ∈ Seq(Effect) = (is_first_tick ? ⟨eff_nop, ReadLine⟩
+        : tk_ov_any ? ⟨eff_ov_msg, eff_ov_exit⟩
         : tk_read_go ? ⟨eff_nop, ReadLine⟩
         : tk_ph = 10 ? ⟨eff_out, eff_nop⟩
         : tk_ph = 11 ? ⟨eff_out, Exit(0)⟩
