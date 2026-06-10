@@ -24,20 +24,20 @@ fsm main
     tok0 = (is_first_tick ? Ident("x") : _tok0)
     tok1 ∈ Token
     tok1 = (is_first_tick ? Comma : _tok1)
-    c_is_mem ∈ Bool
-    c_is_mem = (is_first_tick ? false : _c_is_mem)
-    c_is_nat ∈ Bool
-    c_is_nat = (is_first_tick ? false : _c_is_nat)
-    c_sc ∈ Int
-    c_sc = (is_first_tick ? 0 : _c_sc)
-    c_t0 ∈ Token
-    c_t0 = (is_first_tick ? EofTok : _c_t0)
-    c_tyname ∈ String
-    c_tyname = (is_first_tick ? "" : _c_tyname)
+    line_is_mem ∈ Bool
+    line_is_mem = (is_first_tick ? false : _line_is_mem)
+    line_is_nat ∈ Bool
+    line_is_nat = (is_first_tick ? false : _line_is_nat)
+    line_sort ∈ Int
+    line_sort = (is_first_tick ? 0 : _line_sort)
+    line_t0 ∈ Token
+    line_t0 = (is_first_tick ? EofTok : _line_t0)
+    mem_tyname ∈ String
+    mem_tyname = (is_first_tick ? "" : _mem_tyname)
     d_enter_claimp ∈ Bool
     d_enter_claimp = (is_first_tick ? false : _d_enter_claimp)
-    d_enter_mn ∈ Bool
-    d_enter_mn = (is_first_tick ? false : _d_enter_mn)
+    enter_multiname ∈ Bool
+    enter_multiname = (is_first_tick ? false : _enter_multiname)
     tok3 ∈ Token
     tok3 = (is_first_tick ? EofTok : _tok3)
     ..DriverGroup

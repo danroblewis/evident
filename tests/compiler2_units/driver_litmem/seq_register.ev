@@ -1,7 +1,7 @@
 -- DriverLitMem isolation — the seq-literal registry latches once:
--- d_seq_mem held every tick with c_dname "myseq" on the capture tick,
--- "other" after. The pmode-8 registry must latch sq_name = "myseq" on
--- first sight; if the latch-once guard (¬_sq_set) regresses it's "other".
+-- enter_seqmem held every tick with line_dname "myseq" on the capture tick,
+-- "other" after. The pmode-8 registry must latch seqvar_name = "myseq" on
+-- first sight; if the latch-once guard (¬_seqvar_set) regresses it's "other".
 -- entry: main
 -- expect: stdout = "myseq"
 -- expect: exit = 0
@@ -14,11 +14,11 @@ import "compiler2/driver_litmem.ev"
 fsm main
     tc ∈ Int
     tc = (is_first_tick ? 0 : _tc + 1)
-    d_seq_mem ∈ Bool
-    d_seq_mem = (is_first_tick ? true : _d_seq_mem)
-    c_dname ∈ String = (tc ≤ 1 ? "myseq" : "other")
-    c_sq_rt ∈ Int
-    c_sq_rt = (is_first_tick ? 0 - 1 : _c_sq_rt)
+    enter_seqmem ∈ Bool
+    enter_seqmem = (is_first_tick ? true : _enter_seqmem)
+    line_dname ∈ String = (tc ≤ 1 ? "myseq" : "other")
+    seq_elt_slot ∈ Int
+    seq_elt_slot = (is_first_tick ? 0 - 1 : _seq_elt_slot)
     -- pmode-7 set-walk inputs the lifted module also reads (inert here).
     in_parse ∈ Bool
     in_parse = (is_first_tick ? false : _in_parse)
@@ -28,14 +28,14 @@ fsm main
     tok_ready = (is_first_tick ? false : _tok_ready)
     tok0 ∈ Token
     tok0 = (is_first_tick ? EofTok : _tok0)
-    d_enter_set ∈ Bool
-    d_enter_set = (is_first_tick ? false : _d_enter_set)
-    c_name ∈ String
-    c_name = (is_first_tick ? "" : _c_name)
-    c_is_nmem ∈ Bool
-    c_is_nmem = (is_first_tick ? false : _c_is_nmem)
+    enter_intset ∈ Bool
+    enter_intset = (is_first_tick ? false : _enter_intset)
+    line_name ∈ String
+    line_name = (is_first_tick ? "" : _line_name)
+    line_is_notmem ∈ Bool
+    line_is_notmem = (is_first_tick ? false : _line_is_notmem)
     ..DriverLitMem
-    n_msg ∈ String = sq_name
+    n_msg ∈ String = seqvar_name
     effects ∈ Seq(Effect) = (tc ≥ 3
         ? ⟨LibCall("libc", "puts", ⟨ArgStr(n_msg)⟩), Exit(0)⟩
         : ⟨LibCall("libc", "getpid", ⟨⟩)⟩)

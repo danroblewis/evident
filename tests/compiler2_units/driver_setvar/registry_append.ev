@@ -1,7 +1,7 @@
 -- DriverSetVar isolation — Set(T) registry append + name capture.
--- c_setmem_line held under classify_now (not at line end) so d_setmem
--- fires and the ≤2-entry Set registry appends: stv_cnt climbs 0→1→2
--- (capped), stv[0].name captures c_dname = "myset". Exit at stv_cnt = 2.
+-- setmem_decl_line held under classify_now (not at line end) so enter_setdecl
+-- fires and the ≤2-entry Set registry appends: setvar_count climbs 0→1→2
+-- (capped), set_vars[0].name captures line_dname = "myset". Exit at setvar_count = 2.
 --
 -- entry: main
 -- expect: stdout = "myset"
@@ -16,42 +16,42 @@ import "compiler2/driver_setvar.ev"
 fsm main
     classify_now ∈ Bool
     classify_now = (is_first_tick ? true : _classify_now)
-    c_setmem_line ∈ Bool
-    c_setmem_line = (is_first_tick ? true : _c_setmem_line)
-    d_line_end ∈ Bool
-    d_line_end = (is_first_tick ? false : _d_line_end)
-    c_dname ∈ String
-    c_dname = (is_first_tick ? "myset" : _c_dname)
-    c_eff_line ∈ Bool
-    c_eff_line = (is_first_tick ? false : _c_eff_line)
-    c_is_mem ∈ Bool
-    c_is_mem = (is_first_tick ? false : _c_is_mem)
-    c_is_nmem ∈ Bool
-    c_is_nmem = (is_first_tick ? false : _c_is_nmem)
-    c_name ∈ String
-    c_name = (is_first_tick ? "" : _c_name)
-    c_q_ex ∈ Bool
-    c_q_ex = (is_first_tick ? false : _c_q_ex)
-    c_q_s1 ∈ Bool
-    c_q_s1 = (is_first_tick ? false : _c_q_s1)
-    c_q_t3nm ∈ String
-    c_q_t3nm = (is_first_tick ? "" : _c_q_t3nm)
-    c_q_var ∈ String
-    c_q_var = (is_first_tick ? "" : _c_q_var)
-    c_set_line ∈ Bool
-    c_set_line = (is_first_tick ? false : _c_set_line)
-    c_sq_rt ∈ Int
-    c_sq_rt = (is_first_tick ? 0 : _c_sq_rt)
-    c_t0_is_ident ∈ Bool
-    c_t0_is_ident = (is_first_tick ? false : _c_t0_is_ident)
-    c_t1 ∈ Token
-    c_t1 = (is_first_tick ? EofTok : _c_t1)
-    c_t2 ∈ Token
-    c_t2 = (is_first_tick ? EofTok : _c_t2)
-    c_type_str ∈ String
-    c_type_str = (is_first_tick ? "" : _c_type_str)
-    d_enter_sl ∈ Bool
-    d_enter_sl = (is_first_tick ? false : _d_enter_sl)
+    setmem_decl_line ∈ Bool
+    setmem_decl_line = (is_first_tick ? true : _setmem_decl_line)
+    line_end ∈ Bool
+    line_end = (is_first_tick ? false : _line_end)
+    line_dname ∈ String
+    line_dname = (is_first_tick ? "myset" : _line_dname)
+    effects_line ∈ Bool
+    effects_line = (is_first_tick ? false : _effects_line)
+    line_is_mem ∈ Bool
+    line_is_mem = (is_first_tick ? false : _line_is_mem)
+    line_is_notmem ∈ Bool
+    line_is_notmem = (is_first_tick ? false : _line_is_notmem)
+    line_name ∈ String
+    line_name = (is_first_tick ? "" : _line_name)
+    q_is_exists ∈ Bool
+    q_is_exists = (is_first_tick ? false : _q_is_exists)
+    q_seq_plain ∈ Bool
+    q_seq_plain = (is_first_tick ? false : _q_seq_plain)
+    q_t3_name ∈ String
+    q_t3_name = (is_first_tick ? "" : _q_t3_name)
+    q_var ∈ String
+    q_var = (is_first_tick ? "" : _q_var)
+    intset_line ∈ Bool
+    intset_line = (is_first_tick ? false : _intset_line)
+    seq_elt_slot ∈ Int
+    seq_elt_slot = (is_first_tick ? 0 : _seq_elt_slot)
+    line_t0_ident ∈ Bool
+    line_t0_ident = (is_first_tick ? false : _line_t0_ident)
+    line_t1 ∈ Token
+    line_t1 = (is_first_tick ? EofTok : _line_t1)
+    line_t2 ∈ Token
+    line_t2 = (is_first_tick ? EofTok : _line_t2)
+    line_ty_name ∈ String
+    line_ty_name = (is_first_tick ? "" : _line_ty_name)
+    enter_seqlit ∈ Bool
+    enter_seqlit = (is_first_tick ? false : _enter_seqlit)
     d_in_skip ∈ Bool
     d_in_skip = (is_first_tick ? false : _d_in_skip)
     work_nil ∈ Bool
@@ -74,10 +74,10 @@ fsm main
     pr_sres = (is_first_tick ? EInt(0) : _pr_sres)
     rec_pad31 ∈ String
     rec_pad31 = (is_first_tick ? "" : _rec_pad31)
-    sq_name ∈ String
-    sq_name = (is_first_tick ? "" : _sq_name)
-    sq_rt ∈ Int
-    sq_rt = (is_first_tick ? 0 : _sq_rt)
+    seqvar_name ∈ String
+    seqvar_name = (is_first_tick ? "" : _seqvar_name)
+    seqvar_slot ∈ Int
+    seqvar_slot = (is_first_tick ? 0 : _seqvar_slot)
     tok_ready ∈ Bool
     tok_ready = (is_first_tick ? false : _tok_ready)
     tok0 ∈ Token
@@ -89,7 +89,7 @@ fsm main
     tok7 ∈ Token
     tok7 = (is_first_tick ? EofTok : _tok7)
     ..DriverSetVar
-    done ∈ Bool = (stv_cnt = 2)
+    done ∈ Bool = (setvar_count = 2)
     effects ∈ Seq(Effect) = (done
-        ? ⟨LibCall("libc", "puts", ⟨ArgStr(stv[0].name)⟩), Exit(0)⟩
+        ? ⟨LibCall("libc", "puts", ⟨ArgStr(set_vars[0].name)⟩), Exit(0)⟩
         : ⟨LibCall("libc", "getpid", ⟨⟩)⟩)

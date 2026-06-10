@@ -3,7 +3,7 @@
 --           _pk_kind, pr_bad), the claim index (claimidx_names, ci_base),
 --           the pmode-10 composition-walk state (in_parse, _pmode,
 --           _callw_st, callw_reset, work_nil), and the inline-frame
---           stack views (il_pop, _frame_depth, h_top).
+--           stack views (frame_pop, _frame_depth, h_top).
 -- PRODUCES: the guard recognizer (guard_op/guard_lhs/guard_rhs/guard_is_binop/guard_callee/guard_key/
 --           guard_pos/guard_hit), the claim-body fetch effect (eff_guard_read), the
 --           jump capture/fire signals (guard_jump_cap/guard_jump_fire/guard_off), and
@@ -39,7 +39,7 @@ fsm DriverGuard
         ∧ work_nil)
     guard_handle ∈ Int
     guard_depth ∈ Int
-    guard_off ∈ Bool = (il_pop ∧ (_frame_depth = _guard_depth))
+    guard_off ∈ Bool = (frame_pop ∧ (_frame_depth = _guard_depth))
     guard_handle = (is_first_tick ? 0
         : callw_reset ? 0
         : guard_jump_fire ? h_top

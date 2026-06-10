@@ -215,26 +215,26 @@ fsm DriverClaimIdx
     efflit_lib = (is_first_tick ? "" : efflit_libcall_enter ? efflit_t2_str : _efflit_lib)
     efflit_fn = (is_first_tick ? "" : efflit_libcall_enter ? efflit_t4_str : _efflit_fn)
     efflit_count = (is_first_tick ? 0
-        : d_enter_el ? 0
+        : enter_efflit ? 0
         : efflit_open ? 0
         : ((p_done ∧ (¬pr_bad) ∧ _pk_kind = 3) ∨ efflit_argbite ∨ efflit_noargs)
             ? _efflit_count + 1
         : _efflit_count)
     efflit_st = (is_first_tick ? 0
-        : d_enter_el ? (c_eff_cond ? 1 : 0)
+        : enter_efflit ? (effects_cond ? 1 : 0)
         : guard_done ? 0
         : efflit_colon ? 0
         : efflit_nest ? 1
         : (efflit_close ∧ _chain_on) ? 2
         : efflit_rparen ? 2
         : _efflit_st)
-    chain_on = (is_first_tick ? false : d_enter_el ? c_eff_cond : _chain_on)
+    chain_on = (is_first_tick ? false : enter_efflit ? effects_cond : _chain_on)
     chain_pdepth = (is_first_tick ? 0
-        : d_enter_el ? (c_eff_cond ? 1 : 0)
+        : enter_efflit ? (effects_cond ? 1 : 0)
         : efflit_nest ? _chain_pdepth + 1
         : efflit_rparen ? _chain_pdepth - 1
         : _chain_pdepth)
     chain_n = (is_first_tick ? 0
-        : d_enter_el ? 0
+        : enter_efflit ? 0
         : guard_done ? _chain_n + 1
         : _chain_n)

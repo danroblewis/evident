@@ -104,8 +104,8 @@ type UserEnumVariant(name ∈ String, ctor ∈ Int, tester ∈ Int, acc ∈ Int)
 
 -- One row of the Set(T)-variable registry: var name, the element type's
 -- registry slot (kidx), the packed 32-byte-row element-name string, and
--- the element count. `stv ∈ Seq(SetVar)`; rows written by index
--- (_stv_cnt / c_stv_idx / _sv_cur), so no length.
+-- the element count. `set_vars ∈ Seq(SetVar)`; rows written by index
+-- (_setvar_count / setvar_idx / _setvar_cur), so no length.
 type SetVar(name ∈ String, kidx ∈ Int, elems ∈ String, count ∈ Int)
 
 -- ── Work items: one line of claim body = one small program ────────

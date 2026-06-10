@@ -1,7 +1,7 @@
 -- MODULE DriverPosBind
 -- CONSUMES: the composition-line precheck (pcl_*) + classifier head views
---           (c_name, c_t0..t4, c_dd_shape, c_comp_found, c_line_end,
---           classify_now, d_line_end), the window head (tok0..tok5), the
+--           (line_name, line_t0..t4, dotdot_shape, comp_found, c_line_end,
+--           classify_now, line_end), the window head (tok0..tok5), the
 --           parse gate (in_parse, _pmode, tok_ready, work_nil), the
 --           handle stack (h_top/2nd/.. + d_h_t*), the claim index
 --           (ci_base, claimidx_names), the symbol table (sym_names), the
@@ -31,32 +31,32 @@ fsm DriverPosBind
     pj ∈ Bool
     pj_recv ∈ Bool
 
-    pcl_t2nm ∈ String = match c_t2
+    pcl_t2nm ∈ String = match line_t2
         Ident(s) ⇒ s
         _ ⇒ ""
-    pcl_t4nm ∈ String = match c_t4
+    pcl_t4nm ∈ String = match line_t4
         Ident(s) ⇒ s
         _ ⇒ ""
-    pcl_stmt ∈ Bool = (classify_now ∧ (¬d_line_end) ∧ c_t0_is_ident
-        ∧ (c_t1 matches LParen) ∧ (¬(c_t3 matches OpMapsto))
-        ∧ c_comp_found ∧ (¬c_dd_shape) ∧ (_frame_depth < 8))
+    pcl_stmt ∈ Bool = (classify_now ∧ (¬line_end) ∧ line_t0_ident
+        ∧ (line_t1 matches LParen) ∧ (¬(line_t3 matches OpMapsto))
+        ∧ comp_found ∧ (¬dotdot_shape) ∧ (_frame_depth < 8))
     pcl_m1key ∈ String
     FtiNameEntry(name ↦ pcl_t2nm, entry ↦ pcl_m1key)
-    pcl_m1 ∈ Bool = (classify_now ∧ (¬d_line_end) ∧ c_t0_is_ident
-        ∧ (c_t1 matches Dot) ∧ (c_t2 matches Ident(_))
-        ∧ (c_t3 matches LParen)
+    pcl_m1 ∈ Bool = (classify_now ∧ (¬line_end) ∧ line_t0_ident
+        ∧ (line_t1 matches Dot) ∧ (line_t2 matches Ident(_))
+        ∧ (line_t3 matches LParen)
         ∧ (index_of(claimidx_names, pcl_m1key, 0) ≥ 0) ∧ (_frame_depth < 8))
     pcl_m2key ∈ String
     FtiNameEntry(name ↦ pcl_t4nm, entry ↦ pcl_m2key)
-    pcl_m2 ∈ Bool = (classify_now ∧ (¬d_line_end) ∧ c_t0_is_ident
-        ∧ (c_t1 matches Dot) ∧ (c_t2 matches Ident(_))
-        ∧ (c_t3 matches Dot) ∧ (c_t4 matches Ident(_))
+    pcl_m2 ∈ Bool = (classify_now ∧ (¬line_end) ∧ line_t0_ident
+        ∧ (line_t1 matches Dot) ∧ (line_t2 matches Ident(_))
+        ∧ (line_t3 matches Dot) ∧ (line_t4 matches Ident(_))
         ∧ (tok5 matches LParen)
         ∧ (index_of(claimidx_names, pcl_m2key, 0) ≥ 0) ∧ (_frame_depth < 8))
     pcl_meth ∈ Bool = (pcl_m1 ∨ pcl_m2)
-    pcl_recv_nm ∈ String = (pcl_m2 ? (c_name ++ "." ++ pcl_t2nm) : c_name)
-    pcl_tup ∈ Bool = (classify_now ∧ (¬d_line_end) ∧ (c_t0 matches LParen)
-        ∧ (c_t2 matches Comma) ∧ (_frame_depth < 8))
+    pcl_recv_nm ∈ String = (pcl_m2 ? (line_name ++ "." ++ pcl_t2nm) : line_name)
+    pcl_tup ∈ Bool = (classify_now ∧ (¬line_end) ∧ (line_t0 matches LParen)
+        ∧ (line_t2 matches Comma) ∧ (_frame_depth < 8))
     pcl_line ∈ Bool = (pcl_stmt ∨ pcl_meth ∨ pcl_tup)
     pcl_recv_items ∈ C2Items = C2ICons(C2Process(EIdent(pcl_recv_nm)), C2INil)
 
@@ -117,7 +117,7 @@ fsm DriverPosBind
         : ptj_fire ? 0
         : _pt_st)
     pt_callee = (is_first_tick ? ""
-        : pcl_stmt ? c_name
+        : pcl_stmt ? line_name
         : pcl_m1 ? pcl_t2nm
         : pcl_m2 ? pcl_t4nm
         : pcl_tup ? ""
@@ -268,7 +268,7 @@ fsm DriverPosBind
             C2ICons(efflit_sel_eq, C2INil)))
         : _pk_kind = 4 ? (mq_wc ? mp_items : C2INil)
         : _pk_kind = 6 ? C2ICons(C2Process(pr_sres), C2INil)
-        : _pk_kind = 7 ? sl_elem_items
+        : _pk_kind = 7 ? seqlit_elem_items
         : _pk_kind = 8 ? C2ICons(C2Process(pr_sres), C2INil)
         : _pk_kind = 9 ? C2INil
         : _pk_kind = 10 ? pi_items

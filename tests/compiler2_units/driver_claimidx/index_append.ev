@@ -23,14 +23,14 @@ fsm main
     tok1 = (is_first_tick ? Ident("x") : _tok1)
     d_cl_name ∈ String
     d_cl_name = (is_first_tick ? "x" : _d_cl_name)
-    c_eff_cond ∈ Bool
-    c_eff_cond = (is_first_tick ? false : _c_eff_cond)
+    effects_cond ∈ Bool
+    effects_cond = (is_first_tick ? false : _effects_cond)
     claimidx_buf ∈ FtiBuffer
     claimidx_buf.base = (is_first_tick ? 0 : _claimidx_buf.base)
     d_enter_edecl ∈ Bool
     d_enter_edecl = (is_first_tick ? false : _d_enter_edecl)
-    d_enter_el ∈ Bool
-    d_enter_el = (is_first_tick ? false : _d_enter_el)
+    enter_efflit ∈ Bool
+    enter_efflit = (is_first_tick ? false : _enter_efflit)
     work_nil ∈ Bool
     work_nil = (is_first_tick ? false : _work_nil)
     enum_act ∈ Int

@@ -23,8 +23,8 @@ fsm main
     d_lk_read = (is_first_tick ? false : _d_lk_read)
     lookup_name ∈ String
     lookup_name = (is_first_tick ? "" : _lookup_name)
-    fl_on ∈ Bool
-    fl_on = (is_first_tick ? false : _fl_on)
+    qloop_on ∈ Bool
+    qloop_on = (is_first_tick ? false : _qloop_on)
     param_skip ∈ Int
     param_skip = (is_first_tick ? 0 : _param_skip)
     in_parse ∈ Bool
@@ -33,8 +33,8 @@ fsm main
     istep = (is_first_tick ? 0 : _istep)
     pmode ∈ Int
     pmode = (is_first_tick ? 0 : _pmode)
-    rb_on ∈ Bool
-    rb_on = (is_first_tick ? false : _rb_on)
+    bcast_on ∈ Bool
+    bcast_on = (is_first_tick ? false : _bcast_on)
     tok_ready ∈ Bool
     tok_ready = (is_first_tick ? false : _tok_ready)
     sym_buf ∈ FtiBuffer

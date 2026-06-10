@@ -1,7 +1,7 @@
 -- MODULE DriverPratt
 -- CONSUMES: the parse gate (in_parse, _pmode, tok_ready), the decoded
 --           window (tok0.. via the shared views), the Pratt-entry cons/
---           kind (d_pratt_cons0/d_pratt_kind0) + the qstop flag, and its
+--           kind (pratt_enter_consume/pratt_enter_kind) + the qstop flag, and its
 --           own carried Pratt stack/cursor.
 -- PRODUCES: the pmode-3 Pratt expression-parser state (pk_st/pk_kind/
 --           pk_name/pk_rec/pk_sc/pk_pn/pk_nat/pk_nodecl + pr_sres/pr_bad/
@@ -62,46 +62,46 @@ fsm DriverPratt
     pr_scons ∈ Int
     C2PrattStep(toks ↦ _win_toks, outs ↦ _p_out, ops ↦ _p_ops,
         expop ↦ _p_expop, pd ↦ _p_pd, qd ↦ _p_qd, cd ↦ _p_cd,
-        qstop ↦ _pq_qstop, calls ↦ d_cb_names,
+        qstop ↦ _pratt_qstop, calls ↦ d_cb_names,
         ntoks ↦ pr_ntoks, nouts ↦ pr_nouts, nops ↦ pr_nops,
         nexpop ↦ pr_nexpop, npd ↦ pr_npd, nqd ↦ pr_nqd, ncd ↦ pr_ncd,
         sdone ↦ pr_sdone, sres ↦ pr_sres, scons ↦ pr_scons)
 
     p_out = (is_first_tick ? ELNil
-        : d_enter_pratt ? ELNil
+        : enter_pratt ? ELNil
         : d_in_pratt ? pr_nouts
         : _p_out)
     p_ops = (is_first_tick ? PrNil
-        : d_enter_pratt ? PrNil
+        : enter_pratt ? PrNil
         : d_in_pratt ? pr_nops
         : _p_ops)
     p_expop = (is_first_tick ? true
-        : d_enter_pratt ? true
+        : enter_pratt ? true
         : d_in_pratt ? pr_nexpop
         : _p_expop)
     p_pd = (is_first_tick ? 0
-        : d_enter_pratt ? 0
+        : enter_pratt ? 0
         : d_in_pratt ? pr_npd
         : _p_pd)
     p_qd = (is_first_tick ? 0
-        : d_enter_pratt ? 0
+        : enter_pratt ? 0
         : d_in_pratt ? pr_nqd
         : _p_qd)
     p_cd = (is_first_tick ? 0
-        : d_enter_pratt ? 0
+        : enter_pratt ? 0
         : d_in_pratt ? pr_ncd
         : _p_cd)
-    pk_kind = (is_first_tick ? 0 : d_enter_pratt ? d_pratt_kind0 : _pk_kind)
-    pk_name = (is_first_tick ? "" : d_enter_pratt ? c_dname : _pk_name)
-    pk_sc = (is_first_tick ? 0 : d_enter_pratt ? c_sc : _pk_sc)
-    pk_nat = (is_first_tick ? false : d_enter_pratt ? c_is_nat : _pk_nat)
-    pk_nodecl = (is_first_tick ? false : d_enter_pratt ? c_nodecl : _pk_nodecl)
-    pk_pn = (is_first_tick ? "" : d_enter_pratt ? c_pn : _pk_pn)
+    pk_kind = (is_first_tick ? 0 : enter_pratt ? pratt_enter_kind : _pk_kind)
+    pk_name = (is_first_tick ? "" : enter_pratt ? line_dname : _pk_name)
+    pk_sc = (is_first_tick ? 0 : enter_pratt ? line_sort : _pk_sc)
+    pk_nat = (is_first_tick ? false : enter_pratt ? line_is_nat : _pk_nat)
+    pk_nodecl = (is_first_tick ? false : enter_pratt ? no_decl : _pk_nodecl)
+    pk_pn = (is_first_tick ? "" : enter_pratt ? resolved_name : _pk_pn)
     -- record-pinned membership (`offset_pos ∈ IVec2 = <expr>`)
     -- arms the rb broadcast loop at parse completion.
-    c_pin_rtk ∈ Int = ((c_pinned ∧ c_is_mem) ? type_rec_slot : 0 - 1)
+    c_pin_rtk ∈ Int = ((line_pinned ∧ line_is_mem) ? type_rec_slot : 0 - 1)
     pk_rec = (is_first_tick ? 0 - 1
-        : d_enter_pratt ? c_pin_rtk
+        : enter_pratt ? c_pin_rtk
         : _pk_rec)
 
     p_done ∈ Bool = (d_in_pratt ∧ pr_sdone)

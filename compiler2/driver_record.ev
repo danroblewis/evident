@@ -95,7 +95,7 @@ fsm DriverRecord
     rec_cur_sort ∈ Int = (rec_slot = 0 ? rec0.sort : rec_slot = 1 ? rec1.sort : rec2.sort)
 
     rec_start ∈ Bool = (claimidx_add ∧ (tok0 matches KwType) ∧ (_rec_count < 3))
-    rec_collecting ∈ Bool = (d_in_skip ∧ (¬d_skip_stop) ∧ _rec_collect_on)
+    rec_collecting ∈ Bool = (d_in_skip ∧ (¬skip_stop) ∧ _rec_collect_on)
     field_name_tok ∈ String = match tok0
         Ident(s) ⇒ s
         _ ⇒ ""
@@ -146,7 +146,7 @@ fsm DriverRecord
 
     rec_collect_on = (is_first_tick ? false
         : rec_start ? true
-        : d_skip_stop ? false
+        : skip_stop ? false
         : _rec_collect_on)
     rec_collect_ok = (is_first_tick ? false
         : rec_start ? true
@@ -179,7 +179,7 @@ fsm DriverRecord
     recdecl_h_fields ∈ Seq(Int)
     #recdecl_h_fields ≤ 6
 
-    recdecl_go ∈ Bool = (d_skip_stop ∧ _rec_collect_on ∧ _rec_collect_ok ∧ (rec_slot ≥ 0)
+    recdecl_go ∈ Bool = (skip_stop ∧ _rec_collect_on ∧ _rec_collect_ok ∧ (rec_slot ≥ 0)
         ∧ (rec_cur_nf > 0))
     recdecl_prev ∈ Bool = (_pmode = 13)
     recdecl_st_now ∈ Int = (recdecl_go ? 0

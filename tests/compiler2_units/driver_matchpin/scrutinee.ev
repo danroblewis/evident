@@ -22,12 +22,12 @@ fsm main
     tok0 = (is_first_tick ? Ident("e") : _tok0)
     head_ident ∈ String
     head_ident = (is_first_tick ? "e" : _head_ident)
-    c_dname ∈ String
-    c_dname = (is_first_tick ? "" : _c_dname)
-    c_sc ∈ Int
-    c_sc = (is_first_tick ? 0 : _c_sc)
-    d_enter_match ∈ Bool
-    d_enter_match = (is_first_tick ? false : _d_enter_match)
+    line_dname ∈ String
+    line_dname = (is_first_tick ? "" : _line_dname)
+    line_sort ∈ Int
+    line_sort = (is_first_tick ? 0 : _line_sort)
+    enter_match ∈ Bool
+    enter_match = (is_first_tick ? false : _enter_match)
     p_done ∈ Bool
     p_done = (is_first_tick ? false : _p_done)
     pk_kind ∈ Int

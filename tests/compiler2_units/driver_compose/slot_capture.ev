@@ -27,26 +27,26 @@ fsm main
     tok0 = (is_first_tick ? Ident("p") : _tok0)
     tok1 ∈ Token
     tok1 = (is_first_tick ? OpMapsto : _tok1)
-    c_comp_bare ∈ Bool
-    c_comp_bare = (is_first_tick ? false : _c_comp_bare)
-    c_comp_call ∈ Bool
-    c_comp_call = (is_first_tick ? false : _c_comp_call)
-    c_comp_dd ∈ Bool
-    c_comp_dd = (is_first_tick ? false : _c_comp_dd)
-    c_comp_line ∈ Bool
-    c_comp_line = (is_first_tick ? false : _c_comp_line)
-    c_cur_pos ∈ Int
-    c_cur_pos = (is_first_tick ? 0 : _c_cur_pos)
-    c_name ∈ String
-    c_name = (is_first_tick ? "" : _c_name)
-    c_ty_bare ∈ Bool
-    c_ty_bare = (is_first_tick ? false : _c_ty_bare)
-    c_ty_call ∈ Bool
-    c_ty_call = (is_first_tick ? false : _c_ty_call)
-    c_ty_line ∈ Bool
-    c_ty_line = (is_first_tick ? false : _c_ty_line)
-    c_type_str ∈ String
-    c_type_str = (is_first_tick ? "" : _c_type_str)
+    comp_bare ∈ Bool
+    comp_bare = (is_first_tick ? false : _comp_bare)
+    comp_call ∈ Bool
+    comp_call = (is_first_tick ? false : _comp_call)
+    comp_dotdot ∈ Bool
+    comp_dotdot = (is_first_tick ? false : _comp_dotdot)
+    comp_line ∈ Bool
+    comp_line = (is_first_tick ? false : _comp_line)
+    callee_pos ∈ Int
+    callee_pos = (is_first_tick ? 0 : _callee_pos)
+    line_name ∈ String
+    line_name = (is_first_tick ? "" : _line_name)
+    tymem_bare ∈ Bool
+    tymem_bare = (is_first_tick ? false : _tymem_bare)
+    tymem_call ∈ Bool
+    tymem_call = (is_first_tick ? false : _tymem_call)
+    tymem_line ∈ Bool
+    tymem_line = (is_first_tick ? false : _tymem_line)
+    line_ty_name ∈ String
+    line_ty_name = (is_first_tick ? "" : _line_ty_name)
     claimidx_buf ∈ FtiBuffer
     claimidx_buf.base = (is_first_tick ? 0 : _claimidx_buf.base)
     claimidx_buf.count = (is_first_tick ? 0 : _claimidx_buf.count)
@@ -88,8 +88,8 @@ fsm main
     guard_jump_cap = (is_first_tick ? false : _guard_jump_cap)
     guard_jump_fire ∈ Bool
     guard_jump_fire = (is_first_tick ? false : _guard_jump_fire)
-    il_pop ∈ Bool
-    il_pop = (is_first_tick ? false : _il_pop)
+    frame_pop ∈ Bool
+    frame_pop = (is_first_tick ? false : _frame_pop)
     p_done ∈ Bool
     p_done = (is_first_tick ? false : _p_done)
     pk_kind ∈ Int

@@ -1,6 +1,6 @@
 -- MODULE DriverMatchPin
--- CONSUMES: the match-line enter signal (d_enter_match) + the classified
---           name/sort (c_dname, c_sc), the window head views
+-- CONSUMES: the match-line enter signal (enter_match) + the classified
+--           name/sort (line_dname, line_sort), the window head views
 --           (tok0..tok4) + the line head name (head_ident), the parse
 --           gate (in_parse, _pmode, tok_ready), the Pratt result
 --           (p_done, pr_bad, pr_sres, pk_kind), and the user-enum + Result
@@ -108,13 +108,13 @@ fsm DriverMatchPin
     mq_promote ∈ Bool = (mq_arm ∧ _mp_hasp)
 
     mp_st = (is_first_tick ? 0
-        : d_enter_match ? 0
+        : enter_match ? 0
         : (mp_s_lr ∨ mp_s_id) ? 1
         : _mp_st)
-    mp_name = (is_first_tick ? "" : d_enter_match ? c_dname : _mp_name)
-    mp_sc = (is_first_tick ? 0 : d_enter_match ? c_sc : _mp_sc)
+    mp_name = (is_first_tick ? "" : enter_match ? line_dname : _mp_name)
+    mp_sc = (is_first_tick ? 0 : enter_match ? line_sort : _mp_sc)
     mp_lr = (is_first_tick ? false
-        : d_enter_match ? false
+        : enter_match ? false
         : mp_s_lr ? true
         : _mp_lr)
     mp_idx = (is_first_tick ? 0 : mp_s_lr ? mp_idx_v : _mp_idx)
@@ -130,47 +130,47 @@ fsm DriverMatchPin
         : mp_benter ? mp_arm_wc_h
         : _mp_awc)
     mp_pc = (is_first_tick ? ""
-        : d_enter_match ? ""
+        : enter_match ? ""
         : mq_arm ? _mp_ac
         : _mp_pc)
     mp_pb = (is_first_tick ? ""
-        : d_enter_match ? ""
+        : enter_match ? ""
         : mq_arm ? _mp_ab
         : _mp_pb)
     mp_pe = (is_first_tick ? ENoExpr
-        : d_enter_match ? ENoExpr
+        : enter_match ? ENoExpr
         : mq_arm ? pr_sres
         : _mp_pe)
     mp_hasp = (is_first_tick ? false
-        : d_enter_match ? false
+        : enter_match ? false
         : mq_arm ? true
         : _mp_hasp)
     mp_n = (is_first_tick ? 0
-        : d_enter_match ? 0
+        : enter_match ? 0
         : mq_promote ? _mp_n + 1
         : _mp_n)
     mp_c1 = (is_first_tick ? ""
-        : d_enter_match ? ""
+        : enter_match ? ""
         : (mq_promote ∧ _mp_n = 0) ? _mp_pc
         : _mp_c1)
     mp_bd1 = (is_first_tick ? ""
-        : d_enter_match ? ""
+        : enter_match ? ""
         : (mq_promote ∧ _mp_n = 0) ? _mp_pb
         : _mp_bd1)
     mp_e1 = (is_first_tick ? ENoExpr
-        : d_enter_match ? ENoExpr
+        : enter_match ? ENoExpr
         : (mq_promote ∧ _mp_n = 0) ? _mp_pe
         : _mp_e1)
     mp_c2 = (is_first_tick ? ""
-        : d_enter_match ? ""
+        : enter_match ? ""
         : (mq_promote ∧ _mp_n = 1) ? _mp_pc
         : _mp_c2)
     mp_bd2 = (is_first_tick ? ""
-        : d_enter_match ? ""
+        : enter_match ? ""
         : (mq_promote ∧ _mp_n = 1) ? _mp_pb
         : _mp_bd2)
     mp_e2 = (is_first_tick ? ENoExpr
-        : d_enter_match ? ENoExpr
+        : enter_match ? ENoExpr
         : (mq_promote ∧ _mp_n = 1) ? _mp_pe
         : _mp_e2)
 

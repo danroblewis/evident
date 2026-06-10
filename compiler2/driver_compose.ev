@@ -1,10 +1,10 @@
 -- MODULE DriverCompose
 -- CONSUMES: the classifier's composition/type-splice decision flags
---           (c_comp_call/bare/dd/line, c_ty_call/bare/line, c_name,
---           c_type_str, c_cur_pos), the claim index base (ci_base), the
+--           (comp_call/bare/dd/line, tymem_call/bare/line, line_name,
+--           line_ty_name, callee_pos), the claim index base (ci_base), the
 --           handle-stack views (h_top/2nd/.. + h_tail1.. + d_hstk_in),
 --           d_cap_int, the parse gate (in_parse, _pmode, tok_ready,
---           work_nil), the line-pop signal (il_pop), the record
+--           work_nil), the line-pop signal (frame_pop), the record
 --           registry (rt_n*/rt_sort*), and the sibling fire/cap signals
 --           (guard_hit, gj_*, ptj_*, pz_*, p_done, pr_bad, d_enter_claim*).
 --           Wide by nature: a call jump couples the classifier decision,
@@ -106,9 +106,9 @@ fsm DriverCompose
         CFCons(_, _, _, t) ⇒ t
         CFNil ⇒ CFNil
 
-    read_callee_cursor ∈ Bool = (c_comp_line ∨ c_ty_line)
+    read_callee_cursor ∈ Bool = (comp_line ∨ tymem_line)
     eff_claimidx_read ∈ Effect
-    BuildMemReadLong(addr ↦ claimidx_buf.base + (8 * (c_cur_pos / 32)), eff ↦ eff_claimidx_read)
+    BuildMemReadLong(addr ↦ claimidx_buf.base + (8 * (callee_pos / 32)), eff ↦ eff_claimidx_read)
 
     in_callw0 ∈ Bool = (in_parse ∧ (_pmode = 10) ∧ (_callw_st = 0))
     callw_cap ∈ Bool = (in_callw0 ∧ (¬_callw_bare))
@@ -204,26 +204,26 @@ fsm DriverCompose
     frames = (is_first_tick ? CFNil
         : callw_reset ? CFNil
         : frame_jump ? CFCons(frame_ret_now, _scope_prefix, _binds, _frames)
-        : il_pop ? frames_tail
+        : frame_pop ? frames_tail
         : _frames)
     binds = (is_first_tick ? CBNil
         : callw_reset ? CBNil
         : callw_fire ? binds_new
         : ptj_fire ? CBNil
         : pz_act ? pz_binds
-        : il_pop ? frame_binds
+        : frame_pop ? frame_binds
         : _binds)
     scope_prefix = (is_first_tick ? ""
         : callw_reset ? ""
         : callw_fire ? (_callw_is_type ? _type_prefix : prefix_new)
         : (callw_bare_jump ∧ _callw_is_type) ? _type_prefix
         : ptj_fire ? prefix_new
-        : il_pop ? frame_prefix
+        : frame_pop ? frame_prefix
         : _scope_prefix)
     frame_depth = (is_first_tick ? 0
         : callw_reset ? 0
         : frame_jump ? _frame_depth + 1
-        : il_pop ? _frame_depth - 1
+        : frame_pop ? _frame_depth - 1
         : _frame_depth)
     call_count = (is_first_tick ? 1
         : callw_reset ? 1
@@ -245,35 +245,35 @@ fsm DriverCompose
             : _param_depth)
         : _param_depth)
     callw_st = (is_first_tick ? 0
-        : (c_comp_line ∨ c_ty_line) ? 0
+        : (comp_line ∨ tymem_line) ? 0
         : guard_hit ? 3
         : guard_jump_cap ? 4
         : callw_cap ? 1
         : _callw_st)
     callw_bare = (is_first_tick ? false
-        : (c_comp_call ∨ c_ty_call) ? false
-        : (c_comp_bare ∨ c_comp_dd ∨ c_ty_bare) ? true
+        : (comp_call ∨ tymem_call) ? false
+        : (comp_bare ∨ comp_dotdot ∨ tymem_bare) ? true
         : _callw_bare)
     callw_is_type = (is_first_tick ? false
-        : c_ty_line ? true
-        : c_comp_line ? false
+        : tymem_line ? true
+        : comp_line ? false
         : _callw_is_type)
     type_prefix = (is_first_tick ? ""
-        : c_ty_line ? (_scope_prefix ++ c_name ++ ".")
+        : tymem_line ? (_scope_prefix ++ line_name ++ ".")
         : _type_prefix)
     type_slot ∈ Int
     type_inst_name ∈ String
     type_rec_slot ∈ Int
-    RtIdxOf(nm ↦ c_type_str, e0 ↦ rec0, e1 ↦ rec1, e2 ↦ rec2,
+    RtIdxOf(nm ↦ line_ty_name, e0 ↦ rec0, e1 ↦ rec1, e2 ↦ rec2,
         idx ↦ type_rec_slot)
     type_slot = (is_first_tick ? 0 - 1
-        : c_ty_line ? type_rec_slot
+        : tymem_line ? type_rec_slot
         : _type_slot)
     type_inst_name = (is_first_tick ? ""
-        : c_ty_line ? (_scope_prefix ++ c_name)
+        : tymem_line ? (_scope_prefix ++ line_name)
         : _type_inst_name)
     slot_count = (is_first_tick ? 0
-        : (c_comp_call ∨ c_ty_call) ? 0
+        : (comp_call ∨ tymem_call) ? 0
         : slot_val_done ? _slot_count + 1
         : _slot_count)
     ∀ k ∈ {0..5} : slot_names[k].name = (is_first_tick ? "" : (callw_slot ∧ _slot_count = k) ? slot_name_tok : _slot_names[k].name)

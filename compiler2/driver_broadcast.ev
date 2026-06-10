@@ -4,14 +4,14 @@
 --           registry (rec0..2 .n_fields / .fnames), the claim-walk dispatch
 --           gate (d_in_claim, work_nil, _param_skip, tok_ready), and
 --           the symbol-table name index (sym_names).
--- PRODUCES: the record-pin broadcast loop state (rb_on/rb_k/rb_nm/
---           rb_body/rb_fi/rb_v) and the per-field re-walk emission
---           (rb_dname, rb_dup, rb_head, rbx_items) consumed by the
+-- PRODUCES: the record-pin broadcast loop state (bcast_on/bcast_slot/bcast_name/
+--           bcast_body/bcast_field_i/bcast_cur) and the per-field re-walk emission
+--           (bcast_dname, bcast_dup, bcast_head, bcast_items) consumed by the
 --           claim-walk item dispatch.
 -- MAINTAINS: a record-pinned membership re-walks the parsed body once
---           per FIELD of the record type — rb_fi steps 0→n_fields, emitting a
+--           per FIELD of the record type — bcast_field_i steps 0→n_fields, emitting a
 --           declare+pin (`s.<name>.<field> = <body[field]>`) each step,
---           and rb_on disarms when the last field is consumed.
+--           and bcast_on disarms when the last field is consumed.
 --
 -- INTERFACE WIDTH: ~16 external reads (>8) — JUSTIFIED per §6.4: a
 -- per-field broadcast inherently couples three subsystems — the parse
@@ -26,42 +26,42 @@ fsm DriverBroadcast
     -- During a re-walk, an IDENT whose field-qualified dotted name
     -- resolves in the symtab reads through it, and a REGISTRY-ctor
     -- call (`IVec2(10, 20)`) selects its field-index argument.
-    rb_on ∈ Bool
-    rb_k ∈ Int
-    rb_nm ∈ String
-    rb_body ∈ Expr
-    rb_fi ∈ Int
-    rb_v ∈ Int
-    rq_done ∈ Bool = (p_done ∧ (_pk_kind = 1) ∧ (¬pr_bad)
+    bcast_on ∈ Bool
+    bcast_slot ∈ Int
+    bcast_name ∈ String
+    bcast_body ∈ Expr
+    bcast_field_i ∈ Int
+    bcast_cur ∈ Int
+    recpin_done ∈ Bool = (p_done ∧ (_pk_kind = 1) ∧ (¬pr_bad)
         ∧ (_pk_rec ≥ 0))
-    rb_nf ∈ Int = (_rb_k = 0 ? rec0.n_fields : _rb_k = 1 ? rec1.n_fields : rec2.n_fields)
-    rb_fs ∈ String = (_rb_k = 0 ? rec0.fnames : _rb_k = 1 ? rec1.fnames : rec2.fnames)
-    rbx_disp ∈ Bool = (d_in_claim ∧ _rb_on ∧ work_nil
+    bcast_nf ∈ Int = (_bcast_slot = 0 ? rec0.n_fields : _bcast_slot = 1 ? rec1.n_fields : rec2.n_fields)
+    bcast_fnames ∈ String = (_bcast_slot = 0 ? rec0.fnames : _bcast_slot = 1 ? rec1.fnames : rec2.fnames)
+    bcast_disp ∈ Bool = (d_in_claim ∧ _bcast_on ∧ work_nil
         ∧ (_param_skip = 0) ∧ tok_ready)
-    rbx_more ∈ Bool = (rbx_disp ∧ (_rb_fi < rb_nf))
-    rbx_fin ∈ Bool = (rbx_disp ∧ (_rb_fi ≥ rb_nf))
-    rb_on = (is_first_tick ? false
-        : rq_done ? true
-        : rbx_fin ? false
-        : _rb_on)
-    rb_k = (is_first_tick ? 0 : rq_done ? _pk_rec : _rb_k)
-    rb_nm = (is_first_tick ? "" : rq_done ? _pk_name : _rb_nm)
-    rb_body = (is_first_tick ? ENoExpr : rq_done ? pr_sres : _rb_body)
-    rb_fi = (is_first_tick ? 0
-        : rq_done ? 0
-        : rbx_more ? _rb_fi + 1
-        : _rb_fi)
-    rb_v = (is_first_tick ? 0 : rbx_more ? _rb_fi : _rb_v)
-    rb_f ∈ String
-    RtRecName(s ↦ rb_fs, i ↦ _rb_v, name ↦ rb_f)
-    rbx_f ∈ String
-    RtRecName(s ↦ rb_fs, i ↦ _rb_fi, name ↦ rbx_f)
-    rb_dname ∈ String = _rb_nm ++ "." ++ rbx_f
-    rb_dup ∈ Bool = (index_of(sym_names,
-        "|" ++ substr(rb_dname ++ "                               ", 0, 31),
+    bcast_more ∈ Bool = (bcast_disp ∧ (_bcast_field_i < bcast_nf))
+    bcast_fin ∈ Bool = (bcast_disp ∧ (_bcast_field_i ≥ bcast_nf))
+    bcast_on = (is_first_tick ? false
+        : recpin_done ? true
+        : bcast_fin ? false
+        : _bcast_on)
+    bcast_slot = (is_first_tick ? 0 : recpin_done ? _pk_rec : _bcast_slot)
+    bcast_name = (is_first_tick ? "" : recpin_done ? _pk_name : _bcast_name)
+    bcast_body = (is_first_tick ? ENoExpr : recpin_done ? pr_sres : _bcast_body)
+    bcast_field_i = (is_first_tick ? 0
+        : recpin_done ? 0
+        : bcast_more ? _bcast_field_i + 1
+        : _bcast_field_i)
+    bcast_cur = (is_first_tick ? 0 : bcast_more ? _bcast_field_i : _bcast_cur)
+    bcast_field ∈ String
+    RtRecName(s ↦ bcast_fnames, i ↦ _bcast_cur, name ↦ bcast_field)
+    bcast_field_now ∈ String
+    RtRecName(s ↦ bcast_fnames, i ↦ _bcast_field_i, name ↦ bcast_field_now)
+    bcast_dname ∈ String = _bcast_name ++ "." ++ bcast_field_now
+    bcast_dup ∈ Bool = (index_of(sym_names,
+        "|" ++ substr(bcast_dname ++ "                               ", 0, 31),
         0) ≥ 0)
-    rb_head ∈ C2Item = (rb_dup ? C2Process(EIdent(rb_dname))
-        : C2DeclConst(rb_dname, 0))
-    rbx_items ∈ C2Items = C2ICons(rb_head,
-        C2ICons(C2Process(_rb_body),
+    bcast_head ∈ C2Item = (bcast_dup ? C2Process(EIdent(bcast_dname))
+        : C2DeclConst(bcast_dname, 0))
+    bcast_items ∈ C2Items = C2ICons(bcast_head,
+        C2ICons(C2Process(_bcast_body),
         C2ICons(C2PinEq, C2ICons(C2AssertTop, C2INil))))

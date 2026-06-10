@@ -35,24 +35,24 @@ fsm main
     tok3 = (is_first_tick ? IntLit(7) : _tok3)
     tok4 ∈ Token
     tok4 = (is_first_tick ? RParen : _tok4)
-    c_comp_found ∈ Bool
-    c_comp_found = (is_first_tick ? false : _c_comp_found)
-    c_dd_shape ∈ Bool
-    c_dd_shape = (is_first_tick ? false : _c_dd_shape)
-    c_name ∈ String
-    c_name = (is_first_tick ? "" : _c_name)
-    c_t0 ∈ Token
-    c_t0 = (is_first_tick ? EofTok : _c_t0)
-    c_t0_is_ident ∈ Bool
-    c_t0_is_ident = (is_first_tick ? false : _c_t0_is_ident)
-    c_t1 ∈ Token
-    c_t1 = (is_first_tick ? EofTok : _c_t1)
-    c_t2 ∈ Token
-    c_t2 = (is_first_tick ? EofTok : _c_t2)
-    c_t3 ∈ Token
-    c_t3 = (is_first_tick ? EofTok : _c_t3)
-    c_t4 ∈ Token
-    c_t4 = (is_first_tick ? EofTok : _c_t4)
+    comp_found ∈ Bool
+    comp_found = (is_first_tick ? false : _comp_found)
+    dotdot_shape ∈ Bool
+    dotdot_shape = (is_first_tick ? false : _dotdot_shape)
+    line_name ∈ String
+    line_name = (is_first_tick ? "" : _line_name)
+    line_t0 ∈ Token
+    line_t0 = (is_first_tick ? EofTok : _line_t0)
+    line_t0_ident ∈ Bool
+    line_t0_ident = (is_first_tick ? false : _line_t0_ident)
+    line_t1 ∈ Token
+    line_t1 = (is_first_tick ? EofTok : _line_t1)
+    line_t2 ∈ Token
+    line_t2 = (is_first_tick ? EofTok : _line_t2)
+    line_t3 ∈ Token
+    line_t3 = (is_first_tick ? EofTok : _line_t3)
+    line_t4 ∈ Token
+    line_t4 = (is_first_tick ? EofTok : _line_t4)
     claimidx_buf ∈ FtiBuffer
     claimidx_buf.base = (is_first_tick ? 0 : _claimidx_buf.base)
     claimidx_buf.count = (is_first_tick ? 0 : _claimidx_buf.count)
@@ -82,8 +82,8 @@ fsm main
     h_top = (is_first_tick ? 0 : _h_top)
     d_hstk_in ∈ C2H
     d_hstk_in = (is_first_tick ? C2HNil : _d_hstk_in)
-    d_line_end ∈ Bool
-    d_line_end = (is_first_tick ? false : _d_line_end)
+    line_end ∈ Bool
+    line_end = (is_first_tick ? false : _line_end)
     enum_values ∈ Seq(EnumVariantVal)
     #enum_values ≤ 6
     enum_values = (is_first_tick ? ⟨⟩ : _enum_values)
@@ -156,8 +156,8 @@ fsm main
     rec2 ∈ RecTypeEntry(name ↦ "", fnames ↦ "", ftypes ↦ "", n_fields ↦ 0,
         sort ↦ 0, ctor ↦ 0, asort ↦ 0, ssort ↦ 0,
         acc0 ↦ 0, acc1 ↦ 0, acc2 ↦ 0, acc3 ↦ 0, acc4 ↦ 0, acc5 ↦ 0)
-    sl_elem_items ∈ C2Items
-    sl_elem_items = (is_first_tick ? C2INil : _sl_elem_items)
+    seqlit_elem_items ∈ C2Items
+    seqlit_elem_items = (is_first_tick ? C2INil : _seqlit_elem_items)
     sym_names ∈ String
     sym_names = (is_first_tick ? "" : _sym_names)
     tok5 ∈ Token

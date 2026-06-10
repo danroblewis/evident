@@ -4,207 +4,207 @@
 --           (claimidx_names) + symbol table (sym_names), the inline-frame state
 --           (_frame_depth, _scope_prefix, bind_n0..n5), the record registry
 --           (rec0..2 .name / .sort), the user-enum + seq-var carries
---           (_ue_done, _ue_name, _sq_set, _sq_name), and the sibling
+--           (_ue_done, _ue_name, _seqvar_set, _seqvar_name), and the sibling
 --           sub-walks' per-line enter signals (el_*/mp_*/sl_*/callw_slot/
---           q_*/pt_*) that fold into d_enter_pratt. Wide by nature: this
+--           q_*/pt_*) that fold into enter_pratt. Wide by nature: this
 --           is the central dispatch brain — it inspects the whole window
 --           against every other subsystem's entry condition (justified
 --           §6.4).
--- PRODUCES: the per-line classification flags (c_is_mem/c_pinned/c_bound/
---           c_eff_line/c_seq_line/c_match_line/c_comp_line/c_ty_line/
---           c_strin_line/…), the line-end + frame-pop decisions
---           (d_line_end/d_claim_end/il_pop), every dispatch enter signal
---           (d_enter_pratt/_el/_set/_match/_mn/_sl/_si/…), the Pratt
---           entry cons/kind (d_pratt_cons0/d_pratt_kind0), and the
+-- PRODUCES: the per-line classification flags (line_is_mem/line_pinned/line_bounded/
+--           effects_line/seqmem_line/match_line/comp_line/tymem_line/
+--           strin_line/…), the line-end + frame-pop decisions
+--           (line_end/claim_end/frame_pop), every dispatch enter signal
+--           (enter_pratt/_el/_set/_match/_mn/_sl/_si/…), the Pratt
+--           entry cons/kind (pratt_enter_consume/pratt_enter_kind), and the
 --           directly-built membership/contains item lists.
 -- MAINTAINS: classification is a PURE function of the window + the
---           registries (no own carried state beyond pq_qstop); a name
---           that is bound or already declared (c_nodecl) resolves the
+--           registries (no own carried state beyond pratt_qstop); a name
+--           that is bound or already declared (no_decl) resolves the
 --           existing handle instead of redeclaring — the rule that keeps
 --           names-match splices from emitting duplicate decls.
 --
 -- Token window → per-line classification + dispatch decision. Lifted into
 -- driver_main via `..DriverClassify`.
 fsm DriverClassify
-    c_rem_nil ∈ Bool = (tok0 matches EofTok)
-    c_t0 ∈ Token = tok0
-    c_t1 ∈ Token = tok1
-    c_t2 ∈ Token = tok2
-    c_t3 ∈ Token = tok3
-    c_t4 ∈ Token = tok4
+    line_at_eof ∈ Bool = (tok0 matches EofTok)
+    line_t0 ∈ Token = tok0
+    line_t1 ∈ Token = tok1
+    line_t2 ∈ Token = tok2
+    line_t3 ∈ Token = tok3
+    line_t4 ∈ Token = tok4
 
-    c_t0_is_ident ∈ Bool = (c_t0 matches Ident(_))
-    c_t0_is_tlkw ∈ Bool = ((c_t0 matches KwEnum) ∨ (c_t0 matches KwClaim)
-        ∨ (c_t0 matches KwType) ∨ (c_t0 matches KwFsm) ∨ (c_t0 matches KwSchema))
-    c_name ∈ String = match c_t0
+    line_t0_ident ∈ Bool = (line_t0 matches Ident(_))
+    line_t0_toplevel ∈ Bool = ((line_t0 matches KwEnum) ∨ (line_t0 matches KwClaim)
+        ∨ (line_t0 matches KwType) ∨ (line_t0 matches KwFsm) ∨ (line_t0 matches KwSchema))
+    line_name ∈ String = match line_t0
         Ident(s) ⇒ s
         _ ⇒ ""
 
-    c_is_mem ∈ Bool = (c_t1 matches OpIn)
-    c_is_nmem ∈ Bool = (c_t1 matches OpNotIn)
-    c_is_carry ∈ Bool = (substr(c_name, 0, 1) = "_")
-    c_mn_line ∈ Bool = (c_t0_is_ident ∧ (c_t1 matches Comma)
-        ∧ (c_t2 matches Ident(_)))
-    c_eff_line ∈ Bool = (c_is_mem ∧ (c_name = "effects"))
-    c_type_str ∈ String = match c_t2
+    line_is_mem ∈ Bool = (line_t1 matches OpIn)
+    line_is_notmem ∈ Bool = (line_t1 matches OpNotIn)
+    line_is_carry ∈ Bool = (substr(line_name, 0, 1) = "_")
+    multiname_line ∈ Bool = (line_t0_ident ∧ (line_t1 matches Comma)
+        ∧ (line_t2 matches Ident(_)))
+    effects_line ∈ Bool = (line_is_mem ∧ (line_name = "effects"))
+    line_ty_name ∈ String = match line_t2
         Ident(s) ⇒ s
         _ ⇒ ""
-    c_is_nat ∈ Bool = (c_type_str = "Nat")
-    c_sc ∈ Int = (c_type_str = "Bool" ? 1
-        : (_ue_done ∧ (c_type_str = _ue_name)) ? 2
-        : c_type_str = "String" ? 3
-        : c_type_str = "Result" ? 4
-        : c_type_str = "Seq" ? 5
-        : c_type_str = "Real" ? 6
+    line_is_nat ∈ Bool = (line_ty_name = "Nat")
+    line_sort ∈ Int = (line_ty_name = "Bool" ? 1
+        : (_ue_done ∧ (line_ty_name = _ue_name)) ? 2
+        : line_ty_name = "String" ? 3
+        : line_ty_name = "Result" ? 4
+        : line_ty_name = "Seq" ? 5
+        : line_ty_name = "Real" ? 6
         : 0)
-    c_sq_ty ∈ String = match tok4
+    seq_elt_ty ∈ String = match tok4
         Ident(s) ⇒ s
         _ ⇒ ""
-    c_sq_rt ∈ Int
-    RtIdxOf(nm ↦ c_sq_ty, e0 ↦ rec0, e1 ↦ rec1, e2 ↦ rec2,
-        idx ↦ c_sq_rt)
-    c_seq_line ∈ Bool = (c_is_mem ∧ (¬c_eff_line) ∧ (c_type_str = "Seq")
-        ∧ (c_t3 matches LParen) ∧ ((c_sq_ty = "Int") ∨ (c_sq_rt ≥ 0))
+    seq_elt_slot ∈ Int
+    RtIdxOf(nm ↦ seq_elt_ty, e0 ↦ rec0, e1 ↦ rec1, e2 ↦ rec2,
+        idx ↦ seq_elt_slot)
+    seqmem_line ∈ Bool = (line_is_mem ∧ (¬effects_line) ∧ (line_ty_name = "Seq")
+        ∧ (line_t3 matches LParen) ∧ ((seq_elt_ty = "Int") ∨ (seq_elt_slot ≥ 0))
         ∧ (tok5 matches RParen))
-    c_setmem_line ∈ Bool = (c_is_mem ∧ (¬c_eff_line)
-        ∧ (c_type_str = "Set") ∧ (c_t3 matches LParen) ∧ (c_sq_rt ≥ 0)
+    setmem_decl_line ∈ Bool = (line_is_mem ∧ (¬effects_line)
+        ∧ (line_ty_name = "Set") ∧ (line_t3 matches LParen) ∧ (seq_elt_slot ≥ 0)
         ∧ (tok5 matches RParen))
-    c_seqlit_line ∈ Bool = (c_t0_is_ident ∧ (c_t1 matches Eq)
-        ∧ (c_t2 matches OpSeqOpen) ∧ _sq_set ∧ (c_name = _sq_name))
-    c_eff_cond ∈ Bool = (c_eff_line ∧ (tok7 matches LParen))
-    c_pinned ∈ Bool = (c_is_mem ∧ (¬c_eff_line) ∧ (c_t3 matches Eq))
-    c_set_line ∈ Bool = ((c_is_mem ∨ c_is_nmem) ∧ (c_t2 matches LBrace))
-    c_match_line ∈ Bool = (c_is_mem ∧ (¬c_eff_line) ∧ c_pinned
-        ∧ (c_t4 matches KwMatch))
-    c_bnd_op ∈ Op
-    c_t3_is_op ∈ Bool
-    C2TokOp(t ↦ c_t3, o ↦ c_bnd_op, rec ↦ c_t3_is_op)
-    c_bound ∈ Bool = (c_is_mem ∧ (¬c_eff_line) ∧ (¬c_pinned) ∧ c_t3_is_op)
-    c_bnd_e ∈ Expr
-    c_bnd_ok ∈ Bool
-    C2AtomE(t ↦ c_t4, e ↦ c_bnd_e, ok ↦ c_bnd_ok)
+    seqlit_line ∈ Bool = (line_t0_ident ∧ (line_t1 matches Eq)
+        ∧ (line_t2 matches OpSeqOpen) ∧ _seqvar_set ∧ (line_name = _seqvar_name))
+    effects_cond ∈ Bool = (effects_line ∧ (tok7 matches LParen))
+    line_pinned ∈ Bool = (line_is_mem ∧ (¬effects_line) ∧ (line_t3 matches Eq))
+    intset_line ∈ Bool = ((line_is_mem ∨ line_is_notmem) ∧ (line_t2 matches LBrace))
+    match_line ∈ Bool = (line_is_mem ∧ (¬effects_line) ∧ line_pinned
+        ∧ (line_t4 matches KwMatch))
+    bound_op ∈ Op
+    line_t3_is_op ∈ Bool
+    C2TokOp(t ↦ line_t3, o ↦ bound_op, rec ↦ line_t3_is_op)
+    line_bounded ∈ Bool = (line_is_mem ∧ (¬effects_line) ∧ (¬line_pinned) ∧ line_t3_is_op)
+    bound_expr ∈ Expr
+    bound_ok ∈ Bool
+    C2AtomE(t ↦ line_t4, e ↦ bound_expr, ok ↦ bound_ok)
 
-    c_can_expr ∈ Bool = (c_t0_is_ident ∨ (c_t0 matches IntLit(_))
-        ∨ (c_t0 matches OpNot) ∨ (c_t0 matches LParen)
-        ∨ (c_t0 matches KwTrue) ∨ (c_t0 matches KwFalse)
-        ∨ (c_t0 matches Hash))
+    line_can_expr ∈ Bool = (line_t0_ident ∨ (line_t0 matches IntLit(_))
+        ∨ (line_t0 matches OpNot) ∨ (line_t0 matches LParen)
+        ∨ (line_t0 matches KwTrue) ∨ (line_t0 matches KwFalse)
+        ∨ (line_t0 matches Hash))
 
-    c_dd_shape ∈ Bool = ((c_t0 matches Dot) ∧ (c_t1 matches Dot)
-        ∧ (c_t2 matches Ident(_)))
-    c_dd_nm ∈ String = match c_t2
+    dotdot_shape ∈ Bool = ((line_t0 matches Dot) ∧ (line_t1 matches Dot)
+        ∧ (line_t2 matches Ident(_)))
+    dotdot_name ∈ String = match line_t2
         Ident(s) ⇒ s
         _ ⇒ ""
-    c_comp_nm ∈ String = (c_dd_shape ? c_dd_nm : c_name)
-    c_comp_key ∈ String
-    FtiNameEntry(name ↦ c_comp_nm, entry ↦ c_comp_key)
-    c_comp_pos ∈ Int = index_of(claimidx_names, c_comp_key, 0)
-    c_comp_found ∈ Bool = ((c_comp_pos ≥ 0) ∧ (c_comp_nm ≠ ""))
-    c_dd_head ∈ Bool = (c_dd_shape ∧ c_comp_found ∧ (_frame_depth < 8))
+    comp_name ∈ String = (dotdot_shape ? dotdot_name : line_name)
+    comp_key ∈ String
+    FtiNameEntry(name ↦ comp_name, entry ↦ comp_key)
+    comp_pos ∈ Int = index_of(claimidx_names, comp_key, 0)
+    comp_found ∈ Bool = ((comp_pos ≥ 0) ∧ (comp_name ≠ ""))
+    dotdot_head ∈ Bool = (dotdot_shape ∧ comp_found ∧ (_frame_depth < 8))
 
-    d_line_end ∈ Bool = (c_rem_nil ∨ c_t0_is_tlkw
-        ∨ ((¬c_can_expr) ∧ (¬c_dd_head) ∧ (¬c_strin_line)
-            ∧ (¬c_q_line)))
-    d_claim_end ∈ Bool = (classify_now ∧ d_line_end ∧ (_frame_depth = 0))
-    il_pop ∈ Bool = (classify_now ∧ d_line_end ∧ (_frame_depth > 0))
+    line_end ∈ Bool = (line_at_eof ∨ line_t0_toplevel
+        ∨ ((¬line_can_expr) ∧ (¬dotdot_head) ∧ (¬strin_line)
+            ∧ (¬q_line)))
+    claim_end ∈ Bool = (classify_now ∧ line_end ∧ (_frame_depth = 0))
+    frame_pop ∈ Bool = (classify_now ∧ line_end ∧ (_frame_depth > 0))
 
-    c_comp_call ∈ Bool = (classify_now ∧ (¬d_line_end) ∧ c_t0_is_ident
-        ∧ (c_t1 matches LParen) ∧ (c_t3 matches OpMapsto)
-        ∧ c_comp_found ∧ (_frame_depth < 8))
-    c_comp_bare ∈ Bool = (classify_now ∧ (¬d_line_end) ∧ c_t0_is_ident
-        ∧ c_comp_found ∧ (¬(c_t1 matches LParen))
-        ∧ (¬c_is_mem) ∧ (¬c_is_nmem) ∧ (¬(c_t1 matches Eq))
-        ∧ (¬(c_t1 matches Comma)) ∧ (_frame_depth < 8))
-    c_comp_dd ∈ Bool = (classify_now ∧ c_dd_head)
-    c_comp_line ∈ Bool = (c_comp_call ∨ c_comp_bare ∨ c_comp_dd)
-    d_enter_el ∈ Bool = (classify_now ∧ (¬d_line_end) ∧ c_eff_line)
-    d_enter_set ∈ Bool = (classify_now ∧ (¬d_line_end) ∧ c_set_line)
-    d_enter_match ∈ Bool = (classify_now ∧ (¬d_line_end)
-        ∧ (¬c_set_line) ∧ c_match_line)
-    d_seq_mem ∈ Bool = (classify_now ∧ (¬d_line_end) ∧ c_seq_line)
-    d_enter_sl ∈ Bool = (classify_now ∧ (¬d_line_end) ∧ (¬c_is_mem)
-        ∧ (¬c_is_nmem) ∧ c_seqlit_line)
-    d_enter_mn ∈ Bool = (classify_now ∧ (¬d_line_end) ∧ c_mn_line
-        ∧ (¬c_seqlit_line))
-    d_enter_pratt0 ∈ Bool = (classify_now ∧ (¬d_line_end)
-        ∧ (¬c_eff_line) ∧ (¬c_set_line) ∧ (¬c_match_line)
-        ∧ (¬c_seq_line) ∧ (¬c_seqlit_line) ∧ (¬c_mn_line)
-        ∧ (¬c_comp_line) ∧ (¬c_strin_line) ∧ (¬c_ty_line)
-        ∧ (¬c_q_rng) ∧ (¬(c_q_seq ∧ _sq_set)) ∧ (¬pcl_line)
-        ∧ (¬c_setlit_line) ∧ (¬d_enter_qset)
-        ∧ (c_pinned ∨ (¬c_is_mem)))
-    d_enter_pratt ∈ Bool = (d_enter_pratt0 ∨ efflit_exit_enter
-        ∨ efflit_guard_enter ∨ mp_benter ∨ sl_e_enter ∨ callw_slot
-        ∨ q_close ∨ d_enter_qs ∨ pt_elem)
-    d_pratt_cons0 ∈ Int = (efflit_exit_enter ? 2
+    comp_call ∈ Bool = (classify_now ∧ (¬line_end) ∧ line_t0_ident
+        ∧ (line_t1 matches LParen) ∧ (line_t3 matches OpMapsto)
+        ∧ comp_found ∧ (_frame_depth < 8))
+    comp_bare ∈ Bool = (classify_now ∧ (¬line_end) ∧ line_t0_ident
+        ∧ comp_found ∧ (¬(line_t1 matches LParen))
+        ∧ (¬line_is_mem) ∧ (¬line_is_notmem) ∧ (¬(line_t1 matches Eq))
+        ∧ (¬(line_t1 matches Comma)) ∧ (_frame_depth < 8))
+    comp_dotdot ∈ Bool = (classify_now ∧ dotdot_head)
+    comp_line ∈ Bool = (comp_call ∨ comp_bare ∨ comp_dotdot)
+    enter_efflit ∈ Bool = (classify_now ∧ (¬line_end) ∧ effects_line)
+    enter_intset ∈ Bool = (classify_now ∧ (¬line_end) ∧ intset_line)
+    enter_match ∈ Bool = (classify_now ∧ (¬line_end)
+        ∧ (¬intset_line) ∧ match_line)
+    enter_seqmem ∈ Bool = (classify_now ∧ (¬line_end) ∧ seqmem_line)
+    enter_seqlit ∈ Bool = (classify_now ∧ (¬line_end) ∧ (¬line_is_mem)
+        ∧ (¬line_is_notmem) ∧ seqlit_line)
+    enter_multiname ∈ Bool = (classify_now ∧ (¬line_end) ∧ multiname_line
+        ∧ (¬seqlit_line))
+    enter_pratt_line ∈ Bool = (classify_now ∧ (¬line_end)
+        ∧ (¬effects_line) ∧ (¬intset_line) ∧ (¬match_line)
+        ∧ (¬seqmem_line) ∧ (¬seqlit_line) ∧ (¬multiname_line)
+        ∧ (¬comp_line) ∧ (¬strin_line) ∧ (¬tymem_line)
+        ∧ (¬q_range) ∧ (¬(q_over_seq ∧ _seqvar_set)) ∧ (¬pcl_line)
+        ∧ (¬setlit_line) ∧ (¬enter_qset)
+        ∧ (line_pinned ∨ (¬line_is_mem)))
+    enter_pratt ∈ Bool = (enter_pratt_line ∨ efflit_exit_enter
+        ∨ efflit_guard_enter ∨ mp_benter ∨ seqlit_elem_enter ∨ callw_slot
+        ∨ qrange_close ∨ enter_qseq ∨ pt_elem)
+    pratt_enter_consume ∈ Int = (efflit_exit_enter ? 2
         : efflit_guard_enter ? 0
         : mp_benter ? ((mp_take ∧ mp_arm_pl_h) ? 5 : 2)
-        : sl_e_enter ? 0
+        : seqlit_elem_enter ? 0
         : callw_slot ? 2
-        : q_close ? 2
-        : d_enter_qs ? (c_q_s2 ? 7 : 5)
+        : qrange_close ? 2
+        : enter_qseq ? (q_seq_dotted ? 7 : 5)
         : pt_elem ? 0
-        : c_pinned ? 4 : 0)
-    d_pratt_kind0 ∈ Int = (efflit_exit_enter ? 3
+        : line_pinned ? 4 : 0)
+    pratt_enter_kind ∈ Int = (efflit_exit_enter ? 3
         : efflit_guard_enter ? 6
         : mp_benter ? 4
-        : sl_e_enter ? 7
+        : seqlit_elem_enter ? 7
         : callw_slot ? 8
-        : q_close ? 9
-        : d_enter_qs ? 9
+        : qrange_close ? 9
+        : enter_qseq ? 9
         : pt_elem ? 10
-        : c_pinned ? 1 : 2)
-    pq_qstop ∈ Bool
-    pq_qstop = (is_first_tick ? false
-        : d_enter_pratt ? efflit_guard_enter
-        : _pq_qstop)
+        : line_pinned ? 1 : 2)
+    pratt_qstop ∈ Bool
+    pratt_qstop = (is_first_tick ? false
+        : enter_pratt ? efflit_guard_enter
+        : _pratt_qstop)
 
-    c_seg_bound ∈ C2Items = C2ICons(C2Process(c_bnd_e),
-        C2ICons(C2Op(c_bnd_op), C2ICons(C2AssertTop, C2INil)))
-    c_seg_drop ∈ C2Items = C2ICons(C2Drop, C2INil)
-    c_tailseg ∈ C2Items = (c_bound ? c_seg_bound : c_seg_drop)
-    c_natseg ∈ C2Items = (c_is_nat
-        ? C2ICons(C2NatBound, C2ICons(C2AssertTop, c_tailseg))
-        : c_tailseg)
-    c_chk_name ∈ String = _scope_prefix ++ c_name
-    c_dname ∈ String = c_chk_name
-    c_chk_key ∈ String
-    FtiNameEntry(name ↦ c_chk_name, entry ↦ c_chk_key)
-    c_dup ∈ Bool = (index_of(sym_names, c_chk_key, 0) ≥ 0)
-    c_bnd ∈ Bool = ((c_name ≠ "") ∧ ((bind_n0 = c_name) ∨ (bind_n1 = c_name)
-        ∨ (bind_n2 = c_name) ∨ (bind_n3 = c_name) ∨ (bind_n4 = c_name)
-        ∨ (bind_n5 = c_name)))
-    c_nodecl ∈ Bool = (c_bnd ∨ c_dup)
-    c_pn ∈ String = (c_bnd ? c_name : c_dname)
-    c_mem_head ∈ C2Item = (c_nodecl ? C2Process(EIdent(c_pn))
-        : C2DeclConst(c_dname, c_sc))
-    c_mem_items ∈ C2Items = C2ICons(c_mem_head, c_natseg)
+    bound_seg ∈ C2Items = C2ICons(C2Process(bound_expr),
+        C2ICons(C2Op(bound_op), C2ICons(C2AssertTop, C2INil)))
+    drop_seg ∈ C2Items = C2ICons(C2Drop, C2INil)
+    tail_seg ∈ C2Items = (line_bounded ? bound_seg : drop_seg)
+    nat_tail_seg ∈ C2Items = (line_is_nat
+        ? C2ICons(C2NatBound, C2ICons(C2AssertTop, tail_seg))
+        : tail_seg)
+    scoped_name ∈ String = _scope_prefix ++ line_name
+    line_dname ∈ String = scoped_name
+    scoped_key ∈ String
+    FtiNameEntry(name ↦ scoped_name, entry ↦ scoped_key)
+    name_dup ∈ Bool = (index_of(sym_names, scoped_key, 0) ≥ 0)
+    name_bound ∈ Bool = ((line_name ≠ "") ∧ ((bind_n0 = line_name) ∨ (bind_n1 = line_name)
+        ∨ (bind_n2 = line_name) ∨ (bind_n3 = line_name) ∨ (bind_n4 = line_name)
+        ∨ (bind_n5 = line_name)))
+    no_decl ∈ Bool = (name_bound ∨ name_dup)
+    resolved_name ∈ String = (name_bound ? line_name : line_dname)
+    mem_head_item ∈ C2Item = (no_decl ? C2Process(EIdent(resolved_name))
+        : C2DeclConst(line_dname, line_sort))
+    mem_items ∈ C2Items = C2ICons(mem_head_item, nat_tail_seg)
 
     -- ── G1: infix contains — `"lit" ∈ name` → (str.contains name "lit")
-    c_strin_line ∈ Bool = ((c_t0 matches StringLit(_)) ∧ c_is_mem
-        ∧ (c_t2 matches Ident(_)))
-    c_si_lit ∈ String = match c_t0
+    strin_line ∈ Bool = ((line_t0 matches StringLit(_)) ∧ line_is_mem
+        ∧ (line_t2 matches Ident(_)))
+    strin_lit ∈ String = match line_t0
         StringLit(s) ⇒ s
         _ ⇒ ""
-    c_si_items ∈ C2Items = C2ICons(C2Process(EIdent(c_type_str)),
-        C2ICons(C2Process(EStr(c_si_lit)),
+    strin_items ∈ C2Items = C2ICons(C2Process(EIdent(line_ty_name)),
+        C2ICons(C2Process(EStr(strin_lit)),
         C2ICons(C2StrOp("contains", 2),
         C2ICons(C2AssertTop, C2INil))))
-    d_enter_si ∈ Bool = (classify_now ∧ (¬d_line_end) ∧ c_strin_line)
+    enter_strin ∈ Bool = (classify_now ∧ (¬line_end) ∧ strin_line)
 
-    c_ty_key ∈ String
-    FtiNameEntry(name ↦ c_type_str, entry ↦ c_ty_key)
-    c_ty_pos ∈ Int = index_of(claimidx_names, c_ty_key, 0)
-    c_ty_found ∈ Bool = (c_is_mem ∧ (¬c_eff_line) ∧ (c_sc = 0)
-        ∧ (c_type_str ≠ "Int") ∧ (c_type_str ≠ "Nat")
-        ∧ (c_type_str ≠ "Seq") ∧ (c_type_str ≠ "")
-        ∧ (¬c_strin_line) ∧ (c_ty_pos ≥ 0))
-    c_ty_call ∈ Bool = (classify_now ∧ (¬d_line_end) ∧ c_ty_found
-        ∧ (c_t3 matches LParen) ∧ (c_t4 matches Ident(_))
+    tymem_key ∈ String
+    FtiNameEntry(name ↦ line_ty_name, entry ↦ tymem_key)
+    tymem_pos ∈ Int = index_of(claimidx_names, tymem_key, 0)
+    tymem_found ∈ Bool = (line_is_mem ∧ (¬effects_line) ∧ (line_sort = 0)
+        ∧ (line_ty_name ≠ "Int") ∧ (line_ty_name ≠ "Nat")
+        ∧ (line_ty_name ≠ "Seq") ∧ (line_ty_name ≠ "")
+        ∧ (¬strin_line) ∧ (tymem_pos ≥ 0))
+    tymem_call ∈ Bool = (classify_now ∧ (¬line_end) ∧ tymem_found
+        ∧ (line_t3 matches LParen) ∧ (line_t4 matches Ident(_))
         ∧ (tok5 matches OpMapsto) ∧ (_frame_depth < 8))
-    c_ty_bare ∈ Bool = (classify_now ∧ (¬d_line_end) ∧ c_ty_found
-        ∧ (¬(c_t3 matches LParen)) ∧ (¬c_pinned) ∧ (¬c_bound)
+    tymem_bare ∈ Bool = (classify_now ∧ (¬line_end) ∧ tymem_found
+        ∧ (¬(line_t3 matches LParen)) ∧ (¬line_pinned) ∧ (¬line_bounded)
         ∧ (_frame_depth < 8))
-    c_ty_line ∈ Bool = (c_ty_call ∨ c_ty_bare)
-    c_in_ty ∈ Bool = ((#_scope_prefix > 0)
+    tymem_line ∈ Bool = (tymem_call ∨ tymem_bare)
+    in_type_frame ∈ Bool = ((#_scope_prefix > 0)
         ∧ (substr(_scope_prefix, #_scope_prefix - 1, 1) = "."))
-    c_cur_pos ∈ Int = (c_ty_line ? c_ty_pos : c_comp_pos)
+    callee_pos ∈ Int = (tymem_line ? tymem_pos : comp_pos)
