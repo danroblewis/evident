@@ -18,10 +18,10 @@
 -- ── G2: record-registry helpers ───────────────────────────────────
 -- The registry stores ≤ 3 record types (the conformance corpus max
 -- is 2 + headroom) as a fixed ×3 array of `RecTypeEntry` records
--- (rt_e0/rt_e1/rt_e2). Each entry bundles the type name, the fixed-
+-- (rec0/rec1/rec2). Each entry bundles the type name, the fixed-
 -- width 32-byte "|name<pad31>" field-name/field-type record strings,
 -- the field count, and the Z3 handles (sort / ctor decl / array sort /
--- set sort / ≤ 6 accessor decls a0..a5).
+-- set sort / ≤ 6 accessor decls acc0..acc5).
 
 type RcParam(pname ∈ String)
 
@@ -65,278 +65,278 @@ claim RtFieldAcc(fname ∈ String,
     rfa_i1 ∈ Int = rfa_p1 / 32
     rfa_i2 ∈ Int = rfa_p2 / 32
     acc = ((fname ≠ "" ∧ rfa_p0 ≥ 0)
-            ? (rfa_i0 = 0 ? e0.a0 : rfa_i0 = 1 ? e0.a1 : rfa_i0 = 2 ? e0.a2
-                : rfa_i0 = 3 ? e0.a3 : rfa_i0 = 4 ? e0.a4 : e0.a5)
+            ? (rfa_i0 = 0 ? e0.acc0 : rfa_i0 = 1 ? e0.acc1 : rfa_i0 = 2 ? e0.acc2
+                : rfa_i0 = 3 ? e0.acc3 : rfa_i0 = 4 ? e0.acc4 : e0.acc5)
         : (fname ≠ "" ∧ rfa_p1 ≥ 0)
-            ? (rfa_i1 = 0 ? e1.a0 : rfa_i1 = 1 ? e1.a1 : rfa_i1 = 2 ? e1.a2
-                : rfa_i1 = 3 ? e1.a3 : rfa_i1 = 4 ? e1.a4 : e1.a5)
+            ? (rfa_i1 = 0 ? e1.acc0 : rfa_i1 = 1 ? e1.acc1 : rfa_i1 = 2 ? e1.acc2
+                : rfa_i1 = 3 ? e1.acc3 : rfa_i1 = 4 ? e1.acc4 : e1.acc5)
         : (fname ≠ "" ∧ rfa_p2 ≥ 0)
-            ? (rfa_i2 = 0 ? e2.a0 : rfa_i2 = 1 ? e2.a1 : rfa_i2 = 2 ? e2.a2
-                : rfa_i2 = 3 ? e2.a3 : rfa_i2 = 4 ? e2.a4 : e2.a5)
+            ? (rfa_i2 = 0 ? e2.acc0 : rfa_i2 = 1 ? e2.acc1 : rfa_i2 = 2 ? e2.acc2
+                : rfa_i2 = 3 ? e2.acc3 : rfa_i2 = 4 ? e2.acc4 : e2.acc5)
         : 0)
 
 fsm DriverRecord
-    rt_cnt ∈ Int
-    rt_e0 ∈ RecTypeEntry
-    rt_e1 ∈ RecTypeEntry
-    rt_e2 ∈ RecTypeEntry
+    rec_count ∈ Int
+    rec0 ∈ RecTypeEntry
+    rec1 ∈ RecTypeEntry
+    rec2 ∈ RecTypeEntry
 
-    rc_on ∈ Bool
-    rc_ok ∈ Bool
-    rc_np ∈ Int
-    rc_p ∈ Seq(RcParam)
-    #rc_p ≤ 3
+    rec_collect_on ∈ Bool
+    rec_collect_ok ∈ Bool
+    rec_param_n ∈ Int
+    rec_params ∈ Seq(RcParam)
+    #rec_params ≤ 3
 
-    rck ∈ Int = _rt_cnt - 1
-    rc_name ∈ String = (rck = 0 ? rt_e0.name : rck = 1 ? rt_e1.name : rt_e2.name)
-    rc_f ∈ String = (rck = 0 ? rt_e0.fnames : rck = 1 ? rt_e1.fnames : rt_e2.fnames)
-    rc_t ∈ String = (rck = 0 ? rt_e0.ftypes : rck = 1 ? rt_e1.ftypes : rt_e2.ftypes)
-    rc_nf ∈ Int = (rck = 0 ? rt_e0.nf : rck = 1 ? rt_e1.nf : rt_e2.nf)
-    rc_sort ∈ Int = (rck = 0 ? rt_e0.sort : rck = 1 ? rt_e1.sort : rt_e2.sort)
+    rec_slot ∈ Int = _rec_count - 1
+    rec_cur_name ∈ String = (rec_slot = 0 ? rec0.name : rec_slot = 1 ? rec1.name : rec2.name)
+    rec_cur_fnames ∈ String = (rec_slot = 0 ? rec0.fnames : rec_slot = 1 ? rec1.fnames : rec2.fnames)
+    rec_cur_ftypes ∈ String = (rec_slot = 0 ? rec0.ftypes : rec_slot = 1 ? rec1.ftypes : rec2.ftypes)
+    rec_cur_nf ∈ Int = (rec_slot = 0 ? rec0.n_fields : rec_slot = 1 ? rec1.n_fields : rec2.n_fields)
+    rec_cur_sort ∈ Int = (rec_slot = 0 ? rec0.sort : rec_slot = 1 ? rec1.sort : rec2.sort)
 
-    rc_start ∈ Bool = (ci_add ∧ (tok0 matches KwType) ∧ (_rt_cnt < 3))
-    rc_skip ∈ Bool = (d_in_skip ∧ (¬d_skip_stop) ∧ _rc_on)
-    rcf_t0nm ∈ String = match tok0
+    rec_start ∈ Bool = (ci_add ∧ (tok0 matches KwType) ∧ (_rec_count < 3))
+    rec_collecting ∈ Bool = (d_in_skip ∧ (¬d_skip_stop) ∧ _rec_collect_on)
+    field_name_tok ∈ String = match tok0
         Ident(s) ⇒ s
         _ ⇒ ""
-    rcf_t2nm ∈ String = match tok2
+    field_ty_tok ∈ String = match tok2
         Ident(s) ⇒ s
         _ ⇒ ""
-    rcf_t4nm ∈ String = match tok4
+    field_ty_arg ∈ String = match tok4
         Ident(s) ⇒ s
         _ ⇒ ""
-    rcf_pend ∈ Bool = (rc_skip ∧ (tok0 matches Ident(_))
+    field_pending ∈ Bool = (rec_collecting ∧ (tok0 matches Ident(_))
         ∧ (tok1 matches Comma) ∧ (tok2 matches Ident(_)))
-    rcf_take ∈ Bool = (rc_skip ∧ (tok0 matches Ident(_))
+    field_take ∈ Bool = (rec_collecting ∧ (tok0 matches Ident(_))
         ∧ (tok1 matches OpIn) ∧ (tok2 matches Ident(_)))
-    rcf_seq ∈ Bool = (rcf_take ∧ (rcf_t2nm = "Seq")
-        ∧ (tok3 matches LParen) ∧ (rcf_t4nm = "Int")
+    field_is_seq ∈ Bool = (field_take ∧ (field_ty_tok = "Seq")
+        ∧ (tok3 matches LParen) ∧ (field_ty_arg = "Int")
         ∧ (tok5 matches RParen))
-    rcf_prim ∈ Bool = (rcf_t2nm = "Int" ∨ rcf_t2nm = "Nat"
-        ∨ rcf_t2nm = "Bool" ∨ rcf_t2nm = "String" ∨ rcf_t2nm = "Real")
-    rcf_reck ∈ Int
-    RtIdxOf(nm ↦ rcf_t2nm, e0 ↦ _rt_e0, e1 ↦ _rt_e1, e2 ↦ _rt_e2,
-        idx ↦ rcf_reck)
-    rcf_cnt ∈ Int = (_rc_np + 1) + (rcf_seq ? 1 : 0)
-    rc_nf_prev ∈ Int = (rck = 0 ? _rt_e0.nf : rck = 1 ? _rt_e1.nf : _rt_e2.nf)
-    rcf_bad ∈ Bool = ((rcf_take ∧ (((¬rcf_prim) ∧ (¬rcf_seq) ∧ rcf_reck < 0)
-        ∨ (rcf_seq ∧ _rc_np > 0)
-        ∨ (rc_nf_prev + rcf_cnt > 6)))
-        ∨ (rcf_pend ∧ _rc_np ≥ 3))
-    rc_padv ∈ String = "                               "
-    rcf_ty_norm ∈ String = (rcf_seq ? "Seq(Int)" : rcf_t2nm)
-    rcf_rec_n ∈ String = "|" ++ substr(rcf_t0nm ++ rc_padv, 0, 31)
-    rcf_rec_p0 ∈ String = "|" ++ substr(_rc_p[0].pname ++ rc_padv, 0, 31)
-    rcf_rec_p1 ∈ String = "|" ++ substr(_rc_p[1].pname ++ rc_padv, 0, 31)
-    rcf_rec_p2 ∈ String = "|" ++ substr(_rc_p[2].pname ++ rc_padv, 0, 31)
-    rcf_trec ∈ String = "|" ++ substr(rcf_ty_norm ++ rc_padv, 0, 31)
-    rcf_lenrec ∈ String = "|" ++ substr((rcf_t0nm ++ "__len") ++ rc_padv, 0, 31)
-    rcf_irec ∈ String = "|" ++ substr("Int" ++ rc_padv, 0, 31)
-    rcf_app_f ∈ String = ((_rc_np = 0 ? rcf_rec_n
-        : _rc_np = 1 ? rcf_rec_p0 ++ rcf_rec_n
-        : _rc_np = 2 ? rcf_rec_p0 ++ rcf_rec_p1 ++ rcf_rec_n
-        : rcf_rec_p0 ++ rcf_rec_p1 ++ rcf_rec_p2 ++ rcf_rec_n)
-        ++ (rcf_seq ? rcf_lenrec : ""))
-    rcf_app_t ∈ String = ((_rc_np = 0 ? rcf_trec
-        : _rc_np = 1 ? rcf_trec ++ rcf_trec
-        : _rc_np = 2 ? rcf_trec ++ rcf_trec ++ rcf_trec
-        : rcf_trec ++ rcf_trec ++ rcf_trec ++ rcf_trec)
-        ++ (rcf_seq ? rcf_irec : ""))
-    rcf_ok ∈ Bool = (rcf_take ∧ (¬rcf_bad))
+    field_is_prim ∈ Bool = (field_ty_tok = "Int" ∨ field_ty_tok = "Nat"
+        ∨ field_ty_tok = "Bool" ∨ field_ty_tok = "String" ∨ field_ty_tok = "Real")
+    field_rec_slot ∈ Int
+    RtIdxOf(nm ↦ field_ty_tok, e0 ↦ _rec0, e1 ↦ _rec1, e2 ↦ _rec2,
+        idx ↦ field_rec_slot)
+    field_add_n ∈ Int = (_rec_param_n + 1) + (field_is_seq ? 1 : 0)
+    rec_nf_prev ∈ Int = (rec_slot = 0 ? _rec0.n_fields : rec_slot = 1 ? _rec1.n_fields : _rec2.n_fields)
+    field_bad ∈ Bool = ((field_take ∧ (((¬field_is_prim) ∧ (¬field_is_seq) ∧ field_rec_slot < 0)
+        ∨ (field_is_seq ∧ _rec_param_n > 0)
+        ∨ (rec_nf_prev + field_add_n > 6)))
+        ∨ (field_pending ∧ _rec_param_n ≥ 3))
+    rec_pad31 ∈ String = "                               "
+    field_ty_norm ∈ String = (field_is_seq ? "Seq(Int)" : field_ty_tok)
+    field_row_name ∈ String = "|" ++ substr(field_name_tok ++ rec_pad31, 0, 31)
+    field_row_p0 ∈ String = "|" ++ substr(_rec_params[0].pname ++ rec_pad31, 0, 31)
+    field_row_p1 ∈ String = "|" ++ substr(_rec_params[1].pname ++ rec_pad31, 0, 31)
+    field_row_p2 ∈ String = "|" ++ substr(_rec_params[2].pname ++ rec_pad31, 0, 31)
+    field_row_ty ∈ String = "|" ++ substr(field_ty_norm ++ rec_pad31, 0, 31)
+    field_row_len ∈ String = "|" ++ substr((field_name_tok ++ "__len") ++ rec_pad31, 0, 31)
+    field_row_int ∈ String = "|" ++ substr("Int" ++ rec_pad31, 0, 31)
+    field_rows_names ∈ String = ((_rec_param_n = 0 ? field_row_name
+        : _rec_param_n = 1 ? field_row_p0 ++ field_row_name
+        : _rec_param_n = 2 ? field_row_p0 ++ field_row_p1 ++ field_row_name
+        : field_row_p0 ++ field_row_p1 ++ field_row_p2 ++ field_row_name)
+        ++ (field_is_seq ? field_row_len : ""))
+    field_rows_types ∈ String = ((_rec_param_n = 0 ? field_row_ty
+        : _rec_param_n = 1 ? field_row_ty ++ field_row_ty
+        : _rec_param_n = 2 ? field_row_ty ++ field_row_ty ++ field_row_ty
+        : field_row_ty ++ field_row_ty ++ field_row_ty ++ field_row_ty)
+        ++ (field_is_seq ? field_row_int : ""))
+    field_ok ∈ Bool = (field_take ∧ (¬field_bad))
 
-    rc_on = (is_first_tick ? false
-        : rc_start ? true
+    rec_collect_on = (is_first_tick ? false
+        : rec_start ? true
         : d_skip_stop ? false
-        : _rc_on)
-    rc_ok = (is_first_tick ? false
-        : rc_start ? true
-        : rcf_bad ? false
-        : _rc_ok)
-    rc_np = (is_first_tick ? 0
-        : rc_start ? 0
-        : rcf_take ? 0
-        : (rcf_pend ∧ _rc_np < 3) ? _rc_np + 1
-        : _rc_np)
-    ∀ k ∈ {0..2} : rc_p[k].pname = (is_first_tick ? "" : (rcf_pend ∧ _rc_np = k) ? rcf_t0nm : _rc_p[k].pname)
+        : _rec_collect_on)
+    rec_collect_ok = (is_first_tick ? false
+        : rec_start ? true
+        : field_bad ? false
+        : _rec_collect_ok)
+    rec_param_n = (is_first_tick ? 0
+        : rec_start ? 0
+        : field_take ? 0
+        : (field_pending ∧ _rec_param_n < 3) ? _rec_param_n + 1
+        : _rec_param_n)
+    ∀ k ∈ {0..2} : rec_params[k].pname = (is_first_tick ? "" : (field_pending ∧ _rec_param_n = k) ? field_name_tok : _rec_params[k].pname)
 
-    rt_cnt = (is_first_tick ? 0 : rc_start ? _rt_cnt + 1 : _rt_cnt)
-    rt_e0.name = (is_first_tick ? "" : (rc_start ∧ _rt_cnt = 0) ? d_cl_name : _rt_e0.name)
-    rt_e1.name = (is_first_tick ? "" : (rc_start ∧ _rt_cnt = 1) ? d_cl_name : _rt_e1.name)
-    rt_e2.name = (is_first_tick ? "" : (rc_start ∧ _rt_cnt = 2) ? d_cl_name : _rt_e2.name)
-    rt_e0.fnames = (is_first_tick ? "" : (rcf_ok ∧ rck = 0) ? _rt_e0.fnames ++ rcf_app_f : _rt_e0.fnames)
-    rt_e1.fnames = (is_first_tick ? "" : (rcf_ok ∧ rck = 1) ? _rt_e1.fnames ++ rcf_app_f : _rt_e1.fnames)
-    rt_e2.fnames = (is_first_tick ? "" : (rcf_ok ∧ rck = 2) ? _rt_e2.fnames ++ rcf_app_f : _rt_e2.fnames)
-    rt_e0.ftypes = (is_first_tick ? "" : (rcf_ok ∧ rck = 0) ? _rt_e0.ftypes ++ rcf_app_t : _rt_e0.ftypes)
-    rt_e1.ftypes = (is_first_tick ? "" : (rcf_ok ∧ rck = 1) ? _rt_e1.ftypes ++ rcf_app_t : _rt_e1.ftypes)
-    rt_e2.ftypes = (is_first_tick ? "" : (rcf_ok ∧ rck = 2) ? _rt_e2.ftypes ++ rcf_app_t : _rt_e2.ftypes)
-    rt_e0.nf = (is_first_tick ? 0 : (rcf_ok ∧ rck = 0) ? _rt_e0.nf + rcf_cnt : _rt_e0.nf)
-    rt_e1.nf = (is_first_tick ? 0 : (rcf_ok ∧ rck = 1) ? _rt_e1.nf + rcf_cnt : _rt_e1.nf)
-    rt_e2.nf = (is_first_tick ? 0 : (rcf_ok ∧ rck = 2) ? _rt_e2.nf + rcf_cnt : _rt_e2.nf)
+    rec_count = (is_first_tick ? 0 : rec_start ? _rec_count + 1 : _rec_count)
+    rec0.name = (is_first_tick ? "" : (rec_start ∧ _rec_count = 0) ? d_cl_name : _rec0.name)
+    rec1.name = (is_first_tick ? "" : (rec_start ∧ _rec_count = 1) ? d_cl_name : _rec1.name)
+    rec2.name = (is_first_tick ? "" : (rec_start ∧ _rec_count = 2) ? d_cl_name : _rec2.name)
+    rec0.fnames = (is_first_tick ? "" : (field_ok ∧ rec_slot = 0) ? _rec0.fnames ++ field_rows_names : _rec0.fnames)
+    rec1.fnames = (is_first_tick ? "" : (field_ok ∧ rec_slot = 1) ? _rec1.fnames ++ field_rows_names : _rec1.fnames)
+    rec2.fnames = (is_first_tick ? "" : (field_ok ∧ rec_slot = 2) ? _rec2.fnames ++ field_rows_names : _rec2.fnames)
+    rec0.ftypes = (is_first_tick ? "" : (field_ok ∧ rec_slot = 0) ? _rec0.ftypes ++ field_rows_types : _rec0.ftypes)
+    rec1.ftypes = (is_first_tick ? "" : (field_ok ∧ rec_slot = 1) ? _rec1.ftypes ++ field_rows_types : _rec1.ftypes)
+    rec2.ftypes = (is_first_tick ? "" : (field_ok ∧ rec_slot = 2) ? _rec2.ftypes ++ field_rows_types : _rec2.ftypes)
+    rec0.n_fields = (is_first_tick ? 0 : (field_ok ∧ rec_slot = 0) ? _rec0.n_fields + field_add_n : _rec0.n_fields)
+    rec1.n_fields = (is_first_tick ? 0 : (field_ok ∧ rec_slot = 1) ? _rec1.n_fields + field_add_n : _rec1.n_fields)
+    rec2.n_fields = (is_first_tick ? 0 : (field_ok ∧ rec_slot = 2) ? _rec2.n_fields + field_add_n : _rec2.n_fields)
 
-    rd_st ∈ Int
-    rd_fi ∈ Int
-    rd_hn ∈ Int
-    rd_hf ∈ Seq(Int)
-    #rd_hf ≤ 6
+    recdecl_st ∈ Int
+    recdecl_field_i ∈ Int
+    recdecl_h_name ∈ Int
+    recdecl_h_fields ∈ Seq(Int)
+    #recdecl_h_fields ≤ 6
 
-    rd_go ∈ Bool = (d_skip_stop ∧ _rc_on ∧ _rc_ok ∧ (rck ≥ 0)
-        ∧ (rc_nf > 0))
-    rd_prev ∈ Bool = (_pmode = 13)
-    rd_cur_st ∈ Int = (rd_go ? 0
-        : (¬rd_prev) ? 8
-        : _rd_st = 0 ? 1
-        : _rd_st = 1 ? ((_rd_fi + 1 < rc_nf) ? 1 : 2)
-        : _rd_st = 2 ? 3
-        : _rd_st = 3 ? 4
-        : _rd_st = 4 ? 5
-        : _rd_st = 5 ? ((_rd_fi + 1 < rc_nf) ? 5 : 6)
-        : _rd_st = 6 ? 7
+    recdecl_go ∈ Bool = (d_skip_stop ∧ _rec_collect_on ∧ _rec_collect_ok ∧ (rec_slot ≥ 0)
+        ∧ (rec_cur_nf > 0))
+    recdecl_prev ∈ Bool = (_pmode = 13)
+    recdecl_st_now ∈ Int = (recdecl_go ? 0
+        : (¬recdecl_prev) ? 8
+        : _recdecl_st = 0 ? 1
+        : _recdecl_st = 1 ? ((_recdecl_field_i + 1 < rec_cur_nf) ? 1 : 2)
+        : _recdecl_st = 2 ? 3
+        : _recdecl_st = 3 ? 4
+        : _recdecl_st = 4 ? 5
+        : _recdecl_st = 5 ? ((_recdecl_field_i + 1 < rec_cur_nf) ? 5 : 6)
+        : _recdecl_st = 6 ? 7
         : 8)
-    rd_cur_fi ∈ Int = (rd_go ? 0
-        : (_rd_st = 1 ∧ rd_cur_st = 1) ? _rd_fi + 1
-        : _rd_st = 0 ? 0
-        : _rd_st = 4 ? 0
-        : (_rd_st = 5 ∧ rd_cur_st = 5) ? _rd_fi + 1
+    recdecl_fi_now ∈ Int = (recdecl_go ? 0
+        : (_recdecl_st = 1 ∧ recdecl_st_now = 1) ? _recdecl_field_i + 1
+        : _recdecl_st = 0 ? 0
+        : _recdecl_st = 4 ? 0
+        : (_recdecl_st = 5 ∧ recdecl_st_now = 5) ? _recdecl_field_i + 1
         : 0)
-    rd_fin ∈ Bool = (rd_prev ∧ rd_cur_st = 8)
-    rd_act_now ∈ Bool = (rd_go ∨ (rd_prev ∧ rd_cur_st ≤ 7))
-    rd_st = (is_first_tick ? 8 : rd_go ? 0 : rd_prev ? rd_cur_st : _rd_st)
-    rd_fi = (is_first_tick ? 0 : (rd_go ∨ rd_prev) ? rd_cur_fi : _rd_fi)
+    recdecl_fin ∈ Bool = (recdecl_prev ∧ recdecl_st_now = 8)
+    recdecl_active ∈ Bool = (recdecl_go ∨ (recdecl_prev ∧ recdecl_st_now ≤ 7))
+    recdecl_st = (is_first_tick ? 8 : recdecl_go ? 0 : recdecl_prev ? recdecl_st_now : _recdecl_st)
+    recdecl_field_i = (is_first_tick ? 0 : (recdecl_go ∨ recdecl_prev) ? recdecl_fi_now : _recdecl_field_i)
 
-    rd_cap ∈ Bool = rd_prev
-    rd_hn = (is_first_tick ? 0
-        : (rd_cap ∧ _rd_st = 0) ? d_cap_int : _rd_hn)
-    ∀ k ∈ {0..5} : rd_hf[k] = (is_first_tick ? 0 : (rd_cap ∧ _rd_st = 1 ∧ _rd_fi = k) ? d_cap_int : _rd_hf[k])
-    rd_sort_cap ∈ Bool = (rd_cap ∧ _rd_st = 3)
-    rd_ctor_cap ∈ Bool = (rd_cap ∧ _rd_st = 4)
-    rd_acc_cap ∈ Bool = (rd_cap ∧ _rd_st = 5)
-    rd_as_cap ∈ Bool = (rd_cap ∧ _rd_st = 6)
-    rd_ss_cap ∈ Bool = (rd_cap ∧ _rd_st = 7)
-    rt_e0.sort = (is_first_tick ? 0 : (rd_sort_cap ∧ rck = 0) ? d_cap_int : _rt_e0.sort)
-    rt_e1.sort = (is_first_tick ? 0 : (rd_sort_cap ∧ rck = 1) ? d_cap_int : _rt_e1.sort)
-    rt_e2.sort = (is_first_tick ? 0 : (rd_sort_cap ∧ rck = 2) ? d_cap_int : _rt_e2.sort)
-    rt_e0.ctor = (is_first_tick ? 0 : (rd_ctor_cap ∧ rck = 0) ? d_cap_int : _rt_e0.ctor)
-    rt_e1.ctor = (is_first_tick ? 0 : (rd_ctor_cap ∧ rck = 1) ? d_cap_int : _rt_e1.ctor)
-    rt_e2.ctor = (is_first_tick ? 0 : (rd_ctor_cap ∧ rck = 2) ? d_cap_int : _rt_e2.ctor)
-    rt_e0.asort = (is_first_tick ? 0 : (rd_as_cap ∧ rck = 0) ? d_cap_int : _rt_e0.asort)
-    rt_e1.asort = (is_first_tick ? 0 : (rd_as_cap ∧ rck = 1) ? d_cap_int : _rt_e1.asort)
-    rt_e2.asort = (is_first_tick ? 0 : (rd_as_cap ∧ rck = 2) ? d_cap_int : _rt_e2.asort)
-    rt_e0.ssort = (is_first_tick ? 0 : (rd_ss_cap ∧ rck = 0) ? d_cap_int : _rt_e0.ssort)
-    rt_e1.ssort = (is_first_tick ? 0 : (rd_ss_cap ∧ rck = 1) ? d_cap_int : _rt_e1.ssort)
-    rt_e2.ssort = (is_first_tick ? 0 : (rd_ss_cap ∧ rck = 2) ? d_cap_int : _rt_e2.ssort)
-    rt_e0.a0 = (is_first_tick ? 0 : (rd_acc_cap ∧ rck = 0 ∧ _rd_fi = 0) ? d_cap_int : _rt_e0.a0)
-    rt_e0.a1 = (is_first_tick ? 0 : (rd_acc_cap ∧ rck = 0 ∧ _rd_fi = 1) ? d_cap_int : _rt_e0.a1)
-    rt_e0.a2 = (is_first_tick ? 0 : (rd_acc_cap ∧ rck = 0 ∧ _rd_fi = 2) ? d_cap_int : _rt_e0.a2)
-    rt_e0.a3 = (is_first_tick ? 0 : (rd_acc_cap ∧ rck = 0 ∧ _rd_fi = 3) ? d_cap_int : _rt_e0.a3)
-    rt_e0.a4 = (is_first_tick ? 0 : (rd_acc_cap ∧ rck = 0 ∧ _rd_fi = 4) ? d_cap_int : _rt_e0.a4)
-    rt_e0.a5 = (is_first_tick ? 0 : (rd_acc_cap ∧ rck = 0 ∧ _rd_fi = 5) ? d_cap_int : _rt_e0.a5)
-    rt_e1.a0 = (is_first_tick ? 0 : (rd_acc_cap ∧ rck = 1 ∧ _rd_fi = 0) ? d_cap_int : _rt_e1.a0)
-    rt_e1.a1 = (is_first_tick ? 0 : (rd_acc_cap ∧ rck = 1 ∧ _rd_fi = 1) ? d_cap_int : _rt_e1.a1)
-    rt_e1.a2 = (is_first_tick ? 0 : (rd_acc_cap ∧ rck = 1 ∧ _rd_fi = 2) ? d_cap_int : _rt_e1.a2)
-    rt_e1.a3 = (is_first_tick ? 0 : (rd_acc_cap ∧ rck = 1 ∧ _rd_fi = 3) ? d_cap_int : _rt_e1.a3)
-    rt_e1.a4 = (is_first_tick ? 0 : (rd_acc_cap ∧ rck = 1 ∧ _rd_fi = 4) ? d_cap_int : _rt_e1.a4)
-    rt_e1.a5 = (is_first_tick ? 0 : (rd_acc_cap ∧ rck = 1 ∧ _rd_fi = 5) ? d_cap_int : _rt_e1.a5)
-    rt_e2.a0 = (is_first_tick ? 0 : (rd_acc_cap ∧ rck = 2 ∧ _rd_fi = 0) ? d_cap_int : _rt_e2.a0)
-    rt_e2.a1 = (is_first_tick ? 0 : (rd_acc_cap ∧ rck = 2 ∧ _rd_fi = 1) ? d_cap_int : _rt_e2.a1)
-    rt_e2.a2 = (is_first_tick ? 0 : (rd_acc_cap ∧ rck = 2 ∧ _rd_fi = 2) ? d_cap_int : _rt_e2.a2)
-    rt_e2.a3 = (is_first_tick ? 0 : (rd_acc_cap ∧ rck = 2 ∧ _rd_fi = 3) ? d_cap_int : _rt_e2.a3)
-    rt_e2.a4 = (is_first_tick ? 0 : (rd_acc_cap ∧ rck = 2 ∧ _rd_fi = 4) ? d_cap_int : _rt_e2.a4)
-    rt_e2.a5 = (is_first_tick ? 0 : (rd_acc_cap ∧ rck = 2 ∧ _rd_fi = 5) ? d_cap_int : _rt_e2.a5)
+    recdecl_cap ∈ Bool = recdecl_prev
+    recdecl_h_name = (is_first_tick ? 0
+        : (recdecl_cap ∧ _recdecl_st = 0) ? d_cap_int : _recdecl_h_name)
+    ∀ k ∈ {0..5} : recdecl_h_fields[k] = (is_first_tick ? 0 : (recdecl_cap ∧ _recdecl_st = 1 ∧ _recdecl_field_i = k) ? d_cap_int : _recdecl_h_fields[k])
+    recdecl_sort_cap ∈ Bool = (recdecl_cap ∧ _recdecl_st = 3)
+    recdecl_ctor_cap ∈ Bool = (recdecl_cap ∧ _recdecl_st = 4)
+    recdecl_acc_cap ∈ Bool = (recdecl_cap ∧ _recdecl_st = 5)
+    recdecl_asort_cap ∈ Bool = (recdecl_cap ∧ _recdecl_st = 6)
+    recdecl_ssort_cap ∈ Bool = (recdecl_cap ∧ _recdecl_st = 7)
+    rec0.sort = (is_first_tick ? 0 : (recdecl_sort_cap ∧ rec_slot = 0) ? d_cap_int : _rec0.sort)
+    rec1.sort = (is_first_tick ? 0 : (recdecl_sort_cap ∧ rec_slot = 1) ? d_cap_int : _rec1.sort)
+    rec2.sort = (is_first_tick ? 0 : (recdecl_sort_cap ∧ rec_slot = 2) ? d_cap_int : _rec2.sort)
+    rec0.ctor = (is_first_tick ? 0 : (recdecl_ctor_cap ∧ rec_slot = 0) ? d_cap_int : _rec0.ctor)
+    rec1.ctor = (is_first_tick ? 0 : (recdecl_ctor_cap ∧ rec_slot = 1) ? d_cap_int : _rec1.ctor)
+    rec2.ctor = (is_first_tick ? 0 : (recdecl_ctor_cap ∧ rec_slot = 2) ? d_cap_int : _rec2.ctor)
+    rec0.asort = (is_first_tick ? 0 : (recdecl_asort_cap ∧ rec_slot = 0) ? d_cap_int : _rec0.asort)
+    rec1.asort = (is_first_tick ? 0 : (recdecl_asort_cap ∧ rec_slot = 1) ? d_cap_int : _rec1.asort)
+    rec2.asort = (is_first_tick ? 0 : (recdecl_asort_cap ∧ rec_slot = 2) ? d_cap_int : _rec2.asort)
+    rec0.ssort = (is_first_tick ? 0 : (recdecl_ssort_cap ∧ rec_slot = 0) ? d_cap_int : _rec0.ssort)
+    rec1.ssort = (is_first_tick ? 0 : (recdecl_ssort_cap ∧ rec_slot = 1) ? d_cap_int : _rec1.ssort)
+    rec2.ssort = (is_first_tick ? 0 : (recdecl_ssort_cap ∧ rec_slot = 2) ? d_cap_int : _rec2.ssort)
+    rec0.acc0 = (is_first_tick ? 0 : (recdecl_acc_cap ∧ rec_slot = 0 ∧ _recdecl_field_i = 0) ? d_cap_int : _rec0.acc0)
+    rec0.acc1 = (is_first_tick ? 0 : (recdecl_acc_cap ∧ rec_slot = 0 ∧ _recdecl_field_i = 1) ? d_cap_int : _rec0.acc1)
+    rec0.acc2 = (is_first_tick ? 0 : (recdecl_acc_cap ∧ rec_slot = 0 ∧ _recdecl_field_i = 2) ? d_cap_int : _rec0.acc2)
+    rec0.acc3 = (is_first_tick ? 0 : (recdecl_acc_cap ∧ rec_slot = 0 ∧ _recdecl_field_i = 3) ? d_cap_int : _rec0.acc3)
+    rec0.acc4 = (is_first_tick ? 0 : (recdecl_acc_cap ∧ rec_slot = 0 ∧ _recdecl_field_i = 4) ? d_cap_int : _rec0.acc4)
+    rec0.acc5 = (is_first_tick ? 0 : (recdecl_acc_cap ∧ rec_slot = 0 ∧ _recdecl_field_i = 5) ? d_cap_int : _rec0.acc5)
+    rec1.acc0 = (is_first_tick ? 0 : (recdecl_acc_cap ∧ rec_slot = 1 ∧ _recdecl_field_i = 0) ? d_cap_int : _rec1.acc0)
+    rec1.acc1 = (is_first_tick ? 0 : (recdecl_acc_cap ∧ rec_slot = 1 ∧ _recdecl_field_i = 1) ? d_cap_int : _rec1.acc1)
+    rec1.acc2 = (is_first_tick ? 0 : (recdecl_acc_cap ∧ rec_slot = 1 ∧ _recdecl_field_i = 2) ? d_cap_int : _rec1.acc2)
+    rec1.acc3 = (is_first_tick ? 0 : (recdecl_acc_cap ∧ rec_slot = 1 ∧ _recdecl_field_i = 3) ? d_cap_int : _rec1.acc3)
+    rec1.acc4 = (is_first_tick ? 0 : (recdecl_acc_cap ∧ rec_slot = 1 ∧ _recdecl_field_i = 4) ? d_cap_int : _rec1.acc4)
+    rec1.acc5 = (is_first_tick ? 0 : (recdecl_acc_cap ∧ rec_slot = 1 ∧ _recdecl_field_i = 5) ? d_cap_int : _rec1.acc5)
+    rec2.acc0 = (is_first_tick ? 0 : (recdecl_acc_cap ∧ rec_slot = 2 ∧ _recdecl_field_i = 0) ? d_cap_int : _rec2.acc0)
+    rec2.acc1 = (is_first_tick ? 0 : (recdecl_acc_cap ∧ rec_slot = 2 ∧ _recdecl_field_i = 1) ? d_cap_int : _rec2.acc1)
+    rec2.acc2 = (is_first_tick ? 0 : (recdecl_acc_cap ∧ rec_slot = 2 ∧ _recdecl_field_i = 2) ? d_cap_int : _rec2.acc2)
+    rec2.acc3 = (is_first_tick ? 0 : (recdecl_acc_cap ∧ rec_slot = 2 ∧ _recdecl_field_i = 3) ? d_cap_int : _rec2.acc3)
+    rec2.acc4 = (is_first_tick ? 0 : (recdecl_acc_cap ∧ rec_slot = 2 ∧ _recdecl_field_i = 4) ? d_cap_int : _rec2.acc4)
+    rec2.acc5 = (is_first_tick ? 0 : (recdecl_acc_cap ∧ rec_slot = 2 ∧ _recdecl_field_i = 5) ? d_cap_int : _rec2.acc5)
 
-    rd_fn_p ∈ Int = z_arena + 288
-    rd_fs_p ∈ Int = z_arena + 336
-    rd_ct_p ∈ Int = z_arena + 384
-    rd_ac_p ∈ Int = z_arena + 392
+    recdecl_fnames_p ∈ Int = z_arena + 288
+    recdecl_fsorts_p ∈ Int = z_arena + 336
+    recdecl_ctor_p ∈ Int = z_arena + 384
+    recdecl_accs_p ∈ Int = z_arena + 392
 
-    rd_eff_st ∈ Int = (rd_go ? 0 : rd_cur_st)
-    rd_eff_fi ∈ Int = (rd_go ? 0 : rd_cur_fi)
-    rdf_name ∈ String
-    RtRecName(s ↦ rc_f, i ↦ rd_eff_fi, name ↦ rdf_name)
-    rd_hfu ∈ Seq(Int)
-    #rd_hfu ≤ 6
-    ∀ k ∈ {0..5} : rd_hfu[k] = ((rd_cap ∧ _rd_st = 1 ∧ _rd_fi = k) ? d_cap_int : _rd_hf[k])
-    rdt_0 ∈ String
-    RtRecName(s ↦ rc_t, i ↦ 0, name ↦ rdt_0)
-    rdt_1 ∈ String
-    RtRecName(s ↦ rc_t, i ↦ 1, name ↦ rdt_1)
-    rdt_2 ∈ String
-    RtRecName(s ↦ rc_t, i ↦ 2, name ↦ rdt_2)
-    rdt_3 ∈ String
-    RtRecName(s ↦ rc_t, i ↦ 3, name ↦ rdt_3)
-    rdt_4 ∈ String
-    RtRecName(s ↦ rc_t, i ↦ 4, name ↦ rdt_4)
-    rdt_5 ∈ String
-    RtRecName(s ↦ rc_t, i ↦ 5, name ↦ rdt_5)
-    rds_0 ∈ Int
-    RtSortOf(ty ↦ rdt_0, int_h ↦ z3sorts.isort, bool_h ↦ z3sorts.bsort,
+    recdecl_eff_st ∈ Int = (recdecl_go ? 0 : recdecl_st_now)
+    recdecl_eff_fi ∈ Int = (recdecl_go ? 0 : recdecl_fi_now)
+    recdecl_fname ∈ String
+    RtRecName(s ↦ rec_cur_fnames, i ↦ recdecl_eff_fi, name ↦ recdecl_fname)
+    recdecl_h_fields_now ∈ Seq(Int)
+    #recdecl_h_fields_now ≤ 6
+    ∀ k ∈ {0..5} : recdecl_h_fields_now[k] = ((recdecl_cap ∧ _recdecl_st = 1 ∧ _recdecl_field_i = k) ? d_cap_int : _recdecl_h_fields[k])
+    recdecl_ty0 ∈ String
+    RtRecName(s ↦ rec_cur_ftypes, i ↦ 0, name ↦ recdecl_ty0)
+    recdecl_ty1 ∈ String
+    RtRecName(s ↦ rec_cur_ftypes, i ↦ 1, name ↦ recdecl_ty1)
+    recdecl_ty2 ∈ String
+    RtRecName(s ↦ rec_cur_ftypes, i ↦ 2, name ↦ recdecl_ty2)
+    recdecl_ty3 ∈ String
+    RtRecName(s ↦ rec_cur_ftypes, i ↦ 3, name ↦ recdecl_ty3)
+    recdecl_ty4 ∈ String
+    RtRecName(s ↦ rec_cur_ftypes, i ↦ 4, name ↦ recdecl_ty4)
+    recdecl_ty5 ∈ String
+    RtRecName(s ↦ rec_cur_ftypes, i ↦ 5, name ↦ recdecl_ty5)
+    recdecl_sort0 ∈ Int
+    RtSortOf(ty ↦ recdecl_ty0, int_h ↦ z3sorts.isort, bool_h ↦ z3sorts.bsort,
         str_h ↦ z3sorts.ssort, real_h ↦ z3sorts.rsort, iarr_h ↦ z_intarr_sort,
-        e0 ↦ rt_e0, e1 ↦ rt_e1, e2 ↦ rt_e2, sort ↦ rds_0)
-    rds_1 ∈ Int
-    RtSortOf(ty ↦ rdt_1, int_h ↦ z3sorts.isort, bool_h ↦ z3sorts.bsort,
+        e0 ↦ rec0, e1 ↦ rec1, e2 ↦ rec2, sort ↦ recdecl_sort0)
+    recdecl_sort1 ∈ Int
+    RtSortOf(ty ↦ recdecl_ty1, int_h ↦ z3sorts.isort, bool_h ↦ z3sorts.bsort,
         str_h ↦ z3sorts.ssort, real_h ↦ z3sorts.rsort, iarr_h ↦ z_intarr_sort,
-        e0 ↦ rt_e0, e1 ↦ rt_e1, e2 ↦ rt_e2, sort ↦ rds_1)
-    rds_2 ∈ Int
-    RtSortOf(ty ↦ rdt_2, int_h ↦ z3sorts.isort, bool_h ↦ z3sorts.bsort,
+        e0 ↦ rec0, e1 ↦ rec1, e2 ↦ rec2, sort ↦ recdecl_sort1)
+    recdecl_sort2 ∈ Int
+    RtSortOf(ty ↦ recdecl_ty2, int_h ↦ z3sorts.isort, bool_h ↦ z3sorts.bsort,
         str_h ↦ z3sorts.ssort, real_h ↦ z3sorts.rsort, iarr_h ↦ z_intarr_sort,
-        e0 ↦ rt_e0, e1 ↦ rt_e1, e2 ↦ rt_e2, sort ↦ rds_2)
-    rds_3 ∈ Int
-    RtSortOf(ty ↦ rdt_3, int_h ↦ z3sorts.isort, bool_h ↦ z3sorts.bsort,
+        e0 ↦ rec0, e1 ↦ rec1, e2 ↦ rec2, sort ↦ recdecl_sort2)
+    recdecl_sort3 ∈ Int
+    RtSortOf(ty ↦ recdecl_ty3, int_h ↦ z3sorts.isort, bool_h ↦ z3sorts.bsort,
         str_h ↦ z3sorts.ssort, real_h ↦ z3sorts.rsort, iarr_h ↦ z_intarr_sort,
-        e0 ↦ rt_e0, e1 ↦ rt_e1, e2 ↦ rt_e2, sort ↦ rds_3)
-    rds_4 ∈ Int
-    RtSortOf(ty ↦ rdt_4, int_h ↦ z3sorts.isort, bool_h ↦ z3sorts.bsort,
+        e0 ↦ rec0, e1 ↦ rec1, e2 ↦ rec2, sort ↦ recdecl_sort3)
+    recdecl_sort4 ∈ Int
+    RtSortOf(ty ↦ recdecl_ty4, int_h ↦ z3sorts.isort, bool_h ↦ z3sorts.bsort,
         str_h ↦ z3sorts.ssort, real_h ↦ z3sorts.rsort, iarr_h ↦ z_intarr_sort,
-        e0 ↦ rt_e0, e1 ↦ rt_e1, e2 ↦ rt_e2, sort ↦ rds_4)
-    rds_5 ∈ Int
-    RtSortOf(ty ↦ rdt_5, int_h ↦ z3sorts.isort, bool_h ↦ z3sorts.bsort,
+        e0 ↦ rec0, e1 ↦ rec1, e2 ↦ rec2, sort ↦ recdecl_sort4)
+    recdecl_sort5 ∈ Int
+    RtSortOf(ty ↦ recdecl_ty5, int_h ↦ z3sorts.isort, bool_h ↦ z3sorts.bsort,
         str_h ↦ z3sorts.ssort, real_h ↦ z3sorts.rsort, iarr_h ↦ z_intarr_sort,
-        e0 ↦ rt_e0, e1 ↦ rt_e1, e2 ↦ rt_e2, sort ↦ rds_5)
+        e0 ↦ rec0, e1 ↦ rec1, e2 ↦ rec2, sort ↦ recdecl_sort5)
 
-    rde_nsym ∈ Effect
-    BuildZ3MkStringSymbol(ctx_h ↦ z3ctx.ctx, name ↦ rc_name, eff ↦ rde_nsym)
-    rde_fsym ∈ Effect
-    BuildZ3MkStringSymbol(ctx_h ↦ z3ctx.ctx, name ↦ rdf_name, eff ↦ rde_fsym)
-    rde_wfn0 ∈ Effect
-    BuildMemWriteLong(addr ↦ rd_fn_p, value ↦ rd_hfu[0], eff ↦ rde_wfn0)
-    rde_wfn1 ∈ Effect
-    BuildMemWriteLong(addr ↦ rd_fn_p + 8, value ↦ rd_hfu[1], eff ↦ rde_wfn1)
-    rde_wfn2 ∈ Effect
-    BuildMemWriteLong(addr ↦ rd_fn_p + 16, value ↦ rd_hfu[2], eff ↦ rde_wfn2)
-    rde_wfn3 ∈ Effect
-    BuildMemWriteLong(addr ↦ rd_fn_p + 24, value ↦ rd_hfu[3], eff ↦ rde_wfn3)
-    rde_wfn4 ∈ Effect
-    BuildMemWriteLong(addr ↦ rd_fn_p + 32, value ↦ rd_hfu[4], eff ↦ rde_wfn4)
-    rde_wfn5 ∈ Effect
-    BuildMemWriteLong(addr ↦ rd_fn_p + 40, value ↦ rd_hfu[5], eff ↦ rde_wfn5)
-    rde_wfs0 ∈ Effect
-    BuildMemWriteLong(addr ↦ rd_fs_p, value ↦ rds_0, eff ↦ rde_wfs0)
-    rde_wfs1 ∈ Effect
-    BuildMemWriteLong(addr ↦ rd_fs_p + 8, value ↦ rds_1, eff ↦ rde_wfs1)
-    rde_wfs2 ∈ Effect
-    BuildMemWriteLong(addr ↦ rd_fs_p + 16, value ↦ rds_2, eff ↦ rde_wfs2)
-    rde_wfs3 ∈ Effect
-    BuildMemWriteLong(addr ↦ rd_fs_p + 24, value ↦ rds_3, eff ↦ rde_wfs3)
-    rde_wfs4 ∈ Effect
-    BuildMemWriteLong(addr ↦ rd_fs_p + 32, value ↦ rds_4, eff ↦ rde_wfs4)
-    rde_wfs5 ∈ Effect
-    BuildMemWriteLong(addr ↦ rd_fs_p + 40, value ↦ rds_5, eff ↦ rde_wfs5)
-    rde_tup ∈ Effect = LibCall("libz3", "Z3_mk_tuple_sort",
-        ⟨ArgInt(z3ctx.ctx), ArgInt(rd_hn), ArgInt(rc_nf), ArgInt(rd_fn_p),
-         ArgInt(rd_fs_p), ArgInt(rd_ct_p), ArgInt(rd_ac_p)⟩)
-    rde_rdct ∈ Effect
-    BuildMemReadLong(addr ↦ rd_ct_p, eff ↦ rde_rdct)
-    rde_rdacc ∈ Effect
-    BuildMemReadLong(addr ↦ rd_ac_p + (8 * rd_eff_fi), eff ↦ rde_rdacc)
-    rde_asort ∈ Effect
+    recdecl_namesym ∈ Effect
+    BuildZ3MkStringSymbol(ctx_h ↦ z3ctx.ctx, name ↦ rec_cur_name, eff ↦ recdecl_namesym)
+    recdecl_fieldsym ∈ Effect
+    BuildZ3MkStringSymbol(ctx_h ↦ z3ctx.ctx, name ↦ recdecl_fname, eff ↦ recdecl_fieldsym)
+    recdecl_write_fn0 ∈ Effect
+    BuildMemWriteLong(addr ↦ recdecl_fnames_p, value ↦ recdecl_h_fields_now[0], eff ↦ recdecl_write_fn0)
+    recdecl_write_fn1 ∈ Effect
+    BuildMemWriteLong(addr ↦ recdecl_fnames_p + 8, value ↦ recdecl_h_fields_now[1], eff ↦ recdecl_write_fn1)
+    recdecl_write_fn2 ∈ Effect
+    BuildMemWriteLong(addr ↦ recdecl_fnames_p + 16, value ↦ recdecl_h_fields_now[2], eff ↦ recdecl_write_fn2)
+    recdecl_write_fn3 ∈ Effect
+    BuildMemWriteLong(addr ↦ recdecl_fnames_p + 24, value ↦ recdecl_h_fields_now[3], eff ↦ recdecl_write_fn3)
+    recdecl_write_fn4 ∈ Effect
+    BuildMemWriteLong(addr ↦ recdecl_fnames_p + 32, value ↦ recdecl_h_fields_now[4], eff ↦ recdecl_write_fn4)
+    recdecl_write_fn5 ∈ Effect
+    BuildMemWriteLong(addr ↦ recdecl_fnames_p + 40, value ↦ recdecl_h_fields_now[5], eff ↦ recdecl_write_fn5)
+    recdecl_write_fs0 ∈ Effect
+    BuildMemWriteLong(addr ↦ recdecl_fsorts_p, value ↦ recdecl_sort0, eff ↦ recdecl_write_fs0)
+    recdecl_write_fs1 ∈ Effect
+    BuildMemWriteLong(addr ↦ recdecl_fsorts_p + 8, value ↦ recdecl_sort1, eff ↦ recdecl_write_fs1)
+    recdecl_write_fs2 ∈ Effect
+    BuildMemWriteLong(addr ↦ recdecl_fsorts_p + 16, value ↦ recdecl_sort2, eff ↦ recdecl_write_fs2)
+    recdecl_write_fs3 ∈ Effect
+    BuildMemWriteLong(addr ↦ recdecl_fsorts_p + 24, value ↦ recdecl_sort3, eff ↦ recdecl_write_fs3)
+    recdecl_write_fs4 ∈ Effect
+    BuildMemWriteLong(addr ↦ recdecl_fsorts_p + 32, value ↦ recdecl_sort4, eff ↦ recdecl_write_fs4)
+    recdecl_write_fs5 ∈ Effect
+    BuildMemWriteLong(addr ↦ recdecl_fsorts_p + 40, value ↦ recdecl_sort5, eff ↦ recdecl_write_fs5)
+    recdecl_mk_tuple ∈ Effect = LibCall("libz3", "Z3_mk_tuple_sort",
+        ⟨ArgInt(z3ctx.ctx), ArgInt(recdecl_h_name), ArgInt(rec_cur_nf), ArgInt(recdecl_fnames_p),
+         ArgInt(recdecl_fsorts_p), ArgInt(recdecl_ctor_p), ArgInt(recdecl_accs_p)⟩)
+    recdecl_read_ctor ∈ Effect
+    BuildMemReadLong(addr ↦ recdecl_ctor_p, eff ↦ recdecl_read_ctor)
+    recdecl_read_acc ∈ Effect
+    BuildMemReadLong(addr ↦ recdecl_accs_p + (8 * recdecl_eff_fi), eff ↦ recdecl_read_acc)
+    recdecl_mk_asort ∈ Effect
     BuildZ3MkArraySort(ctx_h ↦ z3ctx.ctx, idx_sort_h ↦ z3sorts.isort,
-        val_sort_h ↦ rc_sort, eff ↦ rde_asort)
-    rde_ssort ∈ Effect = LibCall("libz3", "Z3_mk_set_sort",
-        ⟨ArgInt(z3ctx.ctx), ArgInt(rc_sort)⟩)
-    rd_eff1 ∈ Effect = (rd_eff_st = 0 ? rde_nsym
-        : rd_eff_st = 1 ? rde_fsym
-        : rd_eff_st = 3 ? rde_tup
-        : rd_eff_st = 4 ? rde_rdct
-        : rd_eff_st = 5 ? rde_rdacc
-        : rd_eff_st = 6 ? rde_asort
-        : rd_eff_st = 7 ? rde_ssort
+        val_sort_h ↦ rec_cur_sort, eff ↦ recdecl_mk_asort)
+    recdecl_mk_ssort ∈ Effect = LibCall("libz3", "Z3_mk_set_sort",
+        ⟨ArgInt(z3ctx.ctx), ArgInt(rec_cur_sort)⟩)
+    recdecl_step_eff ∈ Effect = (recdecl_eff_st = 0 ? recdecl_namesym
+        : recdecl_eff_st = 1 ? recdecl_fieldsym
+        : recdecl_eff_st = 3 ? recdecl_mk_tuple
+        : recdecl_eff_st = 4 ? recdecl_read_ctor
+        : recdecl_eff_st = 5 ? recdecl_read_acc
+        : recdecl_eff_st = 6 ? recdecl_mk_asort
+        : recdecl_eff_st = 7 ? recdecl_mk_ssort
         : LibCall("libc", "getpid", ⟨⟩))

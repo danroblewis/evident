@@ -2,7 +2,7 @@
 -- CONSUMES: the decomposed call (d_cnm, d_ca0/1/2), the ctor-dispatch decl
 --           (d_ctor_d), the lookup name d_lkname, the work tail d_wtail,
 --           the cached zero numeral (z3nums.zero), the record-type registry
---           (rt_e0/e1/e2) + its RtRecName/RtFieldAcc probes, and the set-var
+--           (rec0/e1/e2) + its RtRecName/RtFieldAcc probes, and the set-var
 --           registry carries (_sq_set/_sq_name/_il_pfx, stv_*).
 -- PRODUCES: the per-arity builtin/ctor lowering — d_c1_items (str_len /
 --           str_from_int / 1-arg ctor; incl. d_sfi_items, d_sl_*/d_card_*
@@ -89,7 +89,7 @@ fsm DriverCallLower
         _ ⇒ ""
     d_fld_acc ∈ Int
     RtFieldAcc(fname ↦ d_fld_nm,
-        e0 ↦ rt_e0, e1 ↦ rt_e1, e2 ↦ rt_e2,
+        e0 ↦ rec0, e1 ↦ rec1, e2 ↦ rec2,
         acc ↦ d_fld_acc)
     d_c2_items ∈ C2Items = (d_cnm = "__real"
             ? C2ICons(C2Real(d_rl_s, d_rl_d), d_wtail)

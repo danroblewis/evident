@@ -72,8 +72,8 @@ fsm main
     pr_bad = (is_first_tick ? false : _pr_bad)
     pr_sres ∈ Expr
     pr_sres = (is_first_tick ? EInt(0) : _pr_sres)
-    rc_padv ∈ String
-    rc_padv = (is_first_tick ? "" : _rc_padv)
+    rec_pad31 ∈ String
+    rec_pad31 = (is_first_tick ? "" : _rec_pad31)
     sq_name ∈ String
     sq_name = (is_first_tick ? "" : _sq_name)
     sq_rt ∈ Int

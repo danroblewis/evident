@@ -207,9 +207,9 @@ fsm DriverPosBind
         : _pt_ts = 2 ? _pty[2].s
         : _pty[3].s)
     pzt_k ∈ Int
-    RtIdxOf(nm ↦ pzt_pty, e0 ↦ rt_e0, e1 ↦ rt_e1, e2 ↦ rt_e2,
+    RtIdxOf(nm ↦ pzt_pty, e0 ↦ rec0, e1 ↦ rec1, e2 ↦ rec2,
         idx ↦ pzt_k)
-    pzt_fs ∈ String = (pzt_k = 0 ? rt_e0.fnames : pzt_k = 1 ? rt_e1.fnames : rt_e2.fnames)
+    pzt_fs ∈ String = (pzt_k = 0 ? rec0.fnames : pzt_k = 1 ? rec1.fnames : rec2.fnames)
     pzt_f0 ∈ String
     RtRecName(s ↦ pzt_fs, i ↦ 0, name ↦ pzt_f0)
     pzt_f1 ∈ String

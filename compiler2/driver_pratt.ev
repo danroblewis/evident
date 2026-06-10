@@ -47,9 +47,9 @@ fsm DriverPratt
         ++ ((user_variants[3].name ≠ "") ? ("|" ++ substr(user_variants[3].name ++ d_cb_pad, 0, 31)) : "")
         ++ ((user_variants[4].name ≠ "") ? ("|" ++ substr(user_variants[4].name ++ d_cb_pad, 0, 31)) : "")
         ++ ((user_variants[5].name ≠ "") ? ("|" ++ substr(user_variants[5].name ++ d_cb_pad, 0, 31)) : "")
-        ++ ((rt_e0.name ≠ "" ∧ rt_e0.sort ≠ 0) ? ("|" ++ substr(rt_e0.name ++ d_cb_pad, 0, 31)) : "")
-        ++ ((rt_e1.name ≠ "" ∧ rt_e1.sort ≠ 0) ? ("|" ++ substr(rt_e1.name ++ d_cb_pad, 0, 31)) : "")
-        ++ ((rt_e2.name ≠ "" ∧ rt_e2.sort ≠ 0) ? ("|" ++ substr(rt_e2.name ++ d_cb_pad, 0, 31)) : ""))
+        ++ ((rec0.name ≠ "" ∧ rec0.sort ≠ 0) ? ("|" ++ substr(rec0.name ++ d_cb_pad, 0, 31)) : "")
+        ++ ((rec1.name ≠ "" ∧ rec1.sort ≠ 0) ? ("|" ++ substr(rec1.name ++ d_cb_pad, 0, 31)) : "")
+        ++ ((rec2.name ≠ "" ∧ rec2.sort ≠ 0) ? ("|" ++ substr(rec2.name ++ d_cb_pad, 0, 31)) : ""))
     pr_ntoks ∈ TokenList
     pr_nouts ∈ ExprList
     pr_nops ∈ PrOps

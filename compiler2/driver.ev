@@ -315,7 +315,7 @@ fsm driver_main
         #d_lkname - #d_vb_pfx)
     d_vb_acc ∈ Int
     RtFieldAcc(fname ↦ d_vb_fld,
-        e0 ↦ rt_e0, e1 ↦ rt_e1, e2 ↦ rt_e2,
+        e0 ↦ rec0, e1 ↦ rec1, e2 ↦ rec2,
         acc ↦ d_vb_acc)
     d_vbd_items ∈ C2Items = C2ICons(C2Process(EIdent(_fl_seq)),
         C2ICons(C2Process(EInt(_fl_v)),
@@ -328,7 +328,7 @@ fsm driver_main
         ∧ (index_of(st_names, rb_q_key, 0) ≥ 0))
     d_rb_items ∈ C2Items = C2ICons(C2Process(EIdent(rb_q_name)), d_wtail)
     rbc_rtk ∈ Int
-    RtIdxOf(nm ↦ d_cnm, e0 ↦ rt_e0, e1 ↦ rt_e1, e2 ↦ rt_e2, idx ↦ rbc_rtk)
+    RtIdxOf(nm ↦ d_cnm, e0 ↦ rec0, e1 ↦ rec1, e2 ↦ rec2, idx ↦ rbc_rtk)
     d_rbc_hit ∈ Bool = (d_it_proc ∧ _rb_on ∧ (rbc_rtk ≥ 0)
         ∧ (d_pe_is_c1 ∨ d_pe_is_c2 ∨ d_pe_is_c3))
     d_rbc_items ∈ C2Items = C2ICons(
@@ -383,9 +383,9 @@ fsm driver_main
         ∧ (¬c_strin_line) ∧ (¬c_ty_line) ∧ (¬c_q_line)
         ∧ (¬pcl_line))
     d_mem_cons ∈ Int = (d_seq_mem ? 6 : c_bound ? 5 : 3)
-    c_sq_eltnm ∈ String = (c_sq_rt = 0 ? rt_e0.name
-        : c_sq_rt = 1 ? rt_e1.name
-        : rt_e2.name)
+    c_sq_eltnm ∈ String = (c_sq_rt = 0 ? rec0.name
+        : c_sq_rt = 1 ? rec1.name
+        : rec2.name)
     c_tyname ∈ String = (c_sc = 1 ? "Bool"
         : c_sc = 2 ? c_type_str
         : c_sc = 3 ? "String"
@@ -513,8 +513,8 @@ fsm driver_main
         : d_it_proc ∧ d_pe_is_c2 ? d_c2_items
         : d_it_proc ∧ d_pe_is_c3 ? d_c3_items
         : d_it_proc ? d_wtail
-        : d_it_recv ? d_rv_items
-        : d_it_recd ? d_rdc_items
+        : d_it_recv ? recval_items
+        : d_it_recd ? recval_decl_items
         : d_it_op ? (d_op_arr ? (_istep = 2 ? d_wtail : _witems) : d_wtail)
         : d_it_decl ? (_istep = 2 ? d_wtail : _witems)
         : d_it_app ? (_istep = d_app_n ? d_wtail : _witems)
@@ -672,8 +672,8 @@ fsm driver_main
         : d_enter_claimp ? 9
         : d_enter_edecl ? 4
         : d_enter_skip ? 1
-        : rd_go ? 13
-        : rd_fin ? 0
+        : recdecl_go ? 13
+        : recdecl_fin ? 0
         : d_skip_stop ? 0
         : d_claim_end ? 0
         : (c_comp_line ∨ c_ty_line) ? 10
@@ -771,12 +771,12 @@ fsm driver_main
             : d_dc_sc = 4 ? z_result_sort
             : d_dc_sc = 5 ? z_intarr_sort
             : d_dc_sc = 6 ? z3sorts.rsort
-            : d_dc_sc = 10 ? rt_e0.asort
-            : d_dc_sc = 11 ? rt_e1.asort
-            : d_dc_sc = 12 ? rt_e2.asort
-            : d_dc_sc = 20 ? rt_e0.ssort
-            : d_dc_sc = 21 ? rt_e1.ssort
-            : d_dc_sc = 22 ? rt_e2.ssort
+            : d_dc_sc = 10 ? rec0.asort
+            : d_dc_sc = 11 ? rec1.asort
+            : d_dc_sc = 12 ? rec2.asort
+            : d_dc_sc = 20 ? rec0.ssort
+            : d_dc_sc = 21 ? rec1.ssort
+            : d_dc_sc = 22 ? rec2.ssort
             : z3sorts.isort), eff ↦ d_eff_const)
     d_eff_stwr ∈ Effect
     BuildMemWriteLong(addr ↦ sym_buf.base + (8 * _sym_buf.count), value ↦ d_tmp_in,
@@ -839,9 +839,9 @@ fsm driver_main
     d_eff_real ∈ Effect
     BuildZ3MkNumeral(ctx_h ↦ z3ctx.ctx, num ↦ d_re_str, sort_h ↦ z3sorts.rsort,
         eff ↦ d_eff_real)
-    d_mes_sort ∈ Int = (d_mes_k = 0 ? rt_e0.sort
-        : d_mes_k = 1 ? rt_e1.sort
-        : rt_e2.sort)
+    d_mes_sort ∈ Int = (d_mes_k = 0 ? rec0.sort
+        : d_mes_k = 1 ? rec1.sort
+        : rec2.sort)
     d_eff_mes ∈ Effect = LibCall("libz3", "Z3_mk_empty_set",
         ⟨ArgInt(z3ctx.ctx), ArgInt(d_mes_sort)⟩)
     d_eff_sadd ∈ Effect = LibCall("libz3", "Z3_mk_set_add",
@@ -959,11 +959,11 @@ fsm driver_main
         : il_rdcur ? ⟨e_cir⟩
         : gc_hit ? ⟨e_gcr⟩
         : pt_close ? ⟨e_pcr⟩
-        : rd_act_now ? (rd_eff_st = 2
-            ? ⟨rde_wfn0, rde_wfn1, rde_wfn2, rde_wfn3, rde_wfn4,
-               rde_wfn5, rde_wfs0, rde_wfs1, rde_wfs2, rde_wfs3,
-               rde_wfs4, rde_wfs5⟩
-            : ⟨rd_eff1⟩)
+        : recdecl_active ? (recdecl_eff_st = 2
+            ? ⟨recdecl_write_fn0, recdecl_write_fn1, recdecl_write_fn2, recdecl_write_fn3, recdecl_write_fn4,
+               recdecl_write_fn5, recdecl_write_fs0, recdecl_write_fs1, recdecl_write_fs2, recdecl_write_fs3,
+               recdecl_write_fs4, recdecl_write_fs5⟩
+            : ⟨recdecl_step_eff⟩)
         : d_processing ? ⟨d_eff_lib⟩
         : (float_finish ∧ float_with_op) ? ⟨write_float_tag, write_float_pay, write_float_op⟩
         : float_finish ? ⟨write_float_tag, write_float_pay⟩

@@ -33,8 +33,8 @@ fsm main
     tok_buf.count = (is_first_tick ? 0 : _tok_buf.count)
     -- Sub-state carries read only by non-pmode-6 win_need branches; held so
     -- the names resolve.
-    rc_on ∈ Bool
-    rc_on = (is_first_tick ? false : _rc_on)
+    rec_collect_on ∈ Bool
+    rec_collect_on = (is_first_tick ? false : _rec_collect_on)
     enum_act ∈ Int
     enum_act = (is_first_tick ? 0 : _enum_act)
     cw_st ∈ Int

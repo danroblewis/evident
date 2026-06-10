@@ -1,7 +1,7 @@
 -- MODULE DriverBroadcast
 -- CONSUMES: the parse result (p_done, _pk_kind, pr_bad, _pk_rec,
 --           _pk_name, pr_sres), the pinned record type's field
---           registry (rt_e0..2 .nf / .fnames), the claim-walk dispatch
+--           registry (rec0..2 .n_fields / .fnames), the claim-walk dispatch
 --           gate (d_in_claim, d_witems_nil, _il_ps, tok_ready), and
 --           the symbol-table name index (st_names).
 -- PRODUCES: the record-pin broadcast loop state (rb_on/rb_k/rb_nm/
@@ -9,7 +9,7 @@
 --           (rb_dname, rb_dup, rb_head, rbx_items) consumed by the
 --           claim-walk item dispatch.
 -- MAINTAINS: a record-pinned membership re-walks the parsed body once
---           per FIELD of the record type — rb_fi steps 0→nf, emitting a
+--           per FIELD of the record type — rb_fi steps 0→n_fields, emitting a
 --           declare+pin (`s.<name>.<field> = <body[field]>`) each step,
 --           and rb_on disarms when the last field is consumed.
 --
@@ -34,8 +34,8 @@ fsm DriverBroadcast
     rb_v ∈ Int
     rq_done ∈ Bool = (p_done ∧ (_pk_kind = 1) ∧ (¬pr_bad)
         ∧ (_pk_rec ≥ 0))
-    rb_nf ∈ Int = (_rb_k = 0 ? rt_e0.nf : _rb_k = 1 ? rt_e1.nf : rt_e2.nf)
-    rb_fs ∈ String = (_rb_k = 0 ? rt_e0.fnames : _rb_k = 1 ? rt_e1.fnames : rt_e2.fnames)
+    rb_nf ∈ Int = (_rb_k = 0 ? rec0.n_fields : _rb_k = 1 ? rec1.n_fields : rec2.n_fields)
+    rb_fs ∈ String = (_rb_k = 0 ? rec0.fnames : _rb_k = 1 ? rec1.fnames : rec2.fnames)
     rbx_disp ∈ Bool = (d_in_claim ∧ _rb_on ∧ d_witems_nil
         ∧ (_il_ps = 0) ∧ tok_ready)
     rbx_more ∈ Bool = (rbx_disp ∧ (_rb_fi < rb_nf))

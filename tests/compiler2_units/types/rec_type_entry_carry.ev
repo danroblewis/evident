@@ -17,24 +17,24 @@ fsm main
     e.name = (is_first_tick ? "Pt" : _e.name)
     e.fnames = (is_first_tick ? "" : _e.fnames)
     e.ftypes = (is_first_tick ? "" : _e.ftypes)
-    e.nf = (is_first_tick ? 0 : _e.nf)
+    e.n_fields = (is_first_tick ? 0 : _e.n_fields)
     e.sort = (is_first_tick ? 1 : _e.sort + 1)
     e.ctor = (is_first_tick ? 0 : _e.ctor)
     e.asort = (is_first_tick ? 0 : _e.asort)
     e.ssort = (is_first_tick ? 0 : _e.ssort)
-    e.a0 = (is_first_tick ? 0 : _e.a0)
-    e.a1 = (is_first_tick ? 0 : _e.a1)
-    e.a2 = (is_first_tick ? 0 : _e.a2)
-    e.a3 = (is_first_tick ? 0 : _e.a3)
-    e.a4 = (is_first_tick ? 0 : _e.a4)
-    e.a5 = (is_first_tick ? 0 : _e.a5)
+    e.acc0 = (is_first_tick ? 0 : _e.acc0)
+    e.acc1 = (is_first_tick ? 0 : _e.acc1)
+    e.acc2 = (is_first_tick ? 0 : _e.acc2)
+    e.acc3 = (is_first_tick ? 0 : _e.acc3)
+    e.acc4 = (is_first_tick ? 0 : _e.acc4)
+    e.acc5 = (is_first_tick ? 0 : _e.acc5)
     -- two empty sibling slots so RtIdxOf has its full ×3 input.
-    empty1 ∈ RecTypeEntry(name ↦ "", fnames ↦ "", ftypes ↦ "", nf ↦ 0,
+    empty1 ∈ RecTypeEntry(name ↦ "", fnames ↦ "", ftypes ↦ "", n_fields ↦ 0,
         sort ↦ 0, ctor ↦ 0, asort ↦ 0, ssort ↦ 0,
-        a0 ↦ 0, a1 ↦ 0, a2 ↦ 0, a3 ↦ 0, a4 ↦ 0, a5 ↦ 0)
-    empty2 ∈ RecTypeEntry(name ↦ "", fnames ↦ "", ftypes ↦ "", nf ↦ 0,
+        acc0 ↦ 0, acc1 ↦ 0, acc2 ↦ 0, acc3 ↦ 0, acc4 ↦ 0, acc5 ↦ 0)
+    empty2 ∈ RecTypeEntry(name ↦ "", fnames ↦ "", ftypes ↦ "", n_fields ↦ 0,
         sort ↦ 0, ctor ↦ 0, asort ↦ 0, ssort ↦ 0,
-        a0 ↦ 0, a1 ↦ 0, a2 ↦ 0, a3 ↦ 0, a4 ↦ 0, a5 ↦ 0)
+        acc0 ↦ 0, acc1 ↦ 0, acc2 ↦ 0, acc3 ↦ 0, acc4 ↦ 0, acc5 ↦ 0)
     k ∈ Int
     RtIdxOf(nm ↦ "Pt", e0 ↦ e, e1 ↦ empty1, e2 ↦ empty2, idx ↦ k)
     msg ∈ String = e.name ++ "/" ++ str_from_int(e.sort) ++ "/" ++ str_from_int(k)

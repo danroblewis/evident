@@ -9,7 +9,7 @@
 --           the post-pend handle-stack views (d_h_top/2nd/3rd/4th/5th/6th
 --           + the C2H tails), the current work-item (d_whead) and its
 --           per-opcode discriminators (d_it_proc/op/ite/.../recv/recd),
---           and the C2RecVal/C2RecDecl head decode (d_rv_nm/d_rv_k).
+--           and the C2RecVal/C2RecDecl head decode (recval_name/recval_slot).
 -- MAINTAINS: st_cnt < 8192 (a declare past the buffer end is UNSAT, not a
 --           native overrun); the 32-byte "|name<pad31>" record layout so
 --           a name lookup is pure index_of arithmetic; one decl appended
@@ -187,11 +187,11 @@ fsm DriverSymtab
     d_mes_k ∈ Int = match d_whead
         C2MkEmptySet(mk2) ⇒ mk2
         _ ⇒ 0
-    d_rv_nm ∈ String = match d_whead
+    recval_name ∈ String = match d_whead
         C2RecVal(rn2, _) ⇒ rn2
         C2RecDecl(rn3, _) ⇒ rn3
         _ ⇒ ""
-    d_rv_k ∈ Int = match d_whead
+    recval_slot ∈ Int = match d_whead
         C2RecVal(_, rk2) ⇒ rk2
         C2RecDecl(_, rk3) ⇒ rk3
         _ ⇒ 0
