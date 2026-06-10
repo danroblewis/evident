@@ -91,15 +91,15 @@ type RecField(name ∈ String, ty ∈ String, kidx ∈ Int)
     0 - 1 ≤ kidx ≤ 2
 
 -- One row of the user-enum VALUE table: a nullary variant's name and
--- the Z3 handle of its constant. Used as `evt ∈ Seq(EnumVariantVal)` with
--- `#evt ≤ 6` — the bounded-Seq lowering (scripts/lower-bounded-seq.sh)
+-- the Z3 handle of its constant. Used as `enum_values ∈ Seq(EnumVariantVal)` with
+-- `#enum_values ≤ 6` — the bounded-Seq lowering (scripts/lower-bounded-seq.sh)
 -- flattens it to scalars pre-oracle, so the oracle never sees the Seq.
 type EnumVariantVal(name ∈ String, value ∈ Int)
 
 -- One row of the user-enum DECL registry: variant name, ctor func_decl,
--- tester decl, field-0 accessor decl. `uev ∈ Seq(UserEnumVariant)`,
+-- tester decl, field-0 accessor decl. `user_variants ∈ Seq(UserEnumVariant)`,
 -- lowered by the bounded-Seq pass; rows are written by INDEX (the ED
--- machine's _ed_vidx / acc-pend walk), so the registry has no length.
+-- machine's _enum_vidx / acc-pend walk), so the registry has no length.
 type UserEnumVariant(name ∈ String, ctor ∈ Int, tester ∈ Int, acc ∈ Int)
 
 -- One row of the Set(T)-variable registry: var name, the element type's

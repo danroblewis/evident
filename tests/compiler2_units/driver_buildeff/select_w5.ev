@@ -18,38 +18,38 @@ import "compiler2/driver_ir.ev"
 import "compiler2/driver_buildeff.ev"
 
 fsm main
-    ed_cur_act ∈ Int
-    ed_cur_act = (is_first_tick ? 1 : _ed_cur_act)
-    ed_cur_step ∈ Int
-    ed_cur_step = (is_first_tick ? 5 : _ed_cur_step)
+    enum_act_now ∈ Int
+    enum_act_now = (is_first_tick ? 1 : _enum_act_now)
+    enum_step_now ∈ Int
+    enum_step_now = (is_first_tick ? 5 : _enum_step_now)
     d_cap_int ∈ Int
     d_cap_int = (is_first_tick ? 0 : _d_cap_int)
-    ed_fr2 ∈ Int
-    ed_fr2 = (is_first_tick ? 0 : _ed_fr2)
-    ed_h_f0 ∈ Int
-    ed_h_f0 = (is_first_tick ? 0 : _ed_h_f0)
-    ed_h_f1 ∈ Int
-    ed_h_f1 = (is_first_tick ? 0 : _ed_h_f1)
-    ed_h_f2 ∈ Int
-    ed_h_f2 = (is_first_tick ? 0 : _ed_h_f2)
-    ed_h_name ∈ Int
-    ed_h_name = (is_first_tick ? 0 : _ed_h_name)
-    ed_h_rec ∈ Int
-    ed_h_rec = (is_first_tick ? 0 : _ed_h_rec)
-    ed_nv ∈ Int
-    ed_nv = (is_first_tick ? 0 : _ed_nv)
-    ed_pack01 ∈ Int
-    ed_pack01 = (is_first_tick ? 0 : _ed_pack01)
-    ed_slot0 ∈ Int
-    ed_slot0 = (is_first_tick ? 0 : _ed_slot0)
-    ed_slot1 ∈ Int
-    ed_slot1 = (is_first_tick ? 0 : _ed_slot1)
-    ed_slot2 ∈ Int
-    ed_slot2 = (is_first_tick ? 0 : _ed_slot2)
-    ed_step ∈ Int
-    ed_step = (is_first_tick ? 0 : _ed_step)
-    ed_vidx ∈ Int
-    ed_vidx = (is_first_tick ? 0 : _ed_vidx)
+    field_ref2 ∈ Int
+    field_ref2 = (is_first_tick ? 0 : _field_ref2)
+    enum_h_field0 ∈ Int
+    enum_h_field0 = (is_first_tick ? 0 : _enum_h_field0)
+    enum_h_field1 ∈ Int
+    enum_h_field1 = (is_first_tick ? 0 : _enum_h_field1)
+    enum_h_field2 ∈ Int
+    enum_h_field2 = (is_first_tick ? 0 : _enum_h_field2)
+    enum_h_name ∈ Int
+    enum_h_name = (is_first_tick ? 0 : _enum_h_name)
+    enum_h_recog ∈ Int
+    enum_h_recog = (is_first_tick ? 0 : _enum_h_recog)
+    enum_n_variants ∈ Int
+    enum_n_variants = (is_first_tick ? 0 : _enum_n_variants)
+    refs_packed01 ∈ Int
+    refs_packed01 = (is_first_tick ? 0 : _refs_packed01)
+    field_sort0 ∈ Int
+    field_sort0 = (is_first_tick ? 0 : _field_sort0)
+    field_sort1 ∈ Int
+    field_sort1 = (is_first_tick ? 0 : _field_sort1)
+    field_sort2 ∈ Int
+    field_sort2 = (is_first_tick ? 0 : _field_sort2)
+    enum_step ∈ Int
+    enum_step = (is_first_tick ? 0 : _enum_step)
+    enum_vidx ∈ Int
+    enum_vidx = (is_first_tick ? 0 : _enum_vidx)
     sym_buf ∈ FtiBuffer
     sym_buf.base = (is_first_tick ? 0 : _sym_buf.base)
     sym_buf.count = (is_first_tick ? 0 : _sym_buf.count)
@@ -66,8 +66,8 @@ fsm main
     z3ctx.cfg = (is_first_tick ? 0 : _z3ctx.cfg)
     z3ctx.ctx = (is_first_tick ? 0 : _z3ctx.ctx)
     z3ctx.sol = (is_first_tick ? 0 : _z3ctx.sol)
-    z_effsort ∈ Int
-    z_effsort = (is_first_tick ? 0 : _z_effsort)
+    z_effect_sort ∈ Int
+    z_effect_sort = (is_first_tick ? 0 : _z_effect_sort)
     z_efflen_ge ∈ Int
     z_efflen_ge = (is_first_tick ? 0 : _z_efflen_ge)
     z_efflen ∈ Int
@@ -82,8 +82,8 @@ fsm main
     z_lastres_len = (is_first_tick ? 0 : _z_lastres_len)
     z_lastres_sort ∈ Int
     z_lastres_sort = (is_first_tick ? 0 : _z_lastres_sort)
-    z_ressort ∈ Int
-    z_ressort = (is_first_tick ? 0 : _z_ressort)
+    z_result_sort ∈ Int
+    z_result_sort = (is_first_tick ? 0 : _z_result_sort)
     z_effects_sym ∈ Int
     z_effects_sym = (is_first_tick ? 0 : _z_effects_sym)
     z_efflen_sym ∈ Int
@@ -100,16 +100,16 @@ fsm main
     z3nums.two = (is_first_tick ? 0 : _z3nums.two)
     z3nums.three = (is_first_tick ? 0 : _z3nums.three)
     z3nums.four = (is_first_tick ? 0 : _z3nums.four)
-    ed_nullary ∈ Bool
-    ed_nullary = (is_first_tick ? false : _ed_nullary)
-    ed_res_harvest ∈ Bool
-    ed_res_harvest = (is_first_tick ? false : _ed_res_harvest)
-    ed_user ∈ Bool
-    ed_user = (is_first_tick ? false : _ed_user)
-    ed_name ∈ String
-    ed_name = (is_first_tick ? "" : _ed_name)
+    enum_nullary ∈ Bool
+    enum_nullary = (is_first_tick ? false : _enum_nullary)
+    result_harvest ∈ Bool
+    result_harvest = (is_first_tick ? false : _result_harvest)
+    enum_is_user ∈ Bool
+    enum_is_user = (is_first_tick ? false : _enum_is_user)
+    enum_decl_name ∈ String
+    enum_decl_name = (is_first_tick ? "" : _enum_decl_name)
     d_op_geq ∈ Op = OpGeq
-    ed_v ∈ EnumVariantDecl = EVNoVariant
+    enum_variant ∈ EnumVariantDecl = EVNoVariant
     ..DriverBuildEff
     sel ∈ String = (enum_wbatch5 ? "1" : "0") ++ "/" ++ (enum_wbatch2 ? "1" : "0") ++ "/" ++ (enum_wbatch3u ? "1" : "0")
     effects ∈ Seq(Effect) = ((¬is_first_tick)

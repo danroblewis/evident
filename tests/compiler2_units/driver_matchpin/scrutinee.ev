@@ -36,9 +36,9 @@ fsm main
     pr_bad = (is_first_tick ? false : _pr_bad)
     pr_sres ∈ Expr
     pr_sres = (is_first_tick ? EInt(0) : _pr_sres)
-    uev ∈ Seq(UserEnumVariant)
-    #uev ≤ 6
-    uev = (is_first_tick ? ⟨⟩ : _uev)
+    user_variants ∈ Seq(UserEnumVariant)
+    #user_variants ≤ 6
+    user_variants = (is_first_tick ? ⟨⟩ : _user_variants)
     tok1 ∈ Token
     tok1 = (is_first_tick ? EofTok : _tok1)
     tok2 ∈ Token
@@ -47,14 +47,14 @@ fsm main
     tok3 = (is_first_tick ? EofTok : _tok3)
     tok4 ∈ Token
     tok4 = (is_first_tick ? EofTok : _tok4)
-    z_iracc ∈ Int
-    z_iracc = (is_first_tick ? 0 : _z_iracc)
-    z_irtest ∈ Int
-    z_irtest = (is_first_tick ? 0 : _z_irtest)
-    z_sracc ∈ Int
-    z_sracc = (is_first_tick ? 0 : _z_sracc)
-    z_srtest ∈ Int
-    z_srtest = (is_first_tick ? 0 : _z_srtest)
+    z_intres_acc ∈ Int
+    z_intres_acc = (is_first_tick ? 0 : _z_intres_acc)
+    z_intres_test ∈ Int
+    z_intres_test = (is_first_tick ? 0 : _z_intres_test)
+    z_strres_acc ∈ Int
+    z_strres_acc = (is_first_tick ? 0 : _z_strres_acc)
+    z_strres_test ∈ Int
+    z_strres_test = (is_first_tick ? 0 : _z_strres_test)
     ..DriverMatchPin
     ready ∈ Bool = (mp_st = 1)
     effects ∈ Seq(Effect) = (ready

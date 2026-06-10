@@ -6,9 +6,9 @@
 --           handle stack (d_h_top/2nd/.. + d_h_t*), the claim index
 --           (ci_base, ci_names), the symbol table (st_names), the
 --           inline-frame state (il_pfx/il_depth/il_pd/ilb_n*), the
---           enum value table (evt), the record registry (rt_n*/rt_f*/
+--           enum value table (enum_values), the record registry (rt_n*/rt_f*/
 --           rt_sort*), the Pratt result (p_done/pr_bad/pr_sres/pk_*), and
---           z_exitdecl. (Width justified §6.4: positional binding
+--           z_exit_decl. (Width justified §6.4: positional binding
 --           inherently touches index + Pratt stack + callee params.)
 -- PRODUCES: the pmode-12 positional-binding walk (pt_st/pc_k/pj/pt_tup/
 --           pt_ts/pt_callee + the tuple-element recognizers pt_tup_b/
@@ -148,7 +148,7 @@ fsm DriverPosBind
     FtiNameEntry(name ↦ (_il_pfx ++ pi_nm), entry ↦ pi_skey)
     pi_pkey ∈ String
     FtiNameEntry(name ↦ pi_nm, entry ↦ pi_pkey)
-    pi_evt ∈ Bool = (∃ i ∈ {0..#evt-1} : evt[i].name = pi_nm)
+    pi_evt ∈ Bool = (∃ i ∈ {0..#enum_values-1} : enum_values[i].name = pi_nm)
     pi_ilb ∈ Bool = ((ilb_n0 = pi_nm) ∨ (ilb_n1 = pi_nm)
         ∨ (ilb_n2 = pi_nm) ∨ (ilb_n3 = pi_nm) ∨ (ilb_n4 = pi_nm)
         ∨ (ilb_n5 = pi_nm))
@@ -264,7 +264,7 @@ fsm DriverPosBind
         : C2DeclConst(_pk_name, _pk_sc))
     d_pratt_items ∈ C2Items = (pr_bad ? C2INil
         : _pk_kind = 3 ? C2ICons(C2Process(pr_sres),
-            C2ICons(C2App(z_exitdecl, 1),
+            C2ICons(C2App(z_exit_decl, 1),
             C2ICons(el_seleq_item, C2INil)))
         : _pk_kind = 4 ? (mq_wc ? mp_items : C2INil)
         : _pk_kind = 6 ? C2ICons(C2Process(pr_sres), C2INil)

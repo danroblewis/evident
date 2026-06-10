@@ -33,10 +33,10 @@ fsm main
     d_enter_el = (is_first_tick ? false : _d_enter_el)
     d_witems_nil ∈ Bool
     d_witems_nil = (is_first_tick ? false : _d_witems_nil)
-    ed_act ∈ Int
-    ed_act = (is_first_tick ? 0 : _ed_act)
-    ed_done_user ∈ Bool
-    ed_done_user = (is_first_tick ? false : _ed_done_user)
+    enum_act ∈ Int
+    enum_act = (is_first_tick ? 0 : _enum_act)
+    enum_done_user ∈ Bool
+    enum_done_user = (is_first_tick ? false : _enum_done_user)
     in_parse ∈ Bool
     in_parse = (is_first_tick ? false : _in_parse)
     p_done ∈ Bool
@@ -73,8 +73,8 @@ fsm main
     z_cell_decl = (is_first_tick ? 0 : _z_cell_decl)
     z_empty_val ∈ Int
     z_empty_val = (is_first_tick ? 0 : _z_empty_val)
-    z_lc_decl ∈ Int
-    z_lc_decl = (is_first_tick ? 0 : _z_lc_decl)
+    z_libcall_decl ∈ Int
+    z_libcall_decl = (is_first_tick ? 0 : _z_libcall_decl)
     ..DriverClaimIdx
     c_msg ∈ String = str_from_int(claimidx_buf.count)
     effects ∈ Seq(Effect) = ((claimidx_buf.count = 3)

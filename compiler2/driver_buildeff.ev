@@ -1,8 +1,8 @@
 -- MODULE DriverBuildEff
 -- CONSUMES: the Z3-lifecycle handles (z3ctx.ctx/z3ctx.cfg/z3ctx.sol + the base
 --           sorts/consts from DriverZInit), the enum-decl machine's
---           per-step state (ed_v, ed_cur_act/ed_cur_step, the ed_h_*/
---           ed_slot*/ed_pack01 field captures, the arena base z_arena),
+--           per-step state (enum_variant, enum_act_now/enum_step_now, the ed_h_*/
+--           ed_slot*/refs_packed01 field captures, the arena base z_arena),
 --           and d_cap_int.
 -- PRODUCES: the pure per-step Z3 effect constructors selected by the
 --           effects schedule: (a) the enum-datatype declaration bank
@@ -13,7 +13,7 @@
 --           the numerals, and the calloc'd token/symbol/claim buffers).
 -- MAINTAINS: every member here is a STATELESS per-tick Effect value (no
 --           carries) — a pure constructor bank the single effects-writer
---           indexes by zstep / ed_cur_step. It owns no FSM state.
+--           indexes by zstep / enum_step_now. It owns no FSM state.
 --
 -- The enum-decl + Z3-lifecycle build-effect bank. Lifted into
 -- driver_main via `..DriverBuildEff` immediately after `..DriverRecord`,
@@ -28,19 +28,19 @@ fsm DriverBuildEff
     enum_clists_p ∈ Int = z_arena + 144
     enum_query_p ∈ Int = z_arena + 152
 
-    enum_fsym0_now ∈ Int = (_ed_step = 2 ? d_cap_int : _ed_h_f0)
-    enum_fsym1_now ∈ Int = (_ed_step = 3 ? d_cap_int : _ed_h_f1)
-    enum_fsym2_now ∈ Int = (_ed_step = 4 ? d_cap_int : _ed_h_f2)
+    enum_fsym0_now ∈ Int = (_enum_step = 2 ? d_cap_int : _enum_h_field0)
+    enum_fsym1_now ∈ Int = (_enum_step = 3 ? d_cap_int : _enum_h_field1)
+    enum_fsym2_now ∈ Int = (_enum_step = 4 ? d_cap_int : _enum_h_field2)
     enum_namesym ∈ Effect
-    VariantNameSymStep(ctx_h ↦ z3ctx.ctx, v ↦ ed_v, eff ↦ enum_namesym)
+    VariantNameSymStep(ctx_h ↦ z3ctx.ctx, v ↦ enum_variant, eff ↦ enum_namesym)
     enum_recogsym ∈ Effect
-    VariantRecognizerSymStep(ctx_h ↦ z3ctx.ctx, v ↦ ed_v, eff ↦ enum_recogsym)
+    VariantRecognizerSymStep(ctx_h ↦ z3ctx.ctx, v ↦ enum_variant, eff ↦ enum_recogsym)
     enum_fieldsym0 ∈ Effect
-    VariantFieldSymStep(ctx_h ↦ z3ctx.ctx, v ↦ ed_v, idx ↦ 0, eff ↦ enum_fieldsym0)
+    VariantFieldSymStep(ctx_h ↦ z3ctx.ctx, v ↦ enum_variant, idx ↦ 0, eff ↦ enum_fieldsym0)
     enum_fieldsym1 ∈ Effect
-    VariantFieldSymStep(ctx_h ↦ z3ctx.ctx, v ↦ ed_v, idx ↦ 1, eff ↦ enum_fieldsym1)
+    VariantFieldSymStep(ctx_h ↦ z3ctx.ctx, v ↦ enum_variant, idx ↦ 1, eff ↦ enum_fieldsym1)
     enum_fieldsym2 ∈ Effect
-    VariantFieldSymStep(ctx_h ↦ z3ctx.ctx, v ↦ ed_v, idx ↦ 2, eff ↦ enum_fieldsym2)
+    VariantFieldSymStep(ctx_h ↦ z3ctx.ctx, v ↦ enum_variant, idx ↦ 2, eff ↦ enum_fieldsym2)
     enum_write_fn0 ∈ Effect
     BuildMemWriteLong(addr ↦ enum_fnames_p, value ↦ enum_fsym0_now, eff ↦ enum_write_fn0)
     enum_write_fn1 ∈ Effect
@@ -48,31 +48,31 @@ fsm DriverBuildEff
     enum_write_fn2 ∈ Effect
     BuildMemWriteLong(addr ↦ enum_fnames_p + 16, value ↦ enum_fsym2_now, eff ↦ enum_write_fn2)
     enum_write_fs0 ∈ Effect
-    BuildMemWriteLong(addr ↦ enum_fsorts_p, value ↦ ed_slot0, eff ↦ enum_write_fs0)
+    BuildMemWriteLong(addr ↦ enum_fsorts_p, value ↦ field_sort0, eff ↦ enum_write_fs0)
     enum_write_fs1 ∈ Effect
-    BuildMemWriteLong(addr ↦ enum_fsorts_p + 8, value ↦ ed_slot1, eff ↦ enum_write_fs1)
+    BuildMemWriteLong(addr ↦ enum_fsorts_p + 8, value ↦ field_sort1, eff ↦ enum_write_fs1)
     enum_write_fs2 ∈ Effect
-    BuildMemWriteLong(addr ↦ enum_fsorts_p + 16, value ↦ ed_slot2, eff ↦ enum_write_fs2)
+    BuildMemWriteLong(addr ↦ enum_fsorts_p + 16, value ↦ field_sort2, eff ↦ enum_write_fs2)
     enum_write_refs01 ∈ Effect
-    BuildMemWriteLong(addr ↦ enum_srefs_p, value ↦ ed_pack01, eff ↦ enum_write_refs01)
+    BuildMemWriteLong(addr ↦ enum_srefs_p, value ↦ refs_packed01, eff ↦ enum_write_refs01)
     enum_write_refs2 ∈ Effect
-    BuildMemWriteLong(addr ↦ enum_srefs_p + 8, value ↦ ed_fr2, eff ↦ enum_write_refs2)
+    BuildMemWriteLong(addr ↦ enum_srefs_p + 8, value ↦ field_ref2, eff ↦ enum_write_refs2)
     enum_mk_ctor ∈ Effect
-    VariantMkConstructorStep(ctx_h ↦ z3ctx.ctx, v ↦ ed_v,
-        name_sym_h ↦ ed_h_name, recog_sym_h ↦ ed_h_rec,
+    VariantMkConstructorStep(ctx_h ↦ z3ctx.ctx, v ↦ enum_variant,
+        name_sym_h ↦ enum_h_name, recog_sym_h ↦ enum_h_recog,
         fnames_p ↦ enum_fnames_p, fsorts_p ↦ enum_fsorts_p, srefs_p ↦ enum_srefs_p,
         eff ↦ enum_mk_ctor)
     enum_write_ctor ∈ Effect
-    BuildMemWriteLong(addr ↦ enum_ctors_p + (8 * _ed_vidx), value ↦ d_cap_int,
+    BuildMemWriteLong(addr ↦ enum_ctors_p + (8 * _enum_vidx), value ↦ d_cap_int,
         eff ↦ enum_write_ctor)
-    enum_sortsym_decl ∈ EnumDeclAst = EnumD(_ed_name, EVNil)
+    enum_sortsym_decl ∈ EnumDeclAst = EnumD(_enum_decl_name, EVNil)
     enum_sortsym ∈ Effect
     EnumSortSymStep(ctx_h ↦ z3ctx.ctx, decl ↦ enum_sortsym_decl, eff ↦ enum_sortsym)
     enum_mk_clist ∈ Effect
-    BuildZ3MkConstructorList(ctx_h ↦ z3ctx.ctx, n_ctors ↦ _ed_nv,
+    BuildZ3MkConstructorList(ctx_h ↦ z3ctx.ctx, n_ctors ↦ _enum_n_variants,
         ctors_arr_p ↦ enum_ctors_p, eff ↦ enum_mk_clist)
     enum_write_name ∈ Effect
-    BuildMemWriteLong(addr ↦ enum_sortnames_p, value ↦ ed_h_name, eff ↦ enum_write_name)
+    BuildMemWriteLong(addr ↦ enum_sortnames_p, value ↦ enum_h_name, eff ↦ enum_write_name)
     enum_write_clist ∈ Effect
     BuildMemWriteLong(addr ↦ enum_clists_p, value ↦ d_cap_int, eff ↦ enum_write_clist)
     enum_mk_datatype ∈ Effect
@@ -82,9 +82,9 @@ fsm DriverBuildEff
     enum_read_sort ∈ Effect
     BuildMemReadLong(addr ↦ enum_sortsout_p, eff ↦ enum_read_sort)
     enum_read_ctor ∈ Effect
-    BuildMemReadLong(addr ↦ enum_ctors_p + (8 * _ed_vidx), eff ↦ enum_read_ctor)
+    BuildMemReadLong(addr ↦ enum_ctors_p + (8 * _enum_vidx), eff ↦ enum_read_ctor)
     enum_query ∈ Effect
-    VariantQueryStep(ctx_h ↦ z3ctx.ctx, ctor_h ↦ d_cap_int, v ↦ ed_v,
+    VariantQueryStep(ctx_h ↦ z3ctx.ctx, ctor_h ↦ d_cap_int, v ↦ enum_variant,
         out_base_p ↦ enum_query_p, eff ↦ enum_query)
     enum_read_decl ∈ Effect
     BuildMemReadLong(addr ↦ enum_query_p, eff ↦ enum_read_decl)
@@ -97,34 +97,34 @@ fsm DriverBuildEff
     BuildMemReadLong(addr ↦ enum_query_p + 16, eff ↦ enum_read_acc)
     enum_filler ∈ Effect = LibCall("libc", "getpid", ⟨⟩)
 
-    enum_step_eff ∈ Effect = (ed_cur_act = 1 ?
-            (ed_cur_step = 0 ? enum_namesym
-            : ed_cur_step = 1 ? enum_recogsym
-            : ed_cur_step = 2 ? enum_fieldsym0
-            : ed_cur_step = 3 ? enum_fieldsym1
-            : ed_cur_step = 4 ? enum_fieldsym2
-            : ed_cur_step = 6 ? enum_mk_ctor
+    enum_step_eff ∈ Effect = (enum_act_now = 1 ?
+            (enum_step_now = 0 ? enum_namesym
+            : enum_step_now = 1 ? enum_recogsym
+            : enum_step_now = 2 ? enum_fieldsym0
+            : enum_step_now = 3 ? enum_fieldsym1
+            : enum_step_now = 4 ? enum_fieldsym2
+            : enum_step_now = 6 ? enum_mk_ctor
             : enum_write_ctor)
-        : ed_cur_act = 2 ?
-            (ed_cur_step = 0 ? enum_sortsym
-            : ed_cur_step = 1 ? enum_mk_clist
-            : ed_cur_step = 3 ? enum_mk_datatype
-            : ed_cur_step = 4 ? enum_read_sort
+        : enum_act_now = 2 ?
+            (enum_step_now = 0 ? enum_sortsym
+            : enum_step_now = 1 ? enum_mk_clist
+            : enum_step_now = 3 ? enum_mk_datatype
+            : enum_step_now = 4 ? enum_read_sort
             : enum_filler)
-        : ed_cur_act = 3 ?
-            (ed_cur_step = 0 ? enum_read_ctor
-            : ed_cur_step = 1 ? enum_query
-            : ed_cur_step = 2 ? enum_read_decl
-            : ed_cur_step = 3 ? (ed_nullary ? enum_app0
-                : (ed_res_harvest ∨ ed_user) ? enum_read_tester
+        : enum_act_now = 3 ?
+            (enum_step_now = 0 ? enum_read_ctor
+            : enum_step_now = 1 ? enum_query
+            : enum_step_now = 2 ? enum_read_decl
+            : enum_step_now = 3 ? (enum_nullary ? enum_app0
+                : (result_harvest ∨ enum_is_user) ? enum_read_tester
                 : enum_filler)
-            : (ed_res_harvest ∨ (ed_user ∧ (¬ed_nullary))) ? enum_read_acc
+            : (result_harvest ∨ (enum_is_user ∧ (¬enum_nullary))) ? enum_read_acc
             : enum_filler)
         : enum_filler)
-    enum_wbatch5 ∈ Bool = (ed_cur_act = 1 ∧ ed_cur_step = 5)
-    enum_wbatch2 ∈ Bool = (ed_cur_act = 2 ∧ ed_cur_step = 2)
-    enum_wbatch3u ∈ Bool = (ed_user ∧ ed_cur_act = 3 ∧ ed_cur_step = 3
-        ∧ ed_nullary)
+    enum_wbatch5 ∈ Bool = (enum_act_now = 1 ∧ enum_step_now = 5)
+    enum_wbatch2 ∈ Bool = (enum_act_now = 2 ∧ enum_step_now = 2)
+    enum_wbatch3u ∈ Bool = (enum_is_user ∧ enum_act_now = 3 ∧ enum_step_now = 3
+        ∧ enum_nullary)
 
     zinit_cfg ∈ Effect
     BuildZ3MkConfig(eff ↦ zinit_cfg)
@@ -146,7 +146,7 @@ fsm DriverBuildEff
     BuildMalloc(n_bytes ↦ 512, eff ↦ zinit_arena)
     zinit_arrsort ∈ Effect
     BuildZ3MkArraySort(ctx_h ↦ z3ctx.ctx, idx_sort_h ↦ z3sorts.isort,
-        val_sort_h ↦ z_effsort, eff ↦ zinit_arrsort)
+        val_sort_h ↦ z_effect_sort, eff ↦ zinit_arrsort)
     zinit_effects_sym ∈ Effect
     BuildZ3MkStringSymbol(ctx_h ↦ z3ctx.ctx, name ↦ "effects", eff ↦ zinit_effects_sym)
     zinit_effects ∈ Effect
@@ -171,7 +171,7 @@ fsm DriverBuildEff
     zinit_sym_buf ∈ Effect = LibCall("libc", "calloc", ⟨ArgInt(8192), ArgInt(8)⟩)
     zinit_lastres_arr ∈ Effect
     BuildZ3MkArraySort(ctx_h ↦ z3ctx.ctx, idx_sort_h ↦ z3sorts.isort,
-        val_sort_h ↦ z_ressort, eff ↦ zinit_lastres_arr)
+        val_sort_h ↦ z_result_sort, eff ↦ zinit_lastres_arr)
     zinit_lastres_sym ∈ Effect
     BuildZ3MkStringSymbol(ctx_h ↦ z3ctx.ctx, name ↦ "last_results",
         eff ↦ zinit_lastres_sym)

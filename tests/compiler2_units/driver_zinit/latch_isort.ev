@@ -1,5 +1,5 @@
 -- DriverZInit isolation — zstep climbs −2,−1,0,1,… one per tick with the
--- ED hold released (ed_act 0, ed_src 4 ⇒ enum_hold false). z3sorts.isort
+-- ED hold released (enum_act 0, enum_src 4 ⇒ enum_hold false). z3sorts.isort
 -- must latch d_cap_int (42) at EXACTLY zstep = 5 and hold; zstep ≥ 6
 -- drives the exit. A skipped step or wrong-step latch ⇒ isort stays 0.
 --
@@ -11,10 +11,10 @@ import "compiler2/driver_ir.ev"
 import "compiler2/driver_zinit.ev"
 
 fsm main
-    ed_act ∈ Int
-    ed_act = (is_first_tick ? 0 : _ed_act)
-    ed_src ∈ Int
-    ed_src = (is_first_tick ? 4 : _ed_src)
+    enum_act ∈ Int
+    enum_act = (is_first_tick ? 0 : _enum_act)
+    enum_src ∈ Int
+    enum_src = (is_first_tick ? 4 : _enum_src)
     d_cap_int ∈ Int
     d_cap_int = (is_first_tick ? 42 : _d_cap_int)
     ..DriverZInit

@@ -1,6 +1,6 @@
 -- DriverEnum isolation — the four Effect-floor enum runs walk to completion.
--- zstep held at 9 keeps ed_go_floor firing; the machine declares LibArg
--- (src 0), __SeqOf_LibArg (1), Effect (2), Result (3), advancing ed_src
+-- zstep held at 9 keeps enum_go_floor firing; the machine declares LibArg
+-- (src 0), __SeqOf_LibArg (1), Effect (2), Result (3), advancing enum_src
 -- per run until it idles at 4. Z3 build effects not scheduled (no arena).
 -- entry: main
 -- expect: stdout = "4"
@@ -31,7 +31,7 @@ fsm main
     d_cap_int ∈ Int
     d_cap_int = (is_first_tick ? 0 : _d_cap_int)
     ..DriverEnum
-    src_msg ∈ String = str_from_int(ed_src)
-    effects ∈ Seq(Effect) = (ed_src = 4
+    src_msg ∈ String = str_from_int(enum_src)
+    effects ∈ Seq(Effect) = (enum_src = 4
         ? ⟨LibCall("libc", "puts", ⟨ArgStr(src_msg)⟩), Exit(0)⟩
         : ⟨LibCall("libc", "getpid", ⟨⟩)⟩)

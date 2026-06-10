@@ -84,9 +84,9 @@ fsm main
     d_hstk_in = (is_first_tick ? C2HNil : _d_hstk_in)
     d_line_end ∈ Bool
     d_line_end = (is_first_tick ? false : _d_line_end)
-    evt ∈ Seq(EnumVariantVal)
-    #evt ≤ 6
-    evt = (is_first_tick ? ⟨⟩ : _evt)
+    enum_values ∈ Seq(EnumVariantVal)
+    #enum_values ≤ 6
+    enum_values = (is_first_tick ? ⟨⟩ : _enum_values)
     gc_hit ∈ Bool
     gc_hit = (is_first_tick ? false : _gc_hit)
     gc_l ∈ Expr
@@ -162,8 +162,8 @@ fsm main
     st_names = (is_first_tick ? "" : _st_names)
     tok5 ∈ Token
     tok5 = (is_first_tick ? EofTok : _tok5)
-    z_exitdecl ∈ Int
-    z_exitdecl = (is_first_tick ? 0 : _z_exitdecl)
+    z_exit_decl ∈ Int
+    z_exit_decl = (is_first_tick ? 0 : _z_exit_decl)
     el_seleq_item ∈ C2Item
     el_seleq_item = (is_first_tick ? C2Drop : _el_seleq_item)
     ..DriverPosBind

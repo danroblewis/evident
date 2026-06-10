@@ -53,9 +53,9 @@ fsm main
         a0 ↦ 0, a1 ↦ 0, a2 ↦ 0, a3 ↦ 0, a4 ↦ 0, a5 ↦ 0)
     toks ∈ TokenList
     toks = (is_first_tick ? TLNil : _toks)
-    uev ∈ Seq(UserEnumVariant)
-    #uev ≤ 6
-    uev = (is_first_tick ? ⟨⟩ : _uev)
+    user_variants ∈ Seq(UserEnumVariant)
+    #user_variants ≤ 6
+    user_variants = (is_first_tick ? ⟨⟩ : _user_variants)
     win_toks ∈ TokenList
     win_toks = (is_first_tick ? TLNil : _win_toks)
     ..DriverPratt

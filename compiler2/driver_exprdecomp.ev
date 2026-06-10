@@ -1,7 +1,7 @@
 -- MODULE DriverExprDecomp
 -- CONSUMES: the current parse-expr node d_pe, the work-item tail d_wtail,
---           the user-enum-variant registry (uev[0].name..5 / uev[0].ctor..5 /
---           uev[0].tester..5), and the floor tester decls z_irtest / z_srtest.
+--           the user-enum-variant registry (user_variants[0].name..5 / user_variants[0].ctor..5 /
+--           user_variants[0].tester..5), and the floor tester decls z_intres_test / z_strres_test.
 -- PRODUCES: the decomposed views of d_pe used by the work-item lowering —
 --           the node-kind flags + payloads (d_pe_is_int/id/str/bin/tern/
 --           not/m, d_pe_str, d_lkname, d_pe_op/l/r/c/t/e/ni, d_pe_op_ne),
@@ -67,12 +67,12 @@ fsm DriverExprDecomp
     -- fallthrough (no collision: builtins lowercase, variants
     -- capitalized). Compound args are handles, so the legacy
     -- dropped-Exit(3+4) class is impossible by construction.
-    d_ctor_d ∈ Int = (uev[0].name = d_cnm ? uev[0].ctor
-        : uev[1].name = d_cnm ? uev[1].ctor
-        : uev[2].name = d_cnm ? uev[2].ctor
-        : uev[3].name = d_cnm ? uev[3].ctor
-        : uev[4].name = d_cnm ? uev[4].ctor
-        : uev[5].name = d_cnm ? uev[5].ctor
+    d_ctor_d ∈ Int = (user_variants[0].name = d_cnm ? user_variants[0].ctor
+        : user_variants[1].name = d_cnm ? user_variants[1].ctor
+        : user_variants[2].name = d_cnm ? user_variants[2].ctor
+        : user_variants[3].name = d_cnm ? user_variants[3].ctor
+        : user_variants[4].name = d_cnm ? user_variants[4].ctor
+        : user_variants[5].name = d_cnm ? user_variants[5].ctor
         : 0)
 
     d_pe_is_m ∈ Bool = (d_pe matches EMatches(_, _))
@@ -82,14 +82,14 @@ fsm DriverExprDecomp
     d_m_in ∈ Expr = match d_pe
         EMatches(_, me) ⇒ me
         _ ⇒ ENoExpr
-    d_m_t ∈ Int = (d_m_nm = "IntResult" ? z_irtest
-        : d_m_nm = "StringResult" ? z_srtest
-        : uev[0].name = d_m_nm ? uev[0].tester
-        : uev[1].name = d_m_nm ? uev[1].tester
-        : uev[2].name = d_m_nm ? uev[2].tester
-        : uev[3].name = d_m_nm ? uev[3].tester
-        : uev[4].name = d_m_nm ? uev[4].tester
-        : uev[5].name = d_m_nm ? uev[5].tester
+    d_m_t ∈ Int = (d_m_nm = "IntResult" ? z_intres_test
+        : d_m_nm = "StringResult" ? z_strres_test
+        : user_variants[0].name = d_m_nm ? user_variants[0].tester
+        : user_variants[1].name = d_m_nm ? user_variants[1].tester
+        : user_variants[2].name = d_m_nm ? user_variants[2].tester
+        : user_variants[3].name = d_m_nm ? user_variants[3].tester
+        : user_variants[4].name = d_m_nm ? user_variants[4].tester
+        : user_variants[5].name = d_m_nm ? user_variants[5].tester
         : 0)
     d_m_items ∈ C2Items = (d_m_t ≠ 0
         ? C2ICons(C2Process(d_m_in), C2ICons(C2App(d_m_t, 1), d_wtail))

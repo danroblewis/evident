@@ -246,7 +246,7 @@ fsm driver_main
     ue_name ∈ String
     ue_name = (is_first_tick ? "" : d_enter_edecl ? d_cl_name : _ue_name)
     ue_done ∈ Bool
-    ue_done = (is_first_tick ? false : ed_done_user ? true : _ue_done)
+    ue_done = (is_first_tick ? false : enum_done_user ? true : _ue_done)
 
     -- ── F2: the claim index (see compiler2/driver_claimidx.ev) ──
     ..DriverClaimIdx
@@ -705,7 +705,7 @@ fsm driver_main
             : 2)
         : (ec_active ∧ ec_payload ∧ (¬ec_p_ok)) ? 1
         : (ec_active ∧ (¬ec_v_ok)) ? 0
-        : ed_done_user ? 0
+        : enum_done_user ? 0
         : ch_fire ? 2
         : el_close ? (_ch_on ? 5 : 2)
         : (el_bad ∨ el_b2_bad ∨ el_st2_bad) ? 2
@@ -766,9 +766,9 @@ fsm driver_main
     d_eff_const ∈ Effect
     BuildZ3MkConst(ctx_h ↦ z3ctx.ctx, sym_h ↦ d_tmp_in,
         sort_h ↦ (d_dc_sc = 1 ? z3sorts.bsort
-            : d_dc_sc = 2 ? ue_sort
+            : d_dc_sc = 2 ? user_enum_sort
             : d_dc_sc = 3 ? z3sorts.ssort
-            : d_dc_sc = 4 ? z_ressort
+            : d_dc_sc = 4 ? z_result_sort
             : d_dc_sc = 5 ? z_intarr_sort
             : d_dc_sc = 6 ? z3sorts.rsort
             : d_dc_sc = 10 ? rt_e0.asort
@@ -911,9 +911,9 @@ fsm driver_main
         : zstep = 6 ? ⟨zinit_ssort⟩
         : zstep = 7 ? ⟨zinit_rsort⟩
         : zstep = 8 ? ⟨zinit_arena⟩
-        : ed_running ? (enum_wbatch5
-            ? (ed_n = 1 ? ⟨enum_write_fn0, enum_write_fs0, enum_write_refs01⟩
-              : ed_n = 2 ? ⟨enum_write_fn0, enum_write_fn1, enum_write_fs0, enum_write_fs1, enum_write_refs01⟩
+        : enum_running ? (enum_wbatch5
+            ? (enum_field_n = 1 ? ⟨enum_write_fn0, enum_write_fs0, enum_write_refs01⟩
+              : enum_field_n = 2 ? ⟨enum_write_fn0, enum_write_fn1, enum_write_fs0, enum_write_fs1, enum_write_refs01⟩
               : ⟨enum_write_fn0, enum_write_fn1, enum_write_fn2, enum_write_fs0, enum_write_fs1, enum_write_fs2,
                  enum_write_refs01, enum_write_refs2⟩)
             : enum_wbatch2 ? ⟨enum_write_name, enum_write_clist⟩

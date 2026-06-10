@@ -35,8 +35,8 @@ fsm main
     -- the names resolve.
     rc_on ∈ Bool
     rc_on = (is_first_tick ? false : _rc_on)
-    ed_act ∈ Int
-    ed_act = (is_first_tick ? 0 : _ed_act)
+    enum_act ∈ Int
+    enum_act = (is_first_tick ? 0 : _enum_act)
     cw_st ∈ Int
     cw_st = (is_first_tick ? 0 : _cw_st)
     pt_st ∈ Int

@@ -2,7 +2,7 @@
 -- CONSUMES: the lookup name d_lkname, the symbol-table name registry
 --           (st_names) + base (sym_buf.base), the inline-frame slot-bind
 --           registry (ilb_n*/ilb_h*), the import/inline prefix (_il_pfx),
---           the enum-variant value registry (evt, a bounded Seq), and the cached
+--           the enum-variant value registry (enum_values, a bounded Seq), and the cached
 --           z_true/z_false handles.
 -- PRODUCES: name resolution — d_lk_key/d_lk_pos/d_lk_found(2)/d_lk_pos_eff,
 --           the prefix-scoped variants (d_lk_pfx_*), the frame slot-bind hit
@@ -41,12 +41,12 @@ fsm DriverSymLookup
     d_lk_pure ∈ Bool = (d_lk_special ∨ (¬d_lk_found2))
     d_lk ∈ Int = (d_lkname = "true" ? z_true
         : d_lkname = "false" ? z_false
-        : evt[0].name = d_lkname ? evt[0].value
-        : evt[1].name = d_lkname ? evt[1].value
-        : evt[2].name = d_lkname ? evt[2].value
-        : evt[3].name = d_lkname ? evt[3].value
-        : evt[4].name = d_lkname ? evt[4].value
-        : evt[5].name = d_lkname ? evt[5].value
+        : enum_values[0].name = d_lkname ? enum_values[0].value
+        : enum_values[1].name = d_lkname ? enum_values[1].value
+        : enum_values[2].name = d_lkname ? enum_values[2].value
+        : enum_values[3].name = d_lkname ? enum_values[3].value
+        : enum_values[4].name = d_lkname ? enum_values[4].value
+        : enum_values[5].name = d_lkname ? enum_values[5].value
         : 0)
     d_eff_stread ∈ Effect
     BuildMemReadLong(addr ↦ sym_buf.base + (8 * (d_lk_pos_eff / 32)), eff ↦ d_eff_stread)

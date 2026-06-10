@@ -3,18 +3,18 @@
 --           handles (z3sorts.isort/z3sorts.bsort/z3sorts.ssort/z3sorts.rsort) + the int-result-1
 --           value res_int1, d_cap_int (last libc capture), and the user-enum
 --           collection signals from the parse dispatcher (ec_start,
---           ec_list_n, _ue_name, _ed_user).
+--           ec_list_n, _ue_name, _enum_is_user).
 -- PRODUCES: the Effect-floor + user-enum datatype machine's outputs — the
---           sort registers (la_sort/sq_sort/z_effsort/z_ressort/ue_sort),
---           the floor ctor/tester/accessor decls (z_exitdecl/z_lc_decl/
+--           sort registers (libarg_sort/seqarg_sort/z_effect_sort/z_result_sort/user_enum_sort),
+--           the floor ctor/tester/accessor decls (z_exit_decl/z_libcall_decl/
 --           z_argstr_decl/z_argint_decl/z_cell_decl/z_empty_val,
---           z_irtest/z_srtest/z_iracc/z_sracc), the user-enum value table
+--           z_intres_test/z_strres_test/z_intres_acc/z_strres_acc), the user-enum value table
 --           (evt_*) and the user-variant ctor/tester/accessor registry
 --           (uev_*), plus the act/step/src/vidx walk state.
--- MAINTAINS: one variant declared per (ed_act, ed_step) micro-step, one
+-- MAINTAINS: one variant declared per (enum_act, enum_step) micro-step, one
 --           Z3 effect per tick with captures landing on the next tick keyed
---           off (_ed_act, _ed_step); runs the four floor enums (ed_src 0..3,
---           zstep held at 9) before the single user enum (ed_user).
+--           off (_enum_act, _enum_step); runs the four floor enums (enum_src 0..3,
+--           zstep held at 9) before the single user enum (enum_is_user).
 --
 -- Enum decls → Z3 datatypes. The stateful ED machine, lifted into
 -- driver_main via `..DriverEnum`, so its act/step/src walk + the sort and
@@ -23,9 +23,9 @@
 
 -- One per-field slot row for the variant being declared: the field's
 -- type string plus its resolved sort handle and self-reference flag.
--- `efs ∈ Seq(EnumFieldSlot)`, `#efs ≤ 3`, pure per-tick (no length) —
+-- `field_slots ∈ Seq(EnumFieldSlot)`, `#field_slots ≤ 3`, pure per-tick (no length) —
 -- lowered to flat scalars by scripts/lower-bounded-seq.sh pre-oracle.
--- The ref slots stay the scalar ed_fr0/1/2: ed_fr2 + ed_pack01 are
+-- The ref slots stay the scalar field_ref0/1/2: field_ref2 + refs_packed01 are
 -- read by driver_buildeff.ev under those names.
 type EnumFieldSlot(ty ∈ String, sort ∈ Int, is_self ∈ Bool)
 
@@ -34,15 +34,15 @@ fsm DriverEnum
     -- ONE FSM declares any enum (parsed EnumDeclAst data) in the
     -- build context through translate2_ctor.ev's step claims, then
     -- harvests each variant's ctor func_decl + (nullary) value.
-    -- It runs FIVE times: four ZINIT floor runs (ed_src 0 LibArg,
+    -- It runs FIVE times: four ZINIT floor runs (enum_src 0 LibArg,
     -- 1 __SeqOf_LibArg, 2 Effect, 3 Result — zstep holds at 9) and
-    -- once per USER enum at parse time (pmode 4, ed_user). The
+    -- once per USER enum at parse time (pmode 4, enum_is_user). The
     -- Result run (D3) additionally harvests the IntResult /
     -- StringResult tester + accessor decls (acts 3 steps 3-4 read
     -- qout+8 / qout+16 instead of fillers).
     --
-    -- Acts/steps (ed_act · ed_step; one effect per tick, captures
-    -- land next tick keyed off the (_ed_act, _ed_step) that ran):
+    -- Acts/steps (enum_act · enum_step; one effect per tick, captures
+    -- land next tick keyed off the (_enum_act, _enum_step) that ran):
     --   act 1 (declare, per variant; n = field count):
     --     0 name sym · 1 recog sym · 2..4 field syms (skip by n) ·
     --     5 array-write batch (≤8 effects) · 6 mk_constructor ·
@@ -52,7 +52,7 @@ fsm DriverEnum
     --     4 read sort · 5 capture sort, reset walk → harvest
     --   act 3 (harvest, per variant): 0 read ctor handle · 1 query ·
     --     2 read ctor decl · 3 capture decl (+ floor-decl register
-    --     latches), mk_app for nullary · 4 capture value (evt / floor
+    --     latches), mk_app for nullary · 4 capture value (enum_values / floor
     --     value latches), advance variant
     --
     -- Arena layout for the machine (reused per run; the WALK's
@@ -62,35 +62,35 @@ fsm DriverEnum
     --   collided with sort_names) · +128 sort_names[1] ·
     --   +136 sorts_out[1] · +144 clists[1] ·
     --   +152 query out block (16 + 8·3)
-    ed_act ∈ Int
-    ed_step ∈ Int
-    ed_src ∈ Int
-    ed_user ∈ Bool
-    ed_name ∈ String
-    ed_all ∈ EnumVariantList
-    ed_vs ∈ EnumVariantList
-    ed_vidx ∈ Int
-    ed_nv ∈ Int
-    ed_h_name ∈ Int
-    ed_h_rec ∈ Int
-    ed_h_f0 ∈ Int
-    ed_h_f1 ∈ Int
-    ed_h_f2 ∈ Int
+    enum_act ∈ Int
+    enum_step ∈ Int
+    enum_src ∈ Int
+    enum_is_user ∈ Bool
+    enum_decl_name ∈ String
+    enum_variants_all ∈ EnumVariantList
+    enum_variants ∈ EnumVariantList
+    enum_vidx ∈ Int
+    enum_n_variants ∈ Int
+    enum_h_name ∈ Int
+    enum_h_recog ∈ Int
+    enum_h_field0 ∈ Int
+    enum_h_field1 ∈ Int
+    enum_h_field2 ∈ Int
 
-    d_la_decl ∈ EnumDeclAst = EnumD("LibArg",
+    libarg_decl ∈ EnumDeclAst = EnumD("LibArg",
         EVCons(EVDeclP("ArgInt", EVFCons(EVFType("Int"), EVFNil)),
         EVCons(EVDeclP("ArgStr", EVFCons(EVFType("String"), EVFNil)),
         EVCons(EVDeclP("ArgReal", EVFCons(EVFType("Real"), EVFNil)),
         EVNil))))
-    d_sq_decl ∈ EnumDeclAst = EnumD("__SeqOf_LibArg",
+    seqarg_decl ∈ EnumDeclAst = EnumD("__SeqOf_LibArg",
         EVCons(EVDecl("__Empty_LibArg"),
         EVCons(EVDeclP("__Cell_LibArg",
             EVFCons(EVFType("LibArg"),
                 EVFCons(EVFType("__SeqOf_LibArg"), EVFNil))),
         EVNil)))
-    d_eff_decl ∈ EnumDeclAst
-    EffectEnumDecl(decl ↦ d_eff_decl)
-    d_res_decl ∈ EnumDeclAst = EnumD("Result",
+    effect_decl ∈ EnumDeclAst
+    EffectEnumDecl(decl ↦ effect_decl)
+    result_decl ∈ EnumDeclAst = EnumD("Result",
         EVCons(EVDecl("NoResult"),
         EVCons(EVDeclP("IntResult", EVFCons(EVFType("Int"), EVFNil)),
         EVCons(EVDeclP("StringResult", EVFCons(EVFType("String"), EVFNil)),
@@ -98,252 +98,252 @@ fsm DriverEnum
         EVCons(EVDecl("EofResult"),
         EVCons(EVDeclP("ErrorResult", EVFCons(EVFType("String"), EVFNil)),
         EVNil)))))))
-    d_la_vs ∈ EnumVariantList
-    EnumVariantListOf(decl ↦ d_la_decl, vs ↦ d_la_vs)
-    d_sq_vs ∈ EnumVariantList
-    EnumVariantListOf(decl ↦ d_sq_decl, vs ↦ d_sq_vs)
-    d_eff_vs ∈ EnumVariantList
-    EnumVariantListOf(decl ↦ d_eff_decl, vs ↦ d_eff_vs)
-    d_res_vs ∈ EnumVariantList
-    EnumVariantListOf(decl ↦ d_res_decl, vs ↦ d_res_vs)
+    libarg_variants ∈ EnumVariantList
+    EnumVariantListOf(decl ↦ libarg_decl, vs ↦ libarg_variants)
+    seqarg_variants ∈ EnumVariantList
+    EnumVariantListOf(decl ↦ seqarg_decl, vs ↦ seqarg_variants)
+    effect_variants ∈ EnumVariantList
+    EnumVariantListOf(decl ↦ effect_decl, vs ↦ effect_variants)
+    result_variants ∈ EnumVariantList
+    EnumVariantListOf(decl ↦ result_decl, vs ↦ result_variants)
 
-    ed_go_floor ∈ Bool = ((¬is_first_tick) ∧ (zstep = 9)
-        ∧ (_ed_act = 0) ∧ (_ed_src < 4))
-    ed_go ∈ Bool = (ed_go_floor ∨ ec_start)
-    ed_go_vs ∈ EnumVariantList = (ec_start ? ec_list_n
-        : _ed_src = 0 ? d_la_vs
-        : _ed_src = 1 ? d_sq_vs
-        : _ed_src = 2 ? d_eff_vs
-        : d_res_vs)
-    ed_go_name ∈ String = (ec_start ? _ue_name
-        : _ed_src = 0 ? "LibArg"
-        : _ed_src = 1 ? "__SeqOf_LibArg"
-        : _ed_src = 2 ? "Effect"
+    enum_go_floor ∈ Bool = ((¬is_first_tick) ∧ (zstep = 9)
+        ∧ (_enum_act = 0) ∧ (_enum_src < 4))
+    enum_go ∈ Bool = (enum_go_floor ∨ ec_start)
+    enum_go_variants ∈ EnumVariantList = (ec_start ? ec_list_n
+        : _enum_src = 0 ? libarg_variants
+        : _enum_src = 1 ? seqarg_variants
+        : _enum_src = 2 ? effect_variants
+        : result_variants)
+    enum_go_name ∈ String = (ec_start ? _ue_name
+        : _enum_src = 0 ? "LibArg"
+        : _enum_src = 1 ? "__SeqOf_LibArg"
+        : _enum_src = 2 ? "Effect"
         : "Result")
 
     -- The START tick already runs step 0 (the first variant's name
     -- sym), so the peel must see the NEW list on that tick.
-    ed_vs_eff ∈ EnumVariantList = (ed_go ? ed_go_vs : _ed_vs)
-    ed_v ∈ EnumVariantDecl
-    ed_vrest ∈ EnumVariantList
-    ed_vs_nonempty ∈ Bool
-    EnumVariantsHead(vs ↦ ed_vs_eff, v ↦ ed_v, rest ↦ ed_vrest,
-        nonempty ↦ ed_vs_nonempty)
-    ed_n ∈ Int
-    VariantFieldCount(v ↦ ed_v, n ↦ ed_n)
-    ed_vname ∈ String = match ed_v
+    enum_vs_now ∈ EnumVariantList = (enum_go ? enum_go_variants : _enum_variants)
+    enum_variant ∈ EnumVariantDecl
+    enum_vrest ∈ EnumVariantList
+    enum_vs_nonempty ∈ Bool
+    EnumVariantsHead(vs ↦ enum_vs_now, v ↦ enum_variant, rest ↦ enum_vrest,
+        nonempty ↦ enum_vs_nonempty)
+    enum_field_n ∈ Int
+    VariantFieldCount(v ↦ enum_variant, n ↦ enum_field_n)
+    enum_vname ∈ String = match enum_variant
         EVDecl(n) ⇒ n
         EVDeclP(n, _) ⇒ n
         EVNoVariant ⇒ ""
-    ed_nullary ∈ Bool = (ed_n = 0)
+    enum_nullary ∈ Bool = (enum_field_n = 0)
 
-    efs ∈ Seq(EnumFieldSlot)
-    #efs ≤ 3
-    ∀ k ∈ {0..2} : VariantFieldType(v ↦ ed_v, idx ↦ k, ty ↦ efs[k].ty)
-    ed_fr0 ∈ Int
-    FieldSortSlot(enum_name ↦ _ed_name, ty ↦ efs[0].ty,
+    field_slots ∈ Seq(EnumFieldSlot)
+    #field_slots ≤ 3
+    ∀ k ∈ {0..2} : VariantFieldType(v ↦ enum_variant, idx ↦ k, ty ↦ field_slots[k].ty)
+    field_ref0 ∈ Int
+    FieldSortSlot(enum_name ↦ _enum_decl_name, ty ↦ field_slots[0].ty,
         int_sort_h ↦ z3sorts.isort, bool_sort_h ↦ z3sorts.bsort, string_sort_h ↦ z3sorts.ssort,
         self_sort_idx ↦ 0,
-        sort_slot ↦ efs[0].sort, ref_slot ↦ ed_fr0, is_self ↦ efs[0].is_self)
-    ed_fr1 ∈ Int
-    FieldSortSlot(enum_name ↦ _ed_name, ty ↦ efs[1].ty,
+        sort_slot ↦ field_slots[0].sort, ref_slot ↦ field_ref0, is_self ↦ field_slots[0].is_self)
+    field_ref1 ∈ Int
+    FieldSortSlot(enum_name ↦ _enum_decl_name, ty ↦ field_slots[1].ty,
         int_sort_h ↦ z3sorts.isort, bool_sort_h ↦ z3sorts.bsort, string_sort_h ↦ z3sorts.ssort,
         self_sort_idx ↦ 0,
-        sort_slot ↦ efs[1].sort, ref_slot ↦ ed_fr1, is_self ↦ efs[1].is_self)
-    ed_fr2 ∈ Int
-    FieldSortSlot(enum_name ↦ _ed_name, ty ↦ efs[2].ty,
+        sort_slot ↦ field_slots[1].sort, ref_slot ↦ field_ref1, is_self ↦ field_slots[1].is_self)
+    field_ref2 ∈ Int
+    FieldSortSlot(enum_name ↦ _enum_decl_name, ty ↦ field_slots[2].ty,
         int_sort_h ↦ z3sorts.isort, bool_sort_h ↦ z3sorts.bsort, string_sort_h ↦ z3sorts.ssort,
         self_sort_idx ↦ 0,
-        sort_slot ↦ efs[2].sort, ref_slot ↦ ed_fr2, is_self ↦ efs[2].is_self)
-    ed_slot0 ∈ Int = ((efs[0].sort ≠ 0 ∨ efs[0].is_self) ? efs[0].sort
-        : efs[0].ty = "Real" ? z3sorts.rsort
-        : efs[0].ty = "LibArg" ? la_sort
-        : efs[0].ty = "Seq(LibArg)" ? sq_sort
+        sort_slot ↦ field_slots[2].sort, ref_slot ↦ field_ref2, is_self ↦ field_slots[2].is_self)
+    field_sort0 ∈ Int = ((field_slots[0].sort ≠ 0 ∨ field_slots[0].is_self) ? field_slots[0].sort
+        : field_slots[0].ty = "Real" ? z3sorts.rsort
+        : field_slots[0].ty = "LibArg" ? libarg_sort
+        : field_slots[0].ty = "Seq(LibArg)" ? seqarg_sort
         : 0)
-    ed_slot1 ∈ Int = ((efs[1].sort ≠ 0 ∨ efs[1].is_self) ? efs[1].sort
-        : efs[1].ty = "Real" ? z3sorts.rsort
-        : efs[1].ty = "LibArg" ? la_sort
-        : efs[1].ty = "Seq(LibArg)" ? sq_sort
+    field_sort1 ∈ Int = ((field_slots[1].sort ≠ 0 ∨ field_slots[1].is_self) ? field_slots[1].sort
+        : field_slots[1].ty = "Real" ? z3sorts.rsort
+        : field_slots[1].ty = "LibArg" ? libarg_sort
+        : field_slots[1].ty = "Seq(LibArg)" ? seqarg_sort
         : 0)
-    ed_slot2 ∈ Int = ((efs[2].sort ≠ 0 ∨ efs[2].is_self) ? efs[2].sort
-        : efs[2].ty = "Real" ? z3sorts.rsort
-        : efs[2].ty = "LibArg" ? la_sort
-        : efs[2].ty = "Seq(LibArg)" ? sq_sort
+    field_sort2 ∈ Int = ((field_slots[2].sort ≠ 0 ∨ field_slots[2].is_self) ? field_slots[2].sort
+        : field_slots[2].ty = "Real" ? z3sorts.rsort
+        : field_slots[2].ty = "LibArg" ? libarg_sort
+        : field_slots[2].ty = "Seq(LibArg)" ? seqarg_sort
         : 0)
-    ed_pack01 ∈ Int
-    SortRefsPack2(ref_lo ↦ ed_fr0, ref_hi ↦ ed_fr1, packed ↦ ed_pack01)
+    refs_packed01 ∈ Int
+    SortRefsPack2(ref_lo ↦ field_ref0, ref_hi ↦ field_ref1, packed ↦ refs_packed01)
 
-    ed_cur_act ∈ Int = (ed_go ? 1
-        : _ed_act = 1 ?
-            (_ed_step = 7 ? (ed_vs_nonempty ? 1 : 2) : 1)
-        : _ed_act = 2 ? (_ed_step = 5 ? 3 : 2)
-        : _ed_act = 3 ?
-            (_ed_step = 4 ? (ed_vs_nonempty ? 3 : 0) : 3)
+    enum_act_now ∈ Int = (enum_go ? 1
+        : _enum_act = 1 ?
+            (_enum_step = 7 ? (enum_vs_nonempty ? 1 : 2) : 1)
+        : _enum_act = 2 ? (_enum_step = 5 ? 3 : 2)
+        : _enum_act = 3 ?
+            (_enum_step = 4 ? (enum_vs_nonempty ? 3 : 0) : 3)
         : 0)
-    ed_cur_step ∈ Int = (ed_go ? 0
-        : _ed_act = 1 ?
-            (_ed_step = 0 ? 1
-            : _ed_step = 1 ? (ed_n = 0 ? 6 : 2)
-            : _ed_step = 2 ? (ed_n = 1 ? 5 : 3)
-            : _ed_step = 3 ? (ed_n = 2 ? 5 : 4)
-            : _ed_step = 4 ? 5
-            : _ed_step = 5 ? 6
-            : _ed_step = 6 ? 7
+    enum_step_now ∈ Int = (enum_go ? 0
+        : _enum_act = 1 ?
+            (_enum_step = 0 ? 1
+            : _enum_step = 1 ? (enum_field_n = 0 ? 6 : 2)
+            : _enum_step = 2 ? (enum_field_n = 1 ? 5 : 3)
+            : _enum_step = 3 ? (enum_field_n = 2 ? 5 : 4)
+            : _enum_step = 4 ? 5
+            : _enum_step = 5 ? 6
+            : _enum_step = 6 ? 7
             : 0)
-        : _ed_act = 2 ? (_ed_step = 5 ? 0 : _ed_step + 1)
-        : _ed_act = 3 ? (_ed_step = 4 ? 0 : _ed_step + 1)
+        : _enum_act = 2 ? (_enum_step = 5 ? 0 : _enum_step + 1)
+        : _enum_act = 3 ? (_enum_step = 4 ? 0 : _enum_step + 1)
         : 0)
-    ed_running ∈ Bool = (ed_go ∨ _ed_act ≠ 0)
-    ed_done ∈ Bool = (_ed_act = 3 ∧ _ed_step = 4 ∧ (¬ed_vs_nonempty))
-    ed_done_user ∈ Bool = (ed_done ∧ _ed_user)
+    enum_running ∈ Bool = (enum_go ∨ _enum_act ≠ 0)
+    enum_done ∈ Bool = (_enum_act = 3 ∧ _enum_step = 4 ∧ (¬enum_vs_nonempty))
+    enum_done_user ∈ Bool = (enum_done ∧ _enum_is_user)
 
-    ed_adv ∈ Bool = (ed_running ∧
-        ((ed_cur_act = 1 ∧ ed_cur_step = 7)
-        ∨ (ed_cur_act = 3 ∧ ed_cur_step = 4)))
-    ed_act = (is_first_tick ? 0
-        : ed_done ? 0
-        : ed_running ? ed_cur_act
+    enum_advance ∈ Bool = (enum_running ∧
+        ((enum_act_now = 1 ∧ enum_step_now = 7)
+        ∨ (enum_act_now = 3 ∧ enum_step_now = 4)))
+    enum_act = (is_first_tick ? 0
+        : enum_done ? 0
+        : enum_running ? enum_act_now
         : 0)
-    ed_step = (is_first_tick ? 0 : ed_running ? ed_cur_step : 0)
-    ed_src = (is_first_tick ? 0
-        : (ed_done ∧ (¬_ed_user)) ? _ed_src + 1
-        : _ed_src)
-    ed_user = (is_first_tick ? false
+    enum_step = (is_first_tick ? 0 : enum_running ? enum_step_now : 0)
+    enum_src = (is_first_tick ? 0
+        : (enum_done ∧ (¬_enum_is_user)) ? _enum_src + 1
+        : _enum_src)
+    enum_is_user = (is_first_tick ? false
         : ec_start ? true
-        : ed_done ? false
-        : _ed_user)
-    ed_name = (is_first_tick ? "" : ed_go ? ed_go_name : _ed_name)
-    ed_all = (is_first_tick ? EVNil : ed_go ? ed_go_vs : _ed_all)
-    ed_vs = (is_first_tick ? EVNil
-        : ed_go ? ed_go_vs
-        : ed_adv ? ed_vrest
-        : (ed_cur_act = 2 ∧ ed_cur_step = 5) ? _ed_all
-        : _ed_vs)
-    ed_vidx = (is_first_tick ? 0
-        : ed_go ? 0
-        : ed_adv ? _ed_vidx + 1
-        : (ed_cur_act = 2 ∧ ed_cur_step = 5) ? 0
-        : _ed_vidx)
-    ed_nv = (is_first_tick ? 0
-        : (ed_cur_act = 1 ∧ ed_cur_step = 7) ? _ed_vidx + 1
-        : _ed_nv)
+        : enum_done ? false
+        : _enum_is_user)
+    enum_decl_name = (is_first_tick ? "" : enum_go ? enum_go_name : _enum_decl_name)
+    enum_variants_all = (is_first_tick ? EVNil : enum_go ? enum_go_variants : _enum_variants_all)
+    enum_variants = (is_first_tick ? EVNil
+        : enum_go ? enum_go_variants
+        : enum_advance ? enum_vrest
+        : (enum_act_now = 2 ∧ enum_step_now = 5) ? _enum_variants_all
+        : _enum_variants)
+    enum_vidx = (is_first_tick ? 0
+        : enum_go ? 0
+        : enum_advance ? _enum_vidx + 1
+        : (enum_act_now = 2 ∧ enum_step_now = 5) ? 0
+        : _enum_vidx)
+    enum_n_variants = (is_first_tick ? 0
+        : (enum_act_now = 1 ∧ enum_step_now = 7) ? _enum_vidx + 1
+        : _enum_n_variants)
 
-    ed_h_name = (is_first_tick ? 0
-        : (_ed_act = 1 ∧ _ed_step = 0) ? d_cap_int
-        : (_ed_act = 2 ∧ _ed_step = 0) ? d_cap_int
-        : _ed_h_name)
-    ed_h_rec = (is_first_tick ? 0
-        : (_ed_act = 1 ∧ _ed_step = 1) ? d_cap_int : _ed_h_rec)
-    ed_h_f0 = (is_first_tick ? 0
-        : (_ed_act = 1 ∧ _ed_step = 2) ? d_cap_int : _ed_h_f0)
-    ed_h_f1 = (is_first_tick ? 0
-        : (_ed_act = 1 ∧ _ed_step = 3) ? d_cap_int : _ed_h_f1)
-    ed_h_f2 = (is_first_tick ? 0
-        : (_ed_act = 1 ∧ _ed_step = 4) ? d_cap_int : _ed_h_f2)
+    enum_h_name = (is_first_tick ? 0
+        : (_enum_act = 1 ∧ _enum_step = 0) ? d_cap_int
+        : (_enum_act = 2 ∧ _enum_step = 0) ? d_cap_int
+        : _enum_h_name)
+    enum_h_recog = (is_first_tick ? 0
+        : (_enum_act = 1 ∧ _enum_step = 1) ? d_cap_int : _enum_h_recog)
+    enum_h_field0 = (is_first_tick ? 0
+        : (_enum_act = 1 ∧ _enum_step = 2) ? d_cap_int : _enum_h_field0)
+    enum_h_field1 = (is_first_tick ? 0
+        : (_enum_act = 1 ∧ _enum_step = 3) ? d_cap_int : _enum_h_field1)
+    enum_h_field2 = (is_first_tick ? 0
+        : (_enum_act = 1 ∧ _enum_step = 4) ? d_cap_int : _enum_h_field2)
 
-    la_sort ∈ Int
-    sq_sort ∈ Int
-    z_effsort ∈ Int
-    z_ressort ∈ Int
-    ue_sort ∈ Int
-    ed_sort_cap ∈ Bool = (_ed_act = 2 ∧ _ed_step = 4)
-    la_sort = (is_first_tick ? 0
-        : (ed_sort_cap ∧ (¬_ed_user) ∧ _ed_src = 0) ? d_cap_int : _la_sort)
-    sq_sort = (is_first_tick ? 0
-        : (ed_sort_cap ∧ (¬_ed_user) ∧ _ed_src = 1) ? d_cap_int : _sq_sort)
-    z_effsort = (is_first_tick ? 0
-        : (ed_sort_cap ∧ (¬_ed_user) ∧ _ed_src = 2) ? d_cap_int : _z_effsort)
-    z_ressort = (is_first_tick ? 0
-        : (ed_sort_cap ∧ (¬_ed_user) ∧ _ed_src = 3) ? d_cap_int : _z_ressort)
-    ue_sort = (is_first_tick ? 0
-        : (ed_sort_cap ∧ _ed_user) ? d_cap_int : _ue_sort)
+    libarg_sort ∈ Int
+    seqarg_sort ∈ Int
+    z_effect_sort ∈ Int
+    z_result_sort ∈ Int
+    user_enum_sort ∈ Int
+    enum_sort_cap ∈ Bool = (_enum_act = 2 ∧ _enum_step = 4)
+    libarg_sort = (is_first_tick ? 0
+        : (enum_sort_cap ∧ (¬_enum_is_user) ∧ _enum_src = 0) ? d_cap_int : _libarg_sort)
+    seqarg_sort = (is_first_tick ? 0
+        : (enum_sort_cap ∧ (¬_enum_is_user) ∧ _enum_src = 1) ? d_cap_int : _seqarg_sort)
+    z_effect_sort = (is_first_tick ? 0
+        : (enum_sort_cap ∧ (¬_enum_is_user) ∧ _enum_src = 2) ? d_cap_int : _z_effect_sort)
+    z_result_sort = (is_first_tick ? 0
+        : (enum_sort_cap ∧ (¬_enum_is_user) ∧ _enum_src = 3) ? d_cap_int : _z_result_sort)
+    user_enum_sort = (is_first_tick ? 0
+        : (enum_sort_cap ∧ _enum_is_user) ? d_cap_int : _user_enum_sort)
 
-    ed_decl_cap ∈ Bool = (_ed_act = 3 ∧ _ed_step = 2)
-    z_exitdecl ∈ Int
-    z_exitdecl = (is_first_tick ? 0
-        : (ed_decl_cap ∧ ed_vname = "Exit") ? d_cap_int : _z_exitdecl)
-    z_lc_decl ∈ Int
-    z_lc_decl = (is_first_tick ? 0
-        : (ed_decl_cap ∧ ed_vname = "LibCall") ? d_cap_int : _z_lc_decl)
+    enum_decl_cap ∈ Bool = (_enum_act = 3 ∧ _enum_step = 2)
+    z_exit_decl ∈ Int
+    z_exit_decl = (is_first_tick ? 0
+        : (enum_decl_cap ∧ enum_vname = "Exit") ? d_cap_int : _z_exit_decl)
+    z_libcall_decl ∈ Int
+    z_libcall_decl = (is_first_tick ? 0
+        : (enum_decl_cap ∧ enum_vname = "LibCall") ? d_cap_int : _z_libcall_decl)
     z_argstr_decl ∈ Int
     z_argstr_decl = (is_first_tick ? 0
-        : (ed_decl_cap ∧ ed_vname = "ArgStr") ? d_cap_int : _z_argstr_decl)
+        : (enum_decl_cap ∧ enum_vname = "ArgStr") ? d_cap_int : _z_argstr_decl)
     z_argint_decl ∈ Int
     z_argint_decl = (is_first_tick ? 0
-        : (ed_decl_cap ∧ ed_vname = "ArgInt") ? d_cap_int : _z_argint_decl)
+        : (enum_decl_cap ∧ enum_vname = "ArgInt") ? d_cap_int : _z_argint_decl)
     z_cell_decl ∈ Int
     z_cell_decl = (is_first_tick ? 0
-        : (ed_decl_cap ∧ ed_vname = "__Cell_LibArg") ? d_cap_int : _z_cell_decl)
-    ed_val_cap ∈ Bool = (_ed_act = 3 ∧ _ed_step = 3 ∧ ed_nullary)
+        : (enum_decl_cap ∧ enum_vname = "__Cell_LibArg") ? d_cap_int : _z_cell_decl)
+    enum_val_cap ∈ Bool = (_enum_act = 3 ∧ _enum_step = 3 ∧ enum_nullary)
     z_empty_val ∈ Int
     z_empty_val = (is_first_tick ? 0
-        : (ed_val_cap ∧ ed_vname = "__Empty_LibArg") ? d_cap_int : _z_empty_val)
+        : (enum_val_cap ∧ enum_vname = "__Empty_LibArg") ? d_cap_int : _z_empty_val)
 
     -- Result-floor tester + accessor decls (D3). During the Result
-    -- run (ed_src 3) a payload variant's act-3 steps 3/4 read the
+    -- run (enum_src 3) a payload variant's act-3 steps 3/4 read the
     -- query out-block's tester (qout+8) and accessor (qout+16)
     -- slots instead of emitting fillers. The tester read (emitted at
-    -- step 3) captures at the _ed_step = 3 tick, where ed_vname is
+    -- step 3) captures at the _enum_step = 3 tick, where enum_vname is
     -- still the current variant; the accessor read (emitted at step
-    -- 4 — the advance tick) captures at the _ed_step = 4 tick, where
-    -- the variant walk has already moved on, so res_acc_pend carries
+    -- 4 — the advance tick) captures at the _enum_step = 4 tick, where
+    -- the variant walk has already moved on, so result_acc_pend carries
     -- WHICH register the landing value belongs to.
-    ed_res_run ∈ Bool = ((¬_ed_user) ∧ (_ed_src = 3))
-    ed_res_harvest ∈ Bool = (ed_res_run ∧ (¬ed_nullary))
-    z_irtest ∈ Int
-    z_irtest = (is_first_tick ? 0
-        : (_ed_act = 3 ∧ _ed_step = 3 ∧ ed_res_run ∧ ed_vname = "IntResult")
-            ? d_cap_int : _z_irtest)
-    z_srtest ∈ Int
-    z_srtest = (is_first_tick ? 0
-        : (_ed_act = 3 ∧ _ed_step = 3 ∧ ed_res_run ∧ ed_vname = "StringResult")
-            ? d_cap_int : _z_srtest)
-    res_acc_pend ∈ Int
-    res_acc_pend = (is_first_tick ? 0
-        : (ed_cur_act = 3 ∧ ed_cur_step = 4 ∧ ed_res_harvest)
-            ? (ed_vname = "IntResult" ? 1
-              : ed_vname = "StringResult" ? 2
+    result_run ∈ Bool = ((¬_enum_is_user) ∧ (_enum_src = 3))
+    result_harvest ∈ Bool = (result_run ∧ (¬enum_nullary))
+    z_intres_test ∈ Int
+    z_intres_test = (is_first_tick ? 0
+        : (_enum_act = 3 ∧ _enum_step = 3 ∧ result_run ∧ enum_vname = "IntResult")
+            ? d_cap_int : _z_intres_test)
+    z_strres_test ∈ Int
+    z_strres_test = (is_first_tick ? 0
+        : (_enum_act = 3 ∧ _enum_step = 3 ∧ result_run ∧ enum_vname = "StringResult")
+            ? d_cap_int : _z_strres_test)
+    result_acc_pend ∈ Int
+    result_acc_pend = (is_first_tick ? 0
+        : (enum_act_now = 3 ∧ enum_step_now = 4 ∧ result_harvest)
+            ? (enum_vname = "IntResult" ? 1
+              : enum_vname = "StringResult" ? 2
               : 0)
         : 0)
-    z_iracc ∈ Int
-    z_iracc = (is_first_tick ? 0
-        : (_ed_act = 3 ∧ _ed_step = 4 ∧ _res_acc_pend = 1) ? d_cap_int
-        : _z_iracc)
-    z_sracc ∈ Int
-    z_sracc = (is_first_tick ? 0
-        : (_ed_act = 3 ∧ _ed_step = 4 ∧ _res_acc_pend = 2) ? d_cap_int
-        : _z_sracc)
+    z_intres_acc ∈ Int
+    z_intres_acc = (is_first_tick ? 0
+        : (_enum_act = 3 ∧ _enum_step = 4 ∧ _result_acc_pend = 1) ? d_cap_int
+        : _z_intres_acc)
+    z_strres_acc ∈ Int
+    z_strres_acc = (is_first_tick ? 0
+        : (_enum_act = 3 ∧ _enum_step = 4 ∧ _result_acc_pend = 2) ? d_cap_int
+        : _z_strres_acc)
 
-    evt ∈ Seq(EnumVariantVal)
-    #evt ≤ 6
-    evt_add ∈ Bool = (ed_val_cap ∧ _ed_user)
-    evt = (is_first_tick ? ⟨⟩ : evt_add ? _evt ++ ⟨EnumVariantVal(ed_vname, d_cap_int)⟩ : _evt)
+    enum_values ∈ Seq(EnumVariantVal)
+    #enum_values ≤ 6
+    enum_values_add ∈ Bool = (enum_val_cap ∧ _enum_is_user)
+    enum_values = (is_first_tick ? ⟨⟩ : enum_values_add ? _enum_values ++ ⟨EnumVariantVal(enum_vname, d_cap_int)⟩ : _enum_values)
 
     -- User-enum variant DECL registry (C3/C4): per variant (indexed
-    -- by ed_vidx — the harvest visits variants in declaration
+    -- by enum_vidx — the harvest visits variants in declaration
     -- order), the ctor func_decl (mk_app target for `B(7)` ctor
     -- applications) and the TESTER func_decl (mk_app target for
     -- `e matches B(_)` / the match-pin arms). The decl + name land
     -- on the act-3 step-2 capture tick; the tester lands on the
     -- step-3 capture tick — lr[1] of the nullary ⟨app, rdtest⟩
     -- batch, lr[0] of the payload variant's single rdtest.
-    uev_cap_d ∈ Bool = (_ed_act = 3 ∧ _ed_step = 2 ∧ _ed_user)
-    uev_cap_t ∈ Bool = (_ed_act = 3 ∧ _ed_step = 3 ∧ _ed_user)
-    uev_t_val ∈ Int = (ed_nullary ? res_int1 : d_cap_int)
-    uev ∈ Seq(UserEnumVariant)
-    #uev ≤ 6
-    ∀ k ∈ {0..5} : uev[k].name = (is_first_tick ? "" : (uev_cap_d ∧ _ed_vidx = k) ? ed_vname : _uev[k].name)
-    ∀ k ∈ {0..5} : uev[k].ctor = (is_first_tick ? 0 : (uev_cap_d ∧ _ed_vidx = k) ? d_cap_int : _uev[k].ctor)
-    ∀ k ∈ {0..5} : uev[k].tester = (is_first_tick ? 0 : (uev_cap_t ∧ _ed_vidx = k) ? uev_t_val : _uev[k].tester)
+    variant_cap_decl ∈ Bool = (_enum_act = 3 ∧ _enum_step = 2 ∧ _enum_is_user)
+    variant_cap_tester ∈ Bool = (_enum_act = 3 ∧ _enum_step = 3 ∧ _enum_is_user)
+    variant_tester_val ∈ Int = (enum_nullary ? res_int1 : d_cap_int)
+    user_variants ∈ Seq(UserEnumVariant)
+    #user_variants ≤ 6
+    ∀ k ∈ {0..5} : user_variants[k].name = (is_first_tick ? "" : (variant_cap_decl ∧ _enum_vidx = k) ? enum_vname : _user_variants[k].name)
+    ∀ k ∈ {0..5} : user_variants[k].ctor = (is_first_tick ? 0 : (variant_cap_decl ∧ _enum_vidx = k) ? d_cap_int : _user_variants[k].ctor)
+    ∀ k ∈ {0..5} : user_variants[k].tester = (is_first_tick ? 0 : (variant_cap_tester ∧ _enum_vidx = k) ? variant_tester_val : _user_variants[k].tester)
 
     -- C5: user-variant field-0 ACCESSOR decls (match-pin payload
     -- binds over USER ctors). Same pend dance as the Result floor:
     -- the rdacc emitted on the step-4 (advance) tick lands AFTER the
-    -- variant walk moved on, so uev_acc_pend carries vidx + 1.
-    uev_acc_pend ∈ Int
-    uev_acc_pend = (is_first_tick ? 0
-        : (ed_cur_act = 3 ∧ ed_cur_step = 4 ∧ ed_user ∧ (¬ed_nullary))
-            ? _ed_vidx + 1
+    -- variant walk moved on, so variant_acc_pend carries vidx + 1.
+    variant_acc_pend ∈ Int
+    variant_acc_pend = (is_first_tick ? 0
+        : (enum_act_now = 3 ∧ enum_step_now = 4 ∧ enum_is_user ∧ (¬enum_nullary))
+            ? _enum_vidx + 1
         : 0)
-    uev_cap_a ∈ Bool = (_ed_act = 3 ∧ _ed_step = 4 ∧ _uev_acc_pend > 0)
-    ∀ k ∈ {0..5} : uev[k].acc = (is_first_tick ? 0 : (uev_cap_a ∧ _uev_acc_pend = k + 1) ? d_cap_int : _uev[k].acc)
+    variant_cap_acc ∈ Bool = (_enum_act = 3 ∧ _enum_step = 4 ∧ _variant_acc_pend > 0)
+    ∀ k ∈ {0..5} : user_variants[k].acc = (is_first_tick ? 0 : (variant_cap_acc ∧ _variant_acc_pend = k + 1) ? d_cap_int : _user_variants[k].acc)
