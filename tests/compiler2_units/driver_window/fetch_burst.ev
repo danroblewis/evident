@@ -28,9 +28,9 @@ fsm main
     fetch_end = (is_first_tick ? 0 : _fetch_end)
     win_toks ∈ TokenList
     win_toks = (is_first_tick ? TLNil : _win_toks)
-    tbuf ∈ FtiBuffer
-    tbuf.base = (is_first_tick ? 0 : _tbuf.base)
-    tbuf.count = (is_first_tick ? 0 : _tbuf.count)
+    tok_buf ∈ FtiBuffer
+    tok_buf.base = (is_first_tick ? 0 : _tok_buf.base)
+    tok_buf.count = (is_first_tick ? 0 : _tok_buf.count)
     -- Sub-state carries read only by non-pmode-6 win_need branches; held so
     -- the names resolve.
     rc_on ∈ Bool

@@ -52,6 +52,6 @@ fsm DriverEmit
 
     e_puts ∈ Effect
     BuildPrintln(s ↦ d_unit, eff ↦ e_puts)
-    e_free_tbuf ∈ Effect = LibCall("libc", "free", ⟨ArgInt(tbuf.base)⟩)
-    e_free_sbuf ∈ Effect = LibCall("libc", "free", ⟨ArgInt(stbuf.base)⟩)
-    e_free_cibuf ∈ Effect = LibCall("libc", "free", ⟨ArgInt(cibuf.base)⟩)
+    e_free_tbuf ∈ Effect = LibCall("libc", "free", ⟨ArgInt(tok_buf.base)⟩)
+    e_free_sbuf ∈ Effect = LibCall("libc", "free", ⟨ArgInt(sym_buf.base)⟩)
+    e_free_cibuf ∈ Effect = LibCall("libc", "free", ⟨ArgInt(claimidx_buf.base)⟩)

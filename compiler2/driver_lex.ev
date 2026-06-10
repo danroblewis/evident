@@ -9,7 +9,7 @@
 --           cursor (lx_count/lex_last_tag/lex_prev_tag/pend_str_addr), the per-tick token
 --           plan (k_* regs, plan_kind), next_pos, and the strlit/int/float
 --           collection state.
--- MAINTAINS: lx_count < 65534 — every write lands inside ze_tbuf (a write
+-- MAINTAINS: lx_count < 65534 — every write lands inside zinit_tok_buf (a write
 --           past the buffer end is UNSAT, so the kernel halts cleanly
 --           instead of corrupting the heap); the FTI one-triple-per-token
 --           buffer layout (tbase + count*32).
@@ -128,11 +128,11 @@ fsm DriverLex
         : 1)
     float_payload ∈ Int = (_float_whole * frac_pow + _partial_int) * 8 + _frac_digits
     write_float_tag ∈ Effect = LibCall("__mem", "write_long",
-        ⟨ArgInt(tbuf.base + (_tbuf.count * 32)), ArgInt(4)⟩)
+        ⟨ArgInt(tok_buf.base + (_tok_buf.count * 32)), ArgInt(4)⟩)
     write_float_pay ∈ Effect = LibCall("__mem", "write_long",
-        ⟨ArgInt(tbuf.base + (_tbuf.count * 32) + 8), ArgInt(float_payload)⟩)
+        ⟨ArgInt(tok_buf.base + (_tok_buf.count * 32) + 8), ArgInt(float_payload)⟩)
     write_float_op ∈ Effect = LibCall("__mem", "write_long",
-        ⟨ArgInt(tbuf.base + ((_tbuf.count + 1) * 32)), ArgInt(char_tag)⟩)
+        ⟨ArgInt(tok_buf.base + ((_tok_buf.count + 1) * 32)), ArgInt(char_tag)⟩)
 
     partial_str = (is_first_tick ? "" : (str_continuing ? _partial_str ++ cur_char : (str_starting ? cur_char : "")))
     partial_int = (is_first_tick ? 0 - 1 : (int_continuing ? (_partial_int * 10) + dig_val : (int_starting ? dig_val : 0 - 1)))
@@ -148,7 +148,7 @@ fsm DriverLex
     -- LexFtiPlan from the cached lex_last_tag/lex_prev_tag tag pair.
     --
     -- FTI bounds CONSTRAINT (the model, not a runtime check): the token
-    -- buffer (ze_tbuf) holds 65536 entries × 32 bytes. The lexer writes
+    -- buffer (zinit_tok_buf) holds 65536 entries × 32 bytes. The lexer writes
     -- entry _lx_count (and, on a two-token tick, _lx_count+1) at
     -- tbase + _lx_count*32. Constraining lx_count < 65536 makes a write
     -- past the buffer end UNSAT — Z3 refuses the tick, the kernel halts
@@ -156,7 +156,7 @@ fsm DriverLex
     -- the violated constraint. Without it, the write went out of bounds
     -- and the native kernel corrupted the heap / segfaulted. The "+2"
     -- headroom covers the two-token push shapes (float-with-op etc.).
-    tbuf.count < 65534
+    tok_buf.count < 65534
     lex_last_tag ∈ Int
     lex_prev_tag ∈ Int
     pend_str_addr ∈ Int
@@ -180,7 +180,7 @@ fsm DriverLex
         ch_only ↦ char_only,
         cur_char ↦ cur_char, partial_str ↦ _partial_str,
         partial_strlit ↦ _partial_strlit, partial_int ↦ _partial_int,
-        base ↦ tbuf.base, count ↦ _tbuf.count,
+        base ↦ tok_buf.base, count ↦ _tok_buf.count,
         last_tag ↦ _lex_last_tag, prev_tag ↦ _lex_prev_tag,
         kind ↦ plan_kind, tag0 ↦ plan_tag0, p0 ↦ plan_pay0, str0 ↦ plan_str0,
         tag1 ↦ plan_tag1, a_tag0 ↦ plan_addr_tag0, a_p0 ↦ plan_addr_pay0, a_tag1 ↦ plan_addr_tag1,
@@ -196,8 +196,8 @@ fsm DriverLex
     plan_tag1_pp ∈ Int = ((at_plusplus ∧ (plan_kind = 4 ∨ plan_kind = 5 ∨ plan_kind = 6))
         ? 60 : plan_tag1)
 
-    tbuf.count = (is_first_tick ? 0
-        : float_finish ? (_tbuf.count + (float_with_op ? 2 : 1))
+    tok_buf.count = (is_first_tick ? 0
+        : float_finish ? (_tok_buf.count + (float_with_op ? 2 : 1))
         : plan_count_n)
     lex_last_tag = (is_first_tick ? 0
         : float_finish ? (float_with_op ? char_tag : 4)
@@ -215,7 +215,7 @@ fsm DriverLex
     write_tag1 ∈ Effect = LibCall("__mem", "write_long", ⟨ArgInt(plan_addr_tag1), ArgInt(plan_tag1_pp)⟩)
     eff_strdup   ∈ Effect = LibCall("libc", "strdup", ⟨ArgStr(plan_str0)⟩)
     write_pend_str  ∈ Effect = LibCall("__mem", "write_long", ⟨ArgInt(_pend_str_addr), ArgInt(d_cap_int)⟩)
-    write_eof   ∈ Effect = LibCall("__mem", "write_long", ⟨ArgInt(tbuf.base + (tbuf.count * 32)), ArgInt(13)⟩)
+    write_eof   ∈ Effect = LibCall("__mem", "write_long", ⟨ArgInt(tok_buf.base + (tok_buf.count * 32)), ArgInt(13)⟩)
 
     has_input ∈ Bool = (#input > 0)
     lex_done ∈ Bool = (done ∧ ¬was_collecting_str ∧ ¬was_collecting_int ∧ ¬_in_strlit ∧ has_input)

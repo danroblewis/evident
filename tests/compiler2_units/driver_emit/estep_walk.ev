@@ -32,15 +32,15 @@ fsm main
     saw_ift = (is_first_tick ? false : _saw_ift)
     cdstr ∈ String
     cdstr = (is_first_tick ? "" : _cdstr)
-    tbuf ∈ FtiBuffer
-    tbuf.base = (is_first_tick ? 0 : _tbuf.base)
-    tbuf.count = (is_first_tick ? 0 : _tbuf.count)
-    stbuf ∈ FtiBuffer
-    stbuf.base = (is_first_tick ? 0 : _stbuf.base)
-    stbuf.count = (is_first_tick ? 0 : _stbuf.count)
-    cibuf ∈ FtiBuffer
-    cibuf.base = (is_first_tick ? 0 : _cibuf.base)
-    cibuf.count = (is_first_tick ? 0 : _cibuf.count)
+    tok_buf ∈ FtiBuffer
+    tok_buf.base = (is_first_tick ? 0 : _tok_buf.base)
+    tok_buf.count = (is_first_tick ? 0 : _tok_buf.count)
+    sym_buf ∈ FtiBuffer
+    sym_buf.base = (is_first_tick ? 0 : _sym_buf.base)
+    sym_buf.count = (is_first_tick ? 0 : _sym_buf.count)
+    claimidx_buf ∈ FtiBuffer
+    claimidx_buf.base = (is_first_tick ? 0 : _claimidx_buf.base)
+    claimidx_buf.count = (is_first_tick ? 0 : _claimidx_buf.count)
     -- DriverEmit's d_prelude string literal contains the text
     -- "last_results", which trips the oracle's saw_lr heuristic and
     -- suppresses the genuine `last_results` declaration. A real read

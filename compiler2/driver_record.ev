@@ -269,27 +269,27 @@ fsm DriverRecord
     RtRecName(s ↦ rc_t, i ↦ 5, name ↦ rdt_5)
     rds_0 ∈ Int
     RtSortOf(ty ↦ rdt_0, int_h ↦ z3sorts.isort, bool_h ↦ z3sorts.bsort,
-        str_h ↦ z3sorts.ssort, real_h ↦ z3sorts.rsort, iarr_h ↦ z_iarr,
+        str_h ↦ z3sorts.ssort, real_h ↦ z3sorts.rsort, iarr_h ↦ z_intarr_sort,
         e0 ↦ rt_e0, e1 ↦ rt_e1, e2 ↦ rt_e2, sort ↦ rds_0)
     rds_1 ∈ Int
     RtSortOf(ty ↦ rdt_1, int_h ↦ z3sorts.isort, bool_h ↦ z3sorts.bsort,
-        str_h ↦ z3sorts.ssort, real_h ↦ z3sorts.rsort, iarr_h ↦ z_iarr,
+        str_h ↦ z3sorts.ssort, real_h ↦ z3sorts.rsort, iarr_h ↦ z_intarr_sort,
         e0 ↦ rt_e0, e1 ↦ rt_e1, e2 ↦ rt_e2, sort ↦ rds_1)
     rds_2 ∈ Int
     RtSortOf(ty ↦ rdt_2, int_h ↦ z3sorts.isort, bool_h ↦ z3sorts.bsort,
-        str_h ↦ z3sorts.ssort, real_h ↦ z3sorts.rsort, iarr_h ↦ z_iarr,
+        str_h ↦ z3sorts.ssort, real_h ↦ z3sorts.rsort, iarr_h ↦ z_intarr_sort,
         e0 ↦ rt_e0, e1 ↦ rt_e1, e2 ↦ rt_e2, sort ↦ rds_2)
     rds_3 ∈ Int
     RtSortOf(ty ↦ rdt_3, int_h ↦ z3sorts.isort, bool_h ↦ z3sorts.bsort,
-        str_h ↦ z3sorts.ssort, real_h ↦ z3sorts.rsort, iarr_h ↦ z_iarr,
+        str_h ↦ z3sorts.ssort, real_h ↦ z3sorts.rsort, iarr_h ↦ z_intarr_sort,
         e0 ↦ rt_e0, e1 ↦ rt_e1, e2 ↦ rt_e2, sort ↦ rds_3)
     rds_4 ∈ Int
     RtSortOf(ty ↦ rdt_4, int_h ↦ z3sorts.isort, bool_h ↦ z3sorts.bsort,
-        str_h ↦ z3sorts.ssort, real_h ↦ z3sorts.rsort, iarr_h ↦ z_iarr,
+        str_h ↦ z3sorts.ssort, real_h ↦ z3sorts.rsort, iarr_h ↦ z_intarr_sort,
         e0 ↦ rt_e0, e1 ↦ rt_e1, e2 ↦ rt_e2, sort ↦ rds_4)
     rds_5 ∈ Int
     RtSortOf(ty ↦ rdt_5, int_h ↦ z3sorts.isort, bool_h ↦ z3sorts.bsort,
-        str_h ↦ z3sorts.ssort, real_h ↦ z3sorts.rsort, iarr_h ↦ z_iarr,
+        str_h ↦ z3sorts.ssort, real_h ↦ z3sorts.rsort, iarr_h ↦ z_intarr_sort,
         e0 ↦ rt_e0, e1 ↦ rt_e1, e2 ↦ rt_e2, sort ↦ rds_5)
 
     rde_nsym ∈ Effect

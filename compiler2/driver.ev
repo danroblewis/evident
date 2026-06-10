@@ -769,7 +769,7 @@ fsm driver_main
             : d_dc_sc = 2 ? ue_sort
             : d_dc_sc = 3 ? z3sorts.ssort
             : d_dc_sc = 4 ? z_ressort
-            : d_dc_sc = 5 ? z_iarr
+            : d_dc_sc = 5 ? z_intarr_sort
             : d_dc_sc = 6 ? z3sorts.rsort
             : d_dc_sc = 10 ? rt_e0.asort
             : d_dc_sc = 11 ? rt_e1.asort
@@ -779,7 +779,7 @@ fsm driver_main
             : d_dc_sc = 22 ? rt_e2.ssort
             : z3sorts.isort), eff ↦ d_eff_const)
     d_eff_stwr ∈ Effect
-    BuildMemWriteLong(addr ↦ stbuf.base + (8 * _stbuf.count), value ↦ d_tmp_in,
+    BuildMemWriteLong(addr ↦ sym_buf.base + (8 * _sym_buf.count), value ↦ d_tmp_in,
         eff ↦ d_eff_stwr)
     d_op_geq ∈ Op = OpGeq
     d_op_eq ∈ Op = OpEq
@@ -823,7 +823,7 @@ fsm driver_main
         : d_sel_i = 2 ? z3nums.two
         : z3nums.three)
     d_eff_sel ∈ Effect
-    BuildZ3MkSelect(ctx_h ↦ z3ctx.ctx, arr_h ↦ z_effs, idx_h ↦ d_sel_idx_h,
+    BuildZ3MkSelect(ctx_h ↦ z3ctx.ctx, arr_h ↦ z_effects, idx_h ↦ d_sel_idx_h,
         eff ↦ d_eff_sel)
     d_eff_selh ∈ Effect
     BuildZ3MkSelect(ctx_h ↦ z3ctx.ctx, arr_h ↦ d_h_2nd, idx_h ↦ d_h_top,
@@ -859,7 +859,7 @@ fsm driver_main
     d_eff_leneq ∈ Effect
     d_leneq_ok ∈ Bool
     d_leneq_nn ∈ Bool
-    BoolCmpBuildZ3(ctx_h ↦ z3ctx.ctx, op ↦ d_op_eq, l_h ↦ z_elen, r_h ↦ d_len_n_h,
+    BoolCmpBuildZ3(ctx_h ↦ z3ctx.ctx, op ↦ d_op_eq, l_h ↦ z_efflen, r_h ↦ d_len_n_h,
         eff ↦ d_eff_leneq, ok ↦ d_leneq_ok, needs_not ↦ d_leneq_nn)
     d_eff_filler ∈ Effect = LibCall("libc", "getpid", ⟨⟩)
 
@@ -902,51 +902,51 @@ fsm driver_main
 
     effects ∈ Seq(Effect) = (is_first_tick ? ⟨ReadLine, ReadLine⟩
         : (¬_got_path) ? ⟨ReadFile(src_path)⟩
-        : zstep = 0 ? ⟨ze_cfg⟩
-        : zstep = 1 ? ⟨ze_ctx⟩
-        : zstep = 2 ? ⟨ze_sol⟩
-        : zstep = 3 ? ⟨ze_sinc⟩
-        : zstep = 4 ? ⟨ze_isort⟩
-        : zstep = 5 ? ⟨ze_bsort⟩
-        : zstep = 6 ? ⟨ze_ssort⟩
-        : zstep = 7 ? ⟨ze_rsort⟩
-        : zstep = 8 ? ⟨ze_arena⟩
-        : ed_running ? (ed_w5
-            ? (ed_n = 1 ? ⟨edw_fn0, edw_fs0, edw_sr01⟩
-              : ed_n = 2 ? ⟨edw_fn0, edw_fn1, edw_fs0, edw_fs1, edw_sr01⟩
-              : ⟨edw_fn0, edw_fn1, edw_fn2, edw_fs0, edw_fs1, edw_fs2,
-                 edw_sr01, edw_sr2⟩)
-            : ed_w2 ? ⟨edw_nm, edw_cl⟩
-            : ed_w3u ? ⟨ede_app0, ede_rdtest⟩
-            : ⟨ed_eff1⟩)
-        : zstep = 10 ? ⟨ze_arrsort⟩
-        : zstep = 11 ? ⟨ze_sym_effs⟩
-        : zstep = 12 ? ⟨ze_effs⟩
-        : zstep = 13 ? ⟨ze_sym_elen⟩
-        : zstep = 14 ? ⟨ze_elen⟩
-        : zstep = 15 ? ⟨ze_zero⟩
-        : zstep = 16 ? ⟨ze_one⟩
-        : zstep = 17 ? ⟨ze_two⟩
-        : zstep = 18 ? ⟨ze_true⟩
-        : zstep = 19 ? ⟨ze_false⟩
-        : zstep = 20 ? ⟨ze_tbuf⟩
-        : zstep = 21 ? ⟨ze_sbuf⟩
-        : zstep = 22 ? ⟨ze_lrarr⟩
-        : zstep = 23 ? ⟨ze_sym_lr⟩
-        : zstep = 24 ? ⟨ze_lastres⟩
-        : zstep = 25 ? ⟨ze_sym_lrl⟩
-        : zstep = 26 ? ⟨ze_lrlen⟩
-        : zstep = 27 ? ⟨ze_sym_ift⟩
-        : zstep = 28 ? ⟨ze_ift⟩
-        : zstep = 29 ? ⟨ze_lrge⟩
-        : zstep = 30 ? ⟨ze_lrassert⟩
-        : zstep = 31 ? ⟨ze_seed0, ze_seed1⟩
-        : zstep = 32 ? ⟨ze_three⟩
-        : zstep = 33 ? ⟨ze_four⟩
-        : zstep = 34 ? ⟨ze_iarr⟩
-        : zstep = 35 ? ⟨ze_ege⟩
-        : zstep = 36 ? ⟨ze_eassert⟩
-        : zstep = 37 ? ⟨ze_cibuf⟩
+        : zstep = 0 ? ⟨zinit_cfg⟩
+        : zstep = 1 ? ⟨zinit_ctx⟩
+        : zstep = 2 ? ⟨zinit_sol⟩
+        : zstep = 3 ? ⟨zinit_sol_inc⟩
+        : zstep = 4 ? ⟨zinit_isort⟩
+        : zstep = 5 ? ⟨zinit_bsort⟩
+        : zstep = 6 ? ⟨zinit_ssort⟩
+        : zstep = 7 ? ⟨zinit_rsort⟩
+        : zstep = 8 ? ⟨zinit_arena⟩
+        : ed_running ? (enum_wbatch5
+            ? (ed_n = 1 ? ⟨enum_write_fn0, enum_write_fs0, enum_write_refs01⟩
+              : ed_n = 2 ? ⟨enum_write_fn0, enum_write_fn1, enum_write_fs0, enum_write_fs1, enum_write_refs01⟩
+              : ⟨enum_write_fn0, enum_write_fn1, enum_write_fn2, enum_write_fs0, enum_write_fs1, enum_write_fs2,
+                 enum_write_refs01, enum_write_refs2⟩)
+            : enum_wbatch2 ? ⟨enum_write_name, enum_write_clist⟩
+            : enum_wbatch3u ? ⟨enum_app0, enum_read_tester⟩
+            : ⟨enum_step_eff⟩)
+        : zstep = 10 ? ⟨zinit_arrsort⟩
+        : zstep = 11 ? ⟨zinit_effects_sym⟩
+        : zstep = 12 ? ⟨zinit_effects⟩
+        : zstep = 13 ? ⟨zinit_efflen_sym⟩
+        : zstep = 14 ? ⟨zinit_efflen⟩
+        : zstep = 15 ? ⟨zinit_zero⟩
+        : zstep = 16 ? ⟨zinit_one⟩
+        : zstep = 17 ? ⟨zinit_two⟩
+        : zstep = 18 ? ⟨zinit_true⟩
+        : zstep = 19 ? ⟨zinit_false⟩
+        : zstep = 20 ? ⟨zinit_tok_buf⟩
+        : zstep = 21 ? ⟨zinit_sym_buf⟩
+        : zstep = 22 ? ⟨zinit_lastres_arr⟩
+        : zstep = 23 ? ⟨zinit_lastres_sym⟩
+        : zstep = 24 ? ⟨zinit_lastres⟩
+        : zstep = 25 ? ⟨zinit_lastres_len_sym⟩
+        : zstep = 26 ? ⟨zinit_lastres_len⟩
+        : zstep = 27 ? ⟨zinit_first_tick_sym⟩
+        : zstep = 28 ? ⟨zinit_first_tick⟩
+        : zstep = 29 ? ⟨zinit_lastres_ge⟩
+        : zstep = 30 ? ⟨zinit_lastres_assert⟩
+        : zstep = 31 ? ⟨zinit_seed0, zinit_seed1⟩
+        : zstep = 32 ? ⟨zinit_three⟩
+        : zstep = 33 ? ⟨zinit_four⟩
+        : zstep = 34 ? ⟨zinit_intarr⟩
+        : zstep = 35 ? ⟨zinit_efflen_ge⟩
+        : zstep = 36 ? ⟨zinit_efflen_assert⟩
+        : zstep = 37 ? ⟨zinit_claimidx_buf⟩
         : entering_parse ? (have_pend_str ? ⟨write_pend_str, write_eof⟩ : ⟨write_eof⟩)
         : estep = 0 ? ⟨e_s2s⟩
         : estep = 1 ? ⟨e_copy⟩

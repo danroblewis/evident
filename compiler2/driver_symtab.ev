@@ -28,7 +28,7 @@ fsm DriverSymtab
     -- idx = index_of(st_names, key) / 32; the handle is then ONE
     -- __mem.read_long through the pend=1 capture path. Names longer
     -- than 31 chars would truncate-alias (corpus max is 21).
-    stbuf.count < 8192
+    sym_buf.count < 8192
     st_names ∈ String
     d_st_add ∈ Bool = (d_processing ∧ d_it_decl ∧ (_istep = 2))
     st_entry ∈ String
@@ -36,9 +36,9 @@ fsm DriverSymtab
     d_seed_names ∈ String = ("|" ++ substr("last_results                               ", 0, 31)
         ++ "|" ++ substr("is_first_tick                               ", 0, 31))
     FtiNamedAppend(first ↦ is_first_tick, add ↦ d_st_add,
-        prev_count ↦ _stbuf.count, prev_names ↦ _st_names,
+        prev_count ↦ _sym_buf.count, prev_names ↦ _st_names,
         init_count ↦ 2, seed_names ↦ d_seed_names, entry ↦ st_entry,
-        count ↦ stbuf.count, names ↦ st_names)
+        count ↦ sym_buf.count, names ↦ st_names)
 
     -- saw flags: a user constraint mentioned last_results /
     -- is_first_tick — the serialized solver body then carries their

@@ -1,5 +1,5 @@
 -- DriverLex isolation — happy path: lex two idents from "ab cd"; the
--- scan must produce exactly two Ident tokens (tbuf.count = 2 at
+-- scan must produce exactly two Ident tokens (tok_buf.count = 2 at
 -- lex_done). The token-buffer writes (w_*) are NOT scheduled into
 -- effects, so no __mem/Z3 arena is needed — we read the cursor directly.
 -- entry: main
@@ -24,12 +24,12 @@ fsm main
     -- carry then can't find the field).
     input   ∈ String
     input   = (is_first_tick ? "ab cd" : _input)
-    tbuf      ∈ FtiBuffer
-    tbuf.base = (is_first_tick ? 0 : _tbuf.base)
+    tok_buf      ∈ FtiBuffer
+    tok_buf.base = (is_first_tick ? 0 : _tok_buf.base)
     d_cap_int ∈ Int
     d_cap_int = (is_first_tick ? 0 : _d_cap_int)
     ..DriverLex
-    cnt_msg ∈ String = str_from_int(tbuf.count)
+    cnt_msg ∈ String = str_from_int(tok_buf.count)
     effects ∈ Seq(Effect) = (lex_done
         ? ⟨LibCall("libc", "puts", ⟨ArgStr(cnt_msg)⟩), Exit(0)⟩
         : ⟨LibCall("libc", "getpid", ⟨⟩)⟩)

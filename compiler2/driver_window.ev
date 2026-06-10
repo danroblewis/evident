@@ -315,7 +315,7 @@ fsm DriverWindow
         : _fetch_mode = 1 ? 2
         : 0)
 
-    fetch_addr ∈ Int = tbuf.base + (_tok_cur * 32)
+    fetch_addr ∈ Int = tok_buf.base + (_tok_cur * 32)
     read_tag0 ∈ Effect = LibCall("__mem", "read_long", ⟨ArgInt(fetch_addr)⟩)
     read_pay0 ∈ Effect = LibCall("__mem", "read_long", ⟨ArgInt(fetch_addr + 8)⟩)
     read_tag1 ∈ Effect = LibCall("__mem", "read_long", ⟨ArgInt(fetch_addr + 32)⟩)

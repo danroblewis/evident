@@ -37,8 +37,8 @@ fsm main
     rb_on = (is_first_tick ? false : _rb_on)
     tok_ready ∈ Bool
     tok_ready = (is_first_tick ? false : _tok_ready)
-    stbuf ∈ FtiBuffer
-    stbuf.base = (is_first_tick ? 0 : _stbuf.base)
+    sym_buf ∈ FtiBuffer
+    sym_buf.base = (is_first_tick ? 0 : _sym_buf.base)
     ..DriverSymtab
     verdict ∈ Int = ((d_h_top = 99 ? 1 : 0) + (d_h_2nd = 7 ? 2 : 0)
         + (d_it_decl ? 4 : 0))

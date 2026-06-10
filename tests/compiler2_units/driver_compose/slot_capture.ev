@@ -47,9 +47,9 @@ fsm main
     c_ty_line = (is_first_tick ? false : _c_ty_line)
     c_type_str ∈ String
     c_type_str = (is_first_tick ? "" : _c_type_str)
-    cibuf ∈ FtiBuffer
-    cibuf.base = (is_first_tick ? 0 : _cibuf.base)
-    cibuf.count = (is_first_tick ? 0 : _cibuf.count)
+    claimidx_buf ∈ FtiBuffer
+    claimidx_buf.base = (is_first_tick ? 0 : _claimidx_buf.base)
+    claimidx_buf.count = (is_first_tick ? 0 : _claimidx_buf.count)
     d_cap_int ∈ Int
     d_cap_int = (is_first_tick ? 0 : _d_cap_int)
     d_enter_claim ∈ Bool

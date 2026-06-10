@@ -35,7 +35,7 @@ fsm DriverClaimIdx
     -- true for the corpus: stdlib then helpers then main).
     -- ci_cnt < 2048 makes an index past the buffer end UNSAT (the
     -- model refuses it) rather than a native overrun.
-    cibuf.count < 2048
+    claimidx_buf.count < 2048
     ci_names ∈ String
     ci_add ∈ Bool = (d_enter_skip
         ∧ (d_head_is_claim ∨ (tok0 matches KwType))
@@ -43,11 +43,11 @@ fsm DriverClaimIdx
     ci_entry ∈ String
     FtiNameEntry(name ↦ d_cl_name, entry ↦ ci_entry)
     FtiNamedAppend(first ↦ is_first_tick, add ↦ ci_add,
-        prev_count ↦ _cibuf.count, prev_names ↦ _ci_names,
+        prev_count ↦ _claimidx_buf.count, prev_names ↦ _ci_names,
         init_count ↦ 0, seed_names ↦ "", entry ↦ ci_entry,
-        count ↦ cibuf.count, names ↦ ci_names)
+        count ↦ claimidx_buf.count, names ↦ ci_names)
     e_ciw ∈ Effect
-    BuildMemWriteLong(addr ↦ cibuf.base + (8 * _cibuf.count), value ↦ _tok_cur + 2,
+    BuildMemWriteLong(addr ↦ claimidx_buf.base + (8 * _claimidx_buf.count), value ↦ _tok_cur + 2,
         eff ↦ e_ciw)
 
     -- pmode 4 collection: one variant per tick — `Vname [|]` or a

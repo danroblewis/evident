@@ -1,6 +1,6 @@
 -- MODULE DriverSymLookup
 -- CONSUMES: the lookup name d_lkname, the symbol-table name registry
---           (st_names) + base (stbuf.base), the inline-frame slot-bind
+--           (st_names) + base (sym_buf.base), the inline-frame slot-bind
 --           registry (ilb_n*/ilb_h*), the import/inline prefix (_il_pfx),
 --           the enum-variant value registry (evt, a bounded Seq), and the cached
 --           z_true/z_false handles.
@@ -49,4 +49,4 @@ fsm DriverSymLookup
         : evt[5].name = d_lkname ? evt[5].value
         : 0)
     d_eff_stread ∈ Effect
-    BuildMemReadLong(addr ↦ stbuf.base + (8 * (d_lk_pos_eff / 32)), eff ↦ d_eff_stread)
+    BuildMemReadLong(addr ↦ sym_buf.base + (8 * (d_lk_pos_eff / 32)), eff ↦ d_eff_stread)

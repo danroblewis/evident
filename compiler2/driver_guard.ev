@@ -33,7 +33,7 @@ fsm DriverGuard
         ∧ (gc_op matches OpImpl) ∧ (gc_rnm ≠ "") ∧ (gc_pos ≥ 0)
         ∧ (_il_depth < 8))
     e_gcr ∈ Effect
-    BuildMemReadLong(addr ↦ cibuf.base + (8 * (gc_pos / 32)), eff ↦ e_gcr)
+    BuildMemReadLong(addr ↦ claimidx_buf.base + (8 * (gc_pos / 32)), eff ↦ e_gcr)
     gj_cap ∈ Bool = (in_parse ∧ (_pmode = 10) ∧ (_cw_st = 3))
     gj_fire ∈ Bool = (in_parse ∧ (_pmode = 10) ∧ (_cw_st = 4)
         ∧ d_witems_nil)

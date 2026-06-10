@@ -25,8 +25,8 @@ fsm main
     d_cl_name = (is_first_tick ? "x" : _d_cl_name)
     c_eff_cond ∈ Bool
     c_eff_cond = (is_first_tick ? false : _c_eff_cond)
-    cibuf ∈ FtiBuffer
-    cibuf.base = (is_first_tick ? 0 : _cibuf.base)
+    claimidx_buf ∈ FtiBuffer
+    claimidx_buf.base = (is_first_tick ? 0 : _claimidx_buf.base)
     d_enter_edecl ∈ Bool
     d_enter_edecl = (is_first_tick ? false : _d_enter_edecl)
     d_enter_el ∈ Bool
@@ -76,7 +76,7 @@ fsm main
     z_lc_decl ∈ Int
     z_lc_decl = (is_first_tick ? 0 : _z_lc_decl)
     ..DriverClaimIdx
-    c_msg ∈ String = str_from_int(cibuf.count)
-    effects ∈ Seq(Effect) = ((cibuf.count = 3)
+    c_msg ∈ String = str_from_int(claimidx_buf.count)
+    effects ∈ Seq(Effect) = ((claimidx_buf.count = 3)
         ? ⟨LibCall("libc", "puts", ⟨ArgStr(c_msg)⟩), Exit(0)⟩
         : ⟨LibCall("libc", "getpid", ⟨⟩)⟩)

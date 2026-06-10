@@ -5,12 +5,12 @@
 -- PRODUCES: the Z3-lifecycle latch bank — zstep (the setup program
 --           counter) plus every captured handle/const it latches:
 --           z3ctx (cfg/ctx/sol), z3sorts (the four base sorts isort/
---           bsort/ssort/rsort), z_arena, z_arrsort, the effects-array
---           consts (z_sym_effs/z_effs/z_sym_elen/z_elen), the numeral
+--           bsort/ssort/rsort), z_arena, z_eff_arrsort, the effects-array
+--           consts (z_effects_sym/z_effects/z_efflen_sym/z_efflen), the numeral
 --           consts z3nums (zero..four), z_true/z_false, the token/symbol/
 --           claim-index buffer bases (tbase/st_base/ci_base), and the
 --           last_results / is_first_tick build-context consts
---           (z_lrsort..z_lrge, z_ege).
+--           (z_lastres_sort..z_lastres_ge, z_efflen_ge).
 -- MAINTAINS: zstep advances one step per tick (−2,−1,0,1,… capped at
 --           60) EXCEPT it HOLDS at 9 while the ED machine runs, so each
 --           handle latches exactly once at its named zstep; the latch is
@@ -19,9 +19,9 @@
 -- The ZINIT Z3-lifecycle setup. Lifted into driver_main via `..DriverZInit`.
 fsm DriverZInit
     zstep  ∈ Int
-    ed_hold ∈ Bool = (_ed_act ≠ 0 ∨ _ed_src < 4)
+    enum_hold ∈ Bool = (_ed_act ≠ 0 ∨ _ed_src < 4)
     zstep = (is_first_tick ? 0 - 2
-        : (_zstep = 9 ∧ ed_hold) ? 9
+        : (_zstep = 9 ∧ enum_hold) ? 9
         : (_zstep < 60 ? _zstep + 1 : _zstep))
 
     z3ctx ∈ Z3SolverCtx
@@ -37,16 +37,16 @@ fsm DriverZInit
     z_arena ∈ Int
     z_arena = (is_first_tick ? 0
         : (zstep = 9 ∧ _zstep = 8) ? d_cap_int : _z_arena)
-    z_arrsort ∈ Int
-    z_arrsort = (is_first_tick ? 0 : zstep = 11 ? d_cap_int : _z_arrsort)
-    z_sym_effs ∈ Int
-    z_sym_effs = (is_first_tick ? 0 : zstep = 12 ? d_cap_int : _z_sym_effs)
-    z_effs ∈ Int
-    z_effs = (is_first_tick ? 0 : zstep = 13 ? d_cap_int : _z_effs)
-    z_sym_elen ∈ Int
-    z_sym_elen = (is_first_tick ? 0 : zstep = 14 ? d_cap_int : _z_sym_elen)
-    z_elen ∈ Int
-    z_elen = (is_first_tick ? 0 : zstep = 15 ? d_cap_int : _z_elen)
+    z_eff_arrsort ∈ Int
+    z_eff_arrsort = (is_first_tick ? 0 : zstep = 11 ? d_cap_int : _z_eff_arrsort)
+    z_effects_sym ∈ Int
+    z_effects_sym = (is_first_tick ? 0 : zstep = 12 ? d_cap_int : _z_effects_sym)
+    z_effects ∈ Int
+    z_effects = (is_first_tick ? 0 : zstep = 13 ? d_cap_int : _z_effects)
+    z_efflen_sym ∈ Int
+    z_efflen_sym = (is_first_tick ? 0 : zstep = 14 ? d_cap_int : _z_efflen_sym)
+    z_efflen ∈ Int
+    z_efflen = (is_first_tick ? 0 : zstep = 15 ? d_cap_int : _z_efflen)
     z3nums ∈ Z3Numerals
     z3nums.zero = (is_first_tick ? 0 : zstep = 16 ? d_cap_int : _z3nums.zero)
     z3nums.one = (is_first_tick ? 0 : zstep = 17 ? d_cap_int : _z3nums.one)
@@ -55,34 +55,34 @@ fsm DriverZInit
     z_true = (is_first_tick ? 0 : zstep = 19 ? d_cap_int : _z_true)
     z_false ∈ Int
     z_false = (is_first_tick ? 0 : zstep = 20 ? d_cap_int : _z_false)
-    tbuf ∈ FtiBuffer
-    tbuf.base = (is_first_tick ? 0 : zstep = 21 ? d_cap_int : _tbuf.base)
-    tbuf.cap = 65534
-    stbuf ∈ FtiBuffer
-    stbuf.base = (is_first_tick ? 0 : zstep = 22 ? d_cap_int : _stbuf.base)
-    stbuf.cap = 8192
-    z_lrsort ∈ Int
-    z_lrsort = (is_first_tick ? 0 : zstep = 23 ? d_cap_int : _z_lrsort)
-    z_sym_lr ∈ Int
-    z_sym_lr = (is_first_tick ? 0 : zstep = 24 ? d_cap_int : _z_sym_lr)
+    tok_buf ∈ FtiBuffer
+    tok_buf.base = (is_first_tick ? 0 : zstep = 21 ? d_cap_int : _tok_buf.base)
+    tok_buf.cap = 65534
+    sym_buf ∈ FtiBuffer
+    sym_buf.base = (is_first_tick ? 0 : zstep = 22 ? d_cap_int : _sym_buf.base)
+    sym_buf.cap = 8192
+    z_lastres_sort ∈ Int
+    z_lastres_sort = (is_first_tick ? 0 : zstep = 23 ? d_cap_int : _z_lastres_sort)
+    z_lastres_sym ∈ Int
+    z_lastres_sym = (is_first_tick ? 0 : zstep = 24 ? d_cap_int : _z_lastres_sym)
     z_lastres ∈ Int
     z_lastres = (is_first_tick ? 0 : zstep = 25 ? d_cap_int : _z_lastres)
-    z_sym_lrl ∈ Int
-    z_sym_lrl = (is_first_tick ? 0 : zstep = 26 ? d_cap_int : _z_sym_lrl)
-    z_lrlen ∈ Int
-    z_lrlen = (is_first_tick ? 0 : zstep = 27 ? d_cap_int : _z_lrlen)
-    z_sym_ift ∈ Int
-    z_sym_ift = (is_first_tick ? 0 : zstep = 28 ? d_cap_int : _z_sym_ift)
-    z_ift ∈ Int
-    z_ift = (is_first_tick ? 0 : zstep = 29 ? d_cap_int : _z_ift)
-    z_lrge ∈ Int
-    z_lrge = (is_first_tick ? 0 : zstep = 30 ? d_cap_int : _z_lrge)
+    z_lastres_len_sym ∈ Int
+    z_lastres_len_sym = (is_first_tick ? 0 : zstep = 26 ? d_cap_int : _z_lastres_len_sym)
+    z_lastres_len ∈ Int
+    z_lastres_len = (is_first_tick ? 0 : zstep = 27 ? d_cap_int : _z_lastres_len)
+    z_first_tick_sym ∈ Int
+    z_first_tick_sym = (is_first_tick ? 0 : zstep = 28 ? d_cap_int : _z_first_tick_sym)
+    z_first_tick ∈ Int
+    z_first_tick = (is_first_tick ? 0 : zstep = 29 ? d_cap_int : _z_first_tick)
+    z_lastres_ge ∈ Int
+    z_lastres_ge = (is_first_tick ? 0 : zstep = 30 ? d_cap_int : _z_lastres_ge)
     z3nums.three = (is_first_tick ? 0 : zstep = 33 ? d_cap_int : _z3nums.three)
     z3nums.four = (is_first_tick ? 0 : zstep = 34 ? d_cap_int : _z3nums.four)
-    z_iarr ∈ Int
-    z_iarr = (is_first_tick ? 0 : zstep = 35 ? d_cap_int : _z_iarr)
-    z_ege ∈ Int
-    z_ege = (is_first_tick ? 0 : zstep = 36 ? d_cap_int : _z_ege)
-    cibuf ∈ FtiBuffer
-    cibuf.base = (is_first_tick ? 0 : zstep = 38 ? d_cap_int : _cibuf.base)
-    cibuf.cap = 2048
+    z_intarr_sort ∈ Int
+    z_intarr_sort = (is_first_tick ? 0 : zstep = 35 ? d_cap_int : _z_intarr_sort)
+    z_efflen_ge ∈ Int
+    z_efflen_ge = (is_first_tick ? 0 : zstep = 36 ? d_cap_int : _z_efflen_ge)
+    claimidx_buf ∈ FtiBuffer
+    claimidx_buf.base = (is_first_tick ? 0 : zstep = 38 ? d_cap_int : _claimidx_buf.base)
+    claimidx_buf.cap = 2048

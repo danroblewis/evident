@@ -1,6 +1,6 @@
 -- DriverBuildEff isolation — the ED effect-row selector.
 -- Act 2 (datatype run) step 2 is the name+constructor-list double write:
--- ed_w2 must select it (w2=1, w5/w3u=0). Boundary case vs the w5 row.
+-- enum_wbatch2 must select it (w2=1, w5/w3u=0). Boundary case vs the w5 row.
 -- entry: main
 -- expect: stdout = "0/1/0"
 -- expect: exit = 0
@@ -49,13 +49,13 @@ fsm main
     ed_step = (is_first_tick ? 0 : _ed_step)
     ed_vidx ∈ Int
     ed_vidx = (is_first_tick ? 0 : _ed_vidx)
-    stbuf ∈ FtiBuffer
-    stbuf.base = (is_first_tick ? 0 : _stbuf.base)
-    stbuf.count = (is_first_tick ? 0 : _stbuf.count)
+    sym_buf ∈ FtiBuffer
+    sym_buf.base = (is_first_tick ? 0 : _sym_buf.base)
+    sym_buf.count = (is_first_tick ? 0 : _sym_buf.count)
     z_arena ∈ Int
     z_arena = (is_first_tick ? 0 : _z_arena)
-    z_arrsort ∈ Int
-    z_arrsort = (is_first_tick ? 0 : _z_arrsort)
+    z_eff_arrsort ∈ Int
+    z_eff_arrsort = (is_first_tick ? 0 : _z_eff_arrsort)
     z3sorts ∈ Z3Sorts
     z3sorts.isort = (is_first_tick ? 0 : _z3sorts.isort)
     z3sorts.bsort = (is_first_tick ? 0 : _z3sorts.bsort)
@@ -67,32 +67,32 @@ fsm main
     z3ctx.sol = (is_first_tick ? 0 : _z3ctx.sol)
     z_effsort ∈ Int
     z_effsort = (is_first_tick ? 0 : _z_effsort)
-    z_ege ∈ Int
-    z_ege = (is_first_tick ? 0 : _z_ege)
-    z_elen ∈ Int
-    z_elen = (is_first_tick ? 0 : _z_elen)
-    z_ift ∈ Int
-    z_ift = (is_first_tick ? 0 : _z_ift)
+    z_efflen_ge ∈ Int
+    z_efflen_ge = (is_first_tick ? 0 : _z_efflen_ge)
+    z_efflen ∈ Int
+    z_efflen = (is_first_tick ? 0 : _z_efflen)
+    z_first_tick ∈ Int
+    z_first_tick = (is_first_tick ? 0 : _z_first_tick)
     z_lastres ∈ Int
     z_lastres = (is_first_tick ? 0 : _z_lastres)
-    z_lrge ∈ Int
-    z_lrge = (is_first_tick ? 0 : _z_lrge)
-    z_lrlen ∈ Int
-    z_lrlen = (is_first_tick ? 0 : _z_lrlen)
-    z_lrsort ∈ Int
-    z_lrsort = (is_first_tick ? 0 : _z_lrsort)
+    z_lastres_ge ∈ Int
+    z_lastres_ge = (is_first_tick ? 0 : _z_lastres_ge)
+    z_lastres_len ∈ Int
+    z_lastres_len = (is_first_tick ? 0 : _z_lastres_len)
+    z_lastres_sort ∈ Int
+    z_lastres_sort = (is_first_tick ? 0 : _z_lastres_sort)
     z_ressort ∈ Int
     z_ressort = (is_first_tick ? 0 : _z_ressort)
-    z_sym_effs ∈ Int
-    z_sym_effs = (is_first_tick ? 0 : _z_sym_effs)
-    z_sym_elen ∈ Int
-    z_sym_elen = (is_first_tick ? 0 : _z_sym_elen)
-    z_sym_ift ∈ Int
-    z_sym_ift = (is_first_tick ? 0 : _z_sym_ift)
-    z_sym_lr ∈ Int
-    z_sym_lr = (is_first_tick ? 0 : _z_sym_lr)
-    z_sym_lrl ∈ Int
-    z_sym_lrl = (is_first_tick ? 0 : _z_sym_lrl)
+    z_effects_sym ∈ Int
+    z_effects_sym = (is_first_tick ? 0 : _z_effects_sym)
+    z_efflen_sym ∈ Int
+    z_efflen_sym = (is_first_tick ? 0 : _z_efflen_sym)
+    z_first_tick_sym ∈ Int
+    z_first_tick_sym = (is_first_tick ? 0 : _z_first_tick_sym)
+    z_lastres_sym ∈ Int
+    z_lastres_sym = (is_first_tick ? 0 : _z_lastres_sym)
+    z_lastres_len_sym ∈ Int
+    z_lastres_len_sym = (is_first_tick ? 0 : _z_lastres_len_sym)
     z3nums ∈ Z3Numerals
     z3nums.zero = (is_first_tick ? 0 : _z3nums.zero)
     z3nums.one = (is_first_tick ? 0 : _z3nums.one)
@@ -110,7 +110,7 @@ fsm main
     d_op_geq ∈ Op = OpGeq
     ed_v ∈ EnumVariantDecl = EVNoVariant
     ..DriverBuildEff
-    sel ∈ String = (ed_w5 ? "1" : "0") ++ "/" ++ (ed_w2 ? "1" : "0") ++ "/" ++ (ed_w3u ? "1" : "0")
+    sel ∈ String = (enum_wbatch5 ? "1" : "0") ++ "/" ++ (enum_wbatch2 ? "1" : "0") ++ "/" ++ (enum_wbatch3u ? "1" : "0")
     effects ∈ Seq(Effect) = ((¬is_first_tick)
         ? ⟨LibCall("libc", "puts", ⟨ArgStr(sel)⟩), Exit(0)⟩
         : ⟨LibCall("libc", "getpid", ⟨⟩)⟩)
