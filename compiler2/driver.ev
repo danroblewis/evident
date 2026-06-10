@@ -431,6 +431,13 @@ fsm driver_main
         ? "(declare-fun _" ++ line_dname ++ " () (Array " ++ seq_elt_tyname ++ " Bool))\n"
         : "(declare-fun _" ++ line_dname ++ " () " ++ mem_tyname ++ ")\n")
 
+    -- The bundled parse context (window + gate), built once per tick and
+    -- passed to bare-mention components as one slot.
+    parse_ctx ∈ ParseCtx(tok0 ↦ tok0, tok1 ↦ tok1, tok2 ↦ tok2, tok3 ↦ tok3,
+        tok4 ↦ tok4, tok5 ↦ tok5, tok6 ↦ tok6, tok7 ↦ tok7,
+        parse_mode ↦ _parse_mode, in_parse ↦ in_parse,
+        tok_ready ↦ tok_ready, work_nil ↦ work_nil)
+
     -- ── F1: parse_mode-9 GROUP walk (see compiler2/driver_group.ev) ──
     ..DriverGroup
     -- ── F2: composition inlining (see compiler2/driver_compose.ev) ──
