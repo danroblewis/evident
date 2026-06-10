@@ -3,15 +3,19 @@
 # their Evident sources after editing scripts/passes/autocarry_*.ev.
 #
 # Bootstrap note: the pass programs are themselves fsm sources, so this
-# build flattens them through the EXISTING awk pipeline
-# (scripts/flatten-evident.sh, which runs expand-fsm-autocarry.sh) and
-# compiles with the frozen oracle. The awk pass stays in the repo as the
-# reference implementation and this rebuild bootstrap.
+# build flattens them through the awk reference pass
+# (EVIDENT_AUTOCARRY=awk → expand-fsm-autocarry.sh inside
+# flatten-evident.sh) and compiles with the frozen oracle — rebuilding
+# the artifacts never depends on the artifacts being rebuilt. The awk
+# pass stays in the repo as the reference implementation and this
+# rebuild bootstrap; the wired pipeline pass is the Evident port
+# (autocarry-evident.sh).
 #
 # Usage: scripts/passes/build-autocarry.sh
 # Env:   EVIDENT_ORACLE (default /usr/local/bin/evident-oracle)
 
 set -e -u -o pipefail
+export EVIDENT_AUTOCARRY=awk
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$DIR/../.." && pwd)"

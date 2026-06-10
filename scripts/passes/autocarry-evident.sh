@@ -5,14 +5,16 @@
 #   analyze < src  ──record stream──▶  fix  ──2-line edit script──▶  apply
 #        (concurrent pipe)                  (+ src again)
 #
-# Byte-identical to the awk pass on the full corpus gate (236 pipeline
-# streams incl. compiler2/driver.ev) and self-application, 2026-06-10.
+# Byte-identical to the awk pass on the full corpus gate (250 pipeline
+# streams incl. compiler2/driver.ev with the headered DriverBroadcast,
+# the counter_*_header fixtures, and conformance 142-148) and on
+# self-application, 2026-06-10.
 #
-# NOT wired into flatten-evident.sh: the perf budget gate failed —
-# 1.49 s wall on the 8468-line driver stream vs the ≤1 s budget
-# (awk: ~60 ms). Bottleneck: the functionizer interp evaluates ~0.6 us
-# per step per tick across ~10k line-ticks × ~82 steps (analyze alone
-# 0.79 s); see docs/plans/passes-in-evident-walls.md.
+# WIRED into flatten-evident.sh as the production autocarry pass
+# (EVIDENT_AUTOCARRY=awk falls back to the reference awk). Perf gate:
+# 0.33-0.38 s wall on the 8610-line driver stream vs the ≤1 s budget —
+# the kernel's lowered-IR interpreter (2b7312e) closed the prior 1.46 s
+# wall; see docs/plans/passes-in-evident-walls.md.
 #
 # Usage: scripts/passes/autocarry-evident.sh < in.ev > out.ev
 # Env:   EVIDENT_KERNEL (default <repo>/kernel/target/release/kernel)
