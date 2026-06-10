@@ -16,73 +16,51 @@
 --           handle latches exactly once at its named zstep; the latch is
 --           idempotent (holds its prior value off-step).
 --
--- The ZINIT Z3-lifecycle setup. Lifted into driver_main via `..DriverZInit`.
-fsm DriverZInit
-    zstep  ∈ Int
-    enum_hold ∈ Bool = (_enum_act ≠ 0 ∨ _enum_src < 4)
+-- The ZINIT Z3-lifecycle setup. Composed into driver_main by BARE
+-- MENTION against the header below — the whole latch bank is interface
+-- (the consumers read every handle); only the setup-busy gate is
+-- internal.
+fsm DriverZInit(zstep ∈ Int, z3ctx ∈ Z3SolverCtx, z3sorts ∈ Z3Sorts, z3nums ∈ Z3Numerals, z_arena ∈ Int, z_eff_arrsort ∈ Int, z_effects_sym ∈ Int, z_effects ∈ Int, z_efflen_sym ∈ Int, z_efflen ∈ Int, z_true ∈ Int, z_false ∈ Int, tok_buf ∈ FtiBuffer, sym_buf ∈ FtiBuffer, claimidx_buf ∈ FtiBuffer, z_lastres_sort ∈ Int, z_lastres_sym ∈ Int, z_lastres ∈ Int, z_lastres_len_sym ∈ Int, z_lastres_len ∈ Int, z_first_tick_sym ∈ Int, z_first_tick ∈ Int, z_lastres_ge ∈ Int, z_intarr_sort ∈ Int, z_efflen_ge ∈ Int)
+    enum_setup_busy ∈ Bool = (_enum_act ≠ 0 ∨ _enum_src < 4)
     zstep = (is_first_tick ? 0 - 2
-        : (_zstep = 9 ∧ enum_hold) ? 9
+        : (_zstep = 9 ∧ enum_setup_busy) ? 9
         : (_zstep < 60 ? _zstep + 1 : _zstep))
 
-    z3ctx ∈ Z3SolverCtx
     z3ctx.cfg = (is_first_tick ? 0 : zstep = 1 ? cap_int : _z3ctx.cfg)
     z3ctx.ctx = (is_first_tick ? 0 : zstep = 2 ? cap_int : _z3ctx.ctx)
     z3ctx.sol = (is_first_tick ? 0 : zstep = 3 ? cap_int : _z3ctx.sol)
-    z3sorts ∈ Z3Sorts
     z3sorts.isort = (is_first_tick ? 0 : zstep = 5 ? cap_int : _z3sorts.isort)
     z3sorts.bsort = (is_first_tick ? 0 : zstep = 6 ? cap_int : _z3sorts.bsort)
     z3sorts.ssort = (is_first_tick ? 0 : zstep = 7 ? cap_int : _z3sorts.ssort)
     z3sorts.rsort = (is_first_tick ? 0 : zstep = 8 ? cap_int : _z3sorts.rsort)
     -- zstep holds at 9; latch the arena only on the FIRST 9-tick.
-    z_arena ∈ Int
     z_arena = (is_first_tick ? 0
         : (zstep = 9 ∧ _zstep = 8) ? cap_int : _z_arena)
-    z_eff_arrsort ∈ Int
     z_eff_arrsort = (is_first_tick ? 0 : zstep = 11 ? cap_int : _z_eff_arrsort)
-    z_effects_sym ∈ Int
     z_effects_sym = (is_first_tick ? 0 : zstep = 12 ? cap_int : _z_effects_sym)
-    z_effects ∈ Int
     z_effects = (is_first_tick ? 0 : zstep = 13 ? cap_int : _z_effects)
-    z_efflen_sym ∈ Int
     z_efflen_sym = (is_first_tick ? 0 : zstep = 14 ? cap_int : _z_efflen_sym)
-    z_efflen ∈ Int
     z_efflen = (is_first_tick ? 0 : zstep = 15 ? cap_int : _z_efflen)
-    z3nums ∈ Z3Numerals
     z3nums.zero = (is_first_tick ? 0 : zstep = 16 ? cap_int : _z3nums.zero)
     z3nums.one = (is_first_tick ? 0 : zstep = 17 ? cap_int : _z3nums.one)
     z3nums.two = (is_first_tick ? 0 : zstep = 18 ? cap_int : _z3nums.two)
-    z_true ∈ Int
     z_true = (is_first_tick ? 0 : zstep = 19 ? cap_int : _z_true)
-    z_false ∈ Int
     z_false = (is_first_tick ? 0 : zstep = 20 ? cap_int : _z_false)
-    tok_buf ∈ FtiBuffer
     tok_buf.base = (is_first_tick ? 0 : zstep = 21 ? cap_int : _tok_buf.base)
     tok_buf.cap = 65534
-    sym_buf ∈ FtiBuffer
     sym_buf.base = (is_first_tick ? 0 : zstep = 22 ? cap_int : _sym_buf.base)
     sym_buf.cap = 8192
-    z_lastres_sort ∈ Int
     z_lastres_sort = (is_first_tick ? 0 : zstep = 23 ? cap_int : _z_lastres_sort)
-    z_lastres_sym ∈ Int
     z_lastres_sym = (is_first_tick ? 0 : zstep = 24 ? cap_int : _z_lastres_sym)
-    z_lastres ∈ Int
     z_lastres = (is_first_tick ? 0 : zstep = 25 ? cap_int : _z_lastres)
-    z_lastres_len_sym ∈ Int
     z_lastres_len_sym = (is_first_tick ? 0 : zstep = 26 ? cap_int : _z_lastres_len_sym)
-    z_lastres_len ∈ Int
     z_lastres_len = (is_first_tick ? 0 : zstep = 27 ? cap_int : _z_lastres_len)
-    z_first_tick_sym ∈ Int
     z_first_tick_sym = (is_first_tick ? 0 : zstep = 28 ? cap_int : _z_first_tick_sym)
-    z_first_tick ∈ Int
     z_first_tick = (is_first_tick ? 0 : zstep = 29 ? cap_int : _z_first_tick)
-    z_lastres_ge ∈ Int
     z_lastres_ge = (is_first_tick ? 0 : zstep = 30 ? cap_int : _z_lastres_ge)
     z3nums.three = (is_first_tick ? 0 : zstep = 33 ? cap_int : _z3nums.three)
     z3nums.four = (is_first_tick ? 0 : zstep = 34 ? cap_int : _z3nums.four)
-    z_intarr_sort ∈ Int
     z_intarr_sort = (is_first_tick ? 0 : zstep = 35 ? cap_int : _z_intarr_sort)
-    z_efflen_ge ∈ Int
     z_efflen_ge = (is_first_tick ? 0 : zstep = 36 ? cap_int : _z_efflen_ge)
-    claimidx_buf ∈ FtiBuffer
     claimidx_buf.base = (is_first_tick ? 0 : zstep = 38 ? cap_int : _claimidx_buf.base)
     claimidx_buf.cap = 2048
