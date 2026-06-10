@@ -63,31 +63,89 @@ widening costs nothing on the existing corpus.
 | 1 | pre-widening (6-slot registries, +64 ctor array) | exited after ~750 s with **zero output lines**; stderr carried only the functionizer summary (`2114 total / 617 JIT / 1347 interp / 71 residual; 0.0 ms z3`). Diagnosed as wall 1 (ctor clobber → EINVAL). |
 | 2 | post-widening (05:16 build, contains 2048 arena) | launched 05:15–05:16, `EVIDENT_TICK_LIMIT=2000000 timeout 3600`; outcome recorded below. |
 
-## Attempt v2 outcome (2026-06-10 05:15–05:32): TICK-BUDGET WALL, not a crash
+## Attempt v2 outcome (2026-06-10 05:15–05:32): rc=7, ROOT-CAUSED below
 
-`EVIDENT_TICK_LIMIT=2000000 kernel compiler2-stage1.smt2 < sample_flat.ev`
-(5,326 flattened lines) exhausted the full 2M-tick budget in ~992s and
-exited with empty output (never reached emit). The decisive line:
+**Correction (2026-06-10, later the same day): v2 did NOT exhaust the
+tick budget.** A tick-limit halt exits **3** with `kernel: tick limit
+(N) reached` on stderr (kernel/src/main.rs maps every `tick::run` Err
+to 3); v2's stderr carried no such line and the exit code was **7** —
+a *driver-emitted* `Exit(7)`, the TernaryBuildZ3 null-operand guard
+(the only Exit(7) in compiler2). Both v1 (rc=7 @750s) and v2 (rc=7
+@992s) died at the SAME guard at the same input position; the 750→992s
+ratio matches the 2114→2976 widened step count, not a budget edge.
 
 ```
 [functionizer] 2976 total / 894 JIT / 1932 interp / 71 residual;
 992629.8 ms total (889154.1 ms func / 0.0 ms z3)
 ```
 
-- **0.0 ms z3 over 2M ticks** — the driver stayed fully functionized at
-  compiler-scale input. The constraint architecture is NOT the wall.
-- **~0.50 ms/tick, 90% in `func`** — the per-step interpreter (1932 of
-  2976 steps interp, not JIT) is the entire cost. This is the SAME wall
-  the autocarry-in-Evident port measured (docs/plans/passes-in-evident-walls.md:
-  ~0.5–0.7µs per step per tick): convergent evidence from two independent
-  workloads.
-- Budget arithmetic: at ~375 ticks/input-line observed on fixtures, 5,326
-  lines wants ~2M ticks just for the walk — the budget was at the knife
-  edge. But raising the tick limit alone buys at best linear headroom at
-  ~0.5 ms/tick (≥30 min compiles); the real fix is per-tick cost.
+Two findings stand regardless: **0.0 ms z3 at compiler-scale input**
+(the constraint architecture holds), and **~0.5 ms/tick interp cost**
+(the wave-5c-adjacent throughput concern is real — it makes every
+attempt slow — but it is not what killed the compile).
 
-**Conclusion: the sample rung and the passes-in-Evident wiring share one
-blocker — functionizer step-interp throughput (JIT coverage for the
-string/accessor shapes that today fall to interp, or a kernel string-step
-JIT). That is wave-5c-adjacent kernel work and is now the single highest-
-leverage item on the self-hosting path.**
+## Root cause of rc=7 (bisected via 9 probe fixtures, 2026-06-10)
+
+The 0-handle reaching the ternary guard was the END of a silent causal
+chain that starts in enum-decl DISPATCH. Three stacked grammar gaps,
+all of which used to fail silently:
+
+### Wall A — ONE user enum per program (the primary blocker)
+
+`enter_enum_decl` (compiler2/driver.ev) requires `(¬_user_enum_done)`:
+the SECOND and every later user `enum` decl falls through to
+`enter_skip` and is silently dropped. Every variant of every dropped
+enum resolves to 0 handles at use (ternary branch → Exit(7); pin RHS →
+kernel null-AST guard, `Error: invalid argument`, rc=1). The singular
+`user_enum_name` / `user_enum_sort` registers and driver_classify's
+`line_ty_name = _user_enum_name` membership sort-code all assume one
+user enum. sample.ev declares **31**. The conformance corpus (137/138
+green) never exercises two user enums — which is why this survived.
+Repro: `tests/seam/known-failing/repro_second_enum.ev`.
+
+### Wall B — variant payload arity ≤ 2
+
+The variant walker (compiler2/driver_claimidx.ev) has `variant_pay1` /
+`variant_pay2` forms only; a 3-field payload spans past the 8-token
+lookahead window. sample.ev: `FloatLit(Int,Int,Int)`,
+`EBinOp(Op,Expr,Expr)`, `ECall3(...)`, `ETernary(...)`. Repro:
+`tests/seam/known-failing/repro_payload_arity3.ev`.
+
+### Wall C — payload types limited to Int/Bool/String/Real/self
+
+`variant_ty0_ok/ty1_ok` whitelist (driver_claimidx.ev) admits the four
+scalar types plus self-reference (`_user_enum_name`); `FieldSortSlot`
+(translate2_ctor.ev) and the `field_sort*` fallthroughs (driver_enum.ev)
+can produce sorts only for those plus the floor types. A cross-enum
+payload (`EBinOp(Op, …)`, `MArm(MatchPattern, Expr)`, every cons-list
+over a payload type) has no sort source — there is no per-enum sort
+registry and no mutual-recursion (multi-sort `Z3_mk_datatypes`) build.
+**33 of sample.ev's 157 variants** need Wall B and/or Wall C support
+(census script in git history; `Nat` is also missing from the
+whitelist).
+
+### What landed now: silent → LOUD (commit pending, gates green)
+
+A compiler must error nameably, not 992s later (the TernaryBuildZ3
+precedent). Two guards:
+
+- `variant_unsupported` (Wall B/C at the walker) → puts diagnostic +
+  **Exit(8)**.
+- `enum_decl_second` (Wall A at dispatch) → puts diagnostic +
+  **Exit(9)**.
+
+sample.ev now fails in the parse phase with the Wall-A message instead
+of rc=7 after 16 minutes. Probe battery: arity-3 → 8, second-enum → 9,
+all previously-supported shapes (incl. 60-variant single enum,
+payload-ctor ternaries, repro_deep) still compile.
+
+### The remaining rung plan (out of this session's scope)
+
+Wall A/B/C are one wave: a user-enum registry (name → sort/ctor-list,
+the same bounded-Seq registry pattern as `user_variants`), batched
+multi-sort `Z3_mk_datatypes` for mutual recursion, an N-field variant
+walk (multi-tick, not window-bound), and `FieldSortSlot` consulting the
+registry. The gap census called this C1 and sized it L — that estimate
+stands. The ~0.5 ms/tick interp throughput item is the *second* wall
+behind it (a full-sample compile at current speed is ~20+ min even
+once it compiles).

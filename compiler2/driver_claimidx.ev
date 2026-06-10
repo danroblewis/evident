@@ -84,6 +84,14 @@ fsm DriverClaimIdx
     variant_more_pay ∈ Bool = (variant_pay2 ? (tok6 matches Pipe)
         : (tok4 matches Pipe))
     variant_more_any ∈ Bool = (variant_payload ? variant_more_pay : variant_more)
+    -- A payload that opened `(` but didn't parse is an UNSUPPORTED
+    -- VARIANT SHAPE (arity ≥3, or a payload type outside
+    -- Int/Bool/String/Real/self — cross-enum payloads included). The
+    -- old silent bail dropped the whole enum decl and the failure
+    -- surfaced ~900s later as a 0-handle Exit(7) in an unrelated
+    -- ternary (sample.ev, 2026-06-10). Halt nameably instead: Exit(8).
+    variant_unsupported ∈ Bool = (variant_walk_on
+        ∧ variant_payload ∧ (¬variant_pay_ok))
     variant_bail ∈ Bool = (variant_walk_on
         ∧ ((variant_payload ∧ (¬variant_pay_ok)) ∨ (¬variant_name_ok)))
     variant_take ∈ Bool = (variant_walk_on ∧ variant_name_ok ∧ ((¬variant_payload) ∨ variant_pay_ok))
