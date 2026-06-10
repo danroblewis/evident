@@ -1,8 +1,19 @@
 # Multi-enum grammar — unblocking the sample self-host rung
 
-**Status:** proposed (2026-06-10). Queued **behind** the in-flight
-claim-headers work (`docs/plans/claim-headers-interface.md`) — see
-"Sequencing" at the end.
+**Status:** LANDED (2026-06-10). Walls A/B/C retired; the
+known-failing repros graduated into `tests/seam/` and conformance
+fixtures 149–153 pin the feature (two-enums, cross-enum payload,
+mutual-recursion pair, arity-3 match read-back, unsat dual).
+Deviations from the sketch below: the build group is collected as a
+prepend cons list during the variant walks (no second token pass);
+acts 1 and 3 peel the group in the same order, so the global ctor
+cursor needs no per-member base bookkeeping; match-pin arm patterns
+walk multi-tick with one bind at any field index (accessors 1..5 on
+an acc-table tape row per registry slot, field 0 via the registry);
+a matches-pattern skim in DriverPratt consumes 3+-element patterns
+past the window. Known residual gap (named, loud at use): ctor
+APPLICATIONS in expressions still cap at 3 args (ECall3) — sample.ev's
+4-field ECall3/ETernary variants will hit it at their call sites.
 
 ## Problem
 

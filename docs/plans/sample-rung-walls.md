@@ -187,3 +187,16 @@ per-enum sort registry must NOT be a wide flat slot family — a tape-side
 (FTI) registry or a narrow per-enum window is required. (The full-sample
 Exit(9) demo remains undemonstrated — it now needs ~150k+ ticks at this
 speed; the guard logic is probe-proven instead.)
+
+## Walls A/B/C retired (2026-06-10, multi-enum grammar)
+
+The multi-enum grammar work (docs/plans/multi-enum-grammar.md, LANDED)
+removed all three: build groups batch consecutive enum decls into one
+Z3_mk_datatypes call (mutual recursion by sort-ref index), the variant
+walker collects up to 6 payload fields one per tick, and payload sorts
+resolve group member → scalar → floor register → enum table (tape-side
+per the v5 datum) with a loud Exit(8) only for genuinely unknown
+types. Exit(9) is deleted; the repros graduated to tests/seam/ and
+compile+run exit 0 on both compiler2 and the oracle. The next rung
+walls are the ECall3 call-site arity cap (4-field ctor applications)
+and the interp throughput multiplier.

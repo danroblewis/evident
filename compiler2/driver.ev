@@ -97,7 +97,7 @@
 --     an unknown call name pushes handle 0 (unbound-ident parity)
 --   · symbol table: 1024 handle slots in a calloc'd buffer +
 --     fixed-width-32 name records in a Z3 String; lookup = pure
---     index_of/32 + one __mem.read_long. Enum-value table: 6.
+--     index_of/32 + one __mem.read_long. Enum-value table: 160.
 --     Slots 0/1 pre-seeded with the kernel-provided last_results /
 --     is_first_tick consts.
 --   · ONE registered Seq var per compile
@@ -240,11 +240,11 @@ fsm driver_main
     in_dispatch ∈ Bool = (in_parse ∧ (_parse_mode = 0) ∧ tok_ready
         ∧ (_enum_act = 0))
     -- BUILD-GROUP trigger (multi-enum-grammar D4): consecutive user
-    -- enum decls accumulate in egroup; the first non-enum top-level
+    -- enum decls accumulate in pend_group; the first non-enum top-level
     -- head (claim/type/EOF — a reserved Effect/Result/LibArg decl
     -- does NOT close the group, it skips) fires one batched build.
     -- Consumes nothing — the same head dispatches normally afterward.
-    enum_group_go ∈ Bool = (in_dispatch ∧ (_egroup_n > 0) ∧ (¬head_is_enum))
+    enum_group_go ∈ Bool = (in_dispatch ∧ (_pend_group_n > 0) ∧ (¬head_is_enum))
     enter_claim ∈ Bool = (in_dispatch ∧ (¬enum_group_go) ∧ (¬head_is_eof) ∧ head_is_claim ∧ is_target ∧ (¬head_has_params))
     enter_claim_params ∈ Bool = (in_dispatch ∧ (¬enum_group_go) ∧ (¬head_is_eof) ∧ head_is_claim ∧ is_target ∧ head_has_params)
     enter_enum_decl ∈ Bool = (in_dispatch ∧ (¬head_is_eof)
