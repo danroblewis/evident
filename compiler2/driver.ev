@@ -205,7 +205,37 @@ fsm driver_main
     -- ── enum-decl + Z3-lifecycle effect bank (see compiler2/driver_buildeff.ev) ──
     ..DriverBuildEff
     -- ── LEX (fossil FSM; gated to start after ZINIT) ──────────────
-    ..DriverLex
+    -- Bare mention against its header: these twenty-seven declarations
+    -- ARE the lexer interface (write effects + scheduling views + the
+    -- carried scan state); its other names are per-call-site internals.
+    lex_done ∈ Bool
+    have_pend_str ∈ Bool
+    write_pend_str ∈ Effect
+    write_eof ∈ Effect
+    write_tag0 ∈ Effect
+    write_tag1 ∈ Effect
+    write_pay0 ∈ Effect
+    eff_strdup ∈ Effect
+    plan_kind ∈ Int
+    float_finish ∈ Bool
+    float_with_op ∈ Bool
+    write_float_tag ∈ Effect
+    write_float_pay ∈ Effect
+    write_float_op ∈ Effect
+    pos ∈ Int
+    next_pos ∈ Int
+    partial_str ∈ String
+    partial_int ∈ Int
+    in_strlit ∈ Bool
+    partial_strlit ∈ String
+    esc_pending ∈ Bool
+    in_fraction ∈ Bool
+    float_whole ∈ Int
+    frac_digits ∈ Int
+    lex_last_tag ∈ Int
+    lex_prev_tag ∈ Int
+    pend_str_addr ∈ Int
+    DriverLex
 
     -- ── PHASE control (0 lex · 2 parse · 3 emit; REVERSE deleted) ─
     phase  ∈ Int

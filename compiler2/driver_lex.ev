@@ -4,37 +4,45 @@
 --           (start gate), and the pure lex char-class helpers
 --           (IsAlphaChar/IsDigitChar/IsWhitespace/IsQuote/LexCharTag/
 --           DigitToInt/EscapeChar/WsRunLen) + the LexFtiPlan token planner.
--- PRODUCES: the FTI token-buffer write effects (write_tag0/write_pay0/write_tag1/
---           write_pend_str/write_eof, float write_float_tag/write_float_pay/write_float_op, eff_strdup), the lexer
---           cursor (tok_buf.count/lex_last_tag/lex_prev_tag/pend_str_addr), the per-tick token
---           plan (plan_* regs, plan_kind), next_pos, and the strlit/int/float
---           collection state.
+-- PRODUCES: the HEADER below — the checked interface: the FTI token-
+--           buffer write effects (write_tag0/write_pay0/write_tag1/
+--           write_pend_str/write_eof, the float writes write_float_tag/
+--           write_float_pay/write_float_op, eff_strdup), the scheduling
+--           views driver_main's effects chain reads (plan_kind/
+--           have_pend_str/float_finish/float_with_op/lex_done), and the
+--           carried scan state (pos/next_pos/partial_*/in_strlit/
+--           esc_pending/in_fraction/float_whole/frac_digits/lex_last_tag/
+--           lex_prev_tag/pend_str_addr — carried header slots, manifest-
+--           visible for the kernel carry step). tok_buf.count is assigned
+--           through the caller's record (names-match write; tok_buf is
+--           declared at the ZINIT site). Everything else is per-call-site
+--           internal.
 -- MAINTAINS: tok_buf.count < 65534 — every write lands inside zinit_tok_buf (a write
 --           past the buffer end is UNSAT, so the kernel halts cleanly
 --           instead of corrupting the heap); the FTI one-triple-per-token
 --           buffer layout (tok_buf.base + count*32).
 --
+-- INTERFACE WIDTH: 27 slots — JUSTIFIED per §6.4: 14 are the write
+-- effects + scheduling views driver_main's effects chain dispatches,
+-- and 13 are the scan-state carries, which must stay header slots to
+-- remain manifest-visible (a hidden carried internal does not carry).
+--
 -- Char-stream → FTI token buffer. The fossil per-char scanner FSM; gated
--- to start after ZINIT. Lifted into driver_main via `..DriverLex`, so its
--- carry pairs (pos, partial_str/int, in_strlit, lex_*, …) become
--- driver_main's own manifest state-fields and carry across ticks.
-fsm DriverLex
-    pos  ∈ Int
-    next_pos  ∈ Int
+-- to start after ZINIT. Composed into driver_main by BARE MENTION
+-- against the header.
+fsm DriverLex(lex_done ∈ Bool, have_pend_str ∈ Bool, write_pend_str ∈ Effect, write_eof ∈ Effect, write_tag0 ∈ Effect, write_tag1 ∈ Effect, write_pay0 ∈ Effect, eff_strdup ∈ Effect, plan_kind ∈ Int, float_finish ∈ Bool, float_with_op ∈ Bool, write_float_tag ∈ Effect, write_float_pay ∈ Effect, write_float_op ∈ Effect, pos ∈ Int, next_pos ∈ Int, partial_str ∈ String, partial_int ∈ Int, in_strlit ∈ Bool, partial_strlit ∈ String, esc_pending ∈ Bool, in_fraction ∈ Bool, float_whole ∈ Int, frac_digits ∈ Int, lex_last_tag ∈ Int, lex_prev_tag ∈ Int, pend_str_addr ∈ Int)
     pos = (is_first_tick ? 0 - 1
         : ((¬_got_path) ? 0 - 1
         : (_zstep < 38 ? 0 - 1
         : (_pos < 0 ? 0 : _next_pos))))
 
-    partial_str  ∈ String
-    partial_int  ∈ Int
 
     cur_char ∈ String = substr(input, pos, 1)
 
     is_alpha ∈ Bool
     IsAlphaChar(c ↦ cur_char, out ↦ is_alpha)
-    is_dig ∈ Bool
-    IsDigitChar(c ↦ cur_char, out ↦ is_dig)
+    is_digit ∈ Bool
+    IsDigitChar(c ↦ cur_char, out ↦ is_digit)
     is_ws ∈ Bool
     IsWhitespace(c ↦ cur_char, out ↦ is_ws)
     is_quote ∈ Bool
@@ -42,8 +50,8 @@ fsm DriverLex
     char_tag ∈ Int
     is_op ∈ Bool
     LexCharTag(c ↦ cur_char, tag ↦ char_tag, recognized ↦ is_op)
-    dig_val ∈ Int
-    DigitToInt(c ↦ cur_char, n ↦ dig_val)
+    digit_val ∈ Int
+    DigitToInt(c ↦ cur_char, n ↦ digit_val)
 
     done ∈ Bool = ((pos ≥ #input) ∧ (#input > 0))
     in_range ∈ Bool = ((pos ≥ 0) ∧ ¬done)
@@ -51,8 +59,6 @@ fsm DriverLex
     was_collecting_str ∈ Bool = (#_partial_str > 0)
     was_collecting_int ∈ Bool = (_partial_int ≥ 0)
 
-    in_strlit  ∈ Bool
-    partial_strlit  ∈ String
 
     -- Escape-pending mode: `\` inside a strlit appends nothing and
     -- arms esc_pending; the NEXT char appends its EscapeChar translation
@@ -62,9 +68,8 @@ fsm DriverLex
     -- carries the four).
     is_backslash ∈ Bool
     IsBackslash(c ↦ cur_char, out ↦ is_backslash)
-    esc_trans ∈ String
-    EscapeChar(c ↦ cur_char, out ↦ esc_trans)
-    esc_pending ∈ Bool
+    esc_char ∈ String
+    EscapeChar(c ↦ cur_char, out ↦ esc_char)
 
     strlit_open       ∈ Bool = ((¬_in_strlit) ∧ is_quote ∧ in_range ∧ (¬was_collecting_str) ∧ (¬was_collecting_int))
     strlit_esc_open   ∈ Bool = (_in_strlit ∧ (¬_esc_pending) ∧ is_backslash ∧ in_range)
@@ -79,19 +84,19 @@ fsm DriverLex
         : _in_strlit)))
     partial_strlit = (is_first_tick ? ""
         : (strlit_open ? ""
-        : (strlit_esc_char ? _partial_strlit ++ esc_trans
+        : (strlit_esc_char ? _partial_strlit ++ esc_char
         : (strlit_continuing ? _partial_strlit ++ cur_char
         : (strlit_closing ? ""
         : _partial_strlit)))))
 
-    is_alnum ∈ Bool = (is_alpha ∨ is_dig)
+    is_alnum ∈ Bool = (is_alpha ∨ is_digit)
     str_continuing ∈ Bool = (was_collecting_str ∧ is_alnum ∧ in_range ∧ ¬_in_strlit)
     str_finishing  ∈ Bool = (was_collecting_str ∧ ((¬is_alnum ∧ in_range) ∨ done))
     str_starting   ∈ Bool = ((¬was_collecting_str) ∧ is_alpha ∧ in_range ∧ ¬_in_strlit)
 
-    int_continuing ∈ Bool = (was_collecting_int ∧ is_dig ∧ in_range ∧ ¬_in_strlit)
-    int_finishing  ∈ Bool = (was_collecting_int ∧ ((¬is_dig ∧ in_range) ∨ done))
-    int_starting   ∈ Bool = ((¬was_collecting_int) ∧ (¬was_collecting_str) ∧ is_dig ∧ in_range ∧ ¬_in_strlit)
+    int_continuing ∈ Bool = (was_collecting_int ∧ is_digit ∧ in_range ∧ ¬_in_strlit)
+    int_finishing  ∈ Bool = (was_collecting_int ∧ ((¬is_digit ∧ in_range) ∨ done))
+    int_starting   ∈ Bool = ((¬was_collecting_int) ∧ (¬was_collecting_str) ∧ is_digit ∧ in_range ∧ ¬_in_strlit)
 
     -- FloatLit — `3.14`. An int collecting into `.`-then-digit
     -- latches the whole part and re-enters int collection for the
@@ -103,13 +108,10 @@ fsm DriverLex
     -- minus-fold is IntLit-only; zero corpus occurrences).
     next_is_digit ∈ Bool
     IsDigitChar(c ↦ next_char, out ↦ next_is_digit)
-    in_fraction ∈ Bool
-    float_whole ∈ Int
-    frac_digits ∈ Int
     frac_enter ∈ Bool = (was_collecting_int ∧ (¬_in_fraction)
         ∧ (cur_char = ".") ∧ next_is_digit ∧ in_range ∧ (¬_in_strlit))
-    float_finish ∈ Bool = (_in_fraction ∧ int_finishing)
-    float_with_op ∈ Bool = (float_finish ∧ is_op ∧ in_range)
+    float_finish = (_in_fraction ∧ int_finishing)
+    float_with_op = (float_finish ∧ is_op ∧ in_range)
     in_fraction = (is_first_tick ? false
         : frac_enter ? true
         : float_finish ? false
@@ -117,7 +119,7 @@ fsm DriverLex
     float_whole = (is_first_tick ? 0 : frac_enter ? _partial_int : _float_whole)
     frac_digits = (is_first_tick ? 0
         : frac_enter ? 0
-        : (_in_fraction ∧ is_dig ∧ in_range) ? _frac_digits + 1
+        : (_in_fraction ∧ is_digit ∧ in_range) ? _frac_digits + 1
         : _frac_digits)
     frac_pow ∈ Int
     (_frac_digits = 1) ⇒ (frac_pow = 10)
@@ -130,15 +132,15 @@ fsm DriverLex
         ∨ (_frac_digits = 4) ∨ (_frac_digits = 5) ∨ (_frac_digits = 6)))
         ⇒ (frac_pow = 1)
     float_payload ∈ Int = (_float_whole * frac_pow + _partial_int) * 8 + _frac_digits
-    write_float_tag ∈ Effect = LibCall("__mem", "write_long",
+    write_float_tag = LibCall("__mem", "write_long",
         ⟨ArgInt(tok_buf.base + (_tok_buf.count * 32)), ArgInt(4)⟩)
-    write_float_pay ∈ Effect = LibCall("__mem", "write_long",
+    write_float_pay = LibCall("__mem", "write_long",
         ⟨ArgInt(tok_buf.base + (_tok_buf.count * 32) + 8), ArgInt(float_payload)⟩)
-    write_float_op ∈ Effect = LibCall("__mem", "write_long",
+    write_float_op = LibCall("__mem", "write_long",
         ⟨ArgInt(tok_buf.base + ((_tok_buf.count + 1) * 32)), ArgInt(char_tag)⟩)
 
     partial_str = (is_first_tick ? "" : (str_continuing ? _partial_str ++ cur_char : (str_starting ? cur_char : "")))
-    partial_int = (is_first_tick ? 0 - 1 : (int_continuing ? (_partial_int * 10) + dig_val : (int_starting ? dig_val : 0 - 1)))
+    partial_int = (is_first_tick ? 0 - 1 : (int_continuing ? (_partial_int * 10) + digit_val : (int_starting ? digit_val : 0 - 1)))
 
     finish_str_only    ∈ Bool = (str_finishing ∧ (is_ws ∨ done))
     finish_int_only    ∈ Bool = (int_finishing ∧ (is_ws ∨ done ∨ is_alpha))
@@ -160,11 +162,7 @@ fsm DriverLex
     -- and the native kernel corrupted the heap / segfaulted. The "+2"
     -- headroom covers the two-token push shapes (float-with-op etc.).
     tok_buf.count < 65534
-    lex_last_tag ∈ Int
-    lex_prev_tag ∈ Int
-    pend_str_addr ∈ Int
 
-    plan_kind ∈ Int
     plan_tag0 ∈ Int
     plan_pay0 ∈ Int
     plan_str0 ∈ String
@@ -211,17 +209,17 @@ fsm DriverLex
         : plan_prev_n)
     pend_str_addr = (is_first_tick ? 0 - 1
         : ((plan_kind = 3 ∨ plan_kind = 5) ? plan_addr_pay0 : 0 - 1))
-    have_pend_str ∈ Bool = (_pend_str_addr ≥ 0)
+    have_pend_str = (_pend_str_addr ≥ 0)
 
-    write_tag0 ∈ Effect = LibCall("__mem", "write_long", ⟨ArgInt(plan_addr_tag0), ArgInt(plan_tag0_pp)⟩)
-    write_pay0   ∈ Effect = LibCall("__mem", "write_long", ⟨ArgInt(plan_addr_pay0), ArgInt(plan_pay0)⟩)
-    write_tag1 ∈ Effect = LibCall("__mem", "write_long", ⟨ArgInt(plan_addr_tag1), ArgInt(plan_tag1_pp)⟩)
-    eff_strdup   ∈ Effect = LibCall("libc", "strdup", ⟨ArgStr(plan_str0)⟩)
-    write_pend_str  ∈ Effect = LibCall("__mem", "write_long", ⟨ArgInt(_pend_str_addr), ArgInt(cap_int)⟩)
-    write_eof   ∈ Effect = LibCall("__mem", "write_long", ⟨ArgInt(tok_buf.base + (tok_buf.count * 32)), ArgInt(13)⟩)
+    write_tag0 = LibCall("__mem", "write_long", ⟨ArgInt(plan_addr_tag0), ArgInt(plan_tag0_pp)⟩)
+    write_pay0 = LibCall("__mem", "write_long", ⟨ArgInt(plan_addr_pay0), ArgInt(plan_pay0)⟩)
+    write_tag1 = LibCall("__mem", "write_long", ⟨ArgInt(plan_addr_tag1), ArgInt(plan_tag1_pp)⟩)
+    eff_strdup = LibCall("libc", "strdup", ⟨ArgStr(plan_str0)⟩)
+    write_pend_str = LibCall("__mem", "write_long", ⟨ArgInt(_pend_str_addr), ArgInt(cap_int)⟩)
+    write_eof = LibCall("__mem", "write_long", ⟨ArgInt(tok_buf.base + (tok_buf.count * 32)), ArgInt(13)⟩)
 
     has_input ∈ Bool = (#input > 0)
-    lex_done ∈ Bool = (done ∧ ¬was_collecting_str ∧ ¬was_collecting_int ∧ ¬_in_strlit ∧ has_input)
+    lex_done = (done ∧ ¬was_collecting_str ∧ ¬was_collecting_int ∧ ¬_in_strlit ∧ has_input)
 
     next_char ∈ String = substr(input, pos + 1, 1)
     collecting ∈ Bool = (was_collecting_str ∨ was_collecting_int)
