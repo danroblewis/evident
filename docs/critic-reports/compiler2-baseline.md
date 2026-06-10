@@ -489,3 +489,26 @@ membership/match-shaped (the calibration's SMT-shaped allowance inverted).
   rename collision; latent UNSAT; the only collision in the map.
 - S1 bind-peel half (`bind_n0..n5`), the S2 chain classes (V9), the
   fold families (W7), and index-in-interface (V6) remain open.
+
+## Burndown updates (2026-06-10, claim headers landed — task #36)
+
+- **Claim headers as interface: LANDED** (oracle pin 292c7ef +
+  compiler2; conformance 142–148 pin the semantics). The V5
+  hand-prefix debt now has its structural fix available: headers on
+  new components, prefix deletion as components convert.
+- **Pilot: `DriverBroadcast` headered** — composed by bare mention
+  against a 10-slot header; its 8 internals (recpin_done, bcast_nf,
+  bcast_fnames, bcast_disp, bcast_field_now, bcast_dname, bcast_dup,
+  bcast_head) left the manifest (1558 → 1550 state fields) and are
+  per-call-site fresh. The 6 carried header slots thread their `_x`
+  duals through the header (the autocarry append rule;
+  `tests/fsm_compose/counter_slot_header.ev` / `counter_bare_header.ev`).
+- **Ambient-`recs` interface: BLOCKED, root cause pinned** — a `recs`
+  header slot cannot bind through the bounded-Seq lowering, which
+  scalarizes `recs` to `recs_0_name`… before the oracle sees it; a
+  punned `recs` slot would be silently-vacuous surface (V2 smell).
+  This is the headers plan's open question 1 (context bundles). Wall
+  and two retirement paths documented in
+  `docs/plans/blocked-recs-header-slot.md`; the ambient read stands as
+  a documented exception (named in driver_record.ev's PRODUCES) until
+  record-slot mapping lands.
