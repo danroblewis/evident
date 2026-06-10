@@ -246,6 +246,10 @@ echo "${passed} passed / ${failed} failed / ${blocked} blocked  (of ${total})"
 # STATE.md). Allow these specific feature directories to fail under
 # IMPL=selfhost while still verifying the rest. The bootstrap path
 # (default) ignores the allowlist.
+# 142-146/148: claim headers as interface (landed 2026-06-10 in the
+# oracle + compiler2; docs/plans/claim-headers-interface.md) — the
+# frozen compiler.smt2 predates header semantics. Retire with the
+# wave-5 rebuild.
 if [ "$IMPL" = "selfhost" ] || [ "$IMPL" = "both" ]; then
     # One feature-dir name per line. Update as compiler gaps close.
     DEFAULT_KNOWN_FAILS="$(cat <<'EOF'
@@ -265,6 +269,12 @@ if [ "$IMPL" = "selfhost" ] || [ "$IMPL" = "both" ]; then
 027-arithmetic-unsat
 028-chained-comparison
 029-chained-comparison-unsat
+142-header-join-sat
+143-header-join-unsat
+144-header-internal-no-capture
+145-mapped-explicit-only
+146-punning-binds-unsat
+148-positional-alignment-unsat
 EOF
 )"
     KNOWN_FAILS="${EVIDENT_CONFORMANCE_KNOWN_FAILS-$DEFAULT_KNOWN_FAILS}"
