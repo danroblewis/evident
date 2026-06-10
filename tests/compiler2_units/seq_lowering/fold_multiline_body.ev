@@ -1,0 +1,33 @@
+-- Range-∀ with a multi-line body (joined on balanced parens) — the
+-- driver_compose type_pin shape: a guarded cons-build whose step spans
+-- lines. n = 3 keeps all of ⟨2,5,11⟩ doubled into the cons list; the
+-- walk reads 4 then 10, exit = 4 * 10 + 10 = 50.
+--
+-- entry: main
+-- expect: exit = 50
+import "stdlib/kernel.ev"
+
+enum JL = JNil | JCons(Int, JL)
+
+claim main
+    xs ∈ Seq(Int) = ⟨2, 5, 11⟩
+    #xs ≤ 3
+    n ∈ Int = 3
+    sfx ∈ Seq(JL)
+    #sfx ≤ 4
+    sfx[3] = JNil
+    ∀ k ∈ {0..2} : sfx[k] = (n ≥ k + 1
+        ? JCons(xs[k] * 2,
+            sfx[k + 1])
+        : sfx[k + 1])
+    built ∈ JL = sfx[0]
+    hd ∈ Int = match built
+        JCons(v, _) ⇒ v
+        JNil ⇒ 0
+    tl ∈ JL = match built
+        JCons(_, r) ⇒ r
+        JNil ⇒ JNil
+    hd2 ∈ Int = match tl
+        JCons(v, _) ⇒ v
+        JNil ⇒ 0
+    effects ∈ Seq(Effect) = ⟨Exit(hd * 10 + hd2)⟩

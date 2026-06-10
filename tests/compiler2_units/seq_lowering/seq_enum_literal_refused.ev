@@ -1,0 +1,13 @@
+-- LOUD REFUSAL: a ⟨…⟩ literal on an enum-element Seq decl (no zero
+-- default to pad the empty slots). Same refusal class as hold/append.
+--
+-- entry: main
+-- expect: flatten-error = enum-element Seq
+import "stdlib/kernel.ev"
+
+enum Sig4 = Off | On(Int)
+
+claim main
+    sigs ∈ Seq(Sig4) = ⟨Off, On(3)⟩
+    #sigs ≤ 2
+    effects ∈ Seq(Effect) = ⟨Exit(0)⟩
