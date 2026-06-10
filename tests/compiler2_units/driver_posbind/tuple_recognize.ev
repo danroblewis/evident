@@ -56,8 +56,8 @@ fsm main
     claimidx_buf ∈ FtiBuffer
     claimidx_buf.base = (is_first_tick ? 0 : _claimidx_buf.base)
     claimidx_buf.count = (is_first_tick ? 0 : _claimidx_buf.count)
-    ci_names ∈ String
-    ci_names = (is_first_tick ? "" : _ci_names)
+    claimidx_names ∈ String
+    claimidx_names = (is_first_tick ? "" : _claimidx_names)
     cw_reset ∈ Bool
     cw_reset = (is_first_tick ? false : _cw_reset)
     classify_now ∈ Bool
@@ -164,8 +164,8 @@ fsm main
     tok5 = (is_first_tick ? EofTok : _tok5)
     z_exit_decl ∈ Int
     z_exit_decl = (is_first_tick ? 0 : _z_exit_decl)
-    el_seleq_item ∈ C2Item
-    el_seleq_item = (is_first_tick ? C2Drop : _el_seleq_item)
+    efflit_sel_eq ∈ C2Item
+    efflit_sel_eq = (is_first_tick ? C2Drop : _efflit_sel_eq)
     ..DriverPosBind
     verdict ∈ Int = ((pt_tup_b ? 1 : 0) + (ptt_ok0 ? 2 : 0))
     v_msg ∈ String = str_from_int(verdict)

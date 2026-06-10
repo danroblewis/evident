@@ -1,7 +1,7 @@
 -- MODULE DriverClassify
 -- CONSUMES: the decoded token window head views (tok0..tok7), the
 --           classify-mode gate (classify_now), the claim/type index
---           (ci_names) + symbol table (sym_names), the inline-frame state
+--           (claimidx_names) + symbol table (sym_names), the inline-frame state
 --           (_il_depth, _il_pfx, ilb_n0..n5), the record registry
 --           (rec0..2 .name / .sort), the user-enum + seq-var carries
 --           (_ue_done, _ue_name, _sq_set, _sq_name), and the sibling
@@ -97,7 +97,7 @@ fsm DriverClassify
     c_comp_nm ∈ String = (c_dd_shape ? c_dd_nm : c_name)
     c_comp_key ∈ String
     FtiNameEntry(name ↦ c_comp_nm, entry ↦ c_comp_key)
-    c_comp_pos ∈ Int = index_of(ci_names, c_comp_key, 0)
+    c_comp_pos ∈ Int = index_of(claimidx_names, c_comp_key, 0)
     c_comp_found ∈ Bool = ((c_comp_pos ≥ 0) ∧ (c_comp_nm ≠ ""))
     c_dd_head ∈ Bool = (c_dd_shape ∧ c_comp_found ∧ (_il_depth < 8))
 
@@ -132,11 +132,11 @@ fsm DriverClassify
         ∧ (¬c_q_rng) ∧ (¬(c_q_seq ∧ _sq_set)) ∧ (¬pcl_line)
         ∧ (¬c_setlit_line) ∧ (¬d_enter_qset)
         ∧ (c_pinned ∨ (¬c_is_mem)))
-    d_enter_pratt ∈ Bool = (d_enter_pratt0 ∨ el_exit_enter
-        ∨ el_g_enter ∨ mp_benter ∨ sl_e_enter ∨ cw_slot
+    d_enter_pratt ∈ Bool = (d_enter_pratt0 ∨ efflit_exit_enter
+        ∨ efflit_guard_enter ∨ mp_benter ∨ sl_e_enter ∨ cw_slot
         ∨ q_close ∨ d_enter_qs ∨ pt_elem)
-    d_pratt_cons0 ∈ Int = (el_exit_enter ? 2
-        : el_g_enter ? 0
+    d_pratt_cons0 ∈ Int = (efflit_exit_enter ? 2
+        : efflit_guard_enter ? 0
         : mp_benter ? ((mp_take ∧ mp_arm_pl_h) ? 5 : 2)
         : sl_e_enter ? 0
         : cw_slot ? 2
@@ -144,8 +144,8 @@ fsm DriverClassify
         : d_enter_qs ? (c_q_s2 ? 7 : 5)
         : pt_elem ? 0
         : c_pinned ? 4 : 0)
-    d_pratt_kind0 ∈ Int = (el_exit_enter ? 3
-        : el_g_enter ? 6
+    d_pratt_kind0 ∈ Int = (efflit_exit_enter ? 3
+        : efflit_guard_enter ? 6
         : mp_benter ? 4
         : sl_e_enter ? 7
         : cw_slot ? 8
@@ -155,7 +155,7 @@ fsm DriverClassify
         : c_pinned ? 1 : 2)
     pq_qstop ∈ Bool
     pq_qstop = (is_first_tick ? false
-        : d_enter_pratt ? el_g_enter
+        : d_enter_pratt ? efflit_guard_enter
         : _pq_qstop)
 
     c_seg_bound ∈ C2Items = C2ICons(C2Process(c_bnd_e),
@@ -193,7 +193,7 @@ fsm DriverClassify
 
     c_ty_key ∈ String
     FtiNameEntry(name ↦ c_type_str, entry ↦ c_ty_key)
-    c_ty_pos ∈ Int = index_of(ci_names, c_ty_key, 0)
+    c_ty_pos ∈ Int = index_of(claimidx_names, c_ty_key, 0)
     c_ty_found ∈ Bool = (c_is_mem ∧ (¬c_eff_line) ∧ (c_sc = 0)
         ∧ (c_type_str ≠ "Int") ∧ (c_type_str ≠ "Nat")
         ∧ (c_type_str ≠ "Seq") ∧ (c_type_str ≠ "")

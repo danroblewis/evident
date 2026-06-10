@@ -32,8 +32,8 @@ fsm main
     tok7 = (is_first_tick ? EofTok : _tok7)
     classify_now ∈ Bool
     classify_now = (is_first_tick ? true : _classify_now)
-    ci_names ∈ String
-    ci_names = (is_first_tick ? "" : _ci_names)
+    claimidx_names ∈ String
+    claimidx_names = (is_first_tick ? "" : _claimidx_names)
     sym_names ∈ String
     sym_names = (is_first_tick ? "" : _sym_names)
     il_depth ∈ Int
@@ -71,10 +71,10 @@ fsm main
     sq_name ∈ String
     sq_name = (is_first_tick ? "" : _sq_name)
     -- sibling sub-walk enter signals (none active in this isolation).
-    el_exit_enter ∈ Bool
-    el_exit_enter = (is_first_tick ? false : _el_exit_enter)
-    el_g_enter ∈ Bool
-    el_g_enter = (is_first_tick ? false : _el_g_enter)
+    efflit_exit_enter ∈ Bool
+    efflit_exit_enter = (is_first_tick ? false : _efflit_exit_enter)
+    efflit_guard_enter ∈ Bool
+    efflit_guard_enter = (is_first_tick ? false : _efflit_guard_enter)
     mp_benter ∈ Bool
     mp_benter = (is_first_tick ? false : _mp_benter)
     sl_e_enter ∈ Bool

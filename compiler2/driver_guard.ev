@@ -1,6 +1,6 @@
 -- MODULE DriverGuard
 -- CONSUMES: the parsed root (pr_sres) + parse-done signal (p_done,
---           _pk_kind, pr_bad), the claim index (ci_names, ci_base),
+--           _pk_kind, pr_bad), the claim index (claimidx_names, ci_base),
 --           the pmode-10 composition-walk state (in_parse, _pmode,
 --           _cw_st, cw_reset, work_nil), and the inline-frame
 --           stack views (il_pop, _il_depth, h_top).
@@ -28,7 +28,7 @@ fsm DriverGuard
         _ ⇒ ""
     gc_key ∈ String
     FtiNameEntry(name ↦ gc_rnm, entry ↦ gc_key)
-    gc_pos ∈ Int = index_of(ci_names, gc_key, 0)
+    gc_pos ∈ Int = index_of(claimidx_names, gc_key, 0)
     gc_hit ∈ Bool = (p_done ∧ (_pk_kind = 2) ∧ (¬pr_bad) ∧ gc_bin
         ∧ (gc_op matches OpImpl) ∧ (gc_rnm ≠ "") ∧ (gc_pos ≥ 0)
         ∧ (_il_depth < 8))

@@ -479,10 +479,10 @@ fsm driver_main
         : (d_enter_claim ∨ d_enter_claimp) ? C2INil
         : classify_now ? d_new_items
         : p_done ? d_pratt_items
-        : el_b2 ? el_lc_items
-        : el_b2e ? el_lce_items
-        : el_close ? (_ch_on ? el_bfold : C2ICons(C2LenEq(_el_cnt), C2INil))
-        : ch_fire ? ch_fold_items
+        : efflit_argbite ? efflit_libcall_items
+        : efflit_noargs ? efflit_libcall0_items
+        : efflit_close ? (_chain_on ? efflit_branch_fold : C2ICons(C2LenEq(_efflit_count), C2INil))
+        : chain_fire ? chain_fold_items
         : mp_fire ? mp_items
         : ms_close ? ms_items
         : sl_close ? sl_close_items
@@ -563,16 +563,16 @@ fsm driver_main
         : d_enter_edecl ? 3
         : d_enter_skip ? 1
         : (d_in_skip ∧ (¬d_skip_stop)) ? 1
-        : ec_bail ? 1
-        : ec_take ? ec_cons
+        : variant_bail ? 1
+        : variant_take ? variant_consume
         : d_enter_el ? 8
-        : el_lc_enter ? 6
-        : el_b2 ? 7
-        : el_b2e ? 3
-        : (el_comma ∨ el_close) ? 1
-        : el_open ? 1
-        : el_nest ? 1
-        : (el_colon ∨ el_rp ∨ el_st2_bad) ? 1
+        : efflit_libcall_enter ? 6
+        : efflit_argbite ? 7
+        : efflit_noargs ? 3
+        : (efflit_comma ∨ efflit_close) ? 1
+        : efflit_open ? 1
+        : efflit_nest ? 1
+        : (efflit_colon ∨ efflit_rparen ∨ efflit_st2_bad) ? 1
         : d_enter_set ? 3
         : d_enter_match ? 5
         : mp_s_lr ? 4
@@ -703,12 +703,12 @@ fsm driver_main
             : _pk_kind = 8 ? (pr_bad ? 2 : 10)
             : _pk_kind = 10 ? (pr_bad ? 2 : 12)
             : 2)
-        : (ec_active ∧ ec_payload ∧ (¬ec_p_ok)) ? 1
-        : (ec_active ∧ (¬ec_v_ok)) ? 0
+        : (variant_walk_on ∧ variant_payload ∧ (¬variant_pay_ok)) ? 1
+        : (variant_walk_on ∧ (¬variant_name_ok)) ? 0
         : enum_done_user ? 0
-        : ch_fire ? 2
-        : el_close ? (_ch_on ? 5 : 2)
-        : (el_bad ∨ el_b2_bad ∨ el_st2_bad) ? 2
+        : chain_fire ? 2
+        : efflit_close ? (_chain_on ? 5 : 2)
+        : (efflit_bad ∨ efflit_argbite_bad ∨ efflit_st2_bad) ? 2
         : (mp_fire ∨ mp_bail) ? 2
         : (ms_close ∨ ms_bad) ? 2
         : sl_close ? 2
@@ -955,7 +955,7 @@ fsm driver_main
             read_tag3, read_pay3, read_tag4, read_pay4, read_tag5, read_pay5, read_tag6, read_pay6,
             read_tag7, read_pay7⟩
         : _fetch_mode = 1 ? ⟨copy_eff0, copy_eff1, copy_eff2, copy_eff3, copy_eff4, copy_eff5, copy_eff6, copy_eff7⟩
-        : ci_add ? ⟨e_ciw⟩
+        : claimidx_add ? ⟨eff_claimidx_write⟩
         : il_rdcur ? ⟨e_cir⟩
         : gc_hit ? ⟨e_gcr⟩
         : pt_close ? ⟨e_pcr⟩

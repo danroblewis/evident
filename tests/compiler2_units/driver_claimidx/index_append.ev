@@ -1,6 +1,6 @@
 -- DriverClaimIdx isolation — claim-index append counter.
 -- Skip pass held with a claim head (d_head_is_claim, tok1 an Ident) so
--- ci_add fires each tick; exit when the count reaches 3. The
+-- claimidx_add fires each tick; exit when the count reaches 3. The
 -- BuildMemWriteLong index-write effect is not scheduled (no arena).
 -- entry: main
 -- expect: stdout = "3"

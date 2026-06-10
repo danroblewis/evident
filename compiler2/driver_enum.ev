@@ -2,8 +2,8 @@
 -- CONSUMES: the ZINIT start gate (zstep parked at 9), the Z3 base-sort
 --           handles (z3sorts.isort/z3sorts.bsort/z3sorts.ssort/z3sorts.rsort) + the int-result-1
 --           value res_int1, d_cap_int (last libc capture), and the user-enum
---           collection signals from the parse dispatcher (ec_start,
---           ec_list_n, _ue_name, _enum_is_user).
+--           collection signals from the parse dispatcher (enum_start,
+--           variant_list_now, _ue_name, _enum_is_user).
 -- PRODUCES: the Effect-floor + user-enum datatype machine's outputs — the
 --           sort registers (libarg_sort/seqarg_sort/z_effect_sort/z_result_sort/user_enum_sort),
 --           the floor ctor/tester/accessor decls (z_exit_decl/z_libcall_decl/
@@ -109,13 +109,13 @@ fsm DriverEnum
 
     enum_go_floor ∈ Bool = ((¬is_first_tick) ∧ (zstep = 9)
         ∧ (_enum_act = 0) ∧ (_enum_src < 4))
-    enum_go ∈ Bool = (enum_go_floor ∨ ec_start)
-    enum_go_variants ∈ EnumVariantList = (ec_start ? ec_list_n
+    enum_go ∈ Bool = (enum_go_floor ∨ enum_start)
+    enum_go_variants ∈ EnumVariantList = (enum_start ? variant_list_now
         : _enum_src = 0 ? libarg_variants
         : _enum_src = 1 ? seqarg_variants
         : _enum_src = 2 ? effect_variants
         : result_variants)
-    enum_go_name ∈ String = (ec_start ? _ue_name
+    enum_go_name ∈ String = (enum_start ? _ue_name
         : _enum_src = 0 ? "LibArg"
         : _enum_src = 1 ? "__SeqOf_LibArg"
         : _enum_src = 2 ? "Effect"
@@ -209,7 +209,7 @@ fsm DriverEnum
         : (enum_done ∧ (¬_enum_is_user)) ? _enum_src + 1
         : _enum_src)
     enum_is_user = (is_first_tick ? false
-        : ec_start ? true
+        : enum_start ? true
         : enum_done ? false
         : _enum_is_user)
     enum_decl_name = (is_first_tick ? "" : enum_go ? enum_go_name : _enum_decl_name)

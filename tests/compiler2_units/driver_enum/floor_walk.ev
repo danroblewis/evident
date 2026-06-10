@@ -14,8 +14,8 @@ import "compiler2/driver_enum.ev"
 fsm main
     zstep ∈ Int
     zstep = (is_first_tick ? 9 : _zstep)
-    ec_start ∈ Bool = false
-    ec_list_n ∈ EnumVariantList = EVNil
+    enum_start ∈ Bool = false
+    variant_list_now ∈ EnumVariantList = EVNil
     ue_name ∈ String
     ue_name = (is_first_tick ? "" : _ue_name)
     -- Bus values the machine reads as plain handles; held live so they

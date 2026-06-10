@@ -38,8 +38,8 @@ fsm main
     pk_kind = (is_first_tick ? 0 : _pk_kind)
     pr_bad ∈ Bool
     pr_bad = (is_first_tick ? false : _pr_bad)
-    ci_names ∈ String
-    ci_names = (is_first_tick ? "" : _ci_names)
+    claimidx_names ∈ String
+    claimidx_names = (is_first_tick ? "" : _claimidx_names)
     claimidx_buf ∈ FtiBuffer
     claimidx_buf.base = (is_first_tick ? 0 : _claimidx_buf.base)
     claimidx_buf.count = (is_first_tick ? 0 : _claimidx_buf.count)

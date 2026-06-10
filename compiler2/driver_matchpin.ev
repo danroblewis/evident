@@ -1,7 +1,7 @@
 -- MODULE DriverMatchPin
 -- CONSUMES: the match-line enter signal (d_enter_match) + the classified
 --           name/sort (c_dname, c_sc), the window head views
---           (tok0..tok4) + the line head name (el_head_name), the parse
+--           (tok0..tok4) + the line head name (head_ident), the parse
 --           gate (in_parse, _pmode, tok_ready), the Pratt result
 --           (p_done, pr_bad, pr_sres, pk_kind), and the user-enum + Result
 --           variant registries (uev_n*/uev_t*/uev_a*, z_intres_test/z_strres_test/
@@ -69,7 +69,7 @@ fsm DriverMatchPin
 
     m_act ∈ Bool = (in_parse ∧ (_pmode = 6) ∧ tok_ready)
     mp_s_lr ∈ Bool = (m_act ∧ (_mp_st = 0)
-        ∧ (el_head_name = "last_results") ∧ (tok1 matches LBracket)
+        ∧ (head_ident = "last_results") ∧ (tok1 matches LBracket)
         ∧ (tok2 matches IntLit(_)) ∧ (tok3 matches RBracket))
     mp_s_id ∈ Bool = (m_act ∧ (_mp_st = 0) ∧ (tok0 matches Ident(_))
         ∧ (¬mp_s_lr))
@@ -82,13 +82,13 @@ fsm DriverMatchPin
         _ ⇒ ""
     mp_st1 ∈ Bool = (m_act ∧ (_mp_st = 1))
     mp_arm_pl_h ∈ Bool = (mp_st1 ∧ (tok0 matches Ident(_))
-        ∧ (el_head_name ≠ "_")
+        ∧ (head_ident ≠ "_")
         ∧ (tok1 matches LParen) ∧ (tok2 matches Ident(_))
         ∧ (tok3 matches RParen) ∧ (tok4 matches OpImplies))
     mp_arm_nl_h ∈ Bool = (mp_st1 ∧ (tok0 matches Ident(_))
-        ∧ (el_head_name ≠ "_")
+        ∧ (head_ident ≠ "_")
         ∧ (tok1 matches OpImplies))
-    mp_arm_wc_h ∈ Bool = (mp_st1 ∧ (el_head_name = "_")
+    mp_arm_wc_h ∈ Bool = (mp_st1 ∧ (head_ident = "_")
         ∧ (tok1 matches OpImplies))
     mp_arm_new ∈ Bool = (mp_arm_pl_h ∨ mp_arm_nl_h)
     mp_overflow ∈ Bool = (mp_arm_new ∧ _mp_hasp ∧ (_mp_n ≥ 2))
@@ -118,9 +118,9 @@ fsm DriverMatchPin
         : mp_s_lr ? true
         : _mp_lr)
     mp_idx = (is_first_tick ? 0 : mp_s_lr ? mp_idx_v : _mp_idx)
-    mp_scrut = (is_first_tick ? "" : mp_s_id ? el_head_name : _mp_scrut)
+    mp_scrut = (is_first_tick ? "" : mp_s_id ? head_ident : _mp_scrut)
     mp_ac = (is_first_tick ? ""
-        : mp_take ? el_head_name
+        : mp_take ? head_ident
         : _mp_ac)
     mp_ab = (is_first_tick ? ""
         : mp_take ? (mp_arm_pl_h ? mp_w_t2s : "")

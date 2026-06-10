@@ -4,7 +4,7 @@
 --           classify_now, d_line_end), the window head (tok0..tok5), the
 --           parse gate (in_parse, _pmode, tok_ready, work_nil), the
 --           handle stack (h_top/2nd/.. + d_h_t*), the claim index
---           (ci_base, ci_names), the symbol table (sym_names), the
+--           (ci_base, claimidx_names), the symbol table (sym_names), the
 --           inline-frame state (il_pfx/il_depth/il_pd/ilb_n*), the
 --           enum value table (enum_values), the record registry (rt_n*/rt_f*/
 --           rt_sort*), the Pratt result (p_done/pr_bad/pr_sres/pk_*), and
@@ -45,14 +45,14 @@ fsm DriverPosBind
     pcl_m1 ∈ Bool = (classify_now ∧ (¬d_line_end) ∧ c_t0_is_ident
         ∧ (c_t1 matches Dot) ∧ (c_t2 matches Ident(_))
         ∧ (c_t3 matches LParen)
-        ∧ (index_of(ci_names, pcl_m1key, 0) ≥ 0) ∧ (_il_depth < 8))
+        ∧ (index_of(claimidx_names, pcl_m1key, 0) ≥ 0) ∧ (_il_depth < 8))
     pcl_m2key ∈ String
     FtiNameEntry(name ↦ pcl_t4nm, entry ↦ pcl_m2key)
     pcl_m2 ∈ Bool = (classify_now ∧ (¬d_line_end) ∧ c_t0_is_ident
         ∧ (c_t1 matches Dot) ∧ (c_t2 matches Ident(_))
         ∧ (c_t3 matches Dot) ∧ (c_t4 matches Ident(_))
         ∧ (tok5 matches LParen)
-        ∧ (index_of(ci_names, pcl_m2key, 0) ≥ 0) ∧ (_il_depth < 8))
+        ∧ (index_of(claimidx_names, pcl_m2key, 0) ≥ 0) ∧ (_il_depth < 8))
     pcl_meth ∈ Bool = (pcl_m1 ∨ pcl_m2)
     pcl_recv_nm ∈ String = (pcl_m2 ? (c_name ++ "." ++ pcl_t2nm) : c_name)
     pcl_tup ∈ Bool = (classify_now ∧ (¬d_line_end) ∧ (c_t0 matches LParen)
@@ -98,7 +98,7 @@ fsm DriverPosBind
     ptc_nm ∈ String = (ptc_n ? _pt_callee : ptc_tm ? ptc_w4nm : ptc_w2nm)
     ptc_key ∈ String
     FtiNameEntry(name ↦ ptc_nm, entry ↦ ptc_key)
-    ptc_pos ∈ Int = index_of(ci_names, ptc_key, 0)
+    ptc_pos ∈ Int = index_of(claimidx_names, ptc_key, 0)
     ptc_ok ∈ Bool = ((ptc_n ∨ ptc_t ∨ ptc_tm) ∧ (ptc_pos ≥ 0))
     pt_close ∈ Bool = ptc_ok
     pt_bail ∈ Bool = (pt_rp ∧ (¬ptc_ok))
@@ -265,7 +265,7 @@ fsm DriverPosBind
     d_pratt_items ∈ C2Items = (pr_bad ? C2INil
         : _pk_kind = 3 ? C2ICons(C2Process(pr_sres),
             C2ICons(C2App(z_exit_decl, 1),
-            C2ICons(el_seleq_item, C2INil)))
+            C2ICons(efflit_sel_eq, C2INil)))
         : _pk_kind = 4 ? (mq_wc ? mp_items : C2INil)
         : _pk_kind = 6 ? C2ICons(C2Process(pr_sres), C2INil)
         : _pk_kind = 7 ? sl_elem_items
