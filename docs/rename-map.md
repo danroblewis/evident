@@ -916,7 +916,7 @@ module contract headers and usage.
 | `c_stv_idx` | `setvar_idx` | set-var slot matching the line name |
 | `c_setlit_line` | `setlit_line` | set-literal assignment line |
 | `d_enter_stl` | `enter_setlit` | enter the set-literal walk |
-| `sv_k` | `setvar_slot` | element-type slot of the active set var |
+| `sv_k` | `setvar_cur_slot` | element-type slot of the active set var (was setvar_slot; collided with c_stv_kidx → setvar_slot — two distinct keyed projections merged into one const, a latent UNSAT; split 2026-06-10, caught by the critic baseline) |
 | `stl_entry_items` | `setlit_entry_items` | set-literal entry item run |
 | `sv_act` | `setlit_act` | pmode-14 set-literal walk tick |
 | `stl_elem` | `setlit_elem` | a set element lands |

@@ -47,9 +47,9 @@ fsm DriverSetVar
     enter_setlit ∈ Bool = (classify_now ∧ (¬line_end) ∧ (¬line_is_mem)
         ∧ (¬line_is_notmem) ∧ setlit_line)
     setvar_cur_name = (is_first_tick ? "" : enter_setlit ? setvar_name : _setvar_cur_name)
-    setvar_slot ∈ Int
-    ∀ e ∈ set_vars : ((e.name = _setvar_cur_name) ⇒ (setvar_slot = e.kidx))
-    (¬(∃ e ∈ set_vars : e.name = _setvar_cur_name)) ⇒ (setvar_slot = 0)
+    setvar_cur_slot ∈ Int
+    ∀ e ∈ set_vars : ((e.name = _setvar_cur_name) ⇒ (setvar_cur_slot = e.kidx))
+    (¬(∃ e ∈ set_vars : e.name = _setvar_cur_name)) ⇒ (setvar_cur_slot = 0)
     setvar_slot ∈ Int
     ∀ e ∈ set_vars : ((e.name = setvar_name) ⇒ (setvar_slot = e.kidx))
     (¬(∃ e ∈ set_vars : e.name = setvar_name)) ⇒ (setvar_slot = 0)
@@ -66,7 +66,7 @@ fsm DriverSetVar
         Ident(s) ⇒ s
         _ ⇒ ""
     setlit_elem_items ∈ C2Items = C2ICons(
-        C2RecVal(_scope_prefix ++ setlit_elt_name, setvar_slot),
+        C2RecVal(_scope_prefix ++ setlit_elt_name, setvar_cur_slot),
         C2ICons(C2SetAdd, C2INil))
     setlit_close_items ∈ C2Items = C2ICons(C2PinEq,
         C2ICons(C2AssertTop, C2INil))
