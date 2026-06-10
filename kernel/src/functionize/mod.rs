@@ -853,6 +853,394 @@ unsafe fn conj_guard(
     r
 }
 
+// ── Relational extraction pre-pass (stages N0/N1) ───────────────
+//
+// Design + measurements: docs/plans/relational-extraction.md. The main
+// classification loop captures only DIRECTED definitions (`(= var
+// expr)`); a linear RELATION that pins an output just as uniquely —
+// the difference equation `n - _n = 1`, `lo + width = hi` — falls to
+// `raw.predicates` and the whole program goes residual. This pass
+// re-scans the rejected assertions and rearranges them with Z3-as-CAS:
+//
+//   N0 — cancellation: for equality `L = R` and a candidate output `v`
+//   occurring linearly with coefficient ±1, `Z3_simplify(v − (L − R))`
+//   (or `v + (L − R)` for coefficient −1) cancels every occurrence of
+//   `v`; the existing `mentions_name` gate decides acceptance. Sound
+//   by ring arithmetic (`v = def ⇔ L = R`), belt-and-braces re-checked
+//   with one load-time UNSAT query per derived def.
+//
+//   N1 — `Z3_solver_solve_for` (per equation, fresh simple solver):
+//   adds Int coefficients beyond ±1 — Z3 synthesizes the division
+//   (`2y = a` → `y := a div 2`) plus a divisibility side condition
+//   (`a mod 2 = 0`) that joins `raw.predicates` (eval-checked per tick;
+//   false ⇒ fall through to Z3, which reports the genuine UNSAT).
+//
+// Direction is forced by US: candidates are manifest outputs only —
+// never `_x` carries / `is_first_tick` / intermediates. (Study Exp 3:
+// solve-eqs's own pick is deterministic but semantically arbitrary; on
+// the real driver formula it defined carry INPUTS from outputs.)
+//
+// Pure addition: runs only over assertions the main loop already
+// rejected, inserts a scalar def only when the output has NO existing
+// coverage, and APPENDS guarded branches (first-match-wins order
+// preserved — derived branches are consulted only on ticks that today
+// refuse and fall to Z3). Programs that fully extract today build an
+// identical `Raw`. The tick-0/1 verify-vs-Z3 gate covers derived defs
+// like any other step. `EVIDENT_FZ_RELATIONAL=0` disables the pass.
+
+extern "C" {
+    // Present in the installed libz3 (≥ 4.15); z3-sys 0.8.1 predates the
+    // binding, so it is declared here directly against the same libz3
+    // the rest of z3-sys links.
+    //
+    // ⚠ MEASURED TRAP (relational-extraction.md, 2026-06-10): this API
+    // works ONLY on `Z3_mk_simple_solver` — `Z3_mk_solver`'s
+    // preprocessing eliminates the queried variables before the theory
+    // core sees them and the result comes back EMPTY. It must be called
+    // after `Z3_solver_check`. And at whole-formula granularity it is
+    // trail-relative: on a real tick formula it returned the current
+    // model's BRANCH of a carry equation and bare model VALUES. Only
+    // per-equation use in a fresh simple solver is sound.
+    fn Z3_solver_solve_for(
+        c: Z3_context,
+        s: Z3_solver,
+        variables: Z3_ast_vector,
+        terms: Z3_ast_vector,
+        guards: Z3_ast_vector,
+    );
+}
+
+fn relational_enabled() -> bool {
+    std::env::var("EVIDENT_FZ_RELATIONAL").ok().as_deref() != Some("0")
+}
+
+unsafe fn is_arith_sorted(ctx: Z3_context, a: Z3_ast) -> bool {
+    let k = Z3_get_sort_kind(ctx, Z3_get_sort(ctx, a));
+    k == SortKind::Int || k == SortKind::Real
+}
+
+/// First 0-arity uninterpreted const named `name` in `a`'s tree (the
+/// hash-consed AST node for the variable itself).
+unsafe fn find_const(ctx: Z3_context, a: Z3_ast, name: &str) -> Option<Z3_ast> {
+    if is_uninterp_const(ctx, a) && ast_app_name(ctx, a).as_deref() == Some(name) {
+        return Some(a);
+    }
+    for c in children(ctx, a) {
+        if let Some(f) = find_const(ctx, c, name) {
+            return Some(f);
+        }
+    }
+    None
+}
+
+/// N0: rearrange `l = r` into `v := def` by cancellation. Tries
+/// `simplify(v - (l - r))` (coefficient +1) then `simplify(v + (l - r))`
+/// (coefficient −1); a candidate is the rearrangement iff it no longer
+/// mentions `v`. Nonlinear / ite-spread occurrences fail the gate and
+/// are refused — exactly the safe behavior (no side-condition guessing).
+unsafe fn cancel_solve(
+    ctx: Z3_context,
+    l: Z3_ast,
+    r: Z3_ast,
+    v: Z3_ast,
+    vname: &str,
+) -> Option<Z3_ast> {
+    let lmr_args = [l, r];
+    let lmr = Z3_mk_sub(ctx, 2, lmr_args.as_ptr());
+    Z3_inc_ref(ctx, lmr);
+    let cand_args = [v, lmr];
+    for add in [false, true] {
+        let cand = if add {
+            Z3_mk_add(ctx, 2, cand_args.as_ptr())
+        } else {
+            Z3_mk_sub(ctx, 2, cand_args.as_ptr())
+        };
+        Z3_inc_ref(ctx, cand);
+        let def = Z3_simplify(ctx, cand);
+        Z3_inc_ref(ctx, def);
+        if !mentions_name(ctx, def, vname) {
+            return Some(def);
+        }
+    }
+    None
+}
+
+/// N1: per-equation `Z3_solver_solve_for` in a fresh simple solver.
+/// Returns `(def, side_guards)`; the guards (divisibility conditions)
+/// must hold for `def` to be the solution — the caller turns them into
+/// per-tick predicates.
+///
+/// ⚠ MEASURED (tests::solve_for_probe_int_coefficient, z3 4.15.4): the
+/// returned guard is `(consumed-equation ∧ divisibility)` — for
+/// `2y = a` it is `(and (≤ 2y−a 0) (≥ 2y−a 0) (= (mod a 2) 0))`. The
+/// equation conjuncts MENTION `v` and would be circular as per-tick
+/// predicates (checkable only after computing `v` from them), so they
+/// are dropped; they are re-implied by `v = def ∧ divisibility`, and
+/// `derived_def_valid`'s UNSAT query is the net — if dropping a
+/// `v`-mentioning conjunct ever broke equivalence, the derivation is
+/// refused, never mis-extracted.
+unsafe fn solve_for_def(
+    ctx: Z3_context,
+    l: Z3_ast,
+    r: Z3_ast,
+    v: Z3_ast,
+    vname: &str,
+) -> Option<(Z3_ast, Vec<Z3_ast>)> {
+    let eq = Z3_mk_eq(ctx, l, r);
+    Z3_inc_ref(ctx, eq);
+    let s = Z3_mk_simple_solver(ctx);
+    Z3_solver_inc_ref(ctx, s);
+    Z3_solver_assert(ctx, s, eq);
+    let mut out = None;
+    if Z3_solver_check(ctx, s) == Z3_L_TRUE {
+        let vars = Z3_mk_ast_vector(ctx);
+        Z3_ast_vector_inc_ref(ctx, vars);
+        let terms = Z3_mk_ast_vector(ctx);
+        Z3_ast_vector_inc_ref(ctx, terms);
+        let guards = Z3_mk_ast_vector(ctx);
+        Z3_ast_vector_inc_ref(ctx, guards);
+        Z3_ast_vector_push(ctx, vars, v);
+        Z3_solver_solve_for(ctx, s, vars, terms, guards);
+        // Result format (probed; see tests::solve_for_probe): the three
+        // vectors come back PARALLEL over the solved variables — vars[i]
+        // solves to terms[i] under guards[i]. An unsolvable query leaves
+        // them empty (vars is rewritten by the call, not preserved).
+        let n = Z3_ast_vector_size(ctx, vars);
+        if n == Z3_ast_vector_size(ctx, terms) {
+            for i in 0..n {
+                let vi = Z3_ast_vector_get(ctx, vars, i);
+                if ast_app_name(ctx, vi).as_deref() != Some(vname) {
+                    continue;
+                }
+                let def = Z3_ast_vector_get(ctx, terms, i);
+                Z3_inc_ref(ctx, def);
+                if mentions_name(ctx, def, vname) {
+                    continue;
+                }
+                let mut side = Vec::new();
+                if Z3_ast_vector_size(ctx, guards) == n {
+                    let g = Z3_ast_vector_get(ctx, guards, i);
+                    // Split the guard conjunction; keep only the
+                    // v-free conjuncts (see the doc comment above).
+                    let conjuncts = if decl_kind(ctx, g) == Some(DeclKind::AND) {
+                        children(ctx, g)
+                    } else {
+                        vec![g]
+                    };
+                    for c in conjuncts {
+                        if decl_kind(ctx, c) == Some(DeclKind::TRUE) {
+                            continue;
+                        }
+                        if mentions_name(ctx, c, vname) {
+                            continue;
+                        }
+                        Z3_inc_ref(ctx, c);
+                        side.push(c);
+                    }
+                }
+                out = Some((def, side));
+                break;
+            }
+        }
+        Z3_ast_vector_dec_ref(ctx, vars);
+        Z3_ast_vector_dec_ref(ctx, terms);
+        Z3_ast_vector_dec_ref(ctx, guards);
+    }
+    Z3_solver_dec_ref(ctx, s);
+    out
+}
+
+/// Load-time soundness check for a derived definition:
+/// `(l = r) ⇔ (v = def ∧ guards…)` must be VALID — assert the negation,
+/// expect UNSAT. One cheap query per derived def (derivation only runs
+/// on assertions the main loop rejected, so this is rare).
+unsafe fn derived_def_valid(
+    ctx: Z3_context,
+    l: Z3_ast,
+    r: Z3_ast,
+    v: Z3_ast,
+    def: Z3_ast,
+    guards: &[Z3_ast],
+) -> bool {
+    let eq = Z3_mk_eq(ctx, l, r);
+    Z3_inc_ref(ctx, eq);
+    let vd = Z3_mk_eq(ctx, v, def);
+    Z3_inc_ref(ctx, vd);
+    let rhs = if guards.is_empty() {
+        vd
+    } else {
+        let mut conj = vec![vd];
+        conj.extend_from_slice(guards);
+        let a = Z3_mk_and(ctx, conj.len() as u32, conj.as_ptr());
+        Z3_inc_ref(ctx, a);
+        a
+    };
+    let iff = Z3_mk_iff(ctx, eq, rhs);
+    Z3_inc_ref(ctx, iff);
+    let neg = Z3_mk_not(ctx, iff);
+    Z3_inc_ref(ctx, neg);
+    let s = Z3_mk_solver(ctx);
+    Z3_solver_inc_ref(ctx, s);
+    Z3_solver_assert(ctx, s, neg);
+    let ok = Z3_solver_check(ctx, s) == Z3_L_FALSE;
+    Z3_solver_dec_ref(ctx, s);
+    ok
+}
+
+/// Attempt relational extraction of one rejected equality (bare or under
+/// a single guard) toward a manifest output. On success the def lands in
+/// `raw` (scalar slot or appended guarded branch), any N1 side guards
+/// join `raw.predicates`, and the assertion is consumed.
+unsafe fn try_relational_eq(
+    ctx: Z3_context,
+    l: Z3_ast,
+    r: Z3_ast,
+    guard: Option<(Z3_ast, bool)>,
+    outputs: &HashSet<String>,
+    raw: &mut Raw,
+) -> bool {
+    if !is_arith_sorted(ctx, l) {
+        return false;
+    }
+    let mut mentioned: HashSet<String> = HashSet::new();
+    collect_mentioned_names(ctx, l, &mut mentioned);
+    collect_mentioned_names(ctx, r, &mut mentioned);
+    let mut cands: Vec<&String> = mentioned.iter().filter(|n| outputs.contains(*n)).collect();
+    cands.sort();
+    for name in cands {
+        // Never re-define a covered output: a scalar def wins over both
+        // (build_body precedence), and consuming the equation while its
+        // derived def is shadowed would silently drop a constraint.
+        // Guarded coverage may only GROW (append), never cross over to a
+        // scalar def (and vice versa).
+        let has_scalar = raw.scalar.contains_key(name.as_str());
+        let has_guarded = raw.guarded.contains_key(name.as_str());
+        let has_seq = raw.seq_lengths.contains_key(name.as_str())
+            || raw.seq_elements.contains_key(name.as_str());
+        if has_scalar || has_seq {
+            continue;
+        }
+        if guard.is_none() && has_guarded {
+            continue;
+        }
+        let Some(v) = find_const(ctx, l, name).or_else(|| find_const(ctx, r, name)) else {
+            continue;
+        };
+        if Z3_get_sort(ctx, v) != Z3_get_sort(ctx, l) {
+            continue;
+        }
+        let mut side: Vec<Z3_ast> = Vec::new();
+        let def = match cancel_solve(ctx, l, r, v, name) {
+            Some(d) => d,
+            None => match solve_for_def(ctx, l, r, v, name) {
+                Some((d, g)) => {
+                    side = g;
+                    d
+                }
+                None => continue,
+            },
+        };
+        if !derived_def_valid(ctx, l, r, v, def, &side) {
+            continue;
+        }
+        match guard {
+            None => {
+                raw.scalar.insert(name.clone(), def);
+            }
+            Some((g, neg)) => {
+                raw.guarded
+                    .entry(name.clone())
+                    .or_default()
+                    .push(Branch { guard: g, neg, body: GBody::Scalar(def) });
+            }
+        }
+        // Side conditions hold only where the source equation applied:
+        // under a guard, predicate-ize as `fires ⇒ side`, i.e.
+        // `(or (not fires) side)` with `fires = neg ? ¬g : g`.
+        for sg in side {
+            let p = match guard {
+                None => sg,
+                Some((g, neg)) => {
+                    let not_fires = if neg {
+                        g
+                    } else {
+                        let n = Z3_mk_not(ctx, g);
+                        Z3_inc_ref(ctx, n);
+                        n
+                    };
+                    let args = [not_fires, sg];
+                    let o = Z3_mk_or(ctx, 2, args.as_ptr());
+                    Z3_inc_ref(ctx, o);
+                    o
+                }
+            };
+            raw.predicates.push(p);
+        }
+        if trace_enabled() {
+            eprintln!(
+                "[fz/relational] derived {} := {} {}",
+                name,
+                truncate(ast_str(ctx, def), 64),
+                if guard.is_some() { "(guarded)" } else { "" }
+            );
+        }
+        return true;
+    }
+    false
+}
+
+/// One rejected assertion → relational forms: bare `(= L R)`,
+/// `(=> G (= L R))`, and the simplifier's `(or X (= L R))` (≡ ¬X ⇒ eq;
+/// both operand orders probed, as in `try_record_guarded`).
+unsafe fn try_relational(
+    ctx: Z3_context,
+    a: Z3_ast,
+    outputs: &HashSet<String>,
+    raw: &mut Raw,
+) -> bool {
+    if let Some((l, r)) = split_equality(ctx, a) {
+        return try_relational_eq(ctx, l, r, None, outputs, raw);
+    }
+    let Some(dk) = decl_kind(ctx, a) else { return false };
+    let ch = children(ctx, a);
+    if dk == DeclKind::IMPLIES && ch.len() == 2 {
+        if let Some((l, r)) = split_equality(ctx, ch[1]) {
+            return try_relational_eq(ctx, l, r, Some((ch[0], false)), outputs, raw);
+        }
+    }
+    if dk == DeclKind::OR && ch.len() == 2 {
+        for (g, q) in [(ch[0], ch[1]), (ch[1], ch[0])] {
+            if let Some((l, r)) = split_equality(ctx, q) {
+                if try_relational_eq(ctx, l, r, Some((g, true)), outputs, raw) {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
+/// Re-scan the assertions the main loop rejected and recover relational
+/// definitions for manifest outputs. Consumed assertions leave
+/// `raw.predicates`; everything else stays exactly as it was. Returns
+/// the number of derived definitions.
+unsafe fn relational_recover(
+    ctx: Z3_context,
+    outputs: &HashSet<String>,
+    raw: &mut Raw,
+) -> usize {
+    let mut derived = 0usize;
+    let preds = std::mem::take(&mut raw.predicates);
+    for a in preds {
+        if try_relational(ctx, a, outputs, raw) {
+            derived += 1;
+        } else {
+            raw.predicates.push(a);
+        }
+    }
+    derived
+}
+
 /// Assemble a single var's body from the raw partition, or `None` if `var` has
 /// no covering definition. Reads by reference (callable for many vars).
 unsafe fn build_body(raw: &Raw, var: &str) -> Option<StepBody> {
@@ -1013,6 +1401,15 @@ unsafe fn extract_program(
             }
         }
         raw.predicates.push(a);
+    }
+
+    // Relational pre-pass (N0/N1): recover output definitions from the
+    // rejected assertions before declaring any output uncovered.
+    if relational_enabled() {
+        let n = relational_recover(ctx, &output_set, &mut raw);
+        if n > 0 && trace_enabled() {
+            eprintln!("[fz/relational] pre-pass derived {n} definition(s)");
+        }
     }
 
     // Assemble candidate bodies: every output (required) + every internally
@@ -1888,6 +2285,177 @@ unsafe fn exec_step(
         }
     }
     true
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    unsafe fn ctx_new() -> Z3_context {
+        let cfg = Z3_mk_config();
+        Z3_mk_context(cfg)
+    }
+
+    unsafe fn int_const(ctx: Z3_context, name: &str) -> Z3_ast {
+        let cs = CString::new(name).unwrap();
+        let sym = Z3_mk_string_symbol(ctx, cs.as_ptr());
+        Z3_mk_const(ctx, sym, Z3_mk_int_sort(ctx))
+    }
+
+    unsafe fn int_lit(ctx: Z3_context, n: i64) -> Z3_ast {
+        Z3_mk_int64(ctx, n, Z3_mk_int_sort(ctx))
+    }
+
+    unsafe fn add(ctx: Z3_context, a: Z3_ast, b: Z3_ast) -> Z3_ast {
+        let args = [a, b];
+        Z3_mk_add(ctx, 2, args.as_ptr())
+    }
+
+    /// N0: `n - _n = 1` (as the simplifier renders it: `n + (-1)*_n = 1`)
+    /// rearranges to `n := 1 + _n`; the carry `_n` is not a candidate so
+    /// direction cannot flip.
+    #[test]
+    fn cancel_solve_difference_equation() {
+        unsafe {
+            let ctx = ctx_new();
+            let n = int_const(ctx, "n");
+            let pn = int_const(ctx, "_n");
+            let neg_args = [pn];
+            let neg_pn = Z3_mk_unary_minus(ctx, neg_args[0]);
+            let l = add(ctx, n, neg_pn);
+            let r = int_lit(ctx, 1);
+            let def = cancel_solve(ctx, l, r, n, "n").expect("linear ±1 must solve");
+            assert!(!mentions_name(ctx, def, "n"));
+            assert!(mentions_name(ctx, def, "_n"));
+            assert!(derived_def_valid(ctx, l, r, n, def, &[]));
+        }
+    }
+
+    /// N0 coefficient −1 path: `c - y = a` ⇒ `y := c - a` via `v + (L−R)`.
+    #[test]
+    fn cancel_solve_negative_coefficient() {
+        unsafe {
+            let ctx = ctx_new();
+            let y = int_const(ctx, "y");
+            let c = int_const(ctx, "c");
+            let a = int_const(ctx, "a");
+            let sub_args = [c, y];
+            let l = Z3_mk_sub(ctx, 2, sub_args.as_ptr());
+            let def = cancel_solve(ctx, l, a, y, "y").expect("coeff −1 must solve");
+            assert!(!mentions_name(ctx, def, "y"));
+            assert!(derived_def_valid(ctx, l, a, y, def, &[]));
+        }
+    }
+
+    /// N0 refusal: `x*y = a + b` must NOT solve for `y` (nonlinear — every
+    /// mechanism refuses, per the study; no division side-conditions exist).
+    #[test]
+    fn cancel_solve_refuses_nonlinear() {
+        unsafe {
+            let ctx = ctx_new();
+            let x = int_const(ctx, "x");
+            let y = int_const(ctx, "y");
+            let a = int_const(ctx, "a");
+            let b = int_const(ctx, "b");
+            let mul_args = [x, y];
+            let l = Z3_mk_mul(ctx, 2, mul_args.as_ptr());
+            let r = add(ctx, a, b);
+            assert!(cancel_solve(ctx, l, r, y, "y").is_none());
+        }
+    }
+
+    /// N1 probe + contract: `2*y = a` has no ±1 cancellation, but
+    /// solve_for synthesizes `y := a div 2` with the divisibility guard.
+    /// This test IS the documentation of the result format (parallel
+    /// vectors) — if a z3 upgrade changes it, this fails loudly.
+    #[test]
+    fn solve_for_probe_int_coefficient() {
+        unsafe {
+            let ctx = ctx_new();
+            let y = int_const(ctx, "y");
+            let a = int_const(ctx, "a");
+            let two = int_lit(ctx, 2);
+            let mul_args = [two, y];
+            let l = Z3_mk_mul(ctx, 2, mul_args.as_ptr());
+            assert!(cancel_solve(ctx, l, a, y, "y").is_none(), "cancellation must refuse coeff 2");
+            let Some((def, guards)) = solve_for_def(ctx, l, a, y, "y") else {
+                panic!("solve_for must handle Int coefficient 2");
+            };
+            assert!(!mentions_name(ctx, def, "y"));
+            assert!(mentions_name(ctx, def, "a"));
+            assert!(derived_def_valid(ctx, l, a, y, def, &guards),
+                "def {} + guards {:?} must be equivalent to 2y = a",
+                ast_str(ctx, def),
+                guards.iter().map(|&g| ast_str(ctx, g)).collect::<Vec<_>>());
+        }
+    }
+
+    /// End-to-end recovery on the E2 shape: the guarded difference
+    /// equation `(or is_first_tick (= n - _n 1))` lands as an appended
+    /// guarded branch for `n`, and the predicate is consumed.
+    #[test]
+    fn relational_recover_guarded_difference() {
+        unsafe {
+            let ctx = ctx_new();
+            let n = int_const(ctx, "n");
+            let pn = int_const(ctx, "_n");
+            let ift_cs = CString::new("is_first_tick").unwrap();
+            let ift = Z3_mk_const(ctx, Z3_mk_string_symbol(ctx, ift_cs.as_ptr()), Z3_mk_bool_sort(ctx));
+            let sub_args = [n, pn];
+            let l = Z3_mk_sub(ctx, 2, sub_args.as_ptr());
+            let eq = Z3_mk_eq(ctx, l, int_lit(ctx, 1));
+            let or_args = [ift, eq];
+            let assertion = Z3_mk_or(ctx, 2, or_args.as_ptr());
+
+            let mut raw = Raw::default();
+            raw.predicates.push(assertion);
+            let outputs: HashSet<String> = ["n".to_string()].into_iter().collect();
+            let derived = relational_recover(ctx, &outputs, &mut raw);
+            assert_eq!(derived, 1);
+            assert!(raw.predicates.is_empty(), "consumed assertion must leave predicates");
+            let branches = raw.guarded.get("n").expect("guarded branch for n");
+            assert_eq!(branches.len(), 1);
+            assert!(branches[0].neg, "or-shape guard fires on negation");
+        }
+    }
+
+    /// Direction forcing: an equation whose only arith vars are carries
+    /// (`_a + _b = 3` — no output mentioned) derives nothing and stays a
+    /// predicate.
+    #[test]
+    fn relational_recover_never_defines_inputs() {
+        unsafe {
+            let ctx = ctx_new();
+            let pa = int_const(ctx, "_a");
+            let pb = int_const(ctx, "_b");
+            let eq = Z3_mk_eq(ctx, add(ctx, pa, pb), int_lit(ctx, 3));
+            let mut raw = Raw::default();
+            raw.predicates.push(eq);
+            let outputs: HashSet<String> = ["n".to_string()].into_iter().collect();
+            assert_eq!(relational_recover(ctx, &outputs, &mut raw), 0);
+            assert_eq!(raw.predicates.len(), 1);
+            assert!(raw.scalar.is_empty() && raw.guarded.is_empty());
+        }
+    }
+
+    /// Covered outputs are untouchable: a bare relational equation over an
+    /// output that already has a scalar def stays a predicate (first-def-
+    /// wins, identical to the main loop's contract).
+    #[test]
+    fn relational_recover_skips_covered_output() {
+        unsafe {
+            let ctx = ctx_new();
+            let n = int_const(ctx, "n");
+            let a = int_const(ctx, "a");
+            let eq = Z3_mk_eq(ctx, add(ctx, n, a), int_lit(ctx, 7));
+            let mut raw = Raw::default();
+            raw.scalar.insert("n".to_string(), int_lit(ctx, 5));
+            raw.predicates.push(eq);
+            let outputs: HashSet<String> = ["n".to_string()].into_iter().collect();
+            assert_eq!(relational_recover(ctx, &outputs, &mut raw), 0);
+            assert_eq!(raw.predicates.len(), 1);
+        }
+    }
 }
 
 type Z3Tick = (Vec<Sv>, Vec<Sv>);
