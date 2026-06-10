@@ -203,7 +203,34 @@ fsm driver_main
         _ ⇒ ""
 
     -- ── ZINIT — Z3 lifecycle latch bank (see compiler2/driver_zinit.ev) ──
-    ..DriverZInit
+    -- Bare mention against its header: these declarations ARE the latch
+    -- bank's interface; the setup-busy gate is internal.
+    zstep ∈ Int
+    z3ctx ∈ Z3SolverCtx
+    z3sorts ∈ Z3Sorts
+    z3nums ∈ Z3Numerals
+    z_arena ∈ Int
+    z_eff_arrsort ∈ Int
+    z_effects_sym ∈ Int
+    z_effects ∈ Int
+    z_efflen_sym ∈ Int
+    z_efflen ∈ Int
+    z_true ∈ Int
+    z_false ∈ Int
+    tok_buf ∈ FtiBuffer
+    sym_buf ∈ FtiBuffer
+    claimidx_buf ∈ FtiBuffer
+    z_lastres_sort ∈ Int
+    z_lastres_sym ∈ Int
+    z_lastres ∈ Int
+    z_lastres_len_sym ∈ Int
+    z_lastres_len ∈ Int
+    z_first_tick_sym ∈ Int
+    z_first_tick ∈ Int
+    z_lastres_ge ∈ Int
+    z_intarr_sort ∈ Int
+    z_efflen_ge ∈ Int
+    DriverZInit
 
     -- ── ED — enum-declaration machine (see compiler2/driver_enum.ev) ──
     ..DriverEnum
