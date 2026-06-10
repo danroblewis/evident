@@ -3,11 +3,14 @@
 --           _pratt_decl_name, pratt_result), the pinned record type's field
 --           registry (recs .n_fields / .fnames), the claim-walk dispatch
 --           gate (in_claim, work_nil, _param_skip, tok_ready), and
---           the symbol-table name index (sym_names).
--- PRODUCES: the record-pin broadcast loop state (bcast_on/bcast_slot/bcast_name/
---           bcast_body/bcast_field_i/bcast_cur) and the per-field re-walk emission
---           (bcast_dname, bcast_dup, bcast_head, bcast_items) consumed by the
---           claim-walk item dispatch.
+--           the symbol-table name index (sym_names) — all as free names
+--           (names-match; never declared here).
+-- PRODUCES: the HEADER below — the checked interface (claim-headers
+--           pilot): the carried loop state (bcast_on/bcast_slot/bcast_name/
+--           bcast_body/bcast_field_i/bcast_cur) and the per-field re-walk
+--           outputs (bcast_field, bcast_more, bcast_fin, bcast_items)
+--           consumed by the claim-walk item dispatch. Everything else is
+--           per-call-site internal.
 -- MAINTAINS: a record-pinned membership re-walks the parsed body once
 --           per FIELD of the record type — bcast_field_i steps 0→n_fields, emitting a
 --           declare+pin (`s.<name>.<field> = <body[field]>`) each step,
@@ -19,27 +22,23 @@
 -- iterates, and the claim-walk dispatch gate that schedules each
 -- re-walk tick. None can be dropped; the concern is the join itself.
 --
--- The G2 record-pin BROADCAST loop. Lifted into driver_main via
--- `..DriverBroadcast`.
-fsm DriverBroadcast
+-- The G2 record-pin BROADCAST loop. Composed into driver_main by BARE
+-- MENTION: the header below is the whole interface (the pilot of the
+-- claim-headers plan) — driver_main declares these ten names and joins
+-- them; everything else in this body is per-call-site internal.
+fsm DriverBroadcast(bcast_on ∈ Bool, bcast_slot ∈ Int, bcast_name ∈ String, bcast_body ∈ Expr, bcast_field_i ∈ Int, bcast_cur ∈ Int, bcast_field ∈ String, bcast_more ∈ Bool, bcast_fin ∈ Bool, bcast_items ∈ C2Items)
     -- ── G2: rb — the record-pin BROADCAST loop ──
     -- During a re-walk, an IDENT whose field-qualified dotted name
     -- resolves in the symtab reads through it, and a REGISTRY-ctor
     -- call (`IVec2(10, 20)`) selects its field-index argument.
-    bcast_on ∈ Bool
-    bcast_slot ∈ Int
-    bcast_name ∈ String
-    bcast_body ∈ Expr
-    bcast_field_i ∈ Int
-    bcast_cur ∈ Int
     recpin_done ∈ Bool = (pratt_done ∧ (_pratt_kind = 1) ∧ (¬pratt_bad)
         ∧ (_pratt_rec_slot ≥ 0))
     bcast_nf ∈ Int = recs[_bcast_slot].n_fields
     bcast_fnames ∈ String = recs[_bcast_slot].fnames
     bcast_disp ∈ Bool = (in_claim ∧ _bcast_on ∧ work_nil
         ∧ (_param_skip = 0) ∧ tok_ready)
-    bcast_more ∈ Bool = (bcast_disp ∧ (_bcast_field_i < bcast_nf))
-    bcast_fin ∈ Bool = (bcast_disp ∧ (_bcast_field_i ≥ bcast_nf))
+    bcast_more = (bcast_disp ∧ (_bcast_field_i < bcast_nf))
+    bcast_fin = (bcast_disp ∧ (_bcast_field_i ≥ bcast_nf))
     bcast_on = (is_first_tick ? false
         : recpin_done ? true
         : bcast_fin ? false
@@ -52,7 +51,6 @@ fsm DriverBroadcast
         : bcast_more ? _bcast_field_i + 1
         : _bcast_field_i)
     bcast_cur = (is_first_tick ? 0 : bcast_more ? _bcast_field_i : _bcast_cur)
-    bcast_field ∈ String
     RtRecName(s ↦ bcast_fnames, i ↦ _bcast_cur, name ↦ bcast_field)
     bcast_field_now ∈ String
     RtRecName(s ↦ bcast_fnames, i ↦ _bcast_field_i, name ↦ bcast_field_now)
@@ -62,6 +60,6 @@ fsm DriverBroadcast
         0) ≥ 0)
     bcast_head ∈ C2Item = (bcast_dup ? C2Process(EIdent(bcast_dname))
         : C2DeclConst(bcast_dname, 0))
-    bcast_items ∈ C2Items = C2ICons(bcast_head,
+    bcast_items = C2ICons(bcast_head,
         C2ICons(C2Process(_bcast_body),
         C2ICons(C2PinEq, C2ICons(C2AssertTop, C2INil))))
