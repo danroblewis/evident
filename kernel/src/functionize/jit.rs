@@ -128,6 +128,24 @@ impl JitStep {
         let ptr = if args.is_empty() { std::ptr::null() } else { args.as_ptr() };
         Some(unsafe { (self.func)(ptr) })
     }
+
+    /// Slot-env variant of `call`: `slot_ids` is `inputs` pre-interned in
+    /// pack order, so packing is direct vec reads (no name hashing). `buf` is
+    /// a caller-owned scratch reused across calls (one alloc per tick, not
+    /// one per JIT step).
+    pub fn call_slots(&self, slot_ids: &[u32], slots: &[Option<Sv>], buf: &mut Vec<i64>) -> Option<i64> {
+        buf.clear();
+        for &id in slot_ids {
+            let v = match slots.get(id as usize)?.as_ref()? {
+                Sv::Int(n) => *n,
+                Sv::Bool(b) => *b as i64,
+                _ => return None,
+            };
+            buf.push(v);
+        }
+        let ptr = if buf.is_empty() { std::ptr::null() } else { buf.as_ptr() };
+        Some(unsafe { (self.func)(ptr) })
+    }
 }
 
 /// Try to JIT-compile a scalar Int/Bool expression, resolving any fixed-size

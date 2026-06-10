@@ -455,18 +455,17 @@ unsafe fn run_inner(src: &str, manifest: &Manifest) -> Result<u8, String> {
         if let Some(prog) = &functionized {
             let tf = mark();
             let prev_results_sv: Vec<Sv> = prev_results.iter().map(res_to_sv).collect();
-            let inputs = crate::functionize::build_inputs_with_results(
-                is_first, &prev_state, manifest, Some(&prog.tick0_carries), &prev_results_sv);
-            let run_opt = crate::functionize::run_program(ctx, prog, &inputs);
+            let run_opt = crate::functionize::run_program(
+                ctx, prog, manifest, is_first, &prev_state, &prev_results_sv);
             let dt = since(tf);
             tick_func += dt;
             stats.t_func += dt;
             if let Some(run) = run_opt {
                 let mut new_state: Vec<Sv> = Vec::with_capacity(manifest.state_fields.len());
                 let mut covered = true;
-                for (name, _) in &manifest.state_fields {
-                    match run.scalars.get(name) {
-                        Some(v) => new_state.push(v.clone()),
+                for v in run.state {
+                    match v {
+                        Some(v) => new_state.push(v),
                         None => { covered = false; break; }
                     }
                 }
