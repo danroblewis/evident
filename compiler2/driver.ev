@@ -407,7 +407,14 @@ fsm driver_main
     ..DriverCallLower
 
     -- ── symbol-table / name resolution (see compiler2/driver_symlookup.ev) ──
-    ..DriverSymLookup
+    -- Bare mention against its header: these five declarations ARE the
+    -- name-resolution interface; its other names are per-call-site internals.
+    bound_found ∈ Bool
+    bound_handle ∈ Int
+    lookup_pure ∈ Bool
+    lookup_handle ∈ Int
+    eff_sym_read ∈ Effect
+    DriverSymLookup
 
     bind_scope_on ∈ Bool
     bind_scope_name ∈ String
@@ -473,7 +480,65 @@ fsm driver_main
     op_is_nary ∈ Bool = (op_arith_nary ∨ op_bool_nary ∨ op_is_concat)
 
     -- ── LINE CLASSIFIER + dispatch (see compiler2/driver_classify.ev) ──
-    ..DriverClassify
+    -- Bare mention against its header: these declarations ARE the
+    -- central dispatch interface (the per-line classification flags,
+    -- dispatch enter signals, and Pratt entry cons/kind). Only
+    -- pratt_qstop carries; the rest is a pure window function.
+    line_t0 ∈ Token
+    line_t1 ∈ Token
+    line_t2 ∈ Token
+    line_t3 ∈ Token
+    line_t4 ∈ Token
+    line_t0_ident ∈ Bool
+    line_name ∈ String
+    line_is_mem ∈ Bool
+    line_is_notmem ∈ Bool
+    line_is_carry ∈ Bool
+    effects_line ∈ Bool
+    line_ty_name ∈ String
+    line_is_nat ∈ Bool
+    line_sort ∈ Int
+    seq_elt_slot ∈ Int
+    setmem_decl_line ∈ Bool
+    effects_cond ∈ Bool
+    line_pinned ∈ Bool
+    intset_line ∈ Bool
+    line_bounded ∈ Bool
+    dotdot_shape ∈ Bool
+    comp_found ∈ Bool
+    line_end ∈ Bool
+    claim_end ∈ Bool
+    frame_pop ∈ Bool
+    comp_call ∈ Bool
+    comp_bare ∈ Bool
+    comp_dotdot ∈ Bool
+    comp_line ∈ Bool
+    enter_efflit ∈ Bool
+    enter_intset ∈ Bool
+    enter_match ∈ Bool
+    enter_seqmem ∈ Bool
+    enter_seqlit ∈ Bool
+    enter_multiname ∈ Bool
+    enter_pratt_line ∈ Bool
+    enter_pratt ∈ Bool
+    pratt_enter_consume ∈ Int
+    pratt_enter_kind ∈ Int
+    pratt_qstop ∈ Bool
+    line_dname ∈ String
+    scoped_key ∈ String
+    name_outer ∈ Bool
+    no_decl ∈ Bool
+    resolved_name ∈ String
+    mem_items ∈ C2Items
+    strin_line ∈ Bool
+    strin_items ∈ C2Items
+    enter_strin ∈ Bool
+    tymem_call ∈ Bool
+    tymem_bare ∈ Bool
+    tymem_line ∈ Bool
+    in_type_frame ∈ Bool
+    callee_pos ∈ Int
+    DriverClassify
     -- ── G1: bounded quantifier (see compiler2/driver_quant.ev) ──
     -- Bare mention against its header: these twenty-seven declarations
     -- ARE the bounded-quantifier interface; its other names are
@@ -602,7 +667,37 @@ fsm driver_main
     -- ── F2: composition inlining (see compiler2/driver_compose.ev) ──
     ..DriverCompose
     -- ── PRATT FSM state (see compiler2/driver_pratt.ev) ──
-    ..DriverPratt
+    -- Bare mention against its header: these declarations ARE the Pratt
+    -- interface — the parse result (pratt_kind/decl_name/sort/nat/nodecl/
+    -- pin_name/rec_slot/result/consume/done/bad), the in-pass gate
+    -- (in_pratt), the matches-skim recognizers the consume schedule reads
+    -- (mskim/mskim_enter/mskim_field/mskim_close/mskim_bad), and the carried
+    -- Pratt stack/cursor (expr_stack/op_stack/expect_operand/paren_depth/
+    -- quant_depth/call_depth — carried state must be interface, not hidden).
+    in_pratt ∈ Bool
+    pratt_kind ∈ Int
+    pratt_decl_name ∈ String
+    pratt_sort ∈ Int
+    pratt_nat ∈ Bool
+    pratt_nodecl ∈ Bool
+    pratt_pin_name ∈ String
+    pratt_rec_slot ∈ Int
+    pratt_result ∈ Expr
+    pratt_consume ∈ Int
+    pratt_done ∈ Bool
+    pratt_bad ∈ Bool
+    mskim ∈ Bool
+    mskim_enter ∈ Bool
+    mskim_field ∈ Bool
+    mskim_close ∈ Bool
+    mskim_bad ∈ Bool
+    expr_stack ∈ ExprList
+    op_stack ∈ PrOps
+    expect_operand ∈ Bool
+    paren_depth ∈ Int
+    quant_depth ∈ Int
+    call_depth ∈ Int
+    DriverPratt
     -- ── G1: conditional inline (see compiler2/driver_guard.ev) ──
     -- Bare mention against its header: these eleven declarations ARE
     -- the guarded-splice interface; its other names are per-call-site
@@ -1107,7 +1202,20 @@ fsm driver_main
         : eff_filler)
 
     -- ── EMIT rendering phase (see compiler2/driver_emit.ev) ──
-    ..DriverEmit
+    -- Bare mention against its header: these nine declarations ARE the
+    -- emit interface (the program counter, its carried captures, and the
+    -- schedule's emit effects); the per-tick translation-unit string
+    -- pieces are per-call-site internals.
+    emit_step ∈ Int
+    unit_ptr ∈ Int
+    rendered ∈ String
+    eff_solver_str ∈ Effect
+    eff_copy_unit ∈ Effect
+    eff_print_unit ∈ Effect
+    eff_free_tokbuf ∈ Effect
+    eff_free_symbuf ∈ Effect
+    eff_free_claimbuf ∈ Effect
+    DriverEmit
 
     effects ∈ Seq(Effect) = (is_first_tick ? ⟨ReadLine, ReadLine⟩
         : variant_unsupported ? ⟨LibCall("libc", "puts",
