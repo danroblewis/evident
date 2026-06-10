@@ -49,7 +49,16 @@ fsm main
     lr_probe ∈ Int = match last_results[0]
         IntResult(n) ⇒ n
         _ ⇒ 0
-    ..DriverEmit
+    emit_step ∈ Int
+    unit_ptr ∈ Int
+    rendered ∈ String
+    eff_solver_str ∈ Effect
+    eff_copy_unit ∈ Effect
+    eff_print_unit ∈ Effect
+    eff_free_tokbuf ∈ Effect
+    eff_free_symbuf ∈ Effect
+    eff_free_claimbuf ∈ Effect
+    DriverEmit
     e_msg ∈ String = str_from_int(emit_step + (lr_probe - lr_probe))
     effects ∈ Seq(Effect) = (emit_step ≥ 5
         ? ⟨LibCall("libc", "puts", ⟨ArgStr(e_msg)⟩), Exit(0)⟩

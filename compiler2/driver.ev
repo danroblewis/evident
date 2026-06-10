@@ -1114,7 +1114,20 @@ fsm driver_main
         : eff_filler)
 
     -- ── EMIT rendering phase (see compiler2/driver_emit.ev) ──
-    ..DriverEmit
+    -- Bare mention against its header: these nine declarations ARE the
+    -- emit interface (the program counter, its carried captures, and the
+    -- schedule's emit effects); the per-tick translation-unit string
+    -- pieces are per-call-site internals.
+    emit_step ∈ Int
+    unit_ptr ∈ Int
+    rendered ∈ String
+    eff_solver_str ∈ Effect
+    eff_copy_unit ∈ Effect
+    eff_print_unit ∈ Effect
+    eff_free_tokbuf ∈ Effect
+    eff_free_symbuf ∈ Effect
+    eff_free_claimbuf ∈ Effect
+    DriverEmit
 
     effects ∈ Seq(Effect) = (is_first_tick ? ⟨ReadLine, ReadLine⟩
         : variant_unsupported ? ⟨LibCall("libc", "puts",
