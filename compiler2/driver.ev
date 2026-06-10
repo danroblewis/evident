@@ -263,7 +263,20 @@ fsm driver_main
     -- ── parse_mode 6: match-pin walk (see compiler2/driver_matchpin.ev) ──
     ..DriverMatchPin
     -- ── parse_mode 7/8: literal-collection membership (see compiler2/driver_litmem.ev) ──
-    ..DriverLitMem
+    -- Bare mention against its header: these ten declarations ARE the
+    -- literal-membership interface; its other names are per-call-site
+    -- internals.
+    intset_elem ∈ Bool
+    intset_close ∈ Bool
+    intset_bad ∈ Bool
+    intset_items ∈ C2Items
+    intset_name ∈ String
+    intset_negated ∈ Bool
+    intset_expr ∈ Expr
+    seqvar_set ∈ Bool
+    seqvar_name ∈ String
+    seqvar_slot ∈ Int
+    DriverLitMem
 
     -- ── G2: set-var registry (see compiler2/driver_setvar.ev) ──
     ..DriverSetVar
