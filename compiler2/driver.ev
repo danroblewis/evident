@@ -609,7 +609,37 @@ fsm driver_main
     -- ── F2: composition inlining (see compiler2/driver_compose.ev) ──
     ..DriverCompose
     -- ── PRATT FSM state (see compiler2/driver_pratt.ev) ──
-    ..DriverPratt
+    -- Bare mention against its header: these declarations ARE the Pratt
+    -- interface — the parse result (pratt_kind/decl_name/sort/nat/nodecl/
+    -- pin_name/rec_slot/result/consume/done/bad), the in-pass gate
+    -- (in_pratt), the matches-skim recognizers the consume schedule reads
+    -- (mskim/mskim_enter/mskim_field/mskim_close/mskim_bad), and the carried
+    -- Pratt stack/cursor (expr_stack/op_stack/expect_operand/paren_depth/
+    -- quant_depth/call_depth — carried state must be interface, not hidden).
+    in_pratt ∈ Bool
+    pratt_kind ∈ Int
+    pratt_decl_name ∈ String
+    pratt_sort ∈ Int
+    pratt_nat ∈ Bool
+    pratt_nodecl ∈ Bool
+    pratt_pin_name ∈ String
+    pratt_rec_slot ∈ Int
+    pratt_result ∈ Expr
+    pratt_consume ∈ Int
+    pratt_done ∈ Bool
+    pratt_bad ∈ Bool
+    mskim ∈ Bool
+    mskim_enter ∈ Bool
+    mskim_field ∈ Bool
+    mskim_close ∈ Bool
+    mskim_bad ∈ Bool
+    expr_stack ∈ ExprList
+    op_stack ∈ PrOps
+    expect_operand ∈ Bool
+    paren_depth ∈ Int
+    quant_depth ∈ Int
+    call_depth ∈ Int
+    DriverPratt
     -- ── G1: conditional inline (see compiler2/driver_guard.ev) ──
     -- Bare mention against its header: these eleven declarations ARE
     -- the guarded-splice interface; its other names are per-call-site
