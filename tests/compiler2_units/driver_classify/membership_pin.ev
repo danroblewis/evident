@@ -40,18 +40,14 @@ fsm main
     frame_depth = (is_first_tick ? 0 : _frame_depth)
     scope_prefix ∈ String
     scope_prefix = (is_first_tick ? "" : _scope_prefix)
-    bind_n0 ∈ String
-    bind_n0 = (is_first_tick ? "" : _bind_n0)
-    bind_n1 ∈ String
-    bind_n1 = (is_first_tick ? "" : _bind_n1)
-    bind_n2 ∈ String
-    bind_n2 = (is_first_tick ? "" : _bind_n2)
-    bind_n3 ∈ String
-    bind_n3 = (is_first_tick ? "" : _bind_n3)
-    bind_n4 ∈ String
-    bind_n4 = (is_first_tick ? "" : _bind_n4)
-    bind_n5 ∈ String
-    bind_n5 = (is_first_tick ? "" : _bind_n5)
+    binds ∈ Seq(Bind)
+    #binds ≤ 12
+    ∀ k ∈ {0..11} : binds[k].name = (is_first_tick ? "" : _binds[k].name)
+    ∀ k ∈ {0..11} : binds[k].handle = (is_first_tick ? 0 : _binds[k].handle)
+    bind_base ∈ Int
+    bind_base = (is_first_tick ? 0 : _bind_base)
+    bind_top ∈ Int
+    bind_top = (is_first_tick ? 0 : _bind_top)
     recs ∈ Seq(RecTypeEntry)
     #recs ≤ 3
     ∀ e ∈ recs : e.name = ""

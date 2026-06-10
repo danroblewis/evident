@@ -49,6 +49,13 @@
 #           ∀ k ∈ {0..K} : ((xs[k].F = KEY) ⇒ (OUT = xs[k].V))
 #           (¬(∃ i ∈ {0..K} : xs[i].F = KEY)) ⇒ (OUT = DEF)
 #           → OUT = (xs_0_F = KEY ? xs_0_V : … : DEF)
+#   windowed index form (cursor-window registries, e.g. a frame's
+#   segment [LO, HI) of a global tape; LO/HI are idents):
+#           ∀ k ∈ {0..K} : (((k ≥ LO) ∧ (k < HI) ∧ (xs[k].F = KEY)) ⇒ (OUT = xs[k].V))
+#           (¬(∃ i ∈ {0..K} : ((i ≥ LO) ∧ (i < HI) ∧ (xs[i].F = KEY)))) ⇒ (OUT = DEF)
+#           → OUT = (((0 ≥ LO) ∧ (0 < HI) ∧ (xs_0_F = KEY)) ? xs_0_V : … : DEF)
+#           (k is substituted as a literal per slot, so the window
+#           conjuncts constant-fold; keys must be unique IN the window.)
 #           The covered select chain — implication-pins alone are bare
 #           disjunctions the functionizer cannot extract (measured
 #           2026-06-09: hot-loop fatal), so the PAIR lowers to the
@@ -580,6 +587,42 @@ END {
             projKey[cur, pOut] = pKey; projV[cur, pOut] = pV
             projHi[cur, pOut] = pHi; projPinLine[cur, pOut] = i
         }
+        # keyed-projection PIN, windowed index form:
+        #   ∀ k ∈ {0..K} : (((k ≥ LO) ∧ (k < HI) ∧ (xs[k].F = KEY)) ⇒ (OUT = xs[k].V))
+        # (conjuncts split on index() — a [^∧]-style byte class would
+        # corrupt on ≥, which shares the E2 lead byte with ∧)
+        if (code ~ /^[ \t]*∀[ \t]+[A-Za-z_][A-Za-z0-9_]*[ \t]*∈[ \t]*\{0\.\.[0-9]+\}[ \t]*:[ \t]*\(\(\([A-Za-z_][A-Za-z0-9_]*[ \t]*≥[ \t]*[A-Za-z_][A-Za-z0-9_]*\)[ \t]*∧[ \t]*\([A-Za-z_][A-Za-z0-9_]*[ \t]*<[ \t]*[A-Za-z_][A-Za-z0-9_]*\)[ \t]*∧[ \t]*\([A-Za-z_][A-Za-z0-9_]*\[[A-Za-z_][A-Za-z0-9_]*\]\.[A-Za-z_][A-Za-z0-9_]*[ \t]*=[ \t]*[A-Za-z_][A-Za-z0-9_]*\)\)[ \t]*⇒[ \t]*\([A-Za-z_][A-Za-z0-9_]*[ \t]*=[ \t]*[A-Za-z_][A-Za-z0-9_]*\[[A-Za-z_][A-Za-z0-9_]*\]\.[A-Za-z_][A-Za-z0-9_]*\)\)[ \t]*$/) {
+            t1 = code
+            match(t1, /\{0\.\.[0-9]+\}/)
+            pHi = substr(t1, RSTART + 4, RLENGTH - 5) + 0
+            bv = t1; sub(/^[ \t]*∀[ \t]*/, "", bv); sub(/[ \t]*∈.*$/, "", bv); bv = trim(bv)
+            sub(/^[^:]*:[ \t]*/, "", t1)
+            wa = index(t1, "∧")
+            wc1 = substr(t1, 1, wa - 1)
+            t1 = substr(t1, wa + length("∧"))
+            wa = index(t1, "∧")
+            wc2 = substr(t1, 1, wa - 1)
+            t1 = substr(t1, wa + length("∧"))
+            wv1 = wc1; gsub(/[() \t]/, "", wv1); sub(/≥.*$/, "", wv1)
+            wlo = wc1; sub(/^.*≥[ \t]*/, "", wlo); sub(/\).*$/, "", wlo); wlo = trim(wlo)
+            wv2 = wc2; gsub(/[() \t]/, "", wv2); sub(/<.*$/, "", wv2)
+            whi = wc2; sub(/^.*<[ \t]*/, "", whi); sub(/\).*$/, "", whi); whi = trim(whi)
+            sub(/^[ \t]*\(/, "", t1)               # xs[k].F = KEY)) ⇒ (OUT = xs[k].V))
+            pSeq = t1; sub(/\[.*$/, "", pSeq)
+            pIdx = t1; sub(/^[^[]*\[/, "", pIdx); sub(/\].*$/, "", pIdx)
+            pF = t1; sub(/^[^.]*\./, "", pF); sub(/[ \t]*=.*$/, "", pF)
+            pKey = t1; sub(/^[^=]*=[ \t]*/, "", pKey); sub(/\).*$/, "", pKey); gsub(/[ \t]/, "", pKey)
+            t2 = code; sub(/^.*⇒[ \t]*\(/, "", t2)
+            pOut = t2; sub(/[ \t]*=.*$/, "", pOut); pOut = trim(pOut)
+            pIdx2 = t2; sub(/^[^[]*\[/, "", pIdx2); sub(/\].*$/, "", pIdx2)
+            pV = t2; sub(/^[^.]*\./, "", pV); sub(/\).*$/, "", pV); gsub(/[ \t]/, "", pV)
+            if (wv1 == bv && wv2 == bv && pIdx == bv && pIdx2 == bv) {
+                projSeq[cur, pOut] = pSeq; projF[cur, pOut] = pF
+                projKey[cur, pOut] = pKey; projV[cur, pOut] = pV
+                projHi[cur, pOut] = pHi; projPinLine[cur, pOut] = i
+                projWlo[cur, pOut] = wlo; projWhi[cur, pOut] = whi
+            }
+        }
         # element-∀ carry detection: `∀ e ∈ xs : … _e …` implies xs carries,
         # but autocarry cannot see that `_e` is `_xs` — synthesize the dual
         # decls at the main decl site (PASS 2) when autocarry did not.
@@ -1043,7 +1086,9 @@ END {
                 for (k = 0; k <= hh; k++) {
                     # len-guard element-form conditions only when the seq HAS
                     # a len (length-less slot registries have no xs_len const)
-                    if (pel && (sq in hasLen))
+                    if ((F SUBSEP out) in projWlo)
+                        cnd = "((" k " ≥ " projWlo[F, out] ") ∧ (" k " < " projWhi[F, out] ") ∧ (" sq "_" k "_" ff " = " ky "))"
+                    else if (pel && (sq in hasLen))
                         cnd = "((" k " < " sq "_len) ∧ (" sq "_" k "_" ff " = " ky "))"
                     else
                         cnd = sq "_" k "_" ff " = " ky

@@ -5,7 +5,8 @@
 --           parse gate (in_parse, _parse_mode, tok_ready, work_nil), the
 --           handle stack (h_top/2nd/.. + d_h_t*), the claim index
 --           (claimidx_buf.base, claimidx_names), the symbol table (sym_names), the
---           inline-frame state (scope_prefix/frame_depth/param_depth/ilb_n*), the
+--           inline-frame state (scope_prefix/frame_depth/param_depth + the
+--           bind-tape window _binds/_bind_base/_bind_top), the
 --           enum value table (enum_values), the record registry (recs name/fields/
 --           sorts), the Pratt result (pratt_done/pratt_bad/pratt_result/pratt_*), and
 --           z_exit_decl. (Width justified §6.4: positional binding
@@ -16,7 +17,9 @@
 --           the header-slot fresh-decl emission (pskip_decl_fire/pskip_decl_items —
 --           unjoined header slots of a headered callee get scoped C2DeclConst
 --           at the seam; claim-headers plan, fixtures 142-148), the
---           bindzip_* zip/bind stage, and the lowered C2App/C2DeclConst item
+--           bindzip_* zip/bind stage with its bindzip_binds/bindzip_count
+--           staging column (appended onto compose's bind tape on
+--           bindzip_act), and the lowered C2App/C2DeclConst item
 --           runs for the bound call.
 -- MAINTAINS: a positional call `(e1, e2, e3) ∈ add` parses each element to
 --           a handle, then binds the handles to the callee's first-line
@@ -152,9 +155,7 @@ fsm DriverPosBind
     elem_plain_key ∈ String
     FtiNameEntry(name ↦ elem_name, entry ↦ elem_plain_key)
     elem_is_variant ∈ Bool = (∃ i ∈ {0..#enum_values-1} : enum_values[i].name = elem_name)
-    elem_is_bound ∈ Bool = ((bind_n0 = elem_name) ∨ (bind_n1 = elem_name)
-        ∨ (bind_n2 = elem_name) ∨ (bind_n3 = elem_name) ∨ (bind_n4 = elem_name)
-        ∨ (bind_n5 = elem_name))
+    elem_is_bound ∈ Bool = (∃ i ∈ {0..11} : ((i ≥ _bind_base) ∧ (i < _bind_top) ∧ (_binds[i].name = elem_name)))
     elem_unresolved ∈ Bool = ((elem_name ≠ "") ∧ (elem_name ≠ "true")
         ∧ (elem_name ≠ "false") ∧ (¬elem_is_variant) ∧ (¬elem_is_bound)
         ∧ (index_of(sym_names, elem_scoped_key, 0) < 0)
@@ -222,49 +223,37 @@ fsm DriverPosBind
     pskip_g5 ∈ C2Items = (((_pskip_grp ≤ 5) ∧ (5 < _param_count)
             ∧ (_posjump_armed ? (5 ≥ _pos_argc)
                 : _callw_hide ? (index_of(sym_names, "|" ++ substr(_param_names[5].s ++ "                               ", 0, 31), 0) < 0)
-                : (¬((bind_n0 = _param_names[5].s) ∨ (bind_n1 = _param_names[5].s)
-                    ∨ (bind_n2 = _param_names[5].s) ∨ (bind_n3 = _param_names[5].s)
-                    ∨ (bind_n4 = _param_names[5].s) ∨ (bind_n5 = _param_names[5].s)))))
+                : (¬(∃ i ∈ {0..11} : ((i ≥ _bind_base) ∧ (i < _bind_top) ∧ (_binds[i].name = _param_names[5].s))))))
         ? C2ICons(C2DeclConst(_scope_prefix ++ _param_names[5].s, pskip_sort), C2ICons(C2Drop, C2INil))
         : C2INil)
     pskip_g4 ∈ C2Items = (((_pskip_grp ≤ 4) ∧ (4 < _param_count)
             ∧ (_posjump_armed ? (4 ≥ _pos_argc)
                 : _callw_hide ? (index_of(sym_names, "|" ++ substr(_param_names[4].s ++ "                               ", 0, 31), 0) < 0)
-                : (¬((bind_n0 = _param_names[4].s) ∨ (bind_n1 = _param_names[4].s)
-                    ∨ (bind_n2 = _param_names[4].s) ∨ (bind_n3 = _param_names[4].s)
-                    ∨ (bind_n4 = _param_names[4].s) ∨ (bind_n5 = _param_names[4].s)))))
+                : (¬(∃ i ∈ {0..11} : ((i ≥ _bind_base) ∧ (i < _bind_top) ∧ (_binds[i].name = _param_names[4].s))))))
         ? C2ICons(C2DeclConst(_scope_prefix ++ _param_names[4].s, pskip_sort), C2ICons(C2Drop, pskip_g5))
         : pskip_g5)
     pskip_g3 ∈ C2Items = (((_pskip_grp ≤ 3) ∧ (3 < _param_count)
             ∧ (_posjump_armed ? (3 ≥ _pos_argc)
                 : _callw_hide ? (index_of(sym_names, "|" ++ substr(_param_names[3].s ++ "                               ", 0, 31), 0) < 0)
-                : (¬((bind_n0 = _param_names[3].s) ∨ (bind_n1 = _param_names[3].s)
-                    ∨ (bind_n2 = _param_names[3].s) ∨ (bind_n3 = _param_names[3].s)
-                    ∨ (bind_n4 = _param_names[3].s) ∨ (bind_n5 = _param_names[3].s)))))
+                : (¬(∃ i ∈ {0..11} : ((i ≥ _bind_base) ∧ (i < _bind_top) ∧ (_binds[i].name = _param_names[3].s))))))
         ? C2ICons(C2DeclConst(_scope_prefix ++ _param_names[3].s, pskip_sort), C2ICons(C2Drop, pskip_g4))
         : pskip_g4)
     pskip_g2 ∈ C2Items = (((_pskip_grp ≤ 2) ∧ (2 < _param_count)
             ∧ (_posjump_armed ? (2 ≥ _pos_argc)
                 : _callw_hide ? (index_of(sym_names, "|" ++ substr(_param_names[2].s ++ "                               ", 0, 31), 0) < 0)
-                : (¬((bind_n0 = _param_names[2].s) ∨ (bind_n1 = _param_names[2].s)
-                    ∨ (bind_n2 = _param_names[2].s) ∨ (bind_n3 = _param_names[2].s)
-                    ∨ (bind_n4 = _param_names[2].s) ∨ (bind_n5 = _param_names[2].s)))))
+                : (¬(∃ i ∈ {0..11} : ((i ≥ _bind_base) ∧ (i < _bind_top) ∧ (_binds[i].name = _param_names[2].s))))))
         ? C2ICons(C2DeclConst(_scope_prefix ++ _param_names[2].s, pskip_sort), C2ICons(C2Drop, pskip_g3))
         : pskip_g3)
     pskip_g1 ∈ C2Items = (((_pskip_grp ≤ 1) ∧ (1 < _param_count)
             ∧ (_posjump_armed ? (1 ≥ _pos_argc)
                 : _callw_hide ? (index_of(sym_names, "|" ++ substr(_param_names[1].s ++ "                               ", 0, 31), 0) < 0)
-                : (¬((bind_n0 = _param_names[1].s) ∨ (bind_n1 = _param_names[1].s)
-                    ∨ (bind_n2 = _param_names[1].s) ∨ (bind_n3 = _param_names[1].s)
-                    ∨ (bind_n4 = _param_names[1].s) ∨ (bind_n5 = _param_names[1].s)))))
+                : (¬(∃ i ∈ {0..11} : ((i ≥ _bind_base) ∧ (i < _bind_top) ∧ (_binds[i].name = _param_names[1].s))))))
         ? C2ICons(C2DeclConst(_scope_prefix ++ _param_names[1].s, pskip_sort), C2ICons(C2Drop, pskip_g2))
         : pskip_g2)
     pskip_decl_items ∈ C2Items = (((_pskip_grp ≤ 0) ∧ (0 < _param_count)
             ∧ (_posjump_armed ? (0 ≥ _pos_argc)
                 : _callw_hide ? (index_of(sym_names, "|" ++ substr(_param_names[0].s ++ "                               ", 0, 31), 0) < 0)
-                : (¬((bind_n0 = _param_names[0].s) ∨ (bind_n1 = _param_names[0].s)
-                    ∨ (bind_n2 = _param_names[0].s) ∨ (bind_n3 = _param_names[0].s)
-                    ∨ (bind_n4 = _param_names[0].s) ∨ (bind_n5 = _param_names[0].s)))))
+                : (¬(∃ i ∈ {0..11} : ((i ≥ _bind_base) ∧ (i < _bind_top) ∧ (_binds[i].name = _param_names[0].s))))))
         ? C2ICons(C2DeclConst(_scope_prefix ++ _param_names[0].s, pskip_sort), C2ICons(C2Drop, pskip_g1))
         : pskip_g1)
 
@@ -302,25 +291,48 @@ fsm DriverPosBind
         : (_pos_argc = 2 ∧ _tuple_pos = 0) ? h_2nd
         : (_pos_argc = 3 ∧ _tuple_pos = 0) ? h_3rd
         : h_2nd)
-    tup_binds ∈ C2Binds = (tup_rec_slot ≥ 0
-        ? CBCons(tup_param_name ++ "." ++ tup_field0, tup_h0,
-            CBCons(tup_param_name ++ "." ++ tup_field1, tup_h1, CBNil))
-        : CBCons(tup_param_name, tup_h0, CBNil))
-    tup_binds_full ∈ C2Binds = (_pos_argc = 2
-        ? CBCons(_param_names[1].s, h_top, tup_binds)
-        : _pos_argc = 3
-        ? (_tuple_pos = 0
-            ? CBCons(_param_names[1].s, h_2nd, CBCons(_param_names[2].s, h_top, tup_binds))
-            : CBCons(_param_names[0].s, h_4th, CBCons(_param_names[2].s, h_top, tup_binds)))
-        : tup_binds)
-    bindzip_plain ∈ C2Binds = (_pos_argc = 1 ? CBCons(_param_names[0].s, bindzip_h0, CBNil)
-        : _pos_argc = 2 ? CBCons(_param_names[0].s, bindzip_h0, CBCons(_param_names[1].s, bindzip_h1, CBNil))
-        : _pos_argc = 3 ? CBCons(_param_names[0].s, bindzip_h0, CBCons(_param_names[1].s, bindzip_h1,
-            CBCons(_param_names[2].s, bindzip_h2, CBNil)))
-        : _pos_argc = 4 ? CBCons(_param_names[0].s, bindzip_h0, CBCons(_param_names[1].s, bindzip_h1,
-            CBCons(_param_names[2].s, bindzip_h2, CBCons(_param_names[3].s, bindzip_h3, CBNil))))
-        : CBNil)
-    bindzip_binds ∈ C2Binds = (_has_tuple ? tup_binds_full : bindzip_plain)
+    -- ── bindzip staging — appended onto compose's bind tape ────────
+    -- bindzip_binds[0..bindzip_count-1] are this close's binds, in the
+    -- cons order the retired C2Binds builders produced: the non-tuple
+    -- params first (tuple case), then the tuple's record fields (or the
+    -- bare param when the callee param is not a record type).
+    tup_name0 ∈ String = (tup_rec_slot ≥ 0
+        ? (tup_param_name ++ "." ++ tup_field0)
+        : tup_param_name)
+    tup_name1 ∈ String = tup_param_name ++ "." ++ tup_field1
+    bindzip_count ∈ Int = (_has_tuple
+        ? ((_pos_argc = 2 ? 1 : _pos_argc = 3 ? 2 : 0) + (tup_rec_slot ≥ 0 ? 2 : 1))
+        : _pos_argc ≤ 4 ? _pos_argc : 0)
+    bindzip_binds ∈ Seq(Bind)
+    #bindzip_binds ≤ 6
+    bindzip_binds[0].name = (_has_tuple
+        ? (_pos_argc = 2 ? _param_names[1].s
+            : _pos_argc = 3 ? (_tuple_pos = 0 ? _param_names[1].s : _param_names[0].s)
+            : tup_name0)
+        : _param_names[0].s)
+    bindzip_binds[0].handle = (_has_tuple
+        ? (_pos_argc = 2 ? h_top
+            : _pos_argc = 3 ? (_tuple_pos = 0 ? h_2nd : h_4th)
+            : tup_h0)
+        : bindzip_h0)
+    bindzip_binds[1].name = (_has_tuple
+        ? (_pos_argc = 2 ? tup_name0 : _pos_argc = 3 ? _param_names[2].s : tup_name1)
+        : _param_names[1].s)
+    bindzip_binds[1].handle = (_has_tuple
+        ? (_pos_argc = 2 ? tup_h0 : _pos_argc = 3 ? h_top : tup_h1)
+        : bindzip_h1)
+    bindzip_binds[2].name = (_has_tuple
+        ? (_pos_argc = 2 ? tup_name1 : _pos_argc = 3 ? tup_name0 : "")
+        : _param_names[2].s)
+    bindzip_binds[2].handle = (_has_tuple
+        ? (_pos_argc = 2 ? tup_h1 : _pos_argc = 3 ? tup_h0 : 0)
+        : bindzip_h2)
+    bindzip_binds[3].name = (_has_tuple ? (_pos_argc = 3 ? tup_name1 : "") : _param_names[3].s)
+    bindzip_binds[3].handle = (_has_tuple ? (_pos_argc = 3 ? tup_h1 : 0) : bindzip_h3)
+    bindzip_binds[4].name = ""
+    bindzip_binds[4].handle = 0
+    bindzip_binds[5].name = ""
+    bindzip_binds[5].handle = 0
     bindzip_pop ∈ C2H = (_has_tuple
         ? (_pos_argc = 1 ? h_tail2
             : _pos_argc = 2 ? h_tail3

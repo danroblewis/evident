@@ -8,26 +8,33 @@
 --           registry (recs name/sort), the callee param registry walked
 --           during pskip (posbind's param_names/_param_count), the active-
 --           guard state (guard_on, _guard_depth), and the sibling fire/cap
---           signals (guard_hit, guard_jump_*, posjump_*, bindzip_*,
+--           signals (guard_hit, guard_jump_*, posjump_*, the bindzip
+--           staging column bindzip_binds/bindzip_count,
 --           pratt_done, pratt_bad, enter_claim*).
 --           Wide by nature: a call jump couples the classifier decision,
 --           the claim index, and the handle stack (justified §6.4).
--- PRODUCES: the inline-frame stack (frames/binds/scope_prefix/frame_depth/
+-- PRODUCES: the inline-frame stack (frames/scope_prefix/frame_depth/
 --           call_count/jump_target), the frame join-set (join_hdr — read by
 --           the classifier's name_outer rule; "*" = join all, "" = binds
 --           only, "|a|b|" = these header names), the param-skip substate
 --           (param_skip/param_depth), the slot-call walk (callw_st/callw_bare/
 --           callw_is_type/callw_pun/slot_count/type_prefix + the slot_names
 --           slot-name registry),
---           the current-frame binds peel (bind_n0..n5 / bind_h0..h5 — read
---           by the classifier's no-redeclare rule), and the call-jump /
---           frame-push-pop effects.
--- MAINTAINS: ≤4 binds per call, depth ≤8; a `..` splice inherits the
---           caller scope (no fresh binds, no prefix); a BARE claim splice
---           installs the "__cN_" α-prefix with NO binds (internals hidden,
---           parent names reach the child via prefix-then-bare lookup —
---           conformance 139/140/141); a slot call installs the prefix +
---           its C2Binds table; a headered callee restricts the join to its
+--           and the bind tape (binds/bind_base/bind_top — the window
+--           [bind_base, bind_top) is the current frame's binds; read by
+--           the classifier's no-redeclare rule, symlookup's bound-name
+--           resolution, and posbind's element/seam checks).
+-- MAINTAINS: ≤6 binds per call (the slot grammar cap; positional caps
+--           at 4), ≤12 live binds across the whole frame stack (the
+--           tape bound — measured corpus peak 4, loud UNSAT on
+--           overflow via the cursor invariants), depth ≤8; a `..`
+--           splice inherits the caller scope (no fresh binds, no
+--           prefix, window inherited); a BARE claim splice installs
+--           the "__cN_" α-prefix with NO fresh binds (internals
+--           hidden, window inherited, parent names reach the child via
+--           prefix-then-bare lookup — conformance 139/140/141); a slot
+--           call installs the prefix + a fresh window holding its
+--           binds; a headered callee restricts the join to its
 --           first-line params — bare joins header∩parent, mapped/positional
 --           joins listed slots only, punning binds name to the parent's
 --           name (claim-headers plan; fixtures 142-148).
@@ -38,7 +45,10 @@ type CSlot(name ∈ String)
 
 fsm DriverCompose
     frames ∈ C2Frames
-    binds ∈ C2Binds
+    binds ∈ Seq(Bind)
+    #binds ≤ 12
+    bind_base ∈ Int
+    bind_top ∈ Int
     scope_prefix ∈ String
     join_hdr ∈ String
     frame_depth ∈ Int
@@ -55,72 +65,23 @@ fsm DriverCompose
     slot_names ∈ Seq(CSlot)
     #slot_names ≤ 6
 
-    bind_n0 ∈ String = match _binds
-        CBCons(n, _, _) ⇒ n
-        CBNil ⇒ ""
-    bind_h0 ∈ Int = match _binds
-        CBCons(_, h, _) ⇒ h
-        CBNil ⇒ 0
-    bind_tail0 ∈ C2Binds = match _binds
-        CBCons(_, _, r) ⇒ r
-        CBNil ⇒ CBNil
-    bind_n1 ∈ String = match bind_tail0
-        CBCons(n, _, _) ⇒ n
-        CBNil ⇒ ""
-    bind_h1 ∈ Int = match bind_tail0
-        CBCons(_, h, _) ⇒ h
-        CBNil ⇒ 0
-    bind_tail1 ∈ C2Binds = match bind_tail0
-        CBCons(_, _, r) ⇒ r
-        CBNil ⇒ CBNil
-    bind_n2 ∈ String = match bind_tail1
-        CBCons(n, _, _) ⇒ n
-        CBNil ⇒ ""
-    bind_h2 ∈ Int = match bind_tail1
-        CBCons(_, h, _) ⇒ h
-        CBNil ⇒ 0
-    bind_tail2 ∈ C2Binds = match bind_tail1
-        CBCons(_, _, r) ⇒ r
-        CBNil ⇒ CBNil
-    bind_n3 ∈ String = match bind_tail2
-        CBCons(n, _, _) ⇒ n
-        CBNil ⇒ ""
-    bind_h3 ∈ Int = match bind_tail2
-        CBCons(_, h, _) ⇒ h
-        CBNil ⇒ 0
-    bind_tail3 ∈ C2Binds = match bind_tail2
-        CBCons(_, _, r) ⇒ r
-        CBNil ⇒ CBNil
-    bind_n4 ∈ String = match bind_tail3
-        CBCons(n, _, _) ⇒ n
-        CBNil ⇒ ""
-    bind_h4 ∈ Int = match bind_tail3
-        CBCons(_, h, _) ⇒ h
-        CBNil ⇒ 0
-    bind_tail4 ∈ C2Binds = match bind_tail3
-        CBCons(_, _, r) ⇒ r
-        CBNil ⇒ CBNil
-    bind_n5 ∈ String = match bind_tail4
-        CBCons(n, _, _) ⇒ n
-        CBNil ⇒ ""
-    bind_h5 ∈ Int = match bind_tail4
-        CBCons(_, h, _) ⇒ h
-        CBNil ⇒ 0
-
     frame_ret ∈ Int = match _frames
-        CFCons(r, _, _, _, _) ⇒ r
+        CFCons(r, _, _, _, _, _) ⇒ r
         CFNil ⇒ 0
     frame_prefix ∈ String = match _frames
-        CFCons(_, p, _, _, _) ⇒ p
+        CFCons(_, p, _, _, _, _) ⇒ p
         CFNil ⇒ ""
-    frame_binds ∈ C2Binds = match _frames
-        CFCons(_, _, b, _, _) ⇒ b
-        CFNil ⇒ CBNil
+    frame_bbase ∈ Int = match _frames
+        CFCons(_, _, b, _, _, _) ⇒ b
+        CFNil ⇒ 0
+    frame_btop ∈ Int = match _frames
+        CFCons(_, _, _, t, _, _) ⇒ t
+        CFNil ⇒ 0
     frame_hdr ∈ String = match _frames
-        CFCons(_, _, _, h, _) ⇒ h
+        CFCons(_, _, _, _, h, _) ⇒ h
         CFNil ⇒ "*"
     frames_tail ∈ C2Frames = match _frames
-        CFCons(_, _, _, _, t) ⇒ t
+        CFCons(_, _, _, _, _, t) ⇒ t
         CFNil ⇒ CFNil
 
     read_callee_cursor ∈ Bool = (comp_line ∨ tymem_line)
@@ -156,19 +117,6 @@ fsm DriverCompose
     slot_handles[3] = (_slot_count = 4 ? h_top : _slot_count = 5 ? h_2nd : h_3rd)
     slot_handles[4] = (_slot_count = 5 ? h_top : h_2nd)
     slot_handles[5] = h_top
-    binds_new ∈ C2Binds = (_slot_count = 1 ? CBCons(_slot_names[0].name, slot_handles[0], CBNil)
-        : _slot_count = 2 ? CBCons(_slot_names[0].name, slot_handles[0], CBCons(_slot_names[1].name, slot_handles[1], CBNil))
-        : _slot_count = 3 ? CBCons(_slot_names[0].name, slot_handles[0], CBCons(_slot_names[1].name, slot_handles[1],
-            CBCons(_slot_names[2].name, slot_handles[2], CBNil)))
-        : _slot_count = 4 ? CBCons(_slot_names[0].name, slot_handles[0], CBCons(_slot_names[1].name, slot_handles[1],
-            CBCons(_slot_names[2].name, slot_handles[2], CBCons(_slot_names[3].name, slot_handles[3], CBNil))))
-        : _slot_count = 5 ? CBCons(_slot_names[0].name, slot_handles[0], CBCons(_slot_names[1].name, slot_handles[1],
-            CBCons(_slot_names[2].name, slot_handles[2], CBCons(_slot_names[3].name, slot_handles[3],
-            CBCons(_slot_names[4].name, slot_handles[4], CBNil)))))
-        : _slot_count = 6 ? CBCons(_slot_names[0].name, slot_handles[0], CBCons(_slot_names[1].name, slot_handles[1],
-            CBCons(_slot_names[2].name, slot_handles[2], CBCons(_slot_names[3].name, slot_handles[3],
-            CBCons(_slot_names[4].name, slot_handles[4], CBCons(_slot_names[5].name, slot_handles[5], CBNil))))))
-        : CBNil)
     callw_pop_stack ∈ C2H = (_slot_count = 1 ? h_tail1
         : _slot_count = 2 ? h_tail2
         : _slot_count = 3 ? h_tail3
@@ -224,16 +172,52 @@ fsm DriverCompose
     callw_reset ∈ Bool = (enter_claim ∨ enter_claim_params)
     frames = (is_first_tick ? CFNil
         : callw_reset ? CFNil
-        : frame_jump ? CFCons(frame_ret_now, _scope_prefix, _binds, _join_hdr, _frames)
+        : frame_jump ? CFCons(frame_ret_now, _scope_prefix, _bind_base, _bind_top, _join_hdr, _frames)
         : frame_pop ? frames_tail
         : _frames)
-    binds = (is_first_tick ? CBNil
-        : callw_reset ? CBNil
-        : callw_fire ? binds_new
-        : posjump_fire ? CBNil
-        : bindzip_act ? bindzip_binds
-        : frame_pop ? frame_binds
-        : _binds)
+    -- ── bind tape: this tick's new binds, staged in bind_stage ─────
+    -- A slot call lands _slot_count of them (slot_names/slot_handles);
+    -- a positional close lands bindzip_count (posbind's bindzip_binds
+    -- column). They append at _bind_top; the new window is
+    -- [_bind_top, bind_top).
+    bind_stage_count ∈ Int = (callw_fire ? _slot_count : bindzip_act ? bindzip_count : 0)
+    bind_stage ∈ Seq(Bind)
+    #bind_stage ≤ 6
+    ∀ j ∈ {0..5} : bind_stage[j].name = (callw_fire ? _slot_names[j].name : bindzip_binds[j].name)
+    ∀ j ∈ {0..5} : bind_stage[j].handle = (callw_fire ? slot_handles[j] : bindzip_binds[j].handle)
+    binds_clear ∈ Bool = (is_first_tick ∨ callw_reset)
+    ∀ k ∈ {0..11} : binds[k].name = (binds_clear ? ""
+        : ((bind_stage_count ≥ 1) ∧ (_bind_top + 0 = k)) ? bind_stage[0].name
+        : ((bind_stage_count ≥ 2) ∧ (_bind_top + 1 = k)) ? bind_stage[1].name
+        : ((bind_stage_count ≥ 3) ∧ (_bind_top + 2 = k)) ? bind_stage[2].name
+        : ((bind_stage_count ≥ 4) ∧ (_bind_top + 3 = k)) ? bind_stage[3].name
+        : ((bind_stage_count ≥ 5) ∧ (_bind_top + 4 = k)) ? bind_stage[4].name
+        : ((bind_stage_count ≥ 6) ∧ (_bind_top + 5 = k)) ? bind_stage[5].name
+        : _binds[k].name)
+    ∀ k ∈ {0..11} : binds[k].handle = (binds_clear ? 0
+        : ((bind_stage_count ≥ 1) ∧ (_bind_top + 0 = k)) ? bind_stage[0].handle
+        : ((bind_stage_count ≥ 2) ∧ (_bind_top + 1 = k)) ? bind_stage[1].handle
+        : ((bind_stage_count ≥ 3) ∧ (_bind_top + 2 = k)) ? bind_stage[2].handle
+        : ((bind_stage_count ≥ 4) ∧ (_bind_top + 3 = k)) ? bind_stage[3].handle
+        : ((bind_stage_count ≥ 5) ∧ (_bind_top + 4 = k)) ? bind_stage[4].handle
+        : ((bind_stage_count ≥ 6) ∧ (_bind_top + 5 = k)) ? bind_stage[5].handle
+        : _binds[k].handle)
+    bind_top = (is_first_tick ? 0
+        : callw_reset ? 0
+        : callw_fire ? _bind_top + _slot_count
+        : posjump_fire ? _bind_top
+        : bindzip_act ? _bind_top + bindzip_count
+        : frame_pop ? frame_btop
+        : _bind_top)
+    bind_base = (is_first_tick ? 0
+        : callw_reset ? 0
+        : callw_fire ? _bind_top
+        : posjump_fire ? _bind_top
+        : bindzip_act ? _bind_base
+        : frame_pop ? frame_bbase
+        : _bind_base)
+    0 ≤ bind_base ≤ bind_top ≤ 12
+    ∀ e ∈ binds : e.handle ≥ 0
     scope_prefix = (is_first_tick ? ""
         : callw_reset ? ""
         : callw_fire ? (_callw_is_type ? _type_prefix : prefix_new)

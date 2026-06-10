@@ -2,7 +2,8 @@
 -- CONSUMES: the decoded token window head views (tok0..tok7), the
 --           classify-mode gate (classify_now), the claim/type index
 --           (claimidx_names) + symbol table (sym_names), the inline-frame state
---           (_frame_depth, _scope_prefix, bind_n0..n5, _join_hdr), the record registry
+--           (_frame_depth, _scope_prefix, the bind-tape window
+--           _binds/_bind_base/_bind_top, _join_hdr), the record registry
 --           (recs .name / .sort), the enum-table name column (enum_names)
 --           + the seq-var carries (_seqvar_set, _seqvar_name), and the sibling
 --           sub-walks' per-line enter signals (efflit_*/arm_*/seqlit_*/callw_slot/
@@ -180,9 +181,7 @@ fsm DriverClassify
     scoped_key ∈ String
     FtiNameEntry(name ↦ scoped_name, entry ↦ scoped_key)
     name_dup ∈ Bool = (index_of(sym_names, scoped_key, 0) ≥ 0)
-    name_bound ∈ Bool = ((line_name ≠ "") ∧ ((bind_n0 = line_name) ∨ (bind_n1 = line_name)
-        ∨ (bind_n2 = line_name) ∨ (bind_n3 = line_name) ∨ (bind_n4 = line_name)
-        ∨ (bind_n5 = line_name)))
+    name_bound ∈ Bool = ((line_name ≠ "") ∧ (∃ i ∈ {0..11} : ((i ≥ _bind_base) ∧ (i < _bind_top) ∧ (_binds[i].name = line_name))))
     bare_key ∈ String
     FtiNameEntry(name ↦ line_name, entry ↦ bare_key)
     name_outer ∈ Bool = ((line_name ≠ "") ∧ (substr(_scope_prefix, 0, 3) = "__c")
