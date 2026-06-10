@@ -1,8 +1,11 @@
 # Bind-peel lowering — retiring the S1 bind half (`bind_n0..n5`)
 
-**Status:** option (a) in progress (2026-06-10). The remaining half of the
+**Status:** option (a) LANDED (2026-06-10). The remaining half of the
 baseline report's S1 BLOCKER complex (`docs/critic-reports/compiler2-baseline.md`,
-2026-06-10); the record half resolved in merge `b46f373`.
+2026-06-10); the record half resolved in merge `b46f373`. Peel deleted
+(bind-peel tokens 99→0), `C2Binds` deleted, consumers on the window
+surfaces; staging columns are `Seq(Bind)` (compose `bind_stage`,
+posbind `bindzip_binds`).
 
 ## Resolved before implementation (2026-06-10)
 
