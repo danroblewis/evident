@@ -1,0 +1,21 @@
+import "stdlib/kernel.ev"
+
+-- `matches` (enum recognizer) applied to a RECORD FIELD ACCESS of enum
+-- type. The scrutinee `c.t` is a field access, not a bare variable.
+-- Oracle gap (resolved): the matches-scrutinee path rejected dotted
+-- identifiers, dropping the constraint vacuously-SAT. See
+-- docs/plans/context-bundles.md (matches-on-field-access gap).
+
+enum Token = Ident(String) | Num(Int)
+
+type Ctx(t ∈ Token, u ∈ Token)
+
+claim main
+    idtok ∈ Token = Ident("x")
+    numtok ∈ Token = Num(7)
+    c ∈ Ctx(t ↦ idtok, u ↦ numtok)
+    is_id ∈ Bool = (c.t matches Ident(_))     -- true
+    u_is_id ∈ Bool = (c.u matches Ident(_))    -- false
+    -- Exit 0 only if the recognizer truly evaluates both fields:
+    -- is_id ∧ ¬u_is_id  ⇒  (is_id ? 0 : 1) + (u_is_id ? 1 : 0) = 0
+    effects ∈ Seq(Effect) = ⟨Exit((is_id ? 0 : 1) + (u_is_id ? 1 : 0))⟩

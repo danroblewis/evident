@@ -96,11 +96,22 @@ WORKS (probed):
 - Hidden carried internal state, SEPARATE-decl form (`n ∈ Int` then
   `n = (is_first_tick ? 0 : _n + 1)`): carries across ticks (probe → exit 3).
 
-BLOCKS (need oracle/transform work before clean option A):
+RESOLVED (oracle f767cd5, 2026-06-10):
 - **`matches` on an enum-typed record field** (`ctx.tok0 matches Ident(_)`):
-  oracle parses `ctx.tok0` as a literal identifier, not a field access →
-  drops the constraint. The driver `matches`-es the token window
-  PERVASIVELY, so this blocks bundling the 8 tokens (the bulk of the win).
+  the `Expr::Matches` Ctor arm in `translate/exprs/bool.rs` guarded its
+  scrutinee on `!n.contains('.')`, so a dotted name — record-field access —
+  fell through and the constraint dropped vacuously-SAT. `declare_var_named`
+  already flattens an enum-typed record field into an env entry keyed by
+  the dotted name (`c.t` → its `EnumVar`), exactly as scalar field access
+  relies on; dropping the dot guard lets `env.get("c.t")` resolve it (the
+  `Var::EnumVar` match remains the real gate). Bugfix-to-spec; conformance
+  fixture `155-matches-on-record-field` (red→green via the oracle, exit 0);
+  `compiler2/driver.ev` `driver_main` emit byte-identical before/after
+  (inert on existing source). Pin lineage `292c7ef → f767cd5`. NOTE: the
+  frozen `compiler.smt2` predates this fix, so fixture 155 remains a
+  compiler2 conformance gap until the wave-5 rebuild (same status as
+  fixtures 142-148). The oracle — used by the compiler2 emit/driver-decomp
+  gates — now handles it correctly.
 - **Record construction pinning an enum field to a constructor literal**
   (`Win(t0 ↦ Ident("x"))`): "field doesn't exist / shape" error. (Pinning
   to a variable — `ParseCtx(tok0 ↦ tok0)` — works.)

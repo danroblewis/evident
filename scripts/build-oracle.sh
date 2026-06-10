@@ -21,7 +21,12 @@
 #     → a1fd517 (bare-mention hiding: ClaimCall not passthrough;
 #     fixtures 139/140/141) → 292c7ef (claim headers as interface:
 #     header-join, explicit-only mapping, punning; fixtures 142-148;
-#     driver.ev + sample.ev emits byte-identical to a1fd517).
+#     driver.ev + sample.ev emits byte-identical to a1fd517)
+#     → f767cd5 (matches-scrutinee accepts record-field access: drop the
+#     dotted-ident guard so `c.t matches Ctor(_)` resolves the flattened
+#     enum-field EnumVar instead of dropping vacuously-SAT; fixture
+#     155-matches-on-record-field; driver.ev driver_main emit
+#     byte-identical to 292c7ef).
 #   - Install: /usr/local/bin/evident-oracle
 #   - SUNSET: delete this script, the binary, and the `oracle` branch
 #     the day compiler2 compiles itself.
@@ -31,7 +36,7 @@
 set -euo pipefail
 
 # PIN: exact SHA on the `oracle` branch (see header rules).
-PIN="292c7ef"
+PIN="f767cd5"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 BUILD=/opt/bootstrap-oracle
 BIN=/usr/local/bin/evident-oracle

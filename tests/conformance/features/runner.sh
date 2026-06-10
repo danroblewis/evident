@@ -250,6 +250,9 @@ echo "${passed} passed / ${failed} failed / ${blocked} blocked  (of ${total})"
 # oracle + compiler2; docs/plans/claim-headers-interface.md) — the
 # frozen compiler.smt2 predates header semantics. Retire with the
 # wave-5 rebuild.
+# 155: matches-on-record-field (oracle f767cd5, docs/plans/context-bundles.md)
+# — the oracle compiles+runs it green; the frozen compiler.smt2 predates the
+# fix. Retire with the wave-5 rebuild.
 if [ "$IMPL" = "selfhost" ] || [ "$IMPL" = "both" ]; then
     # One feature-dir name per line. Update as compiler gaps close.
     DEFAULT_KNOWN_FAILS="$(cat <<'EOF'
@@ -275,6 +278,7 @@ if [ "$IMPL" = "selfhost" ] || [ "$IMPL" = "both" ]; then
 145-mapped-explicit-only
 146-punning-binds-unsat
 148-positional-alignment-unsat
+155-matches-on-record-field
 EOF
 )"
     KNOWN_FAILS="${EVIDENT_CONFORMANCE_KNOWN_FAILS-$DEFAULT_KNOWN_FAILS}"
