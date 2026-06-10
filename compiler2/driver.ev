@@ -438,7 +438,21 @@ fsm driver_main
     -- ── PRATT FSM state (see compiler2/driver_pratt.ev) ──
     ..DriverPratt
     -- ── G1: conditional inline (see compiler2/driver_guard.ev) ──
-    ..DriverGuard
+    -- Bare mention against its header: these eleven declarations ARE
+    -- the guarded-splice interface; its other names are per-call-site
+    -- internals.
+    guard_op ∈ Op
+    guard_lhs ∈ Expr
+    guard_rhs ∈ Expr
+    guard_is_binop ∈ Bool
+    guard_hit ∈ Bool
+    eff_guard_read ∈ Effect
+    guard_jump_cap ∈ Bool
+    guard_jump_fire ∈ Bool
+    guard_on ∈ Bool
+    guard_handle ∈ Int
+    guard_depth ∈ Int
+    DriverGuard
 
     -- ── G1: positional binding (see compiler2/driver_posbind.ev) ──
     ..DriverPosBind
