@@ -334,16 +334,20 @@ fsm DriverEnum
     #uev ≤ 6
     ∀ k ∈ {0..5} : uev[k].name = (is_first_tick ? "" : (uev_cap_d ∧ _ed_vidx = k) ? ed_vname : _uev[k].name)
     ∀ k ∈ {0..5} : uev[k].ctor = (is_first_tick ? 0 : (uev_cap_d ∧ _ed_vidx = k) ? d_cap_int : _uev[k].ctor)
-    ∀ k ∈ {0..5} : uev[k].tester = (is_first_tick ? 0 : (uev_cap_t ∧ _ed_vidx = k) ? uev_t_val : _uev[k].tester)
+    ∀ e ∈ uev : e.tester = (is_first_tick ? 0 : (uev_cap_t ∧ _e.name = ed_vname) ? uev_t_val : _e.tester)
 
     -- C5: user-variant field-0 ACCESSOR decls (match-pin payload
     -- binds over USER ctors). Same pend dance as the Result floor:
     -- the rdacc emitted on the step-4 (advance) tick lands AFTER the
-    -- variant walk moved on, so uev_acc_pend carries vidx + 1.
-    uev_acc_pend ∈ Int
-    uev_acc_pend = (is_first_tick ? 0
-        : (ed_cur_act = 3 ∧ ed_cur_step = 4 ∧ ed_user ∧ (¬ed_nullary))
-            ? _ed_vidx + 1
-        : 0)
-    uev_cap_a ∈ Bool = (_ed_act = 3 ∧ _ed_step = 4 ∧ _uev_acc_pend > 0)
-    ∀ k ∈ {0..5} : uev[k].acc = (is_first_tick ? 0 : (uev_cap_a ∧ _uev_acc_pend = k + 1) ? d_cap_int : _uev[k].acc)
+    -- variant walk moved on, so the pending variant carries BY NAME
+    -- (ed_v still heads the pre-advance list on the pend tick, so
+    -- ed_vname names the pending variant there).
+    uev_acc_on ∈ Bool
+    uev_acc_on = (is_first_tick ? false
+        : (ed_cur_act = 3 ∧ ed_cur_step = 4 ∧ ed_user ∧ (¬ed_nullary)))
+    uev_acc_nm ∈ String
+    uev_acc_nm = (is_first_tick ? ""
+        : (ed_cur_act = 3 ∧ ed_cur_step = 4 ∧ ed_user ∧ (¬ed_nullary)) ? ed_vname
+        : "")
+    uev_cap_a ∈ Bool = (_ed_act = 3 ∧ _ed_step = 4 ∧ _uev_acc_on)
+    ∀ e ∈ uev : e.acc = (is_first_tick ? 0 : (uev_cap_a ∧ _e.name = _uev_acc_nm) ? d_cap_int : _e.acc)

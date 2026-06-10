@@ -68,8 +68,8 @@ fsm DriverExprDecomp
     -- capitalized). Compound args are handles, so the legacy
     -- dropped-Exit(3+4) class is impossible by construction.
     d_ctor_d ∈ Int
-    ∀ k ∈ {0..5} : ((uev[k].name = d_cnm) ⇒ (d_ctor_d = uev[k].ctor))
-    (¬(∃ i ∈ {0..5} : uev[i].name = d_cnm)) ⇒ (d_ctor_d = 0)
+    ∀ e ∈ uev : ((e.name = d_cnm) ⇒ (d_ctor_d = e.ctor))
+    (¬(∃ e ∈ uev : e.name = d_cnm)) ⇒ (d_ctor_d = 0)
 
     d_pe_is_m ∈ Bool = (d_pe matches EMatches(_, _))
     d_m_nm ∈ String = match d_pe
@@ -79,8 +79,8 @@ fsm DriverExprDecomp
         EMatches(_, me) ⇒ me
         _ ⇒ ENoExpr
     d_m_t_uev ∈ Int
-    ∀ k ∈ {0..5} : ((uev[k].name = d_m_nm) ⇒ (d_m_t_uev = uev[k].tester))
-    (¬(∃ i ∈ {0..5} : uev[i].name = d_m_nm)) ⇒ (d_m_t_uev = 0)
+    ∀ e ∈ uev : ((e.name = d_m_nm) ⇒ (d_m_t_uev = e.tester))
+    (¬(∃ e ∈ uev : e.name = d_m_nm)) ⇒ (d_m_t_uev = 0)
     d_m_t ∈ Int = (d_m_nm = "IntResult" ? z_irtest
         : d_m_nm = "StringResult" ? z_srtest
         : d_m_t_uev)
