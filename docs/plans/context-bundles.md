@@ -84,3 +84,32 @@ becomes an unbound hidden internal → loud failure, good); (b) oracle
 emit must succeed (no "output had no covering assignment"); (c) the
 component's behavior fixture + full conformance unchanged. Pilot one,
 prove it, then scale.
+
+## Discovered oracle gaps (2026-06-10, blocking clean option A)
+
+Building the DriverGroup pilot surfaced a cluster of frozen-oracle limits.
+Some were probed working, several block the clean-names refactor:
+
+WORKS (probed):
+- Record-typed header slot with SCALAR fields (`ctx.a + 1`, `ctx.b ? …`):
+  compiles + runs correct.
+- Hidden carried internal state, SEPARATE-decl form (`n ∈ Int` then
+  `n = (is_first_tick ? 0 : _n + 1)`): carries across ticks (probe → exit 3).
+
+BLOCKS (need oracle/transform work before clean option A):
+- **`matches` on an enum-typed record field** (`ctx.tok0 matches Ident(_)`):
+  oracle parses `ctx.tok0` as a literal identifier, not a field access →
+  drops the constraint. The driver `matches`-es the token window
+  PERVASIVELY, so this blocks bundling the 8 tokens (the bulk of the win).
+- **Record construction pinning an enum field to a constructor literal**
+  (`Win(t0 ↦ Ident("x"))`): "field doesn't exist / shape" error. (Pinning
+  to a variable — `ParseCtx(tok0 ↦ tok0)` — works.)
+- **Autocarry combined-decl gap**: `n ∈ Int = (…_n…)` (decl+assign on one
+  line) does NOT get its `_n` dual synthesized; only the separate-decl form
+  does. Minor, but a real autocarry transform bug.
+
+Consequence: clean option A (bare names via hiding + ctx bundle) for the
+stateful, token-`matches`-ing components is gated on the oracle growing
+`matches`-on-field-access (and the autocarry combined-decl fix). Until
+then, only stateless non-token components convert cleanly; the rest need
+option B (qualified names, keep `..` lift) or the oracle work.
