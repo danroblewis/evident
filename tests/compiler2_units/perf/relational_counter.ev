@@ -1,0 +1,20 @@
+-- E2 relational counter (docs/plans/relational-style-exploration.md):
+-- the transition stated as a difference equation, not a hold chain.
+-- Without the kernel's relational extraction pre-pass (stage N0,
+-- docs/plans/relational-extraction.md) `n` has no covering assignment
+-- and ALL ticks fall to Z3 (measured 2026-06-10: 6/6 residual,
+-- 3.2 ms z3); with it the machine extracts and z3 ms stays ~0.
+-- The z3 budget IS the gate: relational extraction regressing shows
+-- here as a blown budget, not a wrong answer.
+--
+-- entry: main
+-- expect: exit = 0
+-- perf: max_z3_ms = 5
+-- perf: max_wall_s = 10
+import "stdlib/kernel.ev"
+
+fsm main
+    n ∈ Int
+    is_first_tick ⇒ (n = 0)
+    (¬is_first_tick) ⇒ (n - _n = 1)
+    effects ∈ Seq(Effect) = (n = 5 ? ⟨Exit(0)⟩ : ⟨LibCall("libc", "abs", ⟨ArgInt(1)⟩)⟩)
