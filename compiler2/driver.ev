@@ -284,7 +284,12 @@ fsm driver_main
     -- ── FTI symbol table + work-item decode (see compiler2/driver_symtab.ev) ──
     ..DriverSymtab
     -- ── C2RecVal/C2RecDecl expansion (see compiler2/driver_recval.ev) ──
-    ..DriverRecVal
+    -- Bare mention against its header: recval_slot/recval_name (decoded
+    -- by DriverSymtab) join in; recval_items/recval_decl_items join out;
+    -- its field-walk segment internals are per-call-site fresh.
+    recval_items ∈ C2Items
+    recval_decl_items ∈ C2Items
+    DriverRecVal
 
     -- ── parse-expr node decomposition (see compiler2/driver_exprdecomp.ev) ──
     ..DriverExprDecomp
