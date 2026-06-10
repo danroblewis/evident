@@ -54,6 +54,31 @@
 #           duplicates) — use only where keys are unique. A lone pin
 #           or lone default falls through to the bare forms (the
 #           CLAUDE.md covered-output trap applies).
+#   guarded pin FAMILY (the PAIR generalized to scalar/mixed families;
+#   docs/plans/guarded-pin-family-lowering.md). N parenthesized guarded
+#   pins on ONE output in one claim, plus EXACTLY ONE default whose guard
+#   is the negated disjunction of the member guards in member order
+#   (quantified element-form PAIR pins may be members; they contribute
+#   the matching existential):
+#           (g1) ⇒ (OUT = v1)
+#           (g2) ⇒ (OUT = v2)
+#           ∀ e ∈ xs : ((e.F = KEY) ⇒ (OUT = e.V))         -- optional member
+#           (¬((g1) ∨ (g2) ∨ (∃ e ∈ xs : e.F = KEY))) ⇒ (OUT = DEF)
+#           → OUT = (g1 ? v1 : g2 ? v2 : per-slot arms : DEF)
+#           Members may span lines (joined on balanced parens). Order =
+#           chain priority, but the constraint reading pins ALL matching
+#           arms: guards must be pairwise disjoint (overlaps are UNSAT) —
+#           never lean on priority; where priority IS the semantics use
+#           the blessed hold chain or match. LOUD REFUSALS (exit 1):
+#           a family (≥2 members) with NO default (bare implications are
+#           the measured covered-output perf cliff); a default guard that
+#           is not the negated member-guard disjunction; a default value
+#           equal to _OUT (a hold chain in pin-family clothing — hold
+#           guards are prioritized events, lowering would bake in textual
+#           priority); a bare covering write `OUT = …` alongside a family
+#           (two covering writes); two defaults; an index-form quantified
+#           member. `effects` is exempt (kernel multi-writer rule); a
+#           LONE scalar guarded pin with no default passes through bare.
 #   index   xs[k] / xs[k].f (k literal)    → xs_k / xs_k_f   (anywhere)
 #   card    #xs                            → xs_len          (anywhere)
 #
@@ -109,6 +134,93 @@ function zdef(t) {
     if (t == "String") return "\"\""
     if (t == "Bool")   return "false"
     return "0"
+}
+function fam_norm(s) { gsub(/[ \t]/, "", s); return s }
+# end index of the balanced paren group starting at i (s[i] must be an
+# opening paren); quote-aware; 0 if unbalanced.
+function fam_pend(s, i,    d, j, c, instr) {
+    d = 0; instr = 0
+    for (j = i; j <= length(s); j++) {
+        c = substr(s, j, 1)
+        if (c == "\"") { instr = !instr; continue }
+        if (instr) continue
+        if (c == "(") d++
+        else if (c == ")") { d--; if (d == 0) return j }
+    }
+    return 0
+}
+# net unclosed parens (quote-aware) — the multi-line member join test
+function fam_open(s,    d, j, c, instr) {
+    d = 0; instr = 0
+    for (j = 1; j <= length(s); j++) {
+        c = substr(s, j, 1)
+        if (c == "\"") { instr = !instr; continue }
+        if (instr) continue
+        if (c == "(") d++
+        else if (c == ")") d--
+    }
+    return d
+}
+# TRUE iff s carries, at paren depth 0 outside strings, a connective or
+# ternary glyph — such a consequent is a Bool constraint, not a pin.
+function fam_toplevel_op(s,    d, j, c, instr) {
+    d = 0; instr = 0
+    for (j = 1; j <= length(s); j++) {
+        c = substr(s, j, 1)
+        if (c == "\"") { instr = !instr; continue }
+        if (instr) continue
+        if (c == "(") d++
+        else if (c == ")") d--
+        else if (d == 0) {
+            if (c == "?" || c == ":") return 1
+            if (substr(s, j, length("∧")) == "∧") return 1
+            if (substr(s, j, length("∨")) == "∨") return 1
+            if (substr(s, j, length("⇒")) == "⇒") return 1
+        }
+    }
+    return 0
+}
+# Parse a family candidate: GUARD ⇒ (OUT = VALUE), GUARD parenthesized.
+# Sets FP_G / FP_OUT / FP_V (and FP_DISJ for kind 2).
+# Returns 0 = no match, 1 = guarded pin, 2 = default (guard is ¬(DISJ)).
+function fam_parse(t,    i, n, ge, ce, inner, gi, di, de, out, j, v) {
+    n = length(t); i = 1
+    while (i <= n && substr(t, i, 1) ~ /[ \t]/) i++
+    if (substr(t, i, 1) != "(") return 0
+    ge = fam_pend(t, i)
+    if (ge == 0) return 0
+    FP_G = substr(t, i, ge - i + 1)
+    j = ge + 1
+    while (j <= n && substr(t, j, 1) ~ /[ \t]/) j++
+    if (substr(t, j, length("⇒")) != "⇒") return 0
+    j += length("⇒")
+    while (j <= n && substr(t, j, 1) ~ /[ \t]/) j++
+    if (substr(t, j, 1) != "(") return 0
+    ce = fam_pend(t, j)
+    if (ce == 0) return 0
+    if (trim(substr(t, ce + 1)) != "") return 0
+    inner = substr(t, j + 1, ce - j - 1)
+    gsub(/^[ \t]+/, "", inner)
+    if (inner !~ /^[A-Za-z_][A-Za-z0-9_]*[ \t]*=/) return 0
+    out = inner; sub(/[ \t]*=.*$/, "", out)
+    v = inner; sub(/^[A-Za-z_][A-Za-z0-9_]*[ \t]*=[ \t]*/, "", v)
+    v = trim(v)
+    if (v == "") return 0
+    if (fam_toplevel_op(v)) return 0
+    FP_OUT = out; FP_V = v
+    gi = trim(substr(FP_G, 2, length(FP_G) - 2))
+    if (substr(gi, 1, length("¬")) == "¬") {
+        di = 1 + length("¬")
+        while (di <= length(gi) && substr(gi, di, 1) ~ /[ \t]/) di++
+        if (substr(gi, di, 1) == "(") {
+            de = fam_pend(gi, di)
+            if (de == length(gi)) {
+                FP_DISJ = substr(gi, di + 1, de - di - 1)
+                return 2
+            }
+        }
+    }
+    return 1
 }
 function subst_tok(txt, vr, rep,    out, i, c, tok, isid) {
     out = ""; tok = ""
@@ -430,6 +542,40 @@ END {
                 projKey[cur, pOut] = pKey; projV[cur, pOut] = pV
                 projHi[cur, pOut] = -1; projPinLine[cur, pOut] = i
                 projElem[cur, pOut] = 1
+                projEV[cur, pOut] = ev
+            }
+        }
+        # covering-write census (a leading `name = …` or `name ∈ T = …`) —
+        # consulted only for outputs that grow a pin family
+        cwn = lead_ident(code)
+        if (cwn != "") {
+            cwr = code; sub(/^[ \t]*[A-Za-z_][A-Za-z0-9_]*[ \t]*/, "", cwr)
+            if (cwr ~ /^=/ || (cwr ~ /^∈/ && cwr ~ /=/)) coverW[cur, cwn] = 1
+        }
+        # guarded-pin-family member / default candidates (may span lines;
+        # joined on balanced parens). Tentative: only an assembled family
+        # or a refused one changes emission.
+        if (code ~ /^[ \t]*\(/) {
+            jt = code; jl = i
+            while (fam_open(jt) > 0 && jl < N && !is_top_decl(L[jl + 1])) {
+                jl++
+                jt = jt " " trim(strip_comment(L[jl]))
+            }
+            if (fam_open(jt) == 0) {
+                fk = fam_parse(jt)
+                if (fk == 1) {
+                    fn2 = ++famN[cur, FP_OUT]
+                    famG[cur, FP_OUT, fn2] = FP_G
+                    famV[cur, FP_OUT, fn2] = FP_V
+                    famS[cur, FP_OUT, fn2] = i
+                    famE[cur, FP_OUT, fn2] = jl
+                } else if (fk == 2) {
+                    if ((cur SUBSEP FP_OUT) in famDefV) famDup[cur, FP_OUT] = 1
+                    famDefV[cur, FP_OUT] = FP_V
+                    famDefD[cur, FP_OUT] = FP_DISJ
+                    famDefS[cur, FP_OUT] = i
+                    famDefE[cur, FP_OUT] = jl
+                }
             }
         }
         # keyed-projection DEFAULT:
@@ -470,6 +616,91 @@ END {
         }
     }
 
+    # ── guarded-pin-family assembly (REWRITE RULES: pin FAMILY) ─────────
+    fbad = ""
+    for (fkey in famN) {
+        split(fkey, fpk, SUBSEP); FF = fpk[1]; fo = fpk[2]
+        if (fo == "effects") continue
+        ql = ((FF SUBSEP fo) in projPinLine ? projPinLine[FF, fo] : 0)
+        if (ql > 0 && (FF SUBSEP fo) in projDef) {
+            fbad = "pin-family `" fo "` in claim " FF ": scalar guarded pins alongside a keyed-projection PAIR default — fold the existential into ONE family default (negated disjunction of ALL member guards)"
+            break
+        }
+        tm = famN[FF, fo] + (ql > 0 ? 1 : 0)
+        if (!((FF SUBSEP fo) in famDefV)) {
+            if (tm >= 2) {
+                fbad = "pin-family `" fo "` in claim " FF ": " tm " guarded pins but MISSING the mandatory default line — bare implication-pins are the measured covered-output perf cliff. Add: (¬(g1 ∨ …)) ⇒ (" fo " = <default>)"
+                break
+            }
+            continue
+        }
+        if ((FF SUBSEP fo) in famDup) {
+            fbad = "pin-family `" fo "` in claim " FF ": more than one default line (exactly one is required)"
+            break
+        }
+        if ((FF SUBSEP fo) in coverW) {
+            fbad = "pin-family `" fo "` in claim " FF ": a bare covering write `" fo " = …` exists alongside the family — two covering writes"
+            break
+        }
+        if (fam_norm(famDefV[FF, fo]) == "_" fo) {
+            fbad = "pin-family `" fo "` in claim " FF ": default value `_" fo "` is a hold chain in pin-family clothing — hold guards are prioritized events; write the blessed carried-write hold chain instead"
+            break
+        }
+        if (ql > 0 && !((FF SUBSEP fo) in projElem)) {
+            fbad = "pin-family `" fo "` in claim " FF ": index-form quantified pin in a family — use the element form"
+            break
+        }
+        if (ql > 0 && !(projSeq[FF, fo] in gbnd)) {
+            fbad = "pin-family `" fo "` in claim " FF ": quantified member over unregistered Seq `" projSeq[FF, fo] "`"
+            break
+        }
+        # merge members in textual order (scalar pins are already ordered)
+        nmem = 0; qdone = (ql == 0 ? 1 : 0)
+        for (fmp = 1; fmp <= famN[FF, fo]; fmp++) {
+            if (!qdone && ql < famS[FF, fo, fmp]) {
+                nmem++; gmemQ[FF, fo, nmem] = 1
+                gmemS[FF, fo, nmem] = ql; gmemE[FF, fo, nmem] = ql
+                qdone = 1
+            }
+            nmem++; gmemQ[FF, fo, nmem] = 0
+            gmemG[FF, fo, nmem] = famG[FF, fo, fmp]
+            gmemV[FF, fo, nmem] = famV[FF, fo, fmp]
+            gmemS[FF, fo, nmem] = famS[FF, fo, fmp]
+            gmemE[FF, fo, nmem] = famE[FF, fo, fmp]
+        }
+        if (!qdone) {
+            nmem++; gmemQ[FF, fo, nmem] = 1
+            gmemS[FF, fo, nmem] = ql; gmemE[FF, fo, nmem] = ql
+        }
+        gmemN[FF, fo] = nmem
+        # the default guard must be the negated disjunction of the member
+        # guards, in member order (syntactic check, space-insensitive)
+        expd = ""
+        for (fmp = 1; fmp <= nmem; fmp++) {
+            if (gmemQ[FF, fo, fmp])
+                fct = "(∃ " projEV[FF, fo] " ∈ " projSeq[FF, fo] " : " projEV[FF, fo] "." projF[FF, fo] " = " projKey[FF, fo] ")"
+            else
+                fct = gmemG[FF, fo, fmp]
+            expd = expd (fmp > 1 ? " ∨ " : "") fct
+        }
+        if (fam_norm(expd) != fam_norm(famDefD[FF, fo])) {
+            fbad = "pin-family `" fo "` in claim " FF ": default guard MISMATCH — it must be the negated disjunction of the member guards in member order.\n    expected: (¬(" expd "))\n    found:    (¬(" famDefD[FF, fo] "))"
+            break
+        }
+        # mark spans: drop every member + default line; emit at the first
+        # member start line
+        for (fmp = 1; fmp <= nmem; fmp++)
+            for (fml = gmemS[FF, fo, fmp]; fml <= gmemE[FF, fo, fmp]; fml++)
+                famSkipLine[fml] = 1
+        for (fml = famDefS[FF, fo]; fml <= famDefE[FF, fo]; fml++)
+            famSkipLine[fml] = 1
+        famOutKey[gmemS[FF, fo, 1]] = FF SUBSEP fo
+    }
+    if (fbad != "") {
+        printf("lower-bounded-seq: %s\n", fbad) > "/dev/stderr"
+        exit 1
+    }
+
     # field plan per registered seq: for Int, one unnamed slot
     # (slotname xs_k); for record R, slots xs_k_f1..fm.
     # emit helpers read elemOf/tfield/ttype directly.
@@ -482,6 +713,34 @@ END {
         code = strip_comment(s)
         ind = indent_of(s)
         nm = lead_ident(code)
+
+        # guarded pin family → the covered select chain (emitted at the
+        # first member line; every other member/default line drops)
+        if (i in famOutKey) {
+            split(famOutKey[i], fok, SUBSEP); fo = fok[2]
+            chain = ""
+            for (m = 1; m <= gmemN[F, fo]; m++) {
+                if (gmemQ[F, fo, m]) {
+                    sq = projSeq[F, fo]; ff = projF[F, fo]; ky = projKey[F, fo]
+                    vv = projV[F, fo]; hh = gbnd[sq] - 1
+                    for (k = 0; k <= hh; k++) {
+                        if (sq in hasLen)
+                            cnd = "((" k " < " sq "_len) ∧ (" sq "_" k "_" ff " = " ky "))"
+                        else
+                            cnd = sq "_" k "_" ff " = " ky
+                        chain = chain cnd " ? " sq "_" k "_" vv "\n" ind "    : "
+                    }
+                } else {
+                    gt = subst_dyn_fix(subst_card(subst_index(subst_exists(gmemG[F, fo, m]))))
+                    vt = subst_dyn_fix(subst_card(subst_index(subst_exists(gmemV[F, fo, m]))))
+                    chain = chain gt " ? " vt "\n" ind "    : "
+                }
+            }
+            dd = subst_dyn_fix(subst_card(subst_index(subst_exists(famDefV[F, fo]))))
+            O[++on] = ind fo " = (" chain dd ")"
+            continue
+        }
+        if (i in famSkipLine) continue
 
         # dual decl  `_xs ∈ Seq(…)`
         if (nm ~ /^_/ && (substr(nm, 2) in gbnd) && code ~ /∈[ \t]*Seq\(/) {

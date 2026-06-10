@@ -1,0 +1,16 @@
+-- REFUSAL: a pin family whose default value is the output prev-tick
+-- carry dual is a hold chain in pin-family clothing — hold guards are
+-- prioritized events that overlap by design; the lowering refuses
+-- loudly instead of baking in textual priority.
+--
+-- entry: main
+-- expect: flatten-error = hold chain in pin-family clothing
+import "stdlib/kernel.ev"
+
+fsm main
+    ev_sig ∈ Bool = is_first_tick
+    a ∈ Int
+    (is_first_tick) ⇒ (a = 0)
+    (ev_sig) ⇒ (a = 1)
+    (¬((is_first_tick) ∨ (ev_sig))) ⇒ (a = _a)
+    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

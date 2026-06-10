@@ -1,0 +1,15 @@
+-- REFUSAL: the default guard must be the negated disjunction of the
+-- member guards IN MEMBER ORDER (order = chain priority); a reordered
+-- or partial disjunction fails loudly at flatten.
+--
+-- entry: main
+-- expect: flatten-error = default guard MISMATCH
+import "stdlib/kernel.ev"
+
+claim main
+    sel ∈ Int = 1
+    a ∈ Int
+    (sel = 1) ⇒ (a = 10)
+    (sel = 2) ⇒ (a = 20)
+    (¬((sel = 2) ∨ (sel = 1))) ⇒ (a = 30)
+    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

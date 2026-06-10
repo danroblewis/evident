@@ -1,0 +1,13 @@
+-- REFUSAL: a pin family for an output that also has a bare covering
+-- write is two covering writes — fail loudly at flatten.
+--
+-- entry: main
+-- expect: flatten-error = two covering writes
+import "stdlib/kernel.ev"
+
+claim main
+    sel ∈ Int = 1
+    a ∈ Int = 5
+    (sel = 1) ⇒ (a = 10)
+    (¬((sel = 1))) ⇒ (a = 0)
+    effects ∈ Seq(Effect) = ⟨Exit(0)⟩
