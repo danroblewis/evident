@@ -47,9 +47,9 @@ fsm DriverPratt
         ++ ((user_variants[3].name ≠ "") ? ("|" ++ substr(user_variants[3].name ++ call_pad31, 0, 31)) : "")
         ++ ((user_variants[4].name ≠ "") ? ("|" ++ substr(user_variants[4].name ++ call_pad31, 0, 31)) : "")
         ++ ((user_variants[5].name ≠ "") ? ("|" ++ substr(user_variants[5].name ++ call_pad31, 0, 31)) : "")
-        ++ ((rec0.name ≠ "" ∧ rec0.sort ≠ 0) ? ("|" ++ substr(rec0.name ++ call_pad31, 0, 31)) : "")
-        ++ ((rec1.name ≠ "" ∧ rec1.sort ≠ 0) ? ("|" ++ substr(rec1.name ++ call_pad31, 0, 31)) : "")
-        ++ ((rec2.name ≠ "" ∧ rec2.sort ≠ 0) ? ("|" ++ substr(rec2.name ++ call_pad31, 0, 31)) : ""))
+        ++ ((recs[0].name ≠ "" ∧ recs[0].sort > 0) ? ("|" ++ substr(recs[0].name ++ call_pad31, 0, 31)) : "")
+        ++ ((recs[1].name ≠ "" ∧ recs[1].sort > 0) ? ("|" ++ substr(recs[1].name ++ call_pad31, 0, 31)) : "")
+        ++ ((recs[2].name ≠ "" ∧ recs[2].sort > 0) ? ("|" ++ substr(recs[2].name ++ call_pad31, 0, 31)) : ""))
     pratt_next_toks ∈ TokenList
     pratt_next_outs ∈ ExprList
     pratt_next_ops ∈ PrOps

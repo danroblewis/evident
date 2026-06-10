@@ -314,9 +314,7 @@ fsm driver_main
     qvar_field ∈ String = substr(lookup_name, #qvar_prefix,
         #lookup_name - #qvar_prefix)
     qvar_acc ∈ Int
-    RtFieldAcc(fname ↦ qvar_field,
-        e0 ↦ rec0, e1 ↦ rec1, e2 ↦ rec2,
-        acc ↦ qvar_acc)
+    RtFieldAcc(fname ↦ qvar_field, acc ↦ qvar_acc)
     qvar_dot_items ∈ C2Items = C2ICons(C2Process(EIdent(_qloop_seq)),
         C2ICons(C2Process(EInt(_qloop_cur)),
         C2ICons(C2SelH,
@@ -328,7 +326,7 @@ fsm driver_main
         ∧ (index_of(sym_names, bcast_qual_key, 0) ≥ 0))
     bcast_hit_items ∈ C2Items = C2ICons(C2Process(EIdent(bcast_qual_name)), work_tail)
     bcast_ctor_slot ∈ Int
-    RtIdxOf(nm ↦ call_name, e0 ↦ rec0, e1 ↦ rec1, e2 ↦ rec2, idx ↦ bcast_ctor_slot)
+    RtIdxOf(nm ↦ call_name, idx ↦ bcast_ctor_slot)
     bcast_ctor_hit ∈ Bool = (it_process ∧ _bcast_on ∧ (bcast_ctor_slot ≥ 0)
         ∧ (expr_is_call1 ∨ expr_is_call2 ∨ expr_is_call3))
     bcast_ctor_items ∈ C2Items = C2ICons(
@@ -383,9 +381,7 @@ fsm driver_main
         ∧ (¬strin_line) ∧ (¬tymem_line) ∧ (¬q_line)
         ∧ (¬posbind_line))
     mem_consume ∈ Int = (enter_seqmem ? 6 : line_bounded ? 5 : 3)
-    seq_elt_tyname ∈ String = (seq_elt_slot = 0 ? rec0.name
-        : seq_elt_slot = 1 ? rec1.name
-        : rec2.name)
+    seq_elt_tyname ∈ String = recs[seq_elt_slot].name
     mem_tyname ∈ String = (line_sort = 1 ? "Bool"
         : line_sort = 2 ? line_ty_name
         : line_sort = 3 ? "String"
@@ -771,12 +767,12 @@ fsm driver_main
             : decl_const_sort = 4 ? z_result_sort
             : decl_const_sort = 5 ? z_intarr_sort
             : decl_const_sort = 6 ? z3sorts.rsort
-            : decl_const_sort = 10 ? rec0.asort
-            : decl_const_sort = 11 ? rec1.asort
-            : decl_const_sort = 12 ? rec2.asort
-            : decl_const_sort = 20 ? rec0.ssort
-            : decl_const_sort = 21 ? rec1.ssort
-            : decl_const_sort = 22 ? rec2.ssort
+            : decl_const_sort = 10 ? recs[0].asort
+            : decl_const_sort = 11 ? recs[1].asort
+            : decl_const_sort = 12 ? recs[2].asort
+            : decl_const_sort = 20 ? recs[0].ssort
+            : decl_const_sort = 21 ? recs[1].ssort
+            : decl_const_sort = 22 ? recs[2].ssort
             : z3sorts.isort), eff ↦ eff_mkconst)
     eff_sym_write ∈ Effect
     BuildMemWriteLong(addr ↦ sym_buf.base + (8 * _sym_buf.count), value ↦ tmp_in,
@@ -839,9 +835,7 @@ fsm driver_main
     eff_mkreal ∈ Effect
     BuildZ3MkNumeral(ctx_h ↦ z3ctx.ctx, num ↦ real_text, sort_h ↦ z3sorts.rsort,
         eff ↦ eff_mkreal)
-    empty_set_sort ∈ Int = (empty_set_slot = 0 ? rec0.sort
-        : empty_set_slot = 1 ? rec1.sort
-        : rec2.sort)
+    empty_set_sort ∈ Int = recs[empty_set_slot].sort
     eff_empty_set ∈ Effect = LibCall("libz3", "Z3_mk_empty_set",
         ⟨ArgInt(z3ctx.ctx), ArgInt(empty_set_sort)⟩)
     eff_set_add ∈ Effect = LibCall("libz3", "Z3_mk_set_add",

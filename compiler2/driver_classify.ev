@@ -3,7 +3,7 @@
 --           classify-mode gate (classify_now), the claim/type index
 --           (claimidx_names) + symbol table (sym_names), the inline-frame state
 --           (_frame_depth, _scope_prefix, bind_n0..n5), the record registry
---           (rec0..2 .name / .sort), the user-enum + seq-var carries
+--           (recs .name / .sort), the user-enum + seq-var carries
 --           (_user_enum_done, _user_enum_name, _seqvar_set, _seqvar_name), and the sibling
 --           sub-walks' per-line enter signals (efflit_*/arm_*/seqlit_*/callw_slot/
 --           qrange_close/pos_elem) that fold into enter_pratt. Wide by nature: this
@@ -61,8 +61,7 @@ fsm DriverClassify
         Ident(s) ⇒ s
         _ ⇒ ""
     seq_elt_slot ∈ Int
-    RtIdxOf(nm ↦ seq_elt_ty, e0 ↦ rec0, e1 ↦ rec1, e2 ↦ rec2,
-        idx ↦ seq_elt_slot)
+    RtIdxOf(nm ↦ seq_elt_ty, idx ↦ seq_elt_slot)
     seqmem_line ∈ Bool = (line_is_mem ∧ (¬effects_line) ∧ (line_ty_name = "Seq")
         ∧ (line_t3 matches LParen) ∧ ((seq_elt_ty = "Int") ∨ (seq_elt_slot ≥ 0))
         ∧ (tok5 matches RParen))

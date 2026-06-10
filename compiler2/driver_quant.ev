@@ -1,7 +1,7 @@
 -- MODULE DriverQuant
 -- CONSUMES: the classifier line-head views (line_t0..line_t4) + the window
 --           lookahead (tok5..tok7), the registered-seq carries (_seqvar_set,
---           _seqvar_name, _seqvar_len), the record registry (rec0..rec2 via RtIdxOf),
+--           _seqvar_name, _seqvar_len), the record registry (recs via RtIdxOf),
 --           the classify gate (classify_now, line_end), and the parse
 --           cursor for the body re-walk.
 -- PRODUCES: the bounded-quantifier line classification (q_head/q_line/

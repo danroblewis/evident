@@ -5,7 +5,7 @@
 --           handle-stack views (h_top/2nd/.. + h_tail1.. + stack_in),
 --           cap_int, the parse gate (in_parse, _parse_mode, tok_ready,
 --           work_nil), the line-pop signal (frame_pop), the record
---           registry (rec0..rec2 name/sort), and the sibling fire/cap signals
+--           registry (recs name/sort), and the sibling fire/cap signals
 --           (guard_hit, guard_jump_*, posjump_*, bindzip_*, pratt_done, pratt_bad, enter_claim*).
 --           Wide by nature: a call jump couples the classifier decision,
 --           the claim index, and the handle stack (justified §6.4).
@@ -274,8 +274,7 @@ fsm DriverCompose
     type_slot ∈ Int
     type_inst_name ∈ String
     type_rec_slot ∈ Int
-    RtIdxOf(nm ↦ line_ty_name, e0 ↦ rec0, e1 ↦ rec1, e2 ↦ rec2,
-        idx ↦ type_rec_slot)
+    RtIdxOf(nm ↦ line_ty_name, idx ↦ type_rec_slot)
     type_slot = (is_first_tick ? 0 - 1
         : tymem_line ? type_rec_slot
         : _type_slot)

@@ -6,7 +6,7 @@
 --           handle stack (h_top/2nd/.. + d_h_t*), the claim index
 --           (claimidx_buf.base, claimidx_names), the symbol table (sym_names), the
 --           inline-frame state (scope_prefix/frame_depth/param_depth/ilb_n*), the
---           enum value table (enum_values), the record registry (rec0..rec2 name/fields/
+--           enum value table (enum_values), the record registry (recs name/fields/
 --           sorts), the Pratt result (pratt_done/pratt_bad/pratt_result/pratt_*), and
 --           z_exit_decl. (Width justified §6.4: positional binding
 --           inherently touches index + Pratt stack + callee params.)
@@ -207,9 +207,8 @@ fsm DriverPosBind
         : _tuple_pos = 2 ? _param_types[2].s
         : _param_types[3].s)
     tup_rec_slot ∈ Int
-    RtIdxOf(nm ↦ tup_param_ty, e0 ↦ rec0, e1 ↦ rec1, e2 ↦ rec2,
-        idx ↦ tup_rec_slot)
-    tup_rec_fnames ∈ String = (tup_rec_slot = 0 ? rec0.fnames : tup_rec_slot = 1 ? rec1.fnames : rec2.fnames)
+    RtIdxOf(nm ↦ tup_param_ty, idx ↦ tup_rec_slot)
+    tup_rec_fnames ∈ String = recs[tup_rec_slot].fnames
     tup_field0 ∈ String
     RtRecName(s ↦ tup_rec_fnames, i ↦ 0, name ↦ tup_field0)
     tup_field1 ∈ String

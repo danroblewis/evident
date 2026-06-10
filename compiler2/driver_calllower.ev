@@ -2,7 +2,7 @@
 -- CONSUMES: the decomposed call (call_name, call_arg0/1/2), the ctor-dispatch decl
 --           (ctor_decl), the lookup name lookup_name, the work tail work_tail,
 --           the cached zero numeral (z3nums.zero), the record-type registry
---           (rec0/e1/e2) + its RtRecName/RtFieldAcc probes, and the set-var
+--           (recs) + its RtRecName/RtFieldAcc probes, and the set-var
 --           registry carries (_seqvar_set/_seqvar_name/_scope_prefix, stv_*).
 -- PRODUCES: the per-arity builtin/ctor lowering — call1_items (str_len /
 --           str_from_int / 1-arg ctor; incl. str_from_int_items, d_sl_*/d_card_*
@@ -95,9 +95,7 @@ fsm DriverCallLower
         EIdent(s) ⇒ s
         _ ⇒ ""
     field_arg_acc ∈ Int
-    RtFieldAcc(fname ↦ field_arg_name,
-        e0 ↦ rec0, e1 ↦ rec1, e2 ↦ rec2,
-        acc ↦ field_arg_acc)
+    RtFieldAcc(fname ↦ field_arg_name, acc ↦ field_arg_acc)
     call2_items ∈ C2Items = (call_name = "__real"
             ? C2ICons(C2Real(real_arg_scaled, real_arg_digits), work_tail)
         : call_name = "__field"

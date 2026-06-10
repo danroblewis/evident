@@ -2,12 +2,13 @@
 -- CONSUMES: the parse cursor/window + skip-pass record collection (the
 --           `type Name(...)` tops), the Z3 base-sort handles (int/bool/
 --           str/real/iarr), cap_int captures, and the parse_mode-13 RD gate.
--- PRODUCES: the record-type registry (≤3 types): per-type Z3 tuple sort,
---           ctor decl, array/set sorts, ≤6 accessor decls, the fixed-width
---           field-name/type record strings, and the RD machine's build
---           effects (mk_tuple_sort etc.). Pure lookups RtRecName/RtIdxOf/
---           RtSortOf/RtFieldAcc resolve a name/type/field to its slot.
--- MAINTAINS: ≤3 registered record types; a slot with sort handle 0 is
+-- PRODUCES: the record-type registry recs (≤3 entries): per-type Z3 tuple
+--           sort, ctor decl, array/set sorts, ≤6 accessor decls, the
+--           fixed-width field-name/type record strings, and the RD
+--           machine's build effects (mk_tuple_sort etc.). Pure lookups
+--           RtRecName/RtIdxOf/RtSortOf/RtFieldAcc resolve a name/type/
+--           field to its entry; they read recs ambiently (names-match).
+-- MAINTAINS: ≤3 registered record types; an entry with sort handle 0 is
 --           "not finished" and never matches a lookup; field records are
 --           32-byte "|name<pad31>" aligned so index_of is slot-arithmetic.
 --
@@ -16,12 +17,11 @@
 -- RD machine); DriverRecord is the stateful RD build machine, lifted into
 -- driver_main via `..DriverRecord`.
 -- ── G2: record-registry helpers ───────────────────────────────────
--- The registry stores ≤ 3 record types (the conformance corpus max
--- is 2 + headroom) as a fixed ×3 array of `RecTypeEntry` records
--- (rec0/rec1/rec2). Each entry bundles the type name, the fixed-
+-- The registry recs stores ≤ 3 record types (the conformance corpus
+-- max is 2 + headroom). Each entry bundles the type name, the fixed-
 -- width 32-byte "|name<pad31>" field-name/field-type record strings,
 -- the field count, and the Z3 handles (sort / ctor decl / array sort /
--- set sort / ≤ 6 accessor decls acc0..acc5).
+-- set sort / ≤ 6 accessor decls).
 
 type RcParam(pname ∈ String)
 
@@ -31,55 +31,48 @@ claim RtRecName(s ∈ String, i ∈ Int, name ∈ String)
     rrn_sp ∈ Int = index_of(rrn_raw, " ", 0)
     name = substr(rrn_raw, 0, rrn_sp < 0 ? 31 : rrn_sp)
 
-claim RtIdxOf(nm ∈ String, e0 ∈ RecTypeEntry, e1 ∈ RecTypeEntry,
-        e2 ∈ RecTypeEntry, idx ∈ Int)
-    idx = ((nm ≠ "" ∧ nm = e0.name ∧ e0.sort ≠ 0) ? 0
-        : (nm ≠ "" ∧ nm = e1.name ∧ e1.sort ≠ 0) ? 1
-        : (nm ≠ "" ∧ nm = e2.name ∧ e2.sort ≠ 0) ? 2
+claim RtIdxOf(nm ∈ String, idx ∈ Int)
+    idx = ((nm ≠ "" ∧ nm = recs[0].name ∧ recs[0].sort > 0) ? 0
+        : (nm ≠ "" ∧ nm = recs[1].name ∧ recs[1].sort > 0) ? 1
+        : (nm ≠ "" ∧ nm = recs[2].name ∧ recs[2].sort > 0) ? 2
         : 0 - 1)
 
 claim RtSortOf(ty ∈ String,
         int_h ∈ Int, bool_h ∈ Int, str_h ∈ Int, real_h ∈ Int,
         iarr_h ∈ Int,
-        e0 ∈ RecTypeEntry, e1 ∈ RecTypeEntry, e2 ∈ RecTypeEntry,
         sort ∈ Int)
     sort = ((ty = "Int" ∨ ty = "Nat") ? int_h
         : ty = "Bool" ? bool_h
         : ty = "String" ? str_h
         : ty = "Real" ? real_h
         : ty = "Seq(Int)" ? iarr_h
-        : (ty ≠ "" ∧ ty = e0.name) ? e0.sort
-        : (ty ≠ "" ∧ ty = e1.name) ? e1.sort
-        : (ty ≠ "" ∧ ty = e2.name) ? e2.sort
+        : (ty ≠ "" ∧ ty = recs[0].name) ? recs[0].sort
+        : (ty ≠ "" ∧ ty = recs[1].name) ? recs[1].sort
+        : (ty ≠ "" ∧ ty = recs[2].name) ? recs[2].sort
         : 0)
 
-claim RtFieldAcc(fname ∈ String,
-        e0 ∈ RecTypeEntry, e1 ∈ RecTypeEntry, e2 ∈ RecTypeEntry,
-        acc ∈ Int)
+claim RtFieldAcc(fname ∈ String, acc ∈ Int)
     rfa_key ∈ String
     FtiNameEntry(name ↦ fname, entry ↦ rfa_key)
-    rfa_p0 ∈ Int = index_of(e0.fnames, rfa_key, 0)
-    rfa_p1 ∈ Int = index_of(e1.fnames, rfa_key, 0)
-    rfa_p2 ∈ Int = index_of(e2.fnames, rfa_key, 0)
+    rfa_p0 ∈ Int = index_of(recs[0].fnames, rfa_key, 0)
+    rfa_p1 ∈ Int = index_of(recs[1].fnames, rfa_key, 0)
+    rfa_p2 ∈ Int = index_of(recs[2].fnames, rfa_key, 0)
     rfa_i0 ∈ Int = rfa_p0 / 32
     rfa_i1 ∈ Int = rfa_p1 / 32
     rfa_i2 ∈ Int = rfa_p2 / 32
-    acc = ((fname ≠ "" ∧ rfa_p0 ≥ 0)
-            ? (rfa_i0 = 0 ? e0.acc0 : rfa_i0 = 1 ? e0.acc1 : rfa_i0 = 2 ? e0.acc2
-                : rfa_i0 = 3 ? e0.acc3 : rfa_i0 = 4 ? e0.acc4 : e0.acc5)
-        : (fname ≠ "" ∧ rfa_p1 ≥ 0)
-            ? (rfa_i1 = 0 ? e1.acc0 : rfa_i1 = 1 ? e1.acc1 : rfa_i1 = 2 ? e1.acc2
-                : rfa_i1 = 3 ? e1.acc3 : rfa_i1 = 4 ? e1.acc4 : e1.acc5)
-        : (fname ≠ "" ∧ rfa_p2 ≥ 0)
-            ? (rfa_i2 = 0 ? e2.acc0 : rfa_i2 = 1 ? e2.acc1 : rfa_i2 = 2 ? e2.acc2
-                : rfa_i2 = 3 ? e2.acc3 : rfa_i2 = 4 ? e2.acc4 : e2.acc5)
+    acc = ((fname ≠ "" ∧ rfa_p0 ≥ 0) ? recs[0].accs[rfa_i0]
+        : (fname ≠ "" ∧ rfa_p1 ≥ 0) ? recs[1].accs[rfa_i1]
+        : (fname ≠ "" ∧ rfa_p2 ≥ 0) ? recs[2].accs[rfa_i2]
         : 0)
 
 fsm DriverRecord
     rec_count ∈ Int
-    rec0 ∈ RecTypeEntry
-    rec1 ∈ RecTypeEntry
-    rec2 ∈ RecTypeEntry
+    recs ∈ Seq(RecTypeEntry)
+    #recs ≤ 3
+    -- restates RecTypeEntry's body bound: the bounded-Seq lowering
+    -- flattens recs to scalars pre-oracle, so the type body is never
+    -- instantiated over the entries (gap noted at the type, 2026-06-10).
+    ∀ e ∈ recs : 0 ≤ e.n_fields ≤ 6
 
     rec_collect_on ∈ Bool
     rec_collect_ok ∈ Bool
@@ -88,11 +81,11 @@ fsm DriverRecord
     #rec_params ≤ 3
 
     rec_slot ∈ Int = _rec_count - 1
-    rec_cur_name ∈ String = (rec_slot = 0 ? rec0.name : rec_slot = 1 ? rec1.name : rec2.name)
-    rec_cur_fnames ∈ String = (rec_slot = 0 ? rec0.fnames : rec_slot = 1 ? rec1.fnames : rec2.fnames)
-    rec_cur_ftypes ∈ String = (rec_slot = 0 ? rec0.ftypes : rec_slot = 1 ? rec1.ftypes : rec2.ftypes)
-    rec_cur_nf ∈ Int = (rec_slot = 0 ? rec0.n_fields : rec_slot = 1 ? rec1.n_fields : rec2.n_fields)
-    rec_cur_sort ∈ Int = (rec_slot = 0 ? rec0.sort : rec_slot = 1 ? rec1.sort : rec2.sort)
+    rec_cur_name ∈ String = recs[rec_slot].name
+    rec_cur_fnames ∈ String = recs[rec_slot].fnames
+    rec_cur_ftypes ∈ String = recs[rec_slot].ftypes
+    rec_cur_nf ∈ Int = recs[rec_slot].n_fields
+    rec_cur_sort ∈ Int = recs[rec_slot].sort
 
     rec_start ∈ Bool = (claimidx_add ∧ (tok0 matches KwType) ∧ (_rec_count < 3))
     rec_collecting ∈ Bool = (in_skip ∧ (¬skip_stop) ∧ _rec_collect_on)
@@ -115,10 +108,9 @@ fsm DriverRecord
     field_is_prim ∈ Bool = (field_ty_tok = "Int" ∨ field_ty_tok = "Nat"
         ∨ field_ty_tok = "Bool" ∨ field_ty_tok = "String" ∨ field_ty_tok = "Real")
     field_rec_slot ∈ Int
-    RtIdxOf(nm ↦ field_ty_tok, e0 ↦ _rec0, e1 ↦ _rec1, e2 ↦ _rec2,
-        idx ↦ field_rec_slot)
+    RtIdxOf(nm ↦ field_ty_tok, idx ↦ field_rec_slot)
     field_add_n ∈ Int = (_rec_param_n + 1) + (field_is_seq ? 1 : 0)
-    rec_nf_prev ∈ Int = (rec_slot = 0 ? _rec0.n_fields : rec_slot = 1 ? _rec1.n_fields : _rec2.n_fields)
+    rec_nf_prev ∈ Int = _recs[rec_slot].n_fields
     field_bad ∈ Bool = ((field_take ∧ (((¬field_is_prim) ∧ (¬field_is_seq) ∧ field_rec_slot < 0)
         ∨ (field_is_seq ∧ _rec_param_n > 0)
         ∨ (rec_nf_prev + field_add_n > 6)))
@@ -160,18 +152,10 @@ fsm DriverRecord
     ∀ k ∈ {0..2} : rec_params[k].pname = (is_first_tick ? "" : (field_pending ∧ _rec_param_n = k) ? field_name_tok : _rec_params[k].pname)
 
     rec_count = (is_first_tick ? 0 : rec_start ? _rec_count + 1 : _rec_count)
-    rec0.name = (is_first_tick ? "" : (rec_start ∧ _rec_count = 0) ? decl_name : _rec0.name)
-    rec1.name = (is_first_tick ? "" : (rec_start ∧ _rec_count = 1) ? decl_name : _rec1.name)
-    rec2.name = (is_first_tick ? "" : (rec_start ∧ _rec_count = 2) ? decl_name : _rec2.name)
-    rec0.fnames = (is_first_tick ? "" : (field_ok ∧ rec_slot = 0) ? _rec0.fnames ++ field_rows_names : _rec0.fnames)
-    rec1.fnames = (is_first_tick ? "" : (field_ok ∧ rec_slot = 1) ? _rec1.fnames ++ field_rows_names : _rec1.fnames)
-    rec2.fnames = (is_first_tick ? "" : (field_ok ∧ rec_slot = 2) ? _rec2.fnames ++ field_rows_names : _rec2.fnames)
-    rec0.ftypes = (is_first_tick ? "" : (field_ok ∧ rec_slot = 0) ? _rec0.ftypes ++ field_rows_types : _rec0.ftypes)
-    rec1.ftypes = (is_first_tick ? "" : (field_ok ∧ rec_slot = 1) ? _rec1.ftypes ++ field_rows_types : _rec1.ftypes)
-    rec2.ftypes = (is_first_tick ? "" : (field_ok ∧ rec_slot = 2) ? _rec2.ftypes ++ field_rows_types : _rec2.ftypes)
-    rec0.n_fields = (is_first_tick ? 0 : (field_ok ∧ rec_slot = 0) ? _rec0.n_fields + field_add_n : _rec0.n_fields)
-    rec1.n_fields = (is_first_tick ? 0 : (field_ok ∧ rec_slot = 1) ? _rec1.n_fields + field_add_n : _rec1.n_fields)
-    rec2.n_fields = (is_first_tick ? 0 : (field_ok ∧ rec_slot = 2) ? _rec2.n_fields + field_add_n : _rec2.n_fields)
+    ∀ k ∈ {0..2} : recs[k].name = (is_first_tick ? "" : (rec_start ∧ _rec_count = k) ? decl_name : _recs[k].name)
+    ∀ k ∈ {0..2} : recs[k].fnames = (is_first_tick ? "" : (field_ok ∧ rec_slot = k) ? _recs[k].fnames ++ field_rows_names : _recs[k].fnames)
+    ∀ k ∈ {0..2} : recs[k].ftypes = (is_first_tick ? "" : (field_ok ∧ rec_slot = k) ? _recs[k].ftypes ++ field_rows_types : _recs[k].ftypes)
+    ∀ k ∈ {0..2} : recs[k].n_fields = (is_first_tick ? 0 : (field_ok ∧ rec_slot = k) ? _recs[k].n_fields + field_add_n : _recs[k].n_fields)
 
     recdecl_st ∈ Int
     recdecl_field_i ∈ Int
@@ -212,36 +196,16 @@ fsm DriverRecord
     recdecl_acc_cap ∈ Bool = (recdecl_cap ∧ _recdecl_st = 5)
     recdecl_asort_cap ∈ Bool = (recdecl_cap ∧ _recdecl_st = 6)
     recdecl_ssort_cap ∈ Bool = (recdecl_cap ∧ _recdecl_st = 7)
-    rec0.sort = (is_first_tick ? 0 : (recdecl_sort_cap ∧ rec_slot = 0) ? cap_int : _rec0.sort)
-    rec1.sort = (is_first_tick ? 0 : (recdecl_sort_cap ∧ rec_slot = 1) ? cap_int : _rec1.sort)
-    rec2.sort = (is_first_tick ? 0 : (recdecl_sort_cap ∧ rec_slot = 2) ? cap_int : _rec2.sort)
-    rec0.ctor = (is_first_tick ? 0 : (recdecl_ctor_cap ∧ rec_slot = 0) ? cap_int : _rec0.ctor)
-    rec1.ctor = (is_first_tick ? 0 : (recdecl_ctor_cap ∧ rec_slot = 1) ? cap_int : _rec1.ctor)
-    rec2.ctor = (is_first_tick ? 0 : (recdecl_ctor_cap ∧ rec_slot = 2) ? cap_int : _rec2.ctor)
-    rec0.asort = (is_first_tick ? 0 : (recdecl_asort_cap ∧ rec_slot = 0) ? cap_int : _rec0.asort)
-    rec1.asort = (is_first_tick ? 0 : (recdecl_asort_cap ∧ rec_slot = 1) ? cap_int : _rec1.asort)
-    rec2.asort = (is_first_tick ? 0 : (recdecl_asort_cap ∧ rec_slot = 2) ? cap_int : _rec2.asort)
-    rec0.ssort = (is_first_tick ? 0 : (recdecl_ssort_cap ∧ rec_slot = 0) ? cap_int : _rec0.ssort)
-    rec1.ssort = (is_first_tick ? 0 : (recdecl_ssort_cap ∧ rec_slot = 1) ? cap_int : _rec1.ssort)
-    rec2.ssort = (is_first_tick ? 0 : (recdecl_ssort_cap ∧ rec_slot = 2) ? cap_int : _rec2.ssort)
-    rec0.acc0 = (is_first_tick ? 0 : (recdecl_acc_cap ∧ rec_slot = 0 ∧ _recdecl_field_i = 0) ? cap_int : _rec0.acc0)
-    rec0.acc1 = (is_first_tick ? 0 : (recdecl_acc_cap ∧ rec_slot = 0 ∧ _recdecl_field_i = 1) ? cap_int : _rec0.acc1)
-    rec0.acc2 = (is_first_tick ? 0 : (recdecl_acc_cap ∧ rec_slot = 0 ∧ _recdecl_field_i = 2) ? cap_int : _rec0.acc2)
-    rec0.acc3 = (is_first_tick ? 0 : (recdecl_acc_cap ∧ rec_slot = 0 ∧ _recdecl_field_i = 3) ? cap_int : _rec0.acc3)
-    rec0.acc4 = (is_first_tick ? 0 : (recdecl_acc_cap ∧ rec_slot = 0 ∧ _recdecl_field_i = 4) ? cap_int : _rec0.acc4)
-    rec0.acc5 = (is_first_tick ? 0 : (recdecl_acc_cap ∧ rec_slot = 0 ∧ _recdecl_field_i = 5) ? cap_int : _rec0.acc5)
-    rec1.acc0 = (is_first_tick ? 0 : (recdecl_acc_cap ∧ rec_slot = 1 ∧ _recdecl_field_i = 0) ? cap_int : _rec1.acc0)
-    rec1.acc1 = (is_first_tick ? 0 : (recdecl_acc_cap ∧ rec_slot = 1 ∧ _recdecl_field_i = 1) ? cap_int : _rec1.acc1)
-    rec1.acc2 = (is_first_tick ? 0 : (recdecl_acc_cap ∧ rec_slot = 1 ∧ _recdecl_field_i = 2) ? cap_int : _rec1.acc2)
-    rec1.acc3 = (is_first_tick ? 0 : (recdecl_acc_cap ∧ rec_slot = 1 ∧ _recdecl_field_i = 3) ? cap_int : _rec1.acc3)
-    rec1.acc4 = (is_first_tick ? 0 : (recdecl_acc_cap ∧ rec_slot = 1 ∧ _recdecl_field_i = 4) ? cap_int : _rec1.acc4)
-    rec1.acc5 = (is_first_tick ? 0 : (recdecl_acc_cap ∧ rec_slot = 1 ∧ _recdecl_field_i = 5) ? cap_int : _rec1.acc5)
-    rec2.acc0 = (is_first_tick ? 0 : (recdecl_acc_cap ∧ rec_slot = 2 ∧ _recdecl_field_i = 0) ? cap_int : _rec2.acc0)
-    rec2.acc1 = (is_first_tick ? 0 : (recdecl_acc_cap ∧ rec_slot = 2 ∧ _recdecl_field_i = 1) ? cap_int : _rec2.acc1)
-    rec2.acc2 = (is_first_tick ? 0 : (recdecl_acc_cap ∧ rec_slot = 2 ∧ _recdecl_field_i = 2) ? cap_int : _rec2.acc2)
-    rec2.acc3 = (is_first_tick ? 0 : (recdecl_acc_cap ∧ rec_slot = 2 ∧ _recdecl_field_i = 3) ? cap_int : _rec2.acc3)
-    rec2.acc4 = (is_first_tick ? 0 : (recdecl_acc_cap ∧ rec_slot = 2 ∧ _recdecl_field_i = 4) ? cap_int : _rec2.acc4)
-    rec2.acc5 = (is_first_tick ? 0 : (recdecl_acc_cap ∧ rec_slot = 2 ∧ _recdecl_field_i = 5) ? cap_int : _rec2.acc5)
+    ∀ k ∈ {0..2} : recs[k].sort = (is_first_tick ? 0 : (recdecl_sort_cap ∧ rec_slot = k) ? cap_int : _recs[k].sort)
+    ∀ k ∈ {0..2} : recs[k].ctor = (is_first_tick ? 0 : (recdecl_ctor_cap ∧ rec_slot = k) ? cap_int : _recs[k].ctor)
+    ∀ k ∈ {0..2} : recs[k].asort = (is_first_tick ? 0 : (recdecl_asort_cap ∧ rec_slot = k) ? cap_int : _recs[k].asort)
+    ∀ k ∈ {0..2} : recs[k].ssort = (is_first_tick ? 0 : (recdecl_ssort_cap ∧ rec_slot = k) ? cap_int : _recs[k].ssort)
+    ∀ k ∈ {0..2} : recs[k].accs[0] = (is_first_tick ? 0 : (recdecl_acc_cap ∧ rec_slot = k ∧ _recdecl_field_i = 0) ? cap_int : _recs[k].accs[0])
+    ∀ k ∈ {0..2} : recs[k].accs[1] = (is_first_tick ? 0 : (recdecl_acc_cap ∧ rec_slot = k ∧ _recdecl_field_i = 1) ? cap_int : _recs[k].accs[1])
+    ∀ k ∈ {0..2} : recs[k].accs[2] = (is_first_tick ? 0 : (recdecl_acc_cap ∧ rec_slot = k ∧ _recdecl_field_i = 2) ? cap_int : _recs[k].accs[2])
+    ∀ k ∈ {0..2} : recs[k].accs[3] = (is_first_tick ? 0 : (recdecl_acc_cap ∧ rec_slot = k ∧ _recdecl_field_i = 3) ? cap_int : _recs[k].accs[3])
+    ∀ k ∈ {0..2} : recs[k].accs[4] = (is_first_tick ? 0 : (recdecl_acc_cap ∧ rec_slot = k ∧ _recdecl_field_i = 4) ? cap_int : _recs[k].accs[4])
+    ∀ k ∈ {0..2} : recs[k].accs[5] = (is_first_tick ? 0 : (recdecl_acc_cap ∧ rec_slot = k ∧ _recdecl_field_i = 5) ? cap_int : _recs[k].accs[5])
 
     recdecl_fnames_p ∈ Int = z_arena + 288
     recdecl_fsorts_p ∈ Int = z_arena + 336
@@ -270,27 +234,27 @@ fsm DriverRecord
     recdecl_sort0 ∈ Int
     RtSortOf(ty ↦ recdecl_ty0, int_h ↦ z3sorts.isort, bool_h ↦ z3sorts.bsort,
         str_h ↦ z3sorts.ssort, real_h ↦ z3sorts.rsort, iarr_h ↦ z_intarr_sort,
-        e0 ↦ rec0, e1 ↦ rec1, e2 ↦ rec2, sort ↦ recdecl_sort0)
+        sort ↦ recdecl_sort0)
     recdecl_sort1 ∈ Int
     RtSortOf(ty ↦ recdecl_ty1, int_h ↦ z3sorts.isort, bool_h ↦ z3sorts.bsort,
         str_h ↦ z3sorts.ssort, real_h ↦ z3sorts.rsort, iarr_h ↦ z_intarr_sort,
-        e0 ↦ rec0, e1 ↦ rec1, e2 ↦ rec2, sort ↦ recdecl_sort1)
+        sort ↦ recdecl_sort1)
     recdecl_sort2 ∈ Int
     RtSortOf(ty ↦ recdecl_ty2, int_h ↦ z3sorts.isort, bool_h ↦ z3sorts.bsort,
         str_h ↦ z3sorts.ssort, real_h ↦ z3sorts.rsort, iarr_h ↦ z_intarr_sort,
-        e0 ↦ rec0, e1 ↦ rec1, e2 ↦ rec2, sort ↦ recdecl_sort2)
+        sort ↦ recdecl_sort2)
     recdecl_sort3 ∈ Int
     RtSortOf(ty ↦ recdecl_ty3, int_h ↦ z3sorts.isort, bool_h ↦ z3sorts.bsort,
         str_h ↦ z3sorts.ssort, real_h ↦ z3sorts.rsort, iarr_h ↦ z_intarr_sort,
-        e0 ↦ rec0, e1 ↦ rec1, e2 ↦ rec2, sort ↦ recdecl_sort3)
+        sort ↦ recdecl_sort3)
     recdecl_sort4 ∈ Int
     RtSortOf(ty ↦ recdecl_ty4, int_h ↦ z3sorts.isort, bool_h ↦ z3sorts.bsort,
         str_h ↦ z3sorts.ssort, real_h ↦ z3sorts.rsort, iarr_h ↦ z_intarr_sort,
-        e0 ↦ rec0, e1 ↦ rec1, e2 ↦ rec2, sort ↦ recdecl_sort4)
+        sort ↦ recdecl_sort4)
     recdecl_sort5 ∈ Int
     RtSortOf(ty ↦ recdecl_ty5, int_h ↦ z3sorts.isort, bool_h ↦ z3sorts.bsort,
         str_h ↦ z3sorts.ssort, real_h ↦ z3sorts.rsort, iarr_h ↦ z_intarr_sort,
-        e0 ↦ rec0, e1 ↦ rec1, e2 ↦ rec2, sort ↦ recdecl_sort5)
+        sort ↦ recdecl_sort5)
 
     recdecl_namesym ∈ Effect
     BuildZ3MkStringSymbol(ctx_h ↦ z3ctx.ctx, name ↦ rec_cur_name, eff ↦ recdecl_namesym)

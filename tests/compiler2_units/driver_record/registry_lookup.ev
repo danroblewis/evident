@@ -1,8 +1,10 @@
--- DriverRecord isolation — the registry read layer (RtIdxOf/RtSortOf).
--- RtIdxOf: type name → registry slot, with the "slot whose sort handle
--- is 0 is unfinished ⇒ never matches" invariant. RtSortOf: field-type
--- string → Z3 sort handle (Nat aliases Int; user type → its slot's sort;
--- unknown ⇒ 0). Registry is a fixed ×3 array of RecTypeEntry slots.
+-- DriverRecord isolation — the registry read layer (RtIdxOf/RtSortOf/
+-- RtFieldAcc over the ambient recs registry). RtIdxOf: type name →
+-- registry slot, with the "entry whose sort handle is 0 is unfinished
+-- ⇒ never matches" invariant (slot 2 pins it). RtSortOf: field-type
+-- string → Z3 sort handle (Nat aliases Int; user type → its entry's
+-- sort; unknown ⇒ 0). RtFieldAcc: field name → accessor decl via the
+-- fixed-width fnames probe and the accs sub-index.
 --
 -- entry: main
 -- expect: stdout = "ok"
@@ -12,35 +14,70 @@ import "compiler2/driver_ir.ev"
 import "compiler2/driver_record.ev"
 
 claim main
-    e0 ∈ RecTypeEntry(name ↦ "Point", sort ↦ 7)
-    e1 ∈ RecTypeEntry(name ↦ "Color", sort ↦ 9)
-    e2 ∈ RecTypeEntry(name ↦ "", sort ↦ 0)
-    -- Slot 0 UNFINISHED (sort 0) for the name-present-but-unfinished miss.
-    eu0 ∈ RecTypeEntry(name ↦ "Point", sort ↦ 0)
+    recs ∈ Seq(RecTypeEntry)
+    #recs ≤ 3
+    row_x ∈ String
+    FtiNameEntry(name ↦ "x", entry ↦ row_x)
+    row_y ∈ String
+    FtiNameEntry(name ↦ "y", entry ↦ row_y)
+    recs[0].name = "Point"
+    recs[0].sort = 7
+    recs[0].fnames = row_x ++ row_y
+    recs[0].n_fields = 2
+    recs[0].accs[0] = 101
+    recs[0].accs[1] = 102
+    recs[1].name = "Color"
+    recs[1].sort = 9
+    recs[1].fnames = ""
+    recs[1].n_fields = 0
+    recs[1].accs[0] = 0
+    recs[1].accs[1] = 0
+    recs[2].name = "Widget"
+    recs[2].sort = 0
+    recs[2].fnames = ""
+    recs[2].n_fields = 0
+    recs[2].accs[0] = 0
+    recs[2].accs[1] = 0
+    ∀ e ∈ recs : e.ftypes = ""
+    ∀ e ∈ recs : e.ctor = 0
+    ∀ e ∈ recs : e.asort = 0
+    ∀ e ∈ recs : e.ssort = 0
+    ∀ e ∈ recs : e.accs[2] = 0
+    ∀ e ∈ recs : e.accs[3] = 0
+    ∀ e ∈ recs : e.accs[4] = 0
+    ∀ e ∈ recs : e.accs[5] = 0
 
     i_pt ∈ Int
-    RtIdxOf(nm ↦ "Point", e0 ↦ e0, e1 ↦ e1, e2 ↦ e2, idx ↦ i_pt)
+    RtIdxOf(nm ↦ "Point", idx ↦ i_pt)
     i_co ∈ Int
-    RtIdxOf(nm ↦ "Color", e0 ↦ e0, e1 ↦ e1, e2 ↦ e2, idx ↦ i_co)
+    RtIdxOf(nm ↦ "Color", idx ↦ i_co)
     i_un ∈ Int
-    RtIdxOf(nm ↦ "Point", e0 ↦ eu0, e1 ↦ e1, e2 ↦ e2, idx ↦ i_un)
+    RtIdxOf(nm ↦ "Widget", idx ↦ i_un)
     i_miss ∈ Int
-    RtIdxOf(nm ↦ "Zzz", e0 ↦ e0, e1 ↦ e1, e2 ↦ e2, idx ↦ i_miss)
+    RtIdxOf(nm ↦ "Zzz", idx ↦ i_miss)
 
     so_int ∈ Int
     RtSortOf(ty ↦ "Int", int_h ↦ 11, bool_h ↦ 12, str_h ↦ 13, real_h ↦ 14,
-        iarr_h ↦ 15, e0 ↦ e0, e1 ↦ e1, e2 ↦ e2, sort ↦ so_int)
+        iarr_h ↦ 15, sort ↦ so_int)
     so_nat ∈ Int
     RtSortOf(ty ↦ "Nat", int_h ↦ 11, bool_h ↦ 12, str_h ↦ 13, real_h ↦ 14,
-        iarr_h ↦ 15, e0 ↦ e0, e1 ↦ e1, e2 ↦ e2, sort ↦ so_nat)
+        iarr_h ↦ 15, sort ↦ so_nat)
     so_co ∈ Int
     RtSortOf(ty ↦ "Color", int_h ↦ 11, bool_h ↦ 12, str_h ↦ 13, real_h ↦ 14,
-        iarr_h ↦ 15, e0 ↦ e0, e1 ↦ e1, e2 ↦ e2, sort ↦ so_co)
+        iarr_h ↦ 15, sort ↦ so_co)
     so_un ∈ Int
-    RtSortOf(ty ↦ "Widget", int_h ↦ 11, bool_h ↦ 12, str_h ↦ 13, real_h ↦ 14,
-        iarr_h ↦ 15, e0 ↦ e0, e1 ↦ e1, e2 ↦ e2, sort ↦ so_un)
+    RtSortOf(ty ↦ "Zzz", int_h ↦ 11, bool_h ↦ 12, str_h ↦ 13, real_h ↦ 14,
+        iarr_h ↦ 15, sort ↦ so_un)
+
+    af_x ∈ Int
+    RtFieldAcc(fname ↦ "x", acc ↦ af_x)
+    af_y ∈ Int
+    RtFieldAcc(fname ↦ "y", acc ↦ af_y)
+    af_miss ∈ Int
+    RtFieldAcc(fname ↦ "z", acc ↦ af_miss)
 
     ok ∈ Bool = (i_pt = 0 ∧ i_co = 1 ∧ i_un = (0 - 1) ∧ i_miss = (0 - 1)
-        ∧ so_int = 11 ∧ so_nat = 11 ∧ so_co = 9 ∧ so_un = 0)
+        ∧ so_int = 11 ∧ so_nat = 11 ∧ so_co = 9 ∧ so_un = 0
+        ∧ af_x = 101 ∧ af_y = 102 ∧ af_miss = 0)
     msg ∈ String = (ok ? "ok" : "BAD")
     effects ∈ Seq(Effect) = ⟨LibCall("libc", "puts", ⟨ArgStr(msg)⟩), Exit(0)⟩

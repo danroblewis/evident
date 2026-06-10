@@ -37,15 +37,22 @@ fsm main
     tok_ready ∈ Bool
     tok_ready = (is_first_tick ? true : _tok_ready)
     -- A 2-field record type at registry slot 0.
-    rec0 ∈ RecTypeEntry(name ↦ "", fnames ↦ "", ftypes ↦ "", n_fields ↦ 2,
-        sort ↦ 0, ctor ↦ 0, asort ↦ 0, ssort ↦ 0,
-        acc0 ↦ 0, acc1 ↦ 0, acc2 ↦ 0, acc3 ↦ 0, acc4 ↦ 0, acc5 ↦ 0)
-    rec1 ∈ RecTypeEntry(name ↦ "", fnames ↦ "", ftypes ↦ "", n_fields ↦ 0,
-        sort ↦ 0, ctor ↦ 0, asort ↦ 0, ssort ↦ 0,
-        acc0 ↦ 0, acc1 ↦ 0, acc2 ↦ 0, acc3 ↦ 0, acc4 ↦ 0, acc5 ↦ 0)
-    rec2 ∈ RecTypeEntry(name ↦ "", fnames ↦ "", ftypes ↦ "", n_fields ↦ 0,
-        sort ↦ 0, ctor ↦ 0, asort ↦ 0, ssort ↦ 0,
-        acc0 ↦ 0, acc1 ↦ 0, acc2 ↦ 0, acc3 ↦ 0, acc4 ↦ 0, acc5 ↦ 0)
+    recs ∈ Seq(RecTypeEntry)
+    #recs ≤ 3
+    ∀ e ∈ recs : e.name = ""
+    ∀ e ∈ recs : e.fnames = ""
+    ∀ e ∈ recs : e.ftypes = ""
+    ∀ k ∈ {0..2} : recs[k].n_fields = (k = 0 ? 2 : 0)
+    ∀ e ∈ recs : e.sort = 0
+    ∀ e ∈ recs : e.ctor = 0
+    ∀ e ∈ recs : e.asort = 0
+    ∀ e ∈ recs : e.ssort = 0
+    ∀ e ∈ recs : e.accs[0] = 0
+    ∀ e ∈ recs : e.accs[1] = 0
+    ∀ e ∈ recs : e.accs[2] = 0
+    ∀ e ∈ recs : e.accs[3] = 0
+    ∀ e ∈ recs : e.accs[4] = 0
+    ∀ e ∈ recs : e.accs[5] = 0
     sym_names ∈ String
     sym_names = (is_first_tick ? "" : _sym_names)
     ..DriverBroadcast
