@@ -74,10 +74,13 @@
 --     `(and (=> g B) (=> (not g) T))` guard tree. ≤ 4 guards /
 --     5 branches; then-branches must be literals; chains nest in
 --     else position only
---   · USER ENUMS: ONE enum per compile; payload variants up to TWO
---     fields of Int/Bool/String/Real/self (the 8-token window caps
---     collection at 2); enum-typed memberships land in the manifest
---     as `name:Enum`
+--   · USER ENUMS: any number, in BUILD GROUPS of consecutive decls
+--     (one batched Z3_mk_datatypes per group — mutual recursion
+--     resolves within a group; across groups only already-built
+--     enums are referenceable); payload variants up to SIX fields of
+--     scalar floor / group member / floor enum / built enum (the
+--     enum TABLE: name rows in enum_names, sort cells on the tape);
+--     enum-typed memberships land in the manifest as `name:Enum`
 --   · ctor applications lower to C2App(decl, argc) = mk_app;
 --     compound args are handles — the legacy dropped-Exit(3+4) bug
 --     class cannot exist here
@@ -94,7 +97,7 @@
 --     an unknown call name pushes handle 0 (unbound-ident parity)
 --   · symbol table: 1024 handle slots in a calloc'd buffer +
 --     fixed-width-32 name records in a Z3 String; lookup = pure
---     index_of/32 + one __mem.read_long. Enum-value table: 6.
+--     index_of/32 + one __mem.read_long. Enum-value table: 160.
 --     Slots 0/1 pre-seeded with the kernel-provided last_results /
 --     is_first_tick consts.
 --   · ONE registered Seq var per compile
@@ -126,9 +129,9 @@
 --   · NOT covered: Real membership / float literals (021 — needs
 --     FloatLit lexing in this FSM + mk_numeral), match as a general
 --     EXPRESSION (only the parse_mode-6 match-pin shape; bare `y = match`
---     pins without a membership type), 3-field payload variants
---     (the 8-token window caps collection at 2), multiple user
---     enums, 5+-element effects literals, guarded-writer effects
+--     pins without a membership type), 7+-field payload variants,
+--     forward payload references across an intervening non-enum
+--     decl (group rule), 5+-element effects literals, guarded-writer effects
 --     lines (`cond ⇒ effects = ⟨…⟩` — zero corpus occurrences; the
 --     corpus's only conditional effects shape is the ternary chain),
 --     quantifiers in EXPRESSION position (123), record arithmetic
@@ -232,30 +235,28 @@ fsm driver_main
     enum_reserved ∈ Bool = (decl_name = "Effect" ∨ decl_name = "Result"
         ∨ decl_name = "LibArg")
 
-    in_dispatch ∈ Bool = (in_parse ∧ (_parse_mode = 0) ∧ tok_ready)
-    enter_claim ∈ Bool = (in_dispatch ∧ (¬head_is_eof) ∧ head_is_claim ∧ is_target ∧ (¬head_has_params))
-    enter_claim_params ∈ Bool = (in_dispatch ∧ (¬head_is_eof) ∧ head_is_claim ∧ is_target ∧ head_has_params)
+    -- Dispatch idles while the ED machine builds a group (_enum_act
+    -- gate); the head token is re-read once the build finishes.
+    in_dispatch ∈ Bool = (in_parse ∧ (_parse_mode = 0) ∧ tok_ready
+        ∧ (_enum_act = 0))
+    -- BUILD-GROUP trigger (multi-enum-grammar D4): consecutive user
+    -- enum decls accumulate in pend_group; the first non-enum top-level
+    -- head (claim/type/EOF — a reserved Effect/Result/LibArg decl
+    -- does NOT close the group, it skips) fires one batched build.
+    -- Consumes nothing — the same head dispatches normally afterward.
+    enum_group_go ∈ Bool = (in_dispatch ∧ (_pend_group_n > 0) ∧ (¬head_is_enum))
+    enter_claim ∈ Bool = (in_dispatch ∧ (¬enum_group_go) ∧ (¬head_is_eof) ∧ head_is_claim ∧ is_target ∧ (¬head_has_params))
+    enter_claim_params ∈ Bool = (in_dispatch ∧ (¬enum_group_go) ∧ (¬head_is_eof) ∧ head_is_claim ∧ is_target ∧ head_has_params)
     enter_enum_decl ∈ Bool = (in_dispatch ∧ (¬head_is_eof)
-        ∧ head_is_enum ∧ (¬enum_reserved) ∧ (¬_user_enum_done)
+        ∧ head_is_enum ∧ (¬enum_reserved)
         ∧ (tok1 matches Ident(_)) ∧ (tok2 matches Eq))
-    -- ONE-USER-ENUM LIMIT: the (¬_user_enum_done) above means a SECOND
-    -- user `enum` decl cannot enter the walk — it used to fall through
-    -- to enter_skip and the decl was SILENTLY dropped (every variant
-    -- of every later enum became a 0 handle; sample.ev, 31 enums, died
-    -- 992s downstream at an unrelated ternary, 2026-06-10). Until the
-    -- multi-enum registry lands, halt nameably: Exit(9).
-    enum_decl_second ∈ Bool = (in_dispatch ∧ (¬head_is_eof)
-        ∧ head_is_enum ∧ (¬enum_reserved) ∧ _user_enum_done
-        ∧ (tok1 matches Ident(_)) ∧ (tok2 matches Eq))
-    enter_skip  ∈ Bool = (in_dispatch ∧ (¬head_is_eof) ∧ (¬enter_claim) ∧ (¬enter_claim_params) ∧ (¬enter_enum_decl))
-    parse_done    ∈ Bool = (in_dispatch ∧ head_is_eof)
+    enter_skip  ∈ Bool = (in_dispatch ∧ (¬enum_group_go) ∧ (¬head_is_eof) ∧ (¬enter_claim) ∧ (¬enter_claim_params) ∧ (¬enter_enum_decl))
+    parse_done    ∈ Bool = (in_dispatch ∧ (¬enum_group_go) ∧ head_is_eof)
     in_skip     ∈ Bool = (in_parse ∧ (_parse_mode = 1) ∧ tok_ready)
     in_claim    ∈ Bool = (in_parse ∧ (_parse_mode = 2))
 
     user_enum_name ∈ String
     user_enum_name = (is_first_tick ? "" : enter_enum_decl ? decl_name : _user_enum_name)
-    user_enum_done ∈ Bool
-    user_enum_done = (is_first_tick ? false : enum_done_user ? true : _user_enum_done)
 
     -- ── F2: the claim index (see compiler2/driver_claimidx.ev) ──
     ..DriverClaimIdx
@@ -405,7 +406,7 @@ fsm driver_main
     mem_consume ∈ Int = (enter_seqmem ? 6 : line_bounded ? 5 : 3)
     seq_elt_tyname ∈ String = recs[seq_elt_slot].name
     mem_tyname ∈ String = (line_sort = 1 ? "Bool"
-        : line_sort = 2 ? line_ty_name
+        : line_sort ≥ 30 ? line_ty_name
         : line_sort = 3 ? "String"
         : line_sort = 4 ? "Result"
         : (line_sort = 5 ∧ seq_elt_slot ≥ 0) ? ("Seq(" ++ seq_elt_tyname ++ ")")
@@ -583,7 +584,7 @@ fsm driver_main
         : enter_skip ? 1
         : (in_skip ∧ (¬skip_stop)) ? 1
         : variant_bail ? 1
-        : variant_take ? variant_consume
+        : variant_act ? variant_consume
         : enter_efflit ? 8
         : efflit_libcall_enter ? 6
         : efflit_argbite ? 7
@@ -597,6 +598,8 @@ fsm driver_main
         : scrut_lastres ? 4
         : (scrut_ident ∨ scrut_bad) ? 1
         : (arm_overflow ∨ wc_overflow) ? 1
+        : (pat_open ∧ (¬arm_overflow)) ? 2
+        : pat_more ? 2
         : intset_elem ? ((tok1 matches Comma) ? 2 : 1)
         : (intset_close ∨ intset_bad) ? 1
         : enter_seqlit ? 3
@@ -630,6 +633,9 @@ fsm driver_main
         : enter_pratt ? pratt_enter_consume
         : mem_line ? mem_consume
         : pratt_done ? pratt_done_consume
+        : mskim_enter ? 3
+        : (mskim_field ∨ mskim_close) ? 2
+        : mskim_bad ? 0
         : (in_pratt ∧ (pratt_consume ≥ 1)) ? pratt_consume
         : 0)
     tok_cur = (is_first_tick ? 0
@@ -722,9 +728,8 @@ fsm driver_main
             : _pratt_kind = 8 ? (pratt_bad ? 2 : 10)
             : _pratt_kind = 10 ? (pratt_bad ? 2 : 12)
             : 2)
-        : (variant_walk_on ∧ variant_payload ∧ (¬variant_pay_ok)) ? 1
-        : (variant_walk_on ∧ (¬variant_name_ok)) ? 0
-        : enum_done_user ? 0
+        : variant_bail ? 0
+        : enum_member_end ? 0
         : chain_fire ? 2
         : efflit_close ? (_chain_on ? 5 : 2)
         : (efflit_bad ∨ efflit_argbite_bad ∨ efflit_st2_bad) ? 2
@@ -782,10 +787,17 @@ fsm driver_main
         b_h ↦ strop_b, c_h ↦ strop_c, eff ↦ eff_strop, ok ↦ strop_ok)
     eff_mksym ∈ Effect
     BuildZ3MkStringSymbol(ctx_h ↦ z3ctx.ctx, name ↦ decl_const_name, eff ↦ eff_mksym)
+    -- An enum-typed decl (sort code 30+slot) reads its sort handle
+    -- from the enum-table tape: the it_decl step-0 tick batches
+    -- ⟨eff_mksym, eff_enumtab_read_mem⟩, so on the step-1 (mkconst)
+    -- tick lr[0] is the symbol (tmp_in) and lr[1] is the sort.
+    eff_enumtab_read_mem ∈ Effect
+    BuildMemReadLong(addr ↦ enumtab_p + (8 * (decl_const_sort - 30)),
+        eff ↦ eff_enumtab_read_mem)
     eff_mkconst ∈ Effect
     BuildZ3MkConst(ctx_h ↦ z3ctx.ctx, sym_h ↦ tmp_in,
         sort_h ↦ (decl_const_sort = 1 ? z3sorts.bsort
-            : decl_const_sort = 2 ? user_enum_sort
+            : decl_const_sort ≥ 30 ? res_int1
             : decl_const_sort = 3 ? z3sorts.ssort
             : decl_const_sort = 4 ? z_result_sort
             : decl_const_sort = 5 ? z_intarr_sort
@@ -919,11 +931,11 @@ fsm driver_main
 
     effects ∈ Seq(Effect) = (is_first_tick ? ⟨ReadLine, ReadLine⟩
         : variant_unsupported ? ⟨LibCall("libc", "puts",
-            ⟨ArgStr(";; compiler2: unsupported enum variant payload (arity >2, or a type outside Int/Bool/String/Real/self)")⟩),
+            ⟨ArgStr(";; compiler2: unsupported enum variant payload shape (arity >6, or a malformed field list)")⟩),
             Exit(8)⟩
-        : enum_decl_second ? ⟨LibCall("libc", "puts",
-            ⟨ArgStr(";; compiler2: second user enum decl — only ONE user enum is supported today")⟩),
-            Exit(9)⟩
+        : enum_field_unresolved ? ⟨LibCall("libc", "puts",
+            ⟨ArgStr(";; compiler2: enum payload field type is not a group member, a scalar, a floor type, or a previously built enum")⟩),
+            Exit(8)⟩
         : (¬_got_path) ? ⟨ReadFile(src_path)⟩
         : zstep = 0 ? ⟨zinit_cfg⟩
         : zstep = 1 ? ⟨zinit_ctx⟩
@@ -934,13 +946,36 @@ fsm driver_main
         : zstep = 6 ? ⟨zinit_ssort⟩
         : zstep = 7 ? ⟨zinit_rsort⟩
         : zstep = 8 ? ⟨zinit_arena⟩
-        : enum_running ? (enum_wbatch5
+        : enum_running ? (enum_wbatchf
             ? (enum_field_n = 1 ? ⟨enum_write_fn0, enum_write_fs0, enum_write_refs01⟩
               : enum_field_n = 2 ? ⟨enum_write_fn0, enum_write_fn1, enum_write_fs0, enum_write_fs1, enum_write_refs01⟩
-              : ⟨enum_write_fn0, enum_write_fn1, enum_write_fn2, enum_write_fs0, enum_write_fs1, enum_write_fs2,
-                 enum_write_refs01, enum_write_refs2⟩)
+              : enum_field_n = 3 ? ⟨enum_write_fn0, enum_write_fn1, enum_write_fn2,
+                 enum_write_fs0, enum_write_fs1, enum_write_fs2,
+                 enum_write_refs01, enum_write_refs23⟩
+              : enum_field_n = 4 ? ⟨enum_write_fn0, enum_write_fn1, enum_write_fn2, enum_write_fn3,
+                 enum_write_fs0, enum_write_fs1, enum_write_fs2, enum_write_fs3,
+                 enum_write_refs01, enum_write_refs23⟩
+              : enum_field_n = 5 ? ⟨enum_write_fn0, enum_write_fn1, enum_write_fn2, enum_write_fn3, enum_write_fn4,
+                 enum_write_fs0, enum_write_fs1, enum_write_fs2, enum_write_fs3, enum_write_fs4,
+                 enum_write_refs01, enum_write_refs23, enum_write_refs45⟩
+              : ⟨enum_write_fn0, enum_write_fn1, enum_write_fn2, enum_write_fn3, enum_write_fn4, enum_write_fn5,
+                 enum_write_fs0, enum_write_fs1, enum_write_fs2, enum_write_fs3, enum_write_fs4, enum_write_fs5,
+                 enum_write_refs01, enum_write_refs23, enum_write_refs45⟩)
+            : enum_wbatchfx ? ⟨enum_fld_sym_eff, enum_tabread_f⟩
             : enum_wbatch2 ? ⟨enum_write_name, enum_write_clist⟩
             : enum_wbatch3u ? ⟨enum_app0, enum_read_tester⟩
+            : enum_wbatchacc ? (enum_field_n = 1 ? ⟨enum_read_acc0⟩
+              : enum_field_n = 2 ? ⟨enum_read_acc0, enum_read_acc1⟩
+              : enum_field_n = 3 ? ⟨enum_read_acc0, enum_read_acc1, enum_read_acc2⟩
+              : enum_field_n = 4 ? ⟨enum_read_acc0, enum_read_acc1, enum_read_acc2, enum_read_acc3⟩
+              : enum_field_n = 5 ? ⟨enum_read_acc0, enum_read_acc1, enum_read_acc2, enum_read_acc3, enum_read_acc4⟩
+              : ⟨enum_read_acc0, enum_read_acc1, enum_read_acc2, enum_read_acc3, enum_read_acc4, enum_read_acc5⟩)
+            : enum_wbatchtw ? (enum_field_n = 1 ? ⟨acctab_w0⟩
+              : enum_field_n = 2 ? ⟨acctab_w0, acctab_w1⟩
+              : enum_field_n = 3 ? ⟨acctab_w0, acctab_w1, acctab_w2⟩
+              : enum_field_n = 4 ? ⟨acctab_w0, acctab_w1, acctab_w2, acctab_w3⟩
+              : enum_field_n = 5 ? ⟨acctab_w0, acctab_w1, acctab_w2, acctab_w3, acctab_w4⟩
+              : ⟨acctab_w0, acctab_w1, acctab_w2, acctab_w3, acctab_w4, acctab_w5⟩)
             : ⟨enum_step_eff⟩)
         : zstep = 10 ? ⟨zinit_arrsort⟩
         : zstep = 11 ? ⟨zinit_effects_sym⟩
@@ -981,12 +1016,15 @@ fsm driver_main
         : claimidx_add ? ⟨eff_claimidx_write⟩
         : read_callee_cursor ? ⟨eff_claimidx_read⟩
         : guard_hit ? ⟨eff_guard_read⟩
+        : matchpin_accread ? ⟨eff_match_accread⟩
         : pos_close ? ⟨eff_posbind_read⟩
         : recdecl_active ? (recdecl_eff_st = 2
             ? ⟨recdecl_write_fn0, recdecl_write_fn1, recdecl_write_fn2, recdecl_write_fn3, recdecl_write_fn4,
                recdecl_write_fn5, recdecl_write_fs0, recdecl_write_fs1, recdecl_write_fs2, recdecl_write_fs3,
                recdecl_write_fs4, recdecl_write_fs5⟩
             : ⟨recdecl_step_eff⟩)
+        : (processing ∧ it_decl ∧ (_item_step = 0) ∧ (decl_const_sort ≥ 30))
+            ? ⟨eff_mksym, eff_enumtab_read_mem⟩
         : processing ? ⟨eff_step⟩
         : (float_finish ∧ float_with_op) ? ⟨write_float_tag, write_float_pay, write_float_op⟩
         : float_finish ? ⟨write_float_tag, write_float_pay⟩

@@ -14,13 +14,16 @@ import "compiler2/driver_enum.ev"
 fsm main
     zstep ∈ Int
     zstep = (is_first_tick ? 9 : _zstep)
-    enum_start ∈ Bool = false
+    enum_group_go ∈ Bool = false
+    enum_member_end ∈ Bool = false
     variant_list_now ∈ EnumVariantList = EVNil
     user_enum_name ∈ String
     user_enum_name = (is_first_tick ? "" : _user_enum_name)
     -- Bus values the machine reads as plain handles; held live so they
     -- stay in every tick's model (a pinned `= const` simplifies out and
     -- the kernel's state carry then can't find the field).
+    res_int0 ∈ Int
+    res_int0 = (is_first_tick ? 0 : _res_int0)
     res_int1 ∈ Int
     res_int1 = (is_first_tick ? 0 : _res_int1)
     z3sorts ∈ Z3Sorts

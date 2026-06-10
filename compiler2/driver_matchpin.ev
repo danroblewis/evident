@@ -3,18 +3,21 @@
 --           name/sort (line_dname, line_sort), the window head views
 --           (tok0..tok4) + the line head name (head_ident), the parse
 --           gate (in_parse, _parse_mode, tok_ready), the Pratt result
---           (pratt_done, pratt_bad, pratt_result, pratt_kind), and the user-enum + Result
---           variant registries (uev_n*/uev_t*/uev_a*, z_intres_test/z_strres_test/
+--           (pratt_done, pratt_bad, pratt_result, pratt_kind), the user-enum + Result
+--           variant registries (user_variants/variant_names, z_intres_test/z_strres_test/
 --           z_intres_acc/z_strres_acc) the arms resolve their ctor/tester/accessor
---           handles against.
+--           handles against, and the acc-table tape base (acctab_p) for
+--           binds past field 0.
 -- PRODUCES: the parse_mode-6 match-pin walk state (match_st/match_name/match_sort/match_scrut_lr/
---           match_scrut_idx/match_scrut + the per-arm recognizers mp_arm_*), and the
+--           match_scrut_idx/match_scrut + the pattern walk pat_*/arm_*), the
+--           acc-table read (matchpin_accread/eff_match_accread), and the
 --           lowered match work-items (the C2App tester / C2BindScope arm
 --           body item runs) consumed by the interpreter.
 -- MAINTAINS: a `name ∈ Type = match <scrut>` line walks ≤3 arms; the
---           scrutinee is a plain ident or `last_results[<int>]`; each arm
---           head (payload 5-token / nullary 2-token / wildcard) emits one
---           item run, with payload binds α-scoped under the arm.
+--           scrutinee is a plain ident or `last_results[<int>]`; an arm
+--           head is nullary 2-token / wildcard 2-token / a payload
+--           PATTERN WALK (match_st 2, one element per tick, one bind
+--           at any field index ≤5), with binds α-scoped under the arm.
 --
 -- The parse_mode-6 match-pin walk (D3 match lowering). Lifted into driver_main
 -- via `..DriverMatchPin`.
@@ -22,7 +25,9 @@ fsm DriverMatchPin
     -- ── parse_mode 6: match-pin walk (D3 · C4 n-arm · C5 binds+exprs) ──
     -- `name ∈ Type = match <scrut>` + up to THREE arms. scrut is a
     -- plain ident or `last_results [ <int> ]`. Arm HEADS:
-    --   `Ctor ( bind ) ⇒`   payload arm head (5 tokens)
+    --   `Ctor ( p0, …, pk ) ⇒` payload arm — multi-tick pattern walk;
+    --                       exactly one non-`_` element binds, at its
+    --                       field index
     --   `Ctor ⇒`            nullary arm head (2 tokens)
     --   `_ ⇒`               wildcard arm head (2 tokens; ENDS the
     --                       match — later arms are dead, the legacy
@@ -54,17 +59,25 @@ fsm DriverMatchPin
     -- arm-head latches
     arm_ctor ∈ String
     arm_bind ∈ String
+    arm_acc ∈ Int
+    arm_acc_pend ∈ Bool
     arm_is_wc ∈ Bool
+    pat_n ∈ Int
+    pat_bind ∈ String
+    pat_bind_idx ∈ Int
     pend_ctor ∈ String
     pend_bind ∈ String
+    pend_acc ∈ Int
     pend_expr ∈ Expr
     has_pend_arm ∈ Bool
     tested_arms ∈ Int
     arm1_ctor ∈ String
     arm1_bind ∈ String
+    arm1_acc ∈ Int
     arm1_expr ∈ Expr
     arm2_ctor ∈ String
     arm2_bind ∈ String
+    arm2_acc ∈ Int
     arm2_expr ∈ Expr
 
     match_act ∈ Bool = (in_parse ∧ (_parse_mode = 6) ∧ tok_ready)
@@ -77,30 +90,64 @@ fsm DriverMatchPin
     scrut_idx_val ∈ Int = match tok2
         IntLit(n) ⇒ n
         _ ⇒ 0
-    match_t2_name ∈ String = match tok2
-        Ident(s) ⇒ s
-        _ ⇒ ""
     match_arms_st ∈ Bool = (match_act ∧ (_match_st = 1))
-    arm_payload_head ∈ Bool = (match_arms_st ∧ (tok0 matches Ident(_))
-        ∧ (head_ident ≠ "_")
-        ∧ (tok1 matches LParen) ∧ (tok2 matches Ident(_))
-        ∧ (tok3 matches RParen) ∧ (tok4 matches OpImplies))
+    -- A payload arm head `Ctor (` opens a multi-tick PATTERN walk
+    -- (match_st 2): one `elem ,` / `elem ) ⇒` per tick; `_` is a
+    -- skip, the single non-`_` ident is the bind (its position is the
+    -- accessor index). A second bind bails the match.
+    pat_open ∈ Bool = (match_arms_st ∧ (tok0 matches Ident(_))
+        ∧ (head_ident ≠ "_") ∧ (tok1 matches LParen))
     arm_nullary_head ∈ Bool = (match_arms_st ∧ (tok0 matches Ident(_))
         ∧ (head_ident ≠ "_")
         ∧ (tok1 matches OpImplies))
     arm_wc_head ∈ Bool = (match_arms_st ∧ (head_ident = "_")
         ∧ (tok1 matches OpImplies))
-    arm_new ∈ Bool = (arm_payload_head ∨ arm_nullary_head)
+    match_pat_st ∈ Bool = (match_act ∧ (_match_st = 2))
+    pat_elem ∈ String = head_ident
+    pat_more ∈ Bool = (match_pat_st ∧ (tok0 matches Ident(_))
+        ∧ (tok1 matches Comma))
+    pat_close ∈ Bool = (match_pat_st ∧ (tok0 matches Ident(_))
+        ∧ (tok1 matches RParen) ∧ (tok2 matches OpImplies))
+    pat_bad ∈ Bool = (match_pat_st ∧ (¬pat_more) ∧ (¬pat_close))
+    pat_elem_binds ∈ Bool = ((pat_more ∨ pat_close) ∧ (pat_elem ≠ "_")
+        ∧ (_pat_bind = ""))
+    pat_multi_bind ∈ Bool = ((pat_more ∨ pat_close) ∧ (pat_elem ≠ "_")
+        ∧ (_pat_bind ≠ ""))
+    pat_bind_name_now ∈ String = (pat_elem_binds ? pat_elem : _pat_bind)
+    pat_bind_idx_now ∈ Int = (pat_elem_binds ? _pat_n : _pat_bind_idx)
+    pat_close_take ∈ Bool = (pat_close ∧ (¬pat_multi_bind))
+    pat_close_bind ∈ Bool = (pat_close_take ∧ (pat_bind_name_now ≠ ""))
+    arm_new ∈ Bool = (pat_open ∨ arm_nullary_head)
     arm_overflow ∈ Bool = (arm_new ∧ _has_pend_arm ∧ (_tested_arms ≥ 2))
     arm_take ∈ Bool = (arm_new ∧ (¬arm_overflow))
     wc_overflow ∈ Bool = (arm_wc_head ∧ _has_pend_arm ∧ (_tested_arms ≥ 2))
     wc_take ∈ Bool = (arm_wc_head ∧ (¬wc_overflow))
-    arm_body_enter ∈ Bool = (arm_take ∨ wc_take)
+    arm_body_enter ∈ Bool = ((arm_take ∧ arm_nullary_head) ∨ wc_take
+        ∨ pat_close_take)
     match_end_tok ∈ Bool = (match_arms_st ∧ (¬arm_new) ∧ (¬arm_wc_head))
     match_fire_end ∈ Bool = (match_end_tok ∧ _has_pend_arm)
     match_fire ∈ Bool = match_fire_end
     match_bail ∈ Bool = (scrut_bad ∨ arm_overflow ∨ wc_overflow
+        ∨ pat_bad ∨ pat_multi_bind
         ∨ (match_end_tok ∧ (¬_has_pend_arm)))
+
+    -- bind accessor resolution at pattern close: field 0 reads the
+    -- registry/floor purely; field 1..5 reads the acc-table tape row
+    -- (registry slot = index_of/32 over variant_names) — the capture
+    -- lands on the next (first body) tick via arm_acc_pend.
+    mp_pad31 ∈ String = "                               "
+    mp_acc0_user ∈ Int
+    ∀ e ∈ user_variants : ((e.name = _arm_ctor) ⇒ (mp_acc0_user = e.acc))
+    (¬(∃ e ∈ user_variants : e.name = _arm_ctor)) ⇒ (mp_acc0_user = 0)
+    mp_acc0 ∈ Int = (_arm_ctor = "IntResult" ? z_intres_acc
+        : _arm_ctor = "StringResult" ? z_strres_acc
+        : mp_acc0_user)
+    mp_regslot ∈ Int = (index_of(variant_names,
+        "|" ++ substr(_arm_ctor ++ mp_pad31, 0, 31), 0) / 32)
+    matchpin_accread ∈ Bool = (pat_close_bind ∧ (pat_bind_idx_now ≥ 1))
+    eff_match_accread ∈ Effect
+    BuildMemReadLong(addr ↦ acctab_p + (48 * mp_regslot) + (8 * pat_bind_idx_now),
+        eff ↦ eff_match_accread)
 
     arm_body_done ∈ Bool = (pratt_done ∧ (_pratt_kind = 4))
     wc_body_done ∈ Bool = (arm_body_done ∧ (¬pratt_bad) ∧ _arm_is_wc)
@@ -110,6 +157,8 @@ fsm DriverMatchPin
     match_st = (is_first_tick ? 0
         : enter_match ? 0
         : (scrut_lastres ∨ scrut_ident) ? 1
+        : (pat_open ∧ (¬arm_overflow)) ? 2
+        : pat_close ? 1
         : _match_st)
     match_name = (is_first_tick ? "" : enter_match ? line_dname : _match_name)
     match_sort = (is_first_tick ? 0 : enter_match ? line_sort : _match_sort)
@@ -123,9 +172,29 @@ fsm DriverMatchPin
         : arm_take ? head_ident
         : _arm_ctor)
     arm_bind = (is_first_tick ? ""
-        : arm_take ? (arm_payload_head ? match_t2_name : "")
+        : arm_take ? ""
         : wc_take ? ""
+        : pat_close_take ? pat_bind_name_now
         : _arm_bind)
+    arm_acc = (is_first_tick ? 0
+        : arm_take ? 0
+        : wc_take ? 0
+        : (pat_close_bind ∧ (pat_bind_idx_now = 0)) ? mp_acc0
+        : _arm_acc_pend ? cap_int
+        : _arm_acc)
+    arm_acc_pend = (is_first_tick ? false : matchpin_accread)
+    pat_n = (is_first_tick ? 0
+        : pat_open ? 0
+        : pat_more ? _pat_n + 1
+        : _pat_n)
+    pat_bind = (is_first_tick ? ""
+        : pat_open ? ""
+        : pat_elem_binds ? pat_elem
+        : _pat_bind)
+    pat_bind_idx = (is_first_tick ? 0
+        : pat_open ? 0
+        : pat_elem_binds ? _pat_n
+        : _pat_bind_idx)
     arm_is_wc = (is_first_tick ? false
         : arm_body_enter ? arm_wc_head
         : _arm_is_wc)
@@ -137,6 +206,10 @@ fsm DriverMatchPin
         : enter_match ? ""
         : arm_done ? _arm_bind
         : _pend_bind)
+    pend_acc = (is_first_tick ? 0
+        : enter_match ? 0
+        : arm_done ? _arm_acc
+        : _pend_acc)
     pend_expr = (is_first_tick ? ENoExpr
         : enter_match ? ENoExpr
         : arm_done ? pratt_result
@@ -157,6 +230,10 @@ fsm DriverMatchPin
         : enter_match ? ""
         : (arm_promote ∧ _tested_arms = 0) ? _pend_bind
         : _arm1_bind)
+    arm1_acc = (is_first_tick ? 0
+        : enter_match ? 0
+        : (arm_promote ∧ _tested_arms = 0) ? _pend_acc
+        : _arm1_acc)
     arm1_expr = (is_first_tick ? ENoExpr
         : enter_match ? ENoExpr
         : (arm_promote ∧ _tested_arms = 0) ? _pend_expr
@@ -169,6 +246,10 @@ fsm DriverMatchPin
         : enter_match ? ""
         : (arm_promote ∧ _tested_arms = 1) ? _pend_bind
         : _arm2_bind)
+    arm2_acc = (is_first_tick ? 0
+        : enter_match ? 0
+        : (arm_promote ∧ _tested_arms = 1) ? _pend_acc
+        : _arm2_acc)
     arm2_expr = (is_first_tick ? ENoExpr
         : enter_match ? ENoExpr
         : (arm_promote ∧ _tested_arms = 1) ? _pend_expr
@@ -196,24 +277,9 @@ fsm DriverMatchPin
     ∀ e ∈ user_variants : ((e.name = fold_ctor2) ⇒ (fold_tester2 = e.tester))
     (¬((fold_ctor2 = "IntResult") ∨ (fold_ctor2 = "StringResult")
         ∨ (∃ e ∈ user_variants : e.name = fold_ctor2))) ⇒ (fold_tester2 = 0)
-    fold_acc1 ∈ Int
-    (fold_ctor1 = "IntResult") ⇒ (fold_acc1 = z_intres_acc)
-    (fold_ctor1 = "StringResult") ⇒ (fold_acc1 = z_strres_acc)
-    ∀ e ∈ user_variants : ((e.name = fold_ctor1) ⇒ (fold_acc1 = e.acc))
-    (¬((fold_ctor1 = "IntResult") ∨ (fold_ctor1 = "StringResult")
-        ∨ (∃ e ∈ user_variants : e.name = fold_ctor1))) ⇒ (fold_acc1 = 0)
-    fold_acc2 ∈ Int
-    (fold_ctor2 = "IntResult") ⇒ (fold_acc2 = z_intres_acc)
-    (fold_ctor2 = "StringResult") ⇒ (fold_acc2 = z_strres_acc)
-    ∀ e ∈ user_variants : ((e.name = fold_ctor2) ⇒ (fold_acc2 = e.acc))
-    (¬((fold_ctor2 = "IntResult") ∨ (fold_ctor2 = "StringResult")
-        ∨ (∃ e ∈ user_variants : e.name = fold_ctor2))) ⇒ (fold_acc2 = 0)
-    fold_def_acc ∈ Int
-    (fold_def_ctor = "IntResult") ⇒ (fold_def_acc = z_intres_acc)
-    (fold_def_ctor = "StringResult") ⇒ (fold_def_acc = z_strres_acc)
-    ∀ e ∈ user_variants : ((e.name = fold_def_ctor) ⇒ (fold_def_acc = e.acc))
-    (¬((fold_def_ctor = "IntResult") ∨ (fold_def_ctor = "StringResult")
-        ∨ (∃ e ∈ user_variants : e.name = fold_def_ctor))) ⇒ (fold_def_acc = 0)
+    fold_acc1 ∈ Int = (_tested_arms ≥ 1 ? _arm1_acc : _pend_acc)
+    fold_acc2 ∈ Int = (_tested_arms ≥ 2 ? _arm2_acc : _pend_acc)
+    fold_def_acc ∈ Int = (wc_body_done ? 0 : _pend_acc)
     match_tail_eq ∈ C2Items = C2ICons(C2PinEq,
         C2ICons(C2AssertTop, C2INil))
     match_tail_ite1 ∈ C2Items = C2ICons(C2Ite, match_tail_eq)

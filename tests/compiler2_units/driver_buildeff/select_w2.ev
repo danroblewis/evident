@@ -1,6 +1,6 @@
 -- DriverBuildEff isolation — the ED effect-row selector.
--- Act 2 (datatype run) step 2 is the name+constructor-list double write:
--- enum_wbatch2 must select it (w2=1, w5/w3u=0). Boundary case vs the w5 row.
+-- Act 1 (member finalize) step 13 is the name+constructor-list double write:
+-- enum_wbatch2 must select it (w2=1, wf/w3u=0). Boundary case vs the wf row.
 -- entry: main
 -- expect: stdout = "0/1/0"
 -- expect: exit = 0
@@ -18,9 +18,9 @@ import "compiler2/driver_buildeff.ev"
 
 fsm main
     enum_act_now ∈ Int
-    enum_act_now = (is_first_tick ? 2 : _enum_act_now)
+    enum_act_now = (is_first_tick ? 1 : _enum_act_now)
     enum_step_now ∈ Int
-    enum_step_now = (is_first_tick ? 2 : _enum_step_now)
+    enum_step_now = (is_first_tick ? 13 : _enum_step_now)
     cap_int ∈ Int
     cap_int = (is_first_tick ? 0 : _cap_int)
     field_ref2 ∈ Int
@@ -39,12 +39,6 @@ fsm main
     enum_n_variants = (is_first_tick ? 0 : _enum_n_variants)
     refs_packed01 ∈ Int
     refs_packed01 = (is_first_tick ? 0 : _refs_packed01)
-    field_sort0 ∈ Int
-    field_sort0 = (is_first_tick ? 0 : _field_sort0)
-    field_sort1 ∈ Int
-    field_sort1 = (is_first_tick ? 0 : _field_sort1)
-    field_sort2 ∈ Int
-    field_sort2 = (is_first_tick ? 0 : _field_sort2)
     enum_step ∈ Int
     enum_step = (is_first_tick ? 0 : _enum_step)
     enum_vidx ∈ Int
@@ -109,8 +103,53 @@ fsm main
     enum_decl_name = (is_first_tick ? "" : _enum_decl_name)
     op_geq ∈ Op = OpGeq
     enum_variant ∈ EnumVariantDecl = EVNoVariant
+    enum_h_field3 ∈ Int
+    enum_h_field3 = (is_first_tick ? 0 : _enum_h_field3)
+    enum_h_field4 ∈ Int
+    enum_h_field4 = (is_first_tick ? 0 : _enum_h_field4)
+    enum_h_field5 ∈ Int
+    enum_h_field5 = (is_first_tick ? 0 : _enum_h_field5)
+    refs_packed23 ∈ Int
+    refs_packed23 = (is_first_tick ? 0 : _refs_packed23)
+    refs_packed45 ∈ Int
+    refs_packed45 = (is_first_tick ? 0 : _refs_packed45)
+    member_base ∈ Int
+    member_base = (is_first_tick ? 0 : _member_base)
+    group_size ∈ Int
+    group_size = (is_first_tick ? 1 : _group_size)
+    group_read_cur ∈ Int
+    group_read_cur = (is_first_tick ? 0 : _group_read_cur)
+    enum_member_idx ∈ Int = 0
+    enumtab_count ∈ Int
+    enumtab_count = (is_first_tick ? 0 : _enumtab_count)
+    variant_alloc ∈ Int
+    variant_alloc = (is_first_tick ? 1 : _variant_alloc)
+    res_int0 ∈ Int
+    res_int0 = (is_first_tick ? 0 : _res_int0)
+    res_int1 ∈ Int
+    res_int1 = (is_first_tick ? 0 : _res_int1)
+    res_int2 ∈ Int
+    res_int2 = (is_first_tick ? 0 : _res_int2)
+    res_int3 ∈ Int
+    res_int3 = (is_first_tick ? 0 : _res_int3)
+    res_int4 ∈ Int
+    res_int4 = (is_first_tick ? 0 : _res_int4)
+    res_int5 ∈ Int
+    res_int5 = (is_first_tick ? 0 : _res_int5)
+    field_slots ∈ Seq(EnumFieldSlot)
+    #field_slots ≤ 6
+    ∀ k ∈ {0..5} : field_slots[k].ty = (is_first_tick ? "" : _field_slots[k].ty)
+    ∀ k ∈ {0..5} : field_slots[k].key = (is_first_tick ? "" : _field_slots[k].key)
+    ∀ k ∈ {0..5} : field_slots[k].refpos = (is_first_tick ? 0 : _field_slots[k].refpos)
+    ∀ k ∈ {0..5} : field_slots[k].isref = (is_first_tick ? false : _field_slots[k].isref)
+    ∀ k ∈ {0..5} : field_slots[k].ref = (is_first_tick ? 0 : _field_slots[k].ref)
+    ∀ k ∈ {0..5} : field_slots[k].tabpos = (is_first_tick ? 0 - 1 : _field_slots[k].tabpos)
+    ∀ k ∈ {0..5} : field_slots[k].istab = (is_first_tick ? false : _field_slots[k].istab)
+    ∀ k ∈ {0..5} : field_slots[k].xsort = (is_first_tick ? 0 : _field_slots[k].xsort)
+    ∀ k ∈ {0..5} : field_slots[k].sort = (is_first_tick ? 0 : _field_slots[k].sort)
+    ∀ k ∈ {0..5} : field_slots[k].unres = (is_first_tick ? false : _field_slots[k].unres)
     ..DriverBuildEff
-    sel ∈ String = (enum_wbatch5 ? "1" : "0") ++ "/" ++ (enum_wbatch2 ? "1" : "0") ++ "/" ++ (enum_wbatch3u ? "1" : "0")
+    sel ∈ String = (enum_wbatchf ? "1" : "0") ++ "/" ++ (enum_wbatch2 ? "1" : "0") ++ "/" ++ (enum_wbatch3u ? "1" : "0")
     effects ∈ Seq(Effect) = ((¬is_first_tick)
         ? ⟨LibCall("libc", "puts", ⟨ArgStr(sel)⟩), Exit(0)⟩
         : ⟨LibCall("libc", "getpid", ⟨⟩)⟩)

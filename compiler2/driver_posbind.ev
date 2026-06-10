@@ -210,11 +210,14 @@ fsm DriverPosBind
     pskip_guard ∈ Bool = (guard_on ∧ (_frame_depth = _guard_depth))
     pskip_decl_fire ∈ Bool = (param_ty_take ∧ (¬_callw_is_type) ∧ (¬pskip_guard)
         ∧ (¬(_callw_bare ∧ (¬_callw_hide))))
+    pskip_enum_key ∈ String
+    FtiNameEntry(name ↦ param_ty_name, entry ↦ pskip_enum_key)
+    pskip_enum_pos ∈ Int = index_of(enum_names, pskip_enum_key, 0)
     pskip_sort ∈ Int = (param_ty_name = "Bool" ? 1
-        : (_user_enum_done ∧ (param_ty_name = _user_enum_name)) ? 2
         : param_ty_name = "String" ? 3
         : param_ty_name = "Result" ? 4
         : param_ty_name = "Real" ? 6
+        : pskip_enum_pos ≥ 0 ? 30 + (pskip_enum_pos / 32)
         : 0)
     pskip_g5 ∈ C2Items = (((_pskip_grp ≤ 5) ∧ (5 < _param_count)
             ∧ (_posjump_armed ? (5 ≥ _pos_argc)

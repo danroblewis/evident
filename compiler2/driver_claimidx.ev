@@ -3,14 +3,15 @@
 --           (tok0..tok6), the claim head shape (head_is_claim,
 --           decl_name), the parse gate (in_parse, _parse_mode, tok_ready,
 --           work_nil), the parse_mode-4 enum-collection signals
---           (enter_enum_decl, enum_act, enum_done_user, user_enum_name) + floor decl
+--           (enter_enum_decl, enum_act) + floor decl
 --           handles (z_*_decl/z_empty_val), the Pratt result (pratt_done,
 --           pratt_bad, pratt_kind), and the claim-index buffer base (claimidx_buf.base).
 -- PRODUCES: the claim/type index (ci_cnt, claimidx_names) + its per-skip append
 --           effect (eff_claimidx_write), the parse_mode-4 user-enum variant collection
---           (variant_take/enum_start/variant_decl/variant_list/variant_list_now + the variant shape
---           classifiers variant_*), and the parse_mode-5 effects-literal / D2
---           conditional-chain element walk dispatch.
+--           (variant_take/variant_act/enum_member_end/variant_decl/variant_list/
+--           variant_list_now + the vf_* field-walk state), and the
+--           parse_mode-5 effects-literal / D2 conditional-chain element
+--           walk dispatch.
 -- MAINTAINS: ci_cnt < 2048 (an index past the buffer end is UNSAT, not a
 --           native overrun); one claim recorded per skip-entry tick in
 --           declaration order; the conditional-effects chain folds
@@ -50,61 +51,92 @@ fsm DriverClaimIdx
     BuildMemWriteLong(addr ↦ claimidx_buf.base + (8 * _claimidx_buf.count), value ↦ _tok_cur + 2,
         eff ↦ eff_claimidx_write)
 
-    -- parse_mode 4 collection: one variant per tick — `Vname [|]` or a
-    -- PAYLOADED `Vname ( Ty [, Ty] ) [|]` (C3; up to TWO fields of
-    -- Int/Bool/String/Real/self — a third field would need a
-    -- 9-token lookahead past the 8-token window; an unknown field
-    -- type would mis-resolve to sort 0). Prepend-accumulated (the
-    -- declared variant order is REVERSED vs source — harmless:
-    -- declaration and harvest peel the same list).
+    -- parse_mode 4 collection: a multi-tick walk — one variant HEAD or
+    -- one payload FIELD per tick (vf_st 0 head / 1 fields; cap 6,
+    -- matching the slot-call width). No payload-type whitelist: an
+    -- unknown type is checked at BUILD time against the group/table
+    -- (driver_enum's enum_field_unresolved → Exit 8). Prepend-
+    -- accumulated (the declared variant order is REVERSED vs source —
+    -- harmless: declaration and harvest peel the same list).
     variant_walk_on ∈ Bool = (in_parse ∧ (_parse_mode = 4) ∧ (_enum_act = 0)
-        ∧ (¬enum_done_user) ∧ tok_ready)
+        ∧ tok_ready)
     variant_name ∈ String = match tok0
         Ident(s) ⇒ s
         _ ⇒ ""
     variant_name_ok ∈ Bool = (tok0 matches Ident(_))
-    variant_more ∈ Bool = (tok1 matches Pipe)
-    variant_payload ∈ Bool = (tok1 matches LParen)
-    variant_ty0 ∈ String = match tok2
-        Ident(s) ⇒ s
-        _ ⇒ ""
-    variant_ty1 ∈ String = match tok4
-        Ident(s) ⇒ s
-        _ ⇒ ""
-    variant_ty0_ok ∈ Bool = (variant_ty0 = "Int" ∨ variant_ty0 = "Bool"
-        ∨ variant_ty0 = "String" ∨ variant_ty0 = "Real" ∨ variant_ty0 = _user_enum_name)
-    variant_ty1_ok ∈ Bool = (variant_ty1 = "Int" ∨ variant_ty1 = "Bool"
-        ∨ variant_ty1 = "String" ∨ variant_ty1 = "Real" ∨ variant_ty1 = _user_enum_name)
-    variant_pay1 ∈ Bool = (variant_payload ∧ (tok2 matches Ident(_)) ∧ variant_ty0_ok
-        ∧ (tok3 matches RParen))
-    variant_pay2 ∈ Bool = (variant_payload ∧ (tok2 matches Ident(_)) ∧ variant_ty0_ok
-        ∧ (tok3 matches Comma) ∧ (tok4 matches Ident(_)) ∧ variant_ty1_ok
-        ∧ (tok5 matches RParen))
-    variant_pay_ok ∈ Bool = (variant_pay1 ∨ variant_pay2)
-    variant_more_pay ∈ Bool = (variant_pay2 ? (tok6 matches Pipe)
-        : (tok4 matches Pipe))
-    variant_more_any ∈ Bool = (variant_payload ? variant_more_pay : variant_more)
-    -- A payload that opened `(` but didn't parse is an UNSUPPORTED
-    -- VARIANT SHAPE (arity ≥3, or a payload type outside
-    -- Int/Bool/String/Real/self — cross-enum payloads included). The
-    -- old silent bail dropped the whole enum decl and the failure
-    -- surfaced ~900s later as a 0-handle Exit(7) in an unrelated
-    -- ternary (sample.ev, 2026-06-10). Halt nameably instead: Exit(8).
-    variant_unsupported ∈ Bool = (variant_walk_on
-        ∧ variant_payload ∧ (¬variant_pay_ok))
-    variant_bail ∈ Bool = (variant_walk_on
-        ∧ ((variant_payload ∧ (¬variant_pay_ok)) ∨ (¬variant_name_ok)))
-    variant_take ∈ Bool = (variant_walk_on ∧ variant_name_ok ∧ ((¬variant_payload) ∨ variant_pay_ok))
-    enum_start ∈ Bool = (variant_take ∧ (¬variant_more_any))
-    variant_fields ∈ EVFieldList = (variant_pay2
-        ? EVFCons(EVFType(variant_ty0), EVFCons(EVFType(variant_ty1), EVFNil))
-        : EVFCons(EVFType(variant_ty0), EVFNil))
-    variant_decl ∈ EnumVariantDecl = (variant_payload
-        ? EVDeclP(variant_name, variant_fields)
+    vf_st ∈ Int
+    vf_pend ∈ String
+    vf_n ∈ Int
+    vf_t0 ∈ String
+    vf_t1 ∈ String
+    vf_t2 ∈ String
+    vf_t3 ∈ String
+    vf_t4 ∈ String
+    -- Variant separators: `|` or a bare following Ident (the newline-
+    -- separated enum form — newlines don't survive lexing, and every
+    -- top-level decl head is a KEYWORD token, so a trailing Ident can
+    -- only be the next variant).
+    vf_head ∈ Bool = (variant_walk_on ∧ (_vf_st = 0))
+    vf_fields ∈ Bool = (variant_walk_on ∧ (_vf_st = 1))
+    vh_nullary_more ∈ Bool = (vf_head ∧ variant_name_ok
+        ∧ ((tok1 matches Pipe) ∨ (tok1 matches Ident(_))))
+    vh_open ∈ Bool = (vf_head ∧ variant_name_ok ∧ (tok1 matches LParen))
+    vh_nullary_end ∈ Bool = (vf_head ∧ variant_name_ok
+        ∧ (¬(tok1 matches Pipe)) ∧ (¬(tok1 matches LParen))
+        ∧ (¬(tok1 matches Ident(_))))
+    vfield_ty ∈ String = variant_name
+    vfield_more ∈ Bool = (vf_fields ∧ variant_name_ok ∧ (tok1 matches Comma)
+        ∧ (_vf_n < 5))
+    vfield_close ∈ Bool = (vf_fields ∧ variant_name_ok ∧ (tok1 matches RParen))
+    vfield_close_more ∈ Bool = (vfield_close
+        ∧ ((tok2 matches Pipe) ∨ (tok2 matches Ident(_))))
+    -- A payload field that is not `Ty ,` / `Ty )`, or a 7th field, is an
+    -- UNSUPPORTED VARIANT SHAPE. The old silent bail dropped the whole
+    -- enum decl and the failure surfaced ~900s later as a 0-handle
+    -- Exit(7) in an unrelated ternary (sample.ev, 2026-06-10). Halt
+    -- nameably instead: Exit(8).
+    variant_unsupported ∈ Bool = (vf_fields ∧ (¬vfield_more) ∧ (¬vfield_close))
+    variant_bail ∈ Bool = (vf_head ∧ (¬variant_name_ok))
+    variant_take ∈ Bool = (vh_nullary_more ∨ vh_nullary_end ∨ vfield_close)
+    enum_member_end ∈ Bool = (vh_nullary_end ∨ (vfield_close ∧ (¬vfield_close_more)))
+    vf_st = (is_first_tick ? 0
+        : enter_enum_decl ? 0
+        : vh_open ? 1
+        : vfield_close ? 0
+        : _vf_st)
+    vf_pend = (is_first_tick ? "" : vh_open ? variant_name : _vf_pend)
+    vf_n = (is_first_tick ? 0
+        : vh_open ? 0
+        : vfield_more ? _vf_n + 1
+        : _vf_n)
+    vf_t0 = (is_first_tick ? "" : (vfield_more ∧ _vf_n = 0) ? vfield_ty : _vf_t0)
+    vf_t1 = (is_first_tick ? "" : (vfield_more ∧ _vf_n = 1) ? vfield_ty : _vf_t1)
+    vf_t2 = (is_first_tick ? "" : (vfield_more ∧ _vf_n = 2) ? vfield_ty : _vf_t2)
+    vf_t3 = (is_first_tick ? "" : (vfield_more ∧ _vf_n = 3) ? vfield_ty : _vf_t3)
+    vf_t4 = (is_first_tick ? "" : (vfield_more ∧ _vf_n = 4) ? vfield_ty : _vf_t4)
+    vfc_f5 ∈ EVFieldList = EVFCons(EVFType(vfield_ty), EVFNil)
+    vfc_f4 ∈ EVFieldList = (_vf_n = 4 ? vfc_f5
+        : EVFCons(EVFType(_vf_t4), vfc_f5))
+    vfc_f3 ∈ EVFieldList = (_vf_n = 3 ? vfc_f5
+        : EVFCons(EVFType(_vf_t3), vfc_f4))
+    vfc_f2 ∈ EVFieldList = (_vf_n = 2 ? vfc_f5
+        : EVFCons(EVFType(_vf_t2), vfc_f3))
+    vfc_f1 ∈ EVFieldList = (_vf_n = 1 ? vfc_f5
+        : EVFCons(EVFType(_vf_t1), vfc_f2))
+    variant_fields ∈ EVFieldList = (_vf_n = 0 ? vfc_f5
+        : EVFCons(EVFType(_vf_t0), vfc_f1))
+    variant_decl ∈ EnumVariantDecl = (vfield_close
+        ? EVDeclP(_vf_pend, variant_fields)
         : EVDecl(variant_name))
-    variant_consume ∈ Int = (variant_pay2 ? (variant_more_pay ? 7 : 6)
-        : variant_pay1 ? (variant_more_pay ? 5 : 4)
-        : variant_more ? 2 : 1)
+    variant_consume ∈ Int = (vh_nullary_more ? ((tok1 matches Pipe) ? 2 : 1)
+        : vh_open ? 2
+        : vh_nullary_end ? 1
+        : vfield_more ? 2
+        : vfield_close_more ? ((tok2 matches Pipe) ? 3 : 2)
+        : vfield_close ? 2
+        : 1)
+    variant_act ∈ Bool = (vh_nullary_more ∨ vh_open ∨ vh_nullary_end
+        ∨ vfield_more ∨ vfield_close)
     variant_list ∈ EnumVariantList
     variant_list_now ∈ EnumVariantList = (variant_take
         ? EVCons(variant_decl, _variant_list) : _variant_list)

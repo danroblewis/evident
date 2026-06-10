@@ -1,0 +1,7 @@
+import "stdlib/kernel.ev"
+enum Op2 = QPlus | QMinus
+enum Node = Leaf(Int) | Branch(Op2, Int)
+claim main
+    n ∈ Node = Branch(QPlus, 3)
+    n matches Leaf(_)
+    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

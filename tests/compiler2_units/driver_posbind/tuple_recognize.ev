@@ -101,10 +101,8 @@ fsm main
     callw_bare = (is_first_tick ? false : _callw_bare)
     callw_is_type ∈ Bool
     callw_is_type = (is_first_tick ? false : _callw_is_type)
-    user_enum_done ∈ Bool
-    user_enum_done = (is_first_tick ? false : _user_enum_done)
-    user_enum_name ∈ String
-    user_enum_name = (is_first_tick ? "" : _user_enum_name)
+    enum_names ∈ String
+    enum_names = (is_first_tick ? "" : _enum_names)
     idx ∈ String
     idx = (is_first_tick ? "" : _idx)
     frame_depth ∈ Int

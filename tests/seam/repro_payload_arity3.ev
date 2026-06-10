@@ -1,0 +1,13 @@
+-- Arity-3 payload pin (GRADUATED 2026-06-10 from known-failing/): a
+-- 3-field variant. The old walker had pay1/pay2 single-window forms
+-- only (8-token lookahead) and halted Exit(8); the multi-tick field
+-- walk (cap 6) collects it and the matches-pattern skim consumes the
+-- 3-element pattern.
+-- entry: main
+-- expect: exit = 0
+import "stdlib/kernel.ev"
+enum QA = QN(Int) | QB3(Int, Int, Int)
+claim main
+    t ∈ QA = QB3(1, 2, 3)
+    ok ∈ Bool = (t matches QB3(_, _, _))
+    effects ∈ Seq(Effect) = ⟨Exit(ok ? 0 : 1)⟩

@@ -187,3 +187,29 @@ per-enum sort registry must NOT be a wide flat slot family — a tape-side
 (FTI) registry or a narrow per-enum window is required. (The full-sample
 Exit(9) demo remains undemonstrated — it now needs ~150k+ ticks at this
 speed; the guard logic is probe-proven instead.)
+
+## Walls A/B/C retired (2026-06-10, multi-enum grammar)
+
+The multi-enum grammar work (docs/plans/multi-enum-grammar.md, LANDED)
+removed all three: build groups batch consecutive enum decls into one
+Z3_mk_datatypes call (mutual recursion by sort-ref index), the variant
+walker collects up to 6 payload fields one per tick, and payload sorts
+resolve group member → scalar → floor register → enum table (tape-side
+per the v5 datum) with a loud Exit(8) only for genuinely unknown
+types. Exit(9) is deleted; the repros graduated to tests/seam/ and
+compile+run exit 0 on both compiler2 and the oracle. The walker also
+gained the newline-separated variant form (sample.ev/stdlib style;
+fixture 154) — without it the walk silently truncated Token after one
+variant.
+
+Rung attempt v3 (2026-06-10, multi-enum stage1, EVIDENT_TICK_LIMIT=2M):
+all 31 enums / 6 build groups DECLARE AND HARVEST CLEANLY — the
+compile proceeds into claim translation and halts at the pre-existing
+TernaryBuildZ3 zero-handle guard (rc=7) at ~135 s (vs 992 s in v2;
+lowered-IR interp, 0.0 ms z3, 64 residual steps). The zero handle is
+NOT the enum machinery: no 4-arg ctor application sites or float
+literals grep out of the flattened source, so the next wall is an
+expression-class gap in the NOT-covered list (driver.ev header) —
+needs its own probe bisect. Grammar gate for enums: closed.
+Reference sanity: fresh oracle emit of sample.ev ≡ committed
+sample.smt2 on all 13 lang_tests (verdict-equiv 13 agree / 0 differ).

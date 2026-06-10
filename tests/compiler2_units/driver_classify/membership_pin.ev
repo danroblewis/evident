@@ -69,10 +69,8 @@ fsm main
     ∀ e ∈ recs : e.accs[4] = 0
     ∀ e ∈ recs : e.accs[5] = 0
     -- user-enum + seq-var carries (no user enum, no registered seq).
-    user_enum_done ∈ Bool
-    user_enum_done = (is_first_tick ? false : _user_enum_done)
-    user_enum_name ∈ String
-    user_enum_name = (is_first_tick ? "" : _user_enum_name)
+    enum_names ∈ String
+    enum_names = (is_first_tick ? "" : _enum_names)
     seqvar_set ∈ Bool
     seqvar_set = (is_first_tick ? false : _seqvar_set)
     seqvar_name ∈ String
@@ -117,6 +115,8 @@ fsm main
     arm_take = (is_first_tick ? false : _arm_take)
     arm_payload_head ∈ Bool
     arm_payload_head = (is_first_tick ? false : _arm_payload_head)
+    pat_close_take ∈ Bool
+    pat_close_take = (is_first_tick ? false : _pat_close_take)
     ..DriverClassify
     verdict ∈ Int = ((line_is_mem ? 1 : 0) + (line_pinned ? 2 : 0)
         + (enter_pratt_line ? 4 : 0))

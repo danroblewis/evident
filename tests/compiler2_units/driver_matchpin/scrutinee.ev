@@ -6,6 +6,7 @@
 -- expect: stdout = "e"
 -- expect: exit = 0
 import "stdlib/kernel.ev"
+import "stdlib/z3_datatypes.ev"
 import "compiler/lexer.ev"
 import "compiler/parser.ev"
 import "compiler2/driver_ir.ev"
@@ -55,6 +56,11 @@ fsm main
     z_strres_acc = (is_first_tick ? 0 : _z_strres_acc)
     z_strres_test ∈ Int
     z_strres_test = (is_first_tick ? 0 : _z_strres_test)
+    variant_names ∈ String
+    variant_names = (is_first_tick ? "" : _variant_names)
+    acctab_p ∈ Int = 0
+    cap_int ∈ Int
+    cap_int = (is_first_tick ? 0 : _cap_int)
     ..DriverMatchPin
     ready ∈ Bool = (match_st = 1)
     effects ∈ Seq(Effect) = (ready
