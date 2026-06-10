@@ -115,13 +115,13 @@ fsm DriverCompose
     cw_bjump ∈ Bool = (d_in_cw0 ∧ _cw_bare)
     d_in_cw1 ∈ Bool = (in_parse ∧ (_pmode = 10) ∧ (_cw_st = 1)
         ∧ d_witems_nil ∧ tok_ready)
-    cw_slot ∈ Bool = (d_in_cw1 ∧ (ww_t0 matches Ident(_))
-        ∧ (ww_t1 matches OpMapsto) ∧ (_cw_k < 6))
-    cw_comma ∈ Bool = (d_in_cw1 ∧ (ww_t0 matches Comma))
-    cw_fire ∈ Bool = (d_in_cw1 ∧ (ww_t0 matches RParen))
+    cw_slot ∈ Bool = (d_in_cw1 ∧ (tok0 matches Ident(_))
+        ∧ (tok1 matches OpMapsto) ∧ (_cw_k < 6))
+    cw_comma ∈ Bool = (d_in_cw1 ∧ (tok0 matches Comma))
+    cw_fire ∈ Bool = (d_in_cw1 ∧ (tok0 matches RParen))
     cw_bail ∈ Bool = (d_in_cw1 ∧ (¬cw_slot) ∧ (¬cw_comma) ∧ (¬cw_fire))
     cw_vdone ∈ Bool = (p_done ∧ (¬pr_bad) ∧ (_pk_kind = 8))
-    cw_slot_nm ∈ String = match ww_t0
+    cw_slot_nm ∈ String = match tok0
         Ident(s) ⇒ s
         _ ⇒ ""
 
@@ -190,15 +190,15 @@ fsm DriverCompose
 
     il_jump ∈ Bool = (cw_fire ∨ cw_bjump ∨ gj_fire ∨ ptj_fire)
     il_tgt_v ∈ Int = (cw_bjump ? d_cap_int : _il_tgt)
-    il_ret_v ∈ Int = (cw_fire ? _tcur + 1 : _tcur)
+    il_ret_v ∈ Int = (cw_fire ? _tok_cur + 1 : _tok_cur)
 
     ips_act ∈ Bool = (in_parse ∧ (_pmode = 2) ∧ d_witems_nil
         ∧ tok_ready ∧ (_il_ps > 0))
     ips_chk ∈ Bool = (ips_act ∧ (_il_ps = 1))
-    ips_open ∈ Bool = (ips_chk ∧ (ww_t0 matches LParen))
-    ips_off ∈ Bool = (ips_chk ∧ (¬(ww_t0 matches LParen)))
+    ips_open ∈ Bool = (ips_chk ∧ (tok0 matches LParen))
+    ips_off ∈ Bool = (ips_chk ∧ (¬(tok0 matches LParen)))
     ips_skp ∈ Bool = (ips_act ∧ (_il_ps = 2))
-    ips_done ∈ Bool = (ips_skp ∧ (ww_t0 matches RParen) ∧ (_il_pd = 1))
+    ips_done ∈ Bool = (ips_skp ∧ (tok0 matches RParen) ∧ (_il_pd = 1))
 
     cw_reset ∈ Bool = (d_enter_claim ∨ d_enter_claimp)
     il_frames = (is_first_tick ? CFNil
@@ -240,8 +240,8 @@ fsm DriverCompose
         : _il_ps)
     il_pd = (is_first_tick ? 0
         : ips_open ? 1
-        : ips_skp ? ((ww_t0 matches LParen) ? _il_pd + 1
-            : (ww_t0 matches RParen) ? _il_pd - 1
+        : ips_skp ? ((tok0 matches LParen) ? _il_pd + 1
+            : (tok0 matches RParen) ? _il_pd - 1
             : _il_pd)
         : _il_pd)
     cw_st = (is_first_tick ? 0

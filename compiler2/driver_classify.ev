@@ -1,5 +1,5 @@
 -- MODULE DriverClassify
--- CONSUMES: the decoded token window head views (ww_t0..ww_t7), the
+-- CONSUMES: the decoded token window head views (tok0..tok7), the
 --           classify-mode gate (d_classify), the claim/type index
 --           (ci_names) + symbol table (st_names), the inline-frame state
 --           (_il_depth, _il_pfx, ilb_n0..n5), the record registry
@@ -26,12 +26,12 @@
 -- Token window → per-line classification + dispatch decision. Lifted into
 -- driver_main via `..DriverClassify`.
 fsm DriverClassify
-    c_rem_nil ∈ Bool = (ww_t0 matches EofTok)
-    c_t0 ∈ Token = ww_t0
-    c_t1 ∈ Token = ww_t1
-    c_t2 ∈ Token = ww_t2
-    c_t3 ∈ Token = ww_t3
-    c_t4 ∈ Token = ww_t4
+    c_rem_nil ∈ Bool = (tok0 matches EofTok)
+    c_t0 ∈ Token = tok0
+    c_t1 ∈ Token = tok1
+    c_t2 ∈ Token = tok2
+    c_t3 ∈ Token = tok3
+    c_t4 ∈ Token = tok4
 
     c_t0_is_ident ∈ Bool = (c_t0 matches Ident(_))
     c_t0_is_tlkw ∈ Bool = ((c_t0 matches KwEnum) ∨ (c_t0 matches KwClaim)
@@ -57,7 +57,7 @@ fsm DriverClassify
         : c_type_str = "Seq" ? 5
         : c_type_str = "Real" ? 6
         : 0)
-    c_sq_ty ∈ String = match ww_t4
+    c_sq_ty ∈ String = match tok4
         Ident(s) ⇒ s
         _ ⇒ ""
     c_sq_rt ∈ Int
@@ -65,13 +65,13 @@ fsm DriverClassify
         idx ↦ c_sq_rt)
     c_seq_line ∈ Bool = (c_is_mem ∧ (¬c_eff_line) ∧ (c_type_str = "Seq")
         ∧ (c_t3 matches LParen) ∧ ((c_sq_ty = "Int") ∨ (c_sq_rt ≥ 0))
-        ∧ (ww_t5 matches RParen))
+        ∧ (tok5 matches RParen))
     c_setmem_line ∈ Bool = (c_is_mem ∧ (¬c_eff_line)
         ∧ (c_type_str = "Set") ∧ (c_t3 matches LParen) ∧ (c_sq_rt ≥ 0)
-        ∧ (ww_t5 matches RParen))
+        ∧ (tok5 matches RParen))
     c_seqlit_line ∈ Bool = (c_t0_is_ident ∧ (c_t1 matches Eq)
         ∧ (c_t2 matches OpSeqOpen) ∧ _sq_set ∧ (c_name = _sq_name))
-    c_eff_cond ∈ Bool = (c_eff_line ∧ (ww_t7 matches LParen))
+    c_eff_cond ∈ Bool = (c_eff_line ∧ (tok7 matches LParen))
     c_pinned ∈ Bool = (c_is_mem ∧ (¬c_eff_line) ∧ (c_t3 matches Eq))
     c_set_line ∈ Bool = ((c_is_mem ∨ c_is_nmem) ∧ (c_t2 matches LBrace))
     c_match_line ∈ Bool = (c_is_mem ∧ (¬c_eff_line) ∧ c_pinned
@@ -200,7 +200,7 @@ fsm DriverClassify
         ∧ (¬c_strin_line) ∧ (c_ty_pos ≥ 0))
     c_ty_call ∈ Bool = (d_classify ∧ (¬d_line_end) ∧ c_ty_found
         ∧ (c_t3 matches LParen) ∧ (c_t4 matches Ident(_))
-        ∧ (ww_t5 matches OpMapsto) ∧ (_il_depth < 8))
+        ∧ (tok5 matches OpMapsto) ∧ (_il_depth < 8))
     c_ty_bare ∈ Bool = (d_classify ∧ (¬d_line_end) ∧ c_ty_found
         ∧ (¬(c_t3 matches LParen)) ∧ (¬c_pinned) ∧ (¬c_bound)
         ∧ (_il_depth < 8))

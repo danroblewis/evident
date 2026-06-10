@@ -1,7 +1,7 @@
 -- MODULE DriverMatchPin
 -- CONSUMES: the match-line enter signal (d_enter_match) + the classified
 --           name/sort (c_dname, c_sc), the window head views
---           (ww_t0..ww_t4) + the line head name (el_head_name), the parse
+--           (tok0..tok4) + the line head name (el_head_name), the parse
 --           gate (in_parse, _pmode, tok_ready), the Pratt result
 --           (p_done, pr_bad, pr_sres, pk_kind), and the user-enum + Result
 --           variant registries (uev_n*/uev_t*/uev_a*, z_irtest/z_srtest/
@@ -69,27 +69,27 @@ fsm DriverMatchPin
 
     m_act ∈ Bool = (in_parse ∧ (_pmode = 6) ∧ tok_ready)
     mp_s_lr ∈ Bool = (m_act ∧ (_mp_st = 0)
-        ∧ (el_head_name = "last_results") ∧ (ww_t1 matches LBracket)
-        ∧ (ww_t2 matches IntLit(_)) ∧ (ww_t3 matches RBracket))
-    mp_s_id ∈ Bool = (m_act ∧ (_mp_st = 0) ∧ (ww_t0 matches Ident(_))
+        ∧ (el_head_name = "last_results") ∧ (tok1 matches LBracket)
+        ∧ (tok2 matches IntLit(_)) ∧ (tok3 matches RBracket))
+    mp_s_id ∈ Bool = (m_act ∧ (_mp_st = 0) ∧ (tok0 matches Ident(_))
         ∧ (¬mp_s_lr))
     mp_s_bad ∈ Bool = (m_act ∧ (_mp_st = 0) ∧ (¬mp_s_lr) ∧ (¬mp_s_id))
-    mp_idx_v ∈ Int = match ww_t2
+    mp_idx_v ∈ Int = match tok2
         IntLit(n) ⇒ n
         _ ⇒ 0
-    mp_w_t2s ∈ String = match ww_t2
+    mp_w_t2s ∈ String = match tok2
         Ident(s) ⇒ s
         _ ⇒ ""
     mp_st1 ∈ Bool = (m_act ∧ (_mp_st = 1))
-    mp_arm_pl_h ∈ Bool = (mp_st1 ∧ (ww_t0 matches Ident(_))
+    mp_arm_pl_h ∈ Bool = (mp_st1 ∧ (tok0 matches Ident(_))
         ∧ (el_head_name ≠ "_")
-        ∧ (ww_t1 matches LParen) ∧ (ww_t2 matches Ident(_))
-        ∧ (ww_t3 matches RParen) ∧ (ww_t4 matches OpImplies))
-    mp_arm_nl_h ∈ Bool = (mp_st1 ∧ (ww_t0 matches Ident(_))
+        ∧ (tok1 matches LParen) ∧ (tok2 matches Ident(_))
+        ∧ (tok3 matches RParen) ∧ (tok4 matches OpImplies))
+    mp_arm_nl_h ∈ Bool = (mp_st1 ∧ (tok0 matches Ident(_))
         ∧ (el_head_name ≠ "_")
-        ∧ (ww_t1 matches OpImplies))
+        ∧ (tok1 matches OpImplies))
     mp_arm_wc_h ∈ Bool = (mp_st1 ∧ (el_head_name = "_")
-        ∧ (ww_t1 matches OpImplies))
+        ∧ (tok1 matches OpImplies))
     mp_arm_new ∈ Bool = (mp_arm_pl_h ∨ mp_arm_nl_h)
     mp_overflow ∈ Bool = (mp_arm_new ∧ _mp_hasp ∧ (_mp_n ≥ 2))
     mp_take ∈ Bool = (mp_arm_new ∧ (¬mp_overflow))

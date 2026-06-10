@@ -80,14 +80,14 @@ fsm main
     sq_rt = (is_first_tick ? 0 : _sq_rt)
     tok_ready ∈ Bool
     tok_ready = (is_first_tick ? false : _tok_ready)
-    ww_t0 ∈ Token
-    ww_t0 = (is_first_tick ? EofTok : _ww_t0)
-    ww_t5 ∈ Token
-    ww_t5 = (is_first_tick ? EofTok : _ww_t5)
-    ww_t6 ∈ Token
-    ww_t6 = (is_first_tick ? EofTok : _ww_t6)
-    ww_t7 ∈ Token
-    ww_t7 = (is_first_tick ? EofTok : _ww_t7)
+    tok0 ∈ Token
+    tok0 = (is_first_tick ? EofTok : _tok0)
+    tok5 ∈ Token
+    tok5 = (is_first_tick ? EofTok : _tok5)
+    tok6 ∈ Token
+    tok6 = (is_first_tick ? EofTok : _tok6)
+    tok7 ∈ Token
+    tok7 = (is_first_tick ? EofTok : _tok7)
     ..DriverSetVar
     done ∈ Bool = (stv_cnt = 2)
     effects ∈ Seq(Effect) = (done

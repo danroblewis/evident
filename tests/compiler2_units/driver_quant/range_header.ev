@@ -24,12 +24,12 @@ fsm main
     c_t3 = (is_first_tick ? LBrace : _c_t3)
     c_t4 ∈ Token
     c_t4 = (is_first_tick ? IntLit(0) : _c_t4)
-    ww_t5 ∈ Token
-    ww_t5 = (is_first_tick ? Dot : _ww_t5)
-    ww_t6 ∈ Token
-    ww_t6 = (is_first_tick ? Dot : _ww_t6)
-    ww_t7 ∈ Token
-    ww_t7 = (is_first_tick ? IntLit(9) : _ww_t7)
+    tok5 ∈ Token
+    tok5 = (is_first_tick ? Dot : _tok5)
+    tok6 ∈ Token
+    tok6 = (is_first_tick ? Dot : _tok6)
+    tok7 ∈ Token
+    tok7 = (is_first_tick ? IntLit(9) : _tok7)
     d_classify ∈ Bool
     d_classify = (is_first_tick ? false : _d_classify)
     d_enter_qset ∈ Bool
@@ -70,10 +70,10 @@ fsm main
     sq_set = (is_first_tick ? false : _sq_set)
     tok_ready ∈ Bool
     tok_ready = (is_first_tick ? false : _tok_ready)
-    ww_t0 ∈ Token
-    ww_t0 = (is_first_tick ? EofTok : _ww_t0)
-    ww_t1 ∈ Token
-    ww_t1 = (is_first_tick ? EofTok : _ww_t1)
+    tok0 ∈ Token
+    tok0 = (is_first_tick ? EofTok : _tok0)
+    tok1 ∈ Token
+    tok1 = (is_first_tick ? EofTok : _tok1)
     ..DriverQuant
     ok ∈ Bool = c_q_rng
     msg ∈ String = str_from_int(c_q_hi)

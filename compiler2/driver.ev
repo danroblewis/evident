@@ -22,12 +22,12 @@
 --           tokens are written to the FTI buffer in APPEND (source)
 --           order via __mem.write_long; string payloads
 --           (Ident/StringLit) are strdup'd char*s. Z3-carried lexer
---           state = five Ints (tbase, lx_count, lx_last, lx_prev,
---           lx_pend) — no TokenList anywhere; phase goes 0 → 2
+--           state = five Ints (tbase, lx_count, lex_last_tag, lex_prev_tag,
+--           pend_str_addr) — no TokenList anywhere; phase goes 0 → 2
 --           directly, after flushing any pending string write + the
 --           EofTok sentinel.
 --   FETCH   the parse phases read tokens through a sliding 8-token
---           decoded window (wtoks, head = token tcur). A refill is
+--           decoded window (win_toks, head = token tok_cur). A refill is
 --           a 3-tick burst: 16 __mem.read_long (8 tags + 8
 --           payloads, one tick), then 8 slot-aligned __cstr.copy /
 --           getpid-filler effects (string payloads), then the pure
@@ -37,7 +37,7 @@
 --           SKIPPED (one token per tick); the target claim enters
 --           the claim walk — through the pmode-9 group walk first
 --           when it carries a first-line param list (F1). All
---           consumption is cursor arithmetic (tcur += k) + window
+--           consumption is cursor arithmetic (tok_cur += k) + window
 --           tails.
 --   WALK    per body line: a one-tick PURE classifier picks the line
 --           kind; lines carrying an expression run the Pratt FSM
@@ -220,15 +220,15 @@ fsm driver_main
     -- (the sentinel / past-end decode). Actions are tok_ready-gated.
     pmode  ∈ Int
 
-    d_items_nil ∈ Bool = (ww_t0 matches EofTok)
-    d_head_is_claim ∈ Bool = (ww_t0 matches KwClaim)
-    d_cl_name ∈ String = match ww_t1
+    d_items_nil ∈ Bool = (tok0 matches EofTok)
+    d_head_is_claim ∈ Bool = (tok0 matches KwClaim)
+    d_cl_name ∈ String = match tok1
         Ident(s) ⇒ s
         _ ⇒ ""
     d_name_ok ∈ Bool = (d_cl_name = target)
-    d_is_param ∈ Bool = (ww_t2 matches LParen)
+    d_is_param ∈ Bool = (tok2 matches LParen)
 
-    d_head_is_enum ∈ Bool = (ww_t0 matches KwEnum)
+    d_head_is_enum ∈ Bool = (tok0 matches KwEnum)
     d_en_reserved ∈ Bool = (d_cl_name = "Effect" ∨ d_cl_name = "Result"
         ∨ d_cl_name = "LibArg")
 
@@ -237,7 +237,7 @@ fsm driver_main
     d_enter_claimp ∈ Bool = (d_in_dispatch ∧ (¬d_items_nil) ∧ d_head_is_claim ∧ d_name_ok ∧ d_is_param)
     d_enter_edecl ∈ Bool = (d_in_dispatch ∧ (¬d_items_nil)
         ∧ d_head_is_enum ∧ (¬d_en_reserved) ∧ (¬_ue_done)
-        ∧ (ww_t1 matches Ident(_)) ∧ (ww_t2 matches Eq))
+        ∧ (tok1 matches Ident(_)) ∧ (tok2 matches Eq))
     d_enter_skip  ∈ Bool = (d_in_dispatch ∧ (¬d_items_nil) ∧ (¬d_enter_claim) ∧ (¬d_enter_claimp) ∧ (¬d_enter_edecl))
     d_all_done    ∈ Bool = (d_in_dispatch ∧ d_items_nil)
     d_in_skip     ∈ Bool = (in_parse ∧ (_pmode = 1) ∧ tok_ready)
@@ -578,7 +578,7 @@ fsm driver_main
         : mp_s_lr ? 4
         : (mp_s_id ∨ mp_s_bad) ? 1
         : (mp_overflow ∨ mp_wc_over) ? 1
-        : ms_elem ? ((ww_t1 matches Comma) ? 2 : 1)
+        : ms_elem ? ((tok1 matches Comma) ? 2 : 1)
         : (ms_close ∨ ms_bad) ? 1
         : d_enter_sl ? 3
         : (sl_close ∨ sl_comma) ? 1
@@ -605,7 +605,7 @@ fsm driver_main
         : pcl_tup ? 1
         : pt_comma ? 1
         : pt_tup_b ? 5
-        : (pt_close ∨ pt_bail) ? (ptc_tm ? 5 : (ptc_t ∨ (pt_bail ∧ (ww_t1 matches OpIn))) ? 3 : 1)
+        : (pt_close ∨ pt_bail) ? (ptc_tm ? 5 : (ptc_t ∨ (pt_bail ∧ (tok1 matches OpIn))) ? 3 : 1)
         : (cw_comma ∨ cw_fire ∨ cw_bail) ? 1
         : (ips_open ∨ ips_skp) ? 1
         : d_enter_pratt ? d_pratt_cons0
@@ -613,26 +613,26 @@ fsm driver_main
         : p_done ? d_done_cons
         : (d_in_pratt ∧ (pr_scons ≥ 1)) ? pr_scons
         : 0)
-    tcur = (is_first_tick ? 0
+    tok_cur = (is_first_tick ? 0
         : il_jump ? il_tgt_v
         : il_pop ? fr_ret
-        : _tcur + dcons)
-    wend = (is_first_tick ? 0
+        : _tok_cur + dcons)
+    fetch_end = (is_first_tick ? 0
         : il_jump ? il_tgt_v
         : il_pop ? fr_ret
-        : _fmode = 2 ? _tcur + 8 : _wend)
-    w_after ∈ TokenList = (dcons = 0 ? _wtoks
-        : dcons = 1 ? ww_l1
-        : dcons = 2 ? ww_l2
-        : dcons = 3 ? ww_l3
-        : dcons = 4 ? ww_l4
-        : dcons = 5 ? ww_l5
-        : dcons = 6 ? ww_l6
-        : dcons = 7 ? ww_l7
+        : _fetch_mode = 2 ? _tok_cur + 8 : _fetch_end)
+    w_after ∈ TokenList = (dcons = 0 ? _win_toks
+        : dcons = 1 ? win_rest1
+        : dcons = 2 ? win_rest2
+        : dcons = 3 ? win_rest3
+        : dcons = 4 ? win_rest4
+        : dcons = 5 ? win_rest5
+        : dcons = 6 ? win_rest6
+        : dcons = 7 ? win_rest7
         : TLNil)
-    wtoks = (is_first_tick ? TLNil
+    win_toks = (is_first_tick ? TLNil
         : (il_jump ∨ il_pop) ? TLNil
-        : _fmode = 2 ? f_built
+        : _fetch_mode = 2 ? win_rebuilt
         : w_after)
 
     c_field_add ∈ Bool = (d_classify ∧ (¬d_line_end) ∧ c_is_mem
@@ -947,14 +947,14 @@ fsm driver_main
         : zstep = 35 ? ⟨ze_ege⟩
         : zstep = 36 ? ⟨ze_eassert⟩
         : zstep = 37 ? ⟨ze_cibuf⟩
-        : entering_parse ? (lx_have_pend ? ⟨w_pend, w_eof⟩ : ⟨w_eof⟩)
+        : entering_parse ? (have_pend_str ? ⟨write_pend_str, write_eof⟩ : ⟨write_eof⟩)
         : estep = 0 ? ⟨e_s2s⟩
         : estep = 1 ? ⟨e_copy⟩
         : estep ≥ 2 ? ⟨e_free_tbuf, e_free_sbuf, e_free_cibuf, e_puts, Exit(0)⟩
-        : fetch_go ? ⟨rd_t0, rd_q0, rd_t1, rd_q1, rd_t2, rd_q2,
-            rd_t3, rd_q3, rd_t4, rd_q4, rd_t5, rd_q5, rd_t6, rd_q6,
-            rd_t7, rd_q7⟩
-        : _fmode = 1 ? ⟨cp0, cp1, cp2, cp3, cp4, cp5, cp6, cp7⟩
+        : fetch_go ? ⟨read_tag0, read_pay0, read_tag1, read_pay1, read_tag2, read_pay2,
+            read_tag3, read_pay3, read_tag4, read_pay4, read_tag5, read_pay5, read_tag6, read_pay6,
+            read_tag7, read_pay7⟩
+        : _fetch_mode = 1 ? ⟨copy_eff0, copy_eff1, copy_eff2, copy_eff3, copy_eff4, copy_eff5, copy_eff6, copy_eff7⟩
         : ci_add ? ⟨e_ciw⟩
         : il_rdcur ? ⟨e_cir⟩
         : gc_hit ? ⟨e_gcr⟩
@@ -965,14 +965,14 @@ fsm driver_main
                rde_wfs4, rde_wfs5⟩
             : ⟨rd_eff1⟩)
         : d_processing ? ⟨d_eff_lib⟩
-        : (float_fin ∧ float_op) ? ⟨w_ftag, w_fp0, w_fop⟩
-        : float_fin ? ⟨w_ftag, w_fp0⟩
-        : (k_kind = 1 ∧ lx_have_pend) ? ⟨w_pend, w_tag0e⟩
-        : k_kind = 1 ? ⟨w_tag0e⟩
-        : k_kind = 2 ? ⟨w_tag0e, w_p0e⟩
-        : k_kind = 3 ? ⟨e_dup, w_tag0e⟩
-        : k_kind = 4 ? ⟨w_tag0e, w_tag1e⟩
-        : k_kind = 5 ? ⟨e_dup, w_tag0e, w_tag1e⟩
-        : k_kind = 6 ? ⟨w_tag0e, w_p0e, w_tag1e⟩
-        : lx_have_pend ? ⟨w_pend⟩
+        : (float_finish ∧ float_with_op) ? ⟨write_float_tag, write_float_pay, write_float_op⟩
+        : float_finish ? ⟨write_float_tag, write_float_pay⟩
+        : (plan_kind = 1 ∧ have_pend_str) ? ⟨write_pend_str, write_tag0⟩
+        : plan_kind = 1 ? ⟨write_tag0⟩
+        : plan_kind = 2 ? ⟨write_tag0, write_pay0⟩
+        : plan_kind = 3 ? ⟨eff_strdup, write_tag0⟩
+        : plan_kind = 4 ? ⟨write_tag0, write_tag1⟩
+        : plan_kind = 5 ? ⟨eff_strdup, write_tag0, write_tag1⟩
+        : plan_kind = 6 ? ⟨write_tag0, write_pay0, write_tag1⟩
+        : have_pend_str ? ⟨write_pend_str⟩
         : ⟨d_eff_filler⟩)

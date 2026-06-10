@@ -1,6 +1,6 @@
 -- MODULE DriverClaimIdx
 -- CONSUMES: the skip-pass entry (d_enter_skip) + the window head views
---           (ww_t0..ww_t6), the claim head shape (d_head_is_claim,
+--           (tok0..tok6), the claim head shape (d_head_is_claim,
 --           d_cl_name), the parse gate (in_parse, _pmode, tok_ready,
 --           d_witems_nil), the pmode-4 enum-collection signals
 --           (d_enter_edecl, ed_act, ed_done_user, ue_name) + floor decl
@@ -28,7 +28,7 @@ fsm DriverClaimIdx
     -- ── F2: the claim index ───────────────────────────────────────
     -- ci_names: fixed-width 32-byte name records (the B1 st_names
     -- pattern). Cursors live in the ci_base buffer (256 × 8 bytes),
-    -- one per skipped claim, value = _tcur + 2 — the token after
+    -- one per skipped claim, value = _tok_cur + 2 — the token after
     -- `claim Name`, which is `(` for parametrized claims (the
     -- call-time param-skip walks over it). Composition can only call
     -- claims that PRECEDE the call site textually (one-pass index —
@@ -38,8 +38,8 @@ fsm DriverClaimIdx
     cibuf.count < 2048
     ci_names ∈ String
     ci_add ∈ Bool = (d_enter_skip
-        ∧ (d_head_is_claim ∨ (ww_t0 matches KwType))
-        ∧ (ww_t1 matches Ident(_)))
+        ∧ (d_head_is_claim ∨ (tok0 matches KwType))
+        ∧ (tok1 matches Ident(_)))
     ci_entry ∈ String
     FtiNameEntry(name ↦ d_cl_name, entry ↦ ci_entry)
     FtiNamedAppend(first ↦ is_first_tick, add ↦ ci_add,
@@ -47,7 +47,7 @@ fsm DriverClaimIdx
         init_count ↦ 0, seed_names ↦ "", entry ↦ ci_entry,
         count ↦ cibuf.count, names ↦ ci_names)
     e_ciw ∈ Effect
-    BuildMemWriteLong(addr ↦ cibuf.base + (8 * _cibuf.count), value ↦ _tcur + 2,
+    BuildMemWriteLong(addr ↦ cibuf.base + (8 * _cibuf.count), value ↦ _tok_cur + 2,
         eff ↦ e_ciw)
 
     -- pmode 4 collection: one variant per tick — `Vname [|]` or a
@@ -59,30 +59,30 @@ fsm DriverClaimIdx
     -- declaration and harvest peel the same list).
     ec_active ∈ Bool = (in_parse ∧ (_pmode = 4) ∧ (_ed_act = 0)
         ∧ (¬ed_done_user) ∧ tok_ready)
-    ec_vname ∈ String = match ww_t0
+    ec_vname ∈ String = match tok0
         Ident(s) ⇒ s
         _ ⇒ ""
-    ec_v_ok ∈ Bool = (ww_t0 matches Ident(_))
-    ec_more ∈ Bool = (ww_t1 matches Pipe)
-    ec_payload ∈ Bool = (ww_t1 matches LParen)
-    ec_ty0 ∈ String = match ww_t2
+    ec_v_ok ∈ Bool = (tok0 matches Ident(_))
+    ec_more ∈ Bool = (tok1 matches Pipe)
+    ec_payload ∈ Bool = (tok1 matches LParen)
+    ec_ty0 ∈ String = match tok2
         Ident(s) ⇒ s
         _ ⇒ ""
-    ec_ty1 ∈ String = match ww_t4
+    ec_ty1 ∈ String = match tok4
         Ident(s) ⇒ s
         _ ⇒ ""
     ec_ty0_ok ∈ Bool = (ec_ty0 = "Int" ∨ ec_ty0 = "Bool"
         ∨ ec_ty0 = "String" ∨ ec_ty0 = "Real" ∨ ec_ty0 = _ue_name)
     ec_ty1_ok ∈ Bool = (ec_ty1 = "Int" ∨ ec_ty1 = "Bool"
         ∨ ec_ty1 = "String" ∨ ec_ty1 = "Real" ∨ ec_ty1 = _ue_name)
-    ec_p1 ∈ Bool = (ec_payload ∧ (ww_t2 matches Ident(_)) ∧ ec_ty0_ok
-        ∧ (ww_t3 matches RParen))
-    ec_p2 ∈ Bool = (ec_payload ∧ (ww_t2 matches Ident(_)) ∧ ec_ty0_ok
-        ∧ (ww_t3 matches Comma) ∧ (ww_t4 matches Ident(_)) ∧ ec_ty1_ok
-        ∧ (ww_t5 matches RParen))
+    ec_p1 ∈ Bool = (ec_payload ∧ (tok2 matches Ident(_)) ∧ ec_ty0_ok
+        ∧ (tok3 matches RParen))
+    ec_p2 ∈ Bool = (ec_payload ∧ (tok2 matches Ident(_)) ∧ ec_ty0_ok
+        ∧ (tok3 matches Comma) ∧ (tok4 matches Ident(_)) ∧ ec_ty1_ok
+        ∧ (tok5 matches RParen))
     ec_p_ok ∈ Bool = (ec_p1 ∨ ec_p2)
-    ec_more_p ∈ Bool = (ec_p2 ? (ww_t6 matches Pipe)
-        : (ww_t4 matches Pipe))
+    ec_more_p ∈ Bool = (ec_p2 ? (tok6 matches Pipe)
+        : (tok4 matches Pipe))
     ec_more_u ∈ Bool = (ec_payload ? ec_more_p : ec_more)
     ec_bail ∈ Bool = (ec_active
         ∧ ((ec_payload ∧ (¬ec_p_ok)) ∨ (¬ec_v_ok)))
@@ -115,47 +115,47 @@ fsm DriverClaimIdx
     ch_n ∈ Int
 
     d_in_el ∈ Bool = (in_parse ∧ (_pmode = 5) ∧ d_witems_nil ∧ tok_ready)
-    el_w_t2s ∈ String = match ww_t2
+    el_w_t2s ∈ String = match tok2
         StringLit(s) ⇒ s
         _ ⇒ ""
-    el_w_t4s ∈ String = match ww_t4
+    el_w_t4s ∈ String = match tok4
         StringLit(s) ⇒ s
         _ ⇒ ""
-    el_head_name ∈ String = match ww_t0
+    el_head_name ∈ String = match tok0
         Ident(s) ⇒ s
         _ ⇒ ""
     el_g_enter ∈ Bool = (d_in_el ∧ (_el_st = 1))
     el_open ∈ Bool = (d_in_el ∧ (_el_st = 0) ∧ _ch_on ∧ (_el_lc = 0)
-        ∧ (ww_t0 matches OpSeqOpen))
+        ∧ (tok0 matches OpSeqOpen))
     el_nest ∈ Bool = (d_in_el ∧ (_el_st = 0) ∧ _ch_on ∧ (_el_lc = 0)
-        ∧ (ww_t0 matches LParen))
+        ∧ (tok0 matches LParen))
     el_st2 ∈ Bool = (d_in_el ∧ (_el_st = 2))
-    el_colon ∈ Bool = (el_st2 ∧ (ww_t0 matches Colon))
-    el_rp ∈ Bool = (el_st2 ∧ (ww_t0 matches RParen))
+    el_colon ∈ Bool = (el_st2 ∧ (tok0 matches Colon))
+    el_rp ∈ Bool = (el_st2 ∧ (tok0 matches RParen))
     ch_fire ∈ Bool = (el_rp ∧ (_ch_pd = 1))
     el_st2_bad ∈ Bool = (el_st2 ∧ (¬el_colon) ∧ (¬el_rp))
     el_exit_enter ∈ Bool = (d_in_el ∧ (_el_st = 0) ∧ (_el_lc = 0)
-        ∧ (el_head_name = "Exit") ∧ (ww_t1 matches LParen))
+        ∧ (el_head_name = "Exit") ∧ (tok1 matches LParen))
     el_lc_enter ∈ Bool = (d_in_el ∧ (_el_st = 0) ∧ (_el_lc = 0)
-        ∧ (el_head_name = "LibCall") ∧ (ww_t1 matches LParen)
-        ∧ (ww_t2 matches StringLit(_)) ∧ (ww_t3 matches Comma)
-        ∧ (ww_t4 matches StringLit(_)) ∧ (ww_t5 matches Comma))
+        ∧ (el_head_name = "LibCall") ∧ (tok1 matches LParen)
+        ∧ (tok2 matches StringLit(_)) ∧ (tok3 matches Comma)
+        ∧ (tok4 matches StringLit(_)) ∧ (tok5 matches Comma))
     el_comma ∈ Bool = (d_in_el ∧ (_el_st = 0) ∧ (_el_lc = 0)
-        ∧ (ww_t0 matches Comma))
+        ∧ (tok0 matches Comma))
     el_close ∈ Bool = (d_in_el ∧ (_el_st = 0) ∧ (_el_lc = 0)
-        ∧ (ww_t0 matches OpSeqClose))
-    el_arg_name ∈ String = match ww_t1
+        ∧ (tok0 matches OpSeqClose))
+    el_arg_name ∈ String = match tok1
         Ident(s) ⇒ s
         _ ⇒ ""
     el_arg_e ∈ Expr
     el_arg_ok ∈ Bool
-    C2AtomE(t ↦ ww_t3, e ↦ el_arg_e, ok ↦ el_arg_ok)
-    el_b2_shape ∈ Bool = ((ww_t0 matches OpSeqOpen)
-        ∧ (ww_t1 matches Ident(_)) ∧ (ww_t2 matches LParen)
-        ∧ el_arg_ok ∧ (ww_t4 matches RParen)
-        ∧ (ww_t5 matches OpSeqClose) ∧ (ww_t6 matches RParen))
-    el_b2e_shape ∈ Bool = ((ww_t0 matches OpSeqOpen)
-        ∧ (ww_t1 matches OpSeqClose) ∧ (ww_t2 matches RParen))
+    C2AtomE(t ↦ tok3, e ↦ el_arg_e, ok ↦ el_arg_ok)
+    el_b2_shape ∈ Bool = ((tok0 matches OpSeqOpen)
+        ∧ (tok1 matches Ident(_)) ∧ (tok2 matches LParen)
+        ∧ el_arg_ok ∧ (tok4 matches RParen)
+        ∧ (tok5 matches OpSeqClose) ∧ (tok6 matches RParen))
+    el_b2e_shape ∈ Bool = ((tok0 matches OpSeqOpen)
+        ∧ (tok1 matches OpSeqClose) ∧ (tok2 matches RParen))
     el_b2 ∈ Bool = (d_in_el ∧ (_el_lc = 1) ∧ el_b2_shape)
     el_b2e ∈ Bool = (d_in_el ∧ (_el_lc = 1) ∧ el_b2e_shape)
     el_b2_bad ∈ Bool = (d_in_el ∧ (_el_lc = 1) ∧ (¬el_b2_shape)

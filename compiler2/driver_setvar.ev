@@ -3,7 +3,7 @@
 --           c_is_mem/c_is_nmem, c_dname, c_name, c_type_str, c_sq_rt,
 --           the quantifier-set views c_q_*), the classify gate
 --           (d_classify, d_line_end, d_enter_sl, d_in_skip), the window
---           head (ww_t0/ww_t5..t7), the registered-seq carries (sq_name/
+--           head (tok0/tok5..t7), the registered-seq carries (sq_name/
 --           sq_rt), the inline-frame prefix (il_pfx), the parse gate, and
 --           the Pratt result (p_done/pr_bad/pr_sres/pk_kind).
 -- PRODUCES: the ≤2-entry Set(T) variable registry (stv_cnt/stv_n*/stv_k*/
@@ -52,11 +52,11 @@ fsm DriverSetVar
         C2ICons(C2MkEmptySet(c_stv_idx = 0 ? stv[0].kidx : stv[1].kidx), C2INil))
 
     sv_act ∈ Bool = (in_parse ∧ (_pmode = 14) ∧ d_witems_nil ∧ tok_ready)
-    stl_elem ∈ Bool = (sv_act ∧ (ww_t0 matches Ident(_)))
-    stl_comma ∈ Bool = (sv_act ∧ (ww_t0 matches Comma))
-    stl_close ∈ Bool = (sv_act ∧ (ww_t0 matches RBrace))
+    stl_elem ∈ Bool = (sv_act ∧ (tok0 matches Ident(_)))
+    stl_comma ∈ Bool = (sv_act ∧ (tok0 matches Comma))
+    stl_close ∈ Bool = (sv_act ∧ (tok0 matches RBrace))
     stl_bad ∈ Bool = (sv_act ∧ (¬stl_elem) ∧ (¬stl_comma) ∧ (¬stl_close))
-    stl_enm ∈ String = match ww_t0
+    stl_enm ∈ String = match tok0
         Ident(s) ⇒ s
         _ ⇒ ""
     stl_elem_items ∈ C2Items = C2ICons(
@@ -83,10 +83,10 @@ fsm DriverSetVar
     qset_src ∈ Int = ((c_q_t3nm ≠ "" ∧ c_q_t3nm = stv[0].name) ? 0
         : (c_q_t3nm ≠ "" ∧ c_q_t3nm = stv[1].name) ? 1
         : 0 - 1)
-    qset_b_var ∈ String = match ww_t5
+    qset_b_var ∈ String = match tok5
         Ident(s) ⇒ s
         _ ⇒ ""
-    qset_b_tgtnm ∈ String = match ww_t7
+    qset_b_tgtnm ∈ String = match tok7
         Ident(s) ⇒ s
         _ ⇒ ""
     qset_tgt ∈ Int = ((qset_b_tgtnm ≠ "" ∧ qset_b_tgtnm = stv[0].name) ? 0
@@ -94,7 +94,7 @@ fsm DriverSetVar
         : 0 - 1)
     d_enter_qset ∈ Bool = (d_classify ∧ (¬d_line_end) ∧ c_q_s1
         ∧ (¬c_q_ex) ∧ (qset_src ≥ 0) ∧ (qset_tgt ≥ 0)
-        ∧ (qset_b_var = c_q_var) ∧ (ww_t6 matches OpIn))
+        ∧ (qset_b_var = c_q_var) ∧ (tok6 matches OpIn))
     qset_e ∈ String = (qset_src = 0 ? stv[0].elems : stv[1].elems)
     qset_c ∈ Int = (qset_src = 0 ? stv[0].count : stv[1].count)
     qset_k ∈ Int = (qset_src = 0 ? stv[0].kidx : stv[1].kidx)
@@ -120,8 +120,8 @@ fsm DriverSetVar
 
     sl_cnt ∈ Int
     d_in_sl ∈ Bool = (in_parse ∧ (_pmode = 8) ∧ d_witems_nil ∧ tok_ready)
-    sl_close ∈ Bool = (d_in_sl ∧ (ww_t0 matches OpSeqClose))
-    sl_comma ∈ Bool = (d_in_sl ∧ (ww_t0 matches Comma))
+    sl_close ∈ Bool = (d_in_sl ∧ (tok0 matches OpSeqClose))
+    sl_comma ∈ Bool = (d_in_sl ∧ (tok0 matches Comma))
     sl_e_enter ∈ Bool = (d_in_sl ∧ (¬sl_close) ∧ (¬sl_comma))
     sl_done_inc ∈ Bool = (p_done ∧ (¬pr_bad) ∧ (_pk_kind = 7))
     sl_cnt = (is_first_tick ? 0
@@ -143,7 +143,7 @@ fsm DriverSetVar
         C2ICons(C2Process(EInt(_sl_cnt)),
         C2ICons(C2PinEq, C2ICons(C2AssertTop, C2INil))))
 
-    d_skipl_nil ∈ Bool = (ww_t0 matches EofTok)
-    d_skip_at_tlkw ∈ Bool = ((ww_t0 matches KwEnum) ∨ (ww_t0 matches KwClaim)
-        ∨ (ww_t0 matches KwType) ∨ (ww_t0 matches KwFsm) ∨ (ww_t0 matches KwSchema))
+    d_skipl_nil ∈ Bool = (tok0 matches EofTok)
+    d_skip_at_tlkw ∈ Bool = ((tok0 matches KwEnum) ∨ (tok0 matches KwClaim)
+        ∨ (tok0 matches KwType) ∨ (tok0 matches KwFsm) ∨ (tok0 matches KwSchema))
     d_skip_stop ∈ Bool = (d_in_skip ∧ (d_skipl_nil ∨ d_skip_at_tlkw))

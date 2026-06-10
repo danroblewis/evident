@@ -23,10 +23,10 @@ fsm main
     d_witems_nil = (is_first_tick ? true : _d_witems_nil)
     tok_ready ∈ Bool
     tok_ready = (is_first_tick ? true : _tok_ready)
-    ww_t0 ∈ Token
-    ww_t0 = (is_first_tick ? Ident("p") : _ww_t0)
-    ww_t1 ∈ Token
-    ww_t1 = (is_first_tick ? OpMapsto : _ww_t1)
+    tok0 ∈ Token
+    tok0 = (is_first_tick ? Ident("p") : _tok0)
+    tok1 ∈ Token
+    tok1 = (is_first_tick ? OpMapsto : _tok1)
     c_comp_bare ∈ Bool
     c_comp_bare = (is_first_tick ? false : _c_comp_bare)
     c_comp_call ∈ Bool
@@ -113,8 +113,8 @@ fsm main
     rt_e2 ∈ RecTypeEntry(name ↦ "", fnames ↦ "", ftypes ↦ "", nf ↦ 0,
         sort ↦ 0, ctor ↦ 0, asort ↦ 0, ssort ↦ 0,
         a0 ↦ 0, a1 ↦ 0, a2 ↦ 0, a3 ↦ 0, a4 ↦ 0, a5 ↦ 0)
-    tcur ∈ Int
-    tcur = (is_first_tick ? 0 : _tcur)
+    tok_cur ∈ Int
+    tok_cur = (is_first_tick ? 0 : _tok_cur)
     ..DriverCompose
     captured ∈ Bool = (cs[0].name = "p")
     effects ∈ Seq(Effect) = (captured

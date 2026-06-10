@@ -2,7 +2,7 @@
 -- CONSUMES: the group-enter signals (d_enter_mn body multi-name,
 --           d_enter_claimp first-line param list), the classifier name/
 --           sort/type (c_is_mem, c_is_nat, c_sc, c_tyname, c_t0), the
---           window head (ww_t0/ww_t1/ww_t3), and the parse gate (in_parse,
+--           window head (tok0/tok1/tok3), and the parse gate (in_parse,
 --           _pmode, tok_ready, d_witems_nil).
 -- PRODUCES: the pmode-9 group walk (pg_st/pg_param/pg_close/pg_sc/pg_nat/
 --           pg_ty + the pending-name list pg_pend), which broadcasts one
@@ -38,9 +38,9 @@ fsm DriverGroup
     pg_active ∈ Bool = (in_parse ∧ (_pmode = 9) ∧ d_witems_nil
         ∧ tok_ready)
     pg_collect ∈ Bool = (pg_active ∧ (_pg_st = 0))
-    pg_take2 ∈ Bool = (pg_collect ∧ (ww_t0 matches Ident(_))
-        ∧ (ww_t1 matches Comma))
-    pg_ty_tick ∈ Bool = (pg_collect ∧ (ww_t0 matches Ident(_))
+    pg_take2 ∈ Bool = (pg_collect ∧ (tok0 matches Ident(_))
+        ∧ (tok1 matches Comma))
+    pg_ty_tick ∈ Bool = (pg_collect ∧ (tok0 matches Ident(_))
         ∧ c_is_mem)
     pg_bail ∈ Bool = (pg_collect ∧ (¬pg_take2) ∧ (¬pg_ty_tick))
     pg_drain ∈ Bool = (pg_active ∧ (_pg_st = 1))
@@ -58,7 +58,7 @@ fsm DriverGroup
     pg_last ∈ Bool = (pg_tail matches TLNil)
 
     pg_ty_cons ∈ Int = (_pg_param ? 4 : 3)
-    pg_ty_close ∈ Bool = (ww_t3 matches RParen)
+    pg_ty_close ∈ Bool = (tok3 matches RParen)
     pg_group_done_mode ∈ Int = ((¬_pg_param) ? 2
         : _pg_close ? 2
         : 9)
@@ -69,7 +69,7 @@ fsm DriverGroup
     pg_pend = (is_first_tick ? TLNil
         : d_enter_claimp ? TLNil
         : d_enter_mn ? TLCons(c_t0, TLNil)
-        : pg_take2 ? TLCons(ww_t0, _pg_pend)
+        : pg_take2 ? TLCons(tok0, _pg_pend)
         : pg_drain ? pg_tail
         : _pg_pend)
     pg_st = (is_first_tick ? 0

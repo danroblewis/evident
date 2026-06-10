@@ -26,8 +26,8 @@ fsm main
     pmode = (is_first_tick ? 0 : _pmode)
     tok_ready ∈ Bool
     tok_ready = (is_first_tick ? false : _tok_ready)
-    ww_t0 ∈ Token
-    ww_t0 = (is_first_tick ? EofTok : _ww_t0)
+    tok0 ∈ Token
+    tok0 = (is_first_tick ? EofTok : _tok0)
     d_enter_set ∈ Bool
     d_enter_set = (is_first_tick ? false : _d_enter_set)
     c_name ∈ String

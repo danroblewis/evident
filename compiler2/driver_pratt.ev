@@ -1,6 +1,6 @@
 -- MODULE DriverPratt
 -- CONSUMES: the parse gate (in_parse, _pmode, tok_ready), the decoded
---           window (ww_t0.. via the shared views), the Pratt-entry cons/
+--           window (tok0.. via the shared views), the Pratt-entry cons/
 --           kind (d_pratt_cons0/d_pratt_kind0) + the qstop flag, and its
 --           own carried Pratt stack/cursor.
 -- PRODUCES: the pmode-3 Pratt expression-parser state (pk_st/pk_kind/
@@ -60,7 +60,7 @@ fsm DriverPratt
     pr_sdone ∈ Bool
     pr_sres ∈ Expr
     pr_scons ∈ Int
-    C2PrattStep(toks ↦ _wtoks, outs ↦ _p_out, ops ↦ _p_ops,
+    C2PrattStep(toks ↦ _win_toks, outs ↦ _p_out, ops ↦ _p_ops,
         expop ↦ _p_expop, pd ↦ _p_pd, qd ↦ _p_qd, cd ↦ _p_cd,
         qstop ↦ _pq_qstop, calls ↦ d_cb_names,
         ntoks ↦ pr_ntoks, nouts ↦ pr_nouts, nops ↦ pr_nops,

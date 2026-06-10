@@ -20,10 +20,10 @@ fsm main
     tok_ready = (is_first_tick ? true : _tok_ready)
     d_witems_nil ∈ Bool
     d_witems_nil = (is_first_tick ? true : _d_witems_nil)
-    ww_t0 ∈ Token
-    ww_t0 = (is_first_tick ? Ident("x") : _ww_t0)
-    ww_t1 ∈ Token
-    ww_t1 = (is_first_tick ? Comma : _ww_t1)
+    tok0 ∈ Token
+    tok0 = (is_first_tick ? Ident("x") : _tok0)
+    tok1 ∈ Token
+    tok1 = (is_first_tick ? Comma : _tok1)
     c_is_mem ∈ Bool
     c_is_mem = (is_first_tick ? false : _c_is_mem)
     c_is_nat ∈ Bool
@@ -38,8 +38,8 @@ fsm main
     d_enter_claimp = (is_first_tick ? false : _d_enter_claimp)
     d_enter_mn ∈ Bool
     d_enter_mn = (is_first_tick ? false : _d_enter_mn)
-    ww_t3 ∈ Token
-    ww_t3 = (is_first_tick ? EofTok : _ww_t3)
+    tok3 ∈ Token
+    tok3 = (is_first_tick ? EofTok : _tok3)
     ..DriverGroup
     verdict ∈ Int = ((pg_collect ? 1 : 0) + (pg_take2 ? 2 : 0))
     v_msg ∈ String = str_from_int(verdict)

@@ -56,8 +56,8 @@ fsm main
     uev ∈ Seq(UserEnumVariant)
     #uev ≤ 6
     uev = (is_first_tick ? ⟨⟩ : _uev)
-    wtoks ∈ TokenList
-    wtoks = (is_first_tick ? TLNil : _wtoks)
+    win_toks ∈ TokenList
+    win_toks = (is_first_tick ? TLNil : _win_toks)
     ..DriverPratt
     msg ∈ String = str_from_int(pk_kind)
     effects ∈ Seq(Effect) = ((¬is_first_tick)

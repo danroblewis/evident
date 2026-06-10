@@ -94,24 +94,24 @@ fsm DriverRecord
     rc_nf ∈ Int = (rck = 0 ? rt_e0.nf : rck = 1 ? rt_e1.nf : rt_e2.nf)
     rc_sort ∈ Int = (rck = 0 ? rt_e0.sort : rck = 1 ? rt_e1.sort : rt_e2.sort)
 
-    rc_start ∈ Bool = (ci_add ∧ (ww_t0 matches KwType) ∧ (_rt_cnt < 3))
+    rc_start ∈ Bool = (ci_add ∧ (tok0 matches KwType) ∧ (_rt_cnt < 3))
     rc_skip ∈ Bool = (d_in_skip ∧ (¬d_skip_stop) ∧ _rc_on)
-    rcf_t0nm ∈ String = match ww_t0
+    rcf_t0nm ∈ String = match tok0
         Ident(s) ⇒ s
         _ ⇒ ""
-    rcf_t2nm ∈ String = match ww_t2
+    rcf_t2nm ∈ String = match tok2
         Ident(s) ⇒ s
         _ ⇒ ""
-    rcf_t4nm ∈ String = match ww_t4
+    rcf_t4nm ∈ String = match tok4
         Ident(s) ⇒ s
         _ ⇒ ""
-    rcf_pend ∈ Bool = (rc_skip ∧ (ww_t0 matches Ident(_))
-        ∧ (ww_t1 matches Comma) ∧ (ww_t2 matches Ident(_)))
-    rcf_take ∈ Bool = (rc_skip ∧ (ww_t0 matches Ident(_))
-        ∧ (ww_t1 matches OpIn) ∧ (ww_t2 matches Ident(_)))
+    rcf_pend ∈ Bool = (rc_skip ∧ (tok0 matches Ident(_))
+        ∧ (tok1 matches Comma) ∧ (tok2 matches Ident(_)))
+    rcf_take ∈ Bool = (rc_skip ∧ (tok0 matches Ident(_))
+        ∧ (tok1 matches OpIn) ∧ (tok2 matches Ident(_)))
     rcf_seq ∈ Bool = (rcf_take ∧ (rcf_t2nm = "Seq")
-        ∧ (ww_t3 matches LParen) ∧ (rcf_t4nm = "Int")
-        ∧ (ww_t5 matches RParen))
+        ∧ (tok3 matches LParen) ∧ (rcf_t4nm = "Int")
+        ∧ (tok5 matches RParen))
     rcf_prim ∈ Bool = (rcf_t2nm = "Int" ∨ rcf_t2nm = "Nat"
         ∨ rcf_t2nm = "Bool" ∨ rcf_t2nm = "String" ∨ rcf_t2nm = "Real")
     rcf_reck ∈ Int

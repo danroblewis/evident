@@ -1,6 +1,6 @@
 -- MODULE DriverQuant
 -- CONSUMES: the classifier line-head views (c_t0..c_t4) + the window
---           lookahead (ww_t5..ww_t7), the registered-seq carries (_sq_set,
+--           lookahead (tok5..tok7), the registered-seq carries (_sq_set,
 --           _sq_name, _sq_len), the record registry (rt_* via RtIdxOf),
 --           the classify gate (d_classify, d_line_end), and the parse
 --           cursor for the body re-walk.
@@ -24,25 +24,25 @@ fsm DriverQuant
         Ident(s) ⇒ s
         _ ⇒ ""
     c_q_rng ∈ Bool = (c_q_line ∧ (c_t3 matches LBrace)
-        ∧ (c_t4 matches IntLit(_)) ∧ (ww_t5 matches Dot)
-        ∧ (ww_t6 matches Dot) ∧ (ww_t7 matches IntLit(_)))
+        ∧ (c_t4 matches IntLit(_)) ∧ (tok5 matches Dot)
+        ∧ (tok6 matches Dot) ∧ (tok7 matches IntLit(_)))
     c_q_lo ∈ Int = match c_t4
         IntLit(n) ⇒ n
         _ ⇒ 0
-    c_q_hi ∈ Int = match ww_t7
+    c_q_hi ∈ Int = match tok7
         IntLit(n) ⇒ n
         _ ⇒ 0
     c_q_t3nm ∈ String = match c_t3
         Ident(s) ⇒ s
         _ ⇒ ""
-    c_q_t5nm ∈ String = match ww_t5
+    c_q_t5nm ∈ String = match tok5
         Ident(s) ⇒ s
         _ ⇒ ""
     c_q_s1 ∈ Bool = (c_q_line ∧ (c_t3 matches Ident(_))
         ∧ (c_t4 matches Colon))
     c_q_s2 ∈ Bool = (c_q_line ∧ (c_t3 matches Ident(_))
-        ∧ (c_t4 matches Dot) ∧ (ww_t5 matches Ident(_))
-        ∧ (ww_t6 matches Colon))
+        ∧ (c_t4 matches Dot) ∧ (tok5 matches Ident(_))
+        ∧ (tok6 matches Colon))
     c_q_seq ∈ Bool = (c_q_s1 ∨ c_q_s2)
     c_q_seqnm0 ∈ String = (c_q_s2 ? (c_q_t3nm ++ "." ++ c_q_t5nm) : c_q_t3nm)
     c_q_seqnm ∈ String = (((_il_pfx ++ c_q_seqnm0) = _sq_name)
@@ -54,8 +54,8 @@ fsm DriverQuant
     -- pmode 11: the range head's `} :` close (the 8-token classify
     -- bite latched lo/hi; the brace close enters the body parse)
     q_act ∈ Bool = (in_parse ∧ (_pmode = 11) ∧ d_witems_nil ∧ tok_ready)
-    q_close ∈ Bool = (q_act ∧ (ww_t0 matches RBrace)
-        ∧ (ww_t1 matches Colon))
+    q_close ∈ Bool = (q_act ∧ (tok0 matches RBrace)
+        ∧ (tok1 matches Colon))
     q_bail ∈ Bool = (q_act ∧ (¬q_close))
 
     fl_on ∈ Bool

@@ -21,8 +21,8 @@ fsm main
     -- Bus values the machine reads as plain handles; held live so they
     -- stay in every tick's model (a pinned `= const` simplifies out and
     -- the kernel's state carry then can't find the field).
-    f_ir1 ∈ Int
-    f_ir1 = (is_first_tick ? 0 : _f_ir1)
+    res_int1 ∈ Int
+    res_int1 = (is_first_tick ? 0 : _res_int1)
     z3sorts ∈ Z3Sorts
     z3sorts.isort = (is_first_tick ? 0 : _z3sorts.isort)
     z3sorts.bsort = (is_first_tick ? 0 : _z3sorts.bsort)

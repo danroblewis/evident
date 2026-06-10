@@ -1,7 +1,7 @@
 -- MODULE DriverEnum
 -- CONSUMES: the ZINIT start gate (zstep parked at 9), the Z3 base-sort
 --           handles (z3sorts.isort/z3sorts.bsort/z3sorts.ssort/z3sorts.rsort) + the int-result-1
---           value f_ir1, d_cap_int (last libc capture), and the user-enum
+--           value res_int1, d_cap_int (last libc capture), and the user-enum
 --           collection signals from the parse dispatcher (ec_start,
 --           ec_list_n, _ue_name, _ed_user).
 -- PRODUCES: the Effect-floor + user-enum datatype machine's outputs — the
@@ -329,7 +329,7 @@ fsm DriverEnum
     -- batch, lr[0] of the payload variant's single rdtest.
     uev_cap_d ∈ Bool = (_ed_act = 3 ∧ _ed_step = 2 ∧ _ed_user)
     uev_cap_t ∈ Bool = (_ed_act = 3 ∧ _ed_step = 3 ∧ _ed_user)
-    uev_t_val ∈ Int = (ed_nullary ? f_ir1 : d_cap_int)
+    uev_t_val ∈ Int = (ed_nullary ? res_int1 : d_cap_int)
     uev ∈ Seq(UserEnumVariant)
     #uev ≤ 6
     ∀ k ∈ {0..5} : uev[k].name = (is_first_tick ? "" : (uev_cap_d ∧ _ed_vidx = k) ? ed_vname : _uev[k].name)

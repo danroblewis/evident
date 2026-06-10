@@ -25,16 +25,16 @@ fsm main
     tok_ready = (is_first_tick ? true : _tok_ready)
     d_witems_nil ∈ Bool
     d_witems_nil = (is_first_tick ? true : _d_witems_nil)
-    ww_t0 ∈ Token
-    ww_t0 = (is_first_tick ? LParen : _ww_t0)
-    ww_t1 ∈ Token
-    ww_t1 = (is_first_tick ? IntLit(5) : _ww_t1)
-    ww_t2 ∈ Token
-    ww_t2 = (is_first_tick ? Comma : _ww_t2)
-    ww_t3 ∈ Token
-    ww_t3 = (is_first_tick ? IntLit(7) : _ww_t3)
-    ww_t4 ∈ Token
-    ww_t4 = (is_first_tick ? RParen : _ww_t4)
+    tok0 ∈ Token
+    tok0 = (is_first_tick ? LParen : _tok0)
+    tok1 ∈ Token
+    tok1 = (is_first_tick ? IntLit(5) : _tok1)
+    tok2 ∈ Token
+    tok2 = (is_first_tick ? Comma : _tok2)
+    tok3 ∈ Token
+    tok3 = (is_first_tick ? IntLit(7) : _tok3)
+    tok4 ∈ Token
+    tok4 = (is_first_tick ? RParen : _tok4)
     c_comp_found ∈ Bool
     c_comp_found = (is_first_tick ? false : _c_comp_found)
     c_dd_shape ∈ Bool
@@ -160,8 +160,8 @@ fsm main
     sl_elem_items = (is_first_tick ? C2INil : _sl_elem_items)
     st_names ∈ String
     st_names = (is_first_tick ? "" : _st_names)
-    ww_t5 ∈ Token
-    ww_t5 = (is_first_tick ? EofTok : _ww_t5)
+    tok5 ∈ Token
+    tok5 = (is_first_tick ? EofTok : _tok5)
     z_exitdecl ∈ Int
     z_exitdecl = (is_first_tick ? 0 : _z_exitdecl)
     el_seleq_item ∈ C2Item

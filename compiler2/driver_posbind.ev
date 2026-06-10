@@ -1,7 +1,7 @@
 -- MODULE DriverPosBind
 -- CONSUMES: the composition-line precheck (pcl_*) + classifier head views
 --           (c_name, c_t0..t4, c_dd_shape, c_comp_found, c_line_end,
---           d_classify, d_line_end), the window head (ww_t0..ww_t5), the
+--           d_classify, d_line_end), the window head (tok0..tok5), the
 --           parse gate (in_parse, _pmode, tok_ready, d_witems_nil), the
 --           handle stack (d_h_top/2nd/.. + d_h_t*), the claim index
 --           (ci_base, ci_names), the symbol table (st_names), the
@@ -51,7 +51,7 @@ fsm DriverPosBind
     pcl_m2 ∈ Bool = (d_classify ∧ (¬d_line_end) ∧ c_t0_is_ident
         ∧ (c_t1 matches Dot) ∧ (c_t2 matches Ident(_))
         ∧ (c_t3 matches Dot) ∧ (c_t4 matches Ident(_))
-        ∧ (ww_t5 matches LParen)
+        ∧ (tok5 matches LParen)
         ∧ (index_of(ci_names, pcl_m2key, 0) ≥ 0) ∧ (_il_depth < 8))
     pcl_meth ∈ Bool = (pcl_m1 ∨ pcl_m2)
     pcl_recv_nm ∈ String = (pcl_m2 ? (c_name ++ "." ++ pcl_t2nm) : c_name)
@@ -62,16 +62,16 @@ fsm DriverPosBind
 
     pe_act ∈ Bool = (in_parse ∧ (_pmode = 12) ∧ (_pt_st = 0)
         ∧ d_witems_nil ∧ tok_ready)
-    pt_comma ∈ Bool = (pe_act ∧ (ww_t0 matches Comma))
-    pt_rp ∈ Bool = (pe_act ∧ (ww_t0 matches RParen))
+    pt_comma ∈ Bool = (pe_act ∧ (tok0 matches Comma))
+    pt_rp ∈ Bool = (pe_act ∧ (tok0 matches RParen))
     ptt_e0 ∈ Expr
     ptt_ok0 ∈ Bool
-    C2AtomE(t ↦ ww_t1, e ↦ ptt_e0, ok ↦ ptt_ok0)
+    C2AtomE(t ↦ tok1, e ↦ ptt_e0, ok ↦ ptt_ok0)
     ptt_e1 ∈ Expr
     ptt_ok1 ∈ Bool
-    C2AtomE(t ↦ ww_t3, e ↦ ptt_e1, ok ↦ ptt_ok1)
-    pt_tup_b ∈ Bool = (pe_act ∧ (ww_t0 matches LParen) ∧ ptt_ok0
-        ∧ (ww_t2 matches Comma) ∧ ptt_ok1 ∧ (ww_t4 matches RParen)
+    C2AtomE(t ↦ tok3, e ↦ ptt_e1, ok ↦ ptt_ok1)
+    pt_tup_b ∈ Bool = (pe_act ∧ (tok0 matches LParen) ∧ ptt_ok0
+        ∧ (tok2 matches Comma) ∧ ptt_ok1 ∧ (tok4 matches RParen)
         ∧ (¬_pt_tup))
     ptt_items ∈ C2Items = C2ICons(C2Process(ptt_e0),
         C2ICons(C2Process(ptt_e1), C2INil))
@@ -83,18 +83,18 @@ fsm DriverPosBind
         : _pt_tup)
     pt_ts = (is_first_tick ? 0 : pt_tup_b ? _pc_k : _pt_ts)
     pt_elem ∈ Bool = (pe_act ∧ (¬pt_comma) ∧ (¬pt_rp) ∧ (¬pt_tup_b))
-    ptc_w2nm ∈ String = match ww_t2
+    ptc_w2nm ∈ String = match tok2
         Ident(s) ⇒ s
         _ ⇒ ""
-    ptc_w4nm ∈ String = match ww_t4
+    ptc_w4nm ∈ String = match tok4
         Ident(s) ⇒ s
         _ ⇒ ""
     ptc_n ∈ Bool = (pt_rp ∧ (_pt_callee ≠ ""))
-    ptc_tm ∈ Bool = (pt_rp ∧ (_pt_callee = "") ∧ (ww_t1 matches OpIn)
-        ∧ (ww_t2 matches Ident(_)) ∧ (ww_t3 matches Dot)
-        ∧ (ww_t4 matches Ident(_)))
-    ptc_t ∈ Bool = (pt_rp ∧ (_pt_callee = "") ∧ (ww_t1 matches OpIn)
-        ∧ (ww_t2 matches Ident(_)) ∧ (¬ptc_tm))
+    ptc_tm ∈ Bool = (pt_rp ∧ (_pt_callee = "") ∧ (tok1 matches OpIn)
+        ∧ (tok2 matches Ident(_)) ∧ (tok3 matches Dot)
+        ∧ (tok4 matches Ident(_)))
+    ptc_t ∈ Bool = (pt_rp ∧ (_pt_callee = "") ∧ (tok1 matches OpIn)
+        ∧ (tok2 matches Ident(_)) ∧ (¬ptc_tm))
     ptc_nm ∈ String = (ptc_n ? _pt_callee : ptc_tm ? ptc_w4nm : ptc_w2nm)
     ptc_key ∈ String
     FtiNameEntry(name ↦ ptc_nm, entry ↦ ptc_key)
@@ -168,22 +168,22 @@ fsm DriverPosBind
     pn_prev ∈ Int
     pn ∈ Seq(PbStr)
     #pn ≤ 6
-    pn_take ∈ Bool = (ips_skp ∧ (ww_t0 matches Ident(_))
+    pn_take ∈ Bool = (ips_skp ∧ (tok0 matches Ident(_))
         ∧ (_pn_prev = 1))
-    pty_take ∈ Bool = (ips_skp ∧ (ww_t0 matches OpIn)
-        ∧ (ww_t1 matches Ident(_)) ∧ (_il_pd = 1))
-    pty_nm ∈ String = match ww_t1
+    pty_take ∈ Bool = (ips_skp ∧ (tok0 matches OpIn)
+        ∧ (tok1 matches Ident(_)) ∧ (_il_pd = 1))
+    pty_nm ∈ String = match tok1
         Ident(s) ⇒ s
         _ ⇒ ""
     pty ∈ Seq(PbStr)
     #pty ≤ 4
     ∀ k ∈ {0..3} : pty[k].s = (is_first_tick ? "" : il_jump ? "" : (pty_take ∧ _pn_k = k + 1) ? pty_nm : _pty[k].s)
-    pn_nm ∈ String = match ww_t0
+    pn_nm ∈ String = match tok0
         Ident(s) ⇒ s
         _ ⇒ ""
     pn_prev = (is_first_tick ? 0
         : ips_open ? 1
-        : ips_skp ? (((ww_t0 matches Comma) ∧ (_il_pd = 1)) ? 1 : 0)
+        : ips_skp ? (((tok0 matches Comma) ∧ (_il_pd = 1)) ? 1 : 0)
         : _pn_prev)
     pn_k = (is_first_tick ? 0
         : il_jump ? 0

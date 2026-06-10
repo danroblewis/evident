@@ -1,6 +1,6 @@
 -- MODULE DriverLitMem
 -- CONSUMES: the parse gate (in_parse, _pmode, tok_ready), the decoded
---           window head (ww_t0), the set-literal entry + classifier
+--           window head (tok0), the set-literal entry + classifier
 --           views (d_enter_set, c_name, c_is_nmem), and the seq-literal
 --           entry + classifier views (d_seq_mem, c_dname, c_sq_rt).
 -- PRODUCES: the pmode-7 set-literal walk state (ms_name/ms_neg/ms_e +
@@ -22,10 +22,10 @@ fsm DriverLitMem
     ms_e ∈ Expr
 
     s_act ∈ Bool = (in_parse ∧ (_pmode = 7) ∧ tok_ready)
-    ms_elem ∈ Bool = (s_act ∧ (ww_t0 matches IntLit(_)))
-    ms_close ∈ Bool = (s_act ∧ (ww_t0 matches RBrace))
+    ms_elem ∈ Bool = (s_act ∧ (tok0 matches IntLit(_)))
+    ms_close ∈ Bool = (s_act ∧ (tok0 matches RBrace))
     ms_bad ∈ Bool = (s_act ∧ (¬ms_elem) ∧ (¬ms_close))
-    ms_v ∈ Int = match ww_t0
+    ms_v ∈ Int = match tok0
         IntLit(n) ⇒ n
         _ ⇒ 0
     ms_eq ∈ Expr = EBinOp(OpEq, EIdent(_ms_name), EInt(ms_v))
