@@ -126,6 +126,76 @@ function base_of(t,    b) {
     b = t; sub(/[ \t].*$/, "", b); return b
 }
 
+# Extract the inside of the first balanced paren group of a line.
+function paren_inside(code,    lp, p, ch, depth, inside, started) {
+    lp = index(code, "(")
+    if (lp == 0) return ""
+    depth = 0; inside = ""; started = 0
+    for (p = lp; p <= length(code); p++) {
+        ch = substr(code, p, 1)
+        if (ch == "(") { depth++; if (depth == 1) { started = 1; continue } }
+        if (ch == ")") { depth--; if (depth == 0) break }
+        if (started) inside = inside ch
+    }
+    return inside
+}
+
+# Insert text before the closing paren of the first balanced group.
+function insert_before_close(line, add,    lp, p, ch, depth, pos) {
+    lp = index(line, "(")
+    if (lp == 0) return line
+    depth = 0; pos = 0
+    for (p = lp; p <= length(line); p++) {
+        ch = substr(line, p, 1)
+        if (ch == "(") depth++
+        else if (ch == ")") { depth--; if (depth == 0) { pos = p; break } }
+    }
+    if (pos == 0) return line
+    return substr(line, 1, pos - 1) add substr(line, pos)
+}
+
+# Is x a header param name of fsm F?
+function hdr_has(F, x,    k) {
+    for (k = 1; k <= hdrN[F]; k++) if (hdrName[F, k] == x) return 1
+    return 0
+}
+
+# Parse a single-line fsm header param list into hdrName order and
+# register each name as carry-eligible (a header decl is an interface
+# decl — claim-headers plan). Group typing: a bare-name segment takes
+# the type of the next segment that has the membership glyph. The
+# glyph is located with index(), never a negated character class
+# (the multibyte byte-class trap).
+function parse_header(nm, code,    inside, nseg, segs, segty, sg, p, nmx, ty, k) {
+    inside = paren_inside(code)
+    if (inside == "") return
+    nseg = split_toplevel(inside, segs)
+    for (sg = 1; sg <= nseg; sg++) {
+        p = index(segs[sg], "∈")
+        if (p == 0) continue
+        ty = substr(segs[sg], p + length("∈"))
+        gsub(/^[ \t]+/, "", ty); gsub(/[ \t]+$/, "", ty)
+        segty[sg] = ty
+    }
+    ty = ""
+    for (sg = nseg; sg >= 1; sg--) {
+        if (sg in segty) ty = segty[sg]
+        else segty[sg] = ty
+    }
+    for (sg = 1; sg <= nseg; sg++) {
+        nmx = segs[sg]
+        p = index(nmx, "∈")
+        if (p > 0) nmx = substr(nmx, 1, p - 1)
+        gsub(/[ \t]/, "", nmx)
+        if (nmx == "") continue
+        if (nmx ~ /^_/) { hdrDual[nm SUBSEP nmx] = 1; continue }
+        k = ++hdrN[nm]
+        hdrName[nm, k] = nmx
+        hasBareDecl[nm SUBSEP nmx] = 1
+        declType[nm, nmx] = segty[sg]
+    }
+}
+
 # Split a string on top-level commas (commas not enclosed in parens).
 # Multibyte UTF-8 chars (the mapsto/in/angle glyphs) never contain the
 # ASCII bytes ( ) , so byte-wise scanning is safe regardless of locale.
@@ -210,6 +280,7 @@ END {
                 nm = decl_name(s)
                 cur = nm
                 isFsm[nm] = 1
+                parse_header(nm, strip_comment(s))
             }
             continue
         }
@@ -220,6 +291,17 @@ END {
         if (fld != "") {
             hasBareDecl[cur, fld] = 1
             declType[cur, fld] = field_type(code)
+        }
+
+        # bare mention of a composed schema: a line that is ONLY an
+        # identifier. Recorded so a carried header slot of the callee
+        # marks the same-named parent field carried (header-join).
+        bm = code
+        gsub(/^[ \t]+/, "", bm); gsub(/[ \t]+$/, "", bm)
+        if (bm ~ /^[A-Za-z][A-Za-z0-9_]*$/) {
+            nbare++
+            bmFsm[nbare] = cur
+            bmCallee[nbare] = bm
         }
 
         nt = split(code, toks, /[^A-Za-z0-9_]+/)
@@ -253,6 +335,16 @@ END {
                     }
                     if (mark) break
                 }
+                # bare mention header-join: F declares x, the callee
+                # carries header slot x — the joined name carries in F.
+                if (!mark) {
+                    for (b = 1; b <= nbare; b++) {
+                        if (bmFsm[b] != F) continue
+                        if (!(bmCallee[b] in isFsm)) continue
+                        if (!hdr_has(bmCallee[b], x)) continue
+                        if ((bmCallee[b] SUBSEP x) in carry) { mark = 1; break }
+                    }
+                }
             }
             if (mark) {
                 carry[F SUBSEP x] = 1
@@ -268,8 +360,21 @@ END {
         s = L[i]
         if (is_top_decl(s)) {
             if (s ~ /^fsm[ \t]/) {
-                hdr = s; sub(/^fsm/, "claim", hdr); print hdr
                 cur = decl_name(s)
+                hdr = s
+                # carried header slots get their prev-tick dual appended
+                # to the HEADER: the dual of a carried interface slot is
+                # itself interface, so header-join and slot-bind
+                # injection thread carries uniformly.
+                add = ""
+                for (k = 1; k <= hdrN[cur]; k++) {
+                    x = hdrName[cur, k]
+                    if (!((cur SUBSEP x) in carry)) continue
+                    if ((cur SUBSEP ("_" x)) in hdrDual) continue
+                    add = add ", _" x " ∈ " carryBase[cur SUBSEP x]
+                }
+                if (add != "") hdr = insert_before_close(hdr, add)
+                sub(/^fsm/, "claim", hdr); print hdr
             } else {
                 print s; cur = ""
             }
