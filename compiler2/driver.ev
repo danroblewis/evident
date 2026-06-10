@@ -362,7 +362,20 @@ fsm driver_main
     -- ── G1: bounded quantifier (see compiler2/driver_quant.ev) ──
     ..DriverQuant
     -- ── G2: rb — record-pin BROADCAST loop (see compiler2/driver_broadcast.ev) ──
-    ..DriverBroadcast
+    -- Bare mention against its header (the claim-headers pilot): these
+    -- ten declarations ARE the broadcast interface; its other names are
+    -- per-call-site internals.
+    bcast_on ∈ Bool
+    bcast_slot ∈ Int
+    bcast_name ∈ String
+    bcast_body ∈ Expr
+    bcast_field_i ∈ Int
+    bcast_cur ∈ Int
+    bcast_field ∈ String
+    bcast_more ∈ Bool
+    bcast_fin ∈ Bool
+    bcast_items ∈ C2Items
+    DriverBroadcast
 
     seq_mem_items ∈ C2Items = C2ICons(
         C2DeclConst(line_dname, (seq_elt_slot ≥ 0 ? 10 + seq_elt_slot : 5)),
@@ -495,6 +508,7 @@ fsm driver_main
         : setlit_close ? setlit_close_items
         : (callw_fire ∧ _callw_is_type) ? type_pin_items
         : (callw_bare_jump ∧ _callw_is_type ∧ (_type_slot ≥ 0)) ? type_recdecl_items
+        : pskip_decl_fire ? pskip_decl_items
         : group_ty_tick ? mem_items
         : group_drain ? group_drain_items
         : (pos_close ∧ close_recv_method) ? close_recv_items

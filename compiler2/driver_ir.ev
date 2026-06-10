@@ -155,6 +155,11 @@ enum C2Binds =
     CBNil
     CBCons(String, Int, C2Binds)
 
+-- CFCons fields: return cursor, scope prefix, binds, join-set, tail.
+-- The join-set is the caller's header join-set to RESTORE on pop:
+-- "*" = join everything (header-less callee / lift), "" = join nothing
+-- beyond binds (headered + mapped), "|a|b|" = join exactly these names
+-- (headered + bare mention) — docs/plans/claim-headers-interface.md.
 enum C2Frames =
     CFNil
-    CFCons(Int, String, C2Binds, C2Frames)
+    CFCons(Int, String, C2Binds, String, C2Frames)

@@ -105,27 +105,46 @@ lowers it today (§5).
 hand-written `_x` decls where `fsm` would synthesize them is
 dispreferred; using `fsm` for a pure predicate is wrong.
 
-### 2.2 Composition (current semantics, pinned 2026-06-10 by conformance 139/140/141)
+### 2.2 Composition (current semantics, pinned 2026-06-10 by conformance 139/140/141 + 142–148)
 
 | Form | Meaning |
 | ---- | ------- |
 | `v ∈ TypeName`            | Typed variable; fields/invariants **receiver-scoped** (`v.field`). Zero implicit sharing. |
-| `..ClaimName`             | **LIFT**: inline the body in the caller's scope (shared names, names-match). The deliberate everything-shared form. |
-| `ClaimName` (bare)        | **CALL**: parent names pass down; the claim's own unmapped internals are **HIDDEN** (fresh per call site). |
-| `ClaimName(slot ↦ value)` | CALL with explicit slot binding; unmapped internals hidden. |
-| `(a, b) ∈ ClaimName`      | Positional binding to first-line params. |
-| `cond ⇒ ClaimName`        | Conditional inline. |
+| `..ClaimName`             | **LIFT**: inline the body in the caller's scope (shared names, names-match). The deliberate everything-shared form. Ignores headers. |
+| `ClaimName` (bare)        | **CALL**: joins on the claim's **header** names only (header-less: parent names pass down); internals **HIDDEN** (fresh per call site). |
+| `ClaimName(slot ↦ value)` | CALL with explicit slot binding — **explicit-only** on a headered claim: unmapped header slots are fresh internals. Punning: a lone `name` ≡ `name ↦ name` (not as the first list element). |
+| `(a, b) ∈ ClaimName`      | Positional binding to header slots in order; a mapping form (explicit-only). |
+| `cond ⇒ ClaimName`        | Conditional inline; joins like bare mention. |
 | `recv.subclaim(args)`     | Subclaim dispatch with receiver prefix. |
 | `subclaim Name`           | Nested claim registered top-level. |
 
+**The claim header** (landed 2026-06-10; conformance 142–148;
+`docs/plans/claim-headers-interface.md`):
+
+```evident
+claim Render(on ∈ Bool, name ∈ String)
+    phase ∈ Int
+```
+
+The first-line params are the claim's declared interface — the relation
+schema its joins operate on (§1.6). Body memberships (`phase`) are
+internal and never join the parent, whatever the caller names its
+variables (142-header-join-sat/143-…-unsat, 144-header-internal-no-capture,
+145-mapped-explicit-only, 146-punning-binds-unsat,
+148-positional-alignment-unsat). Free names a claim never declares
+still resolve in the caller. A header-less claim keeps whole-body
+implicit interface (147-headerless-compat-capture-unsat pins the
+capture). On an `fsm`, a carried header slot has its `_x` dual as
+interface too (appended by the autocarry transform;
+`tests/fsm_compose/counter_slot_header.ev` / `counter_bare_header.ev`).
+
 Bare mention and `..` are NOT synonyms. Use bare/call for components;
 `..` only for deliberate context sharing; receiver instances for zero
-implicit sharing. **Approved direction** (claim-headers plan): a
-claim/fsm header declares its interface — bare mention joins on header
-names only, any mapping is explicit-only (with punning: bare `name` ≡
-`name ↦ name`), body memberships never join. Headers in new code are
-aligned with the ideal; reliance on whole-body implicit interface in
-*new* components is the thing headers exist to retire.
+implicit sharing. Headers in new code are aligned with the ideal;
+reliance on whole-body implicit interface in *new* components is the
+thing headers exist to retire (a new multi-use component claim without
+a header is a WARN-level smell under V5 — hand-prefixes are its
+symptom).
 
 ### 2.3 Chained membership
 

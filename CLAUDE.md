@@ -151,13 +151,28 @@ Seven ways to compose schemas. Use the shortest form that works:
 | Form                       | Meaning                                                                  |
 | -------------------------- | ------------------------------------------------------------------------ |
 | `variable ∈ TypeName`      | Declare a typed variable; fields/invariants receiver-scoped (`v.field`). |
-| `..ClaimName`              | LIFT: inline the body in the caller's scope (shared names, names-match). |
-| `ClaimName` (bare)         | CALL: parent names pass down, but the claim's own unmapped internals are HIDDEN (fresh per call site). |
-| `ClaimName(slot ↦ value)`  | CALL with explicit slot binding; unmapped internals hidden as above.      |
-| `(a, b) ∈ ClaimName`       | Inline with positional binding to first-line params.                     |
-| `cond ⇒ ClaimName`         | Conditional inline (constraints wrapped in `cond ⇒ …`).                  |
+| `..ClaimName`              | LIFT: inline the body in the caller's scope (shared names, names-match). Ignores headers. |
+| `ClaimName` (bare)         | CALL: joins on the claim's HEADER names only (header-less: parent names pass down); internals HIDDEN (fresh per call site). |
+| `ClaimName(slot ↦ value)`  | CALL with explicit slot binding — EXPLICIT-ONLY on a headered claim: unmapped header slots become fresh internals. Punning: a lone `name` ≡ `name ↦ name` (not as the first list element). |
+| `(a, b) ∈ ClaimName`       | Positional binding to header slots in order; a mapping form (explicit-only). |
+| `cond ⇒ ClaimName`         | Conditional inline (constraints wrapped in `cond ⇒ …`); joins like bare mention. |
 | `recv.subclaim(args)`      | Subclaim dispatch with receiver-prefix.                                  |
 | `subclaim Name`            | Nested claim registered as a top-level schema.                           |
+
+**Claim headers are the interface** (landed 2026-06-10; conformance
+142–148 pin it; `docs/plans/claim-headers-interface.md`). A claim/fsm
+may declare a type-style first-line header — `claim Render(on ∈ Bool,
+name ∈ String)` — naming exactly the slots composition may join on.
+Body memberships NEVER join the parent, regardless of name collisions;
+free names the claim never declares still resolve in the caller
+(names-match). A header-less claim keeps the old semantics exactly
+(whole body implicitly interface — conformance 147 pins the capture).
+On an `fsm`, a carried header slot gets its `_x` dual appended to the
+header by the autocarry transform (the dual of a carried interface
+slot is itself interface), so slot-bind injection and bare-mention
+header-join both thread carries (`tests/fsm_compose/counter_*_header.ev`).
+Prefer headers for new components; rely on whole-body interface only in
+legacy code.
 
 Bare mention and `..` are NOT synonyms (restored 2026-06-10; conformance
 139/140/141 pin it): a bare `ClaimName` hides its internals — two bare

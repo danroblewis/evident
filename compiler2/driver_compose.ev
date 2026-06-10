@@ -5,13 +5,19 @@
 --           handle-stack views (h_top/2nd/.. + h_tail1.. + stack_in),
 --           cap_int, the parse gate (in_parse, _parse_mode, tok_ready,
 --           work_nil), the line-pop signal (frame_pop), the record
---           registry (recs name/sort), and the sibling fire/cap signals
---           (guard_hit, guard_jump_*, posjump_*, bindzip_*, pratt_done, pratt_bad, enter_claim*).
+--           registry (recs name/sort), the callee param registry walked
+--           during pskip (posbind's param_names/_param_count), the active-
+--           guard state (guard_on, _guard_depth), and the sibling fire/cap
+--           signals (guard_hit, guard_jump_*, posjump_*, bindzip_*,
+--           pratt_done, pratt_bad, enter_claim*).
 --           Wide by nature: a call jump couples the classifier decision,
 --           the claim index, and the handle stack (justified §6.4).
 -- PRODUCES: the inline-frame stack (frames/binds/scope_prefix/frame_depth/
---           call_count/jump_target), the param-skip substate (param_skip/param_depth), the
---           slot-call walk (callw_st/callw_bare/callw_is_type/slot_count/type_prefix + the slot_names
+--           call_count/jump_target), the frame join-set (join_hdr — read by
+--           the classifier's name_outer rule; "*" = join all, "" = binds
+--           only, "|a|b|" = these header names), the param-skip substate
+--           (param_skip/param_depth), the slot-call walk (callw_st/callw_bare/
+--           callw_is_type/callw_pun/slot_count/type_prefix + the slot_names
 --           slot-name registry),
 --           the current-frame binds peel (bind_n0..n5 / bind_h0..h5 — read
 --           by the classifier's no-redeclare rule), and the call-jump /
@@ -21,7 +27,10 @@
 --           installs the "__cN_" α-prefix with NO binds (internals hidden,
 --           parent names reach the child via prefix-then-bare lookup —
 --           conformance 139/140/141); a slot call installs the prefix +
---           its C2Binds table.
+--           its C2Binds table; a headered callee restricts the join to its
+--           first-line params — bare joins header∩parent, mapped/positional
+--           joins listed slots only, punning binds name to the parent's
+--           name (claim-headers plan; fixtures 142-148).
 --
 -- Claim-composition (slot-call + names-match `..` inlining). Lifted into
 -- driver_main via `..DriverCompose`.
@@ -31,6 +40,7 @@ fsm DriverCompose
     frames ∈ C2Frames
     binds ∈ C2Binds
     scope_prefix ∈ String
+    join_hdr ∈ String
     frame_depth ∈ Int
     call_count ∈ Int
     jump_target ∈ Int
@@ -98,16 +108,19 @@ fsm DriverCompose
         CBNil ⇒ 0
 
     frame_ret ∈ Int = match _frames
-        CFCons(r, _, _, _) ⇒ r
+        CFCons(r, _, _, _, _) ⇒ r
         CFNil ⇒ 0
     frame_prefix ∈ String = match _frames
-        CFCons(_, p, _, _) ⇒ p
+        CFCons(_, p, _, _, _) ⇒ p
         CFNil ⇒ ""
     frame_binds ∈ C2Binds = match _frames
-        CFCons(_, _, b, _) ⇒ b
+        CFCons(_, _, b, _, _) ⇒ b
         CFNil ⇒ CBNil
+    frame_hdr ∈ String = match _frames
+        CFCons(_, _, _, h, _) ⇒ h
+        CFNil ⇒ "*"
     frames_tail ∈ C2Frames = match _frames
-        CFCons(_, _, _, t) ⇒ t
+        CFCons(_, _, _, _, t) ⇒ t
         CFNil ⇒ CFNil
 
     read_callee_cursor ∈ Bool = (comp_line ∨ tymem_line)
@@ -121,9 +134,11 @@ fsm DriverCompose
         ∧ work_nil ∧ tok_ready)
     callw_slot ∈ Bool = (in_callw1 ∧ (tok0 matches Ident(_))
         ∧ (tok1 matches OpMapsto) ∧ (_slot_count < 6))
+    callw_pun ∈ Bool = (in_callw1 ∧ (tok0 matches Ident(_))
+        ∧ ((tok1 matches Comma) ∨ (tok1 matches RParen)) ∧ (_slot_count < 6))
     callw_comma ∈ Bool = (in_callw1 ∧ (tok0 matches Comma))
     callw_fire ∈ Bool = (in_callw1 ∧ (tok0 matches RParen))
-    callw_bail ∈ Bool = (in_callw1 ∧ (¬callw_slot) ∧ (¬callw_comma) ∧ (¬callw_fire))
+    callw_bail ∈ Bool = (in_callw1 ∧ (¬callw_slot) ∧ (¬callw_pun) ∧ (¬callw_comma) ∧ (¬callw_fire))
     slot_val_done ∈ Bool = (pratt_done ∧ (¬pratt_bad) ∧ (_pratt_kind = 8))
     slot_name_tok ∈ String = match tok0
         Ident(s) ⇒ s
@@ -204,10 +219,31 @@ fsm DriverCompose
     pskip_run ∈ Bool = (pskip_act ∧ (_param_skip = 2))
     pskip_done ∈ Bool = (pskip_run ∧ (tok0 matches RParen) ∧ (_param_depth = 1))
 
+    -- ── header join-set (claim headers as interface) ──────────────
+    -- The callee's first-line params, walked by posbind's param
+    -- registry during pskip, become the frame's join-set: a bare
+    -- splice of a headered claim joins parent names ONLY through it
+    -- (name_outer consults _join_hdr); a mapped/positional splice of
+    -- a headered claim joins nothing beyond its binds ("");
+    -- header-less callees keep full names-match pass-down ("*").
+    -- Caps at 6 header names (the slot_names/param_names width).
+    hdr_join_now ∈ String = (_param_count = 0 ? "*"
+        : _param_count = 1 ? "|" ++ _param_names[0].s ++ "|"
+        : _param_count = 2 ? "|" ++ _param_names[0].s ++ "|" ++ _param_names[1].s ++ "|"
+        : _param_count = 3 ? "|" ++ _param_names[0].s ++ "|" ++ _param_names[1].s ++ "|"
+            ++ _param_names[2].s ++ "|"
+        : _param_count = 4 ? "|" ++ _param_names[0].s ++ "|" ++ _param_names[1].s ++ "|"
+            ++ _param_names[2].s ++ "|" ++ _param_names[3].s ++ "|"
+        : _param_count = 5 ? "|" ++ _param_names[0].s ++ "|" ++ _param_names[1].s ++ "|"
+            ++ _param_names[2].s ++ "|" ++ _param_names[3].s ++ "|" ++ _param_names[4].s ++ "|"
+        : "|" ++ _param_names[0].s ++ "|" ++ _param_names[1].s ++ "|"
+            ++ _param_names[2].s ++ "|" ++ _param_names[3].s ++ "|" ++ _param_names[4].s ++ "|"
+            ++ _param_names[5].s ++ "|")
+
     callw_reset ∈ Bool = (enter_claim ∨ enter_claim_params)
     frames = (is_first_tick ? CFNil
         : callw_reset ? CFNil
-        : frame_jump ? CFCons(frame_ret_now, _scope_prefix, _binds, _frames)
+        : frame_jump ? CFCons(frame_ret_now, _scope_prefix, _binds, _join_hdr, _frames)
         : frame_pop ? frames_tail
         : _frames)
     binds = (is_first_tick ? CBNil
@@ -225,6 +261,17 @@ fsm DriverCompose
         : posjump_fire ? prefix_new
         : frame_pop ? frame_prefix
         : _scope_prefix)
+    join_hdr = (is_first_tick ? "*"
+        : callw_reset ? "*"
+        : frame_pop ? frame_hdr
+        : (pskip_done ∧ guard_on ∧ (_frame_depth = _guard_depth)) ? _join_hdr
+        : (pskip_off ∧ guard_on ∧ (_frame_depth = _guard_depth)) ? _join_hdr
+        : pskip_off ? "*"
+        : (pskip_done ∧ _callw_is_type) ? "*"
+        : (pskip_done ∧ _callw_hide) ? hdr_join_now
+        : (pskip_done ∧ _callw_bare) ? "*"
+        : pskip_done ? (_param_count = 0 ? "*" : "")
+        : _join_hdr)
     frame_depth = (is_first_tick ? 0
         : callw_reset ? 0
         : frame_jump ? _frame_depth + 1
@@ -259,14 +306,17 @@ fsm DriverCompose
     callw_bare = (is_first_tick ? false
         : (comp_call ∨ tymem_call) ? false
         : (comp_bare ∨ comp_dotdot ∨ tymem_bare) ? true
+        : posbind_line ? false
         : _callw_bare)
     callw_hide = (is_first_tick ? false
         : comp_bare ? true
         : (comp_call ∨ comp_dotdot ∨ tymem_line) ? false
+        : posbind_line ? false
         : _callw_hide)
     callw_is_type = (is_first_tick ? false
         : tymem_line ? true
         : comp_line ? false
+        : posbind_line ? false
         : _callw_is_type)
     type_prefix = (is_first_tick ? ""
         : tymem_line ? (_scope_prefix ++ line_name ++ ".")
@@ -285,4 +335,4 @@ fsm DriverCompose
         : (comp_call ∨ tymem_call) ? 0
         : slot_val_done ? _slot_count + 1
         : _slot_count)
-    ∀ k ∈ {0..5} : slot_names[k].name = (is_first_tick ? "" : (callw_slot ∧ _slot_count = k) ? slot_name_tok : _slot_names[k].name)
+    ∀ k ∈ {0..5} : slot_names[k].name = (is_first_tick ? "" : ((callw_slot ∨ callw_pun) ∧ _slot_count = k) ? slot_name_tok : _slot_names[k].name)

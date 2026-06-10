@@ -1,8 +1,14 @@
 # Claim headers as interface — header-join, explicit-only mapping, punning
 
-**Status:** approved direction (operator, 2026-06-10). Fixtures first, then
-oracle + compiler2 in lockstep, per the oracle-branch rules in
-`scripts/build-oracle.sh`.
+**Status:** LANDED 2026-06-10 (approved by operator the same day).
+Conformance 142–148 pin the semantics; oracle pin `292c7ef`; compiler2
+frame join-set + punning + seam decls; autocarry threads carried header
+slots (`tests/fsm_compose/counter_*_header.ev`). Open question 1
+(context bundles) remains open — see
+`docs/plans/blocked-recs-header-slot.md`. Open question 2 decided: a
+carried header slot's `_x` dual is appended to the header (interface).
+The frozen `compiler.smt2` seam keeps pre-header semantics (142–146 +
+148 allowlisted for IMPL=selfhost) until the wave-5 rebuild.
 
 ## Problem
 

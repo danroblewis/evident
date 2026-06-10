@@ -88,6 +88,10 @@ fsm main
     seqlit_elem_enter = (is_first_tick ? false : _seqlit_elem_enter)
     callw_slot ∈ Bool
     callw_slot = (is_first_tick ? false : _callw_slot)
+    callw_pun ∈ Bool
+    callw_pun = (is_first_tick ? false : _callw_pun)
+    join_hdr ∈ String
+    join_hdr = (is_first_tick ? "*" : _join_hdr)
     qrange_close ∈ Bool
     qrange_close = (is_first_tick ? false : _qrange_close)
     enter_qseq ∈ Bool
