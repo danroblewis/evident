@@ -1,8 +1,9 @@
 -- MODULE autocarry_lib — shared single-expression scan helpers for the
 -- autocarry pass programs (analyze + apply).
 -- CONSUMES: slot-bound (s, from/p0/…) inputs per instantiation.
--- PRODUCES: out/p1/… slot-bound outputs; no internal names, so every
---           claim is safe to instantiate many times in one body.
+-- PRODUCES: out/p1/… slot-bound outputs; headered claims keep their
+--           internals per-call-site fresh, so every claim is safe to
+--           instantiate many times in one body.
 -- MAINTAINS: chains are lazy nested ternaries — cost is the distance
 --            actually scanned, not the unroll depth (measured 2026-06-10:
 --            64-deep chain over 9k ticks = 0.19 s wall, 0.0 ms z3).
