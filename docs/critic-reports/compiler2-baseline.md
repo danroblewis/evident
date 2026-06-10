@@ -473,3 +473,19 @@ selections (`group_done_mode`, lex `kind`, `pratt_enter_kind`) NOT flagged
 as V9 — the §3.4 letter requires one discriminant against successive
 keys/codes; (e) Evident-shaped quotes in comments flagged V13 only when
 membership/match-shaped (the calibration's SMT-shaped allowance inverted).
+
+---
+
+## Burndown updates (2026-06-10, post-baseline)
+
+- **S1 record half: RESOLVED** (merge b46f373). rec0/rec1/rec2 +
+  acc0..acc5 → `recs ∈ Seq(RecTypeEntry)` with `accs ∈ Seq(Int)`;
+  all 6 BLOCKERs cleared. Critic on the diff: 0 BLOCKER.
+- **NEW (from that diff's critic review): ambient-`recs` implicit
+  interface** — RtIdxOf/RtSortOf/RtFieldAcc read `recs` via names-match
+  pass-down with no declared interface. Fix when claim headers land
+  (task #36): declare `recs` in the claims' headers.
+- **Duplicate `setvar_slot` definition: RESOLVED** (d047518) — was a
+  rename collision; latent UNSAT; the only collision in the map.
+- S1 bind-peel half (`bind_n0..n5`), the S2 chain classes (V9), the
+  fold families (W7), and index-in-interface (V6) remain open.
