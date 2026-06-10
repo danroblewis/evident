@@ -71,12 +71,8 @@ fsm DriverEnum
     enum_n_variants ∈ Int
     enum_h_name ∈ Int
     enum_h_recog ∈ Int
-    enum_h_field0 ∈ Int
-    enum_h_field1 ∈ Int
-    enum_h_field2 ∈ Int
-    enum_h_field3 ∈ Int
-    enum_h_field4 ∈ Int
-    enum_h_field5 ∈ Int
+    enum_h_fields ∈ Seq(Int)
+    #enum_h_fields ≤ 6
 
     libarg_decl ∈ EnumDeclAst = EnumD("LibArg",
         EVCons(EVDeclP("ArgInt", EVFCons(EVFType("Int"), EVFNil)),
@@ -309,18 +305,7 @@ fsm DriverEnum
         : _enum_h_name)
     enum_h_recog = (is_first_tick ? 0
         : (_enum_act = 1 ∧ _enum_step = 1) ? cap_int : _enum_h_recog)
-    enum_h_field0 = (is_first_tick ? 0
-        : (_enum_act = 1 ∧ _enum_step = 2) ? cap_int : _enum_h_field0)
-    enum_h_field1 = (is_first_tick ? 0
-        : (_enum_act = 1 ∧ _enum_step = 3) ? cap_int : _enum_h_field1)
-    enum_h_field2 = (is_first_tick ? 0
-        : (_enum_act = 1 ∧ _enum_step = 4) ? cap_int : _enum_h_field2)
-    enum_h_field3 = (is_first_tick ? 0
-        : (_enum_act = 1 ∧ _enum_step = 5) ? cap_int : _enum_h_field3)
-    enum_h_field4 = (is_first_tick ? 0
-        : (_enum_act = 1 ∧ _enum_step = 6) ? cap_int : _enum_h_field4)
-    enum_h_field5 = (is_first_tick ? 0
-        : (_enum_act = 1 ∧ _enum_step = 7) ? cap_int : _enum_h_field5)
+    ∀ k ∈ {0..5} : enum_h_fields[k] = (is_first_tick ? 0 : (_enum_act = 1 ∧ _enum_step = 2 + k) ? cap_int : _enum_h_fields[k])
 
     -- ── group sort capture: floor registers + the enum table ──────
     libarg_sort ∈ Int

@@ -24,6 +24,7 @@
 -- set sort / ≤ 6 accessor decls).
 
 type RcParam(pname ∈ String)
+type RdField(ty ∈ String, sort ∈ Int)
 
 -- RtRecName: record i of a fixed-width string, trailing pad trimmed.
 claim RtRecName(s ∈ String, i ∈ Int, name ∈ String)
@@ -226,42 +227,10 @@ fsm DriverRecord
     recdecl_h_fields_now ∈ Seq(Int)
     #recdecl_h_fields_now ≤ 6
     ∀ k ∈ {0..5} : recdecl_h_fields_now[k] = ((recdecl_cap ∧ _recdecl_st = 1 ∧ _recdecl_field_i = k) ? cap_int : _recdecl_h_fields[k])
-    recdecl_ty0 ∈ String
-    RtRecName(s ↦ rec_cur_ftypes, i ↦ 0, name ↦ recdecl_ty0)
-    recdecl_ty1 ∈ String
-    RtRecName(s ↦ rec_cur_ftypes, i ↦ 1, name ↦ recdecl_ty1)
-    recdecl_ty2 ∈ String
-    RtRecName(s ↦ rec_cur_ftypes, i ↦ 2, name ↦ recdecl_ty2)
-    recdecl_ty3 ∈ String
-    RtRecName(s ↦ rec_cur_ftypes, i ↦ 3, name ↦ recdecl_ty3)
-    recdecl_ty4 ∈ String
-    RtRecName(s ↦ rec_cur_ftypes, i ↦ 4, name ↦ recdecl_ty4)
-    recdecl_ty5 ∈ String
-    RtRecName(s ↦ rec_cur_ftypes, i ↦ 5, name ↦ recdecl_ty5)
-    recdecl_sort0 ∈ Int
-    RtSortOf(ty ↦ recdecl_ty0, int_h ↦ z3sorts.isort, bool_h ↦ z3sorts.bsort,
-        str_h ↦ z3sorts.ssort, real_h ↦ z3sorts.rsort, iarr_h ↦ z_intarr_sort,
-        sort ↦ recdecl_sort0)
-    recdecl_sort1 ∈ Int
-    RtSortOf(ty ↦ recdecl_ty1, int_h ↦ z3sorts.isort, bool_h ↦ z3sorts.bsort,
-        str_h ↦ z3sorts.ssort, real_h ↦ z3sorts.rsort, iarr_h ↦ z_intarr_sort,
-        sort ↦ recdecl_sort1)
-    recdecl_sort2 ∈ Int
-    RtSortOf(ty ↦ recdecl_ty2, int_h ↦ z3sorts.isort, bool_h ↦ z3sorts.bsort,
-        str_h ↦ z3sorts.ssort, real_h ↦ z3sorts.rsort, iarr_h ↦ z_intarr_sort,
-        sort ↦ recdecl_sort2)
-    recdecl_sort3 ∈ Int
-    RtSortOf(ty ↦ recdecl_ty3, int_h ↦ z3sorts.isort, bool_h ↦ z3sorts.bsort,
-        str_h ↦ z3sorts.ssort, real_h ↦ z3sorts.rsort, iarr_h ↦ z_intarr_sort,
-        sort ↦ recdecl_sort3)
-    recdecl_sort4 ∈ Int
-    RtSortOf(ty ↦ recdecl_ty4, int_h ↦ z3sorts.isort, bool_h ↦ z3sorts.bsort,
-        str_h ↦ z3sorts.ssort, real_h ↦ z3sorts.rsort, iarr_h ↦ z_intarr_sort,
-        sort ↦ recdecl_sort4)
-    recdecl_sort5 ∈ Int
-    RtSortOf(ty ↦ recdecl_ty5, int_h ↦ z3sorts.isort, bool_h ↦ z3sorts.bsort,
-        str_h ↦ z3sorts.ssort, real_h ↦ z3sorts.rsort, iarr_h ↦ z_intarr_sort,
-        sort ↦ recdecl_sort5)
+    recdecl_fields ∈ Seq(RdField)
+    #recdecl_fields ≤ 6
+    ∀ k ∈ {0..5} : RtRecName(s ↦ rec_cur_ftypes, i ↦ k, name ↦ recdecl_fields[k].ty)
+    ∀ k ∈ {0..5} : RtSortOf(ty ↦ recdecl_fields[k].ty, int_h ↦ z3sorts.isort, bool_h ↦ z3sorts.bsort, str_h ↦ z3sorts.ssort, real_h ↦ z3sorts.rsort, iarr_h ↦ z_intarr_sort, sort ↦ recdecl_fields[k].sort)
 
     recdecl_namesym ∈ Effect
     BuildZ3MkStringSymbol(ctx_h ↦ z3ctx.ctx, name ↦ rec_cur_name, eff ↦ recdecl_namesym)
@@ -280,17 +249,17 @@ fsm DriverRecord
     recdecl_write_fn5 ∈ Effect
     BuildMemWriteLong(addr ↦ recdecl_fnames_p + 40, value ↦ recdecl_h_fields_now[5], eff ↦ recdecl_write_fn5)
     recdecl_write_fs0 ∈ Effect
-    BuildMemWriteLong(addr ↦ recdecl_fsorts_p, value ↦ recdecl_sort0, eff ↦ recdecl_write_fs0)
+    BuildMemWriteLong(addr ↦ recdecl_fsorts_p, value ↦ recdecl_fields[0].sort, eff ↦ recdecl_write_fs0)
     recdecl_write_fs1 ∈ Effect
-    BuildMemWriteLong(addr ↦ recdecl_fsorts_p + 8, value ↦ recdecl_sort1, eff ↦ recdecl_write_fs1)
+    BuildMemWriteLong(addr ↦ recdecl_fsorts_p + 8, value ↦ recdecl_fields[1].sort, eff ↦ recdecl_write_fs1)
     recdecl_write_fs2 ∈ Effect
-    BuildMemWriteLong(addr ↦ recdecl_fsorts_p + 16, value ↦ recdecl_sort2, eff ↦ recdecl_write_fs2)
+    BuildMemWriteLong(addr ↦ recdecl_fsorts_p + 16, value ↦ recdecl_fields[2].sort, eff ↦ recdecl_write_fs2)
     recdecl_write_fs3 ∈ Effect
-    BuildMemWriteLong(addr ↦ recdecl_fsorts_p + 24, value ↦ recdecl_sort3, eff ↦ recdecl_write_fs3)
+    BuildMemWriteLong(addr ↦ recdecl_fsorts_p + 24, value ↦ recdecl_fields[3].sort, eff ↦ recdecl_write_fs3)
     recdecl_write_fs4 ∈ Effect
-    BuildMemWriteLong(addr ↦ recdecl_fsorts_p + 32, value ↦ recdecl_sort4, eff ↦ recdecl_write_fs4)
+    BuildMemWriteLong(addr ↦ recdecl_fsorts_p + 32, value ↦ recdecl_fields[4].sort, eff ↦ recdecl_write_fs4)
     recdecl_write_fs5 ∈ Effect
-    BuildMemWriteLong(addr ↦ recdecl_fsorts_p + 40, value ↦ recdecl_sort5, eff ↦ recdecl_write_fs5)
+    BuildMemWriteLong(addr ↦ recdecl_fsorts_p + 40, value ↦ recdecl_fields[5].sort, eff ↦ recdecl_write_fs5)
     recdecl_mk_tuple ∈ Effect = LibCall("libz3", "Z3_mk_tuple_sort",
         ⟨ArgInt(z3ctx.ctx), ArgInt(recdecl_h_name), ArgInt(rec_cur_nf), ArgInt(recdecl_fnames_p),
          ArgInt(recdecl_fsorts_p), ArgInt(recdecl_ctor_p), ArgInt(recdecl_accs_p)⟩)

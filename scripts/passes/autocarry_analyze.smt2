@@ -74,7 +74,15 @@
 (declare-fun tk_ce_run () Bool)
 (declare-fun tk_ce_gt () Int)
 (declare-fun tk_ce_x () String)
+(declare-fun AcBodyScan3__bs3_f0__call13 () Int)
 (declare-fun _body () String)
+(declare-fun AcBodyScan3__bs3_pos_a__call13 () Int)
+(declare-fun AcBodyScan3__bs3_f_a__call13 () Int)
+(declare-fun AcBodyScan3__bs3_o_a__call13 () Int)
+(declare-fun AcBodyScan3__bs3_pos_b__call13 () Int)
+(declare-fun AcBodyScan3__bs3_f_b__call13 () Int)
+(declare-fun AcBodyScan3__bs3_o_b__call13 () Int)
+(declare-fun AcBodyScan3__bs3_pos_c__call13 () Int)
 (declare-fun tk_ce_f1 () Int)
 (declare-fun tk_ce_o1 () Int)
 (declare-fun tk_ce_mark () Bool)
@@ -2689,98 +2697,82 @@
                        (+ (str.indexof _claim_bare "." _cur_a) 1)
                        (- (- tk_ce_gt (str.indexof _claim_bare "." _cur_a)) 1))))
   (= tk_ce_x (ite tk_ce_run a!1 ""))))
-(assert (let ((a!1 (> (ite tk_ce_run (- 0 2) (- 0 1)) (- 0 2)))
-      (a!2 (str.at _body (- (str.indexof _body (str.++ "_" tk_ce_x) _cur_b) 1)))
-      (a!3 (+ (str.indexof _body (str.++ "_" tk_ce_x) _cur_b)
-              (+ (str.len tk_ce_x) 1))))
-(let ((a!4 (or (>= a!3 (str.len _body))
-               (not (str.contains "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
-                                  (str.at _body a!3)))))
-      (a!8 (ite a!1
-                _cur_b
-                (+ (str.indexof _body (str.++ "_" tk_ce_x) _cur_b) 1))))
-(let ((a!5 (ite (and (not (str.contains "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
-                                        a!2))
-                     a!4)
-                (str.indexof _body (str.++ "_" tk_ce_x) _cur_b)
-                (- 0 2)))
-      (a!9 (str.at _body (- (str.indexof _body (str.++ "_" tk_ce_x) a!8) 1)))
-      (a!10 (+ (str.indexof _body (str.++ "_" tk_ce_x) a!8)
-               (+ (str.len tk_ce_x) 1))))
-(let ((a!6 (ite (< (str.indexof _body (str.++ "_" tk_ce_x) _cur_b) 0)
-                (- 0 1)
-                a!5))
-      (a!11 (or (>= a!10 (str.len _body))
-                (not (str.contains "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
-                                   (str.at _body a!10))))))
-(let ((a!7 (ite a!1 (ite tk_ce_run (- 0 2) (- 0 1)) a!6))
-      (a!12 (ite (and (not (str.contains "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
-                                         a!9))
-                      a!11)
-                 (str.indexof _body (str.++ "_" tk_ce_x) a!8)
-                 (- 0 2))))
-(let ((a!13 (ite (< (str.indexof _body (str.++ "_" tk_ce_x) a!8) 0)
-                 (- 0 1)
-                 a!12))
-      (a!15 (ite (> a!7 (- 0 2))
-                 a!8
-                 (+ (str.indexof _body (str.++ "_" tk_ce_x) a!8) 1))))
-(let ((a!14 (> (ite (> a!7 (- 0 2)) a!7 a!13) (- 0 2)))
-      (a!16 (str.at _body (- (str.indexof _body (str.++ "_" tk_ce_x) a!15) 1)))
-      (a!17 (+ (str.indexof _body (str.++ "_" tk_ce_x) a!15)
-               (+ (str.len tk_ce_x) 1))))
-(let ((a!18 (or (>= a!17 (str.len _body))
-                (not (str.contains "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
-                                   (str.at _body a!17))))))
-(let ((a!19 (ite (and (not (str.contains "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
-                                         a!16))
-                      a!18)
-                 (str.indexof _body (str.++ "_" tk_ce_x) a!15)
-                 (- 0 2))))
-(let ((a!20 (ite (< (str.indexof _body (str.++ "_" tk_ce_x) a!15) 0)
-                 (- 0 1)
-                 a!19)))
-(let ((a!21 (ite a!14 (ite (> a!7 (- 0 2)) a!7 a!13) a!20)))
-  (= tk_ce_f1 a!21)))))))))))))
-(assert (let ((a!1 (> (ite tk_ce_run (- 0 2) (- 0 1)) (- 0 2)))
-      (a!2 (str.at _body (- (str.indexof _body (str.++ "_" tk_ce_x) _cur_b) 1)))
-      (a!3 (+ (str.indexof _body (str.++ "_" tk_ce_x) _cur_b)
-              (+ (str.len tk_ce_x) 1))))
-(let ((a!4 (or (>= a!3 (str.len _body))
-               (not (str.contains "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
-                                  (str.at _body a!3)))))
-      (a!8 (ite a!1
-                _cur_b
-                (+ (str.indexof _body (str.++ "_" tk_ce_x) _cur_b) 1))))
-(let ((a!5 (ite (and (not (str.contains "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
-                                        a!2))
-                     a!4)
-                (str.indexof _body (str.++ "_" tk_ce_x) _cur_b)
-                (- 0 2)))
-      (a!9 (str.at _body (- (str.indexof _body (str.++ "_" tk_ce_x) a!8) 1)))
-      (a!10 (+ (str.indexof _body (str.++ "_" tk_ce_x) a!8)
-               (+ (str.len tk_ce_x) 1))))
-(let ((a!6 (ite (< (str.indexof _body (str.++ "_" tk_ce_x) _cur_b) 0)
-                (- 0 1)
-                a!5))
-      (a!11 (or (>= a!10 (str.len _body))
-                (not (str.contains "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
-                                   (str.at _body a!10))))))
-(let ((a!7 (ite a!1 (ite tk_ce_run (- 0 2) (- 0 1)) a!6))
-      (a!12 (ite (and (not (str.contains "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
-                                         a!9))
-                      a!11)
-                 (str.indexof _body (str.++ "_" tk_ce_x) a!8)
-                 (- 0 2))))
-(let ((a!13 (ite (< (str.indexof _body (str.++ "_" tk_ce_x) a!8) 0)
-                 (- 0 1)
-                 a!12))
-      (a!15 (ite (> a!7 (- 0 2))
-                 a!8
-                 (+ (str.indexof _body (str.++ "_" tk_ce_x) a!8) 1))))
-(let ((a!14 (> (ite (> a!7 (- 0 2)) a!7 a!13) (- 0 2))))
-(let ((a!16 (ite a!14 a!15 (+ (str.indexof _body (str.++ "_" tk_ce_x) a!15) 1))))
-  (= tk_ce_o1 a!16))))))))))
+(assert (= AcBodyScan3__bs3_f0__call13 (ite tk_ce_run (- 0 2) (- 0 1))))
+(assert (= AcBodyScan3__bs3_pos_a__call13
+   (ite (> AcBodyScan3__bs3_f0__call13 (- 0 2))
+        (- 0 1)
+        (str.indexof _body (str.++ "_" tk_ce_x) _cur_b))))
+(assert (let ((a!1 (not (str.contains "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+                              (str.at _body
+                                      (- AcBodyScan3__bs3_pos_a__call13 1)))))
+      (a!2 (str.contains "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+                         (str.at _body
+                                 (+ AcBodyScan3__bs3_pos_a__call13
+                                    (str.len tk_ce_x)
+                                    1)))))
+(let ((a!3 (or (>= (+ AcBodyScan3__bs3_pos_a__call13 (str.len tk_ce_x) 1)
+                   (str.len _body))
+               (not a!2))))
+(let ((a!4 (ite (> AcBodyScan3__bs3_f0__call13 (- 0 2))
+                AcBodyScan3__bs3_f0__call13
+                (ite (< AcBodyScan3__bs3_pos_a__call13 0)
+                     (- 0 1)
+                     (ite (and a!1 a!3) AcBodyScan3__bs3_pos_a__call13 (- 0 2))))))
+  (= AcBodyScan3__bs3_f_a__call13 a!4)))))
+(assert (= AcBodyScan3__bs3_o_a__call13
+   (ite (> AcBodyScan3__bs3_f0__call13 (- 0 2))
+        _cur_b
+        (+ AcBodyScan3__bs3_pos_a__call13 1))))
+(assert (= AcBodyScan3__bs3_pos_b__call13
+   (ite (> AcBodyScan3__bs3_f_a__call13 (- 0 2))
+        (- 0 1)
+        (str.indexof _body (str.++ "_" tk_ce_x) AcBodyScan3__bs3_o_a__call13))))
+(assert (let ((a!1 (not (str.contains "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+                              (str.at _body
+                                      (- AcBodyScan3__bs3_pos_b__call13 1)))))
+      (a!2 (str.contains "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+                         (str.at _body
+                                 (+ AcBodyScan3__bs3_pos_b__call13
+                                    (str.len tk_ce_x)
+                                    1)))))
+(let ((a!3 (or (>= (+ AcBodyScan3__bs3_pos_b__call13 (str.len tk_ce_x) 1)
+                   (str.len _body))
+               (not a!2))))
+(let ((a!4 (ite (> AcBodyScan3__bs3_f_a__call13 (- 0 2))
+                AcBodyScan3__bs3_f_a__call13
+                (ite (< AcBodyScan3__bs3_pos_b__call13 0)
+                     (- 0 1)
+                     (ite (and a!1 a!3) AcBodyScan3__bs3_pos_b__call13 (- 0 2))))))
+  (= AcBodyScan3__bs3_f_b__call13 a!4)))))
+(assert (= AcBodyScan3__bs3_o_b__call13
+   (ite (> AcBodyScan3__bs3_f_a__call13 (- 0 2))
+        AcBodyScan3__bs3_o_a__call13
+        (+ AcBodyScan3__bs3_pos_b__call13 1))))
+(assert (= AcBodyScan3__bs3_pos_c__call13
+   (ite (> AcBodyScan3__bs3_f_b__call13 (- 0 2))
+        (- 0 1)
+        (str.indexof _body (str.++ "_" tk_ce_x) AcBodyScan3__bs3_o_b__call13))))
+(assert (let ((a!1 (not (str.contains "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+                              (str.at _body
+                                      (- AcBodyScan3__bs3_pos_c__call13 1)))))
+      (a!2 (str.contains "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+                         (str.at _body
+                                 (+ AcBodyScan3__bs3_pos_c__call13
+                                    (str.len tk_ce_x)
+                                    1)))))
+(let ((a!3 (or (>= (+ AcBodyScan3__bs3_pos_c__call13 (str.len tk_ce_x) 1)
+                   (str.len _body))
+               (not a!2))))
+(let ((a!4 (ite (> AcBodyScan3__bs3_f_b__call13 (- 0 2))
+                AcBodyScan3__bs3_f_b__call13
+                (ite (< AcBodyScan3__bs3_pos_c__call13 0)
+                     (- 0 1)
+                     (ite (and a!1 a!3) AcBodyScan3__bs3_pos_c__call13 (- 0 2))))))
+  (= tk_ce_f1 a!4)))))
+(assert (= tk_ce_o1
+   (ite (> AcBodyScan3__bs3_f_b__call13 (- 0 2))
+        AcBodyScan3__bs3_o_b__call13
+        (+ AcBodyScan3__bs3_pos_c__call13 1))))
 (assert (= tk_ce_mark (and tk_ce_run (>= tk_ce_f1 0))))
 (assert (= tk_hdr_code (ite tk_lp_ready tk_code_now _code)))
 (assert (= tk_hdr_lp

@@ -20,6 +20,8 @@
 -- The claim index + enum/effects collection. Lifted into driver_main via
 -- `..DriverClaimIdx`. C2ChainLvl (the D2 chain-fold helper) travels with
 -- it as a pure claim (call sites inline identically).
+type VfTy(tyname ∈ String)
+
 claim C2ChainLvl(tail ∈ C2Items, out ∈ C2Items)
     out = C2ICons(C2Dup3, C2ICons(C2Not, C2ICons(C2Swap,
         C2ICons(C2Op(OpImpl), C2ICons(C2Rot3, C2ICons(C2Op(OpImpl),
@@ -67,11 +69,8 @@ fsm DriverClaimIdx
     vf_st ∈ Int
     vf_pend ∈ String
     vf_n ∈ Int
-    vf_t0 ∈ String
-    vf_t1 ∈ String
-    vf_t2 ∈ String
-    vf_t3 ∈ String
-    vf_t4 ∈ String
+    vf_tys ∈ Seq(VfTy)
+    #vf_tys ≤ 5
     -- Variant separators: `|` or a bare following Ident (the newline-
     -- separated enum form — newlines don't survive lexing, and every
     -- top-level decl head is a KEYWORD token, so a trailing Ident can
@@ -109,22 +108,18 @@ fsm DriverClaimIdx
         : vh_open ? 0
         : vfield_more ? _vf_n + 1
         : _vf_n)
-    vf_t0 = (is_first_tick ? "" : (vfield_more ∧ _vf_n = 0) ? vfield_ty : _vf_t0)
-    vf_t1 = (is_first_tick ? "" : (vfield_more ∧ _vf_n = 1) ? vfield_ty : _vf_t1)
-    vf_t2 = (is_first_tick ? "" : (vfield_more ∧ _vf_n = 2) ? vfield_ty : _vf_t2)
-    vf_t3 = (is_first_tick ? "" : (vfield_more ∧ _vf_n = 3) ? vfield_ty : _vf_t3)
-    vf_t4 = (is_first_tick ? "" : (vfield_more ∧ _vf_n = 4) ? vfield_ty : _vf_t4)
+    ∀ k ∈ {0..4} : vf_tys[k].tyname = (is_first_tick ? "" : (vfield_more ∧ _vf_n = k) ? vfield_ty : _vf_tys[k].tyname)
     vfc_f5 ∈ EVFieldList = EVFCons(EVFType(vfield_ty), EVFNil)
     vfc_f4 ∈ EVFieldList = (_vf_n = 4 ? vfc_f5
-        : EVFCons(EVFType(_vf_t4), vfc_f5))
+        : EVFCons(EVFType(_vf_tys[4].tyname), vfc_f5))
     vfc_f3 ∈ EVFieldList = (_vf_n = 3 ? vfc_f5
-        : EVFCons(EVFType(_vf_t3), vfc_f4))
+        : EVFCons(EVFType(_vf_tys[3].tyname), vfc_f4))
     vfc_f2 ∈ EVFieldList = (_vf_n = 2 ? vfc_f5
-        : EVFCons(EVFType(_vf_t2), vfc_f3))
+        : EVFCons(EVFType(_vf_tys[2].tyname), vfc_f3))
     vfc_f1 ∈ EVFieldList = (_vf_n = 1 ? vfc_f5
-        : EVFCons(EVFType(_vf_t1), vfc_f2))
+        : EVFCons(EVFType(_vf_tys[1].tyname), vfc_f2))
     variant_fields ∈ EVFieldList = (_vf_n = 0 ? vfc_f5
-        : EVFCons(EVFType(_vf_t0), vfc_f1))
+        : EVFCons(EVFType(_vf_tys[0].tyname), vfc_f1))
     variant_decl ∈ EnumVariantDecl = (vfield_close
         ? EVDeclP(_vf_pend, variant_fields)
         : EVDecl(variant_name))
