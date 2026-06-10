@@ -117,5 +117,5 @@ walk "$(canon "$ROOT_ARG")" > "$FLAT_TMP"
 # autocarry first (synthesizes `_xs ∈ Seq(…)` duals), then the bounded-Seq
 # lowering rewrites both decls to flat scalars — ordering avoids double
 # duals. The lowering is opt-in (a `#xs ≤ N` bound) and fails loudly on
-# unsupported uses (see scripts/lower-bounded-seq.sh).
-"$SCRIPT_DIR/expand-fsm-autocarry.sh" < "$FLAT_TMP" | "$SCRIPT_DIR/lower-bounded-seq.sh"
+# unsupported uses (see scripts/passes/lower-bounded-seq.sh).
+"$SCRIPT_DIR/passes/expand-fsm-autocarry.sh" < "$FLAT_TMP" | "$SCRIPT_DIR/passes/lower-bounded-seq.sh"

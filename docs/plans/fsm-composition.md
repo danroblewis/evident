@@ -1,6 +1,6 @@
 # carry-preserving fsm composition
 
-Status: landed (2026-06-08). Extends `scripts/expand-fsm-autocarry.sh`
+Status: landed (2026-06-08). Extends `scripts/passes/expand-fsm-autocarry.sh`
 (see `docs/plans/fsm-autocarry.md` for the single-fsm base case).
 
 ## The problem this overturns

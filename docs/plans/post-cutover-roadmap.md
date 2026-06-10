@@ -124,9 +124,9 @@ run passes → lower → emit` — and a place for passes (`compiler2/passes/`).
 The first citizens are the two shell transforms that today run pre-oracle
 in `flatten-evident.sh` (both carry `# TODO: rewrite in Evident` headers
 pointing here — they are interim by charter, not by accident):
-- **`scripts/expand-fsm-autocarry.sh`** — `fsm` → `claim` + `_x` carry-dual
+- **`scripts/passes/expand-fsm-autocarry.sh`** — `fsm` → `claim` + `_x` carry-dual
   synthesis + composition threading.
-- **`scripts/lower-bounded-seq.sh`** — bounded-`Seq` → flat-scalar lowering.
+- **`scripts/passes/lower-bounded-seq.sh`** — bounded-`Seq` → flat-scalar lowering.
   No longer a PoC: as of 2026-06-09 it is the production encoding of every
   compiler2 registry (evt/uev/stv + 13 more families), with a real rule
   inventory the Evident port must reach parity with: decl/dual/literal/
@@ -167,7 +167,7 @@ stays on the functionizer fast path today.
 
 **Resolution (2026-06-09, later the same day):** the registry cleanup DID
 land — not by changing the encoding, but by putting the unroll behind a
-pre-oracle source transform. `scripts/lower-bounded-seq.sh` lets the
+pre-oracle source transform. `scripts/passes/lower-bounded-seq.sh` lets the
 source say `evt ∈ Seq(EnumVariantVal)` / `∀ k ∈ {0..5} : …` while the
 oracle still sees the numbered scalars. The measured walls above are
 walls of the *oracle-visible encoding*, and they stand; the *surface* is

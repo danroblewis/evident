@@ -75,7 +75,7 @@ types.
 
 ## Where the transform lives
 
-`scripts/expand-fsm-autocarry.sh` (awk; `# TODO: rewrite in Evident`). It
+`scripts/passes/expand-fsm-autocarry.sh` (awk; `# TODO: rewrite in Evident`). It
 reads Evident source on stdin and writes the expanded source on stdout:
 rewrites `fsm <Name>` → `claim <Name>` and inserts `_x ∈ base(T)` after each
 anchoring bare field decl whose `_x` is referenced.

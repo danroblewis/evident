@@ -134,7 +134,7 @@ Four keywords produce the same AST node (`SchemaDecl`):
 `sat_*` / `unsat_*` test claims are written as `claim`.
 
 `fsm` is no longer a bare synonym for `claim`. The pre-oracle transform
-`scripts/expand-fsm-autocarry.sh` rewrites `fsm Name` → `claim Name` and,
+`scripts/passes/expand-fsm-autocarry.sh` rewrites `fsm Name` → `claim Name` and,
 for every bare field `x ∈ T` whose `_x` is referenced in the body, inserts
 a `_x ∈ base(T)` carry-dual — so a carry-bearing machine is written `fsm`
 with no hand-written `_<name>` declarations. A plain `claim` (no autocarry)
@@ -316,7 +316,7 @@ no slow *operation*; there is only "is it bounded." See
 > drop is Seq-specific.) `scripts/lint-seq-membership.sh <flat.ev>` flags
 > the bad form loudly. Record-field access on a Seq element (`e.from` in
 > `∀ e ∈ edges`) is also oracle-dropped — BUT on a **bounded** Seq
-> (`#xs ≤ N`, registered by `scripts/lower-bounded-seq.sh`) the element
+> (`#xs ≤ N`, registered by `scripts/passes/lower-bounded-seq.sh`) the element
 > forms `∀ e ∈ xs : …e.f…` and `(∃ e ∈ xs : …e.f…)` are lowered
 > pre-oracle and work fine; they are the preferred surface. Only an
 > UNBOUNDED Seq still needs `coindexed` parallel `Seq`s.
@@ -335,7 +335,7 @@ no slow *operation*; there is only "is it bounded." See
 > every output variable needs one covering `=` assignment; `⇒`/`∨` may
 > only appear *inside* its right-hand expression, never as the thing
 > that defines it. **Exception — the bounded-Seq pair form is safe to
-> write:** on a transform-lowered Seq, `scripts/lower-bounded-seq.sh`
+> write:** on a transform-lowered Seq, `scripts/passes/lower-bounded-seq.sh`
 > recognizes the `∀`-pin + `¬∃`-default PAIR and lowers it to the
 > covered chain itself (first-match-wins; keys must be unique), so the
 > pretty surface stays. Preferred (element form, occupied slots only):
