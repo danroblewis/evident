@@ -8,10 +8,15 @@
 --           by source line number).
 -- MAINTAINS: parity with scripts/expand-fsm-autocarry.sh pass 2 + the
 --            emit decisions of pass 3 — the worklist drain propagates
---            carry through call bindings into registered fsms; inserts
---            are `_x ∈ base(T)` after each carried bare decl; injects
---            append `, _slot ↦ _val` per carried slot-binding without
---            an explicit `_slot` binding already present.
+--            carry through call bindings into registered fsms AND
+--            through bare-mention header-joins (a drained item that is
+--            a header slot of its fsm marks the same-named bare decl
+--            of every mentioning parent); inserts are `_x ∈ base(T)`
+--            after each carried bare decl (header slots, declline "0",
+--            are skipped — their dual is an inject); injects append
+--            `, _slot ↦ _val` per carried slot-binding without an
+--            explicit `_slot` binding already present, or
+--            `, _slot ∈ base` for a header-dual record (val "∈ base").
 import "stdlib/kernel.ev"
 import "scripts/passes/autocarry_lib.ev"
 
@@ -21,6 +26,7 @@ fsm autocarry_fix
     bare_reg ∈ String
     bind_reg ∈ String
     slot_reg ∈ String
+    ment_reg ∈ String
     carry_reg ∈ String
     work_list ∈ String
     ins_out ∈ String
@@ -44,10 +50,11 @@ fsm autocarry_fix
     -- ── phase 7: worklist drain (call-direction carry propagation) ──
     _t_dr_done ∈ Bool = (_t_ph = 7 ∧ _cur_a ≥ #_work_list)
     _t_dr_run ∈ Bool = (_t_ph = 7 ∧ ¬_t_dr_done)
-    _t_dr_dot ∈ Int = (_t_dr_run ? index_of(_work_list, ".", _cur_a) : 0)
-    _t_dr_gt ∈ Int = (_t_dr_run ? index_of(_work_list, "⟩", _cur_a) : 0)
-    _t_dr_f ∈ String = (_t_dr_run ? substr(_work_list, _cur_a + 1, _t_dr_dot - _cur_a - 1) : "")
-    _t_dr_x ∈ String = (_t_dr_run ? substr(_work_list, _t_dr_dot + 1, _t_dr_gt - _t_dr_dot - 1) : "")
+    _t_fx_run ∈ Bool = (_t_dr_run ∨ _t_ph = 6)
+    _t_dr_dot ∈ Int = (_t_fx_run ? index_of(_work_list, ".", _cur_a) : 0)
+    _t_dr_gt ∈ Int = (_t_fx_run ? index_of(_work_list, "⟩", _cur_a) : 0)
+    _t_dr_f ∈ String = (_t_fx_run ? substr(_work_list, _cur_a + 1, _t_dr_dot - _cur_a - 1) : "")
+    _t_dr_x ∈ String = (_t_fx_run ? substr(_work_list, _t_dr_dot + 1, _t_dr_gt - _t_dr_dot - 1) : "")
     _t_dr_fsm_ok ∈ Bool = (_t_dr_run ∧ str_contains(_fsm_set, "⟨" ++ _t_dr_f ++ "⟩"))
     _t_dr_m ∈ Int = (_t_dr_fsm_ok ? index_of(_bind_reg, "❲" ++ _t_dr_f ++ "⦂" ++ _t_dr_x ++ "❳", _cur_b) : -1)
     _t_dr_vs ∈ Int = (_t_dr_m ≥ 0 ? _t_dr_m + #_t_dr_f + #_t_dr_x + 3 : 0)
@@ -60,6 +67,22 @@ fsm autocarry_fix
     _t_dr_bp ∈ Int = (_t_dr_m ≥ 0 ∧ ¬(_t_dr_val = "0") ? index_of(_bare_reg, _t_dr_bkey) : -1)
     _t_dr_new ∈ Bool = (_t_dr_bp ≥ 0 ∧ ¬str_contains(_carry_reg, _t_dr_bkey))
     _t_dr_item_done ∈ Bool = (_t_dr_run ∧ (¬_t_dr_fsm_ok ∨ _t_dr_m < 0))
+    _t_dr_hdr_go ∈ Bool = (_t_dr_item_done
+        ∧ index_of(_bind_reg, "❲" ++ _t_dr_f ++ "⦂" ++ _t_dr_x ++ "❳∈") ≥ 0)
+
+    -- ── phase 6: bare-mention header-join for the drained item ──
+    -- The item ⟨F.x⟩ is a carried header slot of F: every fsm that
+    -- mentions F bare and declares x joins x, so x carries there too.
+    _t_mn_on ∈ Bool = (_t_ph = 6)
+    _t_mn_p ∈ Int = (_t_mn_on ? index_of(_ment_reg, "❨" ++ _t_dr_f ++ "⦂", _cur_b) : -1)
+    _t_mn_done ∈ Bool = (_t_mn_on ∧ _t_mn_p < 0)
+    _t_mn_e ∈ Int = (_t_mn_p ≥ 0 ? index_of(_ment_reg, "❩", _t_mn_p) : 0)
+    _t_mn_par ∈ String = (_t_mn_p ≥ 0
+        ? substr(_ment_reg, _t_mn_p + #_t_dr_f + 2, _t_mn_e - _t_mn_p - #_t_dr_f - 2)
+        : "")
+    _t_mn_bkey ∈ String = ("⟨" ++ _t_mn_par ++ "." ++ _t_dr_x ++ "⟩")
+    _t_mn_bp ∈ Int = (_t_mn_p ≥ 0 ? index_of(_bare_reg, _t_mn_bkey) : -1)
+    _t_mn_new ∈ Bool = (_t_mn_bp ≥ 0 ∧ ¬str_contains(_carry_reg, _t_mn_bkey))
 
     -- ── phase 8: insert walk over bare_reg × carry_reg ──
     _t_iw_done ∈ Bool = (_t_ph = 8 ∧ _cur_a ≥ #_bare_reg)
@@ -73,6 +96,7 @@ fsm autocarry_fix
     _t_iw_c2 ∈ Int = (_t_iw_run ? index_of(_bare_reg, "⦂", _t_iw_c1 + 1) : 0)
     _t_iw_cp ∈ Int = (_t_iw_run ? index_of(_carry_reg, _t_iw_key) : -1)
     _t_iw_isc ∈ Bool = (_t_iw_cp ≥ 0)
+    _t_iw_ln0 ∈ Bool = (_t_iw_run ∧ substr(_bare_reg, _t_iw_c1 + 1, _t_iw_c2 - _t_iw_c1 - 1) = "0")
 
     -- ── phase 9: inject walk over bind_reg call groups ──
     _t_jw_done ∈ Bool = (_t_ph = 9 ∧ _cur_a ≥ #_bind_reg)
@@ -96,10 +120,15 @@ fsm autocarry_fix
     _t_jw_give ∈ Bool = (_t_jw_run ∧ ¬(_t_jw_val = "0") ∧ ¬_t_jw_have
         ∧ str_contains(_fsm_set, "⟨" ++ _t_jw_sub ++ "⟩")
         ∧ str_contains(_carry_reg, "⟨" ++ _t_jw_sub ++ "." ++ _t_jw_slot ++ "⟩"))
+    _t_jw_hdr ∈ Bool = (_t_jw_run ∧ char_at(_bind_reg, _t_jw_brk + 1) = "∈")
+    _t_jw_add ∈ String = (_t_jw_hdr
+        ? ", _" ++ _t_jw_slot ++ " " ++ _t_jw_val
+        : ", _" ++ _t_jw_slot ++ " ↦ _" ++ _t_jw_val)
 
     phase = (is_first_tick ? 1
         : _t_ph = 1 ? (_t_reof ? 7 : 1)
-        : _t_ph = 7 ? (_t_dr_done ? 8 : 7)
+        : _t_ph = 7 ? (_t_dr_done ? 8 : _t_dr_hdr_go ? 6 : 7)
+        : _t_ph = 6 ? (_t_mn_done ? 7 : 6)
         : _t_ph = 8 ? (_t_iw_done ? 9 : 8)
         : _t_ph = 9 ? (_t_jw_done ? 10 : 9)
         : _t_ph = 10 ? 11
@@ -108,18 +137,24 @@ fsm autocarry_fix
     bare_reg = (is_first_tick ? "" : _t_kind = "B" ? _bare_reg ++ _t_payload : _bare_reg)
     bind_reg = (is_first_tick ? "" : _t_kind = "D" ? _bind_reg ++ _t_payload : _bind_reg)
     slot_reg = (is_first_tick ? "" : _t_kind = "S" ? _slot_reg ++ _t_payload : _slot_reg)
+    ment_reg = (is_first_tick ? "" : _t_kind = "M" ? _ment_reg ++ _t_payload : _ment_reg)
     carry_reg = (is_first_tick ? ""
         : _t_kind = "C" ? _carry_reg ++ _t_payload
         : _t_dr_new
         ? _carry_reg ++ _t_dr_bkey
           ++ substr(_bare_reg, _t_dr_bp + #_t_dr_bkey,
               index_of(_bare_reg, "⦂", _t_dr_bp + #_t_dr_bkey) - _t_dr_bp - #_t_dr_bkey) ++ "⦂"
+        : _t_mn_new
+        ? _carry_reg ++ _t_mn_bkey
+          ++ substr(_bare_reg, _t_mn_bp + #_t_mn_bkey,
+              index_of(_bare_reg, "⦂", _t_mn_bp + #_t_mn_bkey) - _t_mn_bp - #_t_mn_bkey) ++ "⦂"
         : _carry_reg)
     work_list = (is_first_tick ? ""
         : _t_kind = "C" ? _work_list ++ substr(_t_payload, 0, index_of(_t_payload, "⟩") + 1)
         : _t_dr_new ? _work_list ++ _t_dr_bkey
+        : _t_mn_new ? _work_list ++ _t_mn_bkey
         : _work_list)
-    ins_out = (is_first_tick ? "" : _t_iw_run ∧ _t_iw_isc
+    ins_out = (is_first_tick ? "" : _t_iw_run ∧ _t_iw_isc ∧ ¬_t_iw_ln0
         ? _ins_out ++ "⟦" ++ substr(_bare_reg, _t_iw_c1 + 1, _t_iw_c2 - _t_iw_c1 - 1) ++ "⟧_"
           ++ _t_iw_x ++ " ∈ "
           ++ substr(_carry_reg, _t_iw_cp + #_t_iw_key,
@@ -130,8 +165,9 @@ fsm autocarry_fix
         : _inj_out)
     cur_a = (is_first_tick ? 0
         : _t_ph = 1 ? 0
-        : _t_dr_run ? (_t_dr_item_done ? _t_dr_gt + 1 : _cur_a)
+        : _t_dr_run ? (_t_dr_hdr_go ? _cur_a : _t_dr_item_done ? _t_dr_gt + 1 : _cur_a)
         : _t_ph = 7 ∧ _t_dr_done ? 0
+        : _t_ph = 6 ? (_t_mn_done ? _t_dr_gt + 1 : _cur_a)
         : _t_iw_run ? _t_iw_c2 + 1
         : _t_ph = 8 ∧ _t_iw_done ? 0
         : _t_jw_run ? _t_jw_nc + 1
@@ -139,11 +175,12 @@ fsm autocarry_fix
     cur_b = (is_first_tick ? 0
         : _t_ph = 1 ? 0
         : _t_dr_run ? (_t_dr_item_done ? 0 : _t_dr_m + 1)
+        : _t_ph = 6 ? (_t_mn_done ? 0 : _t_mn_p + 1)
         : _cur_b)
     acc_a = (is_first_tick ? ""
         : _t_ph = 7 ? ""
-        : _t_jw_newgrp ? (_t_jw_give ? ", _" ++ _t_jw_slot ++ " ↦ _" ++ _t_jw_val : "")
-        : _t_jw_run ∧ _t_jw_give ? _acc_a ++ ", _" ++ _t_jw_slot ++ " ↦ _" ++ _t_jw_val
+        : _t_jw_newgrp ? (_t_jw_give ? _t_jw_add : "")
+        : _t_jw_run ∧ _t_jw_give ? _acc_a ++ _t_jw_add
         : _acc_a)
     acc_b = (is_first_tick ? ""
         : _t_ph = 7 ? ""
