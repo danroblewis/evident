@@ -16,7 +16,9 @@
 --           the header-slot fresh-decl emission (pskip_decl_fire/pskip_decl_items —
 --           unjoined header slots of a headered callee get scoped C2DeclConst
 --           at the seam; claim-headers plan, fixtures 142-148), the
---           bindzip_* zip/bind stage, and the lowered C2App/C2DeclConst item
+--           bindzip_* zip/bind stage with its bz_count/bz_names/bz_handles
+--           bind columns (appended onto compose's bind tape on
+--           bindzip_act), and the lowered C2App/C2DeclConst item
 --           runs for the bound call.
 -- MAINTAINS: a positional call `(e1, e2, e3) ∈ add` parses each element to
 --           a handle, then binds the handles to the callee's first-line
@@ -302,25 +304,50 @@ fsm DriverPosBind
         : (_pos_argc = 2 ∧ _tuple_pos = 0) ? h_2nd
         : (_pos_argc = 3 ∧ _tuple_pos = 0) ? h_3rd
         : h_2nd)
-    tup_binds ∈ C2Binds = (tup_rec_slot ≥ 0
-        ? CBCons(tup_param_name ++ "." ++ tup_field0, tup_h0,
-            CBCons(tup_param_name ++ "." ++ tup_field1, tup_h1, CBNil))
-        : CBCons(tup_param_name, tup_h0, CBNil))
-    tup_binds_full ∈ C2Binds = (_pos_argc = 2
-        ? CBCons(_param_names[1].s, h_top, tup_binds)
-        : _pos_argc = 3
-        ? (_tuple_pos = 0
-            ? CBCons(_param_names[1].s, h_2nd, CBCons(_param_names[2].s, h_top, tup_binds))
-            : CBCons(_param_names[0].s, h_4th, CBCons(_param_names[2].s, h_top, tup_binds)))
-        : tup_binds)
-    bindzip_plain ∈ C2Binds = (_pos_argc = 1 ? CBCons(_param_names[0].s, bindzip_h0, CBNil)
-        : _pos_argc = 2 ? CBCons(_param_names[0].s, bindzip_h0, CBCons(_param_names[1].s, bindzip_h1, CBNil))
-        : _pos_argc = 3 ? CBCons(_param_names[0].s, bindzip_h0, CBCons(_param_names[1].s, bindzip_h1,
-            CBCons(_param_names[2].s, bindzip_h2, CBNil)))
-        : _pos_argc = 4 ? CBCons(_param_names[0].s, bindzip_h0, CBCons(_param_names[1].s, bindzip_h1,
-            CBCons(_param_names[2].s, bindzip_h2, CBCons(_param_names[3].s, bindzip_h3, CBNil))))
-        : CBNil)
-    bindzip_binds ∈ C2Binds = (_has_tuple ? tup_binds_full : bindzip_plain)
+    -- ── bindzip staging columns — appended onto compose's bind tape ──
+    -- bz_names/bz_handles[0..bz_count-1] are this close's binds, in the
+    -- cons order the retired C2Binds builders produced: the non-tuple
+    -- params first (tuple case), then the tuple's record fields (or the
+    -- bare param when the callee param is not a record type).
+    tup_name0 ∈ String = (tup_rec_slot ≥ 0
+        ? (tup_param_name ++ "." ++ tup_field0)
+        : tup_param_name)
+    tup_name1 ∈ String = tup_param_name ++ "." ++ tup_field1
+    bz_count ∈ Int = (_has_tuple
+        ? ((_pos_argc = 2 ? 1 : _pos_argc = 3 ? 2 : 0) + (tup_rec_slot ≥ 0 ? 2 : 1))
+        : _pos_argc ≤ 4 ? _pos_argc : 0)
+    bz_names ∈ Seq(String)
+    #bz_names ≤ 6
+    bz_handles ∈ Seq(Int)
+    #bz_handles ≤ 6
+    bz_names[0] = (_has_tuple
+        ? (_pos_argc = 2 ? _param_names[1].s
+            : _pos_argc = 3 ? (_tuple_pos = 0 ? _param_names[1].s : _param_names[0].s)
+            : tup_name0)
+        : _param_names[0].s)
+    bz_handles[0] = (_has_tuple
+        ? (_pos_argc = 2 ? h_top
+            : _pos_argc = 3 ? (_tuple_pos = 0 ? h_2nd : h_4th)
+            : tup_h0)
+        : bindzip_h0)
+    bz_names[1] = (_has_tuple
+        ? (_pos_argc = 2 ? tup_name0 : _pos_argc = 3 ? _param_names[2].s : tup_name1)
+        : _param_names[1].s)
+    bz_handles[1] = (_has_tuple
+        ? (_pos_argc = 2 ? tup_h0 : _pos_argc = 3 ? h_top : tup_h1)
+        : bindzip_h1)
+    bz_names[2] = (_has_tuple
+        ? (_pos_argc = 2 ? tup_name1 : _pos_argc = 3 ? tup_name0 : "")
+        : _param_names[2].s)
+    bz_handles[2] = (_has_tuple
+        ? (_pos_argc = 2 ? tup_h1 : _pos_argc = 3 ? tup_h0 : 0)
+        : bindzip_h2)
+    bz_names[3] = (_has_tuple ? (_pos_argc = 3 ? tup_name1 : "") : _param_names[3].s)
+    bz_handles[3] = (_has_tuple ? (_pos_argc = 3 ? tup_h1 : 0) : bindzip_h3)
+    bz_names[4] = ""
+    bz_handles[4] = 0
+    bz_names[5] = ""
+    bz_handles[5] = 0
     bindzip_pop ∈ C2H = (_has_tuple
         ? (_pos_argc = 1 ? h_tail2
             : _pos_argc = 2 ? h_tail3

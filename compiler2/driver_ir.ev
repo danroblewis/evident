@@ -2,7 +2,7 @@
 -- The intermediate representation produced by the line classifier and
 -- consumed by the work-item interpreter / dispatch: one claim-body line
 -- compiles to a small C2Items program over a C2H handle stack, with
--- C2Binds/C2Frames carrying the composition-inline frame state. Hoisted
+-- C2Frames carrying the composition-inline frame state. Hoisted
 -- out of driver.ev so the extracted modules (and their isolation tests)
 -- share the same IR definitions.
 import "compiler/parser.ev"
@@ -158,15 +158,17 @@ enum C2H =
     C2HNil
     C2HCons(Int, C2H)
 
-enum C2Binds =
-    CBNil
-    CBCons(String, Int, C2Binds)
-
--- CFCons fields: return cursor, scope prefix, binds, join-set, tail.
--- The join-set is the caller's header join-set to RESTORE on pop:
--- "*" = join everything (header-less callee / lift), "" = join nothing
--- beyond binds (headered + mapped), "|a|b|" = join exactly these names
+-- CFCons fields: return cursor, scope prefix, the caller's bind-tape
+-- window cursors (bind_base, bind_top — both restored on pop; the tape
+-- itself is compose's global `binds ∈ Seq(Bind)`, never copied into
+-- the frame), join-set, tail. Both cursors ride in the frame because
+-- bare/`..`/guard splices INHERIT the caller's window while slot and
+-- positional calls open a fresh one — a single saved base cannot
+-- restore both kinds (docs/plans/bind-peel-lowering.md). The join-set
+-- is the caller's header join-set to RESTORE on pop: "*" = join
+-- everything (header-less callee / lift), "" = join nothing beyond
+-- binds (headered + mapped), "|a|b|" = join exactly these names
 -- (headered + bare mention) — docs/plans/claim-headers-interface.md.
 enum C2Frames =
     CFNil
-    CFCons(Int, String, C2Binds, String, C2Frames)
+    CFCons(Int, String, Int, Int, String, C2Frames)
