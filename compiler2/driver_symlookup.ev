@@ -39,11 +39,11 @@ fsm DriverSymLookup
     lookup_pos_now ∈ Int = (lookup_pfx_hit ? lookup_pfx_pos : lookup_pos)
     lookup_found2 ∈ Bool = (lookup_pfx_hit ∨ lookup_found)
     lookup_pure ∈ Bool = (lookup_special ∨ (¬lookup_found2))
-    lookup_enum_val ∈ Int
-    ∀ e ∈ enum_values : ((e.name = lookup_name) ⇒ (lookup_enum_val = e.value))
-    (¬(∃ e ∈ enum_values : e.name = lookup_name)) ⇒ (lookup_enum_val = 0)
-    lookup_handle ∈ Int = (lookup_name = "true" ? z_true
-        : lookup_name = "false" ? z_false
-        : lookup_enum_val)
+    lookup_handle ∈ Int
+    (lookup_name = "true") ⇒ (lookup_handle = z_true)
+    (lookup_name = "false") ⇒ (lookup_handle = z_false)
+    ∀ e ∈ enum_values : ((e.name = lookup_name) ⇒ (lookup_handle = e.value))
+    (¬((lookup_name = "true") ∨ (lookup_name = "false")
+        ∨ (∃ e ∈ enum_values : e.name = lookup_name))) ⇒ (lookup_handle = 0)
     eff_sym_read ∈ Effect
     BuildMemReadLong(addr ↦ sym_buf.base + (8 * (lookup_pos_now / 32)), eff ↦ eff_sym_read)
