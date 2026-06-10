@@ -1,7 +1,7 @@
 -- MODULE DriverRecVal
 -- CONSUMES: a record-instance work item — recval_slot (the registry slot index
 --           0/1/2), recval_name (the instance name), work_tail (the rest of the
---           work-item program), and the record-type registry rec0/e1/e2.
+--           work-item program), and the record-type registry recs.
 -- PRODUCES: recval_items (the C2RecVal expansion — the record value as a
 --           ctor app over its flattened dotted-const segments) and
 --           recval_decl_items (the C2RecDecl expansion — the declarations of
@@ -15,15 +15,15 @@
 -- The record value/decl expansion. Lifted into driver_main via
 -- `..DriverRecVal`.
 fsm DriverRecVal
-    recval_fnames ∈ String = (recval_slot = 0 ? rec0.fnames : recval_slot = 1 ? rec1.fnames : rec2.fnames)
-    recval_ftypes ∈ String = (recval_slot = 0 ? rec0.ftypes : recval_slot = 1 ? rec1.ftypes : rec2.ftypes)
-    recval_nf ∈ Int = (recval_slot = 0 ? rec0.n_fields : recval_slot = 1 ? rec1.n_fields : rec2.n_fields)
-    recval_ctor ∈ Int = (recval_slot = 0 ? rec0.ctor : recval_slot = 1 ? rec1.ctor : rec2.ctor)
+    recval_fnames ∈ String = recs[recval_slot].fnames
+    recval_ftypes ∈ String = recs[recval_slot].ftypes
+    recval_nf ∈ Int = recs[recval_slot].n_fields
+    recval_ctor ∈ Int = recs[recval_slot].ctor
     recval_fields ∈ Seq(RecField)
     #recval_fields ≤ 6
     ∀ k ∈ {0..5} : RtRecName(s ↦ recval_fnames, i ↦ k, name ↦ recval_fields[k].name)
     ∀ k ∈ {0..5} : RtRecName(s ↦ recval_ftypes, i ↦ k, name ↦ recval_fields[k].ty)
-    ∀ k ∈ {0..5} : RtIdxOf(nm ↦ recval_fields[k].ty, e0 ↦ rec0, e1 ↦ rec1, e2 ↦ rec2, idx ↦ recval_fields[k].kidx)
+    ∀ k ∈ {0..5} : RtIdxOf(nm ↦ recval_fields[k].ty, idx ↦ recval_fields[k].kidx)
     recval_seg0 ∈ C2Item = (recval_fields[0].kidx ≥ 0
         ? C2RecVal(recval_name ++ "." ++ recval_fields[0].name, recval_fields[0].kidx)
         : C2Process(EIdent(recval_name ++ "." ++ recval_fields[0].name)))

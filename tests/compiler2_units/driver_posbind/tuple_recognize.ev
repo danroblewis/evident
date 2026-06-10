@@ -147,15 +147,22 @@ fsm main
     pratt_bad = (is_first_tick ? false : _pratt_bad)
     pratt_result ∈ Expr
     pratt_result = (is_first_tick ? EInt(0) : _pratt_result)
-    rec0 ∈ RecTypeEntry(name ↦ "", fnames ↦ "", ftypes ↦ "", n_fields ↦ 0,
-        sort ↦ 0, ctor ↦ 0, asort ↦ 0, ssort ↦ 0,
-        acc0 ↦ 0, acc1 ↦ 0, acc2 ↦ 0, acc3 ↦ 0, acc4 ↦ 0, acc5 ↦ 0)
-    rec1 ∈ RecTypeEntry(name ↦ "", fnames ↦ "", ftypes ↦ "", n_fields ↦ 0,
-        sort ↦ 0, ctor ↦ 0, asort ↦ 0, ssort ↦ 0,
-        acc0 ↦ 0, acc1 ↦ 0, acc2 ↦ 0, acc3 ↦ 0, acc4 ↦ 0, acc5 ↦ 0)
-    rec2 ∈ RecTypeEntry(name ↦ "", fnames ↦ "", ftypes ↦ "", n_fields ↦ 0,
-        sort ↦ 0, ctor ↦ 0, asort ↦ 0, ssort ↦ 0,
-        acc0 ↦ 0, acc1 ↦ 0, acc2 ↦ 0, acc3 ↦ 0, acc4 ↦ 0, acc5 ↦ 0)
+    recs ∈ Seq(RecTypeEntry)
+    #recs ≤ 3
+    ∀ e ∈ recs : e.name = ""
+    ∀ e ∈ recs : e.fnames = ""
+    ∀ e ∈ recs : e.ftypes = ""
+    ∀ e ∈ recs : e.n_fields = 0
+    ∀ e ∈ recs : e.sort = 0
+    ∀ e ∈ recs : e.ctor = 0
+    ∀ e ∈ recs : e.asort = 0
+    ∀ e ∈ recs : e.ssort = 0
+    ∀ e ∈ recs : e.accs[0] = 0
+    ∀ e ∈ recs : e.accs[1] = 0
+    ∀ e ∈ recs : e.accs[2] = 0
+    ∀ e ∈ recs : e.accs[3] = 0
+    ∀ e ∈ recs : e.accs[4] = 0
+    ∀ e ∈ recs : e.accs[5] = 0
     seqlit_elem_items ∈ C2Items
     seqlit_elem_items = (is_first_tick ? C2INil : _seqlit_elem_items)
     sym_names ∈ String
