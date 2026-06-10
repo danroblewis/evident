@@ -308,7 +308,25 @@ because "the names happen to line up" is a component boundary erased
 not a style (the claim-headers plan names it as exactly that; the
 1,316-name rename of `docs/rename-map.md` is the repo-wide repayment of
 that debt). Expression-scoped bound variables may be short (`e`, `v`,
-`k`, `x`).
+`k`, `x`). The shape conventions (from the rename, the house style):
+
+- **Registries are plural nouns**: `user_variants`, `set_vars`,
+  `param_names` — a bounded `Seq` of records reads as the set it is.
+- **Bools read as predicates in a guard**: states `tok_ready`,
+  `line_end`; lookup hits `*_hit`, `*_found`; gates `*_on`, `*_cap`;
+  a Bool named like a noun (`flag`, `mode2`) is unreviewable.
+- **Key-valued cursor state says so**: `setvar_cur_name`,
+  `variant_acc_name` — the `_name` suffix marks "this identifies an
+  entry by key" (an `_idx`/`_slot` suffix on carried state is the
+  index-in-interface smell, §3.2).
+- **Never hand-write `_x` duals** — `fsm` synthesizes them; a
+  hand-written dual is either dead or a footgun.
+- **Per-slot scalars (`xs_0_name`) never appear in source** — they are
+  transform output; their presence in a `.ev` file means lowered
+  artifact leaked back into surface (BLOCKER, §4 V1 territory).
+- Component prefixes are words, not codes (`lookup_`, `match_`,
+  `fetch_`), and only where disambiguation is needed; they should
+  retire as claim headers (§2.2) land.
 
 3.7 **Comments: only the five allowed classes.** Module contract
 headers (`-- MODULE X` with CONSUMES/PRODUCES/MAINTAINS); measured
@@ -348,6 +366,8 @@ preferred alternative. **NOTE** = style.
 | V13 | **Comment violations** — restating, narration, code-in-prose, semantics explanations | NOTE | CLAUDE.md comment rules (code-in-comments caused real lint false positives). |
 | V14 | **Naming violations** — letter-code prefixes aside (V5), opaque abbreviations where 2–3 words exist | NOTE | `docs/rename-map.md`. |
 | V15 | **Unbounded carried collections** — a carried `Seq`/cons list with no static bound, or unbounded data kept in state instead of on the tape | BLOCKER | Operator ruling §1.2 (FSMs stay finite). |
+| V16 | **Missing module contract** — a multi-schema file without a `-- MODULE` CONSUMES/PRODUCES/MAINTAINS header | NOTE | §6.1; the comment rules made the header the interface. |
+| V17 | **Oversized schema** — past the §6.3 budgets; a wide fsm is a missing abstraction | NOTE | The driver_main decomposition (tasks #27/#28) is the precedent. |
 
 ---
 
@@ -377,3 +397,40 @@ never to approve it — even when it passes tests 2–5, and *especially*
 when a transform already lowers it and the gates are green (the
 admissibility rule). Calibration for this document lives in
 `docs/evident-purism-calibration.md`.
+
+---
+
+## 6. Organization and size (added 2026-06-10; budgets are NOTE-severity, operator-tunable)
+
+6.1 **One module per file, contract first.** A file holds one component:
+a `-- MODULE X` header with CONSUMES/PRODUCES/MAINTAINS (the interface
+is structurally invisible without it — §3.7), then its types, then its
+fsm/claims. Until claim headers (§2.2) make interfaces checked, the
+contract header IS the interface; a file without one is unreviewable
+(V16).
+
+6.2 **Entry points read as wiring.** A top-level fsm composes
+components; logic lives in the components. An entry point that mixes
+composition lines with field-level constraint logic is doing both jobs
+badly. Inside a component: declarations, then writes, then derived
+reads — a reader should find a registry's decl, its writers, and its
+readers adjacent, with one-line section banners in long files.
+
+6.3 **Size budgets** — past these, decompose (sub-fsms, subclaims,
+extracted types). The numbers are heuristics from the driver
+decomposition, not laws; the critic emits NOTE, never blocks:
+
+| Schema | Budget | Past it |
+| --- | --- | --- |
+| `type` body | ≤ ~12 invariant lines | the type is hiding a claim — extract it |
+| pure `claim` | ≤ ~25 lines | split into subclaims or compose smaller claims |
+| `fsm` | ≤ ~80 lines (≤ ~150 with banners, tolerated) | decompose into carry-owning sub-fsms |
+| file | ≤ ~350 lines, ONE module | split the module |
+
+A wide fsm is usually a missing abstraction, not a long machine: the
+fix is naming the hidden component, not adding banners (V17).
+
+6.4 **Registries sit with their writers.** A bounded-Seq registry, its
+bound, its allocation write, and its keyed updates belong together;
+keyed *projections* belong with their consumers. A registry written in
+one file and updated in another is a split brain — move one side.
