@@ -127,15 +127,16 @@ pub(super) fn inline_body_items_guarded(
                 // BODY_MARKERS are metadata identifiers with no Bool translation; skip silently.
                 if let crate::core::ast::Expr::Identifier(s) = e {
                     if crate::core::ast::BODY_MARKERS.contains(&s.as_str()) { continue; }
-                    // Bare claim name → names-match passthrough composition.
+                    // Bare claim name → ClaimCall with no mappings: parent
+                    // names pass down (names-match), but the claim's own
+                    // unmapped internals get per-call fresh consts — HIDDEN
+                    // from the parent. Lift (shared internals) is spelled
+                    // `..name`. Specced by conformance 139/140/141.
                     if schemas.contains_key(s) {
-                        if !guard_is_satisfiable(solver, guard) { continue; }
-                        if try_enter(visited, s).is_none() { continue; }
-                        let claim = schemas.get(s).unwrap();
-                        inline_body_items_guarded(
-                            &claim.body, env, solver, schemas, ctx, registry, enums, visited, guard, tracker
+                        calls::inline_claim_call(
+                            s, &[],
+                            env, solver, schemas, ctx, registry, enums, visited, guard, tracker,
                         );
-                        exit_frame(visited, s);
                         continue;
                     }
                 }
