@@ -186,7 +186,14 @@ import "compiler2/driver_ir.ev"
 
 fsm driver_main
     -- ── INPUT — per-process source path (see compiler2/driver_input.ev) ──
-    ..DriverInput
+    -- Bare mention against its header: these four carried declarations
+    -- ARE the input interface; the per-read match-extract strings are
+    -- per-call-site internals.
+    got_path ∈ Bool
+    src_path ∈ String
+    input ∈ String
+    target ∈ String
+    DriverInput
 
     cap_int ∈ Int = match last_results[0]
         IntResult(n) ⇒ n
