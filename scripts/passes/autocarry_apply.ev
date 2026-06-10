@@ -34,105 +34,105 @@ fsm autocarry_apply
     scan_found ∈ Int
     splice_add ∈ String
 
-    _t_ph ∈ Int = (is_first_tick ? 0 : _phase)
-    _t_rline ∈ String = match last_results[1]
+    tk_ph ∈ Int = (is_first_tick ? 0 : _phase)
+    tk_rline ∈ String = match last_results[1]
         StringResult(s) ⇒ s
         _ ⇒ ""
-    _t_reof ∈ Bool = match last_results[1]
+    tk_reof ∈ Bool = match last_results[1]
         EofResult ⇒ true
         _ ⇒ false
 
-    _t_nn ∈ Int = (is_first_tick ? 0 : _t_ph = 3 ∧ ¬_t_reof ? _line_no + 1 : _line_no)
+    tk_nn ∈ Int = (is_first_tick ? 0 : tk_ph = 3 ∧ ¬tk_reof ? _line_no + 1 : _line_no)
 
     -- paren-balance scan: one event per tick over the held call line
-    _t_s1p, _t_s1d, _t_s1f, _t_s1op, _t_s1cp ∈ Int
-    AcParenStep(s ↦ _cur_line, p0 ↦ _scan_pos, d0 ↦ _scan_depth, f0 ↦ _scan_found, op ↦ _t_s1op, cp ↦ _t_s1cp, p1 ↦ _t_s1p, d1 ↦ _t_s1d, f1 ↦ _t_s1f)
-    _t_scan_done ∈ Bool = (_t_ph = 4 ∧ _t_s1f > -2)
-    _t_plain_emit ∈ Bool = (_t_ph = 3 ∧ ¬_t_reof ∧ ¬_t_has_inj)
-    _t_emit_now ∈ Bool = (_t_plain_emit ∨ _t_scan_done)
+    tk_s1p, tk_s1d, tk_s1f, tk_s1op, tk_s1cp ∈ Int
+    AcParenStep(s ↦ _cur_line, p0 ↦ _scan_pos, d0 ↦ _scan_depth, f0 ↦ _scan_found, op ↦ tk_s1op, cp ↦ tk_s1cp, p1 ↦ tk_s1p, d1 ↦ tk_s1d, f1 ↦ tk_s1f)
+    tk_scan_done ∈ Bool = (tk_ph = 4 ∧ tk_s1f > -2)
+    tk_plain_emit ∈ Bool = (tk_ph = 3 ∧ ¬tk_reof ∧ ¬tk_has_inj)
+    tk_emit_now ∈ Bool = (tk_plain_emit ∨ tk_scan_done)
 
     -- sequential registry consumption: the next pending record's line
     -- number is a carried Int, so the per-line check is one comparison
-    _t_ins_take ∈ Bool = (_t_emit_now ∧ _t_nn = _ins_no)
-    _t_inj_take ∈ Bool = (_t_ph = 3 ∧ ¬_t_reof ∧ _t_nn = _inj_no)
-    _t_has_inj ∈ Bool = (_t_ph = 3 ∧ ¬_t_reof ∧ _t_nn = _inj_no ? index_of(_t_rline, "(") ≥ 0 : false)
+    tk_ins_take ∈ Bool = (tk_emit_now ∧ tk_nn = _ins_no)
+    tk_inj_take ∈ Bool = (tk_ph = 3 ∧ ¬tk_reof ∧ tk_nn = _inj_no)
+    tk_has_inj ∈ Bool = (tk_ph = 3 ∧ ¬tk_reof ∧ tk_nn = _inj_no ? index_of(tk_rline, "(") ≥ 0 : false)
 
-    _t_ins_src ∈ String = (_t_ph = 1 ? _t_rline : _ins_reg)
-    _t_ins_c ∈ Int = (_t_ph = 1 ? 0 : _ins_cur)
-    _t_ins_step ∈ Bool = (_t_ph = 1 ∨ _t_ins_take)
-    _t_inj_src ∈ String = (_t_ph = 2 ? _t_rline : _inj_reg)
-    _t_inj_c ∈ Int = (_t_ph = 2 ? 0 : _inj_cur)
-    _t_inj_step ∈ Bool = (_t_ph = 2 ∨ _t_inj_take)
+    tk_ins_src ∈ String = (tk_ph = 1 ? tk_rline : _ins_reg)
+    tk_ins_c ∈ Int = (tk_ph = 1 ? 0 : _ins_cur)
+    tk_ins_step ∈ Bool = (tk_ph = 1 ∨ tk_ins_take)
+    tk_inj_src ∈ String = (tk_ph = 2 ? tk_rline : _inj_reg)
+    tk_inj_c ∈ Int = (tk_ph = 2 ? 0 : _inj_cur)
+    tk_inj_step ∈ Bool = (tk_ph = 2 ∨ tk_inj_take)
 
-    _t_src_line ∈ String = (_t_ph = 3 ? _t_rline : _cur_line)
-    _t_ind_end ∈ Int
-    AcWsSkip(s ↦ (_t_ins_take ? _t_src_line : ""), from ↦ 0, out ↦ _t_ind_end)
+    tk_src_line ∈ String = (tk_ph = 3 ? tk_rline : _cur_line)
+    tk_ind_end ∈ Int
+    AcWsSkip(s ↦ (tk_ins_take ? tk_src_line : ""), from ↦ 0, out ↦ tk_ind_end)
 
     -- the fsm→claim rewrite applies on BOTH paths: plain emit and the
     -- inject capture (a headered fsm line is spliced, then emitted)
-    _t_apl_fsm ∈ Bool = (_t_ph = 3 ∧ ¬_t_reof
-        ∧ (starts_with(_t_rline, "fsm ") ∨ starts_with(_t_rline, "fsm\t")))
-    _t_inline ∈ String = (_t_apl_fsm ? "claim" ++ substr(_t_rline, 3, #_t_rline - 3) : _t_rline)
+    tk_apl_fsm ∈ Bool = (tk_ph = 3 ∧ ¬tk_reof
+        ∧ (starts_with(tk_rline, "fsm ") ∨ starts_with(tk_rline, "fsm\t")))
+    tk_inline ∈ String = (tk_apl_fsm ? "claim" ++ substr(tk_rline, 3, #tk_rline - 3) : tk_rline)
 
-    _t_out_full ∈ String = ((_t_plain_emit
-        ? _t_inline
-        : _t_scan_done ∧ _t_s1f ≥ 0
-            ? substr(_cur_line, 0, _t_s1f) ++ _splice_add ++ substr(_cur_line, _t_s1f, #_cur_line - _t_s1f)
+    tk_out_full ∈ String = ((tk_plain_emit
+        ? tk_inline
+        : tk_scan_done ∧ tk_s1f ≥ 0
+            ? substr(_cur_line, 0, tk_s1f) ++ _splice_add ++ substr(_cur_line, tk_s1f, #_cur_line - tk_s1f)
             : _cur_line)
-        ++ (_t_ins_take ? "\n" ++ substr(_t_src_line, 0, _t_ind_end) ++ _ins_txt : ""))
+        ++ (tk_ins_take ? "\n" ++ substr(tk_src_line, 0, tk_ind_end) ++ _ins_txt : ""))
 
     eff_out ∈ Effect
-    BuildPrintln(s ↦ _t_out_full, eff ↦ eff_out)
+    BuildPrintln(s ↦ tk_out_full, eff ↦ eff_out)
     eff_nop ∈ Effect
     eff_nop = LibCall("libc", "getpid", ⟨⟩)
-    _t_exit_now ∈ Bool = (_t_reof ∧ (_t_ph = 1 ∨ _t_ph = 2 ∨ _t_ph = 3))
-    _t_reg_read ∈ Bool = (_t_ph = 1 ∨ _t_ph = 2)
+    tk_exit_now ∈ Bool = (tk_reof ∧ (tk_ph = 1 ∨ tk_ph = 2 ∨ tk_ph = 3))
+    tk_reg_read ∈ Bool = (tk_ph = 1 ∨ tk_ph = 2)
 
     phase = (is_first_tick ? 1
-        : _t_ph = 1 ? 2
-        : _t_ph = 2 ? 3
-        : _t_ph = 3 ? (_t_has_inj ? 4 : 3)
-        : _t_ph = 4 ? (_t_scan_done ? 3 : 4)
-        : _t_ph)
-    line_no = (is_first_tick ? 0 : _t_nn)
-    ins_reg = (is_first_tick ? "" : _t_ph = 1 ? _t_rline : _ins_reg)
-    inj_reg = (is_first_tick ? "" : _t_ph = 2 ? _t_rline : _inj_reg)
-    _t_ins_no_parsed ∈ Int
-    AcParseInt(s ↦ _t_ins_src, from ↦ _t_ins_c + 1, len ↦ (_t_ins_step ∧ _t_ins_c < #_t_ins_src ? index_of(_t_ins_src, "⟧", _t_ins_c) - _t_ins_c - 1 : 0), out ↦ _t_ins_no_parsed)
-    ins_no = (is_first_tick ? -1 : _t_ins_step
-        ? (_t_ins_c ≥ #_t_ins_src ? -1 : _t_ins_no_parsed)
+        : tk_ph = 1 ? 2
+        : tk_ph = 2 ? 3
+        : tk_ph = 3 ? (tk_has_inj ? 4 : 3)
+        : tk_ph = 4 ? (tk_scan_done ? 3 : 4)
+        : tk_ph)
+    line_no = (is_first_tick ? 0 : tk_nn)
+    ins_reg = (is_first_tick ? "" : tk_ph = 1 ? tk_rline : _ins_reg)
+    inj_reg = (is_first_tick ? "" : tk_ph = 2 ? tk_rline : _inj_reg)
+    tk_ins_no_parsed ∈ Int
+    AcParseInt(s ↦ tk_ins_src, from ↦ tk_ins_c + 1, len ↦ (tk_ins_step ∧ tk_ins_c < #tk_ins_src ? index_of(tk_ins_src, "⟧", tk_ins_c) - tk_ins_c - 1 : 0), out ↦ tk_ins_no_parsed)
+    ins_no = (is_first_tick ? -1 : tk_ins_step
+        ? (tk_ins_c ≥ #tk_ins_src ? -1 : tk_ins_no_parsed)
         : _ins_no)
-    ins_txt = (is_first_tick ? "" : _t_ins_step
-        ? (_t_ins_c ≥ #_t_ins_src ? ""
-            : substr(_t_ins_src, index_of(_t_ins_src, "⟧", _t_ins_c) + 1,
-                (index_of(_t_ins_src, "⟦", _t_ins_c + 1) < 0 ? #_t_ins_src : index_of(_t_ins_src, "⟦", _t_ins_c + 1))
-                - index_of(_t_ins_src, "⟧", _t_ins_c) - 1))
+    ins_txt = (is_first_tick ? "" : tk_ins_step
+        ? (tk_ins_c ≥ #tk_ins_src ? ""
+            : substr(tk_ins_src, index_of(tk_ins_src, "⟧", tk_ins_c) + 1,
+                (index_of(tk_ins_src, "⟦", tk_ins_c + 1) < 0 ? #tk_ins_src : index_of(tk_ins_src, "⟦", tk_ins_c + 1))
+                - index_of(tk_ins_src, "⟧", tk_ins_c) - 1))
         : _ins_txt)
-    ins_cur = (is_first_tick ? 0 : _t_ins_step
-        ? (index_of(_t_ins_src, "⟦", _t_ins_c + 1) < 0 ? #_t_ins_src : index_of(_t_ins_src, "⟦", _t_ins_c + 1))
+    ins_cur = (is_first_tick ? 0 : tk_ins_step
+        ? (index_of(tk_ins_src, "⟦", tk_ins_c + 1) < 0 ? #tk_ins_src : index_of(tk_ins_src, "⟦", tk_ins_c + 1))
         : _ins_cur)
-    _t_inj_no_parsed ∈ Int
-    AcParseInt(s ↦ _t_inj_src, from ↦ _t_inj_c + 1, len ↦ (_t_inj_step ∧ _t_inj_c < #_t_inj_src ? index_of(_t_inj_src, "⟧", _t_inj_c) - _t_inj_c - 1 : 0), out ↦ _t_inj_no_parsed)
-    inj_no = (is_first_tick ? -1 : _t_inj_step
-        ? (_t_inj_c ≥ #_t_inj_src ? -1 : _t_inj_no_parsed)
+    tk_inj_no_parsed ∈ Int
+    AcParseInt(s ↦ tk_inj_src, from ↦ tk_inj_c + 1, len ↦ (tk_inj_step ∧ tk_inj_c < #tk_inj_src ? index_of(tk_inj_src, "⟧", tk_inj_c) - tk_inj_c - 1 : 0), out ↦ tk_inj_no_parsed)
+    inj_no = (is_first_tick ? -1 : tk_inj_step
+        ? (tk_inj_c ≥ #tk_inj_src ? -1 : tk_inj_no_parsed)
         : _inj_no)
-    inj_cur = (is_first_tick ? 0 : _t_inj_step
-        ? (index_of(_t_inj_src, "⟦", _t_inj_c + 1) < 0 ? #_t_inj_src : index_of(_t_inj_src, "⟦", _t_inj_c + 1))
+    inj_cur = (is_first_tick ? 0 : tk_inj_step
+        ? (index_of(tk_inj_src, "⟦", tk_inj_c + 1) < 0 ? #tk_inj_src : index_of(tk_inj_src, "⟦", tk_inj_c + 1))
         : _inj_cur)
-    inj_txt = (is_first_tick ? "" : _t_inj_step
-        ? (_t_inj_c ≥ #_t_inj_src ? ""
-            : substr(_t_inj_src, index_of(_t_inj_src, "⟧", _t_inj_c) + 1,
-                (index_of(_t_inj_src, "⟦", _t_inj_c + 1) < 0 ? #_t_inj_src : index_of(_t_inj_src, "⟦", _t_inj_c + 1))
-                - index_of(_t_inj_src, "⟧", _t_inj_c) - 1))
+    inj_txt = (is_first_tick ? "" : tk_inj_step
+        ? (tk_inj_c ≥ #tk_inj_src ? ""
+            : substr(tk_inj_src, index_of(tk_inj_src, "⟧", tk_inj_c) + 1,
+                (index_of(tk_inj_src, "⟦", tk_inj_c + 1) < 0 ? #tk_inj_src : index_of(tk_inj_src, "⟦", tk_inj_c + 1))
+                - index_of(tk_inj_src, "⟧", tk_inj_c) - 1))
         : _inj_txt)
-    cur_line = (is_first_tick ? "" : _t_has_inj ? _t_inline : _cur_line)
-    scan_pos = (is_first_tick ? 0 : _t_has_inj ? index_of(_t_inline, "(") + 1 : _t_ph = 4 ? _t_s1p : _scan_pos)
-    scan_depth = (is_first_tick ? 0 : _t_has_inj ? 1 : _t_ph = 4 ? _t_s1d : _scan_depth)
-    scan_found = (is_first_tick ? -1 : _t_has_inj ? -2 : _t_ph = 4 ? _t_s1f : _scan_found)
-    splice_add = (is_first_tick ? "" : _t_inj_take ? _inj_txt : _splice_add)
+    cur_line = (is_first_tick ? "" : tk_has_inj ? tk_inline : _cur_line)
+    scan_pos = (is_first_tick ? 0 : tk_has_inj ? index_of(tk_inline, "(") + 1 : tk_ph = 4 ? tk_s1p : _scan_pos)
+    scan_depth = (is_first_tick ? 0 : tk_has_inj ? 1 : tk_ph = 4 ? tk_s1d : _scan_depth)
+    scan_found = (is_first_tick ? -1 : tk_has_inj ? -2 : tk_ph = 4 ? tk_s1f : _scan_found)
+    splice_add = (is_first_tick ? "" : tk_inj_take ? _inj_txt : _splice_add)
 
     effects ∈ Seq(Effect) = (is_first_tick ? ⟨eff_nop, ReadLine⟩
-        : _t_exit_now ? ⟨Exit(0), eff_nop⟩
-        : _t_reg_read ? ⟨eff_nop, ReadLine⟩
-        : _t_emit_now ? ⟨eff_out, ReadLine⟩
+        : tk_exit_now ? ⟨Exit(0), eff_nop⟩
+        : tk_reg_read ? ⟨eff_nop, ReadLine⟩
+        : tk_emit_now ? ⟨eff_out, ReadLine⟩
         : ⟨eff_nop, eff_nop⟩)

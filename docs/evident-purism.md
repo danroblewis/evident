@@ -339,7 +339,15 @@ that debt). Expression-scoped bound variables may be short (`e`, `v`,
   entry by key" (an `_idx`/`_slot` suffix on carried state is the
   index-in-interface smell, §3.2).
 - **Never hand-write `_x` duals** — `fsm` synthesizes them; a
-  hand-written dual is either dead or a footgun.
+  hand-written dual is either dead or a footgun. And **never use a
+  `_x` name without a base `x`** (operator ruling 2026-06-10): `_` is
+  the carry namespace, full stop. There is no transient namespace —
+  the kernel's `_`-exclusion filter is an implementation detail, not
+  surface. An intermediate is an ordinary variable; it carries like
+  everything else (measured 2026-06-10: carrying the autocarry pass's
+  ~35 former `_t_*` transients costs ~40 ms per driver flatten on the
+  lowered-IR kernel — noise), and its unused dual is free optionality
+  for future model revisions. A `_x` with no base `x` is a BLOCKER.
 - **Per-slot scalars (`xs_0_name`) never appear in source** — they are
   transform output; their presence in a `.ev` file means lowered
   artifact leaked back into surface (BLOCKER, §4 V1 territory).

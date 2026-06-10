@@ -103,3 +103,15 @@ Plus tolerated WARNs: delimiter-encoded record registries in Strings
 chains and digit parsing in `autocarry_lib.ev` (no blessed string-scan
 surface exists — a `str_span`-like builtin would erase ~700 lines of
 generated chain).
+
+
+## RESOLVED (operator ruling 2026-06-10): the `_t_` transient class
+
+Ruled a violation; fixed by renaming all `_t_*` transients to ordinary
+carried variables (`tk_*`). Measured on the lowered-IR kernel: full
+driver flatten 0.72 s (awk) vs 1.00 s (Evident pass, everything
+carried) — the pun was buying ~40 ms. Output byte-identical to awk
+after the rename; gates green. `_x` without a base `x` is now a
+purism BLOCKER (§3.6). The unbounded-carried-String registry class
+remains tolerated-tracked, pending the bounded Seq-of-String carry
+lowering and an operator ruling.
