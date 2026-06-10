@@ -1,8 +1,44 @@
 # Bind-peel lowering — retiring the S1 bind half (`bind_n0..n5`)
 
-**Status:** proposed (2026-06-10). The remaining half of the baseline
-report's S1 BLOCKER complex (`docs/critic-reports/compiler2-baseline.md`,
+**Status:** option (a) in progress (2026-06-10). The remaining half of the
+baseline report's S1 BLOCKER complex (`docs/critic-reports/compiler2-baseline.md`,
 2026-06-10); the record half resolved in merge `b46f373`.
+
+## Resolved before implementation (2026-06-10)
+
+1. **The ≤4-vs-6 contract contradiction.** The compose MAINTAINS line
+   ("≤4 binds per call") is stale: the slot-call grammar gates
+   (`callw_slot`/`callw_pun` admit up to `_slot_count < 6` + the firing
+   slot) and `binds_new` both carry **6**; positional `bindzip` caps at
+   4 (`tup_binds_full` max = argc 3 + record pair = 4). The real
+   per-call max is **6**; the contract line is corrected to ≤6.
+2. **Tape bound: 12.** Measured on the conformance corpus
+   (156 fixtures + the stdlib they import): max binds in one call = 3
+   (mapped), 4 by positional grammar; **zero nested bind-carrying
+   calls** (no fixture composes a binds-carrying claim from inside
+   another) — measured peak live binds = 4. Contract-true worst case
+   is 6×8 = 48, but reader chains pay per slot, so the tape is sized
+   12 = grammar cap (6) × depth 2 = 3× the measured peak, with
+   `bind_base ≤ bind_top ≤ 12` as a kernel-checked invariant: overflow
+   is a loud UNSAT (exit 2), never a silent drop.
+3. **Frames save BOTH cursors** (deviation from the single-Int sketch
+   above). Bare/`..`/guard splices INHERIT the caller's bind window
+   (the live code holds `binds = _binds` through `callw_bare_jump` /
+   `guard_jump_fire`); a single saved base cannot restore both a fresh
+   window (truncate to the popped window's base) and an inherited one
+   (whose base IS the caller's). `CFCons` therefore carries
+   `(ret, prefix, bind_base, bind_top, join_hdr, tail)` — pop restores
+   both, uniformly for every frame kind. Still one wire change.
+4. **Lowering extension 1 (guarded multi-append) is NOT needed.** Pop
+   is a *truncation*, which no append form expresses — the tape is
+   written registry-style instead (`∀ k ∈ {0..11} : binds[k].f = (… ∧
+   _bind_top + j = k) ? staged[j] : _binds[k].f`, the blessed
+   user_variants alloc pattern), with explicit `bind_base`/`bind_top`
+   cursor recurrences. Extension 2 narrows to: the index-form
+   keyed-projection PAIR accepts the two window conjuncts
+   `(k ≥ LO) ∧ (k < HI)` before the key equality. The ∃ rule already
+   substitutes the predicate wholesale — window existentials need no
+   pass change.
 
 ## Problem
 
