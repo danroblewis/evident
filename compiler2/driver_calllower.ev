@@ -74,17 +74,17 @@ fsm DriverCallLower
                 C2ICons(C2Process(EInt(2)),
                 C2ICons(C2Ite, work_tail))))))
         : C2ICons(C2Process(EInt(card_count)), work_tail))
-    call1_items ∈ C2Items = (call_name = "str_len"
-            ? (len_of_seqvar
-                ? C2ICons(C2Process(EIdent(_seqvar_name ++ "__len")), work_tail)
-                : len_of_setvar
-                ? card_items
-                : C2ICons(C2Process(call_arg0), C2ICons(C2StrOp("len", 1), work_tail)))
-        : call_name = "str_from_int" ? str_from_int_items
-        : ctor_decl ≠ 0
-            ? C2ICons(C2Process(call_arg0),
-                C2ICons(C2App(ctor_decl, 1), work_tail))
-        : C2ICons(C2PushH(0), work_tail))
+    call1_items ∈ C2Items
+    (call_name = "str_len") ⇒ (call1_items = (len_of_seqvar
+        ? C2ICons(C2Process(EIdent(_seqvar_name ++ "__len")), work_tail)
+        : len_of_setvar
+        ? card_items
+        : C2ICons(C2Process(call_arg0), C2ICons(C2StrOp("len", 1), work_tail))))
+    (call_name = "str_from_int") ⇒ (call1_items = str_from_int_items)
+    (ctor_decl ≠ 0) ⇒ (call1_items = C2ICons(C2Process(call_arg0),
+        C2ICons(C2App(ctor_decl, 1), work_tail)))
+    (¬((call_name = "str_len") ∨ (call_name = "str_from_int")
+        ∨ (ctor_decl ≠ 0))) ⇒ (call1_items = C2ICons(C2PushH(0), work_tail))
     real_arg_scaled ∈ Int = match call_arg0
         EInt(n) ⇒ n
         _ ⇒ 0
@@ -96,48 +96,55 @@ fsm DriverCallLower
         _ ⇒ ""
     field_arg_acc ∈ Int
     RtFieldAcc(fname ↦ field_arg_name, acc ↦ field_arg_acc)
-    call2_items ∈ C2Items = (call_name = "__real"
-            ? C2ICons(C2Real(real_arg_scaled, real_arg_digits), work_tail)
-        : call_name = "__field"
-            ? C2ICons(C2Process(call_arg0),
-                C2ICons(C2App(field_arg_acc, 1), work_tail))
-        : call_name = "__index"
-            ? C2ICons(C2Process(call_arg0), C2ICons(C2Process(call_arg1),
-                C2ICons(C2SelH, work_tail)))
-        : call_name = "char_at"
-            ? C2ICons(C2Process(call_arg0), C2ICons(C2Process(call_arg1),
-                C2ICons(C2StrOp("char_at", 2), work_tail)))
-        : call_name = "index_of"
-            ? C2ICons(C2Process(call_arg0), C2ICons(C2Process(call_arg1),
-                C2ICons(C2PushH(z3nums.zero),
-                C2ICons(C2StrOp("indexof", 3), work_tail))))
-        : call_name = "str_contains"
-            ? C2ICons(C2Process(call_arg0), C2ICons(C2Process(call_arg1),
-                C2ICons(C2StrOp("contains", 2), work_tail)))
-        : call_name = "starts_with"
-            ? C2ICons(C2Process(call_arg1), C2ICons(C2Process(call_arg0),
-                C2ICons(C2StrOp("prefixof", 2), work_tail)))
-        : call_name = "ends_with"
-            ? C2ICons(C2Process(call_arg1), C2ICons(C2Process(call_arg0),
-                C2ICons(C2StrOp("suffixof", 2), work_tail)))
-        : ctor_decl ≠ 0
-            ? C2ICons(C2Process(call_arg0), C2ICons(C2Process(call_arg1),
-                C2ICons(C2App(ctor_decl, 2), work_tail)))
-        : C2ICons(C2PushH(0), work_tail))
-    call3_items ∈ C2Items = (call_name = "replace"
-            ? C2ICons(C2Process(call_arg0), C2ICons(C2Process(call_arg1),
-                C2ICons(C2Process(call_arg2),
-                C2ICons(C2StrOp("replace", 3), work_tail))))
-        : call_name = "substr"
-            ? C2ICons(C2Process(call_arg0), C2ICons(C2Process(call_arg1),
-                C2ICons(C2Process(call_arg2),
-                C2ICons(C2StrOp("substr", 3), work_tail))))
-        : call_name = "index_of"
-            ? C2ICons(C2Process(call_arg0), C2ICons(C2Process(call_arg1),
-                C2ICons(C2Process(call_arg2),
-                C2ICons(C2StrOp("indexof", 3), work_tail))))
-        : ctor_decl ≠ 0
-            ? C2ICons(C2Process(call_arg0), C2ICons(C2Process(call_arg1),
-                C2ICons(C2Process(call_arg2),
-                C2ICons(C2App(ctor_decl, 3), work_tail))))
-        : C2ICons(C2PushH(0), work_tail))
+    call2_items ∈ C2Items
+    (call_name = "__real") ⇒ (call2_items =
+        C2ICons(C2Real(real_arg_scaled, real_arg_digits), work_tail))
+    (call_name = "__field") ⇒ (call2_items = C2ICons(C2Process(call_arg0),
+        C2ICons(C2App(field_arg_acc, 1), work_tail)))
+    (call_name = "__index") ⇒ (call2_items =
+        C2ICons(C2Process(call_arg0), C2ICons(C2Process(call_arg1),
+        C2ICons(C2SelH, work_tail))))
+    (call_name = "char_at") ⇒ (call2_items =
+        C2ICons(C2Process(call_arg0), C2ICons(C2Process(call_arg1),
+        C2ICons(C2StrOp("char_at", 2), work_tail))))
+    (call_name = "index_of") ⇒ (call2_items =
+        C2ICons(C2Process(call_arg0), C2ICons(C2Process(call_arg1),
+        C2ICons(C2PushH(z3nums.zero),
+        C2ICons(C2StrOp("indexof", 3), work_tail)))))
+    (call_name = "str_contains") ⇒ (call2_items =
+        C2ICons(C2Process(call_arg0), C2ICons(C2Process(call_arg1),
+        C2ICons(C2StrOp("contains", 2), work_tail))))
+    (call_name = "starts_with") ⇒ (call2_items =
+        C2ICons(C2Process(call_arg1), C2ICons(C2Process(call_arg0),
+        C2ICons(C2StrOp("prefixof", 2), work_tail))))
+    (call_name = "ends_with") ⇒ (call2_items =
+        C2ICons(C2Process(call_arg1), C2ICons(C2Process(call_arg0),
+        C2ICons(C2StrOp("suffixof", 2), work_tail))))
+    (ctor_decl ≠ 0) ⇒ (call2_items =
+        C2ICons(C2Process(call_arg0), C2ICons(C2Process(call_arg1),
+        C2ICons(C2App(ctor_decl, 2), work_tail))))
+    (¬((call_name = "__real") ∨ (call_name = "__field") ∨ (call_name = "__index")
+        ∨ (call_name = "char_at") ∨ (call_name = "index_of")
+        ∨ (call_name = "str_contains") ∨ (call_name = "starts_with")
+        ∨ (call_name = "ends_with") ∨ (ctor_decl ≠ 0)))
+        ⇒ (call2_items = C2ICons(C2PushH(0), work_tail))
+    call3_items ∈ C2Items
+    (call_name = "replace") ⇒ (call3_items =
+        C2ICons(C2Process(call_arg0), C2ICons(C2Process(call_arg1),
+        C2ICons(C2Process(call_arg2),
+        C2ICons(C2StrOp("replace", 3), work_tail)))))
+    (call_name = "substr") ⇒ (call3_items =
+        C2ICons(C2Process(call_arg0), C2ICons(C2Process(call_arg1),
+        C2ICons(C2Process(call_arg2),
+        C2ICons(C2StrOp("substr", 3), work_tail)))))
+    (call_name = "index_of") ⇒ (call3_items =
+        C2ICons(C2Process(call_arg0), C2ICons(C2Process(call_arg1),
+        C2ICons(C2Process(call_arg2),
+        C2ICons(C2StrOp("indexof", 3), work_tail)))))
+    (ctor_decl ≠ 0) ⇒ (call3_items =
+        C2ICons(C2Process(call_arg0), C2ICons(C2Process(call_arg1),
+        C2ICons(C2Process(call_arg2),
+        C2ICons(C2App(ctor_decl, 3), work_tail)))))
+    (¬((call_name = "replace") ∨ (call_name = "substr")
+        ∨ (call_name = "index_of") ∨ (ctor_decl ≠ 0)))
+        ⇒ (call3_items = C2ICons(C2PushH(0), work_tail))
