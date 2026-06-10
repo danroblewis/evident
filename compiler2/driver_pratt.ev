@@ -32,19 +32,19 @@ fsm DriverPratt
     pratt_rec_slot ∈ Int
 
     call_pad31 ∈ String = "                               "
-    callable_names ∈ String = ("|" ++ substr("str_len" ++ call_pad31, 0, 31)
-        ++ "|" ++ substr("str_from_int" ++ call_pad31, 0, 31)
-        ++ "|" ++ substr("substr" ++ call_pad31, 0, 31)
-        ++ "|" ++ substr("char_at" ++ call_pad31, 0, 31)
-        ++ "|" ++ substr("index_of" ++ call_pad31, 0, 31)
-        ++ "|" ++ substr("str_contains" ++ call_pad31, 0, 31)
-        ++ "|" ++ substr("starts_with" ++ call_pad31, 0, 31)
-        ++ "|" ++ substr("ends_with" ++ call_pad31, 0, 31)
-        ++ "|" ++ substr("replace" ++ call_pad31, 0, 31)
-        ++ variant_names
-        ++ ((recs[0].name ≠ "" ∧ recs[0].sort > 0) ? ("|" ++ substr(recs[0].name ++ call_pad31, 0, 31)) : "")
-        ++ ((recs[1].name ≠ "" ∧ recs[1].sort > 0) ? ("|" ++ substr(recs[1].name ++ call_pad31, 0, 31)) : "")
-        ++ ((recs[2].name ≠ "" ∧ recs[2].sort > 0) ? ("|" ++ substr(recs[2].name ++ call_pad31, 0, 31)) : ""))
+    builtin_callables ∈ Seq(String) = ⟨"str_len", "str_from_int", "substr", "char_at", "index_of", "str_contains", "starts_with", "ends_with", "replace"⟩
+    #builtin_callables ≤ 9
+    callable_joins ∈ Seq(String)
+    #callable_joins ≤ 10
+    callable_joins[0] = ""
+    ∀ k ∈ {0..8} : callable_joins[k + 1] = callable_joins[k] ++ "|" ++ substr(builtin_callables[k] ++ call_pad31, 0, 31)
+    callable_rec_joins ∈ Seq(String)
+    #callable_rec_joins ≤ 4
+    callable_rec_joins[0] = callable_joins[9] ++ variant_names
+    ∀ k ∈ {0..2} : callable_rec_joins[k + 1] = ((recs[k].name ≠ "" ∧ recs[k].sort > 0)
+        ? callable_rec_joins[k] ++ "|" ++ substr(recs[k].name ++ call_pad31, 0, 31)
+        : callable_rec_joins[k])
+    callable_names ∈ String = callable_rec_joins[3]
     pratt_next_toks ∈ TokenList
     pratt_next_outs ∈ ExprList
     pratt_next_ops ∈ PrOps
