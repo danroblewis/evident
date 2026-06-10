@@ -145,25 +145,42 @@ stem — a family spans files; the file field is audit metadata.)
 |---|---|---|---|---|---|---|
 | `v18_numbered_families` | trend | det | 0 unexempted | **49** | stems with ≥3 trailing-digit identifiers (`dec_tok0..7`-shape) in comment-stripped `compiler2/*.ev` | Counts the actual scalar families in the actual source; threshold 3 skips incidental pairs; renaming `xs0→xs_a` to dodge it still shrinks the family below threshold only by actually removing it or by visible ledger exemption. |
 | `v18_bind_peel_refs` | gate | det | 0 unexempted | **96** | occurrences of `bind_n[0-9]`/`bind_h[0-9]`/`bind_tail[0-9]` (the goal's named class) across compiler2 | Direct count of the named family's references — driver_compose.ev's peel plus every consumer; goes green only when the Seq-of-record replacement lands or the stems are ledger-justified. |
-| `fsm_prefix_decls` | trend | det | 0 unexempted | **276** | decl-position names inside each `fsm DriverXyz` body that start with the fsm's own component word(s) or their concatenation + `_` (DriverGroup→`group_*`, DriverSetVar→`set_*`/`var_*`/`setvar_*`) | Derives the forbidden prefixes from the fsm's own name — no hand-kept list to game; catches exactly the "fsm namespacing its own internals" symptom; a rename to a *different* opaque prefix is caught by the critic (secondary) and the V5 ledger requirement. |
-| `driver_lift_compositions` | gate | det | 0 unexempted | **24** | `..Name` composition lines in `compiler2/driver.ev` | The goal says these become header-based bare mentions except deliberate context-sharing lifts; a survivor needs a V11 ledger line naming what is shared. Dropping the `..` without converting to a bare mention changes program meaning and is caught by the conformance gate, so this can't be gamed by deletion. |
+| `fsm_prefix_decls` | trend | det | 0 unexempted | **351** (276 component + 75 denylist) | COMBINED decl-position hand-namespacing in `compiler2/*.ev`: (a) names inside each `fsm DriverXyz` body starting with the fsm's own component word(s)/concatenation + `_` (DriverGroup→`group_*`), PLUS (b) names starting with the abbreviation denylist `mp_ sv_ il_ rv_ rd_ rc_ ww_ pg_ d_pe d_m_ d_lk vf_ vfc_ ed_ stl_ stv_ qset_ bcast_` (operator decision 2026-06-10) | Half (a) derives forbidden prefixes from the fsm's own name — no hand list to game. Half (b) names the abbreviation-debt prefixes that don't match a component word; they are disjoint from every derived prefix (`bcast_`≠`broadcast_`) so the halves never double-count (verified: 351 = 276 + 75). Decl-aware over multi-name decls; comments/strings stripped. A rename to a *new* opaque prefix is caught by the critic (secondary) + the V5 ledger requirement. |
 | `v9_selection_chains` | trend | det | 0 unexempted | **62** | statements (joined by paren balance, so multi-line chains count once) with ≥2 literal-equality ternary tests (`x = 3 ?` / `x = "key" ?`); chains whose final else-arm is a carry `_name` are the blessed hold form and excluded by construction | Implements the goal's own exemption (hold chains blessed) mechanically; matches the critic's V9 class within a few counts (62 vs 32 grouped findings). Splitting a chain across lines doesn't hide it; rewriting to keyed-projection pins genuinely removes it. |
 | `cryptic_name_refs` | trend | det | 0 unexempted | **66** (`ty`=66, `st`=0, `nat`=0) | word-bounded uses of the goal's denylist (`st`, `ty`, `nat`) in comment/string-stripped compiler2 source | The denylist comes from the goal statement verbatim; `ty`'s existing "reserved keyword" rationale can survive only as an explicit `naming * ty` ledger line a human can see and veto. |
 | `critic_v18_v9_findings` | trend | det | 0 | **55** (4 BLOCKER + 19 + 32 WARN) | latest (by `**Date:**`) `docs/critic-reports/*baseline*.md`: summary-table rows citing V18/V9, BLOCKER+WARN summed | The secondary signal the goal names: full-rulebook judgment cross-checking the greps. Ruler-broken (exit 2) if no report with a verdict line exists. |
 | `critic_report_age_days` | gate | det | ≤14 d | **0** | date of that report | A stale critic report can't masquerade as current truth; the greps stay live regardless. |
 
-**Definition of done** = both gates at 0 unexempted, the four primary
-trends at 0 unexempted, and the critic secondary at 0 with a ≤14-day
-report — i.e. every instance of the four classes is gone or visibly
+**Definition of done** = the remaining gate (`v18_bind_peel_refs`) at 0
+unexempted, the four primary trends (`v18_numbered_families`,
+`fsm_prefix_decls`, `v9_selection_chains`, `cryptic_name_refs`) at 0
+unexempted, and the critic secondary at 0 with a ≤14-day report — i.e.
+every instance of the surviving classes is gone or visibly
 ledger-justified, and an independent full-rulebook review agrees.
+
+> **AMENDED 2026-06-10 (operator design decision):** The
+> `driver_lift_compositions` gate (count of `..Driver*` lifts in
+> `driver.ev`, target 0) is **RETIRED**. `..`-lift composition is now
+> BLESSED: de-prefixing is a pure rename that keeps the `..` lifts, and
+> the claim-headers conversion was abandoned as worse for
+> wide-interface components — so driving lifts toward 0 was the wrong
+> target. The measure no longer emits that series; its dead V11 ledger
+> class is read by nothing. Concurrently, `fsm_prefix_decls` was
+> ENHANCED to a COMBINED count (component prefixes + abbreviation
+> denylist), re-baselined to 351. See CHANGELOG 2026-06-10. The lock
+> block below is therefore STALE for `purism_namespacing.sh` and must be
+> re-approved.
 
 ## Limits stated honestly
 
-- `fsm_prefix_decls` derives prefixes from fsm names, so an
-  *abbreviated* prefix (`win_` in DriverWindow) or an unrelated
-  letter-code prefix is not caught here — that class lands in the
-  critic secondary (V5/V14 rows are not part of the V18/V9 sum, so
-  full coverage of abbreviations rides on critic review + ledger).
+- `fsm_prefix_decls` derives the component-half prefixes from fsm
+  names. As of the 2026-06-10 amendment it ALSO counts a fixed
+  abbreviation denylist (`mp_ sv_ il_ rv_ rd_ rc_ ww_ pg_ d_pe d_m_
+  d_lk vf_ vfc_ ed_ stl_ stv_ qset_ bcast_`), so the most common
+  abbreviated-prefix debt is now caught directly here. An abbreviation
+  *not* on the denylist still rides on the critic secondary + ledger;
+  growing the denylist is a deliberate (CHANGELOG-recorded) amendment,
+  not a silent edit.
 - `v9_selection_chains` requires literal-equality tests; a chain
   dispatching on `matches` or comparisons is not counted (none exist
   in the baseline scan's blind spot today per the critic report).
@@ -184,7 +201,7 @@ eafffa485f5f3bc15a11e143bedccbf8d226db8715997ec935b8970104007e1a  kernel_fixture
 bf76ae5fae789197915d20064c751d222ac906e299007c15af3e56cd79744f52  legacy_imports.sh
 94650b5c5c610da6586c0c24f3a24c6a7e698bae9fb6a2ccd57dd75d48791ff1  purism_critic_signal.sh
 bfda07d59ddc141ae902ba977bfbdaf4cdedd0214e8db067114bdc22e81f9b98  purism_cryptic_names.sh
-1965a4beeeac26886b087949a66792430474112eee1c8178ad060116efc3876a  purism_namespacing.sh
+1965a4beeeac26886b087949a66792430474112eee1c8178ad060116efc3876a  purism_namespacing.sh  [STALE — amended 2026-06-10, re-approval required]
 9a73d827a17c7f2fe06668660b272831ed56a105fc6c6e77cd4895521e499fc2  purism_v18_families.sh
 d32a519bb4f8ebca49d82fc4522209e2b54c715a9a1348b96f5fef6c99ad1649  purism_v9_chains.sh
 982666d9258c86521235c4226bbd33cf2ef1b2da9745f95e964da4a440a9468d  sample_ev.sh
