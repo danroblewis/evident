@@ -49,7 +49,10 @@ fsm autocarry_analyze
     s_open ∈ Bool
     hdr_seg ∈ Int
     hdr_fl ∈ Int
-    hdr_pend ∈ String
+    hdr_pend ∈ Seq(String)
+    #hdr_pend ≤ 16
+    hp_n ∈ Int
+    hp_i ∈ Int
     hdr_ty ∈ String
 
     tk_ph ∈ Int = (is_first_tick ? 0 : _phase)
@@ -242,11 +245,11 @@ fsm autocarry_analyze
         ? (tk_h_tb ≥ 0 ∧ tk_h_tb < tk_h_sp ? tk_h_tb : tk_h_sp)
         : (tk_h_tb ≥ 0 ∧ tk_h_tb < tk_h_te ? tk_h_tb : tk_h_te))
     tk_h_base ∈ String = (tk_h_typed ∧ tk_h_te > tk_h_t0 ? substr(_code, tk_h_t0, tk_h_bs - tk_h_t0) : "")
-    tk_h_pend1 ∈ String = (tk_h_bnd ∧ ¬(tk_h_nm = "") ∧ ¬tk_h_us ? _hdr_pend ++ tk_h_nm ++ "⦂" : _hdr_pend)
-    tk_h_fl1 ∈ Bool = (tk_h_bnd ∧ ¬(tk_h_pend1 = "") ∧ (tk_h_typed ∨ tk_h_end))
-    tk_h_hp ∈ Int = (tk_h_fl_run ? index_of(_hdr_pend, "⦂") : -1)
-    tk_h_fnm ∈ String = (tk_h_fl_run ? substr(_hdr_pend, 0, tk_h_hp) : "")
-    tk_h_tail ∈ String = (tk_h_fl_run ? substr(_hdr_pend, tk_h_hp + 1, #_hdr_pend - tk_h_hp - 1) : "")
+    tk_h_ovp ∈ Bool = (tk_h_bnd ∧ ¬(tk_h_nm = "") ∧ ¬tk_h_us ∧ _hp_n ≥ 16)
+    tk_h_add ∈ Bool = (tk_h_bnd ∧ ¬(tk_h_nm = "") ∧ ¬tk_h_us ∧ _hp_n < 16)
+    tk_h_fl1 ∈ Bool = (tk_h_bnd ∧ (tk_h_add ∨ _hp_n > 0) ∧ (tk_h_typed ∨ tk_h_end))
+    tk_h_fnm ∈ String = (tk_h_fl_run ? hdr_pend[_hp_i] : "")
+    tk_h_last ∈ Bool = (tk_h_fl_run ∧ _hp_i + 1 ≥ _hp_n)
 
     -- ── transitions ──
     tk_enter_call ∈ Bool = tk_is_call
@@ -315,14 +318,19 @@ fsm autocarry_analyze
         : _hdr_seg)
     hdr_fl = (is_first_tick ? 0
         : tk_hdr_go ? 0
-        : tk_h_fl_run ? (tk_h_tail = "" ? 0 : 1)
+        : tk_h_fl_run ? (tk_h_last ? 0 : 1)
         : tk_h_bnd ? (tk_h_fl1 ? 1 : 0)
         : _hdr_fl)
-    hdr_pend = (is_first_tick ? ""
-        : tk_hdr_go ? ""
-        : tk_h_fl_run ? tk_h_tail
-        : tk_h_bnd ? tk_h_pend1
-        : _hdr_pend)
+    ∀ k ∈ {0..15} : hdr_pend[k] = (is_first_tick ? "" : (tk_h_add ∧ _hp_n = k) ? tk_h_nm : _hdr_pend[k])
+    hp_n = (is_first_tick ? 0
+        : tk_hdr_go ? 0
+        : tk_h_fl_run ? (tk_h_last ? 0 : _hp_n)
+        : tk_h_add ? _hp_n + 1
+        : _hp_n)
+    hp_i = (is_first_tick ? 0
+        : tk_hdr_go ? 0
+        : tk_h_fl_run ? (tk_h_last ? 0 : _hp_i + 1)
+        : _hp_i)
     hdr_ty = (is_first_tick ? ""
         : tk_h_fl1 ? (tk_h_typed ? tk_h_base : "")
         : _hdr_ty)
@@ -356,10 +364,13 @@ fsm autocarry_analyze
     tk_emit_rec ∈ Bool = (¬(tk_rec = ""))
     eff_out ∈ Effect
     BuildPrintln(s ↦ tk_rec, eff ↦ eff_out)
+    eff_ov_msg ∈ Effect
+    BuildEprint(s ↦ "autocarry_analyze: header name pool overflow (cap 16, exit 64)\n", eff ↦ eff_ov_msg)
     tk_read_go ∈ Bool = ((tk_lp_ready ∧ ¬tk_is_call ∧ ¬tk_enter_ce ∧ ¬tk_hdr_go) ∨ (tk_ph = 3 ∧ tk_scan3_done) ∨ (tk_ph = 4 ∧ tk_ce_done ∧ ¬tk_hdr_go) ∨ tk_h_done)
     tk_exit_now ∈ Bool = (tk_ph = 13)
 
     effects ∈ Seq(Effect) = (is_first_tick ? ⟨eff_nop, ReadLine⟩
+        : tk_h_ovp ? ⟨eff_ov_msg, Exit(64)⟩
         : tk_exit_now ? ⟨Exit(0), eff_nop⟩
         : tk_emit_rec ∧ tk_read_go ? ⟨eff_out, ReadLine⟩
         : tk_emit_rec ? ⟨eff_out, eff_nop⟩

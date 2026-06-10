@@ -1,4 +1,4 @@
-;; manifest: state-fields = body:String callee:String claim_bare:String claim_name:String code:String cur_a:Int cur_b:Int eff_nop:Effect eff_out:Effect hdr_fl:Int hdr_pend:String hdr_seg:Int hdr_ty:String in_fsm:Int line:String line_no:Int phase:Int s_open:Bool tk_base:String tk_bind_now:Bool tk_ce_done:Bool tk_ce_f1:Int tk_ce_gt:Int tk_ce_mark:Bool tk_ce_o1:Int tk_ce_on:Bool tk_ce_run:Bool tk_ce_x:String tk_cline:String tk_code_now:String tk_consume:Bool tk_cs_code:String tk_cs_dd:Int tk_cs_done:Bool tk_cs_p:Int tk_cs_q:Bool tk_cs_qq:Int tk_d0:Int tk_emit_rec:Bool tk_enter_call:Bool tk_enter_ce:Bool tk_enter_ce_eof:Bool tk_eof_now:Bool tk_exit_now:Bool tk_fld:String tk_h_b:Int tk_h_base:String tk_h_bnd:Bool tk_h_bs:Int tk_h_c:Int tk_h_close:Bool tk_h_comma:Bool tk_h_done:Bool tk_h_end:Bool tk_h_ep:Int tk_h_fl1:Bool tk_h_fl_run:Bool tk_h_fnm:String tk_h_hp:Int tk_h_m:Int tk_h_ne:Int tk_h_nm:String tk_h_none:Bool tk_h_ns:Int tk_h_o:Int tk_h_open:Bool tk_h_pend1:String tk_h_scan:Bool tk_h_sp:Int tk_h_t0:Int tk_h_tail:String tk_h_tb:Int tk_h_te:Int tk_h_typed:Bool tk_h_us:Bool tk_hdr_code:String tk_hdr_fsm:Bool tk_hdr_go:Bool tk_hdr_lp:Int tk_hdr_name:String tk_ie:Int tk_ie2:Int tk_in_body:Bool tk_is_bare:Bool tk_is_call:Bool tk_is_ment:Bool tk_is_top:Bool tk_lp_ready:Bool tk_m:Int tk_need_code:Bool tk_nm_start:Int tk_nn:Int tk_pb:Int tk_ph:Int tk_q0:Int tk_quick:Bool tk_read_go:Bool tk_rec:String tk_rec_fsm:Bool tk_reof:Bool tk_rest:String tk_rline:String tk_sb:Int tk_scan3_done:Bool tk_slot:String tk_ss:Int tk_strip_go:Bool tk_switch_now:Bool tk_t0:Int tk_te:Int tk_v0:Int tk_va:Int tk_val_ok:Bool tk_ve:Int tk_ws:Int
+;; manifest: state-fields = body:String callee:String claim_bare:String claim_name:String code:String cur_a:Int cur_b:Int eff_nop:Effect eff_out:Effect eff_ov_msg:Effect hdr_fl:Int hdr_pend_0:String hdr_pend_1:String hdr_pend_10:String hdr_pend_11:String hdr_pend_12:String hdr_pend_13:String hdr_pend_14:String hdr_pend_15:String hdr_pend_2:String hdr_pend_3:String hdr_pend_4:String hdr_pend_5:String hdr_pend_6:String hdr_pend_7:String hdr_pend_8:String hdr_pend_9:String hdr_seg:Int hdr_ty:String hp_i:Int hp_n:Int in_fsm:Int line:String line_no:Int phase:Int s_open:Bool tk_base:String tk_bind_now:Bool tk_ce_done:Bool tk_ce_f1:Int tk_ce_gt:Int tk_ce_mark:Bool tk_ce_o1:Int tk_ce_on:Bool tk_ce_run:Bool tk_ce_x:String tk_cline:String tk_code_now:String tk_consume:Bool tk_cs_code:String tk_cs_dd:Int tk_cs_done:Bool tk_cs_p:Int tk_cs_q:Bool tk_cs_qq:Int tk_d0:Int tk_emit_rec:Bool tk_enter_call:Bool tk_enter_ce:Bool tk_enter_ce_eof:Bool tk_eof_now:Bool tk_exit_now:Bool tk_fld:String tk_h_add:Bool tk_h_b:Int tk_h_base:String tk_h_bnd:Bool tk_h_bs:Int tk_h_c:Int tk_h_close:Bool tk_h_comma:Bool tk_h_done:Bool tk_h_end:Bool tk_h_ep:Int tk_h_fl1:Bool tk_h_fl_run:Bool tk_h_fnm:String tk_h_last:Bool tk_h_m:Int tk_h_ne:Int tk_h_nm:String tk_h_none:Bool tk_h_ns:Int tk_h_o:Int tk_h_open:Bool tk_h_ovp:Bool tk_h_scan:Bool tk_h_sp:Int tk_h_t0:Int tk_h_tb:Int tk_h_te:Int tk_h_typed:Bool tk_h_us:Bool tk_hdr_code:String tk_hdr_fsm:Bool tk_hdr_go:Bool tk_hdr_lp:Int tk_hdr_name:String tk_ie:Int tk_ie2:Int tk_in_body:Bool tk_is_bare:Bool tk_is_call:Bool tk_is_ment:Bool tk_is_top:Bool tk_lp_ready:Bool tk_m:Int tk_need_code:Bool tk_nm_start:Int tk_nn:Int tk_pb:Int tk_ph:Int tk_q0:Int tk_quick:Bool tk_read_go:Bool tk_rec:String tk_rec_fsm:Bool tk_reof:Bool tk_rest:String tk_rline:String tk_sb:Int tk_scan3_done:Bool tk_slot:String tk_ss:Int tk_strip_go:Bool tk_switch_now:Bool tk_t0:Int tk_te:Int tk_v0:Int tk_va:Int tk_val_ok:Bool tk_ve:Int tk_ws:Int
 ;; manifest: effects-name = effects
 ;; manifest: effect-enum-name = Effect
 ;; manifest: result-enum-name = Result
@@ -116,12 +116,29 @@
 (declare-fun tk_h_tb () Int)
 (declare-fun tk_h_bs () Int)
 (declare-fun tk_h_base () String)
-(declare-fun _hdr_pend () String)
-(declare-fun tk_h_pend1 () String)
+(declare-fun _hp_n () Int)
+(declare-fun tk_h_ovp () Bool)
+(declare-fun tk_h_add () Bool)
 (declare-fun tk_h_fl1 () Bool)
-(declare-fun tk_h_hp () Int)
+(declare-fun hdr_pend_15 () String)
+(declare-fun hdr_pend_14 () String)
+(declare-fun _hp_i () Int)
+(declare-fun hdr_pend_13 () String)
+(declare-fun hdr_pend_12 () String)
+(declare-fun hdr_pend_11 () String)
+(declare-fun hdr_pend_10 () String)
+(declare-fun hdr_pend_9 () String)
+(declare-fun hdr_pend_8 () String)
+(declare-fun hdr_pend_7 () String)
+(declare-fun hdr_pend_6 () String)
+(declare-fun hdr_pend_5 () String)
+(declare-fun hdr_pend_4 () String)
+(declare-fun hdr_pend_3 () String)
+(declare-fun hdr_pend_2 () String)
+(declare-fun hdr_pend_1 () String)
+(declare-fun hdr_pend_0 () String)
 (declare-fun tk_h_fnm () String)
-(declare-fun tk_h_tail () String)
+(declare-fun tk_h_last () Bool)
 (declare-fun tk_enter_call () Bool)
 (declare-fun tk_enter_ce () Bool)
 (declare-fun tk_enter_ce_eof () Bool)
@@ -140,7 +157,24 @@
 (declare-fun cur_b () Int)
 (declare-fun hdr_seg () Int)
 (declare-fun hdr_fl () Int)
-(declare-fun hdr_pend () String)
+(declare-fun _hdr_pend_0 () String)
+(declare-fun _hdr_pend_1 () String)
+(declare-fun _hdr_pend_2 () String)
+(declare-fun _hdr_pend_3 () String)
+(declare-fun _hdr_pend_4 () String)
+(declare-fun _hdr_pend_5 () String)
+(declare-fun _hdr_pend_6 () String)
+(declare-fun _hdr_pend_7 () String)
+(declare-fun _hdr_pend_8 () String)
+(declare-fun _hdr_pend_9 () String)
+(declare-fun _hdr_pend_10 () String)
+(declare-fun _hdr_pend_11 () String)
+(declare-fun _hdr_pend_12 () String)
+(declare-fun _hdr_pend_13 () String)
+(declare-fun _hdr_pend_14 () String)
+(declare-fun _hdr_pend_15 () String)
+(declare-fun hp_n () Int)
+(declare-fun hp_i () Int)
 (declare-fun hdr_ty () String)
 (declare-fun _s_open () Bool)
 (declare-fun s_open () Bool)
@@ -149,6 +183,7 @@
 (declare-fun tk_rec () String)
 (declare-fun tk_emit_rec () Bool)
 (declare-fun eff_out () Effect)
+(declare-fun eff_ov_msg () Effect)
 (declare-fun tk_read_go () Bool)
 (declare-fun tk_exit_now () Bool)
 (declare-fun effects () (Array Int Effect))
@@ -3433,17 +3468,30 @@
    (ite (and tk_h_typed (> tk_h_te tk_h_t0))
         (str.substr _code tk_h_t0 (- tk_h_bs tk_h_t0))
         "")))
-(assert (let ((a!1 (ite (and tk_h_bnd (not (= tk_h_nm "")) (not tk_h_us))
-                (str.++ _hdr_pend tk_h_nm "\u{2982}")
-                _hdr_pend)))
-  (= tk_h_pend1 a!1)))
-(assert (= tk_h_fl1 (and tk_h_bnd (not (= tk_h_pend1 "")) (or tk_h_typed tk_h_end))))
-(assert (= tk_h_hp (ite tk_h_fl_run (str.indexof _hdr_pend "\u{2982}" 0) (- 0 1))))
-(assert (= tk_h_fnm (ite tk_h_fl_run (str.substr _hdr_pend 0 tk_h_hp) "")))
-(assert (let ((a!1 (str.substr _hdr_pend
-                       (+ tk_h_hp 1)
-                       (- (- (str.len _hdr_pend) tk_h_hp) 1))))
-  (= tk_h_tail (ite tk_h_fl_run a!1 ""))))
+(assert (= tk_h_ovp (and tk_h_bnd (not (= tk_h_nm "")) (not tk_h_us) (>= _hp_n 16))))
+(assert (= tk_h_add (and tk_h_bnd (not (= tk_h_nm "")) (not tk_h_us) (< _hp_n 16))))
+(assert (= tk_h_fl1 (and tk_h_bnd (or tk_h_add (> _hp_n 0)) (or tk_h_typed tk_h_end))))
+(assert (let ((a!1 (ite (= _hp_i 12)
+                hdr_pend_12
+                (ite (= _hp_i 13)
+                     hdr_pend_13
+                     (ite (= _hp_i 14) hdr_pend_14 hdr_pend_15)))))
+(let ((a!2 (ite (= _hp_i 9)
+                hdr_pend_9
+                (ite (= _hp_i 10)
+                     hdr_pend_10
+                     (ite (= _hp_i 11) hdr_pend_11 a!1)))))
+(let ((a!3 (ite (= _hp_i 6)
+                hdr_pend_6
+                (ite (= _hp_i 7) hdr_pend_7 (ite (= _hp_i 8) hdr_pend_8 a!2)))))
+(let ((a!4 (ite (= _hp_i 3)
+                hdr_pend_3
+                (ite (= _hp_i 4) hdr_pend_4 (ite (= _hp_i 5) hdr_pend_5 a!3)))))
+(let ((a!5 (ite (= _hp_i 0)
+                hdr_pend_0
+                (ite (= _hp_i 1) hdr_pend_1 (ite (= _hp_i 2) hdr_pend_2 a!4)))))
+  (= tk_h_fnm (ite tk_h_fl_run a!5 ""))))))))
+(assert (= tk_h_last (and tk_h_fl_run (>= (+ _hp_i 1) _hp_n))))
 (assert (= tk_enter_call tk_is_call))
 (assert (= tk_enter_ce (and tk_lp_ready tk_is_top (= _in_fsm 1))))
 (assert (= tk_enter_ce_eof (and tk_eof_now (= _in_fsm 1))))
@@ -3554,17 +3602,83 @@
 (assert (let ((a!1 (ite tk_hdr_go
                 0
                 (ite tk_h_fl_run
-                     (ite (= tk_h_tail "") 0 1)
+                     (ite tk_h_last 0 1)
                      (ite tk_h_bnd (ite tk_h_fl1 1 0) _hdr_fl)))))
   (= hdr_fl (ite is_first_tick 0 a!1))))
 (assert (let ((a!1 (ite is_first_tick
                 ""
-                (ite tk_hdr_go
-                     ""
-                     (ite tk_h_fl_run
-                          tk_h_tail
-                          (ite tk_h_bnd tk_h_pend1 _hdr_pend))))))
-  (= hdr_pend a!1)))
+                (ite (and tk_h_add (= _hp_n 0)) tk_h_nm _hdr_pend_0))))
+  (= hdr_pend_0 a!1)))
+(assert (let ((a!1 (ite is_first_tick
+                ""
+                (ite (and tk_h_add (= _hp_n 1)) tk_h_nm _hdr_pend_1))))
+  (= hdr_pend_1 a!1)))
+(assert (let ((a!1 (ite is_first_tick
+                ""
+                (ite (and tk_h_add (= _hp_n 2)) tk_h_nm _hdr_pend_2))))
+  (= hdr_pend_2 a!1)))
+(assert (let ((a!1 (ite is_first_tick
+                ""
+                (ite (and tk_h_add (= _hp_n 3)) tk_h_nm _hdr_pend_3))))
+  (= hdr_pend_3 a!1)))
+(assert (let ((a!1 (ite is_first_tick
+                ""
+                (ite (and tk_h_add (= _hp_n 4)) tk_h_nm _hdr_pend_4))))
+  (= hdr_pend_4 a!1)))
+(assert (let ((a!1 (ite is_first_tick
+                ""
+                (ite (and tk_h_add (= _hp_n 5)) tk_h_nm _hdr_pend_5))))
+  (= hdr_pend_5 a!1)))
+(assert (let ((a!1 (ite is_first_tick
+                ""
+                (ite (and tk_h_add (= _hp_n 6)) tk_h_nm _hdr_pend_6))))
+  (= hdr_pend_6 a!1)))
+(assert (let ((a!1 (ite is_first_tick
+                ""
+                (ite (and tk_h_add (= _hp_n 7)) tk_h_nm _hdr_pend_7))))
+  (= hdr_pend_7 a!1)))
+(assert (let ((a!1 (ite is_first_tick
+                ""
+                (ite (and tk_h_add (= _hp_n 8)) tk_h_nm _hdr_pend_8))))
+  (= hdr_pend_8 a!1)))
+(assert (let ((a!1 (ite is_first_tick
+                ""
+                (ite (and tk_h_add (= _hp_n 9)) tk_h_nm _hdr_pend_9))))
+  (= hdr_pend_9 a!1)))
+(assert (let ((a!1 (ite is_first_tick
+                ""
+                (ite (and tk_h_add (= _hp_n 10)) tk_h_nm _hdr_pend_10))))
+  (= hdr_pend_10 a!1)))
+(assert (let ((a!1 (ite is_first_tick
+                ""
+                (ite (and tk_h_add (= _hp_n 11)) tk_h_nm _hdr_pend_11))))
+  (= hdr_pend_11 a!1)))
+(assert (let ((a!1 (ite is_first_tick
+                ""
+                (ite (and tk_h_add (= _hp_n 12)) tk_h_nm _hdr_pend_12))))
+  (= hdr_pend_12 a!1)))
+(assert (let ((a!1 (ite is_first_tick
+                ""
+                (ite (and tk_h_add (= _hp_n 13)) tk_h_nm _hdr_pend_13))))
+  (= hdr_pend_13 a!1)))
+(assert (let ((a!1 (ite is_first_tick
+                ""
+                (ite (and tk_h_add (= _hp_n 14)) tk_h_nm _hdr_pend_14))))
+  (= hdr_pend_14 a!1)))
+(assert (let ((a!1 (ite is_first_tick
+                ""
+                (ite (and tk_h_add (= _hp_n 15)) tk_h_nm _hdr_pend_15))))
+  (= hdr_pend_15 a!1)))
+(assert (let ((a!1 (ite tk_hdr_go
+                0
+                (ite tk_h_fl_run
+                     (ite tk_h_last 0 _hp_n)
+                     (ite tk_h_add (+ _hp_n 1) _hp_n)))))
+  (= hp_n (ite is_first_tick 0 a!1))))
+(assert (let ((a!1 (ite tk_hdr_go
+                0
+                (ite tk_h_fl_run (ite tk_h_last 0 (+ _hp_i 1)) _hp_i))))
+  (= hp_i (ite is_first_tick 0 a!1))))
 (assert (= hdr_ty
    (ite is_first_tick "" (ite tk_h_fl1 (ite tk_h_typed tk_h_base "") _hdr_ty))))
 (assert (let ((a!1 (or tk_bind_now (and tk_h_bnd (not (= tk_h_nm ""))))))
@@ -3652,6 +3766,10 @@
 (assert (= tk_emit_rec (not (= tk_rec ""))))
 (assert (= eff_out
    (LibCall "libc" "puts" (__Cell_LibArg (ArgStr tk_rec) __Empty_LibArg))))
+(assert (let ((a!1 (__Cell_LibArg (ArgStr "autocarry_analyze: header name pool overflow (cap 16, exit 64)\u{a}")
+                          (__Cell_LibArg (ArgInt (str.len "autocarry_analyze: header name pool overflow (cap 16, exit 64)\u{a}"))
+                                         __Empty_LibArg))))
+  (= eff_ov_msg (LibCall "libc" "write" (__Cell_LibArg (ArgInt 2) a!1)))))
 (assert (= tk_read_go
    (or (and tk_lp_ready (not tk_is_call) (not tk_enter_ce) (not tk_hdr_go))
        (and (= tk_ph 3) tk_scan3_done)
@@ -3661,28 +3779,33 @@
 (assert (let ((a!1 (and (= effects__len 2)
                 (= (select effects 0) eff_nop)
                 (= (select effects 1) ReadLine)))
-      (a!2 (=> tk_exit_now
+      (a!2 (=> tk_h_ovp
+               (and (= effects__len 2)
+                    (= (select effects 0) eff_ov_msg)
+                    (= (select effects 1) (Exit 64)))))
+      (a!3 (=> tk_exit_now
                (and (= effects__len 2)
                     (= (select effects 0) (Exit 0))
                     (= (select effects 1) eff_nop))))
-      (a!3 (=> (and tk_emit_rec tk_read_go)
+      (a!4 (=> (and tk_emit_rec tk_read_go)
                (and (= effects__len 2)
                     (= (select effects 0) eff_out)
                     (= (select effects 1) ReadLine))))
-      (a!4 (=> tk_emit_rec
+      (a!5 (=> tk_emit_rec
                (and (= effects__len 2)
                     (= (select effects 0) eff_out)
                     (= (select effects 1) eff_nop))))
-      (a!5 (=> (not tk_read_go)
+      (a!6 (=> (not tk_read_go)
                (and (= effects__len 2)
                     (= (select effects 0) eff_nop)
                     (= (select effects 1) eff_nop)))))
-(let ((a!6 (and a!4 (=> (not tk_emit_rec) (and (=> tk_read_go a!1) a!5)))))
-(let ((a!7 (and a!3 (=> (not (and tk_emit_rec tk_read_go)) a!6))))
-(let ((a!8 (=> (not is_first_tick) (and a!2 (=> (not tk_exit_now) a!7)))))
-  (and (=> is_first_tick a!1) a!8))))))
+(let ((a!7 (and a!5 (=> (not tk_emit_rec) (and (=> tk_read_go a!1) a!6)))))
+(let ((a!8 (and a!4 (=> (not (and tk_emit_rec tk_read_go)) a!7))))
+(let ((a!9 (=> (not tk_h_ovp) (and a!3 (=> (not tk_exit_now) a!8)))))
+  (and (=> is_first_tick a!1) (=> (not is_first_tick) (and a!2 a!9))))))))
 (declare-fun _eff_nop () Effect)
 (declare-fun _eff_out () Effect)
+(declare-fun _eff_ov_msg () Effect)
 (declare-fun _tk_base () String)
 (declare-fun _tk_bind_now () Bool)
 (declare-fun _tk_ce_done () Bool)
@@ -3710,6 +3833,7 @@
 (declare-fun _tk_eof_now () Bool)
 (declare-fun _tk_exit_now () Bool)
 (declare-fun _tk_fld () String)
+(declare-fun _tk_h_add () Bool)
 (declare-fun _tk_h_b () Int)
 (declare-fun _tk_h_base () String)
 (declare-fun _tk_h_bnd () Bool)
@@ -3723,7 +3847,7 @@
 (declare-fun _tk_h_fl1 () Bool)
 (declare-fun _tk_h_fl_run () Bool)
 (declare-fun _tk_h_fnm () String)
-(declare-fun _tk_h_hp () Int)
+(declare-fun _tk_h_last () Bool)
 (declare-fun _tk_h_m () Int)
 (declare-fun _tk_h_ne () Int)
 (declare-fun _tk_h_nm () String)
@@ -3731,11 +3855,10 @@
 (declare-fun _tk_h_ns () Int)
 (declare-fun _tk_h_o () Int)
 (declare-fun _tk_h_open () Bool)
-(declare-fun _tk_h_pend1 () String)
+(declare-fun _tk_h_ovp () Bool)
 (declare-fun _tk_h_scan () Bool)
 (declare-fun _tk_h_sp () Int)
 (declare-fun _tk_h_t0 () Int)
-(declare-fun _tk_h_tail () String)
 (declare-fun _tk_h_tb () Int)
 (declare-fun _tk_h_te () Int)
 (declare-fun _tk_h_typed () Bool)
