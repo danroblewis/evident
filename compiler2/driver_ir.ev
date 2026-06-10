@@ -54,14 +54,6 @@ type Z3SolverCtx(cfg ∈ Int, ctx ∈ Int, sol ∈ Int)
     sol ≥ 0
     sol > 0 ⇒ (ctx > 0 ∧ cfg > 0)
 
--- The ambient parse context: the token window + parse gate, shared by
--- most components. Bundled so a bare-mention component takes ONE header
--- slot instead of ~12 (see docs/plans/context-bundles.md). parse_mode
--- carries the prev-tick dispatch mode; the tokens are current-tick.
-type ParseCtx(tok0 ∈ Token, tok1 ∈ Token, tok2 ∈ Token, tok3 ∈ Token,
-    tok4 ∈ Token, tok5 ∈ Token, tok6 ∈ Token, tok7 ∈ Token,
-    parse_mode ∈ Int, in_parse ∈ Bool, tok_ready ∈ Bool, work_nil ∈ Bool)
-
 type Z3Sorts(isort ∈ Int, bsort ∈ Int, ssort ∈ Int, rsort ∈ Int)
     isort ≥ 0
     bsort ≥ 0
