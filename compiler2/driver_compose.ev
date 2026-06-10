@@ -16,9 +16,12 @@
 --           the current-frame binds peel (bind_n0..n5 / bind_h0..h5 — read
 --           by the classifier's no-redeclare rule), and the call-jump /
 --           frame-push-pop effects.
--- MAINTAINS: ≤4 binds per call, depth ≤8; a bare/`..` splice inherits the
---           caller scope (no fresh binds, no prefix) while a slot call
---           installs the "__cN_" α-prefix + its C2Binds table.
+-- MAINTAINS: ≤4 binds per call, depth ≤8; a `..` splice inherits the
+--           caller scope (no fresh binds, no prefix); a BARE claim splice
+--           installs the "__cN_" α-prefix with NO binds (internals hidden,
+--           parent names reach the child via prefix-then-bare lookup —
+--           conformance 139/140/141); a slot call installs the prefix +
+--           its C2Binds table.
 --
 -- Claim-composition (slot-call + names-match `..` inlining). Lifted into
 -- driver_main via `..DriverCompose`.
@@ -35,6 +38,7 @@ fsm DriverCompose
     param_depth ∈ Int
     callw_st ∈ Int
     callw_bare ∈ Bool
+    callw_hide ∈ Bool
     callw_is_type ∈ Bool
     type_prefix ∈ String
     slot_count ∈ Int
@@ -217,6 +221,7 @@ fsm DriverCompose
         : callw_reset ? ""
         : callw_fire ? (_callw_is_type ? _type_prefix : prefix_new)
         : (callw_bare_jump ∧ _callw_is_type) ? _type_prefix
+        : (callw_bare_jump ∧ _callw_hide) ? prefix_new
         : posjump_fire ? prefix_new
         : frame_pop ? frame_prefix
         : _scope_prefix)
@@ -228,6 +233,7 @@ fsm DriverCompose
     call_count = (is_first_tick ? 1
         : callw_reset ? 1
         : (callw_fire ∧ (¬_callw_is_type)) ? _call_count + 1
+        : (callw_bare_jump ∧ (¬_callw_is_type) ∧ _callw_hide) ? _call_count + 1
         : posjump_fire ? _call_count + 1
         : _call_count)
     jump_target = (is_first_tick ? 0
@@ -254,6 +260,10 @@ fsm DriverCompose
         : (comp_call ∨ tymem_call) ? false
         : (comp_bare ∨ comp_dotdot ∨ tymem_bare) ? true
         : _callw_bare)
+    callw_hide = (is_first_tick ? false
+        : comp_bare ? true
+        : (comp_call ∨ comp_dotdot ∨ tymem_line) ? false
+        : _callw_hide)
     callw_is_type = (is_first_tick ? false
         : tymem_line ? true
         : comp_line ? false

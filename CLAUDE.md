@@ -150,14 +150,20 @@ Seven ways to compose schemas. Use the shortest form that works:
 
 | Form                       | Meaning                                                                  |
 | -------------------------- | ------------------------------------------------------------------------ |
-| `variable ∈ TypeName`      | Declare a typed variable; fields/invariants become accessible.           |
-| `..ClaimName`              | Inline the claim's body (names-match).                                   |
-| `ClaimName` (bare)         | Inline via names-match (synonym; resolved at translation).               |
-| `ClaimName(slot ↦ value)`  | Inline with explicit slot binding.                                       |
+| `variable ∈ TypeName`      | Declare a typed variable; fields/invariants receiver-scoped (`v.field`). |
+| `..ClaimName`              | LIFT: inline the body in the caller's scope (shared names, names-match). |
+| `ClaimName` (bare)         | CALL: parent names pass down, but the claim's own unmapped internals are HIDDEN (fresh per call site). |
+| `ClaimName(slot ↦ value)`  | CALL with explicit slot binding; unmapped internals hidden as above.      |
 | `(a, b) ∈ ClaimName`       | Inline with positional binding to first-line params.                     |
 | `cond ⇒ ClaimName`         | Conditional inline (constraints wrapped in `cond ⇒ …`).                  |
 | `recv.subclaim(args)`      | Subclaim dispatch with receiver-prefix.                                  |
 | `subclaim Name`            | Nested claim registered as a top-level schema.                           |
+
+Bare mention and `..` are NOT synonyms (restored 2026-06-10; conformance
+139/140/141 pin it): a bare `ClaimName` hides its internals — two bare
+mentions of the same claim get independent internal variables — while
+`..ClaimName` shares them with the caller. Use bare/call for components,
+`..` only when you deliberately want the child's names in your scope.
 
 ### Chained membership
 

@@ -17,7 +17,9 @@
 #        the branch → update PIN here → rebuild.
 #   - Pin lineage: c218dca^ (original bootstrap + c817c6c expr_as_var
 #     fix) → c95710c (record-carry fix: pinned-constant manifest
-#     exclusion + dotted record-field carry; branch point of `oracle`).
+#     exclusion + dotted record-field carry; branch point of `oracle`)
+#     → a1fd517 (bare-mention hiding: ClaimCall not passthrough;
+#     fixtures 139/140/141).
 #   - Install: /usr/local/bin/evident-oracle
 #   - SUNSET: delete this script, the binary, and the `oracle` branch
 #     the day compiler2 compiles itself.
@@ -27,7 +29,7 @@
 set -euo pipefail
 
 # PIN: exact SHA on the `oracle` branch (see header rules).
-PIN="c95710c"
+PIN="a1fd517"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 BUILD=/opt/bootstrap-oracle
 BIN=/usr/local/bin/evident-oracle
