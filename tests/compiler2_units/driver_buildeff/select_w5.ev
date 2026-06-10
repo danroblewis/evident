@@ -1,6 +1,6 @@
 -- DriverBuildEff isolation — the ED effect-row selector.
--- Act 1 (ctor-field run) step 5 is the 6-slot field-name/sort write
--- batch: enum_wbatch5 must select the wide row (w5=1, w2/w3u=0). A regression
+-- Act 1 (ctor-field run) step 8 is the field-name/sort array-write
+-- batch: enum_wbatchf must select the wide row (wf=1, w2/w3u=0). A regression
 -- in the batch selector emits the wrong number of effect writes.
 -- entry: main
 -- expect: stdout = "1/0/0"
@@ -21,7 +21,7 @@ fsm main
     enum_act_now ∈ Int
     enum_act_now = (is_first_tick ? 1 : _enum_act_now)
     enum_step_now ∈ Int
-    enum_step_now = (is_first_tick ? 5 : _enum_step_now)
+    enum_step_now = (is_first_tick ? 8 : _enum_step_now)
     cap_int ∈ Int
     cap_int = (is_first_tick ? 0 : _cap_int)
     field_ref2 ∈ Int
@@ -110,8 +110,59 @@ fsm main
     enum_decl_name = (is_first_tick ? "" : _enum_decl_name)
     op_geq ∈ Op = OpGeq
     enum_variant ∈ EnumVariantDecl = EVNoVariant
+    enum_h_field3 ∈ Int
+    enum_h_field3 = (is_first_tick ? 0 : _enum_h_field3)
+    enum_h_field4 ∈ Int
+    enum_h_field4 = (is_first_tick ? 0 : _enum_h_field4)
+    enum_h_field5 ∈ Int
+    enum_h_field5 = (is_first_tick ? 0 : _enum_h_field5)
+    field_sort3 ∈ Int
+    field_sort3 = (is_first_tick ? 0 : _field_sort3)
+    field_sort4 ∈ Int
+    field_sort4 = (is_first_tick ? 0 : _field_sort4)
+    field_sort5 ∈ Int
+    field_sort5 = (is_first_tick ? 0 : _field_sort5)
+    refs_packed23 ∈ Int
+    refs_packed23 = (is_first_tick ? 0 : _refs_packed23)
+    refs_packed45 ∈ Int
+    refs_packed45 = (is_first_tick ? 0 : _refs_packed45)
+    member_base ∈ Int
+    member_base = (is_first_tick ? 0 : _member_base)
+    ed_n ∈ Int
+    ed_n = (is_first_tick ? 1 : _ed_n)
+    ed_rd ∈ Int
+    ed_rd = (is_first_tick ? 0 : _ed_rd)
+    enum_member_idx ∈ Int = 0
+    enumtab_count ∈ Int
+    enumtab_count = (is_first_tick ? 0 : _enumtab_count)
+    variant_alloc ∈ Int
+    variant_alloc = (is_first_tick ? 1 : _variant_alloc)
+    res_int0 ∈ Int
+    res_int0 = (is_first_tick ? 0 : _res_int0)
+    res_int1 ∈ Int
+    res_int1 = (is_first_tick ? 0 : _res_int1)
+    res_int2 ∈ Int
+    res_int2 = (is_first_tick ? 0 : _res_int2)
+    res_int3 ∈ Int
+    res_int3 = (is_first_tick ? 0 : _res_int3)
+    res_int4 ∈ Int
+    res_int4 = (is_first_tick ? 0 : _res_int4)
+    res_int5 ∈ Int
+    res_int5 = (is_first_tick ? 0 : _res_int5)
+    f_istab0 ∈ Bool = false
+    f_istab1 ∈ Bool = false
+    f_istab2 ∈ Bool = false
+    f_istab3 ∈ Bool = false
+    f_istab4 ∈ Bool = false
+    f_istab5 ∈ Bool = false
+    ftab_pos0 ∈ Int = 0 - 1
+    ftab_pos1 ∈ Int = 0 - 1
+    ftab_pos2 ∈ Int = 0 - 1
+    ftab_pos3 ∈ Int = 0 - 1
+    ftab_pos4 ∈ Int = 0 - 1
+    ftab_pos5 ∈ Int = 0 - 1
     ..DriverBuildEff
-    sel ∈ String = (enum_wbatch5 ? "1" : "0") ++ "/" ++ (enum_wbatch2 ? "1" : "0") ++ "/" ++ (enum_wbatch3u ? "1" : "0")
+    sel ∈ String = (enum_wbatchf ? "1" : "0") ++ "/" ++ (enum_wbatch2 ? "1" : "0") ++ "/" ++ (enum_wbatch3u ? "1" : "0")
     effects ∈ Seq(Effect) = ((¬is_first_tick)
         ? ⟨LibCall("libc", "puts", ⟨ArgStr(sel)⟩), Exit(0)⟩
         : ⟨LibCall("libc", "getpid", ⟨⟩)⟩)

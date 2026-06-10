@@ -67,6 +67,13 @@ fsm main
     variant_names = (is_first_tick ? "" : _variant_names)
     win_toks ∈ TokenList
     win_toks = (is_first_tick ? TLNil : _win_toks)
+    tok0 ∈ Token = EofTok
+    tok1 ∈ Token = EofTok
+    tok2 ∈ Token = EofTok
+    tok3 ∈ Token = EofTok
+    tok4 ∈ Token = EofTok
+    tok5 ∈ Token = EofTok
+    tok6 ∈ Token = EofTok
     ..DriverPratt
     msg ∈ String = str_from_int(pratt_kind)
     effects ∈ Seq(Effect) = ((¬is_first_tick)

@@ -1,73 +1,71 @@
 -- MODULE DriverEnum
 -- CONSUMES: the ZINIT start gate (zstep parked at 9), the Z3 base-sort
---           handles (z3sorts.isort/z3sorts.bsort/z3sorts.ssort/z3sorts.rsort) + the int-result-1
---           value res_int1, cap_int (last libc capture), and the user-enum
---           collection signals from the parse dispatcher (enum_start,
---           variant_list_now, _user_enum_name, _enum_is_user).
+--           handles (z3sorts.isort/z3sorts.bsort/z3sorts.ssort/z3sorts.rsort) + the int-result
+--           captures cap_int/res_int0/res_int1, and the user-enum collection
+--           signals from the parse dispatcher (enum_group_go,
+--           enum_member_end, variant_list_now, _user_enum_name).
 -- PRODUCES: the Effect-floor + user-enum datatype machine's outputs — the
---           sort registers (libarg_sort/seqarg_sort/z_effect_sort/z_result_sort/user_enum_sort),
+--           floor sort registers (libarg_sort/seqarg_sort/z_effect_sort/z_result_sort),
 --           the floor ctor/tester/accessor decls (z_exit_decl/z_libcall_decl/
 --           z_argstr_decl/z_argint_decl/z_cell_decl/z_empty_val,
 --           z_intres_test/z_strres_test/z_intres_acc/z_strres_acc), the user-enum value table
---           (evt_*) and the user-variant ctor/tester/accessor registry
---           (uev_*), plus the act/step/src/vidx walk state.
--- MAINTAINS: one variant declared per (enum_act, enum_step) micro-step, one
---           Z3 effect per tick with captures landing on the next tick keyed
---           off (_enum_act, _enum_step); runs the four floor enums (enum_src 0..3,
---           zstep held at 9) before the single user enum (enum_is_user).
---
--- Enum decls → Z3 datatypes. The stateful ED machine, lifted into
--- driver_main via `..DriverEnum`, so its act/step/src walk + the sort and
--- decl registers become driver_main's own carried state-fields. The big
--- act/step table below is the machine's spec.
-
--- One per-field slot row for the variant being declared: the field's
--- type string plus its resolved sort handle and self-reference flag.
--- `field_slots ∈ Seq(EnumFieldSlot)`, `#field_slots ≤ 3`, pure per-tick (no length) —
--- lowered to flat scalars by scripts/lower-bounded-seq.sh pre-oracle.
--- The ref slots stay the scalar field_ref0/1/2: field_ref2 + refs_packed01 are
--- read by driver_buildeff.ev under those names.
-type EnumFieldSlot(ty ∈ String, sort ∈ Int, is_self ∈ Bool)
+--           (enum_values), the user-variant ctor/tester/accessor registry
+--           (user_variants + variant_names + variant_alloc), the parse-side
+--           build-group accumulator (egroup/egroup_names/egroup_n), the
+--           ENUM TABLE name column (enum_names, fixed-width-32 rows whose
+--           index_of/32 is the table slot; the sort-handle cells live on
+--           the tape at enumtab_p, written at act-2 read-back) + its row
+--           count (enumtab_count), plus the act/step/src walk state.
+-- MAINTAINS: one Z3 effect batch per tick with captures landing on the
+--           next tick keyed off (_enum_act, _enum_step); runs the four floor
+--           enums (enum_src 0..3, zstep held at 9) before the user groups;
+--           a BUILD GROUP (consecutive user enum decls, batched into ONE
+--           Z3_mk_datatypes call so mutual recursion resolves by sort-ref
+--           index into ed_names) walks acts 1→2→3 with the SAME member
+--           iteration order in act 1 (declare) and act 3 (harvest), so the
+--           global ctor cursor enum_vidx addresses ctors[] identically in
+--           both passes with no per-member base bookkeeping.
 
 fsm DriverEnum
     -- ── ED — the enum-declaration machine ────────────────────────
-    -- ONE FSM declares any enum (parsed EnumDeclAst data) in the
-    -- build context through translate2_ctor.ev's step claims, then
-    -- harvests each variant's ctor func_decl + (nullary) value.
-    -- It runs FIVE times: four ZINIT floor runs (enum_src 0 LibArg,
+    -- ONE FSM declares a GROUP of enums (EnumDeclList) in the build
+    -- context through translate2_ctor.ev's step claims, then harvests
+    -- each variant's ctor func_decl + (nullary) value. It runs once
+    -- per floor enum as a 1-member group (enum_src 0 LibArg,
     -- 1 __SeqOf_LibArg, 2 Effect, 3 Result — zstep holds at 9) and
-    -- once per USER enum at parse time (parse_mode 4, enum_is_user). The
-    -- Result run (D3) additionally harvests the IntResult /
-    -- StringResult tester + accessor decls (acts 3 steps 3-4 read
-    -- qout+8 / qout+16 instead of fillers).
+    -- once per USER build group at parse time (enum_group_go).
     --
-    -- Acts/steps (enum_act · enum_step; one effect per tick, captures
-    -- land next tick keyed off the (_enum_act, _enum_step) that ran):
-    --   act 1 (declare, per variant; n = field count):
-    --     0 name sym · 1 recog sym · 2..4 field syms (skip by n) ·
-    --     5 array-write batch (≤8 effects) · 6 mk_constructor ·
-    --     7 write ctor → ctors[vidx], advance variant
-    --   act 2 (finalize): 0 enum sort sym · 1 mk_constructor_list ·
-    --     2 write batch (sort name + clist) · 3 mk_datatypes ·
-    --     4 read sort · 5 capture sort, reset walk → harvest
-    --   act 3 (harvest, per variant): 0 read ctor handle · 1 query ·
-    --     2 read ctor decl · 3 capture decl (+ floor-decl register
-    --     latches), mk_app for nullary · 4 capture value (enum_values / floor
-    --     value latches), advance variant
-    --
-    -- Arena layout for the machine (reused per run; the WALK's
-    -- regions live at +200..247 and never overlap in time):
-    --   +0 fnames[3] · +24 fsorts[3] · +48 srefs (2 packed writes) ·
-    --   +64 ctors[8] (Result has 6 variants — the old ctors[5]
-    --   collided with sort_names) · +128 sort_names[1] ·
-    --   +136 sorts_out[1] · +144 clists[1] ·
-    --   +152 query out block (16 + 8·3)
+    -- Acts/steps (enum_act · enum_step):
+    --   act 1 (declare; per variant of each member; n = field count):
+    --     0 name sym · 1 recog sym · 2..7 field sym k = step−2 (skip
+    --     by n; a cross-group enum payload batches the enum-table
+    --     sort read alongside its field sym, latched in field_xsortK)
+    --     · 8 array-write batch (≤15 effects) · 9 mk_constructor ·
+    --     10 write ctor → ctors[enum_vidx], advance variant; member
+    --     end: 11 member sort sym · 12 mk_constructor_list (this
+    --     member's ctor span) · 13 write batch (sort name + clist at
+    --     the member's ed_names index) → next member or act 2
+    --   act 2 (group finalize): 0 mk_datatypes(ed_n) · 1 read
+    --     sorts_out[ed_rd] · 2 write enum-table row (user), loop to 1
+    --     until ed_n rows · 3 commit (enum_names ++= ed_names), reset
+    --     the walk to the group head → act 3
+    --   act 3 (harvest; per variant of each member): 0 read ctor
+    --     handle · 1 query · 2 read ctor decl · 3 capture decl
+    --     (+ floor-decl register latches), nullary ⟨mk_app, read
+    --     tester⟩ / payload ⟨read tester⟩ · 4 payload ⟨read accessors
+    --     0..n−1⟩ · 5 capture accessors (registry f0 + acc-table tape
+    --     rows), advance variant → next variant / next member / done
     enum_act ∈ Int
     enum_step ∈ Int
     enum_src ∈ Int
     enum_is_user ∈ Bool
     enum_decl_name ∈ String
-    enum_variants_all ∈ EnumVariantList
+    ed_group ∈ EnumDeclList
+    ed_group_all ∈ EnumDeclList
+    ed_names ∈ String
+    ed_n ∈ Int
+    ed_rd ∈ Int
+    member_base ∈ Int
     enum_variants ∈ EnumVariantList
     enum_vidx ∈ Int
     enum_n_variants ∈ Int
@@ -76,6 +74,9 @@ fsm DriverEnum
     enum_h_field0 ∈ Int
     enum_h_field1 ∈ Int
     enum_h_field2 ∈ Int
+    enum_h_field3 ∈ Int
+    enum_h_field4 ∈ Int
+    enum_h_field5 ∈ Int
 
     libarg_decl ∈ EnumDeclAst = EnumD("LibArg",
         EVCons(EVDeclP("ArgInt", EVFCons(EVFType("Int"), EVFNil)),
@@ -98,37 +99,74 @@ fsm DriverEnum
         EVCons(EVDecl("EofResult"),
         EVCons(EVDeclP("ErrorResult", EVFCons(EVFType("String"), EVFNil)),
         EVNil)))))))
-    libarg_variants ∈ EnumVariantList
-    EnumVariantListOf(decl ↦ libarg_decl, vs ↦ libarg_variants)
-    seqarg_variants ∈ EnumVariantList
-    EnumVariantListOf(decl ↦ seqarg_decl, vs ↦ seqarg_variants)
-    effect_variants ∈ EnumVariantList
-    EnumVariantListOf(decl ↦ effect_decl, vs ↦ effect_variants)
-    result_variants ∈ EnumVariantList
-    EnumVariantListOf(decl ↦ result_decl, vs ↦ result_variants)
+
+    -- ── parse-side build-group accumulator ────────────────────────
+    -- Each user enum decl's variant walk ends with enum_member_end;
+    -- the member is prepended here. The group fires (enum_group_go,
+    -- from dispatch) when a non-enum top-level decl or EOF arrives —
+    -- so forward and mutual payload references resolve against the
+    -- whole group's name rows.
+    egroup ∈ EnumDeclList
+    egroup_names ∈ String
+    egroup_n ∈ Int
+    egroup_name_entry ∈ String
+    FtiNameEntry(name ↦ _user_enum_name, entry ↦ egroup_name_entry)
+    egroup = (is_first_tick ? EDLNil
+        : enum_group_go ? EDLNil
+        : enum_member_end ? EDLCons(EnumD(_user_enum_name, variant_list_now), _egroup)
+        : _egroup)
+    egroup_names = (is_first_tick ? ""
+        : enum_group_go ? ""
+        : enum_member_end ? (_egroup_names ++ egroup_name_entry)
+        : _egroup_names)
+    egroup_n = (is_first_tick ? 0
+        : enum_group_go ? 0
+        : enum_member_end ? _egroup_n + 1
+        : _egroup_n)
 
     enum_go_floor ∈ Bool = ((¬is_first_tick) ∧ (zstep = 9)
         ∧ (_enum_act = 0) ∧ (_enum_src < 4))
-    enum_go ∈ Bool = (enum_go_floor ∨ enum_start)
-    enum_go_variants ∈ EnumVariantList = (enum_start ? variant_list_now
-        : _enum_src = 0 ? libarg_variants
-        : _enum_src = 1 ? seqarg_variants
-        : _enum_src = 2 ? effect_variants
-        : result_variants)
-    enum_go_name ∈ String = (enum_start ? _user_enum_name
-        : _enum_src = 0 ? "LibArg"
+    enum_go ∈ Bool = (enum_go_floor ∨ enum_group_go)
+    floor_decl_now ∈ EnumDeclAst = (_enum_src = 0 ? libarg_decl
+        : _enum_src = 1 ? seqarg_decl
+        : _enum_src = 2 ? effect_decl
+        : result_decl)
+    floor_name_now ∈ String = (_enum_src = 0 ? "LibArg"
         : _enum_src = 1 ? "__SeqOf_LibArg"
         : _enum_src = 2 ? "Effect"
         : "Result")
+    floor_name_entry ∈ String
+    FtiNameEntry(name ↦ floor_name_now, entry ↦ floor_name_entry)
+    ed_go_group ∈ EnumDeclList = (enum_group_go ? _egroup
+        : EDLCons(floor_decl_now, EDLNil))
+    ed_go_names ∈ String = (enum_group_go ? _egroup_names : floor_name_entry)
+    ed_go_n ∈ Int = (enum_group_go ? _egroup_n : 1)
 
-    -- The START tick already runs step 0 (the first variant's name
-    -- sym), so the peel must see the NEW list on that tick.
-    enum_vs_now ∈ EnumVariantList = (enum_go ? enum_go_variants : _enum_variants)
+    -- ── member peel (group start / next member / harvest reset) ───
+    -- a2_commit (the act-2 step-3 tick) is recognized from PREV state
+    -- only — peel feeds enum_variant feeds enum_step_now, so keying it
+    -- off enum_step_now would be a definitional cycle (and a
+    -- functionizer residual).
+    a2_commit ∈ Bool = (_enum_act = 2 ∧ _enum_step = 2 ∧ (_ed_rd ≥ ed_n))
+    ed_peel_src ∈ EnumDeclList = (enum_go ? ed_go_group
+        : a2_commit ? _ed_group_all
+        : _ed_group)
+    peel_name ∈ String
+    peel_vs ∈ EnumVariantList
+    peel_rest ∈ EnumDeclList
+    peel_nonempty ∈ Bool
+    EnumGroupHead(g ↦ ed_peel_src, name ↦ peel_name, vs ↦ peel_vs,
+        rest ↦ peel_rest, nonempty ↦ peel_nonempty)
+
+    -- The START tick already runs act-1 step 0 (the first variant's
+    -- name sym), so the peel must see the NEW group on that tick.
+    enum_vs_now ∈ EnumVariantList = (enum_go ? peel_vs : _enum_variants)
     enum_variant ∈ EnumVariantDecl
     enum_vrest ∈ EnumVariantList
     enum_vs_nonempty ∈ Bool
     EnumVariantsHead(vs ↦ enum_vs_now, v ↦ enum_variant, rest ↦ enum_vrest,
         nonempty ↦ enum_vs_nonempty)
+    vrest_nonempty ∈ Bool = (enum_vrest matches EVCons(_, _))
     enum_field_n ∈ Int
     VariantFieldCount(v ↦ enum_variant, n ↦ enum_field_n)
     enum_vname ∈ String = match enum_variant
@@ -137,69 +175,218 @@ fsm DriverEnum
         EVNoVariant ⇒ ""
     enum_nullary ∈ Bool = (enum_field_n = 0)
 
-    field_slots ∈ Seq(EnumFieldSlot)
-    #field_slots ≤ 3
-    ∀ k ∈ {0..2} : VariantFieldType(v ↦ enum_variant, idx ↦ k, ty ↦ field_slots[k].ty)
-    field_ref0 ∈ Int
-    FieldSortSlot(enum_name ↦ _enum_decl_name, ty ↦ field_slots[0].ty,
-        int_sort_h ↦ z3sorts.isort, bool_sort_h ↦ z3sorts.bsort, string_sort_h ↦ z3sorts.ssort,
-        self_sort_idx ↦ 0,
-        sort_slot ↦ field_slots[0].sort, ref_slot ↦ field_ref0, is_self ↦ field_slots[0].is_self)
-    field_ref1 ∈ Int
-    FieldSortSlot(enum_name ↦ _enum_decl_name, ty ↦ field_slots[1].ty,
-        int_sort_h ↦ z3sorts.isort, bool_sort_h ↦ z3sorts.bsort, string_sort_h ↦ z3sorts.ssort,
-        self_sort_idx ↦ 0,
-        sort_slot ↦ field_slots[1].sort, ref_slot ↦ field_ref1, is_self ↦ field_slots[1].is_self)
-    field_ref2 ∈ Int
-    FieldSortSlot(enum_name ↦ _enum_decl_name, ty ↦ field_slots[2].ty,
-        int_sort_h ↦ z3sorts.isort, bool_sort_h ↦ z3sorts.bsort, string_sort_h ↦ z3sorts.ssort,
-        self_sort_idx ↦ 0,
-        sort_slot ↦ field_slots[2].sort, ref_slot ↦ field_ref2, is_self ↦ field_slots[2].is_self)
-    field_sort0 ∈ Int = ((field_slots[0].sort ≠ 0 ∨ field_slots[0].is_self) ? field_slots[0].sort
-        : field_slots[0].ty = "Real" ? z3sorts.rsort
-        : field_slots[0].ty = "LibArg" ? libarg_sort
-        : field_slots[0].ty = "Seq(LibArg)" ? seqarg_sort
+    member_key ∈ String
+    FtiNameEntry(name ↦ _enum_decl_name, entry ↦ member_key)
+    enum_member_idx ∈ Int = (index_of(ed_names, member_key, 0) / 32)
+
+    -- ── per-field sort resolution (D3) ────────────────────────────
+    -- Resolution order per payload field type: group member (sort 0 +
+    -- ref index into ed_names — covers self and mutual recursion) →
+    -- scalar floor → floor sort registers → enum table (cross-group:
+    -- the sort handle is read from the tape alongside the field sym
+    -- and latched in field_xsortK) → unresolved (loud Exit 8 at the
+    -- array-write step).
+    fty0 ∈ String
+    VariantFieldType(v ↦ enum_variant, idx ↦ 0, ty ↦ fty0)
+    fty1 ∈ String
+    VariantFieldType(v ↦ enum_variant, idx ↦ 1, ty ↦ fty1)
+    fty2 ∈ String
+    VariantFieldType(v ↦ enum_variant, idx ↦ 2, ty ↦ fty2)
+    fty3 ∈ String
+    VariantFieldType(v ↦ enum_variant, idx ↦ 3, ty ↦ fty3)
+    fty4 ∈ String
+    VariantFieldType(v ↦ enum_variant, idx ↦ 4, ty ↦ fty4)
+    fty5 ∈ String
+    VariantFieldType(v ↦ enum_variant, idx ↦ 5, ty ↦ fty5)
+    fkey0 ∈ String
+    FtiNameEntry(name ↦ fty0, entry ↦ fkey0)
+    fkey1 ∈ String
+    FtiNameEntry(name ↦ fty1, entry ↦ fkey1)
+    fkey2 ∈ String
+    FtiNameEntry(name ↦ fty2, entry ↦ fkey2)
+    fkey3 ∈ String
+    FtiNameEntry(name ↦ fty3, entry ↦ fkey3)
+    fkey4 ∈ String
+    FtiNameEntry(name ↦ fty4, entry ↦ fkey4)
+    fkey5 ∈ String
+    FtiNameEntry(name ↦ fty5, entry ↦ fkey5)
+    fref_pos0 ∈ Int = index_of(ed_names, fkey0, 0)
+    fref_pos1 ∈ Int = index_of(ed_names, fkey1, 0)
+    fref_pos2 ∈ Int = index_of(ed_names, fkey2, 0)
+    fref_pos3 ∈ Int = index_of(ed_names, fkey3, 0)
+    fref_pos4 ∈ Int = index_of(ed_names, fkey4, 0)
+    fref_pos5 ∈ Int = index_of(ed_names, fkey5, 0)
+    f_isref0 ∈ Bool = (fref_pos0 ≥ 0)
+    f_isref1 ∈ Bool = (fref_pos1 ≥ 0)
+    f_isref2 ∈ Bool = (fref_pos2 ≥ 0)
+    f_isref3 ∈ Bool = (fref_pos3 ≥ 0)
+    f_isref4 ∈ Bool = (fref_pos4 ≥ 0)
+    f_isref5 ∈ Bool = (fref_pos5 ≥ 0)
+    field_ref0 ∈ Int = (f_isref0 ? fref_pos0 / 32 : 0)
+    field_ref1 ∈ Int = (f_isref1 ? fref_pos1 / 32 : 0)
+    field_ref2 ∈ Int = (f_isref2 ? fref_pos2 / 32 : 0)
+    field_ref3 ∈ Int = (f_isref3 ? fref_pos3 / 32 : 0)
+    field_ref4 ∈ Int = (f_isref4 ? fref_pos4 / 32 : 0)
+    field_ref5 ∈ Int = (f_isref5 ? fref_pos5 / 32 : 0)
+    ftab_pos0 ∈ Int = index_of(enum_names, fkey0, 0)
+    ftab_pos1 ∈ Int = index_of(enum_names, fkey1, 0)
+    ftab_pos2 ∈ Int = index_of(enum_names, fkey2, 0)
+    ftab_pos3 ∈ Int = index_of(enum_names, fkey3, 0)
+    ftab_pos4 ∈ Int = index_of(enum_names, fkey4, 0)
+    ftab_pos5 ∈ Int = index_of(enum_names, fkey5, 0)
+    f_istab0 ∈ Bool = ((¬f_isref0) ∧ (ftab_pos0 ≥ 0))
+    f_istab1 ∈ Bool = ((¬f_isref1) ∧ (ftab_pos1 ≥ 0))
+    f_istab2 ∈ Bool = ((¬f_isref2) ∧ (ftab_pos2 ≥ 0))
+    f_istab3 ∈ Bool = ((¬f_isref3) ∧ (ftab_pos3 ≥ 0))
+    f_istab4 ∈ Bool = ((¬f_isref4) ∧ (ftab_pos4 ≥ 0))
+    f_istab5 ∈ Bool = ((¬f_isref5) ∧ (ftab_pos5 ≥ 0))
+    field_xsort0 ∈ Int
+    field_xsort1 ∈ Int
+    field_xsort2 ∈ Int
+    field_xsort3 ∈ Int
+    field_xsort4 ∈ Int
+    field_xsort5 ∈ Int
+    field_xsort0 = (is_first_tick ? 0
+        : (_enum_act = 1 ∧ _enum_step = 2 ∧ f_istab0) ? res_int1 : _field_xsort0)
+    field_xsort1 = (is_first_tick ? 0
+        : (_enum_act = 1 ∧ _enum_step = 3 ∧ f_istab1) ? res_int1 : _field_xsort1)
+    field_xsort2 = (is_first_tick ? 0
+        : (_enum_act = 1 ∧ _enum_step = 4 ∧ f_istab2) ? res_int1 : _field_xsort2)
+    field_xsort3 = (is_first_tick ? 0
+        : (_enum_act = 1 ∧ _enum_step = 5 ∧ f_istab3) ? res_int1 : _field_xsort3)
+    field_xsort4 = (is_first_tick ? 0
+        : (_enum_act = 1 ∧ _enum_step = 6 ∧ f_istab4) ? res_int1 : _field_xsort4)
+    field_xsort5 = (is_first_tick ? 0
+        : (_enum_act = 1 ∧ _enum_step = 7 ∧ f_istab5) ? res_int1 : _field_xsort5)
+    field_sort0 ∈ Int = (f_isref0 ? 0
+        : fty0 = "Int" ? z3sorts.isort
+        : fty0 = "Nat" ? z3sorts.isort
+        : fty0 = "Bool" ? z3sorts.bsort
+        : fty0 = "String" ? z3sorts.ssort
+        : fty0 = "Real" ? z3sorts.rsort
+        : fty0 = "LibArg" ? libarg_sort
+        : fty0 = "Seq(LibArg)" ? seqarg_sort
+        : fty0 = "Effect" ? z_effect_sort
+        : fty0 = "Result" ? z_result_sort
+        : f_istab0 ? field_xsort0
         : 0)
-    field_sort1 ∈ Int = ((field_slots[1].sort ≠ 0 ∨ field_slots[1].is_self) ? field_slots[1].sort
-        : field_slots[1].ty = "Real" ? z3sorts.rsort
-        : field_slots[1].ty = "LibArg" ? libarg_sort
-        : field_slots[1].ty = "Seq(LibArg)" ? seqarg_sort
+    field_sort1 ∈ Int = (f_isref1 ? 0
+        : fty1 = "Int" ? z3sorts.isort
+        : fty1 = "Nat" ? z3sorts.isort
+        : fty1 = "Bool" ? z3sorts.bsort
+        : fty1 = "String" ? z3sorts.ssort
+        : fty1 = "Real" ? z3sorts.rsort
+        : fty1 = "LibArg" ? libarg_sort
+        : fty1 = "Seq(LibArg)" ? seqarg_sort
+        : fty1 = "Effect" ? z_effect_sort
+        : fty1 = "Result" ? z_result_sort
+        : f_istab1 ? field_xsort1
         : 0)
-    field_sort2 ∈ Int = ((field_slots[2].sort ≠ 0 ∨ field_slots[2].is_self) ? field_slots[2].sort
-        : field_slots[2].ty = "Real" ? z3sorts.rsort
-        : field_slots[2].ty = "LibArg" ? libarg_sort
-        : field_slots[2].ty = "Seq(LibArg)" ? seqarg_sort
+    field_sort2 ∈ Int = (f_isref2 ? 0
+        : fty2 = "Int" ? z3sorts.isort
+        : fty2 = "Nat" ? z3sorts.isort
+        : fty2 = "Bool" ? z3sorts.bsort
+        : fty2 = "String" ? z3sorts.ssort
+        : fty2 = "Real" ? z3sorts.rsort
+        : fty2 = "LibArg" ? libarg_sort
+        : fty2 = "Seq(LibArg)" ? seqarg_sort
+        : fty2 = "Effect" ? z_effect_sort
+        : fty2 = "Result" ? z_result_sort
+        : f_istab2 ? field_xsort2
         : 0)
+    field_sort3 ∈ Int = (f_isref3 ? 0
+        : fty3 = "Int" ? z3sorts.isort
+        : fty3 = "Nat" ? z3sorts.isort
+        : fty3 = "Bool" ? z3sorts.bsort
+        : fty3 = "String" ? z3sorts.ssort
+        : fty3 = "Real" ? z3sorts.rsort
+        : fty3 = "LibArg" ? libarg_sort
+        : fty3 = "Seq(LibArg)" ? seqarg_sort
+        : fty3 = "Effect" ? z_effect_sort
+        : fty3 = "Result" ? z_result_sort
+        : f_istab3 ? field_xsort3
+        : 0)
+    field_sort4 ∈ Int = (f_isref4 ? 0
+        : fty4 = "Int" ? z3sorts.isort
+        : fty4 = "Nat" ? z3sorts.isort
+        : fty4 = "Bool" ? z3sorts.bsort
+        : fty4 = "String" ? z3sorts.ssort
+        : fty4 = "Real" ? z3sorts.rsort
+        : fty4 = "LibArg" ? libarg_sort
+        : fty4 = "Seq(LibArg)" ? seqarg_sort
+        : fty4 = "Effect" ? z_effect_sort
+        : fty4 = "Result" ? z_result_sort
+        : f_istab4 ? field_xsort4
+        : 0)
+    field_sort5 ∈ Int = (f_isref5 ? 0
+        : fty5 = "Int" ? z3sorts.isort
+        : fty5 = "Nat" ? z3sorts.isort
+        : fty5 = "Bool" ? z3sorts.bsort
+        : fty5 = "String" ? z3sorts.ssort
+        : fty5 = "Real" ? z3sorts.rsort
+        : fty5 = "LibArg" ? libarg_sort
+        : fty5 = "Seq(LibArg)" ? seqarg_sort
+        : fty5 = "Effect" ? z_effect_sort
+        : fty5 = "Result" ? z_result_sort
+        : f_istab5 ? field_xsort5
+        : 0)
+    f_unres0 ∈ Bool = ((¬f_isref0) ∧ (field_sort0 = 0) ∧ (enum_field_n ≥ 1))
+    f_unres1 ∈ Bool = ((¬f_isref1) ∧ (field_sort1 = 0) ∧ (enum_field_n ≥ 2))
+    f_unres2 ∈ Bool = ((¬f_isref2) ∧ (field_sort2 = 0) ∧ (enum_field_n ≥ 3))
+    f_unres3 ∈ Bool = ((¬f_isref3) ∧ (field_sort3 = 0) ∧ (enum_field_n ≥ 4))
+    f_unres4 ∈ Bool = ((¬f_isref4) ∧ (field_sort4 = 0) ∧ (enum_field_n ≥ 5))
+    f_unres5 ∈ Bool = ((¬f_isref5) ∧ (field_sort5 = 0) ∧ (enum_field_n ≥ 6))
+    enum_field_unresolved ∈ Bool = (enum_running
+        ∧ (enum_act_now = 1) ∧ (enum_step_now = 8)
+        ∧ (f_unres0 ∨ f_unres1 ∨ f_unres2 ∨ f_unres3 ∨ f_unres4 ∨ f_unres5))
     refs_packed01 ∈ Int
     SortRefsPack2(ref_lo ↦ field_ref0, ref_hi ↦ field_ref1, packed ↦ refs_packed01)
+    refs_packed23 ∈ Int
+    SortRefsPack2(ref_lo ↦ field_ref2, ref_hi ↦ field_ref3, packed ↦ refs_packed23)
+    refs_packed45 ∈ Int
+    SortRefsPack2(ref_lo ↦ field_ref4, ref_hi ↦ field_ref5, packed ↦ refs_packed45)
 
+    -- ── act/step transitions ──────────────────────────────────────
     enum_act_now ∈ Int = (enum_go ? 1
         : _enum_act = 1 ?
-            (_enum_step = 7 ? (enum_vs_nonempty ? 1 : 2) : 1)
-        : _enum_act = 2 ? (_enum_step = 5 ? 3 : 2)
+            (_enum_step = 13 ? (enum_vs_nonempty ? 1 : 2) : 1)
+        : _enum_act = 2 ? (_enum_step = 3 ? 3 : 2)
         : _enum_act = 3 ?
-            (_enum_step = 4 ? (enum_vs_nonempty ? 3 : 0) : 3)
+            (_enum_step = 5 ? (enum_vs_nonempty ? 3 : 0) : 3)
         : 0)
     enum_step_now ∈ Int = (enum_go ? 0
         : _enum_act = 1 ?
             (_enum_step = 0 ? 1
-            : _enum_step = 1 ? (enum_field_n = 0 ? 6 : 2)
-            : _enum_step = 2 ? (enum_field_n = 1 ? 5 : 3)
-            : _enum_step = 3 ? (enum_field_n = 2 ? 5 : 4)
-            : _enum_step = 4 ? 5
-            : _enum_step = 5 ? 6
-            : _enum_step = 6 ? 7
+            : _enum_step = 1 ? (enum_field_n = 0 ? 9 : 2)
+            : _enum_step = 2 ? (enum_field_n = 1 ? 8 : 3)
+            : _enum_step = 3 ? (enum_field_n = 2 ? 8 : 4)
+            : _enum_step = 4 ? (enum_field_n = 3 ? 8 : 5)
+            : _enum_step = 5 ? (enum_field_n = 4 ? 8 : 6)
+            : _enum_step = 6 ? (enum_field_n = 5 ? 8 : 7)
+            : _enum_step = 7 ? 8
+            : _enum_step = 8 ? 9
+            : _enum_step = 9 ? 10
+            : _enum_step = 10 ? (enum_vs_nonempty ? 0 : 11)
+            : _enum_step = 11 ? 12
+            : _enum_step = 12 ? 13
             : 0)
-        : _enum_act = 2 ? (_enum_step = 5 ? 0 : _enum_step + 1)
-        : _enum_act = 3 ? (_enum_step = 4 ? 0 : _enum_step + 1)
+        : _enum_act = 2 ?
+            (_enum_step = 0 ? 1
+            : _enum_step = 1 ? 2
+            : _enum_step = 2 ? (_ed_rd < ed_n ? 1 : 3)
+            : 0)
+        : _enum_act = 3 ? (_enum_step = 5 ? 0 : _enum_step + 1)
         : 0)
     enum_running ∈ Bool = (enum_go ∨ _enum_act ≠ 0)
-    enum_done ∈ Bool = (_enum_act = 3 ∧ _enum_step = 4 ∧ (¬enum_vs_nonempty))
+    enum_done ∈ Bool = (_enum_act = 3 ∧ _enum_step = 5 ∧ (¬enum_vs_nonempty))
     enum_done_user ∈ Bool = (enum_done ∧ _enum_is_user)
 
-    enum_advance ∈ Bool = (enum_running ∧
-        ((enum_act_now = 1 ∧ enum_step_now = 7)
-        ∨ (enum_act_now = 3 ∧ enum_step_now = 4)))
+    a1_advance ∈ Bool = (enum_running ∧ enum_act_now = 1 ∧ enum_step_now = 10)
+    a3_advance ∈ Bool = (enum_running ∧ enum_act_now = 3 ∧ enum_step_now = 5)
+    a1_member_fin ∈ Bool = (enum_running ∧ enum_act_now = 1 ∧ enum_step_now = 13)
+    a1_member_load ∈ Bool = (a1_member_fin ∧ peel_nonempty)
+    a3_member_load ∈ Bool = (a3_advance ∧ (¬vrest_nonempty) ∧ peel_nonempty)
+
     enum_act = (is_first_tick ? 0
         : enum_done ? 0
         : enum_running ? enum_act_now
@@ -209,28 +396,53 @@ fsm DriverEnum
         : (enum_done ∧ (¬_enum_is_user)) ? _enum_src + 1
         : _enum_src)
     enum_is_user = (is_first_tick ? false
-        : enum_start ? true
+        : enum_group_go ? true
         : enum_done ? false
         : _enum_is_user)
-    enum_decl_name = (is_first_tick ? "" : enum_go ? enum_go_name : _enum_decl_name)
-    enum_variants_all = (is_first_tick ? EVNil : enum_go ? enum_go_variants : _enum_variants_all)
+    enum_decl_name = (is_first_tick ? ""
+        : enum_go ? peel_name
+        : a1_member_load ? peel_name
+        : a2_commit ? peel_name
+        : a3_member_load ? peel_name
+        : _enum_decl_name)
+    ed_group = (is_first_tick ? EDLNil
+        : enum_go ? peel_rest
+        : a1_member_load ? peel_rest
+        : a2_commit ? peel_rest
+        : a3_member_load ? peel_rest
+        : _ed_group)
+    ed_group_all = (is_first_tick ? EDLNil
+        : enum_go ? ed_go_group
+        : _ed_group_all)
+    ed_names = (is_first_tick ? "" : enum_go ? ed_go_names : _ed_names)
+    ed_n = (is_first_tick ? 0 : enum_go ? ed_go_n : _ed_n)
+    ed_rd = (is_first_tick ? 0
+        : (enum_running ∧ enum_act_now = 2 ∧ enum_step_now = 0) ? 0
+        : (enum_running ∧ enum_act_now = 2 ∧ enum_step_now = 2) ? _ed_rd + 1
+        : _ed_rd)
     enum_variants = (is_first_tick ? EVNil
-        : enum_go ? enum_go_variants
-        : enum_advance ? enum_vrest
-        : (enum_act_now = 2 ∧ enum_step_now = 5) ? _enum_variants_all
+        : enum_go ? peel_vs
+        : a1_member_load ? peel_vs
+        : a2_commit ? peel_vs
+        : a3_member_load ? peel_vs
+        : (a1_advance ∨ a3_advance) ? enum_vrest
         : _enum_variants)
     enum_vidx = (is_first_tick ? 0
         : enum_go ? 0
-        : enum_advance ? _enum_vidx + 1
-        : (enum_act_now = 2 ∧ enum_step_now = 5) ? 0
+        : a2_commit ? 0
+        : (a1_advance ∨ a3_advance) ? _enum_vidx + 1
         : _enum_vidx)
+    member_base = (is_first_tick ? 0
+        : enum_go ? 0
+        : a1_member_load ? _enum_vidx
+        : _member_base)
     enum_n_variants = (is_first_tick ? 0
-        : (enum_act_now = 1 ∧ enum_step_now = 7) ? _enum_vidx + 1
+        : a1_advance ? _enum_vidx + 1 - _member_base
         : _enum_n_variants)
 
     enum_h_name = (is_first_tick ? 0
         : (_enum_act = 1 ∧ _enum_step = 0) ? cap_int
-        : (_enum_act = 2 ∧ _enum_step = 0) ? cap_int
+        : (_enum_act = 1 ∧ _enum_step = 11) ? cap_int
         : _enum_h_name)
     enum_h_recog = (is_first_tick ? 0
         : (_enum_act = 1 ∧ _enum_step = 1) ? cap_int : _enum_h_recog)
@@ -240,13 +452,19 @@ fsm DriverEnum
         : (_enum_act = 1 ∧ _enum_step = 3) ? cap_int : _enum_h_field1)
     enum_h_field2 = (is_first_tick ? 0
         : (_enum_act = 1 ∧ _enum_step = 4) ? cap_int : _enum_h_field2)
+    enum_h_field3 = (is_first_tick ? 0
+        : (_enum_act = 1 ∧ _enum_step = 5) ? cap_int : _enum_h_field3)
+    enum_h_field4 = (is_first_tick ? 0
+        : (_enum_act = 1 ∧ _enum_step = 6) ? cap_int : _enum_h_field4)
+    enum_h_field5 = (is_first_tick ? 0
+        : (_enum_act = 1 ∧ _enum_step = 7) ? cap_int : _enum_h_field5)
 
+    -- ── group sort capture: floor registers + the enum table ──────
     libarg_sort ∈ Int
     seqarg_sort ∈ Int
     z_effect_sort ∈ Int
     z_result_sort ∈ Int
-    user_enum_sort ∈ Int
-    enum_sort_cap ∈ Bool = (_enum_act = 2 ∧ _enum_step = 4)
+    enum_sort_cap ∈ Bool = (_enum_act = 2 ∧ _enum_step = 1)
     libarg_sort = (is_first_tick ? 0
         : (enum_sort_cap ∧ (¬_enum_is_user) ∧ _enum_src = 0) ? cap_int : _libarg_sort)
     seqarg_sort = (is_first_tick ? 0
@@ -255,8 +473,14 @@ fsm DriverEnum
         : (enum_sort_cap ∧ (¬_enum_is_user) ∧ _enum_src = 2) ? cap_int : _z_effect_sort)
     z_result_sort = (is_first_tick ? 0
         : (enum_sort_cap ∧ (¬_enum_is_user) ∧ _enum_src = 3) ? cap_int : _z_result_sort)
-    user_enum_sort = (is_first_tick ? 0
-        : (enum_sort_cap ∧ _enum_is_user) ? cap_int : _user_enum_sort)
+    enum_names ∈ String
+    enumtab_count ∈ Int
+    enum_names = (is_first_tick ? ""
+        : (a2_commit ∧ _enum_is_user) ? (_enum_names ++ ed_names)
+        : _enum_names)
+    enumtab_count = (is_first_tick ? 0
+        : (a2_commit ∧ _enum_is_user) ? _enumtab_count + ed_n
+        : _enumtab_count)
 
     enum_decl_cap ∈ Bool = (_enum_act = 3 ∧ _enum_step = 2)
     z_exit_decl ∈ Int
@@ -279,15 +503,11 @@ fsm DriverEnum
     z_empty_val = (is_first_tick ? 0
         : (enum_val_cap ∧ enum_vname = "__Empty_LibArg") ? cap_int : _z_empty_val)
 
-    -- Result-floor tester + accessor decls (D3). During the Result
-    -- run (enum_src 3) a payload variant's act-3 steps 3/4 read the
-    -- query out-block's tester (qout+8) and accessor (qout+16)
-    -- slots instead of emitting fillers. The tester read (emitted at
-    -- step 3) captures at the _enum_step = 3 tick, where enum_vname is
-    -- still the current variant; the accessor read (emitted at step
-    -- 4 — the advance tick) captures at the _enum_step = 4 tick, where
-    -- the variant walk has already moved on, so result_acc_pend carries
-    -- WHICH register the landing value belongs to.
+    -- Result-floor tester + accessor decls. The tester read (emitted
+    -- at step 3) captures at the _enum_step = 3 tick; the accessor
+    -- batch (emitted at step 4) captures at the _enum_step = 4 tick —
+    -- the variant walk advances only at step 5, so enum_vname still
+    -- names the current variant on BOTH capture ticks.
     result_run ∈ Bool = ((¬_enum_is_user) ∧ (_enum_src = 3))
     result_harvest ∈ Bool = (result_run ∧ (¬enum_nullary))
     z_intres_test ∈ Int
@@ -298,44 +518,42 @@ fsm DriverEnum
     z_strres_test = (is_first_tick ? 0
         : (_enum_act = 3 ∧ _enum_step = 3 ∧ result_run ∧ enum_vname = "StringResult")
             ? cap_int : _z_strres_test)
-    result_acc_pend ∈ Int
-    result_acc_pend = (is_first_tick ? 0
-        : (enum_act_now = 3 ∧ enum_step_now = 4 ∧ result_harvest)
-            ? (enum_vname = "IntResult" ? 1
-              : enum_vname = "StringResult" ? 2
-              : 0)
-        : 0)
     z_intres_acc ∈ Int
     z_intres_acc = (is_first_tick ? 0
-        : (_enum_act = 3 ∧ _enum_step = 4 ∧ _result_acc_pend = 1) ? cap_int
-        : _z_intres_acc)
+        : (_enum_act = 3 ∧ _enum_step = 4 ∧ result_run ∧ enum_vname = "IntResult")
+            ? res_int0 : _z_intres_acc)
     z_strres_acc ∈ Int
     z_strres_acc = (is_first_tick ? 0
-        : (_enum_act = 3 ∧ _enum_step = 4 ∧ _result_acc_pend = 2) ? cap_int
-        : _z_strres_acc)
+        : (_enum_act = 3 ∧ _enum_step = 4 ∧ result_run ∧ enum_vname = "StringResult")
+            ? res_int0 : _z_strres_acc)
 
     enum_values ∈ Seq(EnumVariantVal)
-    #enum_values ≤ 128
+    #enum_values ≤ 160
     enum_values_add ∈ Bool = (enum_val_cap ∧ _enum_is_user)
     enum_values = (is_first_tick ? ⟨⟩ : enum_values_add ? _enum_values ++ ⟨EnumVariantVal(enum_vname, cap_int)⟩ : _enum_values)
 
-    -- User-enum variant DECL registry (C3/C4): per variant (indexed
-    -- by enum_vidx — the harvest visits variants in declaration
-    -- order), the ctor func_decl (mk_app target for `B(7)` ctor
-    -- applications) and the TESTER func_decl (mk_app target for
-    -- `e matches B(_)` / the match-pin arms). The decl + name land
-    -- on the act-3 step-2 capture tick; the tester lands on the
-    -- step-3 capture tick — lr[1] of the nullary ⟨app, rdtest⟩
-    -- batch, lr[0] of the payload variant's single rdtest.
+    -- User-enum variant DECL registry: per variant, the ctor func_decl
+    -- (mk_app target for `B(7)` ctor applications), the TESTER
+    -- func_decl (mk_app target for `e matches B(_)` / match-pin arms),
+    -- and the field-0 accessor decl (the hot match-bind path; field
+    -- accessors 0..5 ALSO land on the acc-table tape, 48 bytes per
+    -- registry slot, for binds past field 0). The decl + name land on
+    -- the act-3 step-2 capture tick; the tester on the step-3 capture
+    -- tick — lr[1] of the nullary ⟨app, rdtest⟩ batch, lr[0] of the
+    -- payload single rdtest; the accessors on the step-4 capture tick
+    -- (lr[0..n−1] of the batch).
+    -- Registry slots allocate by a GLOBAL cursor (variant_alloc), never the
+    -- per-enum walk index: positional writes by a per-enum index
+    -- collide across enums (the 2nd enum's variant 0 overwrites the
+    -- 1st's). Reads are name-keyed (names are globally unique), so
+    -- the registry must hold EVERY user variant of the whole program
+    -- at once — sample.ev carries 142 across 31 enums (census
+    -- 2026-06-10). variant_names is the registry's name COLUMN
+    -- ("|"+31-pad rows): index_of/32 over it is also the variant's
+    -- registry slot — the acc-table tape row index.
     variant_cap_decl ∈ Bool = (_enum_act = 3 ∧ _enum_step = 2 ∧ _enum_is_user)
     variant_cap_tester ∈ Bool = (_enum_act = 3 ∧ _enum_step = 3 ∧ _enum_is_user)
     variant_tester_val ∈ Int = (enum_nullary ? res_int1 : cap_int)
-    -- Registry slots allocate by a GLOBAL cursor (variant_alloc), never the
-    -- per-enum enum_vidx: vidx resets on each `enum_go`, so positional
-    -- writes at vidx collide across enums (the 2nd enum's variant 0
-    -- overwrites the 1st's). Reads are name-keyed (names are globally
-    -- unique), so the registry must hold EVERY user variant at once —
-    -- sample.ev carries 142 across 31 enums (census 2026-06-10).
     variant_alloc ∈ Int
     variant_alloc = (is_first_tick ? 0 : variant_cap_decl ? _variant_alloc + 1 : _variant_alloc)
     variant_names ∈ String
@@ -347,19 +565,6 @@ fsm DriverEnum
     ∀ k ∈ {0..159} : user_variants[k].name = (is_first_tick ? "" : (variant_cap_decl ∧ _variant_alloc = k) ? enum_vname : _user_variants[k].name)
     ∀ k ∈ {0..159} : user_variants[k].ctor = (is_first_tick ? 0 : (variant_cap_decl ∧ _variant_alloc = k) ? cap_int : _user_variants[k].ctor)
     ∀ e ∈ user_variants : e.tester = (is_first_tick ? 0 : (variant_cap_tester ∧ _e.name = enum_vname) ? variant_tester_val : _e.tester)
-
-    -- C5: user-variant field-0 ACCESSOR decls (match-pin payload
-    -- binds over USER ctors). Same capture_pend dance as the Result floor:
-    -- the rdacc emitted on the step-4 (advance) tick lands AFTER the
-    -- variant walk moved on, so the pending variant carries BY NAME
-    -- (enum_variant still heads the pre-advance list on the capture_pend tick, so
-    -- enum_vname names the pending variant there).
-    variant_acc_on ∈ Bool
-    variant_acc_on = (is_first_tick ? false
-        : (enum_act_now = 3 ∧ enum_step_now = 4 ∧ enum_is_user ∧ (¬enum_nullary)))
-    variant_acc_name ∈ String
-    variant_acc_name = (is_first_tick ? ""
-        : (enum_act_now = 3 ∧ enum_step_now = 4 ∧ enum_is_user ∧ (¬enum_nullary)) ? enum_vname
-        : "")
-    variant_cap_acc ∈ Bool = (_enum_act = 3 ∧ _enum_step = 4 ∧ _variant_acc_on)
-    ∀ e ∈ user_variants : e.acc = (is_first_tick ? 0 : (variant_cap_acc ∧ _e.name = _variant_acc_name) ? cap_int : _e.acc)
+    variant_cap_acc ∈ Bool = (_enum_act = 3 ∧ _enum_step = 4 ∧ _enum_is_user
+        ∧ (¬enum_nullary))
+    ∀ e ∈ user_variants : e.acc = (is_first_tick ? 0 : (variant_cap_acc ∧ _e.name = enum_vname) ? res_int0 : _e.acc)

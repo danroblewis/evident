@@ -43,6 +43,26 @@ import "stdlib/z3_datatypes.ev"
 
 -- ── Parsed-data peel claims (driver iteration) ──────────────────────────
 
+-- A mutual-recursion BUILD GROUP: the consecutive top-level enum decls
+-- batched into one Z3_mk_datatypes call (multi-enum-grammar plan D4).
+enum EnumDeclList =
+    EDLNil
+    EDLCons(EnumDeclAst, EnumDeclList)
+
+claim EnumGroupHead(g ∈ EnumDeclList, name ∈ String, vs ∈ EnumVariantList,
+        rest ∈ EnumDeclList, nonempty ∈ Bool)
+    nonempty = (g matches EDLCons(_, _))
+    egh_d ∈ EnumDeclAst = match g
+        EDLCons(h, _) ⇒ h
+        EDLNil ⇒ ENoEnum
+    name = match egh_d
+        EnumD(n, _) ⇒ n
+        ENoEnum ⇒ ""
+    EnumVariantListOf(decl ↦ egh_d, vs ↦ vs)
+    rest = match g
+        EDLCons(_, t) ⇒ t
+        EDLNil ⇒ EDLNil
+
 claim EnumVariantListOf(decl ∈ EnumDeclAst, vs ∈ EnumVariantList)
     vs = match decl
         EnumD(_, l) ⇒ l
@@ -79,10 +99,23 @@ claim VariantFieldCount(v ∈ EnumVariantDecl, n ∈ Int)
     vfc_r2 ∈ EVFieldList = match vfc_r1
         EVFCons(_, r) ⇒ r
         EVFNil ⇒ EVFNil
+    vfc_r3 ∈ EVFieldList = match vfc_r2
+        EVFCons(_, r) ⇒ r
+        EVFNil ⇒ EVFNil
+    vfc_r4 ∈ EVFieldList = match vfc_r3
+        EVFCons(_, r) ⇒ r
+        EVFNil ⇒ EVFNil
+    vfc_r5 ∈ EVFieldList = match vfc_r4
+        EVFCons(_, r) ⇒ r
+        EVFNil ⇒ EVFNil
     vfc_has0 ∈ Bool = (vfc_fs matches EVFCons(_, _))
     vfc_has1 ∈ Bool = (vfc_r1 matches EVFCons(_, _))
     vfc_has2 ∈ Bool = (vfc_r2 matches EVFCons(_, _))
-    n = (¬vfc_has0 ? 0 : ¬vfc_has1 ? 1 : ¬vfc_has2 ? 2 : 3)
+    vfc_has3 ∈ Bool = (vfc_r3 matches EVFCons(_, _))
+    vfc_has4 ∈ Bool = (vfc_r4 matches EVFCons(_, _))
+    vfc_has5 ∈ Bool = (vfc_r5 matches EVFCons(_, _))
+    n = (¬vfc_has0 ? 0 : ¬vfc_has1 ? 1 : ¬vfc_has2 ? 2 : ¬vfc_has3 ? 3
+        : ¬vfc_has4 ? 4 : ¬vfc_has5 ? 5 : 6)
 
 claim VariantFieldType(v ∈ EnumVariantDecl, idx ∈ Int, ty ∈ String)
     vft_fs ∈ EVFieldList = match v
@@ -94,7 +127,17 @@ claim VariantFieldType(v ∈ EnumVariantDecl, idx ∈ Int, ty ∈ String)
     vft_r2 ∈ EVFieldList = match vft_r1
         EVFCons(_, r) ⇒ r
         EVFNil ⇒ EVFNil
-    vft_pick ∈ EVFieldList = (idx = 0 ? vft_fs : idx = 1 ? vft_r1 : vft_r2)
+    vft_r3 ∈ EVFieldList = match vft_r2
+        EVFCons(_, r) ⇒ r
+        EVFNil ⇒ EVFNil
+    vft_r4 ∈ EVFieldList = match vft_r3
+        EVFCons(_, r) ⇒ r
+        EVFNil ⇒ EVFNil
+    vft_pick ∈ EVFieldList = (idx = 0 ? vft_fs : idx = 1 ? vft_r1
+        : idx = 2 ? vft_r2 : idx = 3 ? vft_r3 : idx = 4 ? vft_r4 : vft_r5_pick)
+    vft_r5_pick ∈ EVFieldList = match vft_r4
+        EVFCons(_, r) ⇒ r
+        EVFNil ⇒ EVFNil
     vft_f ∈ EVField = match vft_pick
         EVFCons(h, _) ⇒ h
         EVFNil ⇒ EVFNone

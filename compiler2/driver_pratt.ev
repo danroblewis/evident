@@ -62,28 +62,69 @@ fsm DriverPratt
         nexpop ↦ pratt_next_expop, npd ↦ pratt_next_pd, nqd ↦ pratt_next_qd, ncd ↦ pratt_next_cd,
         sdone ↦ pratt_step_done, sres ↦ pratt_result, scons ↦ pratt_consume)
 
+    -- ── matches-pattern SKIM ──────────────────────────────────────
+    -- `e matches Ctor(p0, …, pk)` with k ≥ 2 spans past the window in
+    -- one bite (the step claim's one-shot shapes stop at two pattern
+    -- elements). The skim wraps the top operand in EMatches on the
+    -- enter tick — the pattern elements carry no semantics, only the
+    -- tester name does — then consumes one `elem ,` / `elem )` per
+    -- tick with the step claim's outputs HELD.
+    mskim ∈ Bool
+    mskim_p1 ∈ Bool = ((tok3 matches Ident(_)) ∧ (tok4 matches RParen))
+    mskim_p2 ∈ Bool = ((tok3 matches Ident(_)) ∧ (tok4 matches Comma)
+        ∧ (tok5 matches Ident(_)) ∧ (tok6 matches RParen))
+    mskim_enter ∈ Bool = (in_pratt ∧ (¬_mskim) ∧ (¬_pratt_expop)
+        ∧ (tok0 matches KwMatches) ∧ (tok1 matches Ident(_))
+        ∧ (tok2 matches LParen) ∧ (¬mskim_p1) ∧ (¬mskim_p2))
+    mskim_name ∈ String = match tok1
+        Ident(s) ⇒ s
+        _ ⇒ ""
+    mskim_field ∈ Bool = (in_pratt ∧ _mskim ∧ (tok0 matches Ident(_))
+        ∧ (tok1 matches Comma))
+    mskim_close ∈ Bool = (in_pratt ∧ _mskim ∧ (tok0 matches Ident(_))
+        ∧ (tok1 matches RParen))
+    mskim_bad ∈ Bool = (in_pratt ∧ _mskim ∧ (¬mskim_field) ∧ (¬mskim_close))
+    mskim_hold ∈ Bool = (in_pratt ∧ _mskim)
+    mskim = (is_first_tick ? false
+        : mskim_enter ? true
+        : (mskim_close ∨ mskim_bad) ? false
+        : _mskim)
+    mskim_top ∈ Expr = match _pratt_out
+        ELCons(h, _) ⇒ h
+        ELNil ⇒ ENoExpr
+    mskim_tail ∈ ExprList = match _pratt_out
+        ELCons(_, t) ⇒ t
+        ELNil ⇒ ELNil
+
     pratt_out = (is_first_tick ? ELNil
         : enter_pratt ? ELNil
+        : mskim_enter ? ELCons(EMatches(mskim_name, mskim_top), mskim_tail)
+        : mskim_hold ? _pratt_out
         : in_pratt ? pratt_next_outs
         : _pratt_out)
     pratt_ops = (is_first_tick ? PrNil
         : enter_pratt ? PrNil
+        : (mskim_enter ∨ mskim_hold) ? _pratt_ops
         : in_pratt ? pratt_next_ops
         : _pratt_ops)
     pratt_expop = (is_first_tick ? true
         : enter_pratt ? true
+        : (mskim_enter ∨ mskim_hold) ? _pratt_expop
         : in_pratt ? pratt_next_expop
         : _pratt_expop)
     pratt_pd = (is_first_tick ? 0
         : enter_pratt ? 0
+        : (mskim_enter ∨ mskim_hold) ? _pratt_pd
         : in_pratt ? pratt_next_pd
         : _pratt_pd)
     pratt_qd = (is_first_tick ? 0
         : enter_pratt ? 0
+        : (mskim_enter ∨ mskim_hold) ? _pratt_qd
         : in_pratt ? pratt_next_qd
         : _pratt_qd)
     pratt_cd = (is_first_tick ? 0
         : enter_pratt ? 0
+        : (mskim_enter ∨ mskim_hold) ? _pratt_cd
         : in_pratt ? pratt_next_cd
         : _pratt_cd)
     pratt_kind = (is_first_tick ? 0 : enter_pratt ? pratt_enter_kind : _pratt_kind)
@@ -99,5 +140,6 @@ fsm DriverPratt
         : enter_pratt ? pin_rec_slot
         : _pratt_rec_slot)
 
-    pratt_done ∈ Bool = (in_pratt ∧ pratt_step_done)
+    pratt_done ∈ Bool = (in_pratt ∧ pratt_step_done
+        ∧ (¬mskim_enter) ∧ (¬mskim_hold))
     pratt_bad ∈ Bool = (pratt_done ∧ (pratt_result matches ENoExpr))

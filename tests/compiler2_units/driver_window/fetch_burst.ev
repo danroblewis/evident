@@ -43,6 +43,8 @@ fsm main
     posbind_st = (is_first_tick ? 0 : _posbind_st)
     work_nil ∈ Bool
     work_nil = (is_first_tick ? true : _work_nil)
+    vf_st ∈ Int
+    vf_st = (is_first_tick ? 0 : _vf_st)
     ..DriverWindow
     bursts ∈ Int
     bursts = (is_first_tick ? 0 : (_fetch_mode = 2 ? _bursts + 1 : _bursts))
