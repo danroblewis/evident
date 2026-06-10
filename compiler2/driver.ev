@@ -205,7 +205,37 @@ fsm driver_main
     -- ── enum-decl + Z3-lifecycle effect bank (see compiler2/driver_buildeff.ev) ──
     ..DriverBuildEff
     -- ── LEX (fossil FSM; gated to start after ZINIT) ──────────────
-    ..DriverLex
+    -- Bare mention against its header: these twenty-seven declarations
+    -- ARE the lexer interface (write effects + scheduling views + the
+    -- carried scan state); its other names are per-call-site internals.
+    lex_done ∈ Bool
+    have_pend_str ∈ Bool
+    write_pend_str ∈ Effect
+    write_eof ∈ Effect
+    write_tag0 ∈ Effect
+    write_tag1 ∈ Effect
+    write_pay0 ∈ Effect
+    eff_strdup ∈ Effect
+    plan_kind ∈ Int
+    float_finish ∈ Bool
+    float_with_op ∈ Bool
+    write_float_tag ∈ Effect
+    write_float_pay ∈ Effect
+    write_float_op ∈ Effect
+    pos ∈ Int
+    next_pos ∈ Int
+    partial_str ∈ String
+    partial_int ∈ Int
+    in_strlit ∈ Bool
+    partial_strlit ∈ String
+    esc_pending ∈ Bool
+    in_fraction ∈ Bool
+    float_whole ∈ Int
+    frac_digits ∈ Int
+    lex_last_tag ∈ Int
+    lex_prev_tag ∈ Int
+    pend_str_addr ∈ Int
+    DriverLex
 
     -- ── PHASE control (0 lex · 2 parse · 3 emit; REVERSE deleted) ─
     phase  ∈ Int
@@ -216,7 +246,78 @@ fsm driver_main
     in_parse       ∈ Bool = (_phase = 2)
 
     -- ── TOKEN WINDOW (see compiler2/driver_window.ev) ────────────
-    ..DriverWindow
+    -- Bare mention against its header: these fifty-two declarations ARE
+    -- the window interface (decoded views + consumption tails + fetch
+    -- gate + read/copy effect slots + the shared res_int0..5 decoders +
+    -- the carried cursor); its other names are per-call-site internals.
+    tok_cur ∈ Int
+    fetch_end ∈ Int
+    fetch_mode ∈ Int
+    win_toks ∈ TokenList
+    tok0 ∈ Token
+    tok1 ∈ Token
+    tok2 ∈ Token
+    tok3 ∈ Token
+    tok4 ∈ Token
+    tok5 ∈ Token
+    tok6 ∈ Token
+    tok7 ∈ Token
+    win_rest1 ∈ TokenList
+    win_rest2 ∈ TokenList
+    win_rest3 ∈ TokenList
+    win_rest4 ∈ TokenList
+    win_rest5 ∈ TokenList
+    win_rest6 ∈ TokenList
+    win_rest7 ∈ TokenList
+    win_rebuilt ∈ TokenList
+    tok_ready ∈ Bool
+    fetch_go ∈ Bool
+    res_int0 ∈ Int
+    res_int1 ∈ Int
+    res_int2 ∈ Int
+    res_int3 ∈ Int
+    res_int4 ∈ Int
+    res_int5 ∈ Int
+    read_tag0 ∈ Effect
+    read_tag1 ∈ Effect
+    read_tag2 ∈ Effect
+    read_tag3 ∈ Effect
+    read_tag4 ∈ Effect
+    read_tag5 ∈ Effect
+    read_tag6 ∈ Effect
+    read_tag7 ∈ Effect
+    read_pay0 ∈ Effect
+    read_pay1 ∈ Effect
+    read_pay2 ∈ Effect
+    read_pay3 ∈ Effect
+    read_pay4 ∈ Effect
+    read_pay5 ∈ Effect
+    read_pay6 ∈ Effect
+    read_pay7 ∈ Effect
+    copy_eff0 ∈ Effect
+    copy_eff1 ∈ Effect
+    copy_eff2 ∈ Effect
+    copy_eff3 ∈ Effect
+    copy_eff4 ∈ Effect
+    copy_eff5 ∈ Effect
+    copy_eff6 ∈ Effect
+    copy_eff7 ∈ Effect
+    -- The fetch-latch registers: carried bounded Seqs must be top-level
+    -- memberships with their write here (the seq lowering does not
+    -- rewrite fsm headers, and autocarry only marks a carry where the
+    -- declaring claim's own body references the dual), so the latch
+    -- lives with the cursor; window entry k's (tag, payload) lands at
+    -- last_results[2k]/[2k+1] on the fetch_cap tick and the window
+    -- reads the registers back through names-match (see DriverWindow's
+    -- MAINTAINS).
+    lat_tags ∈ Seq(Int)
+    #lat_tags ≤ 8
+    lat_pays ∈ Seq(Int)
+    #lat_pays ≤ 8
+    fetch_cap ∈ Bool = (_fetch_mode = 1)
+    ∀ k ∈ {0..7} : FtiLatch(slot ↦ 2*k, cap ↦ fetch_cap, prev ↦ _lat_tags[k], cur ↦ lat_tags[k])
+    ∀ k ∈ {0..7} : FtiLatch(slot ↦ 2*k + 1, cap ↦ fetch_cap, prev ↦ _lat_pays[k], cur ↦ lat_pays[k])
+    DriverWindow
 
     -- ── PARSE dispatch (parse_mode 0 dispatch · 1 skip · 2 claim) ──────
     -- All modes read the shared token window; "nil" = EofTok head
@@ -263,7 +364,20 @@ fsm driver_main
     -- ── parse_mode 6: match-pin walk (see compiler2/driver_matchpin.ev) ──
     ..DriverMatchPin
     -- ── parse_mode 7/8: literal-collection membership (see compiler2/driver_litmem.ev) ──
-    ..DriverLitMem
+    -- Bare mention against its header: these ten declarations ARE the
+    -- literal-membership interface; its other names are per-call-site
+    -- internals.
+    intset_elem ∈ Bool
+    intset_close ∈ Bool
+    intset_bad ∈ Bool
+    intset_items ∈ C2Items
+    intset_name ∈ String
+    intset_negated ∈ Bool
+    intset_expr ∈ Expr
+    seqvar_set ∈ Bool
+    seqvar_name ∈ String
+    seqvar_slot ∈ Int
+    DriverLitMem
 
     -- ── G2: set-var registry (see compiler2/driver_setvar.ev) ──
     ..DriverSetVar
@@ -361,7 +475,37 @@ fsm driver_main
     -- ── LINE CLASSIFIER + dispatch (see compiler2/driver_classify.ev) ──
     ..DriverClassify
     -- ── G1: bounded quantifier (see compiler2/driver_quant.ev) ──
-    ..DriverQuant
+    -- Bare mention against its header: these twenty-seven declarations
+    -- ARE the bounded-quantifier interface; its other names are
+    -- per-call-site internals.
+    enter_qrange ∈ Bool
+    enter_qseq ∈ Bool
+    qrange_close ∈ Bool
+    qrange_bail ∈ Bool
+    q_line ∈ Bool
+    q_range ∈ Bool
+    q_over_seq ∈ Bool
+    q_seq_plain ∈ Bool
+    q_seq_dotted ∈ Bool
+    q_is_exists ∈ Bool
+    q_var ∈ String
+    q_t3_name ∈ String
+    qexp_more ∈ Bool
+    qexp_fin ∈ Bool
+    qexp_items ∈ C2Items
+    qexp_fin_items ∈ C2Items
+    qloop_on ∈ Bool
+    qloop_exists ∈ Bool
+    qloop_var ∈ String
+    qloop_kind ∈ Int
+    qloop_lo ∈ Int
+    qloop_hi ∈ Int
+    qloop_seq ∈ String
+    qloop_body ∈ Expr
+    qloop_next ∈ Int
+    qloop_cur ∈ Int
+    seqvar_len ∈ Int
+    DriverQuant
     -- ── G2: rb — record-pin BROADCAST loop (see compiler2/driver_broadcast.ev) ──
     -- Bare mention against its header (the claim-headers pilot): these
     -- ten declarations ARE the broadcast interface; its other names are
@@ -432,13 +576,49 @@ fsm driver_main
         : "(declare-fun _" ++ line_dname ++ " () " ++ mem_tyname ++ ")\n")
 
     -- ── F1: parse_mode-9 GROUP walk (see compiler2/driver_group.ev) ──
-    ..DriverGroup
+    -- Bare mention against its header: these nineteen declarations ARE
+    -- the group-walk interface; its other names are per-call-site
+    -- internals.
+    group_take2 ∈ Bool
+    group_ty_tick ∈ Bool
+    group_bail ∈ Bool
+    group_drain ∈ Bool
+    group_have_pend ∈ Bool
+    group_last ∈ Bool
+    group_ty_consume ∈ Int
+    group_done_mode ∈ Int
+    group_ty_exit_mode ∈ Int
+    group_field ∈ String
+    group_carry_decl ∈ String
+    group_drain_items ∈ C2Items
+    group_pending ∈ TokenList
+    group_phase ∈ Int
+    group_is_param ∈ Bool
+    group_closed ∈ Bool
+    group_sort ∈ Int
+    group_is_nat ∈ Bool
+    group_type_name ∈ String
+    DriverGroup
     -- ── F2: composition inlining (see compiler2/driver_compose.ev) ──
     ..DriverCompose
     -- ── PRATT FSM state (see compiler2/driver_pratt.ev) ──
     ..DriverPratt
     -- ── G1: conditional inline (see compiler2/driver_guard.ev) ──
-    ..DriverGuard
+    -- Bare mention against its header: these eleven declarations ARE
+    -- the guarded-splice interface; its other names are per-call-site
+    -- internals.
+    guard_op ∈ Op
+    guard_lhs ∈ Expr
+    guard_rhs ∈ Expr
+    guard_is_binop ∈ Bool
+    guard_hit ∈ Bool
+    eff_guard_read ∈ Effect
+    guard_jump_cap ∈ Bool
+    guard_jump_fire ∈ Bool
+    guard_on ∈ Bool
+    guard_handle ∈ Int
+    guard_depth ∈ Int
+    DriverGuard
 
     -- ── G1: positional binding (see compiler2/driver_posbind.ev) ──
     ..DriverPosBind

@@ -3,43 +3,43 @@
 --           window head (tok0), the set-literal entry + classifier
 --           views (enter_intset, line_name, line_is_notmem), and the seq-literal
 --           entry + classifier views (enter_seqmem, line_dname, seq_elt_slot).
--- PRODUCES: the parse_mode-7 set-literal walk state (intset_name/intset_neg/intset_expr +
---           intset_body/intset_items, the or-folded membership Expr and its
---           assert program) and the parse_mode-8 seq-literal registry latch
---           (seqvar_set/seqvar_name/seqvar_slot — the one registered Seq(Int) var).
+-- PRODUCES: the HEADER below — the checked interface: the parse_mode-7
+--           set-literal walk signals (intset_elem/intset_close/intset_bad),
+--           its assert program (intset_items) and carried fold
+--           (intset_name/intset_negated/intset_expr), and the parse_mode-8
+--           seq-literal registry latch (seqvar_set/seqvar_name/seqvar_slot —
+--           the one registered Seq(Int) var). The carried slots stay
+--           manifest-visible for the kernel carry step. Everything else is
+--           per-call-site internal.
 -- MAINTAINS: a `x ∈ {a,b,…}` line or-folds one int element per tick
 --           into an Expr, asserted (C2Not-wrapped for ∉) at the closing
 --           `}`; the empty set lowers to `false`. A `s ∈ Seq(Int)` line
 --           latches exactly one registered seq var (name + element
 --           record type, −1 = Int) on first sight.
 --
--- The parse_mode-7/8 literal-collection membership walks. Lifted into
--- driver_main via `..DriverLitMem`.
-fsm DriverLitMem
+-- The parse_mode-7/8 literal-collection membership walks. Composed into
+-- driver_main by BARE MENTION against the header.
+fsm DriverLitMem(intset_elem ∈ Bool, intset_close ∈ Bool, intset_bad ∈ Bool, intset_items ∈ C2Items, intset_name ∈ String, intset_negated ∈ Bool, intset_expr ∈ Expr, seqvar_set ∈ Bool, seqvar_name ∈ String, seqvar_slot ∈ Int)
     -- ── parse_mode 7: set-literal membership walk (C2: 041/042/062) ────
-    intset_name ∈ String
-    intset_neg ∈ Bool
-    intset_expr ∈ Expr
-
-    intset_act ∈ Bool = (in_parse ∧ (_parse_mode = 7) ∧ tok_ready)
-    intset_elem ∈ Bool = (intset_act ∧ (tok0 matches IntLit(_)))
-    intset_close ∈ Bool = (intset_act ∧ (tok0 matches RBrace))
-    intset_bad ∈ Bool = (intset_act ∧ (¬intset_elem) ∧ (¬intset_close))
-    intset_val ∈ Int = match tok0
+    set_walk_on ∈ Bool = (in_parse ∧ (_parse_mode = 7) ∧ tok_ready)
+    intset_elem = (set_walk_on ∧ (tok0 matches IntLit(_)))
+    intset_close = (set_walk_on ∧ (tok0 matches RBrace))
+    intset_bad = (set_walk_on ∧ (¬intset_elem) ∧ (¬intset_close))
+    elem_val ∈ Int = match tok0
         IntLit(n) ⇒ n
         _ ⇒ 0
-    intset_eq ∈ Expr = EBinOp(OpEq, EIdent(_intset_name), EInt(intset_val))
-    intset_expr_now ∈ Expr = ((_intset_expr matches ENoExpr) ? intset_eq
-        : EBinOp(OpDisj, _intset_expr, intset_eq))
+    elem_eq ∈ Expr = EBinOp(OpEq, EIdent(_intset_name), EInt(elem_val))
+    fold_with_elem ∈ Expr = ((_intset_expr matches ENoExpr) ? elem_eq
+        : EBinOp(OpDisj, _intset_expr, elem_eq))
     intset_name = (is_first_tick ? "" : enter_intset ? line_name : _intset_name)
-    intset_neg = (is_first_tick ? false : enter_intset ? line_is_notmem : _intset_neg)
+    intset_negated = (is_first_tick ? false : enter_intset ? line_is_notmem : _intset_negated)
     intset_expr = (is_first_tick ? ENoExpr
         : enter_intset ? ENoExpr
-        : intset_elem ? intset_expr_now
+        : intset_elem ? fold_with_elem
         : _intset_expr)
-    intset_body ∈ Expr = ((_intset_expr matches ENoExpr) ? EIdent("false") : _intset_expr)
-    intset_items ∈ C2Items = C2ICons(C2Process(intset_body),
-        (_intset_neg ? C2ICons(C2Not, C2ICons(C2AssertTop, C2INil))
+    fold_body ∈ Expr = ((_intset_expr matches ENoExpr) ? EIdent("false") : _intset_expr)
+    intset_items = C2ICons(C2Process(fold_body),
+        (_intset_negated ? C2ICons(C2Not, C2ICons(C2AssertTop, C2INil))
             : C2ICons(C2AssertTop, C2INil)))
 
     -- ── parse_mode 8: user Seq(Int) literal walk (D2: 051/052/057/065) ──
@@ -54,9 +54,6 @@ fsm DriverLitMem
     -- to UNSAT. `#s` lowers to the s__len const (per-sort `#`
     -- dispatch), not str.len. One registered seq var per compile
     -- (the census surface).
-    seqvar_set ∈ Bool
-    seqvar_name ∈ String
-    seqvar_slot ∈ Int
     seqvar_set = (is_first_tick ? false : enter_seqmem ? true : _seqvar_set)
     seqvar_name = (is_first_tick ? ""
         : (enter_seqmem ∧ (¬_seqvar_set)) ? line_dname
