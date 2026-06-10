@@ -76,6 +76,9 @@ claim BuildTime(eff ∈ Effect)
 claim BuildPrint(s ∈ String, eff ∈ Effect)
     eff = LibCall("libc", "write", ⟨ArgInt(1), ArgStr(s), ArgInt(#s)⟩)
 
+claim BuildEprint(s ∈ String, eff ∈ Effect)
+    eff = LibCall("libc", "write", ⟨ArgInt(2), ArgStr(s), ArgInt(#s)⟩)
+
 claim BuildReadFile(path ∈ String, eff ∈ Effect)
     eff = ReadFile(path)
 
