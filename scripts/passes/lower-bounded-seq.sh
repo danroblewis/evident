@@ -557,9 +557,19 @@ END {
         # or a refused one changes emission.
         if (code ~ /^[ \t]*\(/) {
             jt = code; jl = i
-            while (fam_open(jt) > 0 && jl < N && !is_top_decl(L[jl + 1])) {
-                jl++
-                jt = jt " " trim(strip_comment(L[jl]))
+            while (jl < N && !is_top_decl(L[jl + 1])) {
+                if (fam_open(jt) > 0) {
+                    jl++; jt = jt " " trim(strip_comment(L[jl]))
+                    continue
+                }
+                # a guard whose parens balance before its arrow: the
+                # consequent continues on the next line
+                if (index(jt, "⇒") == 0 &&
+                    substr(trim(strip_comment(L[jl + 1])), 1, length("⇒")) == "⇒") {
+                    jl++; jt = jt " " trim(strip_comment(L[jl]))
+                    continue
+                }
+                break
             }
             if (fam_open(jt) == 0) {
                 fk = fam_parse(jt)
