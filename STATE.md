@@ -1,5 +1,46 @@
 # STATE
 
+## Snapshot 2026-06-10: the surface-language week
+
+Main is green (conformance 140/141, functionization GREEN 0.0 ms z3,
+units 53/53). What changed since the 2026-06-08 entries below:
+
+**The language got its set-theoretic surface back.** The bounded-Seq
+lowering (`scripts/passes/lower-bounded-seq.sh`) now carries the whole
+registry idiom: bounded `Seq` decls, element-form `∀`/`∃`, keyed
+projections (`∀`-pin + `¬∃`-default → covered select chain), keyed
+writes with `_e` carry duals, bounded `Seq(Int)` fields inside record
+types, and dynamic-index select chains. All 22 numbered-scalar
+registries are gone — the last (rec0/1/2 + acc0..5) fell 2026-06-10.
+Doctrine (CLAUDE.md + docs/evident-purism.md): allocate by position,
+everything else by key; ternary chains live in lowered artifacts only.
+
+**Composition semantics were restored.** Bare mention HIDES unmapped
+internals (per-call fresh); `..` LIFTS; pinned by conformance
+139/140/141 in both translators (oracle pin a1fd517 on the `oracle`
+branch — bugfix-to-spec rules in scripts/build-oracle.sh). The
+claim-headers plan (docs/plans/claim-headers-interface.md, approved)
+is in flight: headers as the declared interface, explicit-only
+mappings with punning.
+
+**The adherence loop exists.** docs/evident-purism.md (the rulebook) +
+.claude/skills/evident-critic (the reviewer) + docs/critic-reports/
+compiler2-baseline.md (103 findings, now burning down). Its first day
+caught a latent-UNSAT rename collision the behavioral gates missed.
+1,316 cryptic names were renamed readable (docs/rename-map.md).
+
+**Self-hosting status.** Wave 5a B1 (ArgRef chaining) landed earlier.
+The sample.ev rung was attempted and walled — root cause is THREE
+compiler2 grammar gaps (one-enum limit, payload arity ≤2, payload type
+whitelist), all loud now (docs/plans/sample-rung-walls.md). The
+multiplier underneath: functionizer interp throughput (~0.5 ms/tick,
+twice-measured; registry width multiplies it). The autocarry pass was
+ported to Evident (3 kernel-run programs, byte-identical on 236
+streams) but is UNWIRED pending that same throughput fix. In flight as
+of this snapshot: kernel JIT coverage for the interp shapes, and claim
+headers.
+
+
 ## The "memory growth" problem is solved (2026-06-07)
 
 The multi-GB / hours-long / OOM-killed seam compiles were **not** a
