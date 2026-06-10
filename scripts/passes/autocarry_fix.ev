@@ -1,0 +1,163 @@
+-- MODULE autocarry_fix — stage between analyze and apply: the carry
+-- fixpoint and the edit-script walks.
+-- CONSUMES: the analyze record stream on stdin until EOF (one tagged
+--           record per line; formats documented in autocarry_analyze) —
+--           runs concurrently with analyze in the pass pipeline.
+-- PRODUCES: two stdout lines for autocarry_apply — the insert registry
+--           and the inject registry ("⟦<line>⟧<payload>" records sorted
+--           by source line number).
+-- MAINTAINS: parity with scripts/expand-fsm-autocarry.sh pass 2 + the
+--            emit decisions of pass 3 — the worklist drain propagates
+--            carry through call bindings into registered fsms; inserts
+--            are `_x ∈ base(T)` after each carried bare decl; injects
+--            append `, _slot ↦ _val` per carried slot-binding without
+--            an explicit `_slot` binding already present.
+import "stdlib/kernel.ev"
+import "scripts/passes/autocarry_lib.ev"
+
+fsm autocarry_fix
+    phase ∈ Int
+    fsm_set ∈ String
+    bare_reg ∈ String
+    bind_reg ∈ String
+    slot_reg ∈ String
+    carry_reg ∈ String
+    work_list ∈ String
+    ins_out ∈ String
+    inj_out ∈ String
+    cur_a ∈ Int
+    cur_b ∈ Int
+    acc_a ∈ String
+    acc_b ∈ String
+
+    _t_ph ∈ Int = (is_first_tick ? 0 : _phase)
+    _t_rline ∈ String = match last_results[1]
+        StringResult(s) ⇒ s
+        _ ⇒ ""
+    _t_reof ∈ Bool = match last_results[1]
+        EofResult ⇒ true
+        _ ⇒ false
+    _t_rd ∈ Bool = (_t_ph = 1 ∧ ¬_t_reof)
+    _t_kind ∈ String = (_t_rd ? char_at(_t_rline, 0) : "")
+    _t_payload ∈ String = (_t_rd ? substr(_t_rline, 1, #_t_rline - 1) : "")
+
+    -- ── phase 7: worklist drain (call-direction carry propagation) ──
+    _t_dr_done ∈ Bool = (_t_ph = 7 ∧ _cur_a ≥ #_work_list)
+    _t_dr_run ∈ Bool = (_t_ph = 7 ∧ ¬_t_dr_done)
+    _t_dr_dot ∈ Int = (_t_dr_run ? index_of(_work_list, ".", _cur_a) : 0)
+    _t_dr_gt ∈ Int = (_t_dr_run ? index_of(_work_list, "⟩", _cur_a) : 0)
+    _t_dr_f ∈ String = (_t_dr_run ? substr(_work_list, _cur_a + 1, _t_dr_dot - _cur_a - 1) : "")
+    _t_dr_x ∈ String = (_t_dr_run ? substr(_work_list, _t_dr_dot + 1, _t_dr_gt - _t_dr_dot - 1) : "")
+    _t_dr_fsm_ok ∈ Bool = (_t_dr_run ∧ str_contains(_fsm_set, "⟨" ++ _t_dr_f ++ "⟩"))
+    _t_dr_m ∈ Int = (_t_dr_fsm_ok ? index_of(_bind_reg, "❲" ++ _t_dr_f ++ "⦂" ++ _t_dr_x ++ "❳", _cur_b) : -1)
+    _t_dr_vs ∈ Int = (_t_dr_m ≥ 0 ? _t_dr_m + #_t_dr_f + #_t_dr_x + 3 : 0)
+    _t_dr_vc ∈ Int = (_t_dr_m ≥ 0 ? index_of(_bind_reg, "⦂", _t_dr_vs) : 0)
+    _t_dr_val ∈ String = (_t_dr_m ≥ 0 ? substr(_bind_reg, _t_dr_vs, _t_dr_vc - _t_dr_vs) : "0")
+    _t_dr_f2 ∈ String = (_t_dr_m ≥ 0
+        ? substr(_bind_reg, _t_dr_vc + 1, index_of(_bind_reg, "⦂", _t_dr_vc + 1) - _t_dr_vc - 1)
+        : "")
+    _t_dr_bkey ∈ String = ("⟨" ++ _t_dr_f2 ++ "." ++ _t_dr_val ++ "⟩")
+    _t_dr_bp ∈ Int = (_t_dr_m ≥ 0 ∧ ¬(_t_dr_val = "0") ? index_of(_bare_reg, _t_dr_bkey) : -1)
+    _t_dr_new ∈ Bool = (_t_dr_bp ≥ 0 ∧ ¬str_contains(_carry_reg, _t_dr_bkey))
+    _t_dr_item_done ∈ Bool = (_t_dr_run ∧ (¬_t_dr_fsm_ok ∨ _t_dr_m < 0))
+
+    -- ── phase 8: insert walk over bare_reg × carry_reg ──
+    _t_iw_done ∈ Bool = (_t_ph = 8 ∧ _cur_a ≥ #_bare_reg)
+    _t_iw_run ∈ Bool = (_t_ph = 8 ∧ ¬_t_iw_done)
+    _t_iw_gt ∈ Int = (_t_iw_run ? index_of(_bare_reg, "⟩", _cur_a) : 0)
+    _t_iw_key ∈ String = (_t_iw_run ? substr(_bare_reg, _cur_a, _t_iw_gt + 1 - _cur_a) : "")
+    _t_iw_x ∈ String = (_t_iw_run
+        ? substr(_bare_reg, index_of(_bare_reg, ".", _cur_a) + 1, _t_iw_gt - index_of(_bare_reg, ".", _cur_a) - 1)
+        : "")
+    _t_iw_c1 ∈ Int = (_t_iw_run ? index_of(_bare_reg, "⦂", _t_iw_gt) : 0)
+    _t_iw_c2 ∈ Int = (_t_iw_run ? index_of(_bare_reg, "⦂", _t_iw_c1 + 1) : 0)
+    _t_iw_cp ∈ Int = (_t_iw_run ? index_of(_carry_reg, _t_iw_key) : -1)
+    _t_iw_isc ∈ Bool = (_t_iw_cp ≥ 0)
+
+    -- ── phase 9: inject walk over bind_reg call groups ──
+    _t_jw_done ∈ Bool = (_t_ph = 9 ∧ _cur_a ≥ #_bind_reg)
+    _t_jw_run ∈ Bool = (_t_ph = 9 ∧ ¬_t_jw_done)
+    _t_jw_cA ∈ Int = (_t_jw_run ? index_of(_bind_reg, "⦂", _cur_a) : 0)
+    _t_jw_brk ∈ Int = (_t_jw_run ? index_of(_bind_reg, "❳", _cur_a) : 0)
+    _t_jw_sub ∈ String = (_t_jw_run ? substr(_bind_reg, _cur_a + 1, _t_jw_cA - _cur_a - 1) : "")
+    _t_jw_slot ∈ String = (_t_jw_run ? substr(_bind_reg, _t_jw_cA + 1, _t_jw_brk - _t_jw_cA - 1) : "")
+    _t_jw_vc ∈ Int = (_t_jw_run ? index_of(_bind_reg, "⦂", _t_jw_brk) : 0)
+    _t_jw_val ∈ String = (_t_jw_run ? substr(_bind_reg, _t_jw_brk + 1, _t_jw_vc - _t_jw_brk - 1) : "0")
+    _t_jw_fc ∈ Int = (_t_jw_run ? index_of(_bind_reg, "⦂", _t_jw_vc + 1) : 0)
+    _t_jw_nc ∈ Int = (_t_jw_run ? index_of(_bind_reg, "⦂", _t_jw_fc + 1) : 0)
+    _t_jw_ln ∈ String = (_t_jw_run ? substr(_bind_reg, _t_jw_fc + 1, _t_jw_nc - _t_jw_fc - 1) : "")
+    _t_jw_newgrp ∈ Bool = (_t_jw_run ∧ ¬(_t_jw_ln = _acc_b))
+    _t_jw_flush ∈ Bool = ((_t_jw_newgrp ∨ _t_jw_done) ∧ ¬(_acc_a = "") ∧ (_t_ph = 9))
+    _t_jw_hp ∈ Int = (_t_jw_run ? index_of(_slot_reg, "❰" ++ _t_jw_ln ++ "❱") : -1)
+    _t_jw_have ∈ Bool = (_t_jw_hp ≥ 0
+        ∧ str_contains(substr(_slot_reg, _t_jw_hp + #_t_jw_ln + 2,
+            index_of(_slot_reg, "❱", _t_jw_hp + #_t_jw_ln + 2) - _t_jw_hp - #_t_jw_ln - 2),
+            "⦂_" ++ _t_jw_slot ++ "⦂"))
+    _t_jw_give ∈ Bool = (_t_jw_run ∧ ¬(_t_jw_val = "0") ∧ ¬_t_jw_have
+        ∧ str_contains(_fsm_set, "⟨" ++ _t_jw_sub ++ "⟩")
+        ∧ str_contains(_carry_reg, "⟨" ++ _t_jw_sub ++ "." ++ _t_jw_slot ++ "⟩"))
+
+    phase = (is_first_tick ? 1
+        : _t_ph = 1 ? (_t_reof ? 7 : 1)
+        : _t_ph = 7 ? (_t_dr_done ? 8 : 7)
+        : _t_ph = 8 ? (_t_iw_done ? 9 : 8)
+        : _t_ph = 9 ? (_t_jw_done ? 10 : 9)
+        : _t_ph = 10 ? 11
+        : 11)
+    fsm_set = (is_first_tick ? "" : _t_kind = "F" ? _fsm_set ++ _t_payload : _fsm_set)
+    bare_reg = (is_first_tick ? "" : _t_kind = "B" ? _bare_reg ++ _t_payload : _bare_reg)
+    bind_reg = (is_first_tick ? "" : _t_kind = "D" ? _bind_reg ++ _t_payload : _bind_reg)
+    slot_reg = (is_first_tick ? "" : _t_kind = "S" ? _slot_reg ++ _t_payload : _slot_reg)
+    carry_reg = (is_first_tick ? ""
+        : _t_kind = "C" ? _carry_reg ++ _t_payload
+        : _t_dr_new
+        ? _carry_reg ++ _t_dr_bkey
+          ++ substr(_bare_reg, _t_dr_bp + #_t_dr_bkey,
+              index_of(_bare_reg, "⦂", _t_dr_bp + #_t_dr_bkey) - _t_dr_bp - #_t_dr_bkey) ++ "⦂"
+        : _carry_reg)
+    work_list = (is_first_tick ? ""
+        : _t_kind = "C" ? _work_list ++ substr(_t_payload, 0, index_of(_t_payload, "⟩") + 1)
+        : _t_dr_new ? _work_list ++ _t_dr_bkey
+        : _work_list)
+    ins_out = (is_first_tick ? "" : _t_iw_run ∧ _t_iw_isc
+        ? _ins_out ++ "⟦" ++ substr(_bare_reg, _t_iw_c1 + 1, _t_iw_c2 - _t_iw_c1 - 1) ++ "⟧_"
+          ++ _t_iw_x ++ " ∈ "
+          ++ substr(_carry_reg, _t_iw_cp + #_t_iw_key,
+              index_of(_carry_reg, "⦂", _t_iw_cp + #_t_iw_key) - _t_iw_cp - #_t_iw_key)
+        : _ins_out)
+    inj_out = (is_first_tick ? "" : _t_jw_flush
+        ? _inj_out ++ "⟦" ++ _acc_b ++ "⟧" ++ _acc_a
+        : _inj_out)
+    cur_a = (is_first_tick ? 0
+        : _t_ph = 1 ? 0
+        : _t_dr_run ? (_t_dr_item_done ? _t_dr_gt + 1 : _cur_a)
+        : _t_ph = 7 ∧ _t_dr_done ? 0
+        : _t_iw_run ? _t_iw_c2 + 1
+        : _t_ph = 8 ∧ _t_iw_done ? 0
+        : _t_jw_run ? _t_jw_nc + 1
+        : _cur_a)
+    cur_b = (is_first_tick ? 0
+        : _t_ph = 1 ? 0
+        : _t_dr_run ? (_t_dr_item_done ? 0 : _t_dr_m + 1)
+        : _cur_b)
+    acc_a = (is_first_tick ? ""
+        : _t_ph = 7 ? ""
+        : _t_jw_newgrp ? (_t_jw_give ? ", _" ++ _t_jw_slot ++ " ↦ _" ++ _t_jw_val : "")
+        : _t_jw_run ∧ _t_jw_give ? _acc_a ++ ", _" ++ _t_jw_slot ++ " ↦ _" ++ _t_jw_val
+        : _acc_a)
+    acc_b = (is_first_tick ? ""
+        : _t_ph = 7 ? ""
+        : _t_jw_run ? _t_jw_ln
+        : _acc_b)
+
+    eff_nop ∈ Effect
+    eff_nop = LibCall("libc", "getpid", ⟨⟩)
+    eff_out ∈ Effect
+    BuildPrintln(s ↦ (_t_ph = 10 ? _ins_out : _inj_out), eff ↦ eff_out)
+    _t_read_go ∈ Bool = (_t_ph = 1 ∧ ¬_t_reof)
+
+    effects ∈ Seq(Effect) = (is_first_tick ? ⟨eff_nop, ReadLine⟩
+        : _t_read_go ? ⟨eff_nop, ReadLine⟩
+        : _t_ph = 10 ? ⟨eff_out, eff_nop⟩
+        : _t_ph = 11 ? ⟨eff_out, Exit(0)⟩
+        : ⟨eff_nop, eff_nop⟩)

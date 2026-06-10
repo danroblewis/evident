@@ -1,0 +1,352 @@
+-- MODULE autocarry_lib — shared single-expression scan helpers for the
+-- autocarry pass programs (analyze + apply).
+-- CONSUMES: slot-bound (s, from/p0/…) inputs per instantiation.
+-- PRODUCES: out/p1/… slot-bound outputs; no internal names, so every
+--           claim is safe to instantiate many times in one body.
+-- MAINTAINS: chains are lazy nested ternaries — cost is the distance
+--            actually scanned, not the unroll depth (measured 2026-06-10:
+--            64-deep chain over 9k ticks = 0.19 s wall, 0.0 ms z3).
+-- Unroll caps: identifiers/indent ≤ 64 chars, trailing ws ≤ 48.
+
+claim AcWsSkip(s ∈ String, from ∈ Int, out ∈ Int)
+    out = (¬((char_at(s, from) = " ") ∨ (char_at(s, from) = "\t")) ? from
+        : ¬((char_at(s, from + 1) = " ") ∨ (char_at(s, from + 1) = "\t")) ? from + 1
+        : ¬((char_at(s, from + 2) = " ") ∨ (char_at(s, from + 2) = "\t")) ? from + 2
+        : ¬((char_at(s, from + 3) = " ") ∨ (char_at(s, from + 3) = "\t")) ? from + 3
+        : ¬((char_at(s, from + 4) = " ") ∨ (char_at(s, from + 4) = "\t")) ? from + 4
+        : ¬((char_at(s, from + 5) = " ") ∨ (char_at(s, from + 5) = "\t")) ? from + 5
+        : ¬((char_at(s, from + 6) = " ") ∨ (char_at(s, from + 6) = "\t")) ? from + 6
+        : ¬((char_at(s, from + 7) = " ") ∨ (char_at(s, from + 7) = "\t")) ? from + 7
+        : ¬((char_at(s, from + 8) = " ") ∨ (char_at(s, from + 8) = "\t")) ? from + 8
+        : ¬((char_at(s, from + 9) = " ") ∨ (char_at(s, from + 9) = "\t")) ? from + 9
+        : ¬((char_at(s, from + 10) = " ") ∨ (char_at(s, from + 10) = "\t")) ? from + 10
+        : ¬((char_at(s, from + 11) = " ") ∨ (char_at(s, from + 11) = "\t")) ? from + 11
+        : ¬((char_at(s, from + 12) = " ") ∨ (char_at(s, from + 12) = "\t")) ? from + 12
+        : ¬((char_at(s, from + 13) = " ") ∨ (char_at(s, from + 13) = "\t")) ? from + 13
+        : ¬((char_at(s, from + 14) = " ") ∨ (char_at(s, from + 14) = "\t")) ? from + 14
+        : ¬((char_at(s, from + 15) = " ") ∨ (char_at(s, from + 15) = "\t")) ? from + 15
+        : ¬((char_at(s, from + 16) = " ") ∨ (char_at(s, from + 16) = "\t")) ? from + 16
+        : ¬((char_at(s, from + 17) = " ") ∨ (char_at(s, from + 17) = "\t")) ? from + 17
+        : ¬((char_at(s, from + 18) = " ") ∨ (char_at(s, from + 18) = "\t")) ? from + 18
+        : ¬((char_at(s, from + 19) = " ") ∨ (char_at(s, from + 19) = "\t")) ? from + 19
+        : ¬((char_at(s, from + 20) = " ") ∨ (char_at(s, from + 20) = "\t")) ? from + 20
+        : ¬((char_at(s, from + 21) = " ") ∨ (char_at(s, from + 21) = "\t")) ? from + 21
+        : ¬((char_at(s, from + 22) = " ") ∨ (char_at(s, from + 22) = "\t")) ? from + 22
+        : ¬((char_at(s, from + 23) = " ") ∨ (char_at(s, from + 23) = "\t")) ? from + 23
+        : ¬((char_at(s, from + 24) = " ") ∨ (char_at(s, from + 24) = "\t")) ? from + 24
+        : ¬((char_at(s, from + 25) = " ") ∨ (char_at(s, from + 25) = "\t")) ? from + 25
+        : ¬((char_at(s, from + 26) = " ") ∨ (char_at(s, from + 26) = "\t")) ? from + 26
+        : ¬((char_at(s, from + 27) = " ") ∨ (char_at(s, from + 27) = "\t")) ? from + 27
+        : ¬((char_at(s, from + 28) = " ") ∨ (char_at(s, from + 28) = "\t")) ? from + 28
+        : ¬((char_at(s, from + 29) = " ") ∨ (char_at(s, from + 29) = "\t")) ? from + 29
+        : ¬((char_at(s, from + 30) = " ") ∨ (char_at(s, from + 30) = "\t")) ? from + 30
+        : ¬((char_at(s, from + 31) = " ") ∨ (char_at(s, from + 31) = "\t")) ? from + 31
+        : ¬((char_at(s, from + 32) = " ") ∨ (char_at(s, from + 32) = "\t")) ? from + 32
+        : ¬((char_at(s, from + 33) = " ") ∨ (char_at(s, from + 33) = "\t")) ? from + 33
+        : ¬((char_at(s, from + 34) = " ") ∨ (char_at(s, from + 34) = "\t")) ? from + 34
+        : ¬((char_at(s, from + 35) = " ") ∨ (char_at(s, from + 35) = "\t")) ? from + 35
+        : ¬((char_at(s, from + 36) = " ") ∨ (char_at(s, from + 36) = "\t")) ? from + 36
+        : ¬((char_at(s, from + 37) = " ") ∨ (char_at(s, from + 37) = "\t")) ? from + 37
+        : ¬((char_at(s, from + 38) = " ") ∨ (char_at(s, from + 38) = "\t")) ? from + 38
+        : ¬((char_at(s, from + 39) = " ") ∨ (char_at(s, from + 39) = "\t")) ? from + 39
+        : ¬((char_at(s, from + 40) = " ") ∨ (char_at(s, from + 40) = "\t")) ? from + 40
+        : ¬((char_at(s, from + 41) = " ") ∨ (char_at(s, from + 41) = "\t")) ? from + 41
+        : ¬((char_at(s, from + 42) = " ") ∨ (char_at(s, from + 42) = "\t")) ? from + 42
+        : ¬((char_at(s, from + 43) = " ") ∨ (char_at(s, from + 43) = "\t")) ? from + 43
+        : ¬((char_at(s, from + 44) = " ") ∨ (char_at(s, from + 44) = "\t")) ? from + 44
+        : ¬((char_at(s, from + 45) = " ") ∨ (char_at(s, from + 45) = "\t")) ? from + 45
+        : ¬((char_at(s, from + 46) = " ") ∨ (char_at(s, from + 46) = "\t")) ? from + 46
+        : ¬((char_at(s, from + 47) = " ") ∨ (char_at(s, from + 47) = "\t")) ? from + 47
+        : ¬((char_at(s, from + 48) = " ") ∨ (char_at(s, from + 48) = "\t")) ? from + 48
+        : ¬((char_at(s, from + 49) = " ") ∨ (char_at(s, from + 49) = "\t")) ? from + 49
+        : ¬((char_at(s, from + 50) = " ") ∨ (char_at(s, from + 50) = "\t")) ? from + 50
+        : ¬((char_at(s, from + 51) = " ") ∨ (char_at(s, from + 51) = "\t")) ? from + 51
+        : ¬((char_at(s, from + 52) = " ") ∨ (char_at(s, from + 52) = "\t")) ? from + 52
+        : ¬((char_at(s, from + 53) = " ") ∨ (char_at(s, from + 53) = "\t")) ? from + 53
+        : ¬((char_at(s, from + 54) = " ") ∨ (char_at(s, from + 54) = "\t")) ? from + 54
+        : ¬((char_at(s, from + 55) = " ") ∨ (char_at(s, from + 55) = "\t")) ? from + 55
+        : ¬((char_at(s, from + 56) = " ") ∨ (char_at(s, from + 56) = "\t")) ? from + 56
+        : ¬((char_at(s, from + 57) = " ") ∨ (char_at(s, from + 57) = "\t")) ? from + 57
+        : ¬((char_at(s, from + 58) = " ") ∨ (char_at(s, from + 58) = "\t")) ? from + 58
+        : ¬((char_at(s, from + 59) = " ") ∨ (char_at(s, from + 59) = "\t")) ? from + 59
+        : ¬((char_at(s, from + 60) = " ") ∨ (char_at(s, from + 60) = "\t")) ? from + 60
+        : ¬((char_at(s, from + 61) = " ") ∨ (char_at(s, from + 61) = "\t")) ? from + 61
+        : ¬((char_at(s, from + 62) = " ") ∨ (char_at(s, from + 62) = "\t")) ? from + 62
+        : ¬((char_at(s, from + 63) = " ") ∨ (char_at(s, from + 63) = "\t")) ? from + 63
+        : from + 64)
+
+claim AcWordEnd(s ∈ String, from ∈ Int, out ∈ Int)
+    out = (¬(((from) < #s) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from))) ? from
+        : ¬(((from + 1) < #s) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from + 1))) ? from + 1
+        : ¬(((from + 2) < #s) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from + 2))) ? from + 2
+        : ¬(((from + 3) < #s) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from + 3))) ? from + 3
+        : ¬(((from + 4) < #s) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from + 4))) ? from + 4
+        : ¬(((from + 5) < #s) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from + 5))) ? from + 5
+        : ¬(((from + 6) < #s) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from + 6))) ? from + 6
+        : ¬(((from + 7) < #s) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from + 7))) ? from + 7
+        : ¬(((from + 8) < #s) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from + 8))) ? from + 8
+        : ¬(((from + 9) < #s) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from + 9))) ? from + 9
+        : ¬(((from + 10) < #s) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from + 10))) ? from + 10
+        : ¬(((from + 11) < #s) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from + 11))) ? from + 11
+        : ¬(((from + 12) < #s) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from + 12))) ? from + 12
+        : ¬(((from + 13) < #s) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from + 13))) ? from + 13
+        : ¬(((from + 14) < #s) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from + 14))) ? from + 14
+        : ¬(((from + 15) < #s) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from + 15))) ? from + 15
+        : ¬(((from + 16) < #s) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from + 16))) ? from + 16
+        : ¬(((from + 17) < #s) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from + 17))) ? from + 17
+        : ¬(((from + 18) < #s) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from + 18))) ? from + 18
+        : ¬(((from + 19) < #s) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from + 19))) ? from + 19
+        : ¬(((from + 20) < #s) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from + 20))) ? from + 20
+        : ¬(((from + 21) < #s) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from + 21))) ? from + 21
+        : ¬(((from + 22) < #s) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from + 22))) ? from + 22
+        : ¬(((from + 23) < #s) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from + 23))) ? from + 23
+        : ¬(((from + 24) < #s) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from + 24))) ? from + 24
+        : ¬(((from + 25) < #s) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from + 25))) ? from + 25
+        : ¬(((from + 26) < #s) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from + 26))) ? from + 26
+        : ¬(((from + 27) < #s) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from + 27))) ? from + 27
+        : ¬(((from + 28) < #s) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from + 28))) ? from + 28
+        : ¬(((from + 29) < #s) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from + 29))) ? from + 29
+        : ¬(((from + 30) < #s) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from + 30))) ? from + 30
+        : ¬(((from + 31) < #s) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from + 31))) ? from + 31
+        : ¬(((from + 32) < #s) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from + 32))) ? from + 32
+        : ¬(((from + 33) < #s) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from + 33))) ? from + 33
+        : ¬(((from + 34) < #s) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from + 34))) ? from + 34
+        : ¬(((from + 35) < #s) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from + 35))) ? from + 35
+        : ¬(((from + 36) < #s) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from + 36))) ? from + 36
+        : ¬(((from + 37) < #s) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from + 37))) ? from + 37
+        : ¬(((from + 38) < #s) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from + 38))) ? from + 38
+        : ¬(((from + 39) < #s) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from + 39))) ? from + 39
+        : ¬(((from + 40) < #s) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from + 40))) ? from + 40
+        : ¬(((from + 41) < #s) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from + 41))) ? from + 41
+        : ¬(((from + 42) < #s) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from + 42))) ? from + 42
+        : ¬(((from + 43) < #s) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from + 43))) ? from + 43
+        : ¬(((from + 44) < #s) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from + 44))) ? from + 44
+        : ¬(((from + 45) < #s) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from + 45))) ? from + 45
+        : ¬(((from + 46) < #s) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from + 46))) ? from + 46
+        : ¬(((from + 47) < #s) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from + 47))) ? from + 47
+        : ¬(((from + 48) < #s) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from + 48))) ? from + 48
+        : ¬(((from + 49) < #s) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from + 49))) ? from + 49
+        : ¬(((from + 50) < #s) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from + 50))) ? from + 50
+        : ¬(((from + 51) < #s) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from + 51))) ? from + 51
+        : ¬(((from + 52) < #s) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from + 52))) ? from + 52
+        : ¬(((from + 53) < #s) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from + 53))) ? from + 53
+        : ¬(((from + 54) < #s) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from + 54))) ? from + 54
+        : ¬(((from + 55) < #s) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from + 55))) ? from + 55
+        : ¬(((from + 56) < #s) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from + 56))) ? from + 56
+        : ¬(((from + 57) < #s) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from + 57))) ? from + 57
+        : ¬(((from + 58) < #s) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from + 58))) ? from + 58
+        : ¬(((from + 59) < #s) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from + 59))) ? from + 59
+        : ¬(((from + 60) < #s) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from + 60))) ? from + 60
+        : ¬(((from + 61) < #s) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from + 61))) ? from + 61
+        : ¬(((from + 62) < #s) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from + 62))) ? from + 62
+        : ¬(((from + 63) < #s) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from + 63))) ? from + 63
+        : from + 64)
+
+claim AcTrimEnd(s ∈ String, out ∈ Int)
+    out = (¬((char_at(s, #s - 1) = " ") ∨ (char_at(s, #s - 1) = "\t")) ? #s
+        : ¬((char_at(s, #s - 2) = " ") ∨ (char_at(s, #s - 2) = "\t")) ? #s - 1
+        : ¬((char_at(s, #s - 3) = " ") ∨ (char_at(s, #s - 3) = "\t")) ? #s - 2
+        : ¬((char_at(s, #s - 4) = " ") ∨ (char_at(s, #s - 4) = "\t")) ? #s - 3
+        : ¬((char_at(s, #s - 5) = " ") ∨ (char_at(s, #s - 5) = "\t")) ? #s - 4
+        : ¬((char_at(s, #s - 6) = " ") ∨ (char_at(s, #s - 6) = "\t")) ? #s - 5
+        : ¬((char_at(s, #s - 7) = " ") ∨ (char_at(s, #s - 7) = "\t")) ? #s - 6
+        : ¬((char_at(s, #s - 8) = " ") ∨ (char_at(s, #s - 8) = "\t")) ? #s - 7
+        : ¬((char_at(s, #s - 9) = " ") ∨ (char_at(s, #s - 9) = "\t")) ? #s - 8
+        : ¬((char_at(s, #s - 10) = " ") ∨ (char_at(s, #s - 10) = "\t")) ? #s - 9
+        : ¬((char_at(s, #s - 11) = " ") ∨ (char_at(s, #s - 11) = "\t")) ? #s - 10
+        : ¬((char_at(s, #s - 12) = " ") ∨ (char_at(s, #s - 12) = "\t")) ? #s - 11
+        : ¬((char_at(s, #s - 13) = " ") ∨ (char_at(s, #s - 13) = "\t")) ? #s - 12
+        : ¬((char_at(s, #s - 14) = " ") ∨ (char_at(s, #s - 14) = "\t")) ? #s - 13
+        : ¬((char_at(s, #s - 15) = " ") ∨ (char_at(s, #s - 15) = "\t")) ? #s - 14
+        : ¬((char_at(s, #s - 16) = " ") ∨ (char_at(s, #s - 16) = "\t")) ? #s - 15
+        : ¬((char_at(s, #s - 17) = " ") ∨ (char_at(s, #s - 17) = "\t")) ? #s - 16
+        : ¬((char_at(s, #s - 18) = " ") ∨ (char_at(s, #s - 18) = "\t")) ? #s - 17
+        : ¬((char_at(s, #s - 19) = " ") ∨ (char_at(s, #s - 19) = "\t")) ? #s - 18
+        : ¬((char_at(s, #s - 20) = " ") ∨ (char_at(s, #s - 20) = "\t")) ? #s - 19
+        : ¬((char_at(s, #s - 21) = " ") ∨ (char_at(s, #s - 21) = "\t")) ? #s - 20
+        : ¬((char_at(s, #s - 22) = " ") ∨ (char_at(s, #s - 22) = "\t")) ? #s - 21
+        : ¬((char_at(s, #s - 23) = " ") ∨ (char_at(s, #s - 23) = "\t")) ? #s - 22
+        : ¬((char_at(s, #s - 24) = " ") ∨ (char_at(s, #s - 24) = "\t")) ? #s - 23
+        : ¬((char_at(s, #s - 25) = " ") ∨ (char_at(s, #s - 25) = "\t")) ? #s - 24
+        : ¬((char_at(s, #s - 26) = " ") ∨ (char_at(s, #s - 26) = "\t")) ? #s - 25
+        : ¬((char_at(s, #s - 27) = " ") ∨ (char_at(s, #s - 27) = "\t")) ? #s - 26
+        : ¬((char_at(s, #s - 28) = " ") ∨ (char_at(s, #s - 28) = "\t")) ? #s - 27
+        : ¬((char_at(s, #s - 29) = " ") ∨ (char_at(s, #s - 29) = "\t")) ? #s - 28
+        : ¬((char_at(s, #s - 30) = " ") ∨ (char_at(s, #s - 30) = "\t")) ? #s - 29
+        : ¬((char_at(s, #s - 31) = " ") ∨ (char_at(s, #s - 31) = "\t")) ? #s - 30
+        : ¬((char_at(s, #s - 32) = " ") ∨ (char_at(s, #s - 32) = "\t")) ? #s - 31
+        : ¬((char_at(s, #s - 33) = " ") ∨ (char_at(s, #s - 33) = "\t")) ? #s - 32
+        : ¬((char_at(s, #s - 34) = " ") ∨ (char_at(s, #s - 34) = "\t")) ? #s - 33
+        : ¬((char_at(s, #s - 35) = " ") ∨ (char_at(s, #s - 35) = "\t")) ? #s - 34
+        : ¬((char_at(s, #s - 36) = " ") ∨ (char_at(s, #s - 36) = "\t")) ? #s - 35
+        : ¬((char_at(s, #s - 37) = " ") ∨ (char_at(s, #s - 37) = "\t")) ? #s - 36
+        : ¬((char_at(s, #s - 38) = " ") ∨ (char_at(s, #s - 38) = "\t")) ? #s - 37
+        : ¬((char_at(s, #s - 39) = " ") ∨ (char_at(s, #s - 39) = "\t")) ? #s - 38
+        : ¬((char_at(s, #s - 40) = " ") ∨ (char_at(s, #s - 40) = "\t")) ? #s - 39
+        : ¬((char_at(s, #s - 41) = " ") ∨ (char_at(s, #s - 41) = "\t")) ? #s - 40
+        : ¬((char_at(s, #s - 42) = " ") ∨ (char_at(s, #s - 42) = "\t")) ? #s - 41
+        : ¬((char_at(s, #s - 43) = " ") ∨ (char_at(s, #s - 43) = "\t")) ? #s - 42
+        : ¬((char_at(s, #s - 44) = " ") ∨ (char_at(s, #s - 44) = "\t")) ? #s - 43
+        : ¬((char_at(s, #s - 45) = " ") ∨ (char_at(s, #s - 45) = "\t")) ? #s - 44
+        : ¬((char_at(s, #s - 46) = " ") ∨ (char_at(s, #s - 46) = "\t")) ? #s - 45
+        : ¬((char_at(s, #s - 47) = " ") ∨ (char_at(s, #s - 47) = "\t")) ? #s - 46
+        : ¬((char_at(s, #s - 48) = " ") ∨ (char_at(s, #s - 48) = "\t")) ? #s - 47
+        : #s - 48)
+
+-- One comment-strip event: from scan state (p0 = next position,
+-- q0 = inside-string), resolve or advance past the next quote/dash-pair.
+-- dd/qq are caller-named scratch outputs. done1 + code1 hold the result.
+claim AcCommentStep(s ∈ String, p0 ∈ Int, q0 ∈ Bool, done0 ∈ Bool, code0 ∈ String, dd ∈ Int, qq ∈ Int, p1 ∈ Int, q1 ∈ Bool, done1 ∈ Bool, code1 ∈ String)
+    dd = (done0 ? -1 : index_of(s, "--", p0))
+    qq = (done0 ? -1 : index_of(s, "\"", p0))
+    done1 = (done0 ? done0
+        : q0 ? (qq < 0)
+        : ((dd ≥ 0 ∧ ((qq < 0) ∨ (dd < qq))) ∨ ((dd < 0) ∧ (qq < 0))))
+    code1 = (done0 ? code0
+        : q0 ? s
+        : (dd ≥ 0 ∧ ((qq < 0) ∨ (dd < qq))) ? substr(s, 0, dd)
+        : s)
+    p1 = (done0 ? p0 : qq + 1)
+    q1 = (done0 ? q0 : ¬q0)
+
+-- One paren-balance event for the injection splice point: nearest "(" or
+-- ")" from p0; f tracks -2 = scanning, -1 = unbalanced, ≥ 0 = close-paren
+-- index that returns depth to 0. op/cp are caller-named scratch outputs.
+claim AcParenStep(s ∈ String, p0 ∈ Int, d0 ∈ Int, f0 ∈ Int, op ∈ Int, cp ∈ Int, p1 ∈ Int, d1 ∈ Int, f1 ∈ Int)
+    op = (f0 > -2 ? -1 : index_of(s, "(", p0))
+    cp = (f0 > -2 ? -1 : index_of(s, ")", p0))
+    f1 = (f0 > -2 ? f0
+        : cp < 0 ? -1
+        : (op ≥ 0 ∧ op < cp) ? -2
+        : (d0 = 1 ? cp : -2))
+    d1 = (f0 > -2 ? d0
+        : cp < 0 ? d0
+        : (op ≥ 0 ∧ op < cp) ? d0 + 1
+        : d0 - 1)
+    p1 = (f0 > -2 ? p0
+        : cp < 0 ? p0
+        : (op ≥ 0 ∧ op < cp) ? op + 1
+        : cp + 1)
+
+-- One word-boundary occurrence probe of `needle` (length nlen) in body.
+-- f: -2 = keep probing from o1, -1 = no occurrence, ≥ 0 = boundary hit.
+-- pos is caller-named scratch.
+claim AcBodyProbe(body ∈ String, needle ∈ String, nlen ∈ Int, o0 ∈ Int, f0 ∈ Int, pos ∈ Int, o1 ∈ Int, f1 ∈ Int)
+    pos = (f0 > -2 ? -1 : index_of(body, needle, o0))
+    f1 = (f0 > -2 ? f0
+        : pos < 0 ? -1
+        : ((¬str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(body, pos - 1)))
+           ∧ ((pos + nlen ≥ #body) ∨ ¬str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(body, pos + nlen)))) ? pos
+        : -2)
+    o1 = (f0 > -2 ? o0 : pos + 1)
+
+
+-- Parse the non-negative base-10 integer at s[from .. from+len); -1 when
+-- len is 0 or beyond 7 digits.
+claim AcParseInt(s ∈ String, from ∈ Int, len ∈ Int, out ∈ Int)
+    out = (len = 1 ? index_of("0123456789", char_at(s, from + 0))
+        : len = 2 ? index_of("0123456789", char_at(s, from + 0)) * 10 + index_of("0123456789", char_at(s, from + 1))
+        : len = 3 ? index_of("0123456789", char_at(s, from + 0)) * 100 + index_of("0123456789", char_at(s, from + 1)) * 10 + index_of("0123456789", char_at(s, from + 2))
+        : len = 4 ? index_of("0123456789", char_at(s, from + 0)) * 1000 + index_of("0123456789", char_at(s, from + 1)) * 100 + index_of("0123456789", char_at(s, from + 2)) * 10 + index_of("0123456789", char_at(s, from + 3))
+        : len = 5 ? index_of("0123456789", char_at(s, from + 0)) * 10000 + index_of("0123456789", char_at(s, from + 1)) * 1000 + index_of("0123456789", char_at(s, from + 2)) * 100 + index_of("0123456789", char_at(s, from + 3)) * 10 + index_of("0123456789", char_at(s, from + 4))
+        : len = 6 ? index_of("0123456789", char_at(s, from + 0)) * 100000 + index_of("0123456789", char_at(s, from + 1)) * 10000 + index_of("0123456789", char_at(s, from + 2)) * 1000 + index_of("0123456789", char_at(s, from + 3)) * 100 + index_of("0123456789", char_at(s, from + 4)) * 10 + index_of("0123456789", char_at(s, from + 5))
+        : len = 7 ? index_of("0123456789", char_at(s, from + 0)) * 1000000 + index_of("0123456789", char_at(s, from + 1)) * 100000 + index_of("0123456789", char_at(s, from + 2)) * 10000 + index_of("0123456789", char_at(s, from + 3)) * 1000 + index_of("0123456789", char_at(s, from + 4)) * 100 + index_of("0123456789", char_at(s, from + 5)) * 10 + index_of("0123456789", char_at(s, from + 6))
+        : -1)
+
+
+-- Backward scans for the ↦-jump call-binding parser: out = the lowest
+-- index reachable from `from` (exclusive) by stepping back over ws /
+-- word chars. char_at at negative indexes returns "" and stops the scan.
+claim AcWsBack(s ∈ String, from ∈ Int, out ∈ Int)
+    out = (¬((char_at(s, from - 1) = " ") ∨ (char_at(s, from - 1) = "\t")) ? from
+        : ¬((char_at(s, from - 2) = " ") ∨ (char_at(s, from - 2) = "\t")) ? from - 1
+        : ¬((char_at(s, from - 3) = " ") ∨ (char_at(s, from - 3) = "\t")) ? from - 2
+        : ¬((char_at(s, from - 4) = " ") ∨ (char_at(s, from - 4) = "\t")) ? from - 3
+        : ¬((char_at(s, from - 5) = " ") ∨ (char_at(s, from - 5) = "\t")) ? from - 4
+        : ¬((char_at(s, from - 6) = " ") ∨ (char_at(s, from - 6) = "\t")) ? from - 5
+        : ¬((char_at(s, from - 7) = " ") ∨ (char_at(s, from - 7) = "\t")) ? from - 6
+        : ¬((char_at(s, from - 8) = " ") ∨ (char_at(s, from - 8) = "\t")) ? from - 7
+        : ¬((char_at(s, from - 9) = " ") ∨ (char_at(s, from - 9) = "\t")) ? from - 8
+        : ¬((char_at(s, from - 10) = " ") ∨ (char_at(s, from - 10) = "\t")) ? from - 9
+        : ¬((char_at(s, from - 11) = " ") ∨ (char_at(s, from - 11) = "\t")) ? from - 10
+        : ¬((char_at(s, from - 12) = " ") ∨ (char_at(s, from - 12) = "\t")) ? from - 11
+        : ¬((char_at(s, from - 13) = " ") ∨ (char_at(s, from - 13) = "\t")) ? from - 12
+        : ¬((char_at(s, from - 14) = " ") ∨ (char_at(s, from - 14) = "\t")) ? from - 13
+        : ¬((char_at(s, from - 15) = " ") ∨ (char_at(s, from - 15) = "\t")) ? from - 14
+        : ¬((char_at(s, from - 16) = " ") ∨ (char_at(s, from - 16) = "\t")) ? from - 15
+        : from - 16)
+
+claim AcWordBack(s ∈ String, from ∈ Int, out ∈ Int)
+    out = (¬((from - 1 ≥ 0) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from - 1))) ? from
+        : ¬((from - 2 ≥ 0) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from - 2))) ? from - 1
+        : ¬((from - 3 ≥ 0) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from - 3))) ? from - 2
+        : ¬((from - 4 ≥ 0) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from - 4))) ? from - 3
+        : ¬((from - 5 ≥ 0) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from - 5))) ? from - 4
+        : ¬((from - 6 ≥ 0) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from - 6))) ? from - 5
+        : ¬((from - 7 ≥ 0) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from - 7))) ? from - 6
+        : ¬((from - 8 ≥ 0) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from - 8))) ? from - 7
+        : ¬((from - 9 ≥ 0) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from - 9))) ? from - 8
+        : ¬((from - 10 ≥ 0) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from - 10))) ? from - 9
+        : ¬((from - 11 ≥ 0) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from - 11))) ? from - 10
+        : ¬((from - 12 ≥ 0) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from - 12))) ? from - 11
+        : ¬((from - 13 ≥ 0) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from - 13))) ? from - 12
+        : ¬((from - 14 ≥ 0) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from - 14))) ? from - 13
+        : ¬((from - 15 ≥ 0) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from - 15))) ? from - 14
+        : ¬((from - 16 ≥ 0) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from - 16))) ? from - 15
+        : ¬((from - 17 ≥ 0) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from - 17))) ? from - 16
+        : ¬((from - 18 ≥ 0) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from - 18))) ? from - 17
+        : ¬((from - 19 ≥ 0) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from - 19))) ? from - 18
+        : ¬((from - 20 ≥ 0) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from - 20))) ? from - 19
+        : ¬((from - 21 ≥ 0) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from - 21))) ? from - 20
+        : ¬((from - 22 ≥ 0) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from - 22))) ? from - 21
+        : ¬((from - 23 ≥ 0) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from - 23))) ? from - 22
+        : ¬((from - 24 ≥ 0) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from - 24))) ? from - 23
+        : ¬((from - 25 ≥ 0) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from - 25))) ? from - 24
+        : ¬((from - 26 ≥ 0) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from - 26))) ? from - 25
+        : ¬((from - 27 ≥ 0) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from - 27))) ? from - 26
+        : ¬((from - 28 ≥ 0) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from - 28))) ? from - 27
+        : ¬((from - 29 ≥ 0) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from - 29))) ? from - 28
+        : ¬((from - 30 ≥ 0) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from - 30))) ? from - 29
+        : ¬((from - 31 ≥ 0) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from - 31))) ? from - 30
+        : ¬((from - 32 ≥ 0) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from - 32))) ? from - 31
+        : ¬((from - 33 ≥ 0) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from - 33))) ? from - 32
+        : ¬((from - 34 ≥ 0) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from - 34))) ? from - 33
+        : ¬((from - 35 ≥ 0) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from - 35))) ? from - 34
+        : ¬((from - 36 ≥ 0) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from - 36))) ? from - 35
+        : ¬((from - 37 ≥ 0) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from - 37))) ? from - 36
+        : ¬((from - 38 ≥ 0) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from - 38))) ? from - 37
+        : ¬((from - 39 ≥ 0) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from - 39))) ? from - 38
+        : ¬((from - 40 ≥ 0) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from - 40))) ? from - 39
+        : ¬((from - 41 ≥ 0) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from - 41))) ? from - 40
+        : ¬((from - 42 ≥ 0) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from - 42))) ? from - 41
+        : ¬((from - 43 ≥ 0) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from - 43))) ? from - 42
+        : ¬((from - 44 ≥ 0) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from - 44))) ? from - 43
+        : ¬((from - 45 ≥ 0) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from - 45))) ? from - 44
+        : ¬((from - 46 ≥ 0) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from - 46))) ? from - 45
+        : ¬((from - 47 ≥ 0) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from - 47))) ? from - 46
+        : ¬((from - 48 ≥ 0) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from - 48))) ? from - 47
+        : ¬((from - 49 ≥ 0) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from - 49))) ? from - 48
+        : ¬((from - 50 ≥ 0) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from - 50))) ? from - 49
+        : ¬((from - 51 ≥ 0) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from - 51))) ? from - 50
+        : ¬((from - 52 ≥ 0) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from - 52))) ? from - 51
+        : ¬((from - 53 ≥ 0) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from - 53))) ? from - 52
+        : ¬((from - 54 ≥ 0) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from - 54))) ? from - 53
+        : ¬((from - 55 ≥ 0) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from - 55))) ? from - 54
+        : ¬((from - 56 ≥ 0) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from - 56))) ? from - 55
+        : ¬((from - 57 ≥ 0) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from - 57))) ? from - 56
+        : ¬((from - 58 ≥ 0) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from - 58))) ? from - 57
+        : ¬((from - 59 ≥ 0) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from - 59))) ? from - 58
+        : ¬((from - 60 ≥ 0) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from - 60))) ? from - 59
+        : ¬((from - 61 ≥ 0) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from - 61))) ? from - 60
+        : ¬((from - 62 ≥ 0) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from - 62))) ? from - 61
+        : ¬((from - 63 ≥ 0) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from - 63))) ? from - 62
+        : ¬((from - 64 ≥ 0) ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(s, from - 64))) ? from - 63
+        : from - 64)
+
+
+-- Three word-boundary occurrence probes of `needle` (length nlen) in
+-- body, fused into two outputs: f1 = -2 keep probing from o1, -1 = no
+-- occurrence, ≥ 0 = boundary hit. Inactive (act = false) returns -1.
+claim AcBodyScan3(body ∈ String, needle ∈ String, nlen ∈ Int, o0 ∈ Int, act ∈ Bool, o1 ∈ Int, f1 ∈ Int)
+    f1 = ((((act ? -2 : -1) > -2 ? (act ? -2 : -1) : (index_of(body, needle, o0) < 0 ? -1 : ((¬str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(body, index_of(body, needle, o0) - 1))) ∧ ((index_of(body, needle, o0) + nlen ≥ #body) ∨ ¬str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(body, index_of(body, needle, o0) + nlen))) ? index_of(body, needle, o0) : -2))) > -2 ? ((act ? -2 : -1) > -2 ? (act ? -2 : -1) : (index_of(body, needle, o0) < 0 ? -1 : ((¬str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(body, index_of(body, needle, o0) - 1))) ∧ ((index_of(body, needle, o0) + nlen ≥ #body) ∨ ¬str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(body, index_of(body, needle, o0) + nlen))) ? index_of(body, needle, o0) : -2))) : (index_of(body, needle, ((act ? -2 : -1) > -2 ? o0 : index_of(body, needle, o0) + 1)) < 0 ? -1 : ((¬str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(body, index_of(body, needle, ((act ? -2 : -1) > -2 ? o0 : index_of(body, needle, o0) + 1)) - 1))) ∧ ((index_of(body, needle, ((act ? -2 : -1) > -2 ? o0 : index_of(body, needle, o0) + 1)) + nlen ≥ #body) ∨ ¬str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(body, index_of(body, needle, ((act ? -2 : -1) > -2 ? o0 : index_of(body, needle, o0) + 1)) + nlen))) ? index_of(body, needle, ((act ? -2 : -1) > -2 ? o0 : index_of(body, needle, o0) + 1)) : -2))) > -2 ? (((act ? -2 : -1) > -2 ? (act ? -2 : -1) : (index_of(body, needle, o0) < 0 ? -1 : ((¬str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(body, index_of(body, needle, o0) - 1))) ∧ ((index_of(body, needle, o0) + nlen ≥ #body) ∨ ¬str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(body, index_of(body, needle, o0) + nlen))) ? index_of(body, needle, o0) : -2))) > -2 ? ((act ? -2 : -1) > -2 ? (act ? -2 : -1) : (index_of(body, needle, o0) < 0 ? -1 : ((¬str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(body, index_of(body, needle, o0) - 1))) ∧ ((index_of(body, needle, o0) + nlen ≥ #body) ∨ ¬str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(body, index_of(body, needle, o0) + nlen))) ? index_of(body, needle, o0) : -2))) : (index_of(body, needle, ((act ? -2 : -1) > -2 ? o0 : index_of(body, needle, o0) + 1)) < 0 ? -1 : ((¬str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(body, index_of(body, needle, ((act ? -2 : -1) > -2 ? o0 : index_of(body, needle, o0) + 1)) - 1))) ∧ ((index_of(body, needle, ((act ? -2 : -1) > -2 ? o0 : index_of(body, needle, o0) + 1)) + nlen ≥ #body) ∨ ¬str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(body, index_of(body, needle, ((act ? -2 : -1) > -2 ? o0 : index_of(body, needle, o0) + 1)) + nlen))) ? index_of(body, needle, ((act ? -2 : -1) > -2 ? o0 : index_of(body, needle, o0) + 1)) : -2))) : (index_of(body, needle, (((act ? -2 : -1) > -2 ? (act ? -2 : -1) : (index_of(body, needle, o0) < 0 ? -1 : ((¬str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(body, index_of(body, needle, o0) - 1))) ∧ ((index_of(body, needle, o0) + nlen ≥ #body) ∨ ¬str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(body, index_of(body, needle, o0) + nlen))) ? index_of(body, needle, o0) : -2))) > -2 ? ((act ? -2 : -1) > -2 ? o0 : index_of(body, needle, o0) + 1) : index_of(body, needle, ((act ? -2 : -1) > -2 ? o0 : index_of(body, needle, o0) + 1)) + 1)) < 0 ? -1 : ((¬str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(body, index_of(body, needle, (((act ? -2 : -1) > -2 ? (act ? -2 : -1) : (index_of(body, needle, o0) < 0 ? -1 : ((¬str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(body, index_of(body, needle, o0) - 1))) ∧ ((index_of(body, needle, o0) + nlen ≥ #body) ∨ ¬str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(body, index_of(body, needle, o0) + nlen))) ? index_of(body, needle, o0) : -2))) > -2 ? ((act ? -2 : -1) > -2 ? o0 : index_of(body, needle, o0) + 1) : index_of(body, needle, ((act ? -2 : -1) > -2 ? o0 : index_of(body, needle, o0) + 1)) + 1)) - 1))) ∧ ((index_of(body, needle, (((act ? -2 : -1) > -2 ? (act ? -2 : -1) : (index_of(body, needle, o0) < 0 ? -1 : ((¬str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(body, index_of(body, needle, o0) - 1))) ∧ ((index_of(body, needle, o0) + nlen ≥ #body) ∨ ¬str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(body, index_of(body, needle, o0) + nlen))) ? index_of(body, needle, o0) : -2))) > -2 ? ((act ? -2 : -1) > -2 ? o0 : index_of(body, needle, o0) + 1) : index_of(body, needle, ((act ? -2 : -1) > -2 ? o0 : index_of(body, needle, o0) + 1)) + 1)) + nlen ≥ #body) ∨ ¬str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(body, index_of(body, needle, (((act ? -2 : -1) > -2 ? (act ? -2 : -1) : (index_of(body, needle, o0) < 0 ? -1 : ((¬str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(body, index_of(body, needle, o0) - 1))) ∧ ((index_of(body, needle, o0) + nlen ≥ #body) ∨ ¬str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(body, index_of(body, needle, o0) + nlen))) ? index_of(body, needle, o0) : -2))) > -2 ? ((act ? -2 : -1) > -2 ? o0 : index_of(body, needle, o0) + 1) : index_of(body, needle, ((act ? -2 : -1) > -2 ? o0 : index_of(body, needle, o0) + 1)) + 1)) + nlen))) ? index_of(body, needle, (((act ? -2 : -1) > -2 ? (act ? -2 : -1) : (index_of(body, needle, o0) < 0 ? -1 : ((¬str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(body, index_of(body, needle, o0) - 1))) ∧ ((index_of(body, needle, o0) + nlen ≥ #body) ∨ ¬str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(body, index_of(body, needle, o0) + nlen))) ? index_of(body, needle, o0) : -2))) > -2 ? ((act ? -2 : -1) > -2 ? o0 : index_of(body, needle, o0) + 1) : index_of(body, needle, ((act ? -2 : -1) > -2 ? o0 : index_of(body, needle, o0) + 1)) + 1)) : -2)))
+    o1 = ((((act ? -2 : -1) > -2 ? (act ? -2 : -1) : (index_of(body, needle, o0) < 0 ? -1 : ((¬str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(body, index_of(body, needle, o0) - 1))) ∧ ((index_of(body, needle, o0) + nlen ≥ #body) ∨ ¬str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(body, index_of(body, needle, o0) + nlen))) ? index_of(body, needle, o0) : -2))) > -2 ? ((act ? -2 : -1) > -2 ? (act ? -2 : -1) : (index_of(body, needle, o0) < 0 ? -1 : ((¬str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(body, index_of(body, needle, o0) - 1))) ∧ ((index_of(body, needle, o0) + nlen ≥ #body) ∨ ¬str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(body, index_of(body, needle, o0) + nlen))) ? index_of(body, needle, o0) : -2))) : (index_of(body, needle, ((act ? -2 : -1) > -2 ? o0 : index_of(body, needle, o0) + 1)) < 0 ? -1 : ((¬str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(body, index_of(body, needle, ((act ? -2 : -1) > -2 ? o0 : index_of(body, needle, o0) + 1)) - 1))) ∧ ((index_of(body, needle, ((act ? -2 : -1) > -2 ? o0 : index_of(body, needle, o0) + 1)) + nlen ≥ #body) ∨ ¬str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(body, index_of(body, needle, ((act ? -2 : -1) > -2 ? o0 : index_of(body, needle, o0) + 1)) + nlen))) ? index_of(body, needle, ((act ? -2 : -1) > -2 ? o0 : index_of(body, needle, o0) + 1)) : -2))) > -2 ? (((act ? -2 : -1) > -2 ? (act ? -2 : -1) : (index_of(body, needle, o0) < 0 ? -1 : ((¬str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(body, index_of(body, needle, o0) - 1))) ∧ ((index_of(body, needle, o0) + nlen ≥ #body) ∨ ¬str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(body, index_of(body, needle, o0) + nlen))) ? index_of(body, needle, o0) : -2))) > -2 ? ((act ? -2 : -1) > -2 ? o0 : index_of(body, needle, o0) + 1) : index_of(body, needle, ((act ? -2 : -1) > -2 ? o0 : index_of(body, needle, o0) + 1)) + 1) : index_of(body, needle, (((act ? -2 : -1) > -2 ? (act ? -2 : -1) : (index_of(body, needle, o0) < 0 ? -1 : ((¬str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(body, index_of(body, needle, o0) - 1))) ∧ ((index_of(body, needle, o0) + nlen ≥ #body) ∨ ¬str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", char_at(body, index_of(body, needle, o0) + nlen))) ? index_of(body, needle, o0) : -2))) > -2 ? ((act ? -2 : -1) > -2 ? o0 : index_of(body, needle, o0) + 1) : index_of(body, needle, ((act ? -2 : -1) > -2 ? o0 : index_of(body, needle, o0) + 1)) + 1)) + 1)

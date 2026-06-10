@@ -1,0 +1,134 @@
+-- MODULE autocarry_apply — stage B of the fsm autocarry pass.
+-- CONSUMES: stdin line 1 = insert registry, line 2 = inject registry
+--           (both produced by autocarry_analyze, records sorted by line
+--           number), then the flattened source until EOF.
+-- PRODUCES: the autocarry-expanded source on stdout, byte-identical to
+--           scripts/expand-fsm-autocarry.sh on the same input.
+-- MAINTAINS: registry wire format — insert "⟦<line>⟧<text>" means print
+--            <text> (with the line's own indent) AFTER source line <line>;
+--            inject "⟦<line>⟧<add>" means splice <add> before the close
+--            paren that balances the line's first "(". Line numbers count
+--            source lines from 1; records are consumed strictly in order
+--            through carried Int cursors (no per-line registry probes).
+--            "fsm "/"fsm\t" headers become "claim".
+-- Effects leaves are named Effect vars under named Bool guards — inline
+-- LibCall leaves or compound guards make the whole program Z3-residual
+-- (measured 2026-06-10: 25 ms z3/tick vs 0.0).
+import "stdlib/kernel.ev"
+import "scripts/passes/autocarry_lib.ev"
+
+fsm autocarry_apply
+    phase ∈ Int
+    line_no ∈ Int
+    ins_reg ∈ String
+    inj_reg ∈ String
+    ins_no ∈ Int
+    ins_cur ∈ Int
+    ins_txt ∈ String
+    inj_no ∈ Int
+    inj_cur ∈ Int
+    inj_txt ∈ String
+    cur_line ∈ String
+    scan_pos ∈ Int
+    scan_depth ∈ Int
+    scan_found ∈ Int
+    splice_add ∈ String
+
+    _t_ph ∈ Int = (is_first_tick ? 0 : _phase)
+    _t_rline ∈ String = match last_results[1]
+        StringResult(s) ⇒ s
+        _ ⇒ ""
+    _t_reof ∈ Bool = match last_results[1]
+        EofResult ⇒ true
+        _ ⇒ false
+
+    _t_nn ∈ Int = (is_first_tick ? 0 : _t_ph = 3 ∧ ¬_t_reof ? _line_no + 1 : _line_no)
+
+    -- paren-balance scan: one event per tick over the held call line
+    _t_s1p, _t_s1d, _t_s1f, _t_s1op, _t_s1cp ∈ Int
+    AcParenStep(s ↦ _cur_line, p0 ↦ _scan_pos, d0 ↦ _scan_depth, f0 ↦ _scan_found, op ↦ _t_s1op, cp ↦ _t_s1cp, p1 ↦ _t_s1p, d1 ↦ _t_s1d, f1 ↦ _t_s1f)
+    _t_scan_done ∈ Bool = (_t_ph = 4 ∧ _t_s1f > -2)
+    _t_plain_emit ∈ Bool = (_t_ph = 3 ∧ ¬_t_reof ∧ ¬_t_has_inj)
+    _t_emit_now ∈ Bool = (_t_plain_emit ∨ _t_scan_done)
+
+    -- sequential registry consumption: the next pending record's line
+    -- number is a carried Int, so the per-line check is one comparison
+    _t_ins_take ∈ Bool = (_t_emit_now ∧ _t_nn = _ins_no)
+    _t_inj_take ∈ Bool = (_t_ph = 3 ∧ ¬_t_reof ∧ _t_nn = _inj_no)
+    _t_has_inj ∈ Bool = (_t_ph = 3 ∧ ¬_t_reof ∧ _t_nn = _inj_no ? index_of(_t_rline, "(") ≥ 0 : false)
+
+    _t_ins_src ∈ String = (_t_ph = 1 ? _t_rline : _ins_reg)
+    _t_ins_c ∈ Int = (_t_ph = 1 ? 0 : _ins_cur)
+    _t_ins_step ∈ Bool = (_t_ph = 1 ∨ _t_ins_take)
+    _t_inj_src ∈ String = (_t_ph = 2 ? _t_rline : _inj_reg)
+    _t_inj_c ∈ Int = (_t_ph = 2 ? 0 : _inj_cur)
+    _t_inj_step ∈ Bool = (_t_ph = 2 ∨ _t_inj_take)
+
+    _t_src_line ∈ String = (_t_ph = 3 ? _t_rline : _cur_line)
+    _t_ind_end ∈ Int
+    AcWsSkip(s ↦ (_t_ins_take ? _t_src_line : ""), from ↦ 0, out ↦ _t_ind_end)
+
+    _t_out_full ∈ String = ((_t_plain_emit
+        ? ((starts_with(_t_rline, "fsm ") ∨ starts_with(_t_rline, "fsm\t"))
+            ? "claim" ++ substr(_t_rline, 3, #_t_rline - 3)
+            : _t_rline)
+        : _t_scan_done ∧ _t_s1f ≥ 0
+            ? substr(_cur_line, 0, _t_s1f) ++ _splice_add ++ substr(_cur_line, _t_s1f, #_cur_line - _t_s1f)
+            : _cur_line)
+        ++ (_t_ins_take ? "\n" ++ substr(_t_src_line, 0, _t_ind_end) ++ _ins_txt : ""))
+
+    eff_out ∈ Effect
+    BuildPrintln(s ↦ _t_out_full, eff ↦ eff_out)
+    eff_nop ∈ Effect
+    eff_nop = LibCall("libc", "getpid", ⟨⟩)
+    _t_exit_now ∈ Bool = (_t_reof ∧ (_t_ph = 1 ∨ _t_ph = 2 ∨ _t_ph = 3))
+    _t_reg_read ∈ Bool = (_t_ph = 1 ∨ _t_ph = 2)
+
+    phase = (is_first_tick ? 1
+        : _t_ph = 1 ? 2
+        : _t_ph = 2 ? 3
+        : _t_ph = 3 ? (_t_has_inj ? 4 : 3)
+        : _t_ph = 4 ? (_t_scan_done ? 3 : 4)
+        : _t_ph)
+    line_no = (is_first_tick ? 0 : _t_nn)
+    ins_reg = (is_first_tick ? "" : _t_ph = 1 ? _t_rline : _ins_reg)
+    inj_reg = (is_first_tick ? "" : _t_ph = 2 ? _t_rline : _inj_reg)
+    _t_ins_no_parsed ∈ Int
+    AcParseInt(s ↦ _t_ins_src, from ↦ _t_ins_c + 1, len ↦ (_t_ins_step ∧ _t_ins_c < #_t_ins_src ? index_of(_t_ins_src, "⟧", _t_ins_c) - _t_ins_c - 1 : 0), out ↦ _t_ins_no_parsed)
+    ins_no = (is_first_tick ? -1 : _t_ins_step
+        ? (_t_ins_c ≥ #_t_ins_src ? -1 : _t_ins_no_parsed)
+        : _ins_no)
+    ins_txt = (is_first_tick ? "" : _t_ins_step
+        ? (_t_ins_c ≥ #_t_ins_src ? ""
+            : substr(_t_ins_src, index_of(_t_ins_src, "⟧", _t_ins_c) + 1,
+                (index_of(_t_ins_src, "⟦", _t_ins_c + 1) < 0 ? #_t_ins_src : index_of(_t_ins_src, "⟦", _t_ins_c + 1))
+                - index_of(_t_ins_src, "⟧", _t_ins_c) - 1))
+        : _ins_txt)
+    ins_cur = (is_first_tick ? 0 : _t_ins_step
+        ? (index_of(_t_ins_src, "⟦", _t_ins_c + 1) < 0 ? #_t_ins_src : index_of(_t_ins_src, "⟦", _t_ins_c + 1))
+        : _ins_cur)
+    _t_inj_no_parsed ∈ Int
+    AcParseInt(s ↦ _t_inj_src, from ↦ _t_inj_c + 1, len ↦ (_t_inj_step ∧ _t_inj_c < #_t_inj_src ? index_of(_t_inj_src, "⟧", _t_inj_c) - _t_inj_c - 1 : 0), out ↦ _t_inj_no_parsed)
+    inj_no = (is_first_tick ? -1 : _t_inj_step
+        ? (_t_inj_c ≥ #_t_inj_src ? -1 : _t_inj_no_parsed)
+        : _inj_no)
+    inj_cur = (is_first_tick ? 0 : _t_inj_step
+        ? (index_of(_t_inj_src, "⟦", _t_inj_c + 1) < 0 ? #_t_inj_src : index_of(_t_inj_src, "⟦", _t_inj_c + 1))
+        : _inj_cur)
+    inj_txt = (is_first_tick ? "" : _t_inj_step
+        ? (_t_inj_c ≥ #_t_inj_src ? ""
+            : substr(_t_inj_src, index_of(_t_inj_src, "⟧", _t_inj_c) + 1,
+                (index_of(_t_inj_src, "⟦", _t_inj_c + 1) < 0 ? #_t_inj_src : index_of(_t_inj_src, "⟦", _t_inj_c + 1))
+                - index_of(_t_inj_src, "⟧", _t_inj_c) - 1))
+        : _inj_txt)
+    cur_line = (is_first_tick ? "" : _t_has_inj ? _t_rline : _cur_line)
+    scan_pos = (is_first_tick ? 0 : _t_has_inj ? index_of(_t_rline, "(") + 1 : _t_ph = 4 ? _t_s1p : _scan_pos)
+    scan_depth = (is_first_tick ? 0 : _t_has_inj ? 1 : _t_ph = 4 ? _t_s1d : _scan_depth)
+    scan_found = (is_first_tick ? -1 : _t_has_inj ? -2 : _t_ph = 4 ? _t_s1f : _scan_found)
+    splice_add = (is_first_tick ? "" : _t_inj_take ? _inj_txt : _splice_add)
+
+    effects ∈ Seq(Effect) = (is_first_tick ? ⟨eff_nop, ReadLine⟩
+        : _t_exit_now ? ⟨Exit(0), eff_nop⟩
+        : _t_reg_read ? ⟨eff_nop, ReadLine⟩
+        : _t_emit_now ? ⟨eff_out, ReadLine⟩
+        : ⟨eff_nop, eff_nop⟩)
