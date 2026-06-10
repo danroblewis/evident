@@ -1,12 +1,12 @@
 -- MODULE DriverCompose
 -- CONSUMES: the classifier's composition/type-splice decision flags
 --           (comp_call/bare/dd/line, tymem_call/bare/line, line_name,
---           line_ty_name, callee_pos), the claim index base (ci_base), the
+--           line_ty_name, callee_pos), the claim index base (claimidx_buf.base), the
 --           handle-stack views (h_top/2nd/.. + h_tail1.. + stack_in),
 --           cap_int, the parse gate (in_parse, _parse_mode, tok_ready,
 --           work_nil), the line-pop signal (frame_pop), the record
---           registry (rt_n*/rt_sort*), and the sibling fire/cap signals
---           (guard_hit, gj_*, ptj_*, pz_*, pratt_done, pratt_bad, enter_claim*).
+--           registry (rec0..rec2 name/sort), and the sibling fire/cap signals
+--           (guard_hit, guard_jump_*, posjump_*, bindzip_*, pratt_done, pratt_bad, enter_claim*).
 --           Wide by nature: a call jump couples the classifier decision,
 --           the claim index, and the handle stack (justified §6.4).
 -- PRODUCES: the inline-frame stack (frames/binds/scope_prefix/frame_depth/

@@ -2,7 +2,7 @@
 -- CONSUMES: the parse-phase gate (in_parse), the active parse mode + the
 --           consumer sub-state carries that set lookahead need (_parse_mode,
 --           _rec_collect_on, _enum_act, work_nil, _callw_st, _posbind_st), the FTI token
---           buffer base (tbase) + the per-tick libc read results
+--           buffer base (tok_buf.base) + the per-tick libc read results
 --           (last_results), and its own carried cursor (_tok_cur/_fetch_end/
 --           _fetch_mode/_win_toks).
 -- PRODUCES: the decoded 8-token window (win_toks + the tok0..tok7 head

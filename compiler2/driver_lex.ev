@@ -1,22 +1,22 @@
 -- MODULE DriverLex
--- CONSUMES: input (source text), pos/_pos scan cursor, tbase (FTI token
+-- CONSUMES: input (source text), pos/_pos scan cursor, tok_buf.base (FTI token
 --           buffer base), cap_int (last libc capture), _zstep / _got_path
 --           (start gate), and the pure lex char-class helpers
 --           (IsAlphaChar/IsDigitChar/IsWhitespace/IsQuote/LexCharTag/
 --           DigitToInt/EscapeChar/WsRunLen) + the LexFtiPlan token planner.
 -- PRODUCES: the FTI token-buffer write effects (write_tag0/write_pay0/write_tag1/
 --           write_pend_str/write_eof, float write_float_tag/write_float_pay/write_float_op, eff_strdup), the lexer
---           cursor (lx_count/lex_last_tag/lex_prev_tag/pend_str_addr), the per-tick token
---           plan (k_* regs, plan_kind), next_pos, and the strlit/int/float
+--           cursor (tok_buf.count/lex_last_tag/lex_prev_tag/pend_str_addr), the per-tick token
+--           plan (plan_* regs, plan_kind), next_pos, and the strlit/int/float
 --           collection state.
--- MAINTAINS: lx_count < 65534 — every write lands inside zinit_tok_buf (a write
+-- MAINTAINS: tok_buf.count < 65534 — every write lands inside zinit_tok_buf (a write
 --           past the buffer end is UNSAT, so the kernel halts cleanly
 --           instead of corrupting the heap); the FTI one-triple-per-token
---           buffer layout (tbase + count*32).
+--           buffer layout (tok_buf.base + count*32).
 --
 -- Char-stream → FTI token buffer. The fossil per-char scanner FSM; gated
 -- to start after ZINIT. Lifted into driver_main via `..DriverLex`, so its
--- carry pairs (pos, partial_str/int, in_strlit, lx_*, …) become
+-- carry pairs (pos, partial_str/int, in_strlit, lex_*, …) become
 -- driver_main's own manifest state-fields and carry across ticks.
 fsm DriverLex
     pos  ∈ Int
@@ -149,8 +149,8 @@ fsm DriverLex
     --
     -- FTI bounds CONSTRAINT (the model, not a runtime check): the token
     -- buffer (zinit_tok_buf) holds 65536 entries × 32 bytes. The lexer writes
-    -- entry _lx_count (and, on a two-token tick, _lx_count+1) at
-    -- tbase + _lx_count*32. Constraining lx_count < 65536 makes a write
+    -- entry _tok_buf.count (and, on a two-token tick, _tok_buf.count+1) at
+    -- tok_buf.base + _tok_buf.count*32. Constraining tok_buf.count < 65536 makes a write
     -- past the buffer end UNSAT — Z3 refuses the tick, the kernel halts
     -- cleanly (exit 2), and EVIDENT_UNSAT_CORE=1 names this very line as
     -- the violated constraint. Without it, the write went out of bounds

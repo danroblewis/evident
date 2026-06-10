@@ -1,13 +1,13 @@
 -- MODULE DriverSetVar
 -- CONSUMES: the classifier set-line flags (intset_line, setmem_decl_line,
 --           line_is_mem/line_is_notmem, line_dname, line_name, line_ty_name, seq_elt_slot,
---           the quantifier-set views c_q_*), the classify gate
+--           the quantifier-set views q_*), the classify gate
 --           (classify_now, line_end, enter_seqlit, in_skip), the window
 --           head (tok0/tok5..t7), the registered-seq carries (seqvar_name/
 --           seqvar_slot), the inline-frame prefix (scope_prefix), the parse gate, and
 --           the Pratt result (pratt_done/pratt_bad/pratt_result/pratt_kind).
--- PRODUCES: the ≤2-entry Set(T) variable registry (setvar_count/stv_n*/stv_k*/
---           stv_e*/stv_c*), the parse_mode-14 set-literal element walk
+-- PRODUCES: the ≤2-entry Set(T) variable registry (setvar_count + the set_vars rows/
+--           ), the parse_mode-14 set-literal element walk
 --           (seqlit_count + the C2MkEmptySet/C2SetAdd item runs), and the
 --           quantifier-over-set element bookkeeping (qset_*).
 -- MAINTAINS: ≤2 registered Set(T) vars; a set var declares ONE const of

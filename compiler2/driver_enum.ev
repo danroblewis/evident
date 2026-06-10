@@ -9,8 +9,8 @@
 --           the floor ctor/tester/accessor decls (z_exit_decl/z_libcall_decl/
 --           z_argstr_decl/z_argint_decl/z_cell_decl/z_empty_val,
 --           z_intres_test/z_strres_test/z_intres_acc/z_strres_acc), the user-enum value table
---           (evt_*) and the user-variant ctor/tester/accessor registry
---           (uev_*), plus the act/step/src/vidx walk state.
+--           (enum_values) and the user-variant ctor/tester/accessor registry
+--           (user_variants), plus the act/step/src/vidx walk state.
 -- MAINTAINS: one variant declared per (enum_act, enum_step) micro-step, one
 --           Z3 effect per tick with captures landing on the next tick keyed
 --           off (_enum_act, _enum_step); runs the four floor enums (enum_src 0..3,

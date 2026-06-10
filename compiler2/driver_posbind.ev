@@ -1,19 +1,19 @@
 -- MODULE DriverPosBind
--- CONSUMES: the composition-line precheck (pcl_*) + classifier head views
+-- CONSUMES: the composition-line precheck (call_stmt/method_call/tuple_line) + classifier head views
 --           (line_name, line_t0..t4, dotdot_shape, comp_found, c_line_end,
 --           classify_now, line_end), the window head (tok0..tok5), the
 --           parse gate (in_parse, _parse_mode, tok_ready, work_nil), the
 --           handle stack (h_top/2nd/.. + d_h_t*), the claim index
---           (ci_base, claimidx_names), the symbol table (sym_names), the
+--           (claimidx_buf.base, claimidx_names), the symbol table (sym_names), the
 --           inline-frame state (scope_prefix/frame_depth/param_depth/ilb_n*), the
---           enum value table (enum_values), the record registry (rt_n*/rt_f*/
---           rt_sort*), the Pratt result (pratt_done/pratt_bad/pratt_result/pk_*), and
+--           enum value table (enum_values), the record registry (rec0..rec2 name/fields/
+--           sorts), the Pratt result (pratt_done/pratt_bad/pratt_result/pratt_*), and
 --           z_exit_decl. (Width justified §6.4: positional binding
 --           inherently touches index + Pratt stack + callee params.)
 -- PRODUCES: the parse_mode-12 positional-binding walk (posbind_st/pos_argc/posjump_armed/has_tuple/
 --           tuple_pos/pos_callee + the tuple-element recognizers tuple_bite/
---           pos_comma/pos_rparen + ptt_*), the ips_* param-skip substate, the
---           pz_* zip/bind stage, and the lowered C2App/C2DeclConst item
+--           pos_comma/pos_rparen + tuparg_*), the pskip_* param-skip substate, the
+--           bindzip_* zip/bind stage, and the lowered C2App/C2DeclConst item
 --           runs for the bound call.
 -- MAINTAINS: a positional call `(e1, e2, e3) ∈ add` parses each element to
 --           a handle, then binds the handles to the callee's first-line

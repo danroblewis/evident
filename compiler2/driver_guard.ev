@@ -1,6 +1,6 @@
 -- MODULE DriverGuard
 -- CONSUMES: the parsed root (pratt_result) + parse-done signal (pratt_done,
---           _pratt_kind, pratt_bad), the claim index (claimidx_names, ci_base),
+--           _pratt_kind, pratt_bad), the claim index (claimidx_names, claimidx_buf.base),
 --           the parse_mode-10 composition-walk state (in_parse, _parse_mode,
 --           _callw_st, callw_reset, work_nil), and the inline-frame
 --           stack views (frame_pop, _frame_depth, h_top).

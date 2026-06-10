@@ -1,14 +1,14 @@
 -- MODULE DriverBuildEff
 -- CONSUMES: the Z3-lifecycle handles (z3ctx.ctx/z3ctx.cfg/z3ctx.sol + the base
 --           sorts/consts from DriverZInit), the enum-decl machine's
---           per-step state (enum_variant, enum_act_now/enum_step_now, the ed_h_*/
---           ed_slot*/refs_packed01 field captures, the arena base z_arena),
+--           per-step state (enum_variant, enum_act_now/enum_step_now, the enum_h_*/
+--           field_sort*/refs_packed01 field captures, the arena base z_arena),
 --           and cap_int.
 -- PRODUCES: the pure per-step Z3 effect constructors selected by the
 --           effects schedule: (a) the enum-datatype declaration bank
---           (ede_*/edw_* + the enum_step_eff/enum_wbatch5/enum_wbatch2/enum_wbatch3u selectors that
+--           (the enum_* declare/write effects + the enum_step_eff/enum_wbatch5/enum_wbatch2/enum_wbatch3u selectors that
 --           the ED machine emits each tick), and (b) the Z3-lifecycle
---           setup bank (ze_*, one per zstep — config/context/solver, the
+--           setup bank (zinit_*, one per zstep — config/context/solver, the
 --           base sorts, the effects/last_results/is_first_tick consts,
 --           the numerals, and the calloc'd token/symbol/claim buffers).
 -- MAINTAINS: every member here is a STATELESS per-tick Effect value (no

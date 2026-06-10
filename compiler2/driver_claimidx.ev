@@ -5,11 +5,11 @@
 --           work_nil), the parse_mode-4 enum-collection signals
 --           (enter_enum_decl, enum_act, enum_done_user, user_enum_name) + floor decl
 --           handles (z_*_decl/z_empty_val), the Pratt result (pratt_done,
---           pratt_bad, pratt_kind), and the claim-index buffer base (ci_base).
+--           pratt_bad, pratt_kind), and the claim-index buffer base (claimidx_buf.base).
 -- PRODUCES: the claim/type index (ci_cnt, claimidx_names) + its per-skip append
 --           effect (eff_claimidx_write), the parse_mode-4 user-enum variant collection
 --           (variant_take/enum_start/variant_decl/variant_list/variant_list_now + the variant shape
---           classifiers ec_*), and the parse_mode-5 effects-literal / D2
+--           classifiers variant_*), and the parse_mode-5 effects-literal / D2
 --           conditional-chain element walk dispatch.
 -- MAINTAINS: ci_cnt < 2048 (an index past the buffer end is UNSAT, not a
 --           native overrun); one claim recorded per skip-entry tick in
@@ -27,7 +27,7 @@ claim C2ChainLvl(tail ∈ C2Items, out ∈ C2Items)
 fsm DriverClaimIdx
     -- ── F2: the claim index ───────────────────────────────────────
     -- claimidx_names: fixed-width 32-byte name records (the B1 sym_names
-    -- pattern). Cursors live in the ci_base buffer (256 × 8 bytes),
+    -- pattern). Cursors live in the claimidx_buf.base buffer (256 × 8 bytes),
     -- one per skipped claim, value = _tok_cur + 2 — the token after
     -- `claim Name`, which is `(` for parametrized claims (the
     -- call-time param-skip walks over it). Composition can only call

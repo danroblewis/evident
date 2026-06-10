@@ -19,7 +19,7 @@
 -- via `..DriverSymtab`.
 fsm DriverSymtab
     -- ── FTI symbol table ─────────
-    -- Handles live in the calloc'd st_base buffer (8 bytes/entry,
+    -- Handles live in the calloc'd sym_buf.base buffer (8 bytes/entry,
     -- decl order); names live in sym_names, a Z3 String of
     -- fixed-width 32-byte records: "|" ++ name padded to 31 with
     -- spaces. "|" never occurs inside a record (idents are

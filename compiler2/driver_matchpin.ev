@@ -8,7 +8,7 @@
 --           z_intres_acc/z_strres_acc) the arms resolve their ctor/tester/accessor
 --           handles against.
 -- PRODUCES: the parse_mode-6 match-pin walk state (match_st/match_name/match_sort/match_scrut_lr/
---           match_scrut_idx/match_scrut + the per-arm recognizers mp_arm_*), and the
+--           match_scrut_idx/match_scrut + the per-arm recognizers arm_*_head), and the
 --           lowered match work-items (the C2App tester / C2BindScope arm
 --           body item runs) consumed by the interpreter.
 -- MAINTAINS: a `name ∈ Type = match <scrut>` line walks ≤3 arms; the

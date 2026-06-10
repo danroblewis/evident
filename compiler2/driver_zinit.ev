@@ -8,7 +8,7 @@
 --           bsort/ssort/rsort), z_arena, z_eff_arrsort, the effects-array
 --           consts (z_effects_sym/z_effects/z_efflen_sym/z_efflen), the numeral
 --           consts z3nums (zero..four), z_true/z_false, the token/symbol/
---           claim-index buffer bases (tbase/st_base/ci_base), and the
+--           claim-index buffer bases (tok_buf.base/sym_buf.base/claimidx_buf.base), and the
 --           last_results / is_first_tick build-context consts
 --           (z_lastres_sort..z_lastres_ge, z_efflen_ge).
 -- MAINTAINS: zstep advances one step per tick (−2,−1,0,1,… capped at

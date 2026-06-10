@@ -22,7 +22,7 @@
 --           tokens are written to the FTI buffer in APPEND (source)
 --           order via __mem.write_long; string payloads
 --           (Ident/StringLit) are strdup'd char*s. Z3-carried lexer
---           state = five Ints (tbase, lx_count, lex_last_tag, lex_prev_tag,
+--           state = five Ints (tok_buf.base, tok_buf.count, lex_last_tag, lex_prev_tag,
 --           pend_str_addr) — no TokenList anywhere; phase goes 0 → 2
 --           directly, after flushing any pending string write + the
 --           EofTok sentinel.

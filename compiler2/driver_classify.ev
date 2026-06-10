@@ -5,8 +5,8 @@
 --           (_frame_depth, _scope_prefix, bind_n0..n5), the record registry
 --           (rec0..2 .name / .sort), the user-enum + seq-var carries
 --           (_user_enum_done, _user_enum_name, _seqvar_set, _seqvar_name), and the sibling
---           sub-walks' per-line enter signals (el_*/mp_*/sl_*/callw_slot/
---           q_*/pt_*) that fold into enter_pratt. Wide by nature: this
+--           sub-walks' per-line enter signals (efflit_*/arm_*/seqlit_*/callw_slot/
+--           qrange_close/pos_elem) that fold into enter_pratt. Wide by nature: this
 --           is the central dispatch brain — it inspects the whole window
 --           against every other subsystem's entry condition (justified
 --           §6.4).
