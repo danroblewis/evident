@@ -374,7 +374,37 @@ fsm driver_main
     -- ── LINE CLASSIFIER + dispatch (see compiler2/driver_classify.ev) ──
     ..DriverClassify
     -- ── G1: bounded quantifier (see compiler2/driver_quant.ev) ──
-    ..DriverQuant
+    -- Bare mention against its header: these twenty-seven declarations
+    -- ARE the bounded-quantifier interface; its other names are
+    -- per-call-site internals.
+    enter_qrange ∈ Bool
+    enter_qseq ∈ Bool
+    qrange_close ∈ Bool
+    qrange_bail ∈ Bool
+    q_line ∈ Bool
+    q_range ∈ Bool
+    q_over_seq ∈ Bool
+    q_seq_plain ∈ Bool
+    q_seq_dotted ∈ Bool
+    q_is_exists ∈ Bool
+    q_var ∈ String
+    q_t3_name ∈ String
+    qexp_more ∈ Bool
+    qexp_fin ∈ Bool
+    qexp_items ∈ C2Items
+    qexp_fin_items ∈ C2Items
+    qloop_on ∈ Bool
+    qloop_exists ∈ Bool
+    qloop_var ∈ String
+    qloop_kind ∈ Int
+    qloop_lo ∈ Int
+    qloop_hi ∈ Int
+    qloop_seq ∈ String
+    qloop_body ∈ Expr
+    qloop_next ∈ Int
+    qloop_cur ∈ Int
+    seqvar_len ∈ Int
+    DriverQuant
     -- ── G2: rb — record-pin BROADCAST loop (see compiler2/driver_broadcast.ev) ──
     -- Bare mention against its header (the claim-headers pilot): these
     -- ten declarations ARE the broadcast interface; its other names are

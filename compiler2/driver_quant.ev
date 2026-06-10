@@ -1,78 +1,81 @@
 -- MODULE DriverQuant
 -- CONSUMES: the classifier line-head views (line_t0..line_t4) + the window
 --           lookahead (tok5..tok7), the registered-seq carries (_seqvar_set,
---           _seqvar_name, _seqvar_len), the record registry (recs via RtIdxOf),
---           the classify gate (classify_now, line_end), and the parse
---           cursor for the body re-walk.
--- PRODUCES: the bounded-quantifier line classification (q_head/q_line/
---           q_range/q_over_seq/q_var/q_lo/q_hi/q_seq_plain/q_seq_dotted/…) + the
---           quantifier-set entry signals (enter_qseq/enter_qset/qrange_close)
---           and the fl-loop re-walk bookkeeping the interpreter expands.
+--           _seqvar_name), the guard recognizer's root-binop decomposition
+--           (guard_op/guard_lhs/guard_rhs/guard_is_binop), the classify gate
+--           (classify_now, line_end), and the parse cursor for the body
+--           re-walk.
+-- PRODUCES: the HEADER below — the checked interface: the bounded-
+--           quantifier line classification (q_line/q_range/q_over_seq/
+--           q_seq_plain/q_seq_dotted/q_is_exists/q_var/q_t3_name — read by
+--           classify and setvar), the entry/walk signals (enter_qrange/
+--           enter_qseq/qrange_close/qrange_bail), the re-walk expansion
+--           (qexp_more/qexp_fin/qexp_items/qexp_fin_items), the carried
+--           fl-loop state (qloop_* — carried header slots, manifest-
+--           visible for the kernel carry step; qloop_on/var/kind/seq/cur
+--           are also read by driver_main and symtab), and the registered
+--           seq's pinned length (seqvar_len). Everything else is
+--           per-call-site internal.
 -- MAINTAINS: `∀|∃ v ∈ {lo..hi} : body` (integer range) and `∀ v ∈ seq :
 --           body` (registered Seq var, length from its `#seq = k` pin)
 --           parse the body ONCE through the Pratt FSM, then re-walk per
 --           element; a range is fully static (lo/hi are int literals).
 --
--- The bounded-quantifier line classifier + set walk. Lifted into
--- driver_main via `..DriverQuant`.
-fsm DriverQuant
-    q_is_exists ∈ Bool = (line_t0 matches OpExists)
-    q_head ∈ Bool = ((line_t0 matches OpForall) ∨ q_is_exists)
-    q_line ∈ Bool = (q_head ∧ (line_t1 matches Ident(_))
+-- INTERFACE WIDTH: 27 slots — JUSTIFIED per §6.4: the quantifier line
+-- classification feeds two sibling consumers (classify's line dispatch,
+-- setvar's registry append), and the fl-loop carry must stay manifest-
+-- visible; the concern is one machine, the joins are its real fan-out.
+--
+-- The bounded-quantifier line classifier + set walk. Composed into
+-- driver_main by BARE MENTION against the header.
+fsm DriverQuant(enter_qrange ∈ Bool, enter_qseq ∈ Bool, qrange_close ∈ Bool, qrange_bail ∈ Bool, q_line ∈ Bool, q_range ∈ Bool, q_over_seq ∈ Bool, q_seq_plain ∈ Bool, q_seq_dotted ∈ Bool, q_is_exists ∈ Bool, q_var ∈ String, q_t3_name ∈ String, qexp_more ∈ Bool, qexp_fin ∈ Bool, qexp_items ∈ C2Items, qexp_fin_items ∈ C2Items, qloop_on ∈ Bool, qloop_exists ∈ Bool, qloop_var ∈ String, qloop_kind ∈ Int, qloop_lo ∈ Int, qloop_hi ∈ Int, qloop_seq ∈ String, qloop_body ∈ Expr, qloop_next ∈ Int, qloop_cur ∈ Int, seqvar_len ∈ Int)
+    q_is_exists = (line_t0 matches OpExists)
+    head_is_quant ∈ Bool = ((line_t0 matches OpForall) ∨ q_is_exists)
+    q_line = (head_is_quant ∧ (line_t1 matches Ident(_))
         ∧ (line_t2 matches OpIn))
-    q_var ∈ String = match line_t1
+    q_var = match line_t1
         Ident(s) ⇒ s
         _ ⇒ ""
-    q_range ∈ Bool = (q_line ∧ (line_t3 matches LBrace)
+    q_range = (q_line ∧ (line_t3 matches LBrace)
         ∧ (line_t4 matches IntLit(_)) ∧ (tok5 matches Dot)
         ∧ (tok6 matches Dot) ∧ (tok7 matches IntLit(_)))
-    q_lo ∈ Int = match line_t4
+    range_lo ∈ Int = match line_t4
         IntLit(n) ⇒ n
         _ ⇒ 0
-    q_hi ∈ Int = match tok7
+    range_hi ∈ Int = match tok7
         IntLit(n) ⇒ n
         _ ⇒ 0
-    q_t3_name ∈ String = match line_t3
+    q_t3_name = match line_t3
         Ident(s) ⇒ s
         _ ⇒ ""
-    q_t5_name ∈ String = match tok5
+    dotted_field ∈ String = match tok5
         Ident(s) ⇒ s
         _ ⇒ ""
-    q_seq_plain ∈ Bool = (q_line ∧ (line_t3 matches Ident(_))
+    q_seq_plain = (q_line ∧ (line_t3 matches Ident(_))
         ∧ (line_t4 matches Colon))
-    q_seq_dotted ∈ Bool = (q_line ∧ (line_t3 matches Ident(_))
+    q_seq_dotted = (q_line ∧ (line_t3 matches Ident(_))
         ∧ (line_t4 matches Dot) ∧ (tok5 matches Ident(_))
         ∧ (tok6 matches Colon))
-    q_over_seq ∈ Bool = (q_seq_plain ∨ q_seq_dotted)
-    q_seq_name0 ∈ String = (q_seq_dotted ? (q_t3_name ++ "." ++ q_t5_name) : q_t3_name)
-    q_seq_name ∈ String = (((_scope_prefix ++ q_seq_name0) = _seqvar_name)
-        ? _seqvar_name : q_seq_name0)
-    enter_qrange ∈ Bool = (classify_now ∧ (¬line_end) ∧ q_range)
-    enter_qseq ∈ Bool = (classify_now ∧ (¬line_end) ∧ (¬q_range)
+    q_over_seq = (q_seq_plain ∨ q_seq_dotted)
+    seq_name_raw ∈ String = (q_seq_dotted ? (q_t3_name ++ "." ++ dotted_field) : q_t3_name)
+    seq_name_resolved ∈ String = (((_scope_prefix ++ seq_name_raw) = _seqvar_name)
+        ? _seqvar_name : seq_name_raw)
+    enter_qrange = (classify_now ∧ (¬line_end) ∧ q_range)
+    enter_qseq = (classify_now ∧ (¬line_end) ∧ (¬q_range)
         ∧ q_over_seq ∧ _seqvar_set ∧ (¬enter_qset))
 
     -- parse_mode 11: the range head's `} :` close (the 8-token classify
     -- bite latched lo/hi; the brace close enters the body parse)
-    qrange_act ∈ Bool = (in_parse ∧ (_parse_mode = 11) ∧ work_nil ∧ tok_ready)
-    qrange_close ∈ Bool = (qrange_act ∧ (tok0 matches RBrace)
+    range_walk_on ∈ Bool = (in_parse ∧ (_parse_mode = 11) ∧ work_nil ∧ tok_ready)
+    qrange_close = (range_walk_on ∧ (tok0 matches RBrace)
         ∧ (tok1 matches Colon))
-    qrange_bail ∈ Bool = (qrange_act ∧ (¬qrange_close))
+    qrange_bail = (range_walk_on ∧ (¬qrange_close))
 
-    qloop_on ∈ Bool
-    qloop_exists ∈ Bool
-    qloop_var ∈ String
-    qloop_kind ∈ Int
-    qloop_lo ∈ Int
-    qloop_hi ∈ Int
-    qloop_seq ∈ String
-    qloop_body ∈ Expr
-    qloop_next ∈ Int
-    qloop_cur ∈ Int
-    qbody_done ∈ Bool = (pratt_done ∧ (_pratt_kind = 9) ∧ (¬pratt_bad))
-    qexp_disp ∈ Bool = (in_claim ∧ _qloop_on ∧ work_nil
+    body_parsed ∈ Bool = (pratt_done ∧ (_pratt_kind = 9) ∧ (¬pratt_bad))
+    expand_on ∈ Bool = (in_claim ∧ _qloop_on ∧ work_nil
         ∧ (_param_skip = 0) ∧ tok_ready)
-    qexp_more ∈ Bool = (qexp_disp ∧ (_qloop_next ≤ _qloop_hi))
-    qexp_fin ∈ Bool = (qexp_disp ∧ (_qloop_next > _qloop_hi))
+    qexp_more = (expand_on ∧ (_qloop_next ≤ _qloop_hi))
+    qexp_fin = (expand_on ∧ (_qloop_next > _qloop_hi))
     qloop_exists = (is_first_tick ? false
         : (enter_qrange ∨ enter_qseq) ? q_is_exists : _qloop_exists)
     qloop_var = (is_first_tick ? ""
@@ -80,26 +83,25 @@ fsm DriverQuant
     qloop_kind = (is_first_tick ? 0
         : enter_qrange ? 0 : enter_qseq ? 1 : _qloop_kind)
     qloop_lo = (is_first_tick ? 0
-        : enter_qrange ? q_lo : enter_qseq ? 0 : _qloop_lo)
+        : enter_qrange ? range_lo : enter_qseq ? 0 : _qloop_lo)
     qloop_hi = (is_first_tick ? 0
-        : enter_qrange ? q_hi : enter_qseq ? _seqvar_len - 1 : _qloop_hi)
-    qloop_seq = (is_first_tick ? "" : enter_qseq ? q_seq_name : _qloop_seq)
-    qloop_body = (is_first_tick ? ENoExpr : qbody_done ? pratt_result : _qloop_body)
+        : enter_qrange ? range_hi : enter_qseq ? _seqvar_len - 1 : _qloop_hi)
+    qloop_seq = (is_first_tick ? "" : enter_qseq ? seq_name_resolved : _qloop_seq)
+    qloop_body = (is_first_tick ? ENoExpr : body_parsed ? pratt_result : _qloop_body)
     qloop_on = (is_first_tick ? false
-        : qbody_done ? true
+        : body_parsed ? true
         : qexp_fin ? false
         : _qloop_on)
     qloop_next = (is_first_tick ? 0
-        : (enter_qrange ∨ enter_qseq) ? (enter_qrange ? q_lo : 0)
+        : (enter_qrange ∨ enter_qseq) ? (enter_qrange ? range_lo : 0)
         : qexp_more ? _qloop_next + 1
         : _qloop_next)
     qloop_cur = (is_first_tick ? 0 : qexp_more ? _qloop_next : _qloop_cur)
-    qexp_fold_op ∈ Op = (_qloop_exists ? OpDisj : OpConj)
-    qexp_items ∈ C2Items = C2ICons(C2Process(_qloop_body),
-        ((_qloop_next > _qloop_lo) ? C2ICons(C2Op(qexp_fold_op), C2INil) : C2INil))
-    qexp_fin_items ∈ C2Items = C2ICons(C2AssertTop, C2INil)
+    fold_op ∈ Op = (_qloop_exists ? OpDisj : OpConj)
+    qexp_items = C2ICons(C2Process(_qloop_body),
+        ((_qloop_next > _qloop_lo) ? C2ICons(C2Op(fold_op), C2INil) : C2INil))
+    qexp_fin_items = C2ICons(C2AssertTop, C2INil)
 
-    seqvar_len ∈ Int
     seqlen_lhs_call ∈ Bool = (guard_lhs matches ECall1(_, _))
     seqlen_callee ∈ String = match guard_lhs
         ECall1(n, _) ⇒ n
