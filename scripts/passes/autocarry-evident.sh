@@ -16,9 +16,12 @@
 # the kernel's lowered-IR interpreter (2b7312e) closed the prior 1.46 s
 # wall; see docs/plans/passes-in-evident-walls.md.
 #
-# FAILURE PROPAGATION: each stage's registries are statically bounded
-# with loud overflow exits (codes 61-64 analyze / 70-79 fix / 81-83
-# apply — the table lives in each program's MODULE header). A nonzero
+# FAILURE PROPAGATION: each stage's registries are statically bounded.
+# analyze (61-64) and fix (70-79) clamp their growing accumulators and
+# emit a distinct BuildEprint+BuildExit code on overflow; apply's Strings
+# are per-record reassignments, so a literal #-bound makes an oversize
+# record a loud per-tick invariant violation (UNSAT, exit 2). The
+# distinct-code table lives in each program's MODULE header. A nonzero
 # stage aborts the pass: its stderr diagnostic (minus [functionizer]
 # noise) is surfaced and the stage's exit code is propagated, so an
 # overflow can never silently truncate the expanded source.

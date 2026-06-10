@@ -14,6 +14,14 @@
 -- Effects leaves are named Effect vars under named Bool guards — inline
 -- LibCall leaves or compound guards make the whole program Z3-residual
 -- (measured 2026-06-10: 25 ms z3/tick vs 0.0).
+-- BOUNDED REGISTRIES: every carried String is length-bounded; an
+-- overflow trips the kernel's per-tick invariant re-check (loud UNSAT,
+-- exit 2) rather than silently truncating. These Strings are reassigned
+-- per record/line (not multi-tick accumulators), so a literal #-bound is
+-- the loud guard — no explicit BuildExit needed. Caps ≥ 4x the corpus
+-- maxima (driver.ev, measured 2026-06-10: ins_reg 6051 · inj_reg 125 ·
+-- ins_txt 37 · inj_txt 119 · cur_line 216 · splice_add 119); ins_reg/
+-- inj_reg caps equal autocarry_fix's ins_out/inj_out caps (their source).
 import "stdlib/kernel.ev"
 import "scripts/passes/autocarry_lib.ev"
 
@@ -21,18 +29,24 @@ fsm autocarry_apply
     phase ∈ Int
     line_no ∈ Int
     ins_reg ∈ String
+    #ins_reg ≤ 24500
     inj_reg ∈ String
+    #inj_reg ≤ 1000
     ins_no ∈ Int
     ins_cur ∈ Int
     ins_txt ∈ String
+    #ins_txt ≤ 2000
     inj_no ∈ Int
     inj_cur ∈ Int
     inj_txt ∈ String
+    #inj_txt ≤ 2000
     cur_line ∈ String
+    #cur_line ≤ 2000
     scan_pos ∈ Int
     scan_depth ∈ Int
     scan_found ∈ Int
     splice_add ∈ String
+    #splice_add ≤ 2000
 
     tk_ph ∈ Int = (is_first_tick ? 0 : _phase)
     tk_rline ∈ String = match last_results[1]
