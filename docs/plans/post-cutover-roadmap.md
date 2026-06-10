@@ -133,7 +133,11 @@ pointing here — they are interim by charter, not by accident):
   append/hold, range-`∀` slot instantiation, len-guarded + literal-range
   `∃`, index/card substitution, Int `∀`/membership unrolls, the
   **keyed-projection pair** (`∀`-pin + `¬∃`-default → covered select chain;
-  the functionizer-safe lowering of registry lookups), and the loud
+  the functionizer-safe lowering of registry lookups), the **guarded pin
+  family** (the pair generalized to scalar/mixed same-out families with a
+  mandatory negated-disjunction default and loud refusals — missing
+  default, hold-in-disguise, double cover;
+  `docs/plans/guarded-pin-family-lowering.md`), and the loud
   completeness check. Conformance for the port: `tests/compiler2_units/
   seq_lowering/` + `tests/seq/` + byte-identical flatten output on
   `compiler2/driver.ev`.

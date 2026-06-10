@@ -1,0 +1,14 @@
+-- REFUSAL: a pin family (two guarded pins on one output) with no default
+-- line must fail loudly at flatten — bare implication-pins are the
+-- measured covered-output perf cliff.
+--
+-- entry: main
+-- expect: flatten-error = MISSING the mandatory default
+import "stdlib/kernel.ev"
+
+claim main
+    sel ∈ Int = 1
+    a ∈ Int
+    (sel = 1) ⇒ (a = 10)
+    (sel = 2) ⇒ (a = 20)
+    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

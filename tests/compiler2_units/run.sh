@@ -21,6 +21,9 @@
 #   -- entry:  <ClaimName>
 #   -- expect: stdout = "<line>"   (repeat, in order)
 #   -- expect: exit = <N>
+#   -- expect: flatten-error = <substring>
+#       (refusal fixture: flatten must FAIL — nonzero exit — and its
+#       stderr must contain <substring>; nothing runs past flatten)
 #
 # Pipeline mirrors the producing path exactly:
 #   flatten-evident.sh | evident-oracle emit <entry> | kernel <out.smt2>
@@ -61,8 +64,24 @@ for fx in "${FIXTURES[@]}"; do
     exp_out="$(sed -n 's/^-- expect: stdout = "\(.*\)"$/\1/p' "$fx")"
     exp_exit="$(sed -n 's/^-- expect: exit = \([0-9]*\)$/\1/p' "$fx" | head -1)"
     [ -n "$exp_exit" ] || exp_exit=0
+    exp_flat_err="$(sed -n 's/^-- expect: flatten-error = //p' "$fx" | head -1)"
 
     flat="$(mktemp)"; smt="$(mktemp)"; out="$(mktemp)"
+    if [ -n "$exp_flat_err" ]; then
+        ferr="$(mktemp)"
+        if "$FLATTEN" "$fx" > "$flat" 2>"$ferr"; then
+            echo "FAIL $name — flatten succeeded; expected loud refusal: $exp_flat_err"
+            fail=$((fail+1))
+        elif ! grep -qF -- "$exp_flat_err" "$ferr"; then
+            echo "FAIL $name — flatten failed but stderr lacks: $exp_flat_err"
+            sed 's/^/    /' "$ferr"
+            fail=$((fail+1))
+        else
+            echo "PASS $name — flatten refused: $(head -1 "$ferr" | cut -c1-100)"
+            pass=$((pass+1))
+        fi
+        rm -f "$flat" "$smt" "$out" "$ferr"; continue
+    fi
     if ! "$FLATTEN" "$fx" > "$flat" 2>/dev/null; then
         echo "FAIL $name — flatten failed"; fail=$((fail+1)); rm -f "$flat" "$smt" "$out"; continue
     fi

@@ -119,13 +119,16 @@ fsm DriverLex
         : frac_enter ? 0
         : (_in_fraction ∧ is_dig ∧ in_range) ? _frac_digits + 1
         : _frac_digits)
-    frac_pow ∈ Int = (_frac_digits = 1 ? 10
-        : _frac_digits = 2 ? 100
-        : _frac_digits = 3 ? 1000
-        : _frac_digits = 4 ? 10000
-        : _frac_digits = 5 ? 100000
-        : _frac_digits = 6 ? 1000000
-        : 1)
+    frac_pow ∈ Int
+    (_frac_digits = 1) ⇒ (frac_pow = 10)
+    (_frac_digits = 2) ⇒ (frac_pow = 100)
+    (_frac_digits = 3) ⇒ (frac_pow = 1000)
+    (_frac_digits = 4) ⇒ (frac_pow = 10000)
+    (_frac_digits = 5) ⇒ (frac_pow = 100000)
+    (_frac_digits = 6) ⇒ (frac_pow = 1000000)
+    (¬((_frac_digits = 1) ∨ (_frac_digits = 2) ∨ (_frac_digits = 3)
+        ∨ (_frac_digits = 4) ∨ (_frac_digits = 5) ∨ (_frac_digits = 6)))
+        ⇒ (frac_pow = 1)
     float_payload ∈ Int = (_float_whole * frac_pow + _partial_int) * 8 + _frac_digits
     write_float_tag ∈ Effect = LibCall("__mem", "write_long",
         ⟨ArgInt(tok_buf.base + (_tok_buf.count * 32)), ArgInt(4)⟩)

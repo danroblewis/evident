@@ -78,12 +78,12 @@ fsm DriverExprDecomp
     matches_scrut ∈ Expr = match cur_expr
         EMatches(_, me) ⇒ me
         _ ⇒ ENoExpr
-    matches_tester_user ∈ Int
-    ∀ e ∈ user_variants : ((e.name = matches_name) ⇒ (matches_tester_user = e.tester))
-    (¬(∃ e ∈ user_variants : e.name = matches_name)) ⇒ (matches_tester_user = 0)
-    matches_tester ∈ Int = (matches_name = "IntResult" ? z_intres_test
-        : matches_name = "StringResult" ? z_strres_test
-        : matches_tester_user)
+    matches_tester ∈ Int
+    (matches_name = "IntResult") ⇒ (matches_tester = z_intres_test)
+    (matches_name = "StringResult") ⇒ (matches_tester = z_strres_test)
+    ∀ e ∈ user_variants : ((e.name = matches_name) ⇒ (matches_tester = e.tester))
+    (¬((matches_name = "IntResult") ∨ (matches_name = "StringResult")
+        ∨ (∃ e ∈ user_variants : e.name = matches_name))) ⇒ (matches_tester = 0)
     matches_items ∈ C2Items = (matches_tester ≠ 0
         ? C2ICons(C2Process(matches_scrut), C2ICons(C2App(matches_tester, 1), work_tail))
         : C2ICons(C2PushH(0), work_tail))

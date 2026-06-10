@@ -32,24 +32,31 @@ claim RtRecName(s ∈ String, i ∈ Int, name ∈ String)
     name = substr(rrn_raw, 0, rrn_sp < 0 ? 31 : rrn_sp)
 
 claim RtIdxOf(nm ∈ String, idx ∈ Int)
-    idx = ((nm ≠ "" ∧ nm = recs[0].name ∧ recs[0].sort > 0) ? 0
-        : (nm ≠ "" ∧ nm = recs[1].name ∧ recs[1].sort > 0) ? 1
-        : (nm ≠ "" ∧ nm = recs[2].name ∧ recs[2].sort > 0) ? 2
-        : 0 - 1)
+    (nm ≠ "" ∧ nm = recs[0].name ∧ recs[0].sort > 0) ⇒ (idx = 0)
+    (nm ≠ "" ∧ nm = recs[1].name ∧ recs[1].sort > 0) ⇒ (idx = 1)
+    (nm ≠ "" ∧ nm = recs[2].name ∧ recs[2].sort > 0) ⇒ (idx = 2)
+    (¬((nm ≠ "" ∧ nm = recs[0].name ∧ recs[0].sort > 0)
+        ∨ (nm ≠ "" ∧ nm = recs[1].name ∧ recs[1].sort > 0)
+        ∨ (nm ≠ "" ∧ nm = recs[2].name ∧ recs[2].sort > 0)))
+        ⇒ (idx = 0 - 1)
 
 claim RtSortOf(ty ∈ String,
         int_h ∈ Int, bool_h ∈ Int, str_h ∈ Int, real_h ∈ Int,
         iarr_h ∈ Int,
         sort ∈ Int)
-    sort = ((ty = "Int" ∨ ty = "Nat") ? int_h
-        : ty = "Bool" ? bool_h
-        : ty = "String" ? str_h
-        : ty = "Real" ? real_h
-        : ty = "Seq(Int)" ? iarr_h
-        : (ty ≠ "" ∧ ty = recs[0].name) ? recs[0].sort
-        : (ty ≠ "" ∧ ty = recs[1].name) ? recs[1].sort
-        : (ty ≠ "" ∧ ty = recs[2].name) ? recs[2].sort
-        : 0)
+    (ty = "Int" ∨ ty = "Nat") ⇒ (sort = int_h)
+    (ty = "Bool") ⇒ (sort = bool_h)
+    (ty = "String") ⇒ (sort = str_h)
+    (ty = "Real") ⇒ (sort = real_h)
+    (ty = "Seq(Int)") ⇒ (sort = iarr_h)
+    (ty ≠ "" ∧ ty = recs[0].name) ⇒ (sort = recs[0].sort)
+    (ty ≠ "" ∧ ty = recs[1].name) ⇒ (sort = recs[1].sort)
+    (ty ≠ "" ∧ ty = recs[2].name) ⇒ (sort = recs[2].sort)
+    (¬((ty = "Int" ∨ ty = "Nat") ∨ (ty = "Bool") ∨ (ty = "String")
+        ∨ (ty = "Real") ∨ (ty = "Seq(Int)")
+        ∨ (ty ≠ "" ∧ ty = recs[0].name) ∨ (ty ≠ "" ∧ ty = recs[1].name)
+        ∨ (ty ≠ "" ∧ ty = recs[2].name)))
+        ⇒ (sort = 0)
 
 claim RtFieldAcc(fname ∈ String, acc ∈ Int)
     rfa_key ∈ String

@@ -184,36 +184,36 @@ fsm DriverMatchPin
     fold_default ∈ Expr = (wc_body_done ? pratt_result : _pend_expr)
     fold_def_bind ∈ String = (wc_body_done ? "" : _pend_bind)
     fold_def_ctor ∈ String = (wc_body_done ? "" : _pend_ctor)
-    fold_tester1_user ∈ Int
-    ∀ e ∈ user_variants : ((e.name = fold_ctor1) ⇒ (fold_tester1_user = e.tester))
-    (¬(∃ e ∈ user_variants : e.name = fold_ctor1)) ⇒ (fold_tester1_user = 0)
-    fold_tester1 ∈ Int = (fold_ctor1 = "IntResult" ? z_intres_test
-        : fold_ctor1 = "StringResult" ? z_strres_test
-        : fold_tester1_user)
-    fold_tester2_user ∈ Int
-    ∀ e ∈ user_variants : ((e.name = fold_ctor2) ⇒ (fold_tester2_user = e.tester))
-    (¬(∃ e ∈ user_variants : e.name = fold_ctor2)) ⇒ (fold_tester2_user = 0)
-    fold_tester2 ∈ Int = (fold_ctor2 = "IntResult" ? z_intres_test
-        : fold_ctor2 = "StringResult" ? z_strres_test
-        : fold_tester2_user)
-    fold_acc1_user ∈ Int
-    ∀ e ∈ user_variants : ((e.name = fold_ctor1) ⇒ (fold_acc1_user = e.acc))
-    (¬(∃ e ∈ user_variants : e.name = fold_ctor1)) ⇒ (fold_acc1_user = 0)
-    fold_acc1 ∈ Int = (fold_ctor1 = "IntResult" ? z_intres_acc
-        : fold_ctor1 = "StringResult" ? z_strres_acc
-        : fold_acc1_user)
-    fold_acc2_user ∈ Int
-    ∀ e ∈ user_variants : ((e.name = fold_ctor2) ⇒ (fold_acc2_user = e.acc))
-    (¬(∃ e ∈ user_variants : e.name = fold_ctor2)) ⇒ (fold_acc2_user = 0)
-    fold_acc2 ∈ Int = (fold_ctor2 = "IntResult" ? z_intres_acc
-        : fold_ctor2 = "StringResult" ? z_strres_acc
-        : fold_acc2_user)
-    fold_def_acc_user ∈ Int
-    ∀ e ∈ user_variants : ((e.name = fold_def_ctor) ⇒ (fold_def_acc_user = e.acc))
-    (¬(∃ e ∈ user_variants : e.name = fold_def_ctor)) ⇒ (fold_def_acc_user = 0)
-    fold_def_acc ∈ Int = (fold_def_ctor = "IntResult" ? z_intres_acc
-        : fold_def_ctor = "StringResult" ? z_strres_acc
-        : fold_def_acc_user)
+    fold_tester1 ∈ Int
+    (fold_ctor1 = "IntResult") ⇒ (fold_tester1 = z_intres_test)
+    (fold_ctor1 = "StringResult") ⇒ (fold_tester1 = z_strres_test)
+    ∀ e ∈ user_variants : ((e.name = fold_ctor1) ⇒ (fold_tester1 = e.tester))
+    (¬((fold_ctor1 = "IntResult") ∨ (fold_ctor1 = "StringResult")
+        ∨ (∃ e ∈ user_variants : e.name = fold_ctor1))) ⇒ (fold_tester1 = 0)
+    fold_tester2 ∈ Int
+    (fold_ctor2 = "IntResult") ⇒ (fold_tester2 = z_intres_test)
+    (fold_ctor2 = "StringResult") ⇒ (fold_tester2 = z_strres_test)
+    ∀ e ∈ user_variants : ((e.name = fold_ctor2) ⇒ (fold_tester2 = e.tester))
+    (¬((fold_ctor2 = "IntResult") ∨ (fold_ctor2 = "StringResult")
+        ∨ (∃ e ∈ user_variants : e.name = fold_ctor2))) ⇒ (fold_tester2 = 0)
+    fold_acc1 ∈ Int
+    (fold_ctor1 = "IntResult") ⇒ (fold_acc1 = z_intres_acc)
+    (fold_ctor1 = "StringResult") ⇒ (fold_acc1 = z_strres_acc)
+    ∀ e ∈ user_variants : ((e.name = fold_ctor1) ⇒ (fold_acc1 = e.acc))
+    (¬((fold_ctor1 = "IntResult") ∨ (fold_ctor1 = "StringResult")
+        ∨ (∃ e ∈ user_variants : e.name = fold_ctor1))) ⇒ (fold_acc1 = 0)
+    fold_acc2 ∈ Int
+    (fold_ctor2 = "IntResult") ⇒ (fold_acc2 = z_intres_acc)
+    (fold_ctor2 = "StringResult") ⇒ (fold_acc2 = z_strres_acc)
+    ∀ e ∈ user_variants : ((e.name = fold_ctor2) ⇒ (fold_acc2 = e.acc))
+    (¬((fold_ctor2 = "IntResult") ∨ (fold_ctor2 = "StringResult")
+        ∨ (∃ e ∈ user_variants : e.name = fold_ctor2))) ⇒ (fold_acc2 = 0)
+    fold_def_acc ∈ Int
+    (fold_def_ctor = "IntResult") ⇒ (fold_def_acc = z_intres_acc)
+    (fold_def_ctor = "StringResult") ⇒ (fold_def_acc = z_strres_acc)
+    ∀ e ∈ user_variants : ((e.name = fold_def_ctor) ⇒ (fold_def_acc = e.acc))
+    (¬((fold_def_ctor = "IntResult") ∨ (fold_def_ctor = "StringResult")
+        ∨ (∃ e ∈ user_variants : e.name = fold_def_ctor))) ⇒ (fold_def_acc = 0)
     match_tail_eq ∈ C2Items = C2ICons(C2PinEq,
         C2ICons(C2AssertTop, C2INil))
     match_tail_ite1 ∈ C2Items = C2ICons(C2Ite, match_tail_eq)
