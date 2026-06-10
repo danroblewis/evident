@@ -1,0 +1,8 @@
+import "stdlib/kernel.ev"
+enum T3 = TN(Int) | TB3(Int, Int, Int)
+claim main
+    t ∈ T3 = TB3(7, 8, 9)
+    v ∈ Int = match t
+        TB3(a, _, _) ⇒ a
+        TN(x) ⇒ x
+    effects ∈ Seq(Effect) = ⟨Exit(v - 7)⟩

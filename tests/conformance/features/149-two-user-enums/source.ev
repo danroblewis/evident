@@ -1,0 +1,8 @@
+import "stdlib/kernel.ev"
+enum Light = LRed | LGreen
+enum Door = DOpen | DShut
+claim main
+    l ∈ Light = LGreen
+    d ∈ Door = DShut
+    ok ∈ Bool = ((l matches LGreen) ∧ (d matches DShut))
+    effects ∈ Seq(Effect) = ⟨Exit(ok ? 0 : 1)⟩
