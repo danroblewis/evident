@@ -115,3 +115,46 @@ after the rename; gates green. `_x` without a base `x` is now a
 purism BLOCKER (§3.6). The unbounded-carried-String registry class
 remains tolerated-tracked, pending the bounded Seq-of-String carry
 lowering and an operator ruling.
+
+
+## RESOLVED (2026-06-10): the unbounded-carried-String registry class
+
+Every carried registry across all three stages is now statically
+bounded — the §1.2 "FSMs stay finite" BLOCKER (V15) is cleared. Two
+shapes, chosen by how each registry is *read*:
+
+- **Bounded Seq(String)** where the read is equality membership. The
+  fsm-name set was `str_contains(_fsm_set, "⟨F⟩")` over a concatenated
+  String; it is now `fsm_set ∈ Seq(String)` + `#fsm_set ≤ 104` read by
+  `∃ e ∈ fsm_set : e = key` — the blessed §2.5 existential. Same for
+  analyze's `hdr_pend` (cap 16). These are honest sets; the surface
+  reads as set theory.
+
+- **Length-bounded String** where the read is char-offset cursor
+  scanning (`index_of`/`substr` into a concatenated registry). These
+  keep the delimiter encoding (the pre-existing tolerated WARN, NOT
+  introduced here) and gain a literal `#reg ≤ N` bound. The bound makes
+  the carried state finite; an overflow is loud — analyze (61-64) and
+  fix (70-79) clamp the append and emit a distinct BuildEprint+BuildExit
+  code, apply's per-record reassignments trip the kernel's per-tick
+  invariant re-check (UNSAT, exit 2). All caps ≥ 4x the corpus maxima
+  measured on driver.ev (the largest stream); the per-stage exit-code +
+  cap tables live in each program's MODULE header as wire facts.
+
+Why NOT Seq-of-records for the cursor-scanned registries: those hold
+500–734 records each (bind 529, slot 734 on driver); a keyed-projection
+read would lower to a per-tick N-way ∃-unroll over 2000+ slots,
+multiplied across ~19 read sites and thousands of ticks — categorically
+past the ≤1 s pass budget. The bounded String keeps the registry finite
+(the BLOCKER's actual requirement) without that explosion. The
+delimiter-encoding remains a tolerated WARN pending a `str_span`-style
+scan builtin or a Seq-of-records lowering that the functionizer can
+extract without the unroll.
+
+Verification (2026-06-10): corpus parity 302/302 byte-identical (awk vs
+Evident, every pipeline stream); self-application identical on all four
+pass sources; autocarry pass 0.43 s on the 8.9k-line driver stream
+(≤1 s budget, GREEN); all three stages 0.0 ms z3; overflow guards
+verified to fire (fix exit 70 + stderr, apply exit 2); conformance
+153/154 (123 known-fail), 0 timeouts; compiler2_units 67/67;
+fsm_compose 7/7; functionization gate GREEN.
