@@ -62,3 +62,32 @@ widening costs nothing on the existing corpus.
 |---|---|---|
 | 1 | pre-widening (6-slot registries, +64 ctor array) | exited after ~750 s with **zero output lines**; stderr carried only the functionizer summary (`2114 total / 617 JIT / 1347 interp / 71 residual; 0.0 ms z3`). Diagnosed as wall 1 (ctor clobber → EINVAL). |
 | 2 | post-widening (05:16 build, contains 2048 arena) | launched 05:15–05:16, `EVIDENT_TICK_LIMIT=2000000 timeout 3600`; outcome recorded below. |
+
+## Attempt v2 outcome (2026-06-10 05:15–05:32): TICK-BUDGET WALL, not a crash
+
+`EVIDENT_TICK_LIMIT=2000000 kernel compiler2-stage1.smt2 < sample_flat.ev`
+(5,326 flattened lines) exhausted the full 2M-tick budget in ~992s and
+exited with empty output (never reached emit). The decisive line:
+
+```
+[functionizer] 2976 total / 894 JIT / 1932 interp / 71 residual;
+992629.8 ms total (889154.1 ms func / 0.0 ms z3)
+```
+
+- **0.0 ms z3 over 2M ticks** — the driver stayed fully functionized at
+  compiler-scale input. The constraint architecture is NOT the wall.
+- **~0.50 ms/tick, 90% in `func`** — the per-step interpreter (1932 of
+  2976 steps interp, not JIT) is the entire cost. This is the SAME wall
+  the autocarry-in-Evident port measured (docs/plans/passes-in-evident-walls.md:
+  ~0.5–0.7µs per step per tick): convergent evidence from two independent
+  workloads.
+- Budget arithmetic: at ~375 ticks/input-line observed on fixtures, 5,326
+  lines wants ~2M ticks just for the walk — the budget was at the knife
+  edge. But raising the tick limit alone buys at best linear headroom at
+  ~0.5 ms/tick (≥30 min compiles); the real fix is per-tick cost.
+
+**Conclusion: the sample rung and the passes-in-Evident wiring share one
+blocker — functionizer step-interp throughput (JIT coverage for the
+string/accessor shapes that today fall to interp, or a kernel string-step
+JIT). That is wave-5c-adjacent kernel work and is now the single highest-
+leverage item on the self-hosting path.**
