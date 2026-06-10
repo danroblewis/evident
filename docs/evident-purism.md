@@ -387,6 +387,7 @@ preferred alternative. **NOTE** = style.
 | V15 | **Unbounded carried collections** — a carried `Seq`/cons list with no static bound, or unbounded data kept in state instead of on the tape | BLOCKER | Operator ruling §1.2 (FSMs stay finite). |
 | V16 | **Missing module contract** — a multi-schema file without a `-- MODULE` CONSUMES/PRODUCES/MAINTAINS header | NOTE | §6.1; the comment rules made the header the interface. |
 | V17 | **Oversized schema** — past the §6.3 budgets; a wide fsm is a missing abstraction | NOTE | The driver_main decomposition (tasks #27/#28) is the precedent. |
+| V18 | **Numbered-variable families** — a collection spelled as suffixed scalars (`dec_tok0..7`, `lat_tag0..7`, `recdecl_sort0..5`): N variables emulating one `Seq`. BLOCKER when the blessed bounded-Seq surface covers the shape (Seq(Int)/Seq(record) decls, element/range ∀, keyed access, claim-call instantiation — V3 applies); WARN-with-named-gap when the shape is genuinely blocked (enum-typed elements, Seq→cons folds, cons-list carry), citing the gap. A numbered family is a missing `xs ∈ Seq(T)` + `#xs ≤ N`, never a style choice. | BLOCKER/WARN | Operator ruling 2026-06-10 (the driver_window dec_tok block); S1 (`recs`) is the resolved precedent; the W7 fold gap and Seq(enum) elements are the open named gaps. |
 
 ---
 
