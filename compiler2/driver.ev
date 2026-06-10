@@ -238,6 +238,15 @@ fsm driver_main
     enter_enum_decl ∈ Bool = (in_dispatch ∧ (¬head_is_eof)
         ∧ head_is_enum ∧ (¬enum_reserved) ∧ (¬_user_enum_done)
         ∧ (tok1 matches Ident(_)) ∧ (tok2 matches Eq))
+    -- ONE-USER-ENUM LIMIT: the (¬_user_enum_done) above means a SECOND
+    -- user `enum` decl cannot enter the walk — it used to fall through
+    -- to enter_skip and the decl was SILENTLY dropped (every variant
+    -- of every later enum became a 0 handle; sample.ev, 31 enums, died
+    -- 992s downstream at an unrelated ternary, 2026-06-10). Until the
+    -- multi-enum registry lands, halt nameably: Exit(9).
+    enum_decl_second ∈ Bool = (in_dispatch ∧ (¬head_is_eof)
+        ∧ head_is_enum ∧ (¬enum_reserved) ∧ _user_enum_done
+        ∧ (tok1 matches Ident(_)) ∧ (tok2 matches Eq))
     enter_skip  ∈ Bool = (in_dispatch ∧ (¬head_is_eof) ∧ (¬enter_claim) ∧ (¬enter_claim_params) ∧ (¬enter_enum_decl))
     parse_done    ∈ Bool = (in_dispatch ∧ head_is_eof)
     in_skip     ∈ Bool = (in_parse ∧ (_parse_mode = 1) ∧ tok_ready)
@@ -895,6 +904,12 @@ fsm driver_main
     ..DriverEmit
 
     effects ∈ Seq(Effect) = (is_first_tick ? ⟨ReadLine, ReadLine⟩
+        : variant_unsupported ? ⟨LibCall("libc", "puts",
+            ⟨ArgStr(";; compiler2: unsupported enum variant payload (arity >2, or a type outside Int/Bool/String/Real/self)")⟩),
+            Exit(8)⟩
+        : enum_decl_second ? ⟨LibCall("libc", "puts",
+            ⟨ArgStr(";; compiler2: second user enum decl — only ONE user enum is supported today")⟩),
+            Exit(9)⟩
         : (¬_got_path) ? ⟨ReadFile(src_path)⟩
         : zstep = 0 ? ⟨zinit_cfg⟩
         : zstep = 1 ? ⟨zinit_ctx⟩
