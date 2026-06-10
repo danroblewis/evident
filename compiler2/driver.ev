@@ -445,7 +445,29 @@ fsm driver_main
         : "(declare-fun _" ++ line_dname ++ " () " ++ mem_tyname ++ ")\n")
 
     -- ── F1: parse_mode-9 GROUP walk (see compiler2/driver_group.ev) ──
-    ..DriverGroup
+    -- Bare mention against its header: these nineteen declarations ARE
+    -- the group-walk interface; its other names are per-call-site
+    -- internals.
+    group_take2 ∈ Bool
+    group_ty_tick ∈ Bool
+    group_bail ∈ Bool
+    group_drain ∈ Bool
+    group_have_pend ∈ Bool
+    group_last ∈ Bool
+    group_ty_consume ∈ Int
+    group_done_mode ∈ Int
+    group_ty_exit_mode ∈ Int
+    group_field ∈ String
+    group_carry_decl ∈ String
+    group_drain_items ∈ C2Items
+    group_pending ∈ TokenList
+    group_phase ∈ Int
+    group_is_param ∈ Bool
+    group_closed ∈ Bool
+    group_sort ∈ Int
+    group_is_nat ∈ Bool
+    group_type_name ∈ String
+    DriverGroup
     -- ── F2: composition inlining (see compiler2/driver_compose.ev) ──
     ..DriverCompose
     -- ── PRATT FSM state (see compiler2/driver_pratt.ev) ──
