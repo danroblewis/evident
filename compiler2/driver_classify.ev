@@ -129,29 +129,29 @@ fsm DriverClassify
         ∧ (¬effects_line) ∧ (¬intset_line) ∧ (¬match_line)
         ∧ (¬seqmem_line) ∧ (¬seqlit_line) ∧ (¬multiname_line)
         ∧ (¬comp_line) ∧ (¬strin_line) ∧ (¬tymem_line)
-        ∧ (¬q_range) ∧ (¬(q_over_seq ∧ _seqvar_set)) ∧ (¬pcl_line)
+        ∧ (¬q_range) ∧ (¬(q_over_seq ∧ _seqvar_set)) ∧ (¬posbind_line)
         ∧ (¬setlit_line) ∧ (¬enter_qset)
         ∧ (line_pinned ∨ (¬line_is_mem)))
     enter_pratt ∈ Bool = (enter_pratt_line ∨ efflit_exit_enter
-        ∨ efflit_guard_enter ∨ mp_benter ∨ seqlit_elem_enter ∨ callw_slot
-        ∨ qrange_close ∨ enter_qseq ∨ pt_elem)
+        ∨ efflit_guard_enter ∨ arm_body_enter ∨ seqlit_elem_enter ∨ callw_slot
+        ∨ qrange_close ∨ enter_qseq ∨ pos_elem)
     pratt_enter_consume ∈ Int = (efflit_exit_enter ? 2
         : efflit_guard_enter ? 0
-        : mp_benter ? ((mp_take ∧ mp_arm_pl_h) ? 5 : 2)
+        : arm_body_enter ? ((arm_take ∧ arm_payload_head) ? 5 : 2)
         : seqlit_elem_enter ? 0
         : callw_slot ? 2
         : qrange_close ? 2
         : enter_qseq ? (q_seq_dotted ? 7 : 5)
-        : pt_elem ? 0
+        : pos_elem ? 0
         : line_pinned ? 4 : 0)
     pratt_enter_kind ∈ Int = (efflit_exit_enter ? 3
         : efflit_guard_enter ? 6
-        : mp_benter ? 4
+        : arm_body_enter ? 4
         : seqlit_elem_enter ? 7
         : callw_slot ? 8
         : qrange_close ? 9
         : enter_qseq ? 9
-        : pt_elem ? 10
+        : pos_elem ? 10
         : line_pinned ? 1 : 2)
     pratt_qstop ∈ Bool
     pratt_qstop = (is_first_tick ? false

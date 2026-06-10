@@ -16,17 +16,17 @@ import "compiler2/driver_broadcast.ev"
 fsm main
     tc ∈ Int
     tc = (is_first_tick ? 0 : _tc + 1)
-    p_done ∈ Bool = (tc = 1)
-    pk_kind ∈ Int
-    pk_kind = (is_first_tick ? 1 : _pk_kind)
-    pk_rec ∈ Int
-    pk_rec = (is_first_tick ? 0 : _pk_rec)
-    pr_bad ∈ Bool
-    pr_bad = (is_first_tick ? false : _pr_bad)
-    pk_name ∈ String
-    pk_name = (is_first_tick ? "p" : _pk_name)
-    pr_sres ∈ Expr
-    pr_sres = (is_first_tick ? ENoExpr : _pr_sres)
+    pratt_done ∈ Bool = (tc = 1)
+    pratt_kind ∈ Int
+    pratt_kind = (is_first_tick ? 1 : _pratt_kind)
+    pratt_rec_slot ∈ Int
+    pratt_rec_slot = (is_first_tick ? 0 : _pratt_rec_slot)
+    pratt_bad ∈ Bool
+    pratt_bad = (is_first_tick ? false : _pratt_bad)
+    pratt_decl_name ∈ String
+    pratt_decl_name = (is_first_tick ? "p" : _pratt_decl_name)
+    pratt_result ∈ Expr
+    pratt_result = (is_first_tick ? ENoExpr : _pratt_result)
     -- Claim-walk dispatch gate: held open so the broadcast can step.
     d_in_claim ∈ Bool
     d_in_claim = (is_first_tick ? true : _d_in_claim)

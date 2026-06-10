@@ -334,12 +334,12 @@ fsm driver_main
     bcast_ctor_items ∈ C2Items = C2ICons(
         C2Process(_bcast_cur = 0 ? call_arg0 : _bcast_cur = 1 ? call_arg1 : call_arg2),
         work_tail)
-    d_bind_items ∈ C2Items = (_mp_lr
+    d_bind_items ∈ C2Items = (_match_scrut_lr
         ? C2ICons(C2Process(EIdent("last_results")),
-            C2ICons(C2Process(EInt(_mp_idx)),
+            C2ICons(C2Process(EInt(_match_scrut_idx)),
             C2ICons(C2SelH,
             C2ICons(C2App(_bsc_acc, 1), work_tail))))
-        : C2ICons(C2Process(EIdent(_mp_scrut)),
+        : C2ICons(C2Process(EIdent(_match_scrut)),
             C2ICons(C2App(_bsc_acc, 1), work_tail)))
 
     d_op_arith_arr ∈ Bool
@@ -367,9 +367,9 @@ fsm driver_main
         C2ICons(C2Drop, C2INil))
     d_new_items ∈ C2Items = ((line_end ∨ enter_pratt_line ∨ enter_efflit
         ∨ enter_intset ∨ enter_match ∨ enter_seqlit ∨ comp_line
-        ∨ tymem_line ∨ enter_qrange ∨ enter_qseq ∨ pcl_tup ∨ pcl_stmt)
+        ∨ tymem_line ∨ enter_qrange ∨ enter_qseq ∨ tuple_line ∨ call_stmt)
         ? C2INil
-        : pcl_meth ? pcl_recv_items
+        : method_call ? recv_items
         : enter_strin ? strin_items
         : enter_qset ? qset_items
         : enter_setlit ? setlit_entry_items
@@ -381,7 +381,7 @@ fsm driver_main
         ∧ (¬enter_efflit) ∧ (¬enter_intset) ∧ (¬enter_match)
         ∧ (¬enter_seqlit) ∧ (¬enter_multiname) ∧ (¬comp_line)
         ∧ (¬strin_line) ∧ (¬tymem_line) ∧ (¬q_line)
-        ∧ (¬pcl_line))
+        ∧ (¬posbind_line))
     d_mem_cons ∈ Int = (enter_seqmem ? 6 : line_bounded ? 5 : 3)
     seq_elt_tyname ∈ String = (seq_elt_slot = 0 ? rec0.name
         : seq_elt_slot = 1 ? rec1.name
@@ -458,7 +458,7 @@ fsm driver_main
         : (d_enter_claim ∨ d_enter_claimp) ? C2HNil
         : callw_fire ? callw_pop_stack
         : guard_jump_fire ? h_tail1
-        : pz_act ? pz_pop
+        : bindzip_act ? bindzip_pop
         : d_ilb_push ? C2HCons(bound_handle, d_hstk_in)
         : d_push_ident ? C2HCons(lookup_handle, d_hstk_in)
         : d_push_h ? C2HCons(push_h_val, d_hstk_in)
@@ -478,22 +478,22 @@ fsm driver_main
     witems = (is_first_tick ? C2INil
         : (d_enter_claim ∨ d_enter_claimp) ? C2INil
         : classify_now ? d_new_items
-        : p_done ? d_pratt_items
+        : pratt_done ? pratt_done_items
         : efflit_argbite ? efflit_libcall_items
         : efflit_noargs ? efflit_libcall0_items
         : efflit_close ? (_chain_on ? efflit_branch_fold : C2ICons(C2LenEq(_efflit_count), C2INil))
         : chain_fire ? chain_fold_items
-        : mp_fire ? mp_items
+        : match_fire ? match_items
         : intset_close ? intset_items
         : seqlit_close ? seqlit_close_items
         : setlit_elem ? setlit_elem_items
         : setlit_close ? setlit_close_items
         : (callw_fire ∧ _callw_is_type) ? type_pin_items
         : (callw_bare_jump ∧ _callw_is_type ∧ (_type_slot ≥ 0)) ? type_recdecl_items
-        : pg_ty_tick ? mem_items
-        : pg_drain ? pg_drain_items
-        : (pt_close ∧ ptc_tm) ? ptc_recv_items
-        : pt_tup_b ? ptt_items
+        : group_ty_tick ? mem_items
+        : group_drain ? group_drain_items
+        : (pos_close ∧ close_recv_method) ? close_recv_items
+        : tuple_bite ? tuparg_items
         : qexp_more ? qexp_items
         : qexp_fin ? qexp_fin_items
         : bcast_more ? bcast_items
@@ -575,17 +575,17 @@ fsm driver_main
         : (efflit_colon ∨ efflit_rparen ∨ efflit_st2_bad) ? 1
         : enter_intset ? 3
         : enter_match ? 5
-        : mp_s_lr ? 4
-        : (mp_s_id ∨ mp_s_bad) ? 1
-        : (mp_overflow ∨ mp_wc_over) ? 1
+        : scrut_lastres ? 4
+        : (scrut_ident ∨ scrut_bad) ? 1
+        : (arm_overflow ∨ wc_overflow) ? 1
         : intset_elem ? ((tok1 matches Comma) ? 2 : 1)
         : (intset_close ∨ intset_bad) ? 1
         : enter_seqlit ? 3
         : (seqlit_close ∨ seqlit_comma) ? 1
         : enter_multiname ? 2
-        : pg_take2 ? 2
-        : pg_ty_tick ? pg_ty_cons
-        : pg_bail ? 1
+        : group_take2 ? 2
+        : group_ty_tick ? group_ty_consume
+        : group_bail ? 1
         : comp_call ? 2
         : comp_bare ? 1
         : comp_dotdot ? 3
@@ -599,19 +599,19 @@ fsm driver_main
         : enter_setdecl ? 6
         : (setlit_elem ∨ setlit_comma ∨ setlit_close ∨ setlit_bad) ? 1
         : qrange_bail ? 1
-        : pcl_stmt ? 2
-        : pcl_m1 ? 4
-        : pcl_m2 ? 6
-        : pcl_tup ? 1
-        : pt_comma ? 1
-        : pt_tup_b ? 5
-        : (pt_close ∨ pt_bail) ? (ptc_tm ? 5 : (ptc_t ∨ (pt_bail ∧ (tok1 matches OpIn))) ? 3 : 1)
+        : call_stmt ? 2
+        : method_call1 ? 4
+        : method_call2 ? 6
+        : tuple_line ? 1
+        : pos_comma ? 1
+        : tuple_bite ? 5
+        : (pos_close ∨ pos_bail) ? (close_recv_method ? 5 : (close_membership ∨ (pos_bail ∧ (tok1 matches OpIn))) ? 3 : 1)
         : (callw_comma ∨ callw_fire ∨ callw_bail) ? 1
         : (pskip_open ∨ pskip_run) ? 1
         : enter_pratt ? pratt_enter_consume
         : d_mem_line ? d_mem_cons
-        : p_done ? d_done_cons
-        : (d_in_pratt ∧ (pr_scons ≥ 1)) ? pr_scons
+        : pratt_done ? pratt_done_consume
+        : (in_pratt ∧ (pratt_consume ≥ 1)) ? pratt_consume
         : 0)
     tok_cur = (is_first_tick ? 0
         : frame_jump ? jump_target_now
@@ -653,16 +653,16 @@ fsm driver_main
     cs_cut ∈ String = (substr(_cdstr, 0, cs_pos)
         ++ substr(_cdstr, cs_nl + 1, #_cdstr - (cs_nl + 1)))
     fstr = (is_first_tick ? ""
-        : (pi_decl ∧ (¬in_type_frame)) ? (_fstr = "" ? pi_field : _fstr ++ " " ++ pi_field)
+        : (elem_declare ∧ (¬in_type_frame)) ? (_fstr = "" ? elem_field : _fstr ++ " " ++ elem_field)
         : c_field_add ? (_fstr = "" ? mem_field : _fstr ++ " " ++ mem_field)
-        : pg_ty_tick ? (_fstr = "" ? mem_field : _fstr ++ " " ++ mem_field)
-        : pg_drain ? (_fstr = "" ? pg_field : _fstr ++ " " ++ pg_field)
+        : group_ty_tick ? (_fstr = "" ? mem_field : _fstr ++ " " ++ mem_field)
+        : group_drain ? (_fstr = "" ? group_field : _fstr ++ " " ++ group_field)
         : _fstr)
     cdstr = (is_first_tick ? ""
-        : (pi_decl ∧ (¬in_type_frame)) ? _cdstr ++ pi_cdecl
+        : (elem_declare ∧ (¬in_type_frame)) ? _cdstr ++ elem_carry_decl
         : c_field_add ? _cdstr ++ mem_carry_decl
-        : pg_ty_tick ? _cdstr ++ mem_carry_decl
-        : pg_drain ? _cdstr ++ pg_cdecl
+        : group_ty_tick ? _cdstr ++ mem_carry_decl
+        : group_drain ? _cdstr ++ group_carry_decl
         : (d_carry_strip ∧ (cs_pos ≥ 0)) ? cs_cut
         : _cdstr)
 
@@ -682,9 +682,9 @@ fsm driver_main
         : (callw_bare_jump ∨ callw_fire ∨ callw_bail) ? 2
         : enter_qrange ? 11
         : qrange_bail ? 2
-        : pcl_line ? 12
-        : pt_bail ? 2
-        : ptj_fire ? 2
+        : posbind_line ? 12
+        : pos_bail ? 2
+        : posjump_fire ? 2
         : enter_efflit ? 5
         : enter_intset ? 7
         : enter_match ? 6
@@ -692,16 +692,16 @@ fsm driver_main
         : enter_setlit ? 14
         : (setlit_close ∨ setlit_bad) ? 2
         : enter_multiname ? 9
-        : pg_bail ? 2
-        : pg_ty_tick ? (pg_have_pend ? 9 : pg_ty_exit_mode)
-        : (pg_drain ∧ pg_last) ? pg_group_done_mode
+        : group_bail ? 2
+        : group_ty_tick ? (group_have_pend ? 9 : group_ty_exit_mode)
+        : (group_drain ∧ group_last) ? group_done_mode
         : enter_pratt ? 3
-        : p_done ? (_pk_kind = 3 ? 5
-            : _pk_kind = 4 ? ((pr_bad ∨ mq_wc) ? 2 : 6)
-            : _pk_kind = 6 ? (pr_bad ? 2 : 5)
-            : _pk_kind = 7 ? (pr_bad ? 2 : 8)
-            : _pk_kind = 8 ? (pr_bad ? 2 : 10)
-            : _pk_kind = 10 ? (pr_bad ? 2 : 12)
+        : pratt_done ? (_pratt_kind = 3 ? 5
+            : _pratt_kind = 4 ? ((pratt_bad ∨ wc_body_done) ? 2 : 6)
+            : _pratt_kind = 6 ? (pratt_bad ? 2 : 5)
+            : _pratt_kind = 7 ? (pratt_bad ? 2 : 8)
+            : _pratt_kind = 8 ? (pratt_bad ? 2 : 10)
+            : _pratt_kind = 10 ? (pratt_bad ? 2 : 12)
             : 2)
         : (variant_walk_on ∧ variant_payload ∧ (¬variant_pay_ok)) ? 1
         : (variant_walk_on ∧ (¬variant_name_ok)) ? 0
@@ -709,7 +709,7 @@ fsm driver_main
         : chain_fire ? 2
         : efflit_close ? (_chain_on ? 5 : 2)
         : (efflit_bad ∨ efflit_argbite_bad ∨ efflit_st2_bad) ? 2
-        : (mp_fire ∨ mp_bail) ? 2
+        : (match_fire ∨ match_bail) ? 2
         : (intset_close ∨ intset_bad) ? 2
         : seqlit_close ? 2
         : _pmode)
@@ -958,7 +958,7 @@ fsm driver_main
         : claimidx_add ? ⟨eff_claimidx_write⟩
         : read_callee_cursor ? ⟨eff_claimidx_read⟩
         : guard_hit ? ⟨eff_guard_read⟩
-        : pt_close ? ⟨e_pcr⟩
+        : pos_close ? ⟨eff_posbind_read⟩
         : recdecl_active ? (recdecl_eff_st = 2
             ? ⟨recdecl_write_fn0, recdecl_write_fn1, recdecl_write_fn2, recdecl_write_fn3, recdecl_write_fn4,
                recdecl_write_fn5, recdecl_write_fs0, recdecl_write_fs1, recdecl_write_fs2, recdecl_write_fs3,

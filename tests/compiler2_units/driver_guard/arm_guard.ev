@@ -30,14 +30,14 @@ fsm main
     frame_depth ∈ Int
     frame_depth = (is_first_tick ? 0 : _frame_depth)
     -- Recognizer inputs the phase also reads (inert here — no guard line).
-    pr_sres ∈ Expr
-    pr_sres = (is_first_tick ? ENoExpr : _pr_sres)
-    p_done ∈ Bool
-    p_done = (is_first_tick ? false : _p_done)
-    pk_kind ∈ Int
-    pk_kind = (is_first_tick ? 0 : _pk_kind)
-    pr_bad ∈ Bool
-    pr_bad = (is_first_tick ? false : _pr_bad)
+    pratt_result ∈ Expr
+    pratt_result = (is_first_tick ? ENoExpr : _pratt_result)
+    pratt_done ∈ Bool
+    pratt_done = (is_first_tick ? false : _pratt_done)
+    pratt_kind ∈ Int
+    pratt_kind = (is_first_tick ? 0 : _pratt_kind)
+    pratt_bad ∈ Bool
+    pratt_bad = (is_first_tick ? false : _pratt_bad)
     claimidx_names ∈ String
     claimidx_names = (is_first_tick ? "" : _claimidx_names)
     claimidx_buf ∈ FtiBuffer

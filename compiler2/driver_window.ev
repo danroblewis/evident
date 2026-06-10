@@ -1,7 +1,7 @@
 -- MODULE DriverWindow
 -- CONSUMES: the parse-phase gate (in_parse), the active parse mode + the
 --           consumer sub-state carries that set lookahead need (_pmode,
---           _rec_collect_on, _enum_act, work_nil, _callw_st, _pt_st), the FTI token
+--           _rec_collect_on, _enum_act, work_nil, _callw_st, _posbind_st), the FTI token
 --           buffer base (tbase) + the per-tick libc read results
 --           (last_results), and its own carried cursor (_tok_cur/_fetch_end/
 --           _fetch_mode/_win_toks).
@@ -302,7 +302,7 @@ fsm DriverWindow
         : _pmode = 8 ? (work_nil ? 1 : 0)
         : _pmode = 10 ? ((_callw_st = 1 ∧ work_nil) ? 2 : 0)
         : _pmode = 11 ? 2
-        : _pmode = 12 ? ((_pt_st = 0 ∧ work_nil) ? 5 : 0)
+        : _pmode = 12 ? ((_posbind_st = 0 ∧ work_nil) ? 5 : 0)
         : _pmode = 13 ? 0
         : _pmode = 14 ? (work_nil ? 2 : 0)
         : work_nil ? 8

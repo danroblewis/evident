@@ -1,6 +1,6 @@
 -- MODULE DriverGuard
--- CONSUMES: the parsed root (pr_sres) + parse-done signal (p_done,
---           _pk_kind, pr_bad), the claim index (claimidx_names, ci_base),
+-- CONSUMES: the parsed root (pratt_result) + parse-done signal (pratt_done,
+--           _pratt_kind, pratt_bad), the claim index (claimidx_names, ci_base),
 --           the pmode-10 composition-walk state (in_parse, _pmode,
 --           _callw_st, callw_reset, work_nil), and the inline-frame
 --           stack views (frame_pop, _frame_depth, h_top).
@@ -21,7 +21,7 @@ fsm DriverGuard
     guard_lhs ∈ Expr
     guard_rhs ∈ Expr
     guard_is_binop ∈ Bool
-    BoolExprBinopParts(e ↦ pr_sres, op ↦ guard_op, lhs ↦ guard_lhs,
+    BoolExprBinopParts(e ↦ pratt_result, op ↦ guard_op, lhs ↦ guard_lhs,
         rhs ↦ guard_rhs, is_binop ↦ guard_is_binop)
     guard_callee ∈ String = match guard_rhs
         EIdent(s) ⇒ s
@@ -29,7 +29,7 @@ fsm DriverGuard
     guard_key ∈ String
     FtiNameEntry(name ↦ guard_callee, entry ↦ guard_key)
     guard_pos ∈ Int = index_of(claimidx_names, guard_key, 0)
-    guard_hit ∈ Bool = (p_done ∧ (_pk_kind = 2) ∧ (¬pr_bad) ∧ guard_is_binop
+    guard_hit ∈ Bool = (pratt_done ∧ (_pratt_kind = 2) ∧ (¬pratt_bad) ∧ guard_is_binop
         ∧ (guard_op matches OpImpl) ∧ (guard_callee ≠ "") ∧ (guard_pos ≥ 0)
         ∧ (_frame_depth < 8))
     eff_guard_read ∈ Effect

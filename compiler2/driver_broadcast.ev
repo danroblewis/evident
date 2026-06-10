@@ -1,6 +1,6 @@
 -- MODULE DriverBroadcast
--- CONSUMES: the parse result (p_done, _pk_kind, pr_bad, _pk_rec,
---           _pk_name, pr_sres), the pinned record type's field
+-- CONSUMES: the parse result (pratt_done, _pratt_kind, pratt_bad, _pratt_rec_slot,
+--           _pratt_decl_name, pratt_result), the pinned record type's field
 --           registry (rec0..2 .n_fields / .fnames), the claim-walk dispatch
 --           gate (d_in_claim, work_nil, _param_skip, tok_ready), and
 --           the symbol-table name index (sym_names).
@@ -32,8 +32,8 @@ fsm DriverBroadcast
     bcast_body ∈ Expr
     bcast_field_i ∈ Int
     bcast_cur ∈ Int
-    recpin_done ∈ Bool = (p_done ∧ (_pk_kind = 1) ∧ (¬pr_bad)
-        ∧ (_pk_rec ≥ 0))
+    recpin_done ∈ Bool = (pratt_done ∧ (_pratt_kind = 1) ∧ (¬pratt_bad)
+        ∧ (_pratt_rec_slot ≥ 0))
     bcast_nf ∈ Int = (_bcast_slot = 0 ? rec0.n_fields : _bcast_slot = 1 ? rec1.n_fields : rec2.n_fields)
     bcast_fnames ∈ String = (_bcast_slot = 0 ? rec0.fnames : _bcast_slot = 1 ? rec1.fnames : rec2.fnames)
     bcast_disp ∈ Bool = (d_in_claim ∧ _bcast_on ∧ work_nil
@@ -44,9 +44,9 @@ fsm DriverBroadcast
         : recpin_done ? true
         : bcast_fin ? false
         : _bcast_on)
-    bcast_slot = (is_first_tick ? 0 : recpin_done ? _pk_rec : _bcast_slot)
-    bcast_name = (is_first_tick ? "" : recpin_done ? _pk_name : _bcast_name)
-    bcast_body = (is_first_tick ? ENoExpr : recpin_done ? pr_sres : _bcast_body)
+    bcast_slot = (is_first_tick ? 0 : recpin_done ? _pratt_rec_slot : _bcast_slot)
+    bcast_name = (is_first_tick ? "" : recpin_done ? _pratt_decl_name : _bcast_name)
+    bcast_body = (is_first_tick ? ENoExpr : recpin_done ? pratt_result : _bcast_body)
     bcast_field_i = (is_first_tick ? 0
         : recpin_done ? 0
         : bcast_more ? _bcast_field_i + 1

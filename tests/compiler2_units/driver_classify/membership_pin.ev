@@ -75,8 +75,8 @@ fsm main
     efflit_exit_enter = (is_first_tick ? false : _efflit_exit_enter)
     efflit_guard_enter ∈ Bool
     efflit_guard_enter = (is_first_tick ? false : _efflit_guard_enter)
-    mp_benter ∈ Bool
-    mp_benter = (is_first_tick ? false : _mp_benter)
+    arm_body_enter ∈ Bool
+    arm_body_enter = (is_first_tick ? false : _arm_body_enter)
     seqlit_elem_enter ∈ Bool
     seqlit_elem_enter = (is_first_tick ? false : _seqlit_elem_enter)
     callw_slot ∈ Bool
@@ -85,8 +85,8 @@ fsm main
     qrange_close = (is_first_tick ? false : _qrange_close)
     enter_qseq ∈ Bool
     enter_qseq = (is_first_tick ? false : _enter_qseq)
-    pt_elem ∈ Bool
-    pt_elem = (is_first_tick ? false : _pt_elem)
+    pos_elem ∈ Bool
+    pos_elem = (is_first_tick ? false : _pos_elem)
     -- other line-shape flags this block reads but does not define.
     q_line ∈ Bool
     q_line = (is_first_tick ? false : _q_line)
@@ -96,16 +96,16 @@ fsm main
     q_over_seq = (is_first_tick ? false : _q_over_seq)
     setlit_line ∈ Bool
     setlit_line = (is_first_tick ? false : _setlit_line)
-    pcl_line ∈ Bool
-    pcl_line = (is_first_tick ? false : _pcl_line)
+    posbind_line ∈ Bool
+    posbind_line = (is_first_tick ? false : _posbind_line)
     enter_qset ∈ Bool
     enter_qset = (is_first_tick ? false : _enter_qset)
     q_seq_dotted ∈ Bool
     q_seq_dotted = (is_first_tick ? false : _q_seq_dotted)
-    mp_take ∈ Bool
-    mp_take = (is_first_tick ? false : _mp_take)
-    mp_arm_pl_h ∈ Bool
-    mp_arm_pl_h = (is_first_tick ? false : _mp_arm_pl_h)
+    arm_take ∈ Bool
+    arm_take = (is_first_tick ? false : _arm_take)
+    arm_payload_head ∈ Bool
+    arm_payload_head = (is_first_tick ? false : _arm_payload_head)
     ..DriverClassify
     verdict ∈ Int = ((line_is_mem ? 1 : 0) + (line_pinned ? 2 : 0)
         + (enter_pratt_line ? 4 : 0))

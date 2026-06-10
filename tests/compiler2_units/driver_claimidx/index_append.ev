@@ -39,14 +39,14 @@ fsm main
     enum_done_user = (is_first_tick ? false : _enum_done_user)
     in_parse ∈ Bool
     in_parse = (is_first_tick ? false : _in_parse)
-    p_done ∈ Bool
-    p_done = (is_first_tick ? false : _p_done)
-    pk_kind ∈ Int
-    pk_kind = (is_first_tick ? 0 : _pk_kind)
+    pratt_done ∈ Bool
+    pratt_done = (is_first_tick ? false : _pratt_done)
+    pratt_kind ∈ Int
+    pratt_kind = (is_first_tick ? 0 : _pratt_kind)
     pmode ∈ Int
     pmode = (is_first_tick ? 0 : _pmode)
-    pr_bad ∈ Bool
-    pr_bad = (is_first_tick ? false : _pr_bad)
+    pratt_bad ∈ Bool
+    pratt_bad = (is_first_tick ? false : _pratt_bad)
     tok_cur ∈ Int
     tok_cur = (is_first_tick ? 0 : _tok_cur)
     tok_ready ∈ Bool

@@ -5,7 +5,7 @@
 --           (classify_now, line_end, enter_seqlit, d_in_skip), the window
 --           head (tok0/tok5..t7), the registered-seq carries (seqvar_name/
 --           seqvar_slot), the inline-frame prefix (scope_prefix), the parse gate, and
---           the Pratt result (p_done/pr_bad/pr_sres/pk_kind).
+--           the Pratt result (pratt_done/pratt_bad/pratt_result/pratt_kind).
 -- PRODUCES: the ≤2-entry Set(T) variable registry (setvar_count/stv_n*/stv_k*/
 --           stv_e*/stv_c*), the pmode-14 set-literal element walk
 --           (seqlit_count + the C2MkEmptySet/C2SetAdd item runs), and the
@@ -123,17 +123,17 @@ fsm DriverSetVar
     seqlit_close ∈ Bool = (in_seqlit ∧ (tok0 matches OpSeqClose))
     seqlit_comma ∈ Bool = (in_seqlit ∧ (tok0 matches Comma))
     seqlit_elem_enter ∈ Bool = (in_seqlit ∧ (¬seqlit_close) ∧ (¬seqlit_comma))
-    seqlit_elem_done ∈ Bool = (p_done ∧ (¬pr_bad) ∧ (_pk_kind = 7))
+    seqlit_elem_done ∈ Bool = (pratt_done ∧ (¬pratt_bad) ∧ (_pratt_kind = 7))
     seqlit_count = (is_first_tick ? 0
         : enter_seqlit ? 0
         : seqlit_elem_done ? _seqlit_count + 1
         : _seqlit_count)
-    seqlit_elt_name ∈ String = match pr_sres
+    seqlit_elt_name ∈ String = match pratt_result
         EIdent(sen) ⇒ sen
         _ ⇒ ""
-    seqlit_elt_item ∈ C2Item = ((_seqvar_slot ≥ 0 ∧ (pr_sres matches EIdent(_)))
+    seqlit_elt_item ∈ C2Item = ((_seqvar_slot ≥ 0 ∧ (pratt_result matches EIdent(_)))
         ? C2RecVal(_scope_prefix ++ seqlit_elt_name, _seqvar_slot)
-        : C2Process(pr_sres))
+        : C2Process(pratt_result))
     seqlit_elem_items ∈ C2Items = C2ICons(C2Process(EIdent(_seqvar_name)),
         C2ICons(C2Process(EInt(_seqlit_count)),
         C2ICons(C2SelH,

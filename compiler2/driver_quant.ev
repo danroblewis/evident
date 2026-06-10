@@ -68,7 +68,7 @@ fsm DriverQuant
     qloop_body ∈ Expr
     qloop_next ∈ Int
     qloop_cur ∈ Int
-    qbody_done ∈ Bool = (p_done ∧ (_pk_kind = 9) ∧ (¬pr_bad))
+    qbody_done ∈ Bool = (pratt_done ∧ (_pratt_kind = 9) ∧ (¬pratt_bad))
     qexp_disp ∈ Bool = (d_in_claim ∧ _qloop_on ∧ work_nil
         ∧ (_param_skip = 0) ∧ tok_ready)
     qexp_more ∈ Bool = (qexp_disp ∧ (_qloop_next ≤ _qloop_hi))
@@ -84,7 +84,7 @@ fsm DriverQuant
     qloop_hi = (is_first_tick ? 0
         : enter_qrange ? q_hi : enter_qseq ? _seqvar_len - 1 : _qloop_hi)
     qloop_seq = (is_first_tick ? "" : enter_qseq ? q_seq_name : _qloop_seq)
-    qloop_body = (is_first_tick ? ENoExpr : qbody_done ? pr_sres : _qloop_body)
+    qloop_body = (is_first_tick ? ENoExpr : qbody_done ? pratt_result : _qloop_body)
     qloop_on = (is_first_tick ? false
         : qbody_done ? true
         : qexp_fin ? false
@@ -113,7 +113,7 @@ fsm DriverQuant
     seqlen_val ∈ Int = match guard_rhs
         EInt(n) ⇒ n
         _ ⇒ 0 - 1
-    seqlen_pin_hit ∈ Bool = (p_done ∧ (_pk_kind = 2) ∧ (¬pr_bad) ∧ guard_is_binop
+    seqlen_pin_hit ∈ Bool = (pratt_done ∧ (_pratt_kind = 2) ∧ (¬pratt_bad) ∧ guard_is_binop
         ∧ (guard_op matches OpEq) ∧ seqlen_lhs_call ∧ (seqlen_callee = "str_len")
         ∧ (seqlen_val ≥ 0) ∧ _seqvar_set
         ∧ ((seqlen_arg_name = _seqvar_name) ∨ ((_scope_prefix ++ seqlen_arg_name) = _seqvar_name)))

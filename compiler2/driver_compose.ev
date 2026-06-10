@@ -6,7 +6,7 @@
 --           d_cap_int, the parse gate (in_parse, _pmode, tok_ready,
 --           work_nil), the line-pop signal (frame_pop), the record
 --           registry (rt_n*/rt_sort*), and the sibling fire/cap signals
---           (guard_hit, gj_*, ptj_*, pz_*, p_done, pr_bad, d_enter_claim*).
+--           (guard_hit, gj_*, ptj_*, pz_*, pratt_done, pratt_bad, d_enter_claim*).
 --           Wide by nature: a call jump couples the classifier decision,
 --           the claim index, and the handle stack (justified §6.4).
 -- PRODUCES: the inline-frame stack (frames/binds/scope_prefix/frame_depth/
@@ -120,7 +120,7 @@ fsm DriverCompose
     callw_comma ∈ Bool = (in_callw1 ∧ (tok0 matches Comma))
     callw_fire ∈ Bool = (in_callw1 ∧ (tok0 matches RParen))
     callw_bail ∈ Bool = (in_callw1 ∧ (¬callw_slot) ∧ (¬callw_comma) ∧ (¬callw_fire))
-    slot_val_done ∈ Bool = (p_done ∧ (¬pr_bad) ∧ (_pk_kind = 8))
+    slot_val_done ∈ Bool = (pratt_done ∧ (¬pratt_bad) ∧ (_pratt_kind = 8))
     slot_name_tok ∈ String = match tok0
         Ident(s) ⇒ s
         _ ⇒ ""
@@ -188,7 +188,7 @@ fsm DriverCompose
         : C2INil)
     type_recdecl_items ∈ C2Items = C2ICons(C2RecDecl(_type_inst_name, _type_slot), C2INil)
 
-    frame_jump ∈ Bool = (callw_fire ∨ callw_bare_jump ∨ guard_jump_fire ∨ ptj_fire)
+    frame_jump ∈ Bool = (callw_fire ∨ callw_bare_jump ∨ guard_jump_fire ∨ posjump_fire)
     jump_target_now ∈ Int = (callw_bare_jump ? d_cap_int : _jump_target)
     frame_ret_now ∈ Int = (callw_fire ? _tok_cur + 1 : _tok_cur)
 
@@ -209,15 +209,15 @@ fsm DriverCompose
     binds = (is_first_tick ? CBNil
         : callw_reset ? CBNil
         : callw_fire ? binds_new
-        : ptj_fire ? CBNil
-        : pz_act ? pz_binds
+        : posjump_fire ? CBNil
+        : bindzip_act ? bindzip_binds
         : frame_pop ? frame_binds
         : _binds)
     scope_prefix = (is_first_tick ? ""
         : callw_reset ? ""
         : callw_fire ? (_callw_is_type ? _type_prefix : prefix_new)
         : (callw_bare_jump ∧ _callw_is_type) ? _type_prefix
-        : ptj_fire ? prefix_new
+        : posjump_fire ? prefix_new
         : frame_pop ? frame_prefix
         : _scope_prefix)
     frame_depth = (is_first_tick ? 0
@@ -228,10 +228,10 @@ fsm DriverCompose
     call_count = (is_first_tick ? 1
         : callw_reset ? 1
         : (callw_fire ∧ (¬_callw_is_type)) ? _call_count + 1
-        : ptj_fire ? _call_count + 1
+        : posjump_fire ? _call_count + 1
         : _call_count)
     jump_target = (is_first_tick ? 0
-        : (callw_cap ∨ guard_jump_cap ∨ ptj_cap) ? d_cap_int
+        : (callw_cap ∨ guard_jump_cap ∨ posjump_cap) ? d_cap_int
         : _jump_target)
     param_skip = (is_first_tick ? 0
         : frame_jump ? 1

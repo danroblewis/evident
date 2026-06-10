@@ -3,106 +3,106 @@
 --           window (tok0.. via the shared views), the Pratt-entry cons/
 --           kind (pratt_enter_consume/pratt_enter_kind) + the qstop flag, and its
 --           own carried Pratt stack/cursor.
--- PRODUCES: the pmode-3 Pratt expression-parser state (pk_st/pk_kind/
---           pk_name/pk_rec/pk_sc/pk_pn/pk_nat/pk_nodecl + pr_sres/pr_bad/
---           p_done), driving one shift/reduce micro-step per tick via
---           C2PrattStep and yielding the parsed Expr (pr_sres) on p_done.
--- MAINTAINS: an expression parses in ONE Pratt pass keyed by pk_kind (pin/
+-- PRODUCES: the pmode-3 Pratt expression-parser state (pk_st/pratt_kind/
+--           pratt_decl_name/pratt_rec_slot/pratt_sort/pratt_pin_name/pratt_nat/pratt_nodecl + pratt_result/pratt_bad/
+--           pratt_done), driving one shift/reduce micro-step per tick via
+--           C2PrattStep and yielding the parsed Expr (pratt_result) on pratt_done.
+-- MAINTAINS: an expression parses in ONE Pratt pass keyed by pratt_kind (pin/
 --           element/guard/arm/slot/seq/quantifier/positional); the result
---           handle/Expr lands on p_done for the consumer that entered it.
+--           handle/Expr lands on pratt_done for the consumer that entered it.
 --
 -- The pmode-3 Pratt FSM (expression parser). Lifted into driver_main via
 -- `..DriverPratt`.
 fsm DriverPratt
     -- ── PRATT FSM state (pmode 3; reads the shared window) ────────
-    d_in_pratt ∈ Bool = (in_parse ∧ (_pmode = 3) ∧ tok_ready)
+    in_pratt ∈ Bool = (in_parse ∧ (_pmode = 3) ∧ tok_ready)
 
-    p_out ∈ ExprList
-    p_ops ∈ PrOps
-    p_expop ∈ Bool
-    p_pd ∈ Int
-    p_qd ∈ Int
-    p_cd ∈ Int
-    pk_kind ∈ Int
-    pk_name ∈ String
-    pk_sc ∈ Int
-    pk_nat ∈ Bool
-    pk_nodecl ∈ Bool
-    pk_pn ∈ String
-    pk_rec ∈ Int
+    pratt_out ∈ ExprList
+    pratt_ops ∈ PrOps
+    pratt_expop ∈ Bool
+    pratt_pd ∈ Int
+    pratt_qd ∈ Int
+    pratt_cd ∈ Int
+    pratt_kind ∈ Int
+    pratt_decl_name ∈ String
+    pratt_sort ∈ Int
+    pratt_nat ∈ Bool
+    pratt_nodecl ∈ Bool
+    pratt_pin_name ∈ String
+    pratt_rec_slot ∈ Int
 
-    d_cb_pad ∈ String = "                               "
-    d_cb_names ∈ String = ("|" ++ substr("str_len" ++ d_cb_pad, 0, 31)
-        ++ "|" ++ substr("str_from_int" ++ d_cb_pad, 0, 31)
-        ++ "|" ++ substr("substr" ++ d_cb_pad, 0, 31)
-        ++ "|" ++ substr("char_at" ++ d_cb_pad, 0, 31)
-        ++ "|" ++ substr("index_of" ++ d_cb_pad, 0, 31)
-        ++ "|" ++ substr("str_contains" ++ d_cb_pad, 0, 31)
-        ++ "|" ++ substr("starts_with" ++ d_cb_pad, 0, 31)
-        ++ "|" ++ substr("ends_with" ++ d_cb_pad, 0, 31)
-        ++ "|" ++ substr("replace" ++ d_cb_pad, 0, 31)
-        ++ ((user_variants[0].name ≠ "") ? ("|" ++ substr(user_variants[0].name ++ d_cb_pad, 0, 31)) : "")
-        ++ ((user_variants[1].name ≠ "") ? ("|" ++ substr(user_variants[1].name ++ d_cb_pad, 0, 31)) : "")
-        ++ ((user_variants[2].name ≠ "") ? ("|" ++ substr(user_variants[2].name ++ d_cb_pad, 0, 31)) : "")
-        ++ ((user_variants[3].name ≠ "") ? ("|" ++ substr(user_variants[3].name ++ d_cb_pad, 0, 31)) : "")
-        ++ ((user_variants[4].name ≠ "") ? ("|" ++ substr(user_variants[4].name ++ d_cb_pad, 0, 31)) : "")
-        ++ ((user_variants[5].name ≠ "") ? ("|" ++ substr(user_variants[5].name ++ d_cb_pad, 0, 31)) : "")
-        ++ ((rec0.name ≠ "" ∧ rec0.sort ≠ 0) ? ("|" ++ substr(rec0.name ++ d_cb_pad, 0, 31)) : "")
-        ++ ((rec1.name ≠ "" ∧ rec1.sort ≠ 0) ? ("|" ++ substr(rec1.name ++ d_cb_pad, 0, 31)) : "")
-        ++ ((rec2.name ≠ "" ∧ rec2.sort ≠ 0) ? ("|" ++ substr(rec2.name ++ d_cb_pad, 0, 31)) : ""))
-    pr_ntoks ∈ TokenList
-    pr_nouts ∈ ExprList
-    pr_nops ∈ PrOps
-    pr_nexpop ∈ Bool
-    pr_npd ∈ Int
-    pr_nqd ∈ Int
-    pr_ncd ∈ Int
-    pr_sdone ∈ Bool
-    pr_sres ∈ Expr
-    pr_scons ∈ Int
-    C2PrattStep(toks ↦ _win_toks, outs ↦ _p_out, ops ↦ _p_ops,
-        expop ↦ _p_expop, pd ↦ _p_pd, qd ↦ _p_qd, cd ↦ _p_cd,
-        qstop ↦ _pratt_qstop, calls ↦ d_cb_names,
-        ntoks ↦ pr_ntoks, nouts ↦ pr_nouts, nops ↦ pr_nops,
-        nexpop ↦ pr_nexpop, npd ↦ pr_npd, nqd ↦ pr_nqd, ncd ↦ pr_ncd,
-        sdone ↦ pr_sdone, sres ↦ pr_sres, scons ↦ pr_scons)
+    call_pad31 ∈ String = "                               "
+    callable_names ∈ String = ("|" ++ substr("str_len" ++ call_pad31, 0, 31)
+        ++ "|" ++ substr("str_from_int" ++ call_pad31, 0, 31)
+        ++ "|" ++ substr("substr" ++ call_pad31, 0, 31)
+        ++ "|" ++ substr("char_at" ++ call_pad31, 0, 31)
+        ++ "|" ++ substr("index_of" ++ call_pad31, 0, 31)
+        ++ "|" ++ substr("str_contains" ++ call_pad31, 0, 31)
+        ++ "|" ++ substr("starts_with" ++ call_pad31, 0, 31)
+        ++ "|" ++ substr("ends_with" ++ call_pad31, 0, 31)
+        ++ "|" ++ substr("replace" ++ call_pad31, 0, 31)
+        ++ ((user_variants[0].name ≠ "") ? ("|" ++ substr(user_variants[0].name ++ call_pad31, 0, 31)) : "")
+        ++ ((user_variants[1].name ≠ "") ? ("|" ++ substr(user_variants[1].name ++ call_pad31, 0, 31)) : "")
+        ++ ((user_variants[2].name ≠ "") ? ("|" ++ substr(user_variants[2].name ++ call_pad31, 0, 31)) : "")
+        ++ ((user_variants[3].name ≠ "") ? ("|" ++ substr(user_variants[3].name ++ call_pad31, 0, 31)) : "")
+        ++ ((user_variants[4].name ≠ "") ? ("|" ++ substr(user_variants[4].name ++ call_pad31, 0, 31)) : "")
+        ++ ((user_variants[5].name ≠ "") ? ("|" ++ substr(user_variants[5].name ++ call_pad31, 0, 31)) : "")
+        ++ ((rec0.name ≠ "" ∧ rec0.sort ≠ 0) ? ("|" ++ substr(rec0.name ++ call_pad31, 0, 31)) : "")
+        ++ ((rec1.name ≠ "" ∧ rec1.sort ≠ 0) ? ("|" ++ substr(rec1.name ++ call_pad31, 0, 31)) : "")
+        ++ ((rec2.name ≠ "" ∧ rec2.sort ≠ 0) ? ("|" ++ substr(rec2.name ++ call_pad31, 0, 31)) : ""))
+    pratt_next_toks ∈ TokenList
+    pratt_next_outs ∈ ExprList
+    pratt_next_ops ∈ PrOps
+    pratt_next_expop ∈ Bool
+    pratt_next_pd ∈ Int
+    pratt_next_qd ∈ Int
+    pratt_next_cd ∈ Int
+    pratt_step_done ∈ Bool
+    pratt_result ∈ Expr
+    pratt_consume ∈ Int
+    C2PrattStep(toks ↦ _win_toks, outs ↦ _pratt_out, ops ↦ _pratt_ops,
+        expop ↦ _pratt_expop, pd ↦ _pratt_pd, qd ↦ _pratt_qd, cd ↦ _pratt_cd,
+        qstop ↦ _pratt_qstop, calls ↦ callable_names,
+        ntoks ↦ pratt_next_toks, nouts ↦ pratt_next_outs, nops ↦ pratt_next_ops,
+        nexpop ↦ pratt_next_expop, npd ↦ pratt_next_pd, nqd ↦ pratt_next_qd, ncd ↦ pratt_next_cd,
+        sdone ↦ pratt_step_done, sres ↦ pratt_result, scons ↦ pratt_consume)
 
-    p_out = (is_first_tick ? ELNil
+    pratt_out = (is_first_tick ? ELNil
         : enter_pratt ? ELNil
-        : d_in_pratt ? pr_nouts
-        : _p_out)
-    p_ops = (is_first_tick ? PrNil
+        : in_pratt ? pratt_next_outs
+        : _pratt_out)
+    pratt_ops = (is_first_tick ? PrNil
         : enter_pratt ? PrNil
-        : d_in_pratt ? pr_nops
-        : _p_ops)
-    p_expop = (is_first_tick ? true
+        : in_pratt ? pratt_next_ops
+        : _pratt_ops)
+    pratt_expop = (is_first_tick ? true
         : enter_pratt ? true
-        : d_in_pratt ? pr_nexpop
-        : _p_expop)
-    p_pd = (is_first_tick ? 0
+        : in_pratt ? pratt_next_expop
+        : _pratt_expop)
+    pratt_pd = (is_first_tick ? 0
         : enter_pratt ? 0
-        : d_in_pratt ? pr_npd
-        : _p_pd)
-    p_qd = (is_first_tick ? 0
+        : in_pratt ? pratt_next_pd
+        : _pratt_pd)
+    pratt_qd = (is_first_tick ? 0
         : enter_pratt ? 0
-        : d_in_pratt ? pr_nqd
-        : _p_qd)
-    p_cd = (is_first_tick ? 0
+        : in_pratt ? pratt_next_qd
+        : _pratt_qd)
+    pratt_cd = (is_first_tick ? 0
         : enter_pratt ? 0
-        : d_in_pratt ? pr_ncd
-        : _p_cd)
-    pk_kind = (is_first_tick ? 0 : enter_pratt ? pratt_enter_kind : _pk_kind)
-    pk_name = (is_first_tick ? "" : enter_pratt ? line_dname : _pk_name)
-    pk_sc = (is_first_tick ? 0 : enter_pratt ? line_sort : _pk_sc)
-    pk_nat = (is_first_tick ? false : enter_pratt ? line_is_nat : _pk_nat)
-    pk_nodecl = (is_first_tick ? false : enter_pratt ? no_decl : _pk_nodecl)
-    pk_pn = (is_first_tick ? "" : enter_pratt ? resolved_name : _pk_pn)
+        : in_pratt ? pratt_next_cd
+        : _pratt_cd)
+    pratt_kind = (is_first_tick ? 0 : enter_pratt ? pratt_enter_kind : _pratt_kind)
+    pratt_decl_name = (is_first_tick ? "" : enter_pratt ? line_dname : _pratt_decl_name)
+    pratt_sort = (is_first_tick ? 0 : enter_pratt ? line_sort : _pratt_sort)
+    pratt_nat = (is_first_tick ? false : enter_pratt ? line_is_nat : _pratt_nat)
+    pratt_nodecl = (is_first_tick ? false : enter_pratt ? no_decl : _pratt_nodecl)
+    pratt_pin_name = (is_first_tick ? "" : enter_pratt ? resolved_name : _pratt_pin_name)
     -- record-pinned membership (`offset_pos ∈ IVec2 = <expr>`)
     -- arms the rb broadcast loop at parse completion.
-    c_pin_rtk ∈ Int = ((line_pinned ∧ line_is_mem) ? type_rec_slot : 0 - 1)
-    pk_rec = (is_first_tick ? 0 - 1
-        : enter_pratt ? c_pin_rtk
-        : _pk_rec)
+    pin_rec_slot ∈ Int = ((line_pinned ∧ line_is_mem) ? type_rec_slot : 0 - 1)
+    pratt_rec_slot = (is_first_tick ? 0 - 1
+        : enter_pratt ? pin_rec_slot
+        : _pratt_rec_slot)
 
-    p_done ∈ Bool = (d_in_pratt ∧ pr_sdone)
-    pr_bad ∈ Bool = (p_done ∧ (pr_sres matches ENoExpr))
+    pratt_done ∈ Bool = (in_pratt ∧ pratt_step_done)
+    pratt_bad ∈ Bool = (pratt_done ∧ (pratt_result matches ENoExpr))

@@ -1,6 +1,6 @@
 -- DriverPratt isolation — entry-kind latch.
 -- pmode-3 Pratt entry with enter_pratt held and pratt_enter_kind = 5: the
--- module must latch pk_kind = 5 (which consumer the result returns to).
+-- module must latch pratt_kind = 5 (which consumer the result returns to).
 -- Full shift/reduce needs a fed token window; this is entry wiring only.
 --
 -- entry: main
@@ -59,7 +59,7 @@ fsm main
     win_toks ∈ TokenList
     win_toks = (is_first_tick ? TLNil : _win_toks)
     ..DriverPratt
-    msg ∈ String = str_from_int(pk_kind)
+    msg ∈ String = str_from_int(pratt_kind)
     effects ∈ Seq(Effect) = ((¬is_first_tick)
         ? ⟨LibCall("libc", "puts", ⟨ArgStr(msg)⟩), Exit(0)⟩
         : ⟨LibCall("libc", "getpid", ⟨⟩)⟩)

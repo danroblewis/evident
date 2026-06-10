@@ -1,7 +1,7 @@
 -- DriverPosBind isolation — tuple-element recognizer + atom parse.
 -- pmode-12 positional walk, window = `( 5 , 7 )`. Must parse both atoms
--- (ptt_ok0) and recognize the 5-token tuple bite (pt_tup_b).
--- verdict = 1*pt_tup_b + 2*ptt_ok0 = 3.
+-- (tuparg_ok0) and recognize the 5-token tuple bite (tuple_bite).
+-- verdict = 1*tuple_bite + 2*tuparg_ok0 = 3.
 --
 -- entry: main
 -- expect: stdout = "3"
@@ -121,32 +121,32 @@ fsm main
     pskip_open = (is_first_tick ? false : _pskip_open)
     pskip_run ∈ Bool
     pskip_run = (is_first_tick ? false : _pskip_run)
-    mp_items ∈ C2Items
-    mp_items = (is_first_tick ? C2INil : _mp_items)
-    mq_wc ∈ Bool
-    mq_wc = (is_first_tick ? false : _mq_wc)
+    match_items ∈ C2Items
+    match_items = (is_first_tick ? C2INil : _match_items)
+    wc_body_done ∈ Bool
+    wc_body_done = (is_first_tick ? false : _wc_body_done)
     name ∈ String
     name = (is_first_tick ? "" : _name)
-    p_done ∈ Bool
-    p_done = (is_first_tick ? false : _p_done)
-    pk_kind ∈ Int
-    pk_kind = (is_first_tick ? 0 : _pk_kind)
-    pk_name ∈ String
-    pk_name = (is_first_tick ? "" : _pk_name)
-    pk_nat ∈ Bool
-    pk_nat = (is_first_tick ? false : _pk_nat)
-    pk_nodecl ∈ Bool
-    pk_nodecl = (is_first_tick ? false : _pk_nodecl)
-    pk_pn ∈ String
-    pk_pn = (is_first_tick ? "" : _pk_pn)
-    pk_rec ∈ Int
-    pk_rec = (is_first_tick ? 0 : _pk_rec)
-    pk_sc ∈ Int
-    pk_sc = (is_first_tick ? 0 : _pk_sc)
-    pr_bad ∈ Bool
-    pr_bad = (is_first_tick ? false : _pr_bad)
-    pr_sres ∈ Expr
-    pr_sres = (is_first_tick ? EInt(0) : _pr_sres)
+    pratt_done ∈ Bool
+    pratt_done = (is_first_tick ? false : _pratt_done)
+    pratt_kind ∈ Int
+    pratt_kind = (is_first_tick ? 0 : _pratt_kind)
+    pratt_decl_name ∈ String
+    pratt_decl_name = (is_first_tick ? "" : _pratt_decl_name)
+    pratt_nat ∈ Bool
+    pratt_nat = (is_first_tick ? false : _pratt_nat)
+    pratt_nodecl ∈ Bool
+    pratt_nodecl = (is_first_tick ? false : _pratt_nodecl)
+    pratt_pin_name ∈ String
+    pratt_pin_name = (is_first_tick ? "" : _pratt_pin_name)
+    pratt_rec_slot ∈ Int
+    pratt_rec_slot = (is_first_tick ? 0 : _pratt_rec_slot)
+    pratt_sort ∈ Int
+    pratt_sort = (is_first_tick ? 0 : _pratt_sort)
+    pratt_bad ∈ Bool
+    pratt_bad = (is_first_tick ? false : _pratt_bad)
+    pratt_result ∈ Expr
+    pratt_result = (is_first_tick ? EInt(0) : _pratt_result)
     rec0 ∈ RecTypeEntry(name ↦ "", fnames ↦ "", ftypes ↦ "", n_fields ↦ 0,
         sort ↦ 0, ctor ↦ 0, asort ↦ 0, ssort ↦ 0,
         acc0 ↦ 0, acc1 ↦ 0, acc2 ↦ 0, acc3 ↦ 0, acc4 ↦ 0, acc5 ↦ 0)
@@ -167,7 +167,7 @@ fsm main
     efflit_sel_eq ∈ C2Item
     efflit_sel_eq = (is_first_tick ? C2Drop : _efflit_sel_eq)
     ..DriverPosBind
-    verdict ∈ Int = ((pt_tup_b ? 1 : 0) + (ptt_ok0 ? 2 : 0))
+    verdict ∈ Int = ((tuple_bite ? 1 : 0) + (tuparg_ok0 ? 2 : 0))
     v_msg ∈ String = str_from_int(verdict)
     effects ∈ Seq(Effect) = ((¬is_first_tick)
         ? ⟨LibCall("libc", "puts", ⟨ArgStr(v_msg)⟩), Exit(0)⟩

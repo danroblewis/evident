@@ -90,20 +90,20 @@ fsm main
     guard_jump_fire = (is_first_tick ? false : _guard_jump_fire)
     frame_pop ∈ Bool
     frame_pop = (is_first_tick ? false : _frame_pop)
-    p_done ∈ Bool
-    p_done = (is_first_tick ? false : _p_done)
-    pk_kind ∈ Int
-    pk_kind = (is_first_tick ? 0 : _pk_kind)
-    pr_bad ∈ Bool
-    pr_bad = (is_first_tick ? false : _pr_bad)
-    ptj_cap ∈ Bool
-    ptj_cap = (is_first_tick ? false : _ptj_cap)
-    ptj_fire ∈ Bool
-    ptj_fire = (is_first_tick ? false : _ptj_fire)
-    pz_act ∈ Bool
-    pz_act = (is_first_tick ? false : _pz_act)
-    pz_binds ∈ C2Binds
-    pz_binds = (is_first_tick ? CBNil : _pz_binds)
+    pratt_done ∈ Bool
+    pratt_done = (is_first_tick ? false : _pratt_done)
+    pratt_kind ∈ Int
+    pratt_kind = (is_first_tick ? 0 : _pratt_kind)
+    pratt_bad ∈ Bool
+    pratt_bad = (is_first_tick ? false : _pratt_bad)
+    posjump_cap ∈ Bool
+    posjump_cap = (is_first_tick ? false : _posjump_cap)
+    posjump_fire ∈ Bool
+    posjump_fire = (is_first_tick ? false : _posjump_fire)
+    bindzip_act ∈ Bool
+    bindzip_act = (is_first_tick ? false : _bindzip_act)
+    bindzip_binds ∈ C2Binds
+    bindzip_binds = (is_first_tick ? CBNil : _bindzip_binds)
     rec0 ∈ RecTypeEntry(name ↦ "", fnames ↦ "", ftypes ↦ "", n_fields ↦ 0,
         sort ↦ 0, ctor ↦ 0, asort ↦ 0, ssort ↦ 0,
         acc0 ↦ 0, acc1 ↦ 0, acc2 ↦ 0, acc3 ↦ 0, acc4 ↦ 0, acc5 ↦ 0)
