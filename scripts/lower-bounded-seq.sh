@@ -276,7 +276,10 @@ END {
         if (code ~ /^[ \t]*#[A-Za-z][A-Za-z0-9_]*[ \t]*≤[ \t]*[0-9]+[ \t]*$/) {
             nm = code; sub(/^[ \t]*#/, "", nm); sub(/[ \t]*≤.*$/, "", nm)
             v  = code; sub(/^.*≤[ \t]*/, "", v); sub(/[ \t]*$/, "", v)
-            boundN[cur, nm] = v
+            boundN[cur, nm] = v + 0   # +0: force numeric — a string bound makes
+                                      # `k < Nn` LEXICAL ("2" > "160" → 2 slots
+                                      # for a 160 bound; single digits worked by
+                                      # luck). Measured 2026-06-10.
         }
         # keyed-projection PIN:
         #   ∀ k ∈ {0..K} : ((xs[k].F = KEY) ⇒ (OUT = xs[k].V))
