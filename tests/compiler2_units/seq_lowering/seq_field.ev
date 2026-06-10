@@ -1,0 +1,29 @@
+-- Bounded Seq(Int) FIELD inside a record type (bound in the type body)
+-- flattens to per-subslot scalars; dynamic single-ident indexes lower
+-- to covered select chains (outer, sub, and both). Slot 0 gets
+-- accs = ⟨0,0,9⟩ via a literal sub-index write at tick 1; reads:
+-- recs[cur].sort (outer dyn) = 5, recs[0].accs[1] (lit) = 0,
+-- recs[cur].accs[fi] (double dyn, fi=2) = 9. exit = 5 + 0 + 9.
+--
+-- entry: main
+-- expect: exit = 14
+import "stdlib/kernel.ev"
+
+type Entry(name ∈ String, sort ∈ Int, accs ∈ Seq(Int))
+    #accs ≤ 3
+
+fsm main
+    tick ∈ Int
+    tick = (is_first_tick ? 0 : _tick + 1)
+    cur ∈ Int = 0
+    fi ∈ Int = 2
+    recs ∈ Seq(Entry)
+    #recs ≤ 2
+    ∀ k ∈ {0..1} : recs[k].name = (is_first_tick ? "" : _recs[k].name)
+    ∀ k ∈ {0..1} : recs[k].sort = (is_first_tick ? 0 : (tick = 1 ∧ cur = k) ? 5 : _recs[k].sort)
+    ∀ k ∈ {0..1} : recs[k].accs[0] = (is_first_tick ? 0 : _recs[k].accs[0])
+    ∀ k ∈ {0..1} : recs[k].accs[1] = (is_first_tick ? 0 : _recs[k].accs[1])
+    ∀ k ∈ {0..1} : recs[k].accs[2] = (is_first_tick ? 0 : (tick = 1 ∧ cur = k) ? 9 : _recs[k].accs[2])
+    effects ∈ Seq(Effect) = (tick ≥ 2
+        ? ⟨Exit(recs[cur].sort + recs[0].accs[1] + recs[cur].accs[fi])⟩
+        : ⟨LibCall("libc","abs",⟨ArgInt(1)⟩)⟩)

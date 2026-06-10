@@ -158,6 +158,12 @@ function subst_index(txt,    out, i, c, tok, isid, rest, idx, fld, m, base) {
                         match(substr(txt, i + 2), /^[A-Za-z_][A-Za-z0-9_]*/)) {
                         fld = substr(txt, i + 2, RLENGTH)
                         i = i + 1 + RLENGTH
+                        # Seq-typed field, LITERAL sub-index: xs[k].accs[3] -> xs_k_accs_3
+                        if (substr(txt, i + 1, 1) == "[" &&
+                            match(substr(txt, i + 2), /^[0-9]+\]/)) {
+                            fld = fld "_" substr(txt, i + 2, RLENGTH - 1)
+                            i = i + 1 + RLENGTH
+                        }
                     }
                     out = out tok "_" idx (fld != "" ? "_" fld : "")
                     tok = ""
@@ -170,6 +176,68 @@ function subst_index(txt,    out, i, c, tok, isid, rest, idx, fld, m, base) {
     }
     if (tok != "") out = out tok
     return out
+}
+# Dynamic (single-ident) index -> covered select chain, applied at
+# fixpoint after literal-index substitution. Two shapes:
+#   xs[i]/.f[/[j]]  (xs registered, i an ident)  -> (i = 0 ? xs_0_f.. : .. : xs_{N-1}_f..)
+#   xs_k_accs[j]    (a flattened Seq-field family, j ident or digit)
+# The last arm is unconditional (the bound makes the chain covering).
+function subst_dyn(txt,    out, i, c, tok, isid, rest, idv, fld, sub2, base, Nn, M, k, arm, chain, changed) {
+    out = ""; tok = ""
+    for (i = 1; i <= length(txt); i++) {
+        c = substr(txt, i, 1)
+        isid = (c ~ /[A-Za-z0-9_]/)
+        if (isid) { tok = tok c; continue }
+        if (tok != "" && c == "[") {
+            base = tok; sub(/^_/, "", base)
+            rest = substr(txt, i + 1)
+            if ((base in gbnd) && match(rest, /^[A-Za-z_][A-Za-z0-9_]*\]/)) {
+                idv = substr(rest, 1, RLENGTH - 1)
+                i = i + RLENGTH
+                fld = ""; sub2 = ""
+                if (substr(txt, i + 1, 1) == "." &&
+                    match(substr(txt, i + 2), /^[A-Za-z_][A-Za-z0-9_]*/)) {
+                    fld = substr(txt, i + 2, RLENGTH)
+                    i = i + 1 + RLENGTH
+                    if (substr(txt, i + 1, 1) == "[" &&
+                        match(substr(txt, i + 2), /^[A-Za-z0-9_]+\]/)) {
+                        sub2 = substr(txt, i + 2, RLENGTH - 1)
+                        i = i + 1 + RLENGTH
+                    }
+                }
+                Nn = gbnd[base]; chain = ""
+                for (k = 0; k < Nn; k++) {
+                    arm = tok "_" k (fld != "" ? "_" fld : "") (sub2 != "" ? "[" sub2 "]" : "")
+                    if (k < Nn - 1) chain = chain idv " = " k " ? " arm " : "
+                    else chain = chain arm
+                }
+                out = out "(" chain ")"
+                tok = ""
+                continue
+            }
+            if ((tok in dynfam) && match(rest, /^[A-Za-z0-9_]+\]/)) {
+                idv = substr(rest, 1, RLENGTH - 1)
+                i = i + RLENGTH
+                M = dynfam[tok]
+                if (idv ~ /^[0-9]+$/) { out = out tok "_" idv; tok = ""; continue }
+                chain = ""
+                for (k = 0; k < M; k++) {
+                    if (k < M - 1) chain = chain idv " = " k " ? " tok "_" k " : "
+                    else chain = chain tok "_" k
+                }
+                out = out "(" chain ")"
+                tok = ""
+                continue
+            }
+        }
+        if (tok != "") { out = out tok; tok = "" }
+        out = out c
+    }
+    if (tok != "") out = out tok
+    return out
+}
+function subst_dyn_fix(txt,    prev) {
+    while (1) { prev = txt; txt = subst_dyn(txt); if (txt == prev) return txt }
 }
 # Expand every `(∃ i ∈ {0..#xs-1} : P)` over a registered xs. P may use
 # xs[i] / xs[i].f; the bound var index is substituted per slot, the
@@ -221,6 +289,27 @@ function subst_exists(txt,    pos, a, st, en, depth, j, ch, inner, bvar, sname, 
     }
 }
 
+# Emit the decl(s) for record field j of element type el under prefix pfx
+# (e.g. "xs_0" / "_xs_0"). A Seq(Int) field with a type-body bound expands
+# to per-subslot Int decls (pfx_fn_0..M-1); other fields emit one decl.
+function emit_field_decl(pfx, el, j, ind,    fn, ft, m, M) {
+    fn = tfield[el, j]; ft = ttype[el, j]
+    if (ft == "Seq(Int)" && (el SUBSEP fn) in fbound) {
+        M = fbound[el, fn]
+        for (m = 0; m < M; m++) O[++on] = ind pfx "_" fn "_" m " ∈ Int"
+    } else O[++on] = ind pfx "_" fn " ∈ " ft
+}
+# Same expansion for the hold rule: per-subslot zero-init carried holds.
+function emit_field_hold(pfx, el, j, ind,    fn, ft, m, M) {
+    fn = tfield[el, j]; ft = ttype[el, j]
+    if (ft == "Seq(Int)" && (el SUBSEP fn) in fbound) {
+        M = fbound[el, fn]
+        for (m = 0; m < M; m++)
+            O[++on] = ind pfx "_" fn "_" m " = (is_first_tick ? 0 : _" pfx "_" fn "_" m ")"
+    } else
+        O[++on] = ind pfx "_" fn " = (is_first_tick ? " zdef(ft) " : _" pfx "_" fn ")"
+}
+
 { L[NR] = $0 }
 
 END {
@@ -250,6 +339,19 @@ END {
             }
         }
         tnf[tn] = cnt
+        # type-body bounds for Seq-typed fields: an indented `#field ≤ N`
+        # line directly inside the type body sets the field static bound
+        # (real grammar: a cardinality constraint in the type body).
+        for (b = i + 1; b <= N; b++) {
+            bs = strip_comment(L[b])
+            if (bs ~ /^[ \t]*$/) continue
+            if (bs !~ /^[ \t]/) break
+            if (bs ~ /^[ \t]*#[A-Za-z_][A-Za-z0-9_]*[ \t]*≤[ \t]*[0-9]+[ \t]*$/) {
+                bn = bs; sub(/^[ \t]*#/, "", bn); sub(/[ \t]*≤.*$/, "", bn)
+                bv = bs; sub(/^.*≤[ \t]*/, "", bv); bv = trim(bv)
+                fbound[tn, bn] = bv + 0
+            }
+        }
     }
 
     # ── PASS 1: per-claim decls + bounds; register globally ─────────────
@@ -340,6 +442,21 @@ END {
         split(k, kp, SUBSEP); F = kp[1]; nm = kp[2]
         if ((F SUBSEP nm) in boundN) { bnd[F, nm] = boundN[F, nm]; gbnd[nm] = boundN[F, nm] }
     }
+    # flattened Seq-field families (xs_k_accs and _xs_k_accs) for the
+    # dynamic-index select chains
+    for (nm in gbnd) {
+        el = elemOf[nm]
+        if (el == "" || el == "Int") continue
+        for (j = 1; j <= tnf[el]; j++) {
+            fn = tfield[el, j]
+            if (ttype[el, j] == "Seq(Int)" && (el SUBSEP fn) in fbound) {
+                for (k = 0; k < gbnd[nm]; k++) {
+                    dynfam[nm "_" k "_" fn] = fbound[el, fn]
+                    dynfam["_" nm "_" k "_" fn] = fbound[el, fn]
+                }
+            }
+        }
+    }
     # pre-mark paired projection defaults for dropping (order-independent:
     # the default may precede its pin in source)
     for (po in projPinLine) {
@@ -369,7 +486,7 @@ END {
             for (k = 0; k < Nn; k++) {
                 if (el == "Int") O[++on] = ind "_" base "_" k " ∈ Int"
                 else for (j = 1; j <= tnf[el]; j++)
-                    O[++on] = ind "_" base "_" k "_" tfield[el, j] " ∈ " ttype[el, j]
+                    emit_field_decl("_" base "_" k, el, j, ind)
             }
             if (base in hasLen) O[++on] = ind "_" base "_len ∈ Int"
             continue
@@ -389,7 +506,7 @@ END {
                 for (k = 0; k < Nn; k++) {
                     if (el == "Int") O[++on] = ind nm "_" k " ∈ Int"
                     else for (j = 1; j <= tnf[el]; j++)
-                        O[++on] = ind nm "_" k "_" tfield[el, j] " ∈ " ttype[el, j]
+                        emit_field_decl(nm "_" k, el, j, ind)
                 }
                 if (nm in hasLen) {
                     O[++on] = ind nm "_len ∈ Int"
@@ -401,7 +518,7 @@ END {
                 for (k = 0; k < Nn; k++) {
                     if (el == "Int") O[++on] = ind "_" nm "_" k " ∈ Int"
                     else for (j = 1; j <= tnf[el]; j++)
-                        O[++on] = ind "_" nm "_" k "_" tfield[el, j] " ∈ " ttype[el, j]
+                        emit_field_decl("_" nm "_" k, el, j, ind)
                 }
                 if (nm in hasLen) O[++on] = ind "_" nm "_len ∈ Int"
             }
@@ -414,10 +531,8 @@ END {
             Nn = gbnd[nm]; el = elemOf[nm]
             for (k = 0; k < Nn; k++) {
                 if (el == "Int") O[++on] = ind nm "_" k " = (is_first_tick ? 0 : _" nm "_" k ")"
-                else for (j = 1; j <= tnf[el]; j++) {
-                    fn = tfield[el, j]; dv = zdef(ttype[el, j])
-                    O[++on] = ind nm "_" k "_" fn " = (is_first_tick ? " dv " : _" nm "_" k "_" fn ")"
-                }
+                else for (j = 1; j <= tnf[el]; j++)
+                    emit_field_hold(nm "_" k, el, j, ind)
             }
             O[++on] = ind nm "_len = (is_first_tick ? 0 : _" nm "_len)"
             continue
@@ -508,6 +623,7 @@ END {
                     pk = subst_tok(pk, bvar, sname "[" k "]")
                     pk = subst_index(pk)
                     pk = subst_card(pk)
+                    pk = subst_dyn_fix(pk)
                     if (is_write || !(sname in hasLen))
                         O[++on] = ind pk
                     else
@@ -585,6 +701,7 @@ END {
                     t2 = subst_tok(body, bvar, k)
                     t2 = subst_index(t2)
                     t2 = subst_card(t2)
+                    t2 = subst_dyn_fix(t2)
                     O[++on] = ind t2
                 }
                 continue
@@ -595,6 +712,7 @@ END {
         t = subst_exists(s)
         t = subst_index(t)
         t = subst_card(t)
+        t = subst_dyn_fix(t)
         O[++on] = t
     }
 
