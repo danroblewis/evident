@@ -41,12 +41,7 @@ fsm DriverPratt
         ++ "|" ++ substr("starts_with" ++ call_pad31, 0, 31)
         ++ "|" ++ substr("ends_with" ++ call_pad31, 0, 31)
         ++ "|" ++ substr("replace" ++ call_pad31, 0, 31)
-        ++ ((user_variants[0].name ≠ "") ? ("|" ++ substr(user_variants[0].name ++ call_pad31, 0, 31)) : "")
-        ++ ((user_variants[1].name ≠ "") ? ("|" ++ substr(user_variants[1].name ++ call_pad31, 0, 31)) : "")
-        ++ ((user_variants[2].name ≠ "") ? ("|" ++ substr(user_variants[2].name ++ call_pad31, 0, 31)) : "")
-        ++ ((user_variants[3].name ≠ "") ? ("|" ++ substr(user_variants[3].name ++ call_pad31, 0, 31)) : "")
-        ++ ((user_variants[4].name ≠ "") ? ("|" ++ substr(user_variants[4].name ++ call_pad31, 0, 31)) : "")
-        ++ ((user_variants[5].name ≠ "") ? ("|" ++ substr(user_variants[5].name ++ call_pad31, 0, 31)) : "")
+        ++ variant_names
         ++ ((recs[0].name ≠ "" ∧ recs[0].sort > 0) ? ("|" ++ substr(recs[0].name ++ call_pad31, 0, 31)) : "")
         ++ ((recs[1].name ≠ "" ∧ recs[1].sort > 0) ? ("|" ++ substr(recs[1].name ++ call_pad31, 0, 31)) : "")
         ++ ((recs[2].name ≠ "" ∧ recs[2].sort > 0) ? ("|" ++ substr(recs[2].name ++ call_pad31, 0, 31)) : ""))
