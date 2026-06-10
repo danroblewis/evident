@@ -65,3 +65,4 @@ Every measure script now hard-caps itself at 55 s via a
 timeout-self-exec first line (GP_TIMEBOXED guard) — the budget holds
 regardless of runner. Skill prompt.md records the pattern as a hard
 rule. All five measures re-verified rc=0, <80 ms. No targets moved.
+2026-06-10 — operator approved compiler2-purism measures; hashes locked in REVIEW.md

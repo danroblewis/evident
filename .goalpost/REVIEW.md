@@ -173,3 +173,21 @@ ledger-justified, and an independent full-rulebook review agrees.
 Hashes left unlocked — human approval required before md runs these
 (reviewer: also note `code_quality.sh` predates this amendment and has
 no REVIEW/CHANGELOG entry; flagged in CHANGELOG, not touched).
+
+## Approval (2026-06-10, operator)
+
+compiler2-purism measures APPROVED by operator. Locked hashes:
+```
+6e6c118dc6c16f3be2d1b3ee5523213d20e9e67da3135519b4c62d4ac938463f  code_quality.sh
+d0dd689696935a9e5d306bc6fe0820833b63898fd0789ff409b38a7887a7fc06  conformance.sh
+eafffa485f5f3bc15a11e143bedccbf8d226db8715997ec935b8970104007e1a  kernel_fixtures.sh
+bf76ae5fae789197915d20064c751d222ac906e299007c15af3e56cd79744f52  legacy_imports.sh
+94650b5c5c610da6586c0c24f3a24c6a7e698bae9fb6a2ccd57dd75d48791ff1  purism_critic_signal.sh
+bfda07d59ddc141ae902ba977bfbdaf4cdedd0214e8db067114bdc22e81f9b98  purism_cryptic_names.sh
+1965a4beeeac26886b087949a66792430474112eee1c8178ad060116efc3876a  purism_namespacing.sh
+9a73d827a17c7f2fe06668660b272831ed56a105fc6c6e77cd4895521e499fc2  purism_v18_families.sh
+d32a519bb4f8ebca49d82fc4522209e2b54c715a9a1348b96f5fef6c99ad1649  purism_v9_chains.sh
+982666d9258c86521235c4226bbd33cf2ef1b2da9745f95e964da4a440a9468d  sample_ev.sh
+fb91ffa86a775afafa1e48cbd6a3a8e9a126159e5d08ad4200b324b32061480e  selfhost.sh
+```
+Any change to these files requires a new approval entry here.
