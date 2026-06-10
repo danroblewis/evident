@@ -42,7 +42,6 @@
 -- Claim-composition (slot-call + names-match `..` inlining). Lifted into
 -- driver_main via `..DriverCompose`.
 type CSlot(name ∈ String)
-type Bind(name ∈ String, handle ∈ Int)
 
 fsm DriverCompose
     frames ∈ C2Frames
@@ -65,28 +64,6 @@ fsm DriverCompose
     slot_count ∈ Int
     slot_names ∈ Seq(CSlot)
     #slot_names ≤ 6
-
-    -- transitional peel — bind_n*/bind_h* DERIVED from the tape window
-    -- so the consumers compile unchanged across the wire change;
-    -- deleted with the consumer rewrite (bind-peel plan step 4)
-    peel_ix0 ∈ Int = _bind_base
-    peel_ix1 ∈ Int = _bind_base + 1
-    peel_ix2 ∈ Int = _bind_base + 2
-    peel_ix3 ∈ Int = _bind_base + 3
-    peel_ix4 ∈ Int = _bind_base + 4
-    peel_ix5 ∈ Int = _bind_base + 5
-    bind_n0 ∈ String = ((_bind_base + 0 < _bind_top) ? _binds[peel_ix0].name : "")
-    bind_h0 ∈ Int = ((_bind_base + 0 < _bind_top) ? _binds[peel_ix0].handle : 0)
-    bind_n1 ∈ String = ((_bind_base + 1 < _bind_top) ? _binds[peel_ix1].name : "")
-    bind_h1 ∈ Int = ((_bind_base + 1 < _bind_top) ? _binds[peel_ix1].handle : 0)
-    bind_n2 ∈ String = ((_bind_base + 2 < _bind_top) ? _binds[peel_ix2].name : "")
-    bind_h2 ∈ Int = ((_bind_base + 2 < _bind_top) ? _binds[peel_ix2].handle : 0)
-    bind_n3 ∈ String = ((_bind_base + 3 < _bind_top) ? _binds[peel_ix3].name : "")
-    bind_h3 ∈ Int = ((_bind_base + 3 < _bind_top) ? _binds[peel_ix3].handle : 0)
-    bind_n4 ∈ String = ((_bind_base + 4 < _bind_top) ? _binds[peel_ix4].name : "")
-    bind_h4 ∈ Int = ((_bind_base + 4 < _bind_top) ? _binds[peel_ix4].handle : 0)
-    bind_n5 ∈ String = ((_bind_base + 5 < _bind_top) ? _binds[peel_ix5].name : "")
-    bind_h5 ∈ Int = ((_bind_base + 5 < _bind_top) ? _binds[peel_ix5].handle : 0)
 
     frame_ret ∈ Int = match _frames
         CFCons(r, _, _, _, _, _) ⇒ r

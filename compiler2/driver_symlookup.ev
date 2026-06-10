@@ -1,7 +1,8 @@
 -- MODULE DriverSymLookup
 -- CONSUMES: the lookup name lookup_name, the symbol-table name registry
---           (sym_names) + base (sym_buf.base), the inline-frame slot-bind
---           registry (ilb_n*/ilb_h*), the import/inline prefix (_scope_prefix),
+--           (sym_names) + base (sym_buf.base), the bind-tape window
+--           (_binds / _bind_base / _bind_top — compose's slot-bind
+--           registry), the import/inline prefix (_scope_prefix),
 --           the enum-variant value registry (enum_values, a bounded Seq), and the cached
 --           z_true/z_false handles.
 -- PRODUCES: name resolution — lookup_key/lookup_pos/lookup_found(2)/lookup_pos_now,
@@ -22,16 +23,10 @@ fsm DriverSymLookup
     lookup_pos ∈ Int = index_of(sym_names, lookup_key, 0)
     lookup_found ∈ Bool = (lookup_pos ≥ 0)
     lookup_special ∈ Bool = (lookup_name = "true" ∨ lookup_name = "false")
-    bound_found ∈ Bool = ((lookup_name ≠ "") ∧ ((bind_n0 = lookup_name)
-        ∨ (bind_n1 = lookup_name) ∨ (bind_n2 = lookup_name)
-        ∨ (bind_n3 = lookup_name) ∨ (bind_n4 = lookup_name)
-        ∨ (bind_n5 = lookup_name)))
-    bound_handle ∈ Int = (bind_n0 = lookup_name ? bind_h0
-        : bind_n1 = lookup_name ? bind_h1
-        : bind_n2 = lookup_name ? bind_h2
-        : bind_n3 = lookup_name ? bind_h3
-        : bind_n4 = lookup_name ? bind_h4
-        : bind_h5)
+    bound_found ∈ Bool = ((lookup_name ≠ "") ∧ (∃ i ∈ {0..11} : ((i ≥ _bind_base) ∧ (i < _bind_top) ∧ (_binds[i].name = lookup_name))))
+    bound_handle ∈ Int
+    ∀ k ∈ {0..11} : (((k ≥ _bind_base) ∧ (k < _bind_top) ∧ (_binds[k].name = lookup_name)) ⇒ (bound_handle = _binds[k].handle))
+    (¬(∃ i ∈ {0..11} : ((i ≥ _bind_base) ∧ (i < _bind_top) ∧ (_binds[i].name = lookup_name)))) ⇒ (bound_handle = 0)
     lookup_pfx_key ∈ String
     FtiNameEntry(name ↦ (_scope_prefix ++ lookup_name), entry ↦ lookup_pfx_key)
     lookup_pfx_pos ∈ Int = index_of(sym_names, lookup_pfx_key, 0)

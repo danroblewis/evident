@@ -158,6 +158,11 @@ enum C2H =
     C2HNil
     C2HCons(Int, C2H)
 
+-- One bind-tape entry: a frame-local name bound to a Z3 handle. The
+-- tape itself (`binds ∈ Seq(Bind)`, ≤12) lives in compose; the window
+-- [bind_base, bind_top) is the current frame's binds.
+type Bind(name ∈ String, handle ∈ Int)
+
 -- CFCons fields: return cursor, scope prefix, the caller's bind-tape
 -- window cursors (bind_base, bind_top — both restored on pop; the tape
 -- itself is compose's global `binds ∈ Seq(Bind)`, never copied into
