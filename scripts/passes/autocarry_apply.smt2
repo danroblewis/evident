@@ -47,6 +47,8 @@
 (declare-fun _t_inj_step () Bool)
 (declare-fun _t_src_line () String)
 (declare-fun _t_ind_end () Int)
+(declare-fun _t_apl_fsm () Bool)
+(declare-fun _t_inline () String)
 (declare-fun _ins_txt () String)
 (declare-fun _splice_add () String)
 (declare-fun _t_out_full () String)
@@ -315,23 +317,25 @@
                  (+ 0 1)
                  (ite (not a!3) (+ 0 2) (ite (not a!4) (+ 0 3) a!84)))))
   (= _t_ind_end (ite (not a!1) 0 a!85)))))))))))))))))))))))))
-(assert (let ((a!1 (str.++ "claim" (str.substr _t_rline 3 (- (str.len _t_rline) 3))))
-      (a!2 (str.++ (str.substr _cur_line 0 _t_s1f)
+(assert (= _t_apl_fsm
+   (and (= _t_ph 3)
+        (not _t_reof)
+        (or (str.prefixof "fsm " _t_rline) (str.prefixof "fsm\u{9}" _t_rline)))))
+(assert (let ((a!1 (str.++ "claim" (str.substr _t_rline 3 (- (str.len _t_rline) 3)))))
+  (= _t_inline (ite _t_apl_fsm a!1 _t_rline))))
+(assert (let ((a!1 (str.++ (str.substr _cur_line 0 _t_s1f)
                    _splice_add
                    (str.substr _cur_line _t_s1f (- (str.len _cur_line) _t_s1f)))))
-(let ((a!3 (ite _t_plain_emit
-                (ite (or (str.prefixof "fsm " _t_rline)
-                         (str.prefixof "fsm\u{9}" _t_rline))
-                     a!1
-                     _t_rline)
-                (ite (and _t_scan_done (>= _t_s1f 0)) a!2 _cur_line))))
-(let ((a!4 (str.++ a!3
+(let ((a!2 (ite _t_plain_emit
+                _t_inline
+                (ite (and _t_scan_done (>= _t_s1f 0)) a!1 _cur_line))))
+(let ((a!3 (str.++ a!2
                    (ite _t_ins_take
                         (str.++ "\u{a}"
                                 (str.substr _t_src_line 0 _t_ind_end)
                                 _ins_txt)
                         ""))))
-  (= _t_out_full a!4)))))
+  (= _t_out_full a!3)))))
 (assert (= eff_out
    (LibCall "libc" "puts" (__Cell_LibArg (ArgStr _t_out_full) __Empty_LibArg))))
 (assert (= eff_nop (LibCall "libc" "getpid" __Empty_LibArg)))
@@ -458,11 +462,11 @@
                 (ite (>= _t_inj_c (str.len _t_inj_src)) "" a!2)
                 _inj_txt)))
   (= inj_txt (ite is_first_tick "" a!3))))))
-(assert (= cur_line (ite is_first_tick "" (ite _t_has_inj _t_rline _cur_line))))
+(assert (= cur_line (ite is_first_tick "" (ite _t_has_inj _t_inline _cur_line))))
 (assert (let ((a!1 (ite is_first_tick
                 0
                 (ite _t_has_inj
-                     (+ (str.indexof _t_rline "(" 0) 1)
+                     (+ (str.indexof _t_inline "(" 0) 1)
                      (ite (= _t_ph 4) _t_s1p _scan_pos)))))
   (= scan_pos a!1)))
 (assert (let ((a!1 (ite is_first_tick

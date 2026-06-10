@@ -1,21 +1,29 @@
 -- MODULE autocarry_analyze — stage A of the fsm autocarry pass.
 -- CONSUMES: the flattened (pre-autocarry) source on stdin until EOF.
 -- PRODUCES: a stream of registry records for autocarry_fix, one per
---           line, tagged by kind: F⟨fsm⟩ · B⟨F.x⟩base⦂declline⦂ ·
---           D❲Callee⦂slot❳val⦂F⦂callline⦂ (val "0" = non-bare) ·
---           S❰callline❱⦂slot⦂…⦂❱ (the call's have-set) ·
---           C⟨F.x⟩base⦂ (body-reference carry marks).
+--           line, tagged by kind: F⟨fsm⟩ · B⟨F.x⟩base⦂declline⦂
+--           (declline "0" = header slot; never insert-walked) ·
+--           D❲Callee⦂slot❳val⦂F⦂callline⦂ (val "0" = non-bare; a val
+--           starting "∈ " = header-dual candidate, payload after ∈) ·
+--           S❰callline❱⦂slot⦂…⦂❱ (the call's have-set; for an fsm
+--           header line, the header's own param names — explicit `_x`
+--           params suppress the dual exactly like a call's `_x` slot) ·
+--           C⟨F.x⟩base⦂ (body-reference carry marks) ·
+--           M❨Callee⦂F❩ (bare mention of Callee inside fsm F).
 -- MAINTAINS: parity with scripts/expand-fsm-autocarry.sh pass 1 — bare
---            decls, call bindings, and the body-reference carry marks
+--            decls, fsm header params (parse_header: group typing,
+--            interface decls feed the carry registry), call bindings,
+--            bare mentions, and the body-reference carry marks
 --            (carry(F, x) when token `_x` occurs in F's comment-stripped
---            body); the call-direction fixpoint runs in autocarry_fix.
+--            body); the call-direction + header-join fixpoint runs in
+--            autocarry_fix.
 -- Call bindings are read by ↦-jump (slot = the word backward of each ↦,
 -- preceded by "(" or ","; val = the word forward, followed by "," / ")" /
 -- EOL), not by awk's top-level comma segmentation — exotic shapes
 -- (nested ↦ inside a binding value, two calls on one line) can diverge;
 -- the byte-identical corpus gate is the arbiter.
 -- Phases: 1 read line · 2 comment scan · 3 call scan · 4/14 claim end
--- (→ read / → exit) · 13 exit.
+-- (→ read / → exit) · 5 fsm header param scan · 13 exit.
 -- Transient locals are `_t_`-named: the kernel carries every plain
 -- top-level primitive membership across ticks, and an un-carried local
 -- costs measurably less per tick (measured 2026-06-10).
@@ -35,6 +43,11 @@ fsm autocarry_analyze
     cur_a ∈ Int
     cur_b ∈ Int
     acc_a ∈ String
+    hdr_seg ∈ Int
+    hdr_fl ∈ Int
+    hdr_pend ∈ String
+    hdr_slots ∈ String
+    hdr_ty ∈ String
 
     _t_ph ∈ Int = (is_first_tick ? 0 : _phase)
     _t_rline ∈ String = match last_results[1]
@@ -95,7 +108,7 @@ fsm autocarry_analyze
         : "")
 
     -- ── comment strip: quick path + one scan event per tick ──
-    _t_need_code ∈ Bool = (_t_consume ∧ ¬_t_is_top ∧ _in_fsm = 1)
+    _t_need_code ∈ Bool = (_t_consume ∧ ((¬_t_is_top ∧ _in_fsm = 1) ∨ _t_hdr_fsm))
     _t_d0 ∈ Int = (_t_need_code ∨ _t_ph = 2 ? index_of(_t_cline, "--") : -1)
     _t_q0 ∈ Int = (_t_need_code ∨ _t_ph = 2 ? index_of(_t_cline, "\"") : -1)
     _t_quick ∈ Bool = (_t_d0 < 0 ∨ _t_q0 < 0 ∨ _t_q0 > _t_d0)
@@ -128,6 +141,9 @@ fsm autocarry_analyze
         ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ", char_at(_t_code_now, _t_ws))
         ∧ (char_at(_t_code_now, _t_ie2) = "("))
     _t_fld ∈ String = substr(_t_code_now, _t_ws, _t_ie - _t_ws)
+    _t_is_ment ∈ Bool = (_t_in_body ∧ _t_ie > _t_ws
+        ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ", char_at(_t_code_now, _t_ws))
+        ∧ _t_ie2 ≥ #_t_code_now)
     _t_rest ∈ String = (_t_is_bare ? substr(_t_code_now, _t_ie2 + 1, #_t_code_now - _t_ie2 - 1) : "")
     _t_t0 ∈ Int
     AcWsSkip(s ↦ _t_rest, from ↦ 0, out ↦ _t_t0)
@@ -182,6 +198,54 @@ fsm autocarry_analyze
     AcBodyScan3(body ↦ _body, needle ↦ "_" ++ _t_ce_x, nlen ↦ #_t_ce_x + 1, o0 ↦ _cur_b, act ↦ _t_ce_run, o1 ↦ _t_ce_o1, f1 ↦ _t_ce_f1)
     _t_ce_mark ∈ Bool = (_t_ce_run ∧ _t_ce_f1 ≥ 0)
 
+    -- ── phase 5: fsm header param scan (parse_header parity) ──
+    -- One paren/comma event or one pending-name flush per tick over the
+    -- comment-stripped header held in `code`. Group typing: untyped
+    -- names pool in hdr_pend until a typed segment (or group end)
+    -- flushes them left-to-right with that segment's base. Each flushed
+    -- name emits B (line "0") + D (val "∈ base") in one record batch;
+    -- the header's own param names accumulate in hdr_slots for the
+    -- close-of-header S record (explicit `_x` params suppress duals).
+    _t_hdr_code ∈ String = (_t_lp_ready ? _t_code_now : _code)
+    _t_hdr_lp ∈ Int = (_t_switch_now ∧ _t_hdr_fsm ? index_of(_t_hdr_code, "(") : -1)
+    _t_hdr_go ∈ Bool = (_t_hdr_lp ≥ 0)
+    _t_h_fl_run ∈ Bool = (_t_ph = 5 ∧ _hdr_fl = 1)
+    _t_h_done ∈ Bool = (_t_ph = 5 ∧ _hdr_fl = 0 ∧ _cur_a < 0)
+    _t_h_scan ∈ Bool = (_t_ph = 5 ∧ _hdr_fl = 0 ∧ _cur_a ≥ 0)
+    _t_h_o ∈ Int = (_t_h_scan ? index_of(_code, "(", _cur_a) : -1)
+    _t_h_c ∈ Int = (_t_h_scan ? index_of(_code, ")", _cur_a) : -1)
+    _t_h_m ∈ Int = (_t_h_scan ? index_of(_code, ",", _cur_a) : -1)
+    _t_h_open ∈ Bool = (_t_h_o ≥ 0 ∧ (_t_h_c < 0 ∨ _t_h_o < _t_h_c) ∧ (_t_h_m < 0 ∨ _t_h_o < _t_h_m))
+    _t_h_close ∈ Bool = (¬_t_h_open ∧ _t_h_c ≥ 0 ∧ (_t_h_m < 0 ∨ _t_h_c < _t_h_m))
+    _t_h_comma ∈ Bool = (¬_t_h_open ∧ ¬_t_h_close ∧ _t_h_m ≥ 0)
+    _t_h_none ∈ Bool = (_t_h_scan ∧ ¬_t_h_open ∧ ¬_t_h_close ∧ ¬_t_h_comma)
+    _t_h_bnd ∈ Bool = (_t_h_scan ∧ ((_t_h_close ∧ _cur_b = 1) ∨ (_t_h_comma ∧ _cur_b = 1) ∨ _t_h_none))
+    _t_h_end ∈ Bool = (_t_h_scan ∧ ((_t_h_close ∧ _cur_b = 1) ∨ _t_h_none))
+    _t_h_b ∈ Int = (_t_h_close ? _t_h_c : _t_h_comma ? _t_h_m : #_code)
+    _t_h_ep ∈ Int = (_t_h_bnd ? index_of(_code, "∈", _hdr_seg) : -1)
+    _t_h_typed ∈ Bool = (_t_h_bnd ∧ _t_h_ep ≥ 0 ∧ _t_h_ep < _t_h_b)
+    _t_h_ns ∈ Int
+    AcWsSkip(s ↦ (_t_h_bnd ? _code : ""), from ↦ _hdr_seg, out ↦ _t_h_ns)
+    _t_h_ne ∈ Int
+    AcWsBack(s ↦ (_t_h_bnd ? _code : ""), from ↦ (_t_h_typed ? _t_h_ep : _t_h_b), out ↦ _t_h_ne)
+    _t_h_nm ∈ String = (_t_h_bnd ∧ _t_h_ne > _t_h_ns ? substr(_code, _t_h_ns, _t_h_ne - _t_h_ns) : "")
+    _t_h_us ∈ Bool = (¬(_t_h_nm = "") ∧ char_at(_t_h_nm, 0) = "_")
+    _t_h_t0 ∈ Int
+    AcWsSkip(s ↦ (_t_h_typed ? _code : ""), from ↦ _t_h_ep + 1, out ↦ _t_h_t0)
+    _t_h_te ∈ Int
+    AcWsBack(s ↦ (_t_h_typed ? _code : ""), from ↦ _t_h_b, out ↦ _t_h_te)
+    _t_h_sp ∈ Int = (_t_h_typed ? index_of(_code, " ", _t_h_t0) : -1)
+    _t_h_tb ∈ Int = (_t_h_typed ? index_of(_code, "\t", _t_h_t0) : -1)
+    _t_h_bs ∈ Int = (_t_h_sp ≥ 0 ∧ _t_h_sp < _t_h_te
+        ? (_t_h_tb ≥ 0 ∧ _t_h_tb < _t_h_sp ? _t_h_tb : _t_h_sp)
+        : (_t_h_tb ≥ 0 ∧ _t_h_tb < _t_h_te ? _t_h_tb : _t_h_te))
+    _t_h_base ∈ String = (_t_h_typed ∧ _t_h_te > _t_h_t0 ? substr(_code, _t_h_t0, _t_h_bs - _t_h_t0) : "")
+    _t_h_pend1 ∈ String = (_t_h_bnd ∧ ¬(_t_h_nm = "") ∧ ¬_t_h_us ? _hdr_pend ++ _t_h_nm ++ "⦂" : _hdr_pend)
+    _t_h_fl1 ∈ Bool = (_t_h_bnd ∧ ¬(_t_h_pend1 = "") ∧ (_t_h_typed ∨ _t_h_end))
+    _t_h_hp ∈ Int = (_t_h_fl_run ? index_of(_hdr_pend, "⦂") : -1)
+    _t_h_fnm ∈ String = (_t_h_fl_run ? substr(_hdr_pend, 0, _t_h_hp) : "")
+    _t_h_tail ∈ String = (_t_h_fl_run ? substr(_hdr_pend, _t_h_hp + 1, #_hdr_pend - _t_h_hp - 1) : "")
+
     -- ── transitions ──
     _t_enter_call ∈ Bool = _t_is_call
     _t_enter_ce ∈ Bool = (_t_lp_ready ∧ _t_is_top ∧ _in_fsm = 1)
@@ -190,11 +254,12 @@ fsm autocarry_analyze
 
     phase = (is_first_tick ? 1
         : _t_eof_now ? (_in_fsm = 1 ? 14 : 13)
-        : _t_lp_ready ? (_t_is_top ? (_in_fsm = 1 ? 4 : 1) : _t_is_call ? 3 : 1)
+        : _t_lp_ready ? (_t_is_top ? (_in_fsm = 1 ? 4 : (_t_hdr_go ? 5 : 1)) : _t_is_call ? 3 : 1)
         : _t_consume ? 2
         : _t_ph = 2 ? 2
         : _t_ph = 3 ? (_t_scan3_done ? 1 : 3)
-        : _t_ph = 4 ? (_t_ce_done ? 1 : 4)
+        : _t_ph = 4 ? (_t_ce_done ? (_t_hdr_go ? 5 : 1) : 4)
+        : _t_ph = 5 ? (_t_h_done ? 1 : 5)
         : _t_ph = 14 ? (_t_ce_done ? 13 : 14)
         : 13)
     line_no = (is_first_tick ? 0 : _t_nn)
@@ -209,26 +274,60 @@ fsm autocarry_analyze
         : _body)
     claim_bare = (is_first_tick ? ""
         : _t_switch_now ? ""
+        : _t_h_fl_run
+        ? _claim_bare ++ "⟨" ++ _claim_name ++ "." ++ _t_h_fnm ++ "⟩" ++ _hdr_ty ++ "⦂0⦂"
         : _t_is_bare
         ? _claim_bare ++ "⟨" ++ _claim_name ++ "." ++ _t_fld ++ "⟩" ++ _t_base ++ "⦂" ++ str_from_int(_t_nn) ++ "⦂"
         : _claim_bare)
     cur_a = (is_first_tick ? 0
+        : _t_hdr_go ? _t_hdr_lp + 1
         : _t_enter_ce ∨ _t_enter_ce_eof ? 0
         : _t_enter_call ? _t_ie2 + 1
         : _t_consume ∧ ¬_t_lp_ready ? _t_cs_p
         : _t_ph = 2 ∧ ¬_t_lp_ready ? _t_cs_p
         : _t_ph = 3 ? (_t_m ≥ 0 ? _t_m + 1 : _cur_a)
+        : _t_ph = 5 ? (_t_h_bnd ? (_t_h_end ? -1 : _t_h_b + 1)
+            : _t_h_open ? _t_h_o + 1
+            : _t_h_close ? _t_h_c + 1
+            : _t_h_comma ? _t_h_m + 1
+            : _cur_a)
         : _t_ce_run ? (_t_ce_f1 > -2
             ? index_of(_claim_bare, "⦂", index_of(_claim_bare, "⦂", _t_ce_gt) + 1) + 1
             : _cur_a)
         : _cur_a)
     cur_b = (is_first_tick ? 0
+        : _t_hdr_go ? 1
         : _t_enter_ce ∨ _t_enter_ce_eof ? 0
         : _t_enter_call ? 1
         : _t_consume ∧ ¬_t_lp_ready ? (_t_cs_q ? 1 : 0)
         : _t_ph = 2 ∧ ¬_t_lp_ready ? (_t_cs_q ? 1 : 0)
+        : _t_ph = 5 ? (_t_h_bnd ? _cur_b
+            : _t_h_open ? _cur_b + 1
+            : _t_h_close ? _cur_b - 1
+            : _cur_b)
         : _t_ce_run ? (_t_ce_f1 > -2 ? 0 : _t_ce_o1)
         : _cur_b)
+    hdr_seg = (is_first_tick ? 0
+        : _t_hdr_go ? _t_hdr_lp + 1
+        : _t_h_bnd ? _t_h_b + 1
+        : _hdr_seg)
+    hdr_fl = (is_first_tick ? 0
+        : _t_hdr_go ? 0
+        : _t_h_fl_run ? (_t_h_tail = "" ? 0 : 1)
+        : _t_h_bnd ? (_t_h_fl1 ? 1 : 0)
+        : _hdr_fl)
+    hdr_pend = (is_first_tick ? ""
+        : _t_hdr_go ? ""
+        : _t_h_fl_run ? _t_h_tail
+        : _t_h_bnd ? _t_h_pend1
+        : _hdr_pend)
+    hdr_slots = (is_first_tick ? ""
+        : _t_hdr_go ? ""
+        : _t_h_bnd ∧ ¬(_t_h_nm = "") ? _hdr_slots ++ "⦂" ++ _t_h_nm
+        : _hdr_slots)
+    hdr_ty = (is_first_tick ? ""
+        : _t_h_fl1 ? (_t_h_typed ? _t_h_base : "")
+        : _hdr_ty)
     acc_a = (is_first_tick ? ""
         : _t_enter_call ? ""
         : _t_ph = 3 ? _t_acc_now
@@ -239,7 +338,12 @@ fsm autocarry_analyze
     eff_nop = LibCall("libc", "getpid", ⟨⟩)
     _t_rec_fsm ∈ Bool = (_t_switch_now ∧ _t_hdr_fsm)
     _t_rec ∈ String = (_t_rec_fsm ? "F⟨" ++ _t_hdr_name ++ "⟩"
+        : _t_h_fl_run ? "B⟨" ++ _claim_name ++ "." ++ _t_h_fnm ++ "⟩" ++ _hdr_ty ++ "⦂0⦂"
+          ++ "\n" ++ "D❲" ++ _claim_name ++ "⦂" ++ _t_h_fnm ++ "❳∈ " ++ _hdr_ty
+          ++ "⦂" ++ _claim_name ++ "⦂" ++ str_from_int(_line_no) ++ "⦂"
+        : _t_h_done ∧ ¬(_hdr_slots = "") ? "S❰" ++ str_from_int(_line_no) ++ "❱" ++ _hdr_slots ++ "⦂❱"
         : _t_is_bare ? "B⟨" ++ _claim_name ++ "." ++ _t_fld ++ "⟩" ++ _t_base ++ "⦂" ++ str_from_int(_t_nn) ++ "⦂"
+        : _t_is_ment ? "M❨" ++ _t_fld ++ "⦂" ++ _claim_name ++ "❩"
         : _t_bind_now ? "D❲" ++ _callee ++ "⦂" ++ _t_slot ++ "❳"
           ++ (_t_val_ok ? substr(code, _t_v0, _t_ve - _t_v0) : "0")
           ++ "⦂" ++ _claim_name ++ "⦂" ++ str_from_int(_t_nn) ++ "⦂"
@@ -250,7 +354,7 @@ fsm autocarry_analyze
     _t_emit_rec ∈ Bool = (¬(_t_rec = ""))
     eff_out ∈ Effect
     BuildPrintln(s ↦ _t_rec, eff ↦ eff_out)
-    _t_read_go ∈ Bool = ((_t_lp_ready ∧ ¬_t_is_call ∧ ¬_t_enter_ce) ∨ (_t_ph = 3 ∧ _t_scan3_done) ∨ (_t_ph = 4 ∧ _t_ce_done))
+    _t_read_go ∈ Bool = ((_t_lp_ready ∧ ¬_t_is_call ∧ ¬_t_enter_ce ∧ ¬_t_hdr_go) ∨ (_t_ph = 3 ∧ _t_scan3_done) ∨ (_t_ph = 4 ∧ _t_ce_done ∧ ¬_t_hdr_go) ∨ _t_h_done)
     _t_exit_now ∈ Bool = (_t_ph = 13)
 
     effects ∈ Seq(Effect) = (is_first_tick ? ⟨eff_nop, ReadLine⟩

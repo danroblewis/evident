@@ -68,10 +68,14 @@ fsm autocarry_apply
     _t_ind_end ∈ Int
     AcWsSkip(s ↦ (_t_ins_take ? _t_src_line : ""), from ↦ 0, out ↦ _t_ind_end)
 
+    -- the fsm→claim rewrite applies on BOTH paths: plain emit and the
+    -- inject capture (a headered fsm line is spliced, then emitted)
+    _t_apl_fsm ∈ Bool = (_t_ph = 3 ∧ ¬_t_reof
+        ∧ (starts_with(_t_rline, "fsm ") ∨ starts_with(_t_rline, "fsm\t")))
+    _t_inline ∈ String = (_t_apl_fsm ? "claim" ++ substr(_t_rline, 3, #_t_rline - 3) : _t_rline)
+
     _t_out_full ∈ String = ((_t_plain_emit
-        ? ((starts_with(_t_rline, "fsm ") ∨ starts_with(_t_rline, "fsm\t"))
-            ? "claim" ++ substr(_t_rline, 3, #_t_rline - 3)
-            : _t_rline)
+        ? _t_inline
         : _t_scan_done ∧ _t_s1f ≥ 0
             ? substr(_cur_line, 0, _t_s1f) ++ _splice_add ++ substr(_cur_line, _t_s1f, #_cur_line - _t_s1f)
             : _cur_line)
@@ -121,8 +125,8 @@ fsm autocarry_apply
                 (index_of(_t_inj_src, "⟦", _t_inj_c + 1) < 0 ? #_t_inj_src : index_of(_t_inj_src, "⟦", _t_inj_c + 1))
                 - index_of(_t_inj_src, "⟧", _t_inj_c) - 1))
         : _inj_txt)
-    cur_line = (is_first_tick ? "" : _t_has_inj ? _t_rline : _cur_line)
-    scan_pos = (is_first_tick ? 0 : _t_has_inj ? index_of(_t_rline, "(") + 1 : _t_ph = 4 ? _t_s1p : _scan_pos)
+    cur_line = (is_first_tick ? "" : _t_has_inj ? _t_inline : _cur_line)
+    scan_pos = (is_first_tick ? 0 : _t_has_inj ? index_of(_t_inline, "(") + 1 : _t_ph = 4 ? _t_s1p : _scan_pos)
     scan_depth = (is_first_tick ? 0 : _t_has_inj ? 1 : _t_ph = 4 ? _t_s1d : _scan_depth)
     scan_found = (is_first_tick ? -1 : _t_has_inj ? -2 : _t_ph = 4 ? _t_s1f : _scan_found)
     splice_add = (is_first_tick ? "" : _t_inj_take ? _inj_txt : _splice_add)

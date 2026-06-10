@@ -118,4 +118,16 @@ walk "$(canon "$ROOT_ARG")" > "$FLAT_TMP"
 # lowering rewrites both decls to flat scalars — ordering avoids double
 # duals. The lowering is opt-in (a `#xs ≤ N` bound) and fails loudly on
 # unsupported uses (see scripts/passes/lower-bounded-seq.sh).
-"$SCRIPT_DIR/passes/expand-fsm-autocarry.sh" < "$FLAT_TMP" | "$SCRIPT_DIR/passes/lower-bounded-seq.sh"
+# The autocarry pass runs SELF-HOSTED (kernel + autocarry_*.smt2, see
+# scripts/passes/autocarry-evident.sh); scripts/passes/
+# expand-fsm-autocarry.sh is the awk reference implementation and the
+# build-autocarry.sh bootstrap, byte-identical on the 250-stream corpus
+# gate (2026-06-10). EVIDENT_AUTOCARRY=awk forces the reference pass
+# (build-autocarry.sh sets it so artifact rebuilds never depend on the
+# artifacts being rebuilt).
+if [ "${EVIDENT_AUTOCARRY:-evident}" = "awk" ]; then
+    AUTOCARRY="$SCRIPT_DIR/passes/expand-fsm-autocarry.sh"
+else
+    AUTOCARRY="$SCRIPT_DIR/passes/autocarry-evident.sh"
+fi
+"$AUTOCARRY" < "$FLAT_TMP" | "$SCRIPT_DIR/passes/lower-bounded-seq.sh"
