@@ -36,6 +36,7 @@ use crate::tick::{self, Sv};
 
 pub mod eval;
 pub mod jit;
+pub mod low;
 
 // ── Program IR ──────────────────────────────────────────────────
 
@@ -43,6 +44,25 @@ pub mod jit;
 pub enum GBody {
     Scalar(Z3_ast),
     Seq(Vec<Z3_ast>),
+}
+
+/// Lowered (FFI-free) mirror of `StepBody` — see `low.rs` for why. Built once
+/// at load; the per-tick hot path evaluates these instead of the Z3 ASTs.
+pub enum LowBody {
+    Scalar(low::LExpr),
+    Seq(Vec<low::LExpr>),
+    Guarded(Vec<LowBranch>),
+}
+
+pub struct LowBranch {
+    pub guard: low::LExpr,
+    pub neg: bool,
+    pub body: LowGBody,
+}
+
+pub enum LowGBody {
+    Scalar(low::LExpr),
+    Seq(Vec<low::LExpr>),
 }
 
 #[derive(Clone)]
@@ -65,6 +85,12 @@ pub enum StepBody {
 pub struct Step {
     pub var: String,
     pub body: StepBody,
+    /// FFI-free lowered body (the per-tick hot path).
+    pub low: LowBody,
+    /// Env slot this step writes (`var` interned in `Program::names`).
+    pub var_slot: u32,
+    /// Slot ids of `jit.inputs`, in pack order (empty when `jit` is None).
+    pub jit_slots: Vec<u32>,
     /// Member of a mention-level dependency cycle: excluded from the topo
     /// order, resolved by run_program fixpoint rounds (eval laziness makes
     /// guard-acyclic graphs converge; real cycles stall → Z3 tick).
@@ -80,9 +106,32 @@ pub struct Step {
     pub jit: Option<jit::JitStep>,
 }
 
+/// Pre-resolved env slots for the per-tick input fill and output read
+/// (mirrors `build_inputs` / the manifest state-field order).
+pub struct SlotPlan {
+    pub is_first_tick: u32,
+    pub last_results: u32,
+    pub last_results_len: u32,
+    /// Slot of `_<name>` per manifest state field.
+    pub carries: Vec<u32>,
+    /// Slot of `<name>` per manifest state field.
+    pub state_out: Vec<u32>,
+    /// Tick-0 fallback value per state field (type sentinel; see
+    /// `build_inputs`).
+    pub sentinels: Vec<Sv>,
+}
+
 pub struct Program {
     pub steps: Vec<Step>,
     pub predicates: Vec<Z3_ast>,
+    /// Lowered mirrors of `predicates`.
+    pub low_predicates: Vec<low::LExpr>,
+    /// Variable-name interner; env slot i holds the value of `names.list[i]`.
+    pub names: low::Names,
+    pub plan: SlotPlan,
+    /// `EVIDENT_FUNCTIONIZE_LOWER=0` flips the per-tick path back to the
+    /// legacy FFI interpreter (A/B + escape hatch).
+    pub lowered: bool,
     /// Number of scalar steps the JIT compiled vs interpreted (reporting).
     pub jit_count: usize,
     pub interp_count: usize,
@@ -102,7 +151,9 @@ pub struct Program {
 }
 
 pub struct RunOut {
-    pub scalars: HashMap<String, Sv>,
+    /// New state values aligned to `manifest.state_fields`; `None` = the
+    /// step left the field unbound (caller falls through to Z3).
+    pub state: Vec<Option<Sv>>,
     pub effects: Vec<Sv>,
 }
 
@@ -1231,6 +1282,7 @@ pub unsafe fn functionize(
     let mut steps: Vec<Step> = Vec::new();
     let mut jit_count = 0usize;
     let mut interp_count = 0usize;
+    let mut names = low::Names::default();
     for (var, body, deferred) in raw_steps {
         let is_effects = var == manifest.effects_name;
         let is_state = manifest.state_fields.iter().any(|(n, _)| n == &var);
@@ -1260,13 +1312,57 @@ pub unsafe fn functionize(
             }
             _ => (false, None),
         };
-        steps.push(Step { var, body, deferred, result_is_bool, is_effects, jit });
+        let lowb = match &body {
+            StepBody::Scalar(e) => LowBody::Scalar(low::lower(ctx, *e, &mut names)),
+            StepBody::Seq(es) => {
+                LowBody::Seq(es.iter().map(|&e| low::lower(ctx, e, &mut names)).collect())
+            }
+            StepBody::Guarded(bs) => LowBody::Guarded(bs.iter().map(|b| LowBranch {
+                guard: low::lower(ctx, b.guard, &mut names),
+                neg: b.neg,
+                body: match &b.body {
+                    GBody::Scalar(e) => LowGBody::Scalar(low::lower(ctx, *e, &mut names)),
+                    GBody::Seq(es) => LowGBody::Seq(
+                        es.iter().map(|&e| low::lower(ctx, e, &mut names)).collect()),
+                },
+            }).collect()),
+        };
+        let var_slot = names.intern(&var);
+        let jit_slots: Vec<u32> = jit.as_ref()
+            .map(|j| j.inputs.iter().map(|n| names.intern(n)).collect())
+            .unwrap_or_default();
+        steps.push(Step {
+            var, body, low: lowb, var_slot, jit_slots,
+            deferred, result_is_bool, is_effects, jit,
+        });
+    }
+    let low_predicates: Vec<low::LExpr> =
+        predicates.iter().map(|&p| low::lower(ctx, p, &mut names)).collect();
+    let plan = SlotPlan {
+        is_first_tick: names.intern("is_first_tick"),
+        last_results: names.intern("last_results"),
+        last_results_len: names.intern("last_results__len"),
+        carries: manifest.state_fields.iter()
+            .map(|(n, _)| names.intern(&format!("_{n}"))).collect(),
+        state_out: manifest.state_fields.iter()
+            .map(|(n, _)| names.intern(n)).collect(),
+        sentinels: manifest.state_fields.iter().map(|(_, ty)| match ty.as_str() {
+            "Int" => Sv::Int(0),
+            "Bool" => Sv::Bool(false),
+            "String" => Sv::Str(String::new()),
+            _ => Sv::Datatype(format!("_sentinel_{ty}"), Vec::new()),
+        }).collect(),
+    };
+    let lowered = std::env::var("EVIDENT_FUNCTIONIZE_LOWER").ok().as_deref() != Some("0");
+    if trace {
+        eprintln!("[fz] lowered: {} steps, {} env slots, lowered path {}",
+            steps.len(), names.len(), if lowered { "ON" } else { "OFF" });
     }
 
     let mut keepalive = simplified;
     keepalive.shrink_to_fit();
     let mut prog = Program {
-        steps, predicates, jit_count, interp_count,
+        steps, predicates, low_predicates, names, plan, lowered, jit_count, interp_count,
         tick0_carries: HashMap::new(),
         _keepalive: keepalive,
     };
@@ -1281,7 +1377,7 @@ pub unsafe fn functionize(
         };
         // Seed the eval with the carry values Z3 chose (see Program doc).
         prog.tick0_carries = z3_0.2.clone();
-        let Some(mine_0) = run_program(ctx, &prog, &build_inputs(true, &empty_prev, manifest, Some(&prog.tick0_carries))) else {
+        let Some(mine_0) = run_program(ctx, &prog, manifest, true, &empty_prev, &[]) else {
             refuse!("verify: tick-0 eval refused (unsupported op)");
         };
         if !outputs_match(manifest, &(z3_0.0.clone(), z3_0.1.clone()), &mine_0) {
@@ -1291,7 +1387,7 @@ pub unsafe fn functionize(
         let Ok(Some(z3_1)) = tick::solve_tick_sv(ctx, body, decl_preamble, manifest, false, &prev1) else {
             refuse!("verify: tick-1 Z3 solve failed");
         };
-        let Some(mine_1) = run_program(ctx, &prog, &build_inputs(false, &prev1, manifest, None)) else {
+        let Some(mine_1) = run_program(ctx, &prog, manifest, false, &prev1, &[]) else {
             refuse!("verify: tick-1 eval refused (unsupported op)");
         };
         if !outputs_match(manifest, &(z3_1.0.clone(), z3_1.1.clone()), &mine_1) {
@@ -1395,7 +1491,234 @@ pub fn build_inputs(
 
 /// Run the extracted program for one tick. `None` ⇒ a shape/predicate the fast
 /// path can't honour ⇒ caller falls through to Z3.
-pub unsafe fn run_program(ctx: Z3_context, prog: &Program, inputs: &HashMap<String, Sv>) -> Option<RunOut> {
+///
+/// Default path: the lowered (FFI-free) IR over a slot vector — no HashMap
+/// build, no env clone (measured 2026-06-10: the legacy path's per-tick
+/// `format!`+HashMap input rebuild alone costs ~0.3 ms on the driver's 1,543
+/// state fields). `EVIDENT_FUNCTIONIZE_LOWER=0` selects the legacy FFI
+/// interpreter.
+pub unsafe fn run_program(
+    ctx: Z3_context,
+    prog: &Program,
+    manifest: &Manifest,
+    is_first: bool,
+    prev_state: &[Option<Sv>],
+    results: &[Sv],
+) -> Option<RunOut> {
+    if !prog.lowered {
+        let inputs = build_inputs_with_results(
+            is_first, prev_state, manifest, Some(&prog.tick0_carries), results);
+        return run_program_legacy(ctx, prog, manifest, &inputs);
+    }
+    let plan = &prog.plan;
+    let mut slots: Vec<Option<Sv>> = vec![None; prog.names.len()];
+    slots[plan.is_first_tick as usize] = Some(Sv::Bool(is_first));
+    // Mirror `build_inputs_with_results`: pad `last_results` to 16 with
+    // NoResult so OOB reads match the Z3 path's pin shape.
+    let no_result = Sv::Datatype("NoResult".to_string(), Vec::new());
+    if results.is_empty() {
+        slots[plan.last_results_len as usize] = Some(Sv::Int(0));
+        slots[plan.last_results as usize] = Some(Sv::Seq(vec![no_result; 16]));
+    } else {
+        slots[plan.last_results_len as usize] = Some(Sv::Int(results.len() as i64));
+        let mut seq: Vec<Sv> = results.to_vec();
+        while seq.len() < 16 {
+            seq.push(no_result.clone());
+        }
+        slots[plan.last_results as usize] = Some(Sv::Seq(seq));
+    }
+    for (i, (name, _)) in manifest.state_fields.iter().enumerate() {
+        let slot = plan.carries[i] as usize;
+        if is_first {
+            let key = format!("_{name}");
+            slots[slot] = Some(match prog.tick0_carries.get(&key) {
+                Some(v) => v.clone(),
+                None => plan.sentinels[i].clone(),
+            });
+        } else if let Some(v) = &prev_state[i] {
+            slots[slot] = Some(v.clone());
+        }
+    }
+
+    let mut effects: Vec<Sv> = Vec::new();
+    let mut deferred: Vec<&Step> = Vec::new();
+    let mut jit_buf: Vec<i64> = Vec::new();
+    let mut meta = vec![low::StrMeta::default(); prog.names.len()];
+    // Per-step timing probe (EVIDENT_FZ_STEPTIME=<tick>): on that tick,
+    // time each step and print the 25 costliest. The probe tick runs its
+    // steps twice (probe + real pass) — timing only, results unchanged.
+    let probe: Option<usize> = std::env::var("EVIDENT_FZ_STEPTIME").ok().and_then(|v| v.parse().ok());
+    if let Some(want) = probe {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        static TICKNO: AtomicUsize = AtomicUsize::new(0);
+        let t = TICKNO.fetch_add(1, Ordering::Relaxed);
+        if t == want {
+            let mut rows: Vec<(String, f64)> = Vec::new();
+            for step in &prog.steps {
+                if step.deferred { continue; }
+                let t0 = std::time::Instant::now();
+                let ok = exec_step_low(step, &mut slots, &mut effects, true, &mut jit_buf, &mut meta);
+                rows.push((step.var.clone(), t0.elapsed().as_secs_f64() * 1e6));
+                if !ok { break; }
+            }
+            rows.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+            let total: f64 = rows.iter().map(|r| r.1).sum();
+            eprintln!("[fz/steptime] tick {t}: {total:.1} us over {} steps", rows.len());
+            for (n, us) in rows.iter().take(25) {
+                eprintln!("[fz/steptime]   {us:8.2} us  {n}");
+            }
+        }
+    }
+    for step in &prog.steps {
+        if step.deferred {
+            deferred.push(step);
+            continue;
+        }
+        if !exec_step_low(step, &mut slots, &mut effects, true, &mut jit_buf, &mut meta) {
+            return None;
+        }
+    }
+    let mut pending = deferred;
+    while !pending.is_empty() {
+        let before = pending.len();
+        pending.retain(|s| !exec_step_low(s, &mut slots, &mut effects, false, &mut jit_buf, &mut meta));
+        if pending.len() == before {
+            if trace_enabled() {
+                eprintln!(
+                    "[fz/run] deferred fixpoint stalled: {} unresolved (first: {:?})",
+                    pending.len(),
+                    pending.first().map(|s| s.var.as_str())
+                );
+            }
+            return None;
+        }
+    }
+    for p in &prog.low_predicates {
+        if let Some(v) = low::eval(p, &slots, &mut meta) {
+            if matches!(v.as_ref(), Sv::Bool(false)) {
+                return None;
+            }
+        }
+    }
+    let state = plan.state_out.iter().map(|&s| slots[s as usize].take()).collect();
+    Some(RunOut { state, effects })
+}
+
+/// Execute one lowered step against the slot env — semantics mirror
+/// `exec_step` (the legacy AST-eval path) exactly.
+fn exec_step_low(
+    step: &Step,
+    slots: &mut Vec<Option<Sv>>,
+    effects: &mut Vec<Sv>,
+    use_jit: bool,
+    jit_buf: &mut Vec<i64>,
+    meta: &mut [low::StrMeta],
+) -> bool {
+    match &step.low {
+        LowBody::Scalar(le) => {
+            // Deferred (fixpoint) callers pass use_jit=false — see `exec_step`.
+            let v = if let (true, Some(j)) = (use_jit, &step.jit) {
+                match j.call_slots(&step.jit_slots, slots, jit_buf) {
+                    Some(r) => if step.result_is_bool { Sv::Bool(r != 0) } else { Sv::Int(r) },
+                    None => {
+                        if trace_enabled() {
+                            eprintln!("[fz/run] scalar step {:?} JIT call refused", step.var);
+                        }
+                        return false;
+                    }
+                }
+            } else {
+                match low::eval(le, slots, meta) {
+                    Some(v) => v.into_owned(),
+                    None => {
+                        if trace_enabled() { eprintln!("[fz/run] scalar step {:?} eval refused", step.var); }
+                        return false;
+                    }
+                }
+            };
+            slots[step.var_slot as usize] = Some(v);
+            low::reset_meta(meta, step.var_slot as usize);
+        }
+        LowBody::Seq(les) => {
+            let mut seq = Vec::with_capacity(les.len());
+            for le in les {
+                match low::eval(le, slots, meta) {
+                    Some(v) => seq.push(v.into_owned()),
+                    None => {
+                        if trace_enabled() { eprintln!("[fz/run] seq step {:?} elem eval refused", step.var); }
+                        return false;
+                    }
+                }
+            }
+            if step.is_effects {
+                *effects = seq;
+            } else {
+                slots[step.var_slot as usize] = Some(Sv::Seq(seq));
+                low::reset_meta(meta, step.var_slot as usize);
+            }
+        }
+        LowBody::Guarded(branches) => {
+            let mut chosen: Option<&LowGBody> = None;
+            for b in branches {
+                match low::eval(&b.guard, slots, meta) {
+                    Some(v) => {
+                        if let Sv::Bool(g) = v.as_ref() {
+                            let fires = if b.neg { !g } else { *g };
+                            if fires { chosen = Some(&b.body); break; }
+                        }
+                    }
+                    None => {
+                        if trace_enabled() { eprintln!("[fz/run] guarded step {:?} guard eval refused", step.var); }
+                        return false;
+                    }
+                }
+            }
+            let Some(body) = chosen else {
+                if trace_enabled() {
+                    eprintln!("[fz/run] guarded step {:?}: no branch guard matched", step.var);
+                }
+                return false;
+            };
+            match body {
+                LowGBody::Scalar(le) => {
+                    let Some(v) = low::eval(le, slots, meta) else {
+                        if trace_enabled() { eprintln!("[fz/run] guarded step {:?} scalar body refused", step.var); }
+                        return false;
+                    };
+                    slots[step.var_slot as usize] = Some(v.into_owned());
+                    low::reset_meta(meta, step.var_slot as usize);
+                }
+                LowGBody::Seq(les) => {
+                    let mut seq = Vec::with_capacity(les.len());
+                    for le in les {
+                        match low::eval(le, slots, meta) {
+                            Some(v) => seq.push(v.into_owned()),
+                            None => {
+                                if trace_enabled() { eprintln!("[fz/run] guarded step {:?} seq elem refused", step.var); }
+                                return false;
+                            }
+                        }
+                    }
+                    if step.is_effects {
+                        *effects = seq;
+                    } else {
+                        slots[step.var_slot as usize] = Some(Sv::Seq(seq));
+                        low::reset_meta(meta, step.var_slot as usize);
+                    }
+                }
+            }
+        }
+    }
+    true
+}
+
+/// Legacy per-tick path: the FFI AST interpreter over a name-keyed env.
+unsafe fn run_program_legacy(
+    ctx: Z3_context,
+    prog: &Program,
+    manifest: &Manifest,
+    inputs: &HashMap<String, Sv>,
+) -> Option<RunOut> {
     let mut env = inputs.clone();
     let mut effects: Vec<Sv> = Vec::new();
 
@@ -1443,7 +1766,8 @@ pub unsafe fn run_program(ctx: Z3_context, prog: &Program, inputs: &HashMap<Stri
         }
     }
 
-    Some(RunOut { scalars: env, effects })
+    let state = manifest.state_fields.iter().map(|(n, _)| env.remove(n)).collect();
+    Some(RunOut { state, effects })
 }
 
 /// Execute one step against the env: bind its value (or set `effects`) and
@@ -1573,7 +1897,7 @@ fn outputs_match(manifest: &Manifest, z3: &Z3Tick, mine: &RunOut) -> bool {
         || std::env::var("EVIDENT_FUNCTIONIZE_WHY").ok().as_deref() == Some("1");
     let mut diffs = 0usize;
     for (i, (name, _)) in manifest.state_fields.iter().enumerate() {
-        match mine.scalars.get(name) {
+        match mine.state.get(i).and_then(|v| v.as_ref()) {
             Some(v) if tick::compare_sv_pub(v, &z3.0[i]) => {}
             Some(v) => {
                 if trace && diffs < 10 {
