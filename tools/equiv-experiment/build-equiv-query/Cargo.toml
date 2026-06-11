@@ -1,0 +1,11 @@
+[package]
+name = "build-equiv-query"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "build-equiv-query"
+path = "main.rs"
+
+[profile.release]
+opt-level = 2

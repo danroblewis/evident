@@ -5,7 +5,7 @@
 //! compiler/ + tests, see `collect_files`), token-accurately, respecting the
 //! `_x` carry dual and identifier boundaries (no substring corruption).
 
-use evident_tools::{families, index, rename};
+use evident_tools::{equiv, families, index, rename};
 use index::{build_index, DeclKind, Index, RefKind};
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -28,6 +28,8 @@ fn main() {
         "symbols" => cmd_symbols(rest),
         "families" => cmd_families(rest),
         "collisions" => cmd_collisions(rest),
+        "sat" => cmd_sat(rest),
+        "diff" => cmd_diff(rest),
         "-h" | "--help" | "help" => {
             usage();
             0
@@ -56,6 +58,12 @@ USAGE:
   evt families [--min N]          Numbered (→Seq) + prefix (→record) families.
   evt collisions [entry] [claim]  declare-fun names of emitted driver_main
                                   (authoritative collision oracle).
+  evt sat <file.ev> <claim>       Satisfiability of a claim (emit + check-sat).
+       --model                    Print a witness model on SAT.
+  evt diff <fixture.ev> [opts]    Compile a fixture through the CURRENT and an
+                                  --old compiler; diff stdout+exit.
+       --old <gitref>             Old compiler tree (default HEAD~1).
+       --sample <dir>             Diff every *.ev under <dir>; report divergences.
 
 GLOBAL:
   --root <dir>   repo root (default: discovered from cwd upward)
@@ -85,6 +93,8 @@ struct Opts {
     positional: Vec<String>,
     flags: BTreeSet<String>,
     min: Option<usize>,
+    old: Option<String>,
+    sample: Option<String>,
 }
 
 fn parse_opts(args: &[String]) -> Opts {
@@ -93,6 +103,8 @@ fn parse_opts(args: &[String]) -> Opts {
     let mut positional = Vec::new();
     let mut flags = BTreeSet::new();
     let mut min = None;
+    let mut old: Option<String> = None;
+    let mut sample: Option<String> = None;
     let mut root_override: Option<PathBuf> = None;
     let mut i = 0;
     while i < args.len() {
@@ -115,11 +127,26 @@ fn parse_opts(args: &[String]) -> Opts {
                     i += 1;
                 }
             }
+            "--old" => {
+                if i + 1 < args.len() {
+                    old = Some(args[i + 1].clone());
+                    i += 1;
+                }
+            }
+            "--sample" => {
+                if i + 1 < args.len() {
+                    sample = Some(args[i + 1].clone());
+                    i += 1;
+                }
+            }
             "--dry-run" => {
                 flags.insert("dry-run".into());
             }
             "--force" => {
                 flags.insert("force".into());
+            }
+            "--model" => {
+                flags.insert("model".into());
             }
             other => positional.push(other.to_string()),
         }
@@ -145,6 +172,8 @@ fn parse_opts(args: &[String]) -> Opts {
         positional,
         flags,
         min,
+        old,
+        sample,
     }
 }
 
@@ -677,5 +706,225 @@ fn cmd_collisions(args: &[String]) -> i32 {
             eprintln!("  {n}  ×{c}");
         }
         4
+    }
+}
+
+// ── sat (emit + check-sat) ─────────────────────────────────────────────
+
+fn resolve_ev(root: &Path, s: &str) -> PathBuf {
+    let p = PathBuf::from(s);
+    if p.is_absolute() {
+        return p;
+    }
+    let cwd = std::env::current_dir().unwrap_or_default().join(&p);
+    if cwd.exists() {
+        cwd
+    } else {
+        root.join(&p)
+    }
+}
+
+fn cmd_sat(args: &[String]) -> i32 {
+    let opts = parse_opts(args);
+    if opts.positional.len() < 2 {
+        eprintln!("evt sat: need <file.ev> <claim>");
+        return 2;
+    }
+    let file = resolve_ev(&opts.root, &opts.positional[0]);
+    let claim = &opts.positional[1];
+    let t = equiv::Tools::discover(&opts.root);
+
+    let flat = match equiv::flatten(&t, &file) {
+        Ok(f) => f,
+        Err(e) => {
+            eprintln!("evt sat: {e}");
+            return 1;
+        }
+    };
+    let smt = match equiv::emit(&t, &flat, claim) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("evt sat: {e}");
+            return 1;
+        }
+    };
+    let want_model = opts.flags.contains("model");
+    match equiv::check_sat(&t, &smt, want_model) {
+        Ok(r) => {
+            println!("{} {}\t{}", r.status, claim, rel(&opts.root, &file).display());
+            if let Some(m) = r.model {
+                println!("{m}");
+            }
+            match r.status.as_str() {
+                "sat" => 0,
+                "unsat" => 1,
+                _ => 2,
+            }
+        }
+        Err(e) => {
+            eprintln!("evt sat: {e}");
+            1
+        }
+    }
+}
+
+// ── diff (old vs new concrete behavior) ─────────────────────────────────
+
+fn cmd_diff(args: &[String]) -> i32 {
+    let opts = parse_opts(args);
+    let t = equiv::Tools::discover(&opts.root);
+    if !t.kernel.exists() {
+        eprintln!("evt diff: kernel not found at {}", t.kernel.display());
+        return 1;
+    }
+    let oldref = opts.old.clone().unwrap_or_else(|| "HEAD~1".to_string());
+
+    // Materialize the OLD compiler tree in a throwaway worktree.
+    let old_wt = std::env::temp_dir().join(format!("evt_diff_old.{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&old_wt);
+    let add = Command::new("git")
+        .current_dir(&opts.root)
+        .args(["worktree", "add", "--detach"])
+        .arg(&old_wt)
+        .arg(&oldref)
+        .output();
+    match add {
+        Ok(o) if o.status.success() => {}
+        Ok(o) => {
+            eprintln!(
+                "evt diff: git worktree add {oldref} failed: {}",
+                String::from_utf8_lossy(&o.stderr)
+            );
+            return 1;
+        }
+        Err(e) => {
+            eprintln!("evt diff: git worktree exec: {e}");
+            return 1;
+        }
+    }
+    let cleanup = |wt: &Path| {
+        let _ = Command::new("git")
+            .current_dir(&opts.root)
+            .args(["worktree", "remove", "--force"])
+            .arg(wt)
+            .output();
+        let _ = std::fs::remove_dir_all(wt);
+    };
+
+    eprintln!("# building old stage1 ({oldref}) …");
+    let old_s1 = std::env::temp_dir().join(format!("evt_diff_old_stage1.{}.smt2", std::process::id()));
+    if let Err(e) = equiv::build_stage1(&t, &old_wt, &old_s1) {
+        eprintln!("evt diff: old stage1: {e}");
+        cleanup(&old_wt);
+        return 1;
+    }
+    eprintln!("# building new stage1 (current) …");
+    let new_s1 = std::env::temp_dir().join(format!("evt_diff_new_stage1.{}.smt2", std::process::id()));
+    if let Err(e) = equiv::build_stage1(&t, &opts.root, &new_s1) {
+        eprintln!("evt diff: new stage1: {e}");
+        cleanup(&old_wt);
+        return 1;
+    }
+
+    // Fixture set: a single file, or every *.ev under --sample.
+    let fixtures: Vec<PathBuf> = if let Some(dir) = &opts.sample {
+        let mut v = Vec::new();
+        walk(&resolve_ev(&opts.root, dir), &mut v);
+        v.sort();
+        v
+    } else if let Some(f) = opts.positional.first() {
+        vec![resolve_ev(&opts.root, f)]
+    } else {
+        eprintln!("evt diff: need <fixture.ev> or --sample <dir>");
+        cleanup(&old_wt);
+        let _ = std::fs::remove_file(&old_s1);
+        let _ = std::fs::remove_file(&new_s1);
+        return 2;
+    };
+
+    let claim = derive_claim(&opts);
+    let mut diverged = 0usize;
+    let mut checked = 0usize;
+    let mut errored = 0usize;
+    for fx in &fixtures {
+        let c = claim
+            .clone()
+            .or_else(|| fixture_claim(fx))
+            .unwrap_or_else(|| "main".to_string());
+        let old_out = equiv::c2_compile(&t, &old_s1, fx, &c);
+        let new_out = equiv::c2_compile(&t, &new_s1, fx, &c);
+        match (old_out, new_out) {
+            (Ok(o), Ok(n)) => {
+                checked += 1;
+                if o != n {
+                    diverged += 1;
+                    println!("DIVERGE\t{}\t(claim {c})", rel(&opts.root, fx).display());
+                    print_first_diff(&o, &n);
+                } else if opts.sample.is_none() {
+                    println!("AGREE\t{}\t(claim {c})", rel(&opts.root, fx).display());
+                }
+            }
+            (a, b) => {
+                errored += 1;
+                eprintln!(
+                    "ERROR\t{}\told={} new={}",
+                    rel(&opts.root, fx).display(),
+                    a.err().unwrap_or_default(),
+                    b.err().unwrap_or_default()
+                );
+            }
+        }
+    }
+
+    cleanup(&old_wt);
+    let _ = std::fs::remove_file(&old_s1);
+    let _ = std::fs::remove_file(&new_s1);
+    eprintln!(
+        "# {checked} compared, {diverged} diverged, {errored} errored (old={oldref})"
+    );
+    if diverged > 0 {
+        4
+    } else {
+        0
+    }
+}
+
+fn derive_claim(opts: &Opts) -> Option<String> {
+    // In --sample mode positional[0] is unused; with a single fixture,
+    // positional[1] (if present) is an explicit claim override.
+    if opts.sample.is_some() {
+        return None;
+    }
+    opts.positional.get(1).cloned()
+}
+
+/// Parse `-- entry: <claim>` from a fixture header; fall back to `main`.
+fn fixture_claim(fx: &Path) -> Option<String> {
+    let src = std::fs::read_to_string(fx).ok()?;
+    for line in src.lines().take(40) {
+        let l = line.trim_start();
+        if let Some(rest) = l.strip_prefix("-- entry:") {
+            let c = rest.trim();
+            if !c.is_empty() {
+                return Some(c.to_string());
+            }
+        }
+    }
+    None
+}
+
+fn print_first_diff(old: &str, new: &str) {
+    let ol: Vec<&str> = old.lines().collect();
+    let nl: Vec<&str> = new.lines().collect();
+    let n = ol.len().max(nl.len());
+    for i in 0..n {
+        let o = ol.get(i).copied().unwrap_or("<none>");
+        let nw = nl.get(i).copied().unwrap_or("<none>");
+        if o != nw {
+            println!("  first diff at line {}:", i + 1);
+            println!("  - old: {o}");
+            println!("  + new: {nw}");
+            return;
+        }
     }
 }

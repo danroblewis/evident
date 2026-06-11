@@ -69,6 +69,8 @@ repo-root discovery.
 | `evt symbols [file.ev]` | Symbol outline (one file, or the whole tree) with member variables nested under their schema. |
 | `evt families [--min N]` | The two hand-run refactoring probes, productized: **numbered** families (`xN` siblings → candidate `Seq`), **prefix** families (`<word>_` ≥N decls → candidate record/namespace), and **cons-peel** residue (`after`/`next`/`tail`/`*_rest` — the "skip a bank" list-walk clusters). |
 | `evt collisions [entry] [claim]` | The **authoritative** collision oracle: flatten → `evident-oracle emit driver_main` → parse top-level `declare-fun` names → report duplicates. Defaults `compiler2/driver.ev` / `driver_main`. Needs `evident-oracle` on `/usr/local/bin` (override with `EVIDENT_ORACLE`). |
+| `evt sat <file.ev> <claim>` | **Satisfiability** check. flatten → `evident-oracle emit` → Z3 `(check-sat)`. Reports `sat`/`unsat`/`unknown` (exit 0/1/2). `--model` prints a witness on SAT. Use after adding a type invariant to confirm the claim is still satisfiable — catches silent **over-constraining** (a refactor that turns the claim UNSAT). Needs `z3` (override `EVIDENT_Z3`). |
+| `evt diff <fixture.ev> [--old <ref>]` | Concrete **old-vs-new behavior diff**, no Z3, no var-mapping. Builds stage1 from BOTH the current `compiler2/` and the `--old` tree (default `HEAD~1`, via a throwaway worktree), compiles the fixture through each under the kernel, and diffs stdout+exit. Auto-derives "expected" from the old version. `--sample <dir>` diffs every `*.ev` under a dir and reports only divergences (exit 4 if any). The pragmatic everyday check. |
 
 ### Examples
 
@@ -78,7 +80,77 @@ evt refs enum_hold
 evt rename enum_hold zinit_enum_hold --dry-run
 evt families --scope compiler2 --min 4
 evt collisions                      # declare-fun names of emitted driver_main
+evt sat compiler2/driver.ev driver_main      # is the compiler still satisfiable?
+evt sat mytype_test.ev MyType --model        # witness on SAT
+evt diff tests/compiler2_units/perf/relational_counter.ev --old HEAD~1
+evt diff x.ev --sample tests/compiler2_units/perf    # divergences only
 ```
+
+## Semantic verification: what it proves vs. what it assumes
+
+Evident's distinguishing property is that **a program compiles to an SMT
+formula** (`evident-oracle emit` produces the entire tick-constraint as one
+`.smt2`). That makes Z3 a verification engine for *edits*, not just a solver
+for *programs* — which is why `sat`/`diff` and the translation-validation
+experiment below exist. Be honest about the guarantees:
+
+- **`evt sat` proves**: the emitted body of `<claim>` is satisfiable (`sat`) or
+  not (`unsat`). An `unsat` after a refactor is a real bug signal — a new
+  invariant or constraint made the claim impossible. It does **not** prove the
+  claim is *correct*, only *consistent*. (`unknown` means Z3 gave up — treat as
+  inconclusive.)
+- **`evt diff` proves**: for the *specific fixtures you run*, the new compiler
+  and the `--old` compiler produce *identical* output. It is concrete
+  (input-by-input), needs no variable mapping, and is the everyday gate. It
+  does **not** prove agreement on inputs you didn't run — it is testing, just
+  auto-derived and old-vs-new. It complements conformance: conformance checks
+  output against a *fixed expected*, `diff` checks output against the *previous
+  version* (catches regressions even where no expected exists).
+
+### Translation validation (the `tools/equiv-experiment/` prototype)
+
+The experiment under `tools/equiv-experiment/` asks the research-grade
+question: can Z3 *prove* `stage1_old ≡ stage1_new` for **all** inputs with one
+query? Construction (`build-equiv-query`):
+
+- shared single-tick **inputs** (`is_first_tick`, `last_results`/`__len`, every
+  carried `_X` state dual) are equated across the two emits via a mapping **φ**
+  (auto-derived by `build-phi.sh` from the declare-fun set diff);
+- both compiler bodies are asserted, the NEW side's consts renamed `N!…` so the
+  namespaces don't accidentally unify;
+- a final assert demands some **observable** output differ (`effects__len`, or
+  an in-bounds `effects[k]`, or a next-state field) — `effects` is compared
+  element-wise up to `max-effects`, **not** whole-array, because indices past
+  the length are unconstrained and a whole-array `≠` falsely "diverges" even on
+  identical programs (verified: the naive form returns `sat` for a program vs.
+  itself; the observable form returns `unsat`);
+- `(check-sat)`: **UNSAT ⇒ equivalent under φ; SAT ⇒ a divergence witness.**
+
+**What this proves and assumes — read before trusting it:**
+
+- It is **single-tick OUTPUT equivalence under φ**. That is *necessary but not
+  sufficient* for full behavioral equivalence. Full soundness needs the
+  **inductive** form: assume `_state` related by φ ⇒ prove (outputs equal ∧
+  *next-state* related by φ). The single-tick query proves the base shape
+  (outputs + next-state agree for arbitrary related inputs); promoting it to a
+  true induction requires also asserting the next-state relation as the
+  inductive hypothesis on the `_X` duals and discharging it — sketched in
+  `tools/equiv-experiment/INDUCTIVE.md`.
+- It is only meaningful if **φ is correct**. `build-phi.sh` derives φ from the
+  actual emitted const names and **refuses silently-wrong φ**: it requires the
+  old-only and new-only declare-fun sets to be the same size and to map under a
+  single rewrite rule, printing a loud warning otherwise. A wrong φ can make a
+  truly-divergent pair look UNSAT (false "equivalent") — so φ derivation is the
+  trust root.
+- It does **not** replace conformance. Conformance executes the compiler on
+  real fixtures end-to-end (effects dispatched, multi-tick); the equivalence
+  query reasons about one tick of the constraint formula. Use it as a *fast
+  pre-filter* for pure rename/restructure commits ("did this edit change *any*
+  observable output for *any* input?"), then let conformance confirm the
+  behavior it actually exercises.
+
+See `tools/equiv-experiment/VERDICT.md` for the measured timing/feasibility
+verdict (z3 wall + rlimit-count on real `stage1` emits).
 
 ## Evident semantics the tools respect (why naive grep/sed fails)
 
