@@ -19,3 +19,4 @@ scripts/coordinator-results/
 
 # claudebot config (contains Discord channel binding)
 .claudebot
+kernel/target
