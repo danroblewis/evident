@@ -1,0 +1,17 @@
+-- Nested range-∀ (operator ruling 2026-06-11: blessed grammar). A Seq of
+-- records each holding a Seq(Int); a 2D write `∀ k : ∀ j : grid[k].cells[j]
+-- = k*10 + j` fills it, then grid[1].cells[2] is read back.
+-- 1*10 + 2 = 12.
+-- entry: main
+-- expect: exit = 12
+import "stdlib/kernel.ev"
+
+type Row(cells ∈ Seq(Int))
+
+fsm main
+    grid ∈ Seq(Row)
+    #grid ≤ 2
+    ∀ r ∈ grid : #r.cells ≤ 3
+    ∀ k ∈ {0..1} : ∀ j ∈ {0..2} : grid[k].cells[j] = k * 10 + j
+    out ∈ Int = grid[1].cells[2]
+    effects ∈ Seq(Effect) = ((¬is_first_tick) ? ⟨Exit(out)⟩ : ⟨LibCall("libc", "getpid", ⟨⟩)⟩)
