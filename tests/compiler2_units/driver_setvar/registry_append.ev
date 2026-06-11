@@ -1,7 +1,7 @@
 -- DriverSetVar isolation — Set(T) registry append + name capture.
--- decl_line held under classify_now (not at line end) so setdecl
--- fires and the ≤2-entry Set registry appends: collection_count climbs 0→1→2
--- (capped), vars[0].name captures line_dname = "myset". Exit at collection_count = 2.
+-- decl_line held under classify_now (not at line end) so is_setdecl
+-- fires and the ≤2-entry Set registry appends: set_registry_count climbs 0→1→2
+-- (capped), vars[0].name captures line_dname = "myset". Exit at set_registry_count = 2.
 --
 -- entry: main
 -- expect: stdout = "myset"
@@ -42,8 +42,8 @@ fsm main
     intset_line = (is_first_tick ? false : _intset_line)
     kind_slot ∈ Int
     kind_slot = (is_first_tick ? 0 : _kind_slot)
-    t0_ident ∈ Bool
-    t0_ident = (is_first_tick ? false : _t0_ident)
+    is_ident_head ∈ Bool
+    is_ident_head = (is_first_tick ? false : _is_ident_head)
     line_t1 ∈ Token
     line_t1 = (is_first_tick ? EofTok : _line_t1)
     line_t2 ∈ Token
@@ -74,12 +74,12 @@ fsm main
     result = (is_first_tick ? EInt(0) : _result)
     rec_pad31 ∈ String
     rec_pad31 = (is_first_tick ? "" : _rec_pad31)
-    census_var_name ∈ String
-    census_var_name = (is_first_tick ? "" : _census_var_name)
-    census_var_slot ∈ Int
-    census_var_slot = (is_first_tick ? 0 : _census_var_slot)
-    tok_ready ∈ Bool
-    tok_ready = (is_first_tick ? false : _tok_ready)
+    registered_seq_name ∈ String
+    registered_seq_name = (is_first_tick ? "" : _registered_seq_name)
+    registered_seq_kind ∈ Int
+    registered_seq_kind = (is_first_tick ? 0 : _registered_seq_kind)
+    can_consume ∈ Bool
+    can_consume = (is_first_tick ? false : _can_consume)
     tok0 ∈ Token
     tok0 = (is_first_tick ? EofTok : _tok0)
     tok5 ∈ Token
@@ -89,7 +89,7 @@ fsm main
     tok7 ∈ Token
     tok7 = (is_first_tick ? EofTok : _tok7)
     ..DriverSetVar
-    done ∈ Bool = (collection_count = 2)
+    done ∈ Bool = (set_registry_count = 2)
     effects ∈ Seq(Effect) = (done
         ? ⟨LibCall("libc", "puts", ⟨ArgStr(vars[0].name)⟩), Exit(0)⟩
         : ⟨LibCall("libc", "getpid", ⟨⟩)⟩)

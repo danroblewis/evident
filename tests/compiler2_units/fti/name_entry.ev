@@ -1,4 +1,4 @@
--- FtiNameEntry isolation test: a "|name<pad>" row is always 32 bytes —
+-- FtiNameEntry isolation test: a "|name<pad>" elem_record is always 32 bytes —
 -- "|" + the name padded to 31 chars. tick 0 checks the length (32);
 -- tick 1 checks the name text survives after the "|".
 --

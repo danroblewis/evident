@@ -266,7 +266,7 @@ claim EffectCtorArity(name ∈ String, n ∈ Int, known ∈ Bool)
     known = (is_readline ∨ is_readfile ∨ is_writefile ∨ is_libcall ∨ is_exit)
     n = (is_readline ? 0 : is_readfile ? 1 : is_writefile ? 2 : is_libcall ? 3 : is_exit ? 1 : 0)
 
--- ── Probe (oracle-compile smoke; pure data, single tick) ────────────────
+-- ── Probe (oracle-compile smoke; is_pure_push data, single tick) ────────────────
 claim translate2_ctor_probe
     variant_decl_node ∈ EnumVariantDecl = EVDeclP("B", EVFCons(EVFType("Int"), EVFNil))
     field_count_check ∈ Int

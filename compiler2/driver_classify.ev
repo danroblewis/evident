@@ -5,7 +5,7 @@
 --           (_frame_depth, _scope_prefix, the bind-tape window
 --           _binds/_bind_base/_bind_top, _join_hdr), the record registry
 --           (recs .name / .sort), the enum-table name column (decl_names)
---           + the seq-var carries (_census_registered, _census_var_name), and the sibling
+--           + the seq-var carries (_is_seq_registered, _registered_seq_name), and the sibling
 --           sub-walks' per-line enter signals (efflit_*/arm_*/seqlit_*/call_arg_slot/
 --           pun/qrange_close/element) that fold into enter_pratt. Wide by nature: this
 --           is the central dispatch brain — it inspects the whole window
@@ -13,7 +13,7 @@
 --           §6.4).
 -- PRODUCES: the per-line classification flags (is_mem/pinned/bounded/
 --           effects_line/seqmem_line/match_line/is_comp_line/is_member_line/
---           strin_line/…), the line-end + frame-pop decisions
+--           contains_line/…), the line-end + frame-pop decisions
 --           (line_end/claim_end/frame_pop), every dispatch enter signal
 --           (enter_pratt/_el/_set/_match/_mn/_sl/_si/…), the Pratt
 --           entry cons/kind (enter_consume/enter_kind), and the
@@ -37,8 +37,8 @@ fsm DriverClassify
     line_t3 ∈ Token = tok3
     line_t4 ∈ Token = tok4
 
-    t0_ident ∈ Bool = (line_t0 matches Ident(_))
-    t0_toplevel ∈ Bool = ((line_t0 matches KwEnum) ∨ (line_t0 matches KwClaim)
+    is_ident_head ∈ Bool = (line_t0 matches Ident(_))
+    is_toplevel_kw ∈ Bool = ((line_t0 matches KwEnum) ∨ (line_t0 matches KwClaim)
         ∨ (line_t0 matches KwType) ∨ (line_t0 matches KwFsm) ∨ (line_t0 matches KwSchema))
     line_name ∈ String = match line_t0
         Ident(s) ⇒ s
@@ -47,7 +47,7 @@ fsm DriverClassify
     is_mem ∈ Bool = (line_t1 matches OpIn)
     is_notmem ∈ Bool = (line_t1 matches OpNotIn)
     is_carry ∈ Bool = (substr(line_name, 0, 1) = "_")
-    multiname_line ∈ Bool = (t0_ident ∧ (line_t1 matches Comma)
+    multiname_line ∈ Bool = (is_ident_head ∧ (line_t1 matches Comma)
         ∧ (line_t2 matches Ident(_)))
     effects_line ∈ Bool = (is_mem ∧ (line_name = "effects"))
     line_ty_name ∈ String = match line_t2
@@ -78,8 +78,8 @@ fsm DriverClassify
     decl_line ∈ Bool = (is_mem ∧ (¬effects_line)
         ∧ (line_ty_name = "Set") ∧ (line_t3 matches LParen) ∧ (kind_slot ≥ 0)
         ∧ (tok5 matches RParen))
-    seqlit_line ∈ Bool = (t0_ident ∧ (line_t1 matches Eq)
-        ∧ (line_t2 matches OpSeqOpen) ∧ _census_registered ∧ (line_name = _census_var_name))
+    seqlit_line ∈ Bool = (is_ident_head ∧ (line_t1 matches Eq)
+        ∧ (line_t2 matches OpSeqOpen) ∧ _is_seq_registered ∧ (line_name = _registered_seq_name))
     effects_cond ∈ Bool = (effects_line ∧ (tok7 matches LParen))
     pinned ∈ Bool = (is_mem ∧ (¬effects_line) ∧ (line_t3 matches Eq))
     intset_line ∈ Bool = ((is_mem ∨ is_notmem) ∧ (line_t2 matches LBrace))
@@ -93,38 +93,38 @@ fsm DriverClassify
     bound_ok ∈ Bool
     C2AtomE(t ↦ line_t4, e ↦ bound_expr, ok ↦ bound_ok)
 
-    can_expr ∈ Bool = (t0_ident ∨ (line_t0 matches IntLit(_))
+    can_expr ∈ Bool = (is_ident_head ∨ (line_t0 matches IntLit(_))
         ∨ (line_t0 matches OpNot) ∨ (line_t0 matches LParen)
         ∨ (line_t0 matches KwTrue) ∨ (line_t0 matches KwFalse)
         ∨ (line_t0 matches Hash))
 
-    dotdot_shape ∈ Bool = ((line_t0 matches Dot) ∧ (line_t1 matches Dot)
+    is_lift_shape ∈ Bool = ((line_t0 matches Dot) ∧ (line_t1 matches Dot)
         ∧ (line_t2 matches Ident(_)))
-    dotdot_name ∈ String = match line_t2
+    lift_name ∈ String = match line_t2
         Ident(s) ⇒ s
         _ ⇒ ""
-    composed_name ∈ String = (dotdot_shape ? dotdot_name : line_name)
-    comp_lookup_key ∈ String
-    FtiNameEntry(name ↦ composed_name, entry ↦ comp_lookup_key)
-    comp_position ∈ Int = index_of(claimindex_names, comp_lookup_key, 0)
-    is_comp_found ∈ Bool = ((comp_position ≥ 0) ∧ (composed_name ≠ ""))
-    dotdot_head ∈ Bool = (dotdot_shape ∧ is_comp_found ∧ (_frame_depth < 8))
+    composed_name ∈ String = (is_lift_shape ? lift_name : line_name)
+    composed_key ∈ String
+    FtiNameEntry(name ↦ composed_name, entry ↦ composed_key)
+    composed_index ∈ Int = index_of(claimindex_names, composed_key, 0)
+    is_comp_found ∈ Bool = ((composed_index ≥ 0) ∧ (composed_name ≠ ""))
+    is_lift_head ∈ Bool = (is_lift_shape ∧ is_comp_found ∧ (_frame_depth < 8))
 
-    line_end ∈ Bool = (line_at_eof ∨ t0_toplevel
-        ∨ ((¬can_expr) ∧ (¬dotdot_head) ∧ (¬strin_line)
+    line_end ∈ Bool = (line_at_eof ∨ is_toplevel_kw
+        ∨ ((¬can_expr) ∧ (¬is_lift_head) ∧ (¬contains_line)
             ∧ (¬is_quant_line)))
     claim_end ∈ Bool = (classify_now ∧ line_end ∧ (_frame_depth = 0))
     frame_pop ∈ Bool = (classify_now ∧ line_end ∧ (_frame_depth > 0))
 
-    is_comp_call ∈ Bool = (classify_now ∧ (¬line_end) ∧ t0_ident
+    is_comp_call ∈ Bool = (classify_now ∧ (¬line_end) ∧ is_ident_head
         ∧ (line_t1 matches LParen) ∧ (line_t3 matches OpMapsto)
         ∧ is_comp_found ∧ (_frame_depth < 8))
-    is_bare_comp ∈ Bool = (classify_now ∧ (¬line_end) ∧ t0_ident
+    is_bare_comp ∈ Bool = (classify_now ∧ (¬line_end) ∧ is_ident_head
         ∧ is_comp_found ∧ (¬(line_t1 matches LParen))
         ∧ (¬is_mem) ∧ (¬is_notmem) ∧ (¬(line_t1 matches Eq))
         ∧ (¬(line_t1 matches Comma)) ∧ (_frame_depth < 8))
-    dotdot ∈ Bool = (classify_now ∧ dotdot_head)
-    is_comp_line ∈ Bool = (is_comp_call ∨ is_bare_comp ∨ dotdot)
+    is_lift ∈ Bool = (classify_now ∧ is_lift_head)
+    is_comp_line ∈ Bool = (is_comp_call ∨ is_bare_comp ∨ is_lift)
     enter_efflit ∈ Bool = (classify_now ∧ (¬line_end) ∧ effects_line)
     intset ∈ Bool = (classify_now ∧ (¬line_end) ∧ intset_line)
     enter_match ∈ Bool = (classify_now ∧ (¬line_end)
@@ -137,17 +137,17 @@ fsm DriverClassify
     pratt_line ∈ Bool = (classify_now ∧ (¬line_end)
         ∧ (¬effects_line) ∧ (¬intset_line) ∧ (¬match_line)
         ∧ (¬seqmem_line) ∧ (¬seqlit_line) ∧ (¬multiname_line)
-        ∧ (¬is_comp_line) ∧ (¬strin_line) ∧ (¬is_member_line)
-        ∧ (¬quant_range_line) ∧ (¬(over_seq ∧ _census_registered)) ∧ (¬positional_line)
-        ∧ (¬setlit_line) ∧ (¬qset)
+        ∧ (¬is_comp_line) ∧ (¬contains_line) ∧ (¬is_member_line)
+        ∧ (¬quant_range_line) ∧ (¬(over_seq ∧ _is_seq_registered)) ∧ (¬positional_line)
+        ∧ (¬is_setlit_line) ∧ (¬is_setquery)
         ∧ (pinned ∨ (¬is_mem)))
     enter_pratt ∈ Bool = (pratt_line ∨ exit_enter
-        ∨ is_guard_enter ∨ body_enter ∨ elem_enter ∨ call_arg_slot
+        ∨ is_guard_enter ∨ body_enter ∨ enter_seq_elem ∨ call_arg_slot
         ∨ pun ∨ qrange_close ∨ qseq ∨ element)
     enter_consume ∈ Int = (exit_enter ? 2
         : is_guard_enter ? 0
         : body_enter ? (close_take ? 3 : 2)
-        : elem_enter ? 0
+        : enter_seq_elem ? 0
         : call_arg_slot ? 2
         : pun ? 0
         : qrange_close ? 2
@@ -157,7 +157,7 @@ fsm DriverClassify
     enter_kind ∈ Int = (exit_enter ? 3
         : is_guard_enter ? 6
         : body_enter ? 4
-        : elem_enter ? 7
+        : enter_seq_elem ? 7
         : call_arg_slot ? 8
         : pun ? 8
         : qrange_close ? 9
@@ -180,38 +180,38 @@ fsm DriverClassify
     line_dname ∈ String = scoped_name
     scoped_key ∈ String
     FtiNameEntry(name ↦ scoped_name, entry ↦ scoped_key)
-    name_dup ∈ Bool = (index_of(symbol_index, scoped_key, 0) ≥ 0)
-    name_bound ∈ Bool = ((line_name ≠ "") ∧ (∃ i ∈ {0..11} : ((i ≥ _bind_base) ∧ (i < _bind_top) ∧ (_binds[i].name = line_name))))
+    is_redeclared ∈ Bool = (index_of(symbol_index, scoped_key, 0) ≥ 0)
+    is_tape_bound ∈ Bool = ((line_name ≠ "") ∧ (∃ i ∈ {0..11} : ((i ≥ _bind_base) ∧ (i < _bind_top) ∧ (_binds[i].name = line_name))))
     bare_key ∈ String
     FtiNameEntry(name ↦ line_name, entry ↦ bare_key)
     outer ∈ Bool = ((line_name ≠ "") ∧ (substr(_scope_prefix, 0, 3) = "__c")
         ∧ (index_of(symbol_index, bare_key, 0) ≥ 0)
         ∧ ((_join_hdr = "*") ∨ (index_of(_join_hdr, "|" ++ line_name ++ "|", 0) ≥ 0)))
-    no_decl ∈ Bool = (name_bound ∨ name_dup ∨ outer)
-    effective_name ∈ String = ((name_bound ∨ outer) ? line_name : line_dname)
-    mem_item ∈ C2Item = (no_decl ? C2Process(EIdent(effective_name))
+    no_decl ∈ Bool = (is_tape_bound ∨ is_redeclared ∨ outer)
+    effective_name ∈ String = ((is_tape_bound ∨ outer) ? line_name : line_dname)
+    member_decl ∈ C2Item = (no_decl ? C2Process(EIdent(effective_name))
         : C2DeclConst(line_dname, line_sort))
-    mem_items ∈ C2Items = C2ICons(mem_item, natbound_tail_segment)
+    member_decls ∈ C2Items = C2ICons(member_decl, natbound_tail_segment)
 
     -- ── G1: infix contains — `"lit" ∈ name` → (str.contains name "lit")
-    strin_line ∈ Bool = ((line_t0 matches StringLit(_)) ∧ is_mem
+    contains_line ∈ Bool = ((line_t0 matches StringLit(_)) ∧ is_mem
         ∧ (line_t2 matches Ident(_)))
-    strin_lit ∈ String = match line_t0
+    contains_lit ∈ String = match line_t0
         StringLit(s) ⇒ s
         _ ⇒ ""
-    strin_items ∈ C2Items = C2ICons(C2Process(EIdent(line_ty_name)),
-        C2ICons(C2Process(EStr(strin_lit)),
+    contains_items ∈ C2Items = C2ICons(C2Process(EIdent(line_ty_name)),
+        C2ICons(C2Process(EStr(contains_lit)),
         C2ICons(C2StrOp("contains", 2),
         C2ICons(C2AssertTop, C2INil))))
-    strin ∈ Bool = (classify_now ∧ (¬line_end) ∧ strin_line)
+    enter_contains ∈ Bool = (classify_now ∧ (¬line_end) ∧ contains_line)
 
-    membercheck_key ∈ String
-    FtiNameEntry(name ↦ line_ty_name, entry ↦ membercheck_key)
-    membercheck_position ∈ Int = index_of(claimindex_names, membercheck_key, 0)
+    typecheck_key ∈ String
+    FtiNameEntry(name ↦ line_ty_name, entry ↦ typecheck_key)
+    typecheck_index ∈ Int = index_of(claimindex_names, typecheck_key, 0)
     is_typed_member ∈ Bool = (is_mem ∧ (¬effects_line) ∧ (line_sort = 0)
         ∧ (line_ty_name ≠ "Int") ∧ (line_ty_name ≠ "Nat")
         ∧ (line_ty_name ≠ "Seq") ∧ (line_ty_name ≠ "")
-        ∧ (¬strin_line) ∧ (membercheck_position ≥ 0))
+        ∧ (¬contains_line) ∧ (typecheck_index ≥ 0))
     is_member_call ∈ Bool = (classify_now ∧ (¬line_end) ∧ is_typed_member
         ∧ (line_t3 matches LParen) ∧ (line_t4 matches Ident(_))
         ∧ (tok5 matches OpMapsto) ∧ (_frame_depth < 8))
@@ -221,4 +221,4 @@ fsm DriverClassify
     is_member_line ∈ Bool = (is_member_call ∨ is_bare_member)
     type_frame ∈ Bool = ((#_scope_prefix > 0)
         ∧ (substr(_scope_prefix, #_scope_prefix - 1, 1) = "."))
-    callee_pos ∈ Int = (is_member_line ? membercheck_position : comp_position)
+    callee_pos ∈ Int = (is_member_line ? typecheck_index : composed_index)

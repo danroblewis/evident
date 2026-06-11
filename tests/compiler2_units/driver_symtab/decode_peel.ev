@@ -1,6 +1,6 @@
 -- DriverSymtab isolation — handle-stack peel + work-item discriminator.
 -- Handle stack pinned to ⟨99, 7⟩, work items to one C2DeclConst("x", 0).
--- Must peel h_top = 99, h_2nd = 7 and decode is_decl_item = true.
+-- Must peel topmost_handle = 99, second_handle = 7 and decode is_decl_item = true.
 -- verdict = 1*(top=99) + 2*(2nd=7) + 4*is_decl_item = 7.
 --
 -- entry: main
@@ -35,12 +35,12 @@ fsm main
     parse_mode = (is_first_tick ? 0 : _parse_mode)
     pinning ∈ Bool
     pinning = (is_first_tick ? false : _pinning)
-    tok_ready ∈ Bool
-    tok_ready = (is_first_tick ? false : _tok_ready)
+    can_consume ∈ Bool
+    can_consume = (is_first_tick ? false : _can_consume)
     symtab_buffer ∈ FtiBuffer
     symtab_buffer.base = (is_first_tick ? 0 : _symtab_buffer.base)
     ..DriverSymtab
-    verdict ∈ Int = ((h_top = 99 ? 1 : 0) + (h_2nd = 7 ? 2 : 0)
+    verdict ∈ Int = ((topmost_handle = 99 ? 1 : 0) + (second_handle = 7 ? 2 : 0)
         + (is_decl_item ? 4 : 0))
     v_msg ∈ String = str_from_int(verdict)
     effects ∈ Seq(Effect) = ((¬is_first_tick)

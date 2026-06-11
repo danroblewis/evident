@@ -20,7 +20,7 @@ type FtiBuffer(base ∈ Int, count ∈ Int, cap ∈ Int)
     0 ≤ count ≤ cap
 
 -- ── Named FTI buffer append: cursor + parallel name registry ──────
--- The shared "append a named row" step behind every FTI buffer with a
+-- The shared "append a named elem_record" step behind every FTI buffer with a
 -- companion name string (the symbol table's `symbol_index`, the claim
 -- index's `claimindex_names`).
 claim FtiNamedAppend(first ∈ Bool, add ∈ Bool, prev_count ∈ Int,
@@ -29,9 +29,9 @@ claim FtiNamedAppend(first ∈ Bool, add ∈ Bool, prev_count ∈ Int,
     count = (first ? init_count : (add ? prev_count + 1 : prev_count))
     names = (first ? seed_names : (add ? prev_names ++ entry : prev_names))
 
--- ── FTI name-registry entry: a fixed-width 32-byte "|name<pad>" row ─
+-- ── FTI name-registry entry: a fixed-width 32-byte "|name<pad>" elem_record ─
 -- Every name registry stores fixed-width rows: a "|" delimiter then the
--- name padded/truncated to 31 chars, so row N lives at a known offset.
+-- name padded/truncated to 31 chars, so elem_record N lives at a known offset.
 claim FtiNameEntry(name ∈ String, entry ∈ String)
     entry = "|" ++ substr(name ++ "                               ", 0, 31)
 
@@ -95,13 +95,13 @@ type RecField(name ∈ String, typename ∈ String, kidx ∈ Int)
     -- (`typename`, not `type`: `type` is a reserved keyword, unusable as `.type`.)
     0 - 1 ≤ kidx ≤ 2
 
--- One row of the user-enum VALUE table: a nullary variant's name and
+-- One elem_record of the user-enum VALUE table: a nullary variant's name and
 -- the Z3 handle of its constant. Used as `values ∈ Seq(EnumVariantVal)` with
 -- `#values ≤ 160` — the bounded-Seq lowering (scripts/passes/lower-bounded-seq.sh)
 -- flattens it to scalars pre-oracle, so the oracle never sees the Seq.
 type EnumVariantVal(name ∈ String, value ∈ Int)
 
--- One row of the user-enum DECL registry: variant name, ctor func_decl,
+-- One elem_record of the user-enum DECL registry: variant name, ctor func_decl,
 -- tester decl, field-0 accessor decl (field 1..5 accessors live on the
 -- acc-table tape rows). `user_variants ∈ Seq(UserEnumVariant)`,
 -- lowered by the bounded-Seq pass; rows are written by INDEX (the
@@ -114,10 +114,10 @@ type UserEnumVariant(name ∈ String, ctor ∈ Int, tester ∈ Int, acc ∈ Int)
 -- Pure per-tick except xsort (the cross-group sort capture latch).
 type EnumFieldSlot(typename ∈ String, key ∈ String, refpos ∈ Int, isref ∈ Bool, ref ∈ Int, tabpos ∈ Int, istab ∈ Bool, xsort ∈ Int, sort ∈ Int, unres ∈ Bool)
 
--- One row of the Set(T)-variable registry: var name, the element type's
--- registry slot (kidx), the packed 32-byte-row element-name string, and
+-- One elem_record of the Set(T)-variable registry: var name, the element type's
+-- registry slot (kidx), the packed 32-byte-elem_record element-name string, and
 -- the element count. `vars ∈ Seq(SetVar)`; rows written by index
--- (_collection_count / setvar_idx / _setvar_cur), so no length.
+-- (_set_registry_count / setvar_idx / _setvar_cur), so no length.
 type SetVar(name ∈ String, kidx ∈ Int, elems ∈ String, count ∈ Int)
 
 -- ── Work items: one line of claim body = one small program ────────

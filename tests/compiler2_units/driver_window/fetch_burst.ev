@@ -1,7 +1,7 @@
 -- DriverWindow isolation — lookahead-need dispatch + fetch state machine.
--- Cursor held empty (tok_cur = fetch_end = 0 ⇒ avail = 0) under parse_mode 6
--- (⇒ need = 5), so every idle tick raises fetch_go and walks fetch_mode
--- 0→1→2; each arrival at fetch_mode 2 is a completed burst. Count bursts,
+-- Cursor held empty (token_cursor = coverage_end = 0 ⇒ avail = 0) under parse_mode 6
+-- (⇒ need = 5), so every idle tick raises start_fetch and walks burst_phase
+-- 0→1→2; each arrival at burst_phase 2 is a completed burst. Count bursts,
 -- exit at 3. Pure sequencing — no __mem arena needed (the rd_* read
 -- effects are not scheduled).
 --
@@ -19,15 +19,15 @@ fsm main
     parse = (is_first_tick ? true : _parse)
     parse_mode ∈ Int
     parse_mode = (is_first_tick ? 6 : _parse_mode)
-    -- tok_cur/fetch_end are declared by DriverWindow but their transitions live in
+    -- token_cursor/coverage_end are declared by DriverWindow but their transitions live in
     -- driver_main's cursor region (absent here), so main pins them as held
     -- carries.
-    tok_cur ∈ Int
-    tok_cur = (is_first_tick ? 0 : _tok_cur)
-    fetch_end ∈ Int
-    fetch_end = (is_first_tick ? 0 : _fetch_end)
-    win_toks ∈ TokenList
-    win_toks = (is_first_tick ? TLNil : _win_toks)
+    token_cursor ∈ Int
+    token_cursor = (is_first_tick ? 0 : _token_cursor)
+    coverage_end ∈ Int
+    coverage_end = (is_first_tick ? 0 : _coverage_end)
+    decoded_window ∈ TokenList
+    decoded_window = (is_first_tick ? TLNil : _decoded_window)
     tok_buf ∈ FtiBuffer
     tok_buf.base = (is_first_tick ? 0 : _tok_buf.base)
     tok_buf.count = (is_first_tick ? 0 : _tok_buf.count)
@@ -47,7 +47,7 @@ fsm main
     vfield_st = (is_first_tick ? 0 : _vfield_st)
     ..DriverWindow
     bursts ∈ Int
-    bursts = (is_first_tick ? 0 : (_fetch_mode = 2 ? _bursts + 1 : _bursts))
+    bursts = (is_first_tick ? 0 : (_burst_phase = 2 ? _bursts + 1 : _bursts))
     b_msg ∈ String = str_from_int(bursts)
     effects ∈ Seq(Effect) = (bursts = 3
         ? ⟨LibCall("libc", "puts", ⟨ArgStr(b_msg)⟩), Exit(0)⟩

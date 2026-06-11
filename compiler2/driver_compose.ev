@@ -2,8 +2,8 @@
 -- CONSUMES: the classifier's composition/type-splice decision flags
 --           (is_comp_call/bare/dd/line, is_member_call/bare/line, line_name,
 --           line_ty_name, callee_pos), the claim index base (claimindex_buf.base), the
---           handle-stack views (h_top/2nd/.. + tail1.. + stack_in),
---           is_intresult_capture, the parse gate (parse, _parse_mode, tok_ready,
+--           handle-stack views (topmost_handle/2nd/.. + tail1.. + stack_in),
+--           is_intresult_capture, the parse gate (parse, _parse_mode, can_consume,
 --           nil), the line-pop signal (frame_pop), the record
 --           registry (recs name/sort), the callee param registry walked
 --           during pskip (posbind's param_names/_param_count), the active-
@@ -92,7 +92,7 @@ fsm DriverCompose
     call_capacity ∈ Bool = (callw0 ∧ (¬_is_bare_call))
     bare_jump ∈ Bool = (callw0 ∧ _is_bare_call)
     callw1 ∈ Bool = (parse ∧ (_parse_mode = 10) ∧ (_callwalk_state = 1)
-        ∧ nil ∧ tok_ready)
+        ∧ nil ∧ can_consume)
     call_arg_slot ∈ Bool = (callw1 ∧ (tok0 matches Ident(_))
         ∧ (tok1 matches OpMapsto) ∧ (_slot_count < 6))
     pun ∈ Bool = (callw1 ∧ (tok0 matches Ident(_))
@@ -107,16 +107,16 @@ fsm DriverCompose
 
     handles ∈ Seq(Int)
     #handles ≤ 6
-    handles[0] = (_slot_count = 1 ? h_top : _slot_count = 2 ? h_2nd
-        : _slot_count = 3 ? h_3rd : _slot_count = 4 ? h_4th
-        : _slot_count = 5 ? h_5th : h_6th)
-    handles[1] = (_slot_count = 2 ? h_top : _slot_count = 3 ? h_2nd
-        : _slot_count = 4 ? h_3rd : _slot_count = 5 ? h_4th : h_5th)
-    handles[2] = (_slot_count = 3 ? h_top : _slot_count = 4 ? h_2nd
-        : _slot_count = 5 ? h_3rd : h_4th)
-    handles[3] = (_slot_count = 4 ? h_top : _slot_count = 5 ? h_2nd : h_3rd)
-    handles[4] = (_slot_count = 5 ? h_top : h_2nd)
-    handles[5] = h_top
+    handles[0] = (_slot_count = 1 ? topmost_handle : _slot_count = 2 ? second_handle
+        : _slot_count = 3 ? third_handle : _slot_count = 4 ? fourth_handle
+        : _slot_count = 5 ? fifth_handle : sixth_handle)
+    handles[1] = (_slot_count = 2 ? topmost_handle : _slot_count = 3 ? second_handle
+        : _slot_count = 4 ? third_handle : _slot_count = 5 ? fourth_handle : fifth_handle)
+    handles[2] = (_slot_count = 3 ? topmost_handle : _slot_count = 4 ? second_handle
+        : _slot_count = 5 ? third_handle : fourth_handle)
+    handles[3] = (_slot_count = 4 ? topmost_handle : _slot_count = 5 ? second_handle : third_handle)
+    handles[4] = (_slot_count = 5 ? topmost_handle : second_handle)
+    handles[5] = topmost_handle
     pop_stack ∈ C2H = (_slot_count = 1 ? tail1
         : _slot_count = 2 ? tail2
         : _slot_count = 3 ? tail3
@@ -138,10 +138,10 @@ fsm DriverCompose
 
     jump ∈ Bool = (is_call_fire ∨ bare_jump ∨ jump_fire ∨ posjump_fire)
     target_now ∈ Int = (bare_jump ? is_intresult_capture : _jump_target)
-    ret_now ∈ Int = (is_call_fire ? _tok_cur + 1 : _tok_cur)
+    ret_now ∈ Int = (is_call_fire ? _token_cursor + 1 : _token_cursor)
 
     pskip_act ∈ Bool = (parse ∧ (_parse_mode = 2) ∧ nil
-        ∧ tok_ready ∧ (_param_skip > 0))
+        ∧ can_consume ∧ (_param_skip > 0))
     check ∈ Bool = (pskip_act ∧ (_param_skip = 1))
     pskip_open ∈ Bool = (check ∧ (tok0 matches LParen))
     off ∈ Bool = (check ∧ (¬(tok0 matches LParen)))
@@ -270,12 +270,12 @@ fsm DriverCompose
         : _callwalk_state)
     is_bare_call = (is_first_tick ? false
         : (is_comp_call ∨ is_member_call) ? false
-        : (is_bare_comp ∨ dotdot ∨ is_bare_member) ? true
+        : (is_bare_comp ∨ is_lift ∨ is_bare_member) ? true
         : positional_line ? false
         : _is_bare_call)
     hide = (is_first_tick ? false
         : is_bare_comp ? true
-        : (is_comp_call ∨ dotdot ∨ is_member_line) ? false
+        : (is_comp_call ∨ is_lift ∨ is_member_line) ? false
         : positional_line ? false
         : _hide)
     is_type = (is_first_tick ? false

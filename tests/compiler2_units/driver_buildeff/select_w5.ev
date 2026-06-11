@@ -1,6 +1,6 @@
--- DriverBuildEff isolation — the ED effect-row selector.
+-- DriverBuildEff isolation — the ED effect-elem_record selector.
 -- Act 1 (ctor-field run) step 8 is the field-name/sort array-write
--- batch: wbatchf must select the wide row (wf=1, w2/w3u=0). A regression
+-- batch: wbatchf must select the wide elem_record (wf=1, w2/w3u=0). A regression
 -- in the batch selector emits the wrong number of effect writes.
 -- entry: main
 -- expect: stdout = "1/0/0"

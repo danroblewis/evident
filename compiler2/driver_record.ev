@@ -12,7 +12,7 @@
 --           "not finished" and never matches a lookup; field records are
 --           32-byte "|name<pad31>" aligned so index_of is slot-arithmetic.
 --
--- record decls → Z3 tuple sorts + accessor registry. The pure Rt* lookup
+-- record decls → Z3 tuple sorts + accessor registry. The is_pure_push Rt* lookup
 -- claims are the registry's read layer (called from the parse FSM and the
 -- RD machine); DriverRecord is the stateful RD build machine, lifted into
 -- driver_main via `..DriverRecord`.
@@ -93,7 +93,7 @@ fsm DriverRecord
     cur_sort ∈ Int = recs[rec_slot].sort
 
     start ∈ Bool = (claimindex_add ∧ (tok0 matches KwType) ∧ (_rec_count < 3))
-    rec_collecting ∈ Bool = (in_skip ∧ (¬stop) ∧ _collect_on)
+    rec_collecting ∈ Bool = (in_skip ∧ (¬skip_stop) ∧ _collect_on)
     field_name_tok ∈ String = match tok0
         Ident(s) ⇒ s
         _ ⇒ ""
@@ -143,7 +143,7 @@ fsm DriverRecord
 
     collect_on = (is_first_tick ? false
         : start ? true
-        : stop ? false
+        : skip_stop ? false
         : _collect_on)
     collect_ok = (is_first_tick ? false
         : start ? true
@@ -168,7 +168,7 @@ fsm DriverRecord
     h_fields ∈ Seq(Int)
     #h_fields ≤ 6
 
-    recdecl_go ∈ Bool = (stop ∧ _collect_on ∧ _collect_ok ∧ (rec_slot ≥ 0)
+    recdecl_go ∈ Bool = (skip_stop ∧ _collect_on ∧ _collect_ok ∧ (rec_slot ≥ 0)
         ∧ (cur_nf > 0))
     recdecl_prev ∈ Bool = (_parse_mode = 13)
     st_now ∈ Int = (recdecl_go ? 0

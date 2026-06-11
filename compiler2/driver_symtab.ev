@@ -1,18 +1,18 @@
 -- MODULE DriverSymtab
 -- CONSUMES: the current work-item list (work_items) + the handle stack
---           (stack_in), the parse gate (parse, _parse_mode, tok_ready),
+--           (stack_in), the parse gate (parse, _parse_mode, can_consume),
 --           the decl-context flags (in_claim, qloop_on, pinning, param_skip),
 --           the lookup-read signal (lookup_read, lookup_name), the micro-step
 --           cursor (_item_step), and the kernel last_results floor.
 -- PRODUCES: the FTI symbol table (st_cnt, symbol_index) + its append on a
 --           C2DeclConst, the saw_lastres/saw_first_tick duplicate-suppression flags,
---           the post-capture_pend handle-stack views (h_top/2nd/3rd/4th/5th/6th
+--           the post-capture_pend handle-stack views (topmost_handle/2nd/3rd/4th/5th/6th
 --           + the C2H tails), the current work-item (work_head) and its
 --           per-opcode discriminators (process/op/ite/.../recv/recd),
---           and the C2RecVal/C2RecDecl head decode (recval_name/recval_slot).
+--           and the C2RecVal/C2RecDecl head decode (recfield_name/recfield_slot).
 -- MAINTAINS: st_cnt < 8192 (a declare past the buffer end is UNSAT, not a
 --           native overrun); the 32-byte "|name<pad31>" record layout so
---           a name lookup is pure index_of arithmetic; one decl appended
+--           a name lookup is is_pure_push index_of arithmetic; one decl appended
 --           per C2DeclConst item_step-2 tick, visible to every later lookup.
 --
 -- The FTI symbol table + work-item decode layer. Lifted into driver_main
@@ -24,7 +24,7 @@ fsm DriverSymtab
     -- fixed-width 32-byte records: "|" ++ name padded to 31 with
     -- spaces. "|" never occurs inside a record (idents are
     -- alnum/underscore, padding is spaces), so every index_of match
-    -- is 32-aligned and lookup is pure arithmetic:
+    -- is 32-aligned and lookup is is_pure_push arithmetic:
     -- idx = index_of(symbol_index, key) / 32; the handle is then ONE
     -- __mem.read_long through the capture_pend=1 capture path. Names longer
     -- than 31 chars would truncate-alias (corpus max is 21).
@@ -32,7 +32,7 @@ fsm DriverSymtab
     symbol_index ∈ String
     append_symbol ∈ Bool = (processing ∧ is_decl_item ∧ (_item_step = 2))
     symtab_row ∈ String
-    FtiNameEntry(name ↦ const_name, entry ↦ symtab_row)
+    FtiNameEntry(name ↦ new_const_name, entry ↦ symtab_row)
     initial_symbols ∈ String = ("|" ++ substr("last_results                               ", 0, 31)
         ++ "|" ++ substr("is_first_tick                               ", 0, 31))
     FtiNamedAppend(first ↦ is_first_tick, add ↦ append_symbol,
@@ -54,37 +54,37 @@ fsm DriverSymtab
         : _saw_first_tick)
 
     -- handle-stack views (post capture_pend application).
-    h_top ∈ Int = match stack_in
+    topmost_handle ∈ Int = match stack_in
         C2HCons(h, _) ⇒ h
         C2HNil ⇒ 0
     tail1 ∈ C2H = match stack_in
         C2HCons(_, r) ⇒ r
         C2HNil ⇒ C2HNil
-    h_2nd ∈ Int = match tail1
+    second_handle ∈ Int = match tail1
         C2HCons(h, _) ⇒ h
         C2HNil ⇒ 0
     tail2 ∈ C2H = match tail1
         C2HCons(_, r) ⇒ r
         C2HNil ⇒ C2HNil
-    h_3rd ∈ Int = match tail2
+    third_handle ∈ Int = match tail2
         C2HCons(h, _) ⇒ h
         C2HNil ⇒ 0
     tail3 ∈ C2H = match tail2
         C2HCons(_, r) ⇒ r
         C2HNil ⇒ C2HNil
-    h_4th ∈ Int = match tail3
+    fourth_handle ∈ Int = match tail3
         C2HCons(h, _) ⇒ h
         C2HNil ⇒ 0
     tail4 ∈ C2H = match tail3
         C2HCons(_, r) ⇒ r
         C2HNil ⇒ C2HNil
-    h_5th ∈ Int = match tail4
+    fifth_handle ∈ Int = match tail4
         C2HCons(h, _) ⇒ h
         C2HNil ⇒ 0
     tail5 ∈ C2H = match tail4
         C2HCons(_, r) ⇒ r
         C2HNil ⇒ C2HNil
-    h_6th ∈ Int = match tail5
+    sixth_handle ∈ Int = match tail5
         C2HCons(h, _) ⇒ h
         C2HNil ⇒ 0
     tail6 ∈ C2H = match tail5
@@ -101,7 +101,7 @@ fsm DriverSymtab
         C2ICons(_, r) ⇒ r
         C2INil ⇒ C2INil
 
-    classify_now   ∈ Bool = (in_claim ∧ nil ∧ tok_ready
+    classify_now   ∈ Bool = (in_claim ∧ nil ∧ can_consume
         ∧ (_param_skip = 0) ∧ (¬_qloop_on) ∧ (¬_pinning))
     processing ∈ Bool = ((in_claim ∨ (parse ∧ (_parse_mode = 5))
         ∨ (parse ∧ (_parse_mode = 8)) ∨ (parse ∧ (_parse_mode = 9))
@@ -118,47 +118,47 @@ fsm DriverSymtab
     is_pineq_item   ∈ Bool = (work_head matches C2PinEq)
     is_assert_item  ∈ Bool = (work_head matches C2AssertTop)
     drop    ∈ Bool = (work_head matches C2Drop)
-    push_h   ∈ Bool = (work_head matches C2PushH(_))
+    is_pushh   ∈ Bool = (work_head matches C2PushH(_))
     app     ∈ Bool = (work_head matches C2App(_, _))
     is_seleq_item   ∈ Bool = (work_head matches C2SelectEq(_))
     is_leneq_item   ∈ Bool = (work_head matches C2LenEq(_))
     is_strop_item   ∈ Bool = (work_head matches C2StrOp(_, _))
-    chosen_handle    ∈ Bool = (work_head matches C2SelH)
-    equality_handle  ∈ Bool = (work_head matches C2SelEqH(_))
-    len_equals_handle  ∈ Bool = (work_head matches C2LenEqH(_))
+    is_selh    ∈ Bool = (work_head matches C2SelH)
+    is_seleqh  ∈ Bool = (work_head matches C2SelEqH(_))
+    is_leneqh  ∈ Bool = (work_head matches C2LenEqH(_))
     is_dup3_item    ∈ Bool = (work_head matches C2Dup3)
     is_swap_item    ∈ Bool = (work_head matches C2Swap)
     is_rot3_item    ∈ Bool = (work_head matches C2Rot3)
-    bind_scope     ∈ Bool = (work_head matches C2BindScope(_, _))
-    bind_end    ∈ Bool = (work_head matches C2BindEnd)
+    is_bindscope     ∈ Bool = (work_head matches C2BindScope(_, _))
+    is_bindend    ∈ Bool = (work_head matches C2BindEnd)
     real    ∈ Bool = (work_head matches C2Real(_, _))
     is_emptyset_item     ∈ Bool = (work_head matches C2MkEmptySet(_))
     is_setadd_item    ∈ Bool = (work_head matches C2SetAdd)
-    rec_val    ∈ Bool = (work_head matches C2RecVal(_, _))
-    rec_decl    ∈ Bool = (work_head matches C2RecDecl(_, _))
+    is_recval    ∈ Bool = (work_head matches C2RecVal(_, _))
+    is_recdecl    ∈ Bool = (work_head matches C2RecDecl(_, _))
 
-    cur_expr ∈ Expr = match work_head
+    process_expr ∈ Expr = match work_head
         C2Process(e) ⇒ e
         _ ⇒ ENoExpr
-    cur_op ∈ Op = match work_head
+    process_op ∈ Op = match work_head
         C2Op(o) ⇒ o
         _ ⇒ OpPlus
-    const_name ∈ String = match work_head
+    new_const_name ∈ String = match work_head
         C2DeclConst(n, _) ⇒ n
         _ ⇒ ""
-    const_sort ∈ Int = match work_head
+    new_const_sort ∈ Int = match work_head
         C2DeclConst(_, s) ⇒ s
         _ ⇒ 0
-    h_val ∈ Int = match work_head
+    pushed_handle ∈ Int = match work_head
         C2PushH(h) ⇒ h
         _ ⇒ 0
-    app_decl ∈ Int = match work_head
+    applied_decl ∈ Int = match work_head
         C2App(h, _) ⇒ h
         _ ⇒ 0
-    app_argc ∈ Int = match work_head
+    applied_argc ∈ Int = match work_head
         C2App(_, n) ⇒ n
         _ ⇒ 0
-    chosen_position ∈ Int = match work_head
+    select_position ∈ Int = match work_head
         C2SelectEq(i) ⇒ i
         C2SelEqH(i2) ⇒ i2
         _ ⇒ 0
@@ -166,16 +166,16 @@ fsm DriverSymtab
         C2LenEq(n) ⇒ n
         C2LenEqH(n2) ⇒ n2
         _ ⇒ 0
-    bind_name ∈ String = match work_head
+    bindscope_name ∈ String = match work_head
         C2BindScope(bn, _) ⇒ bn
         _ ⇒ ""
-    bind_acc ∈ Int = match work_head
+    bindscope_acc ∈ Int = match work_head
         C2BindScope(_, ba) ⇒ ba
         _ ⇒ 0
-    string_op_name ∈ String = match work_head
+    strop_key ∈ String = match work_head
         C2StrOp(sn, _) ⇒ sn
         _ ⇒ ""
-    string_op_arity ∈ Int = match work_head
+    strop_arity ∈ Int = match work_head
         C2StrOp(_, sk) ⇒ sk
         _ ⇒ 0
     scaled ∈ Int = match work_head
@@ -184,14 +184,14 @@ fsm DriverSymtab
     digits ∈ Int = match work_head
         C2Real(_, rd2) ⇒ rd2
         _ ⇒ 0
-    empty_set_slot ∈ Int = match work_head
+    emptyset_kind ∈ Int = match work_head
         C2MkEmptySet(mk2) ⇒ mk2
         _ ⇒ 0
-    recval_name ∈ String = match work_head
+    recfield_name ∈ String = match work_head
         C2RecVal(rn2, _) ⇒ rn2
         C2RecDecl(rn3, _) ⇒ rn3
         _ ⇒ ""
-    recval_slot ∈ Int = match work_head
+    recfield_slot ∈ Int = match work_head
         C2RecVal(_, rk2) ⇒ rk2
         C2RecDecl(_, rk3) ⇒ rk3
         _ ⇒ 0

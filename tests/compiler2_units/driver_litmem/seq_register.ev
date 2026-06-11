@@ -1,7 +1,7 @@
 -- DriverLitMem isolation — the seq-literal registry latches once:
 -- seqmem held every tick with line_dname "myseq" on the capture tick,
--- "other" after. The parse_mode-8 registry must latch census_var_name = "myseq" on
--- first sight; if the latch-once guard (¬_census_registered) regresses it's "other".
+-- "other" after. The parse_mode-8 registry must latch registered_seq_name = "myseq" on
+-- first sight; if the latch-once guard (¬_is_seq_registered) regresses it's "other".
 -- entry: main
 -- expect: stdout = "myseq"
 -- expect: exit = 0
@@ -24,8 +24,8 @@ fsm main
     parse = (is_first_tick ? false : _parse)
     parse_mode ∈ Int
     parse_mode = (is_first_tick ? 0 : _parse_mode)
-    tok_ready ∈ Bool
-    tok_ready = (is_first_tick ? false : _tok_ready)
+    can_consume ∈ Bool
+    can_consume = (is_first_tick ? false : _can_consume)
     tok0 ∈ Token
     tok0 = (is_first_tick ? EofTok : _tok0)
     intset ∈ Bool
@@ -35,7 +35,7 @@ fsm main
     is_notmem ∈ Bool
     is_notmem = (is_first_tick ? false : _is_notmem)
     ..DriverLitMem
-    n_msg ∈ String = census_var_name
+    n_msg ∈ String = registered_seq_name
     effects ∈ Seq(Effect) = (tc ≥ 3
         ? ⟨LibCall("libc", "puts", ⟨ArgStr(n_msg)⟩), Exit(0)⟩
         : ⟨LibCall("libc", "getpid", ⟨⟩)⟩)

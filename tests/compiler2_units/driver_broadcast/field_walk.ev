@@ -34,8 +34,8 @@ fsm main
     nil = (is_first_tick ? true : _nil)
     param_skip ∈ Int
     param_skip = (is_first_tick ? 0 : _param_skip)
-    tok_ready ∈ Bool
-    tok_ready = (is_first_tick ? true : _tok_ready)
+    can_consume ∈ Bool
+    can_consume = (is_first_tick ? true : _can_consume)
     -- A 2-field record type at registry slot 0.
     recs ∈ Seq(RecTypeEntry)
     #recs ≤ 3

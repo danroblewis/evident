@@ -3,13 +3,13 @@
 --           (ctor_decl), the lookup name lookup_name, the work tail work_tail,
 --           the cached zero numeral (z3nums.zero), the record-type registry
 --           (recs) + its RtRecName/RtFieldAcc probes, and the set-var
---           registry carries (_census_registered/_census_var_name/_scope_prefix, stv_*).
+--           registry carries (_is_seq_registered/_registered_seq_name/_scope_prefix, stv_*).
 -- PRODUCES: the per-arity builtin/ctor lowering — call1_items (str_len /
 --           str_from_int / 1-arg ctor; incl. from_int_items, d_sl_*/d_card_*
 --           cardinality), call2_items (__real/__field/__index/char_at/
 --           index_of/str_contains/starts_with/ends_with / 2-arg ctor), and
 --           call3_items (replace/substr/index_of / 3-arg ctor).
--- MAINTAINS: pure per-tick lowering, no carry. starts_with/ends_with
+-- MAINTAINS: is_pure_push per-tick lowering, no carry. starts_with/ends_with
 --           process args in SWAPPED order to line up StrOpBuildZ3's operand
 --           order; an unknown call name pushes handle 0 (unbound-ident
 --           parity).
@@ -43,41 +43,41 @@ fsm DriverCallLower
     arg0_name ∈ String = match arg0
         EIdent(can) ⇒ can
         _ ⇒ ""
-    of_seqvar ∈ Bool = (_census_registered ∧ ((arg0_name = _census_var_name)
-        ∨ ((_scope_prefix ++ arg0_name) = _census_var_name)))
-    set_bare_hit ∈ Bool = (arg0_name ≠ "" ∧ (∃ e ∈ vars : e.name = arg0_name))
-    set_pfx_hit ∈ Bool = (arg0_name ≠ "" ∧ (∃ e ∈ vars : e.name = _scope_prefix ++ arg0_name))
-    of_setvar ∈ Bool = (set_bare_hit ∨ set_pfx_hit)
-    set_name ∈ String = (set_bare_hit ? arg0_name
-        : set_pfx_hit ? _scope_prefix ++ arg0_name
+    arg_is_seqvar ∈ Bool = (_is_seq_registered ∧ ((arg0_name = _registered_seq_name)
+        ∨ ((_scope_prefix ++ arg0_name) = _registered_seq_name)))
+    bare_setvar_match ∈ Bool = (arg0_name ≠ "" ∧ (∃ e ∈ vars : e.name = arg0_name))
+    prefixed_setvar_match ∈ Bool = (arg0_name ≠ "" ∧ (∃ e ∈ vars : e.name = _scope_prefix ++ arg0_name))
+    arg_is_setvar ∈ Bool = (bare_setvar_match ∨ prefixed_setvar_match)
+    setvar_name ∈ String = (bare_setvar_match ? arg0_name
+        : prefixed_setvar_match ? _scope_prefix ++ arg0_name
         : "")
-    elem_string ∈ String
-    ∀ e ∈ vars : ((e.name = set_name) ⇒ (elem_string = e.elems))
-    (¬(∃ e ∈ vars : e.name = set_name)) ⇒ (elem_string = "")
+    packed_elems ∈ String
+    ∀ e ∈ vars : ((e.name = setvar_name) ⇒ (packed_elems = e.elems))
+    (¬(∃ e ∈ vars : e.name = setvar_name)) ⇒ (packed_elems = "")
     cardinality ∈ Int
-    ∀ e ∈ vars : ((e.name = set_name) ⇒ (cardinality = e.count))
-    (¬(∃ e ∈ vars : e.name = set_name)) ⇒ (cardinality = 0)
-    elem_slot ∈ Int
-    ∀ e ∈ vars : ((e.name = set_name) ⇒ (elem_slot = e.kidx))
-    (¬(∃ e ∈ vars : e.name = set_name)) ⇒ (elem_slot = 0)
+    ∀ e ∈ vars : ((e.name = setvar_name) ⇒ (cardinality = e.count))
+    (¬(∃ e ∈ vars : e.name = setvar_name)) ⇒ (cardinality = 0)
+    elem_kind_slot ∈ Int
+    ∀ e ∈ vars : ((e.name = setvar_name) ⇒ (elem_kind_slot = e.kidx))
+    (¬(∃ e ∈ vars : e.name = setvar_name)) ⇒ (elem_kind_slot = 0)
     elt0 ∈ String
-    RtRecName(s ↦ elem_string, i ↦ 0, name ↦ elt0)
+    RtRecName(s ↦ packed_elems, i ↦ 0, name ↦ elt0)
     elt1 ∈ String
-    RtRecName(s ↦ elem_string, i ↦ 1, name ↦ elt1)
+    RtRecName(s ↦ packed_elems, i ↦ 1, name ↦ elt1)
     cardinality_items ∈ C2Items = (cardinality = 1
             ? C2ICons(C2Process(EInt(1)), work_tail)
         : cardinality = 2
-            ? C2ICons(C2RecVal(elt0, elem_slot),
-                C2ICons(C2RecVal(elt1, elem_slot),
+            ? C2ICons(C2RecVal(elt0, elem_kind_slot),
+                C2ICons(C2RecVal(elt1, elem_kind_slot),
                 C2ICons(C2Op(OpEq),
                 C2ICons(C2Process(EInt(1)),
                 C2ICons(C2Process(EInt(2)),
                 C2ICons(C2Ite, work_tail))))))
         : C2ICons(C2Process(EInt(cardinality)), work_tail))
     call1_items ∈ C2Items
-    (call_name = "str_len") ⇒ (call1_items = (of_seqvar
-        ? C2ICons(C2Process(EIdent(_census_var_name ++ "__len")), work_tail)
-        : of_setvar
+    (call_name = "str_len") ⇒ (call1_items = (arg_is_seqvar
+        ? C2ICons(C2Process(EIdent(_registered_seq_name ++ "__len")), work_tail)
+        : arg_is_setvar
         ? cardinality_items
         : C2ICons(C2Process(arg0), C2ICons(C2StrOp("len", 1), work_tail))))
     (call_name = "str_from_int") ⇒ (call1_items = from_int_items)
@@ -85,10 +85,10 @@ fsm DriverCallLower
         C2ICons(C2App(ctor_decl, 1), work_tail)))
     (¬((call_name = "str_len") ∨ (call_name = "str_from_int")
         ∨ (ctor_decl ≠ 0))) ⇒ (call1_items = C2ICons(C2PushH(0), work_tail))
-    real_scaled ∈ Int = match arg0
+    real_whole ∈ Int = match arg0
         EInt(n) ⇒ n
         _ ⇒ 0
-    real_digits ∈ Int = match arg1
+    real_frac_digits ∈ Int = match arg1
         EInt(n) ⇒ n
         _ ⇒ 0
     field_arg_name ∈ String = match arg1
@@ -98,7 +98,7 @@ fsm DriverCallLower
     RtFieldAcc(fname ↦ field_arg_name, acc ↦ field_accessor_handle)
     call2_items ∈ C2Items
     (call_name = "__real") ⇒ (call2_items =
-        C2ICons(C2Real(real_scaled, real_digits), work_tail))
+        C2ICons(C2Real(real_whole, real_frac_digits), work_tail))
     (call_name = "__field") ⇒ (call2_items = C2ICons(C2Process(arg0),
         C2ICons(C2App(field_accessor_handle, 1), work_tail)))
     (call_name = "__index") ⇒ (call2_items =

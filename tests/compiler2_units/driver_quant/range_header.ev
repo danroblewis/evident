@@ -32,8 +32,8 @@ fsm main
     tok7 = (is_first_tick ? IntLit(9) : _tok7)
     classify_now ∈ Bool
     classify_now = (is_first_tick ? false : _classify_now)
-    qset ∈ Bool
-    qset = (is_first_tick ? false : _qset)
+    is_setquery ∈ Bool
+    is_setquery = (is_first_tick ? false : _is_setquery)
     in_claim ∈ Bool
     in_claim = (is_first_tick ? false : _in_claim)
     line_end ∈ Bool
@@ -64,12 +64,12 @@ fsm main
     parse_bad = (is_first_tick ? false : _parse_bad)
     result ∈ Expr
     result = (is_first_tick ? EInt(0) : _result)
-    census_var_name ∈ String
-    census_var_name = (is_first_tick ? "" : _census_var_name)
-    census_registered ∈ Bool
-    census_registered = (is_first_tick ? false : _census_registered)
-    tok_ready ∈ Bool
-    tok_ready = (is_first_tick ? false : _tok_ready)
+    registered_seq_name ∈ String
+    registered_seq_name = (is_first_tick ? "" : _registered_seq_name)
+    is_seq_registered ∈ Bool
+    is_seq_registered = (is_first_tick ? false : _is_seq_registered)
+    can_consume ∈ Bool
+    can_consume = (is_first_tick ? false : _can_consume)
     tok0 ∈ Token
     tok0 = (is_first_tick ? EofTok : _tok0)
     tok1 ∈ Token

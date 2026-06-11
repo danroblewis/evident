@@ -21,8 +21,8 @@ fsm main
     parse = (is_first_tick ? true : _parse)
     parse_mode ∈ Int
     parse_mode = (is_first_tick ? 12 : _parse_mode)
-    tok_ready ∈ Bool
-    tok_ready = (is_first_tick ? true : _tok_ready)
+    can_consume ∈ Bool
+    can_consume = (is_first_tick ? true : _can_consume)
     nil ∈ Bool
     nil = (is_first_tick ? true : _nil)
     tok0 ∈ Token
@@ -37,14 +37,14 @@ fsm main
     tok4 = (is_first_tick ? RParen : _tok4)
     is_comp_found ∈ Bool
     is_comp_found = (is_first_tick ? false : _is_comp_found)
-    dotdot_shape ∈ Bool
-    dotdot_shape = (is_first_tick ? false : _dotdot_shape)
+    is_lift_shape ∈ Bool
+    is_lift_shape = (is_first_tick ? false : _is_lift_shape)
     line_name ∈ String
     line_name = (is_first_tick ? "" : _line_name)
     line_t0 ∈ Token
     line_t0 = (is_first_tick ? EofTok : _line_t0)
-    t0_ident ∈ Bool
-    t0_ident = (is_first_tick ? false : _t0_ident)
+    is_ident_head ∈ Bool
+    is_ident_head = (is_first_tick ? false : _is_ident_head)
     line_t1 ∈ Token
     line_t1 = (is_first_tick ? EofTok : _line_t1)
     line_t2 ∈ Token
@@ -62,12 +62,12 @@ fsm main
     reset = (is_first_tick ? false : _reset)
     classify_now ∈ Bool
     classify_now = (is_first_tick ? false : _classify_now)
-    h_2nd ∈ Int
-    h_2nd = (is_first_tick ? 0 : _h_2nd)
-    h_3rd ∈ Int
-    h_3rd = (is_first_tick ? 0 : _h_3rd)
-    h_4th ∈ Int
-    h_4th = (is_first_tick ? 0 : _h_4th)
+    second_handle ∈ Int
+    second_handle = (is_first_tick ? 0 : _second_handle)
+    third_handle ∈ Int
+    third_handle = (is_first_tick ? 0 : _third_handle)
+    fourth_handle ∈ Int
+    fourth_handle = (is_first_tick ? 0 : _fourth_handle)
     tail1 ∈ C2H
     tail1 = (is_first_tick ? C2HNil : _tail1)
     tail2 ∈ C2H
@@ -78,8 +78,8 @@ fsm main
     tail4 = (is_first_tick ? C2HNil : _tail4)
     tail5 ∈ C2H
     tail5 = (is_first_tick ? C2HNil : _tail5)
-    h_top ∈ Int
-    h_top = (is_first_tick ? 0 : _h_top)
+    topmost_handle ∈ Int
+    topmost_handle = (is_first_tick ? 0 : _topmost_handle)
     stack_in ∈ C2H
     stack_in = (is_first_tick ? C2HNil : _stack_in)
     line_end ∈ Bool
@@ -171,8 +171,8 @@ fsm main
     ∀ e ∈ recs : e.accs[3] = 0
     ∀ e ∈ recs : e.accs[4] = 0
     ∀ e ∈ recs : e.accs[5] = 0
-    seqlit_elem_items ∈ C2Items
-    seqlit_elem_items = (is_first_tick ? C2INil : _seqlit_elem_items)
+    append_elem_items ∈ C2Items
+    append_elem_items = (is_first_tick ? C2INil : _append_elem_items)
     symbol_index ∈ String
     symbol_index = (is_first_tick ? "" : _symbol_index)
     tok5 ∈ Token

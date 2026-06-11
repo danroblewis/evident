@@ -14,7 +14,7 @@
 --           build-group accumulator (group/group_names_buffer/group_n), the
 --           ENUM TABLE name column (decl_names, fixed-width-32 rows whose
 --           index_of/32 is the table slot; the sort-handle cells live on
---           the tape at enumtab_p, written at act-2 read-back) + its row
+--           the tape at enumtab_p, written at act-2 read-back) + its elem_record
 --           count (enumtab_count), plus the act/step/src walk state.
 -- MAINTAINS: one Z3 effect batch per tick with captures landing on the
 --           next tick keyed off (_decl_action, _decl_step); runs the four floor
@@ -46,7 +46,7 @@ fsm DriverEnum
     --     member's ctor span) · 13 write batch (sort name + clist at
     --     the member's group_names index) → next member or act 2
     --   act 2 (group finalize): 0 mk_datatypes(size) · 1 read
-    --     sorts_out[read_cur] · 2 write enum-table row (user), loop to 1
+    --     sorts_out[read_cur] · 2 write enum-table elem_record (user), loop to 1
     --     until size rows · 3 commit (decl_names ++= group_names), reset
     --     the walk to the group head → act 3
     --   act 3 (harvest; per variant of each member): 0 read ctor
@@ -176,7 +176,7 @@ fsm DriverEnum
     member_index ∈ Int = (index_of(group_names, member_key, 0) / 32)
 
     -- ── per-field sort resolution (D3) ────────────────────────────
-    -- One EnumFieldSlot row per payload field of the variant in hand.
+    -- One EnumFieldSlot elem_record per payload field of the variant in hand.
     -- Resolution order per field type: group member (sort 0 + ref
     -- index into group_names — covers self and mutual recursion) →
     -- scalar floor → floor sort registers → enum table (cross-group:
@@ -398,7 +398,7 @@ fsm DriverEnum
     -- at once — sample.ev carries 142 across 31 enums (census
     -- 2026-06-10). variant_names is the registry's name COLUMN
     -- ("|"+31-pad rows): index_of/32 over it is also the variant's
-    -- registry slot — the acc-table tape row index.
+    -- registry slot — the acc-table tape elem_record index.
     is_decl_step ∈ Bool = (_decl_action = 3 ∧ _decl_step = 2 ∧ _is_user_enum)
     is_tester_step ∈ Bool = (_decl_action = 3 ∧ _decl_step = 3 ∧ _is_user_enum)
     tester_val ∈ Int = (nullary_variant ? int1 : is_intresult_capture)

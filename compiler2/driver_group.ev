@@ -4,7 +4,7 @@
 --           first-line param list), the classifier name/sort/type
 --           (is_mem, line_is_nat, line_sort, mem_tyname, line_t0), the
 --           window head (tok0/tok1/tok3), and the parse gate (parse,
---           _parse_mode, tok_ready, nil).
+--           _parse_mode, can_consume, nil).
 -- PRODUCES: the HEADER below — the checked interface (bare-mention
 --           composition). The carried walk state (pending_names/walk_state/
 --           is_parameter/closed/shared_sort/is_nat/type_name) and the
@@ -26,14 +26,14 @@ fsm DriverGroup(pending_names ∈ TokenList, walk_state ∈ Int, is_parameter �
     -- multi-name memberships) ─────────────────────────────────────
     -- Collect substate (walk_state 0): one `Ident ,` per tick pushes the
     -- name; the `Ident ∈ Type` tick declares the LAST name through the
-    -- classifier's own mem_items/mem_field/mem_carry_decl (same window
+    -- classifier's own member_decls/mem_field/mem_carry_decl (same window
     -- positions as a plain membership) and latches the group type.
     -- Drain substate (walk_state 1): one pending name per tick declares
     -- through drain_items with the latched type.
     -- Scalar types only (Int/Nat/Bool/String/Result/the user enum);
     -- Seq(...) params and bounds/pins on group lines are descoped
     -- (zero corpus occurrences of either).
-    active ∈ Bool = (parse ∧ (_parse_mode = 9) ∧ nil ∧ tok_ready)
+    active ∈ Bool = (parse ∧ (_parse_mode = 9) ∧ nil ∧ can_consume)
     collect = (active ∧ (_walk_state = 0))
     take_name = (collect ∧ (tok0 matches Ident(_)) ∧ (tok1 matches Comma))
     type_tick = (collect ∧ (tok0 matches Ident(_)) ∧ is_mem)

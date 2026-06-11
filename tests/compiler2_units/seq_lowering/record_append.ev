@@ -1,7 +1,7 @@
 -- Bounded Seq(record) lowering, end-to-end through flatten's native pass:
 -- a guarded carried append of Pair rows, an ∃ keyed lookup, literal-index
 -- field access, and #. Appends ("1",10) and ("2",20); at tick 3 the "2"
--- lookup hits, v0 = first row's value, exit = 10 + len = 12.
+-- lookup hits, v0 = first elem_record's value, exit = 10 + len = 12.
 --
 -- entry: main
 -- expect: exit = 12

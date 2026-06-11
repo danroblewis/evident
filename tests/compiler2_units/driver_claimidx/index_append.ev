@@ -47,10 +47,10 @@ fsm main
     parse_mode = (is_first_tick ? 0 : _parse_mode)
     parse_bad ∈ Bool
     parse_bad = (is_first_tick ? false : _parse_bad)
-    tok_cur ∈ Int
-    tok_cur = (is_first_tick ? 0 : _tok_cur)
-    tok_ready ∈ Bool
-    tok_ready = (is_first_tick ? false : _tok_ready)
+    token_cursor ∈ Int
+    token_cursor = (is_first_tick ? 0 : _token_cursor)
+    can_consume ∈ Bool
+    can_consume = (is_first_tick ? false : _can_consume)
     user_enum_name ∈ String
     user_enum_name = (is_first_tick ? "" : _user_enum_name)
     tok0 ∈ Token

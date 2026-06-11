@@ -23,21 +23,21 @@
 --           order via __mem.write_long; string payloads
 --           (Ident/StringLit) are strdup'd char*s. Z3-carried lexer
 --           state = five Ints (tok_buf.base, tok_buf.count, last_token_tag, prev_token_tag,
---           strlit_addr) — no TokenList anywhere; phase goes 0 → 2
+--           strdup_addr) — no TokenList anywhere; phase goes 0 → 2
 --           directly, after flushing any pending string write + the
 --           EofTok sentinel.
 --   FETCH   the parse phases read tokens through a sliding 8-token
---           decoded window (win_toks, head = token tok_cur). A refill is
+--           decoded window (decoded_window, head = token token_cursor). A refill is
 --           a 3-tick burst: 16 __mem.read_long (8 tags + 8
 --           payloads, one tick), then 8 slot-aligned __cstr.copy /
---           getpid-filler effects (string payloads), then the pure
+--           getpid-filler effects (string payloads), then the is_pure_push
 --           rebuild. Entries past the EofTok sentinel read 0 from
 --           the calloc'd region and decode to EofTok.
 --   PARSE   top-level dispatch: enums and non-target claims are
 --           SKIPPED (one token per tick); the target claim enters
 --           the claim walk — through the parse_mode-9 group walk first
 --           when it carries a first-line param list (F1). All
---           consumption is cursor arithmetic (tok_cur += k) + window
+--           consumption is cursor arithmetic (token_cursor += k) + window
 --           tails.
 --   WALK    per body line: a one-tick PURE classifier picks the line
 --           kind; lines carrying an expression run the Pratt FSM
@@ -73,7 +73,7 @@
 --     conjunction HANDLE and the chain end emits the oracle's nested
 --     `(and (=> g B) (=> (not g) T))` guard tree. ≤ 4 guards /
 --     5 branches; then-branches must be literals; chains nest in
---     else position only
+--     else bare_offset only
 --   · USER ENUMS: any number, in BUILD GROUPS of consecutive decls
 --     (one batched Z3_mk_datatypes per group — mutual recursion
 --     resolves within a group; across groups only already-built
@@ -96,7 +96,7 @@
 --     `(ite (>= e 0) (str.from_int e) (str.++ "-" (str.from_int (- 0 e))))`;
 --     an unknown call name pushes handle 0 (unbound-ident parity)
 --   · symbol table: 1024 handle slots in a calloc'd buffer +
---     fixed-width-32 name records in a Z3 String; lookup = pure
+--     fixed-width-32 name records in a Z3 String; lookup = is_pure_push
 --     index_of/32 + one __mem.read_long. Enum-value table: 160.
 --     Slots 0/1 pre-seeded with the kernel-provided last_results /
 --     is_first_tick consts.
@@ -134,13 +134,13 @@
 --     decl (group rule), 5+-element effects literals, guarded-writer effects
 --     lines (`cond ⇒ effects = ⟨…⟩` — zero corpus occurrences; the
 --     corpus's only conditional effects shape is the ternary chain),
---     quantifiers in EXPRESSION position (123), record arithmetic
+--     quantifiers in EXPRESSION bare_offset (123), record arithmetic
 --     broadcast (121/122), tuple→record coercion (090-093),
 --     composite seq/set elements (125-132, 137/138 — need record
 --     DATATYPES with plain-named accessors), Seq(...)-typed /
 --     bounded / pinned multi-name groups, callees AFTER the call
 --     site textually (one-pass index), composition calls in
---     EXPRESSION position, carry (`_x`) memberships inside inline
+--     EXPRESSION bare_offset, carry (`_x`) memberships inside inline
 --     frames, nested guarded splices
 
 import "stdlib/kernel.ev"
@@ -220,7 +220,7 @@ fsm driver_main
 
     -- ── PARSE dispatch (parse_mode 0 dispatch · 1 skip · 2 claim) ──────
     -- All modes read the shared token window; "nil" = EofTok head
-    -- (the sentinel / past-end decode). Actions are tok_ready-gated.
+    -- (the sentinel / past-end decode). Actions are can_consume-gated.
     parse_mode  ∈ Int
 
     is_eof ∈ Bool = (tok0 matches EofTok)
@@ -237,7 +237,7 @@ fsm driver_main
 
     -- Dispatch idles while the ED machine builds a group (_decl_action
     -- gate); the head token is re-read once the build finishes.
-    in_dispatch ∈ Bool = (parse ∧ (_parse_mode = 0) ∧ tok_ready
+    in_dispatch ∈ Bool = (parse ∧ (_parse_mode = 0) ∧ can_consume
         ∧ (_decl_action = 0))
     -- BUILD-GROUP trigger (multi-enum-grammar D4): consecutive user
     -- enum decls accumulate in group; the first non-enum top-level
@@ -252,7 +252,7 @@ fsm driver_main
         ∧ (tok1 matches Ident(_)) ∧ (tok2 matches Eq))
     enter_skip  ∈ Bool = (in_dispatch ∧ (¬group_go) ∧ (¬is_eof) ∧ (¬enter_claim) ∧ (¬claim_params) ∧ (¬enum_decl))
     parse_done    ∈ Bool = (in_dispatch ∧ (¬group_go) ∧ is_eof)
-    in_skip     ∈ Bool = (parse ∧ (_parse_mode = 1) ∧ tok_ready)
+    in_skip     ∈ Bool = (parse ∧ (_parse_mode = 1) ∧ can_consume)
     in_claim    ∈ Bool = (parse ∧ (_parse_mode = 2))
 
     user_enum_name ∈ String
@@ -299,14 +299,14 @@ fsm driver_main
     scope_name ∈ String
     scope_acc ∈ Int
     scope_on = (is_first_tick ? false
-        : (processing ∧ bind_scope) ? true
-        : (processing ∧ bind_end) ? false
+        : (processing ∧ is_bindscope) ? true
+        : (processing ∧ is_bindend) ? false
         : _scope_on)
     scope_name = (is_first_tick ? ""
-        : (processing ∧ bind_scope) ? bind_name
+        : (processing ∧ is_bindscope) ? bindscope_name
         : _scope_name)
     scope_acc = (is_first_tick ? 0
-        : (processing ∧ bind_scope) ? bind_acc
+        : (processing ∧ is_bindscope) ? bindscope_acc
         : _scope_acc)
     bind_hit ∈ Bool = (process ∧ is_ident ∧ _scope_on
         ∧ (lookup_name = _scope_name))
@@ -319,7 +319,7 @@ fsm driver_main
             C2ICons(C2SelH, work_tail))))
     loopvar_prefix ∈ String = _qloop_var ++ "."
     dot ∈ Bool = (process ∧ is_ident ∧ _qloop_on
-        ∧ (_qloop_kind = 1) ∧ (_census_var_slot ≥ 0)
+        ∧ (_qloop_kind = 1) ∧ (_registered_seq_kind ≥ 0)
         ∧ (substr(lookup_name, 0, #loopvar_prefix) = loopvar_prefix))
     loopvar_field ∈ String = substr(lookup_name, #loopvar_prefix,
         #lookup_name - #loopvar_prefix)
@@ -351,11 +351,11 @@ fsm driver_main
             C2ICons(C2App(_scope_acc, 1), work_tail)))
 
     arith_nary ∈ Bool
-    BinopIsArray(op ↦ cur_op, out ↦ arith_nary)
+    BinopIsArray(op ↦ process_op, out ↦ arith_nary)
     bool_nary ∈ Bool
-    BoolOpIsArray(op ↦ cur_op, out ↦ bool_nary)
-    is_div ∈ Bool = (cur_op matches OpDiv)
-    op_is_concat ∈ Bool = (cur_op matches OpConcat)
+    BoolOpIsArray(op ↦ process_op, out ↦ bool_nary)
+    is_div ∈ Bool = (process_op matches OpDiv)
+    op_is_concat ∈ Bool = (process_op matches OpConcat)
     is_nary ∈ Bool = (arith_nary ∨ bool_nary ∨ op_is_concat)
 
     -- ── LINE CLASSIFIER + dispatch (see compiler2/driver_classify.ev) ──
@@ -391,17 +391,17 @@ fsm driver_main
         ∨ is_member_line ∨ qrange ∨ qseq ∨ tuple_line ∨ call_stmt)
         ? C2INil
         : method_call ? receiver_items
-        : strin ? strin_items
-        : qset ? setquery_items
-        : setlit ? entry_items
-        : setmem ? setmember_items
-        : setdecl ? set_mem_items
+        : enter_contains ? contains_items
+        : is_setquery ? membership_items
+        : is_setlit ? setdecl_items
+        : is_setmem ? member_items
+        : is_setdecl ? set_mem_items
         : seqmem ? seq_mem_items
-        : mem_items)
+        : member_decls)
     mem_line ∈ Bool = (classify_now ∧ (¬line_end) ∧ (¬pratt_line)
         ∧ (¬enter_efflit) ∧ (¬intset) ∧ (¬enter_match)
         ∧ (¬enter_seqlit) ∧ (¬multiname) ∧ (¬is_comp_line)
-        ∧ (¬strin_line) ∧ (¬is_member_line) ∧ (¬is_quant_line)
+        ∧ (¬contains_line) ∧ (¬is_member_line) ∧ (¬is_quant_line)
         ∧ (¬positional_line))
     mem_consume ∈ Int = (seqmem ? 6 : bounded ? 5 : 3)
     registry_typename ∈ String = recs[kind_slot].name
@@ -473,23 +473,23 @@ fsm driver_main
         : is_pineq_item ? 2
         : is_assert_item ? (guarding ? (_item_step = 1 ? 1 : 0) : 1)
         : drop ? 1
-        : app ? (_item_step = app_argc ? app_argc : 0)
+        : app ? (_item_step = applied_argc ? applied_argc : 0)
         : is_seleq_item ? (_item_step = 1 ? 1 : 0)
-        : equality_handle ? (_item_step = 1 ? 1 : 0)
-        : is_strop_item ? string_op_arity
-        : chosen_handle ? 2
+        : is_seleqh ? (_item_step = 1 ? 1 : 0)
+        : is_strop_item ? strop_arity
+        : is_selh ? 2
         : is_setadd_item ? 2
         : 0)
     push_bound ∈ Bool = (processing ∧ process ∧ is_ident
-        ∧ bound_found ∧ (¬bind_hit) ∧ (¬is_bound_ref) ∧ (¬dot)
+        ∧ is_frame_bound ∧ (¬bind_hit) ∧ (¬is_bound_ref) ∧ (¬dot)
         ∧ (¬is_pin_hit))
     push_ident ∈ Bool = (processing ∧ process ∧ is_ident
-        ∧ pure ∧ (¬bind_hit) ∧ (¬bound_found) ∧ (¬is_bound_ref)
+        ∧ is_pure_push ∧ (¬bind_hit) ∧ (¬is_frame_bound) ∧ (¬is_bound_ref)
         ∧ (¬dot) ∧ (¬is_pin_hit) ∧ (¬ctor_hit))
     lookup_read ∈ Bool = (processing ∧ process ∧ is_ident
-        ∧ (¬pure) ∧ (¬bind_hit) ∧ (¬bound_found) ∧ (¬is_bound_ref)
+        ∧ (¬is_pure_push) ∧ (¬bind_hit) ∧ (¬is_frame_bound) ∧ (¬is_bound_ref)
         ∧ (¬dot) ∧ (¬is_pin_hit))
-    push_handle ∈ Bool = (processing ∧ push_h)
+    push_handle ∈ Bool = (processing ∧ is_pushh)
     push_decl ∈ Bool = (processing ∧ is_decl_item ∧ (_item_step = 2))
     stack_dup3 ∈ Bool = (processing ∧ is_dup3_item)
     stack_swap ∈ Bool = (processing ∧ is_swap_item)
@@ -500,14 +500,14 @@ fsm driver_main
         : is_call_fire ? pop_stack
         : jump_fire ? tail1
         : bindzip_act ? bindzip_pop
-        : push_bound ? C2HCons(bound_handle, stack_in)
-        : push_ident ? C2HCons(looked_up_handle, stack_in)
-        : push_handle ? C2HCons(h_val, stack_in)
+        : push_bound ? C2HCons(frame_handle, stack_in)
+        : push_ident ? C2HCons(resolved_handle, stack_in)
+        : push_handle ? C2HCons(pushed_handle, stack_in)
         : push_decl ? C2HCons(tmp_in, stack_in)
-        : stack_dup3 ? C2HCons(h_3rd, stack_in)
-        : stack_swap ? C2HCons(h_2nd, C2HCons(h_top, tail2))
-        : stack_rot3 ? C2HCons(h_2nd, C2HCons(h_3rd,
-            C2HCons(h_top, tail3)))
+        : stack_dup3 ? C2HCons(third_handle, stack_in)
+        : stack_swap ? C2HCons(second_handle, C2HCons(topmost_handle, tail2))
+        : stack_rot3 ? C2HCons(second_handle, C2HCons(third_handle,
+            C2HCons(topmost_handle, tail3)))
         : pops = 6 ? tail6
         : pops = 5 ? tail5
         : pops = 4 ? tail4
@@ -525,14 +525,14 @@ fsm driver_main
         : efflit_close ? (_chain_on ? branch_fold : C2ICons(C2LenEq(_efflit_count), C2INil))
         : chain_fire ? fold_items
         : case_fire ? case_items
-        : intset_close ? intset_items
-        : seqlit_close ? seqlit_close_items
-        : setlit_elem ? setlit_elem_items
-        : setlit_close ? setlit_close_items
+        : at_close ? set_assert
+        : at_seq_close ? seqlen_items
+        : is_setlit_ident ? add_elem_items
+        : is_setlit_close ? setlit_len_items
         : (is_call_fire ∧ _is_type) ? type_pin_items
         : (bare_jump ∧ _is_type ∧ (_type_slot ≥ 0)) ? recdecl_items
         : decl_fire ? pskip_decl_items
-        : type_tick ? mem_items
+        : type_tick ? member_decls
         : draining ? drain_items
         : (tuple_close ∧ called_method) ? close_recv_items
         : bite ? tuparg_items
@@ -555,13 +555,13 @@ fsm driver_main
         : process ∧ is_call2 ? call2_items
         : process ∧ is_call3 ? call3_items
         : process ? work_tail
-        : rec_val ? literal_items
-        : rec_decl ? literal_decl_items
+        : is_recval ? literal_items
+        : is_recdecl ? literal_decl_items
         : is_op_item ? (is_nary ? (_item_step = 2 ? work_tail : _work_items) : work_tail)
         : is_decl_item ? (_item_step = 2 ? work_tail : _work_items)
-        : app ? (_item_step = app_argc ? work_tail : _work_items)
+        : app ? (_item_step = applied_argc ? work_tail : _work_items)
         : is_seleq_item ? (_item_step = 2 ? work_tail : _work_items)
-        : equality_handle ? (_item_step = 1 ? work_tail : _work_items)
+        : is_seleqh ? (_item_step = 1 ? work_tail : _work_items)
         : is_leneq_item ? (_item_step = 1 ? work_tail : _work_items)
         : is_assert_item ? ((guarding ∧ (_item_step = 0)) ? _work_items : work_tail)
         : work_tail)
@@ -570,9 +570,9 @@ fsm driver_main
         ((is_op_item ∧ is_nary ∧ (_item_step < 2))
         ∨ (is_assert_item ∧ guarding ∧ (_item_step < 1))
         ∨ (is_decl_item ∧ (_item_step < 2))
-        ∨ (app ∧ (_item_step < app_argc))
+        ∨ (app ∧ (_item_step < applied_argc))
         ∨ (is_seleq_item ∧ (_item_step < 2))
-        ∨ (equality_handle ∧ (_item_step < 1))
+        ∨ (is_seleqh ∧ (_item_step < 1))
         ∨ (is_leneq_item ∧ (_item_step < 1))))
     item_step = (is_first_tick ? 0
         : multi_step ? _item_step + 1
@@ -588,13 +588,13 @@ fsm driver_main
         : natbound ? 1
         : is_pineq_item ? 1
         : is_assert_item ? ((guarding ∧ (_item_step = 0)) ? 2 : 0)
-        : app ? (_item_step = app_argc ? 1 : 0)
+        : app ? (_item_step = applied_argc ? 1 : 0)
         : is_seleq_item ? ((_item_step = 0 ∨ _item_step = 1) ? 2 : 0)
-        : equality_handle ? (_item_step = 0 ? 2 : 1)
+        : is_seleqh ? (_item_step = 0 ? 2 : 1)
         : is_leneq_item ? (_item_step = 0 ? 2 : 0)
-        : len_equals_handle ? 1
+        : is_leneqh ? 1
         : is_strop_item ? 1
-        : chosen_handle ? 1
+        : is_selh ? 1
         : real ? 1
         : is_emptyset_item ? 1
         : is_setadd_item ? 1
@@ -604,7 +604,7 @@ fsm driver_main
         : claim_params ? 3
         : enum_decl ? 3
         : enter_skip ? 1
-        : (in_skip ∧ (¬stop)) ? 1
+        : (in_skip ∧ (¬skip_stop)) ? 1
         : variant_bail ? 1
         : variant_act ? variant_consume
         : enter_efflit ? 8
@@ -622,26 +622,26 @@ fsm driver_main
         : (overflow ∨ extra_wildcards) ? 1
         : (is_pattern_open ∧ (¬overflow)) ? 2
         : is_pattern_more ? 2
-        : intset_elem ? ((tok1 matches Comma) ? 2 : 1)
-        : (intset_close ∨ intset_bad) ? 1
+        : at_element ? ((tok1 matches Comma) ? 2 : 1)
+        : (at_close ∨ bad_token) ? 1
         : enter_seqlit ? 3
-        : (seqlit_close ∨ seqlit_comma) ? 1
+        : (at_seq_close ∨ at_seq_comma) ? 1
         : multiname ? 2
         : take_name ? 2
         : type_tick ? type_consume
         : bail ? 1
         : is_comp_call ? 2
         : is_bare_comp ? 1
-        : dotdot ? 3
+        : is_lift ? 3
         : is_member_call ? 4
         : is_bare_member ? 3
-        : strin ? 3
+        : enter_contains ? 3
         : qrange ? 8
-        : qset ? 8
-        : setlit ? 3
-        : setmem ? 3
-        : setdecl ? 6
-        : (setlit_elem ∨ setlit_comma ∨ setlit_close ∨ setlit_bad) ? 1
+        : is_setquery ? 8
+        : is_setlit ? 3
+        : is_setmem ? 3
+        : is_setdecl ? 6
+        : (is_setlit_ident ∨ is_setlit_comma ∨ is_setlit_close ∨ is_setlit_bad) ? 1
         : qrange_bail ? 1
         : call_stmt ? 2
         : method_call1 ? 4
@@ -660,31 +660,31 @@ fsm driver_main
         : is_skim_bad ? 0
         : (in_pratt ∧ (parse_consume ≥ 1)) ? parse_consume
         : 0)
-    tok_cur = (is_first_tick ? 0
+    token_cursor = (is_first_tick ? 0
         : jump ? target_now
         : frame_pop ? ret
-        : _tok_cur + consume_n)
-    fetch_end = (is_first_tick ? 0
+        : _token_cursor + consume_n)
+    coverage_end = (is_first_tick ? 0
         : jump ? target_now
         : frame_pop ? ret
-        : _fetch_mode = 2 ? _tok_cur + 8 : _fetch_end)
-    window_after ∈ TokenList = (consume_n = 0 ? _win_toks
-        : consume_n = 1 ? win_rest1
-        : consume_n = 2 ? win_rest2
-        : consume_n = 3 ? win_rest3
-        : consume_n = 4 ? win_rest4
-        : consume_n = 5 ? win_rest5
-        : consume_n = 6 ? rest6
-        : consume_n = 7 ? rest7
+        : _burst_phase = 2 ? _token_cursor + 8 : _coverage_end)
+    window_after ∈ TokenList = (consume_n = 0 ? _decoded_window
+        : consume_n = 1 ? after1
+        : consume_n = 2 ? after2
+        : consume_n = 3 ? after3
+        : consume_n = 4 ? after4
+        : consume_n = 5 ? after5
+        : consume_n = 6 ? after6
+        : consume_n = 7 ? after7
         : TLNil)
-    win_toks = (is_first_tick ? TLNil
+    decoded_window = (is_first_tick ? TLNil
         : (jump ∨ frame_pop) ? TLNil
-        : _fetch_mode = 2 ? rebuilt
+        : _burst_phase = 2 ? rebuilt
         : window_after)
 
     field_add ∈ Bool = (classify_now ∧ (¬line_end) ∧ is_mem
         ∧ (¬effects_line) ∧ (¬intset_line) ∧ (¬is_carry)
-        ∧ (¬no_decl) ∧ (¬strin_line) ∧ (¬is_member_line)
+        ∧ (¬no_decl) ∧ (¬contains_line) ∧ (¬is_member_line)
         ∧ (¬is_setmember_line)
         ∧ (¬type_frame))
     -- E1: the first time a `_name` const is MENTIONED in an
@@ -721,7 +721,7 @@ fsm driver_main
         : enter_skip ? 1
         : recdecl_go ? 13
         : recdecl_fin ? 0
-        : stop ? 0
+        : skip_stop ? 0
         : claim_end ? 0
         : (is_comp_line ∨ is_member_line) ? 10
         : cond_hit ? 10
@@ -736,8 +736,8 @@ fsm driver_main
         : intset ? 7
         : enter_match ? 6
         : enter_seqlit ? 8
-        : setlit ? 14
-        : (setlit_close ∨ setlit_bad) ? 2
+        : is_setlit ? 14
+        : (is_setlit_close ∨ is_setlit_bad) ? 2
         : multiname ? 9
         : bail ? 2
         : type_tick ? (have_pending ? 9 : exit_mode)
@@ -756,8 +756,8 @@ fsm driver_main
         : efflit_close ? (_chain_on ? 5 : 2)
         : (efflit_bad ∨ argbite_bad ∨ st2_bad) ? 2
         : (case_fire ∨ case_bail) ? 2
-        : (intset_close ∨ intset_bad) ? 2
-        : seqlit_close ? 2
+        : (at_close ∨ bad_token) ? 2
+        : at_seq_close ? 2
         : _parse_mode)
 
     phase = (is_first_tick ? 0
@@ -769,67 +769,67 @@ fsm driver_main
     mkint ∈ Effect
     atom_ok ∈ Bool
     AtomBuildZ3(ctx_h ↦ z3ctx.ctx, int_sort_h ↦ z3sorts.isort, sym_h ↦ 0,
-        e ↦ cur_expr, eff ↦ mkint, ok ↦ atom_ok)
+        e ↦ process_expr, eff ↦ mkint, ok ↦ atom_ok)
     compare_eff ∈ Effect
     cmp_ok ∈ Bool
     cmp_needs_not ∈ Bool
-    BoolCmpBuildZ3(ctx_h ↦ z3ctx.ctx, op ↦ cur_op, l_h ↦ h_2nd, r_h ↦ h_top,
+    BoolCmpBuildZ3(ctx_h ↦ z3ctx.ctx, op ↦ process_op, l_h ↦ second_handle, r_h ↦ topmost_handle,
         eff ↦ compare_eff, ok ↦ cmp_ok, needs_not ↦ cmp_needs_not)
     arith ∈ Effect
     arith_ok ∈ Bool
-    ArithBinopBuildZ3(ctx_h ↦ z3ctx.ctx, op ↦ cur_op,
-        l_h ↦ h_2nd, r_h ↦ h_top, args_arr_ptr ↦ z3_arena + 200,
+    ArithBinopBuildZ3(ctx_h ↦ z3ctx.ctx, op ↦ process_op,
+        l_h ↦ second_handle, r_h ↦ topmost_handle, args_arr_ptr ↦ z3_arena + 200,
         eff ↦ arith, ok ↦ arith_ok)
     nary ∈ Effect
     nary_ok ∈ Bool
-    BoolNaryBuildZ3(ctx_h ↦ z3ctx.ctx, op ↦ cur_op, num_args ↦ 2,
+    BoolNaryBuildZ3(ctx_h ↦ z3ctx.ctx, op ↦ process_op, num_args ↦ 2,
         args_arr_ptr ↦ z3_arena + 200, eff ↦ nary, ok ↦ nary_ok)
     concat ∈ Effect
     BuildZ3MkSeqConcat(ctx_h ↦ z3ctx.ctx, num_args ↦ 2,
         args_arr_ptr ↦ z3_arena + 200, eff ↦ concat)
     ite_eff ∈ Effect
-    TernaryBuildZ3(ctx_h ↦ z3ctx.ctx, cond_h ↦ h_3rd, then_h ↦ h_2nd,
-        else_h ↦ h_top, eff ↦ ite_eff)
+    TernaryBuildZ3(ctx_h ↦ z3ctx.ctx, cond_h ↦ third_handle, then_h ↦ second_handle,
+        else_h ↦ topmost_handle, eff ↦ ite_eff)
     not_eff ∈ Effect
-    BoolNotBuildZ3(ctx_h ↦ z3ctx.ctx, x_h ↦ h_top, eff ↦ not_eff)
+    BoolNotBuildZ3(ctx_h ↦ z3ctx.ctx, x_h ↦ topmost_handle, eff ↦ not_eff)
     argw0 ∈ Effect
-    BuildMemWriteLong(addr ↦ z3_arena + 200, value ↦ h_2nd, eff ↦ argw0)
+    BuildMemWriteLong(addr ↦ z3_arena + 200, value ↦ second_handle, eff ↦ argw0)
     argw1 ∈ Effect
-    BuildMemWriteLong(addr ↦ z3_arena + 208, value ↦ h_top, eff ↦ argw1)
+    BuildMemWriteLong(addr ↦ z3_arena + 208, value ↦ topmost_handle, eff ↦ argw1)
     mkstring ∈ Effect
     BuildZ3MkString(ctx_h ↦ z3ctx.ctx, s ↦ strlit_value, eff ↦ mkstring)
-    primary_handle ∈ Int = (string_op_arity = 3 ? h_3rd : string_op_arity = 2 ? h_2nd : h_top)
-    secondary_handle ∈ Int = (string_op_arity = 3 ? h_2nd : string_op_arity = 2 ? h_top : 0)
-    tertiary_handle ∈ Int = (string_op_arity = 3 ? h_top : 0)
+    primary_handle ∈ Int = (strop_arity = 3 ? third_handle : strop_arity = 2 ? second_handle : topmost_handle)
+    secondary_handle ∈ Int = (strop_arity = 3 ? second_handle : strop_arity = 2 ? topmost_handle : 0)
+    tertiary_handle ∈ Int = (strop_arity = 3 ? topmost_handle : 0)
     strlen ∈ Effect
-    BuildZ3MkSeqLength(ctx_h ↦ z3ctx.ctx, s_h ↦ h_top, eff ↦ strlen)
+    BuildZ3MkSeqLength(ctx_h ↦ z3ctx.ctx, s_h ↦ topmost_handle, eff ↦ strlen)
     strop_eff ∈ Effect
     is_string_op ∈ Bool
-    StrOpBuildZ3(ctx_h ↦ z3ctx.ctx, op_name ↦ string_op_name, a_h ↦ primary_handle,
+    StrOpBuildZ3(ctx_h ↦ z3ctx.ctx, op_name ↦ strop_key, a_h ↦ primary_handle,
         b_h ↦ secondary_handle, c_h ↦ tertiary_handle, eff ↦ strop_eff, ok ↦ is_string_op)
     mksym_eff ∈ Effect
-    BuildZ3MkStringSymbol(ctx_h ↦ z3ctx.ctx, name ↦ const_name, eff ↦ mksym_eff)
+    BuildZ3MkStringSymbol(ctx_h ↦ z3ctx.ctx, name ↦ new_const_name, eff ↦ mksym_eff)
     -- An enum-typed decl (sort code 30+slot) reads its sort handle
     -- from the enum-table tape: the is_decl_item step-0 tick batches
     -- ⟨mksym_eff, enumtab_read_mem⟩, so on the step-1 (mkconst)
     -- tick lr[0] is the symbol (tmp_in) and lr[1] is the sort.
     enumtab_read_mem ∈ Effect
-    BuildMemReadLong(addr ↦ enumtab_p + (8 * (const_sort - 30)),
+    BuildMemReadLong(addr ↦ enumtab_p + (8 * (new_const_sort - 30)),
         eff ↦ enumtab_read_mem)
     mkconst ∈ Effect
     BuildZ3MkConst(ctx_h ↦ z3ctx.ctx, sym_h ↦ tmp_in,
-        sort_h ↦ (const_sort = 1 ? z3sorts.bsort
-            : const_sort ≥ 30 ? int1
-            : const_sort = 3 ? z3sorts.ssort
-            : const_sort = 4 ? result_sort
-            : const_sort = 5 ? int_array_sort
-            : const_sort = 6 ? z3sorts.rsort
-            : const_sort = 10 ? recs[0].asort
-            : const_sort = 11 ? recs[1].asort
-            : const_sort = 12 ? recs[2].asort
-            : const_sort = 20 ? recs[0].ssort
-            : const_sort = 21 ? recs[1].ssort
-            : const_sort = 22 ? recs[2].ssort
+        sort_h ↦ (new_const_sort = 1 ? z3sorts.bsort
+            : new_const_sort ≥ 30 ? int1
+            : new_const_sort = 3 ? z3sorts.ssort
+            : new_const_sort = 4 ? result_sort
+            : new_const_sort = 5 ? int_array_sort
+            : new_const_sort = 6 ? z3sorts.rsort
+            : new_const_sort = 10 ? recs[0].asort
+            : new_const_sort = 11 ? recs[1].asort
+            : new_const_sort = 12 ? recs[2].asort
+            : new_const_sort = 20 ? recs[0].ssort
+            : new_const_sort = 21 ? recs[1].ssort
+            : new_const_sort = 22 ? recs[2].ssort
             : z3sorts.isort), eff ↦ mkconst)
     write_symbol_eff ∈ Effect
     BuildMemWriteLong(addr ↦ symtab_buffer.base + (8 * _symtab_buffer.count), value ↦ tmp_in,
@@ -841,45 +841,45 @@ fsm driver_main
     is_impl_ok ∈ Bool
     is_impl_nn ∈ Bool
     BoolCmpBuildZ3(ctx_h ↦ z3ctx.ctx, op ↦ impl, l_h ↦ _active_handle,
-        r_h ↦ h_top, eff ↦ impl_handle, ok ↦ is_impl_ok,
+        r_h ↦ topmost_handle, eff ↦ impl_handle, ok ↦ is_impl_ok,
         needs_not ↦ is_impl_nn)
     natbound_geq_eff ∈ Effect
     is_natbound_ok ∈ Bool
     is_natbound_nn ∈ Bool
-    BoolCmpBuildZ3(ctx_h ↦ z3ctx.ctx, op ↦ geq, l_h ↦ h_top, r_h ↦ z3nums.zero,
+    BoolCmpBuildZ3(ctx_h ↦ z3ctx.ctx, op ↦ geq, l_h ↦ topmost_handle, r_h ↦ z3nums.zero,
         eff ↦ natbound_geq_eff, ok ↦ is_natbound_ok, needs_not ↦ is_natbound_nn)
     pineq_eff ∈ Effect
     is_pin_ok ∈ Bool
     is_pin_nn ∈ Bool
-    BoolCmpBuildZ3(ctx_h ↦ z3ctx.ctx, op ↦ op_eq, l_h ↦ h_2nd, r_h ↦ h_top,
+    BoolCmpBuildZ3(ctx_h ↦ z3ctx.ctx, op ↦ op_eq, l_h ↦ second_handle, r_h ↦ topmost_handle,
         eff ↦ pineq_eff, ok ↦ is_pin_ok, needs_not ↦ is_pin_nn)
     assert_eff ∈ Effect
-    BuildZ3SolverAssert(ctx_h ↦ z3ctx.ctx, solver_h ↦ z3ctx.sol, ast_h ↦ h_top,
+    BuildZ3SolverAssert(ctx_h ↦ z3ctx.ctx, solver_h ↦ z3ctx.sol, ast_h ↦ topmost_handle,
         eff ↦ assert_eff)
     assert_tmp ∈ Effect
     BuildZ3SolverAssert(ctx_h ↦ z3ctx.ctx, solver_h ↦ z3ctx.sol, ast_h ↦ tmp_in,
         eff ↦ assert_tmp)
-    app_arg ∈ Int = (_item_step = 0 ? h_top
-        : _item_step = 1 ? h_2nd
-        : _item_step = 2 ? h_3rd
-        : _item_step = 3 ? h_4th
-        : _item_step = 4 ? h_5th
-        : h_6th)
+    app_arg ∈ Int = (_item_step = 0 ? topmost_handle
+        : _item_step = 1 ? second_handle
+        : _item_step = 2 ? third_handle
+        : _item_step = 3 ? fourth_handle
+        : _item_step = 4 ? fifth_handle
+        : sixth_handle)
     ctor_argw ∈ Effect
-    CtorArgWriteStep(args_p ↦ z3_arena + 224, idx ↦ app_argc - 1 - _item_step,
+    CtorArgWriteStep(args_p ↦ z3_arena + 224, idx ↦ applied_argc - 1 - _item_step,
         arg_h ↦ app_arg, eff ↦ ctor_argw)
     ctor_app ∈ Effect
-    CtorAppStep(ctx_h ↦ z3ctx.ctx, ctor_decl_h ↦ app_decl, n_args ↦ app_argc,
+    CtorAppStep(ctx_h ↦ z3ctx.ctx, ctor_decl_h ↦ applied_decl, n_args ↦ applied_argc,
         args_p ↦ z3_arena + 224, eff ↦ ctor_app)
-    chosen_position_handle ∈ Int = (chosen_position = 0 ? z3nums.zero
-        : chosen_position = 1 ? z3nums.one
-        : chosen_position = 2 ? z3nums.two
+    chosen_position_handle ∈ Int = (select_position = 0 ? z3nums.zero
+        : select_position = 1 ? z3nums.one
+        : select_position = 2 ? z3nums.two
         : z3nums.three)
     select ∈ Effect
     BuildZ3MkSelect(ctx_h ↦ z3ctx.ctx, arr_h ↦ z3_effects, idx_h ↦ chosen_position_handle,
         eff ↦ select)
     select_h ∈ Effect
-    BuildZ3MkSelect(ctx_h ↦ z3ctx.ctx, arr_h ↦ h_2nd, idx_h ↦ h_top,
+    BuildZ3MkSelect(ctx_h ↦ z3ctx.ctx, arr_h ↦ second_handle, idx_h ↦ topmost_handle,
         eff ↦ select_h)
     denom ∈ String = (digits = 1 ? "10"
         : digits = 2 ? "100"
@@ -892,15 +892,15 @@ fsm driver_main
     mkreal ∈ Effect
     BuildZ3MkNumeral(ctx_h ↦ z3ctx.ctx, num ↦ text, sort_h ↦ z3sorts.rsort,
         eff ↦ mkreal)
-    empty_set_sort ∈ Int = recs[empty_set_slot].sort
+    empty_set_sort ∈ Int = recs[emptyset_kind].sort
     emptyset_eff ∈ Effect = LibCall("libz3", "Z3_mk_empty_set",
         ⟨ArgInt(z3ctx.ctx), ArgInt(empty_set_sort)⟩)
     setadd_eff ∈ Effect = LibCall("libz3", "Z3_mk_set_add",
-        ⟨ArgInt(z3ctx.ctx), ArgInt(h_2nd), ArgInt(h_top)⟩)
+        ⟨ArgInt(z3ctx.ctx), ArgInt(second_handle), ArgInt(topmost_handle)⟩)
     seleq_eff ∈ Effect
     select_eq_ok ∈ Bool
     select_eq_nn ∈ Bool
-    BoolCmpBuildZ3(ctx_h ↦ z3ctx.ctx, op ↦ op_eq, l_h ↦ tmp_in, r_h ↦ h_top,
+    BoolCmpBuildZ3(ctx_h ↦ z3ctx.ctx, op ↦ op_eq, l_h ↦ tmp_in, r_h ↦ topmost_handle,
         eff ↦ seleq_eff, ok ↦ select_eq_ok, needs_not ↦ select_eq_nn)
     lit_handle ∈ Int = (lit = 1 ? z3nums.one
         : lit = 2 ? z3nums.two
@@ -916,7 +916,7 @@ fsm driver_main
 
     step_eff ∈ Effect = (process ∧ is_int ? mkint
         : process ∧ is_str ? mkstring
-        : lookup_read ? read_symbol_eff
+        : lookup_read ? symbol_read_eff
         : is_op_item ∧ is_nary ∧ (_item_step = 0) ? argw0
         : is_op_item ∧ is_nary ∧ (_item_step = 1) ? argw1
         : is_op_item ∧ is_nary ? (bool_nary ? nary
@@ -934,15 +934,15 @@ fsm driver_main
         : is_assert_item ? (guarding
             ? (_item_step = 0 ? impl_handle : assert_tmp)
             : assert_eff)
-        : app ? (_item_step < app_argc ? ctor_argw : ctor_app)
+        : app ? (_item_step < applied_argc ? ctor_argw : ctor_app)
         : is_seleq_item ? (_item_step = 0 ? select
             : _item_step = 1 ? seleq_eff
             : assert_tmp)
-        : equality_handle ? (_item_step = 0 ? select : seleq_eff)
+        : is_seleqh ? (_item_step = 0 ? select : seleq_eff)
         : is_leneq_item ? (_item_step = 0 ? leneq_eff : assert_tmp)
-        : len_equals_handle ? leneq_eff
-        : is_strop_item ? (string_op_name = "len" ? strlen : strop_eff)
-        : chosen_handle ? select_h
+        : is_leneqh ? leneq_eff
+        : is_strop_item ? (strop_key = "len" ? strlen : strop_eff)
+        : is_selh ? select_h
         : real ? mkreal
         : is_emptyset_item ? emptyset_eff
         : is_setadd_item ? setadd_eff
@@ -958,7 +958,7 @@ fsm driver_main
         : field_unresolved ? ⟨LibCall("libc", "puts",
             ⟨ArgStr(";; compiler2: enum payload field type is not a group member, a scalar, a floor type, or a previously built enum")⟩),
             Exit(8)⟩
-        : (¬_got_path) ? ⟨ReadFile(src_path)⟩
+        : (¬_got_path) ? ⟨ReadFile(source_path)⟩
         : zstep = 0 ? ⟨zinit_cfg⟩
         : zstep = 1 ? ⟨zinit_ctx⟩
         : zstep = 2 ? ⟨zinit_sol⟩
@@ -1031,10 +1031,10 @@ fsm driver_main
         : render_step = 0 ? ⟨solver_str⟩
         : render_step = 1 ? ⟨copy_unit⟩
         : render_step ≥ 2 ? ⟨free_tokbuf, free_symbuf, free_claimbuf, print_unit, Exit(0)⟩
-        : fetch_go ? ⟨read_tag0, read_pay0, read_tag1, pay1, tag2, pay2,
+        : start_fetch ? ⟨read_tag0, read_pay0, read_tag1, pay1, tag2, pay2,
             tag3, pay3, tag4, pay4, tag5, pay5, tag6, pay6,
             tag7, pay7⟩
-        : _fetch_mode = 1 ? ⟨eff0, eff1, eff2, eff3, eff4, eff5, eff6, eff7⟩
+        : _burst_phase = 1 ? ⟨eff0, eff1, eff2, eff3, eff4, eff5, eff6, eff7⟩
         : claimindex_add ? ⟨claimidx_write⟩
         : callee_cursor ? ⟨claimidx_read⟩
         : cond_hit ? ⟨guard_read_eff⟩
@@ -1045,17 +1045,17 @@ fsm driver_main
                recdecl_write_fn5, recdecl_write_fs0, recdecl_write_fs1, recdecl_write_fs2, recdecl_write_fs3,
                recdecl_write_fs4, recdecl_write_fs5⟩
             : ⟨recdecl_step_eff⟩)
-        : (processing ∧ is_decl_item ∧ (_item_step = 0) ∧ (const_sort ≥ 30))
+        : (processing ∧ is_decl_item ∧ (_item_step = 0) ∧ (new_const_sort ≥ 30))
             ? ⟨mksym_eff, enumtab_read_mem⟩
         : processing ? ⟨step_eff⟩
         : (finish ∧ with_op) ? ⟨tag_cell, payload_cell, op_cell⟩
         : finish ? ⟨tag_cell, payload_cell⟩
-        : (plan_kind = 1 ∧ have_pend_str) ? ⟨pending_str_eff, write_tag0⟩
-        : plan_kind = 1 ? ⟨write_tag0⟩
-        : plan_kind = 2 ? ⟨write_tag0, write_pay0⟩
-        : plan_kind = 3 ? ⟨strdup, write_tag0⟩
-        : plan_kind = 4 ? ⟨write_tag0, write_tag1⟩
-        : plan_kind = 5 ? ⟨strdup, write_tag0, write_tag1⟩
-        : plan_kind = 6 ? ⟨write_tag0, write_pay0, write_tag1⟩
+        : (emit_shape = 1 ∧ have_pend_str) ? ⟨pending_str_eff, write_tag0⟩
+        : emit_shape = 1 ? ⟨write_tag0⟩
+        : emit_shape = 2 ? ⟨write_tag0, write_pay0⟩
+        : emit_shape = 3 ? ⟨strdup, write_tag0⟩
+        : emit_shape = 4 ? ⟨write_tag0, write_tag1⟩
+        : emit_shape = 5 ? ⟨strdup, write_tag0, write_tag1⟩
+        : emit_shape = 6 ? ⟨write_tag0, write_pay0, write_tag1⟩
         : have_pend_str ? ⟨pending_str_eff⟩
         : ⟨filler_eff⟩)

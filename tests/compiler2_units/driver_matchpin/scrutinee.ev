@@ -17,8 +17,8 @@ fsm main
     parse = (is_first_tick ? true : _parse)
     parse_mode ∈ Int
     parse_mode = (is_first_tick ? 6 : _parse_mode)
-    tok_ready ∈ Bool
-    tok_ready = (is_first_tick ? true : _tok_ready)
+    can_consume ∈ Bool
+    can_consume = (is_first_tick ? true : _can_consume)
     tok0 ∈ Token
     tok0 = (is_first_tick ? Ident("e") : _tok0)
     head_ident ∈ String

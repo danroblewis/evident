@@ -1,6 +1,6 @@
--- DriverBuildEff isolation — the ED effect-row selector.
+-- DriverBuildEff isolation — the ED effect-elem_record selector.
 -- Act 1 (member finalize) step 13 is the name+constructor-list double write:
--- wbatch2 must select it (w2=1, wf/w3u=0). Boundary case vs the wf row.
+-- wbatch2 must select it (w2=1, wf/w3u=0). Boundary case vs the wf elem_record.
 -- entry: main
 -- expect: stdout = "0/1/0"
 -- expect: exit = 0

@@ -1,7 +1,7 @@
 -- DriverEmit isolation — the EMIT program counter walks once done.
 -- render_step parks at −1 until parse_done, then steps 0→1→…→5 (capped), one
 -- per tick: solver-to-string, cstr-copy, render-capture, then the
--- free+puts+Exit row. parse_done held true; exit at render_step ≥ 5.
+-- free+puts+Exit elem_record. parse_done held true; exit at render_step ≥ 5.
 -- entry: main
 -- expect: stdout = "5"
 -- expect: exit = 0

@@ -1,12 +1,12 @@
 -- MODULE DriverRecVal
--- CONSUMES: a record-instance work item — recval_slot (the registry slot index
---           0/1/2), recval_name (the instance name), work_tail (the rest of the
+-- CONSUMES: a record-instance work item — recfield_slot (the registry slot index
+--           0/1/2), recfield_name (the instance name), work_tail (the rest of the
 --           work-item program), and the record-type registry recs.
 -- PRODUCES: literal_items (the C2RecVal expansion — the record value as a
 --           ctor app over its flattened dotted-const segments) and
 --           literal_decl_items (the C2RecDecl expansion — the declarations of
 --           those dotted consts), plus the literal_fields/sortcodes intermediates.
--- MAINTAINS: pure per-tick lowering, no carry. Both expansions handle
+-- MAINTAINS: is_pure_push per-tick lowering, no carry. Both expansions handle
 --           ≤6 fields; a record-typed field recurses one C2RecVal /
 --           C2RecDecl level (the work-item walk is the recursion); a
 --           Seq(Int) field is skipped in the decl (its own seq membership
@@ -15,33 +15,33 @@
 -- The record value/decl expansion. Lifted into driver_main via
 -- `..DriverRecVal`.
 fsm DriverRecVal
-    literal_fnames ∈ String = recs[recval_slot].fnames
-    literal_ftypes ∈ String = recs[recval_slot].ftypes
-    nfields ∈ Int = recs[recval_slot].n_fields
-    literal_ctor ∈ Int = recs[recval_slot].ctor
+    literal_fnames ∈ String = recs[recfield_slot].fnames
+    literal_ftypes ∈ String = recs[recfield_slot].ftypes
+    nfields ∈ Int = recs[recfield_slot].n_fields
+    literal_ctor ∈ Int = recs[recfield_slot].ctor
     literal_fields ∈ Seq(RecField)
     #literal_fields ≤ 6
     ∀ k ∈ {0..5} : RtRecName(s ↦ literal_fnames, i ↦ k, name ↦ literal_fields[k].name)
     ∀ k ∈ {0..5} : RtRecName(s ↦ literal_ftypes, i ↦ k, name ↦ literal_fields[k].typename)
     ∀ k ∈ {0..5} : RtIdxOf(nm ↦ literal_fields[k].typename, idx ↦ literal_fields[k].kidx)
     seg0 ∈ C2Item = (literal_fields[0].kidx ≥ 0
-        ? C2RecVal(recval_name ++ "." ++ literal_fields[0].name, literal_fields[0].kidx)
-        : C2Process(EIdent(recval_name ++ "." ++ literal_fields[0].name)))
+        ? C2RecVal(recfield_name ++ "." ++ literal_fields[0].name, literal_fields[0].kidx)
+        : C2Process(EIdent(recfield_name ++ "." ++ literal_fields[0].name)))
     literal_seg1 ∈ C2Item = (literal_fields[1].kidx ≥ 0
-        ? C2RecVal(recval_name ++ "." ++ literal_fields[1].name, literal_fields[1].kidx)
-        : C2Process(EIdent(recval_name ++ "." ++ literal_fields[1].name)))
+        ? C2RecVal(recfield_name ++ "." ++ literal_fields[1].name, literal_fields[1].kidx)
+        : C2Process(EIdent(recfield_name ++ "." ++ literal_fields[1].name)))
     literal_seg2 ∈ C2Item = (literal_fields[2].kidx ≥ 0
-        ? C2RecVal(recval_name ++ "." ++ literal_fields[2].name, literal_fields[2].kidx)
-        : C2Process(EIdent(recval_name ++ "." ++ literal_fields[2].name)))
+        ? C2RecVal(recfield_name ++ "." ++ literal_fields[2].name, literal_fields[2].kidx)
+        : C2Process(EIdent(recfield_name ++ "." ++ literal_fields[2].name)))
     seg3 ∈ C2Item = (literal_fields[3].kidx ≥ 0
-        ? C2RecVal(recval_name ++ "." ++ literal_fields[3].name, literal_fields[3].kidx)
-        : C2Process(EIdent(recval_name ++ "." ++ literal_fields[3].name)))
+        ? C2RecVal(recfield_name ++ "." ++ literal_fields[3].name, literal_fields[3].kidx)
+        : C2Process(EIdent(recfield_name ++ "." ++ literal_fields[3].name)))
     seg4 ∈ C2Item = (literal_fields[4].kidx ≥ 0
-        ? C2RecVal(recval_name ++ "." ++ literal_fields[4].name, literal_fields[4].kidx)
-        : C2Process(EIdent(recval_name ++ "." ++ literal_fields[4].name)))
+        ? C2RecVal(recfield_name ++ "." ++ literal_fields[4].name, literal_fields[4].kidx)
+        : C2Process(EIdent(recfield_name ++ "." ++ literal_fields[4].name)))
     seg5 ∈ C2Item = (literal_fields[5].kidx ≥ 0
-        ? C2RecVal(recval_name ++ "." ++ literal_fields[5].name, literal_fields[5].kidx)
-        : C2Process(EIdent(recval_name ++ "." ++ literal_fields[5].name)))
+        ? C2RecVal(recfield_name ++ "." ++ literal_fields[5].name, literal_fields[5].kidx)
+        : C2Process(EIdent(recfield_name ++ "." ++ literal_fields[5].name)))
     literal_tail ∈ C2Items = C2ICons(C2App(literal_ctor, nfields), work_tail)
     literal_items ∈ C2Items = (nfields = 1
             ? C2ICons(seg0, literal_tail)
@@ -62,26 +62,26 @@ fsm DriverRecVal
     #sortcodes ≤ 6
     ∀ k ∈ {0..5} : sortcodes[k] = (literal_fields[k].typename = "Bool" ? 1 : literal_fields[k].typename = "String" ? 3 : literal_fields[k].typename = "Real" ? 6 : 0)
     dtail5 ∈ C2Items = ((nfields < 6 ∨ literal_fields[5].typename = "Seq(Int)") ? work_tail
-        : literal_fields[5].kidx ≥ 0 ? C2ICons(C2RecDecl(recval_name ++ "." ++ literal_fields[5].name, literal_fields[5].kidx), work_tail)
-        : C2ICons(C2DeclConst(recval_name ++ "." ++ literal_fields[5].name, sortcodes[5]),
+        : literal_fields[5].kidx ≥ 0 ? C2ICons(C2RecDecl(recfield_name ++ "." ++ literal_fields[5].name, literal_fields[5].kidx), work_tail)
+        : C2ICons(C2DeclConst(recfield_name ++ "." ++ literal_fields[5].name, sortcodes[5]),
             C2ICons(C2Drop, work_tail)))
     dtail4 ∈ C2Items = ((nfields < 5 ∨ literal_fields[4].typename = "Seq(Int)") ? dtail5
-        : literal_fields[4].kidx ≥ 0 ? C2ICons(C2RecDecl(recval_name ++ "." ++ literal_fields[4].name, literal_fields[4].kidx), dtail5)
-        : C2ICons(C2DeclConst(recval_name ++ "." ++ literal_fields[4].name, sortcodes[4]),
+        : literal_fields[4].kidx ≥ 0 ? C2ICons(C2RecDecl(recfield_name ++ "." ++ literal_fields[4].name, literal_fields[4].kidx), dtail5)
+        : C2ICons(C2DeclConst(recfield_name ++ "." ++ literal_fields[4].name, sortcodes[4]),
             C2ICons(C2Drop, dtail5)))
     dtail3 ∈ C2Items = ((nfields < 4 ∨ literal_fields[3].typename = "Seq(Int)") ? dtail4
-        : literal_fields[3].kidx ≥ 0 ? C2ICons(C2RecDecl(recval_name ++ "." ++ literal_fields[3].name, literal_fields[3].kidx), dtail4)
-        : C2ICons(C2DeclConst(recval_name ++ "." ++ literal_fields[3].name, sortcodes[3]),
+        : literal_fields[3].kidx ≥ 0 ? C2ICons(C2RecDecl(recfield_name ++ "." ++ literal_fields[3].name, literal_fields[3].kidx), dtail4)
+        : C2ICons(C2DeclConst(recfield_name ++ "." ++ literal_fields[3].name, sortcodes[3]),
             C2ICons(C2Drop, dtail4)))
     dtail2 ∈ C2Items = ((nfields < 3 ∨ literal_fields[2].typename = "Seq(Int)") ? dtail3
-        : literal_fields[2].kidx ≥ 0 ? C2ICons(C2RecDecl(recval_name ++ "." ++ literal_fields[2].name, literal_fields[2].kidx), dtail3)
-        : C2ICons(C2DeclConst(recval_name ++ "." ++ literal_fields[2].name, sortcodes[2]),
+        : literal_fields[2].kidx ≥ 0 ? C2ICons(C2RecDecl(recfield_name ++ "." ++ literal_fields[2].name, literal_fields[2].kidx), dtail3)
+        : C2ICons(C2DeclConst(recfield_name ++ "." ++ literal_fields[2].name, sortcodes[2]),
             C2ICons(C2Drop, dtail3)))
     dtail1 ∈ C2Items = ((nfields < 2 ∨ literal_fields[1].typename = "Seq(Int)") ? dtail2
-        : literal_fields[1].kidx ≥ 0 ? C2ICons(C2RecDecl(recval_name ++ "." ++ literal_fields[1].name, literal_fields[1].kidx), dtail2)
-        : C2ICons(C2DeclConst(recval_name ++ "." ++ literal_fields[1].name, sortcodes[1]),
+        : literal_fields[1].kidx ≥ 0 ? C2ICons(C2RecDecl(recfield_name ++ "." ++ literal_fields[1].name, literal_fields[1].kidx), dtail2)
+        : C2ICons(C2DeclConst(recfield_name ++ "." ++ literal_fields[1].name, sortcodes[1]),
             C2ICons(C2Drop, dtail2)))
     literal_decl_items ∈ C2Items = ((nfields < 1 ∨ literal_fields[0].typename = "Seq(Int)") ? dtail1
-        : literal_fields[0].kidx ≥ 0 ? C2ICons(C2RecDecl(recval_name ++ "." ++ literal_fields[0].name, literal_fields[0].kidx), dtail1)
-        : C2ICons(C2DeclConst(recval_name ++ "." ++ literal_fields[0].name, sortcodes[0]),
+        : literal_fields[0].kidx ≥ 0 ? C2ICons(C2RecDecl(recfield_name ++ "." ++ literal_fields[0].name, literal_fields[0].kidx), dtail1)
+        : C2ICons(C2DeclConst(recfield_name ++ "." ++ literal_fields[0].name, sortcodes[0]),
             C2ICons(C2Drop, dtail1)))

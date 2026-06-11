@@ -3,20 +3,20 @@
 --           consumer sub-state carries that set lookahead need (_parse_mode,
 --           _collect_on, _decl_action, nil, _callwalk_state, _tuple_state), the FTI token
 --           buffer base (tok_buf.base) + the per-tick libc read results
---           (last_results), and its own carried cursor (_tok_cur/_fetch_end/
---           _fetch_mode/_win_toks).
--- PRODUCES: the decoded 8-token window (win_toks + the tok0..tok7 head
+--           (last_results), and its own carried cursor (_token_cursor/_coverage_end/
+--           _burst_phase/_decoded_window).
+-- PRODUCES: the decoded 8-token window (decoded_window + the tok0..tok7 head
 --           views), the per-tick lookahead need (need), the fetch gate
---           (tok_ready / fetch_go), the fetch state machine (fetch_mode 0→1→2),
+--           (can_consume / start_fetch), the fetch state machine (burst_phase 0→1→2),
 --           the read-burst effects (read_tag0..pay7) and the latched
---           tag/payload registers (lat_tags/lat_pays) + the last_results
+--           tag/payload registers (tag_latch/pay_latch) + the last_results
 --           int/string decoders (int0..15/res_strs) and copy effects
 --           (eff0..7).
 -- MAINTAINS: a consumer acts only when avail ≥ need (else a 3-tick fetch
---           burst refills from tok_cur); the window never holds an unbounded
+--           burst refills from token_cursor); the window never holds an unbounded
 --           TokenList — exactly 8 entries decoded from the buffer, entries
 --           past the sentinel decode to EofTok. The cursor STATE TRANSITIONS
---           (tok_cur/fetch_end/win_toks =) live in the sibling token-consumption region
+--           (token_cursor/coverage_end/decoded_window =) live in the sibling token-consumption region
 --           of driver_main; this module owns the decode + fetch-read side.
 --
 -- FTI cursor → decoded 8-token window + fetch burst. Lifted into
@@ -102,22 +102,22 @@ claim FtiLatch(slot ∈ Int, cap ∈ Bool, prev ∈ Int, cur ∈ Int)
 
 fsm DriverWindow
     -- ── TOKEN WINDOW (FTI cursor + 8-token decoded window) ────────
-    -- tok_cur = absolute index of the next unconsumed token; fetch_end = one
-    -- past the fetched coverage; win_toks = the 8 entries decoded from
-    -- tok_cur (past-sentinel ⇒ EofTok).
-    tok_cur ∈ Int
-    fetch_end ∈ Int
-    fetch_mode ∈ Int
-    win_toks ∈ TokenList
+    -- token_cursor = absolute index of the next unconsumed token; coverage_end = one
+    -- past the fetched coverage; decoded_window = the 8 entries decoded from
+    -- token_cursor (past-sentinel ⇒ EofTok).
+    token_cursor ∈ Int
+    coverage_end ∈ Int
+    burst_phase ∈ Int
+    decoded_window ∈ TokenList
 
-    avail ∈ Int = _fetch_end - _tok_cur
+    avail ∈ Int = _coverage_end - _token_cursor
 
     -- latched tags/payloads between the read tick and the copy tick;
     -- window entry k's (tag, payload) lands at last_results[2k]/[2k+1]
-    lat_tags ∈ Seq(Int)
-    #lat_tags ≤ 8
-    lat_pays ∈ Seq(Int)
-    #lat_pays ≤ 8
+    tag_latch ∈ Seq(Int)
+    #tag_latch ≤ 8
+    pay_latch ∈ Seq(Int)
+    #pay_latch ≤ 8
 
     int0 ∈ Int = match last_results[0]
         IntResult(n) ⇒ n
@@ -168,9 +168,9 @@ fsm DriverWindow
         IntResult(n) ⇒ n
         _ ⇒ 0
 
-    fetch_cap ∈ Bool = (_fetch_mode = 1)
-    ∀ k ∈ {0..7} : FtiLatch(slot ↦ 2*k, cap ↦ fetch_cap, prev ↦ _lat_tags[k], cur ↦ lat_tags[k])
-    ∀ k ∈ {0..7} : FtiLatch(slot ↦ 2*k + 1, cap ↦ fetch_cap, prev ↦ _lat_pays[k], cur ↦ lat_pays[k])
+    is_capture_tick ∈ Bool = (_burst_phase = 1)
+    ∀ k ∈ {0..7} : FtiLatch(slot ↦ 2*k, cap ↦ is_capture_tick, prev ↦ _tag_latch[k], cur ↦ tag_latch[k])
+    ∀ k ∈ {0..7} : FtiLatch(slot ↦ 2*k + 1, cap ↦ is_capture_tick, prev ↦ _pay_latch[k], cur ↦ pay_latch[k])
 
     is_str0 ∈ Bool = (int0 = 1 ∨ int0 = 3)
     is_str1 ∈ Bool = (int2 = 1 ∨ int2 = 3)
@@ -195,56 +195,56 @@ fsm DriverWindow
 
     dec_toks ∈ Seq(Token)
     #dec_toks ≤ 8
-    ∀ k ∈ {0..7} : FtiTok(tag ↦ _lat_tags[k], p0 ↦ _lat_pays[k], s ↦ res_strs[k], t ↦ dec_toks[k])
+    ∀ k ∈ {0..7} : FtiTok(tag ↦ _tag_latch[k], p0 ↦ _pay_latch[k], s ↦ res_strs[k], t ↦ dec_toks[k])
     suffixes ∈ Seq(TokenList)
     #suffixes ≤ 9
     suffixes[8] = TLNil
     ∀ k ∈ {0..7} : suffixes[k] = TLCons(dec_toks[k], suffixes[k + 1])
     rebuilt ∈ TokenList = suffixes[0]
 
-    tok0 ∈ Token = match _win_toks
+    tok0 ∈ Token = match _decoded_window
         TLCons(t, _) ⇒ t
         TLNil ⇒ EofTok
-    win_rest1 ∈ TokenList = match _win_toks
+    after1 ∈ TokenList = match _decoded_window
         TLCons(_, r) ⇒ r
         TLNil ⇒ TLNil
-    tok1 ∈ Token = match win_rest1
+    tok1 ∈ Token = match after1
         TLCons(t, _) ⇒ t
         TLNil ⇒ EofTok
-    win_rest2 ∈ TokenList = match win_rest1
+    after2 ∈ TokenList = match after1
         TLCons(_, r) ⇒ r
         TLNil ⇒ TLNil
-    tok2 ∈ Token = match win_rest2
+    tok2 ∈ Token = match after2
         TLCons(t, _) ⇒ t
         TLNil ⇒ EofTok
-    win_rest3 ∈ TokenList = match win_rest2
+    after3 ∈ TokenList = match after2
         TLCons(_, r) ⇒ r
         TLNil ⇒ TLNil
-    tok3 ∈ Token = match win_rest3
+    tok3 ∈ Token = match after3
         TLCons(t, _) ⇒ t
         TLNil ⇒ EofTok
-    win_rest4 ∈ TokenList = match win_rest3
+    after4 ∈ TokenList = match after3
         TLCons(_, r) ⇒ r
         TLNil ⇒ TLNil
-    tok4 ∈ Token = match win_rest4
+    tok4 ∈ Token = match after4
         TLCons(t, _) ⇒ t
         TLNil ⇒ EofTok
-    win_rest5 ∈ TokenList = match win_rest4
+    after5 ∈ TokenList = match after4
         TLCons(_, r) ⇒ r
         TLNil ⇒ TLNil
-    tok5 ∈ Token = match win_rest5
+    tok5 ∈ Token = match after5
         TLCons(t, _) ⇒ t
         TLNil ⇒ EofTok
-    rest6 ∈ TokenList = match win_rest5
+    after6 ∈ TokenList = match after5
         TLCons(_, r) ⇒ r
         TLNil ⇒ TLNil
-    tok6 ∈ Token = match rest6
+    tok6 ∈ Token = match after6
         TLCons(t, _) ⇒ t
         TLNil ⇒ EofTok
-    rest7 ∈ TokenList = match rest6
+    after7 ∈ TokenList = match after6
         TLCons(_, r) ⇒ r
         TLNil ⇒ TLNil
-    tok7 ∈ Token = match rest7
+    tok7 ∈ Token = match after7
         TLCons(t, _) ⇒ t
         TLNil ⇒ EofTok
 
@@ -265,28 +265,28 @@ fsm DriverWindow
         : _parse_mode = 14 ? (nil ? 2 : 0)
         : nil ? 8
         : 0)
-    tok_ready ∈ Bool = ((_fetch_mode = 0) ∧ (need > 0) ∧ (avail ≥ need))
-    fetch_go ∈ Bool = ((_fetch_mode = 0) ∧ (need > 0) ∧ (avail < need))
+    can_consume ∈ Bool = ((_burst_phase = 0) ∧ (need > 0) ∧ (avail ≥ need))
+    start_fetch ∈ Bool = ((_burst_phase = 0) ∧ (need > 0) ∧ (avail < need))
 
-    fetch_mode = (is_first_tick ? 0
-        : fetch_go ? 1
-        : _fetch_mode = 1 ? 2
+    burst_phase = (is_first_tick ? 0
+        : start_fetch ? 1
+        : _burst_phase = 1 ? 2
         : 0)
 
-    fetch_addr ∈ Int = tok_buf.base + (_tok_cur * 32)
-    read_tag0 ∈ Effect = LibCall("__mem", "read_long", ⟨ArgInt(fetch_addr)⟩)
-    read_pay0 ∈ Effect = LibCall("__mem", "read_long", ⟨ArgInt(fetch_addr + 8)⟩)
-    read_tag1 ∈ Effect = LibCall("__mem", "read_long", ⟨ArgInt(fetch_addr + 32)⟩)
-    pay1 ∈ Effect = LibCall("__mem", "read_long", ⟨ArgInt(fetch_addr + 40)⟩)
-    tag2 ∈ Effect = LibCall("__mem", "read_long", ⟨ArgInt(fetch_addr + 64)⟩)
-    pay2 ∈ Effect = LibCall("__mem", "read_long", ⟨ArgInt(fetch_addr + 72)⟩)
-    tag3 ∈ Effect = LibCall("__mem", "read_long", ⟨ArgInt(fetch_addr + 96)⟩)
-    pay3 ∈ Effect = LibCall("__mem", "read_long", ⟨ArgInt(fetch_addr + 104)⟩)
-    tag4 ∈ Effect = LibCall("__mem", "read_long", ⟨ArgInt(fetch_addr + 128)⟩)
-    pay4 ∈ Effect = LibCall("__mem", "read_long", ⟨ArgInt(fetch_addr + 136)⟩)
-    tag5 ∈ Effect = LibCall("__mem", "read_long", ⟨ArgInt(fetch_addr + 160)⟩)
-    pay5 ∈ Effect = LibCall("__mem", "read_long", ⟨ArgInt(fetch_addr + 168)⟩)
-    tag6 ∈ Effect = LibCall("__mem", "read_long", ⟨ArgInt(fetch_addr + 192)⟩)
-    pay6 ∈ Effect = LibCall("__mem", "read_long", ⟨ArgInt(fetch_addr + 200)⟩)
-    tag7 ∈ Effect = LibCall("__mem", "read_long", ⟨ArgInt(fetch_addr + 224)⟩)
-    pay7 ∈ Effect = LibCall("__mem", "read_long", ⟨ArgInt(fetch_addr + 232)⟩)
+    cursor_addr ∈ Int = tok_buf.base + (_token_cursor * 32)
+    read_tag0 ∈ Effect = LibCall("__mem", "read_long", ⟨ArgInt(cursor_addr)⟩)
+    read_pay0 ∈ Effect = LibCall("__mem", "read_long", ⟨ArgInt(cursor_addr + 8)⟩)
+    read_tag1 ∈ Effect = LibCall("__mem", "read_long", ⟨ArgInt(cursor_addr + 32)⟩)
+    pay1 ∈ Effect = LibCall("__mem", "read_long", ⟨ArgInt(cursor_addr + 40)⟩)
+    tag2 ∈ Effect = LibCall("__mem", "read_long", ⟨ArgInt(cursor_addr + 64)⟩)
+    pay2 ∈ Effect = LibCall("__mem", "read_long", ⟨ArgInt(cursor_addr + 72)⟩)
+    tag3 ∈ Effect = LibCall("__mem", "read_long", ⟨ArgInt(cursor_addr + 96)⟩)
+    pay3 ∈ Effect = LibCall("__mem", "read_long", ⟨ArgInt(cursor_addr + 104)⟩)
+    tag4 ∈ Effect = LibCall("__mem", "read_long", ⟨ArgInt(cursor_addr + 128)⟩)
+    pay4 ∈ Effect = LibCall("__mem", "read_long", ⟨ArgInt(cursor_addr + 136)⟩)
+    tag5 ∈ Effect = LibCall("__mem", "read_long", ⟨ArgInt(cursor_addr + 160)⟩)
+    pay5 ∈ Effect = LibCall("__mem", "read_long", ⟨ArgInt(cursor_addr + 168)⟩)
+    tag6 ∈ Effect = LibCall("__mem", "read_long", ⟨ArgInt(cursor_addr + 192)⟩)
+    pay6 ∈ Effect = LibCall("__mem", "read_long", ⟨ArgInt(cursor_addr + 200)⟩)
+    tag7 ∈ Effect = LibCall("__mem", "read_long", ⟨ArgInt(cursor_addr + 224)⟩)
+    pay7 ∈ Effect = LibCall("__mem", "read_long", ⟨ArgInt(cursor_addr + 232)⟩)

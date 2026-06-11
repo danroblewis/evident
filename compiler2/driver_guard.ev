@@ -3,7 +3,7 @@
 --           _parse_kind, parse_bad), the claim index (claimindex_names, claimindex_buf.base),
 --           the parse_mode-10 composition-walk state (parse, _parse_mode,
 --           _callwalk_state, reset, nil), and the inline-frame
---           stack views (frame_pop, _frame_depth, h_top).
+--           stack views (frame_pop, _frame_depth, topmost_handle).
 -- PRODUCES: the guard recognizer (cond_op/cond_lhs/cond_rhs/binop/cond_callee/cond_key/
 --           cond_pos/cond_hit), the claim-body fetch effect (guard_read_eff), the
 --           jump capture/fire signals (capture/jump_fire/disarm), and
@@ -42,7 +42,7 @@ fsm DriverGuard
     disarm ∈ Bool = (frame_pop ∧ (_frame_depth = _armed_depth))
     active_handle = (is_first_tick ? 0
         : reset ? 0
-        : jump_fire ? h_top
+        : jump_fire ? topmost_handle
         : disarm ? 0
         : _active_handle)
     armed_depth = (is_first_tick ? 0

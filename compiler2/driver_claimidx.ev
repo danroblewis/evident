@@ -1,7 +1,7 @@
 -- MODULE DriverClaimIdx
 -- CONSUMES: the skip-pass entry (enter_skip) + the window head views
 --           (tok0..tok6), the claim head shape (is_claim,
---           decl_name), the parse gate (parse, _parse_mode, tok_ready,
+--           decl_name), the parse gate (parse, _parse_mode, can_consume,
 --           nil), the parse_mode-4 enum-collection signals
 --           (enum_decl, decl_action) + floor decl
 --           handles (z_*_decl/empty_val), the Pratt result (parse_ready,
@@ -19,7 +19,7 @@
 --
 -- The claim index + enum/effects collection. Lifted into driver_main via
 -- `..DriverClaimIdx`. C2ChainLvl (the D2 chain-fold helper) travels with
--- it as a pure claim (call sites inline identically).
+-- it as a is_pure_push claim (call sites inline identically).
 type VfTy(tyname ∈ String)
 
 claim C2ChainLvl(tail ∈ C2Items, out ∈ C2Items)
@@ -31,7 +31,7 @@ fsm DriverClaimIdx
     -- ── F2: the claim index ───────────────────────────────────────
     -- claimindex_names: fixed-width 32-byte name records (the B1 symbol_index
     -- pattern). Cursors live in the claimindex_buf.base buffer (256 × 8 bytes),
-    -- one per skipped claim, value = _tok_cur + 2 — the token after
+    -- one per skipped claim, value = _token_cursor + 2 — the token after
     -- `claim Name`, which is `(` for parametrized claims (the
     -- call-time param-skip walks over it). Composition can only call
     -- claims that PRECEDE the call site textually (one-pass index —
@@ -50,7 +50,7 @@ fsm DriverClaimIdx
         init_count ↦ 0, seed_names ↦ "", entry ↦ claimindex_entry,
         count ↦ claimindex_buf.count, names ↦ claimindex_names)
     claimidx_write ∈ Effect
-    BuildMemWriteLong(addr ↦ claimindex_buf.base + (8 * _claimindex_buf.count), value ↦ _tok_cur + 2,
+    BuildMemWriteLong(addr ↦ claimindex_buf.base + (8 * _claimindex_buf.count), value ↦ _token_cursor + 2,
         eff ↦ claimidx_write)
 
     -- parse_mode 4 collection: a multi-tick walk — one variant HEAD or
@@ -61,7 +61,7 @@ fsm DriverClaimIdx
     -- accumulated (the declared variant order is REVERSED vs source —
     -- harmless: declaration and harvest peel the same list).
     walk_on ∈ Bool = (parse ∧ (_parse_mode = 4) ∧ (_decl_action = 0)
-        ∧ tok_ready)
+        ∧ can_consume)
     variant_name ∈ String = match tok0
         Ident(s) ⇒ s
         _ ⇒ ""
@@ -149,7 +149,7 @@ fsm DriverClaimIdx
     pdepth ∈ Int
     chain_n ∈ Int
 
-    in_efflit ∈ Bool = (parse ∧ (_parse_mode = 5) ∧ nil ∧ tok_ready)
+    in_efflit ∈ Bool = (parse ∧ (_parse_mode = 5) ∧ nil ∧ can_consume)
     efflit_t2_str ∈ String = match tok2
         StringLit(s) ⇒ s
         _ ⇒ ""

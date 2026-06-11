@@ -2,7 +2,7 @@
 -- CONSUMES: the match-line enter signal (enter_match) + the classified
 --           name/sort (line_dname, line_sort), the window head views
 --           (tok0..tok4) + the line head name (head_ident), the parse
---           gate (parse, _parse_mode, tok_ready), the Pratt result
+--           gate (parse, _parse_mode, can_consume), the Pratt result
 --           (parse_ready, parse_bad, result, parse_kind), the user-enum + Result
 --           variant registries (user_variants/variant_names, intresult_tester/strresult_tester/
 --           intresult_accessor/strresult_accessor) the arms resolve their ctor/tester/accessor
@@ -80,7 +80,7 @@ fsm DriverMatchPin
     arm2_acc ∈ Int
     arm2_expr ∈ Expr
 
-    case_action ∈ Bool = (parse ∧ (_parse_mode = 6) ∧ tok_ready)
+    case_action ∈ Bool = (parse ∧ (_parse_mode = 6) ∧ can_consume)
     scrut_lastres ∈ Bool = (case_action ∧ (_case_state = 0)
         ∧ (head_ident = "last_results") ∧ (tok1 matches LBracket)
         ∧ (tok2 matches IntLit(_)) ∧ (tok3 matches RBracket))
@@ -93,7 +93,7 @@ fsm DriverMatchPin
     arms_state ∈ Bool = (case_action ∧ (_case_state = 1))
     -- A payload arm head `Ctor (` opens a multi-tick PATTERN walk
     -- (case_state 2): one `elem ,` / `elem ) ⇒` per tick; `_` is a
-    -- skip, the single non-`_` ident is the bind (its position is the
+    -- skip, the single non-`_` ident is the bind (its bare_offset is the
     -- accessor index). A second bind bails the match.
     is_pattern_open ∈ Bool = (arms_state ∧ (tok0 matches Ident(_))
         ∧ (head_ident ≠ "_") ∧ (tok1 matches LParen))
@@ -132,7 +132,7 @@ fsm DriverMatchPin
         ∨ (end_tok ∧ (¬_has_pend_arm)))
 
     -- bind accessor resolution at pattern close: field 0 reads the
-    -- registry/floor purely; field 1..5 reads the acc-table tape row
+    -- registry/floor purely; field 1..5 reads the acc-table tape elem_record
     -- (registry slot = index_of/32 over variant_names) — the capture
     -- lands on the next (first body) tick via acc_pend.
     case_pad31 ∈ String = "                               "

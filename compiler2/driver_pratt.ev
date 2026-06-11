@@ -1,5 +1,5 @@
 -- MODULE DriverPratt
--- CONSUMES: the parse gate (parse, _parse_mode, tok_ready), the decoded
+-- CONSUMES: the parse gate (parse, _parse_mode, can_consume), the decoded
 --           window (tok0.. via the shared views), the Pratt-entry cons/
 --           kind (enter_consume/enter_kind) + the qstop flag, and its
 --           own carried Pratt stack/cursor.
@@ -15,7 +15,7 @@
 -- `..DriverPratt`.
 fsm DriverPratt
     -- ── PRATT FSM state (parse_mode 3; reads the shared window) ────────
-    in_pratt ∈ Bool = (parse ∧ (_parse_mode = 3) ∧ tok_ready)
+    in_pratt ∈ Bool = (parse ∧ (_parse_mode = 3) ∧ can_consume)
 
     parse_out ∈ ExprList
     parse_ops ∈ PrOps
@@ -55,7 +55,7 @@ fsm DriverPratt
     step_done ∈ Bool
     result ∈ Expr
     parse_consume ∈ Int
-    C2PrattStep(toks ↦ _win_toks, outs ↦ _parse_out, ops ↦ _parse_ops,
+    C2PrattStep(toks ↦ _decoded_window, outs ↦ _parse_out, ops ↦ _parse_ops,
         expop ↦ _parse_expop, pd ↦ _parse_pd, qd ↦ _parse_qd, cd ↦ _parse_cd,
         qstop ↦ _pratt_qstop, calls ↦ callable_names,
         ntoks ↦ next_toks, nouts ↦ next_outs, nops ↦ next_ops,
@@ -64,7 +64,7 @@ fsm DriverPratt
 
     -- ── matches-pattern SKIM ──────────────────────────────────────
     -- `e matches Ctor(p0, …, pk)` with k ≥ 2 spans past the window in
-    -- one bite (the step claim's one-shot shapes stop at two pattern
+    -- one bite (the step claim's one-shot shapes skip_stop at two pattern
     -- elements). The skim wraps the top operand in EMatches on the
     -- enter tick — the pattern elements carry no semantics, only the
     -- tester name does — then consumes one `elem ,` / `elem )` per

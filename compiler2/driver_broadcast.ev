@@ -2,7 +2,7 @@
 -- CONSUMES: the parse result (parse_ready, _parse_kind, parse_bad, _parse_rec_slot,
 --           _parse_decl_name, result), the pinned record type's field
 --           registry (recs .n_fields / .fnames), the claim-walk dispatch
---           gate (in_claim, nil, _param_skip, tok_ready), and
+--           gate (in_claim, nil, _param_skip, can_consume), and
 --           the symbol-table name index (symbol_index) — all as free names
 --           (names-match; never declared here).
 -- PRODUCES: the HEADER below — the checked interface (claim-headers
@@ -36,7 +36,7 @@ fsm DriverBroadcast(pinning ∈ Bool, record_slot ∈ Int, record_type_name ∈ 
     field_count ∈ Int = recs[_record_slot].n_fields
     field_names ∈ String = recs[_record_slot].fnames
     dispatch ∈ Bool = (in_claim ∧ _pinning ∧ nil
-        ∧ (_param_skip = 0) ∧ tok_ready)
+        ∧ (_param_skip = 0) ∧ can_consume)
     more_fields = (dispatch ∧ (_cursor < field_count))
     is_pin_done = (dispatch ∧ (_cursor ≥ field_count))
     pinning = (is_first_tick ? false

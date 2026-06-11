@@ -3,18 +3,18 @@
 --           carried by the caller (PrOps op-stack, ExprList output-stack,
 --           expop / pd / qd / cd / qstop). Pure: value-in, value-out.
 -- PRODUCES: per token, the classification (C2TokOp t→Op, C2AtomE t→Expr),
---           the precedence row (C2Prec o→level/assoc/chain), and ONE
+--           the precedence elem_record (C2Prec o→level/assoc/chain), and ONE
 --           shunting-yard action (C2PrattStep): the next stacks + a
 --           finished Expr when the expression closes.
 -- MAINTAINS: the oracle-verified precedence ladder (⇒1 · ?:2 · ∨3 · ∧4 ·
 --           chain-cmp 5 · +-6 · */7 · unary 8); right-assoc ternary;
 --           comparison-chain folding to a conjunction of consecutive
---           pairs. No FSM carry of its own — these are pure helper claims.
+--           pairs. No FSM carry of its own — these are is_pure_push helper claims.
 --
 -- Tokens → expression tree (precedence-climbing Pratt, incl. ternary).
 -- The driver's parse FSM (driver_main, parse_mode 3) drives C2PrattStep one
 -- action per tick over the shared token window; these claims are the
--- pure folding core it calls. Owns the ternary PARSE path (the C2Ite
+-- is_pure_push folding core it calls. Owns the ternary PARSE path (the C2Ite
 -- handle-stack underflow bug lives downstream in the build step, not here).
 -- ── Token → Op classifier (wider than parser.ev's TokenToOp) ──────
 claim C2TokOp(t ∈ Token, o ∈ Op, rec ∈ Bool)
@@ -165,7 +165,7 @@ enum PrOps =
 -- A token that can't start an operand while expop holds is a
 -- malformed line: done fires with sres = ENoExpr.
 -- qstop (D2): when set, a `?` at top level (pd = 0, qd = 0) in
--- operator position TERMINATES the expression instead of arming a
+-- operator bare_offset TERMINATES the expression instead of arming a
 -- ternary — the conditional-effects chain walk parses its branch
 -- GUARDS this way (the `?` belongs to the chain, not the guard).
 claim C2PrattStep(toks ∈ TokenList, outs ∈ ExprList, ops ∈ PrOps,
@@ -207,13 +207,13 @@ claim C2PrattStep(toks ∈ TokenList, outs ∈ ExprList, ops ∈ PrOps,
     next5 ∈ Token = match rest5
         TLCons(t, _) ⇒ t
         TLNil ⇒ EofTok
-    rest6 ∈ TokenList = match rest5
+    after6 ∈ TokenList = match rest5
         TLCons(_, r) ⇒ r
         TLNil ⇒ TLNil
-    next6 ∈ Token = match rest6
+    next6 ∈ Token = match after6
         TLCons(t, _) ⇒ t
         TLNil ⇒ EofTok
-    rest7 ∈ TokenList = match rest6
+    after7 ∈ TokenList = match after6
         TLCons(_, r) ⇒ r
         TLNil ⇒ TLNil
 
@@ -412,7 +412,7 @@ claim C2PrattStep(toks ∈ TokenList, outs ∈ ExprList, ops ∈ PrOps,
         : (dotf ∨ dotf2) ? 2
         : consume_token ? 1 : 0)
     ntoks = (call_shift ? rest2
-        : is_match ? (match_pat2 ? rest7 : match_pat1 ? rest5 : rest2)
+        : is_match ? (match_pat2 ? after7 : match_pat1 ? rest5 : rest2)
         : (dotf ∨ dotf2) ? rest2
         : consume_token ? rest_tokens : toks)
 

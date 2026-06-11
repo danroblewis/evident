@@ -1,9 +1,9 @@
 -- DriverLitMem isolation — set-literal walk entry latches: a one-shot
 -- `x ∉ { … }` entry (intset at tc = 1, line_name "x", is_notmem true)
--- must latch intset_name = "x" / neg = true and hold them. Reports
+-- must latch bound_name = "x" / is_negated = true and hold them. Reports
 -- "<name>/<sign>"; the ∉ sign drives C2Not-wrapping of the folded Expr.
 -- entry: main
--- expect: stdout = "x/neg"
+-- expect: stdout = "x/is_negated"
 -- expect: exit = 0
 import "stdlib/kernel.ev"
 import "compiler/lexer.ev"
@@ -24,8 +24,8 @@ fsm main
     parse = (is_first_tick ? false : _parse)
     parse_mode ∈ Int
     parse_mode = (is_first_tick ? 0 : _parse_mode)
-    tok_ready ∈ Bool
-    tok_ready = (is_first_tick ? false : _tok_ready)
+    can_consume ∈ Bool
+    can_consume = (is_first_tick ? false : _can_consume)
     tok0 ∈ Token
     tok0 = (is_first_tick ? EofTok : _tok0)
     seqmem ∈ Bool
@@ -35,7 +35,7 @@ fsm main
     kind_slot ∈ Int
     kind_slot = (is_first_tick ? 0 - 1 : _kind_slot)
     ..DriverLitMem
-    e_msg ∈ String = intset_name ++ "/" ++ (neg ? "neg" : "pos")
+    e_msg ∈ String = bound_name ++ "/" ++ (is_negated ? "is_negated" : "pos")
     effects ∈ Seq(Effect) = (tc ≥ 2
         ? ⟨LibCall("libc", "puts", ⟨ArgStr(e_msg)⟩), Exit(0)⟩
         : ⟨LibCall("libc", "getpid", ⟨⟩)⟩)

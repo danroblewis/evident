@@ -2,8 +2,8 @@
 -- CONSUMES: the per-tick libc read results (last_results[0] = the source
 --           path on the first read, then the file content; last_results[1]
 --           = the target claim name), is_first_tick, and its own carries
---           (_got_path, _src_path, _input, _target).
--- PRODUCES: got_path (whether the path-read tick has passed), src_path
+--           (_got_path, _source_path, _input, _target).
+-- PRODUCES: got_path (whether the path-read tick has passed), source_path
 --           (the source file path), input (the file content to compile),
 --           and target (the claim name to compile) — all carried, and all
 --           consumed downstream (driver_lex reads got_path/input;
@@ -19,11 +19,11 @@ fsm DriverInput
     got_path  ∈ Bool
     got_path = (is_first_tick ? false : true)
 
-    src_path  ∈ String
+    source_path  ∈ String
     path_read ∈ String = match last_results[0]
         StringResult(s) ⇒ s
         _ ⇒ ""
-    src_path = (is_first_tick ? "" : ((¬_got_path) ? path_read : _src_path))
+    source_path = (is_first_tick ? "" : ((¬_got_path) ? path_read : _source_path))
 
     input  ∈ String
     content_read ∈ String = match last_results[0]

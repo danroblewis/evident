@@ -3,12 +3,12 @@
 --           is_mem/is_notmem, line_dname, line_name, line_ty_name, kind_slot,
 --           the quantifier-set views c_q_*), the classify gate
 --           (classify_now, line_end, enter_seqlit, in_skip), the window
---           head (tok0/tok5..t7), the registered-seq carries (census_var_name/
---           census_var_slot), the inline-frame prefix (scope_prefix), the parse gate, and
+--           head (tok0/tok5..t7), the registered-seq carries (registered_seq_name/
+--           registered_seq_kind), the inline-frame prefix (scope_prefix), the parse gate, and
 --           the Pratt result (parse_ready/parse_bad/result/parse_kind).
--- PRODUCES: the ≤2-entry Set(T) variable registry (collection_count/stv_n*/stv_k*/
+-- PRODUCES: the ≤2-entry Set(T) variable registry (set_registry_count/stv_n*/stv_k*/
 --           stv_e*/stv_c*), the parse_mode-14 set-literal element walk
---           (seqlit_count + the C2MkEmptySet/C2SetAdd item runs), and the
+--           (element_index + the C2MkEmptySet/C2SetAdd item runs), and the
 --           quantifier-over-set element bookkeeping (qset_*).
 -- MAINTAINS: ≤2 registered Set(T) vars; a set var declares ONE const of
 --           the set sort (Array T Bool) with no __len; set elements add
@@ -17,144 +17,144 @@
 -- The Set(T) variable registry + parse_mode-14 set walk. Lifted into
 -- driver_main via `..DriverSetVar`.
 
--- One row of the quantifier-over-set element-name projection: the i-th
+-- One elem_record of the quantifier-over-set element-name projection: the i-th
 -- element name unpacked from a SetVar's packed `elems` string.
 -- Used as a Seq(QsetName) bounded to 3 rows, lowered pre-oracle by
 -- scripts/lower-bounded-seq.sh.
 type QsetName(name ∈ String)
 
 fsm DriverSetVar
-    collection_count ∈ Int
+    set_registry_count ∈ Int
     vars ∈ Seq(SetVar)
     #vars ≤ 2
-    collection_cur_name ∈ String
+    active_set_name ∈ String
 
-    setdecl ∈ Bool = (classify_now ∧ (¬line_end) ∧ decl_line)
-    collection_count = (is_first_tick ? 0
-        : (setdecl ∧ _collection_count < 2) ? _collection_count + 1
-        : _collection_count)
-    ∀ k ∈ {0..1} : vars[k].name = (is_first_tick ? "" : (setdecl ∧ _collection_count = k) ? line_dname : _vars[k].name)
-    ∀ k ∈ {0..1} : vars[k].kidx = (is_first_tick ? 0 : (setdecl ∧ _collection_count = k) ? kind_slot : _vars[k].kidx)
+    is_setdecl ∈ Bool = (classify_now ∧ (¬line_end) ∧ decl_line)
+    set_registry_count = (is_first_tick ? 0
+        : (is_setdecl ∧ _set_registry_count < 2) ? _set_registry_count + 1
+        : _set_registry_count)
+    ∀ k ∈ {0..1} : vars[k].name = (is_first_tick ? "" : (is_setdecl ∧ _set_registry_count = k) ? line_dname : _vars[k].name)
+    ∀ k ∈ {0..1} : vars[k].kidx = (is_first_tick ? 0 : (is_setdecl ∧ _set_registry_count = k) ? kind_slot : _vars[k].kidx)
 
-    collection_pfx_hit ∈ Bool = (line_name ≠ "" ∧ (∃ e ∈ vars : e.name = _scope_prefix ++ line_name))
-    collection_bare_hit ∈ Bool = (line_name ≠ "" ∧ (∃ e ∈ vars : e.name = line_name))
-    collection_found ∈ Bool = (collection_pfx_hit ∨ collection_bare_hit)
-    collection_name ∈ String = (collection_pfx_hit ? _scope_prefix ++ line_name
-        : collection_bare_hit ? line_name
+    is_prefixed_set ∈ Bool = (line_name ≠ "" ∧ (∃ e ∈ vars : e.name = _scope_prefix ++ line_name))
+    is_bare_set ∈ Bool = (line_name ≠ "" ∧ (∃ e ∈ vars : e.name = line_name))
+    is_known_set ∈ Bool = (is_prefixed_set ∨ is_bare_set)
+    target_set_name ∈ String = (is_prefixed_set ? _scope_prefix ++ line_name
+        : is_bare_set ? line_name
         : "")
-    setlit_line ∈ Bool = (t0_ident ∧ (line_t1 matches Eq)
-        ∧ (line_t2 matches LBrace) ∧ collection_found)
-    setlit ∈ Bool = (classify_now ∧ (¬line_end) ∧ (¬is_mem)
-        ∧ (¬is_notmem) ∧ setlit_line)
-    collection_cur_name = (is_first_tick ? "" : setlit ? collection_name : _collection_cur_name)
-    cur_slot ∈ Int
-    ∀ e ∈ vars : ((e.name = _collection_cur_name) ⇒ (cur_slot = e.kidx))
-    (¬(∃ e ∈ vars : e.name = _collection_cur_name)) ⇒ (cur_slot = 0)
-    collection_slot ∈ Int
-    ∀ e ∈ vars : ((e.name = collection_name) ⇒ (collection_slot = e.kidx))
-    (¬(∃ e ∈ vars : e.name = collection_name)) ⇒ (collection_slot = 0)
-    entry_items ∈ C2Items = C2ICons(
-        C2Process(EIdent(collection_name)),
-        C2ICons(C2MkEmptySet(collection_slot), C2INil))
+    is_setlit_line ∈ Bool = (is_ident_head ∧ (line_t1 matches Eq)
+        ∧ (line_t2 matches LBrace) ∧ is_known_set)
+    is_setlit ∈ Bool = (classify_now ∧ (¬line_end) ∧ (¬is_mem)
+        ∧ (¬is_notmem) ∧ is_setlit_line)
+    active_set_name = (is_first_tick ? "" : is_setlit ? target_set_name : _active_set_name)
+    active_set_kind ∈ Int
+    ∀ e ∈ vars : ((e.name = _active_set_name) ⇒ (active_set_kind = e.kidx))
+    (¬(∃ e ∈ vars : e.name = _active_set_name)) ⇒ (active_set_kind = 0)
+    target_set_kind ∈ Int
+    ∀ e ∈ vars : ((e.name = target_set_name) ⇒ (target_set_kind = e.kidx))
+    (¬(∃ e ∈ vars : e.name = target_set_name)) ⇒ (target_set_kind = 0)
+    setdecl_items ∈ C2Items = C2ICons(
+        C2Process(EIdent(target_set_name)),
+        C2ICons(C2MkEmptySet(target_set_kind), C2INil))
 
-    setlit_act ∈ Bool = (parse ∧ (_parse_mode = 14) ∧ nil ∧ tok_ready)
-    setlit_elem ∈ Bool = (setlit_act ∧ (tok0 matches Ident(_)))
-    setlit_comma ∈ Bool = (setlit_act ∧ (tok0 matches Comma))
-    setlit_close ∈ Bool = (setlit_act ∧ (tok0 matches RBrace))
-    setlit_bad ∈ Bool = (setlit_act ∧ (¬setlit_elem) ∧ (¬setlit_comma) ∧ (¬setlit_close))
-    setlit_elt_name ∈ String = match tok0
+    in_setlit_walk ∈ Bool = (parse ∧ (_parse_mode = 14) ∧ nil ∧ can_consume)
+    is_setlit_ident ∈ Bool = (in_setlit_walk ∧ (tok0 matches Ident(_)))
+    is_setlit_comma ∈ Bool = (in_setlit_walk ∧ (tok0 matches Comma))
+    is_setlit_close ∈ Bool = (in_setlit_walk ∧ (tok0 matches RBrace))
+    is_setlit_bad ∈ Bool = (in_setlit_walk ∧ (¬is_setlit_ident) ∧ (¬is_setlit_comma) ∧ (¬is_setlit_close))
+    setlit_ident_text ∈ String = match tok0
         Ident(s) ⇒ s
         _ ⇒ ""
-    setlit_elem_items ∈ C2Items = C2ICons(
-        C2RecVal(_scope_prefix ++ setlit_elt_name, cur_slot),
+    add_elem_items ∈ C2Items = C2ICons(
+        C2RecVal(_scope_prefix ++ setlit_ident_text, active_set_kind),
         C2ICons(C2SetAdd, C2INil))
-    setlit_close_items ∈ C2Items = C2ICons(C2PinEq,
+    setlit_len_items ∈ C2Items = C2ICons(C2PinEq,
         C2ICons(C2AssertTop, C2INil))
-    row ∈ String = "|" ++ substr((_scope_prefix ++ setlit_elt_name) ++ rec_pad31, 0, 31)
-    ∀ e ∈ vars : e.elems = (is_first_tick ? "" : (setlit ∧ _e.name = collection_name) ? "" : (setlit_elem ∧ _e.name = _collection_cur_name) ? _e.elems ++ row : _e.elems)
-    ∀ e ∈ vars : e.count = (is_first_tick ? 0 : (setlit ∧ _e.name = collection_name) ? 0 : (setlit_elem ∧ _e.name = _collection_cur_name) ? _e.count + 1 : _e.count)
+    elem_record ∈ String = "|" ++ substr((_scope_prefix ++ setlit_ident_text) ++ rec_pad31, 0, 31)
+    ∀ e ∈ vars : e.elems = (is_first_tick ? "" : (is_setlit ∧ _e.name = target_set_name) ? "" : (is_setlit_ident ∧ _e.name = _active_set_name) ? _e.elems ++ elem_record : _e.elems)
+    ∀ e ∈ vars : e.count = (is_first_tick ? 0 : (is_setlit ∧ _e.name = target_set_name) ? 0 : (is_setlit_ident ∧ _e.name = _active_set_name) ? _e.count + 1 : _e.count)
 
     is_prefixed_setmember ∈ Bool = (line_ty_name ≠ "" ∧ (∃ e ∈ vars : e.name = _scope_prefix ++ line_ty_name))
     is_bare_setmember ∈ Bool = (line_ty_name ≠ "" ∧ (∃ e ∈ vars : e.name = line_ty_name))
     is_setmember_line ∈ Bool = (is_mem ∧ (¬effects_line) ∧ (is_prefixed_setmember ∨ is_bare_setmember))
-    setmem ∈ Bool = (classify_now ∧ (¬line_end) ∧ (¬intset_line)
+    is_setmem ∈ Bool = (classify_now ∧ (¬line_end) ∧ (¬intset_line)
         ∧ is_setmember_line)
-    setmember_setname ∈ String = (is_prefixed_setmember ? _scope_prefix ++ line_ty_name
+    member_set_name ∈ String = (is_prefixed_setmember ? _scope_prefix ++ line_ty_name
         : is_bare_setmember ? line_ty_name
         : "")
-    setmember_slot ∈ Int
-    ∀ e ∈ vars : ((e.name = setmember_setname) ⇒ (setmember_slot = e.kidx))
-    (¬(∃ e ∈ vars : e.name = setmember_setname)) ⇒ (setmember_slot = 0)
-    setmember_items ∈ C2Items = C2ICons(C2Process(EIdent(setmember_setname)),
-        C2ICons(C2RecVal(_scope_prefix ++ line_name, setmember_slot),
+    member_set_kind ∈ Int
+    ∀ e ∈ vars : ((e.name = member_set_name) ⇒ (member_set_kind = e.kidx))
+    (¬(∃ e ∈ vars : e.name = member_set_name)) ⇒ (member_set_kind = 0)
+    member_items ∈ C2Items = C2ICons(C2Process(EIdent(member_set_name)),
+        C2ICons(C2RecVal(_scope_prefix ++ line_name, member_set_kind),
         C2ICons(C2SelH, C2ICons(C2AssertTop, C2INil))))
 
-    src_hit ∈ Bool = (t3_name ≠ "" ∧ (∃ e ∈ vars : e.name = t3_name))
-    bind_var ∈ String = match tok5
+    is_source_set ∈ Bool = (t3_name ≠ "" ∧ (∃ e ∈ vars : e.name = t3_name))
+    loop_bind_name ∈ String = match tok5
         Ident(s) ⇒ s
         _ ⇒ ""
-    tgt_name ∈ String = match tok7
+    dest_set_name ∈ String = match tok7
         Ident(s) ⇒ s
         _ ⇒ ""
-    tgt_hit ∈ Bool = (tgt_name ≠ "" ∧ (∃ e ∈ vars : e.name = tgt_name))
-    qset ∈ Bool = (classify_now ∧ (¬line_end) ∧ is_plain_ident
-        ∧ (¬is_exists) ∧ src_hit ∧ tgt_hit
-        ∧ (bind_var = loop_variable) ∧ (tok6 matches OpIn))
-    setquery_elems ∈ String
-    ∀ e ∈ vars : ((e.name = t3_name) ⇒ (setquery_elems = e.elems))
-    (¬(∃ e ∈ vars : e.name = t3_name)) ⇒ (setquery_elems = "")
-    setquery_count ∈ Int
-    ∀ e ∈ vars : ((e.name = t3_name) ⇒ (setquery_count = e.count))
-    (¬(∃ e ∈ vars : e.name = t3_name)) ⇒ (setquery_count = 0)
-    setquery_slot ∈ Int
-    ∀ e ∈ vars : ((e.name = t3_name) ⇒ (setquery_slot = e.kidx))
-    (¬(∃ e ∈ vars : e.name = t3_name)) ⇒ (setquery_slot = 0)
-    tgt_set ∈ String = (tgt_hit ? tgt_name : "")
-    setquery_names ∈ Seq(QsetName)
-    #setquery_names ≤ 3
-    ∀ k ∈ {0..2} : RtRecName(s ↦ setquery_elems, i ↦ k, name ↦ setquery_names[k].name)
-    setquery_seg2 ∈ C2Items = (setquery_count ≥ 3
-        ? C2ICons(C2Process(EIdent(tgt_set)),
-            C2ICons(C2RecVal(setquery_names[2].name, setquery_slot),
+    is_target_set ∈ Bool = (dest_set_name ≠ "" ∧ (∃ e ∈ vars : e.name = dest_set_name))
+    is_setquery ∈ Bool = (classify_now ∧ (¬line_end) ∧ is_plain_ident
+        ∧ (¬is_exists) ∧ is_source_set ∧ is_target_set
+        ∧ (loop_bind_name = loop_variable) ∧ (tok6 matches OpIn))
+    source_packed_elems ∈ String
+    ∀ e ∈ vars : ((e.name = t3_name) ⇒ (source_packed_elems = e.elems))
+    (¬(∃ e ∈ vars : e.name = t3_name)) ⇒ (source_packed_elems = "")
+    source_card ∈ Int
+    ∀ e ∈ vars : ((e.name = t3_name) ⇒ (source_card = e.count))
+    (¬(∃ e ∈ vars : e.name = t3_name)) ⇒ (source_card = 0)
+    dest_kind ∈ Int
+    ∀ e ∈ vars : ((e.name = t3_name) ⇒ (dest_kind = e.kidx))
+    (¬(∃ e ∈ vars : e.name = t3_name)) ⇒ (dest_kind = 0)
+    dest_set_resolved ∈ String = (is_target_set ? dest_set_name : "")
+    unpacked_names ∈ Seq(QsetName)
+    #unpacked_names ≤ 3
+    ∀ k ∈ {0..2} : RtRecName(s ↦ source_packed_elems, i ↦ k, name ↦ unpacked_names[k].name)
+    membership_seg2 ∈ C2Items = (source_card ≥ 3
+        ? C2ICons(C2Process(EIdent(dest_set_resolved)),
+            C2ICons(C2RecVal(unpacked_names[2].name, dest_kind),
             C2ICons(C2SelH, C2ICons(C2AssertTop, C2INil))))
         : C2INil)
-    setquery_seg1 ∈ C2Items = (setquery_count ≥ 2
-        ? C2ICons(C2Process(EIdent(tgt_set)),
-            C2ICons(C2RecVal(setquery_names[1].name, setquery_slot),
-            C2ICons(C2SelH, C2ICons(C2AssertTop, setquery_seg2))))
-        : setquery_seg2)
-    setquery_items ∈ C2Items = (setquery_count ≥ 1
-        ? C2ICons(C2Process(EIdent(tgt_set)),
-            C2ICons(C2RecVal(setquery_names[0].name, setquery_slot),
-            C2ICons(C2SelH, C2ICons(C2AssertTop, setquery_seg1))))
-        : setquery_seg1)
+    membership_seg1 ∈ C2Items = (source_card ≥ 2
+        ? C2ICons(C2Process(EIdent(dest_set_resolved)),
+            C2ICons(C2RecVal(unpacked_names[1].name, dest_kind),
+            C2ICons(C2SelH, C2ICons(C2AssertTop, membership_seg2))))
+        : membership_seg2)
+    membership_items ∈ C2Items = (source_card ≥ 1
+        ? C2ICons(C2Process(EIdent(dest_set_resolved)),
+            C2ICons(C2RecVal(unpacked_names[0].name, dest_kind),
+            C2ICons(C2SelH, C2ICons(C2AssertTop, membership_seg1))))
+        : membership_seg1)
 
-    seqlit_count ∈ Int
-    in_seqlit ∈ Bool = (parse ∧ (_parse_mode = 8) ∧ nil ∧ tok_ready)
-    seqlit_close ∈ Bool = (in_seqlit ∧ (tok0 matches OpSeqClose))
-    seqlit_comma ∈ Bool = (in_seqlit ∧ (tok0 matches Comma))
-    elem_enter ∈ Bool = (in_seqlit ∧ (¬seqlit_close) ∧ (¬seqlit_comma))
-    elem_done ∈ Bool = (parse_ready ∧ (¬parse_bad) ∧ (_parse_kind = 7))
-    seqlit_count = (is_first_tick ? 0
+    element_index ∈ Int
+    walking_seq ∈ Bool = (parse ∧ (_parse_mode = 8) ∧ nil ∧ can_consume)
+    at_seq_close ∈ Bool = (walking_seq ∧ (tok0 matches OpSeqClose))
+    at_seq_comma ∈ Bool = (walking_seq ∧ (tok0 matches Comma))
+    enter_seq_elem ∈ Bool = (walking_seq ∧ (¬at_seq_close) ∧ (¬at_seq_comma))
+    element_parsed ∈ Bool = (parse_ready ∧ (¬parse_bad) ∧ (_parse_kind = 7))
+    element_index = (is_first_tick ? 0
         : enter_seqlit ? 0
-        : elem_done ? _seqlit_count + 1
-        : _seqlit_count)
-    seqlit_elt_name ∈ String = match result
+        : element_parsed ? _element_index + 1
+        : _element_index)
+    parsed_ident_name ∈ String = match result
         EIdent(sen) ⇒ sen
         _ ⇒ ""
-    projected_item ∈ C2Item = ((_census_var_slot ≥ 0 ∧ (result matches EIdent(_)))
-        ? C2RecVal(_scope_prefix ++ seqlit_elt_name, _census_var_slot)
+    projected_item ∈ C2Item = ((_registered_seq_kind ≥ 0 ∧ (result matches EIdent(_)))
+        ? C2RecVal(_scope_prefix ++ parsed_ident_name, _registered_seq_kind)
         : C2Process(result))
-    seqlit_elem_items ∈ C2Items = C2ICons(C2Process(EIdent(_census_var_name)),
-        C2ICons(C2Process(EInt(_seqlit_count)),
+    append_elem_items ∈ C2Items = C2ICons(C2Process(EIdent(_registered_seq_name)),
+        C2ICons(C2Process(EInt(_element_index)),
         C2ICons(C2SelH,
         C2ICons(projected_item,
         C2ICons(C2PinEq, C2ICons(C2AssertTop, C2INil))))))
-    seqlit_close_items ∈ C2Items = C2ICons(C2Process(EIdent(_census_var_name ++ "__len")),
-        C2ICons(C2Process(EInt(_seqlit_count)),
+    seqlen_items ∈ C2Items = C2ICons(C2Process(EIdent(_registered_seq_name ++ "__len")),
+        C2ICons(C2Process(EInt(_element_index)),
         C2ICons(C2PinEq, C2ICons(C2AssertTop, C2INil))))
 
-    skip_at_eof ∈ Bool = (tok0 matches EofTok)
+    is_skip_eof ∈ Bool = (tok0 matches EofTok)
     is_keyword_char ∈ Bool = ((tok0 matches KwEnum) ∨ (tok0 matches KwClaim)
         ∨ (tok0 matches KwType) ∨ (tok0 matches KwFsm) ∨ (tok0 matches KwSchema))
-    stop ∈ Bool = (in_skip ∧ (skip_at_eof ∨ is_keyword_char))
+    skip_stop ∈ Bool = (in_skip ∧ (is_skip_eof ∨ is_keyword_char))

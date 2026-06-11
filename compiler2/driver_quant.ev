@@ -1,12 +1,12 @@
 -- MODULE DriverQuant
 -- CONSUMES: the classifier line-head views (line_t0..line_t4) + the window
---           lookahead (tok5..tok7), the registered-seq carries (_census_registered,
---           _census_var_name, _cached_length), the record registry (recs via RtIdxOf),
+--           lookahead (tok5..tok7), the registered-seq carries (_is_seq_registered,
+--           _registered_seq_name, _cached_length), the record registry (recs via RtIdxOf),
 --           the classify gate (classify_now, line_end), and the parse
 --           cursor for the body re-walk.
 -- PRODUCES: the bounded-quantifier line classification (quant_head_token/is_quant_line/
 --           quant_range_line/over_seq/loop_variable/range_lower/range_upper/is_plain_ident/is_dotted_ident/…) + the
---           quantifier-set entry signals (qseq/qset/qrange_close)
+--           quantifier-set entry signals (qseq/is_setquery/qrange_close)
 --           and the fl-loop re-walk bookkeeping the interpreter expands.
 -- MAINTAINS: `∀|∃ v ∈ {lo..hi} : body` (integer range) and `∀ v ∈ seq :
 --           body` (registered Seq var, length from its `#seq = k` pin)
@@ -45,15 +45,15 @@ fsm DriverQuant
         ∧ (tok6 matches Colon))
     over_seq ∈ Bool = (is_plain_ident ∨ is_dotted_ident)
     raw_var_name ∈ String = (is_dotted_ident ? (t3_name ++ "." ++ t5_name) : t3_name)
-    matched_var_name ∈ String = (((_scope_prefix ++ raw_var_name) = _census_var_name)
-        ? _census_var_name : raw_var_name)
+    matched_var_name ∈ String = (((_scope_prefix ++ raw_var_name) = _registered_seq_name)
+        ? _registered_seq_name : raw_var_name)
     qrange ∈ Bool = (classify_now ∧ (¬line_end) ∧ quant_range_line)
     qseq ∈ Bool = (classify_now ∧ (¬line_end) ∧ (¬quant_range_line)
-        ∧ over_seq ∧ _census_registered ∧ (¬qset))
+        ∧ over_seq ∧ _is_seq_registered ∧ (¬is_setquery))
 
     -- parse_mode 11: the range head's `} :` close (the 8-token classify
     -- bite latched lo/hi; the brace close enters the body parse)
-    qrange_act ∈ Bool = (parse ∧ (_parse_mode = 11) ∧ nil ∧ tok_ready)
+    qrange_act ∈ Bool = (parse ∧ (_parse_mode = 11) ∧ nil ∧ can_consume)
     qrange_close ∈ Bool = (qrange_act ∧ (tok0 matches RBrace)
         ∧ (tok1 matches Colon))
     qrange_bail ∈ Bool = (qrange_act ∧ (¬qrange_close))
@@ -70,7 +70,7 @@ fsm DriverQuant
     qloop_cur ∈ Int
     qbody_done ∈ Bool = (parse_ready ∧ (_parse_kind = 9) ∧ (¬parse_bad))
     disp ∈ Bool = (in_claim ∧ _qloop_on ∧ nil
-        ∧ (_param_skip = 0) ∧ tok_ready)
+        ∧ (_param_skip = 0) ∧ can_consume)
     qexp_more ∈ Bool = (disp ∧ (_next ≤ _qloop_hi))
     qexp_fin ∈ Bool = (disp ∧ (_next > _qloop_hi))
     exists = (is_first_tick ? false
@@ -115,6 +115,6 @@ fsm DriverQuant
         _ ⇒ 0 - 1
     is_seqlen_pin ∈ Bool = (parse_ready ∧ (_parse_kind = 2) ∧ (¬parse_bad) ∧ binop
         ∧ (cond_op matches OpEq) ∧ lhs_call ∧ (cardinality_callee = "str_len")
-        ∧ (computed_length ≥ 0) ∧ _census_registered
-        ∧ ((cardinality_argument = _census_var_name) ∨ ((_scope_prefix ++ cardinality_argument) = _census_var_name)))
+        ∧ (computed_length ≥ 0) ∧ _is_seq_registered
+        ∧ ((cardinality_argument = _registered_seq_name) ∨ ((_scope_prefix ++ cardinality_argument) = _registered_seq_name)))
     cached_length = (is_first_tick ? 0 : is_seqlen_pin ? computed_length : _cached_length)

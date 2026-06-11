@@ -67,10 +67,10 @@ fsm main
     -- user-enum + seq-var carries (no user enum, no registered seq).
     decl_names ∈ String
     decl_names = (is_first_tick ? "" : _decl_names)
-    census_registered ∈ Bool
-    census_registered = (is_first_tick ? false : _census_registered)
-    census_var_name ∈ String
-    census_var_name = (is_first_tick ? "" : _census_var_name)
+    is_seq_registered ∈ Bool
+    is_seq_registered = (is_first_tick ? false : _is_seq_registered)
+    registered_seq_name ∈ String
+    registered_seq_name = (is_first_tick ? "" : _registered_seq_name)
     -- sibling sub-walk enter signals (none active in this isolation).
     exit_enter ∈ Bool
     exit_enter = (is_first_tick ? false : _exit_enter)
@@ -78,8 +78,8 @@ fsm main
     is_guard_enter = (is_first_tick ? false : _is_guard_enter)
     body_enter ∈ Bool
     body_enter = (is_first_tick ? false : _body_enter)
-    elem_enter ∈ Bool
-    elem_enter = (is_first_tick ? false : _elem_enter)
+    enter_seq_elem ∈ Bool
+    enter_seq_elem = (is_first_tick ? false : _enter_seq_elem)
     call_arg_slot ∈ Bool
     call_arg_slot = (is_first_tick ? false : _call_arg_slot)
     pun ∈ Bool
@@ -99,12 +99,12 @@ fsm main
     quant_range_line = (is_first_tick ? false : _quant_range_line)
     over_seq ∈ Bool
     over_seq = (is_first_tick ? false : _over_seq)
-    setlit_line ∈ Bool
-    setlit_line = (is_first_tick ? false : _setlit_line)
+    is_setlit_line ∈ Bool
+    is_setlit_line = (is_first_tick ? false : _is_setlit_line)
     positional_line ∈ Bool
     positional_line = (is_first_tick ? false : _positional_line)
-    qset ∈ Bool
-    qset = (is_first_tick ? false : _qset)
+    is_setquery ∈ Bool
+    is_setquery = (is_first_tick ? false : _is_setquery)
     is_dotted_ident ∈ Bool
     is_dotted_ident = (is_first_tick ? false : _is_dotted_ident)
     arm_take ∈ Bool

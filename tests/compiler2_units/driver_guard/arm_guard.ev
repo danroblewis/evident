@@ -1,6 +1,6 @@
 -- DriverGuard isolation — guard arms when the jump fires: drive the
 -- composition jump-fire condition (parse, parse_mode 10, callwalk_state 4, work_items
--- nil) with inline-frame-top guard handle h_top = 99 and no
+-- nil) with inline-frame-top guard handle topmost_handle = 99 and no
 -- reset/unguard; the splice phase must latch active_handle ← 99 on the fire tick.
 -- entry: main
 -- expect: stdout = "99"
@@ -21,8 +21,8 @@ fsm main
     callwalk_state = (is_first_tick ? 4 : _callwalk_state)
     nil ∈ Bool
     nil = (is_first_tick ? true : _nil)
-    h_top ∈ Int
-    h_top = (is_first_tick ? 99 : _h_top)
+    topmost_handle ∈ Int
+    topmost_handle = (is_first_tick ? 99 : _topmost_handle)
     reset ∈ Bool
     reset = (is_first_tick ? false : _reset)
     frame_pop ∈ Bool

@@ -22,8 +22,8 @@ fsm main
     parse = (is_first_tick ? true : _parse)
     nil ∈ Bool
     nil = (is_first_tick ? true : _nil)
-    tok_ready ∈ Bool
-    tok_ready = (is_first_tick ? true : _tok_ready)
+    can_consume ∈ Bool
+    can_consume = (is_first_tick ? true : _can_consume)
     tok0 ∈ Token
     tok0 = (is_first_tick ? Ident("p") : _tok0)
     tok1 ∈ Token
@@ -32,8 +32,8 @@ fsm main
     is_bare_comp = (is_first_tick ? false : _is_bare_comp)
     is_comp_call ∈ Bool
     is_comp_call = (is_first_tick ? false : _is_comp_call)
-    dotdot ∈ Bool
-    dotdot = (is_first_tick ? false : _dotdot)
+    is_lift ∈ Bool
+    is_lift = (is_first_tick ? false : _is_lift)
     is_comp_line ∈ Bool
     is_comp_line = (is_first_tick ? false : _is_comp_line)
     callee_pos ∈ Int
@@ -57,16 +57,16 @@ fsm main
     enter_claim = (is_first_tick ? false : _enter_claim)
     claim_params ∈ Bool
     claim_params = (is_first_tick ? false : _claim_params)
-    h_2nd ∈ Int
-    h_2nd = (is_first_tick ? 0 : _h_2nd)
-    h_3rd ∈ Int
-    h_3rd = (is_first_tick ? 0 : _h_3rd)
-    h_4th ∈ Int
-    h_4th = (is_first_tick ? 0 : _h_4th)
-    h_5th ∈ Int
-    h_5th = (is_first_tick ? 0 : _h_5th)
-    h_6th ∈ Int
-    h_6th = (is_first_tick ? 0 : _h_6th)
+    second_handle ∈ Int
+    second_handle = (is_first_tick ? 0 : _second_handle)
+    third_handle ∈ Int
+    third_handle = (is_first_tick ? 0 : _third_handle)
+    fourth_handle ∈ Int
+    fourth_handle = (is_first_tick ? 0 : _fourth_handle)
+    fifth_handle ∈ Int
+    fifth_handle = (is_first_tick ? 0 : _fifth_handle)
+    sixth_handle ∈ Int
+    sixth_handle = (is_first_tick ? 0 : _sixth_handle)
     tail1 ∈ C2H
     tail1 = (is_first_tick ? C2HNil : _tail1)
     tail2 ∈ C2H
@@ -79,8 +79,8 @@ fsm main
     tail5 = (is_first_tick ? C2HNil : _tail5)
     tail6 ∈ C2H
     tail6 = (is_first_tick ? C2HNil : _tail6)
-    h_top ∈ Int
-    h_top = (is_first_tick ? 0 : _h_top)
+    topmost_handle ∈ Int
+    topmost_handle = (is_first_tick ? 0 : _topmost_handle)
     stack_in ∈ C2H
     stack_in = (is_first_tick ? C2HNil : _stack_in)
     cond_hit ∈ Bool
@@ -124,8 +124,8 @@ fsm main
     ∀ e ∈ recs : e.accs[3] = 0
     ∀ e ∈ recs : e.accs[4] = 0
     ∀ e ∈ recs : e.accs[5] = 0
-    tok_cur ∈ Int
-    tok_cur = (is_first_tick ? 0 : _tok_cur)
+    token_cursor ∈ Int
+    token_cursor = (is_first_tick ? 0 : _token_cursor)
     positional_line ∈ Bool
     positional_line = (is_first_tick ? false : _positional_line)
     guarding ∈ Bool

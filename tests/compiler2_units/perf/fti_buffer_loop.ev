@@ -1,7 +1,7 @@
 -- FTI perf probe: FtiBuffer's `0 ≤ count ≤ cap` is re-checked every tick;
 -- climb count to 800 and Exit. Must stay fully functionized (≈0 ms z3) —
 -- an invariant falling to Z3 (e.g. a `≠`) blows z3/wall time; gate catches it.
--- Non-final ticks emit a cheap pure libcall (abs) so effects has a model.
+-- Non-final ticks emit a cheap is_pure_push libcall (abs) so effects has a model.
 --
 -- entry: main
 -- expect: exit = 0
