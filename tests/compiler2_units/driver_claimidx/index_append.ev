@@ -33,10 +33,10 @@ fsm main
     enter_efflit = (is_first_tick ? false : _enter_efflit)
     work_nil ∈ Bool
     work_nil = (is_first_tick ? false : _work_nil)
-    enum_act ∈ Int
-    enum_act = (is_first_tick ? 0 : _enum_act)
-    enum_done_user ∈ Bool
-    enum_done_user = (is_first_tick ? false : _enum_done_user)
+    decl_action ∈ Int
+    decl_action = (is_first_tick ? 0 : _decl_action)
+    user_decl_done ∈ Bool
+    user_decl_done = (is_first_tick ? false : _user_decl_done)
     in_parse ∈ Bool
     in_parse = (is_first_tick ? false : _in_parse)
     pratt_done ∈ Bool

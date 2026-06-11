@@ -1,6 +1,6 @@
 -- MODULE DriverZInit
 -- CONSUMES: cap_int (the per-tick IntResult capture), and the ED
---           machine's idle signals (_enum_act, _enum_src) that gate the
+--           machine's idle signals (_decl_action, _decl_source) that gate the
 --           zstep hold at 9 while the Effect-floor datatypes declare.
 -- PRODUCES: the Z3-lifecycle latch bank — zstep (the setup program
 --           counter) plus every captured handle/const it latches:
@@ -19,7 +19,7 @@
 -- The ZINIT Z3-lifecycle setup. Lifted into driver_main via `..DriverZInit`.
 fsm DriverZInit
     zstep  ∈ Int
-    enum_hold ∈ Bool = (_enum_act ≠ 0 ∨ _enum_src < 4)
+    enum_hold ∈ Bool = (_decl_action ≠ 0 ∨ _decl_source < 4)
     zstep = (is_first_tick ? 0 - 2
         : (_zstep = 9 ∧ enum_hold) ? 9
         : (_zstep < 60 ? _zstep + 1 : _zstep))

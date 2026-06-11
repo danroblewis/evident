@@ -1,9 +1,9 @@
 -- MODULE DriverBuildEff
 -- CONSUMES: the Z3-lifecycle handles (z3ctx.ctx/z3ctx.cfg/z3ctx.sol + the base
 --           sorts/consts from DriverZInit), the enum-decl machine's
---           per-step state (enum_variant, enum_act_now/enum_step_now, the enum_h_*/
+--           per-step state (current_variant, decl_action_now/decl_step_now, the enum_h_*/
 --           field_sort*/refs_packed* field captures, the group registers
---           group_size/_group_read_cur/_member_base/enum_member_idx/_enumtab_count, the
+--           group_size/_group_read_cur/_member_base/member_index/_enumtab_count, the
 --           arena base z3_arena), and cap_int / res_int0..5.
 -- PRODUCES: the pure per-step Z3 effect constructors selected by the
 --           effects schedule: (a) the enum-datatype declaration bank
@@ -15,7 +15,7 @@
 --           the numerals, and the calloc'd token/symbol/claim buffers).
 -- MAINTAINS: every member here is a STATELESS per-tick Effect value (no
 --           carries) — a pure constructor bank the single effects-writer
---           indexes by zstep / enum_step_now. It owns no FSM state.
+--           indexes by zstep / decl_step_now. It owns no FSM state.
 --
 -- The enum-decl + Z3-lifecycle build-effect bank. Lifted into
 -- driver_main via `..DriverBuildEff` immediately after `..DriverRecord`,
@@ -48,16 +48,16 @@ fsm DriverBuildEff
 
     enum_fsyms_now ∈ Seq(Int)
     #enum_fsyms_now ≤ 6
-    ∀ k ∈ {0..5} : enum_fsyms_now[k] = (_enum_step = 2 + k ? cap_int : _enum_h_fields[k])
+    ∀ k ∈ {0..5} : enum_fsyms_now[k] = (_decl_step = 2 + k ? cap_int : _header_fields[k])
     enum_namesym ∈ Effect
-    VariantNameSymStep(ctx_h ↦ z3ctx.ctx, v ↦ enum_variant, eff ↦ enum_namesym)
+    VariantNameSymStep(ctx_h ↦ z3ctx.ctx, v ↦ current_variant, eff ↦ enum_namesym)
     enum_recogsym ∈ Effect
-    VariantRecognizerSymStep(ctx_h ↦ z3ctx.ctx, v ↦ enum_variant, eff ↦ enum_recogsym)
+    VariantRecognizerSymStep(ctx_h ↦ z3ctx.ctx, v ↦ current_variant, eff ↦ enum_recogsym)
     -- cross-group payload sort: read the enum-table cell alongside the
     -- field sym (lr[1] → the slot's xsort).
-    enum_fld_k ∈ Int = enum_step_now - 2
+    enum_fld_k ∈ Int = decl_step_now - 2
     enum_fld_sym_eff ∈ Effect
-    VariantFieldSymStep(ctx_h ↦ z3ctx.ctx, v ↦ enum_variant, idx ↦ enum_fld_k, eff ↦ enum_fld_sym_eff)
+    VariantFieldSymStep(ctx_h ↦ z3ctx.ctx, v ↦ current_variant, idx ↦ enum_fld_k, eff ↦ enum_fld_sym_eff)
     enum_fld_istab ∈ Bool = field_slots[enum_fld_k].istab
     enum_fld_tabpos ∈ Int = field_slots[enum_fld_k].tabpos
     enum_tabread_f ∈ Effect
@@ -93,24 +93,24 @@ fsm DriverBuildEff
     enum_write_refs45 ∈ Effect
     BuildMemWriteLong(addr ↦ enum_srefs_p + 16, value ↦ refs_packed45, eff ↦ enum_write_refs45)
     enum_mk_ctor ∈ Effect
-    VariantMkConstructorStep(ctx_h ↦ z3ctx.ctx, v ↦ enum_variant,
-        name_sym_h ↦ enum_h_name, recog_sym_h ↦ enum_h_recog,
+    VariantMkConstructorStep(ctx_h ↦ z3ctx.ctx, v ↦ current_variant,
+        name_sym_h ↦ header_name, recog_sym_h ↦ header_recognized,
         fnames_p ↦ enum_fnames_p, fsorts_p ↦ enum_fsorts_p, srefs_p ↦ enum_srefs_p,
         eff ↦ enum_mk_ctor)
     enum_write_ctor ∈ Effect
-    BuildMemWriteLong(addr ↦ enum_ctors_p + (8 * _enum_vidx), value ↦ cap_int,
+    BuildMemWriteLong(addr ↦ enum_ctors_p + (8 * _variant_index), value ↦ cap_int,
         eff ↦ enum_write_ctor)
-    enum_sortsym_decl ∈ EnumDeclAst = EnumD(_enum_decl_name, EVNil)
+    enum_sortsym_decl ∈ EnumDeclAst = EnumD(_declared_name, EVNil)
     enum_sortsym ∈ Effect
     EnumSortSymStep(ctx_h ↦ z3ctx.ctx, decl ↦ enum_sortsym_decl, eff ↦ enum_sortsym)
     enum_mk_clist ∈ Effect
-    BuildZ3MkConstructorList(ctx_h ↦ z3ctx.ctx, n_ctors ↦ _enum_n_variants,
+    BuildZ3MkConstructorList(ctx_h ↦ z3ctx.ctx, n_ctors ↦ _variant_count,
         ctors_arr_p ↦ enum_ctors_p + (8 * _member_base), eff ↦ enum_mk_clist)
     enum_write_name ∈ Effect
-    BuildMemWriteLong(addr ↦ enum_sortnames_p + (8 * enum_member_idx),
-        value ↦ enum_h_name, eff ↦ enum_write_name)
+    BuildMemWriteLong(addr ↦ enum_sortnames_p + (8 * member_index),
+        value ↦ header_name, eff ↦ enum_write_name)
     enum_write_clist ∈ Effect
-    BuildMemWriteLong(addr ↦ enum_clists_p + (8 * enum_member_idx),
+    BuildMemWriteLong(addr ↦ enum_clists_p + (8 * member_index),
         value ↦ cap_int, eff ↦ enum_write_clist)
     enum_mk_datatype ∈ Effect
     BuildZ3MkDatatypes(ctx_h ↦ z3ctx.ctx, n_sorts ↦ group_size,
@@ -122,9 +122,9 @@ fsm DriverBuildEff
     BuildMemWriteLong(addr ↦ enumtab_p + (8 * (_enumtab_count + _group_read_cur)),
         value ↦ cap_int, eff ↦ enum_write_tab)
     enum_read_ctor ∈ Effect
-    BuildMemReadLong(addr ↦ enum_ctors_p + (8 * _enum_vidx), eff ↦ enum_read_ctor)
+    BuildMemReadLong(addr ↦ enum_ctors_p + (8 * _variant_index), eff ↦ enum_read_ctor)
     enum_query ∈ Effect
-    VariantQueryStep(ctx_h ↦ z3ctx.ctx, ctor_h ↦ cap_int, v ↦ enum_variant,
+    VariantQueryStep(ctx_h ↦ z3ctx.ctx, ctor_h ↦ cap_int, v ↦ current_variant,
         out_base_p ↦ enum_query_p, eff ↦ enum_query)
     enum_read_decl ∈ Effect
     BuildMemReadLong(addr ↦ enum_query_p, eff ↦ enum_read_decl)
@@ -163,39 +163,39 @@ fsm DriverBuildEff
     BuildMemWriteLong(addr ↦ acctab_row_p + 40, value ↦ res_int5, eff ↦ acctab_w5)
     enum_filler ∈ Effect = LibCall("libc", "getpid", ⟨⟩)
 
-    enum_step_eff ∈ Effect = (enum_act_now = 1 ?
-            (enum_step_now = 0 ? enum_namesym
-            : enum_step_now = 1 ? enum_recogsym
-            : enum_step_now = 9 ? enum_mk_ctor
-            : enum_step_now = 10 ? enum_write_ctor
-            : enum_step_now = 11 ? enum_sortsym
-            : enum_step_now = 12 ? enum_mk_clist
+    enum_step_eff ∈ Effect = (decl_action_now = 1 ?
+            (decl_step_now = 0 ? enum_namesym
+            : decl_step_now = 1 ? enum_recogsym
+            : decl_step_now = 9 ? enum_mk_ctor
+            : decl_step_now = 10 ? enum_write_ctor
+            : decl_step_now = 11 ? enum_sortsym
+            : decl_step_now = 12 ? enum_mk_clist
             : enum_fld_sym_eff)
-        : enum_act_now = 2 ?
-            (enum_step_now = 0 ? enum_mk_datatype
-            : enum_step_now = 1 ? enum_read_sort
-            : enum_step_now = 2 ? (enum_is_user ? enum_write_tab : enum_filler)
+        : decl_action_now = 2 ?
+            (decl_step_now = 0 ? enum_mk_datatype
+            : decl_step_now = 1 ? enum_read_sort
+            : decl_step_now = 2 ? (is_user_enum ? enum_write_tab : enum_filler)
             : enum_filler)
-        : enum_act_now = 3 ?
-            (enum_step_now = 0 ? enum_read_ctor
-            : enum_step_now = 1 ? enum_query
-            : enum_step_now = 2 ? enum_read_decl
-            : enum_step_now = 3 ? (enum_nullary ? enum_app0
-                : (result_harvest ∨ enum_is_user) ? enum_read_tester
+        : decl_action_now = 3 ?
+            (decl_step_now = 0 ? enum_read_ctor
+            : decl_step_now = 1 ? enum_query
+            : decl_step_now = 2 ? enum_read_decl
+            : decl_step_now = 3 ? (nullary_variant ? enum_app0
+                : (result_harvest ∨ is_user_enum) ? enum_read_tester
                 : enum_filler)
             : enum_filler)
         : enum_filler)
-    enum_a1_fld ∈ Bool = (enum_act_now = 1 ∧ enum_step_now ≥ 2
-        ∧ enum_step_now ≤ 7)
+    enum_a1_fld ∈ Bool = (decl_action_now = 1 ∧ decl_step_now ≥ 2
+        ∧ decl_step_now ≤ 7)
     enum_wbatchfx ∈ Bool = (enum_a1_fld ∧ enum_fld_istab)
-    enum_wbatchf ∈ Bool = (enum_act_now = 1 ∧ enum_step_now = 8)
-    enum_wbatch2 ∈ Bool = (enum_act_now = 1 ∧ enum_step_now = 13)
-    enum_wbatch3u ∈ Bool = (enum_is_user ∧ enum_act_now = 3 ∧ enum_step_now = 3
-        ∧ enum_nullary)
-    enum_wbatchacc ∈ Bool = (enum_act_now = 3 ∧ enum_step_now = 4
-        ∧ (¬enum_nullary) ∧ (enum_is_user ∨ result_harvest))
-    enum_wbatchtw ∈ Bool = (enum_is_user ∧ enum_act_now = 3 ∧ enum_step_now = 5
-        ∧ (¬enum_nullary))
+    enum_wbatchf ∈ Bool = (decl_action_now = 1 ∧ decl_step_now = 8)
+    enum_wbatch2 ∈ Bool = (decl_action_now = 1 ∧ decl_step_now = 13)
+    enum_wbatch3u ∈ Bool = (is_user_enum ∧ decl_action_now = 3 ∧ decl_step_now = 3
+        ∧ nullary_variant)
+    enum_wbatchacc ∈ Bool = (decl_action_now = 3 ∧ decl_step_now = 4
+        ∧ (¬nullary_variant) ∧ (is_user_enum ∨ result_harvest))
+    enum_wbatchtw ∈ Bool = (is_user_enum ∧ decl_action_now = 3 ∧ decl_step_now = 5
+        ∧ (¬nullary_variant))
 
     zinit_cfg ∈ Effect
     BuildZ3MkConfig(eff ↦ zinit_cfg)

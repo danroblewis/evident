@@ -65,8 +65,8 @@ fsm main
     ∀ e ∈ recs : e.accs[4] = 0
     ∀ e ∈ recs : e.accs[5] = 0
     -- user-enum + seq-var carries (no user enum, no registered seq).
-    enum_names ∈ String
-    enum_names = (is_first_tick ? "" : _enum_names)
+    decl_names ∈ String
+    decl_names = (is_first_tick ? "" : _decl_names)
     seqvar_set ∈ Bool
     seqvar_set = (is_first_tick ? false : _seqvar_set)
     seqvar_name ∈ String

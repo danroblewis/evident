@@ -4,7 +4,7 @@
 --           (claimidx_names) + symbol table (sym_names), the inline-frame state
 --           (_frame_depth, _scope_prefix, the bind-tape window
 --           _binds/_bind_base/_bind_top, _join_hdr), the record registry
---           (recs .name / .sort), the enum-table name column (enum_names)
+--           (recs .name / .sort), the enum-table name column (decl_names)
 --           + the seq-var carries (_seqvar_set, _seqvar_name), and the sibling
 --           sub-walks' per-line enter signals (efflit_*/arm_*/seqlit_*/callw_slot/
 --           callw_pun/qrange_close/tuple_element) that fold into enter_pratt. Wide by nature: this
@@ -59,7 +59,7 @@ fsm DriverClassify
     -- the sort handle (multi-enum-grammar D1).
     line_enum_key ∈ String
     FtiNameEntry(name ↦ line_ty_name, entry ↦ line_enum_key)
-    line_enum_pos ∈ Int = index_of(enum_names, line_enum_key, 0)
+    line_enum_pos ∈ Int = index_of(decl_names, line_enum_key, 0)
     line_sort ∈ Int = (line_ty_name = "Bool" ? 1
         : line_ty_name = "String" ? 3
         : line_ty_name = "Result" ? 4

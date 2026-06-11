@@ -96,8 +96,8 @@ type RecField(name ∈ String, ty ∈ String, kidx ∈ Int)
     0 - 1 ≤ kidx ≤ 2
 
 -- One row of the user-enum VALUE table: a nullary variant's name and
--- the Z3 handle of its constant. Used as `enum_values ∈ Seq(EnumVariantVal)` with
--- `#enum_values ≤ 160` — the bounded-Seq lowering (scripts/passes/lower-bounded-seq.sh)
+-- the Z3 handle of its constant. Used as `variant_values ∈ Seq(EnumVariantVal)` with
+-- `#variant_values ≤ 160` — the bounded-Seq lowering (scripts/passes/lower-bounded-seq.sh)
 -- flattens it to scalars pre-oracle, so the oracle never sees the Seq.
 type EnumVariantVal(name ∈ String, value ∈ Int)
 

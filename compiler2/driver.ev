@@ -79,7 +79,7 @@
 --     resolves within a group; across groups only already-built
 --     enums are referenceable); payload variants up to SIX fields of
 --     scalar floor / group member / floor enum / built enum (the
---     enum TABLE: name rows in enum_names, sort cells on the tape);
+--     enum TABLE: name rows in decl_names, sort cells on the tape);
 --     enum-typed memberships land in the manifest as `name:Enum`
 --   · ctor applications lower to C2App(decl, argc) = mk_app;
 --     compound args are handles — the legacy dropped-Exit(3+4) bug
@@ -235,10 +235,10 @@ fsm driver_main
     enum_reserved ∈ Bool = (decl_name = "Effect" ∨ decl_name = "Result"
         ∨ decl_name = "LibArg")
 
-    -- Dispatch idles while the ED machine builds a group (_enum_act
+    -- Dispatch idles while the ED machine builds a group (_decl_action
     -- gate); the head token is re-read once the build finishes.
     in_dispatch ∈ Bool = (in_parse ∧ (_parse_mode = 0) ∧ tok_ready
-        ∧ (_enum_act = 0))
+        ∧ (_decl_action = 0))
     -- BUILD-GROUP trigger (multi-enum-grammar D4): consecutive user
     -- enum decls accumulate in pend_group; the first non-enum top-level
     -- head (claim/type/EOF — a reserved Effect/Result/LibArg decl
@@ -955,7 +955,7 @@ fsm driver_main
         : variant_unsupported ? ⟨LibCall("libc", "puts",
             ⟨ArgStr(";; compiler2: unsupported enum variant payload shape (arity >6, or a malformed field list)")⟩),
             Exit(8)⟩
-        : enum_field_unresolved ? ⟨LibCall("libc", "puts",
+        : field_unresolved ? ⟨LibCall("libc", "puts",
             ⟨ArgStr(";; compiler2: enum payload field type is not a group member, a scalar, a floor type, or a previously built enum")⟩),
             Exit(8)⟩
         : (¬_got_path) ? ⟨ReadFile(src_path)⟩
@@ -968,16 +968,16 @@ fsm driver_main
         : zstep = 6 ? ⟨zinit_ssort⟩
         : zstep = 7 ? ⟨zinit_rsort⟩
         : zstep = 8 ? ⟨zinit_arena⟩
-        : enum_running ? (enum_wbatchf
-            ? (enum_field_n = 1 ? ⟨enum_write_fn0, enum_write_fs0, enum_write_refs01⟩
-              : enum_field_n = 2 ? ⟨enum_write_fn0, enum_write_fn1, enum_write_fs0, enum_write_fs1, enum_write_refs01⟩
-              : enum_field_n = 3 ? ⟨enum_write_fn0, enum_write_fn1, enum_write_fn2,
+        : decl_running ? (enum_wbatchf
+            ? (field_count = 1 ? ⟨enum_write_fn0, enum_write_fs0, enum_write_refs01⟩
+              : field_count = 2 ? ⟨enum_write_fn0, enum_write_fn1, enum_write_fs0, enum_write_fs1, enum_write_refs01⟩
+              : field_count = 3 ? ⟨enum_write_fn0, enum_write_fn1, enum_write_fn2,
                  enum_write_fs0, enum_write_fs1, enum_write_fs2,
                  enum_write_refs01, enum_write_refs23⟩
-              : enum_field_n = 4 ? ⟨enum_write_fn0, enum_write_fn1, enum_write_fn2, enum_write_fn3,
+              : field_count = 4 ? ⟨enum_write_fn0, enum_write_fn1, enum_write_fn2, enum_write_fn3,
                  enum_write_fs0, enum_write_fs1, enum_write_fs2, enum_write_fs3,
                  enum_write_refs01, enum_write_refs23⟩
-              : enum_field_n = 5 ? ⟨enum_write_fn0, enum_write_fn1, enum_write_fn2, enum_write_fn3, enum_write_fn4,
+              : field_count = 5 ? ⟨enum_write_fn0, enum_write_fn1, enum_write_fn2, enum_write_fn3, enum_write_fn4,
                  enum_write_fs0, enum_write_fs1, enum_write_fs2, enum_write_fs3, enum_write_fs4,
                  enum_write_refs01, enum_write_refs23, enum_write_refs45⟩
               : ⟨enum_write_fn0, enum_write_fn1, enum_write_fn2, enum_write_fn3, enum_write_fn4, enum_write_fn5,
@@ -986,17 +986,17 @@ fsm driver_main
             : enum_wbatchfx ? ⟨enum_fld_sym_eff, enum_tabread_f⟩
             : enum_wbatch2 ? ⟨enum_write_name, enum_write_clist⟩
             : enum_wbatch3u ? ⟨enum_app0, enum_read_tester⟩
-            : enum_wbatchacc ? (enum_field_n = 1 ? ⟨enum_read_acc0⟩
-              : enum_field_n = 2 ? ⟨enum_read_acc0, enum_read_acc1⟩
-              : enum_field_n = 3 ? ⟨enum_read_acc0, enum_read_acc1, enum_read_acc2⟩
-              : enum_field_n = 4 ? ⟨enum_read_acc0, enum_read_acc1, enum_read_acc2, enum_read_acc3⟩
-              : enum_field_n = 5 ? ⟨enum_read_acc0, enum_read_acc1, enum_read_acc2, enum_read_acc3, enum_read_acc4⟩
+            : enum_wbatchacc ? (field_count = 1 ? ⟨enum_read_acc0⟩
+              : field_count = 2 ? ⟨enum_read_acc0, enum_read_acc1⟩
+              : field_count = 3 ? ⟨enum_read_acc0, enum_read_acc1, enum_read_acc2⟩
+              : field_count = 4 ? ⟨enum_read_acc0, enum_read_acc1, enum_read_acc2, enum_read_acc3⟩
+              : field_count = 5 ? ⟨enum_read_acc0, enum_read_acc1, enum_read_acc2, enum_read_acc3, enum_read_acc4⟩
               : ⟨enum_read_acc0, enum_read_acc1, enum_read_acc2, enum_read_acc3, enum_read_acc4, enum_read_acc5⟩)
-            : enum_wbatchtw ? (enum_field_n = 1 ? ⟨acctab_w0⟩
-              : enum_field_n = 2 ? ⟨acctab_w0, acctab_w1⟩
-              : enum_field_n = 3 ? ⟨acctab_w0, acctab_w1, acctab_w2⟩
-              : enum_field_n = 4 ? ⟨acctab_w0, acctab_w1, acctab_w2, acctab_w3⟩
-              : enum_field_n = 5 ? ⟨acctab_w0, acctab_w1, acctab_w2, acctab_w3, acctab_w4⟩
+            : enum_wbatchtw ? (field_count = 1 ? ⟨acctab_w0⟩
+              : field_count = 2 ? ⟨acctab_w0, acctab_w1⟩
+              : field_count = 3 ? ⟨acctab_w0, acctab_w1, acctab_w2⟩
+              : field_count = 4 ? ⟨acctab_w0, acctab_w1, acctab_w2, acctab_w3⟩
+              : field_count = 5 ? ⟨acctab_w0, acctab_w1, acctab_w2, acctab_w3, acctab_w4⟩
               : ⟨acctab_w0, acctab_w1, acctab_w2, acctab_w3, acctab_w4, acctab_w5⟩)
             : ⟨enum_step_eff⟩)
         : zstep = 10 ? ⟨zinit_arrsort⟩

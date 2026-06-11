@@ -3,7 +3,7 @@
 --           (sym_names) + base (sym_buf.base), the bind-tape window
 --           (_binds / _bind_base / _bind_top — compose's slot-bind
 --           registry), the import/inline prefix (_scope_prefix),
---           the enum-variant value registry (enum_values, a bounded Seq), and the cached
+--           the enum-variant value registry (variant_values, a bounded Seq), and the cached
 --           z3_true/z3_false handles.
 -- PRODUCES: name resolution — resolved_key/resolved_position/resolved_found(2)/position_now,
 --           the prefix-scoped variants (d_lk_pfx_*), the frame slot-bind hit
@@ -37,8 +37,8 @@ fsm DriverSymLookup
     resolved_handle ∈ Int
     (lookup_name = "true") ⇒ (resolved_handle = z3_true)
     (lookup_name = "false") ⇒ (resolved_handle = z3_false)
-    ∀ e ∈ enum_values : ((e.name = lookup_name) ⇒ (resolved_handle = e.value))
+    ∀ e ∈ variant_values : ((e.name = lookup_name) ⇒ (resolved_handle = e.value))
     (¬((lookup_name = "true") ∨ (lookup_name = "false")
-        ∨ (∃ e ∈ enum_values : e.name = lookup_name))) ⇒ (resolved_handle = 0)
+        ∨ (∃ e ∈ variant_values : e.name = lookup_name))) ⇒ (resolved_handle = 0)
     eff_sym_read ∈ Effect
     BuildMemReadLong(addr ↦ sym_buf.base + (8 * (position_now / 32)), eff ↦ eff_sym_read)

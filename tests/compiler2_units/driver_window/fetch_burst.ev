@@ -35,8 +35,8 @@ fsm main
     -- the names resolve.
     rec_collect_on ∈ Bool
     rec_collect_on = (is_first_tick ? false : _rec_collect_on)
-    enum_act ∈ Int
-    enum_act = (is_first_tick ? 0 : _enum_act)
+    decl_action ∈ Int
+    decl_action = (is_first_tick ? 0 : _decl_action)
     callw_st ∈ Int
     callw_st = (is_first_tick ? 0 : _callw_st)
     tuple_state ∈ Int

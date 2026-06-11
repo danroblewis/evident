@@ -3,7 +3,7 @@
 --           (tok0..tok6), the claim head shape (head_is_claim,
 --           decl_name), the parse gate (in_parse, _parse_mode, tok_ready,
 --           work_nil), the parse_mode-4 enum-collection signals
---           (enter_enum_decl, enum_act) + floor decl
+--           (enter_enum_decl, decl_action) + floor decl
 --           handles (z_*_decl/z3_empty_val), the Pratt result (pratt_done,
 --           pratt_bad, pratt_kind), and the claim-index buffer base (claimidx_buf.base).
 -- PRODUCES: the claim/type index (ci_cnt, claimidx_names) + its per-skip append
@@ -57,10 +57,10 @@ fsm DriverClaimIdx
     -- one payload FIELD per tick (vf_st 0 head / 1 fields; cap 6,
     -- matching the slot-call width). No payload-type whitelist: an
     -- unknown type is checked at BUILD time against the group/table
-    -- (driver_enum's enum_field_unresolved → Exit 8). Prepend-
+    -- (driver_enum's field_unresolved → Exit 8). Prepend-
     -- accumulated (the declared variant order is REVERSED vs source —
     -- harmless: declaration and harvest peel the same list).
-    variant_walk_on ∈ Bool = (in_parse ∧ (_parse_mode = 4) ∧ (_enum_act = 0)
+    variant_walk_on ∈ Bool = (in_parse ∧ (_parse_mode = 4) ∧ (_decl_action = 0)
         ∧ tok_ready)
     variant_name ∈ String = match tok0
         Ident(s) ⇒ s

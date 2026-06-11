@@ -7,7 +7,7 @@
 --           (claimidx_buf.base, claimidx_names), the symbol table (sym_names), the
 --           inline-frame state (scope_prefix/frame_depth/param_depth + the
 --           bind-tape window _binds/_bind_base/_bind_top), the
---           enum value table (enum_values), the record registry (recs name/fields/
+--           enum value table (variant_values), the record registry (recs name/fields/
 --           sorts), the Pratt result (pratt_done/pratt_bad/pratt_result/pratt_*), and
 --           z3_exit_decl. (Width justified §6.4: positional binding
 --           inherently touches index + Pratt stack + callee params.)
@@ -154,7 +154,7 @@ fsm DriverPosBind
     FtiNameEntry(name ↦ (_scope_prefix ++ elem_name), entry ↦ elem_scoped_key)
     elem_plain_key ∈ String
     FtiNameEntry(name ↦ elem_name, entry ↦ elem_plain_key)
-    elem_is_variant ∈ Bool = (∃ i ∈ {0..#enum_values-1} : enum_values[i].name = elem_name)
+    elem_is_variant ∈ Bool = (∃ i ∈ {0..#variant_values-1} : variant_values[i].name = elem_name)
     elem_is_bound ∈ Bool = (∃ i ∈ {0..11} : ((i ≥ _bind_base) ∧ (i < _bind_top) ∧ (_binds[i].name = elem_name)))
     elem_unresolved ∈ Bool = ((elem_name ≠ "") ∧ (elem_name ≠ "true")
         ∧ (elem_name ≠ "false") ∧ (¬elem_is_variant) ∧ (¬elem_is_bound)
@@ -213,7 +213,7 @@ fsm DriverPosBind
         ∧ (¬(_callw_bare ∧ (¬_callw_hide))))
     pskip_enum_key ∈ String
     FtiNameEntry(name ↦ param_ty_name, entry ↦ pskip_enum_key)
-    pskip_enum_pos ∈ Int = index_of(enum_names, pskip_enum_key, 0)
+    pskip_enum_pos ∈ Int = index_of(decl_names, pskip_enum_key, 0)
     pskip_sort ∈ Int = (param_ty_name = "Bool" ? 1
         : param_ty_name = "String" ? 3
         : param_ty_name = "Result" ? 4

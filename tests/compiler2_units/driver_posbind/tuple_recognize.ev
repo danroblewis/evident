@@ -84,9 +84,9 @@ fsm main
     stack_in = (is_first_tick ? C2HNil : _stack_in)
     line_end ∈ Bool
     line_end = (is_first_tick ? false : _line_end)
-    enum_values ∈ Seq(EnumVariantVal)
-    #enum_values ≤ 6
-    enum_values = (is_first_tick ? ⟨⟩ : _enum_values)
+    variant_values ∈ Seq(EnumVariantVal)
+    #variant_values ≤ 6
+    variant_values = (is_first_tick ? ⟨⟩ : _variant_values)
     cond_hit ∈ Bool
     cond_hit = (is_first_tick ? false : _cond_hit)
     cond_lhs ∈ Expr
@@ -101,8 +101,8 @@ fsm main
     callw_bare = (is_first_tick ? false : _callw_bare)
     callw_is_type ∈ Bool
     callw_is_type = (is_first_tick ? false : _callw_is_type)
-    enum_names ∈ String
-    enum_names = (is_first_tick ? "" : _enum_names)
+    decl_names ∈ String
+    decl_names = (is_first_tick ? "" : _decl_names)
     idx ∈ String
     idx = (is_first_tick ? "" : _idx)
     frame_depth ∈ Int
