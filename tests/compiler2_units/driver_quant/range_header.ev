@@ -54,16 +54,16 @@ fsm main
     param_skip = (is_first_tick ? 0 : _param_skip)
     in_parse ∈ Bool
     in_parse = (is_first_tick ? false : _in_parse)
-    pratt_done ∈ Bool
-    pratt_done = (is_first_tick ? false : _pratt_done)
-    pratt_kind ∈ Int
-    pratt_kind = (is_first_tick ? 0 : _pratt_kind)
+    parse_ready ∈ Bool
+    parse_ready = (is_first_tick ? false : _parse_ready)
+    parse_kind ∈ Int
+    parse_kind = (is_first_tick ? 0 : _parse_kind)
     parse_mode ∈ Int
     parse_mode = (is_first_tick ? 0 : _parse_mode)
-    pratt_bad ∈ Bool
-    pratt_bad = (is_first_tick ? false : _pratt_bad)
-    pratt_result ∈ Expr
-    pratt_result = (is_first_tick ? EInt(0) : _pratt_result)
+    parse_bad ∈ Bool
+    parse_bad = (is_first_tick ? false : _parse_bad)
+    parse_result ∈ Expr
+    parse_result = (is_first_tick ? EInt(0) : _parse_result)
     seqvar_name ∈ String
     seqvar_name = (is_first_tick ? "" : _seqvar_name)
     seqvar_set ∈ Bool

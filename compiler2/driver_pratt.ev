@@ -3,13 +3,13 @@
 --           window (tok0.. via the shared views), the Pratt-entry cons/
 --           kind (pratt_enter_consume/pratt_enter_kind) + the qstop flag, and its
 --           own carried Pratt stack/cursor.
--- PRODUCES: the parse_mode-3 Pratt expression-parser state (pk_st/pratt_kind/
---           pratt_decl_name/pratt_rec_slot/pratt_sort/pratt_pin_name/pratt_nat/pratt_nodecl + pratt_result/pratt_bad/
---           pratt_done), driving one shift/reduce micro-step per tick via
---           C2PrattStep and yielding the parsed Expr (pratt_result) on pratt_done.
--- MAINTAINS: an expression parses in ONE Pratt pass keyed by pratt_kind (pin/
+-- PRODUCES: the parse_mode-3 Pratt expression-parser state (pk_st/parse_kind/
+--           parse_decl_name/parse_rec_slot/parse_sort/parse_pin_name/parse_nat/parse_nodecl + parse_result/parse_bad/
+--           parse_ready), driving one shift/reduce micro-step per tick via
+--           C2PrattStep and yielding the parsed Expr (parse_result) on parse_ready.
+-- MAINTAINS: an expression parses in ONE Pratt pass keyed by parse_kind (pin/
 --           element/guard/arm/slot/seq/quantifier/positional); the result
---           handle/Expr lands on pratt_done for the consumer that entered it.
+--           handle/Expr lands on parse_ready for the consumer that entered it.
 --
 -- The parse_mode-3 Pratt FSM (expression parser). Lifted into driver_main via
 -- `..DriverPratt`.
@@ -17,19 +17,19 @@ fsm DriverPratt
     -- ── PRATT FSM state (parse_mode 3; reads the shared window) ────────
     in_pratt ∈ Bool = (in_parse ∧ (_parse_mode = 3) ∧ tok_ready)
 
-    pratt_out ∈ ExprList
-    pratt_ops ∈ PrOps
-    pratt_expop ∈ Bool
-    pratt_pd ∈ Int
-    pratt_qd ∈ Int
-    pratt_cd ∈ Int
-    pratt_kind ∈ Int
-    pratt_decl_name ∈ String
-    pratt_sort ∈ Int
-    pratt_nat ∈ Bool
-    pratt_nodecl ∈ Bool
-    pratt_pin_name ∈ String
-    pratt_rec_slot ∈ Int
+    parse_out ∈ ExprList
+    parse_ops ∈ PrOps
+    parse_expop ∈ Bool
+    parse_pd ∈ Int
+    parse_qd ∈ Int
+    parse_cd ∈ Int
+    parse_kind ∈ Int
+    parse_decl_name ∈ String
+    parse_sort ∈ Int
+    parse_nat ∈ Bool
+    parse_nodecl ∈ Bool
+    parse_pin_name ∈ String
+    parse_rec_slot ∈ Int
 
     call_pad31 ∈ String = "                               "
     builtin_callables ∈ Seq(String) = ⟨"str_len", "str_from_int", "substr", "char_at", "index_of", "str_contains", "starts_with", "ends_with", "replace"⟩
@@ -45,22 +45,22 @@ fsm DriverPratt
         ? callable_rec_joins[k] ++ "|" ++ substr(recs[k].name ++ call_pad31, 0, 31)
         : callable_rec_joins[k])
     callable_names ∈ String = callable_rec_joins[3]
-    pratt_next_toks ∈ TokenList
-    pratt_next_outs ∈ ExprList
-    pratt_next_ops ∈ PrOps
-    pratt_next_expop ∈ Bool
-    pratt_next_pd ∈ Int
-    pratt_next_qd ∈ Int
-    pratt_next_cd ∈ Int
-    pratt_step_done ∈ Bool
-    pratt_result ∈ Expr
-    pratt_consume ∈ Int
-    C2PrattStep(toks ↦ _win_toks, outs ↦ _pratt_out, ops ↦ _pratt_ops,
-        expop ↦ _pratt_expop, pd ↦ _pratt_pd, qd ↦ _pratt_qd, cd ↦ _pratt_cd,
+    parse_next_toks ∈ TokenList
+    parse_next_outs ∈ ExprList
+    parse_next_ops ∈ PrOps
+    parse_next_expop ∈ Bool
+    parse_next_pd ∈ Int
+    parse_next_qd ∈ Int
+    parse_next_cd ∈ Int
+    parse_step_done ∈ Bool
+    parse_result ∈ Expr
+    parse_consume ∈ Int
+    C2PrattStep(toks ↦ _win_toks, outs ↦ _parse_out, ops ↦ _parse_ops,
+        expop ↦ _parse_expop, pd ↦ _parse_pd, qd ↦ _parse_qd, cd ↦ _parse_cd,
         qstop ↦ _pratt_qstop, calls ↦ callable_names,
-        ntoks ↦ pratt_next_toks, nouts ↦ pratt_next_outs, nops ↦ pratt_next_ops,
-        nexpop ↦ pratt_next_expop, npd ↦ pratt_next_pd, nqd ↦ pratt_next_qd, ncd ↦ pratt_next_cd,
-        sdone ↦ pratt_step_done, sres ↦ pratt_result, scons ↦ pratt_consume)
+        ntoks ↦ parse_next_toks, nouts ↦ parse_next_outs, nops ↦ parse_next_ops,
+        nexpop ↦ parse_next_expop, npd ↦ parse_next_pd, nqd ↦ parse_next_qd, ncd ↦ parse_next_cd,
+        sdone ↦ parse_step_done, sres ↦ parse_result, scons ↦ parse_consume)
 
     -- ── matches-pattern SKIM ──────────────────────────────────────
     -- `e matches Ctor(p0, …, pk)` with k ≥ 2 spans past the window in
@@ -73,7 +73,7 @@ fsm DriverPratt
     mskim_p1 ∈ Bool = ((tok3 matches Ident(_)) ∧ (tok4 matches RParen))
     mskim_p2 ∈ Bool = ((tok3 matches Ident(_)) ∧ (tok4 matches Comma)
         ∧ (tok5 matches Ident(_)) ∧ (tok6 matches RParen))
-    mskim_enter ∈ Bool = (in_pratt ∧ (¬_mskim) ∧ (¬_pratt_expop)
+    mskim_enter ∈ Bool = (in_pratt ∧ (¬_mskim) ∧ (¬_parse_expop)
         ∧ (tok0 matches KwMatches) ∧ (tok1 matches Ident(_))
         ∧ (tok2 matches LParen) ∧ (¬mskim_p1) ∧ (¬mskim_p2))
     mskim_name ∈ String = match tok1
@@ -89,57 +89,57 @@ fsm DriverPratt
         : mskim_enter ? true
         : (mskim_close ∨ mskim_bad) ? false
         : _mskim)
-    mskim_top ∈ Expr = match _pratt_out
+    mskim_top ∈ Expr = match _parse_out
         ELCons(h, _) ⇒ h
         ELNil ⇒ ENoExpr
-    mskim_tail ∈ ExprList = match _pratt_out
+    mskim_tail ∈ ExprList = match _parse_out
         ELCons(_, t) ⇒ t
         ELNil ⇒ ELNil
 
-    pratt_out = (is_first_tick ? ELNil
+    parse_out = (is_first_tick ? ELNil
         : enter_pratt ? ELNil
         : mskim_enter ? ELCons(EMatches(mskim_name, mskim_top), mskim_tail)
-        : mskim_hold ? _pratt_out
-        : in_pratt ? pratt_next_outs
-        : _pratt_out)
-    pratt_ops = (is_first_tick ? PrNil
+        : mskim_hold ? _parse_out
+        : in_pratt ? parse_next_outs
+        : _parse_out)
+    parse_ops = (is_first_tick ? PrNil
         : enter_pratt ? PrNil
-        : (mskim_enter ∨ mskim_hold) ? _pratt_ops
-        : in_pratt ? pratt_next_ops
-        : _pratt_ops)
-    pratt_expop = (is_first_tick ? true
+        : (mskim_enter ∨ mskim_hold) ? _parse_ops
+        : in_pratt ? parse_next_ops
+        : _parse_ops)
+    parse_expop = (is_first_tick ? true
         : enter_pratt ? true
-        : (mskim_enter ∨ mskim_hold) ? _pratt_expop
-        : in_pratt ? pratt_next_expop
-        : _pratt_expop)
-    pratt_pd = (is_first_tick ? 0
+        : (mskim_enter ∨ mskim_hold) ? _parse_expop
+        : in_pratt ? parse_next_expop
+        : _parse_expop)
+    parse_pd = (is_first_tick ? 0
         : enter_pratt ? 0
-        : (mskim_enter ∨ mskim_hold) ? _pratt_pd
-        : in_pratt ? pratt_next_pd
-        : _pratt_pd)
-    pratt_qd = (is_first_tick ? 0
+        : (mskim_enter ∨ mskim_hold) ? _parse_pd
+        : in_pratt ? parse_next_pd
+        : _parse_pd)
+    parse_qd = (is_first_tick ? 0
         : enter_pratt ? 0
-        : (mskim_enter ∨ mskim_hold) ? _pratt_qd
-        : in_pratt ? pratt_next_qd
-        : _pratt_qd)
-    pratt_cd = (is_first_tick ? 0
+        : (mskim_enter ∨ mskim_hold) ? _parse_qd
+        : in_pratt ? parse_next_qd
+        : _parse_qd)
+    parse_cd = (is_first_tick ? 0
         : enter_pratt ? 0
-        : (mskim_enter ∨ mskim_hold) ? _pratt_cd
-        : in_pratt ? pratt_next_cd
-        : _pratt_cd)
-    pratt_kind = (is_first_tick ? 0 : enter_pratt ? pratt_enter_kind : _pratt_kind)
-    pratt_decl_name = (is_first_tick ? "" : enter_pratt ? line_dname : _pratt_decl_name)
-    pratt_sort = (is_first_tick ? 0 : enter_pratt ? line_sort : _pratt_sort)
-    pratt_nat = (is_first_tick ? false : enter_pratt ? line_is_nat : _pratt_nat)
-    pratt_nodecl = (is_first_tick ? false : enter_pratt ? no_decl : _pratt_nodecl)
-    pratt_pin_name = (is_first_tick ? "" : enter_pratt ? resolved_name : _pratt_pin_name)
+        : (mskim_enter ∨ mskim_hold) ? _parse_cd
+        : in_pratt ? parse_next_cd
+        : _parse_cd)
+    parse_kind = (is_first_tick ? 0 : enter_pratt ? pratt_enter_kind : _parse_kind)
+    parse_decl_name = (is_first_tick ? "" : enter_pratt ? line_dname : _parse_decl_name)
+    parse_sort = (is_first_tick ? 0 : enter_pratt ? line_sort : _parse_sort)
+    parse_nat = (is_first_tick ? false : enter_pratt ? line_is_nat : _parse_nat)
+    parse_nodecl = (is_first_tick ? false : enter_pratt ? no_decl : _parse_nodecl)
+    parse_pin_name = (is_first_tick ? "" : enter_pratt ? resolved_name : _parse_pin_name)
     -- record-pinned membership (`offset_pos ∈ IVec2 = <expr>`)
     -- arms the rb broadcast loop at parse completion.
     pin_rec_slot ∈ Int = ((line_pinned ∧ line_is_mem) ? type_rec_slot : 0 - 1)
-    pratt_rec_slot = (is_first_tick ? 0 - 1
+    parse_rec_slot = (is_first_tick ? 0 - 1
         : enter_pratt ? pin_rec_slot
-        : _pratt_rec_slot)
+        : _parse_rec_slot)
 
-    pratt_done ∈ Bool = (in_pratt ∧ pratt_step_done
+    parse_ready ∈ Bool = (in_pratt ∧ parse_step_done
         ∧ (¬mskim_enter) ∧ (¬mskim_hold))
-    pratt_bad ∈ Bool = (pratt_done ∧ (pratt_result matches ENoExpr))
+    parse_bad ∈ Bool = (parse_ready ∧ (parse_result matches ENoExpr))

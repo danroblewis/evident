@@ -38,9 +38,9 @@ fsm main
     sym_buf ∈ FtiBuffer
     sym_buf.base = (is_first_tick ? 0 : _sym_buf.base)
     sym_buf.count = (is_first_tick ? 0 : _sym_buf.count)
-    claimidx_buf ∈ FtiBuffer
-    claimidx_buf.base = (is_first_tick ? 0 : _claimidx_buf.base)
-    claimidx_buf.count = (is_first_tick ? 0 : _claimidx_buf.count)
+    claimindex_buf ∈ FtiBuffer
+    claimindex_buf.base = (is_first_tick ? 0 : _claimindex_buf.base)
+    claimindex_buf.count = (is_first_tick ? 0 : _claimindex_buf.count)
     -- DriverEmit's prelude_txt string literal contains the text
     -- "last_results", which trips the oracle's saw_lastres heuristic and
     -- suppresses the genuine `last_results` declaration. A real read

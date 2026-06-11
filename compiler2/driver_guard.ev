@@ -1,6 +1,6 @@
 -- MODULE DriverGuard
--- CONSUMES: the parsed root (pratt_result) + parse-done signal (pratt_done,
---           _pratt_kind, pratt_bad), the claim index (claimidx_names, claimidx_buf.base),
+-- CONSUMES: the parsed root (parse_result) + parse-done signal (parse_ready,
+--           _parse_kind, parse_bad), the claim index (claimindex_names, claimindex_buf.base),
 --           the parse_mode-10 composition-walk state (in_parse, _parse_mode,
 --           _callw_st, callw_reset, work_nil), and the inline-frame
 --           stack views (frame_pop, _frame_depth, h_top).
@@ -21,19 +21,19 @@ fsm DriverGuard
     cond_lhs ∈ Expr
     cond_rhs ∈ Expr
     cond_binop ∈ Bool
-    BoolExprBinopParts(e ↦ pratt_result, op ↦ cond_op, lhs ↦ cond_lhs,
+    BoolExprBinopParts(e ↦ parse_result, op ↦ cond_op, lhs ↦ cond_lhs,
         rhs ↦ cond_rhs, is_binop ↦ cond_binop)
     cond_callee ∈ String = match cond_rhs
         EIdent(s) ⇒ s
         _ ⇒ ""
     cond_key ∈ String
     FtiNameEntry(name ↦ cond_callee, entry ↦ cond_key)
-    cond_pos ∈ Int = index_of(claimidx_names, cond_key, 0)
-    cond_hit ∈ Bool = (pratt_done ∧ (_pratt_kind = 2) ∧ (¬pratt_bad) ∧ cond_binop
+    cond_pos ∈ Int = index_of(claimindex_names, cond_key, 0)
+    cond_hit ∈ Bool = (parse_ready ∧ (_parse_kind = 2) ∧ (¬parse_bad) ∧ cond_binop
         ∧ (cond_op matches OpImpl) ∧ (cond_callee ≠ "") ∧ (cond_pos ≥ 0)
         ∧ (_frame_depth < 8))
     eff_guard_read ∈ Effect
-    BuildMemReadLong(addr ↦ claimidx_buf.base + (8 * (cond_pos / 32)), eff ↦ eff_guard_read)
+    BuildMemReadLong(addr ↦ claimindex_buf.base + (8 * (cond_pos / 32)), eff ↦ eff_guard_read)
     jump_capture ∈ Bool = (in_parse ∧ (_parse_mode = 10) ∧ (_callw_st = 3))
     jump_fire ∈ Bool = (in_parse ∧ (_parse_mode = 10) ∧ (_callw_st = 4)
         ∧ work_nil)

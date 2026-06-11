@@ -4,9 +4,9 @@
 --           decl_name), the parse gate (in_parse, _parse_mode, tok_ready,
 --           work_nil), the parse_mode-4 enum-collection signals
 --           (enter_enum_decl, decl_action) + floor decl
---           handles (z_*_decl/z3_empty_val), the Pratt result (pratt_done,
---           pratt_bad, pratt_kind), and the claim-index buffer base (claimidx_buf.base).
--- PRODUCES: the claim/type index (ci_cnt, claimidx_names) + its per-skip append
+--           handles (z_*_decl/z3_empty_val), the Pratt result (parse_ready,
+--           parse_bad, parse_kind), and the claim-index buffer base (claimindex_buf.base).
+-- PRODUCES: the claim/type index (ci_cnt, claimindex_names) + its per-skip append
 --           effect (eff_claimidx_write), the parse_mode-4 user-enum variant collection
 --           (variant_take/variant_act/enum_member_end/variant_decl/variant_list/
 --           variant_list_now + the vf_* field-walk state), and the
@@ -29,8 +29,8 @@ claim C2ChainLvl(tail ∈ C2Items, out ∈ C2Items)
 
 fsm DriverClaimIdx
     -- ── F2: the claim index ───────────────────────────────────────
-    -- claimidx_names: fixed-width 32-byte name records (the B1 sym_names
-    -- pattern). Cursors live in the claimidx_buf.base buffer (256 × 8 bytes),
+    -- claimindex_names: fixed-width 32-byte name records (the B1 sym_names
+    -- pattern). Cursors live in the claimindex_buf.base buffer (256 × 8 bytes),
     -- one per skipped claim, value = _tok_cur + 2 — the token after
     -- `claim Name`, which is `(` for parametrized claims (the
     -- call-time param-skip walks over it). Composition can only call
@@ -38,23 +38,23 @@ fsm DriverClaimIdx
     -- true for the corpus: stdlib then helpers then main).
     -- ci_cnt < 2048 makes an index past the buffer end UNSAT (the
     -- model refuses it) rather than a native overrun.
-    claimidx_buf.count < 2048
-    claimidx_names ∈ String
-    claimidx_add ∈ Bool = (enter_skip
+    claimindex_buf.count < 2048
+    claimindex_names ∈ String
+    claimindex_add ∈ Bool = (enter_skip
         ∧ (head_is_claim ∨ (tok0 matches KwType))
         ∧ (tok1 matches Ident(_)))
-    claimidx_entry ∈ String
-    FtiNameEntry(name ↦ decl_name, entry ↦ claimidx_entry)
-    FtiNamedAppend(first ↦ is_first_tick, add ↦ claimidx_add,
-        prev_count ↦ _claimidx_buf.count, prev_names ↦ _claimidx_names,
-        init_count ↦ 0, seed_names ↦ "", entry ↦ claimidx_entry,
-        count ↦ claimidx_buf.count, names ↦ claimidx_names)
+    claimindex_entry ∈ String
+    FtiNameEntry(name ↦ decl_name, entry ↦ claimindex_entry)
+    FtiNamedAppend(first ↦ is_first_tick, add ↦ claimindex_add,
+        prev_count ↦ _claimindex_buf.count, prev_names ↦ _claimindex_names,
+        init_count ↦ 0, seed_names ↦ "", entry ↦ claimindex_entry,
+        count ↦ claimindex_buf.count, names ↦ claimindex_names)
     eff_claimidx_write ∈ Effect
-    BuildMemWriteLong(addr ↦ claimidx_buf.base + (8 * _claimidx_buf.count), value ↦ _tok_cur + 2,
+    BuildMemWriteLong(addr ↦ claimindex_buf.base + (8 * _claimindex_buf.count), value ↦ _tok_cur + 2,
         eff ↦ eff_claimidx_write)
 
     -- parse_mode 4 collection: a multi-tick walk — one variant HEAD or
-    -- one payload FIELD per tick (vf_st 0 head / 1 fields; cap 6,
+    -- one payload FIELD per tick (vfield_st 0 head / 1 fields; cap 6,
     -- matching the slot-call width). No payload-type whitelist: an
     -- unknown type is checked at BUILD time against the group/table
     -- (driver_enum's field_unresolved → Exit 8). Prepend-
@@ -66,27 +66,27 @@ fsm DriverClaimIdx
         Ident(s) ⇒ s
         _ ⇒ ""
     variant_name_ok ∈ Bool = (tok0 matches Ident(_))
-    vf_st ∈ Int
-    vf_pend ∈ String
-    vf_n ∈ Int
-    vf_tys ∈ Seq(VfTy)
-    #vf_tys ≤ 5
+    vfield_st ∈ Int
+    vfield_pend ∈ String
+    vfield_n ∈ Int
+    vfield_tys ∈ Seq(VfTy)
+    #vfield_tys ≤ 5
     -- Variant separators: `|` or a bare following Ident (the newline-
     -- separated enum form — newlines don't survive lexing, and every
     -- top-level decl head is a KEYWORD token, so a trailing Ident can
     -- only be the next variant).
-    vf_head ∈ Bool = (variant_walk_on ∧ (_vf_st = 0))
-    vf_fields ∈ Bool = (variant_walk_on ∧ (_vf_st = 1))
-    vh_nullary_more ∈ Bool = (vf_head ∧ variant_name_ok
+    vfield_head ∈ Bool = (variant_walk_on ∧ (_vfield_st = 0))
+    vfield_fields ∈ Bool = (variant_walk_on ∧ (_vfield_st = 1))
+    vh_nullary_more ∈ Bool = (vfield_head ∧ variant_name_ok
         ∧ ((tok1 matches Pipe) ∨ (tok1 matches Ident(_))))
-    vh_open ∈ Bool = (vf_head ∧ variant_name_ok ∧ (tok1 matches LParen))
-    vh_nullary_end ∈ Bool = (vf_head ∧ variant_name_ok
+    vh_open ∈ Bool = (vfield_head ∧ variant_name_ok ∧ (tok1 matches LParen))
+    vh_nullary_end ∈ Bool = (vfield_head ∧ variant_name_ok
         ∧ (¬(tok1 matches Pipe)) ∧ (¬(tok1 matches LParen))
         ∧ (¬(tok1 matches Ident(_))))
     vfield_ty ∈ String = variant_name
-    vfield_more ∈ Bool = (vf_fields ∧ variant_name_ok ∧ (tok1 matches Comma)
-        ∧ (_vf_n < 5))
-    vfield_close ∈ Bool = (vf_fields ∧ variant_name_ok ∧ (tok1 matches RParen))
+    vfield_more ∈ Bool = (vfield_fields ∧ variant_name_ok ∧ (tok1 matches Comma)
+        ∧ (_vfield_n < 5))
+    vfield_close ∈ Bool = (vfield_fields ∧ variant_name_ok ∧ (tok1 matches RParen))
     vfield_close_more ∈ Bool = (vfield_close
         ∧ ((tok2 matches Pipe) ∨ (tok2 matches Ident(_))))
     -- A payload field that is not `Ty ,` / `Ty )`, or a 7th field, is an
@@ -94,34 +94,34 @@ fsm DriverClaimIdx
     -- enum decl and the failure surfaced ~900s later as a 0-handle
     -- Exit(7) in an unrelated ternary (sample.ev, 2026-06-10). Halt
     -- nameably instead: Exit(8).
-    variant_unsupported ∈ Bool = (vf_fields ∧ (¬vfield_more) ∧ (¬vfield_close))
-    variant_bail ∈ Bool = (vf_head ∧ (¬variant_name_ok))
+    variant_unsupported ∈ Bool = (vfield_fields ∧ (¬vfield_more) ∧ (¬vfield_close))
+    variant_bail ∈ Bool = (vfield_head ∧ (¬variant_name_ok))
     variant_take ∈ Bool = (vh_nullary_more ∨ vh_nullary_end ∨ vfield_close)
     enum_member_end ∈ Bool = (vh_nullary_end ∨ (vfield_close ∧ (¬vfield_close_more)))
-    vf_st = (is_first_tick ? 0
+    vfield_st = (is_first_tick ? 0
         : enter_enum_decl ? 0
         : vh_open ? 1
         : vfield_close ? 0
-        : _vf_st)
-    vf_pend = (is_first_tick ? "" : vh_open ? variant_name : _vf_pend)
-    vf_n = (is_first_tick ? 0
+        : _vfield_st)
+    vfield_pend = (is_first_tick ? "" : vh_open ? variant_name : _vfield_pend)
+    vfield_n = (is_first_tick ? 0
         : vh_open ? 0
-        : vfield_more ? _vf_n + 1
-        : _vf_n)
-    ∀ k ∈ {0..4} : vf_tys[k].tyname = (is_first_tick ? "" : (vfield_more ∧ _vf_n = k) ? vfield_ty : _vf_tys[k].tyname)
-    vfc_f5 ∈ EVFieldList = EVFCons(EVFType(vfield_ty), EVFNil)
-    vfc_f4 ∈ EVFieldList = (_vf_n = 4 ? vfc_f5
-        : EVFCons(EVFType(_vf_tys[4].tyname), vfc_f5))
-    vfc_f3 ∈ EVFieldList = (_vf_n = 3 ? vfc_f5
-        : EVFCons(EVFType(_vf_tys[3].tyname), vfc_f4))
-    vfc_f2 ∈ EVFieldList = (_vf_n = 2 ? vfc_f5
-        : EVFCons(EVFType(_vf_tys[2].tyname), vfc_f3))
-    vfc_f1 ∈ EVFieldList = (_vf_n = 1 ? vfc_f5
-        : EVFCons(EVFType(_vf_tys[1].tyname), vfc_f2))
-    variant_fields ∈ EVFieldList = (_vf_n = 0 ? vfc_f5
-        : EVFCons(EVFType(_vf_tys[0].tyname), vfc_f1))
+        : vfield_more ? _vfield_n + 1
+        : _vfield_n)
+    ∀ k ∈ {0..4} : vfield_tys[k].tyname = (is_first_tick ? "" : (vfield_more ∧ _vfield_n = k) ? vfield_ty : _vfield_tys[k].tyname)
+    vfield_f5 ∈ EVFieldList = EVFCons(EVFType(vfield_ty), EVFNil)
+    vfield_f4 ∈ EVFieldList = (_vfield_n = 4 ? vfield_f5
+        : EVFCons(EVFType(_vfield_tys[4].tyname), vfield_f5))
+    vfield_f3 ∈ EVFieldList = (_vfield_n = 3 ? vfield_f5
+        : EVFCons(EVFType(_vfield_tys[3].tyname), vfield_f4))
+    vfield_f2 ∈ EVFieldList = (_vfield_n = 2 ? vfield_f5
+        : EVFCons(EVFType(_vfield_tys[2].tyname), vfield_f3))
+    vfield_f1 ∈ EVFieldList = (_vfield_n = 1 ? vfield_f5
+        : EVFCons(EVFType(_vfield_tys[1].tyname), vfield_f2))
+    variant_fields ∈ EVFieldList = (_vfield_n = 0 ? vfield_f5
+        : EVFCons(EVFType(_vfield_tys[0].tyname), vfield_f1))
     variant_decl ∈ EnumVariantDecl = (vfield_close
-        ? EVDeclP(_vf_pend, variant_fields)
+        ? EVDeclP(_vfield_pend, variant_fields)
         : EVDecl(variant_name))
     variant_consume ∈ Int = (vh_nullary_more ? ((tok1 matches Pipe) ? 2 : 1)
         : vh_open ? 2
@@ -216,7 +216,7 @@ fsm DriverClaimIdx
         C2ICons(C2App(z3_libcall_decl, 3),
         C2ICons(efflit_sel_eq, C2INil)))))
 
-    guard_done ∈ Bool = (pratt_done ∧ (_pratt_kind = 6) ∧ (¬pratt_bad))
+    guard_done ∈ Bool = (parse_ready ∧ (_parse_kind = 6) ∧ (¬parse_bad))
 
     conj_items1 ∈ C2Items = C2ICons(C2Op(OpConj), C2INil)
     conj_items2 ∈ C2Items = C2ICons(C2Op(OpConj), conj_items1)
@@ -252,7 +252,7 @@ fsm DriverClaimIdx
     efflit_count = (is_first_tick ? 0
         : enter_efflit ? 0
         : efflit_open ? 0
-        : ((pratt_done ∧ (¬pratt_bad) ∧ _pratt_kind = 3) ∨ efflit_argbite ∨ efflit_noargs)
+        : ((parse_ready ∧ (¬parse_bad) ∧ _parse_kind = 3) ∨ efflit_argbite ∨ efflit_noargs)
             ? _efflit_count + 1
         : _efflit_count)
     efflit_st = (is_first_tick ? 0

@@ -342,12 +342,12 @@ fsm driver_main
     pin_ctor_items ∈ C2Items = C2ICons(
         C2Process(_emit_cursor = 0 ? call_arg0 : _emit_cursor = 1 ? call_arg1 : call_arg2),
         work_tail)
-    bind_items ∈ C2Items = (_match_scrut_lr
+    bind_items ∈ C2Items = (_case_scrutinee_lr
         ? C2ICons(C2Process(EIdent("last_results")),
-            C2ICons(C2Process(EInt(_match_scrut_idx)),
+            C2ICons(C2Process(EInt(_case_scrutinee_index)),
             C2ICons(C2SelH,
             C2ICons(C2App(_bind_scope_acc, 1), work_tail))))
-        : C2ICons(C2Process(EIdent(_match_scrut)),
+        : C2ICons(C2Process(EIdent(_case_scrutinee)),
             C2ICons(C2App(_bind_scope_acc, 1), work_tail)))
 
     op_arith_nary ∈ Bool
@@ -392,7 +392,7 @@ fsm driver_main
         ? C2INil
         : method_call ? recv_items
         : enter_strin ? strin_items
-        : enter_qset ? qset_items
+        : enter_qset ? setquery_items
         : enter_setlit ? setlit_entry_items
         : enter_setmem ? setmem_items
         : enter_setdecl ? set_mem_items
@@ -519,12 +519,12 @@ fsm driver_main
     work_items = (is_first_tick ? C2INil
         : (enter_claim ∨ enter_claim_params) ? C2INil
         : classify_now ? line_items
-        : pratt_done ? pratt_done_items
+        : parse_ready ? pratt_done_items
         : efflit_argbite ? efflit_libcall_items
         : efflit_noargs ? efflit_libcall0_items
         : efflit_close ? (_chain_on ? efflit_branch_fold : C2ICons(C2LenEq(_efflit_count), C2INil))
         : chain_fire ? chain_fold_items
-        : match_fire ? match_items
+        : case_fire ? case_items
         : intset_close ? intset_items
         : seqlit_close ? seqlit_close_items
         : setlit_elem ? setlit_elem_items
@@ -654,11 +654,11 @@ fsm driver_main
         : (pskip_open ∨ pskip_run) ? 1
         : enter_pratt ? pratt_enter_consume
         : mem_line ? mem_consume
-        : pratt_done ? pratt_done_consume
+        : parse_ready ? pratt_done_consume
         : mskim_enter ? 3
         : (mskim_field ∨ mskim_close) ? 2
         : mskim_bad ? 0
-        : (in_pratt ∧ (pratt_consume ≥ 1)) ? pratt_consume
+        : (in_pratt ∧ (parse_consume ≥ 1)) ? parse_consume
         : 0)
     tok_cur = (is_first_tick ? 0
         : frame_jump ? jump_target_now
@@ -743,19 +743,19 @@ fsm driver_main
         : type_tick ? (have_pending ? 9 : type_exit_mode)
         : (draining ∧ last_name) ? done_mode
         : enter_pratt ? 3
-        : pratt_done ? (_pratt_kind = 3 ? 5
-            : _pratt_kind = 4 ? ((pratt_bad ∨ wc_body_done) ? 2 : 6)
-            : _pratt_kind = 6 ? (pratt_bad ? 2 : 5)
-            : _pratt_kind = 7 ? (pratt_bad ? 2 : 8)
-            : _pratt_kind = 8 ? (pratt_bad ? 2 : 10)
-            : _pratt_kind = 10 ? (pratt_bad ? 2 : 12)
+        : parse_ready ? (_parse_kind = 3 ? 5
+            : _parse_kind = 4 ? ((parse_bad ∨ wc_body_done) ? 2 : 6)
+            : _parse_kind = 6 ? (parse_bad ? 2 : 5)
+            : _parse_kind = 7 ? (parse_bad ? 2 : 8)
+            : _parse_kind = 8 ? (parse_bad ? 2 : 10)
+            : _parse_kind = 10 ? (parse_bad ? 2 : 12)
             : 2)
         : variant_bail ? 0
         : enum_member_end ? 0
         : chain_fire ? 2
         : efflit_close ? (_chain_on ? 5 : 2)
         : (efflit_bad ∨ efflit_argbite_bad ∨ efflit_st2_bad) ? 2
-        : (match_fire ∨ match_bail) ? 2
+        : (case_fire ∨ case_bail) ? 2
         : (intset_close ∨ intset_bad) ? 2
         : seqlit_close ? 2
         : _parse_mode)
@@ -1026,7 +1026,7 @@ fsm driver_main
         : zstep = 34 ? ⟨zinit_intarr⟩
         : zstep = 35 ? ⟨zinit_efflen_ge⟩
         : zstep = 36 ? ⟨zinit_efflen_assert⟩
-        : zstep = 37 ? ⟨zinit_claimidx_buf⟩
+        : zstep = 37 ? ⟨zinit_claimindex_buf⟩
         : entering_parse ? (have_pend_str ? ⟨write_pend_str, write_eof⟩ : ⟨write_eof⟩)
         : render_step = 0 ? ⟨eff_solver_str⟩
         : render_step = 1 ? ⟨eff_copy_unit⟩
@@ -1035,10 +1035,10 @@ fsm driver_main
             read_tag3, read_pay3, read_tag4, read_pay4, read_tag5, read_pay5, read_tag6, read_pay6,
             read_tag7, read_pay7⟩
         : _fetch_mode = 1 ? ⟨copy_eff0, copy_eff1, copy_eff2, copy_eff3, copy_eff4, copy_eff5, copy_eff6, copy_eff7⟩
-        : claimidx_add ? ⟨eff_claimidx_write⟩
+        : claimindex_add ? ⟨eff_claimidx_write⟩
         : read_callee_cursor ? ⟨eff_claimidx_read⟩
         : cond_hit ? ⟨eff_guard_read⟩
-        : matchpin_accread ? ⟨eff_match_accread⟩
+        : case_accread ? ⟨eff_match_accread⟩
         : tuple_close ? ⟨eff_posbind_read⟩
         : recdecl_active ? (recdecl_eff_st = 2
             ? ⟨recdecl_write_fn0, recdecl_write_fn1, recdecl_write_fn2, recdecl_write_fn3, recdecl_write_fn4,

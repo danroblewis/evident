@@ -1,7 +1,7 @@
 -- DriverSetVar isolation — Set(T) registry append + name capture.
 -- setmem_decl_line held under classify_now (not at line end) so enter_setdecl
--- fires and the ≤2-entry Set registry appends: setvar_count climbs 0→1→2
--- (capped), set_vars[0].name captures line_dname = "myset". Exit at setvar_count = 2.
+-- fires and the ≤2-entry Set registry appends: collection_count climbs 0→1→2
+-- (capped), collection_vars[0].name captures line_dname = "myset". Exit at collection_count = 2.
 --
 -- entry: main
 -- expect: stdout = "myset"
@@ -62,16 +62,16 @@ fsm main
     in_parse = (is_first_tick ? false : _in_parse)
     name ∈ String
     name = (is_first_tick ? "" : _name)
-    pratt_done ∈ Bool
-    pratt_done = (is_first_tick ? false : _pratt_done)
-    pratt_kind ∈ Int
-    pratt_kind = (is_first_tick ? 0 : _pratt_kind)
+    parse_ready ∈ Bool
+    parse_ready = (is_first_tick ? false : _parse_ready)
+    parse_kind ∈ Int
+    parse_kind = (is_first_tick ? 0 : _parse_kind)
     parse_mode ∈ Int
     parse_mode = (is_first_tick ? 0 : _parse_mode)
-    pratt_bad ∈ Bool
-    pratt_bad = (is_first_tick ? false : _pratt_bad)
-    pratt_result ∈ Expr
-    pratt_result = (is_first_tick ? EInt(0) : _pratt_result)
+    parse_bad ∈ Bool
+    parse_bad = (is_first_tick ? false : _parse_bad)
+    parse_result ∈ Expr
+    parse_result = (is_first_tick ? EInt(0) : _parse_result)
     rec_pad31 ∈ String
     rec_pad31 = (is_first_tick ? "" : _rec_pad31)
     seqvar_name ∈ String
@@ -89,7 +89,7 @@ fsm main
     tok7 ∈ Token
     tok7 = (is_first_tick ? EofTok : _tok7)
     ..DriverSetVar
-    done ∈ Bool = (setvar_count = 2)
+    done ∈ Bool = (collection_count = 2)
     effects ∈ Seq(Effect) = (done
-        ? ⟨LibCall("libc", "puts", ⟨ArgStr(set_vars[0].name)⟩), Exit(0)⟩
+        ? ⟨LibCall("libc", "puts", ⟨ArgStr(collection_vars[0].name)⟩), Exit(0)⟩
         : ⟨LibCall("libc", "getpid", ⟨⟩)⟩)

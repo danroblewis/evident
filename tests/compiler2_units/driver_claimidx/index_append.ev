@@ -1,6 +1,6 @@
 -- DriverClaimIdx isolation — claim-index append counter.
 -- Skip pass held with a claim head (head_is_claim, tok1 an Ident) so
--- claimidx_add fires each tick; exit when the count reaches 3. The
+-- claimindex_add fires each tick; exit when the count reaches 3. The
 -- BuildMemWriteLong index-write effect is not scheduled (no arena).
 -- entry: main
 -- expect: stdout = "3"
@@ -25,8 +25,8 @@ fsm main
     decl_name = (is_first_tick ? "x" : _decl_name)
     effects_cond ∈ Bool
     effects_cond = (is_first_tick ? false : _effects_cond)
-    claimidx_buf ∈ FtiBuffer
-    claimidx_buf.base = (is_first_tick ? 0 : _claimidx_buf.base)
+    claimindex_buf ∈ FtiBuffer
+    claimindex_buf.base = (is_first_tick ? 0 : _claimindex_buf.base)
     enter_enum_decl ∈ Bool
     enter_enum_decl = (is_first_tick ? false : _enter_enum_decl)
     enter_efflit ∈ Bool
@@ -39,14 +39,14 @@ fsm main
     user_decl_done = (is_first_tick ? false : _user_decl_done)
     in_parse ∈ Bool
     in_parse = (is_first_tick ? false : _in_parse)
-    pratt_done ∈ Bool
-    pratt_done = (is_first_tick ? false : _pratt_done)
-    pratt_kind ∈ Int
-    pratt_kind = (is_first_tick ? 0 : _pratt_kind)
+    parse_ready ∈ Bool
+    parse_ready = (is_first_tick ? false : _parse_ready)
+    parse_kind ∈ Int
+    parse_kind = (is_first_tick ? 0 : _parse_kind)
     parse_mode ∈ Int
     parse_mode = (is_first_tick ? 0 : _parse_mode)
-    pratt_bad ∈ Bool
-    pratt_bad = (is_first_tick ? false : _pratt_bad)
+    parse_bad ∈ Bool
+    parse_bad = (is_first_tick ? false : _parse_bad)
     tok_cur ∈ Int
     tok_cur = (is_first_tick ? 0 : _tok_cur)
     tok_ready ∈ Bool
@@ -76,7 +76,7 @@ fsm main
     z3_libcall_decl ∈ Int
     z3_libcall_decl = (is_first_tick ? 0 : _z3_libcall_decl)
     ..DriverClaimIdx
-    c_msg ∈ String = str_from_int(claimidx_buf.count)
-    effects ∈ Seq(Effect) = ((claimidx_buf.count = 3)
+    c_msg ∈ String = str_from_int(claimindex_buf.count)
+    effects ∈ Seq(Effect) = ((claimindex_buf.count = 3)
         ? ⟨LibCall("libc", "puts", ⟨ArgStr(c_msg)⟩), Exit(0)⟩
         : ⟨LibCall("libc", "getpid", ⟨⟩)⟩)

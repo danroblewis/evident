@@ -1,7 +1,7 @@
 -- MODULE DriverCompose
 -- CONSUMES: the classifier's composition/type-splice decision flags
 --           (comp_call/bare/dd/line, tymem_call/bare/line, line_name,
---           line_ty_name, callee_pos), the claim index base (claimidx_buf.base), the
+--           line_ty_name, callee_pos), the claim index base (claimindex_buf.base), the
 --           handle-stack views (h_top/2nd/.. + h_tail1.. + stack_in),
 --           cap_int, the parse gate (in_parse, _parse_mode, tok_ready,
 --           work_nil), the line-pop signal (frame_pop), the record
@@ -10,7 +10,7 @@
 --           guard state (guarding, _armed_depth), and the sibling fire/cap
 --           signals (cond_hit, guard_jump_*, posjump_*, the bindzip
 --           staging column bindzip_binds/bindzip_count,
---           pratt_done, pratt_bad, enter_claim*).
+--           parse_ready, parse_bad, enter_claim*).
 --           Wide by nature: a call jump couples the classifier decision,
 --           the claim index, and the handle stack (justified §6.4).
 -- PRODUCES: the inline-frame stack (frames/scope_prefix/frame_depth/
@@ -86,7 +86,7 @@ fsm DriverCompose
 
     read_callee_cursor ∈ Bool = (comp_line ∨ tymem_line)
     eff_claimidx_read ∈ Effect
-    BuildMemReadLong(addr ↦ claimidx_buf.base + (8 * (callee_pos / 32)), eff ↦ eff_claimidx_read)
+    BuildMemReadLong(addr ↦ claimindex_buf.base + (8 * (callee_pos / 32)), eff ↦ eff_claimidx_read)
 
     in_callw0 ∈ Bool = (in_parse ∧ (_parse_mode = 10) ∧ (_callw_st = 0))
     callw_cap ∈ Bool = (in_callw0 ∧ (¬_callw_bare))
@@ -100,7 +100,7 @@ fsm DriverCompose
     callw_comma ∈ Bool = (in_callw1 ∧ (tok0 matches Comma))
     callw_fire ∈ Bool = (in_callw1 ∧ (tok0 matches RParen))
     callw_bail ∈ Bool = (in_callw1 ∧ (¬callw_slot) ∧ (¬callw_pun) ∧ (¬callw_comma) ∧ (¬callw_fire))
-    slot_val_done ∈ Bool = (pratt_done ∧ (¬pratt_bad) ∧ (_pratt_kind = 8))
+    slot_val_done ∈ Bool = (parse_ready ∧ (¬parse_bad) ∧ (_parse_kind = 8))
     slot_name_tok ∈ String = match tok0
         Ident(s) ⇒ s
         _ ⇒ ""

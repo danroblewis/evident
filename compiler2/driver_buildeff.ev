@@ -288,4 +288,4 @@ fsm DriverBuildEff
     zinit_efflen_assert ∈ Effect
     BuildZ3SolverAssert(ctx_h ↦ z3ctx.ctx, solver_h ↦ z3ctx.sol, ast_h ↦ z3_effects_length_geq,
         eff ↦ zinit_efflen_assert)
-    zinit_claimidx_buf ∈ Effect = LibCall("libc", "calloc", ⟨ArgInt(2048), ArgInt(8)⟩)
+    zinit_claimindex_buf ∈ Effect = LibCall("libc", "calloc", ⟨ArgInt(2048), ArgInt(8)⟩)

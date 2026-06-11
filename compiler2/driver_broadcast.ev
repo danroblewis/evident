@@ -1,6 +1,6 @@
 -- MODULE DriverBroadcast
--- CONSUMES: the parse result (pratt_done, _pratt_kind, pratt_bad, _pratt_rec_slot,
---           _pratt_decl_name, pratt_result), the pinned record type's field
+-- CONSUMES: the parse result (parse_ready, _parse_kind, parse_bad, _parse_rec_slot,
+--           _parse_decl_name, parse_result), the pinned record type's field
 --           registry (recs .n_fields / .fnames), the claim-walk dispatch
 --           gate (in_claim, work_nil, _param_skip, tok_ready), and
 --           the symbol-table name index (sym_names) — all as free names
@@ -31,8 +31,8 @@ fsm DriverBroadcast(pinning ∈ Bool, record_slot ∈ Int, pinned_name ∈ Strin
     -- During a re-walk, an IDENT whose field-qualified dotted name
     -- resolves in the symtab reads through it, and a REGISTRY-ctor
     -- call (`IVec2(10, 20)`) selects its field-index argument.
-    recpin_done ∈ Bool = (pratt_done ∧ (_pratt_kind = 1) ∧ (¬pratt_bad)
-        ∧ (_pratt_rec_slot ≥ 0))
+    recpin_done ∈ Bool = (parse_ready ∧ (_parse_kind = 1) ∧ (¬parse_bad)
+        ∧ (_parse_rec_slot ≥ 0))
     field_count ∈ Int = recs[_record_slot].n_fields
     field_names ∈ String = recs[_record_slot].fnames
     dispatch ∈ Bool = (in_claim ∧ _pinning ∧ work_nil
@@ -43,9 +43,9 @@ fsm DriverBroadcast(pinning ∈ Bool, record_slot ∈ Int, pinned_name ∈ Strin
         : recpin_done ? true
         : pin_done ? false
         : _pinning)
-    record_slot = (is_first_tick ? 0 : recpin_done ? _pratt_rec_slot : _record_slot)
-    pinned_name = (is_first_tick ? "" : recpin_done ? _pratt_decl_name : _pinned_name)
-    pinned_body = (is_first_tick ? ENoExpr : recpin_done ? pratt_result : _pinned_body)
+    record_slot = (is_first_tick ? 0 : recpin_done ? _parse_rec_slot : _record_slot)
+    pinned_name = (is_first_tick ? "" : recpin_done ? _parse_decl_name : _pinned_name)
+    pinned_body = (is_first_tick ? ENoExpr : recpin_done ? parse_result : _pinned_body)
     field_cursor = (is_first_tick ? 0
         : recpin_done ? 0
         : more_fields ? _field_cursor + 1

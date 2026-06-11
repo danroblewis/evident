@@ -22,7 +22,7 @@ type FtiBuffer(base ∈ Int, count ∈ Int, cap ∈ Int)
 -- ── Named FTI buffer append: cursor + parallel name registry ──────
 -- The shared "append a named row" step behind every FTI buffer with a
 -- companion name string (the symbol table's `sym_names`, the claim
--- index's `claimidx_names`).
+-- index's `claimindex_names`).
 claim FtiNamedAppend(first ∈ Bool, add ∈ Bool, prev_count ∈ Int,
         prev_names ∈ String, init_count ∈ Int, seed_names ∈ String,
         entry ∈ String, count ∈ Int, names ∈ String)
@@ -116,8 +116,8 @@ type EnumFieldSlot(ty ∈ String, key ∈ String, refpos ∈ Int, isref ∈ Bool
 
 -- One row of the Set(T)-variable registry: var name, the element type's
 -- registry slot (kidx), the packed 32-byte-row element-name string, and
--- the element count. `set_vars ∈ Seq(SetVar)`; rows written by index
--- (_setvar_count / setvar_idx / _setvar_cur), so no length.
+-- the element count. `collection_vars ∈ Seq(SetVar)`; rows written by index
+-- (_collection_count / setvar_idx / _setvar_cur), so no length.
 type SetVar(name ∈ String, kidx ∈ Int, elems ∈ String, count ∈ Int)
 
 -- ── Work items: one line of claim body = one small program ────────

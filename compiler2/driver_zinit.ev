@@ -8,7 +8,7 @@
 --           bsort/ssort/rsort), z3_arena, z3_effect_arraysort, the effects-array
 --           consts (z3_effects_symbol/z3_effects/z3_effects_length_symbol/z3_effects_length), the numeral
 --           consts z3nums (zero..four), z3_true/z3_false, the token/symbol/
---           claim-index buffer bases (tok_buf.base/sym_buf.base/claimidx_buf.base), and the
+--           claim-index buffer bases (tok_buf.base/sym_buf.base/claimindex_buf.base), and the
 --           last_results / is_first_tick build-context consts
 --           (z3_last_results_sort..z3_last_results_geq, z3_effects_length_geq).
 -- MAINTAINS: zstep advances one step per tick (−2,−1,0,1,… capped at
@@ -83,6 +83,6 @@ fsm DriverZInit
     z3_int_array_sort = (is_first_tick ? 0 : zstep = 35 ? cap_int : _z3_int_array_sort)
     z3_effects_length_geq ∈ Int
     z3_effects_length_geq = (is_first_tick ? 0 : zstep = 36 ? cap_int : _z3_effects_length_geq)
-    claimidx_buf ∈ FtiBuffer
-    claimidx_buf.base = (is_first_tick ? 0 : zstep = 38 ? cap_int : _claimidx_buf.base)
-    claimidx_buf.cap = 2048
+    claimindex_buf ∈ FtiBuffer
+    claimindex_buf.base = (is_first_tick ? 0 : zstep = 38 ? cap_int : _claimindex_buf.base)
+    claimindex_buf.cap = 2048

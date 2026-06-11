@@ -1,7 +1,7 @@
 -- MODULE DriverClassify
 -- CONSUMES: the decoded token window head views (tok0..tok7), the
 --           classify-mode gate (classify_now), the claim/type index
---           (claimidx_names) + symbol table (sym_names), the inline-frame state
+--           (claimindex_names) + symbol table (sym_names), the inline-frame state
 --           (_frame_depth, _scope_prefix, the bind-tape window
 --           _binds/_bind_base/_bind_top, _join_hdr), the record registry
 --           (recs .name / .sort), the enum-table name column (decl_names)
@@ -106,7 +106,7 @@ fsm DriverClassify
     comp_name ∈ String = (dotdot_shape ? dotdot_name : line_name)
     comp_key ∈ String
     FtiNameEntry(name ↦ comp_name, entry ↦ comp_key)
-    comp_pos ∈ Int = index_of(claimidx_names, comp_key, 0)
+    comp_pos ∈ Int = index_of(claimindex_names, comp_key, 0)
     comp_found ∈ Bool = ((comp_pos ≥ 0) ∧ (comp_name ≠ ""))
     dotdot_head ∈ Bool = (dotdot_shape ∧ comp_found ∧ (_frame_depth < 8))
 
@@ -207,7 +207,7 @@ fsm DriverClassify
 
     tymem_key ∈ String
     FtiNameEntry(name ↦ line_ty_name, entry ↦ tymem_key)
-    tymem_pos ∈ Int = index_of(claimidx_names, tymem_key, 0)
+    tymem_pos ∈ Int = index_of(claimindex_names, tymem_key, 0)
     tymem_found ∈ Bool = (line_is_mem ∧ (¬effects_line) ∧ (line_sort = 0)
         ∧ (line_ty_name ≠ "Int") ∧ (line_ty_name ≠ "Nat")
         ∧ (line_ty_name ≠ "Seq") ∧ (line_ty_name ≠ "")

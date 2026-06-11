@@ -48,9 +48,9 @@ fsm main
     tymem_line = (is_first_tick ? false : _tymem_line)
     line_ty_name ∈ String
     line_ty_name = (is_first_tick ? "" : _line_ty_name)
-    claimidx_buf ∈ FtiBuffer
-    claimidx_buf.base = (is_first_tick ? 0 : _claimidx_buf.base)
-    claimidx_buf.count = (is_first_tick ? 0 : _claimidx_buf.count)
+    claimindex_buf ∈ FtiBuffer
+    claimindex_buf.base = (is_first_tick ? 0 : _claimindex_buf.base)
+    claimindex_buf.count = (is_first_tick ? 0 : _claimindex_buf.count)
     cap_int ∈ Int
     cap_int = (is_first_tick ? 0 : _cap_int)
     enter_claim ∈ Bool
@@ -91,12 +91,12 @@ fsm main
     jump_fire = (is_first_tick ? false : _jump_fire)
     frame_pop ∈ Bool
     frame_pop = (is_first_tick ? false : _frame_pop)
-    pratt_done ∈ Bool
-    pratt_done = (is_first_tick ? false : _pratt_done)
-    pratt_kind ∈ Int
-    pratt_kind = (is_first_tick ? 0 : _pratt_kind)
-    pratt_bad ∈ Bool
-    pratt_bad = (is_first_tick ? false : _pratt_bad)
+    parse_ready ∈ Bool
+    parse_ready = (is_first_tick ? false : _parse_ready)
+    parse_kind ∈ Int
+    parse_kind = (is_first_tick ? 0 : _parse_kind)
+    parse_bad ∈ Bool
+    parse_bad = (is_first_tick ? false : _parse_bad)
     posjump_cap ∈ Bool
     posjump_cap = (is_first_tick ? false : _posjump_cap)
     posjump_fire ∈ Bool

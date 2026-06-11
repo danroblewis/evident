@@ -45,21 +45,21 @@ fsm DriverCallLower
         _ ⇒ ""
     len_of_seqvar ∈ Bool = (_seqvar_set ∧ ((arg0_name = _seqvar_name)
         ∨ ((_scope_prefix ++ arg0_name) = _seqvar_name)))
-    len_set_bare_hit ∈ Bool = (arg0_name ≠ "" ∧ (∃ e ∈ set_vars : e.name = arg0_name))
-    len_set_pfx_hit ∈ Bool = (arg0_name ≠ "" ∧ (∃ e ∈ set_vars : e.name = _scope_prefix ++ arg0_name))
+    len_set_bare_hit ∈ Bool = (arg0_name ≠ "" ∧ (∃ e ∈ collection_vars : e.name = arg0_name))
+    len_set_pfx_hit ∈ Bool = (arg0_name ≠ "" ∧ (∃ e ∈ collection_vars : e.name = _scope_prefix ++ arg0_name))
     len_of_setvar ∈ Bool = (len_set_bare_hit ∨ len_set_pfx_hit)
     len_set_name ∈ String = (len_set_bare_hit ? arg0_name
         : len_set_pfx_hit ? _scope_prefix ++ arg0_name
         : "")
     card_elems ∈ String
-    ∀ e ∈ set_vars : ((e.name = len_set_name) ⇒ (card_elems = e.elems))
-    (¬(∃ e ∈ set_vars : e.name = len_set_name)) ⇒ (card_elems = "")
+    ∀ e ∈ collection_vars : ((e.name = len_set_name) ⇒ (card_elems = e.elems))
+    (¬(∃ e ∈ collection_vars : e.name = len_set_name)) ⇒ (card_elems = "")
     card_count ∈ Int
-    ∀ e ∈ set_vars : ((e.name = len_set_name) ⇒ (card_count = e.count))
-    (¬(∃ e ∈ set_vars : e.name = len_set_name)) ⇒ (card_count = 0)
+    ∀ e ∈ collection_vars : ((e.name = len_set_name) ⇒ (card_count = e.count))
+    (¬(∃ e ∈ collection_vars : e.name = len_set_name)) ⇒ (card_count = 0)
     card_slot ∈ Int
-    ∀ e ∈ set_vars : ((e.name = len_set_name) ⇒ (card_slot = e.kidx))
-    (¬(∃ e ∈ set_vars : e.name = len_set_name)) ⇒ (card_slot = 0)
+    ∀ e ∈ collection_vars : ((e.name = len_set_name) ⇒ (card_slot = e.kidx))
+    (¬(∃ e ∈ collection_vars : e.name = len_set_name)) ⇒ (card_slot = 0)
     card_elt0 ∈ String
     RtRecName(s ↦ card_elems, i ↦ 0, name ↦ card_elt0)
     card_elt1 ∈ String

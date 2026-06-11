@@ -53,11 +53,11 @@ fsm main
     line_t3 = (is_first_tick ? EofTok : _line_t3)
     line_t4 ∈ Token
     line_t4 = (is_first_tick ? EofTok : _line_t4)
-    claimidx_buf ∈ FtiBuffer
-    claimidx_buf.base = (is_first_tick ? 0 : _claimidx_buf.base)
-    claimidx_buf.count = (is_first_tick ? 0 : _claimidx_buf.count)
-    claimidx_names ∈ String
-    claimidx_names = (is_first_tick ? "" : _claimidx_names)
+    claimindex_buf ∈ FtiBuffer
+    claimindex_buf.base = (is_first_tick ? 0 : _claimindex_buf.base)
+    claimindex_buf.count = (is_first_tick ? 0 : _claimindex_buf.count)
+    claimindex_names ∈ String
+    claimindex_names = (is_first_tick ? "" : _claimindex_names)
     callw_reset ∈ Bool
     callw_reset = (is_first_tick ? false : _callw_reset)
     classify_now ∈ Bool
@@ -129,32 +129,32 @@ fsm main
     pskip_open = (is_first_tick ? false : _pskip_open)
     pskip_run ∈ Bool
     pskip_run = (is_first_tick ? false : _pskip_run)
-    match_items ∈ C2Items
-    match_items = (is_first_tick ? C2INil : _match_items)
+    case_items ∈ C2Items
+    case_items = (is_first_tick ? C2INil : _case_items)
     wc_body_done ∈ Bool
     wc_body_done = (is_first_tick ? false : _wc_body_done)
     name ∈ String
     name = (is_first_tick ? "" : _name)
-    pratt_done ∈ Bool
-    pratt_done = (is_first_tick ? false : _pratt_done)
-    pratt_kind ∈ Int
-    pratt_kind = (is_first_tick ? 0 : _pratt_kind)
-    pratt_decl_name ∈ String
-    pratt_decl_name = (is_first_tick ? "" : _pratt_decl_name)
-    pratt_nat ∈ Bool
-    pratt_nat = (is_first_tick ? false : _pratt_nat)
-    pratt_nodecl ∈ Bool
-    pratt_nodecl = (is_first_tick ? false : _pratt_nodecl)
-    pratt_pin_name ∈ String
-    pratt_pin_name = (is_first_tick ? "" : _pratt_pin_name)
-    pratt_rec_slot ∈ Int
-    pratt_rec_slot = (is_first_tick ? 0 : _pratt_rec_slot)
-    pratt_sort ∈ Int
-    pratt_sort = (is_first_tick ? 0 : _pratt_sort)
-    pratt_bad ∈ Bool
-    pratt_bad = (is_first_tick ? false : _pratt_bad)
-    pratt_result ∈ Expr
-    pratt_result = (is_first_tick ? EInt(0) : _pratt_result)
+    parse_ready ∈ Bool
+    parse_ready = (is_first_tick ? false : _parse_ready)
+    parse_kind ∈ Int
+    parse_kind = (is_first_tick ? 0 : _parse_kind)
+    parse_decl_name ∈ String
+    parse_decl_name = (is_first_tick ? "" : _parse_decl_name)
+    parse_nat ∈ Bool
+    parse_nat = (is_first_tick ? false : _parse_nat)
+    parse_nodecl ∈ Bool
+    parse_nodecl = (is_first_tick ? false : _parse_nodecl)
+    parse_pin_name ∈ String
+    parse_pin_name = (is_first_tick ? "" : _parse_pin_name)
+    parse_rec_slot ∈ Int
+    parse_rec_slot = (is_first_tick ? 0 : _parse_rec_slot)
+    parse_sort ∈ Int
+    parse_sort = (is_first_tick ? 0 : _parse_sort)
+    parse_bad ∈ Bool
+    parse_bad = (is_first_tick ? false : _parse_bad)
+    parse_result ∈ Expr
+    parse_result = (is_first_tick ? EInt(0) : _parse_result)
     recs ∈ Seq(RecTypeEntry)
     #recs ≤ 3
     ∀ e ∈ recs : e.name = ""

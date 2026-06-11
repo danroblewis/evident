@@ -95,7 +95,7 @@ fsm DriverRecord
     rec_cur_nf ∈ Int = recs[rec_slot].n_fields
     rec_cur_sort ∈ Int = recs[rec_slot].sort
 
-    rec_start ∈ Bool = (claimidx_add ∧ (tok0 matches KwType) ∧ (_rec_count < 3))
+    rec_start ∈ Bool = (claimindex_add ∧ (tok0 matches KwType) ∧ (_rec_count < 3))
     rec_collecting ∈ Bool = (in_skip ∧ (¬skip_stop) ∧ _rec_collect_on)
     field_name_tok ∈ String = match tok0
         Ident(s) ⇒ s

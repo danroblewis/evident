@@ -32,8 +32,8 @@ fsm main
     tok7 = (is_first_tick ? EofTok : _tok7)
     classify_now ∈ Bool
     classify_now = (is_first_tick ? true : _classify_now)
-    claimidx_names ∈ String
-    claimidx_names = (is_first_tick ? "" : _claimidx_names)
+    claimindex_names ∈ String
+    claimindex_names = (is_first_tick ? "" : _claimindex_names)
     sym_names ∈ String
     sym_names = (is_first_tick ? "" : _sym_names)
     frame_depth ∈ Int
