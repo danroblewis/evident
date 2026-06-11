@@ -783,7 +783,8 @@ fsm driver_main
     nary ∈ Effect
     nary_ok ∈ Bool
     BoolNaryBuildZ3(ctx_h ↦ z3ctx.ctx, op ↦ process_op, num_args ↦ 2,
-        args_arr_ptr ↦ z3_arena + 200, eff ↦ nary, ok ↦ nary_ok)
+        args_arr_ptr ↦ z3_arena + 200, l_h ↦ second_handle, r_h ↦ topmost_handle,
+        eff ↦ nary, ok ↦ nary_ok)
     concat ∈ Effect
     BuildZ3MkSeqConcat(ctx_h ↦ z3ctx.ctx, num_args ↦ 2,
         args_arr_ptr ↦ z3_arena + 200, eff ↦ concat)

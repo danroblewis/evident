@@ -54,7 +54,12 @@ claim BoolCmpBuildZ3(
     is_impl ∈ Bool = (op matches OpImpl)
     ok = (is_eq ∨ is_ne ∨ is_lt ∨ is_gt ∨ is_le ∨ is_ge ∨ is_impl)
     needs_not = is_ne
-    eff = ((is_eq ∨ is_ne)
+    -- NULL-OPERAND GUARD (see BoolNaryBuildZ3 / TernaryBuildZ3): a 0 operand
+    -- handle derefs null inside Z3 → SIGSEGV. Halt nameably with Exit(7).
+    bad ∈ Bool = (l_h = 0 ∨ r_h = 0)
+    eff = (bad
+        ? Exit(7)
+        : (is_eq ∨ is_ne)
         ? LibCall("libz3", "Z3_mk_eq",
             ⟨ArgInt(ctx_h), ArgInt(l_h), ArgInt(r_h)⟩)
         : is_lt
@@ -77,11 +82,19 @@ claim BoolCmpBuildZ3(
 claim BoolNaryBuildZ3(
         ctx_h ∈ Int, op ∈ Op,
         num_args ∈ Int, args_arr_ptr ∈ Int,
+        l_h ∈ Int, r_h ∈ Int,
         eff ∈ Effect, ok ∈ Bool)
     is_and ∈ Bool = (op matches OpConj)
     is_or  ∈ Bool = (op matches OpDisj)
     ok = (is_and ∨ is_or)
-    eff = (is_and
+    -- NULL-OPERAND GUARD (same class as TernaryBuildZ3, extended to n-ary
+    -- 2024 self-compile crash): an operand handle of 0 means a sub-expression
+    -- never pushed a Z3 AST; Z3_mk_or/and(…0…) derefs null in
+    -- ast_manager::check_args → SIGSEGV. Halt NAMEABLY with Exit(7) instead.
+    bad ∈ Bool = (l_h = 0 ∨ r_h = 0)
+    eff = (bad
+        ? Exit(7)
+        : is_and
         ? LibCall("libz3", "Z3_mk_and",
             ⟨ArgInt(ctx_h), ArgInt(num_args), ArgInt(args_arr_ptr)⟩)
         : is_or
@@ -90,8 +103,11 @@ claim BoolNaryBuildZ3(
         : LibCall("libc", "time", ⟨ArgInt(0)⟩))
 
 claim BoolNotBuildZ3(ctx_h ∈ Int, x_h ∈ Int, eff ∈ Effect)
-    eff = LibCall("libz3", "Z3_mk_not",
-        ⟨ArgInt(ctx_h), ArgInt(x_h)⟩)
+    -- NULL-OPERAND GUARD (see BoolNaryBuildZ3): 0 → Z3 null deref → SIGSEGV.
+    eff = (x_h = 0
+        ? Exit(7)
+        : LibCall("libz3", "Z3_mk_not",
+            ⟨ArgInt(ctx_h), ArgInt(x_h)⟩))
 
 -- ── TernaryBuildZ3: Z3_mk_ite is fixed 3-arity, no args buffer
 --    (cond must be Bool-sorted; then/else same-sorted).
