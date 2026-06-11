@@ -343,12 +343,12 @@ fsm DriverPosBind
         : _tuple_arity = 3 ? tail3
         : _tuple_arity = 4 ? tail4
         : stack_in)
-    pin_seg ∈ C2Items = C2ICons(C2Process(result),
+    pin_segment ∈ C2Items = C2ICons(C2Process(result),
         C2ICons(C2PinEq, C2ICons(C2AssertTop, C2INil)))
     natbound_segment ∈ C2Items = (_is_nat_type
-        ? C2ICons(C2NatBound, C2ICons(C2AssertTop, pin_seg))
-        : pin_seg)
-    decl_head ∈ C2Item = (_nodecl ? C2Process(EIdent(_pin_name))
+        ? C2ICons(C2NatBound, C2ICons(C2AssertTop, pin_segment))
+        : pin_segment)
+    decl_head ∈ C2Item = (_nodecl ? C2Process(EIdent(_pinned_recname))
         : C2DeclConst(_parse_decl_name, _parse_sort))
     done_items ∈ C2Items = (parse_bad ? C2INil
         : _parse_kind = 3 ? C2ICons(C2Process(result),

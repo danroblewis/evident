@@ -125,15 +125,15 @@ fsm DriverCompose
         : _slot_count = 6 ? tail6
         : stack_in)
     prefix_new ∈ String = "__c" ++ str_from_int(_call_count) ++ "_"
-    pin_suffixes ∈ Seq(C2Items)
-    #pin_suffixes ≤ 7
-    pin_suffixes[6] = C2INil
-    ∀ k ∈ {0..5} : pin_suffixes[k] = (_slot_count ≥ k + 1
+    suffix_list ∈ Seq(C2Items)
+    #suffix_list ≤ 7
+    suffix_list[6] = C2INil
+    ∀ k ∈ {0..5} : suffix_list[k] = (_slot_count ≥ k + 1
         ? C2ICons(C2DeclConst(_type_prefix ++ _slot_names[k].name, 0),
             C2ICons(C2PushH(handles[k]), C2ICons(C2PinEq,
-            C2ICons(C2AssertTop, pin_suffixes[k + 1]))))
-        : pin_suffixes[k + 1])
-    type_pin_items ∈ C2Items = pin_suffixes[0]
+            C2ICons(C2AssertTop, suffix_list[k + 1]))))
+        : suffix_list[k + 1])
+    type_pin_items ∈ C2Items = suffix_list[0]
     recdecl_items ∈ C2Items = C2ICons(C2RecDecl(_inst_name, _type_slot), C2INil)
 
     jump ∈ Bool = (is_call_fire ∨ bare_jump ∨ jump_fire ∨ posjump_fire)

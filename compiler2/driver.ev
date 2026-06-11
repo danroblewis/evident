@@ -332,7 +332,7 @@ fsm driver_main
     qual_name ∈ String = _scope_prefix ++ lookup_name ++ "." ++ field_name
     qual_key ∈ String
     FtiNameEntry(name ↦ qual_name, entry ↦ qual_key)
-    pin_hit ∈ Bool = (process ∧ is_ident ∧ _pinning
+    is_pin_hit ∈ Bool = (process ∧ is_ident ∧ _pinning
         ∧ (index_of(sym_names, qual_key, 0) ≥ 0))
     hit_items ∈ C2Items = C2ICons(C2Process(EIdent(qual_name)), work_tail)
     ctor_slot ∈ Int
@@ -374,8 +374,8 @@ fsm driver_main
     emit_cursor ∈ Int
     field_name ∈ String
     more_fields ∈ Bool
-    pin_done ∈ Bool
-    pin_items ∈ C2Items
+    is_pin_done ∈ Bool
+    pin_item_list ∈ C2Items
     DriverBroadcast
 
     seq_mem_items ∈ C2Items = C2ICons(
@@ -482,13 +482,13 @@ fsm driver_main
         : 0)
     push_bound ∈ Bool = (processing ∧ process ∧ is_ident
         ∧ bound_found ∧ (¬bind_hit) ∧ (¬is_bound_ref) ∧ (¬dot)
-        ∧ (¬pin_hit))
+        ∧ (¬is_pin_hit))
     push_ident ∈ Bool = (processing ∧ process ∧ is_ident
         ∧ pure ∧ (¬bind_hit) ∧ (¬bound_found) ∧ (¬is_bound_ref)
-        ∧ (¬dot) ∧ (¬pin_hit) ∧ (¬ctor_hit))
+        ∧ (¬dot) ∧ (¬is_pin_hit) ∧ (¬ctor_hit))
     lookup_read ∈ Bool = (processing ∧ process ∧ is_ident
         ∧ (¬pure) ∧ (¬bind_hit) ∧ (¬bound_found) ∧ (¬is_bound_ref)
-        ∧ (¬dot) ∧ (¬pin_hit))
+        ∧ (¬dot) ∧ (¬is_pin_hit))
     push_handle ∈ Bool = (processing ∧ push_h)
     push_decl ∈ Bool = (processing ∧ is_decl_item ∧ (_item_step = 2))
     stack_dup3 ∈ Bool = (processing ∧ is_dup3_item)
@@ -538,8 +538,8 @@ fsm driver_main
         : bite ? tuparg_items
         : qexp_more ? qexp_items
         : qexp_fin ? fin_items
-        : more_fields ? pin_items
-        : pin_done ? C2INil
+        : more_fields ? pin_item_list
+        : is_pin_done ? C2INil
         : ¬processing ? _work_items
         : process ∧ is_binop ∧ is_neq ? C2ICons(C2Process(lhs), C2ICons(C2Process(rhs), C2ICons(C2Op(OpEq), C2ICons(C2Not, work_tail))))
         : process ∧ is_binop ? C2ICons(C2Process(lhs), C2ICons(C2Process(rhs), C2ICons(C2Op(op), work_tail)))
@@ -548,7 +548,7 @@ fsm driver_main
         : process ∧ is_matches ? matches_items
         : process ∧ is_bound_ref ? bound_var_items
         : process ∧ dot ? dot_items
-        : pin_hit ? hit_items
+        : is_pin_hit ? hit_items
         : ctor_hit ? ctor_items
         : process ∧ bind_hit ? bind_items
         : process ∧ is_call1 ? call1_items
@@ -849,10 +849,10 @@ fsm driver_main
     BoolCmpBuildZ3(ctx_h ↦ z3ctx.ctx, op ↦ geq, l_h ↦ h_top, r_h ↦ z3nums.zero,
         eff ↦ natbound_geq_eff, ok ↦ is_natbound_ok, needs_not ↦ is_natbound_nn)
     pineq_eff ∈ Effect
-    pin_ok ∈ Bool
-    pin_nn ∈ Bool
+    is_pin_ok ∈ Bool
+    is_pin_nn ∈ Bool
     BoolCmpBuildZ3(ctx_h ↦ z3ctx.ctx, op ↦ op_eq, l_h ↦ h_2nd, r_h ↦ h_top,
-        eff ↦ pineq_eff, ok ↦ pin_ok, needs_not ↦ pin_nn)
+        eff ↦ pineq_eff, ok ↦ is_pin_ok, needs_not ↦ is_pin_nn)
     assert_eff ∈ Effect
     BuildZ3SolverAssert(ctx_h ↦ z3ctx.ctx, solver_h ↦ z3ctx.sol, ast_h ↦ h_top,
         eff ↦ assert_eff)
