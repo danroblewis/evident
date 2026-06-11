@@ -57,10 +57,24 @@ echo "# deriving phi …" >&2
 bash "$PHI" "$SC/stage1_old.smt2" "$SC/stage1_new.smt2" > "$SC/phi.txt"
 echo "# phi: $(grep -vc '^#' "$SC/phi.txt") mappings" >&2
 
-echo "# building equivalence query …" >&2
+# ── Fast SYNTACTIC gate first (the recommended tool; ~ms). ──────────────
+echo "==================================================================" >&2
+echo "SYNTACTIC alpha-equivalence (the fast gate):" >&2
+SS=$(date +%s.%N)
+"$BIN" --syntactic "$SC/stage1_old.smt2" "$SC/stage1_new.smt2" "$SC/phi.txt" || true
+SE=$(date +%s.%N)
+awk "BEGIN{printf \"  wall: %.3f s\n\", $SE-$SS}" >&2
+
+# ── Then the SEMANTIC Z3 probe (the research question; may time out). ──
+if [ "${SKIP_SEMANTIC:-0}" = 1 ]; then
+  echo "# SKIP_SEMANTIC=1 — not running the z3 query." >&2
+  exit 0
+fi
+
+echo "# building semantic equivalence query …" >&2
 "$BIN" "$SC/stage1_old.smt2" "$SC/stage1_new.smt2" "$SC/phi.txt" > "$SC/query.smt2"
 
-echo "# running z3 (-st, T:$TMO) — UNSAT means equivalent …" >&2
+echo "# running z3 (-st, T:$TMO) — UNSAT means equivalent (EXPECT slow/timeout) …" >&2
 S=$(date +%s.%N)
 "$Z3" -smt2 -st "$SC/query.smt2" -T:"$TMO" > "$SC/z3.out" 2>&1 || true
 E=$(date +%s.%N)

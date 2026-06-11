@@ -29,19 +29,39 @@ if [ "$no" != "$nn" ]; then
   echo "# phi is NOT a clean bijective rename; the experiment's soundness is at risk." >&2
 fi
 
-# Pair them: each old-only X is mapped to the new-only name obtained by the
-# qloop rewrite  qloop_<f> -> qloop.<f>  (and dual _qloop_<f> -> _qloop.<f>).
-# We DERIVE the pair by applying that rewrite and checking the result is a
-# real new-only name; anything that doesn't map cleanly is reported.
+# Pair them. A carried-record rename turns a flat name `pfx_<field>` (and its
+# dual `_pfx_<field>`) into `rec.<field>` / `_rec.<field>`. We DERIVE phi
+# structurally, NOT by assuming the spelling: strip each name to its
+# (is_dual, field) key — drop a leading `_`, then take the substring after the
+# LAST `_` or `.` separator (the field) — and pair old↔new on equal keys. This
+# discovers any single-level `<core>_field → <core>.field` rename. If the keys
+# don't form a bijection the script says so loudly (soundness depends on it).
+key() {  # name -> "<dual>\t<field>"
+  local s="$1" dual=""
+  case "$s" in _*) dual="_"; s="${s#_}";; esac
+  # field = substring after the last '.' or '_'
+  local field="${s##*.}"; field="${field##*_}"
+  printf '%s\t%s' "$dual" "$field"
+}
+
 unmatched=0
+declare -A NEWBYKEY
+while IFS= read -r n; do
+  NEWBYKEY["$(key "$n")"]="$n"
+done < /tmp/phi_only_new.txt
+
 while IFS= read -r o; do
-  n="${o//qloop_/qloop.}"
-  if grep -qxF "$n" /tmp/phi_only_new.txt; then
+  k="$(key "$o")"
+  n="${NEWBYKEY[$k]:-}"
+  if [ -n "$n" ]; then
     echo "$o $n"
+    unset 'NEWBYKEY[$k]'
   else
-    echo "# UNMATCHED old-only const (no phi image): $o" >&2
+    echo "# UNMATCHED old-only const (no phi image for key '$k'): $o" >&2
     unmatched=$((unmatched+1))
   fi
 done < /tmp/phi_only_old.txt
 
+leftover=${#NEWBYKEY[@]}
 [ "$unmatched" = 0 ] || echo "# $unmatched old-only consts had no clean image — phi incomplete." >&2
+[ "$leftover" = 0 ]  || echo "# $leftover new-only consts left unpaired — phi not a bijection." >&2

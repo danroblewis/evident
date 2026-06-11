@@ -107,11 +107,27 @@ experiment below exist. Be honest about the guarantees:
   output against a *fixed expected*, `diff` checks output against the *previous
   version* (catches regressions even where no expected exists).
 
-### Translation validation (the `tools/equiv-experiment/` prototype)
+### Translation validation (`tools/equiv-experiment/`)
 
-The experiment under `tools/equiv-experiment/` asks the research-grade
-question: can Z3 *prove* `stage1_old ≡ stage1_new` for **all** inputs with one
-query? Construction (`build-equiv-query`):
+The experiment under `tools/equiv-experiment/` asks: can we *prove*
+`stage1_old ≡ stage1_new` for **all** inputs, not just test it on fixtures?
+**Measured verdict (`VERDICT.md`): yes — as a SYNTACTIC check, not a Z3 prover.**
+
+- **`build-equiv-query --syntactic OLD.smt2 NEW.smt2 phi.txt`** (the **recommended
+  gate**): phi-normalizes the NEW emit (token-accurate) and checks the
+  `declare-fun`+`assert` statement sets are identical to OLD. For a
+  rename/carried-record refactor this proves whole-formula equivalence in **~20
+  ms** — exact, and far stronger than the single-tick Z3 query. Both real
+  de-prefixing commits (`b955bdd` qloop, `30c3eda` ParseState/17 files) pass.
+  `equivalent`/`differs` (exit 0/1); a wrong/missing φ surfaces as residual
+  differing statements, never a false "equivalent".
+- **The semantic Z3 query** (default mode of `build-equiv-query`, below) is a
+  documented **prototype**: it **times out at 600 s** on the whole compiler even
+  for a trivially-true rename (String + datatype + thousands of array
+  equalities), so it is NOT a shipped gate. It exists for the soundness harness
+  and the inductive sketch.
+
+Semantic construction (`build-equiv-query`, no `--syntactic`):
 
 - shared single-tick **inputs** (`is_first_tick`, `last_results`/`__len`, every
   carried `_X` state dual) are equated across the two emits via a mapping **φ**

@@ -30,9 +30,14 @@ use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fs;
 
 fn main() {
-    let a: Vec<String> = std::env::args().collect();
+    let mut a: Vec<String> = std::env::args().collect();
+    // --syntactic: token-aware alpha-equivalence check (no Z3). For the RENAME
+    // class (phi a bijection, identical bodies) this is the right tool — it
+    // proves equivalence in milliseconds where the semantic Z3 query times out.
+    let syntactic = a.iter().any(|x| x == "--syntactic");
+    a.retain(|x| x != "--syntactic");
     if a.len() < 4 {
-        eprintln!("usage: build-equiv-query OLD.smt2 NEW.smt2 phi.txt > query.smt2");
+        eprintln!("usage: build-equiv-query [--syntactic] OLD.smt2 NEW.smt2 phi.txt");
         std::process::exit(2);
     }
     let old_src = fs::read_to_string(&a[1]).expect("read OLD");
@@ -54,6 +59,10 @@ fn main() {
 
     let old_decls = declared_consts(&old_src);
     let new_decls = declared_consts(&new_src);
+
+    if syntactic {
+        std::process::exit(syntactic_equiv(&old_src, &new_src, &phi_old2new));
+    }
 
     // State-field base names from the manifest (each has a `_X` carried dual).
     let state_fields = manifest_state_fields(&old_src);
@@ -204,6 +213,87 @@ fn main() {
         diffs.len()
     );
     print!("{out}");
+}
+
+/// Token-aware alpha-equivalence: rename every NEW const to its phi-PREIMAGE
+/// (new→old) and check the resulting declare-fun + assert STATEMENT SETS equal
+/// OLD's exactly. Datatype/sort decls are compared too. This proves the two
+/// emits are identical modulo phi — the strongest possible equivalence, and it
+/// runs in milliseconds. Returns 0 (equivalent) or 1 (differs), printing a
+/// short diff on difference.
+///
+/// Sound ONLY for the bijective-rename / restructure class where phi maps the
+/// ENTIRE delta. If the bodies differ by anything other than the phi renaming
+/// (a real logic change), the statement sets won't match and it reports the
+/// residue — correctly refusing to claim equivalence.
+fn syntactic_equiv(
+    old_src: &str,
+    new_src: &str,
+    phi_old2new: &HashMap<String, String>,
+) -> i32 {
+    // new -> old map (phi inverse), token-accurate.
+    let new2old: HashMap<String, String> =
+        phi_old2new.iter().map(|(o, n)| (n.clone(), o.clone())).collect();
+
+    let norm = |src: &str, map: &HashMap<String, String>| -> Vec<String> {
+        let mut v: Vec<String> = top_level_stmts(src)
+            .into_iter()
+            .filter(|s| {
+                let h = stmt_head(s);
+                h == "declare-fun" || h == "assert" || h == "declare-datatypes" || h == "declare-sort" || h == "define-sort"
+            })
+            .map(|s| canonical_ws(&rename_tokens(&s, map)))
+            .collect();
+        v.sort();
+        v
+    };
+
+    let empty: HashMap<String, String> = HashMap::new();
+    let old_stmts = norm(old_src, &empty);
+    let new_stmts = norm(new_src, &new2old); // phi-normalize NEW to OLD spelling
+
+    if old_stmts == new_stmts {
+        eprintln!(
+            "# SYNTACTIC alpha-equivalence: HOLDS ({} statements match exactly under phi)",
+            old_stmts.len()
+        );
+        println!("equivalent (syntactic, under phi)");
+        return 0;
+    }
+
+    // Report the residue (statements in one but not the other after phi-normalize).
+    let oset: BTreeSet<&String> = old_stmts.iter().collect();
+    let nset: BTreeSet<&String> = new_stmts.iter().collect();
+    let only_old: Vec<&&String> = oset.difference(&nset).collect();
+    let only_new: Vec<&&String> = nset.difference(&oset).collect();
+    eprintln!(
+        "# SYNTACTIC alpha-equivalence: DIFFERS — {} old-only, {} new-only statements after phi",
+        only_old.len(),
+        only_new.len()
+    );
+    for s in only_old.iter().take(5) {
+        eprintln!("  - OLD: {}", truncate(s, 160));
+    }
+    for s in only_new.iter().take(5) {
+        eprintln!("  + NEW: {}", truncate(s, 160));
+    }
+    println!("differs (syntactic, under phi)");
+    1
+}
+
+/// Collapse runs of whitespace to single spaces and trim, so formatting
+/// differences (the oracle pretty-prints `let` blocks) don't create spurious
+/// statement-set mismatches.
+fn canonical_ws(s: &str) -> String {
+    s.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn truncate(s: &str, n: usize) -> String {
+    if s.len() <= n {
+        s.to_string()
+    } else {
+        format!("{}…", &s[..n])
+    }
 }
 
 /// Names declared via `(declare-fun NAME ...)` at top level.
