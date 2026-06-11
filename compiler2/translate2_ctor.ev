@@ -90,32 +90,32 @@ claim VariantFieldsHead(fs ∈ EVFieldList, ty ∈ String, rest ∈ EVFieldList,
         EVFNil ⇒ EVFNil
 
 claim VariantFieldCount(v ∈ EnumVariantDecl, n ∈ Int)
-    vfc_fs ∈ EVFieldList = match v
+    vcount_fields ∈ EVFieldList = match v
         EVDeclP(_, fs) ⇒ fs
         _ ⇒ EVFNil
-    vfc_r1 ∈ EVFieldList = match vfc_fs
+    vcount_rest1 ∈ EVFieldList = match vcount_fields
         EVFCons(_, r) ⇒ r
         EVFNil ⇒ EVFNil
-    vfc_r2 ∈ EVFieldList = match vfc_r1
+    vcount_rest2 ∈ EVFieldList = match vcount_rest1
         EVFCons(_, r) ⇒ r
         EVFNil ⇒ EVFNil
-    vfc_r3 ∈ EVFieldList = match vfc_r2
+    vcount_rest3 ∈ EVFieldList = match vcount_rest2
         EVFCons(_, r) ⇒ r
         EVFNil ⇒ EVFNil
-    vfc_r4 ∈ EVFieldList = match vfc_r3
+    vcount_rest4 ∈ EVFieldList = match vcount_rest3
         EVFCons(_, r) ⇒ r
         EVFNil ⇒ EVFNil
-    vfc_r5 ∈ EVFieldList = match vfc_r4
+    vcount_rest5 ∈ EVFieldList = match vcount_rest4
         EVFCons(_, r) ⇒ r
         EVFNil ⇒ EVFNil
-    vfc_has0 ∈ Bool = (vfc_fs matches EVFCons(_, _))
-    vfc_has1 ∈ Bool = (vfc_r1 matches EVFCons(_, _))
-    vfc_has2 ∈ Bool = (vfc_r2 matches EVFCons(_, _))
-    vfc_has3 ∈ Bool = (vfc_r3 matches EVFCons(_, _))
-    vfc_has4 ∈ Bool = (vfc_r4 matches EVFCons(_, _))
-    vfc_has5 ∈ Bool = (vfc_r5 matches EVFCons(_, _))
-    n = (¬vfc_has0 ? 0 : ¬vfc_has1 ? 1 : ¬vfc_has2 ? 2 : ¬vfc_has3 ? 3
-        : ¬vfc_has4 ? 4 : ¬vfc_has5 ? 5 : 6)
+    vcount_has0 ∈ Bool = (vcount_fields matches EVFCons(_, _))
+    vcount_has1 ∈ Bool = (vcount_rest1 matches EVFCons(_, _))
+    vcount_has2 ∈ Bool = (vcount_rest2 matches EVFCons(_, _))
+    vcount_has3 ∈ Bool = (vcount_rest3 matches EVFCons(_, _))
+    vcount_has4 ∈ Bool = (vcount_rest4 matches EVFCons(_, _))
+    vcount_has5 ∈ Bool = (vcount_rest5 matches EVFCons(_, _))
+    n = (¬vcount_has0 ? 0 : ¬vcount_has1 ? 1 : ¬vcount_has2 ? 2 : ¬vcount_has3 ? 3
+        : ¬vcount_has4 ? 4 : ¬vcount_has5 ? 5 : 6)
 
 claim VariantFieldType(v ∈ EnumVariantDecl, idx ∈ Int, ty ∈ String)
     vft_fs ∈ EVFieldList = match v
