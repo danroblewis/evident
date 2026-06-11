@@ -124,7 +124,7 @@ claim LexKeywordTag(s ∈ String, tag ∈ Int)
         : s = "mapsto" ? 28
         : 1)
 
-claim LexFtiPlan(at_comment ∈ Bool, strlit_closing ∈ Bool,
+claim LexFtiPlan(at_comment ∈ Bool, closing ∈ Bool,
                  fs_op ∈ Bool, fi_op ∈ Bool,
                  fs_only ∈ Bool, fi_only ∈ Bool, ch_only ∈ Bool,
                  cur_char ∈ String, partial_str ∈ String,
@@ -135,14 +135,14 @@ claim LexFtiPlan(at_comment ∈ Bool, strlit_closing ∈ Bool,
                  tag1 ∈ Int, a_tag0 ∈ Int, a_p0 ∈ Int, a_tag1 ∈ Int,
                  count_n ∈ Int, last_n ∈ Int, prev_n ∈ Int)
     cur_char_tag ∈ Int
-    cur_char_isop ∈ Bool
-    LexCharTag(c ↦ cur_char, tag ↦ cur_char_tag, recognized ↦ cur_char_isop)
+    char_isop ∈ Bool
+    LexCharTag(c ↦ cur_char, tag ↦ cur_char_tag, recognized ↦ char_isop)
     keyword_tag ∈ Int
     LexKeywordTag(s ↦ partial_str, tag ↦ keyword_tag)
     is_plain_ident ∈ Bool = (keyword_tag = 1)
 
     kind = (at_comment ? 0
-        : strlit_closing ? 3
+        : closing ? 3
         : fs_op ? (is_plain_ident ? 5 : 4)
         : fi_op ? 6
         : fs_only ? (is_plain_ident ? 3 : 1)
@@ -150,22 +150,22 @@ claim LexFtiPlan(at_comment ∈ Bool, strlit_closing ∈ Bool,
         : ch_only ? 1
         : 0)
 
-    prev_is_atom ∈ Bool = (prev_tag = 1 ∨ prev_tag = 2
+    is_atom ∈ Bool = (prev_tag = 1 ∨ prev_tag = 2
         ∨ prev_tag = 3 ∨ prev_tag = 6 ∨ prev_tag = 70)
     neg_fold ∈ Bool = ((kind = 2 ∨ kind = 6)
-        ∧ (last_tag = 11) ∧ (¬prev_is_atom))
+        ∧ (last_tag = 11) ∧ (¬is_atom))
 
     entry_idx ∈ Int = (neg_fold ? count - 1 : count)
     a_tag0 = base + (entry_idx * 32)
     a_p0 = a_tag0 + 8
     a_tag1 = base + ((entry_idx + 1) * 32)
 
-    tag0 = (strlit_closing ? 3
+    tag0 = (closing ? 3
         : (kind = 2 ∨ kind = 6) ? 2
         : ch_only ? cur_char_tag
         : keyword_tag)
     p0 = (neg_fold ? 0 - partial_int : partial_int)
-    str0 = (strlit_closing ? partial_strlit : partial_str)
+    str0 = (closing ? partial_strlit : partial_str)
     tag1 = cur_char_tag
 
     count_n = (kind = 0 ? count

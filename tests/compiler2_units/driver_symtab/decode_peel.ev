@@ -27,8 +27,8 @@ fsm main
     qloop_on = (is_first_tick ? false : _qloop_on)
     param_skip ∈ Int
     param_skip = (is_first_tick ? 0 : _param_skip)
-    in_parse ∈ Bool
-    in_parse = (is_first_tick ? false : _in_parse)
+    parse ∈ Bool
+    parse = (is_first_tick ? false : _parse)
     item_step ∈ Int
     item_step = (is_first_tick ? 0 : _item_step)
     parse_mode ∈ Int

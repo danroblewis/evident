@@ -1,5 +1,5 @@
 -- DriverGuard isolation — guard arms when the jump fires: drive the
--- composition jump-fire condition (in_parse, parse_mode 10, callw_st 4, work_items
+-- composition jump-fire condition (parse, parse_mode 10, callw_st 4, work_items
 -- nil) with inline-frame-top guard handle h_top = 99 and no
 -- reset/unguard; the splice phase must latch active_handle ← 99 on the fire tick.
 -- entry: main
@@ -13,25 +13,25 @@ import "compiler2/driver_ir.ev"
 import "compiler2/driver_guard.ev"
 
 fsm main
-    in_parse ∈ Bool
-    in_parse = (is_first_tick ? true : _in_parse)
+    parse ∈ Bool
+    parse = (is_first_tick ? true : _parse)
     parse_mode ∈ Int
     parse_mode = (is_first_tick ? 10 : _parse_mode)
     callw_st ∈ Int
     callw_st = (is_first_tick ? 4 : _callw_st)
-    work_nil ∈ Bool
-    work_nil = (is_first_tick ? true : _work_nil)
+    nil ∈ Bool
+    nil = (is_first_tick ? true : _nil)
     h_top ∈ Int
     h_top = (is_first_tick ? 99 : _h_top)
-    callw_reset ∈ Bool
-    callw_reset = (is_first_tick ? false : _callw_reset)
+    reset ∈ Bool
+    reset = (is_first_tick ? false : _reset)
     frame_pop ∈ Bool
     frame_pop = (is_first_tick ? false : _frame_pop)
     frame_depth ∈ Int
     frame_depth = (is_first_tick ? 0 : _frame_depth)
     -- Recognizer inputs the phase also reads (inert here — no guard line).
-    parse_result ∈ Expr
-    parse_result = (is_first_tick ? ENoExpr : _parse_result)
+    result ∈ Expr
+    result = (is_first_tick ? ENoExpr : _result)
     parse_ready ∈ Bool
     parse_ready = (is_first_tick ? false : _parse_ready)
     parse_kind ∈ Int

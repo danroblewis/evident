@@ -1,6 +1,6 @@
 -- DriverCompose isolation — slot-call name capture through callw_st.
 -- parse_mode-10 held, frame idle: tick 1, callw_cap advances callw_st 0→1; tick 2,
--- in_callw1 is live and the window head `p ↦` (Ident, OpMapsto) fires
+-- callw1 is live and the window head `p ↦` (Ident, OpMapsto) fires
 -- callw_slot, capturing slot_name_tok into slot_names[0].name (slot index 0). Must read "p".
 -- entry: main
 -- expect: stdout = "p"
@@ -18,10 +18,10 @@ import "compiler2/driver_compose.ev"
 fsm main
     parse_mode ∈ Int
     parse_mode = (is_first_tick ? 10 : _parse_mode)
-    in_parse ∈ Bool
-    in_parse = (is_first_tick ? true : _in_parse)
-    work_nil ∈ Bool
-    work_nil = (is_first_tick ? true : _work_nil)
+    parse ∈ Bool
+    parse = (is_first_tick ? true : _parse)
+    nil ∈ Bool
+    nil = (is_first_tick ? true : _nil)
     tok_ready ∈ Bool
     tok_ready = (is_first_tick ? true : _tok_ready)
     tok0 ∈ Token
@@ -32,8 +32,8 @@ fsm main
     comp_bare = (is_first_tick ? false : _comp_bare)
     comp_call ∈ Bool
     comp_call = (is_first_tick ? false : _comp_call)
-    comp_dotdot ∈ Bool
-    comp_dotdot = (is_first_tick ? false : _comp_dotdot)
+    dotdot ∈ Bool
+    dotdot = (is_first_tick ? false : _dotdot)
     comp_line ∈ Bool
     comp_line = (is_first_tick ? false : _comp_line)
     callee_pos ∈ Int
@@ -55,8 +55,8 @@ fsm main
     cap_int = (is_first_tick ? 0 : _cap_int)
     enter_claim ∈ Bool
     enter_claim = (is_first_tick ? false : _enter_claim)
-    enter_claim_params ∈ Bool
-    enter_claim_params = (is_first_tick ? false : _enter_claim_params)
+    claim_params ∈ Bool
+    claim_params = (is_first_tick ? false : _claim_params)
     h_2nd ∈ Int
     h_2nd = (is_first_tick ? 0 : _h_2nd)
     h_3rd ∈ Int
@@ -67,26 +67,26 @@ fsm main
     h_5th = (is_first_tick ? 0 : _h_5th)
     h_6th ∈ Int
     h_6th = (is_first_tick ? 0 : _h_6th)
-    h_tail1 ∈ C2H
-    h_tail1 = (is_first_tick ? C2HNil : _h_tail1)
-    h_tail2 ∈ C2H
-    h_tail2 = (is_first_tick ? C2HNil : _h_tail2)
-    h_tail3 ∈ C2H
-    h_tail3 = (is_first_tick ? C2HNil : _h_tail3)
-    h_tail4 ∈ C2H
-    h_tail4 = (is_first_tick ? C2HNil : _h_tail4)
-    h_tail5 ∈ C2H
-    h_tail5 = (is_first_tick ? C2HNil : _h_tail5)
-    h_tail6 ∈ C2H
-    h_tail6 = (is_first_tick ? C2HNil : _h_tail6)
+    tail1 ∈ C2H
+    tail1 = (is_first_tick ? C2HNil : _tail1)
+    tail2 ∈ C2H
+    tail2 = (is_first_tick ? C2HNil : _tail2)
+    tail3 ∈ C2H
+    tail3 = (is_first_tick ? C2HNil : _tail3)
+    tail4 ∈ C2H
+    tail4 = (is_first_tick ? C2HNil : _tail4)
+    tail5 ∈ C2H
+    tail5 = (is_first_tick ? C2HNil : _tail5)
+    tail6 ∈ C2H
+    tail6 = (is_first_tick ? C2HNil : _tail6)
     h_top ∈ Int
     h_top = (is_first_tick ? 0 : _h_top)
     stack_in ∈ C2H
     stack_in = (is_first_tick ? C2HNil : _stack_in)
     cond_hit ∈ Bool
     cond_hit = (is_first_tick ? false : _cond_hit)
-    jump_capture ∈ Bool
-    jump_capture = (is_first_tick ? false : _jump_capture)
+    capture ∈ Bool
+    capture = (is_first_tick ? false : _capture)
     jump_fire ∈ Bool
     jump_fire = (is_first_tick ? false : _jump_fire)
     frame_pop ∈ Bool

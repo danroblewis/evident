@@ -1,7 +1,7 @@
 -- DriverSetVar isolation — Set(T) registry append + name capture.
--- setmem_decl_line held under classify_now (not at line end) so enter_setdecl
+-- decl_line held under classify_now (not at line end) so setdecl
 -- fires and the ≤2-entry Set registry appends: collection_count climbs 0→1→2
--- (capped), collection_vars[0].name captures line_dname = "myset". Exit at collection_count = 2.
+-- (capped), vars[0].name captures line_dname = "myset". Exit at collection_count = 2.
 --
 -- entry: main
 -- expect: stdout = "myset"
@@ -16,34 +16,34 @@ import "compiler2/driver_setvar.ev"
 fsm main
     classify_now ∈ Bool
     classify_now = (is_first_tick ? true : _classify_now)
-    setmem_decl_line ∈ Bool
-    setmem_decl_line = (is_first_tick ? true : _setmem_decl_line)
+    decl_line ∈ Bool
+    decl_line = (is_first_tick ? true : _decl_line)
     line_end ∈ Bool
     line_end = (is_first_tick ? false : _line_end)
     line_dname ∈ String
     line_dname = (is_first_tick ? "myset" : _line_dname)
     effects_line ∈ Bool
     effects_line = (is_first_tick ? false : _effects_line)
-    line_is_mem ∈ Bool
-    line_is_mem = (is_first_tick ? false : _line_is_mem)
-    line_is_notmem ∈ Bool
-    line_is_notmem = (is_first_tick ? false : _line_is_notmem)
+    is_mem ∈ Bool
+    is_mem = (is_first_tick ? false : _is_mem)
+    is_notmem ∈ Bool
+    is_notmem = (is_first_tick ? false : _is_notmem)
     line_name ∈ String
     line_name = (is_first_tick ? "" : _line_name)
-    q_is_exists ∈ Bool
-    q_is_exists = (is_first_tick ? false : _q_is_exists)
-    q_seq_plain ∈ Bool
-    q_seq_plain = (is_first_tick ? false : _q_seq_plain)
-    q_t3_name ∈ String
-    q_t3_name = (is_first_tick ? "" : _q_t3_name)
+    is_exists ∈ Bool
+    is_exists = (is_first_tick ? false : _is_exists)
+    seq_plain ∈ Bool
+    seq_plain = (is_first_tick ? false : _seq_plain)
+    t3_name ∈ String
+    t3_name = (is_first_tick ? "" : _t3_name)
     q_var ∈ String
     q_var = (is_first_tick ? "" : _q_var)
     intset_line ∈ Bool
     intset_line = (is_first_tick ? false : _intset_line)
-    seq_elt_slot ∈ Int
-    seq_elt_slot = (is_first_tick ? 0 : _seq_elt_slot)
-    line_t0_ident ∈ Bool
-    line_t0_ident = (is_first_tick ? false : _line_t0_ident)
+    elt_slot ∈ Int
+    elt_slot = (is_first_tick ? 0 : _elt_slot)
+    t0_ident ∈ Bool
+    t0_ident = (is_first_tick ? false : _t0_ident)
     line_t1 ∈ Token
     line_t1 = (is_first_tick ? EofTok : _line_t1)
     line_t2 ∈ Token
@@ -54,12 +54,12 @@ fsm main
     enter_seqlit = (is_first_tick ? false : _enter_seqlit)
     in_skip ∈ Bool
     in_skip = (is_first_tick ? false : _in_skip)
-    work_nil ∈ Bool
-    work_nil = (is_first_tick ? false : _work_nil)
+    nil ∈ Bool
+    nil = (is_first_tick ? false : _nil)
     scope_prefix ∈ String
     scope_prefix = (is_first_tick ? "" : _scope_prefix)
-    in_parse ∈ Bool
-    in_parse = (is_first_tick ? false : _in_parse)
+    parse ∈ Bool
+    parse = (is_first_tick ? false : _parse)
     name ∈ String
     name = (is_first_tick ? "" : _name)
     parse_ready ∈ Bool
@@ -70,8 +70,8 @@ fsm main
     parse_mode = (is_first_tick ? 0 : _parse_mode)
     parse_bad ∈ Bool
     parse_bad = (is_first_tick ? false : _parse_bad)
-    parse_result ∈ Expr
-    parse_result = (is_first_tick ? EInt(0) : _parse_result)
+    result ∈ Expr
+    result = (is_first_tick ? EInt(0) : _result)
     rec_pad31 ∈ String
     rec_pad31 = (is_first_tick ? "" : _rec_pad31)
     seqvar_name ∈ String
@@ -91,5 +91,5 @@ fsm main
     ..DriverSetVar
     done ∈ Bool = (collection_count = 2)
     effects ∈ Seq(Effect) = (done
-        ? ⟨LibCall("libc", "puts", ⟨ArgStr(collection_vars[0].name)⟩), Exit(0)⟩
+        ? ⟨LibCall("libc", "puts", ⟨ArgStr(vars[0].name)⟩), Exit(0)⟩
         : ⟨LibCall("libc", "getpid", ⟨⟩)⟩)

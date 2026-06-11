@@ -5,7 +5,7 @@
 -- PRODUCES: literal_items (the C2RecVal expansion — the record value as a
 --           ctor app over its flattened dotted-const segments) and
 --           literal_decl_items (the C2RecDecl expansion — the declarations of
---           those dotted consts), plus the literal_fields/literal_sortcodes intermediates.
+--           those dotted consts), plus the literal_fields/sortcodes intermediates.
 -- MAINTAINS: pure per-tick lowering, no carry. Both expansions handle
 --           ≤6 fields; a record-typed field recurses one C2RecVal /
 --           C2RecDecl level (the work-item walk is the recursion); a
@@ -17,14 +17,14 @@
 fsm DriverRecVal
     literal_fnames ∈ String = recs[recval_slot].fnames
     literal_ftypes ∈ String = recs[recval_slot].ftypes
-    literal_nfields ∈ Int = recs[recval_slot].n_fields
+    nfields ∈ Int = recs[recval_slot].n_fields
     literal_ctor ∈ Int = recs[recval_slot].ctor
     literal_fields ∈ Seq(RecField)
     #literal_fields ≤ 6
     ∀ k ∈ {0..5} : RtRecName(s ↦ literal_fnames, i ↦ k, name ↦ literal_fields[k].name)
     ∀ k ∈ {0..5} : RtRecName(s ↦ literal_ftypes, i ↦ k, name ↦ literal_fields[k].ty)
     ∀ k ∈ {0..5} : RtIdxOf(nm ↦ literal_fields[k].ty, idx ↦ literal_fields[k].kidx)
-    literal_seg0 ∈ C2Item = (literal_fields[0].kidx ≥ 0
+    seg0 ∈ C2Item = (literal_fields[0].kidx ≥ 0
         ? C2RecVal(recval_name ++ "." ++ literal_fields[0].name, literal_fields[0].kidx)
         : C2Process(EIdent(recval_name ++ "." ++ literal_fields[0].name)))
     literal_seg1 ∈ C2Item = (literal_fields[1].kidx ≥ 0
@@ -33,55 +33,55 @@ fsm DriverRecVal
     literal_seg2 ∈ C2Item = (literal_fields[2].kidx ≥ 0
         ? C2RecVal(recval_name ++ "." ++ literal_fields[2].name, literal_fields[2].kidx)
         : C2Process(EIdent(recval_name ++ "." ++ literal_fields[2].name)))
-    literal_seg3 ∈ C2Item = (literal_fields[3].kidx ≥ 0
+    seg3 ∈ C2Item = (literal_fields[3].kidx ≥ 0
         ? C2RecVal(recval_name ++ "." ++ literal_fields[3].name, literal_fields[3].kidx)
         : C2Process(EIdent(recval_name ++ "." ++ literal_fields[3].name)))
-    literal_seg4 ∈ C2Item = (literal_fields[4].kidx ≥ 0
+    seg4 ∈ C2Item = (literal_fields[4].kidx ≥ 0
         ? C2RecVal(recval_name ++ "." ++ literal_fields[4].name, literal_fields[4].kidx)
         : C2Process(EIdent(recval_name ++ "." ++ literal_fields[4].name)))
-    literal_seg5 ∈ C2Item = (literal_fields[5].kidx ≥ 0
+    seg5 ∈ C2Item = (literal_fields[5].kidx ≥ 0
         ? C2RecVal(recval_name ++ "." ++ literal_fields[5].name, literal_fields[5].kidx)
         : C2Process(EIdent(recval_name ++ "." ++ literal_fields[5].name)))
-    literal_tail ∈ C2Items = C2ICons(C2App(literal_ctor, literal_nfields), work_tail)
-    literal_items ∈ C2Items = (literal_nfields = 1
-            ? C2ICons(literal_seg0, literal_tail)
-        : literal_nfields = 2
-            ? C2ICons(literal_seg0, C2ICons(literal_seg1, literal_tail))
-        : literal_nfields = 3
-            ? C2ICons(literal_seg0, C2ICons(literal_seg1, C2ICons(literal_seg2, literal_tail)))
-        : literal_nfields = 4
-            ? C2ICons(literal_seg0, C2ICons(literal_seg1, C2ICons(literal_seg2,
-                C2ICons(literal_seg3, literal_tail))))
-        : literal_nfields = 5
-            ? C2ICons(literal_seg0, C2ICons(literal_seg1, C2ICons(literal_seg2,
-                C2ICons(literal_seg3, C2ICons(literal_seg4, literal_tail)))))
-        : C2ICons(literal_seg0, C2ICons(literal_seg1, C2ICons(literal_seg2,
-            C2ICons(literal_seg3, C2ICons(literal_seg4, C2ICons(literal_seg5,
+    literal_tail ∈ C2Items = C2ICons(C2App(literal_ctor, nfields), work_tail)
+    literal_items ∈ C2Items = (nfields = 1
+            ? C2ICons(seg0, literal_tail)
+        : nfields = 2
+            ? C2ICons(seg0, C2ICons(literal_seg1, literal_tail))
+        : nfields = 3
+            ? C2ICons(seg0, C2ICons(literal_seg1, C2ICons(literal_seg2, literal_tail)))
+        : nfields = 4
+            ? C2ICons(seg0, C2ICons(literal_seg1, C2ICons(literal_seg2,
+                C2ICons(seg3, literal_tail))))
+        : nfields = 5
+            ? C2ICons(seg0, C2ICons(literal_seg1, C2ICons(literal_seg2,
+                C2ICons(seg3, C2ICons(seg4, literal_tail)))))
+        : C2ICons(seg0, C2ICons(literal_seg1, C2ICons(literal_seg2,
+            C2ICons(seg3, C2ICons(seg4, C2ICons(seg5,
             literal_tail)))))))
-    literal_sortcodes ∈ Seq(Int)
-    #literal_sortcodes ≤ 6
-    ∀ k ∈ {0..5} : literal_sortcodes[k] = (literal_fields[k].ty = "Bool" ? 1 : literal_fields[k].ty = "String" ? 3 : literal_fields[k].ty = "Real" ? 6 : 0)
-    literal_dtail5 ∈ C2Items = ((literal_nfields < 6 ∨ literal_fields[5].ty = "Seq(Int)") ? work_tail
+    sortcodes ∈ Seq(Int)
+    #sortcodes ≤ 6
+    ∀ k ∈ {0..5} : sortcodes[k] = (literal_fields[k].ty = "Bool" ? 1 : literal_fields[k].ty = "String" ? 3 : literal_fields[k].ty = "Real" ? 6 : 0)
+    dtail5 ∈ C2Items = ((nfields < 6 ∨ literal_fields[5].ty = "Seq(Int)") ? work_tail
         : literal_fields[5].kidx ≥ 0 ? C2ICons(C2RecDecl(recval_name ++ "." ++ literal_fields[5].name, literal_fields[5].kidx), work_tail)
-        : C2ICons(C2DeclConst(recval_name ++ "." ++ literal_fields[5].name, literal_sortcodes[5]),
+        : C2ICons(C2DeclConst(recval_name ++ "." ++ literal_fields[5].name, sortcodes[5]),
             C2ICons(C2Drop, work_tail)))
-    literal_dtail4 ∈ C2Items = ((literal_nfields < 5 ∨ literal_fields[4].ty = "Seq(Int)") ? literal_dtail5
-        : literal_fields[4].kidx ≥ 0 ? C2ICons(C2RecDecl(recval_name ++ "." ++ literal_fields[4].name, literal_fields[4].kidx), literal_dtail5)
-        : C2ICons(C2DeclConst(recval_name ++ "." ++ literal_fields[4].name, literal_sortcodes[4]),
-            C2ICons(C2Drop, literal_dtail5)))
-    literal_dtail3 ∈ C2Items = ((literal_nfields < 4 ∨ literal_fields[3].ty = "Seq(Int)") ? literal_dtail4
-        : literal_fields[3].kidx ≥ 0 ? C2ICons(C2RecDecl(recval_name ++ "." ++ literal_fields[3].name, literal_fields[3].kidx), literal_dtail4)
-        : C2ICons(C2DeclConst(recval_name ++ "." ++ literal_fields[3].name, literal_sortcodes[3]),
-            C2ICons(C2Drop, literal_dtail4)))
-    literal_dtail2 ∈ C2Items = ((literal_nfields < 3 ∨ literal_fields[2].ty = "Seq(Int)") ? literal_dtail3
-        : literal_fields[2].kidx ≥ 0 ? C2ICons(C2RecDecl(recval_name ++ "." ++ literal_fields[2].name, literal_fields[2].kidx), literal_dtail3)
-        : C2ICons(C2DeclConst(recval_name ++ "." ++ literal_fields[2].name, literal_sortcodes[2]),
-            C2ICons(C2Drop, literal_dtail3)))
-    literal_dtail1 ∈ C2Items = ((literal_nfields < 2 ∨ literal_fields[1].ty = "Seq(Int)") ? literal_dtail2
-        : literal_fields[1].kidx ≥ 0 ? C2ICons(C2RecDecl(recval_name ++ "." ++ literal_fields[1].name, literal_fields[1].kidx), literal_dtail2)
-        : C2ICons(C2DeclConst(recval_name ++ "." ++ literal_fields[1].name, literal_sortcodes[1]),
-            C2ICons(C2Drop, literal_dtail2)))
-    literal_decl_items ∈ C2Items = ((literal_nfields < 1 ∨ literal_fields[0].ty = "Seq(Int)") ? literal_dtail1
-        : literal_fields[0].kidx ≥ 0 ? C2ICons(C2RecDecl(recval_name ++ "." ++ literal_fields[0].name, literal_fields[0].kidx), literal_dtail1)
-        : C2ICons(C2DeclConst(recval_name ++ "." ++ literal_fields[0].name, literal_sortcodes[0]),
-            C2ICons(C2Drop, literal_dtail1)))
+    dtail4 ∈ C2Items = ((nfields < 5 ∨ literal_fields[4].ty = "Seq(Int)") ? dtail5
+        : literal_fields[4].kidx ≥ 0 ? C2ICons(C2RecDecl(recval_name ++ "." ++ literal_fields[4].name, literal_fields[4].kidx), dtail5)
+        : C2ICons(C2DeclConst(recval_name ++ "." ++ literal_fields[4].name, sortcodes[4]),
+            C2ICons(C2Drop, dtail5)))
+    dtail3 ∈ C2Items = ((nfields < 4 ∨ literal_fields[3].ty = "Seq(Int)") ? dtail4
+        : literal_fields[3].kidx ≥ 0 ? C2ICons(C2RecDecl(recval_name ++ "." ++ literal_fields[3].name, literal_fields[3].kidx), dtail4)
+        : C2ICons(C2DeclConst(recval_name ++ "." ++ literal_fields[3].name, sortcodes[3]),
+            C2ICons(C2Drop, dtail4)))
+    dtail2 ∈ C2Items = ((nfields < 3 ∨ literal_fields[2].ty = "Seq(Int)") ? dtail3
+        : literal_fields[2].kidx ≥ 0 ? C2ICons(C2RecDecl(recval_name ++ "." ++ literal_fields[2].name, literal_fields[2].kidx), dtail3)
+        : C2ICons(C2DeclConst(recval_name ++ "." ++ literal_fields[2].name, sortcodes[2]),
+            C2ICons(C2Drop, dtail3)))
+    dtail1 ∈ C2Items = ((nfields < 2 ∨ literal_fields[1].ty = "Seq(Int)") ? dtail2
+        : literal_fields[1].kidx ≥ 0 ? C2ICons(C2RecDecl(recval_name ++ "." ++ literal_fields[1].name, literal_fields[1].kidx), dtail2)
+        : C2ICons(C2DeclConst(recval_name ++ "." ++ literal_fields[1].name, sortcodes[1]),
+            C2ICons(C2Drop, dtail2)))
+    literal_decl_items ∈ C2Items = ((nfields < 1 ∨ literal_fields[0].ty = "Seq(Int)") ? dtail1
+        : literal_fields[0].kidx ≥ 0 ? C2ICons(C2RecDecl(recval_name ++ "." ++ literal_fields[0].name, literal_fields[0].kidx), dtail1)
+        : C2ICons(C2DeclConst(recval_name ++ "." ++ literal_fields[0].name, sortcodes[0]),
+            C2ICons(C2Drop, dtail1)))

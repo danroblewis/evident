@@ -1,6 +1,6 @@
 -- DriverEnum isolation — the four Effect-floor enum runs walk to completion.
 -- zstep held at 9 keeps floor_go firing; the machine declares LibArg
--- (src 0), __SeqOf_LibArg (1), Effect (2), Result (3), advancing decl_source
+-- (src 0), __SeqOf_LibArg (1), Effect (2), Result (3), advancing source
 -- per run until it idles at 4. Z3 build effects not scheduled (no arena).
 -- entry: main
 -- expect: stdout = "4"
@@ -14,18 +14,18 @@ import "compiler2/driver_enum.ev"
 fsm main
     zstep ∈ Int
     zstep = (is_first_tick ? 9 : _zstep)
-    enum_group_go ∈ Bool = false
-    enum_member_end ∈ Bool = false
-    variant_list_now ∈ EnumVariantList = EVNil
+    group_go ∈ Bool = false
+    member_end ∈ Bool = false
+    list_now ∈ EnumVariantList = EVNil
     user_enum_name ∈ String
     user_enum_name = (is_first_tick ? "" : _user_enum_name)
     -- Bus values the machine reads as plain handles; held live so they
     -- stay in every tick's model (a pinned `= const` simplifies out and
     -- the kernel's state carry then can't find the field).
-    res_int0 ∈ Int
-    res_int0 = (is_first_tick ? 0 : _res_int0)
-    res_int1 ∈ Int
-    res_int1 = (is_first_tick ? 0 : _res_int1)
+    int0 ∈ Int
+    int0 = (is_first_tick ? 0 : _int0)
+    int1 ∈ Int
+    int1 = (is_first_tick ? 0 : _int1)
     z3sorts ∈ Z3Sorts
     z3sorts.isort = (is_first_tick ? 0 : _z3sorts.isort)
     z3sorts.bsort = (is_first_tick ? 0 : _z3sorts.bsort)
@@ -34,7 +34,7 @@ fsm main
     cap_int ∈ Int
     cap_int = (is_first_tick ? 0 : _cap_int)
     ..DriverEnum
-    src_msg ∈ String = str_from_int(decl_source)
-    effects ∈ Seq(Effect) = (decl_source = 4
+    src_msg ∈ String = str_from_int(source)
+    effects ∈ Seq(Effect) = (source = 4
         ? ⟨LibCall("libc", "puts", ⟨ArgStr(src_msg)⟩), Exit(0)⟩
         : ⟨LibCall("libc", "getpid", ⟨⟩)⟩)

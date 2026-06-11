@@ -1,15 +1,15 @@
 -- MODULE DriverClaimIdx
 -- CONSUMES: the skip-pass entry (enter_skip) + the window head views
---           (tok0..tok6), the claim head shape (head_is_claim,
---           decl_name), the parse gate (in_parse, _parse_mode, tok_ready,
---           work_nil), the parse_mode-4 enum-collection signals
---           (enter_enum_decl, decl_action) + floor decl
---           handles (z_*_decl/z3_empty_val), the Pratt result (parse_ready,
+--           (tok0..tok6), the claim head shape (is_claim,
+--           decl_name), the parse gate (parse, _parse_mode, tok_ready,
+--           nil), the parse_mode-4 enum-collection signals
+--           (enum_decl, decl_action) + floor decl
+--           handles (z_*_decl/empty_val), the Pratt result (parse_ready,
 --           parse_bad, parse_kind), and the claim-index buffer base (claimindex_buf.base).
 -- PRODUCES: the claim/type index (ci_cnt, claimindex_names) + its per-skip append
---           effect (eff_claimidx_write), the parse_mode-4 user-enum variant collection
---           (variant_take/variant_act/enum_member_end/variant_decl/variant_list/
---           variant_list_now + the vf_* field-walk state), and the
+--           effect (claimidx_write), the parse_mode-4 user-enum variant collection
+--           (variant_take/variant_act/member_end/variant_decl/list/
+--           list_now + the vf_* field-walk state), and the
 --           parse_mode-5 effects-literal / D2 conditional-chain element
 --           walk dispatch.
 -- MAINTAINS: ci_cnt < 2048 (an index past the buffer end is UNSAT, not a
@@ -41,7 +41,7 @@ fsm DriverClaimIdx
     claimindex_buf.count < 2048
     claimindex_names ∈ String
     claimindex_add ∈ Bool = (enter_skip
-        ∧ (head_is_claim ∨ (tok0 matches KwType))
+        ∧ (is_claim ∨ (tok0 matches KwType))
         ∧ (tok1 matches Ident(_)))
     claimindex_entry ∈ String
     FtiNameEntry(name ↦ decl_name, entry ↦ claimindex_entry)
@@ -49,9 +49,9 @@ fsm DriverClaimIdx
         prev_count ↦ _claimindex_buf.count, prev_names ↦ _claimindex_names,
         init_count ↦ 0, seed_names ↦ "", entry ↦ claimindex_entry,
         count ↦ claimindex_buf.count, names ↦ claimindex_names)
-    eff_claimidx_write ∈ Effect
+    claimidx_write ∈ Effect
     BuildMemWriteLong(addr ↦ claimindex_buf.base + (8 * _claimindex_buf.count), value ↦ _tok_cur + 2,
-        eff ↦ eff_claimidx_write)
+        eff ↦ claimidx_write)
 
     -- parse_mode 4 collection: a multi-tick walk — one variant HEAD or
     -- one payload FIELD per tick (vfield_st 0 head / 1 fields; cap 6,
@@ -60,14 +60,14 @@ fsm DriverClaimIdx
     -- (driver_enum's field_unresolved → Exit 8). Prepend-
     -- accumulated (the declared variant order is REVERSED vs source —
     -- harmless: declaration and harvest peel the same list).
-    variant_walk_on ∈ Bool = (in_parse ∧ (_parse_mode = 4) ∧ (_decl_action = 0)
+    walk_on ∈ Bool = (parse ∧ (_parse_mode = 4) ∧ (_decl_action = 0)
         ∧ tok_ready)
     variant_name ∈ String = match tok0
         Ident(s) ⇒ s
         _ ⇒ ""
-    variant_name_ok ∈ Bool = (tok0 matches Ident(_))
+    name_ok ∈ Bool = (tok0 matches Ident(_))
     vfield_st ∈ Int
-    vfield_pend ∈ String
+    pend ∈ String
     vfield_n ∈ Int
     vfield_tys ∈ Seq(VfTy)
     #vfield_tys ≤ 5
@@ -75,35 +75,35 @@ fsm DriverClaimIdx
     -- separated enum form — newlines don't survive lexing, and every
     -- top-level decl head is a KEYWORD token, so a trailing Ident can
     -- only be the next variant).
-    vfield_head ∈ Bool = (variant_walk_on ∧ (_vfield_st = 0))
-    vfield_fields ∈ Bool = (variant_walk_on ∧ (_vfield_st = 1))
-    vh_nullary_more ∈ Bool = (vfield_head ∧ variant_name_ok
+    vfield_head ∈ Bool = (walk_on ∧ (_vfield_st = 0))
+    vfield_fields ∈ Bool = (walk_on ∧ (_vfield_st = 1))
+    vh_nullary_more ∈ Bool = (vfield_head ∧ name_ok
         ∧ ((tok1 matches Pipe) ∨ (tok1 matches Ident(_))))
-    vh_open ∈ Bool = (vfield_head ∧ variant_name_ok ∧ (tok1 matches LParen))
-    vh_nullary_end ∈ Bool = (vfield_head ∧ variant_name_ok
+    vh_open ∈ Bool = (vfield_head ∧ name_ok ∧ (tok1 matches LParen))
+    vh_nullary_end ∈ Bool = (vfield_head ∧ name_ok
         ∧ (¬(tok1 matches Pipe)) ∧ (¬(tok1 matches LParen))
         ∧ (¬(tok1 matches Ident(_))))
     vfield_ty ∈ String = variant_name
-    vfield_more ∈ Bool = (vfield_fields ∧ variant_name_ok ∧ (tok1 matches Comma)
+    vfield_more ∈ Bool = (vfield_fields ∧ name_ok ∧ (tok1 matches Comma)
         ∧ (_vfield_n < 5))
-    vfield_close ∈ Bool = (vfield_fields ∧ variant_name_ok ∧ (tok1 matches RParen))
-    vfield_close_more ∈ Bool = (vfield_close
+    vfield_close ∈ Bool = (vfield_fields ∧ name_ok ∧ (tok1 matches RParen))
+    close_more ∈ Bool = (vfield_close
         ∧ ((tok2 matches Pipe) ∨ (tok2 matches Ident(_))))
     -- A payload field that is not `Ty ,` / `Ty )`, or a 7th field, is an
     -- UNSUPPORTED VARIANT SHAPE. The old silent bail dropped the whole
     -- enum decl and the failure surfaced ~900s later as a 0-handle
     -- Exit(7) in an unrelated ternary (sample.ev, 2026-06-10). Halt
     -- nameably instead: Exit(8).
-    variant_unsupported ∈ Bool = (vfield_fields ∧ (¬vfield_more) ∧ (¬vfield_close))
-    variant_bail ∈ Bool = (vfield_head ∧ (¬variant_name_ok))
+    unsupported ∈ Bool = (vfield_fields ∧ (¬vfield_more) ∧ (¬vfield_close))
+    variant_bail ∈ Bool = (vfield_head ∧ (¬name_ok))
     variant_take ∈ Bool = (vh_nullary_more ∨ vh_nullary_end ∨ vfield_close)
-    enum_member_end ∈ Bool = (vh_nullary_end ∨ (vfield_close ∧ (¬vfield_close_more)))
+    member_end ∈ Bool = (vh_nullary_end ∨ (vfield_close ∧ (¬close_more)))
     vfield_st = (is_first_tick ? 0
-        : enter_enum_decl ? 0
+        : enum_decl ? 0
         : vh_open ? 1
         : vfield_close ? 0
         : _vfield_st)
-    vfield_pend = (is_first_tick ? "" : vh_open ? variant_name : _vfield_pend)
+    pend = (is_first_tick ? "" : vh_open ? variant_name : _pend)
     vfield_n = (is_first_tick ? 0
         : vh_open ? 0
         : vfield_more ? _vfield_n + 1
@@ -121,35 +121,35 @@ fsm DriverClaimIdx
     variant_fields ∈ EVFieldList = (_vfield_n = 0 ? vfield_f5
         : EVFCons(EVFType(_vfield_tys[0].tyname), vfield_f1))
     variant_decl ∈ EnumVariantDecl = (vfield_close
-        ? EVDeclP(_vfield_pend, variant_fields)
+        ? EVDeclP(_pend, variant_fields)
         : EVDecl(variant_name))
     variant_consume ∈ Int = (vh_nullary_more ? ((tok1 matches Pipe) ? 2 : 1)
         : vh_open ? 2
         : vh_nullary_end ? 1
         : vfield_more ? 2
-        : vfield_close_more ? ((tok2 matches Pipe) ? 3 : 2)
+        : close_more ? ((tok2 matches Pipe) ? 3 : 2)
         : vfield_close ? 2
         : 1)
     variant_act ∈ Bool = (vh_nullary_more ∨ vh_open ∨ vh_nullary_end
         ∨ vfield_more ∨ vfield_close)
-    variant_list ∈ EnumVariantList
-    variant_list_now ∈ EnumVariantList = (variant_take
-        ? EVCons(variant_decl, _variant_list) : _variant_list)
-    variant_list = (is_first_tick ? EVNil
-        : enter_enum_decl ? EVNil
-        : variant_take ? variant_list_now
-        : _variant_list)
+    list ∈ EnumVariantList
+    list_now ∈ EnumVariantList = (variant_take
+        ? EVCons(variant_decl, _list) : _list)
+    list = (is_first_tick ? EVNil
+        : enum_decl ? EVNil
+        : variant_take ? list_now
+        : _list)
 
     efflit_count ∈ Int
-    efflit_libcall ∈ Int
-    efflit_lib ∈ String
+    libcall ∈ Int
+    lib ∈ String
     efflit_fn ∈ String
     efflit_st ∈ Int
     chain_on ∈ Bool
-    chain_pdepth ∈ Int
+    pdepth ∈ Int
     chain_n ∈ Int
 
-    in_efflit ∈ Bool = (in_parse ∧ (_parse_mode = 5) ∧ work_nil ∧ tok_ready)
+    in_efflit ∈ Bool = (parse ∧ (_parse_mode = 5) ∧ nil ∧ tok_ready)
     efflit_t2_str ∈ String = match tok2
         StringLit(s) ⇒ s
         _ ⇒ ""
@@ -159,75 +159,75 @@ fsm DriverClaimIdx
     head_ident ∈ String = match tok0
         Ident(s) ⇒ s
         _ ⇒ ""
-    efflit_guard_enter ∈ Bool = (in_efflit ∧ (_efflit_st = 1))
-    efflit_open ∈ Bool = (in_efflit ∧ (_efflit_st = 0) ∧ _chain_on ∧ (_efflit_libcall = 0)
+    guard_enter ∈ Bool = (in_efflit ∧ (_efflit_st = 1))
+    efflit_open ∈ Bool = (in_efflit ∧ (_efflit_st = 0) ∧ _chain_on ∧ (_libcall = 0)
         ∧ (tok0 matches OpSeqOpen))
-    efflit_nest ∈ Bool = (in_efflit ∧ (_efflit_st = 0) ∧ _chain_on ∧ (_efflit_libcall = 0)
+    nest ∈ Bool = (in_efflit ∧ (_efflit_st = 0) ∧ _chain_on ∧ (_libcall = 0)
         ∧ (tok0 matches LParen))
     efflit_st2 ∈ Bool = (in_efflit ∧ (_efflit_st = 2))
-    efflit_colon ∈ Bool = (efflit_st2 ∧ (tok0 matches Colon))
+    colon ∈ Bool = (efflit_st2 ∧ (tok0 matches Colon))
     efflit_rparen ∈ Bool = (efflit_st2 ∧ (tok0 matches RParen))
-    chain_fire ∈ Bool = (efflit_rparen ∧ (_chain_pdepth = 1))
-    efflit_st2_bad ∈ Bool = (efflit_st2 ∧ (¬efflit_colon) ∧ (¬efflit_rparen))
-    efflit_exit_enter ∈ Bool = (in_efflit ∧ (_efflit_st = 0) ∧ (_efflit_libcall = 0)
+    chain_fire ∈ Bool = (efflit_rparen ∧ (_pdepth = 1))
+    st2_bad ∈ Bool = (efflit_st2 ∧ (¬colon) ∧ (¬efflit_rparen))
+    exit_enter ∈ Bool = (in_efflit ∧ (_efflit_st = 0) ∧ (_libcall = 0)
         ∧ (head_ident = "Exit") ∧ (tok1 matches LParen))
-    efflit_libcall_enter ∈ Bool = (in_efflit ∧ (_efflit_st = 0) ∧ (_efflit_libcall = 0)
+    libcall_enter ∈ Bool = (in_efflit ∧ (_efflit_st = 0) ∧ (_libcall = 0)
         ∧ (head_ident = "LibCall") ∧ (tok1 matches LParen)
         ∧ (tok2 matches StringLit(_)) ∧ (tok3 matches Comma)
         ∧ (tok4 matches StringLit(_)) ∧ (tok5 matches Comma))
-    efflit_comma ∈ Bool = (in_efflit ∧ (_efflit_st = 0) ∧ (_efflit_libcall = 0)
+    efflit_comma ∈ Bool = (in_efflit ∧ (_efflit_st = 0) ∧ (_libcall = 0)
         ∧ (tok0 matches Comma))
-    efflit_close ∈ Bool = (in_efflit ∧ (_efflit_st = 0) ∧ (_efflit_libcall = 0)
+    efflit_close ∈ Bool = (in_efflit ∧ (_efflit_st = 0) ∧ (_libcall = 0)
         ∧ (tok0 matches OpSeqClose))
     efflit_arg_name ∈ String = match tok1
         Ident(s) ⇒ s
         _ ⇒ ""
-    efflit_arg_expr ∈ Expr
-    efflit_arg_ok ∈ Bool
-    C2AtomE(t ↦ tok3, e ↦ efflit_arg_expr, ok ↦ efflit_arg_ok)
-    efflit_arg_shape ∈ Bool = ((tok0 matches OpSeqOpen)
+    arg_expr ∈ Expr
+    arg_ok ∈ Bool
+    C2AtomE(t ↦ tok3, e ↦ arg_expr, ok ↦ arg_ok)
+    arg_shape ∈ Bool = ((tok0 matches OpSeqOpen)
         ∧ (tok1 matches Ident(_)) ∧ (tok2 matches LParen)
-        ∧ efflit_arg_ok ∧ (tok4 matches RParen)
+        ∧ arg_ok ∧ (tok4 matches RParen)
         ∧ (tok5 matches OpSeqClose) ∧ (tok6 matches RParen))
-    efflit_noargs_shape ∈ Bool = ((tok0 matches OpSeqOpen)
+    noargs_shape ∈ Bool = ((tok0 matches OpSeqOpen)
         ∧ (tok1 matches OpSeqClose) ∧ (tok2 matches RParen))
-    efflit_argbite ∈ Bool = (in_efflit ∧ (_efflit_libcall = 1) ∧ efflit_arg_shape)
-    efflit_noargs ∈ Bool = (in_efflit ∧ (_efflit_libcall = 1) ∧ efflit_noargs_shape)
-    efflit_argbite_bad ∈ Bool = (in_efflit ∧ (_efflit_libcall = 1) ∧ (¬efflit_arg_shape)
-        ∧ (¬efflit_noargs_shape))
-    efflit_bad ∈ Bool = (in_efflit ∧ (_efflit_st = 0) ∧ (_efflit_libcall = 0)
-        ∧ (¬efflit_exit_enter) ∧ (¬efflit_libcall_enter) ∧ (¬efflit_comma) ∧ (¬efflit_close)
-        ∧ (¬efflit_open) ∧ (¬efflit_nest))
-    efflit_arg_decl ∈ Int = (efflit_arg_name = "ArgInt" ? z3_argint_decl
-        : z3_argstr_decl)
-    efflit_sel_eq ∈ C2Item = (_chain_on ? C2SelEqH(_efflit_count)
+    argbite ∈ Bool = (in_efflit ∧ (_libcall = 1) ∧ arg_shape)
+    noargs ∈ Bool = (in_efflit ∧ (_libcall = 1) ∧ noargs_shape)
+    argbite_bad ∈ Bool = (in_efflit ∧ (_libcall = 1) ∧ (¬arg_shape)
+        ∧ (¬noargs_shape))
+    efflit_bad ∈ Bool = (in_efflit ∧ (_efflit_st = 0) ∧ (_libcall = 0)
+        ∧ (¬exit_enter) ∧ (¬libcall_enter) ∧ (¬efflit_comma) ∧ (¬efflit_close)
+        ∧ (¬efflit_open) ∧ (¬nest))
+    arg_decl ∈ Int = (efflit_arg_name = "ArgInt" ? argint_decl
+        : argstr_decl)
+    sel_eq ∈ C2Item = (_chain_on ? C2SelEqH(_efflit_count)
         : C2SelectEq(_efflit_count))
-    efflit_libcall_items ∈ C2Items = C2ICons(C2Process(EStr(_efflit_lib)),
+    libcall_items ∈ C2Items = C2ICons(C2Process(EStr(_lib)),
         C2ICons(C2Process(EStr(_efflit_fn)),
-        C2ICons(C2Process(efflit_arg_expr),
-        C2ICons(C2App(efflit_arg_decl, 1),
-        C2ICons(C2PushH(z3_empty_val),
-        C2ICons(C2App(z3_cell_decl, 2),
-        C2ICons(C2App(z3_libcall_decl, 3),
-        C2ICons(efflit_sel_eq, C2INil))))))))
-    efflit_libcall0_items ∈ C2Items = C2ICons(C2Process(EStr(_efflit_lib)),
+        C2ICons(C2Process(arg_expr),
+        C2ICons(C2App(arg_decl, 1),
+        C2ICons(C2PushH(empty_val),
+        C2ICons(C2App(cell_decl, 2),
+        C2ICons(C2App(libcall_decl, 3),
+        C2ICons(sel_eq, C2INil))))))))
+    libcall0_items ∈ C2Items = C2ICons(C2Process(EStr(_lib)),
         C2ICons(C2Process(EStr(_efflit_fn)),
-        C2ICons(C2PushH(z3_empty_val),
-        C2ICons(C2App(z3_libcall_decl, 3),
-        C2ICons(efflit_sel_eq, C2INil)))))
+        C2ICons(C2PushH(empty_val),
+        C2ICons(C2App(libcall_decl, 3),
+        C2ICons(sel_eq, C2INil)))))
 
     guard_done ∈ Bool = (parse_ready ∧ (_parse_kind = 6) ∧ (¬parse_bad))
 
-    conj_items1 ∈ C2Items = C2ICons(C2Op(OpConj), C2INil)
-    conj_items2 ∈ C2Items = C2ICons(C2Op(OpConj), conj_items1)
-    conj_items3 ∈ C2Items = C2ICons(C2Op(OpConj), conj_items2)
-    conj_items4 ∈ C2Items = C2ICons(C2Op(OpConj), conj_items3)
-    efflit_branch_fold ∈ C2Items = C2ICons(C2LenEqH(_efflit_count),
+    items1 ∈ C2Items = C2ICons(C2Op(OpConj), C2INil)
+    items2 ∈ C2Items = C2ICons(C2Op(OpConj), items1)
+    items3 ∈ C2Items = C2ICons(C2Op(OpConj), items2)
+    items4 ∈ C2Items = C2ICons(C2Op(OpConj), items3)
+    branch_fold ∈ C2Items = C2ICons(C2LenEqH(_efflit_count),
         (_efflit_count = 0 ? C2INil
-        : _efflit_count = 1 ? conj_items1
-        : _efflit_count = 2 ? conj_items2
-        : _efflit_count = 3 ? conj_items3
-        : conj_items4))
+        : _efflit_count = 1 ? items1
+        : _efflit_count = 2 ? items2
+        : _efflit_count = 3 ? items3
+        : items4))
     chain_lvl0 ∈ C2Items = C2ICons(C2AssertTop, C2INil)
     chain_lvl1 ∈ C2Items
     C2ChainLvl(tail ↦ chain_lvl0, out ↦ chain_lvl1)
@@ -237,38 +237,38 @@ fsm DriverClaimIdx
     C2ChainLvl(tail ↦ chain_lvl2, out ↦ chain_lvl3)
     chain_lvl4 ∈ C2Items
     C2ChainLvl(tail ↦ chain_lvl3, out ↦ chain_lvl4)
-    chain_fold_items ∈ C2Items = (_chain_n = 1 ? chain_lvl1
+    fold_items ∈ C2Items = (_chain_n = 1 ? chain_lvl1
         : _chain_n = 2 ? chain_lvl2
         : _chain_n = 3 ? chain_lvl3
         : _chain_n ≥ 4 ? chain_lvl4
         : chain_lvl0)
 
-    efflit_libcall = (is_first_tick ? 0
-        : efflit_libcall_enter ? 1
-        : (efflit_argbite ∨ efflit_noargs ∨ efflit_argbite_bad) ? 0
-        : _efflit_libcall)
-    efflit_lib = (is_first_tick ? "" : efflit_libcall_enter ? efflit_t2_str : _efflit_lib)
-    efflit_fn = (is_first_tick ? "" : efflit_libcall_enter ? efflit_t4_str : _efflit_fn)
+    libcall = (is_first_tick ? 0
+        : libcall_enter ? 1
+        : (argbite ∨ noargs ∨ argbite_bad) ? 0
+        : _libcall)
+    lib = (is_first_tick ? "" : libcall_enter ? efflit_t2_str : _lib)
+    efflit_fn = (is_first_tick ? "" : libcall_enter ? efflit_t4_str : _efflit_fn)
     efflit_count = (is_first_tick ? 0
         : enter_efflit ? 0
         : efflit_open ? 0
-        : ((parse_ready ∧ (¬parse_bad) ∧ _parse_kind = 3) ∨ efflit_argbite ∨ efflit_noargs)
+        : ((parse_ready ∧ (¬parse_bad) ∧ _parse_kind = 3) ∨ argbite ∨ noargs)
             ? _efflit_count + 1
         : _efflit_count)
     efflit_st = (is_first_tick ? 0
         : enter_efflit ? (effects_cond ? 1 : 0)
         : guard_done ? 0
-        : efflit_colon ? 0
-        : efflit_nest ? 1
+        : colon ? 0
+        : nest ? 1
         : (efflit_close ∧ _chain_on) ? 2
         : efflit_rparen ? 2
         : _efflit_st)
     chain_on = (is_first_tick ? false : enter_efflit ? effects_cond : _chain_on)
-    chain_pdepth = (is_first_tick ? 0
+    pdepth = (is_first_tick ? 0
         : enter_efflit ? (effects_cond ? 1 : 0)
-        : efflit_nest ? _chain_pdepth + 1
-        : efflit_rparen ? _chain_pdepth - 1
-        : _chain_pdepth)
+        : nest ? _pdepth + 1
+        : efflit_rparen ? _pdepth - 1
+        : _pdepth)
     chain_n = (is_first_tick ? 0
         : enter_efflit ? 0
         : guard_done ? _chain_n + 1

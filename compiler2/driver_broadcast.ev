@@ -1,18 +1,18 @@
 -- MODULE DriverBroadcast
 -- CONSUMES: the parse result (parse_ready, _parse_kind, parse_bad, _parse_rec_slot,
---           _parse_decl_name, parse_result), the pinned record type's field
+--           _parse_decl_name, result), the pinned record type's field
 --           registry (recs .n_fields / .fnames), the claim-walk dispatch
---           gate (in_claim, work_nil, _param_skip, tok_ready), and
+--           gate (in_claim, nil, _param_skip, tok_ready), and
 --           the symbol-table name index (sym_names) — all as free names
 --           (names-match; never declared here).
 -- PRODUCES: the HEADER below — the checked interface (claim-headers
 --           pilot): the carried loop state (pinning/record_slot/pinned_name/
---           pinned_body/field_cursor/emit_cursor) and the per-field re-walk
+--           pinned_body/cursor/emit_cursor) and the per-field re-walk
 --           outputs (field_name, more_fields, pin_done, pin_items)
 --           consumed by the claim-walk item dispatch. Everything else is
 --           per-call-site internal.
 -- MAINTAINS: a record-pinned membership re-walks the parsed body once
---           per FIELD of the record type — field_cursor steps 0→n_fields, emitting a
+--           per FIELD of the record type — cursor steps 0→n_fields, emitting a
 --           declare+pin (`s.<name>.<field> = <body[field]>`) each step,
 --           and pinning disarms when the last field is consumed.
 --
@@ -26,7 +26,7 @@
 -- MENTION: the header below is the whole interface (the pilot of the
 -- claim-headers plan) — driver_main declares these ten names and joins
 -- them; everything else in this body is per-call-site internal.
-fsm DriverBroadcast(pinning ∈ Bool, record_slot ∈ Int, pinned_name ∈ String, pinned_body ∈ Expr, field_cursor ∈ Int, emit_cursor ∈ Int, field_name ∈ String, more_fields ∈ Bool, pin_done ∈ Bool, pin_items ∈ C2Items)
+fsm DriverBroadcast(pinning ∈ Bool, record_slot ∈ Int, pinned_name ∈ String, pinned_body ∈ Expr, cursor ∈ Int, emit_cursor ∈ Int, field_name ∈ String, more_fields ∈ Bool, pin_done ∈ Bool, pin_items ∈ C2Items)
     -- ── G2: rb — the record-pin BROADCAST loop ──
     -- During a re-walk, an IDENT whose field-qualified dotted name
     -- resolves in the symtab reads through it, and a REGISTRY-ctor
@@ -35,31 +35,31 @@ fsm DriverBroadcast(pinning ∈ Bool, record_slot ∈ Int, pinned_name ∈ Strin
         ∧ (_parse_rec_slot ≥ 0))
     field_count ∈ Int = recs[_record_slot].n_fields
     field_names ∈ String = recs[_record_slot].fnames
-    dispatch ∈ Bool = (in_claim ∧ _pinning ∧ work_nil
+    dispatch ∈ Bool = (in_claim ∧ _pinning ∧ nil
         ∧ (_param_skip = 0) ∧ tok_ready)
-    more_fields = (dispatch ∧ (_field_cursor < field_count))
-    pin_done = (dispatch ∧ (_field_cursor ≥ field_count))
+    more_fields = (dispatch ∧ (_cursor < field_count))
+    pin_done = (dispatch ∧ (_cursor ≥ field_count))
     pinning = (is_first_tick ? false
         : recpin_done ? true
         : pin_done ? false
         : _pinning)
     record_slot = (is_first_tick ? 0 : recpin_done ? _parse_rec_slot : _record_slot)
     pinned_name = (is_first_tick ? "" : recpin_done ? _parse_decl_name : _pinned_name)
-    pinned_body = (is_first_tick ? ENoExpr : recpin_done ? parse_result : _pinned_body)
-    field_cursor = (is_first_tick ? 0
+    pinned_body = (is_first_tick ? ENoExpr : recpin_done ? result : _pinned_body)
+    cursor = (is_first_tick ? 0
         : recpin_done ? 0
-        : more_fields ? _field_cursor + 1
-        : _field_cursor)
-    emit_cursor = (is_first_tick ? 0 : more_fields ? _field_cursor : _emit_cursor)
+        : more_fields ? _cursor + 1
+        : _cursor)
+    emit_cursor = (is_first_tick ? 0 : more_fields ? _cursor : _emit_cursor)
     RtRecName(s ↦ field_names, i ↦ _emit_cursor, name ↦ field_name)
     cursor_field_name ∈ String
-    RtRecName(s ↦ field_names, i ↦ _field_cursor, name ↦ cursor_field_name)
+    RtRecName(s ↦ field_names, i ↦ _cursor, name ↦ cursor_field_name)
     dotted_name ∈ String = _pinned_name ++ "." ++ cursor_field_name
     dup ∈ Bool = (index_of(sym_names,
         "|" ++ substr(dotted_name ++ "                               ", 0, 31),
         0) ≥ 0)
-    head_item ∈ C2Item = (dup ? C2Process(EIdent(dotted_name))
+    item ∈ C2Item = (dup ? C2Process(EIdent(dotted_name))
         : C2DeclConst(dotted_name, 0))
-    pin_items = C2ICons(head_item,
+    pin_items = C2ICons(item,
         C2ICons(C2Process(_pinned_body),
         C2ICons(C2PinEq, C2ICons(C2AssertTop, C2INil))))

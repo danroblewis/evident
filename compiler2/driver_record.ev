@@ -82,172 +82,172 @@ fsm DriverRecord
     -- instantiated over the entries (gap noted at the type, 2026-06-10).
     ∀ e ∈ recs : 0 ≤ e.n_fields ≤ 6
 
-    rec_collect_on ∈ Bool
-    rec_collect_ok ∈ Bool
-    rec_param_n ∈ Int
-    rec_params ∈ Seq(RcParam)
-    #rec_params ≤ 3
+    collect_on ∈ Bool
+    collect_ok ∈ Bool
+    param_n ∈ Int
+    params ∈ Seq(RcParam)
+    #params ≤ 3
 
     rec_slot ∈ Int = _rec_count - 1
     rec_cur_name ∈ String = recs[rec_slot].name
-    rec_cur_fnames ∈ String = recs[rec_slot].fnames
-    rec_cur_ftypes ∈ String = recs[rec_slot].ftypes
-    rec_cur_nf ∈ Int = recs[rec_slot].n_fields
-    rec_cur_sort ∈ Int = recs[rec_slot].sort
+    cur_fnames ∈ String = recs[rec_slot].fnames
+    cur_ftypes ∈ String = recs[rec_slot].ftypes
+    cur_nf ∈ Int = recs[rec_slot].n_fields
+    cur_sort ∈ Int = recs[rec_slot].sort
 
-    rec_start ∈ Bool = (claimindex_add ∧ (tok0 matches KwType) ∧ (_rec_count < 3))
-    rec_collecting ∈ Bool = (in_skip ∧ (¬skip_stop) ∧ _rec_collect_on)
+    start ∈ Bool = (claimindex_add ∧ (tok0 matches KwType) ∧ (_rec_count < 3))
+    rec_collecting ∈ Bool = (in_skip ∧ (¬stop) ∧ _collect_on)
     field_name_tok ∈ String = match tok0
         Ident(s) ⇒ s
         _ ⇒ ""
-    field_ty_tok ∈ String = match tok2
+    ty_tok ∈ String = match tok2
         Ident(s) ⇒ s
         _ ⇒ ""
-    field_ty_arg ∈ String = match tok4
+    ty_arg ∈ String = match tok4
         Ident(s) ⇒ s
         _ ⇒ ""
-    field_pending ∈ Bool = (rec_collecting ∧ (tok0 matches Ident(_))
+    pending ∈ Bool = (rec_collecting ∧ (tok0 matches Ident(_))
         ∧ (tok1 matches Comma) ∧ (tok2 matches Ident(_)))
     field_take ∈ Bool = (rec_collecting ∧ (tok0 matches Ident(_))
         ∧ (tok1 matches OpIn) ∧ (tok2 matches Ident(_)))
-    field_is_seq ∈ Bool = (field_take ∧ (field_ty_tok = "Seq")
-        ∧ (tok3 matches LParen) ∧ (field_ty_arg = "Int")
+    is_seq ∈ Bool = (field_take ∧ (ty_tok = "Seq")
+        ∧ (tok3 matches LParen) ∧ (ty_arg = "Int")
         ∧ (tok5 matches RParen))
-    field_is_prim ∈ Bool = (field_ty_tok = "Int" ∨ field_ty_tok = "Nat"
-        ∨ field_ty_tok = "Bool" ∨ field_ty_tok = "String" ∨ field_ty_tok = "Real")
+    is_prim ∈ Bool = (ty_tok = "Int" ∨ ty_tok = "Nat"
+        ∨ ty_tok = "Bool" ∨ ty_tok = "String" ∨ ty_tok = "Real")
     field_rec_slot ∈ Int
-    RtIdxOf(nm ↦ field_ty_tok, idx ↦ field_rec_slot)
-    field_add_n ∈ Int = (_rec_param_n + 1) + (field_is_seq ? 1 : 0)
-    rec_nf_prev ∈ Int = _recs[rec_slot].n_fields
-    field_bad ∈ Bool = ((field_take ∧ (((¬field_is_prim) ∧ (¬field_is_seq) ∧ field_rec_slot < 0)
-        ∨ (field_is_seq ∧ _rec_param_n > 0)
-        ∨ (rec_nf_prev + field_add_n > 6)))
-        ∨ (field_pending ∧ _rec_param_n ≥ 3))
+    RtIdxOf(nm ↦ ty_tok, idx ↦ field_rec_slot)
+    add_n ∈ Int = (_param_n + 1) + (is_seq ? 1 : 0)
+    nf_prev ∈ Int = _recs[rec_slot].n_fields
+    field_bad ∈ Bool = ((field_take ∧ (((¬is_prim) ∧ (¬is_seq) ∧ field_rec_slot < 0)
+        ∨ (is_seq ∧ _param_n > 0)
+        ∨ (nf_prev + add_n > 6)))
+        ∨ (pending ∧ _param_n ≥ 3))
     rec_pad31 ∈ String = "                               "
-    field_ty_norm ∈ String = (field_is_seq ? "Seq(Int)" : field_ty_tok)
-    field_row_name ∈ String = "|" ++ substr(field_name_tok ++ rec_pad31, 0, 31)
-    field_row_p0 ∈ String = "|" ++ substr(_rec_params[0].pname ++ rec_pad31, 0, 31)
-    field_row_p1 ∈ String = "|" ++ substr(_rec_params[1].pname ++ rec_pad31, 0, 31)
-    field_row_p2 ∈ String = "|" ++ substr(_rec_params[2].pname ++ rec_pad31, 0, 31)
-    field_row_ty ∈ String = "|" ++ substr(field_ty_norm ++ rec_pad31, 0, 31)
-    field_row_len ∈ String = "|" ++ substr((field_name_tok ++ "__len") ++ rec_pad31, 0, 31)
-    field_row_int ∈ String = "|" ++ substr("Int" ++ rec_pad31, 0, 31)
-    field_rows_names ∈ String = ((_rec_param_n = 0 ? field_row_name
-        : _rec_param_n = 1 ? field_row_p0 ++ field_row_name
-        : _rec_param_n = 2 ? field_row_p0 ++ field_row_p1 ++ field_row_name
-        : field_row_p0 ++ field_row_p1 ++ field_row_p2 ++ field_row_name)
-        ++ (field_is_seq ? field_row_len : ""))
-    field_rows_types ∈ String = ((_rec_param_n = 0 ? field_row_ty
-        : _rec_param_n = 1 ? field_row_ty ++ field_row_ty
-        : _rec_param_n = 2 ? field_row_ty ++ field_row_ty ++ field_row_ty
-        : field_row_ty ++ field_row_ty ++ field_row_ty ++ field_row_ty)
-        ++ (field_is_seq ? field_row_int : ""))
+    ty_norm ∈ String = (is_seq ? "Seq(Int)" : ty_tok)
+    row_name ∈ String = "|" ++ substr(field_name_tok ++ rec_pad31, 0, 31)
+    row_p0 ∈ String = "|" ++ substr(_params[0].pname ++ rec_pad31, 0, 31)
+    row_p1 ∈ String = "|" ++ substr(_params[1].pname ++ rec_pad31, 0, 31)
+    row_p2 ∈ String = "|" ++ substr(_params[2].pname ++ rec_pad31, 0, 31)
+    row_ty ∈ String = "|" ++ substr(ty_norm ++ rec_pad31, 0, 31)
+    row_len ∈ String = "|" ++ substr((field_name_tok ++ "__len") ++ rec_pad31, 0, 31)
+    row_int ∈ String = "|" ++ substr("Int" ++ rec_pad31, 0, 31)
+    rows_names ∈ String = ((_param_n = 0 ? row_name
+        : _param_n = 1 ? row_p0 ++ row_name
+        : _param_n = 2 ? row_p0 ++ row_p1 ++ row_name
+        : row_p0 ++ row_p1 ++ row_p2 ++ row_name)
+        ++ (is_seq ? row_len : ""))
+    rows_types ∈ String = ((_param_n = 0 ? row_ty
+        : _param_n = 1 ? row_ty ++ row_ty
+        : _param_n = 2 ? row_ty ++ row_ty ++ row_ty
+        : row_ty ++ row_ty ++ row_ty ++ row_ty)
+        ++ (is_seq ? row_int : ""))
     field_ok ∈ Bool = (field_take ∧ (¬field_bad))
 
-    rec_collect_on = (is_first_tick ? false
-        : rec_start ? true
-        : skip_stop ? false
-        : _rec_collect_on)
-    rec_collect_ok = (is_first_tick ? false
-        : rec_start ? true
+    collect_on = (is_first_tick ? false
+        : start ? true
+        : stop ? false
+        : _collect_on)
+    collect_ok = (is_first_tick ? false
+        : start ? true
         : field_bad ? false
-        : _rec_collect_ok)
-    rec_param_n = (is_first_tick ? 0
-        : rec_start ? 0
+        : _collect_ok)
+    param_n = (is_first_tick ? 0
+        : start ? 0
         : field_take ? 0
-        : (field_pending ∧ _rec_param_n < 3) ? _rec_param_n + 1
-        : _rec_param_n)
-    ∀ k ∈ {0..2} : rec_params[k].pname = (is_first_tick ? "" : (field_pending ∧ _rec_param_n = k) ? field_name_tok : _rec_params[k].pname)
+        : (pending ∧ _param_n < 3) ? _param_n + 1
+        : _param_n)
+    ∀ k ∈ {0..2} : params[k].pname = (is_first_tick ? "" : (pending ∧ _param_n = k) ? field_name_tok : _params[k].pname)
 
-    rec_count = (is_first_tick ? 0 : rec_start ? _rec_count + 1 : _rec_count)
-    ∀ k ∈ {0..2} : recs[k].name = (is_first_tick ? "" : (rec_start ∧ _rec_count = k) ? decl_name : _recs[k].name)
-    ∀ k ∈ {0..2} : recs[k].fnames = (is_first_tick ? "" : (field_ok ∧ rec_slot = k) ? _recs[k].fnames ++ field_rows_names : _recs[k].fnames)
-    ∀ k ∈ {0..2} : recs[k].ftypes = (is_first_tick ? "" : (field_ok ∧ rec_slot = k) ? _recs[k].ftypes ++ field_rows_types : _recs[k].ftypes)
-    ∀ k ∈ {0..2} : recs[k].n_fields = (is_first_tick ? 0 : (field_ok ∧ rec_slot = k) ? _recs[k].n_fields + field_add_n : _recs[k].n_fields)
+    rec_count = (is_first_tick ? 0 : start ? _rec_count + 1 : _rec_count)
+    ∀ k ∈ {0..2} : recs[k].name = (is_first_tick ? "" : (start ∧ _rec_count = k) ? decl_name : _recs[k].name)
+    ∀ k ∈ {0..2} : recs[k].fnames = (is_first_tick ? "" : (field_ok ∧ rec_slot = k) ? _recs[k].fnames ++ rows_names : _recs[k].fnames)
+    ∀ k ∈ {0..2} : recs[k].ftypes = (is_first_tick ? "" : (field_ok ∧ rec_slot = k) ? _recs[k].ftypes ++ rows_types : _recs[k].ftypes)
+    ∀ k ∈ {0..2} : recs[k].n_fields = (is_first_tick ? 0 : (field_ok ∧ rec_slot = k) ? _recs[k].n_fields + add_n : _recs[k].n_fields)
 
     recdecl_st ∈ Int
-    recdecl_field_i ∈ Int
-    recdecl_h_name ∈ Int
-    recdecl_h_fields ∈ Seq(Int)
-    #recdecl_h_fields ≤ 6
+    field_i ∈ Int
+    h_name ∈ Int
+    h_fields ∈ Seq(Int)
+    #h_fields ≤ 6
 
-    recdecl_go ∈ Bool = (skip_stop ∧ _rec_collect_on ∧ _rec_collect_ok ∧ (rec_slot ≥ 0)
-        ∧ (rec_cur_nf > 0))
+    recdecl_go ∈ Bool = (stop ∧ _collect_on ∧ _collect_ok ∧ (rec_slot ≥ 0)
+        ∧ (cur_nf > 0))
     recdecl_prev ∈ Bool = (_parse_mode = 13)
-    recdecl_st_now ∈ Int = (recdecl_go ? 0
+    st_now ∈ Int = (recdecl_go ? 0
         : (¬recdecl_prev) ? 8
         : _recdecl_st = 0 ? 1
-        : _recdecl_st = 1 ? ((_recdecl_field_i + 1 < rec_cur_nf) ? 1 : 2)
+        : _recdecl_st = 1 ? ((_field_i + 1 < cur_nf) ? 1 : 2)
         : _recdecl_st = 2 ? 3
         : _recdecl_st = 3 ? 4
         : _recdecl_st = 4 ? 5
-        : _recdecl_st = 5 ? ((_recdecl_field_i + 1 < rec_cur_nf) ? 5 : 6)
+        : _recdecl_st = 5 ? ((_field_i + 1 < cur_nf) ? 5 : 6)
         : _recdecl_st = 6 ? 7
         : 8)
-    recdecl_fi_now ∈ Int = (recdecl_go ? 0
-        : (_recdecl_st = 1 ∧ recdecl_st_now = 1) ? _recdecl_field_i + 1
+    fi_now ∈ Int = (recdecl_go ? 0
+        : (_recdecl_st = 1 ∧ st_now = 1) ? _field_i + 1
         : _recdecl_st = 0 ? 0
         : _recdecl_st = 4 ? 0
-        : (_recdecl_st = 5 ∧ recdecl_st_now = 5) ? _recdecl_field_i + 1
+        : (_recdecl_st = 5 ∧ st_now = 5) ? _field_i + 1
         : 0)
-    recdecl_fin ∈ Bool = (recdecl_prev ∧ recdecl_st_now = 8)
-    recdecl_active ∈ Bool = (recdecl_go ∨ (recdecl_prev ∧ recdecl_st_now ≤ 7))
-    recdecl_st = (is_first_tick ? 8 : recdecl_go ? 0 : recdecl_prev ? recdecl_st_now : _recdecl_st)
-    recdecl_field_i = (is_first_tick ? 0 : (recdecl_go ∨ recdecl_prev) ? recdecl_fi_now : _recdecl_field_i)
+    recdecl_fin ∈ Bool = (recdecl_prev ∧ st_now = 8)
+    recdecl_active ∈ Bool = (recdecl_go ∨ (recdecl_prev ∧ st_now ≤ 7))
+    recdecl_st = (is_first_tick ? 8 : recdecl_go ? 0 : recdecl_prev ? st_now : _recdecl_st)
+    field_i = (is_first_tick ? 0 : (recdecl_go ∨ recdecl_prev) ? fi_now : _field_i)
 
     recdecl_cap ∈ Bool = recdecl_prev
-    recdecl_h_name = (is_first_tick ? 0
-        : (recdecl_cap ∧ _recdecl_st = 0) ? cap_int : _recdecl_h_name)
-    ∀ k ∈ {0..5} : recdecl_h_fields[k] = (is_first_tick ? 0 : (recdecl_cap ∧ _recdecl_st = 1 ∧ _recdecl_field_i = k) ? cap_int : _recdecl_h_fields[k])
-    recdecl_sort_cap ∈ Bool = (recdecl_cap ∧ _recdecl_st = 3)
-    recdecl_ctor_cap ∈ Bool = (recdecl_cap ∧ _recdecl_st = 4)
-    recdecl_acc_cap ∈ Bool = (recdecl_cap ∧ _recdecl_st = 5)
-    recdecl_asort_cap ∈ Bool = (recdecl_cap ∧ _recdecl_st = 6)
-    recdecl_ssort_cap ∈ Bool = (recdecl_cap ∧ _recdecl_st = 7)
-    ∀ k ∈ {0..2} : recs[k].sort = (is_first_tick ? 0 : (recdecl_sort_cap ∧ rec_slot = k) ? cap_int : _recs[k].sort)
-    ∀ k ∈ {0..2} : recs[k].ctor = (is_first_tick ? 0 : (recdecl_ctor_cap ∧ rec_slot = k) ? cap_int : _recs[k].ctor)
-    ∀ k ∈ {0..2} : recs[k].asort = (is_first_tick ? 0 : (recdecl_asort_cap ∧ rec_slot = k) ? cap_int : _recs[k].asort)
-    ∀ k ∈ {0..2} : recs[k].ssort = (is_first_tick ? 0 : (recdecl_ssort_cap ∧ rec_slot = k) ? cap_int : _recs[k].ssort)
-    ∀ k ∈ {0..2} : recs[k].accs[0] = (is_first_tick ? 0 : (recdecl_acc_cap ∧ rec_slot = k ∧ _recdecl_field_i = 0) ? cap_int : _recs[k].accs[0])
-    ∀ k ∈ {0..2} : recs[k].accs[1] = (is_first_tick ? 0 : (recdecl_acc_cap ∧ rec_slot = k ∧ _recdecl_field_i = 1) ? cap_int : _recs[k].accs[1])
-    ∀ k ∈ {0..2} : recs[k].accs[2] = (is_first_tick ? 0 : (recdecl_acc_cap ∧ rec_slot = k ∧ _recdecl_field_i = 2) ? cap_int : _recs[k].accs[2])
-    ∀ k ∈ {0..2} : recs[k].accs[3] = (is_first_tick ? 0 : (recdecl_acc_cap ∧ rec_slot = k ∧ _recdecl_field_i = 3) ? cap_int : _recs[k].accs[3])
-    ∀ k ∈ {0..2} : recs[k].accs[4] = (is_first_tick ? 0 : (recdecl_acc_cap ∧ rec_slot = k ∧ _recdecl_field_i = 4) ? cap_int : _recs[k].accs[4])
-    ∀ k ∈ {0..2} : recs[k].accs[5] = (is_first_tick ? 0 : (recdecl_acc_cap ∧ rec_slot = k ∧ _recdecl_field_i = 5) ? cap_int : _recs[k].accs[5])
+    h_name = (is_first_tick ? 0
+        : (recdecl_cap ∧ _recdecl_st = 0) ? cap_int : _h_name)
+    ∀ k ∈ {0..5} : h_fields[k] = (is_first_tick ? 0 : (recdecl_cap ∧ _recdecl_st = 1 ∧ _field_i = k) ? cap_int : _h_fields[k])
+    sort_cap ∈ Bool = (recdecl_cap ∧ _recdecl_st = 3)
+    ctor_cap ∈ Bool = (recdecl_cap ∧ _recdecl_st = 4)
+    acc_cap ∈ Bool = (recdecl_cap ∧ _recdecl_st = 5)
+    asort_cap ∈ Bool = (recdecl_cap ∧ _recdecl_st = 6)
+    ssort_cap ∈ Bool = (recdecl_cap ∧ _recdecl_st = 7)
+    ∀ k ∈ {0..2} : recs[k].sort = (is_first_tick ? 0 : (sort_cap ∧ rec_slot = k) ? cap_int : _recs[k].sort)
+    ∀ k ∈ {0..2} : recs[k].ctor = (is_first_tick ? 0 : (ctor_cap ∧ rec_slot = k) ? cap_int : _recs[k].ctor)
+    ∀ k ∈ {0..2} : recs[k].asort = (is_first_tick ? 0 : (asort_cap ∧ rec_slot = k) ? cap_int : _recs[k].asort)
+    ∀ k ∈ {0..2} : recs[k].ssort = (is_first_tick ? 0 : (ssort_cap ∧ rec_slot = k) ? cap_int : _recs[k].ssort)
+    ∀ k ∈ {0..2} : recs[k].accs[0] = (is_first_tick ? 0 : (acc_cap ∧ rec_slot = k ∧ _field_i = 0) ? cap_int : _recs[k].accs[0])
+    ∀ k ∈ {0..2} : recs[k].accs[1] = (is_first_tick ? 0 : (acc_cap ∧ rec_slot = k ∧ _field_i = 1) ? cap_int : _recs[k].accs[1])
+    ∀ k ∈ {0..2} : recs[k].accs[2] = (is_first_tick ? 0 : (acc_cap ∧ rec_slot = k ∧ _field_i = 2) ? cap_int : _recs[k].accs[2])
+    ∀ k ∈ {0..2} : recs[k].accs[3] = (is_first_tick ? 0 : (acc_cap ∧ rec_slot = k ∧ _field_i = 3) ? cap_int : _recs[k].accs[3])
+    ∀ k ∈ {0..2} : recs[k].accs[4] = (is_first_tick ? 0 : (acc_cap ∧ rec_slot = k ∧ _field_i = 4) ? cap_int : _recs[k].accs[4])
+    ∀ k ∈ {0..2} : recs[k].accs[5] = (is_first_tick ? 0 : (acc_cap ∧ rec_slot = k ∧ _field_i = 5) ? cap_int : _recs[k].accs[5])
 
     recdecl_fnames_p ∈ Int = z3_arena + 288
     recdecl_fsorts_p ∈ Int = z3_arena + 336
-    recdecl_ctor_p ∈ Int = z3_arena + 384
-    recdecl_accs_p ∈ Int = z3_arena + 392
+    ctor_p ∈ Int = z3_arena + 384
+    accs_p ∈ Int = z3_arena + 392
 
-    recdecl_eff_st ∈ Int = (recdecl_go ? 0 : recdecl_st_now)
-    recdecl_eff_fi ∈ Int = (recdecl_go ? 0 : recdecl_fi_now)
+    eff_st ∈ Int = (recdecl_go ? 0 : st_now)
+    eff_fi ∈ Int = (recdecl_go ? 0 : fi_now)
     recdecl_fname ∈ String
-    RtRecName(s ↦ rec_cur_fnames, i ↦ recdecl_eff_fi, name ↦ recdecl_fname)
-    recdecl_h_fields_now ∈ Seq(Int)
-    #recdecl_h_fields_now ≤ 6
-    ∀ k ∈ {0..5} : recdecl_h_fields_now[k] = ((recdecl_cap ∧ _recdecl_st = 1 ∧ _recdecl_field_i = k) ? cap_int : _recdecl_h_fields[k])
+    RtRecName(s ↦ cur_fnames, i ↦ eff_fi, name ↦ recdecl_fname)
+    h_fields_now ∈ Seq(Int)
+    #h_fields_now ≤ 6
+    ∀ k ∈ {0..5} : h_fields_now[k] = ((recdecl_cap ∧ _recdecl_st = 1 ∧ _field_i = k) ? cap_int : _h_fields[k])
     recdecl_fields ∈ Seq(RdField)
     #recdecl_fields ≤ 6
-    ∀ k ∈ {0..5} : RtRecName(s ↦ rec_cur_ftypes, i ↦ k, name ↦ recdecl_fields[k].ty)
-    ∀ k ∈ {0..5} : RtSortOf(ty ↦ recdecl_fields[k].ty, int_h ↦ z3sorts.isort, bool_h ↦ z3sorts.bsort, str_h ↦ z3sorts.ssort, real_h ↦ z3sorts.rsort, iarr_h ↦ z3_int_array_sort, sort ↦ recdecl_fields[k].sort)
+    ∀ k ∈ {0..5} : RtRecName(s ↦ cur_ftypes, i ↦ k, name ↦ recdecl_fields[k].ty)
+    ∀ k ∈ {0..5} : RtSortOf(ty ↦ recdecl_fields[k].ty, int_h ↦ z3sorts.isort, bool_h ↦ z3sorts.bsort, str_h ↦ z3sorts.ssort, real_h ↦ z3sorts.rsort, iarr_h ↦ int_array_sort, sort ↦ recdecl_fields[k].sort)
 
     recdecl_namesym ∈ Effect
     BuildZ3MkStringSymbol(ctx_h ↦ z3ctx.ctx, name ↦ rec_cur_name, eff ↦ recdecl_namesym)
-    recdecl_fieldsym ∈ Effect
-    BuildZ3MkStringSymbol(ctx_h ↦ z3ctx.ctx, name ↦ recdecl_fname, eff ↦ recdecl_fieldsym)
+    fieldsym ∈ Effect
+    BuildZ3MkStringSymbol(ctx_h ↦ z3ctx.ctx, name ↦ recdecl_fname, eff ↦ fieldsym)
     recdecl_write_fn0 ∈ Effect
-    BuildMemWriteLong(addr ↦ recdecl_fnames_p, value ↦ recdecl_h_fields_now[0], eff ↦ recdecl_write_fn0)
+    BuildMemWriteLong(addr ↦ recdecl_fnames_p, value ↦ h_fields_now[0], eff ↦ recdecl_write_fn0)
     recdecl_write_fn1 ∈ Effect
-    BuildMemWriteLong(addr ↦ recdecl_fnames_p + 8, value ↦ recdecl_h_fields_now[1], eff ↦ recdecl_write_fn1)
+    BuildMemWriteLong(addr ↦ recdecl_fnames_p + 8, value ↦ h_fields_now[1], eff ↦ recdecl_write_fn1)
     recdecl_write_fn2 ∈ Effect
-    BuildMemWriteLong(addr ↦ recdecl_fnames_p + 16, value ↦ recdecl_h_fields_now[2], eff ↦ recdecl_write_fn2)
+    BuildMemWriteLong(addr ↦ recdecl_fnames_p + 16, value ↦ h_fields_now[2], eff ↦ recdecl_write_fn2)
     recdecl_write_fn3 ∈ Effect
-    BuildMemWriteLong(addr ↦ recdecl_fnames_p + 24, value ↦ recdecl_h_fields_now[3], eff ↦ recdecl_write_fn3)
+    BuildMemWriteLong(addr ↦ recdecl_fnames_p + 24, value ↦ h_fields_now[3], eff ↦ recdecl_write_fn3)
     recdecl_write_fn4 ∈ Effect
-    BuildMemWriteLong(addr ↦ recdecl_fnames_p + 32, value ↦ recdecl_h_fields_now[4], eff ↦ recdecl_write_fn4)
+    BuildMemWriteLong(addr ↦ recdecl_fnames_p + 32, value ↦ h_fields_now[4], eff ↦ recdecl_write_fn4)
     recdecl_write_fn5 ∈ Effect
-    BuildMemWriteLong(addr ↦ recdecl_fnames_p + 40, value ↦ recdecl_h_fields_now[5], eff ↦ recdecl_write_fn5)
+    BuildMemWriteLong(addr ↦ recdecl_fnames_p + 40, value ↦ h_fields_now[5], eff ↦ recdecl_write_fn5)
     recdecl_write_fs0 ∈ Effect
     BuildMemWriteLong(addr ↦ recdecl_fsorts_p, value ↦ recdecl_fields[0].sort, eff ↦ recdecl_write_fs0)
     recdecl_write_fs1 ∈ Effect
@@ -260,23 +260,23 @@ fsm DriverRecord
     BuildMemWriteLong(addr ↦ recdecl_fsorts_p + 32, value ↦ recdecl_fields[4].sort, eff ↦ recdecl_write_fs4)
     recdecl_write_fs5 ∈ Effect
     BuildMemWriteLong(addr ↦ recdecl_fsorts_p + 40, value ↦ recdecl_fields[5].sort, eff ↦ recdecl_write_fs5)
-    recdecl_mk_tuple ∈ Effect = LibCall("libz3", "Z3_mk_tuple_sort",
-        ⟨ArgInt(z3ctx.ctx), ArgInt(recdecl_h_name), ArgInt(rec_cur_nf), ArgInt(recdecl_fnames_p),
-         ArgInt(recdecl_fsorts_p), ArgInt(recdecl_ctor_p), ArgInt(recdecl_accs_p)⟩)
+    mk_tuple ∈ Effect = LibCall("libz3", "Z3_mk_tuple_sort",
+        ⟨ArgInt(z3ctx.ctx), ArgInt(h_name), ArgInt(cur_nf), ArgInt(recdecl_fnames_p),
+         ArgInt(recdecl_fsorts_p), ArgInt(ctor_p), ArgInt(accs_p)⟩)
     recdecl_read_ctor ∈ Effect
-    BuildMemReadLong(addr ↦ recdecl_ctor_p, eff ↦ recdecl_read_ctor)
-    recdecl_read_acc ∈ Effect
-    BuildMemReadLong(addr ↦ recdecl_accs_p + (8 * recdecl_eff_fi), eff ↦ recdecl_read_acc)
-    recdecl_mk_asort ∈ Effect
+    BuildMemReadLong(addr ↦ ctor_p, eff ↦ recdecl_read_ctor)
+    read_acc ∈ Effect
+    BuildMemReadLong(addr ↦ accs_p + (8 * eff_fi), eff ↦ read_acc)
+    mk_asort ∈ Effect
     BuildZ3MkArraySort(ctx_h ↦ z3ctx.ctx, idx_sort_h ↦ z3sorts.isort,
-        val_sort_h ↦ rec_cur_sort, eff ↦ recdecl_mk_asort)
-    recdecl_mk_ssort ∈ Effect = LibCall("libz3", "Z3_mk_set_sort",
-        ⟨ArgInt(z3ctx.ctx), ArgInt(rec_cur_sort)⟩)
-    recdecl_step_eff ∈ Effect = (recdecl_eff_st = 0 ? recdecl_namesym
-        : recdecl_eff_st = 1 ? recdecl_fieldsym
-        : recdecl_eff_st = 3 ? recdecl_mk_tuple
-        : recdecl_eff_st = 4 ? recdecl_read_ctor
-        : recdecl_eff_st = 5 ? recdecl_read_acc
-        : recdecl_eff_st = 6 ? recdecl_mk_asort
-        : recdecl_eff_st = 7 ? recdecl_mk_ssort
+        val_sort_h ↦ cur_sort, eff ↦ mk_asort)
+    mk_ssort ∈ Effect = LibCall("libz3", "Z3_mk_set_sort",
+        ⟨ArgInt(z3ctx.ctx), ArgInt(cur_sort)⟩)
+    recdecl_step_eff ∈ Effect = (eff_st = 0 ? recdecl_namesym
+        : eff_st = 1 ? fieldsym
+        : eff_st = 3 ? mk_tuple
+        : eff_st = 4 ? recdecl_read_ctor
+        : eff_st = 5 ? read_acc
+        : eff_st = 6 ? mk_asort
+        : eff_st = 7 ? mk_ssort
         : LibCall("libc", "getpid", ⟨⟩))

@@ -108,14 +108,14 @@ claim VariantFieldCount(v ∈ EnumVariantDecl, n ∈ Int)
     vcount_rest5 ∈ EVFieldList = match vcount_rest4
         EVFCons(_, r) ⇒ r
         EVFNil ⇒ EVFNil
-    vcount_has0 ∈ Bool = (vcount_fields matches EVFCons(_, _))
-    vcount_has1 ∈ Bool = (vcount_rest1 matches EVFCons(_, _))
-    vcount_has2 ∈ Bool = (vcount_rest2 matches EVFCons(_, _))
-    vcount_has3 ∈ Bool = (vcount_rest3 matches EVFCons(_, _))
-    vcount_has4 ∈ Bool = (vcount_rest4 matches EVFCons(_, _))
-    vcount_has5 ∈ Bool = (vcount_rest5 matches EVFCons(_, _))
-    n = (¬vcount_has0 ? 0 : ¬vcount_has1 ? 1 : ¬vcount_has2 ? 2 : ¬vcount_has3 ? 3
-        : ¬vcount_has4 ? 4 : ¬vcount_has5 ? 5 : 6)
+    has0 ∈ Bool = (vcount_fields matches EVFCons(_, _))
+    has1 ∈ Bool = (vcount_rest1 matches EVFCons(_, _))
+    has2 ∈ Bool = (vcount_rest2 matches EVFCons(_, _))
+    has3 ∈ Bool = (vcount_rest3 matches EVFCons(_, _))
+    has4 ∈ Bool = (vcount_rest4 matches EVFCons(_, _))
+    has5 ∈ Bool = (vcount_rest5 matches EVFCons(_, _))
+    n = (¬has0 ? 0 : ¬has1 ? 1 : ¬has2 ? 2 : ¬has3 ? 3
+        : ¬has4 ? 4 : ¬has5 ? 5 : 6)
 
 claim VariantFieldType(v ∈ EnumVariantDecl, idx ∈ Int, ty ∈ String)
     vft_fs ∈ EVFieldList = match v
@@ -133,12 +133,12 @@ claim VariantFieldType(v ∈ EnumVariantDecl, idx ∈ Int, ty ∈ String)
     vft_r4 ∈ EVFieldList = match vft_r3
         EVFCons(_, r) ⇒ r
         EVFNil ⇒ EVFNil
-    vft_pick ∈ EVFieldList = (idx = 0 ? vft_fs : idx = 1 ? vft_r1
-        : idx = 2 ? vft_r2 : idx = 3 ? vft_r3 : idx = 4 ? vft_r4 : vft_r5_pick)
-    vft_r5_pick ∈ EVFieldList = match vft_r4
+    pick ∈ EVFieldList = (idx = 0 ? vft_fs : idx = 1 ? vft_r1
+        : idx = 2 ? vft_r2 : idx = 3 ? vft_r3 : idx = 4 ? vft_r4 : r5_pick)
+    r5_pick ∈ EVFieldList = match vft_r4
         EVFCons(_, r) ⇒ r
         EVFNil ⇒ EVFNil
-    vft_f ∈ EVField = match vft_pick
+    vft_f ∈ EVField = match pick
         EVFCons(h, _) ⇒ h
         EVFNil ⇒ EVFNone
     ty = match vft_f
@@ -216,10 +216,10 @@ claim VariantMkConstructorStep(
         eff ∈ Effect)
     vmc_n ∈ Int
     VariantFieldCount(v ↦ v, n ↦ vmc_n)
-    vmc_nullary ∈ Bool = (vmc_n = 0)
-    vmc_fn ∈ Int = (vmc_nullary ? 0 : fnames_p)
-    vmc_fs ∈ Int = (vmc_nullary ? 0 : fsorts_p)
-    vmc_sr ∈ Int = (vmc_nullary ? 0 : srefs_p)
+    nullary ∈ Bool = (vmc_n = 0)
+    vmc_fn ∈ Int = (nullary ? 0 : fnames_p)
+    vmc_fs ∈ Int = (nullary ? 0 : fsorts_p)
+    vmc_sr ∈ Int = (nullary ? 0 : srefs_p)
     BuildZ3MkConstructor(ctx_h ↦ ctx_h, name_sym_h ↦ name_sym_h,
         recognizer_sym_h ↦ recog_sym_h, n_fields ↦ vmc_n,
         field_names_arr_p ↦ vmc_fn, field_sorts_arr_p ↦ vmc_fs,
@@ -278,19 +278,19 @@ claim translate2_ctor_probe
     EffectCtorArity(name ↦ "LibCall", n ↦ p_arity, known ↦ p_known)
     p_slot ∈ Int
     p_ref ∈ Int
-    p_self ∈ Bool
+    self ∈ Bool
     FieldSortSlot(enum_name ↦ "LL", ty ↦ "LL",
         int_sort_h ↦ 77, bool_sort_h ↦ 0, string_sort_h ↦ 0,
         self_sort_idx ↦ 0,
-        sort_slot ↦ p_slot, ref_slot ↦ p_ref, is_self ↦ p_self)
+        sort_slot ↦ p_slot, ref_slot ↦ p_ref, is_self ↦ self)
     p_packed ∈ Int
     SortRefsPack2(ref_lo ↦ 1, ref_hi ↦ 2, packed ↦ p_packed)
     p_ed ∈ EnumDeclAst
     EffectEnumDecl(decl ↦ p_ed)
-    p_ed_name ∈ String = match p_ed
+    ed_name ∈ String = match p_ed
         EnumD(n, _) ⇒ n
         ENoEnum ⇒ ""
     p_ok ∈ Bool = (p_n = 1 ∧ p_ty = "Int" ∧ p_arity = 3 ∧ p_known
-        ∧ p_self ∧ p_slot = 0 ∧ p_packed = 8589934593
-        ∧ p_ed_name = "Effect")
+        ∧ self ∧ p_slot = 0 ∧ p_packed = 8589934593
+        ∧ ed_name = "Effect")
     effects ∈ Seq(Effect) = ⟨Exit(p_ok ? 0 : 1)⟩

@@ -1,5 +1,5 @@
 -- DriverPratt isolation — entry-kind latch.
--- parse_mode-3 Pratt entry with enter_pratt held and pratt_enter_kind = 5: the
+-- parse_mode-3 Pratt entry with enter_pratt held and enter_kind = 5: the
 -- module must latch parse_kind = 5 (which consumer the result returns to).
 -- Full shift/reduce needs a fed token window; this is entry wiring only.
 --
@@ -14,26 +14,26 @@ import "compiler2/driver_expr.ev"
 import "compiler2/driver_pratt.ev"
 
 fsm main
-    in_parse ∈ Bool
-    in_parse = (is_first_tick ? true : _in_parse)
+    parse ∈ Bool
+    parse = (is_first_tick ? true : _parse)
     parse_mode ∈ Int
     parse_mode = (is_first_tick ? 3 : _parse_mode)
     tok_ready ∈ Bool
     tok_ready = (is_first_tick ? true : _tok_ready)
     enter_pratt ∈ Bool
     enter_pratt = (is_first_tick ? true : _enter_pratt)
-    pratt_enter_kind ∈ Int
-    pratt_enter_kind = (is_first_tick ? 5 : _pratt_enter_kind)
+    enter_kind ∈ Int
+    enter_kind = (is_first_tick ? 5 : _enter_kind)
     line_dname ∈ String
     line_dname = (is_first_tick ? "" : _line_dname)
-    line_is_mem ∈ Bool
-    line_is_mem = (is_first_tick ? false : _line_is_mem)
+    is_mem ∈ Bool
+    is_mem = (is_first_tick ? false : _is_mem)
     line_is_nat ∈ Bool
     line_is_nat = (is_first_tick ? false : _line_is_nat)
     no_decl ∈ Bool
     no_decl = (is_first_tick ? false : _no_decl)
-    line_pinned ∈ Bool
-    line_pinned = (is_first_tick ? false : _line_pinned)
+    pinned ∈ Bool
+    pinned = (is_first_tick ? false : _pinned)
     resolved_name ∈ String
     resolved_name = (is_first_tick ? "" : _resolved_name)
     line_sort ∈ Int

@@ -96,8 +96,8 @@ type RecField(name ∈ String, ty ∈ String, kidx ∈ Int)
     0 - 1 ≤ kidx ≤ 2
 
 -- One row of the user-enum VALUE table: a nullary variant's name and
--- the Z3 handle of its constant. Used as `variant_values ∈ Seq(EnumVariantVal)` with
--- `#variant_values ≤ 160` — the bounded-Seq lowering (scripts/passes/lower-bounded-seq.sh)
+-- the Z3 handle of its constant. Used as `values ∈ Seq(EnumVariantVal)` with
+-- `#values ≤ 160` — the bounded-Seq lowering (scripts/passes/lower-bounded-seq.sh)
 -- flattens it to scalars pre-oracle, so the oracle never sees the Seq.
 type EnumVariantVal(name ∈ String, value ∈ Int)
 
@@ -105,7 +105,7 @@ type EnumVariantVal(name ∈ String, value ∈ Int)
 -- tester decl, field-0 accessor decl (field 1..5 accessors live on the
 -- acc-table tape rows). `user_variants ∈ Seq(UserEnumVariant)`,
 -- lowered by the bounded-Seq pass; rows are written by INDEX (the
--- variant_alloc cursor), so the registry has no length.
+-- alloc cursor), so the registry has no length.
 type UserEnumVariant(name ∈ String, ctor ∈ Int, tester ∈ Int, acc ∈ Int)
 
 -- One payload-field slot of the variant being declared: the field's
@@ -116,7 +116,7 @@ type EnumFieldSlot(ty ∈ String, key ∈ String, refpos ∈ Int, isref ∈ Bool
 
 -- One row of the Set(T)-variable registry: var name, the element type's
 -- registry slot (kidx), the packed 32-byte-row element-name string, and
--- the element count. `collection_vars ∈ Seq(SetVar)`; rows written by index
+-- the element count. `vars ∈ Seq(SetVar)`; rows written by index
 -- (_collection_count / setvar_idx / _setvar_cur), so no length.
 type SetVar(name ∈ String, kidx ∈ Int, elems ∈ String, count ∈ Int)
 

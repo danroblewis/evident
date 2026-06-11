@@ -6,8 +6,8 @@
 --           buffer bases (tok_buf.base/sym_buf.base/claimindex_buf.base).
 -- PRODUCES: the EMIT program counter (render_step) + its captures (unit_ptr/
 --           rendered), the translation-unit string (manifest_txt/
---           prelude_txt/unit_txt), and the emit effects (eff_solver_str/eff_copy_unit/
---           eff_print_unit/eff_free_*) the driver_main effects schedule selects
+--           prelude_txt/unit_txt), and the emit effects (solver_str/copy_unit/
+--           print_unit/eff_free_*) the driver_main effects schedule selects
 --           once render_step ≥ 0.
 -- MAINTAINS: render_step runs −1→0→…→5 once parse_done — walking solver-to-
 --           string (render_step 0) → cstr-copy of the rendered unit (1) →
@@ -34,10 +34,10 @@ fsm DriverEmit
     rendered  ∈ String
     rendered = (is_first_tick ? "" : render_step = 2 ? cap_str : _rendered)
 
-    eff_solver_str ∈ Effect
-    BuildZ3SolverToString(ctx_h ↦ z3ctx.ctx, solver_h ↦ z3ctx.sol, eff ↦ eff_solver_str)
-    eff_copy_unit ∈ Effect
-    BuildCstrCopy(addr ↦ unit_ptr, eff ↦ eff_copy_unit)
+    solver_str ∈ Effect
+    BuildZ3SolverToString(ctx_h ↦ z3ctx.ctx, solver_h ↦ z3ctx.sol, eff ↦ solver_str)
+    copy_unit ∈ Effect
+    BuildCstrCopy(addr ↦ unit_ptr, eff ↦ copy_unit)
 
     manifest_txt ∈ String = (";; manifest: state-fields = " ++ _manifest_fields ++ "\n"
         ++ ";; manifest: effects-name = effects\n"
@@ -50,8 +50,8 @@ fsm DriverEmit
         ++ (_saw_first_tick ? "" : "(declare-fun is_first_tick () Bool)\n"))
     unit_txt ∈ String = manifest_txt ++ "\n\n" ++ prelude_txt ++ rendered ++ carry_decls
 
-    eff_print_unit ∈ Effect
-    BuildPrintln(s ↦ unit_txt, eff ↦ eff_print_unit)
-    eff_free_tokbuf ∈ Effect = LibCall("libc", "free", ⟨ArgInt(tok_buf.base)⟩)
-    eff_free_symbuf ∈ Effect = LibCall("libc", "free", ⟨ArgInt(sym_buf.base)⟩)
-    eff_free_claimbuf ∈ Effect = LibCall("libc", "free", ⟨ArgInt(claimindex_buf.base)⟩)
+    print_unit ∈ Effect
+    BuildPrintln(s ↦ unit_txt, eff ↦ print_unit)
+    free_tokbuf ∈ Effect = LibCall("libc", "free", ⟨ArgInt(tok_buf.base)⟩)
+    free_symbuf ∈ Effect = LibCall("libc", "free", ⟨ArgInt(sym_buf.base)⟩)
+    free_claimbuf ∈ Effect = LibCall("libc", "free", ⟨ArgInt(claimindex_buf.base)⟩)

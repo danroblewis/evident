@@ -2,9 +2,9 @@
 -- CONSUMES: the classifier's composition/type-splice decision flags
 --           (comp_call/bare/dd/line, tymem_call/bare/line, line_name,
 --           line_ty_name, callee_pos), the claim index base (claimindex_buf.base), the
---           handle-stack views (h_top/2nd/.. + h_tail1.. + stack_in),
---           cap_int, the parse gate (in_parse, _parse_mode, tok_ready,
---           work_nil), the line-pop signal (frame_pop), the record
+--           handle-stack views (h_top/2nd/.. + tail1.. + stack_in),
+--           cap_int, the parse gate (parse, _parse_mode, tok_ready,
+--           nil), the line-pop signal (frame_pop), the record
 --           registry (recs name/sort), the callee param registry walked
 --           during pskip (posbind's param_names/_param_count), the active-
 --           guard state (guarding, _armed_depth), and the sibling fire/cap
@@ -15,10 +15,10 @@
 --           the claim index, and the handle stack (justified §6.4).
 -- PRODUCES: the inline-frame stack (frames/scope_prefix/frame_depth/
 --           call_count/jump_target), the frame join-set (join_hdr — read by
---           the classifier's name_outer rule; "*" = join all, "" = binds
+--           the classifier's outer rule; "*" = join all, "" = binds
 --           only, "|a|b|" = these header names), the param-skip substate
 --           (param_skip/param_depth), the slot-call walk (callw_st/callw_bare/
---           callw_is_type/callw_pun/slot_count/type_prefix + the slot_names
+--           is_type/pun/slot_count/type_prefix + the slot_names
 --           slot-name registry),
 --           and the bind tape (binds/bind_base/bind_top — the window
 --           [bind_base, bind_top) is the current frame's binds; read by
@@ -58,23 +58,23 @@ fsm DriverCompose
     param_depth ∈ Int
     callw_st ∈ Int
     callw_bare ∈ Bool
-    callw_hide ∈ Bool
-    callw_is_type ∈ Bool
+    hide ∈ Bool
+    is_type ∈ Bool
     type_prefix ∈ String
     slot_count ∈ Int
     slot_names ∈ Seq(CSlot)
     #slot_names ≤ 6
 
-    frame_ret ∈ Int = match _frames
+    ret ∈ Int = match _frames
         CFCons(r, _, _, _, _, _) ⇒ r
         CFNil ⇒ 0
     frame_prefix ∈ String = match _frames
         CFCons(_, p, _, _, _, _) ⇒ p
         CFNil ⇒ ""
-    frame_bbase ∈ Int = match _frames
+    bbase ∈ Int = match _frames
         CFCons(_, _, b, _, _, _) ⇒ b
         CFNil ⇒ 0
-    frame_btop ∈ Int = match _frames
+    btop ∈ Int = match _frames
         CFCons(_, _, _, t, _, _) ⇒ t
         CFNil ⇒ 0
     frame_hdr ∈ String = match _frames
@@ -84,75 +84,75 @@ fsm DriverCompose
         CFCons(_, _, _, _, _, t) ⇒ t
         CFNil ⇒ CFNil
 
-    read_callee_cursor ∈ Bool = (comp_line ∨ tymem_line)
-    eff_claimidx_read ∈ Effect
-    BuildMemReadLong(addr ↦ claimindex_buf.base + (8 * (callee_pos / 32)), eff ↦ eff_claimidx_read)
+    callee_cursor ∈ Bool = (comp_line ∨ tymem_line)
+    claimidx_read ∈ Effect
+    BuildMemReadLong(addr ↦ claimindex_buf.base + (8 * (callee_pos / 32)), eff ↦ claimidx_read)
 
-    in_callw0 ∈ Bool = (in_parse ∧ (_parse_mode = 10) ∧ (_callw_st = 0))
-    callw_cap ∈ Bool = (in_callw0 ∧ (¬_callw_bare))
-    callw_bare_jump ∈ Bool = (in_callw0 ∧ _callw_bare)
-    in_callw1 ∈ Bool = (in_parse ∧ (_parse_mode = 10) ∧ (_callw_st = 1)
-        ∧ work_nil ∧ tok_ready)
-    callw_slot ∈ Bool = (in_callw1 ∧ (tok0 matches Ident(_))
+    callw0 ∈ Bool = (parse ∧ (_parse_mode = 10) ∧ (_callw_st = 0))
+    callw_cap ∈ Bool = (callw0 ∧ (¬_callw_bare))
+    bare_jump ∈ Bool = (callw0 ∧ _callw_bare)
+    callw1 ∈ Bool = (parse ∧ (_parse_mode = 10) ∧ (_callw_st = 1)
+        ∧ nil ∧ tok_ready)
+    callw_slot ∈ Bool = (callw1 ∧ (tok0 matches Ident(_))
         ∧ (tok1 matches OpMapsto) ∧ (_slot_count < 6))
-    callw_pun ∈ Bool = (in_callw1 ∧ (tok0 matches Ident(_))
+    pun ∈ Bool = (callw1 ∧ (tok0 matches Ident(_))
         ∧ ((tok1 matches Comma) ∨ (tok1 matches RParen)) ∧ (_slot_count < 6))
-    callw_comma ∈ Bool = (in_callw1 ∧ (tok0 matches Comma))
-    callw_fire ∈ Bool = (in_callw1 ∧ (tok0 matches RParen))
-    callw_bail ∈ Bool = (in_callw1 ∧ (¬callw_slot) ∧ (¬callw_pun) ∧ (¬callw_comma) ∧ (¬callw_fire))
-    slot_val_done ∈ Bool = (parse_ready ∧ (¬parse_bad) ∧ (_parse_kind = 8))
+    callw_comma ∈ Bool = (callw1 ∧ (tok0 matches Comma))
+    callw_fire ∈ Bool = (callw1 ∧ (tok0 matches RParen))
+    callw_bail ∈ Bool = (callw1 ∧ (¬callw_slot) ∧ (¬pun) ∧ (¬callw_comma) ∧ (¬callw_fire))
+    val_done ∈ Bool = (parse_ready ∧ (¬parse_bad) ∧ (_parse_kind = 8))
     slot_name_tok ∈ String = match tok0
         Ident(s) ⇒ s
         _ ⇒ ""
 
-    slot_handles ∈ Seq(Int)
-    #slot_handles ≤ 6
-    slot_handles[0] = (_slot_count = 1 ? h_top : _slot_count = 2 ? h_2nd
+    handles ∈ Seq(Int)
+    #handles ≤ 6
+    handles[0] = (_slot_count = 1 ? h_top : _slot_count = 2 ? h_2nd
         : _slot_count = 3 ? h_3rd : _slot_count = 4 ? h_4th
         : _slot_count = 5 ? h_5th : h_6th)
-    slot_handles[1] = (_slot_count = 2 ? h_top : _slot_count = 3 ? h_2nd
+    handles[1] = (_slot_count = 2 ? h_top : _slot_count = 3 ? h_2nd
         : _slot_count = 4 ? h_3rd : _slot_count = 5 ? h_4th : h_5th)
-    slot_handles[2] = (_slot_count = 3 ? h_top : _slot_count = 4 ? h_2nd
+    handles[2] = (_slot_count = 3 ? h_top : _slot_count = 4 ? h_2nd
         : _slot_count = 5 ? h_3rd : h_4th)
-    slot_handles[3] = (_slot_count = 4 ? h_top : _slot_count = 5 ? h_2nd : h_3rd)
-    slot_handles[4] = (_slot_count = 5 ? h_top : h_2nd)
-    slot_handles[5] = h_top
-    callw_pop_stack ∈ C2H = (_slot_count = 1 ? h_tail1
-        : _slot_count = 2 ? h_tail2
-        : _slot_count = 3 ? h_tail3
-        : _slot_count = 4 ? h_tail4
-        : _slot_count = 5 ? h_tail5
-        : _slot_count = 6 ? h_tail6
+    handles[3] = (_slot_count = 4 ? h_top : _slot_count = 5 ? h_2nd : h_3rd)
+    handles[4] = (_slot_count = 5 ? h_top : h_2nd)
+    handles[5] = h_top
+    pop_stack ∈ C2H = (_slot_count = 1 ? tail1
+        : _slot_count = 2 ? tail2
+        : _slot_count = 3 ? tail3
+        : _slot_count = 4 ? tail4
+        : _slot_count = 5 ? tail5
+        : _slot_count = 6 ? tail6
         : stack_in)
     prefix_new ∈ String = "__c" ++ str_from_int(_call_count) ++ "_"
-    type_pin_suffixes ∈ Seq(C2Items)
-    #type_pin_suffixes ≤ 7
-    type_pin_suffixes[6] = C2INil
-    ∀ k ∈ {0..5} : type_pin_suffixes[k] = (_slot_count ≥ k + 1
+    pin_suffixes ∈ Seq(C2Items)
+    #pin_suffixes ≤ 7
+    pin_suffixes[6] = C2INil
+    ∀ k ∈ {0..5} : pin_suffixes[k] = (_slot_count ≥ k + 1
         ? C2ICons(C2DeclConst(_type_prefix ++ _slot_names[k].name, 0),
-            C2ICons(C2PushH(slot_handles[k]), C2ICons(C2PinEq,
-            C2ICons(C2AssertTop, type_pin_suffixes[k + 1]))))
-        : type_pin_suffixes[k + 1])
-    type_pin_items ∈ C2Items = type_pin_suffixes[0]
-    type_recdecl_items ∈ C2Items = C2ICons(C2RecDecl(_type_inst_name, _type_slot), C2INil)
+            C2ICons(C2PushH(handles[k]), C2ICons(C2PinEq,
+            C2ICons(C2AssertTop, pin_suffixes[k + 1]))))
+        : pin_suffixes[k + 1])
+    type_pin_items ∈ C2Items = pin_suffixes[0]
+    recdecl_items ∈ C2Items = C2ICons(C2RecDecl(_inst_name, _type_slot), C2INil)
 
-    frame_jump ∈ Bool = (callw_fire ∨ callw_bare_jump ∨ jump_fire ∨ posjump_fire)
-    jump_target_now ∈ Int = (callw_bare_jump ? cap_int : _jump_target)
-    frame_ret_now ∈ Int = (callw_fire ? _tok_cur + 1 : _tok_cur)
+    jump ∈ Bool = (callw_fire ∨ bare_jump ∨ jump_fire ∨ posjump_fire)
+    target_now ∈ Int = (bare_jump ? cap_int : _jump_target)
+    ret_now ∈ Int = (callw_fire ? _tok_cur + 1 : _tok_cur)
 
-    pskip_act ∈ Bool = (in_parse ∧ (_parse_mode = 2) ∧ work_nil
+    pskip_act ∈ Bool = (parse ∧ (_parse_mode = 2) ∧ nil
         ∧ tok_ready ∧ (_param_skip > 0))
-    pskip_check ∈ Bool = (pskip_act ∧ (_param_skip = 1))
-    pskip_open ∈ Bool = (pskip_check ∧ (tok0 matches LParen))
-    pskip_off ∈ Bool = (pskip_check ∧ (¬(tok0 matches LParen)))
-    pskip_run ∈ Bool = (pskip_act ∧ (_param_skip = 2))
-    pskip_done ∈ Bool = (pskip_run ∧ (tok0 matches RParen) ∧ (_param_depth = 1))
+    check ∈ Bool = (pskip_act ∧ (_param_skip = 1))
+    pskip_open ∈ Bool = (check ∧ (tok0 matches LParen))
+    off ∈ Bool = (check ∧ (¬(tok0 matches LParen)))
+    run ∈ Bool = (pskip_act ∧ (_param_skip = 2))
+    pskip_done ∈ Bool = (run ∧ (tok0 matches RParen) ∧ (_param_depth = 1))
 
     -- ── header join-set (claim headers as interface) ──────────────
     -- The callee's first-line params, walked by posbind's param
     -- registry during pskip, become the frame's join-set: a bare
     -- splice of a headered claim joins parent names ONLY through it
-    -- (name_outer consults _join_hdr); a mapped/positional splice of
+    -- (outer consults _join_hdr); a mapped/positional splice of
     -- a headered claim joins nothing beyond its binds ("");
     -- header-less callees keep full names-match pass-down ("*").
     -- Caps at 6 header names (the slot_names/param_names width).
@@ -169,135 +169,135 @@ fsm DriverCompose
             ++ _param_names[2].s ++ "|" ++ _param_names[3].s ++ "|" ++ _param_names[4].s ++ "|"
             ++ _param_names[5].s ++ "|")
 
-    callw_reset ∈ Bool = (enter_claim ∨ enter_claim_params)
+    reset ∈ Bool = (enter_claim ∨ claim_params)
     frames = (is_first_tick ? CFNil
-        : callw_reset ? CFNil
-        : frame_jump ? CFCons(frame_ret_now, _scope_prefix, _bind_base, _bind_top, _join_hdr, _frames)
+        : reset ? CFNil
+        : jump ? CFCons(ret_now, _scope_prefix, _bind_base, _bind_top, _join_hdr, _frames)
         : frame_pop ? frames_tail
         : _frames)
-    -- ── bind tape: this tick's new binds, staged in bind_stage ─────
-    -- A slot call lands _slot_count of them (slot_names/slot_handles);
+    -- ── bind tape: this tick's new binds, staged in stage ─────
+    -- A slot call lands _slot_count of them (slot_names/handles);
     -- a positional close lands bindzip_count (posbind's bindzip_binds
     -- column). They append at _bind_top; the new window is
     -- [_bind_top, bind_top).
-    bind_stage_count ∈ Int = (callw_fire ? _slot_count : bindzip_act ? bindzip_count : 0)
-    bind_stage ∈ Seq(Bind)
-    #bind_stage ≤ 6
-    ∀ j ∈ {0..5} : bind_stage[j].name = (callw_fire ? _slot_names[j].name : bindzip_binds[j].name)
-    ∀ j ∈ {0..5} : bind_stage[j].handle = (callw_fire ? slot_handles[j] : bindzip_binds[j].handle)
-    binds_clear ∈ Bool = (is_first_tick ∨ callw_reset)
+    stage_count ∈ Int = (callw_fire ? _slot_count : bindzip_act ? bindzip_count : 0)
+    stage ∈ Seq(Bind)
+    #stage ≤ 6
+    ∀ j ∈ {0..5} : stage[j].name = (callw_fire ? _slot_names[j].name : bindzip_binds[j].name)
+    ∀ j ∈ {0..5} : stage[j].handle = (callw_fire ? handles[j] : bindzip_binds[j].handle)
+    binds_clear ∈ Bool = (is_first_tick ∨ reset)
     ∀ k ∈ {0..11} : binds[k].name = (binds_clear ? ""
-        : ((bind_stage_count ≥ 1) ∧ (_bind_top + 0 = k)) ? bind_stage[0].name
-        : ((bind_stage_count ≥ 2) ∧ (_bind_top + 1 = k)) ? bind_stage[1].name
-        : ((bind_stage_count ≥ 3) ∧ (_bind_top + 2 = k)) ? bind_stage[2].name
-        : ((bind_stage_count ≥ 4) ∧ (_bind_top + 3 = k)) ? bind_stage[3].name
-        : ((bind_stage_count ≥ 5) ∧ (_bind_top + 4 = k)) ? bind_stage[4].name
-        : ((bind_stage_count ≥ 6) ∧ (_bind_top + 5 = k)) ? bind_stage[5].name
+        : ((stage_count ≥ 1) ∧ (_bind_top + 0 = k)) ? stage[0].name
+        : ((stage_count ≥ 2) ∧ (_bind_top + 1 = k)) ? stage[1].name
+        : ((stage_count ≥ 3) ∧ (_bind_top + 2 = k)) ? stage[2].name
+        : ((stage_count ≥ 4) ∧ (_bind_top + 3 = k)) ? stage[3].name
+        : ((stage_count ≥ 5) ∧ (_bind_top + 4 = k)) ? stage[4].name
+        : ((stage_count ≥ 6) ∧ (_bind_top + 5 = k)) ? stage[5].name
         : _binds[k].name)
     ∀ k ∈ {0..11} : binds[k].handle = (binds_clear ? 0
-        : ((bind_stage_count ≥ 1) ∧ (_bind_top + 0 = k)) ? bind_stage[0].handle
-        : ((bind_stage_count ≥ 2) ∧ (_bind_top + 1 = k)) ? bind_stage[1].handle
-        : ((bind_stage_count ≥ 3) ∧ (_bind_top + 2 = k)) ? bind_stage[2].handle
-        : ((bind_stage_count ≥ 4) ∧ (_bind_top + 3 = k)) ? bind_stage[3].handle
-        : ((bind_stage_count ≥ 5) ∧ (_bind_top + 4 = k)) ? bind_stage[4].handle
-        : ((bind_stage_count ≥ 6) ∧ (_bind_top + 5 = k)) ? bind_stage[5].handle
+        : ((stage_count ≥ 1) ∧ (_bind_top + 0 = k)) ? stage[0].handle
+        : ((stage_count ≥ 2) ∧ (_bind_top + 1 = k)) ? stage[1].handle
+        : ((stage_count ≥ 3) ∧ (_bind_top + 2 = k)) ? stage[2].handle
+        : ((stage_count ≥ 4) ∧ (_bind_top + 3 = k)) ? stage[3].handle
+        : ((stage_count ≥ 5) ∧ (_bind_top + 4 = k)) ? stage[4].handle
+        : ((stage_count ≥ 6) ∧ (_bind_top + 5 = k)) ? stage[5].handle
         : _binds[k].handle)
     bind_top = (is_first_tick ? 0
-        : callw_reset ? 0
+        : reset ? 0
         : callw_fire ? _bind_top + _slot_count
         : posjump_fire ? _bind_top
         : bindzip_act ? _bind_top + bindzip_count
-        : frame_pop ? frame_btop
+        : frame_pop ? btop
         : _bind_top)
     bind_base = (is_first_tick ? 0
-        : callw_reset ? 0
+        : reset ? 0
         : callw_fire ? _bind_top
         : posjump_fire ? _bind_top
         : bindzip_act ? _bind_base
-        : frame_pop ? frame_bbase
+        : frame_pop ? bbase
         : _bind_base)
     0 ≤ bind_base ≤ bind_top ≤ 12
     ∀ e ∈ binds : e.handle ≥ 0
     scope_prefix = (is_first_tick ? ""
-        : callw_reset ? ""
-        : callw_fire ? (_callw_is_type ? _type_prefix : prefix_new)
-        : (callw_bare_jump ∧ _callw_is_type) ? _type_prefix
-        : (callw_bare_jump ∧ _callw_hide) ? prefix_new
+        : reset ? ""
+        : callw_fire ? (_is_type ? _type_prefix : prefix_new)
+        : (bare_jump ∧ _is_type) ? _type_prefix
+        : (bare_jump ∧ _hide) ? prefix_new
         : posjump_fire ? prefix_new
         : frame_pop ? frame_prefix
         : _scope_prefix)
     join_hdr = (is_first_tick ? "*"
-        : callw_reset ? "*"
+        : reset ? "*"
         : frame_pop ? frame_hdr
         : (pskip_done ∧ guarding ∧ (_frame_depth = _armed_depth)) ? _join_hdr
-        : (pskip_off ∧ guarding ∧ (_frame_depth = _armed_depth)) ? _join_hdr
-        : pskip_off ? "*"
-        : (pskip_done ∧ _callw_is_type) ? "*"
-        : (pskip_done ∧ _callw_hide) ? hdr_join_now
+        : (off ∧ guarding ∧ (_frame_depth = _armed_depth)) ? _join_hdr
+        : off ? "*"
+        : (pskip_done ∧ _is_type) ? "*"
+        : (pskip_done ∧ _hide) ? hdr_join_now
         : (pskip_done ∧ _callw_bare) ? "*"
         : pskip_done ? (_param_count = 0 ? "*" : "")
         : _join_hdr)
     frame_depth = (is_first_tick ? 0
-        : callw_reset ? 0
-        : frame_jump ? _frame_depth + 1
+        : reset ? 0
+        : jump ? _frame_depth + 1
         : frame_pop ? _frame_depth - 1
         : _frame_depth)
     call_count = (is_first_tick ? 1
-        : callw_reset ? 1
-        : (callw_fire ∧ (¬_callw_is_type)) ? _call_count + 1
-        : (callw_bare_jump ∧ (¬_callw_is_type) ∧ _callw_hide) ? _call_count + 1
+        : reset ? 1
+        : (callw_fire ∧ (¬_is_type)) ? _call_count + 1
+        : (bare_jump ∧ (¬_is_type) ∧ _hide) ? _call_count + 1
         : posjump_fire ? _call_count + 1
         : _call_count)
     jump_target = (is_first_tick ? 0
-        : (callw_cap ∨ jump_capture ∨ posjump_cap) ? cap_int
+        : (callw_cap ∨ capture ∨ posjump_cap) ? cap_int
         : _jump_target)
     param_skip = (is_first_tick ? 0
-        : frame_jump ? 1
+        : jump ? 1
         : pskip_open ? 2
-        : (pskip_off ∨ pskip_done) ? 0
+        : (off ∨ pskip_done) ? 0
         : _param_skip)
     param_depth = (is_first_tick ? 0
         : pskip_open ? 1
-        : pskip_run ? ((tok0 matches LParen) ? _param_depth + 1
+        : run ? ((tok0 matches LParen) ? _param_depth + 1
             : (tok0 matches RParen) ? _param_depth - 1
             : _param_depth)
         : _param_depth)
     callw_st = (is_first_tick ? 0
         : (comp_line ∨ tymem_line) ? 0
         : cond_hit ? 3
-        : jump_capture ? 4
+        : capture ? 4
         : callw_cap ? 1
         : _callw_st)
     callw_bare = (is_first_tick ? false
         : (comp_call ∨ tymem_call) ? false
-        : (comp_bare ∨ comp_dotdot ∨ tymem_bare) ? true
+        : (comp_bare ∨ dotdot ∨ tymem_bare) ? true
         : positional_line ? false
         : _callw_bare)
-    callw_hide = (is_first_tick ? false
+    hide = (is_first_tick ? false
         : comp_bare ? true
-        : (comp_call ∨ comp_dotdot ∨ tymem_line) ? false
+        : (comp_call ∨ dotdot ∨ tymem_line) ? false
         : positional_line ? false
-        : _callw_hide)
-    callw_is_type = (is_first_tick ? false
+        : _hide)
+    is_type = (is_first_tick ? false
         : tymem_line ? true
         : comp_line ? false
         : positional_line ? false
-        : _callw_is_type)
+        : _is_type)
     type_prefix = (is_first_tick ? ""
         : tymem_line ? (_scope_prefix ++ line_name ++ ".")
         : _type_prefix)
     type_slot ∈ Int
-    type_inst_name ∈ String
+    inst_name ∈ String
     type_rec_slot ∈ Int
     RtIdxOf(nm ↦ line_ty_name, idx ↦ type_rec_slot)
     type_slot = (is_first_tick ? 0 - 1
         : tymem_line ? type_rec_slot
         : _type_slot)
-    type_inst_name = (is_first_tick ? ""
+    inst_name = (is_first_tick ? ""
         : tymem_line ? (_scope_prefix ++ line_name)
-        : _type_inst_name)
+        : _inst_name)
     slot_count = (is_first_tick ? 0
         : (comp_call ∨ tymem_call) ? 0
-        : slot_val_done ? _slot_count + 1
+        : val_done ? _slot_count + 1
         : _slot_count)
-    ∀ k ∈ {0..5} : slot_names[k].name = (is_first_tick ? "" : ((callw_slot ∨ callw_pun) ∧ _slot_count = k) ? slot_name_tok : _slot_names[k].name)
+    ∀ k ∈ {0..5} : slot_names[k].name = (is_first_tick ? "" : ((callw_slot ∨ pun) ∧ _slot_count = k) ? slot_name_tok : _slot_names[k].name)

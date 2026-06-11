@@ -1,8 +1,8 @@
 -- DriverBroadcast isolation — the per-field broadcast walk.
 -- Drives a record-pinned membership completion on one tick, holds the
 -- claim-walk dispatch gate open with a 2-field record; the broadcast
--- must arm, reset field_cursor to 0, step 0→1→2 one field per tick, and
--- disarm at the last field. Reports field_cursor after the walk settles.
+-- must arm, reset cursor to 0, step 0→1→2 one field per tick, and
+-- disarm at the last field. Reports cursor after the walk settles.
 --
 -- entry: main
 -- expect: stdout = "2"
@@ -25,13 +25,13 @@ fsm main
     parse_bad = (is_first_tick ? false : _parse_bad)
     parse_decl_name ∈ String
     parse_decl_name = (is_first_tick ? "p" : _parse_decl_name)
-    parse_result ∈ Expr
-    parse_result = (is_first_tick ? ENoExpr : _parse_result)
+    result ∈ Expr
+    result = (is_first_tick ? ENoExpr : _result)
     -- Claim-walk dispatch gate: held open so the broadcast can step.
     in_claim ∈ Bool
     in_claim = (is_first_tick ? true : _in_claim)
-    work_nil ∈ Bool
-    work_nil = (is_first_tick ? true : _work_nil)
+    nil ∈ Bool
+    nil = (is_first_tick ? true : _nil)
     param_skip ∈ Int
     param_skip = (is_first_tick ? 0 : _param_skip)
     tok_ready ∈ Bool
@@ -56,7 +56,7 @@ fsm main
     sym_names ∈ String
     sym_names = (is_first_tick ? "" : _sym_names)
     ..DriverBroadcast
-    fi_msg ∈ String = str_from_int(field_cursor)
+    fi_msg ∈ String = str_from_int(cursor)
     effects ∈ Seq(Effect) = (tc ≥ 5
         ? ⟨LibCall("libc", "puts", ⟨ArgStr(fi_msg)⟩), Exit(0)⟩
         : ⟨LibCall("libc", "getpid", ⟨⟩)⟩)

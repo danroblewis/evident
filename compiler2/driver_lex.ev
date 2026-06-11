@@ -5,8 +5,8 @@
 --           (IsAlphaChar/IsDigitChar/IsWhitespace/IsQuote/LexCharTag/
 --           DigitToInt/EscapeChar/WsRunLen) + the LexFtiPlan token planner.
 -- PRODUCES: the FTI token-buffer write effects (write_tag0/write_pay0/write_tag1/
---           write_pend_str/write_eof, float write_float_tag/write_float_pay/write_float_op, eff_strdup), the lexer
---           cursor (tok_buf.count/last_token_tag/prev_token_tag/pend_str_addr), the per-tick token
+--           pend_str/eof, float float_tag/float_pay/float_op, strdup), the lexer
+--           cursor (tok_buf.count/last_token_tag/prev_token_tag/str_addr), the per-tick token
 --           plan (plan_* regs, plan_kind), next_pos, and the strlit/int/float
 --           collection state.
 -- MAINTAINS: tok_buf.count < 65534 — every write lands inside zinit_tok_buf (a write
@@ -16,7 +16,7 @@
 --
 -- Char-stream → FTI token buffer. The fossil per-char scanner FSM; gated
 -- to start after ZINIT. Lifted into driver_main via `..DriverLex`, so its
--- carry pairs (pos, partial_str/int, in_strlit, lex_*, …) become
+-- carry pairs (pos, partial_str/int, strlit, lex_*, …) become
 -- driver_main's own manifest state-fields and carry across ticks.
 fsm DriverLex
     pos  ∈ Int
@@ -51,7 +51,7 @@ fsm DriverLex
     was_collecting_str ∈ Bool = (#_partial_str > 0)
     was_collecting_int ∈ Bool = (_partial_int ≥ 0)
 
-    in_strlit  ∈ Bool
+    strlit  ∈ Bool
     partial_strlit  ∈ String
 
     -- Escape-pending mode: `\` inside a strlit appends nothing and
@@ -66,58 +66,58 @@ fsm DriverLex
     EscapeChar(c ↦ cur_char, out ↦ esc_trans)
     esc_pending ∈ Bool
 
-    strlit_open       ∈ Bool = ((¬_in_strlit) ∧ is_quote ∧ in_range ∧ (¬was_collecting_str) ∧ (¬was_collecting_int))
-    strlit_esc_open   ∈ Bool = (_in_strlit ∧ (¬_esc_pending) ∧ is_backslash ∧ in_range)
-    strlit_esc_char   ∈ Bool = (_in_strlit ∧ _esc_pending ∧ in_range)
-    strlit_continuing ∈ Bool = (_in_strlit ∧ (¬_esc_pending) ∧ (¬is_quote) ∧ (¬is_backslash) ∧ in_range)
-    strlit_closing    ∈ Bool = (_in_strlit ∧ (¬_esc_pending) ∧ is_quote ∧ in_range)
+    strlit_open       ∈ Bool = ((¬_strlit) ∧ is_quote ∧ in_range ∧ (¬was_collecting_str) ∧ (¬was_collecting_int))
+    esc_open   ∈ Bool = (_strlit ∧ (¬_esc_pending) ∧ is_backslash ∧ in_range)
+    esc_char   ∈ Bool = (_strlit ∧ _esc_pending ∧ in_range)
+    strlit_continuing ∈ Bool = (_strlit ∧ (¬_esc_pending) ∧ (¬is_quote) ∧ (¬is_backslash) ∧ in_range)
+    closing    ∈ Bool = (_strlit ∧ (¬_esc_pending) ∧ is_quote ∧ in_range)
 
-    esc_pending = (is_first_tick ? false : strlit_esc_open)
-    in_strlit = (is_first_tick ? false
+    esc_pending = (is_first_tick ? false : esc_open)
+    strlit = (is_first_tick ? false
         : (strlit_open ? true
-        : (strlit_closing ? false
-        : _in_strlit)))
+        : (closing ? false
+        : _strlit)))
     partial_strlit = (is_first_tick ? ""
         : (strlit_open ? ""
-        : (strlit_esc_char ? _partial_strlit ++ esc_trans
+        : (esc_char ? _partial_strlit ++ esc_trans
         : (strlit_continuing ? _partial_strlit ++ cur_char
-        : (strlit_closing ? ""
+        : (closing ? ""
         : _partial_strlit)))))
 
     is_alnum ∈ Bool = (is_alpha ∨ is_dig)
-    str_continuing ∈ Bool = (was_collecting_str ∧ is_alnum ∧ in_range ∧ ¬_in_strlit)
+    str_continuing ∈ Bool = (was_collecting_str ∧ is_alnum ∧ in_range ∧ ¬_strlit)
     str_finishing  ∈ Bool = (was_collecting_str ∧ ((¬is_alnum ∧ in_range) ∨ done))
-    str_starting   ∈ Bool = ((¬was_collecting_str) ∧ is_alpha ∧ in_range ∧ ¬_in_strlit)
+    str_starting   ∈ Bool = ((¬was_collecting_str) ∧ is_alpha ∧ in_range ∧ ¬_strlit)
 
-    int_continuing ∈ Bool = (was_collecting_int ∧ is_dig ∧ in_range ∧ ¬_in_strlit)
+    int_continuing ∈ Bool = (was_collecting_int ∧ is_dig ∧ in_range ∧ ¬_strlit)
     int_finishing  ∈ Bool = (was_collecting_int ∧ ((¬is_dig ∧ in_range) ∨ done))
-    int_starting   ∈ Bool = ((¬was_collecting_int) ∧ (¬was_collecting_str) ∧ is_dig ∧ in_range ∧ ¬_in_strlit)
+    int_starting   ∈ Bool = ((¬was_collecting_int) ∧ (¬was_collecting_str) ∧ is_dig ∧ in_range ∧ ¬_strlit)
 
     -- FloatLit — `3.14`. An int collecting into `.`-then-digit
     -- latches the whole part and re-enters int collection for the
-    -- fraction (in_fraction armed); the fraction finishing writes ONE
+    -- fraction (fraction armed); the fraction finishing writes ONE
     -- FloatLit token (tag 4, p0 = scaled·8 + digits) — plus the
     -- finishing op token when one ends it (`)` etc). The plan's
     -- fi_only/fi_op inputs are suppressed on both the `.` tick and
     -- the fraction-finish tick. Negative floats stay descoped (the
     -- minus-fold is IntLit-only; zero corpus occurrences).
-    next_is_digit ∈ Bool
-    IsDigitChar(c ↦ next_char, out ↦ next_is_digit)
-    in_fraction ∈ Bool
-    float_whole ∈ Int
+    is_digit ∈ Bool
+    IsDigitChar(c ↦ next_char, out ↦ is_digit)
+    fraction ∈ Bool
+    whole ∈ Int
     frac_digits ∈ Int
-    frac_enter ∈ Bool = (was_collecting_int ∧ (¬_in_fraction)
-        ∧ (cur_char = ".") ∧ next_is_digit ∧ in_range ∧ (¬_in_strlit))
-    float_finish ∈ Bool = (_in_fraction ∧ int_finishing)
-    float_with_op ∈ Bool = (float_finish ∧ is_op ∧ in_range)
-    in_fraction = (is_first_tick ? false
+    frac_enter ∈ Bool = (was_collecting_int ∧ (¬_fraction)
+        ∧ (cur_char = ".") ∧ is_digit ∧ in_range ∧ (¬_strlit))
+    finish ∈ Bool = (_fraction ∧ int_finishing)
+    with_op ∈ Bool = (finish ∧ is_op ∧ in_range)
+    fraction = (is_first_tick ? false
         : frac_enter ? true
-        : float_finish ? false
-        : _in_fraction)
-    float_whole = (is_first_tick ? 0 : frac_enter ? _partial_int : _float_whole)
+        : finish ? false
+        : _fraction)
+    whole = (is_first_tick ? 0 : frac_enter ? _partial_int : _whole)
     frac_digits = (is_first_tick ? 0
         : frac_enter ? 0
-        : (_in_fraction ∧ is_dig ∧ in_range) ? _frac_digits + 1
+        : (_fraction ∧ is_dig ∧ in_range) ? _frac_digits + 1
         : _frac_digits)
     frac_pow ∈ Int
     (_frac_digits = 1) ⇒ (frac_pow = 10)
@@ -129,22 +129,22 @@ fsm DriverLex
     (¬((_frac_digits = 1) ∨ (_frac_digits = 2) ∨ (_frac_digits = 3)
         ∨ (_frac_digits = 4) ∨ (_frac_digits = 5) ∨ (_frac_digits = 6)))
         ⇒ (frac_pow = 1)
-    float_payload ∈ Int = (_float_whole * frac_pow + _partial_int) * 8 + _frac_digits
-    write_float_tag ∈ Effect = LibCall("__mem", "write_long",
+    payload ∈ Int = (_whole * frac_pow + _partial_int) * 8 + _frac_digits
+    float_tag ∈ Effect = LibCall("__mem", "write_long",
         ⟨ArgInt(tok_buf.base + (_tok_buf.count * 32)), ArgInt(4)⟩)
-    write_float_pay ∈ Effect = LibCall("__mem", "write_long",
-        ⟨ArgInt(tok_buf.base + (_tok_buf.count * 32) + 8), ArgInt(float_payload)⟩)
-    write_float_op ∈ Effect = LibCall("__mem", "write_long",
+    float_pay ∈ Effect = LibCall("__mem", "write_long",
+        ⟨ArgInt(tok_buf.base + (_tok_buf.count * 32) + 8), ArgInt(payload)⟩)
+    float_op ∈ Effect = LibCall("__mem", "write_long",
         ⟨ArgInt(tok_buf.base + ((_tok_buf.count + 1) * 32)), ArgInt(char_tag)⟩)
 
     partial_str = (is_first_tick ? "" : (str_continuing ? _partial_str ++ cur_char : (str_starting ? cur_char : "")))
     partial_int = (is_first_tick ? 0 - 1 : (int_continuing ? (_partial_int * 10) + dig_val : (int_starting ? dig_val : 0 - 1)))
 
-    finish_str_only    ∈ Bool = (str_finishing ∧ (is_ws ∨ done))
+    str_only    ∈ Bool = (str_finishing ∧ (is_ws ∨ done))
     finish_int_only    ∈ Bool = (int_finishing ∧ (is_ws ∨ done ∨ is_alpha))
-    finish_str_with_op ∈ Bool = (str_finishing ∧ is_op ∧ in_range)
-    finish_int_with_op ∈ Bool = (int_finishing ∧ is_op ∧ in_range)
-    char_only          ∈ Bool = ((¬was_collecting_str) ∧ (¬was_collecting_int) ∧ is_op ∧ in_range ∧ ¬_in_strlit)
+    str_with_op ∈ Bool = (str_finishing ∧ is_op ∧ in_range)
+    int_with_op ∈ Bool = (int_finishing ∧ is_op ∧ in_range)
+    char_only          ∈ Bool = ((¬was_collecting_str) ∧ (¬was_collecting_int) ∧ is_op ∧ in_range ∧ ¬_strlit)
 
     -- FTI lexer state: five Ints, no TokenList. The negative-literal
     -- fold (`= -3` folds, `10 - 2` stays binary) is decided inside
@@ -162,31 +162,31 @@ fsm DriverLex
     tok_buf.count < 65534
     last_token_tag ∈ Int
     prev_token_tag ∈ Int
-    pend_str_addr ∈ Int
+    str_addr ∈ Int
 
     plan_kind ∈ Int
     plan_tag0 ∈ Int
     plan_pay0 ∈ Int
     plan_str0 ∈ String
     plan_tag1 ∈ Int
-    plan_addr_tag0 ∈ Int
-    plan_addr_pay0 ∈ Int
-    plan_addr_tag1 ∈ Int
+    addr_tag0 ∈ Int
+    addr_pay0 ∈ Int
+    addr_tag1 ∈ Int
     plan_count_n ∈ Int
     plan_last_n ∈ Int
     plan_prev_n ∈ Int
-    plan_int_op ∈ Bool = (finish_int_with_op ∧ (¬frac_enter) ∧ (¬float_finish))
-    plan_int_only ∈ Bool = (finish_int_only ∧ (¬frac_enter) ∧ (¬float_finish))
-    LexFtiPlan(at_comment ↦ at_comment, strlit_closing ↦ strlit_closing,
-        fs_op ↦ finish_str_with_op, fi_op ↦ plan_int_op,
-        fs_only ↦ finish_str_only, fi_only ↦ plan_int_only,
+    int_op ∈ Bool = (int_with_op ∧ (¬frac_enter) ∧ (¬finish))
+    plan_int_only ∈ Bool = (finish_int_only ∧ (¬frac_enter) ∧ (¬finish))
+    LexFtiPlan(at_comment ↦ at_comment, closing ↦ closing,
+        fs_op ↦ str_with_op, fi_op ↦ int_op,
+        fs_only ↦ str_only, fi_only ↦ plan_int_only,
         ch_only ↦ char_only,
         cur_char ↦ cur_char, partial_str ↦ _partial_str,
         partial_strlit ↦ _partial_strlit, partial_int ↦ _partial_int,
         base ↦ tok_buf.base, count ↦ _tok_buf.count,
         last_tag ↦ _last_token_tag, prev_tag ↦ _prev_token_tag,
         kind ↦ plan_kind, tag0 ↦ plan_tag0, p0 ↦ plan_pay0, str0 ↦ plan_str0,
-        tag1 ↦ plan_tag1, a_tag0 ↦ plan_addr_tag0, a_p0 ↦ plan_addr_pay0, a_tag1 ↦ plan_addr_tag1,
+        tag1 ↦ plan_tag1, a_tag0 ↦ addr_tag0, a_p0 ↦ addr_pay0, a_tag1 ↦ addr_tag1,
         count_n ↦ plan_count_n, last_n ↦ plan_last_n, prev_n ↦ plan_prev_n)
 
     -- `++` (PlusPlus, tag 60): a two-char ASCII token the per-char
@@ -194,43 +194,43 @@ fsm DriverLex
     -- trick as the `--` comment); the written op tag is overridden
     -- 8 → 60 and the scan advances 2.
     at_plusplus ∈ Bool = ((cur_char = "+") ∧ (next_char = "+")
-        ∧ in_range ∧ (¬_in_strlit))
-    plan_tag0_pp ∈ Int = ((at_plusplus ∧ plan_kind = 1) ? 60 : plan_tag0)
-    plan_tag1_pp ∈ Int = ((at_plusplus ∧ (plan_kind = 4 ∨ plan_kind = 5 ∨ plan_kind = 6))
+        ∧ in_range ∧ (¬_strlit))
+    tag0_pp ∈ Int = ((at_plusplus ∧ plan_kind = 1) ? 60 : plan_tag0)
+    tag1_pp ∈ Int = ((at_plusplus ∧ (plan_kind = 4 ∨ plan_kind = 5 ∨ plan_kind = 6))
         ? 60 : plan_tag1)
 
     tok_buf.count = (is_first_tick ? 0
-        : float_finish ? (_tok_buf.count + (float_with_op ? 2 : 1))
+        : finish ? (_tok_buf.count + (with_op ? 2 : 1))
         : plan_count_n)
     last_token_tag = (is_first_tick ? 0
-        : float_finish ? (float_with_op ? char_tag : 4)
+        : finish ? (with_op ? char_tag : 4)
         : (at_plusplus ∧ plan_kind ≠ 0) ? 60
         : plan_last_n)
     prev_token_tag = (is_first_tick ? 0
-        : float_finish ? (float_with_op ? 4 : _last_token_tag)
+        : finish ? (with_op ? 4 : _last_token_tag)
         : plan_prev_n)
-    pend_str_addr = (is_first_tick ? 0 - 1
-        : ((plan_kind = 3 ∨ plan_kind = 5) ? plan_addr_pay0 : 0 - 1))
-    have_pend_str ∈ Bool = (_pend_str_addr ≥ 0)
+    str_addr = (is_first_tick ? 0 - 1
+        : ((plan_kind = 3 ∨ plan_kind = 5) ? addr_pay0 : 0 - 1))
+    have_pend_str ∈ Bool = (_str_addr ≥ 0)
 
-    write_tag0 ∈ Effect = LibCall("__mem", "write_long", ⟨ArgInt(plan_addr_tag0), ArgInt(plan_tag0_pp)⟩)
-    write_pay0   ∈ Effect = LibCall("__mem", "write_long", ⟨ArgInt(plan_addr_pay0), ArgInt(plan_pay0)⟩)
-    write_tag1 ∈ Effect = LibCall("__mem", "write_long", ⟨ArgInt(plan_addr_tag1), ArgInt(plan_tag1_pp)⟩)
-    eff_strdup   ∈ Effect = LibCall("libc", "strdup", ⟨ArgStr(plan_str0)⟩)
-    write_pend_str  ∈ Effect = LibCall("__mem", "write_long", ⟨ArgInt(_pend_str_addr), ArgInt(cap_int)⟩)
-    write_eof   ∈ Effect = LibCall("__mem", "write_long", ⟨ArgInt(tok_buf.base + (tok_buf.count * 32)), ArgInt(13)⟩)
+    write_tag0 ∈ Effect = LibCall("__mem", "write_long", ⟨ArgInt(addr_tag0), ArgInt(tag0_pp)⟩)
+    write_pay0   ∈ Effect = LibCall("__mem", "write_long", ⟨ArgInt(addr_pay0), ArgInt(plan_pay0)⟩)
+    write_tag1 ∈ Effect = LibCall("__mem", "write_long", ⟨ArgInt(addr_tag1), ArgInt(tag1_pp)⟩)
+    strdup   ∈ Effect = LibCall("libc", "strdup", ⟨ArgStr(plan_str0)⟩)
+    pend_str  ∈ Effect = LibCall("__mem", "write_long", ⟨ArgInt(_str_addr), ArgInt(cap_int)⟩)
+    eof   ∈ Effect = LibCall("__mem", "write_long", ⟨ArgInt(tok_buf.base + (tok_buf.count * 32)), ArgInt(13)⟩)
 
     has_input ∈ Bool = (#input > 0)
-    lexing_done ∈ Bool = (done ∧ ¬was_collecting_str ∧ ¬was_collecting_int ∧ ¬_in_strlit ∧ has_input)
+    lexing_done ∈ Bool = (done ∧ ¬was_collecting_str ∧ ¬was_collecting_int ∧ ¬_strlit ∧ has_input)
 
     next_char ∈ String = substr(input, pos + 1, 1)
     collecting ∈ Bool = (was_collecting_str ∨ was_collecting_int)
     at_dash    ∈ Bool = (cur_char = "-")
-    next_dash  ∈ Bool = (next_char = "-")
-    at_comment ∈ Bool = (at_dash ∧ next_dash ∧ in_range ∧ (¬collecting) ∧ (¬_in_strlit))
+    dash  ∈ Bool = (next_char = "-")
+    at_comment ∈ Bool = (at_dash ∧ dash ∧ in_range ∧ (¬collecting) ∧ (¬_strlit))
     comment_nl ∈ Int = index_of(input, "\n", pos)
     comment_end ∈ Int = (comment_nl < 0 ? #input : comment_nl)
-    skip_ws ∈ Bool = (is_ws ∧ in_range ∧ (¬_in_strlit))
+    skip_ws ∈ Bool = (is_ws ∧ in_range ∧ (¬_strlit))
     ws_run_len ∈ Int
     WsRunLen(s ↦ input, p ↦ pos, adv ↦ ws_run_len)
     next_pos = (is_first_tick ? 0

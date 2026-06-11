@@ -165,8 +165,8 @@ claim Translate2BoolProbe
     BoolExprBinopParts(e ↦ cond_e, op ↦ conj_op, lhs ↦ conj_l,
         rhs ↦ conj_r, is_binop ↦ cond_is_binop)
 
-    conj_is_array ∈ Bool
-    BoolOpIsArray(op ↦ conj_op, out ↦ conj_is_array)
+    is_array ∈ Bool
+    BoolOpIsArray(op ↦ conj_op, out ↦ is_array)
 
     lt_op ∈ Op
     lt_l, lt_r ∈ Expr
@@ -195,7 +195,7 @@ claim Translate2BoolProbe
     BoolNaryBuildZ3(ctx_h ↦ 0, op ↦ conj_op, num_args ↦ 2,
         args_arr_ptr ↦ 0, eff ↦ nary_eff, ok ↦ nary_ok)
 
-    all_ok ∈ Bool = (is_tern ∧ cond_is_binop ∧ conj_is_array
+    all_ok ∈ Bool = (is_tern ∧ cond_is_binop ∧ is_array
         ∧ lt_is_binop ∧ lt_ok ∧ ¬lt_needs_not
         ∧ ne_is_binop ∧ ne_ok ∧ ne_needs_not
         ∧ nary_ok)

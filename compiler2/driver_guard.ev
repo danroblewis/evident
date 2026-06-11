@@ -1,12 +1,12 @@
 -- MODULE DriverGuard
--- CONSUMES: the parsed root (parse_result) + parse-done signal (parse_ready,
+-- CONSUMES: the parsed root (result) + parse-done signal (parse_ready,
 --           _parse_kind, parse_bad), the claim index (claimindex_names, claimindex_buf.base),
---           the parse_mode-10 composition-walk state (in_parse, _parse_mode,
---           _callw_st, callw_reset, work_nil), and the inline-frame
+--           the parse_mode-10 composition-walk state (parse, _parse_mode,
+--           _callw_st, reset, nil), and the inline-frame
 --           stack views (frame_pop, _frame_depth, h_top).
--- PRODUCES: the guard recognizer (cond_op/cond_lhs/cond_rhs/cond_binop/cond_callee/cond_key/
---           cond_pos/cond_hit), the claim-body fetch effect (eff_guard_read), the
---           jump capture/fire signals (jump_capture/jump_fire/disarm), and
+-- PRODUCES: the guard recognizer (cond_op/cond_lhs/cond_rhs/binop/cond_callee/cond_key/
+--           cond_pos/cond_hit), the claim-body fetch effect (guard_read), the
+--           jump capture/fire signals (capture/jump_fire/disarm), and
 --           the active-guard carry (active_handle/armed_depth) + guarding flag.
 -- MAINTAINS: a `cond ⇒ ClaimName` line splices Name's body with every
 --           asserted constraint wrapped in (=> guard …); the guard is
@@ -20,33 +20,33 @@ fsm DriverGuard
     cond_op ∈ Op
     cond_lhs ∈ Expr
     cond_rhs ∈ Expr
-    cond_binop ∈ Bool
-    BoolExprBinopParts(e ↦ parse_result, op ↦ cond_op, lhs ↦ cond_lhs,
-        rhs ↦ cond_rhs, is_binop ↦ cond_binop)
+    binop ∈ Bool
+    BoolExprBinopParts(e ↦ result, op ↦ cond_op, lhs ↦ cond_lhs,
+        rhs ↦ cond_rhs, is_binop ↦ binop)
     cond_callee ∈ String = match cond_rhs
         EIdent(s) ⇒ s
         _ ⇒ ""
     cond_key ∈ String
     FtiNameEntry(name ↦ cond_callee, entry ↦ cond_key)
     cond_pos ∈ Int = index_of(claimindex_names, cond_key, 0)
-    cond_hit ∈ Bool = (parse_ready ∧ (_parse_kind = 2) ∧ (¬parse_bad) ∧ cond_binop
+    cond_hit ∈ Bool = (parse_ready ∧ (_parse_kind = 2) ∧ (¬parse_bad) ∧ binop
         ∧ (cond_op matches OpImpl) ∧ (cond_callee ≠ "") ∧ (cond_pos ≥ 0)
         ∧ (_frame_depth < 8))
-    eff_guard_read ∈ Effect
-    BuildMemReadLong(addr ↦ claimindex_buf.base + (8 * (cond_pos / 32)), eff ↦ eff_guard_read)
-    jump_capture ∈ Bool = (in_parse ∧ (_parse_mode = 10) ∧ (_callw_st = 3))
-    jump_fire ∈ Bool = (in_parse ∧ (_parse_mode = 10) ∧ (_callw_st = 4)
-        ∧ work_nil)
+    guard_read ∈ Effect
+    BuildMemReadLong(addr ↦ claimindex_buf.base + (8 * (cond_pos / 32)), eff ↦ guard_read)
+    capture ∈ Bool = (parse ∧ (_parse_mode = 10) ∧ (_callw_st = 3))
+    jump_fire ∈ Bool = (parse ∧ (_parse_mode = 10) ∧ (_callw_st = 4)
+        ∧ nil)
     active_handle ∈ Int
     armed_depth ∈ Int
     disarm ∈ Bool = (frame_pop ∧ (_frame_depth = _armed_depth))
     active_handle = (is_first_tick ? 0
-        : callw_reset ? 0
+        : reset ? 0
         : jump_fire ? h_top
         : disarm ? 0
         : _active_handle)
     armed_depth = (is_first_tick ? 0
-        : callw_reset ? 0
+        : reset ? 0
         : jump_fire ? _frame_depth + 1
         : disarm ? 0
         : _armed_depth)

@@ -1,7 +1,7 @@
 -- DriverClassify isolation — classify a pinned-membership line.
 -- Window pinned to `x ∈ Int = 5` (Ident OpIn Ident Eq IntLit), empty
 -- registries, depth-0 frame; tok0..tok7 pinned directly (no
--- DriverWindow). verdict = line_is_mem + 2*line_pinned + 4*enter_pratt_line = 7.
+-- DriverWindow). verdict = is_mem + 2*pinned + 4*pratt_line = 7.
 -- entry: main
 -- expect: stdout = "7"
 -- expect: exit = 0
@@ -72,50 +72,50 @@ fsm main
     seqvar_name ∈ String
     seqvar_name = (is_first_tick ? "" : _seqvar_name)
     -- sibling sub-walk enter signals (none active in this isolation).
-    efflit_exit_enter ∈ Bool
-    efflit_exit_enter = (is_first_tick ? false : _efflit_exit_enter)
-    efflit_guard_enter ∈ Bool
-    efflit_guard_enter = (is_first_tick ? false : _efflit_guard_enter)
-    arm_body_enter ∈ Bool
-    arm_body_enter = (is_first_tick ? false : _arm_body_enter)
-    seqlit_elem_enter ∈ Bool
-    seqlit_elem_enter = (is_first_tick ? false : _seqlit_elem_enter)
+    exit_enter ∈ Bool
+    exit_enter = (is_first_tick ? false : _exit_enter)
+    guard_enter ∈ Bool
+    guard_enter = (is_first_tick ? false : _guard_enter)
+    body_enter ∈ Bool
+    body_enter = (is_first_tick ? false : _body_enter)
+    elem_enter ∈ Bool
+    elem_enter = (is_first_tick ? false : _elem_enter)
     callw_slot ∈ Bool
     callw_slot = (is_first_tick ? false : _callw_slot)
-    callw_pun ∈ Bool
-    callw_pun = (is_first_tick ? false : _callw_pun)
+    pun ∈ Bool
+    pun = (is_first_tick ? false : _pun)
     join_hdr ∈ String
     join_hdr = (is_first_tick ? "*" : _join_hdr)
     qrange_close ∈ Bool
     qrange_close = (is_first_tick ? false : _qrange_close)
-    enter_qseq ∈ Bool
-    enter_qseq = (is_first_tick ? false : _enter_qseq)
-    tuple_element ∈ Bool
-    tuple_element = (is_first_tick ? false : _tuple_element)
+    qseq ∈ Bool
+    qseq = (is_first_tick ? false : _qseq)
+    element ∈ Bool
+    element = (is_first_tick ? false : _element)
     -- other line-shape flags this block reads but does not define.
     q_line ∈ Bool
     q_line = (is_first_tick ? false : _q_line)
     q_range ∈ Bool
     q_range = (is_first_tick ? false : _q_range)
-    q_over_seq ∈ Bool
-    q_over_seq = (is_first_tick ? false : _q_over_seq)
+    over_seq ∈ Bool
+    over_seq = (is_first_tick ? false : _over_seq)
     setlit_line ∈ Bool
     setlit_line = (is_first_tick ? false : _setlit_line)
     positional_line ∈ Bool
     positional_line = (is_first_tick ? false : _positional_line)
-    enter_qset ∈ Bool
-    enter_qset = (is_first_tick ? false : _enter_qset)
-    q_seq_dotted ∈ Bool
-    q_seq_dotted = (is_first_tick ? false : _q_seq_dotted)
+    qset ∈ Bool
+    qset = (is_first_tick ? false : _qset)
+    seq_dotted ∈ Bool
+    seq_dotted = (is_first_tick ? false : _seq_dotted)
     arm_take ∈ Bool
     arm_take = (is_first_tick ? false : _arm_take)
     arm_payload_head ∈ Bool
     arm_payload_head = (is_first_tick ? false : _arm_payload_head)
-    pat_close_take ∈ Bool
-    pat_close_take = (is_first_tick ? false : _pat_close_take)
+    close_take ∈ Bool
+    close_take = (is_first_tick ? false : _close_take)
     ..DriverClassify
-    verdict ∈ Int = ((line_is_mem ? 1 : 0) + (line_pinned ? 2 : 0)
-        + (enter_pratt_line ? 4 : 0))
+    verdict ∈ Int = ((is_mem ? 1 : 0) + (pinned ? 2 : 0)
+        + (pratt_line ? 4 : 0))
     v_msg ∈ String = str_from_int(verdict)
     effects ∈ Seq(Effect) = ((¬is_first_tick)
         ? ⟨LibCall("libc", "puts", ⟨ArgStr(v_msg)⟩), Exit(0)⟩

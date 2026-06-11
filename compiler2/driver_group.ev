@@ -1,16 +1,16 @@
 -- MODULE DriverGroup
 -- CONSUMES (free names, names-match — never declared here): the group-enter
---           signals (enter_multiname body multi-name, enter_claim_params
+--           signals (multiname body multi-name, claim_params
 --           first-line param list), the classifier name/sort/type
---           (line_is_mem, line_is_nat, line_sort, mem_tyname, line_t0), the
---           window head (tok0/tok1/tok3), and the parse gate (in_parse,
---           _parse_mode, tok_ready, work_nil).
+--           (is_mem, line_is_nat, line_sort, mem_tyname, line_t0), the
+--           window head (tok0/tok1/tok3), and the parse gate (parse,
+--           _parse_mode, tok_ready, nil).
 -- PRODUCES: the HEADER below — the checked interface (bare-mention
 --           composition). The carried walk state (pending_names/walk_state/
 --           is_parameter/closed/shared_sort/is_nat/type_name) and the
 --           per-tick outputs the work-item dispatch reads (collect/take_name/
 --           type_tick/bail/draining/have_pending/last_name/type_consume/
---           done_mode/type_exit_mode/name_field/carry_decl/drain_items).
+--           done_mode/exit_mode/name_field/carry_decl/drain_items).
 --           driver_main declares these names and joins them; every other
 --           name in this body is per-call-site internal (hidden).
 -- MAINTAINS: PARAM groups (`claim main(a, b ∈ Int, ok ∈ Bool)`) close on
@@ -21,7 +21,7 @@
 --
 -- The parse_mode-9 multi-name group walk. Composed into driver_main by
 -- BARE MENTION (the header is the whole interface).
-fsm DriverGroup(pending_names ∈ TokenList, walk_state ∈ Int, is_parameter ∈ Bool, closed ∈ Bool, shared_sort ∈ Int, is_nat ∈ Bool, type_name ∈ String, collect ∈ Bool, take_name ∈ Bool, type_tick ∈ Bool, bail ∈ Bool, draining ∈ Bool, have_pending ∈ Bool, last_name ∈ Bool, type_consume ∈ Int, done_mode ∈ Int, type_exit_mode ∈ Int, name_field ∈ String, carry_decl ∈ String, drain_items ∈ C2Items)
+fsm DriverGroup(pending_names ∈ TokenList, walk_state ∈ Int, is_parameter ∈ Bool, closed ∈ Bool, shared_sort ∈ Int, is_nat ∈ Bool, type_name ∈ String, collect ∈ Bool, take_name ∈ Bool, type_tick ∈ Bool, bail ∈ Bool, draining ∈ Bool, have_pending ∈ Bool, last_name ∈ Bool, type_consume ∈ Int, done_mode ∈ Int, exit_mode ∈ Int, name_field ∈ String, carry_decl ∈ String, drain_items ∈ C2Items)
     -- ── F1: parse_mode-9 GROUP walk (first-line param lists + body
     -- multi-name memberships) ─────────────────────────────────────
     -- Collect substate (walk_state 0): one `Ident ,` per tick pushes the
@@ -33,18 +33,18 @@ fsm DriverGroup(pending_names ∈ TokenList, walk_state ∈ Int, is_parameter �
     -- Scalar types only (Int/Nat/Bool/String/Result/the user enum);
     -- Seq(...) params and bounds/pins on group lines are descoped
     -- (zero corpus occurrences of either).
-    active ∈ Bool = (in_parse ∧ (_parse_mode = 9) ∧ work_nil ∧ tok_ready)
+    active ∈ Bool = (parse ∧ (_parse_mode = 9) ∧ nil ∧ tok_ready)
     collect = (active ∧ (_walk_state = 0))
     take_name = (collect ∧ (tok0 matches Ident(_)) ∧ (tok1 matches Comma))
-    type_tick = (collect ∧ (tok0 matches Ident(_)) ∧ line_is_mem)
+    type_tick = (collect ∧ (tok0 matches Ident(_)) ∧ is_mem)
     bail = (collect ∧ (¬take_name) ∧ (¬type_tick))
     draining = (active ∧ (_walk_state = 1))
 
     have_pending = (¬(_pending_names matches TLNil))
-    head_token ∈ Token = match _pending_names
+    token ∈ Token = match _pending_names
         TLCons(t, _) ⇒ t
         TLNil ⇒ EofTok
-    head_name ∈ String = match head_token
+    head_name ∈ String = match token
         Ident(s) ⇒ s
         _ ⇒ ""
     name_tail ∈ TokenList = match _pending_names
@@ -57,27 +57,27 @@ fsm DriverGroup(pending_names ∈ TokenList, walk_state ∈ Int, is_parameter �
     done_mode = ((¬_is_parameter) ? 2
         : _closed ? 2
         : 9)
-    type_exit_mode = ((¬_is_parameter) ? 2
+    exit_mode = ((¬_is_parameter) ? 2
         : type_close ? 2
         : 9)
 
     pending_names = (is_first_tick ? TLNil
-        : enter_claim_params ? TLNil
-        : enter_multiname ? TLCons(line_t0, TLNil)
+        : claim_params ? TLNil
+        : multiname ? TLCons(line_t0, TLNil)
         : take_name ? TLCons(tok0, _pending_names)
         : draining ? name_tail
         : _pending_names)
     walk_state = (is_first_tick ? 0
-        : (enter_claim_params ∨ enter_multiname) ? 0
+        : (claim_params ∨ multiname) ? 0
         : type_tick ? (have_pending ? 1 : 0)
         : (draining ∧ last_name) ? 0
         : _walk_state)
     is_parameter = (is_first_tick ? false
-        : enter_claim_params ? true
-        : enter_multiname ? false
+        : claim_params ? true
+        : multiname ? false
         : _is_parameter)
     closed = (is_first_tick ? false
-        : enter_claim_params ? false
+        : claim_params ? false
         : (type_tick ∧ _is_parameter) ? type_close
         : _closed)
     shared_sort = (is_first_tick ? 0 : type_tick ? line_sort : _shared_sort)

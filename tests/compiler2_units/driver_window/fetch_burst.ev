@@ -1,6 +1,6 @@
 -- DriverWindow isolation — lookahead-need dispatch + fetch state machine.
--- Cursor held empty (tok_cur = fetch_end = 0 ⇒ win_avail = 0) under parse_mode 6
--- (⇒ win_need = 5), so every idle tick raises fetch_go and walks fetch_mode
+-- Cursor held empty (tok_cur = fetch_end = 0 ⇒ avail = 0) under parse_mode 6
+-- (⇒ need = 5), so every idle tick raises fetch_go and walks fetch_mode
 -- 0→1→2; each arrival at fetch_mode 2 is a completed burst. Count bursts,
 -- exit at 3. Pure sequencing — no __mem arena needed (the rd_* read
 -- effects are not scheduled).
@@ -15,8 +15,8 @@ import "compiler2/driver_ir.ev"
 import "compiler2/driver_window.ev"
 
 fsm main
-    in_parse ∈ Bool
-    in_parse = (is_first_tick ? true : _in_parse)
+    parse ∈ Bool
+    parse = (is_first_tick ? true : _parse)
     parse_mode ∈ Int
     parse_mode = (is_first_tick ? 6 : _parse_mode)
     -- tok_cur/fetch_end are declared by DriverWindow but their transitions live in
@@ -31,18 +31,18 @@ fsm main
     tok_buf ∈ FtiBuffer
     tok_buf.base = (is_first_tick ? 0 : _tok_buf.base)
     tok_buf.count = (is_first_tick ? 0 : _tok_buf.count)
-    -- Sub-state carries read only by non-parse_mode-6 win_need branches; held so
+    -- Sub-state carries read only by non-parse_mode-6 need branches; held so
     -- the names resolve.
-    rec_collect_on ∈ Bool
-    rec_collect_on = (is_first_tick ? false : _rec_collect_on)
+    collect_on ∈ Bool
+    collect_on = (is_first_tick ? false : _collect_on)
     decl_action ∈ Int
     decl_action = (is_first_tick ? 0 : _decl_action)
     callw_st ∈ Int
     callw_st = (is_first_tick ? 0 : _callw_st)
     tuple_state ∈ Int
     tuple_state = (is_first_tick ? 0 : _tuple_state)
-    work_nil ∈ Bool
-    work_nil = (is_first_tick ? true : _work_nil)
+    nil ∈ Bool
+    nil = (is_first_tick ? true : _nil)
     vfield_st ∈ Int
     vfield_st = (is_first_tick ? 0 : _vfield_st)
     ..DriverWindow

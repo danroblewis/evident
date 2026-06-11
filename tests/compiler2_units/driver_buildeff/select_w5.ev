@@ -1,6 +1,6 @@
 -- DriverBuildEff isolation — the ED effect-row selector.
 -- Act 1 (ctor-field run) step 8 is the field-name/sort array-write
--- batch: enum_wbatchf must select the wide row (wf=1, w2/w3u=0). A regression
+-- batch: wbatchf must select the wide row (wf=1, w2/w3u=0). A regression
 -- in the batch selector emits the wrong number of effect writes.
 -- entry: main
 -- expect: stdout = "1/0/0"
@@ -18,10 +18,10 @@ import "compiler2/driver_ir.ev"
 import "compiler2/driver_buildeff.ev"
 
 fsm main
-    decl_action_now ∈ Int
-    decl_action_now = (is_first_tick ? 1 : _decl_action_now)
-    decl_step_now ∈ Int
-    decl_step_now = (is_first_tick ? 8 : _decl_step_now)
+    action_now ∈ Int
+    action_now = (is_first_tick ? 1 : _action_now)
+    step_now ∈ Int
+    step_now = (is_first_tick ? 8 : _step_now)
     cap_int ∈ Int
     cap_int = (is_first_tick ? 0 : _cap_int)
     field_ref2 ∈ Int
@@ -39,15 +39,15 @@ fsm main
     refs_packed01 = (is_first_tick ? 0 : _refs_packed01)
     decl_step ∈ Int
     decl_step = (is_first_tick ? 0 : _decl_step)
-    variant_index ∈ Int
-    variant_index = (is_first_tick ? 0 : _variant_index)
+    index ∈ Int
+    index = (is_first_tick ? 0 : _index)
     sym_buf ∈ FtiBuffer
     sym_buf.base = (is_first_tick ? 0 : _sym_buf.base)
     sym_buf.count = (is_first_tick ? 0 : _sym_buf.count)
     z3_arena ∈ Int
     z3_arena = (is_first_tick ? 0 : _z3_arena)
-    z3_effect_arraysort ∈ Int
-    z3_effect_arraysort = (is_first_tick ? 0 : _z3_effect_arraysort)
+    effect_arraysort ∈ Int
+    effect_arraysort = (is_first_tick ? 0 : _effect_arraysort)
     z3sorts ∈ Z3Sorts
     z3sorts.isort = (is_first_tick ? 0 : _z3sorts.isort)
     z3sorts.bsort = (is_first_tick ? 0 : _z3sorts.bsort)
@@ -57,34 +57,34 @@ fsm main
     z3ctx.cfg = (is_first_tick ? 0 : _z3ctx.cfg)
     z3ctx.ctx = (is_first_tick ? 0 : _z3ctx.ctx)
     z3ctx.sol = (is_first_tick ? 0 : _z3ctx.sol)
-    z3_effect_sort ∈ Int
-    z3_effect_sort = (is_first_tick ? 0 : _z3_effect_sort)
-    z3_effects_length_geq ∈ Int
-    z3_effects_length_geq = (is_first_tick ? 0 : _z3_effects_length_geq)
-    z3_effects_length ∈ Int
-    z3_effects_length = (is_first_tick ? 0 : _z3_effects_length)
+    effect_sort ∈ Int
+    effect_sort = (is_first_tick ? 0 : _effect_sort)
+    effects_length_geq ∈ Int
+    effects_length_geq = (is_first_tick ? 0 : _effects_length_geq)
+    effects_length ∈ Int
+    effects_length = (is_first_tick ? 0 : _effects_length)
     z3_first_tick ∈ Int
     z3_first_tick = (is_first_tick ? 0 : _z3_first_tick)
     z3_last_results ∈ Int
     z3_last_results = (is_first_tick ? 0 : _z3_last_results)
-    z3_last_results_geq ∈ Int
-    z3_last_results_geq = (is_first_tick ? 0 : _z3_last_results_geq)
-    z3_last_results_length ∈ Int
-    z3_last_results_length = (is_first_tick ? 0 : _z3_last_results_length)
-    z3_last_results_sort ∈ Int
-    z3_last_results_sort = (is_first_tick ? 0 : _z3_last_results_sort)
-    z3_result_sort ∈ Int
-    z3_result_sort = (is_first_tick ? 0 : _z3_result_sort)
-    z3_effects_symbol ∈ Int
-    z3_effects_symbol = (is_first_tick ? 0 : _z3_effects_symbol)
-    z3_effects_length_symbol ∈ Int
-    z3_effects_length_symbol = (is_first_tick ? 0 : _z3_effects_length_symbol)
-    z3_first_tick_symbol ∈ Int
-    z3_first_tick_symbol = (is_first_tick ? 0 : _z3_first_tick_symbol)
-    z3_last_results_symbol ∈ Int
-    z3_last_results_symbol = (is_first_tick ? 0 : _z3_last_results_symbol)
-    z3_last_results_length_symbol ∈ Int
-    z3_last_results_length_symbol = (is_first_tick ? 0 : _z3_last_results_length_symbol)
+    last_results_geq ∈ Int
+    last_results_geq = (is_first_tick ? 0 : _last_results_geq)
+    last_results_length ∈ Int
+    last_results_length = (is_first_tick ? 0 : _last_results_length)
+    last_results_sort ∈ Int
+    last_results_sort = (is_first_tick ? 0 : _last_results_sort)
+    result_sort ∈ Int
+    result_sort = (is_first_tick ? 0 : _result_sort)
+    effects_symbol ∈ Int
+    effects_symbol = (is_first_tick ? 0 : _effects_symbol)
+    effects_length_symbol ∈ Int
+    effects_length_symbol = (is_first_tick ? 0 : _effects_length_symbol)
+    first_tick_symbol ∈ Int
+    first_tick_symbol = (is_first_tick ? 0 : _first_tick_symbol)
+    last_results_symbol ∈ Int
+    last_results_symbol = (is_first_tick ? 0 : _last_results_symbol)
+    last_results_length_symbol ∈ Int
+    last_results_length_symbol = (is_first_tick ? 0 : _last_results_length_symbol)
     z3nums ∈ Z3Numerals
     z3nums.zero = (is_first_tick ? 0 : _z3nums.zero)
     z3nums.one = (is_first_tick ? 0 : _z3nums.one)
@@ -99,7 +99,7 @@ fsm main
     is_user_enum = (is_first_tick ? false : _is_user_enum)
     declared_name ∈ String
     declared_name = (is_first_tick ? "" : _declared_name)
-    op_geq ∈ Op = OpGeq
+    geq ∈ Op = OpGeq
     current_variant ∈ EnumVariantDecl = EVNoVariant
     refs_packed23 ∈ Int
     refs_packed23 = (is_first_tick ? 0 : _refs_packed23)
@@ -107,41 +107,41 @@ fsm main
     refs_packed45 = (is_first_tick ? 0 : _refs_packed45)
     member_base ∈ Int
     member_base = (is_first_tick ? 0 : _member_base)
-    group_size ∈ Int
-    group_size = (is_first_tick ? 1 : _group_size)
-    group_read_cur ∈ Int
-    group_read_cur = (is_first_tick ? 0 : _group_read_cur)
+    size ∈ Int
+    size = (is_first_tick ? 1 : _size)
+    read_cur ∈ Int
+    read_cur = (is_first_tick ? 0 : _read_cur)
     member_index ∈ Int = 0
     enumtab_count ∈ Int
     enumtab_count = (is_first_tick ? 0 : _enumtab_count)
-    variant_alloc ∈ Int
-    variant_alloc = (is_first_tick ? 1 : _variant_alloc)
-    res_int0 ∈ Int
-    res_int0 = (is_first_tick ? 0 : _res_int0)
-    res_int1 ∈ Int
-    res_int1 = (is_first_tick ? 0 : _res_int1)
-    res_int2 ∈ Int
-    res_int2 = (is_first_tick ? 0 : _res_int2)
-    res_int3 ∈ Int
-    res_int3 = (is_first_tick ? 0 : _res_int3)
-    res_int4 ∈ Int
-    res_int4 = (is_first_tick ? 0 : _res_int4)
-    res_int5 ∈ Int
-    res_int5 = (is_first_tick ? 0 : _res_int5)
-    field_slots ∈ Seq(EnumFieldSlot)
-    #field_slots ≤ 6
-    ∀ k ∈ {0..5} : field_slots[k].ty = (is_first_tick ? "" : _field_slots[k].ty)
-    ∀ k ∈ {0..5} : field_slots[k].key = (is_first_tick ? "" : _field_slots[k].key)
-    ∀ k ∈ {0..5} : field_slots[k].refpos = (is_first_tick ? 0 : _field_slots[k].refpos)
-    ∀ k ∈ {0..5} : field_slots[k].isref = (is_first_tick ? false : _field_slots[k].isref)
-    ∀ k ∈ {0..5} : field_slots[k].ref = (is_first_tick ? 0 : _field_slots[k].ref)
-    ∀ k ∈ {0..5} : field_slots[k].tabpos = (is_first_tick ? 0 - 1 : _field_slots[k].tabpos)
-    ∀ k ∈ {0..5} : field_slots[k].istab = (is_first_tick ? false : _field_slots[k].istab)
-    ∀ k ∈ {0..5} : field_slots[k].xsort = (is_first_tick ? 0 : _field_slots[k].xsort)
-    ∀ k ∈ {0..5} : field_slots[k].sort = (is_first_tick ? 0 : _field_slots[k].sort)
-    ∀ k ∈ {0..5} : field_slots[k].unres = (is_first_tick ? false : _field_slots[k].unres)
+    alloc ∈ Int
+    alloc = (is_first_tick ? 1 : _alloc)
+    int0 ∈ Int
+    int0 = (is_first_tick ? 0 : _int0)
+    int1 ∈ Int
+    int1 = (is_first_tick ? 0 : _int1)
+    int2 ∈ Int
+    int2 = (is_first_tick ? 0 : _int2)
+    int3 ∈ Int
+    int3 = (is_first_tick ? 0 : _int3)
+    int4 ∈ Int
+    int4 = (is_first_tick ? 0 : _int4)
+    int5 ∈ Int
+    int5 = (is_first_tick ? 0 : _int5)
+    slots ∈ Seq(EnumFieldSlot)
+    #slots ≤ 6
+    ∀ k ∈ {0..5} : slots[k].ty = (is_first_tick ? "" : _slots[k].ty)
+    ∀ k ∈ {0..5} : slots[k].key = (is_first_tick ? "" : _slots[k].key)
+    ∀ k ∈ {0..5} : slots[k].refpos = (is_first_tick ? 0 : _slots[k].refpos)
+    ∀ k ∈ {0..5} : slots[k].isref = (is_first_tick ? false : _slots[k].isref)
+    ∀ k ∈ {0..5} : slots[k].ref = (is_first_tick ? 0 : _slots[k].ref)
+    ∀ k ∈ {0..5} : slots[k].tabpos = (is_first_tick ? 0 - 1 : _slots[k].tabpos)
+    ∀ k ∈ {0..5} : slots[k].istab = (is_first_tick ? false : _slots[k].istab)
+    ∀ k ∈ {0..5} : slots[k].xsort = (is_first_tick ? 0 : _slots[k].xsort)
+    ∀ k ∈ {0..5} : slots[k].sort = (is_first_tick ? 0 : _slots[k].sort)
+    ∀ k ∈ {0..5} : slots[k].unres = (is_first_tick ? false : _slots[k].unres)
     ..DriverBuildEff
-    sel ∈ String = (enum_wbatchf ? "1" : "0") ++ "/" ++ (enum_wbatch2 ? "1" : "0") ++ "/" ++ (enum_wbatch3u ? "1" : "0")
+    sel ∈ String = (wbatchf ? "1" : "0") ++ "/" ++ (wbatch2 ? "1" : "0") ++ "/" ++ (wbatch3u ? "1" : "0")
     effects ∈ Seq(Effect) = ((¬is_first_tick)
         ? ⟨LibCall("libc", "puts", ⟨ArgStr(sel)⟩), Exit(0)⟩
         : ⟨LibCall("libc", "getpid", ⟨⟩)⟩)
