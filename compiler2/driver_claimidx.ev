@@ -200,7 +200,7 @@ fsm DriverClaimIdx
         ∧ (¬efflit_open) ∧ (¬nest))
     arg_decl ∈ Int = (efflit_arg_name = "ArgInt" ? argint_decl
         : argstr_decl)
-    sel_eq ∈ C2Item = (_chain_on ? C2SelEqH(_efflit_count)
+    equality_test ∈ C2Item = (_chain_on ? C2SelEqH(_efflit_count)
         : C2SelectEq(_efflit_count))
     libcall_items ∈ C2Items = C2ICons(C2Process(EStr(_lib)),
         C2ICons(C2Process(EStr(_efflit_fn)),
@@ -209,12 +209,12 @@ fsm DriverClaimIdx
         C2ICons(C2PushH(empty_val),
         C2ICons(C2App(cell_decl, 2),
         C2ICons(C2App(libcall_decl, 3),
-        C2ICons(sel_eq, C2INil))))))))
+        C2ICons(equality_test, C2INil))))))))
     libcall0_items ∈ C2Items = C2ICons(C2Process(EStr(_lib)),
         C2ICons(C2Process(EStr(_efflit_fn)),
         C2ICons(C2PushH(empty_val),
         C2ICons(C2App(libcall_decl, 3),
-        C2ICons(sel_eq, C2INil)))))
+        C2ICons(equality_test, C2INil)))))
 
     guard_done ∈ Bool = (parse_ready ∧ (_parse_kind = 6) ∧ (¬parse_bad))
 

@@ -179,8 +179,8 @@ fsm main
     tok5 = (is_first_tick ? EofTok : _tok5)
     exit_decl ∈ Int
     exit_decl = (is_first_tick ? 0 : _exit_decl)
-    sel_eq ∈ C2Item
-    sel_eq = (is_first_tick ? C2Drop : _sel_eq)
+    equality_test ∈ C2Item
+    equality_test = (is_first_tick ? C2Drop : _equality_test)
     ..DriverPosBind
     verdict ∈ Int = ((bite ? 1 : 0) + (ok0 ? 2 : 0))
     v_msg ∈ String = str_from_int(verdict)

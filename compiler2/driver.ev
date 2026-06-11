@@ -388,7 +388,7 @@ fsm driver_main
         C2ICons(C2Drop, C2INil))
     line_items ∈ C2Items = ((line_end ∨ pratt_line ∨ enter_efflit
         ∨ intset ∨ enter_match ∨ enter_seqlit ∨ comp_line
-        ∨ tymem_line ∨ qrange ∨ qseq ∨ tuple_line ∨ call_stmt)
+        ∨ is_member_line ∨ qrange ∨ qseq ∨ tuple_line ∨ call_stmt)
         ? C2INil
         : method_call ? recv_items
         : strin ? strin_items
@@ -401,7 +401,7 @@ fsm driver_main
     mem_line ∈ Bool = (classify_now ∧ (¬line_end) ∧ (¬pratt_line)
         ∧ (¬enter_efflit) ∧ (¬intset) ∧ (¬enter_match)
         ∧ (¬enter_seqlit) ∧ (¬multiname) ∧ (¬comp_line)
-        ∧ (¬strin_line) ∧ (¬tymem_line) ∧ (¬q_line)
+        ∧ (¬strin_line) ∧ (¬is_member_line) ∧ (¬q_line)
         ∧ (¬positional_line))
     mem_consume ∈ Int = (seqmem ? 6 : bounded ? 5 : 3)
     elt_tyname ∈ String = recs[elt_slot].name
@@ -475,9 +475,9 @@ fsm driver_main
         : drop ? 1
         : app ? (_item_step = app_argc ? app_argc : 0)
         : it_select_eq ? (_item_step = 1 ? 1 : 0)
-        : sel_eq_h ? (_item_step = 1 ? 1 : 0)
+        : equality_handle ? (_item_step = 1 ? 1 : 0)
         : it_strop ? string_op_arity
-        : sel_h ? 2
+        : chosen_handle ? 2
         : it_set_add ? 2
         : 0)
     push_bound ∈ Bool = (processing ∧ process ∧ is_ident
@@ -561,7 +561,7 @@ fsm driver_main
         : it_decl ? (_item_step = 2 ? work_tail : _work_items)
         : app ? (_item_step = app_argc ? work_tail : _work_items)
         : it_select_eq ? (_item_step = 2 ? work_tail : _work_items)
-        : sel_eq_h ? (_item_step = 1 ? work_tail : _work_items)
+        : equality_handle ? (_item_step = 1 ? work_tail : _work_items)
         : it_len_eq ? (_item_step = 1 ? work_tail : _work_items)
         : it_assert ? ((guarding ∧ (_item_step = 0)) ? _work_items : work_tail)
         : work_tail)
@@ -572,7 +572,7 @@ fsm driver_main
         ∨ (it_decl ∧ (_item_step < 2))
         ∨ (app ∧ (_item_step < app_argc))
         ∨ (it_select_eq ∧ (_item_step < 2))
-        ∨ (sel_eq_h ∧ (_item_step < 1))
+        ∨ (equality_handle ∧ (_item_step < 1))
         ∨ (it_len_eq ∧ (_item_step < 1))))
     item_step = (is_first_tick ? 0
         : multi_step ? _item_step + 1
@@ -590,11 +590,11 @@ fsm driver_main
         : it_assert ? ((guarding ∧ (_item_step = 0)) ? 2 : 0)
         : app ? (_item_step = app_argc ? 1 : 0)
         : it_select_eq ? ((_item_step = 0 ∨ _item_step = 1) ? 2 : 0)
-        : sel_eq_h ? (_item_step = 0 ? 2 : 1)
+        : equality_handle ? (_item_step = 0 ? 2 : 1)
         : it_len_eq ? (_item_step = 0 ? 2 : 0)
         : len_eq_h ? 1
         : it_strop ? 1
-        : sel_h ? 1
+        : chosen_handle ? 1
         : real ? 1
         : it_empty_set ? 1
         : it_set_add ? 1
@@ -633,8 +633,8 @@ fsm driver_main
         : comp_call ? 2
         : comp_bare ? 1
         : dotdot ? 3
-        : tymem_call ? 4
-        : tymem_bare ? 3
+        : is_member_call ? 4
+        : is_bare_member ? 3
         : strin ? 3
         : qrange ? 8
         : qset ? 8
@@ -684,7 +684,7 @@ fsm driver_main
 
     field_add ∈ Bool = (classify_now ∧ (¬line_end) ∧ is_mem
         ∧ (¬effects_line) ∧ (¬intset_line) ∧ (¬is_carry)
-        ∧ (¬no_decl) ∧ (¬strin_line) ∧ (¬tymem_line)
+        ∧ (¬no_decl) ∧ (¬strin_line) ∧ (¬is_member_line)
         ∧ (¬setmem_line)
         ∧ (¬type_frame))
     -- E1: the first time a `_name` const is MENTIONED in an
@@ -723,7 +723,7 @@ fsm driver_main
         : recdecl_fin ? 0
         : stop ? 0
         : claim_end ? 0
-        : (comp_line ∨ tymem_line) ? 10
+        : (comp_line ∨ is_member_line) ? 10
         : cond_hit ? 10
         : jump_fire ? 2
         : (bare_jump ∨ callw_fire ∨ callw_bail) ? 2
@@ -871,12 +871,12 @@ fsm driver_main
     ctor_app ∈ Effect
     CtorAppStep(ctx_h ↦ z3ctx.ctx, ctor_decl_h ↦ app_decl, n_args ↦ app_argc,
         args_p ↦ z3_arena + 224, eff ↦ ctor_app)
-    sel_idx_handle ∈ Int = (sel_idx = 0 ? z3nums.zero
-        : sel_idx = 1 ? z3nums.one
-        : sel_idx = 2 ? z3nums.two
+    chosen_position_handle ∈ Int = (chosen_position = 0 ? z3nums.zero
+        : chosen_position = 1 ? z3nums.one
+        : chosen_position = 2 ? z3nums.two
         : z3nums.three)
     select ∈ Effect
-    BuildZ3MkSelect(ctx_h ↦ z3ctx.ctx, arr_h ↦ z3_effects, idx_h ↦ sel_idx_handle,
+    BuildZ3MkSelect(ctx_h ↦ z3ctx.ctx, arr_h ↦ z3_effects, idx_h ↦ chosen_position_handle,
         eff ↦ select)
     select_h ∈ Effect
     BuildZ3MkSelect(ctx_h ↦ z3ctx.ctx, arr_h ↦ h_2nd, idx_h ↦ h_top,
@@ -938,11 +938,11 @@ fsm driver_main
         : it_select_eq ? (_item_step = 0 ? select
             : _item_step = 1 ? eff_select_eq
             : assert_tmp)
-        : sel_eq_h ? (_item_step = 0 ? select : eff_select_eq)
+        : equality_handle ? (_item_step = 0 ? select : eff_select_eq)
         : it_len_eq ? (_item_step = 0 ? eff_len_eq : assert_tmp)
         : len_eq_h ? eff_len_eq
         : it_strop ? (string_op_name = "len" ? strlen : eff_strop)
-        : sel_h ? select_h
+        : chosen_handle ? select_h
         : real ? mkreal
         : it_empty_set ? eff_empty_set
         : it_set_add ? eff_set_add

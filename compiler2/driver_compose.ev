@@ -1,6 +1,6 @@
 -- MODULE DriverCompose
 -- CONSUMES: the classifier's composition/type-splice decision flags
---           (comp_call/bare/dd/line, tymem_call/bare/line, line_name,
+--           (comp_call/bare/dd/line, is_member_call/bare/line, line_name,
 --           line_ty_name, callee_pos), the claim index base (claimindex_buf.base), the
 --           handle-stack views (h_top/2nd/.. + tail1.. + stack_in),
 --           is_intresult_capture, the parse gate (parse, _parse_mode, tok_ready,
@@ -84,7 +84,7 @@ fsm DriverCompose
         CFCons(_, _, _, _, _, t) ⇒ t
         CFNil ⇒ CFNil
 
-    callee_cursor ∈ Bool = (comp_line ∨ tymem_line)
+    callee_cursor ∈ Bool = (comp_line ∨ is_member_line)
     claimidx_read ∈ Effect
     BuildMemReadLong(addr ↦ claimindex_buf.base + (8 * (callee_pos / 32)), eff ↦ claimidx_read)
 
@@ -263,41 +263,41 @@ fsm DriverCompose
             : _param_depth)
         : _param_depth)
     callw_st = (is_first_tick ? 0
-        : (comp_line ∨ tymem_line) ? 0
+        : (comp_line ∨ is_member_line) ? 0
         : cond_hit ? 3
         : capture ? 4
         : callw_cap ? 1
         : _callw_st)
     callw_bare = (is_first_tick ? false
-        : (comp_call ∨ tymem_call) ? false
-        : (comp_bare ∨ dotdot ∨ tymem_bare) ? true
+        : (comp_call ∨ is_member_call) ? false
+        : (comp_bare ∨ dotdot ∨ is_bare_member) ? true
         : positional_line ? false
         : _callw_bare)
     hide = (is_first_tick ? false
         : comp_bare ? true
-        : (comp_call ∨ dotdot ∨ tymem_line) ? false
+        : (comp_call ∨ dotdot ∨ is_member_line) ? false
         : positional_line ? false
         : _hide)
     is_type = (is_first_tick ? false
-        : tymem_line ? true
+        : is_member_line ? true
         : comp_line ? false
         : positional_line ? false
         : _is_type)
     type_prefix = (is_first_tick ? ""
-        : tymem_line ? (_scope_prefix ++ line_name ++ ".")
+        : is_member_line ? (_scope_prefix ++ line_name ++ ".")
         : _type_prefix)
     type_slot ∈ Int
     inst_name ∈ String
     type_rec_slot ∈ Int
     RtIdxOf(nm ↦ line_ty_name, idx ↦ type_rec_slot)
     type_slot = (is_first_tick ? 0 - 1
-        : tymem_line ? type_rec_slot
+        : is_member_line ? type_rec_slot
         : _type_slot)
     inst_name = (is_first_tick ? ""
-        : tymem_line ? (_scope_prefix ++ line_name)
+        : is_member_line ? (_scope_prefix ++ line_name)
         : _inst_name)
     slot_count = (is_first_tick ? 0
-        : (comp_call ∨ tymem_call) ? 0
+        : (comp_call ∨ is_member_call) ? 0
         : val_done ? _slot_count + 1
         : _slot_count)
     ∀ k ∈ {0..5} : slot_names[k].name = (is_first_tick ? "" : ((callw_slot ∨ pun) ∧ _slot_count = k) ? slot_name_tok : _slot_names[k].name)

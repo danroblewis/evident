@@ -40,12 +40,12 @@ fsm main
     callee_pos = (is_first_tick ? 0 : _callee_pos)
     line_name ∈ String
     line_name = (is_first_tick ? "" : _line_name)
-    tymem_bare ∈ Bool
-    tymem_bare = (is_first_tick ? false : _tymem_bare)
-    tymem_call ∈ Bool
-    tymem_call = (is_first_tick ? false : _tymem_call)
-    tymem_line ∈ Bool
-    tymem_line = (is_first_tick ? false : _tymem_line)
+    is_bare_member ∈ Bool
+    is_bare_member = (is_first_tick ? false : _is_bare_member)
+    is_member_call ∈ Bool
+    is_member_call = (is_first_tick ? false : _is_member_call)
+    is_member_line ∈ Bool
+    is_member_line = (is_first_tick ? false : _is_member_line)
     line_ty_name ∈ String
     line_ty_name = (is_first_tick ? "" : _line_ty_name)
     claimindex_buf ∈ FtiBuffer

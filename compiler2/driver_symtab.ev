@@ -123,8 +123,8 @@ fsm DriverSymtab
     it_select_eq   ∈ Bool = (work_head matches C2SelectEq(_))
     it_len_eq   ∈ Bool = (work_head matches C2LenEq(_))
     it_strop   ∈ Bool = (work_head matches C2StrOp(_, _))
-    sel_h    ∈ Bool = (work_head matches C2SelH)
-    sel_eq_h  ∈ Bool = (work_head matches C2SelEqH(_))
+    chosen_handle    ∈ Bool = (work_head matches C2SelH)
+    equality_handle  ∈ Bool = (work_head matches C2SelEqH(_))
     len_eq_h  ∈ Bool = (work_head matches C2LenEqH(_))
     it_dup3    ∈ Bool = (work_head matches C2Dup3)
     it_swap    ∈ Bool = (work_head matches C2Swap)
@@ -158,7 +158,7 @@ fsm DriverSymtab
     app_argc ∈ Int = match work_head
         C2App(_, n) ⇒ n
         _ ⇒ 0
-    sel_idx ∈ Int = match work_head
+    chosen_position ∈ Int = match work_head
         C2SelectEq(i) ⇒ i
         C2SelEqH(i2) ⇒ i2
         _ ⇒ 0

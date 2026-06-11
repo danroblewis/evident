@@ -12,7 +12,7 @@
 --           against every other subsystem's entry condition (justified
 --           §6.4).
 -- PRODUCES: the per-line classification flags (is_mem/pinned/bounded/
---           effects_line/seqmem_line/match_line/comp_line/tymem_line/
+--           effects_line/seqmem_line/match_line/comp_line/is_member_line/
 --           strin_line/…), the line-end + frame-pop decisions
 --           (line_end/claim_end/frame_pop), every dispatch enter signal
 --           (enter_pratt/_el/_set/_match/_mn/_sl/_si/…), the Pratt
@@ -137,7 +137,7 @@ fsm DriverClassify
     pratt_line ∈ Bool = (classify_now ∧ (¬line_end)
         ∧ (¬effects_line) ∧ (¬intset_line) ∧ (¬match_line)
         ∧ (¬seqmem_line) ∧ (¬seqlit_line) ∧ (¬multiname_line)
-        ∧ (¬comp_line) ∧ (¬strin_line) ∧ (¬tymem_line)
+        ∧ (¬comp_line) ∧ (¬strin_line) ∧ (¬is_member_line)
         ∧ (¬q_range) ∧ (¬(over_seq ∧ _seqvar_set)) ∧ (¬positional_line)
         ∧ (¬setlit_line) ∧ (¬qset)
         ∧ (pinned ∨ (¬is_mem)))
@@ -205,20 +205,20 @@ fsm DriverClassify
         C2ICons(C2AssertTop, C2INil))))
     strin ∈ Bool = (classify_now ∧ (¬line_end) ∧ strin_line)
 
-    tymem_key ∈ String
-    FtiNameEntry(name ↦ line_ty_name, entry ↦ tymem_key)
-    tymem_pos ∈ Int = index_of(claimindex_names, tymem_key, 0)
-    tymem_found ∈ Bool = (is_mem ∧ (¬effects_line) ∧ (line_sort = 0)
+    membercheck_key ∈ String
+    FtiNameEntry(name ↦ line_ty_name, entry ↦ membercheck_key)
+    membercheck_position ∈ Int = index_of(claimindex_names, membercheck_key, 0)
+    is_typed_member ∈ Bool = (is_mem ∧ (¬effects_line) ∧ (line_sort = 0)
         ∧ (line_ty_name ≠ "Int") ∧ (line_ty_name ≠ "Nat")
         ∧ (line_ty_name ≠ "Seq") ∧ (line_ty_name ≠ "")
-        ∧ (¬strin_line) ∧ (tymem_pos ≥ 0))
-    tymem_call ∈ Bool = (classify_now ∧ (¬line_end) ∧ tymem_found
+        ∧ (¬strin_line) ∧ (membercheck_position ≥ 0))
+    is_member_call ∈ Bool = (classify_now ∧ (¬line_end) ∧ is_typed_member
         ∧ (line_t3 matches LParen) ∧ (line_t4 matches Ident(_))
         ∧ (tok5 matches OpMapsto) ∧ (_frame_depth < 8))
-    tymem_bare ∈ Bool = (classify_now ∧ (¬line_end) ∧ tymem_found
+    is_bare_member ∈ Bool = (classify_now ∧ (¬line_end) ∧ is_typed_member
         ∧ (¬(line_t3 matches LParen)) ∧ (¬pinned) ∧ (¬bounded)
         ∧ (_frame_depth < 8))
-    tymem_line ∈ Bool = (tymem_call ∨ tymem_bare)
+    is_member_line ∈ Bool = (is_member_call ∨ is_bare_member)
     type_frame ∈ Bool = ((#_scope_prefix > 0)
         ∧ (substr(_scope_prefix, #_scope_prefix - 1, 1) = "."))
-    callee_pos ∈ Int = (tymem_line ? tymem_pos : comp_pos)
+    callee_pos ∈ Int = (is_member_line ? membercheck_position : comp_pos)
