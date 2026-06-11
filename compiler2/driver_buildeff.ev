@@ -133,18 +133,9 @@ fsm DriverBuildEff
         args_p ↦ 0, eff ↦ app0)
     read_tester ∈ Effect
     BuildMemReadLong(addr ↦ query_p + 8, eff ↦ read_tester)
-    read_acc0 ∈ Effect
-    BuildMemReadLong(addr ↦ query_p + 16, eff ↦ read_acc0)
-    read_acc1 ∈ Effect
-    BuildMemReadLong(addr ↦ query_p + 24, eff ↦ read_acc1)
-    read_acc2 ∈ Effect
-    BuildMemReadLong(addr ↦ query_p + 32, eff ↦ read_acc2)
-    read_acc3 ∈ Effect
-    BuildMemReadLong(addr ↦ query_p + 40, eff ↦ read_acc3)
-    read_acc4 ∈ Effect
-    BuildMemReadLong(addr ↦ query_p + 48, eff ↦ read_acc4)
-    read_acc5 ∈ Effect
-    BuildMemReadLong(addr ↦ query_p + 56, eff ↦ read_acc5)
+    read_accs ∈ Seq(Effect)
+    #read_accs ≤ 6
+    ∀ k ∈ {0..5} : BuildMemReadLong(addr ↦ query_p + 16 + (8 * k), eff ↦ read_accs[k])
     -- acc-table tape writes (the variant's registry slot elem_record; the
     -- step-2 capture already bumped alloc, so the elem_record is
     -- _alloc − 1). Values are the step-4 batch's lr[0..n−1].

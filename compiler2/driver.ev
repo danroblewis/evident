@@ -986,12 +986,12 @@ fsm driver_main
             : wbatchfx ? ⟨fld_sym_eff, tabread_f⟩
             : wbatch2 ? ⟨write_name, write_clist⟩
             : wbatch3u ? ⟨app0, read_tester⟩
-            : wbatchacc ? (field_count = 1 ? ⟨read_acc0⟩
-              : field_count = 2 ? ⟨read_acc0, read_acc1⟩
-              : field_count = 3 ? ⟨read_acc0, read_acc1, read_acc2⟩
-              : field_count = 4 ? ⟨read_acc0, read_acc1, read_acc2, read_acc3⟩
-              : field_count = 5 ? ⟨read_acc0, read_acc1, read_acc2, read_acc3, read_acc4⟩
-              : ⟨read_acc0, read_acc1, read_acc2, read_acc3, read_acc4, read_acc5⟩)
+            : wbatchacc ? (field_count = 1 ? ⟨read_accs[0]⟩
+              : field_count = 2 ? ⟨read_accs[0], read_accs[1]⟩
+              : field_count = 3 ? ⟨read_accs[0], read_accs[1], read_accs[2]⟩
+              : field_count = 4 ? ⟨read_accs[0], read_accs[1], read_accs[2], read_accs[3]⟩
+              : field_count = 5 ? ⟨read_accs[0], read_accs[1], read_accs[2], read_accs[3], read_accs[4]⟩
+              : ⟨read_accs[0], read_accs[1], read_accs[2], read_accs[3], read_accs[4], read_accs[5]⟩)
             : wbatchtw ? (field_count = 1 ? ⟨acctab_w0⟩
               : field_count = 2 ? ⟨acctab_w0, acctab_w1⟩
               : field_count = 3 ? ⟨acctab_w0, acctab_w1, acctab_w2⟩
