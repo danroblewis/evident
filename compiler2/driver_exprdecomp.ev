@@ -3,9 +3,9 @@
 --           the user-enum-variant registry (user_variants[0].name..5 / user_variants[0].ctor..5 /
 --           user_variants[0].tester..5), and the floor tester decls z_intres_test / z_strres_test.
 -- PRODUCES: the decomposed views of cur_expr used by the work-item lowering —
---           the node-kind flags + payloads (expr_is_int/id/str/bin/tern/
---           not/m, expr_str_val, lookup_name, expr_op/l/r/c/t/e/ni, expr_op_is_neq),
---           the call shape (expr_is_call1/c2/c3, call_name, call_arg0/1/2), the
+--           the node-kind flags + payloads (is_int/id/str/bin/tern/
+--           not/m, str_val, lookup_name, op/l/r/c/t/e/ni, op_is_neq),
+--           the call shape (is_call1/c2/c3, call_name, call_arg0/1/2), the
 --           ctor-dispatch decl (ctor_decl), and the `matches` lowering
 --           (matches_name, matches_scrut, matches_tester, matches_items).
 -- MAINTAINS: pure per-tick decomposition, no carry. The ctor dispatch is
@@ -16,35 +16,35 @@
 -- The parse-expr node decomposition. Lifted into driver_main via
 -- `..DriverExprDecomp`.
 fsm DriverExprDecomp
-    expr_is_int ∈ Bool = (cur_expr matches EInt(_))
-    expr_is_ident  ∈ Bool = (cur_expr matches EIdent(_))
-    expr_is_str ∈ Bool = (cur_expr matches EStr(_))
-    expr_str_val ∈ String = match cur_expr
+    is_int ∈ Bool = (cur_expr matches EInt(_))
+    is_ident  ∈ Bool = (cur_expr matches EIdent(_))
+    is_str ∈ Bool = (cur_expr matches EStr(_))
+    str_val ∈ String = match cur_expr
         EStr(s) ⇒ s
         _ ⇒ ""
     lookup_name ∈ String = match cur_expr
         EIdent(s) ⇒ s
         _ ⇒ ""
-    expr_op ∈ Op
-    expr_lhs ∈ Expr
-    expr_rhs ∈ Expr
-    expr_is_binop ∈ Bool
-    BoolExprBinopParts(e ↦ cur_expr, op ↦ expr_op, lhs ↦ expr_lhs,
-        rhs ↦ expr_rhs, is_binop ↦ expr_is_binop)
-    expr_cond ∈ Expr
-    expr_then ∈ Expr
-    expr_else ∈ Expr
-    expr_is_ternary ∈ Bool
-    TernaryExprParts(e ↦ cur_expr, cond_e ↦ expr_cond, then_e ↦ expr_then,
-        else_e ↦ expr_else, is_tern ↦ expr_is_ternary)
-    expr_not_inner ∈ Expr
-    expr_is_not ∈ Bool
-    NotExprParts(e ↦ cur_expr, inner ↦ expr_not_inner, is_not ↦ expr_is_not)
-    expr_op_is_neq ∈ Bool = (expr_op matches OpNeq)
+    op ∈ Op
+    lhs ∈ Expr
+    rhs ∈ Expr
+    is_binop ∈ Bool
+    BoolExprBinopParts(e ↦ cur_expr, op ↦ op, lhs ↦ lhs,
+        rhs ↦ rhs, is_binop ↦ is_binop)
+    cond ∈ Expr
+    then_branch ∈ Expr
+    else_branch ∈ Expr
+    is_ternary ∈ Bool
+    TernaryExprParts(e ↦ cur_expr, cond_e ↦ cond, then_e ↦ then_branch,
+        else_e ↦ else_branch, is_tern ↦ is_ternary)
+    not_inner ∈ Expr
+    is_not ∈ Bool
+    NotExprParts(e ↦ cur_expr, inner ↦ not_inner, is_not ↦ is_not)
+    op_is_neq ∈ Bool = (op matches OpNeq)
 
-    expr_is_call1 ∈ Bool = (cur_expr matches ECall1(_, _))
-    expr_is_call2 ∈ Bool = (cur_expr matches ECall2(_, _, _))
-    expr_is_call3 ∈ Bool = (cur_expr matches ECall3(_, _, _, _))
+    is_call1 ∈ Bool = (cur_expr matches ECall1(_, _))
+    is_call2 ∈ Bool = (cur_expr matches ECall2(_, _, _))
+    is_call3 ∈ Bool = (cur_expr matches ECall3(_, _, _, _))
     call_name ∈ String = match cur_expr
         ECall1(cn1, _) ⇒ cn1
         ECall2(cn2, _, _) ⇒ cn2
@@ -71,7 +71,7 @@ fsm DriverExprDecomp
     ∀ e ∈ user_variants : ((e.name = call_name) ⇒ (ctor_decl = e.ctor))
     (¬(∃ e ∈ user_variants : e.name = call_name)) ⇒ (ctor_decl = 0)
 
-    expr_is_matches ∈ Bool = (cur_expr matches EMatches(_, _))
+    is_matches ∈ Bool = (cur_expr matches EMatches(_, _))
     matches_name ∈ String = match cur_expr
         EMatches(mn, _) ⇒ mn
         _ ⇒ ""

@@ -308,9 +308,9 @@ fsm driver_main
     bind_scope_acc = (is_first_tick ? 0
         : (processing ∧ it_bind_scope) ? bind_acc
         : _bind_scope_acc)
-    bind_hit ∈ Bool = (it_process ∧ expr_is_ident ∧ _bind_scope_on
+    bind_hit ∈ Bool = (it_process ∧ is_ident ∧ _bind_scope_on
         ∧ (lookup_name = _bind_scope_name))
-    qvar_hit ∈ Bool = (it_process ∧ expr_is_ident ∧ _qloop_on
+    qvar_hit ∈ Bool = (it_process ∧ is_ident ∧ _qloop_on
         ∧ (lookup_name = _qloop_var))
     qvar_items ∈ C2Items = (_qloop_kind = 0
         ? C2ICons(C2Process(EInt(_qloop_cur)), work_tail)
@@ -318,7 +318,7 @@ fsm driver_main
             C2ICons(C2Process(EInt(_qloop_cur)),
             C2ICons(C2SelH, work_tail))))
     qvar_prefix ∈ String = _qloop_var ++ "."
-    qvar_dot ∈ Bool = (it_process ∧ expr_is_ident ∧ _qloop_on
+    qvar_dot ∈ Bool = (it_process ∧ is_ident ∧ _qloop_on
         ∧ (_qloop_kind = 1) ∧ (_seqvar_slot ≥ 0)
         ∧ (substr(lookup_name, 0, #qvar_prefix) = qvar_prefix))
     qvar_field ∈ String = substr(lookup_name, #qvar_prefix,
@@ -332,13 +332,13 @@ fsm driver_main
     qual_name ∈ String = _scope_prefix ++ lookup_name ++ "." ++ field_name
     qual_key ∈ String
     FtiNameEntry(name ↦ qual_name, entry ↦ qual_key)
-    pin_hit ∈ Bool = (it_process ∧ expr_is_ident ∧ _pinning
+    pin_hit ∈ Bool = (it_process ∧ is_ident ∧ _pinning
         ∧ (index_of(sym_names, qual_key, 0) ≥ 0))
     pin_hit_items ∈ C2Items = C2ICons(C2Process(EIdent(qual_name)), work_tail)
     pin_ctor_slot ∈ Int
     RtIdxOf(nm ↦ call_name, idx ↦ pin_ctor_slot)
     pin_ctor_hit ∈ Bool = (it_process ∧ _pinning ∧ (pin_ctor_slot ≥ 0)
-        ∧ (expr_is_call1 ∨ expr_is_call2 ∨ expr_is_call3))
+        ∧ (is_call1 ∨ is_call2 ∨ is_call3))
     pin_ctor_items ∈ C2Items = C2ICons(
         C2Process(_emit_cursor = 0 ? call_arg0 : _emit_cursor = 1 ? call_arg1 : call_arg2),
         work_tail)
@@ -480,13 +480,13 @@ fsm driver_main
         : it_sel_h ? 2
         : it_set_add ? 2
         : 0)
-    push_bound ∈ Bool = (processing ∧ it_process ∧ expr_is_ident
+    push_bound ∈ Bool = (processing ∧ it_process ∧ is_ident
         ∧ bound_found ∧ (¬bind_hit) ∧ (¬qvar_hit) ∧ (¬qvar_dot)
         ∧ (¬pin_hit))
-    push_ident ∈ Bool = (processing ∧ it_process ∧ expr_is_ident
+    push_ident ∈ Bool = (processing ∧ it_process ∧ is_ident
         ∧ resolved_pure ∧ (¬bind_hit) ∧ (¬bound_found) ∧ (¬qvar_hit)
         ∧ (¬qvar_dot) ∧ (¬pin_hit) ∧ (¬pin_ctor_hit))
-    lookup_read ∈ Bool = (processing ∧ it_process ∧ expr_is_ident
+    lookup_read ∈ Bool = (processing ∧ it_process ∧ is_ident
         ∧ (¬resolved_pure) ∧ (¬bind_hit) ∧ (¬bound_found) ∧ (¬qvar_hit)
         ∧ (¬qvar_dot) ∧ (¬pin_hit))
     push_handle ∈ Bool = (processing ∧ it_push_h)
@@ -541,19 +541,19 @@ fsm driver_main
         : more_fields ? pin_items
         : pin_done ? C2INil
         : ¬processing ? _work_items
-        : it_process ∧ expr_is_binop ∧ expr_op_is_neq ? C2ICons(C2Process(expr_lhs), C2ICons(C2Process(expr_rhs), C2ICons(C2Op(OpEq), C2ICons(C2Not, work_tail))))
-        : it_process ∧ expr_is_binop ? C2ICons(C2Process(expr_lhs), C2ICons(C2Process(expr_rhs), C2ICons(C2Op(expr_op), work_tail)))
-        : it_process ∧ expr_is_ternary ? C2ICons(C2Process(expr_cond), C2ICons(C2Process(expr_then), C2ICons(C2Process(expr_else), C2ICons(C2Ite, work_tail))))
-        : it_process ∧ expr_is_not ? C2ICons(C2Process(expr_not_inner), C2ICons(C2Not, work_tail))
-        : it_process ∧ expr_is_matches ? matches_items
+        : it_process ∧ is_binop ∧ op_is_neq ? C2ICons(C2Process(lhs), C2ICons(C2Process(rhs), C2ICons(C2Op(OpEq), C2ICons(C2Not, work_tail))))
+        : it_process ∧ is_binop ? C2ICons(C2Process(lhs), C2ICons(C2Process(rhs), C2ICons(C2Op(op), work_tail)))
+        : it_process ∧ is_ternary ? C2ICons(C2Process(cond), C2ICons(C2Process(then_branch), C2ICons(C2Process(else_branch), C2ICons(C2Ite, work_tail))))
+        : it_process ∧ is_not ? C2ICons(C2Process(not_inner), C2ICons(C2Not, work_tail))
+        : it_process ∧ is_matches ? matches_items
         : it_process ∧ qvar_hit ? qvar_items
         : it_process ∧ qvar_dot ? qvar_dot_items
         : pin_hit ? pin_hit_items
         : pin_ctor_hit ? pin_ctor_items
         : it_process ∧ bind_hit ? bind_items
-        : it_process ∧ expr_is_call1 ? call1_items
-        : it_process ∧ expr_is_call2 ? call2_items
-        : it_process ∧ expr_is_call3 ? call3_items
+        : it_process ∧ is_call1 ? call1_items
+        : it_process ∧ is_call2 ? call2_items
+        : it_process ∧ is_call3 ? call3_items
         : it_process ? work_tail
         : it_rec_val ? recval_items
         : it_rec_decl ? recval_decl_items
@@ -580,7 +580,7 @@ fsm driver_main
 
     capture_pend = (is_first_tick ? 0
         : ¬processing ? 0
-        : it_process ? ((expr_is_int ∨ expr_is_str ∨ lookup_read) ? 1 : 0)
+        : it_process ? ((is_int ∨ is_str ∨ lookup_read) ? 1 : 0)
         : it_op ? (op_is_nary ? (_item_step = 2 ? 1 : 0) : 1)
         : it_ite ? 1
         : it_not ? 1
@@ -797,7 +797,7 @@ fsm driver_main
     eff_argw1 ∈ Effect
     BuildMemWriteLong(addr ↦ z_arena + 208, value ↦ h_top, eff ↦ eff_argw1)
     eff_mkstring ∈ Effect
-    BuildZ3MkString(ctx_h ↦ z3ctx.ctx, s ↦ expr_str_val, eff ↦ eff_mkstring)
+    BuildZ3MkString(ctx_h ↦ z3ctx.ctx, s ↦ str_val, eff ↦ eff_mkstring)
     strop_a ∈ Int = (strop_argc = 3 ? h_3rd : strop_argc = 2 ? h_2nd : h_top)
     strop_b ∈ Int = (strop_argc = 3 ? h_2nd : strop_argc = 2 ? h_top : 0)
     strop_c ∈ Int = (strop_argc = 3 ? h_top : 0)
@@ -914,8 +914,8 @@ fsm driver_main
         eff ↦ eff_len_eq, ok ↦ len_eq_ok, needs_not ↦ len_eq_nn)
     eff_filler ∈ Effect = LibCall("libc", "getpid", ⟨⟩)
 
-    eff_step ∈ Effect = (it_process ∧ expr_is_int ? eff_mkint
-        : it_process ∧ expr_is_str ? eff_mkstring
+    eff_step ∈ Effect = (it_process ∧ is_int ? eff_mkint
+        : it_process ∧ is_str ? eff_mkstring
         : lookup_read ? eff_sym_read
         : it_op ∧ op_is_nary ∧ (_item_step = 0) ? eff_argw0
         : it_op ∧ op_is_nary ∧ (_item_step = 1) ? eff_argw1
