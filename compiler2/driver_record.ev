@@ -41,14 +41,11 @@ claim RtIdxOf(nm ∈ String, idx ∈ Int)
         ∨ (nm ≠ "" ∧ nm = recs[2].name ∧ recs[2].sort > 0)))
         ⇒ (idx = 0 - 1)
 
-claim RtSortOf(typename ∈ String,
-        int_h ∈ Int, bool_h ∈ Int, str_h ∈ Int, real_h ∈ Int,
-        iarr_h ∈ Int,
-        sort ∈ Int)
-    (typename = "Int" ∨ typename = "Nat") ⇒ (sort = int_h)
-    (typename = "Bool") ⇒ (sort = bool_h)
-    (typename = "String") ⇒ (sort = str_h)
-    (typename = "Real") ⇒ (sort = real_h)
+claim RtSortOf(typename ∈ String, sorts ∈ Z3Sorts, iarr_h ∈ Int, sort ∈ Int)
+    (typename = "Int" ∨ typename = "Nat") ⇒ (sort = sorts.isort)
+    (typename = "Bool") ⇒ (sort = sorts.bsort)
+    (typename = "String") ⇒ (sort = sorts.ssort)
+    (typename = "Real") ⇒ (sort = sorts.rsort)
     (typename = "Seq(Int)") ⇒ (sort = iarr_h)
     (typename ≠ "" ∧ typename = recs[0].name) ⇒ (sort = recs[0].sort)
     (typename ≠ "" ∧ typename = recs[1].name) ⇒ (sort = recs[1].sort)
@@ -230,7 +227,7 @@ fsm DriverRecord
     recdecl_fields ∈ Seq(RdField)
     #recdecl_fields ≤ 6
     ∀ k ∈ {0..5} : RtRecName(s ↦ cur_ftypes, i ↦ k, name ↦ recdecl_fields[k].typename)
-    ∀ k ∈ {0..5} : RtSortOf(typename ↦ recdecl_fields[k].typename, int_h ↦ z3sorts.isort, bool_h ↦ z3sorts.bsort, str_h ↦ z3sorts.ssort, real_h ↦ z3sorts.rsort, iarr_h ↦ int_array_sort, sort ↦ recdecl_fields[k].sort)
+    ∀ k ∈ {0..5} : RtSortOf(typename ↦ recdecl_fields[k].typename, sorts ↦ z3sorts, iarr_h ↦ int_array_sort, sort ↦ recdecl_fields[k].sort)
 
     recdecl_namesym ∈ Effect
     BuildZ3MkStringSymbol(ctx_h ↦ z3ctx.ctx, name ↦ rec_cur_name, eff ↦ recdecl_namesym)

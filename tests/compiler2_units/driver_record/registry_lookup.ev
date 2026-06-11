@@ -56,18 +56,15 @@ claim main
     i_miss ∈ Int
     RtIdxOf(nm ↦ "Zzz", idx ↦ i_miss)
 
+    base_sorts ∈ Z3Sorts(isort ↦ 11, bsort ↦ 12, ssort ↦ 13, rsort ↦ 14)
     so_int ∈ Int
-    RtSortOf(typename ↦ "Int", int_h ↦ 11, bool_h ↦ 12, str_h ↦ 13, real_h ↦ 14,
-        iarr_h ↦ 15, sort ↦ so_int)
+    RtSortOf(typename ↦ "Int", sorts ↦ base_sorts, iarr_h ↦ 15, sort ↦ so_int)
     so_nat ∈ Int
-    RtSortOf(typename ↦ "Nat", int_h ↦ 11, bool_h ↦ 12, str_h ↦ 13, real_h ↦ 14,
-        iarr_h ↦ 15, sort ↦ so_nat)
+    RtSortOf(typename ↦ "Nat", sorts ↦ base_sorts, iarr_h ↦ 15, sort ↦ so_nat)
     so_co ∈ Int
-    RtSortOf(typename ↦ "Color", int_h ↦ 11, bool_h ↦ 12, str_h ↦ 13, real_h ↦ 14,
-        iarr_h ↦ 15, sort ↦ so_co)
+    RtSortOf(typename ↦ "Color", sorts ↦ base_sorts, iarr_h ↦ 15, sort ↦ so_co)
     so_un ∈ Int
-    RtSortOf(typename ↦ "Zzz", int_h ↦ 11, bool_h ↦ 12, str_h ↦ 13, real_h ↦ 14,
-        iarr_h ↦ 15, sort ↦ so_un)
+    RtSortOf(typename ↦ "Zzz", sorts ↦ base_sorts, iarr_h ↦ 15, sort ↦ so_un)
 
     af_x ∈ Int
     RtFieldAcc(fname ↦ "x", acc ↦ af_x)
