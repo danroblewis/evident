@@ -4,13 +4,13 @@
 --           the rendered-unit inputs (_manifest_fields manifest fields, _saw_lastres/
 --           _saw_first_tick prelude gates, carry_decls carry declares), and the arena
 --           buffer bases (tok_buf.base/sym_buf.base/claimidx_buf.base).
--- PRODUCES: the EMIT program counter (emit_step) + its captures (unit_ptr/
+-- PRODUCES: the EMIT program counter (render_step) + its captures (unit_ptr/
 --           rendered), the translation-unit string (manifest_txt/
 --           prelude_txt/unit_txt), and the emit effects (eff_solver_str/eff_copy_unit/
 --           eff_print_unit/eff_free_*) the driver_main effects schedule selects
---           once emit_step ≥ 0.
--- MAINTAINS: emit_step runs −1→0→…→5 once parse_done — walking solver-to-
---           string (emit_step 0) → cstr-copy of the rendered unit (1) →
+--           once render_step ≥ 0.
+-- MAINTAINS: render_step runs −1→0→…→5 once parse_done — walking solver-to-
+--           string (render_step 0) → cstr-copy of the rendered unit (1) →
 --           render capture (2) → free buffers + puts + Exit(0) (≥2).
 --
 -- The EMIT rendering phase: serialize the solver, assemble the manifest+
@@ -23,16 +23,16 @@
 -- driver_main via `..DriverEmit`.
 fsm DriverEmit
     -- ── EMIT ──────────────────────────────────────────────────────
-    emit_step  ∈ Int
-    emit_step = (is_first_tick ? 0 - 1
-        : _emit_step ≥ 0 ? (_emit_step < 5 ? _emit_step + 1 : _emit_step)
+    render_step  ∈ Int
+    render_step = (is_first_tick ? 0 - 1
+        : _render_step ≥ 0 ? (_render_step < 5 ? _render_step + 1 : _render_step)
         : parse_done ? 0
         : 0 - 1)
 
     unit_ptr  ∈ Int
-    unit_ptr = (is_first_tick ? 0 : emit_step = 1 ? cap_int : _unit_ptr)
+    unit_ptr = (is_first_tick ? 0 : render_step = 1 ? cap_int : _unit_ptr)
     rendered  ∈ String
-    rendered = (is_first_tick ? "" : emit_step = 2 ? cap_str : _rendered)
+    rendered = (is_first_tick ? "" : render_step = 2 ? cap_str : _rendered)
 
     eff_solver_str ∈ Effect
     BuildZ3SolverToString(ctx_h ↦ z3ctx.ctx, solver_h ↦ z3ctx.sol, eff ↦ eff_solver_str)

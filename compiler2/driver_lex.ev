@@ -6,7 +6,7 @@
 --           DigitToInt/EscapeChar/WsRunLen) + the LexFtiPlan token planner.
 -- PRODUCES: the FTI token-buffer write effects (write_tag0/write_pay0/write_tag1/
 --           write_pend_str/write_eof, float write_float_tag/write_float_pay/write_float_op, eff_strdup), the lexer
---           cursor (tok_buf.count/lex_last_tag/lex_prev_tag/pend_str_addr), the per-tick token
+--           cursor (tok_buf.count/last_token_tag/prev_token_tag/pend_str_addr), the per-tick token
 --           plan (plan_* regs, plan_kind), next_pos, and the strlit/int/float
 --           collection state.
 -- MAINTAINS: tok_buf.count < 65534 — every write lands inside zinit_tok_buf (a write
@@ -148,7 +148,7 @@ fsm DriverLex
 
     -- FTI lexer state: five Ints, no TokenList. The negative-literal
     -- fold (`= -3` folds, `10 - 2` stays binary) is decided inside
-    -- LexFtiPlan from the cached lex_last_tag/lex_prev_tag tag pair.
+    -- LexFtiPlan from the cached last_token_tag/prev_token_tag tag pair.
     --
     -- FTI bounds CONSTRAINT (the model, not a runtime check): the token
     -- buffer (zinit_tok_buf) holds 65536 entries × 32 bytes. The lexer writes
@@ -160,8 +160,8 @@ fsm DriverLex
     -- and the native kernel corrupted the heap / segfaulted. The "+2"
     -- headroom covers the two-token push shapes (float-with-op etc.).
     tok_buf.count < 65534
-    lex_last_tag ∈ Int
-    lex_prev_tag ∈ Int
+    last_token_tag ∈ Int
+    prev_token_tag ∈ Int
     pend_str_addr ∈ Int
 
     plan_kind ∈ Int
@@ -184,7 +184,7 @@ fsm DriverLex
         cur_char ↦ cur_char, partial_str ↦ _partial_str,
         partial_strlit ↦ _partial_strlit, partial_int ↦ _partial_int,
         base ↦ tok_buf.base, count ↦ _tok_buf.count,
-        last_tag ↦ _lex_last_tag, prev_tag ↦ _lex_prev_tag,
+        last_tag ↦ _last_token_tag, prev_tag ↦ _prev_token_tag,
         kind ↦ plan_kind, tag0 ↦ plan_tag0, p0 ↦ plan_pay0, str0 ↦ plan_str0,
         tag1 ↦ plan_tag1, a_tag0 ↦ plan_addr_tag0, a_p0 ↦ plan_addr_pay0, a_tag1 ↦ plan_addr_tag1,
         count_n ↦ plan_count_n, last_n ↦ plan_last_n, prev_n ↦ plan_prev_n)
@@ -202,12 +202,12 @@ fsm DriverLex
     tok_buf.count = (is_first_tick ? 0
         : float_finish ? (_tok_buf.count + (float_with_op ? 2 : 1))
         : plan_count_n)
-    lex_last_tag = (is_first_tick ? 0
+    last_token_tag = (is_first_tick ? 0
         : float_finish ? (float_with_op ? char_tag : 4)
         : (at_plusplus ∧ plan_kind ≠ 0) ? 60
         : plan_last_n)
-    lex_prev_tag = (is_first_tick ? 0
-        : float_finish ? (float_with_op ? 4 : _lex_last_tag)
+    prev_token_tag = (is_first_tick ? 0
+        : float_finish ? (float_with_op ? 4 : _last_token_tag)
         : plan_prev_n)
     pend_str_addr = (is_first_tick ? 0 - 1
         : ((plan_kind = 3 ∨ plan_kind = 5) ? plan_addr_pay0 : 0 - 1))
@@ -221,7 +221,7 @@ fsm DriverLex
     write_eof   ∈ Effect = LibCall("__mem", "write_long", ⟨ArgInt(tok_buf.base + (tok_buf.count * 32)), ArgInt(13)⟩)
 
     has_input ∈ Bool = (#input > 0)
-    lex_done ∈ Bool = (done ∧ ¬was_collecting_str ∧ ¬was_collecting_int ∧ ¬_in_strlit ∧ has_input)
+    lexing_done ∈ Bool = (done ∧ ¬was_collecting_str ∧ ¬was_collecting_int ∧ ¬_in_strlit ∧ has_input)
 
     next_char ∈ String = substr(input, pos + 1, 1)
     collecting ∈ Bool = (was_collecting_str ∨ was_collecting_int)

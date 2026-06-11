@@ -22,7 +22,7 @@
 --           tokens are written to the FTI buffer in APPEND (source)
 --           order via __mem.write_long; string payloads
 --           (Ident/StringLit) are strdup'd char*s. Z3-carried lexer
---           state = five Ints (tok_buf.base, tok_buf.count, lex_last_tag, lex_prev_tag,
+--           state = five Ints (tok_buf.base, tok_buf.count, last_token_tag, prev_token_tag,
 --           pend_str_addr) — no TokenList anywhere; phase goes 0 → 2
 --           directly, after flushing any pending string write + the
 --           EofTok sentinel.
@@ -210,9 +210,9 @@ fsm driver_main
     -- ── PHASE control (0 lex · 2 parse · 3 emit; REVERSE deleted) ─
     phase  ∈ Int
 
-    -- entering_parse = the lex_done tick: flush any pending string
+    -- entering_parse = the lexing_done tick: flush any pending string
     -- write, write the EofTok sentinel, then parse starts next tick.
-    entering_parse ∈ Bool = ((¬is_first_tick) ∧ (_phase = 0) ∧ lex_done)
+    entering_parse ∈ Bool = ((¬is_first_tick) ∧ (_phase = 0) ∧ lexing_done)
     in_parse       ∈ Bool = (_phase = 2)
 
     -- ── TOKEN WINDOW (see compiler2/driver_window.ev) ────────────
@@ -484,10 +484,10 @@ fsm driver_main
         ∧ bound_found ∧ (¬bind_hit) ∧ (¬qvar_hit) ∧ (¬qvar_dot)
         ∧ (¬pin_hit))
     push_ident ∈ Bool = (processing ∧ it_process ∧ expr_is_ident
-        ∧ lookup_pure ∧ (¬bind_hit) ∧ (¬bound_found) ∧ (¬qvar_hit)
+        ∧ resolved_pure ∧ (¬bind_hit) ∧ (¬bound_found) ∧ (¬qvar_hit)
         ∧ (¬qvar_dot) ∧ (¬pin_hit) ∧ (¬pin_ctor_hit))
     lookup_read ∈ Bool = (processing ∧ it_process ∧ expr_is_ident
-        ∧ (¬lookup_pure) ∧ (¬bind_hit) ∧ (¬bound_found) ∧ (¬qvar_hit)
+        ∧ (¬resolved_pure) ∧ (¬bind_hit) ∧ (¬bound_found) ∧ (¬qvar_hit)
         ∧ (¬qvar_dot) ∧ (¬pin_hit))
     push_handle ∈ Bool = (processing ∧ it_push_h)
     push_decl ∈ Bool = (processing ∧ it_decl ∧ (_item_step = 2))
@@ -501,7 +501,7 @@ fsm driver_main
         : jump_fire ? h_tail1
         : bindzip_act ? bindzip_pop
         : push_bound ? C2HCons(bound_handle, stack_in)
-        : push_ident ? C2HCons(lookup_handle, stack_in)
+        : push_ident ? C2HCons(resolved_handle, stack_in)
         : push_handle ? C2HCons(push_h_val, stack_in)
         : push_decl ? C2HCons(tmp_in, stack_in)
         : stack_dup3 ? C2HCons(h_3rd, stack_in)
@@ -761,7 +761,7 @@ fsm driver_main
         : _parse_mode)
 
     phase = (is_first_tick ? 0
-        : (_phase = 0 ? (lex_done ? 2 : 0)
+        : (_phase = 0 ? (lexing_done ? 2 : 0)
         : (_phase = 2 ? (parse_done ? 3 : 2)
         : 3)))
 
@@ -1028,9 +1028,9 @@ fsm driver_main
         : zstep = 36 ? ⟨zinit_efflen_assert⟩
         : zstep = 37 ? ⟨zinit_claimidx_buf⟩
         : entering_parse ? (have_pend_str ? ⟨write_pend_str, write_eof⟩ : ⟨write_eof⟩)
-        : emit_step = 0 ? ⟨eff_solver_str⟩
-        : emit_step = 1 ? ⟨eff_copy_unit⟩
-        : emit_step ≥ 2 ? ⟨eff_free_tokbuf, eff_free_symbuf, eff_free_claimbuf, eff_print_unit, Exit(0)⟩
+        : render_step = 0 ? ⟨eff_solver_str⟩
+        : render_step = 1 ? ⟨eff_copy_unit⟩
+        : render_step ≥ 2 ? ⟨eff_free_tokbuf, eff_free_symbuf, eff_free_claimbuf, eff_print_unit, Exit(0)⟩
         : fetch_go ? ⟨read_tag0, read_pay0, read_tag1, read_pay1, read_tag2, read_pay2,
             read_tag3, read_pay3, read_tag4, read_pay4, read_tag5, read_pay5, read_tag6, read_pay6,
             read_tag7, read_pay7⟩

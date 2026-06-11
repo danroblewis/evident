@@ -40,16 +40,16 @@ fsm DriverCallLower
         C2ICons(C2StrOp("int_to_str", 1),
         C2ICons(C2Op(OpConcat),
         C2ICons(C2Ite, work_tail))))))))))))
-    call_arg0_name ∈ String = match call_arg0
+    arg0_name ∈ String = match call_arg0
         EIdent(can) ⇒ can
         _ ⇒ ""
-    len_of_seqvar ∈ Bool = (_seqvar_set ∧ ((call_arg0_name = _seqvar_name)
-        ∨ ((_scope_prefix ++ call_arg0_name) = _seqvar_name)))
-    len_set_bare_hit ∈ Bool = (call_arg0_name ≠ "" ∧ (∃ e ∈ set_vars : e.name = call_arg0_name))
-    len_set_pfx_hit ∈ Bool = (call_arg0_name ≠ "" ∧ (∃ e ∈ set_vars : e.name = _scope_prefix ++ call_arg0_name))
+    len_of_seqvar ∈ Bool = (_seqvar_set ∧ ((arg0_name = _seqvar_name)
+        ∨ ((_scope_prefix ++ arg0_name) = _seqvar_name)))
+    len_set_bare_hit ∈ Bool = (arg0_name ≠ "" ∧ (∃ e ∈ set_vars : e.name = arg0_name))
+    len_set_pfx_hit ∈ Bool = (arg0_name ≠ "" ∧ (∃ e ∈ set_vars : e.name = _scope_prefix ++ arg0_name))
     len_of_setvar ∈ Bool = (len_set_bare_hit ∨ len_set_pfx_hit)
-    len_set_name ∈ String = (len_set_bare_hit ? call_arg0_name
-        : len_set_pfx_hit ? _scope_prefix ++ call_arg0_name
+    len_set_name ∈ String = (len_set_bare_hit ? arg0_name
+        : len_set_pfx_hit ? _scope_prefix ++ arg0_name
         : "")
     card_elems ∈ String
     ∀ e ∈ set_vars : ((e.name = len_set_name) ⇒ (card_elems = e.elems))

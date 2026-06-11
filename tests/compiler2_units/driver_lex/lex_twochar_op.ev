@@ -24,6 +24,6 @@ fsm main
     cap_int = (is_first_tick ? 0 : _cap_int)
     ..DriverLex
     cnt_msg ∈ String = str_from_int(tok_buf.count)
-    effects ∈ Seq(Effect) = (lex_done
+    effects ∈ Seq(Effect) = (lexing_done
         ? ⟨LibCall("libc", "puts", ⟨ArgStr(cnt_msg)⟩), Exit(0)⟩
         : ⟨LibCall("libc", "getpid", ⟨⟩)⟩)

@@ -1,6 +1,6 @@
 -- DriverLex isolation — happy path: lex two idents from "ab cd"; the
 -- scan must produce exactly two Ident tokens (tok_buf.count = 2 at
--- lex_done). The token-buffer writes (w_*) are NOT scheduled into
+-- lexing_done). The token-buffer writes (w_*) are NOT scheduled into
 -- effects, so no __mem/Z3 arena is needed — we read the cursor directly.
 -- entry: main
 -- expect: stdout = "2"
@@ -30,6 +30,6 @@ fsm main
     cap_int = (is_first_tick ? 0 : _cap_int)
     ..DriverLex
     cnt_msg ∈ String = str_from_int(tok_buf.count)
-    effects ∈ Seq(Effect) = (lex_done
+    effects ∈ Seq(Effect) = (lexing_done
         ? ⟨LibCall("libc", "puts", ⟨ArgStr(cnt_msg)⟩), Exit(0)⟩
         : ⟨LibCall("libc", "getpid", ⟨⟩)⟩)

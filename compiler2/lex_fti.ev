@@ -50,7 +50,7 @@
 --       6  IntLit + op    ⟨w(a_tag0,tag0), w(a_p0,p0), w(a_tag1,tag1)⟩
 --     prepending ⟨w(capture_pend, last_results[0])⟩ when capture_pend ≥ 0 (only
 --     possible alongside kinds 0 and 1);
---   · on the lex_done tick writes the EofTok sentinel
+--   · on the lexing_done tick writes the EofTok sentinel
 --     w(base + count*32, 13) — NOT counted in tokens_count — and
 --     flushes any pending write.
 --

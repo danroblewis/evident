@@ -1,7 +1,7 @@
 -- DriverEmit isolation — the EMIT program counter walks once done.
--- emit_step parks at −1 until parse_done, then steps 0→1→…→5 (capped), one
+-- render_step parks at −1 until parse_done, then steps 0→1→…→5 (capped), one
 -- per tick: solver-to-string, cstr-copy, render-capture, then the
--- free+puts+Exit row. parse_done held true; exit at emit_step ≥ 5.
+-- free+puts+Exit row. parse_done held true; exit at render_step ≥ 5.
 -- entry: main
 -- expect: stdout = "5"
 -- expect: exit = 0
@@ -50,7 +50,7 @@ fsm main
         IntResult(n) ⇒ n
         _ ⇒ 0
     ..DriverEmit
-    e_msg ∈ String = str_from_int(emit_step + (lr_probe - lr_probe))
-    effects ∈ Seq(Effect) = (emit_step ≥ 5
+    e_msg ∈ String = str_from_int(render_step + (lr_probe - lr_probe))
+    effects ∈ Seq(Effect) = (render_step ≥ 5
         ? ⟨LibCall("libc", "puts", ⟨ArgStr(e_msg)⟩), Exit(0)⟩
         : ⟨LibCall("libc", "getpid", ⟨⟩)⟩)

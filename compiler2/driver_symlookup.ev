@@ -5,10 +5,10 @@
 --           registry), the import/inline prefix (_scope_prefix),
 --           the enum-variant value registry (enum_values, a bounded Seq), and the cached
 --           z_true/z_false handles.
--- PRODUCES: name resolution — lookup_key/lookup_pos/lookup_found(2)/lookup_pos_now,
+-- PRODUCES: name resolution — resolved_key/resolved_position/resolved_found(2)/position_now,
 --           the prefix-scoped variants (d_lk_pfx_*), the frame slot-bind hit
---           (bound_found/bound_handle), lookup_special/lookup_pure, the resolved
---           pure-push handle lookup_handle, and the symtab read effect eff_sym_read.
+--           (bound_found/bound_handle), special_name/resolved_pure, the resolved
+--           pure-push handle resolved_handle, and the symtab read effect eff_sym_read.
 -- MAINTAINS: pure per-tick resolution, no carry. true/false resolve to the
 --           cached handles; a name found in sym_names reads st_base[idx]
 --           (capture_pend=1, the handle pushes next tick); an α-prefixed frame
@@ -18,27 +18,27 @@
 -- The symbol-table / name resolution. Lifted into driver_main via
 -- `..DriverSymLookup`.
 fsm DriverSymLookup
-    lookup_key ∈ String
-    FtiNameEntry(name ↦ lookup_name, entry ↦ lookup_key)
-    lookup_pos ∈ Int = index_of(sym_names, lookup_key, 0)
-    lookup_found ∈ Bool = (lookup_pos ≥ 0)
-    lookup_special ∈ Bool = (lookup_name = "true" ∨ lookup_name = "false")
+    resolved_key ∈ String
+    FtiNameEntry(name ↦ lookup_name, entry ↦ resolved_key)
+    resolved_position ∈ Int = index_of(sym_names, resolved_key, 0)
+    resolved_found ∈ Bool = (resolved_position ≥ 0)
+    special_name ∈ Bool = (lookup_name = "true" ∨ lookup_name = "false")
     bound_found ∈ Bool = ((lookup_name ≠ "") ∧ (∃ i ∈ {0..11} : ((i ≥ _bind_base) ∧ (i < _bind_top) ∧ (_binds[i].name = lookup_name))))
     bound_handle ∈ Int
     ∀ k ∈ {0..11} : (((k ≥ _bind_base) ∧ (k < _bind_top) ∧ (_binds[k].name = lookup_name)) ⇒ (bound_handle = _binds[k].handle))
     (¬(∃ i ∈ {0..11} : ((i ≥ _bind_base) ∧ (i < _bind_top) ∧ (_binds[i].name = lookup_name)))) ⇒ (bound_handle = 0)
-    lookup_pfx_key ∈ String
-    FtiNameEntry(name ↦ (_scope_prefix ++ lookup_name), entry ↦ lookup_pfx_key)
-    lookup_pfx_pos ∈ Int = index_of(sym_names, lookup_pfx_key, 0)
-    lookup_pfx_hit ∈ Bool = ((_scope_prefix ≠ "") ∧ (lookup_pfx_pos ≥ 0))
-    lookup_pos_now ∈ Int = (lookup_pfx_hit ? lookup_pfx_pos : lookup_pos)
-    lookup_found2 ∈ Bool = (lookup_pfx_hit ∨ lookup_found)
-    lookup_pure ∈ Bool = (lookup_special ∨ (¬lookup_found2))
-    lookup_handle ∈ Int
-    (lookup_name = "true") ⇒ (lookup_handle = z_true)
-    (lookup_name = "false") ⇒ (lookup_handle = z_false)
-    ∀ e ∈ enum_values : ((e.name = lookup_name) ⇒ (lookup_handle = e.value))
+    prefixed_key ∈ String
+    FtiNameEntry(name ↦ (_scope_prefix ++ lookup_name), entry ↦ prefixed_key)
+    prefixed_position ∈ Int = index_of(sym_names, prefixed_key, 0)
+    prefixed_hit ∈ Bool = ((_scope_prefix ≠ "") ∧ (prefixed_position ≥ 0))
+    position_now ∈ Int = (prefixed_hit ? prefixed_position : resolved_position)
+    resolved_found2 ∈ Bool = (prefixed_hit ∨ resolved_found)
+    resolved_pure ∈ Bool = (special_name ∨ (¬resolved_found2))
+    resolved_handle ∈ Int
+    (lookup_name = "true") ⇒ (resolved_handle = z_true)
+    (lookup_name = "false") ⇒ (resolved_handle = z_false)
+    ∀ e ∈ enum_values : ((e.name = lookup_name) ⇒ (resolved_handle = e.value))
     (¬((lookup_name = "true") ∨ (lookup_name = "false")
-        ∨ (∃ e ∈ enum_values : e.name = lookup_name))) ⇒ (lookup_handle = 0)
+        ∨ (∃ e ∈ enum_values : e.name = lookup_name))) ⇒ (resolved_handle = 0)
     eff_sym_read ∈ Effect
-    BuildMemReadLong(addr ↦ sym_buf.base + (8 * (lookup_pos_now / 32)), eff ↦ eff_sym_read)
+    BuildMemReadLong(addr ↦ sym_buf.base + (8 * (position_now / 32)), eff ↦ eff_sym_read)
