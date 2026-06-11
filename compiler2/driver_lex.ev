@@ -9,7 +9,7 @@
 --           cursor (tok_buf.count/last_token_tag/prev_token_tag/strdup_addr), the per-tick token
 --           plan (plan_* regs, emit_shape), next_pos, and the strlit/int/float
 --           collection state.
--- MAINTAINS: tok_buf.count < 65534 — every write lands inside zinit_tok_buf (a write
+-- MAINTAINS: tok_buf.count < 131070 — every write lands inside zinit_tok_buf (a write
 --           past the buffer end is UNSAT, so the kernel halts cleanly
 --           instead of corrupting the heap); the FTI one-triple-per-token
 --           buffer layout (tok_buf.base + count*32).
@@ -151,15 +151,18 @@ fsm DriverLex
     -- LexFtiPlan from the cached last_token_tag/prev_token_tag tag pair.
     --
     -- FTI bounds CONSTRAINT (the model, not a runtime check): the token
-    -- buffer (zinit_tok_buf) holds 65536 entries × 32 bytes. The lexer writes
+    -- buffer (zinit_tok_buf) holds 131072 entries × 32 bytes. The lexer writes
     -- entry _tok_buf.count (and, on a two-token tick, _tok_buf.count+1) at
-    -- tok_buf.base + _tok_buf.count*32. Constraining tok_buf.count < 65536 makes a write
+    -- tok_buf.base + _tok_buf.count*32. Constraining tok_buf.count < 131072 makes a write
     -- past the buffer end UNSAT — Z3 refuses the tick, the kernel halts
     -- cleanly (exit 2), and EVIDENT_UNSAT_CORE=1 names this very line as
     -- the violated constraint. Without it, the write went out of bounds
     -- and the native kernel corrupted the heap / segfaulted. The "+2"
     -- headroom covers the two-token push shapes (float-with-op etc.).
-    tok_buf.count < 65534
+    -- Sized for self-compile: driver.ev itself lexes to ~98.7k tokens
+    -- (measured 2026-06-11), over the old 65534 cap — that overflow was
+    -- the first-self-compile UNSAT (~tick 363833, mid-lex).
+    tok_buf.count < 131070
     last_token_tag ∈ Int
     prev_token_tag ∈ Int
     strdup_addr ∈ Int

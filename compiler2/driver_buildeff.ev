@@ -202,7 +202,7 @@ fsm DriverBuildEff
     BuildZ3MkTrue(ctx_h ↦ z3ctx.ctx, eff ↦ zinit_true)
     zinit_false ∈ Effect
     BuildZ3MkFalse(ctx_h ↦ z3ctx.ctx, eff ↦ zinit_false)
-    zinit_tok_buf ∈ Effect = LibCall("libc", "calloc", ⟨ArgInt(65536), ArgInt(32)⟩)
+    zinit_tok_buf ∈ Effect = LibCall("libc", "calloc", ⟨ArgInt(131072), ArgInt(32)⟩)
     zinit_sym_buf ∈ Effect = LibCall("libc", "calloc", ⟨ArgInt(8192), ArgInt(8)⟩)
     lastres_arr ∈ Effect
     BuildZ3MkArraySort(ctx_h ↦ z3ctx.ctx, idx_sort_h ↦ z3sorts.isort,

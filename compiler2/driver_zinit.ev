@@ -57,7 +57,7 @@ fsm DriverZInit
     z3_false = (is_first_tick ? 0 : zstep = 20 ? is_intresult_capture : _z3_false)
     tok_buf ∈ FtiBuffer
     tok_buf.base = (is_first_tick ? 0 : zstep = 21 ? is_intresult_capture : _tok_buf.base)
-    tok_buf.cap = 65534
+    tok_buf.cap = 131070
     symtab_buffer ∈ FtiBuffer
     symtab_buffer.base = (is_first_tick ? 0 : zstep = 22 ? is_intresult_capture : _symtab_buffer.base)
     symtab_buffer.cap = 8192
