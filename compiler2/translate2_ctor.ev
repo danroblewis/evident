@@ -214,16 +214,16 @@ claim VariantMkConstructorStep(
         name_sym_h ∈ Int, recog_sym_h ∈ Int,
         fnames_p ∈ Int, fsorts_p ∈ Int, srefs_p ∈ Int,
         eff ∈ Effect)
-    vmc_n ∈ Int
-    VariantFieldCount(v ↦ v, n ↦ vmc_n)
-    nullary ∈ Bool = (vmc_n = 0)
-    vmc_fn ∈ Int = (nullary ? 0 : fnames_p)
-    vmc_fs ∈ Int = (nullary ? 0 : fsorts_p)
-    vmc_sr ∈ Int = (nullary ? 0 : srefs_p)
+    arity_count ∈ Int
+    VariantFieldCount(v ↦ v, n ↦ arity_count)
+    nullary ∈ Bool = (arity_count = 0)
+    fnames_ptr ∈ Int = (nullary ? 0 : fnames_p)
+    fsorts_ptr ∈ Int = (nullary ? 0 : fsorts_p)
+    srefs_ptr ∈ Int = (nullary ? 0 : srefs_p)
     BuildZ3MkConstructor(ctx_h ↦ ctx_h, name_sym_h ↦ name_sym_h,
-        recognizer_sym_h ↦ recog_sym_h, n_fields ↦ vmc_n,
-        field_names_arr_p ↦ vmc_fn, field_sorts_arr_p ↦ vmc_fs,
-        sort_refs_arr_p ↦ vmc_sr, eff ↦ eff)
+        recognizer_sym_h ↦ recog_sym_h, n_fields ↦ arity_count,
+        field_names_arr_p ↦ fnames_ptr, field_sorts_arr_p ↦ fsorts_ptr,
+        sort_refs_arr_p ↦ srefs_ptr, eff ↦ eff)
 
 claim VariantQueryStep(ctx_h ∈ Int, ctor_h ∈ Int, v ∈ EnumVariantDecl, out_base_p ∈ Int, eff ∈ Effect)
     vq_n ∈ Int
@@ -258,13 +258,13 @@ claim EffectEnumDecl(decl ∈ EnumDeclAst)
         EVNil))))))
 
 claim EffectCtorArity(name ∈ String, n ∈ Int, known ∈ Bool)
-    eca_rl ∈ Bool = (name = "ReadLine")
-    eca_rf ∈ Bool = (name = "ReadFile")
-    eca_wf ∈ Bool = (name = "WriteFile")
-    eca_lc ∈ Bool = (name = "LibCall")
-    eca_ex ∈ Bool = (name = "Exit")
-    known = (eca_rl ∨ eca_rf ∨ eca_wf ∨ eca_lc ∨ eca_ex)
-    n = (eca_rl ? 0 : eca_rf ? 1 : eca_wf ? 2 : eca_lc ? 3 : eca_ex ? 1 : 0)
+    is_readline ∈ Bool = (name = "ReadLine")
+    is_readfile ∈ Bool = (name = "ReadFile")
+    is_writefile ∈ Bool = (name = "WriteFile")
+    is_libcall ∈ Bool = (name = "LibCall")
+    is_exit ∈ Bool = (name = "Exit")
+    known = (is_readline ∨ is_readfile ∨ is_writefile ∨ is_libcall ∨ is_exit)
+    n = (is_readline ? 0 : is_readfile ? 1 : is_writefile ? 2 : is_libcall ? 3 : is_exit ? 1 : 0)
 
 -- ── Probe (oracle-compile smoke; pure data, single tick) ────────────────
 claim translate2_ctor_probe
