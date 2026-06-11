@@ -3,47 +3,34 @@
 [ -z "${GP_TIMEBOXED:-}" ] && exec env GP_TIMEBOXED=1 timeout 55 bash "$0" "$@"
 # Goal: compiler2-purism — surface-rule burndown (docs/evident-purism.md).
 #
-# Trend (§3.6/V5): hand-namespacing of fsm/module internals. The
-# COMBINED count of two decl-position symptoms over compiler2/*.ev
-# (comments + string literals stripped first):
+# Trend: hand-namespacing of variable names by a shared prefix. HONEST
+# auto-detector (replaces the 2026-06-10 component-word + hand-denylist
+# heuristic, which was gameable — it missed every prefix family that
+# wasn't an fsm's own name or on the list, and a rename could "win" by
+# trading one unseen prefix for another).
 #
-#   (a) component prefixes — for each `fsm DriverXyz`, declaration-
-#       position names inside its body that begin with one of the fsm's
-#       own CamelCase component words, or their concatenation, plus "_"
-#       (DriverGroup -> group_*, DriverSetVar -> set_*/var_*/setvar_*).
-#       The prefixes are DERIVED from the fsm's own name — no hand-kept
-#       list to game.
+# Definition: over compiler2/*.ev (comments + string literals stripped),
+# a decl-position name's leading `<word>_` segment is its PREFIX. A prefix
+# is NAMESPACING DEBT when it is shared by >= MINFAM (default 4) DISTINCT
+# decl-names — i.e. the word is being used as a namespace, not as a one-off
+# descriptive qualifier (`walk_state` alone is fine; `parse_a parse_b
+# parse_c parse_d` is a namespace). Every decl-position occurrence under a
+# qualifying prefix counts. Carry-duals (`_x`) are skipped. The idiomatic
+# boolean prefixes `is_`/`has_` are exempt by allowlist.
 #
-#   (b) abbreviation denylist — decl-position names beginning with a
-#       fixed list of known-debt ABBREVIATION prefixes that don't match
-#       a component word but are namespacing debt all the same
-#       (operator design decision, 2026-06-10):
-#         mp_ (matchpin)  sv_ (setvar)   il_ (inline)
-#         rv_ rd_ rc_ (record*)          ww_ (work-window)
-#         pg_ (group)     d_pe d_m_ d_lk (decompose)
-#         vf_ vfc_ (variant-field)       ed_ (enum-decl)
-#         stl_ stv_ (set) qset_          bcast_ (broadcast abbr)
-#       These are distinct from any auto-derived component prefix (e.g.
-#       `bcast_` vs the full-word `broadcast_` that (a) catches), so the
-#       two halves never double-count. Counted decl-aware across multi-
-#       name decls (`a, b ∈ T` is two decl-position uses).
-#
-# The fsm/module namespacing its own internals by name or abbreviation
-# is the hand-namespacing symptom the goal targets; both retire as
-# de-prefixing rename passes land.
+# This is un-gameable by renaming: inventing a fresh prefix for >=MINFAM
+# names just makes that new prefix count. The only way down is to remove
+# the shared prefix — by encapsulation (bare-mention hiding lets internals
+# drop the prefix) or by giving names varied descriptive (non-shared) names.
 #
 # Survivor justification (ledger docs/purism-exemptions.md):
-#   `V5 <file.ev> <prefix_*> — <reason>`   exempts that decl prefix in that file
+#   `V5 <file.ev> <prefix_*> — <reason>`   exempts that prefix in that file
 # Exempt count is reported in the label so mass-exemption is visible.
+# A per-family breakdown (family size + occurrences) prints to stderr.
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 LEDGER="$ROOT/docs/purism-exemptions.md"
-
-# Abbreviation denylist (operator design decision 2026-06-10). Word-
-# bounded decl-position uses of these are namespacing debt that the
-# component-derived half cannot see (they are abbreviations, not the
-# fsm's own component words).
-DENY="mp_ sv_ il_ rv_ rd_ rc_ ww_ pg_ d_pe d_m_ d_lk vf_ vfc_ ed_ stl_ stv_ qset_ bcast_"
+MINFAM="${GP_PREFIX_MINFAM:-4}"
 
 files=("$ROOT"/compiler2/*.ev)
 [ -e "${files[0]}" ] || { echo "no compiler2/*.ev found" >&2; exit 1; }
@@ -51,48 +38,26 @@ files=("$ROOT"/compiler2/*.ev)
 exfile="$(mktemp -t gp-purism-ex.XXXXXX)"
 trap 'rm -f "$exfile"' EXIT
 if [ -f "$LEDGER" ]; then
-    # lines: "<class> <file> <token>"
     grep -ohE '^[-*[:blank:]]*V5[[:blank:]]+[^[:blank:]]+[[:blank:]]+[^[:blank:]]+' "$LEDGER" \
         | sed -E 's/^[-*[:blank:]]+//' > "$exfile" || true
 fi
 
-# Strip comments + string literals from every file into a temp stream,
-# preserving filename markers so the awk can map a hit to its file (for
-# per-file V5 ledger exemptions).
 strip() { sed 's/--.*//;s/"[^"]*"/""/g' "$1"; }
 
 read -r combined exempted <<<"$(
 for f in "${files[@]}"; do
     echo "@@FILE $(basename "$f")"
     strip "$f"
-done | awk -v exfile="$exfile" -v deny="$DENY" '
+done | awk -v exfile="$exfile" -v K="$MINFAM" '
 BEGIN {
   while ((getline l < exfile) > 0) {
     split(l, f, /[[:blank:]]+/)
     if (f[1] == "V5") ex[f[2] " " f[3]] = 1   # ex["file prefix*"]
   }
-  ndeny = split(deny, DP, /[[:blank:]]+/)
+  allow["is_"]=1; allow["has_"]=1
 }
-# File marker (synthetic) — resets per-file fsm state and records name.
-/^@@FILE / { curfile=$2; fsmname=""; next }
-# Any non-fsm schema header ends the current fsm body scope.
-/^(claim|type|schema|enum)[[:blank:]]/ { fsmname="" }
-/^fsm[[:blank:]]/ {
-  fsmname=$2; sub(/\(.*/, "", fsmname)
-  n=0; delete words; concat=""
-  w=""
-  for (i=1; i<=length(fsmname); i++) {
-    c = substr(fsmname, i, 1)
-    if (c ~ /[A-Z]/ && w != "") { words[++n] = tolower(w); w = c } else w = w c
-  }
-  if (w != "") words[++n] = tolower(w)
-  for (i=1; i<=n; i++) if (words[i] != "driver") concat = concat words[i]
-  if (concat != "") words[++n] = concat
-  next
-}
-# ── decl line? leading ws + comma-separated name-list + a binding /
-# membership / comparison terminator. Splits the name-list so every
-# decl-position name in a multi-name decl is examined. ──
+/^@@FILE / { curfile=$2; next }
+# decl line? leading ws + comma-separated name-list + a binding terminator.
 {
   line=$0
   if (line !~ /^[[:space:]]+[a-z_]/) next
@@ -103,31 +68,31 @@ BEGIN {
   m=split(test, names, /,/)
   for (j=1; j<=m; j++) {
     name=names[j]
-    matched=0
-    # (a) component-prefix half — only inside an fsm body.
-    if (fsmname != "") {
-      for (i=1; i<=n; i++) {
-        if (words[i] == "driver") continue
-        p = words[i] "_"
-        if (index(name, p) == 1) {
-          if (ex[curfile " " p "*"]) exempted++; else cnt++
-          matched=1; break
-        }
-      }
-    }
-    if (matched) continue
-    # (b) abbreviation denylist half — anywhere (debt is not fsm-scoped).
-    for (i=1; i<=ndeny; i++) {
-      p = DP[i]
-      if (index(name, p) == 1) {
-        if (ex[curfile " " p "*"]) exempted++; else cnt++
-        break
-      }
-    }
+    if (name ~ /^_/) continue                  # carry dual
+    if (name !~ /^[a-z][a-z0-9]*_/) continue    # no prefix segment
+    p=name; sub(/_.*/, "_", p)                  # leading <word>_
+    if (p in allow) continue
+    occ[curfile SUBSEP p]++                      # occurrences per (file,prefix)
+    distinct[p SUBSEP name]=1                    # for distinct-name-per-prefix
   }
 }
-END { printf "%d %d\n", cnt+0, exempted+0 }
+END {
+  for (k in distinct) { split(k, a, SUBSEP); dc[a[1]]++ }
+  cnt=0; exempted=0
+  for (k in occ) {
+    split(k, a, SUBSEP); file=a[1]; p=a[2]
+    if (dc[p] < K) continue
+    n=occ[k]
+    if (ex[file " " p "*"]) exempted += n; else cnt += n
+  }
+  printf "%d %d\n", cnt, exempted
+  # breakdown to stderr, biggest families first
+  for (k in occ) { split(k, a, SUBSEP); p=a[2]; if (dc[p] >= K) tot[p]+=occ[k] }
+  n=0; for (p in tot) { order[n++]=p }
+  for (i=0;i<n;i++) for (jj=i+1;jj<n;jj++) if (tot[order[jj]]>tot[order[i]]) { t=order[i]; order[i]=order[jj]; order[jj]=t }
+  for (i=0;i<n;i++) { p=order[i]; printf "  %-16s family=%d  occ=%d\n", p, dc[p], tot[p] > "/dev/stderr" }
+}
 '
 )"
 
-printf '{"goal":"compiler2-purism","measure":"fsm_prefix_decls","kind":"trend","value":%d,"target":0,"higher_is_better":false,"unit":"count","rung":"deterministic","period_s":300,"label":"decl-position names hand-namespaced by an fsm component word OR a known abbreviation prefix (mp_/sv_/vf_/bcast_/…), combined, unexempted (%d exempted via ledger)"}\n' "$combined" "$exempted"
+printf '{"goal":"compiler2-purism","measure":"prefix_decls","kind":"trend","value":%d,"target":0,"higher_is_better":false,"unit":"count","rung":"deterministic","period_s":300,"label":"decl-position names under a shared <word>_ prefix (>=%s distinct names share it; is_/has_ exempt), all families auto-detected, unexempted (%d exempted via ledger)"}\n' "$combined" "$MINFAM" "$exempted"
