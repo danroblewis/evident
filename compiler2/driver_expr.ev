@@ -18,70 +18,70 @@
 -- handle-stack underflow bug lives downstream in the build step, not here).
 -- ── Token → Op classifier (wider than parser.ev's TokenToOp) ──────
 claim C2TokOp(t ∈ Token, o ∈ Op, rec ∈ Bool)
-    c2to_pl ∈ Bool = (t matches Plus)
-    c2to_mi ∈ Bool = (t matches Minus)
-    c2to_st ∈ Bool = (t matches Star)
-    c2to_sl ∈ Bool = (t matches Slash)
-    c2to_eq ∈ Bool = (t matches Eq)
-    c2to_lt ∈ Bool = (t matches Lt)
-    c2to_gt ∈ Bool = (t matches Gt)
-    c2to_le ∈ Bool = (t matches OpLe)
-    c2to_ge ∈ Bool = (t matches OpGe)
-    c2to_ne ∈ Bool = (t matches OpNe)
-    c2to_an ∈ Bool = (t matches OpAnd)
-    c2to_or ∈ Bool = (t matches OpOr)
-    c2to_im ∈ Bool = (t matches OpImplies)
-    c2to_cc ∈ Bool = (t matches PlusPlus)
-    o = (c2to_pl ? OpPlus
-       : c2to_mi ? OpSub
-       : c2to_st ? OpMul
-       : c2to_sl ? OpDiv
-       : c2to_eq ? OpEq
-       : c2to_lt ? OpLt
-       : c2to_gt ? OpGt
-       : c2to_le ? OpLeq
-       : c2to_ge ? OpGeq
-       : c2to_ne ? OpNeq
-       : c2to_an ? OpConj
-       : c2to_or ? OpDisj
-       : c2to_im ? OpImpl
-       : c2to_cc ? OpConcat
+    is_plus ∈ Bool = (t matches Plus)
+    is_minus ∈ Bool = (t matches Minus)
+    is_star ∈ Bool = (t matches Star)
+    is_slash ∈ Bool = (t matches Slash)
+    is_eq_tok ∈ Bool = (t matches Eq)
+    is_lt_tok ∈ Bool = (t matches Lt)
+    is_gt_tok ∈ Bool = (t matches Gt)
+    is_le_tok ∈ Bool = (t matches OpLe)
+    is_ge_tok ∈ Bool = (t matches OpGe)
+    is_ne_tok ∈ Bool = (t matches OpNe)
+    is_and_tok ∈ Bool = (t matches OpAnd)
+    is_or_tok ∈ Bool = (t matches OpOr)
+    is_implies_tok ∈ Bool = (t matches OpImplies)
+    is_concat_tok ∈ Bool = (t matches PlusPlus)
+    o = (is_plus ? OpPlus
+       : is_minus ? OpSub
+       : is_star ? OpMul
+       : is_slash ? OpDiv
+       : is_eq_tok ? OpEq
+       : is_lt_tok ? OpLt
+       : is_gt_tok ? OpGt
+       : is_le_tok ? OpLeq
+       : is_ge_tok ? OpGeq
+       : is_ne_tok ? OpNeq
+       : is_and_tok ? OpConj
+       : is_or_tok ? OpDisj
+       : is_implies_tok ? OpImpl
+       : is_concat_tok ? OpConcat
        : OpPlus)
-    rec = (c2to_pl ∨ c2to_mi ∨ c2to_st ∨ c2to_sl ∨ c2to_eq
-         ∨ c2to_lt ∨ c2to_gt ∨ c2to_le ∨ c2to_ge ∨ c2to_ne
-         ∨ c2to_an ∨ c2to_or ∨ c2to_im ∨ c2to_cc)
+    rec = (is_plus ∨ is_minus ∨ is_star ∨ is_slash ∨ is_eq_tok
+         ∨ is_lt_tok ∨ is_gt_tok ∨ is_le_tok ∨ is_ge_tok ∨ is_ne_tok
+         ∨ is_and_tok ∨ is_or_tok ∨ is_implies_tok ∨ is_concat_tok)
 
 -- ── Token → atomic Expr ───────────────────────────────────────────
 claim C2AtomE(t ∈ Token, e ∈ Expr, ok ∈ Bool)
     int ∈ Bool = (t matches IntLit(_))
-    c2a_id  ∈ Bool = (t matches Ident(_))
-    c2a_tr  ∈ Bool = (t matches KwTrue)
-    c2a_fa  ∈ Bool = (t matches KwFalse)
-    c2a_sl  ∈ Bool = (t matches StringLit(_))
-    c2a_fl  ∈ Bool = (t matches FloatLit(_, _, _))
-    c2a_n ∈ Int = match t
+    is_ident  ∈ Bool = (t matches Ident(_))
+    is_true  ∈ Bool = (t matches KwTrue)
+    is_false  ∈ Bool = (t matches KwFalse)
+    is_string_lit  ∈ Bool = (t matches StringLit(_))
+    is_float_lit  ∈ Bool = (t matches FloatLit(_, _, _))
+    int_value ∈ Int = match t
         IntLit(n) ⇒ n
         _ ⇒ 0
-    c2a_s ∈ String = match t
+    ident_name ∈ String = match t
         Ident(s) ⇒ s
         _ ⇒ ""
-    c2a_ls ∈ String = match t
+    string_value ∈ String = match t
         StringLit(s) ⇒ s
         _ ⇒ ""
-    c2a_fs ∈ Int = match t
+    float_whole ∈ Int = match t
         FloatLit(w, _, _) ⇒ w
         _ ⇒ 0
-    c2a_fd ∈ Int = match t
+    float_frac ∈ Int = match t
         FloatLit(_, f, _) ⇒ f
         _ ⇒ 0
-    e = (int ? EInt(c2a_n)
-       : c2a_id ? EIdent(c2a_s)
-       : c2a_tr ? EIdent("true")
-       : c2a_fa ? EIdent("false")
-       : c2a_sl ? EStr(c2a_ls)
-       : c2a_fl ? ECall2("__real", EInt(c2a_fs), EInt(c2a_fd))
+    e = (int ? EInt(int_value)
+       : is_ident ? EIdent(ident_name)
+       : is_true ? EIdent("true")
+       : is_false ? EIdent("false")
+       : is_string_lit ? EStr(string_value)
+       : is_float_lit ? ECall2("__real", EInt(float_whole), EInt(float_frac))
        : ENoExpr)
-    ok = (int ∨ c2a_id ∨ c2a_tr ∨ c2a_fa ∨ c2a_sl ∨ c2a_fl)
+    ok = (int ∨ is_ident ∨ is_true ∨ is_false ∨ is_string_lit ∨ is_float_lit)
 
 -- ── Operator precedence (oracle-verified ladder, P3c) ─────────────
 -- Probed empirically against the frozen bootstrap oracle:
@@ -96,29 +96,29 @@ claim C2AtomE(t ∈ Token, e ∈ Expr, ok ∈ Bool)
 -- semantics; the divergence is pinned in
 -- docs/plans/compiler2-driver-notes.md.
 claim C2Prec(o ∈ Op, n ∈ Int, right ∈ Bool, chain ∈ Bool)
-    pc_im ∈ Bool = (o matches OpImpl)
-    pc_or ∈ Bool = (o matches OpDisj)
-    pc_an ∈ Bool = (o matches OpConj)
-    pc_lt ∈ Bool = (o matches OpLt)
-    pc_gt ∈ Bool = (o matches OpGt)
-    pc_le ∈ Bool = (o matches OpLeq)
-    pc_ge ∈ Bool = (o matches OpGeq)
-    pc_ne ∈ Bool = (o matches OpNeq)
-    pc_eq ∈ Bool = (o matches OpEq)
-    pc_pl ∈ Bool = (o matches OpPlus)
-    pc_su ∈ Bool = (o matches OpSub)
-    pc_mu ∈ Bool = (o matches OpMul)
-    pc_dv ∈ Bool = (o matches OpDiv)
-    pc_cc ∈ Bool = (o matches OpConcat)
-    chain = (pc_lt ∨ pc_gt ∨ pc_le ∨ pc_ge ∨ pc_ne ∨ pc_eq)
-    n = (pc_im ? 1
-       : pc_or ? 3
-       : pc_an ? 4
+    is_implies ∈ Bool = (o matches OpImpl)
+    is_disj ∈ Bool = (o matches OpDisj)
+    is_conj ∈ Bool = (o matches OpConj)
+    is_lt ∈ Bool = (o matches OpLt)
+    is_gt ∈ Bool = (o matches OpGt)
+    is_le ∈ Bool = (o matches OpLeq)
+    is_ge ∈ Bool = (o matches OpGeq)
+    is_ne ∈ Bool = (o matches OpNeq)
+    is_eq ∈ Bool = (o matches OpEq)
+    is_add ∈ Bool = (o matches OpPlus)
+    is_sub ∈ Bool = (o matches OpSub)
+    is_mul ∈ Bool = (o matches OpMul)
+    is_div ∈ Bool = (o matches OpDiv)
+    is_concat ∈ Bool = (o matches OpConcat)
+    chain = (is_lt ∨ is_gt ∨ is_le ∨ is_ge ∨ is_ne ∨ is_eq)
+    n = (is_implies ? 1
+       : is_disj ? 3
+       : is_conj ? 4
        : chain ? 5
-       : (pc_pl ∨ pc_su ∨ pc_cc) ? 6
-       : (pc_mu ∨ pc_dv) ? 7
+       : (is_add ∨ is_sub ∨ is_concat) ? 6
+       : (is_mul ∨ is_div) ? 7
        : 0)
-    right = pc_im
+    right = is_implies
 
 -- Pratt operator stack. PrLP/PrQuest/PrCall/PrIdx are floor markers:
 -- never auto-reduced, prec -1. PrCall's Int payload is the COMMA count
@@ -174,70 +174,70 @@ claim C2PrattStep(toks ∈ TokenList, outs ∈ ExprList, ops ∈ PrOps,
         ntoks ∈ TokenList, nouts ∈ ExprList, nops ∈ PrOps,
         nexpop ∈ Bool, npd ∈ Int, nqd ∈ Int, ncd ∈ Int,
         sdone ∈ Bool, sres ∈ Expr, scons ∈ Int)
-    ps_hd ∈ Token = match toks
+    head_token ∈ Token = match toks
         TLCons(t, _) ⇒ t
         TLNil ⇒ EofTok
-    ps_tl ∈ TokenList = match toks
+    rest_tokens ∈ TokenList = match toks
         TLCons(_, r) ⇒ r
         TLNil ⇒ TLNil
-    ps_nx ∈ Token = match ps_tl
+    next1 ∈ Token = match rest_tokens
         TLCons(t, _) ⇒ t
         TLNil ⇒ EofTok
-    ps_tl2 ∈ TokenList = match ps_tl
+    rest2 ∈ TokenList = match rest_tokens
         TLCons(_, r) ⇒ r
         TLNil ⇒ TLNil
-    ps_nx2 ∈ Token = match ps_tl2
+    next2 ∈ Token = match rest2
         TLCons(t, _) ⇒ t
         TLNil ⇒ EofTok
-    ps_tl3 ∈ TokenList = match ps_tl2
+    rest3 ∈ TokenList = match rest2
         TLCons(_, r) ⇒ r
         TLNil ⇒ TLNil
-    ps_nx3 ∈ Token = match ps_tl3
+    next3 ∈ Token = match rest3
         TLCons(t, _) ⇒ t
         TLNil ⇒ EofTok
-    ps_tl4 ∈ TokenList = match ps_tl3
+    rest4 ∈ TokenList = match rest3
         TLCons(_, r) ⇒ r
         TLNil ⇒ TLNil
-    ps_nx4 ∈ Token = match ps_tl4
+    next4 ∈ Token = match rest4
         TLCons(t, _) ⇒ t
         TLNil ⇒ EofTok
-    ps_tl5 ∈ TokenList = match ps_tl4
+    rest5 ∈ TokenList = match rest4
         TLCons(_, r) ⇒ r
         TLNil ⇒ TLNil
-    ps_nx5 ∈ Token = match ps_tl5
+    next5 ∈ Token = match rest5
         TLCons(t, _) ⇒ t
         TLNil ⇒ EofTok
-    ps_tl6 ∈ TokenList = match ps_tl5
+    rest6 ∈ TokenList = match rest5
         TLCons(_, r) ⇒ r
         TLNil ⇒ TLNil
-    ps_nx6 ∈ Token = match ps_tl6
+    next6 ∈ Token = match rest6
         TLCons(t, _) ⇒ t
         TLNil ⇒ EofTok
-    ps_tl7 ∈ TokenList = match ps_tl6
+    rest7 ∈ TokenList = match rest6
         TLCons(_, r) ⇒ r
         TLNil ⇒ TLNil
 
-    ps_top ∈ PrOp = match ops
+    stack_top ∈ PrOp = match ops
         PrCons(o2, _) ⇒ o2
         PrNil ⇒ PrNone
-    ops_tl ∈ PrOps = match ops
+    orest_tokens ∈ PrOps = match ops
         PrCons(_, r) ⇒ r
         PrNil ⇒ PrNil
     ops_nil ∈ Bool = (ops matches PrNil)
 
-    ps_o1 ∈ Expr = match outs
+    out1 ∈ Expr = match outs
         ELCons(e1, _) ⇒ e1
         ELNil ⇒ ENoExpr
     o_t1 ∈ ExprList = match outs
         ELCons(_, r) ⇒ r
         ELNil ⇒ ELNil
-    ps_o2 ∈ Expr = match o_t1
+    out2 ∈ Expr = match o_t1
         ELCons(e1, _) ⇒ e1
         ELNil ⇒ ENoExpr
     o_t2 ∈ ExprList = match o_t1
         ELCons(_, r) ⇒ r
         ELNil ⇒ ELNil
-    ps_o3 ∈ Expr = match o_t2
+    out3 ∈ Expr = match o_t2
         ELCons(e1, _) ⇒ e1
         ELNil ⇒ ENoExpr
     o_t3 ∈ ExprList = match o_t2
@@ -245,51 +245,51 @@ claim C2PrattStep(toks ∈ TokenList, outs ∈ ExprList, ops ∈ PrOps,
         ELNil ⇒ ELNil
 
     atom_e ∈ Expr
-    ps_atom_ok ∈ Bool
-    C2AtomE(t ↦ ps_hd, e ↦ atom_e, ok ↦ ps_atom_ok)
+    head_is_atom ∈ Bool
+    C2AtomE(t ↦ head_token, e ↦ atom_e, ok ↦ head_is_atom)
     bin_o ∈ Op
     bin_ok ∈ Bool
-    C2TokOp(t ↦ ps_hd, o ↦ bin_o, rec ↦ bin_ok)
-    is_q ∈ Bool = (ps_hd matches Question)
-    is_col ∈ Bool = (ps_hd matches Colon)
-    is_lp ∈ Bool = (ps_hd matches LParen)
-    is_rp ∈ Bool = (ps_hd matches RParen)
-    ps_is_not ∈ Bool = (ps_hd matches OpNot)
-    is_hash ∈ Bool = (ps_hd matches Hash)
-    is_com ∈ Bool = (ps_hd matches Comma)
-    is_lb ∈ Bool = (ps_hd matches LBracket)
-    is_rb ∈ Bool = (ps_hd matches RBracket)
-    ps_hd_nm ∈ String = match ps_hd
+    C2TokOp(t ↦ head_token, o ↦ bin_o, rec ↦ bin_ok)
+    is_q ∈ Bool = (head_token matches Question)
+    is_col ∈ Bool = (head_token matches Colon)
+    is_lp ∈ Bool = (head_token matches LParen)
+    is_rp ∈ Bool = (head_token matches RParen)
+    head_is_not ∈ Bool = (head_token matches OpNot)
+    is_hash ∈ Bool = (head_token matches Hash)
+    is_com ∈ Bool = (head_token matches Comma)
+    is_lb ∈ Bool = (head_token matches LBracket)
+    is_rb ∈ Bool = (head_token matches RBracket)
+    head_name ∈ String = match head_token
         Ident(s2) ⇒ s2
         _ ⇒ ""
-    ps_nx_lp ∈ Bool = (ps_nx matches LParen)
+    next_is_lparen ∈ Bool = (next1 matches LParen)
 
-    o1_id ∈ Bool = (ps_o1 matches EIdent(_))
-    o1_nm ∈ String = match ps_o1
+    o1_id ∈ Bool = (out1 matches EIdent(_))
+    o1_nm ∈ String = match out1
         EIdent(s6) ⇒ s6
         _ ⇒ ""
-    ps_nx_nm ∈ String = match ps_nx
+    next_name ∈ String = match next1
         Ident(s7) ⇒ s7
         _ ⇒ ""
-    dotf ∈ Bool = ((¬expop) ∧ (ps_hd matches Dot)
-        ∧ (ps_nx matches Ident(_)) ∧ o1_id)
+    dotf ∈ Bool = ((¬expop) ∧ (head_token matches Dot)
+        ∧ (next1 matches Ident(_)) ∧ o1_id)
     o1_some ∈ Bool = (¬(outs matches ELNil))
-    dotf2 ∈ Bool = ((¬expop) ∧ (ps_hd matches Dot)
-        ∧ (ps_nx matches Ident(_)) ∧ (¬o1_id) ∧ o1_some)
+    dotf2 ∈ Bool = ((¬expop) ∧ (head_token matches Dot)
+        ∧ (next1 matches Ident(_)) ∧ (¬o1_id) ∧ o1_some)
 
-    is_kwm ∈ Bool = (ps_hd matches KwMatches)
-    ps_mt_hd ∈ Bool = ((¬expop) ∧ is_kwm ∧ (ps_nx matches Ident(_)))
-    ps_mt_nm ∈ String = match ps_nx
+    is_kwm ∈ Bool = (head_token matches KwMatches)
+    match_head ∈ Bool = ((¬expop) ∧ is_kwm ∧ (next1 matches Ident(_)))
+    match_name ∈ String = match next1
         Ident(s3) ⇒ s3
         _ ⇒ ""
-    ps_mt_lp ∈ Bool = (ps_nx2 matches LParen)
-    ps_mt_p1 ∈ Bool = (ps_mt_lp ∧ (ps_nx3 matches Ident(_))
-        ∧ (ps_nx4 matches RParen))
-    ps_mt_p2 ∈ Bool = (ps_mt_lp ∧ (ps_nx3 matches Ident(_))
-        ∧ (ps_nx4 matches Comma) ∧ (ps_nx5 matches Ident(_))
-        ∧ (ps_nx6 matches RParen))
-    ps_match ∈ Bool = (ps_mt_hd ∧ ((¬ps_mt_lp) ∨ ps_mt_p1 ∨ ps_mt_p2))
-    mt_cons ∈ Int = (ps_mt_p2 ? 7 : ps_mt_p1 ? 5 : 2)
+    match_lparen ∈ Bool = (next2 matches LParen)
+    match_pat1 ∈ Bool = (match_lparen ∧ (next3 matches Ident(_))
+        ∧ (next4 matches RParen))
+    match_pat2 ∈ Bool = (match_lparen ∧ (next3 matches Ident(_))
+        ∧ (next4 matches Comma) ∧ (next5 matches Ident(_))
+        ∧ (next6 matches RParen))
+    is_match ∈ Bool = (match_head ∧ ((¬match_lparen) ∨ match_pat1 ∨ match_pat2))
+    mt_cons ∈ Int = (match_pat2 ? 7 : match_pat1 ? 5 : 2)
 
     in_p0 ∈ Int
     in_r0 ∈ Bool
@@ -298,82 +298,82 @@ claim C2PrattStep(toks ∈ TokenList, outs ∈ ExprList, ops ∈ PrOps,
     in_p ∈ Int = (is_q ? 2 : in_p0)
     in_right ∈ Bool = (is_q ? true : in_r0)
 
-    top_op ∈ Op = match ps_top
+    top_op ∈ Op = match stack_top
         PrBin(o2) ⇒ o2
         _ ⇒ OpPlus
-    top_bin ∈ Bool = (ps_top matches PrBin(_))
-    top_not ∈ Bool = (ps_top matches PrNot)
-    top_hash ∈ Bool = (ps_top matches PrHash)
-    top_tern ∈ Bool = (ps_top matches PrTern)
-    top_quest ∈ Bool = (ps_top matches PrQuest)
-    top_lp ∈ Bool = (ps_top matches PrLP)
-    top_call ∈ Bool = (ps_top matches PrCall(_, _))
-    top_idx ∈ Bool = (ps_top matches PrIdx)
-    ps_tc_nm ∈ String = match ps_top
+    top_bin ∈ Bool = (stack_top matches PrBin(_))
+    top_not ∈ Bool = (stack_top matches PrNot)
+    top_hash ∈ Bool = (stack_top matches PrHash)
+    top_tern ∈ Bool = (stack_top matches PrTern)
+    top_quest ∈ Bool = (stack_top matches PrQuest)
+    top_lp ∈ Bool = (stack_top matches PrLP)
+    top_call ∈ Bool = (stack_top matches PrCall(_, _))
+    top_idx ∈ Bool = (stack_top matches PrIdx)
+    top_call_name ∈ String = match stack_top
         PrCall(n2, _) ⇒ n2
         _ ⇒ ""
-    ps_tc_k ∈ Int = match ps_top
+    top_call_argn ∈ Int = match stack_top
         PrCall(_, k2) ⇒ k2
         _ ⇒ 0
-    ps_tb_p ∈ Int
-    ps_tb_r ∈ Bool
+    top_precedence ∈ Int
+    top_right_assoc ∈ Bool
     top_chain ∈ Bool
-    C2Prec(o ↦ top_op, n ↦ ps_tb_p, right ↦ ps_tb_r, chain ↦ top_chain)
-    top_p ∈ Int = (top_bin ? ps_tb_p
+    C2Prec(o ↦ top_op, n ↦ top_precedence, right ↦ top_right_assoc, chain ↦ top_chain)
+    top_p ∈ Int = (top_bin ? top_precedence
         : (top_not ∨ top_hash) ? 8
         : top_tern ? 2
         : 0 - 1)
     top_red ∈ Bool = (top_bin ∨ top_not ∨ top_tern ∨ top_hash)
 
-    -- chain-comparison lowering parts (lhs = ps_o2 when reducing a
+    -- chain-comparison lowering parts (lhs = out2 when reducing a
     -- PrBin whose op is a chain op): a chain-shaped lhs turns
     -- `l op r` into (and l (op middle r)), duplicating the shared
     -- middle operand — same lowering the oracle performs.
     l_op ∈ Op
-    ps_l_l ∈ Expr
-    ps_l_r ∈ Expr
+    left_lhs ∈ Expr
+    left_rhs ∈ Expr
     l_bin ∈ Bool
-    BoolExprBinopParts(e ↦ ps_o2, op ↦ l_op, lhs ↦ ps_l_l,
-        rhs ↦ ps_l_r, is_binop ↦ l_bin)
-    ps_l_p ∈ Int
-    ps_l_rt ∈ Bool
+    BoolExprBinopParts(e ↦ out2, op ↦ l_op, lhs ↦ left_lhs,
+        rhs ↦ left_rhs, is_binop ↦ l_bin)
+    left_precedence ∈ Int
+    left_right_assoc ∈ Bool
     l_chain ∈ Bool
-    C2Prec(o ↦ l_op, n ↦ ps_l_p, right ↦ ps_l_rt, chain ↦ l_chain)
+    C2Prec(o ↦ l_op, n ↦ left_precedence, right ↦ left_right_assoc, chain ↦ l_chain)
     l_conj ∈ Bool = (l_op matches OpConj)
     lr_op ∈ Op
-    ps_lr_l ∈ Expr
-    ps_lr_r ∈ Expr
+    leftright_lhs ∈ Expr
+    leftright_rhs ∈ Expr
     lr_bin ∈ Bool
-    BoolExprBinopParts(e ↦ ps_l_r, op ↦ lr_op, lhs ↦ ps_lr_l,
-        rhs ↦ ps_lr_r, is_binop ↦ lr_bin)
-    ps_lr_p ∈ Int
-    ps_lr_rt ∈ Bool
+    BoolExprBinopParts(e ↦ left_rhs, op ↦ lr_op, lhs ↦ leftright_lhs,
+        rhs ↦ leftright_rhs, is_binop ↦ lr_bin)
+    leftright_precedence ∈ Int
+    leftright_right_assoc ∈ Bool
     lr_chain ∈ Bool
-    C2Prec(o ↦ lr_op, n ↦ ps_lr_p, right ↦ ps_lr_rt, chain ↦ lr_chain)
+    C2Prec(o ↦ lr_op, n ↦ leftright_precedence, right ↦ leftright_right_assoc, chain ↦ lr_chain)
     chain1 ∈ Bool = (top_chain ∧ l_bin ∧ l_chain)
     chain2 ∈ Bool = (top_chain ∧ l_bin ∧ l_conj
         ∧ lr_bin ∧ lr_chain)
     apply_bin ∈ Expr = (chain1
-            ? EBinOp(OpConj, ps_o2, EBinOp(top_op, ps_l_r, ps_o1))
+            ? EBinOp(OpConj, out2, EBinOp(top_op, left_rhs, out1))
         : chain2
-            ? EBinOp(OpConj, ps_o2, EBinOp(top_op, ps_lr_r, ps_o1))
-        : EBinOp(top_op, ps_o2, ps_o1))
+            ? EBinOp(OpConj, out2, EBinOp(top_op, leftright_rhs, out1))
+        : EBinOp(top_op, out2, out1))
 
     call_key ∈ String
-    FtiNameEntry(name ↦ ps_hd_nm, entry ↦ call_key)
+    FtiNameEntry(name ↦ head_name, entry ↦ call_key)
     call_ok ∈ Bool = (index_of(calls, call_key, 0) ≥ 0)
-    sh_call ∈ Bool = (expop ∧ (ps_hd matches Ident(_)) ∧ ps_nx_lp
+    sh_call ∈ Bool = (expop ∧ (head_token matches Ident(_)) ∧ next_is_lparen
         ∧ call_ok)
-    sh_atom ∈ Bool = (expop ∧ ps_atom_ok ∧ (¬sh_call))
-    ps_sh_lp ∈ Bool = (expop ∧ is_lp)
-    sh_not ∈ Bool = (expop ∧ ps_is_not)
+    sh_atom ∈ Bool = (expop ∧ head_is_atom ∧ (¬sh_call))
+    shift_lparen ∈ Bool = (expop ∧ is_lp)
+    sh_not ∈ Bool = (expop ∧ head_is_not)
     sh_hash ∈ Bool = (expop ∧ is_hash)
-    ps_bad ∈ Bool = (expop ∧ (¬ps_atom_ok) ∧ (¬is_lp) ∧ (¬ps_is_not)
+    syntax_error ∈ Bool = (expop ∧ (¬head_is_atom) ∧ (¬is_lp) ∧ (¬head_is_not)
         ∧ (¬is_hash))
 
     q_stop ∈ Bool = (qstop ∧ is_q ∧ (pd = 0) ∧ (qd = 0))
     cont ∈ Bool = (bin_ok ∨ (is_q ∧ (¬q_stop)) ∨ is_lb
-        ∨ ps_match ∨ dotf ∨ dotf2
+        ∨ is_match ∨ dotf ∨ dotf2
         ∨ (is_col ∧ (qd > 0)) ∨ (is_rp ∧ (pd > 0))
         ∨ (is_rb ∧ (pd > 0))
         ∨ (is_com ∧ (cd > 0)))
@@ -383,84 +383,84 @@ claim C2PrattStep(toks ∈ TokenList, outs ∈ ExprList, ops ∈ PrOps,
     arr_shift ∈ Bool = (arr ∧ (¬arr_red))
     col ∈ Bool = ((¬expop) ∧ is_col ∧ (qd > 0))
     col_swap ∈ Bool = (col ∧ top_quest)
-    ps_rp ∈ Bool = ((¬expop) ∧ is_rp ∧ (pd > 0))
-    rp_close ∈ Bool = (ps_rp ∧ top_lp)
-    rp_call ∈ Bool = (ps_rp ∧ top_call)
+    close_rparen ∈ Bool = ((¬expop) ∧ is_rp ∧ (pd > 0))
+    rp_close ∈ Bool = (close_rparen ∧ top_lp)
+    rp_call ∈ Bool = (close_rparen ∧ top_call)
     sh_idx ∈ Bool = ((¬expop) ∧ is_lb)
-    ps_rb ∈ Bool = ((¬expop) ∧ is_rb ∧ (pd > 0))
-    rb_close ∈ Bool = (ps_rb ∧ top_idx)
+    close_rbracket ∈ Bool = ((¬expop) ∧ is_rb ∧ (pd > 0))
+    rb_close ∈ Bool = (close_rbracket ∧ top_idx)
     com ∈ Bool = ((¬expop) ∧ is_com ∧ (cd > 0))
     com_bump ∈ Bool = (com ∧ top_call)
-    ps_end ∈ Bool = ((¬expop) ∧ (¬cont))
+    expr_end ∈ Bool = ((¬expop) ∧ (¬cont))
     need_red ∈ Bool = ((col ∧ (¬col_swap))
-        ∨ (ps_rp ∧ (¬rp_close) ∧ (¬rp_call))
-        ∨ (ps_rb ∧ (¬rb_close))
+        ∨ (close_rparen ∧ (¬rp_close) ∧ (¬rp_call))
+        ∨ (close_rbracket ∧ (¬rb_close))
         ∨ (com ∧ (¬com_bump))
-        ∨ (ps_end ∧ (¬ops_nil))
+        ∨ (expr_end ∧ (¬ops_nil))
         ∨ arr_red)
     reduce ∈ Bool = (need_red ∧ top_red)
     discard ∈ Bool = (need_red ∧ (¬top_red))
 
-    sdone = (ps_bad ∨ (ps_end ∧ ops_nil))
-    sres = (ps_bad ? ENoExpr : ps_o1)
+    sdone = (syntax_error ∨ (expr_end ∧ ops_nil))
+    sres = (syntax_error ? ENoExpr : out1)
 
-    ps_consume ∈ Bool = (sh_atom ∨ ps_sh_lp ∨ sh_not ∨ sh_hash
+    consume_token ∈ Bool = (sh_atom ∨ shift_lparen ∨ sh_not ∨ sh_hash
         ∨ arr_shift ∨ col_swap ∨ rp_close ∨ rp_call
         ∨ com_bump ∨ sh_idx ∨ rb_close)
     scons = (sh_call ? 2
-        : ps_match ? mt_cons
+        : is_match ? mt_cons
         : (dotf ∨ dotf2) ? 2
-        : ps_consume ? 1 : 0)
-    ntoks = (sh_call ? ps_tl2
-        : ps_match ? (ps_mt_p2 ? ps_tl7 : ps_mt_p1 ? ps_tl5 : ps_tl2)
-        : (dotf ∨ dotf2) ? ps_tl2
-        : ps_consume ? ps_tl : toks)
+        : consume_token ? 1 : 0)
+    ntoks = (sh_call ? rest2
+        : is_match ? (match_pat2 ? rest7 : match_pat1 ? rest5 : rest2)
+        : (dotf ∨ dotf2) ? rest2
+        : consume_token ? rest_tokens : toks)
 
-    ps_argc ∈ Int = ps_tc_k + 1
-    call_e ∈ Expr = (ps_argc = 1 ? ECall1(ps_tc_nm, ps_o1)
-        : ps_argc = 2 ? ECall2(ps_tc_nm, ps_o2, ps_o1)
-        : ECall3(ps_tc_nm, ps_o3, ps_o2, ps_o1))
-    call_base ∈ ExprList = (ps_argc = 1 ? o_t1
-        : ps_argc = 2 ? o_t2
+    call_arg_count ∈ Int = top_call_argn + 1
+    call_e ∈ Expr = (call_arg_count = 1 ? ECall1(top_call_name, out1)
+        : call_arg_count = 2 ? ECall2(top_call_name, out2, out1)
+        : ECall3(top_call_name, out3, out2, out1))
+    call_base ∈ ExprList = (call_arg_count = 1 ? o_t1
+        : call_arg_count = 2 ? o_t2
         : o_t3)
 
-    red_e ∈ Expr = (top_not ? ENot(ps_o1)
-        : top_hash ? ECall1("str_len", ps_o1)
-        : top_tern ? ETernary(ps_o3, ps_o2, ps_o1)
+    red_e ∈ Expr = (top_not ? ENot(out1)
+        : top_hash ? ECall1("str_len", out1)
+        : top_tern ? ETernary(out3, out2, out1)
         : apply_bin)
     red_base ∈ ExprList = ((top_not ∨ top_hash) ? o_t1
         : top_tern ? o_t3
         : o_t2)
-    idx_e ∈ Expr = ECall2("__index", ps_o2, ps_o1)
+    idx_e ∈ Expr = ECall2("__index", out2, out1)
     nouts = (sh_atom ? ELCons(atom_e, outs)
         : reduce ? ELCons(red_e, red_base)
         : rp_call ? ELCons(call_e, call_base)
         : rb_close ? ELCons(idx_e, o_t2)
-        : ps_match ? ELCons(EMatches(ps_mt_nm, ps_o1), o_t1)
-        : dotf ? ELCons(EIdent(o1_nm ++ "." ++ ps_nx_nm), o_t1)
-        : dotf2 ? ELCons(ECall2("__field", ps_o1, EIdent(ps_nx_nm)), o_t1)
+        : is_match ? ELCons(EMatches(match_name, out1), o_t1)
+        : dotf ? ELCons(EIdent(o1_nm ++ "." ++ next_name), o_t1)
+        : dotf2 ? ELCons(ECall2("__field", out1, EIdent(next_name)), o_t1)
         : outs)
 
     push ∈ PrOp = (is_q ? PrQuest : PrBin(bin_o))
-    nops = (ps_sh_lp ? PrCons(PrLP, ops)
+    nops = (shift_lparen ? PrCons(PrLP, ops)
         : sh_not ? PrCons(PrNot, ops)
         : sh_hash ? PrCons(PrHash, ops)
-        : sh_call ? PrCons(PrCall(ps_hd_nm, 0), ops)
+        : sh_call ? PrCons(PrCall(head_name, 0), ops)
         : sh_idx ? PrCons(PrIdx, ops)
         : arr_shift ? PrCons(push, ops)
-        : col_swap ? PrCons(PrTern, ops_tl)
-        : com_bump ? PrCons(PrCall(ps_tc_nm, ps_tc_k + 1), ops_tl)
+        : col_swap ? PrCons(PrTern, orest_tokens)
+        : com_bump ? PrCons(PrCall(top_call_name, top_call_argn + 1), orest_tokens)
         : (rp_close ∨ rp_call ∨ rb_close ∨ reduce
-            ∨ discard) ? ops_tl
+            ∨ discard) ? orest_tokens
         : ops)
 
     nexpop = (sh_atom ? false
         : (rp_close ∨ rp_call ∨ rb_close) ? false
-        : (arr_shift ∨ col_swap ∨ ps_sh_lp ∨ sh_not
+        : (arr_shift ∨ col_swap ∨ shift_lparen ∨ sh_not
             ∨ sh_hash ∨ sh_call ∨ com_bump ∨ sh_idx) ? true
         : expop)
 
-    npd = ((ps_sh_lp ∨ sh_call ∨ sh_idx) ? pd + 1
+    npd = ((shift_lparen ∨ sh_call ∨ sh_idx) ? pd + 1
         : (rp_close ∨ rp_call ∨ rb_close) ? pd - 1
         : pd)
     nqd = ((arr_shift ∧ is_q) ? qd + 1 : col_swap ? qd - 1 : qd)
