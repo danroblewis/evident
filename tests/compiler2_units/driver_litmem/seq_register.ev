@@ -17,8 +17,8 @@ fsm main
     seqmem ∈ Bool
     seqmem = (is_first_tick ? true : _seqmem)
     line_dname ∈ String = (tc ≤ 1 ? "myseq" : "other")
-    elt_slot ∈ Int
-    elt_slot = (is_first_tick ? 0 - 1 : _elt_slot)
+    kind_slot ∈ Int
+    kind_slot = (is_first_tick ? 0 - 1 : _kind_slot)
     -- parse_mode-7 set-walk inputs the lifted module also reads (inert here).
     parse ∈ Bool
     parse = (is_first_tick ? false : _parse)

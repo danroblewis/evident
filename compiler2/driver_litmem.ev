@@ -2,7 +2,7 @@
 -- CONSUMES: the parse gate (parse, _parse_mode, tok_ready), the decoded
 --           window head (tok0), the set-literal entry + classifier
 --           views (intset, line_name, is_notmem), and the seq-literal
---           entry + classifier views (seqmem, line_dname, elt_slot).
+--           entry + classifier views (seqmem, line_dname, kind_slot).
 -- PRODUCES: the parse_mode-7 set-literal walk state (intset_name/neg/intset_expr +
 --           intset_body/intset_items, the or-folded membership Expr and its
 --           assert program) and the parse_mode-8 seq-literal registry latch
@@ -62,5 +62,5 @@ fsm DriverLitMem
         : (seqmem ∧ (¬_seqvar_set)) ? line_dname
         : _seqvar_name)
     seqvar_slot = (is_first_tick ? 0 - 1
-        : (seqmem ∧ (¬_seqvar_set)) ? elt_slot
+        : (seqmem ∧ (¬_seqvar_set)) ? kind_slot
         : _seqvar_slot)

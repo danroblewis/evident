@@ -379,12 +379,12 @@ fsm driver_main
     DriverBroadcast
 
     seq_mem_items ∈ C2Items = C2ICons(
-        C2DeclConst(line_dname, (elt_slot ≥ 0 ? 10 + elt_slot : 5)),
+        C2DeclConst(line_dname, (kind_slot ≥ 0 ? 10 + kind_slot : 5)),
         C2ICons(C2DeclConst(line_dname ++ "__len", 0),
         C2ICons(C2NatBound, C2ICons(C2AssertTop,
         C2ICons(C2Drop, C2ICons(C2Drop, C2INil))))))
     set_mem_items ∈ C2Items = C2ICons(
-        C2DeclConst(line_dname, 20 + elt_slot),
+        C2DeclConst(line_dname, 20 + kind_slot),
         C2ICons(C2Drop, C2INil))
     line_items ∈ C2Items = ((line_end ∨ pratt_line ∨ enter_efflit
         ∨ intset ∨ enter_match ∨ enter_seqlit ∨ comp_line
@@ -404,15 +404,15 @@ fsm driver_main
         ∧ (¬strin_line) ∧ (¬is_member_line) ∧ (¬q_line)
         ∧ (¬positional_line))
     mem_consume ∈ Int = (seqmem ? 6 : bounded ? 5 : 3)
-    elt_tyname ∈ String = recs[elt_slot].name
+    registry_typename ∈ String = recs[kind_slot].name
     mem_tyname ∈ String = (line_sort = 1 ? "Bool"
         : line_sort ≥ 30 ? line_ty_name
         : line_sort = 3 ? "String"
         : line_sort = 4 ? "Result"
-        : (line_sort = 5 ∧ elt_slot ≥ 0) ? ("Seq(" ++ elt_tyname ++ ")")
+        : (line_sort = 5 ∧ kind_slot ≥ 0) ? ("Seq(" ++ registry_typename ++ ")")
         : line_sort = 5 ? "Seq(Int)"
         : line_sort = 6 ? "Real"
-        : decl_line ? ("Set(" ++ elt_tyname ++ ")")
+        : decl_line ? ("Set(" ++ registry_typename ++ ")")
         : "Int")
     mem_field ∈ String = line_dname ++ ":" ++ mem_tyname
     -- `_<name>` carry-over DECLARES (fossil parity): the kernel pins
@@ -421,14 +421,14 @@ fsm driver_main
     -- serializes consts the asserts mention, so the carries must be
     -- textual lines in the emitted unit. A Seq field carries BOTH
     -- the array const and its __len (the oracle's two lines).
-    mem_carry_decl ∈ String = ((line_sort = 5 ∧ elt_slot ≥ 0)
-        ? "(declare-fun _" ++ line_dname ++ " () (Array Int " ++ elt_tyname ++ "))\n"
+    mem_carry_decl ∈ String = ((line_sort = 5 ∧ kind_slot ≥ 0)
+        ? "(declare-fun _" ++ line_dname ++ " () (Array Int " ++ registry_typename ++ "))\n"
             ++ "(declare-fun _" ++ line_dname ++ "__len () Int)\n"
         : line_sort = 5
         ? "(declare-fun _" ++ line_dname ++ " () (Array Int Int))\n"
             ++ "(declare-fun _" ++ line_dname ++ "__len () Int)\n"
         : decl_line
-        ? "(declare-fun _" ++ line_dname ++ " () (Array " ++ elt_tyname ++ " Bool))\n"
+        ? "(declare-fun _" ++ line_dname ++ " () (Array " ++ registry_typename ++ " Bool))\n"
         : "(declare-fun _" ++ line_dname ++ " () " ++ mem_tyname ++ ")\n")
 
     -- ── F1: parse_mode-9 GROUP walk (see compiler2/driver_group.ev) ──
@@ -656,8 +656,8 @@ fsm driver_main
         : mem_line ? mem_consume
         : parse_ready ? done_consume
         : enter ? 3
-        : (mskim_field ∨ mskim_close) ? 2
-        : mskim_bad ? 0
+        : (is_skim_field ∨ is_skim_close) ? 2
+        : is_skim_bad ? 0
         : (in_pratt ∧ (parse_consume ≥ 1)) ? parse_consume
         : 0)
     tok_cur = (is_first_tick ? 0

@@ -1,6 +1,6 @@
 -- MODULE DriverSetVar
 -- CONSUMES: the classifier set-line flags (intset_line, decl_line,
---           is_mem/is_notmem, line_dname, line_name, line_ty_name, elt_slot,
+--           is_mem/is_notmem, line_dname, line_name, line_ty_name, kind_slot,
 --           the quantifier-set views c_q_*), the classify gate
 --           (classify_now, line_end, enter_seqlit, in_skip), the window
 --           head (tok0/tok5..t7), the registered-seq carries (seqvar_name/
@@ -34,7 +34,7 @@ fsm DriverSetVar
         : (setdecl ∧ _collection_count < 2) ? _collection_count + 1
         : _collection_count)
     ∀ k ∈ {0..1} : vars[k].name = (is_first_tick ? "" : (setdecl ∧ _collection_count = k) ? line_dname : _vars[k].name)
-    ∀ k ∈ {0..1} : vars[k].kidx = (is_first_tick ? 0 : (setdecl ∧ _collection_count = k) ? elt_slot : _vars[k].kidx)
+    ∀ k ∈ {0..1} : vars[k].kidx = (is_first_tick ? 0 : (setdecl ∧ _collection_count = k) ? kind_slot : _vars[k].kidx)
 
     collection_pfx_hit ∈ Bool = (line_name ≠ "" ∧ (∃ e ∈ vars : e.name = _scope_prefix ++ line_name))
     collection_bare_hit ∈ Bool = (line_name ≠ "" ∧ (∃ e ∈ vars : e.name = line_name))
@@ -142,13 +142,13 @@ fsm DriverSetVar
     seqlit_elt_name ∈ String = match result
         EIdent(sen) ⇒ sen
         _ ⇒ ""
-    elt_item ∈ C2Item = ((_seqvar_slot ≥ 0 ∧ (result matches EIdent(_)))
+    projected_item ∈ C2Item = ((_seqvar_slot ≥ 0 ∧ (result matches EIdent(_)))
         ? C2RecVal(_scope_prefix ++ seqlit_elt_name, _seqvar_slot)
         : C2Process(result))
     seqlit_elem_items ∈ C2Items = C2ICons(C2Process(EIdent(_seqvar_name)),
         C2ICons(C2Process(EInt(_seqlit_count)),
         C2ICons(C2SelH,
-        C2ICons(elt_item,
+        C2ICons(projected_item,
         C2ICons(C2PinEq, C2ICons(C2AssertTop, C2INil))))))
     seqlit_close_items ∈ C2Items = C2ICons(C2Process(EIdent(_seqvar_name ++ "__len")),
         C2ICons(C2Process(EInt(_seqlit_count)),

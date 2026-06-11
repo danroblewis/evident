@@ -69,62 +69,62 @@ fsm DriverPratt
     -- enter tick — the pattern elements carry no semantics, only the
     -- tester name does — then consumes one `elem ,` / `elem )` per
     -- tick with the step claim's outputs HELD.
-    mskim ∈ Bool
-    mskim_p1 ∈ Bool = ((tok3 matches Ident(_)) ∧ (tok4 matches RParen))
-    mskim_p2 ∈ Bool = ((tok3 matches Ident(_)) ∧ (tok4 matches Comma)
+    skimming_match ∈ Bool
+    is_unary_pattern ∈ Bool = ((tok3 matches Ident(_)) ∧ (tok4 matches RParen))
+    is_binary_pattern ∈ Bool = ((tok3 matches Ident(_)) ∧ (tok4 matches Comma)
         ∧ (tok5 matches Ident(_)) ∧ (tok6 matches RParen))
-    enter ∈ Bool = (in_pratt ∧ (¬_mskim) ∧ (¬_parse_expop)
+    enter ∈ Bool = (in_pratt ∧ (¬_skimming_match) ∧ (¬_parse_expop)
         ∧ (tok0 matches KwMatches) ∧ (tok1 matches Ident(_))
-        ∧ (tok2 matches LParen) ∧ (¬mskim_p1) ∧ (¬mskim_p2))
-    mskim_name ∈ String = match tok1
+        ∧ (tok2 matches LParen) ∧ (¬is_unary_pattern) ∧ (¬is_binary_pattern))
+    skim_scrutinee_name ∈ String = match tok1
         Ident(s) ⇒ s
         _ ⇒ ""
-    mskim_field ∈ Bool = (in_pratt ∧ _mskim ∧ (tok0 matches Ident(_))
+    is_skim_field ∈ Bool = (in_pratt ∧ _skimming_match ∧ (tok0 matches Ident(_))
         ∧ (tok1 matches Comma))
-    mskim_close ∈ Bool = (in_pratt ∧ _mskim ∧ (tok0 matches Ident(_))
+    is_skim_close ∈ Bool = (in_pratt ∧ _skimming_match ∧ (tok0 matches Ident(_))
         ∧ (tok1 matches RParen))
-    mskim_bad ∈ Bool = (in_pratt ∧ _mskim ∧ (¬mskim_field) ∧ (¬mskim_close))
-    mskim_hold ∈ Bool = (in_pratt ∧ _mskim)
-    mskim = (is_first_tick ? false
+    is_skim_bad ∈ Bool = (in_pratt ∧ _skimming_match ∧ (¬is_skim_field) ∧ (¬is_skim_close))
+    is_skim_hold ∈ Bool = (in_pratt ∧ _skimming_match)
+    skimming_match = (is_first_tick ? false
         : enter ? true
-        : (mskim_close ∨ mskim_bad) ? false
-        : _mskim)
-    mskim_top ∈ Expr = match _parse_out
+        : (is_skim_close ∨ is_skim_bad) ? false
+        : _skimming_match)
+    skim_output_top ∈ Expr = match _parse_out
         ELCons(h, _) ⇒ h
         ELNil ⇒ ENoExpr
-    mskim_tail ∈ ExprList = match _parse_out
+    skim_output_tail ∈ ExprList = match _parse_out
         ELCons(_, t) ⇒ t
         ELNil ⇒ ELNil
 
     parse_out = (is_first_tick ? ELNil
         : enter_pratt ? ELNil
-        : enter ? ELCons(EMatches(mskim_name, mskim_top), mskim_tail)
-        : mskim_hold ? _parse_out
+        : enter ? ELCons(EMatches(skim_scrutinee_name, skim_output_top), skim_output_tail)
+        : is_skim_hold ? _parse_out
         : in_pratt ? next_outs
         : _parse_out)
     parse_ops = (is_first_tick ? PrNil
         : enter_pratt ? PrNil
-        : (enter ∨ mskim_hold) ? _parse_ops
+        : (enter ∨ is_skim_hold) ? _parse_ops
         : in_pratt ? next_ops
         : _parse_ops)
     parse_expop = (is_first_tick ? true
         : enter_pratt ? true
-        : (enter ∨ mskim_hold) ? _parse_expop
+        : (enter ∨ is_skim_hold) ? _parse_expop
         : in_pratt ? next_expop
         : _parse_expop)
     parse_pd = (is_first_tick ? 0
         : enter_pratt ? 0
-        : (enter ∨ mskim_hold) ? _parse_pd
+        : (enter ∨ is_skim_hold) ? _parse_pd
         : in_pratt ? next_pd
         : _parse_pd)
     parse_qd = (is_first_tick ? 0
         : enter_pratt ? 0
-        : (enter ∨ mskim_hold) ? _parse_qd
+        : (enter ∨ is_skim_hold) ? _parse_qd
         : in_pratt ? next_qd
         : _parse_qd)
     parse_cd = (is_first_tick ? 0
         : enter_pratt ? 0
-        : (enter ∨ mskim_hold) ? _parse_cd
+        : (enter ∨ is_skim_hold) ? _parse_cd
         : in_pratt ? next_cd
         : _parse_cd)
     parse_kind = (is_first_tick ? 0 : enter_pratt ? enter_kind : _parse_kind)
@@ -141,5 +141,5 @@ fsm DriverPratt
         : _parse_rec_slot)
 
     parse_ready ∈ Bool = (in_pratt ∧ step_done
-        ∧ (¬enter) ∧ (¬mskim_hold))
+        ∧ (¬enter) ∧ (¬is_skim_hold))
     parse_bad ∈ Bool = (parse_ready ∧ (result matches ENoExpr))

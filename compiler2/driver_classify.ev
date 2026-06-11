@@ -67,16 +67,16 @@ fsm DriverClassify
         : line_ty_name = "Real" ? 6
         : line_enum_pos ≥ 0 ? 30 + (line_enum_pos / 32)
         : 0)
-    elt_ty ∈ String = match tok4
+    element_typename ∈ String = match tok4
         Ident(s) ⇒ s
         _ ⇒ ""
-    elt_slot ∈ Int
-    RtIdxOf(nm ↦ elt_ty, idx ↦ elt_slot)
+    kind_slot ∈ Int
+    RtIdxOf(nm ↦ element_typename, idx ↦ kind_slot)
     seqmem_line ∈ Bool = (is_mem ∧ (¬effects_line) ∧ (line_ty_name = "Seq")
-        ∧ (line_t3 matches LParen) ∧ ((elt_ty = "Int") ∨ (elt_slot ≥ 0))
+        ∧ (line_t3 matches LParen) ∧ ((element_typename = "Int") ∨ (kind_slot ≥ 0))
         ∧ (tok5 matches RParen))
     decl_line ∈ Bool = (is_mem ∧ (¬effects_line)
-        ∧ (line_ty_name = "Set") ∧ (line_t3 matches LParen) ∧ (elt_slot ≥ 0)
+        ∧ (line_ty_name = "Set") ∧ (line_t3 matches LParen) ∧ (kind_slot ≥ 0)
         ∧ (tok5 matches RParen))
     seqlit_line ∈ Bool = (t0_ident ∧ (line_t1 matches Eq)
         ∧ (line_t2 matches OpSeqOpen) ∧ _seqvar_set ∧ (line_name = _seqvar_name))

@@ -40,8 +40,8 @@ fsm main
     q_var = (is_first_tick ? "" : _q_var)
     intset_line ∈ Bool
     intset_line = (is_first_tick ? false : _intset_line)
-    elt_slot ∈ Int
-    elt_slot = (is_first_tick ? 0 : _elt_slot)
+    kind_slot ∈ Int
+    kind_slot = (is_first_tick ? 0 : _kind_slot)
     t0_ident ∈ Bool
     t0_ident = (is_first_tick ? false : _t0_ident)
     line_t1 ∈ Token
