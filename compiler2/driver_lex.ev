@@ -89,9 +89,9 @@ fsm DriverLex
     is_strlit_finishing  ∈ Bool = (was_collecting_str ∧ ((¬is_alnum ∧ in_range) ∨ done))
     is_strlit_starting   ∈ Bool = ((¬was_collecting_str) ∧ is_alpha ∧ in_range ∧ ¬_strlit)
 
-    int_continuing ∈ Bool = (was_collecting_int ∧ is_dig ∧ in_range ∧ ¬_strlit)
-    int_finishing  ∈ Bool = (was_collecting_int ∧ ((¬is_dig ∧ in_range) ∨ done))
-    int_starting   ∈ Bool = ((¬was_collecting_int) ∧ (¬was_collecting_str) ∧ is_dig ∧ in_range ∧ ¬_strlit)
+    is_continuing_int ∈ Bool = (was_collecting_int ∧ is_dig ∧ in_range ∧ ¬_strlit)
+    is_finishing_int  ∈ Bool = (was_collecting_int ∧ ((¬is_dig ∧ in_range) ∨ done))
+    is_starting_int   ∈ Bool = ((¬was_collecting_int) ∧ (¬was_collecting_str) ∧ is_dig ∧ in_range ∧ ¬_strlit)
 
     -- FloatLit — `3.14`. An int collecting into `.`-then-digit
     -- latches the whole part and re-enters int collection for the
@@ -108,7 +108,7 @@ fsm DriverLex
     frac_digits ∈ Int
     frac_enter ∈ Bool = (was_collecting_int ∧ (¬_fraction)
         ∧ (cur_char = ".") ∧ is_digit ∧ in_range ∧ (¬_strlit))
-    finish ∈ Bool = (_fraction ∧ int_finishing)
+    finish ∈ Bool = (_fraction ∧ is_finishing_int)
     with_op ∈ Bool = (finish ∧ is_op ∧ in_range)
     fraction = (is_first_tick ? false
         : frac_enter ? true
@@ -138,12 +138,12 @@ fsm DriverLex
         ⟨ArgInt(tok_buf.base + ((_tok_buf.count + 1) * 32)), ArgInt(char_tag)⟩)
 
     partial_str = (is_first_tick ? "" : (is_strlit_continuing ? _partial_str ++ cur_char : (is_strlit_starting ? cur_char : "")))
-    partial_int = (is_first_tick ? 0 - 1 : (int_continuing ? (_partial_int * 10) + dig_val : (int_starting ? dig_val : 0 - 1)))
+    partial_int = (is_first_tick ? 0 - 1 : (is_continuing_int ? (_partial_int * 10) + dig_val : (is_starting_int ? dig_val : 0 - 1)))
 
     strlit_only    ∈ Bool = (is_strlit_finishing ∧ (is_ws ∨ done))
-    finish_int_only    ∈ Bool = (int_finishing ∧ (is_ws ∨ done ∨ is_alpha))
+    finish_int_only    ∈ Bool = (is_finishing_int ∧ (is_ws ∨ done ∨ is_alpha))
     is_strlit_with_op ∈ Bool = (is_strlit_finishing ∧ is_op ∧ in_range)
-    int_with_op ∈ Bool = (int_finishing ∧ is_op ∧ in_range)
+    is_int_then_op ∈ Bool = (is_finishing_int ∧ is_op ∧ in_range)
     char_only          ∈ Bool = ((¬was_collecting_str) ∧ (¬was_collecting_int) ∧ is_op ∧ in_range ∧ ¬_strlit)
 
     -- FTI lexer state: five Ints, no TokenList. The negative-literal
@@ -175,10 +175,10 @@ fsm DriverLex
     plan_count_n ∈ Int
     plan_last_n ∈ Int
     plan_prev_n ∈ Int
-    int_op ∈ Bool = (int_with_op ∧ (¬frac_enter) ∧ (¬finish))
+    is_int_op ∈ Bool = (is_int_then_op ∧ (¬frac_enter) ∧ (¬finish))
     plan_int_only ∈ Bool = (finish_int_only ∧ (¬frac_enter) ∧ (¬finish))
     LexFtiPlan(is_comment_char ↦ is_comment_char, closing ↦ closing,
-        fs_op ↦ is_strlit_with_op, fi_op ↦ int_op,
+        fs_op ↦ is_strlit_with_op, fi_op ↦ is_int_op,
         fs_only ↦ strlit_only, fi_only ↦ plan_int_only,
         ch_only ↦ char_only,
         cur_char ↦ cur_char, partial_str ↦ _partial_str,

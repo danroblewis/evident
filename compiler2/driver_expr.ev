@@ -59,7 +59,7 @@ claim C2AtomE(t ∈ Token, e ∈ Expr, ok ∈ Bool)
     is_false  ∈ Bool = (t matches KwFalse)
     is_string_lit  ∈ Bool = (t matches StringLit(_))
     is_float_lit  ∈ Bool = (t matches FloatLit(_, _, _))
-    int_value ∈ Int = match t
+    int_literal_value ∈ Int = match t
         IntLit(n) ⇒ n
         _ ⇒ 0
     ident_name ∈ String = match t
@@ -74,7 +74,7 @@ claim C2AtomE(t ∈ Token, e ∈ Expr, ok ∈ Bool)
     fraction_part ∈ Int = match t
         FloatLit(_, f, _) ⇒ f
         _ ⇒ 0
-    e = (int ? EInt(int_value)
+    e = (int ? EInt(int_literal_value)
        : is_ident ? EIdent(ident_name)
        : is_true ? EIdent("true")
        : is_false ? EIdent("false")
