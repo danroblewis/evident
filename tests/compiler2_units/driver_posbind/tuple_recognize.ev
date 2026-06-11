@@ -141,8 +141,8 @@ fsm main
     parse_kind = (is_first_tick ? 0 : _parse_kind)
     parse_decl_name ∈ String
     parse_decl_name = (is_first_tick ? "" : _parse_decl_name)
-    nat ∈ Bool
-    nat = (is_first_tick ? false : _nat)
+    is_nat_type ∈ Bool
+    is_nat_type = (is_first_tick ? false : _is_nat_type)
     nodecl ∈ Bool
     nodecl = (is_first_tick ? false : _nodecl)
     pin_name ∈ String

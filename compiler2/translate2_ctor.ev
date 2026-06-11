@@ -77,12 +77,12 @@ claim EnumVariantsHead(vs ∈ EnumVariantList, v ∈ EnumVariantDecl, rest ∈ E
         EVCons(_, t) ⇒ t
         EVNil ⇒ EVNil
 
-claim VariantFieldsHead(fs ∈ EVFieldList, ty ∈ String, rest ∈ EVFieldList, nonempty ∈ Bool)
+claim VariantFieldsHead(fs ∈ EVFieldList, typename ∈ String, rest ∈ EVFieldList, nonempty ∈ Bool)
     nonempty = (fs matches EVFCons(_, _))
     vfh_f ∈ EVField = match fs
         EVFCons(h, _) ⇒ h
         EVFNil ⇒ EVFNone
-    ty = match vfh_f
+    typename = match vfh_f
         EVFType(s) ⇒ s
         EVFNone ⇒ ""
     rest = match fs
@@ -117,7 +117,7 @@ claim VariantFieldCount(v ∈ EnumVariantDecl, n ∈ Int)
     n = (¬has0 ? 0 : ¬has1 ? 1 : ¬has2 ? 2 : ¬has3 ? 3
         : ¬has4 ? 4 : ¬has5 ? 5 : 6)
 
-claim VariantFieldType(v ∈ EnumVariantDecl, idx ∈ Int, ty ∈ String)
+claim VariantFieldType(v ∈ EnumVariantDecl, idx ∈ Int, typename ∈ String)
     vft_fs ∈ EVFieldList = match v
         EVDeclP(_, fs) ⇒ fs
         _ ⇒ EVFNil
@@ -141,7 +141,7 @@ claim VariantFieldType(v ∈ EnumVariantDecl, idx ∈ Int, ty ∈ String)
     vft_f ∈ EVField = match pick
         EVFCons(h, _) ⇒ h
         EVFNil ⇒ EVFNone
-    ty = match vft_f
+    typename = match vft_f
         EVFType(s) ⇒ s
         EVFNone ⇒ ""
 
@@ -184,16 +184,16 @@ claim VariantFieldSymStep(ctx_h ∈ Int, v ∈ EnumVariantDecl, idx ∈ Int, eff
 -- (0, 0) with is_self false — the DRIVER must resolve them from its
 -- own sort registry before writing the slot.
 claim FieldSortSlot(
-        enum_name ∈ String, ty ∈ String,
+        enum_name ∈ String, typename ∈ String,
         int_sort_h ∈ Int, bool_sort_h ∈ Int, string_sort_h ∈ Int,
         self_sort_idx ∈ Int,
         sort_slot ∈ Int, ref_slot ∈ Int, is_self ∈ Bool)
-    is_self = (ty = enum_name)
+    is_self = (typename = enum_name)
     sort_slot = (is_self ? 0
-        : ty = "Int" ? int_sort_h
-        : ty = "Nat" ? int_sort_h
-        : ty = "Bool" ? bool_sort_h
-        : ty = "String" ? string_sort_h
+        : typename = "Int" ? int_sort_h
+        : typename = "Nat" ? int_sort_h
+        : typename = "Bool" ? bool_sort_h
+        : typename = "String" ? string_sort_h
         : 0)
     ref_slot = (is_self ? self_sort_idx : 0)
 
@@ -272,14 +272,14 @@ claim translate2_ctor_probe
     p_n ∈ Int
     VariantFieldCount(v ↦ p_v, n ↦ p_n)
     p_ty ∈ String
-    VariantFieldType(v ↦ p_v, idx ↦ 0, ty ↦ p_ty)
+    VariantFieldType(v ↦ p_v, idx ↦ 0, typename ↦ p_ty)
     p_arity ∈ Int
     p_known ∈ Bool
     EffectCtorArity(name ↦ "LibCall", n ↦ p_arity, known ↦ p_known)
     p_slot ∈ Int
     p_ref ∈ Int
     self ∈ Bool
-    FieldSortSlot(enum_name ↦ "LL", ty ↦ "LL",
+    FieldSortSlot(enum_name ↦ "LL", typename ↦ "LL",
         int_sort_h ↦ 77, bool_sort_h ↦ 0, string_sort_h ↦ 0,
         self_sort_idx ↦ 0,
         sort_slot ↦ p_slot, ref_slot ↦ p_ref, is_self ↦ self)

@@ -90,9 +90,9 @@ type RecTypeEntry(name ∈ String, fnames ∈ String, ftypes ∈ String, n_field
     0 ≤ n_fields ≤ 6
     #accs ≤ 6
 
-type RecField(name ∈ String, ty ∈ String, kidx ∈ Int)
+type RecField(name ∈ String, typename ∈ String, kidx ∈ Int)
     -- kidx is RtIdxOf's result: a registry hit (0/1/2) or a miss (−1).
-    -- (`ty`, not `type`: `type` is a reserved keyword, unusable as `.type`.)
+    -- (`typename`, not `type`: `type` is a reserved keyword, unusable as `.type`.)
     0 - 1 ≤ kidx ≤ 2
 
 -- One row of the user-enum VALUE table: a nullary variant's name and
@@ -112,7 +112,7 @@ type UserEnumVariant(name ∈ String, ctor ∈ Int, tester ∈ Int, acc ∈ Int)
 -- type name, its FtiNameEntry key, and its resolved sort/ref per the
 -- D3 resolution order (group ref · scalar/floor · enum-table xsort).
 -- Pure per-tick except xsort (the cross-group sort capture latch).
-type EnumFieldSlot(ty ∈ String, key ∈ String, refpos ∈ Int, isref ∈ Bool, ref ∈ Int, tabpos ∈ Int, istab ∈ Bool, xsort ∈ Int, sort ∈ Int, unres ∈ Bool)
+type EnumFieldSlot(typename ∈ String, key ∈ String, refpos ∈ Int, isref ∈ Bool, ref ∈ Int, tabpos ∈ Int, istab ∈ Bool, xsort ∈ Int, sort ∈ Int, unres ∈ Bool)
 
 -- One row of the Set(T)-variable registry: var name, the element type's
 -- registry slot (kidx), the packed 32-byte-row element-name string, and

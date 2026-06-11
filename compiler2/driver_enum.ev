@@ -185,15 +185,15 @@ fsm DriverEnum
     -- the array-write step).
     slots ∈ Seq(EnumFieldSlot)
     #slots ≤ 6
-    ∀ k ∈ {0..5} : VariantFieldType(v ↦ current_variant, idx ↦ k, ty ↦ slots[k].ty)
-    ∀ k ∈ {0..5} : FtiNameEntry(name ↦ slots[k].ty, entry ↦ slots[k].key)
+    ∀ k ∈ {0..5} : VariantFieldType(v ↦ current_variant, idx ↦ k, typename ↦ slots[k].typename)
+    ∀ k ∈ {0..5} : FtiNameEntry(name ↦ slots[k].typename, entry ↦ slots[k].key)
     ∀ e ∈ slots : e.refpos = index_of(group_names, e.key, 0)
     ∀ e ∈ slots : e.isref = (e.refpos ≥ 0)
     ∀ e ∈ slots : e.ref = (e.isref ? e.refpos / 32 : 0)
     ∀ e ∈ slots : e.tabpos = index_of(decl_names, e.key, 0)
     ∀ e ∈ slots : e.istab = ((¬e.isref) ∧ (e.tabpos ≥ 0))
     ∀ k ∈ {0..5} : slots[k].xsort = (is_first_tick ? 0 : (_decl_action = 1 ∧ _decl_step = 2 + k ∧ slots[k].istab) ? int1 : _slots[k].xsort)
-    ∀ e ∈ slots : e.sort = (e.isref ? 0 : e.ty = "Int" ? z3sorts.isort : e.ty = "Nat" ? z3sorts.isort : e.ty = "Bool" ? z3sorts.bsort : e.ty = "String" ? z3sorts.ssort : e.ty = "Real" ? z3sorts.rsort : e.ty = "LibArg" ? libarg_sort : e.ty = "Seq(LibArg)" ? seqarg_sort : e.ty = "Effect" ? effect_sort : e.ty = "Result" ? result_sort : e.istab ? e.xsort : 0)
+    ∀ e ∈ slots : e.sort = (e.isref ? 0 : e.typename = "Int" ? z3sorts.isort : e.typename = "Nat" ? z3sorts.isort : e.typename = "Bool" ? z3sorts.bsort : e.typename = "String" ? z3sorts.ssort : e.typename = "Real" ? z3sorts.rsort : e.typename = "LibArg" ? libarg_sort : e.typename = "Seq(LibArg)" ? seqarg_sort : e.typename = "Effect" ? effect_sort : e.typename = "Result" ? result_sort : e.istab ? e.xsort : 0)
     ∀ k ∈ {0..5} : slots[k].unres = ((¬slots[k].isref) ∧ (slots[k].sort = 0) ∧ (field_count ≥ k + 1))
     field_unresolved ∈ Bool = (running
         ∧ (action_now = 1) ∧ (step_now = 8)

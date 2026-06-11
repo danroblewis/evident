@@ -4,7 +4,7 @@
 --           kind (enter_consume/enter_kind) + the qstop flag, and its
 --           own carried Pratt stack/cursor.
 -- PRODUCES: the parse_mode-3 Pratt expression-parser state (pk_st/parse_kind/
---           parse_decl_name/parse_rec_slot/parse_sort/pin_name/nat/nodecl + result/parse_bad/
+--           parse_decl_name/parse_rec_slot/parse_sort/pin_name/is_nat_type/nodecl + result/parse_bad/
 --           parse_ready), driving one shift/reduce micro-step per tick via
 --           C2PrattStep and yielding the parsed Expr (result) on parse_ready.
 -- MAINTAINS: an expression parses in ONE Pratt pass keyed by parse_kind (pin/
@@ -26,7 +26,7 @@ fsm DriverPratt
     parse_kind ∈ Int
     parse_decl_name ∈ String
     parse_sort ∈ Int
-    nat ∈ Bool
+    is_nat_type ∈ Bool
     nodecl ∈ Bool
     pin_name ∈ String
     parse_rec_slot ∈ Int
@@ -130,7 +130,7 @@ fsm DriverPratt
     parse_kind = (is_first_tick ? 0 : enter_pratt ? enter_kind : _parse_kind)
     parse_decl_name = (is_first_tick ? "" : enter_pratt ? line_dname : _parse_decl_name)
     parse_sort = (is_first_tick ? 0 : enter_pratt ? line_sort : _parse_sort)
-    nat = (is_first_tick ? false : enter_pratt ? line_is_nat : _nat)
+    is_nat_type = (is_first_tick ? false : enter_pratt ? line_is_nat : _is_nat_type)
     nodecl = (is_first_tick ? false : enter_pratt ? no_decl : _nodecl)
     pin_name = (is_first_tick ? "" : enter_pratt ? resolved_name : _pin_name)
     -- record-pinned membership (`offset_pos ∈ IVec2 = <expr>`)

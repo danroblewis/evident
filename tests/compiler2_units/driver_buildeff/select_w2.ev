@@ -129,7 +129,7 @@ fsm main
     int5 = (is_first_tick ? 0 : _int5)
     slots ∈ Seq(EnumFieldSlot)
     #slots ≤ 6
-    ∀ k ∈ {0..5} : slots[k].ty = (is_first_tick ? "" : _slots[k].ty)
+    ∀ k ∈ {0..5} : slots[k].typename = (is_first_tick ? "" : _slots[k].typename)
     ∀ k ∈ {0..5} : slots[k].key = (is_first_tick ? "" : _slots[k].key)
     ∀ k ∈ {0..5} : slots[k].refpos = (is_first_tick ? 0 : _slots[k].refpos)
     ∀ k ∈ {0..5} : slots[k].isref = (is_first_tick ? false : _slots[k].isref)

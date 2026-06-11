@@ -57,16 +57,16 @@ claim main
     RtIdxOf(nm ↦ "Zzz", idx ↦ i_miss)
 
     so_int ∈ Int
-    RtSortOf(ty ↦ "Int", int_h ↦ 11, bool_h ↦ 12, str_h ↦ 13, real_h ↦ 14,
+    RtSortOf(typename ↦ "Int", int_h ↦ 11, bool_h ↦ 12, str_h ↦ 13, real_h ↦ 14,
         iarr_h ↦ 15, sort ↦ so_int)
     so_nat ∈ Int
-    RtSortOf(ty ↦ "Nat", int_h ↦ 11, bool_h ↦ 12, str_h ↦ 13, real_h ↦ 14,
+    RtSortOf(typename ↦ "Nat", int_h ↦ 11, bool_h ↦ 12, str_h ↦ 13, real_h ↦ 14,
         iarr_h ↦ 15, sort ↦ so_nat)
     so_co ∈ Int
-    RtSortOf(ty ↦ "Color", int_h ↦ 11, bool_h ↦ 12, str_h ↦ 13, real_h ↦ 14,
+    RtSortOf(typename ↦ "Color", int_h ↦ 11, bool_h ↦ 12, str_h ↦ 13, real_h ↦ 14,
         iarr_h ↦ 15, sort ↦ so_co)
     so_un ∈ Int
-    RtSortOf(ty ↦ "Zzz", int_h ↦ 11, bool_h ↦ 12, str_h ↦ 13, real_h ↦ 14,
+    RtSortOf(typename ↦ "Zzz", int_h ↦ 11, bool_h ↦ 12, str_h ↦ 13, real_h ↦ 14,
         iarr_h ↦ 15, sort ↦ so_un)
 
     af_x ∈ Int

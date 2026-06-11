@@ -345,7 +345,7 @@ fsm DriverPosBind
         : stack_in)
     pin_seg ∈ C2Items = C2ICons(C2Process(result),
         C2ICons(C2PinEq, C2ICons(C2AssertTop, C2INil)))
-    nat_seg ∈ C2Items = (_nat
+    nat_seg ∈ C2Items = (_is_nat_type
         ? C2ICons(C2NatBound, C2ICons(C2AssertTop, pin_seg))
         : pin_seg)
     decl_head ∈ C2Item = (_nodecl ? C2Process(EIdent(_pin_name))

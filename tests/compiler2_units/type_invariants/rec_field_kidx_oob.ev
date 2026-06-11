@@ -10,6 +10,6 @@ import "compiler2/driver_ir.ev"
 fsm main
     f ∈ RecField
     f.name = "x"
-    f.ty = "Int"
+    f.typename = "Int"
     f.kidx = 5
     effects ∈ Seq(Effect) = ⟨Exit(7)⟩

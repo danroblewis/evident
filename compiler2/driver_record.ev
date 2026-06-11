@@ -24,7 +24,7 @@
 -- set sort / ≤ 6 accessor decls).
 
 type RcParam(pname ∈ String)
-type RdField(ty ∈ String, sort ∈ Int)
+type RdField(typename ∈ String, sort ∈ Int)
 
 -- RtRecName: record i of a fixed-width string, trailing pad trimmed.
 claim RtRecName(s ∈ String, i ∈ Int, name ∈ String)
@@ -41,22 +41,22 @@ claim RtIdxOf(nm ∈ String, idx ∈ Int)
         ∨ (nm ≠ "" ∧ nm = recs[2].name ∧ recs[2].sort > 0)))
         ⇒ (idx = 0 - 1)
 
-claim RtSortOf(ty ∈ String,
+claim RtSortOf(typename ∈ String,
         int_h ∈ Int, bool_h ∈ Int, str_h ∈ Int, real_h ∈ Int,
         iarr_h ∈ Int,
         sort ∈ Int)
-    (ty = "Int" ∨ ty = "Nat") ⇒ (sort = int_h)
-    (ty = "Bool") ⇒ (sort = bool_h)
-    (ty = "String") ⇒ (sort = str_h)
-    (ty = "Real") ⇒ (sort = real_h)
-    (ty = "Seq(Int)") ⇒ (sort = iarr_h)
-    (ty ≠ "" ∧ ty = recs[0].name) ⇒ (sort = recs[0].sort)
-    (ty ≠ "" ∧ ty = recs[1].name) ⇒ (sort = recs[1].sort)
-    (ty ≠ "" ∧ ty = recs[2].name) ⇒ (sort = recs[2].sort)
-    (¬((ty = "Int" ∨ ty = "Nat") ∨ (ty = "Bool") ∨ (ty = "String")
-        ∨ (ty = "Real") ∨ (ty = "Seq(Int)")
-        ∨ (ty ≠ "" ∧ ty = recs[0].name) ∨ (ty ≠ "" ∧ ty = recs[1].name)
-        ∨ (ty ≠ "" ∧ ty = recs[2].name)))
+    (typename = "Int" ∨ typename = "Nat") ⇒ (sort = int_h)
+    (typename = "Bool") ⇒ (sort = bool_h)
+    (typename = "String") ⇒ (sort = str_h)
+    (typename = "Real") ⇒ (sort = real_h)
+    (typename = "Seq(Int)") ⇒ (sort = iarr_h)
+    (typename ≠ "" ∧ typename = recs[0].name) ⇒ (sort = recs[0].sort)
+    (typename ≠ "" ∧ typename = recs[1].name) ⇒ (sort = recs[1].sort)
+    (typename ≠ "" ∧ typename = recs[2].name) ⇒ (sort = recs[2].sort)
+    (¬((typename = "Int" ∨ typename = "Nat") ∨ (typename = "Bool") ∨ (typename = "String")
+        ∨ (typename = "Real") ∨ (typename = "Seq(Int)")
+        ∨ (typename ≠ "" ∧ typename = recs[0].name) ∨ (typename ≠ "" ∧ typename = recs[1].name)
+        ∨ (typename ≠ "" ∧ typename = recs[2].name)))
         ⇒ (sort = 0)
 
 claim RtFieldAcc(fname ∈ String, acc ∈ Int)
@@ -229,8 +229,8 @@ fsm DriverRecord
     ∀ k ∈ {0..5} : h_fields_now[k] = ((recdecl_cap ∧ _recdecl_st = 1 ∧ _field_i = k) ? cap_int : _h_fields[k])
     recdecl_fields ∈ Seq(RdField)
     #recdecl_fields ≤ 6
-    ∀ k ∈ {0..5} : RtRecName(s ↦ cur_ftypes, i ↦ k, name ↦ recdecl_fields[k].ty)
-    ∀ k ∈ {0..5} : RtSortOf(ty ↦ recdecl_fields[k].ty, int_h ↦ z3sorts.isort, bool_h ↦ z3sorts.bsort, str_h ↦ z3sorts.ssort, real_h ↦ z3sorts.rsort, iarr_h ↦ int_array_sort, sort ↦ recdecl_fields[k].sort)
+    ∀ k ∈ {0..5} : RtRecName(s ↦ cur_ftypes, i ↦ k, name ↦ recdecl_fields[k].typename)
+    ∀ k ∈ {0..5} : RtSortOf(typename ↦ recdecl_fields[k].typename, int_h ↦ z3sorts.isort, bool_h ↦ z3sorts.bsort, str_h ↦ z3sorts.ssort, real_h ↦ z3sorts.rsort, iarr_h ↦ int_array_sort, sort ↦ recdecl_fields[k].sort)
 
     recdecl_namesym ∈ Effect
     BuildZ3MkStringSymbol(ctx_h ↦ z3ctx.ctx, name ↦ rec_cur_name, eff ↦ recdecl_namesym)
