@@ -53,8 +53,8 @@ fsm main
     ∀ e ∈ recs : e.accs[3] = 0
     ∀ e ∈ recs : e.accs[4] = 0
     ∀ e ∈ recs : e.accs[5] = 0
-    sym_names ∈ String
-    sym_names = (is_first_tick ? "" : _sym_names)
+    symbol_index ∈ String
+    symbol_index = (is_first_tick ? "" : _symbol_index)
     ..DriverBroadcast
     fi_msg ∈ String = str_from_int(cursor)
     effects ∈ Seq(Effect) = (tc ≥ 5

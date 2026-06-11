@@ -3,7 +3,7 @@
 --           (is_intresult_capture/is_strresult_capture), the Z3 solver handles (z3ctx.ctx/z3ctx.sol),
 --           the rendered-unit inputs (_manifest_fields manifest fields, _saw_lastres/
 --           _saw_first_tick prelude gates, carry_decls carry declares), and the arena
---           buffer bases (tok_buf.base/sym_buf.base/claimindex_buf.base).
+--           buffer bases (tok_buf.base/symtab_buffer.base/claimindex_buf.base).
 -- PRODUCES: the EMIT program counter (render_step) + its captures (unit_ptr/
 --           rendered), the translation-unit string (manifest_txt/
 --           prelude_txt/unit_txt), and the emit effects (solver_str/copy_unit/
@@ -53,5 +53,5 @@ fsm DriverEmit
     print_unit ∈ Effect
     BuildPrintln(s ↦ unit_txt, eff ↦ print_unit)
     free_tokbuf ∈ Effect = LibCall("libc", "free", ⟨ArgInt(tok_buf.base)⟩)
-    free_symbuf ∈ Effect = LibCall("libc", "free", ⟨ArgInt(sym_buf.base)⟩)
+    free_symbuf ∈ Effect = LibCall("libc", "free", ⟨ArgInt(symtab_buffer.base)⟩)
     free_claimbuf ∈ Effect = LibCall("libc", "free", ⟨ArgInt(claimindex_buf.base)⟩)

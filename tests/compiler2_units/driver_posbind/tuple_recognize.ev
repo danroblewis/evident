@@ -35,8 +35,8 @@ fsm main
     tok3 = (is_first_tick ? IntLit(7) : _tok3)
     tok4 ∈ Token
     tok4 = (is_first_tick ? RParen : _tok4)
-    comp_found ∈ Bool
-    comp_found = (is_first_tick ? false : _comp_found)
+    is_comp_found ∈ Bool
+    is_comp_found = (is_first_tick ? false : _is_comp_found)
     dotdot_shape ∈ Bool
     dotdot_shape = (is_first_tick ? false : _dotdot_shape)
     line_name ∈ String
@@ -173,8 +173,8 @@ fsm main
     ∀ e ∈ recs : e.accs[5] = 0
     seqlit_elem_items ∈ C2Items
     seqlit_elem_items = (is_first_tick ? C2INil : _seqlit_elem_items)
-    sym_names ∈ String
-    sym_names = (is_first_tick ? "" : _sym_names)
+    symbol_index ∈ String
+    symbol_index = (is_first_tick ? "" : _symbol_index)
     tok5 ∈ Token
     tok5 = (is_first_tick ? EofTok : _tok5)
     exit_decl ∈ Int

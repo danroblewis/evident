@@ -1,6 +1,6 @@
 -- MODULE DriverSymLookup
 -- CONSUMES: the lookup name lookup_name, the symbol-table name registry
---           (sym_names) + base (sym_buf.base), the bind-tape window
+--           (symbol_index) + base (symtab_buffer.base), the bind-tape window
 --           (_binds / _bind_base / _bind_top — compose's slot-bind
 --           registry), the import/inline prefix (_scope_prefix),
 --           the enum-variant value registry (values, a bounded Seq), and the cached
@@ -8,9 +8,9 @@
 -- PRODUCES: name resolution — resolved_key/position/resolved_found(2)/position_now,
 --           the prefix-scoped variants (d_lk_pfx_*), the frame slot-bind hit
 --           (bound_found/bound_handle), special_name/pure, the resolved
---           pure-push handle resolved_handle, and the symtab read effect sym_read.
+--           pure-push handle resolved_handle, and the symtab read effect read_symbol_eff.
 -- MAINTAINS: pure per-tick resolution, no carry. true/false resolve to the
---           cached handles; a name found in sym_names reads st_base[idx]
+--           cached handles; a name found in symbol_index reads st_base[idx]
 --           (capture_pend=1, the handle pushes next tick); an α-prefixed frame
 --           local takes priority over the plain table; unknown names stay
 --           handle 0 (fossil parity).
@@ -20,7 +20,7 @@
 fsm DriverSymLookup
     resolved_key ∈ String
     FtiNameEntry(name ↦ lookup_name, entry ↦ resolved_key)
-    position ∈ Int = index_of(sym_names, resolved_key, 0)
+    position ∈ Int = index_of(symbol_index, resolved_key, 0)
     resolved_found ∈ Bool = (position ≥ 0)
     special_name ∈ Bool = (lookup_name = "true" ∨ lookup_name = "false")
     bound_found ∈ Bool = ((lookup_name ≠ "") ∧ (∃ i ∈ {0..11} : ((i ≥ _bind_base) ∧ (i < _bind_top) ∧ (_binds[i].name = lookup_name))))
@@ -29,7 +29,7 @@ fsm DriverSymLookup
     (¬(∃ i ∈ {0..11} : ((i ≥ _bind_base) ∧ (i < _bind_top) ∧ (_binds[i].name = lookup_name)))) ⇒ (bound_handle = 0)
     prefixed_key ∈ String
     FtiNameEntry(name ↦ (_scope_prefix ++ lookup_name), entry ↦ prefixed_key)
-    prefixed_position ∈ Int = index_of(sym_names, prefixed_key, 0)
+    prefixed_position ∈ Int = index_of(symbol_index, prefixed_key, 0)
     prefixed_hit ∈ Bool = ((_scope_prefix ≠ "") ∧ (prefixed_position ≥ 0))
     position_now ∈ Int = (prefixed_hit ? prefixed_position : position)
     found2 ∈ Bool = (prefixed_hit ∨ resolved_found)
@@ -40,5 +40,5 @@ fsm DriverSymLookup
     ∀ e ∈ values : ((e.name = lookup_name) ⇒ (resolved_handle = e.value))
     (¬((lookup_name = "true") ∨ (lookup_name = "false")
         ∨ (∃ e ∈ values : e.name = lookup_name))) ⇒ (resolved_handle = 0)
-    sym_read ∈ Effect
-    BuildMemReadLong(addr ↦ sym_buf.base + (8 * (position_now / 32)), eff ↦ sym_read)
+    read_symbol_eff ∈ Effect
+    BuildMemReadLong(addr ↦ symtab_buffer.base + (8 * (position_now / 32)), eff ↦ read_symbol_eff)

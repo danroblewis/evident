@@ -4,7 +4,7 @@
 --           the decl-context flags (in_claim, qloop_on, pinning, param_skip),
 --           the lookup-read signal (lookup_read, lookup_name), the micro-step
 --           cursor (_item_step), and the kernel last_results floor.
--- PRODUCES: the FTI symbol table (st_cnt, sym_names) + its append on a
+-- PRODUCES: the FTI symbol table (st_cnt, symbol_index) + its append on a
 --           C2DeclConst, the saw_lastres/saw_first_tick duplicate-suppression flags,
 --           the post-capture_pend handle-stack views (h_top/2nd/3rd/4th/5th/6th
 --           + the C2H tails), the current work-item (work_head) and its
@@ -19,26 +19,26 @@
 -- via `..DriverSymtab`.
 fsm DriverSymtab
     -- ── FTI symbol table ─────────
-    -- Handles live in the calloc'd sym_buf.base buffer (8 bytes/entry,
-    -- decl order); names live in sym_names, a Z3 String of
+    -- Handles live in the calloc'd symtab_buffer.base buffer (8 bytes/entry,
+    -- decl order); names live in symbol_index, a Z3 String of
     -- fixed-width 32-byte records: "|" ++ name padded to 31 with
     -- spaces. "|" never occurs inside a record (idents are
     -- alnum/underscore, padding is spaces), so every index_of match
     -- is 32-aligned and lookup is pure arithmetic:
-    -- idx = index_of(sym_names, key) / 32; the handle is then ONE
+    -- idx = index_of(symbol_index, key) / 32; the handle is then ONE
     -- __mem.read_long through the capture_pend=1 capture path. Names longer
     -- than 31 chars would truncate-alias (corpus max is 21).
-    sym_buf.count < 8192
-    sym_names ∈ String
-    sym_add ∈ Bool = (processing ∧ is_decl_item ∧ (_item_step = 2))
-    sym_entry ∈ String
-    FtiNameEntry(name ↦ const_name, entry ↦ sym_entry)
-    sym_seed_names ∈ String = ("|" ++ substr("last_results                               ", 0, 31)
+    symtab_buffer.count < 8192
+    symbol_index ∈ String
+    append_symbol ∈ Bool = (processing ∧ is_decl_item ∧ (_item_step = 2))
+    symtab_row ∈ String
+    FtiNameEntry(name ↦ const_name, entry ↦ symtab_row)
+    initial_symbols ∈ String = ("|" ++ substr("last_results                               ", 0, 31)
         ++ "|" ++ substr("is_first_tick                               ", 0, 31))
-    FtiNamedAppend(first ↦ is_first_tick, add ↦ sym_add,
-        prev_count ↦ _sym_buf.count, prev_names ↦ _sym_names,
-        init_count ↦ 2, seed_names ↦ sym_seed_names, entry ↦ sym_entry,
-        count ↦ sym_buf.count, names ↦ sym_names)
+    FtiNamedAppend(first ↦ is_first_tick, add ↦ append_symbol,
+        prev_count ↦ _symtab_buffer.count, prev_names ↦ _symbol_index,
+        init_count ↦ 2, seed_names ↦ initial_symbols, entry ↦ symtab_row,
+        count ↦ symtab_buffer.count, names ↦ symbol_index)
 
     -- saw flags: a user constraint mentioned last_results /
     -- is_first_tick — the serialized solver body then carries their

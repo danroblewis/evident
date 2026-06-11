@@ -268,29 +268,29 @@ claim EffectCtorArity(name ∈ String, n ∈ Int, known ∈ Bool)
 
 -- ── Probe (oracle-compile smoke; pure data, single tick) ────────────────
 claim translate2_ctor_probe
-    p_v ∈ EnumVariantDecl = EVDeclP("B", EVFCons(EVFType("Int"), EVFNil))
-    p_n ∈ Int
-    VariantFieldCount(v ↦ p_v, n ↦ p_n)
-    p_ty ∈ String
-    VariantFieldType(v ↦ p_v, idx ↦ 0, typename ↦ p_ty)
-    p_arity ∈ Int
-    p_known ∈ Bool
-    EffectCtorArity(name ↦ "LibCall", n ↦ p_arity, known ↦ p_known)
-    p_slot ∈ Int
-    p_ref ∈ Int
+    variant_decl_node ∈ EnumVariantDecl = EVDeclP("B", EVFCons(EVFType("Int"), EVFNil))
+    field_count_check ∈ Int
+    VariantFieldCount(v ↦ variant_decl_node, n ↦ field_count_check)
+    probe_typename ∈ String
+    VariantFieldType(v ↦ variant_decl_node, idx ↦ 0, typename ↦ probe_typename)
+    field_arity ∈ Int
+    is_arity_known ∈ Bool
+    EffectCtorArity(name ↦ "LibCall", n ↦ field_arity, known ↦ is_arity_known)
+    registry_slot_check ∈ Int
+    sort_reference ∈ Int
     self ∈ Bool
     FieldSortSlot(enum_name ↦ "LL", typename ↦ "LL",
         int_sort_h ↦ 77, bool_sort_h ↦ 0, string_sort_h ↦ 0,
         self_sort_idx ↦ 0,
-        sort_slot ↦ p_slot, ref_slot ↦ p_ref, is_self ↦ self)
-    p_packed ∈ Int
-    SortRefsPack2(ref_lo ↦ 1, ref_hi ↦ 2, packed ↦ p_packed)
-    p_ed ∈ EnumDeclAst
-    EffectEnumDecl(decl ↦ p_ed)
-    ed_name ∈ String = match p_ed
+        sort_slot ↦ registry_slot_check, ref_slot ↦ sort_reference, is_self ↦ self)
+    packed_refs ∈ Int
+    SortRefsPack2(ref_lo ↦ 1, ref_hi ↦ 2, packed ↦ packed_refs)
+    enum_decl_ast ∈ EnumDeclAst
+    EffectEnumDecl(decl ↦ enum_decl_ast)
+    ed_name ∈ String = match enum_decl_ast
         EnumD(n, _) ⇒ n
         ENoEnum ⇒ ""
-    p_ok ∈ Bool = (p_n = 1 ∧ p_ty = "Int" ∧ p_arity = 3 ∧ p_known
-        ∧ self ∧ p_slot = 0 ∧ p_packed = 8589934593
+    is_probe_ok ∈ Bool = (field_count_check = 1 ∧ probe_typename = "Int" ∧ field_arity = 3 ∧ is_arity_known
+        ∧ self ∧ registry_slot_check = 0 ∧ packed_refs = 8589934593
         ∧ ed_name = "Effect")
-    effects ∈ Seq(Effect) = ⟨Exit(p_ok ? 0 : 1)⟩
+    effects ∈ Seq(Effect) = ⟨Exit(is_probe_ok ? 0 : 1)⟩

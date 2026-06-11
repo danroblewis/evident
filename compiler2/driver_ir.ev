@@ -21,7 +21,7 @@ type FtiBuffer(base ∈ Int, count ∈ Int, cap ∈ Int)
 
 -- ── Named FTI buffer append: cursor + parallel name registry ──────
 -- The shared "append a named row" step behind every FTI buffer with a
--- companion name string (the symbol table's `sym_names`, the claim
+-- companion name string (the symbol table's `symbol_index`, the claim
 -- index's `claimindex_names`).
 claim FtiNamedAppend(first ∈ Bool, add ∈ Bool, prev_count ∈ Int,
         prev_names ∈ String, init_count ∈ Int, seed_names ∈ String,

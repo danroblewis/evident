@@ -35,9 +35,9 @@ fsm main
     tok_buf ∈ FtiBuffer
     tok_buf.base = (is_first_tick ? 0 : _tok_buf.base)
     tok_buf.count = (is_first_tick ? 0 : _tok_buf.count)
-    sym_buf ∈ FtiBuffer
-    sym_buf.base = (is_first_tick ? 0 : _sym_buf.base)
-    sym_buf.count = (is_first_tick ? 0 : _sym_buf.count)
+    symtab_buffer ∈ FtiBuffer
+    symtab_buffer.base = (is_first_tick ? 0 : _symtab_buffer.base)
+    symtab_buffer.count = (is_first_tick ? 0 : _symtab_buffer.count)
     claimindex_buf ∈ FtiBuffer
     claimindex_buf.base = (is_first_tick ? 0 : _claimindex_buf.base)
     claimindex_buf.count = (is_first_tick ? 0 : _claimindex_buf.count)

@@ -1,10 +1,10 @@
 -- MODULE DriverPosBind
 -- CONSUMES: the composition-line precheck (call_stmt/method_call/tuple_line) + classifier head views
---           (line_name, line_t0..t4, dotdot_shape, comp_found, c_line_end,
+--           (line_name, line_t0..t4, dotdot_shape, is_comp_found, c_line_end,
 --           classify_now, line_end), the window head (tok0..tok5), the
 --           parse gate (parse, _parse_mode, tok_ready, nil), the
 --           handle stack (h_top/2nd/.. + d_h_t*), the claim index
---           (claimindex_buf.base, claimindex_names), the symbol table (sym_names), the
+--           (claimindex_buf.base, claimindex_names), the symbol table (symbol_index), the
 --           inline-frame state (scope_prefix/frame_depth/param_depth + the
 --           bind-tape window _binds/_bind_base/_bind_top), the
 --           enum value table (values), the record registry (recs name/fields/
@@ -45,7 +45,7 @@ fsm DriverPosBind
         _ ⇒ ""
     call_stmt ∈ Bool = (classify_now ∧ (¬line_end) ∧ t0_ident
         ∧ (line_t1 matches LParen) ∧ (¬(line_t3 matches OpMapsto))
-        ∧ comp_found ∧ (¬dotdot_shape) ∧ (_frame_depth < 8))
+        ∧ is_comp_found ∧ (¬dotdot_shape) ∧ (_frame_depth < 8))
     method1_key ∈ String
     FtiNameEntry(name ↦ stmt_t2_name, entry ↦ method1_key)
     method_call1 ∈ Bool = (classify_now ∧ (¬line_end) ∧ t0_ident
@@ -158,8 +158,8 @@ fsm DriverPosBind
     is_bound ∈ Bool = (∃ i ∈ {0..11} : ((i ≥ _bind_base) ∧ (i < _bind_top) ∧ (_binds[i].name = elem_name)))
     elem_unresolved ∈ Bool = ((elem_name ≠ "") ∧ (elem_name ≠ "true")
         ∧ (elem_name ≠ "false") ∧ (¬is_variant) ∧ (¬is_bound)
-        ∧ (index_of(sym_names, elem_scoped_key, 0) < 0)
-        ∧ (index_of(sym_names, plain_key, 0) < 0))
+        ∧ (index_of(symbol_index, elem_scoped_key, 0) < 0)
+        ∧ (index_of(symbol_index, plain_key, 0) < 0))
     declare ∈ Bool = (poselem_done ∧ elem_unresolved)
     elem_dname ∈ String = _scope_prefix ++ elem_name
     elem_field ∈ String = elem_dname ++ ":Int"
@@ -222,37 +222,37 @@ fsm DriverPosBind
         : 0)
     pskip_g5 ∈ C2Items = (((_pskip_grp ≤ 5) ∧ (5 < _param_count)
             ∧ (_armed ? (5 ≥ _tuple_arity)
-                : _hide ? (index_of(sym_names, "|" ++ substr(_param_names[5].s ++ "                               ", 0, 31), 0) < 0)
+                : _hide ? (index_of(symbol_index, "|" ++ substr(_param_names[5].s ++ "                               ", 0, 31), 0) < 0)
                 : (¬(∃ i ∈ {0..11} : ((i ≥ _bind_base) ∧ (i < _bind_top) ∧ (_binds[i].name = _param_names[5].s))))))
         ? C2ICons(C2DeclConst(_scope_prefix ++ _param_names[5].s, pskip_sort), C2ICons(C2Drop, C2INil))
         : C2INil)
     pskip_g4 ∈ C2Items = (((_pskip_grp ≤ 4) ∧ (4 < _param_count)
             ∧ (_armed ? (4 ≥ _tuple_arity)
-                : _hide ? (index_of(sym_names, "|" ++ substr(_param_names[4].s ++ "                               ", 0, 31), 0) < 0)
+                : _hide ? (index_of(symbol_index, "|" ++ substr(_param_names[4].s ++ "                               ", 0, 31), 0) < 0)
                 : (¬(∃ i ∈ {0..11} : ((i ≥ _bind_base) ∧ (i < _bind_top) ∧ (_binds[i].name = _param_names[4].s))))))
         ? C2ICons(C2DeclConst(_scope_prefix ++ _param_names[4].s, pskip_sort), C2ICons(C2Drop, pskip_g5))
         : pskip_g5)
     pskip_g3 ∈ C2Items = (((_pskip_grp ≤ 3) ∧ (3 < _param_count)
             ∧ (_armed ? (3 ≥ _tuple_arity)
-                : _hide ? (index_of(sym_names, "|" ++ substr(_param_names[3].s ++ "                               ", 0, 31), 0) < 0)
+                : _hide ? (index_of(symbol_index, "|" ++ substr(_param_names[3].s ++ "                               ", 0, 31), 0) < 0)
                 : (¬(∃ i ∈ {0..11} : ((i ≥ _bind_base) ∧ (i < _bind_top) ∧ (_binds[i].name = _param_names[3].s))))))
         ? C2ICons(C2DeclConst(_scope_prefix ++ _param_names[3].s, pskip_sort), C2ICons(C2Drop, pskip_g4))
         : pskip_g4)
     pskip_g2 ∈ C2Items = (((_pskip_grp ≤ 2) ∧ (2 < _param_count)
             ∧ (_armed ? (2 ≥ _tuple_arity)
-                : _hide ? (index_of(sym_names, "|" ++ substr(_param_names[2].s ++ "                               ", 0, 31), 0) < 0)
+                : _hide ? (index_of(symbol_index, "|" ++ substr(_param_names[2].s ++ "                               ", 0, 31), 0) < 0)
                 : (¬(∃ i ∈ {0..11} : ((i ≥ _bind_base) ∧ (i < _bind_top) ∧ (_binds[i].name = _param_names[2].s))))))
         ? C2ICons(C2DeclConst(_scope_prefix ++ _param_names[2].s, pskip_sort), C2ICons(C2Drop, pskip_g3))
         : pskip_g3)
     pskip_g1 ∈ C2Items = (((_pskip_grp ≤ 1) ∧ (1 < _param_count)
             ∧ (_armed ? (1 ≥ _tuple_arity)
-                : _hide ? (index_of(sym_names, "|" ++ substr(_param_names[1].s ++ "                               ", 0, 31), 0) < 0)
+                : _hide ? (index_of(symbol_index, "|" ++ substr(_param_names[1].s ++ "                               ", 0, 31), 0) < 0)
                 : (¬(∃ i ∈ {0..11} : ((i ≥ _bind_base) ∧ (i < _bind_top) ∧ (_binds[i].name = _param_names[1].s))))))
         ? C2ICons(C2DeclConst(_scope_prefix ++ _param_names[1].s, pskip_sort), C2ICons(C2Drop, pskip_g2))
         : pskip_g2)
     pskip_decl_items ∈ C2Items = (((_pskip_grp ≤ 0) ∧ (0 < _param_count)
             ∧ (_armed ? (0 ≥ _tuple_arity)
-                : _hide ? (index_of(sym_names, "|" ++ substr(_param_names[0].s ++ "                               ", 0, 31), 0) < 0)
+                : _hide ? (index_of(symbol_index, "|" ++ substr(_param_names[0].s ++ "                               ", 0, 31), 0) < 0)
                 : (¬(∃ i ∈ {0..11} : ((i ≥ _bind_base) ∧ (i < _bind_top) ∧ (_binds[i].name = _param_names[0].s))))))
         ? C2ICons(C2DeclConst(_scope_prefix ++ _param_names[0].s, pskip_sort), C2ICons(C2Drop, pskip_g1))
         : pskip_g1)

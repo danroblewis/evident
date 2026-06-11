@@ -29,7 +29,7 @@ claim C2ChainLvl(tail ∈ C2Items, out ∈ C2Items)
 
 fsm DriverClaimIdx
     -- ── F2: the claim index ───────────────────────────────────────
-    -- claimindex_names: fixed-width 32-byte name records (the B1 sym_names
+    -- claimindex_names: fixed-width 32-byte name records (the B1 symbol_index
     -- pattern). Cursors live in the claimindex_buf.base buffer (256 × 8 bytes),
     -- one per skipped claim, value = _tok_cur + 2 — the token after
     -- `claim Name`, which is `(` for parametrized claims (the

@@ -28,14 +28,14 @@ fsm main
     tok0 = (is_first_tick ? Ident("p") : _tok0)
     tok1 ∈ Token
     tok1 = (is_first_tick ? OpMapsto : _tok1)
-    comp_bare ∈ Bool
-    comp_bare = (is_first_tick ? false : _comp_bare)
-    comp_call ∈ Bool
-    comp_call = (is_first_tick ? false : _comp_call)
+    is_bare_comp ∈ Bool
+    is_bare_comp = (is_first_tick ? false : _is_bare_comp)
+    is_comp_call ∈ Bool
+    is_comp_call = (is_first_tick ? false : _is_comp_call)
     dotdot ∈ Bool
     dotdot = (is_first_tick ? false : _dotdot)
-    comp_line ∈ Bool
-    comp_line = (is_first_tick ? false : _comp_line)
+    is_comp_line ∈ Bool
+    is_comp_line = (is_first_tick ? false : _is_comp_line)
     callee_pos ∈ Int
     callee_pos = (is_first_tick ? 0 : _callee_pos)
     line_name ∈ String

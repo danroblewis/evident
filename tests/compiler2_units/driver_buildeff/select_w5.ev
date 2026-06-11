@@ -41,9 +41,9 @@ fsm main
     decl_step = (is_first_tick ? 0 : _decl_step)
     index ∈ Int
     index = (is_first_tick ? 0 : _index)
-    sym_buf ∈ FtiBuffer
-    sym_buf.base = (is_first_tick ? 0 : _sym_buf.base)
-    sym_buf.count = (is_first_tick ? 0 : _sym_buf.count)
+    symtab_buffer ∈ FtiBuffer
+    symtab_buffer.base = (is_first_tick ? 0 : _symtab_buffer.base)
+    symtab_buffer.count = (is_first_tick ? 0 : _symtab_buffer.count)
     z3_arena ∈ Int
     z3_arena = (is_first_tick ? 0 : _z3_arena)
     effect_arraysort ∈ Int

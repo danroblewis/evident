@@ -270,9 +270,9 @@ fsm DriverBuildEff
     BuildZ3SolverAssert(ctx_h ↦ z3ctx.ctx, solver_h ↦ z3ctx.sol, ast_h ↦ last_results_geq,
         eff ↦ lastres_assert)
     seed0 ∈ Effect
-    BuildMemWriteLong(addr ↦ sym_buf.base, value ↦ z3_last_results, eff ↦ seed0)
+    BuildMemWriteLong(addr ↦ symtab_buffer.base, value ↦ z3_last_results, eff ↦ seed0)
     seed1 ∈ Effect
-    BuildMemWriteLong(addr ↦ sym_buf.base + 8, value ↦ z3_first_tick, eff ↦ seed1)
+    BuildMemWriteLong(addr ↦ symtab_buffer.base + 8, value ↦ z3_first_tick, eff ↦ seed1)
     zinit_three ∈ Effect
     BuildZ3MkInt(ctx_h ↦ z3ctx.ctx, val ↦ 3, sort_h ↦ z3sorts.isort, eff ↦ zinit_three)
     zinit_four ∈ Effect

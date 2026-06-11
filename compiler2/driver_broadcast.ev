@@ -3,7 +3,7 @@
 --           _parse_decl_name, result), the pinned record type's field
 --           registry (recs .n_fields / .fnames), the claim-walk dispatch
 --           gate (in_claim, nil, _param_skip, tok_ready), and
---           the symbol-table name index (sym_names) — all as free names
+--           the symbol-table name index (symbol_index) — all as free names
 --           (names-match; never declared here).
 -- PRODUCES: the HEADER below — the checked interface (claim-headers
 --           pilot): the carried loop state (pinning/record_slot/pinned_name/
@@ -55,7 +55,7 @@ fsm DriverBroadcast(pinning ∈ Bool, record_slot ∈ Int, pinned_name ∈ Strin
     cursor_field_name ∈ String
     RtRecName(s ↦ field_names, i ↦ _cursor, name ↦ cursor_field_name)
     dotted_name ∈ String = _pinned_name ++ "." ++ cursor_field_name
-    dup ∈ Bool = (index_of(sym_names,
+    dup ∈ Bool = (index_of(symbol_index,
         "|" ++ substr(dotted_name ++ "                               ", 0, 31),
         0) ≥ 0)
     item ∈ C2Item = (dup ? C2Process(EIdent(dotted_name))

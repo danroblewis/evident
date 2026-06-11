@@ -21,7 +21,7 @@ fsm main
     -- Cursors normally driven by DriverLex/DriverClaimIdx (absent here);
     -- stub them so the carried record fields have a covering assignment.
     tok_buf.count = (is_first_tick ? 0 : _tok_buf.count)
-    sym_buf.count = (is_first_tick ? 0 : _sym_buf.count)
+    symtab_buffer.count = (is_first_tick ? 0 : _symtab_buffer.count)
     claimindex_buf.count = (is_first_tick ? 0 : _claimindex_buf.count)
     isort_msg ∈ String = str_from_int(z3sorts.isort)
     effects ∈ Seq(Effect) = (zstep ≥ 6

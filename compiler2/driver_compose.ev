@@ -1,6 +1,6 @@
 -- MODULE DriverCompose
 -- CONSUMES: the classifier's composition/type-splice decision flags
---           (comp_call/bare/dd/line, is_member_call/bare/line, line_name,
+--           (is_comp_call/bare/dd/line, is_member_call/bare/line, line_name,
 --           line_ty_name, callee_pos), the claim index base (claimindex_buf.base), the
 --           handle-stack views (h_top/2nd/.. + tail1.. + stack_in),
 --           is_intresult_capture, the parse gate (parse, _parse_mode, tok_ready,
@@ -84,7 +84,7 @@ fsm DriverCompose
         CFCons(_, _, _, _, _, t) ⇒ t
         CFNil ⇒ CFNil
 
-    callee_cursor ∈ Bool = (comp_line ∨ is_member_line)
+    callee_cursor ∈ Bool = (is_comp_line ∨ is_member_line)
     claimidx_read ∈ Effect
     BuildMemReadLong(addr ↦ claimindex_buf.base + (8 * (callee_pos / 32)), eff ↦ claimidx_read)
 
@@ -263,24 +263,24 @@ fsm DriverCompose
             : _param_depth)
         : _param_depth)
     callwalk_state = (is_first_tick ? 0
-        : (comp_line ∨ is_member_line) ? 0
+        : (is_comp_line ∨ is_member_line) ? 0
         : cond_hit ? 3
         : capture ? 4
         : call_capacity ? 1
         : _callwalk_state)
     is_bare_call = (is_first_tick ? false
-        : (comp_call ∨ is_member_call) ? false
-        : (comp_bare ∨ dotdot ∨ is_bare_member) ? true
+        : (is_comp_call ∨ is_member_call) ? false
+        : (is_bare_comp ∨ dotdot ∨ is_bare_member) ? true
         : positional_line ? false
         : _is_bare_call)
     hide = (is_first_tick ? false
-        : comp_bare ? true
-        : (comp_call ∨ dotdot ∨ is_member_line) ? false
+        : is_bare_comp ? true
+        : (is_comp_call ∨ dotdot ∨ is_member_line) ? false
         : positional_line ? false
         : _hide)
     is_type = (is_first_tick ? false
         : is_member_line ? true
-        : comp_line ? false
+        : is_comp_line ? false
         : positional_line ? false
         : _is_type)
     type_prefix = (is_first_tick ? ""
@@ -297,7 +297,7 @@ fsm DriverCompose
         : is_member_line ? (_scope_prefix ++ line_name)
         : _inst_name)
     slot_count = (is_first_tick ? 0
-        : (comp_call ∨ is_member_call) ? 0
+        : (is_comp_call ∨ is_member_call) ? 0
         : val_done ? _slot_count + 1
         : _slot_count)
     ∀ k ∈ {0..5} : slot_names[k].name = (is_first_tick ? "" : ((call_arg_slot ∨ pun) ∧ _slot_count = k) ? slot_name_tok : _slot_names[k].name)

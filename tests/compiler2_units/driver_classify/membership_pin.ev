@@ -34,8 +34,8 @@ fsm main
     classify_now = (is_first_tick ? true : _classify_now)
     claimindex_names ∈ String
     claimindex_names = (is_first_tick ? "" : _claimindex_names)
-    sym_names ∈ String
-    sym_names = (is_first_tick ? "" : _sym_names)
+    symbol_index ∈ String
+    symbol_index = (is_first_tick ? "" : _symbol_index)
     frame_depth ∈ Int
     frame_depth = (is_first_tick ? 0 : _frame_depth)
     scope_prefix ∈ String

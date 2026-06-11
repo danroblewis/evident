@@ -37,8 +37,8 @@ fsm main
     pinning = (is_first_tick ? false : _pinning)
     tok_ready ∈ Bool
     tok_ready = (is_first_tick ? false : _tok_ready)
-    sym_buf ∈ FtiBuffer
-    sym_buf.base = (is_first_tick ? 0 : _sym_buf.base)
+    symtab_buffer ∈ FtiBuffer
+    symtab_buffer.base = (is_first_tick ? 0 : _symtab_buffer.base)
     ..DriverSymtab
     verdict ∈ Int = ((h_top = 99 ? 1 : 0) + (h_2nd = 7 ? 2 : 0)
         + (is_decl_item ? 4 : 0))

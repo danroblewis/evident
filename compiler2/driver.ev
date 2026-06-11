@@ -333,7 +333,7 @@ fsm driver_main
     qual_key ∈ String
     FtiNameEntry(name ↦ qual_name, entry ↦ qual_key)
     is_pin_hit ∈ Bool = (process ∧ is_ident ∧ _pinning
-        ∧ (index_of(sym_names, qual_key, 0) ≥ 0))
+        ∧ (index_of(symbol_index, qual_key, 0) ≥ 0))
     hit_items ∈ C2Items = C2ICons(C2Process(EIdent(qual_name)), work_tail)
     ctor_slot ∈ Int
     RtIdxOf(nm ↦ call_name, idx ↦ ctor_slot)
@@ -387,7 +387,7 @@ fsm driver_main
         C2DeclConst(line_dname, 20 + kind_slot),
         C2ICons(C2Drop, C2INil))
     line_items ∈ C2Items = ((line_end ∨ pratt_line ∨ enter_efflit
-        ∨ intset ∨ enter_match ∨ enter_seqlit ∨ comp_line
+        ∨ intset ∨ enter_match ∨ enter_seqlit ∨ is_comp_line
         ∨ is_member_line ∨ qrange ∨ qseq ∨ tuple_line ∨ call_stmt)
         ? C2INil
         : method_call ? receiver_items
@@ -400,7 +400,7 @@ fsm driver_main
         : mem_items)
     mem_line ∈ Bool = (classify_now ∧ (¬line_end) ∧ (¬pratt_line)
         ∧ (¬enter_efflit) ∧ (¬intset) ∧ (¬enter_match)
-        ∧ (¬enter_seqlit) ∧ (¬multiname) ∧ (¬comp_line)
+        ∧ (¬enter_seqlit) ∧ (¬multiname) ∧ (¬is_comp_line)
         ∧ (¬strin_line) ∧ (¬is_member_line) ∧ (¬is_quant_line)
         ∧ (¬positional_line))
     mem_consume ∈ Int = (seqmem ? 6 : bounded ? 5 : 3)
@@ -630,8 +630,8 @@ fsm driver_main
         : take_name ? 2
         : type_tick ? type_consume
         : bail ? 1
-        : comp_call ? 2
-        : comp_bare ? 1
+        : is_comp_call ? 2
+        : is_bare_comp ? 1
         : dotdot ? 3
         : is_member_call ? 4
         : is_bare_member ? 3
@@ -723,7 +723,7 @@ fsm driver_main
         : recdecl_fin ? 0
         : stop ? 0
         : claim_end ? 0
-        : (comp_line ∨ is_member_line) ? 10
+        : (is_comp_line ∨ is_member_line) ? 10
         : cond_hit ? 10
         : jump_fire ? 2
         : (bare_jump ∨ is_call_fire ∨ is_call_bail) ? 2
@@ -831,9 +831,9 @@ fsm driver_main
             : const_sort = 21 ? recs[1].ssort
             : const_sort = 22 ? recs[2].ssort
             : z3sorts.isort), eff ↦ mkconst)
-    sym_write ∈ Effect
-    BuildMemWriteLong(addr ↦ sym_buf.base + (8 * _sym_buf.count), value ↦ tmp_in,
-        eff ↦ sym_write)
+    write_symbol_eff ∈ Effect
+    BuildMemWriteLong(addr ↦ symtab_buffer.base + (8 * _symtab_buffer.count), value ↦ tmp_in,
+        eff ↦ write_symbol_eff)
     geq ∈ Op = OpGeq
     op_eq ∈ Op = OpEq
     impl ∈ Op = OpImpl
@@ -916,7 +916,7 @@ fsm driver_main
 
     step_eff ∈ Effect = (process ∧ is_int ? mkint
         : process ∧ is_str ? mkstring
-        : lookup_read ? sym_read
+        : lookup_read ? read_symbol_eff
         : is_op_item ∧ is_nary ∧ (_item_step = 0) ? argw0
         : is_op_item ∧ is_nary ∧ (_item_step = 1) ? argw1
         : is_op_item ∧ is_nary ? (bool_nary ? nary
@@ -928,7 +928,7 @@ fsm driver_main
         : is_not_item ? not_eff
         : is_decl_item ? (_item_step = 0 ? mksym_eff
             : _item_step = 1 ? mkconst
-            : sym_write)
+            : write_symbol_eff)
         : natbound ? natbound_geq_eff
         : is_pineq_item ? pineq_eff
         : is_assert_item ? (guarding
