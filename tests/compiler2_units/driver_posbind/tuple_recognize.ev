@@ -132,24 +132,24 @@ fsm main
     wildcard_body_done = (is_first_tick ? false : _wildcard_body_done)
     name ∈ String
     name = (is_first_tick ? "" : _name)
-    parse_ready ∈ Bool
-    parse_ready = (is_first_tick ? false : _parse_ready)
-    parse_kind ∈ Int
-    parse_kind = (is_first_tick ? 0 : _parse_kind)
-    parse_decl_name ∈ String
-    parse_decl_name = (is_first_tick ? "" : _parse_decl_name)
+    parser ∈ ParseState
+    parser.kind = (is_first_tick ? 0 : _parser.kind)
+    parser.ready = (is_first_tick ? false : _parser.ready)
+    parser.bad = (is_first_tick ? false : _parser.bad)
+    parser.consume = (is_first_tick ? 0 : _parser.consume)
+    parser.pd = (is_first_tick ? 0 : _parser.pd)
+    parser.qd = (is_first_tick ? 0 : _parser.qd)
+    parser.cd = (is_first_tick ? 0 : _parser.cd)
+    parser.expop = (is_first_tick ? false : _parser.expop)
+    parser.sort = (is_first_tick ? 0 : _parser.sort)
+    parser.rec_slot = (is_first_tick ? 0 : _parser.rec_slot)
+    parser.decl_name = (is_first_tick ? "" : _parser.decl_name)
     is_nat_type ∈ Bool
     is_nat_type = (is_first_tick ? false : _is_nat_type)
     nodecl ∈ Bool
     nodecl = (is_first_tick ? false : _nodecl)
     membership_record_name ∈ String
     membership_record_name = (is_first_tick ? "" : _membership_record_name)
-    parse_rec_slot ∈ Int
-    parse_rec_slot = (is_first_tick ? 0 : _parse_rec_slot)
-    parse_sort ∈ Int
-    parse_sort = (is_first_tick ? 0 : _parse_sort)
-    parse_bad ∈ Bool
-    parse_bad = (is_first_tick ? false : _parse_bad)
     result ∈ Expr
     result = (is_first_tick ? EInt(0) : _result)
     recs ∈ Seq(RecTypeEntry)

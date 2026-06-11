@@ -16,15 +16,18 @@ import "compiler2/driver_broadcast.ev"
 fsm main
     tc ∈ Int
     tc = (is_first_tick ? 0 : _tc + 1)
-    parse_ready ∈ Bool = (tc = 1)
-    parse_kind ∈ Int
-    parse_kind = (is_first_tick ? 1 : _parse_kind)
-    parse_rec_slot ∈ Int
-    parse_rec_slot = (is_first_tick ? 0 : _parse_rec_slot)
-    parse_bad ∈ Bool
-    parse_bad = (is_first_tick ? false : _parse_bad)
-    parse_decl_name ∈ String
-    parse_decl_name = (is_first_tick ? "p" : _parse_decl_name)
+    parser ∈ ParseState
+    parser.kind = (is_first_tick ? 1 : _parser.kind)
+    parser.ready = (tc = 1)
+    parser.bad = (is_first_tick ? false : _parser.bad)
+    parser.consume = (is_first_tick ? 0 : _parser.consume)
+    parser.pd = (is_first_tick ? 0 : _parser.pd)
+    parser.qd = (is_first_tick ? 0 : _parser.qd)
+    parser.cd = (is_first_tick ? 0 : _parser.cd)
+    parser.expop = (is_first_tick ? false : _parser.expop)
+    parser.sort = (is_first_tick ? 0 : _parser.sort)
+    parser.rec_slot = (is_first_tick ? 0 : _parser.rec_slot)
+    parser.decl_name = (is_first_tick ? "p" : _parser.decl_name)
     result ∈ Expr
     result = (is_first_tick ? ENoExpr : _result)
     -- Claim-walk dispatch gate: held open so the broadcast can step.

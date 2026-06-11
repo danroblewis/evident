@@ -5,7 +5,7 @@
 --           (classify_now, line.end, enter_seqlit, in_skip), the window
 --           head (tok0/tok5..t7), the registered-seq carries (registered_seq_name/
 --           registered_seq_kind), the inline-frame prefix (scope_prefix), the parse gate, and
---           the Pratt result (parse_ready/parse_bad/result/parse_kind).
+--           the Pratt result (parser.ready/parser.bad/result/parser.kind).
 -- PRODUCES: the ≤2-entry Set(T) variable registry (set_registry_count/stv_n*/stv_k*/
 --           stv_e*/stv_c*), the parse_mode-14 set-literal element walk
 --           (element_index + the C2MkEmptySet/C2SetAdd item runs), and the
@@ -134,7 +134,7 @@ fsm DriverSetVar
     at_seq_close ∈ Bool = (walking_seq ∧ (tok0 matches OpSeqClose))
     at_seq_comma ∈ Bool = (walking_seq ∧ (tok0 matches Comma))
     enter_seq_elem ∈ Bool = (walking_seq ∧ (¬at_seq_close) ∧ (¬at_seq_comma))
-    element_parsed ∈ Bool = (parse_ready ∧ (¬parse_bad) ∧ (_parse_kind = 7))
+    element_parsed ∈ Bool = (parser.ready ∧ (¬parser.bad) ∧ (_parser.kind = 7))
     element_index = (is_first_tick ? 0
         : enter_seqlit ? 0
         : element_parsed ? _element_index + 1

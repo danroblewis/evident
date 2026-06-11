@@ -62,7 +62,7 @@ fsm DriverQuant
     exists ∈ Bool
     seq ∈ String
     next ∈ Int
-    qbody_done ∈ Bool = (parse_ready ∧ (_parse_kind = 9) ∧ (¬parse_bad))
+    qbody_done ∈ Bool = (parser.ready ∧ (_parser.kind = 9) ∧ (¬parser.bad))
     disp ∈ Bool = (in_claim ∧ _qloop.on ∧ nil
         ∧ (_param_skip = 0) ∧ can_consume)
     qexp_more ∈ Bool = (disp ∧ (_next ≤ _qloop.hi))
@@ -107,7 +107,7 @@ fsm DriverQuant
     computed_length ∈ Int = match cond_rhs
         EInt(n) ⇒ n
         _ ⇒ 0 - 1
-    is_seqlen_pin ∈ Bool = (parse_ready ∧ (_parse_kind = 2) ∧ (¬parse_bad) ∧ binop
+    is_seqlen_pin ∈ Bool = (parser.ready ∧ (_parser.kind = 2) ∧ (¬parser.bad) ∧ binop
         ∧ (cond_op matches OpEq) ∧ lhs_call ∧ (cardinality_callee = "str_len")
         ∧ (computed_length ≥ 0) ∧ _is_seq_registered
         ∧ ((cardinality_argument = _registered_seq_name) ∨ ((_scope_prefix ++ cardinality_argument) = _registered_seq_name)))

@@ -1,6 +1,6 @@
 -- MODULE DriverBroadcast
--- CONSUMES: the parse result (parse_ready, _parse_kind, parse_bad, _parse_rec_slot,
---           _parse_decl_name, result), the pinned record type's field
+-- CONSUMES: the parse result (parser.ready, _parser.kind, parser.bad, _parser.rec_slot,
+--           _parser.decl_name, result), the pinned record type's field
 --           registry (recs .n_fields / .fnames), the claim-walk dispatch
 --           gate (in_claim, nil, _param_skip, can_consume), and
 --           the symbol-table name index (symbol_index) — all as free names
@@ -31,8 +31,8 @@ fsm DriverBroadcast(pinning ∈ Bool, record_slot ∈ Int, record_type_name ∈ 
     -- During a re-walk, an IDENT whose field-qualified dotted name
     -- resolves in the symtab reads through it, and a REGISTRY-ctor
     -- call (`IVec2(10, 20)`) selects its field-index argument.
-    recpin_done ∈ Bool = (parse_ready ∧ (_parse_kind = 1) ∧ (¬parse_bad)
-        ∧ (_parse_rec_slot ≥ 0))
+    recpin_done ∈ Bool = (parser.ready ∧ (_parser.kind = 1) ∧ (¬parser.bad)
+        ∧ (_parser.rec_slot ≥ 0))
     field_count ∈ Int = recs[_record_slot].n_fields
     field_names ∈ String = recs[_record_slot].fnames
     dispatch ∈ Bool = (in_claim ∧ _pinning ∧ nil
@@ -43,8 +43,8 @@ fsm DriverBroadcast(pinning ∈ Bool, record_slot ∈ Int, record_type_name ∈ 
         : recpin_done ? true
         : is_pin_done ? false
         : _pinning)
-    record_slot = (is_first_tick ? 0 : recpin_done ? _parse_rec_slot : _record_slot)
-    record_type_name = (is_first_tick ? "" : recpin_done ? _parse_decl_name : _record_type_name)
+    record_slot = (is_first_tick ? 0 : recpin_done ? _parser.rec_slot : _record_slot)
+    record_type_name = (is_first_tick ? "" : recpin_done ? _parser.decl_name : _record_type_name)
     parsed_record_body = (is_first_tick ? ENoExpr : recpin_done ? result : _parsed_record_body)
     cursor = (is_first_tick ? 0
         : recpin_done ? 0

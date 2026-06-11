@@ -251,7 +251,7 @@ fsm driver_main
         ∧ is_enum ∧ (¬reserved)
         ∧ (tok1 matches Ident(_)) ∧ (tok2 matches Eq))
     enter_skip  ∈ Bool = (in_dispatch ∧ (¬group_go) ∧ (¬is_eof) ∧ (¬enter_claim) ∧ (¬claim_params) ∧ (¬enum_decl))
-    parse_done    ∈ Bool = (in_dispatch ∧ (¬group_go) ∧ is_eof)
+    parse_done ∈ Bool = (in_dispatch ∧ (¬group_go) ∧ is_eof)
     in_skip     ∈ Bool = (parse ∧ (_parse_mode = 1) ∧ can_consume)
     in_claim    ∈ Bool = (parse ∧ (_parse_mode = 2))
 
@@ -519,7 +519,7 @@ fsm driver_main
     work_items = (is_first_tick ? C2INil
         : (enter_claim ∨ claim_params) ? C2INil
         : classify_now ? line.items
-        : parse_ready ? done_items
+        : parser.ready ? done_items
         : argbite ? libcall_items
         : noargs ? libcall0_items
         : efflit_close ? (_chain_on ? branch_fold : C2ICons(C2LenEq(_efflit.count), C2INil))
@@ -654,11 +654,11 @@ fsm driver_main
         : (pskip_open ∨ run) ? 1
         : enter_pratt ? enter_consume
         : mem_line ? mem_consume
-        : parse_ready ? done_consume
+        : parser.ready ? done_consume
         : enter ? 3
         : (is_skim_field ∨ is_skim_close) ? 2
         : is_skim_bad ? 0
-        : (in_pratt ∧ (parse_consume ≥ 1)) ? parse_consume
+        : (in_pratt ∧ (parser.consume ≥ 1)) ? parser.consume
         : 0)
     token_cursor = (is_first_tick ? 0
         : jump ? target_now
@@ -743,12 +743,12 @@ fsm driver_main
         : type_tick ? (have_pending ? 9 : exit_mode)
         : (draining ∧ last_name) ? done_mode
         : enter_pratt ? 3
-        : parse_ready ? (_parse_kind = 3 ? 5
-            : _parse_kind = 4 ? ((parse_bad ∨ wildcard_body_done) ? 2 : 6)
-            : _parse_kind = 6 ? (parse_bad ? 2 : 5)
-            : _parse_kind = 7 ? (parse_bad ? 2 : 8)
-            : _parse_kind = 8 ? (parse_bad ? 2 : 10)
-            : _parse_kind = 10 ? (parse_bad ? 2 : 12)
+        : parser.ready ? (_parser.kind = 3 ? 5
+            : _parser.kind = 4 ? ((parser.bad ∨ wildcard_body_done) ? 2 : 6)
+            : _parser.kind = 6 ? (parser.bad ? 2 : 5)
+            : _parser.kind = 7 ? (parser.bad ? 2 : 8)
+            : _parser.kind = 8 ? (parser.bad ? 2 : 10)
+            : _parser.kind = 10 ? (parser.bad ? 2 : 12)
             : 2)
         : variant_bail ? 0
         : member_end ? 0

@@ -8,7 +8,7 @@
 --           inline-frame state (scope_prefix/frame_depth/param_depth + the
 --           bind-tape window _binds/_bind_base/_bind_top), the
 --           enum value table (values), the record registry (recs name/fields/
---           sorts), the Pratt result (parse_ready/parse_bad/result/pratt_*), and
+--           sorts), the Pratt result (parser.ready/parser.bad/result/pratt_*), and
 --           exit_decl. (Width justified §6.4: positional binding
 --           inherently touches index + Pratt stack + callee params.)
 -- PRODUCES: the parse_mode-12 positional-binding walk (tuple.state/tuple.arity/armed/has_tuple/
@@ -125,7 +125,7 @@ fsm DriverPosBind
         : method_call2 ? stmt_t4_name
         : tuple_line ? ""
         : _tuple.callee)
-    poselem_done ∈ Bool = (parse_ready ∧ (_parse_kind = 10) ∧ (¬parse_bad))
+    poselem_done ∈ Bool = (parser.ready ∧ (_parser.kind = 10) ∧ (¬parser.bad))
     tuple.arity = (is_first_tick ? 0
         : (call_stmt ∨ tuple_line) ? 0
         : method_call ? 1
@@ -346,22 +346,22 @@ fsm DriverPosBind
         ? C2ICons(C2NatBound, C2ICons(C2AssertTop, pin_segment))
         : pin_segment)
     decl_head ∈ C2Item = (_nodecl ? C2Process(EIdent(_membership_record_name))
-        : C2DeclConst(_parse_decl_name, _parse_sort))
-    done_items ∈ C2Items = (parse_bad ? C2INil
-        : _parse_kind = 3 ? C2ICons(C2Process(result),
+        : C2DeclConst(_parser.decl_name, _parser.sort))
+    done_items ∈ C2Items = (parser.bad ? C2INil
+        : _parser.kind = 3 ? C2ICons(C2Process(result),
             C2ICons(C2App(exit_decl, 1),
             C2ICons(equality_test, C2INil)))
-        : _parse_kind = 4 ? (wildcard_body_done ? case_items : C2INil)
-        : _parse_kind = 6 ? C2ICons(C2Process(result), C2INil)
-        : _parse_kind = 7 ? append_elem_items
-        : _parse_kind = 8 ? C2ICons(C2Process(result), C2INil)
-        : _parse_kind = 9 ? C2INil
-        : _parse_kind = 10 ? elem_items
-        : _parse_kind = 1 ? (_parse_rec_slot ≥ 0 ? C2INil
+        : _parser.kind = 4 ? (wildcard_body_done ? case_items : C2INil)
+        : _parser.kind = 6 ? C2ICons(C2Process(result), C2INil)
+        : _parser.kind = 7 ? append_elem_items
+        : _parser.kind = 8 ? C2ICons(C2Process(result), C2INil)
+        : _parser.kind = 9 ? C2INil
+        : _parser.kind = 10 ? elem_items
+        : _parser.kind = 1 ? (_parser.rec_slot ≥ 0 ? C2INil
             : C2ICons(decl_head, natbound_segment))
         : cond_hit ? C2ICons(C2Process(cond_lhs), C2INil)
         : C2ICons(C2Process(result), C2ICons(C2AssertTop, C2INil)))
-    done_consume ∈ Int = (parse_bad ? 1
-        : _parse_kind = 3 ? 1
-        : _parse_kind = 6 ? 1
+    done_consume ∈ Int = (parser.bad ? 1
+        : _parser.kind = 3 ? 1
+        : _parser.kind = 6 ? 1
         : 0)

@@ -36,12 +36,18 @@ fsm main
     line.items = C2INil
     enter_match ∈ Bool
     enter_match = (is_first_tick ? false : _enter_match)
-    parse_ready ∈ Bool
-    parse_ready = (is_first_tick ? false : _parse_ready)
-    parse_kind ∈ Int
-    parse_kind = (is_first_tick ? 0 : _parse_kind)
-    parse_bad ∈ Bool
-    parse_bad = (is_first_tick ? false : _parse_bad)
+    parser ∈ ParseState
+    parser.kind = (is_first_tick ? 0 : _parser.kind)
+    parser.ready = (is_first_tick ? false : _parser.ready)
+    parser.bad = (is_first_tick ? false : _parser.bad)
+    parser.consume = (is_first_tick ? 0 : _parser.consume)
+    parser.pd = (is_first_tick ? 0 : _parser.pd)
+    parser.qd = (is_first_tick ? 0 : _parser.qd)
+    parser.cd = (is_first_tick ? 0 : _parser.cd)
+    parser.expop = (is_first_tick ? false : _parser.expop)
+    parser.sort = (is_first_tick ? 0 : _parser.sort)
+    parser.rec_slot = (is_first_tick ? 0 : _parser.rec_slot)
+    parser.decl_name = (is_first_tick ? "" : _parser.decl_name)
     result ∈ Expr
     result = (is_first_tick ? EInt(0) : _result)
     user_variants ∈ Seq(UserEnumVariant)

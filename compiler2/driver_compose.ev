@@ -10,7 +10,7 @@
 --           guard state (guarding, _armed_depth), and the sibling fire/cap
 --           signals (cond_hit, guard_jump_*, posjump_*, the bindzip
 --           staging column bindzip_binds/bindzip_count,
---           parse_ready, parse_bad, enter_claim*).
+--           parser.ready, parser.bad, enter_claim*).
 --           Wide by nature: a call jump couples the classifier decision,
 --           the claim index, and the handle stack (justified §6.4).
 -- PRODUCES: the inline-frame stack (frames/scope_prefix/frame_depth/
@@ -100,7 +100,7 @@ fsm DriverCompose
     is_call_comma ∈ Bool = (callw1 ∧ (tok0 matches Comma))
     is_call_fire ∈ Bool = (callw1 ∧ (tok0 matches RParen))
     is_call_bail ∈ Bool = (callw1 ∧ (¬call_arg_slot) ∧ (¬pun) ∧ (¬is_call_comma) ∧ (¬is_call_fire))
-    val_done ∈ Bool = (parse_ready ∧ (¬parse_bad) ∧ (_parse_kind = 8))
+    val_done ∈ Bool = (parser.ready ∧ (¬parser.bad) ∧ (_parser.kind = 8))
     slot_name_tok ∈ String = match tok0
         Ident(s) ⇒ s
         _ ⇒ ""

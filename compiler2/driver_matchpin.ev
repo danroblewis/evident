@@ -3,7 +3,7 @@
 --           name/sort (line.dname, line.sort), the window head views
 --           (tok0..tok4) + the line head name (head_ident), the parse
 --           gate (parse, _parse_mode, can_consume), the Pratt result
---           (parse_ready, parse_bad, result, parse_kind), the user-enum + Result
+--           (parser.ready, parser.bad, result, parser.kind), the user-enum + Result
 --           variant registries (user_variants/variant_names, intresult_tester/strresult_tester/
 --           intresult_accessor/strresult_accessor) the arms resolve their ctor/tester/accessor
 --           handles against, and the acc-table tape base (acctab_p) for
@@ -32,7 +32,7 @@ fsm DriverMatchPin
     --   `_ ⇒`               wildcard arm head (2 tokens; ENDS the
     --                       match — later arms are dead, the legacy
     --                       fold rule)
-    -- Each arm BODY is a full Pratt pass (parse_kind 4); on body
+    -- Each arm BODY is a full Pratt pass (parser.kind 4); on body
     -- completion the previous PENDING arm promotes into a tested
     -- slot, and a wildcard body's completion FIRES the match. The
     -- match also ends at the first non-arm-shaped head. The DEFAULT
@@ -149,9 +149,9 @@ fsm DriverMatchPin
     BuildMemReadLong(addr ↦ acctab_p + (48 * regslot) + (8 * bind_idx_now),
         eff ↦ match_accread)
 
-    body_done ∈ Bool = (parse_ready ∧ (_parse_kind = 4))
-    wildcard_body_done ∈ Bool = (body_done ∧ (¬parse_bad) ∧ _is_wc)
-    arm_done ∈ Bool = (body_done ∧ (¬parse_bad) ∧ (¬_is_wc))
+    body_done ∈ Bool = (parser.ready ∧ (_parser.kind = 4))
+    wildcard_body_done ∈ Bool = (body_done ∧ (¬parser.bad) ∧ _is_wc)
+    arm_done ∈ Bool = (body_done ∧ (¬parser.bad) ∧ (¬_is_wc))
     promote ∈ Bool = (arm_done ∧ _has_pend_arm)
 
     case_state = (is_first_tick ? 0

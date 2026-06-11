@@ -16,6 +16,18 @@ import "compiler2/driver_emit.ev"
 fsm main
     parse_done ∈ Bool
     parse_done = (is_first_tick ? true : _parse_done)
+    parser ∈ ParseState
+    parser.kind = (is_first_tick ? 0 : _parser.kind)
+    parser.ready = (is_first_tick ? false : _parser.ready)
+    parser.bad = (is_first_tick ? false : _parser.bad)
+    parser.consume = (is_first_tick ? 0 : _parser.consume)
+    parser.pd = (is_first_tick ? 0 : _parser.pd)
+    parser.qd = (is_first_tick ? 0 : _parser.qd)
+    parser.cd = (is_first_tick ? 0 : _parser.cd)
+    parser.expop = (is_first_tick ? false : _parser.expop)
+    parser.sort = (is_first_tick ? 0 : _parser.sort)
+    parser.rec_slot = (is_first_tick ? 0 : _parser.rec_slot)
+    parser.decl_name = (is_first_tick ? "" : _parser.decl_name)
     is_intresult_capture ∈ Int
     is_intresult_capture = (is_first_tick ? 0 : _is_intresult_capture)
     is_strresult_capture ∈ String

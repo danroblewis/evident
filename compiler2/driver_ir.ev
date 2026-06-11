@@ -89,6 +89,18 @@ type EfflitState(count ∈ Int, fn ∈ String, st ∈ Int)
 -- arity, and the current argument position.
 type TupleState(state ∈ Int, callee ∈ String, arity ∈ Int, pos ∈ Int)
 
+-- The body-line parser's signals (DriverPratt produces them; the parse
+-- recognizers and driver_main dispatch read them). `kind` = the finished
+-- parse's item-kind; `ready`/`bad`/`done` = parse-complete / malformed /
+-- expression-closed flags; `consume` = tokens to advance; `pd`/`qd`/`cd` =
+-- open-paren / pending-`?` / open-call depths; `expop` = next token must
+-- start an operand; `sort`/`rec_slot`/`decl_name` = the membership's sort
+-- code / record-registry slot / declared name. (The PrOps/ExprList shunting
+-- stacks and the global parse_mode dispatch selector stay separate.)
+type ParseState(kind ∈ Int, ready ∈ Bool, bad ∈ Bool, consume ∈ Int,
+        pd ∈ Int, qd ∈ Int, cd ∈ Int, expop ∈ Bool,
+        sort ∈ Int, rec_slot ∈ Int, decl_name ∈ String)
+
 -- ── Record-type registry entry: one registered `type Name(...)` ─────
 -- One entry of the record-type registry (DriverRecord builds ≤3 as recs).
 -- name = the type name; fnames/ftypes = the fixed-width 32-byte
