@@ -43,10 +43,10 @@ fsm main
     sym_buf ∈ FtiBuffer
     sym_buf.base = (is_first_tick ? 0 : _sym_buf.base)
     sym_buf.count = (is_first_tick ? 0 : _sym_buf.count)
-    z_arena ∈ Int
-    z_arena = (is_first_tick ? 0 : _z_arena)
-    z_eff_arrsort ∈ Int
-    z_eff_arrsort = (is_first_tick ? 0 : _z_eff_arrsort)
+    z3_arena ∈ Int
+    z3_arena = (is_first_tick ? 0 : _z3_arena)
+    z3_effect_arraysort ∈ Int
+    z3_effect_arraysort = (is_first_tick ? 0 : _z3_effect_arraysort)
     z3sorts ∈ Z3Sorts
     z3sorts.isort = (is_first_tick ? 0 : _z3sorts.isort)
     z3sorts.bsort = (is_first_tick ? 0 : _z3sorts.bsort)
@@ -56,34 +56,34 @@ fsm main
     z3ctx.cfg = (is_first_tick ? 0 : _z3ctx.cfg)
     z3ctx.ctx = (is_first_tick ? 0 : _z3ctx.ctx)
     z3ctx.sol = (is_first_tick ? 0 : _z3ctx.sol)
-    z_effect_sort ∈ Int
-    z_effect_sort = (is_first_tick ? 0 : _z_effect_sort)
-    z_efflen_ge ∈ Int
-    z_efflen_ge = (is_first_tick ? 0 : _z_efflen_ge)
-    z_efflen ∈ Int
-    z_efflen = (is_first_tick ? 0 : _z_efflen)
-    z_first_tick ∈ Int
-    z_first_tick = (is_first_tick ? 0 : _z_first_tick)
-    z_lastres ∈ Int
-    z_lastres = (is_first_tick ? 0 : _z_lastres)
-    z_lastres_ge ∈ Int
-    z_lastres_ge = (is_first_tick ? 0 : _z_lastres_ge)
-    z_lastres_len ∈ Int
-    z_lastres_len = (is_first_tick ? 0 : _z_lastres_len)
-    z_lastres_sort ∈ Int
-    z_lastres_sort = (is_first_tick ? 0 : _z_lastres_sort)
-    z_result_sort ∈ Int
-    z_result_sort = (is_first_tick ? 0 : _z_result_sort)
-    z_effects_sym ∈ Int
-    z_effects_sym = (is_first_tick ? 0 : _z_effects_sym)
-    z_efflen_sym ∈ Int
-    z_efflen_sym = (is_first_tick ? 0 : _z_efflen_sym)
-    z_first_tick_sym ∈ Int
-    z_first_tick_sym = (is_first_tick ? 0 : _z_first_tick_sym)
-    z_lastres_sym ∈ Int
-    z_lastres_sym = (is_first_tick ? 0 : _z_lastres_sym)
-    z_lastres_len_sym ∈ Int
-    z_lastres_len_sym = (is_first_tick ? 0 : _z_lastres_len_sym)
+    z3_effect_sort ∈ Int
+    z3_effect_sort = (is_first_tick ? 0 : _z3_effect_sort)
+    z3_effects_length_geq ∈ Int
+    z3_effects_length_geq = (is_first_tick ? 0 : _z3_effects_length_geq)
+    z3_effects_length ∈ Int
+    z3_effects_length = (is_first_tick ? 0 : _z3_effects_length)
+    z3_first_tick ∈ Int
+    z3_first_tick = (is_first_tick ? 0 : _z3_first_tick)
+    z3_last_results ∈ Int
+    z3_last_results = (is_first_tick ? 0 : _z3_last_results)
+    z3_last_results_geq ∈ Int
+    z3_last_results_geq = (is_first_tick ? 0 : _z3_last_results_geq)
+    z3_last_results_length ∈ Int
+    z3_last_results_length = (is_first_tick ? 0 : _z3_last_results_length)
+    z3_last_results_sort ∈ Int
+    z3_last_results_sort = (is_first_tick ? 0 : _z3_last_results_sort)
+    z3_result_sort ∈ Int
+    z3_result_sort = (is_first_tick ? 0 : _z3_result_sort)
+    z3_effects_symbol ∈ Int
+    z3_effects_symbol = (is_first_tick ? 0 : _z3_effects_symbol)
+    z3_effects_length_symbol ∈ Int
+    z3_effects_length_symbol = (is_first_tick ? 0 : _z3_effects_length_symbol)
+    z3_first_tick_symbol ∈ Int
+    z3_first_tick_symbol = (is_first_tick ? 0 : _z3_first_tick_symbol)
+    z3_last_results_symbol ∈ Int
+    z3_last_results_symbol = (is_first_tick ? 0 : _z3_last_results_symbol)
+    z3_last_results_length_symbol ∈ Int
+    z3_last_results_length_symbol = (is_first_tick ? 0 : _z3_last_results_length_symbol)
     z3nums ∈ Z3Numerals
     z3nums.zero = (is_first_tick ? 0 : _z3nums.zero)
     z3nums.one = (is_first_tick ? 0 : _z3nums.one)

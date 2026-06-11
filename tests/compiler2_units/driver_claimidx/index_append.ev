@@ -65,16 +65,16 @@ fsm main
     tok5 = (is_first_tick ? EofTok : _tok5)
     tok6 ∈ Token
     tok6 = (is_first_tick ? EofTok : _tok6)
-    z_argint_decl ∈ Int
-    z_argint_decl = (is_first_tick ? 0 : _z_argint_decl)
-    z_argstr_decl ∈ Int
-    z_argstr_decl = (is_first_tick ? 0 : _z_argstr_decl)
-    z_cell_decl ∈ Int
-    z_cell_decl = (is_first_tick ? 0 : _z_cell_decl)
-    z_empty_val ∈ Int
-    z_empty_val = (is_first_tick ? 0 : _z_empty_val)
-    z_libcall_decl ∈ Int
-    z_libcall_decl = (is_first_tick ? 0 : _z_libcall_decl)
+    z3_argint_decl ∈ Int
+    z3_argint_decl = (is_first_tick ? 0 : _z3_argint_decl)
+    z3_argstr_decl ∈ Int
+    z3_argstr_decl = (is_first_tick ? 0 : _z3_argstr_decl)
+    z3_cell_decl ∈ Int
+    z3_cell_decl = (is_first_tick ? 0 : _z3_cell_decl)
+    z3_empty_val ∈ Int
+    z3_empty_val = (is_first_tick ? 0 : _z3_empty_val)
+    z3_libcall_decl ∈ Int
+    z3_libcall_decl = (is_first_tick ? 0 : _z3_libcall_decl)
     ..DriverClaimIdx
     c_msg ∈ String = str_from_int(claimidx_buf.count)
     effects ∈ Seq(Effect) = ((claimidx_buf.count = 3)

@@ -48,14 +48,14 @@ fsm main
     tok3 = (is_first_tick ? EofTok : _tok3)
     tok4 ∈ Token
     tok4 = (is_first_tick ? EofTok : _tok4)
-    z_intres_acc ∈ Int
-    z_intres_acc = (is_first_tick ? 0 : _z_intres_acc)
-    z_intres_test ∈ Int
-    z_intres_test = (is_first_tick ? 0 : _z_intres_test)
-    z_strres_acc ∈ Int
-    z_strres_acc = (is_first_tick ? 0 : _z_strres_acc)
-    z_strres_test ∈ Int
-    z_strres_test = (is_first_tick ? 0 : _z_strres_test)
+    z3_intresult_accessor ∈ Int
+    z3_intresult_accessor = (is_first_tick ? 0 : _z3_intresult_accessor)
+    z3_intresult_tester ∈ Int
+    z3_intresult_tester = (is_first_tick ? 0 : _z3_intresult_tester)
+    z3_strresult_accessor ∈ Int
+    z3_strresult_accessor = (is_first_tick ? 0 : _z3_strresult_accessor)
+    z3_strresult_tester ∈ Int
+    z3_strresult_tester = (is_first_tick ? 0 : _z3_strresult_tester)
     variant_names ∈ String
     variant_names = (is_first_tick ? "" : _variant_names)
     acctab_p ∈ Int = 0

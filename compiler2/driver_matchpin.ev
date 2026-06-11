@@ -4,8 +4,8 @@
 --           (tok0..tok4) + the line head name (head_ident), the parse
 --           gate (in_parse, _parse_mode, tok_ready), the Pratt result
 --           (pratt_done, pratt_bad, pratt_result, pratt_kind), the user-enum + Result
---           variant registries (user_variants/variant_names, z_intres_test/z_strres_test/
---           z_intres_acc/z_strres_acc) the arms resolve their ctor/tester/accessor
+--           variant registries (user_variants/variant_names, z3_intresult_tester/z3_strresult_tester/
+--           z3_intresult_accessor/z3_strresult_accessor) the arms resolve their ctor/tester/accessor
 --           handles against, and the acc-table tape base (acctab_p) for
 --           binds past field 0.
 -- PRODUCES: the parse_mode-6 match-pin walk state (match_st/match_name/match_sort/match_scrut_lr/
@@ -139,8 +139,8 @@ fsm DriverMatchPin
     mp_acc0_user ∈ Int
     ∀ e ∈ user_variants : ((e.name = _arm_ctor) ⇒ (mp_acc0_user = e.acc))
     (¬(∃ e ∈ user_variants : e.name = _arm_ctor)) ⇒ (mp_acc0_user = 0)
-    mp_acc0 ∈ Int = (_arm_ctor = "IntResult" ? z_intres_acc
-        : _arm_ctor = "StringResult" ? z_strres_acc
+    mp_acc0 ∈ Int = (_arm_ctor = "IntResult" ? z3_intresult_accessor
+        : _arm_ctor = "StringResult" ? z3_strresult_accessor
         : mp_acc0_user)
     mp_regslot ∈ Int = (index_of(variant_names,
         "|" ++ substr(_arm_ctor ++ mp_pad31, 0, 31), 0) / 32)
@@ -266,14 +266,14 @@ fsm DriverMatchPin
     fold_def_bind ∈ String = (wc_body_done ? "" : _pend_bind)
     fold_def_ctor ∈ String = (wc_body_done ? "" : _pend_ctor)
     fold_tester1 ∈ Int
-    (fold_ctor1 = "IntResult") ⇒ (fold_tester1 = z_intres_test)
-    (fold_ctor1 = "StringResult") ⇒ (fold_tester1 = z_strres_test)
+    (fold_ctor1 = "IntResult") ⇒ (fold_tester1 = z3_intresult_tester)
+    (fold_ctor1 = "StringResult") ⇒ (fold_tester1 = z3_strresult_tester)
     ∀ e ∈ user_variants : ((e.name = fold_ctor1) ⇒ (fold_tester1 = e.tester))
     (¬((fold_ctor1 = "IntResult") ∨ (fold_ctor1 = "StringResult")
         ∨ (∃ e ∈ user_variants : e.name = fold_ctor1))) ⇒ (fold_tester1 = 0)
     fold_tester2 ∈ Int
-    (fold_ctor2 = "IntResult") ⇒ (fold_tester2 = z_intres_test)
-    (fold_ctor2 = "StringResult") ⇒ (fold_tester2 = z_strres_test)
+    (fold_ctor2 = "IntResult") ⇒ (fold_tester2 = z3_intresult_tester)
+    (fold_ctor2 = "StringResult") ⇒ (fold_tester2 = z3_strresult_tester)
     ∀ e ∈ user_variants : ((e.name = fold_ctor2) ⇒ (fold_tester2 = e.tester))
     (¬((fold_ctor2 = "IntResult") ∨ (fold_ctor2 = "StringResult")
         ∨ (∃ e ∈ user_variants : e.name = fold_ctor2))) ⇒ (fold_tester2 = 0)

@@ -4,7 +4,7 @@
 --           per-step state (enum_variant, enum_act_now/enum_step_now, the enum_h_*/
 --           field_sort*/refs_packed* field captures, the group registers
 --           group_size/_group_read_cur/_member_base/enum_member_idx/_enumtab_count, the
---           arena base z_arena), and cap_int / res_int0..5.
+--           arena base z3_arena), and cap_int / res_int0..5.
 -- PRODUCES: the pure per-step Z3 effect constructors selected by the
 --           effects schedule: (a) the enum-datatype declaration bank
 --           (the enum_* declare/write/read effects + the enum_step_eff/
@@ -35,16 +35,16 @@ fsm DriverBuildEff
     -- (bisected 2026-06-10: 7 variants ok, 10 fail). sample.ev's
     -- widest enum (Token) has 57 variants; a whole build group shares
     -- the 160 slots (the cursor resets per group).
-    enum_fnames_p ∈ Int = z_arena
-    enum_fsorts_p ∈ Int = z_arena + 64
-    enum_srefs_p ∈ Int = z_arena + 128
-    enum_query_p ∈ Int = z_arena + 320
-    enum_ctors_p ∈ Int = z_arena + 512
-    enum_sortnames_p ∈ Int = z_arena + 1792
-    enum_clists_p ∈ Int = z_arena + 2048
-    enum_sortsout_p ∈ Int = z_arena + 2304
-    enumtab_p ∈ Int = z_arena + 2560
-    acctab_p ∈ Int = z_arena + 2816
+    enum_fnames_p ∈ Int = z3_arena
+    enum_fsorts_p ∈ Int = z3_arena + 64
+    enum_srefs_p ∈ Int = z3_arena + 128
+    enum_query_p ∈ Int = z3_arena + 320
+    enum_ctors_p ∈ Int = z3_arena + 512
+    enum_sortnames_p ∈ Int = z3_arena + 1792
+    enum_clists_p ∈ Int = z3_arena + 2048
+    enum_sortsout_p ∈ Int = z3_arena + 2304
+    enumtab_p ∈ Int = z3_arena + 2560
+    acctab_p ∈ Int = z3_arena + 2816
 
     enum_fsyms_now ∈ Seq(Int)
     #enum_fsyms_now ≤ 6
@@ -217,16 +217,16 @@ fsm DriverBuildEff
     BuildMalloc(n_bytes ↦ 12288, eff ↦ zinit_arena)
     zinit_arrsort ∈ Effect
     BuildZ3MkArraySort(ctx_h ↦ z3ctx.ctx, idx_sort_h ↦ z3sorts.isort,
-        val_sort_h ↦ z_effect_sort, eff ↦ zinit_arrsort)
+        val_sort_h ↦ z3_effect_sort, eff ↦ zinit_arrsort)
     zinit_effects_sym ∈ Effect
     BuildZ3MkStringSymbol(ctx_h ↦ z3ctx.ctx, name ↦ "effects", eff ↦ zinit_effects_sym)
     zinit_effects ∈ Effect
-    BuildZ3MkConst(ctx_h ↦ z3ctx.ctx, sym_h ↦ z_effects_sym, sort_h ↦ z_eff_arrsort,
+    BuildZ3MkConst(ctx_h ↦ z3ctx.ctx, sym_h ↦ z3_effects_symbol, sort_h ↦ z3_effect_arraysort,
         eff ↦ zinit_effects)
     zinit_efflen_sym ∈ Effect
     BuildZ3MkStringSymbol(ctx_h ↦ z3ctx.ctx, name ↦ "effects__len", eff ↦ zinit_efflen_sym)
     zinit_efflen ∈ Effect
-    BuildZ3MkConst(ctx_h ↦ z3ctx.ctx, sym_h ↦ z_efflen_sym, sort_h ↦ z3sorts.isort,
+    BuildZ3MkConst(ctx_h ↦ z3ctx.ctx, sym_h ↦ z3_effects_length_symbol, sort_h ↦ z3sorts.isort,
         eff ↦ zinit_efflen)
     zinit_zero ∈ Effect
     BuildZ3MkInt(ctx_h ↦ z3ctx.ctx, val ↦ 0, sort_h ↦ z3sorts.isort, eff ↦ zinit_zero)
@@ -242,37 +242,37 @@ fsm DriverBuildEff
     zinit_sym_buf ∈ Effect = LibCall("libc", "calloc", ⟨ArgInt(8192), ArgInt(8)⟩)
     zinit_lastres_arr ∈ Effect
     BuildZ3MkArraySort(ctx_h ↦ z3ctx.ctx, idx_sort_h ↦ z3sorts.isort,
-        val_sort_h ↦ z_result_sort, eff ↦ zinit_lastres_arr)
+        val_sort_h ↦ z3_result_sort, eff ↦ zinit_lastres_arr)
     zinit_lastres_sym ∈ Effect
     BuildZ3MkStringSymbol(ctx_h ↦ z3ctx.ctx, name ↦ "last_results",
         eff ↦ zinit_lastres_sym)
     zinit_lastres ∈ Effect
-    BuildZ3MkConst(ctx_h ↦ z3ctx.ctx, sym_h ↦ z_lastres_sym, sort_h ↦ z_lastres_sort,
+    BuildZ3MkConst(ctx_h ↦ z3ctx.ctx, sym_h ↦ z3_last_results_symbol, sort_h ↦ z3_last_results_sort,
         eff ↦ zinit_lastres)
     zinit_lastres_len_sym ∈ Effect
     BuildZ3MkStringSymbol(ctx_h ↦ z3ctx.ctx, name ↦ "last_results__len",
         eff ↦ zinit_lastres_len_sym)
     zinit_lastres_len ∈ Effect
-    BuildZ3MkConst(ctx_h ↦ z3ctx.ctx, sym_h ↦ z_lastres_len_sym, sort_h ↦ z3sorts.isort,
+    BuildZ3MkConst(ctx_h ↦ z3ctx.ctx, sym_h ↦ z3_last_results_length_symbol, sort_h ↦ z3sorts.isort,
         eff ↦ zinit_lastres_len)
     zinit_first_tick_sym ∈ Effect
     BuildZ3MkStringSymbol(ctx_h ↦ z3ctx.ctx, name ↦ "is_first_tick",
         eff ↦ zinit_first_tick_sym)
     zinit_first_tick ∈ Effect
-    BuildZ3MkConst(ctx_h ↦ z3ctx.ctx, sym_h ↦ z_first_tick_sym, sort_h ↦ z3sorts.bsort,
+    BuildZ3MkConst(ctx_h ↦ z3ctx.ctx, sym_h ↦ z3_first_tick_symbol, sort_h ↦ z3sorts.bsort,
         eff ↦ zinit_first_tick)
     zinit_lastres_ge ∈ Effect
     zinit_lastres_ge_ok ∈ Bool
     zinit_lastres_ge_nn ∈ Bool
-    BoolCmpBuildZ3(ctx_h ↦ z3ctx.ctx, op ↦ op_geq, l_h ↦ z_lastres_len,
+    BoolCmpBuildZ3(ctx_h ↦ z3ctx.ctx, op ↦ op_geq, l_h ↦ z3_last_results_length,
         r_h ↦ z3nums.zero, eff ↦ zinit_lastres_ge, ok ↦ zinit_lastres_ge_ok, needs_not ↦ zinit_lastres_ge_nn)
     zinit_lastres_assert ∈ Effect
-    BuildZ3SolverAssert(ctx_h ↦ z3ctx.ctx, solver_h ↦ z3ctx.sol, ast_h ↦ z_lastres_ge,
+    BuildZ3SolverAssert(ctx_h ↦ z3ctx.ctx, solver_h ↦ z3ctx.sol, ast_h ↦ z3_last_results_geq,
         eff ↦ zinit_lastres_assert)
     zinit_seed0 ∈ Effect
-    BuildMemWriteLong(addr ↦ sym_buf.base, value ↦ z_lastres, eff ↦ zinit_seed0)
+    BuildMemWriteLong(addr ↦ sym_buf.base, value ↦ z3_last_results, eff ↦ zinit_seed0)
     zinit_seed1 ∈ Effect
-    BuildMemWriteLong(addr ↦ sym_buf.base + 8, value ↦ z_first_tick, eff ↦ zinit_seed1)
+    BuildMemWriteLong(addr ↦ sym_buf.base + 8, value ↦ z3_first_tick, eff ↦ zinit_seed1)
     zinit_three ∈ Effect
     BuildZ3MkInt(ctx_h ↦ z3ctx.ctx, val ↦ 3, sort_h ↦ z3sorts.isort, eff ↦ zinit_three)
     zinit_four ∈ Effect
@@ -283,9 +283,9 @@ fsm DriverBuildEff
     zinit_efflen_ge ∈ Effect
     zinit_efflen_ge_ok ∈ Bool
     zinit_efflen_ge_nn ∈ Bool
-    BoolCmpBuildZ3(ctx_h ↦ z3ctx.ctx, op ↦ op_geq, l_h ↦ z_efflen,
+    BoolCmpBuildZ3(ctx_h ↦ z3ctx.ctx, op ↦ op_geq, l_h ↦ z3_effects_length,
         r_h ↦ z3nums.zero, eff ↦ zinit_efflen_ge, ok ↦ zinit_efflen_ge_ok, needs_not ↦ zinit_efflen_ge_nn)
     zinit_efflen_assert ∈ Effect
-    BuildZ3SolverAssert(ctx_h ↦ z3ctx.ctx, solver_h ↦ z3ctx.sol, ast_h ↦ z_efflen_ge,
+    BuildZ3SolverAssert(ctx_h ↦ z3ctx.ctx, solver_h ↦ z3ctx.sol, ast_h ↦ z3_effects_length_geq,
         eff ↦ zinit_efflen_assert)
     zinit_claimidx_buf ∈ Effect = LibCall("libc", "calloc", ⟨ArgInt(2048), ArgInt(8)⟩)

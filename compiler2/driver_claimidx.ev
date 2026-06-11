@@ -4,7 +4,7 @@
 --           decl_name), the parse gate (in_parse, _parse_mode, tok_ready,
 --           work_nil), the parse_mode-4 enum-collection signals
 --           (enter_enum_decl, enum_act) + floor decl
---           handles (z_*_decl/z_empty_val), the Pratt result (pratt_done,
+--           handles (z_*_decl/z3_empty_val), the Pratt result (pratt_done,
 --           pratt_bad, pratt_kind), and the claim-index buffer base (claimidx_buf.base).
 -- PRODUCES: the claim/type index (ci_cnt, claimidx_names) + its per-skip append
 --           effect (eff_claimidx_write), the parse_mode-4 user-enum variant collection
@@ -198,22 +198,22 @@ fsm DriverClaimIdx
     efflit_bad ∈ Bool = (in_efflit ∧ (_efflit_st = 0) ∧ (_efflit_libcall = 0)
         ∧ (¬efflit_exit_enter) ∧ (¬efflit_libcall_enter) ∧ (¬efflit_comma) ∧ (¬efflit_close)
         ∧ (¬efflit_open) ∧ (¬efflit_nest))
-    efflit_arg_decl ∈ Int = (efflit_arg_name = "ArgInt" ? z_argint_decl
-        : z_argstr_decl)
+    efflit_arg_decl ∈ Int = (efflit_arg_name = "ArgInt" ? z3_argint_decl
+        : z3_argstr_decl)
     efflit_sel_eq ∈ C2Item = (_chain_on ? C2SelEqH(_efflit_count)
         : C2SelectEq(_efflit_count))
     efflit_libcall_items ∈ C2Items = C2ICons(C2Process(EStr(_efflit_lib)),
         C2ICons(C2Process(EStr(_efflit_fn)),
         C2ICons(C2Process(efflit_arg_expr),
         C2ICons(C2App(efflit_arg_decl, 1),
-        C2ICons(C2PushH(z_empty_val),
-        C2ICons(C2App(z_cell_decl, 2),
-        C2ICons(C2App(z_libcall_decl, 3),
+        C2ICons(C2PushH(z3_empty_val),
+        C2ICons(C2App(z3_cell_decl, 2),
+        C2ICons(C2App(z3_libcall_decl, 3),
         C2ICons(efflit_sel_eq, C2INil))))))))
     efflit_libcall0_items ∈ C2Items = C2ICons(C2Process(EStr(_efflit_lib)),
         C2ICons(C2Process(EStr(_efflit_fn)),
-        C2ICons(C2PushH(z_empty_val),
-        C2ICons(C2App(z_libcall_decl, 3),
+        C2ICons(C2PushH(z3_empty_val),
+        C2ICons(C2App(z3_libcall_decl, 3),
         C2ICons(efflit_sel_eq, C2INil)))))
 
     guard_done ∈ Bool = (pratt_done ∧ (_pratt_kind = 6) ∧ (¬pratt_bad))

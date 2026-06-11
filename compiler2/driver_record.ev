@@ -215,10 +215,10 @@ fsm DriverRecord
     ∀ k ∈ {0..2} : recs[k].accs[4] = (is_first_tick ? 0 : (recdecl_acc_cap ∧ rec_slot = k ∧ _recdecl_field_i = 4) ? cap_int : _recs[k].accs[4])
     ∀ k ∈ {0..2} : recs[k].accs[5] = (is_first_tick ? 0 : (recdecl_acc_cap ∧ rec_slot = k ∧ _recdecl_field_i = 5) ? cap_int : _recs[k].accs[5])
 
-    recdecl_fnames_p ∈ Int = z_arena + 288
-    recdecl_fsorts_p ∈ Int = z_arena + 336
-    recdecl_ctor_p ∈ Int = z_arena + 384
-    recdecl_accs_p ∈ Int = z_arena + 392
+    recdecl_fnames_p ∈ Int = z3_arena + 288
+    recdecl_fsorts_p ∈ Int = z3_arena + 336
+    recdecl_ctor_p ∈ Int = z3_arena + 384
+    recdecl_accs_p ∈ Int = z3_arena + 392
 
     recdecl_eff_st ∈ Int = (recdecl_go ? 0 : recdecl_st_now)
     recdecl_eff_fi ∈ Int = (recdecl_go ? 0 : recdecl_fi_now)
@@ -230,7 +230,7 @@ fsm DriverRecord
     recdecl_fields ∈ Seq(RdField)
     #recdecl_fields ≤ 6
     ∀ k ∈ {0..5} : RtRecName(s ↦ rec_cur_ftypes, i ↦ k, name ↦ recdecl_fields[k].ty)
-    ∀ k ∈ {0..5} : RtSortOf(ty ↦ recdecl_fields[k].ty, int_h ↦ z3sorts.isort, bool_h ↦ z3sorts.bsort, str_h ↦ z3sorts.ssort, real_h ↦ z3sorts.rsort, iarr_h ↦ z_intarr_sort, sort ↦ recdecl_fields[k].sort)
+    ∀ k ∈ {0..5} : RtSortOf(ty ↦ recdecl_fields[k].ty, int_h ↦ z3sorts.isort, bool_h ↦ z3sorts.bsort, str_h ↦ z3sorts.ssort, real_h ↦ z3sorts.rsort, iarr_h ↦ z3_int_array_sort, sort ↦ recdecl_fields[k].sort)
 
     recdecl_namesym ∈ Effect
     BuildZ3MkStringSymbol(ctx_h ↦ z3ctx.ctx, name ↦ rec_cur_name, eff ↦ recdecl_namesym)

@@ -177,8 +177,8 @@ fsm main
     sym_names = (is_first_tick ? "" : _sym_names)
     tok5 ∈ Token
     tok5 = (is_first_tick ? EofTok : _tok5)
-    z_exit_decl ∈ Int
-    z_exit_decl = (is_first_tick ? 0 : _z_exit_decl)
+    z3_exit_decl ∈ Int
+    z3_exit_decl = (is_first_tick ? 0 : _z3_exit_decl)
     efflit_sel_eq ∈ C2Item
     efflit_sel_eq = (is_first_tick ? C2Drop : _efflit_sel_eq)
     ..DriverPosBind

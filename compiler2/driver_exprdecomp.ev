@@ -1,7 +1,7 @@
 -- MODULE DriverExprDecomp
 -- CONSUMES: the current parse-expr node cur_expr, the work-item tail work_tail,
 --           the user-enum-variant registry (user_variants[0].name..5 / user_variants[0].ctor..5 /
---           user_variants[0].tester..5), and the floor tester decls z_intres_test / z_strres_test.
+--           user_variants[0].tester..5), and the floor tester decls z3_intresult_tester / z3_strresult_tester.
 -- PRODUCES: the decomposed views of cur_expr used by the work-item lowering —
 --           the node-kind flags + payloads (is_int/id/str/bin/tern/
 --           not/m, str_val, lookup_name, op/l/r/c/t/e/ni, op_is_neq),
@@ -79,8 +79,8 @@ fsm DriverExprDecomp
         EMatches(_, me) ⇒ me
         _ ⇒ ENoExpr
     matches_tester ∈ Int
-    (matches_name = "IntResult") ⇒ (matches_tester = z_intres_test)
-    (matches_name = "StringResult") ⇒ (matches_tester = z_strres_test)
+    (matches_name = "IntResult") ⇒ (matches_tester = z3_intresult_tester)
+    (matches_name = "StringResult") ⇒ (matches_tester = z3_strresult_tester)
     ∀ e ∈ user_variants : ((e.name = matches_name) ⇒ (matches_tester = e.tester))
     (¬((matches_name = "IntResult") ∨ (matches_name = "StringResult")
         ∨ (∃ e ∈ user_variants : e.name = matches_name))) ⇒ (matches_tester = 0)

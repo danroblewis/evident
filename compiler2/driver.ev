@@ -778,24 +778,24 @@ fsm driver_main
     eff_arith ∈ Effect
     arith_ok ∈ Bool
     ArithBinopBuildZ3(ctx_h ↦ z3ctx.ctx, op ↦ cur_op,
-        l_h ↦ h_2nd, r_h ↦ h_top, args_arr_ptr ↦ z_arena + 200,
+        l_h ↦ h_2nd, r_h ↦ h_top, args_arr_ptr ↦ z3_arena + 200,
         eff ↦ eff_arith, ok ↦ arith_ok)
     eff_nary ∈ Effect
     nary_ok ∈ Bool
     BoolNaryBuildZ3(ctx_h ↦ z3ctx.ctx, op ↦ cur_op, num_args ↦ 2,
-        args_arr_ptr ↦ z_arena + 200, eff ↦ eff_nary, ok ↦ nary_ok)
+        args_arr_ptr ↦ z3_arena + 200, eff ↦ eff_nary, ok ↦ nary_ok)
     eff_concat ∈ Effect
     BuildZ3MkSeqConcat(ctx_h ↦ z3ctx.ctx, num_args ↦ 2,
-        args_arr_ptr ↦ z_arena + 200, eff ↦ eff_concat)
+        args_arr_ptr ↦ z3_arena + 200, eff ↦ eff_concat)
     eff_ite ∈ Effect
     TernaryBuildZ3(ctx_h ↦ z3ctx.ctx, cond_h ↦ h_3rd, then_h ↦ h_2nd,
         else_h ↦ h_top, eff ↦ eff_ite)
     eff_not ∈ Effect
     BoolNotBuildZ3(ctx_h ↦ z3ctx.ctx, x_h ↦ h_top, eff ↦ eff_not)
     eff_argw0 ∈ Effect
-    BuildMemWriteLong(addr ↦ z_arena + 200, value ↦ h_2nd, eff ↦ eff_argw0)
+    BuildMemWriteLong(addr ↦ z3_arena + 200, value ↦ h_2nd, eff ↦ eff_argw0)
     eff_argw1 ∈ Effect
-    BuildMemWriteLong(addr ↦ z_arena + 208, value ↦ h_top, eff ↦ eff_argw1)
+    BuildMemWriteLong(addr ↦ z3_arena + 208, value ↦ h_top, eff ↦ eff_argw1)
     eff_mkstring ∈ Effect
     BuildZ3MkString(ctx_h ↦ z3ctx.ctx, s ↦ str_val, eff ↦ eff_mkstring)
     strop_a ∈ Int = (strop_argc = 3 ? h_3rd : strop_argc = 2 ? h_2nd : h_top)
@@ -821,8 +821,8 @@ fsm driver_main
         sort_h ↦ (decl_const_sort = 1 ? z3sorts.bsort
             : decl_const_sort ≥ 30 ? res_int1
             : decl_const_sort = 3 ? z3sorts.ssort
-            : decl_const_sort = 4 ? z_result_sort
-            : decl_const_sort = 5 ? z_intarr_sort
+            : decl_const_sort = 4 ? z3_result_sort
+            : decl_const_sort = 5 ? z3_int_array_sort
             : decl_const_sort = 6 ? z3sorts.rsort
             : decl_const_sort = 10 ? recs[0].asort
             : decl_const_sort = 11 ? recs[1].asort
@@ -866,17 +866,17 @@ fsm driver_main
         : _item_step = 4 ? h_5th
         : h_6th)
     eff_ctor_argw ∈ Effect
-    CtorArgWriteStep(args_p ↦ z_arena + 224, idx ↦ app_argc - 1 - _item_step,
+    CtorArgWriteStep(args_p ↦ z3_arena + 224, idx ↦ app_argc - 1 - _item_step,
         arg_h ↦ app_arg, eff ↦ eff_ctor_argw)
     eff_ctor_app ∈ Effect
     CtorAppStep(ctx_h ↦ z3ctx.ctx, ctor_decl_h ↦ app_decl, n_args ↦ app_argc,
-        args_p ↦ z_arena + 224, eff ↦ eff_ctor_app)
+        args_p ↦ z3_arena + 224, eff ↦ eff_ctor_app)
     sel_idx_handle ∈ Int = (sel_idx = 0 ? z3nums.zero
         : sel_idx = 1 ? z3nums.one
         : sel_idx = 2 ? z3nums.two
         : z3nums.three)
     eff_select ∈ Effect
-    BuildZ3MkSelect(ctx_h ↦ z3ctx.ctx, arr_h ↦ z_effects, idx_h ↦ sel_idx_handle,
+    BuildZ3MkSelect(ctx_h ↦ z3ctx.ctx, arr_h ↦ z3_effects, idx_h ↦ sel_idx_handle,
         eff ↦ eff_select)
     eff_select_h ∈ Effect
     BuildZ3MkSelect(ctx_h ↦ z3ctx.ctx, arr_h ↦ h_2nd, idx_h ↦ h_top,
@@ -910,7 +910,7 @@ fsm driver_main
     eff_len_eq ∈ Effect
     len_eq_ok ∈ Bool
     len_eq_nn ∈ Bool
-    BoolCmpBuildZ3(ctx_h ↦ z3ctx.ctx, op ↦ op_eq, l_h ↦ z_efflen, r_h ↦ len_lit_handle,
+    BoolCmpBuildZ3(ctx_h ↦ z3ctx.ctx, op ↦ op_eq, l_h ↦ z3_effects_length, r_h ↦ len_lit_handle,
         eff ↦ eff_len_eq, ok ↦ len_eq_ok, needs_not ↦ len_eq_nn)
     eff_filler ∈ Effect = LibCall("libc", "getpid", ⟨⟩)
 

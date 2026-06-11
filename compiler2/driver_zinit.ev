@@ -5,12 +5,12 @@
 -- PRODUCES: the Z3-lifecycle latch bank — zstep (the setup program
 --           counter) plus every captured handle/const it latches:
 --           z3ctx (cfg/ctx/sol), z3sorts (the four base sorts isort/
---           bsort/ssort/rsort), z_arena, z_eff_arrsort, the effects-array
---           consts (z_effects_sym/z_effects/z_efflen_sym/z_efflen), the numeral
---           consts z3nums (zero..four), z_true/z_false, the token/symbol/
+--           bsort/ssort/rsort), z3_arena, z3_effect_arraysort, the effects-array
+--           consts (z3_effects_symbol/z3_effects/z3_effects_length_symbol/z3_effects_length), the numeral
+--           consts z3nums (zero..four), z3_true/z3_false, the token/symbol/
 --           claim-index buffer bases (tok_buf.base/sym_buf.base/claimidx_buf.base), and the
 --           last_results / is_first_tick build-context consts
---           (z_lastres_sort..z_lastres_ge, z_efflen_ge).
+--           (z3_last_results_sort..z3_last_results_geq, z3_effects_length_geq).
 -- MAINTAINS: zstep advances one step per tick (−2,−1,0,1,… capped at
 --           60) EXCEPT it HOLDS at 9 while the ED machine runs, so each
 --           handle latches exactly once at its named zstep; the latch is
@@ -34,55 +34,55 @@ fsm DriverZInit
     z3sorts.ssort = (is_first_tick ? 0 : zstep = 7 ? cap_int : _z3sorts.ssort)
     z3sorts.rsort = (is_first_tick ? 0 : zstep = 8 ? cap_int : _z3sorts.rsort)
     -- zstep holds at 9; latch the arena only on the FIRST 9-tick.
-    z_arena ∈ Int
-    z_arena = (is_first_tick ? 0
-        : (zstep = 9 ∧ _zstep = 8) ? cap_int : _z_arena)
-    z_eff_arrsort ∈ Int
-    z_eff_arrsort = (is_first_tick ? 0 : zstep = 11 ? cap_int : _z_eff_arrsort)
-    z_effects_sym ∈ Int
-    z_effects_sym = (is_first_tick ? 0 : zstep = 12 ? cap_int : _z_effects_sym)
-    z_effects ∈ Int
-    z_effects = (is_first_tick ? 0 : zstep = 13 ? cap_int : _z_effects)
-    z_efflen_sym ∈ Int
-    z_efflen_sym = (is_first_tick ? 0 : zstep = 14 ? cap_int : _z_efflen_sym)
-    z_efflen ∈ Int
-    z_efflen = (is_first_tick ? 0 : zstep = 15 ? cap_int : _z_efflen)
+    z3_arena ∈ Int
+    z3_arena = (is_first_tick ? 0
+        : (zstep = 9 ∧ _zstep = 8) ? cap_int : _z3_arena)
+    z3_effect_arraysort ∈ Int
+    z3_effect_arraysort = (is_first_tick ? 0 : zstep = 11 ? cap_int : _z3_effect_arraysort)
+    z3_effects_symbol ∈ Int
+    z3_effects_symbol = (is_first_tick ? 0 : zstep = 12 ? cap_int : _z3_effects_symbol)
+    z3_effects ∈ Int
+    z3_effects = (is_first_tick ? 0 : zstep = 13 ? cap_int : _z3_effects)
+    z3_effects_length_symbol ∈ Int
+    z3_effects_length_symbol = (is_first_tick ? 0 : zstep = 14 ? cap_int : _z3_effects_length_symbol)
+    z3_effects_length ∈ Int
+    z3_effects_length = (is_first_tick ? 0 : zstep = 15 ? cap_int : _z3_effects_length)
     z3nums ∈ Z3Numerals
     z3nums.zero = (is_first_tick ? 0 : zstep = 16 ? cap_int : _z3nums.zero)
     z3nums.one = (is_first_tick ? 0 : zstep = 17 ? cap_int : _z3nums.one)
     z3nums.two = (is_first_tick ? 0 : zstep = 18 ? cap_int : _z3nums.two)
-    z_true ∈ Int
-    z_true = (is_first_tick ? 0 : zstep = 19 ? cap_int : _z_true)
-    z_false ∈ Int
-    z_false = (is_first_tick ? 0 : zstep = 20 ? cap_int : _z_false)
+    z3_true ∈ Int
+    z3_true = (is_first_tick ? 0 : zstep = 19 ? cap_int : _z3_true)
+    z3_false ∈ Int
+    z3_false = (is_first_tick ? 0 : zstep = 20 ? cap_int : _z3_false)
     tok_buf ∈ FtiBuffer
     tok_buf.base = (is_first_tick ? 0 : zstep = 21 ? cap_int : _tok_buf.base)
     tok_buf.cap = 65534
     sym_buf ∈ FtiBuffer
     sym_buf.base = (is_first_tick ? 0 : zstep = 22 ? cap_int : _sym_buf.base)
     sym_buf.cap = 8192
-    z_lastres_sort ∈ Int
-    z_lastres_sort = (is_first_tick ? 0 : zstep = 23 ? cap_int : _z_lastres_sort)
-    z_lastres_sym ∈ Int
-    z_lastres_sym = (is_first_tick ? 0 : zstep = 24 ? cap_int : _z_lastres_sym)
-    z_lastres ∈ Int
-    z_lastres = (is_first_tick ? 0 : zstep = 25 ? cap_int : _z_lastres)
-    z_lastres_len_sym ∈ Int
-    z_lastres_len_sym = (is_first_tick ? 0 : zstep = 26 ? cap_int : _z_lastres_len_sym)
-    z_lastres_len ∈ Int
-    z_lastres_len = (is_first_tick ? 0 : zstep = 27 ? cap_int : _z_lastres_len)
-    z_first_tick_sym ∈ Int
-    z_first_tick_sym = (is_first_tick ? 0 : zstep = 28 ? cap_int : _z_first_tick_sym)
-    z_first_tick ∈ Int
-    z_first_tick = (is_first_tick ? 0 : zstep = 29 ? cap_int : _z_first_tick)
-    z_lastres_ge ∈ Int
-    z_lastres_ge = (is_first_tick ? 0 : zstep = 30 ? cap_int : _z_lastres_ge)
+    z3_last_results_sort ∈ Int
+    z3_last_results_sort = (is_first_tick ? 0 : zstep = 23 ? cap_int : _z3_last_results_sort)
+    z3_last_results_symbol ∈ Int
+    z3_last_results_symbol = (is_first_tick ? 0 : zstep = 24 ? cap_int : _z3_last_results_symbol)
+    z3_last_results ∈ Int
+    z3_last_results = (is_first_tick ? 0 : zstep = 25 ? cap_int : _z3_last_results)
+    z3_last_results_length_symbol ∈ Int
+    z3_last_results_length_symbol = (is_first_tick ? 0 : zstep = 26 ? cap_int : _z3_last_results_length_symbol)
+    z3_last_results_length ∈ Int
+    z3_last_results_length = (is_first_tick ? 0 : zstep = 27 ? cap_int : _z3_last_results_length)
+    z3_first_tick_symbol ∈ Int
+    z3_first_tick_symbol = (is_first_tick ? 0 : zstep = 28 ? cap_int : _z3_first_tick_symbol)
+    z3_first_tick ∈ Int
+    z3_first_tick = (is_first_tick ? 0 : zstep = 29 ? cap_int : _z3_first_tick)
+    z3_last_results_geq ∈ Int
+    z3_last_results_geq = (is_first_tick ? 0 : zstep = 30 ? cap_int : _z3_last_results_geq)
     z3nums.three = (is_first_tick ? 0 : zstep = 33 ? cap_int : _z3nums.three)
     z3nums.four = (is_first_tick ? 0 : zstep = 34 ? cap_int : _z3nums.four)
-    z_intarr_sort ∈ Int
-    z_intarr_sort = (is_first_tick ? 0 : zstep = 35 ? cap_int : _z_intarr_sort)
-    z_efflen_ge ∈ Int
-    z_efflen_ge = (is_first_tick ? 0 : zstep = 36 ? cap_int : _z_efflen_ge)
+    z3_int_array_sort ∈ Int
+    z3_int_array_sort = (is_first_tick ? 0 : zstep = 35 ? cap_int : _z3_int_array_sort)
+    z3_effects_length_geq ∈ Int
+    z3_effects_length_geq = (is_first_tick ? 0 : zstep = 36 ? cap_int : _z3_effects_length_geq)
     claimidx_buf ∈ FtiBuffer
     claimidx_buf.base = (is_first_tick ? 0 : zstep = 38 ? cap_int : _claimidx_buf.base)
     claimidx_buf.cap = 2048

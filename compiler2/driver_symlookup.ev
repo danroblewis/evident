@@ -4,7 +4,7 @@
 --           (_binds / _bind_base / _bind_top — compose's slot-bind
 --           registry), the import/inline prefix (_scope_prefix),
 --           the enum-variant value registry (enum_values, a bounded Seq), and the cached
---           z_true/z_false handles.
+--           z3_true/z3_false handles.
 -- PRODUCES: name resolution — resolved_key/resolved_position/resolved_found(2)/position_now,
 --           the prefix-scoped variants (d_lk_pfx_*), the frame slot-bind hit
 --           (bound_found/bound_handle), special_name/resolved_pure, the resolved
@@ -35,8 +35,8 @@ fsm DriverSymLookup
     resolved_found2 ∈ Bool = (prefixed_hit ∨ resolved_found)
     resolved_pure ∈ Bool = (special_name ∨ (¬resolved_found2))
     resolved_handle ∈ Int
-    (lookup_name = "true") ⇒ (resolved_handle = z_true)
-    (lookup_name = "false") ⇒ (resolved_handle = z_false)
+    (lookup_name = "true") ⇒ (resolved_handle = z3_true)
+    (lookup_name = "false") ⇒ (resolved_handle = z3_false)
     ∀ e ∈ enum_values : ((e.name = lookup_name) ⇒ (resolved_handle = e.value))
     (¬((lookup_name = "true") ∨ (lookup_name = "false")
         ∨ (∃ e ∈ enum_values : e.name = lookup_name))) ⇒ (resolved_handle = 0)
