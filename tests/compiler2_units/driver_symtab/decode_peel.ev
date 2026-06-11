@@ -33,8 +33,8 @@ fsm main
     item_step = (is_first_tick ? 0 : _item_step)
     parse_mode ∈ Int
     parse_mode = (is_first_tick ? 0 : _parse_mode)
-    bcast_on ∈ Bool
-    bcast_on = (is_first_tick ? false : _bcast_on)
+    pinning ∈ Bool
+    pinning = (is_first_tick ? false : _pinning)
     tok_ready ∈ Bool
     tok_ready = (is_first_tick ? false : _tok_ready)
     sym_buf ∈ FtiBuffer

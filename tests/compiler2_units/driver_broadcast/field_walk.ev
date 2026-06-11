@@ -1,8 +1,8 @@
 -- DriverBroadcast isolation — the per-field broadcast walk.
 -- Drives a record-pinned membership completion on one tick, holds the
 -- claim-walk dispatch gate open with a 2-field record; the broadcast
--- must arm, reset bcast_field_i to 0, step 0→1→2 one field per tick, and
--- disarm at the last field. Reports bcast_field_i after the walk settles.
+-- must arm, reset field_cursor to 0, step 0→1→2 one field per tick, and
+-- disarm at the last field. Reports field_cursor after the walk settles.
 --
 -- entry: main
 -- expect: stdout = "2"
@@ -56,7 +56,7 @@ fsm main
     sym_names ∈ String
     sym_names = (is_first_tick ? "" : _sym_names)
     ..DriverBroadcast
-    fi_msg ∈ String = str_from_int(bcast_field_i)
+    fi_msg ∈ String = str_from_int(field_cursor)
     effects ∈ Seq(Effect) = (tc ≥ 5
         ? ⟨LibCall("libc", "puts", ⟨ArgStr(fi_msg)⟩), Exit(0)⟩
         : ⟨LibCall("libc", "getpid", ⟨⟩)⟩)

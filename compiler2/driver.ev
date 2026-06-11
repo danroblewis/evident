@@ -329,18 +329,18 @@ fsm driver_main
         C2ICons(C2Process(EInt(_qloop_cur)),
         C2ICons(C2SelH,
         C2ICons(C2App(qvar_acc, 1), work_tail))))
-    bcast_qual_name ∈ String = _scope_prefix ++ lookup_name ++ "." ++ bcast_field
-    bcast_qual_key ∈ String
-    FtiNameEntry(name ↦ bcast_qual_name, entry ↦ bcast_qual_key)
-    bcast_hit ∈ Bool = (it_process ∧ expr_is_ident ∧ _bcast_on
-        ∧ (index_of(sym_names, bcast_qual_key, 0) ≥ 0))
-    bcast_hit_items ∈ C2Items = C2ICons(C2Process(EIdent(bcast_qual_name)), work_tail)
-    bcast_ctor_slot ∈ Int
-    RtIdxOf(nm ↦ call_name, idx ↦ bcast_ctor_slot)
-    bcast_ctor_hit ∈ Bool = (it_process ∧ _bcast_on ∧ (bcast_ctor_slot ≥ 0)
+    qual_name ∈ String = _scope_prefix ++ lookup_name ++ "." ++ field_name
+    qual_key ∈ String
+    FtiNameEntry(name ↦ qual_name, entry ↦ qual_key)
+    pin_hit ∈ Bool = (it_process ∧ expr_is_ident ∧ _pinning
+        ∧ (index_of(sym_names, qual_key, 0) ≥ 0))
+    pin_hit_items ∈ C2Items = C2ICons(C2Process(EIdent(qual_name)), work_tail)
+    pin_ctor_slot ∈ Int
+    RtIdxOf(nm ↦ call_name, idx ↦ pin_ctor_slot)
+    pin_ctor_hit ∈ Bool = (it_process ∧ _pinning ∧ (pin_ctor_slot ≥ 0)
         ∧ (expr_is_call1 ∨ expr_is_call2 ∨ expr_is_call3))
-    bcast_ctor_items ∈ C2Items = C2ICons(
-        C2Process(_bcast_cur = 0 ? call_arg0 : _bcast_cur = 1 ? call_arg1 : call_arg2),
+    pin_ctor_items ∈ C2Items = C2ICons(
+        C2Process(_emit_cursor = 0 ? call_arg0 : _emit_cursor = 1 ? call_arg1 : call_arg2),
         work_tail)
     bind_items ∈ C2Items = (_match_scrut_lr
         ? C2ICons(C2Process(EIdent("last_results")),
@@ -366,16 +366,16 @@ fsm driver_main
     -- Bare mention against its header (the claim-headers pilot): these
     -- ten declarations ARE the broadcast interface; its other names are
     -- per-call-site internals.
-    bcast_on ∈ Bool
-    bcast_slot ∈ Int
-    bcast_name ∈ String
-    bcast_body ∈ Expr
-    bcast_field_i ∈ Int
-    bcast_cur ∈ Int
-    bcast_field ∈ String
-    bcast_more ∈ Bool
-    bcast_fin ∈ Bool
-    bcast_items ∈ C2Items
+    pinning ∈ Bool
+    record_slot ∈ Int
+    pinned_name ∈ String
+    pinned_body ∈ Expr
+    field_cursor ∈ Int
+    emit_cursor ∈ Int
+    field_name ∈ String
+    more_fields ∈ Bool
+    pin_done ∈ Bool
+    pin_items ∈ C2Items
     DriverBroadcast
 
     seq_mem_items ∈ C2Items = C2ICons(
@@ -482,13 +482,13 @@ fsm driver_main
         : 0)
     push_bound ∈ Bool = (processing ∧ it_process ∧ expr_is_ident
         ∧ bound_found ∧ (¬bind_hit) ∧ (¬qvar_hit) ∧ (¬qvar_dot)
-        ∧ (¬bcast_hit))
+        ∧ (¬pin_hit))
     push_ident ∈ Bool = (processing ∧ it_process ∧ expr_is_ident
         ∧ lookup_pure ∧ (¬bind_hit) ∧ (¬bound_found) ∧ (¬qvar_hit)
-        ∧ (¬qvar_dot) ∧ (¬bcast_hit) ∧ (¬bcast_ctor_hit))
+        ∧ (¬qvar_dot) ∧ (¬pin_hit) ∧ (¬pin_ctor_hit))
     lookup_read ∈ Bool = (processing ∧ it_process ∧ expr_is_ident
         ∧ (¬lookup_pure) ∧ (¬bind_hit) ∧ (¬bound_found) ∧ (¬qvar_hit)
-        ∧ (¬qvar_dot) ∧ (¬bcast_hit))
+        ∧ (¬qvar_dot) ∧ (¬pin_hit))
     push_handle ∈ Bool = (processing ∧ it_push_h)
     push_decl ∈ Bool = (processing ∧ it_decl ∧ (_item_step = 2))
     stack_dup3 ∈ Bool = (processing ∧ it_dup3)
@@ -538,8 +538,8 @@ fsm driver_main
         : tuple_bite ? tuparg_items
         : qexp_more ? qexp_items
         : qexp_fin ? qexp_fin_items
-        : bcast_more ? bcast_items
-        : bcast_fin ? C2INil
+        : more_fields ? pin_items
+        : pin_done ? C2INil
         : ¬processing ? _work_items
         : it_process ∧ expr_is_binop ∧ expr_op_is_neq ? C2ICons(C2Process(expr_lhs), C2ICons(C2Process(expr_rhs), C2ICons(C2Op(OpEq), C2ICons(C2Not, work_tail))))
         : it_process ∧ expr_is_binop ? C2ICons(C2Process(expr_lhs), C2ICons(C2Process(expr_rhs), C2ICons(C2Op(expr_op), work_tail)))
@@ -548,8 +548,8 @@ fsm driver_main
         : it_process ∧ expr_is_matches ? matches_items
         : it_process ∧ qvar_hit ? qvar_items
         : it_process ∧ qvar_dot ? qvar_dot_items
-        : bcast_hit ? bcast_hit_items
-        : bcast_ctor_hit ? bcast_ctor_items
+        : pin_hit ? pin_hit_items
+        : pin_ctor_hit ? pin_ctor_items
         : it_process ∧ bind_hit ? bind_items
         : it_process ∧ expr_is_call1 ? call1_items
         : it_process ∧ expr_is_call2 ? call2_items
