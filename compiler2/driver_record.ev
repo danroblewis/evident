@@ -228,30 +228,12 @@ fsm DriverRecord
     BuildZ3MkStringSymbol(ctx_h ↦ z3ctx.ctx, name ↦ rec_cur_name, eff ↦ recdecl_namesym)
     fieldsym ∈ Effect
     BuildZ3MkStringSymbol(ctx_h ↦ z3ctx.ctx, name ↦ recdecl_fname, eff ↦ fieldsym)
-    recdecl_write_fn0 ∈ Effect
-    BuildMemWriteLong(addr ↦ recdecl_fnames_p, value ↦ h_fields_now[0], eff ↦ recdecl_write_fn0)
-    recdecl_write_fn1 ∈ Effect
-    BuildMemWriteLong(addr ↦ recdecl_fnames_p + 8, value ↦ h_fields_now[1], eff ↦ recdecl_write_fn1)
-    recdecl_write_fn2 ∈ Effect
-    BuildMemWriteLong(addr ↦ recdecl_fnames_p + 16, value ↦ h_fields_now[2], eff ↦ recdecl_write_fn2)
-    recdecl_write_fn3 ∈ Effect
-    BuildMemWriteLong(addr ↦ recdecl_fnames_p + 24, value ↦ h_fields_now[3], eff ↦ recdecl_write_fn3)
-    recdecl_write_fn4 ∈ Effect
-    BuildMemWriteLong(addr ↦ recdecl_fnames_p + 32, value ↦ h_fields_now[4], eff ↦ recdecl_write_fn4)
-    recdecl_write_fn5 ∈ Effect
-    BuildMemWriteLong(addr ↦ recdecl_fnames_p + 40, value ↦ h_fields_now[5], eff ↦ recdecl_write_fn5)
-    recdecl_write_fs0 ∈ Effect
-    BuildMemWriteLong(addr ↦ recdecl_fsorts_p, value ↦ recdecl_fields[0].sort, eff ↦ recdecl_write_fs0)
-    recdecl_write_fs1 ∈ Effect
-    BuildMemWriteLong(addr ↦ recdecl_fsorts_p + 8, value ↦ recdecl_fields[1].sort, eff ↦ recdecl_write_fs1)
-    recdecl_write_fs2 ∈ Effect
-    BuildMemWriteLong(addr ↦ recdecl_fsorts_p + 16, value ↦ recdecl_fields[2].sort, eff ↦ recdecl_write_fs2)
-    recdecl_write_fs3 ∈ Effect
-    BuildMemWriteLong(addr ↦ recdecl_fsorts_p + 24, value ↦ recdecl_fields[3].sort, eff ↦ recdecl_write_fs3)
-    recdecl_write_fs4 ∈ Effect
-    BuildMemWriteLong(addr ↦ recdecl_fsorts_p + 32, value ↦ recdecl_fields[4].sort, eff ↦ recdecl_write_fs4)
-    recdecl_write_fs5 ∈ Effect
-    BuildMemWriteLong(addr ↦ recdecl_fsorts_p + 40, value ↦ recdecl_fields[5].sort, eff ↦ recdecl_write_fs5)
+    recdecl_write_fns ∈ Seq(Effect)
+    #recdecl_write_fns ≤ 6
+    ∀ k ∈ {0..5} : BuildMemWriteLong(addr ↦ recdecl_fnames_p + (8 * k), value ↦ h_fields_now[k], eff ↦ recdecl_write_fns[k])
+    recdecl_write_fss ∈ Seq(Effect)
+    #recdecl_write_fss ≤ 6
+    ∀ k ∈ {0..5} : BuildMemWriteLong(addr ↦ recdecl_fsorts_p + (8 * k), value ↦ recdecl_fields[k].sort, eff ↦ recdecl_write_fss[k])
     tuplesort_eff ∈ Effect = LibCall("libz3", "Z3_mk_tuple_sort",
         ⟨ArgInt(z3ctx.ctx), ArgInt(h_name), ArgInt(cur_nf), ArgInt(recdecl_fnames_p),
          ArgInt(recdecl_fsorts_p), ArgInt(ctor_p), ArgInt(accs_p)⟩)

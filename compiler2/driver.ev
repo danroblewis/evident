@@ -969,19 +969,19 @@ fsm driver_main
         : zstep = 7 ? ⟨zinit_rsort⟩
         : zstep = 8 ? ⟨zinit_arena⟩
         : running ? (wbatchf
-            ? (field_count = 1 ? ⟨enum_write_fn0, enum_write_fs0, write_refs01⟩
-              : field_count = 2 ? ⟨enum_write_fn0, enum_write_fn1, enum_write_fs0, enum_write_fs1, write_refs01⟩
-              : field_count = 3 ? ⟨enum_write_fn0, enum_write_fn1, enum_write_fn2,
-                 enum_write_fs0, enum_write_fs1, enum_write_fs2,
+            ? (field_count = 1 ? ⟨enum_write_fns[0], enum_write_fss[0], write_refs01⟩
+              : field_count = 2 ? ⟨enum_write_fns[0], enum_write_fns[1], enum_write_fss[0], enum_write_fss[1], write_refs01⟩
+              : field_count = 3 ? ⟨enum_write_fns[0], enum_write_fns[1], enum_write_fns[2],
+                 enum_write_fss[0], enum_write_fss[1], enum_write_fss[2],
                  write_refs01, write_refs23⟩
-              : field_count = 4 ? ⟨enum_write_fn0, enum_write_fn1, enum_write_fn2, enum_write_fn3,
-                 enum_write_fs0, enum_write_fs1, enum_write_fs2, enum_write_fs3,
+              : field_count = 4 ? ⟨enum_write_fns[0], enum_write_fns[1], enum_write_fns[2], enum_write_fns[3],
+                 enum_write_fss[0], enum_write_fss[1], enum_write_fss[2], enum_write_fss[3],
                  write_refs01, write_refs23⟩
-              : field_count = 5 ? ⟨enum_write_fn0, enum_write_fn1, enum_write_fn2, enum_write_fn3, enum_write_fn4,
-                 enum_write_fs0, enum_write_fs1, enum_write_fs2, enum_write_fs3, enum_write_fs4,
+              : field_count = 5 ? ⟨enum_write_fns[0], enum_write_fns[1], enum_write_fns[2], enum_write_fns[3], enum_write_fns[4],
+                 enum_write_fss[0], enum_write_fss[1], enum_write_fss[2], enum_write_fss[3], enum_write_fss[4],
                  write_refs01, write_refs23, write_refs45⟩
-              : ⟨enum_write_fn0, enum_write_fn1, enum_write_fn2, enum_write_fn3, enum_write_fn4, enum_write_fn5,
-                 enum_write_fs0, enum_write_fs1, enum_write_fs2, enum_write_fs3, enum_write_fs4, enum_write_fs5,
+              : ⟨enum_write_fns[0], enum_write_fns[1], enum_write_fns[2], enum_write_fns[3], enum_write_fns[4], enum_write_fns[5],
+                 enum_write_fss[0], enum_write_fss[1], enum_write_fss[2], enum_write_fss[3], enum_write_fss[4], enum_write_fss[5],
                  write_refs01, write_refs23, write_refs45⟩)
             : wbatchfx ? ⟨fld_sym_eff, tabread_f⟩
             : wbatch2 ? ⟨write_name, write_clist⟩
@@ -1034,16 +1034,16 @@ fsm driver_main
         : start_fetch ? ⟨read_tag0, read_pay0, read_tag1, pay1, tag2, pay2,
             tag3, pay3, tag4, pay4, tag5, pay5, tag6, pay6,
             tag7, pay7⟩
-        : _burst_phase = 1 ? ⟨eff0, eff1, eff2, eff3, eff4, eff5, eff6, eff7⟩
+        : _burst_phase = 1 ? ⟨str_copies[0], str_copies[1], str_copies[2], str_copies[3], str_copies[4], str_copies[5], str_copies[6], str_copies[7]⟩
         : claimindex_add ? ⟨claimidx_write⟩
         : callee_cursor ? ⟨claimidx_read⟩
         : cond_hit ? ⟨guard_read_eff⟩
         : accread ? ⟨match_accread⟩
         : tuple_close ? ⟨posbind_read⟩
         : recdecl_active ? (emit_state = 2
-            ? ⟨recdecl_write_fn0, recdecl_write_fn1, recdecl_write_fn2, recdecl_write_fn3, recdecl_write_fn4,
-               recdecl_write_fn5, recdecl_write_fs0, recdecl_write_fs1, recdecl_write_fs2, recdecl_write_fs3,
-               recdecl_write_fs4, recdecl_write_fs5⟩
+            ? ⟨recdecl_write_fns[0], recdecl_write_fns[1], recdecl_write_fns[2], recdecl_write_fns[3], recdecl_write_fns[4],
+               recdecl_write_fns[5], recdecl_write_fss[0], recdecl_write_fss[1], recdecl_write_fss[2], recdecl_write_fss[3],
+               recdecl_write_fss[4], recdecl_write_fss[5]⟩
             : ⟨recdecl_step_eff⟩)
         : (processing ∧ is_decl_item ∧ (_item_step = 0) ∧ (new_const_sort ≥ 30))
             ? ⟨mksym_eff, enumtab_read_mem⟩

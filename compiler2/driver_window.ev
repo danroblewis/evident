@@ -133,22 +133,12 @@ fsm DriverWindow
     ∀ k ∈ {0..7} : FtiLatch(slot ↦ 2*k, cap ↦ is_capture_tick, prev ↦ _tag_latch[k], cur ↦ tag_latch[k])
     ∀ k ∈ {0..7} : FtiLatch(slot ↦ 2*k + 1, cap ↦ is_capture_tick, prev ↦ _pay_latch[k], cur ↦ pay_latch[k])
 
-    is_str0 ∈ Bool = (ints[0] = 1 ∨ ints[0] = 3)
-    is_str1 ∈ Bool = (ints[2] = 1 ∨ ints[2] = 3)
-    is_str2 ∈ Bool = (ints[4] = 1 ∨ ints[4] = 3)
-    is_str3 ∈ Bool = (ints[6] = 1 ∨ ints[6] = 3)
-    is_str4 ∈ Bool = (ints[8] = 1 ∨ ints[8] = 3)
-    is_str5 ∈ Bool = (ints[10] = 1 ∨ ints[10] = 3)
-    is_str6 ∈ Bool = (ints[12] = 1 ∨ ints[12] = 3)
-    is_str7 ∈ Bool = (ints[14] = 1 ∨ ints[14] = 3)
-    eff0 ∈ Effect = (is_str0 ? LibCall("__cstr", "copy", ⟨ArgInt(ints[1])⟩) : LibCall("libc", "getpid", ⟨⟩))
-    eff1 ∈ Effect = (is_str1 ? LibCall("__cstr", "copy", ⟨ArgInt(ints[3])⟩) : LibCall("libc", "getpid", ⟨⟩))
-    eff2 ∈ Effect = (is_str2 ? LibCall("__cstr", "copy", ⟨ArgInt(ints[5])⟩) : LibCall("libc", "getpid", ⟨⟩))
-    eff3 ∈ Effect = (is_str3 ? LibCall("__cstr", "copy", ⟨ArgInt(ints[7])⟩) : LibCall("libc", "getpid", ⟨⟩))
-    eff4 ∈ Effect = (is_str4 ? LibCall("__cstr", "copy", ⟨ArgInt(ints[9])⟩) : LibCall("libc", "getpid", ⟨⟩))
-    eff5 ∈ Effect = (is_str5 ? LibCall("__cstr", "copy", ⟨ArgInt(ints[11])⟩) : LibCall("libc", "getpid", ⟨⟩))
-    eff6 ∈ Effect = (is_str6 ? LibCall("__cstr", "copy", ⟨ArgInt(ints[13])⟩) : LibCall("libc", "getpid", ⟨⟩))
-    eff7 ∈ Effect = (is_str7 ? LibCall("__cstr", "copy", ⟨ArgInt(ints[15])⟩) : LibCall("libc", "getpid", ⟨⟩))
+    is_strs ∈ Seq(Bool)
+    #is_strs ≤ 8
+    ∀ k ∈ {0..7} : is_strs[k] = (ints[2 * k] = 1 ∨ ints[2 * k] = 3)
+    str_copies ∈ Seq(Effect)
+    #str_copies ≤ 8
+    ∀ k ∈ {0..7} : str_copies[k] = (is_strs[k] ? LibCall("__cstr", "copy", ⟨ArgInt(ints[2 * k + 1])⟩) : LibCall("libc", "getpid", ⟨⟩))
 
     res_strs ∈ Seq(String)
     #res_strs ≤ 8

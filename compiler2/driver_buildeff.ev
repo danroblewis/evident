@@ -62,30 +62,12 @@ fsm DriverBuildEff
     fld_tabpos ∈ Int = slots[enum_fld_k].tabpos
     tabread_f ∈ Effect
     BuildMemReadLong(addr ↦ enumtab_p + 8 * (fld_tabpos / 32), eff ↦ tabread_f)
-    enum_write_fn0 ∈ Effect
-    BuildMemWriteLong(addr ↦ enum_fnames_p, value ↦ fsyms_now[0], eff ↦ enum_write_fn0)
-    enum_write_fn1 ∈ Effect
-    BuildMemWriteLong(addr ↦ enum_fnames_p + 8, value ↦ fsyms_now[1], eff ↦ enum_write_fn1)
-    enum_write_fn2 ∈ Effect
-    BuildMemWriteLong(addr ↦ enum_fnames_p + 16, value ↦ fsyms_now[2], eff ↦ enum_write_fn2)
-    enum_write_fn3 ∈ Effect
-    BuildMemWriteLong(addr ↦ enum_fnames_p + 24, value ↦ fsyms_now[3], eff ↦ enum_write_fn3)
-    enum_write_fn4 ∈ Effect
-    BuildMemWriteLong(addr ↦ enum_fnames_p + 32, value ↦ fsyms_now[4], eff ↦ enum_write_fn4)
-    enum_write_fn5 ∈ Effect
-    BuildMemWriteLong(addr ↦ enum_fnames_p + 40, value ↦ fsyms_now[5], eff ↦ enum_write_fn5)
-    enum_write_fs0 ∈ Effect
-    BuildMemWriteLong(addr ↦ enum_fsorts_p, value ↦ slots[0].sort, eff ↦ enum_write_fs0)
-    enum_write_fs1 ∈ Effect
-    BuildMemWriteLong(addr ↦ enum_fsorts_p + 8, value ↦ slots[1].sort, eff ↦ enum_write_fs1)
-    enum_write_fs2 ∈ Effect
-    BuildMemWriteLong(addr ↦ enum_fsorts_p + 16, value ↦ slots[2].sort, eff ↦ enum_write_fs2)
-    enum_write_fs3 ∈ Effect
-    BuildMemWriteLong(addr ↦ enum_fsorts_p + 24, value ↦ slots[3].sort, eff ↦ enum_write_fs3)
-    enum_write_fs4 ∈ Effect
-    BuildMemWriteLong(addr ↦ enum_fsorts_p + 32, value ↦ slots[4].sort, eff ↦ enum_write_fs4)
-    enum_write_fs5 ∈ Effect
-    BuildMemWriteLong(addr ↦ enum_fsorts_p + 40, value ↦ slots[5].sort, eff ↦ enum_write_fs5)
+    enum_write_fns ∈ Seq(Effect)
+    #enum_write_fns ≤ 6
+    ∀ k ∈ {0..5} : BuildMemWriteLong(addr ↦ enum_fnames_p + (8 * k), value ↦ fsyms_now[k], eff ↦ enum_write_fns[k])
+    enum_write_fss ∈ Seq(Effect)
+    #enum_write_fss ≤ 6
+    ∀ k ∈ {0..5} : BuildMemWriteLong(addr ↦ enum_fsorts_p + (8 * k), value ↦ slots[k].sort, eff ↦ enum_write_fss[k])
     write_refs01 ∈ Effect
     BuildMemWriteLong(addr ↦ enum_srefs_p, value ↦ refs_packed01, eff ↦ write_refs01)
     write_refs23 ∈ Effect
