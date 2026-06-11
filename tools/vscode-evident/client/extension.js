@@ -10,10 +10,11 @@ let client;
 function activate(context) {
   const cfg = workspace.getConfiguration("evident");
   const command = cfg.get("lspPath") || "evident-lsp";
+  const args = cfg.get("lspArgs") || [];
 
   const serverOptions = {
-    run: { command, transport: TransportKind.stdio },
-    debug: { command, transport: TransportKind.stdio },
+    run: { command, args, transport: TransportKind.stdio },
+    debug: { command, args, transport: TransportKind.stdio },
   };
 
   const clientOptions = {

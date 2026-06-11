@@ -4,4 +4,6 @@
 pub mod families;
 pub mod index;
 pub mod lexer;
+pub mod positions;
 pub mod rename;
+pub mod resolve;
