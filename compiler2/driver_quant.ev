@@ -101,20 +101,20 @@ fsm DriverQuant
 
     seqvar_len ∈ Int
     lhs_call ∈ Bool = (cond_lhs matches ECall1(_, _))
-    seqlen_callee ∈ String = match cond_lhs
+    len_callee ∈ String = match cond_lhs
         ECall1(n, _) ⇒ n
         _ ⇒ ""
     arg ∈ Expr = match cond_lhs
         ECall1(_, a) ⇒ a
         _ ⇒ ENoExpr
-    seqlen_arg_name ∈ String = match arg
+    len_argument_name ∈ String = match arg
         EIdent(s) ⇒ s
         _ ⇒ ""
-    seqlen_val ∈ Int = match cond_rhs
+    computed_length ∈ Int = match cond_rhs
         EInt(n) ⇒ n
         _ ⇒ 0 - 1
-    seqlen_pin_hit ∈ Bool = (parse_ready ∧ (_parse_kind = 2) ∧ (¬parse_bad) ∧ binop
-        ∧ (cond_op matches OpEq) ∧ lhs_call ∧ (seqlen_callee = "str_len")
-        ∧ (seqlen_val ≥ 0) ∧ _seqvar_set
-        ∧ ((seqlen_arg_name = _seqvar_name) ∨ ((_scope_prefix ++ seqlen_arg_name) = _seqvar_name)))
-    seqvar_len = (is_first_tick ? 0 : seqlen_pin_hit ? seqlen_val : _seqvar_len)
+    is_seqlen_pin ∈ Bool = (parse_ready ∧ (_parse_kind = 2) ∧ (¬parse_bad) ∧ binop
+        ∧ (cond_op matches OpEq) ∧ lhs_call ∧ (len_callee = "str_len")
+        ∧ (computed_length ≥ 0) ∧ _seqvar_set
+        ∧ ((len_argument_name = _seqvar_name) ∨ ((_scope_prefix ++ len_argument_name) = _seqvar_name)))
+    seqvar_len = (is_first_tick ? 0 : is_seqlen_pin ? computed_length : _seqvar_len)

@@ -390,11 +390,11 @@ fsm driver_main
         ∨ intset ∨ enter_match ∨ enter_seqlit ∨ comp_line
         ∨ is_member_line ∨ qrange ∨ qseq ∨ tuple_line ∨ call_stmt)
         ? C2INil
-        : method_call ? recv_items
+        : method_call ? receiver_items
         : strin ? strin_items
         : qset ? setquery_items
         : setlit ? entry_items
-        : setmem ? setmem_items
+        : setmem ? setmember_items
         : setdecl ? set_mem_items
         : seqmem ? seq_mem_items
         : mem_items)
@@ -534,7 +534,7 @@ fsm driver_main
         : decl_fire ? pskip_decl_items
         : type_tick ? mem_items
         : draining ? drain_items
-        : (tuple_close ∧ recv_method) ? close_recv_items
+        : (tuple_close ∧ called_method) ? close_recv_items
         : bite ? tuparg_items
         : qexp_more ? qexp_items
         : qexp_fin ? fin_items
@@ -649,7 +649,7 @@ fsm driver_main
         : tuple_line ? 1
         : tuple_comma ? 1
         : bite ? 5
-        : (tuple_close ∨ tuple_bail) ? (recv_method ? 5 : (membership ∨ (tuple_bail ∧ (tok1 matches OpIn))) ? 3 : 1)
+        : (tuple_close ∨ tuple_bail) ? (called_method ? 5 : (membership ∨ (tuple_bail ∧ (tok1 matches OpIn))) ? 3 : 1)
         : (callw_comma ∨ callw_fire ∨ callw_bail) ? 1
         : (pskip_open ∨ run) ? 1
         : enter_pratt ? enter_consume
@@ -685,7 +685,7 @@ fsm driver_main
     field_add ∈ Bool = (classify_now ∧ (¬line_end) ∧ is_mem
         ∧ (¬effects_line) ∧ (¬intset_line) ∧ (¬is_carry)
         ∧ (¬no_decl) ∧ (¬strin_line) ∧ (¬is_member_line)
-        ∧ (¬setmem_line)
+        ∧ (¬is_setmember_line)
         ∧ (¬type_frame))
     -- E1: the first time a `_name` const is MENTIONED in an
     -- expression (lookup_read of a carry name), the solver

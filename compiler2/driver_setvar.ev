@@ -74,19 +74,19 @@ fsm DriverSetVar
     ∀ e ∈ vars : e.elems = (is_first_tick ? "" : (setlit ∧ _e.name = collection_name) ? "" : (setlit_elem ∧ _e.name = _collection_cur_name) ? _e.elems ++ row : _e.elems)
     ∀ e ∈ vars : e.count = (is_first_tick ? 0 : (setlit ∧ _e.name = collection_name) ? 0 : (setlit_elem ∧ _e.name = _collection_cur_name) ? _e.count + 1 : _e.count)
 
-    setmem_pfx_hit ∈ Bool = (line_ty_name ≠ "" ∧ (∃ e ∈ vars : e.name = _scope_prefix ++ line_ty_name))
-    setmem_bare_hit ∈ Bool = (line_ty_name ≠ "" ∧ (∃ e ∈ vars : e.name = line_ty_name))
-    setmem_line ∈ Bool = (is_mem ∧ (¬effects_line) ∧ (setmem_pfx_hit ∨ setmem_bare_hit))
+    is_prefixed_setmember ∈ Bool = (line_ty_name ≠ "" ∧ (∃ e ∈ vars : e.name = _scope_prefix ++ line_ty_name))
+    is_bare_setmember ∈ Bool = (line_ty_name ≠ "" ∧ (∃ e ∈ vars : e.name = line_ty_name))
+    is_setmember_line ∈ Bool = (is_mem ∧ (¬effects_line) ∧ (is_prefixed_setmember ∨ is_bare_setmember))
     setmem ∈ Bool = (classify_now ∧ (¬line_end) ∧ (¬intset_line)
-        ∧ setmem_line)
-    setmem_set ∈ String = (setmem_pfx_hit ? _scope_prefix ++ line_ty_name
-        : setmem_bare_hit ? line_ty_name
+        ∧ is_setmember_line)
+    setmember_setname ∈ String = (is_prefixed_setmember ? _scope_prefix ++ line_ty_name
+        : is_bare_setmember ? line_ty_name
         : "")
-    setmem_slot ∈ Int
-    ∀ e ∈ vars : ((e.name = setmem_set) ⇒ (setmem_slot = e.kidx))
-    (¬(∃ e ∈ vars : e.name = setmem_set)) ⇒ (setmem_slot = 0)
-    setmem_items ∈ C2Items = C2ICons(C2Process(EIdent(setmem_set)),
-        C2ICons(C2RecVal(_scope_prefix ++ line_name, setmem_slot),
+    setmember_slot ∈ Int
+    ∀ e ∈ vars : ((e.name = setmember_setname) ⇒ (setmember_slot = e.kidx))
+    (¬(∃ e ∈ vars : e.name = setmember_setname)) ⇒ (setmember_slot = 0)
+    setmember_items ∈ C2Items = C2ICons(C2Process(EIdent(setmember_setname)),
+        C2ICons(C2RecVal(_scope_prefix ++ line_name, setmember_slot),
         C2ICons(C2SelH, C2ICons(C2AssertTop, C2INil))))
 
     src_hit ∈ Bool = (t3_name ≠ "" ∧ (∃ e ∈ vars : e.name = t3_name))

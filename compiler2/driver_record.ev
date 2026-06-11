@@ -100,23 +100,23 @@ fsm DriverRecord
     field_name_tok ∈ String = match tok0
         Ident(s) ⇒ s
         _ ⇒ ""
-    ty_tok ∈ String = match tok2
+    type_token_text ∈ String = match tok2
         Ident(s) ⇒ s
         _ ⇒ ""
-    ty_arg ∈ String = match tok4
+    declared_type_arg ∈ String = match tok4
         Ident(s) ⇒ s
         _ ⇒ ""
     pending ∈ Bool = (rec_collecting ∧ (tok0 matches Ident(_))
         ∧ (tok1 matches Comma) ∧ (tok2 matches Ident(_)))
     field_take ∈ Bool = (rec_collecting ∧ (tok0 matches Ident(_))
         ∧ (tok1 matches OpIn) ∧ (tok2 matches Ident(_)))
-    is_seq ∈ Bool = (field_take ∧ (ty_tok = "Seq")
-        ∧ (tok3 matches LParen) ∧ (ty_arg = "Int")
+    is_seq ∈ Bool = (field_take ∧ (type_token_text = "Seq")
+        ∧ (tok3 matches LParen) ∧ (declared_type_arg = "Int")
         ∧ (tok5 matches RParen))
-    is_prim ∈ Bool = (ty_tok = "Int" ∨ ty_tok = "Nat"
-        ∨ ty_tok = "Bool" ∨ ty_tok = "String" ∨ ty_tok = "Real")
+    is_prim ∈ Bool = (type_token_text = "Int" ∨ type_token_text = "Nat"
+        ∨ type_token_text = "Bool" ∨ type_token_text = "String" ∨ type_token_text = "Real")
     field_rec_slot ∈ Int
-    RtIdxOf(nm ↦ ty_tok, idx ↦ field_rec_slot)
+    RtIdxOf(nm ↦ type_token_text, idx ↦ field_rec_slot)
     add_n ∈ Int = (_param_n + 1) + (is_seq ? 1 : 0)
     nf_prev ∈ Int = _recs[rec_slot].n_fields
     field_bad ∈ Bool = ((field_take ∧ (((¬is_prim) ∧ (¬is_seq) ∧ field_rec_slot < 0)
@@ -124,12 +124,12 @@ fsm DriverRecord
         ∨ (nf_prev + add_n > 6)))
         ∨ (pending ∧ _param_n ≥ 3))
     rec_pad31 ∈ String = "                               "
-    ty_norm ∈ String = (is_seq ? "Seq(Int)" : ty_tok)
+    normalized_typestr ∈ String = (is_seq ? "Seq(Int)" : type_token_text)
     row_name ∈ String = "|" ++ substr(field_name_tok ++ rec_pad31, 0, 31)
     row_p0 ∈ String = "|" ++ substr(_params[0].pname ++ rec_pad31, 0, 31)
     row_p1 ∈ String = "|" ++ substr(_params[1].pname ++ rec_pad31, 0, 31)
     row_p2 ∈ String = "|" ++ substr(_params[2].pname ++ rec_pad31, 0, 31)
-    row_ty ∈ String = "|" ++ substr(ty_norm ++ rec_pad31, 0, 31)
+    row_ty ∈ String = "|" ++ substr(normalized_typestr ++ rec_pad31, 0, 31)
     row_len ∈ String = "|" ++ substr((field_name_tok ++ "__len") ++ rec_pad31, 0, 31)
     row_int ∈ String = "|" ++ substr("Int" ++ rec_pad31, 0, 31)
     rows_names ∈ String = ((_param_n = 0 ? row_name

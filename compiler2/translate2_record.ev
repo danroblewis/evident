@@ -51,10 +51,10 @@ claim RecordRecvBuildZ3(
         : LibCall("libc", "time", ⟨ArgInt(0)⟩))
 
 claim RecordFieldAccessBuildZ3(
-        ctx_h, accessor_decl_h, recv_arg_p ∈ Int, eff ∈ Effect)
+        ctx_h, accessor_decl_h, method_arg_ptr ∈ Int, eff ∈ Effect)
     eff = LibCall("libz3", "Z3_mk_app",
         ⟨ArgInt(ctx_h), ArgInt(accessor_decl_h), ArgInt(1),
-         ArgInt(recv_arg_p)⟩)
+         ArgInt(method_arg_ptr)⟩)
 
 -- ── RecordLiteralBuildZ3: literal → Z3_mk_app(ctor_decl, args) ────
 --    n_fields must equal the count the type was declared with (Z3

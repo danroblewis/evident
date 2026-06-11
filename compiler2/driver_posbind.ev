@@ -60,11 +60,11 @@ fsm DriverPosBind
         ∧ (tok5 matches LParen)
         ∧ (index_of(claimindex_names, method2_key, 0) ≥ 0) ∧ (_frame_depth < 8))
     method_call ∈ Bool = (method_call1 ∨ method_call2)
-    recv_name ∈ String = (method_call2 ? (line_name ++ "." ++ stmt_t2_name) : line_name)
+    receiver_name ∈ String = (method_call2 ? (line_name ++ "." ++ stmt_t2_name) : line_name)
     tuple_line ∈ Bool = (classify_now ∧ (¬line_end) ∧ (line_t0 matches LParen)
         ∧ (line_t2 matches Comma) ∧ (_frame_depth < 8))
     positional_line ∈ Bool = (call_stmt ∨ method_call ∨ tuple_line)
-    recv_items ∈ C2Items = C2ICons(C2Process(EIdent(recv_name)), C2INil)
+    receiver_items ∈ C2Items = C2ICons(C2Process(EIdent(receiver_name)), C2INil)
 
     poselem_act ∈ Bool = (parse ∧ (_parse_mode = 12) ∧ (_tuple_state = 0)
         ∧ nil ∧ tok_ready)
@@ -96,16 +96,16 @@ fsm DriverPosBind
         Ident(s) ⇒ s
         _ ⇒ ""
     named ∈ Bool = (tuple_rparen ∧ (_tuple_callee ≠ ""))
-    recv_method ∈ Bool = (tuple_rparen ∧ (_tuple_callee = "") ∧ (tok1 matches OpIn)
+    called_method ∈ Bool = (tuple_rparen ∧ (_tuple_callee = "") ∧ (tok1 matches OpIn)
         ∧ (tok2 matches Ident(_)) ∧ (tok3 matches Dot)
         ∧ (tok4 matches Ident(_)))
     membership ∈ Bool = (tuple_rparen ∧ (_tuple_callee = "") ∧ (tok1 matches OpIn)
-        ∧ (tok2 matches Ident(_)) ∧ (¬recv_method))
-    close_callee ∈ String = (named ? _tuple_callee : recv_method ? t4_name : t2_name)
+        ∧ (tok2 matches Ident(_)) ∧ (¬called_method))
+    close_callee ∈ String = (named ? _tuple_callee : called_method ? t4_name : t2_name)
     close_key ∈ String
     FtiNameEntry(name ↦ close_callee, entry ↦ close_key)
     close_pos ∈ Int = index_of(claimindex_names, close_key, 0)
-    close_ok ∈ Bool = ((named ∨ membership ∨ recv_method) ∧ (close_pos ≥ 0))
+    close_ok ∈ Bool = ((named ∨ membership ∨ called_method) ∧ (close_pos ≥ 0))
     tuple_close ∈ Bool = close_ok
     tuple_bail ∈ Bool = (tuple_rparen ∧ (¬close_ok))
     posbind_read ∈ Effect
@@ -134,7 +134,7 @@ fsm DriverPosBind
         : method_call ? 1
         : poselem_done ? _tuple_arity + 1
         : bite ? _tuple_arity + 1
-        : (tuple_close ∧ recv_method) ? _tuple_arity + 1
+        : (tuple_close ∧ called_method) ? _tuple_arity + 1
         : _tuple_arity)
     armed = (is_first_tick ? false
         : reset ? false
@@ -144,7 +144,7 @@ fsm DriverPosBind
     recv = (is_first_tick ? false
         : method_call ? false
         : positional_line ? false
-        : (tuple_close ∧ recv_method) ? true
+        : (tuple_close ∧ called_method) ? true
         : _recv)
 
     elem_name ∈ String = match result
@@ -174,14 +174,14 @@ fsm DriverPosBind
     #param_names ≤ 6
     param_take ∈ Bool = (run ∧ (tok0 matches Ident(_))
         ∧ (_expect = 1))
-    ty_take ∈ Bool = (run ∧ (tok0 matches OpIn)
+    consuming_type ∈ Bool = (run ∧ (tok0 matches OpIn)
         ∧ (tok1 matches Ident(_)) ∧ (_param_depth = 1))
     param_ty_name ∈ String = match tok1
         Ident(s) ⇒ s
         _ ⇒ ""
     types ∈ Seq(PbStr)
     #types ≤ 4
-    ∀ k ∈ {0..3} : types[k].s = (is_first_tick ? "" : jump ? "" : (ty_take ∧ _param_count = k + 1) ? param_ty_name : _types[k].s)
+    ∀ k ∈ {0..3} : types[k].s = (is_first_tick ? "" : jump ? "" : (consuming_type ∧ _param_count = k + 1) ? param_ty_name : _types[k].s)
     param_name_tok ∈ String = match tok0
         Ident(s) ⇒ s
         _ ⇒ ""
@@ -198,7 +198,7 @@ fsm DriverPosBind
     -- ── header-slot fresh decls at the seam (claim headers) ────────
     -- A headered callee declares its interface in the header, so an
     -- UNJOINED header slot has no body membership line to declare it.
-    -- On each param-group flush (ty_take), declare the fresh
+    -- On each param-group flush (consuming_type), declare the fresh
     -- ones scoped: mapped splice = slots not in binds; positional =
     -- slots past _tuple_arity; bare splice = slots the parent does not
     -- declare (sym miss). Lifts (`..`), guard splices, and type frames
@@ -206,10 +206,10 @@ fsm DriverPosBind
     pskip_grp ∈ Int
     pskip_grp = (is_first_tick ? 0
         : jump ? 0
-        : ty_take ? _param_count
+        : consuming_type ? _param_count
         : _pskip_grp)
     guard ∈ Bool = (guarding ∧ (_frame_depth = _armed_depth))
-    decl_fire ∈ Bool = (ty_take ∧ (¬_is_type) ∧ (¬guard)
+    decl_fire ∈ Bool = (consuming_type ∧ (¬_is_type) ∧ (¬guard)
         ∧ (¬(_callw_bare ∧ (¬_hide))))
     pskip_enum_key ∈ String
     FtiNameEntry(name ↦ param_ty_name, entry ↦ pskip_enum_key)
