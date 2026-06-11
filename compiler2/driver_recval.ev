@@ -24,39 +24,26 @@ fsm DriverRecVal
     ∀ k ∈ {0..5} : RtRecName(s ↦ literal_fnames, i ↦ k, name ↦ literal_fields[k].name)
     ∀ k ∈ {0..5} : RtRecName(s ↦ literal_ftypes, i ↦ k, name ↦ literal_fields[k].typename)
     ∀ k ∈ {0..5} : RtIdxOf(nm ↦ literal_fields[k].typename, idx ↦ literal_fields[k].kidx)
-    seg0 ∈ C2Item = (literal_fields[0].kidx ≥ 0
-        ? C2RecVal(recfield_name ++ "." ++ literal_fields[0].name, literal_fields[0].kidx)
-        : C2Process(EIdent(recfield_name ++ "." ++ literal_fields[0].name)))
-    literal_seg1 ∈ C2Item = (literal_fields[1].kidx ≥ 0
-        ? C2RecVal(recfield_name ++ "." ++ literal_fields[1].name, literal_fields[1].kidx)
-        : C2Process(EIdent(recfield_name ++ "." ++ literal_fields[1].name)))
-    literal_seg2 ∈ C2Item = (literal_fields[2].kidx ≥ 0
-        ? C2RecVal(recfield_name ++ "." ++ literal_fields[2].name, literal_fields[2].kidx)
-        : C2Process(EIdent(recfield_name ++ "." ++ literal_fields[2].name)))
-    seg3 ∈ C2Item = (literal_fields[3].kidx ≥ 0
-        ? C2RecVal(recfield_name ++ "." ++ literal_fields[3].name, literal_fields[3].kidx)
-        : C2Process(EIdent(recfield_name ++ "." ++ literal_fields[3].name)))
-    seg4 ∈ C2Item = (literal_fields[4].kidx ≥ 0
-        ? C2RecVal(recfield_name ++ "." ++ literal_fields[4].name, literal_fields[4].kidx)
-        : C2Process(EIdent(recfield_name ++ "." ++ literal_fields[4].name)))
-    seg5 ∈ C2Item = (literal_fields[5].kidx ≥ 0
-        ? C2RecVal(recfield_name ++ "." ++ literal_fields[5].name, literal_fields[5].kidx)
-        : C2Process(EIdent(recfield_name ++ "." ++ literal_fields[5].name)))
+    segs ∈ Seq(C2Item)
+    #segs ≤ 6
+    ∀ k ∈ {0..5} : segs[k] = (literal_fields[k].kidx ≥ 0
+        ? C2RecVal(recfield_name ++ "." ++ literal_fields[k].name, literal_fields[k].kidx)
+        : C2Process(EIdent(recfield_name ++ "." ++ literal_fields[k].name)))
     literal_tail ∈ C2Items = C2ICons(C2App(literal_ctor, nfields), work_tail)
     literal_items ∈ C2Items = (nfields = 1
-            ? C2ICons(seg0, literal_tail)
+            ? C2ICons(segs[0], literal_tail)
         : nfields = 2
-            ? C2ICons(seg0, C2ICons(literal_seg1, literal_tail))
+            ? C2ICons(segs[0], C2ICons(segs[1], literal_tail))
         : nfields = 3
-            ? C2ICons(seg0, C2ICons(literal_seg1, C2ICons(literal_seg2, literal_tail)))
+            ? C2ICons(segs[0], C2ICons(segs[1], C2ICons(segs[2], literal_tail)))
         : nfields = 4
-            ? C2ICons(seg0, C2ICons(literal_seg1, C2ICons(literal_seg2,
-                C2ICons(seg3, literal_tail))))
+            ? C2ICons(segs[0], C2ICons(segs[1], C2ICons(segs[2],
+                C2ICons(segs[3], literal_tail))))
         : nfields = 5
-            ? C2ICons(seg0, C2ICons(literal_seg1, C2ICons(literal_seg2,
-                C2ICons(seg3, C2ICons(seg4, literal_tail)))))
-        : C2ICons(seg0, C2ICons(literal_seg1, C2ICons(literal_seg2,
-            C2ICons(seg3, C2ICons(seg4, C2ICons(seg5,
+            ? C2ICons(segs[0], C2ICons(segs[1], C2ICons(segs[2],
+                C2ICons(segs[3], C2ICons(segs[4], literal_tail)))))
+        : C2ICons(segs[0], C2ICons(segs[1], C2ICons(segs[2],
+            C2ICons(segs[3], C2ICons(segs[4], C2ICons(segs[5],
             literal_tail)))))))
     sortcodes ∈ Seq(Int)
     #sortcodes ≤ 6
