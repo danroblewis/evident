@@ -1,7 +1,7 @@
 -- MODULE DriverPosBind
 -- CONSUMES: the composition-line precheck (call_stmt/method_call/tuple_line) + classifier head views
---           (line_name, line_t0..t4, is_lift_shape, is_comp_found, c_line_end,
---           classify_now, line_end), the window head (tok0..tok5), the
+--           (line.name, tok0..t4, is_lift_shape, is_comp_found, c_line_end,
+--           classify_now, line.end), the window head (tok0..tok5), the
 --           parse gate (parse, _parse_mode, can_consume, nil), the
 --           handle stack (topmost_handle/2nd/.. + d_h_t*), the claim index
 --           (claimindex_buf.base, claimindex_names), the symbol table (symbol_index), the
@@ -37,32 +37,32 @@ fsm DriverPosBind
     armed ∈ Bool
     recv ∈ Bool
 
-    stmt_t2_name ∈ String = match line_t2
+    stmt_t2_name ∈ String = match tok2
         Ident(s) ⇒ s
         _ ⇒ ""
-    stmt_t4_name ∈ String = match line_t4
+    stmt_t4_name ∈ String = match tok4
         Ident(s) ⇒ s
         _ ⇒ ""
-    call_stmt ∈ Bool = (classify_now ∧ (¬line_end) ∧ is_ident_head
-        ∧ (line_t1 matches LParen) ∧ (¬(line_t3 matches OpMapsto))
+    call_stmt ∈ Bool = (classify_now ∧ (¬line.end) ∧ is_ident_head
+        ∧ (tok1 matches LParen) ∧ (¬(tok3 matches OpMapsto))
         ∧ is_comp_found ∧ (¬is_lift_shape) ∧ (_frame_depth < 8))
     method1_key ∈ String
     FtiNameEntry(name ↦ stmt_t2_name, entry ↦ method1_key)
-    method_call1 ∈ Bool = (classify_now ∧ (¬line_end) ∧ is_ident_head
-        ∧ (line_t1 matches Dot) ∧ (line_t2 matches Ident(_))
-        ∧ (line_t3 matches LParen)
+    method_call1 ∈ Bool = (classify_now ∧ (¬line.end) ∧ is_ident_head
+        ∧ (tok1 matches Dot) ∧ (tok2 matches Ident(_))
+        ∧ (tok3 matches LParen)
         ∧ (index_of(claimindex_names, method1_key, 0) ≥ 0) ∧ (_frame_depth < 8))
     method2_key ∈ String
     FtiNameEntry(name ↦ stmt_t4_name, entry ↦ method2_key)
-    method_call2 ∈ Bool = (classify_now ∧ (¬line_end) ∧ is_ident_head
-        ∧ (line_t1 matches Dot) ∧ (line_t2 matches Ident(_))
-        ∧ (line_t3 matches Dot) ∧ (line_t4 matches Ident(_))
+    method_call2 ∈ Bool = (classify_now ∧ (¬line.end) ∧ is_ident_head
+        ∧ (tok1 matches Dot) ∧ (tok2 matches Ident(_))
+        ∧ (tok3 matches Dot) ∧ (tok4 matches Ident(_))
         ∧ (tok5 matches LParen)
         ∧ (index_of(claimindex_names, method2_key, 0) ≥ 0) ∧ (_frame_depth < 8))
     method_call ∈ Bool = (method_call1 ∨ method_call2)
-    receiver_name ∈ String = (method_call2 ? (line_name ++ "." ++ stmt_t2_name) : line_name)
-    tuple_line ∈ Bool = (classify_now ∧ (¬line_end) ∧ (line_t0 matches LParen)
-        ∧ (line_t2 matches Comma) ∧ (_frame_depth < 8))
+    receiver_name ∈ String = (method_call2 ? (line.name ++ "." ++ stmt_t2_name) : line.name)
+    tuple_line ∈ Bool = (classify_now ∧ (¬line.end) ∧ (tok0 matches LParen)
+        ∧ (tok2 matches Comma) ∧ (_frame_depth < 8))
     positional_line ∈ Bool = (call_stmt ∨ method_call ∨ tuple_line)
     receiver_items ∈ C2Items = C2ICons(C2Process(EIdent(receiver_name)), C2INil)
 
@@ -123,7 +123,7 @@ fsm DriverPosBind
         : posjump_fire ? 0
         : _tuple_state)
     tuple_callee = (is_first_tick ? ""
-        : call_stmt ? line_name
+        : call_stmt ? line.name
         : method_call1 ? stmt_t2_name
         : method_call2 ? stmt_t4_name
         : tuple_line ? ""

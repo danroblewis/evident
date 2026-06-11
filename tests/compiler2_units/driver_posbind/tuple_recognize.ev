@@ -39,20 +39,19 @@ fsm main
     is_comp_found = (is_first_tick ? false : _is_comp_found)
     is_lift_shape ∈ Bool
     is_lift_shape = (is_first_tick ? false : _is_lift_shape)
-    line_name ∈ String
-    line_name = (is_first_tick ? "" : _line_name)
-    line_t0 ∈ Token
-    line_t0 = (is_first_tick ? EofTok : _line_t0)
+    line ∈ ClassifiedLine
+    line.at_eof = false
+    line.name = ""
+    line.ty_name = ""
+    line.is_nat = false
+    line.enum_key = ""
+    line.enum_pos = 0
+    line.sort = 0
+    line.end = false
+    line.dname = ""
+    line.items = C2INil
     is_ident_head ∈ Bool
     is_ident_head = (is_first_tick ? false : _is_ident_head)
-    line_t1 ∈ Token
-    line_t1 = (is_first_tick ? EofTok : _line_t1)
-    line_t2 ∈ Token
-    line_t2 = (is_first_tick ? EofTok : _line_t2)
-    line_t3 ∈ Token
-    line_t3 = (is_first_tick ? EofTok : _line_t3)
-    line_t4 ∈ Token
-    line_t4 = (is_first_tick ? EofTok : _line_t4)
     claimindex_buf ∈ FtiBuffer
     claimindex_buf.base = (is_first_tick ? 0 : _claimindex_buf.base)
     claimindex_buf.count = (is_first_tick ? 0 : _claimindex_buf.count)
@@ -82,8 +81,6 @@ fsm main
     topmost_handle = (is_first_tick ? 0 : _topmost_handle)
     stack_in ∈ C2H
     stack_in = (is_first_tick ? C2HNil : _stack_in)
-    line_end ∈ Bool
-    line_end = (is_first_tick ? false : _line_end)
     values ∈ Seq(EnumVariantVal)
     #values ≤ 6
     values = (is_first_tick ? ⟨⟩ : _values)

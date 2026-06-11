@@ -1,6 +1,6 @@
 -- MODULE DriverMatchPin
 -- CONSUMES: the match-line enter signal (enter_match) + the classified
---           name/sort (line_dname, line_sort), the window head views
+--           name/sort (line.dname, line.sort), the window head views
 --           (tok0..tok4) + the line head name (head_ident), the parse
 --           gate (parse, _parse_mode, can_consume), the Pratt result
 --           (parse_ready, parse_bad, result, parse_kind), the user-enum + Result
@@ -160,8 +160,8 @@ fsm DriverMatchPin
         : (is_pattern_open ∧ (¬overflow)) ? 2
         : is_pattern_close ? 1
         : _case_state)
-    case_name = (is_first_tick ? "" : enter_match ? line_dname : _case_name)
-    case_sort = (is_first_tick ? 0 : enter_match ? line_sort : _case_sort)
+    case_name = (is_first_tick ? "" : enter_match ? line.dname : _case_name)
+    case_sort = (is_first_tick ? 0 : enter_match ? line.sort : _case_sort)
     scrutinee_lr = (is_first_tick ? false
         : enter_match ? false
         : scrut_lastres ? true

@@ -26,12 +26,17 @@ fsm main
     tok1 = (is_first_tick ? Comma : _tok1)
     is_mem ∈ Bool
     is_mem = (is_first_tick ? false : _is_mem)
-    line_is_nat ∈ Bool
-    line_is_nat = (is_first_tick ? false : _line_is_nat)
-    line_sort ∈ Int
-    line_sort = (is_first_tick ? 0 : _line_sort)
-    line_t0 ∈ Token
-    line_t0 = (is_first_tick ? EofTok : _line_t0)
+    line ∈ ClassifiedLine
+    line.at_eof = false
+    line.name = ""
+    line.ty_name = ""
+    line.is_nat = false
+    line.enum_key = ""
+    line.enum_pos = 0
+    line.sort = 0
+    line.end = false
+    line.dname = ""
+    line.items = C2INil
     mem_tyname ∈ String
     mem_tyname = (is_first_tick ? "" : _mem_tyname)
     claim_params ∈ Bool

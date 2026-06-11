@@ -1,7 +1,7 @@
 -- MODULE DriverCompose
 -- CONSUMES: the classifier's composition/type-splice decision flags
---           (is_comp_call/bare/dd/line, is_member_call/bare/line, line_name,
---           line_ty_name, callee_pos), the claim index base (claimindex_buf.base), the
+--           (is_comp_call/bare/dd/line, is_member_call/bare/line, line.name,
+--           line.ty_name, callee_pos), the claim index base (claimindex_buf.base), the
 --           handle-stack views (topmost_handle/2nd/.. + tail1.. + stack_in),
 --           is_intresult_capture, the parse gate (parse, _parse_mode, can_consume,
 --           nil), the line-pop signal (frame_pop), the record
@@ -284,17 +284,17 @@ fsm DriverCompose
         : positional_line ? false
         : _is_type)
     type_prefix = (is_first_tick ? ""
-        : is_member_line ? (_scope_prefix ++ line_name ++ ".")
+        : is_member_line ? (_scope_prefix ++ line.name ++ ".")
         : _type_prefix)
     type_slot ∈ Int
     inst_name ∈ String
     type_rec_slot ∈ Int
-    RtIdxOf(nm ↦ line_ty_name, idx ↦ type_rec_slot)
+    RtIdxOf(nm ↦ line.ty_name, idx ↦ type_rec_slot)
     type_slot = (is_first_tick ? 0 - 1
         : is_member_line ? type_rec_slot
         : _type_slot)
     inst_name = (is_first_tick ? ""
-        : is_member_line ? (_scope_prefix ++ line_name)
+        : is_member_line ? (_scope_prefix ++ line.name)
         : _inst_name)
     slot_count = (is_first_tick ? 0
         : (is_comp_call ∨ is_member_call) ? 0

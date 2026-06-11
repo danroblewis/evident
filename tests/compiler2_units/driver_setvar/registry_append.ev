@@ -18,18 +18,23 @@ fsm main
     classify_now = (is_first_tick ? true : _classify_now)
     decl_line ∈ Bool
     decl_line = (is_first_tick ? true : _decl_line)
-    line_end ∈ Bool
-    line_end = (is_first_tick ? false : _line_end)
-    line_dname ∈ String
-    line_dname = (is_first_tick ? "myset" : _line_dname)
+    line ∈ ClassifiedLine
+    line.at_eof = false
+    line.name = ""
+    line.ty_name = ""
+    line.is_nat = false
+    line.enum_key = ""
+    line.enum_pos = 0
+    line.sort = 0
+    line.end = false
+    line.dname = "myset"
+    line.items = C2INil
     effects_line ∈ Bool
     effects_line = (is_first_tick ? false : _effects_line)
     is_mem ∈ Bool
     is_mem = (is_first_tick ? false : _is_mem)
     is_notmem ∈ Bool
     is_notmem = (is_first_tick ? false : _is_notmem)
-    line_name ∈ String
-    line_name = (is_first_tick ? "" : _line_name)
     is_exists ∈ Bool
     is_exists = (is_first_tick ? false : _is_exists)
     is_plain_ident ∈ Bool
@@ -44,12 +49,10 @@ fsm main
     kind_slot = (is_first_tick ? 0 : _kind_slot)
     is_ident_head ∈ Bool
     is_ident_head = (is_first_tick ? false : _is_ident_head)
-    line_t1 ∈ Token
-    line_t1 = (is_first_tick ? EofTok : _line_t1)
-    line_t2 ∈ Token
-    line_t2 = (is_first_tick ? EofTok : _line_t2)
-    line_ty_name ∈ String
-    line_ty_name = (is_first_tick ? "" : _line_ty_name)
+    tok1 ∈ Token
+    tok1 = (is_first_tick ? EofTok : _tok1)
+    tok2 ∈ Token
+    tok2 = (is_first_tick ? EofTok : _tok2)
     enter_seqlit ∈ Bool
     enter_seqlit = (is_first_tick ? false : _enter_seqlit)
     in_skip ∈ Bool

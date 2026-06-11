@@ -38,16 +38,23 @@ fsm main
     is_comp_line = (is_first_tick ? false : _is_comp_line)
     callee_pos ∈ Int
     callee_pos = (is_first_tick ? 0 : _callee_pos)
-    line_name ∈ String
-    line_name = (is_first_tick ? "" : _line_name)
+    line ∈ ClassifiedLine
+    line.at_eof = false
+    line.name = ""
+    line.ty_name = ""
+    line.is_nat = false
+    line.enum_key = ""
+    line.enum_pos = 0
+    line.sort = 0
+    line.end = false
+    line.dname = ""
+    line.items = C2INil
     is_bare_member ∈ Bool
     is_bare_member = (is_first_tick ? false : _is_bare_member)
     is_member_call ∈ Bool
     is_member_call = (is_first_tick ? false : _is_member_call)
     is_member_line ∈ Bool
     is_member_line = (is_first_tick ? false : _is_member_line)
-    line_ty_name ∈ String
-    line_ty_name = (is_first_tick ? "" : _line_ty_name)
     claimindex_buf ∈ FtiBuffer
     claimindex_buf.base = (is_first_tick ? 0 : _claimindex_buf.base)
     claimindex_buf.count = (is_first_tick ? 0 : _claimindex_buf.count)

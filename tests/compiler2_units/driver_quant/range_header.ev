@@ -14,30 +14,35 @@ import "compiler2/driver_record.ev"
 import "compiler2/driver_quant.ev"
 
 fsm main
-    line_t0 ∈ Token
-    line_t0 = (is_first_tick ? OpForall : _line_t0)
-    line_t1 ∈ Token
-    line_t1 = (is_first_tick ? Ident("x") : _line_t1)
-    line_t2 ∈ Token
-    line_t2 = (is_first_tick ? OpIn : _line_t2)
-    line_t3 ∈ Token
-    line_t3 = (is_first_tick ? LBrace : _line_t3)
-    line_t4 ∈ Token
-    line_t4 = (is_first_tick ? IntLit(0) : _line_t4)
+    tok2 ∈ Token
+    tok2 = (is_first_tick ? OpIn : _tok2)
+    tok3 ∈ Token
+    tok3 = (is_first_tick ? LBrace : _tok3)
+    tok4 ∈ Token
+    tok4 = (is_first_tick ? IntLit(0) : _tok4)
     tok5 ∈ Token
     tok5 = (is_first_tick ? Dot : _tok5)
     tok6 ∈ Token
     tok6 = (is_first_tick ? Dot : _tok6)
     tok7 ∈ Token
     tok7 = (is_first_tick ? IntLit(9) : _tok7)
+    line ∈ ClassifiedLine
+    line.at_eof = false
+    line.name = ""
+    line.ty_name = ""
+    line.is_nat = false
+    line.enum_key = ""
+    line.enum_pos = 0
+    line.sort = 0
+    line.end = false
+    line.dname = ""
+    line.items = C2INil
     classify_now ∈ Bool
     classify_now = (is_first_tick ? false : _classify_now)
     is_setquery ∈ Bool
     is_setquery = (is_first_tick ? false : _is_setquery)
     in_claim ∈ Bool
     in_claim = (is_first_tick ? false : _in_claim)
-    line_end ∈ Bool
-    line_end = (is_first_tick ? false : _line_end)
     nil ∈ Bool
     nil = (is_first_tick ? false : _nil)
     binop ∈ Bool
@@ -71,9 +76,9 @@ fsm main
     can_consume ∈ Bool
     can_consume = (is_first_tick ? false : _can_consume)
     tok0 ∈ Token
-    tok0 = (is_first_tick ? EofTok : _tok0)
+    tok0 = (is_first_tick ? OpForall : _tok0)
     tok1 ∈ Token
-    tok1 = (is_first_tick ? EofTok : _tok1)
+    tok1 = (is_first_tick ? Ident("x") : _tok1)
     ..DriverQuant
     ok ∈ Bool = quant_range_line
     msg ∈ String = str_from_int(range_upper)

@@ -379,14 +379,14 @@ fsm driver_main
     DriverBroadcast
 
     seq_mem_items ∈ C2Items = C2ICons(
-        C2DeclConst(line_dname, (kind_slot ≥ 0 ? 10 + kind_slot : 5)),
-        C2ICons(C2DeclConst(line_dname ++ "__len", 0),
+        C2DeclConst(line.dname, (kind_slot ≥ 0 ? 10 + kind_slot : 5)),
+        C2ICons(C2DeclConst(line.dname ++ "__len", 0),
         C2ICons(C2NatBound, C2ICons(C2AssertTop,
         C2ICons(C2Drop, C2ICons(C2Drop, C2INil))))))
     set_mem_items ∈ C2Items = C2ICons(
-        C2DeclConst(line_dname, 20 + kind_slot),
+        C2DeclConst(line.dname, 20 + kind_slot),
         C2ICons(C2Drop, C2INil))
-    line_items ∈ C2Items = ((line_end ∨ pratt_line ∨ enter_efflit
+    line.items = ((line.end ∨ pratt_line ∨ enter_efflit
         ∨ intset ∨ enter_match ∨ enter_seqlit ∨ is_comp_line
         ∨ is_member_line ∨ qrange ∨ qseq ∨ tuple_line ∨ call_stmt)
         ? C2INil
@@ -398,38 +398,38 @@ fsm driver_main
         : is_setdecl ? set_mem_items
         : seqmem ? seq_mem_items
         : member_decls)
-    mem_line ∈ Bool = (classify_now ∧ (¬line_end) ∧ (¬pratt_line)
+    mem_line ∈ Bool = (classify_now ∧ (¬line.end) ∧ (¬pratt_line)
         ∧ (¬enter_efflit) ∧ (¬intset) ∧ (¬enter_match)
         ∧ (¬enter_seqlit) ∧ (¬multiname) ∧ (¬is_comp_line)
         ∧ (¬contains_line) ∧ (¬is_member_line) ∧ (¬is_quant_line)
         ∧ (¬positional_line))
     mem_consume ∈ Int = (seqmem ? 6 : bounded ? 5 : 3)
     registry_typename ∈ String = recs[kind_slot].name
-    mem_tyname ∈ String = (line_sort = 1 ? "Bool"
-        : line_sort ≥ 30 ? line_ty_name
-        : line_sort = 3 ? "String"
-        : line_sort = 4 ? "Result"
-        : (line_sort = 5 ∧ kind_slot ≥ 0) ? ("Seq(" ++ registry_typename ++ ")")
-        : line_sort = 5 ? "Seq(Int)"
-        : line_sort = 6 ? "Real"
+    mem_tyname ∈ String = (line.sort = 1 ? "Bool"
+        : line.sort ≥ 30 ? line.ty_name
+        : line.sort = 3 ? "String"
+        : line.sort = 4 ? "Result"
+        : (line.sort = 5 ∧ kind_slot ≥ 0) ? ("Seq(" ++ registry_typename ++ ")")
+        : line.sort = 5 ? "Seq(Int)"
+        : line.sort = 6 ? "Real"
         : decl_line ? ("Set(" ++ registry_typename ++ ")")
         : "Int")
-    mem_field ∈ String = line_dname ++ ":" ++ mem_tyname
+    mem_field ∈ String = line.dname ++ ":" ++ mem_tyname
     -- `_<name>` carry-over DECLARES (fossil parity): the kernel pins
     -- `_<name> = <prev>` from tick 1 on — and the functionizer's
     -- verify solves tick 1 even for tick-0-exit programs. Z3 only
     -- serializes consts the asserts mention, so the carries must be
     -- textual lines in the emitted unit. A Seq field carries BOTH
     -- the array const and its __len (the oracle's two lines).
-    mem_carry_decl ∈ String = ((line_sort = 5 ∧ kind_slot ≥ 0)
-        ? "(declare-fun _" ++ line_dname ++ " () (Array Int " ++ registry_typename ++ "))\n"
-            ++ "(declare-fun _" ++ line_dname ++ "__len () Int)\n"
-        : line_sort = 5
-        ? "(declare-fun _" ++ line_dname ++ " () (Array Int Int))\n"
-            ++ "(declare-fun _" ++ line_dname ++ "__len () Int)\n"
+    mem_carry_decl ∈ String = ((line.sort = 5 ∧ kind_slot ≥ 0)
+        ? "(declare-fun _" ++ line.dname ++ " () (Array Int " ++ registry_typename ++ "))\n"
+            ++ "(declare-fun _" ++ line.dname ++ "__len () Int)\n"
+        : line.sort = 5
+        ? "(declare-fun _" ++ line.dname ++ " () (Array Int Int))\n"
+            ++ "(declare-fun _" ++ line.dname ++ "__len () Int)\n"
         : decl_line
-        ? "(declare-fun _" ++ line_dname ++ " () (Array " ++ registry_typename ++ " Bool))\n"
-        : "(declare-fun _" ++ line_dname ++ " () " ++ mem_tyname ++ ")\n")
+        ? "(declare-fun _" ++ line.dname ++ " () (Array " ++ registry_typename ++ " Bool))\n"
+        : "(declare-fun _" ++ line.dname ++ " () " ++ mem_tyname ++ ")\n")
 
     -- ── F1: parse_mode-9 GROUP walk (see compiler2/driver_group.ev) ──
     -- Bare mention: the header below is DriverGroup's whole interface
@@ -518,7 +518,7 @@ fsm driver_main
 
     work_items = (is_first_tick ? C2INil
         : (enter_claim ∨ claim_params) ? C2INil
-        : classify_now ? line_items
+        : classify_now ? line.items
         : parse_ready ? done_items
         : argbite ? libcall_items
         : noargs ? libcall0_items
@@ -682,7 +682,7 @@ fsm driver_main
         : _burst_phase = 2 ? rebuilt
         : window_after)
 
-    field_add ∈ Bool = (classify_now ∧ (¬line_end) ∧ is_mem
+    field_add ∈ Bool = (classify_now ∧ (¬line.end) ∧ is_mem
         ∧ (¬effects_line) ∧ (¬intset_line) ∧ (¬is_carry)
         ∧ (¬no_decl) ∧ (¬contains_line) ∧ (¬is_member_line)
         ∧ (¬is_setmember_line)

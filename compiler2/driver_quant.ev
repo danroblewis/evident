@@ -1,8 +1,8 @@
 -- MODULE DriverQuant
--- CONSUMES: the classifier line-head views (line_t0..line_t4) + the window
+-- CONSUMES: the classifier line-head views (tok0..tok4) + the window
 --           lookahead (tok5..tok7), the registered-seq carries (_is_seq_registered,
 --           _registered_seq_name, _cached_length), the record registry (recs via RtIdxOf),
---           the classify gate (classify_now, line_end), and the parse
+--           the classify gate (classify_now, line.end), and the parse
 --           cursor for the body re-walk.
 -- PRODUCES: the bounded-quantifier line classification (quant_head_token/is_quant_line/
 --           quant_range_line/over_seq/loop_variable/range_lower/range_upper/is_plain_ident/is_dotted_ident/…) + the
@@ -16,39 +16,39 @@
 -- The bounded-quantifier line classifier + set walk. Lifted into
 -- driver_main via `..DriverQuant`.
 fsm DriverQuant
-    is_exists ∈ Bool = (line_t0 matches OpExists)
-    quant_head_token ∈ Bool = ((line_t0 matches OpForall) ∨ is_exists)
-    is_quant_line ∈ Bool = (quant_head_token ∧ (line_t1 matches Ident(_))
-        ∧ (line_t2 matches OpIn))
-    loop_variable ∈ String = match line_t1
+    is_exists ∈ Bool = (tok0 matches OpExists)
+    quant_head_token ∈ Bool = ((tok0 matches OpForall) ∨ is_exists)
+    is_quant_line ∈ Bool = (quant_head_token ∧ (tok1 matches Ident(_))
+        ∧ (tok2 matches OpIn))
+    loop_variable ∈ String = match tok1
         Ident(s) ⇒ s
         _ ⇒ ""
-    quant_range_line ∈ Bool = (is_quant_line ∧ (line_t3 matches LBrace)
-        ∧ (line_t4 matches IntLit(_)) ∧ (tok5 matches Dot)
+    quant_range_line ∈ Bool = (is_quant_line ∧ (tok3 matches LBrace)
+        ∧ (tok4 matches IntLit(_)) ∧ (tok5 matches Dot)
         ∧ (tok6 matches Dot) ∧ (tok7 matches IntLit(_)))
-    range_lower ∈ Int = match line_t4
+    range_lower ∈ Int = match tok4
         IntLit(n) ⇒ n
         _ ⇒ 0
     range_upper ∈ Int = match tok7
         IntLit(n) ⇒ n
         _ ⇒ 0
-    t3_name ∈ String = match line_t3
+    t3_name ∈ String = match tok3
         Ident(s) ⇒ s
         _ ⇒ ""
     t5_name ∈ String = match tok5
         Ident(s) ⇒ s
         _ ⇒ ""
-    is_plain_ident ∈ Bool = (is_quant_line ∧ (line_t3 matches Ident(_))
-        ∧ (line_t4 matches Colon))
-    is_dotted_ident ∈ Bool = (is_quant_line ∧ (line_t3 matches Ident(_))
-        ∧ (line_t4 matches Dot) ∧ (tok5 matches Ident(_))
+    is_plain_ident ∈ Bool = (is_quant_line ∧ (tok3 matches Ident(_))
+        ∧ (tok4 matches Colon))
+    is_dotted_ident ∈ Bool = (is_quant_line ∧ (tok3 matches Ident(_))
+        ∧ (tok4 matches Dot) ∧ (tok5 matches Ident(_))
         ∧ (tok6 matches Colon))
     over_seq ∈ Bool = (is_plain_ident ∨ is_dotted_ident)
     raw_var_name ∈ String = (is_dotted_ident ? (t3_name ++ "." ++ t5_name) : t3_name)
     matched_var_name ∈ String = (((_scope_prefix ++ raw_var_name) = _registered_seq_name)
         ? _registered_seq_name : raw_var_name)
-    qrange ∈ Bool = (classify_now ∧ (¬line_end) ∧ quant_range_line)
-    qseq ∈ Bool = (classify_now ∧ (¬line_end) ∧ (¬quant_range_line)
+    qrange ∈ Bool = (classify_now ∧ (¬line.end) ∧ quant_range_line)
+    qseq ∈ Bool = (classify_now ∧ (¬line.end) ∧ (¬quant_range_line)
         ∧ over_seq ∧ _is_seq_registered ∧ (¬is_setquery))
 
     -- parse_mode 11: the range head's `} :` close (the 8-token classify

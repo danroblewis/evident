@@ -16,7 +16,17 @@ fsm main
     tc = (is_first_tick ? 0 : _tc + 1)
     seqmem ∈ Bool
     seqmem = (is_first_tick ? true : _seqmem)
-    line_dname ∈ String = (tc ≤ 1 ? "myseq" : "other")
+    line ∈ ClassifiedLine
+    line.at_eof = false
+    line.name = ""
+    line.ty_name = ""
+    line.is_nat = false
+    line.enum_key = ""
+    line.enum_pos = 0
+    line.sort = 0
+    line.end = false
+    line.dname = (tc ≤ 1 ? "myseq" : "other")
+    line.items = C2INil
     kind_slot ∈ Int
     kind_slot = (is_first_tick ? 0 - 1 : _kind_slot)
     -- parse_mode-7 set-walk inputs the lifted module also reads (inert here).
@@ -30,8 +40,6 @@ fsm main
     tok0 = (is_first_tick ? EofTok : _tok0)
     intset ∈ Bool
     intset = (is_first_tick ? false : _intset)
-    line_name ∈ String
-    line_name = (is_first_tick ? "" : _line_name)
     is_notmem ∈ Bool
     is_notmem = (is_first_tick ? false : _is_notmem)
     ..DriverLitMem

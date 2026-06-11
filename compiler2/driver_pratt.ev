@@ -128,9 +128,9 @@ fsm DriverPratt
         : in_pratt ? next_cd
         : _parse_cd)
     parse_kind = (is_first_tick ? 0 : enter_pratt ? enter_kind : _parse_kind)
-    parse_decl_name = (is_first_tick ? "" : enter_pratt ? line_dname : _parse_decl_name)
-    parse_sort = (is_first_tick ? 0 : enter_pratt ? line_sort : _parse_sort)
-    is_nat_type = (is_first_tick ? false : enter_pratt ? line_is_nat : _is_nat_type)
+    parse_decl_name = (is_first_tick ? "" : enter_pratt ? line.dname : _parse_decl_name)
+    parse_sort = (is_first_tick ? 0 : enter_pratt ? line.sort : _parse_sort)
+    is_nat_type = (is_first_tick ? false : enter_pratt ? line.is_nat : _is_nat_type)
     nodecl = (is_first_tick ? false : enter_pratt ? no_decl : _nodecl)
     membership_record_name = (is_first_tick ? "" : enter_pratt ? effective_name : _membership_record_name)
     -- record-pinned membership (`offset_pos ∈ IVec2 = <expr>`)

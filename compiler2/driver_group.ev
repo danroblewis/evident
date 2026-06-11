@@ -2,7 +2,7 @@
 -- CONSUMES (free names, names-match — never declared here): the group-enter
 --           signals (multiname body multi-name, claim_params
 --           first-line param list), the classifier name/sort/type
---           (is_mem, line_is_nat, line_sort, mem_tyname, line_t0), the
+--           (is_mem, line.is_nat, line.sort, mem_tyname, tok0), the
 --           window head (tok0/tok1/tok3), and the parse gate (parse,
 --           _parse_mode, can_consume, nil).
 -- PRODUCES: the HEADER below — the checked interface (bare-mention
@@ -63,7 +63,7 @@ fsm DriverGroup(pending_names ∈ TokenList, walk_state ∈ Int, is_parameter �
 
     pending_names = (is_first_tick ? TLNil
         : claim_params ? TLNil
-        : multiname ? TLCons(line_t0, TLNil)
+        : multiname ? TLCons(tok0, TLNil)
         : take_name ? TLCons(tok0, _pending_names)
         : draining ? name_tail
         : _pending_names)
@@ -80,8 +80,8 @@ fsm DriverGroup(pending_names ∈ TokenList, walk_state ∈ Int, is_parameter �
         : claim_params ? false
         : (type_tick ∧ _is_parameter) ? type_close
         : _closed)
-    shared_sort = (is_first_tick ? 0 : type_tick ? line_sort : _shared_sort)
-    is_nat = (is_first_tick ? false : type_tick ? line_is_nat : _is_nat)
+    shared_sort = (is_first_tick ? 0 : type_tick ? line.sort : _shared_sort)
+    is_nat = (is_first_tick ? false : type_tick ? line.is_nat : _is_nat)
     type_name = (is_first_tick ? "" : type_tick ? mem_tyname : _type_name)
 
     name_field = head_name ++ ":" ++ _type_name

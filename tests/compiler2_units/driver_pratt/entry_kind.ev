@@ -24,20 +24,25 @@ fsm main
     enter_pratt = (is_first_tick ? true : _enter_pratt)
     enter_kind ∈ Int
     enter_kind = (is_first_tick ? 5 : _enter_kind)
-    line_dname ∈ String
-    line_dname = (is_first_tick ? "" : _line_dname)
+    line ∈ ClassifiedLine
+    line.at_eof = false
+    line.name = ""
+    line.ty_name = ""
+    line.is_nat = false
+    line.enum_key = ""
+    line.enum_pos = 0
+    line.sort = 0
+    line.end = false
+    line.dname = ""
+    line.items = C2INil
     is_mem ∈ Bool
     is_mem = (is_first_tick ? false : _is_mem)
-    line_is_nat ∈ Bool
-    line_is_nat = (is_first_tick ? false : _line_is_nat)
     no_decl ∈ Bool
     no_decl = (is_first_tick ? false : _no_decl)
     pinned ∈ Bool
     pinned = (is_first_tick ? false : _pinned)
     effective_name ∈ String
     effective_name = (is_first_tick ? "" : _effective_name)
-    line_sort ∈ Int
-    line_sort = (is_first_tick ? 0 : _line_sort)
     type_rec_slot ∈ Int
     type_rec_slot = (is_first_tick ? 0 : _type_rec_slot)
     pratt_qstop ∈ Bool

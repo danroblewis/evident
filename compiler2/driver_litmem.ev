@@ -1,8 +1,8 @@
 -- MODULE DriverLitMem
 -- CONSUMES: the parse gate (parse, _parse_mode, can_consume), the decoded
 --           window head (tok0), the set-literal entry + classifier
---           views (intset, line_name, is_notmem), and the seq-literal
---           entry + classifier views (seqmem, line_dname, kind_slot).
+--           views (intset, line.name, is_notmem), and the seq-literal
+--           entry + classifier views (seqmem, line.dname, kind_slot).
 -- PRODUCES: the parse_mode-7 set-literal walk state (bound_name/is_negated/or_folded +
 --           folded_body/set_assert, the or-folded membership Expr and its
 --           assert program) and the parse_mode-8 seq-literal registry latch
@@ -31,7 +31,7 @@ fsm DriverLitMem
     element_eq ∈ Expr = EBinOp(OpEq, EIdent(_bound_name), EInt(element_value))
     or_folded_next ∈ Expr = ((_or_folded matches ENoExpr) ? element_eq
         : EBinOp(OpDisj, _or_folded, element_eq))
-    bound_name = (is_first_tick ? "" : intset ? line_name : _bound_name)
+    bound_name = (is_first_tick ? "" : intset ? line.name : _bound_name)
     is_negated = (is_first_tick ? false : intset ? is_notmem : _is_negated)
     or_folded = (is_first_tick ? ENoExpr
         : intset ? ENoExpr
@@ -59,7 +59,7 @@ fsm DriverLitMem
     registered_seq_kind ∈ Int
     is_seq_registered = (is_first_tick ? false : seqmem ? true : _is_seq_registered)
     registered_seq_name = (is_first_tick ? ""
-        : (seqmem ∧ (¬_is_seq_registered)) ? line_dname
+        : (seqmem ∧ (¬_is_seq_registered)) ? line.dname
         : _registered_seq_name)
     registered_seq_kind = (is_first_tick ? 0 - 1
         : (seqmem ∧ (¬_is_seq_registered)) ? kind_slot

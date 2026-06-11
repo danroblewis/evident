@@ -154,6 +154,16 @@ enum C2Items =
     C2INil
     C2ICons(C2Item, C2Items)
 
+-- The per-line classification the whole parse front-end reads: whether the
+-- head is EOF, the decl/membership name and the membership TYPE name with its
+-- sort code + enum-table slot, the line-end flag, the decl name, and the
+-- finished C2Items the dispatch produced. DriverClassify fills it from the
+-- token window (tok0..tok7, read directly); each recognizer reads the fields
+-- it needs. Transient — recomputed every tick, never carried.
+type ClassifiedLine(at_eof ∈ Bool, name ∈ String, ty_name ∈ String,
+        is_nat ∈ Bool, enum_key ∈ String, enum_pos ∈ Int, sort ∈ Int,
+        end ∈ Bool, dname ∈ String, items ∈ C2Items)
+
 enum C2H =
     C2HNil
     C2HCons(Int, C2H)

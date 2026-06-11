@@ -23,10 +23,17 @@ fsm main
     tok0 = (is_first_tick ? Ident("e") : _tok0)
     head_ident ∈ String
     head_ident = (is_first_tick ? "e" : _head_ident)
-    line_dname ∈ String
-    line_dname = (is_first_tick ? "" : _line_dname)
-    line_sort ∈ Int
-    line_sort = (is_first_tick ? 0 : _line_sort)
+    line ∈ ClassifiedLine
+    line.at_eof = false
+    line.name = ""
+    line.ty_name = ""
+    line.is_nat = false
+    line.enum_key = ""
+    line.enum_pos = 0
+    line.sort = 0
+    line.end = false
+    line.dname = ""
+    line.items = C2INil
     enter_match ∈ Bool
     enter_match = (is_first_tick ? false : _enter_match)
     parse_ready ∈ Bool
