@@ -39,8 +39,11 @@ fsm main
     decl_action = (is_first_tick ? 0 : _decl_action)
     callwalk_state ∈ Int
     callwalk_state = (is_first_tick ? 0 : _callwalk_state)
-    tuple_state ∈ Int
-    tuple_state = (is_first_tick ? 0 : _tuple_state)
+    tuple ∈ TupleState
+    tuple.state = (is_first_tick ? 0 : _tuple.state)
+    tuple.callee = (is_first_tick ? "" : _tuple.callee)
+    tuple.arity = (is_first_tick ? 0 : _tuple.arity)
+    tuple.pos = (is_first_tick ? 0 : _tuple.pos)
     nil ∈ Bool
     nil = (is_first_tick ? true : _nil)
     vfield_st ∈ Int

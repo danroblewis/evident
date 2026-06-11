@@ -522,7 +522,7 @@ fsm driver_main
         : parse_ready ? done_items
         : argbite ? libcall_items
         : noargs ? libcall0_items
-        : efflit_close ? (_chain_on ? branch_fold : C2ICons(C2LenEq(_efflit_count), C2INil))
+        : efflit_close ? (_chain_on ? branch_fold : C2ICons(C2LenEq(_efflit.count), C2INil))
         : chain_fire ? fold_items
         : case_fire ? case_items
         : at_close ? set_assert

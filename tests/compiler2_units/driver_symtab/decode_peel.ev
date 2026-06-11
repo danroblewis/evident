@@ -23,8 +23,14 @@ fsm main
     lookup_read = (is_first_tick ? false : _lookup_read)
     lookup_name ∈ String
     lookup_name = (is_first_tick ? "" : _lookup_name)
-    qloop_on ∈ Bool
-    qloop_on = (is_first_tick ? false : _qloop_on)
+    qloop ∈ QLoop
+    qloop.on = (is_first_tick ? false : _qloop.on)
+    qloop.var = (is_first_tick ? "" : _qloop.var)
+    qloop.kind = (is_first_tick ? 0 : _qloop.kind)
+    qloop.lo = (is_first_tick ? 0 : _qloop.lo)
+    qloop.hi = (is_first_tick ? 0 : _qloop.hi)
+    qloop.body = (is_first_tick ? ENoExpr : _qloop.body)
+    qloop.cur = (is_first_tick ? 0 : _qloop.cur)
     param_skip ∈ Int
     param_skip = (is_first_tick ? 0 : _param_skip)
     parse ∈ Bool
