@@ -1,8 +1,8 @@
 {
   "name": "vscode-evident",
   "displayName": "Evident",
-  "description": "Syntax highlighting + LSP (definition, references, rename, symbols, hover, diagnostics) for the Evident constraint language.",
-  "version": "0.1.0",
+  "description": "Syntax highlighting + LSP (definition, references, highlight, rename, document/workspace symbols, hover, completion, folding, diagnostics) for the Evident constraint language.",
+  "version": "0.2.0",
   "publisher": "evident-dev",
   "engines": { "vscode": "^1.75.0" },
   "categories": ["Programming Languages"],
@@ -30,7 +30,13 @@
         "evident.lspPath": {
           "type": "string",
           "default": "evident-lsp",
-          "description": "Path to the evident-lsp binary (built from tools/evident-tools)."
+          "description": "Path to the evident-lsp binary. Build with `cd tools/evident-lsp && cargo build --release`; the binary is at tools/evident-lsp/target/release/evident-lsp. Set this to that absolute path, or put it on PATH."
+        },
+        "evident.lspArgs": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "Extra arguments passed to the evident-lsp binary."
         }
       }
     }

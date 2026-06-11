@@ -11,10 +11,21 @@ single dependency-free Rust binary set under `tools/`.
 tools/
   evident-tools/     Rust crate — the engine + two binaries:
     evt              the CLI (index/defs/refs/rename/symbols/families/collisions)
-    evident-lsp      a std-only Language Server over stdio
-  vscode-evident/    minimal VS Code extension (TextMate grammar + LSP client)
+    evident-lsp      a std-only Language Server over stdio (zero-dep fallback)
+  evident-lsp/       the production LSP server (tower-lsp); links evident-tools
+                     as a library. Full capability set + per-editor wiring.
+                     See tools/evident-lsp/README.md.
+  vscode-evident/    VS Code extension (TextMate grammar + LSP client)
   README.md          this file
 ```
+
+> **Two servers, same binary name.** `tools/evident-lsp/` (tower-lsp, async,
+> fuller — incremental sync, completion, highlight, workspace symbols, folding,
+> a precise index-backed Seq diagnostic) **supersedes** the std-only
+> `evident-tools/src/lsp.rs`, which remains as a zero-dependency fallback when
+> crates.io is unreachable. Prefer the `tools/evident-lsp/` build. The engine
+> (lexer / index / rename / resolve / positions) is **shared, never
+> duplicated**.
 
 ## Why Rust (not Python/Go)
 
