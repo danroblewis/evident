@@ -100,21 +100,21 @@ fsm DriverQuant
     qexp_fin_items ∈ C2Items = C2ICons(C2AssertTop, C2INil)
 
     seqvar_len ∈ Int
-    seqlen_lhs_call ∈ Bool = (guard_lhs matches ECall1(_, _))
-    seqlen_callee ∈ String = match guard_lhs
+    seqlen_lhs_call ∈ Bool = (cond_lhs matches ECall1(_, _))
+    seqlen_callee ∈ String = match cond_lhs
         ECall1(n, _) ⇒ n
         _ ⇒ ""
-    seqlen_arg ∈ Expr = match guard_lhs
+    seqlen_arg ∈ Expr = match cond_lhs
         ECall1(_, a) ⇒ a
         _ ⇒ ENoExpr
     seqlen_arg_name ∈ String = match seqlen_arg
         EIdent(s) ⇒ s
         _ ⇒ ""
-    seqlen_val ∈ Int = match guard_rhs
+    seqlen_val ∈ Int = match cond_rhs
         EInt(n) ⇒ n
         _ ⇒ 0 - 1
-    seqlen_pin_hit ∈ Bool = (pratt_done ∧ (_pratt_kind = 2) ∧ (¬pratt_bad) ∧ guard_is_binop
-        ∧ (guard_op matches OpEq) ∧ seqlen_lhs_call ∧ (seqlen_callee = "str_len")
+    seqlen_pin_hit ∈ Bool = (pratt_done ∧ (_pratt_kind = 2) ∧ (¬pratt_bad) ∧ cond_binop
+        ∧ (cond_op matches OpEq) ∧ seqlen_lhs_call ∧ (seqlen_callee = "str_len")
         ∧ (seqlen_val ≥ 0) ∧ _seqvar_set
         ∧ ((seqlen_arg_name = _seqvar_name) ∨ ((_scope_prefix ++ seqlen_arg_name) = _seqvar_name)))
     seqvar_len = (is_first_tick ? 0 : seqlen_pin_hit ? seqlen_val : _seqvar_len)

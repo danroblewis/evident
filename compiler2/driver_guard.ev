@@ -4,50 +4,50 @@
 --           the parse_mode-10 composition-walk state (in_parse, _parse_mode,
 --           _callw_st, callw_reset, work_nil), and the inline-frame
 --           stack views (frame_pop, _frame_depth, h_top).
--- PRODUCES: the guard recognizer (guard_op/guard_lhs/guard_rhs/guard_is_binop/guard_callee/guard_key/
---           guard_pos/guard_hit), the claim-body fetch effect (eff_guard_read), the
---           jump capture/fire signals (guard_jump_cap/guard_jump_fire/guard_off), and
---           the active-guard carry (guard_handle/guard_depth) + guard_on flag.
+-- PRODUCES: the guard recognizer (cond_op/cond_lhs/cond_rhs/cond_binop/cond_callee/cond_key/
+--           cond_pos/cond_hit), the claim-body fetch effect (eff_guard_read), the
+--           jump capture/fire signals (jump_capture/jump_fire/disarm), and
+--           the active-guard carry (active_handle/armed_depth) + guarding flag.
 -- MAINTAINS: a `cond ⇒ ClaimName` line splices Name's body with every
 --           asserted constraint wrapped in (=> guard …); the guard is
---           armed when the jump fires (guard_handle ← the guard handle) and
+--           armed when the jump fires (active_handle ← the guard handle) and
 --           disarmed by the matching frame pop. ONE active guard at a
 --           time (no nested guarded splices — zero corpus occurrences).
 --
 -- The conditional-inline (`cond ⇒ ClaimName`) guarded-splice phase.
 -- Lifted into driver_main via `..DriverGuard`.
 fsm DriverGuard
-    guard_op ∈ Op
-    guard_lhs ∈ Expr
-    guard_rhs ∈ Expr
-    guard_is_binop ∈ Bool
-    BoolExprBinopParts(e ↦ pratt_result, op ↦ guard_op, lhs ↦ guard_lhs,
-        rhs ↦ guard_rhs, is_binop ↦ guard_is_binop)
-    guard_callee ∈ String = match guard_rhs
+    cond_op ∈ Op
+    cond_lhs ∈ Expr
+    cond_rhs ∈ Expr
+    cond_binop ∈ Bool
+    BoolExprBinopParts(e ↦ pratt_result, op ↦ cond_op, lhs ↦ cond_lhs,
+        rhs ↦ cond_rhs, is_binop ↦ cond_binop)
+    cond_callee ∈ String = match cond_rhs
         EIdent(s) ⇒ s
         _ ⇒ ""
-    guard_key ∈ String
-    FtiNameEntry(name ↦ guard_callee, entry ↦ guard_key)
-    guard_pos ∈ Int = index_of(claimidx_names, guard_key, 0)
-    guard_hit ∈ Bool = (pratt_done ∧ (_pratt_kind = 2) ∧ (¬pratt_bad) ∧ guard_is_binop
-        ∧ (guard_op matches OpImpl) ∧ (guard_callee ≠ "") ∧ (guard_pos ≥ 0)
+    cond_key ∈ String
+    FtiNameEntry(name ↦ cond_callee, entry ↦ cond_key)
+    cond_pos ∈ Int = index_of(claimidx_names, cond_key, 0)
+    cond_hit ∈ Bool = (pratt_done ∧ (_pratt_kind = 2) ∧ (¬pratt_bad) ∧ cond_binop
+        ∧ (cond_op matches OpImpl) ∧ (cond_callee ≠ "") ∧ (cond_pos ≥ 0)
         ∧ (_frame_depth < 8))
     eff_guard_read ∈ Effect
-    BuildMemReadLong(addr ↦ claimidx_buf.base + (8 * (guard_pos / 32)), eff ↦ eff_guard_read)
-    guard_jump_cap ∈ Bool = (in_parse ∧ (_parse_mode = 10) ∧ (_callw_st = 3))
-    guard_jump_fire ∈ Bool = (in_parse ∧ (_parse_mode = 10) ∧ (_callw_st = 4)
+    BuildMemReadLong(addr ↦ claimidx_buf.base + (8 * (cond_pos / 32)), eff ↦ eff_guard_read)
+    jump_capture ∈ Bool = (in_parse ∧ (_parse_mode = 10) ∧ (_callw_st = 3))
+    jump_fire ∈ Bool = (in_parse ∧ (_parse_mode = 10) ∧ (_callw_st = 4)
         ∧ work_nil)
-    guard_handle ∈ Int
-    guard_depth ∈ Int
-    guard_off ∈ Bool = (frame_pop ∧ (_frame_depth = _guard_depth))
-    guard_handle = (is_first_tick ? 0
+    active_handle ∈ Int
+    armed_depth ∈ Int
+    disarm ∈ Bool = (frame_pop ∧ (_frame_depth = _armed_depth))
+    active_handle = (is_first_tick ? 0
         : callw_reset ? 0
-        : guard_jump_fire ? h_top
-        : guard_off ? 0
-        : _guard_handle)
-    guard_depth = (is_first_tick ? 0
+        : jump_fire ? h_top
+        : disarm ? 0
+        : _active_handle)
+    armed_depth = (is_first_tick ? 0
         : callw_reset ? 0
-        : guard_jump_fire ? _frame_depth + 1
-        : guard_off ? 0
-        : _guard_depth)
-    guard_on ∈ Bool = (_guard_handle ≠ 0)
+        : jump_fire ? _frame_depth + 1
+        : disarm ? 0
+        : _armed_depth)
+    guarding ∈ Bool = (_active_handle ≠ 0)

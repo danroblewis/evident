@@ -208,7 +208,7 @@ fsm DriverPosBind
         : frame_jump ? 0
         : param_ty_take ? _param_count
         : _pskip_grp)
-    pskip_guard ∈ Bool = (guard_on ∧ (_frame_depth = _guard_depth))
+    pskip_guard ∈ Bool = (guarding ∧ (_frame_depth = _armed_depth))
     pskip_decl_fire ∈ Bool = (param_ty_take ∧ (¬_callw_is_type) ∧ (¬pskip_guard)
         ∧ (¬(_callw_bare ∧ (¬_callw_hide))))
     pskip_enum_key ∈ String
@@ -362,7 +362,7 @@ fsm DriverPosBind
         : _pratt_kind = 10 ? elem_items
         : _pratt_kind = 1 ? (_pratt_rec_slot ≥ 0 ? C2INil
             : C2ICons(pratt_decl_head, nat_seg))
-        : guard_hit ? C2ICons(C2Process(guard_lhs), C2INil)
+        : cond_hit ? C2ICons(C2Process(cond_lhs), C2INil)
         : C2ICons(C2Process(pratt_result), C2ICons(C2AssertTop, C2INil)))
     pratt_done_consume ∈ Int = (pratt_bad ? 1
         : _pratt_kind = 3 ? 1

@@ -40,14 +40,14 @@ fsm main
     line_end = (is_first_tick ? false : _line_end)
     work_nil ∈ Bool
     work_nil = (is_first_tick ? false : _work_nil)
-    guard_is_binop ∈ Bool
-    guard_is_binop = (is_first_tick ? false : _guard_is_binop)
-    guard_lhs ∈ Expr
-    guard_lhs = (is_first_tick ? EInt(0) : _guard_lhs)
-    guard_op ∈ Op
-    guard_op = (is_first_tick ? OpPlus : _guard_op)
-    guard_rhs ∈ Expr
-    guard_rhs = (is_first_tick ? EInt(0) : _guard_rhs)
+    cond_binop ∈ Bool
+    cond_binop = (is_first_tick ? false : _cond_binop)
+    cond_lhs ∈ Expr
+    cond_lhs = (is_first_tick ? EInt(0) : _cond_lhs)
+    cond_op ∈ Op
+    cond_op = (is_first_tick ? OpPlus : _cond_op)
+    cond_rhs ∈ Expr
+    cond_rhs = (is_first_tick ? EInt(0) : _cond_rhs)
     scope_prefix ∈ String
     scope_prefix = (is_first_tick ? "" : _scope_prefix)
     param_skip ∈ Int

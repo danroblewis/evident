@@ -7,8 +7,8 @@
 --           work_nil), the line-pop signal (frame_pop), the record
 --           registry (recs name/sort), the callee param registry walked
 --           during pskip (posbind's param_names/_param_count), the active-
---           guard state (guard_on, _guard_depth), and the sibling fire/cap
---           signals (guard_hit, guard_jump_*, posjump_*, the bindzip
+--           guard state (guarding, _armed_depth), and the sibling fire/cap
+--           signals (cond_hit, guard_jump_*, posjump_*, the bindzip
 --           staging column bindzip_binds/bindzip_count,
 --           pratt_done, pratt_bad, enter_claim*).
 --           Wide by nature: a call jump couples the classifier decision,
@@ -136,7 +136,7 @@ fsm DriverCompose
     type_pin_items ∈ C2Items = type_pin_suffixes[0]
     type_recdecl_items ∈ C2Items = C2ICons(C2RecDecl(_type_inst_name, _type_slot), C2INil)
 
-    frame_jump ∈ Bool = (callw_fire ∨ callw_bare_jump ∨ guard_jump_fire ∨ posjump_fire)
+    frame_jump ∈ Bool = (callw_fire ∨ callw_bare_jump ∨ jump_fire ∨ posjump_fire)
     jump_target_now ∈ Int = (callw_bare_jump ? cap_int : _jump_target)
     frame_ret_now ∈ Int = (callw_fire ? _tok_cur + 1 : _tok_cur)
 
@@ -229,8 +229,8 @@ fsm DriverCompose
     join_hdr = (is_first_tick ? "*"
         : callw_reset ? "*"
         : frame_pop ? frame_hdr
-        : (pskip_done ∧ guard_on ∧ (_frame_depth = _guard_depth)) ? _join_hdr
-        : (pskip_off ∧ guard_on ∧ (_frame_depth = _guard_depth)) ? _join_hdr
+        : (pskip_done ∧ guarding ∧ (_frame_depth = _armed_depth)) ? _join_hdr
+        : (pskip_off ∧ guarding ∧ (_frame_depth = _armed_depth)) ? _join_hdr
         : pskip_off ? "*"
         : (pskip_done ∧ _callw_is_type) ? "*"
         : (pskip_done ∧ _callw_hide) ? hdr_join_now
@@ -249,7 +249,7 @@ fsm DriverCompose
         : posjump_fire ? _call_count + 1
         : _call_count)
     jump_target = (is_first_tick ? 0
-        : (callw_cap ∨ guard_jump_cap ∨ posjump_cap) ? cap_int
+        : (callw_cap ∨ jump_capture ∨ posjump_cap) ? cap_int
         : _jump_target)
     param_skip = (is_first_tick ? 0
         : frame_jump ? 1
@@ -264,8 +264,8 @@ fsm DriverCompose
         : _param_depth)
     callw_st = (is_first_tick ? 0
         : (comp_line ∨ tymem_line) ? 0
-        : guard_hit ? 3
-        : guard_jump_cap ? 4
+        : cond_hit ? 3
+        : jump_capture ? 4
         : callw_cap ? 1
         : _callw_st)
     callw_bare = (is_first_tick ? false

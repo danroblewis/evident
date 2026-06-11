@@ -87,14 +87,14 @@ fsm main
     enum_values ∈ Seq(EnumVariantVal)
     #enum_values ≤ 6
     enum_values = (is_first_tick ? ⟨⟩ : _enum_values)
-    guard_hit ∈ Bool
-    guard_hit = (is_first_tick ? false : _guard_hit)
-    guard_lhs ∈ Expr
-    guard_lhs = (is_first_tick ? EInt(0) : _guard_lhs)
-    guard_on ∈ Bool
-    guard_on = (is_first_tick ? false : _guard_on)
-    guard_depth ∈ Int
-    guard_depth = (is_first_tick ? 0 : _guard_depth)
+    cond_hit ∈ Bool
+    cond_hit = (is_first_tick ? false : _cond_hit)
+    cond_lhs ∈ Expr
+    cond_lhs = (is_first_tick ? EInt(0) : _cond_lhs)
+    guarding ∈ Bool
+    guarding = (is_first_tick ? false : _guarding)
+    armed_depth ∈ Int
+    armed_depth = (is_first_tick ? 0 : _armed_depth)
     callw_hide ∈ Bool
     callw_hide = (is_first_tick ? false : _callw_hide)
     callw_bare ∈ Bool

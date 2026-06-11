@@ -471,7 +471,7 @@ fsm driver_main
         : it_ite ? 3
         : it_not ? 1
         : it_pin_eq ? 2
-        : it_assert ? (guard_on ? (_item_step = 1 ? 1 : 0) : 1)
+        : it_assert ? (guarding ? (_item_step = 1 ? 1 : 0) : 1)
         : it_drop ? 1
         : it_app ? (_item_step = app_argc ? app_argc : 0)
         : it_select_eq ? (_item_step = 1 ? 1 : 0)
@@ -498,7 +498,7 @@ fsm driver_main
     handle_stack = (is_first_tick ? C2HNil
         : (enter_claim ∨ enter_claim_params) ? C2HNil
         : callw_fire ? callw_pop_stack
-        : guard_jump_fire ? h_tail1
+        : jump_fire ? h_tail1
         : bindzip_act ? bindzip_pop
         : push_bound ? C2HCons(bound_handle, stack_in)
         : push_ident ? C2HCons(lookup_handle, stack_in)
@@ -563,12 +563,12 @@ fsm driver_main
         : it_select_eq ? (_item_step = 2 ? work_tail : _work_items)
         : it_sel_eq_h ? (_item_step = 1 ? work_tail : _work_items)
         : it_len_eq ? (_item_step = 1 ? work_tail : _work_items)
-        : it_assert ? ((guard_on ∧ (_item_step = 0)) ? _work_items : work_tail)
+        : it_assert ? ((guarding ∧ (_item_step = 0)) ? _work_items : work_tail)
         : work_tail)
 
     multi_step ∈ Bool = (processing ∧
         ((it_op ∧ op_is_nary ∧ (_item_step < 2))
-        ∨ (it_assert ∧ guard_on ∧ (_item_step < 1))
+        ∨ (it_assert ∧ guarding ∧ (_item_step < 1))
         ∨ (it_decl ∧ (_item_step < 2))
         ∨ (it_app ∧ (_item_step < app_argc))
         ∨ (it_select_eq ∧ (_item_step < 2))
@@ -587,7 +587,7 @@ fsm driver_main
         : it_decl ? (_item_step = 2 ? 0 : 2)
         : it_natbound ? 1
         : it_pin_eq ? 1
-        : it_assert ? ((guard_on ∧ (_item_step = 0)) ? 2 : 0)
+        : it_assert ? ((guarding ∧ (_item_step = 0)) ? 2 : 0)
         : it_app ? (_item_step = app_argc ? 1 : 0)
         : it_select_eq ? ((_item_step = 0 ∨ _item_step = 1) ? 2 : 0)
         : it_sel_eq_h ? (_item_step = 0 ? 2 : 1)
@@ -724,8 +724,8 @@ fsm driver_main
         : skip_stop ? 0
         : claim_end ? 0
         : (comp_line ∨ tymem_line) ? 10
-        : guard_hit ? 10
-        : guard_jump_fire ? 2
+        : cond_hit ? 10
+        : jump_fire ? 2
         : (callw_bare_jump ∨ callw_fire ∨ callw_bail) ? 2
         : enter_qrange ? 11
         : qrange_bail ? 2
@@ -840,7 +840,7 @@ fsm driver_main
     eff_guard_impl ∈ Effect
     guard_impl_ok ∈ Bool
     guard_impl_nn ∈ Bool
-    BoolCmpBuildZ3(ctx_h ↦ z3ctx.ctx, op ↦ op_impl, l_h ↦ _guard_handle,
+    BoolCmpBuildZ3(ctx_h ↦ z3ctx.ctx, op ↦ op_impl, l_h ↦ _active_handle,
         r_h ↦ h_top, eff ↦ eff_guard_impl, ok ↦ guard_impl_ok,
         needs_not ↦ guard_impl_nn)
     eff_nat_ge ∈ Effect
@@ -931,7 +931,7 @@ fsm driver_main
             : eff_sym_write)
         : it_natbound ? eff_nat_ge
         : it_pin_eq ? eff_pin_eq
-        : it_assert ? (guard_on
+        : it_assert ? (guarding
             ? (_item_step = 0 ? eff_guard_impl : eff_assert_tmp)
             : eff_assert)
         : it_app ? (_item_step < app_argc ? eff_ctor_argw : eff_ctor_app)
@@ -1037,7 +1037,7 @@ fsm driver_main
         : _fetch_mode = 1 ? ⟨copy_eff0, copy_eff1, copy_eff2, copy_eff3, copy_eff4, copy_eff5, copy_eff6, copy_eff7⟩
         : claimidx_add ? ⟨eff_claimidx_write⟩
         : read_callee_cursor ? ⟨eff_claimidx_read⟩
-        : guard_hit ? ⟨eff_guard_read⟩
+        : cond_hit ? ⟨eff_guard_read⟩
         : matchpin_accread ? ⟨eff_match_accread⟩
         : pos_close ? ⟨eff_posbind_read⟩
         : recdecl_active ? (recdecl_eff_st = 2

@@ -1,7 +1,7 @@
 -- DriverGuard isolation — guard arms when the jump fires: drive the
 -- composition jump-fire condition (in_parse, parse_mode 10, callw_st 4, work_items
 -- nil) with inline-frame-top guard handle h_top = 99 and no
--- reset/unguard; the splice phase must latch guard_handle ← 99 on the fire tick.
+-- reset/unguard; the splice phase must latch active_handle ← 99 on the fire tick.
 -- entry: main
 -- expect: stdout = "99"
 -- expect: exit = 0
@@ -44,7 +44,7 @@ fsm main
     claimidx_buf.base = (is_first_tick ? 0 : _claimidx_buf.base)
     claimidx_buf.count = (is_first_tick ? 0 : _claimidx_buf.count)
     ..DriverGuard
-    g_msg ∈ String = str_from_int(guard_handle)
+    g_msg ∈ String = str_from_int(active_handle)
     effects ∈ Seq(Effect) = ((¬is_first_tick)
         ? ⟨LibCall("libc", "puts", ⟨ArgStr(g_msg)⟩), Exit(0)⟩
         : ⟨LibCall("libc", "getpid", ⟨⟩)⟩)
