@@ -67,10 +67,10 @@ fsm main
     -- user-enum + seq-var carries (no user enum, no registered seq).
     decl_names ∈ String
     decl_names = (is_first_tick ? "" : _decl_names)
-    seqvar_set ∈ Bool
-    seqvar_set = (is_first_tick ? false : _seqvar_set)
-    seqvar_name ∈ String
-    seqvar_name = (is_first_tick ? "" : _seqvar_name)
+    census_registered ∈ Bool
+    census_registered = (is_first_tick ? false : _census_registered)
+    census_var_name ∈ String
+    census_var_name = (is_first_tick ? "" : _census_var_name)
     -- sibling sub-walk enter signals (none active in this isolation).
     exit_enter ∈ Bool
     exit_enter = (is_first_tick ? false : _exit_enter)
@@ -105,8 +105,8 @@ fsm main
     positional_line = (is_first_tick ? false : _positional_line)
     qset ∈ Bool
     qset = (is_first_tick ? false : _qset)
-    seq_dotted ∈ Bool
-    seq_dotted = (is_first_tick ? false : _seq_dotted)
+    is_dotted_ident ∈ Bool
+    is_dotted_ident = (is_first_tick ? false : _is_dotted_ident)
     arm_take ∈ Bool
     arm_take = (is_first_tick ? false : _arm_take)
     arm_payload_head ∈ Bool

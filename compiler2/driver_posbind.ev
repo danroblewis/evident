@@ -348,7 +348,7 @@ fsm DriverPosBind
     natbound_segment ∈ C2Items = (_is_nat_type
         ? C2ICons(C2NatBound, C2ICons(C2AssertTop, pin_segment))
         : pin_segment)
-    decl_head ∈ C2Item = (_nodecl ? C2Process(EIdent(_pinned_recname))
+    decl_head ∈ C2Item = (_nodecl ? C2Process(EIdent(_membership_record_name))
         : C2DeclConst(_parse_decl_name, _parse_sort))
     done_items ∈ C2Items = (parse_bad ? C2INil
         : _parse_kind = 3 ? C2ICons(C2Process(result),

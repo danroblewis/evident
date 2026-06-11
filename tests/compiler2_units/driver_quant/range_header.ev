@@ -64,10 +64,10 @@ fsm main
     parse_bad = (is_first_tick ? false : _parse_bad)
     result ∈ Expr
     result = (is_first_tick ? EInt(0) : _result)
-    seqvar_name ∈ String
-    seqvar_name = (is_first_tick ? "" : _seqvar_name)
-    seqvar_set ∈ Bool
-    seqvar_set = (is_first_tick ? false : _seqvar_set)
+    census_var_name ∈ String
+    census_var_name = (is_first_tick ? "" : _census_var_name)
+    census_registered ∈ Bool
+    census_registered = (is_first_tick ? false : _census_registered)
     tok_ready ∈ Bool
     tok_ready = (is_first_tick ? false : _tok_ready)
     tok0 ∈ Token

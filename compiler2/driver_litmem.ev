@@ -6,7 +6,7 @@
 -- PRODUCES: the parse_mode-7 set-literal walk state (intset_name/neg/intset_expr +
 --           intset_body/intset_items, the or-folded membership Expr and its
 --           assert program) and the parse_mode-8 seq-literal registry latch
---           (seqvar_set/seqvar_name/seqvar_slot — the one registered Seq(Int) var).
+--           (census_registered/census_var_name/census_var_slot — the one registered Seq(Int) var).
 -- MAINTAINS: a `x ∈ {a,b,…}` line or-folds one int element per tick
 --           into an Expr, asserted (C2Not-wrapped for ∉) at the closing
 --           `}`; the empty set lowers to `false`. A `s ∈ Seq(Int)` line
@@ -54,13 +54,13 @@ fsm DriverLitMem
     -- to UNSAT. `#s` lowers to the s__len const (per-sort `#`
     -- dispatch), not str.len. One registered seq var per compile
     -- (the census surface).
-    seqvar_set ∈ Bool
-    seqvar_name ∈ String
-    seqvar_slot ∈ Int
-    seqvar_set = (is_first_tick ? false : seqmem ? true : _seqvar_set)
-    seqvar_name = (is_first_tick ? ""
-        : (seqmem ∧ (¬_seqvar_set)) ? line_dname
-        : _seqvar_name)
-    seqvar_slot = (is_first_tick ? 0 - 1
-        : (seqmem ∧ (¬_seqvar_set)) ? kind_slot
-        : _seqvar_slot)
+    census_registered ∈ Bool
+    census_var_name ∈ String
+    census_var_slot ∈ Int
+    census_registered = (is_first_tick ? false : seqmem ? true : _census_registered)
+    census_var_name = (is_first_tick ? ""
+        : (seqmem ∧ (¬_census_registered)) ? line_dname
+        : _census_var_name)
+    census_var_slot = (is_first_tick ? 0 - 1
+        : (seqmem ∧ (¬_census_registered)) ? kind_slot
+        : _census_var_slot)

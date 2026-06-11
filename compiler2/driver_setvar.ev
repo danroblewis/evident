@@ -3,8 +3,8 @@
 --           is_mem/is_notmem, line_dname, line_name, line_ty_name, kind_slot,
 --           the quantifier-set views c_q_*), the classify gate
 --           (classify_now, line_end, enter_seqlit, in_skip), the window
---           head (tok0/tok5..t7), the registered-seq carries (seqvar_name/
---           seqvar_slot), the inline-frame prefix (scope_prefix), the parse gate, and
+--           head (tok0/tok5..t7), the registered-seq carries (census_var_name/
+--           census_var_slot), the inline-frame prefix (scope_prefix), the parse gate, and
 --           the Pratt result (parse_ready/parse_bad/result/parse_kind).
 -- PRODUCES: the ≤2-entry Set(T) variable registry (collection_count/stv_n*/stv_k*/
 --           stv_e*/stv_c*), the parse_mode-14 set-literal element walk
@@ -97,7 +97,7 @@ fsm DriverSetVar
         Ident(s) ⇒ s
         _ ⇒ ""
     tgt_hit ∈ Bool = (tgt_name ≠ "" ∧ (∃ e ∈ vars : e.name = tgt_name))
-    qset ∈ Bool = (classify_now ∧ (¬line_end) ∧ seq_plain
+    qset ∈ Bool = (classify_now ∧ (¬line_end) ∧ is_plain_ident
         ∧ (¬is_exists) ∧ src_hit ∧ tgt_hit
         ∧ (bind_var = loop_variable) ∧ (tok6 matches OpIn))
     setquery_elems ∈ String
@@ -142,15 +142,15 @@ fsm DriverSetVar
     seqlit_elt_name ∈ String = match result
         EIdent(sen) ⇒ sen
         _ ⇒ ""
-    projected_item ∈ C2Item = ((_seqvar_slot ≥ 0 ∧ (result matches EIdent(_)))
-        ? C2RecVal(_scope_prefix ++ seqlit_elt_name, _seqvar_slot)
+    projected_item ∈ C2Item = ((_census_var_slot ≥ 0 ∧ (result matches EIdent(_)))
+        ? C2RecVal(_scope_prefix ++ seqlit_elt_name, _census_var_slot)
         : C2Process(result))
-    seqlit_elem_items ∈ C2Items = C2ICons(C2Process(EIdent(_seqvar_name)),
+    seqlit_elem_items ∈ C2Items = C2ICons(C2Process(EIdent(_census_var_name)),
         C2ICons(C2Process(EInt(_seqlit_count)),
         C2ICons(C2SelH,
         C2ICons(projected_item,
         C2ICons(C2PinEq, C2ICons(C2AssertTop, C2INil))))))
-    seqlit_close_items ∈ C2Items = C2ICons(C2Process(EIdent(_seqvar_name ++ "__len")),
+    seqlit_close_items ∈ C2Items = C2ICons(C2Process(EIdent(_census_var_name ++ "__len")),
         C2ICons(C2Process(EInt(_seqlit_count)),
         C2ICons(C2PinEq, C2ICons(C2AssertTop, C2INil))))
 

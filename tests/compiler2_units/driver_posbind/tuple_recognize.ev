@@ -145,8 +145,8 @@ fsm main
     is_nat_type = (is_first_tick ? false : _is_nat_type)
     nodecl ∈ Bool
     nodecl = (is_first_tick ? false : _nodecl)
-    pinned_recname ∈ String
-    pinned_recname = (is_first_tick ? "" : _pinned_recname)
+    membership_record_name ∈ String
+    membership_record_name = (is_first_tick ? "" : _membership_record_name)
     parse_rec_slot ∈ Int
     parse_rec_slot = (is_first_tick ? 0 : _parse_rec_slot)
     parse_sort ∈ Int

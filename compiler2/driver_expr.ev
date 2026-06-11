@@ -68,10 +68,10 @@ claim C2AtomE(t ∈ Token, e ∈ Expr, ok ∈ Bool)
     string_value ∈ String = match t
         StringLit(s) ⇒ s
         _ ⇒ ""
-    float_whole ∈ Int = match t
+    whole_part ∈ Int = match t
         FloatLit(w, _, _) ⇒ w
         _ ⇒ 0
-    float_frac ∈ Int = match t
+    fraction_part ∈ Int = match t
         FloatLit(_, f, _) ⇒ f
         _ ⇒ 0
     e = (int ? EInt(int_value)
@@ -79,7 +79,7 @@ claim C2AtomE(t ∈ Token, e ∈ Expr, ok ∈ Bool)
        : is_true ? EIdent("true")
        : is_false ? EIdent("false")
        : is_string_lit ? EStr(string_value)
-       : is_float_lit ? ECall2("__real", EInt(float_whole), EInt(float_frac))
+       : is_float_lit ? ECall2("__real", EInt(whole_part), EInt(fraction_part))
        : ENoExpr)
     ok = (int ∨ is_ident ∨ is_true ∨ is_false ∨ is_string_lit ∨ is_float_lit)
 

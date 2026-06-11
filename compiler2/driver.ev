@@ -319,7 +319,7 @@ fsm driver_main
             C2ICons(C2SelH, work_tail))))
     loopvar_prefix ∈ String = _qloop_var ++ "."
     dot ∈ Bool = (process ∧ is_ident ∧ _qloop_on
-        ∧ (_qloop_kind = 1) ∧ (_seqvar_slot ≥ 0)
+        ∧ (_qloop_kind = 1) ∧ (_census_var_slot ≥ 0)
         ∧ (substr(lookup_name, 0, #loopvar_prefix) = loopvar_prefix))
     loopvar_field ∈ String = substr(lookup_name, #loopvar_prefix,
         #lookup_name - #loopvar_prefix)
@@ -368,8 +368,8 @@ fsm driver_main
     -- per-call-site internals.
     pinning ∈ Bool
     record_slot ∈ Int
-    pinned_name ∈ String
-    pinned_body ∈ Expr
+    record_type_name ∈ String
+    parsed_record_body ∈ Expr
     cursor ∈ Int
     emit_cursor ∈ Int
     field_name ∈ String
@@ -501,7 +501,7 @@ fsm driver_main
         : jump_fire ? tail1
         : bindzip_act ? bindzip_pop
         : push_bound ? C2HCons(bound_handle, stack_in)
-        : push_ident ? C2HCons(resolved_handle, stack_in)
+        : push_ident ? C2HCons(looked_up_handle, stack_in)
         : push_handle ? C2HCons(h_val, stack_in)
         : push_decl ? C2HCons(tmp_in, stack_in)
         : stack_dup3 ? C2HCons(h_3rd, stack_in)
@@ -1048,8 +1048,8 @@ fsm driver_main
         : (processing ∧ is_decl_item ∧ (_item_step = 0) ∧ (const_sort ≥ 30))
             ? ⟨mksym_eff, enumtab_read_mem⟩
         : processing ? ⟨step_eff⟩
-        : (finish ∧ with_op) ? ⟨float_tag, float_pay, float_op⟩
-        : finish ? ⟨float_tag, float_pay⟩
+        : (finish ∧ with_op) ? ⟨tag_cell, payload_cell, op_cell⟩
+        : finish ? ⟨tag_cell, payload_cell⟩
         : (plan_kind = 1 ∧ have_pend_str) ? ⟨pending_str_eff, write_tag0⟩
         : plan_kind = 1 ? ⟨write_tag0⟩
         : plan_kind = 2 ? ⟨write_tag0, write_pay0⟩

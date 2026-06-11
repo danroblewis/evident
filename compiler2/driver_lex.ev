@@ -5,7 +5,7 @@
 --           (IsAlphaChar/IsDigitChar/IsWhitespace/IsQuote/LexCharTag/
 --           DigitToInt/EscapeChar/WsRunLen) + the LexFtiPlan token planner.
 -- PRODUCES: the FTI token-buffer write effects (write_tag0/write_pay0/write_tag1/
---           pending_str_eff/eof, float float_tag/float_pay/float_op, strdup), the lexer
+--           pending_str_eff/eof, float tag_cell/payload_cell/op_cell, strdup), the lexer
 --           cursor (tok_buf.count/last_token_tag/prev_token_tag/strlit_addr), the per-tick token
 --           plan (plan_* regs, plan_kind), next_pos, and the strlit/int/float
 --           collection state.
@@ -130,11 +130,11 @@ fsm DriverLex
         ∨ (_frac_digits = 4) ∨ (_frac_digits = 5) ∨ (_frac_digits = 6)))
         ⇒ (frac_pow = 1)
     payload ∈ Int = (_whole * frac_pow + _partial_int) * 8 + _frac_digits
-    float_tag ∈ Effect = LibCall("__mem", "write_long",
+    tag_cell ∈ Effect = LibCall("__mem", "write_long",
         ⟨ArgInt(tok_buf.base + (_tok_buf.count * 32)), ArgInt(4)⟩)
-    float_pay ∈ Effect = LibCall("__mem", "write_long",
+    payload_cell ∈ Effect = LibCall("__mem", "write_long",
         ⟨ArgInt(tok_buf.base + (_tok_buf.count * 32) + 8), ArgInt(payload)⟩)
-    float_op ∈ Effect = LibCall("__mem", "write_long",
+    op_cell ∈ Effect = LibCall("__mem", "write_long",
         ⟨ArgInt(tok_buf.base + ((_tok_buf.count + 1) * 32)), ArgInt(char_tag)⟩)
 
     partial_str = (is_first_tick ? "" : (is_strlit_continuing ? _partial_str ++ cur_char : (is_strlit_starting ? cur_char : "")))

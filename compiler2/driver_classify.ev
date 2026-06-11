@@ -5,7 +5,7 @@
 --           (_frame_depth, _scope_prefix, the bind-tape window
 --           _binds/_bind_base/_bind_top, _join_hdr), the record registry
 --           (recs .name / .sort), the enum-table name column (decl_names)
---           + the seq-var carries (_seqvar_set, _seqvar_name), and the sibling
+--           + the seq-var carries (_census_registered, _census_var_name), and the sibling
 --           sub-walks' per-line enter signals (efflit_*/arm_*/seqlit_*/call_arg_slot/
 --           pun/qrange_close/element) that fold into enter_pratt. Wide by nature: this
 --           is the central dispatch brain — it inspects the whole window
@@ -79,7 +79,7 @@ fsm DriverClassify
         ∧ (line_ty_name = "Set") ∧ (line_t3 matches LParen) ∧ (kind_slot ≥ 0)
         ∧ (tok5 matches RParen))
     seqlit_line ∈ Bool = (t0_ident ∧ (line_t1 matches Eq)
-        ∧ (line_t2 matches OpSeqOpen) ∧ _seqvar_set ∧ (line_name = _seqvar_name))
+        ∧ (line_t2 matches OpSeqOpen) ∧ _census_registered ∧ (line_name = _census_var_name))
     effects_cond ∈ Bool = (effects_line ∧ (tok7 matches LParen))
     pinned ∈ Bool = (is_mem ∧ (¬effects_line) ∧ (line_t3 matches Eq))
     intset_line ∈ Bool = ((is_mem ∨ is_notmem) ∧ (line_t2 matches LBrace))
@@ -138,7 +138,7 @@ fsm DriverClassify
         ∧ (¬effects_line) ∧ (¬intset_line) ∧ (¬match_line)
         ∧ (¬seqmem_line) ∧ (¬seqlit_line) ∧ (¬multiname_line)
         ∧ (¬is_comp_line) ∧ (¬strin_line) ∧ (¬is_member_line)
-        ∧ (¬quant_range_line) ∧ (¬(over_seq ∧ _seqvar_set)) ∧ (¬positional_line)
+        ∧ (¬quant_range_line) ∧ (¬(over_seq ∧ _census_registered)) ∧ (¬positional_line)
         ∧ (¬setlit_line) ∧ (¬qset)
         ∧ (pinned ∨ (¬is_mem)))
     enter_pratt ∈ Bool = (pratt_line ∨ exit_enter
@@ -151,7 +151,7 @@ fsm DriverClassify
         : call_arg_slot ? 2
         : pun ? 0
         : qrange_close ? 2
-        : qseq ? (seq_dotted ? 7 : 5)
+        : qseq ? (is_dotted_ident ? 7 : 5)
         : element ? 0
         : pinned ? 4 : 0)
     enter_kind ∈ Int = (exit_enter ? 3
@@ -188,8 +188,8 @@ fsm DriverClassify
         ∧ (index_of(symbol_index, bare_key, 0) ≥ 0)
         ∧ ((_join_hdr = "*") ∨ (index_of(_join_hdr, "|" ++ line_name ++ "|", 0) ≥ 0)))
     no_decl ∈ Bool = (name_bound ∨ name_dup ∨ outer)
-    resolved_name ∈ String = ((name_bound ∨ outer) ? line_name : line_dname)
-    mem_item ∈ C2Item = (no_decl ? C2Process(EIdent(resolved_name))
+    effective_name ∈ String = ((name_bound ∨ outer) ? line_name : line_dname)
+    mem_item ∈ C2Item = (no_decl ? C2Process(EIdent(effective_name))
         : C2DeclConst(line_dname, line_sort))
     mem_items ∈ C2Items = C2ICons(mem_item, natbound_tail_segment)
 

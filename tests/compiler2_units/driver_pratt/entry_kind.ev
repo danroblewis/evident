@@ -34,8 +34,8 @@ fsm main
     no_decl = (is_first_tick ? false : _no_decl)
     pinned ∈ Bool
     pinned = (is_first_tick ? false : _pinned)
-    resolved_name ∈ String
-    resolved_name = (is_first_tick ? "" : _resolved_name)
+    effective_name ∈ String
+    effective_name = (is_first_tick ? "" : _effective_name)
     line_sort ∈ Int
     line_sort = (is_first_tick ? 0 : _line_sort)
     type_rec_slot ∈ Int

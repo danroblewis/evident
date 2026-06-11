@@ -32,8 +32,8 @@ fsm main
     line_name = (is_first_tick ? "" : _line_name)
     is_exists ∈ Bool
     is_exists = (is_first_tick ? false : _is_exists)
-    seq_plain ∈ Bool
-    seq_plain = (is_first_tick ? false : _seq_plain)
+    is_plain_ident ∈ Bool
+    is_plain_ident = (is_first_tick ? false : _is_plain_ident)
     t3_name ∈ String
     t3_name = (is_first_tick ? "" : _t3_name)
     loop_variable ∈ String
@@ -74,10 +74,10 @@ fsm main
     result = (is_first_tick ? EInt(0) : _result)
     rec_pad31 ∈ String
     rec_pad31 = (is_first_tick ? "" : _rec_pad31)
-    seqvar_name ∈ String
-    seqvar_name = (is_first_tick ? "" : _seqvar_name)
-    seqvar_slot ∈ Int
-    seqvar_slot = (is_first_tick ? 0 : _seqvar_slot)
+    census_var_name ∈ String
+    census_var_name = (is_first_tick ? "" : _census_var_name)
+    census_var_slot ∈ Int
+    census_var_slot = (is_first_tick ? 0 : _census_var_slot)
     tok_ready ∈ Bool
     tok_ready = (is_first_tick ? false : _tok_ready)
     tok0 ∈ Token

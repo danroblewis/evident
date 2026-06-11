@@ -5,10 +5,10 @@
 --           registry), the import/inline prefix (_scope_prefix),
 --           the enum-variant value registry (values, a bounded Seq), and the cached
 --           z3_true/z3_false handles.
--- PRODUCES: name resolution — resolved_key/position/resolved_found(2)/position_now,
+-- PRODUCES: name resolution — lookup_entry_key/position/found_in_symtab(2)/position_now,
 --           the prefix-scoped variants (d_lk_pfx_*), the frame slot-bind hit
 --           (bound_found/bound_handle), special_name/pure, the resolved
---           pure-push handle resolved_handle, and the symtab read effect read_symbol_eff.
+--           pure-push handle looked_up_handle, and the symtab read effect read_symbol_eff.
 -- MAINTAINS: pure per-tick resolution, no carry. true/false resolve to the
 --           cached handles; a name found in symbol_index reads st_base[idx]
 --           (capture_pend=1, the handle pushes next tick); an α-prefixed frame
@@ -18,10 +18,10 @@
 -- The symbol-table / name resolution. Lifted into driver_main via
 -- `..DriverSymLookup`.
 fsm DriverSymLookup
-    resolved_key ∈ String
-    FtiNameEntry(name ↦ lookup_name, entry ↦ resolved_key)
-    position ∈ Int = index_of(symbol_index, resolved_key, 0)
-    resolved_found ∈ Bool = (position ≥ 0)
+    lookup_entry_key ∈ String
+    FtiNameEntry(name ↦ lookup_name, entry ↦ lookup_entry_key)
+    position ∈ Int = index_of(symbol_index, lookup_entry_key, 0)
+    found_in_symtab ∈ Bool = (position ≥ 0)
     special_name ∈ Bool = (lookup_name = "true" ∨ lookup_name = "false")
     bound_found ∈ Bool = ((lookup_name ≠ "") ∧ (∃ i ∈ {0..11} : ((i ≥ _bind_base) ∧ (i < _bind_top) ∧ (_binds[i].name = lookup_name))))
     bound_handle ∈ Int
@@ -32,13 +32,13 @@ fsm DriverSymLookup
     prefixed_position ∈ Int = index_of(symbol_index, prefixed_key, 0)
     prefixed_hit ∈ Bool = ((_scope_prefix ≠ "") ∧ (prefixed_position ≥ 0))
     position_now ∈ Int = (prefixed_hit ? prefixed_position : position)
-    found2 ∈ Bool = (prefixed_hit ∨ resolved_found)
+    found2 ∈ Bool = (prefixed_hit ∨ found_in_symtab)
     pure ∈ Bool = (special_name ∨ (¬found2))
-    resolved_handle ∈ Int
-    (lookup_name = "true") ⇒ (resolved_handle = z3_true)
-    (lookup_name = "false") ⇒ (resolved_handle = z3_false)
-    ∀ e ∈ values : ((e.name = lookup_name) ⇒ (resolved_handle = e.value))
+    looked_up_handle ∈ Int
+    (lookup_name = "true") ⇒ (looked_up_handle = z3_true)
+    (lookup_name = "false") ⇒ (looked_up_handle = z3_false)
+    ∀ e ∈ values : ((e.name = lookup_name) ⇒ (looked_up_handle = e.value))
     (¬((lookup_name = "true") ∨ (lookup_name = "false")
-        ∨ (∃ e ∈ values : e.name = lookup_name))) ⇒ (resolved_handle = 0)
+        ∨ (∃ e ∈ values : e.name = lookup_name))) ⇒ (looked_up_handle = 0)
     read_symbol_eff ∈ Effect
     BuildMemReadLong(addr ↦ symtab_buffer.base + (8 * (position_now / 32)), eff ↦ read_symbol_eff)

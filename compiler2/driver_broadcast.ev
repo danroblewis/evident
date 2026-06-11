@@ -6,8 +6,8 @@
 --           the symbol-table name index (symbol_index) — all as free names
 --           (names-match; never declared here).
 -- PRODUCES: the HEADER below — the checked interface (claim-headers
---           pilot): the carried loop state (pinning/record_slot/pinned_name/
---           pinned_body/cursor/emit_cursor) and the per-field re-walk
+--           pilot): the carried loop state (pinning/record_slot/record_type_name/
+--           parsed_record_body/cursor/emit_cursor) and the per-field re-walk
 --           outputs (field_name, more_fields, is_pin_done, pin_item_list)
 --           consumed by the claim-walk item dispatch. Everything else is
 --           per-call-site internal.
@@ -26,7 +26,7 @@
 -- MENTION: the header below is the whole interface (the pilot of the
 -- claim-headers plan) — driver_main declares these ten names and joins
 -- them; everything else in this body is per-call-site internal.
-fsm DriverBroadcast(pinning ∈ Bool, record_slot ∈ Int, pinned_name ∈ String, pinned_body ∈ Expr, cursor ∈ Int, emit_cursor ∈ Int, field_name ∈ String, more_fields ∈ Bool, is_pin_done ∈ Bool, pin_item_list ∈ C2Items)
+fsm DriverBroadcast(pinning ∈ Bool, record_slot ∈ Int, record_type_name ∈ String, parsed_record_body ∈ Expr, cursor ∈ Int, emit_cursor ∈ Int, field_name ∈ String, more_fields ∈ Bool, is_pin_done ∈ Bool, pin_item_list ∈ C2Items)
     -- ── G2: rb — the record-pin BROADCAST loop ──
     -- During a re-walk, an IDENT whose field-qualified dotted name
     -- resolves in the symtab reads through it, and a REGISTRY-ctor
@@ -44,8 +44,8 @@ fsm DriverBroadcast(pinning ∈ Bool, record_slot ∈ Int, pinned_name ∈ Strin
         : is_pin_done ? false
         : _pinning)
     record_slot = (is_first_tick ? 0 : recpin_done ? _parse_rec_slot : _record_slot)
-    pinned_name = (is_first_tick ? "" : recpin_done ? _parse_decl_name : _pinned_name)
-    pinned_body = (is_first_tick ? ENoExpr : recpin_done ? result : _pinned_body)
+    record_type_name = (is_first_tick ? "" : recpin_done ? _parse_decl_name : _record_type_name)
+    parsed_record_body = (is_first_tick ? ENoExpr : recpin_done ? result : _parsed_record_body)
     cursor = (is_first_tick ? 0
         : recpin_done ? 0
         : more_fields ? _cursor + 1
@@ -54,12 +54,12 @@ fsm DriverBroadcast(pinning ∈ Bool, record_slot ∈ Int, pinned_name ∈ Strin
     RtRecName(s ↦ field_names, i ↦ _emit_cursor, name ↦ field_name)
     cursor_field_name ∈ String
     RtRecName(s ↦ field_names, i ↦ _cursor, name ↦ cursor_field_name)
-    dotted_name ∈ String = _pinned_name ++ "." ++ cursor_field_name
+    dotted_name ∈ String = _record_type_name ++ "." ++ cursor_field_name
     dup ∈ Bool = (index_of(symbol_index,
         "|" ++ substr(dotted_name ++ "                               ", 0, 31),
         0) ≥ 0)
     item ∈ C2Item = (dup ? C2Process(EIdent(dotted_name))
         : C2DeclConst(dotted_name, 0))
     pin_item_list = C2ICons(item,
-        C2ICons(C2Process(_pinned_body),
+        C2ICons(C2Process(_parsed_record_body),
         C2ICons(C2PinEq, C2ICons(C2AssertTop, C2INil))))
