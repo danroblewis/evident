@@ -1,0 +1,41 @@
+{
+  "name": "vscode-evident",
+  "displayName": "Evident",
+  "description": "Syntax highlighting + LSP (definition, references, rename, symbols, hover, diagnostics) for the Evident constraint language.",
+  "version": "0.1.0",
+  "publisher": "evident-dev",
+  "engines": { "vscode": "^1.75.0" },
+  "categories": ["Programming Languages"],
+  "main": "./client/extension.js",
+  "activationEvents": ["onLanguage:evident"],
+  "contributes": {
+    "languages": [
+      {
+        "id": "evident",
+        "aliases": ["Evident", "evident"],
+        "extensions": [".ev"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "evident",
+        "scopeName": "source.evident",
+        "path": "./syntaxes/evident.tmLanguage.json"
+      }
+    ],
+    "configuration": {
+      "title": "Evident",
+      "properties": {
+        "evident.lspPath": {
+          "type": "string",
+          "default": "evident-lsp",
+          "description": "Path to the evident-lsp binary (built from tools/evident-tools)."
+        }
+      }
+    }
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  }
+}
