@@ -467,18 +467,18 @@ fsm driver_main
     -- ── state transitions ─────────────────────────────────────────
     pops ∈ Int = (¬processing ? 0
         : process ? 0
-        : it_op ? (is_nary ? (_item_step = 2 ? 2 : 0) : 2)
-        : it_ite ? 3
-        : it_not ? 1
-        : it_pin_eq ? 2
-        : it_assert ? (guarding ? (_item_step = 1 ? 1 : 0) : 1)
+        : is_op_item ? (is_nary ? (_item_step = 2 ? 2 : 0) : 2)
+        : is_ite_item ? 3
+        : is_not_item ? 1
+        : is_pineq_item ? 2
+        : is_assert_item ? (guarding ? (_item_step = 1 ? 1 : 0) : 1)
         : drop ? 1
         : app ? (_item_step = app_argc ? app_argc : 0)
-        : it_select_eq ? (_item_step = 1 ? 1 : 0)
+        : is_seleq_item ? (_item_step = 1 ? 1 : 0)
         : equality_handle ? (_item_step = 1 ? 1 : 0)
-        : it_strop ? string_op_arity
+        : is_strop_item ? string_op_arity
         : chosen_handle ? 2
-        : it_set_add ? 2
+        : is_setadd_item ? 2
         : 0)
     push_bound ∈ Bool = (processing ∧ process ∧ is_ident
         ∧ bound_found ∧ (¬bind_hit) ∧ (¬is_bound_ref) ∧ (¬dot)
@@ -490,10 +490,10 @@ fsm driver_main
         ∧ (¬pure) ∧ (¬bind_hit) ∧ (¬bound_found) ∧ (¬is_bound_ref)
         ∧ (¬dot) ∧ (¬pin_hit))
     push_handle ∈ Bool = (processing ∧ push_h)
-    push_decl ∈ Bool = (processing ∧ it_decl ∧ (_item_step = 2))
-    stack_dup3 ∈ Bool = (processing ∧ it_dup3)
-    stack_swap ∈ Bool = (processing ∧ it_swap)
-    stack_rot3 ∈ Bool = (processing ∧ it_rot3)
+    push_decl ∈ Bool = (processing ∧ is_decl_item ∧ (_item_step = 2))
+    stack_dup3 ∈ Bool = (processing ∧ is_dup3_item)
+    stack_swap ∈ Bool = (processing ∧ is_swap_item)
+    stack_rot3 ∈ Bool = (processing ∧ is_rot3_item)
 
     handle_stack = (is_first_tick ? C2HNil
         : (enter_claim ∨ claim_params) ? C2HNil
@@ -557,23 +557,23 @@ fsm driver_main
         : process ? work_tail
         : rec_val ? literal_items
         : rec_decl ? literal_decl_items
-        : it_op ? (is_nary ? (_item_step = 2 ? work_tail : _work_items) : work_tail)
-        : it_decl ? (_item_step = 2 ? work_tail : _work_items)
+        : is_op_item ? (is_nary ? (_item_step = 2 ? work_tail : _work_items) : work_tail)
+        : is_decl_item ? (_item_step = 2 ? work_tail : _work_items)
         : app ? (_item_step = app_argc ? work_tail : _work_items)
-        : it_select_eq ? (_item_step = 2 ? work_tail : _work_items)
+        : is_seleq_item ? (_item_step = 2 ? work_tail : _work_items)
         : equality_handle ? (_item_step = 1 ? work_tail : _work_items)
-        : it_len_eq ? (_item_step = 1 ? work_tail : _work_items)
-        : it_assert ? ((guarding ∧ (_item_step = 0)) ? _work_items : work_tail)
+        : is_leneq_item ? (_item_step = 1 ? work_tail : _work_items)
+        : is_assert_item ? ((guarding ∧ (_item_step = 0)) ? _work_items : work_tail)
         : work_tail)
 
     multi_step ∈ Bool = (processing ∧
-        ((it_op ∧ is_nary ∧ (_item_step < 2))
-        ∨ (it_assert ∧ guarding ∧ (_item_step < 1))
-        ∨ (it_decl ∧ (_item_step < 2))
+        ((is_op_item ∧ is_nary ∧ (_item_step < 2))
+        ∨ (is_assert_item ∧ guarding ∧ (_item_step < 1))
+        ∨ (is_decl_item ∧ (_item_step < 2))
         ∨ (app ∧ (_item_step < app_argc))
-        ∨ (it_select_eq ∧ (_item_step < 2))
+        ∨ (is_seleq_item ∧ (_item_step < 2))
         ∨ (equality_handle ∧ (_item_step < 1))
-        ∨ (it_len_eq ∧ (_item_step < 1))))
+        ∨ (is_leneq_item ∧ (_item_step < 1))))
     item_step = (is_first_tick ? 0
         : multi_step ? _item_step + 1
         : 0)
@@ -581,23 +581,23 @@ fsm driver_main
     capture_pend = (is_first_tick ? 0
         : ¬processing ? 0
         : process ? ((is_int ∨ is_str ∨ lookup_read) ? 1 : 0)
-        : it_op ? (is_nary ? (_item_step = 2 ? 1 : 0) : 1)
-        : it_ite ? 1
-        : it_not ? 1
-        : it_decl ? (_item_step = 2 ? 0 : 2)
+        : is_op_item ? (is_nary ? (_item_step = 2 ? 1 : 0) : 1)
+        : is_ite_item ? 1
+        : is_not_item ? 1
+        : is_decl_item ? (_item_step = 2 ? 0 : 2)
         : natbound ? 1
-        : it_pin_eq ? 1
-        : it_assert ? ((guarding ∧ (_item_step = 0)) ? 2 : 0)
+        : is_pineq_item ? 1
+        : is_assert_item ? ((guarding ∧ (_item_step = 0)) ? 2 : 0)
         : app ? (_item_step = app_argc ? 1 : 0)
-        : it_select_eq ? ((_item_step = 0 ∨ _item_step = 1) ? 2 : 0)
+        : is_seleq_item ? ((_item_step = 0 ∨ _item_step = 1) ? 2 : 0)
         : equality_handle ? (_item_step = 0 ? 2 : 1)
-        : it_len_eq ? (_item_step = 0 ? 2 : 0)
+        : is_leneq_item ? (_item_step = 0 ? 2 : 0)
         : len_equals_handle ? 1
-        : it_strop ? 1
+        : is_strop_item ? 1
         : chosen_handle ? 1
         : real ? 1
-        : it_empty_set ? 1
-        : it_set_add ? 1
+        : is_emptyset_item ? 1
+        : is_setadd_item ? 1
         : 0)
 
     consume_n ∈ Int = (enter_claim ? 2
@@ -770,11 +770,11 @@ fsm driver_main
     atom_ok ∈ Bool
     AtomBuildZ3(ctx_h ↦ z3ctx.ctx, int_sort_h ↦ z3sorts.isort, sym_h ↦ 0,
         e ↦ cur_expr, eff ↦ mkint, ok ↦ atom_ok)
-    eff_cmp ∈ Effect
+    compare_eff ∈ Effect
     cmp_ok ∈ Bool
     cmp_needs_not ∈ Bool
     BoolCmpBuildZ3(ctx_h ↦ z3ctx.ctx, op ↦ cur_op, l_h ↦ h_2nd, r_h ↦ h_top,
-        eff ↦ eff_cmp, ok ↦ cmp_ok, needs_not ↦ cmp_needs_not)
+        eff ↦ compare_eff, ok ↦ cmp_ok, needs_not ↦ cmp_needs_not)
     arith ∈ Effect
     arith_ok ∈ Bool
     ArithBinopBuildZ3(ctx_h ↦ z3ctx.ctx, op ↦ cur_op,
@@ -787,11 +787,11 @@ fsm driver_main
     concat ∈ Effect
     BuildZ3MkSeqConcat(ctx_h ↦ z3ctx.ctx, num_args ↦ 2,
         args_arr_ptr ↦ z3_arena + 200, eff ↦ concat)
-    eff_ite ∈ Effect
+    ite_eff ∈ Effect
     TernaryBuildZ3(ctx_h ↦ z3ctx.ctx, cond_h ↦ h_3rd, then_h ↦ h_2nd,
-        else_h ↦ h_top, eff ↦ eff_ite)
-    eff_not ∈ Effect
-    BoolNotBuildZ3(ctx_h ↦ z3ctx.ctx, x_h ↦ h_top, eff ↦ eff_not)
+        else_h ↦ h_top, eff ↦ ite_eff)
+    not_eff ∈ Effect
+    BoolNotBuildZ3(ctx_h ↦ z3ctx.ctx, x_h ↦ h_top, eff ↦ not_eff)
     argw0 ∈ Effect
     BuildMemWriteLong(addr ↦ z3_arena + 200, value ↦ h_2nd, eff ↦ argw0)
     argw1 ∈ Effect
@@ -803,15 +803,15 @@ fsm driver_main
     tertiary_handle ∈ Int = (string_op_arity = 3 ? h_top : 0)
     strlen ∈ Effect
     BuildZ3MkSeqLength(ctx_h ↦ z3ctx.ctx, s_h ↦ h_top, eff ↦ strlen)
-    eff_strop ∈ Effect
+    strop_eff ∈ Effect
     is_string_op ∈ Bool
     StrOpBuildZ3(ctx_h ↦ z3ctx.ctx, op_name ↦ string_op_name, a_h ↦ primary_handle,
-        b_h ↦ secondary_handle, c_h ↦ tertiary_handle, eff ↦ eff_strop, ok ↦ is_string_op)
-    eff_mksym ∈ Effect
-    BuildZ3MkStringSymbol(ctx_h ↦ z3ctx.ctx, name ↦ const_name, eff ↦ eff_mksym)
+        b_h ↦ secondary_handle, c_h ↦ tertiary_handle, eff ↦ strop_eff, ok ↦ is_string_op)
+    mksym_eff ∈ Effect
+    BuildZ3MkStringSymbol(ctx_h ↦ z3ctx.ctx, name ↦ const_name, eff ↦ mksym_eff)
     -- An enum-typed decl (sort code 30+slot) reads its sort handle
-    -- from the enum-table tape: the it_decl step-0 tick batches
-    -- ⟨eff_mksym, enumtab_read_mem⟩, so on the step-1 (mkconst)
+    -- from the enum-table tape: the is_decl_item step-0 tick batches
+    -- ⟨mksym_eff, enumtab_read_mem⟩, so on the step-1 (mkconst)
     -- tick lr[0] is the symbol (tmp_in) and lr[1] is the sort.
     enumtab_read_mem ∈ Effect
     BuildMemReadLong(addr ↦ enumtab_p + (8 * (const_sort - 30)),
@@ -848,14 +848,14 @@ fsm driver_main
     is_natbound_nn ∈ Bool
     BoolCmpBuildZ3(ctx_h ↦ z3ctx.ctx, op ↦ geq, l_h ↦ h_top, r_h ↦ z3nums.zero,
         eff ↦ natbound_geq_eff, ok ↦ is_natbound_ok, needs_not ↦ is_natbound_nn)
-    eff_pin_eq ∈ Effect
+    pineq_eff ∈ Effect
     pin_ok ∈ Bool
     pin_nn ∈ Bool
     BoolCmpBuildZ3(ctx_h ↦ z3ctx.ctx, op ↦ op_eq, l_h ↦ h_2nd, r_h ↦ h_top,
-        eff ↦ eff_pin_eq, ok ↦ pin_ok, needs_not ↦ pin_nn)
-    eff_assert ∈ Effect
+        eff ↦ pineq_eff, ok ↦ pin_ok, needs_not ↦ pin_nn)
+    assert_eff ∈ Effect
     BuildZ3SolverAssert(ctx_h ↦ z3ctx.ctx, solver_h ↦ z3ctx.sol, ast_h ↦ h_top,
-        eff ↦ eff_assert)
+        eff ↦ assert_eff)
     assert_tmp ∈ Effect
     BuildZ3SolverAssert(ctx_h ↦ z3ctx.ctx, solver_h ↦ z3ctx.sol, ast_h ↦ tmp_in,
         eff ↦ assert_tmp)
@@ -893,60 +893,60 @@ fsm driver_main
     BuildZ3MkNumeral(ctx_h ↦ z3ctx.ctx, num ↦ text, sort_h ↦ z3sorts.rsort,
         eff ↦ mkreal)
     empty_set_sort ∈ Int = recs[empty_set_slot].sort
-    eff_empty_set ∈ Effect = LibCall("libz3", "Z3_mk_empty_set",
+    emptyset_eff ∈ Effect = LibCall("libz3", "Z3_mk_empty_set",
         ⟨ArgInt(z3ctx.ctx), ArgInt(empty_set_sort)⟩)
-    eff_set_add ∈ Effect = LibCall("libz3", "Z3_mk_set_add",
+    setadd_eff ∈ Effect = LibCall("libz3", "Z3_mk_set_add",
         ⟨ArgInt(z3ctx.ctx), ArgInt(h_2nd), ArgInt(h_top)⟩)
-    eff_select_eq ∈ Effect
+    seleq_eff ∈ Effect
     select_eq_ok ∈ Bool
     select_eq_nn ∈ Bool
     BoolCmpBuildZ3(ctx_h ↦ z3ctx.ctx, op ↦ op_eq, l_h ↦ tmp_in, r_h ↦ h_top,
-        eff ↦ eff_select_eq, ok ↦ select_eq_ok, needs_not ↦ select_eq_nn)
+        eff ↦ seleq_eff, ok ↦ select_eq_ok, needs_not ↦ select_eq_nn)
     lit_handle ∈ Int = (lit = 1 ? z3nums.one
         : lit = 2 ? z3nums.two
         : lit = 3 ? z3nums.three
         : lit = 4 ? z3nums.four
         : z3nums.zero)
-    eff_len_eq ∈ Effect
+    leneq_eff ∈ Effect
     eq_ok ∈ Bool
     eq_nn ∈ Bool
     BoolCmpBuildZ3(ctx_h ↦ z3ctx.ctx, op ↦ op_eq, l_h ↦ effects_length, r_h ↦ lit_handle,
-        eff ↦ eff_len_eq, ok ↦ eq_ok, needs_not ↦ eq_nn)
-    eff_filler ∈ Effect = LibCall("libc", "getpid", ⟨⟩)
+        eff ↦ leneq_eff, ok ↦ eq_ok, needs_not ↦ eq_nn)
+    filler_eff ∈ Effect = LibCall("libc", "getpid", ⟨⟩)
 
-    eff_step ∈ Effect = (process ∧ is_int ? mkint
+    step_eff ∈ Effect = (process ∧ is_int ? mkint
         : process ∧ is_str ? mkstring
         : lookup_read ? sym_read
-        : it_op ∧ is_nary ∧ (_item_step = 0) ? argw0
-        : it_op ∧ is_nary ∧ (_item_step = 1) ? argw1
-        : it_op ∧ is_nary ? (bool_nary ? nary
+        : is_op_item ∧ is_nary ∧ (_item_step = 0) ? argw0
+        : is_op_item ∧ is_nary ∧ (_item_step = 1) ? argw1
+        : is_op_item ∧ is_nary ? (bool_nary ? nary
             : op_is_concat ? concat
             : arith)
-        : it_op ∧ is_div ? arith
-        : it_op ? eff_cmp
-        : it_ite ? eff_ite
-        : it_not ? eff_not
-        : it_decl ? (_item_step = 0 ? eff_mksym
+        : is_op_item ∧ is_div ? arith
+        : is_op_item ? compare_eff
+        : is_ite_item ? ite_eff
+        : is_not_item ? not_eff
+        : is_decl_item ? (_item_step = 0 ? mksym_eff
             : _item_step = 1 ? mkconst
             : sym_write)
         : natbound ? natbound_geq_eff
-        : it_pin_eq ? eff_pin_eq
-        : it_assert ? (guarding
+        : is_pineq_item ? pineq_eff
+        : is_assert_item ? (guarding
             ? (_item_step = 0 ? impl_handle : assert_tmp)
-            : eff_assert)
+            : assert_eff)
         : app ? (_item_step < app_argc ? ctor_argw : ctor_app)
-        : it_select_eq ? (_item_step = 0 ? select
-            : _item_step = 1 ? eff_select_eq
+        : is_seleq_item ? (_item_step = 0 ? select
+            : _item_step = 1 ? seleq_eff
             : assert_tmp)
-        : equality_handle ? (_item_step = 0 ? select : eff_select_eq)
-        : it_len_eq ? (_item_step = 0 ? eff_len_eq : assert_tmp)
-        : len_equals_handle ? eff_len_eq
-        : it_strop ? (string_op_name = "len" ? strlen : eff_strop)
+        : equality_handle ? (_item_step = 0 ? select : seleq_eff)
+        : is_leneq_item ? (_item_step = 0 ? leneq_eff : assert_tmp)
+        : len_equals_handle ? leneq_eff
+        : is_strop_item ? (string_op_name = "len" ? strlen : strop_eff)
         : chosen_handle ? select_h
         : real ? mkreal
-        : it_empty_set ? eff_empty_set
-        : it_set_add ? eff_set_add
-        : eff_filler)
+        : is_emptyset_item ? emptyset_eff
+        : is_setadd_item ? setadd_eff
+        : filler_eff)
 
     -- ── EMIT rendering phase (see compiler2/driver_emit.ev) ──
     ..DriverEmit
@@ -1040,14 +1040,14 @@ fsm driver_main
         : cond_hit ? ⟨guard_read_eff⟩
         : accread ? ⟨match_accread⟩
         : tuple_close ? ⟨posbind_read⟩
-        : recdecl_active ? (eff_st = 2
+        : recdecl_active ? (emit_state = 2
             ? ⟨recdecl_write_fn0, recdecl_write_fn1, recdecl_write_fn2, recdecl_write_fn3, recdecl_write_fn4,
                recdecl_write_fn5, recdecl_write_fs0, recdecl_write_fs1, recdecl_write_fs2, recdecl_write_fs3,
                recdecl_write_fs4, recdecl_write_fs5⟩
             : ⟨recdecl_step_eff⟩)
-        : (processing ∧ it_decl ∧ (_item_step = 0) ∧ (const_sort ≥ 30))
-            ? ⟨eff_mksym, enumtab_read_mem⟩
-        : processing ? ⟨eff_step⟩
+        : (processing ∧ is_decl_item ∧ (_item_step = 0) ∧ (const_sort ≥ 30))
+            ? ⟨mksym_eff, enumtab_read_mem⟩
+        : processing ? ⟨step_eff⟩
         : (finish ∧ with_op) ? ⟨float_tag, float_pay, float_op⟩
         : finish ? ⟨float_tag, float_pay⟩
         : (plan_kind = 1 ∧ have_pend_str) ? ⟨pending_str_eff, write_tag0⟩
@@ -1058,4 +1058,4 @@ fsm driver_main
         : plan_kind = 5 ? ⟨strdup, write_tag0, write_tag1⟩
         : plan_kind = 6 ? ⟨write_tag0, write_pay0, write_tag1⟩
         : have_pend_str ? ⟨pending_str_eff⟩
-        : ⟨eff_filler⟩)
+        : ⟨filler_eff⟩)

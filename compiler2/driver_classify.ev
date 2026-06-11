@@ -55,7 +55,7 @@ fsm DriverClassify
         _ ⇒ ""
     line_is_nat ∈ Bool = (line_ty_name = "Nat")
     -- enum-typed membership: the type name probes the enum-table name
-    -- column; sort code 30+slot tells it_decl which tape cell holds
+    -- column; sort code 30+slot tells is_decl_item which tape cell holds
     -- the sort handle (multi-enum-grammar D1).
     line_enum_key ∈ String
     FtiNameEntry(name ↦ line_ty_name, entry ↦ line_enum_key)

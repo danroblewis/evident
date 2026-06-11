@@ -220,10 +220,10 @@ fsm DriverRecord
     ctor_p ∈ Int = z3_arena + 384
     accs_p ∈ Int = z3_arena + 392
 
-    eff_st ∈ Int = (recdecl_go ? 0 : st_now)
-    eff_fi ∈ Int = (recdecl_go ? 0 : fi_now)
+    emit_state ∈ Int = (recdecl_go ? 0 : st_now)
+    emit_field_index ∈ Int = (recdecl_go ? 0 : fi_now)
     recdecl_fname ∈ String
-    RtRecName(s ↦ cur_fnames, i ↦ eff_fi, name ↦ recdecl_fname)
+    RtRecName(s ↦ cur_fnames, i ↦ emit_field_index, name ↦ recdecl_fname)
     h_fields_now ∈ Seq(Int)
     #h_fields_now ≤ 6
     ∀ k ∈ {0..5} : h_fields_now[k] = ((recdecl_cap ∧ _recdecl_st = 1 ∧ _field_i = k) ? is_intresult_capture : _h_fields[k])
@@ -266,17 +266,17 @@ fsm DriverRecord
     recdecl_read_ctor ∈ Effect
     BuildMemReadLong(addr ↦ ctor_p, eff ↦ recdecl_read_ctor)
     read_acc ∈ Effect
-    BuildMemReadLong(addr ↦ accs_p + (8 * eff_fi), eff ↦ read_acc)
+    BuildMemReadLong(addr ↦ accs_p + (8 * emit_field_index), eff ↦ read_acc)
     array_sort_eff ∈ Effect
     BuildZ3MkArraySort(ctx_h ↦ z3ctx.ctx, idx_sort_h ↦ z3sorts.isort,
         val_sort_h ↦ cur_sort, eff ↦ array_sort_eff)
     set_sort_eff ∈ Effect = LibCall("libz3", "Z3_mk_set_sort",
         ⟨ArgInt(z3ctx.ctx), ArgInt(cur_sort)⟩)
-    recdecl_step_eff ∈ Effect = (eff_st = 0 ? recdecl_namesym
-        : eff_st = 1 ? fieldsym
-        : eff_st = 3 ? tuplesort_eff
-        : eff_st = 4 ? recdecl_read_ctor
-        : eff_st = 5 ? read_acc
-        : eff_st = 6 ? array_sort_eff
-        : eff_st = 7 ? set_sort_eff
+    recdecl_step_eff ∈ Effect = (emit_state = 0 ? recdecl_namesym
+        : emit_state = 1 ? fieldsym
+        : emit_state = 3 ? tuplesort_eff
+        : emit_state = 4 ? recdecl_read_ctor
+        : emit_state = 5 ? read_acc
+        : emit_state = 6 ? array_sort_eff
+        : emit_state = 7 ? set_sort_eff
         : LibCall("libc", "getpid", ⟨⟩))
