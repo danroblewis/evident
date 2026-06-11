@@ -5,7 +5,7 @@
 --           (IsAlphaChar/IsDigitChar/IsWhitespace/IsQuote/LexCharTag/
 --           DigitToInt/EscapeChar/WsRunLen) + the LexFtiPlan token planner.
 -- PRODUCES: the FTI token-buffer write effects (write_tag0/write_pay0/write_tag1/
---           pend_str/eof, float float_tag/float_pay/float_op, strdup), the lexer
+--           pending_str_eff/eof, float float_tag/float_pay/float_op, strdup), the lexer
 --           cursor (tok_buf.count/last_token_tag/prev_token_tag/str_addr), the per-tick token
 --           plan (plan_* regs, plan_kind), next_pos, and the strlit/int/float
 --           collection state.
@@ -217,7 +217,7 @@ fsm DriverLex
     write_pay0   ∈ Effect = LibCall("__mem", "write_long", ⟨ArgInt(payload0_addr), ArgInt(plan_pay0)⟩)
     write_tag1 ∈ Effect = LibCall("__mem", "write_long", ⟨ArgInt(tag1_addr), ArgInt(tag1_pp)⟩)
     strdup   ∈ Effect = LibCall("libc", "strdup", ⟨ArgStr(plan_str0)⟩)
-    pend_str  ∈ Effect = LibCall("__mem", "write_long", ⟨ArgInt(_str_addr), ArgInt(is_intresult_capture)⟩)
+    pending_str_eff  ∈ Effect = LibCall("__mem", "write_long", ⟨ArgInt(_str_addr), ArgInt(is_intresult_capture)⟩)
     eof   ∈ Effect = LibCall("__mem", "write_long", ⟨ArgInt(tok_buf.base + (tok_buf.count * 32)), ArgInt(13)⟩)
 
     has_input ∈ Bool = (#input > 0)

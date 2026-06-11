@@ -11,7 +11,7 @@
 --           intresult_tester/strresult_tester/intresult_accessor/strresult_accessor), the user-enum value table
 --           (values), the user-variant ctor/tester/accessor registry
 --           (user_variants + variant_names + alloc), the parse-side
---           build-group accumulator (group/pend_group_names/group_n), the
+--           build-group accumulator (group/group_names_buffer/group_n), the
 --           ENUM TABLE name column (decl_names, fixed-width-32 rows whose
 --           index_of/32 is the table slot; the sort-handle cells live on
 --           the tape at enumtab_p, written at act-2 read-back) + its row
@@ -103,7 +103,7 @@ fsm DriverEnum
     -- so forward and mutual payload references resolve against the
     -- whole group's name rows.
     group ∈ EnumDeclList
-    pend_group_names ∈ String
+    group_names_buffer ∈ String
     group_n ∈ Int
     group_entry ∈ String
     FtiNameEntry(name ↦ _user_enum_name, entry ↦ group_entry)
@@ -111,10 +111,10 @@ fsm DriverEnum
         : group_go ? EDLNil
         : member_end ? EDLCons(EnumD(_user_enum_name, list_now), _group)
         : _group)
-    pend_group_names = (is_first_tick ? ""
+    group_names_buffer = (is_first_tick ? ""
         : group_go ? ""
-        : member_end ? (_pend_group_names ++ group_entry)
-        : _pend_group_names)
+        : member_end ? (_group_names_buffer ++ group_entry)
+        : _group_names_buffer)
     group_n = (is_first_tick ? 0
         : group_go ? 0
         : member_end ? _group_n + 1
@@ -135,7 +135,7 @@ fsm DriverEnum
     FtiNameEntry(name ↦ name_now, entry ↦ name_entry)
     go_group ∈ EnumDeclList = (group_go ? _group
         : EDLCons(decl_now, EDLNil))
-    go_group_names ∈ String = (group_go ? _pend_group_names : name_entry)
+    go_group_names ∈ String = (group_go ? _group_names_buffer : name_entry)
     go_size ∈ Int = (group_go ? _group_n : 1)
 
     -- ── member peel (group start / next member / harvest reset) ───

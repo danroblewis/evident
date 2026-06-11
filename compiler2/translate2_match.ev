@@ -93,8 +93,8 @@ claim MatchLitTestBuildZ3(ctx_h, scrut_h, lit_h ∈ Int, eff ∈ Effect)
 -- Not a semantic test (the handles are dummies); proves the claims
 -- survive oracle emit + composition inlining and the result runs.
 claim probe_translate2_match
-    probe_eff ∈ Effect
+    smoke_effect ∈ Effect
     MatchesBuildZ3(ctx_h ↦ 1, tester_decl_h ↦ 2, scrut_args_arr_p ↦ 3,
-        eff ↦ probe_eff)
-    probe_ok ∈ Bool = (probe_eff matches LibCall(_, _, _))
-    effects ∈ Seq(Effect) = (probe_ok ? ⟨Exit(0)⟩ : ⟨Exit(1)⟩)
+        eff ↦ smoke_effect)
+    is_smoke_ok ∈ Bool = (smoke_effect matches LibCall(_, _, _))
+    effects ∈ Seq(Effect) = (is_smoke_ok ? ⟨Exit(0)⟩ : ⟨Exit(1)⟩)

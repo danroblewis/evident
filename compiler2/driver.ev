@@ -1027,7 +1027,7 @@ fsm driver_main
         : zstep = 35 ? ⟨geq_constraint_eff⟩
         : zstep = 36 ? ⟨length_assertion_eff⟩
         : zstep = 37 ? ⟨zinit_claimindex_buf⟩
-        : entering_parse ? (have_pend_str ? ⟨pend_str, eof⟩ : ⟨eof⟩)
+        : entering_parse ? (have_pend_str ? ⟨pending_str_eff, eof⟩ : ⟨eof⟩)
         : render_step = 0 ? ⟨solver_str⟩
         : render_step = 1 ? ⟨copy_unit⟩
         : render_step ≥ 2 ? ⟨free_tokbuf, free_symbuf, free_claimbuf, print_unit, Exit(0)⟩
@@ -1050,12 +1050,12 @@ fsm driver_main
         : processing ? ⟨eff_step⟩
         : (finish ∧ with_op) ? ⟨float_tag, float_pay, float_op⟩
         : finish ? ⟨float_tag, float_pay⟩
-        : (plan_kind = 1 ∧ have_pend_str) ? ⟨pend_str, write_tag0⟩
+        : (plan_kind = 1 ∧ have_pend_str) ? ⟨pending_str_eff, write_tag0⟩
         : plan_kind = 1 ? ⟨write_tag0⟩
         : plan_kind = 2 ? ⟨write_tag0, write_pay0⟩
         : plan_kind = 3 ? ⟨strdup, write_tag0⟩
         : plan_kind = 4 ? ⟨write_tag0, write_tag1⟩
         : plan_kind = 5 ? ⟨strdup, write_tag0, write_tag1⟩
         : plan_kind = 6 ? ⟨write_tag0, write_pay0, write_tag1⟩
-        : have_pend_str ? ⟨pend_str⟩
+        : have_pend_str ? ⟨pending_str_eff⟩
         : ⟨eff_filler⟩)

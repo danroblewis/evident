@@ -65,10 +65,10 @@ fsm DriverMatchPin
     pat_n ∈ Int
     pat_bind ∈ String
     bind_idx ∈ Int
-    pend_ctor ∈ String
-    pend_bind ∈ String
-    pend_acc ∈ Int
-    pend_expr ∈ Expr
+    stashed_ctor ∈ String
+    queued_bind ∈ String
+    saved_accessor ∈ Int
+    buffered_expr ∈ Expr
     has_pend_arm ∈ Bool
     tested_arms ∈ Int
     arm1_ctor ∈ String
@@ -198,22 +198,22 @@ fsm DriverMatchPin
     is_wc = (is_first_tick ? false
         : body_enter ? wildcard_head
         : _is_wc)
-    pend_ctor = (is_first_tick ? ""
+    stashed_ctor = (is_first_tick ? ""
         : enter_match ? ""
         : arm_done ? _arm_ctor
-        : _pend_ctor)
-    pend_bind = (is_first_tick ? ""
+        : _stashed_ctor)
+    queued_bind = (is_first_tick ? ""
         : enter_match ? ""
         : arm_done ? _arm_bind
-        : _pend_bind)
-    pend_acc = (is_first_tick ? 0
+        : _queued_bind)
+    saved_accessor = (is_first_tick ? 0
         : enter_match ? 0
         : arm_done ? _arm_acc
-        : _pend_acc)
-    pend_expr = (is_first_tick ? ENoExpr
+        : _saved_accessor)
+    buffered_expr = (is_first_tick ? ENoExpr
         : enter_match ? ENoExpr
         : arm_done ? result
-        : _pend_expr)
+        : _buffered_expr)
     has_pend_arm = (is_first_tick ? false
         : enter_match ? false
         : arm_done ? true
@@ -224,47 +224,47 @@ fsm DriverMatchPin
         : _tested_arms)
     arm1_ctor = (is_first_tick ? ""
         : enter_match ? ""
-        : (promote ∧ _tested_arms = 0) ? _pend_ctor
+        : (promote ∧ _tested_arms = 0) ? _stashed_ctor
         : _arm1_ctor)
     arm1_bind = (is_first_tick ? ""
         : enter_match ? ""
-        : (promote ∧ _tested_arms = 0) ? _pend_bind
+        : (promote ∧ _tested_arms = 0) ? _queued_bind
         : _arm1_bind)
     arm1_acc = (is_first_tick ? 0
         : enter_match ? 0
-        : (promote ∧ _tested_arms = 0) ? _pend_acc
+        : (promote ∧ _tested_arms = 0) ? _saved_accessor
         : _arm1_acc)
     arm1_expr = (is_first_tick ? ENoExpr
         : enter_match ? ENoExpr
-        : (promote ∧ _tested_arms = 0) ? _pend_expr
+        : (promote ∧ _tested_arms = 0) ? _buffered_expr
         : _arm1_expr)
     arm2_ctor = (is_first_tick ? ""
         : enter_match ? ""
-        : (promote ∧ _tested_arms = 1) ? _pend_ctor
+        : (promote ∧ _tested_arms = 1) ? _stashed_ctor
         : _arm2_ctor)
     arm2_bind = (is_first_tick ? ""
         : enter_match ? ""
-        : (promote ∧ _tested_arms = 1) ? _pend_bind
+        : (promote ∧ _tested_arms = 1) ? _queued_bind
         : _arm2_bind)
     arm2_acc = (is_first_tick ? 0
         : enter_match ? 0
-        : (promote ∧ _tested_arms = 1) ? _pend_acc
+        : (promote ∧ _tested_arms = 1) ? _saved_accessor
         : _arm2_acc)
     arm2_expr = (is_first_tick ? ENoExpr
         : enter_match ? ENoExpr
-        : (promote ∧ _tested_arms = 1) ? _pend_expr
+        : (promote ∧ _tested_arms = 1) ? _buffered_expr
         : _arm2_expr)
 
     arm_n ∈ Int = (wildcard_body_done ? (_has_pend_arm ? _tested_arms + 1 : _tested_arms) : _tested_arms)
-    ctor1 ∈ String = (_tested_arms ≥ 1 ? _arm1_ctor : _pend_ctor)
-    bind1 ∈ String = (_tested_arms ≥ 1 ? _arm1_bind : _pend_bind)
-    expr1 ∈ Expr = (_tested_arms ≥ 1 ? _arm1_expr : _pend_expr)
-    ctor2 ∈ String = (_tested_arms ≥ 2 ? _arm2_ctor : _pend_ctor)
-    bind2 ∈ String = (_tested_arms ≥ 2 ? _arm2_bind : _pend_bind)
-    expr2 ∈ Expr = (_tested_arms ≥ 2 ? _arm2_expr : _pend_expr)
-    default ∈ Expr = (wildcard_body_done ? result : _pend_expr)
-    def_bind ∈ String = (wildcard_body_done ? "" : _pend_bind)
-    def_ctor ∈ String = (wildcard_body_done ? "" : _pend_ctor)
+    ctor1 ∈ String = (_tested_arms ≥ 1 ? _arm1_ctor : _stashed_ctor)
+    bind1 ∈ String = (_tested_arms ≥ 1 ? _arm1_bind : _queued_bind)
+    expr1 ∈ Expr = (_tested_arms ≥ 1 ? _arm1_expr : _buffered_expr)
+    ctor2 ∈ String = (_tested_arms ≥ 2 ? _arm2_ctor : _stashed_ctor)
+    bind2 ∈ String = (_tested_arms ≥ 2 ? _arm2_bind : _queued_bind)
+    expr2 ∈ Expr = (_tested_arms ≥ 2 ? _arm2_expr : _buffered_expr)
+    default ∈ Expr = (wildcard_body_done ? result : _buffered_expr)
+    def_bind ∈ String = (wildcard_body_done ? "" : _queued_bind)
+    def_ctor ∈ String = (wildcard_body_done ? "" : _stashed_ctor)
     tester1 ∈ Int
     (ctor1 = "IntResult") ⇒ (tester1 = intresult_tester)
     (ctor1 = "StringResult") ⇒ (tester1 = strresult_tester)
@@ -277,9 +277,9 @@ fsm DriverMatchPin
     ∀ e ∈ user_variants : ((e.name = ctor2) ⇒ (tester2 = e.tester))
     (¬((ctor2 = "IntResult") ∨ (ctor2 = "StringResult")
         ∨ (∃ e ∈ user_variants : e.name = ctor2))) ⇒ (tester2 = 0)
-    acc1 ∈ Int = (_tested_arms ≥ 1 ? _arm1_acc : _pend_acc)
-    acc2 ∈ Int = (_tested_arms ≥ 2 ? _arm2_acc : _pend_acc)
-    def_acc ∈ Int = (wildcard_body_done ? 0 : _pend_acc)
+    acc1 ∈ Int = (_tested_arms ≥ 1 ? _arm1_acc : _saved_accessor)
+    acc2 ∈ Int = (_tested_arms ≥ 2 ? _arm2_acc : _saved_accessor)
+    def_acc ∈ Int = (wildcard_body_done ? 0 : _saved_accessor)
     tail_eq ∈ C2Items = C2ICons(C2PinEq,
         C2ICons(C2AssertTop, C2INil))
     tail_ite1 ∈ C2Items = C2ICons(C2Ite, tail_eq)

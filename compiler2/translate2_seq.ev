@@ -143,10 +143,10 @@ claim StrOpBuildZ3(ctx_h ∈ Int, op_name ∈ String, a_h ∈ Int, b_h ∈ Int, 
         : LibCall("libc", "time", ⟨ArgInt(0)⟩))
 
 claim translate2_seq_probe
-    probe_e ∈ Expr = EStr("hi")
-    probe_eff ∈ Effect
-    probe_ok ∈ Bool
-    StrLitBuildZ3(ctx_h ↦ 0, e ↦ probe_e, eff ↦ probe_eff, ok ↦ probe_ok)
-    probe_len ∈ String
-    SeqLenName(name ↦ "xs", out ↦ probe_len)
+    smoke_expr ∈ Expr = EStr("hi")
+    smoke_effect ∈ Effect
+    is_smoke_ok ∈ Bool
+    StrLitBuildZ3(ctx_h ↦ 0, e ↦ smoke_expr, eff ↦ smoke_effect, ok ↦ is_smoke_ok)
+    smoke_length ∈ String
+    SeqLenName(name ↦ "xs", out ↦ smoke_length)
     effects ∈ Seq(Effect) = ⟨Exit(0)⟩
