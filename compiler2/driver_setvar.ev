@@ -155,6 +155,6 @@ fsm DriverSetVar
         C2ICons(C2PinEq, C2ICons(C2AssertTop, C2INil))))
 
     skip_at_eof ∈ Bool = (tok0 matches EofTok)
-    at_kw ∈ Bool = ((tok0 matches KwEnum) ∨ (tok0 matches KwClaim)
+    is_keyword_char ∈ Bool = ((tok0 matches KwEnum) ∨ (tok0 matches KwClaim)
         ∨ (tok0 matches KwType) ∨ (tok0 matches KwFsm) ∨ (tok0 matches KwSchema))
-    stop ∈ Bool = (in_skip ∧ (skip_at_eof ∨ at_kw))
+    stop ∈ Bool = (in_skip ∧ (skip_at_eof ∨ is_keyword_char))

@@ -362,12 +362,12 @@ claim C2PrattStep(toks ∈ TokenList, outs ∈ ExprList, ops ∈ PrOps,
     call_key ∈ String
     FtiNameEntry(name ↦ head_name, entry ↦ call_key)
     call_ok ∈ Bool = (index_of(calls, call_key, 0) ≥ 0)
-    sh_call ∈ Bool = (expop ∧ (head_token matches Ident(_)) ∧ next_is_lparen
+    call_shift ∈ Bool = (expop ∧ (head_token matches Ident(_)) ∧ next_is_lparen
         ∧ call_ok)
-    sh_atom ∈ Bool = (expop ∧ head_is_atom ∧ (¬sh_call))
+    atom_shift ∈ Bool = (expop ∧ head_is_atom ∧ (¬call_shift))
     shift_lparen ∈ Bool = (expop ∧ is_lp)
-    sh_not ∈ Bool = (expop ∧ head_is_not)
-    sh_hash ∈ Bool = (expop ∧ is_hash)
+    not_shift ∈ Bool = (expop ∧ head_is_not)
+    hash_shift ∈ Bool = (expop ∧ is_hash)
     syntax_error ∈ Bool = (expop ∧ (¬head_is_atom) ∧ (¬is_lp) ∧ (¬head_is_not)
         ∧ (¬is_hash))
 
@@ -386,7 +386,7 @@ claim C2PrattStep(toks ∈ TokenList, outs ∈ ExprList, ops ∈ PrOps,
     close_rparen ∈ Bool = ((¬expop) ∧ is_rp ∧ (pd > 0))
     rp_close ∈ Bool = (close_rparen ∧ top_lp)
     rp_call ∈ Bool = (close_rparen ∧ top_call)
-    sh_idx ∈ Bool = ((¬expop) ∧ is_lb)
+    index_shift ∈ Bool = ((¬expop) ∧ is_lb)
     close_rbracket ∈ Bool = ((¬expop) ∧ is_rb ∧ (pd > 0))
     rb_close ∈ Bool = (close_rbracket ∧ top_idx)
     com ∈ Bool = ((¬expop) ∧ is_com ∧ (cd > 0))
@@ -404,14 +404,14 @@ claim C2PrattStep(toks ∈ TokenList, outs ∈ ExprList, ops ∈ PrOps,
     sdone = (syntax_error ∨ (expr_end ∧ ops_nil))
     sres = (syntax_error ? ENoExpr : out1)
 
-    consume_token ∈ Bool = (sh_atom ∨ shift_lparen ∨ sh_not ∨ sh_hash
+    consume_token ∈ Bool = (atom_shift ∨ shift_lparen ∨ not_shift ∨ hash_shift
         ∨ arr_shift ∨ col_swap ∨ rp_close ∨ rp_call
-        ∨ com_bump ∨ sh_idx ∨ rb_close)
-    scons = (sh_call ? 2
+        ∨ com_bump ∨ index_shift ∨ rb_close)
+    scons = (call_shift ? 2
         : is_match ? mt_cons
         : (dotf ∨ dotf2) ? 2
         : consume_token ? 1 : 0)
-    ntoks = (sh_call ? rest2
+    ntoks = (call_shift ? rest2
         : is_match ? (match_pat2 ? rest7 : match_pat1 ? rest5 : rest2)
         : (dotf ∨ dotf2) ? rest2
         : consume_token ? rest_tokens : toks)
@@ -432,7 +432,7 @@ claim C2PrattStep(toks ∈ TokenList, outs ∈ ExprList, ops ∈ PrOps,
         : top_tern ? o_t3
         : o_t2)
     idx_e ∈ Expr = ECall2("__index", out2, out1)
-    nouts = (sh_atom ? ELCons(atom_e, outs)
+    nouts = (atom_shift ? ELCons(atom_e, outs)
         : reduce ? ELCons(red_e, red_base)
         : rp_call ? ELCons(call_e, call_base)
         : rb_close ? ELCons(idx_e, o_t2)
@@ -443,10 +443,10 @@ claim C2PrattStep(toks ∈ TokenList, outs ∈ ExprList, ops ∈ PrOps,
 
     push ∈ PrOp = (is_q ? PrQuest : PrBin(bin_o))
     nops = (shift_lparen ? PrCons(PrLP, ops)
-        : sh_not ? PrCons(PrNot, ops)
-        : sh_hash ? PrCons(PrHash, ops)
-        : sh_call ? PrCons(PrCall(head_name, 0), ops)
-        : sh_idx ? PrCons(PrIdx, ops)
+        : not_shift ? PrCons(PrNot, ops)
+        : hash_shift ? PrCons(PrHash, ops)
+        : call_shift ? PrCons(PrCall(head_name, 0), ops)
+        : index_shift ? PrCons(PrIdx, ops)
         : arr_shift ? PrCons(push, ops)
         : col_swap ? PrCons(PrTern, orest_tokens)
         : com_bump ? PrCons(PrCall(top_call_name, top_call_argn + 1), orest_tokens)
@@ -454,14 +454,14 @@ claim C2PrattStep(toks ∈ TokenList, outs ∈ ExprList, ops ∈ PrOps,
             ∨ discard) ? orest_tokens
         : ops)
 
-    nexpop = (sh_atom ? false
+    nexpop = (atom_shift ? false
         : (rp_close ∨ rp_call ∨ rb_close) ? false
-        : (arr_shift ∨ col_swap ∨ shift_lparen ∨ sh_not
-            ∨ sh_hash ∨ sh_call ∨ com_bump ∨ sh_idx) ? true
+        : (arr_shift ∨ col_swap ∨ shift_lparen ∨ not_shift
+            ∨ hash_shift ∨ call_shift ∨ com_bump ∨ index_shift) ? true
         : expop)
 
-    npd = ((shift_lparen ∨ sh_call ∨ sh_idx) ? pd + 1
+    npd = ((shift_lparen ∨ call_shift ∨ index_shift) ? pd + 1
         : (rp_close ∨ rp_call ∨ rb_close) ? pd - 1
         : pd)
     nqd = ((arr_shift ∧ is_q) ? qd + 1 : col_swap ? qd - 1 : qd)
-    ncd = (sh_call ? cd + 1 : rp_call ? cd - 1 : cd)
+    ncd = (call_shift ? cd + 1 : rp_call ? cd - 1 : cd)

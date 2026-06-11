@@ -177,7 +177,7 @@ fsm DriverLex
     plan_prev_n ∈ Int
     int_op ∈ Bool = (int_with_op ∧ (¬frac_enter) ∧ (¬finish))
     plan_int_only ∈ Bool = (finish_int_only ∧ (¬frac_enter) ∧ (¬finish))
-    LexFtiPlan(at_comment ↦ at_comment, closing ↦ closing,
+    LexFtiPlan(is_comment_char ↦ is_comment_char, closing ↦ closing,
         fs_op ↦ str_with_op, fi_op ↦ int_op,
         fs_only ↦ str_only, fi_only ↦ plan_int_only,
         ch_only ↦ char_only,
@@ -193,10 +193,10 @@ fsm DriverLex
     -- scanner can't see. Detected by peeking the next char (same
     -- trick as the `--` comment); the written op tag is overridden
     -- 8 → 60 and the scan advances 2.
-    at_plusplus ∈ Bool = ((cur_char = "+") ∧ (next_char = "+")
+    is_plusplus ∈ Bool = ((cur_char = "+") ∧ (next_char = "+")
         ∧ in_range ∧ (¬_strlit))
-    tag0_pp ∈ Int = ((at_plusplus ∧ plan_kind = 1) ? 60 : plan_tag0)
-    tag1_pp ∈ Int = ((at_plusplus ∧ (plan_kind = 4 ∨ plan_kind = 5 ∨ plan_kind = 6))
+    tag0_pp ∈ Int = ((is_plusplus ∧ plan_kind = 1) ? 60 : plan_tag0)
+    tag1_pp ∈ Int = ((is_plusplus ∧ (plan_kind = 4 ∨ plan_kind = 5 ∨ plan_kind = 6))
         ? 60 : plan_tag1)
 
     tok_buf.count = (is_first_tick ? 0
@@ -204,7 +204,7 @@ fsm DriverLex
         : plan_count_n)
     last_token_tag = (is_first_tick ? 0
         : finish ? (with_op ? char_tag : 4)
-        : (at_plusplus ∧ plan_kind ≠ 0) ? 60
+        : (is_plusplus ∧ plan_kind ≠ 0) ? 60
         : plan_last_n)
     prev_token_tag = (is_first_tick ? 0
         : finish ? (with_op ? 4 : _last_token_tag)
@@ -225,16 +225,16 @@ fsm DriverLex
 
     next_char ∈ String = substr(input, pos + 1, 1)
     collecting ∈ Bool = (was_collecting_str ∨ was_collecting_int)
-    at_dash    ∈ Bool = (cur_char = "-")
+    is_dash    ∈ Bool = (cur_char = "-")
     dash  ∈ Bool = (next_char = "-")
-    at_comment ∈ Bool = (at_dash ∧ dash ∧ in_range ∧ (¬collecting) ∧ (¬_strlit))
+    is_comment_char ∈ Bool = (is_dash ∧ dash ∧ in_range ∧ (¬collecting) ∧ (¬_strlit))
     comment_nl ∈ Int = index_of(input, "\n", pos)
     comment_end ∈ Int = (comment_nl < 0 ? #input : comment_nl)
     skip_ws ∈ Bool = (is_ws ∧ in_range ∧ (¬_strlit))
     ws_run_len ∈ Int
     WsRunLen(s ↦ input, p ↦ pos, adv ↦ ws_run_len)
     next_pos = (is_first_tick ? 0
-        : (at_comment ? comment_end
+        : (is_comment_char ? comment_end
         : (skip_ws ? pos + ws_run_len
-        : (at_plusplus ? pos + 2
+        : (is_plusplus ? pos + 2
         : pos + 1))))

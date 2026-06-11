@@ -124,7 +124,7 @@ claim LexKeywordTag(s ∈ String, tag ∈ Int)
         : s = "mapsto" ? 28
         : 1)
 
-claim LexFtiPlan(at_comment ∈ Bool, closing ∈ Bool,
+claim LexFtiPlan(is_comment_char ∈ Bool, closing ∈ Bool,
                  fs_op ∈ Bool, fi_op ∈ Bool,
                  fs_only ∈ Bool, fi_only ∈ Bool, ch_only ∈ Bool,
                  cur_char ∈ String, partial_str ∈ String,
@@ -141,7 +141,7 @@ claim LexFtiPlan(at_comment ∈ Bool, closing ∈ Bool,
     LexKeywordTag(s ↦ partial_str, tag ↦ keyword_tag)
     is_plain_ident ∈ Bool = (keyword_tag = 1)
 
-    kind = (at_comment ? 0
+    kind = (is_comment_char ? 0
         : closing ? 3
         : fs_op ? (is_plain_ident ? 5 : 4)
         : fi_op ? 6

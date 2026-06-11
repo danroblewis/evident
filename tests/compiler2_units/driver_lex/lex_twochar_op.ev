@@ -1,7 +1,7 @@
 -- DriverLex isolation — boundary: the 2-char `++` operator (the §4
 -- contract clause the per-char scanner can't see in one step).
 -- "x ++ y" must lex as Ident, PlusPlus, Ident — three tokens — with the
--- `++` peek advancing the scan cursor by 2 (at_plusplus ⇒ next_pos = pos + 2).
+-- `++` peek advancing the scan cursor by 2 (is_plusplus ⇒ next_pos = pos + 2).
 -- entry: main
 -- expect: stdout = "3"
 -- expect: exit = 0
