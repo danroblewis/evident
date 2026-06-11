@@ -90,8 +90,8 @@ fsm main
     qrange_close = (is_first_tick ? false : _qrange_close)
     enter_qseq ∈ Bool
     enter_qseq = (is_first_tick ? false : _enter_qseq)
-    pos_elem ∈ Bool
-    pos_elem = (is_first_tick ? false : _pos_elem)
+    tuple_element ∈ Bool
+    tuple_element = (is_first_tick ? false : _tuple_element)
     -- other line-shape flags this block reads but does not define.
     q_line ∈ Bool
     q_line = (is_first_tick ? false : _q_line)
@@ -101,8 +101,8 @@ fsm main
     q_over_seq = (is_first_tick ? false : _q_over_seq)
     setlit_line ∈ Bool
     setlit_line = (is_first_tick ? false : _setlit_line)
-    posbind_line ∈ Bool
-    posbind_line = (is_first_tick ? false : _posbind_line)
+    positional_line ∈ Bool
+    positional_line = (is_first_tick ? false : _positional_line)
     enter_qset ∈ Bool
     enter_qset = (is_first_tick ? false : _enter_qset)
     q_seq_dotted ∈ Bool

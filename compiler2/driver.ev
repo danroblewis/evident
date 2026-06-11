@@ -402,7 +402,7 @@ fsm driver_main
         ∧ (¬enter_efflit) ∧ (¬enter_intset) ∧ (¬enter_match)
         ∧ (¬enter_seqlit) ∧ (¬enter_multiname) ∧ (¬comp_line)
         ∧ (¬strin_line) ∧ (¬tymem_line) ∧ (¬q_line)
-        ∧ (¬posbind_line))
+        ∧ (¬positional_line))
     mem_consume ∈ Int = (enter_seqmem ? 6 : line_bounded ? 5 : 3)
     seq_elt_tyname ∈ String = recs[seq_elt_slot].name
     mem_tyname ∈ String = (line_sort = 1 ? "Bool"
@@ -534,7 +534,7 @@ fsm driver_main
         : pskip_decl_fire ? pskip_decl_items
         : type_tick ? mem_items
         : draining ? drain_items
-        : (pos_close ∧ close_recv_method) ? close_recv_items
+        : (tuple_close ∧ close_recv_method) ? close_recv_items
         : tuple_bite ? tuparg_items
         : qexp_more ? qexp_items
         : qexp_fin ? qexp_fin_items
@@ -555,8 +555,8 @@ fsm driver_main
         : it_process ∧ is_call2 ? call2_items
         : it_process ∧ is_call3 ? call3_items
         : it_process ? work_tail
-        : it_rec_val ? recval_items
-        : it_rec_decl ? recval_decl_items
+        : it_rec_val ? literal_items
+        : it_rec_decl ? literal_decl_items
         : it_op ? (op_is_nary ? (_item_step = 2 ? work_tail : _work_items) : work_tail)
         : it_decl ? (_item_step = 2 ? work_tail : _work_items)
         : it_app ? (_item_step = app_argc ? work_tail : _work_items)
@@ -647,9 +647,9 @@ fsm driver_main
         : method_call1 ? 4
         : method_call2 ? 6
         : tuple_line ? 1
-        : pos_comma ? 1
+        : tuple_comma ? 1
         : tuple_bite ? 5
-        : (pos_close ∨ pos_bail) ? (close_recv_method ? 5 : (close_membership ∨ (pos_bail ∧ (tok1 matches OpIn))) ? 3 : 1)
+        : (tuple_close ∨ tuple_bail) ? (close_recv_method ? 5 : (close_membership ∨ (tuple_bail ∧ (tok1 matches OpIn))) ? 3 : 1)
         : (callw_comma ∨ callw_fire ∨ callw_bail) ? 1
         : (pskip_open ∨ pskip_run) ? 1
         : enter_pratt ? pratt_enter_consume
@@ -729,8 +729,8 @@ fsm driver_main
         : (callw_bare_jump ∨ callw_fire ∨ callw_bail) ? 2
         : enter_qrange ? 11
         : qrange_bail ? 2
-        : posbind_line ? 12
-        : pos_bail ? 2
+        : positional_line ? 12
+        : tuple_bail ? 2
         : posjump_fire ? 2
         : enter_efflit ? 5
         : enter_intset ? 7
@@ -1039,7 +1039,7 @@ fsm driver_main
         : read_callee_cursor ? ⟨eff_claimidx_read⟩
         : cond_hit ? ⟨eff_guard_read⟩
         : matchpin_accread ? ⟨eff_match_accread⟩
-        : pos_close ? ⟨eff_posbind_read⟩
+        : tuple_close ? ⟨eff_posbind_read⟩
         : recdecl_active ? (recdecl_eff_st = 2
             ? ⟨recdecl_write_fn0, recdecl_write_fn1, recdecl_write_fn2, recdecl_write_fn3, recdecl_write_fn4,
                recdecl_write_fn5, recdecl_write_fs0, recdecl_write_fs1, recdecl_write_fs2, recdecl_write_fs3,

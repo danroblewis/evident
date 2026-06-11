@@ -7,7 +7,7 @@
 --           (recs .name / .sort), the enum-table name column (enum_names)
 --           + the seq-var carries (_seqvar_set, _seqvar_name), and the sibling
 --           sub-walks' per-line enter signals (efflit_*/arm_*/seqlit_*/callw_slot/
---           callw_pun/qrange_close/pos_elem) that fold into enter_pratt. Wide by nature: this
+--           callw_pun/qrange_close/tuple_element) that fold into enter_pratt. Wide by nature: this
 --           is the central dispatch brain — it inspects the whole window
 --           against every other subsystem's entry condition (justified
 --           §6.4).
@@ -138,12 +138,12 @@ fsm DriverClassify
         ∧ (¬effects_line) ∧ (¬intset_line) ∧ (¬match_line)
         ∧ (¬seqmem_line) ∧ (¬seqlit_line) ∧ (¬multiname_line)
         ∧ (¬comp_line) ∧ (¬strin_line) ∧ (¬tymem_line)
-        ∧ (¬q_range) ∧ (¬(q_over_seq ∧ _seqvar_set)) ∧ (¬posbind_line)
+        ∧ (¬q_range) ∧ (¬(q_over_seq ∧ _seqvar_set)) ∧ (¬positional_line)
         ∧ (¬setlit_line) ∧ (¬enter_qset)
         ∧ (line_pinned ∨ (¬line_is_mem)))
     enter_pratt ∈ Bool = (enter_pratt_line ∨ efflit_exit_enter
         ∨ efflit_guard_enter ∨ arm_body_enter ∨ seqlit_elem_enter ∨ callw_slot
-        ∨ callw_pun ∨ qrange_close ∨ enter_qseq ∨ pos_elem)
+        ∨ callw_pun ∨ qrange_close ∨ enter_qseq ∨ tuple_element)
     pratt_enter_consume ∈ Int = (efflit_exit_enter ? 2
         : efflit_guard_enter ? 0
         : arm_body_enter ? (pat_close_take ? 3 : 2)
@@ -152,7 +152,7 @@ fsm DriverClassify
         : callw_pun ? 0
         : qrange_close ? 2
         : enter_qseq ? (q_seq_dotted ? 7 : 5)
-        : pos_elem ? 0
+        : tuple_element ? 0
         : line_pinned ? 4 : 0)
     pratt_enter_kind ∈ Int = (efflit_exit_enter ? 3
         : efflit_guard_enter ? 6
@@ -162,7 +162,7 @@ fsm DriverClassify
         : callw_pun ? 8
         : qrange_close ? 9
         : enter_qseq ? 9
-        : pos_elem ? 10
+        : tuple_element ? 10
         : line_pinned ? 1 : 2)
     pratt_qstop ∈ Bool
     pratt_qstop = (is_first_tick ? false

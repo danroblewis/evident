@@ -271,17 +271,17 @@ fsm DriverCompose
     callw_bare = (is_first_tick ? false
         : (comp_call ∨ tymem_call) ? false
         : (comp_bare ∨ comp_dotdot ∨ tymem_bare) ? true
-        : posbind_line ? false
+        : positional_line ? false
         : _callw_bare)
     callw_hide = (is_first_tick ? false
         : comp_bare ? true
         : (comp_call ∨ comp_dotdot ∨ tymem_line) ? false
-        : posbind_line ? false
+        : positional_line ? false
         : _callw_hide)
     callw_is_type = (is_first_tick ? false
         : tymem_line ? true
         : comp_line ? false
-        : posbind_line ? false
+        : positional_line ? false
         : _callw_is_type)
     type_prefix = (is_first_tick ? ""
         : tymem_line ? (_scope_prefix ++ line_name ++ ".")

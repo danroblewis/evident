@@ -39,8 +39,8 @@ fsm main
     enum_act = (is_first_tick ? 0 : _enum_act)
     callw_st ∈ Int
     callw_st = (is_first_tick ? 0 : _callw_st)
-    posbind_st ∈ Int
-    posbind_st = (is_first_tick ? 0 : _posbind_st)
+    tuple_state ∈ Int
+    tuple_state = (is_first_tick ? 0 : _tuple_state)
     work_nil ∈ Bool
     work_nil = (is_first_tick ? true : _work_nil)
     vf_st ∈ Int

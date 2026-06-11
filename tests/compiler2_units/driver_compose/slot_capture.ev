@@ -126,8 +126,8 @@ fsm main
     ∀ e ∈ recs : e.accs[5] = 0
     tok_cur ∈ Int
     tok_cur = (is_first_tick ? 0 : _tok_cur)
-    posbind_line ∈ Bool
-    posbind_line = (is_first_tick ? false : _posbind_line)
+    positional_line ∈ Bool
+    positional_line = (is_first_tick ? false : _positional_line)
     guarding ∈ Bool
     guarding = (is_first_tick ? false : _guarding)
     armed_depth ∈ Int
