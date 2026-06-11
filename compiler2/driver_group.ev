@@ -1,99 +1,92 @@
 -- MODULE DriverGroup
--- CONSUMES: the group-enter signals (enter_multiname body multi-name,
---           enter_claim_params first-line param list), the classifier name/
---           sort/type (line_is_mem, line_is_nat, line_sort, mem_tyname, line_t0), the
+-- CONSUMES (free names, names-match — never declared here): the group-enter
+--           signals (enter_multiname body multi-name, enter_claim_params
+--           first-line param list), the classifier name/sort/type
+--           (line_is_mem, line_is_nat, line_sort, mem_tyname, line_t0), the
 --           window head (tok0/tok1/tok3), and the parse gate (in_parse,
 --           _parse_mode, tok_ready, work_nil).
--- PRODUCES: the parse_mode-9 group walk (group_st/group_is_param/group_close/group_sort/group_nat/
---           group_ty + the pending-name list group_pending), which broadcasts one
---           shared `∈ Type` over a comma-separated name group, emitting a
---           C2DeclConst item run per name.
+-- PRODUCES: the HEADER below — the checked interface (bare-mention
+--           composition). The carried walk state (pending_names/walk_state/
+--           is_parameter/closed/shared_sort/is_nat/type_name) and the
+--           per-tick outputs the work-item dispatch reads (collect/take_name/
+--           type_tick/bail/draining/have_pending/last_name/type_consume/
+--           done_mode/type_exit_mode/name_field/carry_decl/drain_items).
+--           driver_main declares these names and joins them; every other
+--           name in this body is per-call-site internal (hidden).
 -- MAINTAINS: PARAM groups (`claim main(a, b ∈ Int, ok ∈ Bool)`) close on
 --           `)`, BODY groups (`x, y, z ∈ Nat`) on the type membership;
 --           every name in a group gets the SAME sort, declared in source
---           order.
+--           order. One shared `∈ Type` broadcasts over a comma-separated
+--           name group, emitting a C2DeclConst item run per name.
 --
--- The parse_mode-9 multi-name group walk. Lifted into driver_main via
--- `..DriverGroup`.
-fsm DriverGroup
+-- The parse_mode-9 multi-name group walk. Composed into driver_main by
+-- BARE MENTION (the header is the whole interface).
+fsm DriverGroup(pending_names ∈ TokenList, walk_state ∈ Int, is_parameter ∈ Bool, closed ∈ Bool, shared_sort ∈ Int, is_nat ∈ Bool, type_name ∈ String, collect ∈ Bool, take_name ∈ Bool, type_tick ∈ Bool, bail ∈ Bool, draining ∈ Bool, have_pending ∈ Bool, last_name ∈ Bool, type_consume ∈ Int, done_mode ∈ Int, type_exit_mode ∈ Int, name_field ∈ String, carry_decl ∈ String, drain_items ∈ C2Items)
     -- ── F1: parse_mode-9 GROUP walk (first-line param lists + body
     -- multi-name memberships) ─────────────────────────────────────
-    -- Collect substate (group_st 0): one `Ident ,` per tick pushes the
-    -- name; the `Ident ∈ Type` tick declares the LAST name through
-    -- the classifier's own mem_items/mem_field/mem_carry_decl (same window
+    -- Collect substate (walk_state 0): one `Ident ,` per tick pushes the
+    -- name; the `Ident ∈ Type` tick declares the LAST name through the
+    -- classifier's own mem_items/mem_field/mem_carry_decl (same window
     -- positions as a plain membership) and latches the group type.
-    -- Drain substate (group_st 1): one pending name per tick declares
-    -- through group_drain_items with the latched type.
+    -- Drain substate (walk_state 1): one pending name per tick declares
+    -- through drain_items with the latched type.
     -- Scalar types only (Int/Nat/Bool/String/Result/the user enum);
     -- Seq(...) params and bounds/pins on group lines are descoped
     -- (zero corpus occurrences of either).
-    group_pending ∈ TokenList
-    group_st ∈ Int
-    group_is_param ∈ Bool
-    group_close ∈ Bool
-    group_sort ∈ Int
-    group_nat ∈ Bool
-    group_ty ∈ String
+    active ∈ Bool = (in_parse ∧ (_parse_mode = 9) ∧ work_nil ∧ tok_ready)
+    collect = (active ∧ (_walk_state = 0))
+    take_name = (collect ∧ (tok0 matches Ident(_)) ∧ (tok1 matches Comma))
+    type_tick = (collect ∧ (tok0 matches Ident(_)) ∧ line_is_mem)
+    bail = (collect ∧ (¬take_name) ∧ (¬type_tick))
+    draining = (active ∧ (_walk_state = 1))
 
-    group_active ∈ Bool = (in_parse ∧ (_parse_mode = 9) ∧ work_nil
-        ∧ tok_ready)
-    group_collect ∈ Bool = (group_active ∧ (_group_st = 0))
-    group_take2 ∈ Bool = (group_collect ∧ (tok0 matches Ident(_))
-        ∧ (tok1 matches Comma))
-    group_ty_tick ∈ Bool = (group_collect ∧ (tok0 matches Ident(_))
-        ∧ line_is_mem)
-    group_bail ∈ Bool = (group_collect ∧ (¬group_take2) ∧ (¬group_ty_tick))
-    group_drain ∈ Bool = (group_active ∧ (_group_st = 1))
-
-    group_have_pend ∈ Bool = (¬(_group_pending matches TLNil))
-    group_head_tok ∈ Token = match _group_pending
+    have_pending = (¬(_pending_names matches TLNil))
+    head_token ∈ Token = match _pending_names
         TLCons(t, _) ⇒ t
         TLNil ⇒ EofTok
-    group_head_name ∈ String = match group_head_tok
+    head_name ∈ String = match head_token
         Ident(s) ⇒ s
         _ ⇒ ""
-    group_tail ∈ TokenList = match _group_pending
+    name_tail ∈ TokenList = match _pending_names
         TLCons(_, r) ⇒ r
         TLNil ⇒ TLNil
-    group_last ∈ Bool = (group_tail matches TLNil)
+    last_name = (name_tail matches TLNil)
 
-    group_ty_consume ∈ Int = (_group_is_param ? 4 : 3)
-    group_ty_close ∈ Bool = (tok3 matches RParen)
-    group_done_mode ∈ Int = ((¬_group_is_param) ? 2
-        : _group_close ? 2
+    type_consume = (_is_parameter ? 4 : 3)
+    type_close ∈ Bool = (tok3 matches RParen)
+    done_mode = ((¬_is_parameter) ? 2
+        : _closed ? 2
         : 9)
-    group_ty_exit_mode ∈ Int = ((¬_group_is_param) ? 2
-        : group_ty_close ? 2
+    type_exit_mode = ((¬_is_parameter) ? 2
+        : type_close ? 2
         : 9)
 
-    group_pending = (is_first_tick ? TLNil
+    pending_names = (is_first_tick ? TLNil
         : enter_claim_params ? TLNil
         : enter_multiname ? TLCons(line_t0, TLNil)
-        : group_take2 ? TLCons(tok0, _group_pending)
-        : group_drain ? group_tail
-        : _group_pending)
-    group_st = (is_first_tick ? 0
+        : take_name ? TLCons(tok0, _pending_names)
+        : draining ? name_tail
+        : _pending_names)
+    walk_state = (is_first_tick ? 0
         : (enter_claim_params ∨ enter_multiname) ? 0
-        : group_ty_tick ? (group_have_pend ? 1 : 0)
-        : (group_drain ∧ group_last) ? 0
-        : _group_st)
-    group_is_param = (is_first_tick ? false
+        : type_tick ? (have_pending ? 1 : 0)
+        : (draining ∧ last_name) ? 0
+        : _walk_state)
+    is_parameter = (is_first_tick ? false
         : enter_claim_params ? true
         : enter_multiname ? false
-        : _group_is_param)
-    group_close = (is_first_tick ? false
+        : _is_parameter)
+    closed = (is_first_tick ? false
         : enter_claim_params ? false
-        : (group_ty_tick ∧ _group_is_param) ? group_ty_close
-        : _group_close)
-    group_sort = (is_first_tick ? 0 : group_ty_tick ? line_sort : _group_sort)
-    group_nat = (is_first_tick ? false : group_ty_tick ? line_is_nat : _group_nat)
-    group_ty = (is_first_tick ? "" : group_ty_tick ? mem_tyname : _group_ty)
+        : (type_tick ∧ _is_parameter) ? type_close
+        : _closed)
+    shared_sort = (is_first_tick ? 0 : type_tick ? line_sort : _shared_sort)
+    is_nat = (is_first_tick ? false : type_tick ? line_is_nat : _is_nat)
+    type_name = (is_first_tick ? "" : type_tick ? mem_tyname : _type_name)
 
-    group_field ∈ String = group_head_name ++ ":" ++ _group_ty
-    group_carry_decl ∈ String = ("(declare-fun _" ++ group_head_name ++ " () "
-        ++ _group_ty ++ ")\n")
-    group_drain_items ∈ C2Items = C2ICons(C2DeclConst(group_head_name, _group_sort),
-        (_group_nat
-            ? C2ICons(C2NatBound, C2ICons(C2AssertTop,
-                C2ICons(C2Drop, C2INil)))
+    name_field = head_name ++ ":" ++ _type_name
+    carry_decl = ("(declare-fun _" ++ head_name ++ " () " ++ _type_name ++ ")\n")
+    drain_items = C2ICons(C2DeclConst(head_name, _shared_sort),
+        (_is_nat
+            ? C2ICons(C2NatBound, C2ICons(C2AssertTop, C2ICons(C2Drop, C2INil)))
             : C2ICons(C2Drop, C2INil)))

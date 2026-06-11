@@ -1,22 +1,28 @@
 # Context bundles — collapse the shared parse context into one header slot
 
-**Status:** approved 2026-06-10. Unblocks clean de-prefixing (operator
-chose "option A": clean short full-word names via bare-mention hiding).
-Core mechanism (record-typed header slot) probed working 2026-06-10
-(`/tmp/ctx_probe.ev`: `consumer(ctx ∈ ParseCtx, …)` with `ctx.field`
-access compiled + ran correct through the frozen oracle).
+**Status:** SUPERSEDED for de-prefixing 2026-06-11 (NOT NEEDED). The
+premise below — "a bare-mention header must list its ENTIRE interface" —
+was DISPROVEN by probe: **free (non-header) names PUN under bare-mention
+of a headered claim** (`/tmp/freejoin_probe.ev`: a claim reading `gate`/
+`tok0` with ONLY `out` in its header joined them correctly, exit 0). So a
+component's inputs never go in its header — they pun like under `..` lift;
+the header carries only the **carried state + outputs** the component
+owns. DriverGroup de-prefixed clean with a 20-slot header (7 carried + 13
+outputs) and ZERO bundle (commit pending). A bundle remains useful only
+to shrink the free-name *surface* for readability, never to make
+de-prefixing possible.
 
-## Problem
+## Problem (as originally framed — the false premise)
 
-To convert a component from `..`-lift to bare-mention (which hides its
-internals so they can have clean unprefixed names), its header must list
-its ENTIRE interface — every name it reads from outside plus every name
-it exposes. Measured on DriverGroup: ~26 names, of which ~12 are
-**ambient context** — the token window (`tok0..tok7`) and parse gate
-(`parse_mode`, `in_parse`, `tok_ready`, `work_nil`) — shared by 10–13 of
-the 24 components. Listing those 12 in every header is the bloat that
-sank the first de-prefix attempt (Symtab's 64-slot header was mostly
-this). The claim-headers plan named this as open question #1.
+The original belief: to convert a component from `..`-lift to
+bare-mention (which hides its internals so they can have clean unprefixed
+names), its header must list its ENTIRE interface — every name it reads
+from outside plus every name it exposes — and the ~12 ambient-context
+names (token window `tok0..tok7` + parse gate `parse_mode`/`in_parse`/
+`tok_ready`/`work_nil`) listed in every header would be the bloat that
+sank the first attempt (Symtab's 64-slot header). **This was wrong**:
+inputs pun (see Status), so the Symtab header should have been ~20 slots,
+not 64. The first attempt over-declared inputs that it didn't need to.
 
 ## Design
 
@@ -114,7 +120,12 @@ RESOLVED (oracle f767cd5, 2026-06-10):
   gates — now handles it correctly.
 - **Record construction pinning an enum field to a constructor literal**
   (`Win(t0 ↦ Ident("x"))`): "field doesn't exist / shape" error. (Pinning
-  to a variable — `ParseCtx(tok0 ↦ tok0)` — works.)
+  to a variable — `ParseCtx(tok0 ↦ tok0)` — WORKS; re-proven 2026-06-11,
+  `/tmp/ctx_enum_probe.ev`: `WinCtx(t0 ↦ tok0)` over Token fields + bare-
+  mention consume + `matches` on the field ran correct, exit 0, 0.0 ms z3.
+  A 2026-06-10 report that the variable-pinned form *also* failed was a
+  MISDIAGNOSIS — the actual pilot failure was a wiring/stale-base bug, not
+  this gap.)
 - **Autocarry combined-decl gap**: `n ∈ Int = (…_n…)` (decl+assign on one
   line) does NOT get its `_n` dual synthesized; only the separate-decl form
   does. Minor, but a real autocarry transform bug.

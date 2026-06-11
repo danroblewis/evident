@@ -432,7 +432,29 @@ fsm driver_main
         : "(declare-fun _" ++ line_dname ++ " () " ++ mem_tyname ++ ")\n")
 
     -- ── F1: parse_mode-9 GROUP walk (see compiler2/driver_group.ev) ──
-    ..DriverGroup
+    -- Bare mention: the header below is DriverGroup's whole interface
+    -- (carried walk state + the outputs the dispatch reads); inputs pun.
+    pending_names ∈ TokenList
+    walk_state ∈ Int
+    is_parameter ∈ Bool
+    closed ∈ Bool
+    shared_sort ∈ Int
+    is_nat ∈ Bool
+    type_name ∈ String
+    collect ∈ Bool
+    take_name ∈ Bool
+    type_tick ∈ Bool
+    bail ∈ Bool
+    draining ∈ Bool
+    have_pending ∈ Bool
+    last_name ∈ Bool
+    type_consume ∈ Int
+    done_mode ∈ Int
+    type_exit_mode ∈ Int
+    name_field ∈ String
+    carry_decl ∈ String
+    drain_items ∈ C2Items
+    DriverGroup
     -- ── F2: composition inlining (see compiler2/driver_compose.ev) ──
     ..DriverCompose
     -- ── PRATT FSM state (see compiler2/driver_pratt.ev) ──
@@ -510,8 +532,8 @@ fsm driver_main
         : (callw_fire ∧ _callw_is_type) ? type_pin_items
         : (callw_bare_jump ∧ _callw_is_type ∧ (_type_slot ≥ 0)) ? type_recdecl_items
         : pskip_decl_fire ? pskip_decl_items
-        : group_ty_tick ? mem_items
-        : group_drain ? group_drain_items
+        : type_tick ? mem_items
+        : draining ? drain_items
         : (pos_close ∧ close_recv_method) ? close_recv_items
         : tuple_bite ? tuparg_items
         : qexp_more ? qexp_items
@@ -605,9 +627,9 @@ fsm driver_main
         : enter_seqlit ? 3
         : (seqlit_close ∨ seqlit_comma) ? 1
         : enter_multiname ? 2
-        : group_take2 ? 2
-        : group_ty_tick ? group_ty_consume
-        : group_bail ? 1
+        : take_name ? 2
+        : type_tick ? type_consume
+        : bail ? 1
         : comp_call ? 2
         : comp_bare ? 1
         : comp_dotdot ? 3
@@ -680,14 +702,14 @@ fsm driver_main
     manifest_fields = (is_first_tick ? ""
         : (elem_declare ∧ (¬in_type_frame)) ? (_manifest_fields = "" ? elem_field : _manifest_fields ++ " " ++ elem_field)
         : field_add ? (_manifest_fields = "" ? mem_field : _manifest_fields ++ " " ++ mem_field)
-        : group_ty_tick ? (_manifest_fields = "" ? mem_field : _manifest_fields ++ " " ++ mem_field)
-        : group_drain ? (_manifest_fields = "" ? group_field : _manifest_fields ++ " " ++ group_field)
+        : type_tick ? (_manifest_fields = "" ? mem_field : _manifest_fields ++ " " ++ mem_field)
+        : draining ? (_manifest_fields = "" ? name_field : _manifest_fields ++ " " ++ name_field)
         : _manifest_fields)
     carry_decls = (is_first_tick ? ""
         : (elem_declare ∧ (¬in_type_frame)) ? _carry_decls ++ elem_carry_decl
         : field_add ? _carry_decls ++ mem_carry_decl
-        : group_ty_tick ? _carry_decls ++ mem_carry_decl
-        : group_drain ? _carry_decls ++ group_carry_decl
+        : type_tick ? _carry_decls ++ mem_carry_decl
+        : draining ? _carry_decls ++ carry_decl
         : (carry_strip ∧ (strip_pos ≥ 0)) ? strip_cut
         : _carry_decls)
 
@@ -717,9 +739,9 @@ fsm driver_main
         : enter_setlit ? 14
         : (setlit_close ∨ setlit_bad) ? 2
         : enter_multiname ? 9
-        : group_bail ? 2
-        : group_ty_tick ? (group_have_pend ? 9 : group_ty_exit_mode)
-        : (group_drain ∧ group_last) ? group_done_mode
+        : bail ? 2
+        : type_tick ? (have_pending ? 9 : type_exit_mode)
+        : (draining ∧ last_name) ? done_mode
         : enter_pratt ? 3
         : pratt_done ? (_pratt_kind = 3 ? 5
             : _pratt_kind = 4 ? ((pratt_bad ∨ wc_body_done) ? 2 : 6)
