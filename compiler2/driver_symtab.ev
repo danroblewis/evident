@@ -125,7 +125,7 @@ fsm DriverSymtab
     it_strop   ∈ Bool = (work_head matches C2StrOp(_, _))
     chosen_handle    ∈ Bool = (work_head matches C2SelH)
     equality_handle  ∈ Bool = (work_head matches C2SelEqH(_))
-    len_eq_h  ∈ Bool = (work_head matches C2LenEqH(_))
+    len_equals_handle  ∈ Bool = (work_head matches C2LenEqH(_))
     it_dup3    ∈ Bool = (work_head matches C2Dup3)
     it_swap    ∈ Bool = (work_head matches C2Swap)
     it_rot3    ∈ Bool = (work_head matches C2Rot3)

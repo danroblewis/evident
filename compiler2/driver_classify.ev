@@ -112,7 +112,7 @@ fsm DriverClassify
 
     line_end ∈ Bool = (line_at_eof ∨ t0_toplevel
         ∨ ((¬can_expr) ∧ (¬dotdot_head) ∧ (¬strin_line)
-            ∧ (¬q_line)))
+            ∧ (¬is_quant_line)))
     claim_end ∈ Bool = (classify_now ∧ line_end ∧ (_frame_depth = 0))
     frame_pop ∈ Bool = (classify_now ∧ line_end ∧ (_frame_depth > 0))
 
@@ -138,7 +138,7 @@ fsm DriverClassify
         ∧ (¬effects_line) ∧ (¬intset_line) ∧ (¬match_line)
         ∧ (¬seqmem_line) ∧ (¬seqlit_line) ∧ (¬multiname_line)
         ∧ (¬comp_line) ∧ (¬strin_line) ∧ (¬is_member_line)
-        ∧ (¬q_range) ∧ (¬(over_seq ∧ _seqvar_set)) ∧ (¬positional_line)
+        ∧ (¬quant_range_line) ∧ (¬(over_seq ∧ _seqvar_set)) ∧ (¬positional_line)
         ∧ (¬setlit_line) ∧ (¬qset)
         ∧ (pinned ∨ (¬is_mem)))
     enter_pratt ∈ Bool = (pratt_line ∨ exit_enter

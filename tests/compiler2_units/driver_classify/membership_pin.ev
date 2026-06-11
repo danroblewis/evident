@@ -93,10 +93,10 @@ fsm main
     element ∈ Bool
     element = (is_first_tick ? false : _element)
     -- other line-shape flags this block reads but does not define.
-    q_line ∈ Bool
-    q_line = (is_first_tick ? false : _q_line)
-    q_range ∈ Bool
-    q_range = (is_first_tick ? false : _q_range)
+    is_quant_line ∈ Bool
+    is_quant_line = (is_first_tick ? false : _is_quant_line)
+    quant_range_line ∈ Bool
+    quant_range_line = (is_first_tick ? false : _quant_range_line)
     over_seq ∈ Bool
     over_seq = (is_first_tick ? false : _over_seq)
     setlit_line ∈ Bool

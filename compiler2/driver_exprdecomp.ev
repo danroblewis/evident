@@ -4,7 +4,7 @@
 --           user_variants[0].tester..5), and the floor tester decls intresult_tester / strresult_tester.
 -- PRODUCES: the decomposed views of cur_expr used by the work-item lowering —
 --           the node-kind flags + payloads (is_int/id/str/bin/tern/
---           not/m, str_val, lookup_name, op/l/r/c/t/e/ni, is_neq),
+--           not/m, strlit_value, lookup_name, op/l/r/c/t/e/ni, is_neq),
 --           the call shape (is_call1/c2/c3, call_name, arg0/1/2), the
 --           ctor-dispatch decl (ctor_decl), and the `matches` lowering
 --           (matches_name, scrut, matches_tester, matches_items).
@@ -19,7 +19,7 @@ fsm DriverExprDecomp
     is_int ∈ Bool = (cur_expr matches EInt(_))
     is_ident  ∈ Bool = (cur_expr matches EIdent(_))
     is_str ∈ Bool = (cur_expr matches EStr(_))
-    str_val ∈ String = match cur_expr
+    strlit_value ∈ String = match cur_expr
         EStr(s) ⇒ s
         _ ⇒ ""
     lookup_name ∈ String = match cur_expr

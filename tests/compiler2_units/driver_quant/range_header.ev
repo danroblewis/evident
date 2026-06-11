@@ -1,6 +1,6 @@
 -- DriverQuant isolation — range-quantifier header classification.
 -- Line head pinned to `∀ x ∈ { 0 .. 9 }`; the module must classify
--- q_range = true and decode q_lo = 0, q_hi = 9. Output is "9" only
+-- quant_range_line = true and decode range_lower = 0, range_upper = 9. Output is "9" only
 -- when the range header is recognized and its bound decoded.
 --
 -- entry: main
@@ -75,8 +75,8 @@ fsm main
     tok1 ∈ Token
     tok1 = (is_first_tick ? EofTok : _tok1)
     ..DriverQuant
-    ok ∈ Bool = q_range
-    msg ∈ String = str_from_int(q_hi)
+    ok ∈ Bool = quant_range_line
+    msg ∈ String = str_from_int(range_upper)
     effects ∈ Seq(Effect) = (ok
         ? ⟨LibCall("libc", "puts", ⟨ArgStr(msg)⟩), Exit(0)⟩
         : ⟨LibCall("libc", "getpid", ⟨⟩)⟩)

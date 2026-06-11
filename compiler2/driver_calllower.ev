@@ -85,22 +85,22 @@ fsm DriverCallLower
         C2ICons(C2App(ctor_decl, 1), work_tail)))
     (¬((call_name = "str_len") ∨ (call_name = "str_from_int")
         ∨ (ctor_decl ≠ 0))) ⇒ (call1_items = C2ICons(C2PushH(0), work_tail))
-    arg_scaled ∈ Int = match arg0
+    real_scaled ∈ Int = match arg0
         EInt(n) ⇒ n
         _ ⇒ 0
-    arg_digits ∈ Int = match arg1
+    real_digits ∈ Int = match arg1
         EInt(n) ⇒ n
         _ ⇒ 0
     field_arg_name ∈ String = match arg1
         EIdent(s) ⇒ s
         _ ⇒ ""
-    arg_acc ∈ Int
-    RtFieldAcc(fname ↦ field_arg_name, acc ↦ arg_acc)
+    field_accessor_handle ∈ Int
+    RtFieldAcc(fname ↦ field_arg_name, acc ↦ field_accessor_handle)
     call2_items ∈ C2Items
     (call_name = "__real") ⇒ (call2_items =
-        C2ICons(C2Real(arg_scaled, arg_digits), work_tail))
+        C2ICons(C2Real(real_scaled, real_digits), work_tail))
     (call_name = "__field") ⇒ (call2_items = C2ICons(C2Process(arg0),
-        C2ICons(C2App(arg_acc, 1), work_tail)))
+        C2ICons(C2App(field_accessor_handle, 1), work_tail)))
     (call_name = "__index") ⇒ (call2_items =
         C2ICons(C2Process(arg0), C2ICons(C2Process(arg1),
         C2ICons(C2SelH, work_tail))))

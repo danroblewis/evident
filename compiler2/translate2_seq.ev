@@ -58,12 +58,12 @@ import "stdlib/kernel.ev"
 
 claim StrLitBuildZ3(ctx_h ∈ Int, e ∈ Expr, eff ∈ Effect, ok ∈ Bool)
     is_str ∈ Bool = (e matches EStr(_))
-    str_val ∈ String = match e
+    strlit_value ∈ String = match e
         EStr(s) ⇒ s
         _ ⇒ ""
     ok = is_str
     eff = (is_str
-        ? LibCall("libz3", "Z3_mk_string", ⟨ArgInt(ctx_h), ArgStr(str_val)⟩)
+        ? LibCall("libz3", "Z3_mk_string", ⟨ArgInt(ctx_h), ArgStr(strlit_value)⟩)
         : LibCall("libc", "time", ⟨ArgInt(0)⟩))
 
 claim SeqLitConstBaseZ3(ctx_h ∈ Int, idx_sort_h ∈ Int, default_h ∈ Int, eff ∈ Effect)
@@ -87,11 +87,11 @@ claim SeqIndexBuildZ3(ctx_h ∈ Int, arr_h ∈ Int, idx_h ∈ Int, eff ∈ Effec
         ⟨ArgInt(ctx_h), ArgInt(arr_h), ArgInt(idx_h)⟩)
 
 claim CardBuildZ3(ctx_h ∈ Int, is_string ∈ Bool, s_h ∈ Int,
-        len_sym_h ∈ Int, int_sort_h ∈ Int, eff ∈ Effect)
+        len_symbol_handle ∈ Int, int_sort_h ∈ Int, eff ∈ Effect)
     eff = (is_string
         ? LibCall("libz3", "Z3_mk_seq_length", ⟨ArgInt(ctx_h), ArgInt(s_h)⟩)
         : LibCall("libz3", "Z3_mk_const",
-            ⟨ArgInt(ctx_h), ArgInt(len_sym_h), ArgInt(int_sort_h)⟩))
+            ⟨ArgInt(ctx_h), ArgInt(len_symbol_handle), ArgInt(int_sort_h)⟩))
 
 claim ConcatBuildZ3(ctx_h ∈ Int, op ∈ Op, num_args ∈ Int, args_arr_ptr ∈ Int,
         eff ∈ Effect, ok ∈ Bool)

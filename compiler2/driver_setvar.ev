@@ -99,7 +99,7 @@ fsm DriverSetVar
     tgt_hit ∈ Bool = (tgt_name ≠ "" ∧ (∃ e ∈ vars : e.name = tgt_name))
     qset ∈ Bool = (classify_now ∧ (¬line_end) ∧ seq_plain
         ∧ (¬is_exists) ∧ src_hit ∧ tgt_hit
-        ∧ (bind_var = q_var) ∧ (tok6 matches OpIn))
+        ∧ (bind_var = loop_variable) ∧ (tok6 matches OpIn))
     setquery_elems ∈ String
     ∀ e ∈ vars : ((e.name = t3_name) ⇒ (setquery_elems = e.elems))
     (¬(∃ e ∈ vars : e.name = t3_name)) ⇒ (setquery_elems = "")

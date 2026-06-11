@@ -36,8 +36,8 @@ fsm main
     seq_plain = (is_first_tick ? false : _seq_plain)
     t3_name ∈ String
     t3_name = (is_first_tick ? "" : _t3_name)
-    q_var ∈ String
-    q_var = (is_first_tick ? "" : _q_var)
+    loop_variable ∈ String
+    loop_variable = (is_first_tick ? "" : _loop_variable)
     intset_line ∈ Bool
     intset_line = (is_first_tick ? false : _intset_line)
     kind_slot ∈ Int

@@ -4,8 +4,8 @@
 --           _seqvar_name, _seqvar_len), the record registry (recs via RtIdxOf),
 --           the classify gate (classify_now, line_end), and the parse
 --           cursor for the body re-walk.
--- PRODUCES: the bounded-quantifier line classification (q_head/q_line/
---           q_range/over_seq/q_var/q_lo/q_hi/seq_plain/seq_dotted/…) + the
+-- PRODUCES: the bounded-quantifier line classification (quant_head_token/is_quant_line/
+--           quant_range_line/over_seq/loop_variable/range_lower/range_upper/seq_plain/seq_dotted/…) + the
 --           quantifier-set entry signals (qseq/qset/qrange_close)
 --           and the fl-loop re-walk bookkeeping the interpreter expands.
 -- MAINTAINS: `∀|∃ v ∈ {lo..hi} : body` (integer range) and `∀ v ∈ seq :
@@ -17,19 +17,19 @@
 -- driver_main via `..DriverQuant`.
 fsm DriverQuant
     is_exists ∈ Bool = (line_t0 matches OpExists)
-    q_head ∈ Bool = ((line_t0 matches OpForall) ∨ is_exists)
-    q_line ∈ Bool = (q_head ∧ (line_t1 matches Ident(_))
+    quant_head_token ∈ Bool = ((line_t0 matches OpForall) ∨ is_exists)
+    is_quant_line ∈ Bool = (quant_head_token ∧ (line_t1 matches Ident(_))
         ∧ (line_t2 matches OpIn))
-    q_var ∈ String = match line_t1
+    loop_variable ∈ String = match line_t1
         Ident(s) ⇒ s
         _ ⇒ ""
-    q_range ∈ Bool = (q_line ∧ (line_t3 matches LBrace)
+    quant_range_line ∈ Bool = (is_quant_line ∧ (line_t3 matches LBrace)
         ∧ (line_t4 matches IntLit(_)) ∧ (tok5 matches Dot)
         ∧ (tok6 matches Dot) ∧ (tok7 matches IntLit(_)))
-    q_lo ∈ Int = match line_t4
+    range_lower ∈ Int = match line_t4
         IntLit(n) ⇒ n
         _ ⇒ 0
-    q_hi ∈ Int = match tok7
+    range_upper ∈ Int = match tok7
         IntLit(n) ⇒ n
         _ ⇒ 0
     t3_name ∈ String = match line_t3
@@ -38,17 +38,17 @@ fsm DriverQuant
     t5_name ∈ String = match tok5
         Ident(s) ⇒ s
         _ ⇒ ""
-    seq_plain ∈ Bool = (q_line ∧ (line_t3 matches Ident(_))
+    seq_plain ∈ Bool = (is_quant_line ∧ (line_t3 matches Ident(_))
         ∧ (line_t4 matches Colon))
-    seq_dotted ∈ Bool = (q_line ∧ (line_t3 matches Ident(_))
+    seq_dotted ∈ Bool = (is_quant_line ∧ (line_t3 matches Ident(_))
         ∧ (line_t4 matches Dot) ∧ (tok5 matches Ident(_))
         ∧ (tok6 matches Colon))
     over_seq ∈ Bool = (seq_plain ∨ seq_dotted)
     seq_name0 ∈ String = (seq_dotted ? (t3_name ++ "." ++ t5_name) : t3_name)
     seq_name ∈ String = (((_scope_prefix ++ seq_name0) = _seqvar_name)
         ? _seqvar_name : seq_name0)
-    qrange ∈ Bool = (classify_now ∧ (¬line_end) ∧ q_range)
-    qseq ∈ Bool = (classify_now ∧ (¬line_end) ∧ (¬q_range)
+    qrange ∈ Bool = (classify_now ∧ (¬line_end) ∧ quant_range_line)
+    qseq ∈ Bool = (classify_now ∧ (¬line_end) ∧ (¬quant_range_line)
         ∧ over_seq ∧ _seqvar_set ∧ (¬qset))
 
     -- parse_mode 11: the range head's `} :` close (the 8-token classify
@@ -76,13 +76,13 @@ fsm DriverQuant
     exists = (is_first_tick ? false
         : (qrange ∨ qseq) ? is_exists : _exists)
     qloop_var = (is_first_tick ? ""
-        : (qrange ∨ qseq) ? q_var : _qloop_var)
+        : (qrange ∨ qseq) ? loop_variable : _qloop_var)
     qloop_kind = (is_first_tick ? 0
         : qrange ? 0 : qseq ? 1 : _qloop_kind)
     qloop_lo = (is_first_tick ? 0
-        : qrange ? q_lo : qseq ? 0 : _qloop_lo)
+        : qrange ? range_lower : qseq ? 0 : _qloop_lo)
     qloop_hi = (is_first_tick ? 0
-        : qrange ? q_hi : qseq ? _seqvar_len - 1 : _qloop_hi)
+        : qrange ? range_upper : qseq ? _seqvar_len - 1 : _qloop_hi)
     seq = (is_first_tick ? "" : qseq ? seq_name : _seq)
     qloop_body = (is_first_tick ? ENoExpr : qbody_done ? result : _qloop_body)
     qloop_on = (is_first_tick ? false
@@ -90,7 +90,7 @@ fsm DriverQuant
         : qexp_fin ? false
         : _qloop_on)
     next = (is_first_tick ? 0
-        : (qrange ∨ qseq) ? (qrange ? q_lo : 0)
+        : (qrange ∨ qseq) ? (qrange ? range_lower : 0)
         : qexp_more ? _next + 1
         : _next)
     qloop_cur = (is_first_tick ? 0 : qexp_more ? _next : _qloop_cur)
@@ -101,20 +101,20 @@ fsm DriverQuant
 
     seqvar_len ∈ Int
     lhs_call ∈ Bool = (cond_lhs matches ECall1(_, _))
-    len_callee ∈ String = match cond_lhs
+    cardinality_callee ∈ String = match cond_lhs
         ECall1(n, _) ⇒ n
         _ ⇒ ""
     arg ∈ Expr = match cond_lhs
         ECall1(_, a) ⇒ a
         _ ⇒ ENoExpr
-    len_argument_name ∈ String = match arg
+    cardinality_argument ∈ String = match arg
         EIdent(s) ⇒ s
         _ ⇒ ""
     computed_length ∈ Int = match cond_rhs
         EInt(n) ⇒ n
         _ ⇒ 0 - 1
     is_seqlen_pin ∈ Bool = (parse_ready ∧ (_parse_kind = 2) ∧ (¬parse_bad) ∧ binop
-        ∧ (cond_op matches OpEq) ∧ lhs_call ∧ (len_callee = "str_len")
+        ∧ (cond_op matches OpEq) ∧ lhs_call ∧ (cardinality_callee = "str_len")
         ∧ (computed_length ≥ 0) ∧ _seqvar_set
-        ∧ ((len_argument_name = _seqvar_name) ∨ ((_scope_prefix ++ len_argument_name) = _seqvar_name)))
+        ∧ ((cardinality_argument = _seqvar_name) ∨ ((_scope_prefix ++ cardinality_argument) = _seqvar_name)))
     seqvar_len = (is_first_tick ? 0 : is_seqlen_pin ? computed_length : _seqvar_len)

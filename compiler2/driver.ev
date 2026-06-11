@@ -23,7 +23,7 @@
 --           order via __mem.write_long; string payloads
 --           (Ident/StringLit) are strdup'd char*s. Z3-carried lexer
 --           state = five Ints (tok_buf.base, tok_buf.count, last_token_tag, prev_token_tag,
---           str_addr) — no TokenList anywhere; phase goes 0 → 2
+--           strlit_addr) — no TokenList anywhere; phase goes 0 → 2
 --           directly, after flushing any pending string write + the
 --           EofTok sentinel.
 --   FETCH   the parse phases read tokens through a sliding 8-token
@@ -401,7 +401,7 @@ fsm driver_main
     mem_line ∈ Bool = (classify_now ∧ (¬line_end) ∧ (¬pratt_line)
         ∧ (¬enter_efflit) ∧ (¬intset) ∧ (¬enter_match)
         ∧ (¬enter_seqlit) ∧ (¬multiname) ∧ (¬comp_line)
-        ∧ (¬strin_line) ∧ (¬is_member_line) ∧ (¬q_line)
+        ∧ (¬strin_line) ∧ (¬is_member_line) ∧ (¬is_quant_line)
         ∧ (¬positional_line))
     mem_consume ∈ Int = (seqmem ? 6 : bounded ? 5 : 3)
     registry_typename ∈ String = recs[kind_slot].name
@@ -592,7 +592,7 @@ fsm driver_main
         : it_select_eq ? ((_item_step = 0 ∨ _item_step = 1) ? 2 : 0)
         : equality_handle ? (_item_step = 0 ? 2 : 1)
         : it_len_eq ? (_item_step = 0 ? 2 : 0)
-        : len_eq_h ? 1
+        : len_equals_handle ? 1
         : it_strop ? 1
         : chosen_handle ? 1
         : real ? 1
@@ -797,7 +797,7 @@ fsm driver_main
     argw1 ∈ Effect
     BuildMemWriteLong(addr ↦ z3_arena + 208, value ↦ h_top, eff ↦ argw1)
     mkstring ∈ Effect
-    BuildZ3MkString(ctx_h ↦ z3ctx.ctx, s ↦ str_val, eff ↦ mkstring)
+    BuildZ3MkString(ctx_h ↦ z3ctx.ctx, s ↦ strlit_value, eff ↦ mkstring)
     primary_handle ∈ Int = (string_op_arity = 3 ? h_3rd : string_op_arity = 2 ? h_2nd : h_top)
     secondary_handle ∈ Int = (string_op_arity = 3 ? h_2nd : string_op_arity = 2 ? h_top : 0)
     tertiary_handle ∈ Int = (string_op_arity = 3 ? h_top : 0)
@@ -940,7 +940,7 @@ fsm driver_main
             : assert_tmp)
         : equality_handle ? (_item_step = 0 ? select : eff_select_eq)
         : it_len_eq ? (_item_step = 0 ? eff_len_eq : assert_tmp)
-        : len_eq_h ? eff_len_eq
+        : len_equals_handle ? eff_len_eq
         : it_strop ? (string_op_name = "len" ? strlen : eff_strop)
         : chosen_handle ? select_h
         : real ? mkreal

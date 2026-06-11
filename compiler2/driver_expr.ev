@@ -371,13 +371,13 @@ claim C2PrattStep(toks ∈ TokenList, outs ∈ ExprList, ops ∈ PrOps,
     syntax_error ∈ Bool = (expop ∧ (¬head_is_atom) ∧ (¬is_lp) ∧ (¬head_is_not)
         ∧ (¬is_hash))
 
-    q_stop ∈ Bool = (qstop ∧ is_q ∧ (pd = 0) ∧ (qd = 0))
-    cont ∈ Bool = (bin_ok ∨ (is_q ∧ (¬q_stop)) ∨ is_lb
+    quant_stop ∈ Bool = (qstop ∧ is_q ∧ (pd = 0) ∧ (qd = 0))
+    cont ∈ Bool = (bin_ok ∨ (is_q ∧ (¬quant_stop)) ∨ is_lb
         ∨ is_match ∨ dotf ∨ dotf2
         ∨ (is_col ∧ (qd > 0)) ∨ (is_rp ∧ (pd > 0))
         ∨ (is_rb ∧ (pd > 0))
         ∨ (is_com ∧ (cd > 0)))
-    arr ∈ Bool = ((¬expop) ∧ (bin_ok ∨ (is_q ∧ (¬q_stop))))
+    arr ∈ Bool = ((¬expop) ∧ (bin_ok ∨ (is_q ∧ (¬quant_stop))))
     arr_red ∈ Bool = (arr ∧ top_red
         ∧ (in_right ? top_p > in_p : top_p ≥ in_p))
     arr_shift ∈ Bool = (arr ∧ (¬arr_red))
