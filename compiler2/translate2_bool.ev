@@ -34,7 +34,7 @@
 -- tick the value first reads back from last_results — NOT before,
 -- or the inc_ref pins a stale 0).
 
-import "compiler/parser.ev"
+import "compiler2/parser.ev"
 import "stdlib/kernel.ev"
 
 -- ── BoolCmpBuildZ3: pick the libcall for a 2-arity boolean binop

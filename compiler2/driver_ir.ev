@@ -5,7 +5,7 @@
 -- C2Frames carrying the composition-inline frame state. Hoisted
 -- out of driver.ev so the extracted modules (and their isolation tests)
 -- share the same IR definitions.
-import "compiler/parser.ev"
+import "compiler2/parser.ev"
 
 -- ── FTI buffers: base + write cursor + capacity travel together ────
 -- The base+cursor+cap triple behind every FTI-resident buffer (token

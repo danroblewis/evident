@@ -1,0 +1,316 @@
+-- WIP: replaces bootstrap/runtime/src/lexer.rs. STATUS: token enum + per-char classifier; not yet driven on real .ev files.
+
+enum Token =
+    Ident(String)
+    IntLit(Int)
+    StringLit(String)
+    -- FloatLit(whole, fractional, fractional_digit_count) — Real-typed
+    -- payload is the natural shape, but `10^n` over Real has no operator
+    -- in stdlib yet, so we carry the three-Int tuple and let downstream
+    -- consumers (formatters / translators) compose them.
+    FloatLit(Int, Int, Int)
+    LParen
+    RParen
+    Comma
+    Plus
+    Star
+    Slash
+    Minus
+    Eq
+    EofTok
+    ErrTok(String)
+    -- Keyword tokens (recognized post-collection).
+    KwClaim
+    KwType
+    KwSchema
+    KwFsm
+    KwEnum
+    KwImport
+    KwMatch
+    KwSubclaim
+    KwExternal
+    KwMatches
+    KwIn
+    KwTrue
+    KwFalse
+    KwMapsTo
+    -- Unicode operators.
+    OpIn
+    OpImplies
+    OpSeqOpen
+    OpSeqClose
+    OpMapsto
+    OpLe
+    OpGe
+    OpNe
+    OpAnd
+    OpOr
+    OpNot
+    OpForall
+    OpExists
+    -- Two-char ASCII operators, each lexed as a single token:
+    --   `++` → PlusPlus · `=>` → OpImplies · `<=` → OpLe
+    --   `>=` → OpGe · `!=` → OpNe · `..` → DotDot
+    -- Lt/Gt/Dot are the single-char fallbacks when the lookahead
+    -- says it's NOT the two-char form.
+    PlusPlus
+    DotDot
+    Lt
+    Gt
+    Dot
+    -- `|` — enum-variant separator.
+    Pipe
+    -- `?` — ternary condition/arm separator (paired with Colon).
+    Question
+    -- `#` — cardinality / length prefix.
+    Hash
+    -- `:` — quantifier body separator (`∀ x ∈ S : body`).
+    Colon
+    -- `[`/`]` indexing, `{`/`}` set literals, `∉` negated set membership.
+    LBracket
+    RBracket
+    LBrace
+    RBrace
+    OpNotIn
+    -- Layout tokens. Indentation is modeled with TWO variants:
+    --   * Newline    — emitted at every '\n' outside a paren group
+    --   * Indent(Int) — emitted ONCE per non-blank, non-comment line,
+    --                   carrying that line's leading-space column count
+    --                   (tab counted as 4 spaces). Blank lines and
+    --                   comment-only lines emit no Indent. Inside any
+    --                   open paren group ((), {}, [], ⟨⟩) both tokens
+    --                   are suppressed so expressions can span lines.
+    -- This is NOT a Python-style Indent/Dedent-stack model — the parser
+    -- compares Indent(n) values directly to decide body-block membership.
+    -- There is no Dedent token; "leaving a block" is just an Indent(n)
+    -- whose n is smaller than the block's chosen indent level.
+    Newline
+    Indent(Int)
+
+-- The lexer's output. Cons-cell shape so a parser can match head/tail.
+enum TokenList =
+    TLNil
+    TLCons(Token, TokenList)
+
+-- ── Character predicates ───────────────────────────────────────
+
+claim IsDigitChar(c ∈ String, out ∈ Bool)
+    out = (c = "0" ∨ c = "1" ∨ c = "2" ∨ c = "3" ∨ c = "4"
+         ∨ c = "5" ∨ c = "6" ∨ c = "7" ∨ c = "8" ∨ c = "9")
+
+-- Underscore counts as an identifier char: without it `_count` lexes as
+-- ErrTok("_") + Ident("count") and the `_<name>` state-carry pairing
+-- can't be recognised.
+claim IsAlphaChar(c ∈ String, out ∈ Bool)
+    out = (c = "_"
+         ∨ c = "a" ∨ c = "b" ∨ c = "c" ∨ c = "d" ∨ c = "e"
+         ∨ c = "f" ∨ c = "g" ∨ c = "h" ∨ c = "i" ∨ c = "j"
+         ∨ c = "k" ∨ c = "l" ∨ c = "m" ∨ c = "n" ∨ c = "o"
+         ∨ c = "p" ∨ c = "q" ∨ c = "r" ∨ c = "s" ∨ c = "t"
+         ∨ c = "u" ∨ c = "v" ∨ c = "w" ∨ c = "x" ∨ c = "y" ∨ c = "z"
+         ∨ c = "A" ∨ c = "B" ∨ c = "C" ∨ c = "D" ∨ c = "E"
+         ∨ c = "F" ∨ c = "G" ∨ c = "H" ∨ c = "I" ∨ c = "J"
+         ∨ c = "K" ∨ c = "L" ∨ c = "M" ∨ c = "N" ∨ c = "O"
+         ∨ c = "P" ∨ c = "Q" ∨ c = "R" ∨ c = "S" ∨ c = "T"
+         ∨ c = "U" ∨ c = "V" ∨ c = "W" ∨ c = "X" ∨ c = "Y" ∨ c = "Z")
+
+claim IsWhitespace(c ∈ String, out ∈ Bool)
+    -- The \r escape isn't supported by the Evident lexer, but a raw
+    -- CR byte inside a "..." literal IS accepted (the bootstrap lexer
+    -- treats it as an ordinary char). We embed a literal CR here so CRLF
+    -- input files lex as if normalized.
+    out = (c = " " ∨ c = "\t" ∨ c = "\n" ∨ c = "")
+
+-- ── Digit character → Int value ────────────────────────────────
+
+claim DigitToInt(c ∈ String, n ∈ Int)
+    n = (c = "0" ? 0
+       : c = "1" ? 1
+       : c = "2" ? 2
+       : c = "3" ? 3
+       : c = "4" ? 4
+       : c = "5" ? 5
+       : c = "6" ? 6
+       : c = "7" ? 7
+       : c = "8" ? 8
+       : c = "9" ? 9
+       : 0 - 1)
+
+-- ── Keyword recognition ─────────────────────────────────────────
+
+claim MaybeKeyword(s ∈ String, t ∈ Token)
+    t = (s = "claim"    ? KwClaim
+       : s = "type"     ? KwType
+       : s = "schema"   ? KwSchema
+       : s = "fsm"      ? KwFsm
+       : s = "enum"     ? KwEnum
+       : s = "import"   ? KwImport
+       : s = "match"    ? KwMatch
+       : s = "subclaim" ? KwSubclaim
+       : s = "external" ? KwExternal
+       : s = "matches"  ? KwMatches
+       : s = "in"       ? KwIn
+       : s = "true"     ? KwTrue
+       : s = "false"    ? KwFalse
+       : s = "mapsto"   ? KwMapsTo
+       : Ident(s))
+
+-- ── Single-char operator recognition ───────────────────────────
+
+claim SingleCharTok(c ∈ String, t ∈ Token, recognized ∈ Bool)
+    t = (c = "(" ? LParen
+        : c = ")" ? RParen
+        : c = "," ? Comma
+        : c = "+" ? Plus
+        : c = "*" ? Star
+        : c = "/" ? Slash
+        : c = "-" ? Minus
+        : c = "=" ? Eq
+        : c = "<" ? Lt
+        : c = ">" ? Gt
+        : c = "." ? Dot
+        : c = "|" ? Pipe
+        : c = ":" ? Colon
+        : c = "?" ? Question
+        : c = "#" ? Hash
+        : c = "∈" ? OpIn
+        : c = "⇒" ? OpImplies
+        : c = "⟨" ? OpSeqOpen
+        : c = "⟩" ? OpSeqClose
+        : c = "↦" ? OpMapsto
+        : c = "≤" ? OpLe
+        : c = "≥" ? OpGe
+        : c = "≠" ? OpNe
+        : c = "∧" ? OpAnd
+        : c = "∨" ? OpOr
+        : c = "¬" ? OpNot
+        : c = "∀" ? OpForall
+        : c = "∃" ? OpExists
+        : ErrTok(c))
+    recognized = (c = "(" ∨ c = ")" ∨ c = "," ∨ c = "+" ∨ c = "="
+                ∨ c = "*" ∨ c = "/" ∨ c = "-"
+                ∨ c = "<" ∨ c = ">" ∨ c = "." ∨ c = "|" ∨ c = ":" ∨ c = "?" ∨ c = "#"
+                ∨ c = "∈" ∨ c = "⇒" ∨ c = "⟨" ∨ c = "⟩" ∨ c = "↦"
+                ∨ c = "≤" ∨ c = "≥" ∨ c = "≠"
+                ∨ c = "∧" ∨ c = "∨" ∨ c = "¬"
+                ∨ c = "∀" ∨ c = "∃")
+
+-- ── Two-char ASCII operator recognition ───────────────────────
+-- If recognized=true, the caller emits `t` and advances pos by 2;
+-- otherwise it falls back to SingleCharTok on c1 (advance by 1).
+
+claim MaybeTwoCharOp(c1 ∈ String, c2 ∈ String, t ∈ Token, recognized ∈ Bool)
+    is_plus_plus  ∈ Bool = ((c1 = "+") ∧ (c2 = "+"))
+    is_implies    ∈ Bool = ((c1 = "=") ∧ (c2 = ">"))
+    is_le         ∈ Bool = ((c1 = "<") ∧ (c2 = "="))
+    is_ge         ∈ Bool = ((c1 = ">") ∧ (c2 = "="))
+    is_ne         ∈ Bool = ((c1 = "!") ∧ (c2 = "="))
+    is_dotdot     ∈ Bool = ((c1 = ".") ∧ (c2 = "."))
+    t = (is_plus_plus ? PlusPlus
+        : is_implies  ? OpImplies
+        : is_le       ? OpLe
+        : is_ge       ? OpGe
+        : is_ne       ? OpNe
+        : is_dotdot   ? DotDot
+        : ErrTok(c1))
+    recognized = (is_plus_plus ∨ is_implies ∨ is_le ∨ is_ge ∨ is_ne ∨ is_dotdot)
+
+-- ── String-literal helpers ──────────────────────────────────────
+claim IsQuote(c ∈ String, out ∈ Bool)
+    out = (c = "\"")
+
+claim IsBackslash(c ∈ String, out ∈ Bool)
+    out = (c = "\\")
+
+-- EscapeChar: `\`-escape → string-contents char; anything else passes
+-- through unchanged.
+claim EscapeChar(c ∈ String, out ∈ String)
+    out = (c = "n"  ? "\n"
+        : (c = "t"  ? "\t"
+        : (c = "\"" ? "\""
+        : (c = "\\" ? "\\"
+        : c))))
+
+-- ── Float-literal accumulator helpers ────────────────────────────
+
+claim DigitAccumulate(prev ∈ Int, c ∈ String, n ∈ Int)
+    dv ∈ Int
+    DigitToInt(c ↦ c, n ↦ dv)
+    n = (prev * 10) + dv
+
+claim IsDecimalPoint(c ∈ String, out ∈ Bool)
+    out = (c = ".")
+
+-- ── Indentation helpers ────────────────────────────────────────
+-- The `Indent(n)` token is emitted BEFORE the line's content tokens.
+--
+-- IndentWidth: column-cost of a single whitespace char (' ' → 1,
+-- '\t' → 4). 0 for non-indent chars so a caller's accumulator update
+-- reads as a flat `cur_indent + width`.
+
+claim IndentWidth(c ∈ String, w ∈ Int)
+    w = (c = " "  ? 1
+       : c = "\t" ? 4
+       : 0)
+
+-- IsIndentChar: true iff the char counts toward indentation.
+
+claim IsIndentChar(c ∈ String, out ∈ Bool)
+    out = (c = " " ∨ c = "\t")
+
+-- IsBlankLineHead: true iff the line emits no Indent token. The caller
+-- passes the FIRST non-whitespace char of the line; `next_after` is the
+-- char after that, used only to distinguish a single '-' (Minus, line
+-- is NOT blank) from '--' (comment, line IS blank for indent purposes).
+
+claim IsBlankLineHead(c ∈ String, next_after ∈ String, out ∈ Bool)
+    is_eol     ∈ Bool = (c = "\n")
+    is_comment ∈ Bool = ((c = "-") ∧ (next_after = "-"))
+    is_eof     ∈ Bool = (c = "")
+    out = (is_eol ∨ is_comment ∨ is_eof)
+
+-- ── Whitespace-run length (bulk-skip) ───────────────────────────
+-- adv = count of consecutive whitespace chars starting at `p`, capped
+-- at 16; the lex driver advances `pos` by `adv` in ONE tick. `adv` ≥ 1
+-- always — the caller only consults it when s[p] is itself whitespace,
+-- so a lone separating space yields adv=1, IDENTICAL to the old
+-- per-char advance; whitespace never produces a token, so the emitted
+-- token stream stays byte-identical. "" (past end-of-input) counts as
+-- whitespace so a trailing run walks cleanly to EOF. All locals are
+-- wr_-prefixed to avoid the composition body-local leak
+-- (project_claim_composition_leaks_body_locals).
+claim WsRunLen(s ∈ String, p ∈ Int, adv ∈ Int)
+    wr_c1  ∈ String = substr(s, p + 1, 1)
+    wr_c2  ∈ String = substr(s, p + 2, 1)
+    wr_c3  ∈ String = substr(s, p + 3, 1)
+    wr_c4  ∈ String = substr(s, p + 4, 1)
+    wr_c5  ∈ String = substr(s, p + 5, 1)
+    wr_c6  ∈ String = substr(s, p + 6, 1)
+    wr_c7  ∈ String = substr(s, p + 7, 1)
+    wr_c8  ∈ String = substr(s, p + 8, 1)
+    wr_c9  ∈ String = substr(s, p + 9, 1)
+    wr_c10 ∈ String = substr(s, p + 10, 1)
+    wr_c11 ∈ String = substr(s, p + 11, 1)
+    wr_c12 ∈ String = substr(s, p + 12, 1)
+    wr_c13 ∈ String = substr(s, p + 13, 1)
+    wr_c14 ∈ String = substr(s, p + 14, 1)
+    wr_c15 ∈ String = substr(s, p + 15, 1)
+    wr_w1  ∈ Bool = (wr_c1  = " " ∨ wr_c1  = "\t" ∨ wr_c1  = "\n" ∨ wr_c1  = "")
+    wr_w2  ∈ Bool = (wr_c2  = " " ∨ wr_c2  = "\t" ∨ wr_c2  = "\n" ∨ wr_c2  = "")
+    wr_w3  ∈ Bool = (wr_c3  = " " ∨ wr_c3  = "\t" ∨ wr_c3  = "\n" ∨ wr_c3  = "")
+    wr_w4  ∈ Bool = (wr_c4  = " " ∨ wr_c4  = "\t" ∨ wr_c4  = "\n" ∨ wr_c4  = "")
+    wr_w5  ∈ Bool = (wr_c5  = " " ∨ wr_c5  = "\t" ∨ wr_c5  = "\n" ∨ wr_c5  = "")
+    wr_w6  ∈ Bool = (wr_c6  = " " ∨ wr_c6  = "\t" ∨ wr_c6  = "\n" ∨ wr_c6  = "")
+    wr_w7  ∈ Bool = (wr_c7  = " " ∨ wr_c7  = "\t" ∨ wr_c7  = "\n" ∨ wr_c7  = "")
+    wr_w8  ∈ Bool = (wr_c8  = " " ∨ wr_c8  = "\t" ∨ wr_c8  = "\n" ∨ wr_c8  = "")
+    wr_w9  ∈ Bool = (wr_c9  = " " ∨ wr_c9  = "\t" ∨ wr_c9  = "\n" ∨ wr_c9  = "")
+    wr_w10 ∈ Bool = (wr_c10 = " " ∨ wr_c10 = "\t" ∨ wr_c10 = "\n" ∨ wr_c10 = "")
+    wr_w11 ∈ Bool = (wr_c11 = " " ∨ wr_c11 = "\t" ∨ wr_c11 = "\n" ∨ wr_c11 = "")
+    wr_w12 ∈ Bool = (wr_c12 = " " ∨ wr_c12 = "\t" ∨ wr_c12 = "\n" ∨ wr_c12 = "")
+    wr_w13 ∈ Bool = (wr_c13 = " " ∨ wr_c13 = "\t" ∨ wr_c13 = "\n" ∨ wr_c13 = "")
+    wr_w14 ∈ Bool = (wr_c14 = " " ∨ wr_c14 = "\t" ∨ wr_c14 = "\n" ∨ wr_c14 = "")
+    wr_w15 ∈ Bool = (wr_c15 = " " ∨ wr_c15 = "\t" ∨ wr_c15 = "\n" ∨ wr_c15 = "")
+    adv = (¬wr_w1 ? 1 : (¬wr_w2 ? 2 : (¬wr_w3 ? 3 : (¬wr_w4 ? 4
+        : (¬wr_w5 ? 5 : (¬wr_w6 ? 6 : (¬wr_w7 ? 7 : (¬wr_w8 ? 8
+        : (¬wr_w9 ? 9 : (¬wr_w10 ? 10 : (¬wr_w11 ? 11 : (¬wr_w12 ? 12
+        : (¬wr_w13 ? 13 : (¬wr_w14 ? 14 : (¬wr_w15 ? 15 : 16)))))))))))))))

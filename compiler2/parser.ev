@@ -1,0 +1,461 @@
+-- WIP: replaces bootstrap/runtime/src/parser/mod.rs. STATUS: tiny Expr/binop-chain AST + per-shape productions; not composed into a full-file parser.
+
+import "compiler2/lexer.ev"
+
+-- Op names the binary operators. Enum variant names are globally
+-- unique, so Op members can't reuse the lexer's Token names — the
+-- comparison/connective ops take distinct spellings
+-- (OpLeq/OpGeq/OpNeq/OpConj/OpDisj). Rendered to SMT-LIB in
+-- translate_bool.ev.
+enum Op =
+    OpPlus
+    OpMul
+    OpEq
+    OpSub
+    OpDiv
+    OpImpl
+    OpConcat
+    OpLt
+    OpGt
+    OpLeq
+    OpGeq
+    OpNeq
+    OpConj
+    OpDisj
+
+-- Expr payload notes:
+--   EForall/EExists(var, range, body) — single-name shape only
+--     (`∀ x ∈ S : body`); tuple-binding is a later sub-step.
+--   ECall1/2/3(name, args…) — builtin calls, fixed arity 1-3. The arg
+--     vector is unrolled into fixed-arity variants (a 4-field payload
+--     is oracle-supported; probed end-to-end 2026-06-07). `#e` parses
+--     to ECall1("str_len", e).
+--   EMatches(ctor, e) — Bool recognizer `((_ is Ctor) e)`. Corpus
+--     pattern binds are always `_`, so only the ctor NAME is carried;
+--     no payload binding exists.
+enum Expr =
+    EInt(Int)
+    EIdent(String)
+    EBinOp(Op, Expr, Expr)
+    EForall(String, Expr, Expr)
+    EExists(String, Expr, Expr)
+    EMatch(Expr, MatchArmList)
+    ETernary(Expr, Expr, Expr)
+    ENot(Expr)
+    EStr(String)
+    ECall1(String, Expr)
+    ECall2(String, Expr, Expr)
+    ECall3(String, Expr, Expr, Expr)
+    EMatches(String, Expr)
+    ENoExpr
+
+-- ── Match patterns (B9) ────────────────────────────────────────
+-- MPCtor(name, binds) — flat constructor pattern with single-name
+-- binds (no nested patterns, no literal-payload comparisons).
+enum MatchPattern =
+    MPCtor(String, MatchBindList)
+    MPWildcard
+
+-- Only the bind-to-name form; `Ok(_)` underscore-skip needs a future
+-- MBWildcard variant.
+enum MatchBind =
+    MBName(String)
+
+enum MatchBindList =
+    MBNil
+    MBCons(MatchBind, MatchBindList)
+
+enum MatchArm =
+    MArm(MatchPattern, Expr)
+
+enum MatchArmList =
+    MANil
+    MACons(MatchArm, MatchArmList)
+
+enum ExprList =
+    ELNil
+    ELCons(Expr, ExprList)
+
+-- Work stack for the AST→text translator: interleaves "process this
+-- Expr" with "emit this literal text" so structural characters like
+-- "(", " ", ")" can be queued between subtree visits.
+enum WorkItem =
+    WIProcess(Expr)
+    WIEmit(String)
+
+enum WorkList =
+    WLNil
+    WLCons(WorkItem, WorkList)
+
+-- ── Import statements (B11) ────────────────────────────────────
+enum ImportStmt =
+    ImportPath(String)
+    NoImport
+    BadImport(String)
+
+-- ── Type references (B3) ───────────────────────────────────────
+-- Types are carried as fully-rendered opaque strings ("Int",
+-- "Seq(Int)", "Edge<Rect>"), mirroring the Rust AST; later translator
+-- passes key off the literal name. TNoType is the placeholder
+-- sentinel (analogous to ENoExpr).
+enum TypeRef =
+    TName(String)
+    TNoType
+
+-- ── Type-name token rendering ──────────────────────────────────
+-- Non-type tokens (Newline/Indent/Eof…) terminate the type;
+-- `is_type_tok` is the FSM's consume-vs-halt signal.
+
+claim TypeTokenText
+    t ∈ Token
+    s ∈ String
+    is_type_tok ∈ Bool
+    ident_str ∈ String = match t
+        Ident(n) ⇒ n
+        _ ⇒ ""
+    is_ident   ∈ Bool = (t matches Ident(_))
+    is_lparen  ∈ Bool = (t matches LParen)
+    is_rparen  ∈ Bool = (t matches RParen)
+    is_lt      ∈ Bool = (t matches Lt)
+    is_gt      ∈ Bool = (t matches Gt)
+    is_comma   ∈ Bool = (t matches Comma)
+    s = (is_ident  ? ident_str
+        : is_lparen ? "("
+        : is_rparen ? ")"
+        : is_lt     ? "<"
+        : is_gt     ? ">"
+        : is_comma  ? ", "
+        : "")
+    is_type_tok = (is_ident ∨ is_lparen ∨ is_rparen ∨ is_lt ∨ is_gt ∨ is_comma)
+
+-- ── Bracket-depth delta ───────────────────────────────────────
+
+claim BracketDelta
+    t ∈ Token
+    d ∈ Int
+    is_open  ∈ Bool = ((t matches LParen) ∨ (t matches Lt))
+    is_close ∈ Bool = ((t matches RParen) ∨ (t matches Gt))
+    d = (is_open ? 1 : (is_close ? 0 - 1 : 0))
+
+-- ── Token → Op classifier ───────────────────────────────────────
+
+-- Note: first-line claim params of enum type have a translator gap
+-- for `matches`/`match` (the param isn't put into env in a form the
+-- recognizer translation can resolve). Workaround: put all vars in
+-- the body; callers use names-match composition.
+claim TokenToOp
+    t ∈ Token
+    o ∈ Op
+    is_binop ∈ Bool
+    is_plus  ∈ Bool = (t matches Plus)
+    is_minus ∈ Bool = (t matches Minus)
+    is_star  ∈ Bool = (t matches Star)
+    is_slash ∈ Bool = (t matches Slash)
+    is_eq    ∈ Bool = (t matches Eq)
+    o = (is_plus  ? OpPlus
+       : is_minus ? OpSub
+       : is_star  ? OpMul
+       : is_slash ? OpDiv
+       : is_eq    ? OpEq
+       : OpPlus)
+    is_binop = (is_plus ∨ is_minus ∨ is_star ∨ is_slash ∨ is_eq)
+
+-- ── Operator precedence (B1) ────────────────────────────────────
+claim Precedence
+    op ∈ Op
+    n ∈ Int
+    is_mul  ∈ Bool = (op matches OpMul)
+    is_div  ∈ Bool = (op matches OpDiv)
+    is_add  ∈ Bool = (op matches OpPlus)
+    is_sub  ∈ Bool = (op matches OpSub)
+    is_eq   ∈ Bool = (op matches OpEq)
+    is_impl ∈ Bool = (op matches OpImpl)
+    n = (is_mul ? 2 : is_div ? 2 : is_add ? 1 : is_sub ? 1
+        : is_eq ? 0 : is_impl ? 0 : 0)
+
+-- ── Enum declaration AST (B6) ───────────────────────────────────
+-- EVDecl(name)            — a nullary variant `Red` → "(Red)".
+-- EVDeclP(name, fields)   — a payload variant `Ok(Int)` → "(Ok (Ok__f0
+--                           Int))". Each field carries only its type-name
+--                           string; the accessor name `<Variant>__f<N>`
+--                           is synthesised by VariantText in translate.ev.
+enum EnumVariantDecl =
+    EVDecl(String)
+    EVDeclP(String, EVFieldList)
+    EVNoVariant
+
+-- A payload field is its fully-rendered type-name string (same
+-- opaque-type-string decision as TypeRef).
+enum EVField =
+    EVFType(String)
+    EVFNone
+
+enum EVFieldList =
+    EVFNil
+    EVFCons(EVField, EVFieldList)
+
+enum EnumVariantList =
+    EVNil
+    EVCons(EnumVariantDecl, EnumVariantList)
+
+enum EnumDeclAst =
+    EnumD(String, EnumVariantList)
+    ENoEnum
+
+-- ── Paren-depth frame stack (B2) ────────────────────────────────
+enum FrameList =
+    FLNil
+    FLCons(Expr, Op, FrameList)
+
+-- ── Claim-argument AST (B10: composition mechanism #5) ──────────
+-- CArg(slot, expr) — a `slot ↦ value` pair (slot = parameter name).
+-- The zero-arg names-match call form is just CANil.
+enum ClaimArg =
+    CArg(String, Expr)
+    CANoArg
+
+enum ClaimArgList =
+    CANil
+    CACons(ClaimArg, ClaimArgList)
+
+-- ── BodyItem AST (B4 + B7 + B10: composition mechanisms) ────────
+-- The seven composition mechanisms from CLAUDE.md, mapped to variants:
+--
+--   #1  `variable ∈ TypeName`             — BIMembership(name, type)
+--   #2  `ClaimName` (bare body item)      — BIClaimCall(name, CANil)
+--   #3  `..ClaimName`                     — BIPassthrough(name)
+--   #4  Names-match composition           — BIClaimCall(name, CANil)
+--   #5  `ClaimName(slot ↦ value)`         — BIClaimCall(name, args)
+--   #6  `subclaim Name body…`             — BISubclaim(name, body)
+--   #7  `cond ⇒ ClaimName`                — BIConstraint(EBinOp(OpImpl,…))
+--
+-- Pins are NOT modeled on BIMembership: chained membership
+-- (`0 ≤ x ∈ Int ≤ 100`) desugars to a BIMembership plus separate
+-- BIConstraint items, as the Rust parser already does. BISubclaim's
+-- body is a BodyItemList — mutually recursive with BodyItem.
+enum BodyItem =
+    BIPassthrough(String)
+    BIConstraint(Expr)
+    BIMembership(String, TypeRef)
+    BIClaimCall(String, ClaimArgList)
+    BISubclaim(String, BodyItemList)
+    BINoItem
+
+enum BodyItemList =
+    BILNil
+    BILCons(BodyItem, BodyItemList)
+
+-- ── Token recognizers ───────────────────────────────────────────
+claim IsDotDot
+    t ∈ Token
+    out ∈ Bool
+    out = (t matches DotDot)
+
+claim IsIdent
+    t ∈ Token
+    out ∈ Bool
+    out = (t matches Ident(_))
+
+claim IdentName
+    t ∈ Token
+    name ∈ String
+    name = match t
+        Ident(s) ⇒ s
+        _ ⇒ ""
+
+-- ── Quantifier recognizers (B8) ─────────────────────────────────
+claim IsForall
+    t ∈ Token
+    out ∈ Bool
+    out = (t matches OpForall)
+
+claim IsExists
+    t ∈ Token
+    out ∈ Bool
+    out = (t matches OpExists)
+
+claim IsOpIn
+    t ∈ Token
+    out ∈ Bool
+    out = (t matches OpIn)
+
+claim IsColon
+    t ∈ Token
+    out ∈ Bool
+    out = (t matches Colon)
+
+-- ── Quantifier parser (B8) ──────────────────────────────────────
+-- Single-name shape `∀/∃ x ∈ S : body` only. The caller pre-extracts
+-- the four head tokens and the already-parsed body Expr. ok=false →
+-- expr is ENoExpr; callers fall through to non-quantifier parsing.
+claim ParseQuantifier
+    head1 ∈ Token
+    head2 ∈ Token
+    head3 ∈ Token
+    head4 ∈ Token
+    body ∈ Expr
+    expr ∈ Expr
+    ok ∈ Bool
+
+    is_forall ∈ Bool
+    IsForall(t ↦ head1, out ↦ is_forall)
+    is_exists ∈ Bool
+    IsExists(t ↦ head1, out ↦ is_exists)
+    is_var_id ∈ Bool
+    IsIdent(t ↦ head2, out ↦ is_var_id)
+    var_name ∈ String
+    IdentName(t ↦ head2, name ↦ var_name)
+    is_in ∈ Bool
+    IsOpIn(t ↦ head3, out ↦ is_in)
+    is_src_id ∈ Bool
+    IsIdent(t ↦ head4, out ↦ is_src_id)
+    src_name ∈ String
+    IdentName(t ↦ head4, name ↦ src_name)
+
+    head1_ok ∈ Bool = (is_forall ∨ is_exists)
+    ok = (head1_ok ∧ is_var_id ∧ is_in ∧ is_src_id)
+    range_expr ∈ Expr = EIdent(src_name)
+    expr = (ok ∧ is_forall ? EForall(var_name, range_expr, body)
+        : (ok ∧ is_exists ? EExists(var_name, range_expr, body)
+        : ENoExpr))
+
+-- ── Passthrough body-item parser (B7) ───────────────────────────
+claim ParsePassthrough
+    head1 ∈ Token
+    head2 ∈ Token
+    item ∈ BodyItem
+    ok ∈ Bool
+
+    is_dd ∈ Bool
+    IsDotDot(t ↦ head1, out ↦ is_dd)
+    is_id ∈ Bool
+    IsIdent(t ↦ head2, out ↦ is_id)
+    name ∈ String
+    IdentName(t ↦ head2, name ↦ name)
+
+    ok = (is_dd ∧ is_id)
+    item = (ok ? BIPassthrough(name) : BINoItem)
+
+-- ── Schema declarations (B5) ────────────────────────────────────
+--
+-- Wire shape of a declaration:
+--
+--   <schema-kw> Ident(name) [type-params]? [(first-line-params)]?
+--   Newline Indent(n) <body-items…>
+--
+-- Keyword variants are KK-prefixed so they don't collide with the
+-- lexer's Kw* token variants. SNoDecl is the "shape didn't match"
+-- sentinel.
+
+enum Keyword =
+    KKClaim
+    KKType
+    KKSchema
+    KKFsm
+
+enum SchemaDecl =
+    SDecl(Keyword, String, BodyItemList)
+    SNoDecl
+
+-- KeywordOfTok: classify a head token as a schema-keyword.
+-- Same vars-in-body shape as TokenToOp: first-line claim params of
+-- enum type hit the translator gap for `matches`/`match`, so the
+-- pattern-matching lives in the body and callers compose with
+-- names-match binding.
+claim KeywordOfTok
+    t ∈ Token
+    kw ∈ Keyword
+    ok ∈ Bool
+    is_claim  ∈ Bool = (t matches KwClaim)
+    is_type   ∈ Bool = (t matches KwType)
+    is_schema ∈ Bool = (t matches KwSchema)
+    is_fsm    ∈ Bool = (t matches KwFsm)
+    kw = (is_claim  ? KKClaim
+        : is_type   ? KKType
+        : is_schema ? KKSchema
+        : is_fsm    ? KKFsm
+        : KKClaim)
+    ok = (is_claim ∨ is_type ∨ is_schema ∨ is_fsm)
+
+-- ParseSchemaHead: recognize `<schema-kw> Ident(name)` at the head
+-- of a token stream and emit the (Keyword, name) pair.
+claim ParseSchemaHead
+    head1 ∈ Token
+    head2 ∈ Token
+    kw ∈ Keyword
+    name ∈ String
+    ok ∈ Bool
+
+    kw_ok ∈ Bool
+    KeywordOfTok(t ↦ head1, kw ↦ kw, ok ↦ kw_ok)
+
+    is_id ∈ Bool
+    IsIdent(t ↦ head2, out ↦ is_id)
+    ident_name ∈ String
+    IdentName(t ↦ head2, name ↦ ident_name)
+
+    ok = (kw_ok ∧ is_id)
+    name = (ok ? ident_name : "")
+
+-- ── Membership body-item parser (B4) ────────────────────────────
+-- The caller's FSM accumulates the type-name string (TypeTokenText)
+-- across ticks and invokes this on the boundary token. Chained-
+-- membership range bounds are folded in by the FSM as extra
+-- BIConstraint emits; this claim only handles the bare `x ∈ T` shape.
+claim ParseMembership
+    head1 ∈ Token
+    head2 ∈ Token
+    type_str ∈ String
+    item ∈ BodyItem
+    ok ∈ Bool
+
+    is_id ∈ Bool
+    IsIdent(t ↦ head1, out ↦ is_id)
+    is_in ∈ Bool
+    IsOpIn(t ↦ head2, out ↦ is_in)
+    name ∈ String
+    IdentName(t ↦ head1, name ↦ name)
+
+    has_type ∈ Bool = (¬ (type_str = ""))
+    ok = (is_id ∧ is_in ∧ has_type)
+    item = (ok ? BIMembership(name, TName(type_str)) : BINoItem)
+
+-- ── KwMatch recognizer ─────────────────────────────────────────
+-- `matches` is in the body (not a first-line param) to avoid the
+-- translator gap noted on TokenToOp.
+
+claim IsKwMatch
+    t ∈ Token
+    out ∈ Bool
+    out = (t matches KwMatch)
+
+-- ── Match-expression assembler (B9) ────────────────────────────
+-- Composes a pre-parsed scrutinee + pre-built MatchArmList into an
+-- EMatch; ok requires the KwMatch head AND ≥ 2 arms (HasTwoArms).
+-- The token-walking FSM lives in the caller.
+
+claim HasTwoArms
+    arms ∈ MatchArmList
+    out ∈ Bool
+    rest ∈ MatchArmList = match arms
+        MACons(_, r) ⇒ r
+        MANil ⇒ MANil
+    head_present ∈ Bool = (arms matches MACons(_, _))
+    rest_present ∈ Bool = (rest matches MACons(_, _))
+    out = (head_present ∧ rest_present)
+
+claim ParseMatch
+    head_tok ∈ Token
+    scrutinee ∈ Expr
+    arms ∈ MatchArmList
+    out ∈ Expr
+    ok ∈ Bool
+
+    is_match ∈ Bool
+    IsKwMatch(t ↦ head_tok, out ↦ is_match)
+
+    has_two_arms ∈ Bool
+    HasTwoArms(arms ↦ arms, out ↦ has_two_arms)
+
+    ok = (is_match ∧ has_two_arms)
+    out = (ok ? EMatch(scrutinee, arms) : ENoExpr)

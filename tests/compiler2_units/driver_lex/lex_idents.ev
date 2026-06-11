@@ -6,7 +6,7 @@
 -- expect: stdout = "2"
 -- expect: exit = 0
 import "stdlib/kernel.ev"
-import "compiler/lexer.ev"
+import "compiler2/lexer.ev"
 import "compiler2/lex_fti.ev"
 import "compiler2/driver_ir.ev"
 import "compiler2/driver_lex.ev"

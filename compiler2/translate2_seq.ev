@@ -53,7 +53,7 @@
 -- Fixture: tests/kernel/compiler2/seq_fixture.ev drives these claims
 -- and compares Z3_ast_to_string output against Z3 4.15.4's prints.
 
-import "compiler/parser.ev"
+import "compiler2/parser.ev"
 import "stdlib/kernel.ev"
 
 claim StrLitBuildZ3(ctx_h ∈ Int, e ∈ Expr, eff ∈ Effect, ok ∈ Bool)

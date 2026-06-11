@@ -1,0 +1,328 @@
+-- WIP: replaces bootstrap/runtime/src/translate/exprs/scalar.rs. STATUS:
+-- Wave-5a pivot — claims emit BuildZ3* libcall effects, not SMT-LIB text.
+--
+-- ── The architectural pivot ─────────────────────────────────────
+--
+-- Every other compiler/translate_*.ev pass emits SMT-LIB TEXT; the
+-- wave-5a claims here emit LibCall effects instead. The kernel invokes
+-- Z3_mk_add / Z3_mk_int / etc., and the return is a `Z3_ast` handle
+-- (i64) carried in the next tick's `last_results` — the pass output is
+-- a handle, not a String. Z3 itself prints (Z3_ast_to_string) when
+-- text is needed at end-of-pipeline.
+--
+-- See docs/plans/wave-5a-z3-in-evident.md (especially §3 on refcounting
+-- and §4 on sugar shapes) and tests/kernel/test_z3_libcall_solve.ev
+-- for the multi-tick FSM pattern that captures handles across ticks.
+--
+-- ── The claim shape ─────────────────────────────────────────────
+--
+-- Each claim describes ONE Z3-builder LibCall — the constraint on
+-- `eff` for the current FSM step. The CALLER's FSM threads the
+-- per-tick state; this file owns the "which libcall builds this AST
+-- node" choice, not the walking strategy.
+--
+-- The mapping is one-to-one with the old SMT-LIB spellings:
+--
+--   Old SMT-LIB                          New libz3 call
+--   ─────────────────────────────────    ─────────────────────────
+--   "<n>"                                Z3_mk_int(ctx, n, int_sort)
+--   "<ident>"                            Z3_mk_const(ctx, sym, int_sort)
+--   "(+ <lhs> <rhs>)"                    Z3_mk_add(ctx, 2, args)
+--   "(- <lhs> <rhs>)"                    Z3_mk_sub(ctx, 2, args)
+--   "(* <lhs> <rhs>)"                    Z3_mk_mul(ctx, 2, args)
+--   "(div <lhs> <rhs>)"                  Z3_mk_div(ctx, lhs, rhs)
+--
+-- Reading the rendered text back out is two extra libcalls —
+-- Z3_ast_to_string for the `const char *`, then __cstr.copy(ptr) to
+-- recover the bytes as an Evident String (BuildZ3AstToString /
+-- BuildCstrCopy in stdlib/kernel.ev).
+--
+-- ── Array marshaling note ───────────────────────────────────────
+--
+-- Z3's variadic builders (Z3_mk_add / sub / mul) take a
+-- `Z3_ast const args[]` pointer + a count. The LibCall grammar has
+-- no array shape, so the FSM allocates a 16-byte libc buffer
+-- (BuildMalloc 16), writes both handles into it (two
+-- BuildMemWriteLong calls), and passes the buffer pointer +
+-- num_args = 2 to BuildZ3MkAdd. The Z3 div spelling is BINARY
+-- (BuildZ3MkDiv ctx l r — no array), which is why the arith
+-- claim below splits the cases.
+
+import "compiler2/parser.ev"
+import "stdlib/kernel.ev"
+
+-- ── AtomBuildZ3: pick the libcall that builds the Z3_ast for an
+--    atomic Expr (EInt or EIdent). The caller supplies the cached
+--    int_sort_h (one BuildZ3MkIntSort at FSM init) and — for the
+--    EIdent case — a sym_h from a prior BuildZ3MkStringSymbol call.
+--    On the ok=false fallthrough `eff` is a no-op Time call (so the
+--    Effect literal is well-formed).
+claim AtomBuildZ3(ctx_h ∈ Int, int_sort_h ∈ Int, sym_h ∈ Int, e ∈ Expr, eff ∈ Effect, ok ∈ Bool)
+    is_int   ∈ Bool = (e matches EInt(_))
+    is_ident ∈ Bool = (e matches EIdent(_))
+    int_val ∈ Int = match e
+        EInt(n) ⇒ n
+        _ ⇒ 0
+    ok = (is_int ∨ is_ident)
+    eff = (is_int
+        ? LibCall("libz3", "Z3_mk_int",
+            ⟨ArgInt(ctx_h), ArgInt(int_val), ArgInt(int_sort_h)⟩)
+        : is_ident
+        ? LibCall("libz3", "Z3_mk_const",
+            ⟨ArgInt(ctx_h), ArgInt(sym_h), ArgInt(int_sort_h)⟩)
+        : LibCall("libc", "time", ⟨ArgInt(0)⟩))
+
+-- ── AtomIdentName: extract the EIdent name for BuildZ3MkStringSymbol;
+--    "" otherwise.
+claim AtomIdentName(e ∈ Expr, name ∈ String)
+    name = match e
+        EIdent(s) ⇒ s
+        _ ⇒ ""
+
+-- ── ArithBinopBuildZ3: pick the libcall for a one-level arithmetic
+--    binop, given operand handles built on prior ticks. For
+--    OpPlus/OpSub/OpMul the caller must pre-populate args_arr_ptr
+--    (a 16-byte buffer with two i64 slots, one operand handle each);
+--    for OpDiv args_arr_ptr is ignored (Z3_mk_div is binary).
+claim ArithBinopBuildZ3(
+        ctx_h ∈ Int, op ∈ Op,
+        l_h ∈ Int, r_h ∈ Int, args_arr_ptr ∈ Int,
+        eff ∈ Effect, ok ∈ Bool)
+    is_plus ∈ Bool = (op matches OpPlus)
+    is_sub  ∈ Bool = (op matches OpSub)
+    is_mul  ∈ Bool = (op matches OpMul)
+    is_div  ∈ Bool = (op matches OpDiv)
+    ok = (is_plus ∨ is_sub ∨ is_mul ∨ is_div)
+    eff = (is_plus
+        ? LibCall("libz3", "Z3_mk_add",
+            ⟨ArgInt(ctx_h), ArgInt(2), ArgInt(args_arr_ptr)⟩)
+        : is_sub
+        ? LibCall("libz3", "Z3_mk_sub",
+            ⟨ArgInt(ctx_h), ArgInt(2), ArgInt(args_arr_ptr)⟩)
+        : is_mul
+        ? LibCall("libz3", "Z3_mk_mul",
+            ⟨ArgInt(ctx_h), ArgInt(2), ArgInt(args_arr_ptr)⟩)
+        : is_div
+        ? LibCall("libz3", "Z3_mk_div",
+            ⟨ArgInt(ctx_h), ArgInt(l_h), ArgInt(r_h)⟩)
+        : LibCall("libc", "time", ⟨ArgInt(0)⟩))
+
+-- ── BinopIsArray: true iff the binop's Z3 spelling takes an args
+--    array (add/sub/mul) vs binary (div); lets the caller skip the
+--    malloc + write_long ceremony for OpDiv.
+claim BinopIsArray(op ∈ Op, out ∈ Bool)
+    is_plus ∈ Bool = (op matches OpPlus)
+    is_sub  ∈ Bool = (op matches OpSub)
+    is_mul  ∈ Bool = (op matches OpMul)
+    out = (is_plus ∨ is_sub ∨ is_mul)
+
+-- ── ArithExprBinopParts: decompose a one-level EBinOp into its
+--    (op, lhs, rhs).
+claim ArithExprBinopParts(e ∈ Expr, op ∈ Op, lhs ∈ Expr, rhs ∈ Expr, is_binop ∈ Bool)
+    is_binop = (e matches EBinOp(_, _, _))
+    op = match e
+        EBinOp(o, _, _) ⇒ o
+        _ ⇒ OpPlus
+    lhs = match e
+        EBinOp(_, l, _) ⇒ l
+        _ ⇒ ENoExpr
+    rhs = match e
+        EBinOp(_, _, r) ⇒ r
+        _ ⇒ ENoExpr
+
+-- ── Recursive arithmetic translation via a WorkItem work-stack ─────
+--
+-- Depth-first walk over an Expr tree, carried across FSM ticks on a
+-- WorkItem cons-list. Each leaf step emits a LibCall EFFECT; the
+-- caller's FSM captures each tick's returned IntResult as a Z3_ast
+-- handle on a parallel handle stack. A `WIProcess(EBinOp(op, l, r))`
+-- expands the stack head-first, so pops evaluate l, then r, then a
+-- WIEmit op marker telling the FSM to pop two handles and run
+-- ArithBinopBuildZ3. This file owns the per-step transition (which
+-- Effect + how to reshape the stack); the handle-stack bookkeeping
+-- lives in the caller. For bounded Expr depth the caller can bypass
+-- the work-stack and use the atomic claims directly
+-- (test_translate_arith_via_z3.ev).
+
+claim ArithTranslateStepZ3(
+        ctx_h ∈ Int, int_sort_h ∈ Int, sym_h ∈ Int,
+        head ∈ WorkItem, rest ∈ WorkList,
+        new_stack ∈ WorkList, eff ∈ Effect, want_emit ∈ Bool)
+    is_emit  ∈ Bool = (head matches WIEmit(_))
+    is_proc  ∈ Bool = (head matches WIProcess(_))
+
+    proc_expr ∈ Expr = match head
+        WIProcess(e) ⇒ e
+        _ ⇒ ENoExpr
+
+    is_int   ∈ Bool = (proc_expr matches EInt(_))
+    is_ident ∈ Bool = (proc_expr matches EIdent(_))
+    is_binop ∈ Bool = (proc_expr matches EBinOp(_, _, _))
+
+    int_val ∈ Int = match proc_expr
+        EInt(n) ⇒ n
+        _ ⇒ 0
+    op ∈ Op = match proc_expr
+        EBinOp(o, _, _) ⇒ o
+        _ ⇒ OpPlus
+    lhs ∈ Expr = match proc_expr
+        EBinOp(_, l, _) ⇒ l
+        _ ⇒ ENoExpr
+    rhs ∈ Expr = match proc_expr
+        EBinOp(_, _, r) ⇒ r
+        _ ⇒ ENoExpr
+
+    -- A WIEmit marker is consumed by the FSM's handle-stack
+    -- bookkeeping (signaled via want_emit + the head literal), not by
+    -- an Effect; a binop WIProcess emits nothing this tick either.
+    want_emit = is_emit
+
+    eff = (is_int
+        ? LibCall("libz3", "Z3_mk_int",
+            ⟨ArgInt(ctx_h), ArgInt(int_val), ArgInt(int_sort_h)⟩)
+        : is_ident
+        ? LibCall("libz3", "Z3_mk_const",
+            ⟨ArgInt(ctx_h), ArgInt(sym_h), ArgInt(int_sort_h)⟩)
+        : LibCall("libc", "time", ⟨ArgInt(0)⟩))
+
+    -- The "build the binop after both operands" marker is a WIEmit
+    -- whose literal encodes op as the string "+", "-", "*", or "div".
+    -- The caller's FSM reads the emit literal and runs
+    -- ArithBinopBuildZ3 with the popped handles + matching args buffer.
+    is_plus ∈ Bool = (op matches OpPlus)
+    is_sub  ∈ Bool = (op matches OpSub)
+    is_mul  ∈ Bool = (op matches OpMul)
+    op_marker ∈ String = (is_plus ? "+"
+        : is_sub ? "-"
+        : is_mul ? "*"
+        : "div")
+
+    expansion ∈ WorkList = WLCons(WIProcess(lhs),
+        WLCons(WIProcess(rhs),
+        WLCons(WIEmit(op_marker), rest)))
+
+    new_stack = (is_binop ? expansion
+        : is_emit ∨ is_int ∨ is_ident ? rest
+        : rest)
+
+-- ── Legacy SMT-LIB-text claims (kept for other passes) ────────────
+--
+-- Every OTHER pass in compiler/translate_*.ev (parse_body.ev,
+-- translate_quant/ternary/seq/ctor/match/bool.ev) still composes the
+-- text-emitting names below; removing them breaks those passes. They
+-- stay as a parallel surface until each pass is migrated. New code
+-- MUST prefer the BuildZ3-emitting claims above.
+
+-- AtomSmtlib: render an EInt/EIdent/EStr leaf to its SMT-LIB token.
+claim AtomSmtlib(e ∈ Expr, out ∈ String, ok ∈ Bool)
+    is_int   ∈ Bool = (e matches EInt(_))
+    is_ident ∈ Bool = (e matches EIdent(_))
+    is_str   ∈ Bool = (e matches EStr(_))
+    int_val ∈ Int = match e
+        EInt(n) ⇒ n
+        _ ⇒ 0
+    ident_val ∈ String = match e
+        EIdent(s) ⇒ s
+        _ ⇒ ""
+    str_val ∈ String = match e
+        EStr(s) ⇒ s
+        _ ⇒ ""
+    ok = (is_int ∨ is_ident ∨ is_str)
+    out = (is_int ? str_from_int(int_val)
+        : is_ident ? ident_val
+        : is_str ? "\"" ++ str_val ++ "\""
+        : "")
+
+-- ArithExprSmtlib: render a one-level arithmetic binop with leaf
+-- operands to its SMT-LIB prefix form.
+claim ArithExprSmtlib(e ∈ Expr, out ∈ String, ok ∈ Bool)
+    is_binop ∈ Bool = (e matches EBinOp(_, _, _))
+    op_x ∈ Op = match e
+        EBinOp(o, _, _) ⇒ o
+        _ ⇒ OpPlus
+    lhs_x ∈ Expr = match e
+        EBinOp(_, l, _) ⇒ l
+        _ ⇒ ENoExpr
+    rhs_x ∈ Expr = match e
+        EBinOp(_, _, r) ⇒ r
+        _ ⇒ ENoExpr
+
+    is_plus_x ∈ Bool = (op_x matches OpPlus)
+    is_sub_x  ∈ Bool = (op_x matches OpSub)
+    is_mul_x  ∈ Bool = (op_x matches OpMul)
+    is_div_x  ∈ Bool = (op_x matches OpDiv)
+    is_arith_x ∈ Bool = (is_plus_x ∨ is_sub_x ∨ is_mul_x ∨ is_div_x)
+
+    op_str_x ∈ String = (is_plus_x ? "+"
+        : is_sub_x ? "-"
+        : is_mul_x ? "*"
+        : is_div_x ? "div"
+        : "")
+
+    lhs_str_x ∈ String
+    lhs_ok_x ∈ Bool
+    AtomSmtlib(e ↦ lhs_x, out ↦ lhs_str_x, ok ↦ lhs_ok_x)
+
+    rhs_str_x ∈ String
+    rhs_ok_x ∈ Bool
+    AtomSmtlib(e ↦ rhs_x, out ↦ rhs_str_x, ok ↦ rhs_ok_x)
+
+    ok = (is_binop ∧ is_arith_x ∧ lhs_ok_x ∧ rhs_ok_x)
+    out = (ok ? "(" ++ op_str_x ++ " " ++ lhs_str_x ++ " " ++ rhs_str_x ++ ")" : "")
+
+-- ArithTranslateStep: the per-tick transition for a depth-first AST
+-- walker that emits SMT-LIB text (pre-pivot semantics; see git history
+-- for the work-stack narration).
+claim ArithTranslateStep(head ∈ WorkItem, rest ∈ WorkList, new_stack ∈ WorkList, emit ∈ String)
+    is_emit_t ∈ Bool = (head matches WIEmit(_))
+    emit_lit_t ∈ String = match head
+        WIEmit(s) ⇒ s
+        _ ⇒ ""
+    proc_expr_t ∈ Expr = match head
+        WIProcess(e) ⇒ e
+        _ ⇒ ENoExpr
+
+    is_int_t   ∈ Bool = (proc_expr_t matches EInt(_))
+    is_ident_t ∈ Bool = (proc_expr_t matches EIdent(_))
+    is_binop_t ∈ Bool = (proc_expr_t matches EBinOp(_, _, _))
+
+    int_val_t ∈ Int = match proc_expr_t
+        EInt(n) ⇒ n
+        _ ⇒ 0
+    ident_val_t ∈ String = match proc_expr_t
+        EIdent(s) ⇒ s
+        _ ⇒ ""
+    op_t ∈ Op = match proc_expr_t
+        EBinOp(o, _, _) ⇒ o
+        _ ⇒ OpPlus
+    lhs_t ∈ Expr = match proc_expr_t
+        EBinOp(_, l, _) ⇒ l
+        _ ⇒ ENoExpr
+    rhs_t ∈ Expr = match proc_expr_t
+        EBinOp(_, _, r) ⇒ r
+        _ ⇒ ENoExpr
+
+    is_plus_t ∈ Bool = (op_t matches OpPlus)
+    is_sub_t  ∈ Bool = (op_t matches OpSub)
+    is_mul_t  ∈ Bool = (op_t matches OpMul)
+    is_div_t  ∈ Bool = (op_t matches OpDiv)
+    op_str_t ∈ String = (is_plus_t ? "+"
+        : is_sub_t ? "-"
+        : is_mul_t ? "*"
+        : is_div_t ? "div"
+        : "")
+
+    emit = (is_emit_t ? emit_lit_t
+        : is_int_t ? str_from_int(int_val_t)
+        : is_ident_t ? ident_val_t
+        : "")
+
+    expansion_t ∈ WorkList = WLCons(WIEmit("("),
+        WLCons(WIEmit(op_str_t),
+        WLCons(WIEmit(" "),
+        WLCons(WIProcess(lhs_t),
+        WLCons(WIEmit(" "),
+        WLCons(WIProcess(rhs_t),
+        WLCons(WIEmit(")"), rest)))))))
+
+    new_stack = (is_binop_t ? expansion_t : rest)

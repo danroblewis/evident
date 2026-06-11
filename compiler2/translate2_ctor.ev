@@ -36,7 +36,7 @@
 -- For a single-field constructor write_long(refs_p, ref) is exactly
 -- right. field_names[] / sorts[] are unaffected (pointer-wide).
 
-import "compiler/parser.ev"
+import "compiler2/parser.ev"
 import "stdlib/z3_ast.ev"
 import "stdlib/z3_core.ev"
 import "stdlib/z3_datatypes.ev"

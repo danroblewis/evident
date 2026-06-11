@@ -35,7 +35,7 @@
 -- the componentwise eq lift's (and …) fold over per-field eqs is
 -- assembled by the CALLER via BuildZ3MkAnd (stdlib/z3_ops.ev).
 
-import "compiler/parser.ev"
+import "compiler2/parser.ev"
 import "stdlib/kernel.ev"
 
 type EqPlanSlot(addr ∈ Int, in_range ∈ Bool, is_last ∈ Bool, needs_and ∈ Bool)

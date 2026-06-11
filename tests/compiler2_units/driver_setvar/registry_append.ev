@@ -7,8 +7,8 @@
 -- expect: stdout = "myset"
 -- expect: exit = 0
 import "stdlib/kernel.ev"
-import "compiler/lexer.ev"
-import "compiler/parser.ev"
+import "compiler2/lexer.ev"
+import "compiler2/parser.ev"
 import "compiler2/driver_ir.ev"
 import "compiler2/driver_record.ev"
 import "compiler2/driver_setvar.ev"
