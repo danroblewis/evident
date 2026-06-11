@@ -62,8 +62,8 @@ fsm DriverMatchPin
     arm_acc ∈ Int
     acc_pend ∈ Bool
     is_wc ∈ Bool
-    pat_n ∈ Int
-    pat_bind ∈ String
+    pattern_count ∈ Int
+    pattern_binding ∈ String
     bind_idx ∈ Int
     stashed_ctor ∈ String
     queued_bind ∈ String
@@ -95,7 +95,7 @@ fsm DriverMatchPin
     -- (case_state 2): one `elem ,` / `elem ) ⇒` per tick; `_` is a
     -- skip, the single non-`_` ident is the bind (its position is the
     -- accessor index). A second bind bails the match.
-    pat_open ∈ Bool = (arms_state ∧ (tok0 matches Ident(_))
+    is_pattern_open ∈ Bool = (arms_state ∧ (tok0 matches Ident(_))
         ∧ (head_ident ≠ "_") ∧ (tok1 matches LParen))
     nullary_head ∈ Bool = (arms_state ∧ (tok0 matches Ident(_))
         ∧ (head_ident ≠ "_")
@@ -103,21 +103,21 @@ fsm DriverMatchPin
     wildcard_head ∈ Bool = (arms_state ∧ (head_ident = "_")
         ∧ (tok1 matches OpImplies))
     pattern_state ∈ Bool = (case_action ∧ (_case_state = 2))
-    pat_elem ∈ String = head_ident
-    pat_more ∈ Bool = (pattern_state ∧ (tok0 matches Ident(_))
+    pattern_element ∈ String = head_ident
+    is_pattern_more ∈ Bool = (pattern_state ∧ (tok0 matches Ident(_))
         ∧ (tok1 matches Comma))
-    pat_close ∈ Bool = (pattern_state ∧ (tok0 matches Ident(_))
+    is_pattern_close ∈ Bool = (pattern_state ∧ (tok0 matches Ident(_))
         ∧ (tok1 matches RParen) ∧ (tok2 matches OpImplies))
-    pat_bad ∈ Bool = (pattern_state ∧ (¬pat_more) ∧ (¬pat_close))
-    elem_binds ∈ Bool = ((pat_more ∨ pat_close) ∧ (pat_elem ≠ "_")
-        ∧ (_pat_bind = ""))
-    multi_bind ∈ Bool = ((pat_more ∨ pat_close) ∧ (pat_elem ≠ "_")
-        ∧ (_pat_bind ≠ ""))
-    bind_name_now ∈ String = (elem_binds ? pat_elem : _pat_bind)
-    bind_idx_now ∈ Int = (elem_binds ? _pat_n : _bind_idx)
-    close_take ∈ Bool = (pat_close ∧ (¬multi_bind))
+    is_pattern_bad ∈ Bool = (pattern_state ∧ (¬is_pattern_more) ∧ (¬is_pattern_close))
+    elem_binds ∈ Bool = ((is_pattern_more ∨ is_pattern_close) ∧ (pattern_element ≠ "_")
+        ∧ (_pattern_binding = ""))
+    multi_bind ∈ Bool = ((is_pattern_more ∨ is_pattern_close) ∧ (pattern_element ≠ "_")
+        ∧ (_pattern_binding ≠ ""))
+    bind_name_now ∈ String = (elem_binds ? pattern_element : _pattern_binding)
+    bind_idx_now ∈ Int = (elem_binds ? _pattern_count : _bind_idx)
+    close_take ∈ Bool = (is_pattern_close ∧ (¬multi_bind))
     close_bind ∈ Bool = (close_take ∧ (bind_name_now ≠ ""))
-    new ∈ Bool = (pat_open ∨ nullary_head)
+    new ∈ Bool = (is_pattern_open ∨ nullary_head)
     overflow ∈ Bool = (new ∧ _has_pend_arm ∧ (_tested_arms ≥ 2))
     arm_take ∈ Bool = (new ∧ (¬overflow))
     extra_wildcards ∈ Bool = (wildcard_head ∧ _has_pend_arm ∧ (_tested_arms ≥ 2))
@@ -128,7 +128,7 @@ fsm DriverMatchPin
     fire_end ∈ Bool = (end_tok ∧ _has_pend_arm)
     case_fire ∈ Bool = fire_end
     case_bail ∈ Bool = (scrut_bad ∨ overflow ∨ extra_wildcards
-        ∨ pat_bad ∨ multi_bind
+        ∨ is_pattern_bad ∨ multi_bind
         ∨ (end_tok ∧ (¬_has_pend_arm)))
 
     -- bind accessor resolution at pattern close: field 0 reads the
@@ -157,8 +157,8 @@ fsm DriverMatchPin
     case_state = (is_first_tick ? 0
         : enter_match ? 0
         : (scrut_lastres ∨ scrut_ident) ? 1
-        : (pat_open ∧ (¬overflow)) ? 2
-        : pat_close ? 1
+        : (is_pattern_open ∧ (¬overflow)) ? 2
+        : is_pattern_close ? 1
         : _case_state)
     case_name = (is_first_tick ? "" : enter_match ? line_dname : _case_name)
     case_sort = (is_first_tick ? 0 : enter_match ? line_sort : _case_sort)
@@ -183,17 +183,17 @@ fsm DriverMatchPin
         : _acc_pend ? is_intresult_capture
         : _arm_acc)
     acc_pend = (is_first_tick ? false : accread)
-    pat_n = (is_first_tick ? 0
-        : pat_open ? 0
-        : pat_more ? _pat_n + 1
-        : _pat_n)
-    pat_bind = (is_first_tick ? ""
-        : pat_open ? ""
-        : elem_binds ? pat_elem
-        : _pat_bind)
+    pattern_count = (is_first_tick ? 0
+        : is_pattern_open ? 0
+        : is_pattern_more ? _pattern_count + 1
+        : _pattern_count)
+    pattern_binding = (is_first_tick ? ""
+        : is_pattern_open ? ""
+        : elem_binds ? pattern_element
+        : _pattern_binding)
     bind_idx = (is_first_tick ? 0
-        : pat_open ? 0
-        : elem_binds ? _pat_n
+        : is_pattern_open ? 0
+        : elem_binds ? _pattern_count
         : _bind_idx)
     is_wc = (is_first_tick ? false
         : body_enter ? wildcard_head

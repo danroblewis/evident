@@ -497,7 +497,7 @@ fsm driver_main
 
     handle_stack = (is_first_tick ? C2HNil
         : (enter_claim ∨ claim_params) ? C2HNil
-        : callw_fire ? pop_stack
+        : is_call_fire ? pop_stack
         : jump_fire ? tail1
         : bindzip_act ? bindzip_pop
         : push_bound ? C2HCons(bound_handle, stack_in)
@@ -529,7 +529,7 @@ fsm driver_main
         : seqlit_close ? seqlit_close_items
         : setlit_elem ? setlit_elem_items
         : setlit_close ? setlit_close_items
-        : (callw_fire ∧ _is_type) ? type_pin_items
+        : (is_call_fire ∧ _is_type) ? type_pin_items
         : (bare_jump ∧ _is_type ∧ (_type_slot ≥ 0)) ? recdecl_items
         : decl_fire ? pskip_decl_items
         : type_tick ? mem_items
@@ -620,8 +620,8 @@ fsm driver_main
         : scrut_lastres ? 4
         : (scrut_ident ∨ scrut_bad) ? 1
         : (overflow ∨ extra_wildcards) ? 1
-        : (pat_open ∧ (¬overflow)) ? 2
-        : pat_more ? 2
+        : (is_pattern_open ∧ (¬overflow)) ? 2
+        : is_pattern_more ? 2
         : intset_elem ? ((tok1 matches Comma) ? 2 : 1)
         : (intset_close ∨ intset_bad) ? 1
         : enter_seqlit ? 3
@@ -650,7 +650,7 @@ fsm driver_main
         : tuple_comma ? 1
         : bite ? 5
         : (tuple_close ∨ tuple_bail) ? (called_method ? 5 : (membership ∨ (tuple_bail ∧ (tok1 matches OpIn))) ? 3 : 1)
-        : (callw_comma ∨ callw_fire ∨ callw_bail) ? 1
+        : (is_call_comma ∨ is_call_fire ∨ is_call_bail) ? 1
         : (pskip_open ∨ run) ? 1
         : enter_pratt ? enter_consume
         : mem_line ? mem_consume
@@ -726,7 +726,7 @@ fsm driver_main
         : (comp_line ∨ is_member_line) ? 10
         : cond_hit ? 10
         : jump_fire ? 2
-        : (bare_jump ∨ callw_fire ∨ callw_bail) ? 2
+        : (bare_jump ∨ is_call_fire ∨ is_call_bail) ? 2
         : qrange ? 11
         : qrange_bail ? 2
         : positional_line ? 12

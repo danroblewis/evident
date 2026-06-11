@@ -2,7 +2,7 @@
 -- CONSUMES: the parsed root (result) + parse-done signal (parse_ready,
 --           _parse_kind, parse_bad), the claim index (claimindex_names, claimindex_buf.base),
 --           the parse_mode-10 composition-walk state (parse, _parse_mode,
---           _callw_st, reset, nil), and the inline-frame
+--           _callwalk_state, reset, nil), and the inline-frame
 --           stack views (frame_pop, _frame_depth, h_top).
 -- PRODUCES: the guard recognizer (cond_op/cond_lhs/cond_rhs/binop/cond_callee/cond_key/
 --           cond_pos/cond_hit), the claim-body fetch effect (guard_read_eff), the
@@ -34,8 +34,8 @@ fsm DriverGuard
         ∧ (_frame_depth < 8))
     guard_read_eff ∈ Effect
     BuildMemReadLong(addr ↦ claimindex_buf.base + (8 * (cond_pos / 32)), eff ↦ guard_read_eff)
-    capture ∈ Bool = (parse ∧ (_parse_mode = 10) ∧ (_callw_st = 3))
-    jump_fire ∈ Bool = (parse ∧ (_parse_mode = 10) ∧ (_callw_st = 4)
+    capture ∈ Bool = (parse ∧ (_parse_mode = 10) ∧ (_callwalk_state = 3))
+    jump_fire ∈ Bool = (parse ∧ (_parse_mode = 10) ∧ (_callwalk_state = 4)
         ∧ nil)
     active_handle ∈ Int
     armed_depth ∈ Int

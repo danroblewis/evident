@@ -125,23 +125,23 @@ fsm DriverRecord
         ∨ (pending ∧ _param_n ≥ 3))
     rec_pad31 ∈ String = "                               "
     normalized_typestr ∈ String = (is_seq ? "Seq(Int)" : type_token_text)
-    row_name ∈ String = "|" ++ substr(field_name_tok ++ rec_pad31, 0, 31)
-    row_p0 ∈ String = "|" ++ substr(_params[0].pname ++ rec_pad31, 0, 31)
-    row_p1 ∈ String = "|" ++ substr(_params[1].pname ++ rec_pad31, 0, 31)
-    row_p2 ∈ String = "|" ++ substr(_params[2].pname ++ rec_pad31, 0, 31)
-    row_ty ∈ String = "|" ++ substr(normalized_typestr ++ rec_pad31, 0, 31)
-    row_len ∈ String = "|" ++ substr((field_name_tok ++ "__len") ++ rec_pad31, 0, 31)
-    row_int ∈ String = "|" ++ substr("Int" ++ rec_pad31, 0, 31)
-    rows_names ∈ String = ((_param_n = 0 ? row_name
-        : _param_n = 1 ? row_p0 ++ row_name
-        : _param_n = 2 ? row_p0 ++ row_p1 ++ row_name
-        : row_p0 ++ row_p1 ++ row_p2 ++ row_name)
-        ++ (is_seq ? row_len : ""))
-    rows_types ∈ String = ((_param_n = 0 ? row_ty
-        : _param_n = 1 ? row_ty ++ row_ty
-        : _param_n = 2 ? row_ty ++ row_ty ++ row_ty
-        : row_ty ++ row_ty ++ row_ty ++ row_ty)
-        ++ (is_seq ? row_int : ""))
+    row_name_str ∈ String = "|" ++ substr(field_name_tok ++ rec_pad31, 0, 31)
+    offset0 ∈ String = "|" ++ substr(_params[0].pname ++ rec_pad31, 0, 31)
+    offset1 ∈ String = "|" ++ substr(_params[1].pname ++ rec_pad31, 0, 31)
+    offset2 ∈ String = "|" ++ substr(_params[2].pname ++ rec_pad31, 0, 31)
+    row_typename ∈ String = "|" ++ substr(normalized_typestr ++ rec_pad31, 0, 31)
+    byte_length ∈ String = "|" ++ substr((field_name_tok ++ "__len") ++ rec_pad31, 0, 31)
+    int_field_value ∈ String = "|" ++ substr("Int" ++ rec_pad31, 0, 31)
+    rows_names ∈ String = ((_param_n = 0 ? row_name_str
+        : _param_n = 1 ? offset0 ++ row_name_str
+        : _param_n = 2 ? offset0 ++ offset1 ++ row_name_str
+        : offset0 ++ offset1 ++ offset2 ++ row_name_str)
+        ++ (is_seq ? byte_length : ""))
+    rows_types ∈ String = ((_param_n = 0 ? row_typename
+        : _param_n = 1 ? row_typename ++ row_typename
+        : _param_n = 2 ? row_typename ++ row_typename ++ row_typename
+        : row_typename ++ row_typename ++ row_typename ++ row_typename)
+        ++ (is_seq ? int_field_value : ""))
     field_ok ∈ Bool = (field_take ∧ (¬field_bad))
 
     collect_on = (is_first_tick ? false

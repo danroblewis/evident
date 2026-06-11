@@ -1,7 +1,7 @@
--- DriverCompose isolation — slot-call name capture through callw_st.
--- parse_mode-10 held, frame idle: tick 1, callw_cap advances callw_st 0→1; tick 2,
+-- DriverCompose isolation — slot-call name capture through callwalk_state.
+-- parse_mode-10 held, frame idle: tick 1, call_capacity advances callwalk_state 0→1; tick 2,
 -- callw1 is live and the window head `p ↦` (Ident, OpMapsto) fires
--- callw_slot, capturing slot_name_tok into slot_names[0].name (slot index 0). Must read "p".
+-- call_arg_slot, capturing slot_name_tok into slot_names[0].name (slot index 0). Must read "p".
 -- entry: main
 -- expect: stdout = "p"
 -- expect: exit = 0

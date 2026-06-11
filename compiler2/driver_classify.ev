@@ -6,7 +6,7 @@
 --           _binds/_bind_base/_bind_top, _join_hdr), the record registry
 --           (recs .name / .sort), the enum-table name column (decl_names)
 --           + the seq-var carries (_seqvar_set, _seqvar_name), and the sibling
---           sub-walks' per-line enter signals (efflit_*/arm_*/seqlit_*/callw_slot/
+--           sub-walks' per-line enter signals (efflit_*/arm_*/seqlit_*/call_arg_slot/
 --           pun/qrange_close/element) that fold into enter_pratt. Wide by nature: this
 --           is the central dispatch brain — it inspects the whole window
 --           against every other subsystem's entry condition (justified
@@ -142,13 +142,13 @@ fsm DriverClassify
         ∧ (¬setlit_line) ∧ (¬qset)
         ∧ (pinned ∨ (¬is_mem)))
     enter_pratt ∈ Bool = (pratt_line ∨ exit_enter
-        ∨ is_guard_enter ∨ body_enter ∨ elem_enter ∨ callw_slot
+        ∨ is_guard_enter ∨ body_enter ∨ elem_enter ∨ call_arg_slot
         ∨ pun ∨ qrange_close ∨ qseq ∨ element)
     enter_consume ∈ Int = (exit_enter ? 2
         : is_guard_enter ? 0
         : body_enter ? (close_take ? 3 : 2)
         : elem_enter ? 0
-        : callw_slot ? 2
+        : call_arg_slot ? 2
         : pun ? 0
         : qrange_close ? 2
         : qseq ? (seq_dotted ? 7 : 5)
@@ -158,7 +158,7 @@ fsm DriverClassify
         : is_guard_enter ? 6
         : body_enter ? 4
         : elem_enter ? 7
-        : callw_slot ? 8
+        : call_arg_slot ? 8
         : pun ? 8
         : qrange_close ? 9
         : qseq ? 9

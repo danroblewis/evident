@@ -210,7 +210,7 @@ fsm DriverPosBind
         : _pskip_grp)
     guard ∈ Bool = (guarding ∧ (_frame_depth = _armed_depth))
     decl_fire ∈ Bool = (consuming_type ∧ (¬_is_type) ∧ (¬guard)
-        ∧ (¬(_callw_bare ∧ (¬_hide))))
+        ∧ (¬(_is_bare_call ∧ (¬_hide))))
     pskip_enum_key ∈ String
     FtiNameEntry(name ↦ param_ty_name, entry ↦ pskip_enum_key)
     pskip_enum_pos ∈ Int = index_of(decl_names, pskip_enum_key, 0)

@@ -148,19 +148,19 @@ fsm DriverBuildEff
     -- acc-table tape writes (the variant's registry slot row; the
     -- step-2 capture already bumped alloc, so the row is
     -- _alloc − 1). Values are the step-4 batch's lr[0..n−1].
-    row_p ∈ Int = acctab_p + (48 * (_alloc - 1))
+    base_pointer ∈ Int = acctab_p + (48 * (_alloc - 1))
     acctab_w0 ∈ Effect
-    BuildMemWriteLong(addr ↦ row_p, value ↦ int0, eff ↦ acctab_w0)
+    BuildMemWriteLong(addr ↦ base_pointer, value ↦ int0, eff ↦ acctab_w0)
     acctab_w1 ∈ Effect
-    BuildMemWriteLong(addr ↦ row_p + 8, value ↦ int1, eff ↦ acctab_w1)
+    BuildMemWriteLong(addr ↦ base_pointer + 8, value ↦ int1, eff ↦ acctab_w1)
     acctab_w2 ∈ Effect
-    BuildMemWriteLong(addr ↦ row_p + 16, value ↦ int2, eff ↦ acctab_w2)
+    BuildMemWriteLong(addr ↦ base_pointer + 16, value ↦ int2, eff ↦ acctab_w2)
     acctab_w3 ∈ Effect
-    BuildMemWriteLong(addr ↦ row_p + 24, value ↦ int3, eff ↦ acctab_w3)
+    BuildMemWriteLong(addr ↦ base_pointer + 24, value ↦ int3, eff ↦ acctab_w3)
     acctab_w4 ∈ Effect
-    BuildMemWriteLong(addr ↦ row_p + 32, value ↦ int4, eff ↦ acctab_w4)
+    BuildMemWriteLong(addr ↦ base_pointer + 32, value ↦ int4, eff ↦ acctab_w4)
     acctab_w5 ∈ Effect
-    BuildMemWriteLong(addr ↦ row_p + 40, value ↦ int5, eff ↦ acctab_w5)
+    BuildMemWriteLong(addr ↦ base_pointer + 40, value ↦ int5, eff ↦ acctab_w5)
     enum_filler ∈ Effect = LibCall("libc", "getpid", ⟨⟩)
 
     enum_step_eff ∈ Effect = (action_now = 1 ?

@@ -37,8 +37,8 @@ fsm main
     collect_on = (is_first_tick ? false : _collect_on)
     decl_action ∈ Int
     decl_action = (is_first_tick ? 0 : _decl_action)
-    callw_st ∈ Int
-    callw_st = (is_first_tick ? 0 : _callw_st)
+    callwalk_state ∈ Int
+    callwalk_state = (is_first_tick ? 0 : _callwalk_state)
     tuple_state ∈ Int
     tuple_state = (is_first_tick ? 0 : _tuple_state)
     nil ∈ Bool

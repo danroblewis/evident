@@ -97,8 +97,8 @@ fsm main
     armed_depth = (is_first_tick ? 0 : _armed_depth)
     hide ∈ Bool
     hide = (is_first_tick ? false : _hide)
-    callw_bare ∈ Bool
-    callw_bare = (is_first_tick ? false : _callw_bare)
+    is_bare_call ∈ Bool
+    is_bare_call = (is_first_tick ? false : _is_bare_call)
     is_type ∈ Bool
     is_type = (is_first_tick ? false : _is_type)
     decl_names ∈ String

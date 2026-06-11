@@ -80,8 +80,8 @@ fsm main
     body_enter = (is_first_tick ? false : _body_enter)
     elem_enter ∈ Bool
     elem_enter = (is_first_tick ? false : _elem_enter)
-    callw_slot ∈ Bool
-    callw_slot = (is_first_tick ? false : _callw_slot)
+    call_arg_slot ∈ Bool
+    call_arg_slot = (is_first_tick ? false : _call_arg_slot)
     pun ∈ Bool
     pun = (is_first_tick ? false : _pun)
     join_hdr ∈ String
