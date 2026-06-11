@@ -205,12 +205,7 @@ fsm DriverRecord
     ∀ k ∈ {0..2} : recs[k].ctor = (is_first_tick ? 0 : (ctor_cap ∧ rec_slot = k) ? is_intresult_capture : _recs[k].ctor)
     ∀ k ∈ {0..2} : recs[k].asort = (is_first_tick ? 0 : (asort_cap ∧ rec_slot = k) ? is_intresult_capture : _recs[k].asort)
     ∀ k ∈ {0..2} : recs[k].ssort = (is_first_tick ? 0 : (ssort_cap ∧ rec_slot = k) ? is_intresult_capture : _recs[k].ssort)
-    ∀ k ∈ {0..2} : recs[k].accs[0] = (is_first_tick ? 0 : (acc_cap ∧ rec_slot = k ∧ _field_i = 0) ? is_intresult_capture : _recs[k].accs[0])
-    ∀ k ∈ {0..2} : recs[k].accs[1] = (is_first_tick ? 0 : (acc_cap ∧ rec_slot = k ∧ _field_i = 1) ? is_intresult_capture : _recs[k].accs[1])
-    ∀ k ∈ {0..2} : recs[k].accs[2] = (is_first_tick ? 0 : (acc_cap ∧ rec_slot = k ∧ _field_i = 2) ? is_intresult_capture : _recs[k].accs[2])
-    ∀ k ∈ {0..2} : recs[k].accs[3] = (is_first_tick ? 0 : (acc_cap ∧ rec_slot = k ∧ _field_i = 3) ? is_intresult_capture : _recs[k].accs[3])
-    ∀ k ∈ {0..2} : recs[k].accs[4] = (is_first_tick ? 0 : (acc_cap ∧ rec_slot = k ∧ _field_i = 4) ? is_intresult_capture : _recs[k].accs[4])
-    ∀ k ∈ {0..2} : recs[k].accs[5] = (is_first_tick ? 0 : (acc_cap ∧ rec_slot = k ∧ _field_i = 5) ? is_intresult_capture : _recs[k].accs[5])
+    ∀ k ∈ {0..2} : ∀ j ∈ {0..5} : recs[k].accs[j] = (is_first_tick ? 0 : (acc_cap ∧ rec_slot = k ∧ _field_i = j) ? is_intresult_capture : _recs[k].accs[j])
 
     recdecl_fnames_p ∈ Int = z3_arena + 288
     recdecl_fsorts_p ∈ Int = z3_arena + 336

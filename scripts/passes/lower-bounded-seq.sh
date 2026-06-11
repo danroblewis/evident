@@ -475,6 +475,26 @@ function subst_exists(txt,    pos, a, st, en, depth, j, ch, inner, bvar, sname, 
     }
 }
 
+# Recursive range-∀ unroll — supports NESTED ∀ (operator ruling 2026-06-11:
+# nested ∀ is blessed grammar). Each unrolled body may itself be a range-∀;
+# recurse until a leaf, then lower (index/card/dyn) and emit. Leaf output is
+# identical to a hand-unrolled `∀ k … ∀ j …` written as N·M flat lines.
+function expand_range_forall(code, ind,    bvar, lo, hi, body, k, t2) {
+    if (code ~ /^[ \t]*∀[ \t].*∈[ \t]*\{[0-9]+\.\.[0-9]+\}[ \t]*:/) {
+        bvar = code; sub(/^[ \t]*∀[ \t]*/, "", bvar); sub(/[ \t]*∈.*$/, "", bvar); bvar = trim(bvar)
+        lo = code; sub(/^[^{]*\{/, "", lo); sub(/\.\..*$/, "", lo)
+        hi = code; sub(/^[^{]*\{[0-9]+\.\./, "", hi); sub(/\}.*$/, "", hi)
+        body = code; sub(/^[^:]*:[ \t]*/, "", body)
+        for (k = lo + 0; k <= hi + 0; k++)
+            expand_range_forall(subst_tok(body, bvar, k), ind)
+        return
+    }
+    t2 = subst_index(code)
+    t2 = subst_card(t2)
+    t2 = subst_dyn_fix(t2)
+    O[++on] = ind t2
+}
+
 # Emit the decl(s) for record field j of element type el under prefix pfx
 # (e.g. "xs_0" / "_xs_0"). A Seq(Int) field with a type-body bound expands
 # to per-subslot Int decls (pfx_fn_0..M-1); other fields emit one decl.
@@ -1120,13 +1140,8 @@ END {
                 if (index(body, g "[") > 0 || index(body, "_" g "[") > 0) { touches = 1; break }
             }
             if (touches) {
-                for (k = lo + 0; k <= hi + 0; k++) {
-                    t2 = subst_tok(body, bvar, k)
-                    t2 = subst_index(t2)
-                    t2 = subst_card(t2)
-                    t2 = subst_dyn_fix(t2)
-                    O[++on] = ind t2
-                }
+                for (k = lo + 0; k <= hi + 0; k++)
+                    expand_range_forall(subst_tok(body, bvar, k), ind)
                 continue
             }
         }
