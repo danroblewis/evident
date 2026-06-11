@@ -310,25 +310,25 @@ fsm driver_main
         : _scope_acc)
     bind_hit ∈ Bool = (process ∧ is_ident ∧ _scope_on
         ∧ (lookup_name = _scope_name))
-    qvar_hit ∈ Bool = (process ∧ is_ident ∧ _qloop_on
+    is_bound_ref ∈ Bool = (process ∧ is_ident ∧ _qloop_on
         ∧ (lookup_name = _qloop_var))
-    qvar_items ∈ C2Items = (_qloop_kind = 0
+    bound_var_items ∈ C2Items = (_qloop_kind = 0
         ? C2ICons(C2Process(EInt(_qloop_cur)), work_tail)
         : C2ICons(C2Process(EIdent(_seq)),
             C2ICons(C2Process(EInt(_qloop_cur)),
             C2ICons(C2SelH, work_tail))))
-    qvar_prefix ∈ String = _qloop_var ++ "."
+    loopvar_prefix ∈ String = _qloop_var ++ "."
     dot ∈ Bool = (process ∧ is_ident ∧ _qloop_on
         ∧ (_qloop_kind = 1) ∧ (_seqvar_slot ≥ 0)
-        ∧ (substr(lookup_name, 0, #qvar_prefix) = qvar_prefix))
-    qvar_field ∈ String = substr(lookup_name, #qvar_prefix,
-        #lookup_name - #qvar_prefix)
-    qvar_acc ∈ Int
-    RtFieldAcc(fname ↦ qvar_field, acc ↦ qvar_acc)
+        ∧ (substr(lookup_name, 0, #loopvar_prefix) = loopvar_prefix))
+    loopvar_field ∈ String = substr(lookup_name, #loopvar_prefix,
+        #lookup_name - #loopvar_prefix)
+    element_accessor ∈ Int
+    RtFieldAcc(fname ↦ loopvar_field, acc ↦ element_accessor)
     dot_items ∈ C2Items = C2ICons(C2Process(EIdent(_seq)),
         C2ICons(C2Process(EInt(_qloop_cur)),
         C2ICons(C2SelH,
-        C2ICons(C2App(qvar_acc, 1), work_tail))))
+        C2ICons(C2App(element_accessor, 1), work_tail))))
     qual_name ∈ String = _scope_prefix ++ lookup_name ++ "." ++ field_name
     qual_key ∈ String
     FtiNameEntry(name ↦ qual_name, entry ↦ qual_key)
@@ -481,13 +481,13 @@ fsm driver_main
         : it_set_add ? 2
         : 0)
     push_bound ∈ Bool = (processing ∧ process ∧ is_ident
-        ∧ bound_found ∧ (¬bind_hit) ∧ (¬qvar_hit) ∧ (¬dot)
+        ∧ bound_found ∧ (¬bind_hit) ∧ (¬is_bound_ref) ∧ (¬dot)
         ∧ (¬pin_hit))
     push_ident ∈ Bool = (processing ∧ process ∧ is_ident
-        ∧ pure ∧ (¬bind_hit) ∧ (¬bound_found) ∧ (¬qvar_hit)
+        ∧ pure ∧ (¬bind_hit) ∧ (¬bound_found) ∧ (¬is_bound_ref)
         ∧ (¬dot) ∧ (¬pin_hit) ∧ (¬ctor_hit))
     lookup_read ∈ Bool = (processing ∧ process ∧ is_ident
-        ∧ (¬pure) ∧ (¬bind_hit) ∧ (¬bound_found) ∧ (¬qvar_hit)
+        ∧ (¬pure) ∧ (¬bind_hit) ∧ (¬bound_found) ∧ (¬is_bound_ref)
         ∧ (¬dot) ∧ (¬pin_hit))
     push_handle ∈ Bool = (processing ∧ push_h)
     push_decl ∈ Bool = (processing ∧ it_decl ∧ (_item_step = 2))
@@ -546,7 +546,7 @@ fsm driver_main
         : process ∧ is_ternary ? C2ICons(C2Process(cond), C2ICons(C2Process(then_branch), C2ICons(C2Process(else_branch), C2ICons(C2Ite, work_tail))))
         : process ∧ is_not ? C2ICons(C2Process(not_inner), C2ICons(C2Not, work_tail))
         : process ∧ is_matches ? matches_items
-        : process ∧ qvar_hit ? qvar_items
+        : process ∧ is_bound_ref ? bound_var_items
         : process ∧ dot ? dot_items
         : pin_hit ? hit_items
         : ctor_hit ? ctor_items
@@ -843,11 +843,11 @@ fsm driver_main
     BoolCmpBuildZ3(ctx_h ↦ z3ctx.ctx, op ↦ impl, l_h ↦ _active_handle,
         r_h ↦ h_top, eff ↦ guard_impl, ok ↦ guard_impl_ok,
         needs_not ↦ guard_impl_nn)
-    nat_ge ∈ Effect
-    nat_ok ∈ Bool
-    nat_nn ∈ Bool
+    natbound_geq_eff ∈ Effect
+    is_natbound_ok ∈ Bool
+    is_natbound_nn ∈ Bool
     BoolCmpBuildZ3(ctx_h ↦ z3ctx.ctx, op ↦ geq, l_h ↦ h_top, r_h ↦ z3nums.zero,
-        eff ↦ nat_ge, ok ↦ nat_ok, needs_not ↦ nat_nn)
+        eff ↦ natbound_geq_eff, ok ↦ is_natbound_ok, needs_not ↦ is_natbound_nn)
     eff_pin_eq ∈ Effect
     pin_ok ∈ Bool
     pin_nn ∈ Bool
@@ -929,7 +929,7 @@ fsm driver_main
         : it_decl ? (_item_step = 0 ? eff_mksym
             : _item_step = 1 ? mkconst
             : sym_write)
-        : natbound ? nat_ge
+        : natbound ? natbound_geq_eff
         : it_pin_eq ? eff_pin_eq
         : it_assert ? (guarding
             ? (_item_step = 0 ? guard_impl : assert_tmp)
@@ -1002,7 +1002,7 @@ fsm driver_main
         : zstep = 10 ? ⟨arrsort⟩
         : zstep = 11 ? ⟨effects_sym⟩
         : zstep = 12 ? ⟨zinit_effects⟩
-        : zstep = 13 ? ⟨efflen_sym⟩
+        : zstep = 13 ? ⟨length_z3symbol⟩
         : zstep = 14 ? ⟨efflen⟩
         : zstep = 15 ? ⟨zinit_zero⟩
         : zstep = 16 ? ⟨zinit_one⟩
@@ -1024,8 +1024,8 @@ fsm driver_main
         : zstep = 32 ? ⟨zinit_three⟩
         : zstep = 33 ? ⟨zinit_four⟩
         : zstep = 34 ? ⟨intarr⟩
-        : zstep = 35 ? ⟨efflen_ge⟩
-        : zstep = 36 ? ⟨efflen_assert⟩
+        : zstep = 35 ? ⟨geq_constraint_eff⟩
+        : zstep = 36 ? ⟨length_assertion_eff⟩
         : zstep = 37 ? ⟨zinit_claimindex_buf⟩
         : entering_parse ? (have_pend_str ? ⟨pend_str, eof⟩ : ⟨eof⟩)
         : render_step = 0 ? ⟨solver_str⟩

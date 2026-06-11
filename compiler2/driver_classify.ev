@@ -173,7 +173,7 @@ fsm DriverClassify
         C2ICons(C2Op(bound_op), C2ICons(C2AssertTop, C2INil)))
     drop_seg ∈ C2Items = C2ICons(C2Drop, C2INil)
     tail_seg ∈ C2Items = (bounded ? bound_seg : drop_seg)
-    nat_tail_seg ∈ C2Items = (line_is_nat
+    natbound_tail_segment ∈ C2Items = (line_is_nat
         ? C2ICons(C2NatBound, C2ICons(C2AssertTop, tail_seg))
         : tail_seg)
     scoped_name ∈ String = _scope_prefix ++ line_name
@@ -191,7 +191,7 @@ fsm DriverClassify
     resolved_name ∈ String = ((name_bound ∨ outer) ? line_name : line_dname)
     mem_item ∈ C2Item = (no_decl ? C2Process(EIdent(resolved_name))
         : C2DeclConst(line_dname, line_sort))
-    mem_items ∈ C2Items = C2ICons(mem_item, nat_tail_seg)
+    mem_items ∈ C2Items = C2ICons(mem_item, natbound_tail_segment)
 
     -- ── G1: infix contains — `"lit" ∈ name` → (str.contains name "lit")
     strin_line ∈ Bool = ((line_t0 matches StringLit(_)) ∧ is_mem

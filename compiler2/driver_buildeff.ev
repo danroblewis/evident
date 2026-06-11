@@ -223,8 +223,8 @@ fsm DriverBuildEff
     zinit_effects ∈ Effect
     BuildZ3MkConst(ctx_h ↦ z3ctx.ctx, sym_h ↦ effects_symbol, sort_h ↦ effect_arraysort,
         eff ↦ zinit_effects)
-    efflen_sym ∈ Effect
-    BuildZ3MkStringSymbol(ctx_h ↦ z3ctx.ctx, name ↦ "effects__len", eff ↦ efflen_sym)
+    length_z3symbol ∈ Effect
+    BuildZ3MkStringSymbol(ctx_h ↦ z3ctx.ctx, name ↦ "effects__len", eff ↦ length_z3symbol)
     efflen ∈ Effect
     BuildZ3MkConst(ctx_h ↦ z3ctx.ctx, sym_h ↦ effects_length_symbol, sort_h ↦ z3sorts.isort,
         eff ↦ efflen)
@@ -280,12 +280,12 @@ fsm DriverBuildEff
     intarr ∈ Effect
     BuildZ3MkArraySort(ctx_h ↦ z3ctx.ctx, idx_sort_h ↦ z3sorts.isort,
         val_sort_h ↦ z3sorts.isort, eff ↦ intarr)
-    efflen_ge ∈ Effect
-    efflen_ge_ok ∈ Bool
-    efflen_ge_nn ∈ Bool
+    geq_constraint_eff ∈ Effect
+    is_length_geq_ok ∈ Bool
+    is_length_geq_nn ∈ Bool
     BoolCmpBuildZ3(ctx_h ↦ z3ctx.ctx, op ↦ geq, l_h ↦ effects_length,
-        r_h ↦ z3nums.zero, eff ↦ efflen_ge, ok ↦ efflen_ge_ok, needs_not ↦ efflen_ge_nn)
-    efflen_assert ∈ Effect
+        r_h ↦ z3nums.zero, eff ↦ geq_constraint_eff, ok ↦ is_length_geq_ok, needs_not ↦ is_length_geq_nn)
+    length_assertion_eff ∈ Effect
     BuildZ3SolverAssert(ctx_h ↦ z3ctx.ctx, solver_h ↦ z3ctx.sol, ast_h ↦ effects_length_geq,
-        eff ↦ efflen_assert)
+        eff ↦ length_assertion_eff)
     zinit_claimindex_buf ∈ Effect = LibCall("libc", "calloc", ⟨ArgInt(2048), ArgInt(8)⟩)
