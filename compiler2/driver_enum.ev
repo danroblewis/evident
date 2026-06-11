@@ -1,7 +1,7 @@
 -- MODULE DriverEnum
 -- CONSUMES: the ZINIT start gate (zstep parked at 9), the Z3 base-sort
 --           handles (z3sorts.isort/z3sorts.bsort/z3sorts.ssort/z3sorts.rsort) + the int-result
---           captures is_intresult_capture/int0/int1, and the user-enum collection
+--           captures is_intresult_capture/ints[0]/ints[1], and the user-enum collection
 --           signals from the parse dispatcher (group_go,
 --           member_end, list_now, _user_enum_name).
 -- PRODUCES: the Effect-floor + user-enum datatype machine's outputs — the
@@ -192,7 +192,7 @@ fsm DriverEnum
     ∀ e ∈ slots : e.ref = (e.isref ? e.refpos / 32 : 0)
     ∀ e ∈ slots : e.tabpos = index_of(decl_names, e.key, 0)
     ∀ e ∈ slots : e.istab = ((¬e.isref) ∧ (e.tabpos ≥ 0))
-    ∀ k ∈ {0..5} : slots[k].xsort = (is_first_tick ? 0 : (_decl_action = 1 ∧ _decl_step = 2 + k ∧ slots[k].istab) ? int1 : _slots[k].xsort)
+    ∀ k ∈ {0..5} : slots[k].xsort = (is_first_tick ? 0 : (_decl_action = 1 ∧ _decl_step = 2 + k ∧ slots[k].istab) ? ints[1] : _slots[k].xsort)
     ∀ e ∈ slots : e.sort = (e.isref ? 0 : e.typename = "Int" ? z3sorts.isort : e.typename = "Nat" ? z3sorts.isort : e.typename = "Bool" ? z3sorts.bsort : e.typename = "String" ? z3sorts.ssort : e.typename = "Real" ? z3sorts.rsort : e.typename = "LibArg" ? libarg_sort : e.typename = "Seq(LibArg)" ? seqarg_sort : e.typename = "Effect" ? effect_sort : e.typename = "Result" ? result_sort : e.istab ? e.xsort : 0)
     ∀ k ∈ {0..5} : slots[k].unres = ((¬slots[k].isref) ∧ (slots[k].sort = 0) ∧ (field_count ≥ k + 1))
     field_unresolved ∈ Bool = (running
@@ -369,11 +369,11 @@ fsm DriverEnum
     intresult_accessor ∈ Int
     intresult_accessor = (is_first_tick ? 0
         : (_decl_action = 3 ∧ _decl_step = 4 ∧ result_run ∧ current_variant_name = "IntResult")
-            ? int0 : _intresult_accessor)
+            ? ints[0] : _intresult_accessor)
     strresult_accessor ∈ Int
     strresult_accessor = (is_first_tick ? 0
         : (_decl_action = 3 ∧ _decl_step = 4 ∧ result_run ∧ current_variant_name = "StringResult")
-            ? int0 : _strresult_accessor)
+            ? ints[0] : _strresult_accessor)
 
     values ∈ Seq(EnumVariantVal)
     #values ≤ 160
@@ -401,7 +401,7 @@ fsm DriverEnum
     -- registry slot — the acc-table tape elem_record index.
     is_decl_step ∈ Bool = (_decl_action = 3 ∧ _decl_step = 2 ∧ _is_user_enum)
     is_tester_step ∈ Bool = (_decl_action = 3 ∧ _decl_step = 3 ∧ _is_user_enum)
-    tester_val ∈ Int = (nullary_variant ? int1 : is_intresult_capture)
+    tester_val ∈ Int = (nullary_variant ? ints[1] : is_intresult_capture)
     alloc ∈ Int
     alloc = (is_first_tick ? 0 : is_decl_step ? _alloc + 1 : _alloc)
     variant_names ∈ String
@@ -415,4 +415,4 @@ fsm DriverEnum
     ∀ e ∈ user_variants : e.tester = (is_first_tick ? 0 : (is_tester_step ∧ _e.name = current_variant_name) ? tester_val : _e.tester)
     is_accessor_step ∈ Bool = (_decl_action = 3 ∧ _decl_step = 4 ∧ _is_user_enum
         ∧ (¬nullary_variant))
-    ∀ e ∈ user_variants : e.acc = (is_first_tick ? 0 : (is_accessor_step ∧ _e.name = current_variant_name) ? int0 : _e.acc)
+    ∀ e ∈ user_variants : e.acc = (is_first_tick ? 0 : (is_accessor_step ∧ _e.name = current_variant_name) ? ints[0] : _e.acc)

@@ -4,7 +4,7 @@
 --           per-step state (current_variant, action_now/step_now, the enum_h_*/
 --           field_sort*/refs_packed* field captures, the group registers
 --           size/_read_cur/_member_base/member_index/_enumtab_count, the
---           arena base z3_arena), and is_intresult_capture / int0..5.
+--           arena base z3_arena), and is_intresult_capture / ints[0]..5.
 -- PRODUCES: the is_pure_push per-step Z3 effect constructors selected by the
 --           effects schedule: (a) the enum-datatype declaration bank
 --           (the enum_* declare/write/read effects + the enum_step_eff/
@@ -140,18 +140,9 @@ fsm DriverBuildEff
     -- step-2 capture already bumped alloc, so the elem_record is
     -- _alloc − 1). Values are the step-4 batch's lr[0..n−1].
     base_pointer ∈ Int = acctab_p + (48 * (_alloc - 1))
-    acctab_w0 ∈ Effect
-    BuildMemWriteLong(addr ↦ base_pointer, value ↦ int0, eff ↦ acctab_w0)
-    acctab_w1 ∈ Effect
-    BuildMemWriteLong(addr ↦ base_pointer + 8, value ↦ int1, eff ↦ acctab_w1)
-    acctab_w2 ∈ Effect
-    BuildMemWriteLong(addr ↦ base_pointer + 16, value ↦ int2, eff ↦ acctab_w2)
-    acctab_w3 ∈ Effect
-    BuildMemWriteLong(addr ↦ base_pointer + 24, value ↦ int3, eff ↦ acctab_w3)
-    acctab_w4 ∈ Effect
-    BuildMemWriteLong(addr ↦ base_pointer + 32, value ↦ int4, eff ↦ acctab_w4)
-    acctab_w5 ∈ Effect
-    BuildMemWriteLong(addr ↦ base_pointer + 40, value ↦ int5, eff ↦ acctab_w5)
+    acctab_ws ∈ Seq(Effect)
+    #acctab_ws ≤ 6
+    ∀ k ∈ {0..5} : BuildMemWriteLong(addr ↦ base_pointer + (8 * k), value ↦ ints[k], eff ↦ acctab_ws[k])
     enum_filler ∈ Effect = LibCall("libc", "getpid", ⟨⟩)
 
     enum_step_eff ∈ Effect = (action_now = 1 ?

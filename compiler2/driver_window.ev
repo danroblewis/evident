@@ -10,7 +10,7 @@
 --           (can_consume / start_fetch), the fetch state machine (burst_phase 0→1→2),
 --           the read-burst effects (read_tag0..pay7) and the latched
 --           tag/payload registers (tag_latch/pay_latch) + the last_results
---           int/string decoders (int0..15/res_strs) and copy effects
+--           int/string decoders (ints[0]..15/res_strs) and copy effects
 --           (eff0..7).
 -- MAINTAINS: a consumer acts only when avail ≥ need (else a 3-tick fetch
 --           burst refills from token_cursor); the window never holds an unbounded
@@ -92,6 +92,12 @@ claim FtiResStr(slot ∈ Int, s ∈ String)
         StringResult(v) ⇒ v
         _ ⇒ ""
 
+-- Decode last_results[slot]'s IntResult payload (0 if not an IntResult).
+claim FtiResInt(slot ∈ Int, n ∈ Int)
+    n = match last_results[slot]
+        IntResult(v) ⇒ v
+        _ ⇒ 0
+
 -- The fetch latch: on cap, capture last_results[slot]'s IntResult
 -- payload; otherwise hold prev (0 on tick 0).
 claim FtiLatch(slot ∈ Int, cap ∈ Bool, prev ∈ Int, cur ∈ Int)
@@ -119,75 +125,30 @@ fsm DriverWindow
     pay_latch ∈ Seq(Int)
     #pay_latch ≤ 8
 
-    int0 ∈ Int = match last_results[0]
-        IntResult(n) ⇒ n
-        _ ⇒ 0
-    int1 ∈ Int = match last_results[1]
-        IntResult(n) ⇒ n
-        _ ⇒ 0
-    int2 ∈ Int = match last_results[2]
-        IntResult(n) ⇒ n
-        _ ⇒ 0
-    int3 ∈ Int = match last_results[3]
-        IntResult(n) ⇒ n
-        _ ⇒ 0
-    int4 ∈ Int = match last_results[4]
-        IntResult(n) ⇒ n
-        _ ⇒ 0
-    int5 ∈ Int = match last_results[5]
-        IntResult(n) ⇒ n
-        _ ⇒ 0
-    int6 ∈ Int = match last_results[6]
-        IntResult(n) ⇒ n
-        _ ⇒ 0
-    int7 ∈ Int = match last_results[7]
-        IntResult(n) ⇒ n
-        _ ⇒ 0
-    int8 ∈ Int = match last_results[8]
-        IntResult(n) ⇒ n
-        _ ⇒ 0
-    int9 ∈ Int = match last_results[9]
-        IntResult(n) ⇒ n
-        _ ⇒ 0
-    int10 ∈ Int = match last_results[10]
-        IntResult(n) ⇒ n
-        _ ⇒ 0
-    int11 ∈ Int = match last_results[11]
-        IntResult(n) ⇒ n
-        _ ⇒ 0
-    int12 ∈ Int = match last_results[12]
-        IntResult(n) ⇒ n
-        _ ⇒ 0
-    int13 ∈ Int = match last_results[13]
-        IntResult(n) ⇒ n
-        _ ⇒ 0
-    int14 ∈ Int = match last_results[14]
-        IntResult(n) ⇒ n
-        _ ⇒ 0
-    int15 ∈ Int = match last_results[15]
-        IntResult(n) ⇒ n
-        _ ⇒ 0
+    ints ∈ Seq(Int)
+    #ints ≤ 16
+    ∀ k ∈ {0..15} : FtiResInt(slot ↦ k, n ↦ ints[k])
 
     is_capture_tick ∈ Bool = (_burst_phase = 1)
     ∀ k ∈ {0..7} : FtiLatch(slot ↦ 2*k, cap ↦ is_capture_tick, prev ↦ _tag_latch[k], cur ↦ tag_latch[k])
     ∀ k ∈ {0..7} : FtiLatch(slot ↦ 2*k + 1, cap ↦ is_capture_tick, prev ↦ _pay_latch[k], cur ↦ pay_latch[k])
 
-    is_str0 ∈ Bool = (int0 = 1 ∨ int0 = 3)
-    is_str1 ∈ Bool = (int2 = 1 ∨ int2 = 3)
-    is_str2 ∈ Bool = (int4 = 1 ∨ int4 = 3)
-    is_str3 ∈ Bool = (int6 = 1 ∨ int6 = 3)
-    is_str4 ∈ Bool = (int8 = 1 ∨ int8 = 3)
-    is_str5 ∈ Bool = (int10 = 1 ∨ int10 = 3)
-    is_str6 ∈ Bool = (int12 = 1 ∨ int12 = 3)
-    is_str7 ∈ Bool = (int14 = 1 ∨ int14 = 3)
-    eff0 ∈ Effect = (is_str0 ? LibCall("__cstr", "copy", ⟨ArgInt(int1)⟩) : LibCall("libc", "getpid", ⟨⟩))
-    eff1 ∈ Effect = (is_str1 ? LibCall("__cstr", "copy", ⟨ArgInt(int3)⟩) : LibCall("libc", "getpid", ⟨⟩))
-    eff2 ∈ Effect = (is_str2 ? LibCall("__cstr", "copy", ⟨ArgInt(int5)⟩) : LibCall("libc", "getpid", ⟨⟩))
-    eff3 ∈ Effect = (is_str3 ? LibCall("__cstr", "copy", ⟨ArgInt(int7)⟩) : LibCall("libc", "getpid", ⟨⟩))
-    eff4 ∈ Effect = (is_str4 ? LibCall("__cstr", "copy", ⟨ArgInt(int9)⟩) : LibCall("libc", "getpid", ⟨⟩))
-    eff5 ∈ Effect = (is_str5 ? LibCall("__cstr", "copy", ⟨ArgInt(int11)⟩) : LibCall("libc", "getpid", ⟨⟩))
-    eff6 ∈ Effect = (is_str6 ? LibCall("__cstr", "copy", ⟨ArgInt(int13)⟩) : LibCall("libc", "getpid", ⟨⟩))
-    eff7 ∈ Effect = (is_str7 ? LibCall("__cstr", "copy", ⟨ArgInt(int15)⟩) : LibCall("libc", "getpid", ⟨⟩))
+    is_str0 ∈ Bool = (ints[0] = 1 ∨ ints[0] = 3)
+    is_str1 ∈ Bool = (ints[2] = 1 ∨ ints[2] = 3)
+    is_str2 ∈ Bool = (ints[4] = 1 ∨ ints[4] = 3)
+    is_str3 ∈ Bool = (ints[6] = 1 ∨ ints[6] = 3)
+    is_str4 ∈ Bool = (ints[8] = 1 ∨ ints[8] = 3)
+    is_str5 ∈ Bool = (ints[10] = 1 ∨ ints[10] = 3)
+    is_str6 ∈ Bool = (ints[12] = 1 ∨ ints[12] = 3)
+    is_str7 ∈ Bool = (ints[14] = 1 ∨ ints[14] = 3)
+    eff0 ∈ Effect = (is_str0 ? LibCall("__cstr", "copy", ⟨ArgInt(ints[1])⟩) : LibCall("libc", "getpid", ⟨⟩))
+    eff1 ∈ Effect = (is_str1 ? LibCall("__cstr", "copy", ⟨ArgInt(ints[3])⟩) : LibCall("libc", "getpid", ⟨⟩))
+    eff2 ∈ Effect = (is_str2 ? LibCall("__cstr", "copy", ⟨ArgInt(ints[5])⟩) : LibCall("libc", "getpid", ⟨⟩))
+    eff3 ∈ Effect = (is_str3 ? LibCall("__cstr", "copy", ⟨ArgInt(ints[7])⟩) : LibCall("libc", "getpid", ⟨⟩))
+    eff4 ∈ Effect = (is_str4 ? LibCall("__cstr", "copy", ⟨ArgInt(ints[9])⟩) : LibCall("libc", "getpid", ⟨⟩))
+    eff5 ∈ Effect = (is_str5 ? LibCall("__cstr", "copy", ⟨ArgInt(ints[11])⟩) : LibCall("libc", "getpid", ⟨⟩))
+    eff6 ∈ Effect = (is_str6 ? LibCall("__cstr", "copy", ⟨ArgInt(ints[13])⟩) : LibCall("libc", "getpid", ⟨⟩))
+    eff7 ∈ Effect = (is_str7 ? LibCall("__cstr", "copy", ⟨ArgInt(ints[15])⟩) : LibCall("libc", "getpid", ⟨⟩))
 
     res_strs ∈ Seq(String)
     #res_strs ≤ 8

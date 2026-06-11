@@ -819,7 +819,7 @@ fsm driver_main
     mkconst ∈ Effect
     BuildZ3MkConst(ctx_h ↦ z3ctx.ctx, sym_h ↦ tmp_in,
         sort_h ↦ (new_const_sort = 1 ? z3sorts.bsort
-            : new_const_sort ≥ 30 ? int1
+            : new_const_sort ≥ 30 ? ints[1]
             : new_const_sort = 3 ? z3sorts.ssort
             : new_const_sort = 4 ? result_sort
             : new_const_sort = 5 ? int_array_sort
@@ -992,12 +992,12 @@ fsm driver_main
               : field_count = 4 ? ⟨read_accs[0], read_accs[1], read_accs[2], read_accs[3]⟩
               : field_count = 5 ? ⟨read_accs[0], read_accs[1], read_accs[2], read_accs[3], read_accs[4]⟩
               : ⟨read_accs[0], read_accs[1], read_accs[2], read_accs[3], read_accs[4], read_accs[5]⟩)
-            : wbatchtw ? (field_count = 1 ? ⟨acctab_w0⟩
-              : field_count = 2 ? ⟨acctab_w0, acctab_w1⟩
-              : field_count = 3 ? ⟨acctab_w0, acctab_w1, acctab_w2⟩
-              : field_count = 4 ? ⟨acctab_w0, acctab_w1, acctab_w2, acctab_w3⟩
-              : field_count = 5 ? ⟨acctab_w0, acctab_w1, acctab_w2, acctab_w3, acctab_w4⟩
-              : ⟨acctab_w0, acctab_w1, acctab_w2, acctab_w3, acctab_w4, acctab_w5⟩)
+            : wbatchtw ? (field_count = 1 ? ⟨acctab_ws[0]⟩
+              : field_count = 2 ? ⟨acctab_ws[0], acctab_ws[1]⟩
+              : field_count = 3 ? ⟨acctab_ws[0], acctab_ws[1], acctab_ws[2]⟩
+              : field_count = 4 ? ⟨acctab_ws[0], acctab_ws[1], acctab_ws[2], acctab_ws[3]⟩
+              : field_count = 5 ? ⟨acctab_ws[0], acctab_ws[1], acctab_ws[2], acctab_ws[3], acctab_ws[4]⟩
+              : ⟨acctab_ws[0], acctab_ws[1], acctab_ws[2], acctab_ws[3], acctab_ws[4], acctab_ws[5]⟩)
             : ⟨enum_step_eff⟩)
         : zstep = 10 ? ⟨arrsort⟩
         : zstep = 11 ? ⟨effects_sym⟩
