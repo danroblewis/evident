@@ -60,17 +60,17 @@ claim RtSortOf(typename ∈ String,
         ⇒ (sort = 0)
 
 claim RtFieldAcc(fname ∈ String, acc ∈ Int)
-    rfa_key ∈ String
-    FtiNameEntry(name ↦ fname, entry ↦ rfa_key)
-    rfa_p0 ∈ Int = index_of(recs[0].fnames, rfa_key, 0)
-    rfa_p1 ∈ Int = index_of(recs[1].fnames, rfa_key, 0)
-    rfa_p2 ∈ Int = index_of(recs[2].fnames, rfa_key, 0)
-    rfa_i0 ∈ Int = rfa_p0 / 32
-    rfa_i1 ∈ Int = rfa_p1 / 32
-    rfa_i2 ∈ Int = rfa_p2 / 32
-    acc = ((fname ≠ "" ∧ rfa_p0 ≥ 0) ? recs[0].accs[rfa_i0]
-        : (fname ≠ "" ∧ rfa_p1 ≥ 0) ? recs[1].accs[rfa_i1]
-        : (fname ≠ "" ∧ rfa_p2 ≥ 0) ? recs[2].accs[rfa_i2]
+    field_lookup_key ∈ String
+    FtiNameEntry(name ↦ fname, entry ↦ field_lookup_key)
+    slot0_pos ∈ Int = index_of(recs[0].fnames, field_lookup_key, 0)
+    slot1_pos ∈ Int = index_of(recs[1].fnames, field_lookup_key, 0)
+    slot2_pos ∈ Int = index_of(recs[2].fnames, field_lookup_key, 0)
+    slot0_index ∈ Int = slot0_pos / 32
+    slot1_index ∈ Int = slot1_pos / 32
+    slot2_index ∈ Int = slot2_pos / 32
+    acc = ((fname ≠ "" ∧ slot0_pos ≥ 0) ? recs[0].accs[slot0_index]
+        : (fname ≠ "" ∧ slot1_pos ≥ 0) ? recs[1].accs[slot1_index]
+        : (fname ≠ "" ∧ slot2_pos ≥ 0) ? recs[2].accs[slot2_index]
         : 0)
 
 fsm DriverRecord
