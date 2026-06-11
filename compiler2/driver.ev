@@ -188,10 +188,10 @@ fsm driver_main
     -- ── INPUT — per-process source path (see compiler2/driver_input.ev) ──
     ..DriverInput
 
-    cap_int ∈ Int = match last_results[0]
+    is_intresult_capture ∈ Int = match last_results[0]
         IntResult(n) ⇒ n
         _ ⇒ 0
-    cap_str ∈ String = match last_results[0]
+    is_strresult_capture ∈ String = match last_results[0]
         StringResult(s) ⇒ s
         _ ⇒ ""
 
@@ -277,8 +277,8 @@ fsm driver_main
     carry_decls  ∈ String
 
     -- capture_pend application (the capture tick of the previous builder).
-    stack_in ∈ C2H = (_capture_pend = 1 ? C2HCons(cap_int, _handle_stack) : _handle_stack)
-    tmp_in ∈ Int = (_capture_pend = 2 ? cap_int : _tmp_handle)
+    stack_in ∈ C2H = (_capture_pend = 1 ? C2HCons(is_intresult_capture, _handle_stack) : _handle_stack)
+    tmp_in ∈ Int = (_capture_pend = 2 ? is_intresult_capture : _tmp_handle)
     tmp_handle = (is_first_tick ? 0 : tmp_in)
 
     -- ── FTI symbol table + work-item decode (see compiler2/driver_symtab.ev) ──
@@ -476,7 +476,7 @@ fsm driver_main
         : app ? (_item_step = app_argc ? app_argc : 0)
         : it_select_eq ? (_item_step = 1 ? 1 : 0)
         : sel_eq_h ? (_item_step = 1 ? 1 : 0)
-        : it_strop ? strop_argc
+        : it_strop ? string_op_arity
         : sel_h ? 2
         : it_set_add ? 2
         : 0)
@@ -798,15 +798,15 @@ fsm driver_main
     BuildMemWriteLong(addr ↦ z3_arena + 208, value ↦ h_top, eff ↦ argw1)
     mkstring ∈ Effect
     BuildZ3MkString(ctx_h ↦ z3ctx.ctx, s ↦ str_val, eff ↦ mkstring)
-    strop_a ∈ Int = (strop_argc = 3 ? h_3rd : strop_argc = 2 ? h_2nd : h_top)
-    strop_b ∈ Int = (strop_argc = 3 ? h_2nd : strop_argc = 2 ? h_top : 0)
-    strop_c ∈ Int = (strop_argc = 3 ? h_top : 0)
+    primary_handle ∈ Int = (string_op_arity = 3 ? h_3rd : string_op_arity = 2 ? h_2nd : h_top)
+    secondary_handle ∈ Int = (string_op_arity = 3 ? h_2nd : string_op_arity = 2 ? h_top : 0)
+    tertiary_handle ∈ Int = (string_op_arity = 3 ? h_top : 0)
     strlen ∈ Effect
     BuildZ3MkSeqLength(ctx_h ↦ z3ctx.ctx, s_h ↦ h_top, eff ↦ strlen)
     eff_strop ∈ Effect
-    strop_ok ∈ Bool
-    StrOpBuildZ3(ctx_h ↦ z3ctx.ctx, op_name ↦ strop_name, a_h ↦ strop_a,
-        b_h ↦ strop_b, c_h ↦ strop_c, eff ↦ eff_strop, ok ↦ strop_ok)
+    is_string_op ∈ Bool
+    StrOpBuildZ3(ctx_h ↦ z3ctx.ctx, op_name ↦ string_op_name, a_h ↦ primary_handle,
+        b_h ↦ secondary_handle, c_h ↦ tertiary_handle, eff ↦ eff_strop, ok ↦ is_string_op)
     eff_mksym ∈ Effect
     BuildZ3MkStringSymbol(ctx_h ↦ z3ctx.ctx, name ↦ const_name, eff ↦ eff_mksym)
     -- An enum-typed decl (sort code 30+slot) reads its sort handle
@@ -941,7 +941,7 @@ fsm driver_main
         : sel_eq_h ? (_item_step = 0 ? select : eff_select_eq)
         : it_len_eq ? (_item_step = 0 ? eff_len_eq : assert_tmp)
         : len_eq_h ? eff_len_eq
-        : it_strop ? (strop_name = "len" ? strlen : eff_strop)
+        : it_strop ? (string_op_name = "len" ? strlen : eff_strop)
         : sel_h ? select_h
         : real ? mkreal
         : it_empty_set ? eff_empty_set

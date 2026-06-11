@@ -180,7 +180,7 @@ fsm DriverMatchPin
         : arm_take ? 0
         : consume_wildcard ? 0
         : (close_bind ∧ (bind_idx_now = 0)) ? acc0
-        : _acc_pend ? cap_int
+        : _acc_pend ? is_intresult_capture
         : _arm_acc)
     acc_pend = (is_first_tick ? false : accread)
     pat_n = (is_first_tick ? 0

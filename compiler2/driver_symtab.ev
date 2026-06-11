@@ -172,10 +172,10 @@ fsm DriverSymtab
     bind_acc ∈ Int = match work_head
         C2BindScope(_, ba) ⇒ ba
         _ ⇒ 0
-    strop_name ∈ String = match work_head
+    string_op_name ∈ String = match work_head
         C2StrOp(sn, _) ⇒ sn
         _ ⇒ ""
-    strop_argc ∈ Int = match work_head
+    string_op_arity ∈ Int = match work_head
         C2StrOp(_, sk) ⇒ sk
         _ ⇒ 0
     scaled ∈ Int = match work_head

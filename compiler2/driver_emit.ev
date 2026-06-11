@@ -1,6 +1,6 @@
 -- MODULE DriverEmit
 -- CONSUMES: the all-done signal (parse_done) + per-tick captures
---           (cap_int/cap_str), the Z3 solver handles (z3ctx.ctx/z3ctx.sol),
+--           (is_intresult_capture/is_strresult_capture), the Z3 solver handles (z3ctx.ctx/z3ctx.sol),
 --           the rendered-unit inputs (_manifest_fields manifest fields, _saw_lastres/
 --           _saw_first_tick prelude gates, carry_decls carry declares), and the arena
 --           buffer bases (tok_buf.base/sym_buf.base/claimindex_buf.base).
@@ -30,9 +30,9 @@ fsm DriverEmit
         : 0 - 1)
 
     unit_ptr  ∈ Int
-    unit_ptr = (is_first_tick ? 0 : render_step = 1 ? cap_int : _unit_ptr)
+    unit_ptr = (is_first_tick ? 0 : render_step = 1 ? is_intresult_capture : _unit_ptr)
     rendered  ∈ String
-    rendered = (is_first_tick ? "" : render_step = 2 ? cap_str : _rendered)
+    rendered = (is_first_tick ? "" : render_step = 2 ? is_strresult_capture : _rendered)
 
     solver_str ∈ Effect
     BuildZ3SolverToString(ctx_h ↦ z3ctx.ctx, solver_h ↦ z3ctx.sol, eff ↦ solver_str)

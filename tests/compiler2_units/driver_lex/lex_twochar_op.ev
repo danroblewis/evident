@@ -20,8 +20,8 @@ fsm main
     input   = (is_first_tick ? "x ++ y" : _input)
     tok_buf      ∈ FtiBuffer
     tok_buf.base = (is_first_tick ? 0 : _tok_buf.base)
-    cap_int ∈ Int
-    cap_int = (is_first_tick ? 0 : _cap_int)
+    is_intresult_capture ∈ Int
+    is_intresult_capture = (is_first_tick ? 0 : _is_intresult_capture)
     ..DriverLex
     cnt_msg ∈ String = str_from_int(tok_buf.count)
     effects ∈ Seq(Effect) = (lexing_done

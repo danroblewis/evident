@@ -1,7 +1,7 @@
 -- MODULE DriverEnum
 -- CONSUMES: the ZINIT start gate (zstep parked at 9), the Z3 base-sort
 --           handles (z3sorts.isort/z3sorts.bsort/z3sorts.ssort/z3sorts.rsort) + the int-result
---           captures cap_int/int0/int1, and the user-enum collection
+--           captures is_intresult_capture/int0/int1, and the user-enum collection
 --           signals from the parse dispatcher (group_go,
 --           member_end, list_now, _user_enum_name).
 -- PRODUCES: the Effect-floor + user-enum datatype machine's outputs — the
@@ -300,12 +300,12 @@ fsm DriverEnum
         : _variant_count)
 
     header_name = (is_first_tick ? 0
-        : (_decl_action = 1 ∧ _decl_step = 0) ? cap_int
-        : (_decl_action = 1 ∧ _decl_step = 11) ? cap_int
+        : (_decl_action = 1 ∧ _decl_step = 0) ? is_intresult_capture
+        : (_decl_action = 1 ∧ _decl_step = 11) ? is_intresult_capture
         : _header_name)
     header_recognized = (is_first_tick ? 0
-        : (_decl_action = 1 ∧ _decl_step = 1) ? cap_int : _header_recognized)
-    ∀ k ∈ {0..5} : header_fields[k] = (is_first_tick ? 0 : (_decl_action = 1 ∧ _decl_step = 2 + k) ? cap_int : _header_fields[k])
+        : (_decl_action = 1 ∧ _decl_step = 1) ? is_intresult_capture : _header_recognized)
+    ∀ k ∈ {0..5} : header_fields[k] = (is_first_tick ? 0 : (_decl_action = 1 ∧ _decl_step = 2 + k) ? is_intresult_capture : _header_fields[k])
 
     -- ── group sort capture: floor registers + the enum table ──────
     libarg_sort ∈ Int
@@ -314,13 +314,13 @@ fsm DriverEnum
     result_sort ∈ Int
     sort_capacity ∈ Bool = (_decl_action = 2 ∧ _decl_step = 1)
     libarg_sort = (is_first_tick ? 0
-        : (sort_capacity ∧ (¬_is_user_enum) ∧ _source = 0) ? cap_int : _libarg_sort)
+        : (sort_capacity ∧ (¬_is_user_enum) ∧ _source = 0) ? is_intresult_capture : _libarg_sort)
     seqarg_sort = (is_first_tick ? 0
-        : (sort_capacity ∧ (¬_is_user_enum) ∧ _source = 1) ? cap_int : _seqarg_sort)
+        : (sort_capacity ∧ (¬_is_user_enum) ∧ _source = 1) ? is_intresult_capture : _seqarg_sort)
     effect_sort = (is_first_tick ? 0
-        : (sort_capacity ∧ (¬_is_user_enum) ∧ _source = 2) ? cap_int : _effect_sort)
+        : (sort_capacity ∧ (¬_is_user_enum) ∧ _source = 2) ? is_intresult_capture : _effect_sort)
     result_sort = (is_first_tick ? 0
-        : (sort_capacity ∧ (¬_is_user_enum) ∧ _source = 3) ? cap_int : _result_sort)
+        : (sort_capacity ∧ (¬_is_user_enum) ∧ _source = 3) ? is_intresult_capture : _result_sort)
     decl_names ∈ String
     enumtab_count ∈ Int
     decl_names = (is_first_tick ? ""
@@ -333,23 +333,23 @@ fsm DriverEnum
     capacity ∈ Bool = (_decl_action = 3 ∧ _decl_step = 2)
     exit_decl ∈ Int
     exit_decl = (is_first_tick ? 0
-        : (capacity ∧ current_variant_name = "Exit") ? cap_int : _exit_decl)
+        : (capacity ∧ current_variant_name = "Exit") ? is_intresult_capture : _exit_decl)
     libcall_decl ∈ Int
     libcall_decl = (is_first_tick ? 0
-        : (capacity ∧ current_variant_name = "LibCall") ? cap_int : _libcall_decl)
+        : (capacity ∧ current_variant_name = "LibCall") ? is_intresult_capture : _libcall_decl)
     argstr_decl ∈ Int
     argstr_decl = (is_first_tick ? 0
-        : (capacity ∧ current_variant_name = "ArgStr") ? cap_int : _argstr_decl)
+        : (capacity ∧ current_variant_name = "ArgStr") ? is_intresult_capture : _argstr_decl)
     argint_decl ∈ Int
     argint_decl = (is_first_tick ? 0
-        : (capacity ∧ current_variant_name = "ArgInt") ? cap_int : _argint_decl)
+        : (capacity ∧ current_variant_name = "ArgInt") ? is_intresult_capture : _argint_decl)
     cell_decl ∈ Int
     cell_decl = (is_first_tick ? 0
-        : (capacity ∧ current_variant_name = "__Cell_LibArg") ? cap_int : _cell_decl)
+        : (capacity ∧ current_variant_name = "__Cell_LibArg") ? is_intresult_capture : _cell_decl)
     value_capacity ∈ Bool = (_decl_action = 3 ∧ _decl_step = 3 ∧ nullary_variant)
     empty_val ∈ Int
     empty_val = (is_first_tick ? 0
-        : (value_capacity ∧ current_variant_name = "__Empty_LibArg") ? cap_int : _empty_val)
+        : (value_capacity ∧ current_variant_name = "__Empty_LibArg") ? is_intresult_capture : _empty_val)
 
     -- Result-floor tester + accessor decls. The tester read (emitted
     -- at step 3) captures at the _decl_step = 3 tick; the accessor
@@ -361,11 +361,11 @@ fsm DriverEnum
     intresult_tester ∈ Int
     intresult_tester = (is_first_tick ? 0
         : (_decl_action = 3 ∧ _decl_step = 3 ∧ result_run ∧ current_variant_name = "IntResult")
-            ? cap_int : _intresult_tester)
+            ? is_intresult_capture : _intresult_tester)
     strresult_tester ∈ Int
     strresult_tester = (is_first_tick ? 0
         : (_decl_action = 3 ∧ _decl_step = 3 ∧ result_run ∧ current_variant_name = "StringResult")
-            ? cap_int : _strresult_tester)
+            ? is_intresult_capture : _strresult_tester)
     intresult_accessor ∈ Int
     intresult_accessor = (is_first_tick ? 0
         : (_decl_action = 3 ∧ _decl_step = 4 ∧ result_run ∧ current_variant_name = "IntResult")
@@ -378,7 +378,7 @@ fsm DriverEnum
     values ∈ Seq(EnumVariantVal)
     #values ≤ 160
     value_add ∈ Bool = (value_capacity ∧ _is_user_enum)
-    values = (is_first_tick ? ⟨⟩ : value_add ? _values ++ ⟨EnumVariantVal(current_variant_name, cap_int)⟩ : _values)
+    values = (is_first_tick ? ⟨⟩ : value_add ? _values ++ ⟨EnumVariantVal(current_variant_name, is_intresult_capture)⟩ : _values)
 
     -- User-enum variant DECL registry: per variant, the ctor func_decl
     -- (mk_app target for `B(7)` ctor applications), the TESTER
@@ -399,20 +399,20 @@ fsm DriverEnum
     -- 2026-06-10). variant_names is the registry's name COLUMN
     -- ("|"+31-pad rows): index_of/32 over it is also the variant's
     -- registry slot — the acc-table tape row index.
-    cap_decl ∈ Bool = (_decl_action = 3 ∧ _decl_step = 2 ∧ _is_user_enum)
-    cap_tester ∈ Bool = (_decl_action = 3 ∧ _decl_step = 3 ∧ _is_user_enum)
-    tester_val ∈ Int = (nullary_variant ? int1 : cap_int)
+    is_decl_step ∈ Bool = (_decl_action = 3 ∧ _decl_step = 2 ∧ _is_user_enum)
+    is_tester_step ∈ Bool = (_decl_action = 3 ∧ _decl_step = 3 ∧ _is_user_enum)
+    tester_val ∈ Int = (nullary_variant ? int1 : is_intresult_capture)
     alloc ∈ Int
-    alloc = (is_first_tick ? 0 : cap_decl ? _alloc + 1 : _alloc)
+    alloc = (is_first_tick ? 0 : is_decl_step ? _alloc + 1 : _alloc)
     variant_names ∈ String
     variant_names = (is_first_tick ? ""
-        : cap_decl ? (_variant_names ++ "|" ++ substr(current_variant_name ++ "                               ", 0, 31))
+        : is_decl_step ? (_variant_names ++ "|" ++ substr(current_variant_name ++ "                               ", 0, 31))
         : _variant_names)
     user_variants ∈ Seq(UserEnumVariant)
     #user_variants ≤ 160
-    ∀ k ∈ {0..159} : user_variants[k].name = (is_first_tick ? "" : (cap_decl ∧ _alloc = k) ? current_variant_name : _user_variants[k].name)
-    ∀ k ∈ {0..159} : user_variants[k].ctor = (is_first_tick ? 0 : (cap_decl ∧ _alloc = k) ? cap_int : _user_variants[k].ctor)
-    ∀ e ∈ user_variants : e.tester = (is_first_tick ? 0 : (cap_tester ∧ _e.name = current_variant_name) ? tester_val : _e.tester)
-    cap_acc ∈ Bool = (_decl_action = 3 ∧ _decl_step = 4 ∧ _is_user_enum
+    ∀ k ∈ {0..159} : user_variants[k].name = (is_first_tick ? "" : (is_decl_step ∧ _alloc = k) ? current_variant_name : _user_variants[k].name)
+    ∀ k ∈ {0..159} : user_variants[k].ctor = (is_first_tick ? 0 : (is_decl_step ∧ _alloc = k) ? is_intresult_capture : _user_variants[k].ctor)
+    ∀ e ∈ user_variants : e.tester = (is_first_tick ? 0 : (is_tester_step ∧ _e.name = current_variant_name) ? tester_val : _e.tester)
+    is_accessor_step ∈ Bool = (_decl_action = 3 ∧ _decl_step = 4 ∧ _is_user_enum
         ∧ (¬nullary_variant))
-    ∀ e ∈ user_variants : e.acc = (is_first_tick ? 0 : (cap_acc ∧ _e.name = current_variant_name) ? int0 : _e.acc)
+    ∀ e ∈ user_variants : e.acc = (is_first_tick ? 0 : (is_accessor_step ∧ _e.name = current_variant_name) ? int0 : _e.acc)

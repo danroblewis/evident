@@ -16,10 +16,10 @@ import "compiler2/driver_emit.ev"
 fsm main
     parse_done ∈ Bool
     parse_done = (is_first_tick ? true : _parse_done)
-    cap_int ∈ Int
-    cap_int = (is_first_tick ? 0 : _cap_int)
-    cap_str ∈ String
-    cap_str = (is_first_tick ? "" : _cap_str)
+    is_intresult_capture ∈ Int
+    is_intresult_capture = (is_first_tick ? 0 : _is_intresult_capture)
+    is_strresult_capture ∈ String
+    is_strresult_capture = (is_first_tick ? "" : _is_strresult_capture)
     z3ctx ∈ Z3SolverCtx
     z3ctx.cfg = (is_first_tick ? 0 : _z3ctx.cfg)
     z3ctx.ctx = (is_first_tick ? 0 : _z3ctx.ctx)

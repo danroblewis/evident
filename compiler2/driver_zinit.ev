@@ -1,5 +1,5 @@
 -- MODULE DriverZInit
--- CONSUMES: cap_int (the per-tick IntResult capture), and the ED
+-- CONSUMES: is_intresult_capture (the per-tick IntResult capture), and the ED
 --           machine's idle signals (_decl_action, _source) that gate the
 --           zstep hold at 9 while the Effect-floor datatypes declare.
 -- PRODUCES: the Z3-lifecycle latch bank — zstep (the setup program
@@ -25,64 +25,64 @@ fsm DriverZInit
         : (_zstep < 60 ? _zstep + 1 : _zstep))
 
     z3ctx ∈ Z3SolverCtx
-    z3ctx.cfg = (is_first_tick ? 0 : zstep = 1 ? cap_int : _z3ctx.cfg)
-    z3ctx.ctx = (is_first_tick ? 0 : zstep = 2 ? cap_int : _z3ctx.ctx)
-    z3ctx.sol = (is_first_tick ? 0 : zstep = 3 ? cap_int : _z3ctx.sol)
+    z3ctx.cfg = (is_first_tick ? 0 : zstep = 1 ? is_intresult_capture : _z3ctx.cfg)
+    z3ctx.ctx = (is_first_tick ? 0 : zstep = 2 ? is_intresult_capture : _z3ctx.ctx)
+    z3ctx.sol = (is_first_tick ? 0 : zstep = 3 ? is_intresult_capture : _z3ctx.sol)
     z3sorts ∈ Z3Sorts
-    z3sorts.isort = (is_first_tick ? 0 : zstep = 5 ? cap_int : _z3sorts.isort)
-    z3sorts.bsort = (is_first_tick ? 0 : zstep = 6 ? cap_int : _z3sorts.bsort)
-    z3sorts.ssort = (is_first_tick ? 0 : zstep = 7 ? cap_int : _z3sorts.ssort)
-    z3sorts.rsort = (is_first_tick ? 0 : zstep = 8 ? cap_int : _z3sorts.rsort)
+    z3sorts.isort = (is_first_tick ? 0 : zstep = 5 ? is_intresult_capture : _z3sorts.isort)
+    z3sorts.bsort = (is_first_tick ? 0 : zstep = 6 ? is_intresult_capture : _z3sorts.bsort)
+    z3sorts.ssort = (is_first_tick ? 0 : zstep = 7 ? is_intresult_capture : _z3sorts.ssort)
+    z3sorts.rsort = (is_first_tick ? 0 : zstep = 8 ? is_intresult_capture : _z3sorts.rsort)
     -- zstep holds at 9; latch the arena only on the FIRST 9-tick.
     z3_arena ∈ Int
     z3_arena = (is_first_tick ? 0
-        : (zstep = 9 ∧ _zstep = 8) ? cap_int : _z3_arena)
+        : (zstep = 9 ∧ _zstep = 8) ? is_intresult_capture : _z3_arena)
     effect_arraysort ∈ Int
-    effect_arraysort = (is_first_tick ? 0 : zstep = 11 ? cap_int : _effect_arraysort)
+    effect_arraysort = (is_first_tick ? 0 : zstep = 11 ? is_intresult_capture : _effect_arraysort)
     effects_symbol ∈ Int
-    effects_symbol = (is_first_tick ? 0 : zstep = 12 ? cap_int : _effects_symbol)
+    effects_symbol = (is_first_tick ? 0 : zstep = 12 ? is_intresult_capture : _effects_symbol)
     z3_effects ∈ Int
-    z3_effects = (is_first_tick ? 0 : zstep = 13 ? cap_int : _z3_effects)
+    z3_effects = (is_first_tick ? 0 : zstep = 13 ? is_intresult_capture : _z3_effects)
     effects_length_symbol ∈ Int
-    effects_length_symbol = (is_first_tick ? 0 : zstep = 14 ? cap_int : _effects_length_symbol)
+    effects_length_symbol = (is_first_tick ? 0 : zstep = 14 ? is_intresult_capture : _effects_length_symbol)
     effects_length ∈ Int
-    effects_length = (is_first_tick ? 0 : zstep = 15 ? cap_int : _effects_length)
+    effects_length = (is_first_tick ? 0 : zstep = 15 ? is_intresult_capture : _effects_length)
     z3nums ∈ Z3Numerals
-    z3nums.zero = (is_first_tick ? 0 : zstep = 16 ? cap_int : _z3nums.zero)
-    z3nums.one = (is_first_tick ? 0 : zstep = 17 ? cap_int : _z3nums.one)
-    z3nums.two = (is_first_tick ? 0 : zstep = 18 ? cap_int : _z3nums.two)
+    z3nums.zero = (is_first_tick ? 0 : zstep = 16 ? is_intresult_capture : _z3nums.zero)
+    z3nums.one = (is_first_tick ? 0 : zstep = 17 ? is_intresult_capture : _z3nums.one)
+    z3nums.two = (is_first_tick ? 0 : zstep = 18 ? is_intresult_capture : _z3nums.two)
     z3_true ∈ Int
-    z3_true = (is_first_tick ? 0 : zstep = 19 ? cap_int : _z3_true)
+    z3_true = (is_first_tick ? 0 : zstep = 19 ? is_intresult_capture : _z3_true)
     z3_false ∈ Int
-    z3_false = (is_first_tick ? 0 : zstep = 20 ? cap_int : _z3_false)
+    z3_false = (is_first_tick ? 0 : zstep = 20 ? is_intresult_capture : _z3_false)
     tok_buf ∈ FtiBuffer
-    tok_buf.base = (is_first_tick ? 0 : zstep = 21 ? cap_int : _tok_buf.base)
+    tok_buf.base = (is_first_tick ? 0 : zstep = 21 ? is_intresult_capture : _tok_buf.base)
     tok_buf.cap = 65534
     sym_buf ∈ FtiBuffer
-    sym_buf.base = (is_first_tick ? 0 : zstep = 22 ? cap_int : _sym_buf.base)
+    sym_buf.base = (is_first_tick ? 0 : zstep = 22 ? is_intresult_capture : _sym_buf.base)
     sym_buf.cap = 8192
     last_results_sort ∈ Int
-    last_results_sort = (is_first_tick ? 0 : zstep = 23 ? cap_int : _last_results_sort)
+    last_results_sort = (is_first_tick ? 0 : zstep = 23 ? is_intresult_capture : _last_results_sort)
     last_results_symbol ∈ Int
-    last_results_symbol = (is_first_tick ? 0 : zstep = 24 ? cap_int : _last_results_symbol)
+    last_results_symbol = (is_first_tick ? 0 : zstep = 24 ? is_intresult_capture : _last_results_symbol)
     z3_last_results ∈ Int
-    z3_last_results = (is_first_tick ? 0 : zstep = 25 ? cap_int : _z3_last_results)
+    z3_last_results = (is_first_tick ? 0 : zstep = 25 ? is_intresult_capture : _z3_last_results)
     last_results_length_symbol ∈ Int
-    last_results_length_symbol = (is_first_tick ? 0 : zstep = 26 ? cap_int : _last_results_length_symbol)
+    last_results_length_symbol = (is_first_tick ? 0 : zstep = 26 ? is_intresult_capture : _last_results_length_symbol)
     last_results_length ∈ Int
-    last_results_length = (is_first_tick ? 0 : zstep = 27 ? cap_int : _last_results_length)
+    last_results_length = (is_first_tick ? 0 : zstep = 27 ? is_intresult_capture : _last_results_length)
     first_tick_symbol ∈ Int
-    first_tick_symbol = (is_first_tick ? 0 : zstep = 28 ? cap_int : _first_tick_symbol)
+    first_tick_symbol = (is_first_tick ? 0 : zstep = 28 ? is_intresult_capture : _first_tick_symbol)
     z3_first_tick ∈ Int
-    z3_first_tick = (is_first_tick ? 0 : zstep = 29 ? cap_int : _z3_first_tick)
+    z3_first_tick = (is_first_tick ? 0 : zstep = 29 ? is_intresult_capture : _z3_first_tick)
     last_results_geq ∈ Int
-    last_results_geq = (is_first_tick ? 0 : zstep = 30 ? cap_int : _last_results_geq)
-    z3nums.three = (is_first_tick ? 0 : zstep = 33 ? cap_int : _z3nums.three)
-    z3nums.four = (is_first_tick ? 0 : zstep = 34 ? cap_int : _z3nums.four)
+    last_results_geq = (is_first_tick ? 0 : zstep = 30 ? is_intresult_capture : _last_results_geq)
+    z3nums.three = (is_first_tick ? 0 : zstep = 33 ? is_intresult_capture : _z3nums.three)
+    z3nums.four = (is_first_tick ? 0 : zstep = 34 ? is_intresult_capture : _z3nums.four)
     int_array_sort ∈ Int
-    int_array_sort = (is_first_tick ? 0 : zstep = 35 ? cap_int : _int_array_sort)
+    int_array_sort = (is_first_tick ? 0 : zstep = 35 ? is_intresult_capture : _int_array_sort)
     effects_length_geq ∈ Int
-    effects_length_geq = (is_first_tick ? 0 : zstep = 36 ? cap_int : _effects_length_geq)
+    effects_length_geq = (is_first_tick ? 0 : zstep = 36 ? is_intresult_capture : _effects_length_geq)
     claimindex_buf ∈ FtiBuffer
-    claimindex_buf.base = (is_first_tick ? 0 : zstep = 38 ? cap_int : _claimindex_buf.base)
+    claimindex_buf.base = (is_first_tick ? 0 : zstep = 38 ? is_intresult_capture : _claimindex_buf.base)
     claimindex_buf.cap = 2048

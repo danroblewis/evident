@@ -1,6 +1,6 @@
 -- MODULE DriverLex
 -- CONSUMES: input (source text), pos/_pos scan cursor, tok_buf.base (FTI token
---           buffer base), cap_int (last libc capture), _zstep / _got_path
+--           buffer base), is_intresult_capture (last libc capture), _zstep / _got_path
 --           (start gate), and the pure lex char-class helpers
 --           (IsAlphaChar/IsDigitChar/IsWhitespace/IsQuote/LexCharTag/
 --           DigitToInt/EscapeChar/WsRunLen) + the LexFtiPlan token planner.
@@ -217,7 +217,7 @@ fsm DriverLex
     write_pay0   ∈ Effect = LibCall("__mem", "write_long", ⟨ArgInt(payload0_addr), ArgInt(plan_pay0)⟩)
     write_tag1 ∈ Effect = LibCall("__mem", "write_long", ⟨ArgInt(tag1_addr), ArgInt(tag1_pp)⟩)
     strdup   ∈ Effect = LibCall("libc", "strdup", ⟨ArgStr(plan_str0)⟩)
-    pend_str  ∈ Effect = LibCall("__mem", "write_long", ⟨ArgInt(_str_addr), ArgInt(cap_int)⟩)
+    pend_str  ∈ Effect = LibCall("__mem", "write_long", ⟨ArgInt(_str_addr), ArgInt(is_intresult_capture)⟩)
     eof   ∈ Effect = LibCall("__mem", "write_long", ⟨ArgInt(tok_buf.base + (tok_buf.count * 32)), ArgInt(13)⟩)
 
     has_input ∈ Bool = (#input > 0)

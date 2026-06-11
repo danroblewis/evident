@@ -4,7 +4,7 @@
 --           per-step state (current_variant, action_now/step_now, the enum_h_*/
 --           field_sort*/refs_packed* field captures, the group registers
 --           size/_read_cur/_member_base/member_index/_enumtab_count, the
---           arena base z3_arena), and cap_int / int0..5.
+--           arena base z3_arena), and is_intresult_capture / int0..5.
 -- PRODUCES: the pure per-step Z3 effect constructors selected by the
 --           effects schedule: (a) the enum-datatype declaration bank
 --           (the enum_* declare/write/read effects + the enum_step_eff/
@@ -48,7 +48,7 @@ fsm DriverBuildEff
 
     fsyms_now ∈ Seq(Int)
     #fsyms_now ≤ 6
-    ∀ k ∈ {0..5} : fsyms_now[k] = (_decl_step = 2 + k ? cap_int : _header_fields[k])
+    ∀ k ∈ {0..5} : fsyms_now[k] = (_decl_step = 2 + k ? is_intresult_capture : _header_fields[k])
     enum_namesym ∈ Effect
     VariantNameSymStep(ctx_h ↦ z3ctx.ctx, v ↦ current_variant, eff ↦ enum_namesym)
     recogsym ∈ Effect
@@ -98,7 +98,7 @@ fsm DriverBuildEff
         fnames_p ↦ enum_fnames_p, fsorts_p ↦ enum_fsorts_p, srefs_p ↦ enum_srefs_p,
         eff ↦ mk_ctor)
     write_ctor ∈ Effect
-    BuildMemWriteLong(addr ↦ ctors_p + (8 * _index), value ↦ cap_int,
+    BuildMemWriteLong(addr ↦ ctors_p + (8 * _index), value ↦ is_intresult_capture,
         eff ↦ write_ctor)
     sortsym_decl ∈ EnumDeclAst = EnumD(_declared_name, EVNil)
     sortsym ∈ Effect
@@ -111,7 +111,7 @@ fsm DriverBuildEff
         value ↦ header_name, eff ↦ write_name)
     write_clist ∈ Effect
     BuildMemWriteLong(addr ↦ clists_p + (8 * member_index),
-        value ↦ cap_int, eff ↦ write_clist)
+        value ↦ is_intresult_capture, eff ↦ write_clist)
     mk_datatype ∈ Effect
     BuildZ3MkDatatypes(ctx_h ↦ z3ctx.ctx, n_sorts ↦ size,
         sort_names_arr_p ↦ sortnames_p, sorts_out_arr_p ↦ sortsout_p,
@@ -120,16 +120,16 @@ fsm DriverBuildEff
     BuildMemReadLong(addr ↦ sortsout_p + (8 * _read_cur), eff ↦ read_sort)
     write_tab ∈ Effect
     BuildMemWriteLong(addr ↦ enumtab_p + (8 * (_enumtab_count + _read_cur)),
-        value ↦ cap_int, eff ↦ write_tab)
+        value ↦ is_intresult_capture, eff ↦ write_tab)
     enum_read_ctor ∈ Effect
     BuildMemReadLong(addr ↦ ctors_p + (8 * _index), eff ↦ enum_read_ctor)
     query ∈ Effect
-    VariantQueryStep(ctx_h ↦ z3ctx.ctx, ctor_h ↦ cap_int, v ↦ current_variant,
+    VariantQueryStep(ctx_h ↦ z3ctx.ctx, ctor_h ↦ is_intresult_capture, v ↦ current_variant,
         out_base_p ↦ query_p, eff ↦ query)
     read_decl ∈ Effect
     BuildMemReadLong(addr ↦ query_p, eff ↦ read_decl)
     app0 ∈ Effect
-    CtorAppStep(ctx_h ↦ z3ctx.ctx, ctor_decl_h ↦ cap_int, n_args ↦ 0,
+    CtorAppStep(ctx_h ↦ z3ctx.ctx, ctor_decl_h ↦ is_intresult_capture, n_args ↦ 0,
         args_p ↦ 0, eff ↦ app0)
     read_tester ∈ Effect
     BuildMemReadLong(addr ↦ query_p + 8, eff ↦ read_tester)

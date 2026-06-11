@@ -3,7 +3,7 @@
 --           (comp_call/bare/dd/line, tymem_call/bare/line, line_name,
 --           line_ty_name, callee_pos), the claim index base (claimindex_buf.base), the
 --           handle-stack views (h_top/2nd/.. + tail1.. + stack_in),
---           cap_int, the parse gate (parse, _parse_mode, tok_ready,
+--           is_intresult_capture, the parse gate (parse, _parse_mode, tok_ready,
 --           nil), the line-pop signal (frame_pop), the record
 --           registry (recs name/sort), the callee param registry walked
 --           during pskip (posbind's param_names/_param_count), the active-
@@ -137,7 +137,7 @@ fsm DriverCompose
     recdecl_items ∈ C2Items = C2ICons(C2RecDecl(_inst_name, _type_slot), C2INil)
 
     jump ∈ Bool = (callw_fire ∨ bare_jump ∨ jump_fire ∨ posjump_fire)
-    target_now ∈ Int = (bare_jump ? cap_int : _jump_target)
+    target_now ∈ Int = (bare_jump ? is_intresult_capture : _jump_target)
     ret_now ∈ Int = (callw_fire ? _tok_cur + 1 : _tok_cur)
 
     pskip_act ∈ Bool = (parse ∧ (_parse_mode = 2) ∧ nil
@@ -249,7 +249,7 @@ fsm DriverCompose
         : posjump_fire ? _call_count + 1
         : _call_count)
     jump_target = (is_first_tick ? 0
-        : (callw_cap ∨ capture ∨ posjump_cap) ? cap_int
+        : (callw_cap ∨ capture ∨ posjump_cap) ? is_intresult_capture
         : _jump_target)
     param_skip = (is_first_tick ? 0
         : jump ? 1

@@ -1,7 +1,7 @@
 -- MODULE DriverRecord
 -- CONSUMES: the parse cursor/window + skip-pass record collection (the
 --           `type Name(...)` tops), the Z3 base-sort handles (int/bool/
---           str/real/iarr), cap_int captures, and the parse_mode-13 RD gate.
+--           str/real/iarr), is_intresult_capture captures, and the parse_mode-13 RD gate.
 -- PRODUCES: the record-type registry recs (≤3 entries): per-type Z3 tuple
 --           sort, ctor decl, array/set sorts, ≤6 accessor decls, the
 --           fixed-width field-name/type record strings, and the RD
@@ -197,23 +197,23 @@ fsm DriverRecord
 
     recdecl_cap ∈ Bool = recdecl_prev
     h_name = (is_first_tick ? 0
-        : (recdecl_cap ∧ _recdecl_st = 0) ? cap_int : _h_name)
-    ∀ k ∈ {0..5} : h_fields[k] = (is_first_tick ? 0 : (recdecl_cap ∧ _recdecl_st = 1 ∧ _field_i = k) ? cap_int : _h_fields[k])
+        : (recdecl_cap ∧ _recdecl_st = 0) ? is_intresult_capture : _h_name)
+    ∀ k ∈ {0..5} : h_fields[k] = (is_first_tick ? 0 : (recdecl_cap ∧ _recdecl_st = 1 ∧ _field_i = k) ? is_intresult_capture : _h_fields[k])
     sort_cap ∈ Bool = (recdecl_cap ∧ _recdecl_st = 3)
     ctor_cap ∈ Bool = (recdecl_cap ∧ _recdecl_st = 4)
     acc_cap ∈ Bool = (recdecl_cap ∧ _recdecl_st = 5)
     asort_cap ∈ Bool = (recdecl_cap ∧ _recdecl_st = 6)
     ssort_cap ∈ Bool = (recdecl_cap ∧ _recdecl_st = 7)
-    ∀ k ∈ {0..2} : recs[k].sort = (is_first_tick ? 0 : (sort_cap ∧ rec_slot = k) ? cap_int : _recs[k].sort)
-    ∀ k ∈ {0..2} : recs[k].ctor = (is_first_tick ? 0 : (ctor_cap ∧ rec_slot = k) ? cap_int : _recs[k].ctor)
-    ∀ k ∈ {0..2} : recs[k].asort = (is_first_tick ? 0 : (asort_cap ∧ rec_slot = k) ? cap_int : _recs[k].asort)
-    ∀ k ∈ {0..2} : recs[k].ssort = (is_first_tick ? 0 : (ssort_cap ∧ rec_slot = k) ? cap_int : _recs[k].ssort)
-    ∀ k ∈ {0..2} : recs[k].accs[0] = (is_first_tick ? 0 : (acc_cap ∧ rec_slot = k ∧ _field_i = 0) ? cap_int : _recs[k].accs[0])
-    ∀ k ∈ {0..2} : recs[k].accs[1] = (is_first_tick ? 0 : (acc_cap ∧ rec_slot = k ∧ _field_i = 1) ? cap_int : _recs[k].accs[1])
-    ∀ k ∈ {0..2} : recs[k].accs[2] = (is_first_tick ? 0 : (acc_cap ∧ rec_slot = k ∧ _field_i = 2) ? cap_int : _recs[k].accs[2])
-    ∀ k ∈ {0..2} : recs[k].accs[3] = (is_first_tick ? 0 : (acc_cap ∧ rec_slot = k ∧ _field_i = 3) ? cap_int : _recs[k].accs[3])
-    ∀ k ∈ {0..2} : recs[k].accs[4] = (is_first_tick ? 0 : (acc_cap ∧ rec_slot = k ∧ _field_i = 4) ? cap_int : _recs[k].accs[4])
-    ∀ k ∈ {0..2} : recs[k].accs[5] = (is_first_tick ? 0 : (acc_cap ∧ rec_slot = k ∧ _field_i = 5) ? cap_int : _recs[k].accs[5])
+    ∀ k ∈ {0..2} : recs[k].sort = (is_first_tick ? 0 : (sort_cap ∧ rec_slot = k) ? is_intresult_capture : _recs[k].sort)
+    ∀ k ∈ {0..2} : recs[k].ctor = (is_first_tick ? 0 : (ctor_cap ∧ rec_slot = k) ? is_intresult_capture : _recs[k].ctor)
+    ∀ k ∈ {0..2} : recs[k].asort = (is_first_tick ? 0 : (asort_cap ∧ rec_slot = k) ? is_intresult_capture : _recs[k].asort)
+    ∀ k ∈ {0..2} : recs[k].ssort = (is_first_tick ? 0 : (ssort_cap ∧ rec_slot = k) ? is_intresult_capture : _recs[k].ssort)
+    ∀ k ∈ {0..2} : recs[k].accs[0] = (is_first_tick ? 0 : (acc_cap ∧ rec_slot = k ∧ _field_i = 0) ? is_intresult_capture : _recs[k].accs[0])
+    ∀ k ∈ {0..2} : recs[k].accs[1] = (is_first_tick ? 0 : (acc_cap ∧ rec_slot = k ∧ _field_i = 1) ? is_intresult_capture : _recs[k].accs[1])
+    ∀ k ∈ {0..2} : recs[k].accs[2] = (is_first_tick ? 0 : (acc_cap ∧ rec_slot = k ∧ _field_i = 2) ? is_intresult_capture : _recs[k].accs[2])
+    ∀ k ∈ {0..2} : recs[k].accs[3] = (is_first_tick ? 0 : (acc_cap ∧ rec_slot = k ∧ _field_i = 3) ? is_intresult_capture : _recs[k].accs[3])
+    ∀ k ∈ {0..2} : recs[k].accs[4] = (is_first_tick ? 0 : (acc_cap ∧ rec_slot = k ∧ _field_i = 4) ? is_intresult_capture : _recs[k].accs[4])
+    ∀ k ∈ {0..2} : recs[k].accs[5] = (is_first_tick ? 0 : (acc_cap ∧ rec_slot = k ∧ _field_i = 5) ? is_intresult_capture : _recs[k].accs[5])
 
     recdecl_fnames_p ∈ Int = z3_arena + 288
     recdecl_fsorts_p ∈ Int = z3_arena + 336
@@ -226,7 +226,7 @@ fsm DriverRecord
     RtRecName(s ↦ cur_fnames, i ↦ eff_fi, name ↦ recdecl_fname)
     h_fields_now ∈ Seq(Int)
     #h_fields_now ≤ 6
-    ∀ k ∈ {0..5} : h_fields_now[k] = ((recdecl_cap ∧ _recdecl_st = 1 ∧ _field_i = k) ? cap_int : _h_fields[k])
+    ∀ k ∈ {0..5} : h_fields_now[k] = ((recdecl_cap ∧ _recdecl_st = 1 ∧ _field_i = k) ? is_intresult_capture : _h_fields[k])
     recdecl_fields ∈ Seq(RdField)
     #recdecl_fields ≤ 6
     ∀ k ∈ {0..5} : RtRecName(s ↦ cur_ftypes, i ↦ k, name ↦ recdecl_fields[k].typename)
