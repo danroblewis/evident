@@ -1,7 +1,7 @@
 -- MODULE DriverSymtab
 -- CONSUMES: the current work-item list (work_items) + the handle stack
 --           (stack_in), the parse gate (parse, _parse_mode, can_consume),
---           the decl-context flags (in_claim, qloop_on, pinning, param_skip),
+--           the decl-context flags (in_claim, qloop.on, pinning, param_skip),
 --           the lookup-read signal (lookup_read, lookup_name), the micro-step
 --           cursor (_item_step), and the kernel last_results floor.
 -- PRODUCES: the FTI symbol table (st_cnt, symbol_index) + its append on a
@@ -102,7 +102,7 @@ fsm DriverSymtab
         C2INil ⇒ C2INil
 
     classify_now   ∈ Bool = (in_claim ∧ nil ∧ can_consume
-        ∧ (_param_skip = 0) ∧ (¬_qloop_on) ∧ (¬_pinning))
+        ∧ (_param_skip = 0) ∧ (¬_qloop.on) ∧ (¬_pinning))
     processing ∈ Bool = ((in_claim ∨ (parse ∧ (_parse_mode = 5))
         ∨ (parse ∧ (_parse_mode = 8)) ∨ (parse ∧ (_parse_mode = 9))
         ∨ (parse ∧ (_parse_mode = 10)) ∨ (parse ∧ (_parse_mode = 12))

@@ -310,23 +310,23 @@ fsm driver_main
         : _scope_acc)
     bind_hit ∈ Bool = (process ∧ is_ident ∧ _scope_on
         ∧ (lookup_name = _scope_name))
-    is_bound_ref ∈ Bool = (process ∧ is_ident ∧ _qloop_on
-        ∧ (lookup_name = _qloop_var))
-    bound_var_items ∈ C2Items = (_qloop_kind = 0
-        ? C2ICons(C2Process(EInt(_qloop_cur)), work_tail)
+    is_bound_ref ∈ Bool = (process ∧ is_ident ∧ _qloop.on
+        ∧ (lookup_name = _qloop.var))
+    bound_var_items ∈ C2Items = (_qloop.kind = 0
+        ? C2ICons(C2Process(EInt(_qloop.cur)), work_tail)
         : C2ICons(C2Process(EIdent(_seq)),
-            C2ICons(C2Process(EInt(_qloop_cur)),
+            C2ICons(C2Process(EInt(_qloop.cur)),
             C2ICons(C2SelH, work_tail))))
-    loopvar_prefix ∈ String = _qloop_var ++ "."
-    dot ∈ Bool = (process ∧ is_ident ∧ _qloop_on
-        ∧ (_qloop_kind = 1) ∧ (_registered_seq_kind ≥ 0)
+    loopvar_prefix ∈ String = _qloop.var ++ "."
+    dot ∈ Bool = (process ∧ is_ident ∧ _qloop.on
+        ∧ (_qloop.kind = 1) ∧ (_registered_seq_kind ≥ 0)
         ∧ (substr(lookup_name, 0, #loopvar_prefix) = loopvar_prefix))
     loopvar_field ∈ String = substr(lookup_name, #loopvar_prefix,
         #lookup_name - #loopvar_prefix)
     element_accessor ∈ Int
     RtFieldAcc(fname ↦ loopvar_field, acc ↦ element_accessor)
     dot_items ∈ C2Items = C2ICons(C2Process(EIdent(_seq)),
-        C2ICons(C2Process(EInt(_qloop_cur)),
+        C2ICons(C2Process(EInt(_qloop.cur)),
         C2ICons(C2SelH,
         C2ICons(C2App(element_accessor, 1), work_tail))))
     qual_name ∈ String = _scope_prefix ++ lookup_name ++ "." ++ field_name

@@ -58,45 +58,39 @@ fsm DriverQuant
         ∧ (tok1 matches Colon))
     qrange_bail ∈ Bool = (qrange_act ∧ (¬qrange_close))
 
-    qloop_on ∈ Bool
+    qloop ∈ QLoop
     exists ∈ Bool
-    qloop_var ∈ String
-    qloop_kind ∈ Int
-    qloop_lo ∈ Int
-    qloop_hi ∈ Int
     seq ∈ String
-    qloop_body ∈ Expr
     next ∈ Int
-    qloop_cur ∈ Int
     qbody_done ∈ Bool = (parse_ready ∧ (_parse_kind = 9) ∧ (¬parse_bad))
-    disp ∈ Bool = (in_claim ∧ _qloop_on ∧ nil
+    disp ∈ Bool = (in_claim ∧ _qloop.on ∧ nil
         ∧ (_param_skip = 0) ∧ can_consume)
-    qexp_more ∈ Bool = (disp ∧ (_next ≤ _qloop_hi))
-    qexp_fin ∈ Bool = (disp ∧ (_next > _qloop_hi))
+    qexp_more ∈ Bool = (disp ∧ (_next ≤ _qloop.hi))
+    qexp_fin ∈ Bool = (disp ∧ (_next > _qloop.hi))
     exists = (is_first_tick ? false
         : (qrange ∨ qseq) ? is_exists : _exists)
-    qloop_var = (is_first_tick ? ""
-        : (qrange ∨ qseq) ? loop_variable : _qloop_var)
-    qloop_kind = (is_first_tick ? 0
-        : qrange ? 0 : qseq ? 1 : _qloop_kind)
-    qloop_lo = (is_first_tick ? 0
-        : qrange ? range_lower : qseq ? 0 : _qloop_lo)
-    qloop_hi = (is_first_tick ? 0
-        : qrange ? range_upper : qseq ? _cached_length - 1 : _qloop_hi)
+    qloop.var = (is_first_tick ? ""
+        : (qrange ∨ qseq) ? loop_variable : _qloop.var)
+    qloop.kind = (is_first_tick ? 0
+        : qrange ? 0 : qseq ? 1 : _qloop.kind)
+    qloop.lo = (is_first_tick ? 0
+        : qrange ? range_lower : qseq ? 0 : _qloop.lo)
+    qloop.hi = (is_first_tick ? 0
+        : qrange ? range_upper : qseq ? _cached_length - 1 : _qloop.hi)
     seq = (is_first_tick ? "" : qseq ? matched_var_name : _seq)
-    qloop_body = (is_first_tick ? ENoExpr : qbody_done ? result : _qloop_body)
-    qloop_on = (is_first_tick ? false
+    qloop.body = (is_first_tick ? ENoExpr : qbody_done ? result : _qloop.body)
+    qloop.on = (is_first_tick ? false
         : qbody_done ? true
         : qexp_fin ? false
-        : _qloop_on)
+        : _qloop.on)
     next = (is_first_tick ? 0
         : (qrange ∨ qseq) ? (qrange ? range_lower : 0)
         : qexp_more ? _next + 1
         : _next)
-    qloop_cur = (is_first_tick ? 0 : qexp_more ? _next : _qloop_cur)
+    qloop.cur = (is_first_tick ? 0 : qexp_more ? _next : _qloop.cur)
     fold_op ∈ Op = (_exists ? OpDisj : OpConj)
-    qexp_items ∈ C2Items = C2ICons(C2Process(_qloop_body),
-        ((_next > _qloop_lo) ? C2ICons(C2Op(fold_op), C2INil) : C2INil))
+    qexp_items ∈ C2Items = C2ICons(C2Process(_qloop.body),
+        ((_next > _qloop.lo) ? C2ICons(C2Op(fold_op), C2INil) : C2INil))
     fin_items ∈ C2Items = C2ICons(C2AssertTop, C2INil)
 
     cached_length ∈ Int

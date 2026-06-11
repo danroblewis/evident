@@ -73,6 +73,12 @@ type Z3Numerals(zero ∈ Int, one ∈ Int, two ∈ Int, three ∈ Int, four ∈ 
     -- live (convex `> 0` test — see the Z3SolverCtx perf note).
     four > 0 ⇒ (zero > 0 ∧ one > 0 ∧ two > 0 ∧ three > 0)
 
+-- The bounded-quantifier loop's carried state (DriverQuant owns it; driver.ev
+-- and driver_symtab read the prev-tick view): whether the loop is live, the
+-- bound variable name, kind (0 = range, 1 = seq), the [lo, hi] index range,
+-- the parsed body Expr, and the current iteration index.
+type QLoop(on ∈ Bool, var ∈ String, kind ∈ Int, lo ∈ Int, hi ∈ Int, body ∈ Expr, cur ∈ Int)
+
 -- ── Record-type registry entry: one registered `type Name(...)` ─────
 -- One entry of the record-type registry (DriverRecord builds ≤3 as recs).
 -- name = the type name; fnames/ftypes = the fixed-width 32-byte
