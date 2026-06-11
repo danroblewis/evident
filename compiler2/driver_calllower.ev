@@ -51,34 +51,34 @@ fsm DriverCallLower
     set_name ∈ String = (set_bare_hit ? arg0_name
         : set_pfx_hit ? _scope_prefix ++ arg0_name
         : "")
-    card_elems ∈ String
-    ∀ e ∈ vars : ((e.name = set_name) ⇒ (card_elems = e.elems))
-    (¬(∃ e ∈ vars : e.name = set_name)) ⇒ (card_elems = "")
-    card_count ∈ Int
-    ∀ e ∈ vars : ((e.name = set_name) ⇒ (card_count = e.count))
-    (¬(∃ e ∈ vars : e.name = set_name)) ⇒ (card_count = 0)
-    card_slot ∈ Int
-    ∀ e ∈ vars : ((e.name = set_name) ⇒ (card_slot = e.kidx))
-    (¬(∃ e ∈ vars : e.name = set_name)) ⇒ (card_slot = 0)
+    elem_string ∈ String
+    ∀ e ∈ vars : ((e.name = set_name) ⇒ (elem_string = e.elems))
+    (¬(∃ e ∈ vars : e.name = set_name)) ⇒ (elem_string = "")
+    cardinality ∈ Int
+    ∀ e ∈ vars : ((e.name = set_name) ⇒ (cardinality = e.count))
+    (¬(∃ e ∈ vars : e.name = set_name)) ⇒ (cardinality = 0)
+    elem_slot ∈ Int
+    ∀ e ∈ vars : ((e.name = set_name) ⇒ (elem_slot = e.kidx))
+    (¬(∃ e ∈ vars : e.name = set_name)) ⇒ (elem_slot = 0)
     elt0 ∈ String
-    RtRecName(s ↦ card_elems, i ↦ 0, name ↦ elt0)
+    RtRecName(s ↦ elem_string, i ↦ 0, name ↦ elt0)
     elt1 ∈ String
-    RtRecName(s ↦ card_elems, i ↦ 1, name ↦ elt1)
-    card_items ∈ C2Items = (card_count = 1
+    RtRecName(s ↦ elem_string, i ↦ 1, name ↦ elt1)
+    cardinality_items ∈ C2Items = (cardinality = 1
             ? C2ICons(C2Process(EInt(1)), work_tail)
-        : card_count = 2
-            ? C2ICons(C2RecVal(elt0, card_slot),
-                C2ICons(C2RecVal(elt1, card_slot),
+        : cardinality = 2
+            ? C2ICons(C2RecVal(elt0, elem_slot),
+                C2ICons(C2RecVal(elt1, elem_slot),
                 C2ICons(C2Op(OpEq),
                 C2ICons(C2Process(EInt(1)),
                 C2ICons(C2Process(EInt(2)),
                 C2ICons(C2Ite, work_tail))))))
-        : C2ICons(C2Process(EInt(card_count)), work_tail))
+        : C2ICons(C2Process(EInt(cardinality)), work_tail))
     call1_items ∈ C2Items
     (call_name = "str_len") ⇒ (call1_items = (of_seqvar
         ? C2ICons(C2Process(EIdent(_seqvar_name ++ "__len")), work_tail)
         : of_setvar
-        ? card_items
+        ? cardinality_items
         : C2ICons(C2Process(arg0), C2ICons(C2StrOp("len", 1), work_tail))))
     (call_name = "str_from_int") ⇒ (call1_items = from_int_items)
     (ctor_decl ≠ 0) ⇒ (call1_items = C2ICons(C2Process(arg0),

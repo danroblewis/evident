@@ -55,31 +55,31 @@ fsm DriverLex
     partial_strlit  ∈ String
 
     -- Escape-pending mode: `\` inside a strlit appends nothing and
-    -- arms esc_pending; the NEXT char appends its EscapeChar translation
+    -- arms after_backslash; the NEXT char appends its EscapeChar translation
     -- (\t \n \" \\ → the real byte). An escaped quote does NOT close
     -- the literal. Unknown escapes pass the char through (the oracle
     -- lex-errors; the driver has no error channel — the corpus only
     -- carries the four).
     is_backslash ∈ Bool
     IsBackslash(c ↦ cur_char, out ↦ is_backslash)
-    esc_trans ∈ String
-    EscapeChar(c ↦ cur_char, out ↦ esc_trans)
-    esc_pending ∈ Bool
+    translated_char ∈ String
+    EscapeChar(c ↦ cur_char, out ↦ translated_char)
+    after_backslash ∈ Bool
 
     strlit_open       ∈ Bool = ((¬_strlit) ∧ is_quote ∧ in_range ∧ (¬was_collecting_str) ∧ (¬was_collecting_int))
-    esc_open   ∈ Bool = (_strlit ∧ (¬_esc_pending) ∧ is_backslash ∧ in_range)
-    esc_char   ∈ Bool = (_strlit ∧ _esc_pending ∧ in_range)
-    strlit_continuing ∈ Bool = (_strlit ∧ (¬_esc_pending) ∧ (¬is_quote) ∧ (¬is_backslash) ∧ in_range)
-    closing    ∈ Bool = (_strlit ∧ (¬_esc_pending) ∧ is_quote ∧ in_range)
+    opening_escape   ∈ Bool = (_strlit ∧ (¬_after_backslash) ∧ is_backslash ∧ in_range)
+    escaped_char   ∈ Bool = (_strlit ∧ _after_backslash ∧ in_range)
+    strlit_continuing ∈ Bool = (_strlit ∧ (¬_after_backslash) ∧ (¬is_quote) ∧ (¬is_backslash) ∧ in_range)
+    closing    ∈ Bool = (_strlit ∧ (¬_after_backslash) ∧ is_quote ∧ in_range)
 
-    esc_pending = (is_first_tick ? false : esc_open)
+    after_backslash = (is_first_tick ? false : opening_escape)
     strlit = (is_first_tick ? false
         : (strlit_open ? true
         : (closing ? false
         : _strlit)))
     partial_strlit = (is_first_tick ? ""
         : (strlit_open ? ""
-        : (esc_char ? _partial_strlit ++ esc_trans
+        : (escaped_char ? _partial_strlit ++ translated_char
         : (strlit_continuing ? _partial_strlit ++ cur_char
         : (closing ? ""
         : _partial_strlit)))))
@@ -169,9 +169,9 @@ fsm DriverLex
     plan_pay0 ∈ Int
     plan_str0 ∈ String
     plan_tag1 ∈ Int
-    addr_tag0 ∈ Int
-    addr_pay0 ∈ Int
-    addr_tag1 ∈ Int
+    tag0_addr ∈ Int
+    payload0_addr ∈ Int
+    tag1_addr ∈ Int
     plan_count_n ∈ Int
     plan_last_n ∈ Int
     plan_prev_n ∈ Int
@@ -186,7 +186,7 @@ fsm DriverLex
         base ↦ tok_buf.base, count ↦ _tok_buf.count,
         last_tag ↦ _last_token_tag, prev_tag ↦ _prev_token_tag,
         kind ↦ plan_kind, tag0 ↦ plan_tag0, p0 ↦ plan_pay0, str0 ↦ plan_str0,
-        tag1 ↦ plan_tag1, a_tag0 ↦ addr_tag0, a_p0 ↦ addr_pay0, a_tag1 ↦ addr_tag1,
+        tag1 ↦ plan_tag1, a_tag0 ↦ tag0_addr, a_p0 ↦ payload0_addr, a_tag1 ↦ tag1_addr,
         count_n ↦ plan_count_n, last_n ↦ plan_last_n, prev_n ↦ plan_prev_n)
 
     -- `++` (PlusPlus, tag 60): a two-char ASCII token the per-char
@@ -210,12 +210,12 @@ fsm DriverLex
         : finish ? (with_op ? 4 : _last_token_tag)
         : plan_prev_n)
     str_addr = (is_first_tick ? 0 - 1
-        : ((plan_kind = 3 ∨ plan_kind = 5) ? addr_pay0 : 0 - 1))
+        : ((plan_kind = 3 ∨ plan_kind = 5) ? payload0_addr : 0 - 1))
     have_pend_str ∈ Bool = (_str_addr ≥ 0)
 
-    write_tag0 ∈ Effect = LibCall("__mem", "write_long", ⟨ArgInt(addr_tag0), ArgInt(tag0_pp)⟩)
-    write_pay0   ∈ Effect = LibCall("__mem", "write_long", ⟨ArgInt(addr_pay0), ArgInt(plan_pay0)⟩)
-    write_tag1 ∈ Effect = LibCall("__mem", "write_long", ⟨ArgInt(addr_tag1), ArgInt(tag1_pp)⟩)
+    write_tag0 ∈ Effect = LibCall("__mem", "write_long", ⟨ArgInt(tag0_addr), ArgInt(tag0_pp)⟩)
+    write_pay0   ∈ Effect = LibCall("__mem", "write_long", ⟨ArgInt(payload0_addr), ArgInt(plan_pay0)⟩)
+    write_tag1 ∈ Effect = LibCall("__mem", "write_long", ⟨ArgInt(tag1_addr), ArgInt(tag1_pp)⟩)
     strdup   ∈ Effect = LibCall("libc", "strdup", ⟨ArgStr(plan_str0)⟩)
     pend_str  ∈ Effect = LibCall("__mem", "write_long", ⟨ArgInt(_str_addr), ArgInt(cap_int)⟩)
     eof   ∈ Effect = LibCall("__mem", "write_long", ⟨ArgInt(tok_buf.base + (tok_buf.count * 32)), ArgInt(13)⟩)

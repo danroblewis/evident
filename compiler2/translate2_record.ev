@@ -94,10 +94,10 @@ claim translate2_record_probe
         acc_slot_addr ↦ plan[2].addr, in_range ↦ plan[2].in_range,
         is_last ↦ plan[2].is_last, needs_and ↦ plan[2].needs_and)
 
-    addr_s ∈ Int
+    single_addr ∈ Int
     in_s, last_s, and_s ∈ Bool
     RecordEqPlan(n_fields ↦ 1, accessors_arr_p ↦ 1000, idx ↦ 0,
-        acc_slot_addr ↦ addr_s, in_range ↦ in_s, is_last ↦ last_s,
+        acc_slot_addr ↦ single_addr, in_range ↦ in_s, is_last ↦ last_s,
         needs_and ↦ and_s)
 
     plan_ok ∈ Bool = ((plan[0].addr = 1000) ∧ plan[0].in_range ∧ ¬plan[0].is_last ∧ plan[0].needs_and
