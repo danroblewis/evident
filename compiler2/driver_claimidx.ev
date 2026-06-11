@@ -159,7 +159,7 @@ fsm DriverClaimIdx
     head_ident ∈ String = match tok0
         Ident(s) ⇒ s
         _ ⇒ ""
-    guard_enter ∈ Bool = (in_efflit ∧ (_efflit_st = 1))
+    is_guard_enter ∈ Bool = (in_efflit ∧ (_efflit_st = 1))
     efflit_open ∈ Bool = (in_efflit ∧ (_efflit_st = 0) ∧ _chain_on ∧ (_libcall = 0)
         ∧ (tok0 matches OpSeqOpen))
     nest ∈ Bool = (in_efflit ∧ (_efflit_st = 0) ∧ _chain_on ∧ (_libcall = 0)
@@ -216,7 +216,7 @@ fsm DriverClaimIdx
         C2ICons(C2App(libcall_decl, 3),
         C2ICons(equality_test, C2INil)))))
 
-    guard_done ∈ Bool = (parse_ready ∧ (_parse_kind = 6) ∧ (¬parse_bad))
+    is_guard_done ∈ Bool = (parse_ready ∧ (_parse_kind = 6) ∧ (¬parse_bad))
 
     items1 ∈ C2Items = C2ICons(C2Op(OpConj), C2INil)
     items2 ∈ C2Items = C2ICons(C2Op(OpConj), items1)
@@ -257,7 +257,7 @@ fsm DriverClaimIdx
         : _efflit_count)
     efflit_st = (is_first_tick ? 0
         : enter_efflit ? (effects_cond ? 1 : 0)
-        : guard_done ? 0
+        : is_guard_done ? 0
         : colon ? 0
         : nest ? 1
         : (efflit_close ∧ _chain_on) ? 2
@@ -271,5 +271,5 @@ fsm DriverClaimIdx
         : _pdepth)
     chain_n = (is_first_tick ? 0
         : enter_efflit ? 0
-        : guard_done ? _chain_n + 1
+        : is_guard_done ? _chain_n + 1
         : _chain_n)

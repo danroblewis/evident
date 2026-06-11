@@ -5,7 +5,7 @@
 --           _callw_st, reset, nil), and the inline-frame
 --           stack views (frame_pop, _frame_depth, h_top).
 -- PRODUCES: the guard recognizer (cond_op/cond_lhs/cond_rhs/binop/cond_callee/cond_key/
---           cond_pos/cond_hit), the claim-body fetch effect (guard_read), the
+--           cond_pos/cond_hit), the claim-body fetch effect (guard_read_eff), the
 --           jump capture/fire signals (capture/jump_fire/disarm), and
 --           the active-guard carry (active_handle/armed_depth) + guarding flag.
 -- MAINTAINS: a `cond ⇒ ClaimName` line splices Name's body with every
@@ -32,8 +32,8 @@ fsm DriverGuard
     cond_hit ∈ Bool = (parse_ready ∧ (_parse_kind = 2) ∧ (¬parse_bad) ∧ binop
         ∧ (cond_op matches OpImpl) ∧ (cond_callee ≠ "") ∧ (cond_pos ≥ 0)
         ∧ (_frame_depth < 8))
-    guard_read ∈ Effect
-    BuildMemReadLong(addr ↦ claimindex_buf.base + (8 * (cond_pos / 32)), eff ↦ guard_read)
+    guard_read_eff ∈ Effect
+    BuildMemReadLong(addr ↦ claimindex_buf.base + (8 * (cond_pos / 32)), eff ↦ guard_read_eff)
     capture ∈ Bool = (parse ∧ (_parse_mode = 10) ∧ (_callw_st = 3))
     jump_fire ∈ Bool = (parse ∧ (_parse_mode = 10) ∧ (_callw_st = 4)
         ∧ nil)

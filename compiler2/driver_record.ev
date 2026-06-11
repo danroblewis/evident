@@ -260,23 +260,23 @@ fsm DriverRecord
     BuildMemWriteLong(addr ↦ recdecl_fsorts_p + 32, value ↦ recdecl_fields[4].sort, eff ↦ recdecl_write_fs4)
     recdecl_write_fs5 ∈ Effect
     BuildMemWriteLong(addr ↦ recdecl_fsorts_p + 40, value ↦ recdecl_fields[5].sort, eff ↦ recdecl_write_fs5)
-    mk_tuple ∈ Effect = LibCall("libz3", "Z3_mk_tuple_sort",
+    tuplesort_eff ∈ Effect = LibCall("libz3", "Z3_mk_tuple_sort",
         ⟨ArgInt(z3ctx.ctx), ArgInt(h_name), ArgInt(cur_nf), ArgInt(recdecl_fnames_p),
          ArgInt(recdecl_fsorts_p), ArgInt(ctor_p), ArgInt(accs_p)⟩)
     recdecl_read_ctor ∈ Effect
     BuildMemReadLong(addr ↦ ctor_p, eff ↦ recdecl_read_ctor)
     read_acc ∈ Effect
     BuildMemReadLong(addr ↦ accs_p + (8 * eff_fi), eff ↦ read_acc)
-    mk_asort ∈ Effect
+    array_sort_eff ∈ Effect
     BuildZ3MkArraySort(ctx_h ↦ z3ctx.ctx, idx_sort_h ↦ z3sorts.isort,
-        val_sort_h ↦ cur_sort, eff ↦ mk_asort)
-    mk_ssort ∈ Effect = LibCall("libz3", "Z3_mk_set_sort",
+        val_sort_h ↦ cur_sort, eff ↦ array_sort_eff)
+    set_sort_eff ∈ Effect = LibCall("libz3", "Z3_mk_set_sort",
         ⟨ArgInt(z3ctx.ctx), ArgInt(cur_sort)⟩)
     recdecl_step_eff ∈ Effect = (eff_st = 0 ? recdecl_namesym
         : eff_st = 1 ? fieldsym
-        : eff_st = 3 ? mk_tuple
+        : eff_st = 3 ? tuplesort_eff
         : eff_st = 4 ? recdecl_read_ctor
         : eff_st = 5 ? read_acc
-        : eff_st = 6 ? mk_asort
-        : eff_st = 7 ? mk_ssort
+        : eff_st = 6 ? array_sort_eff
+        : eff_st = 7 ? set_sort_eff
         : LibCall("libc", "getpid", ⟨⟩))

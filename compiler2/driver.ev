@@ -837,12 +837,12 @@ fsm driver_main
     geq ∈ Op = OpGeq
     op_eq ∈ Op = OpEq
     impl ∈ Op = OpImpl
-    guard_impl ∈ Effect
-    guard_impl_ok ∈ Bool
-    guard_impl_nn ∈ Bool
+    impl_handle ∈ Effect
+    is_impl_ok ∈ Bool
+    is_impl_nn ∈ Bool
     BoolCmpBuildZ3(ctx_h ↦ z3ctx.ctx, op ↦ impl, l_h ↦ _active_handle,
-        r_h ↦ h_top, eff ↦ guard_impl, ok ↦ guard_impl_ok,
-        needs_not ↦ guard_impl_nn)
+        r_h ↦ h_top, eff ↦ impl_handle, ok ↦ is_impl_ok,
+        needs_not ↦ is_impl_nn)
     natbound_geq_eff ∈ Effect
     is_natbound_ok ∈ Bool
     is_natbound_nn ∈ Bool
@@ -932,7 +932,7 @@ fsm driver_main
         : natbound ? natbound_geq_eff
         : it_pin_eq ? eff_pin_eq
         : it_assert ? (guarding
-            ? (_item_step = 0 ? guard_impl : assert_tmp)
+            ? (_item_step = 0 ? impl_handle : assert_tmp)
             : eff_assert)
         : app ? (_item_step < app_argc ? ctor_argw : ctor_app)
         : it_select_eq ? (_item_step = 0 ? select
@@ -1037,7 +1037,7 @@ fsm driver_main
         : _fetch_mode = 1 ? ⟨eff0, eff1, eff2, eff3, eff4, eff5, eff6, eff7⟩
         : claimindex_add ? ⟨claimidx_write⟩
         : callee_cursor ? ⟨claimidx_read⟩
-        : cond_hit ? ⟨guard_read⟩
+        : cond_hit ? ⟨guard_read_eff⟩
         : accread ? ⟨match_accread⟩
         : tuple_close ? ⟨posbind_read⟩
         : recdecl_active ? (eff_st = 2

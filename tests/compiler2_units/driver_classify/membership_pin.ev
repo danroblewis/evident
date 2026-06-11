@@ -74,8 +74,8 @@ fsm main
     -- sibling sub-walk enter signals (none active in this isolation).
     exit_enter ∈ Bool
     exit_enter = (is_first_tick ? false : _exit_enter)
-    guard_enter ∈ Bool
-    guard_enter = (is_first_tick ? false : _guard_enter)
+    is_guard_enter ∈ Bool
+    is_guard_enter = (is_first_tick ? false : _is_guard_enter)
     body_enter ∈ Bool
     body_enter = (is_first_tick ? false : _body_enter)
     elem_enter ∈ Bool

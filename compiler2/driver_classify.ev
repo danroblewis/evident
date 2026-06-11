@@ -142,10 +142,10 @@ fsm DriverClassify
         ∧ (¬setlit_line) ∧ (¬qset)
         ∧ (pinned ∨ (¬is_mem)))
     enter_pratt ∈ Bool = (pratt_line ∨ exit_enter
-        ∨ guard_enter ∨ body_enter ∨ elem_enter ∨ callw_slot
+        ∨ is_guard_enter ∨ body_enter ∨ elem_enter ∨ callw_slot
         ∨ pun ∨ qrange_close ∨ qseq ∨ element)
     enter_consume ∈ Int = (exit_enter ? 2
-        : guard_enter ? 0
+        : is_guard_enter ? 0
         : body_enter ? (close_take ? 3 : 2)
         : elem_enter ? 0
         : callw_slot ? 2
@@ -155,7 +155,7 @@ fsm DriverClassify
         : element ? 0
         : pinned ? 4 : 0)
     enter_kind ∈ Int = (exit_enter ? 3
-        : guard_enter ? 6
+        : is_guard_enter ? 6
         : body_enter ? 4
         : elem_enter ? 7
         : callw_slot ? 8
@@ -166,7 +166,7 @@ fsm DriverClassify
         : pinned ? 1 : 2)
     pratt_qstop ∈ Bool
     pratt_qstop = (is_first_tick ? false
-        : enter_pratt ? guard_enter
+        : enter_pratt ? is_guard_enter
         : _pratt_qstop)
 
     bound_seg ∈ C2Items = C2ICons(C2Process(bound_expr),

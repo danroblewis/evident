@@ -240,10 +240,10 @@ fsm DriverEnum
     decl_done ∈ Bool = (_decl_action = 3 ∧ _decl_step = 5 ∧ (¬variants_nonempty))
     user_decl_done ∈ Bool = (decl_done ∧ _is_user_enum)
 
-    a1_advance ∈ Bool = (running ∧ action_now = 1 ∧ step_now = 10)
+    is_advance_step ∈ Bool = (running ∧ action_now = 1 ∧ step_now = 10)
     a3_advance ∈ Bool = (running ∧ action_now = 3 ∧ step_now = 5)
-    a1_member_fin ∈ Bool = (running ∧ action_now = 1 ∧ step_now = 13)
-    a1_member_load ∈ Bool = (a1_member_fin ∧ has_more_decls)
+    is_member_finish ∈ Bool = (running ∧ action_now = 1 ∧ step_now = 13)
+    is_member_load ∈ Bool = (is_member_finish ∧ has_more_decls)
     a3_member_load ∈ Bool = (a3_advance ∧ (¬vrest_nonempty) ∧ has_more_decls)
 
     decl_action = (is_first_tick ? 0
@@ -260,13 +260,13 @@ fsm DriverEnum
         : _is_user_enum)
     declared_name = (is_first_tick ? ""
         : decl_go ? peeled_name
-        : a1_member_load ? peeled_name
+        : is_member_load ? peeled_name
         : a2_commit ? peeled_name
         : a3_member_load ? peeled_name
         : _declared_name)
     group_rest = (is_first_tick ? EDLNil
         : decl_go ? remaining_decls
-        : a1_member_load ? remaining_decls
+        : is_member_load ? remaining_decls
         : a2_commit ? remaining_decls
         : a3_member_load ? remaining_decls
         : _group_rest)
@@ -281,22 +281,22 @@ fsm DriverEnum
         : _read_cur)
     registry = (is_first_tick ? EVNil
         : decl_go ? peeled_variants
-        : a1_member_load ? peeled_variants
+        : is_member_load ? peeled_variants
         : a2_commit ? peeled_variants
         : a3_member_load ? peeled_variants
-        : (a1_advance ∨ a3_advance) ? variant_rest
+        : (is_advance_step ∨ a3_advance) ? variant_rest
         : _registry)
     index = (is_first_tick ? 0
         : decl_go ? 0
         : a2_commit ? 0
-        : (a1_advance ∨ a3_advance) ? _index + 1
+        : (is_advance_step ∨ a3_advance) ? _index + 1
         : _index)
     member_base = (is_first_tick ? 0
         : decl_go ? 0
-        : a1_member_load ? _index
+        : is_member_load ? _index
         : _member_base)
     variant_count = (is_first_tick ? 0
-        : a1_advance ? _index + 1 - _member_base
+        : is_advance_step ? _index + 1 - _member_base
         : _variant_count)
 
     header_name = (is_first_tick ? 0
