@@ -619,7 +619,7 @@ fsm driver_main
         : enter_match ? 5
         : scrut_lastres ? 4
         : (scrut_ident ∨ scrut_bad) ? 1
-        : (overflow ∨ wc_overflow) ? 1
+        : (overflow ∨ extra_wildcards) ? 1
         : (pat_open ∧ (¬overflow)) ? 2
         : pat_more ? 2
         : intset_elem ? ((tok1 matches Comma) ? 2 : 1)
@@ -744,7 +744,7 @@ fsm driver_main
         : (draining ∧ last_name) ? done_mode
         : enter_pratt ? 3
         : parse_ready ? (_parse_kind = 3 ? 5
-            : _parse_kind = 4 ? ((parse_bad ∨ wc_body_done) ? 2 : 6)
+            : _parse_kind = 4 ? ((parse_bad ∨ wildcard_body_done) ? 2 : 6)
             : _parse_kind = 6 ? (parse_bad ? 2 : 5)
             : _parse_kind = 7 ? (parse_bad ? 2 : 8)
             : _parse_kind = 8 ? (parse_bad ? 2 : 10)

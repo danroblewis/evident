@@ -354,7 +354,7 @@ fsm DriverPosBind
         : _parse_kind = 3 ? C2ICons(C2Process(result),
             C2ICons(C2App(exit_decl, 1),
             C2ICons(sel_eq, C2INil)))
-        : _parse_kind = 4 ? (wc_body_done ? case_items : C2INil)
+        : _parse_kind = 4 ? (wildcard_body_done ? case_items : C2INil)
         : _parse_kind = 6 ? C2ICons(C2Process(result), C2INil)
         : _parse_kind = 7 ? seqlit_elem_items
         : _parse_kind = 8 ? C2ICons(C2Process(result), C2INil)

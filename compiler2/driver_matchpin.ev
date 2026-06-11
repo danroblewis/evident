@@ -100,7 +100,7 @@ fsm DriverMatchPin
     nullary_head ∈ Bool = (arms_state ∧ (tok0 matches Ident(_))
         ∧ (head_ident ≠ "_")
         ∧ (tok1 matches OpImplies))
-    wc_head ∈ Bool = (arms_state ∧ (head_ident = "_")
+    wildcard_head ∈ Bool = (arms_state ∧ (head_ident = "_")
         ∧ (tok1 matches OpImplies))
     pattern_state ∈ Bool = (case_action ∧ (_case_state = 2))
     pat_elem ∈ String = head_ident
@@ -120,14 +120,14 @@ fsm DriverMatchPin
     new ∈ Bool = (pat_open ∨ nullary_head)
     overflow ∈ Bool = (new ∧ _has_pend_arm ∧ (_tested_arms ≥ 2))
     arm_take ∈ Bool = (new ∧ (¬overflow))
-    wc_overflow ∈ Bool = (wc_head ∧ _has_pend_arm ∧ (_tested_arms ≥ 2))
-    wc_take ∈ Bool = (wc_head ∧ (¬wc_overflow))
-    body_enter ∈ Bool = ((arm_take ∧ nullary_head) ∨ wc_take
+    extra_wildcards ∈ Bool = (wildcard_head ∧ _has_pend_arm ∧ (_tested_arms ≥ 2))
+    consume_wildcard ∈ Bool = (wildcard_head ∧ (¬extra_wildcards))
+    body_enter ∈ Bool = ((arm_take ∧ nullary_head) ∨ consume_wildcard
         ∨ close_take)
-    end_tok ∈ Bool = (arms_state ∧ (¬new) ∧ (¬wc_head))
+    end_tok ∈ Bool = (arms_state ∧ (¬new) ∧ (¬wildcard_head))
     fire_end ∈ Bool = (end_tok ∧ _has_pend_arm)
     case_fire ∈ Bool = fire_end
-    case_bail ∈ Bool = (scrut_bad ∨ overflow ∨ wc_overflow
+    case_bail ∈ Bool = (scrut_bad ∨ overflow ∨ extra_wildcards
         ∨ pat_bad ∨ multi_bind
         ∨ (end_tok ∧ (¬_has_pend_arm)))
 
@@ -150,7 +150,7 @@ fsm DriverMatchPin
         eff ↦ match_accread)
 
     body_done ∈ Bool = (parse_ready ∧ (_parse_kind = 4))
-    wc_body_done ∈ Bool = (body_done ∧ (¬parse_bad) ∧ _is_wc)
+    wildcard_body_done ∈ Bool = (body_done ∧ (¬parse_bad) ∧ _is_wc)
     arm_done ∈ Bool = (body_done ∧ (¬parse_bad) ∧ (¬_is_wc))
     promote ∈ Bool = (arm_done ∧ _has_pend_arm)
 
@@ -173,12 +173,12 @@ fsm DriverMatchPin
         : _arm_ctor)
     arm_bind = (is_first_tick ? ""
         : arm_take ? ""
-        : wc_take ? ""
+        : consume_wildcard ? ""
         : close_take ? bind_name_now
         : _arm_bind)
     arm_acc = (is_first_tick ? 0
         : arm_take ? 0
-        : wc_take ? 0
+        : consume_wildcard ? 0
         : (close_bind ∧ (bind_idx_now = 0)) ? acc0
         : _acc_pend ? cap_int
         : _arm_acc)
@@ -196,7 +196,7 @@ fsm DriverMatchPin
         : elem_binds ? _pat_n
         : _bind_idx)
     is_wc = (is_first_tick ? false
-        : body_enter ? wc_head
+        : body_enter ? wildcard_head
         : _is_wc)
     pend_ctor = (is_first_tick ? ""
         : enter_match ? ""
@@ -255,16 +255,16 @@ fsm DriverMatchPin
         : (promote ∧ _tested_arms = 1) ? _pend_expr
         : _arm2_expr)
 
-    arm_n ∈ Int = (wc_body_done ? (_has_pend_arm ? _tested_arms + 1 : _tested_arms) : _tested_arms)
+    arm_n ∈ Int = (wildcard_body_done ? (_has_pend_arm ? _tested_arms + 1 : _tested_arms) : _tested_arms)
     ctor1 ∈ String = (_tested_arms ≥ 1 ? _arm1_ctor : _pend_ctor)
     bind1 ∈ String = (_tested_arms ≥ 1 ? _arm1_bind : _pend_bind)
     expr1 ∈ Expr = (_tested_arms ≥ 1 ? _arm1_expr : _pend_expr)
     ctor2 ∈ String = (_tested_arms ≥ 2 ? _arm2_ctor : _pend_ctor)
     bind2 ∈ String = (_tested_arms ≥ 2 ? _arm2_bind : _pend_bind)
     expr2 ∈ Expr = (_tested_arms ≥ 2 ? _arm2_expr : _pend_expr)
-    default ∈ Expr = (wc_body_done ? result : _pend_expr)
-    def_bind ∈ String = (wc_body_done ? "" : _pend_bind)
-    def_ctor ∈ String = (wc_body_done ? "" : _pend_ctor)
+    default ∈ Expr = (wildcard_body_done ? result : _pend_expr)
+    def_bind ∈ String = (wildcard_body_done ? "" : _pend_bind)
+    def_ctor ∈ String = (wildcard_body_done ? "" : _pend_ctor)
     tester1 ∈ Int
     (ctor1 = "IntResult") ⇒ (tester1 = intresult_tester)
     (ctor1 = "StringResult") ⇒ (tester1 = strresult_tester)
@@ -279,7 +279,7 @@ fsm DriverMatchPin
         ∨ (∃ e ∈ user_variants : e.name = ctor2))) ⇒ (tester2 = 0)
     acc1 ∈ Int = (_tested_arms ≥ 1 ? _arm1_acc : _pend_acc)
     acc2 ∈ Int = (_tested_arms ≥ 2 ? _arm2_acc : _pend_acc)
-    def_acc ∈ Int = (wc_body_done ? 0 : _pend_acc)
+    def_acc ∈ Int = (wildcard_body_done ? 0 : _pend_acc)
     tail_eq ∈ C2Items = C2ICons(C2PinEq,
         C2ICons(C2AssertTop, C2INil))
     tail_ite1 ∈ C2Items = C2ICons(C2Ite, tail_eq)

@@ -131,8 +131,8 @@ fsm main
     run = (is_first_tick ? false : _run)
     case_items ∈ C2Items
     case_items = (is_first_tick ? C2INil : _case_items)
-    wc_body_done ∈ Bool
-    wc_body_done = (is_first_tick ? false : _wc_body_done)
+    wildcard_body_done ∈ Bool
+    wildcard_body_done = (is_first_tick ? false : _wildcard_body_done)
     name ∈ String
     name = (is_first_tick ? "" : _name)
     parse_ready ∈ Bool
