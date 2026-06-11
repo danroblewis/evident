@@ -140,6 +140,15 @@ enum PrOps =
     PrNil
     PrCons(PrOp, PrOps)
 
+-- The decoded top-of-stack frame: which PrOp shape it is, its operator +
+-- precedence view (from C2Prec), reduce precedence p, and whether it
+-- reduces. One value-in/value-out decode of stack_top, the shunting-yard
+-- step's whole read of its operator stack.
+type TopView(op ∈ Op, bin ∈ Bool, not ∈ Bool, hash ∈ Bool, tern ∈ Bool,
+        quest ∈ Bool, lp ∈ Bool, call ∈ Bool, idx ∈ Bool,
+        call_name ∈ String, call_argn ∈ Int, precedence ∈ Int,
+        right_assoc ∈ Bool, chain ∈ Bool, p ∈ Int, red ∈ Bool)
+
 -- ── Pratt parser step (shunting-yard; ONE action per invocation) ──
 -- State in: (toks, outs, ops, expop, pd, qd, cd); state out: the n*
 -- mirrors. Each call performs exactly one action:
@@ -298,32 +307,30 @@ claim C2PrattStep(toks ∈ TokenList, outs ∈ ExprList, ops ∈ PrOps,
     in_p ∈ Int = (is_q ? 2 : in_p0)
     in_right ∈ Bool = (is_q ? true : in_r0)
 
-    top_op ∈ Op = match stack_top
+    top ∈ TopView
+    top.op = match stack_top
         PrBin(o2) ⇒ o2
         _ ⇒ OpPlus
-    top_bin ∈ Bool = (stack_top matches PrBin(_))
-    top_not ∈ Bool = (stack_top matches PrNot)
-    top_hash ∈ Bool = (stack_top matches PrHash)
-    top_tern ∈ Bool = (stack_top matches PrTern)
-    top_quest ∈ Bool = (stack_top matches PrQuest)
-    top_lp ∈ Bool = (stack_top matches PrLP)
-    top_call ∈ Bool = (stack_top matches PrCall(_, _))
-    top_idx ∈ Bool = (stack_top matches PrIdx)
-    top_call_name ∈ String = match stack_top
+    top.bin = (stack_top matches PrBin(_))
+    top.not = (stack_top matches PrNot)
+    top.hash = (stack_top matches PrHash)
+    top.tern = (stack_top matches PrTern)
+    top.quest = (stack_top matches PrQuest)
+    top.lp = (stack_top matches PrLP)
+    top.call = (stack_top matches PrCall(_, _))
+    top.idx = (stack_top matches PrIdx)
+    top.call_name = match stack_top
         PrCall(n2, _) ⇒ n2
         _ ⇒ ""
-    top_call_argn ∈ Int = match stack_top
+    top.call_argn = match stack_top
         PrCall(_, k2) ⇒ k2
         _ ⇒ 0
-    top_precedence ∈ Int
-    top_right_assoc ∈ Bool
-    top_chain ∈ Bool
-    C2Prec(o ↦ top_op, n ↦ top_precedence, right ↦ top_right_assoc, chain ↦ top_chain)
-    top_p ∈ Int = (top_bin ? top_precedence
-        : (top_not ∨ top_hash) ? 8
-        : top_tern ? 2
+    C2Prec(o ↦ top.op, n ↦ top.precedence, right ↦ top.right_assoc, chain ↦ top.chain)
+    top.p = (top.bin ? top.precedence
+        : (top.not ∨ top.hash) ? 8
+        : top.tern ? 2
         : 0 - 1)
-    top_red ∈ Bool = (top_bin ∨ top_not ∨ top_tern ∨ top_hash)
+    top.red = (top.bin ∨ top.not ∨ top.tern ∨ top.hash)
 
     -- chain-comparison lowering parts (lhs = out2 when reducing a
     -- PrBin whose op is a chain op): a chain-shaped lhs turns
@@ -350,14 +357,14 @@ claim C2PrattStep(toks ∈ TokenList, outs ∈ ExprList, ops ∈ PrOps,
     leftright_right_assoc ∈ Bool
     lr_chain ∈ Bool
     C2Prec(o ↦ lr_op, n ↦ leftright_precedence, right ↦ leftright_right_assoc, chain ↦ lr_chain)
-    chain1 ∈ Bool = (top_chain ∧ l_bin ∧ l_chain)
-    chain2 ∈ Bool = (top_chain ∧ l_bin ∧ l_conj
+    chain1 ∈ Bool = (top.chain ∧ l_bin ∧ l_chain)
+    chain2 ∈ Bool = (top.chain ∧ l_bin ∧ l_conj
         ∧ lr_bin ∧ lr_chain)
     apply_bin ∈ Expr = (chain1
-            ? EBinOp(OpConj, out2, EBinOp(top_op, left_rhs, out1))
+            ? EBinOp(OpConj, out2, EBinOp(top.op, left_rhs, out1))
         : chain2
-            ? EBinOp(OpConj, out2, EBinOp(top_op, leftright_rhs, out1))
-        : EBinOp(top_op, out2, out1))
+            ? EBinOp(OpConj, out2, EBinOp(top.op, leftright_rhs, out1))
+        : EBinOp(top.op, out2, out1))
 
     call_key ∈ String
     FtiNameEntry(name ↦ head_name, entry ↦ call_key)
@@ -378,19 +385,19 @@ claim C2PrattStep(toks ∈ TokenList, outs ∈ ExprList, ops ∈ PrOps,
         ∨ (is_rb ∧ (pd > 0))
         ∨ (is_com ∧ (cd > 0)))
     arr ∈ Bool = ((¬expop) ∧ (bin_ok ∨ (is_q ∧ (¬quant_stop))))
-    arr_red ∈ Bool = (arr ∧ top_red
-        ∧ (in_right ? top_p > in_p : top_p ≥ in_p))
+    arr_red ∈ Bool = (arr ∧ top.red
+        ∧ (in_right ? top.p > in_p : top.p ≥ in_p))
     arr_shift ∈ Bool = (arr ∧ (¬arr_red))
     col ∈ Bool = ((¬expop) ∧ is_col ∧ (qd > 0))
-    col_swap ∈ Bool = (col ∧ top_quest)
+    col_swap ∈ Bool = (col ∧ top.quest)
     close_rparen ∈ Bool = ((¬expop) ∧ is_rp ∧ (pd > 0))
-    rp_close ∈ Bool = (close_rparen ∧ top_lp)
-    rp_call ∈ Bool = (close_rparen ∧ top_call)
+    rp_close ∈ Bool = (close_rparen ∧ top.lp)
+    rp_call ∈ Bool = (close_rparen ∧ top.call)
     index_shift ∈ Bool = ((¬expop) ∧ is_lb)
     close_rbracket ∈ Bool = ((¬expop) ∧ is_rb ∧ (pd > 0))
-    rb_close ∈ Bool = (close_rbracket ∧ top_idx)
+    rb_close ∈ Bool = (close_rbracket ∧ top.idx)
     com ∈ Bool = ((¬expop) ∧ is_com ∧ (cd > 0))
-    com_bump ∈ Bool = (com ∧ top_call)
+    com_bump ∈ Bool = (com ∧ top.call)
     expr_end ∈ Bool = ((¬expop) ∧ (¬cont))
     need_red ∈ Bool = ((col ∧ (¬col_swap))
         ∨ (close_rparen ∧ (¬rp_close) ∧ (¬rp_call))
@@ -398,8 +405,8 @@ claim C2PrattStep(toks ∈ TokenList, outs ∈ ExprList, ops ∈ PrOps,
         ∨ (com ∧ (¬com_bump))
         ∨ (expr_end ∧ (¬ops_nil))
         ∨ arr_red)
-    reduce ∈ Bool = (need_red ∧ top_red)
-    discard ∈ Bool = (need_red ∧ (¬top_red))
+    reduce ∈ Bool = (need_red ∧ top.red)
+    discard ∈ Bool = (need_red ∧ (¬top.red))
 
     sdone = (syntax_error ∨ (expr_end ∧ ops_nil))
     sres = (syntax_error ? ENoExpr : out1)
@@ -416,20 +423,20 @@ claim C2PrattStep(toks ∈ TokenList, outs ∈ ExprList, ops ∈ PrOps,
         : (dotf ∨ dotf2) ? rest2
         : consume_token ? rest_tokens : toks)
 
-    call_arg_count ∈ Int = top_call_argn + 1
-    call_e ∈ Expr = (call_arg_count = 1 ? ECall1(top_call_name, out1)
-        : call_arg_count = 2 ? ECall2(top_call_name, out2, out1)
-        : ECall3(top_call_name, out3, out2, out1))
+    call_arg_count ∈ Int = top.call_argn + 1
+    call_e ∈ Expr = (call_arg_count = 1 ? ECall1(top.call_name, out1)
+        : call_arg_count = 2 ? ECall2(top.call_name, out2, out1)
+        : ECall3(top.call_name, out3, out2, out1))
     call_base ∈ ExprList = (call_arg_count = 1 ? o_t1
         : call_arg_count = 2 ? o_t2
         : o_t3)
 
-    red_e ∈ Expr = (top_not ? ENot(out1)
-        : top_hash ? ECall1("str_len", out1)
-        : top_tern ? ETernary(out3, out2, out1)
+    red_e ∈ Expr = (top.not ? ENot(out1)
+        : top.hash ? ECall1("str_len", out1)
+        : top.tern ? ETernary(out3, out2, out1)
         : apply_bin)
-    red_base ∈ ExprList = ((top_not ∨ top_hash) ? o_t1
-        : top_tern ? o_t3
+    red_base ∈ ExprList = ((top.not ∨ top.hash) ? o_t1
+        : top.tern ? o_t3
         : o_t2)
     idx_e ∈ Expr = ECall2("__index", out2, out1)
     nouts = (atom_shift ? ELCons(atom_e, outs)
@@ -449,7 +456,7 @@ claim C2PrattStep(toks ∈ TokenList, outs ∈ ExprList, ops ∈ PrOps,
         : index_shift ? PrCons(PrIdx, ops)
         : arr_shift ? PrCons(push, ops)
         : col_swap ? PrCons(PrTern, orest_tokens)
-        : com_bump ? PrCons(PrCall(top_call_name, top_call_argn + 1), orest_tokens)
+        : com_bump ? PrCons(PrCall(top.call_name, top.call_argn + 1), orest_tokens)
         : (rp_close ∨ rp_call ∨ rb_close ∨ reduce
             ∨ discard) ? orest_tokens
         : ops)
