@@ -19,6 +19,8 @@
 #      Seq-surface regression suite (docs/seq-bounded-catalog.md).
 #   8. functionization gate (scripts/functionization-gate.sh) — perf
 #      regression guard: compiler + FTI fixtures stay ~0 ms z3.
+#   9. invariant gate (scripts/invariant-gate.sh) — static k-induction
+#      guard: carried-type invariants match the RESULTS.md baseline.
 #
 # Usage:
 #   ./test.sh                   # all phases
@@ -41,7 +43,7 @@ for arg in "$@"; do
         --lang)           LANG_ONLY=1 ;;
         --kernel)         KERNEL_ONLY=1 ;;
         -h|--help)
-            sed -n '2,17p' "$0"; exit 0 ;;
+            sed -n '2,30p' "$0"; exit 0 ;;
         *)
             echo "test.sh: unknown flag $arg" >&2; exit 2 ;;
     esac
@@ -160,6 +162,22 @@ if [ "$RUST_ONLY" -eq 0 ] && [ "$CONFORMANCE_ONLY" -eq 0 ] && [ "$LANG_ONLY" -eq
         ok "functionization_gate"
     else
         fail "functionization_gate"; failures+=("functionization_gate")
+    fi
+    echo
+fi
+
+# ── Phase 9: invariant gate (static carried-type proof guard) ───────
+# The static complement to Phase 8: k-induction over the four real
+# carried-type invariants (three zinit latch banks PROVEN with their
+# ordering lemma; the FtiBuffer overrun is the documented runtime net).
+# Fails if a carried type's invariant drifts from the RESULTS.md
+# baseline. See tests/proof/RESULTS.md + scripts/prove-invariants.sh.
+if [ "$RUST_ONLY" -eq 0 ] && [ "$CONFORMANCE_ONLY" -eq 0 ] && [ "$LANG_ONLY" -eq 0 ] && [ "$KERNEL_ONLY" -eq 0 ]; then
+    phase "Phase 9: invariant gate (scripts/invariant-gate.sh)"
+    if scripts/invariant-gate.sh 2>&1 | tee /tmp/evident-invgate.log ; then
+        ok "invariant_gate"
+    else
+        fail "invariant_gate"; failures+=("invariant_gate")
     fi
     echo
 fi
