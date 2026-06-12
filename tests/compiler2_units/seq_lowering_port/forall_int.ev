@@ -1,0 +1,4 @@
+claim demo
+    xs ∈ Seq(Int)
+    #xs ≤ 3
+    ∀ x ∈ xs : x > 0
