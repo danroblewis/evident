@@ -169,7 +169,14 @@ fsm DriverCompose
             ++ _param_names[2].s ++ "|" ++ _param_names[3].s ++ "|" ++ _param_names[4].s ++ "|"
             ++ _param_names[5].s ++ "|")
 
-    reset ∈ Bool = (enter_claim ∨ claim_params)
+    -- A′: the pass-0→pass-1 re-seek restarts the body walk from
+    -- claim_body_start, so the composition state (frame stack, bind tape,
+    -- scope prefix, the per-call α-rename counter call_count) must reset
+    -- to its claim-entry value — otherwise pass 1's `__cN_` prefixes
+    -- differ from pass 0's and forward refs to hidden callee internals
+    -- break. At a pass-0 claim_end frame_depth is 0, so this reset only
+    -- re-zeroes already-idle state plus call_count.
+    reset ∈ Bool = (enter_claim ∨ claim_params ∨ prescan_reseek)
     frames = (is_first_tick ? CFNil
         : reset ? CFNil
         : jump ? CFCons(ret_now, _scope_prefix, _bind_base, _bind_top, _join_hdr, _frames)

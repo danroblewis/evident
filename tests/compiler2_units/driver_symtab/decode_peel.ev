@@ -45,6 +45,7 @@ fsm main
     can_consume = (is_first_tick ? false : _can_consume)
     symtab_buffer ∈ FtiBuffer
     symtab_buffer.base = (is_first_tick ? 0 : _symtab_buffer.base)
+    prescan ∈ Bool = true
     ..DriverSymtab
     verdict ∈ Int = ((topmost_handle = 99 ? 1 : 0) + (second_handle = 7 ? 2 : 0)
         + (is_decl_item ? 4 : 0))

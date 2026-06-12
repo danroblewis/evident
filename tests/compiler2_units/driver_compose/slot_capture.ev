@@ -64,6 +64,7 @@ fsm main
     enter_claim = (is_first_tick ? false : _enter_claim)
     claim_params ∈ Bool
     claim_params = (is_first_tick ? false : _claim_params)
+    prescan_reseek ∈ Bool = false
     second_handle ∈ Int
     second_handle = (is_first_tick ? 0 : _second_handle)
     third_handle ∈ Int

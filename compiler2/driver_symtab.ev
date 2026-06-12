@@ -30,7 +30,11 @@ fsm DriverSymtab
     -- than 31 chars would truncate-alias (corpus max is 21).
     symtab_buffer.count < 8192
     symbol_index ∈ String
-    append_symbol ∈ Bool = (processing ∧ is_decl_item ∧ (_item_step = 2))
+    -- A′: pass 1 re-walks the body and re-emits group/broadcast/setvar
+    -- C2DeclConst items; the Z3 const re-mint is harmless (Z3 interns by
+    -- symbol+sort) but the symbol_index row must NOT double, so the
+    -- append is gated to the pass-0 declaration scan.
+    append_symbol ∈ Bool = (processing ∧ is_decl_item ∧ (_item_step = 2) ∧ prescan)
     symtab_row ∈ String
     FtiNameEntry(name ↦ new_const_name, entry ↦ symtab_row)
     initial_symbols ∈ String = ("|" ++ substr("last_results                               ", 0, 31)

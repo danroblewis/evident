@@ -97,6 +97,7 @@ fsm main
     tok6 = (is_first_tick ? EofTok : _tok6)
     tok7 ∈ Token
     tok7 = (is_first_tick ? EofTok : _tok7)
+    prescan ∈ Bool = true
     ..DriverSetVar
     done ∈ Bool = (set_registry_count = 2)
     effects ∈ Seq(Effect) = (done

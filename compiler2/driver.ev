@@ -210,6 +210,20 @@ fsm driver_main
     -- ── PHASE control (0 lex · 2 parse · 3 emit; REVERSE deleted) ─
     phase  ∈ Int
 
+    -- ── DECLARATION PRE-SCAN (A′) ─────────────────────────────────
+    -- The target-claim body is walked TWICE: pass 0 (walk_pass=0)
+    -- MINTS every const + symtab entry (decls + the manifest/carry
+    -- text) while SUPPRESSING all solver-asserts and the unresolved-
+    -- ident diagnostics; pass 1 (walk_pass=1) re-walks the same body
+    -- with the symtab fully populated, so a name used before its
+    -- declaration line resolves regardless of source order. The pass-0
+    -- `claim_end` re-seeks the cursor to `claim_body_start` instead of
+    -- handing off to dispatch. In-compiler replacement for the
+    -- hoist-decls awk pre-pass (design: declaration-prescan.md).
+    walk_pass ∈ Int
+    claim_body_start ∈ Int
+    prescan ∈ Bool = (_walk_pass = 0)
+
     -- entering_parse = the lexing_done tick: flush any pending string
     -- write, write the EofTok sentinel, then parse starts next tick.
     entering_parse ∈ Bool = ((¬is_first_tick) ∧ (_phase = 0) ∧ lexing_done)
@@ -496,7 +510,7 @@ fsm driver_main
     stack_rot3 ∈ Bool = (processing ∧ is_rot3_item)
 
     handle_stack = (is_first_tick ? C2HNil
-        : (enter_claim ∨ claim_params) ? C2HNil
+        : (enter_claim ∨ claim_params ∨ prescan_reseek) ? C2HNil
         : is_call_fire ? pop_stack
         : jump_fire ? tail1
         : bindzip_act ? bindzip_pop
@@ -517,7 +531,7 @@ fsm driver_main
         : stack_in)
 
     work_items = (is_first_tick ? C2INil
-        : (enter_claim ∨ claim_params) ? C2INil
+        : (enter_claim ∨ claim_params ∨ prescan_reseek) ? C2INil
         : classify_now ? line.items
         : parser.ready ? done_items
         : argbite ? libcall_items
@@ -661,10 +675,12 @@ fsm driver_main
         : (in_pratt ∧ (parser.consume ≥ 1)) ? parser.consume
         : 0)
     token_cursor = (is_first_tick ? 0
+        : prescan_reseek ? _claim_body_start
         : jump ? target_now
         : frame_pop ? ret
         : _token_cursor + consume_n)
     coverage_end = (is_first_tick ? 0
+        : prescan_reseek ? _claim_body_start
         : jump ? target_now
         : frame_pop ? ret
         : _burst_phase = 2 ? _token_cursor + 8 : _coverage_end)
@@ -678,7 +694,7 @@ fsm driver_main
         : consume_n = 7 ? after7
         : TLNil)
     decoded_window = (is_first_tick ? TLNil
-        : (jump ∨ frame_pop) ? TLNil
+        : (prescan_reseek ∨ jump ∨ frame_pop) ? TLNil
         : _burst_phase = 2 ? rebuilt
         : window_after)
 
@@ -699,19 +715,38 @@ fsm driver_main
     strip_nl ∈ Int = index_of(_carry_decls, "\n", strip_pos)
     strip_cut ∈ String = (substr(_carry_decls, 0, strip_pos)
         ++ substr(_carry_decls, strip_nl + 1, #_carry_decls - (strip_nl + 1)))
+    -- A′: the manifest-field list + carry-decl text are built in pass 0
+    -- only; pass 1 (¬prescan) re-walks the body and must NOT re-append
+    -- them (double fields / double declare-funs). All appends + the
+    -- carry-strip are pass-0-gated; pass 1 inherits the frozen strings.
     manifest_fields = (is_first_tick ? ""
+        : (¬prescan) ? _manifest_fields
         : (declare ∧ (¬type_frame)) ? (_manifest_fields = "" ? elem_field : _manifest_fields ++ " " ++ elem_field)
         : field_add ? (_manifest_fields = "" ? mem_field : _manifest_fields ++ " " ++ mem_field)
         : type_tick ? (_manifest_fields = "" ? mem_field : _manifest_fields ++ " " ++ mem_field)
         : draining ? (_manifest_fields = "" ? name_field : _manifest_fields ++ " " ++ name_field)
         : _manifest_fields)
     carry_decls = (is_first_tick ? ""
+        : (¬prescan) ? _carry_decls
         : (declare ∧ (¬type_frame)) ? _carry_decls ++ elem_carry_decl
         : field_add ? _carry_decls ++ mem_carry_decl
         : type_tick ? _carry_decls ++ mem_carry_decl
         : draining ? _carry_decls ++ carry_decl
         : (carry_strip ∧ (strip_pos ≥ 0)) ? strip_cut
         : _carry_decls)
+
+    -- ── A′ pre-scan pass transitions ──────────────────────────────
+    -- claim_body_start = the cursor of the target claim's FIRST body
+    -- line (right after the 2-token `claim Name` header consumed by
+    -- enter_claim). prescan_reseek = the pass-0 claim_end: re-seek the
+    -- cursor back to body-start and re-walk in pass 1.
+    claim_body_start = (is_first_tick ? 0
+        : enter_claim ? (_token_cursor + 2)
+        : _claim_body_start)
+    prescan_reseek ∈ Bool = (claim_end ∧ prescan)
+    walk_pass = (is_first_tick ? 0
+        : prescan_reseek ? 1
+        : _walk_pass)
 
     parse_mode = (is_first_tick ? 0
         : entering_parse ? 0
@@ -722,6 +757,7 @@ fsm driver_main
         : recdecl_go ? 13
         : recdecl_fin ? 0
         : skip_stop ? 0
+        : prescan_reseek ? 2
         : claim_end ? 0
         : (is_comp_line ∨ is_member_line) ? 10
         : cond_hit ? 10
@@ -915,6 +951,13 @@ fsm driver_main
         eff ↦ leneq_eff, ok ↦ eq_ok, needs_not ↦ eq_nn)
     filler_eff ∈ Effect = LibCall("libc", "getpid", ⟨⟩)
 
+    -- A′: in the pre-scan pass the solver-asserts are SUPPRESSED — pass 0
+    -- only mints consts; the commit reruns (with every name resolved) in
+    -- pass 1. assert_eff/assert_tmp are the only BuildZ3SolverAssert
+    -- effects, so routing them to the getpid filler when `prescan` holds
+    -- declares everything without committing a half-resolved body.
+    p_assert_eff ∈ Effect = (prescan ? filler_eff : assert_eff)
+    p_assert_tmp ∈ Effect = (prescan ? filler_eff : assert_tmp)
     step_eff ∈ Effect = (process ∧ is_int ? mkint
         : process ∧ is_str ? mkstring
         : lookup_read ? symbol_read_eff
@@ -933,14 +976,14 @@ fsm driver_main
         : natbound ? natbound_geq_eff
         : is_pineq_item ? pineq_eff
         : is_assert_item ? (guarding
-            ? (_item_step = 0 ? impl_handle : assert_tmp)
-            : assert_eff)
+            ? (_item_step = 0 ? impl_handle : p_assert_tmp)
+            : p_assert_eff)
         : app ? (_item_step < applied_argc ? ctor_argw : ctor_app)
         : is_seleq_item ? (_item_step = 0 ? select
             : _item_step = 1 ? seleq_eff
-            : assert_tmp)
+            : p_assert_tmp)
         : is_seleqh ? (_item_step = 0 ? select : seleq_eff)
-        : is_leneq_item ? (_item_step = 0 ? leneq_eff : assert_tmp)
+        : is_leneq_item ? (_item_step = 0 ? leneq_eff : p_assert_tmp)
         : is_leneqh ? leneq_eff
         : is_strop_item ? (strop_key = "len" ? strlen : strop_eff)
         : is_selh ? select_h
@@ -959,7 +1002,7 @@ fsm driver_main
         : field_unresolved ? ⟨LibCall("libc", "puts",
             ⟨ArgStr(";; compiler2: enum payload field type is not a group member, a scalar, a floor type, or a previously built enum")⟩),
             Exit(8)⟩
-        : (push_ident ∧ resolved_handle = 0) ? ⟨LibCall("libc", "puts",
+        : (push_ident ∧ resolved_handle = 0 ∧ (¬prescan)) ? ⟨LibCall("libc", "puts",
             ⟨ArgStr(";; compiler2: unresolved identifier (no Z3 handle) — declared after use, or a construct the compiler does not support: " ++ lookup_name)⟩),
             Exit(9)⟩
         : (¬_got_path) ? ⟨ReadFile(source_path)⟩
