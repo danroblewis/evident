@@ -43,7 +43,7 @@ import "stdlib/kernel.ev"
 --    `eff` is a no-op Time call (so the Effect literal is well-formed).
 claim BoolCmpBuildZ3(
         ctx_h ∈ Int, op ∈ Op,
-        l_h ∈ Int, r_h ∈ Int,
+        l_h ∈ Int, r_h ∈ Int, prescan ∈ Bool,
         eff ∈ Effect, ok ∈ Bool, needs_not ∈ Bool)
     is_eq   ∈ Bool = (op matches OpEq)
     is_ne   ∈ Bool = (op matches OpNeq)
@@ -56,8 +56,18 @@ claim BoolCmpBuildZ3(
     needs_not = is_ne
     -- NULL-OPERAND GUARD (see BoolNaryBuildZ3 / TernaryBuildZ3): a 0 operand
     -- handle derefs null inside Z3 → SIGSEGV. Halt nameably with Exit(7).
+    -- A′ pass-0 (prescan): an operand is legitimately unresolved (a forward
+    -- reference declared later in the same pass-0 walk). We must NOT call Z3 —
+    -- not even with a placeholder, because a fixed-sort placeholder (Bool)
+    -- mis-sorts a downstream typed build (`C2ICons` wants C2Items, RC 1).
+    -- Instead PROPAGATE the 0: emit a side-effect-free libc call whose result
+    -- captures as handle 0 (`atoi("0")`), so this op's result is 0 too and the
+    -- guard cascades up the expression — no Z3 build ever receives a 0. Pass 1
+    -- re-runs with every name resolved; the assert is suppressed in pass 0.
     bad ∈ Bool = (l_h = 0 ∨ r_h = 0)
-    eff = (bad
+    eff = (bad ∧ prescan
+        ? LibCall("libc", "atoi", ⟨ArgStr("0")⟩)
+        : bad
         ? Exit(7)
         : (is_eq ∨ is_ne)
         ? LibCall("libz3", "Z3_mk_eq",
@@ -82,7 +92,7 @@ claim BoolCmpBuildZ3(
 claim BoolNaryBuildZ3(
         ctx_h ∈ Int, op ∈ Op,
         num_args ∈ Int, args_arr_ptr ∈ Int,
-        l_h ∈ Int, r_h ∈ Int,
+        l_h ∈ Int, r_h ∈ Int, prescan ∈ Bool,
         eff ∈ Effect, ok ∈ Bool)
     is_and ∈ Bool = (op matches OpConj)
     is_or  ∈ Bool = (op matches OpDisj)
@@ -91,8 +101,11 @@ claim BoolNaryBuildZ3(
     -- 2024 self-compile crash): an operand handle of 0 means a sub-expression
     -- never pushed a Z3 AST; Z3_mk_or/and(…0…) derefs null in
     -- ast_manager::check_args → SIGSEGV. Halt NAMEABLY with Exit(7) instead.
+    -- A′ pass-0: propagate 0 (atoi("0") captures as handle 0) — see BoolCmpBuildZ3.
     bad ∈ Bool = (l_h = 0 ∨ r_h = 0)
-    eff = (bad
+    eff = (bad ∧ prescan
+        ? LibCall("libc", "atoi", ⟨ArgStr("0")⟩)
+        : bad
         ? Exit(7)
         : is_and
         ? LibCall("libz3", "Z3_mk_and",
@@ -102,9 +115,12 @@ claim BoolNaryBuildZ3(
             ⟨ArgInt(ctx_h), ArgInt(num_args), ArgInt(args_arr_ptr)⟩)
         : LibCall("libc", "time", ⟨ArgInt(0)⟩))
 
-claim BoolNotBuildZ3(ctx_h ∈ Int, x_h ∈ Int, eff ∈ Effect)
+claim BoolNotBuildZ3(ctx_h ∈ Int, x_h ∈ Int, prescan ∈ Bool, eff ∈ Effect)
     -- NULL-OPERAND GUARD (see BoolNaryBuildZ3): 0 → Z3 null deref → SIGSEGV.
-    eff = (x_h = 0
+    -- A′ pass-0: propagate 0 (atoi("0") captures as handle 0) — see BoolCmpBuildZ3.
+    eff = (x_h = 0 ∧ prescan
+        ? LibCall("libc", "atoi", ⟨ArgStr("0")⟩)
+        : x_h = 0
         ? Exit(7)
         : LibCall("libz3", "Z3_mk_not",
             ⟨ArgInt(ctx_h), ArgInt(x_h)⟩))
@@ -121,9 +137,12 @@ claim BoolNotBuildZ3(ctx_h ∈ Int, x_h ∈ Int, eff ∈ Effect)
 --    into Z3. Valid ternaries (all handles non-zero) are unaffected.
 claim TernaryBuildZ3(
         ctx_h ∈ Int, cond_h ∈ Int, then_h ∈ Int, else_h ∈ Int,
-        eff ∈ Effect)
+        prescan ∈ Bool, eff ∈ Effect)
+    -- A′ pass-0: propagate 0 (atoi("0") captures as handle 0) — see BoolCmpBuildZ3.
     bad ∈ Bool = (cond_h = 0 ∨ then_h = 0 ∨ else_h = 0)
-    eff = (bad
+    eff = (bad ∧ prescan
+        ? LibCall("libc", "atoi", ⟨ArgStr("0")⟩)
+        : bad
         ? Exit(7)
         : LibCall("libz3", "Z3_mk_ite",
             ⟨ArgInt(ctx_h), ArgInt(cond_h), ArgInt(then_h), ArgInt(else_h)⟩))
@@ -192,7 +211,7 @@ claim Translate2BoolProbe
 
     lt_eff ∈ Effect
     lt_ok, lt_needs_not ∈ Bool
-    BoolCmpBuildZ3(ctx_h ↦ 0, op ↦ lt_op, l_h ↦ 0, r_h ↦ 0,
+    BoolCmpBuildZ3(ctx_h ↦ 0, op ↦ lt_op, l_h ↦ 0, r_h ↦ 0, prescan ↦ false,
         eff ↦ lt_eff, ok ↦ lt_ok, needs_not ↦ lt_needs_not)
 
     ne_op ∈ Op
@@ -203,13 +222,13 @@ claim Translate2BoolProbe
 
     ne_eff ∈ Effect
     ne_ok, ne_needs_not ∈ Bool
-    BoolCmpBuildZ3(ctx_h ↦ 0, op ↦ ne_op, l_h ↦ 0, r_h ↦ 0,
+    BoolCmpBuildZ3(ctx_h ↦ 0, op ↦ ne_op, l_h ↦ 0, r_h ↦ 0, prescan ↦ false,
         eff ↦ ne_eff, ok ↦ ne_ok, needs_not ↦ ne_needs_not)
 
     nary_eff ∈ Effect
     nary_ok ∈ Bool
     BoolNaryBuildZ3(ctx_h ↦ 0, op ↦ conj_op, num_args ↦ 2,
-        args_arr_ptr ↦ 0, eff ↦ nary_eff, ok ↦ nary_ok)
+        args_arr_ptr ↦ 0, prescan ↦ false, eff ↦ nary_eff, ok ↦ nary_ok)
 
     all_ok ∈ Bool = (is_tern ∧ cond_is_binop ∧ is_array
         ∧ lt_is_binop ∧ lt_ok ∧ ¬lt_needs_not

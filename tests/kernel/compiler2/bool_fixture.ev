@@ -155,24 +155,24 @@ claim main
     lt_eff ∈ Effect
     lt_ok, lt_needs_not ∈ Bool
     BoolCmpBuildZ3(ctx_h ↦ ctx_h, op ↦ lt_op, l_h ↦ n3_h, r_h ↦ n4_h,
-        eff ↦ lt_eff, ok ↦ lt_ok, needs_not ↦ lt_needs_not)
+        prescan ↦ false, eff ↦ lt_eff, ok ↦ lt_ok, needs_not ↦ lt_needs_not)
 
     ne_eff ∈ Effect
     ne_ok, ne_needs_not ∈ Bool
     BoolCmpBuildZ3(ctx_h ↦ ctx_h, op ↦ ne_op, l_h ↦ n1_h, r_h ↦ n2_h,
-        eff ↦ ne_eff, ok ↦ ne_ok, needs_not ↦ ne_needs_not)
+        prescan ↦ false, eff ↦ ne_eff, ok ↦ ne_ok, needs_not ↦ ne_needs_not)
 
     neg_eff ∈ Effect
-    BoolNotBuildZ3(ctx_h ↦ ctx_h, x_h ↦ eq_h, eff ↦ neg_eff)
+    BoolNotBuildZ3(ctx_h ↦ ctx_h, x_h ↦ eq_h, prescan ↦ false, eff ↦ neg_eff)
 
     and_eff ∈ Effect
     and_ok ∈ Bool
     BoolNaryBuildZ3(ctx_h ↦ ctx_h, op ↦ conj_op, num_args ↦ 2,
-        args_arr_ptr ↦ and_buf, eff ↦ and_eff, ok ↦ and_ok)
+        args_arr_ptr ↦ and_buf, prescan ↦ false, eff ↦ and_eff, ok ↦ and_ok)
 
     ite_eff ∈ Effect
     TernaryBuildZ3(ctx_h ↦ ctx_h, cond_h ↦ and_h, then_h ↦ n1_h,
-        else_h ↦ n0_h, eff ↦ ite_eff)
+        else_h ↦ n0_h, prescan ↦ false, eff ↦ ite_eff)
 
     -- ── Verdict.
 

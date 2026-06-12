@@ -112,7 +112,7 @@ fsm DriverBuildEff
     BuildMemReadLong(addr ↦ query_p, eff ↦ read_decl)
     app0 ∈ Effect
     CtorAppStep(ctx_h ↦ z3ctx.ctx, ctor_decl_h ↦ is_intresult_capture, n_args ↦ 0,
-        args_p ↦ 0, eff ↦ app0)
+        args_p ↦ 0, prescan ↦ false, args_bad ↦ false, eff ↦ app0)
     read_tester ∈ Effect
     BuildMemReadLong(addr ↦ query_p + 8, eff ↦ read_tester)
     read_accs ∈ Seq(Effect)
@@ -229,7 +229,7 @@ fsm DriverBuildEff
     lastres_ge_ok ∈ Bool
     lastres_ge_nn ∈ Bool
     BoolCmpBuildZ3(ctx_h ↦ z3ctx.ctx, op ↦ geq, l_h ↦ last_results_length,
-        r_h ↦ z3nums.zero, eff ↦ lastres_ge, ok ↦ lastres_ge_ok, needs_not ↦ lastres_ge_nn)
+        r_h ↦ z3nums.zero, prescan ↦ false, eff ↦ lastres_ge, ok ↦ lastres_ge_ok, needs_not ↦ lastres_ge_nn)
     lastres_assert ∈ Effect
     BuildZ3SolverAssert(ctx_h ↦ z3ctx.ctx, solver_h ↦ z3ctx.sol, ast_h ↦ last_results_geq,
         eff ↦ lastres_assert)
@@ -248,7 +248,7 @@ fsm DriverBuildEff
     is_length_geq_ok ∈ Bool
     is_length_geq_nn ∈ Bool
     BoolCmpBuildZ3(ctx_h ↦ z3ctx.ctx, op ↦ geq, l_h ↦ effects_length,
-        r_h ↦ z3nums.zero, eff ↦ geq_constraint_eff, ok ↦ is_length_geq_ok, needs_not ↦ is_length_geq_nn)
+        r_h ↦ z3nums.zero, prescan ↦ false, eff ↦ geq_constraint_eff, ok ↦ is_length_geq_ok, needs_not ↦ is_length_geq_nn)
     length_assertion_eff ∈ Effect
     BuildZ3SolverAssert(ctx_h ↦ z3ctx.ctx, solver_h ↦ z3ctx.sol, ast_h ↦ effects_length_geq,
         eff ↦ length_assertion_eff)

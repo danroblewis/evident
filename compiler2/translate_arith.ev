@@ -86,14 +86,20 @@ claim AtomIdentName(e ∈ Expr, name ∈ String)
 --    for OpDiv args_arr_ptr is ignored (Z3_mk_div is binary).
 claim ArithBinopBuildZ3(
         ctx_h ∈ Int, op ∈ Op,
-        l_h ∈ Int, r_h ∈ Int, args_arr_ptr ∈ Int,
+        l_h ∈ Int, r_h ∈ Int, args_arr_ptr ∈ Int, prescan ∈ Bool,
         eff ∈ Effect, ok ∈ Bool)
     is_plus ∈ Bool = (op matches OpPlus)
     is_sub  ∈ Bool = (op matches OpSub)
     is_mul  ∈ Bool = (op matches OpMul)
     is_div  ∈ Bool = (op matches OpDiv)
     ok = (is_plus ∨ is_sub ∨ is_mul ∨ is_div)
-    eff = (is_plus
+    -- A′ pass-0 (prescan): a 0 operand is a forward reference; propagate 0
+    -- (atoi("0") captures as handle 0) instead of feeding Z3_mk_add/sub/mul/div
+    -- a null arg (RC 71). See translate2_bool.ev BoolCmpBuildZ3 for the rationale.
+    bad ∈ Bool = (l_h = 0 ∨ r_h = 0)
+    eff = (bad ∧ prescan
+        ? LibCall("libc", "atoi", ⟨ArgStr("0")⟩)
+        : is_plus
         ? LibCall("libz3", "Z3_mk_add",
             ⟨ArgInt(ctx_h), ArgInt(2), ArgInt(args_arr_ptr)⟩)
         : is_sub
