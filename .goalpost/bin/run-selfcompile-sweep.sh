@@ -27,10 +27,12 @@ total="$(grep -oE 'selfcompile-sweep: [0-9]+/[0-9]+' "$LOG" | grep -oE '[0-9]+/[
 : "${clean:=0}"; : "${total:=0}"
 
 # Per-rc tallies from the per-fixture lines ("... rc=N ...").
-rc_count() { grep -cE "rc=$1( |\$)" "$LOG" 2>/dev/null || echo 0; }
+# NB: `grep -c` already prints "0" on no match (and exits 1) — so use `|| true`,
+# NOT `|| echo 0`, or the count double-prints "0\n0" and corrupts the JSON.
+rc_count() { grep -cE "rc=$1( |\$)" "$LOG" 2>/dev/null || true; }
 rc7="$(rc_count 7)"; rc9="$(rc_count 9)"; rc71="$(rc_count 71)"; rc70="$(rc_count 70)"
 rc1="$(rc_count 1)"; rc3="$(rc_count 3)"
-flatfail="$(grep -cE 'FLATFAIL' "$LOG" 2>/dev/null || echo 0)"
+flatfail="$(grep -cE 'FLATFAIL' "$LOG" 2>/dev/null || true)"
 ts="$(date +%s)"
 
 cat > "$ART/compiler2-selfcompile-sweep.json" <<JSON
