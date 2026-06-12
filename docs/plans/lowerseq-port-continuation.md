@@ -26,7 +26,7 @@ source ──▶ lowerseq_scan ──records──▶ lowerseq_plan ──regist
   `LsTrimR` (flat comma split for literal payloads; `AcParseInt` from
   autocarry_lib parses N).
 
-## Ported + byte-identical (8 fixtures green)
+## Ported + byte-identical (13 fixtures green)
 
 - **R0** opt-in gate (scalar base + same-claim `#name ≤ N`; global
   registration; unbounded Seqs pass through verbatim).
@@ -39,23 +39,31 @@ source ──▶ lowerseq_scan ──records──▶ lowerseq_plan ──regist
   hold; dual decl `_xs ∈ Seq(El)` → `_xs_k` (+ `_xs_len`); the `#xs ≤ N`
   bound directive: vanishes when ¬hasLen, card-rewrites to `xs_len ≤ N`
   when hasLen.
+- **R16** literal index `xs[lit]` → `xs_lit` (anywhere, comment-INCLUSIVE);
+  literal-arith fold `xs[2*3 + 1]` → `xs_7` (`+ - *`, `*` binds tighter,
+  left-assoc sum — `LsIdxEval` matches awk `idx_eval`); `.field` and literal
+  `[sub]`-index (`xs[1].bar[2]` → `xs_1_bar_2`).
+- **R18** card `#xs` → `xs_len` (anywhere, comment-INCLUSIVE).
+
+R16/R18 are implemented as a phase-5 single left-to-right token walk over the
+RAW default-path line, one token-unit per tick (the two token shapes `#name` /
+`name[` are disjoint, so one combined pass mirrors awk's `subst_index ∘
+subst_card`). A clean default line (no `#` or `[`) fast-paths verbatim. New lib
+helpers: `LsIdxEval` / `LsStripWs` / `LsAllDigits` / `LsOnlyIdxChars` /
+`LsDigitEnd`. Fixtures: `r16_index` / `r16_arith` / `r16_field` / `r16_comment`
+/ `r18_card`.
 
 ## NOT ported (continuation, priority order)
 
-### Tier 1 — R16/R18 default-path substitution (the next step)
-The single highest-value gap. The awk runs `subst_index` (R16: `xs[K]`→`xs_K`,
-incl. literal-arith fold `xs[2*3+1]`→`xs_7`) + `subst_card` (R18: `#xs`→`xs_len`)
-on **every default-path line, INCLUDING COMMENTS** (measured: a comment
-`-- note xs[0] and #xs` is rewritten). Hard parts:
-  - must run on the raw line (comment-inclusive), at fixpoint;
-  - literal-index arithmetic folding (`idx_eval`: `+ - *` over int literals);
-  - the dynamic-index select chains (`subst_dyn`: `xs[i]`/`xs_k_accs[j]`→covered
-    chain) and `subst_dyn_fix` fixpoint.
-  Design: a phase-5 sub-loop in `lowerseq_emit` doing one leftmost rewrite per
-  tick until stable, then print. A single-replacement primitive (`LsSubstOne`)
-  in the lib finds the leftmost `#name`/`name[lit]` of a registered seq and
-  rewrites it. Until this lands, gate fixtures must avoid surviving seq
-  index/card uses (the current 8 do).
+### Tier 1b — the DYNAMIC-index select chains (`subst_dyn`)
+Not yet ported — a dynamic index `xs[i]` (i an ident) survives the walk
+VERBATIM (the `LsIdxEval` fold fails on a non-literal, so the walk passes
+`xs[i]` through). The awk default path runs `subst_dyn_fix` after the literal
+substitution, expanding `xs[i]`/`xs_k_accs[j]` to the covered select chain at
+fixpoint. Porting it: extend the phase-5 walk so an `ident[ident]` over a
+registered seq emits the per-slot ternary chain (`(i = 0 ? xs_0 : … : xs_{N-1})`),
+then re-walk to fixpoint. Gate fixtures must avoid surviving dynamic indices
+until this lands (the current 13 do).
 
 ### Tier 2 — record-element decls + the `∀`/`∃`/member unrolls
   - record-`type` element decls (`xs ∈ Seq(R)` → `xs_k_fj ∈ Tj`; the
