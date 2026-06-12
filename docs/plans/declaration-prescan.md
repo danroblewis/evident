@@ -157,3 +157,68 @@ hoist-decls.sh` (and its cross-lift copy) is redundant — remove it from the
 then it stays (Step 1 does NOT yet make it removable: the rc=7 record cluster
 still needs the hoist's within-claim ordering for the self-compile of
 `driver_main` itself).
+
+## A′′ — the remaining decl-scan name classes (2026-06-12)
+
+Steps 1-3 landed; the bodyless-record cap-3 gap is closed (Step 2's uncapped
+`rectab_*` field table + `RtTabDecls`). Two MORE decl-scan name classes were
+then cleared (sweep 54/91, 0 crashes):
+
+- **Floor-ctor names** (`compiler2: register LibArg payload ctors`). A named
+  `e ∈ Effect = LibCall(…, ⟨ArgInt(x)⟩)` member parses through pratt, but the
+  LibArg payload ctors ArgInt/ArgStr/ArgRef were not in pratt's
+  `floor_ctor_names` call registry → `ArgInt` fell to a bare ident
+  (rc=9). Fix: seed them into `floor_ctor_names` (driver_pratt) + extend
+  `ctor_decl` to ArgInt→argint_decl / ArgStr→argstr_decl (driver_exprdecomp),
+  mirroring Exit/LibCall. Bare `ArgInt(x)` now lowers to a real ctor app.
+
+- **Carry duals of a `..`-lifted autocarry fsm** (`declare a ..-lifted
+  autocarry fsm's header carry duals`). A `..`-lift inlines a body but IGNORES
+  the header, so the autocarry-appended `_x` carry-dual header slots (declared
+  nowhere — the caller never declares them, the lift's pskip param-decl is
+  suppressed for lifts) read at a 0 handle (rc=9 unresolved `_record_slot`).
+  Fix: `lift_prescan_decl` in driver_posbind — in PASS 0 only, a lift declares
+  each header param the symtab does not already hold (the `_hide` path's
+  symtab-miss guard, unified as `use_symtab_guard`); the per-slot fresh-decl
+  walk is widened 6→16 (autocarry headers carry ≤10 forward + duals). Fixture
+  tax: tuple_recognize stubs `prescan ∈ Bool = true`; slot_capture widens its
+  own `param_names` stub 6→16.
+
+### NEW blockers surfaced past A′′ (NOT decl-scan — the next efforts)
+
+The two A′′ fixes advance four modules past their rc=9 decl-scan gap
+(field_walk rc=9→7; estep_walk / matchpin/scrutinee / workitems/ternary
+rc=9→1), but each then hits a SUBSEQUENT, non-decl-scan gap, so `clean` holds
+at 54/91. These are distinct classes for a fresh effort:
+
+1. **Effect-literal `⟨⟩` in a non-`effects` member binding** (the dominant
+   one — 39 lines across 7 modules, e.g. `free_tokbuf ∈ Effect = LibCall("libc",
+   "free", ⟨ArgInt(tok_buf.base)⟩)` in driver_emit). The `effects_line` gate
+   (`is_mem ∧ line.name = "effects"`) routes ONLY the `effects` writer into the
+   efflit machinery; a named `Effect`-typed member with a `⟨⟩` Seq(LibArg)
+   literal goes to `pratt_line` instead, and pratt has NO `OpSeqOpen` handling
+   (the `Expr` enum has no Seq-literal variant), so the `⟨⟩` is unparseable →
+   the kernel aborts the compile with "Error: invalid argument" (rc=1). This is
+   what now blocks driver_emit/estep_walk. Fix is a real feature, not a
+   decl-scan patch: either (a) generalize the efflit path to retarget a named
+   const (it is hardwired to `effects` — LenEq/SelectEq/single-writer), or (b)
+   add a Seq-literal `Expr` variant + pratt `⟨…⟩` nud + a Seq-of-ctor lowering.
+
+2. **Runtime "invalid argument" (rc=1) in driver_matchpin/scrutinee +
+   workitems/ternary_null_guard** — these have NO named-effect-member, so the
+   cause is a different malformed LibCall arg produced during the compile (a
+   ctor-app or strop emitting a 0/garbage handle that reaches libffi). Needs
+   per-module tracing.
+
+3. **`next_char` use-before-decl in a lifted body** (driver_lex/lex_idents,
+   lex_twochar_op — rc=9 unresolved `next_char`). `next_char ∈ String =
+   substr(input, pos+1, 1)` is declared LATE in DriverLex's body but read EARLY
+   as a composition slot value (`IsDigitChar(c ↦ next_char, …)`). The two-pass
+   prescan is supposed to make order irrelevant, so this is a prescan gap
+   specific to composition-slot reads ahead of the declaring line in a lifted
+   body — investigate whether pass 0's compose walk short-circuits the cursor
+   before reaching line 229's decl.
+
+4. **field_walk rc=7** — past the carry-dual fix, a recs/`RtRecName` null-operand
+   (the fixture's hand-built `recs` registry + Seq-of-record reads), not a
+   decl-scan class.
