@@ -12,6 +12,81 @@
 --           Seq(Int) field is skipped in the decl (its own seq membership
 --           declares it).
 --
+-- A′ Step 2: pass-0 record field-const declarations from the uncapped,
+-- handle-free field table (rectab_*, built in driver_record). For a
+-- bodyless `r ∈ T` whose T is past the cap-3 `recs` registry, this is
+-- the only place T's dotted field consts (`r.f`) get declared. tyname →
+-- the type's ti*768 ident block, which holds the header Idents in order:
+-- field k's NAME is ident 2k, its TYPE-name is ident 2k+1 (≤12 fields).
+-- Each non-empty field name yields a C2DeclConst with a primitive-mapped
+-- sort (Bool→1, String→3, Real→6, else Int/0, mirroring sortcodes); a
+-- Seq(Int) field is skipped (its own seq membership declares it). Pure
+-- (is_pure_push), no carry — reads rectab_* ambiently (names-match).
+claim RtTabDecls(prefix ∈ String, tyname ∈ String, rectab_names ∈ String,
+        rectab_idents ∈ String, decl_names ∈ String, tail ∈ C2Items, out ∈ C2Items,
+        mani ∈ String, carry ∈ String)
+    tab_key ∈ String
+    FtiNameEntry(name ↦ tyname, entry ↦ tab_key)
+    tab_pos ∈ Int = index_of(rectab_names, tab_key, 0)
+    tab_ti ∈ Int = tab_pos / 32
+    blk_id ∈ String = (tab_pos ≥ 0 ? substr(rectab_idents, tab_ti * 768, 768) : "")
+    tfields ∈ Seq(RecField)
+    #tfields ≤ 12
+    ∀ k ∈ {0..11} : RtRecName(s ↦ blk_id, i ↦ 2 * k, name ↦ tfields[k].name)
+    ∀ k ∈ {0..11} : RtRecName(s ↦ blk_id, i ↦ 2 * k + 1, name ↦ tfields[k].typename)
+    -- sort code per field type: primitives direct; an enum-typed field
+    -- (the field's type-name is in the enum table decl_names) gets the
+    -- enum sort code 30+slot, mirroring driver_classify's line.sort; else
+    -- Int (0). A bare Int decl for an enum field would clash with the
+    -- field's own enum-sorted assignment (Sorts Int and X incompatible).
+    -- enum_key mirrors FtiNameEntry's fixed-width row so the lookup keys
+    -- the same decl_names registry.
+    tab_enum_slot ∈ Seq(Int)
+    #tab_enum_slot ≤ 12
+    ∀ k ∈ {0..11} : tab_enum_slot[k] = index_of(decl_names, "|" ++ substr(tfields[k].typename ++ "                               ", 0, 31), 0)
+    tsc ∈ Seq(Int)
+    #tsc ≤ 12
+    ∀ k ∈ {0..11} : tsc[k] = (tfields[k].typename = "Bool" ? 1
+        : tfields[k].typename = "String" ? 3
+        : tfields[k].typename = "Real" ? 6
+        : tab_enum_slot[k] ≥ 0 ? 30 + (tab_enum_slot[k] / 32)
+        : 0)
+    td ∈ Seq(C2Items)
+    #td ≤ 13
+    td[12] = tail
+    ∀ k ∈ {0..11} : td[11 - k] = ((tfields[11 - k].name = "" ∨ tfields[11 - k].typename = "Seq(Int)")
+        ? td[12 - k]
+        : C2ICons(C2DeclConst(prefix ++ tfields[11 - k].name, tsc[11 - k]),
+            C2ICons(C2Drop, td[12 - k])))
+    out = td[0]
+
+    -- The carried bodyless record needs each flattened field on the
+    -- manifest state-field list AND a `_prefix.f` carry-decl line (the
+    -- mem_field / mem_carry_decl format), or the kernel won't carry it and
+    -- the `_prefix.f` read goes to a 0 handle. The SMT sort string is the
+    -- field's type name verbatim (Int/Bool/String/Real or the enum name).
+    tab_smt_sort ∈ Seq(String)
+    #tab_smt_sort ≤ 12
+    ∀ k ∈ {0..11} : tab_smt_sort[k] = (tfields[k].typename = "Bool" ? "Bool"
+        : tfields[k].typename = "String" ? "String"
+        : tfields[k].typename = "Real" ? "Real"
+        : tab_enum_slot[k] ≥ 0 ? tfields[k].typename
+        : "Int")
+    tab_mani_frag ∈ Seq(String)
+    #tab_mani_frag ≤ 13
+    tab_mani_frag[12] = ""
+    ∀ k ∈ {0..11} : tab_mani_frag[11 - k] = ((tfields[11 - k].name = "" ∨ tfields[11 - k].typename = "Seq(Int)")
+        ? tab_mani_frag[12 - k]
+        : " " ++ prefix ++ tfields[11 - k].name ++ ":" ++ tab_smt_sort[11 - k] ++ tab_mani_frag[12 - k])
+    mani = tab_mani_frag[0]
+    tab_carry_frag ∈ Seq(String)
+    #tab_carry_frag ≤ 13
+    tab_carry_frag[12] = ""
+    ∀ k ∈ {0..11} : tab_carry_frag[11 - k] = ((tfields[11 - k].name = "" ∨ tfields[11 - k].typename = "Seq(Int)")
+        ? tab_carry_frag[12 - k]
+        : "(declare-fun _" ++ prefix ++ tfields[11 - k].name ++ " () " ++ tab_smt_sort[11 - k] ++ ")\n" ++ tab_carry_frag[12 - k])
+    carry = tab_carry_frag[0]
+
 -- The record value/decl expansion. Lifted into driver_main via
 -- `..DriverRecVal`.
 fsm DriverRecVal

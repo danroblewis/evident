@@ -300,6 +300,32 @@ fsm driver_main
     -- ── C2RecVal/C2RecDecl expansion (see compiler2/driver_recval.ev) ──
     ..DriverRecVal
 
+    -- A′ Step 2: pass-0 record field-const decls for a bodyless `r ∈ T`
+    -- whose T is past the cap-3 recs registry (_type_slot < 0): read T's
+    -- field list from the uncapped, handle-free rectab_* table (built in
+    -- DriverRecord). RtTabDecls produces the per-field C2DeclConst list.
+    tab_recdecl_items ∈ C2Items
+    tab_mani ∈ String
+    tab_carry ∈ String
+    RtTabDecls(prefix ↦ _type_prefix, tyname ↦ _type_tyname,
+        rectab_names ↦ rectab_names, rectab_idents ↦ rectab_idents,
+        decl_names ↦ decl_names, tail ↦ C2INil, out ↦ tab_recdecl_items,
+        mani ↦ tab_mani, carry ↦ tab_carry)
+    -- The `_type_slot < 0` membership is a RECORD type past the cap-3 recs
+    -- registry ONLY if its name is in the uncapped rectab; otherwise it is
+    -- an ENUM-typed membership (`result ∈ Expr`) that the original path
+    -- must still own (a tab miss would silently drop its decl → 0 handle).
+    tab_key2 ∈ String
+    FtiNameEntry(name ↦ _type_tyname, entry ↦ tab_key2)
+    tab_is_rec ∈ Bool = (index_of(rectab_names, tab_key2, 0) ≥ 0)
+    -- The manifest + `_`-carry text is appended ONLY for the FORWARD
+    -- record membership (`r ∈ T`), never its autocarry dual (`_r ∈ T`):
+    -- the dual's own tab pass mints the `_r.f` Z3 consts (so the carry
+    -- read resolves), but `_r.f` must not land on the state-field manifest
+    -- and its carry-decl text is the forward's job. Pass-0 only.
+    tab_decl_fire ∈ Bool = (bare_jump ∧ _is_type ∧ (_type_slot < 0) ∧ tab_is_rec ∧ prescan
+        ∧ (substr(_type_prefix, 0, 1) ≠ "_"))
+
     -- ── parse-expr node decomposition (see compiler2/driver_exprdecomp.ev) ──
     ..DriverExprDecomp
 
@@ -545,6 +571,7 @@ fsm driver_main
         : is_setlit_close ? setlit_len_items
         : (is_call_fire ∧ _is_type) ? type_pin_items
         : (bare_jump ∧ _is_type ∧ (_type_slot ≥ 0)) ? recdecl_items
+        : (bare_jump ∧ _is_type ∧ (_type_slot < 0) ∧ tab_is_rec) ? tab_recdecl_items
         : decl_fire ? pskip_decl_items
         : type_tick ? member_decls
         : draining ? drain_items
@@ -724,6 +751,7 @@ fsm driver_main
         : (declare ∧ (¬type_frame)) ? (_manifest_fields = "" ? elem_field : _manifest_fields ++ " " ++ elem_field)
         : field_add ? (_manifest_fields = "" ? mem_field : _manifest_fields ++ " " ++ mem_field)
         : type_tick ? (_manifest_fields = "" ? mem_field : _manifest_fields ++ " " ++ mem_field)
+        : tab_decl_fire ? _manifest_fields ++ tab_mani
         : draining ? (_manifest_fields = "" ? name_field : _manifest_fields ++ " " ++ name_field)
         : _manifest_fields)
     carry_decls = (is_first_tick ? ""
@@ -731,6 +759,7 @@ fsm driver_main
         : (declare ∧ (¬type_frame)) ? _carry_decls ++ elem_carry_decl
         : field_add ? _carry_decls ++ mem_carry_decl
         : type_tick ? _carry_decls ++ mem_carry_decl
+        : tab_decl_fire ? _carry_decls ++ tab_carry
         : draining ? _carry_decls ++ carry_decl
         : (carry_strip ∧ (strip_pos ≥ 0)) ? strip_cut
         : _carry_decls)

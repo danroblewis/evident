@@ -162,6 +162,64 @@ fsm DriverRecord
     ∀ k ∈ {0..2} : recs[k].ftypes = (is_first_tick ? "" : (field_ok ∧ rec_slot = k) ? _recs[k].ftypes ++ rows_types : _recs[k].ftypes)
     ∀ k ∈ {0..2} : recs[k].n_fields = (is_first_tick ? 0 : (field_ok ∧ rec_slot = k) ? _recs[k].n_fields + add_n : _recs[k].n_fields)
 
+    -- ── A′ Step 2: uncapped, text-only field table ───────────────────
+    -- The cap-3 `recs` registry above holds Z3 tuple-sort/ctor/accessor
+    -- HANDLES per type, so bumping it explodes the carried
+    -- Seq(RecTypeEntry) model (the registry-cap wall). But the pass-0
+    -- declaration scan needs every record type's FIELD LIST — names +
+    -- type-names only, no handles — for `r ∈ T`'s dotted field consts.
+    -- So this is a SEPARATE, uncapped, handle-free table:
+    --   rectab_names   — 32-byte "|tyname<pad>" row per record type
+    --   rectab_idents  — a fixed 768-byte (24×32) block of the header's
+    --                    Idents IN ORDER per type: f0,T0,f1,T1,… (a header
+    --                    `(f ∈ T, g ∈ U)` lexes to the strict alternation
+    --                    name,type,name,type — so field k's NAME is ident
+    --                    2k and its TYPE is ident 2k+1; ≤12 fields).
+    -- RtTabDecls (driver_recval) reads a type's block at index ti*768.
+    --
+    -- TRAP (measured 2026-06-12): collection MUST be lookahead-free. The
+    -- skip pass advances 1 tok/tick, and the burst window only guarantees
+    -- tok0; a field whose tok1/tok2 lookahead straddles a burst-coverage
+    -- boundary reads EofTok there, so a `tok0 ∈ tok2`-shaped field
+    -- recognizer silently drops every other field (the cap-3 collector has
+    -- this latent bug too — its fnames are garbage, but nothing reads
+    -- them). So we key ONLY on tok0: append every Ident seen while inside
+    -- the header parens (LParen/RParen depth, also tok0-only). The
+    -- alternation reconstructs names+types with no lookahead.
+    tab_start ∈ Bool = (claimindex_add ∧ (tok0 matches KwType))
+    tab_collect_on ∈ Bool
+    tab_collecting ∈ Bool = (in_skip ∧ (¬skip_stop) ∧ _tab_collect_on)
+    tab_depth ∈ Int
+    tab_open ∈ Bool = (tab_collecting ∧ (tok0 matches LParen))
+    tab_shut ∈ Bool = (tab_collecting ∧ (tok0 matches RParen))
+    tab_ident ∈ Bool = (tab_collecting ∧ (_tab_depth ≥ 1) ∧ (tok0 matches Ident(_)))
+    tab_ident_row ∈ String = "|" ++ substr(field_name_tok ++ rec_pad31, 0, 31)
+
+    cur_ty ∈ String
+    cur_id ∈ String
+    tab_flush ∈ Bool = (skip_stop ∧ _tab_collect_on)
+    spaces192 ∈ String = rec_pad31 ++ rec_pad31 ++ rec_pad31 ++ rec_pad31 ++ rec_pad31 ++ rec_pad31 ++ rec_pad31
+    spaces768 ∈ String = spaces192 ++ spaces192 ++ spaces192 ++ spaces192
+    flush_id ∈ String = substr(_cur_id ++ spaces768, 0, 768)
+    flush_ty ∈ String = "|" ++ substr(_cur_ty ++ rec_pad31, 0, 31)
+
+    rectab_names ∈ String
+    rectab_idents ∈ String
+    rectab_names = (is_first_tick ? "" : tab_flush ? _rectab_names ++ flush_ty : _rectab_names)
+    rectab_idents = (is_first_tick ? "" : tab_flush ? _rectab_idents ++ flush_id : _rectab_idents)
+
+    tab_collect_on = (is_first_tick ? false
+        : tab_start ? true
+        : skip_stop ? false
+        : _tab_collect_on)
+    tab_depth = (is_first_tick ? 0
+        : tab_start ? 0
+        : tab_open ? _tab_depth + 1
+        : tab_shut ? _tab_depth - 1
+        : _tab_depth)
+    cur_ty = (is_first_tick ? "" : tab_start ? decl_name : _cur_ty)
+    cur_id = (is_first_tick ? "" : tab_start ? "" : tab_ident ? _cur_id ++ tab_ident_row : _cur_id)
+
     recdecl_st ∈ Int
     field_i ∈ Int
     h_name ∈ Int
