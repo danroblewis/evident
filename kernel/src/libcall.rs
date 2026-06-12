@@ -85,67 +85,105 @@ pub fn init_effect_trace() {
 /// given args. Returns either an i64 (the libffi register-return value, the
 /// historical default) or a String (used by pseudo-libraries that need to
 /// surface a textual result — today only `__cstr.copy`).
-/// Z3 AST-builder handle validation (see the call site). For a known builder,
-/// returns the arg positions that MUST be nonzero handles, plus an optional
-/// `(count_pos, buffer_pos)` whose buffer holds `count` i64 operand handles
-/// (the n-ary array builders). `ctx` (position 0) is always a handle. Functions
-/// not in the table are not guarded (returns empty). Value args (e.g. the `0`
-/// in `Z3_mk_int(ctx, 0, sort)`) are deliberately NOT positions here.
-fn z3_handle_spec(fn_name: &str) -> (&'static [usize], Option<(usize, usize)>) {
-    match fn_name {
-        "Z3_mk_eq" | "Z3_mk_lt" | "Z3_mk_gt" | "Z3_mk_le" | "Z3_mk_ge"
-        | "Z3_mk_implies" | "Z3_mk_select" | "Z3_mk_set_add" | "Z3_mk_set_del"
-        | "Z3_mk_seq_contains" | "Z3_mk_seq_prefix" | "Z3_mk_seq_suffix"
-            => (&[0, 1, 2], None),
-        "Z3_mk_not" | "Z3_mk_seq_length" | "Z3_inc_ref" | "Z3_dec_ref"
-        | "Z3_mk_seq_unit"
-            => (&[0, 1], None),
-        "Z3_mk_ite" | "Z3_mk_store"
-            => (&[0, 1, 2, 3], None),
-        "Z3_solver_assert"
-            => (&[0, 1, 2], None),
-        "Z3_mk_app"
-            => (&[0, 1], Some((2, 3))),
-        "Z3_mk_and" | "Z3_mk_or" | "Z3_mk_add" | "Z3_mk_sub" | "Z3_mk_mul"
-        | "Z3_mk_seq_concat"
-            => (&[0], Some((1, 2))),
-        _ => (&[], None),
+// ── General FFI crash reporter ──────────────────────────────────────────────
+// The z3_handle_guard below is a PREEMPTIVE check for known null-handle cases.
+// This is the GENERAL net: a SIGSEGV/SIGBUS/SIGABRT/SIGFPE/SIGILL during ANY
+// FFI call (any library, any function, any cause — not just null Z3 handles)
+// is caught and reported with the in-flight call's name, then exits cleanly
+// with RC 71, instead of a bare "Segmentation fault". Like gdb, but built in —
+// no separate debugger run. Async-signal-safe: the handler only touches
+// lock-free atomics, a stack buffer, write() and _exit().
+use std::sync::atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering};
+
+extern "C" {
+    fn signal(signum: i32, handler: usize) -> usize;
+    fn write(fd: i32, buf: *const u8, count: usize) -> isize;
+    fn _exit(code: i32) -> !;
+    // glibc backtrace (execinfo.h). backtrace_symbols_fd writes directly to an
+    // fd without malloc, so it is usable from a signal handler; backtrace() can
+    // allocate on its first call, so we pre-warm it at install time.
+    fn backtrace(buffer: *mut *mut c_void, size: i32) -> i32;
+    fn backtrace_symbols_fd(buffer: *const *mut c_void, size: i32, fd: i32);
+}
+
+const FFI_CTX_CAP: usize = 256;
+static FFI_CTX: [AtomicU8; FFI_CTX_CAP] = [const { AtomicU8::new(0) }; FFI_CTX_CAP];
+static FFI_CTX_LEN: AtomicUsize = AtomicUsize::new(0);
+static FFI_ACTIVE: AtomicBool = AtomicBool::new(false);
+static HANDLER_INSTALLED: AtomicBool = AtomicBool::new(false);
+
+extern "C" fn ffi_crash_handler(_sig: i32) {
+    unsafe {
+        let pre = b"\n[ffi-crash] fatal signal during ";
+        write(2, pre.as_ptr(), pre.len());
+        if FFI_ACTIVE.load(Ordering::SeqCst) {
+            let lab = b"FFI call: ";
+            write(2, lab.as_ptr(), lab.len());
+            let n = FFI_CTX_LEN.load(Ordering::SeqCst).min(FFI_CTX_CAP);
+            let mut local = [0u8; FFI_CTX_CAP];
+            for i in 0..n { local[i] = FFI_CTX[i].load(Ordering::SeqCst); }
+            write(2, local.as_ptr(), n);
+        } else {
+            let lab = b"kernel/Z3 internals (not at the FFI boundary)";
+            write(2, lab.as_ptr(), lab.len());
+        }
+        let post = b"\n[ffi-crash] C backtrace (most recent call first):\n";
+        write(2, post.as_ptr(), post.len());
+        // gdb-style stack trace, signal-safe (fd writer, no malloc).
+        let mut frames = [std::ptr::null_mut::<c_void>(); 48];
+        let n = backtrace(frames.as_mut_ptr(), 48);
+        backtrace_symbols_fd(frames.as_ptr(), n, 2);
+        let tail = b"[ffi-crash] (EVIDENT_EFFECT_TRACE=1 prints the full call sequence)\n";
+        write(2, tail.as_ptr(), tail.len());
+        _exit(71);
     }
 }
 
-/// Validate the handle args of a libz3 call and halt nameably (distinct RC 70)
-/// rather than let Z3 SIGSEGV on a null handle.
-fn z3_handle_guard(fn_name: &str, args: &[LibArg]) {
-    let (handles, array) = z3_handle_spec(fn_name);
-    for &p in handles {
-        if let Some(LibArg::Int(v)) = args.get(p) {
-            if *v == 0 {
-                eprintln!("[z3-guard] {fn_name}: handle arg {p} is null \
-                    (a sub-expression produced no Z3 AST) — would SIGSEGV; halting");
-                std::process::exit(70);
-            }
+fn install_ffi_crash_handler() {
+    if HANDLER_INSTALLED.swap(true, Ordering::SeqCst) { return; }
+    // Pre-warm backtrace() so its first (possibly allocating) call happens
+    // here, not inside the signal handler.
+    let mut warm = [std::ptr::null_mut::<c_void>(); 4];
+    unsafe { backtrace(warm.as_mut_ptr(), 4); }
+    // SIGSEGV=11 SIGBUS=7 SIGABRT=6 SIGFPE=8 SIGILL=4 (Linux).
+    for sig in [11i32, 7, 6, 8, 4] {
+        unsafe { signal(sig, ffi_crash_handler as usize); }
+    }
+}
+
+/// Record the call about to be dispatched, and mark an FFI call in flight. A
+/// returned guard clears the in-flight flag on any normal return (Drop does not
+/// run if the call crashes — which is exactly when we want the flag still set).
+struct FfiCtxGuard;
+impl Drop for FfiCtxGuard {
+    fn drop(&mut self) { FFI_ACTIVE.store(false, Ordering::SeqCst); }
+}
+fn ffi_ctx_enter(lib: &str, fn_name: &str, args: &[LibArg]) -> FfiCtxGuard {
+    install_ffi_crash_handler();
+    // Format "lib::fn(arg0, arg1, …)" into the signal-safe buffer BEFORE the
+    // call (allocation here is fine; the handler only reads the bytes). The
+    // args reveal the offending value — e.g. a null handle shows as `…, 0, …`,
+    // which is exactly what the removed per-function Z3 table used to report.
+    use std::fmt::Write;
+    let mut s = String::with_capacity(FFI_CTX_CAP);
+    let _ = write!(s, "{lib}::{fn_name}(");
+    for (i, a) in args.iter().enumerate() {
+        if i > 0 { let _ = write!(s, ", "); }
+        match a {
+            LibArg::Int(v)  => { let _ = write!(s, "{v}"); }
+            LibArg::Str(t)  => { let trunc: String = t.chars().take(40).collect();
+                                 let _ = write!(s, "{trunc:?}"); }
+            LibArg::Real(r) => { let _ = write!(s, "{r}"); }
+            LibArg::Ref(k)  => { let _ = write!(s, "ref{k}"); }
         }
     }
-    if let Some((cpos, bpos)) = array {
-        if let (Some(LibArg::Int(count)), Some(LibArg::Int(buf))) =
-            (args.get(cpos), args.get(bpos))
-        {
-            let (count, buf) = (*count, *buf);
-            if buf != 0 && count > 0 && count < 4096 {
-                let p = buf as *const i64;
-                for i in 0..count {
-                    // SAFETY: the compiler malloc'd this buffer and wrote `count`
-                    // i64 operand handles; we read them back to validate.
-                    let h = unsafe { *p.add(i as usize) };
-                    if h == 0 {
-                        eprintln!("[z3-guard] {fn_name}: operand {i}/{count} in args \
-                            buffer is null — would SIGSEGV; halting");
-                        std::process::exit(70);
-                    }
-                }
-            }
-        }
-    }
+    let _ = write!(s, ")");
+    let bytes = s.as_bytes();
+    let n = bytes.len().min(FFI_CTX_CAP);
+    for i in 0..n { FFI_CTX[i].store(bytes[i], Ordering::SeqCst); }
+    FFI_CTX_LEN.store(n, Ordering::SeqCst);
+    FFI_ACTIVE.store(true, Ordering::SeqCst);
+    FfiCtxGuard
 }
 
 pub fn call(lib_name: &str, fn_name: &str, args: &[LibArg]) -> Result<LibRet, String> {
@@ -160,22 +198,15 @@ pub fn call(lib_name: &str, fn_name: &str, args: &[LibArg]) -> Result<LibRet, St
         let n = EFFECT_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         eprintln!("[eff {n}] {lib_name}::{fn_name}({args:?})");
     }
+    // Record the in-flight call so the general crash handler can name it if any
+    // FFI dispatch below SIGSEGVs/SIGABRTs. Covers every path (mem/dlsym/cstr/
+    // the libffi call). The guard clears the flag on normal return.
+    let _ffi_guard = ffi_ctx_enter(lib_name, fn_name, args);
     // The dispatcher resolves ArgRef before calling; enforce that here so
     // the unreachable!() arms below are genuinely unreachable.
     if args.iter().any(|a| matches!(a, LibArg::Ref(_))) {
         return Err("unresolved ArgRef reached libcall::call (kernel bug: \
                     the dispatcher must resolve refs first)".to_string());
-    }
-    // Z3 AST-builder calls deref their handle arguments before any internal
-    // error check, so a 0/null handle SIGSEGVs deep in libz3 (Z3_mk_app →
-    // ast_manager). A 0 handle means a sub-expression produced no Z3 AST — a
-    // compiler-scope bug, not a Z3 error. Validate handle positions at the FFI
-    // boundary (the kernel knows the function + args; gdb does not) and halt
-    // NAMEABLY with a distinct RC instead of crashing. Replaces the per-claim
-    // `handle = 0 ? Exit(…)` guards and the manual gdb backtrace. Cheap (a few
-    // integer compares before a microsecond FFI call) → always on.
-    if lib_name == "libz3" {
-        z3_handle_guard(fn_name, args);
     }
     // `__mem`: the minimal pointer-deref escape hatch the FTI honesty audit
     // (task #23) requires. An honest FTI keeps its data in libc-`malloc`'d
