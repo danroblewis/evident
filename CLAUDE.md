@@ -599,6 +599,53 @@ change to a hot carried type's invariants. It is what catches the
 `≠`-disequality class of regression (see the type-invariant perf
 caveat above).
 
+## Proving a carried type invariant — static k-induction
+
+**`scripts/prove-invariants.sh <fixture.ev> <claim> <field-prefix> [lemma.smt2]`**
+turns "add a type invariant, run it, and pray it holds" into "add it
+and PROVE it in sub-second." An Evident program *is* a Z3 transition
+system — the oracle already emits the one-tick transition with the
+carry consts `_x` left free — so the tool asks Z3 whether the
+transition preserves the invariant: `I(_x) ∧ transition ⊢ I(x)`.
+`unsat` = inductive (proven for all reachable states); `sat` = a
+counterexample carry-state (printed).
+
+The three params:
+
+- **`<fixture.ev>`** — a fixture whose `fsm` carries the type across
+  ticks (the `tests/compiler2_units/types/*_carry.ev` files are ready
+  to use; a new type wants its own carry fixture).
+- **`<claim>`** — the entry claim, usually `main`.
+- **`<field-prefix>`** — the flattened carried record's const prefix:
+  the **variable name + `_`**, NOT the type name. A membership
+  `buf ∈ FtiBuffer` flattens to consts `buf_base` / `buf_count`, so the
+  prefix is `buf_`. (`z3ctx ∈ Z3SolverCtx` → `z3ctx_`.)
+- **`[lemma.smt2]`** (optional) — an auxiliary inductive lemma: extra
+  `(assert …)` over the `_`-carries, joined to the step hypothesis.
+  Use it to discharge an invariant that holds on reachable states but
+  isn't 1-inductive alone. It is itself a proof obligation.
+
+```
+# proves 0 ≤ count ≤ cap (finds the unguarded-overrun counterexample)
+scripts/prove-invariants.sh tests/compiler2_units/types/fti_buffer_carry.ev main buf_
+
+# a latch bank: sat alone, PROVEN with the step↔field ordering lemma
+scripts/prove-invariants.sh tests/compiler2_units/types/z3_solverctx_carry.ev \
+    main z3ctx_ tests/proof/lemmas/z3_solverctx_latch_order.smt2
+```
+
+**A `sat` step is NOT automatically a bug** — it means "not
+1-inductive," and there are two causes the counterexample tells apart:
+(1) **needs a lemma** — sound on reachable states, provable with an
+ordering/monotonicity fact (the zinit latch banks climb in step order,
+so 1-induction from an arbitrary carry can set a higher handle while a
+lower is still 0); (2) **runtime net** — relies on the program halting
+before the bound is hit (the FTI buffer's unconditional `count++` —
+the invariant *is* the exit-2 overrun guard, not a static guarantee).
+Worked results + the lemma files: `tests/proof/RESULTS.md`,
+`tests/proof/lemmas/`. This is the **static** complement to the
+functionization gate (which catches the `≠`-trap dynamically).
+
 ## How to run tests
 
 Today:
