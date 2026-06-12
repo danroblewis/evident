@@ -1,0 +1,4 @@
+claim demo
+    xs ∈ Seq(Int) = ⟨5, 6⟩
+    #xs ≤ 2
+    ∀ x ∈ xs : 0 ≤ x ∧ x ≤ 9

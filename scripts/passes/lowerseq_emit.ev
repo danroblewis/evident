@@ -47,6 +47,18 @@ fsm lowerseq_emit
     sub_src ∈ String
     sub_pos ∈ Int
     sub_acc ∈ String
+    -- ∀-over-Int unroll state (phase 6): outer slot cursor fa_k over N
+    -- slots, inner token cursor fa_pos over the predicate (bvar→sname_k
+    -- substitution), fa_arm the current slot's substituted predicate,
+    -- fa_acc the ∧-joined body.
+    fa_sname ∈ String
+    fa_bvar ∈ String
+    fa_pred ∈ String
+    fa_n ∈ Int
+    fa_k ∈ Int
+    fa_pos ∈ Int
+    fa_arm ∈ String
+    fa_acc ∈ String
 
     tk_ph ∈ Int = (is_first_tick ? 0 : _phase)
     tk_rline ∈ String = match last_results[1]
@@ -116,6 +128,83 @@ fsm lowerseq_emit
     tk_rt ∈ Int = (tk_lt ≥ 0 ? index_of(tk_code, "⟩", tk_lt) : -1)
     tk_inside ∈ String = (tk_rt > tk_lt ? substr(tk_code, tk_lt + 1, tk_rt - tk_lt - 1) : "")
 
+    -- whole-line Int membership  `lhs ∈ rhs`  (lhs the element var, rhs a
+    -- registered Int seq). The lead token is the ELEMENT var (NOT a
+    -- registered seq), so this is detected independently of tk_reg_hit.
+    -- The RHS must be exactly a single registered Int-element seq token,
+    -- and the lhs must be a single token (no whitespace) — matching awk's
+    -- `rhs in gbnd ∧ elemOf[rhs]=="Int" ∧ lhs !~ /[ \t]/`.
+    tk_mem_glyph ∈ String = ((tk_src ∧ ¬tk_is_top ∧ tk_lead_ok_em) ? char_at(tk_code, tk_after_lead) : "")
+    tk_lead_ok_em ∈ Bool = (tk_ie > tk_ws
+        ∧ (str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ", char_at(tk_code, tk_ws))
+           ∨ char_at(tk_code, tk_ws) = "_"))
+    -- rhs = trimmed text after `∈`
+    tk_mem_rs ∈ Int
+    AcWsSkip(s ↦ ((tk_mem_glyph = "∈") ? tk_code : ""), from ↦ tk_after_lead + 1, out ↦ tk_mem_rs)
+    tk_mem_re ∈ Int
+    AcWordEnd(s ↦ ((tk_mem_glyph = "∈") ? tk_code : ""), from ↦ tk_mem_rs, out ↦ tk_mem_re)
+    tk_mem_rws ∈ Int
+    AcWsSkip(s ↦ tk_code, from ↦ tk_mem_re, out ↦ tk_mem_rws)
+    tk_mem_rhs ∈ String = (tk_mem_re > tk_mem_rs ? substr(tk_code, tk_mem_rs, tk_mem_re - tk_mem_rs) : "")
+    -- rhs registry lookup (base must be Int)
+    tk_mem_key ∈ String = "⟦" ++ tk_mem_rhs ++ "⟧"
+    tk_mem_at ∈ Int = ((tk_mem_glyph = "∈" ∧ ¬(tk_mem_rhs = "")) ? index_of(_reg, tk_mem_key) : -1)
+    tk_mem_hit ∈ Bool = (tk_mem_at ≥ 0)
+    tk_mem_vs ∈ Int = (tk_mem_hit ? tk_mem_at + #tk_mem_key : -1)
+    tk_mem_d1 ∈ Int = (tk_mem_hit ? index_of(_reg, "⦂", tk_mem_vs) : -1)
+    tk_mem_base ∈ String = (tk_mem_hit ? substr(_reg, tk_mem_vs, tk_mem_d1 - tk_mem_vs) : "")
+    tk_mem_d2 ∈ Int = (tk_mem_hit ? index_of(_reg, "⦂", tk_mem_d1 + 1) : -1)
+    tk_mem_n ∈ Int
+    AcParseInt(s ↦ _reg, from ↦ tk_mem_d1 + 1, len ↦ (tk_mem_hit ? tk_mem_d2 - tk_mem_d1 - 1 : 0), out ↦ tk_mem_n)
+    -- the whole line must be exactly `lhs ∈ rhs` (rhs reaches trimmed end)
+    tk_is_member ∈ Bool = (tk_mem_glyph = "∈" ∧ tk_mem_hit ∧ tk_mem_base = "Int"
+        ∧ tk_mem_rws ≥ #tk_code ∧ tk_ie ≤ tk_after_lead)
+    tk_mem_lhs ∈ String = (tk_is_member ? substr(tk_code, tk_ws, tk_ie - tk_ws) : "")
+    tk_mem_chain ∈ String
+    LsMemberChain(lhs ↦ tk_mem_lhs, sname ↦ tk_mem_rhs, n ↦ tk_mem_n, out ↦ tk_mem_chain)
+
+    -- ∀ over an Int seq  `∀ x ∈ xs : P`  → len-guarded ∧-unroll (phase 6).
+    -- Matches awk's Int-∀ branch: per slot k, ((k < xs_len) ⇒ (P[x→xs_k])),
+    -- joined by ∧, wrapped in (). The predicate is token-substituted only
+    -- (no index/card lowering inside it — awk's branch does just subst_tok).
+    -- Detected when the comment-stripped line begins (after indent) with ∀
+    -- and the seq is a registered Int-element seq.
+    tk_fa_lead ∈ Bool = (tk_src ∧ ¬tk_is_top ∧ char_at(tk_code, tk_ws) = "∀")
+    -- bvar: ident after `∀` + ws
+    tk_fa_bs ∈ Int
+    AcWsSkip(s ↦ (tk_fa_lead ? tk_code : ""), from ↦ tk_ws + 1, out ↦ tk_fa_bs)
+    tk_fa_be ∈ Int
+    AcWordEnd(s ↦ (tk_fa_lead ? tk_code : ""), from ↦ tk_fa_bs, out ↦ tk_fa_be)
+    tk_fa_bvar ∈ String = (tk_fa_be > tk_fa_bs ? substr(tk_code, tk_fa_bs, tk_fa_be - tk_fa_bs) : "")
+    -- `∈` after bvar
+    tk_fa_es ∈ Int
+    AcWsSkip(s ↦ (tk_fa_lead ? tk_code : ""), from ↦ tk_fa_be, out ↦ tk_fa_es)
+    tk_fa_has_in ∈ Bool = (tk_fa_lead ∧ char_at(tk_code, tk_fa_es) = "∈")
+    -- sname: ident after `∈` + ws
+    tk_fa_ss ∈ Int
+    AcWsSkip(s ↦ (tk_fa_has_in ? tk_code : ""), from ↦ tk_fa_es + 1, out ↦ tk_fa_ss)
+    tk_fa_se ∈ Int
+    AcWordEnd(s ↦ (tk_fa_has_in ? tk_code : ""), from ↦ tk_fa_ss, out ↦ tk_fa_se)
+    tk_fa_sname ∈ String = (tk_fa_se > tk_fa_ss ? substr(tk_code, tk_fa_ss, tk_fa_se - tk_fa_ss) : "")
+    -- `:` after sname, then the predicate (rest, leading ws trimmed)
+    tk_fa_cs ∈ Int
+    AcWsSkip(s ↦ (tk_fa_has_in ? tk_code : ""), from ↦ tk_fa_se, out ↦ tk_fa_cs)
+    tk_fa_has_colon ∈ Bool = (tk_fa_has_in ∧ char_at(tk_code, tk_fa_cs) = ":")
+    tk_fa_ps ∈ Int
+    AcWsSkip(s ↦ (tk_fa_has_colon ? tk_code : ""), from ↦ tk_fa_cs + 1, out ↦ tk_fa_ps)
+    tk_fa_pred ∈ String = (tk_fa_has_colon ∧ #tk_code > tk_fa_ps ? substr(tk_code, tk_fa_ps, #tk_code - tk_fa_ps) : "")
+    -- sname registry lookup (must be Int)
+    tk_fa_key ∈ String = "⟦" ++ tk_fa_sname ++ "⟧"
+    tk_fa_at ∈ Int = ((tk_fa_has_colon ∧ ¬(tk_fa_sname = "")) ? index_of(_reg, tk_fa_key) : -1)
+    tk_fa_hit ∈ Bool = (tk_fa_at ≥ 0)
+    tk_fa_vs ∈ Int = (tk_fa_hit ? tk_fa_at + #tk_fa_key : -1)
+    tk_fa_d1 ∈ Int = (tk_fa_hit ? index_of(_reg, "⦂", tk_fa_vs) : -1)
+    tk_fa_base ∈ String = (tk_fa_hit ? substr(_reg, tk_fa_vs, tk_fa_d1 - tk_fa_vs) : "")
+    tk_fa_d2 ∈ Int = (tk_fa_hit ? index_of(_reg, "⦂", tk_fa_d1 + 1) : -1)
+    tk_fa_n ∈ Int
+    AcParseInt(s ↦ _reg, from ↦ tk_fa_d1 + 1, len ↦ (tk_fa_hit ? tk_fa_d2 - tk_fa_d1 - 1 : 0), out ↦ tk_fa_n)
+    tk_is_forall ∈ Bool = (tk_fa_has_colon ∧ tk_fa_hit ∧ tk_fa_base = "Int")
+
     -- decide whether to ENTER the slot-emit loop or take default subst
     tk_enter_loop ∈ Bool = (tk_src ∧ tk_reg_hit ∧ ¬tk_lead_is_dual
         ∧ (tk_is_decl ∨ tk_is_hold ∨ tk_is_litassign))
@@ -150,7 +239,8 @@ fsm lowerseq_emit
 
     -- default path: everything not lowered above passes through verbatim
     tk_default ∈ Bool = (tk_src ∧ ¬tk_is_top ∧ ¬tk_enter_loop ∧ ¬tk_enter_dual
-        ∧ ¬tk_drop_bound ∧ ¬tk_rewrite_bound)
+        ∧ ¬tk_drop_bound ∧ ¬tk_rewrite_bound ∧ ¬tk_is_member ∧ ¬tk_is_forall)
+    tk_enter_forall ∈ Bool = (tk_src ∧ tk_is_forall)
 
     -- ── slot-emit loop (phase 4): one slot line per tick ──
     tk_loop_run ∈ Bool = (tk_ph = 4 ∧ _emit_k < _emit_n)
@@ -280,30 +370,84 @@ fsm lowerseq_emit
     tk_walk_run ∈ Bool = (tk_ph = 5 ∧ w_p < #w_src)
     tk_walk_done ∈ Bool = (tk_ph = 5 ∧ w_p ≥ #w_src)
 
+    -- ── ∀-over-Int unroll (phase 6) ──
+    -- Outer cursor _fa_k over N slots; inner cursor _fa_pos over the
+    -- predicate, substituting whole-token _fa_bvar → _fa_sname_⟨k⟩.
+    -- A tick is one of: (a) more slots remain AND the inner walk has
+    -- predicate left → an INNER-UNIT tick (append one token-unit to
+    -- _fa_arm, advance _fa_pos); (b) more slots remain but inner walk
+    -- done → a FINALIZE-ARM tick (wrap _fa_arm, append to _fa_acc,
+    -- advance _fa_k, reset inner); (c) all slots done → EMIT the body.
+    f_pred ∈ String = _fa_pred
+    f_p ∈ Int = _fa_pos
+    f_slot ∈ String = _fa_sname ++ "_" ++ str_from_int(_fa_k)
+    -- ident-token at f_p
+    f_we ∈ Int
+    AcWordEnd(s ↦ (tk_ph = 6 ? f_pred : ""), from ↦ f_p, out ↦ f_we)
+    f_is_ident ∈ Bool = (tk_ph = 6 ∧ f_we > f_p)
+    f_tok ∈ String = (f_is_ident ? substr(f_pred, f_p, f_we - f_p) : "")
+    f_ch ∈ String = char_at(f_pred, f_p)
+    f_unit ∈ String = (f_is_ident ? (f_tok = _fa_bvar ? f_slot : f_tok) : f_ch)
+    f_next ∈ Int = (f_is_ident ? f_we : f_p + 1)
+    -- phase-6 tick classification
+    tk_fa_inner ∈ Bool = (tk_ph = 6 ∧ _fa_k < _fa_n ∧ _fa_pos < #_fa_pred)
+    tk_fa_finalize ∈ Bool = (tk_ph = 6 ∧ _fa_k < _fa_n ∧ _fa_pos ≥ #_fa_pred)
+    tk_fa_emit ∈ Bool = (tk_ph = 6 ∧ _fa_k ≥ _fa_n)
+    -- the wrapped arm appended on a finalize tick (∧-separated after the first)
+    tk_fa_armline ∈ String = ((_fa_k > 0 ? " ∧ " : "")
+        ++ "((" ++ str_from_int(_fa_k) ++ " < " ++ _fa_sname ++ "_len) ⇒ (" ++ _fa_arm ++ "))")
+
     -- ── line(s) to print this tick ──
     tk_print_now ∈ String = (tk_src ∧ tk_is_top ? tk_rline
+        : tk_is_member ? tk_ind ++ tk_mem_chain
         : tk_rewrite_bound ? tk_ind ++ tk_hash_after ++ "_len ≤ " ++ tk_bound_n
         : tk_default_plain ? tk_rline
         : tk_walk_done ? _sub_acc
+        : tk_fa_emit ? _indent ++ "(" ++ _fa_acc ++ ")"
         : tk_loop_run ? _indent ++ tk_slot_line
         : tk_has_len_lines ? _indent ++ tk_len_lines
         : "")
-    tk_emit ∈ Bool = ((tk_src ∧ (tk_is_top ∨ tk_default_plain ∨ tk_rewrite_bound)) ∨ tk_walk_done ∨ tk_loop_run ∨ tk_has_len_lines)
+    tk_emit ∈ Bool = ((tk_src ∧ (tk_is_top ∨ tk_is_member ∨ tk_default_plain ∨ tk_rewrite_bound)) ∨ tk_walk_done ∨ tk_fa_emit ∨ tk_loop_run ∨ tk_has_len_lines)
 
     -- ── transitions ──
     phase = (is_first_tick ? 2
         : tk_ph = 2 ? 3
         : tk_eof_now ? 13
         : tk_enter_loop ∨ tk_enter_dual ? 4
+        : tk_enter_forall ? 6
         : tk_needs_walk ? 5
         : tk_ph = 4 ? (tk_loop_done ? 3 : 4)
         : tk_ph = 5 ? (tk_walk_done ? 3 : 5)
+        : tk_ph = 6 ? (tk_fa_emit ? 3 : 6)
         : tk_ph = 3 ? 3
         : tk_ph)
     reg = (is_first_tick ? "" : tk_ph = 2 ? tk_rline : _reg)
     line = (is_first_tick ? "" : tk_src ? tk_rline : _line)
     code = (is_first_tick ? "" : tk_src ? tk_code : _code)
-    indent = (is_first_tick ? "" : tk_enter_loop ∨ tk_enter_dual ? tk_ind : _indent)
+    indent = (is_first_tick ? "" : tk_enter_loop ∨ tk_enter_dual ∨ tk_enter_forall ? tk_ind : _indent)
+    -- ∀-unroll phase-6 state
+    fa_sname = (is_first_tick ? "" : tk_enter_forall ? tk_fa_sname : _fa_sname)
+    fa_bvar = (is_first_tick ? "" : tk_enter_forall ? tk_fa_bvar : _fa_bvar)
+    fa_pred = (is_first_tick ? "" : tk_enter_forall ? tk_fa_pred : _fa_pred)
+    fa_n = (is_first_tick ? 0 : tk_enter_forall ? tk_fa_n : _fa_n)
+    fa_k = (is_first_tick ? 0
+        : tk_enter_forall ? 0
+        : tk_fa_finalize ? _fa_k + 1
+        : _fa_k)
+    fa_pos = (is_first_tick ? 0
+        : tk_enter_forall ? 0
+        : tk_fa_inner ? f_next
+        : tk_fa_finalize ? 0
+        : _fa_pos)
+    fa_arm = (is_first_tick ? ""
+        : tk_enter_forall ? ""
+        : tk_fa_inner ? _fa_arm ++ f_unit
+        : tk_fa_finalize ? ""
+        : _fa_arm)
+    fa_acc = (is_first_tick ? ""
+        : tk_enter_forall ? ""
+        : tk_fa_finalize ? _fa_acc ++ tk_fa_armline
+        : _fa_acc)
     sub_src = (is_first_tick ? "" : tk_needs_walk ? tk_rline : _sub_src)
     sub_pos = (is_first_tick ? 0
         : tk_needs_walk ? 0
@@ -339,7 +483,7 @@ fsm lowerseq_emit
     eff_out ∈ Effect
     BuildPrintln(s ↦ tk_print_now, eff ↦ eff_out)
     -- read next source line when the current one is fully resolved
-    tk_read_go ∈ Bool = (tk_ph = 2 ∨ (tk_src ∧ (tk_is_top ∨ tk_default_plain ∨ tk_drop_bound ∨ tk_rewrite_bound)) ∨ tk_loop_done ∨ tk_walk_done)
+    tk_read_go ∈ Bool = (tk_ph = 2 ∨ (tk_src ∧ (tk_is_top ∨ tk_is_member ∨ tk_default_plain ∨ tk_drop_bound ∨ tk_rewrite_bound)) ∨ tk_loop_done ∨ tk_walk_done ∨ tk_fa_emit)
 
     effects ∈ Seq(Effect) = (is_first_tick ? ⟨eff_nop, ReadLine⟩
         : tk_eof_now ? ⟨Exit(0), eff_nop⟩

@@ -60,23 +60,66 @@ helpers: `LsIdxEval` / `LsStripWs` / `LsAllDigits` / `LsOnlyIdxChars` /
   fold fails but the inner is a single ident (`LsIsIdent`), `LsDynChain` emits
   the chain (N ≤ 16). Fixtures `r17_dyn_index` / `r17_dyn_mixed`.
 
-## NOT ported (continuation, priority order)
+- **member (Int)** whole-line `lhs ∈ xs` over a registered Int seq → the
+  len-guarded ∨-unroll `(((0 < xs_len) ∧ (lhs = xs_0)) ∨ …)`. Detected
+  independently of the lead-token registry hit (the lead is the element var,
+  not the seq); requires the whole line to be exactly `lhs ∈ xs`, rhs a
+  registered **Int**-element seq, lhs a single token. New lib `LsMemberChain`.
+  Fixture `member_int`. (String/Bool members are NOT lowered — matching awk's
+  `elemOf[rhs]=="Int"` guard — they fall to awk's completeness refusal, a
+  Tier 4 item the port does not yet reproduce.)
+
+- **∀ over Int seq** `∀ x ∈ xs : P` → the len-guarded ∧-unroll
+  `(((0 < xs_len) ⇒ (P[x→xs_0])) ∧ …)`. Implemented as emit **phase 6**:
+  an outer slot cursor over N, an inner token-walk over the predicate doing
+  the whole-token `bvar → sname_k` substitution (token-boundary aware, like
+  the phase-5 walk; subst_tok ONLY, no index/card lowering inside P — matching
+  awk's Int-∀ branch). Refs `sname_len` unconditionally. Fixtures
+  `forall_int` / `forall_multitoken` / `forall_boundary`.
+
+## NOT ported (continuation, priority order) — parity status: 20/20 byte-equiv
+
+The gate (`scripts/passes/lowerseq-equiv.sh`) now compares 20 fixtures
+byte-identically (was 16/16): the original 16 + `member_int`,
+`forall_int`, `forall_multitoken`, `forall_boundary`, and (Tier-4
+prerequisite landed this session) the harness was extended to diff
+**stderr + exit** for any fixture marked `-- expect: flatten-error` — so
+refusal fixtures can be ported faithfully once the refusals exist. No
+refusal fixtures exist yet (the rules below that REFUSE are not ported).
+
+The wire-in into `scripts/flatten-evident.sh` remains **DEFERRED**: the
+port is not at full parity (the rules below — ∃, record-element, keyed
+projection, pin family, enum/record refusals, completeness sweep — are not
+ported), so swapping out the awk reference would silently drop behavior.
 
 ### Tier 1c — the Seq-field DYNFAM dynamic sub-index
 The remaining `subst_dyn` shape: `xs_k_accs[j]` (a flattened Seq-typed record
 field family) → its own per-subslot chain. Needs the record-element / Seq-field
 registration (PASS0 below), so it folds into Tier 2.
 
-### Tier 2 — record-element decls + the `∀`/`∃`/member unrolls
+### Tier 2 — record-element decls + the remaining `∀`/`∃` unrolls
+  DONE this session: scalar `∀ x ∈ xs : P` (Int) and `y ∈ xs` member (Int).
+  REMAINING:
   - record-`type` element decls (`xs ∈ Seq(R)` → `xs_k_fj ∈ Tj`; the
     `emit_field_decl`/`emit_field_hold` helpers, incl. Seq-typed type-body-bounded
-    fields → per-subslot Int);
-  - `∀ x ∈ xs : P` (Int, len-guarded ∧-unroll) and record element `∀ e ∈ xs`;
-  - `y ∈ xs` member (Int, len-guarded ∨-unroll);
-  - `(∃ i ∈ {0..#xs-1} : P)` / `(∃ e ∈ xs : P)` (`subst_exists`);
+    fields → per-subslot Int) — needs PASS0 record-type + enum scan
+    (`tfield`/`ttype`/`fbound`/`enums`) threaded scan→plan→emit (THE big lift);
+  - record element `∀ e ∈ xs : P` (uses `e.f` / `_e.f`) — needs PASS0;
+  - `(∃ i ∈ {0..#xs-1} : P)` / `(∃ e ∈ xs : P)` (`subst_exists`). MEASURED
+    2026-06-12: the awk `subst_exists` fires ONLY on a **parenthesized**
+    `(∃ … : P)` group (it requires an opening paren immediately before `∃`);
+    a BARE `∃ x ∈ xs : P` is NOT expanded and falls to awk's completeness
+    refusal (exit 1) — so the supported surface is the parenthesized
+    `flag = (∃ i ∈ {0..#xs-1} : xs[i] = v)` form. The index-form expansion
+    substitutes the bvar to a **literal** k (`xs[i]`→`xs[0]`) and the
+    EXISTING phase-5 index walk then lowers `xs[0]`→`xs_0`, so the ∃-expand is
+    a PRE-phase to phase 5 (a phase-5.5 that splices the ∨-chain in, then
+    re-routes the line into the phase-5 walk). The arm is
+    `((k < xs_len) ∧ (P[i→k]))` (len-guarded always for `{0..#xs-1}`;
+    unguarded for the literal `{0..N}` and the element-form-without-len cases).
+    The integration handoff (5.5 → 5) is the implementation cost.
   - the range-∀ slot instantiation + the recursive nested-∀ unroll
     (`expand_range_forall`) + the fold shape (multi-line balanced-paren body join).
-  Requires PASS0 record-type + enum scan (`tfield`/`ttype`/`fbound`/`enums`).
 
 ### Tier 3 — the keyed-projection PAIR + guarded pin FAMILY
 The set-theoretic registry-read lowering. Hard parts:
@@ -108,9 +151,16 @@ The set-theoretic registry-read lowering. Hard parts:
   byte-equivalence harness support (the current gate diffs stdout only).
 
 ## Harness notes for the continuation
-- `lowerseq-equiv.sh` diffs **stdout only**. Tiers 3/4 need stderr+exit
-  comparison for the refusal fixtures — extend the harness before porting
-  refusals.
+- `lowerseq-equiv.sh` now diffs stderr+exit for REFUSAL fixtures (those whose
+  header has `-- expect: flatten-error`): it compares (awk stderr + awk exit)
+  against (port stdout + port exit) — both message text and exit code. The
+  port has no stderr channel, so a refusal must `BuildPrintln` the exact awk
+  diagnostic and `Exit(1)`. Non-refusal fixtures still diff stdout. (Landed
+  2026-06-12 — Tier 4 prerequisite.) Matching the awk's multi-line
+  `expected:`/`found:` diff text byte-for-byte is still the long pole of the
+  pin-family refusals (Tier 3).
+- NOTE for the runner: in a git worktree the kernel may live only in the main
+  checkout; set `EVIDENT_KERNEL=<main>/kernel/target/release/kernel`.
 - Build the per-rule intermediate by running the flatten prefix
   (walk + autocarry + flatten-body-records) and feeding it to BOTH the awk
   pass and the Evident pipeline. The current gate feeds raw fixtures (which

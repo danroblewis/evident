@@ -158,6 +158,49 @@ claim LsDynChain(tok ∈ String, idv ∈ String, n ∈ Int, fld ∈ String, sub2
     dc_arm14 ∈ String = (tok ++ "_14" ++ dc_suffix)
     dc_arm15 ∈ String = (tok ++ "_15" ++ dc_suffix)
 
+-- LsMemberChain — a whole-line Int membership `lhs ∈ xs` over a registered
+-- Int seq of bound n → the len-guarded ∨-unroll
+--   (((0 < xs_len) ∧ (lhs = xs_0)) ∨ … ∨ ((n-1 < xs_len) ∧ (lhs = xs_{n-1})))
+-- matching lower-bounded-seq.sh's whole-line Int membership rule. Every arm
+-- references xs_len (the awk uses `sname "_len"` unconditionally). n ≤ 16.
+claim LsMemberChain(lhs ∈ String, sname ∈ String, n ∈ Int, out ∈ String)
+    out = ("(" ++ mc_body ++ ")")
+    mc_body ∈ String = (mc_seg0 ++ mc_seg1 ++ mc_seg2 ++ mc_seg3 ++ mc_seg4
+        ++ mc_seg5 ++ mc_seg6 ++ mc_seg7 ++ mc_seg8 ++ mc_seg9 ++ mc_seg10
+        ++ mc_seg11 ++ mc_seg12 ++ mc_seg13 ++ mc_seg14 ++ mc_seg15)
+    mc_seg0 ∈ String = (0 < n ? mc_arm0 : "")
+    mc_seg1 ∈ String = (1 < n ? " ∨ " ++ mc_arm1 : "")
+    mc_seg2 ∈ String = (2 < n ? " ∨ " ++ mc_arm2 : "")
+    mc_seg3 ∈ String = (3 < n ? " ∨ " ++ mc_arm3 : "")
+    mc_seg4 ∈ String = (4 < n ? " ∨ " ++ mc_arm4 : "")
+    mc_seg5 ∈ String = (5 < n ? " ∨ " ++ mc_arm5 : "")
+    mc_seg6 ∈ String = (6 < n ? " ∨ " ++ mc_arm6 : "")
+    mc_seg7 ∈ String = (7 < n ? " ∨ " ++ mc_arm7 : "")
+    mc_seg8 ∈ String = (8 < n ? " ∨ " ++ mc_arm8 : "")
+    mc_seg9 ∈ String = (9 < n ? " ∨ " ++ mc_arm9 : "")
+    mc_seg10 ∈ String = (10 < n ? " ∨ " ++ mc_arm10 : "")
+    mc_seg11 ∈ String = (11 < n ? " ∨ " ++ mc_arm11 : "")
+    mc_seg12 ∈ String = (12 < n ? " ∨ " ++ mc_arm12 : "")
+    mc_seg13 ∈ String = (13 < n ? " ∨ " ++ mc_arm13 : "")
+    mc_seg14 ∈ String = (14 < n ? " ∨ " ++ mc_arm14 : "")
+    mc_seg15 ∈ String = (15 < n ? " ∨ " ++ mc_arm15 : "")
+    mc_arm0 ∈ String = ("((0 < " ++ sname ++ "_len) ∧ (" ++ lhs ++ " = " ++ sname ++ "_0))")
+    mc_arm1 ∈ String = ("((1 < " ++ sname ++ "_len) ∧ (" ++ lhs ++ " = " ++ sname ++ "_1))")
+    mc_arm2 ∈ String = ("((2 < " ++ sname ++ "_len) ∧ (" ++ lhs ++ " = " ++ sname ++ "_2))")
+    mc_arm3 ∈ String = ("((3 < " ++ sname ++ "_len) ∧ (" ++ lhs ++ " = " ++ sname ++ "_3))")
+    mc_arm4 ∈ String = ("((4 < " ++ sname ++ "_len) ∧ (" ++ lhs ++ " = " ++ sname ++ "_4))")
+    mc_arm5 ∈ String = ("((5 < " ++ sname ++ "_len) ∧ (" ++ lhs ++ " = " ++ sname ++ "_5))")
+    mc_arm6 ∈ String = ("((6 < " ++ sname ++ "_len) ∧ (" ++ lhs ++ " = " ++ sname ++ "_6))")
+    mc_arm7 ∈ String = ("((7 < " ++ sname ++ "_len) ∧ (" ++ lhs ++ " = " ++ sname ++ "_7))")
+    mc_arm8 ∈ String = ("((8 < " ++ sname ++ "_len) ∧ (" ++ lhs ++ " = " ++ sname ++ "_8))")
+    mc_arm9 ∈ String = ("((9 < " ++ sname ++ "_len) ∧ (" ++ lhs ++ " = " ++ sname ++ "_9))")
+    mc_arm10 ∈ String = ("((10 < " ++ sname ++ "_len) ∧ (" ++ lhs ++ " = " ++ sname ++ "_10))")
+    mc_arm11 ∈ String = ("((11 < " ++ sname ++ "_len) ∧ (" ++ lhs ++ " = " ++ sname ++ "_11))")
+    mc_arm12 ∈ String = ("((12 < " ++ sname ++ "_len) ∧ (" ++ lhs ++ " = " ++ sname ++ "_12))")
+    mc_arm13 ∈ String = ("((13 < " ++ sname ++ "_len) ∧ (" ++ lhs ++ " = " ++ sname ++ "_13))")
+    mc_arm14 ∈ String = ("((14 < " ++ sname ++ "_len) ∧ (" ++ lhs ++ " = " ++ sname ++ "_14))")
+    mc_arm15 ∈ String = ("((15 < " ++ sname ++ "_len) ∧ (" ++ lhs ++ " = " ++ sname ++ "_15))")
+
 -- true iff s is a single identifier `[A-Za-z_][A-Za-z0-9_]*` (≤ 16 chars).
 claim LsIsIdent(s ∈ String, out ∈ Bool)
     out = (#s ≥ 1 ∧ #s ≤ 16 ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_", char_at(s, 0)) ∧ ii_rest)
