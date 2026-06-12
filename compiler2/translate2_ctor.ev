@@ -240,8 +240,14 @@ claim CtorArgWriteStep(args_p ∈ Int, idx ∈ Int, arg_h ∈ Int, eff ∈ Effec
     BuildMemWriteLong(addr ↦ caw_addr, value ↦ arg_h, eff ↦ eff)
 
 claim CtorAppStep(ctx_h ∈ Int, ctor_decl_h ∈ Int, n_args ∈ Int, args_p ∈ Int, eff ∈ Effect)
+    -- NULL-DECL GUARD (same class as the bool/cmp/ternary builders): a 0
+    -- ctor func_decl means the constructor never resolved; Z3_mk_app(ctx, 0, …)
+    -- derefs null inside ast_manager::mk_app → SIGSEGV (caught under gdb on the
+    -- self-compile). Halt NAMEABLY with Exit(7) instead of calling into Z3.
+    app_eff ∈ Effect
     BuildZ3MkApp(ctx_h ↦ ctx_h, decl_h ↦ ctor_decl_h,
-        num_args ↦ n_args, args_arr_p ↦ args_p, eff ↦ eff)
+        num_args ↦ n_args, args_arr_p ↦ args_p, eff ↦ app_eff)
+    eff = (ctor_decl_h = 0 ? Exit(7) : app_eff)
 
 -- ── (c) The Effect enum at this layer ───────────────────────────────────
 
