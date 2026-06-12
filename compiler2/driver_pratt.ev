@@ -11,6 +11,13 @@
 --           element/guard/arm/slot/seq/quantifier/positional); the result
 --           handle/Expr lands on parser.ready for the consumer that entered it.
 --
+-- One step's worth of C2PrattStep outputs: the advanced token/output/op
+-- stacks plus the operand-expected flag and the open paren/quest/call
+-- depths. Transient — the recursive shunting-yard step's next-state,
+-- threaded straight into the carried parse_out/parse_ops/parser fields.
+type PrattStepOut(toks ∈ TokenList, outs ∈ ExprList, ops ∈ PrOps,
+        expop ∈ Bool, pd ∈ Int, qd ∈ Int, cd ∈ Int)
+
 -- The parse_mode-3 Pratt FSM (expression parser). Lifted into driver_main via
 -- `..DriverPratt`.
 fsm DriverPratt
@@ -44,20 +51,14 @@ fsm DriverPratt
         ? callable_rec_joins[k] ++ "|" ++ substr(recs[k].name ++ call_pad31, 0, 31)
         : callable_rec_joins[k])
     callable_names ∈ String = callable_rec_joins[3]
-    next_toks ∈ TokenList
-    next_outs ∈ ExprList
-    next_ops ∈ PrOps
-    next_expop ∈ Bool
-    next_pd ∈ Int
-    next_qd ∈ Int
-    next_cd ∈ Int
+    nxt ∈ PrattStepOut
     step_done ∈ Bool
     result ∈ Expr
     C2PrattStep(toks ↦ _decoded_window, outs ↦ _parse_out, ops ↦ _parse_ops,
         expop ↦ _parser.expop, pd ↦ _parser.pd, qd ↦ _parser.qd, cd ↦ _parser.cd,
         qstop ↦ _pratt_qstop, calls ↦ callable_names,
-        ntoks ↦ next_toks, nouts ↦ next_outs, nops ↦ next_ops,
-        nexpop ↦ next_expop, npd ↦ next_pd, nqd ↦ next_qd, ncd ↦ next_cd,
+        ntoks ↦ nxt.toks, nouts ↦ nxt.outs, nops ↦ nxt.ops,
+        nexpop ↦ nxt.expop, npd ↦ nxt.pd, nqd ↦ nxt.qd, ncd ↦ nxt.cd,
         sdone ↦ step_done, sres ↦ result, scons ↦ parser.consume)
 
     -- ── matches-pattern SKIM ──────────────────────────────────────
@@ -98,32 +99,32 @@ fsm DriverPratt
         : enter_pratt ? ELNil
         : enter ? ELCons(EMatches(skim_scrutinee_name, skim_output_top), skim_output_tail)
         : is_skim_hold ? _parse_out
-        : in_pratt ? next_outs
+        : in_pratt ? nxt.outs
         : _parse_out)
     parse_ops = (is_first_tick ? PrNil
         : enter_pratt ? PrNil
         : (enter ∨ is_skim_hold) ? _parse_ops
-        : in_pratt ? next_ops
+        : in_pratt ? nxt.ops
         : _parse_ops)
     parser.expop = (is_first_tick ? true
         : enter_pratt ? true
         : (enter ∨ is_skim_hold) ? _parser.expop
-        : in_pratt ? next_expop
+        : in_pratt ? nxt.expop
         : _parser.expop)
     parser.pd = (is_first_tick ? 0
         : enter_pratt ? 0
         : (enter ∨ is_skim_hold) ? _parser.pd
-        : in_pratt ? next_pd
+        : in_pratt ? nxt.pd
         : _parser.pd)
     parser.qd = (is_first_tick ? 0
         : enter_pratt ? 0
         : (enter ∨ is_skim_hold) ? _parser.qd
-        : in_pratt ? next_qd
+        : in_pratt ? nxt.qd
         : _parser.qd)
     parser.cd = (is_first_tick ? 0
         : enter_pratt ? 0
         : (enter ∨ is_skim_hold) ? _parser.cd
-        : in_pratt ? next_cd
+        : in_pratt ? nxt.cd
         : _parser.cd)
     parser.kind = (is_first_tick ? 0 : enter_pratt ? enter_kind : _parser.kind)
     parser.decl_name = (is_first_tick ? "" : enter_pratt ? line.dname : _parser.decl_name)

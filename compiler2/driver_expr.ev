@@ -337,33 +337,27 @@ claim C2PrattStep(toks ∈ TokenList, outs ∈ ExprList, ops ∈ PrOps,
     -- `l op r` into (and l (op middle r)), duplicating the shared
     -- middle operand — same lowering the oracle performs.
     l_op ∈ Op
-    left_lhs ∈ Expr
-    left_rhs ∈ Expr
+    lbinop ∈ BinopView
+    rbinop ∈ BinopView
     l_bin ∈ Bool
-    BoolExprBinopParts(e ↦ out2, op ↦ l_op, lhs ↦ left_lhs,
-        rhs ↦ left_rhs, is_binop ↦ l_bin)
-    left_precedence ∈ Int
-    left_right_assoc ∈ Bool
+    BoolExprBinopParts(e ↦ out2, op ↦ l_op, lhs ↦ lbinop.lhs,
+        rhs ↦ lbinop.rhs, is_binop ↦ l_bin)
     l_chain ∈ Bool
-    C2Prec(o ↦ l_op, n ↦ left_precedence, right ↦ left_right_assoc, chain ↦ l_chain)
+    C2Prec(o ↦ l_op, n ↦ lbinop.precedence, right ↦ lbinop.right_assoc, chain ↦ l_chain)
     l_conj ∈ Bool = (l_op matches OpConj)
     lr_op ∈ Op
-    leftright_lhs ∈ Expr
-    leftright_rhs ∈ Expr
     lr_bin ∈ Bool
-    BoolExprBinopParts(e ↦ left_rhs, op ↦ lr_op, lhs ↦ leftright_lhs,
-        rhs ↦ leftright_rhs, is_binop ↦ lr_bin)
-    leftright_precedence ∈ Int
-    leftright_right_assoc ∈ Bool
+    BoolExprBinopParts(e ↦ lbinop.rhs, op ↦ lr_op, lhs ↦ rbinop.lhs,
+        rhs ↦ rbinop.rhs, is_binop ↦ lr_bin)
     lr_chain ∈ Bool
-    C2Prec(o ↦ lr_op, n ↦ leftright_precedence, right ↦ leftright_right_assoc, chain ↦ lr_chain)
+    C2Prec(o ↦ lr_op, n ↦ rbinop.precedence, right ↦ rbinop.right_assoc, chain ↦ lr_chain)
     chain1 ∈ Bool = (top.chain ∧ l_bin ∧ l_chain)
     chain2 ∈ Bool = (top.chain ∧ l_bin ∧ l_conj
         ∧ lr_bin ∧ lr_chain)
     apply_bin ∈ Expr = (chain1
-            ? EBinOp(OpConj, out2, EBinOp(top.op, left_rhs, out1))
+            ? EBinOp(OpConj, out2, EBinOp(top.op, lbinop.rhs, out1))
         : chain2
-            ? EBinOp(OpConj, out2, EBinOp(top.op, leftright_rhs, out1))
+            ? EBinOp(OpConj, out2, EBinOp(top.op, rbinop.rhs, out1))
         : EBinOp(top.op, out2, out1))
 
     call_key ∈ String

@@ -79,6 +79,17 @@ type Z3Numerals(zero ∈ Int, one ∈ Int, two ∈ Int, three ∈ Int, four ∈ 
 -- the parsed body Expr, and the current iteration index.
 type QLoop(on ∈ Bool, var ∈ String, kind ∈ Int, lo ∈ Int, hi ∈ Int, body ∈ Expr, cur ∈ Int)
 
+-- A tested match arm promoted into a slot (DriverMatchPin): the constructor
+-- name, the in-arm bind name (\"\" if none), the payload accessor handle, and
+-- the arm's body Expr. Carried across the multi-tick arm walk.
+type ArmSlot(ctor ∈ String, bind ∈ String, acc ∈ Int, expr ∈ Expr)
+
+-- A binop operand decomposed for the chain-flatten rewrite (DriverExpr):
+-- its lhs/rhs sub-Exprs plus the operator's precedence + associativity.
+-- Transient (no carry) — the BoolExprBinopParts/C2Prec outputs of one
+-- operand, read only by the chain1/chain2 apply_bin lowering.
+type BinopView(lhs ∈ Expr, rhs ∈ Expr, precedence ∈ Int, right_assoc ∈ Bool)
+
 -- The effects-literal parse walk's carried core (DriverClaimIdx, parse_mode 5):
 -- the element count seen so far, the libcall function name, and the walk's
 -- sub-state.
