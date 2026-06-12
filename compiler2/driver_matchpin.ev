@@ -56,7 +56,14 @@ fsm DriverMatchPin
     scrutinee_lr ∈ Bool
     scrutinee_index ∈ Int
     scrutinee ∈ String
-    -- arm-head latches
+    -- arm-head latches. NOT folded into a carried `arm ∈ ArmHead` record:
+    -- `_arm_ctor` is read DIRECTLY inside the `∀ e ∈ user_variants`
+    -- accessor lookup + the `index_of(variant_names, substr(_arm_ctor …))`
+    -- string op below; as a flattened record-field const (`_arm.ctor`) in
+    -- those hot quantified/string positions it falls off the functionizer
+    -- — fixture-001 went 6 s → >150 s timeout (measured 2026-06-12). The
+    -- tested-arm slots (arm1/arm2 ∈ ArmSlot) DO fold because they are read
+    -- via plain locals (ctor1/ctor2), not the raw carry.
     arm_ctor ∈ String
     arm_bind ∈ String
     arm_acc ∈ Int
