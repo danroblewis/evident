@@ -303,6 +303,16 @@ fsm DriverCompose
     inst_name = (is_first_tick ? ""
         : is_member_line ? (_scope_prefix ++ line.name)
         : _inst_name)
+    -- A′ Step 2: the record TYPE name carried to bare_jump, so a `r ∈ T`
+    -- whose T is past the cap-3 recs registry (_type_slot < 0) can look
+    -- its field list up in the uncapped rectab_* table. The RtTabDecls
+    -- read itself lives in driver.ev's main fsm (where rectab_* + the
+    -- DriverRecVal module are in scope), keeping this module free of the
+    -- table dependency.
+    type_tyname ∈ String
+    type_tyname = (is_first_tick ? ""
+        : is_member_line ? line.ty_name
+        : _type_tyname)
     slot_count = (is_first_tick ? 0
         : (is_comp_call ∨ is_member_call) ? 0
         : val_done ? _slot_count + 1
