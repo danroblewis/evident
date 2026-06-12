@@ -116,6 +116,41 @@ fsm lowerseq_emit
     tk_rt ∈ Int = (tk_lt ≥ 0 ? index_of(tk_code, "⟩", tk_lt) : -1)
     tk_inside ∈ String = (tk_rt > tk_lt ? substr(tk_code, tk_lt + 1, tk_rt - tk_lt - 1) : "")
 
+    -- whole-line Int membership  `lhs ∈ rhs`  (lhs the element var, rhs a
+    -- registered Int seq). The lead token is the ELEMENT var (NOT a
+    -- registered seq), so this is detected independently of tk_reg_hit.
+    -- The RHS must be exactly a single registered Int-element seq token,
+    -- and the lhs must be a single token (no whitespace) — matching awk's
+    -- `rhs in gbnd ∧ elemOf[rhs]=="Int" ∧ lhs !~ /[ \t]/`.
+    tk_mem_glyph ∈ String = ((tk_src ∧ ¬tk_is_top ∧ tk_lead_ok_em) ? char_at(tk_code, tk_after_lead) : "")
+    tk_lead_ok_em ∈ Bool = (tk_ie > tk_ws
+        ∧ (str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ", char_at(tk_code, tk_ws))
+           ∨ char_at(tk_code, tk_ws) = "_"))
+    -- rhs = trimmed text after `∈`
+    tk_mem_rs ∈ Int
+    AcWsSkip(s ↦ ((tk_mem_glyph = "∈") ? tk_code : ""), from ↦ tk_after_lead + 1, out ↦ tk_mem_rs)
+    tk_mem_re ∈ Int
+    AcWordEnd(s ↦ ((tk_mem_glyph = "∈") ? tk_code : ""), from ↦ tk_mem_rs, out ↦ tk_mem_re)
+    tk_mem_rws ∈ Int
+    AcWsSkip(s ↦ tk_code, from ↦ tk_mem_re, out ↦ tk_mem_rws)
+    tk_mem_rhs ∈ String = (tk_mem_re > tk_mem_rs ? substr(tk_code, tk_mem_rs, tk_mem_re - tk_mem_rs) : "")
+    -- rhs registry lookup (base must be Int)
+    tk_mem_key ∈ String = "⟦" ++ tk_mem_rhs ++ "⟧"
+    tk_mem_at ∈ Int = ((tk_mem_glyph = "∈" ∧ ¬(tk_mem_rhs = "")) ? index_of(_reg, tk_mem_key) : -1)
+    tk_mem_hit ∈ Bool = (tk_mem_at ≥ 0)
+    tk_mem_vs ∈ Int = (tk_mem_hit ? tk_mem_at + #tk_mem_key : -1)
+    tk_mem_d1 ∈ Int = (tk_mem_hit ? index_of(_reg, "⦂", tk_mem_vs) : -1)
+    tk_mem_base ∈ String = (tk_mem_hit ? substr(_reg, tk_mem_vs, tk_mem_d1 - tk_mem_vs) : "")
+    tk_mem_d2 ∈ Int = (tk_mem_hit ? index_of(_reg, "⦂", tk_mem_d1 + 1) : -1)
+    tk_mem_n ∈ Int
+    AcParseInt(s ↦ _reg, from ↦ tk_mem_d1 + 1, len ↦ (tk_mem_hit ? tk_mem_d2 - tk_mem_d1 - 1 : 0), out ↦ tk_mem_n)
+    -- the whole line must be exactly `lhs ∈ rhs` (rhs reaches trimmed end)
+    tk_is_member ∈ Bool = (tk_mem_glyph = "∈" ∧ tk_mem_hit ∧ tk_mem_base = "Int"
+        ∧ tk_mem_rws ≥ #tk_code ∧ tk_ie ≤ tk_after_lead)
+    tk_mem_lhs ∈ String = (tk_is_member ? substr(tk_code, tk_ws, tk_ie - tk_ws) : "")
+    tk_mem_chain ∈ String
+    LsMemberChain(lhs ↦ tk_mem_lhs, sname ↦ tk_mem_rhs, n ↦ tk_mem_n, out ↦ tk_mem_chain)
+
     -- decide whether to ENTER the slot-emit loop or take default subst
     tk_enter_loop ∈ Bool = (tk_src ∧ tk_reg_hit ∧ ¬tk_lead_is_dual
         ∧ (tk_is_decl ∨ tk_is_hold ∨ tk_is_litassign))
@@ -150,7 +185,7 @@ fsm lowerseq_emit
 
     -- default path: everything not lowered above passes through verbatim
     tk_default ∈ Bool = (tk_src ∧ ¬tk_is_top ∧ ¬tk_enter_loop ∧ ¬tk_enter_dual
-        ∧ ¬tk_drop_bound ∧ ¬tk_rewrite_bound)
+        ∧ ¬tk_drop_bound ∧ ¬tk_rewrite_bound ∧ ¬tk_is_member)
 
     -- ── slot-emit loop (phase 4): one slot line per tick ──
     tk_loop_run ∈ Bool = (tk_ph = 4 ∧ _emit_k < _emit_n)
@@ -282,13 +317,14 @@ fsm lowerseq_emit
 
     -- ── line(s) to print this tick ──
     tk_print_now ∈ String = (tk_src ∧ tk_is_top ? tk_rline
+        : tk_is_member ? tk_ind ++ tk_mem_chain
         : tk_rewrite_bound ? tk_ind ++ tk_hash_after ++ "_len ≤ " ++ tk_bound_n
         : tk_default_plain ? tk_rline
         : tk_walk_done ? _sub_acc
         : tk_loop_run ? _indent ++ tk_slot_line
         : tk_has_len_lines ? _indent ++ tk_len_lines
         : "")
-    tk_emit ∈ Bool = ((tk_src ∧ (tk_is_top ∨ tk_default_plain ∨ tk_rewrite_bound)) ∨ tk_walk_done ∨ tk_loop_run ∨ tk_has_len_lines)
+    tk_emit ∈ Bool = ((tk_src ∧ (tk_is_top ∨ tk_is_member ∨ tk_default_plain ∨ tk_rewrite_bound)) ∨ tk_walk_done ∨ tk_loop_run ∨ tk_has_len_lines)
 
     -- ── transitions ──
     phase = (is_first_tick ? 2
@@ -339,7 +375,7 @@ fsm lowerseq_emit
     eff_out ∈ Effect
     BuildPrintln(s ↦ tk_print_now, eff ↦ eff_out)
     -- read next source line when the current one is fully resolved
-    tk_read_go ∈ Bool = (tk_ph = 2 ∨ (tk_src ∧ (tk_is_top ∨ tk_default_plain ∨ tk_drop_bound ∨ tk_rewrite_bound)) ∨ tk_loop_done ∨ tk_walk_done)
+    tk_read_go ∈ Bool = (tk_ph = 2 ∨ (tk_src ∧ (tk_is_top ∨ tk_is_member ∨ tk_default_plain ∨ tk_drop_bound ∨ tk_rewrite_bound)) ∨ tk_loop_done ∨ tk_walk_done)
 
     effects ∈ Seq(Effect) = (is_first_tick ? ⟨eff_nop, ReadLine⟩
         : tk_eof_now ? ⟨Exit(0), eff_nop⟩

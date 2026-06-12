@@ -1,4 +1,4 @@
-;; manifest: state-fields = code:String eff_nop:Effect eff_out:Effect emit_base:String emit_haslen:Bool emit_inside:String emit_k:Int emit_kind:Int emit_n:Int emit_ne:Int emit_nm:String indent:String line:String phase:Int reg:String sub_acc:String sub_pos:Int sub_src:String tk_after_lead:Int tk_at:Int tk_bkey:String tk_bound_d1:Int tk_bound_d2:Int tk_bound_hl:Bool tk_bound_hl_at:Int tk_bound_n:String tk_bound_reg:Bool tk_bv_e0:Int tk_bv_s0:Int tk_code:String tk_count_el:Int tk_d0:Int tk_d1:Int tk_d2:Int tk_decl_eq:Int tk_decl_lit:Bool tk_default:Bool tk_default_plain:Bool tk_drop_bound:Bool tk_el:String tk_emit:Bool tk_enter_dual:Bool tk_enter_loop:Bool tk_eof_now:Bool tk_glyph:String tk_has_len_lines:Bool tk_hash_after:String tk_hash_aws:Int tk_hh_e:Int tk_hh_s:Int tk_ie:Int tk_ind:String tk_inside:String tk_inside_tl:Int tk_is_assign:Bool tk_is_bound_line:Bool tk_is_decl:Bool tk_is_hold:Bool tk_is_litassign:Bool tk_is_top:Bool tk_key:String tk_lead:String tk_lead_base:String tk_lead_is_dual:Bool tk_len_lines:String tk_loop_done:Bool tk_loop_run:Bool tk_lt:Int tk_needs_walk:Bool tk_ph:Int tk_print_now:String tk_rbase:String tk_read_go:Bool tk_reg_hit:Bool tk_reg_line:Bool tk_reof:Bool tk_rewrite_bound:Bool tk_rhaslen:Bool tk_rhs:String tk_rhs_s:Int tk_rline:String tk_rn:Int tk_rt:Int tk_slot_line:String tk_slot_pfx:String tk_src:Bool tk_vs:Int tk_walk_done:Bool tk_walk_run:Bool tk_ws:Int tk_zdef:String w_base:String w_base_reg:Bool w_bat:Int w_bd1:Int w_bd2:Int w_bkey:String w_bn:Int w_cb:Int w_ch:String w_do_dyn:Bool w_do_index:Bool w_dot:Bool w_dyn_cb:Int w_dyn_chain:String w_dyn_dot:Bool w_dyn_end:Int w_dyn_fe:Int w_dyn_fld:String w_dyn_fs:Int w_dyn_hasf:Bool w_dyn_hassub:Bool w_dyn_inner:String w_dyn_isid:Bool w_dyn_scb:Int w_dyn_sub2:String w_dyn_subbr:Bool w_fe:Int w_field:String w_followed_br:Bool w_fs:Int w_has_field:Bool w_has_sub:Bool w_he:Int w_idx:String w_idx_ok:Bool w_index_end:Int w_index_out:String w_inner:String w_is_hash:Bool w_is_ident:Bool w_next:Int w_p:Int w_scb:Int w_sidx_ok:Bool w_sinner:String w_src:String w_sub_br:Bool w_tok:String w_unit:String w_we:Int w_word:String w_word_reg:Bool
+;; manifest: state-fields = code:String eff_nop:Effect eff_out:Effect emit_base:String emit_haslen:Bool emit_inside:String emit_k:Int emit_kind:Int emit_n:Int emit_ne:Int emit_nm:String indent:String line:String phase:Int reg:String sub_acc:String sub_pos:Int sub_src:String tk_after_lead:Int tk_at:Int tk_bkey:String tk_bound_d1:Int tk_bound_d2:Int tk_bound_hl:Bool tk_bound_hl_at:Int tk_bound_n:String tk_bound_reg:Bool tk_bv_e0:Int tk_bv_s0:Int tk_code:String tk_count_el:Int tk_d0:Int tk_d1:Int tk_d2:Int tk_decl_eq:Int tk_decl_lit:Bool tk_default:Bool tk_default_plain:Bool tk_drop_bound:Bool tk_el:String tk_emit:Bool tk_enter_dual:Bool tk_enter_loop:Bool tk_eof_now:Bool tk_glyph:String tk_has_len_lines:Bool tk_hash_after:String tk_hash_aws:Int tk_hh_e:Int tk_hh_s:Int tk_ie:Int tk_ind:String tk_inside:String tk_inside_tl:Int tk_is_assign:Bool tk_is_bound_line:Bool tk_is_decl:Bool tk_is_hold:Bool tk_is_litassign:Bool tk_is_member:Bool tk_is_top:Bool tk_key:String tk_lead:String tk_lead_base:String tk_lead_is_dual:Bool tk_lead_ok_em:Bool tk_len_lines:String tk_loop_done:Bool tk_loop_run:Bool tk_lt:Int tk_mem_at:Int tk_mem_base:String tk_mem_chain:String tk_mem_d1:Int tk_mem_d2:Int tk_mem_glyph:String tk_mem_hit:Bool tk_mem_key:String tk_mem_lhs:String tk_mem_n:Int tk_mem_re:Int tk_mem_rhs:String tk_mem_rs:Int tk_mem_rws:Int tk_mem_vs:Int tk_needs_walk:Bool tk_ph:Int tk_print_now:String tk_rbase:String tk_read_go:Bool tk_reg_hit:Bool tk_reg_line:Bool tk_reof:Bool tk_rewrite_bound:Bool tk_rhaslen:Bool tk_rhs:String tk_rhs_s:Int tk_rline:String tk_rn:Int tk_rt:Int tk_slot_line:String tk_slot_pfx:String tk_src:Bool tk_vs:Int tk_walk_done:Bool tk_walk_run:Bool tk_ws:Int tk_zdef:String w_base:String w_base_reg:Bool w_bat:Int w_bd1:Int w_bd2:Int w_bkey:String w_bn:Int w_cb:Int w_ch:String w_do_dyn:Bool w_do_index:Bool w_dot:Bool w_dyn_cb:Int w_dyn_chain:String w_dyn_dot:Bool w_dyn_end:Int w_dyn_fe:Int w_dyn_fld:String w_dyn_fs:Int w_dyn_hasf:Bool w_dyn_hassub:Bool w_dyn_inner:String w_dyn_isid:Bool w_dyn_scb:Int w_dyn_sub2:String w_dyn_subbr:Bool w_fe:Int w_field:String w_followed_br:Bool w_fs:Int w_has_field:Bool w_has_sub:Bool w_he:Int w_idx:String w_idx_ok:Bool w_index_end:Int w_index_out:String w_inner:String w_is_hash:Bool w_is_ident:Bool w_next:Int w_p:Int w_scb:Int w_sidx_ok:Bool w_sinner:String w_src:String w_sub_br:Bool w_tok:String w_unit:String w_we:Int w_word:String w_word_reg:Bool
 ;; manifest: effects-name = effects
 ;; manifest: effect-enum-name = Effect
 ;; manifest: result-enum-name = Result
@@ -51,6 +51,56 @@
 (declare-fun tk_lt () Int)
 (declare-fun tk_rt () Int)
 (declare-fun tk_inside () String)
+(declare-fun tk_lead_ok_em () Bool)
+(declare-fun tk_mem_glyph () String)
+(declare-fun tk_mem_rs () Int)
+(declare-fun tk_mem_re () Int)
+(declare-fun tk_mem_rws () Int)
+(declare-fun tk_mem_rhs () String)
+(declare-fun tk_mem_key () String)
+(declare-fun tk_mem_at () Int)
+(declare-fun tk_mem_hit () Bool)
+(declare-fun tk_mem_vs () Int)
+(declare-fun tk_mem_d1 () Int)
+(declare-fun tk_mem_base () String)
+(declare-fun tk_mem_d2 () Int)
+(declare-fun tk_mem_n () Int)
+(declare-fun tk_is_member () Bool)
+(declare-fun tk_mem_lhs () String)
+(declare-fun LsMemberChain__mc_body__call9 () String)
+(declare-fun tk_mem_chain () String)
+(declare-fun LsMemberChain__mc_seg15__call9 () String)
+(declare-fun LsMemberChain__mc_seg14__call9 () String)
+(declare-fun LsMemberChain__mc_seg13__call9 () String)
+(declare-fun LsMemberChain__mc_seg12__call9 () String)
+(declare-fun LsMemberChain__mc_seg11__call9 () String)
+(declare-fun LsMemberChain__mc_seg10__call9 () String)
+(declare-fun LsMemberChain__mc_seg9__call9 () String)
+(declare-fun LsMemberChain__mc_seg8__call9 () String)
+(declare-fun LsMemberChain__mc_seg7__call9 () String)
+(declare-fun LsMemberChain__mc_seg6__call9 () String)
+(declare-fun LsMemberChain__mc_seg5__call9 () String)
+(declare-fun LsMemberChain__mc_seg4__call9 () String)
+(declare-fun LsMemberChain__mc_seg3__call9 () String)
+(declare-fun LsMemberChain__mc_seg2__call9 () String)
+(declare-fun LsMemberChain__mc_seg1__call9 () String)
+(declare-fun LsMemberChain__mc_seg0__call9 () String)
+(declare-fun LsMemberChain__mc_arm0__call9 () String)
+(declare-fun LsMemberChain__mc_arm1__call9 () String)
+(declare-fun LsMemberChain__mc_arm2__call9 () String)
+(declare-fun LsMemberChain__mc_arm3__call9 () String)
+(declare-fun LsMemberChain__mc_arm4__call9 () String)
+(declare-fun LsMemberChain__mc_arm5__call9 () String)
+(declare-fun LsMemberChain__mc_arm6__call9 () String)
+(declare-fun LsMemberChain__mc_arm7__call9 () String)
+(declare-fun LsMemberChain__mc_arm8__call9 () String)
+(declare-fun LsMemberChain__mc_arm9__call9 () String)
+(declare-fun LsMemberChain__mc_arm10__call9 () String)
+(declare-fun LsMemberChain__mc_arm11__call9 () String)
+(declare-fun LsMemberChain__mc_arm12__call9 () String)
+(declare-fun LsMemberChain__mc_arm13__call9 () String)
+(declare-fun LsMemberChain__mc_arm14__call9 () String)
+(declare-fun LsMemberChain__mc_arm15__call9 () String)
 (declare-fun tk_enter_loop () Bool)
 (declare-fun tk_enter_dual () Bool)
 (declare-fun tk_hh_s () Int)
@@ -74,45 +124,45 @@
 (declare-fun _emit_k () Int)
 (declare-fun tk_loop_run () Bool)
 (declare-fun tk_loop_done () Bool)
-(declare-fun LsCommaPos__cp15__call10 () Int)
-(declare-fun LsCommaPos__cp14__call10 () Int)
-(declare-fun LsCommaPos__cp13__call10 () Int)
-(declare-fun LsCommaPos__cp12__call10 () Int)
-(declare-fun LsCommaPos__cp11__call10 () Int)
-(declare-fun LsCommaPos__cp10__call10 () Int)
-(declare-fun LsCommaPos__cp9__call10 () Int)
-(declare-fun LsCommaPos__cp8__call10 () Int)
-(declare-fun LsCommaPos__cp7__call10 () Int)
-(declare-fun LsCommaPos__cp6__call10 () Int)
-(declare-fun LsCommaPos__cp5__call10 () Int)
-(declare-fun LsCommaPos__cp4__call10 () Int)
-(declare-fun LsCommaPos__cp3__call10 () Int)
-(declare-fun LsCommaPos__cp2__call10 () Int)
-(declare-fun LsCommaPos__cp1__call10 () Int)
-(declare-fun LsCommaPos__cp0__call10 () Int)
-(declare-fun LsNthElem__ne_pstart__call9 () Int)
+(declare-fun LsCommaPos__cp15__call15 () Int)
+(declare-fun LsCommaPos__cp14__call15 () Int)
+(declare-fun LsCommaPos__cp13__call15 () Int)
+(declare-fun LsCommaPos__cp12__call15 () Int)
+(declare-fun LsCommaPos__cp11__call15 () Int)
+(declare-fun LsCommaPos__cp10__call15 () Int)
+(declare-fun LsCommaPos__cp9__call15 () Int)
+(declare-fun LsCommaPos__cp8__call15 () Int)
+(declare-fun LsCommaPos__cp7__call15 () Int)
+(declare-fun LsCommaPos__cp6__call15 () Int)
+(declare-fun LsCommaPos__cp5__call15 () Int)
+(declare-fun LsCommaPos__cp4__call15 () Int)
+(declare-fun LsCommaPos__cp3__call15 () Int)
+(declare-fun LsCommaPos__cp2__call15 () Int)
+(declare-fun LsCommaPos__cp1__call15 () Int)
+(declare-fun LsCommaPos__cp0__call15 () Int)
+(declare-fun LsNthElem__ne_pstart__call14 () Int)
 (declare-fun _emit_inside () String)
-(declare-fun LsCommaPos__cp15__call11 () Int)
-(declare-fun LsCommaPos__cp14__call11 () Int)
-(declare-fun LsCommaPos__cp13__call11 () Int)
-(declare-fun LsCommaPos__cp12__call11 () Int)
-(declare-fun LsCommaPos__cp11__call11 () Int)
-(declare-fun LsCommaPos__cp10__call11 () Int)
-(declare-fun LsCommaPos__cp9__call11 () Int)
-(declare-fun LsCommaPos__cp8__call11 () Int)
-(declare-fun LsCommaPos__cp7__call11 () Int)
-(declare-fun LsCommaPos__cp6__call11 () Int)
-(declare-fun LsCommaPos__cp5__call11 () Int)
-(declare-fun LsCommaPos__cp4__call11 () Int)
-(declare-fun LsCommaPos__cp3__call11 () Int)
-(declare-fun LsCommaPos__cp2__call11 () Int)
-(declare-fun LsCommaPos__cp1__call11 () Int)
-(declare-fun LsCommaPos__cp0__call11 () Int)
-(declare-fun LsNthElem__ne_pend__call9 () Int)
-(declare-fun LsNthElem__ne_raw_s__call9 () Int)
-(declare-fun LsNthElem__ne_raw_e__call9 () Int)
-(declare-fun LsNthElem__ne_ts__call9 () Int)
-(declare-fun LsNthElem__ne_te__call9 () Int)
+(declare-fun LsCommaPos__cp15__call16 () Int)
+(declare-fun LsCommaPos__cp14__call16 () Int)
+(declare-fun LsCommaPos__cp13__call16 () Int)
+(declare-fun LsCommaPos__cp12__call16 () Int)
+(declare-fun LsCommaPos__cp11__call16 () Int)
+(declare-fun LsCommaPos__cp10__call16 () Int)
+(declare-fun LsCommaPos__cp9__call16 () Int)
+(declare-fun LsCommaPos__cp8__call16 () Int)
+(declare-fun LsCommaPos__cp7__call16 () Int)
+(declare-fun LsCommaPos__cp6__call16 () Int)
+(declare-fun LsCommaPos__cp5__call16 () Int)
+(declare-fun LsCommaPos__cp4__call16 () Int)
+(declare-fun LsCommaPos__cp3__call16 () Int)
+(declare-fun LsCommaPos__cp2__call16 () Int)
+(declare-fun LsCommaPos__cp1__call16 () Int)
+(declare-fun LsCommaPos__cp0__call16 () Int)
+(declare-fun LsNthElem__ne_pend__call14 () Int)
+(declare-fun LsNthElem__ne_raw_s__call14 () Int)
+(declare-fun LsNthElem__ne_raw_e__call14 () Int)
+(declare-fun LsNthElem__ne_ts__call14 () Int)
+(declare-fun LsNthElem__ne_te__call14 () Int)
 (declare-fun tk_el () String)
 (declare-fun _emit_base () String)
 (declare-fun tk_zdef () String)
@@ -144,102 +194,102 @@
 (declare-fun w_base_reg () Bool)
 (declare-fun w_cb () Int)
 (declare-fun w_inner () String)
-(declare-fun LsStripWs__sw24__call17 () String)
-(declare-fun LsIdxEval__ie_t__call16 () String)
-(declare-fun LsStripWs__sw_keep23__call17 () String)
-(declare-fun LsStripWs__sw_keep22__call17 () String)
-(declare-fun LsStripWs__sw_keep21__call17 () String)
-(declare-fun LsStripWs__sw_keep20__call17 () String)
-(declare-fun LsStripWs__sw_keep19__call17 () String)
-(declare-fun LsStripWs__sw_keep18__call17 () String)
-(declare-fun LsStripWs__sw_keep17__call17 () String)
-(declare-fun LsStripWs__sw_keep16__call17 () String)
-(declare-fun LsStripWs__sw_keep15__call17 () String)
-(declare-fun LsStripWs__sw_keep14__call17 () String)
-(declare-fun LsStripWs__sw_keep13__call17 () String)
-(declare-fun LsStripWs__sw_keep12__call17 () String)
-(declare-fun LsStripWs__sw_keep11__call17 () String)
-(declare-fun LsStripWs__sw_keep10__call17 () String)
-(declare-fun LsStripWs__sw_keep9__call17 () String)
-(declare-fun LsStripWs__sw_keep8__call17 () String)
-(declare-fun LsStripWs__sw_keep7__call17 () String)
-(declare-fun LsStripWs__sw_keep6__call17 () String)
-(declare-fun LsStripWs__sw_keep5__call17 () String)
-(declare-fun LsStripWs__sw_keep4__call17 () String)
-(declare-fun LsStripWs__sw_keep3__call17 () String)
-(declare-fun LsStripWs__sw_keep2__call17 () String)
-(declare-fun LsStripWs__sw_keep1__call17 () String)
-(declare-fun LsStripWs__sw_keep0__call17 () String)
-(declare-fun LsOnlyIdxChars__oic_bad__call18 () Int)
-(declare-fun LsIdxEval__ie_valid_chars__call16 () Bool)
-(declare-fun LsOnlyIdxChars__oic_b23__call18 () Bool)
-(declare-fun LsOnlyIdxChars__oic_b22__call18 () Bool)
-(declare-fun LsOnlyIdxChars__oic_b21__call18 () Bool)
-(declare-fun LsOnlyIdxChars__oic_b20__call18 () Bool)
-(declare-fun LsOnlyIdxChars__oic_b19__call18 () Bool)
-(declare-fun LsOnlyIdxChars__oic_b18__call18 () Bool)
-(declare-fun LsOnlyIdxChars__oic_b17__call18 () Bool)
-(declare-fun LsOnlyIdxChars__oic_b16__call18 () Bool)
-(declare-fun LsOnlyIdxChars__oic_b15__call18 () Bool)
-(declare-fun LsOnlyIdxChars__oic_b14__call18 () Bool)
-(declare-fun LsOnlyIdxChars__oic_b13__call18 () Bool)
-(declare-fun LsOnlyIdxChars__oic_b12__call18 () Bool)
-(declare-fun LsOnlyIdxChars__oic_b11__call18 () Bool)
-(declare-fun LsOnlyIdxChars__oic_b10__call18 () Bool)
-(declare-fun LsOnlyIdxChars__oic_b9__call18 () Bool)
-(declare-fun LsOnlyIdxChars__oic_b8__call18 () Bool)
-(declare-fun LsOnlyIdxChars__oic_b7__call18 () Bool)
-(declare-fun LsOnlyIdxChars__oic_b6__call18 () Bool)
-(declare-fun LsOnlyIdxChars__oic_b5__call18 () Bool)
-(declare-fun LsOnlyIdxChars__oic_b4__call18 () Bool)
-(declare-fun LsOnlyIdxChars__oic_b3__call18 () Bool)
-(declare-fun LsOnlyIdxChars__oic_b2__call18 () Bool)
-(declare-fun LsOnlyIdxChars__oic_b1__call18 () Bool)
-(declare-fun LsOnlyIdxChars__oic_b0__call18 () Bool)
-(declare-fun LsIdxEval__ie_starts_digit__call16 () Bool)
-(declare-fun LsIdxEval__ie_ne0__call16 () Int)
-(declare-fun LsIdxEval__ie_op0__call16 () String)
-(declare-fun LsIdxEval__ie_s1__call16 () Int)
-(declare-fun LsIdxEval__ie_ne1__call16 () Int)
-(declare-fun LsIdxEval__ie_op1__call16 () String)
-(declare-fun LsIdxEval__ie_s2__call16 () Int)
-(declare-fun LsIdxEval__ie_ne2__call16 () Int)
-(declare-fun LsIdxEval__ie_op2__call16 () String)
-(declare-fun LsIdxEval__ie_s3__call16 () Int)
-(declare-fun LsIdxEval__ie_ne3__call16 () Int)
-(declare-fun LsIdxEval__ie_op3__call16 () String)
-(declare-fun LsIdxEval__ie_s4__call16 () Int)
-(declare-fun LsIdxEval__ie_ne4__call16 () Int)
-(declare-fun LsIdxEval__ie_op4__call16 () String)
-(declare-fun LsIdxEval__ie_s5__call16 () Int)
-(declare-fun LsIdxEval__ie_ne5__call16 () Int)
-(declare-fun LsIdxEval__ie_n0__call16 () Int)
-(declare-fun LsIdxEval__ie_n1__call16 () Int)
-(declare-fun LsIdxEval__ie_n2__call16 () Int)
-(declare-fun LsIdxEval__ie_n3__call16 () Int)
-(declare-fun LsIdxEval__ie_n4__call16 () Int)
-(declare-fun LsIdxEval__ie_n5__call16 () Int)
-(declare-fun LsIdxEval__ie_cnt__call16 () Int)
-(declare-fun LsIdxEval__ie_shape_ok__call16 () Bool)
-(declare-fun LsIdxEval__ie_g0__call16 () Int)
-(declare-fun LsIdxEval__ie_t0__call16 () Int)
-(declare-fun LsIdxEval__ie_sg0__call16 () Int)
-(declare-fun LsIdxEval__ie_g1__call16 () Int)
-(declare-fun LsIdxEval__ie_t1__call16 () Int)
-(declare-fun LsIdxEval__ie_sg1__call16 () Int)
-(declare-fun LsIdxEval__ie_g2__call16 () Int)
-(declare-fun LsIdxEval__ie_t2__call16 () Int)
-(declare-fun LsIdxEval__ie_sg2__call16 () Int)
-(declare-fun LsIdxEval__ie_g3__call16 () Int)
-(declare-fun LsIdxEval__ie_t3__call16 () Int)
-(declare-fun LsIdxEval__ie_sg3__call16 () Int)
-(declare-fun LsIdxEval__ie_g4__call16 () Int)
-(declare-fun LsIdxEval__ie_t4__call16 () Int)
-(declare-fun LsIdxEval__ie_sg4__call16 () Int)
-(declare-fun LsIdxEval__ie_g5__call16 () Int)
-(declare-fun LsIdxEval__ie_t5__call16 () Int)
-(declare-fun LsIdxEval__ie_sg5__call16 () Int)
-(declare-fun LsIdxEval__ie_total__call16 () Int)
+(declare-fun LsStripWs__sw24__call22 () String)
+(declare-fun LsIdxEval__ie_t__call21 () String)
+(declare-fun LsStripWs__sw_keep23__call22 () String)
+(declare-fun LsStripWs__sw_keep22__call22 () String)
+(declare-fun LsStripWs__sw_keep21__call22 () String)
+(declare-fun LsStripWs__sw_keep20__call22 () String)
+(declare-fun LsStripWs__sw_keep19__call22 () String)
+(declare-fun LsStripWs__sw_keep18__call22 () String)
+(declare-fun LsStripWs__sw_keep17__call22 () String)
+(declare-fun LsStripWs__sw_keep16__call22 () String)
+(declare-fun LsStripWs__sw_keep15__call22 () String)
+(declare-fun LsStripWs__sw_keep14__call22 () String)
+(declare-fun LsStripWs__sw_keep13__call22 () String)
+(declare-fun LsStripWs__sw_keep12__call22 () String)
+(declare-fun LsStripWs__sw_keep11__call22 () String)
+(declare-fun LsStripWs__sw_keep10__call22 () String)
+(declare-fun LsStripWs__sw_keep9__call22 () String)
+(declare-fun LsStripWs__sw_keep8__call22 () String)
+(declare-fun LsStripWs__sw_keep7__call22 () String)
+(declare-fun LsStripWs__sw_keep6__call22 () String)
+(declare-fun LsStripWs__sw_keep5__call22 () String)
+(declare-fun LsStripWs__sw_keep4__call22 () String)
+(declare-fun LsStripWs__sw_keep3__call22 () String)
+(declare-fun LsStripWs__sw_keep2__call22 () String)
+(declare-fun LsStripWs__sw_keep1__call22 () String)
+(declare-fun LsStripWs__sw_keep0__call22 () String)
+(declare-fun LsOnlyIdxChars__oic_bad__call23 () Int)
+(declare-fun LsIdxEval__ie_valid_chars__call21 () Bool)
+(declare-fun LsOnlyIdxChars__oic_b23__call23 () Bool)
+(declare-fun LsOnlyIdxChars__oic_b22__call23 () Bool)
+(declare-fun LsOnlyIdxChars__oic_b21__call23 () Bool)
+(declare-fun LsOnlyIdxChars__oic_b20__call23 () Bool)
+(declare-fun LsOnlyIdxChars__oic_b19__call23 () Bool)
+(declare-fun LsOnlyIdxChars__oic_b18__call23 () Bool)
+(declare-fun LsOnlyIdxChars__oic_b17__call23 () Bool)
+(declare-fun LsOnlyIdxChars__oic_b16__call23 () Bool)
+(declare-fun LsOnlyIdxChars__oic_b15__call23 () Bool)
+(declare-fun LsOnlyIdxChars__oic_b14__call23 () Bool)
+(declare-fun LsOnlyIdxChars__oic_b13__call23 () Bool)
+(declare-fun LsOnlyIdxChars__oic_b12__call23 () Bool)
+(declare-fun LsOnlyIdxChars__oic_b11__call23 () Bool)
+(declare-fun LsOnlyIdxChars__oic_b10__call23 () Bool)
+(declare-fun LsOnlyIdxChars__oic_b9__call23 () Bool)
+(declare-fun LsOnlyIdxChars__oic_b8__call23 () Bool)
+(declare-fun LsOnlyIdxChars__oic_b7__call23 () Bool)
+(declare-fun LsOnlyIdxChars__oic_b6__call23 () Bool)
+(declare-fun LsOnlyIdxChars__oic_b5__call23 () Bool)
+(declare-fun LsOnlyIdxChars__oic_b4__call23 () Bool)
+(declare-fun LsOnlyIdxChars__oic_b3__call23 () Bool)
+(declare-fun LsOnlyIdxChars__oic_b2__call23 () Bool)
+(declare-fun LsOnlyIdxChars__oic_b1__call23 () Bool)
+(declare-fun LsOnlyIdxChars__oic_b0__call23 () Bool)
+(declare-fun LsIdxEval__ie_starts_digit__call21 () Bool)
+(declare-fun LsIdxEval__ie_ne0__call21 () Int)
+(declare-fun LsIdxEval__ie_op0__call21 () String)
+(declare-fun LsIdxEval__ie_s1__call21 () Int)
+(declare-fun LsIdxEval__ie_ne1__call21 () Int)
+(declare-fun LsIdxEval__ie_op1__call21 () String)
+(declare-fun LsIdxEval__ie_s2__call21 () Int)
+(declare-fun LsIdxEval__ie_ne2__call21 () Int)
+(declare-fun LsIdxEval__ie_op2__call21 () String)
+(declare-fun LsIdxEval__ie_s3__call21 () Int)
+(declare-fun LsIdxEval__ie_ne3__call21 () Int)
+(declare-fun LsIdxEval__ie_op3__call21 () String)
+(declare-fun LsIdxEval__ie_s4__call21 () Int)
+(declare-fun LsIdxEval__ie_ne4__call21 () Int)
+(declare-fun LsIdxEval__ie_op4__call21 () String)
+(declare-fun LsIdxEval__ie_s5__call21 () Int)
+(declare-fun LsIdxEval__ie_ne5__call21 () Int)
+(declare-fun LsIdxEval__ie_n0__call21 () Int)
+(declare-fun LsIdxEval__ie_n1__call21 () Int)
+(declare-fun LsIdxEval__ie_n2__call21 () Int)
+(declare-fun LsIdxEval__ie_n3__call21 () Int)
+(declare-fun LsIdxEval__ie_n4__call21 () Int)
+(declare-fun LsIdxEval__ie_n5__call21 () Int)
+(declare-fun LsIdxEval__ie_cnt__call21 () Int)
+(declare-fun LsIdxEval__ie_shape_ok__call21 () Bool)
+(declare-fun LsIdxEval__ie_g0__call21 () Int)
+(declare-fun LsIdxEval__ie_t0__call21 () Int)
+(declare-fun LsIdxEval__ie_sg0__call21 () Int)
+(declare-fun LsIdxEval__ie_g1__call21 () Int)
+(declare-fun LsIdxEval__ie_t1__call21 () Int)
+(declare-fun LsIdxEval__ie_sg1__call21 () Int)
+(declare-fun LsIdxEval__ie_g2__call21 () Int)
+(declare-fun LsIdxEval__ie_t2__call21 () Int)
+(declare-fun LsIdxEval__ie_sg2__call21 () Int)
+(declare-fun LsIdxEval__ie_g3__call21 () Int)
+(declare-fun LsIdxEval__ie_t3__call21 () Int)
+(declare-fun LsIdxEval__ie_sg3__call21 () Int)
+(declare-fun LsIdxEval__ie_g4__call21 () Int)
+(declare-fun LsIdxEval__ie_t4__call21 () Int)
+(declare-fun LsIdxEval__ie_sg4__call21 () Int)
+(declare-fun LsIdxEval__ie_g5__call21 () Int)
+(declare-fun LsIdxEval__ie_t5__call21 () Int)
+(declare-fun LsIdxEval__ie_sg5__call21 () Int)
+(declare-fun LsIdxEval__ie_total__call21 () Int)
 (declare-fun w_idx_ok () Bool)
 (declare-fun w_idx () String)
 (declare-fun w_do_index () Bool)
@@ -251,33 +301,33 @@
 (declare-fun w_sub_br () Bool)
 (declare-fun w_scb () Int)
 (declare-fun w_sinner () String)
-(declare-fun LsAllDigits__ad_ok__call32 () Bool)
+(declare-fun LsAllDigits__ad_ok__call37 () Bool)
 (declare-fun w_sidx_ok () Bool)
-(declare-fun LsAllDigits__ad_first__call32 () Int)
-(declare-fun LsAllDigits__ad_d15__call32 () Bool)
-(declare-fun LsAllDigits__ad_d14__call32 () Bool)
-(declare-fun LsAllDigits__ad_d13__call32 () Bool)
-(declare-fun LsAllDigits__ad_d12__call32 () Bool)
-(declare-fun LsAllDigits__ad_d11__call32 () Bool)
-(declare-fun LsAllDigits__ad_d10__call32 () Bool)
-(declare-fun LsAllDigits__ad_d9__call32 () Bool)
-(declare-fun LsAllDigits__ad_d8__call32 () Bool)
-(declare-fun LsAllDigits__ad_d7__call32 () Bool)
-(declare-fun LsAllDigits__ad_d6__call32 () Bool)
-(declare-fun LsAllDigits__ad_d5__call32 () Bool)
-(declare-fun LsAllDigits__ad_d4__call32 () Bool)
-(declare-fun LsAllDigits__ad_d3__call32 () Bool)
-(declare-fun LsAllDigits__ad_d2__call32 () Bool)
-(declare-fun LsAllDigits__ad_d1__call32 () Bool)
-(declare-fun LsAllDigits__ad_d0__call32 () Bool)
+(declare-fun LsAllDigits__ad_first__call37 () Int)
+(declare-fun LsAllDigits__ad_d15__call37 () Bool)
+(declare-fun LsAllDigits__ad_d14__call37 () Bool)
+(declare-fun LsAllDigits__ad_d13__call37 () Bool)
+(declare-fun LsAllDigits__ad_d12__call37 () Bool)
+(declare-fun LsAllDigits__ad_d11__call37 () Bool)
+(declare-fun LsAllDigits__ad_d10__call37 () Bool)
+(declare-fun LsAllDigits__ad_d9__call37 () Bool)
+(declare-fun LsAllDigits__ad_d8__call37 () Bool)
+(declare-fun LsAllDigits__ad_d7__call37 () Bool)
+(declare-fun LsAllDigits__ad_d6__call37 () Bool)
+(declare-fun LsAllDigits__ad_d5__call37 () Bool)
+(declare-fun LsAllDigits__ad_d4__call37 () Bool)
+(declare-fun LsAllDigits__ad_d3__call37 () Bool)
+(declare-fun LsAllDigits__ad_d2__call37 () Bool)
+(declare-fun LsAllDigits__ad_d1__call37 () Bool)
+(declare-fun LsAllDigits__ad_d0__call37 () Bool)
 (declare-fun w_has_sub () Bool)
 (declare-fun w_index_out () String)
 (declare-fun w_index_end () Int)
 (declare-fun w_dyn_cb () Int)
 (declare-fun w_dyn_inner () String)
-(declare-fun LsIsIdent__ii_rest__call33 () Bool)
+(declare-fun LsIsIdent__ii_rest__call38 () Bool)
 (declare-fun w_dyn_isid () Bool)
-(declare-fun LsIsIdent__ii_we__call33 () Int)
+(declare-fun LsIsIdent__ii_we__call38 () Int)
 (declare-fun w_do_dyn () Bool)
 (declare-fun w_bkey () String)
 (declare-fun w_bat () Int)
@@ -293,57 +343,57 @@
 (declare-fun w_dyn_scb () Int)
 (declare-fun w_dyn_sub2 () String)
 (declare-fun w_dyn_hassub () Bool)
-(declare-fun LsDynChain__dc_body__call37 () String)
+(declare-fun LsDynChain__dc_body__call42 () String)
 (declare-fun w_dyn_chain () String)
-(declare-fun LsDynChain__dc_suffix__call37 () String)
-(declare-fun LsDynChain__dc_seg15__call37 () String)
-(declare-fun LsDynChain__dc_seg14__call37 () String)
-(declare-fun LsDynChain__dc_seg13__call37 () String)
-(declare-fun LsDynChain__dc_seg12__call37 () String)
-(declare-fun LsDynChain__dc_seg11__call37 () String)
-(declare-fun LsDynChain__dc_seg10__call37 () String)
-(declare-fun LsDynChain__dc_seg9__call37 () String)
-(declare-fun LsDynChain__dc_seg8__call37 () String)
-(declare-fun LsDynChain__dc_seg7__call37 () String)
-(declare-fun LsDynChain__dc_seg6__call37 () String)
-(declare-fun LsDynChain__dc_seg5__call37 () String)
-(declare-fun LsDynChain__dc_seg4__call37 () String)
-(declare-fun LsDynChain__dc_seg3__call37 () String)
-(declare-fun LsDynChain__dc_seg2__call37 () String)
-(declare-fun LsDynChain__dc_seg1__call37 () String)
-(declare-fun LsDynChain__dc_seg0__call37 () String)
-(declare-fun LsDynChain__dc_part0__call37 () String)
-(declare-fun LsDynChain__dc_part1__call37 () String)
-(declare-fun LsDynChain__dc_part2__call37 () String)
-(declare-fun LsDynChain__dc_part3__call37 () String)
-(declare-fun LsDynChain__dc_part4__call37 () String)
-(declare-fun LsDynChain__dc_part5__call37 () String)
-(declare-fun LsDynChain__dc_part6__call37 () String)
-(declare-fun LsDynChain__dc_part7__call37 () String)
-(declare-fun LsDynChain__dc_part8__call37 () String)
-(declare-fun LsDynChain__dc_part9__call37 () String)
-(declare-fun LsDynChain__dc_part10__call37 () String)
-(declare-fun LsDynChain__dc_part11__call37 () String)
-(declare-fun LsDynChain__dc_part12__call37 () String)
-(declare-fun LsDynChain__dc_part13__call37 () String)
-(declare-fun LsDynChain__dc_part14__call37 () String)
-(declare-fun LsDynChain__dc_part15__call37 () String)
-(declare-fun LsDynChain__dc_arm0__call37 () String)
-(declare-fun LsDynChain__dc_arm1__call37 () String)
-(declare-fun LsDynChain__dc_arm2__call37 () String)
-(declare-fun LsDynChain__dc_arm3__call37 () String)
-(declare-fun LsDynChain__dc_arm4__call37 () String)
-(declare-fun LsDynChain__dc_arm5__call37 () String)
-(declare-fun LsDynChain__dc_arm6__call37 () String)
-(declare-fun LsDynChain__dc_arm7__call37 () String)
-(declare-fun LsDynChain__dc_arm8__call37 () String)
-(declare-fun LsDynChain__dc_arm9__call37 () String)
-(declare-fun LsDynChain__dc_arm10__call37 () String)
-(declare-fun LsDynChain__dc_arm11__call37 () String)
-(declare-fun LsDynChain__dc_arm12__call37 () String)
-(declare-fun LsDynChain__dc_arm13__call37 () String)
-(declare-fun LsDynChain__dc_arm14__call37 () String)
-(declare-fun LsDynChain__dc_arm15__call37 () String)
+(declare-fun LsDynChain__dc_suffix__call42 () String)
+(declare-fun LsDynChain__dc_seg15__call42 () String)
+(declare-fun LsDynChain__dc_seg14__call42 () String)
+(declare-fun LsDynChain__dc_seg13__call42 () String)
+(declare-fun LsDynChain__dc_seg12__call42 () String)
+(declare-fun LsDynChain__dc_seg11__call42 () String)
+(declare-fun LsDynChain__dc_seg10__call42 () String)
+(declare-fun LsDynChain__dc_seg9__call42 () String)
+(declare-fun LsDynChain__dc_seg8__call42 () String)
+(declare-fun LsDynChain__dc_seg7__call42 () String)
+(declare-fun LsDynChain__dc_seg6__call42 () String)
+(declare-fun LsDynChain__dc_seg5__call42 () String)
+(declare-fun LsDynChain__dc_seg4__call42 () String)
+(declare-fun LsDynChain__dc_seg3__call42 () String)
+(declare-fun LsDynChain__dc_seg2__call42 () String)
+(declare-fun LsDynChain__dc_seg1__call42 () String)
+(declare-fun LsDynChain__dc_seg0__call42 () String)
+(declare-fun LsDynChain__dc_part0__call42 () String)
+(declare-fun LsDynChain__dc_part1__call42 () String)
+(declare-fun LsDynChain__dc_part2__call42 () String)
+(declare-fun LsDynChain__dc_part3__call42 () String)
+(declare-fun LsDynChain__dc_part4__call42 () String)
+(declare-fun LsDynChain__dc_part5__call42 () String)
+(declare-fun LsDynChain__dc_part6__call42 () String)
+(declare-fun LsDynChain__dc_part7__call42 () String)
+(declare-fun LsDynChain__dc_part8__call42 () String)
+(declare-fun LsDynChain__dc_part9__call42 () String)
+(declare-fun LsDynChain__dc_part10__call42 () String)
+(declare-fun LsDynChain__dc_part11__call42 () String)
+(declare-fun LsDynChain__dc_part12__call42 () String)
+(declare-fun LsDynChain__dc_part13__call42 () String)
+(declare-fun LsDynChain__dc_part14__call42 () String)
+(declare-fun LsDynChain__dc_part15__call42 () String)
+(declare-fun LsDynChain__dc_arm0__call42 () String)
+(declare-fun LsDynChain__dc_arm1__call42 () String)
+(declare-fun LsDynChain__dc_arm2__call42 () String)
+(declare-fun LsDynChain__dc_arm3__call42 () String)
+(declare-fun LsDynChain__dc_arm4__call42 () String)
+(declare-fun LsDynChain__dc_arm5__call42 () String)
+(declare-fun LsDynChain__dc_arm6__call42 () String)
+(declare-fun LsDynChain__dc_arm7__call42 () String)
+(declare-fun LsDynChain__dc_arm8__call42 () String)
+(declare-fun LsDynChain__dc_arm9__call42 () String)
+(declare-fun LsDynChain__dc_arm10__call42 () String)
+(declare-fun LsDynChain__dc_arm11__call42 () String)
+(declare-fun LsDynChain__dc_arm12__call42 () String)
+(declare-fun LsDynChain__dc_arm13__call42 () String)
+(declare-fun LsDynChain__dc_arm14__call42 () String)
+(declare-fun LsDynChain__dc_arm15__call42 () String)
 (declare-fun w_dyn_end () Int)
 (declare-fun w_unit () String)
 (declare-fun w_next () Int)
@@ -372,105 +422,25 @@
 (declare-fun tk_inside_tl () Int)
 (declare-fun tk_count_el () Int)
 (declare-fun emit_ne () Int)
-(declare-fun LsCountElem__ce_n__call39 () Int)
-(declare-fun LsCountElem__ce_scan__call39 () Int)
-(declare-fun LsCountElem__ce_count__call39 () Int)
-(declare-fun LsCountElem__cP15__call39 () Int)
-(declare-fun LsCountElem__cP14__call39 () Int)
-(declare-fun LsCountElem__cP13__call39 () Int)
-(declare-fun LsCountElem__cP12__call39 () Int)
-(declare-fun LsCountElem__cP11__call39 () Int)
-(declare-fun LsCountElem__cP10__call39 () Int)
-(declare-fun LsCountElem__cP9__call39 () Int)
-(declare-fun LsCountElem__cP8__call39 () Int)
-(declare-fun LsCountElem__cP7__call39 () Int)
-(declare-fun LsCountElem__cP6__call39 () Int)
-(declare-fun LsCountElem__cP5__call39 () Int)
-(declare-fun LsCountElem__cP4__call39 () Int)
-(declare-fun LsCountElem__cP3__call39 () Int)
-(declare-fun LsCountElem__cP2__call39 () Int)
-(declare-fun LsCountElem__cP1__call39 () Int)
-(declare-fun LsCountElem__cP0__call39 () Int)
-(declare-fun LsCommaPos__cp15__call40 () Int)
-(declare-fun LsCommaPos__cp14__call40 () Int)
-(declare-fun LsCommaPos__cp13__call40 () Int)
-(declare-fun LsCommaPos__cp12__call40 () Int)
-(declare-fun LsCommaPos__cp11__call40 () Int)
-(declare-fun LsCommaPos__cp10__call40 () Int)
-(declare-fun LsCommaPos__cp9__call40 () Int)
-(declare-fun LsCommaPos__cp8__call40 () Int)
-(declare-fun LsCommaPos__cp7__call40 () Int)
-(declare-fun LsCommaPos__cp6__call40 () Int)
-(declare-fun LsCommaPos__cp5__call40 () Int)
-(declare-fun LsCommaPos__cp4__call40 () Int)
-(declare-fun LsCommaPos__cp3__call40 () Int)
-(declare-fun LsCommaPos__cp2__call40 () Int)
-(declare-fun LsCommaPos__cp1__call40 () Int)
-(declare-fun LsCommaPos__cp0__call40 () Int)
-(declare-fun LsCommaPos__cp15__call41 () Int)
-(declare-fun LsCommaPos__cp14__call41 () Int)
-(declare-fun LsCommaPos__cp13__call41 () Int)
-(declare-fun LsCommaPos__cp12__call41 () Int)
-(declare-fun LsCommaPos__cp11__call41 () Int)
-(declare-fun LsCommaPos__cp10__call41 () Int)
-(declare-fun LsCommaPos__cp9__call41 () Int)
-(declare-fun LsCommaPos__cp8__call41 () Int)
-(declare-fun LsCommaPos__cp7__call41 () Int)
-(declare-fun LsCommaPos__cp6__call41 () Int)
-(declare-fun LsCommaPos__cp5__call41 () Int)
-(declare-fun LsCommaPos__cp4__call41 () Int)
-(declare-fun LsCommaPos__cp3__call41 () Int)
-(declare-fun LsCommaPos__cp2__call41 () Int)
-(declare-fun LsCommaPos__cp1__call41 () Int)
-(declare-fun LsCommaPos__cp0__call41 () Int)
-(declare-fun LsCommaPos__cp15__call42 () Int)
-(declare-fun LsCommaPos__cp14__call42 () Int)
-(declare-fun LsCommaPos__cp13__call42 () Int)
-(declare-fun LsCommaPos__cp12__call42 () Int)
-(declare-fun LsCommaPos__cp11__call42 () Int)
-(declare-fun LsCommaPos__cp10__call42 () Int)
-(declare-fun LsCommaPos__cp9__call42 () Int)
-(declare-fun LsCommaPos__cp8__call42 () Int)
-(declare-fun LsCommaPos__cp7__call42 () Int)
-(declare-fun LsCommaPos__cp6__call42 () Int)
-(declare-fun LsCommaPos__cp5__call42 () Int)
-(declare-fun LsCommaPos__cp4__call42 () Int)
-(declare-fun LsCommaPos__cp3__call42 () Int)
-(declare-fun LsCommaPos__cp2__call42 () Int)
-(declare-fun LsCommaPos__cp1__call42 () Int)
-(declare-fun LsCommaPos__cp0__call42 () Int)
-(declare-fun LsCommaPos__cp15__call43 () Int)
-(declare-fun LsCommaPos__cp14__call43 () Int)
-(declare-fun LsCommaPos__cp13__call43 () Int)
-(declare-fun LsCommaPos__cp12__call43 () Int)
-(declare-fun LsCommaPos__cp11__call43 () Int)
-(declare-fun LsCommaPos__cp10__call43 () Int)
-(declare-fun LsCommaPos__cp9__call43 () Int)
-(declare-fun LsCommaPos__cp8__call43 () Int)
-(declare-fun LsCommaPos__cp7__call43 () Int)
-(declare-fun LsCommaPos__cp6__call43 () Int)
-(declare-fun LsCommaPos__cp5__call43 () Int)
-(declare-fun LsCommaPos__cp4__call43 () Int)
-(declare-fun LsCommaPos__cp3__call43 () Int)
-(declare-fun LsCommaPos__cp2__call43 () Int)
-(declare-fun LsCommaPos__cp1__call43 () Int)
-(declare-fun LsCommaPos__cp0__call43 () Int)
-(declare-fun LsCommaPos__cp15__call44 () Int)
-(declare-fun LsCommaPos__cp14__call44 () Int)
-(declare-fun LsCommaPos__cp13__call44 () Int)
-(declare-fun LsCommaPos__cp12__call44 () Int)
-(declare-fun LsCommaPos__cp11__call44 () Int)
-(declare-fun LsCommaPos__cp10__call44 () Int)
-(declare-fun LsCommaPos__cp9__call44 () Int)
-(declare-fun LsCommaPos__cp8__call44 () Int)
-(declare-fun LsCommaPos__cp7__call44 () Int)
-(declare-fun LsCommaPos__cp6__call44 () Int)
-(declare-fun LsCommaPos__cp5__call44 () Int)
-(declare-fun LsCommaPos__cp4__call44 () Int)
-(declare-fun LsCommaPos__cp3__call44 () Int)
-(declare-fun LsCommaPos__cp2__call44 () Int)
-(declare-fun LsCommaPos__cp1__call44 () Int)
-(declare-fun LsCommaPos__cp0__call44 () Int)
+(declare-fun LsCountElem__ce_n__call44 () Int)
+(declare-fun LsCountElem__ce_scan__call44 () Int)
+(declare-fun LsCountElem__ce_count__call44 () Int)
+(declare-fun LsCountElem__cP15__call44 () Int)
+(declare-fun LsCountElem__cP14__call44 () Int)
+(declare-fun LsCountElem__cP13__call44 () Int)
+(declare-fun LsCountElem__cP12__call44 () Int)
+(declare-fun LsCountElem__cP11__call44 () Int)
+(declare-fun LsCountElem__cP10__call44 () Int)
+(declare-fun LsCountElem__cP9__call44 () Int)
+(declare-fun LsCountElem__cP8__call44 () Int)
+(declare-fun LsCountElem__cP7__call44 () Int)
+(declare-fun LsCountElem__cP6__call44 () Int)
+(declare-fun LsCountElem__cP5__call44 () Int)
+(declare-fun LsCountElem__cP4__call44 () Int)
+(declare-fun LsCountElem__cP3__call44 () Int)
+(declare-fun LsCountElem__cP2__call44 () Int)
+(declare-fun LsCountElem__cP1__call44 () Int)
+(declare-fun LsCountElem__cP0__call44 () Int)
 (declare-fun LsCommaPos__cp15__call45 () Int)
 (declare-fun LsCommaPos__cp14__call45 () Int)
 (declare-fun LsCommaPos__cp13__call45 () Int)
@@ -647,6 +617,86 @@
 (declare-fun LsCommaPos__cp2__call55 () Int)
 (declare-fun LsCommaPos__cp1__call55 () Int)
 (declare-fun LsCommaPos__cp0__call55 () Int)
+(declare-fun LsCommaPos__cp15__call56 () Int)
+(declare-fun LsCommaPos__cp14__call56 () Int)
+(declare-fun LsCommaPos__cp13__call56 () Int)
+(declare-fun LsCommaPos__cp12__call56 () Int)
+(declare-fun LsCommaPos__cp11__call56 () Int)
+(declare-fun LsCommaPos__cp10__call56 () Int)
+(declare-fun LsCommaPos__cp9__call56 () Int)
+(declare-fun LsCommaPos__cp8__call56 () Int)
+(declare-fun LsCommaPos__cp7__call56 () Int)
+(declare-fun LsCommaPos__cp6__call56 () Int)
+(declare-fun LsCommaPos__cp5__call56 () Int)
+(declare-fun LsCommaPos__cp4__call56 () Int)
+(declare-fun LsCommaPos__cp3__call56 () Int)
+(declare-fun LsCommaPos__cp2__call56 () Int)
+(declare-fun LsCommaPos__cp1__call56 () Int)
+(declare-fun LsCommaPos__cp0__call56 () Int)
+(declare-fun LsCommaPos__cp15__call57 () Int)
+(declare-fun LsCommaPos__cp14__call57 () Int)
+(declare-fun LsCommaPos__cp13__call57 () Int)
+(declare-fun LsCommaPos__cp12__call57 () Int)
+(declare-fun LsCommaPos__cp11__call57 () Int)
+(declare-fun LsCommaPos__cp10__call57 () Int)
+(declare-fun LsCommaPos__cp9__call57 () Int)
+(declare-fun LsCommaPos__cp8__call57 () Int)
+(declare-fun LsCommaPos__cp7__call57 () Int)
+(declare-fun LsCommaPos__cp6__call57 () Int)
+(declare-fun LsCommaPos__cp5__call57 () Int)
+(declare-fun LsCommaPos__cp4__call57 () Int)
+(declare-fun LsCommaPos__cp3__call57 () Int)
+(declare-fun LsCommaPos__cp2__call57 () Int)
+(declare-fun LsCommaPos__cp1__call57 () Int)
+(declare-fun LsCommaPos__cp0__call57 () Int)
+(declare-fun LsCommaPos__cp15__call58 () Int)
+(declare-fun LsCommaPos__cp14__call58 () Int)
+(declare-fun LsCommaPos__cp13__call58 () Int)
+(declare-fun LsCommaPos__cp12__call58 () Int)
+(declare-fun LsCommaPos__cp11__call58 () Int)
+(declare-fun LsCommaPos__cp10__call58 () Int)
+(declare-fun LsCommaPos__cp9__call58 () Int)
+(declare-fun LsCommaPos__cp8__call58 () Int)
+(declare-fun LsCommaPos__cp7__call58 () Int)
+(declare-fun LsCommaPos__cp6__call58 () Int)
+(declare-fun LsCommaPos__cp5__call58 () Int)
+(declare-fun LsCommaPos__cp4__call58 () Int)
+(declare-fun LsCommaPos__cp3__call58 () Int)
+(declare-fun LsCommaPos__cp2__call58 () Int)
+(declare-fun LsCommaPos__cp1__call58 () Int)
+(declare-fun LsCommaPos__cp0__call58 () Int)
+(declare-fun LsCommaPos__cp15__call59 () Int)
+(declare-fun LsCommaPos__cp14__call59 () Int)
+(declare-fun LsCommaPos__cp13__call59 () Int)
+(declare-fun LsCommaPos__cp12__call59 () Int)
+(declare-fun LsCommaPos__cp11__call59 () Int)
+(declare-fun LsCommaPos__cp10__call59 () Int)
+(declare-fun LsCommaPos__cp9__call59 () Int)
+(declare-fun LsCommaPos__cp8__call59 () Int)
+(declare-fun LsCommaPos__cp7__call59 () Int)
+(declare-fun LsCommaPos__cp6__call59 () Int)
+(declare-fun LsCommaPos__cp5__call59 () Int)
+(declare-fun LsCommaPos__cp4__call59 () Int)
+(declare-fun LsCommaPos__cp3__call59 () Int)
+(declare-fun LsCommaPos__cp2__call59 () Int)
+(declare-fun LsCommaPos__cp1__call59 () Int)
+(declare-fun LsCommaPos__cp0__call59 () Int)
+(declare-fun LsCommaPos__cp15__call60 () Int)
+(declare-fun LsCommaPos__cp14__call60 () Int)
+(declare-fun LsCommaPos__cp13__call60 () Int)
+(declare-fun LsCommaPos__cp12__call60 () Int)
+(declare-fun LsCommaPos__cp11__call60 () Int)
+(declare-fun LsCommaPos__cp10__call60 () Int)
+(declare-fun LsCommaPos__cp9__call60 () Int)
+(declare-fun LsCommaPos__cp8__call60 () Int)
+(declare-fun LsCommaPos__cp7__call60 () Int)
+(declare-fun LsCommaPos__cp6__call60 () Int)
+(declare-fun LsCommaPos__cp5__call60 () Int)
+(declare-fun LsCommaPos__cp4__call60 () Int)
+(declare-fun LsCommaPos__cp3__call60 () Int)
+(declare-fun LsCommaPos__cp2__call60 () Int)
+(declare-fun LsCommaPos__cp1__call60 () Int)
+(declare-fun LsCommaPos__cp0__call60 () Int)
 (declare-fun eff_nop () Effect)
 (declare-fun eff_out () Effect)
 (declare-fun tk_read_go () Bool)
@@ -1707,6 +1757,1228 @@
                 (str.substr tk_code (+ tk_lt 1) (- (- tk_rt tk_lt) 1))
                 "")))
   (= tk_inside a!1)))
+(assert (= tk_mem_glyph
+   (ite (and tk_src (not tk_is_top) tk_lead_ok_em)
+        (str.at tk_code tk_after_lead)
+        "")))
+(assert (let ((a!1 (and (> tk_ie tk_ws)
+                (or (str.contains "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+                                  (str.at tk_code tk_ws))
+                    (= (str.at tk_code tk_ws) "_")))))
+  (= tk_lead_ok_em a!1)))
+(assert (let ((a!1 (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                   (+ tk_after_lead 1)))
+      (a!2 (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                   (+ (+ tk_after_lead 1) 1)))
+      (a!3 (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                   (+ (+ tk_after_lead 1) 2)))
+      (a!4 (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                   (+ (+ tk_after_lead 1) 3)))
+      (a!5 (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                   (+ (+ tk_after_lead 1) 4)))
+      (a!6 (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                   (+ (+ tk_after_lead 1) 5)))
+      (a!7 (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                   (+ (+ tk_after_lead 1) 6)))
+      (a!8 (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                   (+ (+ tk_after_lead 1) 7)))
+      (a!9 (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                   (+ (+ tk_after_lead 1) 8)))
+      (a!10 (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                    (+ (+ tk_after_lead 1) 9)))
+      (a!11 (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                    (+ (+ tk_after_lead 1) 10)))
+      (a!12 (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                    (+ (+ tk_after_lead 1) 11)))
+      (a!13 (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                    (+ (+ tk_after_lead 1) 12)))
+      (a!14 (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                    (+ (+ tk_after_lead 1) 13)))
+      (a!15 (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                    (+ (+ tk_after_lead 1) 14)))
+      (a!16 (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                    (+ (+ tk_after_lead 1) 15)))
+      (a!17 (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                    (+ (+ tk_after_lead 1) 16)))
+      (a!18 (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                    (+ (+ tk_after_lead 1) 17)))
+      (a!19 (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                    (+ (+ tk_after_lead 1) 18)))
+      (a!20 (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                    (+ (+ tk_after_lead 1) 19)))
+      (a!21 (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                    (+ (+ tk_after_lead 1) 20)))
+      (a!22 (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                    (+ (+ tk_after_lead 1) 21)))
+      (a!23 (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                    (+ (+ tk_after_lead 1) 22)))
+      (a!24 (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                    (+ (+ tk_after_lead 1) 23)))
+      (a!25 (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                    (+ (+ tk_after_lead 1) 24)))
+      (a!26 (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                    (+ (+ tk_after_lead 1) 25)))
+      (a!27 (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                    (+ (+ tk_after_lead 1) 26)))
+      (a!28 (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                    (+ (+ tk_after_lead 1) 27)))
+      (a!29 (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                    (+ (+ tk_after_lead 1) 28)))
+      (a!30 (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                    (+ (+ tk_after_lead 1) 29)))
+      (a!31 (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                    (+ (+ tk_after_lead 1) 30)))
+      (a!32 (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                    (+ (+ tk_after_lead 1) 31)))
+      (a!33 (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                    (+ (+ tk_after_lead 1) 32)))
+      (a!34 (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                    (+ (+ tk_after_lead 1) 33)))
+      (a!35 (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                    (+ (+ tk_after_lead 1) 34)))
+      (a!36 (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                    (+ (+ tk_after_lead 1) 35)))
+      (a!37 (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                    (+ (+ tk_after_lead 1) 36)))
+      (a!38 (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                    (+ (+ tk_after_lead 1) 37)))
+      (a!39 (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                    (+ (+ tk_after_lead 1) 38)))
+      (a!40 (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                    (+ (+ tk_after_lead 1) 39)))
+      (a!41 (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                    (+ (+ tk_after_lead 1) 40)))
+      (a!42 (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                    (+ (+ tk_after_lead 1) 41)))
+      (a!43 (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                    (+ (+ tk_after_lead 1) 42)))
+      (a!44 (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                    (+ (+ tk_after_lead 1) 43)))
+      (a!45 (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                    (+ (+ tk_after_lead 1) 44)))
+      (a!46 (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                    (+ (+ tk_after_lead 1) 45)))
+      (a!47 (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                    (+ (+ tk_after_lead 1) 46)))
+      (a!48 (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                    (+ (+ tk_after_lead 1) 47)))
+      (a!49 (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                    (+ (+ tk_after_lead 1) 48)))
+      (a!50 (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                    (+ (+ tk_after_lead 1) 49)))
+      (a!51 (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                    (+ (+ tk_after_lead 1) 50)))
+      (a!52 (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                    (+ (+ tk_after_lead 1) 51)))
+      (a!53 (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                    (+ (+ tk_after_lead 1) 52)))
+      (a!54 (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                    (+ (+ tk_after_lead 1) 53)))
+      (a!55 (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                    (+ (+ tk_after_lead 1) 54)))
+      (a!56 (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                    (+ (+ tk_after_lead 1) 55)))
+      (a!57 (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                    (+ (+ tk_after_lead 1) 56)))
+      (a!58 (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                    (+ (+ tk_after_lead 1) 57)))
+      (a!59 (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                    (+ (+ tk_after_lead 1) 58)))
+      (a!60 (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                    (+ (+ tk_after_lead 1) 59)))
+      (a!61 (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                    (+ (+ tk_after_lead 1) 60)))
+      (a!62 (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                    (+ (+ tk_after_lead 1) 61)))
+      (a!63 (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                    (+ (+ tk_after_lead 1) 62)))
+      (a!64 (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                    (+ (+ tk_after_lead 1) 63))))
+(let ((a!65 (ite (not (or (= a!64 " ") (= a!64 "\u{9}")))
+                 (+ (+ tk_after_lead 1) 63)
+                 (+ (+ tk_after_lead 1) 64))))
+(let ((a!66 (ite (not (or (= a!63 " ") (= a!63 "\u{9}")))
+                 (+ (+ tk_after_lead 1) 62)
+                 a!65)))
+(let ((a!67 (ite (not (or (= a!62 " ") (= a!62 "\u{9}")))
+                 (+ (+ tk_after_lead 1) 61)
+                 a!66)))
+(let ((a!68 (ite (not (or (= a!61 " ") (= a!61 "\u{9}")))
+                 (+ (+ tk_after_lead 1) 60)
+                 a!67)))
+(let ((a!69 (ite (not (or (= a!60 " ") (= a!60 "\u{9}")))
+                 (+ (+ tk_after_lead 1) 59)
+                 a!68)))
+(let ((a!70 (ite (not (or (= a!59 " ") (= a!59 "\u{9}")))
+                 (+ (+ tk_after_lead 1) 58)
+                 a!69)))
+(let ((a!71 (ite (not (or (= a!58 " ") (= a!58 "\u{9}")))
+                 (+ (+ tk_after_lead 1) 57)
+                 a!70)))
+(let ((a!72 (ite (not (or (= a!57 " ") (= a!57 "\u{9}")))
+                 (+ (+ tk_after_lead 1) 56)
+                 a!71)))
+(let ((a!73 (ite (not (or (= a!56 " ") (= a!56 "\u{9}")))
+                 (+ (+ tk_after_lead 1) 55)
+                 a!72)))
+(let ((a!74 (ite (not (or (= a!55 " ") (= a!55 "\u{9}")))
+                 (+ (+ tk_after_lead 1) 54)
+                 a!73)))
+(let ((a!75 (ite (not (or (= a!54 " ") (= a!54 "\u{9}")))
+                 (+ (+ tk_after_lead 1) 53)
+                 a!74)))
+(let ((a!76 (ite (not (or (= a!53 " ") (= a!53 "\u{9}")))
+                 (+ (+ tk_after_lead 1) 52)
+                 a!75)))
+(let ((a!77 (ite (not (or (= a!52 " ") (= a!52 "\u{9}")))
+                 (+ (+ tk_after_lead 1) 51)
+                 a!76)))
+(let ((a!78 (ite (not (or (= a!51 " ") (= a!51 "\u{9}")))
+                 (+ (+ tk_after_lead 1) 50)
+                 a!77)))
+(let ((a!79 (ite (not (or (= a!50 " ") (= a!50 "\u{9}")))
+                 (+ (+ tk_after_lead 1) 49)
+                 a!78)))
+(let ((a!80 (ite (not (or (= a!49 " ") (= a!49 "\u{9}")))
+                 (+ (+ tk_after_lead 1) 48)
+                 a!79)))
+(let ((a!81 (ite (not (or (= a!48 " ") (= a!48 "\u{9}")))
+                 (+ (+ tk_after_lead 1) 47)
+                 a!80)))
+(let ((a!82 (ite (not (or (= a!47 " ") (= a!47 "\u{9}")))
+                 (+ (+ tk_after_lead 1) 46)
+                 a!81)))
+(let ((a!83 (ite (not (or (= a!46 " ") (= a!46 "\u{9}")))
+                 (+ (+ tk_after_lead 1) 45)
+                 a!82)))
+(let ((a!84 (ite (not (or (= a!45 " ") (= a!45 "\u{9}")))
+                 (+ (+ tk_after_lead 1) 44)
+                 a!83)))
+(let ((a!85 (ite (not (or (= a!44 " ") (= a!44 "\u{9}")))
+                 (+ (+ tk_after_lead 1) 43)
+                 a!84)))
+(let ((a!86 (ite (not (or (= a!43 " ") (= a!43 "\u{9}")))
+                 (+ (+ tk_after_lead 1) 42)
+                 a!85)))
+(let ((a!87 (ite (not (or (= a!42 " ") (= a!42 "\u{9}")))
+                 (+ (+ tk_after_lead 1) 41)
+                 a!86)))
+(let ((a!88 (ite (not (or (= a!41 " ") (= a!41 "\u{9}")))
+                 (+ (+ tk_after_lead 1) 40)
+                 a!87)))
+(let ((a!89 (ite (not (or (= a!40 " ") (= a!40 "\u{9}")))
+                 (+ (+ tk_after_lead 1) 39)
+                 a!88)))
+(let ((a!90 (ite (not (or (= a!39 " ") (= a!39 "\u{9}")))
+                 (+ (+ tk_after_lead 1) 38)
+                 a!89)))
+(let ((a!91 (ite (not (or (= a!38 " ") (= a!38 "\u{9}")))
+                 (+ (+ tk_after_lead 1) 37)
+                 a!90)))
+(let ((a!92 (ite (not (or (= a!37 " ") (= a!37 "\u{9}")))
+                 (+ (+ tk_after_lead 1) 36)
+                 a!91)))
+(let ((a!93 (ite (not (or (= a!36 " ") (= a!36 "\u{9}")))
+                 (+ (+ tk_after_lead 1) 35)
+                 a!92)))
+(let ((a!94 (ite (not (or (= a!35 " ") (= a!35 "\u{9}")))
+                 (+ (+ tk_after_lead 1) 34)
+                 a!93)))
+(let ((a!95 (ite (not (or (= a!34 " ") (= a!34 "\u{9}")))
+                 (+ (+ tk_after_lead 1) 33)
+                 a!94)))
+(let ((a!96 (ite (not (or (= a!33 " ") (= a!33 "\u{9}")))
+                 (+ (+ tk_after_lead 1) 32)
+                 a!95)))
+(let ((a!97 (ite (not (or (= a!32 " ") (= a!32 "\u{9}")))
+                 (+ (+ tk_after_lead 1) 31)
+                 a!96)))
+(let ((a!98 (ite (not (or (= a!31 " ") (= a!31 "\u{9}")))
+                 (+ (+ tk_after_lead 1) 30)
+                 a!97)))
+(let ((a!99 (ite (not (or (= a!30 " ") (= a!30 "\u{9}")))
+                 (+ (+ tk_after_lead 1) 29)
+                 a!98)))
+(let ((a!100 (ite (not (or (= a!29 " ") (= a!29 "\u{9}")))
+                  (+ (+ tk_after_lead 1) 28)
+                  a!99)))
+(let ((a!101 (ite (not (or (= a!28 " ") (= a!28 "\u{9}")))
+                  (+ (+ tk_after_lead 1) 27)
+                  a!100)))
+(let ((a!102 (ite (not (or (= a!27 " ") (= a!27 "\u{9}")))
+                  (+ (+ tk_after_lead 1) 26)
+                  a!101)))
+(let ((a!103 (ite (not (or (= a!26 " ") (= a!26 "\u{9}")))
+                  (+ (+ tk_after_lead 1) 25)
+                  a!102)))
+(let ((a!104 (ite (not (or (= a!25 " ") (= a!25 "\u{9}")))
+                  (+ (+ tk_after_lead 1) 24)
+                  a!103)))
+(let ((a!105 (ite (not (or (= a!24 " ") (= a!24 "\u{9}")))
+                  (+ (+ tk_after_lead 1) 23)
+                  a!104)))
+(let ((a!106 (ite (not (or (= a!23 " ") (= a!23 "\u{9}")))
+                  (+ (+ tk_after_lead 1) 22)
+                  a!105)))
+(let ((a!107 (ite (not (or (= a!22 " ") (= a!22 "\u{9}")))
+                  (+ (+ tk_after_lead 1) 21)
+                  a!106)))
+(let ((a!108 (ite (not (or (= a!21 " ") (= a!21 "\u{9}")))
+                  (+ (+ tk_after_lead 1) 20)
+                  a!107)))
+(let ((a!109 (ite (not (or (= a!20 " ") (= a!20 "\u{9}")))
+                  (+ (+ tk_after_lead 1) 19)
+                  a!108)))
+(let ((a!110 (ite (not (or (= a!19 " ") (= a!19 "\u{9}")))
+                  (+ (+ tk_after_lead 1) 18)
+                  a!109)))
+(let ((a!111 (ite (not (or (= a!18 " ") (= a!18 "\u{9}")))
+                  (+ (+ tk_after_lead 1) 17)
+                  a!110)))
+(let ((a!112 (ite (not (or (= a!17 " ") (= a!17 "\u{9}")))
+                  (+ (+ tk_after_lead 1) 16)
+                  a!111)))
+(let ((a!113 (ite (not (or (= a!16 " ") (= a!16 "\u{9}")))
+                  (+ (+ tk_after_lead 1) 15)
+                  a!112)))
+(let ((a!114 (ite (not (or (= a!15 " ") (= a!15 "\u{9}")))
+                  (+ (+ tk_after_lead 1) 14)
+                  a!113)))
+(let ((a!115 (ite (not (or (= a!14 " ") (= a!14 "\u{9}")))
+                  (+ (+ tk_after_lead 1) 13)
+                  a!114)))
+(let ((a!116 (ite (not (or (= a!13 " ") (= a!13 "\u{9}")))
+                  (+ (+ tk_after_lead 1) 12)
+                  a!115)))
+(let ((a!117 (ite (not (or (= a!12 " ") (= a!12 "\u{9}")))
+                  (+ (+ tk_after_lead 1) 11)
+                  a!116)))
+(let ((a!118 (ite (not (or (= a!11 " ") (= a!11 "\u{9}")))
+                  (+ (+ tk_after_lead 1) 10)
+                  a!117)))
+(let ((a!119 (ite (not (or (= a!10 " ") (= a!10 "\u{9}")))
+                  (+ (+ tk_after_lead 1) 9)
+                  a!118)))
+(let ((a!120 (ite (not (or (= a!9 " ") (= a!9 "\u{9}")))
+                  (+ (+ tk_after_lead 1) 8)
+                  a!119)))
+(let ((a!121 (ite (not (or (= a!8 " ") (= a!8 "\u{9}")))
+                  (+ (+ tk_after_lead 1) 7)
+                  a!120)))
+(let ((a!122 (ite (not (or (= a!7 " ") (= a!7 "\u{9}")))
+                  (+ (+ tk_after_lead 1) 6)
+                  a!121)))
+(let ((a!123 (ite (not (or (= a!6 " ") (= a!6 "\u{9}")))
+                  (+ (+ tk_after_lead 1) 5)
+                  a!122)))
+(let ((a!124 (ite (not (or (= a!5 " ") (= a!5 "\u{9}")))
+                  (+ (+ tk_after_lead 1) 4)
+                  a!123)))
+(let ((a!125 (ite (not (or (= a!4 " ") (= a!4 "\u{9}")))
+                  (+ (+ tk_after_lead 1) 3)
+                  a!124)))
+(let ((a!126 (ite (not (or (= a!3 " ") (= a!3 "\u{9}")))
+                  (+ (+ tk_after_lead 1) 2)
+                  a!125)))
+(let ((a!127 (ite (not (or (= a!2 " ") (= a!2 "\u{9}")))
+                  (+ (+ tk_after_lead 1) 1)
+                  a!126)))
+(let ((a!128 (ite (not (or (= a!1 " ") (= a!1 "\u{9}")))
+                  (+ tk_after_lead 1)
+                  a!127)))
+  (= tk_mem_rs a!128)))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))))
+(assert (let ((a!1 (< tk_mem_rs (str.len (ite (= tk_mem_glyph "\u{2208}") tk_code ""))))
+      (a!2 (str.contains "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+                         (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                                 tk_mem_rs)))
+      (a!3 (< (+ tk_mem_rs 1)
+              (str.len (ite (= tk_mem_glyph "\u{2208}") tk_code ""))))
+      (a!4 (str.contains "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+                         (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                                 (+ tk_mem_rs 1))))
+      (a!5 (< (+ tk_mem_rs 2)
+              (str.len (ite (= tk_mem_glyph "\u{2208}") tk_code ""))))
+      (a!6 (str.contains "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+                         (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                                 (+ tk_mem_rs 2))))
+      (a!7 (< (+ tk_mem_rs 3)
+              (str.len (ite (= tk_mem_glyph "\u{2208}") tk_code ""))))
+      (a!8 (str.contains "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+                         (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                                 (+ tk_mem_rs 3))))
+      (a!9 (< (+ tk_mem_rs 4)
+              (str.len (ite (= tk_mem_glyph "\u{2208}") tk_code ""))))
+      (a!10 (str.contains "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+                          (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                                  (+ tk_mem_rs 4))))
+      (a!11 (< (+ tk_mem_rs 5)
+               (str.len (ite (= tk_mem_glyph "\u{2208}") tk_code ""))))
+      (a!12 (str.contains "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+                          (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                                  (+ tk_mem_rs 5))))
+      (a!13 (< (+ tk_mem_rs 6)
+               (str.len (ite (= tk_mem_glyph "\u{2208}") tk_code ""))))
+      (a!14 (str.contains "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+                          (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                                  (+ tk_mem_rs 6))))
+      (a!15 (< (+ tk_mem_rs 7)
+               (str.len (ite (= tk_mem_glyph "\u{2208}") tk_code ""))))
+      (a!16 (str.contains "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+                          (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                                  (+ tk_mem_rs 7))))
+      (a!17 (< (+ tk_mem_rs 8)
+               (str.len (ite (= tk_mem_glyph "\u{2208}") tk_code ""))))
+      (a!18 (str.contains "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+                          (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                                  (+ tk_mem_rs 8))))
+      (a!19 (< (+ tk_mem_rs 9)
+               (str.len (ite (= tk_mem_glyph "\u{2208}") tk_code ""))))
+      (a!20 (str.contains "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+                          (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                                  (+ tk_mem_rs 9))))
+      (a!21 (< (+ tk_mem_rs 10)
+               (str.len (ite (= tk_mem_glyph "\u{2208}") tk_code ""))))
+      (a!22 (str.contains "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+                          (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                                  (+ tk_mem_rs 10))))
+      (a!23 (< (+ tk_mem_rs 11)
+               (str.len (ite (= tk_mem_glyph "\u{2208}") tk_code ""))))
+      (a!24 (str.contains "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+                          (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                                  (+ tk_mem_rs 11))))
+      (a!25 (< (+ tk_mem_rs 12)
+               (str.len (ite (= tk_mem_glyph "\u{2208}") tk_code ""))))
+      (a!26 (str.contains "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+                          (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                                  (+ tk_mem_rs 12))))
+      (a!27 (< (+ tk_mem_rs 13)
+               (str.len (ite (= tk_mem_glyph "\u{2208}") tk_code ""))))
+      (a!28 (str.contains "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+                          (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                                  (+ tk_mem_rs 13))))
+      (a!29 (< (+ tk_mem_rs 14)
+               (str.len (ite (= tk_mem_glyph "\u{2208}") tk_code ""))))
+      (a!30 (str.contains "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+                          (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                                  (+ tk_mem_rs 14))))
+      (a!31 (< (+ tk_mem_rs 15)
+               (str.len (ite (= tk_mem_glyph "\u{2208}") tk_code ""))))
+      (a!32 (str.contains "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+                          (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                                  (+ tk_mem_rs 15))))
+      (a!33 (< (+ tk_mem_rs 16)
+               (str.len (ite (= tk_mem_glyph "\u{2208}") tk_code ""))))
+      (a!34 (str.contains "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+                          (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                                  (+ tk_mem_rs 16))))
+      (a!35 (< (+ tk_mem_rs 17)
+               (str.len (ite (= tk_mem_glyph "\u{2208}") tk_code ""))))
+      (a!36 (str.contains "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+                          (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                                  (+ tk_mem_rs 17))))
+      (a!37 (< (+ tk_mem_rs 18)
+               (str.len (ite (= tk_mem_glyph "\u{2208}") tk_code ""))))
+      (a!38 (str.contains "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+                          (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                                  (+ tk_mem_rs 18))))
+      (a!39 (< (+ tk_mem_rs 19)
+               (str.len (ite (= tk_mem_glyph "\u{2208}") tk_code ""))))
+      (a!40 (str.contains "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+                          (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                                  (+ tk_mem_rs 19))))
+      (a!41 (< (+ tk_mem_rs 20)
+               (str.len (ite (= tk_mem_glyph "\u{2208}") tk_code ""))))
+      (a!42 (str.contains "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+                          (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                                  (+ tk_mem_rs 20))))
+      (a!43 (< (+ tk_mem_rs 21)
+               (str.len (ite (= tk_mem_glyph "\u{2208}") tk_code ""))))
+      (a!44 (str.contains "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+                          (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                                  (+ tk_mem_rs 21))))
+      (a!45 (< (+ tk_mem_rs 22)
+               (str.len (ite (= tk_mem_glyph "\u{2208}") tk_code ""))))
+      (a!46 (str.contains "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+                          (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                                  (+ tk_mem_rs 22))))
+      (a!47 (< (+ tk_mem_rs 23)
+               (str.len (ite (= tk_mem_glyph "\u{2208}") tk_code ""))))
+      (a!48 (str.contains "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+                          (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                                  (+ tk_mem_rs 23))))
+      (a!49 (< (+ tk_mem_rs 24)
+               (str.len (ite (= tk_mem_glyph "\u{2208}") tk_code ""))))
+      (a!50 (str.contains "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+                          (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                                  (+ tk_mem_rs 24))))
+      (a!51 (< (+ tk_mem_rs 25)
+               (str.len (ite (= tk_mem_glyph "\u{2208}") tk_code ""))))
+      (a!52 (str.contains "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+                          (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                                  (+ tk_mem_rs 25))))
+      (a!53 (< (+ tk_mem_rs 26)
+               (str.len (ite (= tk_mem_glyph "\u{2208}") tk_code ""))))
+      (a!54 (str.contains "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+                          (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                                  (+ tk_mem_rs 26))))
+      (a!55 (< (+ tk_mem_rs 27)
+               (str.len (ite (= tk_mem_glyph "\u{2208}") tk_code ""))))
+      (a!56 (str.contains "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+                          (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                                  (+ tk_mem_rs 27))))
+      (a!57 (< (+ tk_mem_rs 28)
+               (str.len (ite (= tk_mem_glyph "\u{2208}") tk_code ""))))
+      (a!58 (str.contains "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+                          (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                                  (+ tk_mem_rs 28))))
+      (a!59 (< (+ tk_mem_rs 29)
+               (str.len (ite (= tk_mem_glyph "\u{2208}") tk_code ""))))
+      (a!60 (str.contains "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+                          (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                                  (+ tk_mem_rs 29))))
+      (a!61 (< (+ tk_mem_rs 30)
+               (str.len (ite (= tk_mem_glyph "\u{2208}") tk_code ""))))
+      (a!62 (str.contains "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+                          (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                                  (+ tk_mem_rs 30))))
+      (a!63 (< (+ tk_mem_rs 31)
+               (str.len (ite (= tk_mem_glyph "\u{2208}") tk_code ""))))
+      (a!64 (str.contains "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+                          (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                                  (+ tk_mem_rs 31))))
+      (a!65 (< (+ tk_mem_rs 32)
+               (str.len (ite (= tk_mem_glyph "\u{2208}") tk_code ""))))
+      (a!66 (str.contains "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+                          (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                                  (+ tk_mem_rs 32))))
+      (a!67 (< (+ tk_mem_rs 33)
+               (str.len (ite (= tk_mem_glyph "\u{2208}") tk_code ""))))
+      (a!68 (str.contains "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+                          (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                                  (+ tk_mem_rs 33))))
+      (a!69 (< (+ tk_mem_rs 34)
+               (str.len (ite (= tk_mem_glyph "\u{2208}") tk_code ""))))
+      (a!70 (str.contains "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+                          (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                                  (+ tk_mem_rs 34))))
+      (a!71 (< (+ tk_mem_rs 35)
+               (str.len (ite (= tk_mem_glyph "\u{2208}") tk_code ""))))
+      (a!72 (str.contains "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+                          (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                                  (+ tk_mem_rs 35))))
+      (a!73 (< (+ tk_mem_rs 36)
+               (str.len (ite (= tk_mem_glyph "\u{2208}") tk_code ""))))
+      (a!74 (str.contains "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+                          (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                                  (+ tk_mem_rs 36))))
+      (a!75 (< (+ tk_mem_rs 37)
+               (str.len (ite (= tk_mem_glyph "\u{2208}") tk_code ""))))
+      (a!76 (str.contains "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+                          (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                                  (+ tk_mem_rs 37))))
+      (a!77 (< (+ tk_mem_rs 38)
+               (str.len (ite (= tk_mem_glyph "\u{2208}") tk_code ""))))
+      (a!78 (str.contains "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+                          (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                                  (+ tk_mem_rs 38))))
+      (a!79 (< (+ tk_mem_rs 39)
+               (str.len (ite (= tk_mem_glyph "\u{2208}") tk_code ""))))
+      (a!80 (str.contains "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+                          (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                                  (+ tk_mem_rs 39))))
+      (a!81 (< (+ tk_mem_rs 40)
+               (str.len (ite (= tk_mem_glyph "\u{2208}") tk_code ""))))
+      (a!82 (str.contains "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+                          (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                                  (+ tk_mem_rs 40))))
+      (a!83 (< (+ tk_mem_rs 41)
+               (str.len (ite (= tk_mem_glyph "\u{2208}") tk_code ""))))
+      (a!84 (str.contains "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+                          (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                                  (+ tk_mem_rs 41))))
+      (a!85 (< (+ tk_mem_rs 42)
+               (str.len (ite (= tk_mem_glyph "\u{2208}") tk_code ""))))
+      (a!86 (str.contains "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+                          (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                                  (+ tk_mem_rs 42))))
+      (a!87 (< (+ tk_mem_rs 43)
+               (str.len (ite (= tk_mem_glyph "\u{2208}") tk_code ""))))
+      (a!88 (str.contains "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+                          (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                                  (+ tk_mem_rs 43))))
+      (a!89 (< (+ tk_mem_rs 44)
+               (str.len (ite (= tk_mem_glyph "\u{2208}") tk_code ""))))
+      (a!90 (str.contains "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+                          (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                                  (+ tk_mem_rs 44))))
+      (a!91 (< (+ tk_mem_rs 45)
+               (str.len (ite (= tk_mem_glyph "\u{2208}") tk_code ""))))
+      (a!92 (str.contains "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+                          (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                                  (+ tk_mem_rs 45))))
+      (a!93 (< (+ tk_mem_rs 46)
+               (str.len (ite (= tk_mem_glyph "\u{2208}") tk_code ""))))
+      (a!94 (str.contains "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+                          (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                                  (+ tk_mem_rs 46))))
+      (a!95 (< (+ tk_mem_rs 47)
+               (str.len (ite (= tk_mem_glyph "\u{2208}") tk_code ""))))
+      (a!96 (str.contains "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+                          (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                                  (+ tk_mem_rs 47))))
+      (a!97 (< (+ tk_mem_rs 48)
+               (str.len (ite (= tk_mem_glyph "\u{2208}") tk_code ""))))
+      (a!98 (str.contains "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+                          (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                                  (+ tk_mem_rs 48))))
+      (a!99 (< (+ tk_mem_rs 49)
+               (str.len (ite (= tk_mem_glyph "\u{2208}") tk_code ""))))
+      (a!100 (str.contains "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+                           (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                                   (+ tk_mem_rs 49))))
+      (a!101 (< (+ tk_mem_rs 50)
+                (str.len (ite (= tk_mem_glyph "\u{2208}") tk_code ""))))
+      (a!102 (str.contains "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+                           (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                                   (+ tk_mem_rs 50))))
+      (a!103 (< (+ tk_mem_rs 51)
+                (str.len (ite (= tk_mem_glyph "\u{2208}") tk_code ""))))
+      (a!104 (str.contains "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+                           (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                                   (+ tk_mem_rs 51))))
+      (a!105 (< (+ tk_mem_rs 52)
+                (str.len (ite (= tk_mem_glyph "\u{2208}") tk_code ""))))
+      (a!106 (str.contains "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+                           (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                                   (+ tk_mem_rs 52))))
+      (a!107 (< (+ tk_mem_rs 53)
+                (str.len (ite (= tk_mem_glyph "\u{2208}") tk_code ""))))
+      (a!108 (str.contains "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+                           (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                                   (+ tk_mem_rs 53))))
+      (a!109 (< (+ tk_mem_rs 54)
+                (str.len (ite (= tk_mem_glyph "\u{2208}") tk_code ""))))
+      (a!110 (str.contains "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+                           (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                                   (+ tk_mem_rs 54))))
+      (a!111 (< (+ tk_mem_rs 55)
+                (str.len (ite (= tk_mem_glyph "\u{2208}") tk_code ""))))
+      (a!112 (str.contains "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+                           (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                                   (+ tk_mem_rs 55))))
+      (a!113 (< (+ tk_mem_rs 56)
+                (str.len (ite (= tk_mem_glyph "\u{2208}") tk_code ""))))
+      (a!114 (str.contains "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+                           (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                                   (+ tk_mem_rs 56))))
+      (a!115 (< (+ tk_mem_rs 57)
+                (str.len (ite (= tk_mem_glyph "\u{2208}") tk_code ""))))
+      (a!116 (str.contains "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+                           (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                                   (+ tk_mem_rs 57))))
+      (a!117 (< (+ tk_mem_rs 58)
+                (str.len (ite (= tk_mem_glyph "\u{2208}") tk_code ""))))
+      (a!118 (str.contains "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+                           (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                                   (+ tk_mem_rs 58))))
+      (a!119 (< (+ tk_mem_rs 59)
+                (str.len (ite (= tk_mem_glyph "\u{2208}") tk_code ""))))
+      (a!120 (str.contains "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+                           (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                                   (+ tk_mem_rs 59))))
+      (a!121 (< (+ tk_mem_rs 60)
+                (str.len (ite (= tk_mem_glyph "\u{2208}") tk_code ""))))
+      (a!122 (str.contains "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+                           (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                                   (+ tk_mem_rs 60))))
+      (a!123 (< (+ tk_mem_rs 61)
+                (str.len (ite (= tk_mem_glyph "\u{2208}") tk_code ""))))
+      (a!124 (str.contains "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+                           (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                                   (+ tk_mem_rs 61))))
+      (a!125 (< (+ tk_mem_rs 62)
+                (str.len (ite (= tk_mem_glyph "\u{2208}") tk_code ""))))
+      (a!126 (str.contains "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+                           (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                                   (+ tk_mem_rs 62))))
+      (a!127 (< (+ tk_mem_rs 63)
+                (str.len (ite (= tk_mem_glyph "\u{2208}") tk_code ""))))
+      (a!128 (str.contains "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
+                           (str.at (ite (= tk_mem_glyph "\u{2208}") tk_code "")
+                                   (+ tk_mem_rs 63)))))
+(let ((a!129 (ite (not (and a!125 a!126))
+                  (+ tk_mem_rs 62)
+                  (ite (not (and a!127 a!128))
+                       (+ tk_mem_rs 63)
+                       (+ tk_mem_rs 64)))))
+(let ((a!130 (ite (not (and a!121 a!122))
+                  (+ tk_mem_rs 60)
+                  (ite (not (and a!123 a!124)) (+ tk_mem_rs 61) a!129))))
+(let ((a!131 (ite (not (and a!117 a!118))
+                  (+ tk_mem_rs 58)
+                  (ite (not (and a!119 a!120)) (+ tk_mem_rs 59) a!130))))
+(let ((a!132 (ite (not (and a!113 a!114))
+                  (+ tk_mem_rs 56)
+                  (ite (not (and a!115 a!116)) (+ tk_mem_rs 57) a!131))))
+(let ((a!133 (ite (not (and a!109 a!110))
+                  (+ tk_mem_rs 54)
+                  (ite (not (and a!111 a!112)) (+ tk_mem_rs 55) a!132))))
+(let ((a!134 (ite (not (and a!105 a!106))
+                  (+ tk_mem_rs 52)
+                  (ite (not (and a!107 a!108)) (+ tk_mem_rs 53) a!133))))
+(let ((a!135 (ite (not (and a!101 a!102))
+                  (+ tk_mem_rs 50)
+                  (ite (not (and a!103 a!104)) (+ tk_mem_rs 51) a!134))))
+(let ((a!136 (ite (not (and a!97 a!98))
+                  (+ tk_mem_rs 48)
+                  (ite (not (and a!99 a!100)) (+ tk_mem_rs 49) a!135))))
+(let ((a!137 (ite (not (and a!93 a!94))
+                  (+ tk_mem_rs 46)
+                  (ite (not (and a!95 a!96)) (+ tk_mem_rs 47) a!136))))
+(let ((a!138 (ite (not (and a!89 a!90))
+                  (+ tk_mem_rs 44)
+                  (ite (not (and a!91 a!92)) (+ tk_mem_rs 45) a!137))))
+(let ((a!139 (ite (not (and a!85 a!86))
+                  (+ tk_mem_rs 42)
+                  (ite (not (and a!87 a!88)) (+ tk_mem_rs 43) a!138))))
+(let ((a!140 (ite (not (and a!81 a!82))
+                  (+ tk_mem_rs 40)
+                  (ite (not (and a!83 a!84)) (+ tk_mem_rs 41) a!139))))
+(let ((a!141 (ite (not (and a!77 a!78))
+                  (+ tk_mem_rs 38)
+                  (ite (not (and a!79 a!80)) (+ tk_mem_rs 39) a!140))))
+(let ((a!142 (ite (not (and a!73 a!74))
+                  (+ tk_mem_rs 36)
+                  (ite (not (and a!75 a!76)) (+ tk_mem_rs 37) a!141))))
+(let ((a!143 (ite (not (and a!69 a!70))
+                  (+ tk_mem_rs 34)
+                  (ite (not (and a!71 a!72)) (+ tk_mem_rs 35) a!142))))
+(let ((a!144 (ite (not (and a!65 a!66))
+                  (+ tk_mem_rs 32)
+                  (ite (not (and a!67 a!68)) (+ tk_mem_rs 33) a!143))))
+(let ((a!145 (ite (not (and a!61 a!62))
+                  (+ tk_mem_rs 30)
+                  (ite (not (and a!63 a!64)) (+ tk_mem_rs 31) a!144))))
+(let ((a!146 (ite (not (and a!57 a!58))
+                  (+ tk_mem_rs 28)
+                  (ite (not (and a!59 a!60)) (+ tk_mem_rs 29) a!145))))
+(let ((a!147 (ite (not (and a!53 a!54))
+                  (+ tk_mem_rs 26)
+                  (ite (not (and a!55 a!56)) (+ tk_mem_rs 27) a!146))))
+(let ((a!148 (ite (not (and a!49 a!50))
+                  (+ tk_mem_rs 24)
+                  (ite (not (and a!51 a!52)) (+ tk_mem_rs 25) a!147))))
+(let ((a!149 (ite (not (and a!45 a!46))
+                  (+ tk_mem_rs 22)
+                  (ite (not (and a!47 a!48)) (+ tk_mem_rs 23) a!148))))
+(let ((a!150 (ite (not (and a!41 a!42))
+                  (+ tk_mem_rs 20)
+                  (ite (not (and a!43 a!44)) (+ tk_mem_rs 21) a!149))))
+(let ((a!151 (ite (not (and a!37 a!38))
+                  (+ tk_mem_rs 18)
+                  (ite (not (and a!39 a!40)) (+ tk_mem_rs 19) a!150))))
+(let ((a!152 (ite (not (and a!33 a!34))
+                  (+ tk_mem_rs 16)
+                  (ite (not (and a!35 a!36)) (+ tk_mem_rs 17) a!151))))
+(let ((a!153 (ite (not (and a!29 a!30))
+                  (+ tk_mem_rs 14)
+                  (ite (not (and a!31 a!32)) (+ tk_mem_rs 15) a!152))))
+(let ((a!154 (ite (not (and a!25 a!26))
+                  (+ tk_mem_rs 12)
+                  (ite (not (and a!27 a!28)) (+ tk_mem_rs 13) a!153))))
+(let ((a!155 (ite (not (and a!21 a!22))
+                  (+ tk_mem_rs 10)
+                  (ite (not (and a!23 a!24)) (+ tk_mem_rs 11) a!154))))
+(let ((a!156 (ite (not (and a!17 a!18))
+                  (+ tk_mem_rs 8)
+                  (ite (not (and a!19 a!20)) (+ tk_mem_rs 9) a!155))))
+(let ((a!157 (ite (not (and a!13 a!14))
+                  (+ tk_mem_rs 6)
+                  (ite (not (and a!15 a!16)) (+ tk_mem_rs 7) a!156))))
+(let ((a!158 (ite (not (and a!9 a!10))
+                  (+ tk_mem_rs 4)
+                  (ite (not (and a!11 a!12)) (+ tk_mem_rs 5) a!157))))
+(let ((a!159 (ite (not (and a!5 a!6))
+                  (+ tk_mem_rs 2)
+                  (ite (not (and a!7 a!8)) (+ tk_mem_rs 3) a!158))))
+(let ((a!160 (ite (not (and a!1 a!2))
+                  tk_mem_rs
+                  (ite (not (and a!3 a!4)) (+ tk_mem_rs 1) a!159))))
+  (= tk_mem_re a!160)))))))))))))))))))))))))))))))))))
+(assert (let ((a!1 (not (or (= (str.at tk_code tk_mem_re) " ")
+                    (= (str.at tk_code tk_mem_re) "\u{9}"))))
+      (a!2 (or (= (str.at tk_code (+ tk_mem_re 1)) " ")
+               (= (str.at tk_code (+ tk_mem_re 1)) "\u{9}")))
+      (a!3 (or (= (str.at tk_code (+ tk_mem_re 2)) " ")
+               (= (str.at tk_code (+ tk_mem_re 2)) "\u{9}")))
+      (a!4 (or (= (str.at tk_code (+ tk_mem_re 3)) " ")
+               (= (str.at tk_code (+ tk_mem_re 3)) "\u{9}")))
+      (a!5 (or (= (str.at tk_code (+ tk_mem_re 4)) " ")
+               (= (str.at tk_code (+ tk_mem_re 4)) "\u{9}")))
+      (a!6 (or (= (str.at tk_code (+ tk_mem_re 5)) " ")
+               (= (str.at tk_code (+ tk_mem_re 5)) "\u{9}")))
+      (a!7 (or (= (str.at tk_code (+ tk_mem_re 6)) " ")
+               (= (str.at tk_code (+ tk_mem_re 6)) "\u{9}")))
+      (a!8 (or (= (str.at tk_code (+ tk_mem_re 7)) " ")
+               (= (str.at tk_code (+ tk_mem_re 7)) "\u{9}")))
+      (a!9 (or (= (str.at tk_code (+ tk_mem_re 8)) " ")
+               (= (str.at tk_code (+ tk_mem_re 8)) "\u{9}")))
+      (a!10 (or (= (str.at tk_code (+ tk_mem_re 9)) " ")
+                (= (str.at tk_code (+ tk_mem_re 9)) "\u{9}")))
+      (a!11 (or (= (str.at tk_code (+ tk_mem_re 10)) " ")
+                (= (str.at tk_code (+ tk_mem_re 10)) "\u{9}")))
+      (a!12 (or (= (str.at tk_code (+ tk_mem_re 11)) " ")
+                (= (str.at tk_code (+ tk_mem_re 11)) "\u{9}")))
+      (a!13 (or (= (str.at tk_code (+ tk_mem_re 12)) " ")
+                (= (str.at tk_code (+ tk_mem_re 12)) "\u{9}")))
+      (a!14 (or (= (str.at tk_code (+ tk_mem_re 13)) " ")
+                (= (str.at tk_code (+ tk_mem_re 13)) "\u{9}")))
+      (a!15 (or (= (str.at tk_code (+ tk_mem_re 14)) " ")
+                (= (str.at tk_code (+ tk_mem_re 14)) "\u{9}")))
+      (a!16 (or (= (str.at tk_code (+ tk_mem_re 15)) " ")
+                (= (str.at tk_code (+ tk_mem_re 15)) "\u{9}")))
+      (a!17 (or (= (str.at tk_code (+ tk_mem_re 16)) " ")
+                (= (str.at tk_code (+ tk_mem_re 16)) "\u{9}")))
+      (a!18 (or (= (str.at tk_code (+ tk_mem_re 17)) " ")
+                (= (str.at tk_code (+ tk_mem_re 17)) "\u{9}")))
+      (a!19 (or (= (str.at tk_code (+ tk_mem_re 18)) " ")
+                (= (str.at tk_code (+ tk_mem_re 18)) "\u{9}")))
+      (a!20 (or (= (str.at tk_code (+ tk_mem_re 19)) " ")
+                (= (str.at tk_code (+ tk_mem_re 19)) "\u{9}")))
+      (a!21 (or (= (str.at tk_code (+ tk_mem_re 20)) " ")
+                (= (str.at tk_code (+ tk_mem_re 20)) "\u{9}")))
+      (a!22 (or (= (str.at tk_code (+ tk_mem_re 21)) " ")
+                (= (str.at tk_code (+ tk_mem_re 21)) "\u{9}")))
+      (a!23 (or (= (str.at tk_code (+ tk_mem_re 22)) " ")
+                (= (str.at tk_code (+ tk_mem_re 22)) "\u{9}")))
+      (a!24 (or (= (str.at tk_code (+ tk_mem_re 23)) " ")
+                (= (str.at tk_code (+ tk_mem_re 23)) "\u{9}")))
+      (a!25 (or (= (str.at tk_code (+ tk_mem_re 24)) " ")
+                (= (str.at tk_code (+ tk_mem_re 24)) "\u{9}")))
+      (a!26 (or (= (str.at tk_code (+ tk_mem_re 25)) " ")
+                (= (str.at tk_code (+ tk_mem_re 25)) "\u{9}")))
+      (a!27 (or (= (str.at tk_code (+ tk_mem_re 26)) " ")
+                (= (str.at tk_code (+ tk_mem_re 26)) "\u{9}")))
+      (a!28 (or (= (str.at tk_code (+ tk_mem_re 27)) " ")
+                (= (str.at tk_code (+ tk_mem_re 27)) "\u{9}")))
+      (a!29 (or (= (str.at tk_code (+ tk_mem_re 28)) " ")
+                (= (str.at tk_code (+ tk_mem_re 28)) "\u{9}")))
+      (a!30 (or (= (str.at tk_code (+ tk_mem_re 29)) " ")
+                (= (str.at tk_code (+ tk_mem_re 29)) "\u{9}")))
+      (a!31 (or (= (str.at tk_code (+ tk_mem_re 30)) " ")
+                (= (str.at tk_code (+ tk_mem_re 30)) "\u{9}")))
+      (a!32 (or (= (str.at tk_code (+ tk_mem_re 31)) " ")
+                (= (str.at tk_code (+ tk_mem_re 31)) "\u{9}")))
+      (a!33 (or (= (str.at tk_code (+ tk_mem_re 32)) " ")
+                (= (str.at tk_code (+ tk_mem_re 32)) "\u{9}")))
+      (a!34 (or (= (str.at tk_code (+ tk_mem_re 33)) " ")
+                (= (str.at tk_code (+ tk_mem_re 33)) "\u{9}")))
+      (a!35 (or (= (str.at tk_code (+ tk_mem_re 34)) " ")
+                (= (str.at tk_code (+ tk_mem_re 34)) "\u{9}")))
+      (a!36 (or (= (str.at tk_code (+ tk_mem_re 35)) " ")
+                (= (str.at tk_code (+ tk_mem_re 35)) "\u{9}")))
+      (a!37 (or (= (str.at tk_code (+ tk_mem_re 36)) " ")
+                (= (str.at tk_code (+ tk_mem_re 36)) "\u{9}")))
+      (a!38 (or (= (str.at tk_code (+ tk_mem_re 37)) " ")
+                (= (str.at tk_code (+ tk_mem_re 37)) "\u{9}")))
+      (a!39 (or (= (str.at tk_code (+ tk_mem_re 38)) " ")
+                (= (str.at tk_code (+ tk_mem_re 38)) "\u{9}")))
+      (a!40 (or (= (str.at tk_code (+ tk_mem_re 39)) " ")
+                (= (str.at tk_code (+ tk_mem_re 39)) "\u{9}")))
+      (a!41 (or (= (str.at tk_code (+ tk_mem_re 40)) " ")
+                (= (str.at tk_code (+ tk_mem_re 40)) "\u{9}")))
+      (a!42 (or (= (str.at tk_code (+ tk_mem_re 41)) " ")
+                (= (str.at tk_code (+ tk_mem_re 41)) "\u{9}")))
+      (a!43 (or (= (str.at tk_code (+ tk_mem_re 42)) " ")
+                (= (str.at tk_code (+ tk_mem_re 42)) "\u{9}")))
+      (a!44 (or (= (str.at tk_code (+ tk_mem_re 43)) " ")
+                (= (str.at tk_code (+ tk_mem_re 43)) "\u{9}")))
+      (a!45 (or (= (str.at tk_code (+ tk_mem_re 44)) " ")
+                (= (str.at tk_code (+ tk_mem_re 44)) "\u{9}")))
+      (a!46 (or (= (str.at tk_code (+ tk_mem_re 45)) " ")
+                (= (str.at tk_code (+ tk_mem_re 45)) "\u{9}")))
+      (a!47 (or (= (str.at tk_code (+ tk_mem_re 46)) " ")
+                (= (str.at tk_code (+ tk_mem_re 46)) "\u{9}")))
+      (a!48 (or (= (str.at tk_code (+ tk_mem_re 47)) " ")
+                (= (str.at tk_code (+ tk_mem_re 47)) "\u{9}")))
+      (a!49 (or (= (str.at tk_code (+ tk_mem_re 48)) " ")
+                (= (str.at tk_code (+ tk_mem_re 48)) "\u{9}")))
+      (a!50 (or (= (str.at tk_code (+ tk_mem_re 49)) " ")
+                (= (str.at tk_code (+ tk_mem_re 49)) "\u{9}")))
+      (a!51 (or (= (str.at tk_code (+ tk_mem_re 50)) " ")
+                (= (str.at tk_code (+ tk_mem_re 50)) "\u{9}")))
+      (a!52 (or (= (str.at tk_code (+ tk_mem_re 51)) " ")
+                (= (str.at tk_code (+ tk_mem_re 51)) "\u{9}")))
+      (a!53 (or (= (str.at tk_code (+ tk_mem_re 52)) " ")
+                (= (str.at tk_code (+ tk_mem_re 52)) "\u{9}")))
+      (a!54 (or (= (str.at tk_code (+ tk_mem_re 53)) " ")
+                (= (str.at tk_code (+ tk_mem_re 53)) "\u{9}")))
+      (a!55 (or (= (str.at tk_code (+ tk_mem_re 54)) " ")
+                (= (str.at tk_code (+ tk_mem_re 54)) "\u{9}")))
+      (a!56 (or (= (str.at tk_code (+ tk_mem_re 55)) " ")
+                (= (str.at tk_code (+ tk_mem_re 55)) "\u{9}")))
+      (a!57 (or (= (str.at tk_code (+ tk_mem_re 56)) " ")
+                (= (str.at tk_code (+ tk_mem_re 56)) "\u{9}")))
+      (a!58 (or (= (str.at tk_code (+ tk_mem_re 57)) " ")
+                (= (str.at tk_code (+ tk_mem_re 57)) "\u{9}")))
+      (a!59 (or (= (str.at tk_code (+ tk_mem_re 58)) " ")
+                (= (str.at tk_code (+ tk_mem_re 58)) "\u{9}")))
+      (a!60 (or (= (str.at tk_code (+ tk_mem_re 59)) " ")
+                (= (str.at tk_code (+ tk_mem_re 59)) "\u{9}")))
+      (a!61 (or (= (str.at tk_code (+ tk_mem_re 60)) " ")
+                (= (str.at tk_code (+ tk_mem_re 60)) "\u{9}")))
+      (a!62 (or (= (str.at tk_code (+ tk_mem_re 61)) " ")
+                (= (str.at tk_code (+ tk_mem_re 61)) "\u{9}")))
+      (a!63 (or (= (str.at tk_code (+ tk_mem_re 62)) " ")
+                (= (str.at tk_code (+ tk_mem_re 62)) "\u{9}")))
+      (a!64 (or (= (str.at tk_code (+ tk_mem_re 63)) " ")
+                (= (str.at tk_code (+ tk_mem_re 63)) "\u{9}"))))
+(let ((a!65 (ite (not a!62)
+                 (+ tk_mem_re 61)
+                 (ite (not a!63)
+                      (+ tk_mem_re 62)
+                      (ite (not a!64) (+ tk_mem_re 63) (+ tk_mem_re 64))))))
+(let ((a!66 (ite (not a!59)
+                 (+ tk_mem_re 58)
+                 (ite (not a!60)
+                      (+ tk_mem_re 59)
+                      (ite (not a!61) (+ tk_mem_re 60) a!65)))))
+(let ((a!67 (ite (not a!56)
+                 (+ tk_mem_re 55)
+                 (ite (not a!57)
+                      (+ tk_mem_re 56)
+                      (ite (not a!58) (+ tk_mem_re 57) a!66)))))
+(let ((a!68 (ite (not a!53)
+                 (+ tk_mem_re 52)
+                 (ite (not a!54)
+                      (+ tk_mem_re 53)
+                      (ite (not a!55) (+ tk_mem_re 54) a!67)))))
+(let ((a!69 (ite (not a!50)
+                 (+ tk_mem_re 49)
+                 (ite (not a!51)
+                      (+ tk_mem_re 50)
+                      (ite (not a!52) (+ tk_mem_re 51) a!68)))))
+(let ((a!70 (ite (not a!47)
+                 (+ tk_mem_re 46)
+                 (ite (not a!48)
+                      (+ tk_mem_re 47)
+                      (ite (not a!49) (+ tk_mem_re 48) a!69)))))
+(let ((a!71 (ite (not a!44)
+                 (+ tk_mem_re 43)
+                 (ite (not a!45)
+                      (+ tk_mem_re 44)
+                      (ite (not a!46) (+ tk_mem_re 45) a!70)))))
+(let ((a!72 (ite (not a!41)
+                 (+ tk_mem_re 40)
+                 (ite (not a!42)
+                      (+ tk_mem_re 41)
+                      (ite (not a!43) (+ tk_mem_re 42) a!71)))))
+(let ((a!73 (ite (not a!38)
+                 (+ tk_mem_re 37)
+                 (ite (not a!39)
+                      (+ tk_mem_re 38)
+                      (ite (not a!40) (+ tk_mem_re 39) a!72)))))
+(let ((a!74 (ite (not a!35)
+                 (+ tk_mem_re 34)
+                 (ite (not a!36)
+                      (+ tk_mem_re 35)
+                      (ite (not a!37) (+ tk_mem_re 36) a!73)))))
+(let ((a!75 (ite (not a!32)
+                 (+ tk_mem_re 31)
+                 (ite (not a!33)
+                      (+ tk_mem_re 32)
+                      (ite (not a!34) (+ tk_mem_re 33) a!74)))))
+(let ((a!76 (ite (not a!29)
+                 (+ tk_mem_re 28)
+                 (ite (not a!30)
+                      (+ tk_mem_re 29)
+                      (ite (not a!31) (+ tk_mem_re 30) a!75)))))
+(let ((a!77 (ite (not a!26)
+                 (+ tk_mem_re 25)
+                 (ite (not a!27)
+                      (+ tk_mem_re 26)
+                      (ite (not a!28) (+ tk_mem_re 27) a!76)))))
+(let ((a!78 (ite (not a!23)
+                 (+ tk_mem_re 22)
+                 (ite (not a!24)
+                      (+ tk_mem_re 23)
+                      (ite (not a!25) (+ tk_mem_re 24) a!77)))))
+(let ((a!79 (ite (not a!20)
+                 (+ tk_mem_re 19)
+                 (ite (not a!21)
+                      (+ tk_mem_re 20)
+                      (ite (not a!22) (+ tk_mem_re 21) a!78)))))
+(let ((a!80 (ite (not a!17)
+                 (+ tk_mem_re 16)
+                 (ite (not a!18)
+                      (+ tk_mem_re 17)
+                      (ite (not a!19) (+ tk_mem_re 18) a!79)))))
+(let ((a!81 (ite (not a!14)
+                 (+ tk_mem_re 13)
+                 (ite (not a!15)
+                      (+ tk_mem_re 14)
+                      (ite (not a!16) (+ tk_mem_re 15) a!80)))))
+(let ((a!82 (ite (not a!11)
+                 (+ tk_mem_re 10)
+                 (ite (not a!12)
+                      (+ tk_mem_re 11)
+                      (ite (not a!13) (+ tk_mem_re 12) a!81)))))
+(let ((a!83 (ite (not a!8)
+                 (+ tk_mem_re 7)
+                 (ite (not a!9)
+                      (+ tk_mem_re 8)
+                      (ite (not a!10) (+ tk_mem_re 9) a!82)))))
+(let ((a!84 (ite (not a!5)
+                 (+ tk_mem_re 4)
+                 (ite (not a!6)
+                      (+ tk_mem_re 5)
+                      (ite (not a!7) (+ tk_mem_re 6) a!83)))))
+(let ((a!85 (ite (not a!2)
+                 (+ tk_mem_re 1)
+                 (ite (not a!3)
+                      (+ tk_mem_re 2)
+                      (ite (not a!4) (+ tk_mem_re 3) a!84)))))
+  (= tk_mem_rws (ite a!1 tk_mem_re a!85)))))))))))))))))))))))))
+(assert (= tk_mem_rhs
+   (ite (> tk_mem_re tk_mem_rs)
+        (str.substr tk_code tk_mem_rs (- tk_mem_re tk_mem_rs))
+        "")))
+(assert (= tk_mem_key (str.++ "\u{27e6}" tk_mem_rhs "\u{27e7}")))
+(assert (let ((a!1 (ite (and (= tk_mem_glyph "\u{2208}") (not (= tk_mem_rhs "")))
+                (str.indexof _reg tk_mem_key 0)
+                (- 0 1))))
+  (= tk_mem_at a!1)))
+(assert (= tk_mem_hit (>= tk_mem_at 0)))
+(assert (= tk_mem_vs (ite tk_mem_hit (+ tk_mem_at (str.len tk_mem_key)) (- 0 1))))
+(assert (= tk_mem_d1 (ite tk_mem_hit (str.indexof _reg "\u{2982}" tk_mem_vs) (- 0 1))))
+(assert (= tk_mem_base
+   (ite tk_mem_hit (str.substr _reg tk_mem_vs (- tk_mem_d1 tk_mem_vs)) "")))
+(assert (= tk_mem_d2
+   (ite tk_mem_hit (str.indexof _reg "\u{2982}" (+ tk_mem_d1 1)) (- 0 1))))
+(assert (let ((a!1 (= (ite tk_mem_hit (- (- tk_mem_d2 tk_mem_d1) 1) 0) 1))
+      (a!2 (str.indexof "0123456789" (str.at _reg (+ (+ tk_mem_d1 1) 0)) 0))
+      (a!3 (= (ite tk_mem_hit (- (- tk_mem_d2 tk_mem_d1) 1) 0) 2))
+      (a!4 (str.indexof "0123456789" (str.at _reg (+ (+ tk_mem_d1 1) 1)) 0))
+      (a!5 (= (ite tk_mem_hit (- (- tk_mem_d2 tk_mem_d1) 1) 0) 3))
+      (a!6 (str.indexof "0123456789" (str.at _reg (+ (+ tk_mem_d1 1) 2)) 0))
+      (a!7 (= (ite tk_mem_hit (- (- tk_mem_d2 tk_mem_d1) 1) 0) 4))
+      (a!8 (str.indexof "0123456789" (str.at _reg (+ (+ tk_mem_d1 1) 3)) 0))
+      (a!9 (= (ite tk_mem_hit (- (- tk_mem_d2 tk_mem_d1) 1) 0) 5))
+      (a!10 (str.indexof "0123456789" (str.at _reg (+ (+ tk_mem_d1 1) 4)) 0))
+      (a!11 (= (ite tk_mem_hit (- (- tk_mem_d2 tk_mem_d1) 1) 0) 6))
+      (a!12 (str.indexof "0123456789" (str.at _reg (+ (+ tk_mem_d1 1) 5)) 0))
+      (a!13 (= (ite tk_mem_hit (- (- tk_mem_d2 tk_mem_d1) 1) 0) 7))
+      (a!14 (str.indexof "0123456789" (str.at _reg (+ (+ tk_mem_d1 1) 6)) 0)))
+(let ((a!15 (ite a!11
+                 (+ (* a!2 100000)
+                    (* a!4 10000)
+                    (* a!6 1000)
+                    (* a!8 100)
+                    (* a!10 10)
+                    a!12)
+                 (ite a!13
+                      (+ (* a!2 1000000)
+                         (* a!4 100000)
+                         (* a!6 10000)
+                         (* a!8 1000)
+                         (* a!10 100)
+                         (* a!12 10)
+                         a!14)
+                      (- 0 1)))))
+(let ((a!16 (ite a!7
+                 (+ (* a!2 1000) (* a!4 100) (* a!6 10) a!8)
+                 (ite a!9
+                      (+ (* a!2 10000) (* a!4 1000) (* a!6 100) (* a!8 10) a!10)
+                      a!15))))
+(let ((a!17 (ite a!3
+                 (+ (* a!2 10) a!4)
+                 (ite a!5 (+ (* a!2 100) (* a!4 10) a!6) a!16))))
+  (= tk_mem_n (ite a!1 a!2 a!17)))))))
+(assert (= tk_is_member
+   (and (= tk_mem_glyph "\u{2208}")
+        tk_mem_hit
+        (= tk_mem_base "Int")
+        (>= tk_mem_rws (str.len tk_code))
+        (<= tk_ie tk_after_lead))))
+(assert (= tk_mem_lhs (ite tk_is_member (str.substr tk_code tk_ws (- tk_ie tk_ws)) "")))
+(assert (= tk_mem_chain (str.++ "(" LsMemberChain__mc_body__call9 ")")))
+(assert (= LsMemberChain__mc_body__call9
+   (str.++ LsMemberChain__mc_seg0__call9
+           LsMemberChain__mc_seg1__call9
+           LsMemberChain__mc_seg2__call9
+           LsMemberChain__mc_seg3__call9
+           LsMemberChain__mc_seg4__call9
+           LsMemberChain__mc_seg5__call9
+           LsMemberChain__mc_seg6__call9
+           LsMemberChain__mc_seg7__call9
+           LsMemberChain__mc_seg8__call9
+           LsMemberChain__mc_seg9__call9
+           LsMemberChain__mc_seg10__call9
+           LsMemberChain__mc_seg11__call9
+           LsMemberChain__mc_seg12__call9
+           LsMemberChain__mc_seg13__call9
+           LsMemberChain__mc_seg14__call9
+           LsMemberChain__mc_seg15__call9)))
+(assert (= LsMemberChain__mc_seg0__call9
+   (ite (< 0 tk_mem_n) LsMemberChain__mc_arm0__call9 "")))
+(assert (= LsMemberChain__mc_seg1__call9
+   (ite (< 1 tk_mem_n) (str.++ " \u{2228} " LsMemberChain__mc_arm1__call9) "")))
+(assert (= LsMemberChain__mc_seg2__call9
+   (ite (< 2 tk_mem_n) (str.++ " \u{2228} " LsMemberChain__mc_arm2__call9) "")))
+(assert (= LsMemberChain__mc_seg3__call9
+   (ite (< 3 tk_mem_n) (str.++ " \u{2228} " LsMemberChain__mc_arm3__call9) "")))
+(assert (= LsMemberChain__mc_seg4__call9
+   (ite (< 4 tk_mem_n) (str.++ " \u{2228} " LsMemberChain__mc_arm4__call9) "")))
+(assert (= LsMemberChain__mc_seg5__call9
+   (ite (< 5 tk_mem_n) (str.++ " \u{2228} " LsMemberChain__mc_arm5__call9) "")))
+(assert (= LsMemberChain__mc_seg6__call9
+   (ite (< 6 tk_mem_n) (str.++ " \u{2228} " LsMemberChain__mc_arm6__call9) "")))
+(assert (= LsMemberChain__mc_seg7__call9
+   (ite (< 7 tk_mem_n) (str.++ " \u{2228} " LsMemberChain__mc_arm7__call9) "")))
+(assert (= LsMemberChain__mc_seg8__call9
+   (ite (< 8 tk_mem_n) (str.++ " \u{2228} " LsMemberChain__mc_arm8__call9) "")))
+(assert (= LsMemberChain__mc_seg9__call9
+   (ite (< 9 tk_mem_n) (str.++ " \u{2228} " LsMemberChain__mc_arm9__call9) "")))
+(assert (= LsMemberChain__mc_seg10__call9
+   (ite (< 10 tk_mem_n) (str.++ " \u{2228} " LsMemberChain__mc_arm10__call9) "")))
+(assert (= LsMemberChain__mc_seg11__call9
+   (ite (< 11 tk_mem_n) (str.++ " \u{2228} " LsMemberChain__mc_arm11__call9) "")))
+(assert (= LsMemberChain__mc_seg12__call9
+   (ite (< 12 tk_mem_n) (str.++ " \u{2228} " LsMemberChain__mc_arm12__call9) "")))
+(assert (= LsMemberChain__mc_seg13__call9
+   (ite (< 13 tk_mem_n) (str.++ " \u{2228} " LsMemberChain__mc_arm13__call9) "")))
+(assert (= LsMemberChain__mc_seg14__call9
+   (ite (< 14 tk_mem_n) (str.++ " \u{2228} " LsMemberChain__mc_arm14__call9) "")))
+(assert (= LsMemberChain__mc_seg15__call9
+   (ite (< 15 tk_mem_n) (str.++ " \u{2228} " LsMemberChain__mc_arm15__call9) "")))
+(assert (= LsMemberChain__mc_arm0__call9
+   (str.++ "((0 < "
+           tk_mem_rhs
+           "_len) \u{2227} ("
+           tk_mem_lhs
+           " = "
+           tk_mem_rhs
+           "_0))")))
+(assert (= LsMemberChain__mc_arm1__call9
+   (str.++ "((1 < "
+           tk_mem_rhs
+           "_len) \u{2227} ("
+           tk_mem_lhs
+           " = "
+           tk_mem_rhs
+           "_1))")))
+(assert (= LsMemberChain__mc_arm2__call9
+   (str.++ "((2 < "
+           tk_mem_rhs
+           "_len) \u{2227} ("
+           tk_mem_lhs
+           " = "
+           tk_mem_rhs
+           "_2))")))
+(assert (= LsMemberChain__mc_arm3__call9
+   (str.++ "((3 < "
+           tk_mem_rhs
+           "_len) \u{2227} ("
+           tk_mem_lhs
+           " = "
+           tk_mem_rhs
+           "_3))")))
+(assert (= LsMemberChain__mc_arm4__call9
+   (str.++ "((4 < "
+           tk_mem_rhs
+           "_len) \u{2227} ("
+           tk_mem_lhs
+           " = "
+           tk_mem_rhs
+           "_4))")))
+(assert (= LsMemberChain__mc_arm5__call9
+   (str.++ "((5 < "
+           tk_mem_rhs
+           "_len) \u{2227} ("
+           tk_mem_lhs
+           " = "
+           tk_mem_rhs
+           "_5))")))
+(assert (= LsMemberChain__mc_arm6__call9
+   (str.++ "((6 < "
+           tk_mem_rhs
+           "_len) \u{2227} ("
+           tk_mem_lhs
+           " = "
+           tk_mem_rhs
+           "_6))")))
+(assert (= LsMemberChain__mc_arm7__call9
+   (str.++ "((7 < "
+           tk_mem_rhs
+           "_len) \u{2227} ("
+           tk_mem_lhs
+           " = "
+           tk_mem_rhs
+           "_7))")))
+(assert (= LsMemberChain__mc_arm8__call9
+   (str.++ "((8 < "
+           tk_mem_rhs
+           "_len) \u{2227} ("
+           tk_mem_lhs
+           " = "
+           tk_mem_rhs
+           "_8))")))
+(assert (= LsMemberChain__mc_arm9__call9
+   (str.++ "((9 < "
+           tk_mem_rhs
+           "_len) \u{2227} ("
+           tk_mem_lhs
+           " = "
+           tk_mem_rhs
+           "_9))")))
+(assert (= LsMemberChain__mc_arm10__call9
+   (str.++ "((10 < "
+           tk_mem_rhs
+           "_len) \u{2227} ("
+           tk_mem_lhs
+           " = "
+           tk_mem_rhs
+           "_10))")))
+(assert (= LsMemberChain__mc_arm11__call9
+   (str.++ "((11 < "
+           tk_mem_rhs
+           "_len) \u{2227} ("
+           tk_mem_lhs
+           " = "
+           tk_mem_rhs
+           "_11))")))
+(assert (= LsMemberChain__mc_arm12__call9
+   (str.++ "((12 < "
+           tk_mem_rhs
+           "_len) \u{2227} ("
+           tk_mem_lhs
+           " = "
+           tk_mem_rhs
+           "_12))")))
+(assert (= LsMemberChain__mc_arm13__call9
+   (str.++ "((13 < "
+           tk_mem_rhs
+           "_len) \u{2227} ("
+           tk_mem_lhs
+           " = "
+           tk_mem_rhs
+           "_13))")))
+(assert (= LsMemberChain__mc_arm14__call9
+   (str.++ "((14 < "
+           tk_mem_rhs
+           "_len) \u{2227} ("
+           tk_mem_lhs
+           " = "
+           tk_mem_rhs
+           "_14))")))
+(assert (= LsMemberChain__mc_arm15__call9
+   (str.++ "((15 < "
+           tk_mem_rhs
+           "_len) \u{2227} ("
+           tk_mem_lhs
+           " = "
+           tk_mem_rhs
+           "_15))")))
 (assert (= tk_enter_loop
    (and tk_src
         tk_reg_hit
@@ -3140,418 +4412,420 @@
         (not tk_enter_loop)
         (not tk_enter_dual)
         (not tk_drop_bound)
-        (not tk_rewrite_bound))))
+        (not tk_rewrite_bound)
+        (not tk_is_member))))
 (assert (= tk_loop_run (and (= tk_ph 4) (< _emit_k _emit_n))))
 (assert (= tk_loop_done (and (= tk_ph 4) (>= _emit_k _emit_n))))
 (assert (let ((a!1 (ite (= (- _emit_k 1) 13)
-                LsCommaPos__cp13__call10
+                LsCommaPos__cp13__call15
                 (ite (= (- _emit_k 1) 14)
-                     LsCommaPos__cp14__call10
-                     LsCommaPos__cp15__call10))))
+                     LsCommaPos__cp14__call15
+                     LsCommaPos__cp15__call15))))
 (let ((a!2 (ite (= (- _emit_k 1) 11)
-                LsCommaPos__cp11__call10
-                (ite (= (- _emit_k 1) 12) LsCommaPos__cp12__call10 a!1))))
+                LsCommaPos__cp11__call15
+                (ite (= (- _emit_k 1) 12) LsCommaPos__cp12__call15 a!1))))
 (let ((a!3 (ite (= (- _emit_k 1) 9)
-                LsCommaPos__cp9__call10
-                (ite (= (- _emit_k 1) 10) LsCommaPos__cp10__call10 a!2))))
+                LsCommaPos__cp9__call15
+                (ite (= (- _emit_k 1) 10) LsCommaPos__cp10__call15 a!2))))
 (let ((a!4 (ite (= (- _emit_k 1) 7)
-                LsCommaPos__cp7__call10
-                (ite (= (- _emit_k 1) 8) LsCommaPos__cp8__call10 a!3))))
+                LsCommaPos__cp7__call15
+                (ite (= (- _emit_k 1) 8) LsCommaPos__cp8__call15 a!3))))
 (let ((a!5 (ite (= (- _emit_k 1) 5)
-                LsCommaPos__cp5__call10
-                (ite (= (- _emit_k 1) 6) LsCommaPos__cp6__call10 a!4))))
+                LsCommaPos__cp5__call15
+                (ite (= (- _emit_k 1) 6) LsCommaPos__cp6__call15 a!4))))
 (let ((a!6 (ite (= (- _emit_k 1) 3)
-                LsCommaPos__cp3__call10
-                (ite (= (- _emit_k 1) 4) LsCommaPos__cp4__call10 a!5))))
+                LsCommaPos__cp3__call15
+                (ite (= (- _emit_k 1) 4) LsCommaPos__cp4__call15 a!5))))
 (let ((a!7 (ite (= (- _emit_k 1) 1)
-                LsCommaPos__cp1__call10
-                (ite (= (- _emit_k 1) 2) LsCommaPos__cp2__call10 a!6))))
+                LsCommaPos__cp1__call15
+                (ite (= (- _emit_k 1) 2) LsCommaPos__cp2__call15 a!6))))
 (let ((a!8 (ite (< (- _emit_k 1) 0)
                 (- 0 1)
-                (ite (= (- _emit_k 1) 0) LsCommaPos__cp0__call10 a!7))))
-  (= LsNthElem__ne_pstart__call9 a!8))))))))))
-(assert (= LsCommaPos__cp0__call10
+                (ite (= (- _emit_k 1) 0) LsCommaPos__cp0__call15 a!7))))
+  (= LsNthElem__ne_pstart__call14 a!8))))))))))
+(assert (= LsCommaPos__cp0__call15
    (ite (< (str.indexof _emit_inside "," 0) 0)
         (str.len _emit_inside)
         (str.indexof _emit_inside "," 0))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp0__call10 (str.len _emit_inside))
-               (< (str.indexof _emit_inside "," (+ LsCommaPos__cp0__call10 1))
+(assert (let ((a!1 (or (>= LsCommaPos__cp0__call15 (str.len _emit_inside))
+               (< (str.indexof _emit_inside "," (+ LsCommaPos__cp0__call15 1))
                   0))))
-  (= LsCommaPos__cp1__call10
+  (= LsCommaPos__cp1__call15
      (ite a!1
           (str.len _emit_inside)
-          (str.indexof _emit_inside "," (+ LsCommaPos__cp0__call10 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp1__call10 (str.len _emit_inside))
-               (< (str.indexof _emit_inside "," (+ LsCommaPos__cp1__call10 1))
+          (str.indexof _emit_inside "," (+ LsCommaPos__cp0__call15 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp1__call15 (str.len _emit_inside))
+               (< (str.indexof _emit_inside "," (+ LsCommaPos__cp1__call15 1))
                   0))))
-  (= LsCommaPos__cp2__call10
+  (= LsCommaPos__cp2__call15
      (ite a!1
           (str.len _emit_inside)
-          (str.indexof _emit_inside "," (+ LsCommaPos__cp1__call10 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp2__call10 (str.len _emit_inside))
-               (< (str.indexof _emit_inside "," (+ LsCommaPos__cp2__call10 1))
+          (str.indexof _emit_inside "," (+ LsCommaPos__cp1__call15 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp2__call15 (str.len _emit_inside))
+               (< (str.indexof _emit_inside "," (+ LsCommaPos__cp2__call15 1))
                   0))))
-  (= LsCommaPos__cp3__call10
+  (= LsCommaPos__cp3__call15
      (ite a!1
           (str.len _emit_inside)
-          (str.indexof _emit_inside "," (+ LsCommaPos__cp2__call10 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp3__call10 (str.len _emit_inside))
-               (< (str.indexof _emit_inside "," (+ LsCommaPos__cp3__call10 1))
+          (str.indexof _emit_inside "," (+ LsCommaPos__cp2__call15 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp3__call15 (str.len _emit_inside))
+               (< (str.indexof _emit_inside "," (+ LsCommaPos__cp3__call15 1))
                   0))))
-  (= LsCommaPos__cp4__call10
+  (= LsCommaPos__cp4__call15
      (ite a!1
           (str.len _emit_inside)
-          (str.indexof _emit_inside "," (+ LsCommaPos__cp3__call10 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp4__call10 (str.len _emit_inside))
-               (< (str.indexof _emit_inside "," (+ LsCommaPos__cp4__call10 1))
+          (str.indexof _emit_inside "," (+ LsCommaPos__cp3__call15 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp4__call15 (str.len _emit_inside))
+               (< (str.indexof _emit_inside "," (+ LsCommaPos__cp4__call15 1))
                   0))))
-  (= LsCommaPos__cp5__call10
+  (= LsCommaPos__cp5__call15
      (ite a!1
           (str.len _emit_inside)
-          (str.indexof _emit_inside "," (+ LsCommaPos__cp4__call10 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp5__call10 (str.len _emit_inside))
-               (< (str.indexof _emit_inside "," (+ LsCommaPos__cp5__call10 1))
+          (str.indexof _emit_inside "," (+ LsCommaPos__cp4__call15 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp5__call15 (str.len _emit_inside))
+               (< (str.indexof _emit_inside "," (+ LsCommaPos__cp5__call15 1))
                   0))))
-  (= LsCommaPos__cp6__call10
+  (= LsCommaPos__cp6__call15
      (ite a!1
           (str.len _emit_inside)
-          (str.indexof _emit_inside "," (+ LsCommaPos__cp5__call10 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp6__call10 (str.len _emit_inside))
-               (< (str.indexof _emit_inside "," (+ LsCommaPos__cp6__call10 1))
+          (str.indexof _emit_inside "," (+ LsCommaPos__cp5__call15 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp6__call15 (str.len _emit_inside))
+               (< (str.indexof _emit_inside "," (+ LsCommaPos__cp6__call15 1))
                   0))))
-  (= LsCommaPos__cp7__call10
+  (= LsCommaPos__cp7__call15
      (ite a!1
           (str.len _emit_inside)
-          (str.indexof _emit_inside "," (+ LsCommaPos__cp6__call10 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp7__call10 (str.len _emit_inside))
-               (< (str.indexof _emit_inside "," (+ LsCommaPos__cp7__call10 1))
+          (str.indexof _emit_inside "," (+ LsCommaPos__cp6__call15 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp7__call15 (str.len _emit_inside))
+               (< (str.indexof _emit_inside "," (+ LsCommaPos__cp7__call15 1))
                   0))))
-  (= LsCommaPos__cp8__call10
+  (= LsCommaPos__cp8__call15
      (ite a!1
           (str.len _emit_inside)
-          (str.indexof _emit_inside "," (+ LsCommaPos__cp7__call10 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp8__call10 (str.len _emit_inside))
-               (< (str.indexof _emit_inside "," (+ LsCommaPos__cp8__call10 1))
+          (str.indexof _emit_inside "," (+ LsCommaPos__cp7__call15 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp8__call15 (str.len _emit_inside))
+               (< (str.indexof _emit_inside "," (+ LsCommaPos__cp8__call15 1))
                   0))))
-  (= LsCommaPos__cp9__call10
+  (= LsCommaPos__cp9__call15
      (ite a!1
           (str.len _emit_inside)
-          (str.indexof _emit_inside "," (+ LsCommaPos__cp8__call10 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp9__call10 (str.len _emit_inside))
-               (< (str.indexof _emit_inside "," (+ LsCommaPos__cp9__call10 1))
+          (str.indexof _emit_inside "," (+ LsCommaPos__cp8__call15 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp9__call15 (str.len _emit_inside))
+               (< (str.indexof _emit_inside "," (+ LsCommaPos__cp9__call15 1))
                   0))))
-  (= LsCommaPos__cp10__call10
+  (= LsCommaPos__cp10__call15
      (ite a!1
           (str.len _emit_inside)
-          (str.indexof _emit_inside "," (+ LsCommaPos__cp9__call10 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp10__call10 (str.len _emit_inside))
-               (< (str.indexof _emit_inside "," (+ LsCommaPos__cp10__call10 1))
+          (str.indexof _emit_inside "," (+ LsCommaPos__cp9__call15 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp10__call15 (str.len _emit_inside))
+               (< (str.indexof _emit_inside "," (+ LsCommaPos__cp10__call15 1))
                   0))))
-  (= LsCommaPos__cp11__call10
+  (= LsCommaPos__cp11__call15
      (ite a!1
           (str.len _emit_inside)
-          (str.indexof _emit_inside "," (+ LsCommaPos__cp10__call10 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp11__call10 (str.len _emit_inside))
-               (< (str.indexof _emit_inside "," (+ LsCommaPos__cp11__call10 1))
+          (str.indexof _emit_inside "," (+ LsCommaPos__cp10__call15 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp11__call15 (str.len _emit_inside))
+               (< (str.indexof _emit_inside "," (+ LsCommaPos__cp11__call15 1))
                   0))))
-  (= LsCommaPos__cp12__call10
+  (= LsCommaPos__cp12__call15
      (ite a!1
           (str.len _emit_inside)
-          (str.indexof _emit_inside "," (+ LsCommaPos__cp11__call10 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp12__call10 (str.len _emit_inside))
-               (< (str.indexof _emit_inside "," (+ LsCommaPos__cp12__call10 1))
+          (str.indexof _emit_inside "," (+ LsCommaPos__cp11__call15 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp12__call15 (str.len _emit_inside))
+               (< (str.indexof _emit_inside "," (+ LsCommaPos__cp12__call15 1))
                   0))))
-  (= LsCommaPos__cp13__call10
+  (= LsCommaPos__cp13__call15
      (ite a!1
           (str.len _emit_inside)
-          (str.indexof _emit_inside "," (+ LsCommaPos__cp12__call10 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp13__call10 (str.len _emit_inside))
-               (< (str.indexof _emit_inside "," (+ LsCommaPos__cp13__call10 1))
+          (str.indexof _emit_inside "," (+ LsCommaPos__cp12__call15 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp13__call15 (str.len _emit_inside))
+               (< (str.indexof _emit_inside "," (+ LsCommaPos__cp13__call15 1))
                   0))))
-  (= LsCommaPos__cp14__call10
+  (= LsCommaPos__cp14__call15
      (ite a!1
           (str.len _emit_inside)
-          (str.indexof _emit_inside "," (+ LsCommaPos__cp13__call10 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp14__call10 (str.len _emit_inside))
-               (< (str.indexof _emit_inside "," (+ LsCommaPos__cp14__call10 1))
+          (str.indexof _emit_inside "," (+ LsCommaPos__cp13__call15 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp14__call15 (str.len _emit_inside))
+               (< (str.indexof _emit_inside "," (+ LsCommaPos__cp14__call15 1))
                   0))))
-  (= LsCommaPos__cp15__call10
+  (= LsCommaPos__cp15__call15
      (ite a!1
           (str.len _emit_inside)
-          (str.indexof _emit_inside "," (+ LsCommaPos__cp14__call10 1))))))
+          (str.indexof _emit_inside "," (+ LsCommaPos__cp14__call15 1))))))
 (assert (let ((a!1 (ite (= _emit_k 12)
-                LsCommaPos__cp12__call11
+                LsCommaPos__cp12__call16
                 (ite (= _emit_k 13)
-                     LsCommaPos__cp13__call11
+                     LsCommaPos__cp13__call16
                      (ite (= _emit_k 14)
-                          LsCommaPos__cp14__call11
-                          LsCommaPos__cp15__call11)))))
+                          LsCommaPos__cp14__call16
+                          LsCommaPos__cp15__call16)))))
 (let ((a!2 (ite (= _emit_k 9)
-                LsCommaPos__cp9__call11
+                LsCommaPos__cp9__call16
                 (ite (= _emit_k 10)
-                     LsCommaPos__cp10__call11
-                     (ite (= _emit_k 11) LsCommaPos__cp11__call11 a!1)))))
+                     LsCommaPos__cp10__call16
+                     (ite (= _emit_k 11) LsCommaPos__cp11__call16 a!1)))))
 (let ((a!3 (ite (= _emit_k 6)
-                LsCommaPos__cp6__call11
+                LsCommaPos__cp6__call16
                 (ite (= _emit_k 7)
-                     LsCommaPos__cp7__call11
-                     (ite (= _emit_k 8) LsCommaPos__cp8__call11 a!2)))))
+                     LsCommaPos__cp7__call16
+                     (ite (= _emit_k 8) LsCommaPos__cp8__call16 a!2)))))
 (let ((a!4 (ite (= _emit_k 3)
-                LsCommaPos__cp3__call11
+                LsCommaPos__cp3__call16
                 (ite (= _emit_k 4)
-                     LsCommaPos__cp4__call11
-                     (ite (= _emit_k 5) LsCommaPos__cp5__call11 a!3)))))
+                     LsCommaPos__cp4__call16
+                     (ite (= _emit_k 5) LsCommaPos__cp5__call16 a!3)))))
 (let ((a!5 (ite (= _emit_k 0)
-                LsCommaPos__cp0__call11
+                LsCommaPos__cp0__call16
                 (ite (= _emit_k 1)
-                     LsCommaPos__cp1__call11
-                     (ite (= _emit_k 2) LsCommaPos__cp2__call11 a!4)))))
-  (= LsNthElem__ne_pend__call9 (ite (< _emit_k 0) (- 0 1) a!5))))))))
-(assert (= LsCommaPos__cp0__call11
+                     LsCommaPos__cp1__call16
+                     (ite (= _emit_k 2) LsCommaPos__cp2__call16 a!4)))))
+  (= LsNthElem__ne_pend__call14 (ite (< _emit_k 0) (- 0 1) a!5))))))))
+(assert (= LsCommaPos__cp0__call16
    (ite (< (str.indexof _emit_inside "," 0) 0)
         (str.len _emit_inside)
         (str.indexof _emit_inside "," 0))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp0__call11 (str.len _emit_inside))
-               (< (str.indexof _emit_inside "," (+ LsCommaPos__cp0__call11 1))
+(assert (let ((a!1 (or (>= LsCommaPos__cp0__call16 (str.len _emit_inside))
+               (< (str.indexof _emit_inside "," (+ LsCommaPos__cp0__call16 1))
                   0))))
-  (= LsCommaPos__cp1__call11
+  (= LsCommaPos__cp1__call16
      (ite a!1
           (str.len _emit_inside)
-          (str.indexof _emit_inside "," (+ LsCommaPos__cp0__call11 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp1__call11 (str.len _emit_inside))
-               (< (str.indexof _emit_inside "," (+ LsCommaPos__cp1__call11 1))
+          (str.indexof _emit_inside "," (+ LsCommaPos__cp0__call16 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp1__call16 (str.len _emit_inside))
+               (< (str.indexof _emit_inside "," (+ LsCommaPos__cp1__call16 1))
                   0))))
-  (= LsCommaPos__cp2__call11
+  (= LsCommaPos__cp2__call16
      (ite a!1
           (str.len _emit_inside)
-          (str.indexof _emit_inside "," (+ LsCommaPos__cp1__call11 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp2__call11 (str.len _emit_inside))
-               (< (str.indexof _emit_inside "," (+ LsCommaPos__cp2__call11 1))
+          (str.indexof _emit_inside "," (+ LsCommaPos__cp1__call16 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp2__call16 (str.len _emit_inside))
+               (< (str.indexof _emit_inside "," (+ LsCommaPos__cp2__call16 1))
                   0))))
-  (= LsCommaPos__cp3__call11
+  (= LsCommaPos__cp3__call16
      (ite a!1
           (str.len _emit_inside)
-          (str.indexof _emit_inside "," (+ LsCommaPos__cp2__call11 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp3__call11 (str.len _emit_inside))
-               (< (str.indexof _emit_inside "," (+ LsCommaPos__cp3__call11 1))
+          (str.indexof _emit_inside "," (+ LsCommaPos__cp2__call16 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp3__call16 (str.len _emit_inside))
+               (< (str.indexof _emit_inside "," (+ LsCommaPos__cp3__call16 1))
                   0))))
-  (= LsCommaPos__cp4__call11
+  (= LsCommaPos__cp4__call16
      (ite a!1
           (str.len _emit_inside)
-          (str.indexof _emit_inside "," (+ LsCommaPos__cp3__call11 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp4__call11 (str.len _emit_inside))
-               (< (str.indexof _emit_inside "," (+ LsCommaPos__cp4__call11 1))
+          (str.indexof _emit_inside "," (+ LsCommaPos__cp3__call16 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp4__call16 (str.len _emit_inside))
+               (< (str.indexof _emit_inside "," (+ LsCommaPos__cp4__call16 1))
                   0))))
-  (= LsCommaPos__cp5__call11
+  (= LsCommaPos__cp5__call16
      (ite a!1
           (str.len _emit_inside)
-          (str.indexof _emit_inside "," (+ LsCommaPos__cp4__call11 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp5__call11 (str.len _emit_inside))
-               (< (str.indexof _emit_inside "," (+ LsCommaPos__cp5__call11 1))
+          (str.indexof _emit_inside "," (+ LsCommaPos__cp4__call16 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp5__call16 (str.len _emit_inside))
+               (< (str.indexof _emit_inside "," (+ LsCommaPos__cp5__call16 1))
                   0))))
-  (= LsCommaPos__cp6__call11
+  (= LsCommaPos__cp6__call16
      (ite a!1
           (str.len _emit_inside)
-          (str.indexof _emit_inside "," (+ LsCommaPos__cp5__call11 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp6__call11 (str.len _emit_inside))
-               (< (str.indexof _emit_inside "," (+ LsCommaPos__cp6__call11 1))
+          (str.indexof _emit_inside "," (+ LsCommaPos__cp5__call16 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp6__call16 (str.len _emit_inside))
+               (< (str.indexof _emit_inside "," (+ LsCommaPos__cp6__call16 1))
                   0))))
-  (= LsCommaPos__cp7__call11
+  (= LsCommaPos__cp7__call16
      (ite a!1
           (str.len _emit_inside)
-          (str.indexof _emit_inside "," (+ LsCommaPos__cp6__call11 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp7__call11 (str.len _emit_inside))
-               (< (str.indexof _emit_inside "," (+ LsCommaPos__cp7__call11 1))
+          (str.indexof _emit_inside "," (+ LsCommaPos__cp6__call16 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp7__call16 (str.len _emit_inside))
+               (< (str.indexof _emit_inside "," (+ LsCommaPos__cp7__call16 1))
                   0))))
-  (= LsCommaPos__cp8__call11
+  (= LsCommaPos__cp8__call16
      (ite a!1
           (str.len _emit_inside)
-          (str.indexof _emit_inside "," (+ LsCommaPos__cp7__call11 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp8__call11 (str.len _emit_inside))
-               (< (str.indexof _emit_inside "," (+ LsCommaPos__cp8__call11 1))
+          (str.indexof _emit_inside "," (+ LsCommaPos__cp7__call16 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp8__call16 (str.len _emit_inside))
+               (< (str.indexof _emit_inside "," (+ LsCommaPos__cp8__call16 1))
                   0))))
-  (= LsCommaPos__cp9__call11
+  (= LsCommaPos__cp9__call16
      (ite a!1
           (str.len _emit_inside)
-          (str.indexof _emit_inside "," (+ LsCommaPos__cp8__call11 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp9__call11 (str.len _emit_inside))
-               (< (str.indexof _emit_inside "," (+ LsCommaPos__cp9__call11 1))
+          (str.indexof _emit_inside "," (+ LsCommaPos__cp8__call16 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp9__call16 (str.len _emit_inside))
+               (< (str.indexof _emit_inside "," (+ LsCommaPos__cp9__call16 1))
                   0))))
-  (= LsCommaPos__cp10__call11
+  (= LsCommaPos__cp10__call16
      (ite a!1
           (str.len _emit_inside)
-          (str.indexof _emit_inside "," (+ LsCommaPos__cp9__call11 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp10__call11 (str.len _emit_inside))
-               (< (str.indexof _emit_inside "," (+ LsCommaPos__cp10__call11 1))
+          (str.indexof _emit_inside "," (+ LsCommaPos__cp9__call16 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp10__call16 (str.len _emit_inside))
+               (< (str.indexof _emit_inside "," (+ LsCommaPos__cp10__call16 1))
                   0))))
-  (= LsCommaPos__cp11__call11
+  (= LsCommaPos__cp11__call16
      (ite a!1
           (str.len _emit_inside)
-          (str.indexof _emit_inside "," (+ LsCommaPos__cp10__call11 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp11__call11 (str.len _emit_inside))
-               (< (str.indexof _emit_inside "," (+ LsCommaPos__cp11__call11 1))
+          (str.indexof _emit_inside "," (+ LsCommaPos__cp10__call16 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp11__call16 (str.len _emit_inside))
+               (< (str.indexof _emit_inside "," (+ LsCommaPos__cp11__call16 1))
                   0))))
-  (= LsCommaPos__cp12__call11
+  (= LsCommaPos__cp12__call16
      (ite a!1
           (str.len _emit_inside)
-          (str.indexof _emit_inside "," (+ LsCommaPos__cp11__call11 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp12__call11 (str.len _emit_inside))
-               (< (str.indexof _emit_inside "," (+ LsCommaPos__cp12__call11 1))
+          (str.indexof _emit_inside "," (+ LsCommaPos__cp11__call16 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp12__call16 (str.len _emit_inside))
+               (< (str.indexof _emit_inside "," (+ LsCommaPos__cp12__call16 1))
                   0))))
-  (= LsCommaPos__cp13__call11
+  (= LsCommaPos__cp13__call16
      (ite a!1
           (str.len _emit_inside)
-          (str.indexof _emit_inside "," (+ LsCommaPos__cp12__call11 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp13__call11 (str.len _emit_inside))
-               (< (str.indexof _emit_inside "," (+ LsCommaPos__cp13__call11 1))
+          (str.indexof _emit_inside "," (+ LsCommaPos__cp12__call16 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp13__call16 (str.len _emit_inside))
+               (< (str.indexof _emit_inside "," (+ LsCommaPos__cp13__call16 1))
                   0))))
-  (= LsCommaPos__cp14__call11
+  (= LsCommaPos__cp14__call16
      (ite a!1
           (str.len _emit_inside)
-          (str.indexof _emit_inside "," (+ LsCommaPos__cp13__call11 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp14__call11 (str.len _emit_inside))
-               (< (str.indexof _emit_inside "," (+ LsCommaPos__cp14__call11 1))
+          (str.indexof _emit_inside "," (+ LsCommaPos__cp13__call16 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp14__call16 (str.len _emit_inside))
+               (< (str.indexof _emit_inside "," (+ LsCommaPos__cp14__call16 1))
                   0))))
-  (= LsCommaPos__cp15__call11
+  (= LsCommaPos__cp15__call16
      (ite a!1
           (str.len _emit_inside)
-          (str.indexof _emit_inside "," (+ LsCommaPos__cp14__call11 1))))))
-(assert (= LsNthElem__ne_raw_s__call9
-   (ite (= _emit_k 0) 0 (+ LsNthElem__ne_pstart__call9 1))))
-(assert (= LsNthElem__ne_raw_e__call9
-   (ite (>= LsNthElem__ne_pend__call9 (str.len _emit_inside))
+          (str.indexof _emit_inside "," (+ LsCommaPos__cp14__call16 1))))))
+(assert (= LsNthElem__ne_raw_s__call14
+   (ite (= _emit_k 0) 0 (+ LsNthElem__ne_pstart__call14 1))))
+(assert (= LsNthElem__ne_raw_e__call14
+   (ite (>= LsNthElem__ne_pend__call14 (str.len _emit_inside))
         (str.len _emit_inside)
-        LsNthElem__ne_pend__call9)))
-(assert (let ((a!1 (and (< LsNthElem__ne_raw_s__call9 LsNthElem__ne_raw_e__call9)
-                (or (= (str.at _emit_inside LsNthElem__ne_raw_s__call9) " ")
-                    (= (str.at _emit_inside LsNthElem__ne_raw_s__call9) "\u{9}"))))
-      (a!2 (or (= (str.at _emit_inside (+ LsNthElem__ne_raw_s__call9 1)) " ")
-               (= (str.at _emit_inside (+ LsNthElem__ne_raw_s__call9 1))
+        LsNthElem__ne_pend__call14)))
+(assert (let ((a!1 (and (< LsNthElem__ne_raw_s__call14 LsNthElem__ne_raw_e__call14)
+                (or (= (str.at _emit_inside LsNthElem__ne_raw_s__call14) " ")
+                    (= (str.at _emit_inside LsNthElem__ne_raw_s__call14)
+                       "\u{9}"))))
+      (a!2 (or (= (str.at _emit_inside (+ LsNthElem__ne_raw_s__call14 1)) " ")
+               (= (str.at _emit_inside (+ LsNthElem__ne_raw_s__call14 1))
                   "\u{9}")))
-      (a!4 (or (= (str.at _emit_inside (+ LsNthElem__ne_raw_s__call9 2)) " ")
-               (= (str.at _emit_inside (+ LsNthElem__ne_raw_s__call9 2))
+      (a!4 (or (= (str.at _emit_inside (+ LsNthElem__ne_raw_s__call14 2)) " ")
+               (= (str.at _emit_inside (+ LsNthElem__ne_raw_s__call14 2))
                   "\u{9}")))
-      (a!6 (or (= (str.at _emit_inside (+ LsNthElem__ne_raw_s__call9 3)) " ")
-               (= (str.at _emit_inside (+ LsNthElem__ne_raw_s__call9 3))
+      (a!6 (or (= (str.at _emit_inside (+ LsNthElem__ne_raw_s__call14 3)) " ")
+               (= (str.at _emit_inside (+ LsNthElem__ne_raw_s__call14 3))
                   "\u{9}")))
-      (a!8 (or (= (str.at _emit_inside (+ LsNthElem__ne_raw_s__call9 4)) " ")
-               (= (str.at _emit_inside (+ LsNthElem__ne_raw_s__call9 4))
+      (a!8 (or (= (str.at _emit_inside (+ LsNthElem__ne_raw_s__call14 4)) " ")
+               (= (str.at _emit_inside (+ LsNthElem__ne_raw_s__call14 4))
                   "\u{9}")))
-      (a!10 (or (= (str.at _emit_inside (+ LsNthElem__ne_raw_s__call9 5)) " ")
-                (= (str.at _emit_inside (+ LsNthElem__ne_raw_s__call9 5))
+      (a!10 (or (= (str.at _emit_inside (+ LsNthElem__ne_raw_s__call14 5)) " ")
+                (= (str.at _emit_inside (+ LsNthElem__ne_raw_s__call14 5))
                    "\u{9}")))
-      (a!12 (or (= (str.at _emit_inside (+ LsNthElem__ne_raw_s__call9 6)) " ")
-                (= (str.at _emit_inside (+ LsNthElem__ne_raw_s__call9 6))
+      (a!12 (or (= (str.at _emit_inside (+ LsNthElem__ne_raw_s__call14 6)) " ")
+                (= (str.at _emit_inside (+ LsNthElem__ne_raw_s__call14 6))
                    "\u{9}")))
-      (a!14 (or (= (str.at _emit_inside (+ LsNthElem__ne_raw_s__call9 7)) " ")
-                (= (str.at _emit_inside (+ LsNthElem__ne_raw_s__call9 7))
+      (a!14 (or (= (str.at _emit_inside (+ LsNthElem__ne_raw_s__call14 7)) " ")
+                (= (str.at _emit_inside (+ LsNthElem__ne_raw_s__call14 7))
                    "\u{9}"))))
-(let ((a!3 (not (and (< (+ LsNthElem__ne_raw_s__call9 1)
-                        LsNthElem__ne_raw_e__call9)
+(let ((a!3 (not (and (< (+ LsNthElem__ne_raw_s__call14 1)
+                        LsNthElem__ne_raw_e__call14)
                      a!2)))
-      (a!5 (not (and (< (+ LsNthElem__ne_raw_s__call9 2)
-                        LsNthElem__ne_raw_e__call9)
+      (a!5 (not (and (< (+ LsNthElem__ne_raw_s__call14 2)
+                        LsNthElem__ne_raw_e__call14)
                      a!4)))
-      (a!7 (not (and (< (+ LsNthElem__ne_raw_s__call9 3)
-                        LsNthElem__ne_raw_e__call9)
+      (a!7 (not (and (< (+ LsNthElem__ne_raw_s__call14 3)
+                        LsNthElem__ne_raw_e__call14)
                      a!6)))
-      (a!9 (not (and (< (+ LsNthElem__ne_raw_s__call9 4)
-                        LsNthElem__ne_raw_e__call9)
+      (a!9 (not (and (< (+ LsNthElem__ne_raw_s__call14 4)
+                        LsNthElem__ne_raw_e__call14)
                      a!8)))
-      (a!11 (not (and (< (+ LsNthElem__ne_raw_s__call9 5)
-                         LsNthElem__ne_raw_e__call9)
+      (a!11 (not (and (< (+ LsNthElem__ne_raw_s__call14 5)
+                         LsNthElem__ne_raw_e__call14)
                       a!10)))
-      (a!13 (not (and (< (+ LsNthElem__ne_raw_s__call9 6)
-                         LsNthElem__ne_raw_e__call9)
+      (a!13 (not (and (< (+ LsNthElem__ne_raw_s__call14 6)
+                         LsNthElem__ne_raw_e__call14)
                       a!12)))
-      (a!15 (not (and (< (+ LsNthElem__ne_raw_s__call9 7)
-                         LsNthElem__ne_raw_e__call9)
+      (a!15 (not (and (< (+ LsNthElem__ne_raw_s__call14 7)
+                         LsNthElem__ne_raw_e__call14)
                       a!14))))
 (let ((a!16 (ite a!11
-                 (+ LsNthElem__ne_raw_s__call9 5)
+                 (+ LsNthElem__ne_raw_s__call14 5)
                  (ite a!13
-                      (+ LsNthElem__ne_raw_s__call9 6)
+                      (+ LsNthElem__ne_raw_s__call14 6)
                       (ite a!15
-                           (+ LsNthElem__ne_raw_s__call9 7)
-                           (+ LsNthElem__ne_raw_s__call9 8))))))
+                           (+ LsNthElem__ne_raw_s__call14 7)
+                           (+ LsNthElem__ne_raw_s__call14 8))))))
 (let ((a!17 (ite a!5
-                 (+ LsNthElem__ne_raw_s__call9 2)
+                 (+ LsNthElem__ne_raw_s__call14 2)
                  (ite a!7
-                      (+ LsNthElem__ne_raw_s__call9 3)
-                      (ite a!9 (+ LsNthElem__ne_raw_s__call9 4) a!16)))))
-  (= LsNthElem__ne_ts__call9
+                      (+ LsNthElem__ne_raw_s__call14 3)
+                      (ite a!9 (+ LsNthElem__ne_raw_s__call14 4) a!16)))))
+  (= LsNthElem__ne_ts__call14
      (ite (not a!1)
-          LsNthElem__ne_raw_s__call9
-          (ite a!3 (+ LsNthElem__ne_raw_s__call9 1) a!17))))))))
-(assert (let ((a!1 (or (= (str.at _emit_inside (- LsNthElem__ne_raw_e__call9 1)) " ")
-               (= (str.at _emit_inside (- LsNthElem__ne_raw_e__call9 1))
+          LsNthElem__ne_raw_s__call14
+          (ite a!3 (+ LsNthElem__ne_raw_s__call14 1) a!17))))))))
+(assert (let ((a!1 (or (= (str.at _emit_inside (- LsNthElem__ne_raw_e__call14 1)) " ")
+               (= (str.at _emit_inside (- LsNthElem__ne_raw_e__call14 1))
                   "\u{9}")))
-      (a!3 (or (= (str.at _emit_inside (- LsNthElem__ne_raw_e__call9 2)) " ")
-               (= (str.at _emit_inside (- LsNthElem__ne_raw_e__call9 2))
+      (a!3 (or (= (str.at _emit_inside (- LsNthElem__ne_raw_e__call14 2)) " ")
+               (= (str.at _emit_inside (- LsNthElem__ne_raw_e__call14 2))
                   "\u{9}")))
-      (a!5 (or (= (str.at _emit_inside (- LsNthElem__ne_raw_e__call9 3)) " ")
-               (= (str.at _emit_inside (- LsNthElem__ne_raw_e__call9 3))
+      (a!5 (or (= (str.at _emit_inside (- LsNthElem__ne_raw_e__call14 3)) " ")
+               (= (str.at _emit_inside (- LsNthElem__ne_raw_e__call14 3))
                   "\u{9}")))
-      (a!7 (or (= (str.at _emit_inside (- LsNthElem__ne_raw_e__call9 4)) " ")
-               (= (str.at _emit_inside (- LsNthElem__ne_raw_e__call9 4))
+      (a!7 (or (= (str.at _emit_inside (- LsNthElem__ne_raw_e__call14 4)) " ")
+               (= (str.at _emit_inside (- LsNthElem__ne_raw_e__call14 4))
                   "\u{9}")))
-      (a!9 (or (= (str.at _emit_inside (- LsNthElem__ne_raw_e__call9 5)) " ")
-               (= (str.at _emit_inside (- LsNthElem__ne_raw_e__call9 5))
+      (a!9 (or (= (str.at _emit_inside (- LsNthElem__ne_raw_e__call14 5)) " ")
+               (= (str.at _emit_inside (- LsNthElem__ne_raw_e__call14 5))
                   "\u{9}")))
-      (a!11 (or (= (str.at _emit_inside (- LsNthElem__ne_raw_e__call9 6)) " ")
-                (= (str.at _emit_inside (- LsNthElem__ne_raw_e__call9 6))
+      (a!11 (or (= (str.at _emit_inside (- LsNthElem__ne_raw_e__call14 6)) " ")
+                (= (str.at _emit_inside (- LsNthElem__ne_raw_e__call14 6))
                    "\u{9}")))
-      (a!13 (or (= (str.at _emit_inside (- LsNthElem__ne_raw_e__call9 7)) " ")
-                (= (str.at _emit_inside (- LsNthElem__ne_raw_e__call9 7))
+      (a!13 (or (= (str.at _emit_inside (- LsNthElem__ne_raw_e__call14 7)) " ")
+                (= (str.at _emit_inside (- LsNthElem__ne_raw_e__call14 7))
                    "\u{9}")))
-      (a!15 (or (= (str.at _emit_inside (- LsNthElem__ne_raw_e__call9 8)) " ")
-                (= (str.at _emit_inside (- LsNthElem__ne_raw_e__call9 8))
+      (a!15 (or (= (str.at _emit_inside (- LsNthElem__ne_raw_e__call14 8)) " ")
+                (= (str.at _emit_inside (- LsNthElem__ne_raw_e__call14 8))
                    "\u{9}"))))
-(let ((a!2 (not (and (>= (- LsNthElem__ne_raw_e__call9 1)
-                         LsNthElem__ne_ts__call9)
+(let ((a!2 (not (and (>= (- LsNthElem__ne_raw_e__call14 1)
+                         LsNthElem__ne_ts__call14)
                      a!1)))
-      (a!4 (not (and (>= (- LsNthElem__ne_raw_e__call9 2)
-                         LsNthElem__ne_ts__call9)
+      (a!4 (not (and (>= (- LsNthElem__ne_raw_e__call14 2)
+                         LsNthElem__ne_ts__call14)
                      a!3)))
-      (a!6 (not (and (>= (- LsNthElem__ne_raw_e__call9 3)
-                         LsNthElem__ne_ts__call9)
+      (a!6 (not (and (>= (- LsNthElem__ne_raw_e__call14 3)
+                         LsNthElem__ne_ts__call14)
                      a!5)))
-      (a!8 (not (and (>= (- LsNthElem__ne_raw_e__call9 4)
-                         LsNthElem__ne_ts__call9)
+      (a!8 (not (and (>= (- LsNthElem__ne_raw_e__call14 4)
+                         LsNthElem__ne_ts__call14)
                      a!7)))
-      (a!10 (not (and (>= (- LsNthElem__ne_raw_e__call9 5)
-                          LsNthElem__ne_ts__call9)
+      (a!10 (not (and (>= (- LsNthElem__ne_raw_e__call14 5)
+                          LsNthElem__ne_ts__call14)
                       a!9)))
-      (a!12 (not (and (>= (- LsNthElem__ne_raw_e__call9 6)
-                          LsNthElem__ne_ts__call9)
+      (a!12 (not (and (>= (- LsNthElem__ne_raw_e__call14 6)
+                          LsNthElem__ne_ts__call14)
                       a!11)))
-      (a!14 (not (and (>= (- LsNthElem__ne_raw_e__call9 7)
-                          LsNthElem__ne_ts__call9)
+      (a!14 (not (and (>= (- LsNthElem__ne_raw_e__call14 7)
+                          LsNthElem__ne_ts__call14)
                       a!13)))
-      (a!16 (not (and (>= (- LsNthElem__ne_raw_e__call9 8)
-                          LsNthElem__ne_ts__call9)
+      (a!16 (not (and (>= (- LsNthElem__ne_raw_e__call14 8)
+                          LsNthElem__ne_ts__call14)
                       a!15))))
 (let ((a!17 (ite a!12
-                 (- LsNthElem__ne_raw_e__call9 5)
+                 (- LsNthElem__ne_raw_e__call14 5)
                  (ite a!14
-                      (- LsNthElem__ne_raw_e__call9 6)
+                      (- LsNthElem__ne_raw_e__call14 6)
                       (ite a!16
-                           (- LsNthElem__ne_raw_e__call9 7)
-                           (- LsNthElem__ne_raw_e__call9 8))))))
+                           (- LsNthElem__ne_raw_e__call14 7)
+                           (- LsNthElem__ne_raw_e__call14 8))))))
 (let ((a!18 (ite a!6
-                 (- LsNthElem__ne_raw_e__call9 2)
+                 (- LsNthElem__ne_raw_e__call14 2)
                  (ite a!8
-                      (- LsNthElem__ne_raw_e__call9 3)
-                      (ite a!10 (- LsNthElem__ne_raw_e__call9 4) a!17)))))
-  (= LsNthElem__ne_te__call9
+                      (- LsNthElem__ne_raw_e__call14 3)
+                      (ite a!10 (- LsNthElem__ne_raw_e__call14 4) a!17)))))
+  (= LsNthElem__ne_te__call14
      (ite a!2
-          LsNthElem__ne_raw_e__call9
-          (ite a!4 (- LsNthElem__ne_raw_e__call9 1) a!18))))))))
+          LsNthElem__ne_raw_e__call14
+          (ite a!4 (- LsNthElem__ne_raw_e__call14 1) a!18))))))))
 (assert (= tk_el
-   (ite (> LsNthElem__ne_te__call9 LsNthElem__ne_ts__call9)
+   (ite (> LsNthElem__ne_te__call14 LsNthElem__ne_ts__call14)
         (str.substr _emit_inside
-                    LsNthElem__ne_ts__call9
-                    (- LsNthElem__ne_te__call9 LsNthElem__ne_ts__call9))
+                    LsNthElem__ne_ts__call14
+                    (- LsNthElem__ne_te__call14 LsNthElem__ne_ts__call14))
         "")))
 (assert (= tk_zdef
    (ite (= _emit_base "String") """""" (ite (= _emit_base "Bool") "false" "0"))))
@@ -4211,686 +5485,686 @@
                 (str.substr w_src (+ w_we 1) (- (- w_cb w_we) 1))
                 "")))
   (= w_inner a!1)))
-(assert (= LsIdxEval__ie_t__call16 LsStripWs__sw24__call17))
-(assert (= LsStripWs__sw24__call17
-   (str.++ LsStripWs__sw_keep0__call17
-           LsStripWs__sw_keep1__call17
-           LsStripWs__sw_keep2__call17
-           LsStripWs__sw_keep3__call17
-           LsStripWs__sw_keep4__call17
-           LsStripWs__sw_keep5__call17
-           LsStripWs__sw_keep6__call17
-           LsStripWs__sw_keep7__call17
-           LsStripWs__sw_keep8__call17
-           LsStripWs__sw_keep9__call17
-           LsStripWs__sw_keep10__call17
-           LsStripWs__sw_keep11__call17
-           LsStripWs__sw_keep12__call17
-           LsStripWs__sw_keep13__call17
-           LsStripWs__sw_keep14__call17
-           LsStripWs__sw_keep15__call17
-           LsStripWs__sw_keep16__call17
-           LsStripWs__sw_keep17__call17
-           LsStripWs__sw_keep18__call17
-           LsStripWs__sw_keep19__call17
-           LsStripWs__sw_keep20__call17
-           LsStripWs__sw_keep21__call17
-           LsStripWs__sw_keep22__call17
-           LsStripWs__sw_keep23__call17)))
+(assert (= LsIdxEval__ie_t__call21 LsStripWs__sw24__call22))
+(assert (= LsStripWs__sw24__call22
+   (str.++ LsStripWs__sw_keep0__call22
+           LsStripWs__sw_keep1__call22
+           LsStripWs__sw_keep2__call22
+           LsStripWs__sw_keep3__call22
+           LsStripWs__sw_keep4__call22
+           LsStripWs__sw_keep5__call22
+           LsStripWs__sw_keep6__call22
+           LsStripWs__sw_keep7__call22
+           LsStripWs__sw_keep8__call22
+           LsStripWs__sw_keep9__call22
+           LsStripWs__sw_keep10__call22
+           LsStripWs__sw_keep11__call22
+           LsStripWs__sw_keep12__call22
+           LsStripWs__sw_keep13__call22
+           LsStripWs__sw_keep14__call22
+           LsStripWs__sw_keep15__call22
+           LsStripWs__sw_keep16__call22
+           LsStripWs__sw_keep17__call22
+           LsStripWs__sw_keep18__call22
+           LsStripWs__sw_keep19__call22
+           LsStripWs__sw_keep20__call22
+           LsStripWs__sw_keep21__call22
+           LsStripWs__sw_keep22__call22
+           LsStripWs__sw_keep23__call22)))
 (assert (let ((a!1 (not (or (= (str.at w_inner 0) " ") (= (str.at w_inner 0) "\u{9}")))))
 (let ((a!2 (ite (and (< 0 (str.len w_inner)) a!1) (str.at w_inner 0) "")))
-  (= LsStripWs__sw_keep0__call17 a!2))))
+  (= LsStripWs__sw_keep0__call22 a!2))))
 (assert (let ((a!1 (not (or (= (str.at w_inner 1) " ") (= (str.at w_inner 1) "\u{9}")))))
 (let ((a!2 (ite (and (< 1 (str.len w_inner)) a!1) (str.at w_inner 1) "")))
-  (= LsStripWs__sw_keep1__call17 a!2))))
+  (= LsStripWs__sw_keep1__call22 a!2))))
 (assert (let ((a!1 (not (or (= (str.at w_inner 2) " ") (= (str.at w_inner 2) "\u{9}")))))
 (let ((a!2 (ite (and (< 2 (str.len w_inner)) a!1) (str.at w_inner 2) "")))
-  (= LsStripWs__sw_keep2__call17 a!2))))
+  (= LsStripWs__sw_keep2__call22 a!2))))
 (assert (let ((a!1 (not (or (= (str.at w_inner 3) " ") (= (str.at w_inner 3) "\u{9}")))))
 (let ((a!2 (ite (and (< 3 (str.len w_inner)) a!1) (str.at w_inner 3) "")))
-  (= LsStripWs__sw_keep3__call17 a!2))))
+  (= LsStripWs__sw_keep3__call22 a!2))))
 (assert (let ((a!1 (not (or (= (str.at w_inner 4) " ") (= (str.at w_inner 4) "\u{9}")))))
 (let ((a!2 (ite (and (< 4 (str.len w_inner)) a!1) (str.at w_inner 4) "")))
-  (= LsStripWs__sw_keep4__call17 a!2))))
+  (= LsStripWs__sw_keep4__call22 a!2))))
 (assert (let ((a!1 (not (or (= (str.at w_inner 5) " ") (= (str.at w_inner 5) "\u{9}")))))
 (let ((a!2 (ite (and (< 5 (str.len w_inner)) a!1) (str.at w_inner 5) "")))
-  (= LsStripWs__sw_keep5__call17 a!2))))
+  (= LsStripWs__sw_keep5__call22 a!2))))
 (assert (let ((a!1 (not (or (= (str.at w_inner 6) " ") (= (str.at w_inner 6) "\u{9}")))))
 (let ((a!2 (ite (and (< 6 (str.len w_inner)) a!1) (str.at w_inner 6) "")))
-  (= LsStripWs__sw_keep6__call17 a!2))))
+  (= LsStripWs__sw_keep6__call22 a!2))))
 (assert (let ((a!1 (not (or (= (str.at w_inner 7) " ") (= (str.at w_inner 7) "\u{9}")))))
 (let ((a!2 (ite (and (< 7 (str.len w_inner)) a!1) (str.at w_inner 7) "")))
-  (= LsStripWs__sw_keep7__call17 a!2))))
+  (= LsStripWs__sw_keep7__call22 a!2))))
 (assert (let ((a!1 (not (or (= (str.at w_inner 8) " ") (= (str.at w_inner 8) "\u{9}")))))
 (let ((a!2 (ite (and (< 8 (str.len w_inner)) a!1) (str.at w_inner 8) "")))
-  (= LsStripWs__sw_keep8__call17 a!2))))
+  (= LsStripWs__sw_keep8__call22 a!2))))
 (assert (let ((a!1 (not (or (= (str.at w_inner 9) " ") (= (str.at w_inner 9) "\u{9}")))))
 (let ((a!2 (ite (and (< 9 (str.len w_inner)) a!1) (str.at w_inner 9) "")))
-  (= LsStripWs__sw_keep9__call17 a!2))))
+  (= LsStripWs__sw_keep9__call22 a!2))))
 (assert (let ((a!1 (not (or (= (str.at w_inner 10) " ") (= (str.at w_inner 10) "\u{9}")))))
 (let ((a!2 (ite (and (< 10 (str.len w_inner)) a!1) (str.at w_inner 10) "")))
-  (= LsStripWs__sw_keep10__call17 a!2))))
+  (= LsStripWs__sw_keep10__call22 a!2))))
 (assert (let ((a!1 (not (or (= (str.at w_inner 11) " ") (= (str.at w_inner 11) "\u{9}")))))
 (let ((a!2 (ite (and (< 11 (str.len w_inner)) a!1) (str.at w_inner 11) "")))
-  (= LsStripWs__sw_keep11__call17 a!2))))
+  (= LsStripWs__sw_keep11__call22 a!2))))
 (assert (let ((a!1 (not (or (= (str.at w_inner 12) " ") (= (str.at w_inner 12) "\u{9}")))))
 (let ((a!2 (ite (and (< 12 (str.len w_inner)) a!1) (str.at w_inner 12) "")))
-  (= LsStripWs__sw_keep12__call17 a!2))))
+  (= LsStripWs__sw_keep12__call22 a!2))))
 (assert (let ((a!1 (not (or (= (str.at w_inner 13) " ") (= (str.at w_inner 13) "\u{9}")))))
 (let ((a!2 (ite (and (< 13 (str.len w_inner)) a!1) (str.at w_inner 13) "")))
-  (= LsStripWs__sw_keep13__call17 a!2))))
+  (= LsStripWs__sw_keep13__call22 a!2))))
 (assert (let ((a!1 (not (or (= (str.at w_inner 14) " ") (= (str.at w_inner 14) "\u{9}")))))
 (let ((a!2 (ite (and (< 14 (str.len w_inner)) a!1) (str.at w_inner 14) "")))
-  (= LsStripWs__sw_keep14__call17 a!2))))
+  (= LsStripWs__sw_keep14__call22 a!2))))
 (assert (let ((a!1 (not (or (= (str.at w_inner 15) " ") (= (str.at w_inner 15) "\u{9}")))))
 (let ((a!2 (ite (and (< 15 (str.len w_inner)) a!1) (str.at w_inner 15) "")))
-  (= LsStripWs__sw_keep15__call17 a!2))))
+  (= LsStripWs__sw_keep15__call22 a!2))))
 (assert (let ((a!1 (not (or (= (str.at w_inner 16) " ") (= (str.at w_inner 16) "\u{9}")))))
 (let ((a!2 (ite (and (< 16 (str.len w_inner)) a!1) (str.at w_inner 16) "")))
-  (= LsStripWs__sw_keep16__call17 a!2))))
+  (= LsStripWs__sw_keep16__call22 a!2))))
 (assert (let ((a!1 (not (or (= (str.at w_inner 17) " ") (= (str.at w_inner 17) "\u{9}")))))
 (let ((a!2 (ite (and (< 17 (str.len w_inner)) a!1) (str.at w_inner 17) "")))
-  (= LsStripWs__sw_keep17__call17 a!2))))
+  (= LsStripWs__sw_keep17__call22 a!2))))
 (assert (let ((a!1 (not (or (= (str.at w_inner 18) " ") (= (str.at w_inner 18) "\u{9}")))))
 (let ((a!2 (ite (and (< 18 (str.len w_inner)) a!1) (str.at w_inner 18) "")))
-  (= LsStripWs__sw_keep18__call17 a!2))))
+  (= LsStripWs__sw_keep18__call22 a!2))))
 (assert (let ((a!1 (not (or (= (str.at w_inner 19) " ") (= (str.at w_inner 19) "\u{9}")))))
 (let ((a!2 (ite (and (< 19 (str.len w_inner)) a!1) (str.at w_inner 19) "")))
-  (= LsStripWs__sw_keep19__call17 a!2))))
+  (= LsStripWs__sw_keep19__call22 a!2))))
 (assert (let ((a!1 (not (or (= (str.at w_inner 20) " ") (= (str.at w_inner 20) "\u{9}")))))
 (let ((a!2 (ite (and (< 20 (str.len w_inner)) a!1) (str.at w_inner 20) "")))
-  (= LsStripWs__sw_keep20__call17 a!2))))
+  (= LsStripWs__sw_keep20__call22 a!2))))
 (assert (let ((a!1 (not (or (= (str.at w_inner 21) " ") (= (str.at w_inner 21) "\u{9}")))))
 (let ((a!2 (ite (and (< 21 (str.len w_inner)) a!1) (str.at w_inner 21) "")))
-  (= LsStripWs__sw_keep21__call17 a!2))))
+  (= LsStripWs__sw_keep21__call22 a!2))))
 (assert (let ((a!1 (not (or (= (str.at w_inner 22) " ") (= (str.at w_inner 22) "\u{9}")))))
 (let ((a!2 (ite (and (< 22 (str.len w_inner)) a!1) (str.at w_inner 22) "")))
-  (= LsStripWs__sw_keep22__call17 a!2))))
+  (= LsStripWs__sw_keep22__call22 a!2))))
 (assert (let ((a!1 (not (or (= (str.at w_inner 23) " ") (= (str.at w_inner 23) "\u{9}")))))
 (let ((a!2 (ite (and (< 23 (str.len w_inner)) a!1) (str.at w_inner 23) "")))
-  (= LsStripWs__sw_keep23__call17 a!2))))
-(assert (= LsIdxEval__ie_valid_chars__call16 (< LsOnlyIdxChars__oic_bad__call18 0)))
-(assert (let ((a!1 (ite LsOnlyIdxChars__oic_b21__call18
+  (= LsStripWs__sw_keep23__call22 a!2))))
+(assert (= LsIdxEval__ie_valid_chars__call21 (< LsOnlyIdxChars__oic_bad__call23 0)))
+(assert (let ((a!1 (ite LsOnlyIdxChars__oic_b21__call23
                 21
-                (ite LsOnlyIdxChars__oic_b22__call18
+                (ite LsOnlyIdxChars__oic_b22__call23
                      22
-                     (ite LsOnlyIdxChars__oic_b23__call18 23 (- 0 1))))))
-(let ((a!2 (ite LsOnlyIdxChars__oic_b17__call18
+                     (ite LsOnlyIdxChars__oic_b23__call23 23 (- 0 1))))))
+(let ((a!2 (ite LsOnlyIdxChars__oic_b17__call23
                 17
-                (ite LsOnlyIdxChars__oic_b18__call18
+                (ite LsOnlyIdxChars__oic_b18__call23
                      18
-                     (ite LsOnlyIdxChars__oic_b19__call18
+                     (ite LsOnlyIdxChars__oic_b19__call23
                           19
-                          (ite LsOnlyIdxChars__oic_b20__call18 20 a!1))))))
-(let ((a!3 (ite LsOnlyIdxChars__oic_b13__call18
+                          (ite LsOnlyIdxChars__oic_b20__call23 20 a!1))))))
+(let ((a!3 (ite LsOnlyIdxChars__oic_b13__call23
                 13
-                (ite LsOnlyIdxChars__oic_b14__call18
+                (ite LsOnlyIdxChars__oic_b14__call23
                      14
-                     (ite LsOnlyIdxChars__oic_b15__call18
+                     (ite LsOnlyIdxChars__oic_b15__call23
                           15
-                          (ite LsOnlyIdxChars__oic_b16__call18 16 a!2))))))
-(let ((a!4 (ite LsOnlyIdxChars__oic_b9__call18
+                          (ite LsOnlyIdxChars__oic_b16__call23 16 a!2))))))
+(let ((a!4 (ite LsOnlyIdxChars__oic_b9__call23
                 9
-                (ite LsOnlyIdxChars__oic_b10__call18
+                (ite LsOnlyIdxChars__oic_b10__call23
                      10
-                     (ite LsOnlyIdxChars__oic_b11__call18
+                     (ite LsOnlyIdxChars__oic_b11__call23
                           11
-                          (ite LsOnlyIdxChars__oic_b12__call18 12 a!3))))))
-(let ((a!5 (ite LsOnlyIdxChars__oic_b5__call18
+                          (ite LsOnlyIdxChars__oic_b12__call23 12 a!3))))))
+(let ((a!5 (ite LsOnlyIdxChars__oic_b5__call23
                 5
-                (ite LsOnlyIdxChars__oic_b6__call18
+                (ite LsOnlyIdxChars__oic_b6__call23
                      6
-                     (ite LsOnlyIdxChars__oic_b7__call18
+                     (ite LsOnlyIdxChars__oic_b7__call23
                           7
-                          (ite LsOnlyIdxChars__oic_b8__call18 8 a!4))))))
-(let ((a!6 (ite LsOnlyIdxChars__oic_b1__call18
+                          (ite LsOnlyIdxChars__oic_b8__call23 8 a!4))))))
+(let ((a!6 (ite LsOnlyIdxChars__oic_b1__call23
                 1
-                (ite LsOnlyIdxChars__oic_b2__call18
+                (ite LsOnlyIdxChars__oic_b2__call23
                      2
-                     (ite LsOnlyIdxChars__oic_b3__call18
+                     (ite LsOnlyIdxChars__oic_b3__call23
                           3
-                          (ite LsOnlyIdxChars__oic_b4__call18 4 a!5))))))
-  (= LsOnlyIdxChars__oic_bad__call18 (ite LsOnlyIdxChars__oic_b0__call18 0 a!6)))))))))
-(assert (let ((a!1 (and (< 0 (str.len LsIdxEval__ie_t__call16))
+                          (ite LsOnlyIdxChars__oic_b4__call23 4 a!5))))))
+  (= LsOnlyIdxChars__oic_bad__call23 (ite LsOnlyIdxChars__oic_b0__call23 0 a!6)))))))))
+(assert (let ((a!1 (and (< 0 (str.len LsIdxEval__ie_t__call21))
                 (not (str.contains "0123456789+*-"
-                                   (str.at LsIdxEval__ie_t__call16 0))))))
-  (= LsOnlyIdxChars__oic_b0__call18 a!1)))
-(assert (let ((a!1 (and (< 1 (str.len LsIdxEval__ie_t__call16))
+                                   (str.at LsIdxEval__ie_t__call21 0))))))
+  (= LsOnlyIdxChars__oic_b0__call23 a!1)))
+(assert (let ((a!1 (and (< 1 (str.len LsIdxEval__ie_t__call21))
                 (not (str.contains "0123456789+*-"
-                                   (str.at LsIdxEval__ie_t__call16 1))))))
-  (= LsOnlyIdxChars__oic_b1__call18 a!1)))
-(assert (let ((a!1 (and (< 2 (str.len LsIdxEval__ie_t__call16))
+                                   (str.at LsIdxEval__ie_t__call21 1))))))
+  (= LsOnlyIdxChars__oic_b1__call23 a!1)))
+(assert (let ((a!1 (and (< 2 (str.len LsIdxEval__ie_t__call21))
                 (not (str.contains "0123456789+*-"
-                                   (str.at LsIdxEval__ie_t__call16 2))))))
-  (= LsOnlyIdxChars__oic_b2__call18 a!1)))
-(assert (let ((a!1 (and (< 3 (str.len LsIdxEval__ie_t__call16))
+                                   (str.at LsIdxEval__ie_t__call21 2))))))
+  (= LsOnlyIdxChars__oic_b2__call23 a!1)))
+(assert (let ((a!1 (and (< 3 (str.len LsIdxEval__ie_t__call21))
                 (not (str.contains "0123456789+*-"
-                                   (str.at LsIdxEval__ie_t__call16 3))))))
-  (= LsOnlyIdxChars__oic_b3__call18 a!1)))
-(assert (let ((a!1 (and (< 4 (str.len LsIdxEval__ie_t__call16))
+                                   (str.at LsIdxEval__ie_t__call21 3))))))
+  (= LsOnlyIdxChars__oic_b3__call23 a!1)))
+(assert (let ((a!1 (and (< 4 (str.len LsIdxEval__ie_t__call21))
                 (not (str.contains "0123456789+*-"
-                                   (str.at LsIdxEval__ie_t__call16 4))))))
-  (= LsOnlyIdxChars__oic_b4__call18 a!1)))
-(assert (let ((a!1 (and (< 5 (str.len LsIdxEval__ie_t__call16))
+                                   (str.at LsIdxEval__ie_t__call21 4))))))
+  (= LsOnlyIdxChars__oic_b4__call23 a!1)))
+(assert (let ((a!1 (and (< 5 (str.len LsIdxEval__ie_t__call21))
                 (not (str.contains "0123456789+*-"
-                                   (str.at LsIdxEval__ie_t__call16 5))))))
-  (= LsOnlyIdxChars__oic_b5__call18 a!1)))
-(assert (let ((a!1 (and (< 6 (str.len LsIdxEval__ie_t__call16))
+                                   (str.at LsIdxEval__ie_t__call21 5))))))
+  (= LsOnlyIdxChars__oic_b5__call23 a!1)))
+(assert (let ((a!1 (and (< 6 (str.len LsIdxEval__ie_t__call21))
                 (not (str.contains "0123456789+*-"
-                                   (str.at LsIdxEval__ie_t__call16 6))))))
-  (= LsOnlyIdxChars__oic_b6__call18 a!1)))
-(assert (let ((a!1 (and (< 7 (str.len LsIdxEval__ie_t__call16))
+                                   (str.at LsIdxEval__ie_t__call21 6))))))
+  (= LsOnlyIdxChars__oic_b6__call23 a!1)))
+(assert (let ((a!1 (and (< 7 (str.len LsIdxEval__ie_t__call21))
                 (not (str.contains "0123456789+*-"
-                                   (str.at LsIdxEval__ie_t__call16 7))))))
-  (= LsOnlyIdxChars__oic_b7__call18 a!1)))
-(assert (let ((a!1 (and (< 8 (str.len LsIdxEval__ie_t__call16))
+                                   (str.at LsIdxEval__ie_t__call21 7))))))
+  (= LsOnlyIdxChars__oic_b7__call23 a!1)))
+(assert (let ((a!1 (and (< 8 (str.len LsIdxEval__ie_t__call21))
                 (not (str.contains "0123456789+*-"
-                                   (str.at LsIdxEval__ie_t__call16 8))))))
-  (= LsOnlyIdxChars__oic_b8__call18 a!1)))
-(assert (let ((a!1 (and (< 9 (str.len LsIdxEval__ie_t__call16))
+                                   (str.at LsIdxEval__ie_t__call21 8))))))
+  (= LsOnlyIdxChars__oic_b8__call23 a!1)))
+(assert (let ((a!1 (and (< 9 (str.len LsIdxEval__ie_t__call21))
                 (not (str.contains "0123456789+*-"
-                                   (str.at LsIdxEval__ie_t__call16 9))))))
-  (= LsOnlyIdxChars__oic_b9__call18 a!1)))
-(assert (let ((a!1 (and (< 10 (str.len LsIdxEval__ie_t__call16))
+                                   (str.at LsIdxEval__ie_t__call21 9))))))
+  (= LsOnlyIdxChars__oic_b9__call23 a!1)))
+(assert (let ((a!1 (and (< 10 (str.len LsIdxEval__ie_t__call21))
                 (not (str.contains "0123456789+*-"
-                                   (str.at LsIdxEval__ie_t__call16 10))))))
-  (= LsOnlyIdxChars__oic_b10__call18 a!1)))
-(assert (let ((a!1 (and (< 11 (str.len LsIdxEval__ie_t__call16))
+                                   (str.at LsIdxEval__ie_t__call21 10))))))
+  (= LsOnlyIdxChars__oic_b10__call23 a!1)))
+(assert (let ((a!1 (and (< 11 (str.len LsIdxEval__ie_t__call21))
                 (not (str.contains "0123456789+*-"
-                                   (str.at LsIdxEval__ie_t__call16 11))))))
-  (= LsOnlyIdxChars__oic_b11__call18 a!1)))
-(assert (let ((a!1 (and (< 12 (str.len LsIdxEval__ie_t__call16))
+                                   (str.at LsIdxEval__ie_t__call21 11))))))
+  (= LsOnlyIdxChars__oic_b11__call23 a!1)))
+(assert (let ((a!1 (and (< 12 (str.len LsIdxEval__ie_t__call21))
                 (not (str.contains "0123456789+*-"
-                                   (str.at LsIdxEval__ie_t__call16 12))))))
-  (= LsOnlyIdxChars__oic_b12__call18 a!1)))
-(assert (let ((a!1 (and (< 13 (str.len LsIdxEval__ie_t__call16))
+                                   (str.at LsIdxEval__ie_t__call21 12))))))
+  (= LsOnlyIdxChars__oic_b12__call23 a!1)))
+(assert (let ((a!1 (and (< 13 (str.len LsIdxEval__ie_t__call21))
                 (not (str.contains "0123456789+*-"
-                                   (str.at LsIdxEval__ie_t__call16 13))))))
-  (= LsOnlyIdxChars__oic_b13__call18 a!1)))
-(assert (let ((a!1 (and (< 14 (str.len LsIdxEval__ie_t__call16))
+                                   (str.at LsIdxEval__ie_t__call21 13))))))
+  (= LsOnlyIdxChars__oic_b13__call23 a!1)))
+(assert (let ((a!1 (and (< 14 (str.len LsIdxEval__ie_t__call21))
                 (not (str.contains "0123456789+*-"
-                                   (str.at LsIdxEval__ie_t__call16 14))))))
-  (= LsOnlyIdxChars__oic_b14__call18 a!1)))
-(assert (let ((a!1 (and (< 15 (str.len LsIdxEval__ie_t__call16))
+                                   (str.at LsIdxEval__ie_t__call21 14))))))
+  (= LsOnlyIdxChars__oic_b14__call23 a!1)))
+(assert (let ((a!1 (and (< 15 (str.len LsIdxEval__ie_t__call21))
                 (not (str.contains "0123456789+*-"
-                                   (str.at LsIdxEval__ie_t__call16 15))))))
-  (= LsOnlyIdxChars__oic_b15__call18 a!1)))
-(assert (let ((a!1 (and (< 16 (str.len LsIdxEval__ie_t__call16))
+                                   (str.at LsIdxEval__ie_t__call21 15))))))
+  (= LsOnlyIdxChars__oic_b15__call23 a!1)))
+(assert (let ((a!1 (and (< 16 (str.len LsIdxEval__ie_t__call21))
                 (not (str.contains "0123456789+*-"
-                                   (str.at LsIdxEval__ie_t__call16 16))))))
-  (= LsOnlyIdxChars__oic_b16__call18 a!1)))
-(assert (let ((a!1 (and (< 17 (str.len LsIdxEval__ie_t__call16))
+                                   (str.at LsIdxEval__ie_t__call21 16))))))
+  (= LsOnlyIdxChars__oic_b16__call23 a!1)))
+(assert (let ((a!1 (and (< 17 (str.len LsIdxEval__ie_t__call21))
                 (not (str.contains "0123456789+*-"
-                                   (str.at LsIdxEval__ie_t__call16 17))))))
-  (= LsOnlyIdxChars__oic_b17__call18 a!1)))
-(assert (let ((a!1 (and (< 18 (str.len LsIdxEval__ie_t__call16))
+                                   (str.at LsIdxEval__ie_t__call21 17))))))
+  (= LsOnlyIdxChars__oic_b17__call23 a!1)))
+(assert (let ((a!1 (and (< 18 (str.len LsIdxEval__ie_t__call21))
                 (not (str.contains "0123456789+*-"
-                                   (str.at LsIdxEval__ie_t__call16 18))))))
-  (= LsOnlyIdxChars__oic_b18__call18 a!1)))
-(assert (let ((a!1 (and (< 19 (str.len LsIdxEval__ie_t__call16))
+                                   (str.at LsIdxEval__ie_t__call21 18))))))
+  (= LsOnlyIdxChars__oic_b18__call23 a!1)))
+(assert (let ((a!1 (and (< 19 (str.len LsIdxEval__ie_t__call21))
                 (not (str.contains "0123456789+*-"
-                                   (str.at LsIdxEval__ie_t__call16 19))))))
-  (= LsOnlyIdxChars__oic_b19__call18 a!1)))
-(assert (let ((a!1 (and (< 20 (str.len LsIdxEval__ie_t__call16))
+                                   (str.at LsIdxEval__ie_t__call21 19))))))
+  (= LsOnlyIdxChars__oic_b19__call23 a!1)))
+(assert (let ((a!1 (and (< 20 (str.len LsIdxEval__ie_t__call21))
                 (not (str.contains "0123456789+*-"
-                                   (str.at LsIdxEval__ie_t__call16 20))))))
-  (= LsOnlyIdxChars__oic_b20__call18 a!1)))
-(assert (let ((a!1 (and (< 21 (str.len LsIdxEval__ie_t__call16))
+                                   (str.at LsIdxEval__ie_t__call21 20))))))
+  (= LsOnlyIdxChars__oic_b20__call23 a!1)))
+(assert (let ((a!1 (and (< 21 (str.len LsIdxEval__ie_t__call21))
                 (not (str.contains "0123456789+*-"
-                                   (str.at LsIdxEval__ie_t__call16 21))))))
-  (= LsOnlyIdxChars__oic_b21__call18 a!1)))
-(assert (let ((a!1 (and (< 22 (str.len LsIdxEval__ie_t__call16))
+                                   (str.at LsIdxEval__ie_t__call21 21))))))
+  (= LsOnlyIdxChars__oic_b21__call23 a!1)))
+(assert (let ((a!1 (and (< 22 (str.len LsIdxEval__ie_t__call21))
                 (not (str.contains "0123456789+*-"
-                                   (str.at LsIdxEval__ie_t__call16 22))))))
-  (= LsOnlyIdxChars__oic_b22__call18 a!1)))
-(assert (let ((a!1 (and (< 23 (str.len LsIdxEval__ie_t__call16))
+                                   (str.at LsIdxEval__ie_t__call21 22))))))
+  (= LsOnlyIdxChars__oic_b22__call23 a!1)))
+(assert (let ((a!1 (and (< 23 (str.len LsIdxEval__ie_t__call21))
                 (not (str.contains "0123456789+*-"
-                                   (str.at LsIdxEval__ie_t__call16 23))))))
-  (= LsOnlyIdxChars__oic_b23__call18 a!1)))
-(assert (= LsIdxEval__ie_starts_digit__call16
-   (and (>= (str.len LsIdxEval__ie_t__call16) 1)
-        (str.contains "0123456789" (str.at LsIdxEval__ie_t__call16 0)))))
-(assert (let ((a!1 (not (and (< 0 (str.len LsIdxEval__ie_t__call16))
+                                   (str.at LsIdxEval__ie_t__call21 23))))))
+  (= LsOnlyIdxChars__oic_b23__call23 a!1)))
+(assert (= LsIdxEval__ie_starts_digit__call21
+   (and (>= (str.len LsIdxEval__ie_t__call21) 1)
+        (str.contains "0123456789" (str.at LsIdxEval__ie_t__call21 0)))))
+(assert (let ((a!1 (not (and (< 0 (str.len LsIdxEval__ie_t__call21))
                      (str.contains "0123456789"
-                                   (str.at LsIdxEval__ie_t__call16 0)))))
-      (a!2 (and (< (+ 0 1) (str.len LsIdxEval__ie_t__call16))
+                                   (str.at LsIdxEval__ie_t__call21 0)))))
+      (a!2 (and (< (+ 0 1) (str.len LsIdxEval__ie_t__call21))
                 (str.contains "0123456789"
-                              (str.at LsIdxEval__ie_t__call16 (+ 0 1)))))
-      (a!3 (and (< (+ 0 2) (str.len LsIdxEval__ie_t__call16))
+                              (str.at LsIdxEval__ie_t__call21 (+ 0 1)))))
+      (a!3 (and (< (+ 0 2) (str.len LsIdxEval__ie_t__call21))
                 (str.contains "0123456789"
-                              (str.at LsIdxEval__ie_t__call16 (+ 0 2)))))
-      (a!4 (and (< (+ 0 3) (str.len LsIdxEval__ie_t__call16))
+                              (str.at LsIdxEval__ie_t__call21 (+ 0 2)))))
+      (a!4 (and (< (+ 0 3) (str.len LsIdxEval__ie_t__call21))
                 (str.contains "0123456789"
-                              (str.at LsIdxEval__ie_t__call16 (+ 0 3)))))
-      (a!5 (and (< (+ 0 4) (str.len LsIdxEval__ie_t__call16))
+                              (str.at LsIdxEval__ie_t__call21 (+ 0 3)))))
+      (a!5 (and (< (+ 0 4) (str.len LsIdxEval__ie_t__call21))
                 (str.contains "0123456789"
-                              (str.at LsIdxEval__ie_t__call16 (+ 0 4)))))
-      (a!6 (and (< (+ 0 5) (str.len LsIdxEval__ie_t__call16))
+                              (str.at LsIdxEval__ie_t__call21 (+ 0 4)))))
+      (a!6 (and (< (+ 0 5) (str.len LsIdxEval__ie_t__call21))
                 (str.contains "0123456789"
-                              (str.at LsIdxEval__ie_t__call16 (+ 0 5)))))
-      (a!7 (and (< (+ 0 6) (str.len LsIdxEval__ie_t__call16))
+                              (str.at LsIdxEval__ie_t__call21 (+ 0 5)))))
+      (a!7 (and (< (+ 0 6) (str.len LsIdxEval__ie_t__call21))
                 (str.contains "0123456789"
-                              (str.at LsIdxEval__ie_t__call16 (+ 0 6)))))
-      (a!8 (and (< (+ 0 7) (str.len LsIdxEval__ie_t__call16))
+                              (str.at LsIdxEval__ie_t__call21 (+ 0 6)))))
+      (a!8 (and (< (+ 0 7) (str.len LsIdxEval__ie_t__call21))
                 (str.contains "0123456789"
-                              (str.at LsIdxEval__ie_t__call16 (+ 0 7))))))
+                              (str.at LsIdxEval__ie_t__call21 (+ 0 7))))))
 (let ((a!9 (ite (not a!6)
                 (+ 0 5)
                 (ite (not a!7) (+ 0 6) (ite (not a!8) (+ 0 7) (+ 0 8))))))
 (let ((a!10 (ite (not a!3)
                  (+ 0 2)
                  (ite (not a!4) (+ 0 3) (ite (not a!5) (+ 0 4) a!9)))))
-  (= LsIdxEval__ie_ne0__call16 (ite a!1 0 (ite (not a!2) (+ 0 1) a!10)))))))
-(assert (= LsIdxEval__ie_op0__call16
-   (ite (< LsIdxEval__ie_ne0__call16 (str.len LsIdxEval__ie_t__call16))
-        (str.at LsIdxEval__ie_t__call16 LsIdxEval__ie_ne0__call16)
+  (= LsIdxEval__ie_ne0__call21 (ite a!1 0 (ite (not a!2) (+ 0 1) a!10)))))))
+(assert (= LsIdxEval__ie_op0__call21
+   (ite (< LsIdxEval__ie_ne0__call21 (str.len LsIdxEval__ie_t__call21))
+        (str.at LsIdxEval__ie_t__call21 LsIdxEval__ie_ne0__call21)
         "")))
-(assert (= LsIdxEval__ie_s1__call16 (+ LsIdxEval__ie_ne0__call16 1)))
-(assert (let ((a!1 (not (and (< LsIdxEval__ie_s1__call16
-                        (str.len LsIdxEval__ie_t__call16))
+(assert (= LsIdxEval__ie_s1__call21 (+ LsIdxEval__ie_ne0__call21 1)))
+(assert (let ((a!1 (not (and (< LsIdxEval__ie_s1__call21
+                        (str.len LsIdxEval__ie_t__call21))
                      (str.contains "0123456789"
-                                   (str.at LsIdxEval__ie_t__call16
-                                           LsIdxEval__ie_s1__call16)))))
-      (a!2 (and (< (+ LsIdxEval__ie_s1__call16 1)
-                   (str.len LsIdxEval__ie_t__call16))
+                                   (str.at LsIdxEval__ie_t__call21
+                                           LsIdxEval__ie_s1__call21)))))
+      (a!2 (and (< (+ LsIdxEval__ie_s1__call21 1)
+                   (str.len LsIdxEval__ie_t__call21))
                 (str.contains "0123456789"
-                              (str.at LsIdxEval__ie_t__call16
-                                      (+ LsIdxEval__ie_s1__call16 1)))))
-      (a!3 (and (< (+ LsIdxEval__ie_s1__call16 2)
-                   (str.len LsIdxEval__ie_t__call16))
+                              (str.at LsIdxEval__ie_t__call21
+                                      (+ LsIdxEval__ie_s1__call21 1)))))
+      (a!3 (and (< (+ LsIdxEval__ie_s1__call21 2)
+                   (str.len LsIdxEval__ie_t__call21))
                 (str.contains "0123456789"
-                              (str.at LsIdxEval__ie_t__call16
-                                      (+ LsIdxEval__ie_s1__call16 2)))))
-      (a!4 (and (< (+ LsIdxEval__ie_s1__call16 3)
-                   (str.len LsIdxEval__ie_t__call16))
+                              (str.at LsIdxEval__ie_t__call21
+                                      (+ LsIdxEval__ie_s1__call21 2)))))
+      (a!4 (and (< (+ LsIdxEval__ie_s1__call21 3)
+                   (str.len LsIdxEval__ie_t__call21))
                 (str.contains "0123456789"
-                              (str.at LsIdxEval__ie_t__call16
-                                      (+ LsIdxEval__ie_s1__call16 3)))))
-      (a!5 (and (< (+ LsIdxEval__ie_s1__call16 4)
-                   (str.len LsIdxEval__ie_t__call16))
+                              (str.at LsIdxEval__ie_t__call21
+                                      (+ LsIdxEval__ie_s1__call21 3)))))
+      (a!5 (and (< (+ LsIdxEval__ie_s1__call21 4)
+                   (str.len LsIdxEval__ie_t__call21))
                 (str.contains "0123456789"
-                              (str.at LsIdxEval__ie_t__call16
-                                      (+ LsIdxEval__ie_s1__call16 4)))))
-      (a!6 (and (< (+ LsIdxEval__ie_s1__call16 5)
-                   (str.len LsIdxEval__ie_t__call16))
+                              (str.at LsIdxEval__ie_t__call21
+                                      (+ LsIdxEval__ie_s1__call21 4)))))
+      (a!6 (and (< (+ LsIdxEval__ie_s1__call21 5)
+                   (str.len LsIdxEval__ie_t__call21))
                 (str.contains "0123456789"
-                              (str.at LsIdxEval__ie_t__call16
-                                      (+ LsIdxEval__ie_s1__call16 5)))))
-      (a!7 (and (< (+ LsIdxEval__ie_s1__call16 6)
-                   (str.len LsIdxEval__ie_t__call16))
+                              (str.at LsIdxEval__ie_t__call21
+                                      (+ LsIdxEval__ie_s1__call21 5)))))
+      (a!7 (and (< (+ LsIdxEval__ie_s1__call21 6)
+                   (str.len LsIdxEval__ie_t__call21))
                 (str.contains "0123456789"
-                              (str.at LsIdxEval__ie_t__call16
-                                      (+ LsIdxEval__ie_s1__call16 6)))))
-      (a!8 (and (< (+ LsIdxEval__ie_s1__call16 7)
-                   (str.len LsIdxEval__ie_t__call16))
+                              (str.at LsIdxEval__ie_t__call21
+                                      (+ LsIdxEval__ie_s1__call21 6)))))
+      (a!8 (and (< (+ LsIdxEval__ie_s1__call21 7)
+                   (str.len LsIdxEval__ie_t__call21))
                 (str.contains "0123456789"
-                              (str.at LsIdxEval__ie_t__call16
-                                      (+ LsIdxEval__ie_s1__call16 7))))))
+                              (str.at LsIdxEval__ie_t__call21
+                                      (+ LsIdxEval__ie_s1__call21 7))))))
 (let ((a!9 (ite (not a!6)
-                (+ LsIdxEval__ie_s1__call16 5)
+                (+ LsIdxEval__ie_s1__call21 5)
                 (ite (not a!7)
-                     (+ LsIdxEval__ie_s1__call16 6)
+                     (+ LsIdxEval__ie_s1__call21 6)
                      (ite (not a!8)
-                          (+ LsIdxEval__ie_s1__call16 7)
-                          (+ LsIdxEval__ie_s1__call16 8))))))
+                          (+ LsIdxEval__ie_s1__call21 7)
+                          (+ LsIdxEval__ie_s1__call21 8))))))
 (let ((a!10 (ite (not a!3)
-                 (+ LsIdxEval__ie_s1__call16 2)
+                 (+ LsIdxEval__ie_s1__call21 2)
                  (ite (not a!4)
-                      (+ LsIdxEval__ie_s1__call16 3)
-                      (ite (not a!5) (+ LsIdxEval__ie_s1__call16 4) a!9)))))
-  (= LsIdxEval__ie_ne1__call16
+                      (+ LsIdxEval__ie_s1__call21 3)
+                      (ite (not a!5) (+ LsIdxEval__ie_s1__call21 4) a!9)))))
+  (= LsIdxEval__ie_ne1__call21
      (ite a!1
-          LsIdxEval__ie_s1__call16
-          (ite (not a!2) (+ LsIdxEval__ie_s1__call16 1) a!10)))))))
-(assert (= LsIdxEval__ie_op1__call16
-   (ite (< LsIdxEval__ie_ne1__call16 (str.len LsIdxEval__ie_t__call16))
-        (str.at LsIdxEval__ie_t__call16 LsIdxEval__ie_ne1__call16)
+          LsIdxEval__ie_s1__call21
+          (ite (not a!2) (+ LsIdxEval__ie_s1__call21 1) a!10)))))))
+(assert (= LsIdxEval__ie_op1__call21
+   (ite (< LsIdxEval__ie_ne1__call21 (str.len LsIdxEval__ie_t__call21))
+        (str.at LsIdxEval__ie_t__call21 LsIdxEval__ie_ne1__call21)
         "")))
-(assert (= LsIdxEval__ie_s2__call16 (+ LsIdxEval__ie_ne1__call16 1)))
-(assert (let ((a!1 (not (and (< LsIdxEval__ie_s2__call16
-                        (str.len LsIdxEval__ie_t__call16))
+(assert (= LsIdxEval__ie_s2__call21 (+ LsIdxEval__ie_ne1__call21 1)))
+(assert (let ((a!1 (not (and (< LsIdxEval__ie_s2__call21
+                        (str.len LsIdxEval__ie_t__call21))
                      (str.contains "0123456789"
-                                   (str.at LsIdxEval__ie_t__call16
-                                           LsIdxEval__ie_s2__call16)))))
-      (a!2 (and (< (+ LsIdxEval__ie_s2__call16 1)
-                   (str.len LsIdxEval__ie_t__call16))
+                                   (str.at LsIdxEval__ie_t__call21
+                                           LsIdxEval__ie_s2__call21)))))
+      (a!2 (and (< (+ LsIdxEval__ie_s2__call21 1)
+                   (str.len LsIdxEval__ie_t__call21))
                 (str.contains "0123456789"
-                              (str.at LsIdxEval__ie_t__call16
-                                      (+ LsIdxEval__ie_s2__call16 1)))))
-      (a!3 (and (< (+ LsIdxEval__ie_s2__call16 2)
-                   (str.len LsIdxEval__ie_t__call16))
+                              (str.at LsIdxEval__ie_t__call21
+                                      (+ LsIdxEval__ie_s2__call21 1)))))
+      (a!3 (and (< (+ LsIdxEval__ie_s2__call21 2)
+                   (str.len LsIdxEval__ie_t__call21))
                 (str.contains "0123456789"
-                              (str.at LsIdxEval__ie_t__call16
-                                      (+ LsIdxEval__ie_s2__call16 2)))))
-      (a!4 (and (< (+ LsIdxEval__ie_s2__call16 3)
-                   (str.len LsIdxEval__ie_t__call16))
+                              (str.at LsIdxEval__ie_t__call21
+                                      (+ LsIdxEval__ie_s2__call21 2)))))
+      (a!4 (and (< (+ LsIdxEval__ie_s2__call21 3)
+                   (str.len LsIdxEval__ie_t__call21))
                 (str.contains "0123456789"
-                              (str.at LsIdxEval__ie_t__call16
-                                      (+ LsIdxEval__ie_s2__call16 3)))))
-      (a!5 (and (< (+ LsIdxEval__ie_s2__call16 4)
-                   (str.len LsIdxEval__ie_t__call16))
+                              (str.at LsIdxEval__ie_t__call21
+                                      (+ LsIdxEval__ie_s2__call21 3)))))
+      (a!5 (and (< (+ LsIdxEval__ie_s2__call21 4)
+                   (str.len LsIdxEval__ie_t__call21))
                 (str.contains "0123456789"
-                              (str.at LsIdxEval__ie_t__call16
-                                      (+ LsIdxEval__ie_s2__call16 4)))))
-      (a!6 (and (< (+ LsIdxEval__ie_s2__call16 5)
-                   (str.len LsIdxEval__ie_t__call16))
+                              (str.at LsIdxEval__ie_t__call21
+                                      (+ LsIdxEval__ie_s2__call21 4)))))
+      (a!6 (and (< (+ LsIdxEval__ie_s2__call21 5)
+                   (str.len LsIdxEval__ie_t__call21))
                 (str.contains "0123456789"
-                              (str.at LsIdxEval__ie_t__call16
-                                      (+ LsIdxEval__ie_s2__call16 5)))))
-      (a!7 (and (< (+ LsIdxEval__ie_s2__call16 6)
-                   (str.len LsIdxEval__ie_t__call16))
+                              (str.at LsIdxEval__ie_t__call21
+                                      (+ LsIdxEval__ie_s2__call21 5)))))
+      (a!7 (and (< (+ LsIdxEval__ie_s2__call21 6)
+                   (str.len LsIdxEval__ie_t__call21))
                 (str.contains "0123456789"
-                              (str.at LsIdxEval__ie_t__call16
-                                      (+ LsIdxEval__ie_s2__call16 6)))))
-      (a!8 (and (< (+ LsIdxEval__ie_s2__call16 7)
-                   (str.len LsIdxEval__ie_t__call16))
+                              (str.at LsIdxEval__ie_t__call21
+                                      (+ LsIdxEval__ie_s2__call21 6)))))
+      (a!8 (and (< (+ LsIdxEval__ie_s2__call21 7)
+                   (str.len LsIdxEval__ie_t__call21))
                 (str.contains "0123456789"
-                              (str.at LsIdxEval__ie_t__call16
-                                      (+ LsIdxEval__ie_s2__call16 7))))))
+                              (str.at LsIdxEval__ie_t__call21
+                                      (+ LsIdxEval__ie_s2__call21 7))))))
 (let ((a!9 (ite (not a!6)
-                (+ LsIdxEval__ie_s2__call16 5)
+                (+ LsIdxEval__ie_s2__call21 5)
                 (ite (not a!7)
-                     (+ LsIdxEval__ie_s2__call16 6)
+                     (+ LsIdxEval__ie_s2__call21 6)
                      (ite (not a!8)
-                          (+ LsIdxEval__ie_s2__call16 7)
-                          (+ LsIdxEval__ie_s2__call16 8))))))
+                          (+ LsIdxEval__ie_s2__call21 7)
+                          (+ LsIdxEval__ie_s2__call21 8))))))
 (let ((a!10 (ite (not a!3)
-                 (+ LsIdxEval__ie_s2__call16 2)
+                 (+ LsIdxEval__ie_s2__call21 2)
                  (ite (not a!4)
-                      (+ LsIdxEval__ie_s2__call16 3)
-                      (ite (not a!5) (+ LsIdxEval__ie_s2__call16 4) a!9)))))
-  (= LsIdxEval__ie_ne2__call16
+                      (+ LsIdxEval__ie_s2__call21 3)
+                      (ite (not a!5) (+ LsIdxEval__ie_s2__call21 4) a!9)))))
+  (= LsIdxEval__ie_ne2__call21
      (ite a!1
-          LsIdxEval__ie_s2__call16
-          (ite (not a!2) (+ LsIdxEval__ie_s2__call16 1) a!10)))))))
-(assert (= LsIdxEval__ie_op2__call16
-   (ite (< LsIdxEval__ie_ne2__call16 (str.len LsIdxEval__ie_t__call16))
-        (str.at LsIdxEval__ie_t__call16 LsIdxEval__ie_ne2__call16)
+          LsIdxEval__ie_s2__call21
+          (ite (not a!2) (+ LsIdxEval__ie_s2__call21 1) a!10)))))))
+(assert (= LsIdxEval__ie_op2__call21
+   (ite (< LsIdxEval__ie_ne2__call21 (str.len LsIdxEval__ie_t__call21))
+        (str.at LsIdxEval__ie_t__call21 LsIdxEval__ie_ne2__call21)
         "")))
-(assert (= LsIdxEval__ie_s3__call16 (+ LsIdxEval__ie_ne2__call16 1)))
-(assert (let ((a!1 (not (and (< LsIdxEval__ie_s3__call16
-                        (str.len LsIdxEval__ie_t__call16))
+(assert (= LsIdxEval__ie_s3__call21 (+ LsIdxEval__ie_ne2__call21 1)))
+(assert (let ((a!1 (not (and (< LsIdxEval__ie_s3__call21
+                        (str.len LsIdxEval__ie_t__call21))
                      (str.contains "0123456789"
-                                   (str.at LsIdxEval__ie_t__call16
-                                           LsIdxEval__ie_s3__call16)))))
-      (a!2 (and (< (+ LsIdxEval__ie_s3__call16 1)
-                   (str.len LsIdxEval__ie_t__call16))
+                                   (str.at LsIdxEval__ie_t__call21
+                                           LsIdxEval__ie_s3__call21)))))
+      (a!2 (and (< (+ LsIdxEval__ie_s3__call21 1)
+                   (str.len LsIdxEval__ie_t__call21))
                 (str.contains "0123456789"
-                              (str.at LsIdxEval__ie_t__call16
-                                      (+ LsIdxEval__ie_s3__call16 1)))))
-      (a!3 (and (< (+ LsIdxEval__ie_s3__call16 2)
-                   (str.len LsIdxEval__ie_t__call16))
+                              (str.at LsIdxEval__ie_t__call21
+                                      (+ LsIdxEval__ie_s3__call21 1)))))
+      (a!3 (and (< (+ LsIdxEval__ie_s3__call21 2)
+                   (str.len LsIdxEval__ie_t__call21))
                 (str.contains "0123456789"
-                              (str.at LsIdxEval__ie_t__call16
-                                      (+ LsIdxEval__ie_s3__call16 2)))))
-      (a!4 (and (< (+ LsIdxEval__ie_s3__call16 3)
-                   (str.len LsIdxEval__ie_t__call16))
+                              (str.at LsIdxEval__ie_t__call21
+                                      (+ LsIdxEval__ie_s3__call21 2)))))
+      (a!4 (and (< (+ LsIdxEval__ie_s3__call21 3)
+                   (str.len LsIdxEval__ie_t__call21))
                 (str.contains "0123456789"
-                              (str.at LsIdxEval__ie_t__call16
-                                      (+ LsIdxEval__ie_s3__call16 3)))))
-      (a!5 (and (< (+ LsIdxEval__ie_s3__call16 4)
-                   (str.len LsIdxEval__ie_t__call16))
+                              (str.at LsIdxEval__ie_t__call21
+                                      (+ LsIdxEval__ie_s3__call21 3)))))
+      (a!5 (and (< (+ LsIdxEval__ie_s3__call21 4)
+                   (str.len LsIdxEval__ie_t__call21))
                 (str.contains "0123456789"
-                              (str.at LsIdxEval__ie_t__call16
-                                      (+ LsIdxEval__ie_s3__call16 4)))))
-      (a!6 (and (< (+ LsIdxEval__ie_s3__call16 5)
-                   (str.len LsIdxEval__ie_t__call16))
+                              (str.at LsIdxEval__ie_t__call21
+                                      (+ LsIdxEval__ie_s3__call21 4)))))
+      (a!6 (and (< (+ LsIdxEval__ie_s3__call21 5)
+                   (str.len LsIdxEval__ie_t__call21))
                 (str.contains "0123456789"
-                              (str.at LsIdxEval__ie_t__call16
-                                      (+ LsIdxEval__ie_s3__call16 5)))))
-      (a!7 (and (< (+ LsIdxEval__ie_s3__call16 6)
-                   (str.len LsIdxEval__ie_t__call16))
+                              (str.at LsIdxEval__ie_t__call21
+                                      (+ LsIdxEval__ie_s3__call21 5)))))
+      (a!7 (and (< (+ LsIdxEval__ie_s3__call21 6)
+                   (str.len LsIdxEval__ie_t__call21))
                 (str.contains "0123456789"
-                              (str.at LsIdxEval__ie_t__call16
-                                      (+ LsIdxEval__ie_s3__call16 6)))))
-      (a!8 (and (< (+ LsIdxEval__ie_s3__call16 7)
-                   (str.len LsIdxEval__ie_t__call16))
+                              (str.at LsIdxEval__ie_t__call21
+                                      (+ LsIdxEval__ie_s3__call21 6)))))
+      (a!8 (and (< (+ LsIdxEval__ie_s3__call21 7)
+                   (str.len LsIdxEval__ie_t__call21))
                 (str.contains "0123456789"
-                              (str.at LsIdxEval__ie_t__call16
-                                      (+ LsIdxEval__ie_s3__call16 7))))))
+                              (str.at LsIdxEval__ie_t__call21
+                                      (+ LsIdxEval__ie_s3__call21 7))))))
 (let ((a!9 (ite (not a!6)
-                (+ LsIdxEval__ie_s3__call16 5)
+                (+ LsIdxEval__ie_s3__call21 5)
                 (ite (not a!7)
-                     (+ LsIdxEval__ie_s3__call16 6)
+                     (+ LsIdxEval__ie_s3__call21 6)
                      (ite (not a!8)
-                          (+ LsIdxEval__ie_s3__call16 7)
-                          (+ LsIdxEval__ie_s3__call16 8))))))
+                          (+ LsIdxEval__ie_s3__call21 7)
+                          (+ LsIdxEval__ie_s3__call21 8))))))
 (let ((a!10 (ite (not a!3)
-                 (+ LsIdxEval__ie_s3__call16 2)
+                 (+ LsIdxEval__ie_s3__call21 2)
                  (ite (not a!4)
-                      (+ LsIdxEval__ie_s3__call16 3)
-                      (ite (not a!5) (+ LsIdxEval__ie_s3__call16 4) a!9)))))
-  (= LsIdxEval__ie_ne3__call16
+                      (+ LsIdxEval__ie_s3__call21 3)
+                      (ite (not a!5) (+ LsIdxEval__ie_s3__call21 4) a!9)))))
+  (= LsIdxEval__ie_ne3__call21
      (ite a!1
-          LsIdxEval__ie_s3__call16
-          (ite (not a!2) (+ LsIdxEval__ie_s3__call16 1) a!10)))))))
-(assert (= LsIdxEval__ie_op3__call16
-   (ite (< LsIdxEval__ie_ne3__call16 (str.len LsIdxEval__ie_t__call16))
-        (str.at LsIdxEval__ie_t__call16 LsIdxEval__ie_ne3__call16)
+          LsIdxEval__ie_s3__call21
+          (ite (not a!2) (+ LsIdxEval__ie_s3__call21 1) a!10)))))))
+(assert (= LsIdxEval__ie_op3__call21
+   (ite (< LsIdxEval__ie_ne3__call21 (str.len LsIdxEval__ie_t__call21))
+        (str.at LsIdxEval__ie_t__call21 LsIdxEval__ie_ne3__call21)
         "")))
-(assert (= LsIdxEval__ie_s4__call16 (+ LsIdxEval__ie_ne3__call16 1)))
-(assert (let ((a!1 (not (and (< LsIdxEval__ie_s4__call16
-                        (str.len LsIdxEval__ie_t__call16))
+(assert (= LsIdxEval__ie_s4__call21 (+ LsIdxEval__ie_ne3__call21 1)))
+(assert (let ((a!1 (not (and (< LsIdxEval__ie_s4__call21
+                        (str.len LsIdxEval__ie_t__call21))
                      (str.contains "0123456789"
-                                   (str.at LsIdxEval__ie_t__call16
-                                           LsIdxEval__ie_s4__call16)))))
-      (a!2 (and (< (+ LsIdxEval__ie_s4__call16 1)
-                   (str.len LsIdxEval__ie_t__call16))
+                                   (str.at LsIdxEval__ie_t__call21
+                                           LsIdxEval__ie_s4__call21)))))
+      (a!2 (and (< (+ LsIdxEval__ie_s4__call21 1)
+                   (str.len LsIdxEval__ie_t__call21))
                 (str.contains "0123456789"
-                              (str.at LsIdxEval__ie_t__call16
-                                      (+ LsIdxEval__ie_s4__call16 1)))))
-      (a!3 (and (< (+ LsIdxEval__ie_s4__call16 2)
-                   (str.len LsIdxEval__ie_t__call16))
+                              (str.at LsIdxEval__ie_t__call21
+                                      (+ LsIdxEval__ie_s4__call21 1)))))
+      (a!3 (and (< (+ LsIdxEval__ie_s4__call21 2)
+                   (str.len LsIdxEval__ie_t__call21))
                 (str.contains "0123456789"
-                              (str.at LsIdxEval__ie_t__call16
-                                      (+ LsIdxEval__ie_s4__call16 2)))))
-      (a!4 (and (< (+ LsIdxEval__ie_s4__call16 3)
-                   (str.len LsIdxEval__ie_t__call16))
+                              (str.at LsIdxEval__ie_t__call21
+                                      (+ LsIdxEval__ie_s4__call21 2)))))
+      (a!4 (and (< (+ LsIdxEval__ie_s4__call21 3)
+                   (str.len LsIdxEval__ie_t__call21))
                 (str.contains "0123456789"
-                              (str.at LsIdxEval__ie_t__call16
-                                      (+ LsIdxEval__ie_s4__call16 3)))))
-      (a!5 (and (< (+ LsIdxEval__ie_s4__call16 4)
-                   (str.len LsIdxEval__ie_t__call16))
+                              (str.at LsIdxEval__ie_t__call21
+                                      (+ LsIdxEval__ie_s4__call21 3)))))
+      (a!5 (and (< (+ LsIdxEval__ie_s4__call21 4)
+                   (str.len LsIdxEval__ie_t__call21))
                 (str.contains "0123456789"
-                              (str.at LsIdxEval__ie_t__call16
-                                      (+ LsIdxEval__ie_s4__call16 4)))))
-      (a!6 (and (< (+ LsIdxEval__ie_s4__call16 5)
-                   (str.len LsIdxEval__ie_t__call16))
+                              (str.at LsIdxEval__ie_t__call21
+                                      (+ LsIdxEval__ie_s4__call21 4)))))
+      (a!6 (and (< (+ LsIdxEval__ie_s4__call21 5)
+                   (str.len LsIdxEval__ie_t__call21))
                 (str.contains "0123456789"
-                              (str.at LsIdxEval__ie_t__call16
-                                      (+ LsIdxEval__ie_s4__call16 5)))))
-      (a!7 (and (< (+ LsIdxEval__ie_s4__call16 6)
-                   (str.len LsIdxEval__ie_t__call16))
+                              (str.at LsIdxEval__ie_t__call21
+                                      (+ LsIdxEval__ie_s4__call21 5)))))
+      (a!7 (and (< (+ LsIdxEval__ie_s4__call21 6)
+                   (str.len LsIdxEval__ie_t__call21))
                 (str.contains "0123456789"
-                              (str.at LsIdxEval__ie_t__call16
-                                      (+ LsIdxEval__ie_s4__call16 6)))))
-      (a!8 (and (< (+ LsIdxEval__ie_s4__call16 7)
-                   (str.len LsIdxEval__ie_t__call16))
+                              (str.at LsIdxEval__ie_t__call21
+                                      (+ LsIdxEval__ie_s4__call21 6)))))
+      (a!8 (and (< (+ LsIdxEval__ie_s4__call21 7)
+                   (str.len LsIdxEval__ie_t__call21))
                 (str.contains "0123456789"
-                              (str.at LsIdxEval__ie_t__call16
-                                      (+ LsIdxEval__ie_s4__call16 7))))))
+                              (str.at LsIdxEval__ie_t__call21
+                                      (+ LsIdxEval__ie_s4__call21 7))))))
 (let ((a!9 (ite (not a!6)
-                (+ LsIdxEval__ie_s4__call16 5)
+                (+ LsIdxEval__ie_s4__call21 5)
                 (ite (not a!7)
-                     (+ LsIdxEval__ie_s4__call16 6)
+                     (+ LsIdxEval__ie_s4__call21 6)
                      (ite (not a!8)
-                          (+ LsIdxEval__ie_s4__call16 7)
-                          (+ LsIdxEval__ie_s4__call16 8))))))
+                          (+ LsIdxEval__ie_s4__call21 7)
+                          (+ LsIdxEval__ie_s4__call21 8))))))
 (let ((a!10 (ite (not a!3)
-                 (+ LsIdxEval__ie_s4__call16 2)
+                 (+ LsIdxEval__ie_s4__call21 2)
                  (ite (not a!4)
-                      (+ LsIdxEval__ie_s4__call16 3)
-                      (ite (not a!5) (+ LsIdxEval__ie_s4__call16 4) a!9)))))
-  (= LsIdxEval__ie_ne4__call16
+                      (+ LsIdxEval__ie_s4__call21 3)
+                      (ite (not a!5) (+ LsIdxEval__ie_s4__call21 4) a!9)))))
+  (= LsIdxEval__ie_ne4__call21
      (ite a!1
-          LsIdxEval__ie_s4__call16
-          (ite (not a!2) (+ LsIdxEval__ie_s4__call16 1) a!10)))))))
-(assert (= LsIdxEval__ie_op4__call16
-   (ite (< LsIdxEval__ie_ne4__call16 (str.len LsIdxEval__ie_t__call16))
-        (str.at LsIdxEval__ie_t__call16 LsIdxEval__ie_ne4__call16)
+          LsIdxEval__ie_s4__call21
+          (ite (not a!2) (+ LsIdxEval__ie_s4__call21 1) a!10)))))))
+(assert (= LsIdxEval__ie_op4__call21
+   (ite (< LsIdxEval__ie_ne4__call21 (str.len LsIdxEval__ie_t__call21))
+        (str.at LsIdxEval__ie_t__call21 LsIdxEval__ie_ne4__call21)
         "")))
-(assert (= LsIdxEval__ie_s5__call16 (+ LsIdxEval__ie_ne4__call16 1)))
-(assert (let ((a!1 (not (and (< LsIdxEval__ie_s5__call16
-                        (str.len LsIdxEval__ie_t__call16))
+(assert (= LsIdxEval__ie_s5__call21 (+ LsIdxEval__ie_ne4__call21 1)))
+(assert (let ((a!1 (not (and (< LsIdxEval__ie_s5__call21
+                        (str.len LsIdxEval__ie_t__call21))
                      (str.contains "0123456789"
-                                   (str.at LsIdxEval__ie_t__call16
-                                           LsIdxEval__ie_s5__call16)))))
-      (a!2 (and (< (+ LsIdxEval__ie_s5__call16 1)
-                   (str.len LsIdxEval__ie_t__call16))
+                                   (str.at LsIdxEval__ie_t__call21
+                                           LsIdxEval__ie_s5__call21)))))
+      (a!2 (and (< (+ LsIdxEval__ie_s5__call21 1)
+                   (str.len LsIdxEval__ie_t__call21))
                 (str.contains "0123456789"
-                              (str.at LsIdxEval__ie_t__call16
-                                      (+ LsIdxEval__ie_s5__call16 1)))))
-      (a!3 (and (< (+ LsIdxEval__ie_s5__call16 2)
-                   (str.len LsIdxEval__ie_t__call16))
+                              (str.at LsIdxEval__ie_t__call21
+                                      (+ LsIdxEval__ie_s5__call21 1)))))
+      (a!3 (and (< (+ LsIdxEval__ie_s5__call21 2)
+                   (str.len LsIdxEval__ie_t__call21))
                 (str.contains "0123456789"
-                              (str.at LsIdxEval__ie_t__call16
-                                      (+ LsIdxEval__ie_s5__call16 2)))))
-      (a!4 (and (< (+ LsIdxEval__ie_s5__call16 3)
-                   (str.len LsIdxEval__ie_t__call16))
+                              (str.at LsIdxEval__ie_t__call21
+                                      (+ LsIdxEval__ie_s5__call21 2)))))
+      (a!4 (and (< (+ LsIdxEval__ie_s5__call21 3)
+                   (str.len LsIdxEval__ie_t__call21))
                 (str.contains "0123456789"
-                              (str.at LsIdxEval__ie_t__call16
-                                      (+ LsIdxEval__ie_s5__call16 3)))))
-      (a!5 (and (< (+ LsIdxEval__ie_s5__call16 4)
-                   (str.len LsIdxEval__ie_t__call16))
+                              (str.at LsIdxEval__ie_t__call21
+                                      (+ LsIdxEval__ie_s5__call21 3)))))
+      (a!5 (and (< (+ LsIdxEval__ie_s5__call21 4)
+                   (str.len LsIdxEval__ie_t__call21))
                 (str.contains "0123456789"
-                              (str.at LsIdxEval__ie_t__call16
-                                      (+ LsIdxEval__ie_s5__call16 4)))))
-      (a!6 (and (< (+ LsIdxEval__ie_s5__call16 5)
-                   (str.len LsIdxEval__ie_t__call16))
+                              (str.at LsIdxEval__ie_t__call21
+                                      (+ LsIdxEval__ie_s5__call21 4)))))
+      (a!6 (and (< (+ LsIdxEval__ie_s5__call21 5)
+                   (str.len LsIdxEval__ie_t__call21))
                 (str.contains "0123456789"
-                              (str.at LsIdxEval__ie_t__call16
-                                      (+ LsIdxEval__ie_s5__call16 5)))))
-      (a!7 (and (< (+ LsIdxEval__ie_s5__call16 6)
-                   (str.len LsIdxEval__ie_t__call16))
+                              (str.at LsIdxEval__ie_t__call21
+                                      (+ LsIdxEval__ie_s5__call21 5)))))
+      (a!7 (and (< (+ LsIdxEval__ie_s5__call21 6)
+                   (str.len LsIdxEval__ie_t__call21))
                 (str.contains "0123456789"
-                              (str.at LsIdxEval__ie_t__call16
-                                      (+ LsIdxEval__ie_s5__call16 6)))))
-      (a!8 (and (< (+ LsIdxEval__ie_s5__call16 7)
-                   (str.len LsIdxEval__ie_t__call16))
+                              (str.at LsIdxEval__ie_t__call21
+                                      (+ LsIdxEval__ie_s5__call21 6)))))
+      (a!8 (and (< (+ LsIdxEval__ie_s5__call21 7)
+                   (str.len LsIdxEval__ie_t__call21))
                 (str.contains "0123456789"
-                              (str.at LsIdxEval__ie_t__call16
-                                      (+ LsIdxEval__ie_s5__call16 7))))))
+                              (str.at LsIdxEval__ie_t__call21
+                                      (+ LsIdxEval__ie_s5__call21 7))))))
 (let ((a!9 (ite (not a!6)
-                (+ LsIdxEval__ie_s5__call16 5)
+                (+ LsIdxEval__ie_s5__call21 5)
                 (ite (not a!7)
-                     (+ LsIdxEval__ie_s5__call16 6)
+                     (+ LsIdxEval__ie_s5__call21 6)
                      (ite (not a!8)
-                          (+ LsIdxEval__ie_s5__call16 7)
-                          (+ LsIdxEval__ie_s5__call16 8))))))
+                          (+ LsIdxEval__ie_s5__call21 7)
+                          (+ LsIdxEval__ie_s5__call21 8))))))
 (let ((a!10 (ite (not a!3)
-                 (+ LsIdxEval__ie_s5__call16 2)
+                 (+ LsIdxEval__ie_s5__call21 2)
                  (ite (not a!4)
-                      (+ LsIdxEval__ie_s5__call16 3)
-                      (ite (not a!5) (+ LsIdxEval__ie_s5__call16 4) a!9)))))
-  (= LsIdxEval__ie_ne5__call16
+                      (+ LsIdxEval__ie_s5__call21 3)
+                      (ite (not a!5) (+ LsIdxEval__ie_s5__call21 4) a!9)))))
+  (= LsIdxEval__ie_ne5__call21
      (ite a!1
-          LsIdxEval__ie_s5__call16
-          (ite (not a!2) (+ LsIdxEval__ie_s5__call16 1) a!10)))))))
+          LsIdxEval__ie_s5__call21
+          (ite (not a!2) (+ LsIdxEval__ie_s5__call21 1) a!10)))))))
 (assert (let ((a!1 (* (str.indexof "0123456789"
-                           (str.at LsIdxEval__ie_t__call16 (+ 0 0))
+                           (str.at LsIdxEval__ie_t__call21 (+ 0 0))
                            0)
               10))
       (a!3 (* (str.indexof "0123456789"
-                           (str.at LsIdxEval__ie_t__call16 (+ 0 0))
+                           (str.at LsIdxEval__ie_t__call21 (+ 0 0))
                            0)
               100))
       (a!4 (* (str.indexof "0123456789"
-                           (str.at LsIdxEval__ie_t__call16 (+ 0 1))
+                           (str.at LsIdxEval__ie_t__call21 (+ 0 1))
                            0)
               10))
       (a!6 (* (str.indexof "0123456789"
-                           (str.at LsIdxEval__ie_t__call16 (+ 0 0))
+                           (str.at LsIdxEval__ie_t__call21 (+ 0 0))
                            0)
               1000))
       (a!7 (* (str.indexof "0123456789"
-                           (str.at LsIdxEval__ie_t__call16 (+ 0 1))
+                           (str.at LsIdxEval__ie_t__call21 (+ 0 1))
                            0)
               100))
       (a!8 (* (str.indexof "0123456789"
-                           (str.at LsIdxEval__ie_t__call16 (+ 0 2))
+                           (str.at LsIdxEval__ie_t__call21 (+ 0 2))
                            0)
               10))
       (a!10 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16 (+ 0 0))
+                            (str.at LsIdxEval__ie_t__call21 (+ 0 0))
                             0)
                10000))
       (a!11 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16 (+ 0 1))
+                            (str.at LsIdxEval__ie_t__call21 (+ 0 1))
                             0)
                1000))
       (a!12 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16 (+ 0 2))
+                            (str.at LsIdxEval__ie_t__call21 (+ 0 2))
                             0)
                100))
       (a!13 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16 (+ 0 3))
+                            (str.at LsIdxEval__ie_t__call21 (+ 0 3))
                             0)
                10))
       (a!15 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16 (+ 0 0))
+                            (str.at LsIdxEval__ie_t__call21 (+ 0 0))
                             0)
                100000))
       (a!16 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16 (+ 0 1))
+                            (str.at LsIdxEval__ie_t__call21 (+ 0 1))
                             0)
                10000))
       (a!17 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16 (+ 0 2))
+                            (str.at LsIdxEval__ie_t__call21 (+ 0 2))
                             0)
                1000))
       (a!18 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16 (+ 0 3))
+                            (str.at LsIdxEval__ie_t__call21 (+ 0 3))
                             0)
                100))
       (a!19 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16 (+ 0 4))
+                            (str.at LsIdxEval__ie_t__call21 (+ 0 4))
                             0)
                10))
       (a!21 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16 (+ 0 0))
+                            (str.at LsIdxEval__ie_t__call21 (+ 0 0))
                             0)
                1000000))
       (a!22 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16 (+ 0 1))
+                            (str.at LsIdxEval__ie_t__call21 (+ 0 1))
                             0)
                100000))
       (a!23 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16 (+ 0 2))
+                            (str.at LsIdxEval__ie_t__call21 (+ 0 2))
                             0)
                10000))
       (a!24 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16 (+ 0 3))
+                            (str.at LsIdxEval__ie_t__call21 (+ 0 3))
                             0)
                1000))
       (a!25 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16 (+ 0 4))
+                            (str.at LsIdxEval__ie_t__call21 (+ 0 4))
                             0)
                100))
       (a!26 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16 (+ 0 5))
+                            (str.at LsIdxEval__ie_t__call21 (+ 0 5))
                             0)
                10)))
 (let ((a!2 (+ a!1
               (str.indexof "0123456789"
-                           (str.at LsIdxEval__ie_t__call16 (+ 0 1))
+                           (str.at LsIdxEval__ie_t__call21 (+ 0 1))
                            0)))
       (a!5 (+ a!3
               a!4
               (str.indexof "0123456789"
-                           (str.at LsIdxEval__ie_t__call16 (+ 0 2))
+                           (str.at LsIdxEval__ie_t__call21 (+ 0 2))
                            0)))
       (a!9 (+ a!6
               a!7
               a!8
               (str.indexof "0123456789"
-                           (str.at LsIdxEval__ie_t__call16 (+ 0 3))
+                           (str.at LsIdxEval__ie_t__call21 (+ 0 3))
                            0)))
       (a!14 (+ a!10
                a!11
                a!12
                a!13
                (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16 (+ 0 4))
+                            (str.at LsIdxEval__ie_t__call21 (+ 0 4))
                             0)))
       (a!20 (+ a!15
                a!16
@@ -4898,7 +6172,7 @@
                a!18
                a!19
                (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16 (+ 0 5))
+                            (str.at LsIdxEval__ie_t__call21 (+ 0 5))
                             0)))
       (a!27 (+ a!21
                a!22
@@ -4907,154 +6181,154 @@
                a!25
                a!26
                (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16 (+ 0 6))
+                            (str.at LsIdxEval__ie_t__call21 (+ 0 6))
                             0))))
-(let ((a!28 (ite (= LsIdxEval__ie_ne0__call16 5)
+(let ((a!28 (ite (= LsIdxEval__ie_ne0__call21 5)
                  a!14
-                 (ite (= LsIdxEval__ie_ne0__call16 6)
+                 (ite (= LsIdxEval__ie_ne0__call21 6)
                       a!20
-                      (ite (= LsIdxEval__ie_ne0__call16 7) a!27 (- 0 1))))))
-(let ((a!29 (ite (= LsIdxEval__ie_ne0__call16 2)
+                      (ite (= LsIdxEval__ie_ne0__call21 7) a!27 (- 0 1))))))
+(let ((a!29 (ite (= LsIdxEval__ie_ne0__call21 2)
                  a!2
-                 (ite (= LsIdxEval__ie_ne0__call16 3)
+                 (ite (= LsIdxEval__ie_ne0__call21 3)
                       a!5
-                      (ite (= LsIdxEval__ie_ne0__call16 4) a!9 a!28)))))
-(let ((a!30 (ite (= LsIdxEval__ie_ne0__call16 1)
+                      (ite (= LsIdxEval__ie_ne0__call21 4) a!9 a!28)))))
+(let ((a!30 (ite (= LsIdxEval__ie_ne0__call21 1)
                  (str.indexof "0123456789"
-                              (str.at LsIdxEval__ie_t__call16 (+ 0 0))
+                              (str.at LsIdxEval__ie_t__call21 (+ 0 0))
                               0)
                  a!29)))
-  (= LsIdxEval__ie_n0__call16 a!30)))))))
+  (= LsIdxEval__ie_n0__call21 a!30)))))))
 (assert (let ((a!1 (* (str.indexof "0123456789"
-                           (str.at LsIdxEval__ie_t__call16
-                                   (+ LsIdxEval__ie_s1__call16 0))
+                           (str.at LsIdxEval__ie_t__call21
+                                   (+ LsIdxEval__ie_s1__call21 0))
                            0)
               10))
       (a!3 (* (str.indexof "0123456789"
-                           (str.at LsIdxEval__ie_t__call16
-                                   (+ LsIdxEval__ie_s1__call16 0))
+                           (str.at LsIdxEval__ie_t__call21
+                                   (+ LsIdxEval__ie_s1__call21 0))
                            0)
               100))
       (a!4 (* (str.indexof "0123456789"
-                           (str.at LsIdxEval__ie_t__call16
-                                   (+ LsIdxEval__ie_s1__call16 1))
+                           (str.at LsIdxEval__ie_t__call21
+                                   (+ LsIdxEval__ie_s1__call21 1))
                            0)
               10))
       (a!6 (* (str.indexof "0123456789"
-                           (str.at LsIdxEval__ie_t__call16
-                                   (+ LsIdxEval__ie_s1__call16 0))
+                           (str.at LsIdxEval__ie_t__call21
+                                   (+ LsIdxEval__ie_s1__call21 0))
                            0)
               1000))
       (a!7 (* (str.indexof "0123456789"
-                           (str.at LsIdxEval__ie_t__call16
-                                   (+ LsIdxEval__ie_s1__call16 1))
+                           (str.at LsIdxEval__ie_t__call21
+                                   (+ LsIdxEval__ie_s1__call21 1))
                            0)
               100))
       (a!8 (* (str.indexof "0123456789"
-                           (str.at LsIdxEval__ie_t__call16
-                                   (+ LsIdxEval__ie_s1__call16 2))
+                           (str.at LsIdxEval__ie_t__call21
+                                   (+ LsIdxEval__ie_s1__call21 2))
                            0)
               10))
       (a!10 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s1__call16 0))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s1__call21 0))
                             0)
                10000))
       (a!11 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s1__call16 1))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s1__call21 1))
                             0)
                1000))
       (a!12 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s1__call16 2))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s1__call21 2))
                             0)
                100))
       (a!13 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s1__call16 3))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s1__call21 3))
                             0)
                10))
       (a!15 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s1__call16 0))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s1__call21 0))
                             0)
                100000))
       (a!16 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s1__call16 1))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s1__call21 1))
                             0)
                10000))
       (a!17 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s1__call16 2))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s1__call21 2))
                             0)
                1000))
       (a!18 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s1__call16 3))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s1__call21 3))
                             0)
                100))
       (a!19 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s1__call16 4))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s1__call21 4))
                             0)
                10))
       (a!21 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s1__call16 0))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s1__call21 0))
                             0)
                1000000))
       (a!22 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s1__call16 1))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s1__call21 1))
                             0)
                100000))
       (a!23 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s1__call16 2))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s1__call21 2))
                             0)
                10000))
       (a!24 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s1__call16 3))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s1__call21 3))
                             0)
                1000))
       (a!25 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s1__call16 4))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s1__call21 4))
                             0)
                100))
       (a!26 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s1__call16 5))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s1__call21 5))
                             0)
                10)))
 (let ((a!2 (+ a!1
               (str.indexof "0123456789"
-                           (str.at LsIdxEval__ie_t__call16
-                                   (+ LsIdxEval__ie_s1__call16 1))
+                           (str.at LsIdxEval__ie_t__call21
+                                   (+ LsIdxEval__ie_s1__call21 1))
                            0)))
       (a!5 (+ a!3
               a!4
               (str.indexof "0123456789"
-                           (str.at LsIdxEval__ie_t__call16
-                                   (+ LsIdxEval__ie_s1__call16 2))
+                           (str.at LsIdxEval__ie_t__call21
+                                   (+ LsIdxEval__ie_s1__call21 2))
                            0)))
       (a!9 (+ a!6
               a!7
               a!8
               (str.indexof "0123456789"
-                           (str.at LsIdxEval__ie_t__call16
-                                   (+ LsIdxEval__ie_s1__call16 3))
+                           (str.at LsIdxEval__ie_t__call21
+                                   (+ LsIdxEval__ie_s1__call21 3))
                            0)))
       (a!14 (+ a!10
                a!11
                a!12
                a!13
                (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s1__call16 4))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s1__call21 4))
                             0)))
       (a!20 (+ a!15
                a!16
@@ -5062,8 +6336,8 @@
                a!18
                a!19
                (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s1__call16 5))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s1__call21 5))
                             0)))
       (a!27 (+ a!21
                a!22
@@ -5072,164 +6346,164 @@
                a!25
                a!26
                (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s1__call16 6))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s1__call21 6))
                             0))))
-(let ((a!28 (ite (= (- LsIdxEval__ie_ne1__call16 LsIdxEval__ie_s1__call16) 6)
+(let ((a!28 (ite (= (- LsIdxEval__ie_ne1__call21 LsIdxEval__ie_s1__call21) 6)
                  a!20
-                 (ite (= (- LsIdxEval__ie_ne1__call16 LsIdxEval__ie_s1__call16)
+                 (ite (= (- LsIdxEval__ie_ne1__call21 LsIdxEval__ie_s1__call21)
                          7)
                       a!27
                       (- 0 1)))))
-(let ((a!29 (ite (= (- LsIdxEval__ie_ne1__call16 LsIdxEval__ie_s1__call16) 4)
+(let ((a!29 (ite (= (- LsIdxEval__ie_ne1__call21 LsIdxEval__ie_s1__call21) 4)
                  a!9
-                 (ite (= (- LsIdxEval__ie_ne1__call16 LsIdxEval__ie_s1__call16)
+                 (ite (= (- LsIdxEval__ie_ne1__call21 LsIdxEval__ie_s1__call21)
                          5)
                       a!14
                       a!28))))
-(let ((a!30 (ite (= (- LsIdxEval__ie_ne1__call16 LsIdxEval__ie_s1__call16) 2)
+(let ((a!30 (ite (= (- LsIdxEval__ie_ne1__call21 LsIdxEval__ie_s1__call21) 2)
                  a!2
-                 (ite (= (- LsIdxEval__ie_ne1__call16 LsIdxEval__ie_s1__call16)
+                 (ite (= (- LsIdxEval__ie_ne1__call21 LsIdxEval__ie_s1__call21)
                          3)
                       a!5
                       a!29))))
-(let ((a!31 (ite (= (- LsIdxEval__ie_ne1__call16 LsIdxEval__ie_s1__call16) 1)
+(let ((a!31 (ite (= (- LsIdxEval__ie_ne1__call21 LsIdxEval__ie_s1__call21) 1)
                  (str.indexof "0123456789"
-                              (str.at LsIdxEval__ie_t__call16
-                                      (+ LsIdxEval__ie_s1__call16 0))
+                              (str.at LsIdxEval__ie_t__call21
+                                      (+ LsIdxEval__ie_s1__call21 0))
                               0)
                  a!30)))
-  (= LsIdxEval__ie_n1__call16 a!31))))))))
+  (= LsIdxEval__ie_n1__call21 a!31))))))))
 (assert (let ((a!1 (* (str.indexof "0123456789"
-                           (str.at LsIdxEval__ie_t__call16
-                                   (+ LsIdxEval__ie_s2__call16 0))
+                           (str.at LsIdxEval__ie_t__call21
+                                   (+ LsIdxEval__ie_s2__call21 0))
                            0)
               10))
       (a!3 (* (str.indexof "0123456789"
-                           (str.at LsIdxEval__ie_t__call16
-                                   (+ LsIdxEval__ie_s2__call16 0))
+                           (str.at LsIdxEval__ie_t__call21
+                                   (+ LsIdxEval__ie_s2__call21 0))
                            0)
               100))
       (a!4 (* (str.indexof "0123456789"
-                           (str.at LsIdxEval__ie_t__call16
-                                   (+ LsIdxEval__ie_s2__call16 1))
+                           (str.at LsIdxEval__ie_t__call21
+                                   (+ LsIdxEval__ie_s2__call21 1))
                            0)
               10))
       (a!6 (* (str.indexof "0123456789"
-                           (str.at LsIdxEval__ie_t__call16
-                                   (+ LsIdxEval__ie_s2__call16 0))
+                           (str.at LsIdxEval__ie_t__call21
+                                   (+ LsIdxEval__ie_s2__call21 0))
                            0)
               1000))
       (a!7 (* (str.indexof "0123456789"
-                           (str.at LsIdxEval__ie_t__call16
-                                   (+ LsIdxEval__ie_s2__call16 1))
+                           (str.at LsIdxEval__ie_t__call21
+                                   (+ LsIdxEval__ie_s2__call21 1))
                            0)
               100))
       (a!8 (* (str.indexof "0123456789"
-                           (str.at LsIdxEval__ie_t__call16
-                                   (+ LsIdxEval__ie_s2__call16 2))
+                           (str.at LsIdxEval__ie_t__call21
+                                   (+ LsIdxEval__ie_s2__call21 2))
                            0)
               10))
       (a!10 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s2__call16 0))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s2__call21 0))
                             0)
                10000))
       (a!11 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s2__call16 1))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s2__call21 1))
                             0)
                1000))
       (a!12 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s2__call16 2))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s2__call21 2))
                             0)
                100))
       (a!13 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s2__call16 3))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s2__call21 3))
                             0)
                10))
       (a!15 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s2__call16 0))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s2__call21 0))
                             0)
                100000))
       (a!16 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s2__call16 1))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s2__call21 1))
                             0)
                10000))
       (a!17 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s2__call16 2))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s2__call21 2))
                             0)
                1000))
       (a!18 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s2__call16 3))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s2__call21 3))
                             0)
                100))
       (a!19 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s2__call16 4))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s2__call21 4))
                             0)
                10))
       (a!21 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s2__call16 0))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s2__call21 0))
                             0)
                1000000))
       (a!22 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s2__call16 1))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s2__call21 1))
                             0)
                100000))
       (a!23 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s2__call16 2))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s2__call21 2))
                             0)
                10000))
       (a!24 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s2__call16 3))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s2__call21 3))
                             0)
                1000))
       (a!25 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s2__call16 4))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s2__call21 4))
                             0)
                100))
       (a!26 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s2__call16 5))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s2__call21 5))
                             0)
                10)))
 (let ((a!2 (+ a!1
               (str.indexof "0123456789"
-                           (str.at LsIdxEval__ie_t__call16
-                                   (+ LsIdxEval__ie_s2__call16 1))
+                           (str.at LsIdxEval__ie_t__call21
+                                   (+ LsIdxEval__ie_s2__call21 1))
                            0)))
       (a!5 (+ a!3
               a!4
               (str.indexof "0123456789"
-                           (str.at LsIdxEval__ie_t__call16
-                                   (+ LsIdxEval__ie_s2__call16 2))
+                           (str.at LsIdxEval__ie_t__call21
+                                   (+ LsIdxEval__ie_s2__call21 2))
                            0)))
       (a!9 (+ a!6
               a!7
               a!8
               (str.indexof "0123456789"
-                           (str.at LsIdxEval__ie_t__call16
-                                   (+ LsIdxEval__ie_s2__call16 3))
+                           (str.at LsIdxEval__ie_t__call21
+                                   (+ LsIdxEval__ie_s2__call21 3))
                            0)))
       (a!14 (+ a!10
                a!11
                a!12
                a!13
                (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s2__call16 4))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s2__call21 4))
                             0)))
       (a!20 (+ a!15
                a!16
@@ -5237,8 +6511,8 @@
                a!18
                a!19
                (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s2__call16 5))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s2__call21 5))
                             0)))
       (a!27 (+ a!21
                a!22
@@ -5247,164 +6521,164 @@
                a!25
                a!26
                (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s2__call16 6))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s2__call21 6))
                             0))))
-(let ((a!28 (ite (= (- LsIdxEval__ie_ne2__call16 LsIdxEval__ie_s2__call16) 6)
+(let ((a!28 (ite (= (- LsIdxEval__ie_ne2__call21 LsIdxEval__ie_s2__call21) 6)
                  a!20
-                 (ite (= (- LsIdxEval__ie_ne2__call16 LsIdxEval__ie_s2__call16)
+                 (ite (= (- LsIdxEval__ie_ne2__call21 LsIdxEval__ie_s2__call21)
                          7)
                       a!27
                       (- 0 1)))))
-(let ((a!29 (ite (= (- LsIdxEval__ie_ne2__call16 LsIdxEval__ie_s2__call16) 4)
+(let ((a!29 (ite (= (- LsIdxEval__ie_ne2__call21 LsIdxEval__ie_s2__call21) 4)
                  a!9
-                 (ite (= (- LsIdxEval__ie_ne2__call16 LsIdxEval__ie_s2__call16)
+                 (ite (= (- LsIdxEval__ie_ne2__call21 LsIdxEval__ie_s2__call21)
                          5)
                       a!14
                       a!28))))
-(let ((a!30 (ite (= (- LsIdxEval__ie_ne2__call16 LsIdxEval__ie_s2__call16) 2)
+(let ((a!30 (ite (= (- LsIdxEval__ie_ne2__call21 LsIdxEval__ie_s2__call21) 2)
                  a!2
-                 (ite (= (- LsIdxEval__ie_ne2__call16 LsIdxEval__ie_s2__call16)
+                 (ite (= (- LsIdxEval__ie_ne2__call21 LsIdxEval__ie_s2__call21)
                          3)
                       a!5
                       a!29))))
-(let ((a!31 (ite (= (- LsIdxEval__ie_ne2__call16 LsIdxEval__ie_s2__call16) 1)
+(let ((a!31 (ite (= (- LsIdxEval__ie_ne2__call21 LsIdxEval__ie_s2__call21) 1)
                  (str.indexof "0123456789"
-                              (str.at LsIdxEval__ie_t__call16
-                                      (+ LsIdxEval__ie_s2__call16 0))
+                              (str.at LsIdxEval__ie_t__call21
+                                      (+ LsIdxEval__ie_s2__call21 0))
                               0)
                  a!30)))
-  (= LsIdxEval__ie_n2__call16 a!31))))))))
+  (= LsIdxEval__ie_n2__call21 a!31))))))))
 (assert (let ((a!1 (* (str.indexof "0123456789"
-                           (str.at LsIdxEval__ie_t__call16
-                                   (+ LsIdxEval__ie_s3__call16 0))
+                           (str.at LsIdxEval__ie_t__call21
+                                   (+ LsIdxEval__ie_s3__call21 0))
                            0)
               10))
       (a!3 (* (str.indexof "0123456789"
-                           (str.at LsIdxEval__ie_t__call16
-                                   (+ LsIdxEval__ie_s3__call16 0))
+                           (str.at LsIdxEval__ie_t__call21
+                                   (+ LsIdxEval__ie_s3__call21 0))
                            0)
               100))
       (a!4 (* (str.indexof "0123456789"
-                           (str.at LsIdxEval__ie_t__call16
-                                   (+ LsIdxEval__ie_s3__call16 1))
+                           (str.at LsIdxEval__ie_t__call21
+                                   (+ LsIdxEval__ie_s3__call21 1))
                            0)
               10))
       (a!6 (* (str.indexof "0123456789"
-                           (str.at LsIdxEval__ie_t__call16
-                                   (+ LsIdxEval__ie_s3__call16 0))
+                           (str.at LsIdxEval__ie_t__call21
+                                   (+ LsIdxEval__ie_s3__call21 0))
                            0)
               1000))
       (a!7 (* (str.indexof "0123456789"
-                           (str.at LsIdxEval__ie_t__call16
-                                   (+ LsIdxEval__ie_s3__call16 1))
+                           (str.at LsIdxEval__ie_t__call21
+                                   (+ LsIdxEval__ie_s3__call21 1))
                            0)
               100))
       (a!8 (* (str.indexof "0123456789"
-                           (str.at LsIdxEval__ie_t__call16
-                                   (+ LsIdxEval__ie_s3__call16 2))
+                           (str.at LsIdxEval__ie_t__call21
+                                   (+ LsIdxEval__ie_s3__call21 2))
                            0)
               10))
       (a!10 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s3__call16 0))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s3__call21 0))
                             0)
                10000))
       (a!11 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s3__call16 1))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s3__call21 1))
                             0)
                1000))
       (a!12 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s3__call16 2))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s3__call21 2))
                             0)
                100))
       (a!13 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s3__call16 3))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s3__call21 3))
                             0)
                10))
       (a!15 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s3__call16 0))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s3__call21 0))
                             0)
                100000))
       (a!16 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s3__call16 1))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s3__call21 1))
                             0)
                10000))
       (a!17 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s3__call16 2))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s3__call21 2))
                             0)
                1000))
       (a!18 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s3__call16 3))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s3__call21 3))
                             0)
                100))
       (a!19 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s3__call16 4))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s3__call21 4))
                             0)
                10))
       (a!21 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s3__call16 0))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s3__call21 0))
                             0)
                1000000))
       (a!22 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s3__call16 1))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s3__call21 1))
                             0)
                100000))
       (a!23 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s3__call16 2))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s3__call21 2))
                             0)
                10000))
       (a!24 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s3__call16 3))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s3__call21 3))
                             0)
                1000))
       (a!25 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s3__call16 4))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s3__call21 4))
                             0)
                100))
       (a!26 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s3__call16 5))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s3__call21 5))
                             0)
                10)))
 (let ((a!2 (+ a!1
               (str.indexof "0123456789"
-                           (str.at LsIdxEval__ie_t__call16
-                                   (+ LsIdxEval__ie_s3__call16 1))
+                           (str.at LsIdxEval__ie_t__call21
+                                   (+ LsIdxEval__ie_s3__call21 1))
                            0)))
       (a!5 (+ a!3
               a!4
               (str.indexof "0123456789"
-                           (str.at LsIdxEval__ie_t__call16
-                                   (+ LsIdxEval__ie_s3__call16 2))
+                           (str.at LsIdxEval__ie_t__call21
+                                   (+ LsIdxEval__ie_s3__call21 2))
                            0)))
       (a!9 (+ a!6
               a!7
               a!8
               (str.indexof "0123456789"
-                           (str.at LsIdxEval__ie_t__call16
-                                   (+ LsIdxEval__ie_s3__call16 3))
+                           (str.at LsIdxEval__ie_t__call21
+                                   (+ LsIdxEval__ie_s3__call21 3))
                            0)))
       (a!14 (+ a!10
                a!11
                a!12
                a!13
                (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s3__call16 4))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s3__call21 4))
                             0)))
       (a!20 (+ a!15
                a!16
@@ -5412,8 +6686,8 @@
                a!18
                a!19
                (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s3__call16 5))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s3__call21 5))
                             0)))
       (a!27 (+ a!21
                a!22
@@ -5422,164 +6696,164 @@
                a!25
                a!26
                (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s3__call16 6))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s3__call21 6))
                             0))))
-(let ((a!28 (ite (= (- LsIdxEval__ie_ne3__call16 LsIdxEval__ie_s3__call16) 6)
+(let ((a!28 (ite (= (- LsIdxEval__ie_ne3__call21 LsIdxEval__ie_s3__call21) 6)
                  a!20
-                 (ite (= (- LsIdxEval__ie_ne3__call16 LsIdxEval__ie_s3__call16)
+                 (ite (= (- LsIdxEval__ie_ne3__call21 LsIdxEval__ie_s3__call21)
                          7)
                       a!27
                       (- 0 1)))))
-(let ((a!29 (ite (= (- LsIdxEval__ie_ne3__call16 LsIdxEval__ie_s3__call16) 4)
+(let ((a!29 (ite (= (- LsIdxEval__ie_ne3__call21 LsIdxEval__ie_s3__call21) 4)
                  a!9
-                 (ite (= (- LsIdxEval__ie_ne3__call16 LsIdxEval__ie_s3__call16)
+                 (ite (= (- LsIdxEval__ie_ne3__call21 LsIdxEval__ie_s3__call21)
                          5)
                       a!14
                       a!28))))
-(let ((a!30 (ite (= (- LsIdxEval__ie_ne3__call16 LsIdxEval__ie_s3__call16) 2)
+(let ((a!30 (ite (= (- LsIdxEval__ie_ne3__call21 LsIdxEval__ie_s3__call21) 2)
                  a!2
-                 (ite (= (- LsIdxEval__ie_ne3__call16 LsIdxEval__ie_s3__call16)
+                 (ite (= (- LsIdxEval__ie_ne3__call21 LsIdxEval__ie_s3__call21)
                          3)
                       a!5
                       a!29))))
-(let ((a!31 (ite (= (- LsIdxEval__ie_ne3__call16 LsIdxEval__ie_s3__call16) 1)
+(let ((a!31 (ite (= (- LsIdxEval__ie_ne3__call21 LsIdxEval__ie_s3__call21) 1)
                  (str.indexof "0123456789"
-                              (str.at LsIdxEval__ie_t__call16
-                                      (+ LsIdxEval__ie_s3__call16 0))
+                              (str.at LsIdxEval__ie_t__call21
+                                      (+ LsIdxEval__ie_s3__call21 0))
                               0)
                  a!30)))
-  (= LsIdxEval__ie_n3__call16 a!31))))))))
+  (= LsIdxEval__ie_n3__call21 a!31))))))))
 (assert (let ((a!1 (* (str.indexof "0123456789"
-                           (str.at LsIdxEval__ie_t__call16
-                                   (+ LsIdxEval__ie_s4__call16 0))
+                           (str.at LsIdxEval__ie_t__call21
+                                   (+ LsIdxEval__ie_s4__call21 0))
                            0)
               10))
       (a!3 (* (str.indexof "0123456789"
-                           (str.at LsIdxEval__ie_t__call16
-                                   (+ LsIdxEval__ie_s4__call16 0))
+                           (str.at LsIdxEval__ie_t__call21
+                                   (+ LsIdxEval__ie_s4__call21 0))
                            0)
               100))
       (a!4 (* (str.indexof "0123456789"
-                           (str.at LsIdxEval__ie_t__call16
-                                   (+ LsIdxEval__ie_s4__call16 1))
+                           (str.at LsIdxEval__ie_t__call21
+                                   (+ LsIdxEval__ie_s4__call21 1))
                            0)
               10))
       (a!6 (* (str.indexof "0123456789"
-                           (str.at LsIdxEval__ie_t__call16
-                                   (+ LsIdxEval__ie_s4__call16 0))
+                           (str.at LsIdxEval__ie_t__call21
+                                   (+ LsIdxEval__ie_s4__call21 0))
                            0)
               1000))
       (a!7 (* (str.indexof "0123456789"
-                           (str.at LsIdxEval__ie_t__call16
-                                   (+ LsIdxEval__ie_s4__call16 1))
+                           (str.at LsIdxEval__ie_t__call21
+                                   (+ LsIdxEval__ie_s4__call21 1))
                            0)
               100))
       (a!8 (* (str.indexof "0123456789"
-                           (str.at LsIdxEval__ie_t__call16
-                                   (+ LsIdxEval__ie_s4__call16 2))
+                           (str.at LsIdxEval__ie_t__call21
+                                   (+ LsIdxEval__ie_s4__call21 2))
                            0)
               10))
       (a!10 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s4__call16 0))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s4__call21 0))
                             0)
                10000))
       (a!11 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s4__call16 1))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s4__call21 1))
                             0)
                1000))
       (a!12 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s4__call16 2))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s4__call21 2))
                             0)
                100))
       (a!13 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s4__call16 3))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s4__call21 3))
                             0)
                10))
       (a!15 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s4__call16 0))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s4__call21 0))
                             0)
                100000))
       (a!16 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s4__call16 1))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s4__call21 1))
                             0)
                10000))
       (a!17 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s4__call16 2))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s4__call21 2))
                             0)
                1000))
       (a!18 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s4__call16 3))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s4__call21 3))
                             0)
                100))
       (a!19 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s4__call16 4))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s4__call21 4))
                             0)
                10))
       (a!21 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s4__call16 0))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s4__call21 0))
                             0)
                1000000))
       (a!22 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s4__call16 1))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s4__call21 1))
                             0)
                100000))
       (a!23 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s4__call16 2))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s4__call21 2))
                             0)
                10000))
       (a!24 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s4__call16 3))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s4__call21 3))
                             0)
                1000))
       (a!25 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s4__call16 4))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s4__call21 4))
                             0)
                100))
       (a!26 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s4__call16 5))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s4__call21 5))
                             0)
                10)))
 (let ((a!2 (+ a!1
               (str.indexof "0123456789"
-                           (str.at LsIdxEval__ie_t__call16
-                                   (+ LsIdxEval__ie_s4__call16 1))
+                           (str.at LsIdxEval__ie_t__call21
+                                   (+ LsIdxEval__ie_s4__call21 1))
                            0)))
       (a!5 (+ a!3
               a!4
               (str.indexof "0123456789"
-                           (str.at LsIdxEval__ie_t__call16
-                                   (+ LsIdxEval__ie_s4__call16 2))
+                           (str.at LsIdxEval__ie_t__call21
+                                   (+ LsIdxEval__ie_s4__call21 2))
                            0)))
       (a!9 (+ a!6
               a!7
               a!8
               (str.indexof "0123456789"
-                           (str.at LsIdxEval__ie_t__call16
-                                   (+ LsIdxEval__ie_s4__call16 3))
+                           (str.at LsIdxEval__ie_t__call21
+                                   (+ LsIdxEval__ie_s4__call21 3))
                            0)))
       (a!14 (+ a!10
                a!11
                a!12
                a!13
                (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s4__call16 4))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s4__call21 4))
                             0)))
       (a!20 (+ a!15
                a!16
@@ -5587,8 +6861,8 @@
                a!18
                a!19
                (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s4__call16 5))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s4__call21 5))
                             0)))
       (a!27 (+ a!21
                a!22
@@ -5597,164 +6871,164 @@
                a!25
                a!26
                (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s4__call16 6))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s4__call21 6))
                             0))))
-(let ((a!28 (ite (= (- LsIdxEval__ie_ne4__call16 LsIdxEval__ie_s4__call16) 6)
+(let ((a!28 (ite (= (- LsIdxEval__ie_ne4__call21 LsIdxEval__ie_s4__call21) 6)
                  a!20
-                 (ite (= (- LsIdxEval__ie_ne4__call16 LsIdxEval__ie_s4__call16)
+                 (ite (= (- LsIdxEval__ie_ne4__call21 LsIdxEval__ie_s4__call21)
                          7)
                       a!27
                       (- 0 1)))))
-(let ((a!29 (ite (= (- LsIdxEval__ie_ne4__call16 LsIdxEval__ie_s4__call16) 4)
+(let ((a!29 (ite (= (- LsIdxEval__ie_ne4__call21 LsIdxEval__ie_s4__call21) 4)
                  a!9
-                 (ite (= (- LsIdxEval__ie_ne4__call16 LsIdxEval__ie_s4__call16)
+                 (ite (= (- LsIdxEval__ie_ne4__call21 LsIdxEval__ie_s4__call21)
                          5)
                       a!14
                       a!28))))
-(let ((a!30 (ite (= (- LsIdxEval__ie_ne4__call16 LsIdxEval__ie_s4__call16) 2)
+(let ((a!30 (ite (= (- LsIdxEval__ie_ne4__call21 LsIdxEval__ie_s4__call21) 2)
                  a!2
-                 (ite (= (- LsIdxEval__ie_ne4__call16 LsIdxEval__ie_s4__call16)
+                 (ite (= (- LsIdxEval__ie_ne4__call21 LsIdxEval__ie_s4__call21)
                          3)
                       a!5
                       a!29))))
-(let ((a!31 (ite (= (- LsIdxEval__ie_ne4__call16 LsIdxEval__ie_s4__call16) 1)
+(let ((a!31 (ite (= (- LsIdxEval__ie_ne4__call21 LsIdxEval__ie_s4__call21) 1)
                  (str.indexof "0123456789"
-                              (str.at LsIdxEval__ie_t__call16
-                                      (+ LsIdxEval__ie_s4__call16 0))
+                              (str.at LsIdxEval__ie_t__call21
+                                      (+ LsIdxEval__ie_s4__call21 0))
                               0)
                  a!30)))
-  (= LsIdxEval__ie_n4__call16 a!31))))))))
+  (= LsIdxEval__ie_n4__call21 a!31))))))))
 (assert (let ((a!1 (* (str.indexof "0123456789"
-                           (str.at LsIdxEval__ie_t__call16
-                                   (+ LsIdxEval__ie_s5__call16 0))
+                           (str.at LsIdxEval__ie_t__call21
+                                   (+ LsIdxEval__ie_s5__call21 0))
                            0)
               10))
       (a!3 (* (str.indexof "0123456789"
-                           (str.at LsIdxEval__ie_t__call16
-                                   (+ LsIdxEval__ie_s5__call16 0))
+                           (str.at LsIdxEval__ie_t__call21
+                                   (+ LsIdxEval__ie_s5__call21 0))
                            0)
               100))
       (a!4 (* (str.indexof "0123456789"
-                           (str.at LsIdxEval__ie_t__call16
-                                   (+ LsIdxEval__ie_s5__call16 1))
+                           (str.at LsIdxEval__ie_t__call21
+                                   (+ LsIdxEval__ie_s5__call21 1))
                            0)
               10))
       (a!6 (* (str.indexof "0123456789"
-                           (str.at LsIdxEval__ie_t__call16
-                                   (+ LsIdxEval__ie_s5__call16 0))
+                           (str.at LsIdxEval__ie_t__call21
+                                   (+ LsIdxEval__ie_s5__call21 0))
                            0)
               1000))
       (a!7 (* (str.indexof "0123456789"
-                           (str.at LsIdxEval__ie_t__call16
-                                   (+ LsIdxEval__ie_s5__call16 1))
+                           (str.at LsIdxEval__ie_t__call21
+                                   (+ LsIdxEval__ie_s5__call21 1))
                            0)
               100))
       (a!8 (* (str.indexof "0123456789"
-                           (str.at LsIdxEval__ie_t__call16
-                                   (+ LsIdxEval__ie_s5__call16 2))
+                           (str.at LsIdxEval__ie_t__call21
+                                   (+ LsIdxEval__ie_s5__call21 2))
                            0)
               10))
       (a!10 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s5__call16 0))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s5__call21 0))
                             0)
                10000))
       (a!11 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s5__call16 1))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s5__call21 1))
                             0)
                1000))
       (a!12 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s5__call16 2))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s5__call21 2))
                             0)
                100))
       (a!13 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s5__call16 3))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s5__call21 3))
                             0)
                10))
       (a!15 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s5__call16 0))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s5__call21 0))
                             0)
                100000))
       (a!16 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s5__call16 1))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s5__call21 1))
                             0)
                10000))
       (a!17 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s5__call16 2))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s5__call21 2))
                             0)
                1000))
       (a!18 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s5__call16 3))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s5__call21 3))
                             0)
                100))
       (a!19 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s5__call16 4))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s5__call21 4))
                             0)
                10))
       (a!21 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s5__call16 0))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s5__call21 0))
                             0)
                1000000))
       (a!22 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s5__call16 1))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s5__call21 1))
                             0)
                100000))
       (a!23 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s5__call16 2))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s5__call21 2))
                             0)
                10000))
       (a!24 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s5__call16 3))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s5__call21 3))
                             0)
                1000))
       (a!25 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s5__call16 4))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s5__call21 4))
                             0)
                100))
       (a!26 (* (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s5__call16 5))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s5__call21 5))
                             0)
                10)))
 (let ((a!2 (+ a!1
               (str.indexof "0123456789"
-                           (str.at LsIdxEval__ie_t__call16
-                                   (+ LsIdxEval__ie_s5__call16 1))
+                           (str.at LsIdxEval__ie_t__call21
+                                   (+ LsIdxEval__ie_s5__call21 1))
                            0)))
       (a!5 (+ a!3
               a!4
               (str.indexof "0123456789"
-                           (str.at LsIdxEval__ie_t__call16
-                                   (+ LsIdxEval__ie_s5__call16 2))
+                           (str.at LsIdxEval__ie_t__call21
+                                   (+ LsIdxEval__ie_s5__call21 2))
                            0)))
       (a!9 (+ a!6
               a!7
               a!8
               (str.indexof "0123456789"
-                           (str.at LsIdxEval__ie_t__call16
-                                   (+ LsIdxEval__ie_s5__call16 3))
+                           (str.at LsIdxEval__ie_t__call21
+                                   (+ LsIdxEval__ie_s5__call21 3))
                            0)))
       (a!14 (+ a!10
                a!11
                a!12
                a!13
                (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s5__call16 4))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s5__call21 4))
                             0)))
       (a!20 (+ a!15
                a!16
@@ -5762,8 +7036,8 @@
                a!18
                a!19
                (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s5__call16 5))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s5__call21 5))
                             0)))
       (a!27 (+ a!21
                a!22
@@ -5772,154 +7046,154 @@
                a!25
                a!26
                (str.indexof "0123456789"
-                            (str.at LsIdxEval__ie_t__call16
-                                    (+ LsIdxEval__ie_s5__call16 6))
+                            (str.at LsIdxEval__ie_t__call21
+                                    (+ LsIdxEval__ie_s5__call21 6))
                             0))))
-(let ((a!28 (ite (= (- LsIdxEval__ie_ne5__call16 LsIdxEval__ie_s5__call16) 6)
+(let ((a!28 (ite (= (- LsIdxEval__ie_ne5__call21 LsIdxEval__ie_s5__call21) 6)
                  a!20
-                 (ite (= (- LsIdxEval__ie_ne5__call16 LsIdxEval__ie_s5__call16)
+                 (ite (= (- LsIdxEval__ie_ne5__call21 LsIdxEval__ie_s5__call21)
                          7)
                       a!27
                       (- 0 1)))))
-(let ((a!29 (ite (= (- LsIdxEval__ie_ne5__call16 LsIdxEval__ie_s5__call16) 4)
+(let ((a!29 (ite (= (- LsIdxEval__ie_ne5__call21 LsIdxEval__ie_s5__call21) 4)
                  a!9
-                 (ite (= (- LsIdxEval__ie_ne5__call16 LsIdxEval__ie_s5__call16)
+                 (ite (= (- LsIdxEval__ie_ne5__call21 LsIdxEval__ie_s5__call21)
                          5)
                       a!14
                       a!28))))
-(let ((a!30 (ite (= (- LsIdxEval__ie_ne5__call16 LsIdxEval__ie_s5__call16) 2)
+(let ((a!30 (ite (= (- LsIdxEval__ie_ne5__call21 LsIdxEval__ie_s5__call21) 2)
                  a!2
-                 (ite (= (- LsIdxEval__ie_ne5__call16 LsIdxEval__ie_s5__call16)
+                 (ite (= (- LsIdxEval__ie_ne5__call21 LsIdxEval__ie_s5__call21)
                          3)
                       a!5
                       a!29))))
-(let ((a!31 (ite (= (- LsIdxEval__ie_ne5__call16 LsIdxEval__ie_s5__call16) 1)
+(let ((a!31 (ite (= (- LsIdxEval__ie_ne5__call21 LsIdxEval__ie_s5__call21) 1)
                  (str.indexof "0123456789"
-                              (str.at LsIdxEval__ie_t__call16
-                                      (+ LsIdxEval__ie_s5__call16 0))
+                              (str.at LsIdxEval__ie_t__call21
+                                      (+ LsIdxEval__ie_s5__call21 0))
                               0)
                  a!30)))
-  (= LsIdxEval__ie_n5__call16 a!31))))))))
-(assert (let ((a!1 (ite (= LsIdxEval__ie_op2__call16 "")
+  (= LsIdxEval__ie_n5__call21 a!31))))))))
+(assert (let ((a!1 (ite (= LsIdxEval__ie_op2__call21 "")
                 3
-                (ite (= LsIdxEval__ie_op3__call16 "")
+                (ite (= LsIdxEval__ie_op3__call21 "")
                      4
-                     (ite (= LsIdxEval__ie_op4__call16 "") 5 6)))))
-  (= LsIdxEval__ie_cnt__call16
-     (ite (= LsIdxEval__ie_op0__call16 "")
+                     (ite (= LsIdxEval__ie_op4__call21 "") 5 6)))))
+  (= LsIdxEval__ie_cnt__call21
+     (ite (= LsIdxEval__ie_op0__call21 "")
           1
-          (ite (= LsIdxEval__ie_op1__call16 "") 2 a!1)))))
-(assert (let ((a!1 (and LsIdxEval__ie_starts_digit__call16
-                LsIdxEval__ie_valid_chars__call16
-                (> LsIdxEval__ie_ne0__call16 0)
-                (or (< LsIdxEval__ie_cnt__call16 2)
-                    (> LsIdxEval__ie_ne1__call16 LsIdxEval__ie_s1__call16))
-                (or (< LsIdxEval__ie_cnt__call16 3)
-                    (> LsIdxEval__ie_ne2__call16 LsIdxEval__ie_s2__call16))
-                (or (< LsIdxEval__ie_cnt__call16 4)
-                    (> LsIdxEval__ie_ne3__call16 LsIdxEval__ie_s3__call16))
-                (or (< LsIdxEval__ie_cnt__call16 5)
-                    (> LsIdxEval__ie_ne4__call16 LsIdxEval__ie_s4__call16))
-                (or (< LsIdxEval__ie_cnt__call16 6)
-                    (> LsIdxEval__ie_ne5__call16 LsIdxEval__ie_s5__call16))
-                (ite (>= LsIdxEval__ie_cnt__call16 6)
-                     (>= LsIdxEval__ie_ne5__call16
-                         (str.len LsIdxEval__ie_t__call16))
+          (ite (= LsIdxEval__ie_op1__call21 "") 2 a!1)))))
+(assert (let ((a!1 (and LsIdxEval__ie_starts_digit__call21
+                LsIdxEval__ie_valid_chars__call21
+                (> LsIdxEval__ie_ne0__call21 0)
+                (or (< LsIdxEval__ie_cnt__call21 2)
+                    (> LsIdxEval__ie_ne1__call21 LsIdxEval__ie_s1__call21))
+                (or (< LsIdxEval__ie_cnt__call21 3)
+                    (> LsIdxEval__ie_ne2__call21 LsIdxEval__ie_s2__call21))
+                (or (< LsIdxEval__ie_cnt__call21 4)
+                    (> LsIdxEval__ie_ne3__call21 LsIdxEval__ie_s3__call21))
+                (or (< LsIdxEval__ie_cnt__call21 5)
+                    (> LsIdxEval__ie_ne4__call21 LsIdxEval__ie_s4__call21))
+                (or (< LsIdxEval__ie_cnt__call21 6)
+                    (> LsIdxEval__ie_ne5__call21 LsIdxEval__ie_s5__call21))
+                (ite (>= LsIdxEval__ie_cnt__call21 6)
+                     (>= LsIdxEval__ie_ne5__call21
+                         (str.len LsIdxEval__ie_t__call21))
                      true))))
-  (= LsIdxEval__ie_shape_ok__call16 a!1)))
-(assert (= LsIdxEval__ie_g0__call16 LsIdxEval__ie_n0__call16))
-(assert (= LsIdxEval__ie_t0__call16 0))
-(assert (= LsIdxEval__ie_sg0__call16 1))
-(assert (= LsIdxEval__ie_g1__call16
-   (ite (= LsIdxEval__ie_op0__call16 "*")
-        (* LsIdxEval__ie_g0__call16 LsIdxEval__ie_n1__call16)
-        LsIdxEval__ie_n1__call16)))
-(assert (= LsIdxEval__ie_t1__call16
-   (ite (= LsIdxEval__ie_op0__call16 "*")
-        LsIdxEval__ie_t0__call16
-        (+ LsIdxEval__ie_t0__call16
-           (* LsIdxEval__ie_sg0__call16 LsIdxEval__ie_g0__call16)))))
-(assert (= LsIdxEval__ie_sg1__call16
-   (ite (= LsIdxEval__ie_op0__call16 "*")
-        LsIdxEval__ie_sg0__call16
-        (ite (= LsIdxEval__ie_op0__call16 "-") (- 0 1) 1))))
-(assert (= LsIdxEval__ie_g2__call16
-   (ite (= LsIdxEval__ie_op1__call16 "*")
-        (* LsIdxEval__ie_g1__call16 LsIdxEval__ie_n2__call16)
-        LsIdxEval__ie_n2__call16)))
-(assert (= LsIdxEval__ie_t2__call16
-   (ite (= LsIdxEval__ie_op1__call16 "*")
-        LsIdxEval__ie_t1__call16
-        (+ LsIdxEval__ie_t1__call16
-           (* LsIdxEval__ie_sg1__call16 LsIdxEval__ie_g1__call16)))))
-(assert (= LsIdxEval__ie_sg2__call16
-   (ite (= LsIdxEval__ie_op1__call16 "*")
-        LsIdxEval__ie_sg1__call16
-        (ite (= LsIdxEval__ie_op1__call16 "-") (- 0 1) 1))))
-(assert (= LsIdxEval__ie_g3__call16
-   (ite (= LsIdxEval__ie_op2__call16 "*")
-        (* LsIdxEval__ie_g2__call16 LsIdxEval__ie_n3__call16)
-        LsIdxEval__ie_n3__call16)))
-(assert (= LsIdxEval__ie_t3__call16
-   (ite (= LsIdxEval__ie_op2__call16 "*")
-        LsIdxEval__ie_t2__call16
-        (+ LsIdxEval__ie_t2__call16
-           (* LsIdxEval__ie_sg2__call16 LsIdxEval__ie_g2__call16)))))
-(assert (= LsIdxEval__ie_sg3__call16
-   (ite (= LsIdxEval__ie_op2__call16 "*")
-        LsIdxEval__ie_sg2__call16
-        (ite (= LsIdxEval__ie_op2__call16 "-") (- 0 1) 1))))
-(assert (= LsIdxEval__ie_g4__call16
-   (ite (= LsIdxEval__ie_op3__call16 "*")
-        (* LsIdxEval__ie_g3__call16 LsIdxEval__ie_n4__call16)
-        LsIdxEval__ie_n4__call16)))
-(assert (= LsIdxEval__ie_t4__call16
-   (ite (= LsIdxEval__ie_op3__call16 "*")
-        LsIdxEval__ie_t3__call16
-        (+ LsIdxEval__ie_t3__call16
-           (* LsIdxEval__ie_sg3__call16 LsIdxEval__ie_g3__call16)))))
-(assert (= LsIdxEval__ie_sg4__call16
-   (ite (= LsIdxEval__ie_op3__call16 "*")
-        LsIdxEval__ie_sg3__call16
-        (ite (= LsIdxEval__ie_op3__call16 "-") (- 0 1) 1))))
-(assert (= LsIdxEval__ie_g5__call16
-   (ite (= LsIdxEval__ie_op4__call16 "*")
-        (* LsIdxEval__ie_g4__call16 LsIdxEval__ie_n5__call16)
-        LsIdxEval__ie_n5__call16)))
-(assert (= LsIdxEval__ie_t5__call16
-   (ite (= LsIdxEval__ie_op4__call16 "*")
-        LsIdxEval__ie_t4__call16
-        (+ LsIdxEval__ie_t4__call16
-           (* LsIdxEval__ie_sg4__call16 LsIdxEval__ie_g4__call16)))))
-(assert (= LsIdxEval__ie_sg5__call16
-   (ite (= LsIdxEval__ie_op4__call16 "*")
-        LsIdxEval__ie_sg4__call16
-        (ite (= LsIdxEval__ie_op4__call16 "-") (- 0 1) 1))))
-(assert (let ((a!1 (ite (= LsIdxEval__ie_cnt__call16 4)
-                (+ LsIdxEval__ie_t3__call16
-                   (* LsIdxEval__ie_sg3__call16 LsIdxEval__ie_g3__call16))
-                (ite (= LsIdxEval__ie_cnt__call16 5)
-                     (+ LsIdxEval__ie_t4__call16
-                        (* LsIdxEval__ie_sg4__call16 LsIdxEval__ie_g4__call16))
-                     (+ LsIdxEval__ie_t5__call16
-                        (* LsIdxEval__ie_sg5__call16 LsIdxEval__ie_g5__call16))))))
-(let ((a!2 (ite (= LsIdxEval__ie_cnt__call16 2)
-                (+ LsIdxEval__ie_t1__call16
-                   (* LsIdxEval__ie_sg1__call16 LsIdxEval__ie_g1__call16))
-                (ite (= LsIdxEval__ie_cnt__call16 3)
-                     (+ LsIdxEval__ie_t2__call16
-                        (* LsIdxEval__ie_sg2__call16 LsIdxEval__ie_g2__call16))
+  (= LsIdxEval__ie_shape_ok__call21 a!1)))
+(assert (= LsIdxEval__ie_g0__call21 LsIdxEval__ie_n0__call21))
+(assert (= LsIdxEval__ie_t0__call21 0))
+(assert (= LsIdxEval__ie_sg0__call21 1))
+(assert (= LsIdxEval__ie_g1__call21
+   (ite (= LsIdxEval__ie_op0__call21 "*")
+        (* LsIdxEval__ie_g0__call21 LsIdxEval__ie_n1__call21)
+        LsIdxEval__ie_n1__call21)))
+(assert (= LsIdxEval__ie_t1__call21
+   (ite (= LsIdxEval__ie_op0__call21 "*")
+        LsIdxEval__ie_t0__call21
+        (+ LsIdxEval__ie_t0__call21
+           (* LsIdxEval__ie_sg0__call21 LsIdxEval__ie_g0__call21)))))
+(assert (= LsIdxEval__ie_sg1__call21
+   (ite (= LsIdxEval__ie_op0__call21 "*")
+        LsIdxEval__ie_sg0__call21
+        (ite (= LsIdxEval__ie_op0__call21 "-") (- 0 1) 1))))
+(assert (= LsIdxEval__ie_g2__call21
+   (ite (= LsIdxEval__ie_op1__call21 "*")
+        (* LsIdxEval__ie_g1__call21 LsIdxEval__ie_n2__call21)
+        LsIdxEval__ie_n2__call21)))
+(assert (= LsIdxEval__ie_t2__call21
+   (ite (= LsIdxEval__ie_op1__call21 "*")
+        LsIdxEval__ie_t1__call21
+        (+ LsIdxEval__ie_t1__call21
+           (* LsIdxEval__ie_sg1__call21 LsIdxEval__ie_g1__call21)))))
+(assert (= LsIdxEval__ie_sg2__call21
+   (ite (= LsIdxEval__ie_op1__call21 "*")
+        LsIdxEval__ie_sg1__call21
+        (ite (= LsIdxEval__ie_op1__call21 "-") (- 0 1) 1))))
+(assert (= LsIdxEval__ie_g3__call21
+   (ite (= LsIdxEval__ie_op2__call21 "*")
+        (* LsIdxEval__ie_g2__call21 LsIdxEval__ie_n3__call21)
+        LsIdxEval__ie_n3__call21)))
+(assert (= LsIdxEval__ie_t3__call21
+   (ite (= LsIdxEval__ie_op2__call21 "*")
+        LsIdxEval__ie_t2__call21
+        (+ LsIdxEval__ie_t2__call21
+           (* LsIdxEval__ie_sg2__call21 LsIdxEval__ie_g2__call21)))))
+(assert (= LsIdxEval__ie_sg3__call21
+   (ite (= LsIdxEval__ie_op2__call21 "*")
+        LsIdxEval__ie_sg2__call21
+        (ite (= LsIdxEval__ie_op2__call21 "-") (- 0 1) 1))))
+(assert (= LsIdxEval__ie_g4__call21
+   (ite (= LsIdxEval__ie_op3__call21 "*")
+        (* LsIdxEval__ie_g3__call21 LsIdxEval__ie_n4__call21)
+        LsIdxEval__ie_n4__call21)))
+(assert (= LsIdxEval__ie_t4__call21
+   (ite (= LsIdxEval__ie_op3__call21 "*")
+        LsIdxEval__ie_t3__call21
+        (+ LsIdxEval__ie_t3__call21
+           (* LsIdxEval__ie_sg3__call21 LsIdxEval__ie_g3__call21)))))
+(assert (= LsIdxEval__ie_sg4__call21
+   (ite (= LsIdxEval__ie_op3__call21 "*")
+        LsIdxEval__ie_sg3__call21
+        (ite (= LsIdxEval__ie_op3__call21 "-") (- 0 1) 1))))
+(assert (= LsIdxEval__ie_g5__call21
+   (ite (= LsIdxEval__ie_op4__call21 "*")
+        (* LsIdxEval__ie_g4__call21 LsIdxEval__ie_n5__call21)
+        LsIdxEval__ie_n5__call21)))
+(assert (= LsIdxEval__ie_t5__call21
+   (ite (= LsIdxEval__ie_op4__call21 "*")
+        LsIdxEval__ie_t4__call21
+        (+ LsIdxEval__ie_t4__call21
+           (* LsIdxEval__ie_sg4__call21 LsIdxEval__ie_g4__call21)))))
+(assert (= LsIdxEval__ie_sg5__call21
+   (ite (= LsIdxEval__ie_op4__call21 "*")
+        LsIdxEval__ie_sg4__call21
+        (ite (= LsIdxEval__ie_op4__call21 "-") (- 0 1) 1))))
+(assert (let ((a!1 (ite (= LsIdxEval__ie_cnt__call21 4)
+                (+ LsIdxEval__ie_t3__call21
+                   (* LsIdxEval__ie_sg3__call21 LsIdxEval__ie_g3__call21))
+                (ite (= LsIdxEval__ie_cnt__call21 5)
+                     (+ LsIdxEval__ie_t4__call21
+                        (* LsIdxEval__ie_sg4__call21 LsIdxEval__ie_g4__call21))
+                     (+ LsIdxEval__ie_t5__call21
+                        (* LsIdxEval__ie_sg5__call21 LsIdxEval__ie_g5__call21))))))
+(let ((a!2 (ite (= LsIdxEval__ie_cnt__call21 2)
+                (+ LsIdxEval__ie_t1__call21
+                   (* LsIdxEval__ie_sg1__call21 LsIdxEval__ie_g1__call21))
+                (ite (= LsIdxEval__ie_cnt__call21 3)
+                     (+ LsIdxEval__ie_t2__call21
+                        (* LsIdxEval__ie_sg2__call21 LsIdxEval__ie_g2__call21))
                      a!1))))
-  (= LsIdxEval__ie_total__call16
-     (ite (= LsIdxEval__ie_cnt__call16 1)
-          (+ LsIdxEval__ie_t0__call16
-             (* LsIdxEval__ie_sg0__call16 LsIdxEval__ie_g0__call16))
+  (= LsIdxEval__ie_total__call21
+     (ite (= LsIdxEval__ie_cnt__call21 1)
+          (+ LsIdxEval__ie_t0__call21
+             (* LsIdxEval__ie_sg0__call21 LsIdxEval__ie_g0__call21))
           a!2)))))
 (assert (= w_idx_ok
-   (and LsIdxEval__ie_shape_ok__call16 (>= LsIdxEval__ie_total__call16 0))))
-(assert (let ((a!1 (ite (>= LsIdxEval__ie_total__call16 0)
-                (str.from_int LsIdxEval__ie_total__call16)
-                (str.++ "-" (str.from_int (- 0 LsIdxEval__ie_total__call16))))))
+   (and LsIdxEval__ie_shape_ok__call21 (>= LsIdxEval__ie_total__call21 0))))
+(assert (let ((a!1 (ite (>= LsIdxEval__ie_total__call21 0)
+                (str.from_int LsIdxEval__ie_total__call21)
+                (str.++ "-" (str.from_int (- 0 LsIdxEval__ie_total__call21))))))
   (= w_idx (ite w_idx_ok a!1 ""))))
 (assert (= w_do_index (and w_base_reg (> w_cb w_we) w_idx_ok)))
 (assert (let ((a!1 (and w_do_index (= (str.at w_src (+ w_cb 1)) "."))))
@@ -6193,82 +7467,82 @@
   (= w_sinner a!1)))
 (assert (let ((a!1 (ite (= (str.len w_sinner) 0)
                 false
-                (ite (> (str.len w_sinner) 16) false LsAllDigits__ad_ok__call32))))
+                (ite (> (str.len w_sinner) 16) false LsAllDigits__ad_ok__call37))))
   (= w_sidx_ok a!1)))
-(assert (= LsAllDigits__ad_ok__call32
-   (>= LsAllDigits__ad_first__call32 (str.len w_sinner))))
-(assert (let ((a!1 (ite (not LsAllDigits__ad_d13__call32)
+(assert (= LsAllDigits__ad_ok__call37
+   (>= LsAllDigits__ad_first__call37 (str.len w_sinner))))
+(assert (let ((a!1 (ite (not LsAllDigits__ad_d13__call37)
                 13
-                (ite (not LsAllDigits__ad_d14__call32)
+                (ite (not LsAllDigits__ad_d14__call37)
                      14
-                     (ite (not LsAllDigits__ad_d15__call32) 15 16)))))
-(let ((a!2 (ite (not LsAllDigits__ad_d10__call32)
+                     (ite (not LsAllDigits__ad_d15__call37) 15 16)))))
+(let ((a!2 (ite (not LsAllDigits__ad_d10__call37)
                 10
-                (ite (not LsAllDigits__ad_d11__call32)
+                (ite (not LsAllDigits__ad_d11__call37)
                      11
-                     (ite (not LsAllDigits__ad_d12__call32) 12 a!1)))))
-(let ((a!3 (ite (not LsAllDigits__ad_d7__call32)
+                     (ite (not LsAllDigits__ad_d12__call37) 12 a!1)))))
+(let ((a!3 (ite (not LsAllDigits__ad_d7__call37)
                 7
-                (ite (not LsAllDigits__ad_d8__call32)
+                (ite (not LsAllDigits__ad_d8__call37)
                      8
-                     (ite (not LsAllDigits__ad_d9__call32) 9 a!2)))))
-(let ((a!4 (ite (not LsAllDigits__ad_d4__call32)
+                     (ite (not LsAllDigits__ad_d9__call37) 9 a!2)))))
+(let ((a!4 (ite (not LsAllDigits__ad_d4__call37)
                 4
-                (ite (not LsAllDigits__ad_d5__call32)
+                (ite (not LsAllDigits__ad_d5__call37)
                      5
-                     (ite (not LsAllDigits__ad_d6__call32) 6 a!3)))))
-(let ((a!5 (ite (not LsAllDigits__ad_d1__call32)
+                     (ite (not LsAllDigits__ad_d6__call37) 6 a!3)))))
+(let ((a!5 (ite (not LsAllDigits__ad_d1__call37)
                 1
-                (ite (not LsAllDigits__ad_d2__call32)
+                (ite (not LsAllDigits__ad_d2__call37)
                      2
-                     (ite (not LsAllDigits__ad_d3__call32) 3 a!4)))))
-  (= LsAllDigits__ad_first__call32 (ite (not LsAllDigits__ad_d0__call32) 0 a!5))))))))
-(assert (= LsAllDigits__ad_d0__call32
+                     (ite (not LsAllDigits__ad_d3__call37) 3 a!4)))))
+  (= LsAllDigits__ad_first__call37 (ite (not LsAllDigits__ad_d0__call37) 0 a!5))))))))
+(assert (= LsAllDigits__ad_d0__call37
    (and (< 0 (str.len w_sinner))
         (str.contains "0123456789" (str.at w_sinner 0)))))
-(assert (= LsAllDigits__ad_d1__call32
+(assert (= LsAllDigits__ad_d1__call37
    (and (< 1 (str.len w_sinner))
         (str.contains "0123456789" (str.at w_sinner 1)))))
-(assert (= LsAllDigits__ad_d2__call32
+(assert (= LsAllDigits__ad_d2__call37
    (and (< 2 (str.len w_sinner))
         (str.contains "0123456789" (str.at w_sinner 2)))))
-(assert (= LsAllDigits__ad_d3__call32
+(assert (= LsAllDigits__ad_d3__call37
    (and (< 3 (str.len w_sinner))
         (str.contains "0123456789" (str.at w_sinner 3)))))
-(assert (= LsAllDigits__ad_d4__call32
+(assert (= LsAllDigits__ad_d4__call37
    (and (< 4 (str.len w_sinner))
         (str.contains "0123456789" (str.at w_sinner 4)))))
-(assert (= LsAllDigits__ad_d5__call32
+(assert (= LsAllDigits__ad_d5__call37
    (and (< 5 (str.len w_sinner))
         (str.contains "0123456789" (str.at w_sinner 5)))))
-(assert (= LsAllDigits__ad_d6__call32
+(assert (= LsAllDigits__ad_d6__call37
    (and (< 6 (str.len w_sinner))
         (str.contains "0123456789" (str.at w_sinner 6)))))
-(assert (= LsAllDigits__ad_d7__call32
+(assert (= LsAllDigits__ad_d7__call37
    (and (< 7 (str.len w_sinner))
         (str.contains "0123456789" (str.at w_sinner 7)))))
-(assert (= LsAllDigits__ad_d8__call32
+(assert (= LsAllDigits__ad_d8__call37
    (and (< 8 (str.len w_sinner))
         (str.contains "0123456789" (str.at w_sinner 8)))))
-(assert (= LsAllDigits__ad_d9__call32
+(assert (= LsAllDigits__ad_d9__call37
    (and (< 9 (str.len w_sinner))
         (str.contains "0123456789" (str.at w_sinner 9)))))
-(assert (= LsAllDigits__ad_d10__call32
+(assert (= LsAllDigits__ad_d10__call37
    (and (< 10 (str.len w_sinner))
         (str.contains "0123456789" (str.at w_sinner 10)))))
-(assert (= LsAllDigits__ad_d11__call32
+(assert (= LsAllDigits__ad_d11__call37
    (and (< 11 (str.len w_sinner))
         (str.contains "0123456789" (str.at w_sinner 11)))))
-(assert (= LsAllDigits__ad_d12__call32
+(assert (= LsAllDigits__ad_d12__call37
    (and (< 12 (str.len w_sinner))
         (str.contains "0123456789" (str.at w_sinner 12)))))
-(assert (= LsAllDigits__ad_d13__call32
+(assert (= LsAllDigits__ad_d13__call37
    (and (< 13 (str.len w_sinner))
         (str.contains "0123456789" (str.at w_sinner 13)))))
-(assert (= LsAllDigits__ad_d14__call32
+(assert (= LsAllDigits__ad_d14__call37
    (and (< 14 (str.len w_sinner))
         (str.contains "0123456789" (str.at w_sinner 14)))))
-(assert (= LsAllDigits__ad_d15__call32
+(assert (= LsAllDigits__ad_d15__call37
    (and (< 15 (str.len w_sinner))
         (str.contains "0123456789" (str.at w_sinner 15)))))
 (assert (= w_has_sub (and w_sub_br (> w_scb w_fe) w_sidx_ok (>= (str.len w_sinner) 1))))
@@ -6292,7 +7566,7 @@
         (<= (str.len w_dyn_inner) 16)
         (str.contains "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_"
                       (str.at w_dyn_inner 0))
-        LsIsIdent__ii_rest__call33)))
+        LsIsIdent__ii_rest__call38)))
 (assert (let ((a!1 (not (and (< 0 (str.len w_dyn_inner))
                      (str.contains "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"
                                    (str.at w_dyn_inner 0)))))
@@ -6548,9 +7822,9 @@
 (let ((a!85 (ite (not a!2)
                  (+ 0 1)
                  (ite (not a!3) (+ 0 2) (ite (not a!4) (+ 0 3) a!84)))))
-  (= LsIsIdent__ii_we__call33 (ite a!1 0 a!85)))))))))))))))))))))))))
-(assert (= LsIsIdent__ii_rest__call33
-   (>= LsIsIdent__ii_we__call33 (str.len w_dyn_inner))))
+  (= LsIsIdent__ii_we__call38 (ite a!1 0 a!85)))))))))))))))))))))))))
+(assert (= LsIsIdent__ii_rest__call38
+   (>= LsIsIdent__ii_we__call38 (str.len w_dyn_inner))))
 (assert (= w_do_dyn (and w_base_reg (not w_idx_ok) (> w_dyn_cb w_we) w_dyn_isid)))
 (assert (= w_bkey (str.++ "\u{27e6}" w_base "\u{27e7}")))
 (assert (= w_bat (ite w_do_dyn (str.indexof _reg w_bkey 0) (- 0 1))))
@@ -6903,146 +8177,146 @@
                 "")))
   (= w_dyn_sub2 a!1)))
 (assert (= w_dyn_hassub (and w_dyn_subbr (> w_dyn_scb w_dyn_fe))))
-(assert (= w_dyn_chain (str.++ "(" LsDynChain__dc_body__call37 ")")))
+(assert (= w_dyn_chain (str.++ "(" LsDynChain__dc_body__call42 ")")))
 (assert (let ((a!1 (str.++ (ite (= (ite w_dyn_hasf w_dyn_fld "") "")
                         ""
                         (str.++ "_" (ite w_dyn_hasf w_dyn_fld "")))
                    (ite (= (ite w_dyn_hassub w_dyn_sub2 "") "")
                         ""
                         (str.++ "[" (ite w_dyn_hassub w_dyn_sub2 "") "]")))))
-  (= LsDynChain__dc_suffix__call37 a!1)))
-(assert (= LsDynChain__dc_body__call37
-   (str.++ LsDynChain__dc_seg0__call37
-           LsDynChain__dc_seg1__call37
-           LsDynChain__dc_seg2__call37
-           LsDynChain__dc_seg3__call37
-           LsDynChain__dc_seg4__call37
-           LsDynChain__dc_seg5__call37
-           LsDynChain__dc_seg6__call37
-           LsDynChain__dc_seg7__call37
-           LsDynChain__dc_seg8__call37
-           LsDynChain__dc_seg9__call37
-           LsDynChain__dc_seg10__call37
-           LsDynChain__dc_seg11__call37
-           LsDynChain__dc_seg12__call37
-           LsDynChain__dc_seg13__call37
-           LsDynChain__dc_seg14__call37
-           LsDynChain__dc_seg15__call37)))
-(assert (= LsDynChain__dc_seg0__call37 (ite (< 0 w_bn) LsDynChain__dc_part0__call37 "")))
-(assert (= LsDynChain__dc_seg1__call37 (ite (< 1 w_bn) LsDynChain__dc_part1__call37 "")))
-(assert (= LsDynChain__dc_seg2__call37 (ite (< 2 w_bn) LsDynChain__dc_part2__call37 "")))
-(assert (= LsDynChain__dc_seg3__call37 (ite (< 3 w_bn) LsDynChain__dc_part3__call37 "")))
-(assert (= LsDynChain__dc_seg4__call37 (ite (< 4 w_bn) LsDynChain__dc_part4__call37 "")))
-(assert (= LsDynChain__dc_seg5__call37 (ite (< 5 w_bn) LsDynChain__dc_part5__call37 "")))
-(assert (= LsDynChain__dc_seg6__call37 (ite (< 6 w_bn) LsDynChain__dc_part6__call37 "")))
-(assert (= LsDynChain__dc_seg7__call37 (ite (< 7 w_bn) LsDynChain__dc_part7__call37 "")))
-(assert (= LsDynChain__dc_seg8__call37 (ite (< 8 w_bn) LsDynChain__dc_part8__call37 "")))
-(assert (= LsDynChain__dc_seg9__call37 (ite (< 9 w_bn) LsDynChain__dc_part9__call37 "")))
-(assert (= LsDynChain__dc_seg10__call37
-   (ite (< 10 w_bn) LsDynChain__dc_part10__call37 "")))
-(assert (= LsDynChain__dc_seg11__call37
-   (ite (< 11 w_bn) LsDynChain__dc_part11__call37 "")))
-(assert (= LsDynChain__dc_seg12__call37
-   (ite (< 12 w_bn) LsDynChain__dc_part12__call37 "")))
-(assert (= LsDynChain__dc_seg13__call37
-   (ite (< 13 w_bn) LsDynChain__dc_part13__call37 "")))
-(assert (= LsDynChain__dc_seg14__call37
-   (ite (< 14 w_bn) LsDynChain__dc_part14__call37 "")))
-(assert (= LsDynChain__dc_seg15__call37
-   (ite (< 15 w_bn) LsDynChain__dc_part15__call37 "")))
-(assert (= LsDynChain__dc_part0__call37
+  (= LsDynChain__dc_suffix__call42 a!1)))
+(assert (= LsDynChain__dc_body__call42
+   (str.++ LsDynChain__dc_seg0__call42
+           LsDynChain__dc_seg1__call42
+           LsDynChain__dc_seg2__call42
+           LsDynChain__dc_seg3__call42
+           LsDynChain__dc_seg4__call42
+           LsDynChain__dc_seg5__call42
+           LsDynChain__dc_seg6__call42
+           LsDynChain__dc_seg7__call42
+           LsDynChain__dc_seg8__call42
+           LsDynChain__dc_seg9__call42
+           LsDynChain__dc_seg10__call42
+           LsDynChain__dc_seg11__call42
+           LsDynChain__dc_seg12__call42
+           LsDynChain__dc_seg13__call42
+           LsDynChain__dc_seg14__call42
+           LsDynChain__dc_seg15__call42)))
+(assert (= LsDynChain__dc_seg0__call42 (ite (< 0 w_bn) LsDynChain__dc_part0__call42 "")))
+(assert (= LsDynChain__dc_seg1__call42 (ite (< 1 w_bn) LsDynChain__dc_part1__call42 "")))
+(assert (= LsDynChain__dc_seg2__call42 (ite (< 2 w_bn) LsDynChain__dc_part2__call42 "")))
+(assert (= LsDynChain__dc_seg3__call42 (ite (< 3 w_bn) LsDynChain__dc_part3__call42 "")))
+(assert (= LsDynChain__dc_seg4__call42 (ite (< 4 w_bn) LsDynChain__dc_part4__call42 "")))
+(assert (= LsDynChain__dc_seg5__call42 (ite (< 5 w_bn) LsDynChain__dc_part5__call42 "")))
+(assert (= LsDynChain__dc_seg6__call42 (ite (< 6 w_bn) LsDynChain__dc_part6__call42 "")))
+(assert (= LsDynChain__dc_seg7__call42 (ite (< 7 w_bn) LsDynChain__dc_part7__call42 "")))
+(assert (= LsDynChain__dc_seg8__call42 (ite (< 8 w_bn) LsDynChain__dc_part8__call42 "")))
+(assert (= LsDynChain__dc_seg9__call42 (ite (< 9 w_bn) LsDynChain__dc_part9__call42 "")))
+(assert (= LsDynChain__dc_seg10__call42
+   (ite (< 10 w_bn) LsDynChain__dc_part10__call42 "")))
+(assert (= LsDynChain__dc_seg11__call42
+   (ite (< 11 w_bn) LsDynChain__dc_part11__call42 "")))
+(assert (= LsDynChain__dc_seg12__call42
+   (ite (< 12 w_bn) LsDynChain__dc_part12__call42 "")))
+(assert (= LsDynChain__dc_seg13__call42
+   (ite (< 13 w_bn) LsDynChain__dc_part13__call42 "")))
+(assert (= LsDynChain__dc_seg14__call42
+   (ite (< 14 w_bn) LsDynChain__dc_part14__call42 "")))
+(assert (= LsDynChain__dc_seg15__call42
+   (ite (< 15 w_bn) LsDynChain__dc_part15__call42 "")))
+(assert (= LsDynChain__dc_part0__call42
    (ite (< 0 (- w_bn 1))
-        (str.++ w_dyn_inner " = 0 ? " LsDynChain__dc_arm0__call37 " : ")
-        LsDynChain__dc_arm0__call37)))
-(assert (= LsDynChain__dc_part1__call37
+        (str.++ w_dyn_inner " = 0 ? " LsDynChain__dc_arm0__call42 " : ")
+        LsDynChain__dc_arm0__call42)))
+(assert (= LsDynChain__dc_part1__call42
    (ite (< 1 (- w_bn 1))
-        (str.++ w_dyn_inner " = 1 ? " LsDynChain__dc_arm1__call37 " : ")
-        LsDynChain__dc_arm1__call37)))
-(assert (= LsDynChain__dc_part2__call37
+        (str.++ w_dyn_inner " = 1 ? " LsDynChain__dc_arm1__call42 " : ")
+        LsDynChain__dc_arm1__call42)))
+(assert (= LsDynChain__dc_part2__call42
    (ite (< 2 (- w_bn 1))
-        (str.++ w_dyn_inner " = 2 ? " LsDynChain__dc_arm2__call37 " : ")
-        LsDynChain__dc_arm2__call37)))
-(assert (= LsDynChain__dc_part3__call37
+        (str.++ w_dyn_inner " = 2 ? " LsDynChain__dc_arm2__call42 " : ")
+        LsDynChain__dc_arm2__call42)))
+(assert (= LsDynChain__dc_part3__call42
    (ite (< 3 (- w_bn 1))
-        (str.++ w_dyn_inner " = 3 ? " LsDynChain__dc_arm3__call37 " : ")
-        LsDynChain__dc_arm3__call37)))
-(assert (= LsDynChain__dc_part4__call37
+        (str.++ w_dyn_inner " = 3 ? " LsDynChain__dc_arm3__call42 " : ")
+        LsDynChain__dc_arm3__call42)))
+(assert (= LsDynChain__dc_part4__call42
    (ite (< 4 (- w_bn 1))
-        (str.++ w_dyn_inner " = 4 ? " LsDynChain__dc_arm4__call37 " : ")
-        LsDynChain__dc_arm4__call37)))
-(assert (= LsDynChain__dc_part5__call37
+        (str.++ w_dyn_inner " = 4 ? " LsDynChain__dc_arm4__call42 " : ")
+        LsDynChain__dc_arm4__call42)))
+(assert (= LsDynChain__dc_part5__call42
    (ite (< 5 (- w_bn 1))
-        (str.++ w_dyn_inner " = 5 ? " LsDynChain__dc_arm5__call37 " : ")
-        LsDynChain__dc_arm5__call37)))
-(assert (= LsDynChain__dc_part6__call37
+        (str.++ w_dyn_inner " = 5 ? " LsDynChain__dc_arm5__call42 " : ")
+        LsDynChain__dc_arm5__call42)))
+(assert (= LsDynChain__dc_part6__call42
    (ite (< 6 (- w_bn 1))
-        (str.++ w_dyn_inner " = 6 ? " LsDynChain__dc_arm6__call37 " : ")
-        LsDynChain__dc_arm6__call37)))
-(assert (= LsDynChain__dc_part7__call37
+        (str.++ w_dyn_inner " = 6 ? " LsDynChain__dc_arm6__call42 " : ")
+        LsDynChain__dc_arm6__call42)))
+(assert (= LsDynChain__dc_part7__call42
    (ite (< 7 (- w_bn 1))
-        (str.++ w_dyn_inner " = 7 ? " LsDynChain__dc_arm7__call37 " : ")
-        LsDynChain__dc_arm7__call37)))
-(assert (= LsDynChain__dc_part8__call37
+        (str.++ w_dyn_inner " = 7 ? " LsDynChain__dc_arm7__call42 " : ")
+        LsDynChain__dc_arm7__call42)))
+(assert (= LsDynChain__dc_part8__call42
    (ite (< 8 (- w_bn 1))
-        (str.++ w_dyn_inner " = 8 ? " LsDynChain__dc_arm8__call37 " : ")
-        LsDynChain__dc_arm8__call37)))
-(assert (= LsDynChain__dc_part9__call37
+        (str.++ w_dyn_inner " = 8 ? " LsDynChain__dc_arm8__call42 " : ")
+        LsDynChain__dc_arm8__call42)))
+(assert (= LsDynChain__dc_part9__call42
    (ite (< 9 (- w_bn 1))
-        (str.++ w_dyn_inner " = 9 ? " LsDynChain__dc_arm9__call37 " : ")
-        LsDynChain__dc_arm9__call37)))
-(assert (= LsDynChain__dc_part10__call37
+        (str.++ w_dyn_inner " = 9 ? " LsDynChain__dc_arm9__call42 " : ")
+        LsDynChain__dc_arm9__call42)))
+(assert (= LsDynChain__dc_part10__call42
    (ite (< 10 (- w_bn 1))
-        (str.++ w_dyn_inner " = 10 ? " LsDynChain__dc_arm10__call37 " : ")
-        LsDynChain__dc_arm10__call37)))
-(assert (= LsDynChain__dc_part11__call37
+        (str.++ w_dyn_inner " = 10 ? " LsDynChain__dc_arm10__call42 " : ")
+        LsDynChain__dc_arm10__call42)))
+(assert (= LsDynChain__dc_part11__call42
    (ite (< 11 (- w_bn 1))
-        (str.++ w_dyn_inner " = 11 ? " LsDynChain__dc_arm11__call37 " : ")
-        LsDynChain__dc_arm11__call37)))
-(assert (= LsDynChain__dc_part12__call37
+        (str.++ w_dyn_inner " = 11 ? " LsDynChain__dc_arm11__call42 " : ")
+        LsDynChain__dc_arm11__call42)))
+(assert (= LsDynChain__dc_part12__call42
    (ite (< 12 (- w_bn 1))
-        (str.++ w_dyn_inner " = 12 ? " LsDynChain__dc_arm12__call37 " : ")
-        LsDynChain__dc_arm12__call37)))
-(assert (= LsDynChain__dc_part13__call37
+        (str.++ w_dyn_inner " = 12 ? " LsDynChain__dc_arm12__call42 " : ")
+        LsDynChain__dc_arm12__call42)))
+(assert (= LsDynChain__dc_part13__call42
    (ite (< 13 (- w_bn 1))
-        (str.++ w_dyn_inner " = 13 ? " LsDynChain__dc_arm13__call37 " : ")
-        LsDynChain__dc_arm13__call37)))
-(assert (= LsDynChain__dc_part14__call37
+        (str.++ w_dyn_inner " = 13 ? " LsDynChain__dc_arm13__call42 " : ")
+        LsDynChain__dc_arm13__call42)))
+(assert (= LsDynChain__dc_part14__call42
    (ite (< 14 (- w_bn 1))
-        (str.++ w_dyn_inner " = 14 ? " LsDynChain__dc_arm14__call37 " : ")
-        LsDynChain__dc_arm14__call37)))
-(assert (= LsDynChain__dc_part15__call37 LsDynChain__dc_arm15__call37))
-(assert (= LsDynChain__dc_arm0__call37
-   (str.++ w_tok "_0" LsDynChain__dc_suffix__call37)))
-(assert (= LsDynChain__dc_arm1__call37
-   (str.++ w_tok "_1" LsDynChain__dc_suffix__call37)))
-(assert (= LsDynChain__dc_arm2__call37
-   (str.++ w_tok "_2" LsDynChain__dc_suffix__call37)))
-(assert (= LsDynChain__dc_arm3__call37
-   (str.++ w_tok "_3" LsDynChain__dc_suffix__call37)))
-(assert (= LsDynChain__dc_arm4__call37
-   (str.++ w_tok "_4" LsDynChain__dc_suffix__call37)))
-(assert (= LsDynChain__dc_arm5__call37
-   (str.++ w_tok "_5" LsDynChain__dc_suffix__call37)))
-(assert (= LsDynChain__dc_arm6__call37
-   (str.++ w_tok "_6" LsDynChain__dc_suffix__call37)))
-(assert (= LsDynChain__dc_arm7__call37
-   (str.++ w_tok "_7" LsDynChain__dc_suffix__call37)))
-(assert (= LsDynChain__dc_arm8__call37
-   (str.++ w_tok "_8" LsDynChain__dc_suffix__call37)))
-(assert (= LsDynChain__dc_arm9__call37
-   (str.++ w_tok "_9" LsDynChain__dc_suffix__call37)))
-(assert (= LsDynChain__dc_arm10__call37
-   (str.++ w_tok "_10" LsDynChain__dc_suffix__call37)))
-(assert (= LsDynChain__dc_arm11__call37
-   (str.++ w_tok "_11" LsDynChain__dc_suffix__call37)))
-(assert (= LsDynChain__dc_arm12__call37
-   (str.++ w_tok "_12" LsDynChain__dc_suffix__call37)))
-(assert (= LsDynChain__dc_arm13__call37
-   (str.++ w_tok "_13" LsDynChain__dc_suffix__call37)))
-(assert (= LsDynChain__dc_arm14__call37
-   (str.++ w_tok "_14" LsDynChain__dc_suffix__call37)))
-(assert (= LsDynChain__dc_arm15__call37
-   (str.++ w_tok "_15" LsDynChain__dc_suffix__call37)))
+        (str.++ w_dyn_inner " = 14 ? " LsDynChain__dc_arm14__call42 " : ")
+        LsDynChain__dc_arm14__call42)))
+(assert (= LsDynChain__dc_part15__call42 LsDynChain__dc_arm15__call42))
+(assert (= LsDynChain__dc_arm0__call42
+   (str.++ w_tok "_0" LsDynChain__dc_suffix__call42)))
+(assert (= LsDynChain__dc_arm1__call42
+   (str.++ w_tok "_1" LsDynChain__dc_suffix__call42)))
+(assert (= LsDynChain__dc_arm2__call42
+   (str.++ w_tok "_2" LsDynChain__dc_suffix__call42)))
+(assert (= LsDynChain__dc_arm3__call42
+   (str.++ w_tok "_3" LsDynChain__dc_suffix__call42)))
+(assert (= LsDynChain__dc_arm4__call42
+   (str.++ w_tok "_4" LsDynChain__dc_suffix__call42)))
+(assert (= LsDynChain__dc_arm5__call42
+   (str.++ w_tok "_5" LsDynChain__dc_suffix__call42)))
+(assert (= LsDynChain__dc_arm6__call42
+   (str.++ w_tok "_6" LsDynChain__dc_suffix__call42)))
+(assert (= LsDynChain__dc_arm7__call42
+   (str.++ w_tok "_7" LsDynChain__dc_suffix__call42)))
+(assert (= LsDynChain__dc_arm8__call42
+   (str.++ w_tok "_8" LsDynChain__dc_suffix__call42)))
+(assert (= LsDynChain__dc_arm9__call42
+   (str.++ w_tok "_9" LsDynChain__dc_suffix__call42)))
+(assert (= LsDynChain__dc_arm10__call42
+   (str.++ w_tok "_10" LsDynChain__dc_suffix__call42)))
+(assert (= LsDynChain__dc_arm11__call42
+   (str.++ w_tok "_11" LsDynChain__dc_suffix__call42)))
+(assert (= LsDynChain__dc_arm12__call42
+   (str.++ w_tok "_12" LsDynChain__dc_suffix__call42)))
+(assert (= LsDynChain__dc_arm13__call42
+   (str.++ w_tok "_13" LsDynChain__dc_suffix__call42)))
+(assert (= LsDynChain__dc_arm14__call42
+   (str.++ w_tok "_14" LsDynChain__dc_suffix__call42)))
+(assert (= LsDynChain__dc_arm15__call42
+   (str.++ w_tok "_15" LsDynChain__dc_suffix__call42)))
 (assert (= w_dyn_end
    (ite w_dyn_hassub (+ w_dyn_scb 1) (ite w_dyn_hasf w_dyn_fe (+ w_dyn_cb 1)))))
 (assert (let ((a!1 (ite w_word_reg
@@ -7062,14 +8336,20 @@
                 (ite tk_loop_run
                      (str.++ _indent tk_slot_line)
                      (ite tk_has_len_lines (str.++ _indent tk_len_lines) "")))))
-  (= tk_print_now
-     (ite (and tk_src tk_is_top)
-          tk_rline
-          (ite tk_rewrite_bound
-               (str.++ tk_ind tk_hash_after "_len \u{2264} " tk_bound_n)
-               (ite tk_default_plain tk_rline a!1))))))
+(let ((a!2 (ite (and tk_src tk_is_top)
+                tk_rline
+                (ite tk_is_member
+                     (str.++ tk_ind tk_mem_chain)
+                     (ite tk_rewrite_bound
+                          (str.++ tk_ind
+                                  tk_hash_after
+                                  "_len \u{2264} "
+                                  tk_bound_n)
+                          (ite tk_default_plain tk_rline a!1))))))
+  (= tk_print_now a!2))))
 (assert (= tk_emit
-   (or (and tk_src (or tk_is_top tk_default_plain tk_rewrite_bound))
+   (or (and tk_src
+            (or tk_is_top tk_is_member tk_default_plain tk_rewrite_bound))
        tk_walk_done
        tk_loop_run
        tk_has_len_lines)))
@@ -7161,673 +8441,63 @@
                 (ite (>= tk_inside_tl (str.len tk_inside)) 0 tk_count_el)
                 _emit_ne)))
   (= emit_ne (ite is_first_tick 0 a!1))))
-(assert (= tk_count_el (ite (= (str.len tk_inside) 0) 0 LsCountElem__ce_n__call39)))
-(assert (= LsCountElem__ce_n__call39
-   (ite (< (str.indexof tk_inside "," 0) 0) 1 LsCountElem__ce_scan__call39)))
-(assert (= LsCountElem__ce_scan__call39 (+ LsCountElem__ce_count__call39 1)))
-(assert (let ((a!1 (ite (>= LsCountElem__cP14__call39 (str.len tk_inside))
+(assert (= tk_count_el (ite (= (str.len tk_inside) 0) 0 LsCountElem__ce_n__call44)))
+(assert (= LsCountElem__ce_n__call44
+   (ite (< (str.indexof tk_inside "," 0) 0) 1 LsCountElem__ce_scan__call44)))
+(assert (= LsCountElem__ce_scan__call44 (+ LsCountElem__ce_count__call44 1)))
+(assert (let ((a!1 (ite (>= LsCountElem__cP14__call44 (str.len tk_inside))
                 14
-                (ite (>= LsCountElem__cP15__call39 (str.len tk_inside)) 15 16))))
-(let ((a!2 (ite (>= LsCountElem__cP12__call39 (str.len tk_inside))
+                (ite (>= LsCountElem__cP15__call44 (str.len tk_inside)) 15 16))))
+(let ((a!2 (ite (>= LsCountElem__cP12__call44 (str.len tk_inside))
                 12
-                (ite (>= LsCountElem__cP13__call39 (str.len tk_inside)) 13 a!1))))
-(let ((a!3 (ite (>= LsCountElem__cP10__call39 (str.len tk_inside))
+                (ite (>= LsCountElem__cP13__call44 (str.len tk_inside)) 13 a!1))))
+(let ((a!3 (ite (>= LsCountElem__cP10__call44 (str.len tk_inside))
                 10
-                (ite (>= LsCountElem__cP11__call39 (str.len tk_inside)) 11 a!2))))
-(let ((a!4 (ite (>= LsCountElem__cP8__call39 (str.len tk_inside))
+                (ite (>= LsCountElem__cP11__call44 (str.len tk_inside)) 11 a!2))))
+(let ((a!4 (ite (>= LsCountElem__cP8__call44 (str.len tk_inside))
                 8
-                (ite (>= LsCountElem__cP9__call39 (str.len tk_inside)) 9 a!3))))
-(let ((a!5 (ite (>= LsCountElem__cP6__call39 (str.len tk_inside))
+                (ite (>= LsCountElem__cP9__call44 (str.len tk_inside)) 9 a!3))))
+(let ((a!5 (ite (>= LsCountElem__cP6__call44 (str.len tk_inside))
                 6
-                (ite (>= LsCountElem__cP7__call39 (str.len tk_inside)) 7 a!4))))
-(let ((a!6 (ite (>= LsCountElem__cP4__call39 (str.len tk_inside))
+                (ite (>= LsCountElem__cP7__call44 (str.len tk_inside)) 7 a!4))))
+(let ((a!6 (ite (>= LsCountElem__cP4__call44 (str.len tk_inside))
                 4
-                (ite (>= LsCountElem__cP5__call39 (str.len tk_inside)) 5 a!5))))
-(let ((a!7 (ite (>= LsCountElem__cP2__call39 (str.len tk_inside))
+                (ite (>= LsCountElem__cP5__call44 (str.len tk_inside)) 5 a!5))))
+(let ((a!7 (ite (>= LsCountElem__cP2__call44 (str.len tk_inside))
                 2
-                (ite (>= LsCountElem__cP3__call39 (str.len tk_inside)) 3 a!6))))
-(let ((a!8 (ite (>= LsCountElem__cP0__call39 (str.len tk_inside))
+                (ite (>= LsCountElem__cP3__call44 (str.len tk_inside)) 3 a!6))))
+(let ((a!8 (ite (>= LsCountElem__cP0__call44 (str.len tk_inside))
                 0
-                (ite (>= LsCountElem__cP1__call39 (str.len tk_inside)) 1 a!7))))
-  (= LsCountElem__ce_count__call39 a!8))))))))))
+                (ite (>= LsCountElem__cP1__call44 (str.len tk_inside)) 1 a!7))))
+  (= LsCountElem__ce_count__call44 a!8))))))))))
 (assert (let ((a!1 (ite (= 0 12)
-                LsCommaPos__cp12__call40
-                (ite (= 0 13)
-                     LsCommaPos__cp13__call40
-                     (ite (= 0 14)
-                          LsCommaPos__cp14__call40
-                          LsCommaPos__cp15__call40)))))
-(let ((a!2 (ite (= 0 9)
-                LsCommaPos__cp9__call40
-                (ite (= 0 10)
-                     LsCommaPos__cp10__call40
-                     (ite (= 0 11) LsCommaPos__cp11__call40 a!1)))))
-(let ((a!3 (ite (= 0 6)
-                LsCommaPos__cp6__call40
-                (ite (= 0 7)
-                     LsCommaPos__cp7__call40
-                     (ite (= 0 8) LsCommaPos__cp8__call40 a!2)))))
-(let ((a!4 (ite (= 0 3)
-                LsCommaPos__cp3__call40
-                (ite (= 0 4)
-                     LsCommaPos__cp4__call40
-                     (ite (= 0 5) LsCommaPos__cp5__call40 a!3)))))
-(let ((a!5 (ite (= 0 0)
-                LsCommaPos__cp0__call40
-                (ite (= 0 1)
-                     LsCommaPos__cp1__call40
-                     (ite (= 0 2) LsCommaPos__cp2__call40 a!4)))))
-  (= LsCountElem__cP0__call39 (ite (< 0 0) (- 0 1) a!5))))))))
-(assert (= LsCommaPos__cp0__call40
-   (ite (< (str.indexof tk_inside "," 0) 0)
-        (str.len tk_inside)
-        (str.indexof tk_inside "," 0))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp0__call40 (str.len tk_inside))
-               (< (str.indexof tk_inside "," (+ LsCommaPos__cp0__call40 1)) 0))))
-  (= LsCommaPos__cp1__call40
-     (ite a!1
-          (str.len tk_inside)
-          (str.indexof tk_inside "," (+ LsCommaPos__cp0__call40 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp1__call40 (str.len tk_inside))
-               (< (str.indexof tk_inside "," (+ LsCommaPos__cp1__call40 1)) 0))))
-  (= LsCommaPos__cp2__call40
-     (ite a!1
-          (str.len tk_inside)
-          (str.indexof tk_inside "," (+ LsCommaPos__cp1__call40 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp2__call40 (str.len tk_inside))
-               (< (str.indexof tk_inside "," (+ LsCommaPos__cp2__call40 1)) 0))))
-  (= LsCommaPos__cp3__call40
-     (ite a!1
-          (str.len tk_inside)
-          (str.indexof tk_inside "," (+ LsCommaPos__cp2__call40 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp3__call40 (str.len tk_inside))
-               (< (str.indexof tk_inside "," (+ LsCommaPos__cp3__call40 1)) 0))))
-  (= LsCommaPos__cp4__call40
-     (ite a!1
-          (str.len tk_inside)
-          (str.indexof tk_inside "," (+ LsCommaPos__cp3__call40 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp4__call40 (str.len tk_inside))
-               (< (str.indexof tk_inside "," (+ LsCommaPos__cp4__call40 1)) 0))))
-  (= LsCommaPos__cp5__call40
-     (ite a!1
-          (str.len tk_inside)
-          (str.indexof tk_inside "," (+ LsCommaPos__cp4__call40 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp5__call40 (str.len tk_inside))
-               (< (str.indexof tk_inside "," (+ LsCommaPos__cp5__call40 1)) 0))))
-  (= LsCommaPos__cp6__call40
-     (ite a!1
-          (str.len tk_inside)
-          (str.indexof tk_inside "," (+ LsCommaPos__cp5__call40 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp6__call40 (str.len tk_inside))
-               (< (str.indexof tk_inside "," (+ LsCommaPos__cp6__call40 1)) 0))))
-  (= LsCommaPos__cp7__call40
-     (ite a!1
-          (str.len tk_inside)
-          (str.indexof tk_inside "," (+ LsCommaPos__cp6__call40 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp7__call40 (str.len tk_inside))
-               (< (str.indexof tk_inside "," (+ LsCommaPos__cp7__call40 1)) 0))))
-  (= LsCommaPos__cp8__call40
-     (ite a!1
-          (str.len tk_inside)
-          (str.indexof tk_inside "," (+ LsCommaPos__cp7__call40 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp8__call40 (str.len tk_inside))
-               (< (str.indexof tk_inside "," (+ LsCommaPos__cp8__call40 1)) 0))))
-  (= LsCommaPos__cp9__call40
-     (ite a!1
-          (str.len tk_inside)
-          (str.indexof tk_inside "," (+ LsCommaPos__cp8__call40 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp9__call40 (str.len tk_inside))
-               (< (str.indexof tk_inside "," (+ LsCommaPos__cp9__call40 1)) 0))))
-  (= LsCommaPos__cp10__call40
-     (ite a!1
-          (str.len tk_inside)
-          (str.indexof tk_inside "," (+ LsCommaPos__cp9__call40 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp10__call40 (str.len tk_inside))
-               (< (str.indexof tk_inside "," (+ LsCommaPos__cp10__call40 1)) 0))))
-  (= LsCommaPos__cp11__call40
-     (ite a!1
-          (str.len tk_inside)
-          (str.indexof tk_inside "," (+ LsCommaPos__cp10__call40 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp11__call40 (str.len tk_inside))
-               (< (str.indexof tk_inside "," (+ LsCommaPos__cp11__call40 1)) 0))))
-  (= LsCommaPos__cp12__call40
-     (ite a!1
-          (str.len tk_inside)
-          (str.indexof tk_inside "," (+ LsCommaPos__cp11__call40 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp12__call40 (str.len tk_inside))
-               (< (str.indexof tk_inside "," (+ LsCommaPos__cp12__call40 1)) 0))))
-  (= LsCommaPos__cp13__call40
-     (ite a!1
-          (str.len tk_inside)
-          (str.indexof tk_inside "," (+ LsCommaPos__cp12__call40 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp13__call40 (str.len tk_inside))
-               (< (str.indexof tk_inside "," (+ LsCommaPos__cp13__call40 1)) 0))))
-  (= LsCommaPos__cp14__call40
-     (ite a!1
-          (str.len tk_inside)
-          (str.indexof tk_inside "," (+ LsCommaPos__cp13__call40 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp14__call40 (str.len tk_inside))
-               (< (str.indexof tk_inside "," (+ LsCommaPos__cp14__call40 1)) 0))))
-  (= LsCommaPos__cp15__call40
-     (ite a!1
-          (str.len tk_inside)
-          (str.indexof tk_inside "," (+ LsCommaPos__cp14__call40 1))))))
-(assert (let ((a!1 (ite (= 1 12)
-                LsCommaPos__cp12__call41
-                (ite (= 1 13)
-                     LsCommaPos__cp13__call41
-                     (ite (= 1 14)
-                          LsCommaPos__cp14__call41
-                          LsCommaPos__cp15__call41)))))
-(let ((a!2 (ite (= 1 9)
-                LsCommaPos__cp9__call41
-                (ite (= 1 10)
-                     LsCommaPos__cp10__call41
-                     (ite (= 1 11) LsCommaPos__cp11__call41 a!1)))))
-(let ((a!3 (ite (= 1 6)
-                LsCommaPos__cp6__call41
-                (ite (= 1 7)
-                     LsCommaPos__cp7__call41
-                     (ite (= 1 8) LsCommaPos__cp8__call41 a!2)))))
-(let ((a!4 (ite (= 1 3)
-                LsCommaPos__cp3__call41
-                (ite (= 1 4)
-                     LsCommaPos__cp4__call41
-                     (ite (= 1 5) LsCommaPos__cp5__call41 a!3)))))
-(let ((a!5 (ite (= 1 0)
-                LsCommaPos__cp0__call41
-                (ite (= 1 1)
-                     LsCommaPos__cp1__call41
-                     (ite (= 1 2) LsCommaPos__cp2__call41 a!4)))))
-  (= LsCountElem__cP1__call39 (ite (< 1 0) (- 0 1) a!5))))))))
-(assert (= LsCommaPos__cp0__call41
-   (ite (< (str.indexof tk_inside "," 0) 0)
-        (str.len tk_inside)
-        (str.indexof tk_inside "," 0))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp0__call41 (str.len tk_inside))
-               (< (str.indexof tk_inside "," (+ LsCommaPos__cp0__call41 1)) 0))))
-  (= LsCommaPos__cp1__call41
-     (ite a!1
-          (str.len tk_inside)
-          (str.indexof tk_inside "," (+ LsCommaPos__cp0__call41 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp1__call41 (str.len tk_inside))
-               (< (str.indexof tk_inside "," (+ LsCommaPos__cp1__call41 1)) 0))))
-  (= LsCommaPos__cp2__call41
-     (ite a!1
-          (str.len tk_inside)
-          (str.indexof tk_inside "," (+ LsCommaPos__cp1__call41 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp2__call41 (str.len tk_inside))
-               (< (str.indexof tk_inside "," (+ LsCommaPos__cp2__call41 1)) 0))))
-  (= LsCommaPos__cp3__call41
-     (ite a!1
-          (str.len tk_inside)
-          (str.indexof tk_inside "," (+ LsCommaPos__cp2__call41 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp3__call41 (str.len tk_inside))
-               (< (str.indexof tk_inside "," (+ LsCommaPos__cp3__call41 1)) 0))))
-  (= LsCommaPos__cp4__call41
-     (ite a!1
-          (str.len tk_inside)
-          (str.indexof tk_inside "," (+ LsCommaPos__cp3__call41 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp4__call41 (str.len tk_inside))
-               (< (str.indexof tk_inside "," (+ LsCommaPos__cp4__call41 1)) 0))))
-  (= LsCommaPos__cp5__call41
-     (ite a!1
-          (str.len tk_inside)
-          (str.indexof tk_inside "," (+ LsCommaPos__cp4__call41 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp5__call41 (str.len tk_inside))
-               (< (str.indexof tk_inside "," (+ LsCommaPos__cp5__call41 1)) 0))))
-  (= LsCommaPos__cp6__call41
-     (ite a!1
-          (str.len tk_inside)
-          (str.indexof tk_inside "," (+ LsCommaPos__cp5__call41 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp6__call41 (str.len tk_inside))
-               (< (str.indexof tk_inside "," (+ LsCommaPos__cp6__call41 1)) 0))))
-  (= LsCommaPos__cp7__call41
-     (ite a!1
-          (str.len tk_inside)
-          (str.indexof tk_inside "," (+ LsCommaPos__cp6__call41 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp7__call41 (str.len tk_inside))
-               (< (str.indexof tk_inside "," (+ LsCommaPos__cp7__call41 1)) 0))))
-  (= LsCommaPos__cp8__call41
-     (ite a!1
-          (str.len tk_inside)
-          (str.indexof tk_inside "," (+ LsCommaPos__cp7__call41 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp8__call41 (str.len tk_inside))
-               (< (str.indexof tk_inside "," (+ LsCommaPos__cp8__call41 1)) 0))))
-  (= LsCommaPos__cp9__call41
-     (ite a!1
-          (str.len tk_inside)
-          (str.indexof tk_inside "," (+ LsCommaPos__cp8__call41 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp9__call41 (str.len tk_inside))
-               (< (str.indexof tk_inside "," (+ LsCommaPos__cp9__call41 1)) 0))))
-  (= LsCommaPos__cp10__call41
-     (ite a!1
-          (str.len tk_inside)
-          (str.indexof tk_inside "," (+ LsCommaPos__cp9__call41 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp10__call41 (str.len tk_inside))
-               (< (str.indexof tk_inside "," (+ LsCommaPos__cp10__call41 1)) 0))))
-  (= LsCommaPos__cp11__call41
-     (ite a!1
-          (str.len tk_inside)
-          (str.indexof tk_inside "," (+ LsCommaPos__cp10__call41 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp11__call41 (str.len tk_inside))
-               (< (str.indexof tk_inside "," (+ LsCommaPos__cp11__call41 1)) 0))))
-  (= LsCommaPos__cp12__call41
-     (ite a!1
-          (str.len tk_inside)
-          (str.indexof tk_inside "," (+ LsCommaPos__cp11__call41 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp12__call41 (str.len tk_inside))
-               (< (str.indexof tk_inside "," (+ LsCommaPos__cp12__call41 1)) 0))))
-  (= LsCommaPos__cp13__call41
-     (ite a!1
-          (str.len tk_inside)
-          (str.indexof tk_inside "," (+ LsCommaPos__cp12__call41 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp13__call41 (str.len tk_inside))
-               (< (str.indexof tk_inside "," (+ LsCommaPos__cp13__call41 1)) 0))))
-  (= LsCommaPos__cp14__call41
-     (ite a!1
-          (str.len tk_inside)
-          (str.indexof tk_inside "," (+ LsCommaPos__cp13__call41 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp14__call41 (str.len tk_inside))
-               (< (str.indexof tk_inside "," (+ LsCommaPos__cp14__call41 1)) 0))))
-  (= LsCommaPos__cp15__call41
-     (ite a!1
-          (str.len tk_inside)
-          (str.indexof tk_inside "," (+ LsCommaPos__cp14__call41 1))))))
-(assert (let ((a!1 (ite (= 2 12)
-                LsCommaPos__cp12__call42
-                (ite (= 2 13)
-                     LsCommaPos__cp13__call42
-                     (ite (= 2 14)
-                          LsCommaPos__cp14__call42
-                          LsCommaPos__cp15__call42)))))
-(let ((a!2 (ite (= 2 9)
-                LsCommaPos__cp9__call42
-                (ite (= 2 10)
-                     LsCommaPos__cp10__call42
-                     (ite (= 2 11) LsCommaPos__cp11__call42 a!1)))))
-(let ((a!3 (ite (= 2 6)
-                LsCommaPos__cp6__call42
-                (ite (= 2 7)
-                     LsCommaPos__cp7__call42
-                     (ite (= 2 8) LsCommaPos__cp8__call42 a!2)))))
-(let ((a!4 (ite (= 2 3)
-                LsCommaPos__cp3__call42
-                (ite (= 2 4)
-                     LsCommaPos__cp4__call42
-                     (ite (= 2 5) LsCommaPos__cp5__call42 a!3)))))
-(let ((a!5 (ite (= 2 0)
-                LsCommaPos__cp0__call42
-                (ite (= 2 1)
-                     LsCommaPos__cp1__call42
-                     (ite (= 2 2) LsCommaPos__cp2__call42 a!4)))))
-  (= LsCountElem__cP2__call39 (ite (< 2 0) (- 0 1) a!5))))))))
-(assert (= LsCommaPos__cp0__call42
-   (ite (< (str.indexof tk_inside "," 0) 0)
-        (str.len tk_inside)
-        (str.indexof tk_inside "," 0))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp0__call42 (str.len tk_inside))
-               (< (str.indexof tk_inside "," (+ LsCommaPos__cp0__call42 1)) 0))))
-  (= LsCommaPos__cp1__call42
-     (ite a!1
-          (str.len tk_inside)
-          (str.indexof tk_inside "," (+ LsCommaPos__cp0__call42 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp1__call42 (str.len tk_inside))
-               (< (str.indexof tk_inside "," (+ LsCommaPos__cp1__call42 1)) 0))))
-  (= LsCommaPos__cp2__call42
-     (ite a!1
-          (str.len tk_inside)
-          (str.indexof tk_inside "," (+ LsCommaPos__cp1__call42 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp2__call42 (str.len tk_inside))
-               (< (str.indexof tk_inside "," (+ LsCommaPos__cp2__call42 1)) 0))))
-  (= LsCommaPos__cp3__call42
-     (ite a!1
-          (str.len tk_inside)
-          (str.indexof tk_inside "," (+ LsCommaPos__cp2__call42 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp3__call42 (str.len tk_inside))
-               (< (str.indexof tk_inside "," (+ LsCommaPos__cp3__call42 1)) 0))))
-  (= LsCommaPos__cp4__call42
-     (ite a!1
-          (str.len tk_inside)
-          (str.indexof tk_inside "," (+ LsCommaPos__cp3__call42 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp4__call42 (str.len tk_inside))
-               (< (str.indexof tk_inside "," (+ LsCommaPos__cp4__call42 1)) 0))))
-  (= LsCommaPos__cp5__call42
-     (ite a!1
-          (str.len tk_inside)
-          (str.indexof tk_inside "," (+ LsCommaPos__cp4__call42 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp5__call42 (str.len tk_inside))
-               (< (str.indexof tk_inside "," (+ LsCommaPos__cp5__call42 1)) 0))))
-  (= LsCommaPos__cp6__call42
-     (ite a!1
-          (str.len tk_inside)
-          (str.indexof tk_inside "," (+ LsCommaPos__cp5__call42 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp6__call42 (str.len tk_inside))
-               (< (str.indexof tk_inside "," (+ LsCommaPos__cp6__call42 1)) 0))))
-  (= LsCommaPos__cp7__call42
-     (ite a!1
-          (str.len tk_inside)
-          (str.indexof tk_inside "," (+ LsCommaPos__cp6__call42 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp7__call42 (str.len tk_inside))
-               (< (str.indexof tk_inside "," (+ LsCommaPos__cp7__call42 1)) 0))))
-  (= LsCommaPos__cp8__call42
-     (ite a!1
-          (str.len tk_inside)
-          (str.indexof tk_inside "," (+ LsCommaPos__cp7__call42 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp8__call42 (str.len tk_inside))
-               (< (str.indexof tk_inside "," (+ LsCommaPos__cp8__call42 1)) 0))))
-  (= LsCommaPos__cp9__call42
-     (ite a!1
-          (str.len tk_inside)
-          (str.indexof tk_inside "," (+ LsCommaPos__cp8__call42 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp9__call42 (str.len tk_inside))
-               (< (str.indexof tk_inside "," (+ LsCommaPos__cp9__call42 1)) 0))))
-  (= LsCommaPos__cp10__call42
-     (ite a!1
-          (str.len tk_inside)
-          (str.indexof tk_inside "," (+ LsCommaPos__cp9__call42 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp10__call42 (str.len tk_inside))
-               (< (str.indexof tk_inside "," (+ LsCommaPos__cp10__call42 1)) 0))))
-  (= LsCommaPos__cp11__call42
-     (ite a!1
-          (str.len tk_inside)
-          (str.indexof tk_inside "," (+ LsCommaPos__cp10__call42 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp11__call42 (str.len tk_inside))
-               (< (str.indexof tk_inside "," (+ LsCommaPos__cp11__call42 1)) 0))))
-  (= LsCommaPos__cp12__call42
-     (ite a!1
-          (str.len tk_inside)
-          (str.indexof tk_inside "," (+ LsCommaPos__cp11__call42 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp12__call42 (str.len tk_inside))
-               (< (str.indexof tk_inside "," (+ LsCommaPos__cp12__call42 1)) 0))))
-  (= LsCommaPos__cp13__call42
-     (ite a!1
-          (str.len tk_inside)
-          (str.indexof tk_inside "," (+ LsCommaPos__cp12__call42 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp13__call42 (str.len tk_inside))
-               (< (str.indexof tk_inside "," (+ LsCommaPos__cp13__call42 1)) 0))))
-  (= LsCommaPos__cp14__call42
-     (ite a!1
-          (str.len tk_inside)
-          (str.indexof tk_inside "," (+ LsCommaPos__cp13__call42 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp14__call42 (str.len tk_inside))
-               (< (str.indexof tk_inside "," (+ LsCommaPos__cp14__call42 1)) 0))))
-  (= LsCommaPos__cp15__call42
-     (ite a!1
-          (str.len tk_inside)
-          (str.indexof tk_inside "," (+ LsCommaPos__cp14__call42 1))))))
-(assert (let ((a!1 (ite (= 3 12)
-                LsCommaPos__cp12__call43
-                (ite (= 3 13)
-                     LsCommaPos__cp13__call43
-                     (ite (= 3 14)
-                          LsCommaPos__cp14__call43
-                          LsCommaPos__cp15__call43)))))
-(let ((a!2 (ite (= 3 9)
-                LsCommaPos__cp9__call43
-                (ite (= 3 10)
-                     LsCommaPos__cp10__call43
-                     (ite (= 3 11) LsCommaPos__cp11__call43 a!1)))))
-(let ((a!3 (ite (= 3 6)
-                LsCommaPos__cp6__call43
-                (ite (= 3 7)
-                     LsCommaPos__cp7__call43
-                     (ite (= 3 8) LsCommaPos__cp8__call43 a!2)))))
-(let ((a!4 (ite (= 3 3)
-                LsCommaPos__cp3__call43
-                (ite (= 3 4)
-                     LsCommaPos__cp4__call43
-                     (ite (= 3 5) LsCommaPos__cp5__call43 a!3)))))
-(let ((a!5 (ite (= 3 0)
-                LsCommaPos__cp0__call43
-                (ite (= 3 1)
-                     LsCommaPos__cp1__call43
-                     (ite (= 3 2) LsCommaPos__cp2__call43 a!4)))))
-  (= LsCountElem__cP3__call39 (ite (< 3 0) (- 0 1) a!5))))))))
-(assert (= LsCommaPos__cp0__call43
-   (ite (< (str.indexof tk_inside "," 0) 0)
-        (str.len tk_inside)
-        (str.indexof tk_inside "," 0))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp0__call43 (str.len tk_inside))
-               (< (str.indexof tk_inside "," (+ LsCommaPos__cp0__call43 1)) 0))))
-  (= LsCommaPos__cp1__call43
-     (ite a!1
-          (str.len tk_inside)
-          (str.indexof tk_inside "," (+ LsCommaPos__cp0__call43 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp1__call43 (str.len tk_inside))
-               (< (str.indexof tk_inside "," (+ LsCommaPos__cp1__call43 1)) 0))))
-  (= LsCommaPos__cp2__call43
-     (ite a!1
-          (str.len tk_inside)
-          (str.indexof tk_inside "," (+ LsCommaPos__cp1__call43 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp2__call43 (str.len tk_inside))
-               (< (str.indexof tk_inside "," (+ LsCommaPos__cp2__call43 1)) 0))))
-  (= LsCommaPos__cp3__call43
-     (ite a!1
-          (str.len tk_inside)
-          (str.indexof tk_inside "," (+ LsCommaPos__cp2__call43 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp3__call43 (str.len tk_inside))
-               (< (str.indexof tk_inside "," (+ LsCommaPos__cp3__call43 1)) 0))))
-  (= LsCommaPos__cp4__call43
-     (ite a!1
-          (str.len tk_inside)
-          (str.indexof tk_inside "," (+ LsCommaPos__cp3__call43 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp4__call43 (str.len tk_inside))
-               (< (str.indexof tk_inside "," (+ LsCommaPos__cp4__call43 1)) 0))))
-  (= LsCommaPos__cp5__call43
-     (ite a!1
-          (str.len tk_inside)
-          (str.indexof tk_inside "," (+ LsCommaPos__cp4__call43 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp5__call43 (str.len tk_inside))
-               (< (str.indexof tk_inside "," (+ LsCommaPos__cp5__call43 1)) 0))))
-  (= LsCommaPos__cp6__call43
-     (ite a!1
-          (str.len tk_inside)
-          (str.indexof tk_inside "," (+ LsCommaPos__cp5__call43 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp6__call43 (str.len tk_inside))
-               (< (str.indexof tk_inside "," (+ LsCommaPos__cp6__call43 1)) 0))))
-  (= LsCommaPos__cp7__call43
-     (ite a!1
-          (str.len tk_inside)
-          (str.indexof tk_inside "," (+ LsCommaPos__cp6__call43 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp7__call43 (str.len tk_inside))
-               (< (str.indexof tk_inside "," (+ LsCommaPos__cp7__call43 1)) 0))))
-  (= LsCommaPos__cp8__call43
-     (ite a!1
-          (str.len tk_inside)
-          (str.indexof tk_inside "," (+ LsCommaPos__cp7__call43 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp8__call43 (str.len tk_inside))
-               (< (str.indexof tk_inside "," (+ LsCommaPos__cp8__call43 1)) 0))))
-  (= LsCommaPos__cp9__call43
-     (ite a!1
-          (str.len tk_inside)
-          (str.indexof tk_inside "," (+ LsCommaPos__cp8__call43 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp9__call43 (str.len tk_inside))
-               (< (str.indexof tk_inside "," (+ LsCommaPos__cp9__call43 1)) 0))))
-  (= LsCommaPos__cp10__call43
-     (ite a!1
-          (str.len tk_inside)
-          (str.indexof tk_inside "," (+ LsCommaPos__cp9__call43 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp10__call43 (str.len tk_inside))
-               (< (str.indexof tk_inside "," (+ LsCommaPos__cp10__call43 1)) 0))))
-  (= LsCommaPos__cp11__call43
-     (ite a!1
-          (str.len tk_inside)
-          (str.indexof tk_inside "," (+ LsCommaPos__cp10__call43 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp11__call43 (str.len tk_inside))
-               (< (str.indexof tk_inside "," (+ LsCommaPos__cp11__call43 1)) 0))))
-  (= LsCommaPos__cp12__call43
-     (ite a!1
-          (str.len tk_inside)
-          (str.indexof tk_inside "," (+ LsCommaPos__cp11__call43 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp12__call43 (str.len tk_inside))
-               (< (str.indexof tk_inside "," (+ LsCommaPos__cp12__call43 1)) 0))))
-  (= LsCommaPos__cp13__call43
-     (ite a!1
-          (str.len tk_inside)
-          (str.indexof tk_inside "," (+ LsCommaPos__cp12__call43 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp13__call43 (str.len tk_inside))
-               (< (str.indexof tk_inside "," (+ LsCommaPos__cp13__call43 1)) 0))))
-  (= LsCommaPos__cp14__call43
-     (ite a!1
-          (str.len tk_inside)
-          (str.indexof tk_inside "," (+ LsCommaPos__cp13__call43 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp14__call43 (str.len tk_inside))
-               (< (str.indexof tk_inside "," (+ LsCommaPos__cp14__call43 1)) 0))))
-  (= LsCommaPos__cp15__call43
-     (ite a!1
-          (str.len tk_inside)
-          (str.indexof tk_inside "," (+ LsCommaPos__cp14__call43 1))))))
-(assert (let ((a!1 (ite (= 4 12)
-                LsCommaPos__cp12__call44
-                (ite (= 4 13)
-                     LsCommaPos__cp13__call44
-                     (ite (= 4 14)
-                          LsCommaPos__cp14__call44
-                          LsCommaPos__cp15__call44)))))
-(let ((a!2 (ite (= 4 9)
-                LsCommaPos__cp9__call44
-                (ite (= 4 10)
-                     LsCommaPos__cp10__call44
-                     (ite (= 4 11) LsCommaPos__cp11__call44 a!1)))))
-(let ((a!3 (ite (= 4 6)
-                LsCommaPos__cp6__call44
-                (ite (= 4 7)
-                     LsCommaPos__cp7__call44
-                     (ite (= 4 8) LsCommaPos__cp8__call44 a!2)))))
-(let ((a!4 (ite (= 4 3)
-                LsCommaPos__cp3__call44
-                (ite (= 4 4)
-                     LsCommaPos__cp4__call44
-                     (ite (= 4 5) LsCommaPos__cp5__call44 a!3)))))
-(let ((a!5 (ite (= 4 0)
-                LsCommaPos__cp0__call44
-                (ite (= 4 1)
-                     LsCommaPos__cp1__call44
-                     (ite (= 4 2) LsCommaPos__cp2__call44 a!4)))))
-  (= LsCountElem__cP4__call39 (ite (< 4 0) (- 0 1) a!5))))))))
-(assert (= LsCommaPos__cp0__call44
-   (ite (< (str.indexof tk_inside "," 0) 0)
-        (str.len tk_inside)
-        (str.indexof tk_inside "," 0))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp0__call44 (str.len tk_inside))
-               (< (str.indexof tk_inside "," (+ LsCommaPos__cp0__call44 1)) 0))))
-  (= LsCommaPos__cp1__call44
-     (ite a!1
-          (str.len tk_inside)
-          (str.indexof tk_inside "," (+ LsCommaPos__cp0__call44 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp1__call44 (str.len tk_inside))
-               (< (str.indexof tk_inside "," (+ LsCommaPos__cp1__call44 1)) 0))))
-  (= LsCommaPos__cp2__call44
-     (ite a!1
-          (str.len tk_inside)
-          (str.indexof tk_inside "," (+ LsCommaPos__cp1__call44 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp2__call44 (str.len tk_inside))
-               (< (str.indexof tk_inside "," (+ LsCommaPos__cp2__call44 1)) 0))))
-  (= LsCommaPos__cp3__call44
-     (ite a!1
-          (str.len tk_inside)
-          (str.indexof tk_inside "," (+ LsCommaPos__cp2__call44 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp3__call44 (str.len tk_inside))
-               (< (str.indexof tk_inside "," (+ LsCommaPos__cp3__call44 1)) 0))))
-  (= LsCommaPos__cp4__call44
-     (ite a!1
-          (str.len tk_inside)
-          (str.indexof tk_inside "," (+ LsCommaPos__cp3__call44 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp4__call44 (str.len tk_inside))
-               (< (str.indexof tk_inside "," (+ LsCommaPos__cp4__call44 1)) 0))))
-  (= LsCommaPos__cp5__call44
-     (ite a!1
-          (str.len tk_inside)
-          (str.indexof tk_inside "," (+ LsCommaPos__cp4__call44 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp5__call44 (str.len tk_inside))
-               (< (str.indexof tk_inside "," (+ LsCommaPos__cp5__call44 1)) 0))))
-  (= LsCommaPos__cp6__call44
-     (ite a!1
-          (str.len tk_inside)
-          (str.indexof tk_inside "," (+ LsCommaPos__cp5__call44 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp6__call44 (str.len tk_inside))
-               (< (str.indexof tk_inside "," (+ LsCommaPos__cp6__call44 1)) 0))))
-  (= LsCommaPos__cp7__call44
-     (ite a!1
-          (str.len tk_inside)
-          (str.indexof tk_inside "," (+ LsCommaPos__cp6__call44 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp7__call44 (str.len tk_inside))
-               (< (str.indexof tk_inside "," (+ LsCommaPos__cp7__call44 1)) 0))))
-  (= LsCommaPos__cp8__call44
-     (ite a!1
-          (str.len tk_inside)
-          (str.indexof tk_inside "," (+ LsCommaPos__cp7__call44 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp8__call44 (str.len tk_inside))
-               (< (str.indexof tk_inside "," (+ LsCommaPos__cp8__call44 1)) 0))))
-  (= LsCommaPos__cp9__call44
-     (ite a!1
-          (str.len tk_inside)
-          (str.indexof tk_inside "," (+ LsCommaPos__cp8__call44 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp9__call44 (str.len tk_inside))
-               (< (str.indexof tk_inside "," (+ LsCommaPos__cp9__call44 1)) 0))))
-  (= LsCommaPos__cp10__call44
-     (ite a!1
-          (str.len tk_inside)
-          (str.indexof tk_inside "," (+ LsCommaPos__cp9__call44 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp10__call44 (str.len tk_inside))
-               (< (str.indexof tk_inside "," (+ LsCommaPos__cp10__call44 1)) 0))))
-  (= LsCommaPos__cp11__call44
-     (ite a!1
-          (str.len tk_inside)
-          (str.indexof tk_inside "," (+ LsCommaPos__cp10__call44 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp11__call44 (str.len tk_inside))
-               (< (str.indexof tk_inside "," (+ LsCommaPos__cp11__call44 1)) 0))))
-  (= LsCommaPos__cp12__call44
-     (ite a!1
-          (str.len tk_inside)
-          (str.indexof tk_inside "," (+ LsCommaPos__cp11__call44 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp12__call44 (str.len tk_inside))
-               (< (str.indexof tk_inside "," (+ LsCommaPos__cp12__call44 1)) 0))))
-  (= LsCommaPos__cp13__call44
-     (ite a!1
-          (str.len tk_inside)
-          (str.indexof tk_inside "," (+ LsCommaPos__cp12__call44 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp13__call44 (str.len tk_inside))
-               (< (str.indexof tk_inside "," (+ LsCommaPos__cp13__call44 1)) 0))))
-  (= LsCommaPos__cp14__call44
-     (ite a!1
-          (str.len tk_inside)
-          (str.indexof tk_inside "," (+ LsCommaPos__cp13__call44 1))))))
-(assert (let ((a!1 (or (>= LsCommaPos__cp14__call44 (str.len tk_inside))
-               (< (str.indexof tk_inside "," (+ LsCommaPos__cp14__call44 1)) 0))))
-  (= LsCommaPos__cp15__call44
-     (ite a!1
-          (str.len tk_inside)
-          (str.indexof tk_inside "," (+ LsCommaPos__cp14__call44 1))))))
-(assert (let ((a!1 (ite (= 5 12)
                 LsCommaPos__cp12__call45
-                (ite (= 5 13)
+                (ite (= 0 13)
                      LsCommaPos__cp13__call45
-                     (ite (= 5 14)
+                     (ite (= 0 14)
                           LsCommaPos__cp14__call45
                           LsCommaPos__cp15__call45)))))
-(let ((a!2 (ite (= 5 9)
+(let ((a!2 (ite (= 0 9)
                 LsCommaPos__cp9__call45
-                (ite (= 5 10)
+                (ite (= 0 10)
                      LsCommaPos__cp10__call45
-                     (ite (= 5 11) LsCommaPos__cp11__call45 a!1)))))
-(let ((a!3 (ite (= 5 6)
+                     (ite (= 0 11) LsCommaPos__cp11__call45 a!1)))))
+(let ((a!3 (ite (= 0 6)
                 LsCommaPos__cp6__call45
-                (ite (= 5 7)
+                (ite (= 0 7)
                      LsCommaPos__cp7__call45
-                     (ite (= 5 8) LsCommaPos__cp8__call45 a!2)))))
-(let ((a!4 (ite (= 5 3)
+                     (ite (= 0 8) LsCommaPos__cp8__call45 a!2)))))
+(let ((a!4 (ite (= 0 3)
                 LsCommaPos__cp3__call45
-                (ite (= 5 4)
+                (ite (= 0 4)
                      LsCommaPos__cp4__call45
-                     (ite (= 5 5) LsCommaPos__cp5__call45 a!3)))))
-(let ((a!5 (ite (= 5 0)
+                     (ite (= 0 5) LsCommaPos__cp5__call45 a!3)))))
+(let ((a!5 (ite (= 0 0)
                 LsCommaPos__cp0__call45
-                (ite (= 5 1)
+                (ite (= 0 1)
                      LsCommaPos__cp1__call45
-                     (ite (= 5 2) LsCommaPos__cp2__call45 a!4)))))
-  (= LsCountElem__cP5__call39 (ite (< 5 0) (- 0 1) a!5))))))))
+                     (ite (= 0 2) LsCommaPos__cp2__call45 a!4)))))
+  (= LsCountElem__cP0__call44 (ite (< 0 0) (- 0 1) a!5))))))))
 (assert (= LsCommaPos__cp0__call45
    (ite (< (str.indexof tk_inside "," 0) 0)
         (str.len tk_inside)
@@ -7922,34 +8592,34 @@
      (ite a!1
           (str.len tk_inside)
           (str.indexof tk_inside "," (+ LsCommaPos__cp14__call45 1))))))
-(assert (let ((a!1 (ite (= 6 12)
+(assert (let ((a!1 (ite (= 1 12)
                 LsCommaPos__cp12__call46
-                (ite (= 6 13)
+                (ite (= 1 13)
                      LsCommaPos__cp13__call46
-                     (ite (= 6 14)
+                     (ite (= 1 14)
                           LsCommaPos__cp14__call46
                           LsCommaPos__cp15__call46)))))
-(let ((a!2 (ite (= 6 9)
+(let ((a!2 (ite (= 1 9)
                 LsCommaPos__cp9__call46
-                (ite (= 6 10)
+                (ite (= 1 10)
                      LsCommaPos__cp10__call46
-                     (ite (= 6 11) LsCommaPos__cp11__call46 a!1)))))
-(let ((a!3 (ite (= 6 6)
+                     (ite (= 1 11) LsCommaPos__cp11__call46 a!1)))))
+(let ((a!3 (ite (= 1 6)
                 LsCommaPos__cp6__call46
-                (ite (= 6 7)
+                (ite (= 1 7)
                      LsCommaPos__cp7__call46
-                     (ite (= 6 8) LsCommaPos__cp8__call46 a!2)))))
-(let ((a!4 (ite (= 6 3)
+                     (ite (= 1 8) LsCommaPos__cp8__call46 a!2)))))
+(let ((a!4 (ite (= 1 3)
                 LsCommaPos__cp3__call46
-                (ite (= 6 4)
+                (ite (= 1 4)
                      LsCommaPos__cp4__call46
-                     (ite (= 6 5) LsCommaPos__cp5__call46 a!3)))))
-(let ((a!5 (ite (= 6 0)
+                     (ite (= 1 5) LsCommaPos__cp5__call46 a!3)))))
+(let ((a!5 (ite (= 1 0)
                 LsCommaPos__cp0__call46
-                (ite (= 6 1)
+                (ite (= 1 1)
                      LsCommaPos__cp1__call46
-                     (ite (= 6 2) LsCommaPos__cp2__call46 a!4)))))
-  (= LsCountElem__cP6__call39 (ite (< 6 0) (- 0 1) a!5))))))))
+                     (ite (= 1 2) LsCommaPos__cp2__call46 a!4)))))
+  (= LsCountElem__cP1__call44 (ite (< 1 0) (- 0 1) a!5))))))))
 (assert (= LsCommaPos__cp0__call46
    (ite (< (str.indexof tk_inside "," 0) 0)
         (str.len tk_inside)
@@ -8044,34 +8714,34 @@
      (ite a!1
           (str.len tk_inside)
           (str.indexof tk_inside "," (+ LsCommaPos__cp14__call46 1))))))
-(assert (let ((a!1 (ite (= 7 12)
+(assert (let ((a!1 (ite (= 2 12)
                 LsCommaPos__cp12__call47
-                (ite (= 7 13)
+                (ite (= 2 13)
                      LsCommaPos__cp13__call47
-                     (ite (= 7 14)
+                     (ite (= 2 14)
                           LsCommaPos__cp14__call47
                           LsCommaPos__cp15__call47)))))
-(let ((a!2 (ite (= 7 9)
+(let ((a!2 (ite (= 2 9)
                 LsCommaPos__cp9__call47
-                (ite (= 7 10)
+                (ite (= 2 10)
                      LsCommaPos__cp10__call47
-                     (ite (= 7 11) LsCommaPos__cp11__call47 a!1)))))
-(let ((a!3 (ite (= 7 6)
+                     (ite (= 2 11) LsCommaPos__cp11__call47 a!1)))))
+(let ((a!3 (ite (= 2 6)
                 LsCommaPos__cp6__call47
-                (ite (= 7 7)
+                (ite (= 2 7)
                      LsCommaPos__cp7__call47
-                     (ite (= 7 8) LsCommaPos__cp8__call47 a!2)))))
-(let ((a!4 (ite (= 7 3)
+                     (ite (= 2 8) LsCommaPos__cp8__call47 a!2)))))
+(let ((a!4 (ite (= 2 3)
                 LsCommaPos__cp3__call47
-                (ite (= 7 4)
+                (ite (= 2 4)
                      LsCommaPos__cp4__call47
-                     (ite (= 7 5) LsCommaPos__cp5__call47 a!3)))))
-(let ((a!5 (ite (= 7 0)
+                     (ite (= 2 5) LsCommaPos__cp5__call47 a!3)))))
+(let ((a!5 (ite (= 2 0)
                 LsCommaPos__cp0__call47
-                (ite (= 7 1)
+                (ite (= 2 1)
                      LsCommaPos__cp1__call47
-                     (ite (= 7 2) LsCommaPos__cp2__call47 a!4)))))
-  (= LsCountElem__cP7__call39 (ite (< 7 0) (- 0 1) a!5))))))))
+                     (ite (= 2 2) LsCommaPos__cp2__call47 a!4)))))
+  (= LsCountElem__cP2__call44 (ite (< 2 0) (- 0 1) a!5))))))))
 (assert (= LsCommaPos__cp0__call47
    (ite (< (str.indexof tk_inside "," 0) 0)
         (str.len tk_inside)
@@ -8166,34 +8836,34 @@
      (ite a!1
           (str.len tk_inside)
           (str.indexof tk_inside "," (+ LsCommaPos__cp14__call47 1))))))
-(assert (let ((a!1 (ite (= 8 12)
+(assert (let ((a!1 (ite (= 3 12)
                 LsCommaPos__cp12__call48
-                (ite (= 8 13)
+                (ite (= 3 13)
                      LsCommaPos__cp13__call48
-                     (ite (= 8 14)
+                     (ite (= 3 14)
                           LsCommaPos__cp14__call48
                           LsCommaPos__cp15__call48)))))
-(let ((a!2 (ite (= 8 9)
+(let ((a!2 (ite (= 3 9)
                 LsCommaPos__cp9__call48
-                (ite (= 8 10)
+                (ite (= 3 10)
                      LsCommaPos__cp10__call48
-                     (ite (= 8 11) LsCommaPos__cp11__call48 a!1)))))
-(let ((a!3 (ite (= 8 6)
+                     (ite (= 3 11) LsCommaPos__cp11__call48 a!1)))))
+(let ((a!3 (ite (= 3 6)
                 LsCommaPos__cp6__call48
-                (ite (= 8 7)
+                (ite (= 3 7)
                      LsCommaPos__cp7__call48
-                     (ite (= 8 8) LsCommaPos__cp8__call48 a!2)))))
-(let ((a!4 (ite (= 8 3)
+                     (ite (= 3 8) LsCommaPos__cp8__call48 a!2)))))
+(let ((a!4 (ite (= 3 3)
                 LsCommaPos__cp3__call48
-                (ite (= 8 4)
+                (ite (= 3 4)
                      LsCommaPos__cp4__call48
-                     (ite (= 8 5) LsCommaPos__cp5__call48 a!3)))))
-(let ((a!5 (ite (= 8 0)
+                     (ite (= 3 5) LsCommaPos__cp5__call48 a!3)))))
+(let ((a!5 (ite (= 3 0)
                 LsCommaPos__cp0__call48
-                (ite (= 8 1)
+                (ite (= 3 1)
                      LsCommaPos__cp1__call48
-                     (ite (= 8 2) LsCommaPos__cp2__call48 a!4)))))
-  (= LsCountElem__cP8__call39 (ite (< 8 0) (- 0 1) a!5))))))))
+                     (ite (= 3 2) LsCommaPos__cp2__call48 a!4)))))
+  (= LsCountElem__cP3__call44 (ite (< 3 0) (- 0 1) a!5))))))))
 (assert (= LsCommaPos__cp0__call48
    (ite (< (str.indexof tk_inside "," 0) 0)
         (str.len tk_inside)
@@ -8288,34 +8958,34 @@
      (ite a!1
           (str.len tk_inside)
           (str.indexof tk_inside "," (+ LsCommaPos__cp14__call48 1))))))
-(assert (let ((a!1 (ite (= 9 12)
+(assert (let ((a!1 (ite (= 4 12)
                 LsCommaPos__cp12__call49
-                (ite (= 9 13)
+                (ite (= 4 13)
                      LsCommaPos__cp13__call49
-                     (ite (= 9 14)
+                     (ite (= 4 14)
                           LsCommaPos__cp14__call49
                           LsCommaPos__cp15__call49)))))
-(let ((a!2 (ite (= 9 9)
+(let ((a!2 (ite (= 4 9)
                 LsCommaPos__cp9__call49
-                (ite (= 9 10)
+                (ite (= 4 10)
                      LsCommaPos__cp10__call49
-                     (ite (= 9 11) LsCommaPos__cp11__call49 a!1)))))
-(let ((a!3 (ite (= 9 6)
+                     (ite (= 4 11) LsCommaPos__cp11__call49 a!1)))))
+(let ((a!3 (ite (= 4 6)
                 LsCommaPos__cp6__call49
-                (ite (= 9 7)
+                (ite (= 4 7)
                      LsCommaPos__cp7__call49
-                     (ite (= 9 8) LsCommaPos__cp8__call49 a!2)))))
-(let ((a!4 (ite (= 9 3)
+                     (ite (= 4 8) LsCommaPos__cp8__call49 a!2)))))
+(let ((a!4 (ite (= 4 3)
                 LsCommaPos__cp3__call49
-                (ite (= 9 4)
+                (ite (= 4 4)
                      LsCommaPos__cp4__call49
-                     (ite (= 9 5) LsCommaPos__cp5__call49 a!3)))))
-(let ((a!5 (ite (= 9 0)
+                     (ite (= 4 5) LsCommaPos__cp5__call49 a!3)))))
+(let ((a!5 (ite (= 4 0)
                 LsCommaPos__cp0__call49
-                (ite (= 9 1)
+                (ite (= 4 1)
                      LsCommaPos__cp1__call49
-                     (ite (= 9 2) LsCommaPos__cp2__call49 a!4)))))
-  (= LsCountElem__cP9__call39 (ite (< 9 0) (- 0 1) a!5))))))))
+                     (ite (= 4 2) LsCommaPos__cp2__call49 a!4)))))
+  (= LsCountElem__cP4__call44 (ite (< 4 0) (- 0 1) a!5))))))))
 (assert (= LsCommaPos__cp0__call49
    (ite (< (str.indexof tk_inside "," 0) 0)
         (str.len tk_inside)
@@ -8410,34 +9080,34 @@
      (ite a!1
           (str.len tk_inside)
           (str.indexof tk_inside "," (+ LsCommaPos__cp14__call49 1))))))
-(assert (let ((a!1 (ite (= 10 12)
+(assert (let ((a!1 (ite (= 5 12)
                 LsCommaPos__cp12__call50
-                (ite (= 10 13)
+                (ite (= 5 13)
                      LsCommaPos__cp13__call50
-                     (ite (= 10 14)
+                     (ite (= 5 14)
                           LsCommaPos__cp14__call50
                           LsCommaPos__cp15__call50)))))
-(let ((a!2 (ite (= 10 9)
+(let ((a!2 (ite (= 5 9)
                 LsCommaPos__cp9__call50
-                (ite (= 10 10)
+                (ite (= 5 10)
                      LsCommaPos__cp10__call50
-                     (ite (= 10 11) LsCommaPos__cp11__call50 a!1)))))
-(let ((a!3 (ite (= 10 6)
+                     (ite (= 5 11) LsCommaPos__cp11__call50 a!1)))))
+(let ((a!3 (ite (= 5 6)
                 LsCommaPos__cp6__call50
-                (ite (= 10 7)
+                (ite (= 5 7)
                      LsCommaPos__cp7__call50
-                     (ite (= 10 8) LsCommaPos__cp8__call50 a!2)))))
-(let ((a!4 (ite (= 10 3)
+                     (ite (= 5 8) LsCommaPos__cp8__call50 a!2)))))
+(let ((a!4 (ite (= 5 3)
                 LsCommaPos__cp3__call50
-                (ite (= 10 4)
+                (ite (= 5 4)
                      LsCommaPos__cp4__call50
-                     (ite (= 10 5) LsCommaPos__cp5__call50 a!3)))))
-(let ((a!5 (ite (= 10 0)
+                     (ite (= 5 5) LsCommaPos__cp5__call50 a!3)))))
+(let ((a!5 (ite (= 5 0)
                 LsCommaPos__cp0__call50
-                (ite (= 10 1)
+                (ite (= 5 1)
                      LsCommaPos__cp1__call50
-                     (ite (= 10 2) LsCommaPos__cp2__call50 a!4)))))
-  (= LsCountElem__cP10__call39 (ite (< 10 0) (- 0 1) a!5))))))))
+                     (ite (= 5 2) LsCommaPos__cp2__call50 a!4)))))
+  (= LsCountElem__cP5__call44 (ite (< 5 0) (- 0 1) a!5))))))))
 (assert (= LsCommaPos__cp0__call50
    (ite (< (str.indexof tk_inside "," 0) 0)
         (str.len tk_inside)
@@ -8532,34 +9202,34 @@
      (ite a!1
           (str.len tk_inside)
           (str.indexof tk_inside "," (+ LsCommaPos__cp14__call50 1))))))
-(assert (let ((a!1 (ite (= 11 12)
+(assert (let ((a!1 (ite (= 6 12)
                 LsCommaPos__cp12__call51
-                (ite (= 11 13)
+                (ite (= 6 13)
                      LsCommaPos__cp13__call51
-                     (ite (= 11 14)
+                     (ite (= 6 14)
                           LsCommaPos__cp14__call51
                           LsCommaPos__cp15__call51)))))
-(let ((a!2 (ite (= 11 9)
+(let ((a!2 (ite (= 6 9)
                 LsCommaPos__cp9__call51
-                (ite (= 11 10)
+                (ite (= 6 10)
                      LsCommaPos__cp10__call51
-                     (ite (= 11 11) LsCommaPos__cp11__call51 a!1)))))
-(let ((a!3 (ite (= 11 6)
+                     (ite (= 6 11) LsCommaPos__cp11__call51 a!1)))))
+(let ((a!3 (ite (= 6 6)
                 LsCommaPos__cp6__call51
-                (ite (= 11 7)
+                (ite (= 6 7)
                      LsCommaPos__cp7__call51
-                     (ite (= 11 8) LsCommaPos__cp8__call51 a!2)))))
-(let ((a!4 (ite (= 11 3)
+                     (ite (= 6 8) LsCommaPos__cp8__call51 a!2)))))
+(let ((a!4 (ite (= 6 3)
                 LsCommaPos__cp3__call51
-                (ite (= 11 4)
+                (ite (= 6 4)
                      LsCommaPos__cp4__call51
-                     (ite (= 11 5) LsCommaPos__cp5__call51 a!3)))))
-(let ((a!5 (ite (= 11 0)
+                     (ite (= 6 5) LsCommaPos__cp5__call51 a!3)))))
+(let ((a!5 (ite (= 6 0)
                 LsCommaPos__cp0__call51
-                (ite (= 11 1)
+                (ite (= 6 1)
                      LsCommaPos__cp1__call51
-                     (ite (= 11 2) LsCommaPos__cp2__call51 a!4)))))
-  (= LsCountElem__cP11__call39 (ite (< 11 0) (- 0 1) a!5))))))))
+                     (ite (= 6 2) LsCommaPos__cp2__call51 a!4)))))
+  (= LsCountElem__cP6__call44 (ite (< 6 0) (- 0 1) a!5))))))))
 (assert (= LsCommaPos__cp0__call51
    (ite (< (str.indexof tk_inside "," 0) 0)
         (str.len tk_inside)
@@ -8654,34 +9324,34 @@
      (ite a!1
           (str.len tk_inside)
           (str.indexof tk_inside "," (+ LsCommaPos__cp14__call51 1))))))
-(assert (let ((a!1 (ite (= 12 12)
+(assert (let ((a!1 (ite (= 7 12)
                 LsCommaPos__cp12__call52
-                (ite (= 12 13)
+                (ite (= 7 13)
                      LsCommaPos__cp13__call52
-                     (ite (= 12 14)
+                     (ite (= 7 14)
                           LsCommaPos__cp14__call52
                           LsCommaPos__cp15__call52)))))
-(let ((a!2 (ite (= 12 9)
+(let ((a!2 (ite (= 7 9)
                 LsCommaPos__cp9__call52
-                (ite (= 12 10)
+                (ite (= 7 10)
                      LsCommaPos__cp10__call52
-                     (ite (= 12 11) LsCommaPos__cp11__call52 a!1)))))
-(let ((a!3 (ite (= 12 6)
+                     (ite (= 7 11) LsCommaPos__cp11__call52 a!1)))))
+(let ((a!3 (ite (= 7 6)
                 LsCommaPos__cp6__call52
-                (ite (= 12 7)
+                (ite (= 7 7)
                      LsCommaPos__cp7__call52
-                     (ite (= 12 8) LsCommaPos__cp8__call52 a!2)))))
-(let ((a!4 (ite (= 12 3)
+                     (ite (= 7 8) LsCommaPos__cp8__call52 a!2)))))
+(let ((a!4 (ite (= 7 3)
                 LsCommaPos__cp3__call52
-                (ite (= 12 4)
+                (ite (= 7 4)
                      LsCommaPos__cp4__call52
-                     (ite (= 12 5) LsCommaPos__cp5__call52 a!3)))))
-(let ((a!5 (ite (= 12 0)
+                     (ite (= 7 5) LsCommaPos__cp5__call52 a!3)))))
+(let ((a!5 (ite (= 7 0)
                 LsCommaPos__cp0__call52
-                (ite (= 12 1)
+                (ite (= 7 1)
                      LsCommaPos__cp1__call52
-                     (ite (= 12 2) LsCommaPos__cp2__call52 a!4)))))
-  (= LsCountElem__cP12__call39 (ite (< 12 0) (- 0 1) a!5))))))))
+                     (ite (= 7 2) LsCommaPos__cp2__call52 a!4)))))
+  (= LsCountElem__cP7__call44 (ite (< 7 0) (- 0 1) a!5))))))))
 (assert (= LsCommaPos__cp0__call52
    (ite (< (str.indexof tk_inside "," 0) 0)
         (str.len tk_inside)
@@ -8776,34 +9446,34 @@
      (ite a!1
           (str.len tk_inside)
           (str.indexof tk_inside "," (+ LsCommaPos__cp14__call52 1))))))
-(assert (let ((a!1 (ite (= 13 12)
+(assert (let ((a!1 (ite (= 8 12)
                 LsCommaPos__cp12__call53
-                (ite (= 13 13)
+                (ite (= 8 13)
                      LsCommaPos__cp13__call53
-                     (ite (= 13 14)
+                     (ite (= 8 14)
                           LsCommaPos__cp14__call53
                           LsCommaPos__cp15__call53)))))
-(let ((a!2 (ite (= 13 9)
+(let ((a!2 (ite (= 8 9)
                 LsCommaPos__cp9__call53
-                (ite (= 13 10)
+                (ite (= 8 10)
                      LsCommaPos__cp10__call53
-                     (ite (= 13 11) LsCommaPos__cp11__call53 a!1)))))
-(let ((a!3 (ite (= 13 6)
+                     (ite (= 8 11) LsCommaPos__cp11__call53 a!1)))))
+(let ((a!3 (ite (= 8 6)
                 LsCommaPos__cp6__call53
-                (ite (= 13 7)
+                (ite (= 8 7)
                      LsCommaPos__cp7__call53
-                     (ite (= 13 8) LsCommaPos__cp8__call53 a!2)))))
-(let ((a!4 (ite (= 13 3)
+                     (ite (= 8 8) LsCommaPos__cp8__call53 a!2)))))
+(let ((a!4 (ite (= 8 3)
                 LsCommaPos__cp3__call53
-                (ite (= 13 4)
+                (ite (= 8 4)
                      LsCommaPos__cp4__call53
-                     (ite (= 13 5) LsCommaPos__cp5__call53 a!3)))))
-(let ((a!5 (ite (= 13 0)
+                     (ite (= 8 5) LsCommaPos__cp5__call53 a!3)))))
+(let ((a!5 (ite (= 8 0)
                 LsCommaPos__cp0__call53
-                (ite (= 13 1)
+                (ite (= 8 1)
                      LsCommaPos__cp1__call53
-                     (ite (= 13 2) LsCommaPos__cp2__call53 a!4)))))
-  (= LsCountElem__cP13__call39 (ite (< 13 0) (- 0 1) a!5))))))))
+                     (ite (= 8 2) LsCommaPos__cp2__call53 a!4)))))
+  (= LsCountElem__cP8__call44 (ite (< 8 0) (- 0 1) a!5))))))))
 (assert (= LsCommaPos__cp0__call53
    (ite (< (str.indexof tk_inside "," 0) 0)
         (str.len tk_inside)
@@ -8898,34 +9568,34 @@
      (ite a!1
           (str.len tk_inside)
           (str.indexof tk_inside "," (+ LsCommaPos__cp14__call53 1))))))
-(assert (let ((a!1 (ite (= 14 12)
+(assert (let ((a!1 (ite (= 9 12)
                 LsCommaPos__cp12__call54
-                (ite (= 14 13)
+                (ite (= 9 13)
                      LsCommaPos__cp13__call54
-                     (ite (= 14 14)
+                     (ite (= 9 14)
                           LsCommaPos__cp14__call54
                           LsCommaPos__cp15__call54)))))
-(let ((a!2 (ite (= 14 9)
+(let ((a!2 (ite (= 9 9)
                 LsCommaPos__cp9__call54
-                (ite (= 14 10)
+                (ite (= 9 10)
                      LsCommaPos__cp10__call54
-                     (ite (= 14 11) LsCommaPos__cp11__call54 a!1)))))
-(let ((a!3 (ite (= 14 6)
+                     (ite (= 9 11) LsCommaPos__cp11__call54 a!1)))))
+(let ((a!3 (ite (= 9 6)
                 LsCommaPos__cp6__call54
-                (ite (= 14 7)
+                (ite (= 9 7)
                      LsCommaPos__cp7__call54
-                     (ite (= 14 8) LsCommaPos__cp8__call54 a!2)))))
-(let ((a!4 (ite (= 14 3)
+                     (ite (= 9 8) LsCommaPos__cp8__call54 a!2)))))
+(let ((a!4 (ite (= 9 3)
                 LsCommaPos__cp3__call54
-                (ite (= 14 4)
+                (ite (= 9 4)
                      LsCommaPos__cp4__call54
-                     (ite (= 14 5) LsCommaPos__cp5__call54 a!3)))))
-(let ((a!5 (ite (= 14 0)
+                     (ite (= 9 5) LsCommaPos__cp5__call54 a!3)))))
+(let ((a!5 (ite (= 9 0)
                 LsCommaPos__cp0__call54
-                (ite (= 14 1)
+                (ite (= 9 1)
                      LsCommaPos__cp1__call54
-                     (ite (= 14 2) LsCommaPos__cp2__call54 a!4)))))
-  (= LsCountElem__cP14__call39 (ite (< 14 0) (- 0 1) a!5))))))))
+                     (ite (= 9 2) LsCommaPos__cp2__call54 a!4)))))
+  (= LsCountElem__cP9__call44 (ite (< 9 0) (- 0 1) a!5))))))))
 (assert (= LsCommaPos__cp0__call54
    (ite (< (str.indexof tk_inside "," 0) 0)
         (str.len tk_inside)
@@ -9020,34 +9690,34 @@
      (ite a!1
           (str.len tk_inside)
           (str.indexof tk_inside "," (+ LsCommaPos__cp14__call54 1))))))
-(assert (let ((a!1 (ite (= 15 12)
+(assert (let ((a!1 (ite (= 10 12)
                 LsCommaPos__cp12__call55
-                (ite (= 15 13)
+                (ite (= 10 13)
                      LsCommaPos__cp13__call55
-                     (ite (= 15 14)
+                     (ite (= 10 14)
                           LsCommaPos__cp14__call55
                           LsCommaPos__cp15__call55)))))
-(let ((a!2 (ite (= 15 9)
+(let ((a!2 (ite (= 10 9)
                 LsCommaPos__cp9__call55
-                (ite (= 15 10)
+                (ite (= 10 10)
                      LsCommaPos__cp10__call55
-                     (ite (= 15 11) LsCommaPos__cp11__call55 a!1)))))
-(let ((a!3 (ite (= 15 6)
+                     (ite (= 10 11) LsCommaPos__cp11__call55 a!1)))))
+(let ((a!3 (ite (= 10 6)
                 LsCommaPos__cp6__call55
-                (ite (= 15 7)
+                (ite (= 10 7)
                      LsCommaPos__cp7__call55
-                     (ite (= 15 8) LsCommaPos__cp8__call55 a!2)))))
-(let ((a!4 (ite (= 15 3)
+                     (ite (= 10 8) LsCommaPos__cp8__call55 a!2)))))
+(let ((a!4 (ite (= 10 3)
                 LsCommaPos__cp3__call55
-                (ite (= 15 4)
+                (ite (= 10 4)
                      LsCommaPos__cp4__call55
-                     (ite (= 15 5) LsCommaPos__cp5__call55 a!3)))))
-(let ((a!5 (ite (= 15 0)
+                     (ite (= 10 5) LsCommaPos__cp5__call55 a!3)))))
+(let ((a!5 (ite (= 10 0)
                 LsCommaPos__cp0__call55
-                (ite (= 15 1)
+                (ite (= 10 1)
                      LsCommaPos__cp1__call55
-                     (ite (= 15 2) LsCommaPos__cp2__call55 a!4)))))
-  (= LsCountElem__cP15__call39 (ite (< 15 0) (- 0 1) a!5))))))))
+                     (ite (= 10 2) LsCommaPos__cp2__call55 a!4)))))
+  (= LsCountElem__cP10__call44 (ite (< 10 0) (- 0 1) a!5))))))))
 (assert (= LsCommaPos__cp0__call55
    (ite (< (str.indexof tk_inside "," 0) 0)
         (str.len tk_inside)
@@ -9142,13 +9812,627 @@
      (ite a!1
           (str.len tk_inside)
           (str.indexof tk_inside "," (+ LsCommaPos__cp14__call55 1))))))
+(assert (let ((a!1 (ite (= 11 12)
+                LsCommaPos__cp12__call56
+                (ite (= 11 13)
+                     LsCommaPos__cp13__call56
+                     (ite (= 11 14)
+                          LsCommaPos__cp14__call56
+                          LsCommaPos__cp15__call56)))))
+(let ((a!2 (ite (= 11 9)
+                LsCommaPos__cp9__call56
+                (ite (= 11 10)
+                     LsCommaPos__cp10__call56
+                     (ite (= 11 11) LsCommaPos__cp11__call56 a!1)))))
+(let ((a!3 (ite (= 11 6)
+                LsCommaPos__cp6__call56
+                (ite (= 11 7)
+                     LsCommaPos__cp7__call56
+                     (ite (= 11 8) LsCommaPos__cp8__call56 a!2)))))
+(let ((a!4 (ite (= 11 3)
+                LsCommaPos__cp3__call56
+                (ite (= 11 4)
+                     LsCommaPos__cp4__call56
+                     (ite (= 11 5) LsCommaPos__cp5__call56 a!3)))))
+(let ((a!5 (ite (= 11 0)
+                LsCommaPos__cp0__call56
+                (ite (= 11 1)
+                     LsCommaPos__cp1__call56
+                     (ite (= 11 2) LsCommaPos__cp2__call56 a!4)))))
+  (= LsCountElem__cP11__call44 (ite (< 11 0) (- 0 1) a!5))))))))
+(assert (= LsCommaPos__cp0__call56
+   (ite (< (str.indexof tk_inside "," 0) 0)
+        (str.len tk_inside)
+        (str.indexof tk_inside "," 0))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp0__call56 (str.len tk_inside))
+               (< (str.indexof tk_inside "," (+ LsCommaPos__cp0__call56 1)) 0))))
+  (= LsCommaPos__cp1__call56
+     (ite a!1
+          (str.len tk_inside)
+          (str.indexof tk_inside "," (+ LsCommaPos__cp0__call56 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp1__call56 (str.len tk_inside))
+               (< (str.indexof tk_inside "," (+ LsCommaPos__cp1__call56 1)) 0))))
+  (= LsCommaPos__cp2__call56
+     (ite a!1
+          (str.len tk_inside)
+          (str.indexof tk_inside "," (+ LsCommaPos__cp1__call56 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp2__call56 (str.len tk_inside))
+               (< (str.indexof tk_inside "," (+ LsCommaPos__cp2__call56 1)) 0))))
+  (= LsCommaPos__cp3__call56
+     (ite a!1
+          (str.len tk_inside)
+          (str.indexof tk_inside "," (+ LsCommaPos__cp2__call56 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp3__call56 (str.len tk_inside))
+               (< (str.indexof tk_inside "," (+ LsCommaPos__cp3__call56 1)) 0))))
+  (= LsCommaPos__cp4__call56
+     (ite a!1
+          (str.len tk_inside)
+          (str.indexof tk_inside "," (+ LsCommaPos__cp3__call56 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp4__call56 (str.len tk_inside))
+               (< (str.indexof tk_inside "," (+ LsCommaPos__cp4__call56 1)) 0))))
+  (= LsCommaPos__cp5__call56
+     (ite a!1
+          (str.len tk_inside)
+          (str.indexof tk_inside "," (+ LsCommaPos__cp4__call56 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp5__call56 (str.len tk_inside))
+               (< (str.indexof tk_inside "," (+ LsCommaPos__cp5__call56 1)) 0))))
+  (= LsCommaPos__cp6__call56
+     (ite a!1
+          (str.len tk_inside)
+          (str.indexof tk_inside "," (+ LsCommaPos__cp5__call56 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp6__call56 (str.len tk_inside))
+               (< (str.indexof tk_inside "," (+ LsCommaPos__cp6__call56 1)) 0))))
+  (= LsCommaPos__cp7__call56
+     (ite a!1
+          (str.len tk_inside)
+          (str.indexof tk_inside "," (+ LsCommaPos__cp6__call56 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp7__call56 (str.len tk_inside))
+               (< (str.indexof tk_inside "," (+ LsCommaPos__cp7__call56 1)) 0))))
+  (= LsCommaPos__cp8__call56
+     (ite a!1
+          (str.len tk_inside)
+          (str.indexof tk_inside "," (+ LsCommaPos__cp7__call56 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp8__call56 (str.len tk_inside))
+               (< (str.indexof tk_inside "," (+ LsCommaPos__cp8__call56 1)) 0))))
+  (= LsCommaPos__cp9__call56
+     (ite a!1
+          (str.len tk_inside)
+          (str.indexof tk_inside "," (+ LsCommaPos__cp8__call56 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp9__call56 (str.len tk_inside))
+               (< (str.indexof tk_inside "," (+ LsCommaPos__cp9__call56 1)) 0))))
+  (= LsCommaPos__cp10__call56
+     (ite a!1
+          (str.len tk_inside)
+          (str.indexof tk_inside "," (+ LsCommaPos__cp9__call56 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp10__call56 (str.len tk_inside))
+               (< (str.indexof tk_inside "," (+ LsCommaPos__cp10__call56 1)) 0))))
+  (= LsCommaPos__cp11__call56
+     (ite a!1
+          (str.len tk_inside)
+          (str.indexof tk_inside "," (+ LsCommaPos__cp10__call56 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp11__call56 (str.len tk_inside))
+               (< (str.indexof tk_inside "," (+ LsCommaPos__cp11__call56 1)) 0))))
+  (= LsCommaPos__cp12__call56
+     (ite a!1
+          (str.len tk_inside)
+          (str.indexof tk_inside "," (+ LsCommaPos__cp11__call56 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp12__call56 (str.len tk_inside))
+               (< (str.indexof tk_inside "," (+ LsCommaPos__cp12__call56 1)) 0))))
+  (= LsCommaPos__cp13__call56
+     (ite a!1
+          (str.len tk_inside)
+          (str.indexof tk_inside "," (+ LsCommaPos__cp12__call56 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp13__call56 (str.len tk_inside))
+               (< (str.indexof tk_inside "," (+ LsCommaPos__cp13__call56 1)) 0))))
+  (= LsCommaPos__cp14__call56
+     (ite a!1
+          (str.len tk_inside)
+          (str.indexof tk_inside "," (+ LsCommaPos__cp13__call56 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp14__call56 (str.len tk_inside))
+               (< (str.indexof tk_inside "," (+ LsCommaPos__cp14__call56 1)) 0))))
+  (= LsCommaPos__cp15__call56
+     (ite a!1
+          (str.len tk_inside)
+          (str.indexof tk_inside "," (+ LsCommaPos__cp14__call56 1))))))
+(assert (let ((a!1 (ite (= 12 12)
+                LsCommaPos__cp12__call57
+                (ite (= 12 13)
+                     LsCommaPos__cp13__call57
+                     (ite (= 12 14)
+                          LsCommaPos__cp14__call57
+                          LsCommaPos__cp15__call57)))))
+(let ((a!2 (ite (= 12 9)
+                LsCommaPos__cp9__call57
+                (ite (= 12 10)
+                     LsCommaPos__cp10__call57
+                     (ite (= 12 11) LsCommaPos__cp11__call57 a!1)))))
+(let ((a!3 (ite (= 12 6)
+                LsCommaPos__cp6__call57
+                (ite (= 12 7)
+                     LsCommaPos__cp7__call57
+                     (ite (= 12 8) LsCommaPos__cp8__call57 a!2)))))
+(let ((a!4 (ite (= 12 3)
+                LsCommaPos__cp3__call57
+                (ite (= 12 4)
+                     LsCommaPos__cp4__call57
+                     (ite (= 12 5) LsCommaPos__cp5__call57 a!3)))))
+(let ((a!5 (ite (= 12 0)
+                LsCommaPos__cp0__call57
+                (ite (= 12 1)
+                     LsCommaPos__cp1__call57
+                     (ite (= 12 2) LsCommaPos__cp2__call57 a!4)))))
+  (= LsCountElem__cP12__call44 (ite (< 12 0) (- 0 1) a!5))))))))
+(assert (= LsCommaPos__cp0__call57
+   (ite (< (str.indexof tk_inside "," 0) 0)
+        (str.len tk_inside)
+        (str.indexof tk_inside "," 0))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp0__call57 (str.len tk_inside))
+               (< (str.indexof tk_inside "," (+ LsCommaPos__cp0__call57 1)) 0))))
+  (= LsCommaPos__cp1__call57
+     (ite a!1
+          (str.len tk_inside)
+          (str.indexof tk_inside "," (+ LsCommaPos__cp0__call57 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp1__call57 (str.len tk_inside))
+               (< (str.indexof tk_inside "," (+ LsCommaPos__cp1__call57 1)) 0))))
+  (= LsCommaPos__cp2__call57
+     (ite a!1
+          (str.len tk_inside)
+          (str.indexof tk_inside "," (+ LsCommaPos__cp1__call57 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp2__call57 (str.len tk_inside))
+               (< (str.indexof tk_inside "," (+ LsCommaPos__cp2__call57 1)) 0))))
+  (= LsCommaPos__cp3__call57
+     (ite a!1
+          (str.len tk_inside)
+          (str.indexof tk_inside "," (+ LsCommaPos__cp2__call57 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp3__call57 (str.len tk_inside))
+               (< (str.indexof tk_inside "," (+ LsCommaPos__cp3__call57 1)) 0))))
+  (= LsCommaPos__cp4__call57
+     (ite a!1
+          (str.len tk_inside)
+          (str.indexof tk_inside "," (+ LsCommaPos__cp3__call57 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp4__call57 (str.len tk_inside))
+               (< (str.indexof tk_inside "," (+ LsCommaPos__cp4__call57 1)) 0))))
+  (= LsCommaPos__cp5__call57
+     (ite a!1
+          (str.len tk_inside)
+          (str.indexof tk_inside "," (+ LsCommaPos__cp4__call57 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp5__call57 (str.len tk_inside))
+               (< (str.indexof tk_inside "," (+ LsCommaPos__cp5__call57 1)) 0))))
+  (= LsCommaPos__cp6__call57
+     (ite a!1
+          (str.len tk_inside)
+          (str.indexof tk_inside "," (+ LsCommaPos__cp5__call57 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp6__call57 (str.len tk_inside))
+               (< (str.indexof tk_inside "," (+ LsCommaPos__cp6__call57 1)) 0))))
+  (= LsCommaPos__cp7__call57
+     (ite a!1
+          (str.len tk_inside)
+          (str.indexof tk_inside "," (+ LsCommaPos__cp6__call57 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp7__call57 (str.len tk_inside))
+               (< (str.indexof tk_inside "," (+ LsCommaPos__cp7__call57 1)) 0))))
+  (= LsCommaPos__cp8__call57
+     (ite a!1
+          (str.len tk_inside)
+          (str.indexof tk_inside "," (+ LsCommaPos__cp7__call57 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp8__call57 (str.len tk_inside))
+               (< (str.indexof tk_inside "," (+ LsCommaPos__cp8__call57 1)) 0))))
+  (= LsCommaPos__cp9__call57
+     (ite a!1
+          (str.len tk_inside)
+          (str.indexof tk_inside "," (+ LsCommaPos__cp8__call57 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp9__call57 (str.len tk_inside))
+               (< (str.indexof tk_inside "," (+ LsCommaPos__cp9__call57 1)) 0))))
+  (= LsCommaPos__cp10__call57
+     (ite a!1
+          (str.len tk_inside)
+          (str.indexof tk_inside "," (+ LsCommaPos__cp9__call57 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp10__call57 (str.len tk_inside))
+               (< (str.indexof tk_inside "," (+ LsCommaPos__cp10__call57 1)) 0))))
+  (= LsCommaPos__cp11__call57
+     (ite a!1
+          (str.len tk_inside)
+          (str.indexof tk_inside "," (+ LsCommaPos__cp10__call57 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp11__call57 (str.len tk_inside))
+               (< (str.indexof tk_inside "," (+ LsCommaPos__cp11__call57 1)) 0))))
+  (= LsCommaPos__cp12__call57
+     (ite a!1
+          (str.len tk_inside)
+          (str.indexof tk_inside "," (+ LsCommaPos__cp11__call57 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp12__call57 (str.len tk_inside))
+               (< (str.indexof tk_inside "," (+ LsCommaPos__cp12__call57 1)) 0))))
+  (= LsCommaPos__cp13__call57
+     (ite a!1
+          (str.len tk_inside)
+          (str.indexof tk_inside "," (+ LsCommaPos__cp12__call57 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp13__call57 (str.len tk_inside))
+               (< (str.indexof tk_inside "," (+ LsCommaPos__cp13__call57 1)) 0))))
+  (= LsCommaPos__cp14__call57
+     (ite a!1
+          (str.len tk_inside)
+          (str.indexof tk_inside "," (+ LsCommaPos__cp13__call57 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp14__call57 (str.len tk_inside))
+               (< (str.indexof tk_inside "," (+ LsCommaPos__cp14__call57 1)) 0))))
+  (= LsCommaPos__cp15__call57
+     (ite a!1
+          (str.len tk_inside)
+          (str.indexof tk_inside "," (+ LsCommaPos__cp14__call57 1))))))
+(assert (let ((a!1 (ite (= 13 12)
+                LsCommaPos__cp12__call58
+                (ite (= 13 13)
+                     LsCommaPos__cp13__call58
+                     (ite (= 13 14)
+                          LsCommaPos__cp14__call58
+                          LsCommaPos__cp15__call58)))))
+(let ((a!2 (ite (= 13 9)
+                LsCommaPos__cp9__call58
+                (ite (= 13 10)
+                     LsCommaPos__cp10__call58
+                     (ite (= 13 11) LsCommaPos__cp11__call58 a!1)))))
+(let ((a!3 (ite (= 13 6)
+                LsCommaPos__cp6__call58
+                (ite (= 13 7)
+                     LsCommaPos__cp7__call58
+                     (ite (= 13 8) LsCommaPos__cp8__call58 a!2)))))
+(let ((a!4 (ite (= 13 3)
+                LsCommaPos__cp3__call58
+                (ite (= 13 4)
+                     LsCommaPos__cp4__call58
+                     (ite (= 13 5) LsCommaPos__cp5__call58 a!3)))))
+(let ((a!5 (ite (= 13 0)
+                LsCommaPos__cp0__call58
+                (ite (= 13 1)
+                     LsCommaPos__cp1__call58
+                     (ite (= 13 2) LsCommaPos__cp2__call58 a!4)))))
+  (= LsCountElem__cP13__call44 (ite (< 13 0) (- 0 1) a!5))))))))
+(assert (= LsCommaPos__cp0__call58
+   (ite (< (str.indexof tk_inside "," 0) 0)
+        (str.len tk_inside)
+        (str.indexof tk_inside "," 0))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp0__call58 (str.len tk_inside))
+               (< (str.indexof tk_inside "," (+ LsCommaPos__cp0__call58 1)) 0))))
+  (= LsCommaPos__cp1__call58
+     (ite a!1
+          (str.len tk_inside)
+          (str.indexof tk_inside "," (+ LsCommaPos__cp0__call58 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp1__call58 (str.len tk_inside))
+               (< (str.indexof tk_inside "," (+ LsCommaPos__cp1__call58 1)) 0))))
+  (= LsCommaPos__cp2__call58
+     (ite a!1
+          (str.len tk_inside)
+          (str.indexof tk_inside "," (+ LsCommaPos__cp1__call58 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp2__call58 (str.len tk_inside))
+               (< (str.indexof tk_inside "," (+ LsCommaPos__cp2__call58 1)) 0))))
+  (= LsCommaPos__cp3__call58
+     (ite a!1
+          (str.len tk_inside)
+          (str.indexof tk_inside "," (+ LsCommaPos__cp2__call58 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp3__call58 (str.len tk_inside))
+               (< (str.indexof tk_inside "," (+ LsCommaPos__cp3__call58 1)) 0))))
+  (= LsCommaPos__cp4__call58
+     (ite a!1
+          (str.len tk_inside)
+          (str.indexof tk_inside "," (+ LsCommaPos__cp3__call58 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp4__call58 (str.len tk_inside))
+               (< (str.indexof tk_inside "," (+ LsCommaPos__cp4__call58 1)) 0))))
+  (= LsCommaPos__cp5__call58
+     (ite a!1
+          (str.len tk_inside)
+          (str.indexof tk_inside "," (+ LsCommaPos__cp4__call58 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp5__call58 (str.len tk_inside))
+               (< (str.indexof tk_inside "," (+ LsCommaPos__cp5__call58 1)) 0))))
+  (= LsCommaPos__cp6__call58
+     (ite a!1
+          (str.len tk_inside)
+          (str.indexof tk_inside "," (+ LsCommaPos__cp5__call58 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp6__call58 (str.len tk_inside))
+               (< (str.indexof tk_inside "," (+ LsCommaPos__cp6__call58 1)) 0))))
+  (= LsCommaPos__cp7__call58
+     (ite a!1
+          (str.len tk_inside)
+          (str.indexof tk_inside "," (+ LsCommaPos__cp6__call58 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp7__call58 (str.len tk_inside))
+               (< (str.indexof tk_inside "," (+ LsCommaPos__cp7__call58 1)) 0))))
+  (= LsCommaPos__cp8__call58
+     (ite a!1
+          (str.len tk_inside)
+          (str.indexof tk_inside "," (+ LsCommaPos__cp7__call58 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp8__call58 (str.len tk_inside))
+               (< (str.indexof tk_inside "," (+ LsCommaPos__cp8__call58 1)) 0))))
+  (= LsCommaPos__cp9__call58
+     (ite a!1
+          (str.len tk_inside)
+          (str.indexof tk_inside "," (+ LsCommaPos__cp8__call58 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp9__call58 (str.len tk_inside))
+               (< (str.indexof tk_inside "," (+ LsCommaPos__cp9__call58 1)) 0))))
+  (= LsCommaPos__cp10__call58
+     (ite a!1
+          (str.len tk_inside)
+          (str.indexof tk_inside "," (+ LsCommaPos__cp9__call58 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp10__call58 (str.len tk_inside))
+               (< (str.indexof tk_inside "," (+ LsCommaPos__cp10__call58 1)) 0))))
+  (= LsCommaPos__cp11__call58
+     (ite a!1
+          (str.len tk_inside)
+          (str.indexof tk_inside "," (+ LsCommaPos__cp10__call58 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp11__call58 (str.len tk_inside))
+               (< (str.indexof tk_inside "," (+ LsCommaPos__cp11__call58 1)) 0))))
+  (= LsCommaPos__cp12__call58
+     (ite a!1
+          (str.len tk_inside)
+          (str.indexof tk_inside "," (+ LsCommaPos__cp11__call58 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp12__call58 (str.len tk_inside))
+               (< (str.indexof tk_inside "," (+ LsCommaPos__cp12__call58 1)) 0))))
+  (= LsCommaPos__cp13__call58
+     (ite a!1
+          (str.len tk_inside)
+          (str.indexof tk_inside "," (+ LsCommaPos__cp12__call58 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp13__call58 (str.len tk_inside))
+               (< (str.indexof tk_inside "," (+ LsCommaPos__cp13__call58 1)) 0))))
+  (= LsCommaPos__cp14__call58
+     (ite a!1
+          (str.len tk_inside)
+          (str.indexof tk_inside "," (+ LsCommaPos__cp13__call58 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp14__call58 (str.len tk_inside))
+               (< (str.indexof tk_inside "," (+ LsCommaPos__cp14__call58 1)) 0))))
+  (= LsCommaPos__cp15__call58
+     (ite a!1
+          (str.len tk_inside)
+          (str.indexof tk_inside "," (+ LsCommaPos__cp14__call58 1))))))
+(assert (let ((a!1 (ite (= 14 12)
+                LsCommaPos__cp12__call59
+                (ite (= 14 13)
+                     LsCommaPos__cp13__call59
+                     (ite (= 14 14)
+                          LsCommaPos__cp14__call59
+                          LsCommaPos__cp15__call59)))))
+(let ((a!2 (ite (= 14 9)
+                LsCommaPos__cp9__call59
+                (ite (= 14 10)
+                     LsCommaPos__cp10__call59
+                     (ite (= 14 11) LsCommaPos__cp11__call59 a!1)))))
+(let ((a!3 (ite (= 14 6)
+                LsCommaPos__cp6__call59
+                (ite (= 14 7)
+                     LsCommaPos__cp7__call59
+                     (ite (= 14 8) LsCommaPos__cp8__call59 a!2)))))
+(let ((a!4 (ite (= 14 3)
+                LsCommaPos__cp3__call59
+                (ite (= 14 4)
+                     LsCommaPos__cp4__call59
+                     (ite (= 14 5) LsCommaPos__cp5__call59 a!3)))))
+(let ((a!5 (ite (= 14 0)
+                LsCommaPos__cp0__call59
+                (ite (= 14 1)
+                     LsCommaPos__cp1__call59
+                     (ite (= 14 2) LsCommaPos__cp2__call59 a!4)))))
+  (= LsCountElem__cP14__call44 (ite (< 14 0) (- 0 1) a!5))))))))
+(assert (= LsCommaPos__cp0__call59
+   (ite (< (str.indexof tk_inside "," 0) 0)
+        (str.len tk_inside)
+        (str.indexof tk_inside "," 0))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp0__call59 (str.len tk_inside))
+               (< (str.indexof tk_inside "," (+ LsCommaPos__cp0__call59 1)) 0))))
+  (= LsCommaPos__cp1__call59
+     (ite a!1
+          (str.len tk_inside)
+          (str.indexof tk_inside "," (+ LsCommaPos__cp0__call59 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp1__call59 (str.len tk_inside))
+               (< (str.indexof tk_inside "," (+ LsCommaPos__cp1__call59 1)) 0))))
+  (= LsCommaPos__cp2__call59
+     (ite a!1
+          (str.len tk_inside)
+          (str.indexof tk_inside "," (+ LsCommaPos__cp1__call59 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp2__call59 (str.len tk_inside))
+               (< (str.indexof tk_inside "," (+ LsCommaPos__cp2__call59 1)) 0))))
+  (= LsCommaPos__cp3__call59
+     (ite a!1
+          (str.len tk_inside)
+          (str.indexof tk_inside "," (+ LsCommaPos__cp2__call59 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp3__call59 (str.len tk_inside))
+               (< (str.indexof tk_inside "," (+ LsCommaPos__cp3__call59 1)) 0))))
+  (= LsCommaPos__cp4__call59
+     (ite a!1
+          (str.len tk_inside)
+          (str.indexof tk_inside "," (+ LsCommaPos__cp3__call59 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp4__call59 (str.len tk_inside))
+               (< (str.indexof tk_inside "," (+ LsCommaPos__cp4__call59 1)) 0))))
+  (= LsCommaPos__cp5__call59
+     (ite a!1
+          (str.len tk_inside)
+          (str.indexof tk_inside "," (+ LsCommaPos__cp4__call59 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp5__call59 (str.len tk_inside))
+               (< (str.indexof tk_inside "," (+ LsCommaPos__cp5__call59 1)) 0))))
+  (= LsCommaPos__cp6__call59
+     (ite a!1
+          (str.len tk_inside)
+          (str.indexof tk_inside "," (+ LsCommaPos__cp5__call59 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp6__call59 (str.len tk_inside))
+               (< (str.indexof tk_inside "," (+ LsCommaPos__cp6__call59 1)) 0))))
+  (= LsCommaPos__cp7__call59
+     (ite a!1
+          (str.len tk_inside)
+          (str.indexof tk_inside "," (+ LsCommaPos__cp6__call59 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp7__call59 (str.len tk_inside))
+               (< (str.indexof tk_inside "," (+ LsCommaPos__cp7__call59 1)) 0))))
+  (= LsCommaPos__cp8__call59
+     (ite a!1
+          (str.len tk_inside)
+          (str.indexof tk_inside "," (+ LsCommaPos__cp7__call59 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp8__call59 (str.len tk_inside))
+               (< (str.indexof tk_inside "," (+ LsCommaPos__cp8__call59 1)) 0))))
+  (= LsCommaPos__cp9__call59
+     (ite a!1
+          (str.len tk_inside)
+          (str.indexof tk_inside "," (+ LsCommaPos__cp8__call59 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp9__call59 (str.len tk_inside))
+               (< (str.indexof tk_inside "," (+ LsCommaPos__cp9__call59 1)) 0))))
+  (= LsCommaPos__cp10__call59
+     (ite a!1
+          (str.len tk_inside)
+          (str.indexof tk_inside "," (+ LsCommaPos__cp9__call59 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp10__call59 (str.len tk_inside))
+               (< (str.indexof tk_inside "," (+ LsCommaPos__cp10__call59 1)) 0))))
+  (= LsCommaPos__cp11__call59
+     (ite a!1
+          (str.len tk_inside)
+          (str.indexof tk_inside "," (+ LsCommaPos__cp10__call59 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp11__call59 (str.len tk_inside))
+               (< (str.indexof tk_inside "," (+ LsCommaPos__cp11__call59 1)) 0))))
+  (= LsCommaPos__cp12__call59
+     (ite a!1
+          (str.len tk_inside)
+          (str.indexof tk_inside "," (+ LsCommaPos__cp11__call59 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp12__call59 (str.len tk_inside))
+               (< (str.indexof tk_inside "," (+ LsCommaPos__cp12__call59 1)) 0))))
+  (= LsCommaPos__cp13__call59
+     (ite a!1
+          (str.len tk_inside)
+          (str.indexof tk_inside "," (+ LsCommaPos__cp12__call59 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp13__call59 (str.len tk_inside))
+               (< (str.indexof tk_inside "," (+ LsCommaPos__cp13__call59 1)) 0))))
+  (= LsCommaPos__cp14__call59
+     (ite a!1
+          (str.len tk_inside)
+          (str.indexof tk_inside "," (+ LsCommaPos__cp13__call59 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp14__call59 (str.len tk_inside))
+               (< (str.indexof tk_inside "," (+ LsCommaPos__cp14__call59 1)) 0))))
+  (= LsCommaPos__cp15__call59
+     (ite a!1
+          (str.len tk_inside)
+          (str.indexof tk_inside "," (+ LsCommaPos__cp14__call59 1))))))
+(assert (let ((a!1 (ite (= 15 12)
+                LsCommaPos__cp12__call60
+                (ite (= 15 13)
+                     LsCommaPos__cp13__call60
+                     (ite (= 15 14)
+                          LsCommaPos__cp14__call60
+                          LsCommaPos__cp15__call60)))))
+(let ((a!2 (ite (= 15 9)
+                LsCommaPos__cp9__call60
+                (ite (= 15 10)
+                     LsCommaPos__cp10__call60
+                     (ite (= 15 11) LsCommaPos__cp11__call60 a!1)))))
+(let ((a!3 (ite (= 15 6)
+                LsCommaPos__cp6__call60
+                (ite (= 15 7)
+                     LsCommaPos__cp7__call60
+                     (ite (= 15 8) LsCommaPos__cp8__call60 a!2)))))
+(let ((a!4 (ite (= 15 3)
+                LsCommaPos__cp3__call60
+                (ite (= 15 4)
+                     LsCommaPos__cp4__call60
+                     (ite (= 15 5) LsCommaPos__cp5__call60 a!3)))))
+(let ((a!5 (ite (= 15 0)
+                LsCommaPos__cp0__call60
+                (ite (= 15 1)
+                     LsCommaPos__cp1__call60
+                     (ite (= 15 2) LsCommaPos__cp2__call60 a!4)))))
+  (= LsCountElem__cP15__call44 (ite (< 15 0) (- 0 1) a!5))))))))
+(assert (= LsCommaPos__cp0__call60
+   (ite (< (str.indexof tk_inside "," 0) 0)
+        (str.len tk_inside)
+        (str.indexof tk_inside "," 0))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp0__call60 (str.len tk_inside))
+               (< (str.indexof tk_inside "," (+ LsCommaPos__cp0__call60 1)) 0))))
+  (= LsCommaPos__cp1__call60
+     (ite a!1
+          (str.len tk_inside)
+          (str.indexof tk_inside "," (+ LsCommaPos__cp0__call60 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp1__call60 (str.len tk_inside))
+               (< (str.indexof tk_inside "," (+ LsCommaPos__cp1__call60 1)) 0))))
+  (= LsCommaPos__cp2__call60
+     (ite a!1
+          (str.len tk_inside)
+          (str.indexof tk_inside "," (+ LsCommaPos__cp1__call60 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp2__call60 (str.len tk_inside))
+               (< (str.indexof tk_inside "," (+ LsCommaPos__cp2__call60 1)) 0))))
+  (= LsCommaPos__cp3__call60
+     (ite a!1
+          (str.len tk_inside)
+          (str.indexof tk_inside "," (+ LsCommaPos__cp2__call60 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp3__call60 (str.len tk_inside))
+               (< (str.indexof tk_inside "," (+ LsCommaPos__cp3__call60 1)) 0))))
+  (= LsCommaPos__cp4__call60
+     (ite a!1
+          (str.len tk_inside)
+          (str.indexof tk_inside "," (+ LsCommaPos__cp3__call60 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp4__call60 (str.len tk_inside))
+               (< (str.indexof tk_inside "," (+ LsCommaPos__cp4__call60 1)) 0))))
+  (= LsCommaPos__cp5__call60
+     (ite a!1
+          (str.len tk_inside)
+          (str.indexof tk_inside "," (+ LsCommaPos__cp4__call60 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp5__call60 (str.len tk_inside))
+               (< (str.indexof tk_inside "," (+ LsCommaPos__cp5__call60 1)) 0))))
+  (= LsCommaPos__cp6__call60
+     (ite a!1
+          (str.len tk_inside)
+          (str.indexof tk_inside "," (+ LsCommaPos__cp5__call60 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp6__call60 (str.len tk_inside))
+               (< (str.indexof tk_inside "," (+ LsCommaPos__cp6__call60 1)) 0))))
+  (= LsCommaPos__cp7__call60
+     (ite a!1
+          (str.len tk_inside)
+          (str.indexof tk_inside "," (+ LsCommaPos__cp6__call60 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp7__call60 (str.len tk_inside))
+               (< (str.indexof tk_inside "," (+ LsCommaPos__cp7__call60 1)) 0))))
+  (= LsCommaPos__cp8__call60
+     (ite a!1
+          (str.len tk_inside)
+          (str.indexof tk_inside "," (+ LsCommaPos__cp7__call60 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp8__call60 (str.len tk_inside))
+               (< (str.indexof tk_inside "," (+ LsCommaPos__cp8__call60 1)) 0))))
+  (= LsCommaPos__cp9__call60
+     (ite a!1
+          (str.len tk_inside)
+          (str.indexof tk_inside "," (+ LsCommaPos__cp8__call60 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp9__call60 (str.len tk_inside))
+               (< (str.indexof tk_inside "," (+ LsCommaPos__cp9__call60 1)) 0))))
+  (= LsCommaPos__cp10__call60
+     (ite a!1
+          (str.len tk_inside)
+          (str.indexof tk_inside "," (+ LsCommaPos__cp9__call60 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp10__call60 (str.len tk_inside))
+               (< (str.indexof tk_inside "," (+ LsCommaPos__cp10__call60 1)) 0))))
+  (= LsCommaPos__cp11__call60
+     (ite a!1
+          (str.len tk_inside)
+          (str.indexof tk_inside "," (+ LsCommaPos__cp10__call60 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp11__call60 (str.len tk_inside))
+               (< (str.indexof tk_inside "," (+ LsCommaPos__cp11__call60 1)) 0))))
+  (= LsCommaPos__cp12__call60
+     (ite a!1
+          (str.len tk_inside)
+          (str.indexof tk_inside "," (+ LsCommaPos__cp11__call60 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp12__call60 (str.len tk_inside))
+               (< (str.indexof tk_inside "," (+ LsCommaPos__cp12__call60 1)) 0))))
+  (= LsCommaPos__cp13__call60
+     (ite a!1
+          (str.len tk_inside)
+          (str.indexof tk_inside "," (+ LsCommaPos__cp12__call60 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp13__call60 (str.len tk_inside))
+               (< (str.indexof tk_inside "," (+ LsCommaPos__cp13__call60 1)) 0))))
+  (= LsCommaPos__cp14__call60
+     (ite a!1
+          (str.len tk_inside)
+          (str.indexof tk_inside "," (+ LsCommaPos__cp13__call60 1))))))
+(assert (let ((a!1 (or (>= LsCommaPos__cp14__call60 (str.len tk_inside))
+               (< (str.indexof tk_inside "," (+ LsCommaPos__cp14__call60 1)) 0))))
+  (= LsCommaPos__cp15__call60
+     (ite a!1
+          (str.len tk_inside)
+          (str.indexof tk_inside "," (+ LsCommaPos__cp14__call60 1))))))
 (assert (= eff_nop (LibCall "libc" "getpid" __Empty_LibArg)))
 (assert (= eff_out
    (LibCall "libc" "puts" (__Cell_LibArg (ArgStr tk_print_now) __Empty_LibArg))))
 (assert (= tk_read_go
    (or (= tk_ph 2)
        (and tk_src
-            (or tk_is_top tk_default_plain tk_drop_bound tk_rewrite_bound))
+            (or tk_is_top
+                tk_is_member
+                tk_default_plain
+                tk_drop_bound
+                tk_rewrite_bound))
        tk_loop_done
        tk_walk_done)))
 (assert (let ((a!1 (and (= effects__len 2)
@@ -9217,15 +10501,32 @@
 (declare-fun _tk_is_decl () Bool)
 (declare-fun _tk_is_hold () Bool)
 (declare-fun _tk_is_litassign () Bool)
+(declare-fun _tk_is_member () Bool)
 (declare-fun _tk_is_top () Bool)
 (declare-fun _tk_key () String)
 (declare-fun _tk_lead () String)
 (declare-fun _tk_lead_base () String)
 (declare-fun _tk_lead_is_dual () Bool)
+(declare-fun _tk_lead_ok_em () Bool)
 (declare-fun _tk_len_lines () String)
 (declare-fun _tk_loop_done () Bool)
 (declare-fun _tk_loop_run () Bool)
 (declare-fun _tk_lt () Int)
+(declare-fun _tk_mem_at () Int)
+(declare-fun _tk_mem_base () String)
+(declare-fun _tk_mem_chain () String)
+(declare-fun _tk_mem_d1 () Int)
+(declare-fun _tk_mem_d2 () Int)
+(declare-fun _tk_mem_glyph () String)
+(declare-fun _tk_mem_hit () Bool)
+(declare-fun _tk_mem_key () String)
+(declare-fun _tk_mem_lhs () String)
+(declare-fun _tk_mem_n () Int)
+(declare-fun _tk_mem_re () Int)
+(declare-fun _tk_mem_rhs () String)
+(declare-fun _tk_mem_rs () Int)
+(declare-fun _tk_mem_rws () Int)
+(declare-fun _tk_mem_vs () Int)
 (declare-fun _tk_needs_walk () Bool)
 (declare-fun _tk_ph () Int)
 (declare-fun _tk_print_now () String)
