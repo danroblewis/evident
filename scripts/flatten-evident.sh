@@ -130,4 +130,4 @@ if [ "${EVIDENT_AUTOCARRY:-evident}" = "awk" ]; then
 else
     AUTOCARRY="$SCRIPT_DIR/passes/autocarry-evident.sh"
 fi
-"$AUTOCARRY" < "$FLAT_TMP" | "$SCRIPT_DIR/passes/flatten-body-records.sh" | "$SCRIPT_DIR/passes/lower-bounded-seq.sh"
+"$AUTOCARRY" < "$FLAT_TMP" | "$SCRIPT_DIR/passes/flatten-body-records.sh" | "$SCRIPT_DIR/passes/lower-bounded-seq.sh" | "$SCRIPT_DIR/passes/hoist-decls.sh"
