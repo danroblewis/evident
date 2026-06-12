@@ -168,7 +168,7 @@ fsm DriverPosBind
     param_count ∈ Int
     expect ∈ Int
     param_names ∈ Seq(PbStr)
-    #param_names ≤ 6
+    #param_names ≤ 16
     param_take ∈ Bool = (run ∧ (tok0 matches Ident(_))
         ∧ (_expect = 1))
     consuming_type ∈ Bool = (run ∧ (tok0 matches OpIn)
@@ -190,7 +190,7 @@ fsm DriverPosBind
         : jump ? 0
         : param_take ? _param_count + 1
         : _param_count)
-    ∀ k ∈ {0..5} : param_names[k].s = (is_first_tick ? "" : (param_take ∧ _param_count = k) ? param_name_tok : _param_names[k].s)
+    ∀ k ∈ {0..15} : param_names[k].s = (is_first_tick ? "" : (param_take ∧ _param_count = k) ? param_name_tok : _param_names[k].s)
 
     -- ── header-slot fresh decls at the seam (claim headers) ────────
     -- A headered callee declares its interface in the header, so an
@@ -208,6 +208,19 @@ fsm DriverPosBind
     guard ∈ Bool = (guarding ∧ (_frame_depth = _armed_depth))
     decl_fire ∈ Bool = (consuming_type ∧ (¬_is_type) ∧ (¬guard)
         ∧ (¬(_is_bare_call ∧ (¬_hide))))
+    -- A `..`-lift shares names with the caller, so it normally declares
+    -- no header params (decl_fire excludes _is_bare_call ∧ ¬_hide). But an
+    -- autocarry-expanded fsm's header carries its OWN state — the forward
+    -- slots AND the `_x` carry duals — which the caller never declares.
+    -- In PASS 0 only, a lift declares any header param the symtab does not
+    -- already hold (the symtab-miss guard, same as the _hide path), so a
+    -- lifted carry dual like `_record_slot` resolves on the pass-1 read
+    -- (was rc=9). Pass-0-gated: the pass-1 re-walk re-mints the const
+    -- (harmless, Z3 interns by symbol+sort) but the symbol_index append is
+    -- itself pass-0-gated, so no duplicate symtab row.
+    lift_prescan_decl ∈ Bool = (consuming_type ∧ (¬_is_type) ∧ (¬guard)
+        ∧ prescan ∧ _is_bare_call ∧ (¬_hide))
+    use_symtab_guard ∈ Bool = (_hide ∨ lift_prescan_decl)
     pskip_enum_key ∈ String
     FtiNameEntry(name ↦ param_ty_name, entry ↦ pskip_enum_key)
     pskip_enum_pos ∈ Int = index_of(decl_names, pskip_enum_key, 0)
@@ -217,39 +230,104 @@ fsm DriverPosBind
         : param_ty_name = "Real" ? 6
         : pskip_enum_pos ≥ 0 ? 30 + (pskip_enum_pos / 32)
         : 0)
+    -- An autocarry-expanded fsm header carries up to 16 slots (≤10
+    -- forward + the `_x` carry duals); the per-slot fresh-decl chain
+    -- runs to index 15 so a lifted carry dual past slot 5 (e.g.
+    -- `_record_slot`, slot 11 of DriverBroadcast) is declared. g6..g15
+    -- mirror g0..g5 exactly; the chain runs g0→…→g15→C2INil.
+    pskip_g15 ∈ C2Items = (((_pskip_grp ≤ 15) ∧ (15 < _param_count)
+            ∧ (_armed ? (15 ≥ _tuple.arity)
+                : use_symtab_guard ? (index_of(symbol_index, "|" ++ substr(_param_names[15].s ++ "                               ", 0, 31), 0) < 0)
+                : (¬(∃ i ∈ {0..11} : ((i ≥ _bind_base) ∧ (i < _bind_top) ∧ (_binds[i].name = _param_names[15].s))))))
+        ? C2ICons(C2DeclConst(_scope_prefix ++ _param_names[15].s, pskip_sort), C2ICons(C2Drop, C2INil))
+        : C2INil)
+    pskip_g14 ∈ C2Items = (((_pskip_grp ≤ 14) ∧ (14 < _param_count)
+            ∧ (_armed ? (14 ≥ _tuple.arity)
+                : use_symtab_guard ? (index_of(symbol_index, "|" ++ substr(_param_names[14].s ++ "                               ", 0, 31), 0) < 0)
+                : (¬(∃ i ∈ {0..11} : ((i ≥ _bind_base) ∧ (i < _bind_top) ∧ (_binds[i].name = _param_names[14].s))))))
+        ? C2ICons(C2DeclConst(_scope_prefix ++ _param_names[14].s, pskip_sort), C2ICons(C2Drop, pskip_g15))
+        : pskip_g15)
+    pskip_g13 ∈ C2Items = (((_pskip_grp ≤ 13) ∧ (13 < _param_count)
+            ∧ (_armed ? (13 ≥ _tuple.arity)
+                : use_symtab_guard ? (index_of(symbol_index, "|" ++ substr(_param_names[13].s ++ "                               ", 0, 31), 0) < 0)
+                : (¬(∃ i ∈ {0..11} : ((i ≥ _bind_base) ∧ (i < _bind_top) ∧ (_binds[i].name = _param_names[13].s))))))
+        ? C2ICons(C2DeclConst(_scope_prefix ++ _param_names[13].s, pskip_sort), C2ICons(C2Drop, pskip_g14))
+        : pskip_g14)
+    pskip_g12 ∈ C2Items = (((_pskip_grp ≤ 12) ∧ (12 < _param_count)
+            ∧ (_armed ? (12 ≥ _tuple.arity)
+                : use_symtab_guard ? (index_of(symbol_index, "|" ++ substr(_param_names[12].s ++ "                               ", 0, 31), 0) < 0)
+                : (¬(∃ i ∈ {0..11} : ((i ≥ _bind_base) ∧ (i < _bind_top) ∧ (_binds[i].name = _param_names[12].s))))))
+        ? C2ICons(C2DeclConst(_scope_prefix ++ _param_names[12].s, pskip_sort), C2ICons(C2Drop, pskip_g13))
+        : pskip_g13)
+    pskip_g11 ∈ C2Items = (((_pskip_grp ≤ 11) ∧ (11 < _param_count)
+            ∧ (_armed ? (11 ≥ _tuple.arity)
+                : use_symtab_guard ? (index_of(symbol_index, "|" ++ substr(_param_names[11].s ++ "                               ", 0, 31), 0) < 0)
+                : (¬(∃ i ∈ {0..11} : ((i ≥ _bind_base) ∧ (i < _bind_top) ∧ (_binds[i].name = _param_names[11].s))))))
+        ? C2ICons(C2DeclConst(_scope_prefix ++ _param_names[11].s, pskip_sort), C2ICons(C2Drop, pskip_g12))
+        : pskip_g12)
+    pskip_g10 ∈ C2Items = (((_pskip_grp ≤ 10) ∧ (10 < _param_count)
+            ∧ (_armed ? (10 ≥ _tuple.arity)
+                : use_symtab_guard ? (index_of(symbol_index, "|" ++ substr(_param_names[10].s ++ "                               ", 0, 31), 0) < 0)
+                : (¬(∃ i ∈ {0..11} : ((i ≥ _bind_base) ∧ (i < _bind_top) ∧ (_binds[i].name = _param_names[10].s))))))
+        ? C2ICons(C2DeclConst(_scope_prefix ++ _param_names[10].s, pskip_sort), C2ICons(C2Drop, pskip_g11))
+        : pskip_g11)
+    pskip_g9 ∈ C2Items = (((_pskip_grp ≤ 9) ∧ (9 < _param_count)
+            ∧ (_armed ? (9 ≥ _tuple.arity)
+                : use_symtab_guard ? (index_of(symbol_index, "|" ++ substr(_param_names[9].s ++ "                               ", 0, 31), 0) < 0)
+                : (¬(∃ i ∈ {0..11} : ((i ≥ _bind_base) ∧ (i < _bind_top) ∧ (_binds[i].name = _param_names[9].s))))))
+        ? C2ICons(C2DeclConst(_scope_prefix ++ _param_names[9].s, pskip_sort), C2ICons(C2Drop, pskip_g10))
+        : pskip_g10)
+    pskip_g8 ∈ C2Items = (((_pskip_grp ≤ 8) ∧ (8 < _param_count)
+            ∧ (_armed ? (8 ≥ _tuple.arity)
+                : use_symtab_guard ? (index_of(symbol_index, "|" ++ substr(_param_names[8].s ++ "                               ", 0, 31), 0) < 0)
+                : (¬(∃ i ∈ {0..11} : ((i ≥ _bind_base) ∧ (i < _bind_top) ∧ (_binds[i].name = _param_names[8].s))))))
+        ? C2ICons(C2DeclConst(_scope_prefix ++ _param_names[8].s, pskip_sort), C2ICons(C2Drop, pskip_g9))
+        : pskip_g9)
+    pskip_g7 ∈ C2Items = (((_pskip_grp ≤ 7) ∧ (7 < _param_count)
+            ∧ (_armed ? (7 ≥ _tuple.arity)
+                : use_symtab_guard ? (index_of(symbol_index, "|" ++ substr(_param_names[7].s ++ "                               ", 0, 31), 0) < 0)
+                : (¬(∃ i ∈ {0..11} : ((i ≥ _bind_base) ∧ (i < _bind_top) ∧ (_binds[i].name = _param_names[7].s))))))
+        ? C2ICons(C2DeclConst(_scope_prefix ++ _param_names[7].s, pskip_sort), C2ICons(C2Drop, pskip_g8))
+        : pskip_g8)
+    pskip_g6 ∈ C2Items = (((_pskip_grp ≤ 6) ∧ (6 < _param_count)
+            ∧ (_armed ? (6 ≥ _tuple.arity)
+                : use_symtab_guard ? (index_of(symbol_index, "|" ++ substr(_param_names[6].s ++ "                               ", 0, 31), 0) < 0)
+                : (¬(∃ i ∈ {0..11} : ((i ≥ _bind_base) ∧ (i < _bind_top) ∧ (_binds[i].name = _param_names[6].s))))))
+        ? C2ICons(C2DeclConst(_scope_prefix ++ _param_names[6].s, pskip_sort), C2ICons(C2Drop, pskip_g7))
+        : pskip_g7)
     pskip_g5 ∈ C2Items = (((_pskip_grp ≤ 5) ∧ (5 < _param_count)
             ∧ (_armed ? (5 ≥ _tuple.arity)
-                : _hide ? (index_of(symbol_index, "|" ++ substr(_param_names[5].s ++ "                               ", 0, 31), 0) < 0)
+                : use_symtab_guard ? (index_of(symbol_index, "|" ++ substr(_param_names[5].s ++ "                               ", 0, 31), 0) < 0)
                 : (¬(∃ i ∈ {0..11} : ((i ≥ _bind_base) ∧ (i < _bind_top) ∧ (_binds[i].name = _param_names[5].s))))))
-        ? C2ICons(C2DeclConst(_scope_prefix ++ _param_names[5].s, pskip_sort), C2ICons(C2Drop, C2INil))
-        : C2INil)
+        ? C2ICons(C2DeclConst(_scope_prefix ++ _param_names[5].s, pskip_sort), C2ICons(C2Drop, pskip_g6))
+        : pskip_g6)
     pskip_g4 ∈ C2Items = (((_pskip_grp ≤ 4) ∧ (4 < _param_count)
             ∧ (_armed ? (4 ≥ _tuple.arity)
-                : _hide ? (index_of(symbol_index, "|" ++ substr(_param_names[4].s ++ "                               ", 0, 31), 0) < 0)
+                : use_symtab_guard ? (index_of(symbol_index, "|" ++ substr(_param_names[4].s ++ "                               ", 0, 31), 0) < 0)
                 : (¬(∃ i ∈ {0..11} : ((i ≥ _bind_base) ∧ (i < _bind_top) ∧ (_binds[i].name = _param_names[4].s))))))
         ? C2ICons(C2DeclConst(_scope_prefix ++ _param_names[4].s, pskip_sort), C2ICons(C2Drop, pskip_g5))
         : pskip_g5)
     pskip_g3 ∈ C2Items = (((_pskip_grp ≤ 3) ∧ (3 < _param_count)
             ∧ (_armed ? (3 ≥ _tuple.arity)
-                : _hide ? (index_of(symbol_index, "|" ++ substr(_param_names[3].s ++ "                               ", 0, 31), 0) < 0)
+                : use_symtab_guard ? (index_of(symbol_index, "|" ++ substr(_param_names[3].s ++ "                               ", 0, 31), 0) < 0)
                 : (¬(∃ i ∈ {0..11} : ((i ≥ _bind_base) ∧ (i < _bind_top) ∧ (_binds[i].name = _param_names[3].s))))))
         ? C2ICons(C2DeclConst(_scope_prefix ++ _param_names[3].s, pskip_sort), C2ICons(C2Drop, pskip_g4))
         : pskip_g4)
     pskip_g2 ∈ C2Items = (((_pskip_grp ≤ 2) ∧ (2 < _param_count)
             ∧ (_armed ? (2 ≥ _tuple.arity)
-                : _hide ? (index_of(symbol_index, "|" ++ substr(_param_names[2].s ++ "                               ", 0, 31), 0) < 0)
+                : use_symtab_guard ? (index_of(symbol_index, "|" ++ substr(_param_names[2].s ++ "                               ", 0, 31), 0) < 0)
                 : (¬(∃ i ∈ {0..11} : ((i ≥ _bind_base) ∧ (i < _bind_top) ∧ (_binds[i].name = _param_names[2].s))))))
         ? C2ICons(C2DeclConst(_scope_prefix ++ _param_names[2].s, pskip_sort), C2ICons(C2Drop, pskip_g3))
         : pskip_g3)
     pskip_g1 ∈ C2Items = (((_pskip_grp ≤ 1) ∧ (1 < _param_count)
             ∧ (_armed ? (1 ≥ _tuple.arity)
-                : _hide ? (index_of(symbol_index, "|" ++ substr(_param_names[1].s ++ "                               ", 0, 31), 0) < 0)
+                : use_symtab_guard ? (index_of(symbol_index, "|" ++ substr(_param_names[1].s ++ "                               ", 0, 31), 0) < 0)
                 : (¬(∃ i ∈ {0..11} : ((i ≥ _bind_base) ∧ (i < _bind_top) ∧ (_binds[i].name = _param_names[1].s))))))
         ? C2ICons(C2DeclConst(_scope_prefix ++ _param_names[1].s, pskip_sort), C2ICons(C2Drop, pskip_g2))
         : pskip_g2)
     pskip_decl_items ∈ C2Items = (((_pskip_grp ≤ 0) ∧ (0 < _param_count)
             ∧ (_armed ? (0 ≥ _tuple.arity)
-                : _hide ? (index_of(symbol_index, "|" ++ substr(_param_names[0].s ++ "                               ", 0, 31), 0) < 0)
+                : use_symtab_guard ? (index_of(symbol_index, "|" ++ substr(_param_names[0].s ++ "                               ", 0, 31), 0) < 0)
                 : (¬(∃ i ∈ {0..11} : ((i ≥ _bind_base) ∧ (i < _bind_top) ∧ (_binds[i].name = _param_names[0].s))))))
         ? C2ICons(C2DeclConst(_scope_prefix ++ _param_names[0].s, pskip_sort), C2ICons(C2Drop, pskip_g1))
         : pskip_g1)

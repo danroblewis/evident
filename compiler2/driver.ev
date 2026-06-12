@@ -572,7 +572,7 @@ fsm driver_main
         : (is_call_fire ∧ _is_type) ? type_pin_items
         : (bare_jump ∧ _is_type ∧ (_type_slot ≥ 0)) ? recdecl_items
         : (bare_jump ∧ _is_type ∧ (_type_slot < 0) ∧ tab_is_rec) ? tab_recdecl_items
-        : decl_fire ? pskip_decl_items
+        : (decl_fire ∨ lift_prescan_decl) ? pskip_decl_items
         : type_tick ? member_decls
         : draining ? drain_items
         : (tuple_close ∧ called_method) ? close_recv_items

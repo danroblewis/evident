@@ -149,8 +149,8 @@ fsm main
     param_count ∈ Int
     param_count = (is_first_tick ? 0 : _param_count)
     param_names ∈ Seq(PbStr)
-    #param_names ≤ 6
-    ∀ k ∈ {0..5} : param_names[k].s = (is_first_tick ? "" : _param_names[k].s)
+    #param_names ≤ 16
+    ∀ k ∈ {0..15} : param_names[k].s = (is_first_tick ? "" : _param_names[k].s)
     ..DriverCompose
     captured ∈ Bool = (slot_names[0].name = "p")
     effects ∈ Seq(Effect) = (captured

@@ -17,6 +17,7 @@ import "compiler2/driver_record.ev"
 import "compiler2/driver_posbind.ev"
 
 fsm main
+    prescan ∈ Bool = true
     parse ∈ Bool
     parse = (is_first_tick ? true : _parse)
     parse_mode ∈ Int
