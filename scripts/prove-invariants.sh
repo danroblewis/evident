@@ -31,13 +31,29 @@
 # `≠` would re-explode the search — same discipline that keeps runtime fast.
 #
 # Usage:
-#   prove-invariants.sh <fixture.ev> <claim> <field-const-prefix>
+#   prove-invariants.sh <fixture.ev> <claim> <field-const-prefix> [strengthen.smt2]
 #     <field-const-prefix>  the flattened carried record's const prefix, e.g.
 #       `c_` for `c ∈ Ctr` (field c.n → c_n), `tok_buf_` for an FtiBuffer.
+#     [strengthen.smt2]     optional auxiliary inductive lemma — extra `(assert …)`
+#       over the `_`-carries (e.g. a latch step↔field ordering). Joins the step
+#       hypothesis so a not-1-inductive-but-reachable invariant can be discharged.
+#       It is itself a proof obligation; whatever you assume here, prove separately.
+#
+# A `sat` step result is NOT automatically a bug — it means "not 1-inductive."
+# Read the counterexample: an unguarded write past a bound (the buffer overrun)
+# is a real bug; a latch bank that climbs in step-order is sound but needs the
+# ordering lemma. The four compiler latch banks (z3ctx/z3sorts/z3nums) are the
+# latter — runtime safety nets re-checked each tick, provable with the lemma.
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
 FIX="$1"; CLAIM="$2"; PFX="$3"
+# Optional 4th arg: a file of EXTRA carry-state asserts (an auxiliary inductive
+# lemma over `_`-fields, e.g. the latch step↔field correspondence). Added to the
+# inductive-step hypothesis ONLY. Use it to discharge an invariant that holds on
+# reachable states but isn't 1-inductive on its own (the latch-bank case). It is
+# itself a proof obligation — anything you assume here you must separately prove.
+STRENGTHEN="${4:-}"
 ORACLE="${EVIDENT_ORACLE:-/usr/local/bin/evident-oracle}"
 
 FLAT="$(mktemp -t pi-flat.XXXXXX.ev)"
@@ -47,9 +63,37 @@ scripts/flatten-evident.sh "$FIX" > "$FLAT" 2>/dev/null \
 "$ORACLE" emit "$FLAT" "$CLAIM" -o "$SMT" 2>/dev/null \
   || { echo "FATAL: emit failed"; exit 1; }
 
+# Reflow: the oracle emits multi-line asserts (the `⇒` type invariant, every
+# `let` body). Single-line extraction truncates them. Normalize each top-level
+# S-expr onto one logical line — string- and comment-aware so a `(` inside a
+# string literal or a `;` line comment never miscounts parens. `;;` manifest
+# lines (at depth 0) pass through verbatim.
+NORM="$(mktemp -t pi-norm.XXXXXX.smt2)"
+awk '
+  BEGIN { depth=0; buf=""; instr=0 }
+  (depth==0 && buf=="" && /^;;/) { print; next }
+  {
+    out=""; n=length($0)
+    for (i=1;i<=n;i++) {
+      c=substr($0,i,1)
+      if (instr) { out=out c; if (c=="\"") instr=0; continue }
+      if (c==";") break
+      if (c=="\"") { instr=1; out=out c; continue }
+      if (c=="(") depth++
+      if (c==")") depth--
+      out=out c
+    }
+    gsub(/[ \t]+/," ",out)
+    if (out ~ /[^ ]/) { if (buf=="") buf=out; else buf=buf " " out }
+    if (depth<=0 && buf ~ /[^ ]/) {
+      sub(/^ /,"",buf); sub(/ $/,"",buf); print buf; buf=""; depth=0
+    }
+  }
+' "$SMT" > "$NORM"
+
 # Carried field consts = declared `<prefix><field>` (current state). Exclude
 # the `_`-carries themselves and `__len` duals.
-mapfile -t FIELDS < <(grep -oE "\(declare-fun ${PFX}[A-Za-z0-9_]+ " "$SMT" \
+mapfile -t FIELDS < <(grep -oE "\(declare-fun ${PFX}[A-Za-z0-9_]+ " "$NORM" \
   | awk '{print $2}' | grep -vE "^_|__len$" | sort -u)
 [ "${#FIELDS[@]}" -gt 0 ] || { echo "no field consts match prefix '$PFX'"; exit 1; }
 FIELD_RE="$(printf '%s|' "${FIELDS[@]}")"; FIELD_RE="${FIELD_RE%|}"
@@ -60,7 +104,7 @@ FIELD_RE="$(printf '%s|' "${FIELDS[@]}")"; FIELD_RE="${FIELD_RE%|}"
 # `effects`), and any multi-line `let` assert — all of which name other consts.
 ALLOWED="$(printf '%s\n' and or not true false xor distinct "${FIELDS[@]}" "${FIELDS[@]/#/_}")"
 mapfile -t INV_ASSERTS < <(
-  grep -E "^\(assert .*\)$" "$SMT" | grep -E "($FIELD_RE)" | while IFS= read -r line; do
+  grep -E "^\(assert .*\)$" "$NORM" | grep -E "($FIELD_RE)" | while IFS= read -r line; do
     # all identifier tokens after the leading `assert`
     toks="$(printf '%s' "${line#\(assert }" | grep -oE '[A-Za-z_][A-Za-z0-9_]*')"
     ok=1
@@ -95,7 +139,7 @@ echo
 # Body without the manifest comments and without the current-state invariant
 # asserts (so I(x) is the GOAL, not an assumption).
 BODY="$(mktemp -t pi-body.XXXXXX.smt2)"
-grep -vE "^;;" "$SMT" | grep -vFf <(printf '%s\n' "${INV_ASSERTS[@]}") > "$BODY"
+grep -vE "^;;" "$NORM" | grep -vFf <(printf '%s\n' "${INV_ASSERTS[@]}") > "$BODY"
 
 run() {  # <label> <extra-asserts-file>
   local label="$1" extra="$2" q res
@@ -110,14 +154,24 @@ run() {  # <label> <extra-asserts-file>
 B="$(mktemp)"; { echo '(assert is_first_tick)'; echo "(assert (not $I_CUR))"; } > "$B"
 echo "── base case (holds at init): expect unsat ──"; run "base" "$B"
 
-# step: transition preserves it (the induction)
-S="$(mktemp)"; { echo '(assert (not is_first_tick))'; echo "(assert $I_CARRY)"; echo "(assert (not $I_CUR))"; } > "$S"
+# step: transition preserves it (the induction). With a strengthening file, its
+# asserts join the carry-state hypothesis (the auxiliary inductive lemma).
+S="$(mktemp)"
+{ echo '(assert (not is_first_tick))'; echo "(assert $I_CARRY)"
+  [ -n "$STRENGTHEN" ] && { echo ";; --- strengthening lemma ($STRENGTHEN) ---"; cat "$STRENGTHEN"; }
+  echo "(assert (not $I_CUR))"
+} > "$S"
+[ -n "$STRENGTHEN" ] && echo "strengthen: $STRENGTHEN (added to carry hypothesis)"
 echo "── inductive step (preservation): unsat = PROVEN, sat = counterexample ──"; run "step" "$S"
 # on sat, show the breaking carry-state
 { cat "$BODY"; cat "$S"; echo '(check-sat)'; echo "(get-value ($(printf '_%s ' "${FIELDS[@]}")))"; } > "${S}.cex.smt2"
 CEX="$(z3 -smt2 "${S}.cex.smt2" 2>&1)"
 if printf '%s' "$CEX" | head -1 | grep -q '^sat'; then
   echo "    counterexample carry-state: $(printf '%s' "$CEX" | tail -n +2 | tr -d '\n')"
+  echo "    NOTE  sat = NOT 1-inductive. Either a real bug (an unguarded write"
+  echo "          past a bound — see the counterexample) OR the invariant holds"
+  echo "          only on REACHABLE states and needs an auxiliary lemma (e.g. a"
+  echo "          latch step↔field ordering) supplied as the 4th arg."
 fi
 
 # (TODO: a "no stuck state" check — ∃ invariant-state with no successor — is a
@@ -125,4 +179,4 @@ fi
 # `_x`, pinning it + the full body and checking UNSAT confirms it's the kernel's
 # exit-2 stuck. Left for v2.)
 
-rm -f "$FLAT" "$SMT" "$BODY" "$B" "$S" "${S}.cex.smt2"
+rm -f "$FLAT" "$SMT" "$NORM" "$BODY" "$B" "$S" "${S}.cex.smt2"
