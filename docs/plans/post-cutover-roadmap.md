@@ -179,3 +179,32 @@ free. What remains for this roadmap item is debt relocation: the
 transform is ~450 lines of awk, and self-hosting means porting it (and
 `expand-fsm-autocarry.sh`) into `compiler2/passes/` per the deliverable
 above.
+
+---
+
+## North-star expressibility (design captured, not scheduled)
+
+Separate from the kernel-shrink phases above: a set of language
+features aimed at *expressibility and code size* — keeping programs
+small enough to read all-at-once. Designed but deliberately unscheduled
+until the self-host ordering/record work settles.
+
+**Plan:** [`guarded-cycles-expressibility.md`](guarded-cycles-expressibility.md)
+
+One thesis ties them together: recursive value definitions, recursive
+types, and type *inference* are the same dependency-cycle problem —
+legal iff **guarded** (by a constructor, a length bound, or a tick),
+illegal otherwise (the "combinational loop"). Build one guardedness
+checker, aim it at three sites:
+
+1. **Strict guardedness checker** — shared dependency; an upgrade of the
+   declaration-hoist pass from "hoist" to "reject same-tick structural
+   cycles."
+2. **Type inference** — a finite-domain CSP (Z3's home turf; could be a
+   `.ev` pass), `infer iff exactly one solution`, with a first-class
+   ambiguity/blame report. Highest line-count payoff.
+3. **Recursive-definition surface** — FP-looking self-mention; lowers to
+   bounded unroll (`lower-bounded-seq`) or the tick-trampoline (the
+   `C2Items` pattern). "Lazy thunk ↦ next tick."
+4. **Ternary-alternatives surface** and **set-theoretic runtime
+   redesign** — independent tracks, own docs later.
