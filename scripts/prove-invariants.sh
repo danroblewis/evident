@@ -141,12 +141,18 @@ echo
 BODY="$(mktemp -t pi-body.XXXXXX.smt2)"
 grep -vE "^;;" "$NORM" | grep -vFf <(printf '%s\n' "${INV_ASSERTS[@]}") > "$BODY"
 
+# FULL = the transition WITH the invariant kept on x — exactly what the kernel
+# solves each tick. Used by the totality/stuck check below.
+FULL="$(mktemp -t pi-full.XXXXXX.smt2)"
+grep -vE "^;;" "$NORM" > "$FULL"
+
+LAST=""  # result of the most recent run() — "sat" / "unsat" / other
 run() {  # <label> <extra-asserts-file>
-  local label="$1" extra="$2" q res
+  local label="$1" extra="$2" q
   q="$(mktemp -t pi-q.XXXXXX.smt2)"
   { cat "$BODY"; cat "$extra"; echo '(check-sat)'; } > "$q"
-  res="$(z3 -smt2 "$q" 2>&1 | head -1)"
-  printf '  %-9s %s\n' "$label:" "$res"
+  LAST="$(z3 -smt2 "$q" 2>&1 | head -1)"
+  printf '  %-9s %s\n' "$label:" "$LAST"
   rm -f "$q"
 }
 
@@ -163,20 +169,45 @@ S="$(mktemp)"
 } > "$S"
 [ -n "$STRENGTHEN" ] && echo "strengthen: $STRENGTHEN (added to carry hypothesis)"
 echo "── inductive step (preservation): unsat = PROVEN, sat = counterexample ──"; run "step" "$S"
-# on sat, show the breaking carry-state
+# Only when the step is SAT is there a model to read — a `(get-value)` after an
+# unsat check-sat errors ("model is not available") and z3 exits nonzero.
+if [ "$LAST" = sat ]; then
+# show the breaking carry-state
 { cat "$BODY"; cat "$S"; echo '(check-sat)'; echo "(get-value ($(printf '_%s ' "${FIELDS[@]}")))"; } > "${S}.cex.smt2"
 CEX="$(z3 -smt2 "${S}.cex.smt2" 2>&1)"
 if printf '%s' "$CEX" | head -1 | grep -q '^sat'; then
   echo "    counterexample carry-state: $(printf '%s' "$CEX" | tail -n +2 | tr -d '\n')"
-  echo "    NOTE  sat = NOT 1-inductive. Either a real bug (an unguarded write"
-  echo "          past a bound — see the counterexample) OR the invariant holds"
-  echo "          only on REACHABLE states and needs an auxiliary lemma (e.g. a"
-  echo "          latch step↔field ordering) supplied as the 4th arg."
+  # Totality / stuck discriminator (v2). A `sat` step means "not 1-inductive",
+  # which has TWO causes the tool can now tell apart automatically. Pin the
+  # counterexample's record fields and ask whether the FULL body (transition WITH
+  # the invariant on x — what the kernel actually solves each tick) admits ANY
+  # successor (the non-field carries, e.g. `_step`, stay FREE):
+  #   UNSAT = the field values FORCE a no-valid-successor state → the kernel's
+  #           exit-2 "stuck" overrun. A REAL bug (the unguarded write past a bound).
+  #   SAT   = a successor satisfying the invariant exists → the violation was
+  #           1-induction incompleteness over an unreachable carry. Sound on
+  #           reachable states; supply an ordering/monotonicity lemma (4th arg).
+  PINS="$(printf '%s' "$CEX" | tail -n +2 \
+    | grep -oE '\(_[A-Za-z0-9_]+ [^()]+\)' \
+    | sed -E 's/\((_[A-Za-z0-9_]+) ([^()]+)\)/(assert (= \1 \2))/')"
+  { cat "$FULL"; echo '(assert (not is_first_tick))'; printf '%s\n' "$PINS"; echo '(check-sat)'; } > "${S}.tot.smt2"
+  TOT="$(z3 -smt2 "${S}.tot.smt2" 2>&1 | head -1)"
+  if [ "$TOT" = unsat ]; then
+    echo "    totality:  STUCK — pinned carry forces NO valid successor (kernel exit-2 overrun) ⇒ REAL BUG"
+  elif [ "$TOT" = sat ]; then
+    echo "    totality:  has-successor — reachable-but-not-1-inductive ⇒ supply an ordering/monotonicity lemma (4th arg)"
+  else
+    echo "    totality:  inconclusive ($TOT)"
+  fi
+  rm -f "${S}.tot.smt2"
+fi
+rm -f "${S}.cex.smt2"
 fi
 
-# (TODO: a "no stuck state" check — ∃ invariant-state with no successor — is a
-# quantifier-alternation query (∃_x ∀x ¬body); harder. For a found counterexample
-# `_x`, pinning it + the full body and checking UNSAT confirms it's the kernel's
-# exit-2 stuck. Left for v2.)
+# The totality check above is the per-counterexample form: pin the found `_x`,
+# keep the full body, and UNSAT confirms it's a genuine no-successor (exit-2)
+# state. The fully general "∃ ANY invariant-state with no successor" is a
+# quantifier-alternation query (∃_x ∀x ¬body) — heavier; the per-cex form covers
+# the cases the step check actually surfaces.
 
-rm -f "$FLAT" "$SMT" "$NORM" "$BODY" "$B" "$S" "${S}.cex.smt2"
+rm -f "$FLAT" "$SMT" "$NORM" "$BODY" "$FULL" "$B" "$S" "${S}.cex.smt2"
