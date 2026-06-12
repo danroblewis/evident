@@ -33,7 +33,13 @@ fsm DriverPratt
     ∀ k ∈ {0..8} : callable_joins[k + 1] = callable_joins[k] ++ "|" ++ substr(builtin_callables[k] ++ call_pad31, 0, 31)
     callable_rec_joins ∈ Seq(String)
     #callable_rec_joins ≤ 4
-    callable_rec_joins[0] = callable_joins[9] ++ variant_names
+    -- Floor-enum effect ctors (Exit / LibCall) are callable as general
+    -- expressions, not only inside the effect-literal chain. They live in
+    -- dedicated decl registers (exit_decl / libcall_decl), not
+    -- user_variants, so they are seeded into the call registry by name
+    -- here; ctor_decl resolution special-cases them (driver_exprdecomp.ev).
+    floor_ctor_names ∈ String = "|" ++ substr("Exit" ++ call_pad31, 0, 31) ++ "|" ++ substr("LibCall" ++ call_pad31, 0, 31)
+    callable_rec_joins[0] = callable_joins[9] ++ variant_names ++ floor_ctor_names
     ∀ k ∈ {0..2} : callable_rec_joins[k + 1] = ((recs[k].name ≠ "" ∧ recs[k].sort > 0)
         ? callable_rec_joins[k] ++ "|" ++ substr(recs[k].name ++ call_pad31, 0, 31)
         : callable_rec_joins[k])

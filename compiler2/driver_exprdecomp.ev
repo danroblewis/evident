@@ -67,9 +67,16 @@ fsm DriverExprDecomp
     -- fallthrough (no collision: builtins lowercase, variants
     -- capitalized). Compound args are handles, so the legacy
     -- dropped-Exit(3+4) class is impossible by construction.
+    -- Floor-enum effect ctors (Exit / LibCall) used as general
+    -- expressions resolve from their dedicated decl registers, not
+    -- user_variants (which the floor enum is excluded from). Same
+    -- special-case pattern as matches_tester's IntResult/StringResult.
     ctor_decl ∈ Int
+    (call_name = "Exit") ⇒ (ctor_decl = exit_decl)
+    (call_name = "LibCall") ⇒ (ctor_decl = libcall_decl)
     ∀ e ∈ user_variants : ((e.name = call_name) ⇒ (ctor_decl = e.ctor))
-    (¬(∃ e ∈ user_variants : e.name = call_name)) ⇒ (ctor_decl = 0)
+    (¬((call_name = "Exit") ∨ (call_name = "LibCall")
+        ∨ (∃ e ∈ user_variants : e.name = call_name))) ⇒ (ctor_decl = 0)
 
     is_matches ∈ Bool = (process_expr matches EMatches(_, _))
     matches_name ∈ String = match process_expr

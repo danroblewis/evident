@@ -861,6 +861,7 @@ fsm driver_main
             : new_const_sort = 4 ? result_sort
             : new_const_sort = 5 ? int_array_sort
             : new_const_sort = 6 ? z3sorts.rsort
+            : new_const_sort = 7 ? effect_sort
             : new_const_sort = 10 ? recs[0].asort
             : new_const_sort = 11 ? recs[1].asort
             : new_const_sort = 12 ? recs[2].asort

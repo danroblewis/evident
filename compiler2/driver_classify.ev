@@ -60,6 +60,7 @@ fsm DriverClassify
         : line.ty_name = "Result" ? 4
         : line.ty_name = "Seq" ? 5
         : line.ty_name = "Real" ? 6
+        : line.ty_name = "Effect" ? 7
         : line.enum_pos ≥ 0 ? 30 + (line.enum_pos / 32)
         : 0)
     element_typename ∈ String = match tok4
