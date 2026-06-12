@@ -30,11 +30,17 @@ fsm DriverSetVar
     active_set_name ∈ String
 
     is_setdecl ∈ Bool = (classify_now ∧ (¬line.end) ∧ decl_line)
+    -- A′: the set-var REGISTRY is carried state built once, in the pass-0
+    -- declaration scan; pass 1 re-walks the same decl lines but must read
+    -- the existing registry, not re-register (which would over-count /
+    -- duplicate slots). The empty-set Z3 build (setdecl_items) still runs
+    -- in both passes — its assert is suppressed in pass 0 by the choke.
+    set_reg ∈ Bool = (is_setdecl ∧ prescan)
     set_registry_count = (is_first_tick ? 0
-        : (is_setdecl ∧ _set_registry_count < 2) ? _set_registry_count + 1
+        : (set_reg ∧ _set_registry_count < 2) ? _set_registry_count + 1
         : _set_registry_count)
-    ∀ k ∈ {0..1} : vars[k].name = (is_first_tick ? "" : (is_setdecl ∧ _set_registry_count = k) ? line.dname : _vars[k].name)
-    ∀ k ∈ {0..1} : vars[k].kidx = (is_first_tick ? 0 : (is_setdecl ∧ _set_registry_count = k) ? kind_slot : _vars[k].kidx)
+    ∀ k ∈ {0..1} : vars[k].name = (is_first_tick ? "" : (set_reg ∧ _set_registry_count = k) ? line.dname : _vars[k].name)
+    ∀ k ∈ {0..1} : vars[k].kidx = (is_first_tick ? 0 : (set_reg ∧ _set_registry_count = k) ? kind_slot : _vars[k].kidx)
 
     is_prefixed_set ∈ Bool = (line.name ≠ "" ∧ (∃ e ∈ vars : e.name = _scope_prefix ++ line.name))
     is_bare_set ∈ Bool = (line.name ≠ "" ∧ (∃ e ∈ vars : e.name = line.name))
