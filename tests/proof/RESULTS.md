@@ -48,5 +48,10 @@ The tool cleanly separates the two reasons a type invariant can be `sat`:
 2. **runtime net** — relies on the program halting before the bound is hit (the
    buffer). No lemma; the invariant *is* the guard.
 
+The tool classifies the two automatically: on a `sat` step it pins the
+counterexample and prints `totality: has-successor` (needs a lemma) or
+`totality: STUCK` (real no-successor / exit-2 overrun).
+
 Reproduce: `tests/proof/lemmas/*.smt2` are the lemmas;
 `scripts/prove-invariants.sh tests/compiler2_units/types/<fix>.ev main <pfx> [lemma]`.
+Standing gate over all four (pins this baseline): `scripts/invariant-gate.sh`.

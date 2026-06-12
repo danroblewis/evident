@@ -635,16 +635,25 @@ scripts/prove-invariants.sh tests/compiler2_units/types/z3_solverctx_carry.ev \
 ```
 
 **A `sat` step is NOT automatically a bug** — it means "not
-1-inductive," and there are two causes the counterexample tells apart:
-(1) **needs a lemma** — sound on reachable states, provable with an
-ordering/monotonicity fact (the zinit latch banks climb in step order,
-so 1-induction from an arbitrary carry can set a higher handle while a
-lower is still 0); (2) **runtime net** — relies on the program halting
-before the bound is hit (the FTI buffer's unconditional `count++` —
-the invariant *is* the exit-2 overrun guard, not a static guarantee).
-Worked results + the lemma files: `tests/proof/RESULTS.md`,
-`tests/proof/lemmas/`. This is the **static** complement to the
-functionization gate (which catches the `≠`-trap dynamically).
+1-inductive," and the tool's `totality:` line classifies it for you
+(pin the counterexample's record fields, ask if the full body admits
+any successor): (1) **`has-successor` → needs a lemma** — sound on
+reachable states, provable with an ordering/monotonicity fact (the zinit
+latch banks climb in step order, so 1-induction from an arbitrary carry
+can set a higher handle while a lower is still 0); (2) **`STUCK` →
+runtime net / real bug** — the carry forces a no-successor state (the
+kernel's exit-2 overrun): a genuine overrun like the FTI buffer's
+unconditional `count++`, where the invariant *is* the guard, not a
+static guarantee. Worked results + the lemma files:
+`tests/proof/RESULTS.md`, `tests/proof/lemmas/`.
+
+**`scripts/invariant-gate.sh`** is the standing gate: it pins the
+RESULTS.md baseline of the four real carried-type invariants (the three
+latch banks PROVEN with their lemma, the buffer `sat`+`STUCK`) and fails
+if any drifts. Run it after changing a carried type's body, alongside
+`scripts/functionization-gate.sh` — together they are the **static**
+(logic) and **dynamic** (`≠`-trap) halves of the carried-invariant
+safety net.
 
 ## How to run tests
 
