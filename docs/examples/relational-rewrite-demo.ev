@@ -1,0 +1,60 @@
+-- DEMONSTRATION — proposed relational surface (does NOT compile today).
+-- Two real dispatch clusters from compiler2/, rewritten as tuple-relations
+-- per docs/plans/relations-as-tuple-sets.md. Shows the surface; the lowering
+-- to the covered ternary chain (the functionizer-safe form) is the transform.
+
+-- ════════════════════════════════════════════════════════════════════════
+-- CLUSTER 1 — compiler2/driver_record.ev:44  RtSortOf  (typename → sort)
+-- ════════════════════════════════════════════════════════════════════════
+
+-- BEFORE (14 lines: 8 ⇒-arms + a 5-line negated-disjunction default that
+-- re-lists every condition by hand just to say "otherwise 0"):
+--
+--   claim RtSortOf(typename ∈ String, isort_h, …, iarr_h ∈ Int, sort ∈ Int)
+--       (typename = "Int" ∨ typename = "Nat") ⇒ (sort = isort_h)
+--       (typename = "Bool")     ⇒ (sort = bsort_h)
+--       (typename = "String")   ⇒ (sort = ssort_h)
+--       (typename = "Real")     ⇒ (sort = rsort_h)
+--       (typename = "Seq(Int)") ⇒ (sort = iarr_h)
+--       (typename ≠ "" ∧ typename = recs[0].name) ⇒ (sort = recs[0].sort)
+--       (typename ≠ "" ∧ typename = recs[1].name) ⇒ (sort = recs[1].sort)
+--       (typename ≠ "" ∧ typename = recs[2].name) ⇒ (sort = recs[2].sort)
+--       (¬((typename = "Int" ∨ typename = "Nat") ∨ (typename = "Bool") ∨ …
+--           … ∨ (typename ≠ "" ∧ typename = recs[2].name)))
+--           ⇒ (sort = 0)
+
+-- AFTER — the sort table IS the claim; the default is one word:
+claim RtSortOf(typename ∈ String, isort_h, bsort_h, ssort_h, rsort_h, iarr_h ∈ Int, sort ∈ Int)
+    (typename, sort) ∈
+        {  ("Int",    isort_h),  ("Nat",      isort_h),
+           ("Bool",   bsort_h),  ("String",   ssort_h),
+           ("Real",   rsort_h),  ("Seq(Int)", iarr_h)   }
+        ∪  { (r.name, r.sort) | r ∈ recs, r.name ≠ "" }     -- the record registry, as data
+        otherwise  sort = 0                                  -- totality: nothing matched ⇒ 0
+
+-- The 6 built-in sorts are literal rows; the record registry is a set-builder
+-- over `recs` (filtered to live entries); `otherwise` replaces the entire
+-- hand-written negated disjunction — coverage is now the language's job, and
+-- an unreachable code would be a totality error, not a silent sort = 0.
+
+-- ════════════════════════════════════════════════════════════════════════
+-- CLUSTER 2 — compiler2/driver.ev:895  mkconst sort dispatch (code → handle)
+-- ════════════════════════════════════════════════════════════════════════
+
+-- BEFORE — a 13-arm ternary spine (see the file); a code→handle lookup with a
+-- range arm (≥30) and a default, all flattened into `? :`.
+
+-- AFTER — the point table is data; the range and default are two honest rules:
+    sort_h ∈ Int
+    (new_const_sort, sort_h) ∈
+        {  (1,  z3sorts.bsort),  (3,  z3sorts.ssort),  (4,  result_sort),
+           (5,  int_array_sort), (6,  z3sorts.rsort),  (7,  effect_sort),
+           (10, recs[0].asort),  (11, recs[1].asort),  (12, recs[2].asort),
+           (20, recs[0].ssort),  (21, recs[1].ssort),  (22, recs[2].ssort)  }
+    new_const_sort ≥ 30                          ⇒  sort_h = ints[1]      -- range rule
+    (new_const_sort < 30 ∧ new_const_sort ∉ codes) ⇒ sort_h = z3sorts.isort -- default
+
+-- Reads as a partition of new_const_sort's domain: a 12-row table, a range,
+-- a default. model-diff over (new_const_sort, sort_h) certifies this has the
+-- same solution space as the original ternary spine; the lowering pass turns
+-- it back into that spine so the functionizer stays happy.
