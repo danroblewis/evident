@@ -1,0 +1,14 @@
+-- class 2: renamed/restructured internals, same interface.
+-- helper `dbl` (= 2x). out = dbl + 3. Pair: internals_b.ev computes the same
+-- out via a differently named/structured internal. Tool must say EQUIVALENT —
+-- proves the per-side internal namespacing (__a/__b) works.
+-- entry: main
+import "stdlib/kernel.ev"
+
+claim main
+    x ∈ Int
+    0 < x
+    x < 100
+    dbl ∈ Int = x * 2
+    out ∈ Int = dbl + 3
+    effects ∈ Seq(Effect) = ⟨Exit(out)⟩

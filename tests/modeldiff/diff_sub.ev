@@ -1,0 +1,11 @@
+-- class 3: B tightens both bounds (3 < x < 7) → B ⊊ base (base ⊋ B).
+-- Witness in base-not-B: x=1.
+-- entry: main
+import "stdlib/kernel.ev"
+
+claim main
+    x ∈ Int
+    3 < x
+    x < 7
+    out ∈ Int = x + 1
+    effects ∈ Seq(Effect) = ⟨Exit(out)⟩
