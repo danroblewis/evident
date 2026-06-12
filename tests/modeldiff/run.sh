@@ -114,6 +114,14 @@ PIN_BA="$(grep -A8 'in B, not A' "$LAST_OUT" | grep -oE '\(x -?[0-9]+\)' | head 
 verify_witness "OVERLAP (A∖B)" "$DIR/diff_base.ev"    "$DIR/diff_overlap.ev" main "$PIN_AB"
 verify_witness "OVERLAP (B∖A)" "$DIR/diff_overlap.ev" "$DIR/diff_base.ev"    main "$PIN_BA"
 
+# ── class 5: ternary → set-theoretic (the canonical refactor shape) ───────────
+# A total ternary vs set-theoretic rewrites. Under-coverage (free output) is
+# caught by v1 (outputs diverge); over-coverage (empty for some input) by v2.
+run_case tern_equiv_v1   "$DIR/ternary_a.ev" "$DIR/ternary_eq_b.ev"    main v1 equiv   sel
+run_case tern_equiv_v2   "$DIR/ternary_a.ev" "$DIR/ternary_eq_b.ev"    main v2 equiv   sel
+run_case tern_undercover "$DIR/ternary_a.ev" "$DIR/ternary_under_b.ev" main v1 differ  sel
+run_case tern_overcover  "$DIR/ternary_a.ev" "$DIR/ternary_over_b.ev"  main v2 A_sup_B sel
+
 echo
 echo "═══ $PASS passed, $FAIL failed ═══"
 [ "$FAIL" -eq 0 ]

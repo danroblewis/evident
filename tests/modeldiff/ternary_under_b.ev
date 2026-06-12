@@ -1,0 +1,9 @@
+-- class 5: UNDER-COVERED rewrite (forgot the ¬sel case → out free) → DIFFER.
+-- v1 catches it: at sel=false the output diverges (ternary forces 20, this is free).
+-- entry: main
+import "stdlib/kernel.ev"
+claim main
+    sel ∈ Bool
+    out ∈ Int
+    sel ⇒ (out = 10)
+    effects ∈ Seq(Effect) = ⟨Exit(out)⟩

@@ -1,0 +1,11 @@
+-- class 5: OVER-COVERED rewrite (contradictory pins when sel=true → empty) → DIFFER.
+-- v2 catches it: A ⊋ B, witness sel=true (B admits nothing the ternary does).
+-- entry: main
+import "stdlib/kernel.ev"
+claim main
+    sel ∈ Bool
+    out ∈ Int
+    sel ⇒ (out = 10)
+    sel ⇒ (out = 20)
+    (¬sel) ⇒ (out = 20)
+    effects ∈ Seq(Effect) = ⟨Exit(out)⟩
