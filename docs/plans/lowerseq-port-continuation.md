@@ -26,7 +26,7 @@ source ──▶ lowerseq_scan ──records──▶ lowerseq_plan ──regist
   `LsTrimR` (flat comma split for literal payloads; `AcParseInt` from
   autocarry_lib parses N).
 
-## Ported + byte-identical (13 fixtures green)
+## Ported + byte-identical (15 fixtures green)
 
 - **R0** opt-in gate (scalar base + same-claim `#name ≤ N`; global
   registration; unbounded Seqs pass through verbatim).
@@ -53,17 +53,19 @@ helpers: `LsIdxEval` / `LsStripWs` / `LsAllDigits` / `LsOnlyIdxChars` /
 `LsDigitEnd`. Fixtures: `r16_index` / `r16_arith` / `r16_field` / `r16_comment`
 / `r18_card`.
 
+- **subst_dyn (single-ident)** dynamic index `tok[idv]` over a registered
+  seq → the covered select chain `(idv = 0 ? tok_0 : … : tok_{N-1})`
+  (+ `.field` → `_field` per arm, + literal `[sub2]` left bracketed for the
+  dynfam pass). Inline in the same phase-5 walk: when the `LsIdxEval` literal
+  fold fails but the inner is a single ident (`LsIsIdent`), `LsDynChain` emits
+  the chain (N ≤ 16). Fixtures `r17_dyn_index` / `r17_dyn_mixed`.
+
 ## NOT ported (continuation, priority order)
 
-### Tier 1b — the DYNAMIC-index select chains (`subst_dyn`)
-Not yet ported — a dynamic index `xs[i]` (i an ident) survives the walk
-VERBATIM (the `LsIdxEval` fold fails on a non-literal, so the walk passes
-`xs[i]` through). The awk default path runs `subst_dyn_fix` after the literal
-substitution, expanding `xs[i]`/`xs_k_accs[j]` to the covered select chain at
-fixpoint. Porting it: extend the phase-5 walk so an `ident[ident]` over a
-registered seq emits the per-slot ternary chain (`(i = 0 ? xs_0 : … : xs_{N-1})`),
-then re-walk to fixpoint. Gate fixtures must avoid surviving dynamic indices
-until this lands (the current 13 do).
+### Tier 1c — the Seq-field DYNFAM dynamic sub-index
+The remaining `subst_dyn` shape: `xs_k_accs[j]` (a flattened Seq-typed record
+field family) → its own per-subslot chain. Needs the record-element / Seq-field
+registration (PASS0 below), so it folds into Tier 2.
 
 ### Tier 2 — record-element decls + the `∀`/`∃`/member unrolls
   - record-`type` element decls (`xs ∈ Seq(R)` → `xs_k_fj ∈ Tj`; the

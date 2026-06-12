@@ -96,6 +96,75 @@ claim LsNthElem(s ∈ String, n ∈ Int, out ∈ String)
     LsTrimR(s ↦ s, from ↦ ne_raw_e, lim ↦ ne_ts, out ↦ ne_te)
     out = (ne_te > ne_ts ? substr(s, ne_ts, ne_te - ne_ts) : "")
 
+-- LsDynChain — a dynamic single-ident index `tok[idv]` over a registered
+-- seq of bound n → the covered select chain `(idv = 0 ? tok_0 : … : tok_{n-1})`,
+-- matching lower-bounded-seq.sh subst_dyn. `fld` ("" if none) appends `_fld`
+-- to each arm; `sub2` ("" if none) appends a LITERAL `[sub2]` (resolved later
+-- by the Seq-field dynfam pass). The last arm is unconditional (the bound
+-- makes the chain covering). n ≤ 16.
+claim LsDynChain(tok ∈ String, idv ∈ String, n ∈ Int, fld ∈ String, sub2 ∈ String, out ∈ String)
+    out = ("(" ++ dc_body ++ ")")
+    dc_suffix ∈ String = ((fld = "" ? "" : "_" ++ fld) ++ (sub2 = "" ? "" : "[" ++ sub2 ++ "]"))
+    dc_body ∈ String = (dc_seg0 ++ dc_seg1 ++ dc_seg2 ++ dc_seg3 ++ dc_seg4
+        ++ dc_seg5 ++ dc_seg6 ++ dc_seg7 ++ dc_seg8 ++ dc_seg9 ++ dc_seg10
+        ++ dc_seg11 ++ dc_seg12 ++ dc_seg13 ++ dc_seg14 ++ dc_seg15)
+    dc_seg0 ∈ String = (0 < n ? dc_part0 : "")
+    dc_seg1 ∈ String = (1 < n ? dc_part1 : "")
+    dc_seg2 ∈ String = (2 < n ? dc_part2 : "")
+    dc_seg3 ∈ String = (3 < n ? dc_part3 : "")
+    dc_seg4 ∈ String = (4 < n ? dc_part4 : "")
+    dc_seg5 ∈ String = (5 < n ? dc_part5 : "")
+    dc_seg6 ∈ String = (6 < n ? dc_part6 : "")
+    dc_seg7 ∈ String = (7 < n ? dc_part7 : "")
+    dc_seg8 ∈ String = (8 < n ? dc_part8 : "")
+    dc_seg9 ∈ String = (9 < n ? dc_part9 : "")
+    dc_seg10 ∈ String = (10 < n ? dc_part10 : "")
+    dc_seg11 ∈ String = (11 < n ? dc_part11 : "")
+    dc_seg12 ∈ String = (12 < n ? dc_part12 : "")
+    dc_seg13 ∈ String = (13 < n ? dc_part13 : "")
+    dc_seg14 ∈ String = (14 < n ? dc_part14 : "")
+    dc_seg15 ∈ String = (15 < n ? dc_part15 : "")
+    -- part k = (k < n-1 ? "idv = k ? arm_k : " : "arm_k")
+    dc_part0 ∈ String = (0 < n - 1 ? idv ++ " = 0 ? " ++ dc_arm0 ++ " : " : dc_arm0)
+    dc_part1 ∈ String = (1 < n - 1 ? idv ++ " = 1 ? " ++ dc_arm1 ++ " : " : dc_arm1)
+    dc_part2 ∈ String = (2 < n - 1 ? idv ++ " = 2 ? " ++ dc_arm2 ++ " : " : dc_arm2)
+    dc_part3 ∈ String = (3 < n - 1 ? idv ++ " = 3 ? " ++ dc_arm3 ++ " : " : dc_arm3)
+    dc_part4 ∈ String = (4 < n - 1 ? idv ++ " = 4 ? " ++ dc_arm4 ++ " : " : dc_arm4)
+    dc_part5 ∈ String = (5 < n - 1 ? idv ++ " = 5 ? " ++ dc_arm5 ++ " : " : dc_arm5)
+    dc_part6 ∈ String = (6 < n - 1 ? idv ++ " = 6 ? " ++ dc_arm6 ++ " : " : dc_arm6)
+    dc_part7 ∈ String = (7 < n - 1 ? idv ++ " = 7 ? " ++ dc_arm7 ++ " : " : dc_arm7)
+    dc_part8 ∈ String = (8 < n - 1 ? idv ++ " = 8 ? " ++ dc_arm8 ++ " : " : dc_arm8)
+    dc_part9 ∈ String = (9 < n - 1 ? idv ++ " = 9 ? " ++ dc_arm9 ++ " : " : dc_arm9)
+    dc_part10 ∈ String = (10 < n - 1 ? idv ++ " = 10 ? " ++ dc_arm10 ++ " : " : dc_arm10)
+    dc_part11 ∈ String = (11 < n - 1 ? idv ++ " = 11 ? " ++ dc_arm11 ++ " : " : dc_arm11)
+    dc_part12 ∈ String = (12 < n - 1 ? idv ++ " = 12 ? " ++ dc_arm12 ++ " : " : dc_arm12)
+    dc_part13 ∈ String = (13 < n - 1 ? idv ++ " = 13 ? " ++ dc_arm13 ++ " : " : dc_arm13)
+    dc_part14 ∈ String = (14 < n - 1 ? idv ++ " = 14 ? " ++ dc_arm14 ++ " : " : dc_arm14)
+    dc_part15 ∈ String = dc_arm15
+    dc_arm0 ∈ String = (tok ++ "_0" ++ dc_suffix)
+    dc_arm1 ∈ String = (tok ++ "_1" ++ dc_suffix)
+    dc_arm2 ∈ String = (tok ++ "_2" ++ dc_suffix)
+    dc_arm3 ∈ String = (tok ++ "_3" ++ dc_suffix)
+    dc_arm4 ∈ String = (tok ++ "_4" ++ dc_suffix)
+    dc_arm5 ∈ String = (tok ++ "_5" ++ dc_suffix)
+    dc_arm6 ∈ String = (tok ++ "_6" ++ dc_suffix)
+    dc_arm7 ∈ String = (tok ++ "_7" ++ dc_suffix)
+    dc_arm8 ∈ String = (tok ++ "_8" ++ dc_suffix)
+    dc_arm9 ∈ String = (tok ++ "_9" ++ dc_suffix)
+    dc_arm10 ∈ String = (tok ++ "_10" ++ dc_suffix)
+    dc_arm11 ∈ String = (tok ++ "_11" ++ dc_suffix)
+    dc_arm12 ∈ String = (tok ++ "_12" ++ dc_suffix)
+    dc_arm13 ∈ String = (tok ++ "_13" ++ dc_suffix)
+    dc_arm14 ∈ String = (tok ++ "_14" ++ dc_suffix)
+    dc_arm15 ∈ String = (tok ++ "_15" ++ dc_suffix)
+
+-- true iff s is a single identifier `[A-Za-z_][A-Za-z0-9_]*` (≤ 16 chars).
+claim LsIsIdent(s ∈ String, out ∈ Bool)
+    out = (#s ≥ 1 ∧ #s ≤ 16 ∧ str_contains("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_", char_at(s, 0)) ∧ ii_rest)
+    ii_we ∈ Int
+    AcWordEnd(s ↦ s, from ↦ 0, out ↦ ii_we)
+    ii_rest ∈ Bool = (ii_we ≥ #s)
+
 -- remove ASCII spaces/tabs from s (≤ 24 chars). Index expressions are
 -- tiny; a longer string folds to "" (not a literal index) downstream.
 claim LsStripWs(s ∈ String, out ∈ String)

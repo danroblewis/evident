@@ -16,10 +16,11 @@
 --   R18 card        `#xs`                           → xs_len (anywhere, incl. comments)
 --       bound       `#xs ≤ N`                       → vanishes (¬hasLen) / xs_len ≤ N
 -- TODO (continuation): record-element decls, ∀/∃ unroll, member ∨-unroll,
---   keyed projection, pin family, dynamic-index select chains (subst_dyn),
+--   keyed projection, pin family, the Seq-field dynfam dynamic sub-index,
 --   the completeness sweep, and the enum/record LOUD REFUSALS. See the pass
---   continuation doc. (R16 literal-index incl. arithmetic fold + .field +
---   literal sub-index, and R18 card, are ported below — comment-inclusive.)
+--   continuation doc. PORTED below (comment-inclusive default path): R16
+--   literal-index incl. arithmetic fold + .field + literal sub-index, R18
+--   card, and the single-ident dynamic index (subst_dyn) → select chain.
 -- A per-slot emit loop runs over N slots (phase 4), one line per tick,
 -- holding the source line; phase 1 reads the next source line.
 import "stdlib/kernel.ev"
@@ -234,13 +235,46 @@ fsm lowerseq_emit
         ++ (w_has_sub ? "_" ++ w_sinner : ""))
     w_index_end ∈ Int = (w_has_sub ? w_scb + 1 : w_has_field ? w_fe : w_cb + 1)
 
+    -- ── DYNAMIC single-ident index `tok[idv]` → covered select chain ──
+    -- (subst_dyn) when the literal fold failed but the inner is one ident.
+    w_dyn_cb ∈ Int = ((w_base_reg ∧ ¬w_idx_ok) ? index_of(w_src, "]", w_we + 1) : -1)
+    w_dyn_inner ∈ String = (w_dyn_cb > w_we ? substr(w_src, w_we + 1, w_dyn_cb - w_we - 1) : "")
+    w_dyn_isid ∈ Bool
+    LsIsIdent(s ↦ w_dyn_inner, out ↦ w_dyn_isid)
+    w_do_dyn ∈ Bool = (w_base_reg ∧ ¬w_idx_ok ∧ w_dyn_cb > w_we ∧ w_dyn_isid)
+    -- registry bound N for w_base
+    w_bkey ∈ String = "⟦" ++ w_base ++ "⟧"
+    w_bat ∈ Int = (w_do_dyn ? index_of(_reg, w_bkey) : -1)
+    w_bd1 ∈ Int = (w_bat ≥ 0 ? index_of(_reg, "⦂", w_bat + #w_bkey) : -1)
+    w_bd2 ∈ Int = (w_bat ≥ 0 ? index_of(_reg, "⦂", w_bd1 + 1) : -1)
+    w_bn ∈ Int
+    AcParseInt(s ↦ _reg, from ↦ w_bd1 + 1, len ↦ (w_bat ≥ 0 ? w_bd2 - w_bd1 - 1 : 0), out ↦ w_bn)
+    -- optional `.field` then optional `[sub2]` after the dynamic `]`
+    w_dyn_dot ∈ Bool = (w_do_dyn ∧ char_at(w_src, w_dyn_cb + 1) = ".")
+    w_dyn_fs ∈ Int = w_dyn_cb + 2
+    w_dyn_fe ∈ Int
+    AcWordEnd(s ↦ (w_dyn_dot ? w_src : ""), from ↦ w_dyn_fs, out ↦ w_dyn_fe)
+    w_dyn_hasf ∈ Bool = (w_dyn_dot ∧ w_dyn_fe > w_dyn_fs)
+    w_dyn_fld ∈ String = (w_dyn_hasf ? substr(w_src, w_dyn_fs, w_dyn_fe - w_dyn_fs) : "")
+    w_dyn_subbr ∈ Bool = (w_dyn_hasf ∧ char_at(w_src, w_dyn_fe) = "[")
+    w_dyn_scb ∈ Int = (w_dyn_subbr ? index_of(w_src, "]", w_dyn_fe + 1) : -1)
+    w_dyn_sub2 ∈ String = (w_dyn_scb > w_dyn_fe ? substr(w_src, w_dyn_fe + 1, w_dyn_scb - w_dyn_fe - 1) : "")
+    w_dyn_hassub ∈ Bool = (w_dyn_subbr ∧ w_dyn_scb > w_dyn_fe)
+    w_dyn_chain ∈ String
+    LsDynChain(tok ↦ w_tok, idv ↦ w_dyn_inner, n ↦ w_bn,
+        fld ↦ (w_dyn_hasf ? w_dyn_fld : ""),
+        sub2 ↦ (w_dyn_hassub ? w_dyn_sub2 : ""), out ↦ w_dyn_chain)
+    w_dyn_end ∈ Int = (w_dyn_hassub ? w_dyn_scb + 1 : w_dyn_hasf ? w_dyn_fe : w_dyn_cb + 1)
+
     -- the unit emitted this tick + the cursor advance
     w_unit ∈ String = (w_word_reg ? w_word ++ "_len"
         : w_do_index ? w_index_out
+        : w_do_dyn ? w_dyn_chain
         : w_is_ident ? w_tok
         : w_ch)
     w_next ∈ Int = (w_word_reg ? w_he
         : w_do_index ? w_index_end
+        : w_do_dyn ? w_dyn_end
         : w_is_ident ? w_we
         : w_p + 1)
     tk_walk_run ∈ Bool = (tk_ph = 5 ∧ w_p < #w_src)
