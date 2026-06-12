@@ -1,0 +1,7 @@
+claim main
+    xs ∈ Seq(Int) = ⟨10, 20, 30⟩
+    #xs ≤ 5
+    a ∈ Int = xs[0]
+    b ∈ Int = xs[2]
+    c ∈ Int = _xs[1]
+    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

@@ -96,6 +96,210 @@ claim LsNthElem(s ∈ String, n ∈ Int, out ∈ String)
     LsTrimR(s ↦ s, from ↦ ne_raw_e, lim ↦ ne_ts, out ↦ ne_te)
     out = (ne_te > ne_ts ? substr(s, ne_ts, ne_te - ne_ts) : "")
 
+-- remove ASCII spaces/tabs from s (≤ 24 chars). Index expressions are
+-- tiny; a longer string folds to "" (not a literal index) downstream.
+claim LsStripWs(s ∈ String, out ∈ String)
+    out = sw24
+    sw24 ∈ String = (sw_keep0 ++ sw_keep1 ++ sw_keep2 ++ sw_keep3
+        ++ sw_keep4 ++ sw_keep5 ++ sw_keep6 ++ sw_keep7 ++ sw_keep8
+        ++ sw_keep9 ++ sw_keep10 ++ sw_keep11 ++ sw_keep12 ++ sw_keep13
+        ++ sw_keep14 ++ sw_keep15 ++ sw_keep16 ++ sw_keep17 ++ sw_keep18
+        ++ sw_keep19 ++ sw_keep20 ++ sw_keep21 ++ sw_keep22 ++ sw_keep23)
+    sw_keep0 ∈ String = (0 < #s ∧ ¬(char_at(s, 0) = " " ∨ char_at(s, 0) = "\t") ? char_at(s, 0) : "")
+    sw_keep1 ∈ String = (1 < #s ∧ ¬(char_at(s, 1) = " " ∨ char_at(s, 1) = "\t") ? char_at(s, 1) : "")
+    sw_keep2 ∈ String = (2 < #s ∧ ¬(char_at(s, 2) = " " ∨ char_at(s, 2) = "\t") ? char_at(s, 2) : "")
+    sw_keep3 ∈ String = (3 < #s ∧ ¬(char_at(s, 3) = " " ∨ char_at(s, 3) = "\t") ? char_at(s, 3) : "")
+    sw_keep4 ∈ String = (4 < #s ∧ ¬(char_at(s, 4) = " " ∨ char_at(s, 4) = "\t") ? char_at(s, 4) : "")
+    sw_keep5 ∈ String = (5 < #s ∧ ¬(char_at(s, 5) = " " ∨ char_at(s, 5) = "\t") ? char_at(s, 5) : "")
+    sw_keep6 ∈ String = (6 < #s ∧ ¬(char_at(s, 6) = " " ∨ char_at(s, 6) = "\t") ? char_at(s, 6) : "")
+    sw_keep7 ∈ String = (7 < #s ∧ ¬(char_at(s, 7) = " " ∨ char_at(s, 7) = "\t") ? char_at(s, 7) : "")
+    sw_keep8 ∈ String = (8 < #s ∧ ¬(char_at(s, 8) = " " ∨ char_at(s, 8) = "\t") ? char_at(s, 8) : "")
+    sw_keep9 ∈ String = (9 < #s ∧ ¬(char_at(s, 9) = " " ∨ char_at(s, 9) = "\t") ? char_at(s, 9) : "")
+    sw_keep10 ∈ String = (10 < #s ∧ ¬(char_at(s, 10) = " " ∨ char_at(s, 10) = "\t") ? char_at(s, 10) : "")
+    sw_keep11 ∈ String = (11 < #s ∧ ¬(char_at(s, 11) = " " ∨ char_at(s, 11) = "\t") ? char_at(s, 11) : "")
+    sw_keep12 ∈ String = (12 < #s ∧ ¬(char_at(s, 12) = " " ∨ char_at(s, 12) = "\t") ? char_at(s, 12) : "")
+    sw_keep13 ∈ String = (13 < #s ∧ ¬(char_at(s, 13) = " " ∨ char_at(s, 13) = "\t") ? char_at(s, 13) : "")
+    sw_keep14 ∈ String = (14 < #s ∧ ¬(char_at(s, 14) = " " ∨ char_at(s, 14) = "\t") ? char_at(s, 14) : "")
+    sw_keep15 ∈ String = (15 < #s ∧ ¬(char_at(s, 15) = " " ∨ char_at(s, 15) = "\t") ? char_at(s, 15) : "")
+    sw_keep16 ∈ String = (16 < #s ∧ ¬(char_at(s, 16) = " " ∨ char_at(s, 16) = "\t") ? char_at(s, 16) : "")
+    sw_keep17 ∈ String = (17 < #s ∧ ¬(char_at(s, 17) = " " ∨ char_at(s, 17) = "\t") ? char_at(s, 17) : "")
+    sw_keep18 ∈ String = (18 < #s ∧ ¬(char_at(s, 18) = " " ∨ char_at(s, 18) = "\t") ? char_at(s, 18) : "")
+    sw_keep19 ∈ String = (19 < #s ∧ ¬(char_at(s, 19) = " " ∨ char_at(s, 19) = "\t") ? char_at(s, 19) : "")
+    sw_keep20 ∈ String = (20 < #s ∧ ¬(char_at(s, 20) = " " ∨ char_at(s, 20) = "\t") ? char_at(s, 20) : "")
+    sw_keep21 ∈ String = (21 < #s ∧ ¬(char_at(s, 21) = " " ∨ char_at(s, 21) = "\t") ? char_at(s, 21) : "")
+    sw_keep22 ∈ String = (22 < #s ∧ ¬(char_at(s, 22) = " " ∨ char_at(s, 22) = "\t") ? char_at(s, 22) : "")
+    sw_keep23 ∈ String = (23 < #s ∧ ¬(char_at(s, 23) = " " ∨ char_at(s, 23) = "\t") ? char_at(s, 23) : "")
+
+-- true iff s is a NON-EMPTY run of ASCII digits (≤ 16 chars examined).
+-- Used to validate a literal sub-index `[digits]` in subst_index.
+claim LsAllDigits(s ∈ String, out ∈ Bool)
+    out = (#s = 0 ? false : #s > 16 ? false : ad_ok)
+    ad_ok ∈ Bool = (ad_first ≥ #s)
+    -- ad_first = lowest index whose char is NOT a digit (or #s if all are)
+    ad_first ∈ Int = (¬ad_d0 ? 0 : ¬ad_d1 ? 1 : ¬ad_d2 ? 2 : ¬ad_d3 ? 3
+        : ¬ad_d4 ? 4 : ¬ad_d5 ? 5 : ¬ad_d6 ? 6 : ¬ad_d7 ? 7
+        : ¬ad_d8 ? 8 : ¬ad_d9 ? 9 : ¬ad_d10 ? 10 : ¬ad_d11 ? 11
+        : ¬ad_d12 ? 12 : ¬ad_d13 ? 13 : ¬ad_d14 ? 14 : ¬ad_d15 ? 15 : 16)
+    ad_d0 ∈ Bool = (0 < #s ∧ str_contains("0123456789", char_at(s, 0)))
+    ad_d1 ∈ Bool = (1 < #s ∧ str_contains("0123456789", char_at(s, 1)))
+    ad_d2 ∈ Bool = (2 < #s ∧ str_contains("0123456789", char_at(s, 2)))
+    ad_d3 ∈ Bool = (3 < #s ∧ str_contains("0123456789", char_at(s, 3)))
+    ad_d4 ∈ Bool = (4 < #s ∧ str_contains("0123456789", char_at(s, 4)))
+    ad_d5 ∈ Bool = (5 < #s ∧ str_contains("0123456789", char_at(s, 5)))
+    ad_d6 ∈ Bool = (6 < #s ∧ str_contains("0123456789", char_at(s, 6)))
+    ad_d7 ∈ Bool = (7 < #s ∧ str_contains("0123456789", char_at(s, 7)))
+    ad_d8 ∈ Bool = (8 < #s ∧ str_contains("0123456789", char_at(s, 8)))
+    ad_d9 ∈ Bool = (9 < #s ∧ str_contains("0123456789", char_at(s, 9)))
+    ad_d10 ∈ Bool = (10 < #s ∧ str_contains("0123456789", char_at(s, 10)))
+    ad_d11 ∈ Bool = (11 < #s ∧ str_contains("0123456789", char_at(s, 11)))
+    ad_d12 ∈ Bool = (12 < #s ∧ str_contains("0123456789", char_at(s, 12)))
+    ad_d13 ∈ Bool = (13 < #s ∧ str_contains("0123456789", char_at(s, 13)))
+    ad_d14 ∈ Bool = (14 < #s ∧ str_contains("0123456789", char_at(s, 14)))
+    ad_d15 ∈ Bool = (15 < #s ∧ str_contains("0123456789", char_at(s, 15)))
+
+-- LsIdxEval — evaluate a LITERAL integer index expression over + - *
+-- ("2*3 + 1" → "7"), matching lower-bounded-seq.sh idx_eval. ok=false
+-- (out="") when the text is not such an expression (idents, parens,
+-- negatives, division, …) or the result is negative. `*` binds tighter
+-- than `+`/`-` (group products), then left-assoc sum. Up to 6 numeric
+-- terms; a longer/odd expression fails ok (survives to the completeness
+-- check, exactly as a non-foldable index does in the awk reference).
+claim LsIdxEval(s ∈ String, out ∈ String, ok ∈ Bool)
+    ie_t ∈ String
+    LsStripWs(s ↦ s, out ↦ ie_t)
+    -- VALIDATION: non-empty, starts with a digit, only [0-9+*-] chars,
+    -- and an alternating number/op/number… shape we can tokenize (≤ 6 nums)
+    ie_valid_chars ∈ Bool
+    LsOnlyIdxChars(s ↦ ie_t, out ↦ ie_valid_chars)
+    ie_starts_digit ∈ Bool = (#ie_t ≥ 1 ∧ str_contains("0123456789", char_at(ie_t, 0)))
+    -- token boundaries: ne_i = end of number i; op_i = operator after it
+    ie_ne0 ∈ Int
+    LsDigitEnd(s ↦ ie_t, from ↦ 0, out ↦ ie_ne0)
+    ie_op0 ∈ String = (ie_ne0 < #ie_t ? char_at(ie_t, ie_ne0) : "")
+    ie_s1 ∈ Int = ie_ne0 + 1
+    ie_ne1 ∈ Int
+    LsDigitEnd(s ↦ ie_t, from ↦ ie_s1, out ↦ ie_ne1)
+    ie_op1 ∈ String = (ie_ne1 < #ie_t ? char_at(ie_t, ie_ne1) : "")
+    ie_s2 ∈ Int = ie_ne1 + 1
+    ie_ne2 ∈ Int
+    LsDigitEnd(s ↦ ie_t, from ↦ ie_s2, out ↦ ie_ne2)
+    ie_op2 ∈ String = (ie_ne2 < #ie_t ? char_at(ie_t, ie_ne2) : "")
+    ie_s3 ∈ Int = ie_ne2 + 1
+    ie_ne3 ∈ Int
+    LsDigitEnd(s ↦ ie_t, from ↦ ie_s3, out ↦ ie_ne3)
+    ie_op3 ∈ String = (ie_ne3 < #ie_t ? char_at(ie_t, ie_ne3) : "")
+    ie_s4 ∈ Int = ie_ne3 + 1
+    ie_ne4 ∈ Int
+    LsDigitEnd(s ↦ ie_t, from ↦ ie_s4, out ↦ ie_ne4)
+    ie_op4 ∈ String = (ie_ne4 < #ie_t ? char_at(ie_t, ie_ne4) : "")
+    ie_s5 ∈ Int = ie_ne4 + 1
+    ie_ne5 ∈ Int
+    LsDigitEnd(s ↦ ie_t, from ↦ ie_s5, out ↦ ie_ne5)
+    -- the numbers (AcParseInt over each digit run)
+    ie_n0 ∈ Int
+    AcParseInt(s ↦ ie_t, from ↦ 0, len ↦ ie_ne0, out ↦ ie_n0)
+    ie_n1 ∈ Int
+    AcParseInt(s ↦ ie_t, from ↦ ie_s1, len ↦ ie_ne1 - ie_s1, out ↦ ie_n1)
+    ie_n2 ∈ Int
+    AcParseInt(s ↦ ie_t, from ↦ ie_s2, len ↦ ie_ne2 - ie_s2, out ↦ ie_n2)
+    ie_n3 ∈ Int
+    AcParseInt(s ↦ ie_t, from ↦ ie_s3, len ↦ ie_ne3 - ie_s3, out ↦ ie_n3)
+    ie_n4 ∈ Int
+    AcParseInt(s ↦ ie_t, from ↦ ie_s4, len ↦ ie_ne4 - ie_s4, out ↦ ie_n4)
+    ie_n5 ∈ Int
+    AcParseInt(s ↦ ie_t, from ↦ ie_s5, len ↦ ie_ne5 - ie_s5, out ↦ ie_n5)
+    -- count of numbers = (#ops that are valid) + 1; ops end the scan when ""
+    ie_cnt ∈ Int = (ie_op0 = "" ? 1 : ie_op1 = "" ? 2 : ie_op2 = "" ? 3
+        : ie_op3 = "" ? 4 : ie_op4 = "" ? 5 : 6)
+    -- well-formed iff every operator slot below the count is + - or *,
+    -- the count's terminal op is "", and each number run is non-empty
+    ie_shape_ok ∈ Bool = (ie_starts_digit ∧ ie_valid_chars
+        ∧ (ie_ne0 > 0)
+        ∧ (ie_cnt < 2 ∨ ie_ne1 > ie_s1)
+        ∧ (ie_cnt < 3 ∨ ie_ne2 > ie_s2)
+        ∧ (ie_cnt < 4 ∨ ie_ne3 > ie_s3)
+        ∧ (ie_cnt < 5 ∨ ie_ne4 > ie_s4)
+        ∧ (ie_cnt < 6 ∨ ie_ne5 > ie_s5)
+        ∧ (ie_cnt ≥ 6 ? ie_ne5 ≥ #ie_t : true))
+    -- ── group-product / left-assoc-sum fold ──
+    -- state after processing op before number i: (total, group, gsign)
+    -- step 0: group=n0, total=0, gsign=+1
+    ie_g0 ∈ Int = ie_n0
+    ie_t0 ∈ Int = 0
+    ie_sg0 ∈ Int = 1
+    -- apply op_{i} between num_i and num_{i+1}
+    ie_g1 ∈ Int = (ie_op0 = "*" ? ie_g0 * ie_n1 : ie_n1)
+    ie_t1 ∈ Int = (ie_op0 = "*" ? ie_t0 : ie_t0 + ie_sg0 * ie_g0)
+    ie_sg1 ∈ Int = (ie_op0 = "*" ? ie_sg0 : ie_op0 = "-" ? -1 : 1)
+    ie_g2 ∈ Int = (ie_op1 = "*" ? ie_g1 * ie_n2 : ie_n2)
+    ie_t2 ∈ Int = (ie_op1 = "*" ? ie_t1 : ie_t1 + ie_sg1 * ie_g1)
+    ie_sg2 ∈ Int = (ie_op1 = "*" ? ie_sg1 : ie_op1 = "-" ? -1 : 1)
+    ie_g3 ∈ Int = (ie_op2 = "*" ? ie_g2 * ie_n3 : ie_n3)
+    ie_t3 ∈ Int = (ie_op2 = "*" ? ie_t2 : ie_t2 + ie_sg2 * ie_g2)
+    ie_sg3 ∈ Int = (ie_op2 = "*" ? ie_sg2 : ie_op2 = "-" ? -1 : 1)
+    ie_g4 ∈ Int = (ie_op3 = "*" ? ie_g3 * ie_n4 : ie_n4)
+    ie_t4 ∈ Int = (ie_op3 = "*" ? ie_t3 : ie_t3 + ie_sg3 * ie_g3)
+    ie_sg4 ∈ Int = (ie_op3 = "*" ? ie_sg3 : ie_op3 = "-" ? -1 : 1)
+    ie_g5 ∈ Int = (ie_op4 = "*" ? ie_g4 * ie_n5 : ie_n5)
+    ie_t5 ∈ Int = (ie_op4 = "*" ? ie_t4 : ie_t4 + ie_sg4 * ie_g4)
+    ie_sg5 ∈ Int = (ie_op4 = "*" ? ie_sg4 : ie_op4 = "-" ? -1 : 1)
+    -- final total = total_{cnt-1} + gsign_{cnt-1} * group_{cnt-1}
+    ie_total ∈ Int = (ie_cnt = 1 ? ie_t0 + ie_sg0 * ie_g0
+        : ie_cnt = 2 ? ie_t1 + ie_sg1 * ie_g1
+        : ie_cnt = 3 ? ie_t2 + ie_sg2 * ie_g2
+        : ie_cnt = 4 ? ie_t3 + ie_sg3 * ie_g3
+        : ie_cnt = 5 ? ie_t4 + ie_sg4 * ie_g4
+        : ie_t5 + ie_sg5 * ie_g5)
+    ok = (ie_shape_ok ∧ ie_total ≥ 0)
+    out = (ok ? str_from_int(ie_total) : "")
+
+-- true iff every char of s is in [0-9+*-] (≤ 24 chars). Empty → true.
+claim LsOnlyIdxChars(s ∈ String, out ∈ Bool)
+    out = (oic_bad < 0)
+    -- oic_bad = lowest index whose char is NOT an index char, or -1
+    oic_bad ∈ Int = (oic_b0 ? 0 : oic_b1 ? 1 : oic_b2 ? 2 : oic_b3 ? 3
+        : oic_b4 ? 4 : oic_b5 ? 5 : oic_b6 ? 6 : oic_b7 ? 7
+        : oic_b8 ? 8 : oic_b9 ? 9 : oic_b10 ? 10 : oic_b11 ? 11
+        : oic_b12 ? 12 : oic_b13 ? 13 : oic_b14 ? 14 : oic_b15 ? 15
+        : oic_b16 ? 16 : oic_b17 ? 17 : oic_b18 ? 18 : oic_b19 ? 19
+        : oic_b20 ? 20 : oic_b21 ? 21 : oic_b22 ? 22 : oic_b23 ? 23 : -1)
+    oic_b0 ∈ Bool = (0 < #s ∧ ¬str_contains("0123456789+*-", char_at(s, 0)))
+    oic_b1 ∈ Bool = (1 < #s ∧ ¬str_contains("0123456789+*-", char_at(s, 1)))
+    oic_b2 ∈ Bool = (2 < #s ∧ ¬str_contains("0123456789+*-", char_at(s, 2)))
+    oic_b3 ∈ Bool = (3 < #s ∧ ¬str_contains("0123456789+*-", char_at(s, 3)))
+    oic_b4 ∈ Bool = (4 < #s ∧ ¬str_contains("0123456789+*-", char_at(s, 4)))
+    oic_b5 ∈ Bool = (5 < #s ∧ ¬str_contains("0123456789+*-", char_at(s, 5)))
+    oic_b6 ∈ Bool = (6 < #s ∧ ¬str_contains("0123456789+*-", char_at(s, 6)))
+    oic_b7 ∈ Bool = (7 < #s ∧ ¬str_contains("0123456789+*-", char_at(s, 7)))
+    oic_b8 ∈ Bool = (8 < #s ∧ ¬str_contains("0123456789+*-", char_at(s, 8)))
+    oic_b9 ∈ Bool = (9 < #s ∧ ¬str_contains("0123456789+*-", char_at(s, 9)))
+    oic_b10 ∈ Bool = (10 < #s ∧ ¬str_contains("0123456789+*-", char_at(s, 10)))
+    oic_b11 ∈ Bool = (11 < #s ∧ ¬str_contains("0123456789+*-", char_at(s, 11)))
+    oic_b12 ∈ Bool = (12 < #s ∧ ¬str_contains("0123456789+*-", char_at(s, 12)))
+    oic_b13 ∈ Bool = (13 < #s ∧ ¬str_contains("0123456789+*-", char_at(s, 13)))
+    oic_b14 ∈ Bool = (14 < #s ∧ ¬str_contains("0123456789+*-", char_at(s, 14)))
+    oic_b15 ∈ Bool = (15 < #s ∧ ¬str_contains("0123456789+*-", char_at(s, 15)))
+    oic_b16 ∈ Bool = (16 < #s ∧ ¬str_contains("0123456789+*-", char_at(s, 16)))
+    oic_b17 ∈ Bool = (17 < #s ∧ ¬str_contains("0123456789+*-", char_at(s, 17)))
+    oic_b18 ∈ Bool = (18 < #s ∧ ¬str_contains("0123456789+*-", char_at(s, 18)))
+    oic_b19 ∈ Bool = (19 < #s ∧ ¬str_contains("0123456789+*-", char_at(s, 19)))
+    oic_b20 ∈ Bool = (20 < #s ∧ ¬str_contains("0123456789+*-", char_at(s, 20)))
+    oic_b21 ∈ Bool = (21 < #s ∧ ¬str_contains("0123456789+*-", char_at(s, 21)))
+    oic_b22 ∈ Bool = (22 < #s ∧ ¬str_contains("0123456789+*-", char_at(s, 22)))
+    oic_b23 ∈ Bool = (23 < #s ∧ ¬str_contains("0123456789+*-", char_at(s, 23)))
+
+-- end index of the digit run starting at `from` (≤ 16 digits), = from if none.
+claim LsDigitEnd(s ∈ String, from ∈ Int, out ∈ Int)
+    out = (¬(from < #s ∧ str_contains("0123456789", char_at(s, from))) ? from
+        : ¬(from + 1 < #s ∧ str_contains("0123456789", char_at(s, from + 1))) ? from + 1
+        : ¬(from + 2 < #s ∧ str_contains("0123456789", char_at(s, from + 2))) ? from + 2
+        : ¬(from + 3 < #s ∧ str_contains("0123456789", char_at(s, from + 3))) ? from + 3
+        : ¬(from + 4 < #s ∧ str_contains("0123456789", char_at(s, from + 4))) ? from + 4
+        : ¬(from + 5 < #s ∧ str_contains("0123456789", char_at(s, from + 5))) ? from + 5
+        : ¬(from + 6 < #s ∧ str_contains("0123456789", char_at(s, from + 6))) ? from + 6
+        : ¬(from + 7 < #s ∧ str_contains("0123456789", char_at(s, from + 7))) ? from + 7
+        : from + 8)
+
 -- skip spaces/tabs forward from `from` (capped at lim), ≤ 16 deep
 claim LsTrimL(s ∈ String, from ∈ Int, lim ∈ Int, out ∈ Int)
     out = (¬(from < lim ∧ (char_at(s, from) = " " ∨ char_at(s, from) = "\t")) ? from

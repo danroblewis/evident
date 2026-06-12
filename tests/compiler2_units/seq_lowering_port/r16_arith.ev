@@ -1,0 +1,6 @@
+claim main
+    xs ∈ Seq(Int) = ⟨1, 2, 3, 4, 5⟩
+    #xs ≤ 8
+    a ∈ Int = xs[2*3 + 1]
+    b ∈ Int = xs[1 + 2]
+    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

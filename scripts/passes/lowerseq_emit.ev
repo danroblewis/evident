@@ -15,10 +15,11 @@
 --   R16 index       `xs[k]` (k literal)             → xs_k  (anywhere, incl. comments)
 --   R18 card        `#xs`                           → xs_len (anywhere, incl. comments)
 --       bound       `#xs ≤ N`                       → vanishes (¬hasLen) / xs_len ≤ N
--- TODO (continuation): literal-index ARITHMETIC fold (xs[2*3+1]→xs_7),
---   record-element decls, ∀/∃ unroll, member ∨-unroll, keyed projection,
---   pin family, dynamic-index select chains, the completeness sweep, and
---   the enum/record LOUD REFUSALS. See the pass continuation doc.
+-- TODO (continuation): record-element decls, ∀/∃ unroll, member ∨-unroll,
+--   keyed projection, pin family, dynamic-index select chains (subst_dyn),
+--   the completeness sweep, and the enum/record LOUD REFUSALS. See the pass
+--   continuation doc. (R16 literal-index incl. arithmetic fold + .field +
+--   literal sub-index, and R18 card, are ported below — comment-inclusive.)
 -- A per-slot emit loop runs over N slots (phase 4), one line per tick,
 -- holding the source line; phase 1 reads the next source line.
 import "stdlib/kernel.ev"
@@ -40,6 +41,11 @@ fsm lowerseq_emit
     emit_k ∈ Int
     emit_inside ∈ String  -- the ⟨…⟩ literal payload (lit-decl)
     emit_ne ∈ Int         -- number of literal elements
+    -- substitution walk state (phase 5): R16 index + R18 card on the raw
+    -- default-path line, comment-inclusive, one token-unit per tick.
+    sub_src ∈ String
+    sub_pos ∈ Int
+    sub_acc ∈ String
 
     tk_ph ∈ Int = (is_first_tick ? 0 : _phase)
     tk_rline ∈ String = match last_results[1]
@@ -173,36 +179,106 @@ fsm lowerseq_emit
         : "")
     tk_has_len_lines ∈ Bool = (tk_loop_done ∧ ¬(tk_len_lines = ""))
 
-    -- ── default-path output ──
-    -- PORTED SUBSET: the default path passes the line through VERBATIM.
-    -- The R16/R18 index/card substitution (which must also rewrite tokens
-    -- inside comments, fold literal index arithmetic, and run at fixpoint
-    -- over dynamic-index chains) is the next continuation step — see the
-    -- pass header TODO. Fixtures in the equivalence gate are chosen so the
-    -- only seq references are the decl/literal/hold/bound lines this pass
-    -- already lowers.
+    -- ── default-path substitution walk (phase 5) ──
+    -- R16 (index xs[lit]→xs_lit, +.field/[sub]) + R18 (card #xs→xs_len),
+    -- comment-INCLUSIVE, on the raw line, one token-unit per tick. Mirrors
+    -- the awk default path subst_index ∘ subst_card single left-to-right
+    -- pass (the two token shapes #name / name[ are disjoint, so one walk).
+    -- The walk runs only for a default line that COULD reference a
+    -- registered seq (contains "#" or "[") — a clean line fast-paths.
+    tk_needs_walk ∈ Bool = (tk_default ∧ (str_contains(tk_rline, "#") ∨ str_contains(tk_rline, "[")))
+    tk_default_plain ∈ Bool = (tk_default ∧ ¬tk_needs_walk)
+
+    w_src ∈ String = _sub_src
+    w_p ∈ Int = _sub_pos
+    w_ch ∈ String = char_at(w_src, w_p)
+    -- card candidate: `#word` with word a registered seq name
+    w_is_hash ∈ Bool = (tk_ph = 5 ∧ w_ch = "#")
+    w_he ∈ Int
+    AcWordEnd(s ↦ (w_is_hash ? w_src : ""), from ↦ w_p + 1, out ↦ w_he)
+    w_word ∈ String = (w_he > w_p + 1 ? substr(w_src, w_p + 1, w_he - w_p - 1) : "")
+    w_word_reg ∈ Bool = (w_is_hash ∧ w_he > w_p + 1 ∧ index_of(_reg, "⟦" ++ w_word ++ "⟧") ≥ 0)
+    -- ident-word at p
+    w_we ∈ Int
+    AcWordEnd(s ↦ (tk_ph = 5 ? w_src : ""), from ↦ w_p, out ↦ w_we)
+    w_is_ident ∈ Bool = (tk_ph = 5 ∧ w_we > w_p)
+    w_tok ∈ String = (w_is_ident ? substr(w_src, w_p, w_we - w_p) : "")
+    w_followed_br ∈ Bool = (w_is_ident ∧ char_at(w_src, w_we) = "[")
+    w_base ∈ String = (char_at(w_tok, 0) = "_" ? substr(w_tok, 1, #w_tok - 1) : w_tok)
+    w_base_reg ∈ Bool = (w_followed_br ∧ index_of(_reg, "⟦" ++ w_base ++ "⟧") ≥ 0)
+    -- index body between [ and ]
+    w_cb ∈ Int = (w_base_reg ? index_of(w_src, "]", w_we + 1) : -1)
+    w_inner ∈ String = (w_cb > w_we ? substr(w_src, w_we + 1, w_cb - w_we - 1) : "")
+    -- the folded literal index ("" if not a literal int expression)
+    w_idx ∈ String
+    w_idx_ok ∈ Bool
+    LsIdxEval(s ↦ w_inner, out ↦ w_idx, ok ↦ w_idx_ok)
+    w_do_index ∈ Bool = (w_base_reg ∧ w_cb > w_we ∧ w_idx_ok)
+    -- optional `.field` after `]`
+    w_dot ∈ Bool = (w_do_index ∧ char_at(w_src, w_cb + 1) = ".")
+    w_fs ∈ Int = w_cb + 2
+    w_fe ∈ Int
+    AcWordEnd(s ↦ (w_dot ? w_src : ""), from ↦ w_fs, out ↦ w_fe)
+    w_has_field ∈ Bool = (w_dot ∧ w_fe > w_fs)
+    w_field ∈ String = (w_has_field ? substr(w_src, w_fs, w_fe - w_fs) : "")
+    -- optional literal sub-index `[digits]` after the field (Seq-field family)
+    w_sub_br ∈ Bool = (w_has_field ∧ char_at(w_src, w_fe) = "[")
+    w_scb ∈ Int = (w_sub_br ? index_of(w_src, "]", w_fe + 1) : -1)
+    w_sinner ∈ String = (w_scb > w_fe ? substr(w_src, w_fe + 1, w_scb - w_fe - 1) : "")
+    w_sidx_ok ∈ Bool
+    LsAllDigits(s ↦ w_sinner, out ↦ w_sidx_ok)
+    w_has_sub ∈ Bool = (w_sub_br ∧ w_scb > w_fe ∧ w_sidx_ok ∧ #w_sinner ≥ 1)
+    -- the rewritten index token + span end (exclusive cursor advance target)
+    w_index_out ∈ String = (w_tok ++ "_" ++ w_idx
+        ++ (w_has_field ? "_" ++ w_field : "")
+        ++ (w_has_sub ? "_" ++ w_sinner : ""))
+    w_index_end ∈ Int = (w_has_sub ? w_scb + 1 : w_has_field ? w_fe : w_cb + 1)
+
+    -- the unit emitted this tick + the cursor advance
+    w_unit ∈ String = (w_word_reg ? w_word ++ "_len"
+        : w_do_index ? w_index_out
+        : w_is_ident ? w_tok
+        : w_ch)
+    w_next ∈ Int = (w_word_reg ? w_he
+        : w_do_index ? w_index_end
+        : w_is_ident ? w_we
+        : w_p + 1)
+    tk_walk_run ∈ Bool = (tk_ph = 5 ∧ w_p < #w_src)
+    tk_walk_done ∈ Bool = (tk_ph = 5 ∧ w_p ≥ #w_src)
 
     -- ── line(s) to print this tick ──
     tk_print_now ∈ String = (tk_src ∧ tk_is_top ? tk_rline
         : tk_rewrite_bound ? tk_ind ++ tk_hash_after ++ "_len ≤ " ++ tk_bound_n
-        : tk_default ? tk_rline
+        : tk_default_plain ? tk_rline
+        : tk_walk_done ? _sub_acc
         : tk_loop_run ? _indent ++ tk_slot_line
         : tk_has_len_lines ? _indent ++ tk_len_lines
         : "")
-    tk_emit ∈ Bool = ((tk_src ∧ (tk_is_top ∨ tk_default ∨ tk_rewrite_bound)) ∨ tk_loop_run ∨ tk_has_len_lines)
+    tk_emit ∈ Bool = ((tk_src ∧ (tk_is_top ∨ tk_default_plain ∨ tk_rewrite_bound)) ∨ tk_walk_done ∨ tk_loop_run ∨ tk_has_len_lines)
 
     -- ── transitions ──
     phase = (is_first_tick ? 2
         : tk_ph = 2 ? 3
         : tk_eof_now ? 13
         : tk_enter_loop ∨ tk_enter_dual ? 4
+        : tk_needs_walk ? 5
         : tk_ph = 4 ? (tk_loop_done ? 3 : 4)
+        : tk_ph = 5 ? (tk_walk_done ? 3 : 5)
         : tk_ph = 3 ? 3
         : tk_ph)
     reg = (is_first_tick ? "" : tk_ph = 2 ? tk_rline : _reg)
     line = (is_first_tick ? "" : tk_src ? tk_rline : _line)
     code = (is_first_tick ? "" : tk_src ? tk_code : _code)
     indent = (is_first_tick ? "" : tk_enter_loop ∨ tk_enter_dual ? tk_ind : _indent)
+    sub_src = (is_first_tick ? "" : tk_needs_walk ? tk_rline : _sub_src)
+    sub_pos = (is_first_tick ? 0
+        : tk_needs_walk ? 0
+        : tk_walk_run ? w_next
+        : _sub_pos)
+    sub_acc = (is_first_tick ? ""
+        : tk_needs_walk ? ""
+        : tk_walk_run ? _sub_acc ++ w_unit
+        : _sub_acc)
     emit_kind = (is_first_tick ? 0
         : tk_enter_dual ? 2
         : tk_enter_loop ? (tk_decl_lit ∨ tk_is_litassign ? 3 : tk_is_hold ? 4 : 1)
@@ -229,7 +305,7 @@ fsm lowerseq_emit
     eff_out ∈ Effect
     BuildPrintln(s ↦ tk_print_now, eff ↦ eff_out)
     -- read next source line when the current one is fully resolved
-    tk_read_go ∈ Bool = (tk_ph = 2 ∨ (tk_src ∧ (tk_is_top ∨ tk_default ∨ tk_drop_bound ∨ tk_rewrite_bound)) ∨ tk_loop_done)
+    tk_read_go ∈ Bool = (tk_ph = 2 ∨ (tk_src ∧ (tk_is_top ∨ tk_default_plain ∨ tk_drop_bound ∨ tk_rewrite_bound)) ∨ tk_loop_done ∨ tk_walk_done)
 
     effects ∈ Seq(Effect) = (is_first_tick ? ⟨eff_nop, ReadLine⟩
         : tk_eof_now ? ⟨Exit(0), eff_nop⟩
