@@ -49,6 +49,15 @@ run_port() {
     { printf '%s\n' "$reg"; cat "$in"; } | "$KERNEL" "$DIR/lowerseq_emit.smt2" 2>/dev/null
 }
 
+# A fixture whose header declares `-- expect: flatten-error` is a REFUSAL
+# fixture: the awk reference prints a multi-line diagnostic to stderr and
+# exits 1. The Evident port mirrors this by printing the same diagnostic
+# (to stdout — it has no stderr channel) and exiting 1. For these fixtures
+# the gate compares (awk stderr + awk exit) against (port stdout + port
+# exit) — both the message text AND the exit code must match. Non-refusal
+# fixtures compare stdout on the success path, as before.
+is_refusal() { grep -q -- '-- expect: *flatten-error' "$1"; }
+
 if [ "$#" -gt 0 ]; then
     FIXTURES=("$@")
 else
@@ -58,6 +67,19 @@ fi
 pass=0; fail=0
 for fx in "${FIXTURES[@]}"; do
     name="$(basename "$fx")"
+    if is_refusal "$fx"; then
+        awk_err="$("$AWK" < "$fx" 2>&1 1>/dev/null)"; awk_rc=$?
+        port_out="$(run_port "$fx")"; port_rc=$?
+        if [ "$awk_rc" -eq "$port_rc" ] && [ "$awk_err" = "$port_out" ]; then
+            echo "PASS  $name  (refusal: exit $awk_rc)"
+            pass=$((pass + 1))
+        else
+            echo "FAIL  $name  (refusal: awk exit $awk_rc / port exit $port_rc)"
+            diff <(printf '%s\n' "$awk_err") <(printf '%s\n' "$port_out") | sed 's/^/    /'
+            fail=$((fail + 1))
+        fi
+        continue
+    fi
     awk_out="$("$AWK" < "$fx" 2>/dev/null)"
     port_out="$(run_port "$fx")"
     if [ "$awk_out" = "$port_out" ]; then
