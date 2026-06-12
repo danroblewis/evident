@@ -133,6 +133,7 @@ enum PrOp =
     PrNot
     PrHash
     PrCall(String, Int)
+    PrSeq(Int)
     PrIdx
     PrNone
 
@@ -252,6 +253,36 @@ claim C2PrattStep(toks ∈ TokenList, outs ∈ ExprList, ops ∈ PrOps,
     o_t3 ∈ ExprList = match o_t2
         ELCons(_, r) ⇒ r
         ELNil ⇒ ELNil
+    out4 ∈ Expr = match o_t3
+        ELCons(e1, _) ⇒ e1
+        ELNil ⇒ ENoExpr
+    o_t4 ∈ ExprList = match o_t3
+        ELCons(_, r) ⇒ r
+        ELNil ⇒ ELNil
+    out5 ∈ Expr = match o_t4
+        ELCons(e1, _) ⇒ e1
+        ELNil ⇒ ENoExpr
+    o_t5 ∈ ExprList = match o_t4
+        ELCons(_, r) ⇒ r
+        ELNil ⇒ ELNil
+    out6 ∈ Expr = match o_t5
+        ELCons(e1, _) ⇒ e1
+        ELNil ⇒ ENoExpr
+    o_t6 ∈ ExprList = match o_t5
+        ELCons(_, r) ⇒ r
+        ELNil ⇒ ELNil
+    out7 ∈ Expr = match o_t6
+        ELCons(e1, _) ⇒ e1
+        ELNil ⇒ ENoExpr
+    o_t7 ∈ ExprList = match o_t6
+        ELCons(_, r) ⇒ r
+        ELNil ⇒ ELNil
+    out8 ∈ Expr = match o_t7
+        ELCons(e1, _) ⇒ e1
+        ELNil ⇒ ENoExpr
+    o_t8 ∈ ExprList = match o_t7
+        ELCons(_, r) ⇒ r
+        ELNil ⇒ ELNil
 
     atom_e ∈ Expr
     head_is_atom ∈ Bool
@@ -268,6 +299,9 @@ claim C2PrattStep(toks ∈ TokenList, outs ∈ ExprList, ops ∈ PrOps,
     is_com ∈ Bool = (head_token matches Comma)
     is_lb ∈ Bool = (head_token matches LBracket)
     is_rb ∈ Bool = (head_token matches RBracket)
+    is_seqopen ∈ Bool = (head_token matches OpSeqOpen)
+    is_seqclose ∈ Bool = (head_token matches OpSeqClose)
+    next_is_seqclose ∈ Bool = (next1 matches OpSeqClose)
     head_name ∈ String = match head_token
         Ident(s2) ⇒ s2
         _ ⇒ ""
@@ -318,6 +352,10 @@ claim C2PrattStep(toks ∈ TokenList, outs ∈ ExprList, ops ∈ PrOps,
     top.quest = (stack_top matches PrQuest)
     top.lp = (stack_top matches PrLP)
     top.call = (stack_top matches PrCall(_, _))
+    top_seq ∈ Bool = (stack_top matches PrSeq(_))
+    top_seq_argn ∈ Int = match stack_top
+        PrSeq(ks) ⇒ ks
+        _ ⇒ 0
     top.idx = (stack_top matches PrIdx)
     top.call_name = match stack_top
         PrCall(n2, _) ⇒ n2
@@ -365,18 +403,21 @@ claim C2PrattStep(toks ∈ TokenList, outs ∈ ExprList, ops ∈ PrOps,
     call_ok ∈ Bool = (index_of(calls, call_key, 0) ≥ 0)
     call_shift ∈ Bool = (expop ∧ (head_token matches Ident(_)) ∧ next_is_lparen
         ∧ call_ok)
+    seq_empty_shift ∈ Bool = (expop ∧ is_seqopen ∧ next_is_seqclose)
+    seq_open ∈ Bool = (expop ∧ is_seqopen ∧ (¬next_is_seqclose))
     atom_shift ∈ Bool = (expop ∧ head_is_atom ∧ (¬call_shift))
     shift_lparen ∈ Bool = (expop ∧ is_lp)
     not_shift ∈ Bool = (expop ∧ head_is_not)
     hash_shift ∈ Bool = (expop ∧ is_hash)
     syntax_error ∈ Bool = (expop ∧ (¬head_is_atom) ∧ (¬is_lp) ∧ (¬head_is_not)
-        ∧ (¬is_hash))
+        ∧ (¬is_hash) ∧ (¬is_seqopen))
 
     quant_stop ∈ Bool = (qstop ∧ is_q ∧ (pd = 0) ∧ (qd = 0))
     cont ∈ Bool = (bin_ok ∨ (is_q ∧ (¬quant_stop)) ∨ is_lb
         ∨ is_match ∨ dotf ∨ dotf2
         ∨ (is_col ∧ (qd > 0)) ∨ (is_rp ∧ (pd > 0))
         ∨ (is_rb ∧ (pd > 0))
+        ∨ (is_seqclose ∧ (pd > 0))
         ∨ (is_com ∧ (cd > 0)))
     arr ∈ Bool = ((¬expop) ∧ (bin_ok ∨ (is_q ∧ (¬quant_stop))))
     arr_red ∈ Bool = (arr ∧ top.red
@@ -390,13 +431,17 @@ claim C2PrattStep(toks ∈ TokenList, outs ∈ ExprList, ops ∈ PrOps,
     index_shift ∈ Bool = ((¬expop) ∧ is_lb)
     close_rbracket ∈ Bool = ((¬expop) ∧ is_rb ∧ (pd > 0))
     rb_close ∈ Bool = (close_rbracket ∧ top.idx)
+    close_seqclose ∈ Bool = ((¬expop) ∧ is_seqclose ∧ (pd > 0))
+    seq_close ∈ Bool = (close_seqclose ∧ top_seq)
     com ∈ Bool = ((¬expop) ∧ is_com ∧ (cd > 0))
     com_bump ∈ Bool = (com ∧ top.call)
+    com_seq ∈ Bool = (com ∧ top_seq)
     expr_end ∈ Bool = ((¬expop) ∧ (¬cont))
     need_red ∈ Bool = ((col ∧ (¬col_swap))
         ∨ (close_rparen ∧ (¬rp_close) ∧ (¬rp_call))
         ∨ (close_rbracket ∧ (¬rb_close))
-        ∨ (com ∧ (¬com_bump))
+        ∨ (close_seqclose ∧ (¬seq_close))
+        ∨ (com ∧ (¬com_bump) ∧ (¬com_seq))
         ∨ (expr_end ∧ (¬ops_nil))
         ∨ arr_red)
     reduce ∈ Bool = (need_red ∧ top.red)
@@ -407,12 +452,14 @@ claim C2PrattStep(toks ∈ TokenList, outs ∈ ExprList, ops ∈ PrOps,
 
     consume_token ∈ Bool = (atom_shift ∨ shift_lparen ∨ not_shift ∨ hash_shift
         ∨ arr_shift ∨ col_swap ∨ rp_close ∨ rp_call
-        ∨ com_bump ∨ index_shift ∨ rb_close)
+        ∨ com_bump ∨ com_seq ∨ index_shift ∨ rb_close ∨ seq_open ∨ seq_close)
     scons = (call_shift ? 2
+        : seq_empty_shift ? 2
         : is_match ? mt_cons
         : (dotf ∨ dotf2) ? 2
         : consume_token ? 1 : 0)
     ntoks = (call_shift ? rest2
+        : seq_empty_shift ? rest2
         : is_match ? (match_pat2 ? after7 : match_pat1 ? rest5 : rest2)
         : (dotf ∨ dotf2) ? rest2
         : consume_token ? rest_tokens : toks)
@@ -425,6 +472,27 @@ claim C2PrattStep(toks ∈ TokenList, outs ∈ ExprList, ops ∈ PrOps,
         : call_arg_count = 2 ? o_t2
         : o_t3)
 
+    -- Seq-literal close: pop the top n = top_seq_argn + 1 operands
+    -- (top-first they are e_{n-1}..e0) and build ESeq in SOURCE order
+    -- (e0..e_{n-1}), so the cons-list lowering folds left-to-right.
+    seq_count ∈ Int = top_seq_argn + 1
+    seq_e ∈ Expr = (seq_count = 1 ? ESeq(ELCons(out1, ELNil))
+        : seq_count = 2 ? ESeq(ELCons(out2, ELCons(out1, ELNil)))
+        : seq_count = 3 ? ESeq(ELCons(out3, ELCons(out2, ELCons(out1, ELNil))))
+        : seq_count = 4 ? ESeq(ELCons(out4, ELCons(out3, ELCons(out2, ELCons(out1, ELNil)))))
+        : seq_count = 5 ? ESeq(ELCons(out5, ELCons(out4, ELCons(out3, ELCons(out2, ELCons(out1, ELNil))))))
+        : seq_count = 6 ? ESeq(ELCons(out6, ELCons(out5, ELCons(out4, ELCons(out3, ELCons(out2, ELCons(out1, ELNil)))))))
+        : seq_count = 7 ? ESeq(ELCons(out7, ELCons(out6, ELCons(out5, ELCons(out4, ELCons(out3, ELCons(out2, ELCons(out1, ELNil))))))))
+        : ESeq(ELCons(out8, ELCons(out7, ELCons(out6, ELCons(out5, ELCons(out4, ELCons(out3, ELCons(out2, ELCons(out1, ELNil))))))))))
+    seq_base ∈ ExprList = (seq_count = 1 ? o_t1
+        : seq_count = 2 ? o_t2
+        : seq_count = 3 ? o_t3
+        : seq_count = 4 ? o_t4
+        : seq_count = 5 ? o_t5
+        : seq_count = 6 ? o_t6
+        : seq_count = 7 ? o_t7
+        : o_t8)
+
     red_e ∈ Expr = (top.not ? ENot(out1)
         : top.hash ? ECall1("str_len", out1)
         : top.tern ? ETernary(out3, out2, out1)
@@ -434,6 +502,8 @@ claim C2PrattStep(toks ∈ TokenList, outs ∈ ExprList, ops ∈ PrOps,
         : o_t2)
     idx_e ∈ Expr = ECall2("__index", out2, out1)
     nouts = (atom_shift ? ELCons(atom_e, outs)
+        : seq_empty_shift ? ELCons(ESeq(ELNil), outs)
+        : seq_close ? ELCons(seq_e, seq_base)
         : reduce ? ELCons(red_e, red_base)
         : rp_call ? ELCons(call_e, call_base)
         : rb_close ? ELCons(idx_e, o_t2)
@@ -447,22 +517,30 @@ claim C2PrattStep(toks ∈ TokenList, outs ∈ ExprList, ops ∈ PrOps,
         : not_shift ? PrCons(PrNot, ops)
         : hash_shift ? PrCons(PrHash, ops)
         : call_shift ? PrCons(PrCall(head_name, 0), ops)
+        : seq_open ? PrCons(PrSeq(0), ops)
         : index_shift ? PrCons(PrIdx, ops)
         : arr_shift ? PrCons(push, ops)
         : col_swap ? PrCons(PrTern, orest_tokens)
         : com_bump ? PrCons(PrCall(top.call_name, top.call_argn + 1), orest_tokens)
-        : (rp_close ∨ rp_call ∨ rb_close ∨ reduce
+        : com_seq ? PrCons(PrSeq(top_seq_argn + 1), orest_tokens)
+        : (rp_close ∨ rp_call ∨ rb_close ∨ seq_close ∨ reduce
             ∨ discard) ? orest_tokens
         : ops)
 
     nexpop = (atom_shift ? false
-        : (rp_close ∨ rp_call ∨ rb_close) ? false
+        : seq_empty_shift ? false
+        : (rp_close ∨ rp_call ∨ rb_close ∨ seq_close) ? false
         : (arr_shift ∨ col_swap ∨ shift_lparen ∨ not_shift
-            ∨ hash_shift ∨ call_shift ∨ com_bump ∨ index_shift) ? true
+            ∨ hash_shift ∨ call_shift ∨ com_bump ∨ com_seq ∨ seq_open
+            ∨ index_shift) ? true
         : expop)
 
-    npd = ((shift_lparen ∨ call_shift ∨ index_shift) ? pd + 1
-        : (rp_close ∨ rp_call ∨ rb_close) ? pd - 1
+    npd = ((shift_lparen ∨ call_shift ∨ index_shift ∨ seq_open) ? pd + 1
+        : (rp_close ∨ rp_call ∨ rb_close ∨ seq_close) ? pd - 1
         : pd)
     nqd = ((arr_shift ∧ is_q) ? qd + 1 : col_swap ? qd - 1 : qd)
-    ncd = (call_shift ? cd + 1 : rp_call ? cd - 1 : cd)
+    ncd = (call_shift ? cd + 1
+        : rp_call ? cd - 1
+        : seq_open ? cd + 1
+        : seq_close ? cd - 1
+        : cd)

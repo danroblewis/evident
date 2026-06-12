@@ -452,6 +452,7 @@ fsm driver_main
         : (line.sort = 5 ∧ kind_slot ≥ 0) ? ("Seq(" ++ registry_typename ++ ")")
         : line.sort = 5 ? "Seq(Int)"
         : line.sort = 6 ? "Real"
+        : line.sort = 7 ? "Effect"
         : decl_line ? ("Set(" ++ registry_typename ++ ")")
         : "Int")
     mem_field ∈ String = line.dname ++ ":" ++ mem_tyname
@@ -587,6 +588,7 @@ fsm driver_main
         : process ∧ is_ternary ? C2ICons(C2Process(cond), C2ICons(C2Process(then_branch), C2ICons(C2Process(else_branch), C2ICons(C2Ite, work_tail))))
         : process ∧ is_not ? C2ICons(C2Process(not_inner), C2ICons(C2Not, work_tail))
         : process ∧ is_matches ? matches_items
+        : process ∧ is_seqlit ? seq_lower_items
         : process ∧ is_bound_ref ? bound_var_items
         : process ∧ dot ? dot_items
         : is_pin_hit ? hit_items
@@ -725,10 +727,16 @@ fsm driver_main
         : _burst_phase = 2 ? rebuilt
         : window_after)
 
+    -- An Effect-typed scalar member (sort 7, e.g. `free_one ∈ Effect =
+    -- LibCall(…)`) is a TRANSIENT derived value recomputed every tick —
+    -- it is referenced inside the effects literal, never carried. Excluding
+    -- it from field_add keeps it out of manifest state-fields and the
+    -- `_name` carry-decl (which mem_tyname would otherwise mistype Int,
+    -- contradicting its real effect_sort declaration → UNSAT).
     field_add ∈ Bool = (classify_now ∧ (¬line.end) ∧ is_mem
         ∧ (¬effects_line) ∧ (¬intset_line) ∧ (¬is_carry)
         ∧ (¬no_decl) ∧ (¬contains_line) ∧ (¬is_member_line)
-        ∧ (¬is_setmember_line)
+        ∧ (¬is_setmember_line) ∧ (line.sort ≠ 7)
         ∧ (¬type_frame))
     -- E1: the first time a `_name` const is MENTIONED in an
     -- expression (lookup_read of a carry name), the solver

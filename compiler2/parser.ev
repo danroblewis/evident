@@ -47,6 +47,7 @@ enum Expr =
     ECall2(String, Expr, Expr)
     ECall3(String, Expr, Expr, Expr)
     EMatches(String, Expr)
+    ESeq(ExprList)
     ENoExpr
 
 -- ── Match patterns (B9) ────────────────────────────────────────
