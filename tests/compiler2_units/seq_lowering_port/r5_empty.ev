@@ -1,0 +1,4 @@
+claim main
+    xs ∈ Seq(Int) = ⟨⟩
+    #xs ≤ 3
+    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

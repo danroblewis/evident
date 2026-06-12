@@ -1,0 +1,121 @@
+-- MODULE lowerseq_lib — shared scan/transform helpers for the bounded-Seq
+-- lowering pass programs (scan + emit).
+-- CONSUMES: slot-bound inputs per instantiation.
+-- PRODUCES: out-slot-bound outputs; every claim is headered/internals-fresh
+--           so it is safe to instantiate many times in one body.
+-- MAINTAINS: parity with lower-bounded-seq.sh split_commas / trim for the
+--            ported subset. The ported element-split handles FLAT comma
+--            payloads (Int/Bool/simple String literals — no nested parens,
+--            no commas inside strings); awk's depth+quote-aware split is a
+--            TODO for record-ctor and string-with-comma payloads.
+-- Unroll cap: ≤ 16 literal elements per ⟨…⟩ payload.
+
+-- LsCommaPos: index of the n-th top-level "," in s (0-based n), or #s if
+-- fewer than n+1 commas. A flat scan: comma k+1 is the first "," strictly
+-- after comma k's position.
+claim LsCommaPos(s ∈ String, n ∈ Int, out ∈ Int)
+    out = (n < 0 ? -1
+        : n = 0 ? cp0
+        : n = 1 ? cp1 : n = 2 ? cp2 : n = 3 ? cp3 : n = 4 ? cp4
+        : n = 5 ? cp5 : n = 6 ? cp6 : n = 7 ? cp7 : n = 8 ? cp8
+        : n = 9 ? cp9 : n = 10 ? cp10 : n = 11 ? cp11 : n = 12 ? cp12
+        : n = 13 ? cp13 : n = 14 ? cp14 : cp15)
+    cp0 ∈ Int = (index_of(s, ",") < 0 ? #s : index_of(s, ","))
+    cp1 ∈ Int = (cp0 ≥ #s ∨ index_of(s, ",", cp0 + 1) < 0 ? #s : index_of(s, ",", cp0 + 1))
+    cp2 ∈ Int = (cp1 ≥ #s ∨ index_of(s, ",", cp1 + 1) < 0 ? #s : index_of(s, ",", cp1 + 1))
+    cp3 ∈ Int = (cp2 ≥ #s ∨ index_of(s, ",", cp2 + 1) < 0 ? #s : index_of(s, ",", cp2 + 1))
+    cp4 ∈ Int = (cp3 ≥ #s ∨ index_of(s, ",", cp3 + 1) < 0 ? #s : index_of(s, ",", cp3 + 1))
+    cp5 ∈ Int = (cp4 ≥ #s ∨ index_of(s, ",", cp4 + 1) < 0 ? #s : index_of(s, ",", cp4 + 1))
+    cp6 ∈ Int = (cp5 ≥ #s ∨ index_of(s, ",", cp5 + 1) < 0 ? #s : index_of(s, ",", cp5 + 1))
+    cp7 ∈ Int = (cp6 ≥ #s ∨ index_of(s, ",", cp6 + 1) < 0 ? #s : index_of(s, ",", cp6 + 1))
+    cp8 ∈ Int = (cp7 ≥ #s ∨ index_of(s, ",", cp7 + 1) < 0 ? #s : index_of(s, ",", cp7 + 1))
+    cp9 ∈ Int = (cp8 ≥ #s ∨ index_of(s, ",", cp8 + 1) < 0 ? #s : index_of(s, ",", cp8 + 1))
+    cp10 ∈ Int = (cp9 ≥ #s ∨ index_of(s, ",", cp9 + 1) < 0 ? #s : index_of(s, ",", cp9 + 1))
+    cp11 ∈ Int = (cp10 ≥ #s ∨ index_of(s, ",", cp10 + 1) < 0 ? #s : index_of(s, ",", cp10 + 1))
+    cp12 ∈ Int = (cp11 ≥ #s ∨ index_of(s, ",", cp11 + 1) < 0 ? #s : index_of(s, ",", cp11 + 1))
+    cp13 ∈ Int = (cp12 ≥ #s ∨ index_of(s, ",", cp12 + 1) < 0 ? #s : index_of(s, ",", cp12 + 1))
+    cp14 ∈ Int = (cp13 ≥ #s ∨ index_of(s, ",", cp13 + 1) < 0 ? #s : index_of(s, ",", cp13 + 1))
+    cp15 ∈ Int = (cp14 ≥ #s ∨ index_of(s, ",", cp14 + 1) < 0 ? #s : index_of(s, ",", cp14 + 1))
+
+-- count of comma-separated elements (≥1 when s nonempty)
+claim LsCountElem(s ∈ String, out ∈ Int)
+    out = (#s = 0 ? 0 : ce_n)
+    ce_n ∈ Int = (index_of(s, ",") < 0 ? 1 : ce_scan)
+    -- number of commas = highest k with comma_pos(k) < #s, +1
+    ce_scan ∈ Int = ce_count + 1
+    ce_count ∈ Int = (cP0 ≥ #s ? 0 : cP1 ≥ #s ? 1 : cP2 ≥ #s ? 2 : cP3 ≥ #s ? 3
+        : cP4 ≥ #s ? 4 : cP5 ≥ #s ? 5 : cP6 ≥ #s ? 6 : cP7 ≥ #s ? 7
+        : cP8 ≥ #s ? 8 : cP9 ≥ #s ? 9 : cP10 ≥ #s ? 10 : cP11 ≥ #s ? 11
+        : cP12 ≥ #s ? 12 : cP13 ≥ #s ? 13 : cP14 ≥ #s ? 14 : cP15 ≥ #s ? 15 : 16)
+    cP0 ∈ Int
+    cP1 ∈ Int
+    cP2 ∈ Int
+    cP3 ∈ Int
+    cP4 ∈ Int
+    cP5 ∈ Int
+    cP6 ∈ Int
+    cP7 ∈ Int
+    cP8 ∈ Int
+    cP9 ∈ Int
+    cP10 ∈ Int
+    cP11 ∈ Int
+    cP12 ∈ Int
+    cP13 ∈ Int
+    cP14 ∈ Int
+    cP15 ∈ Int
+    LsCommaPos(s ↦ s, n ↦ 0, out ↦ cP0)
+    LsCommaPos(s ↦ s, n ↦ 1, out ↦ cP1)
+    LsCommaPos(s ↦ s, n ↦ 2, out ↦ cP2)
+    LsCommaPos(s ↦ s, n ↦ 3, out ↦ cP3)
+    LsCommaPos(s ↦ s, n ↦ 4, out ↦ cP4)
+    LsCommaPos(s ↦ s, n ↦ 5, out ↦ cP5)
+    LsCommaPos(s ↦ s, n ↦ 6, out ↦ cP6)
+    LsCommaPos(s ↦ s, n ↦ 7, out ↦ cP7)
+    LsCommaPos(s ↦ s, n ↦ 8, out ↦ cP8)
+    LsCommaPos(s ↦ s, n ↦ 9, out ↦ cP9)
+    LsCommaPos(s ↦ s, n ↦ 10, out ↦ cP10)
+    LsCommaPos(s ↦ s, n ↦ 11, out ↦ cP11)
+    LsCommaPos(s ↦ s, n ↦ 12, out ↦ cP12)
+    LsCommaPos(s ↦ s, n ↦ 13, out ↦ cP13)
+    LsCommaPos(s ↦ s, n ↦ 14, out ↦ cP14)
+    LsCommaPos(s ↦ s, n ↦ 15, out ↦ cP15)
+
+-- the n-th (0-based) comma-separated element of s, trimmed of surrounding
+-- whitespace. For n=0 the start is 0; otherwise after comma n-1.
+claim LsNthElem(s ∈ String, n ∈ Int, out ∈ String)
+    ne_pstart ∈ Int
+    LsCommaPos(s ↦ s, n ↦ n - 1, out ↦ ne_pstart)
+    ne_pend ∈ Int
+    LsCommaPos(s ↦ s, n ↦ n, out ↦ ne_pend)
+    ne_raw_s ∈ Int = (n = 0 ? 0 : ne_pstart + 1)
+    ne_raw_e ∈ Int = (ne_pend ≥ #s ? #s : ne_pend)
+    -- trim leading ws
+    ne_ts ∈ Int
+    LsTrimL(s ↦ s, from ↦ ne_raw_s, lim ↦ ne_raw_e, out ↦ ne_ts)
+    ne_te ∈ Int
+    LsTrimR(s ↦ s, from ↦ ne_raw_e, lim ↦ ne_ts, out ↦ ne_te)
+    out = (ne_te > ne_ts ? substr(s, ne_ts, ne_te - ne_ts) : "")
+
+-- skip spaces/tabs forward from `from` (capped at lim), ≤ 16 deep
+claim LsTrimL(s ∈ String, from ∈ Int, lim ∈ Int, out ∈ Int)
+    out = (¬(from < lim ∧ (char_at(s, from) = " " ∨ char_at(s, from) = "\t")) ? from
+        : ¬(from + 1 < lim ∧ (char_at(s, from + 1) = " " ∨ char_at(s, from + 1) = "\t")) ? from + 1
+        : ¬(from + 2 < lim ∧ (char_at(s, from + 2) = " " ∨ char_at(s, from + 2) = "\t")) ? from + 2
+        : ¬(from + 3 < lim ∧ (char_at(s, from + 3) = " " ∨ char_at(s, from + 3) = "\t")) ? from + 3
+        : ¬(from + 4 < lim ∧ (char_at(s, from + 4) = " " ∨ char_at(s, from + 4) = "\t")) ? from + 4
+        : ¬(from + 5 < lim ∧ (char_at(s, from + 5) = " " ∨ char_at(s, from + 5) = "\t")) ? from + 5
+        : ¬(from + 6 < lim ∧ (char_at(s, from + 6) = " " ∨ char_at(s, from + 6) = "\t")) ? from + 6
+        : ¬(from + 7 < lim ∧ (char_at(s, from + 7) = " " ∨ char_at(s, from + 7) = "\t")) ? from + 7
+        : from + 8)
+
+-- trim trailing ws backward from `from` (down to lim), ≤ 16 deep
+claim LsTrimR(s ∈ String, from ∈ Int, lim ∈ Int, out ∈ Int)
+    out = (¬(from - 1 ≥ lim ∧ (char_at(s, from - 1) = " " ∨ char_at(s, from - 1) = "\t")) ? from
+        : ¬(from - 2 ≥ lim ∧ (char_at(s, from - 2) = " " ∨ char_at(s, from - 2) = "\t")) ? from - 1
+        : ¬(from - 3 ≥ lim ∧ (char_at(s, from - 3) = " " ∨ char_at(s, from - 3) = "\t")) ? from - 2
+        : ¬(from - 4 ≥ lim ∧ (char_at(s, from - 4) = " " ∨ char_at(s, from - 4) = "\t")) ? from - 3
+        : ¬(from - 5 ≥ lim ∧ (char_at(s, from - 5) = " " ∨ char_at(s, from - 5) = "\t")) ? from - 4
+        : ¬(from - 6 ≥ lim ∧ (char_at(s, from - 6) = " " ∨ char_at(s, from - 6) = "\t")) ? from - 5
+        : ¬(from - 7 ≥ lim ∧ (char_at(s, from - 7) = " " ∨ char_at(s, from - 7) = "\t")) ? from - 6
+        : ¬(from - 8 ≥ lim ∧ (char_at(s, from - 8) = " " ∨ char_at(s, from - 8) = "\t")) ? from - 7
+        : from - 8)

@@ -1,0 +1,102 @@
+-- MODULE lowerseq_plan — stage A.5 of the bounded-Seq lowering pass.
+-- CONSUMES: the tagged record stream from lowerseq_scan on stdin (one
+--           record per line) until EOF.
+-- PRODUCES: ONE line on stdout — the resolved global registry the emit
+--           stage consumes, format:
+--             ⟦name⟧base⦂N⦂hasLen⟦name2⟧… (hasLen = "1" or "0")
+--           A name appears iff (a) its decl base is scalar (Int/String/
+--           Bool), and (b) a `#name ≤ N` bound shares the decl's claim.
+--           Registration is GLOBAL: emit lowers use-sites in any claim.
+-- MAINTAINS: parity with lower-bounded-seq.sh PASS1 gbnd/hasLen join for
+--            the scalar opt-in gate (R0). Record/enum elements and the
+--            keyed-projection / pin-family registries are TODO.
+-- The two-pass shape (accumulate all records, then resolve) mirrors the
+-- awk END-block: a `#xs ≤ N` bound may textually precede or follow the
+-- decl, and registration spans claims, so emit needs the whole picture.
+-- Carried-String registries are ⦂/⟦⟧-delimiter encoded.
+import "stdlib/kernel.ev"
+
+fsm lowerseq_plan
+    phase ∈ Int
+    -- raw accumulators: each record kind appended to its own carried String
+    q_acc ∈ String        -- ⟦name⟧base⦂claim⦂  (seq decls)
+    b_acc ∈ String        -- ⟦name⟧claim⦂N⦂     (bounds)
+    l_acc ∈ String        -- ⟦name⟧             (len-writer names)
+
+    tk_ph ∈ Int = (is_first_tick ? 0 : _phase)
+    tk_rline ∈ String = match last_results[1]
+        StringResult(s) ⇒ s
+        _ ⇒ ""
+    tk_reof ∈ Bool = match last_results[1]
+        EofResult ⇒ true
+        _ ⇒ false
+    tk_consume ∈ Bool = (tk_ph = 1 ∧ ¬tk_reof)
+    tk_eof_now ∈ Bool = (tk_ph = 1 ∧ tk_reof)
+
+    -- record dispatch by lead glyph
+    tk_kind ∈ String = (tk_consume ∧ #tk_rline ≥ 1 ? substr(tk_rline, 0, 1) : "")
+    -- parse a `X⟨name⟩rest` record into name + rest
+    tk_gt ∈ Int = (tk_consume ? index_of(tk_rline, "⟩") : -1)
+    tk_name ∈ String = (tk_consume ∧ tk_gt ≥ 0 ? substr(tk_rline, 2, tk_gt - 2) : "")
+    tk_rest ∈ String = (tk_consume ∧ tk_gt ≥ 0 ? substr(tk_rline, tk_gt + 1, #tk_rline - tk_gt - 1) : "")
+
+    tk_is_q ∈ Bool = (tk_kind = "Q")
+    tk_is_b ∈ Bool = (tk_kind = "B")
+    tk_is_l ∈ Bool = (tk_kind = "L")
+
+    phase = (is_first_tick ? 1 : tk_consume ? 1 : tk_eof_now ? 13 : 13)
+    q_acc = (is_first_tick ? "" : tk_is_q ? _q_acc ++ "⟦" ++ tk_name ++ "⟧" ++ tk_rest : _q_acc)
+    b_acc = (is_first_tick ? "" : tk_is_b ? _b_acc ++ "⟦" ++ tk_name ++ "⟧" ++ tk_rest : _b_acc)
+    l_acc = (is_first_tick ? "" : tk_is_l ? _l_acc ++ "⟦" ++ tk_name ++ "⟧" : _l_acc)
+
+    -- ── EOF: resolve the registry by walking q_acc entries ──
+    -- For each ⟦name⟧base⦂claim⦂ in q_acc, registered iff base scalar AND
+    -- ⟦name⟧claim⦂ appears in b_acc; emit ⟦name⟧base⦂N⦂hasLen.
+    -- One resolve event per tick over q_acc (phase 13 loop), cursor qc.
+    qc ∈ Int
+    out_reg ∈ String
+
+    tk_qc ∈ Int = (tk_eof_now ? 0 : _qc)
+    tk_resolving ∈ Bool = (tk_ph = 13 ∧ _qc < #_q_acc)
+    tk_done ∈ Bool = (tk_ph = 13 ∧ _qc ≥ #_q_acc)
+
+    -- parse one q entry at cursor _qc: ⟦name⟧base⦂claim⦂
+    tk_q_lt ∈ Int = (tk_resolving ? _qc : -1)
+    tk_q_gt ∈ Int = (tk_resolving ? index_of(_q_acc, "⟧", _qc) : -1)
+    tk_q_name ∈ String = (tk_resolving ? substr(_q_acc, _qc + 1, tk_q_gt - _qc - 1) : "")
+    tk_q_d1 ∈ Int = (tk_resolving ? index_of(_q_acc, "⦂", tk_q_gt) : -1)
+    tk_q_base ∈ String = (tk_resolving ? substr(_q_acc, tk_q_gt + 1, tk_q_d1 - tk_q_gt - 1) : "")
+    tk_q_d2 ∈ Int = (tk_resolving ? index_of(_q_acc, "⦂", tk_q_d1 + 1) : -1)
+    tk_q_claim ∈ String = (tk_resolving ? substr(_q_acc, tk_q_d1 + 1, tk_q_d2 - tk_q_d1 - 1) : "")
+    tk_q_next ∈ Int = (tk_resolving ? tk_q_d2 + 1 : _qc)
+
+    tk_q_scalar ∈ Bool = (tk_q_base = "Int" ∨ tk_q_base = "String" ∨ tk_q_base = "Bool")
+    -- bound lookup: find ⟦name⟧claim⦂ in b_acc, then read N up to next ⦂
+    tk_b_key ∈ String = "⟦" ++ tk_q_name ++ "⟧" ++ tk_q_claim ++ "⦂"
+    tk_b_at ∈ Int = (tk_resolving ? index_of(_b_acc, tk_b_key) : -1)
+    tk_b_has ∈ Bool = (tk_resolving ∧ tk_b_at ≥ 0)
+    tk_b_vs ∈ Int = (tk_b_has ? tk_b_at + #tk_b_key : -1)
+    tk_b_ve ∈ Int = (tk_b_has ? index_of(_b_acc, "⦂", tk_b_vs) : -1)
+    tk_b_n ∈ String = (tk_b_has ∧ tk_b_ve ≥ tk_b_vs ? substr(_b_acc, tk_b_vs, tk_b_ve - tk_b_vs) : "")
+
+    -- hasLen: ⟦name⟧ appears in l_acc
+    tk_l_has ∈ Bool = (tk_resolving ∧ index_of(_l_acc, "⟦" ++ tk_q_name ++ "⟧") ≥ 0)
+
+    tk_register ∈ Bool = (tk_resolving ∧ tk_q_scalar ∧ tk_b_has)
+    tk_reg_entry ∈ String = (tk_register
+        ? "⟦" ++ tk_q_name ++ "⟧" ++ tk_q_base ++ "⦂" ++ tk_b_n ++ "⦂" ++ (tk_l_has ? "1" : "0")
+        : "")
+
+    qc = (is_first_tick ? 0 : tk_eof_now ? 0 : tk_resolving ? tk_q_next : _qc)
+    out_reg = (is_first_tick ? "" : tk_eof_now ? "" : tk_resolving ? _out_reg ++ tk_reg_entry : _out_reg)
+
+    -- ── effects ──
+    eff_nop ∈ Effect
+    eff_nop = LibCall("libc", "getpid", ⟨⟩)
+    eff_out ∈ Effect
+    BuildPrintln(s ↦ _out_reg, eff ↦ eff_out)
+
+    effects ∈ Seq(Effect) = (is_first_tick ? ⟨eff_nop, ReadLine⟩
+        : tk_consume ? ⟨eff_nop, ReadLine⟩
+        : tk_done ? ⟨eff_out, eff_nop, Exit(0)⟩
+        : ⟨eff_nop, eff_nop⟩)

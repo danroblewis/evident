@@ -1,0 +1,7 @@
+claim helper
+    zs ∈ Seq(Int) = ⟨5, 6⟩
+    #zs ≤ 3
+    effects ∈ Seq(Effect) = ⟨Exit(0)⟩
+claim main
+    n ∈ Int = 1
+    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

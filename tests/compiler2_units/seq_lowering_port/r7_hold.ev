@@ -1,0 +1,6 @@
+claim main
+    xs ∈ Seq(Int)
+    _xs ∈ Seq(Int)
+    #xs ≤ 3
+    xs = (is_first_tick ? ⟨⟩ : _xs)
+    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

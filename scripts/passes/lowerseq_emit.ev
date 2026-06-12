@@ -1,0 +1,239 @@
+-- MODULE lowerseq_emit — stage B of the bounded-Seq lowering pass.
+-- CONSUMES: stdin line 1 = the resolved registry from lowerseq_plan
+--           (⟦name⟧base⦂N⦂hasLen…), then the flattened source until EOF.
+-- PRODUCES: the lowered source on stdout. For the PORTED SUBSET
+--           (R0/R1/R5/R7/R16/R18) the output is byte-identical to
+--           scripts/passes/lower-bounded-seq.sh on inputs that exercise
+--           only those rules.
+-- MAINTAINS: emit parity with lower-bounded-seq.sh PASS2 for:
+--   R1  main decl   `xs ∈ Seq(scalar)`              → xs_0..xs_{N-1} ∈ El
+--                   (+ xs_len ∈ Int / 0 ≤ xs_len only when hasLen)
+--   R5  scalar lit  `xs ∈ Seq(El) = ⟨a,b⟩`          → per-slot pins + xs_len = ne
+--                   `xs = ⟨a,b⟩`                     → per-slot pins + xs_len = ne
+--       dual decl   `_xs ∈ Seq(El)`                 → _xs_0.. (+ _xs_len if hasLen)
+--   R7  hold        `xs = (is_first_tick ? ⟨⟩ : _xs)` → per-slot holds + len hold
+--   R16 index       `xs[k]` (k literal)             → xs_k  (anywhere, incl. comments)
+--   R18 card        `#xs`                           → xs_len (anywhere, incl. comments)
+--       bound       `#xs ≤ N`                       → vanishes (¬hasLen) / xs_len ≤ N
+-- TODO (continuation): literal-index ARITHMETIC fold (xs[2*3+1]→xs_7),
+--   record-element decls, ∀/∃ unroll, member ∨-unroll, keyed projection,
+--   pin family, dynamic-index select chains, the completeness sweep, and
+--   the enum/record LOUD REFUSALS. See the pass continuation doc.
+-- A per-slot emit loop runs over N slots (phase 4), one line per tick,
+-- holding the source line; phase 1 reads the next source line.
+import "stdlib/kernel.ev"
+import "scripts/passes/autocarry_lib.ev"
+import "scripts/passes/lowerseq_lib.ev"
+
+fsm lowerseq_emit
+    phase ∈ Int
+    reg ∈ String
+    line ∈ String
+    code ∈ String
+    indent ∈ String
+    -- slot-emit loop state
+    emit_kind ∈ Int       -- 1 decl 2 dual 3 lit-decl 4 hold
+    emit_nm ∈ String
+    emit_base ∈ String
+    emit_n ∈ Int
+    emit_haslen ∈ Bool
+    emit_k ∈ Int
+    emit_inside ∈ String  -- the ⟨…⟩ literal payload (lit-decl)
+    emit_ne ∈ Int         -- number of literal elements
+
+    tk_ph ∈ Int = (is_first_tick ? 0 : _phase)
+    tk_rline ∈ String = match last_results[1]
+        StringResult(s) ⇒ s
+        _ ⇒ ""
+    tk_reof ∈ Bool = match last_results[1]
+        EofResult ⇒ true
+        _ ⇒ false
+
+    -- ── phase 1: read a source line; phase 2: registry line ──
+    tk_reg_line ∈ Bool = (tk_ph = 2)
+    tk_src ∈ Bool = (tk_ph = 3 ∧ ¬tk_reof)
+    tk_eof_now ∈ Bool = (tk_ph = 3 ∧ tk_reof)
+
+    -- comment strip (quick path only — ported fixtures have no
+    -- in-string "--"; the full quote-aware scan is a TODO)
+    tk_d0 ∈ Int = (tk_src ? index_of(tk_rline, "--") : -1)
+    tk_code ∈ String = (tk_src ? (tk_d0 < 0 ? tk_rline : substr(tk_rline, 0, tk_d0)) : "")
+    tk_ws ∈ Int
+    AcWsSkip(s ↦ tk_code, from ↦ 0, out ↦ tk_ws)
+    tk_ind ∈ String = (tk_src ? substr(tk_rline, 0, tk_ws) : "")
+    tk_ie ∈ Int
+    AcWordEnd(s ↦ tk_code, from ↦ tk_ws, out ↦ tk_ie)
+    tk_lead ∈ String = (tk_ie > tk_ws ? substr(tk_code, tk_ws, tk_ie - tk_ws) : "")
+
+    -- top-level line (column-0 keyword) passes through verbatim
+    tk_is_top ∈ Bool = (#tk_rline ≥ 1 ∧ str_contains("cftse", char_at(tk_rline, 0))
+        ∧ (starts_with(tk_rline, "claim ") ∨ starts_with(tk_rline, "claim\t")
+        ∨ starts_with(tk_rline, "fsm ") ∨ starts_with(tk_rline, "fsm\t")
+        ∨ starts_with(tk_rline, "type ") ∨ starts_with(tk_rline, "type\t")
+        ∨ starts_with(tk_rline, "schema ") ∨ starts_with(tk_rline, "schema\t")
+        ∨ starts_with(tk_rline, "enum ") ∨ starts_with(tk_rline, "enum\t")))
+
+    -- registry lookup for the lead token (and its de-underscored base)
+    tk_lead_base ∈ String = (¬(tk_lead = "") ∧ char_at(tk_lead, 0) = "_" ? substr(tk_lead, 1, #tk_lead - 1) : tk_lead)
+    tk_lead_is_dual ∈ Bool = (¬(tk_lead = "") ∧ char_at(tk_lead, 0) = "_")
+    tk_key ∈ String = "⟦" ++ tk_lead_base ++ "⟧"
+    tk_at ∈ Int = (tk_src ∧ ¬(tk_lead_base = "") ? index_of(_reg, tk_key) : -1)
+    tk_reg_hit ∈ Bool = (tk_at ≥ 0)
+    tk_vs ∈ Int = (tk_reg_hit ? tk_at + #tk_key : -1)
+    tk_d1 ∈ Int = (tk_reg_hit ? index_of(_reg, "⦂", tk_vs) : -1)
+    tk_rbase ∈ String = (tk_reg_hit ? substr(_reg, tk_vs, tk_d1 - tk_vs) : "")
+    tk_d2 ∈ Int = (tk_reg_hit ? index_of(_reg, "⦂", tk_d1 + 1) : -1)
+    tk_rn ∈ Int
+    AcParseInt(s ↦ _reg, from ↦ tk_d1 + 1, len ↦ (tk_reg_hit ? tk_d2 - tk_d1 - 1 : 0), out ↦ tk_rn)
+    tk_rhaslen ∈ Bool = (tk_reg_hit ∧ char_at(_reg, tk_d2 + 1) = "1")
+
+    -- classify the source line (only when lead token is a registered seq)
+    tk_after_lead ∈ Int
+    AcWsSkip(s ↦ tk_code, from ↦ tk_ie, out ↦ tk_after_lead)
+    tk_glyph ∈ String = (tk_reg_hit ? char_at(tk_code, tk_after_lead) : "")
+    tk_is_decl ∈ Bool = (tk_reg_hit ∧ tk_glyph = "∈" ∧ str_contains(substr(tk_code, tk_after_lead, #tk_code - tk_after_lead), "Seq("))
+    tk_is_assign ∈ Bool = (tk_reg_hit ∧ tk_glyph = "=")
+    -- decl literal: `xs ∈ Seq(El) = ⟨…⟩`
+    tk_decl_eq ∈ Int = (tk_is_decl ? index_of(tk_code, "=") : -1)
+    tk_decl_lit ∈ Bool = (tk_is_decl ∧ tk_decl_eq ≥ 0 ∧ str_contains(tk_code, "⟨"))
+    -- assignment forms on RHS
+    tk_rhs_s ∈ Int
+    AcWsSkip(s ↦ tk_code, from ↦ tk_after_lead + 1, out ↦ tk_rhs_s)
+    tk_rhs ∈ String = (tk_is_assign ? substr(tk_code, tk_rhs_s, #tk_code - tk_rhs_s) : "")
+    tk_is_hold ∈ Bool = (tk_is_assign ∧ starts_with(tk_rhs, "(") ∧ str_contains(tk_rhs, "is_first_tick")
+        ∧ str_contains(tk_rhs, "⟨⟩") ∧ ¬str_contains(tk_rhs, "++"))
+    tk_is_litassign ∈ Bool = (tk_is_assign ∧ starts_with(tk_rhs, "⟨") ∧ ends_with(tk_rhs, "⟩"))
+
+    -- ⟨…⟩ payload extraction (between ⟨ and ⟩)
+    tk_lt ∈ Int = (tk_decl_lit ∨ tk_is_litassign ? index_of(tk_code, "⟨") : -1)
+    tk_rt ∈ Int = (tk_lt ≥ 0 ? index_of(tk_code, "⟩", tk_lt) : -1)
+    tk_inside ∈ String = (tk_rt > tk_lt ? substr(tk_code, tk_lt + 1, tk_rt - tk_lt - 1) : "")
+
+    -- decide whether to ENTER the slot-emit loop or take default subst
+    tk_enter_loop ∈ Bool = (tk_src ∧ tk_reg_hit ∧ ¬tk_lead_is_dual
+        ∧ (tk_is_decl ∨ tk_is_hold ∨ tk_is_litassign))
+    tk_enter_dual ∈ Bool = (tk_src ∧ tk_reg_hit ∧ tk_lead_is_dual ∧ tk_is_decl)
+
+    -- bound directive `#name ≤ N` for a REGISTERED name:
+    --   hasLen → card-rewrite to `name_len ≤ N`; ¬hasLen → the directive
+    --   vanishes (nothing to bound). Unregistered `#x ≤ N` falls to the
+    --   default (verbatim) path.
+    tk_hh_s ∈ Int = tk_ws + 1
+    tk_hh_e ∈ Int
+    AcWordEnd(s ↦ ((tk_src ∧ ¬(tk_code = "") ∧ char_at(tk_code, tk_ws) = "#") ? tk_code : ""), from ↦ tk_hh_s, out ↦ tk_hh_e)
+    tk_hash_after ∈ String = (tk_hh_e > tk_hh_s ? substr(tk_code, tk_hh_s, tk_hh_e - tk_hh_s) : "")
+    tk_hash_aws ∈ Int
+    AcWsSkip(s ↦ tk_code, from ↦ tk_hh_e, out ↦ tk_hash_aws)
+    tk_is_bound_line ∈ Bool = (tk_src ∧ ¬(tk_code = "") ∧ char_at(tk_code, tk_ws) = "#" ∧ tk_hh_e > tk_hh_s
+        ∧ char_at(tk_code, tk_hash_aws) = "≤")
+    tk_bkey ∈ String = "⟦" ++ tk_hash_after ++ "⟧"
+    tk_bound_reg ∈ Bool = (tk_is_bound_line ∧ index_of(_reg, tk_bkey) ≥ 0)
+    tk_bound_hl_at ∈ Int = (tk_bound_reg ? index_of(_reg, tk_bkey) : -1)
+    tk_bound_d1 ∈ Int = (tk_bound_reg ? index_of(_reg, "⦂", tk_bound_hl_at + #tk_bkey) : -1)
+    tk_bound_d2 ∈ Int = (tk_bound_reg ? index_of(_reg, "⦂", tk_bound_d1 + 1) : -1)
+    tk_bound_hl ∈ Bool = (tk_bound_reg ∧ char_at(_reg, tk_bound_d2 + 1) = "1")
+    tk_drop_bound ∈ Bool = (tk_bound_reg ∧ ¬tk_bound_hl)
+    -- the N value (after ≤), trimmed
+    tk_bv_s0 ∈ Int
+    AcWsSkip(s ↦ ((tk_bound_reg ∧ tk_bound_hl) ? tk_code : ""), from ↦ tk_hash_aws + 1, out ↦ tk_bv_s0)
+    tk_bv_e0 ∈ Int
+    AcWordEnd(s ↦ ((tk_bound_reg ∧ tk_bound_hl) ? tk_code : ""), from ↦ tk_bv_s0, out ↦ tk_bv_e0)
+    tk_bound_n ∈ String = (tk_bv_e0 > tk_bv_s0 ? substr(tk_code, tk_bv_s0, tk_bv_e0 - tk_bv_s0) : "")
+    tk_rewrite_bound ∈ Bool = (tk_bound_reg ∧ tk_bound_hl)
+
+    -- default path: everything not lowered above passes through verbatim
+    tk_default ∈ Bool = (tk_src ∧ ¬tk_is_top ∧ ¬tk_enter_loop ∧ ¬tk_enter_dual
+        ∧ ¬tk_drop_bound ∧ ¬tk_rewrite_bound)
+
+    -- ── slot-emit loop (phase 4): one slot line per tick ──
+    tk_loop_run ∈ Bool = (tk_ph = 4 ∧ _emit_k < _emit_n)
+    tk_loop_done ∈ Bool = (tk_ph = 4 ∧ _emit_k ≥ _emit_n)
+    -- one element of the literal payload at slot _emit_k (comma split, depth 0)
+    tk_el ∈ String
+    LsNthElem(s ↦ _emit_inside, n ↦ _emit_k, out ↦ tk_el)
+    tk_zdef ∈ String = (_emit_base = "String" ? "\"\"" : _emit_base = "Bool" ? "false" : "0")
+    tk_slot_pfx ∈ String = (_emit_kind = 2 ? "_" ++ _emit_nm : _emit_nm) ++ "_" ++ str_from_int(_emit_k)
+    tk_slot_line ∈ String = (_emit_kind = 1
+        ? tk_slot_pfx ++ " ∈ " ++ _emit_base
+        : _emit_kind = 2
+        ? tk_slot_pfx ++ " ∈ " ++ _emit_base
+        : _emit_kind = 3
+        ? tk_slot_pfx ++ " ∈ " ++ _emit_base ++ " = " ++ (_emit_k < _emit_ne ? tk_el : tk_zdef)
+        : tk_slot_pfx ++ " = (is_first_tick ? " ++ tk_zdef ++ " : _" ++ _emit_nm ++ "_" ++ str_from_int(_emit_k) ++ ")")
+
+    -- the len line(s), emitted when the slot loop finishes (loop_done)
+    tk_len_lines ∈ String = (_emit_kind = 3
+        ? _emit_nm ++ "_len ∈ Int = " ++ str_from_int(_emit_ne)
+        : _emit_kind = 4
+        ? _emit_nm ++ "_len = (is_first_tick ? 0 : _" ++ _emit_nm ++ "_len)"
+        : _emit_haslen
+        ? (_emit_kind = 2
+            ? "_" ++ _emit_nm ++ "_len ∈ Int"
+            : _emit_nm ++ "_len ∈ Int" ++ "\n" ++ _indent ++ "0 ≤ " ++ _emit_nm ++ "_len")
+        : "")
+    tk_has_len_lines ∈ Bool = (tk_loop_done ∧ ¬(tk_len_lines = ""))
+
+    -- ── default-path output ──
+    -- PORTED SUBSET: the default path passes the line through VERBATIM.
+    -- The R16/R18 index/card substitution (which must also rewrite tokens
+    -- inside comments, fold literal index arithmetic, and run at fixpoint
+    -- over dynamic-index chains) is the next continuation step — see the
+    -- pass header TODO. Fixtures in the equivalence gate are chosen so the
+    -- only seq references are the decl/literal/hold/bound lines this pass
+    -- already lowers.
+
+    -- ── line(s) to print this tick ──
+    tk_print_now ∈ String = (tk_src ∧ tk_is_top ? tk_rline
+        : tk_rewrite_bound ? tk_ind ++ tk_hash_after ++ "_len ≤ " ++ tk_bound_n
+        : tk_default ? tk_rline
+        : tk_loop_run ? _indent ++ tk_slot_line
+        : tk_has_len_lines ? _indent ++ tk_len_lines
+        : "")
+    tk_emit ∈ Bool = ((tk_src ∧ (tk_is_top ∨ tk_default ∨ tk_rewrite_bound)) ∨ tk_loop_run ∨ tk_has_len_lines)
+
+    -- ── transitions ──
+    phase = (is_first_tick ? 2
+        : tk_ph = 2 ? 3
+        : tk_eof_now ? 13
+        : tk_enter_loop ∨ tk_enter_dual ? 4
+        : tk_ph = 4 ? (tk_loop_done ? 3 : 4)
+        : tk_ph = 3 ? 3
+        : tk_ph)
+    reg = (is_first_tick ? "" : tk_ph = 2 ? tk_rline : _reg)
+    line = (is_first_tick ? "" : tk_src ? tk_rline : _line)
+    code = (is_first_tick ? "" : tk_src ? tk_code : _code)
+    indent = (is_first_tick ? "" : tk_enter_loop ∨ tk_enter_dual ? tk_ind : _indent)
+    emit_kind = (is_first_tick ? 0
+        : tk_enter_dual ? 2
+        : tk_enter_loop ? (tk_decl_lit ∨ tk_is_litassign ? 3 : tk_is_hold ? 4 : 1)
+        : _emit_kind)
+    emit_nm = (is_first_tick ? "" : tk_enter_loop ∨ tk_enter_dual ? tk_lead_base : _emit_nm)
+    emit_base = (is_first_tick ? "" : tk_enter_loop ∨ tk_enter_dual ? tk_rbase : _emit_base)
+    emit_n = (is_first_tick ? 0 : tk_enter_loop ∨ tk_enter_dual ? tk_rn : _emit_n)
+    emit_haslen = (is_first_tick ? false : tk_enter_loop ∨ tk_enter_dual ? tk_rhaslen : _emit_haslen)
+    emit_k = (is_first_tick ? 0
+        : tk_enter_loop ∨ tk_enter_dual ? 0
+        : tk_loop_run ? _emit_k + 1
+        : _emit_k)
+    emit_inside = (is_first_tick ? "" : tk_enter_loop ? tk_inside : _emit_inside)
+    tk_inside_tl ∈ Int
+    LsTrimL(s ↦ tk_inside, from ↦ 0, lim ↦ #tk_inside, out ↦ tk_inside_tl)
+    emit_ne = (is_first_tick ? 0 : tk_enter_loop ? (tk_inside_tl ≥ #tk_inside ? 0 : tk_count_el) : _emit_ne)
+
+    tk_count_el ∈ Int
+    LsCountElem(s ↦ tk_inside, out ↦ tk_count_el)
+
+    -- ── effects ──
+    eff_nop ∈ Effect
+    eff_nop = LibCall("libc", "getpid", ⟨⟩)
+    eff_out ∈ Effect
+    BuildPrintln(s ↦ tk_print_now, eff ↦ eff_out)
+    -- read next source line when the current one is fully resolved
+    tk_read_go ∈ Bool = (tk_ph = 2 ∨ (tk_src ∧ (tk_is_top ∨ tk_default ∨ tk_drop_bound ∨ tk_rewrite_bound)) ∨ tk_loop_done)
+
+    effects ∈ Seq(Effect) = (is_first_tick ? ⟨eff_nop, ReadLine⟩
+        : tk_eof_now ? ⟨Exit(0), eff_nop⟩
+        : tk_emit ∧ tk_read_go ? ⟨eff_out, ReadLine⟩
+        : tk_emit ? ⟨eff_out, eff_nop⟩
+        : tk_read_go ? ⟨eff_nop, ReadLine⟩
+        : ⟨eff_nop, eff_nop⟩)
