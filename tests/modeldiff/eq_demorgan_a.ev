@@ -1,0 +1,12 @@
+-- class 1: equivalent, different predicates (De Morgan).
+-- gate = ¬(p ∨ q). Pair with eq_demorgan_b.ev (gate = ¬p ∧ ¬q).
+-- p, q are free Bool inputs (pass --inputs p,q).
+-- entry: main
+import "stdlib/kernel.ev"
+
+claim main
+    p ∈ Bool
+    q ∈ Bool
+    gate ∈ Bool = ¬(p ∨ q)
+    out ∈ Int = (gate ? 1 : 0)
+    effects ∈ Seq(Effect) = ⟨Exit(out)⟩

@@ -1,0 +1,11 @@
+-- class 4: functional output. out = 2x via x+x (and a redundant internal).
+-- entry: main
+import "stdlib/kernel.ev"
+
+claim main
+    x ∈ Int
+    0 ≤ x
+    x < 1000
+    half ∈ Int = x
+    out ∈ Int = half + x
+    effects ∈ Seq(Effect) = ⟨Exit(out)⟩

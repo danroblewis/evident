@@ -1,0 +1,12 @@
+-- class 4: functional output (the compiler-refactor shape). out = 2x via x*2.
+-- Pair: func_b.ev computes the same out via x+x. EQUIVALENT over the
+-- input→output interface — exactly how a driver-claim refactor must verify.
+-- entry: main
+import "stdlib/kernel.ev"
+
+claim main
+    x ∈ Int
+    0 ≤ x
+    x < 1000
+    out ∈ Int = x * 2
+    effects ∈ Seq(Effect) = ⟨Exit(out)⟩
