@@ -67,16 +67,106 @@ fsm DriverExprDecomp
     -- fallthrough (no collision: builtins lowercase, variants
     -- capitalized). Compound args are handles, so the legacy
     -- dropped-Exit(3+4) class is impossible by construction.
-    -- Floor-enum effect ctors (Exit / LibCall) used as general
-    -- expressions resolve from their dedicated decl registers, not
-    -- user_variants (which the floor enum is excluded from). Same
-    -- special-case pattern as matches_tester's IntResult/StringResult.
+    -- Floor-enum effect ctors (Exit / LibCall) and the LibArg payload
+    -- ctors (ArgInt / ArgStr) used as general expressions resolve from
+    -- their dedicated decl registers, not user_variants (which the floor
+    -- enum is excluded from). Same special-case pattern as
+    -- matches_tester's IntResult/StringResult.
     ctor_decl ∈ Int
     (call_name = "Exit") ⇒ (ctor_decl = exit_decl)
     (call_name = "LibCall") ⇒ (ctor_decl = libcall_decl)
+    (call_name = "ArgInt") ⇒ (ctor_decl = argint_decl)
+    (call_name = "ArgStr") ⇒ (ctor_decl = argstr_decl)
     ∀ e ∈ user_variants : ((e.name = call_name) ⇒ (ctor_decl = e.ctor))
     (¬((call_name = "Exit") ∨ (call_name = "LibCall")
+        ∨ (call_name = "ArgInt") ∨ (call_name = "ArgStr")
         ∨ (∃ e ∈ user_variants : e.name = call_name))) ⇒ (ctor_decl = 0)
+
+    -- ESeq(ExprList): a seq-literal `⟨e0, …⟩` in expression position.
+    -- The only such literal the compiler source uses is the Seq(LibArg)
+    -- 3rd arg of a general-expression LibCall, so it lowers to the
+    -- __SeqOf_LibArg CONS-LIST (__Cell_LibArg / __Empty_LibArg), NOT a Z3
+    -- seq. The fold emits C2Process per element in source order, then
+    -- C2PushH(empty_val) and one C2App(cell_decl, 2) per element — the
+    -- apps fold tail-first, building Cell(e0, Cell(e1, … Empty)).
+    is_seqlit ∈ Bool = (process_expr matches ESeq(_))
+    seq_elems ∈ ExprList = match process_expr
+        ESeq(els) ⇒ els
+        _ ⇒ ELNil
+    se0 ∈ Expr = match seq_elems
+        ELCons(e, _) ⇒ e
+        ELNil ⇒ ENoExpr
+    se_t0 ∈ ExprList = match seq_elems
+        ELCons(_, r) ⇒ r
+        ELNil ⇒ ELNil
+    se1 ∈ Expr = match se_t0
+        ELCons(e, _) ⇒ e
+        ELNil ⇒ ENoExpr
+    se_t1 ∈ ExprList = match se_t0
+        ELCons(_, r) ⇒ r
+        ELNil ⇒ ELNil
+    se2 ∈ Expr = match se_t1
+        ELCons(e, _) ⇒ e
+        ELNil ⇒ ENoExpr
+    se_t2 ∈ ExprList = match se_t1
+        ELCons(_, r) ⇒ r
+        ELNil ⇒ ELNil
+    se3 ∈ Expr = match se_t2
+        ELCons(e, _) ⇒ e
+        ELNil ⇒ ENoExpr
+    se_t3 ∈ ExprList = match se_t2
+        ELCons(_, r) ⇒ r
+        ELNil ⇒ ELNil
+    se4 ∈ Expr = match se_t3
+        ELCons(e, _) ⇒ e
+        ELNil ⇒ ENoExpr
+    se_t4 ∈ ExprList = match se_t3
+        ELCons(_, r) ⇒ r
+        ELNil ⇒ ELNil
+    se5 ∈ Expr = match se_t4
+        ELCons(e, _) ⇒ e
+        ELNil ⇒ ENoExpr
+    se_t5 ∈ ExprList = match se_t4
+        ELCons(_, r) ⇒ r
+        ELNil ⇒ ELNil
+    se6 ∈ Expr = match se_t5
+        ELCons(e, _) ⇒ e
+        ELNil ⇒ ENoExpr
+    se_t6 ∈ ExprList = match se_t5
+        ELCons(_, r) ⇒ r
+        ELNil ⇒ ELNil
+    se7 ∈ Expr = match se_t6
+        ELCons(e, _) ⇒ e
+        ELNil ⇒ ENoExpr
+    seq_n ∈ Int = ((se0 matches ENoExpr) ? 0
+        : (se1 matches ENoExpr) ? 1
+        : (se2 matches ENoExpr) ? 2
+        : (se3 matches ENoExpr) ? 3
+        : (se4 matches ENoExpr) ? 4
+        : (se5 matches ENoExpr) ? 5
+        : (se6 matches ENoExpr) ? 6
+        : (se7 matches ENoExpr) ? 7
+        : 8)
+    seq_cell_app ∈ C2Item = C2App(cell_decl, 2)
+    seq_apps ∈ C2Items = (seq_n = 0 ? work_tail
+        : seq_n = 1 ? C2ICons(seq_cell_app, work_tail)
+        : seq_n = 2 ? C2ICons(seq_cell_app, C2ICons(seq_cell_app, work_tail))
+        : seq_n = 3 ? C2ICons(seq_cell_app, C2ICons(seq_cell_app, C2ICons(seq_cell_app, work_tail)))
+        : seq_n = 4 ? C2ICons(seq_cell_app, C2ICons(seq_cell_app, C2ICons(seq_cell_app, C2ICons(seq_cell_app, work_tail))))
+        : seq_n = 5 ? C2ICons(seq_cell_app, C2ICons(seq_cell_app, C2ICons(seq_cell_app, C2ICons(seq_cell_app, C2ICons(seq_cell_app, work_tail)))))
+        : seq_n = 6 ? C2ICons(seq_cell_app, C2ICons(seq_cell_app, C2ICons(seq_cell_app, C2ICons(seq_cell_app, C2ICons(seq_cell_app, C2ICons(seq_cell_app, work_tail))))))
+        : seq_n = 7 ? C2ICons(seq_cell_app, C2ICons(seq_cell_app, C2ICons(seq_cell_app, C2ICons(seq_cell_app, C2ICons(seq_cell_app, C2ICons(seq_cell_app, C2ICons(seq_cell_app, work_tail)))))))
+        : C2ICons(seq_cell_app, C2ICons(seq_cell_app, C2ICons(seq_cell_app, C2ICons(seq_cell_app, C2ICons(seq_cell_app, C2ICons(seq_cell_app, C2ICons(seq_cell_app, C2ICons(seq_cell_app, work_tail)))))))))
+    seq_tail_empty ∈ C2Items = C2ICons(C2PushH(empty_val), seq_apps)
+    seq_lower_items ∈ C2Items = (seq_n = 0 ? seq_tail_empty
+        : seq_n = 1 ? C2ICons(C2Process(se0), seq_tail_empty)
+        : seq_n = 2 ? C2ICons(C2Process(se0), C2ICons(C2Process(se1), seq_tail_empty))
+        : seq_n = 3 ? C2ICons(C2Process(se0), C2ICons(C2Process(se1), C2ICons(C2Process(se2), seq_tail_empty)))
+        : seq_n = 4 ? C2ICons(C2Process(se0), C2ICons(C2Process(se1), C2ICons(C2Process(se2), C2ICons(C2Process(se3), seq_tail_empty))))
+        : seq_n = 5 ? C2ICons(C2Process(se0), C2ICons(C2Process(se1), C2ICons(C2Process(se2), C2ICons(C2Process(se3), C2ICons(C2Process(se4), seq_tail_empty)))))
+        : seq_n = 6 ? C2ICons(C2Process(se0), C2ICons(C2Process(se1), C2ICons(C2Process(se2), C2ICons(C2Process(se3), C2ICons(C2Process(se4), C2ICons(C2Process(se5), seq_tail_empty))))))
+        : seq_n = 7 ? C2ICons(C2Process(se0), C2ICons(C2Process(se1), C2ICons(C2Process(se2), C2ICons(C2Process(se3), C2ICons(C2Process(se4), C2ICons(C2Process(se5), C2ICons(C2Process(se6), seq_tail_empty)))))))
+        : C2ICons(C2Process(se0), C2ICons(C2Process(se1), C2ICons(C2Process(se2), C2ICons(C2Process(se3), C2ICons(C2Process(se4), C2ICons(C2Process(se5), C2ICons(C2Process(se6), C2ICons(C2Process(se7), seq_tail_empty)))))))))
 
     is_matches ∈ Bool = (process_expr matches EMatches(_, _))
     matches_name ∈ String = match process_expr
