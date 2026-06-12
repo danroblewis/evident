@@ -16,10 +16,10 @@ type Cell(name ∈ String, val ∈ Int)
 fsm main
     tick ∈ Int
     tick = (is_first_tick ? 0 : _tick + 1)
+    take ∈ Bool = (tick = 1 ∨ tick = 2)
     cur ∈ Int
     cur = (is_first_tick ? 0 : take ? _cur + 1 : _cur)
     nm ∈ String = (tick = 1 ? "a" : "b")
-    take ∈ Bool = (tick = 1 ∨ tick = 2)
     xs ∈ Seq(Cell)
     #xs ≤ 2
     ∀ k ∈ {0..1} : xs[k].name = (is_first_tick ? "" : (take ∧ _cur = k) ? nm : _xs[k].name)
