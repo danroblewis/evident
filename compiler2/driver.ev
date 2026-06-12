@@ -959,6 +959,9 @@ fsm driver_main
         : field_unresolved ? ⟨LibCall("libc", "puts",
             ⟨ArgStr(";; compiler2: enum payload field type is not a group member, a scalar, a floor type, or a previously built enum")⟩),
             Exit(8)⟩
+        : (push_ident ∧ resolved_handle = 0) ? ⟨LibCall("libc", "puts",
+            ⟨ArgStr(";; compiler2: unresolved identifier (no Z3 handle) — declared after use, or a construct the compiler does not support: " ++ lookup_name)⟩),
+            Exit(9)⟩
         : (¬_got_path) ? ⟨ReadFile(source_path)⟩
         : zstep = 0 ? ⟨zinit_cfg⟩
         : zstep = 1 ? ⟨zinit_ctx⟩

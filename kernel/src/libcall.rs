@@ -85,6 +85,69 @@ pub fn init_effect_trace() {
 /// given args. Returns either an i64 (the libffi register-return value, the
 /// historical default) or a String (used by pseudo-libraries that need to
 /// surface a textual result — today only `__cstr.copy`).
+/// Z3 AST-builder handle validation (see the call site). For a known builder,
+/// returns the arg positions that MUST be nonzero handles, plus an optional
+/// `(count_pos, buffer_pos)` whose buffer holds `count` i64 operand handles
+/// (the n-ary array builders). `ctx` (position 0) is always a handle. Functions
+/// not in the table are not guarded (returns empty). Value args (e.g. the `0`
+/// in `Z3_mk_int(ctx, 0, sort)`) are deliberately NOT positions here.
+fn z3_handle_spec(fn_name: &str) -> (&'static [usize], Option<(usize, usize)>) {
+    match fn_name {
+        "Z3_mk_eq" | "Z3_mk_lt" | "Z3_mk_gt" | "Z3_mk_le" | "Z3_mk_ge"
+        | "Z3_mk_implies" | "Z3_mk_select" | "Z3_mk_set_add" | "Z3_mk_set_del"
+        | "Z3_mk_seq_contains" | "Z3_mk_seq_prefix" | "Z3_mk_seq_suffix"
+            => (&[0, 1, 2], None),
+        "Z3_mk_not" | "Z3_mk_seq_length" | "Z3_inc_ref" | "Z3_dec_ref"
+        | "Z3_mk_seq_unit"
+            => (&[0, 1], None),
+        "Z3_mk_ite" | "Z3_mk_store"
+            => (&[0, 1, 2, 3], None),
+        "Z3_solver_assert"
+            => (&[0, 1, 2], None),
+        "Z3_mk_app"
+            => (&[0, 1], Some((2, 3))),
+        "Z3_mk_and" | "Z3_mk_or" | "Z3_mk_add" | "Z3_mk_sub" | "Z3_mk_mul"
+        | "Z3_mk_seq_concat"
+            => (&[0], Some((1, 2))),
+        _ => (&[], None),
+    }
+}
+
+/// Validate the handle args of a libz3 call and halt nameably (distinct RC 70)
+/// rather than let Z3 SIGSEGV on a null handle.
+fn z3_handle_guard(fn_name: &str, args: &[LibArg]) {
+    let (handles, array) = z3_handle_spec(fn_name);
+    for &p in handles {
+        if let Some(LibArg::Int(v)) = args.get(p) {
+            if *v == 0 {
+                eprintln!("[z3-guard] {fn_name}: handle arg {p} is null \
+                    (a sub-expression produced no Z3 AST) — would SIGSEGV; halting");
+                std::process::exit(70);
+            }
+        }
+    }
+    if let Some((cpos, bpos)) = array {
+        if let (Some(LibArg::Int(count)), Some(LibArg::Int(buf))) =
+            (args.get(cpos), args.get(bpos))
+        {
+            let (count, buf) = (*count, *buf);
+            if buf != 0 && count > 0 && count < 4096 {
+                let p = buf as *const i64;
+                for i in 0..count {
+                    // SAFETY: the compiler malloc'd this buffer and wrote `count`
+                    // i64 operand handles; we read them back to validate.
+                    let h = unsafe { *p.add(i as usize) };
+                    if h == 0 {
+                        eprintln!("[z3-guard] {fn_name}: operand {i}/{count} in args \
+                            buffer is null — would SIGSEGV; halting");
+                        std::process::exit(70);
+                    }
+                }
+            }
+        }
+    }
+}
+
 pub fn call(lib_name: &str, fn_name: &str, args: &[LibArg]) -> Result<LibRet, String> {
     // EVIDENT_EFFECT_TRACE=1 prints every C call the program dispatches, in
     // order, with a global sequence number. Joins the kernel's diagnostic
@@ -102,6 +165,17 @@ pub fn call(lib_name: &str, fn_name: &str, args: &[LibArg]) -> Result<LibRet, St
     if args.iter().any(|a| matches!(a, LibArg::Ref(_))) {
         return Err("unresolved ArgRef reached libcall::call (kernel bug: \
                     the dispatcher must resolve refs first)".to_string());
+    }
+    // Z3 AST-builder calls deref their handle arguments before any internal
+    // error check, so a 0/null handle SIGSEGVs deep in libz3 (Z3_mk_app →
+    // ast_manager). A 0 handle means a sub-expression produced no Z3 AST — a
+    // compiler-scope bug, not a Z3 error. Validate handle positions at the FFI
+    // boundary (the kernel knows the function + args; gdb does not) and halt
+    // NAMEABLY with a distinct RC instead of crashing. Replaces the per-claim
+    // `handle = 0 ? Exit(…)` guards and the manual gdb backtrace. Cheap (a few
+    // integer compares before a microsecond FFI call) → always on.
+    if lib_name == "libz3" {
+        z3_handle_guard(fn_name, args);
     }
     // `__mem`: the minimal pointer-deref escape hatch the FTI honesty audit
     // (task #23) requires. An honest FTI keeps its data in libc-`malloc`'d
