@@ -239,15 +239,28 @@ claim CtorArgWriteStep(args_p ∈ Int, idx ∈ Int, arg_h ∈ Int, eff ∈ Effec
     caw_addr ∈ Int = args_p + 8 * idx
     BuildMemWriteLong(addr ↦ caw_addr, value ↦ arg_h, eff ↦ eff)
 
-claim CtorAppStep(ctx_h ∈ Int, ctor_decl_h ∈ Int, n_args ∈ Int, args_p ∈ Int, eff ∈ Effect)
+claim CtorAppStep(ctx_h ∈ Int, ctor_decl_h ∈ Int, n_args ∈ Int, args_p ∈ Int,
+        prescan ∈ Bool, args_bad ∈ Bool, eff ∈ Effect)
     -- NULL-DECL GUARD (same class as the bool/cmp/ternary builders): a 0
     -- ctor func_decl means the constructor never resolved; Z3_mk_app(ctx, 0, …)
     -- derefs null inside ast_manager::mk_app → SIGSEGV (caught under gdb on the
     -- self-compile). Halt NAMEABLY with Exit(7) instead of calling into Z3.
+    -- A′ pass-0 (prescan): the ctor decl OR any of the n_args operands may be
+    -- legitimately unresolved (use-before-decl); the args were pre-written into
+    -- args_p with possibly-0 handles, so Z3_mk_app would deref a null arg inside
+    -- check_args even with a live decl (RC 71). When that happens (decl 0 or
+    -- args_bad) in pass 0 we PROPAGATE 0 (atoi("0") captures as handle 0) so the
+    -- guard cascades up — never calling Z3 with a placeholder of the wrong sort.
+    -- When all operands ARE live the REAL app is built even in pass 0 (Z3 interns
+    -- it, the assert is suppressed); pass 1 builds the real app with everything
+    -- resolved.
     app_eff ∈ Effect
     BuildZ3MkApp(ctx_h ↦ ctx_h, decl_h ↦ ctor_decl_h,
         num_args ↦ n_args, args_arr_p ↦ args_p, eff ↦ app_eff)
-    eff = (ctor_decl_h = 0 ? Exit(7) : app_eff)
+    bad ∈ Bool = (ctor_decl_h = 0 ∨ args_bad)
+    eff = (bad ∧ prescan
+        ? LibCall("libc", "atoi", ⟨ArgStr("0")⟩)
+        : bad ? Exit(7) : app_eff)
 
 -- ── (c) The Effect enum at this layer ───────────────────────────────────
 

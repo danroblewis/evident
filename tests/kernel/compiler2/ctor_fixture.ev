@@ -336,7 +336,7 @@ claim ctor_fixture_main
         eff ↦ eff_w_barg)
     eff_app_b ∈ Effect
     CtorAppStep(ctx_h ↦ ctx, ctor_decl_h ↦ b_decl, n_args ↦ 1,
-        args_p ↦ buf + 104, eff ↦ eff_app_b)
+        args_p ↦ buf + 104, prescan ↦ false, args_bad ↦ false, eff ↦ eff_app_b)
     eff_simp ∈ Effect
     BuildZ3Simplify(ctx_h ↦ ctx, ast_h ↦ b_app, eff ↦ eff_simp)
     eff_str1 ∈ Effect
@@ -409,7 +409,7 @@ claim ctor_fixture_main
     BuildZ3MkInt(ctx_h ↦ ctx, val ↦ 1, sort_h ↦ isort, eff ↦ eff_n1)
     eff_app_nil ∈ Effect
     CtorAppStep(ctx_h ↦ ctx, ctor_decl_h ↦ nil_decl, n_args ↦ 0,
-        args_p ↦ 0, eff ↦ eff_app_nil)
+        args_p ↦ 0, prescan ↦ false, args_bad ↦ false, eff ↦ eff_app_nil)
     eff_w_carg0 ∈ Effect
     CtorArgWriteStep(args_p ↦ buf + 248, idx ↦ 0, arg_h ↦ n1,
         eff ↦ eff_w_carg0)
@@ -418,7 +418,7 @@ claim ctor_fixture_main
         eff ↦ eff_w_carg1)
     eff_app_cons ∈ Effect
     CtorAppStep(ctx_h ↦ ctx, ctor_decl_h ↦ cons_decl, n_args ↦ 2,
-        args_p ↦ buf + 248, eff ↦ eff_app_cons)
+        args_p ↦ buf + 248, prescan ↦ false, args_bad ↦ false, eff ↦ eff_app_cons)
     eff_str2 ∈ Effect
     BuildZ3AstToString(ctx_h ↦ ctx, ast_h ↦ cons_app, eff ↦ eff_str2)
     eff_cp2 ∈ Effect

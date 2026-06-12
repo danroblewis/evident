@@ -839,25 +839,25 @@ fsm driver_main
     cmp_ok ∈ Bool
     cmp_needs_not ∈ Bool
     BoolCmpBuildZ3(ctx_h ↦ z3ctx.ctx, op ↦ process_op, l_h ↦ second_handle, r_h ↦ topmost_handle,
-        eff ↦ compare_eff, ok ↦ cmp_ok, needs_not ↦ cmp_needs_not)
+        prescan ↦ prescan, eff ↦ compare_eff, ok ↦ cmp_ok, needs_not ↦ cmp_needs_not)
     arith ∈ Effect
     arith_ok ∈ Bool
     ArithBinopBuildZ3(ctx_h ↦ z3ctx.ctx, op ↦ process_op,
         l_h ↦ second_handle, r_h ↦ topmost_handle, args_arr_ptr ↦ z3_arena + 200,
-        eff ↦ arith, ok ↦ arith_ok)
+        prescan ↦ prescan, eff ↦ arith, ok ↦ arith_ok)
     nary ∈ Effect
     nary_ok ∈ Bool
     BoolNaryBuildZ3(ctx_h ↦ z3ctx.ctx, op ↦ process_op, num_args ↦ 2,
         args_arr_ptr ↦ z3_arena + 200, l_h ↦ second_handle, r_h ↦ topmost_handle,
-        eff ↦ nary, ok ↦ nary_ok)
+        prescan ↦ prescan, eff ↦ nary, ok ↦ nary_ok)
     concat ∈ Effect
     BuildZ3MkSeqConcat(ctx_h ↦ z3ctx.ctx, num_args ↦ 2,
         args_arr_ptr ↦ z3_arena + 200, eff ↦ concat)
     ite_eff ∈ Effect
     TernaryBuildZ3(ctx_h ↦ z3ctx.ctx, cond_h ↦ third_handle, then_h ↦ second_handle,
-        else_h ↦ topmost_handle, eff ↦ ite_eff)
+        else_h ↦ topmost_handle, prescan ↦ prescan, eff ↦ ite_eff)
     not_eff ∈ Effect
-    BoolNotBuildZ3(ctx_h ↦ z3ctx.ctx, x_h ↦ topmost_handle, eff ↦ not_eff)
+    BoolNotBuildZ3(ctx_h ↦ z3ctx.ctx, x_h ↦ topmost_handle, prescan ↦ prescan, eff ↦ not_eff)
     argw0 ∈ Effect
     BuildMemWriteLong(addr ↦ z3_arena + 200, value ↦ second_handle, eff ↦ argw0)
     argw1 ∈ Effect
@@ -908,18 +908,18 @@ fsm driver_main
     is_impl_ok ∈ Bool
     is_impl_nn ∈ Bool
     BoolCmpBuildZ3(ctx_h ↦ z3ctx.ctx, op ↦ impl, l_h ↦ _active_handle,
-        r_h ↦ topmost_handle, eff ↦ impl_handle, ok ↦ is_impl_ok,
+        r_h ↦ topmost_handle, prescan ↦ prescan, eff ↦ impl_handle, ok ↦ is_impl_ok,
         needs_not ↦ is_impl_nn)
     natbound_geq_eff ∈ Effect
     is_natbound_ok ∈ Bool
     is_natbound_nn ∈ Bool
     BoolCmpBuildZ3(ctx_h ↦ z3ctx.ctx, op ↦ geq, l_h ↦ topmost_handle, r_h ↦ z3nums.zero,
-        eff ↦ natbound_geq_eff, ok ↦ is_natbound_ok, needs_not ↦ is_natbound_nn)
+        prescan ↦ prescan, eff ↦ natbound_geq_eff, ok ↦ is_natbound_ok, needs_not ↦ is_natbound_nn)
     pineq_eff ∈ Effect
     is_pin_ok ∈ Bool
     is_pin_nn ∈ Bool
     BoolCmpBuildZ3(ctx_h ↦ z3ctx.ctx, op ↦ op_eq, l_h ↦ second_handle, r_h ↦ topmost_handle,
-        eff ↦ pineq_eff, ok ↦ is_pin_ok, needs_not ↦ is_pin_nn)
+        prescan ↦ prescan, eff ↦ pineq_eff, ok ↦ is_pin_ok, needs_not ↦ is_pin_nn)
     assert_eff ∈ Effect
     BuildZ3SolverAssert(ctx_h ↦ z3ctx.ctx, solver_h ↦ z3ctx.sol, ast_h ↦ topmost_handle,
         eff ↦ assert_eff)
@@ -936,8 +936,18 @@ fsm driver_main
     CtorArgWriteStep(args_p ↦ z3_arena + 224, idx ↦ applied_argc - 1 - _item_step,
         arg_h ↦ app_arg, eff ↦ ctor_argw)
     ctor_app ∈ Effect
+    -- A′ pass-0: the ctor's args are the top `applied_argc` handle-stack slots
+    -- (already written into args_p). Any 0 among them would crash Z3_mk_app;
+    -- flag it so CtorAppStep substitutes a placeholder in pass 0 (pass 1 has
+    -- everything resolved, so this is false then and the real app is built).
+    app_args_bad ∈ Bool = ((applied_argc ≥ 1 ∧ topmost_handle = 0)
+        ∨ (applied_argc ≥ 2 ∧ second_handle = 0)
+        ∨ (applied_argc ≥ 3 ∧ third_handle = 0)
+        ∨ (applied_argc ≥ 4 ∧ fourth_handle = 0)
+        ∨ (applied_argc ≥ 5 ∧ fifth_handle = 0)
+        ∨ (applied_argc ≥ 6 ∧ sixth_handle = 0))
     CtorAppStep(ctx_h ↦ z3ctx.ctx, ctor_decl_h ↦ applied_decl, n_args ↦ applied_argc,
-        args_p ↦ z3_arena + 224, eff ↦ ctor_app)
+        args_p ↦ z3_arena + 224, prescan ↦ prescan, args_bad ↦ app_args_bad, eff ↦ ctor_app)
     chosen_position_handle ∈ Int = (select_position = 0 ? z3nums.zero
         : select_position = 1 ? z3nums.one
         : select_position = 2 ? z3nums.two
@@ -968,7 +978,7 @@ fsm driver_main
     select_eq_ok ∈ Bool
     select_eq_nn ∈ Bool
     BoolCmpBuildZ3(ctx_h ↦ z3ctx.ctx, op ↦ op_eq, l_h ↦ tmp_in, r_h ↦ topmost_handle,
-        eff ↦ seleq_eff, ok ↦ select_eq_ok, needs_not ↦ select_eq_nn)
+        prescan ↦ prescan, eff ↦ seleq_eff, ok ↦ select_eq_ok, needs_not ↦ select_eq_nn)
     lit_handle ∈ Int = (lit = 1 ? z3nums.one
         : lit = 2 ? z3nums.two
         : lit = 3 ? z3nums.three
@@ -978,7 +988,7 @@ fsm driver_main
     eq_ok ∈ Bool
     eq_nn ∈ Bool
     BoolCmpBuildZ3(ctx_h ↦ z3ctx.ctx, op ↦ op_eq, l_h ↦ effects_length, r_h ↦ lit_handle,
-        eff ↦ leneq_eff, ok ↦ eq_ok, needs_not ↦ eq_nn)
+        prescan ↦ prescan, eff ↦ leneq_eff, ok ↦ eq_ok, needs_not ↦ eq_nn)
     filler_eff ∈ Effect = LibCall("libc", "getpid", ⟨⟩)
 
     -- A′: in the pre-scan pass the solver-asserts are SUPPRESSED — pass 0
@@ -988,13 +998,23 @@ fsm driver_main
     -- declares everything without committing a half-resolved body.
     p_assert_eff ∈ Effect = (prescan ? filler_eff : assert_eff)
     p_assert_tmp ∈ Effect = (prescan ? filler_eff : assert_tmp)
+    -- A′ pass-0: the seq/string/select/set builders below are NOT guarded
+    -- inside their claims (stdlib z3_seq / translate2_seq), so a 0 operand
+    -- (a forward reference in pass 0) would reach Z3_mk_seq_concat/_select/_len
+    -- /set_add and SIGSEGV (RC 71). Propagate 0 (atoi("0") captures as handle 0)
+    -- when prescan AND a consumed top-of-stack handle is 0. The bool/cmp/arith
+    -- /ternary/ctor builders self-guard in their claims; these are the rest.
+    p0_zero ∈ Effect = LibCall("libc", "atoi", ⟨ArgStr("0")⟩)
+    strop_bad ∈ Bool = (primary_handle = 0
+        ∨ (strop_arity ≥ 2 ∧ secondary_handle = 0)
+        ∨ (strop_arity = 3 ∧ tertiary_handle = 0))
     step_eff ∈ Effect = (process ∧ is_int ? mkint
         : process ∧ is_str ? mkstring
         : lookup_read ? symbol_read_eff
         : is_op_item ∧ is_nary ∧ (_item_step = 0) ? argw0
         : is_op_item ∧ is_nary ∧ (_item_step = 1) ? argw1
         : is_op_item ∧ is_nary ? (bool_nary ? nary
-            : op_is_concat ? concat
+            : op_is_concat ? ((prescan ∧ (second_handle = 0 ∨ topmost_handle = 0)) ? p0_zero : concat)
             : arith)
         : is_op_item ∧ is_div ? arith
         : is_op_item ? compare_eff
@@ -1015,11 +1035,12 @@ fsm driver_main
         : is_seleqh ? (_item_step = 0 ? select : seleq_eff)
         : is_leneq_item ? (_item_step = 0 ? leneq_eff : p_assert_tmp)
         : is_leneqh ? leneq_eff
-        : is_strop_item ? (strop_key = "len" ? strlen : strop_eff)
-        : is_selh ? select_h
+        : is_strop_item ? ((prescan ∧ strop_bad) ? p0_zero
+            : strop_key = "len" ? strlen : strop_eff)
+        : is_selh ? ((prescan ∧ (second_handle = 0 ∨ topmost_handle = 0)) ? p0_zero : select_h)
         : real ? mkreal
         : is_emptyset_item ? emptyset_eff
-        : is_setadd_item ? setadd_eff
+        : is_setadd_item ? ((prescan ∧ (second_handle = 0 ∨ topmost_handle = 0)) ? p0_zero : setadd_eff)
         : filler_eff)
 
     -- ── EMIT rendering phase (see compiler2/driver_emit.ev) ──

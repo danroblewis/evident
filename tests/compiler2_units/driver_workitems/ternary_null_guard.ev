@@ -12,5 +12,5 @@ import "compiler2/translate2_bool.ev"
 
 claim main
     e_ite ∈ Effect
-    TernaryBuildZ3(ctx_h ↦ 1, cond_h ↦ 99, then_h ↦ 0, else_h ↦ 42, eff ↦ e_ite)
+    TernaryBuildZ3(ctx_h ↦ 1, cond_h ↦ 99, then_h ↦ 0, else_h ↦ 42, prescan ↦ false, eff ↦ e_ite)
     effects ∈ Seq(Effect) = ⟨e_ite⟩
