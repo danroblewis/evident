@@ -153,9 +153,42 @@ folding them with `C2App(cell_decl, 2)` over a `C2PushH(empty_val)` tail
 Gate per step on the three touched-module unit suites,
 `functionization-gate.sh`, `invariant-gate.sh`, and full conformance.
 
-## Workaround for `LibCall` until (b) lands
+## Status (LANDED) — `Seq(LibArg)` literal in general expr position
 
-Write `LibCall` floor effects through the effect-literal `⟨…⟩` chain
-(the working surface, unaffected by these changes — the efflit parse
-mode handles `LibCall` before Pratt sees it), not as scalar
-`Effect`-typed consts. `Exit` no longer needs the workaround.
+Both sub-gaps (a) and (b) above are now closed (commit "compiler2:
+Seq-literals (⟨…⟩) in general expression position"):
+
+- **(a)** `ArgInt`/`ArgStr`/`ArgRef` seeded into pratt's `floor_ctor_names`
+  + `ctor_decl` (`ArgInt → argint_decl`, `ArgStr → argstr_decl`),
+  mirroring `Exit`/`LibCall`.
+- **(b)** A real `ESeq(ExprList)` `Expr` variant + a Pratt `⟨…⟩` parse
+  (a `PrSeq(Int)` floor mirroring `PrCall`; empty `⟨⟩` is a 2-token
+  atom-shift to `ESeq(ELNil)`) + an `is_seqlit` lowering in
+  driver_exprdecomp that folds the elements into the `__SeqOf_LibArg`
+  CONS-LIST — `C2Process(eᵢ)` per element in source order, then
+  `C2PushH(empty_val)` + one `C2App(cell_decl, 2)` per element (tail-first
+  → `Cell(e0, Cell(e1, … Empty))`). This is the N-ary generalization of
+  efflit's single-arg `libcall_items`, reachable from the general
+  `call3_items`/`C2Process` path. Bound 8 elements (source max 5).
+
+A third, latent gap surfaced once the parse landed: a scalar
+`x ∈ Effect` member was being given a manifest state-field + `_x`
+carry-decl typed `Int` (sort 7 had no `mem_tyname`/`field_add` case),
+contradicting its real `effect_sort` declaration → UNSAT. Fixed:
+sort-7 members are transient (referenced in the effects literal, never
+carried), so excluded from `field_add`; `mem_tyname` maps sort 7 →
+`"Effect"` (paralleling `Result`/sort 4).
+
+Result: `driver_emit/estep_walk` self-compiles clean (rc 9→0);
+`driver_matchpin/scrutinee` and `driver_workitems/ternary_null_guard`
+advance off the parse gap (rc 9→7 / 9→1) onto distinct downstream gaps;
+self-compile sweep 54→55/91; conformance held 153/155; functionization
++ invariant gates green. The general (non-LibArg) `Seq(T)` literal in
+expr position is NOT implemented — the cons-list lowering is
+LibArg-specific (the only such literal the compiler source uses); a
+general element-typed `⟨…⟩` would need the element type threaded.
+
+## Workaround for `LibCall` (historical — no longer needed)
+
+Previously: write `LibCall` floor effects through the effect-literal
+`⟨…⟩` chain, not as scalar `Effect`-typed consts. Both surfaces now work.
