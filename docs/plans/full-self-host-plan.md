@@ -42,6 +42,35 @@ takes over producing `compiler.smt2` + `sample.smt2`.
 
 ---
 
+## Revised priority (operator, 2026-06-12) — proof first, then refactor
+
+The original plan sequenced toward a *usable, fast* cutover (B throughput
+gates D). The operator reprioritized for **maintainability risk**: the
+compiler code is getting hard to work on, and more changes pile complexity
+before it's been proven. New ordering:
+
+1. **Milestone 1 — ONE good `driver_main` self-compile (slow is fine).**
+   The whole driver compiles its own flattened source, correctly,
+   end-to-end. A multi-hour one-time run is acceptable — this is a
+   feasibility PROOF, not the production path. Needs Gate A (correctness)
+   + full-driver integration + the `LibCall` remainder. **Explicitly does
+   NOT need Gate B (throughput).**
+2. **Milestone 2 — the refactor.** With feasibility proven, attack the
+   readability/maintainability debt (finish de-prefix, extract
+   abstractions, the passes-seam / out-of-awk) BEFORE it ossifies.
+   **Unlocked by Milestone 1:** the self-compile FIXED POINT becomes the
+   regression oracle — a refactor that leaves the compiler re-compiling
+   itself byte-identically is provably behavior-preserving. So M1 doesn't
+   just prove feasibility; it makes the refactor safe.
+3. **Functionizer / Gate B (throughput) — opportunistic.** Pursue only if
+   it looks straightforward to implement; otherwise defer. It is no longer
+   a near-term blocker (it only gates the *fast* production cutover, not
+   the proof).
+
+So the five gates below still describe the full cutover, but the *near-term*
+target is Milestone 1 = Gate A complete + a single end-to-end self-compile,
+with B and the heavy C/D/E work reordered to follow the refactor.
+
 ## The critical path (five gates, in dependency order)
 
 ```
