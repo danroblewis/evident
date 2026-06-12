@@ -208,3 +208,30 @@ d32a519bb4f8ebca49d82fc4522209e2b54c715a9a1348b96f5fef6c99ad1649  purism_v9_chai
 fb91ffa86a775afafa1e48cbd6a3a8e9a126159e5d08ad4200b324b32061480e  selfhost.sh
 ```
 Any change to these files requires a new approval entry here.
+
+## Approval (2026-06-12, operator)
+
+Operator directive: refactor carried_invariants to the artifact pattern,
+then approve all current measures. Changes since 2026-06-10:
+- ADDED: out_of_awk.sh, selfcompile.sh, carried_invariants.sh (the last now
+  reads compiler2-invariants.json from bin/run-invariant-gate.sh, <50ms).
+- REMOVED: kernel_fixtures.sh, sample_ev.sh (never-run, self-host-gated).
+- REFRESHED: purism_namespacing.sh (clears the 2026-06-10 STALE flag).
+- New harnesses: bin/run-invariant-gate.sh, bin/run-selfcompile-sweep.sh.
+
+compiler2-selfhost + purism measures APPROVED by operator. Locked hashes:
+```
+11ce26813d2cd63c8c29c59a76e9a8b86721c566c019923fc374c1c33305747b  carried_invariants.sh
+6e6c118dc6c16f3be2d1b3ee5523213d20e9e67da3135519b4c62d4ac938463f  code_quality.sh
+d0dd689696935a9e5d306bc6fe0820833b63898fd0789ff409b38a7887a7fc06  conformance.sh
+bf76ae5fae789197915d20064c751d222ac906e299007c15af3e56cd79744f52  legacy_imports.sh
+dec612c369275489de41dc7f7300b98164126476b7b97f9caab14667ecf8020e  out_of_awk.sh
+94650b5c5c610da6586c0c24f3a24c6a7e698bae9fb6a2ccd57dd75d48791ff1  purism_critic_signal.sh
+bfda07d59ddc141ae902ba977bfbdaf4cdedd0214e8db067114bdc22e81f9b98  purism_cryptic_names.sh
+e3317e94d081fa9aa2a6614b0c0b27b52131f9eafe754ec080f759d072e6e815  purism_namespacing.sh
+9a73d827a17c7f2fe06668660b272831ed56a105fc6c6e77cd4895521e499fc2  purism_v18_families.sh
+d32a519bb4f8ebca49d82fc4522209e2b54c715a9a1348b96f5fef6c99ad1649  purism_v9_chains.sh
+7164e3f22fe7a8102413bdaa791f09eb8e5faba4f543c918071143174fe343d1  selfcompile.sh
+fb91ffa86a775afafa1e48cbd6a3a8e9a126159e5d08ad4200b324b32061480e  selfhost.sh
+```
+Any change to these files requires a new approval entry here.
