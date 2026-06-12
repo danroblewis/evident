@@ -79,6 +79,11 @@ type Z3Numerals(zero ∈ Int, one ∈ Int, two ∈ Int, three ∈ Int, four ∈ 
 -- the parsed body Expr, and the current iteration index.
 type QLoop(on ∈ Bool, var ∈ String, kind ∈ Int, lo ∈ Int, hi ∈ Int, body ∈ Expr, cur ∈ Int)
 
+-- A tested match arm promoted into a slot (DriverMatchPin): the constructor
+-- name, the in-arm bind name (\"\" if none), the payload accessor handle, and
+-- the arm's body Expr. Carried across the multi-tick arm walk.
+type ArmSlot(ctor ∈ String, bind ∈ String, acc ∈ Int, expr ∈ Expr)
+
 -- The effects-literal parse walk's carried core (DriverClaimIdx, parse_mode 5):
 -- the element count seen so far, the libcall function name, and the walk's
 -- sub-state.
