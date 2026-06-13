@@ -119,18 +119,29 @@ def model_diff(rows_or_csv, path):
     open(path, "w").write("\n".join(out))
 
 
-def translations(rows_or_csv, outdir):
-    """Record the before/after smt2 for EVERY case and index them in one report.
+def translations(rows_or_csv, outdir, theory=None, cap=400, dump_files=True):
+    """Record the before/after smt2 for every case and index them in one report.
 
     For each (task, encoding, scale) group: dump the baseline model once, then
     every tactic sequence's resulting model — deduped by content (many sequences
     collapse to the same translation), so each distinct model is one file and the
     report lists every sequence that produces it. Groups are ordered best-first
     (fastest solving encoding first); rows within a group are ordered by total ms.
-    Regenerates smt2 from the registry; the CSV supplies timing/result only."""
+    Regenerates smt2 from the registry; the CSV supplies timing/result only.
+
+    `theory` (e.g. 'set') restricts to encodings that use that theory — a focused
+    report. `cap` is the inline-diff line ceiling (larger models link out).
+    `dump_files=True`: `outdir` is a directory; write `index.md` + a `smt2/` tree.
+    `dump_files=False`: `outdir` is a single self-contained `.md` path; inline the
+    diffs and DON'T write any smt2 (over-cap models just note their size)."""
     rows = _load(rows_or_csv) if isinstance(rows_or_csv, str) else rows_or_csv
-    smtdir = os.path.join(outdir, "smt2")
-    os.makedirs(smtdir, exist_ok=True)
+    if theory:
+        keep = {(t.name, e.name) for t in TASKS.values() for e in t.encodings
+                if theory in e.theories}
+        rows = [r for r in rows if (r["task"], r["encoding"]) in keep]
+    smtdir = os.path.join(outdir, "smt2") if dump_files else None
+    if dump_files:
+        os.makedirs(smtdir, exist_ok=True)
 
     groups = {}
     for r in rows:
@@ -139,16 +150,20 @@ def translations(rows_or_csv, outdir):
     def gbest(g):
         return min((r["total_ms"] for r in g if r["ok"]), default=float("inf"))
 
-    head = ["# Every model translation — before and after each tactic", "",
+    what = (f"`{theory}`-theory model" if theory else "Every model")
+    files_note = ("Each group's baseline is dumped once as `before.smt2` and each "
+                  "distinct post-tactic model as `vNN_<hash>.smt2` under `smt2/`; "
+                  if dump_files else "Each distinct post-tactic model is shown as "
+                  "an inline diff below its group (self-contained — no smt2 files); ")
+    head = [f"# {what} translations — before and after each tactic", "",
+            f"{('Restricted to the **`' + theory + '`** theory. ') if theory else ''}"
             f"{len(rows)} cases over {len(groups)} (task, encoding, scale) groups. "
-            "Each group's baseline model is dumped once as `before.smt2`; each "
-            "distinct post-tactic model is one `vNN_<hash>.smt2` (sequences that "
-            "yield an identical model share a file). All smt2 lives under "
-            "`smt2/`. Groups are ordered fastest-encoding-first; rows within a "
-            "group by total ms (apply + solve).", ""]
+            f"{files_note}sequences yielding an identical model are grouped. Groups "
+            "ordered fastest-encoding-first; rows within a group by total ms "
+            "(apply + solve).", ""]
     summary = ["## Best translation per group", "",
-               "| task | encoding | N | result | best ms | Δnodes | files |",
-               "|---|---|--:|---|--:|--:|---|"]
+               "| task | encoding | N | result | best ms | Δnodes | models |",
+               "|---|---|--:|---|--:|--:|--:|"]
     body = []
 
     for task in sorted({k[0] for k in groups}):
@@ -159,10 +174,12 @@ def translations(rows_or_csv, outdir):
             enc_obj = next(e for e in TASKS[t].encodings if e.name == enc)
             base = enc_obj.build(scale)
             gname = f"{t}__{enc}__N{scale}"
-            gdir = os.path.join(smtdir, gname)
-            os.makedirs(gdir, exist_ok=True)
+            if dump_files:
+                gdir = os.path.join(smtdir, gname)
+                os.makedirs(gdir, exist_ok=True)
             before_sx = base.sexpr()
-            open(os.path.join(gdir, "before.smt2"), "w").write(before_sx)
+            if dump_files:
+                open(os.path.join(gdir, "before.smt2"), "w").write(before_sx)
             base_nodes = profiling.profile(base)["dag_nodes"]
 
             variants, rowinfo = {}, []     # sexpr-hash -> [filename, nodes, sexpr, count]
@@ -177,7 +194,8 @@ def translations(rows_or_csv, outdir):
                 h = hashlib.sha1(sx.encode()).hexdigest()[:8]
                 if h not in variants:
                     fn = f"v{len(variants):02d}_{h}.smt2"
-                    open(os.path.join(gdir, fn), "w").write(sx)
+                    if dump_files:
+                        open(os.path.join(gdir, fn), "w").write(sx)
                     variants[h] = [fn, profiling.profile(g2)["dag_nodes"], sx, 0]
                 variants[h][3] += 1
                 fn, nodes = variants[h][0], variants[h][1]
@@ -190,32 +208,40 @@ def translations(rows_or_csv, outdir):
             bres = best["result"] if best else (g[0]["result"])
             bdn = next((dn for r, f, dn in rowinfo if best and r is best and dn is not None), 0)
             summary.append(f"| {t} | {enc} | {scale} | {bres} | {bms} | "
-                           f"{bdn:+d} | `smt2/{gname}/` ({1 + len(variants)}) |")
+                           f"{bdn:+d} | {1 + len(variants)} |")
 
+            def model_cell(fn):
+                if not fn:
+                    return "(tactic error)"
+                return f"[`{fn}`](smt2/{gname}/{fn})" if dump_files else f"`{fn}`"
+            baseline = (f"[`before.smt2`](smt2/{gname}/before.smt2)" if dump_files
+                        else "`before.smt2`")
             body += [f"### {enc}  (N={scale}) — {1 + len(variants)} distinct models "
                      f"over {len(g)} sequences",
-                     f"baseline: [`smt2/{gname}/before.smt2`](smt2/{gname}/before.smt2) "
-                     f"({base_nodes} nodes)", "",
+                     f"baseline: {baseline} ({base_nodes} nodes)", "",
                      "| rank | tactic sequence | result | total ms | Δnodes | model |",
                      "|--:|---|---|--:|--:|---|"]
             for i, (r, fn, dn) in enumerate(rowinfo, 1):
                 dns = "—" if dn is None else f"{dn:+d}"
-                link = (f"[`{fn}`](smt2/{gname}/{fn})" if fn else "(tactic error)")
                 body.append(f"| {i} | `{r['combo']}` | {r['result']} | "
-                            f"{r['total_ms']:.2f} | {dns} | {link} |")
+                            f"{r['total_ms']:.2f} | {dns} | {model_cell(fn)} |")
             body.append("")
 
             body.append("**diffs vs baseline** (one per distinct model):\n")
             for fn, nodes, sx, cnt in sorted(variants.values(), key=lambda v: v[1]):
                 body += [f"<details><summary><code>{fn}</code> — {cnt} sequence(s), "
                          f"{nodes - base_nodes:+d} nodes</summary>\n",
-                         _diff_block(before_sx, sx, fn), "", "</details>", ""]
+                         _diff_block(before_sx, sx, fn, cap), "", "</details>", ""]
             body.append("")
 
-    report_path = os.path.join(outdir, "index.md")
-    open(report_path, "w").write("\n".join(head + summary + [""] + body))
-    n_files = sum(len(fs) for _, _, fs in os.walk(smtdir))
-    return report_path, n_files
+    text = "\n".join(head + summary + [""] + body)
+    if dump_files:
+        report_path = os.path.join(outdir, "index.md")
+        open(report_path, "w").write(text)
+        return report_path, sum(len(fs) for _, _, fs in os.walk(smtdir))
+    os.makedirs(os.path.dirname(outdir) or ".", exist_ok=True)
+    open(outdir, "w").write(text)
+    return outdir, 0
 
 
 def summarize(rows_or_csv):

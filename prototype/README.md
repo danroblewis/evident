@@ -38,6 +38,8 @@ python3 run.py run --tasks dispatch coloring --max-len 3 --reps 3
 python3 run.py report results/run.csv --markdown results/run.md
 python3 run.py report results/run.csv --model-diff results/run-modeldiff.md
 python3 run.py report results/run.csv --translations results/translations  # all smt2
+python3 run.py report results/run.csv --translations results/set-theory.md \
+        --theory set --single-file --cap 1200          # focused, one self-contained .md
 python3 run.py profile dispatch set 200 --tactics blast   # AST diff under a tactic
 ```
 
@@ -60,6 +62,12 @@ derived outputs from an existing CSV without re-solving.
   per (task, encoding, scale) group, every tactic sequence ranked by total ms
   with a link to its model, plus a rendered ` ```diff ` of baseline→model for
   each distinct translation (large models link out instead of inlining).
+- **`set-theory.md`** — *one theory, self-contained*: `--theory set --single-file`
+  restricts the translations report to the set-theory encodings (`dispatch/set`,
+  `dispatch/set_bv`, `reachability/unroll_set`) and inlines every tactic-run diff
+  into a single `.md` (no smt2 tree). This is where the set→ite lowering is most
+  visible — each set-membership store-chain collapses to `(goal)` under
+  `blast_select_store`. Any theory works (`--theory array`, `--theory bitvec`, …).
 - **`profile`** — the same AST diff as model-diff, on demand, for any one case.
 
 ## The combinatorial sweep

@@ -41,11 +41,14 @@ def cmd_report(a):
         report.model_diff(a.csv, a.model_diff)
         print(f"wrote {a.model_diff}")
     if a.translations:
-        path, n = report.translations(a.csv, a.translations)
-        print(f"wrote {path} + {n} smt2 files under {a.translations}/smt2/")
+        path, n = report.translations(a.csv, a.translations, a.theory, a.cap,
+                                      dump_files=not a.single_file)
+        tail = f" + {n} smt2 files under {a.translations}/smt2/" if n else " (self-contained)"
+        print(f"wrote {path}{tail}")
     if a.json:
         report.write_json(report._load(a.csv), a.json)
-    report.summarize(a.csv)
+    if not (a.markdown or a.model_diff or a.translations or a.json):
+        report.summarize(a.csv)
 
 
 def cmd_profile(a):
@@ -108,6 +111,12 @@ if __name__ == "__main__":
                     help="write a per-encoding baseline-vs-winning-tactic model diff")
     rp.add_argument("--translations",
                     help="DIR: dump before/after smt2 for every case + index.md")
+    rp.add_argument("--theory",
+                    help="restrict --translations to encodings using this theory (e.g. set)")
+    rp.add_argument("--cap", type=int, default=400,
+                    help="inline-diff line ceiling for --translations (default 400)")
+    rp.add_argument("--single-file", action="store_true",
+                    help="--translations writes one self-contained .md (no smt2 tree)")
     rp.add_argument("--json")
     rp.set_defaults(fn=cmd_report)
 
