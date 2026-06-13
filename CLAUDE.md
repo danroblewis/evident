@@ -1,26 +1,48 @@
-# Z3-first constraint modeling — read this first
+# Z3-first toward a general-purpose set-theoretic language — read this first
+
+## The end goal (never lose sight of this)
+
+We are building a **general-purpose programming language** — one you could write
+*any* program in, not a constraint DSL or a solver frontend. Three hard
+requirements define it:
+
+1. **General-purpose.** It must express any programming task — algorithms, data
+   structures, IO, real programs — the way Python or Rust can. Clean constraint
+   problems are the easy case; the language has to do the rest too.
+2. **Set-theory-based.** Its computational paradigm is set theory — sets,
+   membership, relations — not imperative statements or lambda calculus. This is
+   the distinctive bet, and it constrains everything.
+3. **Z3 + a minimal harness as the runtime.** The SMT solver does the work; a
+   small harness around it handles effects, the solve loop, and FFI. No heavy
+   compiler, no large runtime. (This is what the deleted Evident kernel was
+   reaching for — ~880 lines around Z3.)
+
+The language we still call *Evident* is that goal. Holding all three at once —
+general-purpose **and** set-theoretic **and** running on Z3+minimal-harness — is
+the whole challenge. Keep all three in mind for every decision.
 
 ## What this project is now
 
 We are **not building the Evident compiler anymore.** The kernel,
 `compiler.smt2`, the self-hosted `compiler2/*.ev`, stdlib, and the whole
 `.ev → smt2 → kernel` stack have been deleted (branch `prototype-z3-python`).
-
-The north star is unchanged: a **set-theoretic constraint-modeling language**
-where you state constraints over named variables, leave the solution space
-under-determined, and a solver fills in the rest — eventually with nice
-surface syntax (the language we still call *Evident*). What changed is the
-order of operations:
+What changed is the **order of operations**, not the goal:
 
 ```
-  PHASE 1 (now):  make Z3 fast and predictable for set-theoretic modeling,
-                  in Python, and uncover the PRINCIPLES that make it work.
+  PHASE 1 (now):  prove Z3 + a minimal harness CAN be the runtime for a
+                  general-purpose, set-theoretic language — in Python — and
+                  uncover the PRINCIPLES that make it work.
   PHASE 2 (later): design Evident as SUGAR over the proven Z3 substrate.
 ```
 
 So today we prototype directly in **Python over the Z3 library**, keep the
-prototypes honest and measured, and write down what we learn. Evident is the
-goal we're earning the right to design — not the thing we're building this week.
+prototypes honest and measured, and write down what we learn. The recurring
+phase-1 question for any experiment is: **does this move us toward a
+general-purpose set-theoretic language on a Z3+minimal-harness runtime?** A fast
+trick that only works for constraint puzzles, or that needs a heavy runtime, or
+that abandons the set-theoretic paradigm, is not progress — flag it as such.
+Evident is the goal we're earning the right to design — not the thing we're
+building this week.
 
 ## Working style: bias hard toward autonomous background research
 
@@ -216,20 +238,39 @@ rather than guessing; we'll harden the list as we learn.
 
 ---
 
-# The forward vision (phase 2, not yet)
+# The forward vision: a general-purpose set-theoretic language on Z3
 
-When the substrate is proven, Evident becomes sugar that emits the measured-best
-lowerings. The likely shape (see `docs/plans/claims-as-sets.md`,
+The end goal restated as a target, not just a phase-2 note: **Evident is a
+general-purpose programming language whose paradigm is set theory and whose
+runtime is Z3 + a minimal harness.** Every phase-1 experiment should be read as
+evidence for or against that target being reachable.
+
+The likely shape of the language (see `docs/plans/claims-as-sets.md`,
 `docs/plans/relations-as-tuple-sets.md`):
 
 - **Claims as sets** — a named predicate is the set of assignments satisfying it;
-  composition is set algebra.
-- **Relations as tuple-sets** — dispatch / mappings / grammars as membership in a
-  set of tuples, lowered (not interpreted as control flow).
+  composition is set algebra. This is how *all* abstraction works in the
+  language, not just constraints — functions, types, and modules are sets too.
+- **Relations as tuple-sets** — dispatch / mappings / grammars / lookup tables as
+  membership in a set of tuples, lowered (not interpreted as control flow).
 - **Under-determined, bounded solution spaces** — partial constraint; the solver
   fills the rest; somewhere between "totally free" and "all equalities."
 - **Solve-until-`Done`** — a fixpoint/tick loop with carried state and an effect
-  trace, sitting on top of whichever lowering backend.
+  trace, on top of whichever lowering backend. This is how the language reaches
+  *general-purpose* territory: unbounded computation, IO, and real programs live
+  in the loop + effects, since a single Z3 solve is bounded by construction.
+
+What general-purpose demands that pure constraint-solving does not — the phase-1
+questions that decide whether the end goal is reachable:
+
+- **Effects & IO** on a solver runtime — the minimal harness must dispatch reads,
+  writes, and FFI from solver output (the old Effect-enum + solve→dispatch idea),
+  without growing into a heavy runtime.
+- **Unbounded computation** — algorithms that don't fit one bounded solve must
+  decompose across the `Done`-loop; we need to show that's expressible and fast.
+- **Everyday data structures & algorithms** in set-theoretic terms — can a
+  hashmap, a parser, a sort be *sets/relations* and still perform? Each is a
+  phase-1 prototype waiting to be written.
 
 The open phase-2 design question (already under discussion): **where the lowering
 decision lives** — a solver-side tactic portfolio (auto-tuner), a compiler-side
