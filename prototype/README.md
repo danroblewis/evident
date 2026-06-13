@@ -72,38 +72,43 @@ derived outputs from an existing CSV without re-solving.
   `blast_select_store`. Any theory works (`--theory array`, `--theory bitvec`, …).
 - **`profile`** — the same AST diff as model-diff, on demand, for any one case.
 
-## Reading the constraint system: the prettifier (`pretty.py`)
+## Reading the constraint system: the faithful AST view (`pretty.py`)
 
-The Z3 AST *is* a set-theoretic structure wearing an `Array`/`store`/`select`
-costume. `benchsuite/pretty.py` walks an expr/Goal and re-presents it with
-set-theory notation (`∈ ∪ ∩ ⊆ ∀ ∃ ⇒ ∧ ∨ ¬ ≤ ≥ ≠`) so the constraint system
-reads the way Evident did — recovering the surface we lost when we started from
-Z3 instead of `.ev`. It is **not** a 1:1 operator swap; it recognizes the
-patterns that matter:
+smt2 and the Z3-AST repr are hard to read. `benchsuite/pretty.py` renders a Z3
+expr/Goal **faithfully** — one AST node, one rendering — just in readable math
+symbols. It is *not* a recognizer: it does not merge nodes or infer higher-level
+constructs. If the model uses `select`/`store`, you see `select`/`store`; if a
+tactic rewrote a set membership into a disjunction of equalities, you see that
+disjunction. The point is to see *what Z3 actually has*, and to see a tactic's
+effect as the structural change it really is.
 
-| Z3 form | rendered as |
-|---|---|
-| `select(store-chain, key)` (set membership) | `key ∈ {a, b, c}` |
-| `(or (and (= k a)(= v b)) …)` (post-blast) | `(k, v) ∈ {(a,b), …}` |
-| `store`-chain over a non-Bool array | `{0 ↦ 3, 1 ↦ 4, _ ↦ d}` (map literal) |
-| `(and (≤ lo x) (< x hi))` | `lo ≤ x < hi` |
-| `if k=0 then a else if k=1 …` | `match k { 0 ⇒ a \| 1 ⇒ b \| _ ⇒ d }` |
-| `at-most(xs, 1)` / `at-least` | `#{xs} ≤ 1` (cardinality) |
-| `seq.len` / `seq.unit(7)` | `#sq` / `⟨7⟩` |
+Each symbol maps to exactly one Z3 op:
 
-Subterms shared across the model (the Z3 AST is a DAG) are hoisted into a
-trailing `where` block of `sN` bindings — both to avoid exponential blow-up and
-because it reads like Evident lets. Try it:
+| Z3 op | rendered | Z3 op | rendered |
+|---|---|---|---|
+| and / or / not | `∧ ∨ ¬` | select(A, i) | `A[i]` |
+| implies / iff / xor | `⇒ ⇔ ⊕` | store(A, i, v) | `A[i ↦ v]` |
+| eq / distinct | `=` / `distinct(…)` | const array K(v) | `const(v)` |
+| ≤ < ≥ > (signed/int) | `≤ < ≥ >` | ite | `if … then … else …` |
+| unsigned BV compares | `≤ᵤ <ᵤ …` | set union/inter/diff/⊆ | `∪ ∩ ∖ ⊆` (when genuine set ops) |
+| + − · / mod | `+ − · / mod` | at_most/at_least (PB) | `at_most(k; …)` |
+| seq.len / seq.unit | `len(x)` / `⟨x⟩` | array map | `map[f](…)` |
+
+The only structural liberty is **shared-subterm naming**: the AST is a DAG, so a
+subterm reached more than once is hoisted into a trailing `where` block of `sN`
+bindings — exactly what Z3's own `let`-printing does. It keeps output linear and
+makes sharing legible; nothing is merged or reinterpreted.
 
 ```bash
-python3 run.py pretty dispatch set 8 --tactics blast   # ∈ {…} before AND after blast
-python3 run.py pretty reachability unroll_set 5         # a recurrence with `where` bindings
+python3 run.py pretty dispatch set 6 --tactics blast   # set membership IS a bool array…
+python3 run.py pretty reachability unroll_set 5         # …and the blast turns it into ∨ of =
 ```
 
-The flagship demo: `(k, v) ∈ {…}` renders **identically before and after
-`blast_select_store`** — the prettifier shows the lowering changes the costume,
-not the set meaning. Use `pretty.expr(e)` / `pretty.goal(g)` directly on any Z3
-object too.
+`dispatch/set` before blast shows `const(false)[(0,3) ↦ true]…[(k,v)]` — the
+"set" is literally a Bool array updated with `store` and read with `select`.
+After blast it becomes `(0 = k ∧ 3 = v) ∨ …` — you *see* the membership replaced
+by a disjunction of equalities. Use `pretty.expr(e)` / `pretty.goal(g)` on any
+Z3 object directly.
 
 ## The combinatorial sweep
 

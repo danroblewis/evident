@@ -1,20 +1,29 @@
-"""A Z3 → Evident-ish prettifier.
+"""A FAITHFUL Z3-AST pretty-printer.
 
-The Z3 AST is already a set-theoretic structure wearing an Array/store/select
-costume. This renderer walks an expr/Goal and prints it with set-theory notation
-(∈ ∪ ∩ ⊆ ∀ ∃ ⇒ ∧ ∨ ¬ ≤ ≥ ≠), recognizing the patterns that matter so the
-surface reads like Evident did — NOT a 1:1 operator swap.
+This is NOT a set-theory recognizer. It renders the Z3 AST exactly as it is —
+one node, one rendering — just in readable math symbols instead of smt2/Z3-AST
+syntax. If the model uses `select`/`store`, you see `select`/`store`. If a tactic
+rewrote a set membership into a disjunction of equalities, you see that
+disjunction. The goal is to read *what Z3 actually has* without parsing sexprs,
+so the effect of a tactic is visible as the structural change it really is.
 
-The recognizers (the point of the whole thing):
-  • set membership      select(store-chain, key)            → key ∈ {a, b, c}
-  • tuple-set membership (or (and (= k a)(= v b)) …)        → (k, v) ∈ {(a,b), …}
-  • range               (and (≤ lo x) (< x hi))             → lo ≤ x < hi
-  • ite-chain on equality if k=0 then a else if k=1 …       → match k { 0 ⇒ a, … }
+The only structural liberty taken is shared-subterm naming: the Z3 AST is a DAG,
+so any subterm reached more than once is hoisted into a trailing `where` block of
+`sN` bindings — this is exactly what Z3's own `let`-printing does, and it both
+keeps output linear and makes sharing legible. Nothing is merged or reinterpreted.
 
-`blast_select_store` rewrites the first form into the second; both render to the
-same `∈ {…}` — so the prettifier shows the lowering preserves the set meaning.
+Symbol key (each maps to ONE Z3 op, no inference):
+  ∧ ∨ ¬ ⇒ ⇔ ⊕   and or not implies iff xor
+  = distinct      eq / n-ary distinct        ≤ < ≥ >   (ᵤ subscript = unsigned BV)
+  + − · / ÷ mod   arith                        A[i]      select(A, i)
+  A[i ↦ v]        store(A, i, v)               const(v)  constant array (K)
+  ∪ ∩ ∖ ⊆ ᶜ      Z3 set ops (when present as set ops, not arrays)
+  if … then … else  ite                        ⟨x⟩       seq.unit
 """
+import sys
 import z3
+
+sys.setrecursionlimit(40000)   # backstop; deep store/ite spines are iterated below
 
 # ── precedence (higher binds tighter; children below threshold get parens) ────
 P_ATOM, P_SETOP, P_MUL, P_ADD, P_CMP, P_NOT, P_AND, P_OR, P_IMP, P_QUANT = \
@@ -24,17 +33,35 @@ _BIN = {
     z3.Z3_OP_ADD: ("+", P_ADD), z3.Z3_OP_SUB: ("−", P_ADD),
     z3.Z3_OP_MUL: ("·", P_MUL), z3.Z3_OP_DIV: ("/", P_MUL),
     z3.Z3_OP_IDIV: ("÷", P_MUL), z3.Z3_OP_MOD: ("mod", P_MUL),
+    z3.Z3_OP_REM: ("rem", P_MUL), z3.Z3_OP_POWER: ("^", P_MUL),
     z3.Z3_OP_LE: ("≤", P_CMP), z3.Z3_OP_LT: ("<", P_CMP),
     z3.Z3_OP_GE: ("≥", P_CMP), z3.Z3_OP_GT: (">", P_CMP),
     z3.Z3_OP_EQ: ("=", P_CMP),
     z3.Z3_OP_IFF: ("⇔", P_IMP), z3.Z3_OP_XOR: ("⊕", P_OR),
-    # bitvector (a useful subset)
+    # bitvector arithmetic / comparisons (signedness preserved: ᵤ = unsigned)
     z3.Z3_OP_BADD: ("+", P_ADD), z3.Z3_OP_BSUB: ("−", P_ADD),
-    z3.Z3_OP_BMUL: ("·", P_MUL),
-    z3.Z3_OP_ULEQ: ("≤", P_CMP), z3.Z3_OP_ULT: ("<", P_CMP),
-    z3.Z3_OP_UGEQ: ("≥", P_CMP), z3.Z3_OP_UGT: (">", P_CMP),
+    z3.Z3_OP_BMUL: ("·", P_MUL), z3.Z3_OP_BUDIV: ("/ᵤ", P_MUL),
+    z3.Z3_OP_BSDIV: ("/", P_MUL), z3.Z3_OP_BAND: ("&", P_MUL),
+    z3.Z3_OP_BOR: ("|", P_ADD), z3.Z3_OP_BXOR: ("⊕", P_ADD),
+    z3.Z3_OP_ULEQ: ("≤ᵤ", P_CMP), z3.Z3_OP_ULT: ("<ᵤ", P_CMP),
+    z3.Z3_OP_UGEQ: ("≥ᵤ", P_CMP), z3.Z3_OP_UGT: (">ᵤ", P_CMP),
     z3.Z3_OP_SLEQ: ("≤", P_CMP), z3.Z3_OP_SLT: ("<", P_CMP),
     z3.Z3_OP_SGEQ: ("≥", P_CMP), z3.Z3_OP_SGT: (">", P_CMP),
+}
+
+# Z3 set ops, rendered with set symbols ONLY when the AST genuinely uses them
+# (they are distinct op kinds; this is faithful, not inference).
+_SET_BIN = {
+    z3.Z3_OP_SET_UNION: ("∪", P_SETOP), z3.Z3_OP_SET_INTERSECT: ("∩", P_SETOP),
+    z3.Z3_OP_SET_DIFFERENCE: ("∖", P_SETOP), z3.Z3_OP_SET_SUBSET: ("⊆", P_CMP),
+}
+
+_CLEAN_NAME = {
+    "seq.contains": "contains", "str.contains": "contains",
+    "str.suffixof": "suffix_of", "str.prefixof": "prefix_of",
+    "seq.++": "++", "str.++": "++", "seq.at": "at", "str.at": "at",
+    "str.substr": "substr", "seq.extract": "extract", "str.indexof": "index_of",
+    "seq.nth": "nth",
 }
 
 
@@ -42,166 +69,21 @@ def _wrap(txt, prec, need):
     return f"({txt})" if prec < need else txt
 
 
-def _is_true(e):
-    return z3.is_true(e)
-
-
-def _is_false(e):
-    return z3.is_false(e)
+def _is_lit(e):
+    return (z3.is_int_value(e) or z3.is_rational_value(e) or z3.is_bv_value(e)
+            or z3.is_true(e) or z3.is_false(e) or z3.is_string_value(e))
 
 
 def _is_tuple_ctor(e):
-    """A datatype constructor of a single-constructor sort → render as a tuple."""
+    """A datatype constructor of a single-constructor sort → render as a tuple.
+    Faithful: a tuple IS that constructor; (a, b) is just notation for it."""
     if e.decl().kind() != z3.Z3_OP_DT_CONSTRUCTOR or e.num_args() == 0:
         return False
     s = e.sort()
     return isinstance(s, z3.DatatypeSortRef) and s.num_constructors() == 1
 
 
-# ── array rendering: a Bool-valued array is a SET; otherwise a MAP ────────────
-def _render_array(e, b):
-    """Flatten a store-chain. Bool elem sort → set '{a,b,c}' / '∅ ∪ {…}'.
-    Other elem sort → map literal '{0 ↦ 3, 1 ↦ 4, _ ↦ d}'. Returns (text, braced)."""
-    adds, base = [], e
-    while base.decl().kind() == z3.Z3_OP_STORE:
-        adds.append((base.arg(1), base.arg(2)))
-        base = base.arg(0)
-    adds.reverse()
-    is_set = e.sort().range().kind() == z3.Z3_BOOL_SORT
-
-    if not is_set:                                  # MAP literal
-        pairs = [f"{_p(i, b, 0)[0]} ↦ {_p(v, b, 0)[0]}" for i, v in adds]
-        if base.decl().kind() == z3.Z3_OP_CONST_ARRAY:
-            pairs.append(f"_ ↦ {_p(base.arg(0), b, 0)[0]}")
-            return "{" + ", ".join(pairs) + "}", True
-        return _p(base, b, P_ATOM)[0] + " with {" + ", ".join(pairs) + "}", False
-
-    if base.decl().kind() == z3.Z3_OP_CONST_ARRAY:  # SET
-        seed = "∅" if _is_false(base.arg(0)) else "U"
-        seed_braced = seed == "∅"
-    else:
-        seed, seed_braced = _p(base, b, P_SETOP)[0], False
-
-    pos = [i for i, v in adds if _is_true(v)]
-    neg = [i for i, v in adds if _is_false(v)]
-    other = [(i, v) for i, v in adds if not (_is_true(v) or _is_false(v))]
-    if not other and seed_braced and not neg:
-        return "{" + ", ".join(_p(i, b, 0)[0] for i in pos) + "}", True
-    txt = seed
-    if pos:
-        txt += " ∪ {" + ", ".join(_p(i, b, 0)[0] for i in pos) + "}"
-    if neg:
-        txt += " ∖ {" + ", ".join(_p(i, b, 0)[0] for i in neg) + "}"
-    for i, v in other:
-        txt += f" with [{_p(i, b, 0)[0]} ↦ {_p(v, b, 0)[0]}]"
-    return txt, False
-
-
-# ── pattern recognizers (return rendered text or None) ────────────────────────
-def _try_membership(e, b):
-    """Bool-sorted select(S, key) → 'key ∈ {set}'."""
-    if e.decl().kind() == z3.Z3_OP_SELECT and e.sort().kind() == z3.Z3_BOOL_SORT:
-        S, key = e.arg(0), e.arg(1)
-        return f"{_p(key, b, P_CMP)[0]} ∈ {_render_array(S, b)[0]}"
-    return None
-
-
-def _try_tuple_set(e, b):
-    """(or (and (= x a) (= y c)) (and (= x d) (= y f)) …) → (x, y) ∈ {(a,c), …}.
-
-    The post-blast_select_store form of a set membership. Requires every disjunct
-    to be an equality, or a conjunction of equalities, over the SAME lhs vars."""
-    if e.decl().kind() != z3.Z3_OP_OR or e.num_args() < 2:
-        return None
-    rows, keyset = [], None
-    for d in e.children():
-        eqs = list(d.children()) if d.decl().kind() == z3.Z3_OP_AND else [d]
-        cols, vals = [], []
-        for eq in eqs:
-            if eq.decl().kind() != z3.Z3_OP_EQ:
-                return None
-            a0, a1 = eq.arg(0), eq.arg(1)
-            # orient: variable side = key, value side = literal
-            var, lit = (a0, a1) if z3.is_const(a1) and _is_lit(a1) else (a1, a0)
-            cols.append(var.sexpr()); vals.append(lit)
-        ks = tuple(cols)
-        if keyset is None:
-            keyset = ks
-        elif ks != keyset:
-            return None
-        rows.append(vals)
-    keytxt = ", ".join(keyset)
-    keytxt = keytxt if len(keyset) == 1 else f"({keytxt})"
-    body = ", ".join(("(" + ", ".join(_p(v, b, 0)[0] for v in r) + ")")
-                     if len(r) > 1 else _p(r[0], b, 0)[0] for r in rows)
-    return f"{keytxt} ∈ {{{body}}}"
-
-
-def _is_lit(e):
-    return (z3.is_int_value(e) or z3.is_rational_value(e) or z3.is_bv_value(e)
-            or _is_true(e) or _is_false(e))
-
-
-_NEGCMP = {z3.Z3_OP_LE: ">", z3.Z3_OP_LT: "≥", z3.Z3_OP_GE: "<", z3.Z3_OP_GT: "≤",
-           z3.Z3_OP_EQ: "≠", z3.Z3_OP_ULEQ: ">", z3.Z3_OP_ULT: "≥",
-           z3.Z3_OP_UGEQ: "<", z3.Z3_OP_UGT: "≤"}
-
-
-def _try_negcmp(e, b):
-    """¬(a ≤ b) → a > b — flip a negated comparison to read cleanly."""
-    if e.decl().kind() == z3.Z3_OP_NOT:
-        c = e.arg(0)
-        if c.decl().kind() in _NEGCMP and c.num_args() == 2:
-            return (f"{_p(c.arg(0), b, P_CMP)[0]} {_NEGCMP[c.decl().kind()]} "
-                    f"{_p(c.arg(1), b, P_CMP)[0]}")
-    return None
-
-
-def _try_range(e, b):
-    """(and (≤ lo x) (< x hi)) on a shared middle term → 'lo ≤ x < hi'."""
-    if e.decl().kind() != z3.Z3_OP_AND or e.num_args() != 2:
-        return None
-    lo, hi = e.arg(0), e.arg(1)
-    cmps = {z3.Z3_OP_LE: "≤", z3.Z3_OP_LT: "<", z3.Z3_OP_GE: "≥", z3.Z3_OP_GT: ">",
-            z3.Z3_OP_ULEQ: "≤", z3.Z3_OP_ULT: "<"}
-    if lo.decl().kind() not in cmps or hi.decl().kind() not in cmps:
-        return None
-    if lo.num_args() != 2 or hi.num_args() != 2:
-        return None
-    mid = lo.arg(1)
-    if mid.sexpr() != hi.arg(0).sexpr():
-        return None
-    o1, o2 = cmps[lo.decl().kind()], cmps[hi.decl().kind()]
-    return (f"{_p(lo.arg(0), b, P_CMP)[0]} {o1} {_p(mid, b, P_CMP)[0]} "
-            f"{o2} {_p(hi.arg(1), b, P_CMP)[0]}")
-
-
-def _try_match(e, b):
-    """if k=0 then a else if k=1 then b … → match k { 0 ⇒ a, 1 ⇒ b, _ ⇒ d }.
-
-    Only when the chain length ≥ 2 and every test is `same_var = literal`."""
-    arms, cur, var = [], e, None
-    while cur.decl().kind() == z3.Z3_OP_ITE:
-        cond, then, els = cur.arg(0), cur.arg(1), cur.arg(2)
-        if cond.decl().kind() != z3.Z3_OP_EQ:
-            break
-        a0, a1 = cond.arg(0), cond.arg(1)
-        v, lit = (a0, a1) if _is_lit(a1) else (a1, a0)
-        if not _is_lit(lit):
-            break
-        if var is None:
-            var = v.sexpr()
-        elif v.sexpr() != var:
-            break
-        arms.append((lit, then))
-        cur = els
-    if len(arms) < 2:
-        return None
-    arm_txt = " | ".join(f"{_p(lit, b, 0)[0]} ⇒ {_p(val, b, 0)[0]}" for lit, val in arms)
-    return f"match {var} {{ {arm_txt} | _ ⇒ {_p(cur, b, 0)[0]} }}"
-
-
-# ── shared-subterm naming (the Z3 AST is a DAG; without this it blows up) ──────
+# ── shared-subterm naming (the Z3 AST is a DAG; Z3's own printer uses `let`) ───
 _NAMES = {}            # node id → 'sN' for shared, non-trivial subterms
 
 
@@ -221,7 +103,6 @@ def _collect(items):
 
 
 def _render_def(e):
-    """Render a node ignoring its own binding name (used at its definition)."""
     i = e.get_id()
     saved = _NAMES.pop(i, None)
     txt = _p(e, [], 0)[0]
@@ -248,26 +129,25 @@ def _render_top(items):
     return "\n".join(body)
 
 
-# ── core renderer: returns (text, precedence) ─────────────────────────────────
+# ── core renderer: returns (text, precedence). ONE node → ONE rendering. ───────
 def _p(e, b, need=0):
     if not b:                               # only at top level (no active binders)
         nm = _NAMES.get(e.get_id())
         if nm is not None:
             return nm, P_ATOM
+
     # quantifiers
     if z3.is_quantifier(e):
         kind = "∀" if e.is_forall() else "∃"
         names = [e.var_name(i) for i in range(e.num_vars())]
-        nb = b + list(reversed(names))                 # de Bruijn: var 0 = innermost
+        nb = b + list(reversed(names))      # de Bruijn: var 0 = innermost
         body = _p(e.body(), nb, 0)[0]
-        head = ", ".join(names)
-        return _wrap(f"{kind} {head} : {body}", P_QUANT, need), P_QUANT
+        return _wrap(f"{kind} {', '.join(names)} : {body}", P_QUANT, need), P_QUANT
 
     # bound variable (de Bruijn index into binder stack)
     if z3.is_var(e):
         idx = z3.get_var_index(e)
-        name = b[-1 - idx] if idx < len(b) else f"?{idx}"
-        return name, P_ATOM
+        return (b[-1 - idx] if idx < len(b) else f"?{idx}"), P_ATOM
 
     if not z3.is_app(e):
         return str(e), P_ATOM
@@ -275,9 +155,9 @@ def _p(e, b, need=0):
     k = e.decl().kind()
 
     # literals / constants
-    if _is_true(e):
+    if z3.is_true(e):
         return "true", P_ATOM
-    if _is_false(e):
+    if z3.is_false(e):
         return "false", P_ATOM
     if z3.is_int_value(e) or z3.is_bv_value(e):
         return str(e.as_long()), P_ATOM
@@ -286,99 +166,108 @@ def _p(e, b, need=0):
     if z3.is_string_value(e):
         return '"' + e.as_string() + '"', P_ATOM
     if k == z3.Z3_OP_CONST_ARRAY:
-        return _render_array(e, b)[0], P_ATOM
+        return f"const({_p(e.arg(0), b, 0)[0]})", P_ATOM
     if e.num_args() == 0:
         return e.decl().name(), P_ATOM
 
-    # recognizers first (most specific)
-    for rec, prec in ((_try_range, P_CMP), (_try_membership, P_CMP),
-                      (_try_tuple_set, P_CMP), (_try_negcmp, P_CMP),
-                      (_try_match, P_ATOM)):
-        out = rec(e, b)
-        if out is not None:
-            return _wrap(out, prec, need), prec
-
-    # logical
+    # ── logical ──
     if k == z3.Z3_OP_NOT:
-        return _wrap("¬" + _p(e.arg(0), b, P_NOT)[0], P_NOT, need), P_NOT
+        return _wrap("¬" + _p(e.arg(0), b, P_ATOM)[0], P_NOT, need), P_NOT
     if k == z3.Z3_OP_AND:
-        s = " ∧ ".join(_p(c, b, P_AND)[0] for c in e.children())
-        return _wrap(s, P_AND, need), P_AND
-    if k == z3.Z3_OP_OR:
-        s = " ∨ ".join(_p(c, b, P_OR)[0] for c in e.children())
-        return _wrap(s, P_OR, need), P_OR
+        return _wrap(" ∧ ".join(_p(c, b, P_AND)[0] for c in e.children()), P_AND, need), P_AND
+    if k == z3.Z3_OP_OR:                    # wrap ∧-groups for legibility (faithful)
+        return _wrap(" ∨ ".join(_p(c, b, P_AND + 1)[0] for c in e.children()), P_OR, need), P_OR
     if k == z3.Z3_OP_IMPLIES:
         a, c = _p(e.arg(0), b, P_IMP + 1)[0], _p(e.arg(1), b, P_IMP)[0]
         return _wrap(f"{a} ⇒ {c}", P_IMP, need), P_IMP
-
-    # equality / distinct
     if k == z3.Z3_OP_DISTINCT:
-        cs = [_p(c, b, P_CMP)[0] for c in e.children()]
-        s = " ≠ ".join(cs) if len(cs) == 2 else "distinct{" + ", ".join(cs) + "}"
-        return _wrap(s, P_CMP, need), P_CMP
+        return _wrap("distinct(" + ", ".join(_p(c, b, 0)[0]
+                     for c in e.children()) + ")", P_ATOM, need), P_ATOM
 
-    # infix binops (arith, comparisons, bv)
+    # ── infix arithmetic / comparison / bitvector ──
     if k in _BIN:
         op, prec = _BIN[k]
         cs = [_p(c, b, prec + (1 if i else 0))[0] for i, c in enumerate(e.children())]
         return _wrap(f" {op} ".join(cs), prec, need), prec
-    if k == z3.Z3_OP_UMINUS:
-        return _wrap("−" + _p(e.arg(0), b, P_NOT)[0], P_NOT, need), P_NOT
+    if k in (z3.Z3_OP_UMINUS, z3.Z3_OP_BNEG):
+        return _wrap("−" + _p(e.arg(0), b, P_ATOM)[0], P_NOT, need), P_NOT
+    if k == z3.Z3_OP_BNOT:
+        return _wrap("~" + _p(e.arg(0), b, P_ATOM)[0], P_NOT, need), P_NOT
 
-    # pseudo-boolean cardinality
+    # ── arrays (faithful: select / store / const) ──
+    if k == z3.Z3_OP_SELECT:
+        idx = ", ".join(_p(c, b, 0)[0] for c in e.children()[1:])
+        return f"{_p(e.arg(0), b, P_ATOM)[0]}[{idx}]", P_ATOM
+    if k == z3.Z3_OP_STORE:                 # iterate the spine (can be 1000s deep)
+        updates, cur = [], e
+        while cur.decl().kind() == z3.Z3_OP_STORE and not (
+                not b and cur.get_id() in _NAMES):
+            ch = cur.children()
+            idx = ", ".join(_p(c, b, 0)[0] for c in ch[1:-1])
+            updates.append(f"[{idx} ↦ {_p(ch[-1], b, 0)[0]}]")
+            cur = ch[0]
+        return _p(cur, b, P_ATOM)[0] + "".join(reversed(updates)), P_ATOM
+
+    # ── genuine Z3 set ops (distinct AST kinds, so faithful to render as sets) ──
+    if k in _SET_BIN:
+        op, prec = _SET_BIN[k]
+        cs = [_p(c, b, prec + 1)[0] for c in e.children()]
+        return _wrap(f" {op} ".join(cs), prec, need), prec
+    if k == z3.Z3_OP_SET_COMPLEMENT:
+        return _p(e.arg(0), b, P_ATOM)[0] + "ᶜ", P_ATOM
+    if k == z3.Z3_OP_SET_CARD:
+        return f"#{_p(e.arg(0), b, P_ATOM)[0]}", P_ATOM
+
+    # ── ite (faithful: nested if/then/else, NOT collapsed to match) ──
+    if k == z3.Z3_OP_ITE:                   # iterate the else-spine (can be deep)
+        arms, cur = [], e
+        while cur.decl().kind() == z3.Z3_OP_ITE and not (
+                not b and cur.get_id() in _NAMES):
+            c, t, els = cur.children()
+            arms.append((_p(c, b, 0)[0], _p(t, b, 0)[0]))
+            cur = els
+        s = _p(cur, b, 0)[0]
+        for c, t in reversed(arms):
+            s = f"if {c} then {t} else {s}"
+        return _wrap(s, P_QUANT, need), P_QUANT
+
+    # ── pseudo-boolean (faithful: the op + its bound) ──
     if k in (z3.Z3_OP_PB_AT_MOST, z3.Z3_OP_PB_AT_LEAST):
-        op = "≤" if k == z3.Z3_OP_PB_AT_MOST else "≥"
+        nm = "at_most" if k == z3.Z3_OP_PB_AT_MOST else "at_least"
         bound = e.decl().params()[0] if e.decl().params() else "?"
         elems = ", ".join(_p(c, b, 0)[0] for c in e.children())
-        return _wrap(f"#{{{elems}}} {op} {bound}", P_CMP, need), P_CMP
+        return f"{nm}({bound}; {elems})", P_ATOM
 
-    # sequence / string forms
-    if k == z3.Z3_OP_SEQ_LENGTH:
-        return f"#{_p(e.arg(0), b, P_ATOM)[0]}", P_ATOM
+    # ── array map: (_ map f) a b … ──
+    if k == z3.Z3_OP_ARRAY_MAP:
+        ps = e.decl().params()
+        fn = ps[0].name() if ps and hasattr(ps[0], "name") else "?"
+        return f"map[{fn}](" + ", ".join(_p(c, b, 0)[0] for c in e.children()) + ")", P_ATOM
+
+    # ── sequence / string ──
     if k == z3.Z3_OP_SEQ_UNIT:
         return f"⟨{_p(e.arg(0), b, 0)[0]}⟩", P_ATOM
 
-    # arrays / sets that weren't caught as membership
-    if k == z3.Z3_OP_SELECT:
-        return f"{_p(e.arg(0), b, P_ATOM)[0]}[{_p(e.arg(1), b, 0)[0]}]", P_ATOM
-    if k == z3.Z3_OP_STORE:
-        return _render_array(e, b)[0], P_SETOP
-
-    # ite (single, not a chain — chain handled by _try_match)
-    if k == z3.Z3_OP_ITE:
-        c, t, f = (_p(x, b, 0)[0] for x in e.children())
-        return _wrap(f"if {c} then {t} else {f}", P_QUANT, need), P_QUANT
-
-    # tuple constructor → (a, b); other datatype ctor/app → Name(a, b)
+    # ── tuple constructor → (a, b); else generic application ──
     if _is_tuple_ctor(e):
         return "(" + ", ".join(_p(c, b, 0)[0] for c in e.children()) + ")", P_ATOM
-
-    # generic application, with seq/string names cleaned up
     name = e.decl().name()
     if name in ("seq.len", "str.len"):
-        return f"#{_p(e.arg(0), b, P_ATOM)[0]}", P_ATOM
+        return f"len({_p(e.arg(0), b, 0)[0]})", P_ATOM
     name = _CLEAN_NAME.get(name, name)
     return f"{name}(" + ", ".join(_p(c, b, 0)[0] for c in e.children()) + ")", P_ATOM
 
 
-_CLEAN_NAME = {
-    "seq.contains": "contains", "str.contains": "contains",
-    "str.suffixof": "suffix_of", "str.prefixof": "prefix_of",
-    "seq.++": "++", "str.++": "++", "seq.at": "at", "str.at": "at",
-    "str.substr": "substr", "seq.extract": "extract", "str.indexof": "index_of",
-}
-
-
 # ── public API ────────────────────────────────────────────────────────────────
 def expr(e):
-    """Pretty-print a single Z3 expression (shared subterms → `where` bindings)."""
+    """Faithfully pretty-print a single Z3 expression (DAG sharing → `where`)."""
     return _render_top([e])
 
 
 def goal(g):
-    """Pretty-print a Goal/Solver as a constraint list (one assertion per line);
-    subterms shared across assertions are hoisted into a trailing `where` block."""
+    """Faithfully pretty-print a Goal/Solver as a constraint list (one assertion
+    per line); subterms shared across assertions hoist into a `where` block."""
     items = [g[i] for i in range(len(g))] if hasattr(g, "__len__") else list(g)
     if not items:
-        return "(empty — trivially SAT)"
+        return "(empty — trivially true / SAT)"
     return _render_top(items)

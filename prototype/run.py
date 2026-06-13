@@ -81,7 +81,7 @@ def cmd_pretty(a):
     enc = next(e for e in TASKS[a.task].encodings if e.name == a.encoding)
     seq = tuple(_tac(t) for t in a.tactics.split(",") if t)
     g = enc.build(a.scale)
-    print(f"# {a.task}/{a.encoding}  N={a.scale}  (set-theoretic surface)\n")
+    print(f"# {a.task}/{a.encoding}  N={a.scale}  (faithful Z3-AST view)\n")
     print(pretty.goal(g))
     if seq:
         g2, _, err = tactics.apply(g, seq)

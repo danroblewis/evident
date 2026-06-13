@@ -4,8 +4,16 @@ import json
 import os
 import hashlib
 import difflib
-from . import tactics, profiling
+from . import tactics, profiling, pretty
 from .tasks import TASKS
+
+
+def _safe_pp(g):
+    """Faithful pretty-print of a Goal, never raising (reports fall through)."""
+    try:
+        return pretty.goal(g)
+    except Exception as ex:                  # a prettifier bug must not kill a report
+        return f"(prettify failed: {type(ex).__name__}: {ex})"
 
 
 def _diff_block(before, after, after_label, cap=400):
@@ -196,7 +204,8 @@ def translations(rows_or_csv, outdir, theory=None, cap=400, dump_files=True):
                     fn = f"v{len(variants):02d}_{h}.smt2"
                     if dump_files:
                         open(os.path.join(gdir, fn), "w").write(sx)
-                    variants[h] = [fn, profiling.profile(g2)["dag_nodes"], sx, 0]
+                    variants[h] = [fn, profiling.profile(g2)["dag_nodes"], sx, 0,
+                                   _safe_pp(g2)]
                 variants[h][3] += 1
                 fn, nodes = variants[h][0], variants[h][1]
                 rowinfo.append((r, fn, nodes - base_nodes))
@@ -216,9 +225,12 @@ def translations(rows_or_csv, outdir, theory=None, cap=400, dump_files=True):
                 return f"[`{fn}`](smt2/{gname}/{fn})" if dump_files else f"`{fn}`"
             baseline = (f"[`before.smt2`](smt2/{gname}/before.smt2)" if dump_files
                         else "`before.smt2`")
+            before_pp = _safe_pp(base)
             body += [f"### {enc}  (N={scale}) — {1 + len(variants)} distinct models "
                      f"over {len(g)} sequences",
                      f"baseline: {baseline} ({base_nodes} nodes)", "",
+                     "<details><summary>baseline model (faithful Z3-AST view)</summary>\n",
+                     "```", before_pp, "```", "", "</details>", "",
                      "| rank | tactic sequence | result | total ms | Δnodes | model |",
                      "|--:|---|---|--:|--:|---|"]
             for i, (r, fn, dn) in enumerate(rowinfo, 1):
@@ -227,11 +239,12 @@ def translations(rows_or_csv, outdir, theory=None, cap=400, dump_files=True):
                             f"{r['total_ms']:.2f} | {dns} | {model_cell(fn)} |")
             body.append("")
 
-            body.append("**diffs vs baseline** (one per distinct model):\n")
-            for fn, nodes, sx, cnt in sorted(variants.values(), key=lambda v: v[1]):
+            body.append("**diffs vs baseline** — faithful AST view, before → after "
+                         "(one per distinct model):\n")
+            for fn, nodes, sx, cnt, pp in sorted(variants.values(), key=lambda v: v[1]):
                 body += [f"<details><summary><code>{fn}</code> — {cnt} sequence(s), "
                          f"{nodes - base_nodes:+d} nodes</summary>\n",
-                         _diff_block(before_sx, sx, fn, cap), "", "</details>", ""]
+                         _diff_block(before_pp, pp, fn, cap), "", "</details>", ""]
             body.append("")
 
     text = "\n".join(head + summary + [""] + body)
