@@ -29,12 +29,17 @@ def cmd_run(a):
         report.write_json(rows, a.json)
     md = a.markdown or os.path.splitext(a.out)[0] + ".md"
     report.markdown(rows, md, source=a.out)
-    print(f"\nwrote {a.out}, {md}" + (f", {a.json}" if a.json else ""))
+    mdiff = os.path.splitext(a.out)[0] + "-modeldiff.md"
+    report.model_diff(rows, mdiff)
+    print(f"\nwrote {a.out}, {md}, {mdiff}" + (f", {a.json}" if a.json else ""))
 
 
 def cmd_report(a):
     if a.markdown:
         report.markdown(a.csv, a.markdown, source=a.csv)
+    if a.model_diff:
+        report.model_diff(a.csv, a.model_diff)
+        print(f"wrote {a.model_diff}")
     if a.json:
         report.write_json(report._load(a.csv), a.json)
     report.summarize(a.csv)
@@ -96,6 +101,8 @@ if __name__ == "__main__":
     rp = sub.add_parser("report", help="regenerate md/json from a CSV")
     rp.add_argument("csv")
     rp.add_argument("--markdown")
+    rp.add_argument("--model-diff", dest="model_diff",
+                    help="write a per-encoding baseline-vs-winning-tactic model diff")
     rp.add_argument("--json")
     rp.set_defaults(fn=cmd_report)
 

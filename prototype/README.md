@@ -22,8 +22,8 @@ prototype/
     harness.py            timing core (wall-clock floor + Z3 rlimit work counter)
     runner.py             the sweep: task × scale × encoding × tactic-sequence
     profiling.py          model AST fingerprint + before/after diff
-    report.py             CSV / JSON / markdown / text-summary outputs
-  results/                generated artifacts (run.csv, run.md, run.json)
+    report.py             CSV / JSON / markdown / model-diff / text-summary
+  results/                generated artifacts (run.csv/.md/.json, *-modeldiff.md)
   z3-capabilities.md      reference: every theory, sort, predicate Z3 exposes
   set-lowering-via-z3.md  the blast_select_store finding, with Z3 source refs
   FINDINGS.md             cross-theory results + conclusions
@@ -36,12 +36,24 @@ python3 run.py list                          # tasks, theories, tactics, counts
 python3 run.py run --max-len 2               # the sweep → results/run.{csv,md}
 python3 run.py run --tasks dispatch coloring --max-len 3 --reps 3
 python3 run.py report results/run.csv --markdown results/run.md
+python3 run.py report results/run.csv --model-diff results/run-modeldiff.md
 python3 run.py profile dispatch set 200 --tactics blast   # AST diff under a tactic
 ```
 
-`run` writes a CSV, a markdown report, and a text summary to stderr (soundness
-and timeout canaries included). `--json` adds a JSON dump. `report` regenerates
-the derived outputs from an existing CSV without re-solving.
+`run` writes a CSV, a markdown report (`run.md`), a per-encoding **model-diff**
+(`run-modeldiff.md`), and a text summary to stderr (soundness and timeout
+canaries included). `--json` adds a JSON dump. `report` regenerates any of these
+derived outputs from an existing CSV without re-solving.
+
+### The three reports
+
+- **`run.md`** — *timing*: each encoding ranked by baseline solve time, with the
+  fastest tactic sequence found.
+- **`run-modeldiff.md`** — *structure*: for each encoding's winning sequence,
+  how the model changed (Δ DAG nodes, Δ distinct symbols, and the operation
+  counts that moved most — e.g. `store 200→0` where `blast_select_store` blasts
+  a store-chain away). This is the structural *why* behind a speedup.
+- **`profile`** — the same AST diff, on demand, for any one case + tactic string.
 
 ## The combinatorial sweep
 

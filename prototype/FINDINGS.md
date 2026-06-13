@@ -28,6 +28,24 @@ Z3 tactic" the design predicted; `set-lowering-via-z3.md` traces it to
 `array_rewriter.cpp::mk_select_core`. The combinatorial sweep *discovers* it
 without being told — it is the winning sequence wherever a store-chain appears.
 
+### The structural fingerprint (`run-modeldiff.md`)
+
+The model-diff report shows *why* each winning tactic helped — the operation
+counts that moved. The set/array lowerings are unmistakable:
+
+| encoding | winning tactic | what moved |
+|---|---|---|
+| dispatch/array | `blast_select_store` | `store 200→0`, model shrinks 408 nodes |
+| dispatch/set | `ctx-simplify`>`blast_select_store` | `store 200→0`, tuple ctor `P 201→0`, −600 nodes |
+| dispatch/ite | `blast_select_store`>`solve-eqs` | `if 199→0`, `= 200→0`, −603 nodes |
+| reachability/unroll_set | `simplify`>`solve-eqs` | `store 10921→0`, `if 10920→0`, `select 3421→0` |
+| coloring/enum | `propagate-values`>`blast_select_store` | `distinct 147→0`, `= 0→147` (distinct→equality) |
+
+The store-chains literally vanish (`store N→0`); the model gets *smaller* and
+*faster* together. `coloring/enum` is the reverse-shaped lesson — the model
+*grows* (`= 0→147`) yet speeds up, because trading one `distinct` for 147 cheap
+equalities is the better op-mix. Size is not the signal; the op histogram is.
+
 ## No theory is universally fastest
 
 The fast encoding flips by problem — the opposite rankings below are the whole

@@ -1,6 +1,8 @@
 """Outputs: CSV, JSON, a markdown report, and a text summary."""
 import csv
 import json
+from . import tactics, profiling
+from .tasks import TASKS
 
 FIELDS = ["task", "scale", "encoding", "theories", "combo", "combo_len",
           "result", "ok", "tactic_ms", "solve_ms", "total_ms", "rlimit"]
@@ -58,6 +60,46 @@ def markdown(rows_or_csv, path, source=""):
             bs = f"{b:.1f}" if b != float("inf") else "—"
             bts = f"{bt:.1f}" if bt != float("inf") else "—"
             out.append(f"| {enc} | {th} | {res} | {bs} | {bts} | `{combo}` |")
+        out.append("")
+    open(path, "w").write("\n".join(out))
+
+
+def model_diff(rows_or_csv, path):
+    """For each encoding's WINNING tactic sequence, tabulate how the model
+    changed: baseline vs after, with the largest operation-count movers.
+    Rebuilds goals from the task registry; the CSV only names the sequence."""
+    rows = _load(rows_or_csv) if isinstance(rows_or_csv, str) else rows_or_csv
+    out = ["# How the winning tactic reshaped each model", "",
+           "Per encoding (at its largest scale): the baseline model vs the model "
+           "after its fastest tactic sequence. `Δsym`/`Δnodes` are distinct "
+           "symbols and DAG nodes; *movers* are the operations whose count "
+           "changed most (the structural reason for the speedup).", ""]
+    for task in sorted({r["task"] for r in rows}):
+        tr = [r for r in rows if r["task"] == task]
+        N = max(r["scale"] for r in tr)
+        atN = [r for r in tr if r["scale"] == N]
+        out += [f"## {task}  (N={N})", "",
+                "| encoding | best sequence | Δnodes | Δsym | top operation movers |",
+                "|---|---|--:|--:|---|"]
+        for enc_name in sorted({r["encoding"] for r in atN}):
+            er = [r for r in atN if r["encoding"] == enc_name]
+            enc = next(e for e in TASKS[task].encodings if e.name == enc_name)
+            ok = [r for r in er if r["ok"]]
+            best = min(ok, key=lambda r: r["total_ms"]) if ok else None
+            if not best or best["combo"] == "(none)":
+                out.append(f"| {enc_name} | `(none)` | — | — | baseline already best |")
+                continue
+            g0 = enc.build(N)
+            g1, _, err = tactics.apply(g0, tactics.parse(best["combo"]))
+            if err or g1 is None:
+                out.append(f"| {enc_name} | `{best['combo']}` | — | — | (tactic error) |")
+                continue
+            p0, p1 = profiling.profile(g0), profiling.profile(g1)
+            sc, movers = profiling.diff(p0, p1, top=4)
+            dn = sc["dag_nodes"][2]
+            ds = sc["symbols"][2]
+            mv = ", ".join(f"{k} {b}→{a}" for k, b, a in movers) or "—"
+            out.append(f"| {enc_name} | `{best['combo']}` | {dn:+d} | {ds:+d} | {mv} |")
         out.append("")
     open(path, "w").write("\n".join(out))
 

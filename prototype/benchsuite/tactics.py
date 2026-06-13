@@ -44,6 +44,32 @@ def seq_str(seq):
     return ">".join(str(t) for t in seq) if seq else "(none)"
 
 
+def _val(s):
+    if s == "True":
+        return True
+    if s == "False":
+        return False
+    try:
+        return int(s)
+    except ValueError:
+        return s
+
+
+def parse(s):
+    """Inverse of seq_str: '(none)' or 'name[k=v]>name' -> tuple of Tactic."""
+    if not s or s == "(none)":
+        return ()
+    out = []
+    for tok in s.split(">"):
+        name, params = tok, ()
+        if "[" in tok:
+            name, rest = tok.split("[", 1)
+            params = tuple((kv.split("=", 1)[0], _val(kv.split("=", 1)[1]))
+                           for kv in rest.rstrip("]").split("][") if kv)
+        out.append(Tactic(name, params))
+    return tuple(out)
+
+
 def apply(goal, seq):
     """Apply a tactic sequence to a goal. Returns (goal', ms, error_or_None)."""
     if not seq:
