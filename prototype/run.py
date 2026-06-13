@@ -10,7 +10,7 @@
 import argparse
 import os
 import z3
-from benchsuite import runner, report, tactics, profiling
+from benchsuite import runner, report, tactics, profiling, pretty
 from benchsuite.tasks import TASKS, all_theories
 
 
@@ -77,6 +77,18 @@ def cmd_profile(a):
         print(f"\n  exported {base}_{{before,after}}.smt2")
 
 
+def cmd_pretty(a):
+    enc = next(e for e in TASKS[a.task].encodings if e.name == a.encoding)
+    seq = tuple(_tac(t) for t in a.tactics.split(",") if t)
+    g = enc.build(a.scale)
+    print(f"# {a.task}/{a.encoding}  N={a.scale}  (set-theoretic surface)\n")
+    print(pretty.goal(g))
+    if seq:
+        g2, _, err = tactics.apply(g, seq)
+        print(f"\n# after [{tactics.seq_str(seq)}]:\n")
+        print("tactic error" if err else pretty.goal(g2))
+
+
 def cmd_list(a):
     print("z3", z3.get_version_string())
     print(f"\ntheories ({len(all_theories())}): {', '.join(all_theories())}")
@@ -125,6 +137,11 @@ if __name__ == "__main__":
     pr.add_argument("--tactics", default="simplify,propagate-values,solve-eqs,simplify")
     pr.add_argument("--export")
     pr.set_defaults(fn=cmd_profile)
+
+    pp = sub.add_parser("pretty", help="render a model as a set-theoretic surface")
+    pp.add_argument("task"); pp.add_argument("encoding"); pp.add_argument("scale", type=int)
+    pp.add_argument("--tactics", default="", help="also show the model after these tactics")
+    pp.set_defaults(fn=cmd_pretty)
 
     ls = sub.add_parser("list", help="list tasks / theories / tactics")
     ls.set_defaults(fn=cmd_list)

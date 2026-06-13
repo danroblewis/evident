@@ -22,6 +22,7 @@ prototype/
     harness.py            timing core (wall-clock floor + Z3 rlimit work counter)
     runner.py             the sweep: task × scale × encoding × tactic-sequence
     profiling.py          model AST fingerprint + before/after diff
+    pretty.py             Z3 AST → Evident-ish set-theoretic surface renderer
     report.py             CSV / JSON / markdown / model-diff / text-summary
   results/                generated artifacts (run.csv/.md/.json, *-modeldiff.md)
   z3-capabilities.md      reference: every theory, sort, predicate Z3 exposes
@@ -41,6 +42,7 @@ python3 run.py report results/run.csv --translations results/translations  # all
 python3 run.py report results/run.csv --translations results/set-theory.md \
         --theory set --single-file --cap 1200          # focused, one self-contained .md
 python3 run.py profile dispatch set 200 --tactics blast   # AST diff under a tactic
+python3 run.py pretty dispatch set 8 --tactics blast       # set-theoretic surface
 ```
 
 `run` writes a CSV, a markdown report (`run.md`), a per-encoding **model-diff**
@@ -69,6 +71,39 @@ derived outputs from an existing CSV without re-solving.
   visible — each set-membership store-chain collapses to `(goal)` under
   `blast_select_store`. Any theory works (`--theory array`, `--theory bitvec`, …).
 - **`profile`** — the same AST diff as model-diff, on demand, for any one case.
+
+## Reading the constraint system: the prettifier (`pretty.py`)
+
+The Z3 AST *is* a set-theoretic structure wearing an `Array`/`store`/`select`
+costume. `benchsuite/pretty.py` walks an expr/Goal and re-presents it with
+set-theory notation (`∈ ∪ ∩ ⊆ ∀ ∃ ⇒ ∧ ∨ ¬ ≤ ≥ ≠`) so the constraint system
+reads the way Evident did — recovering the surface we lost when we started from
+Z3 instead of `.ev`. It is **not** a 1:1 operator swap; it recognizes the
+patterns that matter:
+
+| Z3 form | rendered as |
+|---|---|
+| `select(store-chain, key)` (set membership) | `key ∈ {a, b, c}` |
+| `(or (and (= k a)(= v b)) …)` (post-blast) | `(k, v) ∈ {(a,b), …}` |
+| `store`-chain over a non-Bool array | `{0 ↦ 3, 1 ↦ 4, _ ↦ d}` (map literal) |
+| `(and (≤ lo x) (< x hi))` | `lo ≤ x < hi` |
+| `if k=0 then a else if k=1 …` | `match k { 0 ⇒ a \| 1 ⇒ b \| _ ⇒ d }` |
+| `at-most(xs, 1)` / `at-least` | `#{xs} ≤ 1` (cardinality) |
+| `seq.len` / `seq.unit(7)` | `#sq` / `⟨7⟩` |
+
+Subterms shared across the model (the Z3 AST is a DAG) are hoisted into a
+trailing `where` block of `sN` bindings — both to avoid exponential blow-up and
+because it reads like Evident lets. Try it:
+
+```bash
+python3 run.py pretty dispatch set 8 --tactics blast   # ∈ {…} before AND after blast
+python3 run.py pretty reachability unroll_set 5         # a recurrence with `where` bindings
+```
+
+The flagship demo: `(k, v) ∈ {…}` renders **identically before and after
+`blast_select_store`** — the prettifier shows the lowering changes the costume,
+not the set meaning. Use `pretty.expr(e)` / `pretty.goal(g)` directly on any Z3
+object too.
 
 ## The combinatorial sweep
 
