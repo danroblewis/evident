@@ -1,0 +1,90 @@
+"""Outputs: CSV, JSON, a markdown report, and a text summary."""
+import csv
+import json
+
+FIELDS = ["task", "scale", "encoding", "theories", "combo", "combo_len",
+          "result", "ok", "tactic_ms", "solve_ms", "total_ms", "rlimit"]
+
+
+def write_csv(rows, path):
+    with open(path, "w", newline="") as fh:
+        w = csv.DictWriter(fh, fieldnames=FIELDS)
+        w.writeheader()
+        for r in rows:
+            w.writerow({k: r.get(k) for k in FIELDS})
+
+
+def write_json(rows, path):
+    json.dump(rows, open(path, "w"), indent=0)
+
+
+def _load(path):
+    rows = list(csv.DictReader(open(path)))
+    for r in rows:
+        for k in ("solve_ms", "total_ms", "tactic_ms"):
+            r[k] = float(r[k])
+        r["scale"] = int(r["scale"])
+        r["ok"] = r["ok"] in ("True", "true", True)
+    return rows
+
+
+def markdown(rows_or_csv, path, source=""):
+    rows = _load(rows_or_csv) if isinstance(rows_or_csv, str) else rows_or_csv
+    theories = sorted({t for r in rows for t in r["theories"].split("+")})
+    out = ["# Z3 theory × encoding × tactic — benchmark report", "",
+           f"{len(rows)} cases{(' from `' + source + '`') if source else ''}. "
+           "`baseline` = no-tactic solve; `best` = fastest tactic sequence (apply+solve).",
+           "", f"**Theories exercised ({len(theories)}):** "
+           + ", ".join(f"`{t}`" for t in theories), ""]
+    for task in sorted({r["task"] for r in rows}):
+        tr = [r for r in rows if r["task"] == task]
+        N = max(r["scale"] for r in tr)
+        atN = [r for r in tr if r["scale"] == N]
+        out += [f"## {task}  (N={N})", "",
+                "| encoding | theories | result | baseline ms | best ms | best tactic sequence |",
+                "|---|---|---|--:|--:|---|"]
+        ranked = []
+        for enc in {r["encoding"] for r in atN}:
+            er = [r for r in atN if r["encoding"] == enc]
+            ok = [r for r in er if r["ok"]]
+            base = next((r for r in er if r["combo"] == "(none)"), None)
+            best = min(ok, key=lambda r: r["total_ms"]) if ok else None
+            ranked.append((enc, er[0]["theories"],
+                           base["result"] if base else "?",
+                           base["solve_ms"] if base else float("inf"),
+                           best["total_ms"] if best else float("inf"),
+                           best["combo"] if best else "—"))
+        for enc, th, res, b, bt, combo in sorted(ranked, key=lambda x: x[3]):
+            bs = f"{b:.1f}" if b != float("inf") else "—"
+            bts = f"{bt:.1f}" if bt != float("inf") else "—"
+            out.append(f"| {enc} | {th} | {res} | {bs} | {bts} | `{combo}` |")
+        out.append("")
+    open(path, "w").write("\n".join(out))
+
+
+def summarize(rows_or_csv):
+    rows = _load(rows_or_csv) if isinstance(rows_or_csv, str) else rows_or_csv
+    for task in sorted({r["task"] for r in rows}):
+        tr = [r for r in rows if r["task"] == task]
+        N = max(r["scale"] for r in tr)
+        atN = [r for r in tr if r["scale"] == N]
+        print(f"\n### {task}  (N={N})")
+        base = sorted((r for r in atN if r["combo"] == "(none)" and r["ok"]),
+                      key=lambda r: r["solve_ms"])
+        for r in base:
+            print(f"  {r['encoding']:11} {r['theories']:22} {r['solve_ms']:8.1f} ms")
+        for enc in {r["encoding"] for r in atN}:
+            er = [r for r in atN if r["encoding"] == enc and r["ok"]]
+            if not er:
+                continue
+            b = next((r for r in er if r["combo"] == "(none)"), None)
+            best = min(er, key=lambda r: r["total_ms"])
+            if b and best["total_ms"] < b["solve_ms"] - 0.05:
+                print(f"    {enc}: {b['solve_ms']:.1f}→{best['total_ms']:.1f}ms "
+                      f"via [{best['combo']}]")
+        unsound = [r for r in tr if r["result"] in ("sat", "unsat") and not r["ok"]]
+        tmo = [r for r in tr if r["result"] == "unknown"]
+        if unsound:
+            print(f"  ⚠⚠ {len(unsound)} SOUNDNESS violations (tactic changed sat/unsat)")
+        if tmo:
+            print(f"  ⓘ {len(tmo)} tactic-induced timeouts (a tactic HURT)")

@@ -1,41 +1,92 @@
-# prototype — Python over Z3
+# prototype — Z3 cross-theory benchmark suite
 
-Strategic restart (branch `prototype-z3-python`). We stripped the
-`Evident → smt2 → Z3 → kernel` stack down to its bottom two layers and are
-prototyping them directly in **Python controlling Z3**, keeping the Python as
-thin as possible so the ideas can move *up* the stack later.
+Branch `prototype-z3-python`. We stripped the `Evident → smt2 → Z3 → kernel`
+stack down and are prototyping the bottom layer directly in **Python over Z3**,
+to answer one question empirically: *for a given problem, which Z3 theory and
+which tactic pipeline actually solve it fastest?*
+
+The thesis behind the Evident rewrite is "model with sets / relations, then let
+a tactic lower the slow encoding." This suite measures whether that holds —
+every task is written in several semantically-identical encodings (set, array,
+arithmetic, bitvector, …) and run under every tactic combination, so the
+fastest path is *discovered*, not assumed.
+
+## Layout
 
 ```
-  (Evident surface)        ← later
-        ↓
-  (smt2 lowering)          ← later
-        ↓
-  Z3 + a small runtime     ← HERE, in Python, kept minimal
+prototype/
+  run.py                  CLI entry point (run / report / profile / list)
+  benchsuite/             the suite, as a package
+    tasks.py              task registry: problems × semantically-equal encodings
+    tactics.py            tactic catalogue + the combinatorial sequence generator
+    harness.py            timing core (wall-clock floor + Z3 rlimit work counter)
+    runner.py             the sweep: task × scale × encoding × tactic-sequence
+    profiling.py          model AST fingerprint + before/after diff
+    report.py             CSV / JSON / markdown / text-summary outputs
+  results/                generated artifacts (run.csv, run.md, run.json)
+  z3-capabilities.md      reference: every theory, sort, predicate Z3 exposes
+  set-lowering-via-z3.md  the blast_select_store finding, with Z3 source refs
+  FINDINGS.md             cross-theory results + conclusions
 ```
-
-## What we're exploring
-
-The constraint-modeling core from `../docs/`:
-
-- **relations as sets of tuples** (`../docs/plans/relations-as-tuple-sets.md`) —
-  dispatch / mappings / grammars as membership in a set, not control flow.
-- **claims as sets** + the set algebra (`../docs/plans/claims-as-sets.md`).
-- **under-determined, bounded solution spaces** — partial constraint, the
-  solver fills the rest; lazy function-images (project, don't expand).
-- **the runtime loop** — `init + Done → solve → effect trace` (bounded model
-  checking / planning-as-SAT), the layer that decomposes large models so Z3
-  doesn't have to swallow them whole.
-
-## Verified (see `00_smoke.py`)
-
-Python Z3 4.15.4 is installed and the pieces we care about work: under-determined
-solves return a witness; sets are native (`SetSort`, `EmptySet`, `SetAdd`,
-`SetUnion`/`Intersect`/`Difference`, `IsMember`, `IsSubset`); relations solve.
 
 ## Run
 
-```
-python3 prototype/00_smoke.py
+```bash
+python3 run.py list                          # tasks, theories, tactics, counts
+python3 run.py run --max-len 2               # the sweep → results/run.{csv,md}
+python3 run.py run --tasks dispatch coloring --max-len 3 --reps 3
+python3 run.py report results/run.csv --markdown results/run.md
+python3 run.py profile dispatch set 200 --tactics blast   # AST diff under a tactic
 ```
 
-(`z3` Python bindings via the system package; the `z3` CLI is also on PATH.)
+`run` writes a CSV, a markdown report, and a text summary to stderr (soundness
+and timeout canaries included). `--json` adds a JSON dump. `report` regenerates
+the derived outputs from an existing CSV without re-solving.
+
+## The combinatorial sweep
+
+For each **task**, each **scale**, each **encoding**, the runner applies every
+tactic **sequence** and times the solve separately from the tactic application
+(so a tactic's cost is never hidden inside the solve number).
+
+The sequence set is the empty baseline plus every ordered sequence with
+repetition of length `1..max_len` over the catalogue — each tactic alone, each
+tactic twice, each after every other, and so on. With 7 tactics:
+
+| max_len | sequences/case |
+|--:|--:|
+| 1 | 8 |
+| 2 | 57 |
+| 3 | 400 |
+| … | … |
+| 7 | 960 800 (the full "until we run out of tactics" sweep) |
+
+`--max-len 2` is the practical default; the winners (notably
+`simplify[blast_select_store=True]`) already surface there.
+
+## Tasks
+
+Each task is one problem with several encodings that must agree on sat/unsat;
+the runner flags any tactic that changes the answer as a **soundness
+violation**.
+
+| task | what it is | encodings (theories) |
+|---|---|---|
+| `dispatch` | invert a scrambled map | arith, ite, array, func, set, set_bv |
+| `coloring` | 3-colour a planted graph | int(≠), bitvec, onehot, enum |
+| `reachability` | is target reachable | unroll_bool, unroll_set, special(TC) |
+| `arith_system` | ordered vars summing to target | int, real, real_nl, bitvec |
+| `string_match` | length-L string w/ "ab", ends "z" | string, regex |
+| `seq_build` | bounded Seq(Int) containing 7 | seq |
+| `fp_solve` | positive non-NaN Float32s | fp |
+
+Together they exercise 14 theories. `python3 run.py list` prints the live set.
+
+## Reading the output
+
+The markdown report ranks each encoding by no-tactic baseline and shows the
+fastest tactic sequence found. The headline results are in `FINDINGS.md`; the
+load-bearing one: a set-of-tuples dispatch is ~1000× slower than an ite chain,
+but `simplify` with `blast_select_store=True` rewrites the store-chain select
+into that ite and recovers the gap (~700×) — the "safe lowering as a tactic"
+the thesis predicted.
