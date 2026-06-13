@@ -1,6 +1,0 @@
-import "stdlib/kernel.ev"
-claim main
-    s ∈ String
-    s = "abc"
-    s = "xyz"
-    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

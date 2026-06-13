@@ -1,9 +1,0 @@
-import "stdlib/kernel.ev"
-type Task
-    duration ∈ Nat
-    priority ∈ Nat
-claim main
-    tasks ∈ Seq(Task)
-    #tasks = 3
-    ∀ t ∈ tasks : t.duration ≥ 0
-    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

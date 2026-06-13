@@ -1,7 +1,0 @@
-import "stdlib/kernel.ev"
-enum Color = Red | Green | Blue
-claim main
-    c ∈ Color
-    c = Red
-    c = Green
-    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

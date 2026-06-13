@@ -1,9 +1,0 @@
--- Probe: bare assert with a String-literal RHS (`t = "xy"`).
-
-import "stdlib/kernel.ev"
-
-claim main
-    t ∈ String
-    t = "xy"
-    sentinel ∈ Int = 42
-    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

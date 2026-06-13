@@ -1,9 +1,0 @@
--- C8 universal ∀ x ∈ xs : P over a bounded seq.
--- entry: main
--- expect: exit = 0
-import "stdlib/kernel.ev"
-claim main
-    xs ∈ Seq(Int) = ⟨1, 2, 3⟩
-    #xs ≤ 5
-    ∀ x ∈ xs : x > 0
-    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

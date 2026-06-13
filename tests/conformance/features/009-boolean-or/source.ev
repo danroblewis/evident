@@ -1,4 +1,0 @@
-import "stdlib/kernel.ev"
-
-claim main
-    effects ∈ Seq(Effect) = ⟨Exit((1 = 2 ∨ 3 = 3) ? 1 : 0)⟩

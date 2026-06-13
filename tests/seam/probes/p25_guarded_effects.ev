@@ -1,8 +1,0 @@
--- Probe: guarded effects writer (`cond ⇒ effects = ⟨Exit(0)⟩`).
-
-import "stdlib/kernel.ev"
-
-claim main
-    flag ∈ Bool
-    flag ⇒ effects = ⟨Exit(0)⟩
-    sentinel ∈ Int = 42

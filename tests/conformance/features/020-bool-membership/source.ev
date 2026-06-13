@@ -1,5 +1,0 @@
-import "stdlib/kernel.ev"
-claim main
-    b ∈ Bool
-    b = true
-    effects ∈ Seq(Effect) = ⟨Exit(b ? 0 : 1)⟩

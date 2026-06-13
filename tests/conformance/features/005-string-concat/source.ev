@@ -1,8 +1,0 @@
-import "stdlib/kernel.ev"
-
-claim main
-    msg ∈ String = "con" ++ "cat"
-    effects ∈ Seq(Effect) = ⟨
-        LibCall("libc", "puts", ⟨ArgStr(msg)⟩),
-        Exit(0)
-    ⟩

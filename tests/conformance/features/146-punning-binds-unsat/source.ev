@@ -1,8 +1,0 @@
-import "stdlib/kernel.ev"
-claim Render(on ∈ Bool, name ∈ String)
-    on ⇒ (name = "lit")
-claim main
-    x ∈ Bool = true
-    name ∈ String = "dark"
-    Render(on ↦ x, name)
-    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

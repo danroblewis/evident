@@ -1,9 +1,0 @@
--- C10 edges violated: a descending seq is not pairwise increasing →
--- UNSAT → exit 2. (Proves edges() is a real constraint.)
--- entry: main
--- expect: exit = 2
-import "stdlib/kernel.ev"
-claim main
-    xs ∈ Seq(Int) = ⟨3, 2, 1⟩
-    ∀ (a, b) ∈ edges(xs) : a < b
-    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

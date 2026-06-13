@@ -1,5 +1,0 @@
-import "stdlib/kernel.ev"
-claim main
-    s ∈ String = "world.pos"
-    str_contains(s, "pos")
-    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

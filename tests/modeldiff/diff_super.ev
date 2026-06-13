@@ -1,9 +1,0 @@
--- class 3: B drops the upper bound → B ⊋ base (base ⊊ B). Witness: x=10.
--- entry: main
-import "stdlib/kernel.ev"
-
-claim main
-    x ∈ Int
-    0 < x
-    out ∈ Int = x + 1
-    effects ∈ Seq(Effect) = ⟨Exit(out)⟩

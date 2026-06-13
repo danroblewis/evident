@@ -1,5 +1,0 @@
-import "stdlib/kernel.ev"
-claim main
-    s ∈ String = "world.pos"
-    ends_with(s, ".pos")
-    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

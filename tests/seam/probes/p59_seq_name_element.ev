@@ -1,9 +1,0 @@
--- Probe: a NAME as a Seq-literal element (`effects = ⟨a⟩`) — needed to
--- route match-selected Effect values into the effects writer.
-
-import "stdlib/kernel.ev"
-
-claim main
-    a ∈ Effect = Exit(0)
-    effects ∈ Seq(Effect) = ⟨a⟩
-    sentinel ∈ Int = 42

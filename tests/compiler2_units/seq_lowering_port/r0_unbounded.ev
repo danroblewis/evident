@@ -1,3 +1,0 @@
-claim main
-    xs ∈ Seq(Int) = ⟨1, 2⟩
-    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

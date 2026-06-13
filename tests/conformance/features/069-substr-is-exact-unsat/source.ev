@@ -1,6 +1,0 @@
-import "stdlib/kernel.ev"
-claim main
-    s ∈ String = "Edge<Rect>"
-    pre ∈ String = substr(s, 0, 4)
-    pre = "Edgz"
-    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

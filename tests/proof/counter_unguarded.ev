@@ -1,8 +1,0 @@
-import "stdlib/kernel.ev"
-type Ctr(n ∈ Int)
-    n ≥ 0
-    n ≤ 10
-fsm main
-    c ∈ Ctr
-    c.n = (is_first_tick ? 0 : _c.n + 1)
-    effects ∈ Seq(Effect) = (c.n ≥ 10 ? ⟨Exit(0)⟩ : ⟨LibCall("libc", "getpid", ⟨⟩)⟩)

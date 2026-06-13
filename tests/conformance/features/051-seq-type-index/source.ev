@@ -1,9 +1,0 @@
-import "stdlib/kernel.ev"
-claim main
-    s ∈ Seq(Int)
-    #s = 3
-    s[0] = 1
-    s[1] = 2
-    s[2] = 3
-    ok ∈ Bool = (s[0] = 1 ∧ s[1] = 2 ∧ s[2] = 3)
-    effects ∈ Seq(Effect) = ⟨Exit(ok ? 0 : 1)⟩

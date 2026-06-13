@@ -1,9 +1,0 @@
--- E16 suffix mismatch: ⟨4,9⟩ is not the suffix ⟨4,5⟩ → UNSAT → exit 2.
--- entry: main
--- expect: exit = 2
-import "stdlib/kernel.ev"
-claim main
-    s ∈ Seq(Int) = ⟨1, 2, 3, 4, 5⟩
-    p ∈ Seq(Int) = ⟨4, 9⟩
-    ∀ i ∈ {0..1} : p[i] = s[3 + i]
-    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

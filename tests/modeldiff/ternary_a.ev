@@ -1,7 +1,0 @@
--- class 5: total ternary — the reference for a set-theoretic rewrite.
--- entry: main
-import "stdlib/kernel.ev"
-claim main
-    sel ∈ Bool
-    out ∈ Int = (sel ? 10 : 20)
-    effects ∈ Seq(Effect) = ⟨Exit(out)⟩

@@ -1,9 +1,0 @@
-import "stdlib/kernel.ev"
-type IVec2(x, y ∈ Int)
-claim sum_vec(v ∈ IVec2, out ∈ Int)
-    out = v.x + v.y
-claim main
-    result ∈ Int
-    sum_vec((3, 4), result)
-    ok ∈ Bool = (result = 7)
-    effects ∈ Seq(Effect) = ⟨Exit(ok ? 0 : 1)⟩

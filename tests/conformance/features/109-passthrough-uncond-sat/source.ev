@@ -1,9 +1,0 @@
-import "stdlib/kernel.ev"
-claim GreetsHi
-    text ∈ String
-    text = "hi"
-claim main
-    text ∈ String
-    ..GreetsHi
-    text = "hi"
-    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

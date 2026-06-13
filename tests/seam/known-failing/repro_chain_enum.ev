@@ -1,5 +1,0 @@
-enum Op = OpA | OpB | OpC
-claim main
-    c ∈ Int = 1
-    result ∈ Op = (c = 1 ? OpA : c = 2 ? OpB : OpC)
-    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

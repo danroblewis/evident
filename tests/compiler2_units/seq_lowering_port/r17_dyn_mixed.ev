@@ -1,5 +1,0 @@
-claim main
-    xs ∈ Seq(Int) = ⟨5, 6⟩
-    #xs ≤ 2
-    a ∈ Int = xs[0] + xs[k]
-    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

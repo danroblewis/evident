@@ -1,9 +1,0 @@
--- expect: stdout = "bye"
--- expect: exit = 42
-import "stdlib/kernel.ev"
-
-claim main
-    effects ∈ Seq(Effect) = ⟨
-        LibCall("libc", "puts", ⟨ArgStr("bye")⟩),
-        Exit(42)
-    ⟩

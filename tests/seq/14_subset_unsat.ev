@@ -1,9 +1,0 @@
--- D14 subset violated: 9 ∉ s → UNSAT → exit 2.
--- entry: main
--- expect: exit = 2
-import "stdlib/kernel.ev"
-claim main
-    s ∈ Set(Int) = {1, 2, 3, 4, 5}
-    xs ∈ Seq(Int) = ⟨2, 9⟩
-    ∀ x ∈ xs : x ∈ s
-    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

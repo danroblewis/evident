@@ -1,4 +1,0 @@
-claim main
-    flags ∈ Seq(Bool) = ⟨true, false, true⟩
-    #flags ≤ 4
-    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

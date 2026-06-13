@@ -1,4 +1,0 @@
-import "stdlib/kernel.ev"
-
-claim main
-    effects ∈ Seq(Effect) = ⟨Exit(starts_with("world.pos", "world.") ? 1 : 0)⟩

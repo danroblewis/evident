@@ -1,8 +1,0 @@
-import "stdlib/kernel.ev"
-
-claim main
-    out ∈ String = replace("Seq(T)", "T", "Rect")
-    effects ∈ Seq(Effect) = ⟨
-        LibCall("libc", "puts", ⟨ArgStr(out)⟩),
-        Exit(0)
-    ⟩

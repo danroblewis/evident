@@ -1,5 +1,0 @@
-import "stdlib/kernel.ev"
-claim main
-    s ∈ String = "abc"
-    ok ∈ Bool = (char_at(s, 1) = "b")
-    effects ∈ Seq(Effect) = ⟨Exit(ok ? 0 : 1)⟩

@@ -1,6 +1,0 @@
-claim main
-    xs ∈ Seq(Int) = ⟨1, 2⟩
-    #xs ≤ 3
-    a ∈ Int = xs[0].foo
-    b ∈ Int = xs[1].bar[2]
-    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

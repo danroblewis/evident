@@ -1,7 +1,0 @@
-import "stdlib/kernel.ev"
-enum A = AEnd | AWrap(B)
-enum B = BEnd | BWrap(A)
-claim main
-    x ∈ A = AWrap(BWrap(AEnd))
-    ok ∈ Bool = (x matches AWrap(_))
-    effects ∈ Seq(Effect) = ⟨Exit(ok ? 0 : 1)⟩

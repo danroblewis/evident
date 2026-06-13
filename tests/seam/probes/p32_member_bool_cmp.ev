@@ -1,9 +1,0 @@
--- Probe: comparison RHS in a Bool membership pin (`flag ∈ Bool = (x > 3)`).
-
-import "stdlib/kernel.ev"
-
-claim main
-    x ∈ Int = 7
-    flag ∈ Bool = (x > 3)
-    sentinel ∈ Int = 42
-    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

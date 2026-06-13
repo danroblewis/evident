@@ -1,4 +1,0 @@
-claim main
-    ys ∈ Seq(String) = ⟨"a", "bb"⟩
-    #ys ≤ 4
-    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

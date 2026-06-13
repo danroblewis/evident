@@ -1,9 +1,0 @@
--- class 5: CORRECT set-theoretic rewrite (both cases covered) → EQUIVALENT.
--- entry: main
-import "stdlib/kernel.ev"
-claim main
-    sel ∈ Bool
-    out ∈ Int
-    sel ⇒ (out = 10)
-    (¬sel) ⇒ (out = 20)
-    effects ∈ Seq(Effect) = ⟨Exit(out)⟩

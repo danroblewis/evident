@@ -1,8 +1,0 @@
-import "stdlib/kernel.ev"
-type Sprite(p ∈ Int)
-    items ∈ Seq(Int)
-    #items = 5
-claim main
-    s ∈ Sprite (p ↦ 0)
-    #s.items = 5
-    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

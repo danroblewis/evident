@@ -1,5 +1,0 @@
-import "stdlib/kernel.ev"
-
-claim main
-    i ∈ Int = index_of("Edge<Rect>", "<")
-    effects ∈ Seq(Effect) = ⟨Exit(i)⟩

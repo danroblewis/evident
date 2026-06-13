@@ -1,4 +1,0 @@
-claim main
-    c ∈ Int = 1
-    result ∈ Int = (c = 1 ? 10 : c = 2 ? 20 : 30)
-    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

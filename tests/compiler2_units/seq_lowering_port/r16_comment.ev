@@ -1,6 +1,0 @@
-claim main
-    xs ∈ Seq(Int) = ⟨7, 8⟩
-    #xs ≤ 3
-    -- note xs[0] and #xs in a comment
-    a ∈ Int = xs[1]
-    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

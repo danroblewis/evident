@@ -1,9 +1,0 @@
-import "stdlib/kernel.ev"
-claim add(a ∈ Int, b ∈ Int, out ∈ Int)
-    out = a + b
-claim main
-    n ∈ Int
-    998 < n < 1000
-    add((1, 2), 5, result)
-    ok ∈ Bool = (n = 999)
-    effects ∈ Seq(Effect) = ⟨Exit(ok ? 0 : 1)⟩

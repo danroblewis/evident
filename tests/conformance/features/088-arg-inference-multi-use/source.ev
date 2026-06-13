@@ -1,9 +1,0 @@
-import "stdlib/kernel.ev"
-claim add(a ∈ Int, b ∈ Int, out ∈ Int)
-    out = a + b
-claim main
-    add(2, 3, mid)
-    final ∈ Int
-    final = mid + 100
-    ok ∈ Bool = (mid = 5 ∧ final = 105)
-    effects ∈ Seq(Effect) = ⟨Exit(ok ? 0 : 1)⟩

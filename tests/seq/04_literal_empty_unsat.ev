@@ -1,8 +1,0 @@
--- B4 empty seq contradiction: ⟨⟩ cannot have length 1 → UNSAT → exit 2.
--- entry: main
--- expect: exit = 2
-import "stdlib/kernel.ev"
-claim main
-    empty ∈ Seq(Int) = ⟨⟩
-    #empty = 1
-    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

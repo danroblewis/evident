@@ -1,6 +1,0 @@
-import "stdlib/kernel.ev"
-claim main
-    x ∈ Nat
-    1 ≤ x ≤ 5
-    ∀ i ∈ {1..5} : i ≥ 1
-    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

@@ -1,9 +1,0 @@
-claim main
-    xs ∈ Seq(Int)
-    #xs ≤ 2
-    n ∈ Int = #xs + 1
-    m ∈ Int = ys[0]
-    p ∈ Bool = (#xs = 2 ∧ xs[1] > 0)
-    q ∈ Int = #other
-    r ∈ Int = arr[idx]
-    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

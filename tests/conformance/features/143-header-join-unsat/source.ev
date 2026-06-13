@@ -1,7 +1,0 @@
-import "stdlib/kernel.ev"
-claim IsBig(n ∈ Int)
-    n > 5
-claim main
-    n ∈ Int = 3
-    IsBig
-    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

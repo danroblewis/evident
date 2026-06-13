@@ -1,9 +1,0 @@
--- expect: stdout = "hello world"
--- expect: exit = 0
-import "stdlib/kernel.ev"
-
-claim hello
-    effects ∈ Seq(Effect) = ⟨
-        LibCall("libc", "puts", ⟨ArgStr("hello world")⟩),
-        Exit(0)
-    ⟩

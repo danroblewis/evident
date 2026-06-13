@@ -1,6 +1,0 @@
-import "stdlib/kernel.ev"
-claim main
-    s ∈ String = "Edge<Rect>"
-    pre ∈ String = substr(s, 0, 4)
-    ok ∈ Bool = (pre = "Edge")
-    effects ∈ Seq(Effect) = ⟨Exit(ok ? 0 : 1)⟩

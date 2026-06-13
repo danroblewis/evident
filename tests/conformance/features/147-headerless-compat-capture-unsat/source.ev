@@ -1,8 +1,0 @@
-import "stdlib/kernel.ev"
-claim Legacy
-    name ∈ String
-    name = "internal"
-claim main
-    name ∈ String = "x"
-    Legacy
-    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

@@ -1,6 +1,0 @@
--- Phase 0 proof, file 1 of 2: a carry-owning fsm in its OWN file,
--- composed across a file boundary by main_2file.ev — proves the
--- flatten-first pipeline injects cross-file carries.
-fsm CounterMod
-    n ∈ Int
-    n = (is_first_tick ? 0 : _n + 1)

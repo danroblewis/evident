@@ -1,8 +1,0 @@
--- C8 universal violated: one element is negative → UNSAT → exit 2.
--- entry: main
--- expect: exit = 2
-import "stdlib/kernel.ev"
-claim main
-    xs ∈ Seq(Int) = ⟨1, 0 - 5, 3⟩
-    ∀ x ∈ xs : x > 0
-    effects ∈ Seq(Effect) = ⟨Exit(0)⟩

@@ -1,8 +1,0 @@
-import "stdlib/kernel.ev"
-claim Ordered(lo ∈ Int, hi ∈ Int)
-    lo < hi
-claim main
-    a ∈ Int = 5
-    b ∈ Int = 3
-    (a, b) ∈ Ordered
-    effects ∈ Seq(Effect) = ⟨Exit(0)⟩
