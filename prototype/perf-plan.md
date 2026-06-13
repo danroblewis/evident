@@ -18,7 +18,7 @@ the single-theory baselines so we can read the *crossing cost*.
 | **b01** | dispatch / inverse lookup | arith · ite · array · EUF · set-of-tuples | membership/lookup cost; the relational-surface question | **done ↓** |
 | **b01b** | *forward* lookup (chain) | same | the common compiler case vs the search case | **done ↓** |
 | **b02** | finite-domain CSP (graph coloring) | Int · BitVec · Bool+cardinality · enum datatype | the "bounded under-determined" sweet spot | **done ↓** |
-| b03 | reachability / transitive closure | special-relations · Fixedpoint(Datalog) · bounded-unroll arrays/sets | recursion / least-fixpoint engines | todo |
+| **b03** | reachability / transitive closure | special-relations · Fixedpoint(Datalog) · bounded-unroll bool/sets | recursion / least-fixpoint engines | **done ↓** |
 | b04 | linear & nonlinear systems | Int(LIA/NIA) · Real(LRA/NRA) · BitVec | arithmetic; the linear→nonlinear cliff | todo |
 | b05 | pattern / parse | Seq · String · Regex · BitVec | sequence theory; the length-bound cliff | todo |
 | b06 | cardinality / counting | pseudo-Boolean · Int-indicator-sum · (SetHasSize ⛔) | the counting gap, measured | todo |
@@ -104,6 +104,83 @@ encodings of "one of 3 colors per node, adjacent differ", swept N.
    on hot state") — now visible as a 10× benchmark gap, not folklore. **For finite
    domains, encode the values as Booleans/bitvecs, not Ints with `≠`.**
 
+## b03 — reachability / transitive closure  (`b03_reachability.py`)
+
+"Is T reachable from S?" in a directed graph — the recursion / least-fixpoint
+shape (grammars, recursive claims). The graph is split into two halves with edges
+only *within* a half, so a first→second-half query is a GUARANTEED cut
+(unreachable); the reachable query is a genuine multi-hop path. Fixed seed, ground
+truth by BFS, **both directions measured**. Four engines:
+
+- **special** — Z3 `TransitiveClosure(R)` over a CLOSED-world relation (assert
+  `R(u,v)` for edges, `¬R` for every non-edge pair). `mk_transitive_closure`
+  axiomatizes *a* transitive superset of R, not the *least* one, so the decision is
+  `reachable(S,T) ⟺ ¬TC(S,T) is UNSAT` (the closure forces the pair). World-closure
+  is **O(N²)** assertions.
+- **fixedpoint** — Z3 Datalog/Horn (μZ): `reach(x,y):-edge(x,y)`;
+  `reach(x,z):-reach(x,y),edge(y,z)`; edge facts; `query(reach(S,T))`. Closed-world
+  **least** fixpoint — the textbook recursion engine. `sat ⟺ reachable`.
+- **unroll-bool** — bounded BFS unrolled K=N Boolean layers: `reach_0={S}`,
+  `reach_{i+1}[v] = reach_i[v] ∨ ⋁_{u→v} reach_i[u]`; ask `reach_K[T]`.
+- **unroll-set** — same fixpoint, frontier as Z3 `Set(Int)` grown with `SetAdd` per
+  layer (does the set theory explode on fixpoint frontiers like it did on dispatch?).
+
+All four AGREE with BFS in both directions at every N (the equivalence check
+passes). `rlimit` is the `Solver` deterministic counter; `fixedpoint` is μZ
+(separate stats → wall only). reps=2, 10 s timeout, K=N for the unrolls.
+
+**Reachable query (multi-hop path: 4 / 8 / 4 hops at N=20/60/150):**
+
+| encoding | N=20 rlimit/ms | N=60 | N=150 |
+|---|---|---|---|
+| **unroll-bool** | 9 108 / 0.6 | 90 488 / 5.6 | **586 958 / 58** |
+| **special** (TC) | 29 588 / 1.5 | 365 152 / 8.3 | **2 247 384 / 54** |
+| **fixedpoint** (μZ) | — / 14.9 | — / 414 | **— / 3 591** |
+| **unroll-set** | 9 991 / 0.5 | 232 089 / 36 | **3 701 925 / 3 699** |
+
+**Unreachable query (the cut: S→other-half):**
+
+| encoding | N=20 rlimit/ms | N=60 | N=150 |
+|---|---|---|---|
+| **unroll-bool** | 8 403 / 0.6 | 83 523 / 5.9 | **541 803 / 61** |
+| **special** (TC) | 106 592 / 1.5 | 2 383 308 / 11 | **11 223 617 / 74** |
+| **fixedpoint** (μZ) | — / 6.1 | — / 129 | **— / 966** |
+| **unroll-set** | 8 105 / 0.4 | 177 405 / 21 | **2 597 831 / 2 395** |
+
+### Reachability findings
+
+1. **Bounded-unroll BOOL wins — the Fixedpoint/Datalog engine does NOT.** The
+   "natural" recursion engine (μZ) is the *slowest* viable encoding in wall-clock:
+   60× `unroll-bool` on the reachable query at N=150 (3 591 ms vs 58 ms). The
+   least-fixpoint machinery (rule construction + μZ engine spin-up) carries fixed
+   overhead that the SAT core, handed a flat K-layer Boolean circuit, simply doesn't
+   pay. **For grammars / recursive claims, the answer is bounded unrolling to a
+   Boolean fixpoint, not the Datalog engine.** This is the b03 analogue of b02's
+   "reduce to SAT": recursion expressed as a bounded Boolean circuit lets the SAT
+   core do what it's best at.
+2. **`set`-frontier EXPLODES — same villain as dispatch.** `unroll-set` is identical
+   in structure to `unroll-bool` but carries the frontier as `Set(Int)`; it runs
+   ~60× slower (3 699 ms vs 58 ms at N=150) and its `rlimit` is 6× higher. The set
+   theory is again the trap on a repeated-membership hot path — exactly the b01/b01b
+   dispatch result, now confirmed for fixpoint frontiers. **A reachable-set frontier
+   must be Booleans-per-node, never a `Set`.**
+3. **`TransitiveClosure` is correct but O(N²)-bound to scale.** Its decision is
+   right both directions, and wall-clock stays competitive (54–74 ms at N=150,
+   beating μZ), but the closed-world requirement — `¬R(u,v)` for every non-edge —
+   is **O(N²) assertions**, and `rlimit` shows it: 11.2M on the N=150 cut, 20× the
+   `unroll-bool`. It is a relation *surface*, not a scaling engine; on a dense or
+   large graph the world-closure dominates. (The open-world relation is useless: an
+   uninterpreted R lets the solver invent edges, so *both* directions came back
+   `sat` — the cut must be closed, and closing it is the O(N²) cost.)
+4. **Direction barely matters for `unroll-bool`** (0.6/0.6, 5.6/5.9, 58/61 ms) — the
+   bounded circuit pays the same whether the answer is yes or no, because it
+   *computes the whole reachable set* and reads off one bit. `special` and μZ are
+   cheaper on the unreachable side at small N but `special`'s O(N²) closure swamps
+   that by N=150.
+5. **K=N is wildly over-provisioned** (true diameter ≤ 8) yet `unroll-bool` still
+   wins — so a tighter diameter bound only widens its lead. If a real diameter bound
+   is known, unrolling to *that* makes the Boolean circuit smaller still.
+
 ---
 
 ## Running tally — which theory for which job
@@ -112,8 +189,15 @@ encodings of "one of 3 colors per node, adjacent differ", swept N.
   direction) or `array` (forward only). **Never raw set-membership.**
 - **Finite-domain CSP:** **Boolean one-hot or bitvec** (reduce to SAT). Avoid `Int`
   + `≠`.
+- **Recursion / reachability:** **bounded-unroll to a Boolean fixpoint** (`unroll-bool`).
+  *Not* the Datalog/Fixedpoint engine (60× slower) and *not* a `Set` frontier (60×
+  slower); `TransitiveClosure` is correct but O(N²) world-closure. Recursion → flat
+  Boolean circuit → let the SAT core run it.
 - **Cross-cutting rule:** `≠` is the recurring villain (non-convex, case-splits) —
-  the same trap in the old compiler and in b02. Convex/Boolean encodings win.
+  the same trap in the old compiler and in b02. Convex/Boolean encodings win. And
+  **`Set` membership is the *other* recurring villain** — catastrophic on dispatch
+  (b01/b01b) *and* on fixpoint frontiers (b03). Sets are a readable surface; they
+  must lower to Bool/array/ite, never run as membership on a hot path.
 
-Next: **b03** (reachability — special-relations vs Fixedpoint vs bounded-unroll),
-then **b04** (arithmetic, the linear→nonlinear cliff), then **b07** (mixing).
+Next: **b04** (arithmetic, the linear→nonlinear cliff), then **b05** (sequence /
+length-bound cliff), then **b07** (mixing).
