@@ -94,10 +94,28 @@ Each symbol maps to exactly one Z3 op:
 | + − · / mod | `+ − · / mod` | at_most/at_least (PB) | `at_most(k; …)` |
 | seq.len / seq.unit | `len(x)` / `⟨x⟩` | array map | `map[f](…)` |
 
+**Layout is width-aware** (a Wadler/Leijen document model, like Z3's own
+printer): a subexpression that fits on the line stays inline; one that doesn't
+breaks with its parts indented. So short constraints are one line, while a long
+conjunction / disjunction / store-chain breaks:
+
+```
+const(false)
+  [(0, 3) ↦ true]
+  [(1, 2) ↦ true]
+  …[(k, v)]              # before: the set is a Bool array of stores, selected
+```
+```
+(3 = k ∧ 0 = v)
+  ∨ (2 = k ∧ 1 = v)
+  ∨ (1 = k ∧ 2 = v)     # after blast: membership became a disjunction of =
+```
+
 The only structural liberty is **shared-subterm naming**: the AST is a DAG, so a
 subterm reached more than once is hoisted into a trailing `where` block of `sN`
 bindings — exactly what Z3's own `let`-printing does. It keeps output linear and
-makes sharing legible; nothing is merged or reinterpreted.
+makes sharing legible; nothing is merged or reinterpreted. Width defaults to 80
+(`pretty.goal(g, width=…)`).
 
 ```bash
 python3 run.py pretty dispatch set 6 --tactics blast   # set membership IS a bool array…
