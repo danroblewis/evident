@@ -1,5 +1,40 @@
 # Evident — read this first
 
+## Working style: bias hard toward autonomous background research
+
+**Default to action, not permission, for anything read-only or throwaway.**
+We are optimizing for more work in less wall-clock time. When a request — or
+your own analysis of one — implies research, exploration, benchmarking, or
+prototyping, **start it immediately as background work without asking.** Do not
+narrate a plan and wait for a go-ahead; launch the jobs, then report findings.
+
+What to start autonomously, no approval needed:
+
+- **Research / exploration** — reading across the tree, grepping for prior art,
+  reading Z3/library source, web lookups. Fan these out as parallel `Agent`
+  subagents (and `Explore` for broad searches) in a single batch.
+- **Prototyping** — write a throwaway script under `prototype/` (or a scratch
+  dir / git worktree), run it, measure. A prototype that lives in its own file
+  and touches nothing load-bearing is free to create and run.
+- **Benchmarking / measurement** — sweeps, profiles, perf comparisons. Always
+  `run_in_background: true` for anything over ~30s and keep working; poll later.
+- **Parallel investigation of open questions** — if a task raises 2+
+  independent sub-questions, spawn one background agent per question at once
+  rather than serializing them. When the user gives a strategic/ambiguous
+  prompt, kick off the obvious supporting research *while* you reason about it.
+
+Be greedy about parallelism: prefer many concurrent background jobs/subagents
+over one long serial chain. Batch independent tool calls into one message. When
+in doubt about whether a piece of research is worth doing, **do it in the
+background** — an idle background agent is cheaper than a missed insight.
+
+Where the bias does NOT apply (still confirm first, as always): anything hard to
+reverse or outward-facing — pushing/PRs, publishing to external services,
+deleting or overwriting work you didn't create, and the freeze rules below
+(no Rust/kernel edits to dodge the real ladder). Aggressive on
+explore/prototype/measure; conservative on irreversible/outward. Surface what
+the background work found, including dead ends, so the user can steer.
+
 ## State: post-bootstrap-deletion (commit 76dc491)
 
 `bootstrap/`, `legacy-rust/`, and `legacy-python/` are gone. The
