@@ -12,8 +12,14 @@ import time
 import statistics as _stat
 import z3
 
+# Z3's 'rlimit count' in statistics() is CUMULATIVE over the (global) context, not
+# per-solve. Work is deterministic per build, so per-solve rlimit = (Δcumulative /
+# reps). We track the running cumulative here.
+_CUM = 0.0
 
-def bench(build, reps=5, timeout_ms=120_000):
+
+def bench(build, reps=3, timeout_ms=120_000):
+    global _CUM
     walls, res, st = [], None, None
     for _ in range(reps):
         s = build()
@@ -23,17 +29,21 @@ def bench(build, reps=5, timeout_ms=120_000):
         walls.append((time.perf_counter() - t) * 1000.0)
         st = s.statistics()
 
-    def stat(key):
-        try:
-            return st.get_key_value(key)
-        except Exception:
-            return None
+    cum = None
+    try:
+        cum = st.get_key_value("rlimit count")
+    except Exception:
+        pass
+    rl = None
+    if cum is not None:
+        rl = int((cum - _CUM) / reps) if cum >= _CUM else None
+        _CUM = cum
 
     return {
         "result": str(res),
         "min_ms": min(walls),
         "med_ms": _stat.median(walls),
-        "rlimit": stat("rlimit count"),
+        "rlimit": rl,   # per-solve deterministic work
     }
 
 

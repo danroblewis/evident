@@ -80,6 +80,6 @@ if __name__ == "__main__":
         vals, target = make(N)
         for label, fn in ENCODINGS:
             m = bench(lambda fn=fn, N=N, v=vals, t=target: fn(N, v, t),
-                      reps=3, timeout_ms=30_000)
+                      reps=2, timeout_ms=10_000)
             rows.append({"label": label, "N": N, **m})
     table(rows)
