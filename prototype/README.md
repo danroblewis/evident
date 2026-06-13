@@ -37,6 +37,7 @@ python3 run.py run --max-len 2               # the sweep → results/run.{csv,md
 python3 run.py run --tasks dispatch coloring --max-len 3 --reps 3
 python3 run.py report results/run.csv --markdown results/run.md
 python3 run.py report results/run.csv --model-diff results/run-modeldiff.md
+python3 run.py report results/run.csv --translations results/translations  # all smt2
 python3 run.py profile dispatch set 200 --tactics blast   # AST diff under a tactic
 ```
 
@@ -45,15 +46,21 @@ python3 run.py profile dispatch set 200 --tactics blast   # AST diff under a tac
 canaries included). `--json` adds a JSON dump. `report` regenerates any of these
 derived outputs from an existing CSV without re-solving.
 
-### The three reports
+### The reports
 
 - **`run.md`** — *timing*: each encoding ranked by baseline solve time, with the
   fastest tactic sequence found.
-- **`run-modeldiff.md`** — *structure*: for each encoding's winning sequence,
-  how the model changed (Δ DAG nodes, Δ distinct symbols, and the operation
-  counts that moved most — e.g. `store 200→0` where `blast_select_store` blasts
-  a store-chain away). This is the structural *why* behind a speedup.
-- **`profile`** — the same AST diff, on demand, for any one case + tactic string.
+- **`run-modeldiff.md`** — *structure, winners only*: for each encoding's winning
+  sequence, how the model changed (Δ DAG nodes, Δ distinct symbols, and the
+  operation counts that moved most — e.g. `store 200→0` where
+  `blast_select_store` blasts a store-chain away).
+- **`translations/`** — *every translation*: `--translations DIR` dumps the
+  before/after smt2 for **every** case (deduped — sequences that yield an
+  identical model share a file) under `DIR/smt2/`, and writes `DIR/index.md`:
+  per (task, encoding, scale) group, every tactic sequence ranked by total ms
+  with a link to its model, plus a rendered ` ```diff ` of baseline→model for
+  each distinct translation (large models link out instead of inlining).
+- **`profile`** — the same AST diff as model-diff, on demand, for any one case.
 
 ## The combinatorial sweep
 

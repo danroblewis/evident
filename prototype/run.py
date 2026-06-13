@@ -40,6 +40,9 @@ def cmd_report(a):
     if a.model_diff:
         report.model_diff(a.csv, a.model_diff)
         print(f"wrote {a.model_diff}")
+    if a.translations:
+        path, n = report.translations(a.csv, a.translations)
+        print(f"wrote {path} + {n} smt2 files under {a.translations}/smt2/")
     if a.json:
         report.write_json(report._load(a.csv), a.json)
     report.summarize(a.csv)
@@ -103,6 +106,8 @@ if __name__ == "__main__":
     rp.add_argument("--markdown")
     rp.add_argument("--model-diff", dest="model_diff",
                     help="write a per-encoding baseline-vs-winning-tactic model diff")
+    rp.add_argument("--translations",
+                    help="DIR: dump before/after smt2 for every case + index.md")
     rp.add_argument("--json")
     rp.set_defaults(fn=cmd_report)
 
