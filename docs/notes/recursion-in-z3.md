@@ -59,14 +59,57 @@ Same expansion, opposite control over when to stop unfolding:
 - **(A) Z3 owns it — `RecFunction`** (built, `RecModel`). Unfolds lazily to
   whatever depth the search needs. No preset bound → answers queries you didn't
   size, but **unbounded ⇒ semi-decidable** (the `unknown` above).
-- **(B) The runtime owns it — a bounded unroller** (not built yet). *We* pick
-  depth `N`, emit all `N` instantiations up front, one solve. **Bounded ⇒ always
-  decidable/fast**, capped at `N`. This is literally "do Z3's unfolding
-  ourselves, but stop at N" — and it keeps recursion in our runtime, in the fast
-  bounded fragment (the benchmark suite's "bounded = fast" law at the recursion
-  layer).
+- **(B) The runtime owns it — a bounded unroller** (built, `BoundedRec`). *We*
+  pick depth `N`, emit all `N` instantiations up front, one solve. **Bounded ⇒
+  always decidable/fast**, capped at `N`. This is literally "do Z3's unfolding
+  ourselves, but stop at N" — recursion stays in our runtime, in the fast bounded
+  fragment (the benchmark suite's "bounded = fast" law at the recursion layer).
 
-(B) is the natural next build: an explicit work-list that expands a self-
-reference to a depth budget, the counterpart to `RecModel`, measured against (A).
-Related: `docs/notes/fixed-point-models.md` (detect a tail recursion and lower it
-to the transition form for memory reuse).
+## Embedding ALWAYS grows the model — so the taxonomy that follows
+
+Embedding a recursive model — **either** (A) Z3's lazy unfolding **or** (B) the
+runtime work-list — grows the model linearly with depth: one constraint and one
+variable per level. In a constraint system the **memory footprint *is* the model
+size**, so embedding can never give the tail-call benefit (constant memory).
+
+| depth N | (B) `BoundedRec`: #constraints | #vars |   | transition + `run_incremental` |
+|--:|--:|--:|---|--:|
+| 3  | 3  | 3  |   | 4 (constant) |
+| 10 | 10 | 10 |   | 4 (constant) |
+| 50 | 50 | 50 |   | 4 (constant) |
+
+A self-referential model falls into one of three cases — handle them in order:
+
+### 1. Fixed-point reducible — the GOOD case (love this)
+The model's answer is a *stable state*: a fixed point `s = step(s)` Z3 can solve
+directly. Lift the fixed-point form **out** of the recursion. A fixed-point model
+embedded in another is just **ordinary single-iteration model embedding** — no
+unrolling, no ticks, no growth; it reads like any other embedded sub-model. Goal:
+detect this and extract the fixed-point model. (Applies when you want the *stable
+state*, not the path — dataflow, reachability closure, settling systems.
+Sequential accumulation like `sum_to` is NOT this unless a closed form exists.)
+
+### 2. Tail-recursive (but not a fixed point) — RUN IT SEPARATELY, as a tick
+The recursive call is the **same model, in tail position, as an assertion**.
+Because it's tail position the parent is effectively solved *except* for that
+nested call — so instead of embedding it (growth), **re-run the same model as a
+tick**: repopulate every variable with its carried value, overwriting only the
+inputs passed differently. Same model, same slots → **no growth, constant memory**
+(measured: footprint 4, flat across 3..50 steps). Tail position is what licenses
+it: with no work pending after the call, the re-run's answer *is* the parent's
+answer, so the parent can be discarded and its memory reused. (This is the
+transition + `run_incremental` form, framed honestly as "re-invoke the same model
+as a tick" rather than "a separate transition object.")
+
+### 3. Neither — the HARD case (where the real work is)
+General recursion: work pending *after* the recursive call. It can't be a tick
+(you'd have to come back to finish the pending work) and isn't a fixed point. Two
+options, both costly: **unroll** and accept O(depth) model growth, or carry an
+**explicit stack** in the state (same growth, hand-managed). The growth is
+fundamental here — this is the situation where neither good option exists, and
+where the design effort will go.
+
+**Decision order:** fixed-point? → tail (run as a tick)? → unroll acceptable? →
+hard case. Related: `docs/notes/fixed-point-models.md` (detecting the fixed-point
+and tail cases so the readable recursive surface is kept while the fast execution
+is chosen underneath).
