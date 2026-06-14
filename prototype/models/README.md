@@ -18,14 +18,18 @@ transfers to a real runtime.
     with depth.
   - `run_incremental` — solve one step at a time, reusing the SAME field slots
     (memory reuse; constant footprint = the tail-recursion runtime).
-- `report_md` — write a markdown file: **each sub-model prettified on its own**,
-  the transition, and the **combined** unrolled model the runtime solves.
+- `section_md` / `write_report` — emit a markdown file: **each sub-model
+  prettified on its own**, the transition, and the **combined** unrolled model
+  the runtime solves.
 
 ## Run
 
 ```bash
-python3 -m models.examples      # → results/model-sum_to.md, results/model-list_max.md
+python3 -m models.examples      # → results/models.md (prettified Z3-AST report)
 ```
+
+Run it from the `prototype/` directory (so `benchsuite` is importable). The
+output path is absolute, so the file always lands in `prototype/results/`.
 
 - `sum_to` — tail-recursive accumulator (sum 1..n).
 - `list_max` — a transition that **composes** a value sub-model `at` (a fixed

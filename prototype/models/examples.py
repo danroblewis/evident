@@ -6,7 +6,7 @@
 """
 import os
 import z3
-from .core import Model, Transition, report_md
+from .core import Model, Transition, section_md, write_report
 
 
 # ── sum_to: pure tail-recursion, one sub-model (the transition) ───────────────
@@ -50,17 +50,19 @@ ListMax = Transition("list_max", [("idx", "Int"), ("best", "Int")],
 def main():
     out = os.path.join(os.path.dirname(__file__), os.pardir, "results")
     os.makedirs(out, exist_ok=True)
-    a = report_md(os.path.join(out, "model-sum_to.md"),
-                  "sum_to — tail-recursive accumulator (sum 1..5)",
-                  SumTo, submodels=[], init={"i": 5, "acc": 0}, fuel=5,
-                  done=lambda v: v["i"] == 0)
-    b = report_md(os.path.join(out, "model-list_max.md"),
-                  f"list_max — iterative max over {LIST}",
-                  ListMax, submodels=[At], init={"idx": 0, "best": -999},
-                  fuel=len(LIST), done=lambda v: v["idx"] == len(LIST))
-    print("sum_to   one-shot/incremental:", a, " (expect 15)")
-    print("list_max one-shot/incremental:", b, f" (expect {max(LIST)})")
-    print("wrote results/model-sum_to.md, results/model-list_max.md")
+    s1, a_one, a_inc = section_md(
+        "sum_to — tail-recursive accumulator (sum 1..5)",
+        SumTo, submodels=[], init={"i": 5, "acc": 0}, fuel=5,
+        done=lambda v: v["i"] == 0)
+    s2, b_one, b_inc = section_md(
+        f"list_max — iterative max over {LIST}",
+        ListMax, submodels=[At], init={"idx": 0, "best": -999},
+        fuel=len(LIST), done=lambda v: v["idx"] == len(LIST))
+    path = os.path.join(out, "models.md")
+    write_report(path, "Sub-model composition — prettified Z3-AST report", [s1, s2])
+    print(f"sum_to   one-shot/incremental: {a_one} / {a_inc}  (expect 15)")
+    print(f"list_max one-shot/incremental: {b_one} / {b_inc}  (expect {max(LIST)})")
+    print(f"wrote {os.path.relpath(os.path.abspath(path))}")
 
 
 if __name__ == "__main__":
