@@ -387,6 +387,8 @@ def goal(g, width=WIDTH):
     """Faithfully pretty-print a Goal/Solver as a constraint list (one assertion
     per line, each wrapped to `width`); subterms shared across assertions hoist
     into a trailing `where` block."""
+    if hasattr(g, "assertions"):                 # a z3.Solver
+        g = g.assertions()
     items = [g[i] for i in range(len(g))] if hasattr(g, "__len__") else list(g)
     if not items:
         return "(empty — trivially true / SAT)"
