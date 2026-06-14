@@ -119,7 +119,7 @@ def _fits(remaining, doc):
         elif tag == "L":
             remaining -= len(t[1])
         elif tag == "H":
-            return True               # a hard break ends this line → it fits
+            return False              # a hard break can't flatten → group must break
     return False
 
 
@@ -163,11 +163,12 @@ def _infix(op, docs, prec):
 
 def _infix_hard(op, docs):
     """Leading-operator layout that ALWAYS breaks before each operator. Used for
-    ∧: a conjunction is a list of separate requirements, one per line."""
+    ∧: a conjunction is a list of separate requirements, one per line — the
+    operands align (no extra indent) at whatever indent the conjunction sits at."""
     parts = [docs[0]]
     for d in docs[1:]:
         parts += [_HARD, _T(op + " "), d]
-    return _N(2, _C(*parts))
+    return _C(*parts)
 
 
 def _call(name, arg_docs):
@@ -346,10 +347,14 @@ def _p(e, b, need=0):
             c, t, els = cur.children()
             arms.append((_p(c, b, 0)[0], _p(t, b, 0)[0]))
             cur = els
-        doc = _p(cur, b, 0)[0]
-        for c, t in reversed(arms):          # left-aligned else-chain (no nesting)
-            doc = _G(_C(_T("if "), c, _T(" then "), t, _L(" "), _T("else "), doc))
-        return _wrap(doc, P_QUANT, need), P_QUANT
+        else_doc = _p(cur, b, 0)[0]
+        # block style: `if c then` / indented body / `else if …` / `else` / body.
+        # Soft lines flatten to one line when it all fits; otherwise it blocks out.
+        parts = [_T("if "), arms[0][0], _T(" then"), _N(2, _C(_L(" "), arms[0][1]))]
+        for c, t in arms[1:]:
+            parts += [_L(" "), _T("else if "), c, _T(" then"), _N(2, _C(_L(" "), t))]
+        parts += [_L(" "), _T("else"), _N(2, _C(_L(" "), else_doc))]
+        return _wrap(_G(_C(*parts)), P_QUANT, need), P_QUANT
 
     # pseudo-boolean
     if k in (z3.Z3_OP_PB_AT_MOST, z3.Z3_OP_PB_AT_LEAST):
