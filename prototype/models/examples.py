@@ -22,8 +22,17 @@ SumTo = Transition("sum_to", [("i", "Int"), ("acc", "Int")], _sum_step)
 
 
 # ── sum_to, RECURSIVE: defined using itself (contrast with the transition) ────
-SumToRec = RecModel("sum_to", [("n", "Int"), ("acc", "Int")], "Int",
-                    lambda f, n, acc: z3.If(n == 0, acc, f(n - 1, acc + n)))
+# The first parameter `sum_to` IS the model referencing itself (the recursive
+# handle). The body literally calls sum_to(n-1, acc+n) — a sum_to defined with
+# a sum_to. (You pass the self-reference in because you're defining the very
+# thing you're calling — the standard fixpoint pattern.)
+def _sum_to(sum_to, n, acc):
+    return z3.If(n == 0,
+                 acc,                          # base
+                 sum_to(n - 1, acc + n))       # recurse: sum_to calls sum_to
+
+
+SumToRec = RecModel("sum_to", [("n", "Int"), ("acc", "Int")], "Int", _sum_to)
 
 
 # ── list_max: a transition that COMPOSES a value sub-model `at` ────────────────
