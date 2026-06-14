@@ -28,7 +28,7 @@ def _diff_block(before, after, after_label, cap=400):
     return "```diff\n" + "\n".join(diff) + "\n```"
 
 FIELDS = ["task", "scale", "encoding", "theories", "combo", "combo_len",
-          "result", "ok", "tactic_ms", "solve_ms", "total_ms", "rlimit"]
+          "result", "ok", "tactic_ms", "solve_ms", "total_ms", "rlimit", "note"]
 
 
 def write_csv(rows, path):
@@ -180,6 +180,8 @@ def translations(rows_or_csv, outdir, theory=None, cap=400, dump_files=True):
         for (t, enc, scale) in gkeys:
             g = groups[(t, enc, scale)]
             enc_obj = next(e for e in TASKS[t].encodings if e.name == enc)
+            if enc_obj.build is None:        # solve-only: no Goal to translate
+                continue
             base = enc_obj.build(scale)
             gname = f"{t}__{enc}__N{scale}"
             if dump_files:

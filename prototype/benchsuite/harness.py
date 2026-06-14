@@ -30,3 +30,18 @@ def solve(goal, reps, timeout_ms):
         pass
 
     return {"result": str(result), "min_ms": round(min(walls), 2), "rlimit": rlimit}
+
+
+def rlimit_delta(stats):
+    """Δ rlimit from the cumulative global counter (mirrors `solve`), or None.
+
+    For solve-only encodings (Fixedpoint/RecFunction) that drive Z3 themselves
+    and hand us their own `statistics()` object."""
+    global _CUM
+    try:
+        cum = stats.get_key_value("rlimit count")
+        d = int(cum - _CUM) if cum >= _CUM else None
+        _CUM = cum
+        return d
+    except Exception:
+        return None
