@@ -63,6 +63,32 @@ class Model:
         return pretty.expr(self.body(*[_const(n, t) for n, t in self.params]))
 
 
+class RecModel:
+    """A GENUINELY recursive sub-model: its body references ITSELF (unlike a
+    transition, which only relates state→state′). Backed by a Z3 recursive
+    function, so Z3 owns the unfolding — no Python recursion, no hand-unrolling.
+
+    body(self_fn, *params) -> term, where `self_fn(...)` is the recursive call."""
+    def __init__(self, name, params, ret, body):
+        self.name, self.params, self.ret = name, params, ret
+        sig = [_SORT[t]() for _, t in params] + [_SORT[ret]()]
+        self.fn = z3.RecFunction(name, *sig)
+        syms = [_const(n, t) for n, t in params]
+        self._body = body(self.fn, *syms)          # references self.fn → self-ref
+        z3.RecAddDefinition(self.fn, syms, self._body)
+
+    def __call__(self, *args):
+        return self.fn(*args)
+
+    def doc(self):
+        return pretty.expr(self._body)              # shows the self-reference
+
+    def solve(self, *args):
+        r = z3.Const("r", _SORT[self.ret]())
+        s = z3.Solver(); s.add(r == self.fn(*args))
+        return _py(s.model(), r, self.ret) if s.check() == z3.sat else None
+
+
 class Transition:
     """A one-step transition sub-model over `fields` = [(name, sort_tag)].
     step(cur, nxt) -> BoolRef, where cur/nxt are dicts field_name -> Z3 const.
@@ -151,6 +177,23 @@ def section_md(title, transition, submodels, init, fuel, done=None):
           "state trace (incremental):", "",
           "```", "\n→ ".join(str(s) for s in trace), "```", ""]
     return "\n".join(L), one_final, inc_final
+
+
+def rec_section_md(model, calls):
+    """Markdown section for a recursive sub-model: its self-referential
+    definition (prettified) + sample solves. `calls` = [(args_tuple, expected)]."""
+    params = ", ".join(n for n, _ in model.params)
+    L = [f"## {model.name}  (recursive — references itself)", "",
+         f"A genuinely recursive sub-model: `{model.name}` appears **inside its "
+         "own definition** (Z3 owns the unfolding; no transition, no "
+         "hand-unrolling).", "",
+         "### definition", "", "```", f"{model.name}({params}) =", model.doc(),
+         "```", "", "### solves", ""]
+    for args, expected in calls:
+        got = model.solve(*[z3.IntVal(a) for a in args])
+        L.append(f"- `{model.name}{args}` = `{got}`  (expect {expected})")
+    L.append("")
+    return "\n".join(L)
 
 
 def write_report(path, title, sections):

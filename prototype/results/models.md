@@ -4,7 +4,26 @@ Prettified Z3-AST view of each sub-model and the combined unrolled model. Genera
 
 ---
 
-## sum_to — tail-recursive accumulator (sum 1..5)
+## sum_to  (recursive — references itself)
+
+A genuinely recursive sub-model: `sum_to` appears **inside its own definition** (Z3 owns the unfolding; no transition, no hand-unrolling).
+
+### definition
+
+```
+sum_to(n, acc) =
+if n = 0 then acc else sum_to(n − 1, acc + n)
+```
+
+### solves
+
+- `sum_to(5, 0)` = `15`  (expect 15)
+- `sum_to(3, 0)` = `6`  (expect 6)
+- `sum_to(10, 0)` = `55`  (expect 55)
+
+---
+
+## sum_to — same computation as a transition (tail-call eliminated)
 
 Each sub-model on its own (symbolic interface), then the **combined** model the runtime solves. Recursion is owned by the unroller, not Python's stack.
 

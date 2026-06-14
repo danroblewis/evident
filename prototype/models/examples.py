@@ -6,7 +6,8 @@
 """
 import os
 import z3
-from .core import Model, Transition, section_md, write_report
+from .core import (Model, Transition, RecModel, section_md, rec_section_md,
+                   write_report)
 
 
 # ── sum_to: pure tail-recursion, one sub-model (the transition) ───────────────
@@ -18,6 +19,11 @@ def _sum_step(cur, nxt):
 
 
 SumTo = Transition("sum_to", [("i", "Int"), ("acc", "Int")], _sum_step)
+
+
+# ── sum_to, RECURSIVE: defined using itself (contrast with the transition) ────
+SumToRec = RecModel("sum_to", [("n", "Int"), ("acc", "Int")], "Int",
+                    lambda f, n, acc: z3.If(n == 0, acc, f(n - 1, acc + n)))
 
 
 # ── list_max: a transition that COMPOSES a value sub-model `at` ────────────────
@@ -50,8 +56,9 @@ ListMax = Transition("list_max", [("idx", "Int"), ("best", "Int")],
 def main():
     out = os.path.join(os.path.dirname(__file__), os.pardir, "results")
     os.makedirs(out, exist_ok=True)
+    s0 = rec_section_md(SumToRec, calls=[((5, 0), 15), ((3, 0), 6), ((10, 0), 55)])
     s1, a_one, a_inc = section_md(
-        "sum_to — tail-recursive accumulator (sum 1..5)",
+        "sum_to — same computation as a transition (tail-call eliminated)",
         SumTo, submodels=[], init={"i": 5, "acc": 0}, fuel=5,
         done=lambda v: v["i"] == 0)
     s2, b_one, b_inc = section_md(
@@ -59,7 +66,8 @@ def main():
         ListMax, submodels=[At], init={"idx": 0, "best": -999},
         fuel=len(LIST), done=lambda v: v["idx"] == len(LIST))
     path = os.path.join(out, "models.md")
-    write_report(path, "Sub-model composition — prettified Z3-AST report", [s1, s2])
+    write_report(path, "Sub-model composition — prettified Z3-AST report",
+                 [s0, s1, s2])
     print(f"sum_to   one-shot/incremental: {a_one} / {a_inc}  (expect 15)")
     print(f"list_max one-shot/incremental: {b_one} / {b_inc}  (expect {max(LIST)})")
     print(f"wrote {os.path.relpath(os.path.abspath(path))}")

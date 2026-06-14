@@ -11,6 +11,11 @@ transfers to a real runtime.
 - `Model(name, params, body)` — a named predicate/function sub-model; `body`
   returns a Bool (predicate) or a term (function), minting internals with
   `fresh()` so a sub-model used twice doesn't alias its internals.
+- `RecModel(name, params, ret, body)` — a **genuinely recursive** sub-model:
+  `body(self_fn, *params)` references `self_fn`, so the definition mentions
+  itself. Backed by a Z3 recursive function (Z3 owns the unfolding). Contrast
+  with `Transition`, which is the tail-call-eliminated *lowering* of a tail
+  recursion and never names itself.
 - `Transition(name, fields, step, uses)` — a one-step state transition;
   `step(cur, nxt) -> Bool` over field dicts.
 - **Two execution strategies for the same transition:**
