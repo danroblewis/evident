@@ -61,19 +61,50 @@ argument for keeping the model theory-agnostic and choosing per-problem:
 Coloring says "reduce to SAT"; arithmetic says "stay in the arithmetic theory."
 There is no globally correct theory — only a correct theory per problem shape.
 
-## Reachability: bounded unroll-to-Bool beats the dedicated machinery
+## Reachability: the Datalog Fixedpoint engine beats every unroll — and scales
 
-`reachability` (N=60), is-target-reachable three ways:
+`reachability` (N=60), is-target-reachable, now five ways (the last two via the
+`Fixedpoint`/`RecFunction` engines — see `docs/notes/fixpoint-engine-benchmarks.md`):
 
-| encoding | theory | baseline |
-|---|---|--:|
-| unroll_bool | bool | 5.1 ms |
-| special (TransitiveClosure) | relations | 9.9 ms |
-| unroll_set | set | 59.2 ms |
+| encoding | theory | baseline | @N=120 |
+|---|---|--:|--:|
+| **datalog** (Fixedpoint) | fixedpoint+bitvec | **1.3 ms** | **4.8 ms** |
+| unroll_bool | bool | 5.1 ms | 30 ms |
+| special (TransitiveClosure) | relations | 10.2 ms | 39 ms |
+| recfun (Z3-owned unroll) | recfun | 45 ms | 1235 ms |
+| unroll_set | set | 59.2 ms | 1326 ms |
 
-The set-frontier encoding is **~12×** slower than the bounded Boolean unroll;
-even Z3's special-relations `TransitiveClosure` is 2× slower. Bounded
-unroll-to-Bool is the encoding to lower toward for reachability/planning shapes.
+`Fixedpoint(engine='datalog')` saturates a `reach` relation bottom-up and is the
+*fastest* encoding measured — **6×** faster than bounded unroll-to-Bool, **8×**
+faster than `TransitiveClosure`, **~275×** faster than the set frontier at N=120 —
+and the gap **widens** with N (datalog grows ~linearly, the unrolls
+super-linearly). This overturns the earlier headline (unroll-to-Bool was the
+prior winner): for a relation closure over a finite/bitvec node domain, lower to
+the Datalog engine. `recfun` (Z3 owns the frontier unfolding) tracks `unroll_set`
+exactly — moving the unfold into Z3's axiom doesn't change the cost; the *engine*
+is the win, not who drives the unroll.
+
+## Recursion & invariants: bound it, or let the right engine prove it
+
+Two new tasks measure the fixpoint/recursive engines the sweep never had
+(`docs/notes/fixpoint-engine-benchmarks.md`):
+
+- **`recursion` (Σ1..n)** — a `RecFunction` is *not* free: it unfolds its axiom
+  once per level, growing ~linearly (0.5 → 13.8 ms over n=20→5000) — it matches
+  the bounded unroller's cost while adding semi-decidability. A runtime-emitted
+  unroll stays flat (constant-folds), and a closed form is flat O(1). **Bound the
+  recursion unless the depth is genuinely unknown at build time; lift to a closed
+  form / fixed point when one exists** — the (A)-vs-(B) tradeoff of
+  `recursion-in-z3.md`, now with numbers.
+- **`invariant` (counter, safety x ≥ 0)** — `Fixedpoint(engine='spacer')` proves
+  the property for ALL reachable states and is **scale-free** (~2 ms at N=20 and
+  N=2000 alike), where bounded `unroll_k` grows with depth and only ever proves
+  "no bad state within N". On a bug reachable only past depth N, unroll-to-50
+  reports a FALSE "safe" while Spacer catches it with no depth parameter — and
+  Spacer hands back the synthesized inductive invariant (`inv(A) == ¬(A ≤ −1)`,
+  i.e. `x ≥ 0`). **Spacer's invariant synthesis is fast and usable** — the right
+  tool for the carried-state-invariant problem (static k-induction with the
+  invariant *discovered*, not supplied).
 
 ## Tactics can also HURT — the sweep catches it
 
