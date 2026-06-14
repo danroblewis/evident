@@ -149,7 +149,7 @@ def section_md(title, transition, submodels, init, fuel, done=None):
           f"- **incremental** (one step at a time, memory reuse): final = "
           f"`{inc_final}`  [{inc_vars} vars, constant]", "",
           "state trace (incremental):", "",
-          "```", " → ".join(str(s) for s in trace), "```", ""]
+          "```", "\n→ ".join(str(s) for s in trace), "```", ""]
     return "\n".join(L), one_final, inc_final
 
 

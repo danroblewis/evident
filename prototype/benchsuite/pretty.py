@@ -153,11 +153,21 @@ def _wrap(doc, prec, need):
 
 
 def _infix(op, docs, prec):
-    """Leading-operator layout: a / op b / op c — breaks before each operator."""
+    """Leading-operator layout: a / op b / op c — breaks before each operator
+    only when the line overflows (soft). Used for ∨, arithmetic, comparisons."""
     parts = [docs[0]]
     for d in docs[1:]:
         parts += [_L(" "), _T(op + " "), d]
     return _G(_N(2, _C(*parts)))
+
+
+def _infix_hard(op, docs):
+    """Leading-operator layout that ALWAYS breaks before each operator. Used for
+    ∧: a conjunction is a list of separate requirements, one per line."""
+    parts = [docs[0]]
+    for d in docs[1:]:
+        parts += [_HARD, _T(op + " "), d]
+    return _N(2, _C(*parts))
 
 
 def _call(name, arg_docs):
@@ -276,9 +286,9 @@ def _p(e, b, need=0):
     # logical
     if k == z3.Z3_OP_NOT:
         return _wrap(_C(_T("¬"), _p(e.arg(0), b, P_ATOM)[0]), P_NOT, need), P_NOT
-    if k == z3.Z3_OP_AND:
+    if k == z3.Z3_OP_AND:                            # ∧ always breaks (one req/line)
         ds = [_p(c, b, P_AND)[0] for c in e.children()]
-        return _wrap(_infix("∧", ds, P_AND), P_AND, need), P_AND
+        return _wrap(_infix_hard("∧", ds), P_AND, need), P_AND
     if k == z3.Z3_OP_OR:
         ds = [_p(c, b, P_AND + 1)[0] for c in e.children()]
         return _wrap(_infix("∨", ds, P_OR), P_OR, need), P_OR
@@ -337,9 +347,8 @@ def _p(e, b, need=0):
             arms.append((_p(c, b, 0)[0], _p(t, b, 0)[0]))
             cur = els
         doc = _p(cur, b, 0)[0]
-        for c, t in reversed(arms):
-            doc = _G(_C(_T("if "), c, _T(" then "), t,
-                        _N(2, _C(_L(" "), _T("else "), doc))))
+        for c, t in reversed(arms):          # left-aligned else-chain (no nesting)
+            doc = _G(_C(_T("if "), c, _T(" then "), t, _L(" "), _T("else "), doc))
         return _wrap(doc, P_QUANT, need), P_QUANT
 
     # pseudo-boolean
