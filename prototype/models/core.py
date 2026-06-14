@@ -89,6 +89,48 @@ class RecModel:
         return _py(s.model(), r, self.ret) if s.check() == z3.sat else None
 
 
+class BoundedRec:
+    """The SAME recursive body as RecModel, but the RUNTIME owns the unfolding:
+    an explicit work-list expands the self-reference to a depth bound N (no Python
+    call stack, no Z3 lazy unfolding). This is 'do Z3's unfolding ourselves, but
+    stop at N' — bounded ⇒ always decidable/fast. Beyond N a call is left
+    unconstrained ('bottom'), so N must exceed the real recursion depth for an
+    exact answer. body(rec, *params) -> term; rec(*args) is the recursive call."""
+    def __init__(self, name, params, ret, body):
+        self.name, self.params, self.ret, self.body = name, params, ret, body
+
+    def unroll(self, args, depth):
+        """Returns (result_term, constraints). The work-list IS the runtime's
+        recursion — popping a pending call and expanding its body one level."""
+        rs = _SORT[self.ret]()
+        ctr = [0]
+
+        def newr():
+            ctr[0] += 1
+            return z3.Const(f"{self.name}!{ctr[0]}", rs)
+
+        top = newr()
+        work, cons = [(top, list(args), depth)], []
+        while work:                              # ← the runtime's unroller
+            rvar, cargs, d = work.pop()
+            if d <= 0:
+                continue                         # bound reached: rvar unconstrained
+
+            def rec(*na, _d=d):                  # a recursive call: defer it
+                child = newr()
+                work.append((child, list(na), _d - 1))
+                return child
+
+            cons.append(rvar == self.body(rec, *cargs))
+        return top, cons
+
+    def solve(self, arg_vals, depth):
+        args = [_LIT[t](v) for (_, t), v in zip(self.params, arg_vals)]
+        top, cons = self.unroll(args, depth)
+        s = z3.Solver(); s.add(*cons)
+        return _py(s.model(), top, self.ret) if s.check() == z3.sat else None
+
+
 class Transition:
     """A one-step transition sub-model over `fields` = [(name, sort_tag)].
     step(cur, nxt) -> BoolRef, where cur/nxt are dicts field_name -> Z3 const.
@@ -193,6 +235,25 @@ def rec_section_md(model, calls):
         got = model.solve(*[z3.IntVal(a) for a in args])
         L.append(f"- `{model.name}{args}` = `{got}`  (expect {expected})")
     L.append("")
+    return "\n".join(L)
+
+
+def bounded_section_md(model, arg_vals, depth):
+    """Markdown for the runtime-owned bounded unroll: the explicit constraints
+    the work-list emits (prettified) + the solve."""
+    args = [_LIT[t](v) for (_, t), v in zip(model.params, arg_vals)]
+    top, cons = model.unroll(args, depth)
+    got = model.solve(arg_vals, depth)
+    L = [f"## {model.name}  (recursive — runtime-owned bounded unroll, N={depth})",
+         "",
+         "**Same definition**, but the runtime owns the unfolding: an explicit "
+         f"work-list expands the self-reference to depth N={depth} (no Python "
+         "stack, no Z3 lazy unfolding). Bounded ⇒ always decidable.", "",
+         "### what the runtime emits (the unrolled constraints)", "",
+         f"`result = {top.decl().name()}`, then:", "",
+         "```", pretty.goal(cons), "```", "",
+         "### solve", "",
+         f"- `{model.name}{tuple(arg_vals)}` (N={depth}) = `{got}`", ""]
     return "\n".join(L)
 
 

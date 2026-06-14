@@ -23,6 +23,35 @@ if n = 0 then acc else sum_to(n − 1, acc + n)
 
 ---
 
+## sum_to  (recursive — runtime-owned bounded unroll, N=5)
+
+**Same definition**, but the runtime owns the unfolding: an explicit work-list expands the self-reference to depth N=5 (no Python stack, no Z3 lazy unfolding). Bounded ⇒ always decidable.
+
+### what the runtime emits (the unrolled constraints)
+
+`result = sum_to!1`, then:
+
+```
+sum_to!1 = (if 3 = 0 then 0 else sum_to!2)
+sum_to!2 = (if s3 = 0 then s6 else sum_to!3)
+sum_to!3 = (if s2 = 0 then s5 else sum_to!4)
+sum_to!4 = (if s1 = 0 then s4 else sum_to!5)
+sum_to!5 = (if s1 − 1 = 0 then s4 + s1 else sum_to!6)
+where
+  s6 = 0 + 3
+  s5 = s6 + s3
+  s4 = s5 + s2
+  s3 = 3 − 1
+  s2 = s3 − 1
+  s1 = s2 − 1
+```
+
+### solve
+
+- `sum_to(3, 0)` (N=5) = `6`
+
+---
+
 ## sum_to — same computation as a transition (tail-call eliminated)
 
 Each sub-model on its own (symbolic interface), then the **combined** model the runtime solves. Recursion is owned by the unroller, not Python's stack.

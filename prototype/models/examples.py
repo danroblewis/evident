@@ -6,8 +6,8 @@
 """
 import os
 import z3
-from .core import (Model, Transition, RecModel, section_md, rec_section_md,
-                   write_report)
+from .core import (Model, Transition, RecModel, BoundedRec, section_md,
+                   rec_section_md, bounded_section_md, write_report)
 
 
 # ── sum_to: pure tail-recursion, one sub-model (the transition) ───────────────
@@ -32,7 +32,11 @@ def _sum_to(sum_to, n, acc):
                  sum_to(n - 1, acc + n))       # recurse: sum_to calls sum_to
 
 
+# The SAME body, two owners of the recursion:
 SumToRec = RecModel("sum_to", [("n", "Int"), ("acc", "Int")], "Int", _sum_to)
+#   (A) Z3 owns the unfolding — semi-decidable
+SumToBounded = BoundedRec("sum_to", [("n", "Int"), ("acc", "Int")], "Int", _sum_to)
+#   (B) the runtime owns the unfolding — bounded, always decidable
 
 
 # ── list_max: a transition that COMPOSES a value sub-model `at` ────────────────
@@ -66,6 +70,7 @@ def main():
     out = os.path.join(os.path.dirname(__file__), os.pardir, "results")
     os.makedirs(out, exist_ok=True)
     s0 = rec_section_md(SumToRec, calls=[((5, 0), 15), ((3, 0), 6), ((10, 0), 55)])
+    sB = bounded_section_md(SumToBounded, arg_vals=(3, 0), depth=5)
     s1, a_one, a_inc = section_md(
         "sum_to — same computation as a transition (tail-call eliminated)",
         SumTo, submodels=[], init={"i": 5, "acc": 0}, fuel=5,
@@ -76,7 +81,7 @@ def main():
         fuel=len(LIST), done=lambda v: v["idx"] == len(LIST))
     path = os.path.join(out, "models.md")
     write_report(path, "Sub-model composition — prettified Z3-AST report",
-                 [s0, s1, s2])
+                 [s0, sB, s1, s2])
     print(f"sum_to   one-shot/incremental: {a_one} / {a_inc}  (expect 15)")
     print(f"list_max one-shot/incremental: {b_one} / {b_inc}  (expect {max(LIST)})")
     print(f"wrote {os.path.relpath(os.path.abspath(path))}")

@@ -16,6 +16,11 @@ transfers to a real runtime.
   itself. Backed by a Z3 recursive function (Z3 owns the unfolding). Contrast
   with `Transition`, which is the tail-call-eliminated *lowering* of a tail
   recursion and never names itself.
+- `BoundedRec(name, params, ret, body)` — the **same recursive body** as
+  `RecModel`, but the *runtime* owns the unfolding: an explicit work-list expands
+  the self-reference to a depth bound `N` (no Python stack, no Z3 lazy
+  unfolding). Bounded ⇒ always decidable. This is "do Z3's unfolding ourselves,
+  but stop at N" (see `docs/notes/recursion-in-z3.md` for A-vs-B).
 - `Transition(name, fields, step, uses)` — a one-step state transition;
   `step(cur, nxt) -> Bool` over field dicts.
 - **Two execution strategies for the same transition:**
