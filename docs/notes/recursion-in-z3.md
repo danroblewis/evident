@@ -78,38 +78,46 @@ size**, so embedding can never give the tail-call benefit (constant memory).
 | 10 | 10 | 10 |   | 4 (constant) |
 | 50 | 50 | 50 |   | 4 (constant) |
 
-A self-referential model falls into one of three cases — handle them in order:
+A self-referential model falls into one of three cases, ordered by how much
+**execution machinery** each needs (less is better):
 
-### 1. Fixed-point reducible — the GOOD case (love this)
+### 1. Fixed-point reducible — the best case
 The model's answer is a *stable state*: a fixed point `s = step(s)` Z3 can solve
 directly. Lift the fixed-point form **out** of the recursion. A fixed-point model
-embedded in another is just **ordinary single-iteration model embedding** — no
-unrolling, no ticks, no growth; it reads like any other embedded sub-model. Goal:
-detect this and extract the fixed-point model. (Applies when you want the *stable
-state*, not the path — dataflow, reachability closure, settling systems.
-Sequential accumulation like `sum_to` is NOT this unless a closed form exists.)
+embedded in another is just **ordinary single-iteration model embedding** — one
+small model, no unrolling, no ticks, no growth; it reads like any other embedded
+sub-model. (Applies when you want the *stable state*, not the path — dataflow,
+reachability closure, settling systems. Sequential accumulation like `sum_to` is
+NOT this unless a closed form exists.)
 
-### 2. Tail-recursive (but not a fixed point) — RUN IT SEPARATELY, as a tick
-The recursive call is the **same model, in tail position, as an assertion**.
-Because it's tail position the parent is effectively solved *except* for that
-nested call — so instead of embedding it (growth), **re-run the same model as a
-tick**: repopulate every variable with its carried value, overwriting only the
-inputs passed differently. Same model, same slots → **no growth, constant memory**
-(measured: footprint 4, flat across 3..50 steps). Tail position is what licenses
-it: with no work pending after the call, the re-run's answer *is* the parent's
-answer, so the parent can be discarded and its memory reused. (This is the
-transition + `run_incremental` form, framed honestly as "re-invoke the same model
-as a tick" rather than "a separate transition object.")
+### 2. Safely unrollable — bounded recursion, acceptable variable count
+Not a fixed point, but the depth is bounded and small enough that emitting all N
+levels into **one** solve is acceptable. Unroll it (`BoundedRec`): one model,
+size O(N), handed to Z3 once. Fine when N is small. Covers bounded recursion
+(tail or not) whose unrolled size you can afford. Still "emit one model, solve
+once" — no execution loop.
 
-### 3. Neither — the HARD case (where the real work is)
-General recursion: work pending *after* the recursive call. It can't be a tick
-(you'd have to come back to finish the pending work) and isn't a fixed point. Two
-options, both costly: **unroll** and accept O(depth) model growth, or carry an
-**explicit stack** in the state (same growth, hand-managed). The growth is
-fundamental here — this is the situation where neither good option exists, and
-where the design effort will go.
+### 3. Tail-recursive but not fixed-point — the HARD case
+Not a fixed point, **and too deep to unroll safely** (the variable count would
+blow up). But it *is* tail-recursive, so it can be **run separately as ticks**:
+the recursive call is the same model in tail position, so re-run the model,
+carrying every variable forward and overwriting only the inputs passed
+differently — constant memory (measured: footprint 4, flat across 3..50 steps).
+Tail position is what licenses it: with no work pending after the call, the
+re-run's answer *is* the parent's answer, so the parent can be discarded and its
+memory reused.
 
-**Decision order:** fixed-point? → tail (run as a tick)? → unroll acceptable? →
-hard case. Related: `docs/notes/fixed-point-models.md` (detecting the fixed-point
-and tail cases so the readable recursive surface is kept while the fast execution
-is chosen underneath).
+This is the hard case not because the idea is subtle but because it needs a real
+**execution loop**: many solves with state carry between them, not a single model
+handed to Z3 once. Cases 1 and 2 are "emit one model, solve once"; case 3 is "run
+the model over and over." That execution machinery is the work. (Prototype:
+`run_incremental` is a first cut of the tick loop.)
+
+> Off the chart: general **non-tail** recursion too deep to unroll needs an
+> unbounded stack = unbounded memory, which a bounded solver can't provide.
+> Bounded non-tail recursion is just case 2.
+
+**Decision order:** fixed-point? → safely unrollable? → tail-recursive (run as a
+tick loop)? Related: `docs/notes/fixed-point-models.md` (detecting the
+fixed-point and tail cases so the readable recursive surface is kept while the
+right execution is chosen underneath).
