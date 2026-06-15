@@ -307,6 +307,37 @@ The router's main inputs. All return true/false.
 
 ---
 
+## Getting effects out of a solve — the commit boundary
+
+Effects (read/write/libcall = uninterpreted functions the runtime must fulfill)
+have to leave the solver at some point. The organizing principle: **`check()` is
+a speculative search that backtracks; effects are irreversible; so an effect may
+only fire at a commit point** — a decision the solver will not take back. The
+"tick" is that commit boundary made explicit; you cannot delete it, only place it.
+
+The mechanisms in this document, arranged by *where* they put the commit boundary:
+
+- **Tick loop** (host `while`, between solves) — commit at the end of a whole
+  solve, on a confirmed model. Maximally safe; coarse; host-driven. (Prototyped.)
+- **Incremental `push`/`pop`** — the *same* boundary made cheap: reuse one solver,
+  keep learned clauses, flat memory. Not a different boundary, an optimization of
+  the tick. (Prototyped.)
+- **`UserPropagateBase` at `final`** — relocates the boundary *inside* one
+  `check()`: at each complete model the propagator dispatches effects and
+  `propagate`s the next state, so **Z3 runs the loop**. The genuine "loop inside
+  Z3." Cost: you own backtracking-safety and lose easy control of effect order.
+- **`UserPropagateBase` at `fixed`** — finest grain (per forced decision), but
+  speculative — unsafe for irreversible effects; fine for tolerant observe/output.
+- **`Optimize` + `set_on_model`** — a stream of *observations* (improving models)
+  during one optimization. Good for telemetry/"observe external state"; not a
+  bidirectional IO channel (the model is fixed during a solve, and intermediate
+  models are search artifacts, so the world's response can't be injected back).
+
+Refinement by direction: **observe/output** effects tolerate speculation and can
+leak from almost any callback; **input/interactive** effects need a real commit
+point. The deep dive — mechanism, the `UserPropagateBase` API, a worked example
+in all three forms, and the backtracking caveats — is in `z3-effects-in-check.md`.
+
 ## Tying it together: a general-purpose language from the non-smt2 features
 
 The thing to see is that smt2 is only the **model** layer — one of five — and the
