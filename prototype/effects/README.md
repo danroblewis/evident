@@ -9,8 +9,10 @@ has its prettified constraint model in the header comment.
   push/pop/fresh scaffolding; you override `on_fixed`/`on_final`).
 - `log.py` — logs each event as the solver fixes it, and at the complete model.
 - `echo.py` — reads a line from stdin and prints it at the commit point.
-- `libcall.py` — the old `LibCall` effect as generic FFI: dispatches a named host
-  function from a registry, the way `LibCall(name, args)` went through libffi.
+- `libcall.py` — the old `LibCall` effect as **real** generic FFI: resolves a C
+  symbol by name out of libc through `ctypes` (Python's libffi binding), sets its
+  signature, and calls it (`getpid`/`getppid`/`strlen`) — the way
+  `LibCall(name, args)` went through libffi.
 
 ```bash
 python3 -m effects.log
