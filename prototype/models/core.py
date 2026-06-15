@@ -171,12 +171,14 @@ def run_oneshot(tr, init, fuel):
 
 
 def run_incremental(tr, init, max_steps, done=None):
-    """Solve ONE step at a time, reusing the SAME field slots each step (memory
-    reuse). Variable footprint is constant (2 × #fields) regardless of steps."""
+    """Step-by-step with a FRESH solver each tick. Constant *variable* footprint
+    (same field slots), but it rebuilds the solver and re-asserts the transition
+    every tick — so it throws away learned clauses. The crude version; prefer
+    `run_persistent` for genuine constraint reuse."""
     vals, trace = dict(init), [dict(init)]
     for _ in range(max_steps):
         cur, nxt = tr.vars(""), tr.vars("′")
-        s = z3.Solver()
+        s = z3.Solver()                              # fresh each tick (no reuse)
         s.add(*[cur[n] == _LIT[tr.tags[n]](vals[n]) for n in cur])
         s.add(tr.step(cur, nxt))
         s.check()
@@ -188,6 +190,29 @@ def run_incremental(tr, init, max_steps, done=None):
     return vals, trace, 2 * len(tr.fields)
 
 
+def run_persistent(tr, init, max_steps, done=None):
+    """The genuine tail-recursion-with-reuse: ONE persistent solver via Z3's
+    incremental push/pop. The transition is asserted ONCE and REUSED every tick;
+    each tick pushes the current-state pins, solves, reads the next state, pops.
+    The held-assertion count stays at 1 (just the transition) and learned clauses
+    persist across ticks — constant memory, reused constraints, warm solver."""
+    s = z3.Solver()
+    cur, nxt = tr.vars(""), tr.vars("′")
+    s.add(tr.step(cur, nxt))                         # asserted ONCE, reused forever
+    vals, trace = dict(init), [dict(init)]
+    for _ in range(max_steps):
+        s.push()
+        s.add(*[cur[n] == _LIT[tr.tags[n]](vals[n]) for n in cur])
+        s.check()
+        m = s.model()
+        vals = {n: _py(m, nxt[n], tr.tags[n]) for n in nxt}
+        s.pop()
+        trace.append(dict(vals))
+        if done and done(vals):
+            break
+    return vals, trace, len(s.assertions())          # == 1: the reused transition
+
+
 # ── the prettified report ─────────────────────────────────────────────────────
 def section_md(title, transition, submodels, init, fuel, done=None):
     """Build one example's markdown section (prettified Z3 AST). Returns
@@ -195,6 +220,7 @@ def section_md(title, transition, submodels, init, fuel, done=None):
     states, cons = unroll_oneshot(transition, init, fuel)
     one_final, one_vars = run_oneshot(transition, init, fuel)
     inc_final, trace, inc_vars = run_incremental(transition, init, fuel, done)
+    per_final, _, per_held = run_persistent(transition, init, fuel, done)
 
     L = [f"## {title}", "",
          "Each sub-model on its own (symbolic interface), then the **combined** "
@@ -213,10 +239,13 @@ def section_md(title, transition, submodels, init, fuel, done=None):
           "with depth).", "", "```", pretty.goal(cons), "```", "",
           "### run result", "",
           f"- **one-shot** (unroll all, one solve): final = `{one_final}`  "
-          f"[{one_vars} vars]",
-          f"- **incremental** (one step at a time, memory reuse): final = "
-          f"`{inc_final}`  [{inc_vars} vars, constant]", "",
-          "state trace (incremental):", "",
+          f"[{one_vars} vars — grows with depth]",
+          f"- **incremental** (fresh solver each tick): final = "
+          f"`{inc_final}`  [{inc_vars} vars, but rebuilds + re-asserts each tick]",
+          f"- **persistent** (ONE solver, push/pop, transition asserted once): "
+          f"final = `{per_final}`  [**{per_held} held assertion — the transition, "
+          "reused every tick**]", "",
+          "state trace (persistent push/pop loop):", "",
           "```", "\n→ ".join(str(s) for s in trace), "```", ""]
     return "\n".join(L), one_final, inc_final
 

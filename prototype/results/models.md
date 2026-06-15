@@ -110,10 +110,11 @@ else
 
 ### run result
 
-- **one-shot** (unroll all, one solve): final = `{'i': 0, 'acc': 15}`  [12 vars]
-- **incremental** (one step at a time, memory reuse): final = `{'i': 0, 'acc': 15}`  [4 vars, constant]
+- **one-shot** (unroll all, one solve): final = `{'i': 0, 'acc': 15}`  [12 vars — grows with depth]
+- **incremental** (fresh solver each tick): final = `{'i': 0, 'acc': 15}`  [4 vars, but rebuilds + re-asserts each tick]
+- **persistent** (ONE solver, push/pop, transition asserted once): final = `{'i': 0, 'acc': 15}`  [**1 held assertion — the transition, reused every tick**]
 
-state trace (incremental):
+state trace (persistent push/pop loop):
 
 ```
 {'i': 5, 'acc': 0}
@@ -369,10 +370,11 @@ where
 
 ### run result
 
-- **one-shot** (unroll all, one solve): final = `{'idx': 8, 'best': 9}`  [18 vars]
-- **incremental** (one step at a time, memory reuse): final = `{'idx': 8, 'best': 9}`  [4 vars, constant]
+- **one-shot** (unroll all, one solve): final = `{'idx': 8, 'best': 9}`  [18 vars — grows with depth]
+- **incremental** (fresh solver each tick): final = `{'idx': 8, 'best': 9}`  [4 vars, but rebuilds + re-asserts each tick]
+- **persistent** (ONE solver, push/pop, transition asserted once): final = `{'idx': 8, 'best': 9}`  [**1 held assertion — the transition, reused every tick**]
 
-state trace (incremental):
+state trace (persistent push/pop loop):
 
 ```
 {'idx': 0, 'best': -999}
