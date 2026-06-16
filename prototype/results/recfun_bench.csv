@@ -1,0 +1,1376 @@
+problem,form,note,tactic,result,apply_ms,solve_ms,total_ms
+wrap_double,inline,"non-recursive, nested 2x",(none),sat,0.0,0.7,0.7
+wrap_double,inline,"non-recursive, nested 2x",ackermannize_bv,sat,0.08,0.4,0.48
+wrap_double,inline,"non-recursive, nested 2x",subpaving,sat,0.06,0.42,0.48
+wrap_double,inline,"non-recursive, nested 2x",horn,tactic_err,0.14,0.0,0.14
+wrap_double,inline,"non-recursive, nested 2x",horn-simplify,tactic_err,0.08,0.0,0.08
+wrap_double,inline,"non-recursive, nested 2x",nlsat,sat,0.11,0.02,0.13
+wrap_double,inline,"non-recursive, nested 2x",qfnra-nlsat,sat,0.08,0.03,0.11
+wrap_double,inline,"non-recursive, nested 2x",qe-light,sat,0.05,0.42,0.47
+wrap_double,inline,"non-recursive, nested 2x",nlqsat,tactic_err,0.06,0.0,0.06
+wrap_double,inline,"non-recursive, nested 2x",qe,sat,0.02,0.35,0.37
+wrap_double,inline,"non-recursive, nested 2x",qsat,sat,0.44,0.02,0.46
+wrap_double,inline,"non-recursive, nested 2x",qe2,sat,0.26,0.49,0.75
+wrap_double,inline,"non-recursive, nested 2x",qe_rec,sat,0.02,0.34,0.36
+wrap_double,inline,"non-recursive, nested 2x",psat,sat,2.08,0.39,2.47
+wrap_double,inline,"non-recursive, nested 2x",sat,sat,1.6,0.37,1.97
+wrap_double,inline,"non-recursive, nested 2x",sat-preprocess,sat,1.38,0.35,1.73
+wrap_double,inline,"non-recursive, nested 2x",ctx-solver-simplify,sat,0.28,0.34,0.62
+wrap_double,inline,"non-recursive, nested 2x",psmt,sat,5.08,0.1,5.18
+wrap_double,inline,"non-recursive, nested 2x",unit-subsume-simplify,sat,0.15,0.4,0.55
+wrap_double,inline,"non-recursive, nested 2x",aig,sat,0.03,0.35,0.38
+wrap_double,inline,"non-recursive, nested 2x",add-bounds,unsat,0.03,0.33,0.36
+wrap_double,inline,"non-recursive, nested 2x",card2bv,sat,0.03,0.33,0.36
+wrap_double,inline,"non-recursive, nested 2x",degree-shift,sat,0.02,0.34,0.36
+wrap_double,inline,"non-recursive, nested 2x",diff-neq,tactic_err,0.03,0.0,0.03
+wrap_double,inline,"non-recursive, nested 2x",eq2bv,sat,0.02,0.34,0.36
+wrap_double,inline,"non-recursive, nested 2x",factor,sat,0.04,0.33,0.37
+wrap_double,inline,"non-recursive, nested 2x",fix-dl-var,sat,0.02,0.33,0.35
+wrap_double,inline,"non-recursive, nested 2x",fm,sat,0.02,0.33,0.35
+wrap_double,inline,"non-recursive, nested 2x",lia2card,sat,0.09,0.04,0.13
+wrap_double,inline,"non-recursive, nested 2x",lia2pb,sat,0.02,0.41,0.43
+wrap_double,inline,"non-recursive, nested 2x",nla2bv,sat,0.12,0.26,0.38
+wrap_double,inline,"non-recursive, nested 2x",normalize-bounds,sat,0.06,0.42,0.48
+wrap_double,inline,"non-recursive, nested 2x",pb2bv,tactic_err,0.06,0.0,0.06
+wrap_double,inline,"non-recursive, nested 2x",propagate-ineqs,sat,0.06,0.37,0.43
+wrap_double,inline,"non-recursive, nested 2x",purify-arith,sat,0.05,0.35,0.4
+wrap_double,inline,"non-recursive, nested 2x",recover-01,sat,0.02,0.34,0.36
+wrap_double,inline,"non-recursive, nested 2x",bit-blast,sat,0.02,0.35,0.37
+wrap_double,inline,"non-recursive, nested 2x",bv1-blast,sat,0.02,0.33,0.35
+wrap_double,inline,"non-recursive, nested 2x",bv_bound_chk,sat,0.05,0.34,0.39
+wrap_double,inline,"non-recursive, nested 2x",propagate-bv-bounds,sat,0.02,0.33,0.35
+wrap_double,inline,"non-recursive, nested 2x",propagate-bv-bounds2,sat,0.06,0.34,0.4
+wrap_double,inline,"non-recursive, nested 2x",reduce-bv-size,sat,0.02,0.36,0.38
+wrap_double,inline,"non-recursive, nested 2x",bv-slice,sat,0.03,0.35,0.38
+wrap_double,inline,"non-recursive, nested 2x",bvarray2uf,sat,0.02,0.37,0.39
+wrap_double,inline,"non-recursive, nested 2x",dt2bv,sat,0.02,0.33,0.35
+wrap_double,inline,"non-recursive, nested 2x",elim-small-bv,sat,0.02,0.34,0.36
+wrap_double,inline,"non-recursive, nested 2x",max-bv-sharing,sat,0.02,0.36,0.38
+wrap_double,inline,"non-recursive, nested 2x",blast-term-ite,sat,0.02,0.33,0.35
+wrap_double,inline,"non-recursive, nested 2x",cofactor-term-ite,sat,0.02,0.36,0.38
+wrap_double,inline,"non-recursive, nested 2x",collect-statistics,sat,0.41,0.36,0.77
+wrap_double,inline,"non-recursive, nested 2x",ctx-simplify,sat,0.02,0.35,0.37
+wrap_double,inline,"non-recursive, nested 2x",demodulator,sat,0.03,0.34,0.37
+wrap_double,inline,"non-recursive, nested 2x",der,sat,0.02,0.33,0.35
+wrap_double,inline,"non-recursive, nested 2x",distribute-forall,sat,0.02,0.34,0.36
+wrap_double,inline,"non-recursive, nested 2x",dom-simplify,sat,0.06,0.33,0.39
+wrap_double,inline,"non-recursive, nested 2x",elim-term-ite,sat,0.02,0.33,0.35
+wrap_double,inline,"non-recursive, nested 2x",elim-uncnstr2,sat,0.03,0.34,0.37
+wrap_double,inline,"non-recursive, nested 2x",elim-uncnstr,sat,0.03,0.35,0.38
+wrap_double,inline,"non-recursive, nested 2x",elim-predicates,sat,0.05,0.02,0.07
+wrap_double,inline,"non-recursive, nested 2x",injectivity,sat,0.02,0.33,0.35
+wrap_double,inline,"non-recursive, nested 2x",snf,sat,0.06,0.39,0.45
+wrap_double,inline,"non-recursive, nested 2x",nnf,sat,0.06,0.33,0.39
+wrap_double,inline,"non-recursive, nested 2x",occf,sat,0.02,0.33,0.35
+wrap_double,inline,"non-recursive, nested 2x",pb-preprocess,sat,0.02,0.33,0.35
+wrap_double,inline,"non-recursive, nested 2x",propagate-values2,sat,0.02,0.33,0.35
+wrap_double,inline,"non-recursive, nested 2x",propagate-values,sat,0.02,0.33,0.35
+wrap_double,inline,"non-recursive, nested 2x",reduce-args,sat,0.02,0.33,0.35
+wrap_double,inline,"non-recursive, nested 2x",reduce-args2,sat,0.02,0.34,0.36
+wrap_double,inline,"non-recursive, nested 2x",simplify,sat,0.04,0.33,0.37
+wrap_double,inline,"non-recursive, nested 2x",elim-and,sat,0.03,0.36,0.39
+wrap_double,inline,"non-recursive, nested 2x",solve-eqs,sat,0.04,0.02,0.06
+wrap_double,inline,"non-recursive, nested 2x",special-relations,sat,0.07,0.33,0.4
+wrap_double,inline,"non-recursive, nested 2x",split-clause,tactic_err,0.03,0.0,0.03
+wrap_double,inline,"non-recursive, nested 2x",symmetry-reduce,sat,0.03,0.41,0.44
+wrap_double,inline,"non-recursive, nested 2x",tseitin-cnf,sat,0.02,0.41,0.43
+wrap_double,inline,"non-recursive, nested 2x",tseitin-cnf-core,sat,0.02,0.36,0.38
+wrap_double,inline,"non-recursive, nested 2x",qffd,sat,0.33,0.07,0.4
+wrap_double,inline,"non-recursive, nested 2x",pqffd,sat,4.22,0.03,4.25
+wrap_double,inline,"non-recursive, nested 2x",smtfd,tactic_to,1506.21,0.0,1506.21
+wrap_double,inline,"non-recursive, nested 2x",fpa2bv,sat,0.03,0.45,0.48
+wrap_double,inline,"non-recursive, nested 2x",qffp,sat,0.23,0.02,0.25
+wrap_double,inline,"non-recursive, nested 2x",qffpbv,sat,0.13,0.02,0.15
+wrap_double,inline,"non-recursive, nested 2x",qffplra,sat,0.13,0.02,0.15
+wrap_double,inline,"non-recursive, nested 2x",default,sat,0.33,0.02,0.35
+wrap_double,inline,"non-recursive, nested 2x",euf-completion,sat,0.2,0.02,0.22
+wrap_double,inline,"non-recursive, nested 2x",solver-subsumption,sat,0.24,0.4,0.64
+wrap_double,inline,"non-recursive, nested 2x",qfbv-sls,sat,0.06,0.03,0.09
+wrap_double,inline,"non-recursive, nested 2x",sls-smt,sat,0.05,0.02,0.07
+wrap_double,inline,"non-recursive, nested 2x",nra,sat,0.17,0.02,0.19
+wrap_double,inline,"non-recursive, nested 2x",qfaufbv,sat,0.06,0.02,0.08
+wrap_double,inline,"non-recursive, nested 2x",qfauflia,sat,0.04,0.02,0.06
+wrap_double,inline,"non-recursive, nested 2x",qfbv,sat,0.05,0.02,0.07
+wrap_double,inline,"non-recursive, nested 2x",qfidl,sat,0.07,0.02,0.09
+wrap_double,inline,"non-recursive, nested 2x",qflia,sat,0.1,0.02,0.12
+wrap_double,inline,"non-recursive, nested 2x",qflra,sat,0.11,0.02,0.13
+wrap_double,inline,"non-recursive, nested 2x",qfnia,sat,2.5,0.02,2.52
+wrap_double,inline,"non-recursive, nested 2x",qfnra,sat,0.45,0.02,0.47
+wrap_double,inline,"non-recursive, nested 2x",qfuf,sat,0.04,0.02,0.06
+wrap_double,inline,"non-recursive, nested 2x",qfufbv,sat,0.05,0.02,0.07
+wrap_double,inline,"non-recursive, nested 2x",qfufbv_ackr,sat,0.05,0.02,0.07
+wrap_double,inline,"non-recursive, nested 2x",ufnia,sat,0.11,0.02,0.13
+wrap_double,inline,"non-recursive, nested 2x",uflra,sat,0.04,0.02,0.06
+wrap_double,inline,"non-recursive, nested 2x",auflia,sat,0.1,0.02,0.12
+wrap_double,inline,"non-recursive, nested 2x",auflira,sat,0.04,0.02,0.06
+wrap_double,inline,"non-recursive, nested 2x",aufnira,sat,0.04,0.02,0.06
+wrap_double,inline,"non-recursive, nested 2x",lra,sat,0.04,0.02,0.06
+wrap_double,inline,"non-recursive, nested 2x",lia,sat,0.04,0.02,0.06
+wrap_double,inline,"non-recursive, nested 2x",lira,sat,0.04,0.02,0.06
+wrap_double,inline,"non-recursive, nested 2x",smt,sat,0.12,0.02,0.14
+wrap_double,inline,"non-recursive, nested 2x",skip,sat,0.02,0.36,0.38
+wrap_double,inline,"non-recursive, nested 2x",fail,tactic_err,0.03,0.0,0.03
+wrap_double,inline,"non-recursive, nested 2x",fail-if-undecided,tactic_err,0.03,0.0,0.03
+wrap_double,inline,"non-recursive, nested 2x",macro-finder,sat,0.02,0.35,0.37
+wrap_double,inline,"non-recursive, nested 2x",quasi-macros,sat,0.04,0.34,0.38
+wrap_double,inline,"non-recursive, nested 2x",ufbv-rewriter,sat,0.03,0.33,0.36
+wrap_double,inline,"non-recursive, nested 2x",bv,sat,0.06,0.02,0.08
+wrap_double,inline,"non-recursive, nested 2x",ufbv,sat,0.06,0.02,0.08
+wrap_double,inline,"non-recursive, nested 2x",simplify>solve-eqs,sat,0.04,0.02,0.06
+wrap_double,inline,"non-recursive, nested 2x",simplify>propagate-values,sat,0.02,0.34,0.36
+wrap_double,inline,"non-recursive, nested 2x",propagate-values>solve-eqs,sat,0.03,0.02,0.05
+wrap_double,inline,"non-recursive, nested 2x",ctx-simplify>simplify,sat,0.03,0.33,0.36
+wrap_double,inline,"non-recursive, nested 2x",elim-term-ite>simplify,sat,0.03,0.32,0.35
+wrap_double,inline,"non-recursive, nested 2x",simplify>ctx-simplify,sat,0.03,0.33,0.36
+wrap_double,inline,"non-recursive, nested 2x",propagate-values>simplify,sat,0.02,0.35,0.37
+wrap_double,inline,"non-recursive, nested 2x",solve-eqs>simplify,sat,0.03,0.02,0.05
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",(none),sat,0.0,0.13,0.13
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",ackermannize_bv,sat,0.05,0.11,0.16
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",subpaving,sat,0.05,0.14,0.19
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",horn,tactic_err,0.3,0.0,0.3
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",horn-simplify,tactic_err,0.07,0.0,0.07
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",nlsat,sat,0.07,0.1,0.17
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",qfnra-nlsat,sat,0.08,0.02,0.1
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",qe-light,sat,0.03,0.11,0.14
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",nlqsat,tactic_err,0.04,0.0,0.04
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",qe,sat,0.02,0.11,0.13
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",qsat,sat,0.47,0.02,0.49
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",qe2,sat,0.58,0.4,0.98
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",qe_rec,sat,0.02,0.11,0.13
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",psat,sat,1.93,0.1,2.03
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",sat,sat,0.35,0.1,0.45
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",sat-preprocess,sat,0.35,0.09,0.44
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",ctx-solver-simplify,sat,0.85,0.38,1.23
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",psmt,sat,2.86,0.03,2.89
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",unit-subsume-simplify,sat,0.35,0.48,0.83
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",aig,sat,0.03,0.11,0.14
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",add-bounds,unsat,0.02,0.09,0.11
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",card2bv,sat,0.05,0.1,0.15
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",degree-shift,sat,0.02,0.09,0.11
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",diff-neq,tactic_err,0.03,0.0,0.03
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",eq2bv,sat,0.05,0.1,0.15
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",factor,sat,0.02,0.09,0.11
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",fix-dl-var,sat,0.03,0.09,0.12
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",fm,sat,0.02,0.1,0.12
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",lia2card,sat,0.04,0.05,0.09
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",lia2pb,sat,0.02,0.09,0.11
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",nla2bv,tactic_err,0.05,0.0,0.05
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",normalize-bounds,sat,0.06,0.15,0.21
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",pb2bv,tactic_err,0.06,0.0,0.06
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",propagate-ineqs,sat,0.06,0.1,0.16
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",purify-arith,sat,0.04,0.11,0.15
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",recover-01,sat,0.02,0.09,0.11
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",bit-blast,sat,0.02,0.1,0.12
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",bv1-blast,sat,0.02,0.09,0.11
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",bv_bound_chk,sat,0.02,0.12,0.14
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",propagate-bv-bounds,sat,0.02,0.09,0.11
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",propagate-bv-bounds2,sat,0.05,0.09,0.14
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",reduce-bv-size,sat,0.02,0.09,0.11
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",bv-slice,sat,0.03,0.09,0.12
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",bvarray2uf,sat,0.02,0.09,0.11
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",dt2bv,sat,0.02,0.09,0.11
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",elim-small-bv,sat,0.02,0.09,0.11
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",max-bv-sharing,sat,0.02,0.09,0.11
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",blast-term-ite,sat,0.03,0.09,0.12
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",cofactor-term-ite,sat,0.02,0.09,0.11
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",collect-statistics,sat,0.2,0.09,0.29
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",ctx-simplify,sat,0.02,0.39,0.41
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",demodulator,sat,0.02,0.09,0.11
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",der,sat,0.02,0.09,0.11
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",distribute-forall,sat,0.02,0.09,0.11
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",dom-simplify,sat,0.06,0.35,0.41
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",elim-term-ite,sat,0.02,0.09,0.11
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",elim-uncnstr2,sat,0.05,0.09,0.14
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",elim-uncnstr,sat,0.02,0.09,0.11
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",elim-predicates,sat,0.06,0.02,0.08
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",injectivity,sat,0.02,0.11,0.13
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",snf,sat,0.03,0.09,0.12
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",nnf,sat,0.05,0.09,0.14
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",occf,sat,0.02,0.09,0.11
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",pb-preprocess,sat,0.02,0.09,0.11
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",propagate-values2,sat,0.04,0.35,0.39
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",propagate-values,sat,0.03,0.35,0.38
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",reduce-args,sat,0.02,0.11,0.13
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",reduce-args2,sat,0.03,0.11,0.14
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",simplify,sat,0.02,0.1,0.12
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",elim-and,sat,0.02,0.1,0.12
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",solve-eqs,sat,0.07,0.02,0.09
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",special-relations,sat,0.05,0.11,0.16
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",split-clause,tactic_err,0.03,0.0,0.03
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",symmetry-reduce,sat,0.02,0.1,0.12
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",tseitin-cnf,sat,0.02,0.09,0.11
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",tseitin-cnf-core,sat,0.02,0.09,0.11
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",qffd,sat,0.21,0.02,0.23
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",pqffd,sat,4.11,0.03,4.14
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",smtfd,tactic_to,1503.57,0.0,1503.57
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",fpa2bv,sat,0.03,0.22,0.25
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",qffp,sat,0.24,0.02,0.26
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",qffpbv,sat,0.16,0.02,0.18
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",qffplra,sat,0.15,0.02,0.17
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",default,sat,0.09,0.02,0.11
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",euf-completion,sat,0.14,0.04,0.18
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",solver-subsumption,sat,0.71,0.44,1.15
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",qfbv-sls,sat,0.06,0.02,0.08
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",sls-smt,sat,0.05,0.02,0.07
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",nra,sat,0.21,0.02,0.23
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",qfaufbv,sat,0.07,0.04,0.11
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",qfauflia,sat,0.06,0.02,0.08
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",qfbv,sat,0.06,0.02,0.08
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",qfidl,sat,0.07,0.02,0.09
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",qflia,sat,0.11,0.02,0.13
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",qflra,sat,0.19,0.02,0.21
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",qfnia,sat,0.08,0.02,0.1
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",qfnra,sat,0.4,0.02,0.42
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",qfuf,sat,0.05,0.02,0.07
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",qfufbv,sat,0.06,0.02,0.08
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",qfufbv_ackr,sat,0.06,0.02,0.08
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",ufnia,sat,0.14,0.02,0.16
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",uflra,sat,0.06,0.02,0.08
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",auflia,sat,0.14,0.02,0.16
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",auflira,sat,0.05,0.02,0.07
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",aufnira,sat,0.05,0.02,0.07
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",lra,sat,0.06,0.02,0.08
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",lia,sat,0.06,0.02,0.08
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",lira,sat,0.05,0.02,0.07
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",smt,sat,0.18,0.02,0.2
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",skip,sat,0.02,0.1,0.12
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",fail,tactic_err,0.03,0.0,0.03
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",fail-if-undecided,tactic_err,0.02,0.0,0.02
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",macro-finder,sat,0.03,0.1,0.13
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",quasi-macros,sat,0.03,0.11,0.14
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",ufbv-rewriter,sat,0.02,0.09,0.11
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",bv,sat,0.07,0.02,0.09
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",ufbv,sat,0.07,0.02,0.09
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",simplify>solve-eqs,sat,0.06,0.02,0.08
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",simplify>propagate-values,sat,0.03,0.44,0.47
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",propagate-values>solve-eqs,sat,0.06,0.02,0.08
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",ctx-simplify>simplify,sat,0.16,0.45,0.61
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",elim-term-ite>simplify,sat,0.05,0.11,0.16
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",simplify>ctx-simplify,sat,0.03,0.4,0.43
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",propagate-values>simplify,sat,0.05,0.37,0.42
+wrap_double,recfun,"non-recursive, dbl() as RecFunction",solve-eqs>simplify,sat,0.07,0.02,0.09
+sum_to_fwd,recfun,,(none),sat,0.0,0.41,0.41
+sum_to_fwd,recfun,,ackermannize_bv,sat,0.02,0.39,0.41
+sum_to_fwd,recfun,,subpaving,sat,0.13,0.35,0.48
+sum_to_fwd,recfun,,horn,tactic_err,0.38,0.0,0.38
+sum_to_fwd,recfun,,horn-simplify,tactic_err,0.09,0.0,0.09
+sum_to_fwd,recfun,,nlsat,sat,0.07,0.42,0.49
+sum_to_fwd,recfun,,qfnra-nlsat,sat,0.16,0.02,0.18
+sum_to_fwd,recfun,,qe-light,sat,0.02,0.4,0.42
+sum_to_fwd,recfun,,nlqsat,tactic_err,0.03,0.0,0.03
+sum_to_fwd,recfun,,qe,sat,0.03,0.48,0.51
+sum_to_fwd,recfun,,qsat,sat,0.46,0.02,0.48
+sum_to_fwd,recfun,,qe2,sat,0.53,0.48,1.01
+sum_to_fwd,recfun,,qe_rec,sat,0.03,0.48,0.51
+sum_to_fwd,recfun,,psat,sat,0.57,0.47,1.04
+sum_to_fwd,recfun,,sat,sat,0.38,0.42,0.8
+sum_to_fwd,recfun,,sat-preprocess,sat,0.36,0.41,0.77
+sum_to_fwd,recfun,,ctx-solver-simplify,sat,0.31,0.41,0.72
+sum_to_fwd,recfun,,psmt,sat,1.76,0.03,1.79
+sum_to_fwd,recfun,,unit-subsume-simplify,sat,0.22,0.45,0.67
+sum_to_fwd,recfun,,aig,sat,0.02,0.52,0.54
+sum_to_fwd,recfun,,add-bounds,unsat,0.03,0.39,0.42
+sum_to_fwd,recfun,,card2bv,sat,0.12,0.37,0.49
+sum_to_fwd,recfun,,degree-shift,sat,0.1,0.36,0.46
+sum_to_fwd,recfun,,diff-neq,tactic_err,0.03,0.0,0.03
+sum_to_fwd,recfun,,eq2bv,sat,0.03,0.41,0.44
+sum_to_fwd,recfun,,factor,sat,0.02,0.4,0.42
+sum_to_fwd,recfun,,fix-dl-var,sat,0.03,0.52,0.55
+sum_to_fwd,recfun,,fm,sat,0.14,0.46,0.6
+sum_to_fwd,recfun,,lia2card,sat,0.02,0.43,0.45
+sum_to_fwd,recfun,,lia2pb,sat,0.02,0.43,0.45
+sum_to_fwd,recfun,,nla2bv,tactic_err,0.05,0.0,0.05
+sum_to_fwd,recfun,,normalize-bounds,sat,0.02,0.41,0.43
+sum_to_fwd,recfun,,pb2bv,tactic_err,0.11,0.0,0.11
+sum_to_fwd,recfun,,propagate-ineqs,sat,0.03,0.47,0.5
+sum_to_fwd,recfun,,purify-arith,sat,0.12,0.37,0.49
+sum_to_fwd,recfun,,recover-01,sat,0.02,0.41,0.43
+sum_to_fwd,recfun,,bit-blast,sat,0.02,0.41,0.43
+sum_to_fwd,recfun,,bv1-blast,sat,0.02,0.41,0.43
+sum_to_fwd,recfun,,bv_bound_chk,sat,0.02,0.41,0.43
+sum_to_fwd,recfun,,propagate-bv-bounds,sat,0.02,0.4,0.42
+sum_to_fwd,recfun,,propagate-bv-bounds2,sat,0.02,0.4,0.42
+sum_to_fwd,recfun,,reduce-bv-size,sat,0.02,0.48,0.5
+sum_to_fwd,recfun,,bv-slice,sat,0.03,0.47,0.5
+sum_to_fwd,recfun,,bvarray2uf,sat,0.03,0.48,0.51
+sum_to_fwd,recfun,,dt2bv,sat,0.02,0.44,0.46
+sum_to_fwd,recfun,,elim-small-bv,sat,0.02,0.45,0.47
+sum_to_fwd,recfun,,max-bv-sharing,sat,0.02,0.44,0.46
+sum_to_fwd,recfun,,blast-term-ite,sat,0.02,0.42,0.44
+sum_to_fwd,recfun,,cofactor-term-ite,sat,0.02,0.43,0.45
+sum_to_fwd,recfun,,collect-statistics,sat,0.09,0.41,0.5
+sum_to_fwd,recfun,,ctx-simplify,sat,0.02,0.4,0.42
+sum_to_fwd,recfun,,demodulator,sat,0.02,0.4,0.42
+sum_to_fwd,recfun,,der,sat,0.02,0.4,0.42
+sum_to_fwd,recfun,,distribute-forall,sat,0.02,0.41,0.43
+sum_to_fwd,recfun,,dom-simplify,sat,0.02,0.41,0.43
+sum_to_fwd,recfun,,elim-term-ite,sat,0.02,0.4,0.42
+sum_to_fwd,recfun,,elim-uncnstr2,sat,0.06,0.14,0.2
+sum_to_fwd,recfun,,elim-uncnstr,sat,0.02,0.41,0.43
+sum_to_fwd,recfun,,elim-predicates,sat,0.13,0.02,0.15
+sum_to_fwd,recfun,,injectivity,sat,0.02,0.42,0.44
+sum_to_fwd,recfun,,snf,sat,0.02,0.41,0.43
+sum_to_fwd,recfun,,nnf,sat,0.02,0.41,0.43
+sum_to_fwd,recfun,,occf,sat,0.02,0.4,0.42
+sum_to_fwd,recfun,,pb-preprocess,sat,0.02,0.42,0.44
+sum_to_fwd,recfun,,propagate-values2,sat,0.02,0.4,0.42
+sum_to_fwd,recfun,,propagate-values,sat,0.02,0.53,0.55
+sum_to_fwd,recfun,,reduce-args,sat,0.03,0.51,0.54
+sum_to_fwd,recfun,,reduce-args2,sat,0.05,0.46,0.51
+sum_to_fwd,recfun,,simplify,sat,0.12,0.38,0.5
+sum_to_fwd,recfun,,elim-and,sat,0.11,0.38,0.49
+sum_to_fwd,recfun,,solve-eqs,sat,0.13,0.02,0.15
+sum_to_fwd,recfun,,special-relations,sat,0.04,0.41,0.45
+sum_to_fwd,recfun,,split-clause,tactic_err,0.03,0.0,0.03
+sum_to_fwd,recfun,,symmetry-reduce,sat,0.02,0.41,0.43
+sum_to_fwd,recfun,,tseitin-cnf,sat,0.02,0.41,0.43
+sum_to_fwd,recfun,,tseitin-cnf-core,sat,0.02,0.42,0.44
+sum_to_fwd,recfun,,qffd,sat,0.21,0.37,0.58
+sum_to_fwd,recfun,,pqffd,tactic_err,1.07,0.0,1.07
+sum_to_fwd,recfun,,smtfd,tactic_to,1509.04,0.0,1509.04
+sum_to_fwd,recfun,,fpa2bv,sat,0.03,0.53,0.56
+sum_to_fwd,recfun,,qffp,sat,0.37,0.02,0.39
+sum_to_fwd,recfun,,qffpbv,sat,0.29,0.02,0.31
+sum_to_fwd,recfun,,qffplra,sat,0.28,0.02,0.3
+sum_to_fwd,recfun,,default,sat,0.45,0.02,0.47
+sum_to_fwd,recfun,,euf-completion,sat,0.17,0.42,0.59
+sum_to_fwd,recfun,,solver-subsumption,sat,0.02,0.41,0.43
+sum_to_fwd,recfun,,qfbv-sls,sat,0.14,0.02,0.16
+sum_to_fwd,recfun,,sls-smt,sat,0.14,0.02,0.16
+sum_to_fwd,recfun,,nra,sat,0.34,0.02,0.36
+sum_to_fwd,recfun,,qfaufbv,sat,0.16,0.02,0.18
+sum_to_fwd,recfun,,qfauflia,sat,0.16,0.02,0.18
+sum_to_fwd,recfun,,qfbv,sat,0.16,0.02,0.18
+sum_to_fwd,recfun,,qfidl,sat,0.16,0.02,0.18
+sum_to_fwd,recfun,,qflia,sat,0.2,0.02,0.22
+sum_to_fwd,recfun,,qflra,sat,0.27,0.02,0.29
+sum_to_fwd,recfun,,qfnia,sat,0.15,0.02,0.17
+sum_to_fwd,recfun,,qfnra,sat,0.49,0.02,0.51
+sum_to_fwd,recfun,,qfuf,sat,0.14,0.02,0.16
+sum_to_fwd,recfun,,qfufbv,sat,0.15,0.02,0.17
+sum_to_fwd,recfun,,qfufbv_ackr,sat,0.15,0.02,0.17
+sum_to_fwd,recfun,,ufnia,sat,0.27,0.02,0.29
+sum_to_fwd,recfun,,uflra,sat,0.14,0.02,0.16
+sum_to_fwd,recfun,,auflia,sat,0.27,0.02,0.29
+sum_to_fwd,recfun,,auflira,sat,0.15,0.02,0.17
+sum_to_fwd,recfun,,aufnira,sat,0.14,0.02,0.16
+sum_to_fwd,recfun,,lra,sat,0.15,0.02,0.17
+sum_to_fwd,recfun,,lia,sat,0.14,0.02,0.16
+sum_to_fwd,recfun,,lira,sat,0.14,0.02,0.16
+sum_to_fwd,recfun,,smt,sat,0.27,0.02,0.29
+sum_to_fwd,recfun,,skip,sat,0.02,0.44,0.46
+sum_to_fwd,recfun,,fail,tactic_err,0.03,0.0,0.03
+sum_to_fwd,recfun,,fail-if-undecided,tactic_err,0.03,0.0,0.03
+sum_to_fwd,recfun,,macro-finder,sat,0.02,0.43,0.45
+sum_to_fwd,recfun,,quasi-macros,sat,0.02,0.42,0.44
+sum_to_fwd,recfun,,ufbv-rewriter,sat,0.02,0.41,0.43
+sum_to_fwd,recfun,,bv,sat,0.18,0.02,0.2
+sum_to_fwd,recfun,,ufbv,sat,0.17,0.02,0.19
+sum_to_fwd,recfun,,simplify>solve-eqs,sat,0.15,0.02,0.17
+sum_to_fwd,recfun,,simplify>propagate-values,sat,0.11,0.36,0.47
+sum_to_fwd,recfun,,propagate-values>solve-eqs,sat,0.14,0.02,0.16
+sum_to_fwd,recfun,,ctx-simplify>simplify,sat,0.11,0.37,0.48
+sum_to_fwd,recfun,,elim-term-ite>simplify,sat,0.11,0.36,0.47
+sum_to_fwd,recfun,,simplify>ctx-simplify,sat,0.11,0.36,0.47
+sum_to_fwd,recfun,,propagate-values>simplify,sat,0.11,0.36,0.47
+sum_to_fwd,recfun,,solve-eqs>simplify,sat,0.15,0.02,0.17
+sum_to_fwd,unroll,,(none),sat,0.0,0.53,0.53
+sum_to_fwd,unroll,,ackermannize_bv,sat,0.03,0.5,0.53
+sum_to_fwd,unroll,,subpaving,sat,0.17,1.43,1.6
+sum_to_fwd,unroll,,horn,tactic_err,0.16,0.0,0.16
+sum_to_fwd,unroll,,horn-simplify,tactic_err,0.13,0.0,0.13
+sum_to_fwd,unroll,,nlsat,sat,0.43,0.03,0.46
+sum_to_fwd,unroll,,qfnra-nlsat,sat,0.19,0.02,0.21
+sum_to_fwd,unroll,,qe-light,sat,0.02,0.51,0.53
+sum_to_fwd,unroll,,nlqsat,tactic_err,0.03,0.0,0.03
+sum_to_fwd,unroll,,qe,sat,0.02,0.51,0.53
+sum_to_fwd,unroll,,qsat,sat,1.42,0.02,1.44
+sum_to_fwd,unroll,,qe2,sat,8.53,0.52,9.05
+sum_to_fwd,unroll,,qe_rec,sat,0.04,0.5,0.54
+sum_to_fwd,unroll,,psat,sat,0.54,0.49,1.03
+sum_to_fwd,unroll,,sat,sat,0.42,0.48,0.9
+sum_to_fwd,unroll,,sat-preprocess,sat,0.43,0.48,0.91
+sum_to_fwd,unroll,,ctx-solver-simplify,sat,1.18,0.48,1.66
+sum_to_fwd,unroll,,psmt,sat,4.14,0.03,4.17
+sum_to_fwd,unroll,,unit-subsume-simplify,sat,2.03,0.49,2.52
+sum_to_fwd,unroll,,aig,sat,0.05,0.62,0.67
+sum_to_fwd,unroll,,add-bounds,unsat,0.05,0.42,0.47
+sum_to_fwd,unroll,,card2bv,sat,0.06,0.49,0.55
+sum_to_fwd,unroll,,degree-shift,sat,0.06,0.48,0.54
+sum_to_fwd,unroll,,diff-neq,tactic_err,0.03,0.0,0.03
+sum_to_fwd,unroll,,eq2bv,sat,0.02,0.48,0.5
+sum_to_fwd,unroll,,factor,sat,0.07,0.54,0.61
+sum_to_fwd,unroll,,fix-dl-var,sat,0.09,0.57,0.66
+sum_to_fwd,unroll,,fm,sat,0.07,0.49,0.56
+sum_to_fwd,unroll,,lia2card,sat,0.04,0.49,0.53
+sum_to_fwd,unroll,,lia2pb,sat,0.03,0.58,0.61
+sum_to_fwd,unroll,,nla2bv,unsat,0.25,2.4,2.65
+sum_to_fwd,unroll,,normalize-bounds,sat,0.02,0.59,0.61
+sum_to_fwd,unroll,,pb2bv,tactic_err,0.07,0.0,0.07
+sum_to_fwd,unroll,,propagate-ineqs,sat,0.06,0.55,0.61
+sum_to_fwd,unroll,,purify-arith,sat,0.08,0.47,0.55
+sum_to_fwd,unroll,,recover-01,sat,0.02,0.47,0.49
+sum_to_fwd,unroll,,bit-blast,sat,0.02,0.47,0.49
+sum_to_fwd,unroll,,bv1-blast,sat,0.03,0.46,0.49
+sum_to_fwd,unroll,,bv_bound_chk,sat,0.03,0.47,0.5
+sum_to_fwd,unroll,,propagate-bv-bounds,sat,0.07,0.48,0.55
+sum_to_fwd,unroll,,propagate-bv-bounds2,sat,0.13,0.5,0.63
+sum_to_fwd,unroll,,reduce-bv-size,sat,0.02,0.51,0.53
+sum_to_fwd,unroll,,bv-slice,sat,0.02,0.46,0.48
+sum_to_fwd,unroll,,bvarray2uf,sat,0.02,0.47,0.49
+sum_to_fwd,unroll,,dt2bv,sat,0.02,0.46,0.48
+sum_to_fwd,unroll,,elim-small-bv,sat,0.02,0.47,0.49
+sum_to_fwd,unroll,,max-bv-sharing,sat,0.03,0.46,0.49
+sum_to_fwd,unroll,,blast-term-ite,sat,0.02,0.47,0.49
+sum_to_fwd,unroll,,cofactor-term-ite,sat,0.05,0.45,0.5
+sum_to_fwd,unroll,,collect-statistics,sat,0.98,0.46,1.44
+sum_to_fwd,unroll,,ctx-simplify,sat,0.08,0.53,0.61
+sum_to_fwd,unroll,,demodulator,sat,0.03,0.47,0.5
+sum_to_fwd,unroll,,der,sat,0.02,0.46,0.48
+sum_to_fwd,unroll,,distribute-forall,sat,0.03,0.48,0.51
+sum_to_fwd,unroll,,dom-simplify,sat,0.17,0.47,0.64
+sum_to_fwd,unroll,,elim-term-ite,sat,0.02,0.47,0.49
+sum_to_fwd,unroll,,elim-uncnstr2,sat,0.09,0.47,0.56
+sum_to_fwd,unroll,,elim-uncnstr,sat,0.02,0.47,0.49
+sum_to_fwd,unroll,,elim-predicates,sat,0.2,0.46,0.66
+sum_to_fwd,unroll,,injectivity,sat,0.02,0.47,0.49
+sum_to_fwd,unroll,,snf,sat,0.02,0.46,0.48
+sum_to_fwd,unroll,,nnf,sat,0.07,0.46,0.53
+sum_to_fwd,unroll,,occf,sat,0.02,0.47,0.49
+sum_to_fwd,unroll,,pb-preprocess,sat,0.02,0.46,0.48
+sum_to_fwd,unroll,,propagate-values2,sat,0.07,0.41,0.48
+sum_to_fwd,unroll,,propagate-values,sat,0.05,0.42,0.47
+sum_to_fwd,unroll,,reduce-args,sat,0.02,0.47,0.49
+sum_to_fwd,unroll,,reduce-args2,sat,0.08,0.52,0.6
+sum_to_fwd,unroll,,simplify,sat,0.05,0.46,0.51
+sum_to_fwd,unroll,,elim-and,sat,0.05,0.46,0.51
+sum_to_fwd,unroll,,solve-eqs,sat,0.16,0.02,0.18
+sum_to_fwd,unroll,,special-relations,sat,0.06,0.48,0.54
+sum_to_fwd,unroll,,split-clause,tactic_err,0.03,0.0,0.03
+sum_to_fwd,unroll,,symmetry-reduce,sat,0.08,0.47,0.55
+sum_to_fwd,unroll,,tseitin-cnf,sat,0.02,0.46,0.48
+sum_to_fwd,unroll,,tseitin-cnf-core,sat,0.02,0.46,0.48
+sum_to_fwd,unroll,,qffd,sat,0.56,0.3,0.86
+sum_to_fwd,unroll,,pqffd,tactic_err,1.91,0.0,1.91
+sum_to_fwd,unroll,,smtfd,tactic_to,1511.63,0.0,1511.63
+sum_to_fwd,unroll,,fpa2bv,sat,0.04,0.59,0.63
+sum_to_fwd,unroll,,qffp,sat,0.54,0.03,0.57
+sum_to_fwd,unroll,,qffpbv,sat,0.46,0.02,0.48
+sum_to_fwd,unroll,,qffplra,sat,0.46,0.02,0.48
+sum_to_fwd,unroll,,default,sat,0.48,0.02,0.5
+sum_to_fwd,unroll,,euf-completion,sat,0.41,0.49,0.9
+sum_to_fwd,unroll,,solver-subsumption,sat,4.09,0.55,4.64
+sum_to_fwd,unroll,,qfbv-sls,sat,0.18,0.03,0.21
+sum_to_fwd,unroll,,sls-smt,sat,0.15,0.02,0.17
+sum_to_fwd,unroll,,nra,sat,0.51,0.02,0.53
+sum_to_fwd,unroll,,qfaufbv,sat,0.17,0.02,0.19
+sum_to_fwd,unroll,,qfauflia,sat,0.15,0.02,0.17
+sum_to_fwd,unroll,,qfbv,sat,0.16,0.02,0.18
+sum_to_fwd,unroll,,qfidl,sat,0.17,0.02,0.19
+sum_to_fwd,unroll,,qflia,sat,0.23,0.02,0.25
+sum_to_fwd,unroll,,qflra,sat,0.55,0.02,0.57
+sum_to_fwd,unroll,,qfnia,sat,0.16,0.02,0.18
+sum_to_fwd,unroll,,qfnra,sat,0.52,0.02,0.54
+sum_to_fwd,unroll,,qfuf,sat,0.14,0.02,0.16
+sum_to_fwd,unroll,,qfufbv,sat,0.15,0.02,0.17
+sum_to_fwd,unroll,,qfufbv_ackr,sat,0.15,0.02,0.17
+sum_to_fwd,unroll,,ufnia,sat,0.43,0.02,0.45
+sum_to_fwd,unroll,,uflra,sat,0.16,0.02,0.18
+sum_to_fwd,unroll,,auflia,sat,0.42,0.02,0.44
+sum_to_fwd,unroll,,auflira,sat,0.16,0.02,0.18
+sum_to_fwd,unroll,,aufnira,sat,0.16,0.02,0.18
+sum_to_fwd,unroll,,lra,sat,0.16,0.02,0.18
+sum_to_fwd,unroll,,lia,sat,0.17,0.02,0.19
+sum_to_fwd,unroll,,lira,sat,0.16,0.02,0.18
+sum_to_fwd,unroll,,smt,sat,0.5,0.02,0.52
+sum_to_fwd,unroll,,skip,sat,0.02,0.49,0.51
+sum_to_fwd,unroll,,fail,tactic_err,0.03,0.0,0.03
+sum_to_fwd,unroll,,fail-if-undecided,tactic_err,0.03,0.0,0.03
+sum_to_fwd,unroll,,macro-finder,sat,0.02,0.5,0.52
+sum_to_fwd,unroll,,quasi-macros,sat,0.05,0.49,0.54
+sum_to_fwd,unroll,,ufbv-rewriter,sat,0.06,0.48,0.54
+sum_to_fwd,unroll,,bv,sat,0.18,0.02,0.2
+sum_to_fwd,unroll,,ufbv,sat,0.19,0.02,0.21
+sum_to_fwd,unroll,,simplify>solve-eqs,sat,0.19,0.02,0.21
+sum_to_fwd,unroll,,simplify>propagate-values,sat,0.07,0.43,0.5
+sum_to_fwd,unroll,,propagate-values>solve-eqs,sat,0.11,0.02,0.13
+sum_to_fwd,unroll,,ctx-simplify>simplify,sat,0.06,0.43,0.49
+sum_to_fwd,unroll,,elim-term-ite>simplify,sat,0.07,0.46,0.53
+sum_to_fwd,unroll,,simplify>ctx-simplify,sat,0.09,0.42,0.51
+sum_to_fwd,unroll,,propagate-values>simplify,sat,0.06,0.44,0.5
+sum_to_fwd,unroll,,solve-eqs>simplify,sat,0.18,0.02,0.2
+sum_to_fwd,closed,,(none),sat,0.0,0.45,0.45
+sum_to_fwd,closed,,ackermannize_bv,sat,0.05,0.4,0.45
+sum_to_fwd,closed,,subpaving,sat,0.05,0.38,0.43
+sum_to_fwd,closed,,horn,tactic_err,0.34,0.0,0.34
+sum_to_fwd,closed,,horn-simplify,tactic_err,0.07,0.0,0.07
+sum_to_fwd,closed,,nlsat,sat,0.07,0.02,0.09
+sum_to_fwd,closed,,qfnra-nlsat,sat,0.09,0.02,0.11
+sum_to_fwd,closed,,qe-light,sat,0.03,0.39,0.42
+sum_to_fwd,closed,,nlqsat,tactic_err,0.03,0.0,0.03
+sum_to_fwd,closed,,qe,sat,0.03,0.37,0.4
+sum_to_fwd,closed,,qsat,sat,0.39,0.02,0.41
+sum_to_fwd,closed,,qe2,sat,0.34,0.38,0.72
+sum_to_fwd,closed,,qe_rec,sat,0.02,0.37,0.39
+sum_to_fwd,closed,,psat,sat,0.71,0.4,1.11
+sum_to_fwd,closed,,sat,sat,0.42,0.38,0.8
+sum_to_fwd,closed,,sat-preprocess,sat,0.4,0.38,0.78
+sum_to_fwd,closed,,ctx-solver-simplify,sat,0.2,0.36,0.56
+sum_to_fwd,closed,,psmt,sat,2.15,0.03,2.18
+sum_to_fwd,closed,,unit-subsume-simplify,sat,0.14,0.44,0.58
+sum_to_fwd,closed,,aig,sat,0.02,0.41,0.43
+sum_to_fwd,closed,,add-bounds,unsat,0.03,0.34,0.37
+sum_to_fwd,closed,,card2bv,sat,0.03,0.37,0.4
+sum_to_fwd,closed,,degree-shift,sat,0.03,0.37,0.4
+sum_to_fwd,closed,,diff-neq,tactic_err,0.03,0.0,0.03
+sum_to_fwd,closed,,eq2bv,sat,0.05,0.17,0.22
+sum_to_fwd,closed,,factor,sat,0.02,0.39,0.41
+sum_to_fwd,closed,,fix-dl-var,sat,0.02,0.38,0.4
+sum_to_fwd,closed,,fm,sat,0.02,0.38,0.4
+sum_to_fwd,closed,,lia2card,sat,0.02,0.02,0.04
+sum_to_fwd,closed,,lia2pb,sat,0.02,0.37,0.39
+sum_to_fwd,closed,,nla2bv,sat,0.05,0.16,0.21
+sum_to_fwd,closed,,normalize-bounds,sat,0.02,0.57,0.59
+sum_to_fwd,closed,,pb2bv,tactic_err,0.07,0.0,0.07
+sum_to_fwd,closed,,propagate-ineqs,sat,0.03,0.41,0.44
+sum_to_fwd,closed,,purify-arith,sat,0.04,0.38,0.42
+sum_to_fwd,closed,,recover-01,sat,0.02,0.4,0.42
+sum_to_fwd,closed,,bit-blast,sat,0.02,0.37,0.39
+sum_to_fwd,closed,,bv1-blast,sat,0.02,0.37,0.39
+sum_to_fwd,closed,,bv_bound_chk,sat,0.02,0.38,0.4
+sum_to_fwd,closed,,propagate-bv-bounds,sat,0.02,0.37,0.39
+sum_to_fwd,closed,,propagate-bv-bounds2,sat,0.02,0.38,0.4
+sum_to_fwd,closed,,reduce-bv-size,sat,0.02,0.36,0.38
+sum_to_fwd,closed,,bv-slice,sat,0.03,0.37,0.4
+sum_to_fwd,closed,,bvarray2uf,sat,0.02,0.36,0.38
+sum_to_fwd,closed,,dt2bv,sat,0.02,0.36,0.38
+sum_to_fwd,closed,,elim-small-bv,sat,0.03,0.36,0.39
+sum_to_fwd,closed,,max-bv-sharing,sat,0.02,0.36,0.38
+sum_to_fwd,closed,,blast-term-ite,sat,0.02,0.35,0.37
+sum_to_fwd,closed,,cofactor-term-ite,sat,0.02,0.38,0.4
+sum_to_fwd,closed,,collect-statistics,sat,0.07,0.36,0.43
+sum_to_fwd,closed,,ctx-simplify,sat,0.02,0.36,0.38
+sum_to_fwd,closed,,demodulator,sat,0.03,0.35,0.38
+sum_to_fwd,closed,,der,sat,0.02,0.35,0.37
+sum_to_fwd,closed,,distribute-forall,sat,0.02,0.36,0.38
+sum_to_fwd,closed,,dom-simplify,sat,0.02,0.38,0.4
+sum_to_fwd,closed,,elim-term-ite,sat,0.02,0.36,0.38
+sum_to_fwd,closed,,elim-uncnstr2,sat,0.08,0.13,0.21
+sum_to_fwd,closed,,elim-uncnstr,sat,0.02,0.36,0.38
+sum_to_fwd,closed,,elim-predicates,sat,0.08,0.02,0.1
+sum_to_fwd,closed,,injectivity,sat,0.02,0.36,0.38
+sum_to_fwd,closed,,snf,sat,0.04,0.35,0.39
+sum_to_fwd,closed,,nnf,sat,0.06,0.36,0.42
+sum_to_fwd,closed,,occf,sat,0.02,0.36,0.38
+sum_to_fwd,closed,,pb-preprocess,sat,0.06,0.5,0.56
+sum_to_fwd,closed,,propagate-values2,sat,0.03,0.39,0.42
+sum_to_fwd,closed,,propagate-values,sat,0.02,0.38,0.4
+sum_to_fwd,closed,,reduce-args,sat,0.02,0.37,0.39
+sum_to_fwd,closed,,reduce-args2,sat,0.07,0.36,0.43
+sum_to_fwd,closed,,simplify,sat,0.02,0.37,0.39
+sum_to_fwd,closed,,elim-and,sat,0.02,0.36,0.38
+sum_to_fwd,closed,,solve-eqs,sat,0.07,0.02,0.09
+sum_to_fwd,closed,,special-relations,sat,0.05,0.36,0.41
+sum_to_fwd,closed,,split-clause,tactic_err,0.03,0.0,0.03
+sum_to_fwd,closed,,symmetry-reduce,sat,0.05,0.37,0.42
+sum_to_fwd,closed,,tseitin-cnf,sat,0.02,0.37,0.39
+sum_to_fwd,closed,,tseitin-cnf-core,sat,0.02,0.36,0.38
+sum_to_fwd,closed,,qffd,sat,0.17,0.02,0.19
+sum_to_fwd,closed,,pqffd,sat,4.83,0.03,4.86
+sum_to_fwd,closed,,smtfd,tactic_to,1509.45,0.0,1509.45
+sum_to_fwd,closed,,fpa2bv,sat,0.03,0.51,0.54
+sum_to_fwd,closed,,qffp,sat,0.29,0.03,0.32
+sum_to_fwd,closed,,qffpbv,sat,0.22,0.02,0.24
+sum_to_fwd,closed,,qffplra,sat,0.21,0.02,0.23
+sum_to_fwd,closed,,default,sat,0.37,0.02,0.39
+sum_to_fwd,closed,,euf-completion,sat,0.09,0.02,0.11
+sum_to_fwd,closed,,solver-subsumption,sat,0.02,0.38,0.4
+sum_to_fwd,closed,,qfbv-sls,sat,0.07,0.02,0.09
+sum_to_fwd,closed,,sls-smt,sat,0.06,0.02,0.08
+sum_to_fwd,closed,,nra,sat,0.25,0.03,0.28
+sum_to_fwd,closed,,qfaufbv,sat,0.08,0.02,0.1
+sum_to_fwd,closed,,qfauflia,sat,0.06,0.02,0.08
+sum_to_fwd,closed,,qfbv,sat,0.09,0.02,0.11
+sum_to_fwd,closed,,qfidl,sat,0.08,0.02,0.1
+sum_to_fwd,closed,,qflia,sat,0.12,0.02,0.14
+sum_to_fwd,closed,,qflra,sat,0.2,0.02,0.22
+sum_to_fwd,closed,,qfnia,sat,0.07,0.02,0.09
+sum_to_fwd,closed,,qfnra,sat,0.42,0.02,0.44
+sum_to_fwd,closed,,qfuf,sat,0.06,0.02,0.08
+sum_to_fwd,closed,,qfufbv,sat,0.08,0.02,0.1
+sum_to_fwd,closed,,qfufbv_ackr,sat,0.07,0.02,0.09
+sum_to_fwd,closed,,ufnia,sat,0.2,0.02,0.22
+sum_to_fwd,closed,,uflra,sat,0.06,0.02,0.08
+sum_to_fwd,closed,,auflia,sat,0.2,0.02,0.22
+sum_to_fwd,closed,,auflira,sat,0.06,0.02,0.08
+sum_to_fwd,closed,,aufnira,sat,0.06,0.02,0.08
+sum_to_fwd,closed,,lra,sat,0.07,0.02,0.09
+sum_to_fwd,closed,,lia,sat,0.07,0.02,0.09
+sum_to_fwd,closed,,lira,sat,0.06,0.02,0.08
+sum_to_fwd,closed,,smt,sat,0.19,0.02,0.21
+sum_to_fwd,closed,,skip,sat,0.02,0.38,0.4
+sum_to_fwd,closed,,fail,tactic_err,0.03,0.0,0.03
+sum_to_fwd,closed,,fail-if-undecided,tactic_err,0.03,0.0,0.03
+sum_to_fwd,closed,,macro-finder,sat,0.02,0.39,0.41
+sum_to_fwd,closed,,quasi-macros,sat,0.06,0.37,0.43
+sum_to_fwd,closed,,ufbv-rewriter,sat,0.04,0.36,0.4
+sum_to_fwd,closed,,bv,sat,0.09,0.03,0.12
+sum_to_fwd,closed,,ufbv,sat,0.09,0.02,0.11
+sum_to_fwd,closed,,simplify>solve-eqs,sat,0.06,0.02,0.08
+sum_to_fwd,closed,,simplify>propagate-values,sat,0.02,0.38,0.4
+sum_to_fwd,closed,,propagate-values>solve-eqs,sat,0.07,0.02,0.09
+sum_to_fwd,closed,,ctx-simplify>simplify,sat,0.02,0.37,0.39
+sum_to_fwd,closed,,elim-term-ite>simplify,sat,0.02,0.37,0.39
+sum_to_fwd,closed,,simplify>ctx-simplify,sat,0.02,0.38,0.4
+sum_to_fwd,closed,,propagate-values>simplify,sat,0.02,0.36,0.38
+sum_to_fwd,closed,,solve-eqs>simplify,sat,0.07,0.02,0.09
+sum_to_bwd,recfun,synthesis: solve for the argument,(none),sat,0.0,106.03,106.03
+sum_to_bwd,recfun,synthesis: solve for the argument,ackermannize_bv,sat,0.03,99.1,99.13
+sum_to_bwd,recfun,synthesis: solve for the argument,subpaving,sat,0.06,134.7,134.76
+sum_to_bwd,recfun,synthesis: solve for the argument,horn,tactic_err,0.13,0.0,0.13
+sum_to_bwd,recfun,synthesis: solve for the argument,horn-simplify,tactic_err,0.09,0.0,0.09
+sum_to_bwd,recfun,synthesis: solve for the argument,nlsat,sat,0.08,106.59,106.67
+sum_to_bwd,recfun,synthesis: solve for the argument,qfnra-nlsat,sat,0.2,107.59,107.79
+sum_to_bwd,recfun,synthesis: solve for the argument,qe-light,sat,0.03,121.7,121.73
+sum_to_bwd,recfun,synthesis: solve for the argument,nlqsat,tactic_err,0.06,0.0,0.06
+sum_to_bwd,recfun,synthesis: solve for the argument,qe,sat,0.02,100.59,100.61
+sum_to_bwd,recfun,synthesis: solve for the argument,qsat,sat,28.82,0.03,28.85
+sum_to_bwd,recfun,synthesis: solve for the argument,qe2,tactic_to,1503.24,0.0,1503.24
+sum_to_bwd,recfun,synthesis: solve for the argument,qe_rec,sat,0.03,108.08,108.11
+sum_to_bwd,recfun,synthesis: solve for the argument,psat,sat,0.67,106.36,107.03
+sum_to_bwd,recfun,synthesis: solve for the argument,sat,sat,0.56,94.16,94.72
+sum_to_bwd,recfun,synthesis: solve for the argument,sat-preprocess,sat,0.5,114.0,114.5
+sum_to_bwd,recfun,synthesis: solve for the argument,ctx-solver-simplify,sat,87.78,134.37,222.15
+sum_to_bwd,recfun,synthesis: solve for the argument,psmt,sat,28.07,0.04,28.11
+sum_to_bwd,recfun,synthesis: solve for the argument,unit-subsume-simplify,sat,78.01,18.53,96.54
+sum_to_bwd,recfun,synthesis: solve for the argument,aig,sat,0.02,104.95,104.97
+sum_to_bwd,recfun,synthesis: solve for the argument,add-bounds,unsat,0.02,0.76,0.78
+sum_to_bwd,recfun,synthesis: solve for the argument,card2bv,sat,0.02,104.05,104.07
+sum_to_bwd,recfun,synthesis: solve for the argument,degree-shift,sat,0.04,111.94,111.98
+sum_to_bwd,recfun,synthesis: solve for the argument,diff-neq,tactic_err,0.04,0.0,0.04
+sum_to_bwd,recfun,synthesis: solve for the argument,eq2bv,sat,0.03,101.71,101.74
+sum_to_bwd,recfun,synthesis: solve for the argument,factor,sat,0.05,100.17,100.22
+sum_to_bwd,recfun,synthesis: solve for the argument,fix-dl-var,sat,0.04,123.49,123.53
+sum_to_bwd,recfun,synthesis: solve for the argument,fm,sat,0.03,116.15,116.18
+sum_to_bwd,recfun,synthesis: solve for the argument,lia2card,sat,0.08,132.05,132.13
+sum_to_bwd,recfun,synthesis: solve for the argument,lia2pb,tactic_err,0.06,0.0,0.06
+sum_to_bwd,recfun,synthesis: solve for the argument,nla2bv,tactic_err,0.04,0.0,0.04
+sum_to_bwd,recfun,synthesis: solve for the argument,normalize-bounds,sat,0.02,70.55,70.57
+sum_to_bwd,recfun,synthesis: solve for the argument,pb2bv,tactic_err,0.07,0.0,0.07
+sum_to_bwd,recfun,synthesis: solve for the argument,propagate-ineqs,sat,0.06,119.67,119.73
+sum_to_bwd,recfun,synthesis: solve for the argument,purify-arith,sat,0.05,115.77,115.82
+sum_to_bwd,recfun,synthesis: solve for the argument,recover-01,sat,0.02,99.71,99.73
+sum_to_bwd,recfun,synthesis: solve for the argument,bit-blast,sat,0.02,103.81,103.83
+sum_to_bwd,recfun,synthesis: solve for the argument,bv1-blast,sat,0.02,109.34,109.36
+sum_to_bwd,recfun,synthesis: solve for the argument,bv_bound_chk,sat,0.02,128.05,128.07
+sum_to_bwd,recfun,synthesis: solve for the argument,propagate-bv-bounds,sat,0.03,113.35,113.38
+sum_to_bwd,recfun,synthesis: solve for the argument,propagate-bv-bounds2,sat,0.05,111.54,111.59
+sum_to_bwd,recfun,synthesis: solve for the argument,reduce-bv-size,sat,0.03,87.23,87.26
+sum_to_bwd,recfun,synthesis: solve for the argument,bv-slice,sat,0.02,30.34,30.36
+sum_to_bwd,recfun,synthesis: solve for the argument,bvarray2uf,sat,0.02,108.6,108.62
+sum_to_bwd,recfun,synthesis: solve for the argument,dt2bv,sat,0.02,140.08,140.1
+sum_to_bwd,recfun,synthesis: solve for the argument,elim-small-bv,sat,0.03,116.47,116.5
+sum_to_bwd,recfun,synthesis: solve for the argument,max-bv-sharing,sat,0.02,97.24,97.26
+sum_to_bwd,recfun,synthesis: solve for the argument,blast-term-ite,sat,0.03,130.09,130.12
+sum_to_bwd,recfun,synthesis: solve for the argument,cofactor-term-ite,sat,0.03,94.39,94.42
+sum_to_bwd,recfun,synthesis: solve for the argument,collect-statistics,sat,0.14,131.14,131.28
+sum_to_bwd,recfun,synthesis: solve for the argument,ctx-simplify,sat,0.04,139.95,139.99
+sum_to_bwd,recfun,synthesis: solve for the argument,demodulator,sat,0.03,135.1,135.13
+sum_to_bwd,recfun,synthesis: solve for the argument,der,sat,0.03,120.11,120.14
+sum_to_bwd,recfun,synthesis: solve for the argument,distribute-forall,sat,0.02,82.55,82.57
+sum_to_bwd,recfun,synthesis: solve for the argument,dom-simplify,sat,0.04,107.08,107.12
+sum_to_bwd,recfun,synthesis: solve for the argument,elim-term-ite,sat,0.03,99.25,99.28
+sum_to_bwd,recfun,synthesis: solve for the argument,elim-uncnstr2,sat,0.1,136.4,136.5
+sum_to_bwd,recfun,synthesis: solve for the argument,elim-uncnstr,sat,0.04,122.25,122.29
+sum_to_bwd,recfun,synthesis: solve for the argument,elim-predicates,sat,0.09,121.26,121.35
+sum_to_bwd,recfun,synthesis: solve for the argument,injectivity,sat,0.02,123.69,123.71
+sum_to_bwd,recfun,synthesis: solve for the argument,snf,sat,0.03,118.46,118.49
+sum_to_bwd,recfun,synthesis: solve for the argument,nnf,sat,0.02,112.57,112.59
+sum_to_bwd,recfun,synthesis: solve for the argument,occf,sat,0.02,113.71,113.73
+sum_to_bwd,recfun,synthesis: solve for the argument,pb-preprocess,sat,0.03,107.25,107.28
+sum_to_bwd,recfun,synthesis: solve for the argument,propagate-values2,sat,0.03,107.09,107.12
+sum_to_bwd,recfun,synthesis: solve for the argument,propagate-values,sat,0.02,103.06,103.08
+sum_to_bwd,recfun,synthesis: solve for the argument,reduce-args,sat,0.02,142.86,142.88
+sum_to_bwd,recfun,synthesis: solve for the argument,reduce-args2,sat,0.1,165.64,165.74
+sum_to_bwd,recfun,synthesis: solve for the argument,simplify,sat,0.03,98.58,98.61
+sum_to_bwd,recfun,synthesis: solve for the argument,elim-and,sat,0.03,114.46,114.49
+sum_to_bwd,recfun,synthesis: solve for the argument,solve-eqs,sat,0.11,89.2,89.31
+sum_to_bwd,recfun,synthesis: solve for the argument,special-relations,sat,0.05,110.67,110.72
+sum_to_bwd,recfun,synthesis: solve for the argument,split-clause,tactic_err,0.05,0.0,0.05
+sum_to_bwd,recfun,synthesis: solve for the argument,symmetry-reduce,sat,0.04,118.49,118.53
+sum_to_bwd,recfun,synthesis: solve for the argument,tseitin-cnf,sat,0.03,111.94,111.97
+sum_to_bwd,recfun,synthesis: solve for the argument,tseitin-cnf-core,sat,0.03,93.11,93.14
+sum_to_bwd,recfun,synthesis: solve for the argument,qffd,sat,0.23,39.61,39.84
+sum_to_bwd,recfun,synthesis: solve for the argument,pqffd,tactic_err,1.2,0.0,1.2
+sum_to_bwd,recfun,synthesis: solve for the argument,smtfd,tactic_to,1500.96,0.0,1500.96
+sum_to_bwd,recfun,synthesis: solve for the argument,fpa2bv,sat,0.03,118.85,118.88
+sum_to_bwd,recfun,synthesis: solve for the argument,qffp,sat,25.98,0.03,26.01
+sum_to_bwd,recfun,synthesis: solve for the argument,qffpbv,sat,20.58,0.02,20.6
+sum_to_bwd,recfun,synthesis: solve for the argument,qffplra,sat,18.29,0.03,18.32
+sum_to_bwd,recfun,synthesis: solve for the argument,default,sat,131.36,0.03,131.39
+sum_to_bwd,recfun,synthesis: solve for the argument,euf-completion,sat,0.19,131.49,131.68
+sum_to_bwd,recfun,synthesis: solve for the argument,solver-subsumption,tactic_to,1510.39,0.0,1510.39
+sum_to_bwd,recfun,synthesis: solve for the argument,qfbv-sls,tactic_err,0.16,0.0,0.16
+sum_to_bwd,recfun,synthesis: solve for the argument,sls-smt,tactic_err,0.64,0.0,0.64
+sum_to_bwd,recfun,synthesis: solve for the argument,nra,sat,26.85,0.04,26.89
+sum_to_bwd,recfun,synthesis: solve for the argument,qfaufbv,sat,22.24,0.03,22.27
+sum_to_bwd,recfun,synthesis: solve for the argument,qfauflia,sat,22.13,0.04,22.17
+sum_to_bwd,recfun,synthesis: solve for the argument,qfbv,sat,23.34,0.02,23.36
+sum_to_bwd,recfun,synthesis: solve for the argument,qfidl,sat,19.14,0.02,19.16
+sum_to_bwd,recfun,synthesis: solve for the argument,qflia,sat,22.42,0.03,22.45
+sum_to_bwd,recfun,synthesis: solve for the argument,qflra,sat,21.38,0.04,21.42
+sum_to_bwd,recfun,synthesis: solve for the argument,qfnia,sat,88.25,0.02,88.27
+sum_to_bwd,recfun,synthesis: solve for the argument,qfnra,sat,0.81,135.63,136.44
+sum_to_bwd,recfun,synthesis: solve for the argument,qfuf,sat,21.57,0.04,21.61
+sum_to_bwd,recfun,synthesis: solve for the argument,qfufbv,sat,22.76,0.04,22.8
+sum_to_bwd,recfun,synthesis: solve for the argument,qfufbv_ackr,sat,22.5,0.04,22.54
+sum_to_bwd,recfun,synthesis: solve for the argument,ufnia,sat,26.58,0.02,26.6
+sum_to_bwd,recfun,synthesis: solve for the argument,uflra,sat,21.92,0.03,21.95
+sum_to_bwd,recfun,synthesis: solve for the argument,auflia,sat,16.83,0.02,16.85
+sum_to_bwd,recfun,synthesis: solve for the argument,auflira,sat,18.76,0.02,18.78
+sum_to_bwd,recfun,synthesis: solve for the argument,aufnira,sat,20.76,0.03,20.79
+sum_to_bwd,recfun,synthesis: solve for the argument,lra,sat,22.18,0.03,22.21
+sum_to_bwd,recfun,synthesis: solve for the argument,lia,sat,22.79,0.03,22.82
+sum_to_bwd,recfun,synthesis: solve for the argument,lira,sat,22.41,0.03,22.44
+sum_to_bwd,recfun,synthesis: solve for the argument,smt,sat,18.47,0.06,18.53
+sum_to_bwd,recfun,synthesis: solve for the argument,skip,sat,0.02,99.96,99.98
+sum_to_bwd,recfun,synthesis: solve for the argument,fail,tactic_err,0.04,0.0,0.04
+sum_to_bwd,recfun,synthesis: solve for the argument,fail-if-undecided,tactic_err,0.03,0.0,0.03
+sum_to_bwd,recfun,synthesis: solve for the argument,macro-finder,sat,0.02,122.48,122.5
+sum_to_bwd,recfun,synthesis: solve for the argument,quasi-macros,sat,0.02,100.61,100.63
+sum_to_bwd,recfun,synthesis: solve for the argument,ufbv-rewriter,sat,0.02,91.63,91.65
+sum_to_bwd,recfun,synthesis: solve for the argument,bv,sat,19.06,0.03,19.09
+sum_to_bwd,recfun,synthesis: solve for the argument,ufbv,sat,22.53,0.02,22.55
+sum_to_bwd,recfun,synthesis: solve for the argument,simplify>solve-eqs,sat,0.09,119.61,119.7
+sum_to_bwd,recfun,synthesis: solve for the argument,simplify>propagate-values,sat,0.02,123.77,123.79
+sum_to_bwd,recfun,synthesis: solve for the argument,propagate-values>solve-eqs,sat,0.11,117.06,117.17
+sum_to_bwd,recfun,synthesis: solve for the argument,ctx-simplify>simplify,sat,0.03,108.87,108.9
+sum_to_bwd,recfun,synthesis: solve for the argument,elim-term-ite>simplify,sat,0.02,95.81,95.83
+sum_to_bwd,recfun,synthesis: solve for the argument,simplify>ctx-simplify,sat,0.02,128.22,128.24
+sum_to_bwd,recfun,synthesis: solve for the argument,propagate-values>simplify,sat,0.03,107.99,108.02
+sum_to_bwd,recfun,synthesis: solve for the argument,solve-eqs>simplify,sat,0.1,139.54,139.64
+factorial,recfun,nonlinear (mul),(none),sat,0.0,0.57,0.57
+factorial,recfun,nonlinear (mul),ackermannize_bv,sat,0.02,0.58,0.6
+factorial,recfun,nonlinear (mul),subpaving,sat,0.08,0.45,0.53
+factorial,recfun,nonlinear (mul),horn,tactic_err,0.4,0.0,0.4
+factorial,recfun,nonlinear (mul),horn-simplify,tactic_err,0.09,0.0,0.09
+factorial,recfun,nonlinear (mul),nlsat,sat,0.07,0.45,0.52
+factorial,recfun,nonlinear (mul),qfnra-nlsat,sat,0.14,0.02,0.16
+factorial,recfun,nonlinear (mul),qe-light,sat,0.02,0.43,0.45
+factorial,recfun,nonlinear (mul),nlqsat,tactic_err,0.04,0.0,0.04
+factorial,recfun,nonlinear (mul),qe,sat,0.02,0.43,0.45
+factorial,recfun,nonlinear (mul),qsat,sat,0.47,0.02,0.49
+factorial,recfun,nonlinear (mul),qe2,sat,0.48,0.41,0.89
+factorial,recfun,nonlinear (mul),qe_rec,sat,0.02,0.43,0.45
+factorial,recfun,nonlinear (mul),psat,sat,1.05,0.43,1.48
+factorial,recfun,nonlinear (mul),sat,sat,0.63,0.43,1.06
+factorial,recfun,nonlinear (mul),sat-preprocess,sat,0.55,0.43,0.98
+factorial,recfun,nonlinear (mul),ctx-solver-simplify,sat,0.23,0.41,0.64
+factorial,recfun,nonlinear (mul),psmt,sat,2.82,0.03,2.85
+factorial,recfun,nonlinear (mul),unit-subsume-simplify,sat,0.15,0.51,0.66
+factorial,recfun,nonlinear (mul),aig,sat,0.04,0.44,0.48
+factorial,recfun,nonlinear (mul),add-bounds,unsat,0.02,0.35,0.37
+factorial,recfun,nonlinear (mul),card2bv,sat,0.06,0.4,0.46
+factorial,recfun,nonlinear (mul),degree-shift,sat,0.05,0.41,0.46
+factorial,recfun,nonlinear (mul),diff-neq,tactic_err,0.03,0.0,0.03
+factorial,recfun,nonlinear (mul),eq2bv,sat,0.02,0.42,0.44
+factorial,recfun,nonlinear (mul),factor,sat,0.02,0.41,0.43
+factorial,recfun,nonlinear (mul),fix-dl-var,sat,0.02,0.56,0.58
+factorial,recfun,nonlinear (mul),fm,sat,0.07,0.5,0.57
+factorial,recfun,nonlinear (mul),lia2card,sat,0.02,0.45,0.47
+factorial,recfun,nonlinear (mul),lia2pb,sat,0.01,0.42,0.43
+factorial,recfun,nonlinear (mul),nla2bv,tactic_err,0.05,0.0,0.05
+factorial,recfun,nonlinear (mul),normalize-bounds,sat,0.02,0.44,0.46
+factorial,recfun,nonlinear (mul),pb2bv,tactic_err,0.07,0.0,0.07
+factorial,recfun,nonlinear (mul),propagate-ineqs,sat,0.02,0.43,0.45
+factorial,recfun,nonlinear (mul),purify-arith,sat,0.07,0.44,0.51
+factorial,recfun,nonlinear (mul),recover-01,sat,0.02,0.42,0.44
+factorial,recfun,nonlinear (mul),bit-blast,sat,0.02,0.41,0.43
+factorial,recfun,nonlinear (mul),bv1-blast,sat,0.02,0.43,0.45
+factorial,recfun,nonlinear (mul),bv_bound_chk,sat,0.02,0.45,0.47
+factorial,recfun,nonlinear (mul),propagate-bv-bounds,sat,0.04,0.41,0.45
+factorial,recfun,nonlinear (mul),propagate-bv-bounds2,sat,0.02,0.42,0.44
+factorial,recfun,nonlinear (mul),reduce-bv-size,sat,0.02,0.43,0.45
+factorial,recfun,nonlinear (mul),bv-slice,sat,0.02,0.42,0.44
+factorial,recfun,nonlinear (mul),bvarray2uf,sat,0.02,0.43,0.45
+factorial,recfun,nonlinear (mul),dt2bv,sat,0.02,0.41,0.43
+factorial,recfun,nonlinear (mul),elim-small-bv,sat,0.02,0.43,0.45
+factorial,recfun,nonlinear (mul),max-bv-sharing,sat,0.02,0.4,0.42
+factorial,recfun,nonlinear (mul),blast-term-ite,sat,0.02,0.41,0.43
+factorial,recfun,nonlinear (mul),cofactor-term-ite,sat,0.02,0.41,0.43
+factorial,recfun,nonlinear (mul),collect-statistics,sat,0.09,0.4,0.49
+factorial,recfun,nonlinear (mul),ctx-simplify,sat,0.02,0.41,0.43
+factorial,recfun,nonlinear (mul),demodulator,sat,0.02,0.41,0.43
+factorial,recfun,nonlinear (mul),der,sat,0.02,0.41,0.43
+factorial,recfun,nonlinear (mul),distribute-forall,sat,0.02,0.41,0.43
+factorial,recfun,nonlinear (mul),dom-simplify,sat,0.02,0.41,0.43
+factorial,recfun,nonlinear (mul),elim-term-ite,sat,0.02,0.41,0.43
+factorial,recfun,nonlinear (mul),elim-uncnstr2,sat,0.1,0.14,0.24
+factorial,recfun,nonlinear (mul),elim-uncnstr,sat,0.02,0.44,0.46
+factorial,recfun,nonlinear (mul),elim-predicates,sat,0.12,0.02,0.14
+factorial,recfun,nonlinear (mul),injectivity,sat,0.02,0.41,0.43
+factorial,recfun,nonlinear (mul),snf,sat,0.02,0.42,0.44
+factorial,recfun,nonlinear (mul),nnf,sat,0.02,0.41,0.43
+factorial,recfun,nonlinear (mul),occf,sat,0.02,0.41,0.43
+factorial,recfun,nonlinear (mul),pb-preprocess,sat,0.02,0.41,0.43
+factorial,recfun,nonlinear (mul),propagate-values2,sat,0.02,0.4,0.42
+factorial,recfun,nonlinear (mul),propagate-values,sat,0.02,0.43,0.45
+factorial,recfun,nonlinear (mul),reduce-args,sat,0.02,0.41,0.43
+factorial,recfun,nonlinear (mul),reduce-args2,sat,0.09,0.41,0.5
+factorial,recfun,nonlinear (mul),simplify,sat,0.05,0.4,0.45
+factorial,recfun,nonlinear (mul),elim-and,sat,0.05,0.39,0.44
+factorial,recfun,nonlinear (mul),solve-eqs,sat,0.12,0.02,0.14
+factorial,recfun,nonlinear (mul),special-relations,sat,0.05,0.43,0.48
+factorial,recfun,nonlinear (mul),split-clause,tactic_err,0.03,0.0,0.03
+factorial,recfun,nonlinear (mul),symmetry-reduce,sat,0.02,0.41,0.43
+factorial,recfun,nonlinear (mul),tseitin-cnf,sat,0.02,0.42,0.44
+factorial,recfun,nonlinear (mul),tseitin-cnf-core,sat,0.02,0.44,0.46
+factorial,recfun,nonlinear (mul),qffd,sat,0.16,0.41,0.57
+factorial,recfun,nonlinear (mul),pqffd,tactic_err,1.18,0.0,1.18
+factorial,recfun,nonlinear (mul),smtfd,tactic_to,1510.55,0.0,1510.55
+factorial,recfun,nonlinear (mul),fpa2bv,sat,0.03,0.57,0.6
+factorial,recfun,nonlinear (mul),qffp,sat,0.43,0.02,0.45
+factorial,recfun,nonlinear (mul),qffpbv,sat,0.37,0.02,0.39
+factorial,recfun,nonlinear (mul),qffplra,sat,0.34,0.02,0.36
+factorial,recfun,nonlinear (mul),default,sat,0.46,0.02,0.48
+factorial,recfun,nonlinear (mul),euf-completion,sat,0.12,0.44,0.56
+factorial,recfun,nonlinear (mul),solver-subsumption,sat,0.02,0.43,0.45
+factorial,recfun,nonlinear (mul),qfbv-sls,sat,0.13,0.02,0.15
+factorial,recfun,nonlinear (mul),sls-smt,sat,0.13,0.02,0.15
+factorial,recfun,nonlinear (mul),nra,sat,0.39,0.02,0.41
+factorial,recfun,nonlinear (mul),qfaufbv,sat,0.14,0.02,0.16
+factorial,recfun,nonlinear (mul),qfauflia,sat,0.12,0.02,0.14
+factorial,recfun,nonlinear (mul),qfbv,sat,0.13,0.02,0.15
+factorial,recfun,nonlinear (mul),qfidl,sat,0.15,0.02,0.17
+factorial,recfun,nonlinear (mul),qflia,sat,0.22,0.08,0.3
+factorial,recfun,nonlinear (mul),qflra,sat,0.5,0.09,0.59
+factorial,recfun,nonlinear (mul),qfnia,sat,0.15,0.03,0.18
+factorial,recfun,nonlinear (mul),qfnra,sat,0.6,0.02,0.62
+factorial,recfun,nonlinear (mul),qfuf,sat,0.14,0.02,0.16
+factorial,recfun,nonlinear (mul),qfufbv,sat,0.14,0.02,0.16
+factorial,recfun,nonlinear (mul),qfufbv_ackr,sat,0.13,0.02,0.15
+factorial,recfun,nonlinear (mul),ufnia,sat,0.39,0.02,0.41
+factorial,recfun,nonlinear (mul),uflra,sat,0.16,0.02,0.18
+factorial,recfun,nonlinear (mul),auflia,sat,0.35,0.02,0.37
+factorial,recfun,nonlinear (mul),auflira,sat,0.13,0.02,0.15
+factorial,recfun,nonlinear (mul),aufnira,sat,0.13,0.02,0.15
+factorial,recfun,nonlinear (mul),lra,sat,0.13,0.02,0.15
+factorial,recfun,nonlinear (mul),lia,sat,0.13,0.02,0.15
+factorial,recfun,nonlinear (mul),lira,sat,0.13,0.02,0.15
+factorial,recfun,nonlinear (mul),smt,sat,0.34,0.02,0.36
+factorial,recfun,nonlinear (mul),skip,sat,0.02,0.47,0.49
+factorial,recfun,nonlinear (mul),fail,tactic_err,0.03,0.0,0.03
+factorial,recfun,nonlinear (mul),fail-if-undecided,tactic_err,0.03,0.0,0.03
+factorial,recfun,nonlinear (mul),macro-finder,sat,0.02,0.45,0.47
+factorial,recfun,nonlinear (mul),quasi-macros,sat,0.02,0.43,0.45
+factorial,recfun,nonlinear (mul),ufbv-rewriter,sat,0.02,0.42,0.44
+factorial,recfun,nonlinear (mul),bv,sat,0.16,0.02,0.18
+factorial,recfun,nonlinear (mul),ufbv,sat,0.15,0.02,0.17
+factorial,recfun,nonlinear (mul),simplify>solve-eqs,sat,0.12,0.02,0.14
+factorial,recfun,nonlinear (mul),simplify>propagate-values,sat,0.05,0.42,0.47
+factorial,recfun,nonlinear (mul),propagate-values>solve-eqs,sat,0.13,0.02,0.15
+factorial,recfun,nonlinear (mul),ctx-simplify>simplify,sat,0.06,0.42,0.48
+factorial,recfun,nonlinear (mul),elim-term-ite>simplify,sat,0.06,0.42,0.48
+factorial,recfun,nonlinear (mul),simplify>ctx-simplify,sat,0.06,0.42,0.48
+factorial,recfun,nonlinear (mul),propagate-values>simplify,sat,0.06,0.41,0.47
+factorial,recfun,nonlinear (mul),solve-eqs>simplify,sat,0.14,0.02,0.16
+factorial,unroll,nonlinear (mul),(none),sat,0.0,0.51,0.51
+factorial,unroll,nonlinear (mul),ackermannize_bv,sat,0.07,0.48,0.55
+factorial,unroll,nonlinear (mul),subpaving,sat,0.09,1.08,1.17
+factorial,unroll,nonlinear (mul),horn,tactic_err,0.13,0.0,0.13
+factorial,unroll,nonlinear (mul),horn-simplify,tactic_err,0.09,0.0,0.09
+factorial,unroll,nonlinear (mul),nlsat,sat,0.14,0.02,0.16
+factorial,unroll,nonlinear (mul),qfnra-nlsat,sat,0.17,0.02,0.19
+factorial,unroll,nonlinear (mul),qe-light,sat,0.03,0.46,0.49
+factorial,unroll,nonlinear (mul),nlqsat,tactic_err,0.03,0.0,0.03
+factorial,unroll,nonlinear (mul),qe,sat,0.02,0.45,0.47
+factorial,unroll,nonlinear (mul),qsat,sat,0.68,0.02,0.7
+factorial,unroll,nonlinear (mul),qe2,sat,3.15,0.46,3.61
+factorial,unroll,nonlinear (mul),qe_rec,sat,0.05,0.45,0.5
+factorial,unroll,nonlinear (mul),psat,sat,0.8,0.47,1.27
+factorial,unroll,nonlinear (mul),sat,sat,0.65,0.57,1.22
+factorial,unroll,nonlinear (mul),sat-preprocess,sat,0.73,0.49,1.22
+factorial,unroll,nonlinear (mul),ctx-solver-simplify,sat,0.59,0.5,1.09
+factorial,unroll,nonlinear (mul),psmt,sat,3.19,0.05,3.24
+factorial,unroll,nonlinear (mul),unit-subsume-simplify,sat,0.42,0.55,0.97
+factorial,unroll,nonlinear (mul),aig,sat,0.06,0.48,0.54
+factorial,unroll,nonlinear (mul),add-bounds,unsat,0.02,0.37,0.39
+factorial,unroll,nonlinear (mul),card2bv,sat,0.02,0.45,0.47
+factorial,unroll,nonlinear (mul),degree-shift,sat,0.02,0.44,0.46
+factorial,unroll,nonlinear (mul),diff-neq,tactic_err,0.05,0.0,0.05
+factorial,unroll,nonlinear (mul),eq2bv,sat,0.03,0.62,0.65
+factorial,unroll,nonlinear (mul),factor,sat,0.05,0.57,0.62
+factorial,unroll,nonlinear (mul),fix-dl-var,sat,0.04,0.51,0.55
+factorial,unroll,nonlinear (mul),fm,sat,0.05,0.48,0.53
+factorial,unroll,nonlinear (mul),lia2card,sat,0.04,0.45,0.49
+factorial,unroll,nonlinear (mul),lia2pb,sat,0.03,0.44,0.47
+factorial,unroll,nonlinear (mul),nla2bv,unsat,0.15,0.76,0.91
+factorial,unroll,nonlinear (mul),normalize-bounds,sat,0.04,0.46,0.5
+factorial,unroll,nonlinear (mul),pb2bv,tactic_err,0.06,0.0,0.06
+factorial,unroll,nonlinear (mul),propagate-ineqs,sat,0.03,0.48,0.51
+factorial,unroll,nonlinear (mul),purify-arith,sat,0.05,0.45,0.5
+factorial,unroll,nonlinear (mul),recover-01,sat,0.03,0.48,0.51
+factorial,unroll,nonlinear (mul),bit-blast,sat,0.02,0.45,0.47
+factorial,unroll,nonlinear (mul),bv1-blast,sat,0.02,0.46,0.48
+factorial,unroll,nonlinear (mul),bv_bound_chk,sat,0.02,0.45,0.47
+factorial,unroll,nonlinear (mul),propagate-bv-bounds,sat,0.02,0.45,0.47
+factorial,unroll,nonlinear (mul),propagate-bv-bounds2,sat,0.07,0.45,0.52
+factorial,unroll,nonlinear (mul),reduce-bv-size,sat,0.02,0.44,0.46
+factorial,unroll,nonlinear (mul),bv-slice,sat,0.02,0.44,0.46
+factorial,unroll,nonlinear (mul),bvarray2uf,sat,0.02,0.44,0.46
+factorial,unroll,nonlinear (mul),dt2bv,sat,0.02,0.43,0.45
+factorial,unroll,nonlinear (mul),elim-small-bv,sat,0.03,0.47,0.5
+factorial,unroll,nonlinear (mul),max-bv-sharing,sat,0.03,0.51,0.54
+factorial,unroll,nonlinear (mul),blast-term-ite,sat,0.02,0.53,0.55
+factorial,unroll,nonlinear (mul),cofactor-term-ite,sat,0.02,0.44,0.46
+factorial,unroll,nonlinear (mul),collect-statistics,sat,0.32,0.45,0.77
+factorial,unroll,nonlinear (mul),ctx-simplify,sat,0.04,0.43,0.47
+factorial,unroll,nonlinear (mul),demodulator,sat,0.02,0.44,0.46
+factorial,unroll,nonlinear (mul),der,sat,0.02,0.46,0.48
+factorial,unroll,nonlinear (mul),distribute-forall,sat,0.02,0.45,0.47
+factorial,unroll,nonlinear (mul),dom-simplify,sat,0.07,0.45,0.52
+factorial,unroll,nonlinear (mul),elim-term-ite,sat,0.02,0.44,0.46
+factorial,unroll,nonlinear (mul),elim-uncnstr2,sat,0.12,0.44,0.56
+factorial,unroll,nonlinear (mul),elim-uncnstr,sat,0.02,0.43,0.45
+factorial,unroll,nonlinear (mul),elim-predicates,sat,0.13,0.42,0.55
+factorial,unroll,nonlinear (mul),injectivity,sat,0.02,0.44,0.46
+factorial,unroll,nonlinear (mul),snf,sat,0.06,0.44,0.5
+factorial,unroll,nonlinear (mul),nnf,sat,0.07,0.44,0.51
+factorial,unroll,nonlinear (mul),occf,sat,0.02,0.43,0.45
+factorial,unroll,nonlinear (mul),pb-preprocess,sat,0.02,0.43,0.45
+factorial,unroll,nonlinear (mul),propagate-values2,sat,0.04,0.42,0.46
+factorial,unroll,nonlinear (mul),propagate-values,sat,0.04,0.62,0.66
+factorial,unroll,nonlinear (mul),reduce-args,sat,0.02,0.53,0.55
+factorial,unroll,nonlinear (mul),reduce-args2,sat,0.12,0.46,0.58
+factorial,unroll,nonlinear (mul),simplify,sat,0.05,0.52,0.57
+factorial,unroll,nonlinear (mul),elim-and,sat,0.04,0.46,0.5
+factorial,unroll,nonlinear (mul),solve-eqs,sat,0.12,0.02,0.14
+factorial,unroll,nonlinear (mul),special-relations,sat,0.05,0.47,0.52
+factorial,unroll,nonlinear (mul),split-clause,tactic_err,0.03,0.0,0.03
+factorial,unroll,nonlinear (mul),symmetry-reduce,sat,0.05,0.49,0.54
+factorial,unroll,nonlinear (mul),tseitin-cnf,sat,0.02,0.44,0.46
+factorial,unroll,nonlinear (mul),tseitin-cnf-core,sat,0.02,0.44,0.46
+factorial,unroll,nonlinear (mul),qffd,sat,0.27,0.18,0.45
+factorial,unroll,nonlinear (mul),pqffd,tactic_err,1.22,0.0,1.22
+factorial,unroll,nonlinear (mul),smtfd,tactic_to,1510.51,0.0,1510.51
+factorial,unroll,nonlinear (mul),fpa2bv,sat,0.03,0.61,0.64
+factorial,unroll,nonlinear (mul),qffp,sat,0.51,0.02,0.53
+factorial,unroll,nonlinear (mul),qffpbv,sat,0.43,0.02,0.45
+factorial,unroll,nonlinear (mul),qffplra,sat,0.51,0.02,0.53
+factorial,unroll,nonlinear (mul),default,sat,0.53,0.02,0.55
+factorial,unroll,nonlinear (mul),euf-completion,sat,0.24,0.53,0.77
+factorial,unroll,nonlinear (mul),solver-subsumption,sat,0.99,0.47,1.46
+factorial,unroll,nonlinear (mul),qfbv-sls,sat,0.13,0.02,0.15
+factorial,unroll,nonlinear (mul),sls-smt,sat,0.13,0.02,0.15
+factorial,unroll,nonlinear (mul),nra,sat,0.47,0.02,0.49
+factorial,unroll,nonlinear (mul),qfaufbv,sat,0.16,0.02,0.18
+factorial,unroll,nonlinear (mul),qfauflia,sat,0.13,0.02,0.15
+factorial,unroll,nonlinear (mul),qfbv,sat,0.15,0.02,0.17
+factorial,unroll,nonlinear (mul),qfidl,sat,0.17,0.02,0.19
+factorial,unroll,nonlinear (mul),qflia,sat,0.21,0.03,0.24
+factorial,unroll,nonlinear (mul),qflra,sat,0.47,0.02,0.49
+factorial,unroll,nonlinear (mul),qfnia,sat,0.1,0.02,0.12
+factorial,unroll,nonlinear (mul),qfnra,sat,0.5,0.02,0.52
+factorial,unroll,nonlinear (mul),qfuf,sat,0.13,0.02,0.15
+factorial,unroll,nonlinear (mul),qfufbv,sat,0.15,0.02,0.17
+factorial,unroll,nonlinear (mul),qfufbv_ackr,sat,0.13,0.02,0.15
+factorial,unroll,nonlinear (mul),ufnia,sat,0.41,0.03,0.44
+factorial,unroll,nonlinear (mul),uflra,sat,0.14,0.02,0.16
+factorial,unroll,nonlinear (mul),auflia,sat,0.4,0.02,0.42
+factorial,unroll,nonlinear (mul),auflira,sat,0.14,0.02,0.16
+factorial,unroll,nonlinear (mul),aufnira,sat,0.16,0.02,0.18
+factorial,unroll,nonlinear (mul),lra,sat,0.15,0.03,0.18
+factorial,unroll,nonlinear (mul),lia,sat,0.19,0.03,0.22
+factorial,unroll,nonlinear (mul),lira,sat,0.19,0.02,0.21
+factorial,unroll,nonlinear (mul),smt,sat,0.49,0.02,0.51
+factorial,unroll,nonlinear (mul),skip,sat,0.02,0.51,0.53
+factorial,unroll,nonlinear (mul),fail,tactic_err,0.03,0.0,0.03
+factorial,unroll,nonlinear (mul),fail-if-undecided,tactic_err,0.03,0.0,0.03
+factorial,unroll,nonlinear (mul),macro-finder,sat,0.02,0.48,0.5
+factorial,unroll,nonlinear (mul),quasi-macros,sat,0.07,0.46,0.53
+factorial,unroll,nonlinear (mul),ufbv-rewriter,sat,0.06,0.46,0.52
+factorial,unroll,nonlinear (mul),bv,sat,0.15,0.02,0.17
+factorial,unroll,nonlinear (mul),ufbv,sat,0.16,0.02,0.18
+factorial,unroll,nonlinear (mul),simplify>solve-eqs,sat,0.14,0.02,0.16
+factorial,unroll,nonlinear (mul),simplify>propagate-values,sat,0.04,0.76,0.8
+factorial,unroll,nonlinear (mul),propagate-values>solve-eqs,sat,0.17,0.04,0.21
+factorial,unroll,nonlinear (mul),ctx-simplify>simplify,sat,0.05,0.53,0.58
+factorial,unroll,nonlinear (mul),elim-term-ite>simplify,sat,0.06,0.55,0.61
+factorial,unroll,nonlinear (mul),simplify>ctx-simplify,sat,0.06,0.49,0.55
+factorial,unroll,nonlinear (mul),propagate-values>simplify,sat,0.05,0.48,0.53
+factorial,unroll,nonlinear (mul),solve-eqs>simplify,sat,0.14,0.03,0.17
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,(none),sat,0.0,0.59,0.59
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,ackermannize_bv,sat,0.03,0.57,0.6
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,subpaving,sat,0.14,0.52,0.66
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,horn,tactic_err,0.41,0.0,0.41
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,horn-simplify,tactic_err,0.11,0.0,0.11
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,nlsat,sat,0.08,0.54,0.62
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,qfnra-nlsat,sat,0.21,0.02,0.23
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,qe-light,sat,0.02,0.47,0.49
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,nlqsat,tactic_err,0.03,0.0,0.03
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,qe,sat,0.02,0.48,0.5
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,qsat,sat,0.66,0.02,0.68
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,qe2,sat,0.7,0.46,1.16
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,qe_rec,sat,0.02,0.47,0.49
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,psat,sat,0.82,0.47,1.29
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,sat,sat,0.67,0.51,1.18
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,sat-preprocess,sat,0.73,0.67,1.4
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,ctx-solver-simplify,sat,0.36,0.54,0.9
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,psmt,sat,3.2,0.03,3.23
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,unit-subsume-simplify,sat,0.23,0.56,0.79
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,aig,sat,0.02,0.49,0.51
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,add-bounds,unsat,0.03,0.39,0.42
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,card2bv,sat,0.11,0.41,0.52
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,degree-shift,sat,0.11,0.42,0.53
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,diff-neq,tactic_err,0.03,0.0,0.03
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,eq2bv,sat,0.04,0.48,0.52
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,factor,sat,0.02,0.64,0.66
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,fix-dl-var,sat,0.02,0.48,0.5
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,fm,sat,0.11,0.42,0.53
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,lia2card,sat,0.02,0.46,0.48
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,lia2pb,sat,0.02,0.47,0.49
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,nla2bv,tactic_err,0.07,0.0,0.07
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,normalize-bounds,sat,0.02,0.49,0.51
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,pb2bv,tactic_err,0.07,0.0,0.07
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,propagate-ineqs,sat,0.03,0.48,0.51
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,purify-arith,sat,0.13,0.46,0.59
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,recover-01,sat,0.02,0.48,0.5
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,bit-blast,sat,0.02,0.47,0.49
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,bv1-blast,sat,0.02,0.46,0.48
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,bv_bound_chk,sat,0.02,0.46,0.48
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,propagate-bv-bounds,sat,0.02,0.47,0.49
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,propagate-bv-bounds2,sat,0.02,0.48,0.5
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,reduce-bv-size,sat,0.02,0.49,0.51
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,bv-slice,sat,0.02,0.47,0.49
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,bvarray2uf,sat,0.02,0.46,0.48
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,dt2bv,sat,0.02,0.46,0.48
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,elim-small-bv,sat,0.02,0.48,0.5
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,max-bv-sharing,sat,0.02,0.47,0.49
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,blast-term-ite,sat,0.02,0.47,0.49
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,cofactor-term-ite,sat,0.02,0.47,0.49
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,collect-statistics,sat,0.09,0.47,0.56
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,ctx-simplify,sat,0.02,0.47,0.49
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,demodulator,sat,0.02,0.48,0.5
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,der,sat,0.02,0.49,0.51
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,distribute-forall,sat,0.03,0.72,0.75
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,dom-simplify,sat,0.02,0.6,0.62
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,elim-term-ite,sat,0.02,0.53,0.55
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,elim-uncnstr2,sat,0.13,0.16,0.29
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,elim-uncnstr,sat,0.02,0.56,0.58
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,elim-predicates,sat,0.22,0.02,0.24
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,injectivity,sat,0.02,0.51,0.53
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,snf,sat,0.02,0.48,0.5
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,nnf,sat,0.02,0.48,0.5
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,occf,sat,0.02,0.5,0.52
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,pb-preprocess,sat,0.02,0.48,0.5
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,propagate-values2,sat,0.02,0.47,0.49
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,propagate-values,sat,0.02,0.47,0.49
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,reduce-args,sat,0.02,0.47,0.49
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,reduce-args2,sat,0.11,0.48,0.59
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,simplify,sat,0.1,0.42,0.52
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,elim-and,sat,0.1,0.45,0.55
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,solve-eqs,sat,0.19,0.02,0.21
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,special-relations,sat,0.04,0.47,0.51
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,split-clause,tactic_err,0.03,0.0,0.03
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,symmetry-reduce,sat,0.02,0.49,0.51
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,tseitin-cnf,sat,0.02,0.48,0.5
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,tseitin-cnf-core,sat,0.02,0.5,0.52
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,qffd,sat,0.21,0.42,0.63
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,pqffd,tactic_err,1.14,0.0,1.14
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,smtfd,tactic_to,1502.26,0.0,1502.26
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,fpa2bv,sat,0.03,0.67,0.7
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,qffp,sat,0.56,0.02,0.58
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,qffpbv,sat,0.48,0.02,0.5
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,qffplra,sat,0.47,0.02,0.49
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,default,sat,0.52,0.02,0.54
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,euf-completion,sat,0.18,0.5,0.68
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,solver-subsumption,sat,0.02,0.49,0.51
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,qfbv-sls,sat,0.2,0.02,0.22
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,sls-smt,sat,0.21,0.03,0.24
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,nra,sat,0.52,0.09,0.61
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,qfaufbv,sat,0.24,0.02,0.26
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,qfauflia,sat,0.21,0.02,0.23
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,qfbv,sat,0.22,0.02,0.24
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,qfidl,sat,0.22,0.02,0.24
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,qflia,sat,0.26,0.02,0.28
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,qflra,sat,0.49,0.02,0.51
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,qfnia,sat,0.16,0.02,0.18
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,qfnra,sat,0.58,0.02,0.6
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,qfuf,sat,0.2,0.02,0.22
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,qfufbv,sat,0.22,0.02,0.24
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,qfufbv_ackr,sat,0.21,0.02,0.23
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,ufnia,sat,0.53,0.02,0.55
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,uflra,sat,0.21,0.02,0.23
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,auflia,sat,0.47,0.02,0.49
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,auflira,sat,0.2,0.02,0.22
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,aufnira,sat,0.21,0.02,0.23
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,lra,sat,0.21,0.02,0.23
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,lia,sat,0.2,0.02,0.22
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,lira,sat,0.2,0.02,0.22
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,smt,sat,0.46,0.02,0.48
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,skip,sat,0.02,0.52,0.54
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,fail,tactic_err,0.03,0.0,0.03
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,fail-if-undecided,tactic_err,0.03,0.0,0.03
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,macro-finder,sat,0.02,0.5,0.52
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,quasi-macros,sat,0.02,0.49,0.51
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,ufbv-rewriter,sat,0.02,0.5,0.52
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,bv,sat,0.24,0.02,0.26
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,ufbv,sat,0.23,0.02,0.25
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,simplify>solve-eqs,sat,0.19,0.02,0.21
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,simplify>propagate-values,sat,0.11,0.44,0.55
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,propagate-values>solve-eqs,sat,0.2,0.02,0.22
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,ctx-simplify>simplify,sat,0.11,0.45,0.56
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,elim-term-ite>simplify,sat,0.11,0.43,0.54
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,simplify>ctx-simplify,sat,0.11,0.44,0.55
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,propagate-values>simplify,sat,0.11,0.44,0.55
+fib,recfun,branching: does Z3 share f(n-1)/f(n-2)?,solve-eqs>simplify,sat,0.2,0.02,0.22
+fib,unroll,,(none),sat,0.0,0.56,0.56
+fib,unroll,,ackermannize_bv,sat,0.07,0.52,0.59
+fib,unroll,,subpaving,sat,0.14,1.44,1.58
+fib,unroll,,horn,tactic_err,0.13,0.0,0.13
+fib,unroll,,horn-simplify,tactic_err,0.1,0.0,0.1
+fib,unroll,,nlsat,sat,0.4,0.03,0.43
+fib,unroll,,qfnra-nlsat,sat,0.23,0.02,0.25
+fib,unroll,,qe-light,sat,0.04,0.53,0.57
+fib,unroll,,nlqsat,tactic_err,0.03,0.0,0.03
+fib,unroll,,qe,sat,0.03,0.52,0.55
+fib,unroll,,qsat,sat,1.09,0.02,1.11
+fib,unroll,,qe2,sat,8.59,0.55,9.14
+fib,unroll,,qe_rec,sat,0.03,0.54,0.57
+fib,unroll,,psat,sat,0.81,0.53,1.34
+fib,unroll,,sat,sat,0.68,0.53,1.21
+fib,unroll,,sat-preprocess,sat,0.61,0.51,1.12
+fib,unroll,,ctx-solver-simplify,sat,0.86,0.51,1.37
+fib,unroll,,psmt,sat,3.68,0.03,3.71
+fib,unroll,,unit-subsume-simplify,sat,1.14,0.58,1.72
+fib,unroll,,aig,sat,0.08,0.55,0.63
+fib,unroll,,add-bounds,unsat,0.02,0.4,0.42
+fib,unroll,,card2bv,sat,0.05,0.5,0.55
+fib,unroll,,degree-shift,sat,0.04,0.5,0.54
+fib,unroll,,diff-neq,tactic_err,0.03,0.0,0.03
+fib,unroll,,eq2bv,sat,0.02,0.53,0.55
+fib,unroll,,factor,sat,0.05,0.5,0.55
+fib,unroll,,fix-dl-var,sat,0.06,0.5,0.56
+fib,unroll,,fm,sat,0.05,0.5,0.55
+fib,unroll,,lia2card,sat,0.04,0.48,0.52
+fib,unroll,,lia2pb,sat,0.02,0.49,0.51
+fib,unroll,,nla2bv,unsat,0.17,1.42,1.59
+fib,unroll,,normalize-bounds,sat,0.04,0.51,0.55
+fib,unroll,,pb2bv,tactic_err,0.07,0.0,0.07
+fib,unroll,,propagate-ineqs,sat,0.05,0.52,0.57
+fib,unroll,,purify-arith,sat,0.05,0.49,0.54
+fib,unroll,,recover-01,sat,0.04,0.52,0.56
+fib,unroll,,bit-blast,sat,0.02,0.51,0.53
+fib,unroll,,bv1-blast,sat,0.02,0.52,0.54
+fib,unroll,,bv_bound_chk,sat,0.02,0.5,0.52
+fib,unroll,,propagate-bv-bounds,sat,0.05,0.49,0.54
+fib,unroll,,propagate-bv-bounds2,sat,0.09,0.49,0.58
+fib,unroll,,reduce-bv-size,sat,0.02,0.49,0.51
+fib,unroll,,bv-slice,sat,0.03,0.49,0.52
+fib,unroll,,bvarray2uf,sat,0.02,0.49,0.51
+fib,unroll,,dt2bv,sat,0.02,0.5,0.52
+fib,unroll,,elim-small-bv,sat,0.04,0.6,0.64
+fib,unroll,,max-bv-sharing,sat,0.02,0.49,0.51
+fib,unroll,,blast-term-ite,sat,0.02,0.48,0.5
+fib,unroll,,cofactor-term-ite,sat,0.04,0.48,0.52
+fib,unroll,,collect-statistics,sat,0.51,0.49,1.0
+fib,unroll,,ctx-simplify,sat,0.08,0.46,0.54
+fib,unroll,,demodulator,sat,0.03,0.48,0.51
+fib,unroll,,der,sat,0.02,0.49,0.51
+fib,unroll,,distribute-forall,sat,0.02,0.49,0.51
+fib,unroll,,dom-simplify,sat,0.12,0.49,0.61
+fib,unroll,,elim-term-ite,sat,0.03,0.49,0.52
+fib,unroll,,elim-uncnstr2,sat,0.16,0.49,0.65
+fib,unroll,,elim-uncnstr,sat,0.02,0.49,0.51
+fib,unroll,,elim-predicates,tactic_to,1514.55,0.0,1514.55
+fib,unroll,,injectivity,sat,0.04,0.74,0.78
+fib,unroll,,snf,sat,0.08,0.62,0.7
+fib,unroll,,nnf,sat,0.08,0.67,0.75
+fib,unroll,,occf,sat,0.02,0.62,0.64
+fib,unroll,,pb-preprocess,sat,0.02,0.56,0.58
+fib,unroll,,propagate-values2,sat,0.08,0.5,0.58
+fib,unroll,,propagate-values,sat,0.08,0.48,0.56
+fib,unroll,,reduce-args,sat,0.02,0.54,0.56
+fib,unroll,,reduce-args2,sat,0.13,0.55,0.68
+fib,unroll,,simplify,sat,0.04,0.53,0.57
+fib,unroll,,elim-and,sat,0.05,0.54,0.59
+fib,unroll,,solve-eqs,sat,0.27,0.02,0.29
+fib,unroll,,special-relations,sat,0.07,0.7,0.77
+fib,unroll,,split-clause,tactic_err,0.04,0.0,0.04
+fib,unroll,,symmetry-reduce,sat,0.08,0.59,0.67
+fib,unroll,,tseitin-cnf,sat,0.02,0.54,0.56
+fib,unroll,,tseitin-cnf-core,sat,0.02,0.54,0.56
+fib,unroll,,qffd,sat,0.45,0.29,0.74
+fib,unroll,,pqffd,tactic_err,1.62,0.0,1.62
+fib,unroll,,smtfd,tactic_to,1511.0,0.0,1511.0
+fib,unroll,,fpa2bv,sat,0.03,0.76,0.79
+fib,unroll,,qffp,sat,0.78,0.03,0.81
+fib,unroll,,qffpbv,sat,0.66,0.02,0.68
+fib,unroll,,qffplra,sat,0.67,0.02,0.69
+fib,unroll,,default,sat,0.54,0.02,0.56
+fib,unroll,,euf-completion,sat,0.51,0.61,1.12
+fib,unroll,,solver-subsumption,sat,2.92,0.59,3.51
+fib,unroll,,qfbv-sls,sat,0.21,0.02,0.23
+fib,unroll,,sls-smt,sat,0.2,0.02,0.22
+fib,unroll,,nra,sat,0.69,0.02,0.71
+fib,unroll,,qfaufbv,sat,0.25,0.02,0.27
+fib,unroll,,qfauflia,sat,0.2,0.02,0.22
+fib,unroll,,qfbv,sat,0.23,0.02,0.25
+fib,unroll,,qfidl,sat,0.24,0.02,0.26
+fib,unroll,,qflia,sat,0.28,0.02,0.3
+fib,unroll,,qflra,sat,0.79,0.02,0.81
+fib,unroll,,qfnia,sat,0.15,0.02,0.17
+fib,unroll,,qfnra,sat,0.62,0.02,0.64
+fib,unroll,,qfuf,sat,0.2,0.02,0.22
+fib,unroll,,qfufbv,sat,0.23,0.02,0.25
+fib,unroll,,qfufbv_ackr,sat,0.21,0.02,0.23
+fib,unroll,,ufnia,sat,0.63,0.02,0.65
+fib,unroll,,uflra,sat,0.21,0.02,0.23
+fib,unroll,,auflia,sat,0.62,0.02,0.64
+fib,unroll,,auflira,sat,0.22,0.02,0.24
+fib,unroll,,aufnira,sat,0.21,0.02,0.23
+fib,unroll,,lra,sat,0.22,0.02,0.24
+fib,unroll,,lia,sat,0.21,0.02,0.23
+fib,unroll,,lira,sat,0.22,0.02,0.24
+fib,unroll,,smt,sat,0.75,0.02,0.77
+fib,unroll,,skip,sat,0.02,0.58,0.6
+fib,unroll,,fail,tactic_err,0.03,0.0,0.03
+fib,unroll,,fail-if-undecided,tactic_err,0.03,0.0,0.03
+fib,unroll,,macro-finder,sat,0.02,0.56,0.58
+fib,unroll,,quasi-macros,sat,0.07,0.57,0.64
+fib,unroll,,ufbv-rewriter,sat,0.07,0.54,0.61
+fib,unroll,,bv,sat,0.24,0.02,0.26
+fib,unroll,,ufbv,sat,0.25,0.02,0.27
+fib,unroll,,simplify>solve-eqs,sat,0.28,0.02,0.3
+fib,unroll,,simplify>propagate-values,sat,0.08,0.52,0.6
+fib,unroll,,propagate-values>solve-eqs,sat,0.2,0.02,0.22
+fib,unroll,,ctx-simplify>simplify,sat,0.05,0.5,0.55
+fib,unroll,,elim-term-ite>simplify,sat,0.06,0.54,0.6
+fib,unroll,,simplify>ctx-simplify,sat,0.07,0.49,0.56
+fib,unroll,,propagate-values>simplify,sat,0.08,0.48,0.56
+fib,unroll,,solve-eqs>simplify,sat,0.27,0.02,0.29
+list_length,recfun,structural recursion over a datatype,(none),sat,0.0,0.65,0.65
+list_length,recfun,structural recursion over a datatype,ackermannize_bv,sat,0.03,0.5,0.53
+list_length,recfun,structural recursion over a datatype,subpaving,sat,0.1,0.55,0.65
+list_length,recfun,structural recursion over a datatype,horn,tactic_err,0.55,0.0,0.55
+list_length,recfun,structural recursion over a datatype,horn-simplify,tactic_err,0.18,0.0,0.18
+list_length,recfun,structural recursion over a datatype,nlsat,sat,0.07,0.5,0.57
+list_length,recfun,structural recursion over a datatype,qfnra-nlsat,sat,0.2,0.02,0.22
+list_length,recfun,structural recursion over a datatype,qe-light,sat,0.02,0.48,0.5
+list_length,recfun,structural recursion over a datatype,nlqsat,tactic_err,0.06,0.0,0.06
+list_length,recfun,structural recursion over a datatype,qe,sat,0.02,0.47,0.49
+list_length,recfun,structural recursion over a datatype,qsat,sat,0.71,0.02,0.73
+list_length,recfun,structural recursion over a datatype,qe2,sat,0.75,0.47,1.22
+list_length,recfun,structural recursion over a datatype,qe_rec,sat,0.02,0.47,0.49
+list_length,recfun,structural recursion over a datatype,psat,sat,5.87,0.54,6.41
+list_length,recfun,structural recursion over a datatype,sat,sat,1.87,0.53,2.4
+list_length,recfun,structural recursion over a datatype,sat-preprocess,sat,0.67,0.49,1.16
+list_length,recfun,structural recursion over a datatype,ctx-solver-simplify,sat,0.32,0.47,0.79
+list_length,recfun,structural recursion over a datatype,psmt,sat,3.79,0.03,3.82
+list_length,recfun,structural recursion over a datatype,unit-subsume-simplify,sat,0.16,0.55,0.71
+list_length,recfun,structural recursion over a datatype,aig,sat,0.02,0.46,0.48
+list_length,recfun,structural recursion over a datatype,add-bounds,unsat,0.02,0.39,0.41
+list_length,recfun,structural recursion over a datatype,card2bv,sat,0.07,0.47,0.54
+list_length,recfun,structural recursion over a datatype,degree-shift,sat,0.06,0.44,0.5
+list_length,recfun,structural recursion over a datatype,diff-neq,tactic_err,0.03,0.0,0.03
+list_length,recfun,structural recursion over a datatype,eq2bv,sat,0.02,0.52,0.54
+list_length,recfun,structural recursion over a datatype,factor,sat,0.03,0.51,0.54
+list_length,recfun,structural recursion over a datatype,fix-dl-var,sat,0.02,0.47,0.49
+list_length,recfun,structural recursion over a datatype,fm,sat,0.06,0.48,0.54
+list_length,recfun,structural recursion over a datatype,lia2card,sat,0.02,0.48,0.5
+list_length,recfun,structural recursion over a datatype,lia2pb,sat,0.02,0.47,0.49
+list_length,recfun,structural recursion over a datatype,nla2bv,tactic_err,0.05,0.0,0.05
+list_length,recfun,structural recursion over a datatype,normalize-bounds,sat,0.03,0.48,0.51
+list_length,recfun,structural recursion over a datatype,pb2bv,tactic_err,0.05,0.0,0.05
+list_length,recfun,structural recursion over a datatype,propagate-ineqs,sat,0.04,0.52,0.56
+list_length,recfun,structural recursion over a datatype,purify-arith,sat,0.08,0.52,0.6
+list_length,recfun,structural recursion over a datatype,recover-01,sat,0.02,0.55,0.57
+list_length,recfun,structural recursion over a datatype,bit-blast,sat,0.02,0.47,0.49
+list_length,recfun,structural recursion over a datatype,bv1-blast,sat,0.02,0.48,0.5
+list_length,recfun,structural recursion over a datatype,bv_bound_chk,sat,0.02,0.47,0.49
+list_length,recfun,structural recursion over a datatype,propagate-bv-bounds,sat,0.02,0.46,0.48
+list_length,recfun,structural recursion over a datatype,propagate-bv-bounds2,sat,0.06,0.46,0.52
+list_length,recfun,structural recursion over a datatype,reduce-bv-size,sat,0.02,0.48,0.5
+list_length,recfun,structural recursion over a datatype,bv-slice,sat,0.02,0.46,0.48
+list_length,recfun,structural recursion over a datatype,bvarray2uf,sat,0.02,0.46,0.48
+list_length,recfun,structural recursion over a datatype,dt2bv,sat,0.02,0.53,0.55
+list_length,recfun,structural recursion over a datatype,elim-small-bv,sat,0.05,0.48,0.53
+list_length,recfun,structural recursion over a datatype,max-bv-sharing,sat,0.02,0.46,0.48
+list_length,recfun,structural recursion over a datatype,blast-term-ite,sat,0.02,0.46,0.48
+list_length,recfun,structural recursion over a datatype,cofactor-term-ite,sat,0.02,0.48,0.5
+list_length,recfun,structural recursion over a datatype,collect-statistics,sat,0.33,0.47,0.8
+list_length,recfun,structural recursion over a datatype,ctx-simplify,sat,0.02,0.56,0.58
+list_length,recfun,structural recursion over a datatype,demodulator,sat,0.03,0.57,0.6
+list_length,recfun,structural recursion over a datatype,der,sat,0.02,0.56,0.58
+list_length,recfun,structural recursion over a datatype,distribute-forall,sat,0.02,0.51,0.53
+list_length,recfun,structural recursion over a datatype,dom-simplify,sat,0.07,0.52,0.59
+list_length,recfun,structural recursion over a datatype,elim-term-ite,sat,0.02,0.49,0.51
+list_length,recfun,structural recursion over a datatype,elim-uncnstr2,sat,0.21,0.16,0.37
+list_length,recfun,structural recursion over a datatype,elim-uncnstr,sat,0.02,0.67,0.69
+list_length,recfun,structural recursion over a datatype,elim-predicates,sat,0.19,0.02,0.21
+list_length,recfun,structural recursion over a datatype,injectivity,sat,0.02,0.49,0.51
+list_length,recfun,structural recursion over a datatype,snf,sat,0.02,0.52,0.54
+list_length,recfun,structural recursion over a datatype,nnf,sat,0.03,0.49,0.52
+list_length,recfun,structural recursion over a datatype,occf,sat,0.02,0.51,0.53
+list_length,recfun,structural recursion over a datatype,pb-preprocess,sat,0.02,0.49,0.51
+list_length,recfun,structural recursion over a datatype,propagate-values2,sat,0.02,0.49,0.51
+list_length,recfun,structural recursion over a datatype,propagate-values,sat,0.02,0.48,0.5
+list_length,recfun,structural recursion over a datatype,reduce-args,sat,0.02,0.46,0.48
+list_length,recfun,structural recursion over a datatype,reduce-args2,sat,0.18,0.59,0.77
+list_length,recfun,structural recursion over a datatype,simplify,sat,0.07,0.5,0.57
+list_length,recfun,structural recursion over a datatype,elim-and,sat,0.06,0.51,0.57
+list_length,recfun,structural recursion over a datatype,solve-eqs,sat,0.19,0.02,0.21
+list_length,recfun,structural recursion over a datatype,special-relations,sat,0.04,0.78,0.82
+list_length,recfun,structural recursion over a datatype,split-clause,tactic_err,0.04,0.0,0.04
+list_length,recfun,structural recursion over a datatype,symmetry-reduce,sat,0.03,0.54,0.57
+list_length,recfun,structural recursion over a datatype,tseitin-cnf,sat,0.03,0.51,0.54
+list_length,recfun,structural recursion over a datatype,tseitin-cnf-core,sat,0.05,0.51,0.56
+list_length,recfun,structural recursion over a datatype,qffd,sat,0.18,0.47,0.65
+list_length,recfun,structural recursion over a datatype,pqffd,tactic_err,1.07,0.0,1.07
+list_length,recfun,structural recursion over a datatype,smtfd,tactic_to,1508.96,0.0,1508.96
+list_length,recfun,structural recursion over a datatype,fpa2bv,sat,0.03,0.67,0.7
+list_length,recfun,structural recursion over a datatype,qffp,sat,0.65,0.02,0.67
+list_length,recfun,structural recursion over a datatype,qffpbv,sat,0.53,0.02,0.55
+list_length,recfun,structural recursion over a datatype,qffplra,sat,0.52,0.02,0.54
+list_length,recfun,structural recursion over a datatype,default,sat,0.5,0.02,0.52
+list_length,recfun,structural recursion over a datatype,euf-completion,sat,0.33,0.5,0.83
+list_length,recfun,structural recursion over a datatype,solver-subsumption,sat,0.02,0.48,0.5
+list_length,recfun,structural recursion over a datatype,qfbv-sls,sat,0.19,0.02,0.21
+list_length,recfun,structural recursion over a datatype,sls-smt,sat,0.19,0.02,0.21
+list_length,recfun,structural recursion over a datatype,nra,sat,0.57,0.03,0.6
+list_length,recfun,structural recursion over a datatype,qfaufbv,sat,0.2,0.03,0.23
+list_length,recfun,structural recursion over a datatype,qfauflia,sat,0.19,0.02,0.21
+list_length,recfun,structural recursion over a datatype,qfbv,sat,0.2,0.02,0.22
+list_length,recfun,structural recursion over a datatype,qfidl,sat,0.2,0.02,0.22
+list_length,recfun,structural recursion over a datatype,qflia,sat,0.26,0.02,0.28
+list_length,recfun,structural recursion over a datatype,qflra,sat,0.51,0.02,0.53
+list_length,recfun,structural recursion over a datatype,qfnia,sat,0.1,0.02,0.12
+list_length,recfun,structural recursion over a datatype,qfnra,sat,0.58,0.02,0.6
+list_length,recfun,structural recursion over a datatype,qfuf,sat,0.19,0.02,0.21
+list_length,recfun,structural recursion over a datatype,qfufbv,sat,0.2,0.02,0.22
+list_length,recfun,structural recursion over a datatype,qfufbv_ackr,sat,0.2,0.02,0.22
+list_length,recfun,structural recursion over a datatype,ufnia,sat,0.52,0.02,0.54
+list_length,recfun,structural recursion over a datatype,uflra,sat,0.26,0.02,0.28
+list_length,recfun,structural recursion over a datatype,auflia,sat,0.62,0.02,0.64
+list_length,recfun,structural recursion over a datatype,auflira,sat,0.2,0.02,0.22
+list_length,recfun,structural recursion over a datatype,aufnira,sat,0.2,0.02,0.22
+list_length,recfun,structural recursion over a datatype,lra,sat,0.2,0.02,0.22
+list_length,recfun,structural recursion over a datatype,lia,sat,0.2,0.02,0.22
+list_length,recfun,structural recursion over a datatype,lira,sat,0.2,0.02,0.22
+list_length,recfun,structural recursion over a datatype,smt,sat,0.5,0.02,0.52
+list_length,recfun,structural recursion over a datatype,skip,sat,0.02,0.54,0.56
+list_length,recfun,structural recursion over a datatype,fail,tactic_err,0.03,0.0,0.03
+list_length,recfun,structural recursion over a datatype,fail-if-undecided,tactic_err,0.03,0.0,0.03
+list_length,recfun,structural recursion over a datatype,macro-finder,sat,0.02,0.51,0.53
+list_length,recfun,structural recursion over a datatype,quasi-macros,sat,0.02,0.51,0.53
+list_length,recfun,structural recursion over a datatype,ufbv-rewriter,sat,0.02,0.48,0.5
+list_length,recfun,structural recursion over a datatype,bv,sat,0.23,0.02,0.25
+list_length,recfun,structural recursion over a datatype,ufbv,sat,0.26,0.02,0.28
+list_length,recfun,structural recursion over a datatype,simplify>solve-eqs,sat,0.24,0.03,0.27
+list_length,recfun,structural recursion over a datatype,simplify>propagate-values,sat,0.07,0.56,0.63
+list_length,recfun,structural recursion over a datatype,propagate-values>solve-eqs,sat,0.21,0.02,0.23
+list_length,recfun,structural recursion over a datatype,ctx-simplify>simplify,sat,0.06,0.48,0.54
+list_length,recfun,structural recursion over a datatype,elim-term-ite>simplify,sat,0.06,0.49,0.55
+list_length,recfun,structural recursion over a datatype,simplify>ctx-simplify,sat,0.06,0.48,0.54
+list_length,recfun,structural recursion over a datatype,propagate-values>simplify,sat,0.07,0.47,0.54
+list_length,recfun,structural recursion over a datatype,solve-eqs>simplify,sat,0.2,0.02,0.22
