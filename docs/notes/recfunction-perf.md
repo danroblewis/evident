@@ -247,15 +247,30 @@ Three lessons:
 ### Methodology — the sweep runs across cores
 
 The scaled sweep (252 cells) runs in `recfun_bench_parallel.py` as one process
-per cell over a `multiprocessing.Pool` (default 20 workers on the 24-core box).
-Process-level parallelism is what makes this safe: Z3's default context is global
-*within* a process (re-declaring a recfun/sort name collides), but each child
-process gets its own context, so the cells can't interfere — and the ~50-minute
-serial sweep finishes in ~3 minutes. Under 20-wide load absolute `solve_ms`
-inflates 10–33 % from memory-bandwidth contention (`sum_fwd` 12.9 s → 17.2 s),
-which is why the `base recfun` column is re-measured serially; rankings and the
-~130× / ~11000× rescue ratios are unaffected. Calibration that picked the scales
-is in `recfun_calibrate.py` / `recfun_calibrate2.py`.
+per cell over a `multiprocessing.Pool` (default 20 workers on the 24-core box),
+turning a ~50-minute serial sweep into ~3 minutes. Under 20-wide load absolute
+`solve_ms` inflates 10–33 % from memory-bandwidth contention (`sum_fwd`
+12.9 s → 17.2 s), which is why the `base recfun` column is re-measured serially;
+rankings and the ~130× / ~11000× rescue ratios are unaffected. Calibration that
+picked the scales is in `recfun_calibrate.py` / `recfun_calibrate2.py`.
+
+**Processes were a convenience, not a requirement** (correcting an earlier note).
+The name collision that motivates fresh contexts is *not* a libz3 limitation — it
+is an artifact of the Python wrapper defaulting every call to one global
+`main_ctx()`. libz3's C API threads a `Z3_context` through essentially every
+function, and the Python layer exposes it via `z3.Context()` + a `ctx=` kwarg on
+the constructors. Two in-process `Context`s with the *same* recfun/sort name do
+not collide (measured). Better still, `Solver.check()` **releases the GIL** in
+this build, so multiple contexts driven from Python **threads** run truly in
+parallel on separate cores: 8 backward solves of ~9 s each finish in **10.2 s
+wall in a single process** (≈73 s if serialized). So an in-process,
+multi-context, threaded runner would parallelize just as well as the pooled
+processes here — we used processes only for the stronger measurement isolation
+(separate address spaces → clean memory accounting, no shared-allocator
+contention) and the simpler code (no `ctx=` to thread through every call). This
+matters beyond the benchmark: the minimal harness for the language can hold many
+independent solver contexts in *one* process and parallelize concurrent solves
+across cores — it need not fork to get either isolation or parallelism.
 
 Per-run detail (every tactic, apply/solve split, `workers`) →
 [`prototype/results/recfun_bench_large.csv`](../../prototype/results/recfun_bench_large.csv).
