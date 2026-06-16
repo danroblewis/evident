@@ -87,13 +87,24 @@ model-finding within a bounded space); they are never fine when the sat/unsat
 answer has to be trusted. The benchmark's own "best tactic" pick of `add-bounds`
 for backward solving was a *false win* — a fast wrong `unsat`.
 
-**Two more RecFunction-specific hazards from the issue tracker** (not surfaced by
-this benchmark, but they belong on the same blacklist): `macro-finder` can *break*
-`define-fun-rec` (Z3 issue #5574), and **`Optimize` (maximize/minimize) yields
-incorrect results with recursive functions** (issue #1382). So the router's rule is
-broader than "no under-approximations": when a `RecFunction` is in play, avoid
-`add-bounds`, `nla2bv`, `macro-finder`, and the optimization engine, unless you've
-specifically validated them for that goal.
+**Two older issue-tracker claims that turned out to be FIXED in z3 4.15.4** —
+flagged here because I cited them before checking, and verifying against the
+running version is the whole point. Issue #5574 says `macro-finder` breaks
+`define-fun-rec`; #1382 says `Optimize` gives incorrect results with recursive
+functions. Directly tested on 4.15.4: **both are fine.** `macro-finder` correctly
+inlines a non-recursive RecFunction *and* leaves a recursive one with the right
+answer (`sum(10)=55`); `Optimize.maximize` over a RecFunction returns the correct
+optimum. The benchmark agrees — `macro-finder`/`quasi-macros` returned correct
+`sat` on every recfun form. So **`macro-finder` is NOT a hazard here** — it's the
+function-inlining tactic, useful and safe in this version — and neither is the
+optimizer. The only *verified* unsafe tactics remain `add-bounds` and `nla2bv`,
+which are unsafe **by design** (under-approximations), not by bug. Lesson: an old
+Z3 issue is a lead, not a verdict — test it against your actual build.
+
+(Note: `macro-finder` is Z3's *macro-inlining* tactic — it eliminates a function
+symbol by substituting its definition. It is **not** the old Evident "functionizer"
+— that was the deleted kernel's Cranelift JIT that compiled extracted assignments
+to native code. Different mechanisms that happen to share the word "function.")
 
 ## Tactics compose with RecFunction cleanly
 
@@ -113,9 +124,10 @@ tactic can hang the sweep; bound each apply with `z3.TryFor(tactic, ms)`.
 computation, including branching recursion over concrete arguments). The two things
 to design around: **synthesis (backward) is the expensive operation** — and the fix
 is orchestration (solve the rest, then forward-check with concrete args), not a
-tactic — and **the tactic router must blacklist the unsafe tactics**
-(`add-bounds`, `nla2bv`, `macro-finder`, the optimizer) or it will hand back wrong
-answers.
+tactic — and **the tactic router must blacklist the under-approximation tactics**
+(`add-bounds`, `nla2bv` — unsafe *by design*) or it will hand back wrong answers.
+`macro-finder` and `Optimize` are safe in 4.15.4 despite old issue reports
+(verified).
 
 ## Sources
 
