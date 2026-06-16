@@ -1,0 +1,253 @@
+problem,form,note,tactic,result,apply_ms,solve_ms,total_ms,workers
+sum_fwd,closed,closed-form lowering of the same,(none),sat,0.0,0.9,0.9,20
+sum_fwd,closed,closed-form lowering of the same,propagate-values,sat,0.18,0.75,0.92,20
+sum_fwd,closed,closed-form lowering of the same,simplify,sat,0.27,0.76,1.03,20
+sum_fwd,closed,closed-form lowering of the same,smt,sat,0.37,0.05,0.42,20
+sum_fwd,closed,closed-form lowering of the same,qflia,sat,0.16,0.02,0.19,20
+sum_fwd,closed,closed-form lowering of the same,auflia,sat,0.2,0.22,0.41,20
+sum_fwd,closed,closed-form lowering of the same,solve-eqs,sat,0.26,0.12,0.38,20
+sum_fwd,closed,closed-form lowering of the same,elim-predicates,sat,0.39,0.1,0.49,20
+sum_fwd,closed,closed-form lowering of the same,macro-finder,sat,0.15,0.49,0.64,20
+sum_fwd,closed,closed-form lowering of the same,add-bounds,unsat,0.03,0.55,0.58,20
+sum_fwd,closed,closed-form lowering of the same,nla2bv,sat,0.15,0.23,0.38,20
+sum_fwd,closed,closed-form lowering of the same,elim-term-ite,sat,0.12,0.64,0.77,20
+sum_fwd,recfun,"forward linear depth, 2M unfoldings",nla2bv,tactic_err,0.2,0.0,0.2,20
+sum_fwd,closed,closed-form lowering of the same,ctx-solver-simplify,sat,0.61,5.71,6.32,20
+sum_bwd,recfun,"backward synthesis, K=140",qsat,tactic_to,5001.97,0.0,5001.97,20
+sum_fwd,recfun,"forward linear depth, 2M unfoldings",ctx-solver-simplify,tactic_to,6016.32,0.0,6016.32,20
+sum_fwd,recfun,"forward linear depth, 2M unfoldings",smt,tactic_to,6125.32,0.0,6125.32,20
+sum_fwd,recfun,"forward linear depth, 2M unfoldings",elim-predicates,tactic_to,6124.29,0.0,6124.29,20
+sum_fwd,recfun,"forward linear depth, 2M unfoldings",qflia,tactic_to,6158.62,0.0,6158.62,20
+sum_fwd,recfun,"forward linear depth, 2M unfoldings",auflia,tactic_to,7435.85,0.0,7435.85,20
+sum_bwd,recfun,"backward synthesis, K=140",qe2,tactic_to,5000.76,0.0,5000.76,20
+sum_bwd,recfun,"backward synthesis, K=140",subpaving,sat,0.19,11680.46,11680.65,20
+sum_bwd,recfun,"backward synthesis, K=140",ctx-solver-simplify,tactic_to,5000.41,0.0,5000.41,20
+sum_bwd,recfun,"backward synthesis, K=140",qe,sat,0.06,13463.28,13463.34,20
+sum_bwd,recfun,"backward synthesis, K=140",add-bounds,unsat,0.02,1.07,1.09,20
+sum_bwd,recfun,"backward synthesis, K=140",ackermannize_bv,sat,0.04,13647.8,13647.84,20
+sum_bwd,recfun,"backward synthesis, K=140",(none),sat,0.0,13660.91,13660.91,20
+sum_bwd,recfun,"backward synthesis, K=140",qe-light,sat,0.04,13683.34,13683.38,20
+sum_bwd,recfun,"backward synthesis, K=140",nlsat,sat,0.25,13700.06,13700.31,20
+sum_bwd,recfun,"backward synthesis, K=140",qfnra-nlsat,sat,0.64,13877.28,13877.92,20
+sum_bwd,recfun,"backward synthesis, K=140",psmt,tactic_to,5004.71,0.0,5004.71,20
+sum_bwd,recfun,"backward synthesis, K=140",qe_rec,sat,0.05,14571.55,14571.6,20
+sum_bwd,recfun,"backward synthesis, K=140",lia2pb,tactic_err,0.07,0.0,0.07,20
+sum_bwd,recfun,"backward synthesis, K=140",psat,sat,348.08,14354.2,14702.28,20
+sum_bwd,recfun,"backward synthesis, K=140",sat-preprocess,sat,419.98,14452.35,14872.33,20
+sum_bwd,recfun,"backward synthesis, K=140",sat,sat,422.21,15088.46,15510.67,20
+sum_bwd,recfun,"backward synthesis, K=140",unit-subsume-simplify,sat,27.58,13770.33,13797.9,20
+sum_bwd,recfun,"backward synthesis, K=140",degree-shift,sat,0.05,12860.53,12860.58,20
+sum_bwd,recfun,"backward synthesis, K=140",eq2bv,sat,0.04,12873.62,12873.66,20
+sum_bwd,recfun,"backward synthesis, K=140",factor,sat,0.06,12907.23,12907.29,20
+sum_bwd,recfun,"backward synthesis, K=140",aig,sat,0.07,14794.92,14794.99,20
+sum_bwd,recfun,"backward synthesis, K=140",fm,sat,0.04,13424.44,13424.48,20
+sum_bwd,recfun,"backward synthesis, K=140",fix-dl-var,sat,0.04,13672.66,13672.7,20
+sum_bwd,recfun,"backward synthesis, K=140",card2bv,sat,0.04,14317.69,14317.72,20
+sum_bwd,recfun,"backward synthesis, K=140",lia2card,sat,0.04,14197.11,14197.16,20
+sum_bwd,recfun,"backward synthesis, K=140",purify-arith,sat,0.12,14067.9,14068.02,20
+sum_bwd,recfun,"backward synthesis, K=140",normalize-bounds,sat,0.6,14835.8,14836.41,20
+sum_bwd,recfun,"backward synthesis, K=140",propagate-ineqs,sat,0.41,14841.89,14842.3,20
+sum_bwd,recfun,"backward synthesis, K=140",recover-01,sat,0.05,14354.4,14354.45,20
+sum_fwd,recfun,"forward linear depth, 2M unfoldings",propagate-values,sat,0.17,17245.76,17245.93,20
+sum_fwd,recfun,"forward linear depth, 2M unfoldings",(none),sat,0.0,17206.37,17206.37,20
+sum_fwd,recfun,"forward linear depth, 2M unfoldings",macro-finder,sat,1.74,17228.73,17230.47,20
+sum_fwd,recfun,"forward linear depth, 2M unfoldings",elim-term-ite,sat,0.13,17242.5,17242.64,20
+sum_fwd,recfun,"forward linear depth, 2M unfoldings",add-bounds,unsat,0.32,17396.2,17396.52,20
+sum_bwd,recfun,"backward synthesis, K=140",bit-blast,sat,0.07,13932.14,13932.22,20
+sum_bwd,recfun,"backward synthesis, K=140",bv1-blast,sat,0.13,13778.46,13778.59,20
+sum_bwd,recfun,"backward synthesis, K=140",bv_bound_chk,sat,0.06,14023.86,14023.93,20
+sum_bwd,recfun,"backward synthesis, K=140",propagate-bv-bounds,sat,0.04,14060.51,14060.55,20
+sum_bwd,recfun,"backward synthesis, K=140",bv-slice,sat,0.07,13512.97,13513.04,20
+sum_bwd,recfun,"backward synthesis, K=140",reduce-bv-size,sat,0.06,13908.41,13908.47,20
+sum_bwd,recfun,"backward synthesis, K=140",bvarray2uf,sat,0.03,13749.26,13749.29,20
+sum_bwd,recfun,"backward synthesis, K=140",propagate-bv-bounds2,sat,0.13,15131.9,15132.03,20
+sum_bwd,recfun,"backward synthesis, K=140",dt2bv,sat,0.04,14212.92,14212.97,20
+sum_fwd,recfun,"forward linear depth, 2M unfoldings",simplify,sat,6092.43,17156.48,23248.91,20
+sum_fwd,recfun,"forward linear depth, 2M unfoldings",solve-eqs,sat,6091.09,17191.59,23282.68,20
+sum_bwd,recfun,"backward synthesis, K=140",max-bv-sharing,sat,0.1,13923.38,13923.48,20
+sum_bwd,recfun,"backward synthesis, K=140",blast-term-ite,sat,0.05,13733.85,13733.9,20
+sum_bwd,recfun,"backward synthesis, K=140",elim-small-bv,sat,0.03,14694.31,14694.33,20
+sum_bwd,recfun,"backward synthesis, K=140",cofactor-term-ite,sat,0.04,14569.72,14569.76,20
+sum_bwd,recfun,"backward synthesis, K=140",collect-statistics,sat,0.23,14348.35,14348.58,20
+sum_bwd,recfun,"backward synthesis, K=140",ctx-simplify,sat,0.07,14335.81,14335.88,20
+sum_bwd,recfun,"backward synthesis, K=140",demodulator,sat,0.05,14297.06,14297.11,20
+sum_bwd,recfun,"backward synthesis, K=140",der,sat,0.05,14322.62,14322.67,20
+sum_bwd,recfun,"backward synthesis, K=140",dom-simplify,sat,0.07,13791.45,13791.52,20
+sum_bwd,recfun,"backward synthesis, K=140",distribute-forall,sat,0.03,14860.03,14860.05,20
+sum_bwd,recfun,"backward synthesis, K=140",elim-term-ite,sat,0.06,13661.96,13662.02,20
+sum_bwd,recfun,"backward synthesis, K=140",elim-predicates,sat,0.05,13969.89,13969.94,20
+sum_bwd,recfun,"backward synthesis, K=140",pqffd,tactic_err,2.22,0.0,2.22,20
+sum_bwd,recfun,"backward synthesis, K=140",elim-uncnstr2,sat,0.05,14381.49,14381.55,20
+sum_bwd,recfun,"backward synthesis, K=140",elim-uncnstr,sat,0.04,14376.04,14376.08,20
+sum_bwd,recfun,"backward synthesis, K=140",injectivity,sat,0.04,13918.97,13919.01,20
+sum_bwd,recfun,"backward synthesis, K=140",snf,sat,0.03,13945.16,13945.19,20
+sum_bwd,recfun,"backward synthesis, K=140",nnf,sat,1.21,14972.79,14974.0,20
+sum_bwd,recfun,"backward synthesis, K=140",occf,sat,0.03,14110.98,14111.0,20
+sum_bwd,recfun,"backward synthesis, K=140",pb-preprocess,sat,0.02,15347.83,15347.86,20
+sum_bwd,recfun,"backward synthesis, K=140",propagate-values2,sat,25.57,15221.7,15247.28,20
+sum_bwd,recfun,"backward synthesis, K=140",qfbv-sls,tactic_err,16.67,0.0,16.67,20
+sum_bwd,recfun,"backward synthesis, K=140",sls-smt,tactic_err,70.8,0.0,70.8,20
+sum_bwd,recfun,"backward synthesis, K=140",qffp,tactic_to,5002.01,0.0,5002.01,20
+sum_bwd,recfun,"backward synthesis, K=140",qffpbv,tactic_to,5008.22,0.0,5008.22,20
+sum_bwd,recfun,"backward synthesis, K=140",qffplra,tactic_to,5003.81,0.0,5003.81,20
+sum_bwd,recfun,"backward synthesis, K=140",default,tactic_to,5001.29,0.0,5001.29,20
+sum_bwd,recfun,"backward synthesis, K=140",solver-subsumption,tactic_to,5000.49,0.0,5000.49,20
+sum_bwd,recfun,"backward synthesis, K=140",propagate-values,sat,0.04,13690.7,13690.74,20
+sum_bwd,recfun,"backward synthesis, K=140",reduce-args,sat,0.06,14243.67,14243.72,20
+sum_bwd,recfun,"backward synthesis, K=140",nra,tactic_to,5006.34,0.0,5006.34,20
+sum_bwd,recfun,"backward synthesis, K=140",qfaufbv,tactic_to,5009.24,0.0,5009.24,20
+sum_bwd,recfun,"backward synthesis, K=140",reduce-args2,sat,0.05,14710.49,14710.54,20
+sum_bwd,recfun,"backward synthesis, K=140",qfauflia,tactic_to,5002.5,0.0,5002.5,20
+sum_bwd,recfun,"backward synthesis, K=140",qfbv,tactic_to,5003.14,0.0,5003.14,20
+sum_bwd,recfun,"backward synthesis, K=140",qfidl,tactic_to,5001.98,0.0,5001.98,20
+sum_bwd,recfun,"backward synthesis, K=140",qflia,tactic_to,5002.18,0.0,5002.18,20
+sum_bwd,recfun,"backward synthesis, K=140",simplify,sat,0.05,15014.67,15014.71,20
+sum_bwd,recfun,"backward synthesis, K=140",tseitin-cnf,sat,0.04,13649.33,13649.37,20
+sum_bwd,recfun,"backward synthesis, K=140",tseitin-cnf-core,sat,0.02,13938.12,13938.15,20
+sum_bwd,recfun,"backward synthesis, K=140",qflra,tactic_to,5002.61,0.0,5002.61,20
+sum_bwd,recfun,"backward synthesis, K=140",symmetry-reduce,sat,0.18,15213.74,15213.92,20
+sum_bwd,recfun,"backward synthesis, K=140",qfnia,tactic_to,5004.16,0.0,5004.16,20
+sum_bwd,recfun,"backward synthesis, K=140",special-relations,sat,0.07,15527.91,15527.98,20
+sum_bwd,recfun,"backward synthesis, K=140",elim-and,sat,0.04,15658.25,15658.29,20
+sum_bwd,recfun,"backward synthesis, K=140",solve-eqs,sat,0.19,15708.33,15708.52,20
+sum_bwd,recfun,"backward synthesis, K=140",qfuf,tactic_to,5010.23,0.0,5010.23,20
+sum_bwd,recfun,"backward synthesis, K=140",qfufbv,tactic_to,5008.09,0.0,5008.09,20
+sum_bwd,recfun,"backward synthesis, K=140",fpa2bv,sat,0.08,14164.85,14164.93,20
+sum_bwd,recfun,"backward synthesis, K=140",qfufbv_ackr,tactic_to,5002.57,0.0,5002.57,20
+sum_bwd,recfun,"backward synthesis, K=140",ufnia,tactic_to,5001.23,0.0,5001.23,20
+sum_bwd,recfun,"backward synthesis, K=140",uflra,tactic_to,5005.73,0.0,5005.73,20
+sum_bwd,recfun,"backward synthesis, K=140",auflia,tactic_to,5003.62,0.0,5003.62,20
+sum_bwd,recfun,"backward synthesis, K=140",auflira,tactic_to,5000.75,0.0,5000.75,20
+sum_bwd,recfun,"backward synthesis, K=140",aufnira,tactic_to,5005.75,0.0,5005.75,20
+sum_bwd,recfun,"backward synthesis, K=140",euf-completion,sat,74.58,13814.15,13888.73,20
+sum_bwd,recfun,"backward synthesis, K=140",qffd,sat,0.31,17367.75,17368.06,20
+sum_bwd,recfun,"backward synthesis, K=140",lra,tactic_to,5002.02,0.0,5002.02,20
+sum_bwd,recfun,"backward synthesis, K=140",lia,tactic_to,5006.52,0.0,5006.52,20
+sum_bwd,recfun,"backward synthesis, K=140",lira,tactic_to,5001.43,0.0,5001.43,20
+sum_bwd,recfun,"backward synthesis, K=140",smt,tactic_to,5009.69,0.0,5009.69,20
+sum_bwd,recfun,"backward synthesis, K=140",bv,tactic_to,5008.35,0.0,5008.35,20
+sum_bwd,recfun,"backward synthesis, K=140",ufbv,tactic_to,5008.46,0.0,5008.46,20
+sum_bwd,recfun,"backward synthesis, K=140",qfnra,sat,24.63,13962.16,13986.79,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",qsat,tactic_to,5000.92,0.0,5000.92,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",qe2,tactic_to,5001.1,0.0,5001.1,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",subpaving,sat,0.77,7855.2,7855.97,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",qe-light,sat,0.11,7829.63,7829.73,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",nlsat,sat,3.18,8647.55,8650.73,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",(none),sat,0.0,11393.42,11393.42,20
+sum_bwd,recfun,"backward synthesis, K=140",simplify>solve-eqs,sat,0.05,13263.39,13263.44,20
+sum_bwd,recfun,"backward synthesis, K=140",skip,sat,0.04,14728.39,14728.43,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",add-bounds,unsat,0.14,62.92,63.06,20
+sum_bwd,recfun,"backward synthesis, K=140",macro-finder,sat,0.02,15004.84,15004.85,20
+sum_bwd,recfun,"backward synthesis, K=140",propagate-values>solve-eqs,sat,0.07,13590.54,13590.61,20
+sum_bwd,recfun,"backward synthesis, K=140",propagate-values>simplify,sat,0.04,13489.86,13489.91,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",psmt,sat,3177.12,0.05,3177.17,20
+sum_bwd,recfun,"backward synthesis, K=140",elim-term-ite>simplify,sat,0.05,13874.64,13874.68,20
+sum_bwd,recfun,"backward synthesis, K=140",quasi-macros,sat,0.04,15583.59,15583.63,20
+sum_bwd,recfun,"backward synthesis, K=140",ufbv-rewriter,sat,0.04,15641.55,15641.59,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",lia2pb,tactic_err,0.15,0.0,0.15,20
+sum_bwd,recfun,"backward synthesis, K=140",simplify>propagate-values,sat,6.6,14742.84,14749.44,20
+sum_bwd,recfun,"backward synthesis, K=140",solve-eqs>simplify,sat,0.05,13813.36,13813.41,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",ctx-solver-simplify,tactic_to,5011.74,0.0,5011.74,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",ackermannize_bv,sat,0.07,14462.14,14462.21,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",sat-preprocess,sat,3.61,7702.19,7705.8,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",unit-subsume-simplify,sat,798.58,5521.83,6320.41,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",qe_rec,sat,0.05,10840.97,10841.02,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",fix-dl-var,sat,0.04,7288.3,7288.34,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",qfnra-nlsat,sat,30.25,18624.68,18654.93,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",aig,sat,0.05,8863.76,8863.81,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",factor,sat,0.08,7774.94,7775.02,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",purify-arith,sat,0.07,7460.76,7460.83,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",eq2bv,sat,0.03,8376.92,8376.95,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",fm,sat,0.05,8617.11,8617.16,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",qe,unknown,0.05,20029.68,20029.73,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",recover-01,sat,0.05,8844.46,8844.51,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",psat,sat,842.52,14944.84,15787.36,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",bv1-blast,sat,0.05,8045.47,8045.53,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",card2bv,sat,0.06,12775.52,12775.59,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",propagate-ineqs,sat,0.6,11802.43,11803.04,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",propagate-bv-bounds2,sat,0.11,7514.64,7514.74,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",sat,sat,890.45,18681.0,19571.45,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",bvarray2uf,sat,0.04,7581.3,7581.34,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",bv-slice,sat,0.05,8062.04,8062.09,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",bit-blast,sat,0.05,14105.68,14105.73,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",propagate-bv-bounds,sat,0.05,12151.22,12151.27,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",bv_bound_chk,sat,0.06,12701.55,12701.6,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",elim-small-bv,sat,0.04,9274.7,9274.74,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",dt2bv,sat,0.03,9439.25,9439.27,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",degree-shift,sat,0.05,18005.3,18005.35,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",cofactor-term-ite,sat,0.06,7765.04,7765.1,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",max-bv-sharing,sat,0.05,10103.17,10103.22,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",ctx-simplify,sat,0.14,8919.34,8919.48,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",normalize-bounds,sat,0.05,19815.3,19815.34,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",lia2card,unknown,1.11,20025.83,20026.93,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",elim-term-ite,sat,0.13,7583.66,7583.78,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",elim-uncnstr2,sat,0.13,7928.46,7928.59,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",distribute-forall,sat,0.04,8965.68,8965.72,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",demodulator,sat,0.54,12318.05,12318.59,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",der,sat,0.04,12168.35,12168.39,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",nnf,sat,0.04,7232.76,7232.8,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",snf,sat,0.03,7763.17,7763.2,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",propagate-values2,sat,0.09,6619.58,6619.67,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",reduce-bv-size,sat,0.04,18580.43,18580.48,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",pqffd,tactic_err,33.87,0.0,33.87,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",elim-predicates,sat,0.8,10095.37,10096.17,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",pb-preprocess,sat,0.05,9428.25,9428.3,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",blast-term-ite,sat,0.06,18370.79,18370.85,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",propagate-values,sat,0.05,8061.02,8061.07,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",collect-statistics,sat,0.68,17528.37,17529.05,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",elim-uncnstr,sat,0.05,13997.65,13997.7,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",qffd,sat,0.53,4895.48,4896.01,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",qfbv-sls,tactic_err,0.2,0.0,0.2,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",sls-smt,tactic_err,0.24,0.0,0.24,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",qffpbv,sat,3073.57,0.05,3073.62,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",elim-and,sat,0.08,7423.23,7423.31,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",simplify,sat,0.04,8370.36,8370.41,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",qffp,tactic_to,5007.52,0.0,5007.52,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",injectivity,sat,0.06,14947.94,14948.0,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",qffplra,tactic_to,5023.93,0.0,5023.93,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",tseitin-cnf-core,sat,0.03,7664.14,7664.18,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",qfnia,sat,90.36,0.04,90.41,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",default,tactic_to,5005.27,0.0,5005.27,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",solve-eqs,sat,0.09,9472.83,9472.93,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",nra,sat,2764.67,0.04,2764.71,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",tseitin-cnf,sat,0.03,8685.5,8685.53,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",qfaufbv,sat,2744.65,0.05,2744.7,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",qfauflia,sat,2776.18,0.05,2776.23,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",qfbv,sat,2879.53,0.04,2879.57,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",dom-simplify,unknown,0.19,20020.7,20020.88,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",solver-subsumption,tactic_to,5003.21,0.0,5003.21,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",qfufbv_ackr,sat,2711.28,0.05,2711.32,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",qfuf,sat,2877.29,0.13,2877.41,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",uflra,sat,2682.98,0.05,2683.03,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",auflia,sat,2689.08,0.05,2689.12,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",symmetry-reduce,sat,0.07,11962.15,11962.22,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",ufnia,sat,3125.31,0.05,3125.37,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",qfufbv,sat,3359.34,0.04,3359.38,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",auflira,sat,2691.5,0.05,2691.55,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",qfidl,tactic_to,5006.49,0.0,5006.49,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",qflia,tactic_to,5018.27,0.0,5018.27,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",occf,unknown,0.03,20027.96,20027.99,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",qflra,tactic_to,5020.19,0.0,5020.19,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",special-relations,sat,0.52,13794.46,13794.98,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",reduce-args,sat,0.02,18001.17,18001.2,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",lia,sat,2623.88,0.05,2623.93,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",lira,sat,2966.27,0.05,2966.32,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",smt,sat,3116.73,0.05,3116.77,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",bv,sat,2887.09,0.04,2887.12,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",aufnira,tactic_to,5018.28,0.0,5018.28,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",lra,tactic_to,5011.1,0.0,5011.1,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",reduce-args2,unknown,0.14,20026.18,20026.32,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",qfnra,sat,1.32,8114.35,8115.67,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",ufbv,sat,4906.05,0.1,4906.15,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",skip,sat,0.04,8484.96,8485.0,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",quasi-macros,sat,0.02,8481.79,8481.81,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",fpa2bv,unknown,0.04,20027.7,20027.75,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",euf-completion,sat,201.13,17439.52,17640.65,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",ufbv-rewriter,sat,0.09,9562.68,9562.77,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",solve-eqs>simplify,sat,0.1,7924.68,7924.78,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",macro-finder,sat,0.03,11578.27,11578.3,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",simplify>solve-eqs,sat,0.16,12222.39,12222.54,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",elim-term-ite>simplify,sat,0.08,13671.04,13671.12,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",propagate-values>solve-eqs,sat,14.81,17489.16,17503.97,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",simplify>propagate-values,sat,15.47,19521.95,19537.41,20
+wide_sum,recfun,"8 independent recfun symbols, each backward",propagate-values>simplify,sat,16.6,19881.42,19898.02,20
