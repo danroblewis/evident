@@ -84,35 +84,36 @@ def pretty_step(tr, width=40):
     return pretty.expr(tr.step(cur, nxt), width=width)
 
 
-# ── the panels: (transition, render-kwargs, card-header, blurb) ──────────────
+# ── the panels (uniform schema: ranges per var, all rendered the same way) ───
+#   ranges: {var: (lo, hi)}   base: held value per var (for >2-D projections)
+#   seeds:  full-state start points for trajectories   equal: square aspect
 PANELS = [
-    (SumTo, dict(xaxis="i", yaxis="acc", xr=(-0.5, 6.5), yr=(-1, 18),
-                 style="fan", max_succ=1,
+    (SumTo, dict(ranges={"i": (-0.5, 6.5), "acc": (-1, 18)}, style="fan",
+                 max_succ=1,
                  seeds=[{"i": 5, "acc": 0}, {"i": 4, "acc": 0}, {"i": 3, "acc": 0}],
                  title="sum_to · Σ1..n   (algorithm)"),
      "sum_to  (i, acc)",
      "Tail-recursive accumulator. The flow funnels into the i=0 halt line; the\n"
      "trajectory from (5,0) lands at (0,15) — and 15 IS the sum 1..5."),
-    (ListMax, dict(xaxis="idx", yaxis="best", xr=(-0.5, 8.5), yr=(-1.5, 10.5),
-                   style="fan", max_succ=1, seeds=[{"idx": 0, "best": 0}],
+    (ListMax, dict(ranges={"idx": (-0.5, 8.5), "best": (-1.5, 10.5)}, style="fan",
+                   max_succ=1, seeds=[{"idx": 0, "best": 0}],
                    title="list_max · max over a list   (algorithm)"),
      "list_max  (idx, best)",
      "Iterative max over [3,1,4,1,5,9,2,6] (composes the `at` lookup sub-model).\n"
      "Flows right to idx=8, settling at best=9 — the maximum."),
-    (Cache, dict(xaxis="n", xr=(-0.6, 5.6), style="fan", max_succ=3,
+    (Cache, dict(ranges={"n": (-0.6, 5.6)}, style="fan", max_succ=3,
                  seeds=[{"n": 0}], title="cache · sessions   (daemon, 1-D)"),
      "cache  (n)",
-     "A session-count daemon. 1-D state, so the portrait is a number line:\n"
+     "A session-count daemon. 1-D state, so its one projection is a number line:\n"
      "open → (n+1, when n<CAP), close ← (n-1, when n>0), idle."),
-    (Queue, dict(xaxis="q0", yaxis="q1", xr=(-0.6, 6.6), yr=(-0.6, 6.6),
-                 style="fan", max_succ=6, equal=True,
-                 title="queue · 2-stage   (daemon)"),
+    (Queue, dict(ranges={"q0": (-0.6, 6.6), "q1": (-0.6, 6.6)}, style="fan",
+                 max_succ=6, equal=True, title="queue · 2-stage   (daemon)"),
      "queue  (q0, q1)",
      "Two bounded stages. Nondeterministic: each state has a FAN of moves\n"
      "(arrive, q0→q1, depart, idle). The flow stays inside [0,CAP]²."),
     (Pipeline, dict(ranges={"q0": (-0.6, 5.6), "q1": (-0.6, 5.6),
                             "q2": (-0.6, 5.6)}, base={"q0": 2, "q1": 2, "q2": 2},
-                    style="fan", max_succ=6,
+                    style="fan", max_succ=6, equal=True,
                     title="pipeline · 3-stage   (daemon, 3-D → all projections)"),
      "pipeline  (q0, q1, q2)",
      "Three stages = 3-D state — too many to draw directly, so render ALL\n"
@@ -129,41 +130,45 @@ def _code_card(fig, cell, body, accent):
 
 
 def render_to_file(tr, kw, header, blurb, accent, outdir):
+    """Every model rendered the SAME way: all of its 2-D projections (one for a
+    2-D model, a number line for a 1-D one, the full matrix for higher-D), beside
+    the model's pretty form."""
     model = to_model(tr)
     body = header + "\n" + pretty_step(tr, width=46)
     nlines = body.count("\n") + 1
-    title = kw["title"]
-    pairs = list(combinations(model.state, 2))            # all 2-D projections
+    state = model.state
+    ranges = kw["ranges"]; base = kw.get("base", {})
+    seeds = kw.get("seeds", []); style = kw.get("style", "fan")
+    ms = kw.get("max_succ", 6); equal = kw.get("equal", False)
+    pairs = list(combinations(state, 2))                 # the projections to show
+    ncells = max(1, len(pairs))                           # 1-D model: one number line
+    cols = 1 if ncells == 1 else (2 if ncells <= 4 else 3)
+    rows = ceil(ncells / cols)
 
-    if len(model.state) <= 2:                             # single portrait
-        H = max(5.6, nlines * 0.245 + 2.0)
-        fig = plt.figure(figsize=(12.5, H))
-        gs = fig.add_gridspec(1, 2, width_ratios=[1.15, 1.0], wspace=0.04,
-                              left=0.07, right=0.97, top=0.80, bottom=0.1)
-        kw2 = dict(kw); kw2.pop("title")
-        pp.render(fig.add_subplot(gs[0]), model, title="", **kw2)
-        _code_card(fig, gs[1], body, accent)
-    else:                                                 # projection matrix
-        ranges, base = kw["ranges"], kw["base"]
-        cols = 2 if len(pairs) <= 4 else 3
-        rows = ceil(len(pairs) / cols)
-        H = max(nlines * 0.245 + 2.2, rows * 3.9 + 2.0)
-        fig = plt.figure(figsize=(15.5, H))
-        outer = fig.add_gridspec(1, 2, width_ratios=[1.55, 1.0], wspace=0.06,
-                                 left=0.05, right=0.97, top=0.80, bottom=0.08)
-        grid = outer[0].subgridspec(rows, cols, hspace=0.5, wspace=0.34)
-        for k, (a, b) in enumerate(pairs):
-            ax = fig.add_subplot(grid[k // cols, k % cols])
-            fixed = {v: base[v] for v in model.state if v not in (a, b)}
-            held = ", ".join(f"{v}={base[v]}" for v in fixed)
-            pp.render(ax, model, a, b, ranges[a], ranges[b], fixed=fixed,
-                      style=kw.get("style", "fan"), max_succ=kw.get("max_succ", 6),
-                      equal=True, title=f"{a} × {b}   ({held})")
-        _code_card(fig, outer[1], body, accent)
+    H = max(5.6, nlines * 0.245 + 2.2, rows * 3.9 + 2.0)
+    W = 12.5 if ncells == 1 else 15.5
+    wr = [1.15, 1.0] if ncells == 1 else [1.55, 1.0]
+    fig = plt.figure(figsize=(W, H))
+    outer = fig.add_gridspec(1, 2, width_ratios=wr, wspace=0.05,
+                             left=0.06, right=0.97, top=0.80, bottom=0.09)
+    grid = outer[0].subgridspec(rows, cols, hspace=0.5, wspace=0.34)
 
-    fig.suptitle(title, fontsize=15, color=INK, weight="bold",
-                 x=0.05, ha="left", y=0.965)
-    fig.text(0.05, 0.915, blurb, fontsize=9.5, color=MUTED, va="top",
+    if not pairs:                                         # 1-D: a number line
+        pp.render(fig.add_subplot(grid[0, 0]), model, state[0], None,
+                  ranges[state[0]], style=style, max_succ=ms, seeds=seeds, title="")
+    for k, (a, b) in enumerate(pairs):
+        ax = fig.add_subplot(grid[k // cols, k % cols])
+        held = [v for v in state if v not in (a, b)]
+        fixed = {v: base.get(v, 0) for v in held}
+        tag = f"   ({', '.join(f'{v}={fixed[v]}' for v in held)})" if held else ""
+        pp.render(ax, model, a, b, ranges[a], ranges[b], fixed=fixed, style=style,
+                  max_succ=ms, equal=equal, seeds=(seeds if not held else []),
+                  title=(f"{a} × {b}{tag}" if len(pairs) > 1 else ""))
+    _code_card(fig, outer[1], body, accent)
+
+    fig.suptitle(kw["title"], fontsize=15, color=INK, weight="bold",
+                 x=0.06, ha="left", y=0.965)
+    fig.text(0.06, 0.915, blurb, fontsize=9.5, color=MUTED, va="top",
              linespacing=1.4)
     path = os.path.join(outdir, f"{tr.name}.png")
     fig.savefig(path, dpi=130, facecolor="white"); plt.close(fig)
