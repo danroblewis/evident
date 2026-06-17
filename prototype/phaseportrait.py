@@ -37,6 +37,7 @@ import z3
 
 INK = "#2a2c34"; MUTED = "#6b7080"; GREEN = "#2eb55f"; GREENFILL = "#bfeccb"
 RED = "#de3c3c"; FLOW = "#b9beca"; FAN = "#5a6478"; GHOST = "#e7e9ef"
+ORBIT = "#aab0be"            # orbit-foliation curves (clearly visible, not ghosted)
 
 
 # ─────────────────────────────── the model ──────────────────────────────────
@@ -195,10 +196,9 @@ def render(ax, model, xaxis, yaxis=None, xr=(0, 1), yr=None, *, fixed=None,
         det = _is_deterministic(model, XS, YS, xaxis, yaxis, fixed)
     det = bool(det) and not oned
 
-    # one grid pass → successors, fixed points, reachability; plus field arrows OR
-    # the deterministic next-state map for tracing orbits.
+    # one grid pass → fixed points, reachability, and (field mode) the arrows.
     fx, fy, fu, fv, areach = [], [], [], [], []
-    fixed_pts, lattice, reach_pts, nextof = [], [], [], {}
+    fixed_pts, lattice, reach_pts = [], [], []
     for X in XS:
         for Y in YS:
             lattice.append((X, Y))
@@ -212,33 +212,43 @@ def render(ax, model, xaxis, yaxis=None, xr=(0, 1), yr=None, *, fixed=None,
             moved = [s for s in succs if max(map(abs, disp(s, X, Y))) > 1e-9]
             if succs and not moved:               # ONLY self-loops -> true fixed point
                 fixed_pts.append((X, Y))
-            if det:
-                if moved:
-                    nextof[(X, Y)] = (moved[0][xaxis], moved[0][yaxis])
-            else:
+            if not det:
                 for s in moved:                   # an idle self-loop just isn't drawn
                     d0, d1 = disp(s, X, Y)
                     fx.append(X); fy.append(Y); fu.append(d0); fv.append(d1)
                     areach.append(src_r)
 
-    if det:                                           # trace each orbit once (dedup)
-        drawn = set()
-        for start in nextof:
-            if start in drawn:
-                continue
-            path, cur = [start], start
-            for _ in range(24):
-                drawn.add(cur)
-                nx = nextof.get(cur)
-                if nx is None:
-                    break
-                path.append(nx)
-                if nx in drawn or nx not in nextof:
-                    break
-                cur = nx
-            if len(path) > 1:
-                px, py = zip(*path)
-                ax.plot(px, py, "-", color=GHOST, lw=1.0, alpha=0.9, zorder=1)
+    if det:                                           # trace each orbit as a CURVE
+        drawn, pad = set(), 3.0                        # extend past the view edge so
+        for X in XS:                                  # short orbits read as curves
+            for Y in YS:
+                if (round(X), round(Y)) in drawn:
+                    continue
+                cur = {**fixed, xaxis: X}
+                if not oned:
+                    cur[yaxis] = Y
+                yval = 0.0 if oned else Y
+                path = [(X, yval)]
+                for _ in range(22):
+                    drawn.add((round(cur[xaxis]), round(0 if oned else cur[yaxis])))
+                    sc = successors(model, cur, 1)
+                    if not sc:
+                        break
+                    nx = sc[0]
+                    xv, yv = nx[xaxis], (0.0 if oned else nx[yaxis])
+                    if max(map(abs, disp(nx, cur[xaxis],
+                                         0 if oned else cur[yaxis]))) < 1e-9:
+                        break                         # fixed point
+                    path.append((xv, yv))
+                    if not (xr[0] - pad <= xv <= xr[1] + pad and
+                            yr[0] - pad <= yv <= yr[1] + pad):
+                        break                         # left the (padded) view
+                    if (round(xv), round(yv)) in drawn:
+                        break
+                    cur = nx
+                if len(path) > 1:
+                    px, py = zip(*path)
+                    ax.plot(px, py, "-", color=ORBIT, lw=1.0, alpha=0.9, zorder=1)
     else:                                             # direction / fan field
         fu, fv = np.array(fu, float), np.array(fv, float)
         if style == "field" and len(fu):              # normalize to a direction field
