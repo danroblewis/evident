@@ -502,3 +502,73 @@ The six things a portrait needs (axes, box, shape, flow, trapping region, world-
 are the six things a claim's boundary should expose; the proof a user wants is the
 region drawn around the flow; the bugs they fear are its topology; and the IDE that
 draws it is not a tool beside the language but the language's reading surface.*
+
+---
+
+# Appendix — Direct manipulation: sculpting the portrait (speculative)
+
+The body of this note treats the portrait as an *output* you read:
+`constraints → solver → portrait`. The inverse is where the real power may be:
+`portrait → manipulate → constraints` — the picture as the **authoring surface
+itself**, edited like a vector-drawing program or ZBrush. This appendix sketches
+the idea; it is speculative and unproven.
+
+**The analogy is technical, not loose.** ZBrush ultimately edits an *implicit
+surface* (a signed-distance-style field whose level-set is the shape), not
+vertices. A feasible region is exactly that: **a constraint is an implicit
+function, the region is its sub-level set.** So *constraints are to feasible regions
+as SDFs are to sculpted shapes* — both implicit representations edited indirectly
+and re-rendered. Drag a wall inward → stiffen a bound; carve a notch → add an
+exclusion; crease an edge → a hard constraint; **paint a soft falloff → author an
+objective** (`minimize distance-to-painted-region` — you paint where the solver
+should prefer to be, gravity instead of a formula).
+
+**The central hard problem is honest and classic: the inverse map is many-to-one.**
+Dragging a boundary is satisfied by infinitely many constraint-edits
+(`x ≤ 5`? `x + y ≤ 5`? a curve through the same point?). This is the
+programming-by-demonstration ambiguity ("I nudged one corner and it rewrote my
+model"). The answer is not a perfect guesser but three things together:
+
+1. **A brush *vocabulary*, not freeform sculpting.** Each brush is a constraint
+   *shape* with a unique reading — an axis-wall brush snaps to a bound on one
+   variable; a diagonal brush gives a linear combination; an exclusion brush carves
+   a region. The palette *is* the language's constraint forms, so every gesture is
+   legible (cf. snapping/guides in vector tools).
+2. **The solver in the loop as the disambiguator.** You needn't invert perfectly
+   because you watch: sculpt → re-render → adjust (the refine loop of §III.3).
+   Real-time consequence makes ambiguous edits safe.
+3. **Lens laws as the editor's correctness spec.** Bidirectional programming already
+   formalized "edit a view, propagate to the source": sculpting the region to what
+   it already shows must not change the constraints (stability / GetPut); a pushed
+   edit must then re-render as shown (PutGet). Those laws *define* a well-behaved
+   sculpt tool.
+
+The genuinely hard residue is that **editing a projection edits the whole** — you
+sculpt a 2-D slice of an N-D region and the lift back is ambiguous (§II.8 in
+reverse: "did you mean *always*, or only when `z` is in this range?"). The brush
+must carry that intent or the system must ask.
+
+**The endpoint that makes it more than a nicer editor:** because the *proof* is a
+feature of the picture (§II.4), you can **draw the trapping region you want and have
+the system synthesize the daemon that stays in it.** Sketch the box the flow must
+never leave; synthesis produces the `_x/x` transition (the guards) that provably
+traps it. That is reactive synthesis with a *drawn* specification instead of a
+temporal-logic one — the phase portrait as the **spec surface**, sketched rather
+than typed. Draw the safe region → get the controller, proven.
+
+**Lineage / references.**
+- I. Sutherland, *Sketchpad* (1963) — the original "draw it, add constraints, the
+  system maintains them"; the patron saint of this whole idea.
+- A. Borning, *ThingLab* (1979); G. Badros, A. Borning, P. Stuckey, **Cassowary**
+  (2001) — constraint-drawing descendants (Cassowary underlies Apple Auto Layout).
+- J. Foster, M. Greenwald, J. Moore, B. Pierce, A. Schmitt, "Combinators for
+  bidirectional tree transformations" (lenses / **Boomerang**), *POPL* 2005 — the
+  view-edit-to-source theory and the lens laws.
+- S. Gulwani, "Automating string processing… by examples" (**FlashFill**),
+  *POPL* 2011 — ranking ambiguous candidate programs (the PBE machinery to reuse).
+- B. Shneiderman, "Direct manipulation," 1983; B. Victor, "Inventing on Principle,"
+  2012; T. Schachman, *Recursive Drawing* / *Apparatus* — the direct-manipulation,
+  immediate-feedback authoring philosophy and modern graphical constraint tools.
+
+*If it works, this is not a side feature — it is the product, because "I sculpted
+the behavior and the proof came with it" is something no current tool does.*
