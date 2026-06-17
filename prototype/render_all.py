@@ -21,7 +21,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 # every script that emits images, in dependency order (the gallery first)
 SCRIPTS = ["model_gallery", "phase_portrait", "phaseportrait", "diagram_zoo",
            "utility_programs", "phase_semantics", "highdim_demo",
-           "fibonacci_honest"]
+           "fibonacci_honest", "seq_ensemble"]
 
 
 def run_all():
