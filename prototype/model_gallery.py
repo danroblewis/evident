@@ -23,6 +23,7 @@ state-space to flow through — so it has no phase portrait. That absence *is* t
 Run from prototype/:  python3 model_gallery.py  -> results/model_gallery.png
 """
 import os
+import random
 from itertools import combinations
 from math import ceil
 
@@ -35,7 +36,7 @@ import phaseportrait as pp
 from benchsuite import pretty
 from models.core import Transition
 from models.examples import (SumTo, ListSum, ListMax, Gcd, RunningMean,
-                             Fibonacci, TokenBucket, EXAMPLE_SEQ)
+                             Fibonacci, TokenBucket, EXAMPLE_SEQ, ELEMMAX, LMAX)
 
 
 def _sum_path(seq):
@@ -57,6 +58,32 @@ def _mean_path(seq):
     for v in seq:
         avg = avg + (v - avg) / (n + 1); n += 1; p.append((n, avg))
     return p
+
+
+def _draw_ensemble(ax, trajfn, yname, yr, examples, n_sample=120):
+    """Variability over the Seq INPUT: one trajectory per sequence, all from the
+    fixed start (0,0). Sample many (faint) + label a few examples with their value."""
+    random.seed(7)
+    for _ in range(n_sample):
+        seq = [random.randint(0, ELEMMAX) for _ in range(LMAX)]
+        px, py = zip(*trajfn(seq))
+        ax.plot(px, py, "-", color="#aab0be", lw=0.8, alpha=0.4, zorder=1)
+    for seq, c in examples:
+        px, py = zip(*trajfn(seq))
+        ax.plot(px, py, "-o", color=c, lw=2.2, ms=4, zorder=4,
+                label=f"{seq} → {py[-1]:g}")
+    ax.plot(0, 0, "o", color=INK, ms=8, mfc="white", mew=2, zorder=5)
+    ax.set_xlim(-0.3, LMAX + 0.3); ax.set_ylim(*yr)
+    ax.set_xlabel("idx", fontsize=9, color=MUTED)
+    ax.set_ylabel(yname, fontsize=9, color=MUTED, rotation=0, labelpad=12)
+    ax.tick_params(colors=MUTED, labelsize=8)
+    for s in ax.spines.values():
+        s.set_color("#d2d6de")
+    ax.legend(loc="upper left", fontsize=7.4, framealpha=0.93, title="example Seq")
+
+
+EX_SEQS = [([3, 3, 3, 3, 3, 3], "#de3c3c"), ([0, 1, 0, 2, 0, 1], "#2eb55f"),
+           ([2, 1, 3, 0, 2], "#2868d2")]
 
 INK = "#2a2c34"; MUTED = "#6b7080"
 ACCENTS = ["#2868d2", "#0e8a8a", "#1f9e6d", "#8a4fbf", "#c0612a", "#b8398a"]
@@ -118,19 +145,20 @@ PANELS = [
      "sum_to  (i, acc)",
      "Tail-recursive accumulator. The flow funnels into the i=0 halt line; the\n"
      "trajectory from (5,0) lands at (0,15) — and 15 IS the sum 1..5."),
-    (ListSum, dict(ranges={"idx": (-0.5, 7), "acc": (-1, 19)}, style="fan",
-                   max_succ=6, paths=[_sum_path(EXAMPLE_SEQ)],
+    (ListSum, dict(ensemble=_sum_path, yname="acc", yr=(-0.5, ELEMMAX * LMAX + 1),
+                   examples=EX_SEQS,
                    title="list_sum · sum a sequence   (real z3 Seq)"),
      "list_sum  (idx, acc)",
-     "Sum a SYMBOLIC z3 Seq (elements 0..3, length 0..6). The next element s[idx] is\n"
-     "unknown, so each state FANS to acc+0..3 — that fan is “sum ANY sequence”. The\n"
-     "bold path is one concrete example [2,1,3,0,2] → acc 8."),
-    (ListMax, dict(ranges={"idx": (-0.5, 7), "best": (-0.5, 4.5)}, style="fan",
-                   max_succ=6, paths=[_max_path(EXAMPLE_SEQ)],
+     "The only input is the SEQUENCE (idx and acc start fixed at 0), so vary the Seq,\n"
+     "not the state: ONE line per sequence, all from (0,0). 120 sampled (faint) + 3\n"
+     "labelled; acc fans into the 0 ≤ acc ≤ 3·idx region."),
+    (ListMax, dict(ensemble=_max_path, yname="best", yr=(-0.3, ELEMMAX + 0.3),
+                   examples=EX_SEQS,
                    title="list_max · max over a sequence   (real z3 Seq)"),
      "list_max  (idx, best)",
-     "Max over a symbolic z3 Seq: best' = max(best, s[idx]) for unknown element\n"
-     "0..3, so best fans upward. Bold path: example [2,1,3,0,2] → max 3."),
+     "Variability is over the Seq, not the state (idx/best start fixed at 0). One\n"
+     "trajectory per sequence from (0,0); best rises to the sequence's max element\n"
+     "(≤3). 120 sampled + 3 labelled with their values."),
     (Gcd, dict(ranges={"a": (-0.5, 13), "b": (-0.5, 13)}, style="fan", max_succ=1,
                equal=True, seeds=[{"a": 12, "b": 8}, {"a": 13, "b": 5},
                                   {"a": 9, "b": 12}],
@@ -140,12 +168,12 @@ PANELS = [
      "Euclid: (a,b) → (b, a mod b) until b=0, then gcd is in `a`. TWO interacting\n"
      "variables — every trajectory flows onto the b=0 axis, where a is the answer\n"
      "(e.g. (12,8) → (8,4) → (4,0): gcd = 4)."),
-    (RunningMean, dict(ranges={"n": (-0.5, 7), "avg": (-0.5, 4)}, style="fan",
-                       max_succ=6, paths=[_mean_path(EXAMPLE_SEQ)],
+    (RunningMean, dict(ensemble=_mean_path, yname="avg", yr=(-0.3, ELEMMAX + 0.3),
+                       examples=EX_SEQS,
                        title="running_mean · online average   (real z3 Seq)"),
      "running_mean  (n, avg)",
-     "Welford online mean over a symbolic z3 Seq: avg += (s[n] − avg)/(n+1). The\n"
-     "unknown element fans avg; bold path is [2,1,3,0,2] → mean 1.6 (a Real)."),
+     "One line per sequence from (0,0); avg (a Real) relaxes toward each sequence's\n"
+     "mean. The Seq is the input — n and avg start fixed. 120 sampled + 3 labelled."),
     (Fibonacci, dict(ranges={"a": (-0.5, 9), "b": (-0.5, 9)}, style="fan",
                      max_succ=1, equal=True, seeds=[{"a": 0, "b": 1}],
                      reachable=[{"a": 0, "b": 1}],
@@ -190,43 +218,51 @@ def _code_card(fig, cell, body, accent):
 
 
 def render_to_file(tr, kw, header, blurb, accent, outdir):
-    """Every model rendered the SAME way: all of its 2-D projections (one for a
-    2-D model, a number line for a 1-D one, the full matrix for higher-D), beside
-    the model's pretty form."""
+    """Each model beside its pretty form. A Seq-parameterized model shows the
+    variability over its Seq input (ensemble of trajectories); a state model shows
+    its 2-D projection(s) — one for 2-D, a number line for 1-D, the matrix for >2-D."""
     model = to_model(tr)
     body = header + "\n" + pretty_step(tr, width=46)
     nlines = body.count("\n") + 1
-    state = model.state
-    ranges = kw["ranges"]; base = kw.get("base", {})
-    seeds = kw.get("seeds", []); style = kw.get("style", "fan")
-    ms = kw.get("max_succ", 6); equal = kw.get("equal", False)
-    pairs = list(combinations(state, 2))                 # the projections to show
-    ncells = max(1, len(pairs))                           # 1-D model: one number line
-    cols = 1 if ncells == 1 else (2 if ncells <= 4 else 3)
-    rows = ceil(ncells / cols)
 
-    H = max(5.6, nlines * 0.245 + 2.2, rows * 3.9 + 2.0)
-    W = 12.5 if ncells == 1 else 15.5
-    wr = [1.15, 1.0] if ncells == 1 else [1.55, 1.0]
-    fig = plt.figure(figsize=(W, H))
-    outer = fig.add_gridspec(1, 2, width_ratios=wr, wspace=0.05,
-                             left=0.06, right=0.97, top=0.80, bottom=0.09)
-    grid = outer[0].subgridspec(rows, cols, hspace=0.5, wspace=0.34)
-
-    if not pairs:                                         # 1-D: a number line
-        pp.render(fig.add_subplot(grid[0, 0]), model, state[0], None,
-                  ranges[state[0]], style=style, max_succ=ms, seeds=seeds, title="")
-    for k, (a, b) in enumerate(pairs):
-        ax = fig.add_subplot(grid[k // cols, k % cols])
-        held = [v for v in state if v not in (a, b)]
-        fixed = {v: base.get(v, 0) for v in held}
-        tag = f"   ({', '.join(f'{v}={fixed[v]}' for v in held)})" if held else ""
-        pp.render(ax, model, a, b, ranges[a], ranges[b], fixed=fixed, style=style,
-                  max_succ=ms, equal=equal, seeds=(seeds if not held else []),
-                  reachable=(kw.get("reachable") if not held else None),
-                  paths=(kw.get("paths") if not held else None),
-                  title=(f"{a} × {b}{tag}" if len(pairs) > 1 else ""))
-    _code_card(fig, outer[1], body, accent)
+    if "ensemble" in kw:                                  # variability over the Seq input
+        H = max(5.6, nlines * 0.245 + 2.0)
+        fig = plt.figure(figsize=(12.5, H))
+        gs = fig.add_gridspec(1, 2, width_ratios=[1.15, 1.0], wspace=0.04,
+                              left=0.07, right=0.97, top=0.80, bottom=0.1)
+        _draw_ensemble(fig.add_subplot(gs[0]), kw["ensemble"], kw["yname"],
+                       kw["yr"], kw["examples"])
+        _code_card(fig, gs[1], body, accent)
+    else:                                                 # state-space projection(s)
+        state = model.state
+        ranges = kw["ranges"]; base = kw.get("base", {})
+        seeds = kw.get("seeds", []); style = kw.get("style", "fan")
+        ms = kw.get("max_succ", 6); equal = kw.get("equal", False)
+        pairs = list(combinations(state, 2))
+        ncells = max(1, len(pairs))                       # 1-D model: one number line
+        cols = 1 if ncells == 1 else (2 if ncells <= 4 else 3)
+        rows = ceil(ncells / cols)
+        H = max(5.6, nlines * 0.245 + 2.2, rows * 3.9 + 2.0)
+        W = 12.5 if ncells == 1 else 15.5
+        wr = [1.15, 1.0] if ncells == 1 else [1.55, 1.0]
+        fig = plt.figure(figsize=(W, H))
+        outer = fig.add_gridspec(1, 2, width_ratios=wr, wspace=0.05,
+                                 left=0.06, right=0.97, top=0.80, bottom=0.09)
+        grid = outer[0].subgridspec(rows, cols, hspace=0.5, wspace=0.34)
+        if not pairs:                                     # 1-D: a number line
+            pp.render(fig.add_subplot(grid[0, 0]), model, state[0], None,
+                      ranges[state[0]], style=style, max_succ=ms, seeds=seeds, title="")
+        for k, (a, b) in enumerate(pairs):
+            ax = fig.add_subplot(grid[k // cols, k % cols])
+            held = [v for v in state if v not in (a, b)]
+            fixed = {v: base.get(v, 0) for v in held}
+            tag = f"   ({', '.join(f'{v}={fixed[v]}' for v in held)})" if held else ""
+            pp.render(ax, model, a, b, ranges[a], ranges[b], fixed=fixed, style=style,
+                      max_succ=ms, equal=equal, seeds=(seeds if not held else []),
+                      reachable=(kw.get("reachable") if not held else None),
+                      paths=(kw.get("paths") if not held else None),
+                      title=(f"{a} × {b}{tag}" if len(pairs) > 1 else ""))
+        _code_card(fig, outer[1], body, accent)
 
     fig.suptitle(kw["title"], fontsize=15, color=INK, weight="bold",
                  x=0.06, ha="left", y=0.965)
