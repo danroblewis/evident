@@ -23,6 +23,8 @@ state-space to flow through — so it has no phase portrait. That absence *is* t
 Run from prototype/:  python3 model_gallery.py  -> results/model_gallery.png
 """
 import os
+from itertools import combinations
+from math import ceil
 
 import matplotlib
 matplotlib.use("Agg")
@@ -108,32 +110,61 @@ PANELS = [
      "queue  (q0, q1)",
      "Two bounded stages. Nondeterministic: each state has a FAN of moves\n"
      "(arrive, q0→q1, depart, idle). The flow stays inside [0,CAP]²."),
-    (Pipeline, dict(xaxis="q0", yaxis="q1", xr=(-0.6, 5.6), yr=(-0.6, 5.6),
-                    fixed={"q2": 0}, style="fan", max_succ=6, equal=True,
-                    title="pipeline · 3-stage, q2=0 slice   (daemon)"),
+    (Pipeline, dict(ranges={"q0": (-0.6, 5.6), "q1": (-0.6, 5.6),
+                            "q2": (-0.6, 5.6)}, base={"q0": 2, "q1": 2, "q2": 2},
+                    style="fan", max_succ=6,
+                    title="pipeline · 3-stage   (daemon, 3-D → all projections)"),
      "pipeline  (q0, q1, q2)",
-     "Three stages — 3-D state, so this is the q2=0 SLICE. Moves that change q2\n"
-     "leave the slice (their q1 drop shows, the q2 rise is hidden by projection)."),
+     "Three stages = 3-D state — too many to draw directly, so render ALL\n"
+     "pairwise projections (the third var held at 2). Only adjacent stages couple,\n"
+     "so q0×q2 is nearly inert; q0×q1 and q1×q2 carry the transfer flow."),
 ]
 
 
-def render_to_file(tr, kw, header, blurb, accent, outdir):
-    body = header + "\n" + pretty_step(tr, width=46)
-    nlines = body.count("\n") + 1
-    H = max(5.6, nlines * 0.245 + 2.0)
-    fig = plt.figure(figsize=(12.5, H))
-    fig.suptitle(kw["title"], fontsize=15, color=INK, weight="bold",
-                 x=0.07, ha="left", y=0.965)
-    fig.text(0.07, 0.915, blurb, fontsize=9.5, color=MUTED, va="top",
-             linespacing=1.4)
-    gs = fig.add_gridspec(1, 2, width_ratios=[1.15, 1.0], wspace=0.04,
-                          left=0.07, right=0.97, top=0.80, bottom=0.1)
-    kw2 = dict(kw); kw2.pop("title")
-    pp.render(fig.add_subplot(gs[0]), to_model(tr), title="", **kw2)
-    cax = fig.add_subplot(gs[1]); cax.axis("off")
+def _code_card(fig, cell, body, accent):
+    cax = fig.add_subplot(cell); cax.axis("off")
     cax.text(0.0, 1.0, body, transform=cax.transAxes, va="top", ha="left",
              family="monospace", fontsize=10.5, color=INK, linespacing=1.45,
              bbox=dict(boxstyle="round,pad=0.7", fc="#fbfcfe", ec=accent, lw=1.6))
+
+
+def render_to_file(tr, kw, header, blurb, accent, outdir):
+    model = to_model(tr)
+    body = header + "\n" + pretty_step(tr, width=46)
+    nlines = body.count("\n") + 1
+    title = kw["title"]
+    pairs = list(combinations(model.state, 2))            # all 2-D projections
+
+    if len(model.state) <= 2:                             # single portrait
+        H = max(5.6, nlines * 0.245 + 2.0)
+        fig = plt.figure(figsize=(12.5, H))
+        gs = fig.add_gridspec(1, 2, width_ratios=[1.15, 1.0], wspace=0.04,
+                              left=0.07, right=0.97, top=0.80, bottom=0.1)
+        kw2 = dict(kw); kw2.pop("title")
+        pp.render(fig.add_subplot(gs[0]), model, title="", **kw2)
+        _code_card(fig, gs[1], body, accent)
+    else:                                                 # projection matrix
+        ranges, base = kw["ranges"], kw["base"]
+        cols = 2 if len(pairs) <= 4 else 3
+        rows = ceil(len(pairs) / cols)
+        H = max(nlines * 0.245 + 2.2, rows * 3.9 + 2.0)
+        fig = plt.figure(figsize=(15.5, H))
+        outer = fig.add_gridspec(1, 2, width_ratios=[1.55, 1.0], wspace=0.06,
+                                 left=0.05, right=0.97, top=0.80, bottom=0.08)
+        grid = outer[0].subgridspec(rows, cols, hspace=0.5, wspace=0.34)
+        for k, (a, b) in enumerate(pairs):
+            ax = fig.add_subplot(grid[k // cols, k % cols])
+            fixed = {v: base[v] for v in model.state if v not in (a, b)}
+            held = ", ".join(f"{v}={base[v]}" for v in fixed)
+            pp.render(ax, model, a, b, ranges[a], ranges[b], fixed=fixed,
+                      style=kw.get("style", "fan"), max_succ=kw.get("max_succ", 6),
+                      equal=True, title=f"{a} × {b}   ({held})")
+        _code_card(fig, outer[1], body, accent)
+
+    fig.suptitle(title, fontsize=15, color=INK, weight="bold",
+                 x=0.05, ha="left", y=0.965)
+    fig.text(0.05, 0.915, blurb, fontsize=9.5, color=MUTED, va="top",
+             linespacing=1.4)
     path = os.path.join(outdir, f"{tr.name}.png")
     fig.savefig(path, dpi=130, facecolor="white"); plt.close(fig)
     return path
