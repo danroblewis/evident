@@ -1,0 +1,9 @@
+# Evident prototype — pinned Python dependencies.
+#
+# z3 note: the target solver is libz3 4.15.4. On a machine that already provides a
+# working z3 >= 4.15 via the system `python3-z3` package, setup.sh KEEPS it and
+# skips the wheel below (to avoid shadowing the measured runtime). On a clean
+# machine, `pip install -r requirements.txt` installs a self-consistent z3 4.15.4.
+numpy==2.4.6
+matplotlib==3.11.0
+z3-solver==4.15.4.0
