@@ -34,10 +34,10 @@ import z3
 import phaseportrait as pp
 from benchsuite import pretty
 from models.core import Transition
-from models.examples import SumTo, ListMax
+from models.examples import SumTo, ListSum, ListMax
 
-INK = "#2a2c34"; MUTED = "#6b7080"; ACCENTS = ["#2868d2", "#1f9e6d", "#8a4fbf",
-                                               "#c0612a", "#b8398a"]
+INK = "#2a2c34"; MUTED = "#6b7080"
+ACCENTS = ["#2868d2", "#0e8a8a", "#1f9e6d", "#8a4fbf", "#c0612a", "#b8398a"]
 
 
 # ── the daemon transitions, as core.Transition (so they get .doc() too) ──────
@@ -95,6 +95,13 @@ PANELS = [
      "sum_to  (i, acc)",
      "Tail-recursive accumulator. The flow funnels into the i=0 halt line; the\n"
      "trajectory from (5,0) lands at (0,15) — and 15 IS the sum 1..5."),
+    (ListSum, dict(ranges={"idx": (-0.5, 8.5), "acc": (-2, 34)}, style="fan",
+                   max_succ=1, seeds=[{"idx": 0, "acc": 0}],
+                   title="list_sum · sum a sequence   (algorithm)"),
+     "list_sum  (idx, acc)",
+     "sum_to over DATA, not the counter: accumulates LIST[idx] = [3,1,4,1,5,9,2,6].\n"
+     "Flows right to idx=8, settling at acc=31 — the total. (Same list as list_max,\n"
+     "which folds the same data to its max, 9.)"),
     (ListMax, dict(ranges={"idx": (-0.5, 8.5), "best": (-1.5, 10.5)}, style="fan",
                    max_succ=1, seeds=[{"idx": 0, "best": 0}],
                    title="list_max · max over a list   (algorithm)"),

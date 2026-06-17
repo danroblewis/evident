@@ -66,6 +66,22 @@ ListMax = Transition("list_max", [("idx", "Int"), ("best", "Int")],
                      _max_step, uses=("at",))
 
 
+# ── list_sum: sum a SEQUENCE (sum_to over data, not the counter) ──────────────
+# Identical shape to sum_to, but accumulates LIST[idx] instead of the index i —
+# so it sums real data. Composes the same `at` lookup as list_max (same list,
+# different fold: list_max -> 9, list_sum -> 31).
+def _sum_seq_step(cur, nxt):
+    idx, acc = cur["idx"], cur["acc"]
+    v = At(idx)                            # <-- the sequence element LIST[idx]
+    return z3.If(idx == len(LIST),
+                 z3.And(nxt["idx"] == idx, nxt["acc"] == acc),       # base: hold
+                 z3.And(nxt["idx"] == idx + 1, nxt["acc"] == acc + v))  # accumulate
+
+
+ListSum = Transition("list_sum", [("idx", "Int"), ("acc", "Int")],
+                     _sum_seq_step, uses=("at",))
+
+
 def main():
     out = os.path.join(os.path.dirname(__file__), os.pardir, "results")
     os.makedirs(out, exist_ok=True)
