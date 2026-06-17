@@ -92,12 +92,14 @@ PANELS = [
     (SumTo, dict(ranges={"i": (-0.5, 6.5), "acc": (-1, 18)}, style="fan",
                  max_succ=1,
                  seeds=[{"i": 5, "acc": 0}, {"i": 4, "acc": 0}, {"i": 3, "acc": 0}],
+                 reachable=[{"i": 5, "acc": 0}, {"i": 4, "acc": 0}, {"i": 3, "acc": 0}],
                  title="sum_to · Σ1..n   (algorithm)"),
      "sum_to  (i, acc)",
      "Tail-recursive accumulator. The flow funnels into the i=0 halt line; the\n"
      "trajectory from (5,0) lands at (0,15) — and 15 IS the sum 1..5."),
     (ListSum, dict(ranges={"idx": (-0.5, 8.5), "acc": (-2, 34)}, style="fan",
                    max_succ=1, seeds=[{"idx": 0, "acc": 0}],
+                   reachable=[{"idx": 0, "acc": 0}],
                    title="list_sum · sum a sequence   (algorithm)"),
      "list_sum  (idx, acc)",
      "sum_to over DATA, not the counter: accumulates LIST[idx] = [3,1,4,1,5,9,2,6].\n"
@@ -105,6 +107,7 @@ PANELS = [
      "which folds the same data to its max, 9.)"),
     (ListMax, dict(ranges={"idx": (-0.5, 8.5), "best": (-1.5, 10.5)}, style="fan",
                    max_succ=1, seeds=[{"idx": 0, "best": 0}],
+                   reachable=[{"idx": 0, "best": 0}],
                    title="list_max · max over a list   (algorithm)"),
      "list_max  (idx, best)",
      "Iterative max over [3,1,4,1,5,9,2,6] (composes the `at` lookup sub-model).\n"
@@ -112,6 +115,7 @@ PANELS = [
     (Gcd, dict(ranges={"a": (-0.5, 13), "b": (-0.5, 13)}, style="fan", max_succ=1,
                equal=True, seeds=[{"a": 12, "b": 8}, {"a": 13, "b": 5},
                                   {"a": 9, "b": 12}],
+               reachable=[{"a": 12, "b": 8}, {"a": 13, "b": 5}, {"a": 9, "b": 12}],
                title="gcd · Euclid's algorithm   (algorithm)"),
      "gcd  (a, b)",
      "Euclid: (a,b) → (b, a mod b) until b=0, then gcd is in `a`. TWO interacting\n"
@@ -126,11 +130,12 @@ PANELS = [
      "3.875 by n=8 — a real online-statistics pattern."),
     (Fibonacci, dict(ranges={"a": (-0.5, 9), "b": (-0.5, 9)}, style="fan",
                      max_succ=1, equal=True, seeds=[{"a": 0, "b": 1}],
+                     reachable=[{"a": 0, "b": 1}],
                      title="fibonacci · (a,b)→(b,a+b)   (never halts)"),
      "fibonacci  (a, b)",
-     "The contrast: NO halt condition, so the flow shoots OUTWARD forever along the\n"
-     "golden-ratio direction — no fixed point, no halt line. An unbounded model\n"
-     "looks completely different from a fold that funnels to its answer."),
+     "NO halt: the flow shoots OUTWARD forever. With reachable highlighting, only\n"
+     "the orbit from (0,1) is the actual series — the ghosted grey field is the\n"
+     "transition at states Fibonacci never reaches (other seeds give other series)."),
     (Cache, dict(ranges={"n": (-0.6, 5.6)}, style="fan", max_succ=3,
                  seeds=[{"n": 0}], title="cache · sessions   (daemon, 1-D)"),
      "cache  (n)",
@@ -200,6 +205,7 @@ def render_to_file(tr, kw, header, blurb, accent, outdir):
         tag = f"   ({', '.join(f'{v}={fixed[v]}' for v in held)})" if held else ""
         pp.render(ax, model, a, b, ranges[a], ranges[b], fixed=fixed, style=style,
                   max_succ=ms, equal=equal, seeds=(seeds if not held else []),
+                  reachable=(kw.get("reachable") if not held else None),
                   title=(f"{a} × {b}{tag}" if len(pairs) > 1 else ""))
     _code_card(fig, outer[1], body, accent)
 

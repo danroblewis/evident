@@ -25,6 +25,7 @@ synthesized — the engine draws the correct skeleton, you decorate if you wish.
 Run from prototype/:  python3 phaseportrait.py  -> results/phaseportrait_generic.png
 """
 import os
+from collections import deque
 
 import numpy as np
 import matplotlib
@@ -35,7 +36,7 @@ from matplotlib.patches import Rectangle
 import z3
 
 INK = "#2a2c34"; MUTED = "#6b7080"; GREEN = "#2eb55f"; GREENFILL = "#bfeccb"
-RED = "#de3c3c"; FLOW = "#b9beca"; FAN = "#5a6478"
+RED = "#de3c3c"; FLOW = "#b9beca"; FAN = "#5a6478"; GHOST = "#e7e9ef"
 
 
 # ─────────────────────────────── the model ──────────────────────────────────
@@ -110,9 +111,37 @@ def _grid(model, name, lo, hi, n):
     return list(np.linspace(lo, hi, n))
 
 
+def _statekey(model, st):
+    return tuple(round(float(st[v]), 6) for v in model.state)
+
+
+def _reachable_set(model, inits, xaxis, yaxis, xr, yr, fixed, max_succ, cap=4000):
+    """BFS the states reachable from `inits` (a list of full-state dicts), keeping
+    only those that land within the plotted window (so unbounded models stay
+    finite). Returns the set of state-keys."""
+    seen, dq = {}, deque()
+    for init in inits:
+        st = {**fixed, **init}
+        if all(v in st for v in model.state):
+            k = _statekey(model, st)
+            seen.setdefault(k, st)
+            if k in seen:
+                dq.append(st)
+    while dq and len(seen) < cap:
+        st = dq.popleft()
+        for succ in successors(model, st, max_succ):
+            k = _statekey(model, succ)
+            if k in seen:
+                continue
+            if (xr[0] - 1.0 <= succ[xaxis] <= xr[1] + 1.0 and
+                    yr[0] - 1.0 <= succ[yaxis] <= yr[1] + 1.0):
+                seen[k] = succ; dq.append(succ)
+    return set(seen.keys())
+
+
 def render(ax, model, xaxis, yaxis=None, xr=(0, 1), yr=None, *, fixed=None,
            n=21, max_succ=1, style="field", seeds=(), tsteps=360, safe_box=None,
-           prove=False, title=None, traj_colors=None, equal=False):
+           prove=False, title=None, traj_colors=None, equal=False, reachable=None):
     oned = yaxis is None                              # 1-D state -> a number line
     fixed = fixed or {}
     if oned and yr is None:
@@ -122,6 +151,13 @@ def render(ax, model, xaxis, yaxis=None, xr=(0, 1), yr=None, *, fixed=None,
 
     def disp(s, X, Y):
         return s[xaxis] - X, (0.0 if oned else s[yaxis] - Y)
+
+    # reachable set from `reachable` (a full-state dict or list of them): ghost the
+    # rest, so the program (the reachable orbit/region) stands out from the relation.
+    reach_keys = None
+    if reachable is not None and not oned:
+        inits = reachable if isinstance(reachable, (list, tuple)) else [reachable]
+        reach_keys = _reachable_set(model, inits, xaxis, yaxis, xr, yr, fixed, max_succ)
 
     # claimed trapping box + Spacer verdict (2-D only)
     verdict = None
@@ -137,14 +173,17 @@ def render(ax, model, xaxis, yaxis=None, xr=(0, 1), yr=None, *, fixed=None,
                                edgecolor=col, lw=2.3, zorder=0))
 
     # flow: ask Z3 for each grid point's successor(s)
-    fx, fy, fu, fv = [], [], [], []
-    fixed_pts, lattice = [], []
+    fx, fy, fu, fv, areach = [], [], [], [], []
+    fixed_pts, lattice, reach_pts = [], [], []
     for X in XS:
         for Y in YS:
             lattice.append((X, Y))
             pt = {**fixed, xaxis: X}
             if not oned:
                 pt[yaxis] = Y
+            src_r = reach_keys is None or _statekey(model, pt) in reach_keys
+            if reach_keys is not None and src_r:
+                reach_pts.append((X, Y))
             succs = successors(model, pt, max_succ)
             moved = [s for s in succs if max(map(abs, disp(s, X, Y))) > 1e-9]
             if succs and not moved:               # ONLY self-loops -> true fixed point
@@ -152,6 +191,7 @@ def render(ax, model, xaxis, yaxis=None, xr=(0, 1), yr=None, *, fixed=None,
             for s in moved:                       # an idle self-loop just isn't drawn
                 d0, d1 = disp(s, X, Y)
                 fx.append(X); fy.append(Y); fu.append(d0); fv.append(d1)
+                areach.append(src_r)
     fu, fv = np.array(fu, float), np.array(fv, float)
     if style == "field" and len(fu):                  # normalize to a direction field
         L = np.hypot(fu, fv); L[L == 0] = 1
@@ -159,12 +199,18 @@ def render(ax, model, xaxis, yaxis=None, xr=(0, 1), yr=None, *, fixed=None,
         fu, fv = fu / L * step, fv / L * step
     elif len(fu):                                     # discrete: shrink the real jump
         fu, fv = fu * 0.6, fv * 0.6
-    ax.quiver(fx, fy, fu, fv, color=FLOW if style == "field" else FAN,
-              angles="xy", scale_units="xy", scale=1, width=0.004,
-              headwidth=4, headlength=5, zorder=2)
+    base_col = FLOW if style == "field" else FAN
+    qcolor = ([base_col if r else GHOST for r in areach]
+              if reach_keys is not None else base_col)
+    ax.quiver(fx, fy, fu, fv, color=qcolor, angles="xy", scale_units="xy",
+              scale=1, width=0.004, headwidth=4, headlength=5, zorder=2)
     if style != "field" and lattice:                  # show the discrete lattice
         lx, ly = zip(*lattice)
-        ax.plot(lx, ly, "o", color=FAN, ms=2.3, zorder=1)
+        ax.plot(lx, ly, "o", color=GHOST if reach_keys is not None else FAN,
+                ms=2.3, zorder=1)
+    if reach_pts:                                     # highlight the reachable states
+        rx, ry = zip(*reach_pts)
+        ax.plot(rx, ry, "o", color=INK, ms=3.4, zorder=4)
 
     # forward trajectories (one run; for relational, first successor each step)
     cols = traj_colors or ["#2868d2", "#9646c8", "#00a0a0", "#eb9628", "#d23bb0"]
@@ -180,7 +226,12 @@ def render(ax, model, xaxis, yaxis=None, xr=(0, 1), yr=None, *, fixed=None,
                 marker="o" if oned else None, ms=4, zorder=3)
 
     for (X, Y) in fixed_pts:                          # fixed points / halt set
-        ax.plot(X, Y, "o", color=INK, ms=5, mfc="white", mew=1.4, zorder=5)
+        pt = {**fixed, xaxis: X}
+        if not oned:
+            pt[yaxis] = Y
+        fp_ghost = reach_keys is not None and _statekey(model, pt) not in reach_keys
+        ax.plot(X, Y, "o", color=GHOST if fp_ghost else INK, ms=5,
+                mfc="white", mew=1.4, zorder=5)
 
     ax.set_xlim(*xr); ax.set_ylim(*yr)
     ax.set_xlabel(xaxis, fontsize=9, color=MUTED)
