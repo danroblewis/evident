@@ -82,6 +82,62 @@ ListSum = Transition("list_sum", [("idx", "Int"), ("acc", "Int")],
                      _sum_seq_step, uses=("at",))
 
 
+# ── gcd: Euclid's algorithm — two interacting variables ──────────────────────
+def _gcd_step(cur, nxt):
+    a, b = cur["a"], cur["b"]
+    return z3.If(b == 0,
+                 z3.And(nxt["a"] == a, nxt["b"] == b),         # done: gcd is in `a`
+                 z3.And(nxt["a"] == b, nxt["b"] == a % b))     # Euclid: (a,b)→(b, a mod b)
+
+
+Gcd = Transition("gcd", [("a", "Int"), ("b", "Int")], _gcd_step)
+
+
+# ── running_mean: an ONLINE average (Welford-style incremental update) ────────
+def _at_real(idx):
+    e = z3.RealVal(LIST[-1])
+    for j in range(len(LIST) - 2, -1, -1):
+        e = z3.If(idx == j, z3.RealVal(LIST[j]), e)
+    return e
+
+
+def _mean_step(cur, nxt):
+    n, avg = cur["n"], cur["avg"]
+    v = _at_real(n)
+    return z3.If(n == len(LIST),
+                 z3.And(nxt["n"] == n, nxt["avg"] == avg),                  # done
+                 z3.And(nxt["n"] == n + 1,
+                        nxt["avg"] == avg + (v - avg) / (z3.ToReal(n) + 1)))  # update
+
+
+RunningMean = Transition("running_mean", [("n", "Int"), ("avg", "Real")],
+                         _mean_step, uses=("at",))
+
+
+# ── fibonacci: a transition that NEVER halts — flows outward forever ──────────
+def _fib_step(cur, nxt):
+    a, b = cur["a"], cur["b"]
+    return z3.And(nxt["a"] == b, nxt["b"] == a + b)            # (a,b)→(b, a+b)
+
+
+Fibonacci = Transition("fibonacci", [("a", "Int"), ("b", "Int")], _fib_step)
+
+
+# ── token_bucket: a rate-limiter DAEMON (never overspend) ────────────────────
+def _token_step(cur, nxt, CAP=5, QMAX=6):
+    tok, q = cur["tokens"], cur["pending"]
+    return z3.Or(
+        z3.And(tok < CAP, nxt["tokens"] == tok + 1, nxt["pending"] == q),   # refill
+        z3.And(q < QMAX, nxt["tokens"] == tok, nxt["pending"] == q + 1),    # request in
+        z3.And(tok > 0, q > 0,                                              # serve: spend
+               nxt["tokens"] == tok - 1, nxt["pending"] == q - 1),
+        z3.And(nxt["tokens"] == tok, nxt["pending"] == q))                  # idle
+
+
+TokenBucket = Transition("token_bucket",
+                         [("tokens", "Int"), ("pending", "Int")], _token_step)
+
+
 def main():
     out = os.path.join(os.path.dirname(__file__), os.pardir, "results")
     os.makedirs(out, exist_ok=True)

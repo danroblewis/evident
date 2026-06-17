@@ -34,7 +34,8 @@ import z3
 import phaseportrait as pp
 from benchsuite import pretty
 from models.core import Transition
-from models.examples import SumTo, ListSum, ListMax
+from models.examples import (SumTo, ListSum, ListMax, Gcd, RunningMean,
+                             Fibonacci, TokenBucket)
 
 INK = "#2a2c34"; MUTED = "#6b7080"
 ACCENTS = ["#2868d2", "#0e8a8a", "#1f9e6d", "#8a4fbf", "#c0612a", "#b8398a"]
@@ -108,6 +109,28 @@ PANELS = [
      "list_max  (idx, best)",
      "Iterative max over [3,1,4,1,5,9,2,6] (composes the `at` lookup sub-model).\n"
      "Flows right to idx=8, settling at best=9 — the maximum."),
+    (Gcd, dict(ranges={"a": (-0.5, 13), "b": (-0.5, 13)}, style="fan", max_succ=1,
+               equal=True, seeds=[{"a": 12, "b": 8}, {"a": 13, "b": 5},
+                                  {"a": 9, "b": 12}],
+               title="gcd · Euclid's algorithm   (algorithm)"),
+     "gcd  (a, b)",
+     "Euclid: (a,b) → (b, a mod b) until b=0, then gcd is in `a`. TWO interacting\n"
+     "variables — every trajectory flows onto the b=0 axis, where a is the answer\n"
+     "(e.g. (12,8) → (8,4) → (4,0): gcd = 4)."),
+    (RunningMean, dict(ranges={"n": (-0.5, 8.5), "avg": (-0.5, 9.5)}, style="fan",
+                       max_succ=1, seeds=[{"n": 0, "avg": 0}],
+                       title="running_mean · online average   (algorithm)"),
+     "running_mean  (n, avg)",
+     "Streaming mean of [3,1,4,1,5,9,2,6], updated incrementally:\n"
+     "avg += (LIST[n] − avg)/(n+1).  avg (a Real) relaxes to the true mean 31/8 =\n"
+     "3.875 by n=8 — a real online-statistics pattern."),
+    (Fibonacci, dict(ranges={"a": (-0.5, 9), "b": (-0.5, 9)}, style="fan",
+                     max_succ=1, equal=True, seeds=[{"a": 0, "b": 1}],
+                     title="fibonacci · (a,b)→(b,a+b)   (never halts)"),
+     "fibonacci  (a, b)",
+     "The contrast: NO halt condition, so the flow shoots OUTWARD forever along the\n"
+     "golden-ratio direction — no fixed point, no halt line. An unbounded model\n"
+     "looks completely different from a fold that funnels to its answer."),
     (Cache, dict(ranges={"n": (-0.6, 5.6)}, style="fan", max_succ=3,
                  seeds=[{"n": 0}], title="cache · sessions   (daemon, 1-D)"),
      "cache  (n)",
@@ -118,6 +141,13 @@ PANELS = [
      "queue  (q0, q1)",
      "Two bounded stages. Nondeterministic: each state has a FAN of moves\n"
      "(arrive, q0→q1, depart, idle). The flow stays inside [0,CAP]²."),
+    (TokenBucket, dict(ranges={"tokens": (-0.6, 6.6), "pending": (-0.6, 7.6)},
+                       style="fan", max_succ=6, equal=True,
+                       title="token_bucket · rate limiter   (daemon)"),
+     "token_bucket  (tokens, pending)",
+     "A rate limiter: tokens refill up to CAP, requests queue as `pending`, a serve\n"
+     "spends one token per request. Nondeterministic fan; tokens stay in [0,CAP]\n"
+     "(Spacer-provable: never overspend)."),
     (Pipeline, dict(ranges={"q0": (-0.6, 5.6), "q1": (-0.6, 5.6),
                             "q2": (-0.6, 5.6)}, base={"q0": 2, "q1": 2, "q2": 2},
                     style="fan", max_succ=6, equal=True,
@@ -185,8 +215,8 @@ def render_to_file(tr, kw, header, blurb, accent, outdir):
 def main():
     outdir = os.path.join(os.path.dirname(__file__), "results", "models")
     os.makedirs(outdir, exist_ok=True)
-    for (tr, kw, header, blurb), accent in zip(PANELS, ACCENTS):
-        path = render_to_file(tr, kw, header, blurb, accent, outdir)
+    for k, (tr, kw, header, blurb) in enumerate(PANELS):
+        path = render_to_file(tr, kw, header, blurb, ACCENTS[k % len(ACCENTS)], outdir)
         print("wrote", os.path.relpath(path), flush=True)
 
 
