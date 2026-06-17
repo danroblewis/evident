@@ -110,16 +110,22 @@ def _grid(model, name, lo, hi, n):
     return list(np.linspace(lo, hi, n))
 
 
-def render(ax, model, xaxis, yaxis, xr, yr, *, fixed=None, n=21, max_succ=1,
-           style="field", seeds=(), tsteps=360, safe_box=None, prove=False,
-           title=None, traj_colors=None):
+def render(ax, model, xaxis, yaxis=None, xr=(0, 1), yr=None, *, fixed=None,
+           n=21, max_succ=1, style="field", seeds=(), tsteps=360, safe_box=None,
+           prove=False, title=None, traj_colors=None):
+    oned = yaxis is None                              # 1-D state -> a number line
     fixed = fixed or {}
+    if oned and yr is None:
+        yr = (-0.8, 0.8)
     XS = _grid(model, xaxis, xr[0], xr[1], n)
-    YS = _grid(model, yaxis, yr[0], yr[1], n)
+    YS = [0.0] if oned else _grid(model, yaxis, yr[0], yr[1], n)
 
-    # claimed trapping box + Spacer verdict
+    def disp(s, X, Y):
+        return s[xaxis] - X, (0.0 if oned else s[yaxis] - Y)
+
+    # claimed trapping box + Spacer verdict (2-D only)
     verdict = None
-    if safe_box is not None:
+    if safe_box is not None and not oned:
         (bx0, bx1) = safe_box[xaxis]; (by0, by1) = safe_box[yaxis]
         ok = True
         if prove and model.init is not None and model.bad is not None:
@@ -136,15 +142,16 @@ def render(ax, model, xaxis, yaxis, xr, yr, *, fixed=None, n=21, max_succ=1,
     for X in XS:
         for Y in YS:
             lattice.append((X, Y))
-            pt = {**fixed, xaxis: X, yaxis: Y}
+            pt = {**fixed, xaxis: X}
+            if not oned:
+                pt[yaxis] = Y
             succs = successors(model, pt, max_succ)
-            moved = [s for s in succs
-                     if abs(s[xaxis] - X) > 1e-9 or abs(s[yaxis] - Y) > 1e-9]
+            moved = [s for s in succs if max(map(abs, disp(s, X, Y))) > 1e-9]
             if succs and not moved:               # ONLY self-loops -> true fixed point
                 fixed_pts.append((X, Y))
             for s in moved:                       # an idle self-loop just isn't drawn
-                fx.append(X); fy.append(Y)
-                fu.append(s[xaxis] - X); fv.append(s[yaxis] - Y)
+                d0, d1 = disp(s, X, Y)
+                fx.append(X); fy.append(Y); fu.append(d0); fv.append(d1)
     fu, fv = np.array(fu, float), np.array(fv, float)
     if style == "field" and len(fu):                  # normalize to a direction field
         L = np.hypot(fu, fv); L[L == 0] = 1
@@ -162,21 +169,26 @@ def render(ax, model, xaxis, yaxis, xr, yr, *, fixed=None, n=21, max_succ=1,
     # forward trajectories (one run; for relational, first successor each step)
     cols = traj_colors or ["#2868d2", "#9646c8", "#00a0a0", "#eb9628", "#d23bb0"]
     for i, seed in enumerate(seeds):
-        pt = dict(seed); xs, ys = [pt[xaxis]], [pt[yaxis]]
+        pt = dict(seed)
+        xs, ys = [pt[xaxis]], [0.0 if oned else pt[yaxis]]
         for _ in range(tsteps):
             sc = successors(model, {**fixed, **pt}, 1)
             if not sc:
                 break
-            pt = sc[0]; xs.append(pt[xaxis]); ys.append(pt[yaxis])
-        ax.plot(xs, ys, color=cols[i % len(cols)], lw=1.8, zorder=3)
+            pt = sc[0]; xs.append(pt[xaxis]); ys.append(0.0 if oned else pt[yaxis])
+        ax.plot(xs, ys, color=cols[i % len(cols)], lw=1.8,
+                marker="o" if oned else None, ms=4, zorder=3)
 
-    for (X, Y) in fixed_pts:                          # approximate fixed points
-        ax.plot(X, Y, "o", color=INK, ms=7, mfc="white", mew=1.8, zorder=5)
+    for (X, Y) in fixed_pts:                          # fixed points / halt set
+        ax.plot(X, Y, "o", color=INK, ms=5, mfc="white", mew=1.4, zorder=5)
 
     ax.set_xlim(*xr); ax.set_ylim(*yr)
     ax.set_xlabel(xaxis, fontsize=9, color=MUTED)
-    ax.set_ylabel(yaxis, fontsize=9, color=MUTED, rotation=0, labelpad=10)
     ax.tick_params(colors=MUTED, labelsize=7.5)
+    if oned:
+        ax.set_yticks([])
+    else:
+        ax.set_ylabel(yaxis, fontsize=9, color=MUTED, rotation=0, labelpad=10)
     for sp in ax.spines.values():
         sp.set_color("#d2d6de")
     ax.set_title(title or model.name, fontsize=11.5, color=INK, loc="left", pad=7)
@@ -185,7 +197,7 @@ def render(ax, model, xaxis, yaxis, xr, yr, *, fixed=None, n=21, max_succ=1,
         ax.text(0.5, -0.17, "Spacer: UNSAT — proved safe" if ok
                 else "Spacer: SAT — box refuted", transform=ax.transAxes,
                 ha="center", fontsize=9.5, weight="bold", color=GREEN if ok else RED)
-    if model.sorts[xaxis] == model.sorts[yaxis] == "Int":
+    if not oned and model.sorts[xaxis] == model.sorts[yaxis] == "Int":
         ax.set_aspect("equal")
 
 
