@@ -27,7 +27,7 @@ from matplotlib.patches import Rectangle
 import z3
 
 GREEN = "#2eb55f"; GREENFILL = "#bfeccb"; RED = "#de3c3c"
-INK = "#2a2c34"; MUTED = "#6b7080"
+INK = "#2a2c34"; MUTED = "#6b7080"; PURPLE = "#8a4fbf"
 
 
 # ─────────────────────── continuous flows (panels A, B) ─────────────────────
@@ -79,7 +79,7 @@ def panel_sink(ax):
                 arrowprops=dict(arrowstyle="->", color=INK, lw=0.9))
     ax.annotate("Lyapunov energy\n= trapping regions", (1.55, 1.55), (1.0, 2.45),
                 color="#5f865f", fontsize=8.5, ha="center")
-    _frame(ax, dom, "A.  SINK — flow descends a Lyapunov function", "x", "v")
+    _frame(ax, dom, "A · Sink  (spiral into a fixed point)", "x", "v")
 
 
 def panel_cycle(ax):
@@ -93,7 +93,7 @@ def panel_cycle(ax):
     ax.annotate("limit cycle\n= livelock", (0, 2.65), (0, 3.15),
                 color=INK, fontsize=8.5, ha="center")
     ax.legend(loc="lower right", fontsize=8, framealpha=0.9)
-    _frame(ax, dom, "B.  LIMIT CYCLE — flow traps into a loop", "x", "v")
+    _frame(ax, dom, "B · Limit cycle  (traps onto a loop)", "x", "v")
 
 
 # ─────────────────────── discrete daemon (panels C, D) ──────────────────────
@@ -158,12 +158,51 @@ def panel_daemon(ax, CAP, guarded, verdict):
 
     ok = verdict == z3.unsat
     tag = "Spacer: UNSAT — PROVED SAFE" if ok else "Spacer: SAT — COUNTEREXAMPLE"
-    title = ("C.  SAFE DAEMON — flow trapped in the proven box"
-             if ok else "D.  LEAK — guard dropped, flow escapes the box")
+    title = ("C · Safe daemon  (flow trapped in the proven box)"
+             if ok else "D · Leak  (guard dropped, flow escapes)")
     ax.text(0.5, -0.155, tag, transform=ax.transAxes, ha="center",
             fontsize=10, color=GREEN if ok else RED, weight="bold")
     _frame(ax, (-0.7, CAP + 1.7, -0.7, CAP + 1.7), title, "q0", "q1")
     ax.set_aspect("equal")
+
+
+# ─────────────────────── synthesized controller (thermostat) ────────────────
+def panel_thermostat(ax):
+    """A C-style SYNTHESIS daemon: `on` is a free choice the controller makes to
+    keep temp in [LO,HI]. State is (temp, heater); bang-bang control traces a
+    hysteresis limit cycle — the canonical hybrid-automaton portrait."""
+    LO, HI = 18, 22
+    dom = (15.3, 24.7, -0.5, 1.6)
+    ax.axvspan(LO, HI, color=GREENFILL, zorder=0)                 # trapping band
+    ax.axvline(LO, color=GREEN, lw=1.1, ls=":", zorder=1)
+    ax.axvline(HI, color=GREEN, lw=1.1, ls=":", zorder=1)
+    for y in (0, 1):
+        ax.axhline(y, color="#e3e5eb", lw=1, zorder=0)
+    # flow: heater on => temp rises (right); heater off => temp falls (left)
+    ts = np.arange(16.3, 24.3, 1.0)
+    ax.quiver(ts, np.ones_like(ts), np.full_like(ts, 0.5), np.zeros_like(ts),
+              color="#b9beca", angles="xy", scale_units="xy", scale=1,
+              width=0.004, headwidth=4, headlength=5, zorder=2)
+    ax.quiver(ts, np.zeros_like(ts), np.full_like(ts, -0.5), np.zeros_like(ts),
+              color="#b9beca", angles="xy", scale_units="xy", scale=1,
+              width=0.004, headwidth=4, headlength=5, zorder=2)
+    # the bang-bang limit cycle: cool to LO -> switch on -> heat to HI -> switch off
+    loop = [((HI, 0), (LO, 0)), ((LO, 0), (LO, 1)),
+            ((LO, 1), (HI, 1)), ((HI, 1), (HI, 0))]
+    for (x0, y0), (x1, y1) in loop:
+        ax.annotate("", (x1, y1), (x0, y0),
+                    arrowprops=dict(arrowstyle="-|>", color=PURPLE, lw=2.6))
+    ax.plot(LO, 0, "o", color=PURPLE, ms=7, zorder=5)
+    ax.plot(HI, 1, "o", color=PURPLE, ms=7, zorder=5)
+    ax.annotate("synthesize on=1\n(temp hits LO)", (LO, 0.5), (LO - 2.5, 0.5),
+                color=PURPLE, fontsize=8, ha="center", va="center")
+    ax.annotate("synthesize on=0\n(temp hits HI)", (HI, 0.5), (HI + 2.4, 0.5),
+                color=PURPLE, fontsize=8, ha="center", va="center")
+    ax.annotate("band = trapping region", ((LO + HI) / 2, 1.42),
+                color="#5f865f", fontsize=8.5, ha="center")
+    _frame(ax, dom, "E · Thermostat  (synthesized bang-bang control)",
+           "temp", "heater")
+    ax.set_yticks([0, 1]); ax.set_yticklabels(["off", "on"])
 
 
 # ─────────────────────── shared framing ─────────────────────────────────────
@@ -179,24 +218,85 @@ def _frame(ax, dom, title, xl, yl):
     ax.axvline(0, color="#aeb4c2", lw=0.6, zorder=0)
 
 
+# ─────────────────────── pretty model definitions (the surface syntax) ──────
+# Each model written in the "Delta" difference-equation style we are designing:
+# state vars, per-tick change laws (Δ), guards, and the invariant (always …).
+DEFS = [
+    ("#2868d2", """A — claim Sink            (ζ = 0.11)
+   state  x, v
+   Δx = v
+   Δv = -x - 2ζ·v
+   ⇒ spirals into the fixed point (0, 0)"""),
+    ("#eb9628", """B — claim Cycle           (μ = 1)
+   state  x, v
+   Δx = v
+   Δv = μ(1 - x²)·v - x
+   ⇒ traps onto a limit cycle (livelock)"""),
+    (GREEN, """C — claim Queue           (CAP = 6)
+   state  q0, q1     init  0, 0
+   each tick, exactly one of:
+     arrive    Δq0 = +1            when q0 < CAP
+     q0 → q1   Δq0 = -1, Δq1 = +1  when q0>0, q1<CAP
+     depart    Δq1 = -1            when q1 > 0
+     idle      —
+   always  0 ≤ q0, q1 ≤ CAP
+   ⇒ Spacer: UNSAT — proved safe forever"""),
+    (RED, """D — claim Queue           (CAP = 6)   ⚠ bug
+   arrive    Δq0 = +1            (guard removed)
+   q0 → q1   Δq0 = -1, Δq1 = +1
+   depart    Δq1 = -1            when q1 > 0
+   always  0 ≤ q0, q1 ≤ CAP
+   ⇒ Spacer: SAT — q0 → CAP+1 escapes the box"""),
+    (PURPLE, """E — claim Thermostat      (band 18–22)
+   state  temp
+   on : Bool                  ← free, synthesized
+   Δtemp = GAIN·on - LOSS
+   always   18 ≤ temp ≤ 22
+   minimize Σ on              ← prefer off
+   ⇒ bang-bang loop: on at 18, off at 22"""),
+]
+
+
+def draw_definitions(ax):
+    ax.axis("off")
+    ax.text(0.0, 1.0, "Model definitions", transform=ax.transAxes,
+            va="top", ha="left", fontsize=15, weight="bold", color=INK)
+    ax.text(0.0, 0.972, "the surface syntax behind each portrait   (Δ = change per tick)",
+            transform=ax.transAxes, va="top", ha="left", fontsize=9.5,
+            color=MUTED, style="italic")
+    y = 0.935                                    # auto-stack cards by line count
+    for accent, body in DEFS:
+        ax.text(0.0, y, body, transform=ax.transAxes, va="top", ha="left",
+                family="monospace", fontsize=9.5, color=INK, linespacing=1.42,
+                bbox=dict(boxstyle="round,pad=0.55", fc="#fbfcfe",
+                          ec=accent, lw=1.5))
+        y -= (body.count("\n") + 1) * 0.0152 + 0.033
+
+
 def main():
     CAP = 6
     safe = prove_queue(CAP, guarded=True)
     leak = prove_queue(CAP, guarded=False)
     print("Spacer  safe(guarded):", safe, " leak(unguarded):", leak, flush=True)
 
-    fig, axes = plt.subplots(2, 2, figsize=(13, 13))
-    fig.suptitle("Phase portraits of a transition model",
-                 fontsize=19, color=INK, weight="bold", x=0.5, y=0.975)
-    fig.text(0.5, 0.943,
+    fig = plt.figure(figsize=(18, 15))
+    fig.suptitle("Phase portraits of a transition model — and the models behind them",
+                 fontsize=20, color=INK, weight="bold", x=0.5, y=0.975)
+    fig.text(0.5, 0.948,
              "flow over state space  ·  fixed points  ·  limit cycles  ·  "
-             "Spacer-proven trapping regions  ·  counterexample",
-             ha="center", fontsize=10.5, color=MUTED)
-    panel_sink(axes[0, 0])
-    panel_cycle(axes[0, 1])
-    panel_daemon(axes[1, 0], CAP, True, safe)
-    panel_daemon(axes[1, 1], CAP, False, leak)
-    fig.tight_layout(rect=(0, 0, 1, 0.93))
+             "Spacer-proven trapping regions  ·  counterexample  ·  synthesized control",
+             ha="center", fontsize=11, color=MUTED)
+
+    outer = fig.add_gridspec(1, 2, width_ratios=[1.5, 1.0], wspace=0.07,
+                             left=0.05, right=0.985, top=0.925, bottom=0.045)
+    grid = outer[0].subgridspec(3, 2, hspace=0.4, wspace=0.24,
+                                height_ratios=[1, 1, 0.72])
+    panel_sink(fig.add_subplot(grid[0, 0]))
+    panel_cycle(fig.add_subplot(grid[0, 1]))
+    panel_daemon(fig.add_subplot(grid[1, 0]), CAP, True, safe)
+    panel_daemon(fig.add_subplot(grid[1, 1]), CAP, False, leak)
+    panel_thermostat(fig.add_subplot(grid[2, :]))
+    draw_definitions(fig.add_subplot(outer[1]))
 
     out = os.path.join(os.path.dirname(__file__), "results", "phase_portrait.png")
     os.makedirs(os.path.dirname(out), exist_ok=True)
