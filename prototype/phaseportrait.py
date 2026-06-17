@@ -112,7 +112,7 @@ def _grid(model, name, lo, hi, n):
 
 def render(ax, model, xaxis, yaxis=None, xr=(0, 1), yr=None, *, fixed=None,
            n=21, max_succ=1, style="field", seeds=(), tsteps=360, safe_box=None,
-           prove=False, title=None, traj_colors=None):
+           prove=False, title=None, traj_colors=None, equal=False):
     oned = yaxis is None                              # 1-D state -> a number line
     fixed = fixed or {}
     if oned and yr is None:
@@ -191,13 +191,14 @@ def render(ax, model, xaxis, yaxis=None, xr=(0, 1), yr=None, *, fixed=None,
         ax.set_ylabel(yaxis, fontsize=9, color=MUTED, rotation=0, labelpad=10)
     for sp in ax.spines.values():
         sp.set_color("#d2d6de")
-    ax.set_title(title or model.name, fontsize=11.5, color=INK, loc="left", pad=7)
+    ax.set_title(title if title is not None else model.name,
+                 fontsize=11.5, color=INK, loc="left", pad=7)
     if verdict is not None:
         ok = verdict == z3.unsat
         ax.text(0.5, -0.17, "Spacer: UNSAT — proved safe" if ok
                 else "Spacer: SAT — box refuted", transform=ax.transAxes,
                 ha="center", fontsize=9.5, weight="bold", color=GREEN if ok else RED)
-    if not oned and model.sorts[xaxis] == model.sorts[yaxis] == "Int":
+    if equal and not oned:
         ax.set_aspect("equal")
 
 
@@ -259,7 +260,7 @@ def main():
            seeds=[{"x": 1.8, "y": 1.2}, {"x": -1.8, "y": -1.2},
                   {"x": 0.05, "y": 1.6}, {"x": -0.05, "y": -1.6}])
     render(axes[1, 1], queue_daemon(), "q0", "q1", (-0.6, 7.6), (-0.6, 7.6),
-           style="fan", max_succ=6, prove=True,
+           style="fan", max_succ=6, prove=True, equal=True,
            safe_box={"q0": (0, 6), "q1": (0, 6)})
 
     fig.tight_layout(rect=(0, 0, 1, 0.93))
