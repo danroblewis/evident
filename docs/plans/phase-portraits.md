@@ -409,6 +409,17 @@ octagon wall: the proof, animated.
 - **Set-valued flow is hard to draw.** A relation gives a *fan* of arrows per
   point; dense fans clutter. Aggregation (draw the post-image *region*, not every
   arrow) scales better but loses the per-choice detail.
+- **A direction field lies for area-preserving / injective maps.** Normalized
+  arrows imply trajectories *converge* — true for **dissipative** dynamics (the
+  damped oscillator really does spiral into the fixed point; folds really do flow
+  to a halt line). But a bijective map (`|det| = 1`, e.g. Fibonacci `(a,b)→(b,a+b)`,
+  det −1) has **disjoint orbits that never merge** — the arrows only point along
+  the global eigendirection, so the field falsely suggests gray states "flow into"
+  the highlighted orbit when no state ever maps onto another orbit. The honest view
+  for such a map is its **orbits / conserved level sets** (Fibonacci lives on the
+  hyperbola `|a²+ab−b²|=1`, Lucas on `=5` — disjoint curves; see
+  `prototype/fibonacci_honest.py`), not a merged-looking direction field. Rule:
+  draw a field only when the dynamics actually contract; otherwise draw orbits.
 - **Sampling bias and the soundness split (II.7).** Witnessed points are an
   under-approximation; proven regions are an over-approximation; conflating them
   lies in one of two directions. Near-uniform sampling is itself nontrivial.
