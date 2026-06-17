@@ -35,7 +35,28 @@ import phaseportrait as pp
 from benchsuite import pretty
 from models.core import Transition
 from models.examples import (SumTo, ListSum, ListMax, Gcd, RunningMean,
-                             Fibonacci, TokenBucket)
+                             Fibonacci, TokenBucket, EXAMPLE_SEQ)
+
+
+def _sum_path(seq):
+    idx, acc, p = 0, 0, [(0, 0)]
+    for v in seq:
+        idx, acc = idx + 1, acc + v; p.append((idx, acc))
+    return p
+
+
+def _max_path(seq):
+    idx, best, p = 0, 0, [(0, 0)]
+    for v in seq:
+        idx, best = idx + 1, max(best, v); p.append((idx, best))
+    return p
+
+
+def _mean_path(seq):
+    n, avg, p = 0, 0.0, [(0, 0.0)]
+    for v in seq:
+        avg = avg + (v - avg) / (n + 1); n += 1; p.append((n, avg))
+    return p
 
 INK = "#2a2c34"; MUTED = "#6b7080"
 ACCENTS = ["#2868d2", "#0e8a8a", "#1f9e6d", "#8a4fbf", "#c0612a", "#b8398a"]
@@ -97,21 +118,19 @@ PANELS = [
      "sum_to  (i, acc)",
      "Tail-recursive accumulator. The flow funnels into the i=0 halt line; the\n"
      "trajectory from (5,0) lands at (0,15) — and 15 IS the sum 1..5."),
-    (ListSum, dict(ranges={"idx": (-0.5, 8.5), "acc": (-2, 34)}, style="fan",
-                   max_succ=1, seeds=[{"idx": 0, "acc": 0}],
-                   reachable=[{"idx": 0, "acc": 0}],
-                   title="list_sum · sum a sequence   (algorithm)"),
+    (ListSum, dict(ranges={"idx": (-0.5, 7), "acc": (-1, 19)}, style="fan",
+                   max_succ=6, paths=[_sum_path(EXAMPLE_SEQ)],
+                   title="list_sum · sum a sequence   (real z3 Seq)"),
      "list_sum  (idx, acc)",
-     "sum_to over DATA, not the counter: accumulates LIST[idx] = [3,1,4,1,5,9,2,6].\n"
-     "Flows right to idx=8, settling at acc=31 — the total. (Same list as list_max,\n"
-     "which folds the same data to its max, 9.)"),
-    (ListMax, dict(ranges={"idx": (-0.5, 8.5), "best": (-1.5, 10.5)}, style="fan",
-                   max_succ=1, seeds=[{"idx": 0, "best": 0}],
-                   reachable=[{"idx": 0, "best": 0}],
-                   title="list_max · max over a list   (algorithm)"),
+     "Sum a SYMBOLIC z3 Seq (elements 0..3, length 0..6). The next element s[idx] is\n"
+     "unknown, so each state FANS to acc+0..3 — that fan is “sum ANY sequence”. The\n"
+     "bold path is one concrete example [2,1,3,0,2] → acc 8."),
+    (ListMax, dict(ranges={"idx": (-0.5, 7), "best": (-0.5, 4.5)}, style="fan",
+                   max_succ=6, paths=[_max_path(EXAMPLE_SEQ)],
+                   title="list_max · max over a sequence   (real z3 Seq)"),
      "list_max  (idx, best)",
-     "Iterative max over [3,1,4,1,5,9,2,6] (composes the `at` lookup sub-model).\n"
-     "Flows right to idx=8, settling at best=9 — the maximum."),
+     "Max over a symbolic z3 Seq: best' = max(best, s[idx]) for unknown element\n"
+     "0..3, so best fans upward. Bold path: example [2,1,3,0,2] → max 3."),
     (Gcd, dict(ranges={"a": (-0.5, 13), "b": (-0.5, 13)}, style="fan", max_succ=1,
                equal=True, seeds=[{"a": 12, "b": 8}, {"a": 13, "b": 5},
                                   {"a": 9, "b": 12}],
@@ -121,21 +140,20 @@ PANELS = [
      "Euclid: (a,b) → (b, a mod b) until b=0, then gcd is in `a`. TWO interacting\n"
      "variables — every trajectory flows onto the b=0 axis, where a is the answer\n"
      "(e.g. (12,8) → (8,4) → (4,0): gcd = 4)."),
-    (RunningMean, dict(ranges={"n": (-0.5, 8.5), "avg": (-0.5, 9.5)}, style="fan",
-                       max_succ=1, seeds=[{"n": 0, "avg": 0}],
-                       title="running_mean · online average   (algorithm)"),
+    (RunningMean, dict(ranges={"n": (-0.5, 7), "avg": (-0.5, 4)}, style="fan",
+                       max_succ=6, paths=[_mean_path(EXAMPLE_SEQ)],
+                       title="running_mean · online average   (real z3 Seq)"),
      "running_mean  (n, avg)",
-     "Streaming mean of [3,1,4,1,5,9,2,6], updated incrementally:\n"
-     "avg += (LIST[n] − avg)/(n+1).  avg (a Real) relaxes to the true mean 31/8 =\n"
-     "3.875 by n=8 — a real online-statistics pattern."),
+     "Welford online mean over a symbolic z3 Seq: avg += (s[n] − avg)/(n+1). The\n"
+     "unknown element fans avg; bold path is [2,1,3,0,2] → mean 1.6 (a Real)."),
     (Fibonacci, dict(ranges={"a": (-0.5, 9), "b": (-0.5, 9)}, style="fan",
                      max_succ=1, equal=True, seeds=[{"a": 0, "b": 1}],
                      reachable=[{"a": 0, "b": 1}],
                      title="fibonacci · (a,b)→(b,a+b)   (never halts)"),
      "fibonacci  (a, b)",
-     "NO halt: the flow shoots OUTWARD forever. With reachable highlighting, only\n"
-     "the orbit from (0,1) is the actual series — the ghosted grey field is the\n"
-     "transition at states Fibonacci never reaches (other seeds give other series)."),
+     "Deterministic, so drawn as ORBITS (a field would falsely imply they merge —\n"
+     "the map is a bijection). Bold = the series from (0,1); the grey orbits are\n"
+     "OTHER seeds (e.g. Lucas), disjoint hyperbolas that never touch it."),
     (Cache, dict(ranges={"n": (-0.6, 5.6)}, style="fan", max_succ=3,
                  seeds=[{"n": 0}], title="cache · sessions   (daemon, 1-D)"),
      "cache  (n)",
@@ -206,6 +224,7 @@ def render_to_file(tr, kw, header, blurb, accent, outdir):
         pp.render(ax, model, a, b, ranges[a], ranges[b], fixed=fixed, style=style,
                   max_succ=ms, equal=equal, seeds=(seeds if not held else []),
                   reachable=(kw.get("reachable") if not held else None),
+                  paths=(kw.get("paths") if not held else None),
                   title=(f"{a} × {b}{tag}" if len(pairs) > 1 else ""))
     _code_card(fig, outer[1], body, accent)
 

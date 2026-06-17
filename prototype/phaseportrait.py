@@ -139,9 +139,25 @@ def _reachable_set(model, inits, xaxis, yaxis, xr, yr, fixed, max_succ, cap=4000
     return set(seen.keys())
 
 
+def _is_deterministic(model, XS, YS, xaxis, yaxis, fixed, probes=12):
+    """Sample some grid states: if every one has a single successor, the model is
+    deterministic and should be drawn as ORBITS, not a (misleading) field."""
+    seen = 0
+    for X in XS[::max(1, len(XS) // 4)]:
+        for Y in YS[::max(1, len(YS) // 4)]:
+            pt = {**fixed, xaxis: X, yaxis: Y}
+            if len(successors(model, pt, 2)) > 1:
+                return False
+            seen += 1
+            if seen >= probes:
+                return True
+    return True
+
+
 def render(ax, model, xaxis, yaxis=None, xr=(0, 1), yr=None, *, fixed=None,
            n=21, max_succ=1, style="field", seeds=(), tsteps=360, safe_box=None,
-           prove=False, title=None, traj_colors=None, equal=False, reachable=None):
+           prove=False, title=None, traj_colors=None, equal=False, reachable=None,
+           orbits=None, paths=None):
     oned = yaxis is None                              # 1-D state -> a number line
     fixed = fixed or {}
     if oned and yr is None:
@@ -172,9 +188,17 @@ def render(ax, model, xaxis, yaxis=None, xr=(0, 1), yr=None, *, fixed=None,
                                facecolor=GREENFILL if ok else "#f6d4d4",
                                edgecolor=col, lw=2.3, zorder=0))
 
-    # flow: ask Z3 for each grid point's successor(s)
+    # deterministic models get ORBITS (a field falsely implies disjoint orbits
+    # merge — see phase-portraits.md "a direction field lies for injective maps").
+    det = orbits
+    if det is None and not oned:
+        det = _is_deterministic(model, XS, YS, xaxis, yaxis, fixed)
+    det = bool(det) and not oned
+
+    # one grid pass → successors, fixed points, reachability; plus field arrows OR
+    # the deterministic next-state map for tracing orbits.
     fx, fy, fu, fv, areach = [], [], [], [], []
-    fixed_pts, lattice, reach_pts = [], [], []
+    fixed_pts, lattice, reach_pts, nextof = [], [], [], {}
     for X in XS:
         for Y in YS:
             lattice.append((X, Y))
@@ -184,30 +208,54 @@ def render(ax, model, xaxis, yaxis=None, xr=(0, 1), yr=None, *, fixed=None,
             src_r = reach_keys is None or _statekey(model, pt) in reach_keys
             if reach_keys is not None and src_r:
                 reach_pts.append((X, Y))
-            succs = successors(model, pt, max_succ)
+            succs = successors(model, pt, 1 if det else max_succ)
             moved = [s for s in succs if max(map(abs, disp(s, X, Y))) > 1e-9]
             if succs and not moved:               # ONLY self-loops -> true fixed point
                 fixed_pts.append((X, Y))
-            for s in moved:                       # an idle self-loop just isn't drawn
-                d0, d1 = disp(s, X, Y)
-                fx.append(X); fy.append(Y); fu.append(d0); fv.append(d1)
-                areach.append(src_r)
-    fu, fv = np.array(fu, float), np.array(fv, float)
-    if style == "field" and len(fu):                  # normalize to a direction field
-        L = np.hypot(fu, fv); L[L == 0] = 1
-        step = 0.62 * min((xr[1] - xr[0]) / n, (yr[1] - yr[0]) / n)
-        fu, fv = fu / L * step, fv / L * step
-    elif len(fu):                                     # discrete: shrink the real jump
-        fu, fv = fu * 0.6, fv * 0.6
-    base_col = FLOW if style == "field" else FAN
-    qcolor = ([base_col if r else GHOST for r in areach]
-              if reach_keys is not None else base_col)
-    ax.quiver(fx, fy, fu, fv, color=qcolor, angles="xy", scale_units="xy",
-              scale=1, width=0.004, headwidth=4, headlength=5, zorder=2)
-    if style != "field" and lattice:                  # show the discrete lattice
-        lx, ly = zip(*lattice)
-        ax.plot(lx, ly, "o", color=GHOST if reach_keys is not None else FAN,
-                ms=2.3, zorder=1)
+            if det:
+                if moved:
+                    nextof[(X, Y)] = (moved[0][xaxis], moved[0][yaxis])
+            else:
+                for s in moved:                   # an idle self-loop just isn't drawn
+                    d0, d1 = disp(s, X, Y)
+                    fx.append(X); fy.append(Y); fu.append(d0); fv.append(d1)
+                    areach.append(src_r)
+
+    if det:                                           # trace each orbit once (dedup)
+        drawn = set()
+        for start in nextof:
+            if start in drawn:
+                continue
+            path, cur = [start], start
+            for _ in range(24):
+                drawn.add(cur)
+                nx = nextof.get(cur)
+                if nx is None:
+                    break
+                path.append(nx)
+                if nx in drawn or nx not in nextof:
+                    break
+                cur = nx
+            if len(path) > 1:
+                px, py = zip(*path)
+                ax.plot(px, py, "-", color=GHOST, lw=1.0, alpha=0.9, zorder=1)
+    else:                                             # direction / fan field
+        fu, fv = np.array(fu, float), np.array(fv, float)
+        if style == "field" and len(fu):              # normalize to a direction field
+            L = np.hypot(fu, fv); L[L == 0] = 1
+            step = 0.62 * min((xr[1] - xr[0]) / n, (yr[1] - yr[0]) / n)
+            fu, fv = fu / L * step, fv / L * step
+        elif len(fu):                                 # discrete: shrink the real jump
+            fu, fv = fu * 0.6, fv * 0.6
+        base_col = FLOW if style == "field" else FAN
+        qcolor = ([base_col if r else GHOST for r in areach]
+                  if reach_keys is not None else base_col)
+        ax.quiver(fx, fy, fu, fv, color=qcolor, angles="xy", scale_units="xy",
+                  scale=1, width=0.004, headwidth=4, headlength=5, zorder=2)
+        if style != "field" and lattice:              # show the discrete lattice
+            lx, ly = zip(*lattice)
+            ax.plot(lx, ly, "o", color=GHOST if reach_keys is not None else FAN,
+                    ms=2.3, zorder=1)
     if reach_pts:                                     # highlight the reachable states
         rx, ry = zip(*reach_pts)
         ax.plot(rx, ry, "o", color=INK, ms=3.4, zorder=4)
@@ -224,6 +272,10 @@ def render(ax, model, xaxis, yaxis=None, xr=(0, 1), yr=None, *, fixed=None,
             pt = sc[0]; xs.append(pt[xaxis]); ys.append(0.0 if oned else pt[yaxis])
         ax.plot(xs, ys, color=cols[i % len(cols)], lw=1.8,
                 marker="o" if oned else None, ms=4, zorder=3)
+    for i, p in enumerate(paths or []):               # explicit concrete trajectories
+        if p:
+            px, py = zip(*p)
+            ax.plot(px, py, "-o", color=cols[i % len(cols)], lw=2.2, ms=4, zorder=4)
 
     for (X, Y) in fixed_pts:                          # fixed points / halt set
         pt = {**fixed, xaxis: X}

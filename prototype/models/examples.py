@@ -39,47 +39,39 @@ SumToBounded = BoundedRec("sum_to", [("n", "Int"), ("acc", "Int")], "Int", _sum_
 #   (B) the runtime owns the unfolding — bounded, always decidable
 
 
-# ── list_max: a transition that COMPOSES a value sub-model `at` ────────────────
-LIST = [3, 1, 4, 1, 5, 9, 2, 6]
+# ── sequence models over a real z3 Seq: list_sum / list_max / running_mean ────
+# The sequence is a SYMBOLIC Seq variable `s` (elements 0..ELEMMAX, length 0..LMAX),
+# so these capture the GENERIC behaviour over ANY sequence: at each step the next
+# element s[idx] is UNKNOWN, so the state FANS OUT. A concrete EXAMPLE_SEQ is
+# overlaid as one path in the gallery. (Replaces the old if/else `at` chain, which
+# baked one fixed list in — a compile-time array, not a sequence.)
+SEQ = z3.SeqSort(z3.IntSort())
+ELEMMAX, LMAX = 3, 6
+EXAMPLE_SEQ = [2, 1, 3, 0, 2]
 
 
-def _at(idx):                              # value sub-model: LIST[idx] as a lookup
-    e = z3.IntVal(LIST[-1])
-    for j in range(len(LIST) - 2, -1, -1):
-        e = z3.If(idx == j, z3.IntVal(LIST[j]), e)
-    return e
-
-
-At = Model("at", [("idx", "Int")], _at)
-
-
-def _max_step(cur, nxt):
-    idx, best = cur["idx"], cur["best"]
-    v = At(idx)                            # <-- compose the `at` sub-model
-    return z3.If(idx == len(LIST),
-                 z3.And(nxt["idx"] == idx, nxt["best"] == best),    # base: hold
-                 z3.And(nxt["idx"] == idx + 1,
-                        nxt["best"] == z3.If(v > best, v, best)))    # else: max-scan
-
-
-ListMax = Transition("list_max", [("idx", "Int"), ("best", "Int")],
-                     _max_step, uses=("at",))
-
-
-# ── list_sum: sum a SEQUENCE (sum_to over data, not the counter) ──────────────
-# Identical shape to sum_to, but accumulates LIST[idx] instead of the index i —
-# so it sums real data. Composes the same `at` lookup as list_max (same list,
-# different fold: list_max -> 9, list_sum -> 31).
-def _sum_seq_step(cur, nxt):
+def _seq_sum_step(cur, nxt):
     idx, acc = cur["idx"], cur["acc"]
-    v = At(idx)                            # <-- the sequence element LIST[idx]
-    return z3.If(idx == len(LIST),
-                 z3.And(nxt["idx"] == idx, nxt["acc"] == acc),       # base: hold
-                 z3.And(nxt["idx"] == idx + 1, nxt["acc"] == acc + v))  # accumulate
+    s = z3.Const("s", SEQ); v = s[idx]                 # s[idx] = Nth(s, idx)
+    return z3.And(z3.Length(s) >= 0, z3.Length(s) <= LMAX, z3.Or(
+        z3.And(idx == z3.Length(s), nxt["idx"] == idx, nxt["acc"] == acc),    # ended
+        z3.And(idx < z3.Length(s), v >= 0, v <= ELEMMAX,                      # continues:
+               nxt["idx"] == idx + 1, nxt["acc"] == acc + v)))                #  acc += s[idx]
 
 
-ListSum = Transition("list_sum", [("idx", "Int"), ("acc", "Int")],
-                     _sum_seq_step, uses=("at",))
+ListSum = Transition("list_sum", [("idx", "Int"), ("acc", "Int")], _seq_sum_step)
+
+
+def _seq_max_step(cur, nxt):
+    idx, best = cur["idx"], cur["best"]
+    s = z3.Const("s", SEQ); v = s[idx]
+    return z3.And(z3.Length(s) >= 0, z3.Length(s) <= LMAX, z3.Or(
+        z3.And(idx == z3.Length(s), nxt["idx"] == idx, nxt["best"] == best),
+        z3.And(idx < z3.Length(s), v >= 0, v <= ELEMMAX, nxt["idx"] == idx + 1,
+               nxt["best"] == z3.If(v > best, v, best))))
+
+
+ListMax = Transition("list_max", [("idx", "Int"), ("best", "Int")], _seq_max_step)
 
 
 # ── gcd: Euclid's algorithm — two interacting variables ──────────────────────
@@ -93,25 +85,18 @@ def _gcd_step(cur, nxt):
 Gcd = Transition("gcd", [("a", "Int"), ("b", "Int")], _gcd_step)
 
 
-# ── running_mean: an ONLINE average (Welford-style incremental update) ────────
-def _at_real(idx):
-    e = z3.RealVal(LIST[-1])
-    for j in range(len(LIST) - 2, -1, -1):
-        e = z3.If(idx == j, z3.RealVal(LIST[j]), e)
-    return e
-
-
-def _mean_step(cur, nxt):
+# ── running_mean: an ONLINE average over the same Seq (Welford-style) ─────────
+def _seq_mean_step(cur, nxt):
     n, avg = cur["n"], cur["avg"]
-    v = _at_real(n)
-    return z3.If(n == len(LIST),
-                 z3.And(nxt["n"] == n, nxt["avg"] == avg),                  # done
-                 z3.And(nxt["n"] == n + 1,
-                        nxt["avg"] == avg + (v - avg) / (z3.ToReal(n) + 1)))  # update
+    s = z3.Const("s", SEQ); v = s[n]
+    return z3.And(z3.Length(s) >= 0, z3.Length(s) <= LMAX, z3.Or(
+        z3.And(n == z3.Length(s), nxt["n"] == n, nxt["avg"] == avg),
+        z3.And(n < z3.Length(s), v >= 0, v <= ELEMMAX, nxt["n"] == n + 1,
+               nxt["avg"] == avg + (z3.ToReal(v) - avg) / (z3.ToReal(n) + 1))))
 
 
 RunningMean = Transition("running_mean", [("n", "Int"), ("avg", "Real")],
-                         _mean_step, uses=("at",))
+                         _seq_mean_step)
 
 
 # ── fibonacci: a transition that NEVER halts — flows outward forever ──────────
@@ -148,14 +133,14 @@ def main():
         SumTo, submodels=[], init={"i": 5, "acc": 0}, fuel=5,
         done=lambda v: v["i"] == 0)
     s2, b_one, b_inc = section_md(
-        f"list_max — iterative max over {LIST}",
-        ListMax, submodels=[At], init={"idx": 0, "best": -999},
-        fuel=len(LIST), done=lambda v: v["idx"] == len(LIST))
+        "list_max — max over a symbolic z3 Seq (the solver picks one sequence)",
+        ListMax, submodels=[], init={"idx": 0, "best": 0},
+        fuel=LMAX, done=lambda v: v["idx"] >= LMAX)
     path = os.path.join(out, "models.md")
     write_report(path, "Sub-model composition — prettified Z3-AST report",
                  [s0, sB, s1, s2])
     print(f"sum_to   one-shot/incremental: {a_one} / {a_inc}  (expect 15)")
-    print(f"list_max one-shot/incremental: {b_one} / {b_inc}  (expect {max(LIST)})")
+    print(f"list_max one-shot/incremental: {b_one} / {b_inc}  (some Seq, max<=ELEMMAX)")
     print(f"wrote {os.path.relpath(os.path.abspath(path))}")
 
 
