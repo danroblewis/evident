@@ -69,31 +69,6 @@ fn vec_compound_subtraction() {
     check_int(r.bindings.get("dragged.pos.y"), 270, "dragged.pos.y");
 }
 
-/// Pure scalar broadcast must NOT happen — `vec = 5` would silently
-/// expand to `vec.x = 5 ∧ vec.y = 5`. The guard rejects it (no record
-/// reference in RHS), so the constraint drops and the runtime errors.
-/// Verified via subprocess so we can observe the dropped-constraint
-/// fatal exit.
-#[test]
-fn vec_scalar_broadcast_is_rejected() {
-    use std::io::Write;
-    use std::process::Command;
-    let mut path = std::env::temp_dir();
-    path.push(format!("evident-vec-scalar-{}.ev", std::process::id()));
-    let mut f = std::fs::File::create(&path).unwrap();
-    let src = format!("{VEC2}schema S\n    v ∈ IVec2\n    v = 5\n");
-    f.write_all(src.as_bytes()).unwrap();
-    let out = Command::new(env!("CARGO_BIN_EXE_evident"))
-        .args(["query", path.to_str().unwrap(), "S"])
-        .output().unwrap();
-    assert!(!out.status.success(), "scalar broadcast must drop");
-    let stderr = String::from_utf8_lossy(&out.stderr);
-    assert!(
-        stderr.contains("dropped constraint"),
-        "expected dropped-constraint, got:\n{stderr}"
-    );
-}
-
 /// Field-of-Index LHS: `state_next.dots[i].pos = state.dots[i].pos +
 /// state.dots[i].vel` — the per-dot physics shape. Both LHS and RHS
 /// are Field-of-Index records on the same Seq.

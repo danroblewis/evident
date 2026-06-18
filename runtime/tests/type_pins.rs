@@ -112,22 +112,3 @@ fn pin_value_can_be_an_expression() {
     assert_eq!(r.bindings.get("offset.y"), Some(&Value::Int(400)));
 }
 
-/// Pin a field that doesn't exist on the type. `IVec2.z` is bogus.
-/// The pin fires `v.z = 0` as a constraint; since `v.z` isn't in env,
-/// the constraint can't translate and drops with the runtime's
-/// dropped-constraint error. Subprocess-tested so we can observe the
-/// fatal exit.
-#[test]
-fn pin_unknown_field_is_an_error() {
-    use std::io::Write;
-    use std::process::Command;
-    let mut path = std::env::temp_dir();
-    path.push(format!("evident-pin-bogus-{}.ev", std::process::id()));
-    let mut f = std::fs::File::create(&path).unwrap();
-    let src = format!("{VEC2}schema S\n    v ∈ IVec2 (z ↦ 0)\n");
-    f.write_all(src.as_bytes()).unwrap();
-    let out = Command::new(env!("CARGO_BIN_EXE_evident"))
-        .args(["query", path.to_str().unwrap(), "S"])
-        .output().unwrap();
-    assert!(!out.status.success(), "unknown-field pin must error");
-}

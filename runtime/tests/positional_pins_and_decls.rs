@@ -51,25 +51,6 @@ fn positional_pins_partial_pins_leading_fields() {
     assert_eq!(r.bindings.get("v.y"), Some(&Value::Int(99)));
 }
 
-/// Too many args — pinning fields that don't exist on the type.
-/// Hard error.
-#[test]
-fn positional_pins_too_many_is_an_error() {
-    use std::io::Write;
-    use std::process::Command;
-    let mut path = std::env::temp_dir();
-    path.push(format!("evident-pos-too-many-{}.ev", std::process::id()));
-    let mut f = std::fs::File::create(&path).unwrap();
-    let src = "type IVec2(x, y ∈ Int)\nschema S\n    v ∈ IVec2(1, 2, 3)\n";
-    f.write_all(src.as_bytes()).unwrap();
-    let out = Command::new(env!("CARGO_BIN_EXE_evident"))
-        .args(["query", path.to_str().unwrap(), "S"])
-        .output().unwrap();
-    assert!(!out.status.success(), "too many positional args must error");
-    let stderr = String::from_utf8_lossy(&out.stderr);
-    assert!(stderr.contains("too many positional"), "expected too-many error: {stderr}");
-}
-
 /// Multi-name in the body: `x, y ∈ Int` declares two fields with
 /// the same type. Order preserved.
 #[test]

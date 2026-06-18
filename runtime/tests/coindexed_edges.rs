@@ -105,20 +105,3 @@ fn exists_tuple_binding() {
     assert_eq!(r.bindings.get("flag"), Some(&Value::Bool(true)));
 }
 
-/// Coindexed arity mismatch (2 vars, 3 seqs): translator returns None,
-/// dropped-constraint policy kicks in. Subprocess test so the fatal
-/// exit doesn't kill the harness.
-#[test]
-fn coindexed_arity_mismatch_is_an_error() {
-    use std::io::Write;
-    use std::process::Command;
-    let mut path = std::env::temp_dir();
-    path.push(format!("evident-coindex-arity-{}.ev", std::process::id()));
-    let mut f = std::fs::File::create(&path).unwrap();
-    let src = "schema S\n    a ∈ Seq(Int)\n    b ∈ Seq(Int)\n    c ∈ Seq(Int)\n    #a = 2\n    #b = 2\n    #c = 2\n    ∀ (x, y) ∈ coindexed(a, b, c) : x = y\n";
-    f.write_all(src.as_bytes()).unwrap();
-    let out = Command::new(env!("CARGO_BIN_EXE_evident"))
-        .args(["query", path.to_str().unwrap(), "S"])
-        .output().unwrap();
-    assert!(!out.status.success(), "arity mismatch must error");
-}

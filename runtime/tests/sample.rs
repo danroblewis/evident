@@ -1,23 +1,9 @@
 //! Tests for the blocking-clause `sample` loop. Exercises the
-//! `EvidentRuntime::sample` API and the `evident sample` CLI.
+//! `EvidentRuntime::sample` API.
 
 use std::collections::HashSet;
-use std::io::Write;
-use std::process::Command;
 
 use evident_runtime::{EvidentRuntime, Value};
-
-fn bin() -> &'static str {
-    env!("CARGO_BIN_EXE_evident")
-}
-
-fn write_tmp(name: &str, body: &str) -> std::path::PathBuf {
-    let mut path = std::env::temp_dir();
-    path.push(format!("evident-sample-test-{}-{}.ev", std::process::id(), name));
-    let mut f = std::fs::File::create(&path).unwrap();
-    f.write_all(body.as_bytes()).unwrap();
-    path
-}
 
 /// `n ∈ Int ; n > 0 ; n < 6` has exactly five satisfying ints
 /// (1..=5). Sampling with -n 5 should return all five distinct.
@@ -72,39 +58,4 @@ fn sample_with_given_partially_pinned() {
         .map(|s| if let Some(Value::Int(n)) = s.get("b") { *n } else { unreachable!() })
         .collect();
     assert_eq!(bs, HashSet::from([1, 2, 3, 4]));
-}
-
-/// CLI smoke: -n 3 prints three distinct samples on a 5-solution schema.
-#[test]
-fn cli_sample_returns_distinct_models() {
-    let path = write_tmp("five",
-        "schema S\n    n ∈ Int\n    n > 0\n    n < 6\n");
-    let out = Command::new(bin())
-        .args(["sample", path.to_str().unwrap(), "S", "-n", "3"])
-        .output().unwrap();
-    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
-    let s = String::from_utf8_lossy(&out.stdout);
-    // Count "--- sample N ---" headers.
-    let header_count = s.lines().filter(|l| l.starts_with("--- sample ")).count();
-    assert_eq!(header_count, 3, "expected 3 sample headers, got {}: {}", header_count, s);
-    // Collect the n=… lines under each header; they must all be distinct.
-    let n_values: HashSet<&str> = s.lines()
-        .filter_map(|l| l.strip_prefix("n="))
-        .collect();
-    assert_eq!(n_values.len(), 3, "expected 3 distinct n values, got {:?}", n_values);
-}
-
-/// CLI smoke: requesting more than the solution count returns only the
-/// available solutions and doesn't hang.
-#[test]
-fn cli_sample_stops_at_unsat() {
-    let path = write_tmp("five-cap",
-        "schema S\n    n ∈ Int\n    n > 0\n    n < 6\n");
-    let out = Command::new(bin())
-        .args(["sample", path.to_str().unwrap(), "S", "-n", "100"])
-        .output().unwrap();
-    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
-    let s = String::from_utf8_lossy(&out.stdout);
-    let header_count = s.lines().filter(|l| l.starts_with("--- sample ")).count();
-    assert_eq!(header_count, 5, "expected exactly 5 samples, got {}", header_count);
 }

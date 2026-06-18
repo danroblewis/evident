@@ -4,11 +4,12 @@
 pub mod common;
 
 pub mod check;
-pub mod desugar;
 pub mod effect_run;
-pub mod infer_types;
 pub mod lint;
-pub mod profile;
-pub mod query;
-pub mod sample;
 pub mod test;
+
+// Not CLI subcommands: these hold the load-time desugar / type-inference
+// passes that run automatically (auto_apply_*), called by the commands
+// above. TODO: relocate into a dedicated runtime module (naming TBD).
+pub mod desugar;
+pub mod infer_types;

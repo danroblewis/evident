@@ -129,33 +129,6 @@ fn record_lift_nested_struct() {
     close(r.bindings.get("b.tag"), 9.0, "b.tag");
 }
 
-/// Cross-type comparison (Vec2 vs Vec3) is shape-mismatched. The lift
-/// must return `None` rather than silently lifting only the overlap
-/// {x, y} and ignoring Vec3's extra `z`. With the runtime's default
-/// dropped-constraint policy, that None propagates to a fatal error;
-/// in lenient mode it warns. We test via subprocess so we can observe
-/// the exit code and stderr — `process::exit` would tank the test
-/// harness if invoked in-process.
-#[test]
-fn record_lift_shape_mismatch_is_an_error() {
-    use std::io::Write;
-    use std::process::Command;
-    let mut path = std::env::temp_dir();
-    path.push(format!("evident-record-lift-mismatch-{}.ev", std::process::id()));
-    let mut f = std::fs::File::create(&path).unwrap();
-    let src = format!("{VEC2}{VEC3}schema S\n    a ∈ Vec2\n    b ∈ Vec3\n    a = b\n");
-    f.write_all(src.as_bytes()).unwrap();
-    let out = Command::new(env!("CARGO_BIN_EXE_evident"))
-        .args(["query", path.to_str().unwrap(), "S"])
-        .output().unwrap();
-    assert!(!out.status.success(), "shape mismatch should be fatal");
-    let stderr = String::from_utf8_lossy(&out.stderr);
-    assert!(
-        stderr.contains("dropped constraint"),
-        "expected dropped-constraint error, stderr was:\n{stderr}"
-    );
-}
-
 /// Lift mixed with explicit per-field constraints. The lift's
 /// conjunction must AND with the rest of the body, not replace it.
 #[test]

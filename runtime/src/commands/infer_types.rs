@@ -20,7 +20,6 @@
 //!   3 — no rule matched (the program doesn't fit any v0.1 pattern)
 
 use std::path::Path;
-use std::process::ExitCode;
 
 use evident_runtime::{EvidentRuntime, Value};
 
@@ -255,44 +254,4 @@ fn render_bindings(rule: &str, b: &std::collections::HashMap<String, Value>)
     None
 }
 
-/// `evident infer-types <file.ev>` — Stage 6 user-facing self-hosted
-/// inference. Loads the user's file in an isolated runtime, runs
-/// every inference rule, and prints each `(claim, var, type)` triple
-/// it finds. Does not mutate any caller state — this is the
-/// report-only verb. Use `evident query --strict … false` (or the
-/// default non-strict path) to get the rewrites APPLIED to a query.
-///
-/// Exit codes:
-///   0 — at least one inference produced bindings
-///   1 — load / encode error
-///   2 — usage error
-///   3 — pipeline ran cleanly but matched nothing
-pub fn cmd_infer_types(args: &[String]) -> ExitCode {
-    if args.is_empty() {
-        eprintln!("infer-types: need <file.ev>");
-        eprintln!("       evident infer-types <file.ev>");
-        eprintln!();
-        eprintln!("Loads stdlib/ast.ev + the inference passes, runs every");
-        eprintln!("rule against the user's source, and prints each");
-        eprintln!("(claim, var, type) inference. Read-only — does not");
-        eprintln!("modify the file.");
-        return ExitCode::from(2);
-    }
-    let user_files: Vec<String> = args.to_vec();
-    let inferences = match collect_inferences(&user_files) {
-        Ok(v) => v,
-        Err(e) => { eprintln!("error: {e}"); return ExitCode::from(1); }
-    };
-    if inferences.is_empty() {
-        println!("no type inferences matched.");
-        return ExitCode::from(3);
-    }
-    for inf in &inferences {
-        println!("{}: {} ∈ {}", inf.claim_name, inf.var, inf.type_name);
-    }
-    eprintln!();
-    eprintln!("{} inference(s) ({} unambiguous)",
-              inferences.len(), unambiguous_inferences(&inferences).len());
-    ExitCode::SUCCESS
-}
 

@@ -17,46 +17,6 @@ fn write_tmp(name: &str, body: &str) -> std::path::PathBuf {
     path
 }
 
-#[test]
-fn cli_query_sat_prints_bindings() {
-    let path = write_tmp("simple",
-        "schema Pair\n    a ∈ Nat\n    b ∈ Nat\n    a + b = 10\n    a > 0\n    b > 0\n");
-    let out = Command::new(bin()).args(["query", path.to_str().unwrap(), "Pair"])
-        .output().unwrap();
-    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
-    let s = String::from_utf8_lossy(&out.stdout);
-    // Both bindings present; values satisfy a + b = 10.
-    let mut a = 0; let mut b = 0;
-    for line in s.lines() {
-        if let Some(v) = line.strip_prefix("a=") { a = v.parse::<i64>().unwrap(); }
-        if let Some(v) = line.strip_prefix("b=") { b = v.parse::<i64>().unwrap(); }
-    }
-    assert_eq!(a + b, 10);
-}
-
-#[test]
-fn cli_query_unsat_exits_1() {
-    let path = write_tmp("unsat", "schema Bad\n    n ∈ Nat\n    n > 10\n    n < 3\n");
-    let out = Command::new(bin()).args(["query", path.to_str().unwrap(), "Bad"])
-        .output().unwrap();
-    assert!(!out.status.success());
-    assert_eq!(out.status.code(), Some(1));
-    assert!(String::from_utf8_lossy(&out.stdout).contains("UNSAT"));
-}
-
-#[test]
-fn cli_query_with_given() {
-    let path = write_tmp("given",
-        "schema S\n    a ∈ Nat\n    b ∈ Nat\n    a + b = 10\n");
-    let out = Command::new(bin())
-        .args(["query", path.to_str().unwrap(), "S", "--given", "a=7"])
-        .output().unwrap();
-    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
-    let s = String::from_utf8_lossy(&out.stdout);
-    assert!(s.contains("a=7"));
-    assert!(s.contains("b=3"));
-}
-
 /// Run the CLI against a real example file from examples/. Exercises
 /// types, claims with sub-schema mapping, ClaimCall, and field access
 /// — a realistic mix.
@@ -96,20 +56,6 @@ fn cli_test_runs_sat_unsat_claims() {
     let _ = std::fs::remove_file(&renamed);
 }
 
-#[test]
-fn cli_query_json_output() {
-    let path = write_tmp("json", "schema S\n    n ∈ Nat\n    n = 7\n");
-    let out = Command::new(bin())
-        .args(["query", path.to_str().unwrap(), "S", "--json"])
-        .output().unwrap();
-    assert!(out.status.success());
-    let s = String::from_utf8_lossy(&out.stdout);
-    assert!(s.contains("\"satisfied\": true"));
-    assert!(s.contains("\"n\": 7"));
-}
-
-
-
 /// Confirms the new `--width / --height / --title / --host / --port`
 /// flags parse cleanly and the program still gets to the executor
 /// entry point. The .ev file is the same trivial echo automaton from
@@ -130,107 +76,9 @@ fn cli_query_json_output() {
 /// UNSAT warning. Verifies the pretty-printer is wired in (looks for
 /// the readable form of `counter < 0`, not the AST debug form).
 
-/// `s = ⟨10, 20, 30⟩` — Unicode angle-bracket sequence literal end-to-end
-/// through the binary (lexer + parser + translator + extraction + stdout).
-#[test]
-fn cli_query_seq_literal() {
-    let path = write_tmp("seqlit",
-        "schema S\n    s ∈ Seq(Int)\n    s = ⟨10, 20, 30⟩\n");
-    let out = Command::new(bin()).args(["query", path.to_str().unwrap(), "S"])
-        .output().unwrap();
-    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
-    let s = String::from_utf8_lossy(&out.stdout);
-    assert!(s.contains("s=[10, 20, 30]"), "expected 's=[10, 20, 30]' in: {s}");
-}
-
 // ---------------------------------------------------------------------------
 // import "path"
 // ---------------------------------------------------------------------------
-
-/// Helper: write `body` to a temp file at a specific absolute path
-/// (for tests that need files at known relative locations to each
-/// other). Returns the path.
-fn write_at(dir: &std::path::Path, name: &str, body: &str) -> std::path::PathBuf {
-    let p = dir.join(name);
-    if let Some(parent) = p.parent() {
-        std::fs::create_dir_all(parent).unwrap();
-    }
-    let mut f = std::fs::File::create(&p).unwrap();
-    f.write_all(body.as_bytes()).unwrap();
-    p
-}
-
-/// `import "lib.ev"` from a sibling file should resolve and the
-/// imported file's schemas should be queryable through the importing
-/// file.
-#[test]
-fn cli_import_loads_referenced_file() {
-    // Use a unique sub-directory under the OS temp dir so concurrent
-    // test runs don't collide on file names.
-    let dir = std::env::temp_dir().join(format!(
-        "evident-rt-import-{}-{}", std::process::id(), "loads"));
-    std::fs::create_dir_all(&dir).unwrap();
-    write_at(&dir, "lib.ev",
-        "type Point\n    x ∈ Int\n    y ∈ Int\n");
-    let main = write_at(&dir, "main.ev",
-        "import \"lib.ev\"\n\
-         schema HasPoint\n    p ∈ Point\n    p.x = 3\n    p.y = 7\n");
-    let out = Command::new(bin())
-        .args(["query", main.to_str().unwrap(), "HasPoint"])
-        .output().unwrap();
-    assert!(out.status.success(),
-        "stderr: {}", String::from_utf8_lossy(&out.stderr));
-    let s = String::from_utf8_lossy(&out.stdout);
-    assert!(s.contains("p.x=3"), "stdout: {s}");
-    assert!(s.contains("p.y=7"), "stdout: {s}");
-    let _ = std::fs::remove_dir_all(&dir);
-}
-
-/// A imports B, B imports A — the runtime should detect the cycle and
-/// not infinite-loop. Both files end up loaded exactly once.
-#[test]
-fn cli_import_cycle_safe() {
-    let dir = std::env::temp_dir().join(format!(
-        "evident-rt-import-{}-{}", std::process::id(), "cycle"));
-    std::fs::create_dir_all(&dir).unwrap();
-    write_at(&dir, "a.ev",
-        "import \"b.ev\"\n\
-         schema A\n    n ∈ Nat\n    n = 1\n");
-    write_at(&dir, "b.ev",
-        "import \"a.ev\"\n\
-         schema B\n    n ∈ Nat\n    n = 2\n");
-    let main = dir.join("a.ev");
-    let out = Command::new(bin())
-        .args(["query", main.to_str().unwrap(), "B"])
-        .output().unwrap();
-    assert!(out.status.success(),
-        "stderr: {}", String::from_utf8_lossy(&out.stderr));
-    let s = String::from_utf8_lossy(&out.stdout);
-    assert!(s.contains("n=2"), "stdout: {s}");
-    let _ = std::fs::remove_dir_all(&dir);
-}
-
-/// `import "sub/lib.ev"` from a file at /tmp/foo/main.ev should find
-/// /tmp/foo/sub/lib.ev — i.e. relative-to-file resolution works.
-#[test]
-fn cli_import_relative_to_file() {
-    let dir = std::env::temp_dir().join(format!(
-        "evident-rt-import-{}-{}", std::process::id(), "relpath"));
-    std::fs::create_dir_all(&dir).unwrap();
-    write_at(&dir, "sub/lib.ev",
-        "type Inner\n    z ∈ Int\n");
-    let main = write_at(&dir, "main.ev",
-        "import \"sub/lib.ev\"\n\
-         schema HasInner\n    i ∈ Inner\n    i.z = 42\n");
-    let out = Command::new(bin())
-        .args(["query", main.to_str().unwrap(), "HasInner"])
-        .output().unwrap();
-    assert!(out.status.success(),
-        "stderr: {}", String::from_utf8_lossy(&out.stderr));
-    let s = String::from_utf8_lossy(&out.stdout);
-    assert!(s.contains("i.z=42"), "stdout: {s}");
-    let _ = std::fs::remove_dir_all(&dir);
-}
 
 /// `parse` of every real demo from the parent project under
 /// `programs/sdl_demo/` and `programs/balls_demo/` should succeed.
@@ -247,42 +95,6 @@ fn cli_import_relative_to_file() {
 /// `next_main = "halt"` shuts the executor down cleanly. Verifies the
 /// MainCoordinator halt path: program runs at least one step, plugins
 /// produce their output, then the swap-check sees "halt" and breaks.
-
-/// Dropped constraints are now hard errors by default — silently
-/// dropping a constraint produces wrong models, so the runtime
-/// exits non-zero. `EVIDENT_LENIENT=1` demotes to a warning for
-/// mid-refactor work.
-#[test]
-fn cli_dropped_constraint_is_an_error() {
-    // `Set(Pos)` isn't supported (the runtime warns + drops); using
-    // it as the LHS of an equality forces translate_bool to fail and
-    // the constraint drops. With strict default, exits non-zero.
-    let path = write_tmp("dropped",
-        "schema S\n    s ∈ Set(Pos)\n    s = {1, 2}\n");
-    let out = Command::new(bin())
-        .args(["query", path.to_str().unwrap(), "S"])
-        .output().unwrap();
-    assert!(!out.status.success(),
-        "expected exit !=0 on dropped constraint; stdout: {}, stderr: {}",
-        String::from_utf8_lossy(&out.stdout),
-        String::from_utf8_lossy(&out.stderr));
-    let stderr = String::from_utf8_lossy(&out.stderr);
-    assert!(stderr.contains("error: dropped constraint"),
-        "expected error message in stderr: {stderr}");
-}
-
-#[test]
-fn cli_dropped_constraint_lenient_demotes_to_warning() {
-    let path = write_tmp("dropped_lenient",
-        "schema S\n    s ∈ Set(Pos)\n    s = {1, 2}\n");
-    let out = Command::new(bin())
-        .args(["query", path.to_str().unwrap(), "S"])
-        .env("EVIDENT_LENIENT", "1")
-        .output().unwrap();
-    let stderr = String::from_utf8_lossy(&out.stderr);
-    assert!(stderr.contains("warning: dropped constraint"),
-        "expected warning in stderr with EVIDENT_LENIENT=1: {stderr}");
-}
 
 /// `--initial-state file.json` seeds the first frame's `given` from
 /// JSON. Verifies the file is parsed and the values reach the
@@ -418,100 +230,3 @@ fn cli_lint_missing_file_exits_1() {
 
 // ── Stage 12+: --infer-types flag wires self-hosted inference ──
 //                into query
-
-#[test]
-fn cli_query_infer_types_succeeds_for_undeclared_vars() {
-    // Program with no ∈ Type annotations — inference fills them in.
-    let path = write_tmp("query_infer",
-        "claim t\n    msg = \"hello\"\n    n = 42\n    flag = true\n");
-    let manifest = env!("CARGO_MANIFEST_DIR");
-    let repo_root = std::path::Path::new(manifest).parent().unwrap();
-    let out = Command::new(bin())
-        .current_dir(repo_root)
-        .args(["query", path.to_str().unwrap(), "t"])
-        .output().unwrap();
-    assert!(out.status.success(),
-        "query with --infer-types should succeed; stderr: {}",
-        String::from_utf8_lossy(&out.stderr));
-    let s = String::from_utf8_lossy(&out.stdout);
-    // All three bindings should appear.
-    assert!(s.contains("msg=\"hello\""), "missing msg binding; got: {s}");
-    assert!(s.contains("n=42"),          "missing n binding; got: {s}");
-    assert!(s.contains("flag=true"),     "missing flag binding; got: {s}");
-    let _ = std::fs::remove_file(&path);
-}
-
-#[test]
-fn cli_query_without_infer_types_fails_for_undeclared_vars() {
-    // Same source — under --strict, no inference fires and the
-    // constraint `msg = "hello"` can't translate (no type for msg).
-    let path = write_tmp("query_no_infer",
-        "claim t\n    msg = \"hello\"\n");
-    let manifest = env!("CARGO_MANIFEST_DIR");
-    let repo_root = std::path::Path::new(manifest).parent().unwrap();
-    let out = Command::new(bin())
-        .current_dir(repo_root)
-        .args(["query", "--strict", path.to_str().unwrap(), "t"])
-        .output().unwrap();
-    assert!(!out.status.success(),
-        "under --strict, undeclared vars should fail the query");
-    let _ = std::fs::remove_file(&path);
-}
-
-#[test]
-fn cli_query_infer_types_announces_added_memberships() {
-    let path = write_tmp("query_infer_announce",
-        "claim t\n    msg = \"hi\"\n");
-    let manifest = env!("CARGO_MANIFEST_DIR");
-    let repo_root = std::path::Path::new(manifest).parent().unwrap();
-    let out = Command::new(bin())
-        .current_dir(repo_root)
-        .args(["query", path.to_str().unwrap(), "t"])
-        .output().unwrap();
-    let stderr = String::from_utf8_lossy(&out.stderr);
-    assert!(stderr.contains("inference: added"),
-        "expected announce message on stderr; got: {stderr}");
-    let _ = std::fs::remove_file(&path);
-}
-
-#[test]
-fn cli_query_infer_types_skips_already_declared_vars() {
-    // User already declared msg ∈ String. --infer-types should be
-    // idempotent: adds nothing (or the same Membership), query
-    // still works the same way.
-    let path = write_tmp("query_infer_dup",
-        "claim t\n    msg ∈ String\n    msg = \"hello\"\n");
-    let manifest = env!("CARGO_MANIFEST_DIR");
-    let repo_root = std::path::Path::new(manifest).parent().unwrap();
-    let out = Command::new(bin())
-        .current_dir(repo_root)
-        .args(["query", path.to_str().unwrap(), "t"])
-        .output().unwrap();
-    assert!(out.status.success());
-    let s = String::from_utf8_lossy(&out.stdout);
-    assert!(s.contains("msg=\"hello\""),
-        "binding should still resolve; got: {s}");
-    let _ = std::fs::remove_file(&path);
-}
-
-#[test]
-fn cli_query_infer_types_skips_ambiguous_vars() {
-    // score declared Nat AND assigned 100 (Int) — ambiguous.
-    // --infer-types should skip the ambiguous case (already
-    // declared ∈ Nat, so the user's annotation wins anyway).
-    let path = write_tmp("query_infer_ambig",
-        "claim t\n    score ∈ Nat\n    score = 100\n");
-    let manifest = env!("CARGO_MANIFEST_DIR");
-    let repo_root = std::path::Path::new(manifest).parent().unwrap();
-    let out = Command::new(bin())
-        .current_dir(repo_root)
-        .args(["query", path.to_str().unwrap(), "t"])
-        .output().unwrap();
-    assert!(out.status.success(),
-        "ambiguous + already-declared shouldn't break the query; \
-         stderr: {}", String::from_utf8_lossy(&out.stderr));
-    let s = String::from_utf8_lossy(&out.stdout);
-    assert!(s.contains("score=100"),
-        "binding should resolve; got: {s}");
-    let _ = std::fs::remove_file(&path);
-}

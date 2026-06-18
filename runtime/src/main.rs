@@ -1,15 +1,10 @@
 //! `evident` — CLI for the Evident runtime.
 //!
 //! Subcommands:
-//!   query        <files…> <schema> [--given k=v …] [--json]
 //!   check        <files…>
-//!   sample       <files…> <schema> [-n N] [--given k=v …] [--json]
 //!   test         [path]
 //!   effect-run   <file>           — run an effect-driven program
 //!   lint         <file>
-//!   profile      <files…> <schema> [--given k=v …] [--top N]
-//!   desugar      <file>           — report self-hosted desugar rewrites
-//!   infer-types  <file>           — report self-hosted type inferences
 
 use std::process::ExitCode;
 
@@ -24,15 +19,10 @@ fn main() -> ExitCode {
         return ExitCode::from(2);
     }
     match args[0].as_str() {
-        "query"       => commands::query::cmd_query(&args[1..]),
         "check"       => commands::check::cmd_check(&args[1..]),
-        "sample"      => commands::sample::cmd_sample(&args[1..]),
         "test"        => commands::test::cmd_test(&args[1..]),
         "effect-run"  => commands::effect_run::cmd_effect_run(&args[1..]),
         "lint"        => commands::lint::cmd_lint(&args[1..]),
-        "profile"     => commands::profile::cmd_profile(&args[1..]),
-        "desugar"     => commands::desugar::cmd_desugar(&args[1..]),
-        "infer-types" => commands::infer_types::cmd_infer_types(&args[1..]),
         "help" | "--help" | "-h" => { usage(); ExitCode::SUCCESS }
         other => {
             eprintln!("unknown subcommand: {}", other);
