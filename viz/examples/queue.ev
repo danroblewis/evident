@@ -1,0 +1,16 @@
+-- queue.ev — a tiny 2-stage bounded-queue daemon, for the phase portrait.
+-- state = (q0, q1); each tick does one of arrive / transfer / depart / idle,
+-- guarded so both stages stay in [0, CAP=6]. Nondeterministic: a fan per state.
+
+type QState
+    q0 ∈ Int
+    q1 ∈ Int
+
+claim QueueStep
+    state ∈ QState
+    state_next ∈ QState
+
+    0 ≤ state.q0 ∧ state.q0 ≤ 6 ∧ 0 ≤ state.q1 ∧ state.q1 ≤ 6
+    0 ≤ state_next.q0 ∧ state_next.q0 ≤ 6 ∧ 0 ≤ state_next.q1 ∧ state_next.q1 ≤ 6
+
+    (state.q0 < 6 ∧ state_next.q0 = state.q0 + 1 ∧ state_next.q1 = state.q1) ∨ (state.q0 > 0 ∧ state.q1 < 6 ∧ state_next.q0 = state.q0 - 1 ∧ state_next.q1 = state.q1 + 1) ∨ (state.q1 > 0 ∧ state_next.q1 = state.q1 - 1 ∧ state_next.q0 = state.q0) ∨ (state_next.q0 = state.q0 ∧ state_next.q1 = state.q1)
