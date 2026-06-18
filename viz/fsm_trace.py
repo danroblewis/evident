@@ -19,8 +19,9 @@ def trace(evfile, steps=80, input_given=None, capture=None):
     state_pairs = ex._detect_state_pairs(declared)
     current = {b: ex._initial_state(t) for b, (_, t) in state_pairs.items()}
     rows = []
-    for _ in range(steps):
-        given = dict(input_given or {})
+    for step in range(steps):
+        ig = input_given(step) if callable(input_given) else input_given
+        given = dict(ig or {})
         for base, st in current.items():
             given.update(ex._state_given(base, st))
         r = ex.rt.query("main", given=given, cached=True)
