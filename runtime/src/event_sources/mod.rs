@@ -21,7 +21,7 @@
 //! This file owns the shared abstraction (trait + queue + event
 //! enum + helpers); each bridge lives in its own sibling file
 //! under `event_sources/<name>.rs` per the per-bridge invariant
-//! in `lints/runtime-invariants.md`.
+//! in `docs/design/runtime-invariants.md`.
 
 use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex};
@@ -33,7 +33,7 @@ use crate::Value;
 //
 // Each file owns the lifecycle of one typed C resource. The
 // scheduler interacts with bridges only through the trait
-// surface defined below — see lints/runtime-invariants.md for
+// surface defined below — see docs/design/runtime-invariants.md for
 // the per-bridge file invariant.
 mod frame_timer;
 mod sigint;
