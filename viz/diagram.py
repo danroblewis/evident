@@ -20,6 +20,7 @@ import re
 import subprocess
 import sys
 from itertools import combinations
+from math import ceil
 
 import matplotlib
 matplotlib.use("Agg")
@@ -120,77 +121,125 @@ def _vals(vmap, k):
     return vmap[k][1]
 
 
-def render(samples, vmap, ann, title):
+def schema_source(source, schema, maxlines=36):
+    """The .ev source block for one schema/claim/type, so the diagram shows the
+    code it came from. From the declaration line to the next top-level decl."""
+    lines = source.splitlines()
+    start = next((i for i, l in enumerate(lines)
+                  if re.match(rf"\s*(schema|claim|type)\s+{re.escape(schema)}\b", l)), None)
+    if start is None:
+        return f"-- {schema}: (definition not in this file — imported)"
+    base = len(lines[start]) - len(lines[start].lstrip())
+    block = [lines[start]]
+    for l in lines[start + 1:]:
+        if l.strip() and (len(l) - len(l.lstrip())) <= base \
+                and re.match(r"\s*(schema|claim|type|assert|import)\b", l):
+            break
+        block.append(l)
+    while block and not block[-1].strip():
+        block.pop()
+    if len(block) > maxlines:
+        block = block[:maxlines] + ["    -- … (truncated)"]
+    return "\n".join(block)
+
+
+# ── panel builders (each returns a draw(ax) closure) ─────────────────────────
+def _scatter_panel(vmap, a, b, color_vals, legend=True):
+    def draw(ax):
+        _scatter(ax, _vals(vmap, a), _vals(vmap, b), a, b, color_vals)
+        if not legend and ax.get_legend():
+            ax.get_legend().remove()
+    return draw
+
+
+def _bar_panel(vmap, k):
+    def draw(ax):
+        order = sorted(set(_vals(vmap, k)))
+        counts = [_vals(vmap, k).count(c) for c in order]
+        ax.bar(range(len(order)), counts,
+               color=[PALETTE[i % len(PALETTE)] for i in range(len(order))])
+        ax.set_xticks(range(len(order)))
+        ax.set_xticklabels(order, fontsize=7, rotation=30, ha="right")
+        ax.set_title(k, fontsize=9, color=INK); _style(ax)
+    return draw
+
+
+def _hist_panel(vmap, k):
+    def draw(ax):
+        ax.hist(_vals(vmap, k), bins=20, color=PALETTE[0], alpha=0.85)
+        _style(ax, k, "count")
+    return draw
+
+
+def _strip_panel(samples, vmap, cat, k):
+    def draw(ax):
+        order = sorted(set(_vals(vmap, cat)))
+        for i, c in enumerate(order):
+            ys = [s[k] for s in samples if s.get(cat) == c]
+            ax.scatter([i] * len(ys), ys, s=14, alpha=0.6,
+                       color=PALETTE[i % len(PALETTE)])
+        ax.set_xticks(range(len(order)))
+        ax.set_xticklabels(order, fontsize=7, rotation=30, ha="right")
+        _style(ax, cat, k)
+    return draw
+
+
+def render(samples, vmap, ann, title, code):
     numeric = [k for k, (knd, _) in vmap.items() if knd in ("real", "int")]
     cats = [k for k, (knd, _) in vmap.items() if knd in ("enum", "bool")]
     color_by = ann.get("color") or (cats[0] if cats else None)
     color_vals = _vals(vmap, color_by) if color_by in vmap else None
     typ = ann.get("type")
 
-    # explicit annotation x/y wins
+    # decide the diagram: a list of panel-draw closures + grid shape + caption
     if ann.get("x") in vmap and ann.get("y") in vmap:
-        fig, ax = plt.subplots(figsize=(6.4, 5.6))
-        _scatter(ax, _vals(vmap, ann["x"]), _vals(vmap, ann["y"]),
-                 ann["x"], ann["y"], color_vals)
-        sub = "scatter"
+        panels = [_scatter_panel(vmap, ann["x"], ann["y"], color_vals)]
+        sub = "scatter (annotated x/y)"
     elif typ == "bars" or (not numeric and cats):
-        cols = min(3, len(cats)); rows = (len(cats) + cols - 1) // cols
-        fig, axes = plt.subplots(rows, cols, figsize=(cols * 4, rows * 3.2),
-                                 squeeze=False)
-        for ax, k in zip(axes.ravel(), cats):
-            order = sorted(set(_vals(vmap, k)))
-            counts = [_vals(vmap, k).count(c) for c in order]
-            ax.bar(range(len(order)), counts,
-                   color=[PALETTE[i % len(PALETTE)] for i in range(len(order))])
-            ax.set_xticks(range(len(order))); ax.set_xticklabels(order, fontsize=7,
-                                                                 rotation=30, ha="right")
-            ax.set_title(k, fontsize=9, color=INK); _style(ax)
-        for ax in axes.ravel()[len(cats):]:
-            ax.axis("off")
+        panels = [_bar_panel(vmap, k) for k in cats]
         sub = f"count bars ({len(cats)} categorical vars)"
+    elif len(numeric) == 1 and cats:
+        panels = [_strip_panel(samples, vmap, cats[0], numeric[0])]
+        sub = f"strip ({cats[0]} × {numeric[0]})"
     elif len(numeric) == 1:
-        k = numeric[0]
-        fig, ax = plt.subplots(figsize=(6.4, 4.6))
-        if cats:
-            for i, c in enumerate(sorted(set(_vals(vmap, cats[0])))):
-                ys = [s[k] for s in samples if s.get(cats[0]) == c]
-                ax.scatter([i] * len(ys), ys, s=14, alpha=0.6,
-                           color=PALETTE[i % len(PALETTE)])
-            ax.set_xticks(range(len(set(_vals(vmap, cats[0])))))
-            ax.set_xticklabels(sorted(set(_vals(vmap, cats[0]))), fontsize=7,
-                               rotation=30, ha="right")
-            _style(ax, cats[0], k); sub = f"strip ({cats[0]} × {k})"
-        else:
-            ax.hist(_vals(vmap, k), bins=20, color=PALETTE[0], alpha=0.85)
-            _style(ax, k, "count"); sub = "histogram (realistic range)"
+        panels = [_hist_panel(vmap, numeric[0])]
+        sub = "histogram (realistic range)"
     elif len(numeric) == 2:
-        fig, ax = plt.subplots(figsize=(6.6, 5.8))
-        _scatter(ax, _vals(vmap, numeric[0]), _vals(vmap, numeric[1]),
-                 numeric[0], numeric[1], color_vals)
+        panels = [_scatter_panel(vmap, numeric[0], numeric[1], color_vals)]
         sub = "scatter"
     elif len(numeric) > 2:
         pairs = list(combinations(numeric, 2))
-        cols = min(3, len(pairs)); rows = (len(pairs) + cols - 1) // cols
-        fig, axes = plt.subplots(rows, cols, figsize=(cols * 3.7, rows * 3.4),
-                                 squeeze=False)
-        for ax, (a, b) in zip(axes.ravel(), pairs):
-            _scatter(ax, _vals(vmap, a), _vals(vmap, b), a, b, color_vals)
-            if ax.get_legend():
-                ax.get_legend().remove()
-        for ax in axes.ravel()[len(pairs):]:
-            ax.axis("off")
-        sub = f"projection matrix ({len(numeric)} numeric vars, {len(pairs)} pairs)"
+        panels = [_scatter_panel(vmap, a, b, color_vals, legend=False) for a, b in pairs]
+        sub = f"projection matrix ({len(numeric)} vars, {len(pairs)} pairs)"
     else:
-        fig, ax = plt.subplots(figsize=(6, 3))
-        ax.axis("off")
-        ax.text(0.5, 0.5, "no renderable numeric/enum interface", ha="center",
-                color=MUTED)
+        panels = [lambda ax: (ax.axis("off"),
+                              ax.text(0.5, 0.5, "no numeric/enum interface",
+                                      ha="center", color=MUTED))]
         sub = "—"
 
-    fig.suptitle(title, fontsize=13, color=INK, weight="bold", x=0.02, ha="left")
-    fig.text(0.02, 0.94, f"{sub}   ·   {len(samples)} samples of the interface",
-             fontsize=9, color=MUTED)
-    fig.tight_layout(rect=(0, 0, 1, 0.93))
+    cols = 1 if len(panels) == 1 else min(3, len(panels))
+    rows = ceil(len(panels) / cols)
+    # figure: diagram grid on the left, the source code card on the right
+    nloc = code.count("\n") + 1
+    W = cols * 3.7 + 5.2
+    H = max(rows * 3.3 + 1.0, nloc * 0.2 + 1.4)
+    fig = plt.figure(figsize=(W, H))
+    outer = fig.add_gridspec(1, 2, width_ratios=[cols * 3.7, 4.6], wspace=0.06,
+                             left=0.05, right=0.975, top=0.88, bottom=0.06)
+    grid = outer[0].subgridspec(rows, cols, hspace=0.55, wspace=0.34)
+    for i, draw in enumerate(panels):
+        draw(fig.add_subplot(grid[i // cols, i % cols]))
+    for j in range(len(panels), rows * cols):
+        fig.add_subplot(grid[j // cols, j % cols]).axis("off")
+
+    cax = fig.add_subplot(outer[1]); cax.axis("off")
+    cax.text(0.0, 1.0, code, transform=cax.transAxes, va="top", ha="left",
+             family="monospace", fontsize=8, color=INK, linespacing=1.35,
+             bbox=dict(boxstyle="round,pad=0.6", fc="#fbfcfe", ec="#cfd3dd", lw=1.2))
+
+    fig.suptitle(title, fontsize=14, color=INK, weight="bold", x=0.05, ha="left")
+    fig.text(0.05, 0.915, f"{sub}   ·   {len(samples)} samples of the interface  "
+             "·  source on the right", fontsize=9, color=MUTED)
     return fig
 
 
@@ -204,7 +253,7 @@ def generate(evfile, schema, source, outdir, n=70):
     ann = plot_annotation(source, schema)
     base = os.path.splitext(os.path.basename(evfile))[0]
     title = ann.get("title", f"{base} · {schema}")
-    fig = render(samples, vmap, ann, title)
+    fig = render(samples, vmap, ann, title, schema_source(source, schema))
     os.makedirs(outdir, exist_ok=True)
     path = os.path.join(outdir, f"{base}__{schema}.png")
     fig.savefig(path, dpi=120, facecolor="white"); plt.close(fig)
