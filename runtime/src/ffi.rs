@@ -512,6 +512,13 @@ mod tests {
         else                          { "libc.so.6" }
     }
 
+    /// Pick a libm (math) path. macOS bundles math into libSystem;
+    /// glibc Linux keeps `sqrt`/`sqrtf` in a separate libm.so.6.
+    fn libm_path() -> &'static str {
+        if cfg!(target_os = "macos") { "libSystem.dylib" }
+        else                          { "libm.so.6" }
+    }
+
     #[test]
     fn parse_signature_basic() {
         let p = parse_signature("i()").unwrap();
@@ -576,7 +583,7 @@ mod tests {
     #[test]
     fn call_libm_sqrt_double() {
         let reg = HandleRegistry::new();
-        let lib = ffi_open(&reg, libc_path()).unwrap();
+        let lib = ffi_open(&reg, libm_path()).unwrap();
         let f = ffi_lookup(&reg, lib, "sqrt").unwrap();
         let r = ffi_call(&reg, f, "d(d)", &[FfiArg::Real(16.0)]).unwrap();
         match r {
@@ -593,7 +600,7 @@ mod tests {
     #[test]
     fn call_libm_sqrtf_float() {
         let reg = HandleRegistry::new();
-        let lib = ffi_open(&reg, libc_path()).unwrap();
+        let lib = ffi_open(&reg, libm_path()).unwrap();
         let f = ffi_lookup(&reg, lib, "sqrtf").unwrap();
         let r = ffi_call(&reg, f, "f(f)", &[FfiArg::Real(25.0)]).unwrap();
         match r {
