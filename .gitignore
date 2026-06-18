@@ -4,3 +4,8 @@ parser/src/__pycache__/
 __pycache__/
 plotly.min.js
 d3.min.js
+
+# generated diagrams (regenerable via viz/generate_*.py)
+viz/diagrams/
+viz/results/
+viz/contact_sheet.png
