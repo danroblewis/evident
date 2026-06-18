@@ -22,6 +22,13 @@ SPECS = [
          xr=(-1, 21), yr=(-14, 14), box={"pos": (0, 20), "v": (-12, 12)},
          title="game_engine · AxisPhysics — player/ball 1-D physics\n"
                "(position, velocity) coasting: velocity decays to 0, walls clamp"),
+    dict(name="game_engine__AxisPhysics_thrust", file="programs/sdl_demo/game_engine.ev",
+         claim="AxisPhysics", axes=[("pos", "pos_next"), ("v", "v_next")],
+         given={"pos_min": 0, "pos_max": 20, "won": False,
+                "accel_pos": True, "accel_neg": False},
+         xr=(-1, 21), yr=(-14, 14), box={"pos": (0, 20), "v": (-12, 12)},
+         title="game_engine · AxisPhysics under THRUST (accel_pos held)\n"
+               "same FSM, different input: velocity is driven up to the +12 cap"),
     dict(name="queue__QueueStep", file="viz/examples/queue.ev",
          claim="QueueStep", nondet=True,
          axes=[("state.q0", "state_next.q0"), ("state.q1", "state_next.q1")],
