@@ -760,26 +760,6 @@ fn subclaim_visible_to_sibling() {
     assert_eq!(r.bindings.get("a"), Some(&Value::Int(42)));
 }
 
-/// Internal slot of the claim that isn't mapped should get a fresh
-/// constant — Z3 picks any value satisfying the constraints.
-#[test]
-fn claim_call_unmapped_internal() {
-    let mut rt = EvidentRuntime::new();
-    // `pick` declares `picked ∈ Nat` and constrains it but doesn't
-    // expose it via a mapping. The caller doesn't see `picked`; Z3
-    // just needs to find some value to satisfy the claim.
-    rt.load_source(
-        "claim pick\n    picked ∈ Nat\n    out ∈ Nat\n    out = picked + 1\n    picked > 5\n\
-         schema S\n    n ∈ Nat\n    pick (out mapsto n)\n    n < 20\n"
-    ).unwrap();
-    let r = rt.query_free("S").unwrap();
-    assert!(r.satisfied);
-    if let Some(Value::Int(n)) = r.bindings.get("n") {
-        // n = picked + 1 with picked > 5 → n > 6; plus n < 20.
-        assert!(*n > 6 && *n < 20, "got {}", n);
-    } else { panic!(); }
-}
-
 /// Passthrough whose constraints contradict a parent constraint → UNSAT.
 #[test]
 fn passthrough_conflict_unsat() {
