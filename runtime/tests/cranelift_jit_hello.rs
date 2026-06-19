@@ -4,7 +4,7 @@ use evident_runtime::functionize::extract_program::{simplify_assertions, extract
 use evident_runtime::functionize::cranelift::compile_program;
 
 #[test]
-fn jit_compiles_hello_state_next() {
+fn jit_compiles_hello_transition() {
     let mut rt = EvidentRuntime::new();
     rt.load_source(r#"
 enum Result = NoResult | IntResult(Int) | StringResult(String)
@@ -12,9 +12,9 @@ enum Effect = NoEffect | Println(String) | Exit(Int)
 enum HelloState = Init | Done
 
 claim hello
+    _state ∈ HelloState
     state ∈ HelloState
-    state_next ∈ HelloState
-    state_next = match state
+    state = match _state
         Init ⇒ Done
         Done ⇒ Done
 "#).unwrap();
@@ -31,7 +31,7 @@ claim hello
     let assertions = cached.solver.get_assertions();
     let simplified = simplify_assertions(ctx, &assertions).formulas;
 
-    let outputs = vec!["state_next".to_string()];
+    let outputs = vec!["state".to_string()];
     let program = extract_program(&simplified, &outputs).expect("extract");
     eprintln!("program has {} steps, {} predicates", program.steps.len(), program.predicates.len());
 
@@ -40,27 +40,27 @@ claim hello
     eprintln!("outputs: {:?}", jit.output_offsets.keys().collect::<Vec<_>>());
 
     let mut env = HashMap::new();
-    env.insert("state".to_string(), Value::Enum {
+    env.insert("_state".to_string(), Value::Enum {
         enum_name: "HelloState".into(),
         variant:   "Init".into(),
         fields:    vec![],
     });
     let result = jit.call(&env).expect("jit call");
-    eprintln!("result for state=Init: {result:?}");
-    assert_eq!(result.get("state_next"), Some(&Value::Enum {
+    eprintln!("result for _state=Init: {result:?}");
+    assert_eq!(result.get("state"), Some(&Value::Enum {
         enum_name: "HelloState".into(),
         variant:   "Done".into(),
         fields:    vec![],
     }));
 
     let mut env2 = HashMap::new();
-    env2.insert("state".to_string(), Value::Enum {
+    env2.insert("_state".to_string(), Value::Enum {
         enum_name: "HelloState".into(),
         variant:   "Done".into(),
         fields:    vec![],
     });
     let result2 = jit.call(&env2).expect("jit call 2");
-    assert_eq!(result2.get("state_next"), Some(&Value::Enum {
+    assert_eq!(result2.get("state"), Some(&Value::Enum {
         enum_name: "HelloState".into(),
         variant:   "Done".into(),
         fields:    vec![],

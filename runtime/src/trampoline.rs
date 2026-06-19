@@ -3,11 +3,12 @@
 //! claim for the next state and its effects, and writes the new state back —
 //! then bounces again. That's the whole execution model.
 //!
-//! Per bounce: discover the single FSM (once), seed its state, then tick it.
-//! Each tick solves the FSM claim, decodes the model's `Effect` values, orders
-//! them (declared seq-chains + auto edges, topo-sorted with random tiebreak),
-//! dispatches them as real IO (via `dispatch`), and feeds results / world writes
-//! back into the store. Halts when nothing changed or an `Exit` was requested.
+//! Per bounce: discover the single FSM (once), then tick it. Each tick solves
+//! the FSM claim, decodes the model's `Effect` values, orders them (declared
+//! seq-chains + auto edges, topo-sorted with random tiebreak), dispatches them
+//! as real IO (via `dispatch`), and rolls the new bindings back into the store —
+//! each becomes next tick's `_var`. Halts when nothing carried changed and no
+//! effect fired, or when an `Exit` was requested.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;

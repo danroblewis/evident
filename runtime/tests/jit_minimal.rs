@@ -11,8 +11,7 @@ enum DState = Init | Done
 
 claim display
     state ∈ DState
-    state_next ∈ DState
-    state_next = Done
+    state = Done
 "#).unwrap();
 
     let ctx       = rt.z3_context();
@@ -26,7 +25,7 @@ claim display
     let assertions = cached.solver.get_assertions();
     let result = simplify_assertions(ctx, &assertions);
     let program = extract_program(&result.formulas,
-        &vec!["state_next".to_string()]).expect("extract");
+        &vec!["state".to_string()]).expect("extract");
     eprintln!("program steps: {}", program.steps.len());
     for step in &program.steps {
         eprintln!("  {step:?}");
@@ -35,7 +34,7 @@ claim display
     eprintln!("jit compiled. outputs = {:?}", jit.output_offsets);
     let bindings = jit.call(&HashMap::new()).expect("call");
     eprintln!("result: {:?}", bindings);
-    assert_eq!(bindings.get("state_next"), Some(&Value::Enum {
+    assert_eq!(bindings.get("state"), Some(&Value::Enum {
         enum_name: "DState".into(),
         variant:   "Done".into(),
         fields:    vec![],

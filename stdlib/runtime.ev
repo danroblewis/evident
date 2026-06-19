@@ -2,14 +2,18 @@
 --
 -- See docs/design/ffi-design.md and docs/plans/01-ffi-effects/02-effect-types.md.
 --
--- An effect-driven program declares `main` claim parameters of:
---     state, state_next ∈ <user-defined>
+-- An effect-driven program declares an `fsm` with:
+--     <state vars> ∈ <user-defined>   -- carried via `_var` (see below)
 --     last_results ∈ Seq(Result)
 --     effects      ∈ Seq(Effect)
 --
--- Each step the runtime solves for `(state_next, effects)` given
--- `(state, last_results)`. It performs each effect in order, collects
--- results, and feeds them into the next step's solve as `last_results`.
+-- Each tick the runtime solves for `(state, effects)` given the previous
+-- tick's values, exposed as `_var` (e.g. `_pos`, `_state`) plus
+-- `is_first_tick`. There is no `state_next`: a variable's current value is
+-- `var` and its previous value is `_var`; the runtime carries `var → _var`
+-- across ticks for scalars, records, and enums alike. It performs each
+-- effect in order, collects results, and feeds them into the next tick's
+-- solve as `last_results`.
 --
 -- Built-in effects (Print/Println/Exit) hit the OS
 -- directly. FFI effects route through libffi for arbitrary C calls;

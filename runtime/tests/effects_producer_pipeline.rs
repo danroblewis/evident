@@ -9,11 +9,10 @@ enum DState = Init | Done
 
 claim display
     state ∈ DState
-    state_next ∈ DState
     last_results ∈ Seq(Effect)
     effects ∈ Seq(Effect)
 
-    state_next = Done
+    state = Done
 
     eff_hello ∈ Effect = Println("hello")
     eff_world ∈ Effect = Println("world")
@@ -45,7 +44,7 @@ fn stage_2_simplified_z3_assertions_match_per_element_pins() {
     eprintln!("Simplified assertions ({} total):", formatted.len());
     for f in &formatted { eprintln!("  {f}"); }
 
-    let has_state = formatted.iter().any(|s| s.contains("state_next") && s.contains("Done"));
+    let has_state = formatted.iter().any(|s| s.contains("state") && s.contains("Done"));
     let has_hello = formatted.iter().any(|s| s.contains("select effects 0")
                                           && s.contains("Println")
                                           && s.contains("hello"));
@@ -55,7 +54,7 @@ fn stage_2_simplified_z3_assertions_match_per_element_pins() {
     let has_exit  = formatted.iter().any(|s| s.contains("select effects 2")
                                           && s.contains("Exit"));
 
-    assert!(has_state, "should pin state_next = Done");
+    assert!(has_state, "should pin state = Done");
     assert!(has_hello, "should pin select effects 0 = Println(\"hello\")");
     assert!(has_world, "should pin select effects 1 = Println(\"world\")");
     assert!(has_exit,  "should pin select effects 2 = Exit(0)");
@@ -78,7 +77,7 @@ fn stage_3_extract_program_builds_seq_step() {
     let result = simplify_assertions(ctx, &assertions);
 
     let outputs = vec![
-        "state_next".to_string(),
+        "state".to_string(),
         "effects".to_string(),
         "eff_hello".to_string(),
         "eff_world".to_string(),
@@ -117,8 +116,8 @@ fn stage_3_extract_program_builds_seq_step() {
         }
         _ => unreachable!(),
     }
-    assert!(scalar_steps.iter().any(|s| matches!(s, Z3Step::Scalar { var, .. } if var == "state_next")),
-        "state_next should be a Scalar step");
+    assert!(scalar_steps.iter().any(|s| matches!(s, Z3Step::Scalar { var, .. } if var == "state")),
+        "state should be a Scalar step");
 }
 
 #[test]
@@ -138,7 +137,7 @@ fn stage_4_jit_compiles_effects_producer() {
     let result = simplify_assertions(ctx, &assertions);
 
     let outputs = vec![
-        "state_next".to_string(),
+        "state".to_string(),
         "effects".to_string(),
         "eff_hello".to_string(),
         "eff_world".to_string(),
@@ -172,7 +171,7 @@ fn stage_4_jit_compiles_effects_producer() {
            && matches!(&fields[..], [Value::Int(0)])),
         "elem 2 should be Exit(0), got: {:?}", elems[2]);
 
-    assert!(matches!(bindings.get("state_next"),
+    assert!(matches!(bindings.get("state"),
         Some(Value::Enum { variant, .. }) if variant == "Done"),
-        "state_next should be Done, got: {:?}", bindings.get("state_next"));
+        "state should be Done, got: {:?}", bindings.get("state"));
 }
