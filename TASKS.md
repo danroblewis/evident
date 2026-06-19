@@ -52,15 +52,11 @@ the Xvfb display) must be green after each.
    `src/commands.rs`; `commands/` dir gone. CLI: `test`, `effect-run`.
 6. [x] **Remove `runtime/scripts/`.** Done — `cc-wrapper.sh` + `install-bin.sh`
    were referenced nowhere (`9a91f48`).
-7. [ ] **Audit `encode_ast.rs` / `decode_ast.rs`; rename or trim (probably not
-   remove).** Their original job — encode the program AST into a Z3 datatype to
-   feed the self-hosting reflection passes — is already gone. What remains is the
-   executor's **Effect/Result value codec**: decode `Effect`/`Result` values out
-   of the Z3 model and encode results back (`value_enum_to_datatype`,
-   `effect_results_to_value`, `decode_effect`/`decode_result`/`decode_ffi_arg`, …),
-   which is load-bearing for FFI-effect dispatch. So this is likely a **rename**
-   (e.g. `effect_codec.rs`) + trim of any still-dead helpers — confirm with the
-   call graph before deleting anything.
+7. [x] **Audit `encode_ast.rs` / `decode_ast.rs`; rename or trim.** Done
+   (`e6c4de9`). The dead AST-encode tree (gated by the caller-less reflection
+   entry `evaluate_with_program_and_body`) was trimmed; the live Effect/Result
+   codec merged into one `translate/effect_codec.rs` (`effect_encoder` /
+   `effect_decoder`). Behavior-identical; SDL demos verified.
 8. [x] **Review & collapse `effect_loop/` to a single FSM.** Done (`cab77c4`).
    `all_fsms() -> Vec<MainShape>` → `single_fsm() -> Result<MainShape>` (errors on
    0 or >1 FSMs); `scheduler.rs::run_loop` is now a flat single-FSM tick loop.
