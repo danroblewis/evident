@@ -1,13 +1,115 @@
-//! Decoder: Z3 model `Value` (`Value::Enum` / `Value::SeqEnum`
-//! trees) → Rust runtime AST fragments.
+//! Effect / Result value codec: the bridge between the executor's
+//! Rust-side `Effect` / `EffectResult` / FFI-arg / install-step types
+//! and their Z3 datatype encodings.
 //!
-//! Walks a value tree and reconstructs the corresponding Rust nodes
-//! by pattern-matching on `(enum_name, variant)` and decoding each
-//! field recursively. Used by the executor to read back `Effect`s,
-//! `Result`s, FFI args, and the declarative `Seq(InstallStep)` path
-//! from a solved model.
+//! Two directions, both load-bearing for FFI-effect dispatch:
+//!
+//!   * **encode** (`effect_results_to_value`, `value_enum_to_datatype`)
+//!     — turn an `EffectResult` slice into a `Value::SeqEnum` of
+//!     `Result` enums (pinned into the multi-FSM scheduler's `given`
+//!     map), and re-encode a `Value::Enum` world field as a Z3
+//!     `Datatype` for the same `given` loop.
+//!
+//!   * **decode** (`decode_effect`, `decode_effect_list`,
+//!     `decode_result`, `decode_ffi_arg`/`decode_arg_list`,
+//!     `decode_install_step(_list)`, `decode_packed_field*`) — walk a
+//!     solved model's `Value::Enum` / `Value::SeqEnum` trees and
+//!     reconstruct the Rust `Effect`s, `Result`s, FFI args, and the
+//!     declarative `Seq(InstallStep)` install path the effect loop
+//!     dispatches.
+//!
+//! The shapes here mirror the `Effect` / `Result` / `FFIArg` /
+//! `InstallStep` / `PackedField` enums declared in `stdlib/runtime.ev`
+//! (and the typed-resource install path). Decoding is mechanical:
+//! match on `(enum_name, variant)`, check arity, decode each field.
+
+use z3::ast::{Ast, Datatype, Real};
+use z3::Context;
 
 use crate::core::Value;
+use crate::core::EnumRegistry;
+
+// ════════════════════════════════════════════════════════════════
+//  Encode: Effect/Result Values → Z3 datatypes
+// ════════════════════════════════════════════════════════════════
+
+/// Build a `Value::SeqEnum` of `Result` enums from a slice of
+/// `EffectResult`s. Used by the multi-FSM scheduler to pin
+/// `last_results ∈ Seq(Result)` via the `given` map; the
+/// `(DatatypeSeqVar, SeqEnum)` case in `assert_seq_given` does
+/// the per-index Z3 assertions.
+pub fn effect_results_to_value(items: &[crate::core::ast::EffectResult]) -> Value {
+    let mk = |n: &str, fields: Vec<Value>| Value::Enum {
+        enum_name: "Result".into(),
+        variant: n.into(),
+        fields,
+    };
+    let elems: Vec<Value> = items.iter().map(|r| match r {
+        crate::core::ast::EffectResult::NoResult     => mk("NoResult", vec![]),
+        crate::core::ast::EffectResult::Int(n)       => mk("IntResult", vec![Value::Int(*n)]),
+        crate::core::ast::EffectResult::Str(s)       => mk("StringResult", vec![Value::Str(s.clone())]),
+        crate::core::ast::EffectResult::Bool(b)      => mk("BoolResult", vec![Value::Bool(*b)]),
+        crate::core::ast::EffectResult::Real(f)      => mk("RealResult", vec![Value::Real(*f)]),
+        crate::core::ast::EffectResult::Handle(h)    => mk("HandleResult", vec![Value::Int(*h as i64)]),
+        crate::core::ast::EffectResult::Error(s)     => mk("ErrorResult", vec![Value::Str(s.clone())]),
+    }).collect();
+    Value::SeqEnum(elems)
+}
+
+/// Re-encode a `Value::Enum` tree as a Z3 `Datatype` value, looking
+/// up constructors against the supplied `EnumRegistry`. Returns
+/// `None` if the value isn't an Enum, the enum/variant isn't
+/// registered, or any payload field has a type that doesn't match
+/// what the constructor expects.
+///
+/// Used by the `given` loop in `evaluate_with_extra_assertion(s)` to
+/// pin enum-typed world fields produced by plugin writes — the same
+/// logic `effect_loop::encode_state_value` performs against
+/// `&EvidentRuntime`, but available without crossing back to the
+/// public facade.
+pub fn value_enum_to_datatype<'ctx>(
+    v:     &Value,
+    ctx:   &'ctx Context,
+    enums: &EnumRegistry,
+) -> Option<Datatype<'ctx>>
+where 'ctx: 'static
+{
+    use z3::ast::{Bool as Z3Bool, Dynamic, Int as Z3Int, String as Z3Str};
+    let Value::Enum { enum_name, variant, fields } = v else { return None };
+    let by_name = enums.by_name.borrow();
+    let (sort, _decl) = by_name.get(enum_name)?;
+    let var_idx = sort.variants.iter()
+        .position(|v| v.constructor.name() == *variant)?;
+    let ctor = &sort.variants[var_idx].constructor;
+    if fields.is_empty() {
+        return ctor.apply(&[]).as_datatype();
+    }
+    drop(by_name);
+    let owned: Vec<Dynamic<'static>> = fields.iter().filter_map(|f| {
+        let dyn_v: Dynamic<'static> = match f {
+            Value::Int(n)  => Dynamic::from_ast(&Z3Int::from_i64(ctx, *n)),
+            Value::Bool(b) => Dynamic::from_ast(&Z3Bool::from_bool(ctx, *b)),
+            Value::Str(s)  => Dynamic::from_ast(&Z3Str::from_str(ctx, s).ok()?),
+            Value::Real(r) => {
+                let i = (*r * 1_000_000.0) as i64;
+                Dynamic::from_ast(&Real::from_real(ctx, i as i32, 1_000_000))
+            }
+            Value::Enum { .. } => {
+                let dt = value_enum_to_datatype(f, ctx, enums)?;
+                Dynamic::from_ast(&dt)
+            }
+            _ => return None,
+        };
+        Some(dyn_v)
+    }).collect();
+    if owned.len() != fields.len() { return None; }
+    let refs: Vec<&dyn Ast> = owned.iter().map(|v| v as &dyn Ast).collect();
+    ctor.apply(&refs).as_datatype()
+}
+
+// ════════════════════════════════════════════════════════════════
+//  Decode: solved-model Values → Rust Effect/Result/FFIArg/InstallStep
+// ════════════════════════════════════════════════════════════════
 
 #[derive(Debug)]
 pub enum DecodeError {

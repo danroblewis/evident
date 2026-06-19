@@ -6,7 +6,7 @@
 //! to derive a dispatch ordering.
 
 use crate::core::ast::{BodyItem, Expr, BinOp, Effect};
-use crate::translate::{Value, ast_decoder};
+use crate::translate::{Value, effect_decoder};
 use std::collections::{HashMap, HashSet};
 
 /// Walk a body for `Seq(Effect)` literal assignments and pull out
@@ -90,6 +90,6 @@ pub(super) fn resolve_nodes_to_effects(
 ) -> Vec<Effect> {
     names.iter()
         .filter_map(|name| bindings.get(name))
-        .filter_map(|v| ast_decoder::decode_effect(v).ok())
+        .filter_map(|v| effect_decoder::decode_effect(v).ok())
         .collect()
 }

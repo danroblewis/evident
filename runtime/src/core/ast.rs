@@ -303,7 +303,7 @@ pub struct EnumField {
 // Mirror of `stdlib/runtime.ev`'s Effect/Result/FFIArg enums. The
 // effect dispatcher in `effect_dispatch.rs` walks Vec<Effect> and
 // produces Vec<EffectResult>. Decoded from Z3 datatype values by
-// `decode_ast::decode_effect_list` (which now reads a Value::SeqEnum
+// `effect_codec::decode_effect_list` (which now reads a Value::SeqEnum
 // — the Seq(Effect) shape — rather than a Cons chain).
 
 /// One side-effect to perform between solver steps. Variants align

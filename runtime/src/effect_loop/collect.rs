@@ -15,7 +15,7 @@
 
 use crate::core::ast::{Effect, BodyItem, Expr, BinOp};
 use crate::runtime::EvidentRuntime;
-use crate::translate::{Value, ast_decoder};
+use crate::translate::{Value, effect_decoder};
 use std::collections::{HashMap, HashSet};
 
 use super::seq_chains::extract_seq_effect_chains;
@@ -71,7 +71,7 @@ pub(crate) fn collect_dispatchable_effects(
     if let Some(pv) = primary_var {
         if let Some(Value::SeqEnum(items)) = bindings.get(pv) {
             return items.iter()
-                .filter_map(|v| ast_decoder::decode_effect(v).ok())
+                .filter_map(|v| effect_decoder::decode_effect(v).ok())
                 .collect();
         }
         // primary_var declared but no model binding — fall through
@@ -146,7 +146,7 @@ pub(crate) fn collect_dispatchable_effects(
     for (name, v) in bindings {
         match v {
             Value::Enum { enum_name, .. } if enum_name == "Effect" => {
-                if let Ok(e) = ast_decoder::decode_effect(v) {
+                if let Ok(e) = effect_decoder::decode_effect(v) {
                     node_values.insert(name.clone(), e);
                     all_names.push(name.clone());
                 }
@@ -164,7 +164,7 @@ pub(crate) fn collect_dispatchable_effects(
                 if is_effect_seq && !has_body_seqlit.contains(name.as_str()) {
                     let mut prev: Option<String> = None;
                     for (i, item) in items.iter().enumerate() {
-                        if let Ok(e) = ast_decoder::decode_effect(item) {
+                        if let Ok(e) = effect_decoder::decode_effect(item) {
                             let syn = format!("{}[{}]", name, i);
                             node_values.insert(syn.clone(), e);
                             all_names.push(syn.clone());
@@ -197,7 +197,7 @@ pub(crate) fn collect_dispatchable_effects(
                         if !is_effect_inner { continue; }
                         let mut prev: Option<String> = None;
                         for (j, item) in inner.iter().enumerate() {
-                            if let Ok(e) = ast_decoder::decode_effect(item) {
+                            if let Ok(e) = effect_decoder::decode_effect(item) {
                                 let syn = format!("{}[{}].{}[{}]", name, i, fname, j);
                                 node_values.insert(syn.clone(), e);
                                 all_names.push(syn.clone());

@@ -209,6 +209,6 @@ impl EvidentRuntime {
         &self,
         items: &[crate::core::ast::EffectResult],
     ) -> crate::core::Value {
-        crate::translate::ast_encoder::effect_results_to_value(items)
+        crate::translate::effect_encoder::effect_results_to_value(items)
     }
 }

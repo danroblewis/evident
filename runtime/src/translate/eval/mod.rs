@@ -1,7 +1,7 @@
 //! Public orchestrator entry points, in two families:
 //!
 //!   * **One-shot query** — `evaluate`, `evaluate_with_extra_assertion`,
-//!     `evaluate_with_extra_assertions`, `evaluate_with_program_and_body`.
+//!     `evaluate_with_extra_assertions`.
 //!     Each builds a fresh Solver, asserts the
 //!     schema's body (plus any caller extras), runs `check`, returns
 //!     a `QueryResult`. Variants exist for the different shapes of
@@ -18,8 +18,7 @@
 //!   * `decode`     — model → `Value` extractors (`extract_binding`,
 //!                    enum + seq decoders).
 //!   * `cached`     — `build_cache`, `run_cached`.
-//!   * `extra`      — `evaluate_with_extra_assertion(s)`,
-//!                    `evaluate_with_program_and_body`.
+//!   * `extra`      — `evaluate_with_extra_assertion(s)`.
 //!
 //! `evaluate` itself lives in this file — it's THE entry point and
 //! the shape every other variant is a copy of.
@@ -44,7 +43,7 @@ use solver::{declare_and_assert, make_tuned_solver, populate_enum_variants, real
 use decode::extract_enum_value;
 
 pub use cached::{build_cache, run_cached};
-pub use extra::{evaluate_with_extra_assertion, evaluate_with_extra_assertions, evaluate_with_program_and_body};
+pub use extra::{evaluate_with_extra_assertion, evaluate_with_extra_assertions};
 pub(crate) use decode::extract_binding;
 
 // Re-export to sibling translate modules. `extract_seq_enum` is
@@ -155,7 +154,7 @@ pub fn evaluate(
             (Var::PinnedInt(_), Value::Int(_)) => solver.assert(&Bool::from_bool(ctx, false)),
             (Var::EnumVar { ast, .. }, val @ Value::Enum { .. }) => {
                 if let Some(reg) = enums {
-                    if let Some(dt) = super::encode_ast::value_enum_to_datatype(val, ctx, reg) {
+                    if let Some(dt) = super::effect_codec::value_enum_to_datatype(val, ctx, reg) {
                         solver.assert(&ast._eq(&dt));
                     }
                 }

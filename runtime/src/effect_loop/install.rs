@@ -26,7 +26,7 @@ use std::collections::HashMap;
 use crate::core::ast::{Expr, Pins};
 use crate::effect_dispatch::{dispatch_all, DispatchContext};
 use crate::runtime::EvidentRuntime;
-use crate::translate::ast_decoder::decode_install_step_list;
+use crate::translate::effect_decoder::decode_install_step_list;
 use crate::translate::Value;
 
 /// Run the declarative install for one typed-resource parameter.

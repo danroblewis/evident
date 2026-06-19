@@ -11,11 +11,6 @@
 //!                                            multi-FSM scheduler to
 //!                                            pin `state` +
 //!                                            `last_results` per tick.
-//!   * `evaluate_with_program_and_body`    — like `_with_extra_assertion`
-//!                                            but injects both a
-//!                                            `Program` enum value AND
-//!                                            a flat `Seq(BodyItem)` for
-//!                                            self-hosted desugar passes.
 
 use std::collections::HashMap;
 use z3::ast::{Ast, Bool, Int, String as Z3Str};
@@ -202,7 +197,7 @@ pub fn evaluate_with_extra_assertions(
             (Var::PinnedInt(_), Value::Int(_)) => solver.assert(&Bool::from_bool(ctx, false)),
             (Var::EnumVar { ast, .. }, val @ Value::Enum { .. }) => {
                 if let Some(reg) = enums {
-                    if let Some(dt) = super::super::encode_ast::value_enum_to_datatype(val, ctx, reg) {
+                    if let Some(dt) = super::super::effect_codec::value_enum_to_datatype(val, ctx, reg) {
                         solver.assert(&ast._eq(&dt));
                     } else {
                         eprintln!("warning: given `{name}`: enum value did not encode \
@@ -229,99 +224,6 @@ pub fn evaluate_with_extra_assertions(
         if let Some(model) = solver.get_model() {
             for (name, var) in env.iter() {
                 extract_binding(name, var, &model, ctx, &mut bindings, enums);
-            }
-        }
-    }
-    EvalResult { satisfied, bindings }
-}
-
-/// Stage 5.5: like `evaluate_with_extra_assertion` but injects two
-/// related values — the encoded `Program` datatype AND a flat
-/// `Seq(BodyItem)` for the user's first claim's body. Lets a
-/// self-hosted pass iterate over arbitrary-length user programs
-/// via `∀ i ∈ {0..#body-1} : …`.
-///
-/// The seq-injection asserts both `#body = items.len()` and
-/// `body[i] = encoded(items[i])` for each i, so the variable's
-/// model is fully pinned to the user's source.
-pub fn evaluate_with_program_and_body(
-    schema: &SchemaDecl,
-    given: &HashMap<String, Value>,
-    schemas: &HashMap<String, SchemaDecl>,
-    ctx: &'static Context,
-    registry: &DatatypeRegistry,
-    enums: &EnumRegistry,
-    arith_solver: u32,
-    program_var: &str,
-    program_value: z3::ast::Datatype<'static>,
-    body_var: &str,
-    body_items: &[BodyItem],
-) -> EvalResult {
-    let _enum_guard = super::super::exprs::EnumRegistryGuard::new(Some(enums));
-    let solver = make_tuned_solver(ctx, arith_solver);
-    let mut env: HashMap<String, Var<'static>> = HashMap::new();
-    populate_enum_variants(&mut env, Some(enums));
-
-    for item in &schema.body {
-        match item {
-            BodyItem::Membership { name, type_name, .. } => {
-                declare_and_assert(ctx, &solver, &mut env, name, type_name, schemas, Some(registry), Some(enums));
-            }
-            BodyItem::Passthrough(claim_name) => {
-                if let Some(claim) = schemas.get(claim_name) {
-                    for sub in &claim.body {
-                        if let BodyItem::Membership { name, type_name, .. } = sub {
-                            if !env.contains_key(name) {
-                                declare_and_assert(ctx, &solver, &mut env, name, type_name, schemas, Some(registry), Some(enums));
-                            }
-                        }
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-
-    let seq_lens = super::super::preprocess::collect_seq_lengths_with_schemas(
-        &schema.body, given, Some(schemas));
-    let pinned   = collect_pinned_ints(&schema.body, given, &seq_lens);
-    apply_pinned_ints(&mut env, &pinned);
-    apply_seq_lengths(&mut env, &seq_lens, ctx);
-
-    let mut visited: HashMap<String, usize> = HashMap::new();
-    inline_body_items(&schema.body, &mut env, &solver, schemas, ctx, registry, Some(enums), &mut visited, false);
-
-    // Program injection.
-    if let Some(Var::EnumVar { ast, .. }) = env.get(program_var) {
-        solver.assert(&ast._eq(&program_value));
-    } else {
-        eprintln!("warning: program var `{}` is not enum-typed in `{}`",
-                  program_var, schema.name);
-    }
-    // Body Seq injection.
-    if let Some(Var::DatatypeSeqVar { arr, len, fields, .. }) = env.get(body_var) {
-        if !fields.is_empty() {
-            eprintln!("warning: body var `{}` is record-typed seq, not enum-typed; skipping",
-                      body_var);
-        } else {
-            match super::super::encode_ast::encode_body_items_into_seq(
-                body_items, arr, len, ctx, enums,
-            ) {
-                Ok(asserts) => for a in &asserts { solver.assert(a); },
-                Err(e) => eprintln!("warning: body encode failed: {e}"),
-            }
-        }
-    } else {
-        eprintln!("warning: body var `{}` is not a Seq(enum) in `{}`",
-                  body_var, schema.name);
-    }
-
-    let satisfied = matches!(solver.check(), SatResult::Sat);
-    let mut bindings = HashMap::new();
-    if satisfied {
-        if let Some(model) = solver.get_model() {
-            for (name, var) in env.iter() {
-                extract_binding(name, var, &model, ctx, &mut bindings, Some(enums));
             }
         }
     }
