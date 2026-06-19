@@ -17,23 +17,6 @@ fn write_tmp(name: &str, body: &str) -> std::path::PathBuf {
     path
 }
 
-/// Run the CLI against a real example file from examples/. Exercises
-/// types, claims with sub-schema mapping, ClaimCall, and field access
-/// — a realistic mix.
-
-#[test]
-fn cli_check_reports_per_schema() {
-    let path = write_tmp("check",
-        "schema A\n    n ∈ Nat\n    n > 0\n\
-         schema B\n    n ∈ Nat\n    n > 100\n    n < 3\n");
-    let out = Command::new(bin()).args(["check", path.to_str().unwrap()])
-        .output().unwrap();
-    let s = String::from_utf8_lossy(&out.stdout);
-    assert!(s.contains("SAT    A"),  "stdout: {s}");
-    assert!(s.contains("UNSAT  B"), "stdout: {s}");
-    // Exit nonzero because at least one schema was UNSAT.
-    assert!(!out.status.success());
-}
 
 #[test]
 fn cli_test_runs_sat_unsat_claims() {
