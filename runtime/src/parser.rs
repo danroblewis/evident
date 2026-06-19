@@ -277,7 +277,7 @@ impl Parser {
         let param_count = body.len();
         body.extend(self.parse_indented_body()?);
         Ok(BodyItem::SubclaimDecl(SchemaDecl {
-            keyword: Keyword::Subclaim, name, type_params: vec![],
+            keyword: Keyword::Subclaim, name,
             body, param_count, external: false,
         }))
     }
@@ -342,29 +342,6 @@ impl Parser {
             other => return Err(ParseError(format!(
                 "expected schema name, got {:?}", other))),
         };
-        // Optional type parameters: `type Edge<T>(...)`, `type Pair<A, B>(...)`,
-        // `claim Toposort<T>`. Comma-separated capitalized identifiers
-        // between angle brackets. Empty if not generic.
-        let type_params = if matches!(self.peek(), Token::Lt) {
-            self.bump();   // <
-            let mut params = Vec::new();
-            loop {
-                match self.bump() {
-                    Token::Ident(s) => params.push(s),
-                    other => return Err(ParseError(format!(
-                        "expected type parameter name, got {:?}", other))),
-                }
-                match self.peek() {
-                    Token::Comma => { self.bump(); }
-                    Token::Gt    => { self.bump(); break; }
-                    other => return Err(ParseError(format!(
-                        "expected `,` or `>` in type parameters, got {:?}", other))),
-                }
-            }
-            params
-        } else {
-            vec![]
-        };
         // Optional first-line param list: `type Vec2(x, y ∈ Int)` is
         // shorthand for declaring those Memberships at the top of the
         // body. The order shown here is the canonical positional order
@@ -375,7 +352,7 @@ impl Parser {
         }
         let param_count = body.len();
         body.extend(self.parse_indented_body()?);
-        Ok(SchemaDecl { keyword, name, type_params, body, param_count, external })
+        Ok(SchemaDecl { keyword, name, body, param_count, external })
     }
 
     /// Parse `( name1, name2, … ∈ Type, name3 ∈ Type2, … )`. Each
@@ -419,25 +396,13 @@ impl Parser {
                 && matches!(self.peek(), Token::LParen)
             {
                 self.bump();   // (
-                let inner_head = match self.bump() {
+                let inner = match self.bump() {
                     Token::Ident(s) => s,
                     other => return Err(ParseError(format!(
                         "expected inner type for {}, got {:?}", head, other))),
                 };
-                // Inner type may itself carry generic args:
-                // `Seq(Edge<T>)`. Consume those if present.
-                let inner = if let Some(args) = self.try_parse_generic_args_suffix()? {
-                    format!("{inner_head}{args}")
-                } else {
-                    inner_head
-                };
                 self.eat(&Token::RParen)?;
                 format!("{}({})", head, inner)
-            } else if matches!(self.peek(), Token::Lt) {
-                // Bare-type with generic args: `Edge<T>`, `Pair<A, B>`.
-                let args = self.try_parse_generic_args_suffix()?
-                    .expect("Lt was peeked");
-                format!("{head}{args}")
             } else {
                 head
             };
@@ -650,86 +615,13 @@ impl Parser {
         Ok(Some(items))
     }
 
-    /// Consume a `<arg1, arg2, …>` type-argument list at the current
-    /// position and return it as a string (including the angle
-    /// brackets). Returns None and doesn't consume anything if the
-    /// next token isn't `<`.
-    ///
-    /// Each `arg` is itself a type name (possibly with further
-    /// generic args). Single-token names only inside args for v1 —
-    /// no Seq/Set/etc. inside generic args yet, but nested generic
-    /// args ARE supported via recursion (`Edge<Pair<A, B>>`).
-    fn try_parse_generic_args_suffix(&mut self) -> Result<Option<String>> {
-        if !matches!(self.peek(), Token::Lt) {
-            return Ok(None);
-        }
-        self.bump();   // <
-        let mut out = String::from("<");
-        let mut first = true;
-        loop {
-            if !first { out.push_str(", "); }
-            first = false;
-            let name = match self.bump() {
-                Token::Ident(s) => s,
-                other => return Err(ParseError(format!(
-                    "expected type argument name, got {:?}", other))),
-            };
-            out.push_str(&name);
-            if let Some(inner) = self.try_parse_generic_args_suffix()? {
-                out.push_str(&inner);
-            }
-            match self.peek() {
-                Token::Comma => { self.bump(); }
-                Token::Gt    => { self.bump(); break; }
-                other => return Err(ParseError(format!(
-                    "expected `,` or `>` in type arguments, got {:?}", other))),
-            }
-        }
-        out.push('>');
-        Ok(Some(out))
-    }
-
     ///   - positional pins:          `IVec2 (-800, -800)`
     ///   - compound `Ident(Ident)`:  `Seq(Int)` (only for hardcoded
     ///     compound heads — Seq/Set/Bag/Map — so other `Type(arg)`
     ///     reads as a positional pin).
-    ///   - generic type:             `Edge<Rect>`, `Pair<A, B>`,
-    ///     and combinations like `Seq(Edge<Rect>)`.
     fn try_parse_type_and_pins(&mut self, head: &str)
         -> Result<Option<(String, crate::core::ast::Pins)>>
     {
-        // Generic-args suffix: `Edge<Rect>` produces head="Edge<Rect>".
-        // We need to peek-and-temporarily-bump because the rest of
-        // this function does its own bumping in each branch. Strategy:
-        // if the token right after head is `Lt`, consume head and the
-        // generic-args suffix here, then recurse with the new
-        // composite head string at the start of the function. The
-        // function then sees `Lt`-extended head and inspects what's
-        // after the angle brackets (newline, `(`, etc.) the same way.
-        if matches!(self.toks.get(self.pos + 1), Some(Token::Lt)) {
-            self.bump();   // consume head ident
-            let args = self.try_parse_generic_args_suffix()?
-                .expect("Lt was peeked");
-            let composite = format!("{head}{args}");
-            // Now the cursor is past the generic args. Peek at what
-            // follows (newline / `(` / etc.) and reuse the existing
-            // logic. We need to construct a synthetic "head" string
-            // and proceed *without* re-bumping the head — so handle
-            // the trailing forms inline.
-            let after = self.toks.get(self.pos).cloned();
-            let plain_terminated = matches!(after,
-                Some(Token::Newline) | Some(Token::Eof)
-                | Some(Token::Indent(_)) | None);
-            if plain_terminated {
-                return Ok(Some((composite, crate::core::ast::Pins::None)));
-            }
-            // No pin/compound forms supported on generic instantiations
-            // at the use-site for v1 (e.g. no `Edge<Rect>(a ↦ x, …)`).
-            // Caller's chain detection or expression parsing handles
-            // anything else.
-            return Ok(Some((composite, crate::core::ast::Pins::None)));
-        }
-
         let after_head = self.toks.get(self.pos + 1);
         let plain_terminated = matches!(after_head,
             Some(Token::Newline) | Some(Token::Eof) | Some(Token::Indent(_)) | None);
@@ -743,11 +635,9 @@ impl Parser {
             let inside_second = self.toks.get(self.pos + 3);
             let is_named_pin = matches!(inside_first, Some(Token::Ident(_)))
                 && matches!(inside_second, Some(Token::MapsTo));
-            // `Seq(Int)` — bare-ident inner — or `Seq(Edge<Rect>)`
-            // — generic-ident inner. Both look-like-compound.
+            // `Seq(Int)` — bare-ident inner — looks like a compound.
             let looks_like_compound = matches!(inside_first, Some(Token::Ident(_)))
-                && (matches!(inside_second, Some(Token::RParen))
-                    || matches!(inside_second, Some(Token::Lt)));
+                && matches!(inside_second, Some(Token::RParen));
             let is_known_compound_head =
                 matches!(head, "Seq" | "Set" | "Bag" | "Map");
 
@@ -772,15 +662,9 @@ impl Parser {
             } else if is_known_compound_head && looks_like_compound {
                 self.bump();           // outer ident
                 self.bump();           // (
-                let inner_head = match self.bump() {
+                let inner = match self.bump() {
                     Token::Ident(s) => s,
                     _ => unreachable!(),
-                };
-                // Inner may carry generic args: `Seq(Edge<Rect>)`.
-                let inner = if let Some(args) = self.try_parse_generic_args_suffix()? {
-                    format!("{inner_head}{args}")
-                } else {
-                    inner_head
                 };
                 self.bump();           // )
                 let after = self.toks.get(self.pos);
@@ -845,40 +729,18 @@ impl Parser {
         }
 
         // ClaimCall: `IDENT(slot mapsto value, …)` at body-item start.
-        // Also accepts `IDENT<T>(slot mapsto value, …)` — generic claim
-        // invocation. Distinguished from a parenthesized expression by
-        // the IDENT (optionally followed by `<...>`) immediately
-        // followed by `(`. Disambiguated from a generic function-call
-        // expression (record literal like `IVec2(0, 0)`) by checking
-        // that the second token inside the parens is `MapsTo` —
-        // specific to ClaimCall syntax.
+        // Distinguished from a parenthesized expression by the IDENT
+        // immediately followed by `(`. Disambiguated from a
+        // function-call expression (record literal like `IVec2(0, 0)`)
+        // by checking that the second token inside the parens is
+        // `MapsTo` — specific to ClaimCall syntax.
         if let Token::Ident(_) = self.peek() {
-            // Peek past optional `<...>` to find the `(` that opens
-            // the mappings list.
-            let lparen_offset: Option<usize> = {
-                let after = self.toks.get(self.pos + 1);
-                if matches!(after, Some(Token::LParen)) {
+            let lparen_offset: Option<usize> =
+                if matches!(self.toks.get(self.pos + 1), Some(Token::LParen)) {
                     Some(1)
-                } else if matches!(after, Some(Token::Lt)) {
-                    // Scan forward past balanced angle brackets.
-                    let mut depth = 0i32;
-                    let mut i = self.pos + 1;
-                    loop {
-                        match self.toks.get(i) {
-                            Some(Token::Lt) => depth += 1,
-                            Some(Token::Gt) => {
-                                depth -= 1;
-                                if depth == 0 { break Some(i - self.pos + 1); }
-                            }
-                            None => break None,
-                            _ => {}
-                        }
-                        i += 1;
-                    }
                 } else {
                     None
-                }
-            };
+                };
             if let Some(lp) = lparen_offset {
                 if matches!(self.toks.get(self.pos + lp), Some(Token::LParen)) {
                     let inside_first = self.toks.get(self.pos + lp + 1);
@@ -886,16 +748,10 @@ impl Parser {
                     let is_claim_call = matches!(inside_first, Some(Token::Ident(_)))
                         && matches!(inside_second, Some(Token::MapsTo));
                     if is_claim_call {
-                        let mut name = match self.bump() {
+                        let name = match self.bump() {
                             Token::Ident(s) => s,
                             _ => unreachable!(),
                         };
-                        // Consume optional `<args>` and append to name.
-                        if matches!(self.peek(), Token::Lt) {
-                            if let Some(args) = self.try_parse_generic_args_suffix()? {
-                                name.push_str(&args);
-                            }
-                        }
                         self.eat(&Token::LParen)?;
                         let mut mappings = Vec::new();
                         if !matches!(self.peek(), Token::RParen) {
@@ -1475,24 +1331,6 @@ impl Parser {
                             "expected field name after '.', got {:?}", other))),
                     }
                 }
-                // Optional type-args suffix: `Edge<Rect>(args)` —
-                // typed constructor for a monomorphic instance of a
-                // generic type. Only accepted when immediately
-                // followed by `(` (a call); anything else means
-                // `<` is comparison and we rewind. Catches errors
-                // from the suffix parser too — they'd mean the `<`
-                // wasn't actually opening a type-args list (e.g.
-                // `n < 5 + 1`).
-                if matches!(self.peek(), Token::Lt) {
-                    let saved = self.pos;
-                    let parsed = self.try_parse_generic_args_suffix();
-                    match parsed {
-                        Ok(Some(args)) if matches!(self.peek(), Token::LParen) => {
-                            name.push_str(&args);
-                        }
-                        _ => { self.pos = saved; }
-                    }
-                }
                 // Function-call expression: `name(arg, …)`. Recognized
                 // for builtins like `coindexed(A, B)` / `edges(seq)`,
                 // record literals like `IVec2(0, 0)`, claim invocations
@@ -1883,5 +1721,29 @@ mod tests {
         // not allowed. Falls through and errors at the schema-parse
         // level (the trailing `< 5` is unexpected).
         assert!(parse("claim t\n    state.x ∈ Int < 5\n").is_err());
+    }
+
+    #[test]
+    fn parse_comparison_ops_after_generics_removal() {
+        // `<` / `>` in expression position are comparison operators,
+        // never type-argument brackets (the `<T>` grammar is gone).
+        let p = parse("claim t\n    a ∈ Int\n    b ∈ Int\n    a < b\n    b > 5\n").unwrap();
+        let s = &p.schemas[0];
+        match s.body[2] {
+            BodyItem::Constraint(Expr::Binary(BinOp::Lt, _, _)) => {}
+            ref other => panic!("expected `a < b`, got {:?}", other),
+        }
+        match s.body[3] {
+            BodyItem::Constraint(Expr::Binary(BinOp::Gt, _, _)) => {}
+            ref other => panic!("expected `b > 5`, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn parse_generic_type_params_no_longer_accepted() {
+        // `type Edge<T>(...)` used to parse a type-parameter list.
+        // With the generics grammar removed, the `<` after the schema
+        // name is unexpected and the parse fails.
+        assert!(parse("type Edge<T>\n    from ∈ Int\n").is_err());
     }
 }

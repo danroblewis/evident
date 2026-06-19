@@ -28,12 +28,12 @@
 //!     of the API because the runtime facade owns one and passes
 //!     references into `evaluate*`.
 //!
-//!   * `ast_encoder` / `ast_decoder` namespaces — the AST↔Z3-Datatype
-//!     bridge for self-hosted compiler passes. Kept as namespaces
-//!     (rather than flat `pub use`) because callers consume them as
-//!     `ast_encoder::encode_program(...)` / `ast_decoder::decode_*` —
-//!     the qualified form makes the bridge boundary visible at the
-//!     call site.
+//!   * `ast_encoder` / `ast_decoder` namespaces — the value↔Z3-Datatype
+//!     bridge the executor uses to encode `Effect`/`Result`/`BodyItem`
+//!     fragments and decode them back from a solved model. Kept as
+//!     namespaces (rather than flat `pub use`) because callers consume
+//!     them as `ast_encoder::...` / `ast_decoder::...` — the qualified
+//!     form makes the bridge boundary visible at the call site.
 
 mod datatypes;
 mod decode_ast;
@@ -46,10 +46,10 @@ mod inline;
 mod preprocess;
 
 pub mod ast_decoder {
-    //! Public surface of the Z3-model → Rust-AST decoder. Mirrors
-    //! the encoder's shape; used by self-hosted desugar passes
-    //! that need to read back a transformed Program.
-    pub use super::decode_ast::{decode_program, decode_effect, decode_effect_list,
+    //! Public surface of the Z3-model → Rust-AST decoder. Used by the
+    //! executor to read back `Effect`s, `Result`s, FFI args, and the
+    //! declarative `Seq(InstallStep)` install path from a model.
+    pub use super::decode_ast::{decode_effect, decode_effect_list,
                                   decode_ffi_arg, decode_arg_list,
                                   decode_result,
                                   decode_install_step, decode_install_step_list,
@@ -58,13 +58,13 @@ pub mod ast_decoder {
 }
 
 pub mod ast_encoder {
-    //! Public surface of the AST → Z3 datatype encoder. Used by
-    //! `EvidentRuntime::encode_program_value` and the
-    //! `evident dump-ast` CLI.
-    pub use super::encode_ast::{encode_program, encode_body_items_into_seq,
+    //! Public surface of the AST → Z3 datatype encoder. Used by the
+    //! executor to encode `BodyItem`s / `Effect`s / `Result`s and to
+    //! re-encode `Value::Enum` world fields for the `given` map.
+    pub use super::encode_ast::{encode_body_items_into_seq,
                                  encode_effect_result,
                                  effect_results_to_value,
-                                 program_to_value, value_enum_to_datatype,
+                                 value_enum_to_datatype,
                                  EncodeError};
 }
 

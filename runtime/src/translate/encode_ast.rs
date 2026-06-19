@@ -1,23 +1,17 @@
-//! Stage 2 of self-hosting: encode a parsed `Program` (Rust AST) as
-//! a Z3 `Datatype` value matching the shape of `stdlib/ast.ev`.
+//! Encode AST fragments (BodyItems, Effects, Results) as Z3
+//! `Datatype` values, and re-encode `Value::Enum` trees as Z3
+//! datatypes.
 //!
-//! This is the bridge that lets self-hosted compiler passes consume
-//! real source. Pass writers will write Evident programs that take a
-//! `Program` value as a `given` and produce constraints over it; the
-//! Rust runtime parses the user's source, calls into here to encode
-//! it, then injects the encoded value as a `given` to the pass.
+//! Used by the executor: `encode_body_items_into_seq` pins an
+//! enum-typed `Seq` variable's elements; `encode_effect_result` /
+//! `effect_results_to_value` build `Result` values for the multi-FSM
+//! scheduler's `given` map; `value_enum_to_datatype` re-encodes a
+//! `Value::Enum` field for the `given` loop.
 //!
 //! Per-type encoders are mostly mechanical: look up the constructor
 //! by name in the `EnumRegistry`, translate each field, apply. The
 //! recursion follows the AST structure; lists become a Cons-chain
 //! through the relevant `*List` enum.
-//!
-//! Limitations:
-//!   - `TraceDecl` and `ShaderDecl` are not in `stdlib/ast.ev` v0.1
-//!     and are silently skipped during program encoding.
-//!   - Self-hosted passes that don't load `stdlib/ast.ev` will see
-//!     `EncodeError::EnumNotRegistered` for every constructor — load
-//!     the file first.
 
 use z3::ast::{Ast, Bool, Datatype, Int, Real, String as Z3Str};
 use z3::Context;
@@ -34,11 +28,6 @@ pub enum EncodeError {
     /// `stdlib/ast.ev` drifted from the Rust AST shape — fix the
     /// stdlib file to add the variant.
     VariantNotFound { enum_name: String, variant: String },
-    /// Something we can't encode in v0.1 (TraceDecl, ShaderDecl,
-    /// etc.). Skipped silently for whole-program encoding; caller
-    /// can still hit this for individual encoder calls on those
-    /// types.
-    Unsupported(&'static str),
 }
 
 impl std::fmt::Display for EncodeError {
@@ -49,8 +38,6 @@ impl std::fmt::Display for EncodeError {
             EncodeError::VariantNotFound { enum_name, variant } =>
                 write!(f, "stdlib/ast.ev is missing variant `{}` of `{}`",
                        variant, enum_name),
-            EncodeError::Unsupported(what) =>
-                write!(f, "encoding `{}` is not yet supported", what),
         }
     }
 }
@@ -215,38 +202,6 @@ fn encode_cons_list<'ctx, T>(
     Ok(acc)
 }
 
-pub fn encode_string_list<'ctx>(
-    items: &[String],
-    ctx: &'ctx Context,
-    enums: &EnumRegistry,
-) -> Result<Datatype<'ctx>> where 'ctx: 'static {
-    // Special case: Seq(String) at the top level still uses the
-    // two-accessor Array+Int representation (Strings aren't part of
-    // any recursive enum group). But when used as a stdlib/ast.ev
-    // enum field (e.g. EForall(Seq(String), …)), the field is
-    // batch-local and would need __SeqOf_String. String is a
-    // primitive though — so `generate_internal_cons_helpers` only
-    // fires for enum elements in the same batch, not primitives.
-    //
-    // So this encoder handles the "top-level Seq(String)" case
-    // (Array+Int) — but no current caller actually goes through it
-    // for AST encoding (EForall etc. is encoded via the field-aware
-    // path below). Kept for completeness / future use.
-    use z3::ast::Array;
-    use z3::Sort;
-    let default = z3_str(ctx, "");
-    let mut arr = Array::const_array(ctx, &Sort::int(ctx), &default);
-    for (i, s) in items.iter().enumerate() {
-        arr = arr.store(&Int::from_i64(ctx, i as i64), &z3_str(ctx, s));
-    }
-    let _ = enums;
-    // Return a freshly-built (arr, len) wrapped as a one-variant
-    // Datatype — but no consumer actually uses this return.
-    // Encode helpers prefer the per-T encoders below.
-    Err(EncodeError::Unsupported("encode_string_list (top-level Array+Int) — \
-                                  use the field-aware encoder path"))
-}
-
 pub fn encode_expr_list<'ctx>(
     items: &[Expr],
     ctx: &'ctx Context,
@@ -271,38 +226,6 @@ pub fn encode_body_item_list<'ctx>(
     encode_cons_list(items, "BodyItem", ctx, enums, encode_body_item)
 }
 
-pub fn encode_schema_list<'ctx>(
-    items: &[SchemaDecl],
-    ctx: &'ctx Context,
-    enums: &EnumRegistry,
-) -> Result<Datatype<'ctx>> where 'ctx: 'static {
-    encode_cons_list(items, "SchemaDecl", ctx, enums, encode_schema_decl)
-}
-
-pub fn encode_enum_decl_list<'ctx>(
-    items: &[EnumDecl],
-    ctx: &'ctx Context,
-    enums: &EnumRegistry,
-) -> Result<Datatype<'ctx>> where 'ctx: 'static {
-    encode_cons_list(items, "EnumDecl", ctx, enums, encode_enum_decl)
-}
-
-pub fn encode_enum_variant_list<'ctx>(
-    items: &[EnumVariant],
-    ctx: &'ctx Context,
-    enums: &EnumRegistry,
-) -> Result<Datatype<'ctx>> where 'ctx: 'static {
-    encode_cons_list(items, "EnumVariant", ctx, enums, encode_enum_variant)
-}
-
-pub fn encode_enum_field_list<'ctx>(
-    items: &[EnumField],
-    ctx: &'ctx Context,
-    enums: &EnumRegistry,
-) -> Result<Datatype<'ctx>> where 'ctx: 'static {
-    encode_cons_list(items, "EnumField", ctx, enums, encode_enum_field)
-}
-
 /// Encode `Vec<String>` for an EForall/EExists vars slot. After
 /// Phase 6.5 the Seq(String) field is two-accessor Array+Int
 /// (String is primitive), but the constructor expects a single
@@ -320,38 +243,6 @@ pub fn encode_string_seq_pair<'ctx>(
         arr = arr.store(&Int::from_i64(ctx, i as i64), &z3_str(ctx, s));
     }
     (arr, Int::from_i64(ctx, items.len() as i64))
-}
-
-// ── Schema-shape singletons (single-variant enums in stdlib/ast.ev) ──
-
-pub fn encode_enum_field<'ctx>(
-    f: &EnumField,
-    ctx: &'ctx Context,
-    enums: &EnumRegistry,
-) -> Result<Datatype<'ctx>> where 'ctx: 'static {
-    let name = z3_str(ctx, &f.name);
-    let type_name = z3_str(ctx, &f.type_name);
-    apply(enums, "EnumField", "MakeEnumField", &[&name, &type_name])
-}
-
-pub fn encode_enum_variant<'ctx>(
-    v: &EnumVariant,
-    ctx: &'ctx Context,
-    enums: &EnumRegistry,
-) -> Result<Datatype<'ctx>> where 'ctx: 'static {
-    let name = z3_str(ctx, &v.name);
-    let fields = encode_enum_field_list(&v.fields, ctx, enums)?;
-    apply(enums, "EnumVariant", "MakeEnumVariant", &[&name, &fields])
-}
-
-pub fn encode_enum_decl<'ctx>(
-    e: &EnumDecl,
-    ctx: &'ctx Context,
-    enums: &EnumRegistry,
-) -> Result<Datatype<'ctx>> where 'ctx: 'static {
-    let name = z3_str(ctx, &e.name);
-    let variants = encode_enum_variant_list(&e.variants, ctx, enums)?;
-    apply(enums, "EnumDecl", "MakeEnumDecl", &[&name, &variants])
 }
 
 /// Encode a SchemaDecl into the `MakeSchemaDecl(Keyword, String,
@@ -580,21 +471,6 @@ fn encode_bind_list<'ctx>(
     Ok(acc)
 }
 
-// ── Top-level Program ──────────────────────────────────────────
-
-pub fn encode_program<'ctx>(
-    prog: &Program,
-    ctx: &'ctx Context,
-    enums: &EnumRegistry,
-) -> Result<Datatype<'ctx>> where 'ctx: 'static {
-    // TraceDecl/ShaderDecl are intentionally omitted from
-    // stdlib/ast.ev's Program — they're runtime-loaded scaffolding,
-    // not part of what passes need to consume. Skip silently.
-    let schemas = encode_schema_list(&prog.schemas, ctx, enums)?;
-    let enums_v = encode_enum_decl_list(&prog.enums, ctx, enums)?;
-    apply(enums, "Program", "MakeProgram", &[&schemas, &enums_v])
-}
-
 // `use _ as _` to keep imports tidy at the module top while still
 // avoiding unused-import warnings if someone strips a helper.
 #[allow(unused_imports)]
@@ -688,21 +564,7 @@ pub fn effect_results_to_value(items: &[crate::core::ast::EffectResult]) -> Valu
     Value::SeqEnum(elems)
 }
 
-// ── Pure-Rust mirror: Program → Value::Enum tree ───────────────
-//
-// The encoders above produce Z3 `Datatype<'static>` values for use
-// as solver assertions. The reflection world-plugin (and other
-// future consumers) need the SAME information shaped as a
-// `Value::Enum` tree — the runtime's neutral value currency that
-// flows through `world_snapshot` and the `given` map.
-//
-// These helpers mirror `encode_program` / `encode_schema_decl` /
-// etc. but produce `Value` directly, never touching Z3. The shape
-// is identical to what `encode_program` would emit and what
-// `decode_ast`'s round-trip expects — same constructor names, same
-// argument order. Adding a variant here means the Z3 path AND
-// stdlib/ast.ev's enum decl must be kept in sync (same as the
-// existing encoders).
+// ── Value::Enum → Z3 Datatype ──────────────────────────────────
 
 use crate::core::Value;
 
@@ -761,273 +623,3 @@ where 'ctx: 'static
     ctor.apply(&refs).as_datatype()
 }
 
-fn ev(enum_name: &str, variant: &str, fields: Vec<Value>) -> Value {
-    Value::Enum {
-        enum_name: enum_name.to_string(),
-        variant:   variant.to_string(),
-        fields,
-    }
-}
-
-pub fn program_to_value(prog: &Program) -> Value {
-    let schemas = schema_list_to_value(&prog.schemas);
-    let enums   = enum_decl_list_to_value(&prog.enums);
-    ev("Program", "MakeProgram", vec![schemas, enums])
-}
-
-fn schema_list_to_value(items: &[SchemaDecl]) -> Value {
-    let mut acc = ev("SchemaList", "SchLNil", vec![]);
-    for s in items.iter().rev() {
-        acc = ev("SchemaList", "SchLCons",
-                 vec![schema_decl_to_value(s), acc]);
-    }
-    acc
-}
-
-fn enum_decl_list_to_value(items: &[EnumDecl]) -> Value {
-    let mut acc = ev("EnumDeclList", "EDLNil", vec![]);
-    for e in items.iter().rev() {
-        acc = ev("EnumDeclList", "EDLCons",
-                 vec![enum_decl_to_value(e), acc]);
-    }
-    acc
-}
-
-fn schema_decl_to_value(s: &SchemaDecl) -> Value {
-    let kw = keyword_to_value(&s.keyword);
-    let body = body_item_list_to_value(&s.body);
-    ev("SchemaDecl", "MakeSchemaDecl",
-       vec![kw, Value::Str(s.name.clone()), body])
-}
-
-fn keyword_to_value(kw: &Keyword) -> Value {
-    let v = match kw {
-        Keyword::Schema   => "KSchema",
-        Keyword::Claim    => "KClaim",
-        Keyword::Type     => "KType",
-        Keyword::Subclaim => "KSubclaim",
-        Keyword::Fsm      => "KFsm",
-    };
-    ev("Keyword", v, vec![])
-}
-
-fn body_item_list_to_value(items: &[BodyItem]) -> Value {
-    let mut acc = ev("BodyItemList", "BILNil", vec![]);
-    for it in items.iter().rev() {
-        acc = ev("BodyItemList", "BILCons",
-                 vec![body_item_to_value(it), acc]);
-    }
-    acc
-}
-
-fn body_item_to_value(bi: &BodyItem) -> Value {
-    match bi {
-        BodyItem::Membership { name, type_name, pins } => {
-            ev("BodyItem", "BIMembership",
-               vec![Value::Str(name.clone()),
-                    Value::Str(type_name.clone()),
-                    pins_to_value(pins)])
-        }
-        BodyItem::Passthrough(name) => {
-            ev("BodyItem", "BIPassthrough", vec![Value::Str(name.clone())])
-        }
-        BodyItem::ClaimCall { name, mappings } => {
-            ev("BodyItem", "BIClaimCall",
-               vec![Value::Str(name.clone()),
-                    mapping_list_to_value(mappings)])
-        }
-        BodyItem::Constraint(e) => {
-            ev("BodyItem", "BIConstraint", vec![expr_to_value(e)])
-        }
-        BodyItem::SubclaimDecl(s) => {
-            ev("BodyItem", "BISubclaim", vec![schema_decl_to_value(s)])
-        }
-    }
-}
-
-fn pins_to_value(p: &Pins) -> Value {
-    match p {
-        Pins::None => ev("Pins", "PNone", vec![]),
-        Pins::Named(maps) => {
-            ev("Pins", "PNamed", vec![mapping_list_to_value(maps)])
-        }
-        Pins::Positional(args) => {
-            ev("Pins", "PPositional", vec![expr_list_to_value(args)])
-        }
-    }
-}
-
-fn mapping_to_value(m: &Mapping) -> Value {
-    ev("Mapping", "MakeMapping",
-       vec![Value::Str(m.slot.clone()), expr_to_value(&m.value)])
-}
-
-fn mapping_list_to_value(items: &[Mapping]) -> Value {
-    let mut acc = ev("MappingList", "MLNil", vec![]);
-    for m in items.iter().rev() {
-        acc = ev("MappingList", "MLCons",
-                 vec![mapping_to_value(m), acc]);
-    }
-    acc
-}
-
-fn string_list_to_value(items: &[String]) -> Value {
-    let mut acc = ev("StringList", "SLNil", vec![]);
-    for s in items.iter().rev() {
-        acc = ev("StringList", "SLCons",
-                 vec![Value::Str(s.clone()), acc]);
-    }
-    acc
-}
-
-fn expr_list_to_value(items: &[Expr]) -> Value {
-    let mut acc = ev("ExprList", "ELNil", vec![]);
-    for e in items.iter().rev() {
-        acc = ev("ExprList", "ELCons",
-                 vec![expr_to_value(e), acc]);
-    }
-    acc
-}
-
-fn binop_to_value(op: &BinOp) -> Value {
-    let v = match op {
-        BinOp::Eq      => "OpEq",
-        BinOp::Neq     => "OpNeq",
-        BinOp::Lt      => "OpLt",
-        BinOp::Le      => "OpLe",
-        BinOp::Gt      => "OpGt",
-        BinOp::Ge      => "OpGe",
-        BinOp::And     => "OpAnd",
-        BinOp::Or      => "OpOr",
-        BinOp::Implies => "OpImplies",
-        BinOp::Add     => "OpAdd",
-        BinOp::Sub     => "OpSub",
-        BinOp::Mul     => "OpMul",
-        BinOp::Div     => "OpDiv",
-        BinOp::Concat  => "OpConcat",
-    };
-    ev("BinOp", v, vec![])
-}
-
-fn expr_to_value(e: &Expr) -> Value {
-    match e {
-        Expr::Identifier(s) => ev("Expr", "EIdentifier", vec![Value::Str(s.clone())]),
-        Expr::Int(n)        => ev("Expr", "EInt",        vec![Value::Int(*n)]),
-        Expr::Real(f)       => ev("Expr", "EReal",       vec![Value::Real(*f)]),
-        Expr::Bool(b)       => ev("Expr", "EBool",       vec![Value::Bool(*b)]),
-        Expr::Str(s)        => ev("Expr", "EStr",        vec![Value::Str(s.clone())]),
-        Expr::SetLit(items) => ev("Expr", "ESetLit",     vec![expr_list_to_value(items)]),
-        Expr::SeqLit(items) => ev("Expr", "ESeqLit",     vec![expr_list_to_value(items)]),
-        Expr::Tuple(items)  => ev("Expr", "ETuple",      vec![expr_list_to_value(items)]),
-        Expr::Range(lo, hi) => ev("Expr", "ERange",
-                                   vec![expr_to_value(lo), expr_to_value(hi)]),
-        Expr::InExpr(l, r)  => ev("Expr", "EInExpr",
-                                   vec![expr_to_value(l), expr_to_value(r)]),
-        Expr::Forall(vars, range, body) =>
-            ev("Expr", "EForall",
-               vec![string_list_to_value(vars),
-                    expr_to_value(range),
-                    expr_to_value(body)]),
-        Expr::Exists(vars, range, body) =>
-            ev("Expr", "EExists",
-               vec![string_list_to_value(vars),
-                    expr_to_value(range),
-                    expr_to_value(body)]),
-        Expr::Call(name, args) =>
-            ev("Expr", "ECall",
-               vec![Value::Str(name.clone()), expr_list_to_value(args)]),
-        Expr::Cardinality(inner) =>
-            ev("Expr", "ECardinality", vec![expr_to_value(inner)]),
-        Expr::Index(seq, idx) =>
-            ev("Expr", "EIndex", vec![expr_to_value(seq), expr_to_value(idx)]),
-        Expr::Field(base, name) =>
-            ev("Expr", "EField",
-               vec![expr_to_value(base), Value::Str(name.clone())]),
-        Expr::Binary(op, l, r) =>
-            ev("Expr", "EBinary",
-               vec![binop_to_value(op), expr_to_value(l), expr_to_value(r)]),
-        Expr::Not(inner) =>
-            ev("Expr", "ENot", vec![expr_to_value(inner)]),
-        Expr::Ternary(c, a, b) =>
-            ev("Expr", "ETernary",
-               vec![expr_to_value(c), expr_to_value(a), expr_to_value(b)]),
-        Expr::Match(scr, arms) =>
-            ev("Expr", "EMatch",
-               vec![expr_to_value(scr), match_arm_list_to_value(arms)]),
-        Expr::Matches(e, pat) =>
-            ev("Expr", "EMatches",
-               vec![expr_to_value(e), match_pattern_to_value(pat)]),
-    }
-}
-
-fn match_arm_list_to_value(arms: &[crate::core::ast::MatchArm]) -> Value {
-    let mut acc = ev("MatchArmList", "MALNil", vec![]);
-    for a in arms.iter().rev() {
-        acc = ev("MatchArmList", "MALCons",
-                 vec![match_arm_to_value(a), acc]);
-    }
-    acc
-}
-
-fn match_arm_to_value(a: &crate::core::ast::MatchArm) -> Value {
-    ev("MatchArm", "MakeMatchArm",
-       vec![match_pattern_to_value(&a.pattern), expr_to_value(&a.body)])
-}
-
-fn match_pattern_to_value(p: &crate::core::ast::MatchPattern) -> Value {
-    use crate::core::ast::MatchPattern;
-    match p {
-        MatchPattern::Wildcard => ev("MatchPattern", "PatWildcard", vec![]),
-        MatchPattern::Ctor { name, binds } => {
-            ev("MatchPattern", "PatCtor",
-               vec![Value::Str(name.clone()), bind_list_to_value(binds)])
-        }
-    }
-}
-
-fn bind_list_to_value(binds: &[Option<String>]) -> Value {
-    let mut acc = ev("BindList", "BLNil", vec![]);
-    for b in binds.iter().rev() {
-        let head = match b {
-            None => ev("MatchBind", "BindWildcard", vec![]),
-            Some(n) => ev("MatchBind", "BindName", vec![Value::Str(n.clone())]),
-        };
-        acc = ev("BindList", "BLCons", vec![head, acc]);
-    }
-    acc
-}
-
-fn enum_decl_to_value(e: &EnumDecl) -> Value {
-    ev("EnumDecl", "MakeEnumDecl",
-       vec![Value::Str(e.name.clone()),
-            enum_variant_list_to_value(&e.variants)])
-}
-
-fn enum_variant_list_to_value(items: &[EnumVariant]) -> Value {
-    let mut acc = ev("EnumVariantList", "EVLNil", vec![]);
-    for v in items.iter().rev() {
-        acc = ev("EnumVariantList", "EVLCons",
-                 vec![enum_variant_to_value(v), acc]);
-    }
-    acc
-}
-
-fn enum_variant_to_value(v: &EnumVariant) -> Value {
-    ev("EnumVariant", "MakeEnumVariant",
-       vec![Value::Str(v.name.clone()),
-            enum_field_list_to_value(&v.fields)])
-}
-
-fn enum_field_list_to_value(items: &[EnumField]) -> Value {
-    let mut acc = ev("EnumFieldList", "EFLNil", vec![]);
-    for f in items.iter().rev() {
-        acc = ev("EnumFieldList", "EFLCons",
-                 vec![enum_field_to_value(f), acc]);
-    }
-    acc
-}
-
-fn enum_field_to_value(f: &EnumField) -> Value {
-    ev("EnumField", "MakeEnumField",
-       vec![Value::Str(f.name.clone()), Value::Str(f.type_name.clone())])
-}
