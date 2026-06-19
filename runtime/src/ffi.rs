@@ -375,6 +375,17 @@ pub fn ffi_call(
     Ok(ret)
 }
 
+// ── FTI: foreign type interface — which stdlib imports are shimmed by a bridge ──
+
+const SHIMMED_STDLIB_PATHS: &[&str] = &[
+    "packages/sdl.ev",
+    "stdlib/io.ev",
+];
+
+pub fn is_shimmed_stdlib(import_path: &str) -> bool {
+    SHIMMED_STDLIB_PATHS.contains(&import_path)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

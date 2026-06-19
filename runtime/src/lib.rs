@@ -10,7 +10,6 @@ mod parser;
 pub mod pretty;
 pub mod translate;
 mod runtime;
-mod fti;
 
 pub use runtime::EvidentRuntime;
 pub use core::{QueryResult, RuntimeError, Value};

@@ -36,7 +36,7 @@ impl EvidentRuntime {
 
         for import_path in &prog.imports {
 
-            if crate::fti::is_shimmed_stdlib(import_path) {
+            if crate::ffi::is_shimmed_stdlib(import_path) {
 
                 if self.resolve_import(import_path, base).is_err() {
                     continue;
