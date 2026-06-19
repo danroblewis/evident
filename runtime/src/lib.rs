@@ -2,7 +2,6 @@ mod core;
 pub mod effect_dispatch;
 pub mod z3_eval;
 pub mod functionize;
-mod value_builders;
 pub mod effect_loop;
 mod ffi;
 mod lexer;

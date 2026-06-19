@@ -106,7 +106,7 @@ pub fn compile_program<'ctx>(
     let isa_builder = cranelift_native::builder().ok()?;
     let isa = isa_builder.finish(settings::Flags::new(flag_builder)).ok()?;
     let mut builder = JITBuilder::with_isa(isa, cranelift_module::default_libcall_names());
-    for (name, addr) in crate::value_builders::symbol_table() {
+    for (name, addr) in super::symbol_table() {
         builder.symbol(name, addr);
     }
     let mut module = JITModule::new(builder);
@@ -481,7 +481,7 @@ fn emit_write_value<'ctx>(
                             string_pool, ptr_t, size_of_value);
                     }
 
-                    let (enum_name, field_types) = lookup_variant(&variant, variant_arity)?;
+                    let (enum_name, field_types) = super::lookup_variant(&variant, variant_arity)?;
                     let (ep, el) = intern_str(string_pool, &enum_name);
                     let (vp, vl) = intern_str(string_pool, &variant);
                     let ep_v = bcx.ins().iconst(types::I64, ep);
@@ -989,14 +989,3 @@ fn collect_inputs<'ctx>(
     }
 }
 
-fn lookup_variant(
-    variant: &str,
-    variant_arity: &HashMap<String, HashMap<String, Vec<String>>>,
-) -> Option<(String, Vec<String>)> {
-    for (en, vs) in variant_arity {
-        if let Some(fields) = vs.get(variant) {
-            return Some((en.clone(), fields.clone()));
-        }
-    }
-    None
-}
