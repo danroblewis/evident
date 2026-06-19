@@ -23,12 +23,16 @@ out, effects executed — is the core value. Nothing else is.
 1. **Front end** — lexer, parser, AST.
 2. **Lower** — desugar / inject (the surface sugar the language promises),
    translate (AST → Z3 sorts + constraints), the Z3-program IR extraction.
-3. **Solve & speed** — the Z3 integration and the Cranelift functionizer (the
-   one performance mechanism we keep, for now). Performance serves a single end —
-   *sensible, fast-enough-to-iterate speed* — it is not a goal in itself. The
-   functionizer stays; speculative optimization (extra solve strategies, caching
-   layers, tuning knobs) and performance **measurement** do not. Add either back
-   only when a real bottleneck demands it.
+3. **Solve & speed** — the Z3 integration, the Cranelift functionizer, and the
+   build-once compiled model it reuses each tick. That model — declared once, then
+   asserted/checked/popped per frame, the fallback path any translator-gap claim
+   hits *every tick* — **is the solve, materialized; it is core, not a cache bolted
+   on top.** Performance serves a single end — *sensible, fast-enough-to-iterate
+   speed* — not a goal in itself. So what's NOT core is **speculative** optimization
+   (alternate solve strategies, tuning knobs, *speculative* caching layered on top
+   of the solve) and performance **measurement** — add either back only when a real
+   bottleneck demands it. The test: does it *do* the solve, or merely try to make an
+   already-working solve faster on a guess?
 4. **Execute** — the single-FSM tick loop, effect dispatch, the FFI primitive,
    and the FTI (foreign type interface) bridges. The Effect/Result value codec.
 5. **CLI** — exactly `effect-run` (run a program) and `test` (verify claims).
