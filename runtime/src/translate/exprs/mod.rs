@@ -4,8 +4,7 @@
 //! ↔ enum ↔ seq) works exactly as it did in the single-file form.
 //!
 //!   - resolve    — mapping/enum/seq-handle resolution from env
-//!   - scalars    — translate_str / translate_int / translate_real
-//!   - records    — record-vector lifting (componentwise eq/cmp/arith)
+//!   - values     — scalar translators (str/int/real) + record-vector lifting
 //!   - equations  — seq/set equality + composite binding/building
 //!   - bool       — translate_bool (the dispatcher) + literal_range
 
@@ -17,8 +16,7 @@ use crate::core::ast::*;
 use crate::core::{EnumRegistry, Var};
 
 mod resolve;
-mod scalars;
-mod records;
+mod values;
 mod equations;
 mod bool;
 
@@ -27,8 +25,7 @@ mod bool;
 // exprs-internal (mutual visibility comes from `use super::*` in each submodule).
 pub(super) use resolve::*;
 pub(super) use self::bool::*;
-use scalars::*;
-use records::*;
+use values::*;
 use equations::*;
 
 // ───────────────────────── enum registry guard + target hint (thread-local) ─────────────────────────
