@@ -209,14 +209,14 @@ ship with it.
 | Thing | Where defined |
 |---|---|
 | Lexer (Unicode operators → tokens) | `runtime/src/lexer.rs` |
-| Parser (recursive-descent) | `runtime/src/parser.rs` |
+| Parser (recursive-descent) | `runtime/src/parser/` (`mod.rs` decls, `exprs.rs` expression chain) |
 | AST node types | `runtime/src/core/ast.rs` |
-| Shared types + traits (Value, Z3Program, Functionizer, …) | `runtime/src/core/` |
+| Shared types (Value, Z3Program, registries, …) | `runtime/src/core/types.rs` |
 | AST → Z3 translator | `runtime/src/translate/` |
 | Z3 functionizer + JIT | `runtime/src/functionize/` (Cranelift impl) + `runtime/src/z3_eval.rs` (extractor) |
 | Effect dispatch | `runtime/src/effect_dispatch.rs` |
-| Subscription-driven scheduler | `runtime/src/effect_loop/` |
-| FTI bridges | `runtime/src/event_sources/`, `runtime/src/fti.rs` |
+| Subscription-driven scheduler | `runtime/src/effect_loop.rs` |
+| FTI bridges | `runtime/src/event_sources/`, `runtime/src/ffi.rs` (`is_shimmed_stdlib`) |
 | Stdlib (Evident) | `stdlib/` |
 | Design docs | `docs/design/` |
 | Worked examples + integration tests | `examples/` |
@@ -229,16 +229,15 @@ The runtime is a pipeline. Each stage is a separate module under
 ```
 source text
   → lexer.rs              Unicode operators + word-keywords → tokens
-  → parser.rs             Recursive-descent parser → AST (core/ast.rs)
+  → parser/               Recursive-descent parser → AST (core/ast.rs)
   → translate/            AST → Z3 sorts + constraints; per-claim inline
   → z3_eval.rs            Simplified Z3 AST → Z3Program (the IR)
   → functionize/          Z3Program → callable function (Cranelift JIT)
   → runtime/              EvidentRuntime: top-level API (load_file, query)
-  → effect_loop/          Subscription-driven scheduler (the executor)
+  → effect_loop.rs        Subscription-driven scheduler (the executor)
   → effect_dispatch.rs    Effect → IO (Println, LibCall, ParseInt, …)
   → event_sources/        FTI bridge implementations (one struct per
                           typed C resource)
-  → fti.rs                FTI registry: type-name → install fn
 ```
 
 Supporting modules:
@@ -258,18 +257,17 @@ here's where to start.
 
 | Module | What lives here |
 |---|---|
-| `core/`        | Shared data types + traits. No orchestration logic. Imported by everything else. |
+| `core/`        | Shared data types. No orchestration logic. Imported by everything else. |
 | `runtime/`     | `EvidentRuntime`: load, query, sample, scheduler-facing API |
-| `effect_loop/` | Subscription-driven scheduler — `run` and `run_with_ctx` |
+| `effect_loop.rs` | Subscription-driven scheduler — `run` and `run_with_ctx`, FSM discovery, install bridge, per-tick loop, effect ordering |
 | `translate/`   | Evident AST → Z3 ASTs; build solvers; extract models |
 | `functionize/` | Functionizer implementations (currently: Cranelift JIT) |
 | `event_sources/` | Async wake plugins (FrameTimer, Stdin, Sigint, …) |
-| `commands/` | Per-CLI-subcommand entry points |
+| `commands.rs` | Per-CLI-subcommand entry points |
 | `effect_dispatch.rs` | Effect → IO (Println, LibCall, ParseInt, …) |
-| `subscriptions.rs` | Static read/write-set inference per claim |
 | `z3_eval.rs`   | Extract a `Z3Program` from a simplified Z3 AST |
-| `ffi.rs`, `fti.rs` | libffi marshaling + typed-resource bridges |
-| `parser.rs`, `lexer.rs`, `pretty.rs` | Front end |
+| `ffi.rs`       | libffi marshaling + handle registry; FTI shimmed-stdlib check |
+| `parser/`, `lexer.rs`, `pretty.rs` | Front end |
 
 ### Inside `core/`
 
@@ -281,12 +279,7 @@ not a core thing — it belongs in `runtime/` or higher.
 | File | What's in it |
 |---|---|
 | `core/ast.rs`          | Evident AST — `Expr`, `BodyItem`, `SchemaDecl`, `Effect`, `EffectResult`, `Pins`, `BinOp`, `Program`, `Keyword` |
-| `core/value.rs`        | `Value` (the runtime value type returned in `QueryResult.bindings`), `EvalResult` |
-| `core/z3_types.rs`     | `EnumRegistry`, `CachedSchema`, `Var`, `FieldKind`, `SeqFieldElem`, `DatatypeRegistry` |
-| `core/z3_program.rs`   | `Z3Program`, `Z3Step`, `GuardedBranch`, `GuardedBody` — the IR the functionizer consumes |
-| `core/seq_helpers.rs`  | `parse_seq_type`, `internal_cons_helper_name` — pure type-name string utilities used by translate/ and runtime/ |
-| `core/api.rs`          | `QueryResult`, `RuntimeError` — the public-facing query result + error |
-| `core/functionizer.rs` | `Functionizer` + `CompiledFunction` traits |
+| `core/types.rs`        | Everything else shared: `Value`/`EvalResult`; the Z3-side `EnumRegistry`, `Var`, `FieldKind`, `SeqFieldElem`, `DatatypeRegistry`, `CompiledModel`; the `Z3Program`/`Z3Step`/`GuardedBranch`/`GuardedBody` IR; `QueryResult`/`RuntimeError`; the `parse_seq_type`/`internal_cons_helper_name` Seq helpers |
 
 External callers can use `evident_runtime::{Value, QueryResult, RuntimeError, ast}` (re-exported from `core` at `lib.rs`). Internal code imports from `crate::core::*` directly.
 
@@ -294,40 +287,36 @@ External callers can use `evident_runtime::{Value, QueryResult, RuntimeError, as
 
 | Want to … | Edit |
 |---|---|
-| Add a new public query method | `runtime/query.rs` (or `analysis.rs` for diagnostic-shaped ones) |
-| Change how a schema gets parsed/loaded | `runtime/load.rs` |
-| Add a new schema desugaring | `runtime/desugar.rs` |
-| Change FSM auto-injection (`state_next`, `_prev`, …) | `runtime/inject.rs` |
+| Add a new public query method | `runtime/query.rs` |
+| Change how a schema gets parsed/loaded, or import resolution | `runtime/mod.rs` (load + scheduler-facing query + UnionFind) |
+| Add/change a lowering pass (seq-concat desugar, world syntax, FSM/type-inference injection) | `runtime/lower.rs` |
 | Touch enum → Z3 Datatype registration | `runtime/register_enums.rs` |
-| Add a per-claim stat | `runtime/stats.rs` |
-| Wire a per-tick scheduler call | `runtime/scheduler_api.rs` |
-| Enforce a load-time validation rule | `runtime/validate.rs` |
 
-### Inside `effect_loop/`
+### Inside `effect_loop.rs` (single file, sectioned)
 
-| Want to … | Edit |
+| Want to … | Section |
 |---|---|
-| Change how FSMs are discovered | `effect_loop/fsm.rs` |
-| Change effect ordering / toposort | `effect_loop/toposort.rs`, `collect.rs` |
-| Touch the per-tick scheduler loop | `effect_loop/scheduler.rs` |
-| Adjust halt detection or state seeding | `effect_loop/state.rs` |
+| Change how FSMs are discovered | FSM discovery + shape (`resolve_fsm`, `single_fsm`) |
+| Change effect ordering / toposort | effect collection + ordering (`collect_dispatchable_effects`, `topo_sort_with_random_tiebreak`) |
+| Touch the per-tick scheduler loop | per-tick scheduler loop (`run_loop`) |
+| Adjust state seeding / encoding | `seed_state`, `encode_state_value` |
+| Touch the declarative install bridge | `run_declarative_install` |
 
-### Inside `translate/eval/`
+### Inside `translate/eval.rs` (single file, sectioned)
 
-| Want to … | Edit |
+| Want to … | Section |
 |---|---|
-| Change the default tactic chain or solver tuning | `translate/eval/solver.rs` |
-| Add a new `evaluate_with_*` variant | `translate/eval/extra.rs` |
-| Touch the cached-solver path | `translate/eval/cached.rs` |
-| Decode a new enum/composite shape from a Z3 model | `translate/eval/decode.rs` |
-| Change UNSAT-core extraction | `translate/eval/core.rs` |
+| Change the default tactic chain or solver tuning | solver tuning + shared helpers (`make_tuned_solver`) |
+| Touch the one-shot vs cached path | `evaluate` / `build_cache` + `run_cached` |
+| Touch the extra-assertions (pins) variant | `evaluate_with_extra_assertions` |
+| Decode a new enum/composite shape from a Z3 model | model → Value decoders (`extract_enum_value`, `extract_seq_enum`) |
 
 ### Inside `functionize/`
 
 | Want to … | Edit |
 |---|---|
-| Plug in a new functionizer strategy | implement `Functionizer` + `CompiledFunction` traits from `functionize/mod.rs` in a new file under `functionize/` |
-| Change Cranelift codegen | `functionize/cranelift.rs` |
+| Touch the JIT program repr / C-helper runtime / Functionizer entry | `functionize/cranelift/mod.rs` |
+| Change Cranelift codegen (compile_program + emit_* walkers) | `functionize/cranelift/codegen.rs` |
 
 ### Rules of thumb
 
@@ -1191,10 +1180,11 @@ record-element Seqs.** For a `Seq(Int)`, `∀ x ∈ s : x > 0`
 binds `x` to each Int element. For a `Seq(Edge)`, `∀ e ∈
 edges : e.from = ...` binds `e` as the element AND makes
 `e.field` accessible for each field on the element record.
-The runtime's `Forall` translator at
-`runtime/src/translate/exprs.rs` does the field-binding via
-`bind_composite_fields` for composite-element Seqs; primitive
-Seqs bind the element value to the variable directly.
+The runtime's `Forall` translator in
+`runtime/src/translate/exprs/bool.rs` does the field-binding via
+`bind_composite_fields` (in `exprs/equations.rs`) for
+composite-element Seqs; primitive Seqs bind the element value to
+the variable directly.
 
 **When indices ARE necessary**:
 - You need the position itself in the constraint (e.g. "the
