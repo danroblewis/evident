@@ -1,0 +1,79 @@
+# claudebot dev image for evident: everything in Dockerfile, plus Claude Code,
+# the md markdown/session viewer (github.com/danroblewis/md) built from
+# source, and a cloudflared quick tunnel announced to the Discord channel at
+# startup (scripts/claudebot-dev-entrypoint.sh).
+#
+# Use via ~/evident/.claudebot: DOCKERFILE=Dockerfile.dev
+FROM rust:1-bookworm
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    clang libclang-dev libffi-dev pkg-config cmake unzip \
+    python3 git curl ca-certificates jq ripgrep procps \
+ && rm -rf /var/lib/apt/lists/*
+
+# Graphics stack for the SDL/GL demos. Evident calls SDL2/OpenGL via FFI;
+# there's no real video device, so Xvfb provides a virtual framebuffer
+# (DISPLAY=:99 below), fluxbox maps windows, x11vnc lets you view it live
+# (VNC on :5900), and imagemagick's `import` captures screenshots for the
+# test harness. The Xvfb/x11vnc daemons are started by the dev entrypoint.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libsdl2-dev libsdl2-mixer-dev libgl1-mesa-dev libglu1-mesa-dev \
+    xvfb x11vnc x11-utils fluxbox imagemagick \
+ && rm -rf /var/lib/apt/lists/*
+
+# Z3 from the official release, NOT Debian's. bookworm ships 4.8.12
+# (2021); the seam workload (compiler.smt2's Seq/String theory) grinds
+# for hours on it and dies with "Overflow encountered when expanding
+# vector". Per-arch: the newest release whose glibc floor fits
+# bookworm's 2.36 (arm64 builds target 2.34, x64 builds 2.35 until
+# 4.15.0 jumped to 2.39).
+RUN arch="$(dpkg --print-architecture)" \
+ && case "$arch" in \
+      arm64) z3v="4.15.4"; z3a="arm64-glibc-2.34" ;; \
+      amd64) z3v="4.14.1"; z3a="x64-glibc-2.35" ;; \
+      *) echo "unsupported arch $arch" >&2; exit 1 ;; \
+    esac \
+ && curl -fsSL -o /tmp/z3.zip \
+    "https://github.com/Z3Prover/z3/releases/download/z3-$z3v/z3-$z3v-$z3a.zip" \
+ && unzip -q /tmp/z3.zip -d /tmp \
+ && cp /tmp/z3-$z3v-$z3a/bin/libz3.so /usr/local/lib/ \
+ && cp /tmp/z3-$z3v-$z3a/bin/z3 /usr/local/bin/ \
+ && cp /tmp/z3-$z3v-$z3a/include/*.h /usr/local/include/ \
+ && rm -rf /tmp/z3.zip /tmp/z3-$z3v-$z3a \
+ && ldconfig
+
+# Claude Code (npm puts it in /usr/local — NOT /root, which the
+# container-home mount shadows at runtime)
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+ && apt-get install -y nodejs \
+ && npm install -g @anthropic-ai/claude-code \
+ && rm -rf /var/lib/apt/lists/*
+
+# md viewer, built from source (go.mod wants go >= 1.25)
+COPY --from=golang:1.25-bookworm /usr/local/go /usr/local/go
+# cache-bust: this URL's content changes with every commit to md, so the
+# clone layer below rebuilds exactly when the repo does
+ADD https://api.github.com/repos/danroblewis/md/commits/main /tmp/md-head.json
+RUN git clone --depth 1 https://github.com/danroblewis/md.git /opt/md \
+ && cd /opt/md && /usr/local/go/bin/go build -o /usr/local/bin/md . \
+ && rm -rf /root/go /root/.cache
+
+# cloudflared (quick tunnels need no account)
+RUN curl -fsSL -o /usr/local/bin/cloudflared \
+    "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-$(dpkg --print-architecture)" \
+ && chmod +x /usr/local/bin/cloudflared
+
+COPY scripts/claudebot-dev-entrypoint.sh /usr/local/bin/dev-entrypoint.sh
+RUN chmod +x /usr/local/bin/dev-entrypoint.sh
+ENTRYPOINT ["/usr/local/bin/dev-entrypoint.sh"]
+
+# The repo's .cargo/config.toml pins Z3_SYS_Z3_HEADER (and friends) to macOS
+# homebrew paths. cargo's [env] does not override variables that are already
+# set in the environment, so these take precedence inside the container.
+ENV Z3_SYS_Z3_HEADER=/usr/local/include/z3.h \
+    PKG_CONFIG_PATH= \
+    LIBRARY_PATH=/usr/local/lib \
+    DISPLAY=:99
+
+WORKDIR /root
+CMD ["bash"]
