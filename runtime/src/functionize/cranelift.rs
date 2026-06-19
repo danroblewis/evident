@@ -111,7 +111,6 @@ struct HelperIds {
     load_bool:         FuncId,
     extract_field:     FuncId,
     seq_select:        FuncId,
-    str_concat:        FuncId,
     is_variant:        FuncId,
     clone_from_pool:   FuncId,
 }
@@ -134,7 +133,6 @@ struct HelperRefs {
     load_bool:         cranelift::codegen::ir::FuncRef,
     extract_field:     cranelift::codegen::ir::FuncRef,
     seq_select:        cranelift::codegen::ir::FuncRef,
-    str_concat:        cranelift::codegen::ir::FuncRef,
     is_variant:        cranelift::codegen::ir::FuncRef,
     clone_from_pool:   cranelift::codegen::ir::FuncRef,
 }
@@ -179,7 +177,6 @@ fn declare_helpers(
     let s_load_bool = mk_ret(&[p], i64t, module);
     let s_extract = mk(&[p, p, p, usz], module);
     let s_seq_sel = mk(&[p, p, i64t], module);
-    let s_str_cat = mk(&[p, p, usz], module);
     let s_is_var  = mk_ret(&[p, p, usz], i64t, module);
     let s_pool    = mk(&[p, p, usz], module);
 
@@ -200,7 +197,6 @@ fn declare_helpers(
         load_bool:        module.declare_function("ev_load_bool",        Linkage::Import, &s_load_bool).ok()?,
         extract_field:    module.declare_function("ev_extract_field",    Linkage::Import, &s_extract).ok()?,
         seq_select:       module.declare_function("ev_seq_select",       Linkage::Import, &s_seq_sel).ok()?,
-        str_concat:       module.declare_function("ev_str_concat",       Linkage::Import, &s_str_cat).ok()?,
         is_variant:       module.declare_function("ev_is_variant",       Linkage::Import, &s_is_var).ok()?,
         clone_from_pool:  module.declare_function("ev_clone_from_pool",  Linkage::Import, &s_pool).ok()?,
     })
@@ -228,7 +224,6 @@ fn import_helpers(
         load_bool:        module.declare_func_in_func(ids.load_bool,        func),
         extract_field:    module.declare_func_in_func(ids.extract_field,    func),
         seq_select:       module.declare_func_in_func(ids.seq_select,       func),
-        str_concat:       module.declare_func_in_func(ids.str_concat,       func),
         is_variant:       module.declare_func_in_func(ids.is_variant,       func),
         clone_from_pool:  module.declare_func_in_func(ids.clone_from_pool,  func),
     }

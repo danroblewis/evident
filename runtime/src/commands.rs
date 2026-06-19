@@ -167,11 +167,6 @@ fn dim(on: bool, t: &str)    -> String { paint(on, DIM, t) }
 fn bold(on: bool, t: &str)   -> String { paint(on, BOLD, t) }
 
 #[derive(Debug)]
-enum TestKind {
-    Schema { expected_sat: bool },
-}
-
-#[derive(Debug)]
 enum FailDetail {
 
     UnexpectedUnsat,
@@ -186,7 +181,6 @@ enum Outcome { Pass, Fail(FailDetail), Error(String) }
 struct TestRun {
     file:       PathBuf,
     name:       String,
-    kind:       TestKind,
     outcome:    Outcome,
     elapsed_ms: u32,
 }
@@ -224,7 +218,6 @@ pub fn cmd_test(args: &[String]) -> ExitCode {
 
             runs.push(TestRun {
                 file: f.clone(), name: f.display().to_string(),
-                kind: TestKind::Schema { expected_sat: true },
                 outcome: Outcome::Error(format!("load: {e}")),
                 elapsed_ms: 0,
             });
@@ -260,7 +253,6 @@ pub fn cmd_test(args: &[String]) -> ExitCode {
             };
             runs.push(TestRun {
                 file: f.clone(), name: name.clone(),
-                kind: TestKind::Schema { expected_sat },
                 outcome, elapsed_ms: t0.elapsed().as_millis() as u32,
             });
             {
