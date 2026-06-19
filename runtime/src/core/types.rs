@@ -1,9 +1,50 @@
+//! Core shared types: the runtime `Value`, the Z3-side variable/registry types,
+//! the `Z3Program` IR the functionizer consumes, the public query result + error,
+//! and a couple of pure Seq type-name helpers.
+
 use std::cell::RefCell;
 use std::collections::HashMap;
-use z3::ast::{Array, Bool, Int, Real, Set, String as Z3Str};
+use z3::ast::{Array, Bool, Dynamic, Int, Real, Set, String as Z3Str};
 use z3::{DatatypeSort, Solver};
 
-use crate::core::Value;
+// ───────────────────────────── runtime values ─────────────────────────────
+
+#[derive(Debug, Clone)]
+pub struct EvalResult {
+    pub satisfied: bool,
+    pub bindings: HashMap<String, Value>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Value {
+    Int(i64),
+
+    Real(f64),
+    Bool(bool),
+    Str(String),
+
+    SeqInt(Vec<i64>),
+    SeqBool(Vec<bool>),
+    SeqStr(Vec<String>),
+
+    Composite(HashMap<String, Value>),
+
+    SeqComposite(Vec<HashMap<String, Value>>),
+
+    SeqEnum(Vec<Value>),
+
+    SetInt(Vec<i64>),
+    SetBool(Vec<bool>),
+    SetStr(Vec<String>),
+
+    Enum {
+        enum_name: String,
+        variant: String,
+        fields: Vec<Value>,
+    },
+}
+
+// ─────────────────────────── Z3-side registries & vars ───────────────────────────
 
 pub type DatatypeRegistry =
     RefCell<HashMap<String, (&'static DatatypeSort<'static>, Vec<FieldKind>)>>;
@@ -193,4 +234,92 @@ pub struct CompiledModel<'ctx> {
     pub solver: Solver<'ctx>,
 
     pub arith_solver: u32,
+}
+
+// ───────────────────────── Z3Program IR (functionizer input) ─────────────────────────
+
+#[derive(Debug, Clone)]
+pub struct Z3Program<'ctx> {
+
+    pub steps: Vec<Z3Step<'ctx>>,
+
+    pub checks: Vec<(Dynamic<'ctx>, Dynamic<'ctx>)>,
+
+    pub predicates: Vec<Bool<'ctx>>,
+}
+
+#[derive(Debug, Clone)]
+pub enum Z3Step<'ctx> {
+
+    Scalar { var: String, expr: Dynamic<'ctx> },
+
+    Seq    { var: String, elem_exprs: Vec<Dynamic<'ctx>> },
+
+    Guarded { var: String, branches: Vec<GuardedBranch<'ctx>> },
+
+    PreBaked { var: String, value: Value },
+}
+
+#[derive(Debug, Clone)]
+pub struct GuardedBranch<'ctx> {
+    pub guard: Dynamic<'ctx>,
+    pub body:  GuardedBody<'ctx>,
+}
+
+#[derive(Debug, Clone)]
+pub enum GuardedBody<'ctx> {
+    Scalar(Dynamic<'ctx>),
+    Seq(Vec<Dynamic<'ctx>>),
+}
+
+impl<'ctx> Z3Step<'ctx> {
+    pub fn var(&self) -> &str {
+        match self {
+            Z3Step::Scalar   { var, .. }
+            | Z3Step::Seq      { var, .. }
+            | Z3Step::Guarded  { var, .. }
+            | Z3Step::PreBaked { var, .. } => var,
+        }
+    }
+}
+
+// ───────────────────────── public query result + error ─────────────────────────
+
+#[derive(Debug, Clone)]
+pub struct QueryResult {
+    pub satisfied: bool,
+    pub bindings: HashMap<String, Value>,
+}
+
+#[derive(Debug)]
+pub enum RuntimeError {
+    Parse(String),
+    UnknownSchema(String),
+    Io(String),
+}
+
+impl std::fmt::Display for RuntimeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            RuntimeError::Parse(s) => write!(f, "{}", s),
+            RuntimeError::UnknownSchema(s) => write!(f, "unknown schema {:?}", s),
+            RuntimeError::Io(s) => write!(f, "{}", s),
+        }
+    }
+}
+
+impl std::error::Error for RuntimeError {}
+
+// ───────────────────────── pure Seq type-name helpers ─────────────────────────
+
+pub fn parse_seq_type(s: &str) -> Option<&str> {
+    if s.starts_with("Seq(") && s.ends_with(')') {
+        Some(&s[4..s.len() - 1])
+    } else {
+        None
+    }
+}
+
+pub fn internal_cons_helper_name(t: &str) -> String {
+    format!("__SeqOf_{}", t)
 }
