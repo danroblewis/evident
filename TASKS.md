@@ -78,9 +78,11 @@ the Xvfb display) must be green after each.
 - [x] ~~Fold `runtime/lenient.rs` into `query.rs`~~ — done better by #3:
   `lenient.rs` deleted, the env side-channel replaced with a threaded `bool`,
   mechanism kept.
-- [ ] Fully remove the inert `<T>` generics grammar + `SchemaDecl.type_params`
-  from the parser/AST (left inert by the sweep; clean removal is fiddly because
-  it's interwoven with `Seq(Edge<Rect>)` parsing).
+- [x] ~~Fully remove the inert `<T>` generics grammar + `SchemaDecl.type_params`~~
+  — already done by an earlier pass (verified via Semfora): `try_parse_type_and_pins`
+  has no angle-bracket handling, `type_params` exists nowhere in the code, and a
+  regression test (`parse_generic_type_params_no_longer_accepted`) asserts
+  `type Edge<T>` is rejected. The old "left inert" note was stale.
 - [ ] `runtime/stats.rs` (functionizer per-claim stats) — test-only after the
   profiling-flag removal; droppable with its tests.
 - [ ] Build a NEW IDE for phase portraits / diagrams (the original goal). The viz
