@@ -9,14 +9,17 @@ avoids worktree merge conflicts. Mark items done and commit as they land.
 - _(nothing running)_
 
 ## Queued (in order)
-1. **KEYSTONE — remove "world", unify FSM record-state onto `_var`** — see
-   [`remove-world-unify-state.md`](remove-world-unify-state.md). Delete the legacy
-   `var`/`var_next` state-pair (`state`/`state_next`, `world`/`world_next`) + the
-   `unify_world_syntax` rename pass; carry record state via the `_var` prev-tick
-   mechanism (`_var.field` = previous, `var.field` = current), like scalars. Removes
-   cruft, fixes `Δ`-on-records, and unblocks the FTI time-shift — do this first.
+- _(empty — cleanup queue clear)_
 
 ## Done (recent, newest first)
+- **KEYSTONE — removed "world", unified FSM state onto `_var`** (branch
+  `unify-fsm-state`) — see [`remove-world-unify-state.md`](remove-world-unify-state.md).
+  Deleted `unify_world_syntax`, the `state`/`state_next`·`world`/`world_next` pair
+  detection + Datatype-pin + world_snapshot carry + `seed_state`/`encode_state_value`;
+  record/enum/scalar state now all carry through the one `_var` mechanism (`_x` reads
+  prev `x`). Migrated all demos + integration/JIT tests; purged "world" everywhere;
+  rewrote CLAUDE.md's FSM-state guidance. Fixes `Δ`-on-records (verified) and unblocks
+  the FTI time-shift. 248 cargo tests + 27 static demos + 3 visual demos green.
 - purge stdlib multi-FSM vestiges (5 `external fsm` + FrameTimer/Signal/FrameClock/Timer + dead comments), `runtime.ev` 299→195; `single_fsm` reviewed, already minimal
 - move `lower.rs` → `encode/lower.rs`; rename `runtime/` module → `session/` — `6a37276`
 - reconcile docs to single-FSM: delete 8 obsolete design docs + multi-fsm cookbook,

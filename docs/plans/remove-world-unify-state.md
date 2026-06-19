@@ -1,6 +1,13 @@
 # Remove "world", unify FSM record-state onto the `_var` prev-tick mechanism
 
-**This is the keystone task.** Do it before more `Δ`, FTI, or phase-portrait work — it
+> **✅ DONE** (branch `unify-fsm-state`, not yet merged to main). All tasks below
+> landed; `Δ`-on-records verified; 248 cargo tests + 27 static demos + 3 visual demos
+> green. Key result: the legacy pair was *pure redundancy* — the `_var` mechanism
+> already carried enum/record/scalar state, so the work was mostly deletion. The doc
+> below is kept as the design record. Downstream now unblocked: `Δ` tiers 2–3 and the
+> FTI state-machine time-shift (`_file.offset`/`file.offset`).
+
+**This was the keystone task.** Done before more `Δ`, FTI, or phase-portrait work — it
 unblocks all three.
 
 ## Goal
