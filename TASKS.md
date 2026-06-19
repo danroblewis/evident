@@ -64,7 +64,15 @@ the Xvfb display) must be green after each.
    which is load-bearing for FFI-effect dispatch. So this is likely a **rename**
    (e.g. `effect_codec.rs`) + trim of any still-dead helpers — confirm with the
    call graph before deleting anything.
-8. [ ] **Strip ALL comments** from `runtime/` Rust (`//`, `/* */`, `///`, `//!`,
+8. [ ] **Review & collapse `effect_loop/` to a single FSM.** One FSM per program
+   now (no multi-FSM scheduling), but the executor still carries the old
+   machinery: `fsm.rs::all_fsms(rt) -> Vec<MainShape>` + `for fsm in &fsms` in
+   `mod.rs`, and `scheduler.rs` (341 lines, "Per-FSM mutable run state",
+   ready-frontier framing). Collapse to a single `MainShape` + a flat tick loop:
+   drop the `Vec`/iteration, the per-FSM run state, and the scheduler abstraction.
+   **Pairs with #1** (both reshape the executor run loop) — likely do together.
+   (`timing.rs` goes with the `EVIDENT_LOOP_TIMING` removal in #3.)
+9. [ ] **Strip ALL comments** from `runtime/` Rust (`//`, `/* */`, `///`, `//!`,
    including doc-comments and their doc-tests). Use a string/char/raw-string-aware
    stripper; build + full test must stay green (comments don't affect logic).
    Done **last**, so it also cleans up comments the earlier passes add.
