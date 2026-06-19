@@ -250,19 +250,12 @@ pub enum Effect {
     NoEffect,
     Print(String),
     Println(String),
-    ReadLine,
-    Time,
     Exit(i64),
 
     ParseInt(String),
 
-    ParseReal(String),
-
     IntToStr(i64),
 
-    RealToStr(f64),
-
-    ShellRun(String),
     FFIOpen(String),
     FFILookup(u64, String),
     FFICall(u64, String, Vec<EffectFfiArg>),
@@ -291,8 +284,6 @@ pub enum Effect {
     WriteStr(u64, i64, String),
 
     Malloc(i64),
-
-    MonotonicTime,
 
     RegisterCallback(String, String),
 }

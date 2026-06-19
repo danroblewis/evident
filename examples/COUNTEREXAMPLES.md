@@ -97,8 +97,8 @@ FTI pins are merged.
 
 ## 6. Bool result from binding inside match arm doesn't propagate
 
-**Where:** test_07_time investigation (workaround already in the
-file)
+**Where:** observed during the (since-removed) time-effect demo
+investigation
 
 ```evident
 got = match last_results
@@ -784,13 +784,10 @@ Every demo ships in green:
 | 03 | seq_chain | Effect::Seq |
 | 04 | parse_int | ParseInt → Int / Error result |
 | 05 | int_to_str | IntToStr → String result |
-| 06 | shell_run | ShellRun → captured stdout |
-| 07 | time | Time → IntResult |
 | 08 | exit_code | non-zero exit propagation |
 | 09 | two_fsms | shared World, writer-first scheduling |
 | 10 | spawn | SpawnFsm with Int arg, spawnable_only marker |
 | 11 | frameclock | FrameClock FTI |
-| 12 | hostname | Hostname FTI (one-shot bridge) |
 | 13 | timer | per-instance Timer with `interval_ms ↦ N` |
 | 14 | stdin | StdinSource plugin-as-writer |
 | 15 | signal | SigintSource plugin-as-writer |

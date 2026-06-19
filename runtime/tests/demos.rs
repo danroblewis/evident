@@ -51,19 +51,6 @@ const EXPECTATIONS: &[DemoExpect] = &[
         max_steps: 10, tick_ms: 0, stdin: None,
     },
     DemoExpect {
-
-        name: "test_06_shell_run", exit: 0,
-        must_lines: &["20"],
-        forbid_exact_lines: &["<no string>", "<no result>"],
-        max_steps: 10, tick_ms: 0, stdin: None,
-    },
-    DemoExpect {
-        name: "test_07_time", exit: 0,
-        must_lines: &["elapsed_ms = "],
-        forbid_exact_lines: &["?", "<no string>", "elapsed_ms = -1"],
-        max_steps: 30, tick_ms: 0, stdin: None,
-    },
-    DemoExpect {
         name: "test_08_exit_code", exit: 42,
         must_lines: &["exiting with code 42"],
         forbid_exact_lines: &[],

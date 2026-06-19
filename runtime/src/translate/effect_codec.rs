@@ -199,14 +199,9 @@ pub fn decode_effect(v: &Value) -> Result<crate::core::ast::Effect> {
         "NoEffect"     => { need_arity(variant, fields, 0)?; Effect::NoEffect }
         "Print"        => { need_arity(variant, fields, 1)?; Effect::Print(decode_str(&fields[0])?) }
         "Println"      => { need_arity(variant, fields, 1)?; Effect::Println(decode_str(&fields[0])?) }
-        "ReadLine"     => { need_arity(variant, fields, 0)?; Effect::ReadLine }
-        "Time"         => { need_arity(variant, fields, 0)?; Effect::Time }
         "Exit"         => { need_arity(variant, fields, 1)?; Effect::Exit(decode_int(&fields[0])?) }
         "ParseInt"     => { need_arity(variant, fields, 1)?; Effect::ParseInt(decode_str(&fields[0])?) }
-        "ParseReal"    => { need_arity(variant, fields, 1)?; Effect::ParseReal(decode_str(&fields[0])?) }
         "IntToStr"     => { need_arity(variant, fields, 1)?; Effect::IntToStr(decode_int(&fields[0])?) }
-        "RealToStr"    => { need_arity(variant, fields, 1)?; Effect::RealToStr(decode_real(&fields[0])?) }
-        "ShellRun"     => { need_arity(variant, fields, 1)?; Effect::ShellRun(decode_str(&fields[0])?) }
         "FFIOpen"      => { need_arity(variant, fields, 1)?; Effect::FFIOpen(decode_str(&fields[0])?) }
         "FFILookup"    => {
             need_arity(variant, fields, 2)?;
@@ -304,7 +299,6 @@ pub fn decode_effect(v: &Value) -> Result<crate::core::ast::Effect> {
             need_arity(variant, fields, 1)?;
             Effect::Malloc(decode_int(&fields[0])?)
         }
-        "MonotonicTime" => { need_arity(variant, fields, 0)?; Effect::MonotonicTime }
         "RegisterCallback" => {
             need_arity(variant, fields, 2)?;
             Effect::RegisterCallback(decode_str(&fields[0])?, decode_str(&fields[1])?)

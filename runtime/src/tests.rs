@@ -171,22 +171,6 @@ mod effect_dispatch {
     }
 
     #[test]
-    fn readline_strips_trailing_newline() {
-        let mut ctx = ctx_with_input("hello\nworld\n");
-        match dispatch_one(&mut ctx, &Effect::ReadLine) {
-            EffectResult::Str(s) => assert_eq!(s, "hello"),
-            other => panic!("expected Str, got {other:?}"),
-        }
-        match dispatch_one(&mut ctx, &Effect::ReadLine) {
-            EffectResult::Str(s) => assert_eq!(s, "world"),
-            other => panic!("expected Str, got {other:?}"),
-        }
-
-        assert!(matches!(dispatch_one(&mut ctx, &Effect::ReadLine), EffectResult::Error(_)));
-        let _ = captured_stdout(ctx);
-    }
-
-    #[test]
     fn int_to_str_decimal() {
         let mut ctx = DispatchContext::new();
         for (n, expected) in [(0, "0"), (42, "42"), (-7, "-7"), (i64::MAX, "9223372036854775807")] {
@@ -194,47 +178,6 @@ mod effect_dispatch {
                 EffectResult::Str(s) => assert_eq!(s, expected),
                 other => panic!("expected Str({expected}), got {other:?}"),
             }
-        }
-    }
-
-    #[test]
-    fn real_to_str_decimal() {
-        let mut ctx = DispatchContext::new();
-        match dispatch_one(&mut ctx, &Effect::RealToStr(3.14)) {
-            EffectResult::Str(s) => assert_eq!(s, "3.14"),
-            other => panic!("expected Str, got {other:?}"),
-        }
-        match dispatch_one(&mut ctx, &Effect::RealToStr(-2500.0)) {
-            EffectResult::Str(s) => assert_eq!(s, "-2500"),
-            other => panic!("expected Str, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn shell_run_returns_stdout() {
-        let mut ctx = DispatchContext::new();
-        match dispatch_one(&mut ctx, &Effect::ShellRun("echo hello".to_string())) {
-            EffectResult::Str(s) => assert_eq!(s, "hello"),
-            other => panic!("expected Str, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn shell_run_reports_nonzero_exit() {
-        let mut ctx = DispatchContext::new();
-        match dispatch_one(&mut ctx, &Effect::ShellRun("false".to_string())) {
-            EffectResult::Error(msg) => assert!(msg.contains("exit=1"),
-                "expected exit=1 in error; got {msg}"),
-            other => panic!("expected Error, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn shell_run_strips_trailing_newline() {
-        let mut ctx = DispatchContext::new();
-        match dispatch_one(&mut ctx, &Effect::ShellRun("printf 'foo\\n'".to_string())) {
-            EffectResult::Str(s) => assert_eq!(s, "foo"),
-            other => panic!("expected Str, got {other:?}"),
         }
     }
 
@@ -262,50 +205,6 @@ mod effect_dispatch {
             EffectResult::Error(_) => {},
             other => panic!("expected Error on empty string, got {other:?}"),
         }
-    }
-
-    #[test]
-    fn parse_real_decodes_decimal() {
-        let mut ctx = DispatchContext::new();
-        match dispatch_one(&mut ctx, &Effect::ParseReal("3.14".to_string())) {
-            EffectResult::Real(f) => assert!((f - 3.14).abs() < 1e-9),
-            other => panic!("expected Real, got {other:?}"),
-        }
-        match dispatch_one(&mut ctx, &Effect::ParseReal("-2.5e3".to_string())) {
-            EffectResult::Real(f) => assert!((f - (-2500.0)).abs() < 1e-9),
-            other => panic!("expected Real, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn parse_real_rejects_garbage() {
-        let mut ctx = DispatchContext::new();
-        match dispatch_one(&mut ctx, &Effect::ParseReal("not-a-real".to_string())) {
-            EffectResult::Error(_) => {},
-            other => panic!("expected Error, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn time_returns_non_negative_int() {
-        let mut ctx = DispatchContext::new();
-        match dispatch_one(&mut ctx, &Effect::Time) {
-            EffectResult::Int(n) => assert!(n >= 0),
-            other => panic!("expected Int, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn time_is_non_decreasing() {
-        let mut ctx = DispatchContext::new();
-        let a = match dispatch_one(&mut ctx, &Effect::Time) {
-            EffectResult::Int(n) => n, _ => unreachable!(),
-        };
-        std::thread::sleep(std::time::Duration::from_millis(2));
-        let b = match dispatch_one(&mut ctx, &Effect::Time) {
-            EffectResult::Int(n) => n, _ => unreachable!(),
-        };
-        assert!(b >= a, "time went backwards: {a} → {b}");
     }
 
     #[test]
@@ -413,13 +312,13 @@ mod effect_dispatch {
         let mut ctx = ctx_with_input("");
         let effects = vec![
             Effect::NoEffect,
-            Effect::Time,
+            Effect::ParseInt("7".into()),
             Effect::NoEffect,
         ];
         let results = dispatch_all(&mut ctx, &effects);
         assert_eq!(results.len(), 3);
         assert!(matches!(results[0], EffectResult::NoResult));
-        assert!(matches!(results[1], EffectResult::Int(_)));
+        assert!(matches!(results[1], EffectResult::Int(7)));
         assert!(matches!(results[2], EffectResult::NoResult));
     }
 }
@@ -767,13 +666,13 @@ mod effect_codec {
 
         let list = Value::SeqEnum(vec![
             e("Effect", "Println", vec![Value::Str("a".into())]),
-            e("Effect", "Time", vec![]),
+            e("Effect", "ParseInt", vec![Value::Str("3".into())]),
             e("Effect", "Exit", vec![Value::Int(0)]),
         ]);
         let decoded = decode_effect_list(&list).unwrap();
         assert_eq!(decoded.len(), 3);
         assert!(matches!(&decoded[0], Effect::Println(s) if s == "a"));
-        assert!(matches!(&decoded[1], Effect::Time));
+        assert!(matches!(&decoded[1], Effect::ParseInt(s) if s == "3"));
         assert!(matches!(&decoded[2], Effect::Exit(0)));
     }
 

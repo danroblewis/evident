@@ -77,53 +77,11 @@ fn dispatch_one_inner(ctx: &mut DispatchContext, e: &Effect) -> EffectResult {
             }
             EffectResult::NoResult
         }
-        Effect::ReadLine => {
-            let mut line = String::new();
-            match ctx.stdin.read_line(&mut line) {
-                Ok(0)  => EffectResult::Error("readline: EOF".into()),
-                Ok(_)  => {
-                    if line.ends_with('\n') { line.pop(); }
-                    if line.ends_with('\r') { line.pop(); }
-                    EffectResult::Str(line)
-                }
-                Err(e) => EffectResult::Error(format!("readline: {e}")),
-            }
-        }
-        Effect::Time => {
-            let ms = ctx.start.elapsed().as_millis() as i64;
-            EffectResult::Int(ms)
-        }
         Effect::ParseInt(s) => match s.parse::<i64>() {
             Ok(n)  => EffectResult::Int(n),
             Err(e) => EffectResult::Error(format!("ParseInt: {e}: {s:?}")),
         },
-        Effect::ParseReal(s) => match s.parse::<f64>() {
-            Ok(f)  => EffectResult::Real(f),
-            Err(e) => EffectResult::Error(format!("ParseReal: {e}: {s:?}")),
-        },
         Effect::IntToStr(n)  => EffectResult::Str(n.to_string()),
-        Effect::RealToStr(f) => EffectResult::Str(f.to_string()),
-        Effect::ShellRun(cmd) => {
-
-            use std::process::Command;
-            match Command::new("sh").arg("-c").arg(cmd).output() {
-                Ok(out) if out.status.success() => {
-                    let mut s = String::from_utf8_lossy(&out.stdout).into_owned();
-                    if s.ends_with('\n') { s.pop(); }
-                    EffectResult::Str(s)
-                }
-                Ok(out) => {
-                    let stderr = String::from_utf8_lossy(&out.stderr);
-                    let snippet: String = stderr.chars().take(200).collect();
-                    EffectResult::Error(format!(
-                        "ShellRun: exit={} stderr={}",
-                        out.status.code().unwrap_or(-1),
-                        snippet.trim_end(),
-                    ))
-                }
-                Err(e) => EffectResult::Error(format!("ShellRun: spawn failed: {e}")),
-            }
-        }
         Effect::Exit(n) => {
 
             if ctx.exit_requested.is_none() {
@@ -311,13 +269,6 @@ fn dispatch_one_inner(ctx: &mut DispatchContext, e: &Effect) -> EffectResult {
         Effect::RegisterCallback(claim, sig) => EffectResult::Error(format!(
             "RegisterCallback({claim}, {sig}) not yet implemented — see \
              docs/design/ffi-os-evolution.md § Tier 4")),
-        Effect::MonotonicTime => {
-            use std::sync::OnceLock;
-            static EPOCH: OnceLock<std::time::Instant> = OnceLock::new();
-            let epoch = EPOCH.get_or_init(std::time::Instant::now);
-            let ns = epoch.elapsed().as_nanos() as i64;
-            EffectResult::Int(ns)
-        }
         Effect::Malloc(size) => {
             if *size <= 0 {
                 return EffectResult::Error(format!(

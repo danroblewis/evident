@@ -11,7 +11,7 @@
 -- `(state, last_results)`. It performs each effect in order, collects
 -- results, and feeds them into the next step's solve as `last_results`.
 --
--- Built-in effects (Print/Println/ReadLine/Time/Exit) hit the OS
+-- Built-in effects (Print/Println/Exit) hit the OS
 -- directly. FFI effects route through libffi for arbitrary C calls;
 -- see stdlib/posix.ev for typical wrappers.
 
@@ -77,29 +77,13 @@ enum Effect =
     NoEffect
     Print(String)
     Println(String)
-    ReadLine
-    Time
     Exit(Int)
     -- Parse a decimal integer string. IntResult on success;
     -- ErrorResult on parse failure (empty string, non-numeric,
     -- overflow, etc.).
     ParseInt(String)
-    -- Parse a decimal real (f64). RealResult on success;
-    -- ErrorResult on failure.
-    ParseReal(String)
     -- Format Int as decimal string (always succeeds).
     IntToStr(Int)
-    -- Format Real (f64) as decimal string (always succeeds).
-    RealToStr(Real)
-    -- Run a shell command synchronously, capture stdout.
-    -- StringResult(stdout) on success (exit 0); ErrorResult on
-    -- non-zero exit (with code + first ~200 chars of stderr) or
-    -- spawn failure. Trailing newline is stripped.
-    --
-    -- Synchronous: blocks dispatch until the command returns.
-    -- Use sparingly — long-running commands stall the whole
-    -- runtime. For background processes, write a custom plugin.
-    ShellRun(String)
     -- Generic FFI primitives (uncached).
     FFIOpen(String)
     FFILookup(Int, String)
@@ -150,11 +134,6 @@ enum Effect =
     -- writable; pass to C functions that need to fill in data
     -- (SDL_PollEvent, getline, read(), etc.).
     Malloc(Int)
-    -- Monotonic nanosecond counter (arbitrary epoch). Strictly
-    -- increasing; NOT subject to NTP / wall-clock adjustments.
-    -- Use for benchmarking and rate-limiting; use `Time` for
-    -- wall-clock ms.
-    MonotonicTime
     -- Register an Evident claim as a C function pointer. When the
     -- C side invokes the callback, libffi unmarshals the args and
     -- the runtime dispatches the named claim. Result is
@@ -246,14 +225,6 @@ external type Signal
 -- is v2. For now: one FTI parameter per program of each type.
 external type FrameClock
     tick_count ∈ Int
-
--- Hostname FTI type. At install time, dispatches `ShellRun("hostname")`
--- and captures its stdout into `name`. Declarative — the runtime's
--- generic install dispatcher (event_sources/declarative_install.rs)
--- reads this Seq, no Rust knowledge of `hostname` required.
-external type Hostname
-    name ∈ String
-    install ∈ Seq(InstallStep) = ⟨Bind("name", ShellRun("hostname"))⟩
 
 -- Per-instance configurable Timer. Declare with the desired
 -- interval in milliseconds:
