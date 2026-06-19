@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::path::Path;
 
 use evident_runtime::{EvidentRuntime, Value};
-use evident_runtime::z3_eval::{simplify_assertions, extract_program};
+use evident_runtime::functionize::extract_program::{simplify_assertions, extract_program};
 use evident_runtime::functionize::cranelift::compile_program;
 
 const PROGRAM: &str = r#"
@@ -103,7 +103,7 @@ fn stage_3_extract_program() {
     eprintln!("Z3Program: {} steps, {} checks, {} predicates",
         program.steps.len(), program.checks.len(), program.predicates.len());
     for (i, step) in program.steps.iter().enumerate() {
-        use evident_runtime::z3_eval::Z3Step;
+        use evident_runtime::functionize::extract_program::Z3Step;
         match step {
             Z3Step::Scalar { var, expr } =>
                 eprintln!("  step {i}: Scalar  {var} = {expr}"),

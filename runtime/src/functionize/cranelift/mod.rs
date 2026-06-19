@@ -4,7 +4,7 @@ use cranelift_jit::JITModule;
 use cranelift_module::{FuncId, Linkage, Module};
 
 use crate::encode::{EnumRegistry, Value};
-use crate::z3_eval::Z3Program;
+use crate::functionize::extract_program::Z3Program;
 
 pub struct JitProgram {
     _module: JITModule,

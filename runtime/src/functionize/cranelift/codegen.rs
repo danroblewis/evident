@@ -15,7 +15,7 @@ use z3::AstKind;
 use z3_sys::DeclKind;
 
 use crate::encode::{EnumRegistry, Value};
-use crate::z3_eval::{Z3Program, Z3Step, GuardedBody};
+use crate::functionize::extract_program::{Z3Program, Z3Step, GuardedBody};
 
 use super::{JitProgram, OutputKind, HelperRefs, declare_helpers, import_helpers};
 
@@ -405,7 +405,7 @@ fn emit_write_value<'ctx>(
                     if children.len() != 1 { return None; }
 
                     let app_text = format!("{expr}");
-                    let variant = crate::z3_eval::extract_is_variant_pub(&app_text)
+                    let variant = crate::functionize::extract_program::extract_is_variant_pub(&app_text)
                         .or_else(|| decl.name().strip_prefix("is_").map(|s| s.to_string()))?;
                     let temp = bcx.create_sized_stack_slot(
                         StackSlotData::new(StackSlotKind::ExplicitSlot,
@@ -867,7 +867,7 @@ fn emit_compute_i64<'ctx>(
                 DeclKind::DT_IS | DeclKind::DT_RECOGNISER => {
                     if children.len() != 1 { return None; }
                     let app_text = format!("{expr}");
-                    let variant = crate::z3_eval::extract_is_variant_pub(&app_text)
+                    let variant = crate::functionize::extract_program::extract_is_variant_pub(&app_text)
                         .or_else(|| decl.name().strip_prefix("is_").map(|s| s.to_string()))?;
 
                     let temp = bcx.create_sized_stack_slot(

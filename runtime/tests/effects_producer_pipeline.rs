@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use evident_runtime::{EvidentRuntime, Value};
-use evident_runtime::z3_eval::{simplify_assertions, extract_program, Z3Step, GuardedBody};
+use evident_runtime::functionize::extract_program::{simplify_assertions, extract_program, Z3Step, GuardedBody};
 use evident_runtime::functionize::cranelift::compile_program;
 
 const PROGRAM: &str = r#"

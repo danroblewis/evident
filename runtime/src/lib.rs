@@ -1,5 +1,4 @@
 mod core;
-pub mod z3_eval;
 pub mod functionize;
 pub mod trampoline;
 pub mod ffi;

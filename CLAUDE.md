@@ -213,7 +213,7 @@ ship with it.
 | AST node types | `runtime/src/core/ast.rs` |
 | Shared types (Value, Z3Program, registries, …) | `runtime/src/core/types.rs` |
 | AST → Z3 encoder | `runtime/src/encode/` |
-| Z3 functionizer + JIT | `runtime/src/functionize/` (Cranelift impl) + `runtime/src/z3_eval.rs` (extractor) |
+| Z3 functionizer + JIT | `runtime/src/functionize/` (Cranelift impl) + `runtime/src/functionize/extract_program.rs` (extractor) |
 | Effect dispatch | `runtime/src/ffi.rs` |
 | Subscription-driven scheduler | `runtime/src/trampoline.rs` |
 | FTI bridges | `runtime/src/event_sources/`, `runtime/src/ffi.rs` (`is_shimmed_stdlib`) |
@@ -231,7 +231,7 @@ source text
   → lexer.rs              Unicode operators + word-keywords → tokens
   → parser/               Recursive-descent parser → AST (core/ast.rs)
   → encode/            AST → Z3 sorts + constraints; per-claim inline
-  → z3_eval.rs            Simplified Z3 AST → Z3Program (the IR)
+  → functionize/extract_program.rs            Simplified Z3 AST → Z3Program (the IR)
   → functionize/          Z3Program → callable function (Cranelift JIT)
   → runtime/              EvidentRuntime: top-level API (load_file, query)
   → trampoline.rs        Subscription-driven scheduler (the executor)
@@ -243,7 +243,7 @@ source text
 Supporting modules:
 - `subscriptions.rs` — static read/write-set inference per claim
 - `ffi.rs` — libffi marshaling, handle registry
-- `z3_eval.rs` — extract a `Z3Program` from a simplified Z3 AST
+- `functionize/extract_program.rs` — extract a `Z3Program` from a simplified Z3 AST
 - `main.rs` — the CLI binary: `test` / `effect-run` entry points + output
 
 ## Source layout: which file owns what
@@ -264,7 +264,7 @@ here's where to start.
 | `event_sources/` | Async wake plugins (FrameTimer, Stdin, Sigint, …) |
 | `main.rs` | The CLI binary: `test` / `effect-run` entry points + test-report output |
 | `ffi.rs` | Effect → IO (Println, LibCall, ParseInt, …) |
-| `z3_eval.rs`   | Extract a `Z3Program` from a simplified Z3 AST |
+| `functionize/extract_program.rs`   | Extract a `Z3Program` from a simplified Z3 AST |
 | `ffi.rs`       | libffi marshaling + handle registry; FTI shimmed-stdlib check |
 | `parser/`, `lexer.rs` | Front end (AST Display rendering lives in `core/ast.rs`) |
 

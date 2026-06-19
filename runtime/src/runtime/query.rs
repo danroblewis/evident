@@ -2,7 +2,7 @@ use crate::core::{CompiledModel, QueryResult, RuntimeError, Var, Z3Step};
 use crate::functionize::cranelift::JitProgram;
 use super::{EvidentRuntime, Value};
 use crate::encode::run_cached;
-use crate::z3_eval::{collect_touched_names, extract_program_partial,
+use crate::functionize::extract_program::{collect_touched_names, extract_program_partial,
                      recompose_record_seqs, simplify_assertions};
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
@@ -127,7 +127,7 @@ impl EvidentRuntime {
 
         let arith: u32 = 2;
 
-        if crate::z3_eval::has_known_translator_gap(&schema.body) {
+        if crate::functionize::extract_program::has_known_translator_gap(&schema.body) {
             self.fn_cache.borrow_mut().insert(cache_key, None);
             return None;
         }
@@ -150,7 +150,7 @@ impl EvidentRuntime {
 
         let mut touched: std::collections::HashSet<String> = std::collections::HashSet::new();
         for a in simplified {
-            crate::z3_eval::collect_touched_names(a, &mut touched);
+            crate::functionize::extract_program::collect_touched_names(a, &mut touched);
         }
         let outputs: Vec<String> = cached.env.iter()
             .filter(|(name, _)| !given.contains_key(name.as_str()))
