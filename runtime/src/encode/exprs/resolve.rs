@@ -9,7 +9,7 @@ use crate::core::{FieldKind, SeqElem, Var};
 
 use super::*;
 
-pub(in crate::translate) fn resolve_mapping<'ctx>(
+pub(in crate::encode) fn resolve_mapping<'ctx>(
     slot: &str,
     value: &Expr,
     ctx: &'ctx Context,

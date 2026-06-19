@@ -212,7 +212,7 @@ ship with it.
 | Parser (recursive-descent) | `runtime/src/parser/` (`mod.rs` decls, `exprs.rs` expression chain) |
 | AST node types | `runtime/src/core/ast.rs` |
 | Shared types (Value, Z3Program, registries, …) | `runtime/src/core/types.rs` |
-| AST → Z3 translator | `runtime/src/translate/` |
+| AST → Z3 encoder | `runtime/src/encode/` |
 | Z3 functionizer + JIT | `runtime/src/functionize/` (Cranelift impl) + `runtime/src/z3_eval.rs` (extractor) |
 | Effect dispatch | `runtime/src/effect_dispatch.rs` |
 | Subscription-driven scheduler | `runtime/src/effect_loop.rs` |
@@ -230,7 +230,7 @@ The runtime is a pipeline. Each stage is a separate module under
 source text
   → lexer.rs              Unicode operators + word-keywords → tokens
   → parser/               Recursive-descent parser → AST (core/ast.rs)
-  → translate/            AST → Z3 sorts + constraints; per-claim inline
+  → encode/            AST → Z3 sorts + constraints; per-claim inline
   → z3_eval.rs            Simplified Z3 AST → Z3Program (the IR)
   → functionize/          Z3Program → callable function (Cranelift JIT)
   → runtime/              EvidentRuntime: top-level API (load_file, query)
@@ -259,7 +259,7 @@ here's where to start.
 | `core/`        | Shared data types. No orchestration logic. Imported by everything else. |
 | `runtime/`     | `EvidentRuntime`: load, query, sample, scheduler-facing API |
 | `effect_loop.rs` | Subscription-driven scheduler — `run` and `run_with_ctx`, FSM discovery, install bridge, per-tick loop, effect ordering |
-| `translate/`   | Evident AST → Z3 ASTs; build solvers; extract models |
+| `encode/`   | Evident AST → Z3 ASTs; build solvers; extract models |
 | `functionize/` | Functionizer implementations (currently: Cranelift JIT) |
 | `event_sources/` | Async wake plugins (FrameTimer, Stdin, Sigint, …) |
 | `main.rs` | The CLI binary: `test` / `effect-run` entry points + test-report output |
@@ -301,7 +301,7 @@ External callers can use `evident_runtime::{Value, QueryResult, RuntimeError, as
 | Adjust state seeding / encoding | `seed_state`, `encode_state_value` |
 | Touch the declarative install bridge | `run_declarative_install` |
 
-### Inside `translate/eval.rs` (single file, sectioned)
+### Inside `encode/eval.rs` (single file, sectioned)
 
 | Want to … | Section |
 |---|---|
@@ -1180,7 +1180,7 @@ binds `x` to each Int element. For a `Seq(Edge)`, `∀ e ∈
 edges : e.from = ...` binds `e` as the element AND makes
 `e.field` accessible for each field on the element record.
 The runtime's `Forall` translator in
-`runtime/src/translate/exprs/bool.rs` does the field-binding via
+`runtime/src/encode/exprs/bool.rs` does the field-binding via
 `bind_composite_fields` (in `exprs/equations.rs`) for
 composite-element Seqs; primitive Seqs bind the element value to
 the variable directly.

@@ -20,7 +20,7 @@ claim display
     let enums     = rt.enums_registry();
     let schemas   = rt.schemas_map();
     let empty: HashMap<String, Value> = HashMap::new();
-    let cached = evident_runtime::translate::build_cache(
+    let cached = evident_runtime::encode::build_cache(
         rt.get_schema("display").unwrap(),
         schemas, ctx, datatypes, Some(enums), &empty, 2);
     let assertions = cached.solver.get_assertions();

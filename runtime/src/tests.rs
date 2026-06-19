@@ -610,7 +610,7 @@ mod parser {
 }
 
 mod effect_codec {
-    use crate::translate::effect_codec::*;
+    use crate::encode::effect_codec::*;
     use crate::core::Value;
     use crate::core::ast::{Effect, EffectFfiArg, EffectResult};
 
@@ -691,7 +691,7 @@ mod effect_codec {
 }
 
 mod extract {
-    use crate::translate::extract::unescape_z3_string;
+    use crate::encode::extract::unescape_z3_string;
     #[test]
     fn newline_escape_decoded() {
         assert_eq!(unescape_z3_string("abc\\u{a}def"), "abc\ndef");

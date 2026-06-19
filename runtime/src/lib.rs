@@ -6,7 +6,7 @@ pub mod effect_loop;
 mod ffi;
 mod lexer;
 mod parser;
-pub mod translate;
+pub mod encode;
 mod runtime;
 
 #[cfg(test)]

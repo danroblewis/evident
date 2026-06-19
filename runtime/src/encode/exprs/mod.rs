@@ -20,8 +20,8 @@ mod values;
 mod equations;
 mod bool;
 
-// resolve + bool export resolve_mapping / translate_bool to translate::inline,
-// so those two re-exports widen to pub(in crate::translate); the rest stay
+// resolve + bool export resolve_mapping / translate_bool to encode::inline,
+// so those two re-exports widen to pub(in crate::encode); the rest stay
 // exprs-internal (mutual visibility comes from `use super::*` in each submodule).
 pub(super) use resolve::*;
 pub(super) use self::bool::*;

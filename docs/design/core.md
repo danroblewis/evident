@@ -22,7 +22,7 @@ out, effects executed — is the core value. Nothing else is.
 
 1. **Front end** — lexer, parser, AST.
 2. **Lower** — desugar / inject (the surface sugar the language promises),
-   translate (AST → Z3 sorts + constraints), the Z3-program IR extraction.
+   encode (AST → Z3 sorts + constraints), the Z3-program IR extraction.
 3. **Solve & speed** — the Z3 integration, the Cranelift functionizer, and the
    build-once compiled model it reuses each tick. That model — declared once, then
    asserted/checked/popped per frame, the fallback path any translator-gap claim

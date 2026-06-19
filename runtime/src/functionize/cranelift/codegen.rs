@@ -14,7 +14,7 @@ use z3::ast::{Ast, Dynamic};
 use z3::AstKind;
 use z3_sys::DeclKind;
 
-use crate::translate::{EnumRegistry, Value};
+use crate::encode::{EnumRegistry, Value};
 use crate::z3_eval::{Z3Program, Z3Step, GuardedBody};
 
 use super::{JitProgram, OutputKind, HelperRefs, declare_helpers, import_helpers};

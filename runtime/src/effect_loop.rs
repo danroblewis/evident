@@ -11,8 +11,8 @@ use crate::core::ast::{BinOp, BodyItem, Effect, EffectResult, Expr, Pins};
 use crate::core::Value;
 use crate::effect_dispatch::{dispatch_all, DispatchContext};
 use crate::runtime::EvidentRuntime;
-use crate::translate::effect_decoder::decode_install_step_list;
-use crate::translate::{effect_decoder, Value as TValue};
+use crate::encode::effect_decoder::decode_install_step_list;
+use crate::encode::{effect_decoder, Value as TValue};
 
 // ───────────────────────── public entry + loop opts ─────────────────────────
 

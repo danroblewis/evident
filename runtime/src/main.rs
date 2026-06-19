@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::Instant;
 use evident_runtime::ast::BodyItem;
-use evident_runtime::translate::collect_referenced_names;
+use evident_runtime::encode::collect_referenced_names;
 use evident_runtime::{EvidentRuntime, Value, effect_loop};
 
 fn main() -> ExitCode {

@@ -25,7 +25,7 @@ claim hello
     let schemas   = rt.schemas_map();
     let arith: u32 = 2;
     let empty_given: HashMap<String, Value> = HashMap::new();
-    let cached = evident_runtime::translate::build_cache(
+    let cached = evident_runtime::encode::build_cache(
         rt.get_schema("hello").unwrap(),
         schemas, ctx, datatypes, Some(enums), &empty_given, arith);
     let assertions = cached.solver.get_assertions();

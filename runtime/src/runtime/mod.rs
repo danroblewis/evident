@@ -8,7 +8,7 @@ pub use crate::core::{QueryResult, RuntimeError};
 
 use crate::core::ast::{BodyItem, Program, SchemaDecl};
 use crate::parser;
-use crate::translate::DatatypeRegistry;
+use crate::encode::DatatypeRegistry;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -87,7 +87,7 @@ impl EvidentRuntime {
         &self,
         items: &[crate::core::ast::EffectResult],
     ) -> crate::core::Value {
-        crate::translate::effect_encoder::effect_results_to_value(items)
+        crate::encode::effect_encoder::effect_results_to_value(items)
     }
 }
 
@@ -230,28 +230,28 @@ impl EvidentRuntime {
             cached.solver.push();
 
             for (var_name, value) in pins {
-                if let Some(crate::translate::Var::EnumVar { ast, .. }) = cached.env.get(*var_name) {
+                if let Some(crate::encode::Var::EnumVar { ast, .. }) = cached.env.get(*var_name) {
                     cached.solver.assert(&ast._eq(value));
                 }
             }
 
             for (name, value) in given {
-                if let (Some(crate::translate::Var::EnumVar { ast, .. }), Value::Enum { .. }) =
+                if let (Some(crate::encode::Var::EnumVar { ast, .. }), Value::Enum { .. }) =
                     (cached.env.get(name), value)
                 {
-                    if let Some(dt) = crate::translate::value_enum_to_datatype(
+                    if let Some(dt) = crate::encode::value_enum_to_datatype(
                         value, self.z3_ctx, &self.enums)
                     {
                         cached.solver.assert(&ast._eq(&dt));
                     }
                 }
             }
-            let r = crate::translate::run_cached(&cached, given, self.z3_ctx, Some(&self.enums));
+            let r = crate::encode::run_cached(&cached, given, self.z3_ctx, Some(&self.enums));
             cached.solver.pop(1);
             return Ok(QueryResult { satisfied: r.satisfied, bindings: r.bindings });
         }
 
-        let r = crate::translate::evaluate_with_extra_assertions(
+        let r = crate::encode::evaluate_with_extra_assertions(
             schema,
             given,
             &self.schemas,

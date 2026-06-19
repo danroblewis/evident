@@ -11,7 +11,7 @@ use crate::core::{SeqElem, Var};
 
 use super::*;
 
-pub(in crate::translate) fn translate_bool<'ctx>(
+pub(in crate::encode) fn translate_bool<'ctx>(
     e: &Expr,
     ctx: &'ctx Context,
     env: &HashMap<String, Var<'ctx>>,

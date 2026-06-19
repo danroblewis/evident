@@ -1,7 +1,7 @@
 use crate::core::{CompiledModel, QueryResult, RuntimeError, Var, Z3Step};
 use crate::functionize::cranelift::JitProgram;
 use super::{EvidentRuntime, Value};
-use crate::translate::run_cached;
+use crate::encode::run_cached;
 use crate::z3_eval::{collect_touched_names, extract_program_partial,
                      recompose_record_seqs, simplify_assertions};
 use std::collections::{HashMap, HashSet};
@@ -133,7 +133,7 @@ impl EvidentRuntime {
         }
 
         let empty_given: HashMap<String, Value> = HashMap::new();
-        let cached = crate::translate::build_cache(
+        let cached = crate::encode::build_cache(
             schema, &self.schemas, self.z3_ctx, &self.datatypes,
             Some(&self.enums), &empty_given, arith);
 
@@ -155,9 +155,9 @@ impl EvidentRuntime {
         let outputs: Vec<String> = cached.env.iter()
             .filter(|(name, _)| !given.contains_key(name.as_str()))
             .filter(|(_, v)| !matches!(v,
-                crate::translate::Var::EnumValue { .. }
-                | crate::translate::Var::EnumCtor { .. }
-                | crate::translate::Var::PinnedInt(_)))
+                crate::encode::Var::EnumValue { .. }
+                | crate::encode::Var::EnumCtor { .. }
+                | crate::encode::Var::PinnedInt(_)))
             .filter(|(name, _)| touched.contains(name.as_str()))
             .map(|(n, _)| n.clone())
             .collect();
@@ -165,7 +165,7 @@ impl EvidentRuntime {
         let pinned_steps: Vec<crate::core::Z3Step<'static>> = cached.env.iter()
             .filter(|(name, _)| !given.contains_key(name.as_str()))
             .filter_map(|(n, v)| match v {
-                crate::translate::Var::PinnedInt(i) => Some(crate::core::Z3Step::Scalar {
+                crate::encode::Var::PinnedInt(i) => Some(crate::core::Z3Step::Scalar {
                     var:  n.clone(),
                     expr: z3::ast::Dynamic::from_ast(&z3::ast::Int::from_i64(self.z3_ctx, *i)),
                 }),
@@ -176,7 +176,7 @@ impl EvidentRuntime {
         let pinned_ints: Vec<(String, Value)> = cached.env.iter()
             .filter(|(name, _)| !given.contains_key(name.as_str()))
             .filter_map(|(n, v)| match v {
-                crate::translate::Var::PinnedInt(i) => Some((n.clone(), Value::Int(*i))),
+                crate::encode::Var::PinnedInt(i) => Some((n.clone(), Value::Int(*i))),
                 _ => None,
             })
             .collect();
@@ -307,7 +307,7 @@ impl EvidentRuntime {
                     return ComponentOutcome::Bail;
                 };
                 let mut tmp: HashMap<String, Value> = HashMap::new();
-                crate::translate::extract_binding(
+                crate::encode::extract_binding(
                     var_name, var, &model, self.z3_ctx, &mut tmp, Some(&self.enums));
                 let Some(value) = tmp.remove(var_name) else {
                     return ComponentOutcome::Bail;
@@ -351,7 +351,7 @@ impl EvidentRuntime {
             for (n, v) in given {
                 match (slow.cached.env.get(n), v) {
                     (Some(Var::EnumVar { ast, .. }), Value::Enum { .. }) => {
-                        if let Some(dt) = crate::translate::value_enum_to_datatype(
+                        if let Some(dt) = crate::encode::value_enum_to_datatype(
                             v, self.z3_ctx, &self.enums)
                         {
                             slow.cached.solver.assert(&ast._eq(&dt));
@@ -386,7 +386,7 @@ impl EvidentRuntime {
         }
 
         let arith: u32 = 2;
-        let r = crate::translate::evaluate(schema, given, &self.schemas, self.z3_ctx, &self.datatypes, Some(&self.enums), arith);
+        let r = crate::encode::evaluate(schema, given, &self.schemas, self.z3_ctx, &self.datatypes, Some(&self.enums), arith);
         Ok(QueryResult { satisfied: r.satisfied, bindings: r.bindings })
     }
 
