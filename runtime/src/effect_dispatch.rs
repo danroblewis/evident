@@ -4,33 +4,11 @@ use std::time::Instant;
 use crate::core::ast::{Effect, EffectFfiArg, EffectResult};
 use crate::ffi::{self, FfiArg, FfiReturn, HandleRegistry};
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct RecordedCall {
-    pub symbol: String,
-    pub sig:    String,
-    pub args:   Vec<EffectFfiArg>,
-    pub result: EffectResult,
-}
-
-#[derive(Default)]
-pub enum DispatchMode {
-    #[default]
-    Real,
-
-    Replay {
-        calls:           Vec<RecordedCall>,
-        cursor:          usize,
-        name_for_handle: std::collections::HashMap<u64, String>,
-        next_sentinel:   u64,
-    },
-}
-
 pub struct DispatchContext {
     pub registry: HandleRegistry,
     pub stdin:    Box<dyn BufRead + Send>,
     pub stdout:   Box<dyn Write + Send>,
     pub start:    Instant,
-    pub mode:     DispatchMode,
 
     pub lib_cache: std::collections::HashMap<String, u64>,
 
@@ -55,20 +33,10 @@ impl DispatchContext {
             registry: HandleRegistry::new(),
             stdin, stdout,
             start: Instant::now(),
-            mode: DispatchMode::default(),
             lib_cache: std::collections::HashMap::new(),
             sym_cache: std::collections::HashMap::new(),
             exit_requested: None,
         }
-    }
-
-    pub fn set_replay(&mut self, calls: Vec<RecordedCall>) {
-        self.mode = DispatchMode::Replay {
-            calls,
-            cursor: 0,
-            name_for_handle: std::collections::HashMap::new(),
-            next_sentinel: 1,
-        };
     }
 }
 
@@ -164,107 +132,56 @@ fn dispatch_one_inner(ctx: &mut DispatchContext, e: &Effect) -> EffectResult {
             EffectResult::NoResult
         }
 
-        Effect::FFIOpen(path) => match &mut ctx.mode {
-            DispatchMode::Real => {
-                match ffi::ffi_open(&ctx.registry, path) {
-                    Ok(h)  => EffectResult::Handle(h),
-                    Err(e) => EffectResult::Error(e.0),
-                }
-            }
-            DispatchMode::Replay { name_for_handle, next_sentinel, .. } => {
-                let h = *next_sentinel; *next_sentinel += 1;
-                name_for_handle.insert(h, format!("LIB:{path}"));
-                EffectResult::Handle(h)
-            }
-        },
-        Effect::FFILookup(lib, sym) => match &mut ctx.mode {
-            DispatchMode::Real => {
-                match ffi::ffi_lookup(&ctx.registry, *lib, sym) {
-                    Ok(h)  => EffectResult::Handle(h),
-                    Err(e) => EffectResult::Error(e.0),
-                }
-            }
-            DispatchMode::Replay { name_for_handle, next_sentinel, .. } => {
-                let h = *next_sentinel; *next_sentinel += 1;
-                name_for_handle.insert(h, sym.clone());
-                let _ = lib;
-                EffectResult::Handle(h)
-            }
-        },
-        Effect::FFICall(fn_id, sig, args) => match &mut ctx.mode {
-            DispatchMode::Real => {
-                let ffi_args: Vec<FfiArg> = args.iter().map(|a| match a {
-                    EffectFfiArg::Int(n)    => FfiArg::Int(*n),
-                    EffectFfiArg::Bool(b)   => FfiArg::Bool(*b),
-                    EffectFfiArg::Str(s)    => FfiArg::Str(s.clone()),
-                    EffectFfiArg::Real(r)   => FfiArg::Real(*r),
-                    EffectFfiArg::Handle(h) => FfiArg::Handle(*h),
-                    EffectFfiArg::StrArr(v) => FfiArg::StrArr(v.clone()),
-                    EffectFfiArg::IntOut    => FfiArg::IntOut,
-                    EffectFfiArg::I32Buf(v) => FfiArg::I32Buf(v.clone()),
-                    EffectFfiArg::PackedBuf(v) => FfiArg::PackedBuf(v.clone()),
-
-                    EffectFfiArg::PriorResult(_) => FfiArg::Int(0),
-                }).collect();
-                if args.iter().any(|a| matches!(a, EffectFfiArg::PriorResult(_))) {
-                    return EffectResult::Error(
-                        "ArgPriorResult unresolved at dispatch_one (should have been \
-                         resolved against prior effects in dispatch_all)".into(),
-                    );
-                }
-                match ffi::ffi_call(&ctx.registry, *fn_id, sig, &ffi_args) {
-                    Ok(FfiReturn::Void)      => EffectResult::NoResult,
-                    Ok(FfiReturn::Int(n))    => EffectResult::Int(n),
-                    Ok(FfiReturn::Bool(b))   => EffectResult::Bool(b),
-                    Ok(FfiReturn::Str(s))    => EffectResult::Str(s),
-                    Ok(FfiReturn::Real(d))   => EffectResult::Real(d),
-                    Ok(FfiReturn::Handle(h)) => EffectResult::Handle(h),
-                    Err(e) => EffectResult::Error(e.0),
-                }
-            }
-            DispatchMode::Replay { calls, cursor, name_for_handle, .. } => {
-                if *cursor >= calls.len() {
-                    return EffectResult::Error(format!(
-                        "replay: ran out of recorded calls at index {cursor}"));
-                }
-                let expected = &calls[*cursor];
-                let actual_name = name_for_handle.get(fn_id)
-                    .cloned()
-                    .unwrap_or_else(|| format!("<handle:{fn_id}>"));
-                if actual_name != expected.symbol {
-                    return EffectResult::Error(format!(
-                        "replay mismatch at index {cursor}: expected symbol {:?}, got {:?}",
-                        expected.symbol, actual_name));
-                }
-                if *sig != expected.sig {
-                    return EffectResult::Error(format!(
-                        "replay mismatch at index {cursor}: expected sig {:?}, got {:?}",
-                        expected.sig, sig));
-                }
-                if !args_equal(args, &expected.args) {
-                    return EffectResult::Error(format!(
-                        "replay mismatch at index {cursor}: args differ"));
-                }
-                let r = expected.result.clone();
-                *cursor += 1;
-                r
-            }
-        },
-        Effect::CloseHandle(h) => {
-            match &ctx.mode {
-                DispatchMode::Real => {
-                    if ctx.registry.close(*h) {
-                        EffectResult::NoResult
-                    } else {
-                        EffectResult::Error(format!("close: unknown handle {h}"))
-                    }
-                }
-                DispatchMode::Replay { .. } => EffectResult::NoResult,
+        Effect::FFIOpen(path) => {
+            match ffi::ffi_open(&ctx.registry, path) {
+                Ok(h)  => EffectResult::Handle(h),
+                Err(e) => EffectResult::Error(e.0),
             }
         }
-        Effect::LibCall(lib_path, sym_name, sig, args) => match &mut ctx.mode {
-            DispatchMode::Real => {
+        Effect::FFILookup(lib, sym) => {
+            match ffi::ffi_lookup(&ctx.registry, *lib, sym) {
+                Ok(h)  => EffectResult::Handle(h),
+                Err(e) => EffectResult::Error(e.0),
+            }
+        }
+        Effect::FFICall(fn_id, sig, args) => {
+            let ffi_args: Vec<FfiArg> = args.iter().map(|a| match a {
+                EffectFfiArg::Int(n)    => FfiArg::Int(*n),
+                EffectFfiArg::Bool(b)   => FfiArg::Bool(*b),
+                EffectFfiArg::Str(s)    => FfiArg::Str(s.clone()),
+                EffectFfiArg::Real(r)   => FfiArg::Real(*r),
+                EffectFfiArg::Handle(h) => FfiArg::Handle(*h),
+                EffectFfiArg::StrArr(v) => FfiArg::StrArr(v.clone()),
+                EffectFfiArg::IntOut    => FfiArg::IntOut,
+                EffectFfiArg::I32Buf(v) => FfiArg::I32Buf(v.clone()),
+                EffectFfiArg::PackedBuf(v) => FfiArg::PackedBuf(v.clone()),
 
+                EffectFfiArg::PriorResult(_) => FfiArg::Int(0),
+            }).collect();
+            if args.iter().any(|a| matches!(a, EffectFfiArg::PriorResult(_))) {
+                return EffectResult::Error(
+                    "ArgPriorResult unresolved at dispatch_one (should have been \
+                     resolved against prior effects in dispatch_all)".into(),
+                );
+            }
+            match ffi::ffi_call(&ctx.registry, *fn_id, sig, &ffi_args) {
+                Ok(FfiReturn::Void)      => EffectResult::NoResult,
+                Ok(FfiReturn::Int(n))    => EffectResult::Int(n),
+                Ok(FfiReturn::Bool(b))   => EffectResult::Bool(b),
+                Ok(FfiReturn::Str(s))    => EffectResult::Str(s),
+                Ok(FfiReturn::Real(d))   => EffectResult::Real(d),
+                Ok(FfiReturn::Handle(h)) => EffectResult::Handle(h),
+                Err(e) => EffectResult::Error(e.0),
+            }
+        }
+        Effect::CloseHandle(h) => {
+            if ctx.registry.close(*h) {
+                EffectResult::NoResult
+            } else {
+                EffectResult::Error(format!("close: unknown handle {h}"))
+            }
+        }
+        Effect::LibCall(lib_path, sym_name, sig, args) => {
                 let lib_handle = match ctx.lib_cache.get(lib_path) {
                     Some(h) => *h,
                     None => match ffi::ffi_open(&ctx.registry, lib_path) {
@@ -309,26 +226,7 @@ fn dispatch_one_inner(ctx: &mut DispatchContext, e: &Effect) -> EffectResult {
                     Ok(FfiReturn::Handle(h)) => EffectResult::Handle(h),
                     Err(e) => EffectResult::Error(e.0),
                 }
-            }
-            DispatchMode::Replay { calls, cursor, .. } => {
-                if *cursor >= calls.len() {
-                    return EffectResult::Error(format!(
-                        "replay: ran out of recorded calls at index {cursor}"));
-                }
-                let expected = &calls[*cursor];
-                if *sym_name != expected.symbol || *sig != expected.sig
-                   || !args_equal(args, &expected.args)
-                {
-                    return EffectResult::Error(format!(
-                        "replay mismatch at index {cursor}: LibCall {sym_name:?} vs expected {:?}",
-                        expected.symbol));
-                }
-                let r = expected.result.clone();
-                let _ = lib_path;
-                *cursor += 1;
-                r
-            }
-        },
+        }
         Effect::ReadByte(handle, offset) =>
             do_read(ctx, *handle, *offset, "ReadByte",
                 |ptr| EffectResult::Int(unsafe { *ptr as i64 })),
@@ -410,95 +308,43 @@ fn dispatch_one_inner(ctx: &mut DispatchContext, e: &Effect) -> EffectResult {
                     std::ptr::copy_nonoverlapping(bytes.as_ptr(), dst, bytes.len());
                     *dst.offset(bytes.len() as isize) = 0;
                 }),
-        Effect::RegisterCallback(claim, sig) => match &mut ctx.mode {
-            DispatchMode::Real => EffectResult::Error(format!(
-                "RegisterCallback({claim}, {sig}) not yet implemented — see \
-                 docs/design/ffi-os-evolution.md § Tier 4")),
-            DispatchMode::Replay { calls, cursor, .. } => {
-                if *cursor >= calls.len() {
-                    return EffectResult::Error(format!(
-                        "replay: ran out of recorded calls at index {cursor}"));
-                }
-                let r = calls[*cursor].result.clone();
-                *cursor += 1;
-                r
+        Effect::RegisterCallback(claim, sig) => EffectResult::Error(format!(
+            "RegisterCallback({claim}, {sig}) not yet implemented — see \
+             docs/design/ffi-os-evolution.md § Tier 4")),
+        Effect::MonotonicTime => {
+            use std::sync::OnceLock;
+            static EPOCH: OnceLock<std::time::Instant> = OnceLock::new();
+            let epoch = EPOCH.get_or_init(std::time::Instant::now);
+            let ns = epoch.elapsed().as_nanos() as i64;
+            EffectResult::Int(ns)
+        }
+        Effect::Malloc(size) => {
+            if *size <= 0 {
+                return EffectResult::Error(format!(
+                    "Malloc: size must be positive, got {size}"));
             }
-        },
-        Effect::MonotonicTime => match &mut ctx.mode {
-            DispatchMode::Real => {
+            let size_usize = *size as usize;
+            let layout = match std::alloc::Layout::from_size_align(size_usize, 8) {
+                Ok(l) => l,
+                Err(e) => return EffectResult::Error(format!(
+                    "Malloc: layout for {size} bytes: {e}")),
+            };
 
-                use std::sync::OnceLock;
-                static EPOCH: OnceLock<std::time::Instant> = OnceLock::new();
-                let epoch = EPOCH.get_or_init(std::time::Instant::now);
-                let ns = epoch.elapsed().as_nanos() as i64;
-                EffectResult::Int(ns)
+            let raw = unsafe { std::alloc::alloc_zeroed(layout) };
+            if raw.is_null() {
+                return EffectResult::Error(format!(
+                    "Malloc: out of memory for {size} bytes"));
             }
-            DispatchMode::Replay { calls, cursor, .. } => {
-                if *cursor >= calls.len() {
-                    return EffectResult::Error(format!(
-                        "replay: ran out of recorded calls at index {cursor}"));
-                }
-                let r = calls[*cursor].result.clone();
-                *cursor += 1;
-                r
-            }
-        },
-        Effect::Malloc(size) => match &mut ctx.mode {
-            DispatchMode::Real => {
-                if *size <= 0 {
-                    return EffectResult::Error(format!(
-                        "Malloc: size must be positive, got {size}"));
-                }
-                let size_usize = *size as usize;
-                let layout = match std::alloc::Layout::from_size_align(size_usize, 8) {
-                    Ok(l) => l,
-                    Err(e) => return EffectResult::Error(format!(
-                        "Malloc: layout for {size} bytes: {e}")),
-                };
 
-                let raw = unsafe { std::alloc::alloc_zeroed(layout) };
-                if raw.is_null() {
-                    return EffectResult::Error(format!(
-                        "Malloc: out of memory for {size} bytes"));
-                }
-
-                let drop_fn: Box<dyn FnOnce(*mut std::ffi::c_void) + Send> =
-                    Box::new(move |p| unsafe {
-                        std::alloc::dealloc(p as *mut u8, layout);
-                    });
-                let id = ctx.registry.register_with_drop(
-                    raw as *mut std::ffi::c_void, Some(drop_fn));
-                EffectResult::Int(id as i64)
-            }
-            DispatchMode::Replay { calls, cursor, .. } => {
-                if *cursor >= calls.len() {
-                    return EffectResult::Error(format!(
-                        "replay: ran out of recorded calls at index {cursor}"));
-                }
-                let r = calls[*cursor].result.clone();
-                *cursor += 1;
-                r
-            }
-        },
+            let drop_fn: Box<dyn FnOnce(*mut std::ffi::c_void) + Send> =
+                Box::new(move |p| unsafe {
+                    std::alloc::dealloc(p as *mut u8, layout);
+                });
+            let id = ctx.registry.register_with_drop(
+                raw as *mut std::ffi::c_void, Some(drop_fn));
+            EffectResult::Int(id as i64)
+        }
     }
-}
-
-fn args_equal(a: &[EffectFfiArg], b: &[EffectFfiArg]) -> bool {
-    if a.len() != b.len() { return false; }
-    a.iter().zip(b.iter()).all(|(x, y)| match (x, y) {
-        (EffectFfiArg::Int(p), EffectFfiArg::Int(q)) => p == q,
-        (EffectFfiArg::Bool(p), EffectFfiArg::Bool(q)) => p == q,
-        (EffectFfiArg::Str(p), EffectFfiArg::Str(q)) => p == q,
-        (EffectFfiArg::Real(p), EffectFfiArg::Real(q)) => (p - q).abs() < 1e-12,
-
-        (EffectFfiArg::Handle(_), EffectFfiArg::Handle(_)) => true,
-        (EffectFfiArg::StrArr(p), EffectFfiArg::StrArr(q)) => p == q,
-        (EffectFfiArg::IntOut,    EffectFfiArg::IntOut)    => true,
-        (EffectFfiArg::I32Buf(p), EffectFfiArg::I32Buf(q)) => p == q,
-        (EffectFfiArg::PackedBuf(p), EffectFfiArg::PackedBuf(q)) => p == q,
-        (EffectFfiArg::PriorResult(p), EffectFfiArg::PriorResult(q)) => p == q,
-        _ => false,
-    })
 }
 
 fn do_read(
@@ -508,25 +354,12 @@ fn do_read(
     name: &'static str,
     extract: impl FnOnce(*const u8) -> EffectResult,
 ) -> EffectResult {
-    match &mut ctx.mode {
-        DispatchMode::Real => {
-            match ctx.registry.lookup(handle) {
-                Ok(ptr) => {
-                    let p = unsafe { (ptr as *const u8).offset(offset as isize) };
-                    extract(p)
-                }
-                Err(e) => EffectResult::Error(format!("{name}: {}", e.0)),
-            }
+    match ctx.registry.lookup(handle) {
+        Ok(ptr) => {
+            let p = unsafe { (ptr as *const u8).offset(offset as isize) };
+            extract(p)
         }
-        DispatchMode::Replay { calls, cursor, .. } => {
-            if *cursor >= calls.len() {
-                return EffectResult::Error(format!(
-                    "replay: ran out of recorded calls at index {cursor}"));
-            }
-            let r = calls[*cursor].result.clone();
-            *cursor += 1;
-            r
-        }
+        Err(e) => EffectResult::Error(format!("{name}: {}", e.0)),
     }
 }
 
@@ -537,26 +370,13 @@ fn do_write(
     name: &'static str,
     apply: impl FnOnce(*mut u8),
 ) -> EffectResult {
-    match &mut ctx.mode {
-        DispatchMode::Real => {
-            match ctx.registry.lookup(handle) {
-                Ok(ptr) => {
-                    let p = unsafe { (ptr as *mut u8).offset(offset as isize) };
-                    apply(p);
-                    EffectResult::NoResult
-                }
-                Err(e) => EffectResult::Error(format!("{name}: {}", e.0)),
-            }
+    match ctx.registry.lookup(handle) {
+        Ok(ptr) => {
+            let p = unsafe { (ptr as *mut u8).offset(offset as isize) };
+            apply(p);
+            EffectResult::NoResult
         }
-        DispatchMode::Replay { calls, cursor, .. } => {
-            if *cursor >= calls.len() {
-                return EffectResult::Error(format!(
-                    "replay: ran out of recorded calls at index {cursor}"));
-            }
-            let r = calls[*cursor].result.clone();
-            *cursor += 1;
-            r
-        }
+        Err(e) => EffectResult::Error(format!("{name}: {}", e.0)),
     }
 }
 
@@ -814,63 +634,6 @@ mod tests {
         let mut ctx = DispatchContext::new();
         match dispatch_one(&mut ctx, &Effect::CloseHandle(9999)) {
             EffectResult::Error(_) => {}
-            other => panic!("expected Error, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn replay_mode_returns_recorded_results() {
-        let mut ctx = ctx_with_input("");
-        ctx.set_replay(vec![
-            RecordedCall {
-                symbol: "getpid".into(), sig: "i()".into(),
-                args: vec![], result: EffectResult::Int(12345),
-            },
-        ]);
-
-        let lib = match dispatch_one(&mut ctx, &Effect::FFIOpen("anything".into())) {
-            EffectResult::Handle(h) => h, _ => panic!(),
-        };
-        let sym = match dispatch_one(&mut ctx, &Effect::FFILookup(lib, "getpid".into())) {
-            EffectResult::Handle(h) => h, _ => panic!(),
-        };
-        match dispatch_one(&mut ctx, &Effect::FFICall(sym, "i()".into(), vec![])) {
-            EffectResult::Int(n) => assert_eq!(n, 12345),
-            other => panic!("expected Int(12345), got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn replay_mode_errors_on_symbol_mismatch() {
-        let mut ctx = ctx_with_input("");
-        ctx.set_replay(vec![RecordedCall {
-            symbol: "expected_sym".into(), sig: "i()".into(),
-            args: vec![], result: EffectResult::Int(1),
-        }]);
-        let lib = match dispatch_one(&mut ctx, &Effect::FFIOpen("x".into())) {
-            EffectResult::Handle(h) => h, _ => panic!(),
-        };
-        let sym = match dispatch_one(&mut ctx, &Effect::FFILookup(lib, "wrong_sym".into())) {
-            EffectResult::Handle(h) => h, _ => panic!(),
-        };
-        match dispatch_one(&mut ctx, &Effect::FFICall(sym, "i()".into(), vec![])) {
-            EffectResult::Error(m) => assert!(m.contains("mismatch"), "{}", m),
-            other => panic!("expected Error, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn replay_mode_errors_when_log_exhausted() {
-        let mut ctx = ctx_with_input("");
-        ctx.set_replay(vec![]);
-        let lib = match dispatch_one(&mut ctx, &Effect::FFIOpen("x".into())) {
-            EffectResult::Handle(h) => h, _ => panic!(),
-        };
-        let sym = match dispatch_one(&mut ctx, &Effect::FFILookup(lib, "any".into())) {
-            EffectResult::Handle(h) => h, _ => panic!(),
-        };
-        match dispatch_one(&mut ctx, &Effect::FFICall(sym, "i()".into(), vec![])) {
-            EffectResult::Error(m) => assert!(m.contains("ran out"), "{}", m),
             other => panic!("expected Error, got {other:?}"),
         }
     }
