@@ -20,18 +20,6 @@ use crate::core::{DatatypeRegistry, EnumRegistry, Var};
 use super::declare::{declare_var, declare_var_named, next_call_id};
 use super::exprs::{resolve_mapping, translate_bool};
 
-/// Add `b` to the solver. With a tracker, use `assert_and_track` so
-/// the constraint joins the unsat-core machinery; otherwise plain
-/// `assert`. The tracker stays the same across every assertion derived
-/// from one top-level body item, so the entire item shows up as one
-/// entry in the core.
-fn track_assert(solver: &Solver<'static>, b: &Bool<'static>, tracker: Option<&Bool<'static>>) {
-    match tracker {
-        Some(t) => solver.assert_and_track(b, t),
-        None    => solver.assert(b),
-    }
-}
-
 /// Rewrite identifiers in `e` so any leading-segment match against the
 /// type's `field_set` becomes `<prefix>.<original>`. Used to inherit a
 /// type body's Constraint items onto a sub-schema instance:
@@ -629,7 +617,6 @@ fn inline_subschema_call(
     enums: Option<&EnumRegistry>,
     visited: &mut HashMap<String, usize>,
     guard: &Option<Bool<'static>>,
-    tracker: Option<&Bool<'static>>,
 ) {
     // Look up the subclaim inside the type's body.
     let Some(type_decl) = schemas.get(type_name) else { return; };
@@ -714,11 +701,11 @@ fn inline_subschema_call(
             let z3_name = format!("{}__{}__call{}", claim_name, vname, call_id);
             let post = declare_var_named(ctx, &mut inner, vname, &z3_name,
                               vty, schemas, Some(registry), enums);
-            for c in &post { track_assert(solver, c, tracker); }
+            for c in &post { solver.assert(c); }
         }
     }
     inline_body_items_guarded(
-        &subclaim.body, &mut inner, solver, schemas, ctx, registry, enums, visited, guard, tracker,
+        &subclaim.body, &mut inner, solver, schemas, ctx, registry, enums, visited, guard,
     );
     exit_frame(visited, &qualified);
 }
@@ -733,35 +720,7 @@ pub(super) fn inline_body_items(
     enums: Option<&EnumRegistry>,
     visited: &mut HashMap<String, usize>,
 ) {
-    inline_body_items_guarded(items, env, solver, schemas, ctx, registry, enums, visited, &None, None)
-}
-
-/// Translate `items` and assert each derived constraint into the
-/// solver, additionally tagging every assertion with one of `trackers`
-/// so a later `solver.get_unsat_core()` can name the offending
-/// top-level body item. `trackers[i]` corresponds to `items[i]` —
-/// passing fewer trackers than items means tail items go untracked.
-/// Used by `evaluate_with_core` to surface unsat-cores back to the
-/// test runner; the regular `evaluate` path passes `None` for
-/// zero overhead.
-pub(super) fn inline_body_items_tracked(
-    items: &[BodyItem],
-    env: &mut HashMap<String, Var<'static>>,
-    solver: &Solver<'static>,
-    schemas: &HashMap<String, SchemaDecl>,
-    ctx: &'static Context,
-    registry: &DatatypeRegistry,
-    enums: Option<&EnumRegistry>,
-    visited: &mut HashMap<String, usize>,
-    trackers: &[Bool<'static>],
-) {
-    for (idx, item) in items.iter().enumerate() {
-        let tracker = trackers.get(idx);
-        let slice = std::slice::from_ref(item);
-        inline_body_items_guarded(
-            slice, env, solver, schemas, ctx, registry, enums, visited, &None, tracker,
-        );
-    }
+    inline_body_items_guarded(items, env, solver, schemas, ctx, registry, enums, visited, &None)
 }
 
 fn inline_body_items_guarded(
@@ -774,7 +733,6 @@ fn inline_body_items_guarded(
     enums: Option<&EnumRegistry>,
     visited: &mut HashMap<String, usize>,
     guard: &Option<Bool<'static>>,
-    tracker: Option<&Bool<'static>>,
 ) {
     for item in items {
         match item {
@@ -785,7 +743,7 @@ fn inline_body_items_guarded(
                 // variables not yet in env (e.g. a nested claim's locals).
                 if !env.contains_key(name) {
                     let post = declare_var(ctx, env, name, type_name, schemas, Some(registry), enums);
-                    for c in &post { track_assert(solver, c, tracker); }
+                    for c in &post { solver.assert(c); }
                 }
                 // Resolve `pins` to a list of (field-name, value-expr)
                 // pairs. Named is direct; Positional looks up the type's
@@ -840,7 +798,7 @@ fn inline_body_items_guarded(
                         Box::new(value.clone()),
                     );
                     if let Some(b) = translate_bool(&eq, ctx, env, schemas) {
-                        track_assert(solver, &guarded_bool(b, guard), tracker);
+                        solver.assert(&guarded_bool(b, guard));
                     } else {
                         let lenient = std::env::var("EVIDENT_LENIENT")
                             .map(|v| !v.is_empty() && v != "0")
@@ -899,7 +857,7 @@ fn inline_body_items_guarded(
                         if let BodyItem::Constraint(e) = item {
                             let rewritten = rewrite_idents_with_prefix(e, name, &field_set);
                             if let Some(b) = translate_bool(&rewritten, ctx, env, schemas) {
-                                track_assert(solver, &guarded_bool(b, guard), tracker);
+                                solver.assert(&guarded_bool(b, guard));
                             }
                             // Silently skip on translation failure — the
                             // type body might contain shapes that only
@@ -964,7 +922,7 @@ fn inline_body_items_guarded(
                                         if let Some(b) = translate_bool(
                                             &substituted, ctx, env, schemas)
                                         {
-                                            track_assert(solver, &guarded_bool(b, guard), tracker);
+                                            solver.assert(&guarded_bool(b, guard));
                                         }
                                     }
                                 }
@@ -1019,7 +977,7 @@ fn inline_body_items_guarded(
                 };
                 inline_subschema_call(
                     &recv, &type_name, &claim_name, &args,
-                    env, solver, schemas, ctx, registry, enums, visited, guard, tracker,
+                    env, solver, schemas, ctx, registry, enums, visited, guard,
                 );
             }
             BodyItem::Constraint(Expr::InExpr(lhs, rhs))
@@ -1093,11 +1051,11 @@ fn inline_body_items_guarded(
                         let z3_name = format!("{}__{}__call{}", name, vname, call_id);
                         let post = declare_var_named(ctx, &mut inner, vname, &z3_name,
                                           type_name, schemas, Some(registry), enums);
-                        for c in &post { track_assert(solver, c, tracker); }
+                        for c in &post { solver.assert(c); }
                     }
                 }
                 inline_body_items_guarded(
-                    &claim.body, &mut inner, solver, schemas, ctx, registry, enums, visited, guard, tracker
+                    &claim.body, &mut inner, solver, schemas, ctx, registry, enums, visited, guard
                 );
                 exit_frame(visited, &name);
             }
@@ -1116,7 +1074,7 @@ fn inline_body_items_guarded(
                     resolve_call(name, items, schemas) else { unreachable!() };
                 inline_subschema_call(
                     &recv, &type_name, &claim_name, args,
-                    env, solver, schemas, ctx, registry, enums, visited, guard, tracker,
+                    env, solver, schemas, ctx, registry, enums, visited, guard,
                 );
             }
             BodyItem::Constraint(Expr::Call(name, args))
@@ -1210,11 +1168,11 @@ fn inline_body_items_guarded(
                         let z3_name = format!("{}__{}__call{}", name, vname, call_id);
                         let post = declare_var_named(ctx, &mut inner, vname, &z3_name,
                                           type_name, schemas, Some(registry), enums);
-                        for c in &post { track_assert(solver, c, tracker); }
+                        for c in &post { solver.assert(c); }
                     }
                 }
                 inline_body_items_guarded(
-                    &claim.body, &mut inner, solver, schemas, ctx, registry, enums, visited, guard, tracker
+                    &claim.body, &mut inner, solver, schemas, ctx, registry, enums, visited, guard
                 );
                 exit_frame(visited, name);
             }
@@ -1270,11 +1228,11 @@ fn inline_body_items_guarded(
                         let z3_name = format!("{}__{}__call{}", claim_name, vname, call_id);
                         let post = declare_var_named(ctx, &mut inner, vname, &z3_name,
                                           type_name, schemas, Some(registry), enums);
-                        for c in &post { track_assert(solver, c, tracker); }
+                        for c in &post { solver.assert(c); }
                     }
                 }
                 inline_body_items_guarded(
-                    &claim.body, &mut inner, solver, schemas, ctx, registry, enums, visited, &new_guard, tracker
+                    &claim.body, &mut inner, solver, schemas, ctx, registry, enums, visited, &new_guard
                 );
                 exit_frame(visited, claim_name);
             }
@@ -1307,7 +1265,7 @@ fn inline_body_items_guarded(
                     let e = Expr::Forall(
                         vars.clone(), range.clone(), body.clone());
                     if let Some(b) = translate_bool(&e, ctx, env, schemas) {
-                        track_assert(solver, &guarded_bool(b, guard), tracker);
+                        solver.assert(&guarded_bool(b, guard));
                     }
                     continue;
                 };
@@ -1343,7 +1301,7 @@ fn inline_body_items_guarded(
                                 inline_subschema_call(
                                     &recv, &type_name, &claim_name, args,
                                     env, solver, schemas, ctx, registry,
-                                    enums, visited, guard, tracker,
+                                    enums, visited, guard,
                                 );
                                 continue;
                             }
@@ -1352,7 +1310,7 @@ fn inline_body_items_guarded(
                     // Fall back: regular Constraint translation.
                     if let BodyItem::Constraint(e) = &expanded[expanded.len() - 1] {
                         if let Some(b) = translate_bool(e, ctx, env, schemas) {
-                            track_assert(solver, &guarded_bool(b, guard), tracker);
+                            solver.assert(&guarded_bool(b, guard));
                         }
                     }
                 }
@@ -1376,7 +1334,7 @@ fn inline_body_items_guarded(
                     continue;
                 };
                 inline_body_items_guarded(
-                    &claim.body, env, solver, schemas, ctx, registry, enums, visited, guard, tracker
+                    &claim.body, env, solver, schemas, ctx, registry, enums, visited, guard
                 );
                 exit_frame(visited, name);
             }
@@ -1390,7 +1348,7 @@ fn inline_body_items_guarded(
                     if crate::core::ast::BODY_MARKERS.contains(&s.as_str()) { continue; }
                 }
                 if let Some(b) = translate_bool(e, ctx, env, schemas) {
-                    track_assert(solver, &guarded_bool(b, guard), tracker);
+                    solver.assert(&guarded_bool(b, guard));
                 } else {
                     let lenient = std::env::var("EVIDENT_LENIENT")
                         .map(|v| !v.is_empty() && v != "0")
@@ -1419,7 +1377,7 @@ fn inline_body_items_guarded(
                     continue;
                 };
                 inline_body_items_guarded(
-                    &claim.body, env, solver, schemas, ctx, registry, enums, visited, guard, tracker
+                    &claim.body, env, solver, schemas, ctx, registry, enums, visited, guard
                 );
                 exit_frame(visited, claim_name);
             }
@@ -1476,12 +1434,12 @@ fn inline_body_items_guarded(
                             let z3_name = format!("{}__{}__call{}", name, vname, call_id);
                             let post = declare_var_named(ctx, &mut inner, vname, &z3_name,
                                               type_name, schemas, Some(registry), enums);
-                            for c in &post { track_assert(solver, c, tracker); }
+                            for c in &post { solver.assert(c); }
                         }
                     }
                 }
                 inline_body_items_guarded(
-                    &claim.body, &mut inner, solver, schemas, ctx, registry, enums, visited, guard, tracker
+                    &claim.body, &mut inner, solver, schemas, ctx, registry, enums, visited, guard
                 );
                 exit_frame(visited, name);
             }

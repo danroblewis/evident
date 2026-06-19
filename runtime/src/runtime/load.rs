@@ -85,7 +85,6 @@ impl EvidentRuntime {
             // registered below. Self-reference works because we look
             // up the called claim's signature, not the current claim's.
             super::inject::inject_claim_arg_types(&mut s, &self.schemas)?;
-            super::validate::enforce_external_only(&s)?;
             if !self.schemas.contains_key(&s.name) {
                 self.schema_order.push(s.name.clone());
             }

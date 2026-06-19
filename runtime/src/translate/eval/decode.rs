@@ -28,7 +28,7 @@ use super::solver::real_value_to_f64;
 
 /// Pull one variable's value out of the model into the bindings map.
 /// Mirrors the inline match in `evaluate`'s SAT branch — extracted so
-/// `evaluate_with_core` doesn't have to duplicate it.
+/// other evaluate variants don't have to duplicate it.
 pub(crate) fn extract_binding(
     name: &str, var: &Var<'static>, model: &z3::Model<'_>, ctx: &'static Context,
     bindings: &mut HashMap<String, Value>,

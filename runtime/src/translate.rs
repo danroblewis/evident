@@ -7,15 +7,14 @@
 //! Adding to either list is a deliberate expansion, not an oversight:
 //!
 //!   * From `eval` — the orchestrator entry points:
-//!       `evaluate`, `evaluate_with_core`,
+//!       `evaluate`,
 //!       `evaluate_with_extra_assertion`,
 //!       `evaluate_with_extra_assertions`,
 //!       `evaluate_with_program_and_body`,
-//!       `build_cache`, `run_cached`, `sample_cached_inner`.
+//!       `build_cache`, `run_cached`.
 //!     The `_with_*` variants exist because the runtime facade has
-//!     several callers (CLI givens, multi-FSM scheduler extras,
-//!     unsat-core extraction) and each needs a slightly different
-//!     extra-assertion shape.
+//!     several callers (CLI givens, multi-FSM scheduler extras) and
+//!     each needs a slightly different extra-assertion shape.
 //!
 //!   * From `preprocess` — pre-translation helpers consumed by the
 //!     runtime cache layer and by `commands/test.rs`'s diagnostic
@@ -69,11 +68,11 @@ pub mod ast_encoder {
 }
 
 pub use eval::{build_cache,
-                evaluate, evaluate_with_core,
+                evaluate,
                 evaluate_with_extra_assertion,
                 evaluate_with_extra_assertions,
                 evaluate_with_program_and_body,
-                run_cached, sample_cached_inner};
+                run_cached};
 pub(crate) use eval::extract_binding;
 pub use preprocess::{collect_referenced_names, structural_names, structural_signature,
                      StructuralSignature};
