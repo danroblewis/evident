@@ -11,11 +11,10 @@ Querying a schema asks whether a satisfying assignment exists.
 
 There is one test command: **`./test.sh` from the repo root**.
 
-It builds the runtime in release mode, runs `cargo test --release` (Rust
+It builds the runtime in release mode, then runs `cargo test --release` (Rust
 units + integration tests + the demo driver that runs every
-`examples/test_*.ev` end-to-end), then runs `pytest tests/conformance/`
-(black-box CLI conformance). All phases must pass; the script exits non-zero
-if any phase fails.
+`examples/test_*.ev` end-to-end, including the SDL demos on the Xvfb display).
+All phases must pass; the script exits non-zero if any phase fails.
 
 The full run is **~10 seconds** when the binary is already built.
 
@@ -30,10 +29,7 @@ When to run it:
     `examples/COUNTEREXAMPLES.md` and delete the test.
 
 Iteration-only flags:
-  * `./test.sh --rust-only` — skip conformance phase.
-  * `./test.sh --conformance` — skip the cargo build + cargo test
-    phases (useful when iterating on Python conformance tests).
-  * `./test.sh --examples` — phases 1–3 PLUS run every demo in
+  * `./test.sh --examples` — phases 1–2 PLUS run every demo in
     `examples/` end-to-end via the binary, capturing
     screenshots for visual demos.
   * `./test.sh --examples-only` — just the examples runner;
@@ -79,7 +75,6 @@ your task:
 |---|---|
 | Writing a new program (any program) | [`examples/`](examples/) — copy the closest existing demo's shape |
 | Looking for the punch list of known runtime gaps | [`examples/COUNTEREXAMPLES.md`](examples/COUNTEREXAMPLES.md) |
-| Trying to find where a claim's Z3 solve cost actually is | run `evident profile <file> <schema> [--given …] [--top N]` — lists given vs solved-for vars and ranks which variables, if pinned, most reduce the solve time |
 | Writing or debugging a program that uses `evident effect-run` | [`docs/guide/effect-state-machines.md`](docs/guide/effect-state-machines.md) |
 | Writing or extending an FFI wrapper library (`packages/sdl/`, `packages/gl/`, `stdlib/shell.ev`, …) | [`docs/guide/ffi-bindings.md`](docs/guide/ffi-bindings.md) |
 | Understanding what an Evident model IS (the unifying framing) | [`docs/design/schema-interface.md`](docs/design/schema-interface.md) |

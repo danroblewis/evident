@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(docker info *)",
+      "Bash(docker buildx *)",
+      "Bash(docker run --rm claudebot-evident:latest bash -lc ' *)",
+      "Bash(docker build *)",
+      "Bash(echo \"BUILD EXIT: $?\")",
+      "Bash(break)",
+      "Bash(docker run *)",
+      "Bash(docker rmi *)"
+    ]
+  }
+}

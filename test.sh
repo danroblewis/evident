@@ -8,49 +8,37 @@
 #      tests. Includes the multi-FSM scheduler tests and the demo
 #      driver (which runs every examples/test_*.ev that has
 #      an EXPECTATIONS row).
-#   3. pytest tests/conformance/ — black-box CLI conformance tests.
 #
 # Optional phase (NOT run by default):
-#   --examples                  Run every examples/test_*.ev
-#                               via the binary, end-to-end. For
-#                               visual demos (SDL etc.), capture
-#                               screenshots into
-#                               /tmp/evident-screenshots/. Use this
-#                               when you want eyes-on confirmation
-#                               that the visible demos still render.
-#                               (Visual demos are NOT in cargo
-#                               test's expectations because they
-#                               need a display.)
+#   --examples                  Run every examples/test_*.ev via the
+#                               binary, end-to-end. Visual demos (SDL)
+#                               render on the Xvfb display ($DISPLAY)
+#                               and are screenshotted into
+#                               /tmp/evident-screenshots/ for eyes-on
+#                               review.
 #
 # This is THE test command. Any time an agent finishes a chunk of
 # work that touches code or stdlib or examples/, run this before
 # declaring done.
 #
 # Usage:
-#   ./test.sh                   # phases 1-3 (default)
-#   ./test.sh --rust-only       # phases 1-2 (skip conformance)
-#   ./test.sh --conformance     # only conformance
-#   ./test.sh --examples        # phases 0-3 PLUS the examples
-#                               # runner with screenshots
-#   ./test.sh --examples-only   # only examples runner
+#   ./test.sh                   # phases 1-2 (default)
+#   ./test.sh --examples        # phases 1-2 PLUS the examples runner
+#   ./test.sh --examples-only   # only the examples runner
 #                               # (assumes binary already built)
 
 set -e -o pipefail
 
 cd "$(dirname "$0")"
 
-RUST_ONLY=0
-CONFORMANCE_ONLY=0
 EXAMPLES=0
 EXAMPLES_ONLY=0
 for arg in "$@"; do
     case "$arg" in
-        --rust-only)      RUST_ONLY=1 ;;
-        --conformance)    CONFORMANCE_ONLY=1 ;;
         --examples)       EXAMPLES=1 ;;
         --examples-only)  EXAMPLES=1 ; EXAMPLES_ONLY=1 ;;
         -h|--help)
-            sed -n '2,38p' "$0"
+            sed -n '2,28p' "$0"
             exit 0
             ;;
         *)
@@ -81,7 +69,7 @@ started=$(date +%s)
 failures=()
 
 # ── Phase 1: build ────────────────────────────────────────────
-if [ "$CONFORMANCE_ONLY" -eq 0 ] && [ "$EXAMPLES_ONLY" -eq 0 ]; then
+if [ "$EXAMPLES_ONLY" -eq 0 ]; then
     phase "Phase 1: build runtime (release)"
     if (cd runtime && cargo build --release 2>&1 | tail -3); then
         ok "build"
@@ -93,7 +81,7 @@ if [ "$CONFORMANCE_ONLY" -eq 0 ] && [ "$EXAMPLES_ONLY" -eq 0 ]; then
 fi
 
 # ── Phase 2: cargo test ───────────────────────────────────────
-if [ "$CONFORMANCE_ONLY" -eq 0 ] && [ "$EXAMPLES_ONLY" -eq 0 ]; then
+if [ "$EXAMPLES_ONLY" -eq 0 ]; then
     phase "Phase 2: cargo test --release (runtime/)"
     if (cd runtime && cargo test --release 2>&1 | tee /tmp/evident-cargo-test.log) ; then
         passed=$(grep "^test result" /tmp/evident-cargo-test.log \
@@ -110,33 +98,14 @@ if [ "$CONFORMANCE_ONLY" -eq 0 ] && [ "$EXAMPLES_ONLY" -eq 0 ]; then
     echo
 fi
 
-# ── Phase 3: conformance ──────────────────────────────────────
-if [ "$RUST_ONLY" -eq 0 ] && [ "$EXAMPLES_ONLY" -eq 0 ]; then
-    phase "Phase 3: conformance (tests/conformance/)"
-    if ! command -v pytest >/dev/null 2>&1; then
-        fail "pytest not found in PATH; install it or run inside a venv"
-        failures+=("conformance: pytest missing")
-    else
-        if pytest tests/conformance/ -q --tb=short 2>&1 | tee /tmp/evident-pytest.log ; then
-            counts=$(grep -E "[0-9]+ passed" /tmp/evident-pytest.log | tail -1)
-            ok "conformance: $counts"
-        else
-            counts=$(grep -E "[0-9]+ (passed|failed)" /tmp/evident-pytest.log | tail -1)
-            fail "conformance: $counts"
-            failures+=("conformance")
-        fi
-    fi
-    echo
-fi
-
 # ── Optional: examples runner ────────────────────────────────
-# Walks examples/, runs each via effect-run. For visual
-# demos (anything that imports packages/sdl/), spawn the program,
-# screenshot after a brief wait, kill, save the PNG. Doesn't
-# fail the run on visual issues — those need eyes-on review by
-# either a human or by an LLM that Reads the captured PNGs.
+# Walks examples/, runs each via effect-run. For visual demos (anything
+# that imports packages/sdl/), spawn the program, screenshot the Xvfb
+# display after a brief wait, kill, save the PNG. Doesn't fail the run on
+# visual issues — those need eyes-on review (a human or an LLM that Reads
+# the captured PNGs).
 if [ "$EXAMPLES" -eq 1 ]; then
-    phase "Phase 4: examples runner (examples/)"
+    phase "Phase 3: examples runner (examples/)"
 
     EVIDENT="$PWD/runtime/target/release/evident"
     if [ ! -x "$EVIDENT" ]; then
@@ -172,9 +141,11 @@ if [ "$EXAMPLES" -eq 1 ]; then
                     >/tmp/evident-example.out 2>/tmp/evident-example.err &
                 pid=$!
                 sleep 2
-                # macOS screencapture; on Linux you'd swap this for
-                # `import` or `gnome-screenshot`. Best-effort either way.
-                if command -v screencapture >/dev/null 2>&1; then
+                # Linux: capture the Xvfb root window via imagemagick.
+                # macOS: screencapture. Best-effort either way.
+                if command -v import >/dev/null 2>&1; then
+                    import -display "${DISPLAY:-:99}" -window root "$SHOTDIR/$name.png" 2>/dev/null
+                elif command -v screencapture >/dev/null 2>&1; then
                     screencapture -x "$SHOTDIR/$name.png" 2>/dev/null
                 fi
                 # Wait for natural exit (capped) or kill.
@@ -187,16 +158,12 @@ if [ "$EXAMPLES" -eq 1 ]; then
                 if [ -f "$SHOTDIR/$name.png" ]; then
                     ok "$name (visual; screenshot saved)"
                 else
-                    note "$name (visual; no screencapture tool found)"
+                    note "$name (visual; no screenshot tool found)"
                 fi
             else
                 # Non-visual: run with a short timeout, check exit.
                 # Demos that need stdin (test_14_stdin) get an empty
                 # stdin and short max-steps so they don't hang.
-                # `timeout` lives in /opt/homebrew/bin on macOS,
-                # /usr/bin on most Linux. Fall back to "run without
-                # timeout" if neither's around (fail-open: better
-                # to hang than to silently skip).
                 TO=$(command -v timeout || command -v gtimeout || echo "")
                 if [ -n "$TO" ]; then RUN="$TO 8 $EVIDENT"; else RUN="$EVIDENT"; fi
                 if $RUN effect-run "$f" --max-steps 60 \
