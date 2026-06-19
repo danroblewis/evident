@@ -9,7 +9,12 @@ avoids worktree merge conflicts. Mark items done and commit as they land.
 - _(nothing running)_
 
 ## Queued (in order)
-- _(empty — cleanup queue clear)_
+1. **KEYSTONE — remove "world", unify FSM record-state onto `_var`** — see
+   [`remove-world-unify-state.md`](remove-world-unify-state.md). Delete the legacy
+   `var`/`var_next` state-pair (`state`/`state_next`, `world`/`world_next`) + the
+   `unify_world_syntax` rename pass; carry record state via the `_var` prev-tick
+   mechanism (`_var.field` = previous, `var.field` = current), like scalars. Removes
+   cruft, fixes `Δ`-on-records, and unblocks the FTI time-shift — do this first.
 
 ## Done (recent, newest first)
 - purge stdlib multi-FSM vestiges (5 `external fsm` + FrameTimer/Signal/FrameClock/Timer + dead comments), `runtime.ev` 299→195; `single_fsm` reviewed, already minimal
