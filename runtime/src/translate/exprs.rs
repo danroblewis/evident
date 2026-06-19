@@ -384,7 +384,7 @@ fn translate_seq_arg_for_ctor<'ctx>(
     schemas: &HashMap<String, SchemaDecl>,
 ) -> Option<(Box<dyn z3::ast::Ast<'ctx> + 'ctx>, Box<dyn z3::ast::Ast<'ctx> + 'ctx>)> {
     use z3::Sort;
-    use z3::ast::{Array, Ast as _, Bool, Int, String as Z3Str};
+    use z3::ast::{Array, Bool, Int, String as Z3Str};
 
     if let Expr::Identifier(name) = arg_expr {
         if let Some(var) = env.get(name) {
@@ -547,12 +547,6 @@ pub(super) enum SeqHandleRef<'ctx> {
 }
 
 impl<'ctx> SeqHandleRef<'ctx> {
-    pub(super) fn arr(&self) -> &z3::ast::Array<'ctx> {
-        match self {
-            SeqHandleRef::Primitive { arr, .. } => arr,
-            SeqHandleRef::Composite { arr, .. } => arr,
-        }
-    }
     pub(super) fn len(&self) -> &Int<'ctx> {
         match self {
             SeqHandleRef::Primitive { len, .. } => len,
