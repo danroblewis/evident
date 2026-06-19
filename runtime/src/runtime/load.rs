@@ -48,15 +48,15 @@ impl EvidentRuntime {
         for s in &prog.schemas {
             let mut s = s.clone();
 
-            super::desugar::unify_world_syntax(&mut s)?;
+            super::lower::unify_world_syntax(&mut s)?;
 
-            super::desugar::desugar_seq_concat(&mut s);
-            super::inject::inject_fsm_params(&mut s)?;
+            super::lower::desugar_seq_concat(&mut s);
+            super::lower::inject_fsm_params(&mut s)?;
 
-            super::inject::inject_lhs_eq_types(&mut s, &self.schemas, &self.enums);
-            super::inject::inject_prev_tick_decls(&mut s)?;
+            super::lower::inject_lhs_eq_types(&mut s, &self.schemas, &self.enums);
+            super::lower::inject_prev_tick_decls(&mut s)?;
 
-            super::inject::inject_claim_arg_types(&mut s, &self.schemas)?;
+            super::lower::inject_claim_arg_types(&mut s, &self.schemas)?;
             if !self.schemas.contains_key(&s.name) {
                 self.schema_order.push(s.name.clone());
             }

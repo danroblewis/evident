@@ -1,6 +1,5 @@
 mod load;
-mod desugar;
-mod inject;
+mod lower;
 mod register_enums;
 mod query;
 mod scheduler_api;
