@@ -92,6 +92,108 @@ pub enum Expr {
     Matches(Box<Expr>, MatchPattern),
 }
 
+/// Pre-order traversal over every `Expr` in the tree: calls `f(e)` first, then
+/// recurses into all child `Expr`s of every variant.
+///
+/// The match is **exhaustive (no `_ =>` wildcard)** on purpose: adding a new
+/// `Expr` variant fails to compile here until the traversal is updated, which
+/// is the whole reason this lives next to the `Expr` definition.
+pub fn walk_expr(e: &Expr, f: &mut impl FnMut(&Expr)) {
+    f(e);
+    match e {
+        Expr::Identifier(_)
+        | Expr::Int(_)
+        | Expr::Real(_)
+        | Expr::Bool(_)
+        | Expr::Str(_) => {}
+        Expr::SetLit(es) | Expr::SeqLit(es) | Expr::Tuple(es) => {
+            for x in es {
+                walk_expr(x, f);
+            }
+        }
+        Expr::Range(a, b) | Expr::InExpr(a, b) | Expr::Index(a, b) => {
+            walk_expr(a, f);
+            walk_expr(b, f);
+        }
+        Expr::Forall(_, r, b) | Expr::Exists(_, r, b) => {
+            walk_expr(r, f);
+            walk_expr(b, f);
+        }
+        Expr::Call(_, args) => {
+            for a in args {
+                walk_expr(a, f);
+            }
+        }
+        Expr::Cardinality(i) | Expr::Not(i) => walk_expr(i, f),
+        Expr::Field(recv, _) => walk_expr(recv, f),
+        Expr::Binary(_, l, r) => {
+            walk_expr(l, f);
+            walk_expr(r, f);
+        }
+        Expr::Ternary(c, a, b) => {
+            walk_expr(c, f);
+            walk_expr(a, f);
+            walk_expr(b, f);
+        }
+        Expr::Match(scr, arms) => {
+            walk_expr(scr, f);
+            for arm in arms {
+                walk_expr(&arm.body, f);
+            }
+        }
+        Expr::Matches(inner, _) => walk_expr(inner, f),
+    }
+}
+
+/// Mutable pre-order twin of [`walk_expr`]: calls `f(e)` first, then recurses
+/// into all child `Expr`s. Exhaustive match, same rationale as `walk_expr`.
+pub fn walk_expr_mut(e: &mut Expr, f: &mut impl FnMut(&mut Expr)) {
+    f(e);
+    match e {
+        Expr::Identifier(_)
+        | Expr::Int(_)
+        | Expr::Real(_)
+        | Expr::Bool(_)
+        | Expr::Str(_) => {}
+        Expr::SetLit(es) | Expr::SeqLit(es) | Expr::Tuple(es) => {
+            for x in es {
+                walk_expr_mut(x, f);
+            }
+        }
+        Expr::Range(a, b) | Expr::InExpr(a, b) | Expr::Index(a, b) => {
+            walk_expr_mut(a, f);
+            walk_expr_mut(b, f);
+        }
+        Expr::Forall(_, r, b) | Expr::Exists(_, r, b) => {
+            walk_expr_mut(r, f);
+            walk_expr_mut(b, f);
+        }
+        Expr::Call(_, args) => {
+            for a in args {
+                walk_expr_mut(a, f);
+            }
+        }
+        Expr::Cardinality(i) | Expr::Not(i) => walk_expr_mut(i, f),
+        Expr::Field(recv, _) => walk_expr_mut(recv, f),
+        Expr::Binary(_, l, r) => {
+            walk_expr_mut(l, f);
+            walk_expr_mut(r, f);
+        }
+        Expr::Ternary(c, a, b) => {
+            walk_expr_mut(c, f);
+            walk_expr_mut(a, f);
+            walk_expr_mut(b, f);
+        }
+        Expr::Match(scr, arms) => {
+            walk_expr_mut(scr, f);
+            for arm in arms {
+                walk_expr_mut(&mut arm.body, f);
+            }
+        }
+        Expr::Matches(inner, _) => walk_expr_mut(inner, f),
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct MatchArm {
     pub pattern: MatchPattern,
