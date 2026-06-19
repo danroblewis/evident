@@ -111,11 +111,7 @@ impl Default for DispatchContext {
 /// don't tear down the runtime are reported as `EffectResult::Error`.
 /// `Exit` calls `process::exit` and never returns.
 pub fn dispatch_one(ctx: &mut DispatchContext, e: &Effect) -> EffectResult {
-    let r = dispatch_one_inner(ctx, e);
-    if std::env::var("EVIDENT_FFI_TRACE").is_ok() {
-        eprintln!("[ffi] {e:?} → {r:?}");
-    }
-    r
+    dispatch_one_inner(ctx, e)
 }
 
 /// Detect Z3's auto-named sentinel strings like "!0!", "!a!",

@@ -136,7 +136,7 @@ pub fn evaluate(
     // and ClaimCall recurse into nested claim composition (one helper
     // unifies all four entry shapes).
     let mut visited: HashMap<String, usize> = HashMap::new();
-    inline_body_items(&schema.body, &mut env, &solver, schemas, ctx, registry, enums, &mut visited);
+    inline_body_items(&schema.body, &mut env, &solver, schemas, ctx, registry, enums, &mut visited, false);
 
     // Pass 3: assert ground facts for each given binding. Names that
     // aren't declared in the schema are silently ignored (matches the

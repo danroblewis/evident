@@ -43,22 +43,14 @@ impl EvidentRuntime {
         // fire even with non-empty pins; the pinned Datatype is
         // simply redundant with the given Value. If function-izer
         // rejects, fall through to Z3 with `pins` intact.
-        // Z3 functionizer + Cranelift JIT, enabled by default. JIT
-        // compiles the extracted Z3Program to native code; on miss
-        // (extract or codegen refused) falls through to the slow
-        // path below. Disable with EVIDENT_FUNCTIONIZE=0.
-        let functionize_on = std::env::var("EVIDENT_FUNCTIONIZE")
-            .map(|s| s != "0").unwrap_or(true);
-        if functionize_on {
-            if let Some(result) = self.try_functionize_z3(claim_name, schema, given) {
-                if std::env::var("EVIDENT_FUNCTIONIZE_TRACE").is_ok() {
-                    eprintln!("[fz/z3] HIT (scheduler) {}", claim_name);
-                }
-                return Ok(result);
-            }
+        // Z3 functionizer + Cranelift JIT. JIT compiles the extracted
+        // Z3Program to native code; on miss (extract or codegen refused)
+        // falls through to the slow path below.
+        if let Some(result) = self.try_functionize_z3(claim_name, schema, given) {
+            return Ok(result);
         }
-        let arith: u32 = std::env::var("EVIDENT_Z3_ARITH_SOLVER").ok()
-            .and_then(|s| s.parse().ok()).unwrap_or(2);
+        // Fixed `smt.arith.solver` default (Z3's simplex arith solver).
+        let arith: u32 = 2;
 
         // Slow-path cache: if the function-izer already built a
         // CompiledModel and stored it (because it refused to produce
@@ -71,9 +63,6 @@ impl EvidentRuntime {
         given_keys.sort();
         let cache_key = (claim_name.to_string(), given_keys);
         if let Some(cached) = self.slow_path_cache.borrow().get(&cache_key).cloned() {
-            if std::env::var("EVIDENT_TRACE_SLOW_PATH").is_ok() {
-                eprintln!("[slow/cached] {claim_name}");
-            }
             use z3::ast::Ast;
             cached.solver.push();
             // Apply the typed Datatype pins (state).
@@ -102,9 +91,6 @@ impl EvidentRuntime {
             return Ok(QueryResult { satisfied: r.satisfied, bindings: r.bindings });
         }
 
-        if std::env::var("EVIDENT_TRACE_SLOW_PATH").is_ok() {
-            eprintln!("[slow] {claim_name}: dispatching to evaluate_with_extra_assertions");
-        }
         let r = crate::translate::evaluate_with_extra_assertions(
             schema,
             given,

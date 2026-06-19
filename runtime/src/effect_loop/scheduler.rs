@@ -26,8 +26,7 @@ use crate::core::Value;
 use super::collect::collect_dispatchable_effects;
 use super::fsm::MainShape;
 use super::state::encode_state_value;
-use super::timing::print_timing_summary_full;
-use super::{LoopEnv, LoopOpts, LoopResult};
+use super::{LoopOpts, LoopResult};
 
 /// Seed an FSM's initial state to its enum's first (nullary) variant.
 /// The first variant declared in `enum FooState = Init | …` is the
@@ -70,7 +69,6 @@ pub(super) fn run_loop(
     opts: &LoopOpts,
     ctx: &mut DispatchContext,
     world_snapshot: &mut HashMap<String, Value>,
-    env: &LoopEnv,
 ) -> Result<LoopResult, String> {
     let (mut current_state, mut current_state_v) = seed_state(rt, fsm);
     let mut last_results: Vec<EffectResult> = Vec::new();
@@ -104,17 +102,6 @@ pub(super) fn run_loop(
     }
 
     let mut step_count = 0usize;
-    let timing = env.timing;
-    let loop_t0 = std::time::Instant::now();
-    let mut total_solve = std::time::Duration::ZERO;
-    let mut total_dispatch = std::time::Duration::ZERO;
-
-    let summary = |loop_t0, steps, solve, dispatch, ticks: usize| {
-        if timing {
-            let rows = [(fsm.claim_name.as_str(), solve, ticks)];
-            print_timing_summary_full(loop_t0, steps, solve, dispatch, &rows);
-        }
-    };
 
     while step_count < opts.max_steps {
         // Pin list: state as Datatype.
@@ -172,16 +159,12 @@ pub(super) fn run_loop(
             fsm_view.insert(state_name.clone(), state_v.clone());
         }
 
-        let solve_t0 = std::time::Instant::now();
         let r = rt
             .query_with_pins_and_given(&fsm.claim_name, &pins, &fsm_view)
             .map_err(|e| format!("FSM `{}` solve step {step_count}: {e}", fsm.claim_name))?;
-        let solve_dt = solve_t0.elapsed();
-        total_solve += solve_dt;
 
         if !r.satisfied {
             eprintln!("[loop] FSM `{}` returned UNSAT on tick {step_count}", fsm.claim_name);
-            summary(loop_t0, step_count, total_solve, total_dispatch, step_count);
             return Ok(LoopResult {
                 steps: step_count,
                 final_state: current_state_v.clone(),
@@ -236,26 +219,14 @@ pub(super) fn run_loop(
             prev_values.insert(k.clone(), v.clone());
         }
 
-        if env.trace {
-            eprintln!("[loop] tick {step_count} fsm={}: state_next={state_next_val:?} effects={effects:?}",
-                fsm.claim_name);
-        }
-        if timing {
-            eprintln!("[timing] tick {step_count} fsm={}: solve={:.2}ms ({} effects)",
-                fsm.claim_name, solve_dt.as_secs_f64() * 1000.0, effects.len());
-        }
-
         // ── Dispatch all effects in order ─────────────────────────
-        let dispatch_t0 = std::time::Instant::now();
         let any_effect = !effects.is_empty();
         last_results = dispatch_all(ctx, &effects);
-        total_dispatch += dispatch_t0.elapsed();
 
         step_count += 1;
 
         // ── Exit (graceful, end-of-tick) ──────────────────────────
         if ctx.exit_requested.is_some() {
-            summary(loop_t0, step_count, total_solve, total_dispatch, step_count);
             return Ok(LoopResult {
                 steps: step_count,
                 final_state: current_state_v.clone(),
@@ -268,7 +239,6 @@ pub(super) fn run_loop(
         // Nothing changed this tick (no state transition, no effect, no
         // world write) → nothing can change next tick either.
         if !state_changed && !any_effect && !any_world_write {
-            summary(loop_t0, step_count, total_solve, total_dispatch, step_count);
             return Ok(LoopResult {
                 steps: step_count,
                 final_state: current_state_v.clone(),
@@ -278,7 +248,6 @@ pub(super) fn run_loop(
         }
     }
 
-    summary(loop_t0, step_count, total_solve, total_dispatch, step_count);
     Ok(LoopResult {
         steps: step_count,
         final_state: current_state_v.clone(),

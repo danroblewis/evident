@@ -87,7 +87,7 @@ pub fn evaluate_with_extra_assertion(
     apply_set_candidates(&env, given);
 
     let mut visited: HashMap<String, usize> = HashMap::new();
-    inline_body_items(&schema.body, &mut env, &solver, schemas, ctx, registry, enums, &mut visited);
+    inline_body_items(&schema.body, &mut env, &solver, schemas, ctx, registry, enums, &mut visited, false);
 
     // Inject the extra value. Look up the variable, must be EnumVar
     // (i.e. enum-typed Membership). Anything else gets a warning;
@@ -166,7 +166,7 @@ pub fn evaluate_with_extra_assertions(
     apply_set_candidates(&env, given);
 
     let mut visited: HashMap<String, usize> = HashMap::new();
-    inline_body_items(&schema.body, &mut env, &solver, schemas, ctx, registry, enums, &mut visited);
+    inline_body_items(&schema.body, &mut env, &solver, schemas, ctx, registry, enums, &mut visited, false);
 
     for (var_name, value) in pins {
         if let Some(Var::EnumVar { ast, .. }) = env.get(*var_name) {
@@ -289,7 +289,7 @@ pub fn evaluate_with_program_and_body(
     apply_seq_lengths(&mut env, &seq_lens, ctx);
 
     let mut visited: HashMap<String, usize> = HashMap::new();
-    inline_body_items(&schema.body, &mut env, &solver, schemas, ctx, registry, Some(enums), &mut visited);
+    inline_body_items(&schema.body, &mut env, &solver, schemas, ctx, registry, Some(enums), &mut visited, false);
 
     // Program injection.
     if let Some(Var::EnumVar { ast, .. }) = env.get(program_var) {

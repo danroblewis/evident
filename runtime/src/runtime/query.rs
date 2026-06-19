@@ -13,7 +13,6 @@
 //! `(claim, given-keys)`.
 
 use crate::core::{CompiledModel, CompiledFunction, QueryResult, RuntimeError, Var, Z3Step};
-use super::lenient::LenientGuard;
 use super::{EvidentRuntime, Value};
 use crate::translate::run_cached;
 use crate::z3_eval::{collect_touched_names, extract_program_partial,
@@ -190,30 +189,15 @@ fn decompose_simplified(
     (comp_vars, comp_assertions, global)
 }
 
-/// Build a solver tuned the same way `make_tuned_solver` does (tactic
-/// chain from `EVIDENT_TACTICS`, default `solve-eqs`; `smt.arith.solver`
-/// param). Re-implemented here because that helper is `pub(super)` to
-/// `translate::eval` — the per-component slow solver needs the same
-/// tuning as the cached slow path it replaces.
+/// Build a solver tuned the same way `make_tuned_solver` does (the
+/// `solve-eqs` tactic chain + `smt.arith.solver` param). Re-implemented
+/// here because that helper is `pub(super)` to `translate::eval` — the
+/// per-component slow solver needs the same tuning as the cached slow
+/// path it replaces.
 fn build_tuned_solver(ctx: &'static Context, arith_solver: u32) -> Solver<'static> {
-    let chain = std::env::var("EVIDENT_TACTICS").ok();
-    let chain_spec = chain.as_deref().unwrap_or("solve-eqs");
-    let solver = match chain_spec {
-        "" | "off" => Solver::new(ctx),
-        spec => {
-            let mut names: Vec<&str> = match spec {
-                "simplify"   => vec!["simplify"],
-                "standard"   => vec!["simplify", "propagate-values", "solve-eqs"],
-                "aggressive" => vec!["simplify", "propagate-values", "solve-eqs",
-                                     "elim-uncnstr", "propagate-ineqs"],
-                custom => custom.split(',').map(|s| s.trim()).collect(),
-            };
-            if !names.last().map(|n| *n == "smt").unwrap_or(false) { names.push("smt"); }
-            let mut t = Tactic::new(ctx, names[0]);
-            for n in &names[1..] { t = t.and_then(&Tactic::new(ctx, n)); }
-            t.solver()
-        }
-    };
+    let solver = Tactic::new(ctx, "solve-eqs")
+        .and_then(&Tactic::new(ctx, "smt"))
+        .solver();
     if arith_solver != 0 {
         let mut params = Params::new(ctx);
         params.set_u32("smt.arith.solver", arith_solver);
@@ -261,8 +245,8 @@ impl EvidentRuntime {
         // assertions (without given values pinned so the
         // extracted program is generic over input values), apply
         // Z3's tactic chain, and extract per-output assignments.
-        let arith: u32 = std::env::var("EVIDENT_Z3_ARITH_SOLVER").ok()
-            .and_then(|s| s.parse().ok()).unwrap_or(2);
+        // Fixed `smt.arith.solver` default (Z3's simplex arith solver).
+        let arith: u32 = 2;
         // The Z3 translator fatal-exits on dropped constraints
         // (constraints it can't express). For schemas with such
         // gaps (e.g. enum ctors carrying Seq payloads), the slow
@@ -277,16 +261,14 @@ impl EvidentRuntime {
         // Without these pins, body shapes like ∀-over-symbolic-Range
         // would trip the translator's dropped-constraint fatal-exit.
         //
-        // R27: temporarily enable EVIDENT_LENIENT for the
-        // build_cache call so untranslatable body items (like
-        // SDL_Window's `install ∈ Seq(InstallStep) = ⟨...⟩` with
-        // payloaded LibCalls) become warnings rather than
-        // fatal-exit. extract_program will produce a partial
-        // program; if it's incomplete for the outputs we need,
-        // we fall through to the slow path which handles these
-        // cases via the silently-skipping inheritance path
-        // (inline.rs line 906).
-        let _lenient_guard = LenientGuard::enable();
+        // R27: build_cache runs the lenient translate path (passed
+        // through to inline_body_items) so untranslatable body items
+        // (like SDL_Window's `install ∈ Seq(InstallStep) = ⟨...⟩` with
+        // payloaded LibCalls) become warnings rather than fatal-exit.
+        // extract_program will produce a partial program; if it's
+        // incomplete for the outputs we need, we fall through to the
+        // slow path which handles these cases via the silently-skipping
+        // inheritance path.
         // Pass an empty given to build_cache so the extracted program
         // is generic over input values. If we passed `given` here,
         // apply_pinned_ints would bake `_count`/state/etc. into the
@@ -298,7 +280,6 @@ impl EvidentRuntime {
         let cached = crate::translate::build_cache(
             schema, &self.schemas, self.z3_ctx, &self.datatypes,
             Some(&self.enums), &empty_given, arith);
-        drop(_lenient_guard);
         // get_assertions ties the Bool lifetime to the solver, but
         // the underlying Z3 ASTs are reference-counted by the
         // 'static Context — they outlive the solver wrapper. Same
@@ -376,23 +357,6 @@ impl EvidentRuntime {
             })
             .collect();
 
-        if std::env::var("EVIDENT_FUNCTIONIZE_TRACE").is_ok() {
-            eprintln!("[fz/z3] {}: simplified body has {} assertions, outputs = {:?}",
-                name, simplified.len(), outputs);
-            for a in simplified {
-                eprintln!("    {a}");
-            }
-        }
-        if std::env::var("EVIDENT_FUNCTIONIZE_TRACE").is_ok() {
-            eprintln!("[fz/z3] {} extract pass: {} outputs, {} simplified",
-                name, outputs.len(), simplified.len());
-            if name == "keyboard" || std::env::var("EVIDENT_FZ_DUMP_BODY").is_ok() {
-                eprintln!("[fz/z3] {name} outputs: {outputs:?}");
-                for a in simplified {
-                    eprintln!("  {a}");
-                }
-            }
-        }
         if outputs.is_empty() {
             // No constrained outputs — the body is just type
             // bounds / predicates with nothing to compute. We
@@ -450,12 +414,6 @@ impl EvidentRuntime {
             per.components += n_components as u32;
             per.components_compiled += n_compiled;
             if n_compiled > 0 { per.compiled += 1; }
-        }
-        if std::env::var("EVIDENT_FUNCTIONIZE_TRACE").is_ok()
-            || std::env::var("EVIDENT_FUNCTIONIZE_STATS").is_ok()
-        {
-            eprintln!("[fz/stats] {}: components={} compiled={} slow_outputs={} simplified={}",
-                name, n_components, n_compiled, uncompiled_outputs.len(), simplified.len());
         }
 
         // Build the combined slow part for the components that didn't
@@ -685,22 +643,14 @@ impl EvidentRuntime {
         // Functionizer fast path: extract a Z3Program from the body
         // and JIT-compile to native code. On miss (extract refused
         // or JIT codegen refused) we fall through to a full Z3 solve.
-        let functionize_on = std::env::var("EVIDENT_FUNCTIONIZE")
-            .map(|s| s != "0").unwrap_or(true);
-        if functionize_on {
-            if let Some(result) = self.try_functionize_z3(name, schema, given) {
-                if std::env::var("EVIDENT_FUNCTIONIZE_TRACE").is_ok() {
-                    eprintln!("[fz/z3] HIT {}", name);
-                }
-                return Ok(result);
-            }
+        if let Some(result) = self.try_functionize_z3(name, schema, given) {
+            return Ok(result);
         }
 
-        // One-shot query: don't auto-tune (no chance to learn over many
-        // calls). Use the env override if set, default 2 (the value
-        // that wins on Z3 4.8.12 for our typical workload).
-        let arith: u32 = std::env::var("EVIDENT_Z3_ARITH_SOLVER").ok()
-            .and_then(|s| s.parse().ok()).unwrap_or(2);
+        // One-shot query: fixed `smt.arith.solver` default (Z3's simplex
+        // arith solver — the value that wins on Z3 4.8.12 for our typical
+        // workload).
+        let arith: u32 = 2;
         let r = crate::translate::evaluate(schema, given, &self.schemas, self.z3_ctx, &self.datatypes, Some(&self.enums), arith);
         Ok(QueryResult { satisfied: r.satisfied, bindings: r.bindings })
     }

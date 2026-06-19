@@ -148,20 +148,12 @@ fn rewrite_idents_with_prefix(
 /// pathological self-passthrough cycles don't OOM. Without unrolling
 /// at all, the transpiler-as-recursive-claims pattern doesn't work
 /// (Z3 invents arbitrary string values for un-asserted `tail_out`
-/// bindings). The depth bound is overridable via
-/// `EVIDENT_MAX_INLINE_DEPTH` for ASTs deeper than the default.
+/// bindings).
 
-/// Default cap — large enough for any realistic shader/transpiler AST,
+/// Cap — large enough for any realistic shader/transpiler AST,
 /// small enough that a self-passthrough loop trips it before the
 /// translation context blows out.
-const DEFAULT_MAX_INLINE_DEPTH: usize = 64;
-
-fn max_inline_depth() -> usize {
-    std::env::var("EVIDENT_MAX_INLINE_DEPTH")
-        .ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(DEFAULT_MAX_INLINE_DEPTH)
-}
+const MAX_INLINE_DEPTH: usize = 64;
 
 /// Try to enter a frame of `name` on the inlining stack. Returns
 /// `Some(depth)` (the post-increment count) on success, `None` if
@@ -172,9 +164,8 @@ fn max_inline_depth() -> usize {
 /// self-reference (e.g. `out = "x " ++ tail_out` where `tail_out`
 /// is the SAME Z3 const as the outer call's `tail_out`).
 fn try_enter(visited: &mut HashMap<String, usize>, name: &str) -> Option<usize> {
-    let max = max_inline_depth();
     let cnt = visited.entry(name.to_string()).or_insert(0);
-    if *cnt >= max {
+    if *cnt >= MAX_INLINE_DEPTH {
         None
     } else {
         *cnt += 1;
@@ -253,15 +244,10 @@ fn guard_is_satisfiable(
         None => return true,
         Some(g) => g,
     };
-    let trace = std::env::var("EVIDENT_INLINE_TRACE").is_ok();
-    let t0 = if trace { Some(std::time::Instant::now()) } else { None };
     solver.push();
     solver.assert(g);
     let result = solver.check();
     solver.pop(1);
-    if let Some(t0) = t0 {
-        eprintln!("[inline] sat-check {:?} in {:?}", result, t0.elapsed());
-    }
     !matches!(result, SatResult::Unsat)
 }
 /// Combine guard + body Bool: `guard ⇒ body` if guarded, else just
@@ -617,6 +603,7 @@ fn inline_subschema_call(
     enums: Option<&EnumRegistry>,
     visited: &mut HashMap<String, usize>,
     guard: &Option<Bool<'static>>,
+    lenient: bool,
 ) {
     // Look up the subclaim inside the type's body.
     let Some(type_decl) = schemas.get(type_name) else { return; };
@@ -705,7 +692,7 @@ fn inline_subschema_call(
         }
     }
     inline_body_items_guarded(
-        &subclaim.body, &mut inner, solver, schemas, ctx, registry, enums, visited, guard,
+        &subclaim.body, &mut inner, solver, schemas, ctx, registry, enums, visited, guard, lenient,
     );
     exit_frame(visited, &qualified);
 }
@@ -719,8 +706,9 @@ pub(super) fn inline_body_items(
     registry: &DatatypeRegistry,
     enums: Option<&EnumRegistry>,
     visited: &mut HashMap<String, usize>,
+    lenient: bool,
 ) {
-    inline_body_items_guarded(items, env, solver, schemas, ctx, registry, enums, visited, &None)
+    inline_body_items_guarded(items, env, solver, schemas, ctx, registry, enums, visited, &None, lenient)
 }
 
 fn inline_body_items_guarded(
@@ -733,6 +721,7 @@ fn inline_body_items_guarded(
     enums: Option<&EnumRegistry>,
     visited: &mut HashMap<String, usize>,
     guard: &Option<Bool<'static>>,
+    lenient: bool,
 ) {
     for item in items {
         match item {
@@ -800,9 +789,6 @@ fn inline_body_items_guarded(
                     if let Some(b) = translate_bool(&eq, ctx, env, schemas) {
                         solver.assert(&guarded_bool(b, guard));
                     } else {
-                        let lenient = std::env::var("EVIDENT_LENIENT")
-                            .map(|v| !v.is_empty() && v != "0")
-                            .unwrap_or(false);
                         let pretty = pretty::expr(&eq);
                         if lenient {
                             eprintln!(
@@ -821,9 +807,6 @@ fn inline_body_items_guarded(
                             );
                             eprintln!(
                                 "or its type doesn't accept the pinned value's shape."
-                            );
-                            eprintln!(
-                                "Set EVIDENT_LENIENT=1 to demote this to a warning."
                             );
                             std::process::exit(1);
                         }
@@ -977,7 +960,7 @@ fn inline_body_items_guarded(
                 };
                 inline_subschema_call(
                     &recv, &type_name, &claim_name, &args,
-                    env, solver, schemas, ctx, registry, enums, visited, guard,
+                    env, solver, schemas, ctx, registry, enums, visited, guard, lenient,
                 );
             }
             BodyItem::Constraint(Expr::InExpr(lhs, rhs))
@@ -1055,7 +1038,7 @@ fn inline_body_items_guarded(
                     }
                 }
                 inline_body_items_guarded(
-                    &claim.body, &mut inner, solver, schemas, ctx, registry, enums, visited, guard
+                    &claim.body, &mut inner, solver, schemas, ctx, registry, enums, visited, guard, lenient
                 );
                 exit_frame(visited, &name);
             }
@@ -1074,7 +1057,7 @@ fn inline_body_items_guarded(
                     resolve_call(name, items, schemas) else { unreachable!() };
                 inline_subschema_call(
                     &recv, &type_name, &claim_name, args,
-                    env, solver, schemas, ctx, registry, enums, visited, guard,
+                    env, solver, schemas, ctx, registry, enums, visited, guard, lenient,
                 );
             }
             BodyItem::Constraint(Expr::Call(name, args))
@@ -1172,7 +1155,7 @@ fn inline_body_items_guarded(
                     }
                 }
                 inline_body_items_guarded(
-                    &claim.body, &mut inner, solver, schemas, ctx, registry, enums, visited, guard
+                    &claim.body, &mut inner, solver, schemas, ctx, registry, enums, visited, guard, lenient
                 );
                 exit_frame(visited, name);
             }
@@ -1232,7 +1215,7 @@ fn inline_body_items_guarded(
                     }
                 }
                 inline_body_items_guarded(
-                    &claim.body, &mut inner, solver, schemas, ctx, registry, enums, visited, &new_guard
+                    &claim.body, &mut inner, solver, schemas, ctx, registry, enums, visited, &new_guard, lenient
                 );
                 exit_frame(visited, claim_name);
             }
@@ -1301,7 +1284,7 @@ fn inline_body_items_guarded(
                                 inline_subschema_call(
                                     &recv, &type_name, &claim_name, args,
                                     env, solver, schemas, ctx, registry,
-                                    enums, visited, guard,
+                                    enums, visited, guard, lenient,
                                 );
                                 continue;
                             }
@@ -1334,7 +1317,7 @@ fn inline_body_items_guarded(
                     continue;
                 };
                 inline_body_items_guarded(
-                    &claim.body, env, solver, schemas, ctx, registry, enums, visited, guard
+                    &claim.body, env, solver, schemas, ctx, registry, enums, visited, guard, lenient
                 );
                 exit_frame(visited, name);
             }
@@ -1350,9 +1333,6 @@ fn inline_body_items_guarded(
                 if let Some(b) = translate_bool(e, ctx, env, schemas) {
                     solver.assert(&guarded_bool(b, guard));
                 } else {
-                    let lenient = std::env::var("EVIDENT_LENIENT")
-                        .map(|v| !v.is_empty() && v != "0")
-                        .unwrap_or(false);
                     let pretty = pretty::expr(e);
                     if lenient {
                         eprintln!("warning: dropped constraint (couldn't translate to Bool): {pretty}");
@@ -1362,8 +1342,7 @@ fn inline_body_items_guarded(
                         eprintln!();
                         eprintln!("This constraint can't be expressed as a Z3 Bool with the");
                         eprintln!("current translator — almost certainly a translator gap.");
-                        eprintln!("Either rewrite the constraint to a supported shape, or");
-                        eprintln!("set EVIDENT_LENIENT=1 to demote this to a warning.");
+                        eprintln!("Rewrite the constraint to a supported shape.");
                         std::process::exit(1);
                     }
                 }
@@ -1377,7 +1356,7 @@ fn inline_body_items_guarded(
                     continue;
                 };
                 inline_body_items_guarded(
-                    &claim.body, env, solver, schemas, ctx, registry, enums, visited, guard
+                    &claim.body, env, solver, schemas, ctx, registry, enums, visited, guard, lenient
                 );
                 exit_frame(visited, claim_name);
             }
@@ -1439,7 +1418,7 @@ fn inline_body_items_guarded(
                     }
                 }
                 inline_body_items_guarded(
-                    &claim.body, &mut inner, solver, schemas, ctx, registry, enums, visited, guard
+                    &claim.body, &mut inner, solver, schemas, ctx, registry, enums, visited, guard, lenient
                 );
                 exit_frame(visited, name);
             }

@@ -92,7 +92,11 @@ pub fn build_cache(
     apply_set_candidates(&env, given);
 
     let mut visited: HashMap<String, usize> = HashMap::new();
-    inline_body_items(&schema.body, &mut env, &solver, schemas, ctx, registry, enums, &mut visited);
+    // Functionizer build path: lenient — untranslatable body items
+    // become warnings rather than fatal-exit, so extract_program can
+    // produce a partial program and the caller falls back to the slow
+    // path when outputs aren't covered.
+    inline_body_items(&schema.body, &mut env, &solver, schemas, ctx, registry, enums, &mut visited, true);
 
     CompiledModel { env, solver, arith_solver }
 }

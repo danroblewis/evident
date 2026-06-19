@@ -39,7 +39,6 @@
 //! layer alongside `effect_loop.rs`.
 
 mod stats;
-mod lenient;
 mod load;
 mod desugar;
 mod inject;
@@ -104,8 +103,7 @@ pub struct EvidentRuntime {
     /// Aggregate stats for the Z3 functionizer + JIT pipeline.
     /// Captures per (claim, given-keys) what was absorbed,
     /// what fell back to Z3, what compiled to native, etc.
-    /// See `FunctionizeStats` for the fields. Enable per-call
-    /// trace via `EVIDENT_FUNCTIONIZE_STATS=1`; query the
+    /// See `FunctionizeStats` for the fields. Query the
     /// aggregate via `EvidentRuntime::functionize_stats()`.
     pub(super) functionize_stats: RefCell<FunctionizeStats>,
     /// Lazily-built `Z3 DatatypeSort` per user type referenced as the
@@ -197,9 +195,8 @@ impl EvidentRuntime {
         &self.schemas
     }
 
-    /// Snapshot of the Z3 functionizer + JIT statistics. Print
-    /// the summary with `stats.print_summary()` or inspect the
-    /// per-claim fields directly. See `FunctionizeStats`.
+    /// Snapshot of the Z3 functionizer + JIT statistics. Inspect
+    /// the per-claim fields directly. See `FunctionizeStats`.
     pub fn functionize_stats(&self) -> FunctionizeStats {
         self.functionize_stats.borrow().clone()
     }

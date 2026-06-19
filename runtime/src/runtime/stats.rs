@@ -4,8 +4,7 @@ use std::collections::HashMap;
 
 /// Aggregate functionizer + JIT statistics across all
 /// (claim, given-keys) cache-miss attempts in this runtime's
-/// lifetime. Inspected via `EvidentRuntime::functionize_stats()`
-/// and printed automatically by `effect-run`'s timing summary.
+/// lifetime. Inspected via `EvidentRuntime::functionize_stats()`.
 #[derive(Default, Clone, Debug)]
 pub struct FunctionizeStats {
     pub claims: HashMap<String, PerClaimStats>,
@@ -54,73 +53,4 @@ pub struct PerClaimStats {
     /// analyses. `components_compiled < components` means partial
     /// compilation — the rest are solved by the cached scoped Z3 solver.
     pub components_compiled: u32,
-}
-
-impl FunctionizeStats {
-    pub fn print_summary(&self) {
-        eprintln!("[fz/stats] ── summary ─────────────────────────────");
-        let mut names: Vec<&String> = self.claims.keys().collect();
-        names.sort();
-        let mut total_a = 0u32;
-        let mut total_h = 0u32;
-        let mut total_compiled = 0u32;
-        let mut total_components = 0u32;
-        let mut total_components_compiled = 0u32;
-        let mut total_steps = 0u32;
-        let mut total_checks = 0u32;
-        let mut total_preds = 0u32;
-        let mut total_simplified = 0u32;
-        for n in &names {
-            let s = &self.claims[*n];
-            total_a += s.analyses;
-            total_h += s.cache_hits;
-            total_compiled += s.compiled;
-            total_components += s.components;
-            total_components_compiled += s.components_compiled;
-            total_steps += s.steps_total;
-            total_checks += s.checks_total;
-            total_preds += s.predicates_total;
-            total_simplified += s.simplified_total;
-        }
-        eprintln!("[fz/stats] {} claims analyzed; {} analyses; {} cache hits",
-            names.len(), total_a, total_h);
-        eprintln!("[fz/stats] z3 simplified assertions: {} total ({:.1}/analysis)",
-            total_simplified,
-            if total_a > 0 { total_simplified as f64 / total_a as f64 } else { 0.0 });
-        eprintln!("[fz/stats]   absorbed as steps:      {} ({:.1}%)",
-            total_steps,
-            if total_simplified > 0 { 100.0 * total_steps as f64 / total_simplified as f64 } else { 0.0 });
-        eprintln!("[fz/stats]   kept as checks:         {} ({:.1}%)",
-            total_checks,
-            if total_simplified > 0 { 100.0 * total_checks as f64 / total_simplified as f64 } else { 0.0 });
-        eprintln!("[fz/stats]   kept as predicates:     {} ({:.1}%)",
-            total_preds,
-            if total_simplified > 0 { 100.0 * total_preds as f64 / total_simplified as f64 } else { 0.0 });
-        eprintln!("[fz/stats] functionizer compiled: {} of {} analyses ({:.0}%)",
-            total_compiled, total_a,
-            if total_a > 0 { 100.0 * total_compiled as f64 / total_a as f64 } else { 0.0 });
-        eprintln!("[fz/stats] components compiled:  {} of {} ({:.0}%)",
-            total_components_compiled, total_components,
-            if total_components > 0 {
-                100.0 * total_components_compiled as f64 / total_components as f64
-            } else { 0.0 });
-        eprintln!("[fz/stats] per-claim:");
-        for n in &names {
-            let s = &self.claims[*n];
-            let extract = match s.last_extract_ok {
-                Some(true)  => "z3-fz✓",
-                Some(false) => "z3-fz✗",
-                None        => "z3-fz·",  // didn't reach Z3 functionizer
-            };
-            let compiled_mark = if s.compiled > 0 { "fn✓" } else { "fn·" };
-            eprintln!("[fz/stats]   {:<14} z3=[an={:>3} h={:>3} sim={:>2} stp={:>2} chk={:>2} pr={:>2}] comp={}/{} {} {}",
-                n, s.analyses, s.cache_hits, s.simplified_total, s.steps_total,
-                s.checks_total, s.predicates_total,
-                s.components_compiled, s.components, extract, compiled_mark);
-        }
-        eprintln!("[fz/stats] legend:  z3=[an=analyses h=plan-hits sim=simplified-assertions stp=absorbed-as-steps chk=checks pr=predicates]");
-        eprintln!("[fz/stats]          z3-fz✓ = extracted a Z3Program | z3-fz✗ = extract failed | z3-fz· = never ran");
-        eprintln!("[fz/stats]          comp=C/N = C of N decomposed components compiled (rest → cached scoped Z3 solve)");
-        eprintln!("[fz/stats]          fn✓ = ≥1 component compiled | fn· = no component compiled (full slow-path Z3)");
-    }
 }

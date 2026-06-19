@@ -245,9 +245,6 @@ pub fn extract_program<'ctx>(
             && !seq_assign.contains_key(v)
             && !guarded_assign.contains_key(v)
         {
-            if std::env::var("EVIDENT_FUNCTIONIZE_TRACE").is_ok() {
-                eprintln!("[fz/z3] extract: output {v:?} has no substitution");
-            }
             return None;
         }
     }
@@ -672,10 +669,6 @@ pub fn recompose_record_seqs(
     let mut added = false;
     for var in targets {
         if let Some(elem_exprs) = try_recompose_one(assertions, &var, datatypes, ctx) {
-            if std::env::var("EVIDENT_FUNCTIONIZE_TRACE").is_ok() {
-                eprintln!("[fz/z3] recomposed record-Seq {var:?} \
-                          ({} elements)", elem_exprs.len());
-            }
             program.steps.push(Z3Step::Seq { var: var.clone(), elem_exprs });
             missing.retain(|m| m != &var);
             added = true;
@@ -742,10 +735,6 @@ fn topo_sort_steps(steps: Vec<Z3Step<'static>>) -> Vec<Z3Step<'static>> {
         }
     }
     if order.len() != n {
-        if std::env::var("EVIDENT_JIT_TRACE").is_ok() {
-            eprintln!("[fz/z3] topo_sort_steps: cycle ({}/{} ordered) — order unchanged",
-                order.len(), n);
-        }
         return steps;  // cycle: leave as-is
     }
     let mut slots: Vec<Option<Z3Step<'static>>> = steps.into_iter().map(Some).collect();

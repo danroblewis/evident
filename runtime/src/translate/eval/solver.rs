@@ -5,8 +5,8 @@
 //!   * **Real-literal conversions** — `real_from_f64`, `real_value_to_f64`
 //!     bridge Rust f64 and Z3's exact rational Real sort.
 //!   * **Tuned solver construction** — `apply_solver_tuning`,
-//!     `make_tuned_solver` build a `Solver` with the right tactic chain
-//!     (controlled by `EVIDENT_TACTICS`) and arith-solver tuning.
+//!     `make_tuned_solver` build a `Solver` with the `solve-eqs` tactic
+//!     chain and arith-solver tuning.
 //!   * **Env priming + declare convenience** — `populate_enum_variants`,
 //!     `declare_and_assert` pre-seed the env with enum constants and
 //!     bundle `declare_var` + assert-post-conditions into one call.
@@ -67,8 +67,9 @@ pub(super) fn real_value_to_f64(num: i64, den: i64) -> f64 {
 }
 
 /// Set `smt.arith.solver` to `arith_solver` on `solver`. Pass `0` to
-/// skip (lets Z3 use its built-in default). The value is the runtime's
-/// fixed default (2) or the `EVIDENT_Z3_ARITH_SOLVER` env override.
+/// skip (lets Z3 use its built-in default). The runtime's fixed default
+/// is `2` (Z3's simplex-based arithmetic solver — empirically the best
+/// across our workloads).
 fn apply_solver_tuning(ctx: &Context, solver: &Solver, arith_solver: u32) {
     if arith_solver == 0 { return; }
     let mut params = Params::new(ctx);
@@ -76,57 +77,20 @@ fn apply_solver_tuning(ctx: &Context, solver: &Solver, arith_solver: u32) {
     solver.set_params(&params);
 }
 
-/// Build a solver, optionally wrapping it with a Z3 tactic preprocessing
-/// chain. `EVIDENT_TACTICS` env var picks the chain:
-///
-///   - unset (default)  → "solve-eqs". Substitutes equality-defined
-///     variables before solving. 1.3-1.6× speedup across our workloads
-///     (`bench_tactics` example). Sound — never converts SAT to UNSAT.
-///   - "off"            → plain `Solver::new(ctx)`; no tactic. Baseline.
-///   - "simplify"       → `simplify` only.
-///   - "standard"       → `simplify` + `propagate-values` + `solve-eqs`.
-///   - "aggressive"     → standard + `elim-uncnstr` + `propagate-ineqs`.
-///   - comma-separated  → custom chain, e.g. "simplify,solve-eqs".
-///
-/// All chains have `smt` appended as the terminal solving tactic —
-/// preprocessors like `simplify` alone return `Unknown` without it.
+/// Build a solver wrapped with the `solve-eqs` Z3 tactic preprocessing
+/// chain. `solve-eqs` substitutes equality-defined variables before
+/// solving — a 1.3-1.6× speedup across our workloads (`bench_tactics`
+/// example) with no soundness regression (never converts SAT to UNSAT).
+/// A terminal `smt` tactic decides SAT/UNSAT.
 ///
 /// Tactics run as preprocessing inside the solver; substitutions
 /// happen automatically. Model extraction goes through the original
 /// variable names because Z3's tactic-derived solver handles the
 /// model conversion under the hood.
 pub(super) fn make_tuned_solver<'ctx>(ctx: &'ctx Context, arith_solver: u32) -> Solver<'ctx> {
-    let chain = std::env::var("EVIDENT_TACTICS").ok();
-    // Default to "solve-eqs" — empirically best speedup with no
-    // soundness regression across our workloads.
-    let chain_spec = chain.as_deref().unwrap_or("solve-eqs");
-    let solver = match chain_spec {
-        "" | "off" => Solver::new(ctx),
-        spec => {
-            let mut names: Vec<&str> = match spec {
-                "simplify"   => vec!["simplify"],
-                "standard"   => vec!["simplify", "propagate-values", "solve-eqs"],
-                "aggressive" => vec!["simplify", "propagate-values", "solve-eqs",
-                                     "elim-uncnstr", "propagate-ineqs"],
-                custom => custom.split(',').map(|s| s.trim()).collect(),
-            };
-            // ALWAYS append a terminal solving tactic. Preprocessors like
-            // `simplify` produce a normalized formula but don't decide
-            // SAT/UNSAT — calling `check()` returns `Unknown`. The
-            // canonical terminal is `smt` (Z3's default SMT strategy).
-            // Tactics that already include solving (`solve-eqs`, `der`,
-            // etc.) cascade through to a decision; appending `smt`
-            // again is a no-op for those.
-            if !names.last().map(|n| *n == "smt").unwrap_or(false) {
-                names.push("smt");
-            }
-            let mut t = z3::Tactic::new(ctx, names[0]);
-            for n in &names[1..] {
-                t = t.and_then(&z3::Tactic::new(ctx, n));
-            }
-            t.solver()
-        }
-    };
+    let solver = z3::Tactic::new(ctx, "solve-eqs")
+        .and_then(&z3::Tactic::new(ctx, "smt"))
+        .solver();
     apply_solver_tuning(ctx, &solver, arith_solver);
     solver
 }

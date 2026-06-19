@@ -259,7 +259,6 @@ External callers can use `evident_runtime::{Value, QueryResult, RuntimeError, as
 | Add a per-claim stat | `runtime/stats.rs` |
 | Wire a per-tick scheduler call | `runtime/scheduler_api.rs` |
 | Enforce a load-time validation rule | `runtime/validate.rs` |
-| Lenient-mode RAII | `runtime/lenient.rs` |
 
 ### Inside `effect_loop/`
 
@@ -269,7 +268,6 @@ External callers can use `evident_runtime::{Value, QueryResult, RuntimeError, as
 | Change effect ordering / toposort | `effect_loop/toposort.rs`, `collect.rs` |
 | Touch the per-tick scheduler loop | `effect_loop/scheduler.rs` |
 | Adjust halt detection or state seeding | `effect_loop/state.rs` |
-| Change timing output | `effect_loop/timing.rs` |
 
 ### Inside `translate/eval/`
 

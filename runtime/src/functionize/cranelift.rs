@@ -104,12 +104,6 @@ impl JitProgram {
             let v = outputs[idx].clone();
             out.insert(name.clone(), classify_seq(v));
         }
-        if std::env::var("EVIDENT_JIT_CALL_TRACE").is_ok() {
-            eprintln!("[jit/call] result:");
-            for (k, v) in &out {
-                eprintln!("    {k} = {v:?}");
-            }
-        }
         Some(out)
     }
 }
@@ -338,7 +332,7 @@ pub fn compile_program<'ctx>(
                 (var.clone(), k)
             }
             Z3Step::Seq { var, .. } => (var.clone(), OutputKind::Seq),
-            Z3Step::Guarded { var, .. } => {
+            Z3Step::Guarded { .. } => {
                 // Guarded steps require correctness around "no branch
                 // matched" (currently the JIT writes a sentinel int,
                 // which propagates as a wrong result to the scheduler).
@@ -346,10 +340,6 @@ pub fn compile_program<'ctx>(
                 // letting the function-izer fall through to the slow
                 // path. Until the JIT can also produce a None-style
                 // bailout, refuse to JIT programs with Guarded steps.
-                if std::env::var("EVIDENT_JIT_TRACE").is_ok() {
-                    eprintln!("[jit] bail: Guarded {var} (would JIT but \
-                              falls through to VM for correctness)");
-                }
                 return None;
             }
             Z3Step::PreBaked { var, .. } => (var.clone(), OutputKind::Seq /* placeholder */),
@@ -460,9 +450,6 @@ pub fn compile_program<'ctx>(
                     if emit_write_value(&mut bcx, expr, out_slot, &env,
                         &helpers, &variant_arity, &record_info, &mut string_pool,
                         ptr_t, size_of_value).is_none() {
-                        if std::env::var("EVIDENT_JIT_TRACE").is_ok() {
-                            eprintln!("[jit] bail: Scalar {var} = {expr}");
-                        }
                         return None;
                     }
                     env.insert(var.clone(), out_slot);
@@ -480,13 +467,10 @@ pub fn compile_program<'ctx>(
                                            size_of_value as u32));
                     let temp_ptr = bcx.ins().stack_addr(ptr_t, temp_slot, 0);
                     bcx.ins().call(helpers.init_slot, &[temp_ptr]);
-                    for (ei, elem) in elem_exprs.iter().enumerate() {
+                    for elem in elem_exprs.iter() {
                         if emit_write_value(&mut bcx, elem, temp_ptr, &env,
                             &helpers, &variant_arity, &record_info, &mut string_pool,
                             ptr_t, size_of_value).is_none() {
-                            if std::env::var("EVIDENT_JIT_TRACE").is_ok() {
-                                eprintln!("[jit] bail: Seq {var}[{ei}] = {elem}");
-                            }
                             return None;
                         }
                         bcx.ins().call(helpers.seq_push_clone, &[out_slot, temp_ptr]);
@@ -510,12 +494,7 @@ pub fn compile_program<'ctx>(
                             &helpers, &variant_arity, &record_info, &mut string_pool, ptr_t, size_of_value)
                         {
                             Some(v) => v,
-                            None => {
-                                if std::env::var("EVIDENT_JIT_TRACE").is_ok() {
-                                    eprintln!("[jit] bail: Guarded {var} guard");
-                                }
-                                return None;
-                            }
+                            None => return None,
                         };
                         bcx.ins().brif(cond_v, body_block, &[], next_block, &[]);
                         bcx.switch_to_block(body_block);
@@ -526,9 +505,6 @@ pub fn compile_program<'ctx>(
                                     &helpers, &variant_arity, &record_info, &mut string_pool,
                                     ptr_t, size_of_value).is_none()
                                 {
-                                    if std::env::var("EVIDENT_JIT_TRACE").is_ok() {
-                                        eprintln!("[jit] bail: Guarded {var} scalar body");
-                                    }
                                     return None;
                                 }
                             }
@@ -545,9 +521,6 @@ pub fn compile_program<'ctx>(
                                         &helpers, &variant_arity, &record_info, &mut string_pool,
                                         ptr_t, size_of_value).is_none()
                                     {
-                                        if std::env::var("EVIDENT_JIT_TRACE").is_ok() {
-                                            eprintln!("[jit] bail: Guarded {var} seq elem");
-                                        }
                                         return None;
                                     }
                                     bcx.ins().call(helpers.seq_push_clone,
@@ -583,9 +556,6 @@ pub fn compile_program<'ctx>(
         bcx.finalize();
     }
 
-    if std::env::var("EVIDENT_JIT_DUMP").is_ok() {
-        eprintln!("[jit] IR for compiled_program:\n{}", ctx.func.display());
-    }
     module.define_function(func_id, &mut ctx).ok()?;
     module.clear_context(&mut ctx);
     module.finalize_definitions().ok()?;
@@ -793,9 +763,6 @@ fn emit_write_value<'ctx>(
                 }
                 DeclKind::SELECT => {
                     if children.len() != 2 {
-                        if std::env::var("EVIDENT_JIT_TRACE").is_ok() {
-                            eprintln!("[jit] SELECT children != 2: {expr}");
-                        }
                         return None;
                     }
                     let temp = bcx.create_sized_stack_slot(
@@ -806,21 +773,13 @@ fn emit_write_value<'ctx>(
                     if emit_write_value(bcx, &children[0], temp_ptr, env,
                         helpers, variant_arity, record_info, string_pool, ptr_t, size_of_value).is_none()
                     {
-                        if std::env::var("EVIDENT_JIT_TRACE").is_ok() {
-                            eprintln!("[jit] SELECT arr bail: {}", &children[0]);
-                        }
                         return None;
                     }
                     let idx_v = match emit_compute_i64(bcx, &children[1], env, helpers,
                         variant_arity, record_info, string_pool, ptr_t, size_of_value)
                     {
                         Some(v) => v,
-                        None => {
-                            if std::env::var("EVIDENT_JIT_TRACE").is_ok() {
-                                eprintln!("[jit] SELECT idx bail: {}", &children[1]);
-                            }
-                            return None;
-                        }
+                        None => return None,
                     };
                     bcx.ins().call(helpers.seq_select,
                         &[out_slot, temp_ptr, idx_v]);

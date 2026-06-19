@@ -332,9 +332,6 @@ pub unsafe extern "C" fn ev_extract_field(
     name_ptr: *const u8, name_len: usize,
 ) {
     let name = str_from_raw(name_ptr, name_len);
-    if std::env::var("EVIDENT_JIT_CALL_TRACE").is_ok() {
-        eprintln!("[jit/extract_field] name={name:?} src={:?}", &*src_slot);
-    }
     match &*src_slot {
         Value::Enum { fields, .. } => {
             // Try numeric "fN" first.
@@ -390,12 +387,7 @@ pub unsafe extern "C" fn ev_seq_select(
         Value::SeqBool(xs) => xs.get(i).map(|b| Value::Bool(*b)),
         Value::SeqStr(xs)  => xs.get(i).map(|s| Value::Str(s.clone())),
         Value::SeqComposite(xs) => xs.get(i).map(|m| Value::Composite(m.clone())),
-        other => {
-            if std::env::var("EVIDENT_JIT_CALL_TRACE").is_ok() {
-                eprintln!("[jit/seq_select] FALLBACK arr={other:?} idx={i}");
-            }
-            None
-        }
+        _ => None,
     }.unwrap_or(Value::Int(0));
     *out = v;
 }

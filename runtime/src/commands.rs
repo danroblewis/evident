@@ -26,18 +26,6 @@ fn print_help() {
     eprintln!("Execution:");
     eprintln!("  --max-steps N            cap the scheduler at N ticks (default: 10000)");
     eprintln!();
-    eprintln!("Timing:");
-    eprintln!("  --dispatch-timing        per-effect dispatch timing");
-    eprintln!("                           (alias for EVIDENT_DISPATCH_TIMING=1)");
-    eprintln!();
-    eprintln!("Functionizer / Cranelift JIT:");
-    eprintln!("  --no-functionizer        disable functionize entirely (EVIDENT_FUNCTIONIZE=0)");
-    eprintln!();
-    eprintln!("Z3 tuning:");
-    eprintln!("  --lenient                demote dropped-constraint errors to warnings");
-    eprintln!("                           (sets EVIDENT_LENIENT=1)");
-    eprintln!("  --arith-solver N         Z3 smt.arith.solver setting (0..6; default 2)");
-    eprintln!();
     eprintln!("Misc:");
     eprintln!("  -h, --help               this message");
 }
@@ -61,21 +49,6 @@ pub fn cmd_effect_run(args: &[String]) -> ExitCode {
                 let v = args.get(i).and_then(|s| s.parse().ok())
                     .unwrap_or(10_000);
                 max_steps = v;
-            }
-            "--dispatch-timing" => {
-                std::env::set_var("EVIDENT_DISPATCH_TIMING", "1");
-            }
-            "--no-functionizer" => {
-                std::env::set_var("EVIDENT_FUNCTIONIZE", "0");
-            }
-            "--lenient" => {
-                std::env::set_var("EVIDENT_LENIENT", "1");
-            }
-            "--arith-solver" => {
-                i += 1;
-                if let Some(v) = args.get(i) {
-                    std::env::set_var("EVIDENT_Z3_ARITH_SOLVER", v);
-                }
             }
             "-h" | "--help" => {
                 print_help();
@@ -428,8 +401,6 @@ fn print_failure(run: &TestRun, opts: &Opts) {
         Outcome::Fail(FailDetail::UnexpectedUnsat) => {
             println!("    expected {}, got {}",
                 green(oc, "SAT"), red(oc, "UNSAT"));
-            println!("    {}",
-                dim(oc, "(try EVIDENT_LENIENT=0 to surface dropped constraints)"));
         }
         Outcome::Fail(FailDetail::SatCounterexample(bindings)) => {
             print_counterexample(run, bindings, opts);

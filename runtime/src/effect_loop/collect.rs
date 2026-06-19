@@ -236,9 +236,6 @@ pub(crate) fn collect_dispatchable_effects(
     // no-op for the dispatch-bundle case.
     let alias_to_canonical: HashMap<String, String> =
         all_names.iter().map(|n| (n.clone(), n.clone())).collect();
-    if std::env::var("EVIDENT_DISPATCH_TIMING").is_ok() {
-        eprintln!("dispatch: {} nodes", nodes.len());
-    }
 
     // Edge extraction from the FSM's AST: each `Seq(Effect)` literal
     // body Constraint contributes edges. Two-step process:
@@ -280,16 +277,13 @@ pub(crate) fn collect_dispatchable_effects(
 
     // Random tie-break — unconstrained orderings get a fresh
     // linearization each run so accidental-ordering bugs surface.
-    // Reproducible via EVIDENT_DISPATCH_SEED for debugging.
     use rand::seq::SliceRandom;
     use rand::SeedableRng;
-    let seed: u64 = std::env::var("EVIDENT_DISPATCH_SEED").ok()
-        .and_then(|s| s.parse().ok())
-        .unwrap_or_else(|| {
-            use std::time::{SystemTime, UNIX_EPOCH};
-            SystemTime::now().duration_since(UNIX_EPOCH)
-                .map(|d| d.as_nanos() as u64).unwrap_or(0)
-        });
+    let seed: u64 = {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        SystemTime::now().duration_since(UNIX_EPOCH)
+            .map(|d| d.as_nanos() as u64).unwrap_or(0)
+    };
     let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
     nodes.shuffle(&mut rng);
 
@@ -317,14 +311,7 @@ pub(crate) fn collect_dispatchable_effects(
         }
     }
 
-    let timing = std::env::var("EVIDENT_DISPATCH_TIMING").is_ok();
-    let t0 = std::time::Instant::now();
     let sorted_names = topo_sort_with_random_tiebreak(&nodes, &edges, &mut rng);
-    if timing {
-        eprintln!("toposort: {} nodes, {} edges, {:.3}ms",
-            nodes.len(), edges.len(),
-            t0.elapsed().as_secs_f64() * 1000.0);
-    }
 
     if let Ok(mut guard) = DISPATCH_ORDER_CACHE.lock() {
         if let Some(map) = guard.as_mut() {

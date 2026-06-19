@@ -29,7 +29,6 @@ mod install;
 mod scheduler;
 mod seq_chains;
 mod state;
-mod timing;
 mod toposort;
 
 // ── Public re-exports ────────────────────────────────────────
@@ -45,25 +44,6 @@ pub struct LoopOpts {
 
 impl Default for LoopOpts {
     fn default() -> Self { Self { max_steps: 10_000 } }
-}
-
-/// Snapshot of the `EVIDENT_*` diagnostic env vars the loop consults.
-/// Read ONCE at startup; per-tick code references the cached fields.
-#[derive(Debug, Clone)]
-pub(crate) struct LoopEnv {
-    /// `EVIDENT_LOOP_TRACE` — gate per-tick scheduling diagnostics.
-    pub(crate) trace:  bool,
-    /// `EVIDENT_LOOP_TIMING` — gate per-step solve/dispatch timing.
-    pub(crate) timing: bool,
-}
-
-impl LoopEnv {
-    fn from_process_env() -> Self {
-        Self {
-            trace:  std::env::var("EVIDENT_LOOP_TRACE").is_ok(),
-            timing: std::env::var("EVIDENT_LOOP_TIMING").is_ok(),
-        }
-    }
 }
 
 /// Result of running an effect-driven program.
@@ -91,7 +71,6 @@ pub fn run_with_ctx(
     ctx: &mut DispatchContext,
 ) -> Result<LoopResult, String> {
     let fsm = single_fsm(rt)?;
-    let env = LoopEnv::from_process_env();
 
     // ── Declarative FTI install ───────────────────────────────────
     // Each typed-resource parameter with an `install ∈ Seq(InstallStep)`
@@ -110,11 +89,7 @@ pub fn run_with_ctx(
         }
     }
 
-    if env.trace {
-        eprintln!("[loop] startup: fsm={}", fsm.claim_name);
-    }
-
-    scheduler::run_loop(rt, &fsm, opts, ctx, &mut world_snapshot, &env)
+    scheduler::run_loop(rt, &fsm, opts, ctx, &mut world_snapshot)
 }
 
 #[cfg(test)]
