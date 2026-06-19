@@ -3,7 +3,7 @@
 ## The actual graph
 
 The Rust-side `topo_sort_with_random_tiebreak` in
-`runtime/src/effect_loop.rs` orders Effects within a tick. For Mario
+`runtime/src/trampoline.rs` orders Effects within a tick. For Mario
 (`examples/test_21_mario/main.ev`) the graph at dispatch time is:
 
 ```
@@ -49,7 +49,7 @@ EVIDENT_TOPOSORT_IMPL=evident    # dogfood path
 ```
 
 Implementation:
-- Dispatcher branches at `runtime/src/effect_loop.rs:340`-ish on
+- Dispatcher branches in `runtime/src/trampoline.rs` on
   `EVIDENT_TOPOSORT_IMPL`. Evident path calls `evident_toposort()`
   which builds the `given` from the node/edge lists and calls
   `rt.query("Toposort<String>", …)`.

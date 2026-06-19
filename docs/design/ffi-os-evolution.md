@@ -41,12 +41,12 @@ FFI arg variants:
 Type codes in signatures: `i`/`b`/`s`/`d`/`f`/`p`/`v`.
 
 OS-level effects: `Print`, `Println`, `ReadLine`, `Time`, `Exit`,
-`ParseInt`, `ParseReal`, `IntToStr`, `RealToStr`, `ShellRun`,
-`SpawnFsm`.
+`ParseInt`, `ParseReal`, `IntToStr`, `RealToStr`, `ShellRun`.
 
 Infrastructure: `HandleRegistry` (per-`DispatchContext`, tracks
-returned pointers + optional drop fns), declarative install
-(`event_sources/declarative_install.rs`) for FTI bridges.
+returned pointers + optional drop fns), declarative install (the
+`run_declarative_install` bridge in `runtime/src/trampoline.rs`)
+for FTI bridges.
 
 ## Tier 1 — Memory read/write primitives
 
@@ -269,9 +269,8 @@ test bench (memory safety stakes are real).
   insists on it.
 
 * **Long-running threads from Evident.** The runtime owns the
-  scheduler thread; Evident-spawned compute threads would need
-  their own coordination model. Evident's per-FSM scheduler
-  already lets you express parallelism declaratively.
+  run-loop thread; Evident-spawned compute threads would need
+  their own coordination model.
 
 * **Inter-process primitives.** Pipes, shared memory, sockets.
   Network-level concerns are big enough to deserve their own

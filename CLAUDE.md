@@ -121,8 +121,6 @@ your task:
 | Writing or debugging a program that uses `evident effect-run` | [`docs/guide/effect-state-machines.md`](docs/guide/effect-state-machines.md) |
 | Writing or extending an FFI wrapper library (`packages/sdl/`, `packages/gl/`, `stdlib/shell.ev`, …) | [`docs/guide/ffi-bindings.md`](docs/guide/ffi-bindings.md) |
 | Understanding what an Evident model IS (the unifying framing) | [`docs/design/schema-interface.md`](docs/design/schema-interface.md) |
-| Writing a multi-FSM program (cookbook) | [`docs/guide/multi-fsm-programs.md`](docs/guide/multi-fsm-programs.md) |
-| Designing/extending the multi-FSM runtime, halt semantics, or scheduler | [`docs/design/multi-fsm.md`](docs/design/multi-fsm.md) + [`docs/design/fsm-subscriptions.md`](docs/design/fsm-subscriptions.md) |
 | Trying to understand the architectural goals (~11K Rust target, FFI-first) | [`docs/design/minimal-runtime.md`](docs/design/minimal-runtime.md) |
 | Designing the FFI primitive itself or extending it | [`docs/design/ffi-design.md`](docs/design/ffi-design.md) |
 | Planning what to add to FFI / OS coverage (reads, writes, alloc, callbacks, posix) | [`docs/design/ffi-os-evolution.md`](docs/design/ffi-os-evolution.md) |
@@ -146,11 +144,9 @@ test, so we hold them to a strict shape.
 Each file in `examples/` is named `test_NN_<name>.ev`
 and contains both:
 
-  * The multi-FSM program (one or more `claim`s with state
-    pair + `last_results ∈ ResultList` + `effects ∈ EffectList`).
-    Single-FSM demos are written as multi-FSM programs with
-    one FSM — the multi-FSM scheduler is the only execution
-    path.
+  * The FSM program (a `claim` with a state pair +
+    `last_results ∈ ResultList` + `effects ∈ EffectList`),
+    which the trampoline ticks.
   * Inline `claim sat_*` / `claim unsat_*` static tests that
     pin state/inputs and assert on the FSM's response.
 
@@ -166,11 +162,10 @@ Two test runners cover both halves:
 When adding a demo: drop the file in `examples/`, add a
 row to `EXPECTATIONS`. Both runners stay green.
 
-(The multi-FSM scheduler skips claims named `sat_*` / `unsat_*`
-from auto-instantiation runtime-wide — they have the FSM
-shape because they pin `state` / `effects` to assert
-properties, but they should never run as FSMs. This applies
-everywhere, not just to demo files.)
+(The trampoline skips claims named `sat_*` / `unsat_*` when
+discovering the FSM — they have the FSM shape because they pin
+`state` / `effects` to assert properties, but they should never
+run as the FSM. This applies everywhere, not just to demo files.)
 
 ### 2. Demo files MUST NOT contain raw FFI calls
 
@@ -215,8 +210,8 @@ ship with it.
 | AST → Z3 encoder | `runtime/src/encode/` |
 | Z3 functionizer + JIT | `runtime/src/functionize/` (Cranelift impl) + `runtime/src/functionize/extract_program.rs` (extractor) |
 | Effect dispatch | `runtime/src/ffi.rs` |
-| Subscription-driven scheduler | `runtime/src/trampoline.rs` |
-| FTI bridges | `runtime/src/event_sources/`, `runtime/src/ffi.rs` (`is_shimmed_stdlib`) |
+| Run loop (ticks the single FSM) | `runtime/src/trampoline.rs` |
+| FTI bridges | `runtime/src/ffi.rs` (`is_shimmed_stdlib`) |
 | Stdlib (Evident) | `stdlib/` |
 | Design docs | `docs/design/` |
 | Worked examples + integration tests | `examples/` |
@@ -234,14 +229,11 @@ source text
   → functionize/extract_program.rs            Simplified Z3 AST → Z3Program (the IR)
   → functionize/          Z3Program → callable function (Cranelift JIT)
   → runtime/              EvidentRuntime: top-level API (load_file, query)
-  → trampoline.rs        Subscription-driven scheduler (the executor)
-  → ffi.rs    Effect → IO (Println, LibCall, ParseInt, …)
-  → event_sources/        FTI bridge implementations (one struct per
-                          typed C resource)
+  → trampoline.rs        Run loop: ticks the single FSM (the executor)
+  → ffi.rs               Effect → IO (Println, LibCall, ParseInt, …)
 ```
 
 Supporting modules:
-- `subscriptions.rs` — static read/write-set inference per claim
 - `ffi.rs` — libffi marshaling, handle registry
 - `functionize/extract_program.rs` — extract a `Z3Program` from a simplified Z3 AST
 - `main.rs` — the CLI binary: `test` / `effect-run` entry points + output
@@ -257,11 +249,10 @@ here's where to start.
 | Module | What lives here |
 |---|---|
 | `core/`        | Shared data types. No orchestration logic. Imported by everything else. |
-| `runtime/`     | `EvidentRuntime`: load, query, sample, scheduler-facing API |
-| `trampoline.rs` | Subscription-driven scheduler — `run` and `run_with_ctx`, FSM discovery, install bridge, per-tick loop, effect ordering |
+| `runtime/`     | `EvidentRuntime`: load, query, sample, run-loop-facing API |
+| `trampoline.rs` | Run loop — `run` and `run_with_ctx`, FSM discovery, install bridge, per-tick loop, effect ordering |
 | `encode/`   | Evident AST → Z3 ASTs; build solvers; extract models |
 | `functionize/` | Functionizer implementations (currently: Cranelift JIT) |
-| `event_sources/` | Async wake plugins (FrameTimer, Stdin, Sigint, …) |
 | `main.rs` | The CLI binary: `test` / `effect-run` entry points + test-report output |
 | `ffi.rs` | Effect → IO (Println, LibCall, ParseInt, …) |
 | `functionize/extract_program.rs`   | Extract a `Z3Program` from a simplified Z3 AST |
@@ -287,7 +278,7 @@ External callers can use `evident_runtime::{Value, QueryResult, RuntimeError, as
 | Want to … | Edit |
 |---|---|
 | Add a new public query method | `runtime/query.rs` |
-| Change how a schema gets parsed/loaded, or import resolution | `runtime/mod.rs` (load + scheduler-facing query + UnionFind) |
+| Change how a schema gets parsed/loaded, or import resolution | `runtime/mod.rs` (load + run-loop-facing query + UnionFind) |
 | Add/change a lowering pass (seq-concat desugar, world syntax, FSM/type-inference injection) | `runtime/lower.rs` |
 | Touch enum → Z3 Datatype registration | `runtime/register_enums.rs` |
 
@@ -297,7 +288,7 @@ External callers can use `evident_runtime::{Value, QueryResult, RuntimeError, as
 |---|---|
 | Change how FSMs are discovered | FSM discovery + shape (`resolve_fsm`, `single_fsm`) |
 | Change effect ordering / toposort | effect collection + ordering (`collect_dispatchable_effects`, `topo_sort_with_random_tiebreak`) |
-| Touch the per-tick scheduler loop | per-tick scheduler loop (`run_loop`) |
+| Touch the per-tick run loop | per-tick run loop (`run_loop`) |
 | Adjust state seeding / encoding | `seed_state`, `encode_state_value` |
 | Touch the declarative install bridge | `run_declarative_install` |
 
@@ -325,82 +316,24 @@ External callers can use `evident_runtime::{Value, QueryResult, RuntimeError, as
 - **Tests next to the code.** `#[cfg(test)] mod tests { … }` at the bottom of the file under test.
 - **`scripts/rust-size.py`** lists files by length — run it when you suspect a file is overdue for a split.
 
-## Multi-FSM Runtime
+## The run loop (single FSM)
 
-For programs run via `evident effect-run`, the multi-FSM scheduler
-in `runtime/src/trampoline.rs` runs each top-level claim matching
-the FSM shape (state pair + EffectList + ResultList) as an
-independent FSM.
-
-**Scheduler: subscription-driven (default).** An FSM ticks only when one of
-its inputs changes:
-  * **World read-set** — fields it references via `world.X` (auto-inferred
-    by `subscriptions::world_access_sets`). Wakes when another FSM writes.
-  * **Effect self-feedback** — emitted ≥1 effect last tick.
-  * **State self-feedback** — transitioned to a new state value last tick.
-  * **Bootstrap** — every FSM ticks once on tick 0.
+For programs run via `evident effect-run`, the trampoline in
+`runtime/src/trampoline.rs` discovers the one top-level claim matching
+the FSM shape (state pair + EffectList + ResultList) and ticks it. Each
+tick reads the previous state, solves the FSM claim for the next state +
+its effects, dispatches those effects as real IO, writes the new state
+back, and bounces again.
 
 **Halt is implicit.** No `Done`/`Halt` name convention, no fixpoint
-heuristic. The program halts when no FSM was scheduled in a tick (nothing
-more can happen) or when any FSM emits `Effect::Exit(code)`.
+heuristic. The program halts when a tick changes nothing (nothing more
+can happen) or when the FSM emits `Effect::Exit(code)`.
 
 **`Effect::Exit(code)` is graceful** — it sets `exit_requested` on the
 dispatch context. The runtime dispatches all of the current tick's
-effects first (so co-scheduled FSMs' cleanup writes / final logs run),
-then halts at end-of-tick with the requested code. `LoopResult::exit_code`
-propagates to the CLI as the process exit code.
-
-**Async event sources.** When no FSM is ready to tick (all subscriptions
-silent), the scheduler blocks on a channel of `SchedulerEvent`s instead
-of immediately halting.
-
-There are TWO ways an FSM subscribes to async events:
-
-  1. **Plugin-as-writer (preferred, unified model)** — the user's
-     `World` type declares a reserved field; the runtime auto-installs
-     a plugin to write that field. User FSMs subscribe via existing
-     world read-set inference. No marker types, no event-channel API.
-       * `tick_count: Int`     → FrameTimer (set rate via `EVIDENT_TICK_MS=<u64>`)
-       * `signal_received: Int` → SigintSource (auto-installed)
-       * `stdin_line: String`  → StdinSource (auto-installed)
-       * `stdin_seq: Int`      → StdinSource also writes seq counter
-     Plugin writes participate in the multi-writer disjoint check
-     — a user FSM trying to write a plugin-owned field is rejected
-     at load.
-
-  2. **Marker-type subscription (legacy v3 path)** — an FSM has a
-     parameter of type `FrameTimer` / `Signal` declared in
-     `stdlib/runtime.ev`. The plugin pushes wake-only events;
-     the FSM body has no payload to read. Useful when the user
-     wants to be woken without making the source's value part of
-     world.
-
-If NO FSM declares any subscription, falls back to coarse wake for
-back-compat. When all sources go dead (channel returns Err), the
-scheduler halts cleanly. See `runtime/src/event_sources.rs` for
-the `EventSource` trait — adding a new source is implementing the
-trait + wiring it into `run_with_ctx`.
-
-**Sources are FSMs too.** Each event source is a stateful state
-machine implemented in Rust — same coordination model as user FSMs,
-different language. User FSMs talk to source FSMs via effect emission
-(commands) and `last_results` / wake events (responses). v1 sources
-are push-only (events flow source → owner; no commands). v2 will add
-bidirectional command channels (mode switching, explicit reads,
-seeks, close).
-
-**Single-owner per fd-style resource.** Stdin, sockets, files, child
-processes — every fd-shaped resource has exactly one owner FSM
-(declared via marker type), enforced at load time. The owner reads,
-parses, publishes to world. Downstream FSMs read world; they never
-touch the resource directly. Sharing an fd across FSMs without
-coordination is the same race-on-read footgun that bites C programs;
-the runtime refuses to allow it. See `docs/design/fsm-subscriptions.md`
-"The runtime is an FSM too" for the full framing.
-
-**Design**: [`docs/design/multi-fsm.md`](docs/design/multi-fsm.md) covers
-the writer/reader pattern + worked examples; [`docs/design/fsm-subscriptions.md`](docs/design/fsm-subscriptions.md)
-covers the scheduler model and 5-phase implementation status.
+effects first (so final cleanup writes / logs run), then halts at
+end-of-tick with the requested code. `LoopResult::exit_code` propagates
+to the CLI as the process exit code.
 
 ## Idiomatic Evident — drop annotations the inference can recover
 
@@ -452,25 +385,25 @@ What stays explicit:
   through `+`).
 - **Type definitions** — `type World` body needs annotations.
 
-### Multi-FSM shared state: `_world` / `world` syntax
+### Shared world state: `_world` / `world` syntax
 
 ```evident
 type World
     pos ∈ IVec2
 
--- Don't (legacy writer pattern):
+-- Don't (explicit next-snapshot pair):
 fsm game(world ∈ World, world_next ∈ World)
     new_pos ∈ IVec2 = world.pos + ...       -- world.X = previous tick
     world_next.pos = new_pos                 -- world_next.X = write
 
--- Do (unified `_var` time-shift):
+-- Do (`_var` time-shift):
 fsm game(world ∈ World)
     world.pos = _world.pos + ...             -- _world.X read prev, world.X = write
 ```
 
 `_world.X` reads the previous tick's value; `world.X = ...`
-writes the current tick's value. Runtime rewrites internally
-to the legacy pattern.
+writes the current tick's value. The runtime rewrites this
+internally to the explicit prev/next-snapshot pair.
 
 ### Subclaim dispatch over receiver-prefix
 
