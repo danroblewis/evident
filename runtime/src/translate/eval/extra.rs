@@ -109,7 +109,7 @@ pub fn evaluate_with_extra_assertion(
             }
         }
     }
-    EvalResult { satisfied, bindings, unsat_core_items: None }
+    EvalResult { satisfied, bindings }
 }
 
 /// Like `evaluate_with_extra_assertion` but pins multiple enum-typed
@@ -232,7 +232,7 @@ pub fn evaluate_with_extra_assertions(
             }
         }
     }
-    EvalResult { satisfied, bindings, unsat_core_items: None }
+    EvalResult { satisfied, bindings }
 }
 
 /// Stage 5.5: like `evaluate_with_extra_assertion` but injects two
@@ -325,5 +325,5 @@ pub fn evaluate_with_program_and_body(
             }
         }
     }
-    EvalResult { satisfied, bindings, unsat_core_items: None }
+    EvalResult { satisfied, bindings }
 }

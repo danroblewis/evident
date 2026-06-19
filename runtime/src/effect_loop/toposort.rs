@@ -1,10 +1,5 @@
 //! Dispatch ordering — Kahn's algorithm with a randomized
-//! ready-frontier, plus the dogfood `Toposort<String>` path.
-//!
-//! The Rust implementation is the default; setting
-//! `EVIDENT_TOPOSORT_IMPL=evident` routes through the stdlib
-//! claim instead (slow alongside complex user solves — see
-//! `collect.rs` comment).
+//! ready-frontier.
 //!
 //! Memoization: `DISPATCH_ORDER_CACHE` keyed on the canonical
 //! (sorted nodes, sorted edges) input. Mario's effect set is
@@ -12,8 +7,6 @@
 //! subsequent tick hits the cache.
 
 use crate::core::ast::Effect;
-use crate::runtime::EvidentRuntime;
-use crate::core::Value;
 use std::collections::HashMap;
 use std::sync::Mutex;
 
@@ -26,36 +19,6 @@ pub(super) static DISPATCH_ORDER_CACHE: Mutex<Option<HashMap<DispatchKey, Vec<St
     = Mutex::new(None);
 
 pub(super) type DispatchKey = (Vec<String>, Vec<(String, String)>);
-
-/// Self-hosted dispatch ordering: call the stdlib `Toposort<String>`
-/// claim via `rt.query`. The runtime's own constraint primitive
-/// solves its own dispatch ordering — the dogfood path.
-///
-/// Returns `None` on UNSAT or if the schema isn't loaded (caller
-/// falls back to the Rust path). Selected by
-/// `EVIDENT_TOPOSORT_IMPL=evident`.
-pub(super) fn evident_toposort(
-    rt: &EvidentRuntime,
-    nodes: &[String],
-    edges: &[(String, String)],
-) -> Option<Vec<String>> {
-    let mut given: HashMap<String, Value> = HashMap::new();
-    given.insert("items".into(), Value::SetStr(nodes.to_vec()));
-    let edge_vals: Vec<HashMap<String, Value>> = edges.iter().map(|(f, t)| {
-        let mut m = HashMap::new();
-        m.insert("from".into(), Value::Str(f.clone()));
-        m.insert("to".into(),   Value::Str(t.clone()));
-        m
-    }).collect();
-    given.insert("edges".into(), Value::SeqComposite(edge_vals));
-
-    let r = rt.query("Toposort<String>", &given).ok()?;
-    if !r.satisfied { return None; }
-    match r.bindings.get("sorted") {
-        Some(Value::SeqStr(v)) => Some(v.clone()),
-        _ => None,
-    }
-}
 
 /// Map sorted node names (real binding names + `name[i]` synthetic
 /// names for Seq(Effect) elements) back to dispatchable Effect values.

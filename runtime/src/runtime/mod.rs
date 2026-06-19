@@ -4,7 +4,7 @@
 //!
 //! Most callers (commands/, embedders, tests) use the
 //! constraint-solver verbs: `load_file` / `load_source` to load
-//! programs, `query` / `query_cached` / `sample` to ask whether
+//! programs, `query` / `query_cached` to ask whether
 //! claims are satisfiable, `get_schema` / `schema_names` to
 //! introspect what's loaded.
 //!
@@ -46,7 +46,6 @@ mod inject;
 mod validate;
 mod register_enums;
 mod query;
-mod sample;
 mod scheduler_api;
 mod analysis;
 
@@ -150,8 +149,8 @@ pub struct EvidentRuntime {
     /// Lazily-built `Z3 DatatypeSort` per user type referenced as the
     /// element of `Seq(UserType)`. Built on first `declare_var`; entries
     /// are `Box::leak`'d to live for `'static` (consistent with the
-    /// leaked Context). Shared across `query`, `query_cached`, and
-    /// `sample` so a `Seq(Point)` declared in one schema reuses the
+    /// leaked Context). Shared across `query` and `query_cached`
+    /// so a `Seq(Point)` declared in one schema reuses the
     /// same Datatype if another schema references `Point` again — Z3
     /// would otherwise error on duplicate type names.
     pub(super) datatypes: DatatypeRegistry,

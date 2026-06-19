@@ -99,7 +99,7 @@ enum TestKind {
 #[derive(Debug)]
 enum FailDetail {
     /// Schema sat_* test came back UNSAT.
-    UnsatCore { core_indices: Vec<usize> },
+    UnexpectedUnsat,
     /// Schema unsat_* test came back SAT. Bindings = counterexample.
     SatCounterexample(HashMap<String, Value>),
 }
@@ -174,15 +174,12 @@ pub fn cmd_test(args: &[String]) -> ExitCode {
         for name in &names {
             let expected_sat = name.starts_with("sat_");
             let t0 = Instant::now();
-            // For sat_* tests we use query_with_core so the failure
-            // path can show the conflicting body items. For unsat_*
-            // tests the standard query is enough — we want bindings.
+            // sat_* tests: PASS if SAT, FAIL (unexpected UNSAT) otherwise.
+            // unsat_* tests: PASS if UNSAT, else show the SAT counterexample.
             let outcome = if expected_sat {
-                match rt.query_with_core(name, &empty) {
-                    Ok((r, _)) if r.satisfied => Outcome::Pass,
-                    Ok((_, core)) => Outcome::Fail(FailDetail::UnsatCore {
-                        core_indices: core.unwrap_or_default(),
-                    }),
+                match rt.query(name, &empty) {
+                    Ok(r) if r.satisfied => Outcome::Pass,
+                    Ok(_) => Outcome::Fail(FailDetail::UnexpectedUnsat),
                     Err(e) => Outcome::Error(format!("{e}")),
                 }
             } else {
@@ -309,37 +306,14 @@ fn print_failure(run: &TestRun, opts: &Opts) {
         Outcome::Error(msg) => {
             println!("    {} {}", red(oc, "ERROR"), msg);
         }
-        Outcome::Fail(FailDetail::UnsatCore { core_indices }) => {
+        Outcome::Fail(FailDetail::UnexpectedUnsat) => {
             println!("    expected {}, got {}",
                 green(oc, "SAT"), red(oc, "UNSAT"));
-            print_unsat_core(run, core_indices, opts);
+            println!("    {}",
+                dim(oc, "(try EVIDENT_LENIENT=0 to surface dropped constraints)"));
         }
         Outcome::Fail(FailDetail::SatCounterexample(bindings)) => {
             print_counterexample(run, bindings, opts);
-        }
-    }
-}
-
-/// UNSAT-when-expected-SAT: print the body items Z3 named as the
-/// conflicting subset. Empty `core_indices` means Z3 returned no core
-/// (the conflict isn't pinpointable to a tracked body item — usually
-/// means the conflict involves Z3's built-in axioms or one of the
-/// items can't be split apart further).
-fn print_unsat_core(run: &TestRun, core_indices: &[usize], opts: &Opts) {
-    let oc = opts.use_color;
-    if core_indices.is_empty() {
-        println!("    {}",
-            dim(oc, "(Z3 returned no specific conflict — try EVIDENT_LENIENT=0 to surface dropped constraints)"));
-        return;
-    }
-    let mut rt = EvidentRuntime::new();
-    if rt.load_file(&run.file).is_err() { return; }
-    let Some(schema) = rt.get_schema(&run.name) else { return };
-    println!("    {}", dim(oc, "conflicting constraints:"));
-    for &i in core_indices {
-        if let Some(item) = schema.body.get(i) {
-            let text = pretty::body_item(item);
-            println!("      {}", highlight_constraint(&text, oc));
         }
     }
 }

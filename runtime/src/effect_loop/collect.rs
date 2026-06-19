@@ -21,7 +21,7 @@ use std::collections::{HashMap, HashSet};
 use super::seq_chains::extract_seq_effect_chains;
 use super::toposort::{
     DISPATCH_ORDER_CACHE, DispatchKey,
-    evident_toposort, resolve_synthetic_names_to_effects,
+    resolve_synthetic_names_to_effects,
     topo_sort_with_random_tiebreak,
 };
 
@@ -57,10 +57,8 @@ use super::toposort::{
 ///   * Cross-Seq ordering with no declared edge is unconstrained —
 ///     unconstrained nodes get a randomized linearization so bugs
 ///     caused by accidental ordering surface naturally.
-///   * Dispatch order comes from `Toposort<String>` (stdlib/toposort.ev),
-///     called via `rt.query`. The runtime dogfoods its own constraint
-///     primitive here. When perf becomes an issue, the future
-///     model-compilation layer is the resolution path.
+///   * Dispatch order comes from a Rust Kahn's-algorithm toposort
+///     (`topo_sort_with_random_tiebreak`) over the nodes + edges.
 pub(crate) fn collect_dispatchable_effects(
     rt: &EvidentRuntime,
     claim_name: &str,
@@ -84,13 +82,7 @@ pub(crate) fn collect_dispatchable_effects(
     // Mode 2: collect Effect-typed nodes + Seq-literal edges, toposort,
     // dispatch in resulting order.
     //
-    // Toposort is in Rust for now. The structurally-equivalent dogfood
-    // call site — `rt.query("Toposort<String>", given)` — was tested
-    // and works correctly but hits an unexplained 30× slowdown when
-    // run alongside a complex user-FSM solve in the same Z3 context
-    // (12–16s vs 0.4s in isolation; see commit log). When the
-    // "compile the model" infrastructure (project memory entry of the
-    // same name) lands, this is the natural call site for it.
+    // Toposort is a Rust Kahn's-algorithm pass (see toposort.rs).
     // Nodes come from two sources:
     //   * Bare `Effect`-typed bindings — node name = binding name.
     //   * `Seq(Effect)`-typed bindings — one synthetic node per element,
@@ -326,25 +318,10 @@ pub(crate) fn collect_dispatchable_effects(
     }
 
     let timing = std::env::var("EVIDENT_DISPATCH_TIMING").is_ok();
-    let impl_choice = std::env::var("EVIDENT_TOPOSORT_IMPL").ok();
-    let use_evident = matches!(impl_choice.as_deref(), Some("evident"));
-
     let t0 = std::time::Instant::now();
-    let sorted_names = if use_evident {
-        match evident_toposort(rt, &nodes, &edges) {
-            Some(v) => v,
-            None => {
-                eprintln!("warning: EVIDENT_TOPOSORT_IMPL=evident failed; \
-                           falling back to rust");
-                topo_sort_with_random_tiebreak(&nodes, &edges, &mut rng)
-            }
-        }
-    } else {
-        topo_sort_with_random_tiebreak(&nodes, &edges, &mut rng)
-    };
+    let sorted_names = topo_sort_with_random_tiebreak(&nodes, &edges, &mut rng);
     if timing {
-        eprintln!("toposort[{}]: {} nodes, {} edges, {:.3}ms",
-            if use_evident { "evident" } else { "rust" },
+        eprintln!("toposort: {} nodes, {} edges, {:.3}ms",
             nodes.len(), edges.len(),
             t0.elapsed().as_secs_f64() * 1000.0);
     }

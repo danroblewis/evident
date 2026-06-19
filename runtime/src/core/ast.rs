@@ -54,13 +54,15 @@ pub struct SchemaDecl {
     /// consts to keep recursive helper invocations isolated.
     /// Zero when the claim has no first-line params.
     pub param_count: usize,
-    /// `external` modifier — `external type X(...)` or
-    /// `external claim X(...)`. Marks the schema as a boundary-crossing
-    /// declaration: only `external` schemas may construct FFI / LibCall
-    /// effects in their body. The load-time check in
-    /// `runtime::enforce_external_only` rejects non-`external` claims
-    /// that try to emit those effects. `external` cannot combine with
-    /// `fsm` or `schema` — both are rejected at parse time.
+    /// `external` modifier — `external type X(...)`,
+    /// `external claim X(...)`, or `external fsm X(...)`. Marks the
+    /// schema as a boundary-crossing declaration. `external type`
+    /// drives FTI bridge install; `external fsm` marks a Rust-side
+    /// bridge contract that the scheduler skips when auto-instantiating
+    /// user FSMs. (The historical FFI-construction gate that restricted
+    /// LibCall/FFICall to `external` schemas has been removed — any
+    /// schema may construct FFI effects now.) `external schema` is
+    /// rejected at parse time.
     pub external: bool,
 }
 

@@ -1,6 +1,6 @@
 //! Model-output value types: `Value` (extracted Z3 binding values
 //! returned from queries) and `EvalResult` (the result of running
-//! one query — satisfiability + bindings + optional unsat core).
+//! one query — satisfiability + bindings).
 //!
 //! These are part of the runtime's core vocabulary — both the
 //! constraint side (translate / runtime / commands) and the
@@ -13,14 +13,6 @@ use std::collections::HashMap;
 pub struct EvalResult {
     pub satisfied: bool,
     pub bindings: HashMap<String, Value>,
-    /// On UNSAT, optionally populated when `evaluate_with_core` was
-    /// used: indices into the schema's top-level body that Z3
-    /// identified as the conflicting subset (via `assert_and_track`
-    /// + `get_unsat_core`). `None` when the caller didn't request
-    /// it; `Some(empty)` when Z3 returned an empty core (rare —
-    /// usually means the conflict is encoded entirely outside the
-    /// tracked top-level constraints, e.g. in given values).
-    pub unsat_core_items: Option<Vec<usize>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

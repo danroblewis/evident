@@ -1,27 +1,25 @@
 //! Public orchestrator entry points, in two families:
 //!
 //!   * **One-shot query** — `evaluate`, `evaluate_with_extra_assertion`,
-//!     `evaluate_with_extra_assertions`, `evaluate_with_program_and_body`,
-//!     `evaluate_with_core`. Each builds a fresh Solver, asserts the
+//!     `evaluate_with_extra_assertions`, `evaluate_with_program_and_body`.
+//!     Each builds a fresh Solver, asserts the
 //!     schema's body (plus any caller extras), runs `check`, returns
 //!     a `QueryResult`. Variants exist for the different shapes of
 //!     "extra constraints" callers want to layer on (CLI `--given`,
 //!     test scaffolding, multi-FSM coordinator).
 //!
 //!   * **Per-step cached query** — `build_cache` (compile once) +
-//!     `run_cached` (step many times re-using the compiled solver) +
-//!     `sample_cached_inner` (n-distinct-models for `sample`). Used
-//!     by the effect loop to amortize translate cost across ticks.
+//!     `run_cached` (step many times re-using the compiled solver).
+//!     Used by the effect loop to amortize translate cost across ticks.
 //!
 //! Submodule layout (each depends only on those above it):
 //!   * `solver`     — solver tuning, numeric helpers, env priming,
 //!                    declare-and-assert convenience.
 //!   * `decode`     — model → `Value` extractors (`extract_binding`,
 //!                    enum + seq decoders).
-//!   * `cached`     — `build_cache`, `run_cached`, `sample_cached_inner`.
+//!   * `cached`     — `build_cache`, `run_cached`.
 //!   * `extra`      — `evaluate_with_extra_assertion(s)`,
 //!                    `evaluate_with_program_and_body`.
-//!   * `core`       — `evaluate_with_core` (UNSAT-core variant).
 //!
 //! `evaluate` itself lives in this file — it's THE entry point and
 //! the shape every other variant is a copy of.
@@ -41,14 +39,12 @@ mod solver;
 mod decode;
 mod cached;
 mod extra;
-mod core;
 
 use solver::{declare_and_assert, make_tuned_solver, populate_enum_variants, real_from_f64, real_value_to_f64};
 use decode::extract_enum_value;
 
-pub use cached::{build_cache, run_cached, sample_cached_inner};
+pub use cached::{build_cache, run_cached};
 pub use extra::{evaluate_with_extra_assertion, evaluate_with_extra_assertions, evaluate_with_program_and_body};
-pub use self::core::evaluate_with_core;
 pub(crate) use decode::extract_binding;
 
 // Re-export to sibling translate modules. `extract_seq_enum` is
@@ -244,5 +240,5 @@ pub fn evaluate(
             }
         }
     }
-    EvalResult { satisfied, bindings, unsat_core_items: None }
+    EvalResult { satisfied, bindings }
 }
