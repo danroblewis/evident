@@ -9,18 +9,14 @@ avoids worktree merge conflicts. Mark items done and commit as they land.
 - _(nothing running)_
 
 ## Queued (in order)
-1. **Move `z3_eval.rs` → `functionize/extract_program.rs`** — it's the
-   functionizer's IR-extraction front-half (builds the `Z3Program`, consumed only
-   by `functionize/` + `query.rs`'s functionization path). Retarget `z3_eval::` →
-   `functionize::extract_program::`; move core.md's "IR extraction" line from
-   stage 2 → stage 3.
-2. **Audit leftover multi-FSM machinery** — `single_fsm` enumerates FSM candidates
+1. **Audit leftover multi-FSM machinery** — `single_fsm` enumerates FSM candidates
    and rejects >1; the runtime is single-FSM now (core.md stage 4), but CLAUDE.md
    still documents a multi-FSM subscription scheduler (world read-sets,
    plugin-as-writer, event sources). Check whether the event-source / subscription /
    multi-FSM code is vestigial, simplify `single_fsm`, and reconcile the docs.
 
 ## Done (recent, newest first)
+- move `z3_eval.rs` → `functionize/extract_program.rs` (IR front-half) — `242ebec`
 - merge `dispatch.rs` → `ffi.rs` (the foreign/IO boundary; `ffi` now `pub`) — `e1e2535`
 - `effect_loop` → `trampoline`, `effect_dispatch` → `dispatch` — `7fadcfe`
 - ParseInt/IntToStr effects → Z3 expression ops (`to_str`/`parse_int`); pruned `start`/`stdin` — `deadc23`
