@@ -67,10 +67,8 @@ pub(super) fn real_value_to_f64(num: i64, den: i64) -> f64 {
 }
 
 /// Set `smt.arith.solver` to `arith_solver` on `solver`. Pass `0` to
-/// skip (lets Z3 use its built-in default). The chosen value depends
-/// on workload — the runtime's auto-tuner decides which to use; this
-/// helper is the dumb mechanism. See `runtime::SolveHistory` for the
-/// policy.
+/// skip (lets Z3 use its built-in default). The value is the runtime's
+/// fixed default (2) or the `EVIDENT_Z3_ARITH_SOLVER` env override.
 fn apply_solver_tuning(ctx: &Context, solver: &Solver, arith_solver: u32) {
     if arith_solver == 0 { return; }
     let mut params = Params::new(ctx);

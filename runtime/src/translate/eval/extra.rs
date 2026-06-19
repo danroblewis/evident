@@ -99,9 +99,7 @@ pub fn evaluate_with_extra_assertion(
                   extra_var, schema.name);
     }
 
-    let check_t0 = std::time::Instant::now();
     let check_result = solver.check();
-    crate::z3_profile::record_check_stats(&solver, Some(&schema.name), check_t0.elapsed());
     let satisfied = matches!(check_result, SatResult::Sat);
     let mut bindings = HashMap::new();
     if satisfied {
@@ -224,9 +222,7 @@ pub fn evaluate_with_extra_assertions(
         }
     }
 
-    let check_t0 = std::time::Instant::now();
     let check_result = solver.check();
-    crate::z3_profile::record_check_stats(&solver, Some(&schema.name), check_t0.elapsed());
     let satisfied = matches!(check_result, SatResult::Sat);
     let mut bindings = HashMap::new();
     if satisfied {

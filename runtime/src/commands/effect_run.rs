@@ -24,25 +24,9 @@ fn print_help() {
     eprintln!("Execution:");
     eprintln!("  --max-steps N            cap the scheduler at N ticks (default: 10000)");
     eprintln!();
-    eprintln!("Timing / tracing:");
-    eprintln!("  --timing                 per-tick solve+dispatch timing + final summary");
-    eprintln!("                           (alias for EVIDENT_LOOP_TIMING=1)");
+    eprintln!("Timing:");
     eprintln!("  --dispatch-timing        per-effect dispatch timing");
     eprintln!("                           (alias for EVIDENT_DISPATCH_TIMING=1)");
-    eprintln!("  --trace                  high-volume scheduler+functionizer trace");
-    eprintln!("                           (sets EVIDENT_FUNCTIONIZE_TRACE=1)");
-    eprintln!();
-    eprintln!("Profiling:");
-    eprintln!("  --profile-functionizer   per-claim functionizer + JIT stats summary");
-    eprintln!("                           (sets EVIDENT_FUNCTIONIZE_STATS=1)");
-    eprintln!("  --profile-z3             aggregate Z3 statistics across solves");
-    eprintln!("                           (conflicts, decisions, propagations, restarts)");
-    eprintln!("  --profile-z3-trace FILE  write Z3 axiom-profiler trace to FILE");
-    eprintln!("                           (post-process with z3 axiom_profiler)");
-    eprintln!("  --profile-z3-unsat-cores extract UNSAT cores when claims fail —");
-    eprintln!("                           shows which assertions caused the conflict");
-    eprintln!("  --profile-all            shorthand for --timing --profile-functionizer");
-    eprintln!("                                       --profile-z3");
     eprintln!();
     eprintln!("Functionizer / Cranelift JIT:");
     eprintln!("  --no-functionizer        disable functionize entirely (EVIDENT_FUNCTIONIZE=0)");
@@ -67,9 +51,6 @@ pub fn cmd_effect_run(args: &[String]) -> ExitCode {
     }
     let mut path: Option<String> = None;
     let mut max_steps = 10_000usize;
-    let mut profile_z3 = false;
-    let mut profile_z3_trace_file: Option<String> = None;
-    let mut profile_z3_unsat_cores = false;
     let mut i = 0;
     while i < args.len() {
         match args[i].as_str() {
@@ -79,37 +60,8 @@ pub fn cmd_effect_run(args: &[String]) -> ExitCode {
                     .unwrap_or(10_000);
                 max_steps = v;
             }
-            "--timing" => {
-                std::env::set_var("EVIDENT_LOOP_TIMING", "1");
-            }
             "--dispatch-timing" => {
                 std::env::set_var("EVIDENT_DISPATCH_TIMING", "1");
-            }
-            "--trace" => {
-                std::env::set_var("EVIDENT_FUNCTIONIZE_TRACE", "1");
-            }
-            "--profile-functionizer" => {
-                std::env::set_var("EVIDENT_FUNCTIONIZE_STATS", "1");
-            }
-            "--profile-z3" => {
-                profile_z3 = true;
-                std::env::set_var("EVIDENT_PROFILE_Z3", "1");
-            }
-            "--profile-z3-trace" => {
-                i += 1;
-                let file = args.get(i).cloned()
-                    .unwrap_or_else(|| "z3_profile.log".to_string());
-                profile_z3_trace_file = Some(file);
-            }
-            "--profile-z3-unsat-cores" => {
-                profile_z3_unsat_cores = true;
-                std::env::set_var("EVIDENT_PROFILE_Z3_UNSAT_CORES", "1");
-            }
-            "--profile-all" => {
-                std::env::set_var("EVIDENT_LOOP_TIMING", "1");
-                std::env::set_var("EVIDENT_FUNCTIONIZE_STATS", "1");
-                std::env::set_var("EVIDENT_PROFILE_Z3", "1");
-                profile_z3 = true;
             }
             "--no-functionizer" => {
                 std::env::set_var("EVIDENT_FUNCTIONIZE", "0");
@@ -146,20 +98,6 @@ pub fn cmd_effect_run(args: &[String]) -> ExitCode {
         i += 1;
     }
 
-    // Configure Z3 profiling BEFORE any Z3 context is created.
-    // Global params are read at context construction.
-    if let Some(file) = &profile_z3_trace_file {
-        // Set global Z3 params for axiom-profiler-compatible
-        // trace logging. Must run before any Solver is created.
-        evident_runtime::z3_profile::enable_trace(file);
-    }
-    if profile_z3_unsat_cores {
-        // Solver-level `unsat_core` parameter — applied per-solver
-        // by the runtime's `make_tuned_solver` (see translate/eval.rs).
-        // The env var is the signal there.
-        std::env::set_var("EVIDENT_PROFILE_Z3_UNSAT_CORES", "1");
-    }
-
     let mut rt = EvidentRuntime::new();
     if let Err(e) = rt.load_file(Path::new(STDLIB_RUNTIME)) {
         eprintln!("effect-run: load {STDLIB_RUNTIME}: {e}");
@@ -178,18 +116,6 @@ pub fn cmd_effect_run(args: &[String]) -> ExitCode {
 
     match effect_loop::run(&rt, &effect_loop::LoopOpts { max_steps }) {
         Ok(r) => {
-            // Print profiling summaries if requested.
-            if std::env::var("EVIDENT_FUNCTIONIZE_STATS").is_ok() {
-                rt.functionize_stats().print_summary();
-            }
-            if profile_z3 {
-                evident_runtime::z3_profile::print_summary();
-            }
-            if let Some(file) = &profile_z3_trace_file {
-                eprintln!("[profile-z3] trace written to {file}");
-                eprintln!("[profile-z3] post-process via Z3's axiom_profiler tool:");
-                eprintln!("[profile-z3]   python3 -m z3.axiom_profiler {file}");
-            }
             // Effect::Exit(code) propagates as the process exit code.
             // Other halt paths exit 0 on clean halt, 1 on max_steps.
             if let Some(code) = r.exit_code {

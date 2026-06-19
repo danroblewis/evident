@@ -40,7 +40,6 @@
 
 mod stats;
 mod lenient;
-mod autotune;
 mod load;
 mod generics;
 mod desugar;
@@ -186,10 +185,6 @@ pub struct EvidentRuntime {
     /// (or transitively via `import`). Used for cycle protection so
     /// `A imports B; B imports A` doesn't recurse forever.
     pub(super) loaded_files: RefCell<HashSet<PathBuf>>,
-    /// Per-schema solve-time history + auto-tuner state. Drives the
-    /// dynamic `smt.arith.solver` selection. See `SolveHistory` and
-    /// `EvidentRuntime::query_cached` for the pricing protocol.
-    pub(super) solve_history: RefCell<HashMap<String, autotune::SolveHistory>>,
 }
 
 impl Default for EvidentRuntime { fn default() -> Self { Self::new() } }
@@ -224,7 +219,6 @@ impl EvidentRuntime {
             system_boundary: RefCell::new(None),
             schema_origins: RefCell::new(HashMap::new()),
             loaded_files: RefCell::new(HashSet::new()),
-            solve_history: RefCell::new(HashMap::new()),
         }
     }
 

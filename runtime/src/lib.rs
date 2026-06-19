@@ -5,10 +5,8 @@
 //! everything else as Evident libraries.
 
 mod core;
-pub mod decompose;
 pub mod effect_dispatch;
 pub mod z3_eval;
-pub mod z3_profile;
 pub mod functionize;
 mod value_builders;
 pub mod effect_loop;
