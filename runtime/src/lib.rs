@@ -1,9 +1,8 @@
 mod core;
-pub mod dispatch;
 pub mod z3_eval;
 pub mod functionize;
 pub mod trampoline;
-mod ffi;
+pub mod ffi;
 mod lexer;
 mod parser;
 pub mod encode;

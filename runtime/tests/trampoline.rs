@@ -2,7 +2,7 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 
 use evident_runtime::{EvidentRuntime, trampoline};
-use evident_runtime::dispatch::DispatchContext;
+use evident_runtime::ffi::DispatchContext;
 
 struct SharedWrite(Arc<Mutex<Vec<u8>>>);
 impl std::io::Write for SharedWrite {

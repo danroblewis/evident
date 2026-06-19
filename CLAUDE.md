@@ -214,7 +214,7 @@ ship with it.
 | Shared types (Value, Z3Program, registries, …) | `runtime/src/core/types.rs` |
 | AST → Z3 encoder | `runtime/src/encode/` |
 | Z3 functionizer + JIT | `runtime/src/functionize/` (Cranelift impl) + `runtime/src/z3_eval.rs` (extractor) |
-| Effect dispatch | `runtime/src/dispatch.rs` |
+| Effect dispatch | `runtime/src/ffi.rs` |
 | Subscription-driven scheduler | `runtime/src/trampoline.rs` |
 | FTI bridges | `runtime/src/event_sources/`, `runtime/src/ffi.rs` (`is_shimmed_stdlib`) |
 | Stdlib (Evident) | `stdlib/` |
@@ -235,7 +235,7 @@ source text
   → functionize/          Z3Program → callable function (Cranelift JIT)
   → runtime/              EvidentRuntime: top-level API (load_file, query)
   → trampoline.rs        Subscription-driven scheduler (the executor)
-  → dispatch.rs    Effect → IO (Println, LibCall, ParseInt, …)
+  → ffi.rs    Effect → IO (Println, LibCall, ParseInt, …)
   → event_sources/        FTI bridge implementations (one struct per
                           typed C resource)
 ```
@@ -263,7 +263,7 @@ here's where to start.
 | `functionize/` | Functionizer implementations (currently: Cranelift JIT) |
 | `event_sources/` | Async wake plugins (FrameTimer, Stdin, Sigint, …) |
 | `main.rs` | The CLI binary: `test` / `effect-run` entry points + test-report output |
-| `dispatch.rs` | Effect → IO (Println, LibCall, ParseInt, …) |
+| `ffi.rs` | Effect → IO (Println, LibCall, ParseInt, …) |
 | `z3_eval.rs`   | Extract a `Z3Program` from a simplified Z3 AST |
 | `ffi.rs`       | libffi marshaling + handle registry; FTI shimmed-stdlib check |
 | `parser/`, `lexer.rs` | Front end (AST Display rendering lives in `core/ast.rs`) |
