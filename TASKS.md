@@ -30,13 +30,18 @@ the Xvfb display) must be green after each.
    `ffi.rs::lib_candidates` hardcodes a macOS→Linux soname list; the runtime
    should just `dlopen` what the `LibCall` names. Delete it; update
    `packages/{sdl,gl,posix}/*.ev` to name the correct (Linux) library directly.
-3. [ ] **Rip out trace/timing/dump scaffolding + magic-number sweep.** ~12
-   diagnostic `EVIDENT_*` env gates (`JIT_TRACE`, `FUNCTIONIZE_TRACE`,
-   `JIT_CALL_TRACE`, `JIT_DUMP`, `FZ_DUMP_BODY`, `INLINE_TRACE`, `FFI_TRACE`,
-   `TRACE_SLOW_PATH`, `LOOP_TRACE`, `LOOP_TIMING`, `DISPATCH_TIMING`,
-   `FUNCTIONIZE_STATS`) + their `if env { eprintln! }` code threaded through the
-   functionizer/executor/dispatch. Also sweep magic numbers tied to removable
-   features.
+3. [ ] **Remove ALL `EVIDENT_*` env-var-gated functionality + its code.** Every
+   env-gated knob goes — we rebuild any we miss much later.
+   - **Diagnostics — delete the code entirely:** `JIT_TRACE`, `FUNCTIONIZE_TRACE`,
+     `JIT_CALL_TRACE`, `JIT_DUMP`, `FZ_DUMP_BODY`, `INLINE_TRACE`, `FFI_TRACE`,
+     `TRACE_SLOW_PATH`, `LOOP_TRACE`, `LOOP_TIMING`, `DISPATCH_TIMING`,
+     `FUNCTIONIZE_STATS`, `DISPATCH_SEED` (+ all their `if env { eprintln! }` sites
+     threaded through the functionizer / executor / dispatch).
+   - **Config toggles — drop the env read, hardcode the default:** `FUNCTIONIZE`
+     (always on), `TACTICS` / `EVIDENT_Z3_*` (default tactic chain), `LENIENT`
+     (keep the functionizer fall-back mechanism, just un-gated), `MAX_INLINE_DEPTH`
+     (fixed cap), `VALUE_CACHE` (goes with the `query_cached` refactor).
+   - Also sweep magic numbers tied to removable features while in here.
 4. [ ] **Remove `runtime/examples/`.** The Rust bench/explore example binaries —
    not important. Delete the directory and drop any `[[example]]` entries in
    `runtime/Cargo.toml`.
@@ -50,7 +55,16 @@ the Xvfb display) must be green after each.
    necessary. Delete the directory; check `.cargo/config.toml` / `build.rs` /
    `test.sh` for any reference, and if any bit is genuinely required, move it into
    the file that needs it.
-7. [ ] **Strip ALL comments** from `runtime/` Rust (`//`, `/* */`, `///`, `//!`,
+7. [ ] **Audit `encode_ast.rs` / `decode_ast.rs`; rename or trim (probably not
+   remove).** Their original job — encode the program AST into a Z3 datatype to
+   feed the self-hosting reflection passes — is already gone. What remains is the
+   executor's **Effect/Result value codec**: decode `Effect`/`Result` values out
+   of the Z3 model and encode results back (`value_enum_to_datatype`,
+   `effect_results_to_value`, `decode_effect`/`decode_result`/`decode_ffi_arg`, …),
+   which is load-bearing for FFI-effect dispatch. So this is likely a **rename**
+   (e.g. `effect_codec.rs`) + trim of any still-dead helpers — confirm with the
+   call graph before deleting anything.
+8. [ ] **Strip ALL comments** from `runtime/` Rust (`//`, `/* */`, `///`, `//!`,
    including doc-comments and their doc-tests). Use a string/char/raw-string-aware
    stripper; build + full test must stay green (comments don't affect logic).
    Done **last**, so it also cleans up comments the earlier passes add.
