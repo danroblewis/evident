@@ -273,14 +273,14 @@ not a core thing — it belongs in `runtime/` or higher.
 
 External callers can use `evident_runtime::{Value, QueryResult, RuntimeError, ast}` (re-exported from `core` at `lib.rs`). Internal code imports from `crate::core::*` directly.
 
-### Inside `runtime/`
+### Inside `session/`
 
 | Want to … | Edit |
 |---|---|
-| Add a new public query method | `runtime/query.rs` |
-| Change how a schema gets parsed/loaded, or import resolution | `runtime/mod.rs` (load + run-loop-facing query + UnionFind) |
-| Add/change a lowering pass (seq-concat desugar, world syntax, FSM/type-inference injection) | `runtime/lower.rs` |
-| Touch enum → Z3 Datatype registration | `runtime/register_enums.rs` |
+| Add a new public query method | `session/query.rs` |
+| Change how a schema gets parsed/loaded, or import resolution | `session/mod.rs` (load + run-loop-facing query + UnionFind) |
+| Add/change a lowering pass (seq-concat desugar, world syntax, FSM/type-inference injection) | `encode/lower.rs` |
+| Touch enum → Z3 Datatype registration | `session/register_enums.rs` |
 
 ### Inside `trampoline.rs` (single file, sectioned)
 
@@ -311,7 +311,7 @@ External callers can use `evident_runtime::{Value, QueryResult, RuntimeError, as
 ### Rules of thumb
 
 - **One file = one concern.** If you're adding > ~200 lines to a file in this layout, ask whether it's actually a new concern.
-- **Public re-exports from `mod.rs`.** `crate::runtime::EvidentRuntime` works whether the type is defined in `runtime/mod.rs` or somewhere under it.
+- **Public re-exports from `mod.rs`.** `crate::session::EvidentRuntime` works whether the type is defined in `session/mod.rs` or somewhere under it.
 - **Sibling visibility: `pub(super)`** for cross-file helpers inside a directory module.
 - **Tests next to the code.** `#[cfg(test)] mod tests { … }` at the bottom of the file under test.
 - **`scripts/rust-size.py`** lists files by length — run it when you suspect a file is overdue for a split.
