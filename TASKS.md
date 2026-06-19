@@ -24,10 +24,10 @@ the Xvfb display) must be green after each.
    Removed `query_cached`, `cache`/`cache_rebuilds`, the structural-signature
    rebuild logic, and the whole `EVIDENT_VALUE_CACHE` value cache. (`cached.rs`
    still holds `build_cache` — it's now the compiler, not a cache; rename later.)
-2. [ ] **Remove `lib_candidates` + fix package lib refs.**
-   `ffi.rs::lib_candidates` hardcodes a macOS→Linux soname list; the runtime
-   should just `dlopen` what the `LibCall` names. Delete it; update
-   `packages/{sdl,gl,posix}/*.ev` to name the correct (Linux) library directly.
+2. [x] **Remove `lib_candidates` + fix package lib refs.** Done (`3912b2e`).
+   `ffi_open` now `dlopen`s exactly the name the `LibCall` supplies; `packages/`
+   bindings name Linux sonames directly (`libSDL2-2.0.so.0`, `libGL.so.1`,
+   `libc.so.6`). SDL demos verified.
 3. [ ] **Remove ALL `EVIDENT_*` env-var-gated functionality + its code.** Every
    env-gated knob goes — we rebuild any we miss much later.
    - **Diagnostics — delete the code entirely:** `JIT_TRACE`, `FUNCTIONIZE_TRACE`,
@@ -42,12 +42,10 @@ the Xvfb display) must be green after each.
    - Also sweep magic numbers tied to removable features while in here.
 4. [x] **Remove `runtime/examples/`.** Done — auto-discovered bench/probe
    binaries, no `Cargo.toml` entries needed removing (`9a91f48`).
-5. [ ] **Drop `check`, consolidate the CLI into one file.** Remove
-   `commands/check.rs` (the `check` subcommand + its `main.rs` dispatch) — don't
-   care about it right now. Then move everything else (`effect_run.rs`, `test.rs`,
-   `common.rs`) into a single `commands.rs` and delete the `commands/` directory,
-   so there's exactly one file for the CLI. Remaining subcommands: `test`,
-   `effect-run`.
+5. [x] **Drop `check`, consolidate the CLI into one file.** Done (`684832e`).
+   `commands/check.rs` + the check-only helpers (`load_runtime`,
+   `split_files_and_flags`) removed; `common`/`effect_run`/`test` merged into one
+   `src/commands.rs`; `commands/` dir gone. CLI: `test`, `effect-run`.
 6. [x] **Remove `runtime/scripts/`.** Done — `cc-wrapper.sh` + `install-bin.sh`
    were referenced nowhere (`9a91f48`).
 7. [ ] **Audit `encode_ast.rs` / `decode_ast.rs`; rename or trim (probably not
