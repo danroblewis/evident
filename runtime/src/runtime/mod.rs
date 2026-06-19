@@ -4,6 +4,7 @@ mod inject;
 mod register_enums;
 mod query;
 mod scheduler_api;
+mod union_find;
 
 pub use crate::core::Value;
 #[allow(unused_imports)]

@@ -269,24 +269,8 @@ fn topo_stage_enums(
     let name_to_idx: HashMap<&str, usize> =
         decls.iter().enumerate().map(|(i, d)| (d.name.as_str(), i)).collect();
 
-    let mut parent: Vec<usize> = (0..n).collect();
-    fn find(parent: &mut [usize], x: usize) -> usize {
-        let mut r = x;
-        while parent[r] != r { r = parent[r]; }
-
-        let mut cur = x;
-        while parent[cur] != r {
-            let next = parent[cur];
-            parent[cur] = r;
-            cur = next;
-        }
-        r
-    }
-    fn union(parent: &mut [usize], a: usize, b: usize) {
-        let ra = find(parent, a);
-        let rb = find(parent, b);
-        if ra != rb { parent[ra] = rb; }
-    }
+    use super::union_find::UnionFind;
+    let mut uf = UnionFind::new(n);
 
     let mut soft: Vec<(usize, usize)> = Vec::new();
     for (i, d) in decls.iter().enumerate() {
@@ -297,7 +281,7 @@ fn topo_stage_enums(
                     if internal_cons_set.contains(inner) {
                         let helper = internal_cons_helper_name(inner);
                         if let Some(&j) = name_to_idx.get(helper.as_str()) {
-                            if j != i { union(&mut parent, i, j); }
+                            if j != i { uf.union(i, j); }
                         }
                         continue;
                     }
@@ -308,7 +292,7 @@ fn topo_stage_enums(
                 }
                 if let Some(&j) = name_to_idx.get(f.type_name.as_str()) {
                     if j != i {
-                        union(&mut parent, i, j);
+                        uf.union(i, j);
                     }
                 }
             }
@@ -317,14 +301,14 @@ fn topo_stage_enums(
 
     let mut groups: HashMap<usize, Vec<usize>> = HashMap::new();
     for i in 0..n {
-        let r = find(&mut parent, i);
+        let r = uf.find(i);
         groups.entry(r).or_default().push(i);
     }
 
     let mut group_deps: HashMap<usize, HashSet<usize>> = HashMap::new();
     for &(src, dst) in &soft {
-        let rs = find(&mut parent, src);
-        let rd = find(&mut parent, dst);
+        let rs = uf.find(src);
+        let rd = uf.find(dst);
         if rs == rd {
 
             return Err(RuntimeError::Parse(format!(
