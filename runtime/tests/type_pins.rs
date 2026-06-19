@@ -1,18 +1,3 @@
-//! Type-use mapsto pins.
-//!
-//! `name ∈ Type (field mapsto value, …)` is sugar for the declaration
-//! plus per-pin equality constraints. Same `mapsto` semantics as
-//! claim-call composition — a type at a declaration site is the same
-//! parameterizable set, narrowed by the same mechanism.
-//!
-//! Six things to pin down so this can't regress:
-//!   - basic two-field pin (IVec2)
-//!   - declaration-order independence (Color: r, g, b)
-//!   - partial pinning (some fields free, others pinned)
-//!   - mixed `mapsto` / `↦` spellings (already-tested via normalizer)
-//!   - works alongside no-pin form on the same type
-//!   - shape mismatch (pin field that doesn't exist) surfaces an error
-
 use evident_runtime::{EvidentRuntime, Value};
 
 const VEC2: &str = "type IVec2\n    x ∈ Int\n    y ∈ Int\n";
@@ -29,10 +14,6 @@ fn basic_two_field_pin() {
     assert_eq!(r.bindings.get("v.y"), Some(&Value::Int(540)));
 }
 
-/// Color's declaration order is r, g, b. Pinning by NAME (not position)
-/// must produce the right values regardless of pin order in source —
-/// proves we're not silently sorting alphabetically (which would map
-/// the first pin to `b`, the alphabetically first leaf).
 #[test]
 fn pins_by_name_not_position() {
     let mut rt = EvidentRuntime::new();
@@ -45,9 +26,6 @@ fn pins_by_name_not_position() {
     assert_eq!(r.bindings.get("sky.b"), Some(&Value::Int(200)));
 }
 
-/// Pin some fields, leave others free. The free fields stay
-/// unconstrained at declaration time — Z3 picks any value (we just
-/// verify the pinned ones).
 #[test]
 fn partial_pin_leaves_other_fields_free() {
     let mut rt = EvidentRuntime::new();
@@ -63,9 +41,6 @@ fn partial_pin_leaves_other_fields_free() {
     assert!(y >= 100, "v.y was free + constrained ≥ 100; got {y}");
 }
 
-/// `mapsto` keyword and `↦` symbol both work — the lexer maps them to
-/// the same token, so this is mostly checking the grammar accepts the
-/// alternate spelling for type-use the same as claim-call.
 #[test]
 fn mapsto_keyword_form() {
     let mut rt = EvidentRuntime::new();
@@ -79,9 +54,6 @@ fn mapsto_keyword_form() {
     assert_eq!(r.bindings.get("v.y"), Some(&Value::Int(11)));
 }
 
-/// Pinned and unpinned membership on the same type can coexist —
-/// pin parsing must not break the fall-through to the bare-membership
-/// path.
 #[test]
 fn pin_and_no_pin_on_same_type() {
     let mut rt = EvidentRuntime::new();
@@ -95,9 +67,6 @@ fn pin_and_no_pin_on_same_type() {
     assert_eq!(r.bindings.get("a.y"), Some(&Value::Int(13)));
 }
 
-/// Pin value is an arithmetic expression, not just a literal. The
-/// pin's RHS goes through the same translator as a regular constraint,
-/// so any expression should work.
 #[test]
 fn pin_value_can_be_an_expression() {
     let mut rt = EvidentRuntime::new();
@@ -111,4 +80,3 @@ fn pin_value_can_be_an_expression() {
     assert_eq!(r.bindings.get("offset.x"), Some(&Value::Int(105)));
     assert_eq!(r.bindings.get("offset.y"), Some(&Value::Int(400)));
 }
-

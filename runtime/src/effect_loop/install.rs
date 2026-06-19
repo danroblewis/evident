@@ -1,26 +1,3 @@
-//! FTI declarative install — the one-shot bridge install path that
-//! survives the single-FSM teardown.
-//!
-//! A typed resource (`win ∈ SDL_Window (title ↦ "X", …)`) declares its
-//! C-side lifecycle as an `install ∈ Seq(InstallStep)` member in its
-//! `external type` body. At startup, for each such parameter on the
-//! main FSM, the runtime:
-//!   1. Queries the type body with the user's pins to extract the
-//!      `install` Seq value.
-//!   2. Decodes it into `Vec<InstallStep>`.
-//!   3. Dispatches the contained effects atomically via
-//!      `effect_dispatch::dispatch_all` (so `ArgPriorResult(N)`
-//!      threading works in-batch — e.g. the renderer handle created
-//!      by `SDL_CreateRenderer` feeds later steps).
-//!   4. For each `Bind`'d step, writes the result to the world
-//!      snapshot key `<fsm>.<param>.<field>`, which the per-tick solve
-//!      then exposes to the FSM body as `param.field` (`win.renderer`).
-//!
-//! CRITICAL: the install MUST run against the same `DispatchContext`
-//! the per-tick loop uses, so libffi pointer IDs (window ptr, renderer
-//! ptr) registered at install are visible to per-tick `ArgHandle`
-//! lookups. A fresh context would orphan them ("renders black").
-
 use std::collections::HashMap;
 
 use crate::core::ast::{Expr, Pins};
@@ -29,9 +6,6 @@ use crate::runtime::EvidentRuntime;
 use crate::translate::effect_decoder::decode_install_step_list;
 use crate::translate::Value;
 
-/// Run the declarative install for one typed-resource parameter.
-/// Returns the captured `<fsm>.<param>.<field>` → Value writes to
-/// merge into the world snapshot. Errors propagate as load failures.
 pub(super) fn run_declarative_install(
     rt: &EvidentRuntime,
     claim_name: &str,
@@ -40,7 +14,7 @@ pub(super) fn run_declarative_install(
     pins: &Pins,
     dispatch_ctx: &mut DispatchContext,
 ) -> Result<Vec<(String, Value)>, String> {
-    // Build the given map from pin values.
+
     let mut given: HashMap<String, Value> = HashMap::new();
     if let Pins::Named(ms) = pins {
         for m in ms {
@@ -54,7 +28,6 @@ pub(super) fn run_declarative_install(
         }
     }
 
-    // Query the type body to get `install`'s Seq value.
     let result = rt
         .query_with_pins_and_given(type_name, &[], &given)
         .map_err(|e| format!("declarative install: query {type_name}: {e}"))?;
@@ -69,13 +42,9 @@ pub(super) fn run_declarative_install(
     let steps = decode_install_step_list(install_val)
         .map_err(|e| format!("declarative install: decode `install`: {e:?}"))?;
 
-    // Dispatch the install Seq atomically. dispatch_all resolves
-    // ArgPriorResult(N) against the running prior vector, so handles
-    // created earlier in the Seq feed forward to later steps.
     let effects: Vec<_> = steps.iter().map(|s| s.effect.clone()).collect();
     let results = dispatch_all(dispatch_ctx, &effects);
 
-    // Capture Bind'd results into the per-instance world keys.
     let mut writes: Vec<(String, Value)> = Vec::new();
     for (step, res) in steps.iter().zip(results.iter()) {
         let Some(field) = &step.field else { continue };

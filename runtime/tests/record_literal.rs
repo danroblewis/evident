@@ -1,8 +1,3 @@
-//! Record literals in expression position: `IVec2(380, 280)` as a
-//! value, not just at a declaration site. Threads through the lift
-//! machinery's positional substitution: for each leaf in the LHS
-//! record, look up the matching arg by index.
-
 use evident_runtime::{EvidentRuntime, Value};
 
 const VEC2: &str = "type IVec2(x, y ∈ Int)\n";
@@ -15,9 +10,6 @@ fn int(v: Option<&Value>) -> i64 {
     }
 }
 
-/// Bare assignment: `pos = IVec2(380, 280)` expands to per-leaf
-/// equalities by indexing into the literal's args by IVec2's
-/// declaration order.
 #[test]
 fn record_literal_assignment_to_record_var() {
     let mut rt = EvidentRuntime::new();
@@ -29,9 +21,6 @@ fn record_literal_assignment_to_record_var() {
     assert_eq!(int(r.bindings.get("pos.y")), 280);
 }
 
-/// Record literal inside arithmetic — `dot.pos - IVec2(12, 12)` is the
-/// headline anchor_collect.ev rendering pattern. The literal is one
-/// operand of a Binary.
 #[test]
 fn record_literal_in_arithmetic() {
     let mut rt = EvidentRuntime::new();
@@ -43,7 +32,6 @@ fn record_literal_in_arithmetic() {
     assert_eq!(int(r.bindings.get("b.y")), 188);
 }
 
-/// Three-arg record literal (Color). Confirms it works for arity > 2.
 #[test]
 fn three_arg_record_literal() {
     let mut rt = EvidentRuntime::new();
@@ -56,8 +44,6 @@ fn three_arg_record_literal() {
     assert_eq!(int(r.bindings.get("sky.b")), 120);
 }
 
-/// Both sides of an Eq are record literals — both contribute to the
-/// shape check, both substitute on each leaf.
 #[test]
 fn record_literal_on_both_sides() {
     let mut rt = EvidentRuntime::new();
@@ -69,8 +55,6 @@ fn record_literal_on_both_sides() {
     assert_eq!(int(r.bindings.get("a.y")), 7);
 }
 
-/// Vector chained comparison with record literals as bounds.
-/// `IVec2(0, 0) ≤ pos ≤ IVec2(100, 100)` expands per-axis.
 #[test]
 fn record_literal_in_chained_comparison() {
     let mut rt = EvidentRuntime::new();
@@ -82,8 +66,6 @@ fn record_literal_in_chained_comparison() {
     assert_eq!(int(r.bindings.get("pos.y")), 75);
 }
 
-/// The headline anchor_collect.ev player-init shape: assign a literal
-/// to a sub-record field on a record-typed variable.
 #[test]
 fn record_literal_assigning_sub_record() {
     let mut rt = EvidentRuntime::new();

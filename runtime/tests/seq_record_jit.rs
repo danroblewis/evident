@@ -1,24 +1,9 @@
-//! JIT codegen for `Seq(Record)` outputs.
-//!
-//! Z3's `simplify` decomposes a per-element record-constructor pin
-//! (`pts[0] = IVec2(...)`) into per-field accessor pins
-//! (`(x (select pts 0)) = ...`). `z3_eval::recompose_record_seqs`
-//! rebuilds the element constructors so the Cranelift functionizer
-//! can emit a `Value::SeqComposite` — matching what the slow-path
-//! extractor (`extract_seq_composite`) produces.
-//!
-//! These tests drive the exact pipeline `runtime/query.rs` uses:
-//! build_cache → simplify → extract_program_partial →
-//! recompose_record_seqs → compile_program → call.
-
 use std::collections::HashMap;
 use evident_runtime::{EvidentRuntime, Value};
 use evident_runtime::z3_eval::{simplify_assertions, extract_program_partial,
     recompose_record_seqs};
 use evident_runtime::functionize::cranelift::compile_program;
 
-/// Run the functionizer pipeline for `schema` and return the JIT
-/// call's output bindings. Panics if extraction/compile/call fails.
 fn jit_run(src: &str, schema: &str, given: &HashMap<String, Value>)
     -> HashMap<String, Value>
 {
@@ -34,9 +19,6 @@ fn jit_run(src: &str, schema: &str, given: &HashMap<String, Value>)
         rt.get_schema(schema).unwrap(),
         schemas, ctx, datatypes, Some(enums), &empty, 2);
 
-    // Tie the assertions to the 'static Context (same transmute the
-    // runtime's functionize fast path uses — the Z3 ASTs are
-    // refcounted by the 'static Context, outliving the solver).
     let assertions_local = cached.solver.get_assertions();
     let assertions: Vec<z3::ast::Bool<'static>> = unsafe {
         std::mem::transmute::<Vec<z3::ast::Bool<'_>>, Vec<z3::ast::Bool<'static>>>(
@@ -44,7 +26,6 @@ fn jit_run(src: &str, schema: &str, given: &HashMap<String, Value>)
     };
     let simp = simplify_assertions(ctx, &assertions);
 
-    // Outputs = every record-Seq / value var that isn't given.
     let outputs: Vec<String> = cached.env.keys()
         .filter(|k| !given.contains_key(k.as_str()))
         .cloned().collect();
@@ -88,9 +69,7 @@ claim SeqRec
 
 #[test]
 fn jit_seq_of_nested_record() {
-    // Rect = Color + IVec2 + IVec2 — two levels of record nesting,
-    // exercising the recursive constructor rebuild + nested
-    // Value::Composite codegen.
+
     let src = r#"
 type IVec2(x, y ∈ Int)
 type Color(r, g, b ∈ Int)
@@ -108,15 +87,15 @@ claim RectSeq
         panic!("rects should be SeqComposite, got {:?}", out.get("rects"));
     };
     assert_eq!(v.len(), 2);
-    // Element 0 nested fields.
+
     let Some(Value::Composite(color0)) = v[0].get("color") else { panic!("color0") };
     assert_eq!(color0.get("r"), Some(&Value::Int(220)));
     assert_eq!(color0.get("g"), Some(&Value::Int(40)));
     assert_eq!(color0.get("b"), Some(&Value::Int(40)));
     let Some(Value::Composite(pos0)) = v[0].get("pos") else { panic!("pos0") };
-    assert_eq!(pos0.get("x"), Some(&Value::Int(100)));  // base
+    assert_eq!(pos0.get("x"), Some(&Value::Int(100)));
     assert_eq!(pos0.get("y"), Some(&Value::Int(6)));
-    // Element 1 pos.x = base + 4.
+
     let Some(Value::Composite(pos1)) = v[1].get("pos") else { panic!("pos1") };
     assert_eq!(pos1.get("x"), Some(&Value::Int(104)));
     let Some(Value::Composite(color1)) = v[1].get("color") else { panic!("color1") };

@@ -1,24 +1,3 @@
-//! Effect-driven tick loop — the executor for `evident effect-run`.
-//!
-//! There is exactly ONE FSM per program. Per tick:
-//!   1. Encode current `state` + `_var` previous values + last_results
-//!      + the world snapshot as Z3 givens/pins.
-//!   2. Solve the FSM with `rt.query_with_pins_and_given` — which builds
-//!      the compiled model once and evaluates it per tick.
-//!   3. Decode `state_next` and the ordered `effects`.
-//!   4. Dispatch each effect via `effect_dispatch`; feed results back
-//!      as `last_results`.
-//!   5. state ← state_next; merge `world.X` writes into the snapshot.
-//!   6. Halt on `Effect::Exit`, at `max_steps`, or at a fixpoint.
-//!
-//! All input/output is via the FFI effects the program emits
-//! (LibCall, Println, ParseInt, …). There are no async event sources,
-//! no world-field plugins, no subscription scheduler, and no multi-FSM
-//! frontier — those were removed in the single-FSM teardown. The one
-//! piece of bridge machinery that remains is the **declarative FTI
-//! install** for typed resources (`win ∈ SDL_Window (…)`), run once at
-//! startup; see `install.rs`.
-
 use crate::effect_dispatch::DispatchContext;
 use crate::runtime::EvidentRuntime;
 use crate::core::Value;
@@ -31,14 +10,11 @@ mod seq_chains;
 mod state;
 mod toposort;
 
-// ── Public re-exports ────────────────────────────────────────
 pub use fsm::{MainShape, single_fsm, detect_main_shape, resolve_fsm};
 
-/// Tunables for the effect loop.
 #[derive(Debug, Clone)]
 pub struct LoopOpts {
-    /// Hard ceiling on iterations. Prevents infinite loops if a
-    /// program's halt condition never fires.
+
     pub max_steps: usize,
 }
 
@@ -46,25 +22,19 @@ impl Default for LoopOpts {
     fn default() -> Self { Self { max_steps: 10_000 } }
 }
 
-/// Result of running an effect-driven program.
 #[derive(Debug)]
 pub struct LoopResult {
     pub steps:       usize,
     pub final_state: Option<Value>,
     pub halted_clean: bool,
-    /// `Some(code)` iff an FSM emitted `Effect::Exit(code)` during the
-    /// run. Recorded at end-of-tick so co-scheduled effects complete
-    /// before halting.
+
     pub exit_code: Option<i32>,
 }
 
-/// Run the effect loop with a default dispatch context.
 pub fn run(rt: &EvidentRuntime, opts: &LoopOpts) -> Result<LoopResult, String> {
     run_with_ctx(rt, opts, &mut DispatchContext::new())
 }
 
-/// Run with a caller-supplied dispatch context. Test entry point —
-/// lets callers swap in fake stdin/stdout.
 pub fn run_with_ctx(
     rt: &EvidentRuntime,
     opts: &LoopOpts,
@@ -72,13 +42,6 @@ pub fn run_with_ctx(
 ) -> Result<LoopResult, String> {
     let fsm = single_fsm(rt)?;
 
-    // ── Declarative FTI install ───────────────────────────────────
-    // Each typed-resource parameter with an `install ∈ Seq(InstallStep)`
-    // body member (e.g. `win ∈ SDL_Window (…)`) runs its install Seq
-    // once, here, against the SAME DispatchContext the per-tick loop
-    // uses — so libffi handles (window ptr, renderer ptr) created at
-    // install are visible to per-tick `ArgHandle` lookups. The bound
-    // fields land in the world snapshot under `<fsm>.<param>.<field>`.
     let mut world_snapshot: std::collections::HashMap<String, Value> =
         std::collections::HashMap::new();
     for (param_name, type_name, pins) in &fsm.install_params {

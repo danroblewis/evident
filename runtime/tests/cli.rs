@@ -1,11 +1,8 @@
-//! End-to-end tests for the CLI binary. Spawns the compiled binary
-//! and checks its stdout / exit code.
-
 use std::io::Write;
 use std::process::Command;
 
 fn bin() -> &'static str {
-    // cargo test sets CARGO_BIN_EXE_<name> for binaries in the package.
+
     env!("CARGO_BIN_EXE_evident")
 }
 
@@ -17,14 +14,12 @@ fn write_tmp(name: &str, body: &str) -> std::path::PathBuf {
     path
 }
 
-
 #[test]
 fn cli_test_runs_sat_unsat_claims() {
     let path = write_tmp("testfile",
         "claim sat_ok\n    n ∈ Nat\n    n > 0\n\
          claim unsat_bad\n    n ∈ Nat\n    n > 10\n    n < 3\n");
-    // Need the file name to start with `test_` so the discovery picks
-    // it up when given the directory. Move it.
+
     let parent = path.parent().unwrap();
     let renamed = parent.join(format!("test_{}.ev", std::process::id()));
     std::fs::rename(&path, &renamed).unwrap();

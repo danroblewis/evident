@@ -1,14 +1,3 @@
-//! Field-wise operator lifting on record-typed values.
-//!
-//! `a = b` between two values of the same record type expands to a
-//! conjunction over fields (`a.x = b.x ∧ a.y = b.y`). Same idea for
-//! `<`, `≤`, `>`, `≥` (componentwise) and `≠` (some field differs,
-//! disjunction). This frees users from hand-writing field equations
-//! when a single comparison already says it.
-//!
-//! Pinning the behavior here so the hook in `translate_bool` doesn't
-//! regress when the comparison arms get reshuffled.
-
 use evident_runtime::{EvidentRuntime, Value};
 
 const VEC2: &str = "type Vec2\n    x ∈ Real\n    y ∈ Real\n";
@@ -24,8 +13,6 @@ fn close(v: Option<&Value>, expected: f64, label: &str) {
     }
 }
 
-/// Baseline: `a = b` lifts componentwise. Pinning a's fields forces
-/// b's to match, proving the expansion produced equality on each.
 #[test]
 fn record_eq_two_vec2() {
     let mut rt = EvidentRuntime::new();
@@ -37,7 +24,6 @@ fn record_eq_two_vec2() {
     close(r.bindings.get("b.y"), 2.71, "b.y");
 }
 
-/// `a ≠ b` is *disjunctive* — only one field needs to differ.
 #[test]
 fn record_neq_disjunctive_some_field_differs() {
     let mut rt = EvidentRuntime::new();
@@ -56,8 +42,6 @@ fn record_neq_unsat_when_all_fields_equal() {
     assert!(!r.satisfied, "all fields equal → a ≠ b must be UNSAT");
 }
 
-/// `a < b` is *componentwise* — every field must be strictly less.
-/// Equal-on-one-axis case must be UNSAT.
 #[test]
 fn record_lt_componentwise_unsat_when_one_axis_equal() {
     let mut rt = EvidentRuntime::new();
@@ -76,8 +60,6 @@ fn record_lt_sat_when_all_axes_strict() {
     assert!(r.satisfied);
 }
 
-/// The headline use case: `min ≤ pos ≤ max`. Verifies chained
-/// comparison composes correctly with record lift.
 #[test]
 fn record_chained_in_box() {
     let mut rt = EvidentRuntime::new();
@@ -89,8 +71,6 @@ fn record_chained_in_box() {
     close(r.bindings.get("pos.y"), 7.5, "pos.y");
 }
 
-/// Out-of-box must be UNSAT. Verifies the chain isn't just folding
-/// to `true` somewhere.
 #[test]
 fn record_chained_in_box_violation() {
     let mut rt = EvidentRuntime::new();
@@ -100,7 +80,6 @@ fn record_chained_in_box_violation() {
     assert!(!r.satisfied, "pos.y = 99 is outside box max.y = 10");
 }
 
-/// Vec3 lift pins three fields per comparison instead of two.
 #[test]
 fn record_eq_two_vec3() {
     let mut rt = EvidentRuntime::new();
@@ -113,10 +92,6 @@ fn record_eq_two_vec3() {
     close(r.bindings.get("b.z"), 3.0, "b.z");
 }
 
-/// Nested records: `outer1 = outer2` where Outer contains a Vec2.
-/// The flat-leaf encoding makes nested lift fall out for free —
-/// `outer.inner.x` and `outer.inner.y` are already top-level keys
-/// under the `outer.` prefix scan.
 #[test]
 fn record_lift_nested_struct() {
     let mut rt = EvidentRuntime::new();
@@ -129,8 +104,6 @@ fn record_lift_nested_struct() {
     close(r.bindings.get("b.tag"), 9.0, "b.tag");
 }
 
-/// Lift mixed with explicit per-field constraints. The lift's
-/// conjunction must AND with the rest of the body, not replace it.
 #[test]
 fn record_lift_combined_with_field_constraints() {
     let mut rt = EvidentRuntime::new();
@@ -147,9 +120,6 @@ fn record_lift_combined_with_field_constraints() {
     assert!(bx >= 3.0 && bx >= 1.0, "b.x must satisfy both ≥ 3.0 and ≥ a.x; got {bx}");
 }
 
-/// Lift over Int-typed fields too — the per-leaf recursion goes
-/// through `translate_int`, not just Real. Pins both axes via the
-/// lifted `=`.
 #[test]
 fn record_lift_with_int_fields() {
     let mut rt = EvidentRuntime::new();

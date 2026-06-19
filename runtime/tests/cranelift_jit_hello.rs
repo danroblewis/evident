@@ -1,10 +1,3 @@
-//! End-to-end Cranelift JIT codegen test.
-//!
-//! Build a Z3Program for hello.ev with unpinned state, then
-//! compile it to native code via Cranelift. Call the compiled
-//! function with state=Init and state=Done; verify the outputs
-//! match the slow-path Z3 result.
-
 use std::collections::HashMap;
 use evident_runtime::{EvidentRuntime, Value};
 use evident_runtime::z3_eval::{simplify_assertions, extract_program};
@@ -42,12 +35,10 @@ claim hello
     let program = extract_program(&simplified, &outputs).expect("extract");
     eprintln!("program has {} steps, {} predicates", program.steps.len(), program.predicates.len());
 
-    // Compile to native.
     let jit = compile_program(&program, enums, datatypes).expect("compile_program");
     eprintln!("inputs: {:?}", jit.input_offsets.keys().collect::<Vec<_>>());
     eprintln!("outputs: {:?}", jit.output_offsets.keys().collect::<Vec<_>>());
 
-    // Call with state=Init.
     let mut env = HashMap::new();
     env.insert("state".to_string(), Value::Enum {
         enum_name: "HelloState".into(),
@@ -62,7 +53,6 @@ claim hello
         fields:    vec![],
     }));
 
-    // Call with state=Done.
     let mut env2 = HashMap::new();
     env2.insert("state".to_string(), Value::Enum {
         enum_name: "HelloState".into(),
@@ -76,11 +66,3 @@ claim hello
         fields:    vec![],
     }));
 }
-
-// Note: the older int-arithmetic JIT test was removed in
-// Round 26 because the JIT was rewritten to produce Value
-// outputs via Rust helper callbacks (needed for Mario's
-// effects-producer pattern). Int-arithmetic codegen — emitting
-// `iadd` / `imul` for computed payload values — lands in
-// Round 27. Until then, scalar-int outputs fall back to the
-// Z3 AST walker.

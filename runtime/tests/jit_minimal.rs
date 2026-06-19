@@ -1,7 +1,3 @@
-//! Minimal isolation test: just JIT-compile a single 0-arity
-//! enum output (state_next = Done) and verify it returns the
-//! right Value. Helps isolate which helper call breaks.
-
 use std::collections::HashMap;
 use evident_runtime::{EvidentRuntime, Value};
 use evident_runtime::z3_eval::{simplify_assertions, extract_program};

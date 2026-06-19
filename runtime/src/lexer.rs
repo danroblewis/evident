@@ -1,15 +1,6 @@
-//! Tokenize Evident source. Handles the Unicode operators directly
-//! (no separate normalization pass).
-//!
-//! Indentation is significant — every newline emits a `Newline` token,
-//! and the parser tracks indent level by counting leading whitespace
-//! on the next non-blank line. We don't emit explicit Indent/Dedent
-//! tokens here; the parser handles indentation as part of statement
-//! recognition.
-
 #[derive(Debug, Clone, PartialEq)]
 pub enum Token {
-    // Identifiers and literals
+
     Ident(String),
     Int(i64),
     Real(f64),
@@ -17,66 +8,60 @@ pub enum Token {
     True,
     False,
 
-    // Keywords
     Schema,
     Claim,
     Type,
     Subclaim,
     Fsm,
     External,
-    Enum,         // enum Day = Mon | Tue | …
-    Match,        // match scrutinee \n   Pattern ⇒ body  ...
-    Matches,      // e matches Pattern — Bool, true iff e's variant matches
-    Import,       // import "path"
-    In,           // ∈ or "in"
-    NotIn,        // ∉ (U+2209) — non-membership; desugars to ¬(lhs ∈ rhs)
-    ContainsRev,  // ∋ (U+220B) — reverse membership; desugars to (rhs ∈ lhs)
+    Enum,
+    Match,
+    Matches,
+    Import,
+    In,
+    NotIn,
+    ContainsRev,
 
-    // Operators
-    Eq,           // =
-    Neq,          // ≠ or "!="
-    Lt,           // <
-    Le,           // ≤ or "<="
-    Gt,           // >
-    Ge,           // ≥ or ">="
-    Plus,         // +
-    PlusPlus,     // ++ (string concatenation)
-    Minus,        // -
-    Star,         // *
-    Slash,        // /
+    Eq,
+    Neq,
+    Lt,
+    Le,
+    Gt,
+    Ge,
+    Plus,
+    PlusPlus,
+    Minus,
+    Star,
+    Slash,
 
-    And,          // ∧
-    Or,           // ∨
-    Not,          // ¬
-    Implies,      // ⇒
+    And,
+    Or,
+    Not,
+    Implies,
 
-    LParen,       // (
-    RParen,       // )
-    LBrace,       // {  (set / range literal)
-    RBrace,       // }
-    LBracket,     // [  (sequence indexing)
-    RBracket,     // ]
-    LSeq,         // ⟨  (Unicode U+27E8) sequence literal open
-    RSeq,         // ⟩  (Unicode U+27E9) sequence literal close
-    Hash,         // #  (cardinality prefix)
-    Comma,        // ,
-    Pipe,         // |  (enum variant separator)
-    Question,     // ?  (ternary conditional: cond ? then : else)
-    DotDot,       // .. (range literal)
-    Dot,          // .  (sub-schema field access)
-    Colon,        // :  (quantifier body separator)
-    ForAll,       // ∀
-    Exists,       // ∃
-    MapsTo,       // ↦ or "mapsto"
+    LParen,
+    RParen,
+    LBrace,
+    RBrace,
+    LBracket,
+    RBracket,
+    LSeq,
+    RSeq,
+    Hash,
+    Comma,
+    Pipe,
+    Question,
+    DotDot,
+    Dot,
+    Colon,
+    ForAll,
+    Exists,
+    MapsTo,
 
-    // Layout
     Newline,
-    /// Number of leading-space columns on a new logical line. Emitted
-    /// after a Newline (and at the start of input) so the parser can
-    /// derive Indent/Dedent.
+
     Indent(usize),
 
-    // Marker for end-of-input
     Eof,
 }
 
@@ -100,24 +85,15 @@ pub fn tokenize(src: &str) -> Result<Vec<Token>, LexError> {
     let mut chars = src.chars().peekable();
     let mut line = 1usize;
     let mut col = 1usize;
-    // Lexer state: at_line_start=true causes the next non-blank stretch
-    // to count leading whitespace and emit an Indent(n). The initial
-    // value is true so the very first line gets an Indent.
+
     let mut at_line_start = true;
     let mut current_indent;
-    // Bracket-nesting depth: incremented on `(`, `[`, `{`, `⟨`,
-    // decremented on the matching closers. While > 0, newlines are
-    // consumed silently and Indent tracking is suspended — so a long
-    // expression can be split across multiple lines inside any group
-    // without the parser seeing intervening Newline / Indent tokens.
-    // Mirrors Lark's default "newlines inside parens are ignored"
-    // behavior, which the Python parser inherits for free. See
-    // `parser/src/grammar.lark` line 33 for the corresponding note.
+
     let mut paren_depth: usize = 0;
 
     while let Some(&c) = chars.peek() {
         if at_line_start {
-            // Count leading spaces (treat tab as 4 spaces).
+
             current_indent = 0;
             while let Some(&ch) = chars.peek() {
                 match ch {
@@ -126,7 +102,7 @@ pub fn tokenize(src: &str) -> Result<Vec<Token>, LexError> {
                     _    => break,
                 }
             }
-            // Skip blank lines and comment-only lines without emitting an Indent.
+
             if let Some(&ch) = chars.peek() {
                 if ch == '\n' {
                     chars.next(); line += 1; col = 1;
@@ -134,11 +110,11 @@ pub fn tokenize(src: &str) -> Result<Vec<Token>, LexError> {
                     continue;
                 }
                 if ch == '-' {
-                    // Look ahead for second '-'
+
                     let mut clone = chars.clone();
                     clone.next();
                     if clone.peek() == Some(&'-') {
-                        // Comment: consume to newline.
+
                         while let Some(&ch) = chars.peek() {
                             if ch == '\n' { break; }
                             chars.next(); col += 1;
@@ -147,7 +123,7 @@ pub fn tokenize(src: &str) -> Result<Vec<Token>, LexError> {
                     }
                 }
             } else {
-                // EOF after some indent.
+
                 break;
             }
             tokens.push(Token::Indent(current_indent));
@@ -164,18 +140,14 @@ pub fn tokenize(src: &str) -> Result<Vec<Token>, LexError> {
                     tokens.push(Token::Newline);
                     at_line_start = true;
                 }
-                // Else: silently consume — we're mid-expression inside
-                // a (..)/[..]/{..}/⟨..⟩ group. Don't emit Newline;
-                // don't trigger the at_line_start indent-counting block
-                // on the next iteration. Leading whitespace on the
-                // continuation line falls through to the ' ' / '\t' arm.
+
             }
             '-' => {
-                // `--` comment, or unary/binary minus. Look at second char.
+
                 let mut clone = chars.clone();
                 clone.next();
                 if clone.peek() == Some(&'-') {
-                    // Skip to end of line (don't consume the newline).
+
                     while let Some(&ch) = chars.peek() {
                         if ch == '\n' { break; }
                         chars.next(); col += 1;
@@ -186,9 +158,7 @@ pub fn tokenize(src: &str) -> Result<Vec<Token>, LexError> {
                 }
             }
             '"' => {
-                // Double-quoted string. Supports \" and \\ escapes; everything
-                // else is literal. Single-line only — newlines inside are an
-                // error (matches the Python grammar).
+
                 chars.next(); col += 1;
                 let mut s = String::new();
                 loop {
@@ -224,9 +194,7 @@ pub fn tokenize(src: &str) -> Result<Vec<Token>, LexError> {
                         chars.next(); col += 1;
                     } else { break; }
                 }
-                // Real literal: `<digits>.<digits>`. Only consume the dot
-                // if it's followed by a digit — otherwise it's the field-
-                // access operator (`3.foo` stays Int(3) Dot Ident(foo)).
+
                 if chars.peek() == Some(&'.') {
                     let mut clone = chars.clone();
                     clone.next();
@@ -294,8 +262,7 @@ pub fn tokenize(src: &str) -> Result<Vec<Token>, LexError> {
             }
             '=' => {
                 chars.next(); col += 1;
-                // ASCII `=>` → Implies (matches Unicode ⇒). Used in
-                // implies-blocks and trace-step assertions.
+
                 if chars.peek() == Some(&'>') {
                     chars.next(); col += 1;
                     tokens.push(Token::Implies);
@@ -330,21 +297,21 @@ pub fn tokenize(src: &str) -> Result<Vec<Token>, LexError> {
                     return Err(LexError { message: "unexpected '!'".into(), line, col });
                 }
             }
-            '\u{2208}' => { chars.next(); col += 1; tokens.push(Token::In); }      // ∈
-            '\u{2209}' => { chars.next(); col += 1; tokens.push(Token::NotIn); }   // ∉
-            '\u{220B}' => { chars.next(); col += 1; tokens.push(Token::ContainsRev); } // ∋
-            '\u{2227}' => { chars.next(); col += 1; tokens.push(Token::And); }     // ∧
-            '\u{2228}' => { chars.next(); col += 1; tokens.push(Token::Or); }      // ∨
-            '\u{00AC}' => { chars.next(); col += 1; tokens.push(Token::Not); }     // ¬
-            '\u{21D2}' => { chars.next(); col += 1; tokens.push(Token::Implies); } // ⇒
-            '\u{2264}' => { chars.next(); col += 1; tokens.push(Token::Le); }      // ≤
-            '\u{2265}' => { chars.next(); col += 1; tokens.push(Token::Ge); }      // ≥
-            '\u{2260}' => { chars.next(); col += 1; tokens.push(Token::Neq); }     // ≠
-            '\u{2200}' => { chars.next(); col += 1; tokens.push(Token::ForAll); }  // ∀
-            '\u{2203}' => { chars.next(); col += 1; tokens.push(Token::Exists); }  // ∃
-            '\u{21A6}' => { chars.next(); col += 1; tokens.push(Token::MapsTo); }  // ↦
-            '\u{27E8}' => { chars.next(); col += 1; tokens.push(Token::LSeq); paren_depth += 1; }    // ⟨
-            '\u{27E9}' => { chars.next(); col += 1; tokens.push(Token::RSeq); paren_depth = paren_depth.saturating_sub(1); }    // ⟩
+            '\u{2208}' => { chars.next(); col += 1; tokens.push(Token::In); }
+            '\u{2209}' => { chars.next(); col += 1; tokens.push(Token::NotIn); }
+            '\u{220B}' => { chars.next(); col += 1; tokens.push(Token::ContainsRev); }
+            '\u{2227}' => { chars.next(); col += 1; tokens.push(Token::And); }
+            '\u{2228}' => { chars.next(); col += 1; tokens.push(Token::Or); }
+            '\u{00AC}' => { chars.next(); col += 1; tokens.push(Token::Not); }
+            '\u{21D2}' => { chars.next(); col += 1; tokens.push(Token::Implies); }
+            '\u{2264}' => { chars.next(); col += 1; tokens.push(Token::Le); }
+            '\u{2265}' => { chars.next(); col += 1; tokens.push(Token::Ge); }
+            '\u{2260}' => { chars.next(); col += 1; tokens.push(Token::Neq); }
+            '\u{2200}' => { chars.next(); col += 1; tokens.push(Token::ForAll); }
+            '\u{2203}' => { chars.next(); col += 1; tokens.push(Token::Exists); }
+            '\u{21A6}' => { chars.next(); col += 1; tokens.push(Token::MapsTo); }
+            '\u{27E8}' => { chars.next(); col += 1; tokens.push(Token::LSeq); paren_depth += 1; }
+            '\u{27E9}' => { chars.next(); col += 1; tokens.push(Token::RSeq); paren_depth = paren_depth.saturating_sub(1); }
             '|' => { chars.next(); col += 1; tokens.push(Token::Pipe); }
             '?' => { chars.next(); col += 1; tokens.push(Token::Question); }
             other => {
@@ -396,7 +363,7 @@ mod tests {
     fn lex_simple_schema() {
         let src = "schema SimpleNat\n    n ∈ Nat\n    n > 5\n";
         let toks = tokenize(src).unwrap();
-        // Expect: Indent(0) schema SimpleNat \n Indent(4) n ∈ Nat \n Indent(4) n > 5 \n Eof
+
         assert!(matches!(toks[0], Token::Indent(0)));
         assert!(matches!(toks[1], Token::Schema));
         assert!(matches!(&toks[2], Token::Ident(s) if s == "SimpleNat"));
@@ -406,7 +373,7 @@ mod tests {
     fn lex_unicode_operators() {
         let toks = tokenize("a ∈ Set ∧ b ≤ 5 ⇒ ¬c").unwrap();
         let kinds: Vec<_> = toks.iter().filter(|t| !matches!(t, Token::Indent(_))).cloned().collect();
-        // a ∈ Set ∧ b ≤ 5 ⇒ ¬ c Eof
+
         assert!(matches!(kinds[1], Token::In));
         assert!(matches!(kinds[3], Token::And));
         assert!(matches!(kinds[5], Token::Le));

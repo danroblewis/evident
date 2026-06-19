@@ -1,10 +1,3 @@
-//! State `Value` → Z3 `Datatype` encoding.
-//!
-//! Re-encodes a decoded state `Value` back into a Z3 `Datatype` so the
-//! next tick can pin it. Handles nullary AND payload variants by
-//! recursively encoding each field — primitive payloads as Z3 literals,
-//! nested enum payloads recursively.
-
 use crate::runtime::EvidentRuntime;
 use crate::core::Value;
 
@@ -19,8 +12,7 @@ pub(super) fn encode_state_value(rt: &EvidentRuntime, v: &Value) -> Option<z3::a
     if fields.is_empty() {
         return ctor.apply(&[]).as_datatype();
     }
-    // Payload — encode each field as a Dynamic so vtable dispatch
-    // through &dyn Ast works correctly.
+
     let ctx = rt.z3_context();
     let owned: Vec<Dynamic<'static>> = fields.iter().filter_map(|f| {
         let dyn_v: Dynamic<'static> = match f {

@@ -1,21 +1,6 @@
-//! `MainShape` + the param-resolution walk that turns a `fsm`-keyword'd
-//! schema into the slot-resolved record the loop consumes.
-//!
-//! The set of FSMs is determined by the `fsm` parse-time keyword, NOT
-//! by walking the body looking for "fsm-shaped" structure. The body
-//! walk here is for *resolving* which slots an fsm uses (state pair,
-//! last_results, effects, world, install params), all of which are
-//! Option because the unified state model lets authors opt out.
-
 use crate::core::ast::BodyItem;
 use crate::runtime::EvidentRuntime;
 
-/// Resolved param info for one `fsm`-keyword'd schema. The body walk
-/// resolves which slots an fsm uses (state pair, last_results,
-/// effects, world, install params); these are Option because the
-/// unified state model lets authors opt out — a pure-counter fsm has
-/// no state pair, no effects, no last_results, just plain variables
-/// coordinated via `_var` time-shift.
 #[derive(Clone)]
 pub struct MainShape {
     pub claim_name:       String,
@@ -24,19 +9,13 @@ pub struct MainShape {
     pub state_type:       Option<String>,
     pub last_results_var: Option<String>,
     pub effects_var:      Option<String>,
-    /// Name of the `world` membership, if this FSM reads world.
+
     pub world_var:        Option<String>,
-    /// Name of the `world_next` membership, if this FSM writes world.
-    /// After the `_world`/`world` time-shift desugar (`unify_world_syntax`),
-    /// a world-touching FSM has both: `world.X` reads the previous
-    /// tick's snapshot, `world_next.X` is its write for this tick.
+
     pub world_next_var:   Option<String>,
-    /// Type name of the world record, if `world_var` is set.
+
     pub world_type:       Option<String>,
-    /// Typed-resource parameters with a declarative `install ∈
-    /// Seq(InstallStep)` body member: `(param_name, type_name, pins)`.
-    /// The runtime runs the install Seq once at startup and exposes
-    /// the bound fields via per-FSM `<fsm>.<param>.<field>` keys.
+
     pub install_params: Vec<(String, String, crate::core::ast::Pins)>,
 }
 
@@ -44,7 +23,6 @@ pub fn detect_main_shape(rt: &EvidentRuntime) -> Option<MainShape> {
     resolve_fsm(rt, "main")
 }
 
-/// True iff `type_name`'s body declares a declarative install Seq.
 fn has_declarative_install(rt: &EvidentRuntime, type_name: &str) -> bool {
     rt.get_schema(type_name)
         .map(|s| {
@@ -56,9 +34,6 @@ fn has_declarative_install(rt: &EvidentRuntime, type_name: &str) -> bool {
         .unwrap_or(false)
 }
 
-/// Resolve a single schema's FSM param info. Returns Some only when
-/// the schema is declared with the `fsm` keyword (and isn't
-/// `external` — those are Rust-side bridge contracts, not user FSMs).
 pub fn resolve_fsm(rt: &EvidentRuntime, claim_name: &str) -> Option<MainShape> {
     let claim = rt.get_schema(claim_name)?;
     if !matches!(claim.keyword, crate::core::ast::Keyword::Fsm) {
@@ -74,10 +49,7 @@ pub fn resolve_fsm(rt: &EvidentRuntime, claim_name: &str) -> Option<MainShape> {
     let mut world_next_var: Option<String> = None;
     let mut world_type: Option<String> = None;
     let mut install_params: Vec<(String, String, crate::core::ast::Pins)> = Vec::new();
-    // Walk this claim's body PLUS the bodies of any `..PassthroughClaim`
-    // so a declarative library (e.g. packages/sdl/scene.ev's
-    // `..SDLScene`) contributes its state-machine vars to the outer
-    // claim.
+
     let mut all_items: Vec<&BodyItem> = Vec::new();
     let mut visited: std::collections::HashSet<String> = std::collections::HashSet::new();
     fn collect<'a>(
@@ -91,12 +63,7 @@ pub fn resolve_fsm(rt: &EvidentRuntime, claim_name: &str) -> Option<MainShape> {
             if let BodyItem::Passthrough(name) = item {
                 if visited.insert(name.clone()) {
                     if let Some(sub) = rt.get_schema(name) {
-                        // SAFETY: lifetime laundering — `sub.body` is owned
-                        // by `rt.schemas` and `rt` is borrowed for `'a`; the
-                        // map isn't mutated through interior mutability in
-                        // this call graph, so the `&SchemaDecl` lives as long
-                        // as `rt`. (Same invariant the prior multi-FSM code
-                        // relied on.)
+
                         let body: &'a [BodyItem] = unsafe {
                             std::mem::transmute::<&[BodyItem], &'a [BodyItem]>(&sub.body)
                         };
@@ -130,8 +97,7 @@ pub fn resolve_fsm(rt: &EvidentRuntime, claim_name: &str) -> Option<MainShape> {
                    && !type_name.starts_with("Seq(")
                    && !type_name.starts_with("Set(")
             {
-                // State-pair detection (same type, two vars, one
-                // ending in `_next`). Excludes world which matched above.
+
                 if name.ends_with("_next") {
                     let base = &name[..name.len() - 5];
                     if let Some((b, _, _)) = &state_pair {
@@ -170,10 +136,6 @@ pub fn resolve_fsm(rt: &EvidentRuntime, claim_name: &str) -> Option<MainShape> {
     })
 }
 
-/// Resolve THE single `fsm`-keyword'd schema (the one-FSM-per-program
-/// invariant). Claims named `sat_*` / `unsat_*` are static assertions,
-/// not FSMs, and are skipped. Errors if zero or more than one
-/// FSM-shaped top-level claim exists.
 pub fn single_fsm(rt: &EvidentRuntime) -> Result<MainShape, String> {
     let mut fsms: Vec<MainShape> = rt.schema_names()
         .map(|s| s.to_string())

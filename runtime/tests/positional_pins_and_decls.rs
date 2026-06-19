@@ -1,14 +1,3 @@
-//! Three related features:
-//!   - Positional pins: `IVec2(20, 20)` uses field declaration order.
-//!   - Multi-name body decl: `x, y ∈ Int` declares both as Int.
-//!   - First-line param list: `type IVec2(x, y ∈ Int)` is shorthand
-//!     for declaring the fields on the schema header line and
-//!     establishes the canonical positional order.
-//!
-//! Pinning these so the parser disambiguation (named vs positional vs
-//! compound type) and the translator's positional-resolve path can't
-//! quietly regress.
-
 use evident_runtime::{EvidentRuntime, Value};
 
 #[test]
@@ -22,10 +11,6 @@ fn positional_pins_two_fields() {
     assert_eq!(r.bindings.get("v.y"), Some(&Value::Int(540)));
 }
 
-/// Positional follows declaration order, not alphabetical. Color's
-/// fields are r, g, b in that order — positional `(255, 128, 64)`
-/// must map r=255, g=128, b=64 (NOT b=255, g=128, r=64 if we'd
-/// sorted).
 #[test]
 fn positional_pins_follow_declaration_order_not_alphabetical() {
     let mut rt = EvidentRuntime::new();
@@ -38,8 +23,6 @@ fn positional_pins_follow_declaration_order_not_alphabetical() {
     assert_eq!(r.bindings.get("sky.b"), Some(&Value::Int(120)));
 }
 
-/// Partial positional: too few args pin the leading fields and
-/// leave the rest free. `IVec2(10)` pins only x; y stays unconstrained.
 #[test]
 fn positional_pins_partial_pins_leading_fields() {
     let mut rt = EvidentRuntime::new();
@@ -51,8 +34,6 @@ fn positional_pins_partial_pins_leading_fields() {
     assert_eq!(r.bindings.get("v.y"), Some(&Value::Int(99)));
 }
 
-/// Multi-name in the body: `x, y ∈ Int` declares two fields with
-/// the same type. Order preserved.
 #[test]
 fn multi_name_body_decl() {
     let mut rt = EvidentRuntime::new();
@@ -64,9 +45,6 @@ fn multi_name_body_decl() {
     assert_eq!(r.bindings.get("v.y"), Some(&Value::Int(11)));
 }
 
-/// First-line param list: `type IVec2(x, y ∈ Int)` declares fields on
-/// the header line. Equivalent to body declarations but more compact
-/// for short types.
 #[test]
 fn first_line_params_basic() {
     let mut rt = EvidentRuntime::new();
@@ -78,8 +56,6 @@ fn first_line_params_basic() {
     assert_eq!(r.bindings.get("v.y"), Some(&Value::Int(11)));
 }
 
-/// Mixed: first-line params with multiple groups of different types.
-/// `(x ∈ Int, y ∈ Bool)` — two groups, one name each, different types.
 #[test]
 fn first_line_params_mixed_types() {
     let mut rt = EvidentRuntime::new();
@@ -91,8 +67,6 @@ fn first_line_params_mixed_types() {
     assert_eq!(r.bindings.get("m.y"), Some(&Value::Bool(true)));
 }
 
-/// First-line + body: header declares some fields, body adds more.
-/// Order: header items first, body items after.
 #[test]
 fn first_line_params_plus_body() {
     let mut rt = EvidentRuntime::new();
@@ -105,8 +79,6 @@ fn first_line_params_plus_body() {
     assert_eq!(r.bindings.get("m.c"), Some(&Value::Bool(false)));
 }
 
-/// Named pins still work alongside positional — disambiguation is on
-/// `mapsto` keyword/symbol presence after the first arg.
 #[test]
 fn named_pins_still_work_after_positional_added() {
     let mut rt = EvidentRuntime::new();
@@ -120,9 +92,6 @@ fn named_pins_still_work_after_positional_added() {
     assert_eq!(r.bindings.get("b.y"), Some(&Value::Int(99)));
 }
 
-/// Compound types (`Seq(Int)`) still parse correctly — they're not
-/// confused with positional pins because Seq/Set/Bag/Map are
-/// hardcoded compound heads.
 #[test]
 fn compound_types_still_parse() {
     let mut rt = EvidentRuntime::new();

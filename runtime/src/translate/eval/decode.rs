@@ -1,23 +1,3 @@
-//! Z3 model → Rust `Value` decoders. Pulled out of `evaluate*` so
-//! every entry point shares one extraction implementation.
-//!
-//!   * `extract_binding`        — top-level dispatcher: take one
-//!                                 `(name, Var)` entry from the env
-//!                                 and stick its model value into the
-//!                                 bindings map.
-//!   * `extract_enum_value`     — walk a Datatype's variants, find
-//!                                 the active one via its tester, and
-//!                                 recursively decode each payload
-//!                                 field (handles Seq payloads via
-//!                                 the two helpers below).
-//!   * `extract_seq_enum`       — read a `Seq(EnumType)` value out of
-//!                                 the model: walk arr[0..len], decode
-//!                                 each element via `extract_enum_value`.
-//!   * `extract_seq_payload`,
-//!     `extract_internal_cons_seq`
-//!                              — file-private helpers consumed only
-//!                                 by `extract_enum_value`.
-
 use std::collections::HashMap;
 use z3::ast::Int;
 use z3::Context;
@@ -26,9 +6,6 @@ use crate::core::{EnumRegistry, Value, Var};
 use super::super::extract::{extract_seq, extract_seq_composite, extract_set, unescape_z3_string};
 use super::solver::real_value_to_f64;
 
-/// Pull one variable's value out of the model into the bindings map.
-/// Mirrors the inline match in `evaluate`'s SAT branch — extracted so
-/// other evaluate variants don't have to duplicate it.
 pub(crate) fn extract_binding(
     name: &str, var: &Var<'static>, model: &z3::Model<'_>, ctx: &'static Context,
     bindings: &mut HashMap<String, Value>,
@@ -72,7 +49,7 @@ pub(crate) fn extract_binding(
                 bindings.insert(name.to_string(), v);
             }
         }
-        Var::DatatypeSetVar { .. } => { /* unsupported in v1 */ }
+        Var::DatatypeSetVar { .. } => {  }
         Var::DatatypeSeqVar { arr, len, dt, fields, type_name } => {
             let extracted = if fields.is_empty() {
                 extract_seq_enum(arr, len, type_name, *dt, model, ctx, enums)
@@ -88,17 +65,11 @@ pub(crate) fn extract_binding(
                 bindings.insert(name.to_string(), v);
             }
         }
-        Var::EnumValue { .. } => { /* literal */ }
-        Var::EnumCtor { .. }  => { /* constructor */ }
+        Var::EnumValue { .. } => {  }
+        Var::EnumCtor { .. }  => {  }
     }
 }
 
-/// Extract an enum-typed Z3 const from the model. Walks the
-/// DatatypeSort's variants looking for the one whose `tester` returns
-/// true on the model-evaluated value, then recursively extracts each
-/// payload field. Recursion handles self-referential enums — the
-/// EnumRegistry is consulted to find the field's enum (by type name)
-/// when a payload field is itself an enum-typed value.
 pub(super) fn extract_enum_value<'ctx>(
     ast: &z3::ast::Datatype<'ctx>,
     enum_name: &str,
@@ -108,7 +79,7 @@ pub(super) fn extract_enum_value<'ctx>(
     enums: Option<&EnumRegistry>,
 ) -> Option<Value> {
     let evaluated = model.eval(ast, true)?;
-    // Find the active variant via its tester.
+
     let mut active_idx: Option<usize> = None;
     for (i, variant) in dt.variants.iter().enumerate() {
         let test = variant.tester.apply(&[&evaluated]).as_bool()?;
@@ -121,14 +92,6 @@ pub(super) fn extract_enum_value<'ctx>(
     let variant = &dt.variants[idx];
     let variant_name = variant.constructor.name();
 
-    // Look up the variant's declared field types so we can route each
-    // accessor's Dynamic through the right `as_int` / `as_bool` /
-    // `as_string` extractor (or recurse for nested enums).
-    //
-    // Seq(T) payload fields are two-accessor-expanded in the Z3
-    // datatype (one logical field → arr accessor + len accessor),
-    // so we maintain a separate physical accessor offset that
-    // advances by 1 for primitive/enum fields and by 2 for Seq.
     let mut field_values: Vec<Value> = Vec::new();
     if let Some(reg) = enums {
         if let Some((_, decl_variants)) = reg.by_name.borrow().get(enum_name) {
@@ -136,9 +99,7 @@ pub(super) fn extract_enum_value<'ctx>(
                 let mut acc_idx: usize = 0;
                 for decl_field in decl_variant.fields.iter() {
                     if let Some(inner) = crate::core::parse_seq_type(&decl_field.type_name) {
-                        // Internal-Cons backing: single Datatype
-                        // accessor; walk the __SeqOf_T chain to
-                        // recover the elements.
+
                         let helper_name = crate::core::internal_cons_helper_name(inner);
                         let has_helper = reg.by_name.borrow().contains_key(&helper_name);
                         if has_helper {
@@ -152,7 +113,7 @@ pub(super) fn extract_enum_value<'ctx>(
                             acc_idx += 1;
                             continue;
                         }
-                        // Two-accessor expansion: arr at acc_idx, len at acc_idx+1.
+
                         let arr_acc = &variant.accessors[acc_idx];
                         let len_acc = &variant.accessors[acc_idx + 1];
                         let arr_dyn = arr_acc.apply(&[&evaluated]);
@@ -184,7 +145,7 @@ pub(super) fn extract_enum_value<'ctx>(
                             .and_then(|r| model.eval(&r, true))
                             .and_then(|x| x.as_real())
                             .map(|(num, den)| Value::Real(real_value_to_f64(num, den))),
-                        // Self-reference or another enum: recurse.
+
                         ref_type => {
                             let target: &str = if ref_type == enum_name { enum_name }
                                                else { ref_type };
@@ -213,11 +174,6 @@ pub(super) fn extract_enum_value<'ctx>(
     })
 }
 
-/// Extract a Seq-typed enum-variant payload field given the (arr,
-/// len) pair produced by the two-accessor expansion. Routes to
-/// `extract_seq` for primitive element types or `extract_seq_enum`
-/// for enum elements. Used by `extract_enum_value` when it
-/// encounters a `Seq(T)` field in a variant's declared types.
 fn extract_seq_payload<'ctx>(
     inner_type: &str,
     arr_dyn: &z3::ast::Dynamic<'ctx>,
@@ -242,8 +198,7 @@ fn extract_seq_payload<'ctx>(
             super::super::extract::extract_seq(&arr, &len, SeqElem::Str, model, ctx)
         }
         enum_type => {
-            // Enum element: look up the DatatypeSort and walk
-            // arr[0..len], calling extract_enum_value per element.
+
             let reg = enums?;
             let dt = reg.by_name.borrow().get(enum_type).map(|(d, _)| *d)?;
             let arr = arr_dyn.as_array()?;
@@ -252,14 +207,6 @@ fn extract_seq_payload<'ctx>(
     }
 }
 
-/// Walk a `__SeqOf_T`-shaped Cons chain in the model and extract
-/// the element list. Used by `extract_enum_value` when a variant
-/// field is `Seq(T)` and T has internal-Cons backing (the field is
-/// a single Datatype slot pointing to `__SeqOf_T`).
-///
-/// `__SeqOf_T` has variants `__Empty_T` (0-ary terminator) and
-/// `__Cell_T(head: T, tail: __SeqOf_T)`. Walk via tester +
-/// accessors until Empty.
 fn extract_internal_cons_seq<'ctx>(
     helper_name: &str,
     elem_type: &str,
@@ -285,7 +232,7 @@ fn extract_internal_cons_seq<'ctx>(
 
     let mut out: Vec<Value> = Vec::new();
     let mut cur = cons_dyn.clone();
-    // Cap iteration so a model bug can't make us walk forever.
+
     for _ in 0..10_000 {
         let is_empty_bool = empty_tester.apply(&[&cur]).as_bool()?;
         let is_empty = model.eval(&is_empty_bool, true)?.as_bool()?;
@@ -301,11 +248,6 @@ fn extract_internal_cons_seq<'ctx>(
     None
 }
 
-/// Read a `Seq(EnumType)` value out of the model. Mirror of
-/// `extract_seq_composite` but for enum-typed elements: each array
-/// element is a Datatype value of the enum's sort, decoded via
-/// `extract_enum_value` (which handles variant detection + payload
-/// recursion). Returned as `Value::SeqEnum(Vec<Value::Enum>)`.
 pub(in super::super) fn extract_seq_enum<'ctx>(
     arr: &z3::ast::Array<'ctx>,
     len: &Int<'ctx>,

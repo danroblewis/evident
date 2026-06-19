@@ -1,36 +1,11 @@
-//! Source-level desugarings: Seq concat flattening and unified-world
-//! syntax.
-
 use crate::core::RuntimeError;
 use crate::core::ast::SchemaDecl;
 use std::collections::HashMap;
 
-/// Desugar `Seq(T)` concatenation. The user writes
-///
-/// ```text
-/// effects = sky_effs ++ rect_effs ++ ⟨present_eff⟩ ++ input_effs
-/// ```
-///
-/// This pass walks the body twice: first to gather every
-/// `name = ⟨items⟩` binding into a name→items map, then to walk
-/// every body expression and rewrite each `Concat` subtree into a
-/// flat `SeqLit`. The flattener resolves operands by:
-///   * `SeqLit(items)` → use `items`.
-///   * `Identifier(name)` → look up `seq_lits[name]`.
-///   * `Concat(a, b)` → recurse.
-///
-/// If a `Concat` subtree fully resolves, it's replaced by a single
-/// `SeqLit` of the flattened items. Concat nested inside a `Ternary`,
-/// `Match` arm, claim-call argument, or further `Binary` ops is
-/// rewritten too. If any operand can't be resolved (an opaque Seq
-/// var coming from a claim invocation, for example), that subtree
-/// is left alone and the translator will fail with the usual
-/// "couldn't translate to Bool" error pointing at it.
 pub(super) fn desugar_seq_concat(s: &mut SchemaDecl) {
     use crate::core::ast::{BinOp, BodyItem, Expr};
     if s.external { return; }
 
-    // Pass 1: gather SeqLit bindings.
     let mut seq_lits: HashMap<String, Vec<Expr>> = HashMap::new();
     for item in &s.body {
         let BodyItem::Constraint(Expr::Binary(BinOp::Eq, lhs, rhs)) = item else { continue };
@@ -58,9 +33,6 @@ pub(super) fn desugar_seq_concat(s: &mut SchemaDecl) {
         }
     }
 
-    // Replace any Concat subexpression that fully flattens into a
-    // SeqLit. Walks the entire tree so Concat inside Ternary,
-    // Match arms, Call args, etc. all get rewritten.
     fn rewrite(
         e: &mut Expr,
         seq_lits: &HashMap<String, Vec<Expr>>,
@@ -98,7 +70,6 @@ pub(super) fn desugar_seq_concat(s: &mut SchemaDecl) {
         }
     }
 
-    // Pass 2: walk every body item's expressions and rewrite Concat in place.
     for item in s.body.iter_mut() {
         match item {
             BodyItem::Constraint(e) => rewrite(e, &seq_lits),
@@ -111,7 +82,6 @@ pub(super) fn desugar_seq_concat(s: &mut SchemaDecl) {
         }
     }
 
-    // Recurse into subclaims.
     for item in s.body.iter_mut() {
         if let BodyItem::SubclaimDecl(sub) = item {
             desugar_seq_concat(sub);
@@ -119,32 +89,11 @@ pub(super) fn desugar_seq_concat(s: &mut SchemaDecl) {
     }
 }
 
-/// Unified-state world syntax. When an fsm declares
-/// `world ∈ World` but NOT `world_next ∈ World`, the user is
-/// using the `_var` time-shift convention for shared state:
-///   * `world.X` reads/writes the current tick's value.
-///   * `_world.X` reads the previous tick's value.
-///
-/// The multi-FSM scheduler still expects the legacy writer
-/// pattern (`world` read-only + `world_next` write-only), so
-/// this pass rewrites the body in-place to that shape:
-///   * Every `world.X` reference (read or write) → `world_next.X`.
-///     That makes it one Z3 var that's both constrained and
-///     read within the same body — same semantics as the new
-///     model's "this-tick value."
-///   * Every `_world.X` reference → `world.X`. That's the
-///     scheduler's "read of previous snapshot" path.
-///   * Auto-inject `world_next ∈ World` so downstream
-///     translation sees the legacy shape.
-///
-/// External fsms are skipped (they don't carry user logic).
 pub(super) fn unify_world_syntax(s: &mut SchemaDecl) -> Result<(), RuntimeError> {
     use crate::core::ast::{BodyItem, Expr, Keyword, Pins};
     if !matches!(s.keyword, Keyword::Fsm) { return Ok(()); }
     if s.external { return Ok(()); }
 
-    // Find `world` membership type (if any) and whether
-    // `world_next` is already declared.
     let mut world_type: Option<String> = None;
     let mut has_world_next = false;
     for item in &s.body {
@@ -154,15 +103,8 @@ pub(super) fn unify_world_syntax(s: &mut SchemaDecl) -> Result<(), RuntimeError>
         }
     }
     let Some(world_ty) = world_type else { return Ok(()); };
-    if has_world_next { return Ok(()); }   // legacy pattern; leave alone.
+    if has_world_next { return Ok(()); }
 
-    // Only trigger the rewrite when the body actually uses
-    // `_world.X` references — that's the unambiguous signal that
-    // the user is in the unified-syntax world. Without this check,
-    // legacy read-only fsms (declare `world ∈ World`, no `world_next`,
-    // never write to world) would have their reads of `world.X`
-    // wrongly promoted to writes, and the scheduler's single-owner-
-    // per-field check would reject the program.
     fn uses_underscore_world(e: &Expr) -> bool {
         match e {
             Expr::Identifier(n) => n.starts_with("_world."),
@@ -195,10 +137,6 @@ pub(super) fn unify_world_syntax(s: &mut SchemaDecl) -> Result<(), RuntimeError>
     });
     if !uses_new_syntax { return Ok(()); }
 
-    // Rewrite Identifier strings in the body.
-    //   "_world.X" → "world.X"
-    //   "world.X"  → "world_next.X"
-    // Same walk so both happen in one pass without re-matching.
     fn rewrite_ident(name: &str) -> Option<String> {
         if let Some(rest) = name.strip_prefix("_world.") {
             return Some(format!("world.{rest}"));
@@ -237,12 +175,7 @@ pub(super) fn unify_world_syntax(s: &mut SchemaDecl) -> Result<(), RuntimeError>
             BodyItem::Constraint(e) => walk(e),
             BodyItem::ClaimCall { mappings, .. } =>
                 for m in mappings { walk(&mut m.value); },
-            // Pin values inside type-use Memberships also need
-            // rewriting — `mario ∈ MarioSprite (pos ↦ _world.player.pos)`
-            // desugars at translate time to `mario.pos =
-            // _world.player.pos`, which only resolves if the RHS has
-            // been promoted to `world.player.pos` like the rest of the
-            // body's `_world` reads.
+
             BodyItem::Membership { pins, .. } => match pins {
                 Pins::Named(named) => for m in named { walk(&mut m.value); },
                 Pins::Positional(vals) => for v in vals { walk(v); },
@@ -252,8 +185,6 @@ pub(super) fn unify_world_syntax(s: &mut SchemaDecl) -> Result<(), RuntimeError>
         }
     }
 
-    // Inject `world_next ∈ World` so the scheduler's writer-shape
-    // detection finds it.
     let insert_pos = s.param_count;
     s.body.insert(insert_pos, BodyItem::Membership {
         name: "world_next".to_string(),

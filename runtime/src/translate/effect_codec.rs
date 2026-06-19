@@ -1,43 +1,9 @@
-//! Effect / Result value codec: the bridge between the executor's
-//! Rust-side `Effect` / `EffectResult` / FFI-arg / install-step types
-//! and their Z3 datatype encodings.
-//!
-//! Two directions, both load-bearing for FFI-effect dispatch:
-//!
-//!   * **encode** (`effect_results_to_value`, `value_enum_to_datatype`)
-//!     — turn an `EffectResult` slice into a `Value::SeqEnum` of
-//!     `Result` enums (pinned into the multi-FSM scheduler's `given`
-//!     map), and re-encode a `Value::Enum` world field as a Z3
-//!     `Datatype` for the same `given` loop.
-//!
-//!   * **decode** (`decode_effect`, `decode_effect_list`,
-//!     `decode_result`, `decode_ffi_arg`/`decode_arg_list`,
-//!     `decode_install_step(_list)`, `decode_packed_field*`) — walk a
-//!     solved model's `Value::Enum` / `Value::SeqEnum` trees and
-//!     reconstruct the Rust `Effect`s, `Result`s, FFI args, and the
-//!     declarative `Seq(InstallStep)` install path the effect loop
-//!     dispatches.
-//!
-//! The shapes here mirror the `Effect` / `Result` / `FFIArg` /
-//! `InstallStep` / `PackedField` enums declared in `stdlib/runtime.ev`
-//! (and the typed-resource install path). Decoding is mechanical:
-//! match on `(enum_name, variant)`, check arity, decode each field.
-
 use z3::ast::{Ast, Datatype, Real};
 use z3::Context;
 
 use crate::core::Value;
 use crate::core::EnumRegistry;
 
-// ════════════════════════════════════════════════════════════════
-//  Encode: Effect/Result Values → Z3 datatypes
-// ════════════════════════════════════════════════════════════════
-
-/// Build a `Value::SeqEnum` of `Result` enums from a slice of
-/// `EffectResult`s. Used by the multi-FSM scheduler to pin
-/// `last_results ∈ Seq(Result)` via the `given` map; the
-/// `(DatatypeSeqVar, SeqEnum)` case in `assert_seq_given` does
-/// the per-index Z3 assertions.
 pub fn effect_results_to_value(items: &[crate::core::ast::EffectResult]) -> Value {
     let mk = |n: &str, fields: Vec<Value>| Value::Enum {
         enum_name: "Result".into(),
@@ -56,17 +22,6 @@ pub fn effect_results_to_value(items: &[crate::core::ast::EffectResult]) -> Valu
     Value::SeqEnum(elems)
 }
 
-/// Re-encode a `Value::Enum` tree as a Z3 `Datatype` value, looking
-/// up constructors against the supplied `EnumRegistry`. Returns
-/// `None` if the value isn't an Enum, the enum/variant isn't
-/// registered, or any payload field has a type that doesn't match
-/// what the constructor expects.
-///
-/// Used by the `given` loop in `evaluate_with_extra_assertion(s)` to
-/// pin enum-typed world fields produced by plugin writes — the same
-/// logic `effect_loop::encode_state_value` performs against
-/// `&EvidentRuntime`, but available without crossing back to the
-/// public facade.
 pub fn value_enum_to_datatype<'ctx>(
     v:     &Value,
     ctx:   &'ctx Context,
@@ -107,28 +62,19 @@ where 'ctx: 'static
     ctor.apply(&refs).as_datatype()
 }
 
-// ════════════════════════════════════════════════════════════════
-//  Decode: solved-model Values → Rust Effect/Result/FFIArg/InstallStep
-// ════════════════════════════════════════════════════════════════
-
 #[derive(Debug)]
 pub enum DecodeError {
-    /// Expected an `Enum` value but got something else.
+
     NotEnum { got: String },
-    /// Expected an `Enum` of `expected_enum` but got a different one.
+
     WrongEnum { expected: &'static str, got: String },
-    /// `(enum_name, variant)` doesn't match anything we know how to
-    /// decode for the requested type — the model produced an
-    /// unexpected value.
+
     UnknownVariant { enum_name: String, variant: String },
-    /// Field count doesn't match the expected variant arity.
+
     WrongArity { variant: String, expected: usize, got: usize },
-    /// Expected a primitive (`Int` / `Bool` / `Str` / `Real`) but
-    /// got something else.
+
     NotPrimitive { expected: &'static str, got: String },
-    /// A field had the wrong runtime kind (e.g. expected
-    /// `Value::SeqStr` but got something else). Distinct from
-    /// `NotPrimitive` because the expected kind isn't a primitive.
+
     FieldKind { what: String, want: String, got: String },
 }
 
@@ -154,8 +100,6 @@ impl std::fmt::Display for DecodeError {
 impl std::error::Error for DecodeError {}
 
 pub type Result<T> = std::result::Result<T, DecodeError>;
-
-// ── Helpers ────────────────────────────────────────────────────
 
 fn check_enum<'a>(v: &'a Value, expected: &'static str)
     -> Result<(&'a str, &'a Vec<Value>)>
@@ -216,18 +160,13 @@ fn decode_bool(v: &Value) -> Result<bool> {
 fn decode_real(v: &Value) -> Result<f64> {
     match v {
         Value::Real(f) => Ok(*f),
-        Value::Int(n)  => Ok(*n as f64),    // Z3 may return Int for whole Real values
+        Value::Int(n)  => Ok(*n as f64),
         other => Err(DecodeError::NotPrimitive {
             expected: "Real", got: format!("{other:?}"),
         }),
     }
 }
 
-// ── Seq decoders ───────────────────────────────────────────────
-
-/// `PackedFieldList` is still a Cons-shaped user-declared enum
-/// (gates on Seq concatenation; see plans/06-cons-removal). Keep
-/// the Cons-walker for it.
 fn decode_list<T>(
     v: &Value,
     list_enum: &'static str,
@@ -252,8 +191,6 @@ fn decode_list<T>(
         });
     }
 }
-
-// ── stdlib/runtime.ev: Effect / Result / FFIArg ────────────────
 
 pub fn decode_effect(v: &Value) -> Result<crate::core::ast::Effect> {
     use crate::core::ast::Effect;
@@ -378,9 +315,6 @@ pub fn decode_effect(v: &Value) -> Result<crate::core::ast::Effect> {
     })
 }
 
-/// Decode `effects ∈ Seq(Effect)` from the model — a `Value::SeqEnum`
-/// of Effect enums (since Phase 6.4 retired the `EffectList` Cons
-/// shape). Maps each element through `decode_effect`.
 pub fn decode_effect_list(v: &Value) -> Result<Vec<crate::core::ast::Effect>> {
     if let Value::SeqEnum(items) = v {
         return items.iter().map(decode_effect).collect();
@@ -392,10 +326,6 @@ pub fn decode_effect_list(v: &Value) -> Result<Vec<crate::core::ast::Effect>> {
     })
 }
 
-/// Decoded `InstallStep`: an Effect to dispatch + an optional field
-/// name to capture the result into. `None` = `Run(Effect)` (discard
-/// result), `Some(field)` = `Bind(field, Effect)`. Used by the
-/// declarative install path in `effect_loop/install.rs`.
 #[derive(Debug, Clone)]
 pub struct InstallStep {
     pub field:  Option<String>,
@@ -469,8 +399,6 @@ pub fn decode_ffi_arg(v: &Value) -> Result<crate::core::ast::EffectFfiArg> {
     })
 }
 
-/// `ArgStrArr`'s payload — `Seq(String)` since Phase 6.2.b.
-/// Extract path produces Value::SeqStr; we just clone the Vec.
 pub fn decode_str_list(v: &Value) -> Result<Vec<String>> {
     if let Value::SeqStr(items) = v {
         return Ok(items.clone());
@@ -482,7 +410,6 @@ pub fn decode_str_list(v: &Value) -> Result<Vec<String>> {
     })
 }
 
-/// `ArgI32Buf`'s payload — `Seq(Int)` since Phase 6.2.b.
 pub fn decode_int_list(v: &Value) -> Result<Vec<i64>> {
     if let Value::SeqInt(items) = v {
         return Ok(items.clone());
@@ -494,10 +421,6 @@ pub fn decode_int_list(v: &Value) -> Result<Vec<i64>> {
     })
 }
 
-/// Decode a single `PackedField` (PfU8 / PfI32 / PfF32) into the
-/// matching Rust enum variant. The field's natural-width Evident type
-/// (Int / Real) is narrowed to the storage width here; callers
-/// should ensure values fit before this runs.
 pub fn decode_packed_field(v: &Value) -> Result<crate::core::ast::PackedField> {
     let (variant, fields) = check_enum(v, "PackedField")?;
     Ok(match variant {
@@ -513,15 +436,10 @@ pub fn decode_packed_field(v: &Value) -> Result<crate::core::ast::PackedField> {
     })
 }
 
-/// Cons/Nil-shaped `PackedFieldList` decoder.
 pub fn decode_packed_field_list(v: &Value) -> Result<Vec<crate::core::ast::PackedField>> {
     decode_list(v, "PackedFieldList", "PfNil", "PfCons", decode_packed_field)
 }
 
-/// `Effect::FFICall` / `Effect::LibCall`'s args payload —
-/// `Seq(FFIArg)` since Phase 6.2.c. Extract path produces
-/// `Value::SeqEnum`; we map each enum element through
-/// `decode_ffi_arg`.
 pub fn decode_arg_list(v: &Value) -> Result<Vec<crate::core::ast::EffectFfiArg>> {
     if let Value::SeqEnum(items) = v {
         return items.iter().map(decode_ffi_arg).collect();
@@ -555,7 +473,6 @@ mod effect_decoder_tests {
     use super::*;
     use crate::core::ast::{Effect, EffectFfiArg, EffectResult};
 
-    /// Helper: construct a `Value::Enum`.
     fn e(enum_name: &str, variant: &str, fields: Vec<Value>) -> Value {
         Value::Enum {
             enum_name: enum_name.into(),
@@ -581,8 +498,7 @@ mod effect_decoder_tests {
 
     #[test]
     fn decode_ffi_call_with_args() {
-        // Phase 6.2.c: args are now Seq(FFIArg), extracted as
-        // Value::SeqEnum of FFIArg Value::Enum elements.
+
         let arglist = Value::SeqEnum(vec![
             e("FFIArg", "ArgStr", vec![Value::Str("hi".into())]),
             e("FFIArg", "ArgInt", vec![Value::Int(42)]),
@@ -606,7 +522,7 @@ mod effect_decoder_tests {
 
     #[test]
     fn decode_effect_list_three_items() {
-        // Post-6.4: effects come back as Value::SeqEnum of Effect.
+
         let list = Value::SeqEnum(vec![
             e("Effect", "Println", vec![Value::Str("a".into())]),
             e("Effect", "Time", vec![]),

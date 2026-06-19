@@ -1,13 +1,3 @@
-//! Per-step cached query path. Used by the multi-FSM scheduler to
-//! amortize the translate cost across ticks.
-//!
-//!   * `build_cache`             — translate the schema's body once
-//!                                  into a fresh solver; returns a
-//!                                  `CompiledModel` callers reuse.
-//!   * `run_cached`              — per-tick: push, assert givens,
-//!                                  check, extract model, pop. Reuses
-//!                                  all cached constraint translation.
-
 use std::collections::HashMap;
 use z3::ast::{Ast, Bool, Int, String as Z3Str};
 use z3::{Context, SatResult};
@@ -21,18 +11,6 @@ use super::super::preprocess::{apply_pinned_ints, collect_pinned_ints};
 use super::solver::{declare_and_assert, make_tuned_solver, populate_enum_variants, real_from_f64, real_value_to_f64};
 use super::decode::{extract_enum_value, extract_seq_enum};
 
-/// Translate the schema's body once into a fresh solver and return a
-/// `CompiledModel` that subsequent queries can reuse via push/pop.
-///
-/// `given` is the set of values that should be folded into the cache
-/// at build time — typically the structural subset (names appearing
-/// in quantifier bounds), so the cache contains the right unrolled
-/// shape. Non-structural givens can be left in or out; they won't
-/// change the cache's correctness, but if included they're folded as
-/// `Var::PinnedInt` and any subsequent `run_cached` with a different
-/// value for that name will hit the PinnedInt-mismatch UNSAT path.
-/// The runtime's cache layer takes care of this by passing only the
-/// structural subset and rebuilding on signature change.
 pub fn build_cache(
     schema: &SchemaDecl,
     schemas: &HashMap<String, SchemaDecl>,
@@ -42,17 +20,12 @@ pub fn build_cache(
     given: &HashMap<String, Value>,
     arith_solver: u32,
 ) -> CompiledModel<'static> {
-    // Mirror evaluate_with_extra_assertions: install the thread-local
-    // EnumRegistry so the translator can resolve enum constructors
-    // (e.g. `LibCall(..., ⟨⟩)`) appearing in body items. Without this,
-    // those constraints silently drop and outputs end up undefined.
+
     let _enum_guard = super::super::exprs::EnumRegistryGuard::new(enums);
     let solver = make_tuned_solver(ctx, arith_solver);
     let mut env: HashMap<String, Var<'static>> = HashMap::new();
     populate_enum_variants(&mut env, enums);
 
-    // Same two passes as evaluate(), but writing into the cache's
-    // solver instead of a fresh one each time.
     for item in &schema.body {
         match item {
             BodyItem::Membership { name, type_name, .. } => {
@@ -69,33 +42,21 @@ pub fn build_cache(
                     }
                 }
             }
-            // (Bare-identifier-as-passthrough is desugared upstream by
-            // stdlib/passes/desugar_passthrough.ev; by the time we
-            // walk body items here, those constraints are already
-            // BodyItem::Passthrough nodes handled above.)
+
             _ => {}
         }
     }
 
-    // Pass 1.5: pin literal-int vars + propagate seq lengths. `given`
-    // contributes both Int values (for pinned) and Seq* lengths (for
-    // seq_lens), so a structural value the runtime decided to bake into
-    // the cache (e.g. `cells_count = 80` from a config menu) makes
-    // every `∀ i ∈ {0..cells_count - 1}` unroll correctly.
     let seq_lens = super::super::preprocess::collect_seq_lengths_with_schemas(
         &schema.body, given, Some(schemas));
     let pinned   = collect_pinned_ints(&schema.body, given, &seq_lens);
     apply_pinned_ints(&mut env, &pinned);
     apply_seq_lengths(&mut env, &seq_lens, ctx);
-    // Populate Set var candidates from given Value::Set* — needed before
-    // body translation so `#s` cardinality folds to a literal count.
+
     apply_set_candidates(&env, given);
 
     let mut visited: HashMap<String, usize> = HashMap::new();
-    // Functionizer build path: lenient — untranslatable body items
-    // become warnings rather than fatal-exit, so extract_program can
-    // produce a partial program and the caller falls back to the slow
-    // path when outputs aren't covered.
+
     inline_body_items(&schema.body, &mut env, &solver, schemas, ctx, registry, enums, &mut visited, true);
 
     CompiledModel { env, solver, arith_solver }
@@ -107,7 +68,7 @@ pub fn run_cached<'ctx>(
     ctx: &'ctx Context,
     enums: Option<&EnumRegistry>,
 ) -> EvalResult {
-    // Solver params were set once in build_cache; no per-call tuning here.
+
     cached.solver.push();
     for (name, value) in given {
         let Some(var) = cached.env.get(name) else { continue };
@@ -116,10 +77,7 @@ pub fn run_cached<'ctx>(
             (Var::BoolVar(v), Value::Bool(b)) => cached.solver.assert(&v._eq(&Bool::from_bool(ctx, *b))),
             (Var::RealVar(v), Value::Real(f)) => cached.solver.assert(&v._eq(&real_from_f64(ctx, *f))),
             (Var::StrVar(v),  Value::Str(s))  => cached.solver.assert(&v._eq(&Z3Str::from_str(ctx, s).expect("nul in str"))),
-            // PinnedInt was already folded in via apply_pinned_ints from
-            // this same given value, so the assertion is redundant. If
-            // the values disagree (caller passes a different int after a
-            // body equality pinned the var), force UNSAT.
+
             (Var::PinnedInt(v), Value::Int(n)) if *v == *n => {}
             (Var::PinnedInt(_), Value::Int(_)) => cached.solver.assert(&Bool::from_bool(ctx, false)),
             _ => {
@@ -176,7 +134,7 @@ pub fn run_cached<'ctx>(
                             bindings.insert(name.clone(), v);
                         }
                     }
-                    Var::DatatypeSetVar { .. } => { /* unsupported in v1 */ }
+                    Var::DatatypeSetVar { .. } => {  }
                     Var::DatatypeSeqVar { arr, len, dt, fields, type_name } => {
                         let extracted = if fields.is_empty() {
                             extract_seq_enum(arr, len, type_name, *dt, &model, ctx, enums)
@@ -192,8 +150,8 @@ pub fn run_cached<'ctx>(
                             bindings.insert(name.clone(), v);
                         }
                     }
-                    Var::EnumValue { .. } => { /* literal, no model state */ }
-                    Var::EnumCtor { .. }  => { /* constructor reference, no model state */ }
+                    Var::EnumValue { .. } => {  }
+                    Var::EnumCtor { .. }  => {  }
                 }
             }
         }

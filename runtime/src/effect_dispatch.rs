@@ -1,23 +1,9 @@
-//! Effect dispatcher — performs `Effect`s and produces `EffectResult`s.
-//!
-//! Sits between the executor (which solves for `effects` each step)
-//! and the OS / FFI layer. Built-in effects (Print/ReadLine/Time/Exit)
-//! hit the OS directly; FFI* effects route through `crate::ffi`.
-//!
-//! Phase 1.3 lands the dispatcher with built-ins working and FFI*
-//! arms returning Error stubs. Phase 1.5 wires the FFI primitives.
-
 use std::io::{BufRead, Write};
 use std::time::Instant;
 
 use crate::core::ast::{Effect, EffectFfiArg, EffectResult};
 use crate::ffi::{self, FfiArg, FfiReturn, HandleRegistry};
 
-/// One recorded FFI call for replay mode. When DispatchMode::Replay
-/// is active, each FFICall consumes the next RecordedCall from the
-/// list; if `symbol` and `args` match, the recorded `result` is
-/// returned. Mismatch → Error. Used for trace tests that should run
-/// without needing the actual external library.
 #[derive(Debug, Clone, PartialEq)]
 pub struct RecordedCall {
     pub symbol: String,
@@ -26,17 +12,11 @@ pub struct RecordedCall {
     pub result: EffectResult,
 }
 
-/// FFI dispatch mode. v1 supports Real (hits libffi) and Replay
-/// (consults a pre-supplied log). Recording (write a log alongside
-/// the test) is YAGNI for now.
 #[derive(Default)]
 pub enum DispatchMode {
     #[default]
     Real,
-    /// Replay: walk through `calls` left-to-right; each FFI call
-    /// must match the next entry. Symbol-name lookup also tracked
-    /// via `name_for_handle` so we can compare symbol vs args at
-    /// call time (libffi otherwise loses the name).
+
     Replay {
         calls:           Vec<RecordedCall>,
         cursor:          usize,
@@ -45,25 +25,17 @@ pub enum DispatchMode {
     },
 }
 
-/// Per-runtime mutable state the dispatcher reads/writes between
-/// effects. Held in the executor; one DispatchContext per step loop
-/// run. stdin/stdout are boxed so unit tests can swap in in-memory
-/// streams.
 pub struct DispatchContext {
     pub registry: HandleRegistry,
     pub stdin:    Box<dyn BufRead + Send>,
     pub stdout:   Box<dyn Write + Send>,
     pub start:    Instant,
     pub mode:     DispatchMode,
-    /// Cache for LibCall: `library_path → lib handle`. Populated on
-    /// first reference, reused on subsequent calls to the same lib.
+
     pub lib_cache: std::collections::HashMap<String, u64>,
-    /// Cache for LibCall: `(lib handle, symbol name) → sym handle`.
+
     pub sym_cache: std::collections::HashMap<(u64, String), u64>,
-    /// Set by `Effect::Exit(code)`. The effect loop checks this at
-    /// end of each tick and halts cleanly with the requested code,
-    /// instead of `Exit` immediately calling `process::exit` and
-    /// cutting off the rest of the tick's effects mid-dispatch.
+
     pub exit_requested: Option<i32>,
 }
 
@@ -90,9 +62,6 @@ impl DispatchContext {
         }
     }
 
-    /// Switch to replay mode with the supplied recorded calls. FFI
-    /// effects no longer hit real libraries; they consult `calls`
-    /// in order.
     pub fn set_replay(&mut self, calls: Vec<RecordedCall>) {
         self.mode = DispatchMode::Replay {
             calls,
@@ -107,26 +76,16 @@ impl Default for DispatchContext {
     fn default() -> Self { Self::new() }
 }
 
-/// Perform one effect; return the matching result. Errors that
-/// don't tear down the runtime are reported as `EffectResult::Error`.
-/// `Exit` calls `process::exit` and never returns.
 pub fn dispatch_one(ctx: &mut DispatchContext, e: &Effect) -> EffectResult {
     dispatch_one_inner(ctx, e)
 }
 
-/// Detect Z3's auto-named sentinel strings like "!0!", "!a!",
-/// "!val!", etc. These appear when an unconstrained String var
-/// in the body gets extracted from a Z3 model — Z3 fills it with
-/// an automatic symbol name that happens to be wrapped in `!`s.
-/// Dispatching them as Print/Println pollutes stdout with garbage.
-/// Filter at the dispatch boundary.
 fn is_z3_sentinel_string(s: &str) -> bool {
     let b = s.as_bytes();
     if b.len() < 3 { return false; }
     if b[0] != b'!' || b[b.len() - 1] != b'!' { return false; }
     let middle = &s[1..s.len() - 1];
-    // Z3 sentinels are short, contain only alphanumeric +
-    // optional `!` separator (e.g. "0", "a", "val!12", "k!7").
+
     middle.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'!')
         && middle.len() <= 16
 }
@@ -136,12 +95,7 @@ fn dispatch_one_inner(ctx: &mut DispatchContext, e: &Effect) -> EffectResult {
         Effect::NoEffect => EffectResult::NoResult,
 
         Effect::Print(s) => {
-            // Filter out Z3-model-sentinel Print outputs (strings that
-            // look like "!N!" where N is a single hex digit). These
-            // come from unconstrained-String free vars in the body
-            // that get extracted from the Z3 model as auto-named
-            // values like `k!0`, then dispatched as Print. They're
-            // cosmetic noise, not intentional output.
+
             if !is_z3_sentinel_string(s) {
                 let _ = write!(ctx.stdout, "{s}");
                 let _ = ctx.stdout.flush();
@@ -182,9 +136,7 @@ fn dispatch_one_inner(ctx: &mut DispatchContext, e: &Effect) -> EffectResult {
         Effect::IntToStr(n)  => EffectResult::Str(n.to_string()),
         Effect::RealToStr(f) => EffectResult::Str(f.to_string()),
         Effect::ShellRun(cmd) => {
-            // Use sh -c to interpret the command string. Errors
-            // include exit code + first line of stderr (truncated
-            // if longer than ~200 chars) for debuggability.
+
             use std::process::Command;
             match Command::new("sh").arg("-c").arg(cmd).output() {
                 Ok(out) if out.status.success() => {
@@ -205,12 +157,7 @@ fn dispatch_one_inner(ctx: &mut DispatchContext, e: &Effect) -> EffectResult {
             }
         }
         Effect::Exit(n) => {
-            // Defer the exit: mark and continue. The effect loop
-            // checks this at end of tick and halts cleanly. Lets
-            // other FSMs in the same tick complete their effects
-            // (cleanup writes, final logs, etc.) before we exit.
-            // First Exit wins if multiple FSMs emit one in the
-            // same tick.
+
             if ctx.exit_requested.is_none() {
                 ctx.exit_requested = Some(*n as i32);
             }
@@ -256,8 +203,7 @@ fn dispatch_one_inner(ctx: &mut DispatchContext, e: &Effect) -> EffectResult {
                     EffectFfiArg::IntOut    => FfiArg::IntOut,
                     EffectFfiArg::I32Buf(v) => FfiArg::I32Buf(v.clone()),
                     EffectFfiArg::PackedBuf(v) => FfiArg::PackedBuf(v.clone()),
-                    // PriorResult is resolved by dispatch_all before
-                    // it reaches us. If one slips through, bail.
+
                     EffectFfiArg::PriorResult(_) => FfiArg::Int(0),
                 }).collect();
                 if args.iter().any(|a| matches!(a, EffectFfiArg::PriorResult(_))) {
@@ -318,8 +264,7 @@ fn dispatch_one_inner(ctx: &mut DispatchContext, e: &Effect) -> EffectResult {
         }
         Effect::LibCall(lib_path, sym_name, sig, args) => match &mut ctx.mode {
             DispatchMode::Real => {
-                // Cached lib handle: reuse if the library was opened
-                // in any prior step; else dlopen and remember.
+
                 let lib_handle = match ctx.lib_cache.get(lib_path) {
                     Some(h) => *h,
                     None => match ffi::ffi_open(&ctx.registry, lib_path) {
@@ -327,9 +272,7 @@ fn dispatch_one_inner(ctx: &mut DispatchContext, e: &Effect) -> EffectResult {
                         Err(e) => return EffectResult::Error(e.0),
                     },
                 };
-                // Cached symbol handle: keyed on (lib_handle, sym_name)
-                // so the same symbol resolved against different libs
-                // doesn't collide.
+
                 let key = (lib_handle, sym_name.clone());
                 let sym_handle = match ctx.sym_cache.get(&key) {
                     Some(h) => *h,
@@ -338,7 +281,7 @@ fn dispatch_one_inner(ctx: &mut DispatchContext, e: &Effect) -> EffectResult {
                         Err(e) => return EffectResult::Error(e.0),
                     },
                 };
-                // The actual call. Same arg-marshalling as FFICall.
+
                 let ffi_args: Vec<FfiArg> = args.iter().map(|a| match a {
                     EffectFfiArg::Int(n)    => FfiArg::Int(*n),
                     EffectFfiArg::Bool(b)   => FfiArg::Bool(*b),
@@ -349,8 +292,7 @@ fn dispatch_one_inner(ctx: &mut DispatchContext, e: &Effect) -> EffectResult {
                     EffectFfiArg::IntOut    => FfiArg::IntOut,
                     EffectFfiArg::I32Buf(v) => FfiArg::I32Buf(v.clone()),
                     EffectFfiArg::PackedBuf(v) => FfiArg::PackedBuf(v.clone()),
-                    // PriorResult is resolved by dispatch_seq before
-                    // it reaches us. If one slips through, bail.
+
                     EffectFfiArg::PriorResult(_) => FfiArg::Int(0),
                 }).collect();
                 if args.iter().any(|a| matches!(a, EffectFfiArg::PriorResult(_))) {
@@ -484,12 +426,7 @@ fn dispatch_one_inner(ctx: &mut DispatchContext, e: &Effect) -> EffectResult {
         },
         Effect::MonotonicTime => match &mut ctx.mode {
             DispatchMode::Real => {
-                // Instant::now ↔ arbitrary monotonic clock; convert
-                // to ns since an arbitrary fixed epoch. We use the
-                // OnceLock pattern to anchor the epoch on first call
-                // so subsequent calls return monotonically-increasing
-                // values WITHOUT exposing Instant::now's actual epoch
-                // (which varies per platform and isn't documented).
+
                 use std::sync::OnceLock;
                 static EPOCH: OnceLock<std::time::Instant> = OnceLock::new();
                 let epoch = EPOCH.get_or_init(std::time::Instant::now);
@@ -518,14 +455,13 @@ fn dispatch_one_inner(ctx: &mut DispatchContext, e: &Effect) -> EffectResult {
                     Err(e) => return EffectResult::Error(format!(
                         "Malloc: layout for {size} bytes: {e}")),
                 };
-                // zeroed so callers don't read uninitialized memory.
+
                 let raw = unsafe { std::alloc::alloc_zeroed(layout) };
                 if raw.is_null() {
                     return EffectResult::Error(format!(
                         "Malloc: out of memory for {size} bytes"));
                 }
-                // Drop fn: deallocate with the same layout we used.
-                // Box-erased; HandleRegistry invokes it on close.
+
                 let drop_fn: Box<dyn FnOnce(*mut std::ffi::c_void) + Send> =
                     Box::new(move |p| unsafe {
                         std::alloc::dealloc(p as *mut u8, layout);
@@ -554,9 +490,7 @@ fn args_equal(a: &[EffectFfiArg], b: &[EffectFfiArg]) -> bool {
         (EffectFfiArg::Bool(p), EffectFfiArg::Bool(q)) => p == q,
         (EffectFfiArg::Str(p), EffectFfiArg::Str(q)) => p == q,
         (EffectFfiArg::Real(p), EffectFfiArg::Real(q)) => (p - q).abs() < 1e-12,
-        // Handle args don't have to match exactly under replay (sentinels
-        // differ between record and replay runs); sufficient that both
-        // sides are Handle.
+
         (EffectFfiArg::Handle(_), EffectFfiArg::Handle(_)) => true,
         (EffectFfiArg::StrArr(p), EffectFfiArg::StrArr(q)) => p == q,
         (EffectFfiArg::IntOut,    EffectFfiArg::IntOut)    => true,
@@ -567,16 +501,6 @@ fn args_equal(a: &[EffectFfiArg], b: &[EffectFfiArg]) -> bool {
     })
 }
 
-/// Shared read-from-pointer-at-offset path for all `ReadX` effects.
-/// Looks up the handle in the registry, computes
-/// `(ptr + offset) as *const u8`, then calls `extract` to do the
-/// actual read at that address. In Replay mode, returns the next
-/// recorded call's result.
-///
-/// SAFETY: caller's `extract` MUST do `read_unaligned` (or read
-/// a single byte) — the pointer is not guaranteed to be aligned
-/// for the type being read. The runtime can't enforce alignment
-/// because the offset is user-supplied.
 fn do_read(
     ctx: &mut DispatchContext,
     handle: u64,
@@ -606,11 +530,6 @@ fn do_read(
     }
 }
 
-/// Shared write-to-pointer-at-offset path for all `WriteX` effects.
-/// Mirrors `do_read` — looks up the handle, computes the target
-/// pointer, runs `apply` to perform the write. Always returns
-/// `NoResult`. Replay mode returns the next recorded call's
-/// result (which should be NoResult; we don't enforce).
 fn do_write(
     ctx: &mut DispatchContext,
     handle: u64,
@@ -641,15 +560,6 @@ fn do_write(
     }
 }
 
-/// Walk an effect list, dispatch each in order, collect results. The
-/// list IS the atomic batch: later effects can reference prior
-/// results via `ArgPriorResult(N)` — which resolves to a typed
-/// FfiArg at marshal time against the running prior vector.
-///
-/// Before Phase 6.4 this was a two-tier model (top-level dispatch_all
-/// + nested Effect::Seq for atomic groups with prior threading);
-/// since Effect::Seq collapsed into the top-level batch, this is the
-/// only dispatch path.
 pub fn dispatch_all(ctx: &mut DispatchContext, effects: &[Effect]) -> Vec<EffectResult> {
     let mut out: Vec<EffectResult> = Vec::with_capacity(effects.len());
     for sub in effects {
@@ -660,9 +570,6 @@ pub fn dispatch_all(ctx: &mut DispatchContext, effects: &[Effect]) -> Vec<Effect
     out
 }
 
-/// Walk an Effect's args and replace each `EffectFfiArg::PriorResult(N)`
-/// with the typed arg derived from `prior[N]`. Non-LibCall/FFICall
-/// effects don't carry args and are returned as-is.
 fn resolve_prior_in_effect(e: &Effect, prior: &[EffectResult]) -> Effect {
     let resolve_args = |args: &[EffectFfiArg]| -> Vec<EffectFfiArg> {
         args.iter().map(|a| match a {
@@ -682,10 +589,6 @@ fn resolve_prior_in_effect(e: &Effect, prior: &[EffectResult]) -> Effect {
     }
 }
 
-/// EffectResult → EffectFfiArg variant pick for prior-result resolution.
-/// Each result variant has a natural FfiArg counterpart (Handle stays
-/// Handle, Int stays Int, etc.); NoResult and Error don't have one and
-/// the caller uses a sentinel on miss.
 fn result_to_ffi_arg(r: &EffectResult) -> Option<EffectFfiArg> {
     match r {
         EffectResult::Int(n)    => Some(EffectFfiArg::Int(*n)),
@@ -710,11 +613,7 @@ mod tests {
     }
 
     fn captured_stdout(ctx: DispatchContext) -> String {
-        // The Box<dyn Write> can't be downcast; tests that need stdout
-        // capture should construct their own Vec<u8> and inspect it
-        // via a separate handle pattern. For simplicity these tests
-        // mostly verify the result, not the stdout bytes.
-        // (Returning empty here since we can't unwrap the Box.)
+
         let _ = ctx;
         String::new()
     }
@@ -746,7 +645,7 @@ mod tests {
             EffectResult::Str(s) => assert_eq!(s, "world"),
             other => panic!("expected Str, got {other:?}"),
         }
-        // Third read hits EOF.
+
         assert!(matches!(dispatch_one(&mut ctx, &Effect::ReadLine), EffectResult::Error(_)));
         let _ = captured_stdout(ctx);
     }
@@ -928,8 +827,7 @@ mod tests {
                 args: vec![], result: EffectResult::Int(12345),
             },
         ]);
-        // FFIOpen + FFILookup return sentinel handles; FFICall consumes
-        // the recorded entry.
+
         let lib = match dispatch_one(&mut ctx, &Effect::FFIOpen("anything".into())) {
             EffectResult::Handle(h) => h, _ => panic!(),
         };
@@ -981,7 +879,7 @@ mod tests {
     fn libcall_caches_lib_and_sym() {
         let mut ctx = ctx_with_input("");
         let path = if cfg!(target_os = "macos") { "/usr/lib/libSystem.dylib" } else { "libc.so.6" };
-        // First call: cache miss for both lib and sym → populates both.
+
         let r1 = dispatch_one(&mut ctx, &Effect::LibCall(
             path.into(), "getpid".into(), "i()".into(), vec![],
         ));
@@ -992,8 +890,6 @@ mod tests {
         assert_eq!(ctx.lib_cache.len(), 1, "lib cache should have one entry");
         assert_eq!(ctx.sym_cache.len(), 1, "sym cache should have one entry");
 
-        // Second call to same lib + sym: cache hit on both. Should
-        // still work and not re-dlopen / re-dlsym.
         let next_id_before = ctx.lib_cache.values().copied().max().unwrap();
         let r2 = dispatch_one(&mut ctx, &Effect::LibCall(
             path.into(), "getpid".into(), "i()".into(), vec![],

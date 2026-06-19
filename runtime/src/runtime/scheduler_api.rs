@@ -1,15 +1,9 @@
-//! Per-tick query entry points for the multi-FSM scheduler.
-
 use crate::core::{QueryResult, RuntimeError};
 use super::{EvidentRuntime, Value};
 use std::collections::HashMap;
 
 impl EvidentRuntime {
-    /// Pin one or more enum-typed (Datatype) variables across a
-    /// single query. Each entry of `pins` is `(var_name, value)`.
-    /// Used by the multi-FSM scheduler to fix `state` and
-    /// `last_results` per tick — see the "execution-layer
-    /// extension surface" section in the module docs.
+
     pub fn query_with_pinned_datatypes(
         &self,
         claim_name: &str,
@@ -18,12 +12,6 @@ impl EvidentRuntime {
         self.query_with_pins_and_given(claim_name, pins, &HashMap::new())
     }
 
-    /// Like `query_with_pinned_datatypes` but also accepts a
-    /// `given` map for scalar pins (Int/Bool/String/Real values).
-    /// Used by the multi-FSM scheduler to thread `world_next.*`
-    /// writer values into reader `world.*` slots within the same
-    /// tick — see the "execution-layer extension surface"
-    /// section in the module docs.
     pub fn query_with_pins_and_given(
         &self,
         claim_name: &str,
@@ -32,49 +20,26 @@ impl EvidentRuntime {
     ) -> Result<QueryResult, RuntimeError> {
         let schema = self.schemas.get(claim_name)
             .ok_or_else(|| RuntimeError::UnknownSchema(claim_name.to_string()))?;
-        // Function-izer fast path on the SCHEDULER side. The
-        // scheduler passes realistic per-tick given values (state,
-        // last_results, _world.X). State-pair FSMs ALSO get a
-        // `pins` array with the state pinned as a Z3 Datatype —
-        // we used to bail in that case, but the scheduler now also
-        // surfaces the state's Value form in `given` (see
-        // `effect_loop.rs::run_with_ctx` around the
-        // `current_state_v` insertion). So the function-izer can
-        // fire even with non-empty pins; the pinned Datatype is
-        // simply redundant with the given Value. If function-izer
-        // rejects, fall through to Z3 with `pins` intact.
-        // Z3 functionizer + Cranelift JIT. JIT compiles the extracted
-        // Z3Program to native code; on miss (extract or codegen refused)
-        // falls through to the slow path below.
+
         if let Some(result) = self.try_functionize_z3(claim_name, schema, given) {
             return Ok(result);
         }
-        // Fixed `smt.arith.solver` default (Z3's simplex arith solver).
+
         let arith: u32 = 2;
 
-        // Slow-path cache: if the function-izer already built a
-        // CompiledModel and stored it (because it refused to produce
-        // a JIT program), reuse it here instead of rebuilding
-        // the body. Each tick is push → assert pins/given → check
-        // → extract model → pop. For Mario's display this cuts the
-        // per-tick cost from ~14ms (fresh translation) to ~2-3ms
-        // (just the solve + extract).
         let mut given_keys: Vec<String> = given.keys().cloned().collect();
         given_keys.sort();
         let cache_key = (claim_name.to_string(), given_keys);
         if let Some(cached) = self.slow_path_cache.borrow().get(&cache_key).cloned() {
             use z3::ast::Ast;
             cached.solver.push();
-            // Apply the typed Datatype pins (state).
+
             for (var_name, value) in pins {
                 if let Some(crate::translate::Var::EnumVar { ast, .. }) = cached.env.get(*var_name) {
                     cached.solver.assert(&ast._eq(value));
                 }
             }
-            // Apply Value::Enum givens here (run_cached doesn't, to
-            // keep its lifetime parametric). We have 'static context
-            // so we can re-encode the enum value as a Datatype and
-            // assert equality on the EnumVar's ast.
+
             for (name, value) in given {
                 if let (Some(crate::translate::Var::EnumVar { ast, .. }), Value::Enum { .. }) =
                     (cached.env.get(name), value)

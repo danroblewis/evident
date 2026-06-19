@@ -1,14 +1,3 @@
-//! Tuple binding + `coindexed(seqs…)` and `edges(seq)` builtins.
-//!
-//! These let constraints over parallel sequences read without integer
-//! indices at every site:
-//!
-//!   ∀ (cur, eff) ∈ coindexed(state.dots, effective_vy) : ...
-//!   ∀ (a, b)    ∈ edges(items)                          : a ≤ b
-//!
-//! Pinning the behavior so the tuple-binding parse path and the
-//! builtin-recognition translator path can't regress quietly.
-
 use evident_runtime::{EvidentRuntime, Value};
 
 const VEC2: &str = "type IVec2\n    x ∈ Int\n    y ∈ Int\n";
@@ -20,9 +9,6 @@ fn ints(v: Option<&Value>) -> Vec<i64> {
     }
 }
 
-/// `coindexed(A, B)` over two primitive Seq(Int) sequences. Each
-/// iteration binds (a, b) to (A[i], B[i]) — body equates them with an
-/// offset.
 #[test]
 fn coindexed_two_int_seqs() {
     let mut rt = EvidentRuntime::new();
@@ -33,8 +19,6 @@ fn coindexed_two_int_seqs() {
     assert_eq!(ints(r.bindings.get("b")), vec![11, 21, 31, 41]);
 }
 
-/// 3-arity coindexed: (A, B, C). Each iteration binds three vars to
-/// the parallel elements. Verifies the N-arity nature.
 #[test]
 fn coindexed_three_int_seqs() {
     let mut rt = EvidentRuntime::new();
@@ -45,10 +29,6 @@ fn coindexed_three_int_seqs() {
     assert_eq!(ints(r.bindings.get("c")), vec![11, 22, 33]);
 }
 
-/// `coindexed` over Seq(UserType) elements. Each iteration binds the
-/// composite var so its `.x`/`.y` fields work inside the body. The
-/// canonical use case from anchor_collect.ev (state.dots paired with
-/// effective_vy) shape.
 #[test]
 fn coindexed_seq_of_record_with_seq_of_int() {
     let mut rt = EvidentRuntime::new();
@@ -61,8 +41,6 @@ fn coindexed_seq_of_record_with_seq_of_int() {
     assert_eq!(ints(r.bindings.get("yvel")), vec![30, 70, 110]);
 }
 
-/// `edges(seq)` over Seq(Int): each iteration binds (a, b) to
-/// (seq[i], seq[i+1]) for i ∈ 0..n-1. Headline use case: monotonicity.
 #[test]
 fn edges_non_decreasing() {
     let mut rt = EvidentRuntime::new();
@@ -72,7 +50,6 @@ fn edges_non_decreasing() {
     assert!(r.satisfied);
 }
 
-/// Edge case: violated monotonicity → UNSAT.
 #[test]
 fn edges_violated_is_unsat() {
     let mut rt = EvidentRuntime::new();
@@ -82,9 +59,6 @@ fn edges_violated_is_unsat() {
     assert!(!r.satisfied);
 }
 
-/// Single-name binding still works after the tuple-binding parser
-/// extension. Regression guard so the original `∀ x ∈ seq` form
-/// doesn't break.
 #[test]
 fn single_var_binding_unchanged() {
     let mut rt = EvidentRuntime::new();
@@ -94,7 +68,6 @@ fn single_var_binding_unchanged() {
     assert!(r.satisfied);
 }
 
-/// `∃ (a, b) ∈ edges(items)` — tuple-binding existential variant.
 #[test]
 fn exists_tuple_binding() {
     let mut rt = EvidentRuntime::new();
@@ -104,4 +77,3 @@ fn exists_tuple_binding() {
     assert!(r.satisfied);
     assert_eq!(r.bindings.get("flag"), Some(&Value::Bool(true)));
 }
-

@@ -1,36 +1,3 @@
-//! FFI primitive — load C libraries dynamically and call functions
-//! through them with Evident-typed arguments. See
-//! `docs/design/ffi-design.md` for the architectural overview.
-//!
-//! The runtime exposes three operations to Evident programs (via the
-//! Effect dispatcher in the executor):
-//!
-//!   * `LoadLibrary(path)`    → Handle  (dlopen)
-//!   * `LoadSymbol(lib, sym)` → Handle  (dlsym)
-//!   * `Call(fn, sig, args)`  → Result  (libffi-marshalled call)
-//!
-//! Plus `CloseHandle(h)` to free a managed handle.
-//!
-//! Type signatures are short ASCII strings: a return-type code, an
-//! open paren, zero-or-more arg-type codes, and a close paren.
-//!
-//!   `i()`     — zero args, returns Int (e.g. `getpid`)
-//!   `i(s)`    — one String arg, returns Int (e.g. `puts`)
-//!   `p(siii)` — String + 3 Ints, returns Handle
-//!   `v(p)`    — one Handle arg, returns nothing (`free`)
-//!
-//! Type codes:
-//!   `i` — int64           (Evident Int)
-//!   `b` — int 0/1         (Evident Bool)
-//!   `s` — UTF-8 const*    (Evident String)
-//!   `d` — double          (Evident Real)
-//!   `p` — void*           (Evident Handle)
-//!   `v` — void return only
-//!
-//! v1 doesn't support: structs by value, callbacks (C → Evident),
-//! variadic calls, function pointer args. These can be added as the
-//! library code we write exercises them.
-
 use std::collections::HashMap;
 use std::ffi::CString;
 use std::sync::Mutex;
@@ -38,9 +5,6 @@ use std::sync::Mutex;
 use libffi::middle::{Arg, Cif, CodePtr, Type as FfiType};
 use libloading::{Library, Symbol};
 
-/// One argument's runtime value, tagged with its Evident type. The
-/// caller (Effect dispatcher) packages each ArgList element into one
-/// of these before calling `ffi_call`.
 #[derive(Debug, Clone)]
 pub enum FfiArg {
     Int(i64),
@@ -48,28 +12,16 @@ pub enum FfiArg {
     Str(String),
     Real(f64),
     Handle(u64),
-    /// Array of strings, marshalled as `const char * const *`. The
-    /// caller passes the C function the count separately (typically
-    /// as a preceding `ArgInt`), per the GL convention.
+
     StrArr(Vec<String>),
-    /// Output-int slot. Allocates an i32 in the call's backing
-    /// storage and passes its pointer. After the call, the read-back
-    /// value is surfaced as the call's IntResult (only valid when the
-    /// function's declared return is void; only one IntOut per call).
+
     IntOut,
-    /// Pack N i32s into a contiguous heap buffer; pass pointer (`p`
-    /// slot). Used for SDL_Rect, SDL_Point, and other fixed-layout
-    /// homogeneous-int32 structs.
+
     I32Buf(Vec<i32>),
-    /// Pack a sequence of `PackedField`s into a contiguous heap
-    /// buffer at natural widths; pass pointer (`p` slot). The
-    /// stdlib wrapper picks the field sequence to match the target
-    /// C struct's layout.
+
     PackedBuf(Vec<crate::core::ast::PackedField>),
 }
 
-/// One returned value from a libffi call. Maps back to an Evident
-/// `Result` enum.
 #[derive(Debug, Clone)]
 pub enum FfiReturn {
     Void,
@@ -89,8 +41,6 @@ impl std::fmt::Display for FfiError {
 }
 impl std::error::Error for FfiError {}
 
-/// One parsed signature: return type + arg types. Validated at call
-/// time against the actual ArgList.
 #[derive(Debug, Clone)]
 struct ParsedSig {
     ret:  TypeCode,
@@ -107,11 +57,7 @@ impl TypeCode {
             'b' => Ok(TypeCode::B),
             's' => Ok(TypeCode::S),
             'd' => Ok(TypeCode::D),
-            // 'f' is GL/single-precision-friendly; the Evident-side value
-            // is still ArgReal (f64) — the marshaller narrows to f32.
-            // Needed for glClearColor / glUniform1f / GLfloat APIs that
-            // ABI-wise take 32-bit floats (passed in s* registers on
-            // AArch64, distinct from d* registers used for f64).
+
             'f' => Ok(TypeCode::F),
             'p' => Ok(TypeCode::P),
             'v' => Ok(TypeCode::V),
@@ -154,54 +100,30 @@ fn parse_signature(sig: &str) -> Result<ParsedSig, FfiError> {
     Ok(ParsedSig { ret, args })
 }
 
-/// Registry of all live FFI handles (libraries, symbols, opaque
-/// pointers returned from C calls). Each entry is a raw `*mut c_void`
-/// plus an optional cleanup closure that runs when the handle is
-/// explicitly closed.
-///
-/// Handles are u64 IDs allocated monotonically; no recycling. The
-/// number space is large enough that exhausting it before the runtime
-/// exits would require an absurd allocation rate.
-///
-/// The lock is coarse-grained — every FFI op acquires it. FFI calls
-/// are single-threaded in v1; if/when we add concurrent step engines
-/// the lock can be split per-resource-kind.
 pub struct HandleRegistry {
     inner: Mutex<HandleRegistryInner>,
 }
 
 struct HandleRegistryInner {
     next_id: u64,
-    /// `entries[id]` is the registered resource, or None if freed.
-    /// Each entry boxes an `Owner` so we can call its drop closure
-    /// when the handle is closed.
+
     entries: HashMap<u64, Owner>,
 }
 
 struct Owner {
-    /// The raw pointer this handle wraps. For library handles, this is
-    /// a leaked `Box<Library>` cast to `*mut c_void`. For symbols,
-    /// the raw function pointer. For C-returned pointers, whatever the
-    /// callee gave us.
+
     ptr: *mut std::ffi::c_void,
-    /// Optional cleanup. For libraries, drops the Box<Library>. For
-    /// C-returned pointers with a registered destructor, calls the
-    /// destructor via FFI. Most handles have None here (lifetimes are
-    /// the user's problem, by design).
+
     drop: Option<Box<dyn FnOnce(*mut std::ffi::c_void) + Send>>,
 }
 
-// SAFETY: Owner stores a raw pointer that's only ever dereferenced
-// inside HandleRegistry under its mutex. The dyn FnOnce we hold has
-// the Send bound so cross-thread ownership of the registry is sound
-// even before the registry itself crosses threads.
 unsafe impl Send for Owner {}
 
 impl HandleRegistry {
     pub fn new() -> Self {
         Self {
             inner: Mutex::new(HandleRegistryInner {
-                next_id: 1, // 0 reserved as sentinel "null"
+                next_id: 1,
                 entries: HashMap::new(),
             }),
         }
@@ -226,8 +148,6 @@ impl HandleRegistry {
             .ok_or_else(|| FfiError(format!("unknown handle {id}")))
     }
 
-    /// Free the handle, running its cleanup closure if any. Returns
-    /// false if the handle didn't exist.
     pub fn close(&self, id: u64) -> bool {
         let owner = {
             let mut inner = self.inner.lock().unwrap();
@@ -248,18 +168,10 @@ impl Default for HandleRegistry {
     fn default() -> Self { Self::new() }
 }
 
-/// `dlopen(path, RTLD_NOW)`-equivalent. Returns a handle to the
-/// loaded library. Cleanup closure unloads via `Library::drop`.
-///
-/// The runtime dlopens exactly the name the `LibCall` effect supplies —
-/// no candidate list, no platform translation. The `.ev` bindings under
-/// `packages/` name the right library for the host (e.g.
-/// `libSDL2-2.0.so.0` on Linux); bare sonames resolve via the loader
-/// search path.
 pub fn ffi_open(reg: &HandleRegistry, path: &str) -> Result<u64, FfiError> {
     let lib = unsafe { Library::new(path) }
         .map_err(|e| FfiError(format!("dlopen({path:?}) failed: {e}")))?;
-    // Box and leak; the cleanup closure reconstructs the box and drops it.
+
     let boxed = Box::new(lib);
     let raw = Box::into_raw(boxed) as *mut std::ffi::c_void;
     Ok(reg.register_with_drop(raw, Some(Box::new(|p| unsafe {
@@ -267,14 +179,9 @@ pub fn ffi_open(reg: &HandleRegistry, path: &str) -> Result<u64, FfiError> {
     }))))
 }
 
-/// `dlsym(handle, symbol)`. Returns a function-pointer handle. No
-/// cleanup needed — the symbol is invalidated when the library is
-/// dropped, but we don't track that dependency in v1; programs are
-/// expected to keep libraries alive while they hold symbols.
 pub fn ffi_lookup(reg: &HandleRegistry, lib_id: u64, sym: &str) -> Result<u64, FfiError> {
     let lib_ptr = reg.lookup(lib_id)?;
-    // Reborrow as Library to call get(). Unsafe because we trust the
-    // handle was registered as a library and not, say, a symbol.
+
     let lib = unsafe { &*(lib_ptr as *const Library) };
     let c_name = CString::new(sym)
         .map_err(|_| FfiError(format!("symbol name {sym:?} contains null byte")))?;
@@ -284,9 +191,6 @@ pub fn ffi_lookup(reg: &HandleRegistry, lib_id: u64, sym: &str) -> Result<u64, F
     Ok(reg.register_with_drop(raw_ptr, None))
 }
 
-/// Call a previously-looked-up function through libffi. Marshals each
-/// arg according to `sig`, invokes the call, materializes the return
-/// value as the matching `FfiReturn`.
 pub fn ffi_call(
     reg: &HandleRegistry,
     fn_id: u64,
@@ -302,15 +206,9 @@ pub fn ffi_call(
     }
     let fn_ptr = reg.lookup(fn_id)?;
 
-    // Build libffi arg-type list (ParsedSig holds TypeCodes; libffi
-    // wants its own Type vector).
     let arg_types: Vec<FfiType> = parsed.args.iter().map(|c| c.as_ffi()).collect();
     let cif = Cif::new(arg_types, parsed.ret.as_ffi());
 
-    // Materialize each Evident-typed arg into a stable C value plus
-    // an `Arg` reference. `c_strings` and `bool_ints` keep backing
-    // storage alive across the call. `handles` resolves Handle ids
-    // to raw pointers.
     let mut c_strings: Vec<CString> = Vec::with_capacity(args.len());
     let mut bool_ints: Vec<i32>     = Vec::with_capacity(args.len());
     let mut int64s:    Vec<i64>     = Vec::with_capacity(args.len());
@@ -318,26 +216,16 @@ pub fn ffi_call(
     let mut floats:    Vec<f32>     = Vec::with_capacity(args.len());
     let mut handles:   Vec<*mut std::ffi::c_void> = Vec::with_capacity(args.len());
     let mut str_ptrs:  Vec<*const std::os::raw::c_char> = Vec::with_capacity(args.len());
-    // Per-StrArr backing: own the CStrings + the array of their
-    // pointers. The inner pointer arrays' heap allocations are
-    // stable across outer-Vec growth, so capturing `as_ptr()`
-    // post-population is safe.
+
     let mut arr_cstrings:   Vec<Vec<CString>>                       = Vec::new();
     let mut arr_ptr_lists:  Vec<Vec<*const std::os::raw::c_char>>   = Vec::new();
-    // Output-int slots: one i32 per ArgIntOut, plus a parallel Vec
-    // of pointers to those slots (for libffi to dereference).
+
     let mut int_outs:       Vec<i32>                                = Vec::new();
-    // Per-I32Buf backing: own the i32 slice. Pointers to as_ptr()
-    // captured post-population in `i32_buf_starts`.
+
     let mut i32_bufs:       Vec<Vec<i32>>                           = Vec::new();
-    // Per-PackedBuf backing: one byte vector per ArgPackedBuf,
-    // built by walking each PackedField and writing its
-    // natural-width little-endian bytes.
+
     let mut packed_bufs:    Vec<Vec<u8>>                            = Vec::new();
 
-    // First pass: fill the backing-storage vectors. We must NOT push
-    // to these between borrowing slots from them, because Vec growth
-    // would invalidate the pointers we hand to libffi.
     for (i, (arg, code)) in args.iter().zip(parsed.args.iter()).enumerate() {
         match (arg, *code) {
             (FfiArg::Int(n), TypeCode::I) => int64s.push(*n),
@@ -385,31 +273,22 @@ pub fn ffi_call(
         }
     }
 
-    // Reserve str_ptrs *after* c_strings is fully populated so the
-    // pointers we capture remain valid.
     for cs in &c_strings { str_ptrs.push(cs.as_ptr()); }
-    // For StrArr: capture each pointer-array's start. Each inner
-    // arr_ptr_lists[i] is heap-stable; this gives the C function
-    // a `const char * const *` pointing into our owned buffer.
+
     let arr_starts: Vec<*const *const std::os::raw::c_char> =
         arr_ptr_lists.iter().map(|v| v.as_ptr()).collect();
-    // For IntOut: pointers to each i32 slot. int_outs is now
-    // fully populated and won't grow, so element addresses are
-    // stable for the duration of the call.
+
     let int_out_base = int_outs.as_mut_ptr();
     let int_out_ptrs: Vec<*mut std::ffi::c_void> = (0..int_outs.len())
         .map(|i| unsafe { int_out_base.add(i) as *mut std::ffi::c_void })
         .collect();
-    // For I32Buf: each Vec's heap data is stable; capture as_ptr()
-    // post-population. Same reasoning as `arr_starts`.
+
     let i32_buf_starts: Vec<*const i32> =
         i32_bufs.iter().map(|v| v.as_ptr()).collect();
-    // Same for PackedBuf — each Vec<u8>'s heap data is stable.
+
     let packed_buf_starts: Vec<*const u8> =
         packed_bufs.iter().map(|v| v.as_ptr()).collect();
-    // Currently only one IntOut per call is supported (the surfaced
-    // result has no slot for more than one). Loosen by adding an
-    // IntListResult variant if a real call needs N>1.
+
     if int_outs.len() > 1 {
         return Err(FfiError(format!(
             "this call has {} ArgIntOut slots; only 1 is supported per call",
@@ -424,10 +303,6 @@ pub fn ffi_call(
         ));
     }
 
-    // Second pass: build the libffi `Arg` vector. Iterate over the
-    // (FfiArg, TypeCode) pairs because TypeCode::P is shared by
-    // Handle and StrArr — we need the actual FfiArg variant to pick
-    // the right backing store.
     let mut idx_int = 0usize; let mut idx_bool = 0usize;
     let mut idx_str = 0usize; let mut idx_dbl  = 0usize;
     let mut idx_flt = 0usize; let mut idx_p   = 0usize;
@@ -452,18 +327,11 @@ pub fn ffi_call(
         ffi_args.push(a);
     }
 
-    // Dispatch via libffi. Different return types use different
-    // `cif.call::<T>(...)` instantiations — libffi reads the right
-    // number of bytes off the return slot for the concrete T. The
-    // caller-side T must match cif's return-type slot, which we set
-    // from `parsed.ret`.
     let code_ptr = CodePtr::from_ptr(fn_ptr as *const _);
     let ret = match parsed.ret {
         TypeCode::V => {
             unsafe { cif.call::<()>(code_ptr, &ffi_args); }
-            // If the call had an ArgIntOut, surface the read-back
-            // value as Int instead of Void. (We already validated
-            // there's at most one IntOut.)
+
             if !int_outs.is_empty() {
                 FfiReturn::Int(int_outs[0] as i64)
             } else {
@@ -511,12 +379,8 @@ pub fn ffi_call(
 mod tests {
     use super::*;
 
-    /// libc soname (Linux). We run on Linux; the FFI dlopens exactly
-    /// the name given, so the tests name the host soname directly.
     fn libc_path() -> &'static str { "libc.so.6" }
 
-    /// libm (math) soname (Linux). glibc keeps `sqrt`/`sqrtf` in a
-    /// separate libm.so.6.
     fn libm_path() -> &'static str { "libm.so.6" }
 
     #[test]
@@ -578,8 +442,6 @@ mod tests {
         }
     }
 
-    /// f64 round-trip through libm's `sqrt`. Validates the
-    /// double-arg + double-return ABI slots.
     #[test]
     fn call_libm_sqrt_double() {
         let reg = HandleRegistry::new();
@@ -592,11 +454,6 @@ mod tests {
         }
     }
 
-    /// f32 round-trip through libm's `sqrtf`. The Evident-side value
-    /// is f64 (ArgReal); the marshaller narrows to f32 for the
-    /// libffi arg slot, then widens the f32 return back to f64.
-    /// On AArch64 floats and doubles use distinct register banks,
-    /// so a wrong type code here would silently return garbage.
     #[test]
     fn call_libm_sqrtf_float() {
         let reg = HandleRegistry::new();
@@ -614,7 +471,7 @@ mod tests {
         let reg = HandleRegistry::new();
         let lib = ffi_open(&reg, libc_path()).unwrap();
         let strlen = ffi_lookup(&reg, lib, "strlen").unwrap();
-        // strlen wants String; pass Int → error before any C call.
+
         let err = ffi_call(&reg, strlen, "i(s)", &[FfiArg::Int(0)]).unwrap_err();
         assert!(err.0.contains("type mismatch"), "{}", err.0);
     }
@@ -645,12 +502,8 @@ mod tests {
 
     #[test]
     fn null_returning_string_is_empty() {
-        // Most pure-libc functions don't return null pointers easily;
-        // skip if we can't construct one. This documents the
-        // null-handling contract more than verifies it.
+
         let _reg = HandleRegistry::new();
-        // Intentionally trivial: covered by ffi_call's null-check
-        // logic, but no widely-portable libc function reliably returns
-        // null we can call without args.
+
     }
 }

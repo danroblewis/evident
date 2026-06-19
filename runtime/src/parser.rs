@@ -1,5 +1,3 @@
-//! Tokens → AST. Hand-rolled recursive-descent for the v0.1 subset.
-
 use crate::core::ast::*;
 use crate::lexer::Token;
 
@@ -41,7 +39,6 @@ impl Parser {
         }
     }
 
-    /// Skip Newline tokens that aren't followed by an indent change worth recording.
     fn skip_blank_newlines(&mut self) {
         loop {
             match self.peek() {
@@ -53,16 +50,15 @@ impl Parser {
 
     pub fn parse_program(&mut self) -> Result<Program> {
         let mut program = Program::default();
-        // Initial Indent(0) at the start of the file.
+
         if !matches!(self.peek(), Token::Indent(0)) {
-            // Allow either Indent(0) explicit (set by lexer) or no indent.
+
         } else {
             self.bump();
         }
         loop {
             self.skip_blank_newlines();
-            // Skip leading Indent tokens at the top level (we expect Indent(0)
-            // before each top-level decl; the lexer emits one per logical line).
+
             while let Token::Indent(_) = self.peek() {
                 self.bump();
             }
@@ -95,18 +91,8 @@ impl Parser {
         Ok(program)
     }
 
-    /// Parse a top-level enum declaration:
-    ///   `enum Name = Variant1 | Variant2 | … | VariantN`
-    ///
-    /// Variants are nullary (no payloads in v0.1). Variant names must be
-    /// idents — they become the constructor names in the underlying Z3
-    /// datatype and must be globally unique across all enums in the
-    /// program (the existing datatypes.rs registry enforces this).
-    /// Whitespace and newlines around `|` are tolerated; the body lives
-    /// on a single logical line by default but parens/brackets aren't
-    /// required to span multiple lines because Pipe doesn't open a group.
     fn parse_enum_decl(&mut self) -> Result<crate::core::ast::EnumDecl> {
-        self.bump(); // enum
+        self.bump();
         let name = match self.bump() {
             Token::Ident(s) => s,
             other => return Err(ParseError(format!(
@@ -117,11 +103,7 @@ impl Parser {
             other => return Err(ParseError(format!(
                 "expected '=' after enum name, got {:?}", other))),
         }
-        // Multi-line variant body: after `=`, if a Newline + deeper
-        // Indent follows, accept variants on separate lines with
-        // optional leading `|`. End of body = dedent / EOF / next
-        // top-level decl. Single-line form (variants joined by `|`
-        // on the same logical line) still works as before.
+
         let mut block_indent: Option<usize> = None;
         if matches!(self.peek(), Token::Newline) {
             let saved = self.pos;
@@ -131,7 +113,7 @@ impl Parser {
                 if n > 0 {
                     block_indent = Some(n);
                     self.bump();
-                    // Optional leading `|` before the first variant.
+
                     if matches!(self.peek(), Token::Pipe) { self.bump(); }
                 } else {
                     self.pos = saved;
@@ -147,16 +129,10 @@ impl Parser {
                 other => return Err(ParseError(format!(
                     "expected variant name in enum, got {:?}", other))),
             };
-            // Optional payload `(Type1, Type2, …)`. Inner types are
-            // either bare Idents (`Int`, `MyEnum`) or compound types
-            // (`Seq(Int)`, `Set(String)`) — the parser accepts both
-            // and serializes to a flat String like `"Seq(Int)"`; the
-            // translator dispatches on the leading prefix at
-            // enum-load time. Field names are auto-generated `f0`,
-            // `f1`, …; named fields are a future extension.
+
             let mut fields: Vec<crate::core::ast::EnumField> = Vec::new();
             if matches!(self.peek(), Token::LParen) {
-                self.bump();   // (
+                self.bump();
                 if matches!(self.peek(), Token::RParen) {
                     return Err(ParseError(format!(
                         "variant `{}` has empty payload — drop the parens for nullary",
@@ -190,10 +166,7 @@ impl Parser {
                 self.bump();
                 continue;
             }
-            // Multi-line continuation: a Newline followed by Indent at
-            // exactly `block_indent` introduces another variant. The
-            // optional `|` between variants is allowed but not
-            // required in the multi-line form.
+
             if let Some(want) = block_indent {
                 if matches!(self.peek(), Token::Newline) {
                     let cont_save = self.pos;
@@ -201,14 +174,12 @@ impl Parser {
                     while matches!(self.peek(), Token::Newline) { self.bump(); }
                     if let Token::Indent(n) = self.peek().clone() {
                         if n == want {
-                            // Same indent → another variant follows.
-                            // Peek one token past the indent: must be
-                            // an Ident (variant name) or `|`.
+
                             let next_kind = self.toks.get(self.pos + 1);
                             let looks_like_variant = matches!(next_kind,
                                 Some(Token::Ident(_)) | Some(Token::Pipe));
                             if looks_like_variant {
-                                self.bump();   // indent
+                                self.bump();
                                 if matches!(self.peek(), Token::Pipe) {
                                     self.bump();
                                 }
@@ -228,12 +199,6 @@ impl Parser {
         Ok(crate::core::ast::EnumDecl { name, variants })
     }
 
-    /// Parse one enum-variant payload field type. Accepts bare idents
-    /// (`Int`, `MyEnum`) and one level of compound type with a single
-    /// inner type (`Seq(Int)`, `Set(String)`, `Seq(Color)`). Nested
-    /// compounds (`Seq(Seq(Int))`) parse recursively. The serialized
-    /// String round-trips through the translator's
-    /// `s.starts_with("Seq(")` dispatch at enum-load time.
     fn parse_enum_field_type(&mut self, v_name: &str) -> Result<String> {
         let head = match self.bump() {
             Token::Ident(s) => s,
@@ -241,9 +206,9 @@ impl Parser {
                 "expected field type in variant `{}`, got {:?}",
                 v_name, other))),
         };
-        // Compound form `Head(InnerType)` — recurse.
+
         if matches!(self.peek(), Token::LParen) {
-            self.bump();   // (
+            self.bump();
             let inner = self.parse_enum_field_type(v_name)?;
             match self.bump() {
                 Token::RParen => {}
@@ -256,20 +221,14 @@ impl Parser {
         Ok(head)
     }
 
-    /// Parse a `subclaim Name` body item. Same indented-body shape as
-    /// a top-level schema decl, but produces a `SubclaimDecl` body item
-    /// so the runtime can register it for later lookup.
     fn parse_subclaim(&mut self) -> Result<BodyItem> {
-        self.bump(); // subclaim keyword
+        self.bump();
         let name = match self.bump() {
             Token::Ident(s) => s,
             other => return Err(ParseError(format!(
                 "expected name after subclaim, got {:?}", other))),
         };
-        // Optional first-line params — same shape as top-level
-        // schemas (`subclaim foo(color ∈ Color)`). Caller-supplied
-        // inputs sit on the signature; outputs and locals go in
-        // the body.
+
         let mut body = Vec::new();
         if matches!(self.peek(), Token::LParen) {
             body = self.parse_first_line_params()?;
@@ -282,9 +241,6 @@ impl Parser {
         }))
     }
 
-    /// Parse zero or more body items at a single indent level. Used by
-    /// both top-level schema decls and subclaims. Stops when the next
-    /// Indent is at a different level (or there's no Indent at all).
     fn parse_indented_body(&mut self) -> Result<Vec<BodyItem>> {
         self.skip_blank_newlines();
         let body_indent = match self.peek() {
@@ -309,13 +265,7 @@ impl Parser {
     }
 
     fn parse_schema_decl(&mut self) -> Result<SchemaDecl> {
-        // Optional `external` modifier before the host keyword.
-        // Legal combinations: `external type` (OS-side resource),
-        // `external claim` (effect builder), `external fsm`
-        // (runtime-side bridge fsm — see
-        // docs/design/state-machines-as-relations.md). The only
-        // illegal combination is `external schema`, since `schema`
-        // is the deprecated synonym for `type`.
+
         let external = if matches!(self.peek(), Token::External) {
             self.bump();
             true
@@ -342,10 +292,7 @@ impl Parser {
             other => return Err(ParseError(format!(
                 "expected schema name, got {:?}", other))),
         };
-        // Optional first-line param list: `type Vec2(x, y ∈ Int)` is
-        // shorthand for declaring those Memberships at the top of the
-        // body. The order shown here is the canonical positional order
-        // for callers using positional pins (`v ∈ Vec2(10, 20)`).
+
         let mut body = Vec::new();
         if matches!(self.peek(), Token::LParen) {
             body = self.parse_first_line_params()?;
@@ -355,11 +302,6 @@ impl Parser {
         Ok(SchemaDecl { keyword, name, body, param_count, external })
     }
 
-    /// Parse `( name1, name2, … ∈ Type, name3 ∈ Type2, … )`. Each
-    /// "group" (comma-separated names + `∈ Type`) becomes one
-    /// Membership per name. Bare types only — no inline pins or
-    /// compound types in this position (would be parser-noisy and
-    /// I haven't seen a use case yet).
     fn parse_first_line_params(&mut self) -> Result<Vec<BodyItem>> {
         self.eat(&Token::LParen)?;
         let mut items = Vec::new();
@@ -368,7 +310,7 @@ impl Parser {
             return Ok(items);
         }
         loop {
-            // One group: comma-separated names ending at `∈`.
+
             let mut names = Vec::new();
             loop {
                 match self.bump() {
@@ -383,10 +325,7 @@ impl Parser {
                         "expected ',' or '∈' after param name, got {:?}", other))),
                 }
             }
-            // Type name: bare ident, or compound `Seq(Inner)` /
-            // `Set(Inner)` / etc. Pins on first-line decls would be
-            // confusing (you're declaring a field, not constructing a
-            // value), so we don't accept them here.
+
             let head = match self.bump() {
                 Token::Ident(s) => s,
                 other => return Err(ParseError(format!(
@@ -395,7 +334,7 @@ impl Parser {
             let type_name = if matches!(head.as_str(), "Seq" | "Set" | "Bag" | "Map")
                 && matches!(self.peek(), Token::LParen)
             {
-                self.bump();   // (
+                self.bump();
                 let inner = match self.bump() {
                     Token::Ident(s) => s,
                     other => return Err(ParseError(format!(
@@ -423,37 +362,6 @@ impl Parser {
         Ok(items)
     }
 
-    /// Parse a Membership's type name and optional pin clause, given
-    /// `head` is the type-name ident currently at `self.peek()`.
-    /// Returns `Ok(Some(...))` on success, `Ok(None)` if the input
-    /// doesn't look like a recognized Membership shape (caller backs
-    /// up and tries to parse as an expression instead).
-    ///
-    /// Type-name shapes accepted:
-    ///   - bare ident:               `Nat`
-    ///   - named pins:               `IVec2 (x ↦ 0, y ↦ 0)`
-    /// Body-item-level recognition of a chained-comparison expression
-    /// with an embedded `∈ TypeName` step. Splits into a Membership
-    /// declaration plus one Constraint per comparison pair.
-    ///
-    ///   `pos_x ∈ Int = 5`         →  `pos_x ∈ Int` ; `pos_x = 5`
-    ///   `pos_x ∈ Int < 5`         →  `pos_x ∈ Int` ; `pos_x < 5`
-    ///   `0 < pos_x ∈ Int`         →  `pos_x ∈ Int` ; `0 < pos_x`
-    ///   `0 < pos_x ∈ Int < 5`     →  `pos_x ∈ Int` ; `0 < pos_x` ; `pos_x < 5`
-    ///   `pos_x ∈ Seq(Int)`        →  same single-Membership case
-    ///
-    /// The variable being declared is the operand immediately to the
-    /// left of `∈`. It must be a bare Identifier (no field access,
-    /// expression). Multi-name shorthand is supported when the comma
-    /// list sits at the operand position immediately to the left of
-    /// `∈`: `x, y, z ∈ Int < 5` and `0 < x, y, z ∈ Int < 5` both
-    /// expand to one Membership per name plus per-name copies of
-    /// every comparison-pair constraint.
-    ///
-    /// Returns `None` (and rewinds the cursor) if the line doesn't fit
-    /// this pattern. Carefully avoids consuming a regular set-membership
-    /// expression like `x ∈ pts ∧ …` — the chain-end check requires
-    /// a Newline / Eof / Indent immediately after the chain.
     fn try_parse_chained_membership(&mut self) -> Result<Option<Vec<BodyItem>>> {
         let saved = self.pos;
 
@@ -463,15 +371,11 @@ impl Parser {
         };
         let mut operands: Vec<Expr> = vec![first];
         let mut ops: Vec<BinOp> = Vec::new();
-        // (var_idx, type_name, all names — 1 element for single-name,
-        //  2+ for `x, y, z ∈ Type` shorthand)
+
         let mut membership_at: Option<(usize, String, Vec<String>)> = None;
 
         loop {
-            // Multi-name shorthand: if the most recent operand is a
-            // bare Ident and the next tokens look like `, IDENT (, IDENT)* ∈`,
-            // consume the extra names. Only valid at the operand position
-            // immediately to the left of `∈`.
+
             let mut extra_names: Vec<String> = Vec::new();
             if matches!(self.peek(), Token::Comma) {
                 let last_is_bare = matches!(operands.last(),
@@ -481,13 +385,9 @@ impl Parser {
                     let mut names: Vec<String> = Vec::new();
                     while matches!(self.peek(), Token::Comma) {
                         let inner_save = self.pos;
-                        self.bump();   // ,
+                        self.bump();
                         if let Token::Ident(s) = self.peek().clone() {
-                            // Same protective lookahead as the existing
-                            // multi-name body-item path: only consume if
-                            // the next token after the new ident is itself
-                            // a `,` or `∈`. Avoids eating `x, y` from a
-                            // tuple-like expression.
+
                             let next_after = self.toks.get(self.pos + 1);
                             if matches!(next_after, Some(Token::Comma) | Some(Token::In)) {
                                 self.bump();
@@ -501,7 +401,7 @@ impl Parser {
                     if matches!(self.peek(), Token::In) && !names.is_empty() {
                         extra_names = names;
                     } else {
-                        // Not a multi-name shorthand; rewind comma consumption.
+
                         self.pos = mn_save;
                     }
                 }
@@ -509,17 +409,12 @@ impl Parser {
 
             if matches!(self.peek(), Token::In) {
                 if membership_at.is_some() {
-                    // Two ∈ in one chain — not a recognized form.
+
                     self.pos = saved;
                     return Ok(None);
                 }
                 self.bump();
-                // The RHS of ∈ in a chained membership must be a
-                // simple type name: a bare Ident, or a recognized
-                // compound `Ident(Ident)` for Seq/Set/Bag/Map.
-                // Followed by either a Newline-class token or
-                // another comparison op. Anything else (function call,
-                // pin form, expression) → bail.
+
                 let head = match self.peek().clone() {
                     Token::Ident(s) => s,
                     _ => { self.pos = saved; return Ok(None); }
@@ -534,13 +429,13 @@ impl Parser {
                     && matches!(self.toks.get(self.pos + 3), Some(Token::RParen));
 
                 let type_name = if is_compound {
-                    self.bump();   // head
-                    self.bump();   // (
+                    self.bump();
+                    self.bump();
                     let inner = match self.bump() {
                         Token::Ident(s) => s,
                         _ => unreachable!(),
                     };
-                    self.bump();   // )
+                    self.bump();
                     let after = self.toks.get(self.pos).cloned();
                     if !after_chain_class(&after) {
                         self.pos = saved;
@@ -552,7 +447,7 @@ impl Parser {
                         self.pos = saved;
                         return Ok(None);
                     }
-                    self.bump();   // head
+                    self.bump();
                     head
                 };
 
@@ -584,9 +479,6 @@ impl Parser {
             return Ok(None);
         };
 
-        // The chain must end at a body-item boundary; otherwise the
-        // user wrote something like `pos_x ∈ Int = 5 ∧ …` and we
-        // should let the regular expression parser handle it.
         if !matches!(self.peek(),
             Token::Newline | Token::Eof | Token::Indent(_)
         ) {
@@ -594,9 +486,6 @@ impl Parser {
             return Ok(None);
         }
 
-        // Desugar: emit one Membership per name first, then per-name
-        // copies of each comparison-pair constraint with the variable
-        // position substituted to the current name.
         let mut items: Vec<BodyItem> = names.iter().map(|n| BodyItem::Membership {
             name: n.clone(),
             type_name: type_name.clone(),
@@ -615,10 +504,6 @@ impl Parser {
         Ok(Some(items))
     }
 
-    ///   - positional pins:          `IVec2 (-800, -800)`
-    ///   - compound `Ident(Ident)`:  `Seq(Int)` (only for hardcoded
-    ///     compound heads — Seq/Set/Bag/Map — so other `Type(arg)`
-    ///     reads as a positional pin).
     fn try_parse_type_and_pins(&mut self, head: &str)
         -> Result<Option<(String, crate::core::ast::Pins)>>
     {
@@ -635,15 +520,15 @@ impl Parser {
             let inside_second = self.toks.get(self.pos + 3);
             let is_named_pin = matches!(inside_first, Some(Token::Ident(_)))
                 && matches!(inside_second, Some(Token::MapsTo));
-            // `Seq(Int)` — bare-ident inner — looks like a compound.
+
             let looks_like_compound = matches!(inside_first, Some(Token::Ident(_)))
                 && matches!(inside_second, Some(Token::RParen));
             let is_known_compound_head =
                 matches!(head, "Seq" | "Set" | "Bag" | "Map");
 
             if is_named_pin {
-                self.bump();   // type ident
-                self.bump();   // (
+                self.bump();
+                self.bump();
                 let mut pins = Vec::new();
                 loop {
                     let slot = match self.bump() {
@@ -660,13 +545,13 @@ impl Parser {
                 self.eat(&Token::RParen)?;
                 return Ok(Some((head.to_string(), crate::core::ast::Pins::Named(pins))));
             } else if is_known_compound_head && looks_like_compound {
-                self.bump();           // outer ident
-                self.bump();           // (
+                self.bump();
+                self.bump();
                 let inner = match self.bump() {
                     Token::Ident(s) => s,
                     _ => unreachable!(),
                 };
-                self.bump();           // )
+                self.bump();
                 let after = self.toks.get(self.pos);
                 let line_end = matches!(after,
                     Some(Token::Newline) | Some(Token::Eof)
@@ -676,9 +561,9 @@ impl Parser {
                 }
                 return Ok(None);
             } else {
-                // Positional pins.
-                self.bump();   // type ident
-                self.bump();   // (
+
+                self.bump();
+                self.bump();
                 let mut args = Vec::new();
                 if !matches!(self.peek(), Token::RParen) {
                     loop {
@@ -697,20 +582,7 @@ impl Parser {
     }
 
     fn parse_body_item(&mut self) -> Result<Vec<BodyItem>> {
-        // Four shapes:
-        //   ..IDENT                                 → Passthrough composition
-        //   IDENT IN IDENT (followed by line-end)   → Membership declaration
-        //   <chain with ∈ TypeName embedded>        → Membership + Constraint(s)
-        //         e.g. `pos_x ∈ Int = 5`, `0 < pos_x ∈ Int < 5`,
-        //              `pos_x ∈ Int < 5`. Desugars to a Membership for
-        //              the var to the left of ∈, plus per-pair Constraints
-        //              for each comparison op in the chain. Single-name
-        //              only; multi-name + chain not supported yet.
-        //   <expr>                                  → Constraint
-        // Anything else with `∈` (e.g. `x ∈ {1, 2}` or `x ∈ pts`) parses
-        // as an expression and ends up as a Constraint.
 
-        // Passthrough: `..ClaimName` at body-item start.
         if matches!(self.peek(), Token::DotDot) {
             self.bump();
             match self.bump() {
@@ -720,20 +592,10 @@ impl Parser {
             }
         }
 
-        // Subclaim: `subclaim Name` followed by an indented body. Same
-        // shape as a top-level schema decl. The runtime-loader pulls
-        // the inner SchemaDecl out and registers it under its name so
-        // ClaimCall / passthrough can reference it.
         if matches!(self.peek(), Token::Subclaim) {
             return Ok(vec![self.parse_subclaim()?]);
         }
 
-        // ClaimCall: `IDENT(slot mapsto value, …)` at body-item start.
-        // Distinguished from a parenthesized expression by the IDENT
-        // immediately followed by `(`. Disambiguated from a
-        // function-call expression (record literal like `IVec2(0, 0)`)
-        // by checking that the second token inside the parens is
-        // `MapsTo` — specific to ClaimCall syntax.
         if let Token::Ident(_) = self.peek() {
             let lparen_offset: Option<usize> =
                 if matches!(self.toks.get(self.pos + 1), Some(Token::LParen)) {
@@ -772,14 +634,10 @@ impl Parser {
                         return Ok(vec![BodyItem::ClaimCall { name, mappings }]);
                     }
                 }
-                // Otherwise fall through to expr-as-Constraint parsing,
-                // which handles record literals like `IVec2(0, 0)`.
+
             }
         }
-        // Chained-membership: try to parse `[lhs comp]* IDENT ∈ TypeName [comp rhs]*`
-        // and split into a Membership + a Constraint per comparison pair.
-        // Returns None (and rewinds) for anything that doesn't fit; the
-        // existing Membership and expression branches below handle the rest.
+
         if let Some(items) = self.try_parse_chained_membership()? {
             return Ok(items);
         }
@@ -790,13 +648,10 @@ impl Parser {
                 Token::Ident(s) => vec![s],
                 _ => unreachable!(),
             };
-            // Multi-name shorthand: `x, y, z ∈ Type …`. Each comma must
-            // be followed by an Ident that's itself followed by a Comma
-            // or `In` — protects against confusing `(a, b)` tuple
-            // bindings or comma-in-expr from being eaten here.
+
             while matches!(self.peek(), Token::Comma) {
                 let inner_save = self.pos;
-                self.bump();   // ,
+                self.bump();
                 if let Token::Ident(next_name) = self.peek().clone() {
                     let next_after = self.toks.get(self.pos + 1);
                     if matches!(next_after, Some(Token::Comma) | Some(Token::In)) {
@@ -819,7 +674,7 @@ impl Parser {
                         }).collect());
                     }
                 }
-                // Not a recognized Membership shape — back up.
+
                 self.pos = saved;
             } else {
                 self.pos = saved;
@@ -829,19 +684,8 @@ impl Parser {
         Ok(vec![BodyItem::Constraint(e)])
     }
 
-    // Operator precedence (low → high):
-    //   implies        : right-assoc
-    //   or             : left
-    //   and            : left
-    //   compare        : non-assoc (=, ≠, <, ≤, >, ≥)
-    //   add/sub        : left
-    //   mul/div        : left
-    //   unary not / -
-    //   atoms          : ident, int, paren
-
     fn parse_expr(&mut self) -> Result<Expr> {
-        // Quantifier expressions are right at the top so the colon-separated
-        // body picks up everything to the right.
+
         if matches!(self.peek(), Token::ForAll | Token::Exists) {
             return self.parse_quantifier();
         }
@@ -851,12 +695,9 @@ impl Parser {
     fn parse_quantifier(&mut self) -> Result<Expr> {
         let is_forall = matches!(self.peek(), Token::ForAll);
         self.bump();
-        // Binding shapes:
-        //   `∀ x ∈ …`               — single-var (1-element Vec)
-        //   `∀ (a, b, c) ∈ …`       — tuple binding for pair/N-tuple
-        //                            iteration (`coindexed`, `edges`)
+
         let vars: Vec<String> = if matches!(self.peek(), Token::LParen) {
-            self.bump();   // (
+            self.bump();
             let mut names = Vec::new();
             loop {
                 match self.bump() {
@@ -882,26 +723,10 @@ impl Parser {
             }
         };
         self.eat(&Token::In)?;
-        // The range can be:
-        //   - `{lo..hi}` or `{a, b, c}` — set / range literal (parsed
-        //     by parse_atom's `{` branch).
-        //   - `coindexed(A, B)` / `edges(seq)` — builtin call.
-        //   - A Seq expression: a bare Identifier OR a Field/Index
-        //     chain like `groups[0].items` reaching a Seq via a
-        //     SeqField on a composite element. parse_postfix is the
-        //     entry that consumes the postfix `[…]` / `.field` chain.
+
         let range = self.parse_postfix()?;
         self.eat(&Token::Colon)?;
-        // Quantifier-block form: `∀ var ∈ range :` followed by Newline +
-        // Indent at a deeper level. Parse a stack of body items at that
-        // indent and AND-combine them as the quantifier body. Mirrors
-        // the implies-block pattern in parse_implies. Lets users write
-        //
-        //   ∀ i ∈ {0..3} :
-        //       state.dots[i].pos_x ≥ 20
-        //       state.dots[i].pos_x ≤ 740
-        //
-        // instead of repeating `∀ i ∈ {0..3} : …` per constraint.
+
         if matches!(self.peek(), Token::Newline) {
             let saved = self.pos;
             self.bump();
@@ -948,30 +773,24 @@ impl Parser {
     }
 
     fn parse_implies(&mut self) -> Result<Expr> {
-        // Quantifiers are valid wherever an `⇒` operand is — they live
-        // at the same precedence as `⇒`. Without this, `A ⇒ ∀ i : B`
-        // and the implies-block form `A ⇒\n    ∀ i : B` both fail
-        // (the body iteration recurses through parse_implies).
+
         if matches!(self.peek(), Token::ForAll | Token::Exists) {
             return self.parse_quantifier();
         }
         let lhs = self.parse_ternary()?;
         if matches!(self.peek(), Token::Implies) {
             self.bump();
-            // Implies-block form: `A ⇒` followed by Newline + Indent at a
-            // deeper level than the line `A ⇒` started on. Parse a stack
-            // of body items at that indent and AND them as the consequent.
-            // Mirrors the Python `implies_block` grammar rule.
+
             if matches!(self.peek(), Token::Newline) {
                 let saved = self.pos;
                 self.bump();
-                // Skip blank newlines.
+
                 while matches!(self.peek(), Token::Newline) { self.bump(); }
                 if let Token::Indent(n) = self.peek().clone() {
                     let block_indent = n;
                     let mut conjuncts = Vec::new();
                     loop {
-                        // Each line: Indent(block_indent) then expr then Newline.
+
                         match self.peek() {
                             Token::Indent(m) if *m == block_indent => { self.bump(); }
                             _ => break,
@@ -985,11 +804,10 @@ impl Parser {
                         }
                     }
                     if conjuncts.is_empty() {
-                        // No body — restore and fall through to the
-                        // expression-RHS branch below (will likely error).
+
                         self.pos = saved;
                     } else {
-                        // Combine into a left-associative AND chain.
+
                         let mut acc = conjuncts.remove(0);
                         for c in conjuncts {
                             acc = Expr::Binary(BinOp::And, Box::new(acc), Box::new(c));
@@ -1006,19 +824,12 @@ impl Parser {
         Ok(lhs)
     }
 
-    /// `cond ? then : else` — C-style ternary. Sits between `⇒` and
-    /// `∨` in precedence so:
-    ///   `a ⇒ b ? c : d`  parses as `a ⇒ (b ? c : d)`
-    ///   `a ∨ b ? c : d`  parses as `(a ∨ b) ? c : d`
-    /// Right-associative (`a ? b : c ? d : e` is `a ? b : (c ? d : e)`).
-    /// Both branches recursively call `parse_ternary` so nested
-    /// ternaries on either side work without parens.
     fn parse_ternary(&mut self) -> Result<Expr> {
         let cond = self.parse_or()?;
         if !matches!(self.peek(), Token::Question) {
             return Ok(cond);
         }
-        self.bump(); // ?
+        self.bump();
         let then_branch = self.parse_ternary()?;
         match self.bump() {
             Token::Colon => {}
@@ -1056,27 +867,25 @@ impl Parser {
 
     fn parse_compare(&mut self) -> Result<Expr> {
         let lhs = self.parse_addsub()?;
-        // `e matches Pattern` — constructor recognizer. Sits at
-        // comparison level so `e matches A ∨ e matches B` parses as
-        // `(matches A) ∨ (matches B)`.
+
         if matches!(self.peek(), Token::Matches) {
             self.bump();
             let pattern = self.parse_match_pattern()?;
             return Ok(Expr::Matches(Box::new(lhs), pattern));
         }
-        // ∈ binds at the same level as =, <, etc.
+
         if matches!(self.peek(), Token::In) {
             self.bump();
             let rhs = self.parse_addsub()?;
             return Ok(Expr::InExpr(Box::new(lhs), Box::new(rhs)));
         }
-        // ∉ — desugar `lhs ∉ rhs` to `¬(lhs ∈ rhs)`.
+
         if matches!(self.peek(), Token::NotIn) {
             self.bump();
             let rhs = self.parse_addsub()?;
             return Ok(Expr::Not(Box::new(Expr::InExpr(Box::new(lhs), Box::new(rhs)))));
         }
-        // ∋ — reverse membership: `lhs ∋ rhs` means `rhs ∈ lhs`.
+
         if matches!(self.peek(), Token::ContainsRev) {
             self.bump();
             let rhs = self.parse_addsub()?;
@@ -1094,15 +903,7 @@ impl Parser {
         if let Some(op) = op {
             self.bump();
             let rhs = self.parse_addsub()?;
-            // Chained comparison: if another comparison op follows
-            // (`20 ≤ x ≤ 740`, `a < b ≤ c`, etc.), collect the rest
-            // and AND-combine pairwise. Standard math notation;
-            // matches the Python parser's `arith_chain` rule. The
-            // inner operands are shared between adjacent
-            // comparisons (the `x` in `20 ≤ x ≤ 740` appears in both
-            // (20 ≤ x) AND (x ≤ 740)) — semantics match Python and
-            // mainstream math; differs from C/Rust's left-fold which
-            // would type-error here.
+
             if peek_compare_op(self.peek()).is_some() {
                 let mut operands: Vec<Expr> = vec![lhs, rhs];
                 let mut ops: Vec<BinOp> = vec![op];
@@ -1111,7 +912,7 @@ impl Parser {
                     operands.push(self.parse_addsub()?);
                     ops.push(next_op);
                 }
-                // Build (operands[0] op[0] operands[1]) ∧ (operands[1] op[1] operands[2]) ∧ …
+
                 let mut acc: Option<Expr> = None;
                 for (i, op_i) in ops.into_iter().enumerate() {
                     let pair = Expr::Binary(
@@ -1171,7 +972,7 @@ impl Parser {
         if matches!(self.peek(), Token::Minus) {
             self.bump();
             let e = self.parse_unary()?;
-            // Treat -x as 0 - x.
+
             return Ok(Expr::Binary(BinOp::Sub, Box::new(Expr::Int(0)), Box::new(e)));
         }
         if matches!(self.peek(), Token::Hash) {
@@ -1182,14 +983,6 @@ impl Parser {
         self.parse_postfix()
     }
 
-    /// Atom followed by zero or more `[expr]` indexing suffixes and/or
-    /// `.ident` field-access suffixes. Both bind tighter than any binary
-    /// op. The `.ident` chain on a bare Identifier is already collapsed
-    /// into a dotted name at the atom level (see `parse_atom`), so this
-    /// loop only sees `.ident` after a non-Ident receiver — typically
-    /// after an Index suffix like `pts[0].x`. We wrap it in `Field`,
-    /// which the runtime resolves through Datatype accessors instead of
-    /// env-key lookup.
     fn parse_postfix(&mut self) -> Result<Expr> {
         let mut e = self.parse_atom()?;
         loop {
@@ -1216,17 +1009,10 @@ impl Parser {
         Ok(e)
     }
 
-    /// `match scrutinee \n   Pattern ⇒ body \n   Pattern ⇒ body ...`
-    /// Arms are delimited by indentation; the scrutinee is one line
-    /// after `match` (no trailing colon needed). Each arm has a
-    /// pattern (`Ctor(b1, b2, ...)` or `_`) then `⇒` then a body
-    /// expression (single line; no implies-block on the body).
-    /// Caller is `parse_atom` — match sits at atom level so it composes
-    /// with arithmetic (`1 + match e ...`) and equality LHS.
     fn parse_match(&mut self) -> Result<Expr> {
-        self.bump(); // match
+        self.bump();
         let scrutinee = self.parse_or()?;
-        // Require Newline → Indent at deeper level.
+
         if !matches!(self.peek(), Token::Newline) {
             return Err(ParseError(
                 "expected newline + indented arms after `match scrutinee`".into()));
@@ -1254,7 +1040,7 @@ impl Parser {
             arms.push(crate::core::ast::MatchArm {
                 pattern, body: Box::new(body),
             });
-            // Optional Newline between arms.
+
             while matches!(self.peek(), Token::Newline) { self.bump(); }
         }
         if arms.is_empty() {
@@ -1263,23 +1049,21 @@ impl Parser {
         Ok(Expr::Match(Box::new(scrutinee), arms))
     }
 
-    /// One pattern: bare `_` (wildcard), or `Ctor(b1, b2, ...)` where
-    /// each binding is an identifier or `_`.
     fn parse_match_pattern(&mut self) -> Result<crate::core::ast::MatchPattern> {
-        // Bare `_` at the top level.
+
         if let Token::Ident(s) = self.peek().clone() {
             if s == "_" {
                 self.bump();
                 return Ok(crate::core::ast::MatchPattern::Wildcard);
             }
-            // Either bare nullary variant `Ctor` or `Ctor(b1, ...)`.
+
             self.bump();
             if !matches!(self.peek(), Token::LParen) {
                 return Ok(crate::core::ast::MatchPattern::Ctor {
                     name: s, binds: Vec::new(),
                 });
             }
-            self.bump(); // (
+            self.bump();
             let mut binds = Vec::new();
             if !matches!(self.peek(), Token::RParen) {
                 loop {
@@ -1314,14 +1098,7 @@ impl Parser {
             Token::Match    => self.parse_match(),
             Token::Ident(s) => {
                 self.bump();
-                // Greedily consume `.ident` chains (sub-schema field access)
-                // and collapse into a single dotted Identifier. Done
-                // BEFORE the call check so `win.renderer.set_draw_color(args)`
-                // parses as `Call("win.renderer.set_draw_color", args)` —
-                // method-style invocation. The inline-translator splits
-                // the name on the last dot and treats the prefix as the
-                // receiver (prepended to args) when the suffix is a
-                // known schema.
+
                 let mut name = s;
                 while matches!(self.peek(), Token::Dot) {
                     self.bump();
@@ -1331,13 +1108,9 @@ impl Parser {
                             "expected field name after '.', got {:?}", other))),
                     }
                 }
-                // Function-call expression: `name(arg, …)`. Recognized
-                // for builtins like `coindexed(A, B)` / `edges(seq)`,
-                // record literals like `IVec2(0, 0)`, claim invocations
-                // like `set_draw_color(ren, c, out)`, and method-style
-                // `recv.claim(args)` (dispatched in inline.rs).
+
                 if matches!(self.peek(), Token::LParen) {
-                    self.bump();   // (
+                    self.bump();
                     let mut args = Vec::new();
                     if !matches!(self.peek(), Token::RParen) {
                         loop {
@@ -1357,11 +1130,7 @@ impl Parser {
             Token::LParen   => {
                 self.bump();
                 let first = self.parse_expr()?;
-                // Tuple form: `(e1, e2, …)`. Used as the LHS of
-                // `∈ claim_name` (the relational invocation form). A
-                // single expression in parens (`(e)`) is just a
-                // grouped expression — no Tuple wrapper, to preserve
-                // the natural reading of `(a + b) * c`.
+
                 if matches!(self.peek(), Token::Comma) {
                     let mut items = vec![first];
                     while matches!(self.peek(), Token::Comma) {
@@ -1376,13 +1145,13 @@ impl Parser {
             }
             Token::LBrace => {
                 self.bump();
-                // Empty `{}` is a (vacuous) set literal.
+
                 if matches!(self.peek(), Token::RBrace) {
                     self.bump();
                     return Ok(Expr::SetLit(vec![]));
                 }
                 let first = self.parse_expr()?;
-                // Decide between range `{lo..hi}` and set `{a, b, c}`.
+
                 if matches!(self.peek(), Token::DotDot) {
                     self.bump();
                     let hi = self.parse_expr()?;
@@ -1398,8 +1167,7 @@ impl Parser {
                 Ok(Expr::SetLit(items))
             }
             Token::LSeq => {
-                // `⟨e1, e2, …⟩` sequence literal. Distinct from `{…}` set
-                // literal — pinned by element index, not membership-only.
+
                 self.bump();
                 if matches!(self.peek(), Token::RSeq) {
                     self.bump();
@@ -1419,10 +1187,6 @@ impl Parser {
     }
 }
 
-/// Recognize a comparison operator token. Used by `parse_compare` for
-/// chained-comparison detection (`20 ≤ x ≤ 740` etc.) — when the
-/// token after a `lhs op rhs` parse is another comparison op, we
-/// know we're in a chain and the desugaring kicks in.
 fn peek_compare_op(tok: &Token) -> Option<BinOp> {
     match tok {
         Token::Eq  => Some(BinOp::Eq),
@@ -1459,21 +1223,20 @@ mod tests {
 
     #[test]
     fn parse_cardinality_and_index() {
-        // Even though the translator doesn't run these yet, the AST
-        // shape should be settled.
+
         let p = parse("schema S\n    s ∈ Seq(Int)\n    #s = 3\n    s[0] > 0\n").unwrap();
         let s = &p.schemas[0];
         assert_eq!(s.body.len(), 3);
         assert!(matches!(&s.body[0], BodyItem::Membership { name, type_name, .. }
             if name == "s" && type_name == "Seq(Int)"));
-        // #s = 3
+
         match &s.body[1] {
             BodyItem::Constraint(Expr::Binary(BinOp::Eq, lhs, _)) => {
                 assert!(matches!(lhs.as_ref(), Expr::Cardinality(_)));
             }
             other => panic!("expected #s = 3 constraint, got {:?}", other),
         }
-        // s[0] > 0
+
         match &s.body[2] {
             BodyItem::Constraint(Expr::Binary(BinOp::Gt, lhs, _)) => {
                 assert!(matches!(lhs.as_ref(), Expr::Index(_, _)));
@@ -1484,14 +1247,14 @@ mod tests {
 
     #[test]
     fn parse_arithmetic_constraint() {
-        // n > 5 + 3 * 2  →  n > (5 + (3 * 2))
+
         let p = parse("schema X\n    n ∈ Nat\n    n > 5 + 3 * 2\n").unwrap();
         let s = &p.schemas[0];
         let constraint = match &s.body[1] {
             BodyItem::Constraint(e) => e,
             _ => panic!(),
         };
-        // Top should be a > comparison; right side should be 5 + (3*2)
+
         match constraint {
             Expr::Binary(BinOp::Gt, _, rhs) => match rhs.as_ref() {
                 Expr::Binary(BinOp::Add, _, r2) => match r2.as_ref() {
@@ -1506,10 +1269,7 @@ mod tests {
 
     #[test]
     fn parse_chained_membership_two_sided() {
-        // `0 < pos_x ∈ Int < 5` desugars to:
-        //   - Membership(pos_x, Int)
-        //   - Constraint(0 < pos_x)
-        //   - Constraint(pos_x < 5)
+
         let p = parse("claim t\n    0 < pos_x ∈ Int < 5\n").unwrap();
         let s = &p.schemas[0];
         assert_eq!(s.body.len(), 3, "expected 3 body items, got {}", s.body.len());
@@ -1521,7 +1281,7 @@ mod tests {
 
     #[test]
     fn parse_chained_membership_pin_form() {
-        // `pos_x ∈ Int = 5` desugars to Membership + Constraint(=).
+
         let p = parse("claim t\n    pos_x ∈ Int = 5\n").unwrap();
         let s = &p.schemas[0];
         assert_eq!(s.body.len(), 2);
@@ -1532,13 +1292,9 @@ mod tests {
 
     #[test]
     fn parse_chained_membership_compound_type() {
-        // Compound type like `Seq(Int)` allowed on the RHS of ∈.
-        // Tail comparison only — leading comparison would need to chain
-        // against a Seq, which isn't meaningful.
+
         let p = parse("claim t\n    s ∈ Seq(Int)\n    #s = 3\n").unwrap();
-        // This particular form doesn't trigger chained-membership (no
-        // comparison op follows the type) — confirms the regular path
-        // still parses.
+
         let s = &p.schemas[0];
         assert!(matches!(&s.body[0], BodyItem::Membership { name, type_name, .. }
             if name == "s" && type_name == "Seq(Int)"));
@@ -1546,13 +1302,10 @@ mod tests {
 
     #[test]
     fn parse_chained_membership_does_not_eat_set_membership() {
-        // `x ∈ pts ∧ x > 0` must NOT be split into a Membership +
-        // Constraint — the `∧` after the Ident isn't a comparison op,
-        // so the chain detector bails and the regular expression
-        // parser handles it as `(x ∈ pts) ∧ (x > 0)`.
+
         let p = parse("claim t\n    pts ∈ Set(Int)\n    x ∈ Int\n    x ∈ pts ∧ x > 0\n").unwrap();
         let s = &p.schemas[0];
-        // Last body item should be a single Constraint with a Binary(And) at top.
+
         match s.body.last().unwrap() {
             BodyItem::Constraint(Expr::Binary(BinOp::And, _, _)) => {}
             other => panic!("expected `(x ∈ pts) ∧ (x > 0)` constraint, got {:?}", other),
@@ -1561,9 +1314,7 @@ mod tests {
 
     #[test]
     fn parse_chained_membership_multi_name() {
-        // `x, y, z ∈ Int < 5` desugars to:
-        //   - Membership(x, Int), Membership(y, Int), Membership(z, Int)
-        //   - Constraint(x < 5), Constraint(y < 5), Constraint(z < 5)
+
         let p = parse("claim t\n    x, y, z ∈ Int < 5\n").unwrap();
         let s = &p.schemas[0];
         assert_eq!(s.body.len(), 6, "expected 3 Memberships + 3 Constraints");
@@ -1578,14 +1329,14 @@ mod tests {
 
     #[test]
     fn parse_chained_membership_multi_name_two_sided() {
-        // `0 < x, y ∈ Int < 5` → 2 Memberships + 4 Constraints (lower + upper per name).
+
         let p = parse("claim t\n    0 < x, y ∈ Int < 5\n").unwrap();
         let s = &p.schemas[0];
         assert_eq!(s.body.len(), 6);
-        // First two are Memberships
+
         assert!(matches!(&s.body[0], BodyItem::Membership { name, .. } if name == "x"));
         assert!(matches!(&s.body[1], BodyItem::Membership { name, .. } if name == "y"));
-        // Next four are Constraints (per-name pair)
+
         for i in 2..6 {
             assert!(matches!(&s.body[i], BodyItem::Constraint(Expr::Binary(BinOp::Lt, _, _))));
         }
@@ -1674,59 +1425,52 @@ mod tests {
 
     #[test]
     fn parse_enum_decl_forward_reference_parses() {
-        // `Expr` declared first, references `BinOp` declared later.
-        // The parser doesn't validate types — that's runtime — so this
-        // just confirms the AST shape: 2 enum decls, the first
-        // references the second by name in a payload field.
+
         let p = parse(
             "enum Expr = Lit(Int) | Op(BinOp, Expr, Expr)\nenum BinOp = Add | Sub\n"
         ).unwrap();
         assert_eq!(p.enums.len(), 2);
         assert_eq!(p.enums[0].name, "Expr");
         assert_eq!(p.enums[1].name, "BinOp");
-        // Op variant's first field references BinOp.
+
         assert_eq!(p.enums[0].variants[1].name, "Op");
         assert_eq!(p.enums[0].variants[1].fields[0].type_name, "BinOp");
     }
 
     #[test]
     fn parse_enum_decl_mutual_recursion_parses() {
-        // Expr ↔ Stmt — each references the other in payloads.
+
         let p = parse(
             "enum Expr = ENum(Int) | EBlock(Stmt)\nenum Stmt = SExpr(Expr) | SSeq(Stmt, Stmt)\n"
         ).unwrap();
         assert_eq!(p.enums.len(), 2);
-        // Expr.EBlock references Stmt.
+
         assert_eq!(p.enums[0].variants[1].fields[0].type_name, "Stmt");
-        // Stmt.SExpr references Expr.
+
         assert_eq!(p.enums[1].variants[0].fields[0].type_name, "Expr");
     }
 
     #[test]
     fn parse_enum_decl_empty_payload_errors() {
-        // `Variant()` is rejected — drop the parens for nullary variants.
+
         assert!(parse("enum X = Foo() | Bar\n").is_err());
     }
 
     #[test]
     fn parse_enum_decl_no_variants_errors() {
-        // The grammar requires at least one variant after `=`.
-        // Parser rejects "got X" where X is the unexpected token after `=`.
+
         assert!(parse("enum Empty =\n").is_err());
     }
 
     #[test]
     fn parse_chained_membership_rejects_dotted_lhs() {
-        // `state.x ∈ Int < 5` would try to declare a dotted name —
-        // not allowed. Falls through and errors at the schema-parse
-        // level (the trailing `< 5` is unexpected).
+
         assert!(parse("claim t\n    state.x ∈ Int < 5\n").is_err());
     }
 
     #[test]
     fn parse_comparison_ops_after_generics_removal() {
-        // `<` / `>` in expression position are comparison operators,
-        // never type-argument brackets (the `<T>` grammar is gone).
+
         let p = parse("claim t\n    a ∈ Int\n    b ∈ Int\n    a < b\n    b > 5\n").unwrap();
         let s = &p.schemas[0];
         match s.body[2] {
@@ -1741,9 +1485,7 @@ mod tests {
 
     #[test]
     fn parse_generic_type_params_no_longer_accepted() {
-        // `type Edge<T>(...)` used to parse a type-parameter list.
-        // With the generics grammar removed, the `<` after the schema
-        // name is unexpected and the parse fails.
+
         assert!(parse("type Edge<T>\n    from ∈ Int\n").is_err());
     }
 }

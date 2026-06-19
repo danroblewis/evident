@@ -1,16 +1,3 @@
-//! Integration tests for the `match` expression.
-//!
-//! Coverage:
-//!   - Int / String / Bool / Real result types
-//!   - Nullary variants
-//!   - Wildcard arm
-//!   - Bindings discarded with `_`
-//!   - UNSAT when match value pinned to wrong branch result
-//!
-//! v1 limitation: scrutinee must be a bare Identifier whose env entry
-//! is a `Var::EnumVar`. Payload bindings restricted to Int / Bool /
-//! String / Real (enum-typed payloads must use `_`).
-
 use evident_runtime::{EvidentRuntime, Value};
 
 #[test]
@@ -131,11 +118,6 @@ claim t
     assert!(!r.satisfied);
 }
 
-/// v1 limitation: a multi-line `match` can't sit inside `(...)`
-/// because the lexer suppresses Newline tokens inside paren groups
-/// — the indented arms collapse onto one line and the parser's
-/// "expected newline + indented arms" check fires. Workaround:
-/// extract the match into its own equation, then use the bound name.
 #[test]
 fn match_into_intermediate_then_arithmetic() {
     let mut rt = EvidentRuntime::new();

@@ -1,27 +1,12 @@
-//! Dispatch ordering — Kahn's algorithm with a randomized
-//! ready-frontier.
-//!
-//! Memoization: `DISPATCH_ORDER_CACHE` keyed on the canonical
-//! (sorted nodes, sorted edges) input. Mario's effect set is
-//! identical every frame, so tick 0 pays the toposort and every
-//! subsequent tick hits the cache.
-
 use crate::core::ast::Effect;
 use std::collections::HashMap;
 use std::sync::Mutex;
 
-/// Process-wide memo of dispatch orderings keyed on the canonical
-/// (sorted nodes, sorted edges) input. After the first solve for a
-/// given shape, subsequent ticks are a HashMap lookup — same idea as
-/// "compile the constraint model" but on a smaller scale. Mario's
-/// effect set is identical every frame, so after tick 0 the cache hits.
 pub(super) static DISPATCH_ORDER_CACHE: Mutex<Option<HashMap<DispatchKey, Vec<String>>>>
     = Mutex::new(None);
 
 pub(super) type DispatchKey = (Vec<String>, Vec<(String, String)>);
 
-/// Map sorted node names (real binding names + `name[i]` synthetic
-/// names for Seq(Effect) elements) back to dispatchable Effect values.
 pub(super) fn resolve_synthetic_names_to_effects(
     names: &[String],
     node_values: &HashMap<String, Effect>,
@@ -31,15 +16,6 @@ pub(super) fn resolve_synthetic_names_to_effects(
         .collect()
 }
 
-/// Kahn's algorithm with a randomized "ready" frontier — each step
-/// picks uniformly at random from nodes whose dependencies have all
-/// been emitted. Both the initial ready set and ties at each step
-/// shuffle, so two runs of the same input produce different valid
-/// linearizations (the bug-surfacing property).
-///
-/// Cycles are reported on stderr and the not-yet-emitted nodes get
-/// appended in arbitrary order — keeps the program running rather
-/// than silently halting on bad user-declared edges.
 pub(super) fn topo_sort_with_random_tiebreak(
     nodes: &[String],
     edges: &[(String, String)],
@@ -53,8 +29,7 @@ pub(super) fn topo_sort_with_random_tiebreak(
         .collect();
     let mut adj: HashMap<&str, Vec<&str>> = HashMap::new();
     for (from, to) in edges {
-        // Skip edges referencing names not in the node set — the
-        // caller already filtered, this is just defensive.
+
         if !in_degree.contains_key(to.as_str()) { continue; }
         if !in_degree.contains_key(from.as_str()) { continue; }
         adj.entry(from.as_str()).or_default().push(to.as_str());
@@ -69,8 +44,7 @@ pub(super) fn topo_sort_with_random_tiebreak(
 
     let mut out: Vec<String> = Vec::with_capacity(nodes.len());
     while let Some(_) = ready.first() {
-        // Pop a random ready node (swap_remove on the last after shuffle
-        // gives uniform sampling without resorting each iteration).
+
         ready.shuffle(rng);
         let n = ready.pop().unwrap();
         out.push(n.to_string());
@@ -84,9 +58,7 @@ pub(super) fn topo_sort_with_random_tiebreak(
     }
 
     if out.len() < nodes.len() {
-        // Cycle: dump the remaining nodes in arbitrary order so the
-        // program keeps running. The user can spot the cycle by
-        // inspecting which effects fired late.
+
         eprintln!("warning: cycle in declared Effect ordering edges — \
                    {} of {} nodes emitted before stall; remaining nodes \
                    appended in input order",

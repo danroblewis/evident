@@ -1,70 +1,8 @@
-//! Snapshot test for the canonical "effects-producer" FSM
-//! pattern.
-//!
-//! Mario `display` is the canonical example: a function from
-//! world state to a Seq(Effect) of ordered FFI calls. NOT a
-//! search problem. The runtime should compile this directly
-//! to native code. The pipeline we want:
-//!
-//! ```text
-//!   Evident AST
-//!       │
-//!       ├─→ STAGE 1: parse → SchemaDecl with BodyItems
-//!       │
-//!       ▼
-//!   Z3 translation (declare + assert)
-//!       │
-//!       ├─→ STAGE 2: simplify + propagate-values
-//!       │   Output: per-element Seq pins:
-//!       │     (= effects__len N)
-//!       │     (= (select effects 0) (LibCall "lib" "fn" "sig" ⟨args⟩))
-//!       │     (= (select effects 1) (LibCall ...))
-//!       │
-//!       ▼
-//!   extract_program
-//!       │
-//!       ├─→ STAGE 3: Z3Program with:
-//!       │     steps: [Seq { var: "effects", elem_exprs: [
-//!       │       (LibCall ...),
-//!       │       (LibCall ...),
-//!       │     ] }]
-//!       │
-//!       ▼
-//!   Cranelift codegen
-//!       │
-//!       ├─→ STAGE 4: native function:
-//!       │     fn(inputs: *const i64, outputs_seq: *mut Effect)
-//!       │     - For each element, construct the Effect variant
-//!       │     - Call Rust constructor helper (LibCall variant has
-//!       │       String/Seq/ArgList payload — can't fit in i64
-//!       │       slots)
-//!       │
-//!       ▼
-//!   call(env) → Value::SeqEnum([Println("hello"), Exit(0), ...])
-//! ```
-//!
-//! This test currently asserts what each stage SHOULD look
-//! like. Where the pipeline can't produce it yet, the test
-//! documents the gap with a `// TODO:` and an explicit
-//! `Option::is_none()` check, so future work has a
-//! red-test-to-green path.
-
 use std::collections::HashMap;
 use evident_runtime::{EvidentRuntime, Value};
 use evident_runtime::z3_eval::{simplify_assertions, extract_program, Z3Step, GuardedBody};
 use evident_runtime::functionize::cranelift::compile_program;
 
-// Minimal effects-producer test fixture. We use only enum
-// variants WITHOUT Seq-of-enum payloads to avoid the translator's
-// Seq-in-ctor-payload gap (which is its own piece of work; the
-// fix lands in the auto-generated `__SeqOf_T` helper enums that
-// stdlib's Effect inherits but our test fixture doesn't).
-//
-// Compositionally: an effects-producer takes inputs (state +
-// maybe last_results) and produces a Seq(Effect) of ordered
-// dispatches. The JIT codegen we want is the same as Mario's
-// display: emit Vec<Effect> as a flat sequence of constructor
-// calls populated from inputs.
 const PROGRAM: &str = r#"
 enum Effect = NoEffect | Println(String) | Exit(Int)
 enum DState = Init | Done
@@ -84,9 +22,6 @@ claim display
     effects = ⟨eff_hello, eff_world, eff_exit⟩
 "#;
 
-/// STAGE 2: with no given pinned, what does Z3's tactic chain
-/// produce? We expect per-element Seq pins for the three Effect
-/// outputs.
 #[test]
 fn stage_2_simplified_z3_assertions_match_per_element_pins() {
     let mut rt = EvidentRuntime::new();
@@ -110,18 +45,6 @@ fn stage_2_simplified_z3_assertions_match_per_element_pins() {
     eprintln!("Simplified assertions ({} total):", formatted.len());
     for f in &formatted { eprintln!("  {f}"); }
 
-    // We expect (in some order):
-    //   - effects__len = 3
-    //   - select effects 0 = LibCall(...)
-    //   - select effects 1 = LibCall(...)
-    //   - select effects 2 = Exit(0)
-    //   - state_next = Done
-    //   - plus type bounds (>= last_results__len 0, etc.)
-    // Note: Z3's apply_seq_lengths pass folds the literal length
-    // pin BEFORE body translation, so `effects__len` survives in
-    // the simplified output only as the type-bound (>= 0). The
-    // length is inferred at extract time from the consecutive
-    // (select effects i) pins below.
     let has_state = formatted.iter().any(|s| s.contains("state_next") && s.contains("Done"));
     let has_hello = formatted.iter().any(|s| s.contains("select effects 0")
                                           && s.contains("Println")
@@ -138,9 +61,6 @@ fn stage_2_simplified_z3_assertions_match_per_element_pins() {
     assert!(has_exit,  "should pin select effects 2 = Exit(0)");
 }
 
-/// STAGE 3: extract_program should turn those per-element pins
-/// into a single Z3Step::Seq for `effects` plus a Z3Step::Scalar
-/// for `state_next`.
 #[test]
 fn stage_3_extract_program_builds_seq_step() {
     let mut rt = EvidentRuntime::new();
@@ -157,7 +77,6 @@ fn stage_3_extract_program_builds_seq_step() {
     let assertions = cached.solver.get_assertions();
     let result = simplify_assertions(ctx, &assertions);
 
-    // Outputs: anything declared in the body that isn't given.
     let outputs = vec![
         "state_next".to_string(),
         "effects".to_string(),
@@ -185,11 +104,6 @@ fn stage_3_extract_program_builds_seq_step() {
         }
     }
 
-    // We expect one Seq step (for effects) and at least one
-    // Scalar step (state_next). The eff_init/eff_draw/eff_exit
-    // outputs may or may not appear as separate Scalar steps —
-    // Z3's simplify might fold them into the Seq elements
-    // directly.
     let seq_steps:   Vec<&Z3Step> = program.steps.iter()
         .filter(|s| matches!(s, Z3Step::Seq { .. })).collect();
     let scalar_steps: Vec<&Z3Step> = program.steps.iter()
@@ -207,18 +121,6 @@ fn stage_3_extract_program_builds_seq_step() {
         "state_next should be a Scalar step");
 }
 
-/// STAGE 4: the JIT codegen should compile this program to a
-/// native function that returns the same SeqEnum the AST walker
-/// produces. CURRENTLY THIS FAILS — the JIT refuses Seq outputs
-/// AND refuses payload-bearing enum constructors. This test
-/// documents the gap.
-///
-/// Target output: the compiled function constructs:
-///   Value::SeqEnum([
-///       Value::Enum { variant: "LibCall", fields: [Str("libfoo.dylib"), Str("init"), Str("v()"), SeqEnum([])] },
-///       Value::Enum { variant: "LibCall", fields: [Str("libfoo.dylib"), Str("draw"), Str("v(i)"), SeqEnum([Enum { variant: "ArgInt", fields: [Int(42)] }])] },
-///       Value::Enum { variant: "Exit",    fields: [Int(0)] },
-///   ])
 #[test]
 fn stage_4_jit_compiles_effects_producer() {
     let mut rt = EvidentRuntime::new();
@@ -254,22 +156,22 @@ fn stage_4_jit_compiles_effects_producer() {
         panic!("effects not SeqEnum: {effects:?}");
     };
     assert_eq!(elems.len(), 3, "three effect elements");
-    // Element 0: Println("hello")
+
     assert!(matches!(&elems[0], Value::Enum { variant, fields, .. }
         if variant == "Println"
            && matches!(&fields[..], [Value::Str(s)] if s == "hello")),
         "elem 0 should be Println(\"hello\"), got: {:?}", elems[0]);
-    // Element 1: Println("world")
+
     assert!(matches!(&elems[1], Value::Enum { variant, fields, .. }
         if variant == "Println"
            && matches!(&fields[..], [Value::Str(s)] if s == "world")),
         "elem 1 should be Println(\"world\"), got: {:?}", elems[1]);
-    // Element 2: Exit(0)
+
     assert!(matches!(&elems[2], Value::Enum { variant, fields, .. }
         if variant == "Exit"
            && matches!(&fields[..], [Value::Int(0)])),
         "elem 2 should be Exit(0), got: {:?}", elems[2]);
-    // state_next = Done
+
     assert!(matches!(bindings.get("state_next"),
         Some(Value::Enum { variant, .. }) if variant == "Done"),
         "state_next should be Done, got: {:?}", bindings.get("state_next"));

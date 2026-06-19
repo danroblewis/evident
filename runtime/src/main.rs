@@ -1,9 +1,3 @@
-//! `evident` — CLI for the Evident runtime.
-//!
-//! Subcommands:
-//!   test         [path]
-//!   effect-run   <file>           — run an effect-driven program
-
 use std::process::ExitCode;
 
 mod commands;

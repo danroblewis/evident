@@ -1,12 +1,3 @@
-//! Integration tests for the ternary operator `cond ? a : b`.
-//!
-//! Coverage:
-//!   - basic Int/Bool/String/Real branches pick correctly
-//!   - nesting on either side, right-associativity
-//!   - precedence vs ∨ / ∧ / ⇒
-//!   - parser error on missing colon
-//!   - ternary inside arithmetic expressions
-
 use evident_runtime::{EvidentRuntime, Value};
 
 #[test]
@@ -59,8 +50,7 @@ claim t
 
 #[test]
 fn ternary_nested_right_associative() {
-    // Per the AST doc: `a ? b : c ? d : e` ≡ `a ? b : (c ? d : e)`.
-    // a=false, c=true → e is reached when c is true → d.
+
     let mut rt = EvidentRuntime::new();
     rt.load_source("\
 claim t

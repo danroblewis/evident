@@ -1,17 +1,5 @@
-//! Guarded claim invocation: `cond ⇒ ClaimName` inlines the claim's
-//! body but wraps each constraint in `cond ⇒ …`.
-//!
-//! Headline use case: the per-frame state-machine init pattern in
-//! anchor_collect.ev — `state.step = 0 ⇒ InitGameState` fires the
-//! init constraints once on the first frame and is permanently false
-//! after. Without this, the init logic would either run every frame
-//! (over-constraining) or sit at the call site with all the
-//! per-constraint guards inlined manually.
-
 use evident_runtime::{EvidentRuntime, Value};
 
-/// Smallest case: guarded invocation runs the claim's constraints
-/// when the guard is true.
 #[test]
 fn guarded_claim_fires_when_true() {
     let mut rt = EvidentRuntime::new();
@@ -22,8 +10,6 @@ fn guarded_claim_fires_when_true() {
     assert_eq!(r.bindings.get("n"), Some(&Value::Int(42)));
 }
 
-/// When the guard is false, the claim's constraints are vacuous —
-/// other constraints can pin variables freely without conflict.
 #[test]
 fn guarded_claim_constraints_vacuous_when_false() {
     let mut rt = EvidentRuntime::new();
@@ -34,9 +20,6 @@ fn guarded_claim_constraints_vacuous_when_false() {
     assert_eq!(r.bindings.get("n"), Some(&Value::Int(99)));
 }
 
-/// When the guard is false but `n = 42` and `n = 99` are both
-/// asserted unconditionally, → UNSAT. Used to verify the guard
-/// actually controls Init's constraint, vs accidentally always firing.
 #[test]
 fn unguarded_invocation_would_conflict() {
     let mut rt = EvidentRuntime::new();
@@ -46,9 +29,6 @@ fn unguarded_invocation_would_conflict() {
     assert!(!r.satisfied, "unguarded Init pins n=42, conflicting with n=99");
 }
 
-/// The claim's *declarations* fire unconditionally — only constraints
-/// are guarded. Init declares `helper ∈ Int`; even when the guard is
-/// false, helper is in env (just unconstrained beyond its type).
 #[test]
 fn guarded_claim_declarations_fire_unconditionally() {
     let mut rt = EvidentRuntime::new();
@@ -59,7 +39,6 @@ fn guarded_claim_declarations_fire_unconditionally() {
     assert_eq!(r.bindings.get("helper"), Some(&Value::Int(100)));
 }
 
-/// Multiple constraints inside the claim each get the guard wrapper.
 #[test]
 fn guarded_claim_multi_constraint() {
     let mut rt = EvidentRuntime::new();
@@ -71,10 +50,6 @@ fn guarded_claim_multi_constraint() {
     assert_eq!(r.bindings.get("b"), Some(&Value::Int(20)));
 }
 
-/// Composed guards: invoking a claim from inside another claim's body
-/// AND-composes the antecedents. With `outer ⇒ Outer` and Outer's body
-/// containing `inner ⇒ Inner` and Inner pinning n=5, the n=5 constraint
-/// only fires when both outer AND inner are true.
 #[test]
 fn nested_guards_compose() {
     let mut rt = EvidentRuntime::new();
@@ -95,8 +70,6 @@ fn nested_guards_inner_false_skips() {
     assert_eq!(r.bindings.get("n"), Some(&Value::Int(99)));
 }
 
-/// Subclaim guarded invocation — the canonical anchor_collect.ev
-/// shape. Subclaim defined inside main, invoked via `step = 0 ⇒ Init`.
 #[test]
 fn guarded_subclaim_init_pattern() {
     let mut rt = EvidentRuntime::new();

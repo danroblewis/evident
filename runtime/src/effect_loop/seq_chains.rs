@@ -1,36 +1,12 @@
-//! Body `Seq(Effect)` edge extraction.
-//!
-//! Pulls pairwise ordering edges from a claim's body — each
-//! `name = ⟨a, b, c⟩` literal contributes edges (a→b, b→c) between
-//! its resolved node names. The toposort downstream consumes these
-//! to derive a dispatch ordering.
-
 use crate::core::ast::{BodyItem, Expr, BinOp, Effect};
 use crate::translate::{Value, effect_decoder};
 use std::collections::{HashMap, HashSet};
 
-/// Walk a body for `Seq(Effect)` literal assignments and pull out
-/// pairwise ordering edges. Recognized shape: `Constraint(Eq(Identifier(_),
-/// SeqLit(elements)))` where every element is `Identifier(name)` and
-/// `name` is in `effect_node_set`. Each such literal contributes edges
-/// `(elements[i], elements[i+1])` for `i in 0..len-1`.
-///
-/// Membership-with-equality forms like `xs ∈ Seq(Effect) = ⟨a, b, c⟩`
-/// desugar (during parse) into a `Membership` plus a separate
-/// `Constraint(Eq(Identifier("xs"), SeqLit(...)))` — only the
-/// Constraint half is what we look for here.
 pub(super) fn extract_seq_effect_chains(
     body: &[BodyItem],
     effect_node_set: &HashSet<&String>,
 ) -> Vec<Vec<String>> {
-    // Resolve a SeqLit element to its node name. Recognizes:
-    //   * `Identifier(name)` where `name` is a bare Effect binding.
-    //   * `Index(Identifier(name), Int(i))` where `name[i]` names a
-    //     synthetic Seq(Effect) element (e.g. `hat_effs[0]`).
-    //   * `Index(Field(Index(Identifier(outer), Int(i)), field), Int(j))`
-    //     where `outer[i].field[j]` names a synthetic
-    //     Seq(Composite-with-Seq-Effect-field) element (e.g.
-    //     `plat_effs[0].effs[0]`).
+
     fn node_name(e: &Expr, set: &HashSet<&String>) -> Option<String> {
         match e {
             Expr::Identifier(n) if set.contains(n) => Some(n.clone()),
@@ -70,9 +46,7 @@ pub(super) fn extract_seq_effect_chains(
             let names: Vec<String> = seq_items.iter()
                 .filter_map(|e| node_name(e, effect_node_set))
                 .collect();
-            // Only emit a chain when every element resolves to a known
-            // node. A Seq with even one unresolved element isn't a clean
-            // ordering chain — bail.
+
             if names.len() != seq_items.len() { continue; }
             chains.push(names);
         }
@@ -80,9 +54,6 @@ pub(super) fn extract_seq_effect_chains(
     chains
 }
 
-/// Map dispatch-order binding names back to their Effect values from
-/// the model. Names not resolving to a decodable Effect (e.g. `NoEffect`
-/// the runtime drops) are filtered.
 #[allow(dead_code)]
 pub(super) fn resolve_nodes_to_effects(
     names: &[String],

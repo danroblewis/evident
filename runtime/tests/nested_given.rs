@@ -1,27 +1,8 @@
-//! `Seq(UserType)` round-trip through `given` when the user type has
-//! nested record fields.
-//!
-//! Regression: `assert_seq_given`'s `FieldKind::Nested` arm used to
-//! return None ("skip for v1"), so the SDL executor's
-//! "extract state from frame N → re-inject as given for frame N+1"
-//! loop silently dropped the entire `state.dots` constraint when
-//! `BouncingDot` had `pos ∈ IVec2` instead of flat `pos_x` / `pos_y`
-//! fields. Symptom: warnings spammed and the next frame ran
-//! unconstrained → state went "crazy".
-//!
-//! This pins the symmetric behavior: model extraction writes a
-//! `Value::SeqComposite` containing `Value::Composite` for each nested
-//! field; injection has to read it back in.
-
 use std::collections::HashMap;
 use evident_runtime::{EvidentRuntime, Value};
 
 const SRC: &str = "type IVec2\n    x ∈ Int\n    y ∈ Int\ntype Dot\n    pos       ∈ IVec2\n    vel       ∈ IVec2\n    eff_vy    ∈ Int\n    collected ∈ Bool\ntype S\n    dots ∈ Seq(Dot)\n    #dots = 2\n";
 
-/// Free query produces a model populated for a `Seq(Dot)` whose
-/// elements have nested IVec2 fields. The output values are arbitrary;
-/// what we care about is the shape: `Value::SeqComposite` of maps,
-/// each containing `Value::Composite` for `pos` and `vel`.
 #[test]
 fn extract_seq_with_nested_record_fields() {
     let mut rt = EvidentRuntime::new();
@@ -33,7 +14,7 @@ fn extract_seq_with_nested_record_fields() {
         panic!("expected SeqComposite, got {:?}", dots);
     };
     assert_eq!(items.len(), 2);
-    // Every dot has a Composite pos with x and y leaves.
+
     for (i, m) in items.iter().enumerate() {
         let pos = m.get("pos").unwrap_or_else(|| panic!("dot[{i}] missing pos"));
         let Value::Composite(pos_map) = pos else {
@@ -44,17 +25,11 @@ fn extract_seq_with_nested_record_fields() {
     }
 }
 
-/// The fix: a `SeqComposite` with nested `Composite` fields can be
-/// passed back as a `given` and the solver's bindings reflect every
-/// pinned leaf. Before this, `assert_seq_given` returned None and the
-/// caller printed "type mismatch for given" — the dots stayed free.
 #[test]
 fn given_seq_with_nested_record_fields_round_trips() {
     let mut rt = EvidentRuntime::new();
     rt.load_source(SRC).unwrap();
 
-    // Build a Value::SeqComposite by hand — same shape `extract`
-    // produces, same shape the executor passes as `given`.
     let dot0 = HashMap::from([
         (
             "pos".to_string(),
@@ -104,8 +79,6 @@ fn given_seq_with_nested_record_fields_round_trips() {
     };
     assert_eq!(items.len(), 2);
 
-    // Verify every leaf round-tripped: nested pos.x / pos.y / vel.x /
-    // vel.y plus the flat eff_vy / collected.
     let p0 = match items[0].get("pos") {
         Some(Value::Composite(m)) => m,
         other => panic!("dot[0].pos: {:?}", other),
@@ -137,9 +110,6 @@ fn given_seq_with_nested_record_fields_round_trips() {
     assert_eq!(items[1].get("collected"), Some(&Value::Bool(true)));
 }
 
-/// Full round-trip: extract a model, pass the extraction back as
-/// given, get the same shape back. Mirrors the executor's per-frame
-/// state-handoff loop.
 #[test]
 fn extract_then_inject_round_trip() {
     let mut rt = EvidentRuntime::new();

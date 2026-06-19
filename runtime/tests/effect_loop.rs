@@ -1,11 +1,3 @@
-//! Integration tests for the effect-driven step loop.
-//!
-//! Validates the full pipeline: load Evident → solve → decode effects
-//! → dispatch → encode results → next step. Built-in effects only
-//! (Print/Println/Time/Exit). FFI effects are exercised by
-//! `tests/ffi.rs` at the dispatcher level; an end-to-end FFI demo
-//! waits on Phase 3.3 enum-typed pattern bindings.
-
 use std::io::{BufReader, Cursor};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
@@ -13,8 +5,6 @@ use std::sync::{Arc, Mutex};
 use evident_runtime::{EvidentRuntime, effect_loop};
 use evident_runtime::effect_dispatch::DispatchContext;
 
-/// A Write impl that writes into a shared Vec — lets the test
-/// inspect captured stdout after running.
 struct SharedWrite(Arc<Mutex<Vec<u8>>>);
 impl std::io::Write for SharedWrite {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {

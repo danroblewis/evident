@@ -1,7 +1,4 @@
-//! Core data types + traits. No orchestration logic lives here.
-//! Imported by translate/, runtime/, functionize/, effect_loop/, etc.
-
-pub mod ast;       // Evident AST — separate submodule because of size
+pub mod ast;
 mod value;
 mod z3_types;
 mod z3_program;

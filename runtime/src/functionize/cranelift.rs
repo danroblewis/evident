@@ -1,28 +1,3 @@
-//! Cranelift JIT codegen for Z3-AST function-shaped components.
-//!
-//! Round 26: Seq outputs + payload-bearing constructors. The JIT
-//! emits a sequence of `call_indirect` instructions to Rust-side
-//! helpers (see `value_builders.rs`) that construct `Value`
-//! enums and push them into `Value::SeqEnum` outputs.
-//!
-//! ## Calling convention
-//!
-//! ```text
-//!   extern "C" fn(inputs: *const i64, outputs: *mut Value)
-//! ```
-//!
-//! - `inputs`: flat array of i64 values packed by the Rust
-//!   wrapper from the caller's `given` map. Supports Int,
-//!   Bool, and 0-arity enum (variant tag) inputs.
-//! - `outputs`: pre-allocated `Vec<Value>` with one slot per
-//!   output. The JIT writes into each slot via `ev_*` helpers
-//!   (`ev_set_int`, `ev_set_enum_str`, `ev_seq_new`, etc.).
-//!
-//! For Seq outputs, the JIT calls `ev_seq_new(slot, cap)` then
-//! builds each element into a stack-allocated temp `Value` slot
-//! and calls `ev_seq_push_clone(slot, temp)`. The runtime owns
-//! all heap allocations; the JIT just orchestrates the calls.
-
 use std::collections::HashMap;
 use cranelift::prelude::{AbiParam, FunctionBuilder, FunctionBuilderContext,
     InstBuilder, MemFlags, settings, types, StackSlotData, StackSlotKind};
@@ -46,12 +21,9 @@ pub struct JitProgram {
     pub output_kinds:   HashMap<String, OutputKind>,
     pub enum_tags:     HashMap<String, HashMap<String, i64>>,
     pub enum_variants: HashMap<String, Vec<String>>,
-    /// Interned strings kept alive for the lifetime of the JIT
-    /// code (the compiled function holds raw pointers into them).
+
     _string_pool: Vec<Box<str>>,
-    /// Compile-time constant Values for PreBaked steps + other
-    /// constant emissions. Kept alive for the JIT module's lifetime;
-    /// the JIT emits pointers into this pool.
+
     value_pool: Vec<Value>,
 }
 
@@ -59,15 +31,13 @@ pub struct JitProgram {
 pub enum OutputKind {
     Int,
     Bool,
-    /// All-nullary enum: encoded as i64 variant tag for inputs.
-    /// Outputs use ev_set_enum_nullary.
+
     Enum(String),
-    /// Payload-bearing enum: outputs use ev_set_enum_int/str.
+
     EnumPayload(String),
-    /// Seq output: uses ev_seq_new + ev_seq_push_clone.
+
     Seq,
-    /// String value (only as an output / intermediate; we don't
-    /// support String inputs through the i64 ABI in v1).
+
     Str,
 }
 
@@ -75,27 +45,21 @@ impl JitProgram {
     pub fn call(&self, given: &HashMap<String, Value>) -> Option<HashMap<String, Value>> {
         let n_in  = self.input_offsets.len();
         let n_out = self.output_offsets.len();
-        // Build input Value array — one slot per input, populated
-        // from `given`. Missing inputs use Value::Int(0) sentinel;
-        // the JIT only loads inputs it knows about.
+
         let mut inputs: Vec<Value> = (0..n_in).map(|_| Value::Int(0)).collect();
         for (name, &idx) in &self.input_offsets {
             if let Some(v) = given.get(name) {
                 inputs[idx] = v.clone();
             }
         }
-        // Initialize each output slot to a default Value::Int(0)
-        // before the JIT runs (helpers do `*out = ...` which drops
-        // the prior valid value).
+
         let mut outputs: Vec<Value> = (0..n_out).map(|_| Value::Int(0)).collect();
         let pool_ptr = if self.value_pool.is_empty() {
             std::ptr::null()
         } else {
             self.value_pool.as_ptr()
         };
-        // SAFETY: compiled code is alive as long as `_module`;
-        // both arrays are valid `Vec<Value>` of the declared size;
-        // value_pool outlives the JIT module (stored alongside).
+
         unsafe {
             (self.func)(inputs.as_ptr(), outputs.as_mut_ptr(), pool_ptr);
         }
@@ -108,11 +72,6 @@ impl JitProgram {
     }
 }
 
-/// Reclassify a `Value::SeqEnum` of homogeneous primitives into the
-/// matching typed `SeqInt` / `SeqBool` / `SeqStr` variant. The JIT
-/// always builds Seq outputs as `SeqEnum` (no static type info on
-/// the IR side); callers compare against typed variants per the
-/// declared Seq element type.
 fn classify_seq(v: Value) -> Value {
     let Value::SeqEnum(xs) = v else { return v };
     match xs.first() {
@@ -126,11 +85,7 @@ fn classify_seq(v: Value) -> Value {
         Some(Value::Str(_))   => Value::SeqStr(
             xs.into_iter().filter_map(|e|
                 if let Value::Str(s) = e { Some(s) } else { None }).collect()),
-        // Record-element Seq — each element is a Value::Composite the
-        // JIT built via ev_set_composite. Reclassify to SeqComposite
-        // so it matches the slow-path extractor's shape (extract.rs
-        // `extract_seq_composite`) and downstream consumers
-        // (effect_loop/collect.rs's Seq(Composite) handling).
+
         Some(Value::Composite(_)) => Value::SeqComposite(
             xs.into_iter().filter_map(|e|
                 if let Value::Composite(m) = e { Some(m) } else { None }).collect()),
@@ -138,7 +93,6 @@ fn classify_seq(v: Value) -> Value {
     }
 }
 
-/// FuncIds for the runtime helpers — declared as Linkage::Import.
 #[derive(Clone, Copy)]
 struct HelperIds {
     init_slot:         FuncId,
@@ -162,7 +116,6 @@ struct HelperIds {
     clone_from_pool:   FuncId,
 }
 
-/// FuncRefs after import into the current function's IR.
 #[derive(Clone, Copy)]
 struct HelperRefs {
     init_slot:         cranelift::codegen::ir::FuncRef,
@@ -286,11 +239,7 @@ pub fn compile_program<'ctx>(
     enums: &EnumRegistry,
     datatypes: &crate::core::DatatypeRegistry,
 ) -> Option<JitProgram> {
-    // Record (user-type) info, keyed by Z3 constructor name (e.g.
-    // "mk_IVec2", "mk_EffectPair"). Records aren't in `enums`; their
-    // constructor name + field shape (`FieldKind`) come from the
-    // DatatypeRegistry. Used by the DT_CONSTRUCTOR codegen path to
-    // build `Value::Composite` (vs `Value::Enum` for true enums).
+
     let record_info: HashMap<String, Vec<crate::core::FieldKind>> = {
         let dts = datatypes.borrow();
         dts.iter().filter_map(|(_type_name, (dt, fields))| {
@@ -298,7 +247,7 @@ pub fn compile_program<'ctx>(
             Some((ctor, fields.clone()))
         }).collect()
     };
-    // ── Phase 1: enum tables ──────────────────────────────
+
     let mut enum_tags: HashMap<String, HashMap<String, i64>> = HashMap::new();
     let mut enum_variants: HashMap<String, Vec<String>> = HashMap::new();
     let mut variant_arity: HashMap<String, HashMap<String, Vec<String>>> = HashMap::new();
@@ -320,7 +269,6 @@ pub fn compile_program<'ctx>(
         }
     }
 
-    // ── Phase 2: output kinds + input collection ──────────
     let mut input_set: std::collections::BTreeSet<(String, OutputKind)> =
         std::collections::BTreeSet::new();
     let mut output_kinds_local: Vec<(String, OutputKind)> = Vec::new();
@@ -333,16 +281,10 @@ pub fn compile_program<'ctx>(
             }
             Z3Step::Seq { var, .. } => (var.clone(), OutputKind::Seq),
             Z3Step::Guarded { .. } => {
-                // Guarded steps require correctness around "no branch
-                // matched" (currently the JIT writes a sentinel int,
-                // which propagates as a wrong result to the scheduler).
-                // The VM handles this correctly by returning None,
-                // letting the function-izer fall through to the slow
-                // path. Until the JIT can also produce a None-style
-                // bailout, refuse to JIT programs with Guarded steps.
+
                 return None;
             }
-            Z3Step::PreBaked { var, .. } => (var.clone(), OutputKind::Seq /* placeholder */),
+            Z3Step::PreBaked { var, .. } => (var.clone(), OutputKind::Seq ),
         };
         output_kinds_local.push((var, kind));
         match step {
@@ -368,13 +310,11 @@ pub fn compile_program<'ctx>(
     }
     let output_names: std::collections::HashSet<String> = output_kinds_local.iter()
         .map(|(n, _)| n.clone()).collect();
-    // Allow ALL kinds as inputs now (Seq, Composite, etc. handled
-    // via ev_load_* / ev_extract_field / ev_seq_select helpers).
+
     let input_names: Vec<(String, OutputKind)> = input_set.into_iter()
         .filter(|(n, _)| !output_names.contains(n))
         .collect();
 
-    // ── Phase 3: Cranelift IR generation ──────────────────
     let mut flag_builder = settings::builder();
     flag_builder.set("use_colocated_libcalls", "false").ok()?;
     flag_builder.set("is_pic", "false").ok()?;
@@ -390,16 +330,14 @@ pub fn compile_program<'ctx>(
     let helper_ids = declare_helpers(&mut module, ptr_t)?;
 
     let mut sig = module.make_signature();
-    sig.params.push(AbiParam::new(ptr_t));   // *const Value inputs
-    sig.params.push(AbiParam::new(ptr_t));   // *mut Value outputs
-    sig.params.push(AbiParam::new(ptr_t));   // *const Value value_pool
+    sig.params.push(AbiParam::new(ptr_t));
+    sig.params.push(AbiParam::new(ptr_t));
+    sig.params.push(AbiParam::new(ptr_t));
     let func_id = module.declare_function("compiled_program",
         Linkage::Local, &sig).ok()?;
     let mut ctx = module.make_context();
     ctx.func.signature = sig;
-    // Import helpers into this function's IR scope BEFORE we
-    // hand ctx.func to FunctionBuilder (since FunctionBuilder
-    // takes a mutable borrow of it).
+
     let helpers = import_helpers(&mut module, helper_ids, &mut ctx.func);
 
     let input_offsets: HashMap<String, usize> = input_names.iter().enumerate()
@@ -427,10 +365,6 @@ pub fn compile_program<'ctx>(
         let outputs_ptr = bcx.block_params(entry)[1];
         let pool_ptr    = bcx.block_params(entry)[2];
 
-        // Env: var name → ptr-to-Value slot. Inputs are at
-        // (inputs_ptr + idx*sizeof(Value)). Outputs are at
-        // (outputs_ptr + idx*sizeof(Value)). We compute the slot
-        // address once and reuse.
         let mut env: HashMap<String, ClValue> = HashMap::new();
         for (name, idx) in &input_offsets {
             let off = (*idx as i64) * size_of_value;
@@ -455,13 +389,10 @@ pub fn compile_program<'ctx>(
                     env.insert(var.clone(), out_slot);
                 }
                 Z3Step::Seq { var, elem_exprs } => {
-                    // Detect if all elements are scalar literals or
-                    // env refs we can handle. Build via ev_seq_new +
-                    // ev_seq_push_clone over per-element temp slots.
+
                     let cap = bcx.ins().iconst(types::I64, elem_exprs.len() as i64);
                     bcx.ins().call(helpers.seq_new, &[out_slot, cap]);
-                    // Use a fresh temp slot per element to be safe
-                    // about ev_seq_push_clone's read-and-clone semantics.
+
                     let temp_slot = bcx.create_sized_stack_slot(
                         StackSlotData::new(StackSlotKind::ExplicitSlot,
                                            size_of_value as u32));
@@ -478,14 +409,7 @@ pub fn compile_program<'ctx>(
                     env.insert(var.clone(), out_slot);
                 }
                 Z3Step::Guarded { var, branches } => {
-                    // Compile as a chain of conditional branches:
-                    // for each (guard, body) in order, brif on guard.
-                    // If guard fires, run body and jump to merge.
-                    // Otherwise fall through to the next branch.
-                    // If no branch matches, write Value::Int(0) as a
-                    // sentinel (matches the VM's behavior on None
-                    // body match, which returns None — but here we
-                    // need to produce SOMETHING, so use a default).
+
                     let merge_block = bcx.create_block();
                     for branch in branches {
                         let body_block = bcx.create_block();
@@ -532,9 +456,7 @@ pub fn compile_program<'ctx>(
                         bcx.switch_to_block(next_block);
                         bcx.seal_block(next_block);
                     }
-                    // Default fallthrough — set Value::Int(0). The
-                    // VM would return None here; we must produce a
-                    // valid Value because the slot is already alive.
+
                     let zero = bcx.ins().iconst(types::I64, 0);
                     bcx.ins().call(helpers.set_int, &[out_slot, zero]);
                     bcx.ins().jump(merge_block, &[]);
@@ -560,8 +482,7 @@ pub fn compile_program<'ctx>(
     module.clear_context(&mut ctx);
     module.finalize_definitions().ok()?;
     let code_ptr = module.get_finalized_function(func_id);
-    // SAFETY: code_ptr points to JIT'd machine code with the
-    // ABI we declared above.
+
     let func: unsafe extern "C" fn(*const Value, *mut Value, *const Value) = unsafe {
         std::mem::transmute(code_ptr)
     };
@@ -587,9 +508,6 @@ fn intern_str(pool: &mut Vec<Box<str>>, s: &str) -> (i64, i64) {
     (ptr, len)
 }
 
-/// Emit IR that writes a Value derived from `expr` into the
-/// memory at `out_slot`. Returns None if the expr uses a
-/// pattern we don't yet emit code for.
 fn emit_write_value<'ctx>(
     bcx: &mut FunctionBuilder,
     expr: &Dynamic<'ctx>,
@@ -602,7 +520,7 @@ fn emit_write_value<'ctx>(
     ptr_t: cranelift::prelude::Type,
     size_of_value: i64,
 ) -> Option<()> {
-    // String literal short-circuit — only genuine zero-child literals.
+
     if expr.kind() == AstKind::App && expr.num_children() == 0 {
         let is_free_var = expr.safe_decl().ok()
             .map(|d| d.kind() == DeclKind::UNINTERPRETED)
@@ -644,7 +562,7 @@ fn emit_write_value<'ctx>(
                 }
                 DeclKind::UNINTERPRETED => {
                     if children.is_empty() {
-                        // Variable lookup: copy from env slot via clone helper.
+
                         let name = decl.name();
                         let src_slot = *env.get(&name)?;
                         let zero = bcx.ins().iconst(types::I64, 0);
@@ -652,14 +570,12 @@ fn emit_write_value<'ctx>(
                             &[out_slot, src_slot, zero]);
                         Some(())
                     } else if children.len() == 1 {
-                        // Z3 internal accessor: `<field>__arr` /
-                        // `<field>__len` — strip suffix to get logical
-                        // field name, then extract by name.
+
                         let name = decl.name();
                         let logical = if let Some(s) = name.strip_suffix("__arr") {
                             s.to_string()
                         } else if let Some(_s) = name.strip_suffix("__len") {
-                            return None;  // length extraction not emitted
+                            return None;
                         } else { return None; };
                         let temp = bcx.create_sized_stack_slot(
                             StackSlotData::new(StackSlotKind::ExplicitSlot,
@@ -681,10 +597,7 @@ fn emit_write_value<'ctx>(
                 DeclKind::DT_ACCESSOR => {
                     if children.len() != 1 { return None; }
                     let raw = decl.name();
-                    // Strip Z3 internal suffixes (`__arr` / `__len`)
-                    // — the Value-level field lookup uses the logical
-                    // name (e.g. "effs"), not the Z3-internal split
-                    // accessor name ("effs__arr").
+
                     let accessor_name = raw.strip_suffix("__arr")
                         .or_else(|| raw.strip_suffix("__len"))
                         .map(|s| s.to_string())
@@ -705,9 +618,7 @@ fn emit_write_value<'ctx>(
                 }
                 DeclKind::DT_IS | DeclKind::DT_RECOGNISER => {
                     if children.len() != 1 { return None; }
-                    // The variant being tested is encoded in the decl
-                    // name. Z3 0.12 doesn't expose the constructor
-                    // parameter directly; parse from app's text form.
+
                     let app_text = format!("{expr}");
                     let variant = crate::z3_eval::extract_is_variant_pub(&app_text)
                         .or_else(|| decl.name().strip_prefix("is_").map(|s| s.to_string()))?;
@@ -728,22 +639,13 @@ fn emit_write_value<'ctx>(
                     Some(())
                 }
                 DeclKind::CONST_ARRAY => {
-                    // `(const-array <default>)` — the base of a Z3
-                    // array store-chain. We materialize Seq-typed
-                    // record fields as a `SeqEnum`, starting empty;
-                    // the wrapping STORE chain fills exactly the
-                    // indices `0..len`, so the const default (which
-                    // would notionally fill all indices) is unused.
+
                     let cap = bcx.ins().iconst(types::I64, 0);
                     bcx.ins().call(helpers.seq_new, &[out_slot, cap]);
                     Some(())
                 }
                 DeclKind::STORE => {
-                    // `(store <arr> <idx> <val>)` — materialize the
-                    // inner array into out_slot (a SeqEnum), then set
-                    // element `idx` to `val`. Walking the chain
-                    // inner-to-outer (innermost store = lowest index)
-                    // builds the Seq(T)-valued field of a record.
+
                     if children.len() != 3 { return None; }
                     emit_write_value(bcx, &children[0], out_slot, env,
                         helpers, variant_arity, record_info, string_pool,
@@ -787,20 +689,13 @@ fn emit_write_value<'ctx>(
                 }
                 DeclKind::DT_CONSTRUCTOR => {
                     let variant = decl.name();
-                    // Record (user-type) constructor → build a
-                    // Value::Composite{field → value} rather than a
-                    // Value::Enum. Records aren't in the enum
-                    // `variant_arity`; they're keyed in `record_info`
-                    // by their Z3 ctor name (e.g. "mk_IVec2"). A
-                    // Seq(Record) of these becomes Value::SeqComposite
-                    // after classify_seq.
+
                     if let Some(fields) = record_info.get(&variant) {
                         return emit_write_record(bcx, &children, fields, out_slot,
                             env, helpers, variant_arity, record_info,
                             string_pool, ptr_t, size_of_value);
                     }
-                    // Check Cons-chain pattern at this level — handled
-                    // by the caller's Seq build, not here.
+
                     let (enum_name, field_types) = lookup_variant(&variant, variant_arity)?;
                     let (ep, el) = intern_str(string_pool, &enum_name);
                     let (vp, vl) = intern_str(string_pool, &variant);
@@ -823,12 +718,10 @@ fn emit_write_value<'ctx>(
                                         &[out_slot, ep_v, el_v, vp_v, vl_v, n_v]);
                                     return Some(());
                                 }
-                                // Computed Int payload (e.g. enum(_frame + 1)):
-                                // build via multifield path.
+
                             }
                             "String" => {
-                                // Only fast-path for literal strings —
-                                // free var as_string() returns Some("").
+
                                 let is_literal = arg.kind() == AstKind::App
                                     && arg.num_children() == 0
                                     && arg.safe_decl().ok()
@@ -846,18 +739,14 @@ fn emit_write_value<'ctx>(
                                         }
                                     }
                                 }
-                                // Fall through to multifield path for
-                                // non-literal String fields.
+
                             }
                             _ => {}
                         }
                     }
-                    // Multi-field (or single computed-field) ctor:
-                    // build each field into a stack slot, then call
-                    // ev_set_enum_multifield with an array of slot ptrs.
+
                     let n = children.len();
-                    // Allocate stack slots for each arg + an array of
-                    // pointers.
+
                     let arg_slots: Vec<ClValue> = (0..n).map(|_| {
                         let s = bcx.create_sized_stack_slot(
                             StackSlotData::new(StackSlotKind::ExplicitSlot,
@@ -867,12 +756,12 @@ fn emit_write_value<'ctx>(
                     for s in &arg_slots {
                         bcx.ins().call(helpers.init_slot, &[*s]);
                     }
-                    // Recursively emit each field.
+
                     for (i, child) in children.iter().enumerate() {
                         emit_write_value(bcx, child, arg_slots[i], env,
                             helpers, variant_arity, record_info, string_pool, ptr_t, size_of_value)?;
                     }
-                    // Build the pointer array on the stack.
+
                     let array_slot = bcx.create_sized_stack_slot(
                         StackSlotData::new(StackSlotKind::ExplicitSlot,
                                            (n as u32) * 8));
@@ -887,7 +776,7 @@ fn emit_write_value<'ctx>(
                     Some(())
                 }
                 DeclKind::ITE => {
-                    // ITE: cond is Bool, then/else are Value.
+
                     if children.len() != 3 { return None; }
                     let cond_v = emit_compute_i64(bcx, &children[0], env,
                         helpers, variant_arity, record_info, string_pool, ptr_t, size_of_value)?;
@@ -910,7 +799,7 @@ fn emit_write_value<'ctx>(
                     Some(())
                 }
                 DeclKind::ADD | DeclKind::SUB | DeclKind::MUL | DeclKind::UMINUS => {
-                    // Int arithmetic → set_int with computed i64.
+
                     let v = emit_compute_i64(bcx, expr, env, helpers,
                         variant_arity, record_info, string_pool, ptr_t, size_of_value)?;
                     bcx.ins().call(helpers.set_int, &[out_slot, v]);
@@ -918,7 +807,7 @@ fn emit_write_value<'ctx>(
                 }
                 DeclKind::LT | DeclKind::LE | DeclKind::GT | DeclKind::GE
                 | DeclKind::EQ | DeclKind::AND | DeclKind::OR | DeclKind::NOT => {
-                    // Bool ops → set_bool with computed i64 (0/1).
+
                     let v = emit_compute_i64(bcx, expr, env, helpers,
                         variant_arity, record_info, string_pool, ptr_t, size_of_value)?;
                     bcx.ins().call(helpers.set_bool, &[out_slot, v]);
@@ -931,17 +820,6 @@ fn emit_write_value<'ctx>(
     }
 }
 
-/// Emit IR that writes a `Value::Composite{field → value}` for a
-/// record (user-type) constructor application into `out_slot`.
-///
-/// `children` are the Z3 constructor args (one per accessor, in
-/// declaration order); `fields` is the record's `FieldKind` list
-/// (same order). A `Primitive`/`Nested` field consumes one arg; a
-/// `SeqField` consumes two (the `Array(Int→T)` and its `Int` length,
-/// collapsed into one `SeqEnum` field — the length arg is implicit
-/// in the materialized Vec, so it's skipped). Nested record fields
-/// recurse back through `emit_write_value` (their arg is itself a
-/// record constructor).
 #[allow(clippy::too_many_arguments)]
 fn emit_write_record<'ctx>(
     bcx: &mut FunctionBuilder,
@@ -958,7 +836,7 @@ fn emit_write_record<'ctx>(
 ) -> Option<()> {
     use crate::core::FieldKind;
     let n = fields.len();
-    // One value slot per logical field.
+
     let val_slots: Vec<ClValue> = (0..n).map(|_| {
         let s = bcx.create_sized_stack_slot(
             StackSlotData::new(StackSlotKind::ExplicitSlot, size_of_value as u32));
@@ -972,10 +850,7 @@ fn emit_write_record<'ctx>(
     for (fi, fk) in fields.iter().enumerate() {
         name_pl.push(intern_str(string_pool, fk.name()));
         match fk {
-            // Seq(T) field: ctor arg `arg_idx` is the Array(Int→T),
-            // `arg_idx + 1` is the Int length. The array arg is a Z3
-            // const-array/store chain that the CONST_ARRAY/STORE
-            // handlers materialize into a SeqEnum.
+
             FieldKind::SeqField { .. } => {
                 let arr_child = children.get(arg_idx)?;
                 emit_write_value(bcx, arr_child, val_slots[fi], env,
@@ -983,7 +858,7 @@ fn emit_write_record<'ctx>(
                     ptr_t, size_of_value)?;
                 arg_idx += 2;
             }
-            // Primitive leaf or nested record: one ctor arg.
+
             _ => {
                 let child = children.get(arg_idx)?;
                 emit_write_value(bcx, child, val_slots[fi], env,
@@ -994,7 +869,6 @@ fn emit_write_record<'ctx>(
         }
     }
 
-    // Parallel stack arrays: field-name ptrs, field-name lens, value ptrs.
     let mk_arr = |bcx: &mut FunctionBuilder| {
         let slot = bcx.create_sized_stack_slot(
             StackSlotData::new(StackSlotKind::ExplicitSlot, (n.max(1) as u32) * 8));
@@ -1018,9 +892,6 @@ fn emit_write_record<'ctx>(
     Some(())
 }
 
-/// Emit IR that computes an i64 value from `expr`. Used for Int
-/// arithmetic operands, Bool conditions, comparison operands.
-/// Returns None if the expr can't be reduced to a single i64.
 fn emit_compute_i64<'ctx>(
     bcx: &mut FunctionBuilder,
     expr: &Dynamic<'ctx>,
@@ -1048,9 +919,7 @@ fn emit_compute_i64<'ctx>(
                     if !children.is_empty() { return None; }
                     let name = decl.name();
                     let src_slot = *env.get(&name)?;
-                    // Pick loader based on the sort: Bool → load_bool,
-                    // else load_int. Sort detection is via the Z3 sort
-                    // string on the expr.
+
                     let sort_name = format!("{}", expr.get_sort());
                     let loader = if sort_name == "Bool" {
                         helpers.load_bool
@@ -1102,10 +971,7 @@ fn emit_compute_i64<'ctx>(
                 DeclKind::LT | DeclKind::LE | DeclKind::GT | DeclKind::GE
                 | DeclKind::EQ => {
                     if children.len() != 2 { return None; }
-                    // Special case: `(= X NullaryVariant)` — compile
-                    // as IsVariant test on X. Lets the JIT handle
-                    // enum equality without needing a full Value
-                    // equality helper.
+
                     if matches!(kind, DeclKind::EQ) {
                         let try_nullary_eq = |child: &Dynamic<'ctx>, other: &Dynamic<'ctx>|
                             -> Option<ClValue>
@@ -1116,16 +982,15 @@ fn emit_compute_i64<'ctx>(
                                     && child.num_children() == 0
                                 {
                                     let variant = d.name();
-                                    // We need a mutable bcx + helpers here; this
-                                    // closure borrows mutably so we inline below.
+
                                     let _ = variant;
-                                    return Some(ClValue::from_u32(0));  // sentinel
+                                    return Some(ClValue::from_u32(0));
                                 }
                             }
                             None
                         };
                         if try_nullary_eq(&children[1], &children[0]).is_some() {
-                            // r is the nullary variant; test (is variant l).
+
                             let variant = children[1].safe_decl().ok()?.name();
                             let temp = bcx.create_sized_stack_slot(
                                 StackSlotData::new(StackSlotKind::ExplicitSlot,
@@ -1172,7 +1037,7 @@ fn emit_compute_i64<'ctx>(
                         _ => unreachable!(),
                     };
                     let cmp = bcx.ins().icmp(cc, l, r);
-                    // icmp returns i8; widen to i64 for our ABI.
+
                     Some(bcx.ins().uextend(types::I64, cmp))
                 }
                 DeclKind::AND => {
@@ -1219,7 +1084,7 @@ fn emit_compute_i64<'ctx>(
                     let app_text = format!("{expr}");
                     let variant = crate::z3_eval::extract_is_variant_pub(&app_text)
                         .or_else(|| decl.name().strip_prefix("is_").map(|s| s.to_string()))?;
-                    // Compile inner into a temp slot.
+
                     let temp = bcx.create_sized_stack_slot(
                         StackSlotData::new(StackSlotKind::ExplicitSlot,
                                            size_of_value as u32));
@@ -1241,9 +1106,7 @@ fn emit_compute_i64<'ctx>(
                         .or_else(|| raw.strip_suffix("__len"))
                         .map(|s| s.to_string())
                         .unwrap_or(raw);
-                    // Compile inner into a temp slot, then extract by name,
-                    // then load as i64. The inner value is presumably
-                    // an enum/composite whose field is Int-typed.
+
                     let inner_temp = bcx.create_sized_stack_slot(
                         StackSlotData::new(StackSlotKind::ExplicitSlot,
                                            size_of_value as u32));
@@ -1261,14 +1124,13 @@ fn emit_compute_i64<'ctx>(
                     let nl_v = bcx.ins().iconst(types::I64, nl);
                     bcx.ins().call(helpers.extract_field,
                         &[field_ptr, inner_ptr, np_v, nl_v]);
-                    // Load as int from the field slot.
+
                     let call = bcx.ins().call(helpers.load_int, &[field_ptr]);
                     Some(bcx.inst_results(call)[0])
                 }
                 DeclKind::SELECT => {
                     if children.len() != 2 { return None; }
-                    // Compile arr into a temp, then seq_select to read elem,
-                    // then load_int from the elem slot.
+
                     let arr_temp = bcx.create_sized_stack_slot(
                         StackSlotData::new(StackSlotKind::ExplicitSlot,
                                            size_of_value as u32));
@@ -1329,10 +1191,7 @@ fn collect_inputs<'ctx>(
         if let Ok(decl) = e.safe_decl() {
             if decl.kind() == DeclKind::UNINTERPRETED && e.num_children() == 0 {
                 let name = decl.name();
-                // Always register the input; kind is used for input
-                // packing (Int/Bool fast path) but Seq/composite
-                // inputs flow through clone_from_pool which doesn't
-                // need a kind.
+
                 let k = kind_of_dynamic(e, enum_variants, variant_arity)
                     .unwrap_or(OutputKind::Seq);
                 out.insert((name, k));
@@ -1357,15 +1216,6 @@ fn lookup_variant(
     None
 }
 
-// ── Functionizer trait wiring ────────────────────────────────────
-//
-// Zero-sized strategy struct that adapts `compile_program` to the
-// `Functionizer` trait, and a `CompiledFunction` impl that wraps
-// `JitProgram::call`. The runtime talks to these traits exclusively
-// — `JitProgram` and `compile_program` stay private to this module.
-
-/// Cranelift JIT functionizer strategy. Compiles a `Z3Program` to
-/// native machine code via Cranelift.
 pub struct CraneliftFunctionizer;
 
 impl super::Functionizer for CraneliftFunctionizer {

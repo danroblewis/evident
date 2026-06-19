@@ -1,16 +1,5 @@
-//! AST → readable-infix string. Used for diagnostics on UNSAT (so the
-//! user sees `state.dots[i].pos_x = state.dots[i].pos_x` instead of a
-//! deeply-nested `Binary(Eq, Field(Index(Identifier("state.dots"),
-//! Identifier("i")), "pos_x"), …)` tree).
-//!
-//! Not a precise round-trip pretty-printer — operator spacing matches
-//! source style and Unicode operators (∈, ∀, ⇒, …) are restored, but
-//! nothing here is parsed back. If a future feature needs accurate
-//! re-parse, write a separate one.
-
 use crate::core::ast::{BinOp, BodyItem, Expr, Mapping, MatchPattern};
 
-/// Render a quantifier binding: a single name as `x`, a tuple as `(a, b, c)`.
 fn fmt_binding(vs: &[String]) -> String {
     if vs.len() == 1 { vs[0].clone() } else { format!("({})", vs.join(", ")) }
 }
@@ -72,9 +61,7 @@ pub fn expr(e: &Expr) -> String {
         Expr::Binary(op, lhs, rhs) => {
             let l = expr(lhs);
             let r = expr(rhs);
-            // Wrap any Binary operand in parens — cheap, slightly noisy,
-            // never wrong. A precedence-aware printer is overkill for
-            // diagnostics.
+
             let l = if matches!(lhs.as_ref(), Expr::Binary(..)) { format!("({})", l) } else { l };
             let r = if matches!(rhs.as_ref(), Expr::Binary(..)) { format!("({})", r) } else { r };
             format!("{} {} {}", l, binop_sym(op), r)

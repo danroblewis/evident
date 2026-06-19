@@ -1,13 +1,3 @@
-//! Record-lift broadcast for arithmetic assignment.
-//!
-//! `lhs = expr` where lhs is a record reference and expr involves
-//! record arithmetic expands to a per-leaf conjunction. Both LHS forms
-//! (bare-identifier records like `dragged.pos` and Field-of-Index
-//! records like `state_next.dots[i].pos`) are supported.
-//!
-//! Pinning the behavior so the lift broadcast doesn't regress the day
-//! someone reshuffles `translate_bool`'s comparison arms.
-
 use evident_runtime::{EvidentRuntime, Value};
 
 const VEC2: &str = "type IVec2\n    x ∈ Int\n    y ∈ Int\n";
@@ -19,8 +9,6 @@ fn check_int(v: Option<&Value>, expected: i64, label: &str) {
     }
 }
 
-/// Headline case: `c = a - b` between three bare-identifier IVec2
-/// values broadcasts to per-axis subtraction.
 #[test]
 fn vec_sub_bare_identifiers() {
     let mut rt = EvidentRuntime::new();
@@ -43,8 +31,6 @@ fn vec_add_bare_identifiers() {
     check_int(r.bindings.get("c.y"), 22, "c.y");
 }
 
-/// Mixed scalar + vector arithmetic: `c = a * dt` broadcasts the
-/// scalar `dt` across both axes (as multiplicand, not as a vector).
 #[test]
 fn vec_times_scalar() {
     let mut rt = EvidentRuntime::new();
@@ -56,8 +42,6 @@ fn vec_times_scalar() {
     check_int(r.bindings.get("c.y"), 20, "c.y");
 }
 
-/// Compound: `dragged.pos = state.pos - window.drag` — the headline
-/// use case from anchor_collect.ev.
 #[test]
 fn vec_compound_subtraction() {
     let mut rt = EvidentRuntime::new();
@@ -69,9 +53,6 @@ fn vec_compound_subtraction() {
     check_int(r.bindings.get("dragged.pos.y"), 270, "dragged.pos.y");
 }
 
-/// Field-of-Index LHS: `state_next.dots[i].pos = state.dots[i].pos +
-/// state.dots[i].vel` — the per-dot physics shape. Both LHS and RHS
-/// are Field-of-Index records on the same Seq.
 #[test]
 fn vec_field_of_index_arith() {
     let mut rt = EvidentRuntime::new();
@@ -96,11 +77,6 @@ fn vec_field_of_index_arith() {
     assert_eq!(pos1.get("y"), Some(&Value::Int(204)));
 }
 
-/// `seq[n] = record_var` — direct Index assignment of an entire Seq
-/// element from a bare-identifier record. Pattern: `output.rects[4] =
-/// player_rect` in anchor_collect.ev. Lift treats `Index(seq, n)` as
-/// a record reference whose leaf set is the Seq element's full field
-/// shape (recursing through Nested sub-fields).
 #[test]
 fn vec_index_lhs_assignment_from_record() {
     let mut rt = EvidentRuntime::new();
@@ -128,10 +104,6 @@ fn vec_index_lhs_assignment_from_record() {
     assert_eq!(size.get("y"), Some(&Value::Int(40)));
 }
 
-/// Vector chained comparison with arithmetic on either side:
-/// `dot.pos + lo ≤ player.pos ≤ dot.pos + hi` — the headline use case
-/// from anchor_collect.ev's collection box. Both clauses of the chain
-/// have a record sub-expression on each side, including arithmetic.
 #[test]
 fn vec_chained_with_offset_arith() {
     let mut rt = EvidentRuntime::new();
@@ -154,9 +126,6 @@ fn vec_chained_with_offset_arith_unsat_when_outside() {
     assert!(!r.satisfied, "player.y = 999 is outside box hi.y = 210");
 }
 
-/// Vector equality between record-typed identifiers (no arithmetic)
-/// also goes through the broadcast path now. Same result as the
-/// existing record-comparison lift, no regression.
 #[test]
 fn vec_eq_via_broadcast() {
     let mut rt = EvidentRuntime::new();

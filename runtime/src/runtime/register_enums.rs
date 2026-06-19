@@ -1,28 +1,6 @@
-//! Z3 datatype registration for `enum` declarations.
-
 use crate::core::{RuntimeError, internal_cons_helper_name, parse_seq_type};
 use z3::Context;
 
-/// Batched build of Z3 DatatypeSorts for every enum declared in
-/// `decls`, using `z3::datatype_builder::create_datatypes` so that
-/// enums can forward-reference each other or be mutually recursive.
-///
-/// Three kinds of payload-field references are resolved per variant:
-///
-///   * Primitive (`Int`/`Nat`/`Pos`/`Real`/`Bool`/`String`) →
-///     `DatatypeAccessor::Sort(...)`.
-///   * Self-reference or forward-reference to another enum *in this
-///     batch* → `DatatypeAccessor::Datatype(name)`. The Z3 multi-
-///     builder resolves these during `create_datatypes`.
-///   * Reference to an enum already registered in a previous load →
-///     `DatatypeAccessor::Sort(prev.sort.clone())`.
-///
-/// Anything else (unknown type name) errors with a user-readable
-/// message naming the offending variant + field.
-///
-/// Variant names are globally unique across all enums; load fails
-/// on collision, both within `decls` and against previously-loaded
-/// enums in the registry.
 pub(super) fn register_enums(
     decls: &[crate::core::ast::EnumDecl],
     ctx: &'static Context,
@@ -31,14 +9,10 @@ pub(super) fn register_enums(
     use z3::{DatatypeAccessor, DatatypeBuilder, DatatypeSort, Sort};
     if decls.is_empty() { return Ok(()); }
 
-    // Pre-flight checks: variant uniqueness (across this batch and
-    // previously-loaded enums), and enum-name uniqueness (same).
     let batch_names: std::collections::HashSet<&str> =
         decls.iter().map(|d| d.name.as_str()).collect();
     {
-        // Same-batch enum-name uniqueness: walk decls once and bail on
-        // the first repeat. If batch_names.len() != decls.len() then
-        // some name collided; locate it for a useful message.
+
         if batch_names.len() != decls.len() {
             let mut seen: std::collections::HashSet<&str> = std::collections::HashSet::new();
             for d in decls {
@@ -82,22 +56,6 @@ pub(super) fn register_enums(
         }
     }
 
-    // Phase 6.5: when a variant has a `Seq(T)` field where T is in
-    // THIS batch (so its sort isn't available yet), the two-accessor
-    // Array(Int → T) expansion fails — Z3's array sort needs a
-    // concrete element sort, and there's no forward-ref mechanism
-    // for sorts wrapping a batch-local datatype. Generate an
-    // internal Cons-shaped helper datatype `__SeqOf_T` with
-    // `__Empty_T` + `__Cell_T(T, __SeqOf_T)`, add it to the batch.
-    // The original `Seq(T)` field's accessor becomes a single
-    // Datatype ref to `__SeqOf_T`, which Z3 *can* forward-ref via
-    // the existing in-batch resolver.
-    //
-    // From the user's POV nothing changes: source still says
-    // `Seq(T)`, the `⟨a, b, c⟩` literal works (build_cons_chain
-    // already handles Cons/Nil-shaped enums). The helper enum
-    // names start with `__` and are not visible in error
-    // messages or self-hosted-pass code.
     let decls_owned: Vec<crate::core::ast::EnumDecl>;
     let internal_cons_set: std::collections::HashSet<String>;
     let decls: &[crate::core::ast::EnumDecl] = {
@@ -111,23 +69,14 @@ pub(super) fn register_enums(
             &decls_owned
         }
     };
-    // batch_names recomputed after possible rewrite (so helper enums
-    // are part of the in-batch set for forward-ref resolution).
+
     let batch_names: std::collections::HashSet<&str> =
         decls.iter().map(|d| d.name.as_str()).collect();
 
-    // Stage decls by Seq-in-payload dependency: an enum X depends on
-    // an enum Y if X has any variant field typed `Seq(Y)` and Y is
-    // also in this batch. The Array(Int → Y) sort needed to declare
-    // the Seq field requires Y's concrete sort to exist already, so
-    // X must go in a later stage than Y. Regular Datatype references
-    // (`Variant(Y)` without Seq) are still resolved via Z3's in-batch
-    // forward-ref machinery.
     let stages = topo_stage_enums(decls, &batch_names, &internal_cons_set)?;
 
     for stage in stages {
-        // Names of enums declared in this stage (for in-stage forward
-        // refs via DatatypeAccessor::Datatype).
+
         let stage_names: std::collections::HashSet<&str> =
             stage.iter().map(|&i| decls[i].name.as_str()).collect();
 
@@ -137,22 +86,14 @@ pub(super) fn register_enums(
             let mut builder = DatatypeBuilder::new(ctx, d.name.as_str());
             for v in &d.variants {
                 let mut accessors: Vec<(&str, DatatypeAccessor)> = Vec::new();
-                // Owned names for two-accessor expansion (`f_arr`,
-                // `f_len`) — kept alive via this Vec so the &str
-                // pushed into `accessors` outlives the variant build.
+
                 let mut owned_names: Vec<String> = Vec::new();
                 for f in &v.fields {
                     if let Some(inner) = parse_seq_type(&f.type_name) {
-                        // Internal-Cons backing: `Seq(T)` where T is a
-                        // batch-local enum — use a single accessor
-                        // pointing to the generated `__SeqOf_T`
-                        // helper enum (added to the batch by
-                        // `generate_internal_cons_helpers`).
+
                         if internal_cons_set.contains(inner) {
                             let helper = internal_cons_helper_name(inner);
-                            // Helper is in this same stage (we order
-                            // it together with T's group), use
-                            // forward-ref by name.
+
                             owned_names.push(helper);
                             let nm_idx = owned_names.len() - 1;
                             let nm: &str = unsafe {
@@ -162,9 +103,7 @@ pub(super) fn register_enums(
                                 DatatypeAccessor::Datatype(nm.into())));
                             continue;
                         }
-                        // Two-accessor expansion: Seq(T) becomes
-                        // (arr: Array(Int → T), len: Int). Only for
-                        // primitives + previously-loaded enums.
+
                         let elem_sort = resolve_concrete_sort(
                             inner, ctx, &stage_names, registry, &d.name, &v.name)?;
                         if elem_sort.is_none() {
@@ -195,12 +134,11 @@ pub(super) fn register_enums(
                         "Real"   => DatatypeAccessor::Sort(Sort::real(ctx)),
                         "String" => DatatypeAccessor::Sort(Sort::string(ctx)),
                         other if stage_names.contains(other) => {
-                            // In-stage forward-ref via Z3's resolver.
+
                             DatatypeAccessor::Datatype(other.into())
                         }
                         other => {
-                            // Previously-loaded enum (earlier stage or
-                            // earlier load batch). Resolve to concrete.
+
                             if let Some((prev, _)) = registry.by_name.borrow().get(other) {
                                 DatatypeAccessor::Sort(prev.sort.clone())
                             } else {
@@ -215,9 +153,7 @@ pub(super) fn register_enums(
                     accessors.push((f.name.as_str(), acc));
                 }
                 builder = builder.variant(v.name.as_str(), accessors);
-                // Drop owned_names at end of variant — the builder
-                // has copied its contents (datatype_builder.rs:21
-                // does `accessor_name.to_string()`).
+
                 drop(owned_names);
             }
             builders.push(builder);
@@ -227,7 +163,6 @@ pub(super) fn register_enums(
             z3::datatype_builder::create_datatypes(builders);
         assert_eq!(sorts.len(), stage.len());
 
-        // Stash each built sort + its variant decl list.
         {
             let mut by_name = registry.by_name.borrow_mut();
             let mut by_variant = registry.by_variant.borrow_mut();
@@ -244,22 +179,6 @@ pub(super) fn register_enums(
     Ok(())
 }
 
-/// Walk `decls` for `Seq(T)` enum-variant fields where T is also in
-/// `decls` (batch-local). For each such T, generate a Cons-shaped
-/// helper enum:
-///
-/// ```text
-/// enum __SeqOf_T =
-///     __Empty_T
-///     __Cell_T(T, __SeqOf_T)
-/// ```
-///
-/// Returns the augmented decl list (original + helpers) and the set
-/// of T-names that got helpers. Caller uses the set to route Seq
-/// fields through the Cons helper in register_enums.
-///
-/// When no Seq-of-batch-local fields exist, returns (empty vec,
-/// empty set) and the caller uses the original `decls` unchanged.
 fn generate_internal_cons_helpers(
     decls: &[crate::core::ast::EnumDecl],
 ) -> (Vec<crate::core::ast::EnumDecl>, std::collections::HashSet<String>) {
@@ -310,11 +229,6 @@ fn generate_internal_cons_helpers(
     (out, needs_helper)
 }
 
-/// Resolve a payload element type to a concrete Z3 Sort. Returns
-/// `Ok(Some(sort))` for primitives + previously-loaded enums,
-/// `Ok(None)` when the type is in the current stage (caller decides
-/// how to handle — Seq fields error out, plain Datatype refs use
-/// forward-ref). Returns `Err` on unknown types.
 fn resolve_concrete_sort<'ctx>(
     type_name: &str,
     ctx: &'ctx z3::Context,
@@ -344,21 +258,6 @@ fn resolve_concrete_sort<'ctx>(
     }
 }
 
-/// Partition `decls` into stages. Two kinds of dependencies:
-///
-///   * **Hard** (regular Datatype payload ref like `EffCons(Effect,
-///     EffectList)`): the referenced enum must be in the SAME stage
-///     as the referencer, so Z3's batch forward-ref machinery can
-///     resolve it. Hard edges are transitive — they merge enums
-///     into one stage via union-find.
-///   * **Soft** (Seq-in-payload like `FFICall(Int, String, Seq(FFIArg))`):
-///     the Seq element's sort must be concrete when the referencer's
-///     batch is built. Soft edges order stages: the referencer's
-///     group must come AFTER the element type's group.
-///
-/// Returns a list of stages, each containing indices into `decls`.
-/// Errors if Seq-in-payload references form a cycle across hard-edge
-/// groups (a single group requiring Seq into itself).
 fn topo_stage_enums(
     decls: &[crate::core::ast::EnumDecl],
     _batch_names: &std::collections::HashSet<&str>,
@@ -370,12 +269,11 @@ fn topo_stage_enums(
     let name_to_idx: HashMap<&str, usize> =
         decls.iter().enumerate().map(|(i, d)| (d.name.as_str(), i)).collect();
 
-    // Union-find over enum indices for hard-edge merging.
     let mut parent: Vec<usize> = (0..n).collect();
     fn find(parent: &mut [usize], x: usize) -> usize {
         let mut r = x;
         while parent[r] != r { r = parent[r]; }
-        // Path compression.
+
         let mut cur = x;
         while parent[cur] != r {
             let next = parent[cur];
@@ -390,18 +288,12 @@ fn topo_stage_enums(
         if ra != rb { parent[ra] = rb; }
     }
 
-    // Walk every variant field; collect hard + soft edges.
-    let mut soft: Vec<(usize, usize)> = Vec::new();  // (src_idx, dst_idx) — src needs dst earlier
+    let mut soft: Vec<(usize, usize)> = Vec::new();
     for (i, d) in decls.iter().enumerate() {
         for v in &d.variants {
             for f in &v.fields {
                 if let Some(inner) = parse_seq_type(&f.type_name) {
-                    // Internal-Cons backing: the field becomes a hard
-                    // ref to `__SeqOf_T`, NOT a Seq-soft-edge to T.
-                    // Without this, the soft-cycle check below would
-                    // erroneously reject the mutually-recursive AST
-                    // even though the runtime now handles it via the
-                    // generated helper.
+
                     if internal_cons_set.contains(inner) {
                         let helper = internal_cons_helper_name(inner);
                         if let Some(&j) = name_to_idx.get(helper.as_str()) {
@@ -415,7 +307,7 @@ fn topo_stage_enums(
                     continue;
                 }
                 if let Some(&j) = name_to_idx.get(f.type_name.as_str()) {
-                    if j != i {  // self-ref doesn't merge
+                    if j != i {
                         union(&mut parent, i, j);
                     }
                 }
@@ -423,21 +315,18 @@ fn topo_stage_enums(
         }
     }
 
-    // Group indices by their union-find root.
     let mut groups: HashMap<usize, Vec<usize>> = HashMap::new();
     for i in 0..n {
         let r = find(&mut parent, i);
         groups.entry(r).or_default().push(i);
     }
 
-    // Group-level soft deps.
     let mut group_deps: HashMap<usize, HashSet<usize>> = HashMap::new();
     for &(src, dst) in &soft {
         let rs = find(&mut parent, src);
         let rd = find(&mut parent, dst);
         if rs == rd {
-            // Seq inside its own hard-edge group: would need a
-            // forward-ref Array sort, which Z3 doesn't support.
+
             return Err(RuntimeError::Parse(format!(
                 "Seq-in-payload references a type in the same hard-edge group: \
                  `{}` has Seq(`{}`) and they're in one mutually-recursive batch",
@@ -447,7 +336,6 @@ fn topo_stage_enums(
         group_deps.entry(rs).or_default().insert(rd);
     }
 
-    // Topologically order groups.
     let group_roots: Vec<usize> = groups.keys().copied().collect();
     let mut remaining: Vec<usize> = group_roots.clone();
     let mut built: HashSet<usize> = HashSet::new();

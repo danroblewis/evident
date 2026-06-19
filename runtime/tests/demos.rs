@@ -1,20 +1,3 @@
-//! End-to-end driver for `examples/test_*.ev`.
-//!
-//! For each demo file, runs:
-//!   1. `evident test <file>`      — static sat_/unsat_ claims
-//!   2. `evident effect-run <file>` — multi-FSM end-to-end
-//!
-//! The expectations table below pins each demo to:
-//!   * exact exit code
-//!   * a sequence of stdout lines that must appear IN ORDER
-//!     (not just "contains substring" — the demo must walk
-//!     through the whole expected behavior, not just hit one
-//!     keyword by accident through a wrong code path).
-//!
-//! Add a row when a new demo lands. WIP / interactive demos
-//! (stdin, signals, broken counterexamples) can be left out
-//! without breaking CI; document why in the comment block.
-
 use std::path::Path;
 use std::process::{Command, Stdio};
 use std::time::Duration;
@@ -24,18 +7,13 @@ const EVIDENT: &str = env!("CARGO_BIN_EXE_evident");
 struct DemoExpect {
     name:        &'static str,
     exit:        i32,
-    /// Lines that MUST appear in stdout, in this order. Other
-    /// lines may appear between/around them. Empty = only check
-    /// exit code.
+
     must_lines:  &'static [&'static str],
-    /// Exact whole-line strings that must NOT appear on their
-    /// own line in stdout. Catches placeholder output (e.g.
-    /// the literal "tick" instead of "tick 5") that would
-    /// satisfy a substring check via the wrong path.
+
     forbid_exact_lines: &'static [&'static str],
     max_steps:   usize,
-    tick_ms:     u64,  // 0 = unset
-    /// Optional stdin to pipe in.
+    tick_ms:     u64,
+
     stdin:       Option<&'static str>,
 }
 
@@ -47,11 +25,11 @@ const EXPECTATIONS: &[DemoExpect] = &[
         max_steps: 10, tick_ms: 0, stdin: None,
     },
     DemoExpect {
-        // Must walk 5 → 1 in order. Catches "tick" placeholder.
+
         name: "test_02_counter", exit: 0,
         must_lines: &["starting count", "tick 5", "tick 4", "tick 3",
                       "tick 2", "tick 1", "bye"],
-        forbid_exact_lines: &["tick", "tick 0"],  // forbid "tick" with no number
+        forbid_exact_lines: &["tick", "tick 0"],
         max_steps: 30, tick_ms: 0, stdin: None,
     },
     DemoExpect {
@@ -73,9 +51,9 @@ const EXPECTATIONS: &[DemoExpect] = &[
         max_steps: 10, tick_ms: 0, stdin: None,
     },
     DemoExpect {
-        // ShellRun captured `date` — should look like "2026-..".
+
         name: "test_06_shell_run", exit: 0,
-        must_lines: &["20"],  // year prefix
+        must_lines: &["20"],
         forbid_exact_lines: &["<no string>", "<no result>"],
         max_steps: 10, tick_ms: 0, stdin: None,
     },
@@ -91,67 +69,37 @@ const EXPECTATIONS: &[DemoExpect] = &[
         forbid_exact_lines: &[],
         max_steps: 10, tick_ms: 0, stdin: None,
     },
-    // test_09..15, test_18 removed in the single-FSM teardown:
-    //   09_two_fsms / 10_spawn   — multi-FSM scheduler + Effect::SpawnFsm (gone).
-    //   11_frameclock / 13_timer — async FrameClock/Timer FTI bridges (gone).
-    //   12_hostname              — Hostname world-plugin bridge (gone).
-    //   14_stdin / 15_signal     — stdin/sigint event-source plugins (gone).
-    //   18_reflection            — Program world-plugin reflection bridge (gone).
-    // test_16_sdl_red — needs a display; renders correctly when run
-    //   manually but not asserted via stdout here.
+
     DemoExpect {
-        // SDL triangle: setup + render in ONE Seq on tick 0, halt.
-        // Visible verification needs a display; here we just check
-        // the program runs to its halt without error.
+
         name: "test_17_sdl_triangle", exit: 0,
         must_lines: &["done"],
         forbid_exact_lines: &[],
         max_steps: 5, tick_ms: 0, stdin: None,
     },
     DemoExpect {
-        // `_var` time-shift convention: every var's previous-tick
-        // value is available as `_var`; `is_first_tick` is auto-
-        // injected when any `_var` is referenced. Counter counts
-        // 0..2 via `_count + 1`, then halts.
+
         name: "test_19_prev_tick", exit: 0,
         must_lines: &["count = 0", "count = 1", "count = 2", "done"],
         forbid_exact_lines: &[],
         max_steps: 10, tick_ms: 0, stdin: None,
     },
     DemoExpect {
-        // Unified state model: an fsm with NO state enum, NO
-        // state-pair — just `count ∈ Int` advanced via `_count
-        // + 1`. Smart-inject only adds the slots that are
-        // referenced (effects + last_results). Demonstrates
-        // that the canonical fsm machinery is opt-in.
+
         name: "test_20_pure_counter", exit: 0,
         must_lines: &["starting", "count = 0", "count = 1", "count = 2", "count = 3"],
         forbid_exact_lines: &["count = ?"],
         max_steps: 15, tick_ms: 0, stdin: None,
     },
     DemoExpect {
-        // First multi-tick rendering demo. Per-tick physics +
-        // draw using the SDL_Window FTI bridge's persistent
-        // renderer handle (win.renderer). Auto-walks across
-        // screen bouncing off walls, falls under gravity to
-        // ground level. 240 frames × 16ms ≈ 4s of visible
-        // animation (the sdl_delay each tick paces the fsm
-        // to ~60fps so SDL has time to show the window).
-        // Visual verification: capture with --examples and Read
-        // the PNG — should show a red square on green ground
-        // against sky-blue background.
+
         name: "test_21_mario", exit: 0,
         must_lines: &["mario done"],
         forbid_exact_lines: &[],
         max_steps: 260, tick_ms: 0, stdin: None,
     },
     DemoExpect {
-        // `_var` time-shift through RECORD types: `_pos.x` and
-        // `_pos.y` get pinned from the previous tick's `pos.x`
-        // and `pos.y` bindings. Diagonal walker: (0,0) → (1,2)
-        // → (2,4) → (3,6), halts when pos.x ≥ 3.
-        // Sums printed are pos.x + pos.y = 0, 3, 6 (the prior
-        // tick's IntToStr surfaces next).
+
         name: "test_22_prev_record", exit: 0,
         must_lines: &["pos.x+pos.y = 0", "pos.x+pos.y = 3", "walker done at 6"],
         forbid_exact_lines: &["pos.x+pos.y = ?"],
@@ -176,8 +124,7 @@ fn static_tests_all_pass() {
 fn each_demo_runs_to_completion() {
     let mut failures = Vec::new();
     for d in EXPECTATIONS {
-        // Demos can be either a single file (`examples/{name}.ev`) or
-        // a directory (`examples/{name}/main.ev`).
+
         let flat = format!("examples/{}.ev", d.name);
         let dir  = format!("examples/{}/main.ev", d.name);
         let path = if Path::new(&format!("../{flat}")).exists() { flat }
@@ -207,7 +154,7 @@ fn each_demo_runs_to_completion() {
                 d.name, d.exit));
             continue;
         }
-        // must_lines: each must appear, in this order.
+
         let mut cursor = 0usize;
         for needle in d.must_lines {
             match stdout[cursor..].find(needle) {
@@ -240,7 +187,7 @@ fn wait_with_timeout(mut cmd: Command, stdin: Option<&'static str>, dur: Duratio
         if let Some(mut sin) = child.stdin.take() {
             use std::io::Write;
             let _ = sin.write_all(s.as_bytes());
-            // dropping sin closes stdin → EOF
+
         }
     }
     let start = std::time::Instant::now();
