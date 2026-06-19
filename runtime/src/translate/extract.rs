@@ -4,7 +4,7 @@ use z3::{Context, DatatypeSort};
 
 use crate::core::{EnumRegistry, FieldKind, SeqElem, Value, Var};
 
-pub(super) fn unescape_z3_string(s: &str) -> String {
+pub(crate) fn unescape_z3_string(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let bytes = s.as_bytes();
     let mut i = 0;
@@ -33,36 +33,6 @@ pub(super) fn unescape_z3_string(s: &str) -> String {
         i += ch.len_utf8();
     }
     out
-}
-
-#[cfg(test)]
-mod unescape_tests {
-    use super::unescape_z3_string;
-    #[test]
-    fn newline_escape_decoded() {
-        assert_eq!(unescape_z3_string("abc\\u{a}def"), "abc\ndef");
-    }
-    #[test]
-    fn multi_escape_decoded() {
-        assert_eq!(
-            unescape_z3_string("a\\u{9}b\\u{20}c"),
-            "a\tb c",
-        );
-    }
-    #[test]
-    fn high_codepoint_decoded() {
-
-        assert_eq!(unescape_z3_string("hi \\u{1f600}!"), "hi 😀!");
-    }
-    #[test]
-    fn no_escape_passthrough() {
-        assert_eq!(unescape_z3_string("plain ascii"), "plain ascii");
-    }
-    #[test]
-    fn malformed_passthrough() {
-
-        assert_eq!(unescape_z3_string("\\u{xyz"), "\\u{xyz");
-    }
 }
 
 pub(super) fn extract_seq<'ctx>(

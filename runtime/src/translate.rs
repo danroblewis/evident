@@ -1,8 +1,8 @@
 mod declare;
-mod effect_codec;
+pub(crate) mod effect_codec;
 mod eval;
 mod exprs;
-mod extract;
+pub(crate) mod extract;
 mod inline;
 
 pub mod effect_decoder {

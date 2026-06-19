@@ -9,6 +9,9 @@ mod parser;
 pub mod translate;
 mod runtime;
 
+#[cfg(test)]
+mod tests;
+
 pub use runtime::EvidentRuntime;
 pub use core::{QueryResult, RuntimeError, Value};
 

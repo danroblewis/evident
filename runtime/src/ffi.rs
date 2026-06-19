@@ -42,13 +42,13 @@ impl std::fmt::Display for FfiError {
 impl std::error::Error for FfiError {}
 
 #[derive(Debug, Clone)]
-struct ParsedSig {
-    ret:  TypeCode,
-    args: Vec<TypeCode>,
+pub(crate) struct ParsedSig {
+    pub(crate) ret:  TypeCode,
+    pub(crate) args: Vec<TypeCode>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum TypeCode { I, B, S, D, F, P, V }
+pub(crate) enum TypeCode { I, B, S, D, F, P, V }
 
 impl TypeCode {
     fn parse(c: char) -> Result<Self, FfiError> {
@@ -77,7 +77,7 @@ impl TypeCode {
     }
 }
 
-fn parse_signature(sig: &str) -> Result<ParsedSig, FfiError> {
+pub(crate) fn parse_signature(sig: &str) -> Result<ParsedSig, FfiError> {
     let bytes = sig.as_bytes();
     if bytes.len() < 3 {
         return Err(FfiError(format!("signature {sig:?} too short")));
@@ -384,137 +384,4 @@ const SHIMMED_STDLIB_PATHS: &[&str] = &[
 
 pub fn is_shimmed_stdlib(import_path: &str) -> bool {
     SHIMMED_STDLIB_PATHS.contains(&import_path)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn libc_path() -> &'static str { "libc.so.6" }
-
-    fn libm_path() -> &'static str { "libm.so.6" }
-
-    #[test]
-    fn parse_signature_basic() {
-        let p = parse_signature("i()").unwrap();
-        assert_eq!(p.ret, TypeCode::I);
-        assert!(p.args.is_empty());
-
-        let p = parse_signature("i(s)").unwrap();
-        assert_eq!(p.ret, TypeCode::I);
-        assert_eq!(p.args, vec![TypeCode::S]);
-
-        let p = parse_signature("p(siii)").unwrap();
-        assert_eq!(p.ret, TypeCode::P);
-        assert_eq!(p.args, vec![TypeCode::S, TypeCode::I, TypeCode::I, TypeCode::I]);
-
-        assert!(parse_signature("x()").is_err(),  "unknown type code");
-        assert!(parse_signature("i)").is_err(),    "missing open paren");
-        assert!(parse_signature("i(").is_err(),    "missing close paren");
-        assert!(parse_signature("i(v)").is_err(),  "void as arg");
-    }
-
-    #[test]
-    fn call_libc_getpid() {
-        let reg = HandleRegistry::new();
-        let lib = ffi_open(&reg, libc_path()).expect("dlopen libc");
-        let getpid = ffi_lookup(&reg, lib, "getpid").expect("dlsym getpid");
-        let result = ffi_call(&reg, getpid, "i()", &[]).expect("call getpid");
-        match result {
-            FfiReturn::Int(pid) => {
-                assert!(pid > 0, "getpid returned {pid}");
-                assert_eq!(pid as u32, std::process::id());
-            }
-            other => panic!("expected Int, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn call_libc_strlen() {
-        let reg = HandleRegistry::new();
-        let lib = ffi_open(&reg, libc_path()).unwrap();
-        let strlen = ffi_lookup(&reg, lib, "strlen").unwrap();
-        let r = ffi_call(&reg, strlen, "i(s)", &[FfiArg::Str("hello world".into())]).unwrap();
-        match r {
-            FfiReturn::Int(n) => assert_eq!(n, 11),
-            other => panic!("expected Int, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn call_libc_abs() {
-        let reg = HandleRegistry::new();
-        let lib = ffi_open(&reg, libc_path()).unwrap();
-        let abs = ffi_lookup(&reg, lib, "abs").unwrap();
-        let r = ffi_call(&reg, abs, "i(i)", &[FfiArg::Int(-42)]).unwrap();
-        match r {
-            FfiReturn::Int(n) => assert_eq!(n, 42),
-            other => panic!("expected Int, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn call_libm_sqrt_double() {
-        let reg = HandleRegistry::new();
-        let lib = ffi_open(&reg, libm_path()).unwrap();
-        let f = ffi_lookup(&reg, lib, "sqrt").unwrap();
-        let r = ffi_call(&reg, f, "d(d)", &[FfiArg::Real(16.0)]).unwrap();
-        match r {
-            FfiReturn::Real(x) => assert!((x - 4.0).abs() < 1e-12, "got {x}"),
-            other => panic!("expected Real, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn call_libm_sqrtf_float() {
-        let reg = HandleRegistry::new();
-        let lib = ffi_open(&reg, libm_path()).unwrap();
-        let f = ffi_lookup(&reg, lib, "sqrtf").unwrap();
-        let r = ffi_call(&reg, f, "f(f)", &[FfiArg::Real(25.0)]).unwrap();
-        match r {
-            FfiReturn::Real(x) => assert!((x - 5.0).abs() < 1e-6, "got {x}"),
-            other => panic!("expected Real, got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn type_mismatch_errors() {
-        let reg = HandleRegistry::new();
-        let lib = ffi_open(&reg, libc_path()).unwrap();
-        let strlen = ffi_lookup(&reg, lib, "strlen").unwrap();
-
-        let err = ffi_call(&reg, strlen, "i(s)", &[FfiArg::Int(0)]).unwrap_err();
-        assert!(err.0.contains("type mismatch"), "{}", err.0);
-    }
-
-    #[test]
-    fn arg_count_mismatch_errors() {
-        let reg = HandleRegistry::new();
-        let lib = ffi_open(&reg, libc_path()).unwrap();
-        let strlen = ffi_lookup(&reg, lib, "strlen").unwrap();
-        let err = ffi_call(&reg, strlen, "i(s)", &[]).unwrap_err();
-        assert!(err.0.contains("expects 1 args"), "{}", err.0);
-    }
-
-    #[test]
-    fn unknown_handle_errors() {
-        let reg = HandleRegistry::new();
-        let err = ffi_lookup(&reg, 9999, "anything").unwrap_err();
-        assert!(err.0.contains("unknown handle"), "{}", err.0);
-    }
-
-    #[test]
-    fn close_handle_frees_entry() {
-        let reg = HandleRegistry::new();
-        let lib = ffi_open(&reg, libc_path()).unwrap();
-        assert!(reg.close(lib),  "first close succeeds");
-        assert!(!reg.close(lib), "second close finds nothing");
-    }
-
-    #[test]
-    fn null_returning_string_is_empty() {
-
-        let _reg = HandleRegistry::new();
-
-    }
 }
