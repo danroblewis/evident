@@ -2,7 +2,7 @@ use crate::core::RuntimeError;
 use crate::core::ast::SchemaDecl;
 use std::collections::HashMap;
 
-pub(super) fn desugar_seq_concat(s: &mut SchemaDecl) {
+pub(crate) fn desugar_seq_concat(s: &mut SchemaDecl) {
     use crate::core::ast::{BinOp, BodyItem, Expr};
     if s.external { return; }
 
@@ -89,7 +89,7 @@ pub(super) fn desugar_seq_concat(s: &mut SchemaDecl) {
     }
 }
 
-pub(super) fn unify_world_syntax(s: &mut SchemaDecl) -> Result<(), RuntimeError> {
+pub(crate) fn unify_world_syntax(s: &mut SchemaDecl) -> Result<(), RuntimeError> {
     use crate::core::ast::{BodyItem, Expr, Keyword, Pins};
     if !matches!(s.keyword, Keyword::Fsm) { return Ok(()); }
     if s.external { return Ok(()); }
@@ -164,7 +164,7 @@ pub(super) fn unify_world_syntax(s: &mut SchemaDecl) -> Result<(), RuntimeError>
 
 // ═════════════════════════ FSM param + type-inference injection ═════════════════════════
 
-pub(super) fn inject_fsm_params(s: &mut SchemaDecl) -> Result<(), RuntimeError> {
+pub(crate) fn inject_fsm_params(s: &mut SchemaDecl) -> Result<(), RuntimeError> {
     use crate::core::ast::{BodyItem, Expr, Keyword, Pins};
     if !matches!(s.keyword, Keyword::Fsm) {
         return Ok(());
@@ -248,7 +248,7 @@ pub(super) fn inject_fsm_params(s: &mut SchemaDecl) -> Result<(), RuntimeError> 
     Ok(())
 }
 
-pub(super) fn inject_prev_tick_decls(s: &mut SchemaDecl) -> Result<(), RuntimeError> {
+pub(crate) fn inject_prev_tick_decls(s: &mut SchemaDecl) -> Result<(), RuntimeError> {
     use crate::core::ast::{BodyItem, Keyword, Pins, Expr};
     if !matches!(s.keyword, Keyword::Fsm) { return Ok(()); }
     if s.external { return Ok(()); }
@@ -310,7 +310,7 @@ pub(super) fn inject_prev_tick_decls(s: &mut SchemaDecl) -> Result<(), RuntimeEr
     Ok(())
 }
 
-pub(super) fn inject_claim_arg_types(
+pub(crate) fn inject_claim_arg_types(
     s: &mut SchemaDecl,
     schemas: &HashMap<String, SchemaDecl>,
 ) -> Result<(), RuntimeError> {
@@ -431,7 +431,7 @@ pub(super) fn inject_claim_arg_types(
     Ok(())
 }
 
-pub(super) fn inject_lhs_eq_types(
+pub(crate) fn inject_lhs_eq_types(
     s: &mut SchemaDecl,
     schemas: &HashMap<String, SchemaDecl>,
     enums: &crate::core::EnumRegistry,

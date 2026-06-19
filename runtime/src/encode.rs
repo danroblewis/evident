@@ -4,6 +4,7 @@ mod eval;
 mod exprs;
 pub(crate) mod extract;
 mod inline;
+pub(crate) mod lower;
 
 pub mod effect_decoder {
 

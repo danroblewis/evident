@@ -15,7 +15,7 @@ use std::sync::Mutex;
 use crate::core::ast::{BinOp, BodyItem, Effect, EffectResult, Expr, Pins};
 use crate::core::Value;
 use crate::ffi::{dispatch_all, DispatchContext};
-use crate::runtime::EvidentRuntime;
+use crate::session::EvidentRuntime;
 use crate::encode::effect_decoder::decode_install_step_list;
 use crate::encode::{effect_decoder, Value as TValue};
 

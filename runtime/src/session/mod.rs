@@ -1,4 +1,4 @@
-mod lower;
+use crate::encode::lower;
 mod register_enums;
 mod query;
 
