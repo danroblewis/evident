@@ -7,6 +7,37 @@ constraints over sets, and a Z3 SMT solver finds satisfying assignments.  The
 central abstraction is `schema`: a named set defined by membership conditions.
 Querying a schema asks whether a satisfying assignment exists.
 
+## Navigate code with Semfora FIRST — do not pull whole files blind
+
+This repo is indexed by **Semfora**, an MCP server (`semfora-engine serve`) plus
+an FS-monitor daemon, baked into `Dockerfile.dev` and started on boot. It exposes
+symbol search, callpath tracing, and surgical source reads. It is the **first**
+tool you reach for to find, understand, or assess the impact of code — before
+`Read`, and instead of shelling `grep`/`cat`/`rg`/`sed` over source files.
+
+**Required workflow when working on code:**
+  * **Find** a symbol or concept → `mcp__semfora__search` (hybrid symbol+semantic).
+    Do NOT grep-then-Read files to locate things.
+  * **Before editing ANY function** → `mcp__semfora__get_callers` on it to see the
+    blast radius. Editing a function without first checking its callers is the
+    exact failure mode this is here to prevent.
+  * **Read** a specific function or any large file → `mcp__semfora__get_source`
+    (by symbol hash, or file+lines) — a surgical read, never the whole file. For
+    files larger than ~500 lines, NEVER use the `Read` tool; use
+    `get_source` / `get_symbol`.
+  * **Cleanup / minimization** (a standing goal in this repo) →
+    `mcp__semfora__dead_code_audit` + `mcp__semfora__find_duplicates` before
+    proposing any removal.
+  * **Reviewing a diff or changes** → `mcp__semfora__analyze_diff`.
+
+The `Read` tool is reserved for exactly two cases: (1) the file you are *about to
+`Edit`* (the harness requires a prior `Read`), and (2) small non-code assets
+(config, `.toml`, docs). Pulling source files to "look around," or shelling
+`grep`/`cat` over `.rs`/`.ev` files to explore, is the anti-pattern Semfora
+replaces. Try Semfora first, every time; only fall back to `search`/`Read` if a
+Semfora query genuinely returns nothing useful. The daemon keeps the index fresh;
+`search` auto-refreshes it if it looks stale.
+
 ## Run `./test.sh` before declaring work done
 
 There is one test command: **`./test.sh` from the repo root**.
