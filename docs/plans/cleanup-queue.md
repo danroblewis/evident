@@ -9,14 +9,10 @@ avoids worktree merge conflicts. Mark items done and commit as they land.
 - _(nothing running)_
 
 ## Queued (in order)
-1. **Simplify `single_fsm` + purge stdlib multi-FSM vestiges** — the runtime is
-   single-FSM now (core.md stage 4); `single_fsm` still enumerates FSM candidates and
-   rejects >1. Also `stdlib/runtime.ev` still declares `external fsm StdinSource/
-   FrameTimerSource/SigintSource/…` + `tick_count`/`EVIDENT_TICK_MS` comments — backed
-   by NO Rust impl (`event_sources/` is gone), so they're dead code. Remove them too.
-   Docs are already reconciled to single-FSM (see Done).
+- _(empty — cleanup queue clear)_
 
 ## Done (recent, newest first)
+- purge stdlib multi-FSM vestiges (5 `external fsm` + FrameTimer/Signal/FrameClock/Timer + dead comments), `runtime.ev` 299→195; `single_fsm` reviewed, already minimal
 - move `lower.rs` → `encode/lower.rs`; rename `runtime/` module → `session/` — `6a37276`
 - reconcile docs to single-FSM: delete 8 obsolete design docs + multi-fsm cookbook,
   scrub multi-FSM/subscription/event-source machinery from CLAUDE.md and the FTI /
