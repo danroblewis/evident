@@ -1218,24 +1218,13 @@ fn lookup_variant(
 
 pub struct CraneliftFunctionizer;
 
-impl super::Functionizer for CraneliftFunctionizer {
-    fn name(&self) -> &'static str { "cranelift" }
-
-    fn compile(&self,
-               program:   &Z3Program,
-               enums:     &EnumRegistry,
-               datatypes: &crate::core::DatatypeRegistry)
-        -> Option<std::rc::Rc<dyn super::CompiledFunction>>
+impl CraneliftFunctionizer {
+    pub fn compile(&self,
+                   program:   &Z3Program,
+                   enums:     &EnumRegistry,
+                   datatypes: &crate::core::DatatypeRegistry)
+        -> Option<std::rc::Rc<JitProgram>>
     {
-        let jit = compile_program(program, enums, datatypes)?;
-        Some(std::rc::Rc::new(jit))
-    }
-}
-
-impl super::CompiledFunction for JitProgram {
-    fn call(&self, given: &HashMap<String, Value>)
-        -> Option<HashMap<String, Value>>
-    {
-        JitProgram::call(self, given)
+        compile_program(program, enums, datatypes).map(std::rc::Rc::new)
     }
 }

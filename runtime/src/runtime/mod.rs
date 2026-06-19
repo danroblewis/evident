@@ -29,7 +29,7 @@ pub struct EvidentRuntime {
 
     pub(super) z3_ctx: &'static Context,
 
-    pub(super) functionizer: Box<dyn crate::core::Functionizer>,
+    pub(super) functionizer: crate::functionize::cranelift::CraneliftFunctionizer,
 
     pub(super) fn_cache: RefCell<HashMap<(String, Vec<String>),
                               Option<std::rc::Rc<query::ClaimPlan>>>>,
@@ -51,10 +51,6 @@ impl Default for EvidentRuntime { fn default() -> Self { Self::new() } }
 impl EvidentRuntime {
 
     pub fn new() -> Self {
-        Self::with_functionizer(crate::functionize::default())
-    }
-
-    pub fn with_functionizer(functionizer: Box<dyn crate::core::Functionizer>) -> Self {
         let cfg = Config::new();
         let ctx: &'static Context = Box::leak(Box::new(Context::new(&cfg)));
         EvidentRuntime {
@@ -62,7 +58,7 @@ impl EvidentRuntime {
             schemas: HashMap::new(),
             schema_order: Vec::new(),
             z3_ctx: ctx,
-            functionizer,
+            functionizer: crate::functionize::cranelift::CraneliftFunctionizer,
             fn_cache: RefCell::new(HashMap::new()),
             slow_path_cache: RefCell::new(HashMap::new()),
             functionize_stats: RefCell::new(FunctionizeStats::default()),

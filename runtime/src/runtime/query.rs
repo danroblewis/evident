@@ -1,4 +1,5 @@
-use crate::core::{CompiledModel, CompiledFunction, QueryResult, RuntimeError, Var, Z3Step};
+use crate::core::{CompiledModel, QueryResult, RuntimeError, Var, Z3Step};
+use crate::functionize::cranelift::JitProgram;
 use super::{EvidentRuntime, Value};
 use crate::translate::run_cached;
 use crate::z3_eval::{collect_touched_names, extract_program_partial,
@@ -20,7 +21,7 @@ fn component_has_defining_assertion(assertions: &[Bool<'static>]) -> bool {
 
 pub(crate) struct ClaimPlan {
 
-    pub(super) compiled: Vec<Rc<dyn CompiledFunction>>,
+    pub(super) compiled: Vec<Rc<JitProgram>>,
 
     pub(super) slow: Option<SlowPart>,
 
@@ -36,7 +37,7 @@ pub(crate) struct SlowPart {
 
 enum ComponentOutcome {
 
-    Compiled(Rc<dyn CompiledFunction>),
+    Compiled(Rc<JitProgram>),
 
     Slow,
 
@@ -232,7 +233,7 @@ impl EvidentRuntime {
             decompose_simplified(simplified, &outputs);
         let n_components = comp_vars.len();
 
-        let mut compiled: Vec<Rc<dyn CompiledFunction>> = Vec::new();
+        let mut compiled: Vec<Rc<JitProgram>> = Vec::new();
         let mut uncompiled_outputs: Vec<String> = Vec::new();
         let mut uncompiled_assert_idx: Vec<usize> = Vec::new();
         let mut n_compiled = 0u32;
