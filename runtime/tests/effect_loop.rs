@@ -1,4 +1,3 @@
-use std::io::{BufReader, Cursor};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
@@ -31,10 +30,7 @@ fsm main
     state = Done ⇒ (state_next = Done ∧ effects = ⟨⟩)
 ");
     let captured: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(Vec::new()));
-    let mut ctx = DispatchContext::with_streams(
-        Box::new(BufReader::new(Cursor::new(Vec::<u8>::new()))),
-        Box::new(SharedWrite(Arc::clone(&captured))),
-    );
+    let mut ctx = DispatchContext::with_streams(Box::new(SharedWrite(Arc::clone(&captured))));
     let r = effect_loop::run_with_ctx(&rt, &effect_loop::LoopOpts { max_steps: 5 }, &mut ctx)
         .unwrap();
     assert!(r.halted_clean, "expected clean halt, got {r:?}");
@@ -52,10 +48,7 @@ fsm main
     state = Done ⇒ (state_next = Done ∧ effects = ⟨⟩)
 ");
     let captured: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(Vec::new()));
-    let mut ctx = DispatchContext::with_streams(
-        Box::new(BufReader::new(Cursor::new(Vec::<u8>::new()))),
-        Box::new(SharedWrite(Arc::clone(&captured))),
-    );
+    let mut ctx = DispatchContext::with_streams(Box::new(SharedWrite(Arc::clone(&captured))));
     let r = effect_loop::run_with_ctx(&rt, &effect_loop::LoopOpts { max_steps: 5 }, &mut ctx)
         .unwrap();
     assert!(r.halted_clean);
@@ -74,10 +67,7 @@ fsm main
     state = Done ⇒ (state_next = Done ∧ effects = ⟨⟩)
 ");
     let captured: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(Vec::new()));
-    let mut ctx = DispatchContext::with_streams(
-        Box::new(BufReader::new(Cursor::new(Vec::<u8>::new()))),
-        Box::new(SharedWrite(Arc::clone(&captured))),
-    );
+    let mut ctx = DispatchContext::with_streams(Box::new(SharedWrite(Arc::clone(&captured))));
     let _ = effect_loop::run_with_ctx(&rt, &effect_loop::LoopOpts { max_steps: 5 }, &mut ctx);
     let stdout = String::from_utf8(captured.lock().unwrap().clone()).unwrap();
     assert_eq!(stdout, "a\nb\n");

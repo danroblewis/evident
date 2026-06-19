@@ -1,5 +1,5 @@
 -- 02_counter — multi-step state transition; prints `tick N` each
--- step using IntToStr and `++` (string concat).
+-- step using to_str and `++` (string concat).
 --
 -- COUNTEREXAMPLE NOTE: enum's first variant must be nullary so
 -- the runtime can seed tick-0 state. If we wrote
@@ -9,32 +9,27 @@
 -- around this — but the runtime should ideally seed payload
 -- first-variants too.
 --
--- Reading the previous tick's IntToStr result back and
--- concatenating it onto the line is the canonical "format an
--- Int" pattern: emit `IntToStr(n)` on tick K, read the
--- StringResult on tick K+1.
+-- to_str(n) formats the Int inline (same tick), so there's no
+-- emit-on-tick-K / read-on-tick-K+1 dance: one Count state both
+-- formats and prints.
 
 import "stdlib/runtime.ev"
 
-enum CountState = Start | Count(Int) | Format(Int) | Done
+enum CountState = Start | Count(Int) | Done
 
 fsm counter(state ∈ CountState)
     state_next = match state
         Start     ⇒ Count(5)
-        Count(n)  ⇒ Format(n)
-        Format(n) ⇒ (n ≤ 1 ? Done : Count(n - 1))
+        Count(n)  ⇒ (n ≤ 1 ? Done : Count(n - 1))
         Done      ⇒ Done
 
-    -- Format state: pull the prior IntToStr result and print it.
-    n_str ∈ String
-    n_str = match last_results[0]
-        StringResult(s) ⇒ s
-        _               ⇒ "?"
+    n_str ∈ String = match state
+        Count(n) ⇒ to_str(n)
+        _        ⇒ "?"
 
     effects = match state
         Start     ⇒ ⟨Println("starting count")⟩
-        Count(n)  ⇒ ⟨IntToStr(n)⟩
-        Format(_) ⇒ ⟨Println("tick " ++ n_str)⟩
+        Count(_)  ⇒ ⟨Println("tick " ++ n_str)⟩
         Done      ⇒ ⟨Println("bye"), Exit(0)⟩
 
 claim sat_start_seeds_count_five
@@ -46,21 +41,21 @@ claim sat_start_seeds_count_five
     counter
     state_next = Count(5)
 
-claim sat_count_emits_int_to_str
+claim sat_count_prints_tick
     state ∈ CountState
     state_next ∈ CountState
     last_results ∈ Seq(Result)
     effects ∈ Seq(Effect)
     state = Count(3)
     counter
-    effects = ⟨IntToStr(3)⟩
+    effects = ⟨Println("tick 3")⟩
 
-claim sat_format_one_goes_done
+claim sat_count_one_goes_done
     state ∈ CountState
     state_next ∈ CountState
     last_results ∈ Seq(Result)
     effects ∈ Seq(Effect)
-    state = Format(1)
+    state = Count(1)
     counter
     state_next = Done
 
@@ -69,6 +64,6 @@ claim unsat_count_increments
     state_next ∈ CountState
     last_results ∈ Seq(Result)
     effects ∈ Seq(Effect)
-    state = Format(3)
+    state = Count(3)
     counter
     state_next = Count(4)

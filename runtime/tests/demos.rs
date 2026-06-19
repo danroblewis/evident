@@ -40,13 +40,13 @@ const EXPECTATIONS: &[DemoExpect] = &[
     },
     DemoExpect {
         name: "test_04_parse_int", exit: 0,
-        must_lines: &["good: parsed an Int", "bad: ERROR was correct"],
-        forbid_exact_lines: &[],
+        must_lines: &["good: parsed an Int", "bad: sentinel was correct"],
+        forbid_exact_lines: &["good: WRONG", "bad: WRONG"],
         max_steps: 10, tick_ms: 0, stdin: None,
     },
     DemoExpect {
         name: "test_05_int_to_str", exit: 0,
-        must_lines: &["42"],
+        must_lines: &["42", "-7"],
         forbid_exact_lines: &["?", "<no string>"],
         max_steps: 10, tick_ms: 0, stdin: None,
     },
@@ -88,7 +88,7 @@ const EXPECTATIONS: &[DemoExpect] = &[
     DemoExpect {
 
         name: "test_22_prev_record", exit: 0,
-        must_lines: &["pos.x+pos.y = 0", "pos.x+pos.y = 3", "walker done at 6"],
+        must_lines: &["pos.x+pos.y = 0", "pos.x+pos.y = 3", "pos.x+pos.y = 6", "walker done at 9"],
         forbid_exact_lines: &["pos.x+pos.y = ?"],
         max_steps: 10, tick_ms: 0, stdin: None,
     },

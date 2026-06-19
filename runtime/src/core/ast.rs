@@ -252,10 +252,6 @@ pub enum Effect {
     Println(String),
     Exit(i64),
 
-    ParseInt(String),
-
-    IntToStr(i64),
-
     FFIOpen(String),
     FFILookup(u64, String),
     FFICall(u64, String, Vec<EffectFfiArg>),

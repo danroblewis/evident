@@ -45,7 +45,7 @@ Top-level summary:
 | `functionize/`   | Functionizer implementations (currently: Cranelift JIT) |
 | `event_sources/` | Async wake plugins (FrameTimer, Stdin, Sigint, FileWatcher, …) |
 | `commands/`      | Per-CLI-subcommand entry points |
-| `effect_dispatch.rs` | `Effect → IO` (Println, LibCall, ParseInt, …) |
+| `effect_dispatch.rs` | `Effect → IO` (Println, LibCall, FFICall, …) |
 | `subscriptions.rs`   | Static read/write-set inference per claim |
 | `z3_eval.rs`     | Extract a `Z3Program` from a simplified Z3 AST |
 | `ffi.rs`, `fti.rs`   | libffi marshaling + typed-resource bridges |
@@ -325,7 +325,7 @@ flowchart TD
     JitOK{JIT compiled?}
     Slow[crate::translate::evaluate<br/>full Z3 solve]
     Out[state_next + Seq Effect emitted]
-    Disp[effect_dispatch::dispatch_all<br/>Println / LibCall / SDL / ParseInt / …]
+    Disp[effect_dispatch::dispatch_all<br/>Println / LibCall / SDL / FFICall / …]
     World[update world snapshot]
     Halt{any FSM emitted<br/>Effect::Exit, or no FSM<br/>scheduled this tick?}
     Done[LoopResult<br/>→ process exit code]

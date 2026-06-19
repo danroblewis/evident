@@ -200,8 +200,6 @@ pub fn decode_effect(v: &Value) -> Result<crate::core::ast::Effect> {
         "Print"        => { need_arity(variant, fields, 1)?; Effect::Print(decode_str(&fields[0])?) }
         "Println"      => { need_arity(variant, fields, 1)?; Effect::Println(decode_str(&fields[0])?) }
         "Exit"         => { need_arity(variant, fields, 1)?; Effect::Exit(decode_int(&fields[0])?) }
-        "ParseInt"     => { need_arity(variant, fields, 1)?; Effect::ParseInt(decode_str(&fields[0])?) }
-        "IntToStr"     => { need_arity(variant, fields, 1)?; Effect::IntToStr(decode_int(&fields[0])?) }
         "FFIOpen"      => { need_arity(variant, fields, 1)?; Effect::FFIOpen(decode_str(&fields[0])?) }
         "FFILookup"    => {
             need_arity(variant, fields, 2)?;

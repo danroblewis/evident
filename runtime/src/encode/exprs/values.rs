@@ -3,12 +3,40 @@
 //! Color, … by enumerating leaf paths and substituting per-leaf).
 
 use std::collections::HashMap;
-use z3::ast::{Bool, Int, Real, String as Z3Str};
+use z3::ast::{Ast, Bool, Int, Real, String as Z3Str};
 use z3::Context;
 
 use crate::core::{FieldKind, SeqElem, Var};
 
 use super::*;
+
+/// Recover the raw `Z3_context` pointer from a `&Context`.
+///
+/// The z3 crate keeps `Context`'s sole `Z3_context` field private, but the
+/// pure string↔int builtins (`to_str` / `parse_int`) need it to call the raw
+/// `z3-sys` constructors (`Z3_mk_int_to_str` / `Z3_mk_str_to_int`), which the
+/// 0.12 crate does not wrap. `Context` is a single-pointer struct, so a byte
+/// copy recovers the pointer.
+fn raw_z3_ctx(ctx: &Context) -> z3_sys::Z3_context {
+    // SAFETY: `z3::Context` is `struct Context { z3_ctx: Z3_context }` — a
+    // single pointer-sized field at offset 0. Copying its bytes recovers the
+    // pointer.
+    unsafe { std::mem::transmute_copy::<Context, z3_sys::Z3_context>(ctx) }
+}
+
+/// `str.from_int(n)` — Z3's `Z3_mk_int_to_str`. Naturals-only: returns `""`
+/// for negatives, so callers must guard the sign themselves.
+fn z3_int_to_str<'ctx>(ctx: &'ctx Context, n: &Int<'ctx>) -> Z3Str<'ctx> {
+    let raw = unsafe { z3_sys::Z3_mk_int_to_str(raw_z3_ctx(ctx), n.get_z3_ast()) };
+    unsafe { Z3Str::wrap(ctx, raw) }
+}
+
+/// `str.to_int(s)` — Z3's `Z3_mk_str_to_int`. Returns `-1` for any string that
+/// is not a non-negative decimal numeral; that `-1` is the runtime sentinel.
+fn z3_str_to_int<'ctx>(ctx: &'ctx Context, s: &Z3Str<'ctx>) -> Int<'ctx> {
+    let raw = unsafe { z3_sys::Z3_mk_str_to_int(raw_z3_ctx(ctx), s.get_z3_ast()) };
+    unsafe { Int::wrap(ctx, raw) }
+}
 
 // ───────────────────────── record-vector lifting ─────────────────────────
 
@@ -303,6 +331,20 @@ pub(super) fn collect_record_refs<'ctx>(
 // ───────────────────────── scalar translators ─────────────────────────
 
 pub(super) fn encode_str<'ctx>(e: &Expr, ctx: &'ctx Context, env: &HashMap<String, Var<'ctx>>) -> Option<Z3Str<'ctx>> {
+    // `to_str(n)` — int → decimal string. Z3's `int.to_str` is naturals-only
+    // (yields "" for negatives), so emit a sign wrapper:
+    //   n < 0 ? "-" ++ from_int(-n) : from_int(n)
+    if let Expr::Call(name, args) = e {
+        if name == "to_str" && args.len() == 1 {
+            let n = encode_int(&args[0], ctx, env)?;
+            let zero = Int::from_i64(ctx, 0);
+            let neg_n = Int::sub(ctx, &[&zero, &n]);
+            let minus = Z3Str::from_str(ctx, "-").ok()?;
+            let neg_str = Z3Str::concat(ctx, &[&minus, &z3_int_to_str(ctx, &neg_n)]);
+            let pos_str = z3_int_to_str(ctx, &n);
+            return Some(n.lt(&zero).ite(&neg_str, &pos_str));
+        }
+    }
     match e {
         Expr::Str(s) => Z3Str::from_str(ctx, s).ok(),
         Expr::Identifier(name) => env.get(name).and_then(|v| v.as_str().cloned()),
@@ -364,6 +406,11 @@ pub(super) fn encode_int<'ctx>(e: &Expr, ctx: &'ctx Context, env: &HashMap<Strin
                 let zero = Int::from_i64(ctx, 0);
                 let neg = Int::sub(ctx, &[&zero, &x]);
                 return Some(x.ge(&zero).ite(&x, &neg));
+            }
+            ("parse_int", 1) => {
+                // string → int via Z3's `str.to_int`; non-numeric → -1 sentinel.
+                let s = encode_str(&args[0], ctx, env)?;
+                return Some(z3_str_to_int(ctx, &s));
             }
             ("mod", 2) => {
                 let a = encode_int(&args[0], ctx, env)?;

@@ -23,33 +23,21 @@ type IVec2(x, y ∈ Int)
 -- "Records as vectors"); the ternary then lives inside the
 -- final IVec2 ctor since record-lift through ternary isn't
 -- supported on both arms.
+--
+-- to_str(pos.x + pos.y) formats the running sum inline (same
+-- tick), so each line prints this tick's value directly.
 fsm walker
     step ∈ IVec2 = _pos + IVec2(1, 2)
     pos ∈ IVec2 = IVec2((is_first_tick ? 0 : step.x),
                         (is_first_tick ? 0 : step.y))
 
-    halt ∈ Bool
-    halt = (pos.x ≥ 3)
+    halt ∈ Bool = (pos.x ≥ 3)
 
-    sum ∈ Effect
-    sum = IntToStr(pos.x + pos.y)
-
-    -- Read the previous tick's IntToStr output. On tick 0
-    -- last_results is empty; we gate the print on having a
-    -- prior result so the first frame just emits IntToStr
-    -- without trying to print yet.
-    have_prior ∈ Bool
-    have_prior = (#last_results > 0)
-    s ∈ String
-    s = match last_results[0]
-        StringResult(v) ⇒ v
-        _               ⇒ "?"
+    s ∈ String = to_str(pos.x + pos.y)
 
     effects = (halt
         ? ⟨Println("walker done at " ++ s), Exit(0)⟩
-        : (have_prior
-            ? ⟨sum, Println("pos.x+pos.y = " ++ s)⟩
-            : ⟨sum⟩))
+        : ⟨Println("pos.x+pos.y = " ++ s)⟩)
 
 -- ── Static tests ─────────────────────────────────────────────
 
@@ -61,7 +49,6 @@ claim sat_first_tick_origin
     _pos ∈ IVec2
     is_first_tick ∈ Bool
     halt ∈ Bool
-    sum ∈ Effect
     s ∈ String
 
     is_first_tick = true
@@ -76,7 +63,6 @@ claim sat_second_tick_advances_diagonal
     _pos ∈ IVec2
     is_first_tick ∈ Bool
     halt ∈ Bool
-    sum ∈ Effect
     s ∈ String
 
     is_first_tick = false
@@ -93,7 +79,6 @@ claim sat_independent_field_pins
     _pos ∈ IVec2
     is_first_tick ∈ Bool
     halt ∈ Bool
-    sum ∈ Effect
     s ∈ String
 
     is_first_tick = false

@@ -1,44 +1,26 @@
--- 04_parse_int — Effect::ParseInt with success and error paths.
+-- 04_parse_int — parse_int(s) as a pure expression op.
 --
--- ParseInt("42") returns IntResult(42); ParseInt("abc") returns
--- ErrorResult("..."). The FSM emits both calls, then on the next
--- tick reads last_results and Println's the outcomes.
+-- parse_int is a same-tick string→int transform (Z3 str.to_int), not an
+-- effect: `m ∈ Int = parse_int("42")` is 42 in the same tick. Non-numeric
+-- strings yield the -1 sentinel (Z3 str.to_int semantics). The FSM computes
+-- both inline, Println's the verdicts, and exits — no last_results dance.
 
 import "stdlib/runtime.ev"
 
-enum PState = Issue | Read | Done
+fsm parse_demo
+    good ∈ Int = parse_int("42")
+    bad  ∈ Int = parse_int("not-a-number")
 
-fsm parse_demo(state ∈ PState)
-    state_next = match state
-        Issue ⇒ Read
-        Read  ⇒ Done
-        Done  ⇒ Done
+    good_msg ∈ String = (good = 42 ? "good: parsed an Int" : "good: WRONG")
+    bad_msg  ∈ String = (bad = 0 - 1 ? "bad: sentinel was correct" : "bad: WRONG")
 
-    -- Pull the first two results from last_results (the two ParseInts).
-    -- Nested-list traversal is gone: index into Seq(Result) directly.
-    good ∈ String
-    good = match last_results[0]
-        IntResult(n)    ⇒ "good: parsed an Int"
-        ErrorResult(_)  ⇒ "good: ERROR was expected to be success"
-        _               ⇒ "good: unknown result"
+    effects = ⟨Println(good_msg), Println(bad_msg), Exit(0)⟩
 
-    bad ∈ String
-    bad = match last_results[1]
-        IntResult(_)    ⇒ "bad: parsed but expected error"
-        ErrorResult(_)  ⇒ "bad: ERROR was correct"
-        _               ⇒ "bad: unknown"
+claim sat_parses_42
+    parse_int("42") = 42
 
-    effects = match state
-        Issue ⇒ ⟨ParseInt("42"), ParseInt("not-a-number")⟩
-        Read  ⇒ ⟨Println(good), Println(bad), Exit(0)⟩
-        Done  ⇒ ⟨⟩
+claim sat_nonnumeric_is_sentinel
+    parse_int("not-a-number") = 0 - 1
 
--- The Issue tick must emit both ParseInt effects.
-claim sat_issue_emits_two_parses
-    state ∈ PState
-    state_next ∈ PState
-    last_results ∈ Seq(Result)
-    effects ∈ Seq(Effect)
-    state = Issue
-    parse_demo
-    effects = ⟨ParseInt("42"), ParseInt("not-a-number")⟩
+claim unsat_nonnumeric_not_42
+    parse_int("not-a-number") = 42

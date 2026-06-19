@@ -1,34 +1,23 @@
--- 05_int_to_str — Effect::IntToStr and a Println roundtrip.
+-- 05_int_to_str — to_str(n) as a pure expression op.
 --
--- Issues IntToStr(42), then on the next tick reads last_results
--- and prints the StringResult — proving the runtime can format
--- Ints without a separate stdlib call.
+-- to_str is a same-tick int→string transform (Z3 str.from_int with a sign
+-- wrapper for negatives), not an effect: `s ∈ String = to_str(42)` is "42"
+-- in the same tick. The FSM formats inline, Println's it, and exits — no
+-- last_results dance.
 
 import "stdlib/runtime.ev"
 
-enum FmtState = Issue | Show | Halt
+fsm fmt_demo
+    formatted ∈ String = to_str(42)
+    negative  ∈ String = to_str(0 - 7)
 
-fsm fmt_demo(state ∈ FmtState)
-    state_next = match state
-        Issue ⇒ Show
-        Show ⇒ Halt
-        Halt  ⇒ Halt
+    effects = ⟨Println(formatted), Println(negative), Exit(0)⟩
 
-    formatted ∈ String
-    formatted = match last_results[0]
-        StringResult(s) ⇒ s
-        _               ⇒ "<no string>"
+claim sat_formats_positive
+    to_str(42) = "42"
 
-    effects = match state
-        Issue ⇒ ⟨IntToStr(42)⟩
-        Show ⇒ ⟨Println(formatted), Exit(0)⟩
-        Halt  ⇒ ⟨⟩
+claim sat_formats_negative
+    to_str(0 - 7) = "-7"
 
-claim sat_issue_emits_int_to_str
-    state ∈ FmtState
-    state_next ∈ FmtState
-    last_results ∈ Seq(Result)
-    effects ∈ Seq(Effect)
-    state = Issue
-    fmt_demo
-    effects = ⟨IntToStr(42)⟩
+claim sat_formats_zero
+    to_str(0) = "0"

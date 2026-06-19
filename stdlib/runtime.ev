@@ -78,12 +78,8 @@ enum Effect =
     Print(String)
     Println(String)
     Exit(Int)
-    -- Parse a decimal integer string. IntResult on success;
-    -- ErrorResult on parse failure (empty string, non-numeric,
-    -- overflow, etc.).
-    ParseInt(String)
-    -- Format Int as decimal string (always succeeds).
-    IntToStr(Int)
+    -- String↔int conversion is a pure expression op, not an effect:
+    --   parse_int(s) / to_str(n) — see encode/exprs/values.rs.
     -- Generic FFI primitives (uncached).
     FFIOpen(String)
     FFILookup(Int, String)

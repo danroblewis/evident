@@ -782,8 +782,8 @@ Every demo ships in green:
 | 01 | hello | Println, Exit |
 | 02 | counter | state-pair, payload-state via Start prefix |
 | 03 | seq_chain | Effect::Seq |
-| 04 | parse_int | ParseInt → Int / Error result |
-| 05 | int_to_str | IntToStr → String result |
+| 04 | parse_int | parse_int(s) expression op (-1 sentinel) |
+| 05 | int_to_str | to_str(n) expression op (signed) |
 | 08 | exit_code | non-zero exit propagation |
 | 09 | two_fsms | shared World, writer-first scheduling |
 | 10 | spawn | SpawnFsm with Int arg, spawnable_only marker |

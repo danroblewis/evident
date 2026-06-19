@@ -139,13 +139,9 @@ mod ffi {
 mod effect_dispatch {
     use crate::effect_dispatch::*;
     use crate::core::ast::{Effect, EffectFfiArg, EffectResult};
-    use std::io::Cursor;
 
-    fn ctx_with_input(input: &str) -> DispatchContext {
-        DispatchContext::with_streams(
-            Box::new(std::io::BufReader::new(Cursor::new(input.to_string().into_bytes()))),
-            Box::new(Vec::<u8>::new()),
-        )
+    fn ctx_with_input(_input: &str) -> DispatchContext {
+        DispatchContext::with_streams(Box::new(Vec::<u8>::new()))
     }
 
     fn captured_stdout(ctx: DispatchContext) -> String {
@@ -162,49 +158,9 @@ mod effect_dispatch {
 
     #[test]
     fn print_returns_no_result() {
-        let mut ctx = DispatchContext::with_streams(
-            Box::new(Cursor::new(Vec::<u8>::new())),
-            Box::new(Vec::<u8>::new()),
-        );
+        let mut ctx = DispatchContext::with_streams(Box::new(Vec::<u8>::new()));
         let r = dispatch_one(&mut ctx, &Effect::Print("hi".into()));
         assert!(matches!(r, EffectResult::NoResult));
-    }
-
-    #[test]
-    fn int_to_str_decimal() {
-        let mut ctx = DispatchContext::new();
-        for (n, expected) in [(0, "0"), (42, "42"), (-7, "-7"), (i64::MAX, "9223372036854775807")] {
-            match dispatch_one(&mut ctx, &Effect::IntToStr(n)) {
-                EffectResult::Str(s) => assert_eq!(s, expected),
-                other => panic!("expected Str({expected}), got {other:?}"),
-            }
-        }
-    }
-
-    #[test]
-    fn parse_int_decodes_decimal() {
-        let mut ctx = DispatchContext::new();
-        match dispatch_one(&mut ctx, &Effect::ParseInt("42".to_string())) {
-            EffectResult::Int(42) => {},
-            other => panic!("expected Int(42), got {other:?}"),
-        }
-        match dispatch_one(&mut ctx, &Effect::ParseInt("-7".to_string())) {
-            EffectResult::Int(-7) => {},
-            other => panic!("expected Int(-7), got {other:?}"),
-        }
-    }
-
-    #[test]
-    fn parse_int_rejects_garbage() {
-        let mut ctx = DispatchContext::new();
-        match dispatch_one(&mut ctx, &Effect::ParseInt("not-a-number".to_string())) {
-            EffectResult::Error(_) => {},
-            other => panic!("expected Error, got {other:?}"),
-        }
-        match dispatch_one(&mut ctx, &Effect::ParseInt("".to_string())) {
-            EffectResult::Error(_) => {},
-            other => panic!("expected Error on empty string, got {other:?}"),
-        }
     }
 
     #[test]
@@ -312,13 +268,13 @@ mod effect_dispatch {
         let mut ctx = ctx_with_input("");
         let effects = vec![
             Effect::NoEffect,
-            Effect::ParseInt("7".into()),
+            Effect::Println("mid".into()),
             Effect::NoEffect,
         ];
         let results = dispatch_all(&mut ctx, &effects);
         assert_eq!(results.len(), 3);
         assert!(matches!(results[0], EffectResult::NoResult));
-        assert!(matches!(results[1], EffectResult::Int(7)));
+        assert!(matches!(results[1], EffectResult::NoResult));
         assert!(matches!(results[2], EffectResult::NoResult));
     }
 }
@@ -666,13 +622,13 @@ mod effect_codec {
 
         let list = Value::SeqEnum(vec![
             e("Effect", "Println", vec![Value::Str("a".into())]),
-            e("Effect", "ParseInt", vec![Value::Str("3".into())]),
+            e("Effect", "Print", vec![Value::Str("b".into())]),
             e("Effect", "Exit", vec![Value::Int(0)]),
         ]);
         let decoded = decode_effect_list(&list).unwrap();
         assert_eq!(decoded.len(), 3);
         assert!(matches!(&decoded[0], Effect::Println(s) if s == "a"));
-        assert!(matches!(&decoded[1], Effect::ParseInt(s) if s == "3"));
+        assert!(matches!(&decoded[1], Effect::Print(s) if s == "b"));
         assert!(matches!(&decoded[2], Effect::Exit(0)));
     }
 
@@ -723,13 +679,8 @@ mod effect_loop {
     use crate::effect_loop::*;
     use crate::effect_dispatch::DispatchContext;
     use crate::EvidentRuntime;
-    use std::io::Cursor;
-
     fn ctx_silent() -> DispatchContext {
-        DispatchContext::with_streams(
-            Box::new(std::io::BufReader::new(Cursor::new(Vec::<u8>::new()))),
-            Box::new(Vec::<u8>::new()),
-        )
+        DispatchContext::with_streams(Box::new(Vec::<u8>::new()))
     }
 
     #[test]

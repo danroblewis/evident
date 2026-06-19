@@ -1,14 +1,11 @@
-use std::io::{BufRead, Write};
-use std::time::Instant;
+use std::io::Write;
 
 use crate::core::ast::{Effect, EffectFfiArg, EffectResult};
 use crate::ffi::{self, FfiArg, FfiReturn, HandleRegistry};
 
 pub struct DispatchContext {
     pub registry: HandleRegistry,
-    pub stdin:    Box<dyn BufRead + Send>,
     pub stdout:   Box<dyn Write + Send>,
-    pub start:    Instant,
 
     pub lib_cache: std::collections::HashMap<String, u64>,
 
@@ -19,20 +16,13 @@ pub struct DispatchContext {
 
 impl DispatchContext {
     pub fn new() -> Self {
-        Self::with_streams(
-            Box::new(std::io::BufReader::new(std::io::stdin())),
-            Box::new(std::io::stdout()),
-        )
+        Self::with_streams(Box::new(std::io::stdout()))
     }
 
-    pub fn with_streams(
-        stdin:  Box<dyn BufRead + Send>,
-        stdout: Box<dyn Write + Send>,
-    ) -> Self {
+    pub fn with_streams(stdout: Box<dyn Write + Send>) -> Self {
         Self {
             registry: HandleRegistry::new(),
-            stdin, stdout,
-            start: Instant::now(),
+            stdout,
             lib_cache: std::collections::HashMap::new(),
             sym_cache: std::collections::HashMap::new(),
             exit_requested: None,
@@ -77,11 +67,6 @@ fn dispatch_one_inner(ctx: &mut DispatchContext, e: &Effect) -> EffectResult {
             }
             EffectResult::NoResult
         }
-        Effect::ParseInt(s) => match s.parse::<i64>() {
-            Ok(n)  => EffectResult::Int(n),
-            Err(e) => EffectResult::Error(format!("ParseInt: {e}: {s:?}")),
-        },
-        Effect::IntToStr(n)  => EffectResult::Str(n.to_string()),
         Effect::Exit(n) => {
 
             if ctx.exit_requested.is_none() {
