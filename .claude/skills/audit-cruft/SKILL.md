@@ -51,8 +51,14 @@ line-count alone.
 
 ## Orchestration discipline (worktree agents) — traps that bit us
 
-- One worktree per agent. Agents must operate inside their worktree, never `cd`
-  into the shared checkout (cwd-drift corrupts `main`).
+- One worktree per agent. Anchor cwd to the worktree for **every** command and use
+  absolute worktree paths — the first `cd` to the repo can resolve to the shared
+  checkout (cwd-drift; it has corrupted `main` and bitten three runs).
+- **Index the worktree for Semfora.** Semfora is per-path indexed and defaults to
+  `main`, so without this its tools analyze main's code, not your worktree's. After
+  `git merge main`, run `semfora-engine index generate .` inside the worktree;
+  re-index after significant edits. (grep-verify still runs on your worktree files,
+  so it catches staleness regardless — but index the worktree so discovery is right.)
 - **Verify the merge commit exists before ANY cleanup.** Never chain
   merge → `worktree remove` → `branch -D` in one shot.
 - **Never pipe a merge through `tail`/`head`** — it masks the exit code so a
