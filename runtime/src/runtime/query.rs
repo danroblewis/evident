@@ -154,8 +154,6 @@ impl EvidentRuntime {
 
         if let Some(entry) = self.fn_cache.borrow().get(&cache_key).cloned() {
             let Some(plan) = entry else { return None };
-            self.functionize_stats.borrow_mut()
-                .claims.entry(name.to_string()).or_default().cache_hits += 1;
             return self.execute_plan(&plan, given);
         }
 
@@ -177,15 +175,7 @@ impl EvidentRuntime {
                 assertions_local)
         };
         let simplify_result = simplify_assertions(self.z3_ctx, &assertions);
-        {
-            let mut stats = self.functionize_stats.borrow_mut();
-            let per = stats.claims.entry(name.to_string()).or_default();
-            per.analyses += 1;
-            per.simplified_total += simplify_result.formulas.len() as u32;
-        }
         if simplify_result.unsat {
-            self.functionize_stats.borrow_mut()
-                .claims.entry(name.to_string()).or_default().decided_unsat += 1;
             return Some(QueryResult { satisfied: false, bindings: HashMap::new() });
         }
         let simplified = &simplify_result.formulas;
@@ -231,18 +221,16 @@ impl EvidentRuntime {
 
         let (comp_vars, comp_assert_idx, global_idx) =
             decompose_simplified(simplified, &outputs);
-        let n_components = comp_vars.len();
 
         let mut compiled: Vec<Rc<JitProgram>> = Vec::new();
         let mut uncompiled_outputs: Vec<String> = Vec::new();
         let mut uncompiled_assert_idx: Vec<usize> = Vec::new();
-        let mut n_compiled = 0u32;
         let mut bail = false;
         for (ci, cvars) in comp_vars.iter().enumerate() {
             let casserts: Vec<Bool<'static>> =
                 comp_assert_idx[ci].iter().map(|&i| simplified[i].clone()).collect();
             match self.compile_one_component(name, cvars, &casserts, &cached, given, &pinned_steps) {
-                ComponentOutcome::Compiled(c) => { compiled.push(c); n_compiled += 1; }
+                ComponentOutcome::Compiled(c) => { compiled.push(c); }
                 ComponentOutcome::Slow => {
                     uncompiled_outputs.extend(cvars.iter().cloned());
                     uncompiled_assert_idx.extend(comp_assert_idx[ci].iter().copied());
@@ -252,22 +240,11 @@ impl EvidentRuntime {
         }
 
         if bail {
-            self.functionize_stats.borrow_mut()
-                .claims.entry(name.to_string()).or_default().last_extract_ok = Some(false);
             let cached_static: CompiledModel<'static> = cached;
             self.slow_path_cache.borrow_mut()
                 .insert(cache_key.clone(), Rc::new(cached_static));
             self.fn_cache.borrow_mut().insert(cache_key, None);
             return None;
-        }
-
-        {
-            let mut stats = self.functionize_stats.borrow_mut();
-            let per = stats.claims.entry(name.to_string()).or_default();
-            per.last_extract_ok = Some(true);
-            per.components += n_components as u32;
-            per.components_compiled += n_compiled;
-            if n_compiled > 0 { per.compiled += 1; }
         }
 
         let slow = if uncompiled_outputs.is_empty() {
@@ -374,14 +351,6 @@ impl EvidentRuntime {
             program.steps = all;
         }
 
-        {
-            let mut stats = self.functionize_stats.borrow_mut();
-            let per = stats.claims.entry(name.to_string()).or_default();
-            per.steps_total      += program.steps.len() as u32;
-            per.checks_total     += program.checks.len() as u32;
-            per.predicates_total += program.predicates.len() as u32;
-        }
-
         let mut all = pinned_steps.to_vec();
         all.append(&mut program.steps);
         program.steps = all;
@@ -434,6 +403,10 @@ impl EvidentRuntime {
         }
         for (k, v) in given { out.insert(k.clone(), v.clone()); }
         Some(QueryResult { satisfied: true, bindings: out })
+    }
+
+    pub fn query_free(&self, name: &str) -> Result<QueryResult, RuntimeError> {
+        self.query(name, &HashMap::new())
     }
 
     pub fn query(&self, name: &str, given: &HashMap<String, Value>) -> Result<QueryResult, RuntimeError> {

@@ -1,7 +1,18 @@
+use crate::core::ast::{BodyItem, SchemaDecl};
 use crate::core::RuntimeError;
 use super::EvidentRuntime;
 use crate::parser;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+
+fn register_subclaims(body: &[BodyItem], schemas: &mut HashMap<String, SchemaDecl>) {
+    for item in body {
+        if let BodyItem::SubclaimDecl(s) = item {
+            schemas.insert(s.name.clone(), s.clone());
+            register_subclaims(&s.body, schemas);
+        }
+    }
+}
 
 impl EvidentRuntime {
 
@@ -50,7 +61,7 @@ impl EvidentRuntime {
                 self.schema_order.push(s.name.clone());
             }
             self.schemas.insert(s.name.clone(), s.clone());
-            super::validate::register_subclaims(&s.body, &mut self.schemas);
+            register_subclaims(&s.body, &mut self.schemas);
         }
 
         super::register_enums::register_enums(&prog.enums, self.z3_ctx, &self.enums)?;

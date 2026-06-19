@@ -1,17 +1,13 @@
-mod stats;
 mod load;
 mod desugar;
 mod inject;
-mod validate;
 mod register_enums;
 mod query;
 mod scheduler_api;
-mod analysis;
 
 pub use crate::core::Value;
 #[allow(unused_imports)]
 pub use crate::core::{QueryResult, RuntimeError};
-pub use stats::{FunctionizeStats, PerClaimStats};
 
 use crate::core::ast::{Program, SchemaDecl};
 use crate::translate::DatatypeRegistry;
@@ -37,8 +33,6 @@ pub struct EvidentRuntime {
     pub(super) slow_path_cache: RefCell<HashMap<(String, Vec<String>),
                                      std::rc::Rc<crate::core::CompiledModel<'static>>>>,
 
-    pub(super) functionize_stats: RefCell<FunctionizeStats>,
-
     pub(super) datatypes: DatatypeRegistry,
 
     pub(super) enums: crate::core::EnumRegistry,
@@ -61,7 +55,6 @@ impl EvidentRuntime {
             functionizer: crate::functionize::cranelift::CraneliftFunctionizer,
             fn_cache: RefCell::new(HashMap::new()),
             slow_path_cache: RefCell::new(HashMap::new()),
-            functionize_stats: RefCell::new(FunctionizeStats::default()),
             datatypes: RefCell::new(HashMap::new()),
             enums: crate::core::EnumRegistry::new(),
             loaded_files: RefCell::new(HashSet::new()),
@@ -90,10 +83,6 @@ impl EvidentRuntime {
 
     pub fn schemas_map(&self) -> &HashMap<String, SchemaDecl> {
         &self.schemas
-    }
-
-    pub fn functionize_stats(&self) -> FunctionizeStats {
-        self.functionize_stats.borrow().clone()
     }
 
     pub fn effect_results_to_value(
