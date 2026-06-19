@@ -25,7 +25,6 @@ pub mod effect_encoder {
 
 pub use eval::{build_cache,
                 evaluate,
-                evaluate_with_extra_assertion,
                 evaluate_with_extra_assertions,
                 run_cached};
 pub(crate) use eval::extract_binding;

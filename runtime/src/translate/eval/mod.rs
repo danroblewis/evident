@@ -18,7 +18,7 @@ use solver::{declare_and_assert, make_tuned_solver, populate_enum_variants, real
 use decode::extract_enum_value;
 
 pub use cached::{build_cache, run_cached};
-pub use extra::{evaluate_with_extra_assertion, evaluate_with_extra_assertions};
+pub use extra::evaluate_with_extra_assertions;
 pub(crate) use decode::extract_binding;
 
 pub(super) use decode::extract_seq_enum;
