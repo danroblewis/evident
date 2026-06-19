@@ -7,6 +7,18 @@ constraints over sets, and a Z3 SMT solver finds satisfying assignments.  The
 central abstraction is `schema`: a named set defined by membership conditions.
 Querying a schema asks whether a satisfying assignment exists.
 
+## The core, and the cruft rule — read `docs/design/core.md` FIRST
+
+[`docs/design/core.md`](docs/design/core.md) is the yardstick. Before adding OR
+removing anything, judge it against the core there: **is this part of the core
+pipeline, does it directly protect it, or is it on the roadmap — or is it
+incidental complexity we dragged along?** If incidental, it does not belong in
+the core — "useful" is not a defense, half-features are worse than absent ones,
+and we add things (perf measurement, error handling, conveniences) only when a
+real need demands them. When you propose a removal or an addition, state the
+one-line judgment against `core.md`; don't decide on caller-count or line-count
+alone.
+
 ## Navigate code with Semfora FIRST — do not pull whole files blind
 
 This repo is indexed by **Semfora**, an MCP server (`semfora-engine serve`) plus
