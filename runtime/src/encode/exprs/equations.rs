@@ -10,7 +10,7 @@ use crate::core::{FieldKind, SeqElem, Value, Var};
 
 use super::*;
 
-pub(super) fn translate_cons_chain_eq<'ctx>(
+pub(super) fn encode_cons_chain_eq<'ctx>(
     lhs: &Expr,
     rhs: &Expr,
     ctx: &'ctx Context,
@@ -28,7 +28,7 @@ pub(super) fn translate_cons_chain_eq<'ctx>(
     Some(lhs_ast._eq(&acc))
 }
 
-pub(super) fn translate_seq_lit_eq<'ctx>(
+pub(super) fn encode_seq_lit_eq<'ctx>(
     lhs: &Expr,
     rhs: &Expr,
     ctx: &'ctx Context,
@@ -40,10 +40,10 @@ pub(super) fn translate_seq_lit_eq<'ctx>(
         _ => return None,
     };
     if env.get(name).is_none() { return None; }
-    translate_seq_rhs_eq(name, rhs, ctx, env, schemas)
+    encode_seq_rhs_eq(name, rhs, ctx, env, schemas)
 }
 
-pub(super) fn translate_seq_rhs_eq<'ctx>(
+pub(super) fn encode_seq_rhs_eq<'ctx>(
     name: &str,
     rhs: &Expr,
     ctx: &'ctx Context,
@@ -52,11 +52,11 @@ pub(super) fn translate_seq_rhs_eq<'ctx>(
 ) -> Option<Bool<'ctx>> {
     match rhs {
         Expr::SeqLit(items) =>
-            translate_seq_lit_for_var(name, items, ctx, env, schemas),
+            encode_seq_lit_for_var(name, items, ctx, env, schemas),
         Expr::Ternary(c, a, b) => {
-            let cond = translate_bool(c, ctx, env, schemas)?;
-            let then_eq = translate_seq_rhs_eq(name, a, ctx, env, schemas)?;
-            let else_eq = translate_seq_rhs_eq(name, b, ctx, env, schemas)?;
+            let cond = encode_bool(c, ctx, env, schemas)?;
+            let then_eq = encode_seq_rhs_eq(name, a, ctx, env, schemas)?;
+            let else_eq = encode_seq_rhs_eq(name, b, ctx, env, schemas)?;
             Some(Bool::and(ctx, &[
                 &cond.implies(&then_eq),
                 &cond.not().implies(&else_eq),
@@ -65,8 +65,8 @@ pub(super) fn translate_seq_rhs_eq<'ctx>(
         Expr::Match(scr, arms) => {
 
             let owned_name = name.to_string();
-            let compiled = translate_match_arms(scr, arms, ctx, env, |body, e| {
-                translate_seq_rhs_eq(&owned_name, body, ctx, e, schemas)
+            let compiled = encode_match_arms(scr, arms, ctx, env, |body, e| {
+                encode_seq_rhs_eq(&owned_name, body, ctx, e, schemas)
             })?;
 
             let mut clauses: Vec<Bool<'ctx>> = Vec::with_capacity(compiled.len());
@@ -91,7 +91,7 @@ pub(super) fn translate_seq_rhs_eq<'ctx>(
     }
 }
 
-pub(super) fn translate_seq_lit_for_var<'ctx>(
+pub(super) fn encode_seq_lit_for_var<'ctx>(
     name: &str,
     items: &[Expr],
     ctx: &'ctx Context,
@@ -110,17 +110,17 @@ pub(super) fn translate_seq_lit_for_var<'ctx>(
             let eq = match elem {
                 SeqElem::Int => {
                     let z = cell.as_int()?;
-                    let v = translate_int(item, ctx, env)?;
+                    let v = encode_int(item, ctx, env)?;
                     z._eq(&v)
                 }
                 SeqElem::Bool => {
                     let z = cell.as_bool()?;
-                    let v = translate_bool(item, ctx, env, schemas)?;
+                    let v = encode_bool(item, ctx, env, schemas)?;
                     z._eq(&v)
                 }
                 SeqElem::Str => {
                     let z = cell.as_string()?;
-                    let v = translate_str(item, ctx, env)?;
+                    let v = encode_str(item, ctx, env)?;
                     z._eq(&v)
                 }
             };
@@ -206,7 +206,7 @@ pub(super) fn match_set_subset_body<'a, 'ctx>(
     None
 }
 
-pub(super) fn translate_set_lit_eq<'ctx>(
+pub(super) fn encode_set_lit_eq<'ctx>(
     lhs: &Expr,
     rhs: &Expr,
     ctx: &'ctx Context,
@@ -254,12 +254,12 @@ pub(super) fn translate_set_lit_eq<'ctx>(
     let mut lit = Z3Set::empty(ctx, &domain);
     for item in items {
         match elem {
-            SeqElem::Int  => { let z = translate_int(item, ctx, env)?; lit = lit.add(&z); }
+            SeqElem::Int  => { let z = encode_int(item, ctx, env)?; lit = lit.add(&z); }
             SeqElem::Bool => {
-                let z = translate_bool(item, ctx, env, schemas)?;
+                let z = encode_bool(item, ctx, env, schemas)?;
                 lit = lit.add(&z);
             }
-            SeqElem::Str  => { let z = translate_str(item, ctx, env)?; lit = lit.add(&z); }
+            SeqElem::Str  => { let z = encode_str(item, ctx, env)?; lit = lit.add(&z); }
         }
     }
 
@@ -317,7 +317,7 @@ pub(super) fn build_composite_dynamic<'ctx>(
     Some(dt.variants[0].constructor.apply(&dyn_refs))
 }
 
-pub(super) fn translate_seq_index_assign<'ctx>(
+pub(super) fn encode_seq_index_assign<'ctx>(
     lhs: &Expr,
     rhs: &Expr,
     ctx: &'ctx Context,
@@ -341,7 +341,7 @@ pub(super) fn translate_seq_index_assign<'ctx>(
     if !env.contains_key(&format!("{}.{}", comp_name, first_field)) {
         return None;
     }
-    let idx = translate_int(idx_expr, ctx, env)?;
+    let idx = encode_int(idx_expr, ctx, env)?;
     let composite = build_composite_dynamic(comp_name, dt, fields, ctx, env)?;
     let elem = arr.select(&idx);
     Some(elem._eq(&composite))
@@ -415,7 +415,7 @@ pub(super) fn bind_composite_fields<'ctx>(
     true
 }
 
-pub(super) fn translate_seq_eq<'ctx>(
+pub(super) fn encode_seq_eq<'ctx>(
     lhs: &Expr,
     rhs: &Expr,
     ctx: &'ctx Context,

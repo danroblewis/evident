@@ -1,4 +1,4 @@
-//! `translate_bool` — the central dispatcher. Handles built-in predicate calls
+//! `encode_bool` — the central dispatcher. Handles built-in predicate calls
 //! (contains / distinct), quantifiers (coindexed / edges / ranges / set-subset),
 //! and every binary/equality form, delegating compound-value equalities to the
 //! equation translators and record comparisons to the record-lift.
@@ -11,7 +11,7 @@ use crate::core::{SeqElem, Var};
 
 use super::*;
 
-pub(in crate::encode) fn translate_bool<'ctx>(
+pub(in crate::encode) fn encode_bool<'ctx>(
     e: &Expr,
     ctx: &'ctx Context,
     env: &HashMap<String, Var<'ctx>>,
@@ -31,15 +31,15 @@ pub(in crate::encode) fn translate_bool<'ctx>(
                     let cell = arr.select(&idx);
                     let eq = match elem {
                         SeqElem::Int => {
-                            let v = translate_int(&args[1], ctx, env)?;
+                            let v = encode_int(&args[1], ctx, env)?;
                             cell.as_int()?._eq(&v)
                         }
                         SeqElem::Bool => {
-                            let v = translate_bool(&args[1], ctx, env, schemas)?;
+                            let v = encode_bool(&args[1], ctx, env, schemas)?;
                             cell.as_bool()?._eq(&v)
                         }
                         SeqElem::Str => {
-                            let v = translate_str(&args[1], ctx, env)?;
+                            let v = encode_str(&args[1], ctx, env)?;
                             cell.as_string()?._eq(&v)
                         }
                     };
@@ -70,7 +70,7 @@ pub(in crate::encode) fn translate_bool<'ctx>(
                         )),
                         Box::new(arg),
                     );
-                    if let Some(b) = translate_bool(&eq_expr, ctx, env, schemas) {
+                    if let Some(b) = encode_bool(&eq_expr, ctx, env, schemas) {
                         clauses.push(b);
                     } else {
                         let _ = cell;
@@ -100,26 +100,26 @@ pub(in crate::encode) fn translate_bool<'ctx>(
                     Expr::Index(
                         Box::new(Expr::Identifier(sname.clone())),
                         Box::new(Expr::Int(i)))).collect();
-                return translate_bool(
+                return encode_bool(
                     &Expr::Call("distinct".into(), exploded),
                     ctx, env, schemas);
             }
             if let Some(ints) = args.iter()
-                .map(|a| translate_int(a, ctx, env))
+                .map(|a| encode_int(a, ctx, env))
                 .collect::<Option<Vec<_>>>()
             {
                 let refs: Vec<&Int> = ints.iter().collect();
                 return Some(Int::distinct(ctx, &refs));
             }
             if let Some(bools) = args.iter()
-                .map(|a| translate_bool(a, ctx, env, schemas))
+                .map(|a| encode_bool(a, ctx, env, schemas))
                 .collect::<Option<Vec<_>>>()
             {
                 let refs: Vec<&Bool> = bools.iter().collect();
                 return Some(Bool::distinct(ctx, &refs));
             }
             if let Some(strs) = args.iter()
-                .map(|a| translate_str(a, ctx, env))
+                .map(|a| encode_str(a, ctx, env))
                 .collect::<Option<Vec<_>>>()
             {
                 let refs: Vec<&Z3Str> = strs.iter().collect();
@@ -131,17 +131,17 @@ pub(in crate::encode) fn translate_bool<'ctx>(
     match e {
         Expr::Bool(b) => Some(Bool::from_bool(ctx, *b)),
         Expr::Identifier(name) => env.get(name).and_then(|v| v.as_bool().cloned()),
-        Expr::Not(inner) => Some(translate_bool(inner, ctx, env, schemas)?.not()),
+        Expr::Not(inner) => Some(encode_bool(inner, ctx, env, schemas)?.not()),
 
         Expr::Ternary(c, a, b) => {
-            let cond = translate_bool(c, ctx, env, schemas)?;
-            let then_v = translate_bool(a, ctx, env, schemas)?;
-            let else_v = translate_bool(b, ctx, env, schemas)?;
+            let cond = encode_bool(c, ctx, env, schemas)?;
+            let then_v = encode_bool(a, ctx, env, schemas)?;
+            let else_v = encode_bool(b, ctx, env, schemas)?;
             Some(cond.ite(&then_v, &else_v))
         }
         Expr::Match(scr, arms) => {
-            let compiled = translate_match_arms(scr, arms, ctx, env,
-                |body, e| translate_bool(body, ctx, e, schemas))?;
+            let compiled = encode_match_arms(scr, arms, ctx, env,
+                |body, e| encode_bool(body, ctx, e, schemas))?;
             fold_arms_to_ite(compiled)
         }
 
@@ -169,7 +169,7 @@ pub(in crate::encode) fn translate_bool<'ctx>(
             let handle = resolve_seq_handle(seq_expr.as_ref(), ctx, env)?;
             let SeqHandleRef::Primitive { arr, elem, .. } = handle else { return None };
             if elem != SeqElem::Bool { return None; }
-            let i = translate_int(idx_expr, ctx, env)?;
+            let i = encode_int(idx_expr, ctx, env)?;
             arr.select(&i).as_bool()
         }
 
@@ -184,15 +184,15 @@ pub(in crate::encode) fn translate_bool<'ctx>(
                 if let Some((set, elem)) = env.get(name).and_then(|v| v.as_set()) {
                     return match elem {
                         SeqElem::Int => {
-                            let x = translate_int(lhs, ctx, env)?;
+                            let x = encode_int(lhs, ctx, env)?;
                             Some(set.member(&x))
                         }
                         SeqElem::Bool => {
-                            let x = translate_bool(lhs, ctx, env, schemas)?;
+                            let x = encode_bool(lhs, ctx, env, schemas)?;
                             Some(set.member(&x))
                         }
                         SeqElem::Str => {
-                            let x = translate_str(lhs, ctx, env)?;
+                            let x = encode_str(lhs, ctx, env)?;
                             Some(set.member(&x))
                         }
                     };
@@ -215,7 +215,7 @@ pub(in crate::encode) fn translate_bool<'ctx>(
             let mut clauses: Vec<Bool> = Vec::with_capacity(items.len());
             for it in &items {
                 let eq = Expr::Binary(BinOp::Eq, lhs.clone(), Box::new(it.clone()));
-                if let Some(b) = translate_bool(&eq, ctx, env, schemas) {
+                if let Some(b) = encode_bool(&eq, ctx, env, schemas) {
                     clauses.push(b);
                 }
             }
@@ -272,7 +272,7 @@ pub(in crate::encode) fn translate_bool<'ctx>(
                                     return None;
                                 }
                             }
-                            if let Some(b) = translate_bool(body, ctx, &env2, schemas) {
+                            if let Some(b) = encode_bool(body, ctx, &env2, schemas) {
                                 clauses.push(b);
                             }
                         }
@@ -323,7 +323,7 @@ pub(in crate::encode) fn translate_bool<'ctx>(
                             let mut env2 = env.clone();
                             if !bind(&mut env2, i,     &vars[0]) { return None; }
                             if !bind(&mut env2, i + 1, &vars[1]) { return None; }
-                            if let Some(b) = translate_bool(body, ctx, &env2, schemas) {
+                            if let Some(b) = encode_bool(body, ctx, &env2, schemas) {
                                 clauses.push(b);
                             }
                         }
@@ -347,7 +347,7 @@ pub(in crate::encode) fn translate_bool<'ctx>(
                 for i in lo..=hi {
                     let mut env2 = env.clone();
                     env2.insert(var.clone(), Var::IntVar(Int::from_i64(ctx, i)));
-                    if let Some(b) = translate_bool(body, ctx, &env2, schemas) {
+                    if let Some(b) = encode_bool(body, ctx, &env2, schemas) {
                         clauses.push(b);
                     }
                 }
@@ -367,7 +367,7 @@ pub(in crate::encode) fn translate_bool<'ctx>(
                             if !bind_composite_fields(&mut env2, &elem_dyn, fields, dt, var) {
                                 return None;
                             }
-                            if let Some(b) = translate_bool(body, ctx, &env2, schemas) {
+                            if let Some(b) = encode_bool(body, ctx, &env2, schemas) {
                                 clauses.push(b);
                             }
                         }
@@ -384,7 +384,7 @@ pub(in crate::encode) fn translate_bool<'ctx>(
                             };
                             let v = v?;
                             env2.insert(var.clone(), v);
-                            if let Some(b) = translate_bool(body, ctx, &env2, schemas) {
+                            if let Some(b) = encode_bool(body, ctx, &env2, schemas) {
                                 clauses.push(b);
                             }
                         }
@@ -402,7 +402,7 @@ pub(in crate::encode) fn translate_bool<'ctx>(
                         if !bind_composite_fields(&mut env2, &elem_dyn, fields, dt, var) {
                             return None;
                         }
-                        if let Some(b) = translate_bool(body, ctx, &env2, schemas) {
+                        if let Some(b) = encode_bool(body, ctx, &env2, schemas) {
                             clauses.push(b);
                         }
                     }
@@ -420,7 +420,7 @@ pub(in crate::encode) fn translate_bool<'ctx>(
                         };
                         let v = v?;
                         env2.insert(var.clone(), v);
-                        if let Some(b) = translate_bool(body, ctx, &env2, schemas) {
+                        if let Some(b) = encode_bool(body, ctx, &env2, schemas) {
                             clauses.push(b);
                         }
                     }
@@ -463,46 +463,31 @@ pub(in crate::encode) fn translate_bool<'ctx>(
         Expr::Binary(op, lhs, rhs) => match op {
 
             BinOp::And => {
-                let l = translate_bool(lhs, ctx, env, schemas)?;
-                let r = translate_bool(rhs, ctx, env, schemas)?;
+                let l = encode_bool(lhs, ctx, env, schemas)?;
+                let r = encode_bool(rhs, ctx, env, schemas)?;
                 Some(Bool::and(ctx, &[&l, &r]))
             }
             BinOp::Or => {
-                let l = translate_bool(lhs, ctx, env, schemas)?;
-                let r = translate_bool(rhs, ctx, env, schemas)?;
+                let l = encode_bool(lhs, ctx, env, schemas)?;
+                let r = encode_bool(rhs, ctx, env, schemas)?;
                 Some(Bool::or(ctx, &[&l, &r]))
             }
             BinOp::Implies => {
-                let l = translate_bool(lhs, ctx, env, schemas)?;
-                let r = translate_bool(rhs, ctx, env, schemas)?;
+                let l = encode_bool(lhs, ctx, env, schemas)?;
+                let r = encode_bool(rhs, ctx, env, schemas)?;
                 Some(l.implies(&r))
             }
 
             BinOp::Eq | BinOp::Neq => {
 
-                if let Some(b) = translate_cons_chain_eq(lhs, rhs, ctx, env, schemas) {
+                if let Some(b) = encode_cons_chain_eq(lhs, rhs, ctx, env, schemas) {
                     return Some(match op {
                         BinOp::Eq  => b,
                         BinOp::Neq => b.not(),
                         _ => unreachable!(),
                     });
                 }
-                if let Some(b) = translate_cons_chain_eq(rhs, lhs, ctx, env, schemas) {
-                    return Some(match op {
-                        BinOp::Eq  => b,
-                        BinOp::Neq => b.not(),
-                        _ => unreachable!(),
-                    });
-                }
-
-                if let Some(b) = translate_seq_lit_eq(lhs, rhs, ctx, env, schemas) {
-                    return Some(match op {
-                        BinOp::Eq  => b,
-                        BinOp::Neq => b.not(),
-                        _ => unreachable!(),
-                    });
-                }
-                if let Some(b) = translate_seq_lit_eq(rhs, lhs, ctx, env, schemas) {
+                if let Some(b) = encode_cons_chain_eq(rhs, lhs, ctx, env, schemas) {
                     return Some(match op {
                         BinOp::Eq  => b,
                         BinOp::Neq => b.not(),
@@ -510,22 +495,14 @@ pub(in crate::encode) fn translate_bool<'ctx>(
                     });
                 }
 
-                if let Some(b) = translate_set_lit_eq(lhs, rhs, ctx, env, schemas) {
+                if let Some(b) = encode_seq_lit_eq(lhs, rhs, ctx, env, schemas) {
                     return Some(match op {
                         BinOp::Eq  => b,
                         BinOp::Neq => b.not(),
                         _ => unreachable!(),
                     });
                 }
-                if let Some(b) = translate_set_lit_eq(rhs, lhs, ctx, env, schemas) {
-                    return Some(match op {
-                        BinOp::Eq  => b,
-                        BinOp::Neq => b.not(),
-                        _ => unreachable!(),
-                    });
-                }
-
-                if let Some(b) = translate_seq_eq(lhs, rhs, ctx, env) {
+                if let Some(b) = encode_seq_lit_eq(rhs, lhs, ctx, env, schemas) {
                     return Some(match op {
                         BinOp::Eq  => b,
                         BinOp::Neq => b.not(),
@@ -533,14 +510,37 @@ pub(in crate::encode) fn translate_bool<'ctx>(
                     });
                 }
 
-                if let Some(b) = translate_seq_index_assign(lhs, rhs, ctx, env) {
+                if let Some(b) = encode_set_lit_eq(lhs, rhs, ctx, env, schemas) {
                     return Some(match op {
                         BinOp::Eq  => b,
                         BinOp::Neq => b.not(),
                         _ => unreachable!(),
                     });
                 }
-                if let Some(b) = translate_seq_index_assign(rhs, lhs, ctx, env) {
+                if let Some(b) = encode_set_lit_eq(rhs, lhs, ctx, env, schemas) {
+                    return Some(match op {
+                        BinOp::Eq  => b,
+                        BinOp::Neq => b.not(),
+                        _ => unreachable!(),
+                    });
+                }
+
+                if let Some(b) = encode_seq_eq(lhs, rhs, ctx, env) {
+                    return Some(match op {
+                        BinOp::Eq  => b,
+                        BinOp::Neq => b.not(),
+                        _ => unreachable!(),
+                    });
+                }
+
+                if let Some(b) = encode_seq_index_assign(lhs, rhs, ctx, env) {
+                    return Some(match op {
+                        BinOp::Eq  => b,
+                        BinOp::Neq => b.not(),
+                        _ => unreachable!(),
+                    });
+                }
+                if let Some(b) = encode_seq_index_assign(rhs, lhs, ctx, env) {
                     return Some(match op {
                         BinOp::Eq  => b,
                         BinOp::Neq => b.not(),
@@ -548,7 +548,7 @@ pub(in crate::encode) fn translate_bool<'ctx>(
                     });
                 }
                 if let (Some(l), Some(r)) =
-                    (translate_bool(lhs, ctx, env, schemas), translate_bool(rhs, ctx, env, schemas))
+                    (encode_bool(lhs, ctx, env, schemas), encode_bool(rhs, ctx, env, schemas))
                 {
                     return Some(match op {
                         BinOp::Eq  => l._eq(&r),
@@ -557,7 +557,7 @@ pub(in crate::encode) fn translate_bool<'ctx>(
                     });
                 }
                 if let (Some(l), Some(r)) =
-                    (translate_int(lhs, ctx, env), translate_int(rhs, ctx, env))
+                    (encode_int(lhs, ctx, env), encode_int(rhs, ctx, env))
                 {
                     return Some(match op {
                         BinOp::Eq  => l._eq(&r),
@@ -567,7 +567,7 @@ pub(in crate::encode) fn translate_bool<'ctx>(
                 }
 
                 if let (Some(l), Some(r)) =
-                    (translate_real(lhs, ctx, env), translate_real(rhs, ctx, env))
+                    (encode_real(lhs, ctx, env), encode_real(rhs, ctx, env))
                 {
                     return Some(match op {
                         BinOp::Eq  => l._eq(&r),
@@ -576,7 +576,7 @@ pub(in crate::encode) fn translate_bool<'ctx>(
                     });
                 }
                 if let (Some(l), Some(r)) =
-                    (translate_str(lhs, ctx, env), translate_str(rhs, ctx, env))
+                    (encode_str(lhs, ctx, env), encode_str(rhs, ctx, env))
                 {
                     return Some(match op {
                         BinOp::Eq  => l._eq(&r),
@@ -610,7 +610,7 @@ pub(in crate::encode) fn translate_bool<'ctx>(
 
             BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge => {
                 if let (Some(l), Some(r)) =
-                    (translate_int(lhs, ctx, env), translate_int(rhs, ctx, env))
+                    (encode_int(lhs, ctx, env), encode_int(rhs, ctx, env))
                 {
                     return Some(match op {
                         BinOp::Lt => l.lt(&r),
@@ -621,7 +621,7 @@ pub(in crate::encode) fn translate_bool<'ctx>(
                     });
                 }
                 if let (Some(l), Some(r)) =
-                    (translate_real(lhs, ctx, env), translate_real(rhs, ctx, env))
+                    (encode_real(lhs, ctx, env), encode_real(rhs, ctx, env))
                 {
                     return Some(match op {
                         BinOp::Lt => l.lt(&r),
@@ -646,8 +646,8 @@ pub(super) fn literal_range<'ctx>(
     env: &HashMap<String, Var<'ctx>>,
 ) -> Option<(i64, i64)> {
     if let Expr::Range(lo, hi) = e {
-        let lo_z3 = translate_int(lo, ctx, env)?;
-        let hi_z3 = translate_int(hi, ctx, env)?;
+        let lo_z3 = encode_int(lo, ctx, env)?;
+        let hi_z3 = encode_int(hi, ctx, env)?;
         let lo_v = lo_z3.simplify().as_i64()?;
         let hi_v = hi_z3.simplify().as_i64()?;
         return Some((lo_v, hi_v));

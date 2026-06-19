@@ -6,7 +6,7 @@
 //!   - resolve    — mapping/enum/seq-handle resolution from env
 //!   - values     — scalar translators (str/int/real) + record-vector lifting
 //!   - equations  — seq/set equality + composite binding/building
-//!   - bool       — translate_bool (the dispatcher) + literal_range
+//!   - bool       — encode_bool (the dispatcher) + literal_range
 
 use std::collections::HashMap;
 use z3::ast::{Ast, Bool};
@@ -20,7 +20,7 @@ mod values;
 mod equations;
 mod bool;
 
-// resolve + bool export resolve_mapping / translate_bool to encode::inline,
+// resolve + bool export resolve_mapping / encode_bool to encode::inline,
 // so those two re-exports widen to pub(in crate::encode); the rest stay
 // exprs-internal (mutual visibility comes from `use super::*` in each submodule).
 pub(super) use resolve::*;
@@ -89,7 +89,7 @@ pub(super) fn current_target_enum() -> Option<(String, &'static DatatypeSort<'st
 
 pub(super) type CompiledArm<'ctx, T> = (Option<Bool<'ctx>>, T);
 
-pub(super) fn translate_match_arms<'ctx, T>(
+pub(super) fn encode_match_arms<'ctx, T>(
     scr: &Expr,
     arms: &[crate::core::ast::MatchArm],
     ctx: &'ctx Context,
@@ -116,7 +116,7 @@ pub(super) fn translate_match_arms<'ctx, T>(
                         (arr.clone(), *dt, type_name.clone()),
                 _ => return None,
             };
-            let idx = translate_int(idx_expr, ctx, env)?;
+            let idx = encode_int(idx_expr, ctx, env)?;
             let elem_dt = arr.select(&idx).as_datatype()?;
             (elem_dt, dt, type_name)
         }

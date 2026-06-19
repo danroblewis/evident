@@ -49,7 +49,7 @@ pub(super) fn lift_record_op<'ctx>(
             Box::new(lhs_leaf),
             Box::new(rhs_leaf),
         );
-        clauses.push(translate_bool(&leaf_op, ctx, env, schemas)?);
+        clauses.push(encode_bool(&leaf_op, ctx, env, schemas)?);
     }
     let refs: Vec<&Bool> = clauses.iter().collect();
     Some(match op {
@@ -302,14 +302,14 @@ pub(super) fn collect_record_refs<'ctx>(
 
 // ───────────────────────── scalar translators ─────────────────────────
 
-pub(super) fn translate_str<'ctx>(e: &Expr, ctx: &'ctx Context, env: &HashMap<String, Var<'ctx>>) -> Option<Z3Str<'ctx>> {
+pub(super) fn encode_str<'ctx>(e: &Expr, ctx: &'ctx Context, env: &HashMap<String, Var<'ctx>>) -> Option<Z3Str<'ctx>> {
     match e {
         Expr::Str(s) => Z3Str::from_str(ctx, s).ok(),
         Expr::Identifier(name) => env.get(name).and_then(|v| v.as_str().cloned()),
 
         Expr::Binary(BinOp::Concat, lhs, rhs) => {
-            let l = translate_str(lhs, ctx, env)?;
-            let r = translate_str(rhs, ctx, env)?;
+            let l = encode_str(lhs, ctx, env)?;
+            let r = encode_str(rhs, ctx, env)?;
             Some(Z3Str::concat(ctx, &[&l, &r]))
         }
 
@@ -317,7 +317,7 @@ pub(super) fn translate_str<'ctx>(e: &Expr, ctx: &'ctx Context, env: &HashMap<St
             let handle = resolve_seq_handle(seq_expr.as_ref(), ctx, env)?;
             let SeqHandleRef::Primitive { arr, elem, .. } = handle else { return None };
             if elem != SeqElem::Str { return None; }
-            let i = translate_int(idx_expr, ctx, env)?;
+            let i = encode_int(idx_expr, ctx, env)?;
             arr.select(&i).as_string()
         }
 
@@ -331,49 +331,49 @@ pub(super) fn translate_str<'ctx>(e: &Expr, ctx: &'ctx Context, env: &HashMap<St
         }
 
         Expr::Ternary(c, a, b) => {
-            let cond = translate_bool(c, ctx, env, &HashMap::new())?;
-            let then_v = translate_str(a, ctx, env)?;
-            let else_v = translate_str(b, ctx, env)?;
+            let cond = encode_bool(c, ctx, env, &HashMap::new())?;
+            let then_v = encode_str(a, ctx, env)?;
+            let else_v = encode_str(b, ctx, env)?;
             Some(cond.ite(&then_v, &else_v))
         }
         Expr::Match(scr, arms) => {
-            let compiled = translate_match_arms(scr, arms, ctx, env,
-                |body, e| translate_str(body, ctx, e))?;
+            let compiled = encode_match_arms(scr, arms, ctx, env,
+                |body, e| encode_str(body, ctx, e))?;
             fold_arms_to_ite(compiled)
         }
         _ => None,
     }
 }
 
-pub(super) fn translate_int<'ctx>(e: &Expr, ctx: &'ctx Context, env: &HashMap<String, Var<'ctx>>) -> Option<Int<'ctx>> {
+pub(super) fn encode_int<'ctx>(e: &Expr, ctx: &'ctx Context, env: &HashMap<String, Var<'ctx>>) -> Option<Int<'ctx>> {
 
     if let Expr::Call(name, args) = e {
         match (name.as_str(), args.len()) {
             ("min", 2) => {
-                let a = translate_int(&args[0], ctx, env)?;
-                let b = translate_int(&args[1], ctx, env)?;
+                let a = encode_int(&args[0], ctx, env)?;
+                let b = encode_int(&args[1], ctx, env)?;
                 return Some(a.le(&b).ite(&a, &b));
             }
             ("max", 2) => {
-                let a = translate_int(&args[0], ctx, env)?;
-                let b = translate_int(&args[1], ctx, env)?;
+                let a = encode_int(&args[0], ctx, env)?;
+                let b = encode_int(&args[1], ctx, env)?;
                 return Some(a.ge(&b).ite(&a, &b));
             }
             ("abs", 1) => {
-                let x = translate_int(&args[0], ctx, env)?;
+                let x = encode_int(&args[0], ctx, env)?;
                 let zero = Int::from_i64(ctx, 0);
                 let neg = Int::sub(ctx, &[&zero, &x]);
                 return Some(x.ge(&zero).ite(&x, &neg));
             }
             ("mod", 2) => {
-                let a = translate_int(&args[0], ctx, env)?;
-                let b = translate_int(&args[1], ctx, env)?;
+                let a = encode_int(&args[0], ctx, env)?;
+                let b = encode_int(&args[1], ctx, env)?;
                 return Some(a.modulo(&b));
             }
             ("clamp", 3) => {
-                let x  = translate_int(&args[0], ctx, env)?;
-                let lo = translate_int(&args[1], ctx, env)?;
-                let hi = translate_int(&args[2], ctx, env)?;
+                let x  = encode_int(&args[0], ctx, env)?;
+                let lo = encode_int(&args[1], ctx, env)?;
+                let hi = encode_int(&args[2], ctx, env)?;
 
                 let inner = x.le(&hi).ite(&x, &hi);
                 return Some(inner.ge(&lo).ite(&inner, &lo));
@@ -390,7 +390,7 @@ pub(super) fn translate_int<'ctx>(e: &Expr, ctx: &'ctx Context, env: &HashMap<St
                     let cell = arr.select(&idx);
                     let eq = match elem {
                         SeqElem::Int => {
-                            let v = translate_int(&args[1], ctx, env)?;
+                            let v = encode_int(&args[1], ctx, env)?;
                             cell.as_int()?._eq(&v)
                         }
                         SeqElem::Bool => {
@@ -402,7 +402,7 @@ pub(super) fn translate_int<'ctx>(e: &Expr, ctx: &'ctx Context, env: &HashMap<St
                             cell.as_bool()?._eq(&v)
                         }
                         SeqElem::Str => {
-                            let v = translate_str(&args[1], ctx, env)?;
+                            let v = encode_str(&args[1], ctx, env)?;
                             cell.as_string()?._eq(&v)
                         }
                     };
@@ -421,8 +421,8 @@ pub(super) fn translate_int<'ctx>(e: &Expr, ctx: &'ctx Context, env: &HashMap<St
             _ => None,
         },
         Expr::Binary(op, lhs, rhs) => {
-            let l = translate_int(lhs, ctx, env)?;
-            let r = translate_int(rhs, ctx, env)?;
+            let l = encode_int(lhs, ctx, env)?;
+            let r = encode_int(rhs, ctx, env)?;
             Some(match op {
                 BinOp::Add => Int::add(ctx, &[&l, &r]),
                 BinOp::Sub => Int::sub(ctx, &[&l, &r]),
@@ -457,7 +457,7 @@ pub(super) fn translate_int<'ctx>(e: &Expr, ctx: &'ctx Context, env: &HashMap<St
             let handle = resolve_seq_handle(seq_expr.as_ref(), ctx, env)?;
             let SeqHandleRef::Primitive { arr, elem, .. } = handle else { return None };
             if elem != SeqElem::Int { return None; }
-            let i = translate_int(idx_expr, ctx, env)?;
+            let i = encode_int(idx_expr, ctx, env)?;
             arr.select(&i).as_int()
         }
 
@@ -471,22 +471,22 @@ pub(super) fn translate_int<'ctx>(e: &Expr, ctx: &'ctx Context, env: &HashMap<St
         }
 
         Expr::Ternary(c, a, b) => {
-            let cond = translate_bool(c, ctx, env, &HashMap::new())?;
-            let then_v = translate_int(a, ctx, env)?;
-            let else_v = translate_int(b, ctx, env)?;
+            let cond = encode_bool(c, ctx, env, &HashMap::new())?;
+            let then_v = encode_int(a, ctx, env)?;
+            let else_v = encode_int(b, ctx, env)?;
             Some(cond.ite(&then_v, &else_v))
         }
 
         Expr::Match(scr, arms) => {
-            let compiled = translate_match_arms(scr, arms, ctx, env,
-                |body, e| translate_int(body, ctx, e))?;
+            let compiled = encode_match_arms(scr, arms, ctx, env,
+                |body, e| encode_int(body, ctx, e))?;
             fold_arms_to_ite(compiled)
         }
         _ => None,
     }
 }
 
-pub(super) fn translate_real<'ctx>(e: &Expr, ctx: &'ctx Context, env: &HashMap<String, Var<'ctx>>) -> Option<Real<'ctx>> {
+pub(super) fn encode_real<'ctx>(e: &Expr, ctx: &'ctx Context, env: &HashMap<String, Var<'ctx>>) -> Option<Real<'ctx>> {
     match e {
         Expr::Real(f) => Some(real_from_f64(ctx, *f)),
         Expr::Int(n)  => Some(Real::from_int(&Int::from_i64(ctx, *n))),
@@ -497,8 +497,8 @@ pub(super) fn translate_real<'ctx>(e: &Expr, ctx: &'ctx Context, env: &HashMap<S
             _ => None,
         },
         Expr::Binary(op, lhs, rhs) => {
-            let l = translate_real(lhs, ctx, env)?;
-            let r = translate_real(rhs, ctx, env)?;
+            let l = encode_real(lhs, ctx, env)?;
+            let r = encode_real(rhs, ctx, env)?;
             Some(match op {
                 BinOp::Add => Real::add(ctx, &[&l, &r]),
                 BinOp::Sub => Real::sub(ctx, &[&l, &r]),
@@ -509,14 +509,14 @@ pub(super) fn translate_real<'ctx>(e: &Expr, ctx: &'ctx Context, env: &HashMap<S
         }
 
         Expr::Ternary(c, a, b) => {
-            let cond = translate_bool(c, ctx, env, &HashMap::new())?;
-            let then_v = translate_real(a, ctx, env)?;
-            let else_v = translate_real(b, ctx, env)?;
+            let cond = encode_bool(c, ctx, env, &HashMap::new())?;
+            let then_v = encode_real(a, ctx, env)?;
+            let else_v = encode_real(b, ctx, env)?;
             Some(cond.ite(&then_v, &else_v))
         }
         Expr::Match(scr, arms) => {
-            let compiled = translate_match_arms(scr, arms, ctx, env,
-                |body, e| translate_real(body, ctx, e))?;
+            let compiled = encode_match_arms(scr, arms, ctx, env,
+                |body, e| encode_real(body, ctx, e))?;
             fold_arms_to_ite(compiled)
         }
         _ => None,

@@ -58,13 +58,13 @@ pub(in crate::encode) fn resolve_mapping<'ctx>(
                     };
                     let v: Option<Var<'ctx>> = match field_type.as_str() {
                         "Int" | "Nat" | "Pos" =>
-                            translate_int(arg_ref, ctx, env).map(Var::IntVar),
+                            encode_int(arg_ref, ctx, env).map(Var::IntVar),
                         "Bool" =>
-                            translate_bool(arg_ref, ctx, env, schemas).map(Var::BoolVar),
+                            encode_bool(arg_ref, ctx, env, schemas).map(Var::BoolVar),
                         "String" =>
-                            translate_str(arg_ref, ctx, env).map(Var::StrVar),
+                            encode_str(arg_ref, ctx, env).map(Var::StrVar),
                         "Real" =>
-                            translate_real(arg_ref, ctx, env).map(Var::RealVar),
+                            encode_real(arg_ref, ctx, env).map(Var::RealVar),
                         _ => {
 
                             let nested = resolve_mapping(&key, arg_ref, ctx, env, schemas);
@@ -93,7 +93,7 @@ pub(in crate::encode) fn resolve_mapping<'ctx>(
         if let Expr::Identifier(seq_name) = seq_expr.as_ref() {
             if let Some(var) = env.get(seq_name) {
                 if let Some((arr, _, _, dt, fields)) = var.as_datatype_seq() {
-                    if let Some(i) = translate_int(idx_expr, ctx, env) {
+                    if let Some(i) = encode_int(idx_expr, ctx, env) {
                         let elem_dyn = arr.select(&i);
 
                         let mut tmp: HashMap<String, Var<'ctx>> = HashMap::new();
@@ -148,7 +148,7 @@ pub(super) fn resolve_field_chain_to_bindings<'ctx>(
     use crate::core::SeqFieldElem;
     let var = env.get(seq_name)?;
     let (arr, _, _, root_dt, root_fields) = var.as_datatype_seq()?;
-    let i = translate_int(idx_expr, ctx, env)?;
+    let i = encode_int(idx_expr, ctx, env)?;
     let elem_dyn = arr.select(&i);
 
     let mut cur_dyn = elem_dyn;
@@ -250,7 +250,7 @@ pub(super) fn resolve_enum_ast<'ctx>(
             let handle = resolve_seq_handle(base.as_ref(), ctx, env)?;
             let SeqHandleRef::Composite { arr, fields, .. } = handle else { return None };
             if !fields.is_empty() { return None; }
-            let i = translate_int(idx, ctx, env)?;
+            let i = encode_int(idx, ctx, env)?;
             arr.select(&i).as_datatype()
         }
         Expr::Call(name, args) => {
@@ -279,20 +279,20 @@ pub(super) fn resolve_enum_ast<'ctx>(
                         continue;
                     }
                     let (arr_dyn, len_dyn) =
-                        translate_seq_arg_for_ctor(arg_expr, inner, ctx, env, schemas)?;
+                        encode_seq_arg_for_ctor(arg_expr, inner, ctx, env, schemas)?;
                     owned_args.push(arr_dyn);
                     owned_args.push(len_dyn);
                     continue;
                 }
                 let v: Box<dyn z3::ast::Ast<'ctx>> = match field_type.as_str() {
                     "Int" | "Nat" | "Pos" =>
-                        Box::new(translate_int(arg_expr, ctx, env)?),
+                        Box::new(encode_int(arg_expr, ctx, env)?),
                     "Bool" =>
-                        Box::new(translate_bool(arg_expr, ctx, env, schemas)?),
+                        Box::new(encode_bool(arg_expr, ctx, env, schemas)?),
                     "String" =>
-                        Box::new(translate_str(arg_expr, ctx, env)?),
+                        Box::new(encode_str(arg_expr, ctx, env)?),
                     "Real" =>
-                        Box::new(translate_real(arg_expr, ctx, env)?),
+                        Box::new(encode_real(arg_expr, ctx, env)?),
                     _ => {
 
                         Box::new(resolve_enum_ast(arg_expr, ctx, env, schemas)?)
@@ -306,13 +306,13 @@ pub(super) fn resolve_enum_ast<'ctx>(
         }
 
         Expr::Ternary(c, a, b) => {
-            let cond = translate_bool(c, ctx, env, schemas)?;
+            let cond = encode_bool(c, ctx, env, schemas)?;
             let then_v = resolve_enum_ast(a, ctx, env, schemas)?;
             let else_v = resolve_enum_ast(b, ctx, env, schemas)?;
             Some(cond.ite(&then_v, &else_v))
         }
         Expr::Match(scr, arms) => {
-            let compiled = translate_match_arms(scr, arms, ctx, env,
+            let compiled = encode_match_arms(scr, arms, ctx, env,
                 |body, e| resolve_enum_ast(body, ctx, e, schemas))?;
             fold_arms_to_ite(compiled)
         }
@@ -325,7 +325,7 @@ pub(super) fn resolve_enum_ast<'ctx>(
     }
 }
 
-pub(super) fn translate_seq_arg_for_ctor<'ctx>(
+pub(super) fn encode_seq_arg_for_ctor<'ctx>(
     arg_expr: &Expr,
     inner_type: &str,
     ctx: &'ctx Context,
@@ -360,7 +360,7 @@ pub(super) fn translate_seq_arg_for_ctor<'ctx>(
                 let mut arr = Array::const_array(
                     ctx, &Sort::int(ctx), &Int::from_i64(ctx, 0));
                 for (i, item) in items.iter().enumerate() {
-                    let v = translate_int(item, ctx, env)?;
+                    let v = encode_int(item, ctx, env)?;
                     arr = arr.store(&Int::from_i64(ctx, i as i64), &v);
                 }
                 return Some((
@@ -372,7 +372,7 @@ pub(super) fn translate_seq_arg_for_ctor<'ctx>(
                 let mut arr = Array::const_array(
                     ctx, &Sort::int(ctx), &Bool::from_bool(ctx, false));
                 for (i, item) in items.iter().enumerate() {
-                    let v = translate_bool(item, ctx, env, schemas)?;
+                    let v = encode_bool(item, ctx, env, schemas)?;
                     arr = arr.store(&Int::from_i64(ctx, i as i64), &v);
                 }
                 return Some((
@@ -384,7 +384,7 @@ pub(super) fn translate_seq_arg_for_ctor<'ctx>(
                 let default = Z3Str::from_str(ctx, "").ok()?;
                 let mut arr = Array::const_array(ctx, &Sort::int(ctx), &default);
                 for (i, item) in items.iter().enumerate() {
-                    let v = translate_str(item, ctx, env)?;
+                    let v = encode_str(item, ctx, env)?;
                     arr = arr.store(&Int::from_i64(ctx, i as i64), &v);
                 }
                 return Some((
@@ -466,10 +466,10 @@ pub(super) fn build_cons_chain<'ctx>(
     let mut acc = dt.variants[nil_idx].constructor.apply(&[]).as_datatype()?;
     for item in items.iter().rev() {
         let elem_dyn: z3::ast::Dynamic<'ctx> = match elem_type.as_str() {
-            "Int" | "Nat" | "Pos" => translate_int(item, ctx, env)?.into(),
-            "Bool"                => translate_bool(item, ctx, env, schemas)?.into(),
-            "String"              => translate_str(item, ctx, env)?.into(),
-            "Real"                => translate_real(item, ctx, env)?.into(),
+            "Int" | "Nat" | "Pos" => encode_int(item, ctx, env)?.into(),
+            "Bool"                => encode_bool(item, ctx, env, schemas)?.into(),
+            "String"              => encode_str(item, ctx, env)?.into(),
+            "Real"                => encode_real(item, ctx, env)?.into(),
             _                     => resolve_enum_ast(item, ctx, env, schemas)?.into(),
         };
         acc = dt.variants[cons_idx].constructor
@@ -534,7 +534,7 @@ pub(super) fn resolve_seq_handle<'ctx>(
     let Expr::Identifier(outer_name) = seq_expr.as_ref() else { return None };
     let var = env.get(outer_name)?;
     let (arr, _, _, dt, fields) = var.as_datatype_seq()?;
-    let i = translate_int(idx_expr, ctx, env)?;
+    let i = encode_int(idx_expr, ctx, env)?;
     let elem_dyn = arr.select(&i);
     let elem = elem_dyn.as_datatype()?;
 
@@ -591,7 +591,7 @@ pub(super) fn resolve_seq_field<'ctx>(
 
     let var = env.get(seq_name)?;
     let (arr, _, _, root_dt, root_fields) = var.as_datatype_seq()?;
-    let i = translate_int(idx_expr, ctx, env)?;
+    let i = encode_int(idx_expr, ctx, env)?;
     let elem_dyn = arr.select(&i);
     let mut cur_dyn = elem_dyn;
 

@@ -5,7 +5,7 @@ use z3::ast::{Ast, Bool};
 use crate::core::ast::*;
 use crate::core::{DatatypeRegistry, EnumRegistry, Var};
 use super::declare::{declare_var, declare_var_named, next_call_id};
-use super::exprs::{resolve_mapping, translate_bool};
+use super::exprs::{resolve_mapping, encode_bool};
 
 mod dispatch;
 use dispatch::*;
@@ -86,7 +86,7 @@ fn inline_body_items_guarded(
                         Box::new(lhs),
                         Box::new(value.clone()),
                     );
-                    if let Some(b) = translate_bool(&eq, ctx, env, schemas) {
+                    if let Some(b) = encode_bool(&eq, ctx, env, schemas) {
                         solver.assert(&guarded_bool(b, guard));
                     } else {
                         let pretty = eq.to_string();
@@ -125,7 +125,7 @@ fn inline_body_items_guarded(
                     for item in &type_schema.body {
                         if let BodyItem::Constraint(e) = item {
                             let rewritten = rewrite_idents_with_prefix(e, name, &field_set);
-                            if let Some(b) = translate_bool(&rewritten, ctx, env, schemas) {
+                            if let Some(b) = encode_bool(&rewritten, ctx, env, schemas) {
                                 solver.assert(&guarded_bool(b, guard));
                             }
 
@@ -168,7 +168,7 @@ fn inline_body_items_guarded(
                                             substituted = substitute_bound_var(
                                                 &substituted, fname, &elem);
                                         }
-                                        if let Some(b) = translate_bool(
+                                        if let Some(b) = encode_bool(
                                             &substituted, ctx, env, schemas)
                                         {
                                             solver.assert(&guarded_bool(b, guard));
@@ -371,7 +371,7 @@ fn inline_body_items_guarded(
                     Expr::Identifier(n) => n,
                     _ => unreachable!(),
                 };
-                let Some(ant_bool) = translate_bool(ant, ctx, env, schemas) else {
+                let Some(ant_bool) = encode_bool(ant, ctx, env, schemas) else {
                     continue;
                 };
                 let new_guard = compose_guards(ctx, guard, ant_bool);
@@ -409,7 +409,7 @@ fn inline_body_items_guarded(
 
                     let e = Expr::Forall(
                         vars.clone(), range.clone(), body.clone());
-                    if let Some(b) = translate_bool(&e, ctx, env, schemas) {
+                    if let Some(b) = encode_bool(&e, ctx, env, schemas) {
                         solver.assert(&guarded_bool(b, guard));
                     }
                     continue;
@@ -443,7 +443,7 @@ fn inline_body_items_guarded(
                     }
 
                     if let BodyItem::Constraint(e) = &expanded[expanded.len() - 1] {
-                        if let Some(b) = translate_bool(e, ctx, env, schemas) {
+                        if let Some(b) = encode_bool(e, ctx, env, schemas) {
                             solver.assert(&guarded_bool(b, guard));
                         }
                     }
@@ -470,7 +470,7 @@ fn inline_body_items_guarded(
                 if let crate::core::ast::Expr::Identifier(s) = e {
                     if crate::core::ast::BODY_MARKERS.contains(&s.as_str()) { continue; }
                 }
-                if let Some(b) = translate_bool(e, ctx, env, schemas) {
+                if let Some(b) = encode_bool(e, ctx, env, schemas) {
                     solver.assert(&guarded_bool(b, guard));
                 } else {
                     let pretty = e.to_string();
