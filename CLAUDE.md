@@ -243,7 +243,6 @@ source text
 Supporting modules:
 - `subscriptions.rs` — static read/write-set inference per claim
 - `ffi.rs` — libffi marshaling, handle registry
-- `pretty.rs` — AST printer for diagnostics
 - `z3_eval.rs` — extract a `Z3Program` from a simplified Z3 AST
 - `commands/` — per-CLI-subcommand entry points
 
@@ -267,7 +266,7 @@ here's where to start.
 | `effect_dispatch.rs` | Effect → IO (Println, LibCall, ParseInt, …) |
 | `z3_eval.rs`   | Extract a `Z3Program` from a simplified Z3 AST |
 | `ffi.rs`       | libffi marshaling + handle registry; FTI shimmed-stdlib check |
-| `parser/`, `lexer.rs`, `pretty.rs` | Front end |
+| `parser/`, `lexer.rs` | Front end (AST Display rendering lives in `core/ast.rs`) |
 
 ### Inside `core/`
 

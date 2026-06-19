@@ -334,6 +334,129 @@ pub enum EffectFfiArg {
     IntOut,
 }
 
+// ---------------------------------------------------------------------------
+// AST rendering — Display for Expr / BodyItem, used by diagnostics.
+// ---------------------------------------------------------------------------
+
+fn fmt_binding(vs: &[String]) -> String {
+    if vs.len() == 1 { vs[0].clone() } else { format!("({})", vs.join(", ")) }
+}
+
+fn fmt_pattern(pat: &MatchPattern) -> String {
+    match pat {
+        MatchPattern::Wildcard => "_".to_string(),
+        MatchPattern::Ctor { name, binds } => {
+            if binds.is_empty() {
+                name.clone()
+            } else {
+                let bs: Vec<String> =
+                    binds.iter().map(|b| b.clone().unwrap_or_else(|| "_".into())).collect();
+                format!("{}({})", name, bs.join(", "))
+            }
+        }
+    }
+}
+
+impl std::fmt::Display for BinOp {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            BinOp::Eq => "=",
+            BinOp::Neq => "≠",
+            BinOp::Lt => "<",
+            BinOp::Le => "≤",
+            BinOp::Gt => ">",
+            BinOp::Ge => "≥",
+            BinOp::And => "∧",
+            BinOp::Or => "∨",
+            BinOp::Implies => "⇒",
+            BinOp::Add => "+",
+            BinOp::Sub => "-",
+            BinOp::Mul => "*",
+            BinOp::Div => "/",
+            BinOp::Concat => "++",
+        };
+        f.write_str(s)
+    }
+}
+
+impl std::fmt::Display for Expr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            Expr::Identifier(n) => n.clone(),
+            Expr::Int(n) => n.to_string(),
+            Expr::Real(v) => v.to_string(),
+            Expr::Bool(b) => b.to_string(),
+            Expr::Str(s) => format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\"")),
+            Expr::SetLit(items) =>
+                format!("{{{}}}", items.iter().map(|e| e.to_string()).collect::<Vec<_>>().join(", ")),
+            Expr::SeqLit(items) =>
+                format!("⟨{}⟩", items.iter().map(|e| e.to_string()).collect::<Vec<_>>().join(", ")),
+            Expr::Tuple(items) =>
+                format!("({})", items.iter().map(|e| e.to_string()).collect::<Vec<_>>().join(", ")),
+            Expr::Range(lo, hi) => format!("{{{}..{}}}", lo, hi),
+            Expr::InExpr(lhs, rhs) => format!("{} ∈ {}", lhs, rhs),
+            Expr::Forall(vs, range, body) =>
+                format!("∀ {} ∈ {} : {}", fmt_binding(vs), range, body),
+            Expr::Exists(vs, range, body) =>
+                format!("∃ {} ∈ {} : {}", fmt_binding(vs), range, body),
+            Expr::Call(name, args) =>
+                format!("{}({})", name, args.iter().map(|e| e.to_string()).collect::<Vec<_>>().join(", ")),
+            Expr::Cardinality(inner) => format!("#{}", inner),
+            Expr::Index(seq, idx) => format!("{}[{}]", seq, idx),
+            Expr::Field(receiver, fld) => format!("{}.{}", receiver, fld),
+            Expr::Not(inner) => format!("¬({})", inner),
+            Expr::Ternary(c, a, b) => format!("({} ? {} : {})", c, a, b),
+            Expr::Matches(e, pat) => format!("({} matches {})", e, fmt_pattern(pat)),
+            Expr::Match(scr, arms) => {
+                let arms_s: Vec<String> = arms
+                    .iter()
+                    .map(|a| format!("{} ⇒ {}", fmt_pattern(&a.pattern), a.body))
+                    .collect();
+                format!("match {} {{ {} }}", scr, arms_s.join(" | "))
+            }
+            Expr::Binary(op, lhs, rhs) => {
+                let l = if matches!(lhs.as_ref(), Expr::Binary(..)) {
+                    format!("({})", lhs)
+                } else {
+                    lhs.to_string()
+                };
+                let r = if matches!(rhs.as_ref(), Expr::Binary(..)) {
+                    format!("({})", rhs)
+                } else {
+                    rhs.to_string()
+                };
+                format!("{} {} {}", l, op, r)
+            }
+        };
+        f.write_str(&s)
+    }
+}
+
+impl std::fmt::Display for Mapping {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} ↦ {}", self.slot, self.value)
+    }
+}
+
+impl std::fmt::Display for BodyItem {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            BodyItem::Membership { name, type_name, .. } => format!("{} ∈ {}", name, type_name),
+            BodyItem::Passthrough(c) => format!("..{}", c),
+            BodyItem::SubclaimDecl(s) => format!("subclaim {} (…)", s.name),
+            BodyItem::ClaimCall { name, mappings } => {
+                if mappings.is_empty() {
+                    name.clone()
+                } else {
+                    format!("{} ({})", name, mappings.iter().map(|m| m.to_string()).collect::<Vec<_>>().join(", "))
+                }
+            }
+            BodyItem::Constraint(e) => e.to_string(),
+        };
+        f.write_str(&s)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum EffectResult {
     NoResult,

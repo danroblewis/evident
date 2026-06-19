@@ -3,7 +3,6 @@ use z3::{Context, Solver};
 use z3::ast::{Ast, Bool};
 
 use crate::core::ast::*;
-use crate::pretty;
 use crate::core::{DatatypeRegistry, EnumRegistry, Var};
 use super::declare::{declare_var, declare_var_named, next_call_id};
 use super::exprs::{resolve_mapping, translate_bool};
@@ -90,7 +89,7 @@ fn inline_body_items_guarded(
                     if let Some(b) = translate_bool(&eq, ctx, env, schemas) {
                         solver.assert(&guarded_bool(b, guard));
                     } else {
-                        let pretty = pretty::expr(&eq);
+                        let pretty = eq.to_string();
                         if lenient {
                             eprintln!(
                                 "warning: type-use pin didn't translate: {}",
@@ -474,7 +473,7 @@ fn inline_body_items_guarded(
                 if let Some(b) = translate_bool(e, ctx, env, schemas) {
                     solver.assert(&guarded_bool(b, guard));
                 } else {
-                    let pretty = pretty::expr(e);
+                    let pretty = e.to_string();
                     if lenient {
                         eprintln!("warning: dropped constraint (couldn't translate to Bool): {pretty}");
                     } else {

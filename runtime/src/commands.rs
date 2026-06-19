@@ -4,7 +4,6 @@ use std::process::ExitCode;
 use std::time::Instant;
 use evident_runtime::ast::BodyItem;
 use evident_runtime::translate::collect_referenced_names;
-use evident_runtime::pretty;
 use evident_runtime::{EvidentRuntime, Value, effect_loop};
 
 pub fn usage() {
@@ -394,9 +393,9 @@ fn print_counterexample(
         let constraint_text = match item {
             BodyItem::Constraint(e) => {
                 if is_cardinality_pin(e) { continue; }
-                pretty::body_item(item)
+                item.to_string()
             }
-            BodyItem::ClaimCall { .. } => pretty::body_item(item),
+            BodyItem::ClaimCall { .. } => item.to_string(),
 
             _ => continue,
         };

@@ -7,7 +7,6 @@ pub mod effect_loop;
 mod ffi;
 mod lexer;
 mod parser;
-pub mod pretty;
 pub mod translate;
 mod runtime;
 
