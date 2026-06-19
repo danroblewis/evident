@@ -28,8 +28,12 @@ the Xvfb display) must be green after each.
    `ffi_open` now `dlopen`s exactly the name the `LibCall` supplies; `packages/`
    bindings name Linux sonames directly (`libSDL2-2.0.so.0`, `libGL.so.1`,
    `libc.so.6`). SDL demos verified.
-3. [ ] **Remove ALL `EVIDENT_*` env-var-gated functionality + its code.** Every
-   env-gated knob goes — we rebuild any we miss much later.
+3. [x] **Remove ALL `EVIDENT_*` env-var-gated functionality + its code.** Done
+   (`c6a02f9`). Zero `EVIDENT_*` left in `runtime/src`. Diagnostics deleted;
+   toggles hardcoded (`FUNCTIONIZE` on, tactics fixed, arith-solver `2`,
+   inline-depth `64`); `LENIENT` refactored env→threaded `bool` (deleted
+   `lenient.rs`); deleted `timing.rs`; dropped the dead `--lenient`/`--arith-solver`
+   /`--no-functionizer`/`--dispatch-timing` CLI flags. Original goals below:
    - **Diagnostics — delete the code entirely:** `JIT_TRACE`, `FUNCTIONIZE_TRACE`,
      `JIT_CALL_TRACE`, `JIT_DUMP`, `FZ_DUMP_BODY`, `INLINE_TRACE`, `FFI_TRACE`,
      `TRACE_SLOW_PATH`, `LOOP_TRACE`, `LOOP_TIMING`, `DISPATCH_TIMING`,
@@ -76,9 +80,9 @@ the Xvfb display) must be green after each.
   self-hosting `main`), then `git push --force origin main`.
 
 ## Deferred / optional
-- [ ] Fold `runtime/lenient.rs` (`LenientGuard`, ~30 lines) into `query.rs`;
-  optionally drop the `--lenient` flag — but KEEP the mechanism (the functionizer
-  relies on it to try-and-fall-back).
+- [x] ~~Fold `runtime/lenient.rs` into `query.rs`~~ — done better by #3:
+  `lenient.rs` deleted, the env side-channel replaced with a threaded `bool`,
+  mechanism kept.
 - [ ] Fully remove the inert `<T>` generics grammar + `SchemaDecl.type_params`
   from the parser/AST (left inert by the sweep; clean removal is fiddly because
   it's interwoven with `Seq(Edge<Rect>)` parsing).
