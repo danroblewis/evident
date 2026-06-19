@@ -18,8 +18,6 @@ mod parser;
 pub mod pretty;
 pub mod translate;
 mod runtime;
-pub mod subscriptions;
-mod event_sources;
 mod fti;
 
 pub use runtime::EvidentRuntime;

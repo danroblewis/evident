@@ -591,10 +591,6 @@ pub fn decode_effect(v: &Value) -> Result<crate::core::ast::Effect> {
         "IntToStr"     => { need_arity(variant, fields, 1)?; Effect::IntToStr(decode_int(&fields[0])?) }
         "RealToStr"    => { need_arity(variant, fields, 1)?; Effect::RealToStr(decode_real(&fields[0])?) }
         "ShellRun"     => { need_arity(variant, fields, 1)?; Effect::ShellRun(decode_str(&fields[0])?) }
-        "SpawnFsm"     => {
-            need_arity(variant, fields, 2)?;
-            Effect::SpawnFsm(decode_str(&fields[0])?, decode_int(&fields[1])?)
-        }
         "FFIOpen"      => { need_arity(variant, fields, 1)?; Effect::FFIOpen(decode_str(&fields[0])?) }
         "FFILookup"    => {
             need_arity(variant, fields, 2)?;
@@ -720,7 +716,7 @@ pub fn decode_effect_list(v: &Value) -> Result<Vec<crate::core::ast::Effect>> {
 /// Decoded `InstallStep`: an Effect to dispatch + an optional field
 /// name to capture the result into. `None` = `Run(Effect)` (discard
 /// result), `Some(field)` = `Bind(field, Effect)`. Used by the
-/// declarative install path in `event_sources/declarative_install.rs`.
+/// declarative install path in `effect_loop/install.rs`.
 #[derive(Debug, Clone)]
 pub struct InstallStep {
     pub field:  Option<String>,

@@ -100,24 +100,6 @@ enum Effect =
     -- Use sparingly — long-running commands stall the whole
     -- runtime. For background processes, write a custom plugin.
     ShellRun(String)
-    -- Spawn a new FSM instance of the named claim with an Int
-    -- argument that gets pinned into the new FSM's first
-    -- state-variant payload. Result is IntResult(instance_id).
-    --
-    -- Convention: define the spawnable claim's state enum with
-    -- a payload first variant taking an Int (the instance ID
-    -- or a parameter chosen by the parent):
-    --
-    --   enum WState = WInit(Int) | WGo
-    --   claim worker(state, state_next ∈ WState, ...)
-    --       my_id ∈ Int
-    --       my_id = match state
-    --           WInit(id) ⇒ id
-    --           WGo       ⇒ -1
-    --
-    -- v1: shares parent's world; no per-instance world.
-    -- See docs/design/fsm-spawning.md.
-    SpawnFsm(String, Int)
     -- Generic FFI primitives (uncached).
     FFIOpen(String)
     FFILookup(Int, String)

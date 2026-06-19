@@ -4,7 +4,7 @@
 //!
 //! These are part of the runtime's core vocabulary — both the
 //! constraint side (translate / runtime / commands) and the
-//! execution side (effect_loop / event_sources) consume them.
+//! execution side (effect_loop) consume them.
 
 use std::collections::HashMap;
 

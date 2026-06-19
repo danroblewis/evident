@@ -63,21 +63,8 @@ pub struct DispatchContext {
     /// Set by `Effect::Exit(code)`. The effect loop checks this at
     /// end of each tick and halts cleanly with the requested code,
     /// instead of `Exit` immediately calling `process::exit` and
-    /// cutting off other FSMs' effects mid-dispatch.
+    /// cutting off the rest of the tick's effects mid-dispatch.
     pub exit_requested: Option<i32>,
-    /// True if the runtime has installed a StdinSource (because
-    /// the user's World declares stdin_line). When true,
-    /// `Effect::ReadLine` is an error — the source owns fd 0,
-    /// and a synchronous read would race with the source's
-    /// background thread for the same bytes.
-    pub stdin_owned_by_plugin: bool,
-    /// FSM-spawn requests accumulated during dispatch. The
-    /// effect loop drains this at end of each tick and
-    /// instantiates new FSM entries from the named claims.
-    /// Each entry is `(claim_name, arg)` — arg gets pinned
-    /// into the new FSM's first state-variant payload.
-    /// See `Effect::SpawnFsm`.
-    pub pending_spawns: Vec<(String, i64)>,
 }
 
 impl DispatchContext {
@@ -100,8 +87,6 @@ impl DispatchContext {
             lib_cache: std::collections::HashMap::new(),
             sym_cache: std::collections::HashMap::new(),
             exit_requested: None,
-            stdin_owned_by_plugin: false,
-            pending_spawns: Vec::new(),
         }
     }
 
@@ -175,16 +160,6 @@ fn dispatch_one_inner(ctx: &mut DispatchContext, e: &Effect) -> EffectResult {
             EffectResult::NoResult
         }
         Effect::ReadLine => {
-            if ctx.stdin_owned_by_plugin {
-                return EffectResult::Error(
-                    "readline: stdin is owned by StdinSource plugin (declared via \
-                     `stdin_line: String` in World) — programs that auto-install \
-                     the plugin cannot also use Effect::ReadLine, since both would \
-                     race for the same bytes on fd 0. Use either the plugin pattern \
-                     (subscribe to world.stdin_line) OR remove stdin_line from World \
-                     and use ReadLine directly.".into()
-                );
-            }
             let mut line = String::new();
             match ctx.stdin.read_line(&mut line) {
                 Ok(0)  => EffectResult::Error("readline: EOF".into()),
@@ -232,11 +207,6 @@ fn dispatch_one_inner(ctx: &mut DispatchContext, e: &Effect) -> EffectResult {
                 }
                 Err(e) => EffectResult::Error(format!("ShellRun: spawn failed: {e}")),
             }
-        }
-        Effect::SpawnFsm(claim_name, arg) => {
-            let idx = ctx.pending_spawns.len() as i64;
-            ctx.pending_spawns.push((claim_name.clone(), *arg));
-            EffectResult::Int(idx)  // tentative — real ID assigned at instantiation
         }
         Effect::Exit(n) => {
             // Defer the exit: mark and continue. The effect loop

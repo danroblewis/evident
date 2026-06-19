@@ -91,52 +91,14 @@ const EXPECTATIONS: &[DemoExpect] = &[
         forbid_exact_lines: &[],
         max_steps: 10, tick_ms: 0, stdin: None,
     },
-    DemoExpect {
-        // Consumer must echo specific n values, not just "got n".
-        name: "test_09_two_fsms", exit: 0,
-        must_lines: &["consumer saw n = 3", "producer done"],
-        forbid_exact_lines: &["got n", "consumer saw n = 0", "consumer saw n = ?"],
-        max_steps: 30, tick_ms: 0, stdin: None,
-    },
-    DemoExpect {
-        // Worker must actually fire AFTER parent's spawn, not just
-        // parent's own "issued spawn" line.
-        name: "test_10_spawn", exit: 0,
-        must_lines: &["parent issued spawn", "worker spawned with id=7", "parent done"],
-        forbid_exact_lines: &[],
-        max_steps: 15, tick_ms: 0, stdin: None,
-    },
-    DemoExpect {
-        name: "test_11_frameclock", exit: 0,
-        must_lines: &["3 clock ticks observed"],
-        forbid_exact_lines: &[],
-        max_steps: 60, tick_ms: 50, stdin: None,
-    },
-    DemoExpect {
-        // Must contain a real hostname value, not just an
-        // acknowledgement. The exact-line forbid catches the
-        // "= " with nothing after it (bridge wrote empty).
-        name: "test_12_hostname", exit: 0,
-        must_lines: &["hostname = "],
-        forbid_exact_lines: &["hostname = ", "hostname unknown"],
-        max_steps: 15, tick_ms: 0, stdin: None,
-    },
-    DemoExpect {
-        name: "test_13_timer", exit: 0,
-        must_lines: &["3 timer ticks observed"],
-        forbid_exact_lines: &[],
-        max_steps: 60, tick_ms: 0, stdin: None,
-    },
-    DemoExpect {
-        // Stdin echo: pipe lines, expect each echoed back, then "bye".
-        name: "test_14_stdin", exit: 0,
-        must_lines: &["hi", "world", "bye"],
-        forbid_exact_lines: &["did not halt"],
-        max_steps: 100, tick_ms: 0, stdin: Some("hi\nworld\nquit\n"),
-    },
-    // test_15_signal — needs SIGINT, only meaningful interactive.
+    // test_09..15, test_18 removed in the single-FSM teardown:
+    //   09_two_fsms / 10_spawn   — multi-FSM scheduler + Effect::SpawnFsm (gone).
+    //   11_frameclock / 13_timer — async FrameClock/Timer FTI bridges (gone).
+    //   12_hostname              — Hostname world-plugin bridge (gone).
+    //   14_stdin / 15_signal     — stdin/sigint event-source plugins (gone).
+    //   18_reflection            — Program world-plugin reflection bridge (gone).
     // test_16_sdl_red — needs a display; renders correctly when run
-    //   manually but not testable in a headless CI.
+    //   manually but not asserted via stdout here.
     DemoExpect {
         // SDL triangle: setup + render in ONE Seq on tick 0, halt.
         // Visible verification needs a display; here we just check
@@ -144,16 +106,6 @@ const EXPECTATIONS: &[DemoExpect] = &[
         name: "test_17_sdl_triangle", exit: 0,
         must_lines: &["done"],
         forbid_exact_lines: &[],
-        max_steps: 5, tick_ms: 0, stdin: None,
-    },
-    DemoExpect {
-        // Reflection world-plugin: declare `program ∈ Program` in
-        // the World type, runtime auto-installs the bridge, FSM
-        // pattern-matches the encoded AST. Success line proves
-        // the value flowed through to Z3 (Bool decided by the pin).
-        name: "test_18_reflection", exit: 0,
-        must_lines: &["reflected: program is loaded"],
-        forbid_exact_lines: &["reflected: program missing"],
         max_steps: 5, tick_ms: 0, stdin: None,
     },
     DemoExpect {

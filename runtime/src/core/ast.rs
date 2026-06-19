@@ -349,32 +349,6 @@ pub enum Effect {
     /// commands; for long-running programs use a custom plugin.
     /// Trailing newline is stripped from stdout for convenience.
     ShellRun(String),
-    /// Spawn a new FSM instance of the named claim with an Int
-    /// argument that gets pinned into the new FSM's first
-    /// state-variant payload. The new FSM joins the scheduler
-    /// from the next tick; result is IntResult(instance_id).
-    ///
-    /// Convention: define the spawnable claim's state enum with
-    /// a payload first variant taking an Int (the instance ID
-    /// or a parameter chosen by the parent). The runtime seeds
-    /// the new FSM's state to `FirstVariant(arg)`. Subsequent
-    /// state transitions are the FSM's own.
-    ///
-    /// Example:
-    ///   enum WState = WInit(Int) | WGo
-    ///   claim worker(state, state_next ∈ WState, ...)
-    ///       my_id ∈ Int
-    ///       my_id = match state
-    ///           WInit(id) ⇒ id
-    ///           WGo       ⇒ -1
-    ///       state_next = match state
-    ///           WInit(_) ⇒ WGo
-    ///           WGo      ⇒ WGo
-    ///
-    /// v1 limitation: shares parent's world; no per-instance
-    /// world or parent-child message passing beyond shared world.
-    /// See docs/design/fsm-spawning.md.
-    SpawnFsm(String, i64),
     FFIOpen(String),
     FFILookup(u64, String),
     FFICall(u64, String, Vec<EffectFfiArg>),
