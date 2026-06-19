@@ -51,35 +51,32 @@ pub fn run_with_ctx(
 ) -> Result<LoopResult, String> {
     let fsm = single_fsm(rt)?;
 
-    let mut world_snapshot: HashMap<String, Value> = HashMap::new();
+    // FTI install fields (from declarative `install` bridges) seed the
+    // snapshot; they're constant across ticks and merged into each tick's view.
+    let mut snapshot: HashMap<String, Value> = HashMap::new();
     for (param_name, type_name, pins) in &fsm.install_params {
         let writes = run_declarative_install(
             rt, &fsm.claim_name, param_name, type_name, pins, ctx)?;
         for (k, v) in writes {
-            world_snapshot.insert(k, v);
+            snapshot.insert(k, v);
         }
     }
 
-    run_loop(rt, &fsm, opts, ctx, &mut world_snapshot)
+    run_loop(rt, &fsm, opts, ctx, &mut snapshot)
 }
 
 // ───────────────────────── FSM discovery + shape ─────────────────────────
 
+// The FSM's runtime shape: the two I/O slots it reads/writes each tick
+// (`last_results` in, `effects` out) plus any FTI install params. State is
+// NOT named here — it carries generically through the `_var` mechanism (any
+// `_x` membership reads the previous tick's `x`), so the trampoline needs no
+// per-FSM knowledge of which variables are "the state".
 #[derive(Clone)]
 pub struct MainShape {
     pub claim_name:       String,
-    pub state_var:        Option<String>,
-    pub state_next_var:   Option<String>,
-    pub state_type:       Option<String>,
     pub last_results_var: Option<String>,
     pub effects_var:      Option<String>,
-
-    pub world_var:        Option<String>,
-
-    pub world_next_var:   Option<String>,
-
-    pub world_type:       Option<String>,
-
     pub install_params: Vec<(String, String, Pins)>,
 }
 
@@ -106,12 +103,8 @@ pub fn resolve_fsm(rt: &EvidentRuntime, claim_name: &str) -> Option<MainShape> {
     if claim.external {
         return None;
     }
-    let mut state_pair: Option<(String, String, String)> = None;
     let mut last_results_var = None;
     let mut effects_var = None;
-    let mut world_var: Option<String> = None;
-    let mut world_next_var: Option<String> = None;
-    let mut world_type: Option<String> = None;
     let mut install_params: Vec<(String, String, Pins)> = Vec::new();
 
     let mut all_items: Vec<&BodyItem> = Vec::new();
@@ -146,56 +139,18 @@ pub fn resolve_fsm(rt: &EvidentRuntime, claim_name: &str) -> Option<MainShape> {
                    && last_results_var.is_none()
             {
                 last_results_var = Some(name.clone());
-            } else if name == "world" {
-                world_var = Some(name.clone());
-                world_type = Some(type_name.clone());
-            } else if name == "world_next" {
-                world_next_var = Some(name.clone());
-                if world_type.is_none() {
-                    world_type = Some(type_name.clone());
-                }
             } else if has_declarative_install(rt, type_name) {
                 install_params.push((name.clone(), type_name.clone(), pins.clone()));
-            } else if type_name != "Int" && type_name != "Bool"
-                   && type_name != "String" && type_name != "Real"
-                   && !type_name.starts_with("Seq(")
-                   && !type_name.starts_with("Set(")
-            {
-
-                if name.ends_with("_next") {
-                    let base = &name[..name.len() - 5];
-                    if let Some((b, _, _)) = &state_pair {
-                        if b == base { continue; }
-                    }
-                    state_pair = Some((base.to_string(), name.clone(), type_name.clone()));
-                } else if state_pair.is_none()
-                       || matches!(&state_pair, Some((b, _, _)) if b != name)
-                {
-                    let nxt = format!("{}_next", name);
-                    if all_items.iter().any(|i| matches!(
-                        i, BodyItem::Membership { name: n, type_name: t, .. }
-                           if n == &nxt && t == type_name
-                    )) {
-                        state_pair = Some((name.clone(), nxt, type_name.clone()));
-                    }
-                }
             }
+            // Everything else (record/enum state, scalars, intermediates) is
+            // carried generically by the `_var` mechanism — the trampoline
+            // needs no per-FSM detection of it.
         }
     }
-    let (state_var, state_next_var, state_type) = match state_pair {
-        Some((s, sn, st)) => (Some(s), Some(sn), Some(st)),
-        None => (None, None, None),
-    };
     Some(MainShape {
         claim_name:    claim_name.to_string(),
-        state_var,
-        state_next_var,
-        state_type,
         last_results_var,
         effects_var,
-        world_var,
-        world_next_var,
-        world_type,
         install_params,
     })
 }
@@ -286,86 +241,31 @@ fn run_declarative_install(
 
 // ───────────────────────── per-tick scheduler loop ─────────────────────────
 
-fn seed_state(
-    rt: &EvidentRuntime,
-    s: &MainShape,
-) -> (Option<z3::ast::Datatype<'static>>, Option<Value>) {
-    let Some(state_type) = s.state_type.as_ref() else { return (None, None); };
-    let enums = rt.enums_registry();
-    let by_name = enums.by_name.borrow();
-    let entry = by_name.get(state_type);
-    let dt = entry.and_then(|(sort, _)| {
-        let first = sort.variants.first()?;
-        if first.constructor.arity() == 0 {
-            first.constructor.apply(&[]).as_datatype()
-        } else {
-            None
-        }
-    });
-    let val = entry.and_then(|(sort, decl_variants)| {
-        let first = decl_variants.first()?;
-        if sort.variants.first().map(|v| v.constructor.arity()).unwrap_or(0) == 0 {
-            Some(Value::Enum {
-                enum_name: state_type.clone(),
-                variant:   first.name.clone(),
-                fields:    Vec::new(),
-            })
-        } else {
-            None
-        }
-    });
-    (dt, val)
-}
-
 fn run_loop(
     rt: &EvidentRuntime,
     fsm: &MainShape,
     opts: &LoopOpts,
     ctx: &mut DispatchContext,
-    world_snapshot: &mut HashMap<String, Value>,
+    snapshot: &mut HashMap<String, Value>,
 ) -> Result<LoopResult, String> {
-    let (mut current_state, mut current_state_v) = seed_state(rt, fsm);
     let mut last_results: Vec<EffectResult> = Vec::new();
 
+    // The carried state: every non-`_` binding from the previous tick,
+    // re-exposed this tick as `_<name>` (the `_var` time-shift). One mechanism
+    // for all state — scalars, records, and enums carry identically. There is
+    // no seeding: the first tick has `is_first_tick = true` and the program
+    // initializes explicitly.
     let mut prev_values: HashMap<String, Value> = HashMap::new();
-
-    if let Some(wt) = &fsm.world_type {
-        if let Some(world_schema) = rt.get_schema(wt) {
-            for item in &world_schema.body {
-                if let BodyItem::Membership { name, type_name, .. } = item {
-                    let key = format!("world.{name}");
-                    if world_snapshot.contains_key(&key) { continue; }
-                    let default = match type_name.as_str() {
-                        "Int"    => Some(Value::Int(0)),
-                        "Bool"   => Some(Value::Bool(false)),
-                        "String" => Some(Value::Str(String::new())),
-                        "Real"   => Some(Value::Real(0.0)),
-                        _        => None,
-                    };
-                    if let Some(d) = default {
-                        world_snapshot.insert(key, d);
-                    }
-                }
-            }
-        }
-    }
 
     let mut step_count = 0usize;
 
     while step_count < opts.max_steps {
-
-        let pins: Vec<(&str, z3::ast::Datatype<'static>)> =
-            match (&fsm.state_var, &current_state) {
-                (Some(name), Some(s)) => vec![(name.as_str(), s.clone())],
-                _ => vec![],
-            };
-
         let mut fsm_view: HashMap<String, Value> = if fsm.install_params.is_empty() {
-            world_snapshot.clone()
+            snapshot.clone()
         } else {
-            let mut v = world_snapshot.clone();
+            let mut v = snapshot.clone();
             let prefix = format!("{}.", fsm.claim_name);
-            for (k, val) in world_snapshot.iter() {
+            for (k, val) in snapshot.iter() {
                 if let Some(stripped) = k.strip_prefix(&prefix) {
                     v.insert(stripped.to_string(), val.clone());
                 }
@@ -377,6 +277,9 @@ fn run_loop(
             fsm_view.insert(lr_var.clone(), lr);
         }
 
+        // `_var` time-shift: expose the previous tick's value of each
+        // `_`-prefixed membership (whole value, plus per-field for records),
+        // and set `is_first_tick` whenever any `_var` is present.
         if let Some(claim) = rt.get_schema(&fsm.claim_name) {
             let is_first = prev_values.is_empty();
             let mut sees_underscore = false;
@@ -400,61 +303,32 @@ fn run_loop(
                 fsm_view.insert("is_first_tick".to_string(), Value::Bool(is_first));
             }
         }
-        if let (Some(state_name), Some(state_v)) = (&fsm.state_var, &current_state_v) {
-            fsm_view.insert(state_name.clone(), state_v.clone());
-        }
 
         let r = rt
-            .query_with_pins_and_given(&fsm.claim_name, &pins, &fsm_view)
+            .query_with_pins_and_given(&fsm.claim_name, &[], &fsm_view)
             .map_err(|e| format!("FSM `{}` solve step {step_count}: {e}", fsm.claim_name))?;
 
         if !r.satisfied {
             eprintln!("[loop] FSM `{}` returned UNSAT on tick {step_count}", fsm.claim_name);
             return Ok(LoopResult {
                 steps: step_count,
-                final_state: current_state_v.clone(),
+                final_state: None,
                 halted_clean: false,
                 exit_code: ctx.exit_requested,
             });
         }
 
-        let state_next_val: Option<Value> = match &fsm.state_next_var {
-            Some(sn) => Some(
-                r.bindings.get(sn)
-                    .ok_or_else(|| format!(
-                        "FSM `{}` step {step_count}: model has no `{}`",
-                        fsm.claim_name, sn))?
-                    .clone(),
-            ),
-            None => None,
-        };
-
         let effects = collect_dispatchable_effects(
             rt, &fsm.claim_name, &r.bindings, fsm.effects_var.as_deref());
 
-        let mut any_world_write = false;
-        if fsm.world_next_var.is_some() {
-            for (k, v) in r.bindings.iter() {
-                if let Some(field) = k.strip_prefix("world_next.") {
-                    let key = format!("world.{field}");
-                    if world_snapshot.get(&key) != Some(v) {
-                        any_world_write = true;
-                    }
-                    world_snapshot.insert(key, v.clone());
-                }
-            }
-        }
-
-        let mut state_changed = false;
-        if let Some(snv) = &state_next_val {
-            state_changed = current_state_v.as_ref().map(|prev| prev != snv).unwrap_or(true);
-            current_state = encode_state_value(rt, snv);
-            current_state_v = Some(snv.clone());
-        }
-
+        // Roll this tick's bindings into the carried state, noting whether any
+        // carried value actually changed — that, together with effects, is the
+        // halt signal. `_`-prefixed bindings and `is_first_tick` are inputs.
+        let mut values_changed = false;
         for (k, v) in r.bindings.iter() {
             if k.starts_with('_') { continue; }
             if k == "is_first_tick" { continue; }
+            if prev_values.get(k) != Some(v) { values_changed = true; }
             prev_values.insert(k.clone(), v.clone());
         }
 
@@ -466,16 +340,18 @@ fn run_loop(
         if ctx.exit_requested.is_some() {
             return Ok(LoopResult {
                 steps: step_count,
-                final_state: current_state_v.clone(),
+                final_state: None,
                 halted_clean: true,
                 exit_code: ctx.exit_requested,
             });
         }
 
-        if !state_changed && !any_effect && !any_world_write {
+        // Halt when the tick was a fixpoint: nothing carried changed and no
+        // effect fired, so no further tick can do anything new.
+        if !values_changed && !any_effect {
             return Ok(LoopResult {
                 steps: step_count,
-                final_state: current_state_v.clone(),
+                final_state: None,
                 halted_clean: true,
                 exit_code: ctx.exit_requested,
             });
@@ -484,45 +360,10 @@ fn run_loop(
 
     Ok(LoopResult {
         steps: step_count,
-        final_state: current_state_v.clone(),
+        final_state: None,
         halted_clean: false,
         exit_code: ctx.exit_requested,
     })
-}
-
-fn encode_state_value(rt: &EvidentRuntime, v: &Value) -> Option<z3::ast::Datatype<'static>> {
-    use z3::ast::{Int as Z3Int, Bool as Z3Bool, String as Z3Str, Dynamic, Ast};
-    let Value::Enum { enum_name, variant, fields } = v else { return None };
-    let enums = rt.enums_registry();
-    let by_name = enums.by_name.borrow();
-    let (sort, _decl) = by_name.get(enum_name)?;
-    let var_idx = sort.variants.iter().position(|v| v.constructor.name() == *variant)?;
-    let ctor = &sort.variants[var_idx].constructor;
-    if fields.is_empty() {
-        return ctor.apply(&[]).as_datatype();
-    }
-
-    let ctx = rt.z3_context();
-    let owned: Vec<Dynamic<'static>> = fields.iter().filter_map(|f| {
-        let dyn_v: Dynamic<'static> = match f {
-            Value::Int(n)  => Dynamic::from_ast(&Z3Int::from_i64(ctx, *n)),
-            Value::Bool(b) => Dynamic::from_ast(&Z3Bool::from_bool(ctx, *b)),
-            Value::Str(s)  => Dynamic::from_ast(&Z3Str::from_str(ctx, s).ok()?),
-            Value::Real(r) => {
-                let i = (*r * 1_000_000.0) as i64;
-                Dynamic::from_ast(&z3::ast::Real::from_real(ctx, i as i32, 1_000_000))
-            }
-            Value::Enum { .. } => {
-                let dt = encode_state_value(rt, f)?;
-                Dynamic::from_ast(&dt)
-            }
-            _ => return None,
-        };
-        Some(dyn_v)
-    }).collect();
-    if owned.len() != fields.len() { return None; }
-    let refs: Vec<&dyn Ast> = owned.iter().map(|v| v as &dyn Ast).collect();
-    ctor.apply(&refs).as_datatype()
 }
 
 // ───────────────────────── effect collection + ordering ─────────────────────────

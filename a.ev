@@ -1,0 +1,3 @@
+type Vec2
+  x, y ∈ Int
+  Δ = Vec2(Δx, Δy)

@@ -89,79 +89,6 @@ pub(crate) fn desugar_seq_concat(s: &mut SchemaDecl) {
     }
 }
 
-pub(crate) fn unify_world_syntax(s: &mut SchemaDecl) -> Result<(), RuntimeError> {
-    use crate::core::ast::{BodyItem, Expr, Keyword, Pins};
-    if !matches!(s.keyword, Keyword::Fsm) { return Ok(()); }
-    if s.external { return Ok(()); }
-
-    let mut world_type: Option<String> = None;
-    let mut has_world_next = false;
-    for item in &s.body {
-        if let BodyItem::Membership { name, type_name, .. } = item {
-            if name == "world" { world_type = Some(type_name.clone()); }
-            if name == "world_next" { has_world_next = true; }
-        }
-    }
-    let Some(world_ty) = world_type else { return Ok(()); };
-    if has_world_next { return Ok(()); }
-
-    fn uses_underscore_world(e: &Expr) -> bool {
-        let mut found = false;
-        crate::core::ast::walk_expr(e, &mut |n| {
-            if let Expr::Identifier(n) = n {
-                if n.starts_with("_world.") { found = true; }
-            }
-        });
-        found
-    }
-    let uses_new_syntax = s.body.iter().any(|item| match item {
-        BodyItem::Constraint(e) => uses_underscore_world(e),
-        BodyItem::ClaimCall { mappings, .. } =>
-            mappings.iter().any(|m| uses_underscore_world(&m.value)),
-        _ => false,
-    });
-    if !uses_new_syntax { return Ok(()); }
-
-    fn rewrite_ident(name: &str) -> Option<String> {
-        if let Some(rest) = name.strip_prefix("_world.") {
-            return Some(format!("world.{rest}"));
-        }
-        if let Some(rest) = name.strip_prefix("world.") {
-            return Some(format!("world_next.{rest}"));
-        }
-        None
-    }
-    fn walk(e: &mut Expr) {
-        crate::core::ast::walk_expr_mut(e, &mut |n| {
-            if let Expr::Identifier(n) = n {
-                if let Some(new_n) = rewrite_ident(n) { *n = new_n; }
-            }
-        });
-    }
-    for item in s.body.iter_mut() {
-        match item {
-            BodyItem::Constraint(e) => walk(e),
-            BodyItem::ClaimCall { mappings, .. } =>
-                for m in mappings { walk(&mut m.value); },
-
-            BodyItem::Membership { pins, .. } => match pins {
-                Pins::Named(named) => for m in named { walk(&mut m.value); },
-                Pins::Positional(vals) => for v in vals { walk(v); },
-                Pins::None => {}
-            },
-            _ => {}
-        }
-    }
-
-    let insert_pos = s.param_count;
-    s.body.insert(insert_pos, BodyItem::Membership {
-        name: "world_next".to_string(),
-        type_name: world_ty,
-        pins: Pins::None,
-    });
-    Ok(())
-}
-
 // ═════════════════════════ FSM param + type-inference injection ═════════════════════════
 
 pub(crate) fn inject_fsm_params(s: &mut SchemaDecl) -> Result<(), RuntimeError> {
@@ -173,15 +100,11 @@ pub(crate) fn inject_fsm_params(s: &mut SchemaDecl) -> Result<(), RuntimeError> 
         return Ok(());
     }
 
-    let mut state_type: Option<String> = None;
-    let mut have_state_next = false;
     let mut have_last_results = false;
     let mut have_effects = false;
     for item in &s.body {
-        if let BodyItem::Membership { name, type_name, .. } = item {
+        if let BodyItem::Membership { name, .. } = item {
             match name.as_str() {
-                "state" if state_type.is_none() => state_type = Some(type_name.clone()),
-                "state_next"   => have_state_next   = true,
                 "last_results" => have_last_results = true,
                 "effects"      => have_effects      = true,
                 _ => {}
@@ -198,12 +121,10 @@ pub(crate) fn inject_fsm_params(s: &mut SchemaDecl) -> Result<(), RuntimeError> 
             }
         });
     }
-    let mut ref_state_next = false;
     let mut ref_last_results = false;
     let mut ref_effects = false;
     {
         let mut targets: Vec<(&str, &mut bool)> = vec![
-            ("state_next",   &mut ref_state_next),
             ("last_results", &mut ref_last_results),
             ("effects",      &mut ref_effects),
         ];
@@ -218,15 +139,6 @@ pub(crate) fn inject_fsm_params(s: &mut SchemaDecl) -> Result<(), RuntimeError> 
     }
 
     let mut injected: Vec<BodyItem> = Vec::new();
-    if !have_state_next && ref_state_next {
-        if let Some(st) = &state_type {
-            injected.push(BodyItem::Membership {
-                name: "state_next".to_string(),
-                type_name: st.clone(),
-                pins: Pins::None,
-            });
-        }
-    }
     if !have_last_results && ref_last_results {
         injected.push(BodyItem::Membership {
             name: "last_results".to_string(),

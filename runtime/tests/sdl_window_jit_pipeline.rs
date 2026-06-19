@@ -8,20 +8,20 @@ use evident_runtime::functionize::cranelift::compile_program;
 const PROGRAM: &str = r#"
 enum SState = Render | Done
 
-fsm display(state ∈ SState)
+fsm display
     win ∈ SDL_Window (title ↦ "JIT Test", width ↦ 320, height ↦ 240)
 
     frame ∈ Int = (is_first_tick ? 0 : _frame + 1)
 
-    state_next = (frame ≥ 120 ? Done : Render)
+    state ∈ SState = (frame ≥ 120 ? Done : Render)
 
     win.set_draw_color((120, 40, 200, 255), sky_eff)
     win.render_clear(clear_eff)
     win.render_present(present_eff)
     sdl_delay(16, delay_eff)
 
-    done_print ∈ Effect = (state_next = Done ? Println("jit test done") : NoEffect)
-    done_exit  ∈ Effect = (state_next = Done ? Exit(0) : NoEffect)
+    done_print ∈ Effect = (state = Done ? Println("jit test done") : NoEffect)
+    done_exit  ∈ Effect = (state = Done ? Exit(0) : NoEffect)
 
     effects ∈ Seq(Effect) = ⟨sky_eff, clear_eff, present_eff, delay_eff,
                               done_print, done_exit⟩
@@ -85,7 +85,7 @@ fn stage_3_extract_program() {
     assert!(!result.unsat);
 
     let outputs = vec![
-        "state_next".to_string(),
+        "state".to_string(),
         "effects".to_string(),
         "frame".to_string(),
         "sky_eff".to_string(),
@@ -137,7 +137,7 @@ fn stage_4_compile_program_soft_check() {
     let result = simplify_assertions(ctx, &assertions);
 
     let outputs = vec![
-        "state_next".to_string(),
+        "state".to_string(),
         "effects".to_string(),
         "frame".to_string(),
         "sky_eff".to_string(),
@@ -182,7 +182,7 @@ fn stage_5_jit_call_opens_window() {
     let result = simplify_assertions(ctx, &assertions);
 
     let outputs = vec![
-        "state_next".to_string(),
+        "state".to_string(),
         "effects".to_string(),
         "frame".to_string(),
         "sky_eff".to_string(),
@@ -198,12 +198,10 @@ fn stage_5_jit_call_opens_window() {
     let jit = compile_program(&program, enums, datatypes)
         .expect("JIT compile_program must return Some for the success path");
 
+    // `state` is now an output (derived from `frame`); the inputs are the
+    // `_var` time-shift slots. First tick → frame = 0 → state = Render.
     let mut env: HashMap<String, Value> = HashMap::new();
-    env.insert("state".to_string(), Value::Enum {
-        enum_name: "SState".into(),
-        variant:   "Render".into(),
-        fields:    vec![],
-    });
+    env.insert("is_first_tick".to_string(), Value::Bool(true));
 
     let bindings = jit.call(&env)
         .expect("JIT-compiled function call returned None");

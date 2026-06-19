@@ -26,8 +26,12 @@ fn println_one_step_then_halt() {
 enum S = Init | Done
 fsm main
     state ∈ S
-    state = Init ⇒ (state_next = Done ∧ effects = ⟨Println(\"hi\")⟩)
-    state = Done ⇒ (state_next = Done ∧ effects = ⟨⟩)
+    is_first_tick ⇒ (state = Init)
+    ¬is_first_tick ⇒
+        state = match _state
+            Init ⇒ Done
+            Done ⇒ Done
+    effects = (is_first_tick ? ⟨Println(\"hi\")⟩ : ⟨⟩)
 ");
     let captured: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(Vec::new()));
     let mut ctx = DispatchContext::with_streams(Box::new(SharedWrite(Arc::clone(&captured))));
@@ -44,8 +48,12 @@ fn no_effect_program_halts_immediately() {
 enum S = Init | Done
 fsm main
     state ∈ S
-    state = Init ⇒ (state_next = Done ∧ effects = ⟨⟩)
-    state = Done ⇒ (state_next = Done ∧ effects = ⟨⟩)
+    is_first_tick ⇒ (state = Init)
+    ¬is_first_tick ⇒
+        state = match _state
+            Init ⇒ Done
+            Done ⇒ Done
+    effects = ⟨⟩
 ");
     let captured: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(Vec::new()));
     let mut ctx = DispatchContext::with_streams(Box::new(SharedWrite(Arc::clone(&captured))));
@@ -61,10 +69,12 @@ fn multiple_println_in_one_step() {
 enum S = Init | Done
 fsm main
     state ∈ S
-    state = Init ⇒
-        (state_next = Done ∧
-         effects = ⟨Println(\"a\"), Println(\"b\")⟩)
-    state = Done ⇒ (state_next = Done ∧ effects = ⟨⟩)
+    is_first_tick ⇒ (state = Init)
+    ¬is_first_tick ⇒
+        state = match _state
+            Init ⇒ Done
+            Done ⇒ Done
+    effects = (is_first_tick ? ⟨Println(\"a\"), Println(\"b\")⟩ : ⟨⟩)
 ");
     let captured: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(Vec::new()));
     let mut ctx = DispatchContext::with_streams(Box::new(SharedWrite(Arc::clone(&captured))));

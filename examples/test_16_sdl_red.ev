@@ -14,11 +14,14 @@ import "packages/sdl/render.ev"
 
 enum RState = Init | Loop(Int) | Done
 
-fsm red_window(state ∈ RState)
-    state_next = match state
-        Init    ⇒ Loop(60)
-        Loop(n) ⇒ (n ≤ 1 ? Done : Loop(n - 1))
-        Done    ⇒ Done
+fsm red_window
+    state ∈ RState
+    is_first_tick ⇒ (state = Init)
+    ¬is_first_tick ⇒
+        state = match _state
+            Init    ⇒ Loop(60)
+            Loop(n) ⇒ (n ≤ 1 ? Done : Loop(n - 1))
+            Done    ⇒ Done
 
     -- Setup tick (Init state):
     --   [0] sdl_init(SDL_INIT_VIDEO)
@@ -70,10 +73,12 @@ fsm red_window(state ∈ RState)
         Done    ⇒ ⟨Println("done"), Exit(0)⟩
 
 claim sat_init_advances_to_loop_60
+    _state ∈ RState
     state ∈ RState
-    state_next ∈ RState
+    is_first_tick ∈ Bool
     last_results ∈ Seq(Result)
     effects ∈ Seq(Effect)
-    state = Init
+    is_first_tick = false
+    _state = Init
     red_window
-    state_next = Loop(60)
+    state = Loop(60)

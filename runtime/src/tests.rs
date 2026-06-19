@@ -684,21 +684,16 @@ mod trampoline {
     }
 
     #[test]
-    fn detect_main_shape_finds_state_and_lists() {
+    fn detect_main_shape_finds_io_slots() {
         let mut rt = EvidentRuntime::new();
         rt.load_file(std::path::Path::new("../stdlib/runtime.ev")).unwrap();
         rt.load_source("\
-enum S = Init | Done
-
 fsm main
-    state ∈ S
-    state = Init ⇒ (state_next = Done ∧ effects = ⟨⟩ ∧ #last_results = 0)
-    state = Done ⇒ (state_next = Done ∧ effects = ⟨⟩ ∧ #last_results = 0)
+    count ∈ Int = (is_first_tick ? 0 : _count + 1)
+    effects = ⟨⟩
+    #last_results = 0
 ").unwrap();
         let shape = detect_main_shape(&rt).expect("should detect");
-        assert_eq!(shape.state_var.as_deref(), Some("state"));
-        assert_eq!(shape.state_next_var.as_deref(), Some("state_next"));
-        assert_eq!(shape.state_type.as_deref(), Some("S"));
         assert_eq!(shape.effects_var.as_deref(), Some("effects"));
         assert_eq!(shape.last_results_var.as_deref(), Some("last_results"));
     }
@@ -708,32 +703,26 @@ fsm main
         let mut rt = EvidentRuntime::new();
         rt.load_file(std::path::Path::new("../stdlib/runtime.ev")).unwrap();
         rt.load_source("\
-enum S = Init | Done
-
 fsm main
-    state ∈ S
-    state = Init ⇒ (state_next = Done ∧ effects = ⟨⟩)
-    state = Done ⇒ (state_next = Done ∧ effects = ⟨⟩)
+    count ∈ Int = (is_first_tick ? 0 : _count + 1)
+    effects = ⟨⟩
 ").unwrap();
         let shape = detect_main_shape(&rt).expect("should detect");
-        assert_eq!(shape.state_var.as_deref(), Some("state"));
-        assert_eq!(shape.state_next_var.as_deref(), Some("state_next"));
         assert_eq!(shape.effects_var.as_deref(), Some("effects"));
         assert_eq!(shape.last_results_var, None,
             "last_results never referenced → should not be auto-injected");
     }
 
     #[test]
-    fn halt_after_one_step_when_state_reaches_done() {
+    fn halt_when_carried_state_reaches_fixpoint() {
         let mut rt = EvidentRuntime::new();
         rt.load_file(std::path::Path::new("../stdlib/runtime.ev")).unwrap();
+        // count climbs 0,1 then sticks at 1 — a fixpoint with no effects,
+        // so the loop halts cleanly once nothing carried changes.
         rt.load_source("\
-enum S = Init | Done
-
 fsm main
-    state ∈ S
-    state = Init ⇒ (state_next = Done ∧ effects = ⟨⟩)
-    state = Done ⇒ (state_next = Done ∧ effects = ⟨⟩)
+    count ∈ Int = (is_first_tick ? 0 : (_count ≥ 1 ? _count : _count + 1))
+    effects = ⟨⟩
 ").unwrap();
         let mut ctx = ctx_silent();
         let r = run_with_ctx(&rt, &LoopOpts { max_steps: 5 }, &mut ctx).unwrap();

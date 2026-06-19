@@ -136,8 +136,6 @@ impl EvidentRuntime {
         for s in &prog.schemas {
             let mut s = s.clone();
 
-            lower::unify_world_syntax(&mut s)?;
-
             lower::desugar_seq_concat(&mut s);
             lower::desugar_delta(&mut s);
             lower::inject_fsm_params(&mut s)?;

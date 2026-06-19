@@ -16,10 +16,13 @@ import "packages/sdl/render.ev"
 
 enum TState = Init | Done
 
-fsm triangle(state ∈ TState)
-    state_next = match state
-        Init ⇒ Done
-        Done ⇒ Done
+fsm triangle
+    state ∈ TState
+    is_first_tick ⇒ (state = Init)
+    ¬is_first_tick ⇒
+        state = match _state
+            Init ⇒ Done
+            Done ⇒ Done
 
     -- Triangle vertices: red top, green bottom-left, blue
     -- bottom-right. Colors interpolate across the face. Build
@@ -80,10 +83,12 @@ fsm triangle(state ∈ TState)
         Done ⇒ ⟨⟩
 
 claim sat_init_emits_full_seq_then_exit
+    _state ∈ TState
     state ∈ TState
-    state_next ∈ TState
+    is_first_tick ∈ Bool
     last_results ∈ Seq(Result)
     effects ∈ Seq(Effect)
-    state = Init
+    is_first_tick = false
+    _state = Init
     triangle
-    state_next = Done
+    state = Done
