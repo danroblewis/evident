@@ -19,13 +19,11 @@ the Xvfb display) must be green after each.
     the gate checks, so any schema can call FFI.
 
 ## Queued (in order)
-1. [ ] **`query_cached` → build-once model.** It caches the compiled Z3 *model*
-   (`CachedSchema`), not results — and under one-FSM-as-one-solver there is only
-   ever one model. Reshape so the runner builds the FSM model **once** at start,
-   functionizes it, evaluates per tick, and drops it at halt. Remove
-   `translate/eval/cached.rs`, `query_cached`, the `cache`/`cache_rebuilds`
-   fields, `CachedSchema`-as-cache, and `EVIDENT_VALUE_CACHE`. The functionizer's
-   compiled function is the only "cache" needed.
+1. [x] **`query_cached` → build-once model.** Done (`cab77c4`). `CachedSchema` →
+   `CompiledModel`, held directly by the executor (built once, eval per tick).
+   Removed `query_cached`, `cache`/`cache_rebuilds`, the structural-signature
+   rebuild logic, and the whole `EVIDENT_VALUE_CACHE` value cache. (`cached.rs`
+   still holds `build_cache` — it's now the compiler, not a cache; rename later.)
 2. [ ] **Remove `lib_candidates` + fix package lib refs.**
    `ffi.rs::lib_candidates` hardcodes a macOS→Linux soname list; the runtime
    should just `dlopen` what the `LibCall` names. Delete it; update
@@ -61,14 +59,13 @@ the Xvfb display) must be green after each.
    which is load-bearing for FFI-effect dispatch. So this is likely a **rename**
    (e.g. `effect_codec.rs`) + trim of any still-dead helpers — confirm with the
    call graph before deleting anything.
-8. [ ] **Review & collapse `effect_loop/` to a single FSM.** One FSM per program
-   now (no multi-FSM scheduling), but the executor still carries the old
-   machinery: `fsm.rs::all_fsms(rt) -> Vec<MainShape>` + `for fsm in &fsms` in
-   `mod.rs`, and `scheduler.rs` (341 lines, "Per-FSM mutable run state",
-   ready-frontier framing). Collapse to a single `MainShape` + a flat tick loop:
-   drop the `Vec`/iteration, the per-FSM run state, and the scheduler abstraction.
-   **Pairs with #1** (both reshape the executor run loop) — likely do together.
-   (`timing.rs` goes with the `EVIDENT_LOOP_TIMING` removal in #3.)
+8. [x] **Review & collapse `effect_loop/` to a single FSM.** Done (`cab77c4`).
+   `all_fsms() -> Vec<MainShape>` → `single_fsm() -> Result<MainShape>` (errors on
+   0 or >1 FSMs); `scheduler.rs::run_loop` is now a flat single-FSM tick loop.
+   **NOTE:** mario was genuinely 3 coordinating FSMs (game/keyboard/display over a
+   shared `world`) — the only multi-FSM demo. Converted it to one `fsm main(world)`
+   (input-poll + physics + render in one ordered tick), aligning with the
+   "one main FSM, everything embedded" architecture. Still renders correctly.
 9. [ ] **Strip ALL comments** from `runtime/` Rust (`//`, `/* */`, `///`, `//!`,
    including doc-comments and their doc-tests). Use a string/char/raw-string-aware
    stripper; build + full test must stay green (comments don't affect logic).
