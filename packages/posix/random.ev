@@ -11,6 +11,6 @@
 import "stdlib/runtime.ev"
 
 external claim getentropy(buf ∈ Int, n ∈ Int, out ∈ Effect)
-    out = LibCall("/usr/lib/libSystem.B.dylib", "getentropy",
+    out = LibCall("libc.so.6", "getentropy",
                   "i(pi)",
                   ⟨ArgHandle(buf), ArgInt(n)⟩)

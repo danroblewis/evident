@@ -248,52 +248,17 @@ impl Default for HandleRegistry {
     fn default() -> Self { Self::new() }
 }
 
-/// The `.ev` FFI bindings hardcode macOS library paths (e.g.
-/// `/opt/homebrew/lib/libSDL2.dylib`, `/usr/lib/libSystem.B.dylib`,
-/// `OpenGL.framework/OpenGL`). On macOS that path is canonical; on Linux
-/// we translate it to the host's soname(s) so the loader can find it. The
-/// platform knowledge lives here in the runtime, keeping the `.ev` bindings
-/// portable.
-fn lib_candidates(path: &str) -> Vec<String> {
-    if cfg!(target_os = "macos") {
-        return vec![path.to_string()];
-    }
-    let mut c: Vec<String> = Vec::new();
-    if path.contains("OpenGL.framework") || path.contains("libGL") {
-        c.push("libGL.so.1".into());
-    } else if path.contains("libSDL2_mixer") {
-        c.push("libSDL2_mixer-2.0.so.0".into());
-    } else if path.contains("libSDL2") {
-        c.push("libSDL2-2.0.so.0".into());
-        c.push("libSDL2-2.0.so".into());
-    } else if path.contains("libSystem") {
-        // macOS bundles libc/libm/pthread into libSystem; Linux splits them.
-        c.push("libc.so.6".into());
-        c.push("libm.so.6".into());
-    }
-    // Generic fallback: <basename without extension> as an soname.
-    if let Some(stem) = std::path::Path::new(path).file_stem().and_then(|s| s.to_str()) {
-        c.push(format!("{stem}.so"));
-        c.push(format!("{stem}.so.0"));
-    }
-    c.push(path.to_string()); // last resort: maybe the literal path exists
-    c
-}
-
 /// `dlopen(path, RTLD_NOW)`-equivalent. Returns a handle to the
 /// loaded library. Cleanup closure unloads via `Library::drop`.
+///
+/// The runtime dlopens exactly the name the `LibCall` effect supplies —
+/// no candidate list, no platform translation. The `.ev` bindings under
+/// `packages/` name the right library for the host (e.g.
+/// `libSDL2-2.0.so.0` on Linux); bare sonames resolve via the loader
+/// search path.
 pub fn ffi_open(reg: &HandleRegistry, path: &str) -> Result<u64, FfiError> {
-    let candidates = lib_candidates(path);
-    let mut last = String::new();
-    let mut opened = None;
-    for cand in &candidates {
-        match unsafe { Library::new(cand) } {
-            Ok(l) => { opened = Some(l); break; }
-            Err(e) => last = format!("{cand:?}: {e}"),
-        }
-    }
-    let lib = opened.ok_or_else(|| FfiError(format!(
-        "dlopen({path:?}) failed; tried {candidates:?}; last: {last}")))?;
+    let lib = unsafe { Library::new(path) }
+        .map_err(|e| FfiError(format!("dlopen({path:?}) failed: {e}")))?;
     // Box and leak; the cleanup closure reconstructs the box and drops it.
     let boxed = Box::new(lib);
     let raw = Box::into_raw(boxed) as *mut std::ffi::c_void;
@@ -546,19 +511,13 @@ pub fn ffi_call(
 mod tests {
     use super::*;
 
-    /// Pick a libc path for the host platform. macOS uses
-    /// libSystem; Linux uses libc.so.6.
-    fn libc_path() -> &'static str {
-        if cfg!(target_os = "macos") { "libSystem.dylib" }
-        else                          { "libc.so.6" }
-    }
+    /// libc soname (Linux). We run on Linux; the FFI dlopens exactly
+    /// the name given, so the tests name the host soname directly.
+    fn libc_path() -> &'static str { "libc.so.6" }
 
-    /// Pick a libm (math) path. macOS bundles math into libSystem;
-    /// glibc Linux keeps `sqrt`/`sqrtf` in a separate libm.so.6.
-    fn libm_path() -> &'static str {
-        if cfg!(target_os = "macos") { "libSystem.dylib" }
-        else                          { "libm.so.6" }
-    }
+    /// libm (math) soname (Linux). glibc keeps `sqrt`/`sqrtf` in a
+    /// separate libm.so.6.
+    fn libm_path() -> &'static str { "libm.so.6" }
 
     #[test]
     fn parse_signature_basic() {
