@@ -42,19 +42,16 @@ the Xvfb display) must be green after each.
      (keep the functionizer fall-back mechanism, just un-gated), `MAX_INLINE_DEPTH`
      (fixed cap), `VALUE_CACHE` (goes with the `query_cached` refactor).
    - Also sweep magic numbers tied to removable features while in here.
-4. [ ] **Remove `runtime/examples/`.** The Rust bench/explore example binaries —
-   not important. Delete the directory and drop any `[[example]]` entries in
-   `runtime/Cargo.toml`.
+4. [x] **Remove `runtime/examples/`.** Done — auto-discovered bench/probe
+   binaries, no `Cargo.toml` entries needed removing (`9a91f48`).
 5. [ ] **Drop `check`, consolidate the CLI into one file.** Remove
    `commands/check.rs` (the `check` subcommand + its `main.rs` dispatch) — don't
    care about it right now. Then move everything else (`effect_run.rs`, `test.rs`,
    `common.rs`) into a single `commands.rs` and delete the `commands/` directory,
    so there's exactly one file for the CLI. Remaining subcommands: `test`,
    `effect-run`.
-6. [ ] **Remove `runtime/scripts/`.** `cc-wrapper.sh` + `install-bin.sh` — not
-   necessary. Delete the directory; check `.cargo/config.toml` / `build.rs` /
-   `test.sh` for any reference, and if any bit is genuinely required, move it into
-   the file that needs it.
+6. [x] **Remove `runtime/scripts/`.** Done — `cc-wrapper.sh` + `install-bin.sh`
+   were referenced nowhere (`9a91f48`).
 7. [ ] **Audit `encode_ast.rs` / `decode_ast.rs`; rename or trim (probably not
    remove).** Their original job — encode the program AST into a Z3 datatype to
    feed the self-hosting reflection passes — is already gone. What remains is the
