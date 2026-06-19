@@ -20,16 +20,6 @@ fn has_generic_seq_param(rt: &EvidentRuntime, name: &str) -> bool {
         BodyItem::Membership { type_name, .. } if type_name == "Seq"))
 }
 
-/// Generic declarations (`type Edge<T>`, `claim Toposort<T>`) are
-/// templates — their bodies contain type variables that resolve
-/// only at monomorphization. Standalone evaluation would treat T
-/// as an unknown type. Skip — the monomorphic copies
-/// (`Edge<Rect>`, `Toposort<Rect>`, …) get evaluated instead.
-fn is_generic_template(rt: &EvidentRuntime, name: &str) -> bool {
-    let Some(decl) = rt.get_schema(name) else { return false };
-    !decl.type_params.is_empty()
-}
-
 pub fn cmd_check(args: &[String]) -> ExitCode {
     let (files, flag_args) = split_files_and_flags(args);
     if files.is_empty() {
@@ -51,10 +41,6 @@ pub fn cmd_check(args: &[String]) -> ExitCode {
     for name in &names {
         if has_generic_seq_param(&rt, name) {
             println!("SKIP   {name}  (generic Seq param — library helper)");
-            continue;
-        }
-        if is_generic_template(&rt, name) {
-            println!("SKIP   {name}  (generic template — monomorphic copies queried separately)");
             continue;
         }
         match rt.query(name, &empty) {
