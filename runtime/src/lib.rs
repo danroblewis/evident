@@ -21,7 +21,6 @@ mod runtime;
 mod fti;
 
 pub use runtime::EvidentRuntime;
-pub use runtime::BottleneckEntry;
 pub use core::{QueryResult, RuntimeError, Value};
 
 // Preserve `evident_runtime::ast::*` for external callers.
