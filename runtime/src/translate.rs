@@ -4,7 +4,6 @@ mod eval;
 mod exprs;
 mod extract;
 mod inline;
-mod preprocess;
 
 pub mod effect_decoder {
 
@@ -27,6 +26,6 @@ pub use eval::{build_cache,
                 evaluate_with_extra_assertions,
                 run_cached};
 pub(crate) use eval::extract_binding;
-pub use preprocess::collect_referenced_names;
+pub use declare::collect_referenced_names;
 pub use crate::core::{CompiledModel, DatatypeRegistry, EnumRegistry, EvalResult, FieldKind, Value, Var};
 pub use effect_codec::value_enum_to_datatype;

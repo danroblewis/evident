@@ -13,7 +13,7 @@ use crate::core::{CompiledModel, DatatypeRegistry, EnumRegistry, EvalResult, Seq
 use super::declare::{apply_seq_lengths, apply_set_candidates, declare_var};
 use super::extract::{assert_seq_given, assert_set_given, extract_seq, extract_seq_composite, extract_set, unescape_z3_string};
 use super::inline::inline_body_items;
-use super::preprocess::{apply_pinned_ints, collect_pinned_ints};
+use super::declare::{apply_pinned_ints, collect_pinned_ints};
 
 // ───────────────────────── one-shot evaluate ─────────────────────────
 
@@ -60,7 +60,7 @@ pub fn evaluate(
         }
     }
 
-    let seq_lens = super::preprocess::collect_seq_lengths_with_schemas(
+    let seq_lens = super::declare::collect_seq_lengths_with_schemas(
         &schema.body, given, Some(schemas));
     let pinned   = collect_pinned_ints(&schema.body, given, &seq_lens);
     apply_pinned_ints(&mut env, &pinned);
@@ -292,7 +292,7 @@ pub fn build_cache(
         }
     }
 
-    let seq_lens = super::preprocess::collect_seq_lengths_with_schemas(
+    let seq_lens = super::declare::collect_seq_lengths_with_schemas(
         &schema.body, given, Some(schemas));
     let pinned   = collect_pinned_ints(&schema.body, given, &seq_lens);
     apply_pinned_ints(&mut env, &pinned);
@@ -446,7 +446,7 @@ pub fn evaluate_with_extra_assertions(
         }
     }
 
-    let seq_lens = super::preprocess::collect_seq_lengths_with_schemas(
+    let seq_lens = super::declare::collect_seq_lengths_with_schemas(
         &schema.body, given, Some(schemas));
     let pinned   = collect_pinned_ints(&schema.body, given, &seq_lens);
     apply_pinned_ints(&mut env, &pinned);
