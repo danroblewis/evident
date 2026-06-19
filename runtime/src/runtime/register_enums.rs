@@ -269,7 +269,7 @@ fn topo_stage_enums(
     let name_to_idx: HashMap<&str, usize> =
         decls.iter().enumerate().map(|(i, d)| (d.name.as_str(), i)).collect();
 
-    use super::union_find::UnionFind;
+    use super::UnionFind;
     let mut uf = UnionFind::new(n);
 
     let mut soft: Vec<(usize, usize)> = Vec::new();

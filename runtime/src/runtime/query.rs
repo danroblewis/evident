@@ -44,7 +44,7 @@ enum ComponentOutcome {
     Bail,
 }
 
-use super::union_find::UnionFind;
+use super::UnionFind;
 
 fn decompose_simplified(
     simplified: &[Bool<'static>],
