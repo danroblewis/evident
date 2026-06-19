@@ -38,7 +38,7 @@ import "packages/sdl/window.ev"
 -- index: -1 means "first matching driver".
 -- flags: 0 = SDL_RENDERER_ACCELERATED is the default; 0x2 explicit accel.
 external claim create_renderer(window ∈ Int, out ∈ Effect)
-    out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_CreateRenderer",
+    out = LibCall("libSDL2-2.0.so.0", "SDL_CreateRenderer",
                   "p(pii)",
                   ⟨ArgHandle(window), ArgInt(0 - 1), ArgInt(0)⟩)
 
@@ -49,21 +49,21 @@ external claim create_renderer(window ∈ Int, out ∈ Effect)
 -- the Seq position whose return value is the renderer handle.
 
 external claim create_renderer_after(prior_idx ∈ Int, out ∈ Effect)
-    out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_CreateRenderer",
+    out = LibCall("libSDL2-2.0.so.0", "SDL_CreateRenderer",
                   "p(pii)",
                   ⟨ArgPriorResult(prior_idx), ArgInt(0 - 1), ArgInt(0)⟩)
 
 external claim set_draw_color_after(prior_idx ∈ Int, color ∈ Color, out ∈ Effect)
-    out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_SetRenderDrawColor",
+    out = LibCall("libSDL2-2.0.so.0", "SDL_SetRenderDrawColor",
                   "i(piiii)",
                   ⟨ArgPriorResult(prior_idx), ArgInt(color.red), ArgInt(color.green), ArgInt(color.blue), ArgInt(color.alpha)⟩)
 
 external claim render_clear_after(prior_idx ∈ Int, out ∈ Effect)
-    out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_RenderClear",
+    out = LibCall("libSDL2-2.0.so.0", "SDL_RenderClear",
                   "i(p)", ⟨ArgPriorResult(prior_idx)⟩)
 
 external claim render_present_after(prior_idx ∈ Int, out ∈ Effect)
-    out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_RenderPresent",
+    out = LibCall("libSDL2-2.0.so.0", "SDL_RenderPresent",
                   "v(p)", ⟨ArgPriorResult(prior_idx)⟩)
 
 -- SDL_RenderGeometry but takes the renderer pointer from the
@@ -72,7 +72,7 @@ external claim render_present_after(prior_idx ∈ Int, out ∈ Effect)
 -- was created earlier in the same Seq.
 external claim render_geometry_after(prior_idx ∈ Int, vertices ∈ PackedFieldList,
                             n ∈ Int, out ∈ Effect)
-    out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_RenderGeometry",
+    out = LibCall("libSDL2-2.0.so.0", "SDL_RenderGeometry",
                   "i(pppipi)",
                   ⟨ArgPriorResult(prior_idx), ArgHandle(0), ArgPackedBuf(vertices), ArgInt(n), ArgHandle(0), ArgInt(0)⟩)
 

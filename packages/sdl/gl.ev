@@ -53,31 +53,31 @@ external type GL_Program
 -- SDL_GL_SetAttribute(attr, value) → int. Set BEFORE SDL_CreateWindow
 -- to influence the GL context that's created for that window.
 external claim gl_set_attribute(attr ∈ Int, value ∈ Int, out ∈ Effect)
-    out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_GL_SetAttribute",
+    out = LibCall("libSDL2-2.0.so.0", "SDL_GL_SetAttribute",
                   "i(ii)",
                   ⟨ArgInt(attr), ArgInt(value)⟩)
 
 -- SDL_GL_CreateContext(window) → SDL_GLContext (void*). Must follow
 -- a CreateWindow whose flags include SDL_WINDOW_OPENGL.
 external claim gl_create_context(window ∈ Int, out ∈ Effect)
-    out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_GL_CreateContext",
+    out = LibCall("libSDL2-2.0.so.0", "SDL_GL_CreateContext",
                   "p(p)", ⟨ArgHandle(window)⟩)
 
 -- SDL_GL_MakeCurrent(window, context) → int.
 external claim gl_make_current(window ∈ Int, context ∈ Int, out ∈ Effect)
-    out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_GL_MakeCurrent",
+    out = LibCall("libSDL2-2.0.so.0", "SDL_GL_MakeCurrent",
                   "i(pp)",
                   ⟨ArgHandle(window), ArgHandle(context)⟩)
 
 -- SDL_GL_SwapWindow(window) — flip back buffer. GL's equivalent of
 -- SDL_RenderPresent. Without this, nothing rendered is visible.
 external claim gl_swap_window(window ∈ Int, out ∈ Effect)
-    out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_GL_SwapWindow",
+    out = LibCall("libSDL2-2.0.so.0", "SDL_GL_SwapWindow",
                   "v(p)", ⟨ArgHandle(window)⟩)
 
 -- SDL_GL_DeleteContext(context) — teardown counterpart of CreateContext.
 external claim gl_delete_context(context ∈ Int, out ∈ Effect)
-    out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_GL_DeleteContext",
+    out = LibCall("libSDL2-2.0.so.0", "SDL_GL_DeleteContext",
                   "v(p)", ⟨ArgHandle(context)⟩)
 
 -- ── _after variants for inside an Effect::Seq ────────────────
@@ -86,17 +86,17 @@ external claim gl_delete_context(context ∈ Int, out ∈ Effect)
 
 -- SDL_GL_CreateContext(window=prior).
 external claim gl_create_context_after(prior_window_idx ∈ Int, out ∈ Effect)
-    out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_GL_CreateContext",
+    out = LibCall("libSDL2-2.0.so.0", "SDL_GL_CreateContext",
                   "p(p)", ⟨ArgPriorResult(prior_window_idx)⟩)
 
 -- SDL_GL_MakeCurrent(window=prior, context=prior).
 external claim gl_make_current_after(prior_window_idx ∈ Int, prior_ctx_idx ∈ Int,
                             out ∈ Effect)
-    out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_GL_MakeCurrent",
+    out = LibCall("libSDL2-2.0.so.0", "SDL_GL_MakeCurrent",
                   "i(pp)",
                   ⟨ArgPriorResult(prior_window_idx), ArgPriorResult(prior_ctx_idx)⟩)
 
 -- SDL_GL_SwapWindow(window=prior).
 external claim gl_swap_window_after(prior_window_idx ∈ Int, out ∈ Effect)
-    out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_GL_SwapWindow",
+    out = LibCall("libSDL2-2.0.so.0", "SDL_GL_SwapWindow",
                   "v(p)", ⟨ArgPriorResult(prior_window_idx)⟩)

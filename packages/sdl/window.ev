@@ -74,20 +74,20 @@ external type SDL_Window
     -- SDL_CreateWindow without anyone declaring it as a positional
     -- arg outside the install context.
     install ∈ Seq(InstallStep) = ⟨
-        Run(LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_Init",
+        Run(LibCall("libSDL2-2.0.so.0", "SDL_Init",
                     "i(i)", ⟨ArgInt(32)⟩)),
-        Bind("handle", LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_CreateWindow",
+        Bind("handle", LibCall("libSDL2-2.0.so.0", "SDL_CreateWindow",
                                 "p(siiiii)",
                                 ⟨ArgStr(title), ArgInt(805240832), ArgInt(805240832),
                                  ArgInt(width), ArgInt(height), ArgInt(4)⟩)),
-        Run(LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_ShowWindow",
+        Run(LibCall("libSDL2-2.0.so.0", "SDL_ShowWindow",
                     "v(p)", ⟨ArgPriorResult(1)⟩)),
-        Run(LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_RaiseWindow",
+        Run(LibCall("libSDL2-2.0.so.0", "SDL_RaiseWindow",
                     "v(p)", ⟨ArgPriorResult(1)⟩)),
-        Bind("renderer", LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_CreateRenderer",
+        Bind("renderer", LibCall("libSDL2-2.0.so.0", "SDL_CreateRenderer",
                                   "p(pii)",
                                   ⟨ArgPriorResult(1), ArgInt(0 - 1), ArgInt(0)⟩)),
-        Bind("keyboard_state", LibCall("/opt/homebrew/lib/libSDL2.dylib",
+        Bind("keyboard_state", LibCall("libSDL2-2.0.so.0",
                                         "SDL_GetKeyboardState",
                                         "p(p)", ⟨ArgHandle(0)⟩))
     ⟩
@@ -117,23 +117,23 @@ external type SDL_Window
     --     `win.set_draw_color(some_color, my_eff_name)`.
 
     subclaim set_draw_color(color ∈ Color)
-        out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_SetRenderDrawColor",
+        out = LibCall("libSDL2-2.0.so.0", "SDL_SetRenderDrawColor",
                       "i(piiii)",
                       ⟨ArgHandle(renderer), ArgInt(color.red), ArgInt(color.green),
                        ArgInt(color.blue), ArgInt(color.alpha)⟩)
 
     subclaim render_clear
-        out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_RenderClear",
+        out = LibCall("libSDL2-2.0.so.0", "SDL_RenderClear",
                       "i(p)", ⟨ArgHandle(renderer)⟩)
 
     subclaim render_present
-        out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_RenderPresent",
+        out = LibCall("libSDL2-2.0.so.0", "SDL_RenderPresent",
                       "v(p)", ⟨ArgHandle(renderer)⟩)
 
     subclaim render_fill_rect(pos ∈ IVec2, size ∈ IVec2)
         rect_buf ∈ Seq(Int)
         rect_buf = ⟨pos.x, pos.y, size.x, size.y⟩
-        out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_RenderFillRect",
+        out = LibCall("libSDL2-2.0.so.0", "SDL_RenderFillRect",
                       "i(pp)",
                       ⟨ArgHandle(renderer), ArgI32Buf(rect_buf)⟩)
 
@@ -155,44 +155,44 @@ external type SDL_Window
     -- parallel Seq(Effect) outputs (which violate the
     -- parallel-Seqs anti-pattern in CLAUDE.md).
     subclaim draw_rect(r ∈ Rect, out ∈ Seq(Effect))
-        color_eff ∈ Effect = LibCall("/opt/homebrew/lib/libSDL2.dylib",
+        color_eff ∈ Effect = LibCall("libSDL2-2.0.so.0",
                             "SDL_SetRenderDrawColor",
                             "i(piiii)",
                             ⟨ArgHandle(renderer),
                              ArgInt(r.color.red), ArgInt(r.color.green),
                              ArgInt(r.color.blue), ArgInt(r.color.alpha)⟩)
         rect_buf ∈ Seq(Int) = ⟨r.pos.x, r.pos.y, r.size.x, r.size.y⟩
-        fill_eff ∈ Effect = LibCall("/opt/homebrew/lib/libSDL2.dylib",
+        fill_eff ∈ Effect = LibCall("libSDL2-2.0.so.0",
                            "SDL_RenderFillRect",
                            "i(pp)",
                            ⟨ArgHandle(renderer), ArgI32Buf(rect_buf)⟩)
         out = ⟨color_eff, fill_eff⟩
 
     subclaim draw_line(p_from ∈ IVec2, p_to ∈ IVec2)
-        out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_RenderDrawLine",
+        out = LibCall("libSDL2-2.0.so.0", "SDL_RenderDrawLine",
                       "i(piiii)",
                       ⟨ArgHandle(renderer), ArgInt(p_from.x), ArgInt(p_from.y),
                        ArgInt(p_to.x), ArgInt(p_to.y)⟩)
 
     subclaim draw_point(p ∈ IVec2)
-        out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_RenderDrawPoint",
+        out = LibCall("libSDL2-2.0.so.0", "SDL_RenderDrawPoint",
                       "i(pii)",
                       ⟨ArgHandle(renderer), ArgInt(p.x), ArgInt(p.y)⟩)
 
     subclaim render_geometry(vertices ∈ PackedFieldList, n ∈ Int)
-        out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_RenderGeometry",
+        out = LibCall("libSDL2-2.0.so.0", "SDL_RenderGeometry",
                       "i(pppipi)",
                       ⟨ArgHandle(renderer), ArgHandle(0), ArgPackedBuf(vertices),
                        ArgInt(n), ArgHandle(0), ArgInt(0)⟩)
 
     subclaim destroy_renderer
-        out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_DestroyRenderer",
+        out = LibCall("libSDL2-2.0.so.0", "SDL_DestroyRenderer",
                       "v(p)", ⟨ArgHandle(renderer)⟩)
 
 -- ── Library path ──────────────────────────────────────────────
 
 claim sdl_lib_path_macos(p ∈ String)
-    p = "/opt/homebrew/lib/libSDL2.dylib"
+    p = "libSDL2-2.0.so.0"
 
 -- ── Init flag values ──────────────────────────────────────────
 
@@ -201,9 +201,9 @@ external claim sdl_init_video(n ∈ Int)
 
 -- ── Effect builders ───────────────────────────────────────────
 
--- FFIOpen("/opt/homebrew/lib/libSDL2.dylib") — returns a library handle.
+-- FFIOpen("libSDL2-2.0.so.0") — returns a library handle.
 external claim open_sdl_lib(e ∈ Effect)
-    e = FFIOpen("/opt/homebrew/lib/libSDL2.dylib")
+    e = FFIOpen("libSDL2-2.0.so.0")
 
 -- FFILookup(lib, "SDL_Init"). Returns the symbol handle.
 external claim lookup_sdl_init(lib ∈ Int, e ∈ Effect)
@@ -261,18 +261,18 @@ external claim call_sdl_quit(sym ∈ Int, e ∈ Effect)
 -- internal queue. macOS in particular needs this called regularly
 -- or the window appears unresponsive.
 external claim sdl_pump_events(out ∈ Effect)
-    out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_PumpEvents",
+    out = LibCall("libSDL2-2.0.so.0", "SDL_PumpEvents",
                   "v()", ⟨⟩)
 
 -- SDL_Delay(ms) — sleep the calling thread. Useful as a crude
 -- frame-rate limiter when you don't have a real vsync source.
 external claim sdl_delay(ms ∈ Int, out ∈ Effect)
-    out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_Delay",
+    out = LibCall("libSDL2-2.0.so.0", "SDL_Delay",
                   "v(i)", ⟨ArgInt(ms)⟩)
 
 -- SDL_Init(flags) → int. flags=32 is SDL_INIT_VIDEO.
 external claim sdl_init(flags ∈ Int, out ∈ Effect)
-    out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_Init",
+    out = LibCall("libSDL2-2.0.so.0", "SDL_Init",
                   "i(i)", ⟨ArgInt(flags)⟩)
 
 -- SDL_CreateWindow(title, x, y, w, h, flags) → SDL_Window*.
@@ -282,7 +282,7 @@ external claim sdl_init(flags ∈ Int, out ∈ Effect)
 --   4 = SDL_WINDOW_SHOWN  (default; SDL2 ignores)
 external claim sdl_create_window(title ∈ String, x ∈ Int, y ∈ Int,
                         w ∈ Int, h ∈ Int, flags ∈ Int, out ∈ Effect)
-    out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_CreateWindow",
+    out = LibCall("libSDL2-2.0.so.0", "SDL_CreateWindow",
                   "p(siiiii)",
                   ⟨ArgStr(title), ArgInt(x), ArgInt(y), ArgInt(w), ArgInt(h), ArgInt(flags)⟩)
 
@@ -290,20 +290,20 @@ external claim sdl_create_window(title ∈ String, x ∈ Int, y ∈ Int,
 -- runtime (the window pointer must be released on the main
 -- thread; the OS reclaims it on process exit).
 external claim sdl_destroy_window(window ∈ Int, out ∈ Effect)
-    out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_DestroyWindow",
+    out = LibCall("libSDL2-2.0.so.0", "SDL_DestroyWindow",
                   "v(p)", ⟨ArgHandle(window)⟩)
 
 -- *_after variants for inside an Effect::Seq when the window
 -- pointer comes from a prior result rather than a known Int.
 external claim sdl_show_window_after(prior_idx ∈ Int, out ∈ Effect)
-    out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_ShowWindow",
+    out = LibCall("libSDL2-2.0.so.0", "SDL_ShowWindow",
                   "v(p)", ⟨ArgPriorResult(prior_idx)⟩)
 
 external claim sdl_raise_window_after(prior_idx ∈ Int, out ∈ Effect)
-    out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_RaiseWindow",
+    out = LibCall("libSDL2-2.0.so.0", "SDL_RaiseWindow",
                   "v(p)", ⟨ArgPriorResult(prior_idx)⟩)
 
 -- SDL_Quit() — shut down all initialized SDL subsystems.
 external claim sdl_quit(out ∈ Effect)
-    out = LibCall("/opt/homebrew/lib/libSDL2.dylib", "SDL_Quit",
+    out = LibCall("libSDL2-2.0.so.0", "SDL_Quit",
                   "v()", ⟨⟩)

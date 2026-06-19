@@ -5,12 +5,11 @@
 -- Evident-side wrapper takes the duration as ms (more typical
 -- for user code) and converts.
 --
--- Library path is macOS-specific (libSystem); for Linux, the
--- caller can substitute /lib/x86_64-linux-gnu/libc.so.6 or
--- similar.
+-- Names the Linux libc soname directly; the runtime dlopens
+-- exactly what the LibCall supplies.
 
 import "stdlib/runtime.ev"
 
 external claim sleep_ms(ms ∈ Int, out ∈ Effect)
-    out = LibCall("/usr/lib/libSystem.B.dylib", "usleep",
+    out = LibCall("libc.so.6", "usleep",
                   "i(i)", ⟨ArgInt(ms * 1000)⟩)

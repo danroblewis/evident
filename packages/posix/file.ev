@@ -31,23 +31,23 @@ external claim o_rdwr(out ∈ Int)
 
 -- open(path, flags) → fd ≥ 0 on success, -1 on error.
 external claim open(path ∈ String, flags ∈ Int, out ∈ Effect)
-    out = LibCall("/usr/lib/libSystem.B.dylib", "open",
+    out = LibCall("libc.so.6", "open",
                   "i(si)",
                   ⟨ArgStr(path), ArgInt(flags)⟩)
 
 -- read(fd, buf, n) → bytes read on success (0 = EOF), -1 on error.
 external claim read(fd ∈ Int, buf ∈ Int, n ∈ Int, out ∈ Effect)
-    out = LibCall("/usr/lib/libSystem.B.dylib", "read",
+    out = LibCall("libc.so.6", "read",
                   "i(ipi)",
                   ⟨ArgInt(fd), ArgHandle(buf), ArgInt(n)⟩)
 
 -- write(fd, buf, n) → bytes written on success, -1 on error.
 external claim write(fd ∈ Int, buf ∈ Int, n ∈ Int, out ∈ Effect)
-    out = LibCall("/usr/lib/libSystem.B.dylib", "write",
+    out = LibCall("libc.so.6", "write",
                   "i(ipi)",
                   ⟨ArgInt(fd), ArgHandle(buf), ArgInt(n)⟩)
 
 -- close(fd) → 0 on success, -1 on error.
 external claim close(fd ∈ Int, out ∈ Effect)
-    out = LibCall("/usr/lib/libSystem.B.dylib", "close",
+    out = LibCall("libc.so.6", "close",
                   "i(i)", ⟨ArgInt(fd)⟩)
