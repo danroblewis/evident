@@ -1,7 +1,7 @@
 -- 20_pure_counter — unified state model: an fsm with no state
 -- enum at all. The whole "state" is `count ∈ Int`, advanced via
--- the `_var` time-shift convention (`_count + 1`). Smart-inject
--- means we don't get state/state_next forced on us.
+-- the `_var` time-shift convention (`_count + 1`). No enum, no
+-- ceremony — just the one carried scalar.
 --
 -- Compare test_02_counter: that demo encodes its state machine
 -- explicitly with an enum. This one expresses the same shape with

@@ -1,12 +1,12 @@
 -- Mario demo — Super Mario Bros. inspired side-scroller.
 --
--- World is 1920 px wide. Camera follows Mario. Stompable Goombas
+-- The level is 1920 px wide. Camera follows Mario. Stompable Goombas
 -- (encoded as enemy.pos.x = -1000 when dead, so the existing
 -- Seq(Mover) layout still works). Lives + death + respawn.
 --
 -- One FSM per program: input poll, physics, and render are three
--- concerns of a single `main` tick. Each reads `_world.X` (previous
--- tick) and writes `world.X` (this tick); the render chain dispatches
+-- concerns of a single `main` tick. Each reads `_game.X` (previous
+-- tick) and writes `game.X` (this tick); the render chain dispatches
 -- in one ordered `effects` Seq with the input-poll effects first.
 
 import "stdlib/runtime.ev"
@@ -48,7 +48,7 @@ type Level
     GROUND_Y       ∈ Int = 432
     LEVEL_W        ∈ Int = 1920
 
-    -- Pit gap at world.x ∈ [700, 800] — Mario falls in and dies.
+    -- Pit gap at game.x ∈ [700, 800] — Mario falls in and dies.
     -- Split ground into two sections to make the pit.
     PIT_X1 ∈ Int = 700
     PIT_X2 ∈ Int = 800
@@ -89,7 +89,7 @@ type Level
     FLAG_X ∈ Int = 1800
     FLAG_Y ∈ Int = 240
 
-type World
+type Game
     player        ∈ Mover
     enemies       ∈ Seq(Mover)
     coins         ∈ Seq(Coin)
@@ -103,18 +103,18 @@ type World
     -- Mario gets Big after collecting 3 coins, becomes Small after death.
     is_big        ∈ Bool
 
-fsm main(world ∈ World)
+fsm main(game ∈ Game)
     ..Level
-    #_world.enemies = 3
-    #world.enemies  = 3
-    #_world.coins   = 5
-    #world.coins    = 5
+    #_game.enemies = 3
+    #game.enemies  = 3
+    #_game.coins   = 5
+    #game.coins    = 5
 
     win ∈ SDL_Window (title ↦ "Mario", width ↦ 640, height ↦ 480)
 
     game_clock ∈ Int = (is_first_tick ? 0 : _game_clock + 1)
     frame ∈ Int = (is_first_tick ? 0 : _frame + 1)
-    world.tick = frame
+    game.tick = frame
 
     -- ── Input poll ────────────────────────────────────────────────
     sdl_pump_events(pump_eff)
@@ -132,32 +132,32 @@ fsm main(world ∈ World)
         IntResult(n) ⇒ n
         _           ⇒ 0
 
-    world.keys.x = (is_first_tick ? 0
+    game.keys.x = (is_first_tick ? 0
                     : (key_left_raw > 0 ∧ key_right_raw = 0 ? 0 - 1
                        : (key_right_raw > 0 ∧ key_left_raw = 0 ? 1 : 0)))
-    world.keys.y = (is_first_tick ? 0 : key_up_raw)
+    game.keys.y = (is_first_tick ? 0 : key_up_raw)
 
     -- ── Physics + game logic ──────────────────────────────────────
-    prev_lives ∈ Int  = (is_first_tick ? 3 : _world.lives)
-    prev_dead  ∈ Bool = ((¬is_first_tick) ∧ _world.dead)
+    prev_lives ∈ Int  = (is_first_tick ? 3 : _game.lives)
+    prev_dead  ∈ Bool = ((¬is_first_tick) ∧ _game.dead)
     respawning ∈ Bool = prev_dead
 
     on_ground ∈ Bool
     ∀ p ∈ platforms :
-        (((_world.player.pos.y + p_size.y = p.aabb.pos.y)
-          ∧ (_world.player.pos.x + p_size.x > p.aabb.pos.x)
-          ∧ (_world.player.pos.x < p.aabb.pos.x + p.aabb.size.x))
+        (((_game.player.pos.y + p_size.y = p.aabb.pos.y)
+          ∧ (_game.player.pos.x + p_size.x > p.aabb.pos.x)
+          ∧ (_game.player.pos.x < p.aabb.pos.x + p.aabb.size.x))
          ⇒ on_ground)
     ¬on_ground ⇒ (∀ p ∈ platforms :
-        ¬((_world.player.pos.y + p_size.y = p.aabb.pos.y)
-          ∧ (_world.player.pos.x + p_size.x > p.aabb.pos.x)
-          ∧ (_world.player.pos.x < p.aabb.pos.x + p.aabb.size.x)))
+        ¬((_game.player.pos.y + p_size.y = p.aabb.pos.y)
+          ∧ (_game.player.pos.x + p_size.x > p.aabb.pos.x)
+          ∧ (_game.player.pos.x < p.aabb.pos.x + p.aabb.size.x)))
 
-    will_jump ∈ Bool = (on_ground ∧ (_world.keys.y > 0))
-    intent_vx ∈ Int = _world.keys.x * walk_speed
+    will_jump ∈ Bool = (on_ground ∧ (_game.keys.y > 0))
+    intent_vx ∈ Int = _game.keys.x * walk_speed
     intent_vy ∈ Int = (will_jump ? 0 - jump_strength
-                       : _world.player.vel.y + grav)
-    tent ∈ IVec2 = _world.player.pos + IVec2(intent_vx, intent_vy)
+                       : _game.player.vel.y + grav)
+    tent ∈ IVec2 = _game.player.pos + IVec2(intent_vx, intent_vy)
 
     x_min ∈ Int = 0
     x_max ∈ Int = LEVEL_W - p_size.x
@@ -171,23 +171,23 @@ fsm main(world ∈ World)
     ∀ p ∈ platforms :
         (((res_x + p_size.x > p.aabb.pos.x)
           ∧ (res_x < p.aabb.pos.x + p.aabb.size.x)
-          ∧ (_world.player.pos.y + p_size.y ≤ p.aabb.pos.y)
+          ∧ (_game.player.pos.y + p_size.y ≤ p.aabb.pos.y)
           ∧ (tent.y + p_size.y > p.aabb.pos.y))
          ⇒ any_landing)
     ¬any_landing ⇒ (∀ p ∈ platforms :
         ¬((res_x + p_size.x > p.aabb.pos.x)
           ∧ (res_x < p.aabb.pos.x + p.aabb.size.x)
-          ∧ (_world.player.pos.y + p_size.y ≤ p.aabb.pos.y)
+          ∧ (_game.player.pos.y + p_size.y ≤ p.aabb.pos.y)
           ∧ (tent.y + p_size.y > p.aabb.pos.y)))
     ∀ p ∈ platforms : (((res_x + p_size.x > p.aabb.pos.x)
          ∧ (res_x < p.aabb.pos.x + p.aabb.size.x)
-         ∧ (_world.player.pos.y + p_size.y ≤ p.aabb.pos.y)
+         ∧ (_game.player.pos.y + p_size.y ≤ p.aabb.pos.y)
          ∧ (tent.y + p_size.y > p.aabb.pos.y))
         ⇒ (new_py + p_size.y ≤ p.aabb.pos.y))
     any_landing ⇒ (∃ p ∈ platforms :
         (res_x + p_size.x > p.aabb.pos.x)
         ∧ (res_x < p.aabb.pos.x + p.aabb.size.x)
-        ∧ (_world.player.pos.y + p_size.y ≤ p.aabb.pos.y)
+        ∧ (_game.player.pos.y + p_size.y ≤ p.aabb.pos.y)
         ∧ (tent.y + p_size.y > p.aabb.pos.y)
         ∧ (new_py + p_size.y = p.aabb.pos.y))
     ¬any_landing ⇒ (new_py = tent.y)
@@ -195,26 +195,26 @@ fsm main(world ∈ World)
     ¬any_landing ⇒ (new_vy = intent_vy)
 
     -- Per-enemy stomp/side checks (alive = pos.x ≥ 0).
-    e0 ∈ Mover = _world.enemies[0]
+    e0 ∈ Mover = _game.enemies[0]
     e0_alive ∈ Bool = (e0.pos.x ≥ 0)
     e0_x_ovl ∈ Bool = (((tent.x + 32) > e0.pos.x) ∧ (tent.x < (e0.pos.x + 28)))
-    e0_was_above ∈ Bool = ((_world.player.pos.y + 32) ≤ (e0.pos.y + 4))
+    e0_was_above ∈ Bool = ((_game.player.pos.y + 32) ≤ (e0.pos.y + 4))
     e0_y_ovl ∈ Bool = (((tent.y + 32) > e0.pos.y) ∧ (tent.y < (e0.pos.y + 28)))
     s0 ∈ Bool = (e0_alive ∧ e0_x_ovl ∧ e0_was_above ∧ e0_y_ovl ∧ (intent_vy > 0))
     h0 ∈ Bool = (e0_alive ∧ e0_x_ovl ∧ e0_y_ovl ∧ ¬s0)
 
-    e1 ∈ Mover = _world.enemies[1]
+    e1 ∈ Mover = _game.enemies[1]
     e1_alive ∈ Bool = (e1.pos.x ≥ 0)
     e1_x_ovl ∈ Bool = (((tent.x + 32) > e1.pos.x) ∧ (tent.x < (e1.pos.x + 28)))
-    e1_was_above ∈ Bool = ((_world.player.pos.y + 32) ≤ (e1.pos.y + 4))
+    e1_was_above ∈ Bool = ((_game.player.pos.y + 32) ≤ (e1.pos.y + 4))
     e1_y_ovl ∈ Bool = (((tent.y + 32) > e1.pos.y) ∧ (tent.y < (e1.pos.y + 28)))
     s1 ∈ Bool = (e1_alive ∧ e1_x_ovl ∧ e1_was_above ∧ e1_y_ovl ∧ (intent_vy > 0))
     h1 ∈ Bool = (e1_alive ∧ e1_x_ovl ∧ e1_y_ovl ∧ ¬s1)
 
-    e2 ∈ Mover = _world.enemies[2]
+    e2 ∈ Mover = _game.enemies[2]
     e2_alive ∈ Bool = (e2.pos.x ≥ 0)
     e2_x_ovl ∈ Bool = (((tent.x + 32) > e2.pos.x) ∧ (tent.x < (e2.pos.x + 28)))
-    e2_was_above ∈ Bool = ((_world.player.pos.y + 32) ≤ (e2.pos.y + 4))
+    e2_was_above ∈ Bool = ((_game.player.pos.y + 32) ≤ (e2.pos.y + 4))
     e2_y_ovl ∈ Bool = (((tent.y + 32) > e2.pos.y) ∧ (tent.y < (e2.pos.y + 28)))
     s2 ∈ Bool = (e2_alive ∧ e2_x_ovl ∧ e2_was_above ∧ e2_y_ovl ∧ (intent_vy > 0))
     h2 ∈ Bool = (e2_alive ∧ e2_x_ovl ∧ e2_y_ovl ∧ ¬s2)
@@ -226,8 +226,8 @@ fsm main(world ∈ World)
     just_died ∈ Bool = ((¬is_first_tick) ∧ (¬prev_dead) ∧ (side_hit ∨ fell_off))
     game_over ∈ Bool = (prev_lives ≤ 0)
 
-    world.dead = just_died
-    world.lives = (just_died ? prev_lives - 1 : prev_lives)
+    game.dead = just_died
+    game.lives = (just_died ? prev_lives - 1 : prev_lives)
 
     -- Mario position: respawn after death.
     new_px ∈ Int = (is_first_tick ? 100
@@ -240,147 +240,147 @@ fsm main(world ∈ World)
     final_vy ∈ Int = (respawning ? 0
                       : (any_stomp ? 0 - 10 : new_vy))
 
-    world.player = Mover(IVec2(new_px, final_py),
+    game.player = Mover(IVec2(new_px, final_py),
                           IVec2(final_vx, final_vy))
 
     cam_tent ∈ Int = new_px - 304
     cam_min  ∈ Int = 0
     cam_max  ∈ Int = LEVEL_W - screen_w
-    world.camera_x = (cam_tent < cam_min ? cam_min
+    game.camera_x = (cam_tent < cam_min ? cam_min
                       : (cam_tent > cam_max ? cam_max : cam_tent))
 
     -- Per-coin pickup detection.
-    c0 ∈ Coin = _world.coins[0]
+    c0 ∈ Coin = _game.coins[0]
     c0_hit ∈ Bool = ((¬c0.collected)
                      ∧ ((new_px + 32) > c0.pos.x)
                      ∧ (new_px < (c0.pos.x + 16))
                      ∧ ((final_py + 32) > c0.pos.y)
                      ∧ (final_py < (c0.pos.y + 16)))
-    c1 ∈ Coin = _world.coins[1]
+    c1 ∈ Coin = _game.coins[1]
     c1_hit ∈ Bool = ((¬c1.collected)
                      ∧ ((new_px + 32) > c1.pos.x)
                      ∧ (new_px < (c1.pos.x + 16))
                      ∧ ((final_py + 32) > c1.pos.y)
                      ∧ (final_py < (c1.pos.y + 16)))
-    c2 ∈ Coin = _world.coins[2]
+    c2 ∈ Coin = _game.coins[2]
     c2_hit ∈ Bool = ((¬c2.collected)
                      ∧ ((new_px + 32) > c2.pos.x)
                      ∧ (new_px < (c2.pos.x + 16))
                      ∧ ((final_py + 32) > c2.pos.y)
                      ∧ (final_py < (c2.pos.y + 16)))
-    c3 ∈ Coin = _world.coins[3]
+    c3 ∈ Coin = _game.coins[3]
     c3_hit ∈ Bool = ((¬c3.collected)
                      ∧ ((new_px + 32) > c3.pos.x)
                      ∧ (new_px < (c3.pos.x + 16))
                      ∧ ((final_py + 32) > c3.pos.y)
                      ∧ (final_py < (c3.pos.y + 16)))
-    c4 ∈ Coin = _world.coins[4]
+    c4 ∈ Coin = _game.coins[4]
     c4_hit ∈ Bool = ((¬c4.collected)
                      ∧ ((new_px + 32) > c4.pos.x)
                      ∧ (new_px < (c4.pos.x + 16))
                      ∧ ((final_py + 32) > c4.pos.y)
                      ∧ (final_py < (c4.pos.y + 16)))
 
-    prev_coin_count ∈ Int = (is_first_tick ? 0 : _world.coin_count)
+    prev_coin_count ∈ Int = (is_first_tick ? 0 : _game.coin_count)
     coin_delta ∈ Int = ((c0_hit ? 1 : 0)
                         + (c1_hit ? 1 : 0)
                         + (c2_hit ? 1 : 0)
                         + (c3_hit ? 1 : 0)
                         + (c4_hit ? 1 : 0))
-    world.coin_count = prev_coin_count + coin_delta
+    game.coin_count = prev_coin_count + coin_delta
     -- Mario grows after collecting 3 coins; shrinks on death.
-    prev_big ∈ Bool = ((¬is_first_tick) ∧ _world.is_big)
-    world.is_big = (just_died ? false
+    prev_big ∈ Bool = ((¬is_first_tick) ∧ _game.is_big)
+    game.is_big = (just_died ? false
                     : (prev_big ∨ (prev_coin_count + coin_delta ≥ 3)))
 
     -- Coin state updates (initialize / mark collected).
-    is_first_tick ⇒ (world.coins[0] = Coin(c_init[0].pos, false))
-    (¬is_first_tick ∧ (_world.coins[0].collected ∨ c0_hit)) ⇒
-        (world.coins[0] = Coin(c_init[0].pos, true))
-    (¬is_first_tick ∧ (¬_world.coins[0].collected) ∧ (¬c0_hit)) ⇒
-        (world.coins[0] = Coin(c_init[0].pos, false))
-    is_first_tick ⇒ (world.coins[1] = Coin(c_init[1].pos, false))
-    (¬is_first_tick ∧ (_world.coins[1].collected ∨ c1_hit)) ⇒
-        (world.coins[1] = Coin(c_init[1].pos, true))
-    (¬is_first_tick ∧ (¬_world.coins[1].collected) ∧ (¬c1_hit)) ⇒
-        (world.coins[1] = Coin(c_init[1].pos, false))
-    is_first_tick ⇒ (world.coins[2] = Coin(c_init[2].pos, false))
-    (¬is_first_tick ∧ (_world.coins[2].collected ∨ c2_hit)) ⇒
-        (world.coins[2] = Coin(c_init[2].pos, true))
-    (¬is_first_tick ∧ (¬_world.coins[2].collected) ∧ (¬c2_hit)) ⇒
-        (world.coins[2] = Coin(c_init[2].pos, false))
-    is_first_tick ⇒ (world.coins[3] = Coin(c_init[3].pos, false))
-    (¬is_first_tick ∧ (_world.coins[3].collected ∨ c3_hit)) ⇒
-        (world.coins[3] = Coin(c_init[3].pos, true))
-    (¬is_first_tick ∧ (¬_world.coins[3].collected) ∧ (¬c3_hit)) ⇒
-        (world.coins[3] = Coin(c_init[3].pos, false))
-    is_first_tick ⇒ (world.coins[4] = Coin(c_init[4].pos, false))
-    (¬is_first_tick ∧ (_world.coins[4].collected ∨ c4_hit)) ⇒
-        (world.coins[4] = Coin(c_init[4].pos, true))
-    (¬is_first_tick ∧ (¬_world.coins[4].collected) ∧ (¬c4_hit)) ⇒
-        (world.coins[4] = Coin(c_init[4].pos, false))
+    is_first_tick ⇒ (game.coins[0] = Coin(c_init[0].pos, false))
+    (¬is_first_tick ∧ (_game.coins[0].collected ∨ c0_hit)) ⇒
+        (game.coins[0] = Coin(c_init[0].pos, true))
+    (¬is_first_tick ∧ (¬_game.coins[0].collected) ∧ (¬c0_hit)) ⇒
+        (game.coins[0] = Coin(c_init[0].pos, false))
+    is_first_tick ⇒ (game.coins[1] = Coin(c_init[1].pos, false))
+    (¬is_first_tick ∧ (_game.coins[1].collected ∨ c1_hit)) ⇒
+        (game.coins[1] = Coin(c_init[1].pos, true))
+    (¬is_first_tick ∧ (¬_game.coins[1].collected) ∧ (¬c1_hit)) ⇒
+        (game.coins[1] = Coin(c_init[1].pos, false))
+    is_first_tick ⇒ (game.coins[2] = Coin(c_init[2].pos, false))
+    (¬is_first_tick ∧ (_game.coins[2].collected ∨ c2_hit)) ⇒
+        (game.coins[2] = Coin(c_init[2].pos, true))
+    (¬is_first_tick ∧ (¬_game.coins[2].collected) ∧ (¬c2_hit)) ⇒
+        (game.coins[2] = Coin(c_init[2].pos, false))
+    is_first_tick ⇒ (game.coins[3] = Coin(c_init[3].pos, false))
+    (¬is_first_tick ∧ (_game.coins[3].collected ∨ c3_hit)) ⇒
+        (game.coins[3] = Coin(c_init[3].pos, true))
+    (¬is_first_tick ∧ (¬_game.coins[3].collected) ∧ (¬c3_hit)) ⇒
+        (game.coins[3] = Coin(c_init[3].pos, false))
+    is_first_tick ⇒ (game.coins[4] = Coin(c_init[4].pos, false))
+    (¬is_first_tick ∧ (_game.coins[4].collected ∨ c4_hit)) ⇒
+        (game.coins[4] = Coin(c_init[4].pos, true))
+    (¬is_first_tick ∧ (¬_game.coins[4].collected) ∧ (¬c4_hit)) ⇒
+        (game.coins[4] = Coin(c_init[4].pos, false))
 
     -- End-of-level flag detection.
-    prev_won ∈ Bool = ((¬is_first_tick) ∧ _world.won)
+    prev_won ∈ Bool = ((¬is_first_tick) ∧ _game.won)
     flag_touch ∈ Bool = (((new_px + 32) > FLAG_X)
                          ∧ (new_px < (FLAG_X + 16))
                          ∧ ((final_py + 32) > FLAG_Y)
                          ∧ (final_py < (GROUND_Y + 16)))
-    world.won = (prev_won ∨ flag_touch)
+    game.won = (prev_won ∨ flag_touch)
 
     -- Enemy 0
-    is_first_tick ⇒ (world.enemies[0] = Mover(e_init[0].pos, e_init[0].vel))
+    is_first_tick ⇒ (game.enemies[0] = Mover(e_init[0].pos, e_init[0].vel))
     (¬is_first_tick ∧ s0) ⇒
-        (world.enemies[0] = Mover(IVec2(0 - 1000, 0 - 1000), IVec2(0, 0)))
+        (game.enemies[0] = Mover(IVec2(0 - 1000, 0 - 1000), IVec2(0, 0)))
     (¬is_first_tick ∧ ¬s0 ∧ ¬e0_alive) ⇒
-        (world.enemies[0] = Mover(IVec2(0 - 1000, 0 - 1000), IVec2(0, 0)))
+        (game.enemies[0] = Mover(IVec2(0 - 1000, 0 - 1000), IVec2(0, 0)))
     (¬is_first_tick ∧ ¬s0 ∧ e0_alive ∧ e0.pos.x ≤ e_init[0].patrol_lo) ⇒
-        (world.enemies[0] = Mover(IVec2(e0.pos.x + enemy_speed, e0.pos.y),
+        (game.enemies[0] = Mover(IVec2(e0.pos.x + enemy_speed, e0.pos.y),
                                    IVec2(enemy_speed, 0)))
     (¬is_first_tick ∧ ¬s0 ∧ e0_alive ∧ e0.pos.x ≥ e_init[0].patrol_hi) ⇒
-        (world.enemies[0] = Mover(IVec2(e0.pos.x + 0 - enemy_speed, e0.pos.y),
+        (game.enemies[0] = Mover(IVec2(e0.pos.x + 0 - enemy_speed, e0.pos.y),
                                    IVec2(0 - enemy_speed, 0)))
     (¬is_first_tick ∧ ¬s0 ∧ e0_alive ∧ e0.pos.x > e_init[0].patrol_lo
         ∧ e0.pos.x < e_init[0].patrol_hi) ⇒
-        (world.enemies[0] = Mover(IVec2(e0.pos.x + e0.vel.x, e0.pos.y),
+        (game.enemies[0] = Mover(IVec2(e0.pos.x + e0.vel.x, e0.pos.y),
                                    IVec2(e0.vel.x, 0)))
 
     -- Enemy 1
-    is_first_tick ⇒ (world.enemies[1] = Mover(e_init[1].pos, e_init[1].vel))
+    is_first_tick ⇒ (game.enemies[1] = Mover(e_init[1].pos, e_init[1].vel))
     (¬is_first_tick ∧ s1) ⇒
-        (world.enemies[1] = Mover(IVec2(0 - 1000, 0 - 1000), IVec2(0, 0)))
+        (game.enemies[1] = Mover(IVec2(0 - 1000, 0 - 1000), IVec2(0, 0)))
     (¬is_first_tick ∧ ¬s1 ∧ ¬e1_alive) ⇒
-        (world.enemies[1] = Mover(IVec2(0 - 1000, 0 - 1000), IVec2(0, 0)))
+        (game.enemies[1] = Mover(IVec2(0 - 1000, 0 - 1000), IVec2(0, 0)))
     (¬is_first_tick ∧ ¬s1 ∧ e1_alive ∧ e1.pos.x ≤ e_init[1].patrol_lo) ⇒
-        (world.enemies[1] = Mover(IVec2(e1.pos.x + enemy_speed, e1.pos.y),
+        (game.enemies[1] = Mover(IVec2(e1.pos.x + enemy_speed, e1.pos.y),
                                    IVec2(enemy_speed, 0)))
     (¬is_first_tick ∧ ¬s1 ∧ e1_alive ∧ e1.pos.x ≥ e_init[1].patrol_hi) ⇒
-        (world.enemies[1] = Mover(IVec2(e1.pos.x + 0 - enemy_speed, e1.pos.y),
+        (game.enemies[1] = Mover(IVec2(e1.pos.x + 0 - enemy_speed, e1.pos.y),
                                    IVec2(0 - enemy_speed, 0)))
     (¬is_first_tick ∧ ¬s1 ∧ e1_alive ∧ e1.pos.x > e_init[1].patrol_lo
         ∧ e1.pos.x < e_init[1].patrol_hi) ⇒
-        (world.enemies[1] = Mover(IVec2(e1.pos.x + e1.vel.x, e1.pos.y),
+        (game.enemies[1] = Mover(IVec2(e1.pos.x + e1.vel.x, e1.pos.y),
                                    IVec2(e1.vel.x, 0)))
 
     -- Enemy 2
-    is_first_tick ⇒ (world.enemies[2] = Mover(e_init[2].pos, e_init[2].vel))
+    is_first_tick ⇒ (game.enemies[2] = Mover(e_init[2].pos, e_init[2].vel))
     (¬is_first_tick ∧ s2) ⇒
-        (world.enemies[2] = Mover(IVec2(0 - 1000, 0 - 1000), IVec2(0, 0)))
+        (game.enemies[2] = Mover(IVec2(0 - 1000, 0 - 1000), IVec2(0, 0)))
     (¬is_first_tick ∧ ¬s2 ∧ ¬e2_alive) ⇒
-        (world.enemies[2] = Mover(IVec2(0 - 1000, 0 - 1000), IVec2(0, 0)))
+        (game.enemies[2] = Mover(IVec2(0 - 1000, 0 - 1000), IVec2(0, 0)))
     (¬is_first_tick ∧ ¬s2 ∧ e2_alive ∧ e2.pos.x ≤ e_init[2].patrol_lo) ⇒
-        (world.enemies[2] = Mover(IVec2(e2.pos.x + enemy_speed, e2.pos.y),
+        (game.enemies[2] = Mover(IVec2(e2.pos.x + enemy_speed, e2.pos.y),
                                    IVec2(enemy_speed, 0)))
     (¬is_first_tick ∧ ¬s2 ∧ e2_alive ∧ e2.pos.x ≥ e_init[2].patrol_hi) ⇒
-        (world.enemies[2] = Mover(IVec2(e2.pos.x + 0 - enemy_speed, e2.pos.y),
+        (game.enemies[2] = Mover(IVec2(e2.pos.x + 0 - enemy_speed, e2.pos.y),
                                    IVec2(0 - enemy_speed, 0)))
     (¬is_first_tick ∧ ¬s2 ∧ e2_alive ∧ e2.pos.x > e_init[2].patrol_lo
         ∧ e2.pos.x < e_init[2].patrol_hi) ⇒
-        (world.enemies[2] = Mover(IVec2(e2.pos.x + e2.vel.x, e2.pos.y),
+        (game.enemies[2] = Mover(IVec2(e2.pos.x + e2.vel.x, e2.pos.y),
                                    IVec2(e2.vel.x, 0)))
 
     -- ── Render ────────────────────────────────────────────────────
-    cam_x ∈ Int = _world.camera_x
+    cam_x ∈ Int = _game.camera_x
 
     sdl_delay(16, delay_eff)
     win.set_draw_color((80, 160, 220, 255), sky_eff)
@@ -393,9 +393,9 @@ fsm main(world ∈ World)
                             IVec2(p.aabb.pos.x - cam_x, p.aabb.pos.y),
                             p.aabb.size), b.effs)
 
-    mario_screen_pos ∈ IVec2 = IVec2(_world.player.pos.x - cam_x,
-                                       _world.player.pos.y)
-    mario ∈ MarioSprite (pos ↦ mario_screen_pos, is_big ↦ _world.is_big)
+    mario_screen_pos ∈ IVec2 = IVec2(_game.player.pos.x - cam_x,
+                                       _game.player.pos.y)
+    mario ∈ MarioSprite (pos ↦ mario_screen_pos, is_big ↦ _game.is_big)
     mario_effs ∈ Seq(EffectPair)
     #mario_effs = 4
     ∀ (r, b) ∈ coindexed(mario.rects, mario_effs) :
@@ -403,7 +403,7 @@ fsm main(world ∈ World)
 
     enemy_effs ∈ Seq(EffectPair)
     #enemy_effs = 3
-    ∀ (m, b) ∈ coindexed(_world.enemies, enemy_effs) :
+    ∀ (m, b) ∈ coindexed(_game.enemies, enemy_effs) :
         win.draw_rect(Rect(Color(200, 80, 220, 255),
                             IVec2(m.pos.x - cam_x, m.pos.y),
                             IVec2(28, 28)), b.effs)
@@ -412,30 +412,30 @@ fsm main(world ∈ World)
     -- original pos but rendered off-screen via coin_sx_N below.
     coin_effs ∈ Seq(EffectPair)
     #coin_effs = 5
-    coin_sx_0 ∈ Int = (_world.coins[0].collected ? 0 - 1000
-                       : _world.coins[0].pos.x - cam_x)
-    coin_sx_1 ∈ Int = (_world.coins[1].collected ? 0 - 1000
-                       : _world.coins[1].pos.x - cam_x)
-    coin_sx_2 ∈ Int = (_world.coins[2].collected ? 0 - 1000
-                       : _world.coins[2].pos.x - cam_x)
-    coin_sx_3 ∈ Int = (_world.coins[3].collected ? 0 - 1000
-                       : _world.coins[3].pos.x - cam_x)
-    coin_sx_4 ∈ Int = (_world.coins[4].collected ? 0 - 1000
-                       : _world.coins[4].pos.x - cam_x)
+    coin_sx_0 ∈ Int = (_game.coins[0].collected ? 0 - 1000
+                       : _game.coins[0].pos.x - cam_x)
+    coin_sx_1 ∈ Int = (_game.coins[1].collected ? 0 - 1000
+                       : _game.coins[1].pos.x - cam_x)
+    coin_sx_2 ∈ Int = (_game.coins[2].collected ? 0 - 1000
+                       : _game.coins[2].pos.x - cam_x)
+    coin_sx_3 ∈ Int = (_game.coins[3].collected ? 0 - 1000
+                       : _game.coins[3].pos.x - cam_x)
+    coin_sx_4 ∈ Int = (_game.coins[4].collected ? 0 - 1000
+                       : _game.coins[4].pos.x - cam_x)
     win.draw_rect(Rect(Color(240, 200, 60, 255),
-                        IVec2(coin_sx_0, _world.coins[0].pos.y),
+                        IVec2(coin_sx_0, _game.coins[0].pos.y),
                         IVec2(16, 16)), coin_effs[0].effs)
     win.draw_rect(Rect(Color(240, 200, 60, 255),
-                        IVec2(coin_sx_1, _world.coins[1].pos.y),
+                        IVec2(coin_sx_1, _game.coins[1].pos.y),
                         IVec2(16, 16)), coin_effs[1].effs)
     win.draw_rect(Rect(Color(240, 200, 60, 255),
-                        IVec2(coin_sx_2, _world.coins[2].pos.y),
+                        IVec2(coin_sx_2, _game.coins[2].pos.y),
                         IVec2(16, 16)), coin_effs[2].effs)
     win.draw_rect(Rect(Color(240, 200, 60, 255),
-                        IVec2(coin_sx_3, _world.coins[3].pos.y),
+                        IVec2(coin_sx_3, _game.coins[3].pos.y),
                         IVec2(16, 16)), coin_effs[3].effs)
     win.draw_rect(Rect(Color(240, 200, 60, 255),
-                        IVec2(coin_sx_4, _world.coins[4].pos.y),
+                        IVec2(coin_sx_4, _game.coins[4].pos.y),
                         IVec2(16, 16)), coin_effs[4].effs)
 
     -- Flag pole (white vertical bar) + flag triangle (red rect).
@@ -459,7 +459,7 @@ fsm main(world ∈ World)
     #hud_effs = 3
     ∀ i ∈ {0..2} :
         win.draw_rect(Rect(
-            (_world.lives > i ? Color(220, 40, 40, 255)
+            (_game.lives > i ? Color(220, 40, 40, 255)
                               : Color(60, 60, 60, 255)),
             IVec2(8 + i * 24, 8),
             IVec2(16, 16)), hud_effs[i].effs)
@@ -469,14 +469,14 @@ fsm main(world ∈ World)
     #coin_hud_effs = 5
     ∀ i ∈ {0..4} :
         win.draw_rect(Rect(
-            (_world.coin_count > i ? Color(240, 200, 60, 255)
+            (_game.coin_count > i ? Color(240, 200, 60, 255)
                                    : Color(60, 60, 60, 255)),
             IVec2(120 + i * 18, 10),
             IVec2(12, 12)), coin_hud_effs[i].effs)
 
     -- Won banner: green rectangle drawn off-screen when not yet won.
     win.set_draw_color((60, 200, 80, 255), win_color_eff)
-    win_banner_x ∈ Int = (_world.won ? 240 : 0 - 1000)
+    win_banner_x ∈ Int = (_game.won ? 240 : 0 - 1000)
     win.render_fill_rect(IVec2(win_banner_x, 4), IVec2(160, 28), win_fill_eff)
 
     win.render_present(present_eff)

@@ -54,7 +54,7 @@ type Rect(color ∈ Color, pos ∈ IVec2, size ∈ IVec2)
 -- Renderer-mode SDL window. Bridge is declarative — the install
 -- Seq below drives SDL_Init + SDL_CreateWindow + SDL_CreateRenderer
 -- via LibCall effects, captures the resulting handles, and writes
--- them to `handle` / `renderer` in the world snapshot. No Rust-side
+-- them to `handle` / `renderer` in the install snapshot. No Rust-side
 -- SDL knowledge required.
 --
 -- For OpenGL-mode windows, use `SDL_GL_Window` instead. The two

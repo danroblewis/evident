@@ -32,7 +32,7 @@ import "packages/sdl/window.ev"
 --     one"), so doesn't fit the subclaim shape.
 --   * `*_after` variants — take a prior-result index instead of
 --     a renderer handle, used for single-Seq atomic batches
---     where the renderer ptr lives in last_results, not world.
+--     where the renderer ptr lives in last_results, not the carried snapshot.
 
 -- SDL_CreateRenderer(window, index, flags) → SDL_Renderer*
 -- index: -1 means "first matching driver".
