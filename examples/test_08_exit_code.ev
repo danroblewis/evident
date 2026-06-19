@@ -8,20 +8,24 @@ import "stdlib/runtime.ev"
 
 enum XState = Init | Done
 
-fsm exit_demo(state ∈ XState)
-    state_next = match state
-        Init ⇒ Done
-        Done ⇒ Done
+fsm exit_demo
+    state ∈ XState
+    is_first_tick ⇒ (state = Init)
+    ¬is_first_tick ⇒
+        state = match _state
+            Init ⇒ Done
+            Done ⇒ Done
 
     effects = match state
         Init ⇒ ⟨Println("exiting with code 42"), Exit(42)⟩
         Done ⇒ ⟨⟩
 
 claim sat_init_exits_42
+    _state ∈ XState
     state ∈ XState
-    state_next ∈ XState
+    is_first_tick ∈ Bool
     last_results ∈ Seq(Result)
     effects ∈ Seq(Effect)
-    state = Init
+    is_first_tick = true
     exit_demo
     effects = ⟨Println("exiting with code 42"), Exit(42)⟩

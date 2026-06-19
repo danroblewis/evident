@@ -6,20 +6,18 @@
 -- time-shift semantics work: every variable's previous-tick value
 -- is available as `_var` for free.
 --
--- to_str(count) formats the running count inline (same tick), so
--- the line prints this tick's value directly.
---
--- The previous-tick mechanism is described in
--- docs/design/state-machines-as-relations.md.
+-- The discrete `state` is a pure function of the carried scalar
+-- `count` (`state ∈ CounterState = (count ≥ 3 ? Done : Counting)`),
+-- so it needs no `_state` — it reflects THIS tick's count directly.
 
 import "stdlib/runtime.ev"
 
 enum CounterState = Counting | Done
 
-fsm counter(state ∈ CounterState)
+fsm counter
     count ∈ Int = (is_first_tick ? 0 : _count + 1)
 
-    state_next = (count ≥ 3 ? Done : Counting)
+    state ∈ CounterState = (count ≥ 3 ? Done : Counting)
 
     cur_str ∈ String = to_str(count)
 
@@ -32,7 +30,6 @@ fsm counter(state ∈ CounterState)
 -- On tick 0, `is_first_tick` is true → count = 0.
 claim sat_first_tick_count_is_zero
     state ∈ CounterState
-    state_next ∈ CounterState
     last_results ∈ Seq(Result)
     effects ∈ Seq(Effect)
     count ∈ Int
@@ -41,14 +38,12 @@ claim sat_first_tick_count_is_zero
     cur_str ∈ String
 
     is_first_tick = true
-    state = Counting
     counter
     count = 0
 
 -- On tick 1+, count = _count + 1.
 claim sat_subsequent_tick_increments
     state ∈ CounterState
-    state_next ∈ CounterState
     last_results ∈ Seq(Result)
     effects ∈ Seq(Effect)
     count ∈ Int
@@ -58,6 +53,5 @@ claim sat_subsequent_tick_increments
 
     is_first_tick = false
     _count = 7
-    state = Counting
     counter
     count = 8

@@ -9,18 +9,21 @@
 -- The sign is the whole feature: `Δx = -1 ⟹ x = _x - 1`, not `_x - 1`
 -- the other way. If the sign flipped, the counter would climb instead
 -- of fall.
+--
+-- The discrete `state` is a pure function of the carried scalar `x`, so
+-- it needs no `_state`: `state ∈ FallState = (x ≤ 7 ? Landed : Falling)`.
 
 import "stdlib/runtime.ev"
 
 enum FallState = Falling | Landed
 
-fsm gravity(state ∈ FallState)
+fsm gravity
     -- Seed at 10 on the first tick; afterward fall by one per tick.
     x ∈ Int
     is_first_tick ⇒ x = 10
     ¬is_first_tick ⇒ Δx = -1
 
-    state_next = (x ≤ 7 ? Landed : Falling)
+    state ∈ FallState = (x ≤ 7 ? Landed : Falling)
 
     x_str ∈ String = to_str(x)
 
@@ -32,34 +35,26 @@ fsm gravity(state ∈ FallState)
 
 -- `Δx = -1` desugars to `x − _x = -1`, so for _x = 5 the only x is 4.
 claim sat_delta_decrements
-    state ∈ FallState
-    state_next ∈ FallState
-    last_results ∈ Seq(Result)
-    effects ∈ Seq(Effect)
     x ∈ Int
     _x ∈ Int
     is_first_tick ∈ Bool
-    x_str ∈ String
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
 
     is_first_tick = false
     _x = 5
-    state = Falling
     gravity
     x = 4                   -- x = _x - 1  ✓  (NEW minus OLD = -1)
 
 -- The opposite sign must NOT satisfy: Δx = -1 forbids x = _x + 1.
 claim unsat_delta_is_not_increment
-    state ∈ FallState
-    state_next ∈ FallState
-    last_results ∈ Seq(Result)
-    effects ∈ Seq(Effect)
     x ∈ Int
     _x ∈ Int
     is_first_tick ∈ Bool
-    x_str ∈ String
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
 
     is_first_tick = false
     _x = 5
-    state = Falling
     gravity
     x = 6                   -- would be x = _x + 1  ✗  (wrong sign)

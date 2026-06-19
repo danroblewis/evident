@@ -1,25 +1,25 @@
--- 01_hello — minimal multi-FSM program: print and exit.
+-- 01_hello — minimal program: print and exit.
 --
 -- Run:    evident effect-run examples/test_01_hello.ev
 -- Test:   evident test examples/test_01_hello.ev
 --
--- This is the smallest possible Evident program in the new model.
--- A single FSM with two states (Init, Done). Init emits the
--- greeting plus Exit(0) in one tick; Done is the absorbing state.
---
--- Even though there's only one FSM, it still runs through the
--- multi-FSM scheduler. The runtime detects the FSM-shape claim
--- (state pair + Seq(Result) + Seq(Effect)) and treats it
--- uniformly — no special-case for "single FSM".
+-- The smallest Evident FSM: two states (Init, Done). The first tick
+-- seeds Init, which emits the greeting plus Exit(0) and halts; Done is
+-- the absorbing state reached via `_state` on any later tick. The
+-- runtime detects the FSM-shape claim (a state record/enum carried via
+-- `_var` + Seq(Result) + Seq(Effect)) and ticks it.
 
 import "stdlib/runtime.ev"
 
 enum HelloState = Init | Done
 
-fsm hello(state ∈ HelloState)
-    state_next = match state
-        Init ⇒ Done
-        Done ⇒ Done
+fsm hello
+    state ∈ HelloState
+    is_first_tick ⇒ (state = Init)
+    ¬is_first_tick ⇒
+        state = match _state
+            Init ⇒ Done
+            Done ⇒ Done
 
     effects = match state
         Init ⇒ ⟨Println("hello from evident"), Exit(0)⟩
@@ -29,30 +29,35 @@ fsm hello(state ∈ HelloState)
 
 -- Init must transition to Done in one step.
 claim sat_init_advances_to_done
+    _state ∈ HelloState
     state ∈ HelloState
-    state_next ∈ HelloState
+    is_first_tick ∈ Bool
     last_results ∈ Seq(Result)
     effects ∈ Seq(Effect)
-    state = Init
+    is_first_tick = false
+    _state = Init
     hello
-    state_next = Done
+    state = Done
 
--- Init must emit BOTH the greeting AND Exit(0).
+-- The first tick (Init) emits BOTH the greeting AND Exit(0).
 claim sat_init_emits_greeting_and_exit
+    _state ∈ HelloState
     state ∈ HelloState
-    state_next ∈ HelloState
+    is_first_tick ∈ Bool
     last_results ∈ Seq(Result)
     effects ∈ Seq(Effect)
-    state = Init
+    is_first_tick = true
     hello
     effects = ⟨Println("hello from evident"), Exit(0)⟩
 
 -- Done is absorbing — never re-enters Init.
 claim unsat_done_returns_to_init
+    _state ∈ HelloState
     state ∈ HelloState
-    state_next ∈ HelloState
+    is_first_tick ∈ Bool
     last_results ∈ Seq(Result)
     effects ∈ Seq(Effect)
-    state = Done
+    is_first_tick = false
+    _state = Done
     hello
-    state_next = Init
+    state = Init

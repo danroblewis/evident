@@ -3,18 +3,20 @@
 -- The top-level effects emission IS the atomic batch — every
 -- effect dispatches in order within a single Z3 solve. Later
 -- effects can reference earlier ones' results via
--- ArgPriorResult(N). Before Phase 6.4 this required wrapping
--- the list in an Effect::Seq variant; now the wrapper is gone
--- and the top-level list does the same job.
+-- ArgPriorResult(N). The first tick (Init) emits all four effects;
+-- Done is the absorbing state reached via `_state`.
 
 import "stdlib/runtime.ev"
 
 enum SeqState = Init | Done
 
-fsm seq_demo(state ∈ SeqState)
-    state_next = match state
-        Init ⇒ Done
-        Done ⇒ Done
+fsm seq_demo
+    state ∈ SeqState
+    is_first_tick ⇒ (state = Init)
+    ¬is_first_tick ⇒
+        state = match _state
+            Init ⇒ Done
+            Done ⇒ Done
 
     effects = match state
         Init ⇒ ⟨Println("first"), Println("second"), Println("third"), Exit(0)⟩
@@ -22,10 +24,11 @@ fsm seq_demo(state ∈ SeqState)
 
 -- Init emits all four effects in one tick.
 claim sat_init_emits_chain_then_exit
+    _state ∈ SeqState
     state ∈ SeqState
-    state_next ∈ SeqState
+    is_first_tick ∈ Bool
     last_results ∈ Seq(Result)
     effects ∈ Seq(Effect)
-    state = Init
+    is_first_tick = true
     seq_demo
     effects = ⟨Println("first"), Println("second"), Println("third"), Exit(0)⟩
