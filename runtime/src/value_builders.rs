@@ -212,7 +212,6 @@ pub fn symbol_table() -> Vec<(&'static str, *const u8)> {
         ("ev_extract_field",    ev_extract_field    as *const u8),
         ("ev_seq_select",       ev_seq_select       as *const u8),
         ("ev_load_bool",        ev_load_bool        as *const u8),
-        ("ev_str_concat",       ev_str_concat       as *const u8),
         ("ev_is_variant",       ev_is_variant       as *const u8),
     ]
 }
@@ -282,21 +281,6 @@ pub unsafe extern "C" fn ev_seq_select(
         _ => None,
     }.unwrap_or(Value::Int(0));
     *out = v;
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn ev_str_concat(
-    out: *mut Value,
-    args_ptr: *const *const Value, args_len: usize,
-) {
-    let slice = std::slice::from_raw_parts(args_ptr, args_len);
-    let mut s = String::new();
-    for p in slice {
-        if let Value::Str(t) = &**p {
-            s.push_str(t);
-        }
-    }
-    *out = Value::Str(s);
 }
 
 #[no_mangle]
