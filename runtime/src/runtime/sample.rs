@@ -23,15 +23,13 @@ impl EvidentRuntime {
         let schema = self.schemas.get(name)
             .ok_or_else(|| RuntimeError::UnknownSchema(name.to_string()))?
             .clone();
-        // Sample uses its own fresh, non-shared cached solver. Two reasons:
-        //   1. `arith.solver=2` (the runtime's per-frame default and a
-        //      candidate in the auto-tuner) is pathologically slow on
-        //      sample_cached_inner's cumulative blocking-clause workload.
-        //   2. The blocking clauses asserted inside sample's outer push
-        //      shouldn't influence the per-frame solver state that the
-        //      auto-tuner is timing.
-        // Sample is rare and amortizes the build_cache cost across N
-        // models, so the lack of cross-call caching is acceptable.
+        // Sample uses its own fresh, non-shared cached solver:
+        // `arith.solver=2` (the runtime's per-frame default) is
+        // pathologically slow on sample_cached_inner's cumulative
+        // blocking-clause workload, so sample runs Z3 at its built-in
+        // default arith path instead. Sample is rare and amortizes the
+        // build_cache cost across N models, so the lack of cross-call
+        // caching is acceptable.
         let names = crate::translate::structural_names(&schema.body);
         let structural_given: HashMap<String, Value> = given.iter()
             .filter(|(k, _)| names.contains(k.as_str()))

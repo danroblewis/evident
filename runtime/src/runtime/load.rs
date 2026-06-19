@@ -131,11 +131,8 @@ impl EvidentRuntime {
         // a fixed point — nested generics resolve in passes.
         super::generics::monomorphize_generics(&mut self.schemas, &mut self.schema_order)?;
         // Loading new schemas invalidates the cache: new schemas might
-        // be referenced by ClaimCall / passthrough in old ones. Also
-        // reset the auto-tuner — measurements taken under the old
-        // schema body don't apply to the new one.
+        // be referenced by ClaimCall / passthrough in old ones.
         self.cache.borrow_mut().clear();
-        self.solve_history.borrow_mut().clear();
         self.functionize_z3_cache.borrow_mut().clear();
         self.fn_cache.borrow_mut().clear();
         self.slow_path_cache.borrow_mut().clear();

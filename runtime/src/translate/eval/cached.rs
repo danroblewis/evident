@@ -305,7 +305,6 @@ pub fn run_cached<'ctx>(
     let check_t0 = std::time::Instant::now();
     let check_result = cached.solver.check();
     let check_dt = check_t0.elapsed();
-    crate::z3_profile::record_check_stats(&cached.solver, None, check_dt);
     let satisfied = matches!(check_result, SatResult::Sat);
     let mut bindings = HashMap::new();
     let extract_t0 = std::time::Instant::now();

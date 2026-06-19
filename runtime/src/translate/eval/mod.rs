@@ -22,7 +22,6 @@
 //!   * `extra`      — `evaluate_with_extra_assertion(s)`,
 //!                    `evaluate_with_program_and_body`.
 //!   * `core`       — `evaluate_with_core` (UNSAT-core variant).
-//!   * `decompose`  — `analyze_decomposition`, `classify_components`.
 //!
 //! `evaluate` itself lives in this file — it's THE entry point and
 //! the shape every other variant is a copy of.
@@ -43,7 +42,6 @@ mod decode;
 mod cached;
 mod extra;
 mod core;
-mod decompose;
 
 use solver::{declare_and_assert, make_tuned_solver, populate_enum_variants, real_from_f64, real_value_to_f64};
 use decode::extract_enum_value;
@@ -51,7 +49,6 @@ use decode::extract_enum_value;
 pub use cached::{build_cache, run_cached, sample_cached_inner};
 pub use extra::{evaluate_with_extra_assertion, evaluate_with_extra_assertions, evaluate_with_program_and_body};
 pub use self::core::evaluate_with_core;
-pub use decompose::{analyze_decomposition, classify_components, ClassifiedComponent};
 pub(crate) use decode::extract_binding;
 
 // Re-export to sibling translate modules. `extract_seq_enum` is
@@ -179,9 +176,7 @@ pub fn evaluate(
         }
     }
 
-    let check_t0 = std::time::Instant::now();
     let check_result = solver.check();
-    crate::z3_profile::record_check_stats(&solver, Some(&schema.name), check_t0.elapsed());
     let satisfied = matches!(check_result, SatResult::Sat);
     let mut bindings = HashMap::new();
     if satisfied {

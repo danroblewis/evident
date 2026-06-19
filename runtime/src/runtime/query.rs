@@ -13,7 +13,6 @@
 //! `run_cached`. The whole arrangement is a `ClaimPlan`, cached per
 //! `(claim, given-keys)`.
 
-use super::autotune::SolveHistory;
 use crate::core::{CachedSchema, CompiledFunction, QueryResult, RuntimeError, Var, Z3Step};
 use super::lenient::LenientGuard;
 use super::{EvidentRuntime, Value};
@@ -24,7 +23,6 @@ use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
-use std::time::Instant;
 use z3::ast::{Ast, Bool};
 use z3::{Context, Params, SatResult, Solver, Tactic};
 use z3_sys::DeclKind;
@@ -197,9 +195,8 @@ enum ComponentOutcome {
     Bail,
 }
 
-/// Minimal union-find for `decompose_simplified`. (The one in
-/// `crate::decompose` is private and re-normalizes its input; here we
-/// partition the already-simplified assertions directly.)
+/// Minimal union-find for `decompose_simplified`. Partitions the
+/// already-simplified assertions directly.
 struct UnionFind {
     parent: Vec<usize>,
     rank: Vec<u8>,
@@ -241,11 +238,9 @@ impl UnionFind {
 /// it; plus the indices of assertions that touch no output at all
 /// (given-only consistency constraints).
 ///
-/// Operating on `simplified` directly (rather than
-/// `analyze_decomposition`, which rebuilds the solver and re-runs
-/// `simplify`) keeps the component partition and the assertion
-/// buckets derived from the *same* formula set, so every assertion's
-/// output-touch-set lands in exactly one component.
+/// Operating on `simplified` directly keeps the component partition
+/// and the assertion buckets derived from the *same* formula set, so
+/// every assertion's output-touch-set lands in exactly one component.
 fn decompose_simplified(
     simplified: &[Bool<'static>],
     outputs: &[String],
@@ -912,16 +907,14 @@ impl EvidentRuntime {
             .clone();   // cheap: SchemaDecl is small + Arc-friendly clones
         let cur_sig = structural_signature(&schema.body, given);
 
-        // Auto-tuner: which arith.solver should the cache use right now?
-        let arith_solver = {
-            let mut hist = self.solve_history.borrow_mut();
-            hist.entry(name.to_string()).or_insert_with(SolveHistory::new)
-                .current_config()
-        };
+        // Default `smt.arith.solver`: env override, else 2 (the per-frame
+        // default that wins on our workload).
+        let arith_solver: u32 = std::env::var("EVIDENT_Z3_ARITH_SOLVER").ok()
+            .and_then(|s| s.parse().ok()).unwrap_or(2);
 
         let mut cache = self.cache.borrow_mut();
         // Rebuild if (a) no entry, (b) structural signature changed, or
-        // (c) cached config doesn't match the auto-tuner's current pick.
+        // (c) cached config doesn't match the configured arith.solver.
         let needs_rebuild = match cache.get(name) {
             Some((cached, cached_sig)) =>
                 cached_sig != &cur_sig || cached.arith_solver != arith_solver,
@@ -943,20 +936,7 @@ impl EvidentRuntime {
         }
         let entry = cache.get(name).unwrap();
 
-        // Time the actual solve so the auto-tuner can decide whether to
-        // advance to the next pricing window.
-        let t0 = Instant::now();
         let r = run_cached(&entry.0, given, self.z3_ctx, Some(&self.enums));
-        let dt = t0.elapsed();
-        drop(cache);  // release before we may invalidate below
-
-        // Record the timing. If the tuner says to switch configs,
-        // evict so the next call rebuilds under the new value.
-        if let Some(_new_cfg) = self.solve_history.borrow_mut()
-            .get_mut(name).and_then(|h| h.record(dt))
-        {
-            self.cache.borrow_mut().remove(name);
-        }
         Ok(QueryResult { satisfied: r.satisfied, bindings: r.bindings })
     }
 }

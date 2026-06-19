@@ -260,7 +260,6 @@ External callers can use `evident_runtime::{Value, QueryResult, RuntimeError, as
 | Add a new generic-type instantiation rule | `runtime/generics.rs` |
 | Touch enum → Z3 Datatype registration | `runtime/register_enums.rs` |
 | Add a per-claim stat | `runtime/stats.rs` |
-| Tune solver / change pricing strategy | `runtime/autotune.rs` |
 | Inject AST values into self-hosted queries | `runtime/reflection.rs` |
 | Wire a per-tick scheduler call | `runtime/scheduler_api.rs` |
 | Enforce a load-time validation rule | `runtime/validate.rs` |
@@ -286,7 +285,6 @@ External callers can use `evident_runtime::{Value, QueryResult, RuntimeError, as
 | Touch the cached-solver path | `translate/eval/cached.rs` |
 | Decode a new enum/composite shape from a Z3 model | `translate/eval/decode.rs` |
 | Change UNSAT-core extraction | `translate/eval/core.rs` |
-| Touch decomposition or component classification | `translate/eval/decompose.rs` |
 
 ### Inside `functionize/`
 
