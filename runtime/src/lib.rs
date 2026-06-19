@@ -1,8 +1,8 @@
 mod core;
-pub mod effect_dispatch;
+pub mod dispatch;
 pub mod z3_eval;
 pub mod functionize;
-pub mod effect_loop;
+pub mod trampoline;
 mod ffi;
 mod lexer;
 mod parser;

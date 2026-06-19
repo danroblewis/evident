@@ -4,7 +4,7 @@ use std::process::ExitCode;
 use std::time::Instant;
 use evident_runtime::ast::BodyItem;
 use evident_runtime::encode::collect_referenced_names;
-use evident_runtime::{EvidentRuntime, Value, effect_loop};
+use evident_runtime::{EvidentRuntime, Value, trampoline};
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -99,7 +99,7 @@ fn cmd_effect_run(args: &[String]) -> ExitCode {
         return ExitCode::from(1);
     }
 
-    match effect_loop::run(&rt, &effect_loop::LoopOpts { max_steps }) {
+    match trampoline::run(&rt, &trampoline::LoopOpts { max_steps }) {
         Ok(r) => {
 
             if let Some(code) = r.exit_code {

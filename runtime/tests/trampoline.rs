@@ -1,8 +1,8 @@
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
-use evident_runtime::{EvidentRuntime, effect_loop};
-use evident_runtime::effect_dispatch::DispatchContext;
+use evident_runtime::{EvidentRuntime, trampoline};
+use evident_runtime::dispatch::DispatchContext;
 
 struct SharedWrite(Arc<Mutex<Vec<u8>>>);
 impl std::io::Write for SharedWrite {
@@ -31,7 +31,7 @@ fsm main
 ");
     let captured: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(Vec::new()));
     let mut ctx = DispatchContext::with_streams(Box::new(SharedWrite(Arc::clone(&captured))));
-    let r = effect_loop::run_with_ctx(&rt, &effect_loop::LoopOpts { max_steps: 5 }, &mut ctx)
+    let r = trampoline::run_with_ctx(&rt, &trampoline::LoopOpts { max_steps: 5 }, &mut ctx)
         .unwrap();
     assert!(r.halted_clean, "expected clean halt, got {r:?}");
     let stdout = String::from_utf8(captured.lock().unwrap().clone()).unwrap();
@@ -49,7 +49,7 @@ fsm main
 ");
     let captured: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(Vec::new()));
     let mut ctx = DispatchContext::with_streams(Box::new(SharedWrite(Arc::clone(&captured))));
-    let r = effect_loop::run_with_ctx(&rt, &effect_loop::LoopOpts { max_steps: 5 }, &mut ctx)
+    let r = trampoline::run_with_ctx(&rt, &trampoline::LoopOpts { max_steps: 5 }, &mut ctx)
         .unwrap();
     assert!(r.halted_clean);
     assert_eq!(captured.lock().unwrap().len(), 0);
@@ -68,7 +68,7 @@ fsm main
 ");
     let captured: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(Vec::new()));
     let mut ctx = DispatchContext::with_streams(Box::new(SharedWrite(Arc::clone(&captured))));
-    let _ = effect_loop::run_with_ctx(&rt, &effect_loop::LoopOpts { max_steps: 5 }, &mut ctx);
+    let _ = trampoline::run_with_ctx(&rt, &trampoline::LoopOpts { max_steps: 5 }, &mut ctx);
     let stdout = String::from_utf8(captured.lock().unwrap().clone()).unwrap();
     assert_eq!(stdout, "a\nb\n");
 }

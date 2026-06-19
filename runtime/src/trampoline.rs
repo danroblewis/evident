@@ -1,15 +1,20 @@
-//! The execute stage: discover the single FSM, seed its state, then tick it.
+//! The trampoline — the program's run loop. There is a state store and a single
+//! FSM that bounces on it: each tick reads the previous state, solves the FSM
+//! claim for the next state and its effects, and writes the new state back —
+//! then bounces again. That's the whole execution model.
+//!
+//! Per bounce: discover the single FSM (once), seed its state, then tick it.
 //! Each tick solves the FSM claim, decodes the model's `Effect` values, orders
 //! them (declared seq-chains + auto edges, topo-sorted with random tiebreak),
-//! dispatches them as real IO, and feeds results / world writes back. Halts when
-//! nothing changed or an `Exit` was requested.
+//! dispatches them as real IO (via `dispatch`), and feeds results / world writes
+//! back into the store. Halts when nothing changed or an `Exit` was requested.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
 
 use crate::core::ast::{BinOp, BodyItem, Effect, EffectResult, Expr, Pins};
 use crate::core::Value;
-use crate::effect_dispatch::{dispatch_all, DispatchContext};
+use crate::dispatch::{dispatch_all, DispatchContext};
 use crate::runtime::EvidentRuntime;
 use crate::encode::effect_decoder::decode_install_step_list;
 use crate::encode::{effect_decoder, Value as TValue};

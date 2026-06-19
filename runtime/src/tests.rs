@@ -136,8 +136,8 @@ mod ffi {
     }
 }
 
-mod effect_dispatch {
-    use crate::effect_dispatch::*;
+mod dispatch {
+    use crate::dispatch::*;
     use crate::core::ast::{Effect, EffectFfiArg, EffectResult};
 
     fn ctx_with_input(_input: &str) -> DispatchContext {
@@ -675,9 +675,9 @@ mod extract {
     }
 }
 
-mod effect_loop {
-    use crate::effect_loop::*;
-    use crate::effect_dispatch::DispatchContext;
+mod trampoline {
+    use crate::trampoline::*;
+    use crate::dispatch::DispatchContext;
     use crate::EvidentRuntime;
     fn ctx_silent() -> DispatchContext {
         DispatchContext::with_streams(Box::new(Vec::<u8>::new()))
