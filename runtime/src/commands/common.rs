@@ -10,7 +10,6 @@ pub fn usage() {
     eprintln!("  evident check        <files…>");
     eprintln!("  evident test         [path] [-v] [--no-color]");
     eprintln!("  evident effect-run   <file>           # run an effect-driven program");
-    eprintln!("  evident lint         <file>");
 }
 
 /// Split positional file paths from flag arguments. Files are everything

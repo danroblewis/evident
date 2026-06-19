@@ -5,5 +5,4 @@ pub mod common;
 
 pub mod check;
 pub mod effect_run;
-pub mod lint;
 pub mod test;
