@@ -2,9 +2,7 @@
 
 use crate::core::RuntimeError;
 use super::EvidentRuntime;
-use crate::core::ast::BodyItem;
 use crate::parser;
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 impl EvidentRuntime {
@@ -93,26 +91,6 @@ impl EvidentRuntime {
             }
             self.schemas.insert(s.name.clone(), s.clone());
             super::validate::register_subclaims(&s.body, &mut self.schemas);
-            // Record source file for this schema (and its subclaims).
-            // Used by the inference pipeline to skip claims from
-            // imported helper files.
-            if let Some(path) = base {
-                let mut origins = self.schema_origins.borrow_mut();
-                origins.insert(s.name.clone(), path.to_path_buf());
-                fn record_subclaim_origins(
-                    body: &[BodyItem],
-                    path: &Path,
-                    out: &mut HashMap<String, PathBuf>,
-                ) {
-                    for item in body {
-                        if let BodyItem::SubclaimDecl(s) = item {
-                            out.insert(s.name.clone(), path.to_path_buf());
-                            record_subclaim_origins(&s.body, path, out);
-                        }
-                    }
-                }
-                record_subclaim_origins(&s.body, path, &mut origins);
-            }
         }
         // Build all Z3 DatatypeSorts for this batch of enums together
         // via `create_datatypes`. Lets enums forward-reference each
@@ -124,12 +102,6 @@ impl EvidentRuntime {
         self.program.schemas.extend(prog.schemas);
         self.program.enums.extend(prog.enums);
 
-        // After all schemas in this batch are loaded, expand generic
-        // type / claim instantiations into monomorphic copies. Each
-        // unique `Edge<Rect>` becomes a real schema named "Edge<Rect>"
-        // with `T → Rect` substituted throughout its body. Iterates to
-        // a fixed point — nested generics resolve in passes.
-        super::generics::monomorphize_generics(&mut self.schemas, &mut self.schema_order)?;
         // Loading new schemas invalidates the cache: new schemas might
         // be referenced by ClaimCall / passthrough in old ones.
         self.cache.borrow_mut().clear();

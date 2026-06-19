@@ -1,76 +1,60 @@
-//! `evident lint <file>` — Stage 11 self-hosted lint pass.
+//! `evident lint <file>` — static lint checks over the parsed AST.
 //!
-//! Loads `stdlib/ast.ev` + `stdlib/passes/lint_duplicate_decls.ev`,
-//! marks both as system, then loads the user's file and runs every
-//! lint rule. Each rule is SAT precisely when its bug class is
-//! present; SAT means "found a problem."
+//! Currently one rule:
+//!   * `duplicate_membership_in_body` — the same variable name is
+//!     declared (via `∈`) twice in a single claim's body. Almost
+//!     always a mistake (and even when intentional, flagging it is
+//!     correct).
 //!
-//! Demonstrates that self-hosting works for non-inference passes
-//! too — the same encode/inject/query pipeline applies.
+//! Each finding is SAT-equivalent to "found a problem." The rule is a
+//! plain Rust scan over each loaded claim's body items — no solver,
+//! no encoded-program reflection.
 //!
 //! Exit codes:
 //!   0 — no lints fired
-//!   1 — load / encode error
+//!   1 — load error
 //!   2 — usage error
 //!   5 — at least one lint fired (distinguishes "found bugs" from
 //!        "ran cleanly")
 
 use std::process::ExitCode;
 
-use evident_runtime::Value;
+use evident_runtime::ast::BodyItem;
 
-use super::common::load_runtime_with_passes;
-
-const LINT_DUPS: &str = "stdlib/passes/lint_duplicate_decls.ev";
-
-const LINT_RULES: &[&str] = &[
-    "duplicate_membership_in_body",
-];
+use super::common::load_runtime;
 
 pub fn cmd_lint(args: &[String]) -> ExitCode {
     if args.is_empty() {
         eprintln!("lint: need <file.ev>");
         eprintln!("       evident lint <file.ev>");
         eprintln!();
-        eprintln!("Loads stdlib/ast.ev + the lint passes, encodes the user's");
-        eprintln!("program, runs each lint rule, and reports any findings.");
+        eprintln!("Scans each claim's body for duplicate variable");
+        eprintln!("declarations and reports any findings.");
         eprintln!();
         eprintln!("Exit 0 — clean. Exit 5 — at least one lint fired.");
         return ExitCode::from(2);
     }
     let user_path = &args[0];
-    let user_files = vec![user_path.clone()];
 
-    let mut rt = match load_runtime_with_passes(&[LINT_DUPS], &user_files) {
+    let rt = match load_runtime(&[user_path.clone()]) {
         Ok(r) => r,
         Err(e) => { eprintln!("error: {e}"); return ExitCode::from(1); }
     };
 
-    super::desugar::auto_apply_desugar(&mut rt, &user_files);
+    // Stable, deterministic order so output doesn't depend on the
+    // schema-map iteration order.
+    let mut names: Vec<String> = rt.schema_names().map(|s| s.to_string()).collect();
+    names.sort();
 
-    let n_claims = rt.user_claim_count();
     let mut findings = 0usize;
-    for claim_idx in 0..n_claims {
-        let claim_name = rt.user_claim_name(claim_idx).unwrap_or_default();
-        for rule in LINT_RULES {
-            // Body-only path — lint rules never reference `program`.
-            match rt.query_with_nth_claim_body_only(rule, "body", claim_idx) {
-                Ok(Some(r)) if r.satisfied => {
-                    findings += 1;
-                    let dup_var = r.bindings.get("dup_var")
-                        .and_then(|v| if let Value::Str(s) = v { Some(s.clone()) } else { None })
-                        .unwrap_or_default();
-                    let type_a = r.bindings.get("type_a")
-                        .and_then(|v| if let Value::Str(s) = v { Some(s.clone()) } else { None })
-                        .unwrap_or_default();
-                    let type_b = r.bindings.get("type_b")
-                        .and_then(|v| if let Value::Str(s) = v { Some(s.clone()) } else { None })
-                        .unwrap_or_default();
-                    println!("{}: in claim `{}`, variable `{}` is declared twice (`{}` and `{}`)",
-                             rule, claim_name, dup_var, type_a, type_b);
-                }
-                Ok(_) | Err(_) => {}
-            }
+    for claim_name in &names {
+        let Some(schema) = rt.get_schema(claim_name) else { continue };
+        for (var, type_a, type_b) in duplicate_memberships(&schema.body) {
+            findings += 1;
+            println!(
+                "duplicate_membership_in_body: in claim `{}`, variable `{}` is declared twice (`{}` and `{}`)",
+                claim_name, var, type_a, type_b
+            );
         }
     }
 
@@ -82,4 +66,29 @@ pub fn cmd_lint(args: &[String]) -> ExitCode {
         eprintln!("{} lint issue(s) found", findings);
         ExitCode::from(5)
     }
+}
+
+/// Find every variable declared via Membership more than once in a
+/// single body. Returns `(var, first_type, later_type)` for the first
+/// redeclaration of each name — in declaration order, so output is
+/// stable.
+fn duplicate_memberships(body: &[BodyItem]) -> Vec<(String, String, String)> {
+    let mut first_type: std::collections::HashMap<&str, &str> =
+        std::collections::HashMap::new();
+    let mut seen_dup: std::collections::HashSet<&str> =
+        std::collections::HashSet::new();
+    let mut out = Vec::new();
+    for item in body {
+        if let BodyItem::Membership { name, type_name, .. } = item {
+            match first_type.get(name.as_str()) {
+                None => { first_type.insert(name.as_str(), type_name.as_str()); }
+                Some(&earlier) => {
+                    if seen_dup.insert(name.as_str()) {
+                        out.push((name.clone(), earlier.to_string(), type_name.clone()));
+                    }
+                }
+            }
+        }
+    }
+    out
 }

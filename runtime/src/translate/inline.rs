@@ -5,12 +5,10 @@
 //! internals).
 //!
 //! Bare-identifier-as-passthrough (`Constraint(Identifier(name))`
-//! where `name` is a known claim) is handled BEFORE this walker
-//! runs by a self-hosted desugar pass —
-//! `stdlib/passes/desugar_passthrough.ev` paired with
-//! `commands/desugar.rs::auto_apply_desugar`, wired into every CLI
-//! subcommand. By the time the AST arrives here, the rewrite has
-//! already turned the bare form into an explicit `Passthrough` node.
+//! where `name` is a known schema) is recognized inline by this
+//! walker: it inlines the named schema's body exactly like an
+//! explicit `..Passthrough`. A bare identifier that does NOT name a
+//! schema translates as its own (typically Bool) value.
 
 use std::collections::{HashMap, HashSet};
 use z3::{Context, SatResult, Solver};
@@ -975,14 +973,11 @@ fn inline_body_items_guarded(
                     }
                 }
             }
-            // Bare-identifier-as-passthrough handling moved to the
-            // self-hosted desugar pass (`stdlib/passes/desugar_passthrough.ev`
-            // + `commands/desugar.rs::auto_apply_desugar`). By the time
-            // any constraint arrives here, the rewrite has already turned
-            // `Constraint(Identifier(name))` (when `name` is a known
-            // claim) into `Passthrough(name)`. Bare-identifier
-            // constraints whose name does NOT match a claim fall through
-            // to the regular Constraint arm below, same as before.
+            // Bare-identifier-as-passthrough is handled by the dedicated
+            // `Constraint(Identifier(name))` arm further below (when
+            // `name` names a known schema). Bare-identifier constraints
+            // whose name does NOT match a schema fall through to the
+            // regular Constraint arm.
 
             // Positional claim invocation: `Constraint(Call(name, args))`
             // whose `name` matches a known claim is treated as a
@@ -1361,6 +1356,29 @@ fn inline_body_items_guarded(
                         }
                     }
                 }
+            }
+            // Bare-identifier-as-passthrough: a constraint that is a
+            // single identifier naming a known schema is the
+            // names-match composition shape (`claim wrap : ... ;
+            // is_pinned_to_seven`). Inline that schema's body exactly
+            // like an explicit `..Passthrough`. Identifiers that are
+            // runtime markers, or that don't name a schema, fall
+            // through to the regular Constraint arm (where a bare Bool
+            // var translates to its own value).
+            BodyItem::Constraint(Expr::Identifier(name))
+                if schemas.contains_key(name)
+                    && !crate::core::ast::BODY_MARKERS.contains(&name.as_str()) =>
+            {
+                if !guard_is_satisfiable(solver, guard) { continue; }
+                if try_enter(visited, name).is_none() { continue; }
+                let Some(claim) = schemas.get(name) else {
+                    exit_frame(visited, name);
+                    continue;
+                };
+                inline_body_items_guarded(
+                    &claim.body, env, solver, schemas, ctx, registry, enums, visited, guard, tracker
+                );
+                exit_frame(visited, name);
             }
             BodyItem::Constraint(e) => {
                 // Recognized runtime markers (declared in

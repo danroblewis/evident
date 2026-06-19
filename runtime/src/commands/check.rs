@@ -40,11 +40,10 @@ pub fn cmd_check(args: &[String]) -> ExitCode {
         eprintln!("check: doesn't take flags (got {:?})", flag_args);
         return ExitCode::from(2);
     }
-    let mut rt = match load_runtime(&files) {
+    let rt = match load_runtime(&files) {
         Ok(r) => r,
         Err(e) => { eprintln!("{e}"); return ExitCode::from(1); }
     };
-    super::desugar::auto_apply_desugar(&mut rt, &files);
     let mut names: Vec<String> = rt.schema_names().map(|s| s.to_string()).collect();
     names.sort();
     let empty = HashMap::new();

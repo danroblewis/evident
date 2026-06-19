@@ -1,18 +1,9 @@
-//! Source-level desugarings: Seq concat flattening, unified-world syntax,
-//! and the user-vs-system boundary snapshot.
+//! Source-level desugarings: Seq concat flattening and unified-world
+//! syntax.
 
 use crate::core::RuntimeError;
 use crate::core::ast::SchemaDecl;
-use std::collections::{HashMap, HashSet};
-
-/// Snapshot of "everything loaded so far is the system layer."
-/// Schemas / enums loaded after a `mark_system_loads_complete()` call
-/// are treated as the user's program for the purposes of AST encoding.
-#[derive(Default, Clone)]
-pub struct SystemBoundary {
-    pub schemas: HashSet<String>,
-    pub enums:   HashSet<String>,
-}
+use std::collections::HashMap;
 
 /// Desugar `Seq(T)` concatenation. The user writes
 ///

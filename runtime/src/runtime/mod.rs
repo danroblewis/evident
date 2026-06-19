@@ -41,7 +41,6 @@
 mod stats;
 mod lenient;
 mod load;
-mod generics;
 mod desugar;
 mod inject;
 mod validate;
@@ -49,15 +48,12 @@ mod register_enums;
 mod query;
 mod sample;
 mod scheduler_api;
-mod reflection;
 mod analysis;
-mod introspect;
 
 pub use crate::core::Value;
 #[allow(unused_imports)]
 pub use crate::core::{QueryResult, RuntimeError};
 pub use stats::{FunctionizeStats, PerClaimStats};
-pub use desugar::SystemBoundary;
 
 use crate::core::ast::{Program, SchemaDecl};
 use crate::translate::{CachedSchema, DatatypeRegistry, StructuralSignature};
@@ -164,23 +160,6 @@ pub struct EvidentRuntime {
     /// `DatatypeBuilder` call per enum, with N nullary variants).
     /// Threaded into the translator alongside `datatypes`.
     pub(super) enums: crate::core::EnumRegistry,
-    /// Stage 3: schemas + enums loaded BEFORE
-    /// `mark_system_loads_complete()` was called. Used by the AST
-    /// encoder to filter so a self-hosted pass receives only the
-    /// user's program, not the pass + stdlib + ast.ev itself.
-    /// `None` means no boundary has been drawn — every schema/enum
-    /// is "user" (the default for non-self-hosting use cases like
-    /// `evident query`).
-    pub(super) system_boundary: RefCell<Option<SystemBoundary>>,
-    /// Per-schema source-file tracking: which file each top-level
-    /// schema was directly defined in. Schemas pulled in via
-    /// `import` chains get the importer's path. Lets the inference
-    /// pipeline restrict iteration to "claims defined in the user's
-    /// directly-specified file" rather than every transitively
-    /// loaded schema — saves substantial time when the user's file
-    /// imports a big helper library (mario_shader.ev → engine.ev's
-    /// 20+ helper claims).
-    pub(super) schema_origins: RefCell<HashMap<String, PathBuf>>,
     /// Canonicalized paths of every file already loaded via `load_file`
     /// (or transitively via `import`). Used for cycle protection so
     /// `A imports B; B imports A` doesn't recurse forever.
@@ -216,8 +195,6 @@ impl EvidentRuntime {
             cache_rebuilds: RefCell::new(0),
             datatypes: RefCell::new(HashMap::new()),
             enums: crate::core::EnumRegistry::new(),
-            system_boundary: RefCell::new(None),
-            schema_origins: RefCell::new(HashMap::new()),
             loaded_files: RefCell::new(HashSet::new()),
         }
     }

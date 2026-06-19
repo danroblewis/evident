@@ -19,9 +19,8 @@
 //!     `EncodeError::EnumNotRegistered` for every constructor — load
 //!     the file first.
 
-use std::collections::HashMap;
 use z3::ast::{Ast, Bool, Datatype, Int, Real, String as Z3Str};
-use z3::{Context, DatatypeSort};
+use z3::Context;
 
 use crate::core::ast::*;
 use crate::core::EnumRegistry;

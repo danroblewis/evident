@@ -83,8 +83,6 @@ your task:
 | Trying to understand the architectural goals (~11K Rust target, FFI-first) | [`docs/design/minimal-runtime.md`](docs/design/minimal-runtime.md) |
 | Designing the FFI primitive itself or extending it | [`docs/design/ffi-design.md`](docs/design/ffi-design.md) |
 | Planning what to add to FFI / OS coverage (reads, writes, alloc, callbacks, posix) | [`docs/design/ffi-os-evolution.md`](docs/design/ffi-os-evolution.md) |
-| Working with topological sort, or hitting "I want generics / higher-order claims" | [`docs/design/toposort.md`](docs/design/toposort.md) |
-| Adding or working with generic types / claims (`type Edge<T>`, `claim Toposort<T>`) | [`docs/design/generics.md`](docs/design/generics.md) |
 | Looking for plan files for the larger refactor | [`docs/plans/README.md`](docs/plans/README.md) |
 
 The two `docs/guide/*` docs were written specifically to spare future-you
@@ -257,13 +255,10 @@ External callers can use `evident_runtime::{Value, QueryResult, RuntimeError, as
 | Change how a schema gets parsed/loaded | `runtime/load.rs` |
 | Add a new schema desugaring | `runtime/desugar.rs` |
 | Change FSM auto-injection (`state_next`, `_prev`, …) | `runtime/inject.rs` |
-| Add a new generic-type instantiation rule | `runtime/generics.rs` |
 | Touch enum → Z3 Datatype registration | `runtime/register_enums.rs` |
 | Add a per-claim stat | `runtime/stats.rs` |
-| Inject AST values into self-hosted queries | `runtime/reflection.rs` |
 | Wire a per-tick scheduler call | `runtime/scheduler_api.rs` |
 | Enforce a load-time validation rule | `runtime/validate.rs` |
-| Touch user-claim introspection / body replacement | `runtime/introspect.rs` |
 | Lenient-mode RAII | `runtime/lenient.rs` |
 
 ### Inside `effect_loop/`
@@ -673,68 +668,6 @@ claim Distinct
 generic claim, not per-type variants. Don't use when the body's
 translation depends on the element type — give a concrete
 `Seq(Bool)` so the type-check fires at the call site.
-
-### Generic types and claims: `type Edge<T>`, `claim Toposort<T>`
-
-Type parameters in angle brackets after the schema name make a
-type or claim polymorphic over its element type. The runtime
-monomorphizes — each unique `<T>` instantiation produces a
-concrete copy at load time.
-
-```evident
--- Declaration
-type Edge<T>(from, to ∈ T)
-
-claim Toposort<T>
-    n ∈ Nat
-    items ∈ Seq(T)
-    edges ∈ Seq(Edge<T>)
-    sorted ∈ Seq(T)
-    -- ... body uses T to relate items, edges, sorted ...
-
--- Use sites
-e ∈ Edge<Rect>                            -- type reference
-es ∈ Seq(Edge<Rect>)                       -- nested in container
-es[0] = Edge<Rect>(Rect(1, 2), Rect(3, 4)) -- typed constructor
-Toposort<Rect> (n ↦ 4, items ↦ rects, …)   -- generic claim invocation
-```
-
-**Capitalization is the disambiguator.** Type parameter names are
-capitalized (`T`, `A`, `B`, `K`, `V`); they live in a separate
-namespace from value identifiers. `<` and `>` are still
-comparison operators in expression position; the parser only
-treats them as type-arg brackets when they appear after a
-capitalized identifier in a type position or before `(` in a
-constructor / claim call.
-
-**Generic templates aren't queryable.** `type Edge<T>` is a
-*template* — it produces concrete schemas (`Edge<Rect>`,
-`Edge<Effect>`, …) when used. The bare `Edge` doesn't translate
-on its own; `check` skips it with a "generic template — monomorphic
-copies queried separately" note. The monomorphic copies appear
-as regular schemas in the runtime's table.
-
-**Identity is by Z3 value equality on T.** For toposort and
-similar claims that match edges to nodes by equality:
-two structurally-equal `Rect`s are the same vertex. Distinct
-vertices need distinct values. Usually trivially true; if two
-items have the same field values, they're indistinguishable to
-the solver.
-
-**Don't put indices at the interface.** A generic claim's
-parameters and outputs should be domain types (`Seq(T)`), not
-`Seq(Int)` indices. Indices belong inside the body (`stdlib/toposort.ev`
-uses an internal `position` Seq), not at the contract boundary.
-See [Indices in interfaces are a leak](#indices-in-interfaces-are-a-leak)
-above and [`docs/design/toposort.md`](docs/design/toposort.md)
-for the worked example.
-
-**Limits today**: explicit type args only — no inference at call
-sites in v1 (`Toposort<Rect>(...)`, not `Toposort(...)`). Generic
-type parameters are scoped to the schema they're declared on; no
-generic functions / lambdas. Higher-kinded types aren't supported.
-See [`docs/design/generics.md`](docs/design/generics.md) for the
-full design and open questions.
 
 ### Chained-membership with comparison chains
 
@@ -1214,7 +1147,7 @@ matches the math; the index form makes you mentally unwind
 
 **The element form is supported for both primitive and
 record-element Seqs.** For a `Seq(Int)`, `∀ x ∈ s : x > 0`
-binds `x` to each Int element. For a `Seq(Edge<T>)`, `∀ e ∈
+binds `x` to each Int element. For a `Seq(Edge)`, `∀ e ∈
 edges : e.from = ...` binds `e` as the element AND makes
 `e.field` accessible for each field on the element record.
 The runtime's `Forall` translator at
