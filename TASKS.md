@@ -64,11 +64,10 @@ the Xvfb display) must be green after each.
    shared `world`) — the only multi-FSM demo. Converted it to one `fsm main(world)`
    (input-poll + physics + render in one ordered tick), aligning with the
    "one main FSM, everything embedded" architecture. Still renders correctly.
-9. [ ] **Strip ALL comments** from `runtime/` Rust (`//`, `/* */`, `///`, `//!`,
-   including doc-comments and their doc-tests). Use a string/char/raw-string-aware
-   stripper; build + full test must stay green (comments don't affect logic).
-   Done **last**, so it also cleans up comments the earlier passes add.
-   Recoverable from git.
+9. [x] **Strip ALL comments** from `runtime/` Rust. Done (`41436fe`). A
+   string/char/raw-string-aware stripper removed every `//`, `/* */`, `///`, `//!`
+   across 103 files (−6389 lines); build clean + `./test.sh` green (267), so
+   behavior-identical. Recoverable from git.
 
 ## Standing / owner action
 - [ ] **Push** (no git creds in the container):
