@@ -16,8 +16,9 @@ and the issue/await pattern.
 >   * declaring **FTI typed resources** (`win ∈ SDL_Window (...)`)
 >     and letting the bridge own the lifecycle.
 >
-> Raw FFI lives in `stdlib/` and in Rust-side FTI bridges
-> (`runtime/src/event_sources.rs`, `runtime/src/fti.rs`).
+> Raw FFI lives in `stdlib/` and in the Rust-side FTI bridge
+> (`runtime/src/ffi.rs` + the declarative-install bridge in
+> `runtime/src/trampoline.rs`).
 > If a demo needs a C function that no stdlib helper covers,
 > the fix is to add the helper to stdlib first, then call it
 > from the demo. Hardcoded dylib paths like

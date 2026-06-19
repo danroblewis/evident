@@ -18,10 +18,9 @@ something behaves wrong.
 > **Two conventions for files we add to `examples/`**
 > (also in `CLAUDE.md`; these are repo conventions, not
 > language requirements):
->   1. Demo files run through the multi-FSM scheduler — even
->      the single-FSM ones. There is no "single-FSM mode";
->      claims with the FSM shape (state pair + ResultList +
->      EffectList) are dispatched uniformly.
+>   1. Demo files run through the trampoline's run loop — the
+>      claim with the FSM shape (state pair + ResultList +
+>      EffectList) is ticked as the program's FSM.
 >   2. Demo files don't contain raw FFI calls (`LibCall`,
 >      `FFICall`, `FFIOpen`, `FFILookup`). Wrap C in `stdlib/`,
 >      then call the wrapper claim. Hardcoded dylib paths in a
@@ -67,7 +66,7 @@ claim main
     -- ... your state-transition + effect-emission logic here
 ```
 
-The runtime detects this shape via `effect_loop::detect_main_shape`.
+The runtime detects this shape via `trampoline::detect_main_shape`.
 The names `last_results` and `effects` are required (the loop's
 HashMap lookup is keyed on those exact strings); the state pair name
 is auto-detected by finding two enum-typed Memberships where one

@@ -1,7 +1,7 @@
 # Evident programming guides
 
 Practical how-to docs for writing Evident programs against the
-runtime as it is today (multi-FSM scheduler, FTI-first I/O).
+runtime as it is today (single-FSM run loop, FTI-first I/O).
 
 > **Worked examples** for this repo's primitives live in
 > [`examples/`](../../examples/) — every primitive
@@ -13,9 +13,8 @@ runtime as it is today (multi-FSM scheduler, FTI-first I/O).
 > The demos in that directory follow two repo-specific
 > conventions (see CLAUDE.md):
 >   1. **Demo files are integration tests.** Each is named
->      `test_*.ev` and bundles the FSM(s) plus inline `sat_*`
->      / `unsat_*` static-test claims. Single-FSM demos are
->      written as multi-FSM programs with one FSM.
+>      `test_*.ev` and bundles the FSM plus inline `sat_*`
+>      / `unsat_*` static-test claims.
 >   2. **Demo files don't contain raw FFI calls.** Wrap C in
 >      `stdlib/`, then call the wrapper claim from the demo.
 >
@@ -26,7 +25,6 @@ runtime as it is today (multi-FSM scheduler, FTI-first I/O).
 | Guide | When to read it |
 |---|---|
 | [`effect-state-machines.md`](effect-state-machines.md) | Before writing any program that uses `evident effect-run`. Explains the step loop, halt convention, the issue/await pattern, and the common pitfalls. |
-| [`multi-fsm-programs.md`](multi-fsm-programs.md) | Cookbook for programs composing FSMs through shared world — setup-then-render, stdin echo, graceful shutdown, timer-driven counters, multi-plugin coordination. |
 | [`ffi-bindings.md`](ffi-bindings.md) | For stdlib authors wrapping a C library (or extending an existing wrapper) — `LibCall` shape, signature codes, ArgList encoding, library paths, debugging. **Programs should never need this guide directly.** |
 
 Read them in that order. Each guide builds on the previous.

@@ -89,11 +89,11 @@ declare what they want; the bridge makes it real.
   * **Composable.** A type can be passed as a parameter, included
     via `..`, embedded as a field of another type — same as any
     Evident type. The bridge follows the value.
-  * **Mirrors evident's coordination model.** Bridge plugin and
-    user FSM coordinate via shared state (the type's fields). Same
-    delta-driven scheduling. Same single-writer-per-field. The
-    bridge is just an FSM implemented in Rust — same interface as
-    the user's claims.
+  * **State lives in the FSM's world.** The user FSM reads and
+    writes the type's fields as ordinary world state; the bridge
+    materializes the C-side resource and mirrors its state into
+    those fields. The bridge is Rust code the runtime runs around
+    each tick — not a separate FSM the user coordinates with.
 
 ## What needs to be built
 
@@ -123,9 +123,10 @@ A bridge plugin needs to:
     `win.position` after a resize event) — to mirror state.
   * Be notified when no FSM declares the value — to clean up.
 
-The first three are existing capabilities (read-set / write-set /
-plugin writes). The last (declaration tracking) is new — we'd need
-the runtime to know "is this resource still referenced?"
+The first three are existing capabilities (the bridge reads and
+writes the type's world fields around each tick). The last
+(declaration tracking) is new — we'd need the runtime to know
+"is this resource still referenced?"
 
 ### 3. Identity / instances
 
@@ -144,8 +145,8 @@ declaration). The user's mental model is probably also distinct
 ("I declared it, it's mine"). Distinct-by-default plus named
 sharing seems right.
 
-This intersects with the user-FSM-spawning question (separate
-doc) — both are about "instances of declared things."
+This is the "instances of declared things" question — how many
+real resources one type name maps to.
 
 ### 4. Migration of existing FFI bindings
 
@@ -156,12 +157,13 @@ bindings can use FTI; old ones stay as-is until rewritten.
 
 ## v1 vs v2 vs v3
 
-  * **v1 (today)**: `Effect::FFICall`, opaque handles, user FSM
-    encodes the state machine. Works; not pretty.
-  * **v2**: introduce the bridge-plugin protocol for new built-in
-    plugins (StdinSource, FrameTimer, SigintSource — already
-    plugins-as-writers). Foreign-type pattern available for one
-    or two trial bindings (probably SDL_Window or socket).
+  * **v1 (today)**: `Effect::FFICall`, opaque handles, the FSM
+    encodes the state machine. Works; not pretty. Typed FTI
+    resources (`win ∈ SDL_Window (...)`) already ride the
+    declarative-install bridge for materialization.
+  * **v2**: extend the bridge protocol with field-write callbacks
+    and declaration tracking, so live field mirroring and cleanup
+    happen without the FSM threading handles.
   * **v3**: full FTI rollout. Most stdlib FFI bindings become
     type declarations. `Effect::FFICall` remains for genuinely
     one-shot calls (math libraries, simple syscalls).
@@ -170,7 +172,5 @@ bindings can use FTI; old ones stay as-is until rewritten.
 
   * [`schema-interface.md`](schema-interface.md) — the unified
     schema model (this is just FFI as schema).
-  * [`fsm-subscriptions.md`](fsm-subscriptions.md) — the scheduler
-    that bridges plugins use.
   * [`ffi-design.md`](ffi-design.md) — current `Effect::FFICall`
     design and tradeoffs.

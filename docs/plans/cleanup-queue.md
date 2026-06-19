@@ -9,13 +9,16 @@ avoids worktree merge conflicts. Mark items done and commit as they land.
 - _(nothing running)_
 
 ## Queued (in order)
-1. **Audit leftover multi-FSM machinery** — `single_fsm` enumerates FSM candidates
-   and rejects >1; the runtime is single-FSM now (core.md stage 4), but CLAUDE.md
-   still documents a multi-FSM subscription scheduler (world read-sets,
-   plugin-as-writer, event sources). Check whether the event-source / subscription /
-   multi-FSM code is vestigial, simplify `single_fsm`, and reconcile the docs.
+1. **Simplify `single_fsm`** — the runtime is single-FSM now (core.md stage 4);
+   `single_fsm` still enumerates FSM candidates and rejects >1. The docs have been
+   reconciled to single-FSM (see Done); the remaining work is the code simplification.
 
 ## Done (recent, newest first)
+- reconcile docs to single-FSM: delete 8 obsolete design docs + multi-fsm cookbook,
+  scrub multi-FSM/subscription/event-source machinery from CLAUDE.md and the FTI /
+  schema-interface / state-machines-as-relations docs
+- _(superseded)_ multi-FSM machinery removed from runtime/src (event-source /
+  subscription / scheduler code gone)
 - move `z3_eval.rs` → `functionize/extract_program.rs` (IR front-half) — `242ebec`
 - merge `dispatch.rs` → `ffi.rs` (the foreign/IO boundary; `ffi` now `pub`) — `e1e2535`
 - `effect_loop` → `trampoline`, `effect_dispatch` → `dispatch` — `7fadcfe`

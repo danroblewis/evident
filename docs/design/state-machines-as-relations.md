@@ -2,24 +2,22 @@
 
 This document is the conceptual anchor for Evident's FSM model.
 Read it before making design decisions about `fsm`, `external`,
-state sharing, or the scheduler.
+or the run loop.
 
 ## The core claim
 
-**Evident is a coordination language for finite state machines
-operating over shared global state.** Every FSM in a program —
-whether written in Evident or implemented in Rust as a runtime
-bridge — participates in the same coordination model:
+**An Evident program run via `effect-run` is a finite state machine
+operating over global state.** The FSM:
 
-1. Read variables from the shared state.
-2. Write new values to those variables.
-3. The runtime schedules turns and persists writes.
+1. Reads variables from the global state (the previous tick).
+2. Writes new values to those variables (this tick).
+3. The runtime ticks it and persists the writes.
 
-Nothing in the language singles out one FSM as special. The
-runtime's effect-dispatcher, stdin-reader, frame-timer, and FFI
-marshaller are FSMs that happen to be implemented in Rust because
-they need OS access. They share state with user FSMs the same way
-two user FSMs share state.
+A `claim` denotes a relation; an `fsm` is that relation given a
+time dimension — the runtime solves it once per tick. The FFI
+bridge (typed resource materialization) is Rust code the runtime
+runs around each tick because it needs OS access; it is not a
+second FSM.
 
 ## Claims are relations
 
@@ -96,134 +94,86 @@ The runtime:
 
 The global state's `count` slot accumulates the values monotonically.
 
-## Coordination is by name
+## State carries across ticks by name
 
-When two FSMs both declare a variable with the same name, they
-share that slot in the global state. No special syntax — name
-identity IS the coordination mechanism.
+A variable in the FSM body is a slot in the global state. Its
+value persists across ticks: `_count` is the previous tick's
+`count`, and the `count` the FSM writes this tick becomes next
+tick's `_count`. Name identity is how a value flows from one tick
+to the next — no special syntax.
 
 ```evident
-fsm producer
+fsm counter
     count ∈ Int
-    count = _count = ⊥ ? 0 : _count + 1
-
-fsm consumer
-    count ∈ Int        -- same `count` as producer's
-    last_seen ∈ Int
-    last_seen = count  -- read the producer's write
+    count = _count = ⊥ ? 0 : _count + 1   -- accumulate across ticks
 ```
-
-The runtime schedules writer-first per turn: `producer` runs,
-writes `count`; then `consumer` runs, reads the freshly-written
-`count` and writes `last_seen`.
-
-This generalizes to N FSMs over M shared slots. The scheduler's
-job is to figure out a valid order (no writer writes after a
-reader has already read this turn) and tick the FSMs.
 
 ## The `external` modifier
 
-A schema is `external` when it crosses the OS boundary. Three
+A schema is `external` when it crosses the OS boundary. Two
 combinations:
 
 - **`external type T(...)`** — a typed OS resource. The runtime
-  owns its lifecycle (allocate, write-fields, free). Example:
+  owns its lifecycle (allocate, write-fields, free) via the
+  declarative-install bridge. Example:
   `external type SDL_Window(title ∈ String, handle ∈ Int)`.
 
 - **`external claim foo(...) ... = LibCall(...)`** — an
   effect-building helper. Constructs `FFICall`/`LibCall`/`FFIOpen`/
-  `FFILookup` values that the runtime's effect-dispatcher
+  `FFILookup` values that the runtime's effect dispatch
   executes. Only `external` schemas may construct these effect
   variants — enforced at load time.
 
-- **`external fsm name`** — a runtime-side bridge FSM. Its body
-  is implemented in Rust because it needs OS access; its
-  declaration in Evident is the **contract** for which shared-state
-  slots it reads and writes. Examples:
+## What the relational model eliminates
 
-  ```evident
-  external fsm stdin_reader
-      stdin_line ∈ String   -- runtime writes
-      stdin_seq  ∈ Int      -- runtime writes
+Compared to earlier versions of `fsm`, the relational model
+eliminates several special cases:
 
-  external fsm frame_timer
-      tick_count ∈ Int      -- runtime writes; rate from EVIDENT_TICK_MS
-
-  external fsm effect_dispatcher
-      effects      ∈ Seq(Effect)   -- runtime reads, then clears
-      last_results ∈ Seq(Result)   -- runtime writes
-  ```
-
-The Rust implementation of each bridge lives in
-`runtime/src/event_sources/`. The declaration in
-`stdlib/runtime.ev` is what user code reads to know which slots
-exist.
-
-## What this redesign eliminates
-
-Compared to earlier versions of `fsm`, the unified relational
-model eliminates several special cases:
-
-1. **No implicit parameter injection.** A user fsm does not
+1. **No implicit parameter injection.** An fsm does not
    automatically have `state_next`, `last_results`, or `effects`.
    It declares only the variables it actually uses.
 
 2. **No "input" vs "output" variable types.** Everything is just
    a slot. `Seq(Effect)` is special only in that the runtime's
-   effect-dispatcher (a bridge) reads from any slot of that type.
+   effect dispatch reads from any slot of that type.
 
 3. **No state-enum requirement.** A counter `count ∈ Int` is a
    perfectly valid fsm. Discrete modes (`mode ∈ {Idle, Active}`)
    are useful when behavior branches on them, not required.
 
-4. **No special `world` keyword.** A multi-FSM program just
-   declares shared variables with matching names across FSMs.
-   The scheduler infers the writer-reader relationships.
-
-5. **No conceptual gap between user FSMs and runtime FSMs.**
-   Both contribute constraints over the shared state. The
-   bridges have Rust-side behavior beyond the constraint system
-   (OS calls), but their coordination interface is uniform.
-
 ## Reading guide
 
-The picture in one sentence: **A program is a collection of FSMs
-sharing global state by name; the runtime contributes its own
-FSMs for OS-side concerns.**
+The picture in one sentence: **A program is an FSM ticking over
+global state, where each variable is a slot whose value carries
+from one tick to the next.**
 
-When reading a multi-FSM program:
+When reading an FSM program:
 
-1. Look at every `fsm` declaration and note its variables. Each
-   variable is a slot in the shared state.
-2. Find which FSMs name the same slot. Those FSMs coordinate.
-3. For each `_var` reference, the slot's previous-tick value
+1. Look at the `fsm` declaration and note its variables. Each
+   variable is a slot in the global state.
+2. For each `_var` reference, the slot's previous-tick value
    feeds in.
-4. For each variable assignment in an fsm body, the slot gets
+3. For each variable assignment in the fsm body, the slot gets
    the new value at end-of-tick.
-5. `external fsm` declarations name slots written by Rust-side
-   bridges. User FSMs read them by declaring matching names.
 
-The graph of "who reads what, who writes what" is the program's
-data-flow shape. The runtime's scheduler is responsible for
-turning that graph into a tick-by-tick execution order.
+The graph of "what reads what, what writes what" across ticks is
+the program's data-flow shape; the run loop turns it into a
+tick-by-tick execution.
 
 ## Decision criteria for future syntax
 
 If a new construct would express something orthogonal to "an fsm
-ticking over shared state," it does not belong in `fsm`'s syntax.
-If it can be expressed as a constraint over the same shared
-state, it does. The `fsm` keyword should remain a thin layer: a
-scheduler hint and the `_var` time-shift convention. Everything
-else is shared-state coordination.
+ticking over global state," it does not belong in `fsm`'s syntax.
+If it can be expressed as a constraint over the same state, it
+does. The `fsm` keyword should remain a thin layer: a run-loop
+hint and the `_var` time-shift convention. Everything else is
+state over time.
 
-Two specific consequences:
+A specific consequence:
 
 - **Hierarchical states (Statecharts)**: expressible as nested
   enum-typed variables. No new syntax needed; existing record
   types and enums compose.
-- **Parallel regions**: expressible as multiple fsms sharing
-  state. No new syntax needed; multi-fsm coordination already
-  handles this.
 
-If either becomes painful in practice, revisit. Until then, the
+If this becomes painful in practice, revisit. Until then, the
 language stays smaller.
