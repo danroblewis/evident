@@ -144,7 +144,7 @@ test, so we hold them to a strict shape.
 Each file in `examples/` is named `test_NN_<name>.ev`
 and contains both:
 
-  * The FSM program (a `claim` with a state pair +
+  * The FSM program (a `claim` with `_var`-carried state +
     `last_results ∈ ResultList` + `effects ∈ EffectList`),
     which the trampoline ticks.
   * Inline `claim sat_*` / `claim unsat_*` static tests that
@@ -279,7 +279,7 @@ External callers can use `evident_runtime::{Value, QueryResult, RuntimeError, as
 |---|---|
 | Add a new public query method | `session/query.rs` |
 | Change how a schema gets parsed/loaded, or import resolution | `session/mod.rs` (load + run-loop-facing query + UnionFind) |
-| Add/change a lowering pass (seq-concat desugar, world syntax, FSM/type-inference injection) | `encode/lower.rs` |
+| Add/change a lowering pass (seq-concat desugar, Δ desugar, FSM/type-inference injection) | `encode/lower.rs` |
 | Touch enum → Z3 Datatype registration | `session/register_enums.rs` |
 
 ### Inside `trampoline.rs` (single file, sectioned)
@@ -320,8 +320,9 @@ External callers can use `evident_runtime::{Value, QueryResult, RuntimeError, as
 
 For programs run via `evident effect-run`, the trampoline in
 `runtime/src/trampoline.rs` discovers the one top-level claim matching
-the FSM shape (state pair + EffectList + ResultList) and ticks it. Each
-tick reads the previous state, solves the FSM claim for the next state +
+the FSM shape (`_var`-carried state + EffectList + ResultList) and ticks
+it. Each tick reads the previous tick's state (exposed as `_var`), solves
+the FSM claim for this tick's state +
 its effects, dispatches those effects as real IO, writes the new state
 back, and bounces again.
 
@@ -364,7 +365,7 @@ on_ground = (_pos.y ≥ 400)                  -- Bool from comparison
 walk_vx = (key_left > 0 ? 0 - 5 : 0)        -- Int from ternary arms
 sky = Color(80, 160, 220, 255)              -- Color from ctor
 eff = LibCall("...", "...", "...", ⟨⟩)      -- Effect from variant
-target = _world.pos                          -- IVec2 from field type
+target = _state.pos                          -- IVec2 from field type
 m_str = match last_results[0]                -- Int from arm bodies
     IntResult(n) ⇒ n
     _           ⇒ 0
@@ -383,27 +384,34 @@ What stays explicit:
 - **Record arithmetic with no anchoring side** — `tent ∈ IVec2 =
   _pos + grav_vel` (inference doesn't yet propagate record type
   through `+`).
-- **Type definitions** — `type World` body needs annotations.
+- **Type definitions** — `type GameState` body needs annotations.
 
-### Shared world state: `_world` / `world` syntax
+### Record-typed FSM state: `_var` / `var`
+
+Record state carries tick-to-tick exactly like a scalar — there is no
+"next snapshot" variable and no special "world" concept. `_var.field`
+reads the previous tick's value; `var.field` writes this tick's value.
 
 ```evident
-type World
+type GameState
     pos ∈ IVec2
 
--- Don't (explicit next-snapshot pair):
-fsm game(world ∈ World, world_next ∈ World)
-    new_pos ∈ IVec2 = world.pos + ...       -- world.X = previous tick
-    world_next.pos = new_pos                 -- world_next.X = write
+-- Don't (the old `*_next` write-snapshot pair):
+fsm game(state ∈ GameState, state_next ∈ GameState)
+    state_next.pos = state.pos + ...         -- the abandoned writer pattern
 
--- Do (`_var` time-shift):
-fsm game(world ∈ World)
-    world.pos = _world.pos + ...             -- _world.X read prev, world.X = write
+-- Do (`_var` time-shift, identical to scalars):
+fsm game(state ∈ GameState)
+    state.pos = _state.pos + ...             -- _state.X read prev, state.X = write
 ```
 
-`_world.X` reads the previous tick's value; `world.X = ...`
-writes the current tick's value. The runtime rewrites this
-internally to the explicit prev/next-snapshot pair.
+`_state.X` reads the previous tick's value; `state.X = ...` writes this
+tick's value, and the runtime carries `state → _state` per-field across
+ticks. On the first tick there is no previous, so `is_first_tick` is true
+and the program seeds explicitly (`is_first_tick ⇒ state.pos = …`). This
+is the ONE state-carrying mechanism: scalars, records, and enums all use
+it. There is no `state_next`; a name carried as `_var`/`var` is the whole
+story.
 
 ### Subclaim dispatch over receiver-prefix
 
@@ -462,9 +470,9 @@ loudly on typos.
 ### `_var` for previous-tick reads
 
 Inside an fsm body, `_var` is the previous tick's value of
-`var`. Works for primitive Ints, records (per-field), and
-shared world (via `_world.X`). `is_first_tick ∈ Bool` auto-
-injects when any `_var` is referenced.
+`var`. Works for primitive Ints, records (per-field, e.g.
+`_state.pos.x`), and enums (whole-value). `is_first_tick ∈ Bool`
+auto-injects when any `_var` is referenced.
 
 ```evident
 fsm counter
@@ -666,22 +674,22 @@ own internal variables are fresh and not visible to the parent.
 
 ```evident
 claim GameTransition
+    _state     ∈ GameState
     state      ∈ GameState
-    state_next ∈ GameState
     response   ∈ String
     verb       ∈ Verb
 
     subclaim LookAction
-        -- state, state_next, response, verb are inherited from parent
-        state_next.location = state.location
-        (state.location, room_desc) ∈ room_descriptions
+        -- _state, state, response, verb are inherited from parent
+        state.location = _state.location
+        (_state.location, room_desc) ∈ room_descriptions
         response = room_desc
 
     subclaim GoAction
         -- direction, dest are internal to GoAction — not in parent scope
         direction ∈ String
         dest      ∈ String
-        (state.location, direction, dest) ∈ direction_exits
+        (_state.location, direction, dest) ∈ direction_exits
         ...
 ```
 
@@ -757,7 +765,7 @@ a ≠ b                         -- some-field-differs (disjunctive)
 ```evident
 c = a - b                     -- c.x = a.x - b.x ∧ c.y = a.y - b.y
 nxt.pos = cur.pos + cur.vel * input.dt / 1000
-state_next.dots[i] = src       -- whole-element record assignment via Index LHS
+state.dots[i] = src            -- whole-element record assignment via Index LHS
 ```
 
 The lift sees `Identifier`, `Field-of-Index`, and `Index` records
@@ -803,10 +811,10 @@ each arg before inlining the claim's body.
 tuple binding and require pinned lengths.
 
 ```evident
-∀ (cur, nxt) ∈ coindexed(state.dots, state_next.dots) :
+∀ (cur, nxt) ∈ coindexed(_state.dots, state.dots) :
     nxt.pos = cur.pos + cur.vel * input.dt / 1000
 
-∀ (cur, nxt, eff) ∈ coindexed(state.dots, state_next.dots, effective_vy) :
+∀ (cur, nxt, eff) ∈ coindexed(_state.dots, state.dots, effective_vy) :
     -- per-dot physics referencing both snapshots and a parallel intermediate
 
 ∀ (a, b) ∈ edges(items) : a ≤ b   -- monotonicity
@@ -872,7 +880,7 @@ claim InitGameState
     init_seeds ∈ Seq(Int)
     -- … initialization constraints …
 
-type main(state, state_next ∈ GameState)
+fsm main(state ∈ GameState)
     input ∈ SDLInput
     init_seeds ∈ Seq(Int)
     -- … other setup …
@@ -1164,8 +1172,8 @@ unbound identifiers — the constraint is silently dropped and the variable
 is left free. This produces no error, just wrong behavior.
 
 ```evident
-state_next.done = true    -- correct
-state_next.done = True    -- SILENT BUG: True is an unbound name, constraint dropped
+state.done = true    -- correct
+state.done = True    -- SILENT BUG: True is an unbound name, constraint dropped
 ```
 
 ### Precedence: `⇒` binds tighter than `∧`
