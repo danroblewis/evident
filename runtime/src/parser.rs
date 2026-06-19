@@ -331,7 +331,7 @@ impl Parser {
                 other => return Err(ParseError(format!(
                     "expected type name in first-line params, got {:?}", other))),
             };
-            let type_name = if matches!(head.as_str(), "Seq" | "Set" | "Bag" | "Map")
+            let type_name = if matches!(head.as_str(), "Seq" | "Set" | "Bag")
                 && matches!(self.peek(), Token::LParen)
             {
                 self.bump();
@@ -524,7 +524,7 @@ impl Parser {
             let looks_like_compound = matches!(inside_first, Some(Token::Ident(_)))
                 && matches!(inside_second, Some(Token::RParen));
             let is_known_compound_head =
-                matches!(head, "Seq" | "Set" | "Bag" | "Map");
+                matches!(head, "Seq" | "Set" | "Bag");
 
             if is_named_pin {
                 self.bump();
