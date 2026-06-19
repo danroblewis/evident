@@ -39,6 +39,7 @@ pub enum Token {
     Or,
     Not,
     Implies,
+    Delta,
 
     LParen,
     RParen,
@@ -305,6 +306,7 @@ pub fn tokenize(src: &str) -> Result<Vec<Token>, LexError> {
             '\u{2228}' => { chars.next(); col += 1; tokens.push(Token::Or); }
             '\u{00AC}' => { chars.next(); col += 1; tokens.push(Token::Not); }
             '\u{21D2}' => { chars.next(); col += 1; tokens.push(Token::Implies); }
+            '\u{0394}' => { chars.next(); col += 1; tokens.push(Token::Delta); }
             '\u{2264}' => { chars.next(); col += 1; tokens.push(Token::Le); }
             '\u{2265}' => { chars.next(); col += 1; tokens.push(Token::Ge); }
             '\u{2260}' => { chars.next(); col += 1; tokens.push(Token::Neq); }

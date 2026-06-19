@@ -293,6 +293,11 @@ impl Parser {
             let e = self.parse_unary()?;
             return Ok(Expr::Not(Box::new(e)));
         }
+        if matches!(self.peek(), Token::Delta) {
+            self.bump();
+            let e = self.parse_unary()?;
+            return Ok(Expr::Delta(Box::new(e)));
+        }
         if matches!(self.peek(), Token::Minus) {
             self.bump();
             let e = self.parse_unary()?;

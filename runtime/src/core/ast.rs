@@ -86,6 +86,8 @@ pub enum Expr {
 
     Not(Box<Expr>),
 
+    Delta(Box<Expr>),
+
     Ternary(Box<Expr>, Box<Expr>, Box<Expr>),
 
     Match(Box<Expr>, Vec<MatchArm>),
@@ -125,7 +127,7 @@ pub fn walk_expr(e: &Expr, f: &mut impl FnMut(&Expr)) {
                 walk_expr(a, f);
             }
         }
-        Expr::Cardinality(i) | Expr::Not(i) => walk_expr(i, f),
+        Expr::Cardinality(i) | Expr::Not(i) | Expr::Delta(i) => walk_expr(i, f),
         Expr::Field(recv, _) => walk_expr(recv, f),
         Expr::Binary(_, l, r) => {
             walk_expr(l, f);
@@ -174,7 +176,7 @@ pub fn walk_expr_mut(e: &mut Expr, f: &mut impl FnMut(&mut Expr)) {
                 walk_expr_mut(a, f);
             }
         }
-        Expr::Cardinality(i) | Expr::Not(i) => walk_expr_mut(i, f),
+        Expr::Cardinality(i) | Expr::Not(i) | Expr::Delta(i) => walk_expr_mut(i, f),
         Expr::Field(recv, _) => walk_expr_mut(recv, f),
         Expr::Binary(_, l, r) => {
             walk_expr_mut(l, f);
@@ -393,6 +395,7 @@ impl std::fmt::Display for Expr {
             Expr::Index(seq, idx) => format!("{}[{}]", seq, idx),
             Expr::Field(receiver, fld) => format!("{}.{}", receiver, fld),
             Expr::Not(inner) => format!("¬({})", inner),
+            Expr::Delta(inner) => format!("Δ({})", inner),
             Expr::Ternary(c, a, b) => format!("({} ? {} : {})", c, a, b),
             Expr::Matches(e, pat) => format!("({} matches {})", e, fmt_pattern(pat)),
             Expr::Match(scr, arms) => {

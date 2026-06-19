@@ -67,6 +67,7 @@ pub(super) fn rewrite_idents_with_prefix(
         Expr::Field(recv, f) => Expr::Field(r(recv), f.clone()),
         Expr::Binary(op, a, b) => Expr::Binary(op.clone(), r(a), r(b)),
         Expr::Not(x)           => Expr::Not(r(x)),
+        Expr::Delta(x)         => Expr::Delta(r(x)),
         Expr::Ternary(c, a, b) => Expr::Ternary(r(c), r(a), r(b)),
         Expr::Match(scr, arms) => {
             let new_arms: Vec<MatchArm> = arms.iter().map(|arm| {
@@ -250,6 +251,7 @@ pub(super) fn substitute_bound_var(e: &Expr, bound: &str, elem: &Expr) -> Expr {
         Expr::Field(recv, f)   => Expr::Field(r(recv), f.clone()),
         Expr::Binary(op, a, b) => Expr::Binary(op.clone(), r(a), r(b)),
         Expr::Not(x)           => Expr::Not(r(x)),
+        Expr::Delta(x)         => Expr::Delta(r(x)),
         Expr::Ternary(c, a, b) => Expr::Ternary(r(c), r(a), r(b)),
         Expr::Match(scr, arms) => {
             let new_arms: Vec<MatchArm> = arms.iter().map(|arm| MatchArm {

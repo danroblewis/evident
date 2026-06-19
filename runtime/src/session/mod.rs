@@ -139,6 +139,7 @@ impl EvidentRuntime {
             lower::unify_world_syntax(&mut s)?;
 
             lower::desugar_seq_concat(&mut s);
+            lower::desugar_delta(&mut s);
             lower::inject_fsm_params(&mut s)?;
 
             lower::inject_lhs_eq_types(&mut s, &self.schemas, &self.enums);

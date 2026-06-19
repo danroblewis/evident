@@ -92,6 +92,13 @@ const EXPECTATIONS: &[DemoExpect] = &[
         forbid_exact_lines: &["pos.x+pos.y = ?"],
         max_steps: 10, tick_ms: 0, stdin: None,
     },
+    DemoExpect {
+
+        name: "test_23_difference", exit: 0,
+        must_lines: &["x = 10", "x = 9", "x = 8", "x = 7", "landed at 6"],
+        forbid_exact_lines: &["x = 11", "landed at 7"],
+        max_steps: 10, tick_ms: 0, stdin: None,
+    },
 ];
 
 #[test]

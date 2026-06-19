@@ -248,6 +248,63 @@ pub(crate) fn inject_fsm_params(s: &mut SchemaDecl) -> Result<(), RuntimeError> 
     Ok(())
 }
 
+/// Forward-difference desugar: `Δe ≡ (e − _e)` (NEW minus OLD).
+///
+/// Walks the body and replaces every `Expr::Delta(inner)` with
+/// `Expr::Binary(Sub, inner, prev_of(inner))`, where `prev_of` mirrors the
+/// `_var` previous-tick convention used by `inject_prev_tick_decls`: the first
+/// dotted segment of an identifier gets a leading underscore. So `Δx` becomes
+/// `x − _x`, and `Δx = -1` constrains `x = _x - 1`.
+///
+/// Run BEFORE `inject_prev_tick_decls` so the generated `_x` reference gets its
+/// prev-tick declaration + `is_first_tick` injected.
+pub(crate) fn desugar_delta(s: &mut SchemaDecl) {
+    use crate::core::ast::{BinOp, BodyItem, Expr};
+
+    // For TIER 1: identifiers (and dotted field/index access spelled as a
+    // dotted identifier). Prefix the first dotted segment with `_`.
+    fn prev_of(e: &Expr) -> Option<Expr> {
+        match e {
+            Expr::Identifier(n) => {
+                let (first, rest) = match n.split_once('.') {
+                    Some((f, r)) => (f, Some(r)),
+                    None => (n.as_str(), None),
+                };
+                let prev = match rest {
+                    Some(r) => format!("_{first}.{r}"),
+                    None => format!("_{first}"),
+                };
+                Some(Expr::Identifier(prev))
+            }
+            Expr::Field(recv, fld) => {
+                prev_of(recv).map(|p| Expr::Field(Box::new(p), fld.clone()))
+            }
+            _ => None,
+        }
+    }
+
+    fn rewrite(e: &mut Expr) {
+        if let Expr::Delta(inner) = e {
+            if let Some(prev) = prev_of(inner) {
+                let cur = std::mem::replace(inner.as_mut(), Expr::Int(0));
+                *e = Expr::Binary(BinOp::Sub, Box::new(cur), Box::new(prev));
+            }
+        }
+    }
+
+    for item in &mut s.body {
+        match item {
+            BodyItem::Constraint(e) => crate::core::ast::walk_expr_mut(e, &mut rewrite),
+            BodyItem::ClaimCall { mappings, .. } => {
+                for m in mappings {
+                    crate::core::ast::walk_expr_mut(&mut m.value, &mut rewrite);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
 pub(crate) fn inject_prev_tick_decls(s: &mut SchemaDecl) -> Result<(), RuntimeError> {
     use crate::core::ast::{BodyItem, Keyword, Pins, Expr};
     if !matches!(s.keyword, Keyword::Fsm) { return Ok(()); }

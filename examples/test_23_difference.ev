@@ -1,0 +1,65 @@
+-- 23_difference — the `Δ` (forward-difference) primitive.
+--
+-- `Δe` is the change in `e` since the previous tick. It lowers to the
+-- forward difference `Δe ≡ (e − _e)` — NEW minus OLD — using the same
+-- `_var` previous-tick mechanism as test_19. So `Δx = -1` constrains
+-- `x − _x = -1`, i.e. `x = _x − 1`: a value that drops by one each tick
+-- (a 1-D "gravity" pulling x downward).
+--
+-- The sign is the whole feature: `Δx = -1 ⟹ x = _x - 1`, not `_x - 1`
+-- the other way. If the sign flipped, the counter would climb instead
+-- of fall.
+
+import "stdlib/runtime.ev"
+
+enum FallState = Falling | Landed
+
+fsm gravity(state ∈ FallState)
+    -- Seed at 10 on the first tick; afterward fall by one per tick.
+    x ∈ Int
+    is_first_tick ⇒ x = 10
+    ¬is_first_tick ⇒ Δx = -1
+
+    state_next = (x ≤ 7 ? Landed : Falling)
+
+    x_str ∈ String = to_str(x)
+
+    effects = match state
+        Falling ⇒ ⟨Println("x = " ++ x_str)⟩
+        Landed  ⇒ ⟨Println("landed at " ++ x_str), Exit(0)⟩
+
+-- ── Static tests ─────────────────────────────────────────────
+
+-- `Δx = -1` desugars to `x − _x = -1`, so for _x = 5 the only x is 4.
+claim sat_delta_decrements
+    state ∈ FallState
+    state_next ∈ FallState
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    x ∈ Int
+    _x ∈ Int
+    is_first_tick ∈ Bool
+    x_str ∈ String
+
+    is_first_tick = false
+    _x = 5
+    state = Falling
+    gravity
+    x = 4                   -- x = _x - 1  ✓  (NEW minus OLD = -1)
+
+-- The opposite sign must NOT satisfy: Δx = -1 forbids x = _x + 1.
+claim unsat_delta_is_not_increment
+    state ∈ FallState
+    state_next ∈ FallState
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    x ∈ Int
+    _x ∈ Int
+    is_first_tick ∈ Bool
+    x_str ∈ String
+
+    is_first_tick = false
+    _x = 5
+    state = Falling
+    gravity
+    x = 6                   -- would be x = _x + 1  ✗  (wrong sign)
