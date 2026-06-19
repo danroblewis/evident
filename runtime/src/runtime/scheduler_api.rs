@@ -4,14 +4,6 @@ use std::collections::HashMap;
 
 impl EvidentRuntime {
 
-    pub fn query_with_pinned_datatypes(
-        &self,
-        claim_name: &str,
-        pins: &[(&str, z3::ast::Datatype<'static>)],
-    ) -> Result<QueryResult, RuntimeError> {
-        self.query_with_pins_and_given(claim_name, pins, &HashMap::new())
-    }
-
     pub fn query_with_pins_and_given(
         &self,
         claim_name: &str,
