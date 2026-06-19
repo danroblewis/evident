@@ -8,6 +8,7 @@ pub enum Keyword {
     Subclaim,
 
     Fsm,
+    Fti,
 }
 
 #[derive(Debug, Clone)]
