@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "semfora": {
+      "command": "semfora-engine",
+      "args": ["serve", "--repo", "/Users/daniellewis/evident"],
+      "env": {}
+    }
+  }
+}
