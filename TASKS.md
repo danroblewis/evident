@@ -46,7 +46,11 @@ the Xvfb display) must be green after each.
    `common.rs`) into a single `commands.rs` and delete the `commands/` directory,
    so there's exactly one file for the CLI. Remaining subcommands: `test`,
    `effect-run`.
-6. [ ] **Strip ALL comments** from `runtime/` Rust (`//`, `/* */`, `///`, `//!`,
+6. [ ] **Remove `runtime/scripts/`.** `cc-wrapper.sh` + `install-bin.sh` — not
+   necessary. Delete the directory; check `.cargo/config.toml` / `build.rs` /
+   `test.sh` for any reference, and if any bit is genuinely required, move it into
+   the file that needs it.
+7. [ ] **Strip ALL comments** from `runtime/` Rust (`//`, `/* */`, `///`, `//!`,
    including doc-comments and their doc-tests). Use a string/char/raw-string-aware
    stripper; build + full test must stay green (comments don't affect logic).
    Done **last**, so it also cleans up comments the earlier passes add.
