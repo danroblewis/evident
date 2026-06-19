@@ -1,9 +1,10 @@
 //! Effect-driven tick loop — the executor for `evident effect-run`.
 //!
-//! Per tick, for each `fsm`-keyword'd claim (declaration order):
+//! There is exactly ONE FSM per program. Per tick:
 //!   1. Encode current `state` + `_var` previous values + last_results
-//!      + the shared world snapshot as Z3 givens/pins.
-//!   2. Solve the FSM with `rt.query_with_pins_and_given`.
+//!      + the world snapshot as Z3 givens/pins.
+//!   2. Solve the FSM with `rt.query_with_pins_and_given` — which builds
+//!      the compiled model once and evaluates it per tick.
 //!   3. Decode `state_next` and the ordered `effects`.
 //!   4. Dispatch each effect via `effect_dispatch`; feed results back
 //!      as `last_results`.
@@ -12,11 +13,11 @@
 //!
 //! All input/output is via the FFI effects the program emits
 //! (LibCall, Println, ParseInt, …). There are no async event sources,
-//! no world-field plugins, and no subscription scheduler — those were
-//! removed in the single-FSM teardown. The one piece of bridge
-//! machinery that remains is the **declarative FTI install** for typed
-//! resources (`win ∈ SDL_Window (…)`), run once at startup; see
-//! `install.rs`.
+//! no world-field plugins, no subscription scheduler, and no multi-FSM
+//! frontier — those were removed in the single-FSM teardown. The one
+//! piece of bridge machinery that remains is the **declarative FTI
+//! install** for typed resources (`win ∈ SDL_Window (…)`), run once at
+//! startup; see `install.rs`.
 
 use crate::effect_dispatch::DispatchContext;
 use crate::runtime::EvidentRuntime;
@@ -32,7 +33,7 @@ mod timing;
 mod toposort;
 
 // ── Public re-exports ────────────────────────────────────────
-pub use fsm::{MainShape, all_fsms, detect_main_shape, resolve_fsm};
+pub use fsm::{MainShape, single_fsm, detect_main_shape, resolve_fsm};
 
 /// Tunables for the effect loop.
 #[derive(Debug, Clone)]
@@ -89,10 +90,7 @@ pub fn run_with_ctx(
     opts: &LoopOpts,
     ctx: &mut DispatchContext,
 ) -> Result<LoopResult, String> {
-    let fsms = all_fsms(rt);
-    if fsms.is_empty() {
-        return Err("no fsm schemas found (declare one with the `fsm` keyword)".to_string());
-    }
+    let fsm = single_fsm(rt)?;
     let env = LoopEnv::from_process_env();
 
     // ── Declarative FTI install ───────────────────────────────────
@@ -104,22 +102,19 @@ pub fn run_with_ctx(
     // fields land in the world snapshot under `<fsm>.<param>.<field>`.
     let mut world_snapshot: std::collections::HashMap<String, Value> =
         std::collections::HashMap::new();
-    for fsm in &fsms {
-        for (param_name, type_name, pins) in &fsm.install_params {
-            let writes = install::run_declarative_install(
-                rt, &fsm.claim_name, param_name, type_name, pins, ctx)?;
-            for (k, v) in writes {
-                world_snapshot.insert(k, v);
-            }
+    for (param_name, type_name, pins) in &fsm.install_params {
+        let writes = install::run_declarative_install(
+            rt, &fsm.claim_name, param_name, type_name, pins, ctx)?;
+        for (k, v) in writes {
+            world_snapshot.insert(k, v);
         }
     }
 
     if env.trace {
-        eprintln!("[loop] startup: fsms=[{}]",
-            fsms.iter().map(|f| f.claim_name.as_str()).collect::<Vec<_>>().join(","));
+        eprintln!("[loop] startup: fsm={}", fsm.claim_name);
     }
 
-    scheduler::run_loop(rt, &fsms, opts, ctx, &mut world_snapshot, &env)
+    scheduler::run_loop(rt, &fsm, opts, ctx, &mut world_snapshot, &env)
 }
 
 #[cfg(test)]

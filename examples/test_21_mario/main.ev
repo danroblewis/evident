@@ -3,6 +3,11 @@
 -- World is 1920 px wide. Camera follows Mario. Stompable Goombas
 -- (encoded as enemy.pos.x = -1000 when dead, so the existing
 -- Seq(Mover) layout still works). Lives + death + respawn.
+--
+-- One FSM per program: input poll, physics, and render are three
+-- concerns of a single `main` tick. Each reads `_world.X` (previous
+-- tick) and writes `world.X` (this tick); the render chain dispatches
+-- in one ordered `effects` Seq with the input-poll effects first.
 
 import "stdlib/runtime.ev"
 import "packages/sdl/window.ev"
@@ -98,19 +103,41 @@ type World
     -- Mario gets Big after collecting 3 coins, becomes Small after death.
     is_big        ∈ Bool
 
-fsm game(world ∈ World)
+fsm main(world ∈ World)
     ..Level
     #_world.enemies = 3
     #world.enemies  = 3
     #_world.coins   = 5
     #world.coins    = 5
 
-    -- Empty effects so the scheduler dispatches nothing for game.
-    effects = ⟨⟩
+    win ∈ SDL_Window (title ↦ "Mario", width ↦ 640, height ↦ 480)
 
     game_clock ∈ Int = (is_first_tick ? 0 : _game_clock + 1)
-    tick_anchor ∈ Int = _world.tick
+    frame ∈ Int = (is_first_tick ? 0 : _frame + 1)
+    world.tick = frame
 
+    -- ── Input poll ────────────────────────────────────────────────
+    sdl_pump_events(pump_eff)
+    key_left_eff  = ReadByte(win.keyboard_state, 80)
+    key_right_eff = ReadByte(win.keyboard_state, 79)
+    key_up_eff    = ReadByte(win.keyboard_state, 82)
+
+    key_left_raw  ∈ Int = match last_results[1]
+        IntResult(n) ⇒ n
+        _           ⇒ 0
+    key_right_raw ∈ Int = match last_results[2]
+        IntResult(n) ⇒ n
+        _           ⇒ 0
+    key_up_raw    ∈ Int = match last_results[3]
+        IntResult(n) ⇒ n
+        _           ⇒ 0
+
+    world.keys.x = (is_first_tick ? 0
+                    : (key_left_raw > 0 ∧ key_right_raw = 0 ? 0 - 1
+                       : (key_right_raw > 0 ∧ key_left_raw = 0 ? 1 : 0)))
+    world.keys.y = (is_first_tick ? 0 : key_up_raw)
+
+    -- ── Physics + game logic ──────────────────────────────────────
     prev_lives ∈ Int  = (is_first_tick ? 3 : _world.lives)
     prev_dead  ∈ Bool = ((¬is_first_tick) ∧ _world.dead)
     respawning ∈ Bool = prev_dead
@@ -352,43 +379,8 @@ fsm game(world ∈ World)
         (world.enemies[2] = Mover(IVec2(e2.pos.x + e2.vel.x, e2.pos.y),
                                    IVec2(e2.vel.x, 0)))
 
-fsm keyboard(world ∈ World)
-    win ∈ SDL_Window (title ↦ "Mario", width ↦ 640, height ↦ 480)
-    tick_anchor ∈ Int = _world.tick
-    kb_frame ∈ Int = (is_first_tick ? 0 : _kb_frame + 1)
-    sdl_pump_events(pump_eff)
-    key_left_eff  = ReadByte(win.keyboard_state, 80)
-    key_right_eff = ReadByte(win.keyboard_state, 79)
-    key_up_eff    = ReadByte(win.keyboard_state, 82)
-
-    key_left_raw  ∈ Int = match last_results[1]
-        IntResult(n) ⇒ n
-        _           ⇒ 0
-    key_right_raw ∈ Int = match last_results[2]
-        IntResult(n) ⇒ n
-        _           ⇒ 0
-    key_up_raw    ∈ Int = match last_results[3]
-        IntResult(n) ⇒ n
-        _           ⇒ 0
-
-    world.keys.x = (is_first_tick ? 0
-                    : (key_left_raw > 0 ∧ key_right_raw = 0 ? 0 - 1
-                       : (key_right_raw > 0 ∧ key_left_raw = 0 ? 1 : 0)))
-    world.keys.y = (is_first_tick ? 0 : key_up_raw)
-
-    effects = ⟨pump_eff, key_left_eff, key_right_eff, key_up_eff⟩
-
-fsm display(world ∈ World)
-    ..Level
-    #_world.enemies = 3
-    #_world.coins   = 5
-
+    -- ── Render ────────────────────────────────────────────────────
     cam_x ∈ Int = _world.camera_x
-
-    win ∈ SDL_Window (title ↦ "Mario", width ↦ 640, height ↦ 480)
-
-    frame ∈ Int = (is_first_tick ? 0 : _frame + 1)
-    world.tick = frame
 
     sdl_delay(16, delay_eff)
     win.set_draw_color((80, 160, 220, 255), sky_eff)
@@ -417,8 +409,7 @@ fsm display(world ∈ World)
                             IVec2(28, 28)), b.effs)
 
     -- Coins (gold rects). Collected coins are stored with their
-    -- original pos but rendered off-screen via game FSM marking
-    -- — see coin_screen_x_N below.
+    -- original pos but rendered off-screen via coin_sx_N below.
     coin_effs ∈ Seq(EffectPair)
     #coin_effs = 5
     coin_sx_0 ∈ Int = (_world.coins[0].collected ? 0 - 1000
@@ -495,7 +486,11 @@ fsm display(world ∈ World)
     done_print ∈ Effect = (frame ≥ 240 ? Println("mario done") : NoEffect)
     done_exit  ∈ Effect = (frame ≥ 240 ? Exit(0) : NoEffect)
 
-    phase_chain ∈ Seq(Effect) = ⟨
+    -- One ordered effects Seq. Input-poll effects FIRST (so
+    -- last_results[1..3] are the key ReadByte results next tick),
+    -- then the render chain.
+    effects ∈ Seq(Effect) = ⟨
+        pump_eff, key_left_eff, key_right_eff, key_up_eff,
         sky_eff,                clear_eff,
         plat_effs[0].effs[0],   plat_effs[0].effs[1],
         plat_effs[1].effs[0],   plat_effs[1].effs[1],

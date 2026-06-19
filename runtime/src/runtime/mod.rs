@@ -4,7 +4,7 @@
 //!
 //! Most callers (commands/, embedders, tests) use the
 //! constraint-solver verbs: `load_file` / `load_source` to load
-//! programs, `query` / `query_cached` to ask whether
+//! programs, `query` to ask whether
 //! claims are satisfiable, `get_schema` / `schema_names` to
 //! introspect what's loaded.
 //!
@@ -32,7 +32,7 @@
 //! intentionally do NOT widen the constraint-side facade — they
 //! expose the read-handles necessary for execution-layer
 //! callers, nothing more. Callers outside the execution layer
-//! should use `query` / `query_cached`; if you find yourself
+//! should use `query`; if you find yourself
 //! reaching for one of these methods from elsewhere, reconsider
 //! whether the verb you need exists on the constraint-side
 //! facade or whether your concern belongs in the execution
@@ -55,7 +55,7 @@ pub use crate::core::{QueryResult, RuntimeError};
 pub use stats::{FunctionizeStats, PerClaimStats};
 
 use crate::core::ast::{Program, SchemaDecl};
-use crate::translate::{CachedSchema, DatatypeRegistry, StructuralSignature};
+use crate::translate::DatatypeRegistry;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
@@ -80,28 +80,6 @@ pub struct EvidentRuntime {
     /// or a test suite. (For long-running embeddings we'd switch to
     /// a Session<'ctx> design — see PROGRESS.md sketch.)
     pub(super) z3_ctx: &'static Context,
-    /// Per-schema cache for `query_cached`. RefCell because we want
-    /// `query_cached` to take `&self` (so multiple queries can share
-    /// the runtime) while the cache mutates on first access.
-    ///
-    /// Each entry pairs the cached solver+env with the structural
-    /// signature it was built with — the subset of the previous
-    /// `given` keyed on names that appear in quantifier bounds. On
-    /// the next query, if the signature would be different (i.e. a
-    /// structural given changed), we drop the entry and rebuild
-    /// against the new given. Non-structural givens (e.g. a player
-    /// position used in body arithmetic but not as an unroll bound)
-    /// don't trigger a rebuild — `run_cached` just asserts the new
-    /// value per-query and Z3 solves with the existing constraint
-    /// shape.
-    pub(super) cache: RefCell<HashMap<String, (CachedSchema<'static>, StructuralSignature)>>,
-    /// Z3-AST functionizer cache: per-(claim, given-keys), the
-    /// extracted Z3Program (or None if extraction failed). The
-    /// extracted program is the input to the Cranelift JIT — when
-    /// JIT compilation succeeds, the cached program is what the
-    /// JIT ran on (kept here for inspection / re-compile).
-    pub(super) functionize_z3_cache: RefCell<HashMap<(String, Vec<String>),
-                                          Option<crate::core::Z3Program<'static>>>>,
     /// Functionizer strategy. Compiles extracted `Z3Program`s into
     /// callable artifacts. Default is Cranelift JIT; swap via
     /// `EvidentRuntime::with_functionizer`. See `runtime/src/functionize/`.
@@ -116,23 +94,13 @@ pub struct EvidentRuntime {
     pub(super) fn_cache: RefCell<HashMap<(String, Vec<String>),
                               Option<std::rc::Rc<query::ClaimPlan>>>>,
     /// Slow-path schema cache. Populated by `try_functionize_z3`
-    /// when extraction or JIT compilation refuses but a CachedSchema
+    /// when extraction or JIT compilation refuses but a CompiledModel
     /// has already been built. Reused by `query_with_pins_and_given`
     /// to skip per-tick body translation. Each tick is then just
     /// push → assert given → check → extract → pop, instead of
     /// rebuilding the body assertions from AST every call.
     pub(super) slow_path_cache: RefCell<HashMap<(String, Vec<String>),
-                                     std::rc::Rc<crate::core::CachedSchema<'static>>>>,
-    /// Cross-tick value cache: per claim, a bounded map from
-    /// `hash(given-values)` to the bindings `try_functionize_z3`
-    /// produced for those exact inputs. Where `fn_cache` is keyed on
-    /// the given KEYS (the compiled plan is generic over input values),
-    /// this is keyed on the given VALUES — so an FSM fed byte-identical
-    /// inputs across ticks (an idle Mario player) skips the
-    /// compiled-function call entirely and returns the prior result.
-    /// Cleared on reload alongside the other caches. See
-    /// `query::ClaimValueCache`.
-    pub(super) value_cache: RefCell<HashMap<String, query::ClaimValueCache>>,
+                                     std::rc::Rc<crate::core::CompiledModel<'static>>>>,
     /// Aggregate stats for the Z3 functionizer + JIT pipeline.
     /// Captures per (claim, given-keys) what was absorbed,
     /// what fell back to Z3, what compiled to native, etc.
@@ -140,19 +108,13 @@ pub struct EvidentRuntime {
     /// trace via `EVIDENT_FUNCTIONIZE_STATS=1`; query the
     /// aggregate via `EvidentRuntime::functionize_stats()`.
     pub(super) functionize_stats: RefCell<FunctionizeStats>,
-    /// Counter incremented each time a cached entry is rebuilt due
-    /// to a structural-signature mismatch. Useful for debugging
-    /// performance issues (e.g. "every step is rebuilding — what
-    /// structural given is flipping?") and for testing the
-    /// invalidation logic.
-    pub(super) cache_rebuilds: RefCell<u64>,
     /// Lazily-built `Z3 DatatypeSort` per user type referenced as the
     /// element of `Seq(UserType)`. Built on first `declare_var`; entries
     /// are `Box::leak`'d to live for `'static` (consistent with the
-    /// leaked Context). Shared across `query` and `query_cached`
-    /// so a `Seq(Point)` declared in one schema reuses the
-    /// same Datatype if another schema references `Point` again — Z3
-    /// would otherwise error on duplicate type names.
+    /// leaked Context). Shared across queries so a `Seq(Point)` declared
+    /// in one schema reuses the same Datatype if another schema
+    /// references `Point` again — Z3 would otherwise error on duplicate
+    /// type names.
     pub(super) datatypes: DatatypeRegistry,
     /// Z3 datatype + variant info for every `enum` declared in loaded
     /// source. Built eagerly at `load_source_with_base` time (one Z3
@@ -184,27 +146,15 @@ impl EvidentRuntime {
             schemas: HashMap::new(),
             schema_order: Vec::new(),
             z3_ctx: ctx,
-            cache: RefCell::new(HashMap::new()),
-            functionize_z3_cache: RefCell::new(HashMap::new()),
             functionizer,
             fn_cache: RefCell::new(HashMap::new()),
             slow_path_cache: RefCell::new(HashMap::new()),
-            value_cache: RefCell::new(HashMap::new()),
             functionize_stats: RefCell::new(FunctionizeStats::default()),
-            cache_rebuilds: RefCell::new(0),
             datatypes: RefCell::new(HashMap::new()),
             enums: crate::core::EnumRegistry::new(),
             loaded_files: RefCell::new(HashSet::new()),
         }
     }
-
-    /// Number of cache rebuilds triggered by structural-signature
-    /// mismatches since this runtime was created. Mostly useful for
-    /// tests verifying that a change to a non-structural given does
-    /// NOT rebuild, and that a change to a structural given DOES.
-    /// Also useful as a perf debugging knob — if this counter climbs
-    /// every step, you have an unintended structural dependency.
-    pub fn cache_rebuilds(&self) -> u64 { *self.cache_rebuilds.borrow() }
 
     /// Iterator over the names of every loaded schema (top-level decls
     /// AND lifted subclaims). Useful for tooling.

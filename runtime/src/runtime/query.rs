@@ -1,5 +1,4 @@
-//! `query`, `query_cached`, and the per-component Z3-AST functionizer
-//! fast path.
+//! `query` and the per-component Z3-AST functionizer fast path.
 //!
 //! ## Per-component compilation
 //!
@@ -13,15 +12,13 @@
 //! `run_cached`. The whole arrangement is a `ClaimPlan`, cached per
 //! `(claim, given-keys)`.
 
-use crate::core::{CachedSchema, CompiledFunction, QueryResult, RuntimeError, Var, Z3Step};
+use crate::core::{CompiledModel, CompiledFunction, QueryResult, RuntimeError, Var, Z3Step};
 use super::lenient::LenientGuard;
 use super::{EvidentRuntime, Value};
-use crate::translate::{build_cache, run_cached, structural_signature};
+use crate::translate::run_cached;
 use crate::z3_eval::{collect_touched_names, extract_program_partial,
                      recompose_record_seqs, simplify_assertions};
-use std::collections::hash_map::DefaultHasher;
-use std::collections::{HashMap, HashSet, VecDeque};
-use std::hash::{Hash, Hasher};
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use z3::ast::{Ast, Bool};
 use z3::{Context, Params, SatResult, Solver, Tactic};
@@ -66,117 +63,11 @@ pub(crate) struct ClaimPlan {
 pub(crate) struct SlowPart {
     /// Full env (for given-pinning + model extraction) paired with a
     /// solver carrying *only* the uncompiled components' assertions.
-    cached: CachedSchema<'static>,
+    cached: CompiledModel<'static>,
     /// Output var names this solve is responsible for — the union of
     /// the uncompiled components' variables. Other env entries the
     /// solver happens to model are ignored.
     outputs: Vec<String>,
-}
-
-/// Max distinct `(given-values → result)` entries kept per claim in the
-/// cross-tick value cache. An idle FSM repeats one input set, so even a
-/// handful suffices; 100 leaves room for a few alternating idle states
-/// (e.g. a blinking cursor) before FIFO eviction kicks in.
-const VALUE_CACHE_CAP: usize = 100;
-
-/// One cached `(input, result)` association in the cross-tick value
-/// cache. `input` is kept so a hash collision (different given, same
-/// `u64`) is caught on hit and falls through to a recompute rather than
-/// silently returning the wrong bindings.
-pub(crate) struct ValueCacheSlot {
-    input: HashMap<String, Value>,
-    satisfied: bool,
-    bindings: HashMap<String, Value>,
-}
-
-/// Per-claim cross-tick value cache: maps `hash(given-values)` to the
-/// `try_functionize_z3` result it produced. Capped at `VALUE_CACHE_CAP`
-/// entries with FIFO eviction. Keyed by the value hash (O(1) lookup),
-/// not the values themselves, so the stored `input` is re-checked on
-/// every hit for collision safety.
-#[derive(Default)]
-pub(crate) struct ClaimValueCache {
-    entries: HashMap<u64, ValueCacheSlot>,
-    /// Insertion order of live hashes, for FIFO eviction.
-    order: VecDeque<u64>,
-}
-
-/// Whether the cross-tick value cache is enabled. On by default;
-/// `EVIDENT_VALUE_CACHE=0` disables it (for A/B measurement or as a
-/// safety valve). Read once and memoized — this sits on the per-tick
-/// hot path.
-fn value_cache_enabled() -> bool {
-    use std::sync::OnceLock;
-    static ENABLED: OnceLock<bool> = OnceLock::new();
-    *ENABLED.get_or_init(|| {
-        std::env::var("EVIDENT_VALUE_CACHE").map(|s| s != "0").unwrap_or(true)
-    })
-}
-
-/// Hash a `given` map deterministically. HashMap iteration order is
-/// nondeterministic, so the keys are sorted before hashing; the per-key
-/// `Value` is fed through `hash_value`. SipHash (`DefaultHasher`) keeps
-/// the collision rate low, and a verified-input check on hit backstops
-/// the rest.
-fn hash_given_values(given: &HashMap<String, Value>) -> u64 {
-    let mut keys: Vec<&String> = given.keys().collect();
-    keys.sort_unstable();
-    let mut h = DefaultHasher::new();
-    keys.len().hash(&mut h);
-    for k in keys {
-        k.hash(&mut h);
-        hash_value(&given[k], &mut h);
-    }
-    h.finish()
-}
-
-/// Feed a `Value` into a hasher. `Value` deliberately has no derived
-/// `Hash` (it lives in `core/`, which this session must not touch, and a
-/// raw `f64` field blocks the derive anyway). Each variant writes a
-/// distinct discriminant tag first so structurally different values with
-/// the same payload bytes don't collide. Reals hash their bit pattern
-/// (not the float value) so `NaN`/`-0.0` are handled deterministically.
-fn hash_value<H: Hasher>(v: &Value, h: &mut H) {
-    match v {
-        Value::Int(i)   => { 0u8.hash(h); i.hash(h); }
-        Value::Real(f)  => { 1u8.hash(h); f.to_bits().hash(h); }
-        Value::Bool(b)  => { 2u8.hash(h); b.hash(h); }
-        Value::Str(s)   => { 3u8.hash(h); s.hash(h); }
-        Value::SeqInt(xs)  => { 4u8.hash(h); xs.hash(h); }
-        Value::SeqBool(xs) => { 5u8.hash(h); xs.hash(h); }
-        Value::SeqStr(xs)  => { 6u8.hash(h); xs.hash(h); }
-        Value::Composite(m) => { 7u8.hash(h); hash_value_map(m, h); }
-        Value::SeqComposite(ms) => {
-            8u8.hash(h); ms.len().hash(h);
-            for m in ms { hash_value_map(m, h); }
-        }
-        Value::SeqEnum(es) => {
-            9u8.hash(h); es.len().hash(h);
-            for e in es { hash_value(e, h); }
-        }
-        Value::SetInt(xs)  => { 10u8.hash(h); xs.hash(h); }
-        Value::SetBool(xs) => { 11u8.hash(h); xs.hash(h); }
-        Value::SetStr(xs)  => { 12u8.hash(h); xs.hash(h); }
-        Value::Enum { enum_name, variant, fields } => {
-            13u8.hash(h);
-            enum_name.hash(h);
-            variant.hash(h);
-            fields.len().hash(h);
-            for f in fields { hash_value(f, h); }
-        }
-    }
-}
-
-/// Hash a `HashMap<String, Value>` (a `Composite`/`SeqComposite` element)
-/// with keys sorted, same as `hash_given_values`.
-fn hash_value_map<H: Hasher>(m: &HashMap<String, Value>, h: &mut H) {
-    let mut keys: Vec<&String> = m.keys().collect();
-    keys.sort_unstable();
-    keys.len().hash(h);
-    for k in keys {
-        k.hash(h);
-        hash_value(&m[k], h);
-    }
 }
 
 /// What `compile_one_component` decided for a component.
@@ -332,77 +223,6 @@ fn build_tuned_solver(ctx: &'static Context, arith_solver: u32) -> Solver<'stati
 }
 
 impl EvidentRuntime {
-    /// Functionizer fast path with a cross-tick value cache wrapped
-    /// around it. The result of [`functionize_z3_uncached`] is a pure
-    /// function of `(name, schema, given)` — pins aren't even a
-    /// parameter — so the same `given` values always reproduce the same
-    /// bindings while the program is loaded. An idle FSM (Mario with no
-    /// input) feeds `display` byte-identical inputs frame after frame,
-    /// so we memoize the last results keyed by `hash(given-values)` and
-    /// skip the compiled-function call entirely on a hit.
-    ///
-    /// The cache is invalidated wholesale on reload (`load.rs` clears it
-    /// alongside `fn_cache`), so a schema or functionizer change can
-    /// never serve a stale value.
-    pub(super) fn try_functionize_z3(&self, name: &str, schema: &crate::core::ast::SchemaDecl,
-                          given: &HashMap<String, Value>) -> Option<QueryResult>
-    {
-        let vhash = if value_cache_enabled() { Some(hash_given_values(given)) } else { None };
-        if let Some(h) = vhash {
-            if let Some(result) = self.value_cache_get(name, h, given) {
-                self.functionize_stats.borrow_mut()
-                    .claims.entry(name.to_string()).or_default().value_cache_hits += 1;
-                return Some(result);
-            }
-        }
-        let result = self.functionize_z3_uncached(name, schema, given);
-        // Only memoize when the fast path actually produced a result.
-        // `None` means "fall through to slow-path Z3" — caching that
-        // would short-circuit a path we never took.
-        if let (Some(h), Some(r)) = (vhash, &result) {
-            self.value_cache_put(name, h, given, r);
-        }
-        result
-    }
-
-    /// Read a memoized result from the cross-tick value cache. On a hash
-    /// hit the stored input is compared against `given`: an exact match
-    /// returns the cached bindings; a mismatch (hash collision) returns
-    /// `None` so the caller recomputes.
-    fn value_cache_get(&self, name: &str, hash: u64, given: &HashMap<String, Value>)
-        -> Option<QueryResult>
-    {
-        let cache = self.value_cache.borrow();
-        let slot = cache.get(name)?.entries.get(&hash)?;
-        if slot.input == *given {
-            Some(QueryResult { satisfied: slot.satisfied, bindings: slot.bindings.clone() })
-        } else {
-            None
-        }
-    }
-
-    /// Store a `(given, result)` association in the cross-tick value
-    /// cache, evicting the oldest entry for this claim once the per-claim
-    /// cap is exceeded (FIFO).
-    fn value_cache_put(&self, name: &str, hash: u64, given: &HashMap<String, Value>,
-                       result: &QueryResult) {
-        let mut cache = self.value_cache.borrow_mut();
-        let claim = cache.entry(name.to_string()).or_default();
-        if !claim.entries.contains_key(&hash) {
-            claim.order.push_back(hash);
-            while claim.order.len() > VALUE_CACHE_CAP {
-                if let Some(old) = claim.order.pop_front() {
-                    claim.entries.remove(&old);
-                }
-            }
-        }
-        claim.entries.insert(hash, ValueCacheSlot {
-            input: given.clone(),
-            satisfied: result.satisfied,
-            bindings: result.bindings.clone(),
-        });
-    }
-
     /// Per-component Z3-AST functionizer. Decomposes the claim's
     /// simplified body into independent sub-models, compiles each one
     /// it can to native code, and gathers the rest into a single
@@ -410,9 +230,13 @@ impl EvidentRuntime {
     /// plan executed (compiled components ran + any slow part was
     /// SAT), `None` to fall through to a full Z3 solve.
     ///
-    /// Cached per `(claim, given-keys)` as a `ClaimPlan`; subsequent
-    /// calls just re-run the plan (JIT calls at ~µs + one scoped solve).
-    fn functionize_z3_uncached(&self, name: &str, schema: &crate::core::ast::SchemaDecl,
+    /// The plan is cached per `(claim, given-keys)` as a `ClaimPlan`;
+    /// subsequent calls just re-run the plan (JIT calls at ~µs + one
+    /// scoped solve). The result is a pure function of
+    /// `(name, schema, given)` — pins aren't a parameter — so the same
+    /// `given` values reproduce the same bindings while the program is
+    /// loaded.
+    pub(super) fn try_functionize_z3(&self, name: &str, schema: &crate::core::ast::SchemaDecl,
                           given: &HashMap<String, Value>) -> Option<QueryResult>
     {
         // Cache key: name + sorted given_keys. The plan is generic
@@ -433,7 +257,7 @@ impl EvidentRuntime {
             return self.execute_plan(&plan, given);
         }
 
-        // Cache miss: build a CachedSchema, capture the body
+        // Cache miss: build a CompiledModel, capture the body
         // assertions (without given values pinned so the
         // extracted program is generic over input values), apply
         // Z3's tactic chain, and extract per-output assignments.
@@ -612,7 +436,7 @@ impl EvidentRuntime {
         if bail {
             self.functionize_stats.borrow_mut()
                 .claims.entry(name.to_string()).or_default().last_extract_ok = Some(false);
-            let cached_static: CachedSchema<'static> = cached;
+            let cached_static: CompiledModel<'static> = cached;
             self.slow_path_cache.borrow_mut()
                 .insert(cache_key.clone(), Rc::new(cached_static));
             self.fn_cache.borrow_mut().insert(cache_key, None);
@@ -652,9 +476,9 @@ impl EvidentRuntime {
             for a in &slow_assertions { slow_solver.assert(a); }
             // Move the env out of the full cache; the full-body solver
             // is dropped (we only needed it for gap-fill models above).
-            let CachedSchema { env, .. } = cached;
+            let CompiledModel { env, .. } = cached;
             Some(SlowPart {
-                cached: CachedSchema { env, solver: slow_solver, arith_solver: arith },
+                cached: CompiledModel { env, solver: slow_solver, arith_solver: arith },
                 outputs: uncompiled_outputs,
             })
         };
@@ -678,7 +502,7 @@ impl EvidentRuntime {
         name: &str,
         comp_outputs: &[String],
         comp_assertions: &[Bool<'static>],
-        cached: &CachedSchema<'static>,
+        cached: &CompiledModel<'static>,
         given: &HashMap<String, Value>,
         pinned_steps: &[Z3Step<'static>],
     ) -> ComponentOutcome {
@@ -881,127 +705,4 @@ impl EvidentRuntime {
         Ok(QueryResult { satisfied: r.satisfied, bindings: r.bindings })
     }
 
-    /// Faster query — translates the schema once on first call and
-    /// reuses the resulting Z3 solver across subsequent calls
-    /// (push/pop per query). Mirrors Python's `query(name, given,
-    /// cached=True)` and the `evaluate_cached` optimization.
-    ///
-    /// **Structural-signature invalidation.** The cache stores the
-    /// subset of the previous `given` keyed on names that appear in
-    /// quantifier bounds — the structural signature. If this query's
-    /// signature differs (e.g. a config value that drives an unroll
-    /// count just changed), the cache is dropped and rebuilt against
-    /// the new given. Non-structural changes (player position, etc.)
-    /// reuse the cache and just re-assert the new value per-query.
-    ///
-    /// Bindings, satisfaction result, and overall semantics are
-    /// identical to `query()`. Faster when called many times against
-    /// the same schema with mostly-stable structural givens (e.g. an
-    /// executor stepping a state machine 60×/sec where lengths and
-    /// bound names don't change).
-    pub fn query_cached(&self, name: &str, given: &HashMap<String, Value>)
-        -> Result<QueryResult, RuntimeError>
-    {
-        let schema = self.schemas.get(name)
-            .ok_or_else(|| RuntimeError::UnknownSchema(name.to_string()))?
-            .clone();   // cheap: SchemaDecl is small + Arc-friendly clones
-        let cur_sig = structural_signature(&schema.body, given);
-
-        // Default `smt.arith.solver`: env override, else 2 (the per-frame
-        // default that wins on our workload).
-        let arith_solver: u32 = std::env::var("EVIDENT_Z3_ARITH_SOLVER").ok()
-            .and_then(|s| s.parse().ok()).unwrap_or(2);
-
-        let mut cache = self.cache.borrow_mut();
-        // Rebuild if (a) no entry, (b) structural signature changed, or
-        // (c) cached config doesn't match the configured arith.solver.
-        let needs_rebuild = match cache.get(name) {
-            Some((cached, cached_sig)) =>
-                cached_sig != &cur_sig || cached.arith_solver != arith_solver,
-            None => true,
-        };
-        if needs_rebuild {
-            if cache.contains_key(name) {
-                *self.cache_rebuilds.borrow_mut() += 1;
-            }
-            let names = crate::translate::structural_names(&schema.body);
-            let structural_given: HashMap<String, Value> = given.iter()
-                .filter(|(k, _)| names.contains(k.as_str()))
-                .map(|(k, v)| (k.clone(), v.clone()))
-                .collect();
-            let new_cached = build_cache(
-                &schema, &self.schemas, self.z3_ctx, &self.datatypes,
-                Some(&self.enums), &structural_given, arith_solver);
-            cache.insert(name.to_string(), (new_cached, cur_sig));
-        }
-        let entry = cache.get(name).unwrap();
-
-        let r = run_cached(&entry.0, given, self.z3_ctx, Some(&self.enums));
-        Ok(QueryResult { satisfied: r.satisfied, bindings: r.bindings })
-    }
-}
-
-#[cfg(test)]
-mod value_hash_tests {
-    use super::*;
-
-    fn map(pairs: &[(&str, Value)]) -> HashMap<String, Value> {
-        pairs.iter().map(|(k, v)| (k.to_string(), v.clone())).collect()
-    }
-
-    #[test]
-    fn equal_maps_hash_equal_regardless_of_insertion_order() {
-        // HashMap iteration order is nondeterministic; the hash must not
-        // depend on it. Build the same logical map two different ways.
-        let a = map(&[("x", Value::Int(1)), ("y", Value::Str("hi".into()))]);
-        let mut b: HashMap<String, Value> = HashMap::new();
-        b.insert("y".into(), Value::Str("hi".into()));
-        b.insert("x".into(), Value::Int(1));
-        assert_eq!(hash_given_values(&a), hash_given_values(&b));
-    }
-
-    #[test]
-    fn distinct_values_hash_distinct() {
-        let a = map(&[("x", Value::Int(1))]);
-        let b = map(&[("x", Value::Int(2))]);
-        assert_ne!(hash_given_values(&a), hash_given_values(&b));
-    }
-
-    #[test]
-    fn enum_and_seq_values_hash_deterministically() {
-        // Exercises the SeqEnum / Enum arms (Mario's `last_results`,
-        // `state`): the hash is stable across calls for the same value
-        // and changes when the payload changes.
-        let state = Value::Enum {
-            enum_name: "GameState".into(),
-            variant: "Playing".into(),
-            fields: vec![Value::Int(7), Value::Bool(true)],
-        };
-        let results = Value::SeqEnum(vec![
-            Value::Enum { enum_name: "Result".into(), variant: "IntResult".into(),
-                          fields: vec![Value::Int(3)] },
-        ]);
-        let g = map(&[("state", state.clone()), ("last_results", results.clone())]);
-        assert_eq!(hash_given_values(&g), hash_given_values(&g.clone()));
-
-        // Flip one nested field — the hash must move.
-        let state2 = Value::Enum {
-            enum_name: "GameState".into(),
-            variant: "Playing".into(),
-            fields: vec![Value::Int(8), Value::Bool(true)],
-        };
-        let g2 = map(&[("state", state2), ("last_results", results)]);
-        assert_ne!(hash_given_values(&g), hash_given_values(&g2));
-    }
-
-    #[test]
-    fn variant_tag_distinguishes_same_payload() {
-        // Two enums with identical payload but different variant must
-        // not collide (the discriminant + variant name guard this).
-        let a = map(&[("e", Value::Enum {
-            enum_name: "E".into(), variant: "A".into(), fields: vec![Value::Int(0)] })]);
-        let b = map(&[("e", Value::Enum {
-            enum_name: "E".into(), variant: "B".into(), fields: vec![Value::Int(0)] })]);
-        assert_ne!(hash_given_values(&a), hash_given_values(&b));
-    }
 }

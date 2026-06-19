@@ -16,13 +16,11 @@
 //!     several callers (CLI givens, multi-FSM scheduler extras) and
 //!     each needs a slightly different extra-assertion shape.
 //!
-//!   * From `preprocess` — pre-translation helpers consumed by the
-//!     runtime cache layer and by `commands/test.rs`'s diagnostic
-//!     path: `structural_names`, `structural_signature`,
-//!     `StructuralSignature`, `collect_referenced_names`.
+//!   * From `preprocess` — the `collect_referenced_names` helper
+//!     consumed by `commands/test.rs`'s diagnostic path.
 //!
 //!   * From `types` — the typed-binding + model-output data types:
-//!     `CachedSchema`, `DatatypeRegistry`, `EnumRegistry`,
+//!     `CompiledModel`, `DatatypeRegistry`, `EnumRegistry`,
 //!     `EvalResult`, `FieldKind`, `Value`. `EnumRegistry` is part
 //!     of the API because the runtime facade owns one and passes
 //!     references into `evaluate*`.
@@ -74,7 +72,6 @@ pub use eval::{build_cache,
                 evaluate_with_program_and_body,
                 run_cached};
 pub(crate) use eval::extract_binding;
-pub use preprocess::{collect_referenced_names, structural_names, structural_signature,
-                     StructuralSignature};
-pub use crate::core::{CachedSchema, DatatypeRegistry, EnumRegistry, EvalResult, FieldKind, Value, Var};
+pub use preprocess::collect_referenced_names;
+pub use crate::core::{CompiledModel, DatatypeRegistry, EnumRegistry, EvalResult, FieldKind, Value, Var};
 pub use encode_ast::value_enum_to_datatype;

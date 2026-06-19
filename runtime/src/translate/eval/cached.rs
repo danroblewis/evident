@@ -3,7 +3,7 @@
 //!
 //!   * `build_cache`             — translate the schema's body once
 //!                                  into a fresh solver; returns a
-//!                                  `CachedSchema` callers reuse.
+//!                                  `CompiledModel` callers reuse.
 //!   * `run_cached`              — per-tick: push, assert givens,
 //!                                  check, extract model, pop. Reuses
 //!                                  all cached constraint translation.
@@ -13,7 +13,7 @@ use z3::ast::{Ast, Bool, Int, String as Z3Str};
 use z3::{Context, SatResult};
 
 use crate::core::ast::*;
-use crate::core::{CachedSchema, DatatypeRegistry, EnumRegistry, EvalResult, Value, Var};
+use crate::core::{CompiledModel, DatatypeRegistry, EnumRegistry, EvalResult, Value, Var};
 use super::super::declare::{apply_seq_lengths, apply_set_candidates};
 use super::super::extract::{assert_seq_given, assert_set_given, extract_seq, extract_seq_composite, extract_set, unescape_z3_string};
 use super::super::inline::inline_body_items;
@@ -22,7 +22,7 @@ use super::solver::{declare_and_assert, make_tuned_solver, populate_enum_variant
 use super::decode::{extract_enum_value, extract_seq_enum};
 
 /// Translate the schema's body once into a fresh solver and return a
-/// `CachedSchema` that subsequent queries can reuse via push/pop.
+/// `CompiledModel` that subsequent queries can reuse via push/pop.
 ///
 /// `given` is the set of values that should be folded into the cache
 /// at build time — typically the structural subset (names appearing
@@ -41,7 +41,7 @@ pub fn build_cache(
     enums: Option<&EnumRegistry>,
     given: &HashMap<String, Value>,
     arith_solver: u32,
-) -> CachedSchema<'static> {
+) -> CompiledModel<'static> {
     // Mirror evaluate_with_extra_assertions: install the thread-local
     // EnumRegistry so the translator can resolve enum constructors
     // (e.g. `LibCall(..., ⟨⟩)`) appearing in body items. Without this,
@@ -94,11 +94,11 @@ pub fn build_cache(
     let mut visited: HashMap<String, usize> = HashMap::new();
     inline_body_items(&schema.body, &mut env, &solver, schemas, ctx, registry, enums, &mut visited);
 
-    CachedSchema { env, solver, arith_solver }
+    CompiledModel { env, solver, arith_solver }
 }
 
 pub fn run_cached<'ctx>(
-    cached: &CachedSchema<'ctx>,
+    cached: &CompiledModel<'ctx>,
     given: &HashMap<String, Value>,
     ctx: &'ctx Context,
     enums: Option<&EnumRegistry>,

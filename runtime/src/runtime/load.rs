@@ -101,16 +101,11 @@ impl EvidentRuntime {
         self.program.schemas.extend(prog.schemas);
         self.program.enums.extend(prog.enums);
 
-        // Loading new schemas invalidates the cache: new schemas might
-        // be referenced by ClaimCall / passthrough in old ones.
-        self.cache.borrow_mut().clear();
-        self.functionize_z3_cache.borrow_mut().clear();
+        // Loading new schemas invalidates the compiled caches: new
+        // schemas might be referenced by ClaimCall / passthrough in
+        // old ones.
         self.fn_cache.borrow_mut().clear();
         self.slow_path_cache.borrow_mut().clear();
-        // Cross-tick value cache memoizes results keyed by given VALUES;
-        // a reload can change a schema body or the functionizer, so any
-        // memoized bindings are now potentially stale. Drop them all.
-        self.value_cache.borrow_mut().clear();
         // Datatype registry entries reference the previous schema body
         // shape (field order / types). A new load could redefine a type
         // with a different shape; flush so we rebuild on first reference.

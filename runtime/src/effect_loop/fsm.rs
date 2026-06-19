@@ -170,16 +170,27 @@ pub fn resolve_fsm(rt: &EvidentRuntime, claim_name: &str) -> Option<MainShape> {
     })
 }
 
-/// Collect every `fsm`-keyword'd schema's resolved param info, in
-/// declaration order (the order the loop dispatches effects each tick).
-/// Claims named `sat_*` / `unsat_*` are static assertions, not FSMs,
-/// and are skipped.
-pub fn all_fsms(rt: &EvidentRuntime) -> Vec<MainShape> {
-    rt.schema_names()
+/// Resolve THE single `fsm`-keyword'd schema (the one-FSM-per-program
+/// invariant). Claims named `sat_*` / `unsat_*` are static assertions,
+/// not FSMs, and are skipped. Errors if zero or more than one
+/// FSM-shaped top-level claim exists.
+pub fn single_fsm(rt: &EvidentRuntime) -> Result<MainShape, String> {
+    let mut fsms: Vec<MainShape> = rt.schema_names()
         .map(|s| s.to_string())
         .collect::<Vec<_>>()
         .into_iter()
         .filter(|n| !n.starts_with("sat_") && !n.starts_with("unsat_"))
         .filter_map(|n| resolve_fsm(rt, &n))
-        .collect()
+        .collect();
+    match fsms.len() {
+        0 => Err("no fsm schemas found (declare one with the `fsm` keyword)".to_string()),
+        1 => Ok(fsms.pop().unwrap()),
+        n => {
+            let names: Vec<&str> = fsms.iter().map(|f| f.claim_name.as_str()).collect();
+            Err(format!(
+                "{n} fsm-shaped claims found ([{}]) but exactly one is allowed \
+                 (one FSM per program)",
+                names.join(", ")))
+        }
+    }
 }

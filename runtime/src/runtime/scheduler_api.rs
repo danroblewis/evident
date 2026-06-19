@@ -61,7 +61,7 @@ impl EvidentRuntime {
             .and_then(|s| s.parse().ok()).unwrap_or(2);
 
         // Slow-path cache: if the function-izer already built a
-        // CachedSchema and stored it (because it refused to produce
+        // CompiledModel and stored it (because it refused to produce
         // a JIT program), reuse it here instead of rebuilding
         // the body. Each tick is push → assert pins/given → check
         // → extract model → pop. For Mario's display this cuts the

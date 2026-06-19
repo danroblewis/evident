@@ -1,80 +1,53 @@
-# test_21_mario — entity-based Mario with constraint-generated levels
+# test_21_mario — entity-based Mario side-scroller
 
-Multi-FSM platformer. Three FSMs:
+Single-FSM platformer. One `fsm main(world ∈ World)` runs three
+concerns in declaration order each tick, all coordinating through the
+shared `World` record (`_world.X` reads the previous tick, `world.X`
+writes this tick):
 
-- **`level_gen`** owns the level state in `world.plat_x` /
-  `world.plat_y` / `world.level_idx`. On tick 0 (and on every
-  level-beat transition) it solves the active level's constraints
-  and writes the platform positions to world; otherwise it freezes
-  them to the previous tick's values.
-- **`game`** owns `world.player` / `world.enemies`. Reads
-  `_world.plat_x` to know where the platforms are.
-- **`display`** owns `world.keys` / `world.tick`. Polls the
-  keyboard, renders the scene.
+- **Input poll** — `sdl_pump_events` + three `ReadByte`s of the SDL
+  keyboard state; writes `world.keys`. The key results come back as
+  `last_results[1..3]` on the next tick (the four input effects lead
+  the `effects` Seq).
+- **Physics + game logic** — gravity, platform landing, camera follow,
+  per-enemy stomp/side collision, coin pickup, lives/death/respawn,
+  Big-Mario growth, end-of-level flag. Writes `world.player`,
+  `world.enemies`, `world.coins`, `world.camera_x`, `world.lives`,
+  `world.dead`, `world.coin_count`, `world.won`, `world.is_big`.
+- **Render** — draws the platforms, Mario, enemies, coins, flag,
+  castle, and HUD via `win.draw_rect` / `win.render_fill_rect`, then
+  `render_present`. Writes `world.tick`.
+
+The frame's effects are one ordered `Seq(Effect)`: the four input-poll
+effects first, then the full render chain, then `delay`/`present` and
+the tick-240 `Println("mario done") + Exit(0)`.
 
 ## Files
 
-- `main.ev` — all three FSMs, the level type, and the per-level
-  claims (`Jumpable`, `Level1`, `Level2`).
+- `main.ev` — the single `main` FSM plus the level/entity types
+  (`Level`, `World`, `Mover`, `AABB`, `Body`, `Coin`, `MarioSprite`).
 
 ## What's a `type` vs a `claim` here?
 
-- **`type Level`** is the level VALUE — a noun. Constants
-  (`PLAT_W`, `GROUND_Y`, …), free placement vars (`plat_x`,
-  `plat_y`), the materialized `platforms` and `e_init` Seqs.
-  The body has only local invariants (each `platforms[i]` is
-  built from the Level's own `plat_x[i]` / `plat_y[i]`); no
-  external dependencies.
-- **`claim Jumpable`** is a property OF a Level: every platform
-  fits, none overlap, every elevated platform is jump-reachable.
-  Generic — works on any Level via names-match.
-- **`claim Level1` / `claim Level2`** are level-specific
-  predicates: each composes `Jumpable` plus its own extras
-  (spread, vertical staircase, etc.). Adding a new level =
-  add a `Level3` claim and one dispatch line in `level_gen`.
+- **`type Level`** is the level VALUE — a noun. Constants (`PLAT_W`,
+  `GROUND_Y`, …) and the materialized `platforms`, `e_init`, `c_init`
+  Seqs. Its body has only local invariants (each `platforms[i]` is a
+  literal); no external dependencies.
+- **`type World`** is the shared mutable state the FSM threads across
+  ticks.
+- **`type MarioSprite`** builds the four-rect Mario sprite from a
+  position + `is_big` flag.
 
-## How `level_gen` switches levels
+## Death, coins, growth
 
-```
-beat ∈ Bool = (¬is_first_tick ∧ _world.player.pos.x ≥ 580)
+- **Death**: a side-hit on an un-stomped enemy or falling below the
+  screen sets `world.dead`; the next tick respawns Mario at x=100 and
+  decrements `world.lives`.
+- **Stomp**: landing on an enemy from above (`intent_vy > 0`,
+  was-above) marks it dead (`pos = (-1000, -1000)`) and bounces Mario.
+- **Coins**: AABB overlap marks a coin collected; collected coins
+  render off-screen. Three coins → Mario goes Big.
+- **Win**: touching the end-of-level flag sets `world.won` (green
+  banner in the HUD).
 
-world.level_idx = (is_first_tick ? 0
-                   : (beat ? (_world.level_idx + 1) mod 2
-                      : _world.level_idx))
-
-level_changed ∈ Bool = (is_first_tick ∨ beat)
-
-world.level_idx = 0 ⇒ Level1
-world.level_idx = 1 ⇒ Level2
-
-¬level_changed ⇒ (∀ i : plat_x[i] = _world.plat_x[i] ∧ …)
-```
-
-Two things make the level stable:
-- **Dispatch is guarded** — only the active `LevelN`'s
-  constraints fire (others are vacuous because their
-  antecedent is false).
-- **Freeze constraint** — when the level didn't change, the
-  current tick's `plat_x[i]` is pinned to the previous tick's,
-  so Z3 can't pick a different valid solution.
-
-When the player walks off the right edge (`pos.x ≥ 580`),
-`beat` flips true → `level_idx` increments → the next tick the
-freeze is OFF, the new `LevelN`'s constraints take over, Z3
-picks a fresh layout, `world.plat_x` updates. Game and display
-read the new positions via `_world.plat_x`.
-
-## Adding a level
-
-1. Write `claim LevelN` with `..Jumpable` + your specifics.
-2. Add `world.level_idx = N ⇒ LevelN` to `level_gen`.
-3. Bump the modulus in the `level_idx` transition.
-
-That's the whole edit.
-
-## Runtime gaps the file works around
-
-- **Set-of-records is unsupported.** See COUNTEREXAMPLES.md #15.
-- **3-level nested writes through `world_next` are dropped.**
-  Enemy physics writes the whole `Mover` per implication branch.
-  See COUNTEREXAMPLES.md #23.
+The demo exits cleanly at frame 240 (`mario done`).

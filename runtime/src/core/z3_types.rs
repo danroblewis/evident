@@ -6,7 +6,8 @@
 //! so model extraction can walk a `Seq(UserType)` element back to a
 //! flat `Value::Composite`. `DatatypeRegistry` and `EnumRegistry` are
 //! the long-lived caches the runtime threads through every solve.
-//! `CachedSchema` is the per-schema cache `query_cached` populates.
+//! `CompiledModel` is the compiled-once solver+env the executor and
+//! the functionizer build via `build_cache` and evaluate per tick.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -335,16 +336,17 @@ impl<'ctx> Var<'ctx> {
     }
 }
 
-/// Per-schema cache used by `evaluate_cached`. Holds the shared
-/// solver (with the schema's body constraints already asserted at
-/// the bottom of the assertion stack) and the env mapping used to
-/// resolve given-bindings + extract the model.
-pub struct CachedSchema<'ctx> {
+/// The compiled-once model `build_cache` produces: a Z3 solver with
+/// the schema's body constraints already asserted at the bottom of
+/// the assertion stack, plus the env mapping used to resolve
+/// given-bindings + extract the model. The executor builds one of
+/// these at startup and evaluates it per tick via `run_cached`
+/// (push givens → check → extract → pop); the functionizer's slow
+/// path holds one per uncompiled component-set.
+pub struct CompiledModel<'ctx> {
     pub env: HashMap<String, Var<'ctx>>,
     pub solver: Solver<'ctx>,
-    /// The `smt.arith.solver` value this cache was built under (0
-    /// means "no explicit setting, use Z3's default"). The runtime's
-    /// auto-tuner consults this to decide whether the cache needs
-    /// rebuilding under a different config.
+    /// The `smt.arith.solver` value this model was built under (0
+    /// means "no explicit setting, use Z3's default").
     pub arith_solver: u32,
 }
