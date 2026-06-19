@@ -1,0 +1,24 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Grep|Glob",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -nc --arg m 'Semfora-first: prefer mcp__semfora__search / get_source / get_callers over grep/cat/Read of source files (see CLAUDE.md). Read is only for files you are about to Edit, or small config/docs.' '{hookSpecificOutput:{hookEventName:\"PreToolUse\",additionalContext:$m}}'"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "c=$(jq -r \".tool_input.command\" 2>/dev/null); if printf \"%s\" \"$c\" | grep -qE \"(^|[|;&])[[:space:]]*(grep|rg|cat|sed)[[:space:]]\" && printf \"%s\" \"$c\" | grep -qE \"[^\\\"']\\.(rs|ev)\\b\"; then jq -nc --arg m \"Semfora-first: prefer mcp__semfora__search / get_source / get_callers over grep/cat/Read of source files (see CLAUDE.md). Read is only for files you are about to Edit, or small config/docs.\" \"{hookSpecificOutput:{hookEventName:\\\"PreToolUse\\\",additionalContext:\\$m}}\"; fi"
+          }
+        ]
+      }
+    ]
+  }
+}
