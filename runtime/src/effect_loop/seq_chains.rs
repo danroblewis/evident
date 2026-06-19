@@ -1,6 +1,5 @@
-use crate::core::ast::{BodyItem, Expr, BinOp, Effect};
-use crate::translate::{Value, effect_decoder};
-use std::collections::{HashMap, HashSet};
+use crate::core::ast::{BodyItem, Expr, BinOp};
+use std::collections::HashSet;
 
 pub(super) fn extract_seq_effect_chains(
     body: &[BodyItem],
@@ -52,15 +51,4 @@ pub(super) fn extract_seq_effect_chains(
         }
     }
     chains
-}
-
-#[allow(dead_code)]
-pub(super) fn resolve_nodes_to_effects(
-    names: &[String],
-    bindings: &HashMap<String, Value>,
-) -> Vec<Effect> {
-    names.iter()
-        .filter_map(|name| bindings.get(name))
-        .filter_map(|v| effect_decoder::decode_effect(v).ok())
-        .collect()
 }
