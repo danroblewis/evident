@@ -1,0 +1,31 @@
+# Cleanup queue
+
+The running list of sequenced cleanup/minimization tasks. **Lives on disk so it
+survives context compaction.** Items are sequenced because several touch shared
+files (the `Effect` enum, `query.rs`, `encode/`) and running them back-to-back
+avoids worktree merge conflicts. Mark items done and commit as they land.
+
+## In progress
+- _(nothing running)_
+
+## Queued (in order)
+1. **Move `z3_eval.rs` → `functionize/extract_program.rs`** — it's the
+   functionizer's IR-extraction front-half (builds the `Z3Program`, consumed only
+   by `functionize/` + `query.rs`'s functionization path). Retarget `z3_eval::` →
+   `functionize::extract_program::`; move core.md's "IR extraction" line from
+   stage 2 → stage 3.
+2. **Rename `effect_loop.rs` / `effect_dispatch.rs`** — the names collide.
+   `effect_loop` = the FSM scheduler/tick-loop (→ `scheduler.rs`); `effect_dispatch`
+   = per-effect IO (→ `dispatch.rs`). Not redundant — the loop calls dispatch.
+3. **Audit leftover multi-FSM machinery** — `single_fsm` enumerates FSM candidates
+   and rejects >1; the runtime is single-FSM now (core.md stage 4), but CLAUDE.md
+   still documents a multi-FSM subscription scheduler (world read-sets,
+   plugin-as-writer, event sources). Check whether the event-source / subscription /
+   multi-FSM code is vestigial, simplify `single_fsm`, and reconcile the docs.
+
+## Done (recent, newest first)
+- ParseInt/IntToStr effects → Z3 expression ops (`to_str`/`parse_int`); pruned `start`/`stdin` — `deadc23`
+- translate/ → encode/ (+ `translate_*` → `encode_*` helpers) — `91e6c8c`, `f33ad2e`
+- delete 6 artifact effects (ShellRun/Time/MonotonicTime/ReadLine/RealToStr/ParseReal) — `2f55ad2`
+- consolidate inline tests → `src/tests.rs` — `687041e`
+- file restructure 49 → 31 files — `f8da116` … `c1ae048`
