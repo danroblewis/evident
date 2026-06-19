@@ -63,6 +63,18 @@ RUN curl -fsSL -o /usr/local/bin/cloudflared \
     "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-$(dpkg --print-architecture)" \
  && chmod +x /usr/local/bin/cloudflared
 
+# Semfora — semantic code-analysis engine: an MCP server (`semfora-engine serve`)
+# the agent uses for symbol/callpath lookups instead of blind file reads, plus
+# an FS-monitor daemon (`semfora-daemon`) that keeps the index fresh. Built from
+# source like md above; binaries land in /usr/local/bin so they survive restarts.
+# cache-bust: rebuild this layer whenever the semfora repo changes.
+ADD https://api.github.com/repos/Semfora-AI/semfora-engine/commits/main /tmp/semfora-head.json
+RUN git clone --depth 1 https://github.com/Semfora-AI/semfora-engine.git /tmp/semfora-engine \
+ && cd /tmp/semfora-engine \
+ && cargo build --release --bin semfora-engine --bin semfora-daemon \
+ && cp target/release/semfora-engine target/release/semfora-daemon /usr/local/bin/ \
+ && rm -rf /tmp/semfora-engine
+
 COPY scripts/claudebot-dev-entrypoint.sh /usr/local/bin/dev-entrypoint.sh
 RUN chmod +x /usr/local/bin/dev-entrypoint.sh
 ENTRYPOINT ["/usr/local/bin/dev-entrypoint.sh"]

@@ -53,4 +53,16 @@ export DISPLAY="${DISPLAY:-:99}"
             -d "{\"content\":\"🌐 md viewer: $TUNNEL\"}" >/dev/null
     fi
 } &
+
+# Semfora: regenerate the workspace index (the ~/.cache index does not survive
+# restarts) and start the FS-monitor daemon. The MCP server itself is launched
+# on demand by claude (`semfora-engine serve`); here we only need a fresh index
+# and the daemon. Best-effort; never blocks claude.
+{
+    if command -v semfora-engine >/dev/null 2>&1; then
+        semfora-engine index generate . >/tmp/semfora-index.log 2>&1 || true
+        semfora-daemon >/tmp/semfora-daemon.log 2>&1 &
+    fi
+} &
+
 exec "$@"

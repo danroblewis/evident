@@ -1,0 +1,6 @@
+# Keep Semfora's index to first-party source — skip build output, VCS, and the
+# agent worktree copies (each is a full duplicate of the repo).
+.git/
+target/
+.claude/
+docs/research/
