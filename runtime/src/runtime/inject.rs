@@ -28,32 +28,13 @@ pub(super) fn inject_fsm_params(s: &mut SchemaDecl) -> Result<(), RuntimeError> 
     }
 
     fn walk(e: &Expr, targets: &mut [(&str, &mut bool)]) {
-        match e {
-            Expr::Identifier(n) => {
+        crate::core::ast::walk_expr(e, &mut |n| {
+            if let Expr::Identifier(n) = n {
                 for (name, hit) in targets.iter_mut() {
                     if n == *name { **hit = true; }
                 }
             }
-            Expr::Int(_) | Expr::Real(_) | Expr::Bool(_) | Expr::Str(_) => {}
-            Expr::SetLit(es) | Expr::SeqLit(es) | Expr::Tuple(es) =>
-                for x in es { walk(x, targets); },
-            Expr::Range(a, b) | Expr::InExpr(a, b) | Expr::Index(a, b) =>
-                { walk(a, targets); walk(b, targets); }
-            Expr::Forall(_, r, b) | Expr::Exists(_, r, b) =>
-                { walk(r, targets); walk(b, targets); }
-            Expr::Call(_, args) =>
-                for a in args { walk(a, targets); },
-            Expr::Cardinality(i) | Expr::Not(i) => walk(i, targets),
-            Expr::Field(recv, _) => walk(recv, targets),
-            Expr::Binary(_, l, r) => { walk(l, targets); walk(r, targets); }
-            Expr::Ternary(c, a, b) =>
-                { walk(c, targets); walk(a, targets); walk(b, targets); }
-            Expr::Match(scr, arms) => {
-                walk(scr, targets);
-                for arm in arms { walk(&arm.body, targets); }
-            }
-            Expr::Matches(e, _) => walk(e, targets),
-        }
+        });
     }
     let mut ref_state_next = false;
     let mut ref_last_results = false;
@@ -120,43 +101,17 @@ pub(super) fn inject_prev_tick_decls(s: &mut SchemaDecl) -> Result<(), RuntimeEr
     let mut prev_refs: HashMap<String, String> = HashMap::new();
     fn walk(e: &Expr, declared: &HashMap<String, String>,
             prev_refs: &mut HashMap<String, String>) {
-        match e {
-            Expr::Identifier(n) => {
-
+        crate::core::ast::walk_expr(e, &mut |n| {
+            if let Expr::Identifier(n) = n {
                 let Some(after_underscore) = n.strip_prefix('_') else { return; };
                 let first_seg = after_underscore
                     .split('.').next().unwrap_or(after_underscore);
                 if let Some(ty) = declared.get(first_seg) {
-
                     let key = format!("_{first_seg}");
                     prev_refs.insert(key, ty.clone());
                 }
             }
-            Expr::Int(_) | Expr::Real(_) | Expr::Bool(_) | Expr::Str(_) => {}
-            Expr::SetLit(es) | Expr::SeqLit(es) | Expr::Tuple(es) =>
-                for x in es { walk(x, declared, prev_refs); },
-            Expr::Range(a, b) | Expr::InExpr(a, b) | Expr::Index(a, b) =>
-                { walk(a, declared, prev_refs); walk(b, declared, prev_refs); }
-            Expr::Forall(_, r, b) | Expr::Exists(_, r, b) =>
-                { walk(r, declared, prev_refs); walk(b, declared, prev_refs); }
-            Expr::Call(_, args) =>
-                for a in args { walk(a, declared, prev_refs); },
-            Expr::Cardinality(i) | Expr::Not(i) =>
-                walk(i, declared, prev_refs),
-            Expr::Field(recv, _) => walk(recv, declared, prev_refs),
-            Expr::Binary(_, l, r) =>
-                { walk(l, declared, prev_refs); walk(r, declared, prev_refs); }
-            Expr::Ternary(c, a, b) => {
-                walk(c, declared, prev_refs);
-                walk(a, declared, prev_refs);
-                walk(b, declared, prev_refs);
-            }
-            Expr::Match(scr, arms) => {
-                walk(scr, declared, prev_refs);
-                for arm in arms { walk(&arm.body, declared, prev_refs); }
-            }
-            Expr::Matches(e, _) => walk(e, declared, prev_refs),
-        }
+        });
     }
     for item in &s.body {
         match item {
@@ -211,27 +166,11 @@ pub(super) fn inject_claim_arg_types(
 
     let mut uses: HashMap<String, usize> = HashMap::new();
     fn walk(e: &Expr, uses: &mut HashMap<String, usize>) {
-        match e {
-            Expr::Identifier(n) => { *uses.entry(n.clone()).or_default() += 1; }
-            Expr::Int(_) | Expr::Real(_) | Expr::Bool(_) | Expr::Str(_) => {}
-            Expr::SetLit(es) | Expr::SeqLit(es) | Expr::Tuple(es) =>
-                for x in es { walk(x, uses); },
-            Expr::Range(a, b) | Expr::InExpr(a, b) | Expr::Index(a, b) =>
-                { walk(a, uses); walk(b, uses); }
-            Expr::Forall(_, r, b) | Expr::Exists(_, r, b) =>
-                { walk(r, uses); walk(b, uses); }
-            Expr::Call(_, args) => for a in args { walk(a, uses); },
-            Expr::Cardinality(i) | Expr::Not(i) => walk(i, uses),
-            Expr::Field(recv, _) => walk(recv, uses),
-            Expr::Binary(_, l, r) => { walk(l, uses); walk(r, uses); }
-            Expr::Ternary(c, a, b) =>
-                { walk(c, uses); walk(a, uses); walk(b, uses); }
-            Expr::Match(scr, arms) => {
-                walk(scr, uses);
-                for arm in arms { walk(&arm.body, uses); }
+        crate::core::ast::walk_expr(e, &mut |n| {
+            if let Expr::Identifier(n) = n {
+                *uses.entry(n.clone()).or_default() += 1;
             }
-            Expr::Matches(e, _) => walk(e, uses),
-        }
+        });
     }
     for item in &s.body {
         match item {

@@ -106,28 +106,13 @@ pub(super) fn unify_world_syntax(s: &mut SchemaDecl) -> Result<(), RuntimeError>
     if has_world_next { return Ok(()); }
 
     fn uses_underscore_world(e: &Expr) -> bool {
-        match e {
-            Expr::Identifier(n) => n.starts_with("_world."),
-            Expr::Int(_) | Expr::Real(_) | Expr::Bool(_) | Expr::Str(_) => false,
-            Expr::SetLit(es) | Expr::SeqLit(es) | Expr::Tuple(es) =>
-                es.iter().any(uses_underscore_world),
-            Expr::Range(a, b) | Expr::InExpr(a, b) | Expr::Index(a, b) =>
-                uses_underscore_world(a) || uses_underscore_world(b),
-            Expr::Forall(_, r, b) | Expr::Exists(_, r, b) =>
-                uses_underscore_world(r) || uses_underscore_world(b),
-            Expr::Call(_, args) => args.iter().any(uses_underscore_world),
-            Expr::Cardinality(i) | Expr::Not(i) => uses_underscore_world(i),
-            Expr::Field(recv, _) => uses_underscore_world(recv),
-            Expr::Binary(_, l, r) =>
-                uses_underscore_world(l) || uses_underscore_world(r),
-            Expr::Ternary(c, a, b) =>
-                uses_underscore_world(c) || uses_underscore_world(a)
-                    || uses_underscore_world(b),
-            Expr::Match(scr, arms) =>
-                uses_underscore_world(scr)
-                    || arms.iter().any(|a| uses_underscore_world(&a.body)),
-            Expr::Matches(e, _) => uses_underscore_world(e),
-        }
+        let mut found = false;
+        crate::core::ast::walk_expr(e, &mut |n| {
+            if let Expr::Identifier(n) = n {
+                if n.starts_with("_world.") { found = true; }
+            }
+        });
+        found
     }
     let uses_new_syntax = s.body.iter().any(|item| match item {
         BodyItem::Constraint(e) => uses_underscore_world(e),
@@ -147,28 +132,11 @@ pub(super) fn unify_world_syntax(s: &mut SchemaDecl) -> Result<(), RuntimeError>
         None
     }
     fn walk(e: &mut Expr) {
-        match e {
-            Expr::Identifier(n) => {
+        crate::core::ast::walk_expr_mut(e, &mut |n| {
+            if let Expr::Identifier(n) = n {
                 if let Some(new_n) = rewrite_ident(n) { *n = new_n; }
             }
-            Expr::Int(_) | Expr::Real(_) | Expr::Bool(_) | Expr::Str(_) => {}
-            Expr::SetLit(es) | Expr::SeqLit(es) | Expr::Tuple(es) =>
-                for x in es { walk(x); },
-            Expr::Range(a, b) | Expr::InExpr(a, b) | Expr::Index(a, b) =>
-                { walk(a); walk(b); }
-            Expr::Forall(_, r, b) | Expr::Exists(_, r, b) =>
-                { walk(r); walk(b); }
-            Expr::Call(_, args) => for a in args { walk(a); },
-            Expr::Cardinality(i) | Expr::Not(i) => walk(i),
-            Expr::Field(recv, _) => walk(recv),
-            Expr::Binary(_, l, r) => { walk(l); walk(r); }
-            Expr::Ternary(c, a, b) => { walk(c); walk(a); walk(b); }
-            Expr::Match(scr, arms) => {
-                walk(scr);
-                for arm in arms { walk(arm.body.as_mut()); }
-            }
-            Expr::Matches(e, _) => walk(e),
-        }
+        });
     }
     for item in s.body.iter_mut() {
         match item {
