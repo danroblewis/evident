@@ -244,7 +244,7 @@ Supporting modules:
 - `subscriptions.rs` — static read/write-set inference per claim
 - `ffi.rs` — libffi marshaling, handle registry
 - `z3_eval.rs` — extract a `Z3Program` from a simplified Z3 AST
-- `commands/` — per-CLI-subcommand entry points
+- `main.rs` — the CLI binary: `test` / `effect-run` entry points + output
 
 ## Source layout: which file owns what
 
@@ -262,7 +262,7 @@ here's where to start.
 | `translate/`   | Evident AST → Z3 ASTs; build solvers; extract models |
 | `functionize/` | Functionizer implementations (currently: Cranelift JIT) |
 | `event_sources/` | Async wake plugins (FrameTimer, Stdin, Sigint, …) |
-| `commands.rs` | Per-CLI-subcommand entry points |
+| `main.rs` | The CLI binary: `test` / `effect-run` entry points + test-report output |
 | `effect_dispatch.rs` | Effect → IO (Println, LibCall, ParseInt, …) |
 | `z3_eval.rs`   | Extract a `Z3Program` from a simplified Z3 AST |
 | `ffi.rs`       | libffi marshaling + handle registry; FTI shimmed-stdlib check |
