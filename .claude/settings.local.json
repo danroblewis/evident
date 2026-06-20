@@ -8,7 +8,12 @@
       "Bash(echo \"BUILD EXIT: $?\")",
       "Bash(break)",
       "Bash(docker run *)",
-      "Bash(docker rmi *)"
+      "Bash(docker rmi *)",
+      "mcp__semfora__search",
+      "mcp__semfora__get_source"
     ]
-  }
+  },
+  "enabledMcpjsonServers": [
+    "semfora"
+  ]
 }
