@@ -12,6 +12,7 @@ Three canonical systems were built and rendered (640×480, SDL via `packages/sdl
 | **Van der Pol** | two trajectories (one from inside, one from outside) spiral onto the *same* closed loop | limit cycle |
 | **Lotka–Volterra** (predator–prey) | three nested closed orbits around the (2,2) fixed point | center / conservative orbits |
 | **Damped spring** | trajectories spiral inward to the origin | spiral sink |
+| **Pendulum** | nested librations ("eyes"), inner circular, outer lens-shaped near the separatrix | separatrix |
 
 ## How it's done
 
@@ -28,6 +29,22 @@ smoothness recipe (see `PARAMS.md`, verified numerically in the `math_*.py`):
   stay closed;
 - the nonlinear terms (van der Pol's `(1−x²)v`, Lotka–Volterra's `x·y`) are done
   in scaled integer arithmetic — see `PARAMS.md`.
+
+### Sine (the pendulum)
+
+Z3 has **no usable `sin`**: `(sin 1.0)` type-checks but `(get-value …)` returns
+the *symbolic* term, not a decimal, and Z3 answers `unknown` to even trivial
+bounds (`0.84 < sin(1.0) < 0.85`). It's a logic engine, not a numerics engine —
+transcendentals aren't algebraic, so its reasoning is incomplete and here inert.
+
+Two integer alternatives, both giving actual numbers:
+- a precomputed **sine LUT** (`Seq(Int)` indexed by angle) — correct, but the Z3
+  array theory makes it slow (a 64-entry table with ~800 selects didn't solve a
+  tick in 90s);
+- a **Bhaskara polynomial** — `sin(x)·S ≈ 16·u·S / (5π²·S² − 4u)` with
+  `u = |x|·(π−|x|)`, valid on `[−π,π]` (the libration range, no range reduction
+  needed). Pure arithmetic, ~10s for the full four-libration portrait, accurate
+  to **0.0016** on `[−π,π]`. This is what `gen_pendulum.py` uses.
 
 The draws use single-effect `render_fill_rect` (one `Effect` per point, no nested
 `Seq`), so the whole portrait is one flat `effects` list. It runs fine on the
