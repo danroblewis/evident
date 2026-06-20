@@ -75,8 +75,12 @@ fn parse(args: &[String]) -> Result<Args, String> {
             other => { file = Some(other.to_string()); i += 1; }
         }
     }
-    let axes = axes.ok_or("--axes a,b is required (e.g. --axes state.pos,state.vel)")?;
-    let (a, b) = axes.split_once(',').ok_or("--axes must be a,b")?;
+    let axes = axes.ok_or("--axes is required (e.g. --axes state.pos,state.vel, or --axes state)")?;
+    // Two axes → numeric vector field. One axis → discrete (enum/bool) state line.
+    let (a, b) = match axes.split_once(',') {
+        Some((a, b)) => (a, b),
+        None => (axes.as_str(), axes.as_str()),
+    };
     if seeds.is_empty() { seeds = vec![(200, 0), (0, 150)]; }
     Ok(Args { file: file.ok_or("a daemon .ev file is required")?,
               axis_a: a.into(), axis_b: b.into(), seeds, grid, steps, range, text, svg })
@@ -98,6 +102,20 @@ pub fn cmd_phase_portrait(args: &[String]) -> ExitCode {
         Ok(shape) => shape.claim_name,
         Err(e) => { eprintln!("phase-portrait: no single fsm in {}: {e}", a.file); return ExitCode::from(2); }
     };
+
+    // Probe the initial state (is_first_tick). If the axis is an enum or bool, the
+    // state space is discrete — draw the difference-equation state line, not a
+    // numeric vector field. Enum-valued `given` is handled only on the slow Z3
+    // path (session/mod.rs), so force the functionizer off for discrete queries.
+    rt.set_functionize_enabled(false);
+    let mut probe_given: HashMap<String, Value> = HashMap::new();
+    probe_given.insert("is_first_tick".into(), Value::Bool(true));
+    if let Some(init @ (Value::Enum { .. } | Value::Bool(_))) =
+        query_axis(&rt, &claim, &a.axis_a, &probe_given)
+    {
+        return discrete_portrait(&rt, &claim, &a.axis_a, init, a.steps, a.text, a.svg.as_deref());
+    }
+    rt.set_functionize_enabled(true);
 
     // Integrate trajectories by repeatedly querying the transition.
     let mut trajs: Vec<Vec<(i64, i64)>> = Vec::new();
@@ -361,8 +379,169 @@ fn render<F: Fn(f64, f64) -> (i64, i64)>(
     ExitCode::SUCCESS
 }
 
+// ───────────────────────── discrete (enum/bool) state portraits ─────────────────────────
+// A daemon whose carried state is an enum/bool is still a difference equation — its
+// phase portrait is the reachable states laid on a line with the transition arrows
+// between them (docs/design/phase-portraits.md Part IV.1), not a numeric field.
+
+/// Query the claim with `given` pinned and read the axis variable's value.
+fn query_axis(rt: &EvidentRuntime, claim: &str, axis: &str, given: &HashMap<String, Value>) -> Option<Value> {
+    let r = rt.query_with_pins_and_given(claim, &[], given).ok()?;
+    if !r.satisfied { return None; }
+    r.bindings.get(axis).cloned()
+}
+
+/// A short label for a discrete value: `Start`, `Count(5)`, `true`.
+fn val_label(v: &Value) -> String {
+    match v {
+        Value::Enum { variant, fields, .. } if fields.is_empty() => variant.clone(),
+        Value::Enum { variant, fields, .. } =>
+            format!("{variant}({})", fields.iter().map(val_label).collect::<Vec<_>>().join(",")),
+        Value::Bool(b) => b.to_string(),
+        Value::Int(n) => n.to_string(),
+        Value::Str(s) => format!("\"{s}\""),
+        other => format!("{other:?}"),
+    }
+}
+
+fn xml_escape(s: &str) -> String {
+    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
+}
+
+/// One step of a discrete transition: pin `_axis` to a value, read the successor.
+fn discrete_succ(rt: &EvidentRuntime, claim: &str, axis: &str, s: &Value) -> Option<Value> {
+    let mut g: HashMap<String, Value> = HashMap::new();
+    g.insert(prev(axis), s.clone());
+    g.insert("is_first_tick".into(), Value::Bool(false));
+    query_axis(rt, claim, axis, &g)
+}
+
+/// Forward-explore the reachable states from the initial state (each has one
+/// successor) and render them as a state line with transition arrows.
+fn discrete_portrait(
+    rt: &EvidentRuntime, claim: &str, axis: &str, init: Value,
+    max: usize, text: bool, svg: Option<&str>,
+) -> ExitCode {
+    let mut order: Vec<Value> = vec![init.clone()];
+    let mut seen: HashMap<String, usize> = HashMap::new();
+    seen.insert(val_label(&init), 0);
+    let mut edges: Vec<(usize, usize)> = Vec::new();
+    let mut frontier = vec![0usize];
+    let cap = max.max(64);
+    while let Some(i) = frontier.pop() {
+        if order.len() > cap { break; }
+        let s = order[i].clone();
+        if let Some(succ) = discrete_succ(rt, claim, axis, &s) {
+            let k = val_label(&succ);
+            let j = match seen.get(&k) {
+                Some(&j) => j,
+                None => {
+                    let j = order.len();
+                    order.push(succ.clone());
+                    seen.insert(k, j);
+                    frontier.push(j);
+                    j
+                }
+            };
+            edges.push((i, j));
+        }
+    }
+
+    if let Some(path) = svg {
+        return render_discrete_svg(path, claim, axis, &order, &edges);
+    }
+    let _ = text;
+    render_discrete_text(claim, axis, &order, &edges)
+}
+
+fn render_discrete_text(claim: &str, axis: &str, order: &[Value], edges: &[(usize, usize)]) -> ExitCode {
+    let mut succ: HashMap<usize, usize> = HashMap::new();
+    for &(i, j) in edges { succ.insert(i, j); }
+    println!("phase portrait — {claim}   axis: {axis}   ({} reachable states)", order.len());
+    let mut parts: Vec<String> = Vec::new();
+    let mut visited = vec![false; order.len()];
+    let mut i = 0usize;
+    while i < order.len() {
+        let lbl = val_label(&order[i]);
+        match succ.get(&i) {
+            Some(&j) if j == i => { parts.push(format!("{lbl} ⟲")); break; }
+            _ if visited[i]    => { parts.push(format!("↺{lbl}")); break; }
+            Some(&j)           => { parts.push(lbl); visited[i] = true; i = j; }
+            None               => { parts.push(lbl); break; }
+        }
+    }
+    println!("  {}", parts.join(" → "));
+    println!("  (⟲ = fixed point / absorbing state)");
+    ExitCode::SUCCESS
+}
+
+/// SVG state line: reachable states as nodes left-to-right in discovery order,
+/// transition arrows as arcs above, the absorbing fixed point highlighted.
+fn render_discrete_svg(
+    path: &str, claim: &str, axis: &str, order: &[Value], edges: &[(usize, usize)],
+) -> ExitCode {
+    let n = order.len().max(1);
+    let w = (n as i64 * 120).max(660);
+    let h = 300i64;
+    let y = 175i64;
+    let m = 80i64;
+    let r = 22i64;
+    let span = (w - 2 * m).max(1);
+    let xpos = |i: usize| -> i64 { if n == 1 { w / 2 } else { m + (i as i64) * span / (n as i64 - 1) } };
+    let mut succ: HashMap<usize, usize> = HashMap::new();
+    for &(i, j) in edges { succ.insert(i, j); }
+
+    let mut s = String::new();
+    s.push_str(&format!(
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{w}\" height=\"{h}\" \
+         viewBox=\"0 0 {w} {h}\" font-family=\"monospace\" font-size=\"13\">\n"));
+    s.push_str(&format!("<rect width=\"{w}\" height=\"{h}\" fill=\"#0a0c14\"/>\n"));
+    s.push_str("<defs><marker id=\"a\" markerWidth=\"9\" markerHeight=\"9\" refX=\"7\" refY=\"3\" \
+                orient=\"auto\"><path d=\"M0,0 L8,3 L0,6 Z\" fill=\"#5aaaff\"/></marker></defs>\n");
+
+    s.push_str("<g stroke=\"#5aaaff\" stroke-width=\"1.7\" fill=\"none\">\n");
+    for &(i, j) in edges {
+        let (xi, xj) = (xpos(i), xpos(j));
+        if i == j {
+            s.push_str(&format!(
+                "<path d=\"M {} {} C {} {}, {} {}, {} {}\" marker-end=\"url(#a)\"/>\n",
+                xi - 9, y - r + 4, xi - 36, y - r - 58, xi + 36, y - r - 58, xi + 9, y - r + 4));
+        } else {
+            let mid = (xi + xj) / 2;
+            let lift = (40 + ((j as i64 - i as i64).abs() * 16)).min(120);
+            let (sx, ex) = if xj > xi { (xi + r, xj - r) } else { (xi - r, xj + r) };
+            s.push_str(&format!(
+                "<path d=\"M {sx} {y} Q {mid} {} {ex} {y}\" marker-end=\"url(#a)\"/>\n", y - lift));
+        }
+    }
+    s.push_str("</g>\n");
+
+    for (i, v) in order.iter().enumerate() {
+        let x = xpos(i);
+        let fp = succ.get(&i) == Some(&i);
+        let (fill, stroke) = if fp { ("#16281a", "#50e678") } else { ("#141a2c", "#5a6a90") };
+        s.push_str(&format!(
+            "<circle cx=\"{x}\" cy=\"{y}\" r=\"{r}\" fill=\"{fill}\" stroke=\"{stroke}\" stroke-width=\"2\"/>\n"));
+        s.push_str(&format!(
+            "<text x=\"{x}\" y=\"{}\" fill=\"#cdd6f0\" text-anchor=\"middle\">{}</text>\n",
+            y + r + 20, xml_escape(&val_label(v))));
+    }
+    s.push_str(&format!(
+        "<text x=\"12\" y=\"24\" fill=\"#aab4d0\">{} — {} (difference-equation state line, \
+         {n} reachable states; green = fixed point)</text>\n",
+        xml_escape(claim), xml_escape(axis)));
+    s.push_str("</svg>\n");
+
+    if let Err(e) = std::fs::write(path, s) {
+        eprintln!("phase-portrait: write {path}: {e}"); return ExitCode::from(1);
+    }
+    println!("wrote {path}  ({n} reachable states, {} transitions)", edges.len());
+    ExitCode::SUCCESS
+}
+
 pub fn usage() {
-    eprintln!("  evident phase-portrait <daemon.ev> --axes a,b [--seeds \"a,b;a,b\"]");
-    eprintln!("                         [--range alo,ahi,blo,bhi] [--grid G] [--steps N]");
-    eprintln!("                         [--text] [--svg PATH]");
+    eprintln!("  evident phase-portrait <daemon.ev> --axes a,b   # numeric: vector field + trajectories");
+    eprintln!("  evident phase-portrait <prog.ev>   --axes state # discrete: enum/bool state line");
+    eprintln!("                         [--seeds \"a,b;a,b\"] [--range alo,ahi,blo,bhi] [--grid G]");
+    eprintln!("                         [--steps N] [--text] [--svg PATH]");
 }
