@@ -10,7 +10,8 @@ See [`docs/design/phase-portraits.md`](../design/phase-portraits.md) for the ful
 ## The generic tool
 
 ```sh
-evident phase-portrait <daemon.ev> --axes a,b [--seeds "a,b;a,b"] [--steps N] [--text]
+evident phase-portrait <daemon.ev> --axes a,b [--seeds "a,b;a,b"] [--steps N] \
+                       [--text] [--svg PATH]
 ```
 
 It reads **no hardcoded dynamics**. Given a daemon and two state axes, it:
@@ -19,10 +20,33 @@ It reads **no hardcoded dynamics**. Given a daemon and two state axes, it:
    transition (pin `_a,_b`, solve for `a,b`, repeat);
 2. **samples a grid** and queries the transition at each cell to draw the
    **vector field** (the displacement, normalized to a fixed arrow length);
-3. **renders** both via SDL, auto-ranging the view to the trajectories' extent.
+3. **renders** both, auto-ranging the view to the trajectories' extent.
 
 Because the dynamics come from *querying the runtime*, the same tool draws any
 daemon. The implementation is `runtime/src/viz.rs`.
+
+### Three output modes
+
+| Flag | Output | Use |
+|---|---|---|
+| *(default)* | live **SDL** window | interactive viewing on a display |
+| `--text` | **ASCII** to stdout (arrow-glyph field + per-seed trajectory glyphs) | headless terminals, quick check, CI logs |
+| `--svg PATH` | **SVG file** (`<line>`/`<circle>`, dark theme, per-seed colors) | crisp committable artifacts; no display needed |
+
+`--text` and `--svg` are fully headless (no SDL, no display, no screenshot) and
+produce byte-identical results on macOS and Linux — they draw from the same
+`arrows`/`trajs` data the SDL path uses.
+
+### Gallery
+
+The four daemons below, rendered with `--svg` (open the `.svg` files in this
+directory, or the inline previews):
+
+| ![spring](spring.svg) | ![vanderpol](vanderpol.svg) |
+|:---:|:---:|
+| **spring** — spiral sink | **vanderpol** — limit cycle |
+| ![lotka](lotka.svg) | ![pendulum](pendulum.svg) |
+| **lotka** — nested closed orbits | **pendulum** — librations + separatrix |
 
 ## The four example daemons
 
@@ -65,10 +89,15 @@ cd runtime && cargo build --release && cd ..          # -> runtime/target/releas
     --axes state.pos,state.vel --seeds "180,0;120,40;60,90"
 ```
 
-Headless capture: `Xvfb :99 ... &` then `DISPLAY=:99`, run in the background,
-`sleep` a few seconds past the first solve, `import -display :99 -window root
-out.png`, and `pkill -x evident` (exact name — `-f` matches the repo path and
-kills unrelated processes).
+**Headless, no display needed (preferred):** add `--svg out.svg` (a file you can
+commit / view anywhere) or `--text` (ASCII straight to the terminal). Neither
+needs SDL, an X server, or a screenshot tool — they only require Rust + Z3.
+
+**SDL screenshot capture (only if you want the windowed render as a raster):**
+`Xvfb :99 ... &` then `DISPLAY=:99`, run in the background, `sleep` a few seconds
+past the first solve, `import -display :99 -window root out.png`, and `pkill -x
+evident` (exact name — `-f` matches the repo path and kills unrelated processes).
+On macOS there is no Xvfb; use `--svg`/`--text` instead.
 
 Write your own: any `fsm` whose body computes the next `state` from `_state`
 works — point the tool at it with `--axes`.
