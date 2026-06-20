@@ -7,9 +7,14 @@
 mod ffi {
     use crate::ffi::*;
 
-    fn libc_path() -> &'static str { "libc.so.6" }
+    fn libc_path() -> &'static str {
+        if cfg!(target_os = "macos") { "libSystem.dylib" } else { "libc.so.6" }
+    }
 
-    fn libm_path() -> &'static str { "libm.so.6" }
+    fn libm_path() -> &'static str {
+        // libm is folded into libSystem on macOS (no standalone libm.so.6).
+        if cfg!(target_os = "macos") { "libSystem.dylib" } else { "libm.so.6" }
+    }
 
     #[test]
     fn parse_signature_basic() {

@@ -142,11 +142,15 @@ if [ "$EXAMPLES" -eq 1 ]; then
                 pid=$!
                 sleep 2
                 # Linux: capture the Xvfb root window via imagemagick.
-                # macOS: screencapture. Best-effort either way.
-                if command -v import >/dev/null 2>&1; then
-                    import -display "${DISPLAY:-:99}" -window root "$SHOTDIR/$name.png" 2>/dev/null
+                # macOS: screencapture (no X server, so `import` can't grab).
+                # Best-effort either way — `|| true` so a failed grab never
+                # aborts the runner under `set -e`.
+                if [ "$(uname)" = "Darwin" ] && command -v screencapture >/dev/null 2>&1; then
+                    screencapture -x "$SHOTDIR/$name.png" 2>/dev/null || true
+                elif command -v import >/dev/null 2>&1; then
+                    import -display "${DISPLAY:-:99}" -window root "$SHOTDIR/$name.png" 2>/dev/null || true
                 elif command -v screencapture >/dev/null 2>&1; then
-                    screencapture -x "$SHOTDIR/$name.png" 2>/dev/null
+                    screencapture -x "$SHOTDIR/$name.png" 2>/dev/null || true
                 fi
                 # Wait for natural exit (capped) or kill.
                 for _ in 1 2 3; do

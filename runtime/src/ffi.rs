@@ -170,8 +170,55 @@ impl Default for HandleRegistry {
     fn default() -> Self { Self::new() }
 }
 
+/// Stdlib FFI wrappers spell library names with Linux sonames
+/// (e.g. `libSDL2-2.0.so.0`). On macOS those don't exist; the
+/// equivalent is a `.dylib`, often only findable under a Homebrew
+/// prefix that isn't on the default dyld search path. Given a failed
+/// soname, produce macOS candidate paths to retry. Empty on Linux.
+#[cfg(target_os = "macos")]
+fn macos_lib_candidates(path: &str) -> Vec<String> {
+    // Only translate bare Linux sonames; leave explicit paths alone.
+    let Some(idx) = path.find(".so") else { return Vec::new() };
+    if path.contains('/') {
+        return Vec::new();
+    }
+    let stem = &path[..idx]; // e.g. "libSDL2-2.0" from "libSDL2-2.0.so.0"
+    let ver = path[idx..].trim_start_matches(".so").trim_start_matches('.'); // "0"
+
+    let mut names = Vec::new();
+    if !ver.is_empty() {
+        names.push(format!("{stem}.{ver}.dylib")); // libSDL2-2.0.0.dylib
+    }
+    names.push(format!("{stem}.dylib")); // libSDL2-2.0.dylib
+    if let Some(dash) = stem.find('-') {
+        names.push(format!("{}.dylib", &stem[..dash])); // libSDL2.dylib
+    }
+
+    // Bare names dlopen can find via default search, plus Homebrew
+    // prefixes (not on the default dyld path).
+    let prefixes = ["", "/opt/homebrew/lib/", "/usr/local/lib/"];
+    let mut out = Vec::new();
+    for p in prefixes {
+        for n in &names {
+            out.push(format!("{p}{n}"));
+        }
+    }
+    out
+}
+
+#[cfg(not(target_os = "macos"))]
+fn macos_lib_candidates(_path: &str) -> Vec<String> {
+    Vec::new()
+}
+
 pub fn ffi_open(reg: &HandleRegistry, path: &str) -> Result<u64, FfiError> {
     let lib = unsafe { Library::new(path) }
+        .or_else(|first_err| {
+            macos_lib_candidates(path)
+                .into_iter()
+                .find_map(|cand| unsafe { Library::new(&cand) }.ok())
+                .ok_or(first_err)
+        })
         .map_err(|e| FfiError(format!("dlopen({path:?}) failed: {e}")))?;
 
     let boxed = Box::new(lib);
