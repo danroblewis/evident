@@ -1,0 +1,10 @@
+-- Pendulum (nested librations / "eyes"). Bhaskara sine, scale S=4096, P=round(pi*S)=12868.
+-- evident phase-portrait examples/daemons/pendulum.ev --axes state.th,state.om --seeds "0,2048;0,4096;0,6144;0,7782"
+type State(th, om ∈ Int)
+fsm pendulum(state ∈ State)
+    ax ∈ Int = (_state.th ≥ 0 ? _state.th : 0 - _state.th)
+    u  ∈ Int = ax * (12868 - ax)
+    sp ∈ Int = (65536 * u) / (828005120 - 4 * u)
+    si ∈ Int = (_state.th ≥ 0 ? sp : 0 - sp)
+    state.om = _state.om - (si + 20) / 40
+    state.th = _state.th + (state.om + 20) / 40

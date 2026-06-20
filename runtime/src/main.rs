@@ -6,6 +6,8 @@ use evident_runtime::ast::BodyItem;
 use evident_runtime::encode::collect_referenced_names;
 use evident_runtime::{EvidentRuntime, Value, trampoline};
 
+mod viz;
+
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.is_empty() {
@@ -15,6 +17,7 @@ fn main() -> ExitCode {
     match args[0].as_str() {
         "test"        => cmd_test(&args[1..]),
         "effect-run"  => cmd_effect_run(&args[1..]),
+        "phase-portrait" => viz::cmd_phase_portrait(&args[1..]),
         "help" | "--help" | "-h" => { usage(); ExitCode::SUCCESS }
         other => {
             eprintln!("unknown subcommand: {}", other);
@@ -28,6 +31,7 @@ fn usage() {
     eprintln!("usage:");
     eprintln!("  evident test         [path] [-v] [--no-color]");
     eprintln!("  evident effect-run   <file>           # run an effect-driven program");
+    viz::usage();
 }
 
 const STDLIB_RUNTIME: &str = "stdlib/runtime.ev";

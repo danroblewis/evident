@@ -1,0 +1,10 @@
+-- Lotka-Volterra predator-prey (nested closed orbits). Scale S=4096, fixed point (2,2)=(8192,8192).
+-- evident phase-portrait examples/daemons/lotka.ev --axes state.x,state.y --seeds "8192,6554;8192,4096;8192,2048"
+type State(x, y ∈ Int)
+fsm lotka(state ∈ State)
+    xy ∈ Int = (_state.x * _state.y + 2048) / 4096
+    dx ∈ Int = (20 * _state.x - 10 * xy + 5) / 10
+    state.x = _state.x + (dx + 32) / 64
+    xz ∈ Int = (state.x * _state.y + 2048) / 4096
+    dy ∈ Int = (0 - 20 * _state.y + 10 * xz + 5) / 10
+    state.y = _state.y + (dy + 32) / 64

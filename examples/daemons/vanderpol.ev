@@ -1,0 +1,9 @@
+-- Van der Pol oscillator (limit cycle). Fixed-point scale S=1024.
+-- evident phase-portrait examples/daemons/vanderpol.ev --axes state.x,state.v --seeds "2867,0;123,0;0,2700"
+type State(x, v ∈ Int)
+fsm vanderpol(state ∈ State)
+    xx   ∈ Int = (_state.x * _state.x + 512) / 1024
+    omx  ∈ Int = 1024 - xx
+    term ∈ Int = (omx * _state.v + 512) / 1024
+    state.v = _state.v + ((term - _state.x) + 12) / 24
+    state.x = _state.x + (state.v + 12) / 24

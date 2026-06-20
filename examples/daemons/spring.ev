@@ -1,0 +1,6 @@
+-- A damped-spring daemon: the dynamics ARE the phase portrait.
+-- `evident phase-portrait examples/daemons/spring.ev --axes state.pos,state.vel`
+type State(pos, vel ∈ Int)
+fsm spring(state ∈ State)
+    state.vel = _state.vel - _state.pos / 4 - _state.vel / 12
+    state.pos = _state.pos + state.vel / 2
