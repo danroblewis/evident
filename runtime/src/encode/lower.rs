@@ -7,28 +7,51 @@ pub(crate) fn desugar_seq_concat(s: &mut SchemaDecl) {
     if s.external { return; }
 
     let mut seq_lits: HashMap<String, Vec<Expr>> = HashMap::new();
+    // Pinned lengths (`#name = N`): let `++` splice a Seq whose elements are
+    // computed (e.g. coindexed-built) rather than literal, by expanding `name`
+    // into `⟨name[0], …, name[N-1]⟩`. This is what makes
+    // `effects = setup ++ built_draws ++ tail` assemble an N-element render
+    // list without hand-enumerating every index.
+    let mut seq_lengths: HashMap<String, usize> = HashMap::new();
     for item in &s.body {
         let BodyItem::Constraint(Expr::Binary(BinOp::Eq, lhs, rhs)) = item else { continue };
-        if let (Expr::Identifier(name), Expr::SeqLit(items)) =
-            (lhs.as_ref(), rhs.as_ref())
-        {
-            seq_lits.insert(name.clone(), items.clone());
+        match (lhs.as_ref(), rhs.as_ref()) {
+            (Expr::Identifier(name), Expr::SeqLit(items)) => {
+                seq_lits.insert(name.clone(), items.clone());
+            }
+            (Expr::Cardinality(inner), Expr::Int(n)) if *n >= 0 => {
+                if let Expr::Identifier(name) = inner.as_ref() {
+                    seq_lengths.insert(name.clone(), *n as usize);
+                }
+            }
+            _ => {}
         }
     }
 
     fn flatten(
         e: &Expr,
         seq_lits: &HashMap<String, Vec<Expr>>,
+        seq_lengths: &HashMap<String, usize>,
     ) -> Option<Vec<Expr>> {
         match e {
             Expr::Binary(BinOp::Concat, l, r) => {
-                let mut left = flatten(l, seq_lits)?;
-                let right = flatten(r, seq_lits)?;
+                let mut left = flatten(l, seq_lits, seq_lengths)?;
+                let right = flatten(r, seq_lits, seq_lengths)?;
                 left.extend(right);
                 Some(left)
             }
             Expr::SeqLit(items) => Some(items.clone()),
-            Expr::Identifier(name) => seq_lits.get(name).cloned(),
+            Expr::Identifier(name) => {
+                if let Some(items) = seq_lits.get(name) {
+                    Some(items.clone())
+                } else {
+                    // A pinned-length Seq with computed elements: expand by index.
+                    let &len = seq_lengths.get(name)?;
+                    Some((0..len).map(|i| Expr::Index(
+                        Box::new(Expr::Identifier(name.clone())),
+                        Box::new(Expr::Int(i as i64)))).collect())
+                }
+            }
             _ => None,
         }
     }
@@ -36,9 +59,10 @@ pub(crate) fn desugar_seq_concat(s: &mut SchemaDecl) {
     fn rewrite(
         e: &mut Expr,
         seq_lits: &HashMap<String, Vec<Expr>>,
+        seq_lengths: &HashMap<String, usize>,
     ) {
         if let Expr::Binary(BinOp::Concat, ..) = e {
-            if let Some(items) = flatten(e, seq_lits) {
+            if let Some(items) = flatten(e, seq_lits, seq_lengths) {
                 *e = Expr::SeqLit(items);
                 return;
             }
@@ -47,24 +71,24 @@ pub(crate) fn desugar_seq_concat(s: &mut SchemaDecl) {
             Expr::Binary(_, l, r)
             | Expr::Range(l, r)
             | Expr::InExpr(l, r)
-            | Expr::Index(l, r) => { rewrite(l, seq_lits); rewrite(r, seq_lits); }
+            | Expr::Index(l, r) => { rewrite(l, seq_lits, seq_lengths); rewrite(r, seq_lits, seq_lengths); }
             Expr::Ternary(c, a, b) => {
-                rewrite(c, seq_lits); rewrite(a, seq_lits); rewrite(b, seq_lits);
+                rewrite(c, seq_lits, seq_lengths); rewrite(a, seq_lits, seq_lengths); rewrite(b, seq_lits, seq_lengths);
             }
             Expr::SetLit(es) | Expr::SeqLit(es) | Expr::Tuple(es)
             | Expr::Call(_, es) => {
-                for x in es { rewrite(x, seq_lits); }
+                for x in es { rewrite(x, seq_lits, seq_lengths); }
             }
             Expr::Forall(_, r, b) | Expr::Exists(_, r, b) => {
-                rewrite(r, seq_lits); rewrite(b, seq_lits);
+                rewrite(r, seq_lits, seq_lengths); rewrite(b, seq_lits, seq_lengths);
             }
             Expr::Cardinality(i) | Expr::Not(i) | Expr::Matches(i, _) => {
-                rewrite(i, seq_lits);
+                rewrite(i, seq_lits, seq_lengths);
             }
-            Expr::Field(recv, _) => rewrite(recv, seq_lits),
+            Expr::Field(recv, _) => rewrite(recv, seq_lits, seq_lengths),
             Expr::Match(scr, arms) => {
-                rewrite(scr, seq_lits);
-                for a in arms { rewrite(&mut a.body, seq_lits); }
+                rewrite(scr, seq_lits, seq_lengths);
+                for a in arms { rewrite(&mut a.body, seq_lits, seq_lengths); }
             }
             _ => {}
         }
@@ -72,10 +96,10 @@ pub(crate) fn desugar_seq_concat(s: &mut SchemaDecl) {
 
     for item in s.body.iter_mut() {
         match item {
-            BodyItem::Constraint(e) => rewrite(e, &seq_lits),
+            BodyItem::Constraint(e) => rewrite(e, &seq_lits, &seq_lengths),
             BodyItem::ClaimCall { mappings, .. } => {
                 for m in mappings.iter_mut() {
-                    rewrite(&mut m.value, &seq_lits);
+                    rewrite(&mut m.value, &seq_lits, &seq_lengths);
                 }
             }
             _ => {}
