@@ -30,9 +30,9 @@ smoothness recipe (see `PARAMS.md`, verified numerically in the `math_*.py`):
   in scaled integer arithmetic — see `PARAMS.md`.
 
 The draws use single-effect `render_fill_rect` (one `Effect` per point, no nested
-`Seq`), so the whole portrait is one flat `effects` list. Rendering runs on the
-slow Z3 path (the correctness oracle): `EVIDENT_NO_JIT=1`, or automatically — the
-functionizer defers Seq-element draws to the oracle.
+`Seq`), so the whole portrait is one flat `effects` list. It runs fine on the
+functionizer (JIT); `EVIDENT_NO_JIT=1` forces the slow Z3 oracle, which is useful
+for differential checking and is always available.
 
 ## Reproduce
 
@@ -56,11 +56,16 @@ Building these stress-tested the runtime and produced durable fixes:
   (`div_euclid`, matches the oracle). This was *the* blocker for trajectories.
 - **Differential harness** (`runtime/tests/differential.rs`): runs a query both
   ways (JIT vs the slow Z3 oracle) and diffs bindings — the oracle is ground
-  truth. It caught a JIT heap-corruption on nested `Seq` access.
-- **Functionizer is correctness-bounded**: nested `Seq` index and Seq-element
-  draw calls defer to the oracle (`has_known_translator_gap`) rather than emit
-  wrong output. Toggle the functionizer off entirely with `EVIDENT_NO_JIT=1` or
+  truth. Toggle the functionizer off with `EVIDENT_NO_JIT=1` or
   `EvidentRuntime::set_functionize_enabled(false)`.
+- **The functionizer is actually correct on Seq draws** — verified two ways: the
+  differential harness shows JIT bindings match the oracle on every Seq shape it
+  compiles, and instrumented dispatch shows the JIT emits byte-identical SDL
+  LibCalls. An earlier gate that deferred Seq-element draws to the oracle was a
+  **misdiagnosis** (every "blank render" was a screenshot-timing artifact on the
+  shared Xvfb, not a JIT difference) and was a ~200× pessimization; it was
+  removed. The off-switch + harness are the durable correctness tools.
 - **No perf pathology.** An apparent super-linear slow-path blowup was orphaned
-  `evident` processes contending for CPU — a 120-point portrait solves a tick in
-  ~1.3s. The slow path is the oracle and is always reachable.
+  `evident` processes contending for CPU (and the now-removed gate forcing the
+  oracle). A 120-point portrait solves a tick in ~1.3s on the oracle and far
+  faster on the JIT. The slow path is the oracle and is always reachable.

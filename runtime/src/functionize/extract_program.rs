@@ -933,62 +933,10 @@ fn mentions_name<'ctx>(a: &Dynamic<'ctx>, name: &str) -> bool {
 }
 
 pub fn has_known_translator_gap(body: &[crate::core::ast::BodyItem]) -> bool {
-    use crate::core::ast::BodyItem;
-    body.iter().any(|item| match item {
-        BodyItem::Constraint(e) =>
-            expr_has_ctor_seqlit_payload(e)
-            || expr_has_call_with_seq_index(e)
-            || expr_has_nested_index(e),
-        BodyItem::ClaimCall { mappings, .. } =>
-            mappings.iter().any(|m|
-                expr_has_call_with_seq_index(&m.value) || expr_has_nested_index(&m.value)),
-        _ => false,
+    body.iter().any(|item| {
+        let crate::core::ast::BodyItem::Constraint(e) = item else { return false };
+        expr_has_ctor_seqlit_payload(e)
     })
-}
-
-/// True if `e` contains a NESTED `Seq` index — `outer[i].inner[j]`, i.e. an
-/// `Index` whose indexed expression itself reads a `Seq` element. The Cranelift
-/// codegen for this shape (a `Seq` of records that each carry a `Seq`, e.g.
-/// `Seq(EffectPair)` with `effs ∈ Seq(Effect)`) corrupts the heap, so any claim
-/// containing it MUST defer to the slow Z3 oracle. Single-level access
-/// (`last_results[0]`, `pts[1].x`) is safe and is not gated.
-fn expr_has_nested_index(e: &crate::core::ast::Expr) -> bool {
-    use crate::core::ast::Expr;
-    let mut found = false;
-    crate::core::ast::walk_expr(e, &mut |n| {
-        if let Expr::Index(base, _) = n {
-            if expr_contains_index(base) { found = true; }
-        }
-    });
-    found
-}
-
-/// True if `e` contains a call (constructor or claim) any of whose arguments
-/// reads a `Seq` element — e.g. `win.draw_rect(Rect(…traj[i]…), …)` or
-/// `IVec2(xs[i].pos, …)`. The functionizer mis-lowers a Seq element that flows
-/// through a call into an FFI arg buffer (it emits a zero/garbage rect), so any
-/// claim matching this must defer to the slow Z3 oracle — correctness over
-/// speed. A bare Seq read like `match last_results[0]` (Index NOT inside a call
-/// argument) is fine on the JIT and is deliberately not gated.
-fn expr_has_call_with_seq_index(e: &crate::core::ast::Expr) -> bool {
-    use crate::core::ast::Expr;
-    let mut found = false;
-    crate::core::ast::walk_expr(e, &mut |n| {
-        if let Expr::Call(_, args) = n {
-            if args.iter().any(expr_contains_index) { found = true; }
-        }
-    });
-    found
-}
-
-/// True if `e` contains any `Seq` index access (`xs[i]`) anywhere within it.
-fn expr_contains_index(e: &crate::core::ast::Expr) -> bool {
-    use crate::core::ast::Expr;
-    let mut found = false;
-    crate::core::ast::walk_expr(e, &mut |n| {
-        if matches!(n, Expr::Index(_, _)) { found = true; }
-    });
-    found
 }
 
 fn expr_has_ctor_seqlit_payload(e: &crate::core::ast::Expr) -> bool {

@@ -104,9 +104,9 @@ claim build
 
 /// The draw-path probe: an `ArgI32Buf` (the SDL rect buffer) built from a
 /// `Seq(Int)` that came from Seq-element reads, wrapped in a `LibCall` effect —
-/// the exact value the renderer marshals. Not gated (the LibCall arg is a named
-/// var, not a direct Seq index), so the JIT compiles it. If the JIT and oracle
-/// disagree on `eff`, that's the rect-buffer rendering bug, isolated.
+/// the exact value the renderer marshals. Confirms the JIT and oracle agree on
+/// the rect-buffer shape (they do — this is the kind of draw the functionizer
+/// handles correctly, contrary to an earlier misdiagnosis).
 #[test]
 fn libcall_argi32buf_from_seq_element_agrees_both_ways() {
     let mut rt = EvidentRuntime::new();
