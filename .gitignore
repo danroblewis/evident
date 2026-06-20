@@ -10,3 +10,7 @@ a.smt
 # local dev-container/bot config
 .claudebot
 *.profraw
+
+# sample phase portraits dropped in the workspace root for review (never committed)
+/portrait_*.svg
+/portrait_*.png

@@ -1,0 +1,78 @@
+-- A vending machine: a UTILITY program whose state is MIXED — an enum mode, an
+-- Int balance, a Bool dispensed flag. Autonomous (auto-inserts a coin each tick
+-- until it can vend), so it's a closed difference equation with a limit cycle.
+--
+--   evident phase-portrait examples/daemons/vending.ev --axes state.balance,state.mode
+--
+-- The portrait is a loop in (balance × mode) space: balance climbs 0→3 while
+-- Coining, jumps to Vending, then resets to Idle and repeats.
+import "stdlib/runtime.ev"
+
+enum VendMode = Idle | Coining | Vending
+
+type VendState
+    mode      ∈ VendMode
+    balance   ∈ Int
+    dispensed ∈ Bool
+
+fsm vending(state ∈ VendState)
+    pm ∈ VendMode = _state.mode
+    pb ∈ Int = _state.balance
+    is_first_tick ⇒ (state.mode = Idle ∧ state.balance = 0 ∧ state.dispensed = false)
+    ¬is_first_tick ⇒
+        state.mode = match pm
+            Idle    ⇒ Coining
+            Coining ⇒ (pb < 3 ? Coining : Vending)
+            Vending ⇒ Idle
+    ¬is_first_tick ⇒
+        state.balance = match pm
+            Idle    ⇒ 0
+            Coining ⇒ (pb < 3 ? pb + 1 : pb)
+            Vending ⇒ 0
+    ¬is_first_tick ⇒
+        state.dispensed = (_state.mode = Vending)
+
+-- ── Static tests ─────────────────────────────────────────────
+
+claim sat_first_tick_idle
+    _state ∈ VendState
+    state ∈ VendState
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = true
+    vending
+    (state.mode = Idle ∧ state.balance = 0)
+
+claim sat_coining_adds_coin
+    _state ∈ VendState
+    state ∈ VendState
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_state.mode = Coining ∧ _state.balance = 2 ∧ ¬_state.dispensed)
+    vending
+    (state.mode = Coining ∧ state.balance = 3)
+
+claim sat_full_balance_vends
+    _state ∈ VendState
+    state ∈ VendState
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_state.mode = Coining ∧ _state.balance = 3 ∧ ¬_state.dispensed)
+    vending
+    state.mode = Vending
+
+claim sat_vending_dispenses_and_resets
+    _state ∈ VendState
+    state ∈ VendState
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_state.mode = Vending ∧ _state.balance = 3 ∧ ¬_state.dispensed)
+    vending
+    (state.mode = Idle ∧ state.balance = 0 ∧ state.dispensed = true)

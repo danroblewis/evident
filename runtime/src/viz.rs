@@ -103,17 +103,24 @@ pub fn cmd_phase_portrait(args: &[String]) -> ExitCode {
         Err(e) => { eprintln!("phase-portrait: no single fsm in {}: {e}", a.file); return ExitCode::from(2); }
     };
 
-    // Probe the initial state (is_first_tick). If the axis is an enum or bool, the
-    // state space is discrete — draw the difference-equation state line, not a
-    // numeric vector field. Enum-valued `given` is handled only on the slow Z3
-    // path (session/mod.rs), so force the functionizer off for discrete queries.
+    // Probe the initial state (is_first_tick) and classify each axis. Enum/bool
+    // axes are discrete; their `given` is handled only on the slow Z3 path
+    // (session/mod.rs), so force the functionizer off while probing/exploring.
+    //   - one discrete axis           → difference-equation state line
+    //   - two axes, ≥1 discrete        → mixed forward-explored portrait
+    //   - two numeric axes             → numeric vector field (below)
     rt.set_functionize_enabled(false);
-    let mut probe_given: HashMap<String, Value> = HashMap::new();
-    probe_given.insert("is_first_tick".into(), Value::Bool(true));
-    if let Some(init @ (Value::Enum { .. } | Value::Bool(_))) =
-        query_axis(&rt, &claim, &a.axis_a, &probe_given)
-    {
-        return discrete_portrait(&rt, &claim, &a.axis_a, init, a.steps, a.text, a.svg.as_deref());
+    if let Some(init) = probe_init(&rt, &claim) {
+        let is_disc = |k: &str| matches!(init.get(k), Some(Value::Enum { .. } | Value::Bool(_)));
+        let single = a.axis_a == a.axis_b;
+        if single && is_disc(&a.axis_a) {
+            return discrete_portrait(&rt, &claim, &a.axis_a,
+                init[&a.axis_a].clone(), a.steps, a.text, a.svg.as_deref());
+        }
+        if !single && (is_disc(&a.axis_a) || is_disc(&a.axis_b)) {
+            return mixed_portrait(&rt, &claim, &a.axis_a, &a.axis_b,
+                &init, a.steps, a.text, a.svg.as_deref());
+        }
     }
     rt.set_functionize_enabled(true);
 
@@ -539,9 +546,222 @@ fn render_discrete_svg(
     ExitCode::SUCCESS
 }
 
+// ───────────────────────── mixed (numeric × discrete) state portraits ─────────────────────────
+// A utility program's state is a record of mixed fields (enum mode, Int balance,
+// Bool flag). Its portrait projects the forward-explored trajectory onto two
+// chosen fields — each mapped to a coordinate (Int→value, enum→ordinal, bool→0/1)
+// — and draws the transition arrows. Numeric axes keep their values; discrete
+// axes get labelled tick marks.
+
+/// Full binding map of the initial state (is_first_tick = true).
+fn probe_init(rt: &EvidentRuntime, claim: &str) -> Option<HashMap<String, Value>> {
+    let mut g: HashMap<String, Value> = HashMap::new();
+    g.insert("is_first_tick".into(), Value::Bool(true));
+    let r = rt.query_with_pins_and_given(claim, &[], &g).ok()?;
+    if r.satisfied { Some(r.bindings) } else { None }
+}
+
+/// One transition step carrying the WHOLE state: pin every `_field`, read every
+/// `field` back. (Pinning only the plotted axes would leave the rest free.)
+fn step_full(rt: &EvidentRuntime, claim: &str, cur: &HashMap<String, Value>, fields: &[String])
+    -> Option<HashMap<String, Value>> {
+    let mut g: HashMap<String, Value> = HashMap::new();
+    for (k, v) in cur { g.insert(format!("_{k}"), v.clone()); }
+    g.insert("is_first_tick".into(), Value::Bool(false));
+    let r = rt.query_with_pins_and_given(claim, &[], &g).ok()?;
+    if !r.satisfied { return None; }
+    let mut next = HashMap::new();
+    for k in fields { next.insert(k.clone(), r.bindings.get(k)?.clone()); }
+    Some(next)
+}
+
+fn state_key(s: &HashMap<String, Value>, fields: &[String]) -> String {
+    fields.iter().map(|k| format!("{k}={}", s.get(k).map(val_label).unwrap_or_default()))
+        .collect::<Vec<_>>().join(";")
+}
+
+/// Per-state coordinate for one axis, plus tick labels (empty if the axis is
+/// purely numeric). Discrete values get ordinals by first appearance.
+fn axis_coords(states: &[HashMap<String, Value>], axis: &str) -> (Vec<f64>, Vec<(f64, String)>, bool) {
+    let discrete = states.iter()
+        .any(|s| matches!(s.get(axis), Some(Value::Enum { .. } | Value::Bool(_))));
+    if !discrete {
+        let coords = states.iter()
+            .map(|s| match s.get(axis) { Some(Value::Int(n)) => *n as f64, _ => 0.0 }).collect();
+        return (coords, vec![], true);
+    }
+    let mut ord: HashMap<String, f64> = HashMap::new();
+    let mut ticks: Vec<(f64, String)> = Vec::new();
+    let mut coords = Vec::new();
+    for s in states {
+        let lbl = s.get(axis).map(val_label).unwrap_or_default();
+        let c = *ord.entry(lbl.clone()).or_insert_with(|| {
+            let o = ticks.len() as f64; ticks.push((o, lbl.clone())); o
+        });
+        coords.push(c);
+    }
+    (coords, ticks, false)
+}
+
+fn mixed_portrait(
+    rt: &EvidentRuntime, claim: &str, axis_a: &str, axis_b: &str,
+    init: &HashMap<String, Value>, max: usize, text: bool, svg: Option<&str>,
+) -> ExitCode {
+    // The carried state is every binding sharing the axis record prefix (`state.*`),
+    // or the bare scalar if there's no dot.
+    let prefix = axis_a.split('.').next().unwrap_or(axis_a);
+    let dotted = format!("{prefix}.");
+    let mut fields: Vec<String> = init.keys()
+        .filter(|k| k.as_str() == prefix || k.starts_with(&dotted))
+        .cloned().collect();
+    fields.sort();
+    if !fields.iter().any(|f| f == axis_b) && init.contains_key(axis_b) {
+        fields.push(axis_b.to_string());
+    }
+    let cur0: HashMap<String, Value> = fields.iter()
+        .filter_map(|k| init.get(k).map(|v| (k.clone(), v.clone()))).collect();
+
+    let mut states = vec![cur0.clone()];
+    let mut seen: HashMap<String, usize> = HashMap::new();
+    seen.insert(state_key(&cur0, &fields), 0);
+    let mut edges: Vec<(usize, usize)> = Vec::new();
+    let mut cur = cur0;
+    let cap = max.max(64);
+    while states.len() <= cap {
+        let Some(next) = step_full(rt, claim, &cur, &fields) else { break };
+        let k = state_key(&next, &fields);
+        if let Some(&j) = seen.get(&k) { edges.push((states.len() - 1, j)); break; }
+        let j = states.len();
+        edges.push((states.len() - 1, j));
+        states.push(next.clone());
+        seen.insert(k, j);
+        cur = next;
+    }
+
+    let (xc, xticks, xnum) = axis_coords(&states, axis_a);
+    let (yc, yticks, ynum) = axis_coords(&states, axis_b);
+    let pts: Vec<(f64, f64)> = xc.iter().zip(yc.iter()).map(|(&x, &y)| (x, y)).collect();
+
+    if let Some(p) = svg {
+        return render_mixed_svg(p, claim, axis_a, axis_b, &pts, &edges, &xticks, &yticks, xnum, ynum);
+    }
+    let _ = text;
+    render_mixed_text(claim, axis_a, axis_b, &states, &edges)
+}
+
+fn render_mixed_text(
+    claim: &str, ax: &str, bx: &str, states: &[HashMap<String, Value>], edges: &[(usize, usize)],
+) -> ExitCode {
+    let mut succ: HashMap<usize, usize> = HashMap::new();
+    for &(i, j) in edges { succ.insert(i, j); }
+    println!("phase portrait — {claim}   axes: ({ax}, {bx})   ({} reachable states)", states.len());
+    let label = |i: usize| {
+        let la = states[i].get(ax).map(val_label).unwrap_or_default();
+        let lb = states[i].get(bx).map(val_label).unwrap_or_default();
+        format!("({la}, {lb})")
+    };
+    let mut parts: Vec<String> = Vec::new();
+    let mut visited = vec![false; states.len()];
+    let mut i = 0usize;
+    loop {
+        parts.push(label(i));
+        visited[i] = true;
+        match succ.get(&i) {
+            Some(&j) if visited[j] => { parts.push(format!("↺ back to {}", label(j))); break; }
+            Some(&j) => { i = j; }
+            None => break,
+        }
+        if parts.len() > states.len() + 2 { break; }
+    }
+    println!("  {}", parts.join(" → "));
+    ExitCode::SUCCESS
+}
+
+/// SVG: the forward-explored trajectory as nodes + transition arrows in
+/// (axis_a × axis_b) coordinate space, with labelled ticks on discrete axes.
+fn render_mixed_svg(
+    path: &str, claim: &str, ax: &str, bx: &str, pts: &[(f64, f64)], edges: &[(usize, usize)],
+    xticks: &[(f64, String)], yticks: &[(f64, String)], xnum: bool, ynum: bool,
+) -> ExitCode {
+    let (wf, hf) = (760.0f64, 460.0f64);
+    let (lm, rm, tm, bm) = (120.0f64, 40.0f64, 44.0f64, 56.0f64);
+    let pad = |lo: f64, hi: f64, disc_n: usize| -> (f64, f64) {
+        if disc_n > 0 { (lo - 0.6, hi + 0.6) }
+        else { let p = (hi - lo).max(1.0) * 0.12; (lo - p, hi + p) }
+    };
+    let (mut xlo, mut xhi, mut ylo, mut yhi) = (f64::MAX, f64::MIN, f64::MAX, f64::MIN);
+    for &(x, y) in pts { xlo = xlo.min(x); xhi = xhi.max(x); ylo = ylo.min(y); yhi = yhi.max(y); }
+    if xlo > xhi { (xlo, xhi, ylo, yhi) = (0.0, 1.0, 0.0, 1.0); }
+    let (xlo, xhi) = pad(xlo, xhi, xticks.len());
+    let (ylo, yhi) = pad(ylo, yhi, yticks.len());
+    let sx = |x: f64| lm + (x - xlo) / (xhi - xlo).max(1e-9) * (wf - lm - rm);
+    let sy = |y: f64| (hf - bm) - (y - ylo) / (yhi - ylo).max(1e-9) * (hf - tm - bm);
+
+    let mut s = String::new();
+    s.push_str(&format!(
+        "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"{wf:.0}\" height=\"{hf:.0}\" \
+         viewBox=\"0 0 {wf:.0} {hf:.0}\" font-family=\"monospace\" font-size=\"12\">\n"));
+    s.push_str(&format!("<rect width=\"{wf:.0}\" height=\"{hf:.0}\" fill=\"#0a0c14\"/>\n"));
+    s.push_str("<defs><marker id=\"m\" markerWidth=\"9\" markerHeight=\"9\" refX=\"7\" refY=\"3\" \
+                orient=\"auto\"><path d=\"M0,0 L8,3 L0,6 Z\" fill=\"#5aaaff\"/></marker></defs>\n");
+
+    // Gridlines + tick labels for discrete axes; light numeric ticks otherwise.
+    s.push_str("<g stroke=\"#1e2740\" stroke-width=\"1\">\n");
+    for &(o, _) in yticks { let y = sy(o); s.push_str(&format!("<line x1=\"{lm:.0}\" y1=\"{y:.1}\" x2=\"{:.0}\" y2=\"{y:.1}\"/>\n", wf - rm)); }
+    for &(o, _) in xticks { let x = sx(o); s.push_str(&format!("<line x1=\"{x:.1}\" y1=\"{tm:.0}\" x2=\"{x:.1}\" y2=\"{:.0}\"/>\n", hf - bm)); }
+    s.push_str("</g>\n");
+    s.push_str("<g fill=\"#8a94b4\">\n");
+    for &(o, ref l) in yticks { let y = sy(o); s.push_str(&format!("<text x=\"{:.0}\" y=\"{:.1}\" text-anchor=\"end\">{}</text>\n", lm - 10.0, y + 4.0, xml_escape(l))); }
+    for &(o, ref l) in xticks { let x = sx(o); s.push_str(&format!("<text x=\"{x:.1}\" y=\"{:.0}\" text-anchor=\"middle\">{}</text>\n", hf - bm + 18.0, xml_escape(l))); }
+    if xnum { for k in 0..=4 { let v = xlo + (xhi - xlo) * k as f64 / 4.0; let x = sx(v); s.push_str(&format!("<text x=\"{x:.1}\" y=\"{:.0}\" text-anchor=\"middle\">{v:.0}</text>\n", hf - bm + 18.0)); } }
+    if ynum { for k in 0..=4 { let v = ylo + (yhi - ylo) * k as f64 / 4.0; let y = sy(v); s.push_str(&format!("<text x=\"{:.0}\" y=\"{:.1}\" text-anchor=\"end\">{v:.0}</text>\n", lm - 10.0, y + 4.0)); } }
+    s.push_str("</g>\n");
+
+    // Transition arrows: a slightly curved arc per edge, so A→B and B→A separate.
+    let r = 9.0f64;
+    s.push_str("<g stroke=\"#5aaaff\" stroke-width=\"1.7\" fill=\"none\">\n");
+    for &(i, j) in edges {
+        let (x1, y1) = (sx(pts[i].0), sy(pts[i].1));
+        let (x2, y2) = (sx(pts[j].0), sy(pts[j].1));
+        let (dx, dy) = (x2 - x1, y2 - y1);
+        let mag = (dx * dx + dy * dy).sqrt();
+        if mag < 1.0 { continue; }
+        let (ux, uy) = (dx / mag, dy / mag);
+        let (px, py) = (-uy, ux);
+        let off = 16.0;
+        let (mx, my) = ((x1 + x2) / 2.0 + px * off, (y1 + y2) / 2.0 + py * off);
+        let (sx0, sy0) = (x1 + ux * r, y1 + uy * r);
+        let (ex0, ey0) = (x2 - ux * r, y2 - uy * r);
+        s.push_str(&format!("<path d=\"M {sx0:.1} {sy0:.1} Q {mx:.1} {my:.1} {ex0:.1} {ey0:.1}\" marker-end=\"url(#m)\"/>\n"));
+    }
+    s.push_str("</g>\n");
+
+    // Nodes (distinct projected points).
+    let mut drawn: Vec<(i64, i64)> = Vec::new();
+    for &(x, y) in pts {
+        let (cx, cy) = (sx(x).round() as i64, sy(y).round() as i64);
+        if drawn.contains(&(cx, cy)) { continue; }
+        drawn.push((cx, cy));
+        s.push_str(&format!("<circle cx=\"{cx}\" cy=\"{cy}\" r=\"{r:.0}\" fill=\"#141a2c\" stroke=\"#7a86b0\" stroke-width=\"2\"/>\n"));
+    }
+
+    s.push_str(&format!(
+        "<text x=\"12\" y=\"22\" fill=\"#aab4d0\">{} — ({}, {}) difference-equation portrait, \
+         {} states</text>\n", xml_escape(claim), xml_escape(ax), xml_escape(bx), pts.len()));
+    s.push_str(&format!("<text x=\"{:.0}\" y=\"{:.0}\" fill=\"#8a94b4\" text-anchor=\"middle\">{} →</text>\n", wf / 2.0, hf - 8.0, xml_escape(ax)));
+    s.push_str("</svg>\n");
+
+    if let Err(e) = std::fs::write(path, s) {
+        eprintln!("phase-portrait: write {path}: {e}"); return ExitCode::from(1);
+    }
+    println!("wrote {path}  ({} states, {} transitions)", pts.len(), edges.len());
+    ExitCode::SUCCESS
+}
+
 pub fn usage() {
     eprintln!("  evident phase-portrait <daemon.ev> --axes a,b   # numeric: vector field + trajectories");
     eprintln!("  evident phase-portrait <prog.ev>   --axes state # discrete: enum/bool state line");
+    eprintln!("  evident phase-portrait <prog.ev>   --axes balance,mode  # mixed: numeric × discrete");
     eprintln!("                         [--seeds \"a,b;a,b\"] [--range alo,ahi,blo,bhi] [--grid G]");
     eprintln!("                         [--steps N] [--text] [--svg PATH]");
 }
