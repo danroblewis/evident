@@ -56,5 +56,5 @@ fsm portrait
         present_eff, delay_eff, done
     ⟩
 '''
-open("/tmp/portraits/vdp.ev","w").write(src)
-print(f"vdp N={N}, {len(src.splitlines())} lines")
+print(src)
+print(f"vdp N={N}, {len(src.splitlines())} lines", file=sys.stderr)

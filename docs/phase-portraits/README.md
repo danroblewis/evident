@@ -51,17 +51,57 @@ The draws use single-effect `render_fill_rect` (one `Effect` per point, no neste
 functionizer (JIT); `EVIDENT_NO_JIT=1` forces the slow Z3 oracle, which is useful
 for differential checking and is always available.
 
-## Reproduce
+## Reproduce (on any machine)
 
+### Prerequisites
+- **Rust** (`cargo`) — builds the runtime.
+- **Z3** dev library — the `z3-sys` crate links the *system* libz3, so it must be
+  installed: `apt install libz3-dev` (Debian/Ubuntu) or `brew install z3` (macOS).
+- **SDL2** runtime library — `dlopen`'d at run time as `libSDL2-2.0.so.0`:
+  `apt install libsdl2-2.0-0` or `brew install sdl2`. (Needed only to render, not
+  to build.)
+- **Python 3** — runs the generators.
+- An **X display** to draw into (a real one, or headless `Xvfb`), plus
+  **ImageMagick** (`import`) if you want to screenshot to PNG.
+
+### 1. Build the runtime
 ```sh
-python3 docs/phase-portraits/gen_vdp.py 300 > /tmp/vdp.ev   # (the generator writes /tmp/portraits/vdp.ev)
-EVIDENT_NO_JIT=1 ./runtime/target/release/evident effect-run /tmp/portraits/vdp.ev
+cd runtime && cargo build --release      # -> runtime/target/release/evident
 ```
 
-A 300-point, two-trajectory van der Pol portrait solves+renders in ~7s on the
-oracle. (The generators here are verbose unrolled scalar form — a clean
-`Seq`/`edges` example would need `++`-splice of built effect Seqs to assemble
-the draw list idiomatically; that's a noted follow-up.)
+### 2. Generate a portrait (each generator prints the `.ev` to stdout)
+```sh
+python3 docs/phase-portraits/gen_vdp.py 300  > /tmp/vdp.ev      # van der Pol limit cycle
+python3 docs/phase-portraits/gen_spring.py   > /tmp/spring.ev   # spiral sink
+python3 docs/phase-portraits/gen_lotka.py    > /tmp/lotka.ev    # predator-prey orbits
+python3 docs/phase-portraits/gen_pendulum.py > /tmp/pendulum.ev # pendulum eyes
+```
+The optional integer arg is points-per-trajectory (default in each file).
+
+### 3. Run it (opens an SDL window; runs on the JIT — no env var needed)
+```sh
+./runtime/target/release/evident effect-run /tmp/vdp.ev
+```
+The first solve takes ~1–9s (it computes the whole trajectory before the first
+frame); the window then redraws the static portrait each tick until it exits.
+
+### 4. Headless render to PNG (Xvfb + ImageMagick)
+```sh
+Xvfb :99 -screen 0 1280x800x24 &            # only if you have no display
+export DISPLAY=:99
+./runtime/target/release/evident effect-run /tmp/vdp.ev &
+sleep 12                                     # WAIT past the first solve, or the window is blank
+import -display :99 -window root /tmp/vdp.png
+pkill -x evident                             # -x (exact name); NOT -f (it matches the repo path)
+```
+Two gotchas, both learned the hard way: screenshot *after* the first solve (the
+window is transparent until the first `present`), and kill with `pkill -x evident`
+— `pkill -f evident` matches the working-directory path and kills unrelated
+processes (and your own shell).
+
+(These generators are the verbose unrolled-scalar form. A clean `Seq`/`edges`
+example needs the coindexed-write-into-`Seq(Effect)` gap fixed first — a noted
+follow-up.)
 
 ## Runtime work this surfaced
 
