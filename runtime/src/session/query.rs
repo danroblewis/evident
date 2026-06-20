@@ -117,9 +117,12 @@ impl EvidentRuntime {
     {
         // The functionizer is an optimization and is lossy — when in doubt it
         // must defer to the slow Z3 path, which is the correctness oracle.
-        // `EVIDENT_NO_JIT=1` forces the slow path everywhere so its result can
-        // be trusted and diffed against the JIT. Off by default.
-        if std::env::var_os("EVIDENT_NO_JIT").is_some() { return None; }
+        // `EVIDENT_NO_JIT=1` (env) or `set_functionize_enabled(false)`
+        // (programmatic, for differential testing) forces the slow path so its
+        // result can be trusted and diffed against the JIT. On by default.
+        if !self.functionize_enabled.get() || std::env::var_os("EVIDENT_NO_JIT").is_some() {
+            return None;
+        }
 
         let mut given_keys: Vec<String> = given.keys().cloned().collect();
         given_keys.sort();

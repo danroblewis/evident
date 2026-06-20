@@ -936,11 +936,31 @@ pub fn has_known_translator_gap(body: &[crate::core::ast::BodyItem]) -> bool {
     use crate::core::ast::BodyItem;
     body.iter().any(|item| match item {
         BodyItem::Constraint(e) =>
-            expr_has_ctor_seqlit_payload(e) || expr_has_call_with_seq_index(e),
+            expr_has_ctor_seqlit_payload(e)
+            || expr_has_call_with_seq_index(e)
+            || expr_has_nested_index(e),
         BodyItem::ClaimCall { mappings, .. } =>
-            mappings.iter().any(|m| expr_has_call_with_seq_index(&m.value)),
+            mappings.iter().any(|m|
+                expr_has_call_with_seq_index(&m.value) || expr_has_nested_index(&m.value)),
         _ => false,
     })
+}
+
+/// True if `e` contains a NESTED `Seq` index — `outer[i].inner[j]`, i.e. an
+/// `Index` whose indexed expression itself reads a `Seq` element. The Cranelift
+/// codegen for this shape (a `Seq` of records that each carry a `Seq`, e.g.
+/// `Seq(EffectPair)` with `effs ∈ Seq(Effect)`) corrupts the heap, so any claim
+/// containing it MUST defer to the slow Z3 oracle. Single-level access
+/// (`last_results[0]`, `pts[1].x`) is safe and is not gated.
+fn expr_has_nested_index(e: &crate::core::ast::Expr) -> bool {
+    use crate::core::ast::Expr;
+    let mut found = false;
+    crate::core::ast::walk_expr(e, &mut |n| {
+        if let Expr::Index(base, _) = n {
+            if expr_contains_index(base) { found = true; }
+        }
+    });
+    found
 }
 
 /// True if `e` contains a call (constructor or claim) any of whose arguments

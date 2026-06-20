@@ -9,7 +9,7 @@ pub use crate::core::{QueryResult, RuntimeError};
 use crate::core::ast::{BodyItem, Program, SchemaDecl};
 use crate::parser;
 use crate::encode::DatatypeRegistry;
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use z3::{Config, Context};
@@ -36,6 +36,12 @@ pub struct EvidentRuntime {
     pub(super) enums: crate::core::EnumRegistry,
 
     pub(super) loaded_files: RefCell<HashSet<PathBuf>>,
+
+    /// Programmatic master switch for the functionizer. When false, every query
+    /// takes the slow Z3 path (the correctness oracle). Lets a single process
+    /// run the same query both ways for differential testing — the env var
+    /// `EVIDENT_NO_JIT` can't be flipped per-query. Defaults to true.
+    pub(super) functionize_enabled: Cell<bool>,
 }
 
 impl Default for EvidentRuntime { fn default() -> Self { Self::new() } }
@@ -56,7 +62,21 @@ impl EvidentRuntime {
             datatypes: RefCell::new(HashMap::new()),
             enums: crate::core::EnumRegistry::new(),
             loaded_files: RefCell::new(HashSet::new()),
+            functionize_enabled: Cell::new(true),
         }
+    }
+
+    /// Enable/disable the functionizer for this runtime. Disabling forces the
+    /// slow Z3 oracle and clears the plan caches so the change takes effect
+    /// immediately — used by the differential harness to run a query both ways.
+    pub fn set_functionize_enabled(&self, on: bool) {
+        self.functionize_enabled.set(on);
+        self.fn_cache.borrow_mut().clear();
+        self.slow_path_cache.borrow_mut().clear();
+    }
+
+    pub fn functionize_enabled(&self) -> bool {
+        self.functionize_enabled.get()
     }
 
     pub fn schema_names(&self) -> impl Iterator<Item = &str> {
