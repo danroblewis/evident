@@ -491,7 +491,12 @@ fn eval_pure_int(
                 BinOp::Add => l.checked_add(r)?,
                 BinOp::Sub => l.checked_sub(r)?,
                 BinOp::Mul => l.checked_mul(r)?,
-                BinOp::Div => if r == 0 { return None } else { l / r },
+                // Match Z3/SMT-LIB integer `div` (remainder always non-negative)
+                // via Rust's div_euclid — NOT `/` (truncation toward zero). Using
+                // `/` here disagreed with the solver on negative inexact division
+                // (e.g. -5/3: `/` gives -1, Z3 gives -2), so when both the folder
+                // and the solver constrained one value the result was UNSAT.
+                BinOp::Div => if r == 0 { return None } else { l.checked_div_euclid(r)? },
                 _ => return None,
             })
         }
