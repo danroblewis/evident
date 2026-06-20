@@ -37,16 +37,8 @@ daemon. The implementation is `runtime/src/viz.rs`.
 produce byte-identical results on macOS and Linux — they draw from the same
 `arrows`/`trajs` data the SDL path uses.
 
-### Gallery
-
-The four daemons below, rendered with `--svg` (open the `.svg` files in this
-directory, or the inline previews):
-
-| ![spring](spring.svg) | ![vanderpol](vanderpol.svg) |
-|:---:|:---:|
-| **spring** — spiral sink | **vanderpol** — limit cycle |
-| ![lotka](lotka.svg) | ![pendulum](pendulum.svg) |
-| **lotka** — nested closed orbits | **pendulum** — librations + separatrix |
+To make a committable image on demand, run a daemon with `--svg out.svg` — the
+tool never writes anywhere unless you pass an explicit path.
 
 ## The four example daemons
 
