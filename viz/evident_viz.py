@@ -294,16 +294,36 @@ class Model:
         (the 'fabrication' bug: gridding a guessed range invents cycles/basins the
         program never enters). Returns None for a non-numeric var or an empty sample;
         callers fall back to a default box only for genuinely unbounded continuous
-        dynamics. bool is excluded (it's categorical, encode ordinally elsewhere)."""
+        dynamics. bool is excluded (it's categorical, encode ordinally elsewhere).
+
+        ROBUST to sentinel values: programs mark 'empty / uninitialized' with extreme
+        seeds — -1 for 'none' (an empty cache slot, no node popped yet) and ±1e6 for a
+        fold initializer (max seeded low, min seeded high so the first real value wins).
+        A single such point would otherwise blow the axis out to ±1e6 and crush the real
+        data. We (1) reject points outside an IQR fence, killing the ±1e6 sentinels, and
+        (2) floor at 0 when the only remaining sub-zero value is a unit -1 'none' marker
+        — while PRESERVING genuinely-negative data (a balance that really overdrafts,
+        whose bulk sits below 0, keeps its negative range)."""
         states = self._sample_states()
-        vals = [s[name] for s in states if type(s.get(name)) in (int, float)]
+        vals = sorted(s[name] for s in states if type(s.get(name)) in (int, float))
         if not vals:
             return None
+        n = len(vals)
+        q1, q3 = vals[n // 4], vals[(3 * n) // 4]
+        iqr = q3 - q1
+        if iqr > 0:                                  # reject ±1e6 / far-out sentinels
+            lof, hif = q1 - 3 * iqr, q3 + 3 * iqr
+            vals = [v for v in vals if lof <= v <= hif] or vals
         lo, hi = float(min(vals)), float(max(vals))
         if lo == hi:
             return (lo - 1.0, hi + 1.0)
         m = (hi - lo) * pad
-        return (lo - m, hi + m)
+        lo_out, hi_out = lo - m, hi + m
+        if lo >= 0:                                  # non-negative-domain var: never pad below 0
+            lo_out = max(0.0, lo_out)
+        elif -1.0 <= lo < 0 < hi:                    # only sub-zero is a '-1 = none' sentinel: drop it
+            lo_out = 0.0
+        return (lo_out, hi_out)
 
     def _rank_and_dedup(self):
         import math
