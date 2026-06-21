@@ -485,6 +485,68 @@ class Model:
         return {"verdict": "driven" if drivers else "relational", "driver": driver,
                 "drivers": drivers, "dependents": dependents, "score": score}
 
+    def independence_structural(self, seeds=4, alts_per_field=2):
+        """Directed dependency by solver SENSITIVITY — the RIGOROUS form of
+        `independence()`. Probes the transition RELATION rather than the sampled
+        trajectory: `state.X` depends on `_state.Y` iff perturbing `_Y` (holding the rest
+        of the previous state) CHANGES `state.X`. This reads off the actual computational
+        form (`state.sum = _sum + val[_cursor]` responds to `_cursor`) regardless of
+        whether the sample happens to expose it, so it can't be fooled by trajectory
+        coincidences the way the reachable-behavior version can.
+
+        Driver = a SOURCE of the dependency DAG: high out-degree (many fields computed
+        from it), low in-degree (its own next value depends on no OTHER field — a
+        self-running clock). Same return shape as `independence()`.
+
+        score(v) = out_degree(v) − in_degree(v): positive = driver, negative = pure
+        dependent, ~0 across the board = mutual / cyclic = genuinely relational."""
+        fields = [v["name"] for v in self.interface_vars]
+        states = self._sample_states()
+        if len(fields) < 2 or not states:
+            return {"verdict": "relational", "driver": None, "drivers": [],
+                    "dependents": [], "score": {n: 0 for n in fields}}
+        # Structural sensitivity needs a DETERMINISTIC transition: a nondeterministic
+        # successor() returns ONE arbitrary choice, so perturb-vs-base would conflate
+        # dependency with that choice. For a nondeterministic model the 'independent
+        # variable' is the nondeterministic CHOICE itself (the free input) — not a state
+        # field — so report that honestly rather than inventing a driver.
+        probe = states[:seeds]
+        if any(len(self.successors(s)) > 1 for s in probe):
+            return {"verdict": "nondeterministic", "driver": None, "drivers": [],
+                    "dependents": [], "score": {n: 0 for n in fields}}
+        alts = {f: sorted({s[f] for s in states}) for f in fields}
+        dep = {x: set() for x in fields}          # dep[x] = {y : state.x depends on _state.y}
+        for _s in states[:seeds]:
+            base = self.successor(_s)             # the next state for this exact previous
+            if base is None:
+                continue
+            for y in fields:
+                tried = 0
+                for yv in alts[y]:
+                    if yv == _s[y] or tried >= alts_per_field:
+                        continue
+                    tried += 1
+                    pert = self.successor({**_s, y: yv})    # perturb ONLY _state.y
+                    if pert is None:
+                        continue
+                    for x in fields:                        # which next-fields moved?
+                        if x != y and base.get(x) != pert.get(x):
+                            dep[x].add(y)
+        out_deg = {y: sum(1 for x in fields if y in dep[x]) for y in fields}
+        in_deg = {x: len(dep[x]) for x in fields}
+        score = {f: out_deg[f] - in_deg[f] for f in fields}
+        top = max(score.values())
+        drivers = [f for f in fields if score[f] == top] if top > 0 else []
+        dependents = sorted((f for f in fields if score[f] < 0), key=lambda f: score[f])
+        driver = None
+        if drivers:
+            kind = {v["name"]: v["kind"] for v in self.interface_vars}
+            ser = {f: [s[f] for s in states] for f in drivers}
+            driver = sorted(drivers, key=lambda a: (
+                not self._is_unit_counter(kind[a], ser[a]), -out_deg[a], len(a)))[0]
+        return {"verdict": "driven" if drivers else "relational", "driver": driver,
+                "drivers": drivers, "dependents": dependents, "score": score}
+
     @staticmethod
     def _pick_rep(members):
         # most interpretable kind first, then shortest name
