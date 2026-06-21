@@ -46,14 +46,45 @@ NUMERIC_SEEDS = [
 ]
 
 
+def _robust_bounds(vals, pad=0.06):
+    """ROBUST [lo,hi] of the PLOTTED column itself — frame each parallel axis on the
+    real spread of the data drawn on it, not on an independent reachable sample.
+
+    `m.axis_bounds(name)` samples its OWN reachable set, which for a continuous
+    system (vanderpol) degenerates to a single fixed point at the origin and
+    returns (-1, 1) — so per-axis normalization then clamped every trajectory
+    point onto two rails (the X/box artifact). Here we instead span the actual
+    `vals` plotted on this axis.
+
+    Sentinel-robust via an IQR fence: ±1e6 fold initializers / far-out -1 'none'
+    markers get rejected so one out-of-domain seed can't blow the axis out; the
+    sentinels themselves then clamp to the boundary in norm() rather than
+    rescaling everything onto a flat rail."""
+    nums = sorted(float(v) for v in vals if type(v) in (int, float))
+    if not nums:
+        return 0.0, 1.0
+    n = len(nums)
+    q1, q3 = nums[n // 4], nums[(3 * n) // 4]
+    iqr = q3 - q1
+    if iqr > 0:                                 # reject ±1e6 / far-out sentinels
+        lof, hif = q1 - 3 * iqr, q3 + 3 * iqr
+        nums = [v for v in nums if lof <= v <= hif] or nums
+    lo, hi = min(nums), max(nums)
+    if lo == hi:
+        return lo - 1.0, hi + 1.0
+    m = (hi - lo) * pad
+    return lo - m, hi + m
+
+
 def _axis_meta(m, samples):
     """For each state var, build (kind, value->position fn, ticks).
 
-    Numeric axes: position = the value itself, scaled to a ROBUST [lo,hi] from
-    m.axis_bounds (rejects ±1e6 fold sentinels / -1 'none' markers so one
-    out-of-domain seed doesn't blow the axis out); ticks = lo/mid/hi. Values
-    outside that range (the sentinels themselves) clamp to the boundary in
-    norm() rather than escaping the frame.
+    Numeric axes: position = the value itself, scaled to a ROBUST [lo,hi] taken
+    from the PLOTTED column (`_robust_bounds` over the drawn samples — rejects
+    ±1e6 fold sentinels / -1 'none' markers so one out-of-domain seed doesn't
+    blow the axis out); ticks = lo/mid/hi. Values outside that range (the
+    sentinels themselves) clamp to the boundary in norm() rather than escaping
+    the frame.
     Categorical axes (bool/enum/string): map each distinct value to an integer
     ordinal; ticks label every category.
     """
@@ -63,11 +94,7 @@ def _axis_meta(m, samples):
         kind = v["kind"]
         vals = [s[name] for s in samples]
         if kind in ("int", "real"):
-            bounds = m.axis_bounds(name)        # robust extent over reachable set
-            if bounds is not None:
-                lo, hi = bounds
-            else:
-                lo, hi = float(min(vals)), float(max(vals))
+            lo, hi = _robust_bounds(vals)       # robust extent of the plotted column
             if lo == hi:
                 lo, hi = lo - 1, hi + 1
             mid = (lo + hi) / 2.0

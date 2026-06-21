@@ -288,8 +288,10 @@ def draw_ribbons(fig, ax, ribbon_var, ribbon_values, m):
     bbox = ax.get_position()
     pad = 0.012
     w = 0.018
-    # Left ribbon (rows / "from" state).
-    ax_left = fig.add_axes([bbox.x0 - w - pad, bbox.y0, w, bbox.height])
+    # Left ribbon (rows / "from" state). Sits LEFT of the y-axis ID tick labels
+    # (S0…S12) — a larger left gap so the ribbon doesn't overprint them.
+    left_pad = 0.055
+    ax_left = fig.add_axes([bbox.x0 - w - left_pad, bbox.y0, w, bbox.height])
     ax_left.imshow(col_rgba, aspect="auto", interpolation="nearest",
                    extent=[0, 1, n - 0.5, -0.5])
     ax_left.set_xticks([]); ax_left.set_yticks([])
@@ -377,11 +379,32 @@ def render(m, out_path):
         placeholder(m, out_path, "no states (initial_state unavailable)")
         return
 
-    labels = [m.label(s) for s in states]
-    n = len(states)
+    # A matrix whose axes are the full state-tuples overprints into illegible
+    # text the moment the tuple is more than a couple of fields (brackets,
+    # toposort: 8-12 carried leaves each). So we NEVER tick the axes with the
+    # tuples. Instead each state gets a short ID (S0, S1, …) on the axis, and a
+    # compact side LEGEND maps IDs -> tuple values. The matrix stays the focus;
+    # the values are one glance away without crushing the labels.
+    total_states = n = len(states)
+    sampled_note = ""
 
-    # Figure size scales with N so labels stay readable.
-    side = max(6.0, min(0.32 * n + 2.5, 22.0))
+    # Above ~30 states the matrix cells themselves shrink past readability and
+    # the ID legend becomes a wall of text. Representatively subsample (evenly
+    # over the meaningful ordering, so the categorical blocks survive) and say so.
+    MAX_MATRIX_STATES = 30
+    if n > MAX_MATRIX_STATES:
+        keep = sorted(set(np.linspace(0, n - 1, MAX_MATRIX_STATES).astype(int)))
+        states = [states[i] for i in keep]
+        if ribbon_values is not None:
+            ribbon_values = [ribbon_values[i] for i in keep]
+        mat = mat[np.ix_(keep, keep)]
+        n = len(states)
+        sampled_note = f"  ·  showing {n} of {total_states} states"
+
+    ids = [f"S{i}" for i in range(n)]
+
+    # Figure size scales with N so cells/IDs stay readable.
+    side = max(6.0, min(0.32 * n + 2.5, 18.0))
     fig, ax = plt.subplots(figsize=(side, side))
 
     im = ax.imshow(mat, cmap="viridis", vmin=0, vmax=1, aspect="equal",
@@ -389,9 +412,9 @@ def render(m, out_path):
 
     ax.set_xticks(range(n))
     ax.set_yticks(range(n))
-    fs = max(4, min(9, int(420 / max(n, 1))))
-    ax.set_xticklabels(labels, rotation=90, fontsize=fs, family="monospace")
-    ax.set_yticklabels(labels, fontsize=fs, family="monospace")
+    fs = max(5, min(10, int(520 / max(n, 1))))
+    ax.set_xticklabels(ids, rotation=90, fontsize=fs, family="monospace")
+    ax.set_yticklabels(ids, fontsize=fs, family="monospace")
     ax.set_xlabel("to  state", fontsize=11)
     ax.set_ylabel("from  state", fontsize=11)
 
@@ -406,7 +429,7 @@ def render(m, out_path):
                   else "unordered")
     ax.set_title(
         f"{m.fsm}  ·  transition_matrix\n"
-        f"{mode} — {n} states, {nnz} transitions  ·  {order_note}",
+        f"{mode} — {n} states, {nnz} transitions  ·  {order_note}{sampled_note}",
         fontsize=13, pad=14,
     )
     cbar = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04,
@@ -433,8 +456,52 @@ def render(m, out_path):
         for tl, c in zip(ax.get_yticklabels(), label_colours):
             tl.set_color(c)
 
+    # ID -> value legend last, against the settled axes box (after tight_layout
+    # and the ribbons, so it doesn't get reflowed on top of them).
+    draw_id_legend(fig, ax, ids, states, m)
+
     fig.savefig(out_path, dpi=120, bbox_inches="tight")
     plt.close(fig)
+
+
+def draw_id_legend(fig, ax, ids, states, m):
+    """Compact side panel mapping each short state ID (S0, S1, …) to its full
+    tuple value. The axes carry only the IDs (so they stay legible no matter how
+    many fields the state has); this is where the reader recovers what each ID
+    means. Laid out as a monospace block to the FAR right of the figure (clear of
+    the colorbar / categorical ribbon legend), in figure coordinates."""
+    field_names = [v["name"] for v in m.interface_vars]
+    lines = [f"{i} = {m.label(s)}" for i, s in zip(ids, states)]
+
+    # Split into columns so a tall legend (up to ~30 rows) doesn't run off the
+    # bottom: ~16 rows per column, columns laid out left-to-right.
+    per_col = 16
+    n_cols = (len(lines) + per_col - 1) // per_col
+    cols = [lines[c * per_col:(c + 1) * per_col] for c in range(n_cols)]
+
+    # Place at a fixed far-right figure x (past the colorbar + ribbon legend) and
+    # GROW the figure to the right to fit, so nothing overlaps and nothing clips.
+    x0 = 1.02                       # just past the right edge of the current fig
+    fig.subplots_adjust()           # ensure positions are current
+    col_dx = 0.16                   # figure-fraction width per legend column
+
+    # Header: the tuple field order. Wrap it so a 12-field name list doesn't run
+    # off — break into lines of a few fields each.
+    per_line = 3
+    hdr_lines = ["(" if field_names else "()"]
+    for k in range(0, len(field_names), per_line):
+        chunk = ", ".join(field_names[k:k + per_line])
+        sep = "," if k + per_line < len(field_names) else ")"
+        hdr_lines.append("  " + chunk + sep)
+
+    fig.text(x0, 0.97, "state IDs", fontsize=10, fontweight="bold",
+             family="monospace", va="top", ha="left")
+    fig.text(x0, 0.94, "\n".join(hdr_lines), fontsize=7, color="0.35",
+             family="monospace", va="top", ha="left")
+    y_body = 0.94 - 0.020 * (len(hdr_lines) + 1)
+    for ci, col in enumerate(cols):
+        fig.text(x0 + ci * col_dx, y_body, "\n".join(col),
+                 fontsize=7.5, family="monospace", va="top", ha="left")
 
 
 def placeholder(m, out_path, reason):

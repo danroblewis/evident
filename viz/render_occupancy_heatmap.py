@@ -149,6 +149,83 @@ def collect_numeric(m, axes):
     return _explore(m, ax, ay)
 
 
+# A numeric axis that takes a DISTINCT (injective — one value per visited state),
+# consecutive value in every reachable state AND fills the reachable-BFS cap is a
+# free-running clock (life's gen: 0,1,2,…, one per state, forever). Its extent is
+# an artifact of where we stopped sampling, not a region the system "dwells" in —
+# there is no occupancy to show along it. Injectivity is the discriminator: an
+# ACCUMULATOR (lru's miss_count) revisits values across states, so it's NOT a clock
+# even when its values happen to densely cover a range; it pairs into a real
+# occupancy region against the other axis.
+def _is_free_running_counter(m, var):
+    if var["kind"] != "int":
+        return False
+    states, _ = m.reachable(limit=2000)
+    if len(states) < 2000:                 # reachable terminated -> bounded, real
+        return False
+    vals = [s[var["name"]] for s in states]
+    return m._is_unit_counter("int", vals)  # distinct+consecutive per state = a clock
+
+
+def numeric_degeneracy(m, ax, ay, xs, ys):
+    """Return an N/A reason string when a (numeric, numeric) occupancy heatmap is
+    not meaningful — a constant axis, or a free-running counter whose extent is
+    just the sampling cap — else None. The heatmap exists to show WHERE the system
+    dwells; if an axis is a clock or a constant there is no dwell structure."""
+    nx = len({round(float(v), 6) for v in xs if np.isfinite(v)})
+    ny = len({round(float(v), 6) for v in ys if np.isfinite(v)})
+    if nx <= 1 and ny <= 1:
+        return "both axes are constant — a single point, no occupancy"
+    if nx <= 1:
+        return f"{ax['name']} is constant ({ny}×1) — no 2-D occupancy to show"
+    if ny <= 1:
+        return f"{ay['name']} is constant (1×{nx}) — no 2-D occupancy to show"
+    cx = _is_free_running_counter(m, ax)
+    cy = _is_free_running_counter(m, ay)
+    if cx and cy:
+        return "both axes are free-running counters — extent is the sampling cap"
+    if cx:
+        return (f"{ax['name']} is a free-running counter (0,1,2,…) and "
+                f"{ay['name']} is constant — no occupancy region")
+    if cy:
+        return (f"{ay['name']} is a free-running counter (0,1,2,…) and "
+                f"{ax['name']} is constant — no occupancy region")
+    return None
+
+
+def numeric_extent(m, var, data):
+    """The robust plotted extent for a numeric axis, derived from the points
+    ACTUALLY plotted (the reachable set, or the explored attractor for a continuous
+    system). An IQR fence rejects sparse outliers and 'empty slot' sentinels (lru's
+    lone -1) so they can't blow the axis out past the occupied region — but the bulk
+    of the orbit is kept, so a wide-but-real limit cycle (van der Pol's ±3000) is
+    NOT crushed to a hardcoded box. Frames from the data, never from a guessed
+    span."""
+    d = np.asarray(data, float)
+    d = d[np.isfinite(d)]
+    if len(d) == 0:
+        return None
+    lo, hi = float(d.min()), float(d.max())
+    if len(d) >= 8:
+        q1, q3 = np.percentile(d, 25), np.percentile(d, 75)
+        iqr = q3 - q1
+        if iqr > 0:
+            fl, fh = q1 - 3 * iqr, q3 + 3 * iqr
+            kept = d[(d >= fl) & (d <= fh)]
+            if len(kept):
+                lo, hi = float(kept.min()), float(kept.max())
+    return (lo - 1.0, hi + 1.0) if lo == hi else (lo, hi)
+
+
+def _clip_to_extent(xs, ys, ex, ey):
+    """Drop points outside the robust per-axis extent so a stray sentinel doesn't
+    survive into the histogram (and so the bin grid covers only the framed range)."""
+    if ex is None or ey is None:
+        return xs, ys
+    keep = ((xs >= ex[0]) & (xs <= ex[1]) & (ys >= ey[0]) & (ys <= ey[1]))
+    return xs[keep], ys[keep]
+
+
 def collect_discrete(m, axes, facet_var=None):
     """Occupancy over the reachable graph. Returns (xs, ys, fs) where fs is the
     ordinal-projected facet value per visited point (or None when not faceting).
@@ -211,26 +288,39 @@ def pick_axes(m, exclude=()):
 _MAX_INT_DISCRETE = 24
 
 
-def nbins(m, v, data=None):
+def nbins(m, v, data=None, extent=None):
     if v["kind"] == "bool":
         return np.array([-0.5, 0.5, 1.5])
     if v["kind"] == "enum":
         n = len(m.enum_variants[v["name"]])
         return np.arange(-0.5, n + 0.5, 1.0)
-    if v["kind"] == "int" and data is not None and len(data):
-        d = np.asarray(data, float)
-        d = d[np.isfinite(d)]
-        if len(d):
+    if v["kind"] == "int":
+        # Bin over the robust extent (frames out sentinels/outliers) when given,
+        # else over the data range.
+        if extent is not None:
+            lo, hi = int(np.floor(extent[0])), int(np.ceil(extent[1]))
+        elif data is not None and len(data):
+            d = np.asarray(data, float)
+            d = d[np.isfinite(d)]
+            if not len(d):
+                return 60
             lo, hi = int(np.floor(d.min())), int(np.ceil(d.max()))
-            span = hi - lo
-            # Few distinct integer columns -> integer-centered full-width cells.
-            if 0 <= span <= _MAX_INT_DISCRETE:
-                return np.arange(lo - 0.5, hi + 1.5, 1.0)
+        else:
+            return 60
+        span = hi - lo
+        # Few distinct integer columns -> integer-centered full-width cells.
+        if 0 <= span <= _MAX_INT_DISCRETE:
+            return np.arange(lo - 0.5, hi + 1.5, 1.0)
+    if extent is not None and v["kind"] in ("int", "real"):
+        return np.linspace(extent[0], extent[1], 61)
     return 60
 
 
-def draw_heatmap(fig, ax, m, a0, a1, xs, ys, vmax=None, title=None):
-    """One heatmap panel. Returns the image (for a shared colorbar)."""
+def draw_heatmap(fig, ax, m, a0, a1, xs, ys, vmax=None, title=None,
+                 ex=None, ey=None):
+    """One heatmap panel. Returns the image (for a shared colorbar). `ex`/`ey` are
+    the robust per-axis extents the histogram is framed to (sentinels/outliers
+    already clipped out by the caller)."""
     if len(xs) == 0:
         ax.text(0.5, 0.5, "(empty)", ha="center", va="center",
                 transform=ax.transAxes, fontsize=11)
@@ -239,7 +329,7 @@ def draw_heatmap(fig, ax, m, a0, a1, xs, ys, vmax=None, title=None):
         if title:
             ax.set_title(title, fontsize=10)
         return None
-    bx, by = nbins(m, a0, xs), nbins(m, a1, ys)
+    bx, by = nbins(m, a0, xs, extent=ex), nbins(m, a1, ys, extent=ey)
     h, xedges, yedges = np.histogram2d(xs, ys, bins=[bx, by])
     hp = np.log1p(h)
     im = ax.imshow(
@@ -379,10 +469,26 @@ def render(smt2, schema, out):
         fig.savefig(out, dpi=120)
         plt.close(fig)
         return
-    # A density over a handful of cells is a fabrication waiting to happen — the
-    # reachable set is too small/degenerate for an occupancy heatmap to mean
-    # anything. Render the honest N/A card instead of painting a guessed plane.
+    ex = ey = None
     if not discrete_path:
+        # An axis that is a constant or a free-running clock (life's gen) has no
+        # dwell structure — its extent is the sampling cap, not a region. Honest N/A.
+        reason = numeric_degeneracy(m, a0, a1, xs, ys)
+        if reason is not None:
+            placeholder(ax, m, reason)
+            ax.set_title(title)
+            fig.tight_layout()
+            fig.savefig(out, dpi=120)
+            plt.close(fig)
+            return
+        # Frame to the robust reachable extent (drops -1 'empty slot' sentinels and
+        # far-out initializers) and clip the data to it, so the grid covers only the
+        # occupied region instead of a sentinel-blown-out plane.
+        ex, ey = numeric_extent(m, a0, xs), numeric_extent(m, a1, ys)
+        xs, ys = _clip_to_extent(xs, ys, ex, ey)
+        # A density over a handful of cells is a fabrication waiting to happen — the
+        # reachable set is too small/degenerate for an occupancy heatmap to mean
+        # anything. Render the honest N/A card instead of painting a guessed plane.
         ndistinct = len({p for p in zip(xs.tolist(), ys.tolist())})
         if ndistinct < MIN_DISTINCT:
             placeholder(ax, m, f"reachable set is {ndistinct} point(s), finite —\n"
@@ -393,7 +499,7 @@ def render(smt2, schema, out):
             plt.close(fig)
             return
 
-    im = draw_heatmap(fig, ax, m, a0, a1, xs, ys)
+    im = draw_heatmap(fig, ax, m, a0, a1, xs, ys, ex=ex, ey=ey)
     if im is not None:
         cb = fig.colorbar(im, ax=ax)
         cb.set_label("log(1 + visits)")

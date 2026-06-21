@@ -517,15 +517,18 @@ def render(smt2_path, schema_path, out_path):
 
 def _na_reason(m, axx, axy):
     """Why a 2-numeric program has no meaningful phase portrait — a constant axis
-    (one variable never moves over the reachable set) or a lone fixed point."""
-    states, _ = m.reachable(limit=3000)
+    (one variable never moves over the program's followed trajectory) or a lone
+    fixed point. We judge constancy on the DWELL (the trajectory the program truly
+    visits), not on m.reachable()'s relational fan: that fan can move an axis the
+    real run holds fixed (randomwalk's v3/v4), which would mislabel the reason."""
     nx_, ny_ = axx["name"], axy["name"]
-    dx = len({_numeric(m, axx, s[nx_]) for s in states})
-    dy = len({_numeric(m, axy, s[ny_]) for s in states})
-    if len(states) > 1 and (dx <= 1 or dy <= 1):
-        flat = axx["name"] if dx <= 1 else axy["name"]
-        return (f"N/A — {flat} is constant across the reachable set;\n"
-                "a phase portrait needs two varying axes")
+    dwell = _dwell_span(m, axx, axy)
+    if dwell is not None:
+        (xlo, xhi), (ylo, yhi) = dwell
+        if xhi - xlo < 1e-9 or yhi - ylo < 1e-9:
+            flat = nx_ if xhi - xlo < 1e-9 else ny_
+            return (f"N/A — {flat} is constant across the reachable trajectory;\n"
+                    "a phase portrait needs two varying axes")
     return ("N/A — reachable set is a single fixed point;\n"
             "no continuum and no orbit for a phase portrait")
 
@@ -587,11 +590,22 @@ def _numeric_regime(m, axx, axy):
 
     # both axes move AND the reachable extent is bounded (robust axis_bounds, which
     # rejects ±1e6 / -1 sentinels) = a real but large/unbounded march. Grid the
-    # field over the reachable domain, not a fabricated box.
+    # field over the reachable domain, not a fabricated box. BUT the `states` above
+    # come from m.reachable(), which pins only the two axis vars and lets the other
+    # carried leaves float — so its fan can move both axes even when the program's
+    # FOLLOWED trajectory holds one axis constant (randomwalk's v3/v4 are pinned at 0
+    # along the real walk; the [0,400] spread is pure relational cloud). A bounded
+    # field is only honest if the actual dwell moves on BOTH axes — else it's a flat
+    # row of arrows over a fabricated box, so report N/A instead.
     if dx > 1 and dy > 1:
         bx = m.axis_bounds(nx_)
         by = m.axis_bounds(ny_)
         if bx is not None and by is not None:
+            dwell = _dwell_span(m, axx, axy)
+            if dwell is not None:
+                (xlo, xhi), (ylo, yhi) = dwell
+                if xhi - xlo < 1e-9 or yhi - ylo < 1e-9:
+                    return "degenerate"
             return "bounded"
 
     # otherwise probe for a continuous orbit by perturbing off the initial state
@@ -607,13 +621,54 @@ def _numeric_regime(m, axx, axy):
     return "degenerate"
 
 
+def _dwell_span(m, axx, axy):
+    """The per-axis extent of the states the program actually DWELLS in — its real
+    deterministic trajectory — as ((xlo,xhi),(ylo,yhi)). This is the honest framing
+    source for a bounded march: `m.reachable()` pins only the two axis vars and
+    leaves the other carried leaves free, so its BFS fans into a relational cloud
+    (lru: k0∈[-1,75], miss_count∈[0,51]) that has nothing to do with where the
+    program goes (k0∈{-1,1}, miss_count∈{0..4}). `axis_bounds` is fed by that same
+    fan, so gridding over it frames a mostly-empty box — the blow-out. The followed
+    trajectory is the set of states the difference equation truly visits; framing to
+    its robust span is the fix. Returns None for an axis if the trajectory is empty."""
+    tr = m.trajectory(steps=400)
+    if len(tr) < 2:
+        return None
+    out = []
+    for v in (axx, axy):
+        nm = v["name"]
+        vals = sorted(_numeric(m, v, s[nm]) for s in tr)
+        # IQR-fence a lone off-domain visit, but keep the RAW span (no zero-width
+        # widening): a genuinely-constant axis must report lo==hi so the caller can
+        # detect the collapse, not be hidden behind an artificial ±1 pad.
+        if len(vals) >= 4:
+            q1, q3 = vals[len(vals) // 4], vals[(3 * len(vals)) // 4]
+            iqr = q3 - q1
+            if iqr > 0:
+                lof, hif = q1 - 3 * iqr, q3 + 3 * iqr
+                vals = [x for x in vals if lof <= x <= hif] or vals
+        out.append((float(min(vals)), float(max(vals))))
+    return tuple(out)
+
+
 def _reachable_extent(m, axx, axy):
-    """The field domain for a BOUNDED numeric march: the robust reachable extent
-    of each axis (axis_bounds rejects ±1e6/-1 sentinels), squared lightly so the
-    field reads. NEVER the perturbation-grown box. Returns (xlo,xhi,ylo,yhi)."""
-    bx = m.axis_bounds(axx["name"]) or (0.0, 1.0)
-    by = m.axis_bounds(axy["name"]) or (0.0, 1.0)
-    return bx[0], bx[1], by[0], by[1]
+    """The field domain for a BOUNDED numeric march: the robust extent of the states
+    the program actually VISITS (its followed trajectory), lightly padded so the
+    field reads. NOT axis_bounds — that helper is fed by the relational reachable
+    fan and blows the frame out to a mostly-empty box (lru's [0,81]×[0,30] when the
+    dwell is [-1,1]×[0,4]). NEVER the perturbation-grown box either. Falls back to
+    axis_bounds only when no trajectory is available. Returns (xlo,xhi,ylo,yhi)."""
+    dwell = _dwell_span(m, axx, axy)
+    if dwell is not None:
+        (xlo, xhi), (ylo, yhi) = dwell
+    else:
+        bx = m.axis_bounds(axx["name"]) or (0.0, 1.0)
+        by = m.axis_bounds(axy["name"]) or (0.0, 1.0)
+        xlo, xhi, ylo, yhi = bx[0], bx[1], by[0], by[1]
+    # light pad so boundary states aren't pinned to the frame edge; never invert
+    px = max((xhi - xlo) * 0.08, 0.5)
+    py = max((yhi - ylo) * 0.08, 0.5)
+    return xlo - px, xhi + px, ylo - py, yhi + py
 
 
 def _panel_grid(n):

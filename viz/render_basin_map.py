@@ -219,6 +219,14 @@ def _tarjan_scc(n, adj):
 
 def _discrete_basins(m, out_path):
     states, edges = m.reachable()
+    return _discrete_basins_on(m, out_path, states, edges)
+
+
+def _discrete_basins_on(m, out_path, states, edges, projected_out=None):
+    """Exact terminal-SCC basin map over a PRE-COMPUTED reachable graph (states +
+    edges). Used both for genuinely-discrete programs (states from m.reachable())
+    and for the counter-projected path (states from _projected_reachable, with the
+    free-running counter collapsed out — `projected_out` names it for the title)."""
     if not states:
         _placeholder(out_path, m.fsm,
                      "no reachable states (initial_state() is None)")
@@ -675,6 +683,75 @@ def _draw_panel(ax, m, ax_x, ax_y, seeds, labels, centers, show_legend, dom):
                   title="attractor basin", frameon=True)
 
 
+# --------------------------------------------------------------------------
+# Monotone-counter projection: recover a FINITE discrete basin that a
+# free-running clock has inflated past enumeration.
+# --------------------------------------------------------------------------
+# A program like Conway's life on a small board is a finite difference equation
+# — the BOARD has only 2^N configurations, so it must fall into a fixed point or
+# a limit cycle. But the IR also carries `gen` (a generation counter that
+# increments forever) and a derived `pop`. Because every (board, gen) pair is a
+# distinct state, reachable() never terminates: it hits the cap, the program
+# LOOKS unenumerable, and the old code fell through to a seeded numeric grid that
+# FABRICATED basins by binning `gen` into ranges. The truth is one basin (the
+# blinker's single period-2 orbit). Projecting the monotone counter(s) out of the
+# state key collapses (board, gen) back onto the finite board graph, on which the
+# exact terminal-SCC basin is well-defined.
+
+
+def _monotone_counters(m, traj):
+    """Int interface vars that STRICTLY increase by a fixed step every tick along
+    the trajectory — free-running clocks (life's `gen`). These inflate the
+    reachable set without changing the underlying dynamics, so they're projected
+    out of the state key before re-running BFS. Returns a set of names."""
+    out = set()
+    if len(traj) < 4:
+        return out
+    for v in m.carried:
+        if v["kind"] != "int":
+            continue
+        seq = [s[v["name"]] for s in traj if v["name"] in s]
+        if len(seq) < 4:
+            continue
+        diffs = {seq[i + 1] - seq[i] for i in range(len(seq) - 1)}
+        if diffs == {1}:                     # +1 every tick: a generation clock
+            out.add(v["name"])
+    return out
+
+
+def _projected_reachable(m, drop, cap=2048):
+    """BFS the reachable graph, but key states by their NON-`drop` fields (so a
+    free-running counter no longer makes every step a fresh state). Returns
+    (states, edges, overflow): states are representative full states (first seen
+    per projected key), edges index into them, overflow is True if the projected
+    graph itself exceeded `cap` (genuinely too large -> caller routes to N/A)."""
+    init = m.initial_state()
+    if init is None:
+        return [], [], False
+
+    def pkey(st):
+        return tuple(sorted((k, v) for k, v in st.items() if k not in drop))
+
+    states = [init]
+    index = {pkey(init): 0}
+    edges = set()
+    frontier = [0]
+    overflow = False
+    while frontier:
+        i = frontier.pop()
+        for nxt in m.successors(states[i]):
+            k = pkey(nxt)
+            if k not in index:
+                if len(states) >= cap:
+                    overflow = True
+                    continue
+                index[k] = len(states)
+                states.append(nxt)
+                frontier.append(index[k])
+            edges.add((i, index[k]))
+    return states, list(edges), overflow
+
+
 def _numeric_basins(m, out_path):
     axes = _choose_axes(m)
     if len(axes) < 1:
@@ -697,6 +774,38 @@ def _numeric_basins(m, out_path):
     if finite and distinct >= 2:
         note = _discrete_basins(m, out_path)
         return f"finite-reachable -> {note}"
+
+    # CAPPED reachable set: the BFS never terminated. Before reaching for a
+    # numeric grid, check whether the set is unbounded ONLY because a monotone
+    # counter (life's `gen`) tags every step as a fresh state. If so, project that
+    # counter out and re-run BFS on the underlying state space — a small board's
+    # dynamics are finite and MUST settle into a fixed point or limit cycle. On the
+    # projected graph the exact terminal-SCC basin is well-defined (life: a single
+    # period-2 orbit = one basin), so route to the same exact-graph machinery the
+    # discrete path uses. If even the projected graph is too large, render honest
+    # N/A — never a seeded grid that fabricates basins.
+    if not finite and len(states) >= rcap:
+        traj = m.trajectory(steps=64)
+        drop = _monotone_counters(m, traj)
+        if drop:
+            pstates, pedges, overflow = _projected_reachable(m, drop)
+            if not overflow and len(pstates) >= 2:
+                note = _discrete_basins_on(m, out_path, pstates, pedges,
+                                           projected_out=drop)
+                return (f"counter-projected ({'/'.join(sorted(drop))}) -> {note}")
+            if overflow or len(pstates) >= 2:
+                _placeholder(out_path, m.fsm,
+                             "reachable set is too large to enumerate even after "
+                             f"projecting out the counter(s) "
+                             f"{', '.join(sorted(drop))} — basin map N/A")
+                return "too-large after projection (N/A)"
+        # No monotone counter explains the blow-up: a genuinely large/continuous
+        # reachable set. Don't fabricate a grid of basins — honest N/A.
+        _placeholder(out_path, m.fsm,
+                     f"reachable set exceeds {rcap} states with no monotone "
+                     "counter to project out — too large to enumerate; basin "
+                     "map N/A")
+        return "too-large reachable (N/A)"
 
     # Single reachable state: the reachable-from-init set is one fixed point. There
     # may still be a surrounding continuous attractor (van der Pol's init sits on

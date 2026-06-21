@@ -107,22 +107,101 @@ def pick_primary(m):
     return None, None, None, "none"
 
 
-def pick_color_var(m, node_var):
-    """COLOR channel = a SECOND categorical var (not the node var), if one exists.
-    Returns (var_dict, color_labels, project_fn) or None. Color is excellent for
-    categorical, so a low-cardinality bool/enum rides the color channel to ADD a
-    dimension on top of the node->node flow."""
+def _color_proj(v):
+    """A (var_dict, labels, project_fn) triple for a candidate color var."""
+    name = v["name"]
+    if v["kind"] == "enum":
+        labels = list(m_enum_variants_safe(v))
+        return v, labels, (lambda st, n=name: st[n])
+    if v["kind"] == "bool":
+        return v, ["false", "true"], (lambda st, n=name: "true" if st[n] else "false")
+    return v, None, (lambda st, n=name: st[n])   # string: dynamic labels
+
+
+def m_enum_variants_safe(v):
+    # set lazily by pick_color_var's caller; kept here to avoid a closure over m
+    return _COLOR_ENUM_VARIANTS.get(v["name"], [])
+
+
+_COLOR_ENUM_VARIANTS = {}
+
+
+def pick_color_var(m, node_var, proj):
+    """COLOR channel = a SECOND categorical var (not the node var) whose value, as
+    PROJECTED ONTO THE ARCS WE ACTUALLY DRAW, genuinely VARIES. Returns
+    (var_dict, color_labels, project_fn) or None.
+
+    The subtlety this guards (the dungeon round-3 defect): a bool can vary across
+    the raw reachable states yet still be MONOCHROME on the chord, because many
+    full-states collapse onto one (src_room -> dst_room) arc and the per-arc
+    MAJORITY vote washes the variation out. d.has_key / d.has_torch / d.escaped all
+    do this — the room you land in fixes the flag, so every arc's majority is the
+    same value and the color channel carries zero information. We therefore rank
+    candidate color vars by how much their per-ARC majority projection varies
+    (Gini-style: 1 means a perfect split, 0 means monochrome) and pick the most
+    varying one. If NO candidate's arc projection varies, return None so draw()
+    drops the color channel entirely rather than rendering it monochrome."""
+    _COLOR_ENUM_VARIANTS.clear()
+    for v in m.carried:
+        if v["kind"] == "enum":
+            _COLOR_ENUM_VARIANTS[v["name"]] = list(m.enum_variants.get(v["name"], []))
+
+    # the exact node->node arcs we will draw, as (src_label, dst_label) -> [dst states]
+    arc_dst_states = _arc_destination_states(m, node_var, proj)
+    if not arc_dst_states:
+        return None
+
+    best = None
+    best_var = -1.0
     for v in m.categorical_vars:
         if v["name"] == node_var["name"]:
             continue
-        if v["kind"] == "enum":
-            labels = list(m.enum_variants[v["name"]])
-            return v, labels, (lambda st: st[v["name"]])
-        if v["kind"] == "bool":
-            return v, ["false", "true"], (lambda st: "true" if st[v["name"]] else "false")
-        # string: dynamic labels resolved while gathering
-        return v, None, (lambda st: st[v["name"]])
-    return None
+        cand = _color_proj(v)
+        cproj = cand[2]
+        # per-arc majority label, then how varied those majorities are across arcs
+        majorities = []
+        for dst_states in arc_dst_states.values():
+            votes = {}
+            for st in dst_states:
+                lab = cproj(st)
+                votes[lab] = votes.get(lab, 0) + 1
+            majorities.append(max(votes, key=votes.get))
+        variation = _label_variation(majorities)
+        if variation > best_var:
+            best_var, best = variation, cand
+
+    # require the chosen var to ACTUALLY vary across arcs; monochrome => no color.
+    if best is None or best_var <= 0.0:
+        return None
+    return best
+
+
+def _arc_destination_states(m, node_var, proj):
+    """{(src_label, dst_label): [destination full-states]} for the reachable edge
+    set, projected onto the node var. This is exactly the arc set draw() renders,
+    so color-variance measured here reflects what the eye actually sees."""
+    try:
+        states, edges = m.reachable()
+    except Exception:
+        return {}
+    arcs = {}
+    for (i, j) in edges:
+        key = (proj(states[i]), proj(states[j]))
+        arcs.setdefault(key, []).append(states[j])
+    return arcs
+
+
+def _label_variation(labels):
+    """1 - sum(p_k^2) over the label distribution (Gini impurity): 0 when all arcs
+    share one majority label (monochrome — useless color channel), approaching 1
+    as the arcs split evenly across labels."""
+    if not labels:
+        return 0.0
+    counts = {}
+    for lab in labels:
+        counts[lab] = counts.get(lab, 0) + 1
+    n = len(labels)
+    return 1.0 - sum((c / n) ** 2 for c in counts.values())
 
 
 # --- gather transition flow as a dict {(src_label, dst_label): count} ----------
@@ -252,7 +331,7 @@ def draw(m, viz_title, out_path):
             "no variable forms >= 3 distinct node classes "
             f"(categoricals: {cards}; no numeric var to bin) — "
             "a chord diagram needs >= 3 nodes to be meaningful")
-    color = pick_color_var(m, var)
+    color = pick_color_var(m, var, proj) if mode in ("enum", "bool", "string") else None
     labels, flow, numrange, arc_cat, color_labels = gather_flow(
         m, var, labels, proj, mode, color)
 

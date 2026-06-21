@@ -48,6 +48,16 @@ from evident_viz import load
 # deterministic trajectory (the real run).
 FINITE_CAP = 220
 
+# A graph with more nodes than this can't be drawn legibly — the dots collapse
+# into a single tangled smear. Beyond this we sample a representative connected
+# subgraph (the first N states of the real run, which IS a faithful prefix of
+# the deterministic trajectory) and stamp a "showing N of M states" note, rather
+# than render an illegible N-hundred-node line. Programs whose internal counter
+# (a random seed, a generation clock) never lets the trajectory revisit produce
+# exactly such a never-settling line: randomwalk / life run the full 400 steps
+# with every state distinct.
+READABLE_CAP = 48
+
 
 def _key(state):
     return tuple(sorted(state.items()))
@@ -176,6 +186,54 @@ def classify_terminal(G):
     return terminal
 
 
+def sample_subgraph(G, states, init_node, cap=READABLE_CAP):
+    """When G is too large to draw legibly, return a representative CONNECTED
+    subgraph of `cap` nodes (and a 'showing N of M' note); otherwise return G
+    unchanged with no note.
+
+    We grow the sample by BFS from the initial node, so the kept nodes are a
+    connected neighbourhood of the real run's start — for a deterministic
+    trajectory that is exactly its first `cap` states (a faithful prefix), and
+    for a branching reachable/seeded graph it is the start basin rather than an
+    arbitrary slice. Returns (G2, states2, note, remap) where remap maps old
+    node id -> new node id (None if a node was dropped)."""
+    n = G.number_of_nodes()
+    if n <= cap:
+        return G, states, None, {i: i for i in G.nodes()}
+
+    start = init_node if (init_node is not None and init_node in G) else (
+        next(iter(G.nodes())) if n else None)
+    keep = []
+    seen = set()
+    frontier = [start]
+    # BFS over the UNDIRECTED view so we still reach predecessors of the start.
+    und = G.to_undirected(as_view=True)
+    while frontier and len(keep) < cap:
+        node = frontier.pop(0)
+        if node in seen:
+            continue
+        seen.add(node)
+        keep.append(node)
+        for nb in und.neighbors(node):
+            if nb not in seen:
+                frontier.append(nb)
+    keep_set = set(keep)
+
+    remap = {old: None for old in G.nodes()}
+    G2 = nx.DiGraph()
+    states2 = []
+    for old in keep:
+        new = len(states2)
+        remap[old] = new
+        states2.append(states[old])
+        G2.add_node(new, state=states[old])
+    for u, v in G.edges():
+        if u in keep_set and v in keep_set:
+            G2.add_edge(remap[u], remap[v])
+    note = f"showing {len(keep)} of {n} states"
+    return G2, states2, note, remap
+
+
 def axis_pair(m):
     """The (x, y) numeric leaves for a phase layout: independent driver on X
     (math convention), the next-ranked numeric on Y. None if < 2 numeric leaves."""
@@ -298,23 +356,47 @@ def render(smt2, schema, out_path):
         plt.close(fig)
         return out_path, 0, 0, "n/a"
 
-    terminal = classify_terminal(G)
-
-    # --- layout ---------------------------------------------------------------
+    # --- is there a meaningful phase layout? ----------------------------------
+    # A real phase-space scatter (vanderpol: state.v × state.x) stays legible at
+    # hundreds of points — that cloud IS the picture. Only a topology layout
+    # (graphviz/spring) collapses a several-hundred-node chain into an illegible
+    # line, so the down-sample below applies ONLY when there's no phase layout.
     pair = None if m.is_discrete() else axis_pair(m)
     phase_pos = None
     axis_labels = None
     if pair is not None:
         axx, axy = pair
-        phase_pos = {n: (states[n][axx], states[n][axy]) for n in G.nodes()}
-        # Only keep the phase layout if both axes actually vary — otherwise it
-        # collapses to a line/point and the dot hierarchy reads better.
         xs = {states[n][axx] for n in G.nodes()}
         ys = {states[n][axy] for n in G.nodes()}
         if len(xs) >= 2 and len(ys) >= 2:
             axis_labels = (axx, axy)
-        else:
-            phase_pos = None
+            phase_pos = True                           # recomputed after sampling
+
+    # --- down-sample an illegible topology graph to a connected subgraph -------
+    # A several-hundred-node line/tangle conveys nothing (randomwalk / life run
+    # the full 400 ticks with every state distinct because an internal counter
+    # never lets the trajectory revisit). Keep a connected neighbourhood of the
+    # real run's start and stamp "showing N of M states". Skipped when a phase
+    # scatter is available — that stays readable at scale.
+    sample_note = None
+    terminal = classify_terminal(G)
+    if phase_pos is None and n_nodes > READABLE_CAP:
+        init_key0 = _key(m.initial_state()) if m.initial_state() is not None else None
+        init0 = next((n for n in G.nodes()
+                      if _key(states[n]) == init_key0), None) if init_key0 else None
+        full_terminal = terminal                       # terminals of the WHOLE graph
+        G, states, sample_note, remap = sample_subgraph(G, states, init0)
+        n_nodes = G.number_of_nodes()
+        n_edges = G.number_of_edges()
+        # A node left dangling only because its successor was sampled away is NOT
+        # a real sink — keep only original fixed points / sinks as terminal.
+        terminal = {remap[o] for o in full_terminal
+                    if remap.get(o) is not None}
+
+    # --- layout ---------------------------------------------------------------
+    if phase_pos is not None:
+        axx, axy = axis_labels
+        phase_pos = {n: (states[n][axx], states[n][axy]) for n in G.nodes()}
 
     if phase_pos is not None:
         pos = phase_pos
@@ -338,9 +420,14 @@ def render(smt2, schema, out_path):
     init_node = next((n for n in G.nodes()
                       if _key(states[n]) == init_key), None) if init_key else None
 
-    # Width/height scale with node count so things stay readable.
-    w = min(max(11, n_nodes * 0.7), 30)
-    h = min(max(7, n_nodes * 0.45), 22)
+    # Width/height scale with node count so things stay readable. A pure chain
+    # (a sampled trajectory laid out vertically by dot) needs height, not width —
+    # a wide canvas would strand the column in whitespace.
+    if sample_note is not None and phase_pos is None:
+        w, h = 10, min(max(8, n_nodes * 0.32), 22)
+    else:
+        w = min(max(11, n_nodes * 0.7), 30)
+        h = min(max(7, n_nodes * 0.45), 22)
     fig, ax = plt.subplots(figsize=(w, h))
 
     self_loops = [(u, v) for u, v in G.edges() if u == v]
@@ -402,8 +489,10 @@ def render(smt2, schema, out_path):
     subtitle = ""
     if color_var is not None:
         subtitle = f"  color: {color_var.split('.')[-1]}"
+    count_txt = (sample_note if sample_note is not None
+                 else f"{n_nodes} states, {n_edges} edges")
     ax.set_title(
-        f"{m.fsm} — {title_type}  ({mode}; {n_nodes} states, {n_edges} edges)"
+        f"{m.fsm} — {title_type}  ({mode}; {count_txt})"
         + subtitle, fontsize=14, fontweight="bold")
 
     if axis_labels is not None:
@@ -445,7 +534,7 @@ def render(smt2, schema, out_path):
 
     fig.savefig(out_path, dpi=120, bbox_inches="tight")
     plt.close(fig)
-    return out_path, n_nodes, n_edges, mode
+    return out_path, n_nodes, n_edges, (mode + f" — {sample_note}" if sample_note else mode)
 
 
 def main(argv):
