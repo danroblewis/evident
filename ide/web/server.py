@@ -48,6 +48,7 @@ for _v in ("time_series", "state_graph", "phase_portrait", "morse_graph",
 VIEWS = [v for v in ("time_series", "state_graph", "phase_portrait",
                      "reachability_tree", "morse_graph", "occupancy_heatmap")
          if v in RENDERERS]
+REACH_LIMIT = 400                              # bounded exploration cap for the live stats
 _LOCK = threading.Lock()                       # matplotlib + z3 are not thread-safe; serialize
 
 app = FastAPI(title="Evident IDE")
@@ -89,8 +90,11 @@ def _banner(m, max_branch=1):
                 f"(a free choice fans out){hint}")
     if ind["verdict"] == "driven" and ind.get("driver"):
         deps = [short(d) for d in ind.get("dependents", [])[:4]]
-        tail = (" — computed from it: " + ", ".join(f"{d}" for d in deps)) if deps else ""
-        return f"Driven pipeline — independent variable: {short(ind['driver'])}{tail}"
+        if deps:
+            return (f"Driven pipeline — independent variable: {short(ind['driver'])}"
+                    f" — computed from it: {', '.join(deps)}")
+        return (f"Driven — {short(ind['driver'])} advances on its own clock "
+                f"(a deterministic recurrence)")
     if ind["verdict"] == "nondeterministic":
         return "Nondeterministic — the free choice is the input, not a state variable"
     return "Genuinely relational — no independent variable (a cycle; every variable co-determines)"
@@ -98,16 +102,19 @@ def _banner(m, max_branch=1):
 
 def _recommend(m, n_states, max_branch, discrete):
     """Pick the lead view from the model's shape:
-      - any branching (some state has ≥2 successors) → reachability_tree, so the fan of
-        choices is VISIBLE instead of collapsing to a single witness line. Keyed on the
-        branching factor, not edge count, so it still fires when a large reachable set
-        hits the exploration cap (where n_edges ≈ n_states);
-      - small discrete state space → the structure graph;
-      - otherwise the time series (faithful and fast for almost everything)."""
-    if "reachability_tree" in VIEWS and max_branch >= 2:
-        return "reachability_tree"
+      - a SMALL DISCRETE machine → state_graph: it draws the whole structure at once —
+        branch out-edges AND back-edges/cycles — which a tree would hide and a noodle
+        would bury. (A 3-state vending loop reads as a loop here, not a fanned tree.)
+      - otherwise, any BRANCHING (some state has ≥2 successors) → reachability_tree, so the
+        fan is visible where the full graph would be an unreadable noodle. Keyed on the
+        branching factor (not edge count) so it still fires when a large reachable set hits
+        the exploration cap (n_edges ≈ n_states).
+      - otherwise the time series: a deterministic numeric ramp/trajectory reads as a clean
+        line, faithful and fast for almost everything."""
     if "state_graph" in VIEWS and discrete and n_states <= 30:
         return "state_graph"
+    if "reachability_tree" in VIEWS and max_branch >= 2:
+        return "reachability_tree"
     return "time_series" if "time_series" in VIEWS else (VIEWS[0] if VIEWS else None)
 
 
@@ -126,10 +133,11 @@ def analyze(req: Source):
             return {"ok": False, "error": msg, "dropped": dropped}
         try:
             m = load_model(prefix + ".smt2", prefix + ".schema.json")
-            states, edges = m.reachable(limit=400)
+            states, edges = m.reachable(limit=REACH_LIMIT)
             n_states, n_edges = len(states), len(edges)
             out_deg = Counter(src for src, _ in edges)
             max_branch = max(out_deg.values()) if out_deg else 1
+            capped = n_states >= REACH_LIMIT      # the reachable set didn't fit the cap
             discrete = m.is_discrete()
             view = req.view if (req.view in VIEWS) else _recommend(m, n_states, max_branch, discrete)
             png = _render_png(view, prefix) if view else b""
@@ -140,6 +148,7 @@ def analyze(req: Source):
                 "branching": max_branch,
                 "states": n_states,
                 "edges": n_edges,
+                "capped": capped,
                 "vars": [v["name"].split(".")[-1] for v in m.interface_vars],
                 "view": view,
                 "views": VIEWS,

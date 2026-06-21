@@ -470,9 +470,18 @@ class Model:
         negative = a pure dependent, ~0 = mutual / cyclic."""
         vs = [v["name"] for v in self.interface_vars]
         states = self._sample_states()
-        if len(vs) < 2 or len({self._key(s) for s in states}) < 2:
+        if not vs or len({self._key(s) for s in states}) < 2:
+            # nothing varies across the sample (constant / degenerate) — no driver to find
             return {"verdict": "relational", "driver": None, "drivers": [],
                     "dependents": [], "score": {n: 0 for n in vs}}
+        if len(vs) == 1:
+            # A lone carried variable that VARIES is its own clock: a deterministic
+            # self-recurrence x_t = f(x_{t-1}). That is the MOST driven shape, not a
+            # relational cycle — every FSM reads its own _prev, so self-carry must not be
+            # mistaken for co-determination. (A nondeterministic lone var is caught by the
+            # branching override in the banner upstream.)
+            return {"verdict": "driven", "driver": vs[0], "drivers": list(vs),
+                    "dependents": [], "score": {vs[0]: 0}}
         series = {n: [s[n] for s in states] for n in vs}
 
         def determines(a, b):                  # each a-value maps to a unique b-value

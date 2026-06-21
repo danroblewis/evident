@@ -589,12 +589,10 @@ def draw(C, info, orig_labels, fsm, viz_type, out_path, subtitle="",
 
 # ----------------------------------------------------------------------------
 
-def main():
-    if len(sys.argv) != 4:
-        print("usage: render_morse_graph.py <smt2> <schema> <out.png>",
-              file=sys.stderr)
-        sys.exit(2)
-    smt2, schema, out = sys.argv[1], sys.argv[2], sys.argv[3]
+def render(smt2, schema, out_path):
+    """In-process entry — the server imports this and calls it like every other renderer
+    (same (smt2, schema, out_path) signature). Mirrors main()'s flow exactly."""
+    out = out_path
     m = load(smt2, schema)
 
     if m.is_discrete():
@@ -677,6 +675,14 @@ def main():
          tint_var=tint_var)
     print(f"wrote {out}: {C.number_of_nodes()} SCC nodes, "
           f"{C.number_of_edges()} condensation edges")
+
+
+def main():
+    if len(sys.argv) != 4:
+        print("usage: render_morse_graph.py <smt2> <schema> <out.png>",
+              file=sys.stderr)
+        sys.exit(2)
+    render(sys.argv[1], sys.argv[2], sys.argv[3])
 
 
 if __name__ == "__main__":
