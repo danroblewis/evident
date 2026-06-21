@@ -188,8 +188,12 @@ def axis_extent(m, xv, vv):
     box = None
     if rec_box and ((rec_box[1] - rec_box[0]) + (rec_box[3] - rec_box[2]) > reach_span):
         box = rec_box
-    elif have_reach and (n_states >= MIN_FIELD_POINTS or reach_span >= 64):
+    elif have_reach and n_states >= MIN_FIELD_POINTS:
         box = reach_box
+        # NB: a wide value RANGE is not enough — a finite terminating trajectory
+        # (csv_stats' sum 0..242, ls' sizes to 65536) is not a continuous vector
+        # field however wide it spans; only a genuinely dense/recurrent reachable
+        # set earns a sign-field, else we route to N/A below.
 
     if box is None:
         return None
