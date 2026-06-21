@@ -371,17 +371,8 @@ class Model:
         # this.)
         INDEX_DISCOUNT = float(os.environ.get("EVIDENT_VIZ_DISCOUNT", "0.8"))
 
-        def is_unit_counter(name):
-            # a tick proxy: an integer that takes a DISTINCT consecutive value in every
-            # sampled state — the loop index / time. Must be injective (one value per
-            # state) so a cyclic sawtooth (balance 0,1,2,3,0,1,2,3) is NOT flagged, and
-            # consecutive so an accumulator (sum, total with gaps) is NOT flagged.
-            if reps[name][0]["kind"] != "int":
-                return False
-            vals = series[name]
-            d = sorted(set(vals))
-            return (len(d) >= 3 and len(d) == len(vals)        # injective: one value per state
-                    and (d[-1] - d[0] + 1) == len(d))          # consecutive: a tick index
+        def is_unit_counter(name):              # tick proxy: a loop index / clock
+            return self._is_unit_counter(reps[name][0]["kind"], series[name])
 
         H = {nm: reps[nm][1] for nm in reps}                       # marginal entropy
         W = {nm: (INDEX_DISCOUNT if is_unit_counter(nm) else 1.0) for nm in reps}
@@ -419,7 +410,18 @@ class Model:
 
         # state_vars = the structure-optimal axis pair first, then the rest by
         # discounted relevance (so the color/facet channels also avoid trivial counters).
+        # Within the pair, the more-INDEPENDENT variable (it determines the other without
+        # being determined — a driver/clock) goes FIRST = on X, matching the math
+        # convention (independent → X, dependent → Y). When neither drives, order is kept.
+        def indep_score(nm):
+            return (sum(determines(nm, x) for x in names if x != nm)
+                    - sum(determines(x, nm) for x in names if x != nm))
+
         if best_pair:
+            a, b = best_pair
+            if indep_score(b) > indep_score(a):
+                a, b = b, a                                    # driver first (X axis)
+            best_pair = (a, b)
             rest = sorted((nm for nm in names if nm not in best_pair),
                           key=lambda nm: -relevance[nm])
             order = list(best_pair) + rest
@@ -429,6 +431,59 @@ class Model:
         self.variable_groups = [{"rep": nm, "members": reps[nm][2],
                                  "entropy": round(H[nm], 3)} for nm in order]
         return [reps[nm][0] for nm in order]
+
+    @staticmethod
+    def _is_unit_counter(kind, vals):
+        """An integer that takes a DISTINCT, CONSECUTIVE value in every sampled state — a
+        loop index / clock. Injective (one value per state) so a cyclic sawtooth isn't
+        flagged; consecutive so an accumulator (monotone with gaps) isn't either."""
+        if kind != "int":
+            return False
+        d = sorted(set(vals))
+        return len(d) >= 3 and len(d) == len(vals) and (d[-1] - d[0] + 1) == len(d)
+
+    def independence(self):
+        """Functional-dependency analysis of the interface variables: which behave as an
+        INDEPENDENT variable — a driver/clock that determines the others without being
+        determined by them — vs DEPENDENT (computed from the drivers).
+
+        Evident models are written to be relational (solve for any variable by leaving it
+        unbound), but a difference-equation model usually smuggles in a driver: a cursor
+        that advances on its own, with everything else computed from it. This surfaces it.
+        A model with NO driver (a cycle, a nondeterministic graph — every variable
+        co-determines) is reported as 'genuinely relational'.
+
+        Returns {'verdict': 'driven'|'relational', 'driver': name|None,
+                 'drivers': [names], 'dependents': [names], 'score': {name: net}} where
+        net = #(vars it determines) − #(vars that determine it): positive = a driver,
+        negative = a pure dependent, ~0 = mutual / cyclic."""
+        vs = [v["name"] for v in self.interface_vars]
+        states = self._sample_states()
+        if len(vs) < 2 or len({self._key(s) for s in states}) < 2:
+            return {"verdict": "relational", "driver": None, "drivers": [],
+                    "dependents": [], "score": {n: 0 for n in vs}}
+        series = {n: [s[n] for s in states] for n in vs}
+
+        def determines(a, b):                  # each a-value maps to a unique b-value
+            m = {}
+            for va, vb in zip(series[a], series[b]):
+                if m.get(va, vb) != vb:
+                    return False
+                m[va] = vb
+            return True
+
+        det = {a: set(b for b in vs if a != b and determines(a, b)) for a in vs}
+        score = {a: len(det[a]) - sum(1 for b in vs if a in det[b]) for a in vs}
+        top = max(score.values())
+        drivers = [a for a in vs if score[a] == top] if top > 0 else []
+        dependents = sorted((a for a in vs if score[a] < 0), key=lambda a: score[a])
+        driver = None
+        if drivers:                            # canonical driver: prefer the unit counter
+            kind = {v["name"]: v["kind"] for v in self.interface_vars}
+            driver = sorted(drivers, key=lambda a: (
+                not self._is_unit_counter(kind[a], series[a]), -len(det[a]), len(a)))[0]
+        return {"verdict": "driven" if drivers else "relational", "driver": driver,
+                "drivers": drivers, "dependents": dependents, "score": score}
 
     @staticmethod
     def _pick_rep(members):

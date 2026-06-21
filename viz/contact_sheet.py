@@ -125,6 +125,24 @@ def describe(ir):
     return cat + " — " + ", ".join(f"{v['name']} ({v['kind']})" for v in vs)
 
 
+def independence_note(ir):
+    """One-line functional-dependency insight: the model's INDEPENDENT variable (the
+    driver/clock that determines the others), or that it is genuinely relational."""
+    try:
+        sys.path.insert(0, str(VIZ))
+        from evident_viz import load
+        ind = load(ir[0], ir[1]).independence()
+    except Exception:
+        return ""
+    if ind["verdict"] == "relational":
+        return ("**Genuinely relational** — no independent variable; every variable "
+                "co-determines (a cycle / nondeterministic relation).")
+    drv = ind["driver"].split(".")[-1]
+    deps = [d.split(".")[-1] for d in ind["dependents"][:4]]
+    tail = (" — computed from it: " + ", ".join(f"`{d}`" for d in deps)) if deps else ""
+    return f"**Independent variable:** `{drv}` (the driver/clock){tail}."
+
+
 def main():
     args = sys.argv[1:]
     workers = max(4, (os.cpu_count() or 4) - 2)
@@ -191,7 +209,8 @@ def write_sheet(order, exported, rs, results, cols=COLS):
         if not ir:
             out += ["", f"**export failed:** {err}", ""]
             continue
-        out += ["", f"_{describe(ir)}_   _(diagrams sorted by interestingness)_", ""]
+        out += ["", f"_{describe(ir)}_   _(diagrams sorted by interestingness)_", "",
+                independence_note(ir), ""]
         ranked = sorted(types, key=lambda vt: -results.get((vt, name), (None, False, "", 0.0))[3])
         for r0 in range(0, len(ranked), cols):
             group = ranked[r0:r0 + cols]
