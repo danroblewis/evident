@@ -24,6 +24,9 @@ html,body { margin:0; height:100%; background:var(--bg); color:var(--ink);
 /* the solve panel — run a claim, read a witness (or UNSAT) */
 #solve { border-top:1px solid var(--line); background:#11212e; max-height:46%;
   display:flex; flex-direction:column; }
+/* the ID selector's display:flex overrides the UA [hidden] rule — restore it, or the
+   panel never hides (close button dead, stale results bleed across programs). */
+#solve[hidden] { display:none; }
 #solve-head { padding:7px 14px; font-size:13px; border-bottom:1px solid var(--line); }
 #solve-head .sat { color:var(--good); } #solve-head .unsat { color:var(--warn); }
 #solve-head .bad { color:var(--bad); }
