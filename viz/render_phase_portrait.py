@@ -200,7 +200,29 @@ def _orbit_extent(m, axx, axy, pin):
     return -span, span, -span, span
 
 
-def render_numeric_panel(m, ax, axx, axy, pin, draw_colorbar, extent):
+def _robust_span(vals, fallback_lo, fallback_hi, pad=0.06):
+    """Robust [lo, hi] of plotted data on one axis: IQR-fence to drop a lone
+    off-domain point, then pad lightly. Falls back to the grid box when there's
+    too little data to fence. Never returns an inverted or zero-width span."""
+    vals = [v for v in vals if v is not None]
+    if len(vals) < 4:
+        return fallback_lo, fallback_hi
+    s = sorted(vals)
+    n = len(s)
+    q1, q3 = s[n // 4], s[(3 * n) // 4]
+    iqr = q3 - q1
+    if iqr > 0:
+        lof, hif = q1 - 3 * iqr, q3 + 3 * iqr
+        s = [v for v in s if lof <= v <= hif] or s
+    lo, hi = float(min(s)), float(max(s))
+    if hi - lo < 1e-9:
+        return lo - 1.0, hi + 1.0
+    m = (hi - lo) * pad
+    return lo - m, hi + m
+
+
+def render_numeric_panel(m, ax, axx, axy, pin, draw_colorbar, extent,
+                         fit_to_data=False):
     """A magnitude-colored vector field over a grid of pinned numeric points.
 
     `pin` carries the values of every NON-axis var (facet value, off-axis vars);
@@ -208,7 +230,15 @@ def render_numeric_panel(m, ax, axx, axy, pin, draw_colorbar, extent):
     (xlo, xhi, ylo, yhi) is the REACHABLE-orbit domain (from `_orbit_extent`) —
     we grid within it, never a guessed ±3000 box. Seeds for the overlaid
     trajectories are placed off-origin (the origin is often the fixed point of an
-    oscillator, which a centered seed would never leave)."""
+    oscillator, which a centered seed would never leave).
+
+    `fit_to_data` (bounded/reachable mode): after we have the field + trajectory
+    points, snap the axis limits to the ROBUST extent of what we actually PLOTTED
+    (grid cells with a valid successor, plus the trajectory points), lightly
+    padded — so a small-data program never shows a frame far larger than its data
+    (lru's dwell sits at k0≈1..40, not the full [0,81] grid: an empty upper grid
+    is a framing lie). For the orbit mode (vanderpol) we keep the symmetric box so
+    the limit cycle reads centred."""
     nx_, ny_ = axx["name"], axy["name"]
 
     xlo, xhi, ylo, yhi = extent
@@ -260,6 +290,7 @@ def render_numeric_panel(m, ax, axx, axy, pin, draw_colorbar, extent):
     seeds = [_seed(0.7, 0.0), _seed(0.1, 0.0), _seed(0.0, 0.7),
              _seed(-0.4, 0.5), _seed(-0.7, 0.0), _seed(0.0, -0.7)]
     cmap = plt.get_cmap("autumn")
+    traj_x, traj_y = [], []
     for i, (sx0, sy0) in enumerate(seeds):
         state = dict(pin)
         state[nx_] = int(round(sx0)) if axx["kind"] == "int" else sx0
@@ -269,6 +300,7 @@ def render_numeric_panel(m, ax, axx, axy, pin, draw_colorbar, extent):
             continue
         px = [_numeric(m, axx, s[nx_]) for s in traj]
         py = [_numeric(m, axy, s[ny_]) for s in traj]
+        traj_x += px; traj_y += py
         ax.plot(px, py, "-", lw=1.6, color=cmap(i / max(1, len(seeds) - 1)),
                 alpha=0.95, zorder=5)
         ax.plot(px[0], py[0], "o", color="white", mec="black", ms=6, zorder=6)
@@ -278,8 +310,21 @@ def render_numeric_panel(m, ax, axx, axy, pin, draw_colorbar, extent):
                 label="fixed point", zorder=7)
         ax.legend(loc="upper right", fontsize=8)
 
-    ax.set_xlim(xlo, xhi)
-    ax.set_ylim(ylo, yhi)
+    # Frame to the robust extent of what we actually plotted, not the raw grid box
+    # (bounded mode only). The grid covers axis_bounds, but the dynamics may dwell
+    # in a sub-region; an empty grid quadrant is a framing lie. Use the union of
+    # the live-field cells (a successor exists there) and the trajectory points,
+    # IQR-fenced on each axis to shed a lone off-domain cell, lightly padded.
+    if fit_to_data:
+        dx_pts = list(GX) + traj_x
+        dy_pts = list(GY) + traj_y
+        fx = _robust_span(dx_pts, xlo, xhi)
+        fy = _robust_span(dy_pts, ylo, yhi)
+        ax.set_xlim(*fx)
+        ax.set_ylim(*fy)
+    else:
+        ax.set_xlim(xlo, xhi)
+        ax.set_ylim(ylo, yhi)
     return q
 
 
@@ -597,12 +642,17 @@ def _render_numeric(m, axx, axy, facet_var, facet_vals, out_path,
                 if extent_mode == "reachable"
                 else "(numeric vector field, reachable-orbit extent)")
 
+    # In reachable mode the grid covers axis_bounds, but the dynamics may dwell in
+    # a sub-region; let the panel snap its frame to the data it plotted. (Orbit
+    # mode keeps its symmetric box — the limit cycle must read centred.)
+    fit = (extent_mode == "reachable")
+
     if facet_var is None:
         fig, ax = plt.subplots(figsize=(8.5, 7.5))
         pin = {v["name"]: init[v["name"]] for v in m.state_vars}
         extent = _extent(pin)
         render_numeric_panel(m, ax, axx, axy, pin, draw_colorbar=True,
-                             extent=extent)
+                             extent=extent, fit_to_data=fit)
         ax.set_xlabel(_axis_label(axx)); ax.set_ylabel(_axis_label(axy))
         _decorate_axes(m, ax, axx, axy)
         ax.grid(True, ls=":", alpha=0.3)
@@ -617,19 +667,31 @@ def _render_numeric(m, axx, axy, facet_var, facet_vals, out_path,
                              squeeze=False)
     flat = [axes[r][c] for r in range(rows) for c in range(cols)]
     last_q = None
+    # Faceted panels MUST share one frame so they're comparable; in reachable mode
+    # snap that shared frame to the union of all panels' plotted data (so an empty
+    # upper grid isn't carried across every panel).
+    panel_xlims, panel_ylims = [], []
     for idx, fval in enumerate(facet_vals):
         ax = flat[idx]
         pin = {v["name"]: init[v["name"]] for v in m.state_vars}
         pin[facet_var["name"]] = fval
         extent = _extent(pin)
         q = render_numeric_panel(m, ax, axx, axy, pin, draw_colorbar=False,
-                                 extent=extent)
+                                 extent=extent, fit_to_data=fit)
+        if fit:
+            panel_xlims.append(ax.get_xlim()); panel_ylims.append(ax.get_ylim())
         if q is not None:
             last_q = q
         ax.set_xlabel(_axis_label(axx)); ax.set_ylabel(_axis_label(axy))
         _decorate_axes(m, ax, axx, axy)
         ax.grid(True, ls=":", alpha=0.3)
         ax.set_title(f"{facet_var['name']} = {fval}", fontsize=11)
+    # unify the per-panel data-fit frames so the small multiples stay comparable
+    if fit and panel_xlims:
+        sxlo = min(l for l, _ in panel_xlims); sxhi = max(h for _, h in panel_xlims)
+        sylo = min(l for l, _ in panel_ylims); syhi = max(h for _, h in panel_ylims)
+        for idx in range(len(facet_vals)):
+            flat[idx].set_xlim(sxlo, sxhi); flat[idx].set_ylim(sylo, syhi)
     for j in range(len(facet_vals), len(flat)):
         flat[j].axis("off")
     if last_q is not None:

@@ -352,6 +352,38 @@ def render(smt2_path, schema_path, out_path):
     for p in pts:
         p["gx"], p["gy"] = p["x"], p["y"]
 
+    # HONEST degenerate-axis guard. An orbit scatter reads from its two axes; if an
+    # axis is CONSTANT over every plotted point, the projection has collapsed onto a
+    # line (or a single node) and the picture is misleading — it looks like a real
+    # orbit, but one whole dimension never moves. This is the selector handing us a
+    # constant coordinate (life's state.pop pinned at 3; randomwalk's v3/v4 both
+    # pinned at 0); the renderer can't pick better axes, but it MUST NOT dress a
+    # flat line up as dynamics. Render an N/A card naming the collapsed axis instead.
+    x_distinct = len({p["gx"] for p in pts})
+    y_distinct = len({p["gy"] for p in pts})
+    if x_distinct <= 1 or y_distinct <= 1:
+        flat = []
+        if x_distinct <= 1:
+            flat.append(f'{xvar["name"]} (x) = {pts[0]["st"][xvar["name"]]}')
+        if y_distinct <= 1:
+            flat.append(f'{yvar["name"]} (y) = {pts[0]["st"][yvar["name"]]}')
+        both = x_distinct <= 1 and y_distinct <= 1
+        detail = ("both chosen axes are constant — the orbit is a single point"
+                  if both else
+                  "the chosen y-axis is constant" if y_distinct <= 1 else
+                  "the chosen x-axis is constant")
+        fig, ax = plt.subplots(figsize=(8, 7))
+        ax.text(0.5, 0.5,
+                f"N/A — {detail} over all {len(pts)} plotted states.\n"
+                f"({'; '.join(flat)})\n"
+                "An orbit scatter on these axes would be a misleading flat line.",
+                ha="center", va="center", fontsize=12)
+        ax.set_title(title)
+        ax.axis("off")
+        fig.savefig(out_path, dpi=120, bbox_inches="tight")
+        plt.close(fig)
+        return
+
     discrete = not (xvar["kind"] in ("int", "real")
                     and yvar["kind"] in ("int", "real"))
     # On a discrete (int / enum / bool) axis the data LIVES on integer grid lines;
