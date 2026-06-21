@@ -1,0 +1,634 @@
+#!/usr/bin/env python3
+"""render_basin_map.py — basin-of-attraction map for ANY Evident IR.
+
+Usage:
+    python3 viz/render_basin_map.py <smt2> <schema> <out_path>
+
+Idea: every start state, when you keep applying the transition, eventually
+settles into a *terminal* set — a fixed point, a limit cycle, or a terminal
+strongly-connected component (SCC). The "basin" of a terminal is every start
+state that flows there. This renderer colors a 2-D projection of state space
+by *which terminal* each start ends up in.
+
+  * DISCRETE programs (all bool/enum/string): we have the exact reachable
+    graph from evident_viz.reachable(). We condense it into SCCs, find the
+    terminal SCCs (no outgoing edge to another SCC), and color every reachable
+    state by the terminal SCC it can reach. Two state axes are chosen for the
+    scatter; the rest collapse (a point may carry several colors -> drawn as a
+    small multi-wedge, but we keep it simple with the dominant terminal).
+
+  * NUMERIC programs: we lay a grid of seeds across two chosen integer axes
+    (holding any other axes at 0), iterate each seed forward to convergence,
+    and color the seed by which terminal *region* it lands in (regions are
+    clustered from the set of observed attractor points). This is the classic
+    basin-of-attraction image.
+
+  * MIXED programs: same as numeric but enum/bool axes are projected to
+    ordinals (enum -> index in variant list, bool -> 0/1) when chosen as an
+    axis, and held at their initial value otherwise.
+
+Everything dynamic comes from querying the transition via evident_viz; nothing
+about any specific program is hardcoded.
+"""
+import sys
+import os
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__))))
+from evident_viz import load  # noqa: E402
+
+import matplotlib  # noqa: E402
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt  # noqa: E402
+from matplotlib.patches import Patch  # noqa: E402
+import numpy as np  # noqa: E402
+
+
+# A qualitative palette big enough for the terminal sets we see.
+PALETTE = [
+    "#4477AA", "#EE6677", "#228833", "#CCBB44", "#66CCEE",
+    "#AA3377", "#BBBBBB", "#FF8C00", "#117733", "#882255",
+    "#44AA99", "#999933", "#332288", "#DDCC77", "#CC6677",
+]
+
+
+def _placeholder(out_path, fsm, reason):
+    fig, ax = plt.subplots(figsize=(8, 6))
+    ax.axis("off")
+    ax.text(0.5, 0.58, "N/A for basin_map", ha="center", va="center",
+            fontsize=20, weight="bold", color="#aa3333")
+    ax.text(0.5, 0.44, reason, ha="center", va="center", fontsize=12,
+            color="#333333", wrap=True)
+    ax.set_title(f"{fsm} — basin_map", fontsize=14, weight="bold")
+    fig.savefig(out_path, dpi=120, bbox_inches="tight")
+    plt.close(fig)
+
+
+# --------------------------------------------------------------------------
+# axis selection: pick two state vars to project onto
+# --------------------------------------------------------------------------
+def _choose_axes(m):
+    """Return up to two state-var dicts to use as the x,y projection axes.
+    Prefer numeric (int/real) axes; fall back to enum/bool. Picks the two with
+    the most distinct values if we can cheaply estimate, else first two."""
+    vs = m.state_vars
+    numeric = [v for v in vs if v["kind"] in ("int", "real")]
+    enums = [v for v in vs if v["kind"] == "enum"]
+    bools = [v for v in vs if v["kind"] == "bool"]
+    ordered = numeric + enums + bools
+    return ordered[:2]
+
+
+def _ordinal(m, var, value):
+    """Project a state value onto a real number for plotting."""
+    k = var["kind"]
+    if k in ("int", "real"):
+        return float(value)
+    if k == "bool":
+        return 1.0 if value else 0.0
+    if k == "enum":
+        variants = m.enum_variants[var["name"]]
+        return float(variants.index(value))
+    if k == "string":
+        return 0.0
+    return 0.0
+
+
+def _axis_label(var):
+    return f"{var['name']}  [{var['kind']}]"
+
+
+# --------------------------------------------------------------------------
+# DISCRETE: exact reachable graph -> SCC condensation -> terminal basins
+# --------------------------------------------------------------------------
+def _tarjan_scc(n, adj):
+    """Return list of SCCs (each a list of node ids), via iterative Tarjan."""
+    index = [None] * n
+    low = [0] * n
+    on_stack = [False] * n
+    stack = []
+    sccs = []
+    counter = [0]
+
+    for root in range(n):
+        if index[root] is not None:
+            continue
+        work = [(root, 0)]
+        while work:
+            v, pi = work[-1]
+            if pi == 0:
+                index[v] = low[v] = counter[0]
+                counter[0] += 1
+                stack.append(v)
+                on_stack[v] = True
+            recursed = False
+            neighbors = adj[v]
+            while pi < len(neighbors):
+                w = neighbors[pi]
+                pi += 1
+                if index[w] is None:
+                    work[-1] = (v, pi)
+                    work.append((w, 0))
+                    recursed = True
+                    break
+                elif on_stack[w]:
+                    low[v] = min(low[v], index[w])
+            if recursed:
+                continue
+            work[-1] = (v, pi)
+            # post-process v: update parent low later; first relax children lows
+            for w in neighbors:
+                if on_stack[w]:
+                    low[v] = min(low[v], low[w])
+            if low[v] == index[v]:
+                comp = []
+                while True:
+                    w = stack.pop()
+                    on_stack[w] = False
+                    comp.append(w)
+                    if w == v:
+                        break
+                sccs.append(comp)
+            work.pop()
+            if work:
+                pv = work[-1][0]
+                low[pv] = min(low[pv], low[v])
+    return sccs
+
+
+def _discrete_basins(m, out_path):
+    states, edges = m.reachable()
+    if not states:
+        _placeholder(out_path, m.fsm,
+                     "no reachable states (initial_state() is None)")
+        return "discrete: empty"
+
+    n = len(states)
+    adj = [[] for _ in range(n)]
+    eset = set()
+    for a, b in edges:
+        if a != b and (a, b) not in eset:
+            adj[a].append(b)
+            eset.add((a, b))
+
+    sccs = _tarjan_scc(n, adj)
+    scc_of = [0] * n
+    for sid, comp in enumerate(sccs):
+        for node in comp:
+            scc_of[node] = sid
+    nscc = len(sccs)
+
+    # condensation DAG
+    cadj = [set() for _ in range(nscc)]
+    for a, b in eset:
+        if scc_of[a] != scc_of[b]:
+            cadj[scc_of[a]].add(scc_of[b])
+
+    terminal = [len(cadj[s]) == 0 for s in range(nscc)]
+    term_ids = [s for s in range(nscc) if terminal[s]]
+    term_index = {s: i for i, s in enumerate(term_ids)}
+
+    # For each SCC, which terminal SCC(s) can it reach? Pick a deterministic
+    # "dominant" terminal (smallest reachable terminal id) for the basin color.
+    # Reverse-topo over condensation.
+    reach_term = [set() for _ in range(nscc)]
+    # iterate to fixpoint (DAG, so a few passes suffice; do it robustly)
+    changed = True
+    while changed:
+        changed = False
+        for s in range(nscc):
+            before = len(reach_term[s])
+            if terminal[s]:
+                reach_term[s].add(s)
+            for t in cadj[s]:
+                reach_term[s] |= reach_term[t]
+            if len(reach_term[s]) != before:
+                changed = True
+
+    def basin_color_idx(node):
+        rt = reach_term[scc_of[node]]
+        if not rt:
+            return -1
+        dom = min(rt, key=lambda s: term_index[s])
+        return term_index[dom]
+
+    # axes
+    axes = _choose_axes(m)
+    if len(axes) == 0:
+        _placeholder(out_path, m.fsm, "no state variables to project")
+        return "discrete: no axes"
+    ax_x = axes[0]
+    ax_y = axes[1] if len(axes) > 1 else None
+
+    # Scatter every reachable state at its projected coords, colored by basin.
+    xs, ys, cidx = [], [], []
+    # jitter to separate states colliding on the 2-axis projection
+    rng = np.random.default_rng(7)
+    for node, st in enumerate(states):
+        x = _ordinal(m, ax_x, st[ax_x["name"]])
+        y = _ordinal(m, ax_y, st[ax_y["name"]]) if ax_y else 0.0
+        xs.append(x)
+        ys.append(y)
+        cidx.append(basin_color_idx(node))
+
+    xs = np.array(xs, float)
+    ys = np.array(ys, float)
+    cidx = np.array(cidx, int)
+    # jitter collisions
+    jx = (rng.random(n) - 0.5) * 0.22
+    jy = (rng.random(n) - 0.5) * 0.22
+
+    fig, ax = plt.subplots(figsize=(9, 7))
+    # draw edges faintly to show flow
+    for a, b in eset:
+        ax.plot([xs[a] + jx[a], xs[b] + jx[b]],
+                [ys[a] + jy[a], ys[b] + jy[b]],
+                color="#cccccc", lw=0.5, alpha=0.5, zorder=1)
+
+    for ci in sorted(set(cidx)):
+        mask = cidx == ci
+        if ci < 0:
+            color = "#000000"
+            lbl = "no terminal"
+        else:
+            color = PALETTE[ci % len(PALETTE)]
+            # label terminal by a representative state
+            rep_scc = term_ids[ci]
+            rep_node = sccs[rep_scc][0]
+            cyc = "cycle" if len(sccs[rep_scc]) > 1 else "fixed pt"
+            lbl = f"→ {m.label(states[rep_node])} ({cyc})"
+        ax.scatter(xs[mask] + jx[mask], ys[mask] + jy[mask], s=90,
+                   color=color, edgecolors="black", linewidths=0.5,
+                   zorder=3, label=lbl)
+
+    ax.set_xlabel(_axis_label(ax_x))
+    ax.set_ylabel(_axis_label(ax_y) if ax_y else "(single axis)")
+    _decorate_enum_ticks(ax, m, ax_x, ax_y)
+    ax.set_title(f"{m.fsm} — basin_map (discrete: {nscc} SCCs, "
+                 f"{len(term_ids)} terminal)", fontsize=13, weight="bold")
+    ax.legend(loc="center left", bbox_to_anchor=(1.01, 0.5), fontsize=8,
+              title="terminal basin", frameon=True)
+    ax.grid(True, alpha=0.25)
+    fig.savefig(out_path, dpi=120, bbox_inches="tight")
+    plt.close(fig)
+    return (f"discrete: {n} reachable states, {nscc} SCCs, "
+            f"{len(term_ids)} terminal basins")
+
+
+def _decorate_enum_ticks(ax, m, ax_x, ax_y):
+    if ax_x["kind"] == "enum":
+        vs = m.enum_variants[ax_x["name"]]
+        ax.set_xticks(range(len(vs)))
+        ax.set_xticklabels(vs, rotation=30, ha="right", fontsize=8)
+    elif ax_x["kind"] == "bool":
+        ax.set_xticks([0, 1])
+        ax.set_xticklabels(["false", "true"])
+    if ax_y is not None:
+        if ax_y["kind"] == "enum":
+            vs = m.enum_variants[ax_y["name"]]
+            ax.set_yticks(range(len(vs)))
+            ax.set_yticklabels(vs, fontsize=8)
+        elif ax_y["kind"] == "bool":
+            ax.set_yticks([0, 1])
+            ax.set_yticklabels(["false", "true"])
+
+
+# --------------------------------------------------------------------------
+# NUMERIC / MIXED: grid of seeds -> iterate to convergence -> cluster regions
+# --------------------------------------------------------------------------
+def _state_key_for_cluster(m, st, axes):
+    """A coarse key for grouping attractor states (used to find regions)."""
+    return tuple(round(_ordinal(m, v, st[v["name"]])) for v in m.state_vars)
+
+
+def _iterate_to_attractor(m, seed_state, cache, resolved, max_steps=4000):
+    """Follow ONE successor chain to its attractor and return that attractor's
+    phase-invariant SIGNATURE. Two memos make a grid of seeds tractable:
+      `cache`    : state-key -> successor state (avoids re-solving z3).
+      `resolved` : state-key -> attractor signature (once a chain settles, every
+                   state along it is tagged with the attractor it reaches, so a
+                   later chain that touches any of them short-circuits instantly).
+    The first chain pays the full cost of walking onto the attractor; all later
+    chains merge onto already-resolved territory and stop."""
+    cur = seed_state
+    history = []
+    seen = {}
+    for step in range(max_steps):
+        k = m._key(cur)
+        if k in resolved:
+            sig = resolved[k]
+            for h in history:
+                resolved[m._key(h)] = sig
+            return sig
+        if k in seen:                       # closed a cycle
+            cycle = history[seen[k]:]
+            sig = _attractor_signature(m, cycle)
+            for h in history:
+                resolved[m._key(h)] = sig
+            return sig
+        seen[k] = step
+        history.append(cur)
+        if k in cache:
+            nxt = cache[k]
+        else:
+            nxt = m.successor(cur)
+            cache[k] = nxt
+        if nxt is None:                     # dead-end / fixed point
+            sig = _attractor_signature(m, [cur])
+            for h in history:
+                resolved[m._key(h)] = sig
+            return sig
+        cur = nxt
+    # ran out of steps: signature from the tail (best effort)
+    sig = _attractor_signature(m, history[-min(len(history), 12):])
+    for h in history:
+        resolved[m._key(h)] = sig
+    return sig
+
+
+def _numeric_basins(m, out_path):
+    axes = _choose_axes(m)
+    if len(axes) < 1:
+        _placeholder(out_path, m.fsm, "no axes available")
+        return "numeric: no axes"
+    ax_x = axes[0]
+    ax_y = axes[1] if len(axes) > 1 else None
+
+    # baseline values for the non-axis variables: use initial_state if present,
+    # else 0 / first variant / false.
+    init = m.initial_state()
+
+    def baseline(v):
+        if init is not None and v["name"] in init:
+            return init[v["name"]]
+        k = v["kind"]
+        if k in ("int", "real"):
+            return 0
+        if k == "bool":
+            return False
+        if k == "enum":
+            return m.enum_variants[v["name"]][0]
+        if k == "string":
+            return ""
+        return 0
+
+    # grid bounds for each axis
+    def axis_grid(v, n):
+        k = v["kind"]
+        if k in ("int", "real"):
+            # heuristic bounds; vanderpol lives in ~[-3200,3200]
+            lo, hi = -3200, 3200
+            return list(np.linspace(lo, hi, n)), (lo, hi), True
+        if k == "bool":
+            return [False, True], (-0.5, 1.5), False
+        if k == "enum":
+            variants = m.enum_variants[v["name"]]
+            return list(variants), (-0.5, len(variants) - 0.5), False
+        return [""], (-0.5, 0.5), False
+
+    nx = 28 if ax_x["kind"] in ("int", "real") else None
+    ny = 28 if (ax_y and ax_y["kind"] in ("int", "real")) else None
+    gx, bx, _ = axis_grid(ax_x, nx or 8)
+    if ax_y is not None:
+        gy, by, _ = axis_grid(ax_y, ny or 8)
+    else:
+        gy, by = [0], (-0.5, 0.5)
+
+    # Build seeds, iterate each to its attractor, collect attractor centroids.
+    # A shared successor cache makes the grid tractable: once chains merge onto
+    # the attractor they reuse cached transitions instead of re-solving z3.
+    seeds = []
+    sigs = []        # per-seed attractor signature
+    cache = {}
+    resolved = {}
+    for xv in gx:
+        for yv in gy:
+            st = {v["name"]: baseline(v) for v in m.state_vars}
+            st[ax_x["name"]] = int(round(xv)) if ax_x["kind"] == "int" else xv
+            if ax_y is not None:
+                st[ax_y["name"]] = (int(round(yv)) if ax_y["kind"] == "int"
+                                    else yv)
+            sig = _iterate_to_attractor(m, st, cache, resolved)
+            seeds.append((xv, yv))
+            sigs.append(sig)
+
+    # cluster attractor signatures into regions
+    labels, centers = _cluster(sigs)
+    nregions = len(centers)
+
+    # plot
+    fig, ax = plt.subplots(figsize=(9, 7))
+    xs = np.array([_ordinal(m, ax_x, s[0]) for s in seeds], float)
+    if ax_y is not None:
+        ys = np.array([_ordinal(m, ax_y, s[1]) for s in seeds], float)
+    else:
+        ys = np.zeros(len(seeds))
+    labels = np.array(labels, int)
+
+    marker_size = 36 if (ax_x["kind"] in ("int", "real")) else 140
+    for ci in sorted(set(labels)):
+        mask = labels == ci
+        color = PALETTE[ci % len(PALETTE)]
+        # describe region by its mean attractor radius / signature
+        center = centers[ci]
+        desc = _describe_region(m, center)
+        ax.scatter(xs[mask], ys[mask], s=marker_size, color=color,
+                   edgecolors="none", marker="s",
+                   label=f"basin {ci}: {desc}")
+
+    # overlay attractor points (cycle centroids) as black dots, if numeric axes
+    if ax_x["kind"] in ("int", "real"):
+        cxs, cys = [], []
+        for cvec in centers:
+            cx, cy = _center_axis_coords(m, cvec, ax_x, ax_y)
+            if cx is not None:
+                cxs.append(cx)
+                cys.append(cy if cy is not None else 0.0)
+        if cxs:
+            ax.scatter(cxs, cys, s=60, color="black", marker="*",
+                       zorder=5, label="attractor")
+
+    ax.set_xlabel(_axis_label(ax_x))
+    ax.set_ylabel(_axis_label(ax_y) if ax_y else "(single axis)")
+    ax.set_xlim(bx)
+    if ax_y is not None:
+        ax.set_ylim(by)
+    _decorate_enum_ticks(ax, m, ax_x, ax_y)
+    kind = "numeric" if m.is_discrete() is False and all(
+        v["kind"] in ("int", "real") for v in m.state_vars) else "mixed"
+    ax.set_title(f"{m.fsm} — basin_map ({kind}: {nregions} basins on "
+                 f"{len(seeds)}-seed grid)", fontsize=13, weight="bold")
+    ax.legend(loc="center left", bbox_to_anchor=(1.01, 0.5), fontsize=8,
+              title="attractor basin", frameon=True)
+    fig.savefig(out_path, dpi=120, bbox_inches="tight")
+    plt.close(fig)
+    return f"{kind}: {len(seeds)} seeds -> {nregions} basins"
+
+
+def _attractor_signature(m, cycle):
+    """A PHASE-INVARIANT signature for an attractor (cycle of states). Two
+    trajectories that land on the same limit cycle must get the same signature
+    regardless of where on the cycle they happened to stop — otherwise every
+    phase reads as its own 'basin'. So for numeric axes we use the cycle's
+    geometric centroid and its mean radius about that centroid (both phase
+    invariant), NOT the raw per-state means. Discrete axes (enum/bool) use the
+    set of values visited, since those genuinely distinguish attractors."""
+    if not cycle:
+        return ("num", 0.0, 0.0, 0.0)
+    num_vars = [v for v in m.state_vars if v["kind"] in ("int", "real")]
+    disc_vars = [v for v in m.state_vars if v["kind"] in ("enum", "bool",
+                                                          "string")]
+    sig = []
+    # numeric: centroid magnitude + mean radius (size of the orbit)
+    for v in num_vars:
+        vals = [_ordinal(m, v, st[v["name"]]) for st in cycle]
+        sig.append(sum(vals) / len(vals))          # centroid coord
+    if num_vars:
+        cx = [sum(_ordinal(m, v, st[v["name"]]) for st in cycle) / len(cycle)
+              for v in num_vars]
+        radii = []
+        for st in cycle:
+            d = sum((_ordinal(m, v, st[v["name"]]) - cx[i]) ** 2
+                    for i, v in enumerate(num_vars)) ** 0.5
+            radii.append(d)
+        sig.append(sum(radii) / len(radii))        # mean orbit radius
+    # discrete: the SET of visited values, projected to an ordinal multiset key
+    for v in disc_vars:
+        visited = sorted(set(round(_ordinal(m, v, st[v["name"]]))
+                             for st in cycle))
+        # encode the visited-set as separated coords (one big number per set)
+        sig.append(float(sum(val * (1000 ** i)
+                             for i, val in enumerate(visited))))
+    sig.append(float(len(cycle)))
+    return tuple(sig)
+
+
+def _cluster(sigs, tol=400.0):
+    """Greedy clustering of signature vectors. Numeric coords use absolute tol;
+    this is enough to separate a limit cycle from a fixed point and distinct
+    discrete attractors. Returns (labels, centers)."""
+    centers = []
+    labels = []
+    for s in sigs:
+        best = -1
+        bestd = None
+        for i, c in enumerate(centers):
+            d = _sig_dist(s, c)
+            if bestd is None or d < bestd:
+                bestd = d
+                best = i
+        if best >= 0 and bestd <= tol:
+            labels.append(best)
+            # online mean update
+            c = centers[best]
+            centers[best] = tuple((a + b) / 2 for a, b in zip(c, s))
+        else:
+            centers.append(s)
+            labels.append(len(centers) - 1)
+    return labels, centers
+
+
+def _sig_dist(a, b):
+    n = min(len(a), len(b))
+    return sum(abs(a[i] - b[i]) for i in range(n))
+
+
+def _sig_layout(m):
+    """Index map into a signature vector (see _attractor_signature):
+      [ num centroid coords (one per numeric var, in state-var order),
+        mean orbit radius (only if any numeric var),
+        discrete set-codes (one per enum/bool/string var),
+        cycle length ]"""
+    num_vars = [v for v in m.state_vars if v["kind"] in ("int", "real")]
+    disc_vars = [v for v in m.state_vars if v["kind"] in ("enum", "bool",
+                                                          "string")]
+    num_idx = {v["name"]: i for i, v in enumerate(num_vars)}
+    base = len(num_vars)
+    radius_idx = base if num_vars else None
+    disc_start = base + (1 if num_vars else 0)
+    disc_idx = {v["name"]: disc_start + i for i, v in enumerate(disc_vars)}
+    return num_idx, radius_idx, disc_idx, num_vars, disc_vars
+
+
+def _center_axis_coords(m, cvec, ax_x, ax_y):
+    """Map an attractor signature's centroid back to plot coords on the chosen
+    numeric axes (used to overlay the attractor location)."""
+    num_idx, _, _, _, _ = _sig_layout(m)
+
+    def coord(ax):
+        if ax is None or ax["name"] not in num_idx:
+            return None
+        i = num_idx[ax["name"]]
+        return cvec[i] if i < len(cvec) else None
+
+    return coord(ax_x), coord(ax_y)
+
+
+def _describe_region(m, center):
+    """Short human description of a cluster center signature."""
+    num_idx, radius_idx, disc_idx, num_vars, disc_vars = _sig_layout(m)
+    cyclelen = center[-1] if center else 0
+    radius = center[radius_idx] if (radius_idx is not None
+                                    and radius_idx < len(center)) else 0.0
+    parts = []
+    for v in num_vars:
+        i = num_idx[v["name"]]
+        val = center[i] if i < len(center) else 0.0
+        parts.append(f"{v['name']}≈{val:.0f}")
+    if num_vars:
+        parts.append(f"r≈{radius:.0f}")
+    for v in disc_vars:
+        i = disc_idx[v["name"]]
+        code = int(center[i]) if i < len(center) else 0
+        # decode the visited-set ordinal multiset
+        vals = []
+        c = code
+        while c > 0:
+            vals.append(c % 1000)
+            c //= 1000
+        if not vals:
+            vals = [0]
+        if v["kind"] == "enum":
+            variants = m.enum_variants[v["name"]]
+            names = "/".join(variants[min(len(variants) - 1, j)] for j in vals)
+            parts.append(f"{v['name']}∈{{{names}}}")
+        elif v["kind"] == "bool":
+            parts.append(f"{v['name']}∈{{{'/'.join('T' if j else 'F' for j in vals)}}}")
+        else:
+            parts.append(f"{v['name']}#{len(vals)}")
+    kind = "cycle" if (cyclelen > 1.5 or radius > 150) else "fixed"
+    return ", ".join(parts) + f" ({kind})"
+
+
+# --------------------------------------------------------------------------
+def render(smt2, schema, out_path):
+    m = load(smt2, schema)
+    if m.is_discrete():
+        return _discrete_basins(m, out_path)
+    return _numeric_basins(m, out_path)
+
+
+def main(argv):
+    if len(argv) != 4:
+        print("usage: render_basin_map.py <smt2> <schema> <out_path>",
+              file=sys.stderr)
+        return 2
+    smt2, schema, out_path = argv[1], argv[2], argv[3]
+    os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
+    try:
+        note = render(smt2, schema, out_path)
+        print(f"[basin_map] {out_path}: {note}")
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        m_fsm = "unknown"
+        try:
+            m_fsm = load(smt2, schema).fsm
+        except Exception:
+            pass
+        _placeholder(out_path, m_fsm, f"render error: {type(e).__name__}: {e}")
+        print(f"[basin_map] {out_path}: placeholder ({e})")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

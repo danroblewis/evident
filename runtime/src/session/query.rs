@@ -398,4 +398,55 @@ impl EvidentRuntime {
         Ok(QueryResult { satisfied: r.satisfied, bindings: r.bindings })
     }
 
+    /// Export the transition relation of `name` as SMT-LIB plus a JSON schema of
+    /// the carried state leaves (a leaf `X` is carried iff `_X` also exists). The
+    /// Python visualization tools load these and query the transition by pinning
+    /// the `_X` constants and solving for the `X` constants. Returns (smt2, json).
+    pub fn export_transition(&self, name: &str) -> Result<(String, String), RuntimeError> {
+        let schema = self.schemas.get(name)
+            .ok_or_else(|| RuntimeError::UnknownSchema(name.to_string()))?;
+        let empty: HashMap<String, Value> = HashMap::new();
+        let cached = crate::encode::build_cache(
+            schema, &self.schemas, self.z3_ctx, &self.datatypes, Some(&self.enums), &empty, 2);
+        let smt2 = format!("{}", cached.solver);
+
+        // The interface = the first `param_count` body items (the claim's first-line
+        // params). A carried leaf is `interface` iff its prefix is a param name,
+        // else `internal` (body-declared). Renderers default their axes to the
+        // interface — the model's observable contract — and treat internals as
+        // existentially-projected witnesses (see docs/design/portrait-axes.md).
+        let interface: std::collections::HashSet<&str> = schema.body.iter()
+            .take(schema.param_count)
+            .filter_map(|it| match it {
+                crate::core::ast::BodyItem::Membership { name, .. } => Some(name.as_str()),
+                _ => None,
+            })
+            .collect();
+
+        let mut names: Vec<&String> = cached.env.keys().collect();
+        names.sort();
+        let mut rows: Vec<String> = Vec::new();
+        for n in names {
+            if n.starts_with('_') { continue; }
+            let prev = format!("_{n}");
+            if !cached.env.contains_key(&prev) { continue; }
+            let kind = match cached.env.get(n) {
+                Some(crate::encode::Var::IntVar(_))    => "int",
+                Some(crate::encode::Var::RealVar(_))   => "real",
+                Some(crate::encode::Var::BoolVar(_))   => "bool",
+                Some(crate::encode::Var::StrVar(_))    => "string",
+                Some(crate::encode::Var::EnumVar { .. }) => "enum",
+                _ => continue,
+            };
+            let role = if interface.contains(n.split('.').next().unwrap_or(n))
+                { "interface" } else { "internal" };
+            rows.push(format!(
+                "    {{\"name\": \"{n}\", \"prev\": \"{prev}\", \"kind\": \"{kind}\", \"role\": \"{role}\"}}"));
+        }
+        let json = format!(
+            "{{\n  \"fsm\": \"{name}\",\n  \"is_first_tick\": \"is_first_tick\",\n  \"state\": [\n{}\n  ]\n}}\n",
+            rows.join(",\n"));
+        Ok((smt2, json))
+    }
+
 }

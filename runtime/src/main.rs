@@ -6,8 +6,6 @@ use evident_runtime::ast::BodyItem;
 use evident_runtime::encode::collect_referenced_names;
 use evident_runtime::{EvidentRuntime, Value, trampoline};
 
-mod viz;
-
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.is_empty() {
@@ -17,7 +15,7 @@ fn main() -> ExitCode {
     match args[0].as_str() {
         "test"        => cmd_test(&args[1..]),
         "effect-run"  => cmd_effect_run(&args[1..]),
-        "phase-portrait" => viz::cmd_phase_portrait(&args[1..]),
+        "export"      => cmd_export(&args[1..]),
         "help" | "--help" | "-h" => { usage(); ExitCode::SUCCESS }
         other => {
             eprintln!("unknown subcommand: {}", other);
@@ -31,7 +29,7 @@ fn usage() {
     eprintln!("usage:");
     eprintln!("  evident test         [path] [-v] [--no-color]");
     eprintln!("  evident effect-run   <file>           # run an effect-driven program");
-    viz::usage();
+    eprintln!("  evident export       <file> [--out PREFIX]  # dump transition SMT-LIB + schema JSON");
 }
 
 const STDLIB_RUNTIME: &str = "stdlib/runtime.ev";
@@ -121,6 +119,64 @@ fn cmd_effect_run(args: &[String]) -> ExitCode {
             ExitCode::from(1)
         }
     }
+}
+
+/// `evident export <file> [--out PREFIX]` — dump the FSM's transition relation as
+/// SMT-LIB (`PREFIX.smt2`) + a JSON state schema (`PREFIX.schema.json`) for the
+/// Python visualization tools. Replaces the old baked-in `phase-portrait` command.
+fn cmd_export(args: &[String]) -> ExitCode {
+    let mut path: Option<String> = None;
+    let mut out: Option<String> = None;
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--out" => { i += 1; out = args.get(i).cloned(); }
+            "-h" | "--help" => {
+                eprintln!("usage: evident export <file> [--out PREFIX]");
+                return ExitCode::SUCCESS;
+            }
+            other if other.starts_with('-') => {
+                eprintln!("export: unknown flag {other:?}");
+                return ExitCode::from(2);
+            }
+            other => { path = Some(other.to_string()); }
+        }
+        i += 1;
+    }
+    let Some(path) = path else {
+        eprintln!("export: need a program path");
+        return ExitCode::from(2);
+    };
+    let mut rt = EvidentRuntime::new();
+    if let Err(e) = rt.load_file(Path::new(STDLIB_RUNTIME)) {
+        eprintln!("export: load {STDLIB_RUNTIME}: {e}");
+        return ExitCode::from(1);
+    }
+    if let Err(e) = rt.load_file(Path::new(&path)) {
+        eprintln!("export: load {path}: {e}");
+        return ExitCode::from(1);
+    }
+    let fsm = match trampoline::single_fsm(&rt) {
+        Ok(s) => s.claim_name,
+        Err(e) => { eprintln!("export: no single fsm in {path}: {e}"); return ExitCode::from(2); }
+    };
+    let (smt2, json) = match rt.export_transition(&fsm) {
+        Ok(x) => x,
+        Err(e) => { eprintln!("export: {e}"); return ExitCode::from(1); }
+    };
+    let prefix = out.unwrap_or_else(|| {
+        Path::new(&path).file_stem().and_then(|s| s.to_str()).unwrap_or(&fsm).to_string()
+    });
+    let smt_path = format!("{prefix}.smt2");
+    let json_path = format!("{prefix}.schema.json");
+    if let Err(e) = std::fs::write(&smt_path, smt2) {
+        eprintln!("export: write {smt_path}: {e}"); return ExitCode::from(1);
+    }
+    if let Err(e) = std::fs::write(&json_path, json) {
+        eprintln!("export: write {json_path}: {e}"); return ExitCode::from(1);
+    }
+    println!("wrote {smt_path} + {json_path}  (fsm: {fsm})");
+    ExitCode::SUCCESS
 }
 
 #[derive(Debug, Clone)]

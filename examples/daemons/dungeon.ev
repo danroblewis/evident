@@ -1,0 +1,73 @@
+-- A text-adventure dungeon: a UTILITY program whose state is mostly DISCRETE — a
+-- Room enum plus item/escape bools. The transition is the room-ADJACENCY relation
+-- (move to a neighbouring room, gated by items), nondeterministic over the available
+-- exits and autonomous (no external input), so the reachable state graph IS the
+-- dungeon map. Pick up a torch in the kitchen, a key in the library; the cellar needs
+-- the torch, the vault (with the treasure) needs the key; escape via the exit with the
+-- treasure.
+import "stdlib/runtime.ev"
+
+enum Room = Entrance | Hall | Kitchen | Library | Cellar | Vault | Gate
+
+type Dungeon
+    room         ∈ Room
+    has_torch    ∈ Bool
+    has_key      ∈ Bool
+    has_treasure ∈ Bool
+    escaped      ∈ Bool
+
+fsm dungeon(d ∈ Dungeon)
+    is_first_tick ⇒
+        (d.room = Entrance ∧ ¬d.has_torch ∧ ¬d.has_key ∧ ¬d.has_treasure ∧ ¬d.escaped)
+    ¬is_first_tick ⇒
+        -- adjacency: the next room is a neighbour of the previous one (nondeterministic)
+        _d.room = Entrance ⇒ (d.room = Entrance ∨ d.room = Hall)
+        _d.room = Hall     ⇒ (d.room = Hall ∨ d.room = Entrance ∨ d.room = Kitchen
+                              ∨ d.room = Library ∨ d.room = Cellar ∨ d.room = Gate)
+        _d.room = Kitchen  ⇒ (d.room = Kitchen ∨ d.room = Hall)
+        _d.room = Library  ⇒ (d.room = Library ∨ d.room = Hall)
+        _d.room = Cellar   ⇒ (d.room = Cellar ∨ d.room = Hall ∨ d.room = Vault)
+        _d.room = Vault    ⇒ (d.room = Vault ∨ d.room = Cellar)
+        _d.room = Gate     ⇒ (d.room = Gate)
+        -- gates: the cellar needs a torch, the vault needs a key
+        d.room = Cellar ⇒ _d.has_torch
+        d.room = Vault  ⇒ _d.has_key
+        -- pickups carry forward; escape requires the treasure at the exit
+        d.has_torch    = (_d.has_torch ∨ d.room = Kitchen)
+        d.has_key      = (_d.has_key ∨ d.room = Library)
+        d.has_treasure = (_d.has_treasure ∨ d.room = Vault)
+        d.escaped      = (_d.escaped ∨ (d.room = Gate ∧ d.has_treasure))
+
+-- ── Static tests (validate the transition encodes, no silent drops) ──
+
+claim sat_first_tick_entrance
+    _d ∈ Dungeon
+    d ∈ Dungeon
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = true
+    dungeon
+    (d.room = Entrance ∧ ¬d.has_treasure)
+
+claim sat_kitchen_grabs_torch
+    _d ∈ Dungeon
+    d ∈ Dungeon
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_d.room = Hall ∧ ¬_d.has_torch)
+    dungeon
+    (d.room = Kitchen ∧ d.has_torch)
+
+claim unsat_cellar_needs_torch
+    _d ∈ Dungeon
+    d ∈ Dungeon
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_d.room = Hall ∧ ¬_d.has_torch)
+    dungeon
+    d.room = Cellar
