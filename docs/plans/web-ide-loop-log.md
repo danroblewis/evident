@@ -117,3 +117,29 @@ the reachable graph has a recurrent SCC (≥2-node) [also Marek/Sam nit]; (2) **
 `evident query` CLI (SAT witness via the existing rt.query engine) + `/api/solve` + a frontend
 solve panel (run a claim → witness/UNSAT; solve-for-X by pinning vars). Deferred to round 4 if
 needed: UNSAT core (needs runtime get_unsat_core) + enumeration (needs blocking clauses).
+
+---
+
+## Round 3 — solve/query (SAT witness + solve-for-X) + cyclic-vs-terminating banner
+
+**Build (commit 9a498f5):** cyclic banner (recurrent-SCC detection); `evident query` CLI
+(SAT witness via rt.query, ./test.sh green 252); `/api/solve`; the ⊨ Solve panel (run a claim →
+witness/UNSAT, pin vars for solve-for-X); queens + sum-pair samples; pure claims invite Solve
+instead of erroring. Only Ana re-run this round (Marek/Sam SHIPPED on round 2; round 3 is purely
+additive — they'll be re-confirmed on round 4).
+
+- **Ana (expert): NEEDS_WORK** — immediacy 4 · diagram-helps 5 · directness 3 · honesty 5 ·
+  first-run 5 · recovery 4 · promises 4. **Zero blockers.** Up from round 2 (directness 2→3,
+  promises 3→4). Adversarially confirmed: cyclic banner sound (counter's terminal self-loop NOT
+  called cyclic, vending's 3-cycle IS), witness verifiable (`col=[1,3,0,2]`), solve-for-X real
+  (`x=3→y=7`), UNSAT honest, no fabrication. Majors gating SHIP: (1) **UNSAT core** — UNSAT gives
+  no conflicting subset ("compiler error with no line number"); (2) **enumeration** — one witness,
+  can't walk all solutions (the Alloy use case). Nits: a seq-length-pin runtime quirk surfaced via
+  her raw-API probe (a length-1 witness under `#col=4` — runtime encoding edge, not IDE
+  fabrication; the pin-box path avoids it); the solve panel keeps a stale pin across sample switch.
+
+**Next (round 4 — flip Ana, both backend-only, no runtime change):** (1) **UNSAT core** via
+source-level delta-debugging (`/api/solve` removes each constraint line, re-queries; SAT-flipping
+lines = the core); (2) **enumeration** via iterated source-level blocking (solve → append
+`¬(witness)` → re-solve, up to a limit, with "showing k of N · complete/≥N" honesty); (3) clear
+the pin box on sample load. Then re-run all three on round 4.

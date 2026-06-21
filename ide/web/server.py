@@ -174,30 +174,120 @@ class SolveReq(BaseModel):
     source: str
     claim: str | None = None
     given: dict[str, str] | None = None
+    enumerate: bool = False
+    limit: int | None = None
+
+
+_HEADER_KW = ("claim", "type", "enum", "fsm", "schema", "import", "assert")
+
+
+def _run_query(source, claim, given, work):
+    """One `evident query --json` call → parsed {ok, satisfied, claim, bindings}."""
+    import json as _json
+    ev = os.path.join(work, "prog.ev")
+    with open(ev, "w") as f:
+        f.write(source)
+    cmd = [EVIDENT, "query", ev]
+    if claim:
+        cmd.append(claim)
+    for k, v in (given or {}).items():
+        cmd += ["--given", f"{k}={v}"]
+    cmd.append("--json")
+    r = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+    out = (r.stdout or "").strip()
+    try:
+        return _json.loads(out.splitlines()[-1]) if out else {"ok": False, "error": "no output"}
+    except Exception:
+        return {"ok": False, "error": (r.stderr or out).strip()[-600:] or "query failed"}
+
+
+def _block_term(name, val):
+    """An Evident expression true for THIS witness value — assembled into a ¬(…) blocking
+    constraint so enumeration can ask for a *different* solution."""
+    if isinstance(val, bool):
+        return f"{name} = {'true' if val else 'false'}"
+    if isinstance(val, (int, float)):
+        return f"{name} = {val}"
+    if isinstance(val, str):
+        # an enum-variant label (Idle) compares bare; a quoted string compares quoted.
+        ident = val and (val[0].isalpha() or val[0] == "_") and "(" not in val
+        return f"{name} = {val}" if ident else f'{name} = "{val}"'
+    if isinstance(val, list):
+        terms = []
+        for i, el in enumerate(val):
+            t = _block_term(f"{name}[{i}]", el)
+            if t is None:
+                return None
+            terms.append(t)
+        return "(" + " ∧ ".join(terms) + ")" if terms else None
+    return None                                    # composite / unsupported → can't block
+
+
+def _block_clause(bindings):
+    terms = []
+    for k, v in sorted(bindings.items()):
+        t = _block_term(k, v)
+        if t is None:
+            return None
+        terms.append(t)
+    return "¬(" + " ∧ ".join(terms) + ")" if terms else None
+
+
+def _enumerate(source, claim, given, limit, work):
+    """Walk distinct witnesses by iterated source-level blocking: solve, append a ¬(witness)
+    constraint to the claim body, re-solve, until UNSAT (complete) or the limit (≥limit)."""
+    sols, blocks, resolved_claim = [], [], claim
+    for _ in range(limit):
+        src = source if not blocks else source.rstrip() + "\n" + "\n".join("    " + b for b in blocks) + "\n"
+        r = _run_query(src, claim, given, work)
+        if not r.get("ok"):
+            return resolved_claim, sols, len(sols) > 0, r.get("error")  # blocking broke parse → stop
+        resolved_claim = r.get("claim") or resolved_claim
+        if not r.get("satisfied"):
+            return resolved_claim, sols, True, None                     # exhausted → complete
+        b = r.get("bindings", {})
+        sols.append(b)
+        clause = _block_clause(b)
+        if clause is None:
+            return resolved_claim, sols, False, None                    # can't block → incomplete
+        blocks.append(clause)
+    return resolved_claim, sols, False, None                            # hit limit → ≥limit
+
+
+def _unsat_core(source, claim, work):
+    """A practical UNSAT core by delta-debugging the source: a line whose removal flips the
+    claim to SAT is part of the conflict. Header/decl lines error on removal (undefined name),
+    so they self-exclude. Line granularity; multi-line ∀ blocks may be missed (noted in UI)."""
+    lines = source.split("\n")
+    core = []
+    for i, ln in enumerate(lines):
+        s = ln.strip()
+        if not s or s.startswith("--") or s.split(" ", 1)[0] in _HEADER_KW:
+            continue
+        trial = "\n".join(lines[:i] + lines[i + 1:])
+        r = _run_query(trial, claim, None, work)
+        if r.get("ok") and r.get("satisfied"):
+            core.append({"line": i + 1, "text": s})
+    return core
 
 
 @app.post("/api/solve")
 def solve(req: SolveReq):
-    """Run a claim through the solver: SAT + a witness assignment, or UNSAT. `given` pins
-    variables so the solver fills the rest (solve-for-X). Reuses `evident query --json` —
-    the same encode+solve path as `test`, just surfacing the model."""
-    import json as _json
+    """Interrogate a claim. Default: SAT + a witness, or UNSAT (with a delta-debugged core).
+    `given` pins variables (solve-for-X). `enumerate` walks distinct witnesses by blocking.
+    All paths reuse `evident query` — the same encode+solve path as `test`."""
     with _LOCK, tempfile.TemporaryDirectory() as work:
-        ev = os.path.join(work, "prog.ev")
-        with open(ev, "w") as f:
-            f.write(req.source)
-        cmd = [EVIDENT, "query", ev]
-        if req.claim:
-            cmd.append(req.claim)
-        for k, v in (req.given or {}).items():
-            cmd += ["--given", f"{k}={v}"]
-        cmd.append("--json")
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-        out = (r.stdout or "").strip()
-        try:
-            return _json.loads(out.splitlines()[-1]) if out else {"ok": False, "error": "no output"}
-        except Exception:
-            return {"ok": False, "error": (r.stderr or out).strip()[-600:] or "query failed"}
+        if req.enumerate:
+            limit = max(1, min(req.limit or 10, 40))
+            claim, sols, complete, err = _enumerate(req.source, req.claim, req.given, limit, work)
+            if not sols and err:
+                return {"ok": False, "error": err}
+            return {"ok": True, "satisfied": bool(sols), "claim": claim, "solutions": sols,
+                    "count": len(sols), "complete": complete, "limit": limit}
+        r = _run_query(req.source, req.claim, req.given, work)
+        if r.get("ok") and r.get("satisfied") is False and not req.given:
+            r["core"] = _unsat_core(req.source, r.get("claim") or req.claim, work)
+        return r
 
 
 @app.get("/")

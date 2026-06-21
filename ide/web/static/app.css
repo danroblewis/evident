@@ -31,6 +31,8 @@ html,body { margin:0; height:100%; background:var(--bg); color:var(--ink);
 #solve-body table { border-collapse:collapse; }
 #solve-body td { padding:2px 14px 2px 0; vertical-align:top; }
 #solve-body td.k { color:var(--accent); } #solve-body td.v { color:var(--ink); white-space:pre-wrap; }
+#solve-body .sol { padding:2px 0; border-bottom:1px solid #1b2129; }
+#solve-body .sol .dim { margin-right:8px; }
 #solve-controls { display:flex; gap:6px; padding:7px 14px; border-top:1px solid var(--line); }
 #solve-given { flex:1; background:#0f1419; color:var(--ink); border:1px solid var(--line);
   border-radius:6px; padding:3px 8px; font:12px ui-monospace,Menlo,monospace; }

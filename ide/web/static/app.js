@@ -226,35 +226,57 @@ function parsePins(s) {
   return given;
 }
 
+function escapeHtml(s) { return (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+
 function renderSolve(d, given) {
   const head = $("#solve-head"), body = $("#solve-body");
   const pinned = Object.keys(given || {});
-  if (!d.ok) { head.innerHTML = `<span class="bad">✕ ${d.error || "query failed"}</span>`; body.innerHTML = ""; return; }
-  if (d.satisfied) {
-    head.innerHTML = `<span class="sat">⊨ SAT</span> — <b>${d.claim || "claim"}</b> has a witness`
-      + (pinned.length ? ` <span class="dim">(pinned: ${pinned.join(", ")})</span>` : "");
-    const keys = Object.keys(d.bindings || {}).sort();
-    body.innerHTML = keys.length
-      ? `<table>${keys.map((k) => `<tr><td class="k">${k}${pinned.includes(k) ? " 📌" : ""}</td>`
-          + `<td class="v">${JSON.stringify(d.bindings[k])}</td></tr>`).join("")}</table>`
-      : '<span class="dim">satisfiable (no free variables to report)</span>';
-  } else {
+  if (!d.ok) { head.innerHTML = `<span class="bad">✕ ${escapeHtml(d.error || "query failed")}</span>`; body.innerHTML = ""; return; }
+
+  // enumeration — a list of distinct witnesses, with exhaustive/▸limit honesty
+  if (d.solutions) {
+    const n = d.count != null ? d.count : d.solutions.length;
+    if (!n) { head.innerHTML = `<span class="unsat">⊭ UNSAT</span> — <b>${d.claim || "claim"}</b> has no solutions`; body.innerHTML = ""; return; }
+    head.innerHTML = `<span class="sat">⊨ ${d.complete ? "all " + n : "≥ " + n}</span> distinct witness${n === 1 ? "" : "es"} of <b>${d.claim || "claim"}</b>`
+      + (d.complete ? ` <span class="dim">(complete — the solver exhausted the space)</span>`
+                    : ` <span class="dim">(showing ${n}; stopped at the limit, more may exist)</span>`);
+    body.innerHTML = d.solutions.map((s, i) =>
+      `<div class="sol"><span class="dim">#${i + 1}</span> `
+      + Object.keys(s).sort().map((k) => `${k}=${escapeHtml(JSON.stringify(s[k]))}`).join("&nbsp;&nbsp;") + `</div>`).join("");
+    return;
+  }
+
+  // UNSAT — with a delta-debugged core (which constraints conflict)
+  if (d.satisfied === false) {
     head.innerHTML = `<span class="unsat">⊭ UNSAT</span> — <b>${d.claim || "claim"}</b> has no solution`
       + (pinned.length ? ` <span class="dim">with ${pinned.join(", ")} pinned</span>` : "");
-    body.innerHTML = `<span class="dim">no assignment satisfies the constraints${pinned.length ? " under those pins — try different ones." : "."}</span>`;
+    body.innerHTML = (d.core && d.core.length)
+      ? `<div class="dim">conflicting core — removing any one of these makes it solvable:</div>`
+        + `<table>${d.core.map((c) => `<tr><td class="k">line ${c.line}</td><td class="v">${escapeHtml(c.text)}</td></tr>`).join("")}</table>`
+      : `<span class="dim">no assignment satisfies the constraints${pinned.length ? " under those pins — try different ones." : "."}</span>`;
+    return;
   }
+
+  // single SAT witness
+  head.innerHTML = `<span class="sat">⊨ SAT</span> — <b>${d.claim || "claim"}</b> has a witness`
+    + (pinned.length ? ` <span class="dim">(pinned: ${pinned.join(", ")})</span>` : "");
+  const keys = Object.keys(d.bindings || {}).sort();
+  body.innerHTML = keys.length
+    ? `<table>${keys.map((k) => `<tr><td class="k">${k}${pinned.includes(k) ? " 📌" : ""}</td>`
+        + `<td class="v">${escapeHtml(JSON.stringify(d.bindings[k]))}</td></tr>`).join("")}</table>`
+    : '<span class="dim">satisfiable (no free variables to report)</span>';
 }
 
-async function solve() {
+async function solve(enumerate) {
   const source = cm.getValue();
   const given = parsePins($("#solve-given").value);
   $("#solve").hidden = false;
-  $("#solve-head").innerHTML = '<span class="dim">solving…</span>';
+  $("#solve-head").innerHTML = `<span class="dim">${enumerate ? "enumerating…" : "solving…"}</span>`;
   $("#solve-body").innerHTML = "";
   try {
     const res = await fetch("/api/solve", {
       method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ source, given }),
+      body: JSON.stringify({ source, given, enumerate: !!enumerate, limit: 20 }),
     });
     renderSolve(await res.json(), given);
   } catch (e) {
@@ -262,17 +284,23 @@ async function solve() {
   }
 }
 
-$("#solve-btn").onclick = () => solve();
-$("#solve-resolve").onclick = () => solve();
+$("#solve-btn").onclick = () => solve(false);
+$("#solve-resolve").onclick = () => solve(false);
+$("#solve-all").onclick = () => solve(true);
 $("#solve-close").onclick = () => { $("#solve").hidden = true; };
-$("#solve-given").addEventListener("keydown", (e) => { if (e.key === "Enter") solve(); });
+$("#solve-given").addEventListener("keydown", (e) => { if (e.key === "Enter") solve(false); });
 
 // --- samples menu: open a worked example -----------------------------------------
 const sel = $("#samples");
 sel.innerHTML = '<option value="">open sample…</option>' +
   Object.keys(SAMPLES).map((k) => `<option value="${k}">${k}</option>`).join("");
 sel.onchange = () => {
-  if (SAMPLES[sel.value]) { cm.setValue(SAMPLES[sel.value]); run(); }
+  if (SAMPLES[sel.value]) {
+    cm.setValue(SAMPLES[sel.value]);
+    $("#solve-given").value = "";   // a fresh sample must not inherit the last pin…
+    $("#solve").hidden = true;       // …nor leave a stale UNSAT/witness over the new program
+    run();
+  }
   sel.value = "";          // reset the label so the same sample can be re-opened
 };
 
