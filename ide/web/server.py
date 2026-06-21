@@ -204,12 +204,29 @@ def analyze(req: Source):
             if edges:
                 g = nx.DiGraph(); g.add_edges_from(edges)
                 recurrent = max((len(c) for c in nx.strongly_connected_components(g)), default=1)
+            try:
+                structure = m.solution_structure(states=states, edges=edges)
+            except Exception as _e:
+                print(f"[server] structure failed: {type(_e).__name__}: {_e}", file=sys.stderr)
+                structure = None
             discrete = m.is_discrete()
             view = req.view if (req.view in VIEWS) else _recommend(m, n_states, max_branch, discrete)
-            png = _render_png(view, prefix) if view else b""
+            # Resilient render: a single buggy renderer must never sink the whole analysis.
+            # Try the chosen view, then fall back to dependable ones; report what rendered.
+            png = b""
+            for cand in [view, "state_graph", "time_series"]:
+                if cand in RENDERERS:
+                    try:
+                        png = _render_png(cand, prefix)
+                        view = cand
+                        break
+                    except Exception as _re:
+                        print(f"[server] render {cand} failed: {type(_re).__name__}: {_re}",
+                              file=sys.stderr)
             return {
                 "ok": True,
                 "banner": _banner(m, max_branch, recurrent),
+                "structure": structure,
                 "dropped": dropped,
                 "branching": max_branch,
                 "states": n_states,

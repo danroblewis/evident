@@ -21,43 +21,126 @@ const DEFAULT_PROGRAM =
         Δi   = (_i < 5 ? 1 : 0)
         Δsum = (_i < 5 ? _i : 0)`;
 
-// A small menu of worked examples — so a newcomer can learn by opening, not just by the
-// one preloaded program. Each is a distinct model SHAPE the diagram characterizes.
+// Worked examples chosen to demonstrate DISTINCT model shapes and language features — not
+// seven counters. The FSMs exercise different dynamics (a terminating ramp, a real cyclic
+// machine, a 2-D phase spiral, a wild integer orbit, nondeterministic drift); the claims
+// show algorithms expressed as constraints (solve them with ⊨ Solve).
 const SAMPLES = {
-  "accumulate · driven pipeline": DEFAULT_PROGRAM,
-  "counter · terminating clock":
+  "counter · a terminating clock (FSM)":
 `fsm counter
     count ∈ Int
     is_first_tick ⇒ count = 0
     ¬is_first_tick ⇒ Δcount = (_count < 5 ? 1 : 0)
     done ∈ Bool = (count ≥ 5)`,
-  "runaway · the bug hunt":
-`fsm runaway
-    count ∈ Int
-    is_first_tick ⇒ count = 0
-    ¬is_first_tick ⇒ Δcount = 1`,
-  "pick · nondeterministic":
+  "accumulate · a driven pipeline (FSM)": DEFAULT_PROGRAM,
+  "vending · stock, coins & a vault (FSM)":
+`-- A real vending machine: coins accumulate (up to a capacity), products sell from stock
+-- into the operator's vault, the customer can cancel for a refund, and the operator
+-- services it. The free \`act\` each tick makes the machine nondeterministic.
+enum Mode = Idle | Coining | Dispensing | Refunding | Servicing
+enum Act  = InsertCoin | Purchase | Cancel | Service
+
+fsm vending
+    mode    ∈ Mode
+    0 ≤ balance ∈ Int ≤ 5      -- coins in the receptacle (capacity 5)
+    0 ≤ stock   ∈ Int ≤ 3      -- units of product remaining
+    0 ≤ vault   ∈ Int ≤ 12     -- money the operator has collected
+    act     ∈ Act              -- free customer/operator choice each tick
+
+    is_first_tick ⇒ (mode = Idle ∧ balance = 0 ∧ stock = 3 ∧ vault = 0)
+
+    (¬is_first_tick ∧ act = InsertCoin ∧ _balance < 5) ⇒ (mode = Coining ∧ balance = _balance + 1 ∧ stock = _stock ∧ vault = _vault)
+    (¬is_first_tick ∧ act = InsertCoin ∧ _balance ≥ 5) ⇒ (mode = Coining ∧ balance = _balance ∧ stock = _stock ∧ vault = _vault)
+    (¬is_first_tick ∧ act = Purchase ∧ _balance ≥ 3 ∧ _stock > 0) ⇒ (mode = Dispensing ∧ balance = _balance - 3 ∧ stock = _stock - 1 ∧ vault = _vault + 3)
+    (¬is_first_tick ∧ act = Purchase ∧ (_balance < 3 ∨ _stock = 0)) ⇒ (mode = Idle ∧ balance = _balance ∧ stock = _stock ∧ vault = _vault)
+    (¬is_first_tick ∧ act = Cancel)  ⇒ (mode = Refunding ∧ balance = 0 ∧ stock = _stock ∧ vault = _vault)
+    (¬is_first_tick ∧ act = Service) ⇒ (mode = Servicing ∧ balance = _balance ∧ stock = 3 ∧ vault = 0)`,
+  "traffic light · a cyclic state machine (FSM)":
+`enum Light = Red | Green | Yellow
+
+fsm traffic
+    light ∈ Light
+    timer ∈ Int
+    is_first_tick ⇒ (light = Red ∧ timer = 0)
+    (¬is_first_tick ∧ _timer ≥ 2) ⇒ timer = 0
+    (¬is_first_tick ∧ _timer < 2) ⇒ Δtimer = 1
+    (¬is_first_tick ∧ _timer < 2) ⇒ light = _light
+    (¬is_first_tick ∧ _timer ≥ 2 ∧ _light = Red)    ⇒ light = Green
+    (¬is_first_tick ∧ _timer ≥ 2 ∧ _light = Green)  ⇒ light = Yellow
+    (¬is_first_tick ∧ _timer ≥ 2 ∧ _light = Yellow) ⇒ light = Red`,
+  "oscillator · a damped spring (FSM, phase spiral)":
+`-- Two interacting real variables — position and velocity. Open the phase_portrait view:
+-- the trajectory spirals in (pos, vel) space. The solver finds the equilibrium at the
+-- origin, and the structure line reports it as an UNSTABLE one (the orbit diverges from it).
+fsm oscillator
+    pos ∈ Real
+    vel ∈ Real
+    is_first_tick ⇒ (pos = 60.0 ∧ vel = 0.0)
+    ¬is_first_tick ⇒ Δpos = _vel / 6.0
+    ¬is_first_tick ⇒ Δvel = (0.0 - _pos - _vel / 2.0) / 6.0`,
+  "collatz · the 3n+1 orbit (FSM)":
+`-- The Collatz map: halve n if even, else 3n+1. A wild integer orbit that always falls to 1.
+-- (No modulo operator yet, so even-ness is 2·(n/2) = n via integer division.)
+fsm collatz
+    n ∈ Int
+    is_first_tick ⇒ n = 27
+    ¬is_first_tick ⇒ n = (_n ≤ 1 ? 1 : (2 * (_n / 2) = _n ? _n / 2 : 3 * _n + 1))`,
+  "random walk · nondeterministic drift (FSM)":
+`-- Each tick the walker steps freely in x and y. The free dx/dy make it nondeterministic;
+-- the occupancy_heatmap shows where it dwells, the reachability_tree shows the fan.
+fsm random_walk
+    x ∈ Int
+    y ∈ Int
+    dx ∈ Int
+    dy ∈ Int
+    -1 ≤ dx ≤ 1
+    -1 ≤ dy ≤ 1
+    is_first_tick ⇒ (x = 0 ∧ y = 0)
+    ¬is_first_tick ⇒ Δx = dx
+    ¬is_first_tick ⇒ Δy = dy`,
+  "pick · a nondeterministic choice (FSM)":
 `fsm pick
     count ∈ Int
     1 ≤ step ∈ Int ≤ 3
     is_first_tick ⇒ count = 0
     ¬is_first_tick ⇒ Δcount = step`,
-  "vending · cyclic machine":
-`enum Mode = Idle | Coining | Vending
-
-fsm vending
-    mode ∈ Mode
-    is_first_tick ⇒ mode = Idle
-    (¬is_first_tick ∧ _mode = Idle)    ⇒ mode = Coining
-    (¬is_first_tick ∧ _mode = Coining) ⇒ mode = Vending
-    (¬is_first_tick ∧ _mode = Vending) ⇒ mode = Idle`,
-  "queens · solve a puzzle (⊨ Solve)":
-`claim queens
+  "N-queens · an algorithm as constraints (⊨ Solve)":
+`-- No search algorithm: just state what a valid board IS, and the solver finds one.
+-- Indented lines after a ⇒ (or a ∀ :) are a conjunction — all must hold.
+claim queens
     col ∈ Seq(Int)
     #col = 4
-    ∀ i ∈ {0..3} : 0 ≤ col[i] ∧ col[i] ≤ 3
-    ∀ i ∈ {0..3} : ∀ j ∈ {0..3} :
-        i < j ⇒ (col[i] ≠ col[j] ∧ col[i] - col[j] ≠ i - j ∧ col[i] - col[j] ≠ j - i)`,
+
+    ∀ i ∈ {0..3} :
+        0 ≤ col[i]
+        col[i] ≤ 3
+
+    ∀ i ∈ {0..3} :
+        ∀ j ∈ {0..3} :
+            i < j ⇒
+                col[i] ≠ col[j]
+                col[i] - col[j] ≠ i - j
+                col[i] - col[j] ≠ j - i`,
+  "graph coloring · 3-color a map (⊨ Solve)":
+`-- Color six regions so no two neighbors share a color — the classic CSP, as constraints.
+enum Hue = Red | Green | Blue
+
+claim graph_coloring
+    wa  ∈ Hue
+    nt  ∈ Hue
+    sa  ∈ Hue
+    q   ∈ Hue
+    nsw ∈ Hue
+    v   ∈ Hue
+    wa ≠ nt
+    wa ≠ sa
+    nt ≠ sa
+    nt ≠ q
+    sa ≠ q
+    sa ≠ nsw
+    sa ≠ v
+    q  ≠ nsw
+    nsw ≠ v`,
   "sum-pair · solve-for-X (⊨ Solve, pin x=3)":
 `claim sum_pair
     x ∈ Int
@@ -231,10 +314,44 @@ function humanizeError(err) {
   return err + hint;
 }
 
+// The SOLVER-computed structure of the whole model (not a single run): a verdict, the
+// rigorous fixed points / equilibria (states the solver proves map to themselves), and the
+// exact boundary of the solution space (min..max each variable spans over the reachable set).
+const VERDICTS = {
+  terminates:       ["✓", "Terminates", "the orbit converges to a fixed point"],
+  cyclic:           ["↻", "Cyclic", "revisits states forever — no fixed point"],
+  nondeterministic: ["⑂", "Nondeterministic", "a free choice fans the future out"],
+  unstable:         ["⚠", "Unstable equilibrium", "a fixed point exists, but the orbit diverges from it"],
+  unbounded:        ["→", "Unbounded", "grows without settling"],
+  settles:          ["·", "Settles", ""],
+};
+function renderStructure(s) {
+  const el = $("#structure");
+  if (!s) { el.hidden = true; return; }
+  el.hidden = false;
+  const [icon, name, note] = VERDICTS[s.verdict] || ["·", s.verdict, ""];
+  let html = `<span class="verdict v-${s.verdict}">${icon} ${name}</span>`
+    + (note ? `<span class="dim">${note}</span>` : "");
+  if (s.fixed_points && s.fixed_points.length) {
+    const fp = s.fixed_points.slice(0, 3).map(
+      (f) => "(" + Object.entries(f).map(([k, v]) => `${k}=${v}`).join(", ") + ")").join("  ");
+    const more = s.fixed_points.length > 3 ? ` +${s.fixed_points.length - 3}` : "";
+    const label = s.verdict === "nondeterministic" ? "rest states" : "fixed point";
+    html += `<span class="struct-fp">● ${label}: ${fp}${more}</span>`;
+  }
+  const b = s.bounds || {}, keys = Object.keys(b);
+  if (keys.length) {
+    const bstr = keys.map((k) => `${k} ∈ [${b[k][0]}, ${b[k][1]}]`).join("   ");
+    html += `<span class="struct-bounds">⊏ boundary${s.capped ? " (≥, capped)" : ""}: ${bstr}</span>`;
+  }
+  el.innerHTML = html;
+}
+
 function paint(data, ms) {
   $("#latency").textContent = ms != null ? `${ms} ms` : "";
   const view = $("#view"), warn = $("#warnings");
   if (!data.ok) {
+    $("#structure").hidden = true;
     // a pure claim (no FSM) isn't an error — it's a solve target, not a thing to visualize
     if (/no fsm schemas? found/i.test(data.error || "")) {
       setStatus("claim — use Solve", "ok");
@@ -268,6 +385,7 @@ function paint(data, ms) {
   setStatus("ok", "ok");
   $("#banner").className = "live";
   $("#banner").textContent = "◆ " + data.banner;
+  renderStructure(data.structure);
   activeView = data.view;
 
   // tabs

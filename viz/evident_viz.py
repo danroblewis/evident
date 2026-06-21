@@ -505,6 +505,85 @@ class Model:
         return {"verdict": "driven" if drivers else "relational", "driver": driver,
                 "drivers": drivers, "dependents": dependents, "score": score}
 
+    def solution_structure(self, limit=300, states=None, edges=None):
+        """Solver-computed structure of the WHOLE model — not a single sampled run.
+
+        The diagrams elsewhere show one forward trajectory; this asks the solver structural
+        questions about the transition RELATION directly:
+          - **fixed points** — states s with `T(s, s)` (the state maps to itself),
+            enumerated rigorously by solving the relation, not by spotting a self-loop in a
+            sampled orbit. THIS is a real equilibrium; an empty list means the model truly
+            has none (a pure cycle).
+          - **verdict** — does the forward orbit converge to a fixed point (`terminates`),
+            revisit states without one (`cyclic`), have an equilibrium it runs AWAY from
+            (`unstable` — a fixed point exists but the orbit diverges), or grow without
+            bound (`unbounded`).
+          - **bounds** — the exact min..max each numeric carried variable spans over the
+            reachable set: the boundary of the solution space (exact when the set is finite,
+            a `≥` floor when the exploration was capped).
+        """
+        short = lambda n: n.split(".")[-1]
+        fmt = lambda x: (x.as_long() if hasattr(x, "as_long") else str(x))
+        nf = (z3.Not(self.consts[self._first_tick_name])
+              if self.consts.get(self._first_tick_name) is not None else z3.BoolVal(True))
+
+        # (1) rigorous fixed points: solve T(s, s)
+        self_eqs = [self.consts[v["name"]] == self.consts[v["prev"]] for v in self.carried
+                    if self.consts.get(v["name"]) is not None and self.consts.get(v["prev"]) is not None]
+        fps = []
+        if self_eqs:
+            sfp = z3.Solver()
+            for a in self.assertions:
+                sfp.add(a)
+            sfp.add(nf)
+            sfp.add(z3.And(*self_eqs))
+            while sfp.check() == z3.sat and len(fps) < 8:
+                mod = sfp.model()
+                fps.append({short(v["name"]): fmt(mod.eval(self.consts[v["name"]], True))
+                            for v in self.carried})
+                sfp.add(z3.Or(*[self.consts[v["name"]] != mod.eval(self.consts[v["name"]], True)
+                                for v in self.carried if self.consts.get(v["name"]) is not None]))
+
+        # (2) reachable set → stability + exact bounds (reuse the caller's if provided)
+        if states is None:
+            try:
+                states, edges = self.reachable(limit=limit)
+            except Exception:
+                states, edges = [], []
+        edges = edges or []
+        n = len(states)
+        capped = n >= limit
+        terminal = any(i == j for (i, j) in edges)        # an absorbing self-loop
+        bounds = {}
+        for v in self.carried:
+            if v.get("kind") in ("int", "real"):
+                nums = [s[v["name"]] for s in states
+                        if isinstance(s.get(v["name"]), (int, float))]
+                if nums:
+                    bounds[short(v["name"])] = [min(nums), max(nums)]
+
+        out_deg = {}
+        for (i, j) in edges:
+            out_deg[i] = out_deg.get(i, 0) + 1
+        max_branch = max(out_deg.values()) if out_deg else 1
+
+        has_fp = bool(fps)
+        if max_branch >= 2:
+            verdict = "nondeterministic"      # a free choice fans out; fps are rest states
+        elif has_fp and terminal and not capped:
+            verdict = "terminates"            # the orbit converges to a fixed point
+        elif has_fp and capped:
+            verdict = "unstable"              # an equilibrium exists but the orbit diverges
+        elif not has_fp and not capped:
+            verdict = "cyclic"                # revisits states, no fixed point
+        elif capped:
+            verdict = "unbounded"             # grows without bound
+        else:
+            verdict = "settles"
+
+        return {"fixed_points": fps, "has_fixed_point": has_fp, "verdict": verdict,
+                "bounds": bounds, "reachable": n, "capped": capped, "branching": max_branch}
+
     def independence_structural(self, seeds=4, alts_per_field=2):
         """Directed dependency by solver SENSITIVITY — the RIGOROUS form of
         `independence()`. Probes the transition RELATION rather than the sampled

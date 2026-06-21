@@ -64,6 +64,15 @@ html,body { margin:0; height:100%; background:var(--bg); color:var(--ink);
 #banner { padding:9px 14px; background:#11212e; border-bottom:1px solid var(--line);
   color:var(--dim); font-size:13px; }
 #banner.live { color:var(--accent); }
+#structure { padding:6px 14px; background:#0e1a16; border-bottom:1px solid var(--line);
+  font-size:12px; display:flex; flex-wrap:wrap; gap:6px 16px; align-items:center; }
+#structure .verdict { font-weight:bold; }
+#structure .v-terminates { color:var(--good); }
+#structure .v-cyclic { color:#58a6ff; }
+#structure .v-nondeterministic { color:var(--warn); }
+#structure .v-unstable, #structure .v-unbounded { color:var(--bad); }
+#structure .struct-fp { color:#c9a8ff; }
+#structure .struct-bounds { color:#7ee0c0; }
 #tabs { display:flex; flex-wrap:wrap; gap:5px; padding:8px 12px 4px; }
 #tabs .tab { padding:3px 10px; border-radius:6px 6px 0 0; background:#1b2129; color:var(--dim);
   cursor:pointer; border:1px solid transparent; user-select:none; }
