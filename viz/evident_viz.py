@@ -611,12 +611,18 @@ class Model:
     def facet_var(self, max_card=6, max_change=0.25):
         """The variable to FACET by (small multiples), or None — then DON'T facet.
         Must be a low-cardinality CATEGORICAL that stays ~constant within a run, so
-        the dynamics live INSIDE a panel rather than being cut across panels."""
+        the dynamics live INSIDE a panel rather than being cut across panels — but it
+        must ACTUALLY PARTITION the run (>=2 distinct reachable values). Faceting by a
+        var that is constant across the whole reachable set (e.g. find's s5, always
+        Unseen) gives one populated panel and the rest empty — worse than not faceting."""
         rates = self.change_rates
+        states = self._sample_states()
         cands = []
         for v in self.categorical_vars:
             card = len(self.enum_variants.get(v["name"], [])) or 2   # bool -> 2
-            if card <= max_card and rates.get(v["name"], 1.0) <= max_change:
+            distinct = len({s[v["name"]] for s in states})           # actual reachable values
+            if (2 <= distinct <= max_card and card <= max_card
+                    and rates.get(v["name"], 1.0) <= max_change):
                 cands.append(v)
-        cands.sort(key=lambda v: rates[v["name"]])      # most static first
+        cands.sort(key=lambda v: rates[v["name"]])      # most static (but varying) first
         return cands[0] if cands else None

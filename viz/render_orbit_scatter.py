@@ -385,14 +385,24 @@ def render(smt2_path, schema_path, out_path):
         ax.grid(True, linestyle=":", alpha=0.4)
         _label_axis(model, ax, xvar, "x")
         _label_axis(model, ax, yvar, "y")
-        # Frame the REAL data via robust axis_bounds (numeric axes only): a lone
-        # sentinel point (min=1e6, an empty -1) is clipped off-screen instead of
-        # auto-scaling the whole axis out to it and crushing the orbit to a dot.
-        bx, by = model.axis_bounds(xvar["name"]), model.axis_bounds(yvar["name"])
-        if bx:
-            ax.set_xlim(*bx)
-        if by:
-            ax.set_ylim(*by)
+        # Frame the REAL plotted points: the robust range of what's actually drawn,
+        # rejecting a lone sentinel outlier (min=1e6, an empty -1). NOT axis_bounds —
+        # the multi-seed mode plots orbits OUTSIDE the reachable extent (vanderpol's
+        # seeds spiral out from the origin fixed point), so clipping to the reachable
+        # box would blank the canvas.
+        for which in ("x", "y"):
+            vals = sorted(p[which] for p in panel_pts
+                          if isinstance(p[which], (int, float)) and not isinstance(p[which], bool))
+            if len(vals) < 2:
+                continue
+            nn = len(vals)
+            q1, q3 = vals[nn // 4], vals[(3 * nn) // 4]
+            if q3 > q1:
+                fence = 3 * (q3 - q1)
+                vals = [v for v in vals if q1 - fence <= v <= q3 + fence] or vals
+            lo, hi = min(vals), max(vals)
+            pad = (hi - lo) * 0.08 if hi > lo else 1.0
+            (ax.set_xlim if which == "x" else ax.set_ylim)(lo - pad, hi + pad)
         if pv is not None:
             ax.set_title(f'{facet_var["name"]} = {_cat_key(model, facet_var, pv)}',
                          fontsize=10)
