@@ -382,7 +382,7 @@ def _state_key_for_cluster(m, st, axes):
     return tuple(round(_ordinal(m, v, st[v["name"]])) for v in m.state_vars)
 
 
-def _iterate_to_attractor(m, seed_state, cache, resolved, max_steps=4000):
+def _iterate_to_attractor(m, seed_state, cache, resolved, max_steps=600):
     """Follow ONE successor chain to its attractor and return that attractor's
     phase-invariant SIGNATURE. Two memos make a grid of seeds tractable:
       `cache`    : state-key -> successor state (avoids re-solving z3).
@@ -493,7 +493,7 @@ def _visited_extent_from_probes(m, ax_x, ax_y):
             cur = st
             local = []
             keyseen = set()
-            for _ in range(2000):
+            for _ in range(500):
                 nxt = m.successor(cur)
                 if nxt is None:
                     break
@@ -595,8 +595,8 @@ def _panel_basins(m, ax_x, ax_y, fixed, cache, resolved, dom):
     (seeds, sigs) where seeds are (xv, yv) axis-value pairs. `cache`/`resolved`
     are shared across panels so the z3 work is paid once."""
     baseline = _baseline_fn(m)
-    nx = 28 if ax_x["kind"] in ("int", "real") else None
-    ny = 28 if (ax_y and ax_y["kind"] in ("int", "real")) else None
+    nx = 14 if ax_x["kind"] in ("int", "real") else None
+    ny = 14 if (ax_y and ax_y["kind"] in ("int", "real")) else None
     gx, _bx = _axis_grid(m, ax_x, nx or 8, dom)
     if ax_y is not None:
         gy, _by = _axis_grid(m, ax_y, ny or 8, dom)
