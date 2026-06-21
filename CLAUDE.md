@@ -109,6 +109,30 @@ This is the only way visual regressions get caught — an agent
 running `./test.sh --examples` and Reading the PNGs is functionally
 the visual-test harness. We don't have a pixel-diff CI yet.
 
+## Task & concern tracking for the web-IDE loop — `python3 ide/task.py`
+
+The web-IDE goal loop is tracked in `ide/tasks.json` through a CLI (run from the repo
+root). There are two object types: **tasks** (units of work) and **concerns** (worries
+the critics or Iris raise). The whole loop runs through this ledger — use it every round.
+
+**Your loop, each round:**
+1. `python3 ide/task.py summary` and `… list --open` — see what's left. The goal loop is
+   done when every task is **closed** (not just done).
+2. `python3 ide/task.py list --concerns --open` — read what the critics are worried about.
+   For each open concern, add a task to resolve it:
+   `python3 ide/task.py add "<the fix>" --from-concern <ID>`. **You may NOT clear a
+   concern** — only its author (the critic/Iris who raised it) clears it, once satisfied.
+3. Work a task: `python3 ide/task.py start <ID>` → do it → `python3 ide/task.py done <ID>`.
+4. **`done` does NOT close a task.** A task closes only with your `done` PLUS an `approve`
+   from ALL THREE critics (`ide-critic`, `ide-critic-newcomer`, `ide-critic-expert`). So
+   after a build you MUST run the critics; they review your done-tasks and either `approve`
+   or `reopen` them (logging a concern saying why). A reopened task resets its approvals.
+
+The critic and Iris subagents use the SAME CLI (their prompts instruct them): they
+`add` tasks and `concern`s, `approve`/`reopen` your done-tasks, and `clear-concern` their
+own concerns. Only the three critics approve/reopen; only an author clears their concern;
+you (the worker) never approve or clear. `ide/task.py --help` lists every command.
+
 ## Where to read first
 
 Before writing code in this repo, check whether one of these guides covers

@@ -238,3 +238,30 @@ knows what not to break) and your **full ranked feature wishlist** — and make 
 long, because a short wishlist means you didn't brainstorm hard enough. Don't be nice; don't
 sandbag; don't grade on a curve. Your dissatisfaction is the engine that makes this tool
 great — feed it.
+
+## Part 9 — The task & concern ledger: `python3 ide/task.py` (you MUST use it)
+
+The loop is tracked in `ide/tasks.json` via a CLI run from the repo root. Your written
+verdict is the narrative; the ledger is the actionable, shared state. **Your `--by` name:**
+Marek → `ide-critic` · Sam → `ide-critic-newcomer` · Ana → `ide-critic-expert` ·
+Iris → `ide-feature-designer`. Do ALL of this, every run, as part of your review:
+
+1. **Approve or reopen the worker's done-tasks.** Run `python3 ide/task.py list --needs-approval`
+   — these are tasks the worker claims are finished and are waiting on the critics. For EACH
+   one, verify it for real in the live browser to YOUR standard. `python3 ide/task.py show <ID>`
+   for detail. Then:
+   - genuinely, fully done → `python3 ide/task.py approve <ID> --by <your-name>`;
+   - not actually done / regressed / half-done → `python3 ide/task.py reopen <ID> --by <your-name>
+     --concern "exactly what's still wrong"`. Be hard to satisfy here — a task closes only when
+     ALL THREE critics approve, so a weak approval defeats the whole point. When in doubt, reopen.
+2. **Log every problem you hit as a concern** (your blockers/majors/minors all become concerns):
+   `python3 ide/task.py concern "<the problem, specific>" --by <your-name> --detail "where/how"`.
+3. **File every feature you discovered as a task** (your ranked wishlist becomes tasks):
+   `python3 ide/task.py add "<the feature>" --by <your-name> --tag <editor|viz|solve|learn|analysis|perf>`.
+4. **Clear your OWN concerns** that a newer build has genuinely resolved — check
+   `python3 ide/task.py list --concerns --by <your-name> --open`, then
+   `python3 ide/task.py clear-concern <ID> --by <your-name>` only when truly satisfied. You alone
+   may clear yours; you may NOT clear anyone else's, and the worker may never clear or approve.
+
+The ledger is how your dissatisfaction becomes the team's backlog. A review that doesn't touch
+it is incomplete — log concerns, file tasks, and hold the line on approvals.

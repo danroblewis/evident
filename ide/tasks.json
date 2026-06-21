@@ -1,0 +1,396 @@
+{
+  "seq": 26,
+  "tasks": [
+    {
+      "id": 1,
+      "title": "Interactive diagrams: click a node, hover for detail, zoom/pan (PNG \u2192 SVG)",
+      "detail": "Diagrams are flat <img> rasters; the 'diagram is the debugger' promise needs touchable views.",
+      "status": "open",
+      "created_by": "worker",
+      "created": "2026-06-21T23:18:36Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "viz"
+      ],
+      "log": []
+    },
+    {
+      "id": 2,
+      "title": "Find / replace / rename / go-to-definition in the editor",
+      "detail": "Ctrl-F does nothing; wire CodeMirror search addon + AST-based rename.",
+      "status": "open",
+      "created_by": "worker",
+      "created": "2026-06-21T23:18:36Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "editor"
+      ],
+      "log": []
+    },
+    {
+      "id": 3,
+      "title": "Compare two runs side by side (pin / split / run history)",
+      "detail": "The headline 'compare broken vs fixed' move has no pin/split.",
+      "status": "open",
+      "created_by": "worker",
+      "created": "2026-06-21T23:18:36Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "editor"
+      ],
+      "log": []
+    },
+    {
+      "id": 4,
+      "title": "Parser errors must carry line/col so the inline marker fires",
+      "detail": "Inline error tint only fires on lexer errors with 'line N'; parser errors have none.",
+      "status": "open",
+      "created_by": "worker",
+      "created": "2026-06-21T23:18:36Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "editor"
+      ],
+      "log": []
+    },
+    {
+      "id": 5,
+      "title": "Command palette + keyboard shortcuts + comment-toggle",
+      "detail": "",
+      "status": "open",
+      "created_by": "worker",
+      "created": "2026-06-21T23:18:36Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "editor"
+      ],
+      "log": []
+    },
+    {
+      "id": 6,
+      "title": "Diagram export / copy (PNG / SVG)",
+      "detail": "",
+      "status": "open",
+      "created_by": "worker",
+      "created": "2026-06-21T23:18:36Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "viz"
+      ],
+      "log": []
+    },
+    {
+      "id": 7,
+      "title": "Autocomplete + hover-for-type in the editor",
+      "detail": "",
+      "status": "open",
+      "created_by": "worker",
+      "created": "2026-06-21T23:18:36Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "editor"
+      ],
+      "log": []
+    },
+    {
+      "id": 8,
+      "title": "Resizable / pop-out panes",
+      "detail": "",
+      "status": "open",
+      "created_by": "worker",
+      "created": "2026-06-21T23:18:36Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "editor"
+      ],
+      "log": []
+    },
+    {
+      "id": 9,
+      "title": "Guided first-run / tutorial walkthrough",
+      "detail": "Cold open gives no onboarding; a 4-step coachmark would turn it into a win.",
+      "status": "open",
+      "created_by": "worker",
+      "created": "2026-06-21T23:18:36Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "learn"
+      ],
+      "log": []
+    },
+    {
+      "id": 10,
+      "title": "Symbol palette / cheat-sheet button (\\in\u2192\u2208, \\Delta\u2192\u0394, ...)",
+      "detail": "",
+      "status": "open",
+      "created_by": "worker",
+      "created": "2026-06-21T23:18:36Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "learn"
+      ],
+      "log": []
+    },
+    {
+      "id": 11,
+      "title": "Render a solve witness domain-shaped (a chessboard for queens, not [1,3,0,2])",
+      "detail": "",
+      "status": "open",
+      "created_by": "worker",
+      "created": "2026-06-21T23:18:36Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "viz"
+      ],
+      "log": []
+    },
+    {
+      "id": 12,
+      "title": "Per-view caption: what this diagram shows and when it is useful",
+      "detail": "",
+      "status": "open",
+      "created_by": "worker",
+      "created": "2026-06-21T23:18:36Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "learn"
+      ],
+      "log": []
+    },
+    {
+      "id": 13,
+      "title": "Counterexample traces: step through s0 \u2192 \u2026 \u2192 s_bad for a failing property",
+      "detail": "TLA+ gives a path; a failing claim in a difference-equation model IS a path.",
+      "status": "open",
+      "created_by": "worker",
+      "created": "2026-06-21T23:18:36Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "solve"
+      ],
+      "log": []
+    },
+    {
+      "id": 14,
+      "title": "Temporal-property checking: \u25c7 / \u25a1 / until (safety + liveness)",
+      "detail": "",
+      "status": "open",
+      "created_by": "worker",
+      "created": "2026-06-21T23:18:36Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "solve"
+      ],
+      "log": []
+    },
+    {
+      "id": 15,
+      "title": "Minimal, named UNSAT core (real Z3 core, not line-granular delta-debug)",
+      "detail": "",
+      "status": "open",
+      "created_by": "worker",
+      "created": "2026-06-21T23:18:36Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "solve"
+      ],
+      "log": []
+    },
+    {
+      "id": 16,
+      "title": "Scoped enumeration with symmetry breaking",
+      "detail": "",
+      "status": "open",
+      "created_by": "worker",
+      "created": "2026-06-21T23:18:36Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "solve"
+      ],
+      "log": []
+    },
+    {
+      "id": 17,
+      "title": "Ad-hoc query console / evaluator pane over the current model",
+      "detail": "",
+      "status": "open",
+      "created_by": "worker",
+      "created": "2026-06-21T23:18:36Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "solve"
+      ],
+      "log": []
+    },
+    {
+      "id": 18,
+      "title": "Export SMT-LIB / model; diff two models",
+      "detail": "",
+      "status": "open",
+      "created_by": "worker",
+      "created": "2026-06-21T23:18:37Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "solve"
+      ],
+      "log": []
+    },
+    {
+      "id": 19,
+      "title": "FSM unrolling / self-composition: compose T^k, simplify, detect fixpoint of the unrolling (T^k \u2261 T^k+1)",
+      "detail": "User's core idea: bind run N output\u2192run N+1 input, analyze the composed relation for overall behavior.",
+      "status": "open",
+      "created_by": "worker",
+      "created": "2026-06-21T23:18:37Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "analysis"
+      ],
+      "log": []
+    },
+    {
+      "id": 20,
+      "title": "Stability classification of fixed points (stable / unstable / saddle)",
+      "detail": "",
+      "status": "open",
+      "created_by": "worker",
+      "created": "2026-06-21T23:18:37Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "analysis"
+      ],
+      "log": []
+    },
+    {
+      "id": 21,
+      "title": "Solve-for-boundaries: extremal/optimization queries on the model, not single runs",
+      "detail": "",
+      "status": "open",
+      "created_by": "worker",
+      "created": "2026-06-21T23:18:37Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "analysis"
+      ],
+      "log": []
+    },
+    {
+      "id": 22,
+      "title": "BUG: render_reachability_tree KeyError on \u22653-variable states (vending)",
+      "detail": "Auto-select picks it for nondeterministic machines; currently falls back to state_graph.",
+      "status": "open",
+      "created_by": "worker",
+      "created": "2026-06-21T23:18:37Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "bug"
+      ],
+      "log": []
+    },
+    {
+      "id": 23,
+      "title": "BUG: real-state reachability mislabels deterministic real FSMs as nondeterministic (oscillator)",
+      "detail": "",
+      "status": "open",
+      "created_by": "worker",
+      "created": "2026-06-21T23:18:37Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "bug"
+      ],
+      "log": []
+    },
+    {
+      "id": 24,
+      "title": "Auto-select phase_portrait for 2-numeric-variable systems (oscillator should not pick reachability_tree)",
+      "detail": "",
+      "status": "open",
+      "created_by": "worker",
+      "created": "2026-06-21T23:18:37Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "viz"
+      ],
+      "log": []
+    },
+    {
+      "id": 25,
+      "title": "Banner: a multi-variable cycle (traffic light) should read 'cyclic', not 'relational'",
+      "detail": "",
+      "status": "open",
+      "created_by": "worker",
+      "created": "2026-06-21T23:18:37Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "bug"
+      ],
+      "log": []
+    },
+    {
+      "id": 26,
+      "title": "Latency: stream / progress indicator for unbounded machines (1-2s solve+render)",
+      "detail": "",
+      "status": "open",
+      "created_by": "worker",
+      "created": "2026-06-21T23:18:37Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "perf"
+      ],
+      "log": []
+    }
+  ],
+  "concerns": []
+}
