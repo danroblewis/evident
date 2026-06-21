@@ -91,14 +91,14 @@ def _choose_axes(m):
     return axes
 
 
-def _choose_facet(m, axes, max_card=5):
-    """Pick a low-cardinality CATEGORICAL var (enum/bool) to FACET by — one panel
-    per value — the honest way to ADD a dimension. Must not already be an axis.
-    Returns (var, values) or (None, None). Prefers the channel API's facet slot,
-    falling back to the first eligible categorical."""
+def _choose_facet(m, axes):
+    """Pick the SUITABLE facet variable via the shared faceting guard
+    (m.facet_var): a low-cardinality categorical that stays ~constant within a
+    run. Faceting by a var that CHANGES along the trajectory (e.g. vending's
+    state.mode on the limit cycle) splits the dynamics across panels — the guard
+    rejects those. Must not already be an axis. Returns (var, values) or
+    (None, None)."""
     axis_names = {a["name"] for a in axes}
-    chans = m.assign_channels(["x", "y", "color", "facet"])
-    preferred = chans.get("facet")
 
     def values_of(v):
         if v["kind"] == "enum":
@@ -107,18 +107,13 @@ def _choose_facet(m, axes, max_card=5):
             return [False, True]
         return None
 
-    def eligible(v):
-        if v is None or v["name"] in axis_names:
-            return False
-        vals = values_of(v)
-        return vals is not None and 2 <= len(vals) <= max_card
-
-    if eligible(preferred):
-        return preferred, values_of(preferred)
-    for v in m.categorical_vars:
-        if eligible(v):
-            return v, values_of(v)
-    return None, None
+    v = m.facet_var()
+    if v is None or v["name"] in axis_names:
+        return None, None
+    vals = values_of(v)
+    if vals is None:
+        return None, None
+    return v, vals
 
 
 def _ordinal(m, var, value):

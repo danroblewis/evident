@@ -139,23 +139,6 @@ def collect_discrete(m, axes, facet_var=None):
     return np.array(xs), np.array(ys), fs
 
 
-def pick_facet(m, axis_names):
-    """A low-cardinality categorical (<= MAX_FACETS) not already an axis.
-    Returns the var dict or None. Prefer enums (richer than a single bool)."""
-    cands = []
-    for v in m.categorical_vars:
-        if v["name"] in axis_names:
-            continue
-        c = cardinality(m, v)
-        if c is not None and 2 <= c <= MAX_FACETS:
-            cands.append(v)
-    if not cands:
-        return None
-    # enums (multi-value) before bools; categorical_vars is already importance-ranked
-    cands.sort(key=lambda v: 0 if v["kind"] == "enum" else 1)
-    return cands[0]
-
-
 def pick_axes(m, exclude=()):
     """Two axes: prefer the two top numeric vars (metric histogram); else fall
     back to assign_channels' x/y, skipping anything in `exclude`."""
@@ -238,8 +221,13 @@ def render(smt2, schema, out):
     a0_pre, a1_pre = pick_axes(m)
     facet = None
     if a0_pre is not None and a1_pre is not None and m.is_discrete():
-        # faceting only makes sense for the reachable-graph path
-        facet = pick_facet(m, {a0_pre["name"], a1_pre["name"]})
+        # faceting only makes sense for the reachable-graph path, AND only on a
+        # var that stays ~constant within a run (a config/regime set once). A var
+        # that changes as the system runs would split the trajectory across
+        # panels and destroy the dynamics — facet_var() returns None for those.
+        facet = m.facet_var()
+        if facet is not None and facet["name"] in {a0_pre["name"], a1_pre["name"]}:
+            facet = None
     a0, a1 = pick_axes(m, exclude=({facet["name"]} if facet else ()))
 
     # --- no axes at all ---

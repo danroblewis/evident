@@ -86,9 +86,18 @@ def assign_channels(model):
         if cats:
             ch["y"] = cats.pop(0)
 
+    # Facet ONLY by a variable that stays ~constant within a run (a config/regime
+    # set once). Faceting by a var that CHANGES as the system runs would split the
+    # trajectory across panels and hide the dynamics. facet_var() returns None when
+    # no such variable exists -> don't facet (single panel). Claim it BEFORE the
+    # secondary channels so the suitable facet var isn't stolen by color/shape.
+    fvar = model.facet_var()
+    if fvar is not None and fvar["name"] in {v["name"] for v in cats}:
+        ch["facet"] = fvar
+        cats = [v for v in cats if v["name"] != fvar["name"]]
+
     # Remaining categoricals -> secondary channels, by type-effectiveness order:
-    # color (hue, excellent for categorical) > shape > facet. Facet only claims a
-    # LOW-cardinality var (<= 5 distinct), the honest way to add a dimension.
+    # color (hue, excellent for categorical) > shape.
     for v in list(cats):
         if ch["color"] is None:
             ch["color"] = v
@@ -96,11 +105,6 @@ def assign_channels(model):
         elif ch["shape"] is None:
             ch["shape"] = v
             cats.remove(v)
-    for v in list(cats):
-        if ch["facet"] is None and _cardinality(model, v) <= 5:
-            ch["facet"] = v
-            cats.remove(v)
-            break
     return ch
 
 

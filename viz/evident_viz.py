@@ -62,6 +62,7 @@ class Model:
         self.internal_vars = [v for v in self.carried if v.get("role") == "internal"]
         self._ranked = None          # cached ranked+deduped interface vars (lazy)
         self.variable_groups = []    # [{rep, members, entropy}] redundancy groups
+        self._change_rates_cache = None
         self._first_tick_name = schema["is_first_tick"]
 
         # Parse the self-contained SMT-LIB (datatype decls + transition asserts).
@@ -377,3 +378,34 @@ class Model:
             assignment[best] = v
             free.remove(best)
         return assignment
+
+    # ---- faceting guard: only facet by a var that stays ~constant within a run ----
+    @property
+    def change_rates(self):
+        """Per-interface-var fraction of transitions where the variable CHANGES
+        value (within-run 'dynamism'). A good FACET variable has a LOW rate — it's a
+        config/regime set once, not something on the trajectory. Cached."""
+        if self._change_rates_cache is None:
+            states, edges = self.reachable(limit=1500)
+            if len(edges) < 1:                       # numeric / degenerate
+                states = self.trajectory(steps=200)
+                edges = [(i, i + 1) for i in range(len(states) - 1)]
+            n = max(len(edges), 1)
+            self._change_rates_cache = {
+                v["name"]: sum(1 for i, j in edges
+                               if states[i][v["name"]] != states[j][v["name"]]) / n
+                for v in self.interface_vars} if edges else {}
+        return self._change_rates_cache
+
+    def facet_var(self, max_card=6, max_change=0.25):
+        """The variable to FACET by (small multiples), or None — then DON'T facet.
+        Must be a low-cardinality CATEGORICAL that stays ~constant within a run, so
+        the dynamics live INSIDE a panel rather than being cut across panels."""
+        rates = self.change_rates
+        cands = []
+        for v in self.categorical_vars:
+            card = len(self.enum_variants.get(v["name"], [])) or 2   # bool -> 2
+            if card <= max_card and rates.get(v["name"], 1.0) <= max_change:
+                cands.append(v)
+        cands.sort(key=lambda v: rates[v["name"]])      # most static first
+        return cands[0] if cands else None

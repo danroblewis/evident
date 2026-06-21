@@ -341,20 +341,23 @@ def main():
     nums = m.numeric_vars
     cats = m.categorical_vars
 
+    # Only facet by a variable that stays ~constant within a run (a config/regime
+    # set once). A var that CHANGES on the trajectory (e.g. a limit-cycle mode)
+    # would split the dynamics across panels and destroy the cycle.
+    facet = m.facet_var(max_card=6, max_change=0.25) if len(nums) == 1 else None
+
     if len(nums) >= 2:
         # canonical two-axis sign-field on the top two numeric vars.
         render_numeric(m, out, nums[0], nums[1])
-    elif len(nums) == 1 and cats and cats[0]["kind"] in ("enum", "bool") \
-            and len(_cat_levels(m, cats[0])[0]) <= 6:
-        # MIXED: facet by the leading low-cardinality categorical; the second
-        # categorical (if any) becomes the ordinal Y axis. The honest +1 dim.
-        facet = cats[0]
-        yv = cats[1] if len(cats) >= 2 else None
+    elif len(nums) == 1 and facet is not None:
+        # MIXED: facet by a suitable ~static categorical; a second categorical
+        # (if any, and distinct from the facet) becomes the ordinal Y axis.
+        yv = next((c for c in cats if c["name"] != facet["name"]), None)
         render_faceted(m, out, nums[0], facet, yv)
     else:
         reason = ("purely discrete state (no numeric axis)"
                   if not nums else
-                  f"{len(nums)} numeric var(s) and no facetable categorical")
+                  f"{len(nums)} numeric var(s) and no suitable facet variable")
         placeholder(m, out, reason)
     print(f"wrote {out}")
 

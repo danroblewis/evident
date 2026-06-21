@@ -44,23 +44,6 @@ def _pick_primary(m):
     return (m.state_vars[0], "enum-ordinal") if m.state_vars else (None, None)
 
 
-def _pick_facet(m, primary, max_card=5):
-    """A low-cardinality categorical var to facet by (one panel per value),
-    or None. Prefers an enum (named panels) over a bool; never the primary."""
-    best = None
-    for v in m.categorical_vars:
-        if v["name"] == primary["name"]:
-            continue
-        card = len(m.enum_variants[v["name"]]) if v["kind"] == "enum" else 2
-        if card > max_card:
-            continue
-        # enum beats bool (named panels read better); fewer panels preferred
-        rank = (0 if v["kind"] == "enum" else 1, card)
-        if best is None or rank < best[0]:
-            best = (rank, v, card)
-    return best[1] if best else None
-
-
 def _facet_values(m, var):
     if var["kind"] == "enum":
         return list(m.enum_variants[var["name"]])
@@ -260,7 +243,9 @@ def render(smt2, schema, out_path):
         grid = list(range(len(m.enum_variants[var["name"]])))
         bounded = True
 
-    facet = _pick_facet(m, var)
+    facet = m.facet_var()
+    if facet is not None and facet["name"] == var["name"]:
+        facet = None
     sup = f"{m.fsm}  —  cobweb on  {var['name']}"
     if mode == "enum-ordinal":
         sup += "  (enum -> ordinal)"

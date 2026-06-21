@@ -100,15 +100,13 @@ def _select_channels(model):
 
     used = {v["name"] for v in (xvar, yvar) if v is not None}
 
-    # FACET: a low-cardinality categorical not on an axis -> small multiples.
-    facet_var = None
-    facet_candidates = [v for v in cats
-                        if v["name"] not in used
-                        and (_cardinality(model, v) or 99) <= 5]
-    if facet_candidates:
-        # prefer the highest-ranked enum (richer than a 2-way bool facet)
-        enums = [v for v in facet_candidates if v["kind"] == "enum"]
-        facet_var = (enums or facet_candidates)[0]
+    # FACET: only a var that stays ~constant within a run (a config/regime set
+    # once) — faceting by a var that changes ON the trajectory cuts the dynamics
+    # across panels. The shared guard returns such a var, or None -> don't facet.
+    facet_var = model.facet_var()
+    if facet_var is not None and facet_var["name"] in used:
+        facet_var = None      # already an axis; don't double-use it
+    if facet_var is not None:
         used.add(facet_var["name"])
 
     # COLOR: a remaining categorical reads best in color; else None -> gradient.

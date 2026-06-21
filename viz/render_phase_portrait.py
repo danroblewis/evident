@@ -95,28 +95,27 @@ def plan_channels(m):
     Returns (axx, axy, facet_var, regime). The phase portrait NEEDS numeric axes
     for a true field, so when >=2 numerics exist we take numeric_vars[:2] for the
     plane directly (rather than assign_channels, which would put a categorical on
-    y). A low-cardinality categorical that is NOT consumed by an axis becomes the
-    facet — the dimension-adder."""
+    y). The facet (when one exists) is the SUITABLE facet var from evident_viz —
+    a low-cardinality categorical that stays ~constant within a run — so the
+    dynamics live INSIDE a panel instead of being cut across panels. A var on the
+    limit cycle (high within-run change rate) returns None: we then DON'T facet."""
     numeric = m.numeric_vars
-    cats = m.categorical_vars
 
     def facetable(exclude_names):
-        """Top-ranked categorical with cardinality in 2..5, excluding names."""
-        for v in cats:
-            if v["name"] in exclude_names:
-                continue
-            c = _cardinality(m, v)
-            if 2 <= c <= 5:
-                return v
-        return None
+        """The suitable facet var (low-card, low within-run change rate), unless
+        it's already consumed by an axis."""
+        fv = m.facet_var()
+        if fv is None or fv["name"] in exclude_names:
+            return None
+        return fv
 
     if len(numeric) >= 2:
         axx, axy = numeric[0], numeric[1]
-        # a numeric field; facet by a low-card categorical if one exists
+        # a numeric field; facet by a suitable low-card categorical if one exists
         facet = facetable({axx["name"], axy["name"]})
         return axx, axy, facet, "numeric"
 
-    # fewer than 2 numerics -> discrete/mixed projection. Facet by the best
+    # fewer than 2 numerics -> discrete/mixed projection. Facet by the suitable
     # low-cardinality categorical FIRST, then pick the two most expressive
     # remaining vars (numeric preferred) for the axes.
     facet = facetable(set())
