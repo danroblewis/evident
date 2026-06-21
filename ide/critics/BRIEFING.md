@@ -195,31 +195,46 @@ immediacy: N · diagram-helps: N · directness: N · honesty: N · first-run: N 
 ### Would I use this over what I use today? <one honest sentence in my voice.>
 ```
 
-### The SHIP bar is HIGH. Default to NEEDS_WORK. SHIP is rare and earned.
+### The SHIP bar is near-impossible. Default to NO. SHIP is the rare terminal state of a finished tool.
 
-SHIP does **not** mean "good enough for my one workflow." SHIP means *"this is the tool —
-I have nothing essential left to ask for, and I would genuinely use it over what I use
-today."* You may write **VERDICT: SHIP only when every one of these holds**:
+**You are evaluating this for REAL PRODUCTION USE.** You are about to stake your actual
+work on it — a verification you'll be held to, a model a team will trust, a debugging
+session where a wrong picture costs you a day. Evaluate it the way you'd evaluate a tool
+you're betting your reputation on adopting. That bar is brutal, and it should be.
 
-- every score is ≥4, and at least **four of the seven are 5** (a 4 means "good, with real
-  gaps" — gaps are not shippable);
-- **zero blockers and zero unaddressed majors**;
-- **"Promised but missing" is empty** — every Part-4 promise that a serious tool in your
-  world treats as table-stakes is actually *delivered*, not "acknowledged," "deferred," or
-  "a curated subset." Six of sixteen promised views is **NEEDS_WORK**. A code editor with
-  no syntax highlighting is **NEEDS_WORK**. A half-kept promise is an unkept promise;
-- **nothing in "Feature requests" is rated ★ essential or ⬆ important** — only genuine
-  nice-to-haves remain;
-- you would make this your **default** over the tools you reach for now.
+**Your default verdict is NEEDS_WORK, and you should expect to return it almost every
+time.** The burden is entirely on the tool to prove it needs nothing more — never on you to
+justify withholding SHIP. Withholding is free; SHIP is the extraordinary claim that requires
+extraordinary evidence.
 
-If you catch yourself writing *"I'd want X before it's my daily driver,"* or *"acknowledged,
-not a blocker,"* or *"the six present are the right ones"* about a sixteen-view promise —
-**that is a NEEDS_WORK.** The loop only keeps improving the tool for as long as you keep
-withholding SHIP and keep handing back a concrete, ranked list of what to build. Your job
-is to keep raising the bar until the tool truly clears it — never to find a reason to let
-it pass. When in doubt: NEEDS_WORK, and say exactly what would change your mind.
+You may write **VERDICT: SHIP only when ALL of these hold**:
+
+- every score is **5** — not 4. A 4 means "good, with real gaps," and gaps are not
+  shippable to production;
+- **zero blockers, zero majors, and zero minors you can articulate** — if you can name a
+  flaw at all, it isn't done;
+- **"Promised but missing" is empty** and **"Feature requests" is empty** — not "no ★/⬆
+  items," *empty*. A half-kept promise is an unkept promise (six of sixteen views =
+  NEEDS_WORK; no syntax highlighting = NEEDS_WORK);
+- you would **switch to this as your primary tool today** and stop opening the alternatives;
+- **THE GATE:** before you may even consider SHIP, you must run a genuine, effortful
+  brainstorm — spend real thought imagining every feature, workflow, edge case, integration,
+  and "what if" a demanding production user of your kind would ever want — and that well must
+  come up **completely dry.** SHIP is permitted *only* when, after honestly trying as hard as
+  you can to think of one more thing to want, **you cannot name a single new idea.** If you
+  can think of even one — a feature, a polish, a question the tool can't answer, a diagram it
+  should draw, a faster path — the verdict is **NEEDS_WORK**, and that idea goes in your
+  Feature requests. The day your wishlist is empty is the day it ships, and not one round
+  before.
+
+Treat SHIP as a claim you almost certainly cannot honestly make yet. If any part of you is
+reaching for a reason to pass it, stop — that reaching is itself the answer: NEEDS_WORK. The
+loop only keeps improving the tool for as long as you keep withholding SHIP and keep handing
+back a concrete, ranked list of what to build. Keep the bar above the tool.
 
 Every issue and request must cite something you **actually did and saw** (a screenshot, a
 console error, a measured lag) — concrete or cut. Always include the delights (so the loop
-knows what not to break) and your **full ranked feature wishlist** (so the loop knows what
-to build next). Don't be nice; don't sandbag; don't grade on a curve.
+knows what not to break) and your **full ranked feature wishlist** — and make that wishlist
+long, because a short wishlist means you didn't brainstorm hard enough. Don't be nice; don't
+sandbag; don't grade on a curve. Your dissatisfaction is the engine that makes this tool
+great — feed it.
