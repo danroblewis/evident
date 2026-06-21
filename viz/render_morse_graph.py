@@ -167,6 +167,111 @@ def build_numeric_orbit_graph(m, steps=400):
     return G, labels
 
 
+def _expanding_orbit_radius(m, xvar, yvar, center):
+    """Probe OUTWARD from the fixed point `center` along +x to find the smallest
+    radius at which the dynamics expand into a non-trivial orbit (length > 2),
+    rather than sitting at the fixed point. Returns that radius, or None if no
+    probe out to a generous cap expands. Mirrors the shared probe the other
+    numeric renderers use (orbit_scatter / phase_portrait) — self-scaling per
+    program instead of a hardcoded box."""
+    cx = center.get(xvar["name"], 0)
+    cy = center.get(yvar["name"], 0)
+    r = 1
+    while r <= 1 << 16:          # generous cap; geometric so ~17 probes max
+        seed = {v["name"]: center.get(v["name"], 0) for v in m.state_vars}
+        seed[xvar["name"]] = int(round(cx + r))
+        seed[yvar["name"]] = int(round(cy))
+        if len(m.trajectory(start=seed, steps=64)) > 2:
+            return r
+        r *= 2
+    return None
+
+
+def build_numeric_scan_graph(m, steps=400):
+    """Recurrence graph for a numeric system whose ENCODED initial state is a
+    degenerate fixed point (e.g. vanderpol's solver-picked (0,0) — the UNSTABLE
+    equilibrium), so walking that single orbit reveals no dynamics. We probe
+    outward from the fixed point (the same seed-scan the other numeric renderers
+    use) to discover the scale at which the dynamics come alive, then walk real
+    forward orbits from a spread of off-origin seeds at that scale and quantize
+    coincident points so the limit cycle closes into one SCC.
+
+    Every node is still a state the program REALLY visits — we only changed the
+    STARTING point from the dead fixed point to off-origin seeds the program's
+    own dynamics carry into the attractor. Returns (G, labels, nseeds) or
+    (None, None, 0) when no seed expands (a genuine fixed point)."""
+    numeric_vars = [v for v in m.state_vars if v["kind"] in ("int", "real")]
+    if len(numeric_vars) < 2:
+        return None, None, 0
+    xvar, yvar = numeric_vars[0], numeric_vars[1]
+    center = m.initial_state() or {v["name"]: 0 for v in m.state_vars}
+    cx = center.get(xvar["name"], 0)
+    cy = center.get(yvar["name"], 0)
+    r = _expanding_orbit_radius(m, xvar, yvar, center)
+    if r is None:
+        return None, None, 0
+
+    # Spread of starts at the discovered scale: along each axis + an off-axis
+    # diagonal, so a closed orbit is entered from several angles and the
+    # recurrent set is well covered.
+    offsets = [(r, 0), (0, r), (-r, r), (r // 2, 0)]
+    orbits = []
+    for dx, dy in offsets:
+        seed = {v["name"]: center.get(v["name"], 0) for v in m.state_vars}
+        seed[xvar["name"]] = int(round(cx + dx))
+        seed[yvar["name"]] = int(round(cy + dy))
+        orb = m.trajectory(start=seed, steps=steps)
+        if len(orb) > 2:
+            orbits.append(orb)
+    if not orbits:
+        return None, None, 0
+
+    # Robust quantization step per numeric axis from the orbits' OWN spread (not
+    # a hardcoded box). One cell ~ 1/40 of the realized range, min 1.
+    allpts = [s for orb in orbits for s in orb]
+    cell = {}
+    for v in numeric_vars:
+        vals = [s[v["name"]] for s in allpts]
+        rng = (max(vals) - min(vals)) if vals else 0.0
+        cell[v["name"]] = max(rng / 40.0, 1.0)
+
+    def quant(state):
+        parts = []
+        for v in m.state_vars:
+            val = state[v["name"]]
+            if v["kind"] in ("int", "real"):
+                parts.append(round(val / cell[v["name"]]))
+            else:
+                parts.append(val)
+        return tuple(parts)
+
+    G = nx.DiGraph()
+    rep = {}
+    for orb in orbits:
+        prev = None
+        for s in orb:
+            k = quant(s)
+            rep.setdefault(k, tuple(s[v["name"]] for v in numeric_vars))
+            G.add_node(k)
+            # Only emit an edge on a genuine cell-to-cell MOVE. A quantized
+            # continuous orbit that lingers in one cell for a step is NOT a
+            # fixed point — emitting a self-loop there would mislabel hundreds
+            # of cells as recurrent. Real recurrence shows up as the orbit
+            # returning to a cell later (closing the limit-cycle SCC).
+            if prev is not None and prev != k:
+                G.add_edge(prev, k)
+            prev = k
+
+    if G.number_of_nodes() <= 1:
+        return None, None, 0
+
+    labels = {}
+    for k, coords in rep.items():
+        labels[k] = "(" + ", ".join(f"{c:.0f}" if isinstance(c, float)
+                                    else str(c) for c in coords) + ")"
+    return G, labels, len(orbits)
+
+
 def draw_na_card(m, out_path, reason):
     """Render an honest 'not meaningful for this program' card instead of a
     fabricated graph."""
@@ -527,18 +632,30 @@ def main():
                 # or the explorer can't unfold a continuous orbit. Try the real
                 # forward orbit from the seed; only that, never a fabricated grid.
                 G, labels = build_numeric_orbit_graph(m)
-                if G is None or G.number_of_nodes() <= 1:
-                    # genuine fixed point: plot the one real reachable state.
-                    G = nx.DiGraph()
-                    keys = [_key(m, s) for s in states]
-                    G.add_node(keys[0])
-                    G.add_edge(keys[0], keys[0])
-                    labels = {keys[0]: _label_for_key(m, keys[0])}
-                    sub = ("1 reachable state — the encoded seed is a fixed "
-                           "point (no further dynamics)  (exact)")
-                else:
+                if G is not None and G.number_of_nodes() > 1:
                     sub = (f"{G.number_of_nodes()} states on the real forward "
                            f"orbit from the initial condition  (exact orbit)")
+                else:
+                    # The encoded seed walks a dead orbit — it may sit at an
+                    # UNSTABLE fixed point (vanderpol's (0,0)) while the real
+                    # dynamics live on a limit cycle off the origin. Probe
+                    # outward with the shared seed-scan and build the recurrence
+                    # graph from the off-origin orbits that come alive.
+                    G, labels, nseeds = build_numeric_scan_graph(m)
+                    if G is not None and G.number_of_nodes() > 1:
+                        sub = (f"{G.number_of_nodes()} states on real forward "
+                               f"orbits from {nseeds} off-fixed-point seeds — "
+                               f"the encoded seed sits at an unstable equilibrium; "
+                               f"the recurrent set lives off it  (seed-scan)")
+                    else:
+                        # genuine fixed point: plot the one real reachable state.
+                        G = nx.DiGraph()
+                        keys = [_key(m, s) for s in states]
+                        G.add_node(keys[0])
+                        G.add_edge(keys[0], keys[0])
+                        labels = {keys[0]: _label_for_key(m, keys[0])}
+                        sub = ("1 reachable state — the encoded seed is a fixed "
+                               "point (no further dynamics)  (exact)")
             else:
                 draw_na_card(m, out,
                              "the reachable transition set could not be "
