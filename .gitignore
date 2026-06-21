@@ -20,3 +20,8 @@ viz/gallery/
 viz/ir/
 viz/CONTACT_SHEET.md
 viz/combo/
+
+# playwright MCP browser output (the ide-critic's session artifacts)
+.playwright-mcp/
+# critic session recordings (screenshots + session logs — watch later, never committed)
+ide/critics/recordings/

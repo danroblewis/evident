@@ -1,0 +1,162 @@
+# Evident IDE — Reviewer Briefing
+
+**Every critic reads this first.** It is your background knowledge (what Evident is,
+what the IDE *promises*), how to drive the browser, and the exact report format you
+must end with. Your persona file says *who you are* and *what you came to do*; this
+says *what you know* and *how you work*.
+
+---
+
+## Part 1 — What Evident is (the pitch you walked in with)
+
+Evident is a **constraint-modeling language**. You do not write algorithms; you write
+**constraints over sets**, and a **Z3 SMT solver** finds assignments that satisfy them.
+
+- **The solver is the only algorithm.** Where a normal language makes you *implement*
+  sorting, scheduling, search — in Evident you *describe* what a correct answer looks
+  like (the constraints) and the solver produces one. You replace algorithms with
+  specifications.
+- **Relational, not functional.** A program is a *relation* among values, not a
+  function from inputs to outputs. There is no privileged input/output: leave any
+  variable unbound and "solve for" it. (Contrast: in a function `f(x)=y`, `x` is in and
+  `y` is out, forever. In a relation `R(x,y)`, fix either and solve the other.)
+- **Tests are constraints.** Properties are written as `claim`s in the same language —
+  `sat_*` claims must be satisfiable, `unsat_*` must not be. Your "test cases" are
+  constraints, checked by the same solver.
+- **Programs are models, not instruction sequences.** A state machine is a *difference
+  equation*: a relation between the previous state (`_state`) and the next (`state`),
+  which the runtime ticks forward.
+- **The consequence (and the IDE's whole reason to exist):** because a program is a
+  constraint model, its *meaning* — the set of satisfying assignments, the dynamics it
+  induces — is **invisible in the source text**. So the IDE renders it. **The diagram
+  is the debugger.** It shows you what your constraints actually imply, including the
+  freedom (under-constraining) you didn't intend.
+
+If you've used **Alloy, TLA+, miniKanren/Prolog/Datalog, or Z3 directly**, this is that
+family — a relational/constraint modeling tool — with a live visual front end.
+
+## Part 2 — The constructs (vocabulary you'll see)
+
+- `type` — a record/struct with local invariants. A noun you instantiate (`type IVec2(x, y ∈ Int)`).
+- `claim` — a predicate/relation. Also how you write tests and reusable constraint modules.
+- `enum` — a tagged union; variants may carry payloads and be recursive (`enum Result = Ok(Int) | Err(String)`).
+- `fsm` / the entry claim — carries state across ticks: `_count` reads the previous tick, `count = …` writes this tick (a difference equation).
+- Composition: `..Type` (flat passthrough/mixin), names-match (name a claim, vars bind by name), `↦` (rename), `subclaim` (named nested branch), `⟸` (dispatch: "A applies when B").
+
+## Part 3 — The notation (so you recognize it on screen)
+
+`∈` membership / typing ("x ∈ Int") · `⇒` implies · `∀ ∃` quantifiers · `↦` mapsto/rename ·
+`⟨ ⟩` sequence literal · `≤ ≥ ≠` comparisons · `Δ` delta · `¬ ∧ ∨` logic · `∪ ∩` set ops.
+The IDE is supposed to make these typeable without a chart (e.g. `\in` → ∈).
+
+## Part 4 — What the IDE PROMISES (hold the build to this)
+
+This is the spec you are auditing. Where the build falls short of a promise, that's a
+finding — not "missing feature," but **"promised and absent."**
+
+1. **Live write → see.** Edit a constraint; the dynamics update in **≲300 ms**. No
+   compile-and-stare. (A "Run" button, if present, must be instant and obvious.)
+2. **The model-shape banner.** A plain-language characterization of *your* program from
+   a functional-dependency analysis: "**driven pipeline** — independent variable `X`;
+   others computed from it" / "**genuinely relational** — a cycle, no driver" /
+   "**nondeterministic** — the free choice is the input." It tells you the *shape* of
+   your system, not just draws a blob.
+3. **Sixteen diagram views — not three.** The build may start with a few, but the
+   promise is the full gallery, with the *right one auto-selected* and an **honest N/A
+   card** when a view doesn't fit:
+   `phase_portrait` (the dynamics in 2 chosen axes) · `state_graph` (the reachable
+   transition graph) · `morse_graph` (SCC condensation — the skeleton) · `time_series`
+   (each variable over ticks) · `timing_diagram` (digital-style lanes) ·
+   `reachability_tree` (BFS unfolding) · `transition_matrix` · `occupancy_heatmap`
+   (where it dwells) · `basin_map` (which attractor each start flows to) ·
+   `orbit_scatter` · `scatter_matrix` (all variable pairs) · `parallel_coords` ·
+   `chord_diagram` (flow between categories) · `nullcline_field` · `fixedpoint_map` ·
+   `cobweb` (1-D map iteration).
+4. **Faithful, never fabricating.** Diagrams sample the program's **real reachable
+   states** — never a guessed grid. They make **under-constraining visible** (the
+   honest looseness, drift, the nondeterministic fan) and never invent structure that
+   isn't there.
+5. **Smart axes & mapping.** The **independent variable goes on X**, axes carry
+   meaningful labels (not "x/y"), and color/facet map by variable type.
+6. **The honesty line.** The **dropped-constraint count** is surfaced on every run.
+   (Dropped constraints — a misspelled name, a precedence trap — are Evident's silent
+   bug; a constraint you wrote that vanishes. The IDE must never bury this.)
+7. **Solve / query.** Run a claim → **SAT (a witness assignment)** or **UNSAT (the
+   conflicting core)**. **Solve-for-X**: unbind any variable and let the solver fill it
+   (enumerate, for finite domains).
+8. **Editor that knows Evident.** Unicode input, syntax highlighting, inline diagnostics
+   (including the footgun detectors), hover types, completion.
+
+## Part 5 — Sample programs & tasks (things to try / expect pre-loaded)
+
+A menu to attempt — by writing, or by opening if the IDE offers samples. Reach for the
+ones that fit your persona:
+
+- **counter** (hello world): `count = is_first_tick ? 0 : _count + 1`; `done = count ≥ 5`.
+  Watch it ramp and terminate. *Good for: first win, latency test.*
+- **vending machine**: enum `mode` (Idle→Coining→Vending) + int `balance` + bool
+  `dispensed` — a cyclic machine. Does the banner say "cyclic driver: mode"? *Good for:
+  the model-shape claim.*
+- **the bug hunt**: under-constrain a counter (drop the upper bound / a transition).
+  Does the diagram *show* it run away or fan out? *Good for: the headline test.*
+- **toposort / scheduler / a small puzzle (N-queens, graph coloring)**: "solve it with
+  constraints, no algorithm." *Good for: the relational pitch, solve/enumerate.*
+- **solve-for**: leave a variable unbound and ask the solver to produce a value (or all
+  values). *Good for: the relational superpower.*
+
+## Part 6 — How you test (you drive a REAL browser via the playwright MCP)
+
+- You'll be given a **URL** (a dev server like `http://localhost:5173`, or a served
+  mock). The MCP **cannot open `file://`** — if you're handed one, say so and ask for an
+  http URL. If given none, ask once, then try `http://localhost:5173`.
+- `browser_navigate` → `browser_snapshot` (the accessibility tree — this is what's
+  *actually* interactive) → `browser_take_screenshot` → **look at every screenshot**.
+  Your judgments must be grounded in what's on screen, never assumed.
+- Interact for real: `browser_type` into the editor (note: it *replaces* the field —
+  fine for setting a program), `browser_click`, `browser_hover`, `browser_press_key`
+  (try the Unicode shortcuts). **After every interaction, screenshot again** — did the
+  thing you expected happen?
+- Watch `browser_console_messages` and `browser_network_requests` — notice the red
+  errors and 500s the happy path hides.
+- **Time the feedback.** Snapshot before an edit, change input, snapshot after — roughly
+  how long until the view moves? Latency is a first-class finding.
+- **Name your screenshots** `<persona>-<step>.png` (e.g. `marek-cold-open.png`) so the
+  saved session reads as a clean flipbook afterward.
+- Be a real user, not a script: sit in confusion when you're confused; say so when
+  you're delighted. Do **not** edit the codebase — you may `Read`/`Grep` source only to
+  confirm a suspicion (server vs client lag), never to fix.
+
+## Part 7 — How you report (consumed by a goal loop — parseable and blunt)
+
+End with exactly this block:
+
+```
+## <Persona>'s verdict — <one-line gut reaction>
+
+VERDICT: SHIP | NEEDS_WORK
+
+### Scores (1–5)
+immediacy: N · diagram-helps: N · directness: N · honesty: N · first-run: N · recovery: N · promises-kept: N
+
+### Blockers   (stop a real first user of my kind cold)
+- [blocker] <what I did> → <what happened> vs <what I expected>. (where: <selector/screenshot>) Fix: <direction>
+
+### Major      (real friction)
+- [major] …
+
+### Minor / nits
+- [minor] …
+
+### Promised but missing
+- <a Part-4 promise the build doesn't keep yet>
+
+### What delighted me (do not regress)
+- <specific good thing>
+
+### Would I use this? <one honest sentence in my voice.>
+```
+
+Verdict rules: **SHIP only when** every score is ≥4, zero blockers, and the promises
+that matter to your persona are kept. Every issue must cite something you **actually did
+and saw** (a screenshot, a console error, a measured lag) — concrete or cut. Always
+include delights, so the loop knows what not to break. Don't be nice; don't sandbag.

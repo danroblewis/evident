@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Evident IDE (mock)</title>
+<style>
+  :root { --bg:#0f1419; --panel:#161b22; --line:#2b3138; --ink:#c9d1d9; --dim:#7d8590;
+          --accent:#58a6ff; --good:#3fb950; --warn:#d29922; }
+  * { box-sizing:border-box; }
+  html,body { margin:0; height:100%; background:var(--bg); color:var(--ink);
+              font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; }
+  #app { display:grid; height:100vh;
+         grid-template-columns:180px 1fr 1fr; grid-template-rows:34px 1fr 150px;
+         grid-template-areas:"top top top" "outline editor dynamics" "outline console console"; }
+  #top { grid-area:top; display:flex; align-items:center; gap:12px; padding:0 12px;
+         background:var(--panel); border-bottom:1px solid var(--line); }
+  #top b { color:#fff; } #top .sp { flex:1; }
+  button { background:#21262d; color:var(--ink); border:1px solid var(--line);
+           border-radius:6px; padding:4px 10px; cursor:pointer; font:inherit; }
+  button:hover { border-color:var(--accent); }
+  #run-btn { background:var(--good); color:#04130a; border-color:var(--good); font-weight:600; }
+  #outline { grid-area:outline; background:var(--panel); border-right:1px solid var(--line);
+             padding:10px; } #outline h4 { color:var(--dim); margin:0 0 6px; font-size:11px;
+             text-transform:uppercase; letter-spacing:.06em; } #outline .it { padding:2px 4px; color:var(--accent); }
+  #editor { grid-area:editor; width:100%; height:100%; background:var(--bg); color:var(--ink);
+            border:none; outline:none; resize:none; padding:12px 14px; font:inherit; tab-size:2; }
+  #dynamics { grid-area:dynamics; background:var(--panel); border-left:1px solid var(--line);
+              display:flex; flex-direction:column; }
+  #banner { padding:8px 12px; background:#11212e; border-bottom:1px solid var(--line);
+            color:var(--dim); } #banner.live { color:var(--accent); }
+  #tabs { display:flex; gap:6px; padding:8px 12px 0; }
+  #tabs .tab { padding:3px 9px; border-radius:6px 6px 0 0; background:#1b2129; color:var(--dim);
+               cursor:pointer; border:1px solid transparent; }
+  #tabs .tab.on { color:#fff; background:var(--bg); border-color:var(--line); border-bottom-color:var(--bg); }
+  #viz { flex:1; display:flex; align-items:center; justify-content:center; position:relative; }
+  #viz .ph { color:var(--dim); }
+  #inspector { padding:6px 12px; border-top:1px solid var(--line); color:var(--dim); min-height:24px; }
+  #console { grid-area:console; background:#0b0e12; border-top:1px solid var(--line);
+             padding:8px 12px; overflow:auto; } #console .ok { color:var(--good); } #console .w { color:var(--warn); }
+  .node { cursor:pointer; } .node:hover circle { stroke:#fff; }
+  svg text { fill:var(--ink); font:11px ui-monospace,monospace; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="top">
+    <b>◆ Evident</b><span class="sp"></span>
+    <span id="file" style="color:var(--dim)">counter.ev</span>
+    <button id="run-btn">▶ Run</button>
+  </div>
+
+  <div id="outline">
+    <h4>Outline</h4>
+    <div class="it">type GameState</div>
+    <div class="it">fsm counter</div>
+    <div class="it">claim sat_init</div>
+  </div>
+
+  <textarea id="editor" spellcheck="false">fsm counter
+    count ∈ Int = (is_first_tick ? 0 : _count + 1)
+    done  ∈ Bool = (count ≥ 5)</textarea>
+
+  <div id="dynamics">
+    <div id="banner">▷ press Run to see the dynamics</div>
+    <div id="tabs">
+      <div class="tab on" id="tab-portrait" data-v="portrait">phase&nbsp;portrait</div>
+      <div class="tab" id="tab-graph" data-v="graph">state&nbsp;graph</div>
+      <div class="tab" id="tab-series" data-v="series">time&nbsp;series</div>
+    </div>
+    <div id="viz"><div class="ph">no dynamics yet</div></div>
+    <div id="inspector">inspector: —</div>
+  </div>
+
+  <div id="console"><span class="ok">●</span> ready. runtime idle.</div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const portraitSVG = `<svg width="320" height="260" viewBox="0 0 320 260">
+  <line x1="20" y1="130" x2="300" y2="130" stroke="#2b3138"/><line x1="160" y1="20" x2="160" y2="240" stroke="#2b3138"/>
+  <path d="M160,130 q60,-90 110,0 q-50,80 -150,40 q-70,-60 30,-90 q70,-15 80,40" fill="none" stroke="#58a6ff" stroke-width="2"/>
+  <circle cx="160" cy="130" r="4" fill="#d29922"/><text x="250" y="125">count</text><text x="166" y="34">done</text>
+</svg>`;
+const graphSVG = `<svg width="320" height="240" viewBox="0 0 320 240">
+  ${[0,1,2,3,4,5].map((n,i)=>`<g class="node" data-n="${n}"><circle cx="${40+i*46}" cy="${120}" r="14" fill="${n===5?'#3fb950':'#21262d'}" stroke="#58a6ff"/><text x="${36+i*46}" y="124">S${n}</text></g>`).join('')}
+  ${[0,1,2,3,4].map(i=>`<line x1="${54+i*46}" y1="120" x2="${66+i*46}" y2="120" stroke="#7d8590" marker-end="url(#a)"/>`).join('')}
+  <defs><marker id="a" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="#7d8590"/></marker></defs>
+</svg>`;
+const seriesSVG = `<svg width="320" height="240" viewBox="0 0 320 240">
+  <polyline points="20,200 70,170 120,140 170,110 220,80 270,50 300,50" fill="none" stroke="#58a6ff" stroke-width="2"/>
+  ${[0,1,2,3,4,5].map(i=>`<circle cx="${20+i*50}" cy="${200-i*30}" r="3" fill="#58a6ff"/>`).join('')}
+  <text x="250" y="220">tick</text><text x="24" y="60">count</text>
+</svg>`;
+const views = { portrait: portraitSVG, graph: graphSVG, series: seriesSVG };
+let ran = false, cur = 'portrait';
+
+function paint() {
+  $('#viz').innerHTML = ran ? views[cur] : '<div class="ph">no dynamics yet</div>';
+  if (ran && cur === 'graph') document.querySelectorAll('.node').forEach(g =>
+    g.onclick = () => { const n = g.dataset.n; $('#inspector').textContent =
+      `inspector: S${n} = { count: ${n}, done: ${n>=5} }`; });
+}
+$('#run-btn').onclick = () => {
+  ran = true;
+  $('#banner').className = 'live';
+  $('#banner').textContent = '◆ Driven pipeline — independent variable: count → ; done computed from it. 6 reachable states.';
+  $('#console').innerHTML = '<span class="ok">●</span> ran. 6 states, 5 transitions, 1 absorbing (S5). 0 dropped constraints.';
+  paint();
+};
+document.querySelectorAll('.tab').forEach(t => t.onclick = () => {
+  document.querySelectorAll('.tab').forEach(x => x.classList.remove('on'));
+  t.classList.add('on'); cur = t.dataset.v; paint();
+});
+</script>
+</body>
+</html>

@@ -4,6 +4,24 @@
       "command": "semfora-engine",
       "args": ["serve"],
       "env": {}
+    },
+    "playwright": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@playwright/mcp@latest",
+        "--headless",
+        "--isolated",
+        "--no-sandbox",
+        "--browser",
+        "chromium",
+        "--viewport-size",
+        "1440,900",
+        "--save-session",
+        "--output-dir",
+        "/Users/daniellewis/evident/ide/critics/recordings"
+      ],
+      "env": {}
     }
   }
 }
