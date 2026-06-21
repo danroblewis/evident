@@ -206,17 +206,22 @@ def grid_states(model, max_points=900):
 
 
 def sample_states(model):
-    """Return (states, mode).
+    """Return (states, mode, edges).
 
     The reachable set from the initial state IS the real dynamics, so prefer it
     whenever it's non-trivial (vending's limit cycle, dungeon's graph). Only
     when it collapses to a point/pair AND the system carries numeric axes
     (vanderpol: reachable = the origin fixed point alone) do we fall back to a
-    phase-space GRID scan to expose the surrounding orbits."""
-    reach, _edges = model.reachable(limit=5000)
+    phase-space GRID scan to expose the surrounding orbits.
+
+    `edges` are the (state, next_state) pairs of the reachable graph — faint
+    connecting structure that turns the basin from scattered dots into a legible
+    transition graph the fixed points sit in. Empty for grid mode."""
+    reach, idx_edges = model.reachable(limit=5000)
     has_numeric = any(v["kind"] in ("int", "real") for v in model.state_vars)
     if len(reach) > 2 or (reach and not has_numeric):
-        return reach, "reachable"
+        edges = [(reach[i], reach[j]) for i, j in idx_edges]
+        return reach, "reachable", edges
     if has_numeric:
         grid = grid_states(model)
         # keep the reachable point(s) too (the true fixed point), unioned in.
@@ -224,8 +229,8 @@ def sample_states(model):
         for s in reach:
             if model._key(s) not in keys:
                 grid.append(s)
-        return grid, "grid"
-    return reach, "reachable"
+        return grid, "grid", []
+    return reach, "reachable", []
 
 
 # --------------------------------------------------------------------------
@@ -429,7 +434,7 @@ def render(smt2, schema, out_path):
     xvar, yvar = ch["x"], ch["y"]
 
     title = f"{model.fsm} — {VIZ_TYPE}"
-    states, mode = sample_states(model)
+    states, mode, edges = sample_states(model)
 
     if not states or xvar is None:
         fig, ax = plt.subplots(figsize=(9, 8))
@@ -472,7 +477,11 @@ def render(smt2, schema, out_path):
                      if facet is not None else fixed)
         sub_cycles = (_filter_cycles(cycles, facet, pval)
                       if facet is not None else cycles)
-        draw_panel(ax, model, ch, sub, sub_fixed, sub_cycles, len(cycles))
+        sub_edges = ([(a, b) for (a, b) in edges
+                      if a[facet["name"]] == pval and b[facet["name"]] == pval]
+                     if facet is not None else edges)
+        draw_panel(ax, model, ch, sub, sub_fixed, sub_cycles, len(cycles),
+                   sub_edges)
         if facet is not None:
             ax.set_title(f"{_short(facet['name'])} = {_fmt(facet, pval)}",
                          fontsize=12, fontweight="bold")
@@ -493,7 +502,7 @@ def _filter_cycles(cycles, facet, pval):
     return out
 
 
-def draw_panel(ax, model, ch, states, fixed, cycles, total_cycles):
+def draw_panel(ax, model, ch, states, fixed, cycles, total_cycles, edges=None):
     xvar, yvar = ch["x"], ch["y"]
     cvar, svar = ch["color"], ch["shape"]
 
@@ -501,6 +510,23 @@ def draw_panel(ax, model, ch, states, fixed, cycles, total_cycles):
         x = ordinal(model, xvar, st[xvar["name"]])
         y = ordinal(model, yvar, st[yvar["name"]]) if yvar else 0.0
         return x, y
+
+    # faint connecting structure: the reachable transition graph. Drawing the
+    # basin's edges (not just its dots) turns scattered points into a legible
+    # graph the fixed points sit at the SINKS of — drawn UNDER everything so it
+    # reads as context, never competing with the attractor markers.
+    if edges:
+        seen_seg = set()
+        for a, b in edges:
+            (x0, y0), (x1, y1) = proj(a), proj(b)
+            if (x0, y0) == (x1, y1):
+                continue                       # self-loop: a dot, not a segment
+            seg = (round(x0, 3), round(y0, 3), round(x1, 3), round(y1, 3))
+            if seg in seen_seg:
+                continue
+            seen_seg.add(seg)
+            ax.plot([x0, x1], [y0, y1], color="#b9bdcc", alpha=0.5,
+                    lw=0.8, zorder=0, solid_capstyle="round")
 
     # background basin: sampled states, encoded by a CATEGORICAL color and/or
     # marker SHAPE. The derived attractor coloring (red/blue) is drawn on top and
@@ -511,7 +537,8 @@ def draw_panel(ax, model, ch, states, fixed, cycles, total_cycles):
         else:
             bx = [proj(s)[0] for s in states]
             by = [proj(s)[1] for s in states]
-            ax.scatter(bx, by, s=10, c="#d9d9e3", alpha=0.55, linewidths=0,
+            ax.scatter(bx, by, s=34, c="#9aa0b5", alpha=0.85,
+                       edgecolors="white", linewidths=0.4,
                        zorder=1, label=f"sampled states ({len(states)})")
 
     # cycle members + loop arrows.
@@ -588,9 +615,10 @@ def _scatter_categorical(ax, model, states, proj, cvar, svar):
             if svar is not None:
                 bits.append(f"{_short(svar['name'])}={_fmt(svar, sv)}")
             ax.scatter([p[0] for p in pts], [p[1] for p in pts],
-                       s=26, c=cmap[cv] if cvar is not None else "#d9d9e3",
+                       s=44, c=cmap[cv] if cvar is not None else "#9aa0b5",
                        marker=smap[sv] if svar is not None else "o",
-                       alpha=0.6, linewidths=0, zorder=1, label=", ".join(bits))
+                       alpha=0.9, edgecolors="white", linewidths=0.4,
+                       zorder=1, label=", ".join(bits))
 
 
 def _super_title(model, ch, mode, fixed, cycles):

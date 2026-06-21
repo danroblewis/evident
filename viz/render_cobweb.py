@@ -317,6 +317,58 @@ def _reachable_count(m):
         return None
 
 
+def _held_alts(m, hv):
+    """A few alternative previous-values for a HELD companion var, to perturb it."""
+    if hv["kind"] == "enum":
+        return list(m.enum_variants[hv["name"]])
+    if hv["kind"] == "bool":
+        return [False, True]
+    # numeric companion: sample a handful of values it actually takes on the orbit
+    vals = sorted({s.get(hv["name"]) for s in m._sample_states()
+                   if isinstance(s.get(hv["name"]), int)})
+    return vals[:4]
+
+
+def _depends_on_held(m, var, base, grid):
+    """Is the candidate scalar's successor a function of a HELD companion var, rather
+    than a self-contained 1-D map?
+
+    The cobweb scans x_n -> x_{n+1} with the OTHER carried vars pinned at `base`. That
+    is only honest when f(x) = state.X(_state.X) — when the scalar's next value is
+    determined by its OWN previous value alone. If instead the next value depends on a
+    held companion (vending's balance(n+1) is driven by the held state.mode, not by
+    balance(n)), the scanned map is a LIE: holding mode=Idle makes f(balance)=0 for
+    EVERY balance, a flat line that wrongly implies balance always collapses to 0.
+
+    Probe: for a few x_n on the grid, perturb each held companion ONE at a time
+    (holding the scalar and the rest) and check whether the scalar's successor MOVES.
+    If any perturbation changes it, the scalar is non-autonomous over these axes and
+    the 1-D cobweb is not meaningful. Returns (True, (x, held_name, alt)) on the first
+    witness, else (False, None)."""
+    name = var["name"]
+    held = [v for v in m.state_vars if v["name"] != name]
+    if not held or not grid:
+        return False, None
+    # a small spread of scan points: ends + middle of the grid (cheap, representative)
+    n = len(grid)
+    sample = sorted({grid[0], grid[n // 2], grid[-1]})
+    for x in sample:
+        st = dict(base)
+        st[name] = _from_ord(m, var, x)
+        ref = m.successor(st)
+        if ref is None:
+            continue
+        refv = ref.get(name)
+        for hv in held:
+            for alt in _held_alts(m, hv):
+                if alt == st.get(hv["name"]):
+                    continue
+                pert = m.successor({**st, hv["name"]: alt})
+                if pert is not None and pert.get(name) != refv:
+                    return True, (x, hv["name"], alt)
+    return False, None
+
+
 def render(smt2, schema, out_path):
     m = load(smt2, schema)
     var, mode = _pick_primary(m)
@@ -347,6 +399,23 @@ def render(smt2, schema, out_path):
             _na_card(out_path, m.fsm,
                      f"N/A — no numeric range for {var['name']}; "
                      "cobweb not meaningful.")
+            return
+        # Non-autonomy guard: a cobweb is a 1-D map x_{n+1}=f(x_n). If the scalar's
+        # next value is actually driven by a HELD companion var (vending's balance is
+        # driven by state.mode, not by balance itself), scanning the scalar with the
+        # companion pinned fabricates a false, misleading map — a flat f(x)=0 line that
+        # claims balance always collapses to 0. Emit an honest N/A instead of drawing it.
+        dep, why = _depends_on_held(m, var, base, grid)
+        if dep:
+            x, hname, _alt = why
+            _na_card(out_path, m.fsm,
+                     f"N/A — not a 1-D autonomous map.\n\n"
+                     f"{var['name']}(n+1) is driven by the held companion "
+                     f"'{hname}', not by {var['name']}(n) alone:\nperturbing "
+                     f"'{hname}' changes {var['name']}'s successor.\nScanning "
+                     f"{var['name']} with '{hname}' pinned gives a false map\n"
+                     f"(a flat line implying {var['name']} always collapses).\n"
+                     f"A cobweb is only meaningful for a self-contained 1-D map.")
             return
     else:
         grid = list(range(len(m.enum_variants[var["name"]])))
