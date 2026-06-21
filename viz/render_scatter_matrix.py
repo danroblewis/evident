@@ -193,6 +193,38 @@ def main():
     # Precompute ordinal columns once.
     cols = {v["name"]: [ordinal(m, v, s[v["name"]]) for s in states] for v in vars_}
 
+    # Robust per-axis display limits, computed from the PLOTTED points. A numeric
+    # var can carry sentinel seeds (±1e6 fold initializers, -1 'none' markers) that
+    # a single state injects; left to matplotlib autoscale they blow the axis out to
+    # ±1e6 and crush the real cluster to a dot (the csv_stats state.min/state.max
+    # defect). We fence each numeric axis to an IQR-robust extent of its own column
+    # so the sentinel point falls outside the view while every genuine state stays
+    # in-frame (the limit-cycle spread of a continuous orbit is preserved — it has
+    # no sentinel, so the fence is wide). Categorical (bool/enum) axes are left
+    # alone (they keep their ordinal extent).
+    def robust_limits(values):
+        vals = sorted(v for v in values if v == v)  # drop NaN
+        if not vals:
+            return None
+        n = len(vals)
+        q1, q3 = vals[n // 4], vals[(3 * n) // 4]
+        iqr = q3 - q1
+        if iqr > 0:  # reject ±1e6 / far-out sentinels via a 3-IQR fence
+            lof, hif = q1 - 3 * iqr, q3 + 3 * iqr
+            vals = [v for v in vals if lof <= v <= hif] or vals
+        lo, hi = float(min(vals)), float(max(vals))
+        if lo == hi:
+            return (lo - 1.0, hi + 1.0)
+        pad = (hi - lo) * 0.08
+        return (lo - pad, hi + pad)
+
+    axis_limits = {}
+    for v in vars_:
+        if v["kind"] in ("int", "real"):
+            lim = robust_limits(cols[v["name"]])
+            if lim is not None:
+                axis_limits[v["name"]] = lim
+
     # COLOR channel: hue every point by the top categorical var (enum/bool/string).
     # This is the classic high-D scatter-matrix coloring — a 3rd dimension carried
     # on top of every pairwise projection. Falls back to a flat color if the model
@@ -242,8 +274,13 @@ def main():
         for j, vj in enumerate(vars_):   # col -> x axis
             ax = axes[i][j]
             if i == j:
-                # Diagonal: var name + a 1-D histogram backdrop.
-                ax.hist(cols[vi["name"]], bins=15, color="#cccccc")
+                # Diagonal: var name + a 1-D histogram backdrop. Confine the bins to
+                # the robust range so a sentinel outlier doesn't compress every bar
+                # into the first bin.
+                hrange = axis_limits.get(vi["name"])
+                ax.hist(cols[vi["name"]], bins=15, color="#cccccc", range=hrange)
+                if hrange is not None:
+                    ax.set_xlim(hrange)
                 ax.set_yticks([])
                 ax.set_xticks([])
                 ax.text(0.5, 0.5, vi["name"], transform=ax.transAxes,
@@ -253,6 +290,13 @@ def main():
             x = cols[vj["name"]]
             y = cols[vi["name"]]
             ax.scatter(x, y, s=10, alpha=0.45, c=point_colors, edgecolors="none")
+
+            # Clamp numeric axes to the robust extent so sentinel seeds
+            # (±1e6 / -1) fall off-panel instead of blowing out the scale.
+            if vj["name"] in axis_limits:
+                ax.set_xlim(axis_limits[vj["name"]])
+            if vi["name"] in axis_limits:
+                ax.set_ylim(axis_limits[vi["name"]])
 
             # Categorical ticks where appropriate; keep it readable for large n.
             tx, txl = tick_info(m, vj)

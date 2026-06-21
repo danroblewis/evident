@@ -72,23 +72,57 @@ def _short(v):
 # discrete / undefined placeholder
 # --------------------------------------------------------------------------- #
 def placeholder(m, out_path, reason, detail=None):
-    fig, ax = plt.subplots(figsize=(8, 6))
-    ax.axis("off")
-    ax.text(0.5, 0.62, f"N/A for this state: {reason}",
-            ha="center", va="center", fontsize=14, wrap=True,
-            transform=ax.transAxes)
-    kinds = ", ".join(f"{v['name']}:{v['kind']}" for v in m.state_vars)
-    ax.text(0.5, 0.42, f"state = [{kinds}]", ha="center", va="center",
-            fontsize=10, color="#555", transform=ax.transAxes)
+    import textwrap
+
+    # The variable list can be long (toposort: 12 carried vars). A single line
+    # overflows both figure margins and clips. Wrap it onto multiple lines on
+    # comma boundaries so every entry stays inside the frame.
+    kinds_items = [f"{_short(v)}:{v['kind']}" for v in m.state_vars]
+    kinds_line = ", ".join(kinds_items)
+    state_lines = textwrap.wrap(kinds_line, width=64,
+                                break_long_words=False, break_on_hyphens=False)
+    reason_lines = textwrap.wrap(f"N/A for this state: {reason}", width=58,
+                                 break_long_words=False, break_on_hyphens=False)
+
     if detail is None:
         detail = ("nullcline_field needs a numeric axis\n"
                   "(sign of d(var) requires a continuous coordinate).")
-    ax.text(0.5, 0.30, detail,
-            ha="center", va="center", fontsize=10, color="#777",
-            transform=ax.transAxes)
+    detail_lines = []
+    for para in detail.split("\n"):
+        detail_lines += textwrap.wrap(para, width=60,
+                                      break_long_words=False,
+                                      break_on_hyphens=False) or [""]
+
+    # Size the figure to the content so nothing is clipped regardless of how
+    # many state vars / how long the detail text is.
+    n_lines = len(reason_lines) + len(state_lines) + len(detail_lines)
+    fig_h = max(6.0, 2.6 + 0.32 * n_lines)
+    fig, ax = plt.subplots(figsize=(9, fig_h))
+    ax.axis("off")
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1)
+
+    y = 0.88
+    ax.text(0.5, y, "\n".join(reason_lines), ha="center", va="top",
+            fontsize=14, transform=ax.transAxes)
+    y -= 0.08 + 0.05 * len(reason_lines)
+
+    ax.text(0.5, y, "state = [", ha="center", va="top",
+            fontsize=10, color="#555", transform=ax.transAxes)
+    y -= 0.06
+    ax.text(0.5, y, "\n".join(state_lines), ha="center", va="top",
+            fontsize=10, color="#555", transform=ax.transAxes)
+    y -= 0.04 + 0.045 * len(state_lines)
+    ax.text(0.5, y, "]", ha="center", va="top",
+            fontsize=10, color="#555", transform=ax.transAxes)
+    y -= 0.08
+
+    ax.text(0.5, y, "\n".join(detail_lines), ha="center", va="top",
+            fontsize=10, color="#777", transform=ax.transAxes)
+
     ax.set_title(f"{m.fsm} — {VIZ}", fontsize=13, fontweight="bold")
-    fig.tight_layout()
-    fig.savefig(out_path, dpi=120)
+    fig.subplots_adjust(top=0.90, bottom=0.06, left=0.06, right=0.94)
+    fig.savefig(out_path, dpi=120, bbox_inches="tight")
     plt.close(fig)
 
 
@@ -108,6 +142,55 @@ def _orbit_pts(m, xv, vv, seed, steps=600):
         cur = {xn: nxt[xn], vn: nxt[vn]}
         pts.append((cur[xn], cur[vn]))
     return pts
+
+
+def _is_recurrent_field(m, xv, vv):
+    """Does the program's OWN trajectory exhibit genuine 2D recurrent motion on
+    these two axes — a real vector field — or is it a monotone counter / clock /
+    constant that merely SPANS a wide reachable box?
+
+    A sign-field is only honest when the dynamics on (xv, vv) loop back: an
+    oscillator revisits cells (vanderpol's limit cycle), a basin spirals in. A
+    monotone counter (life's `gen`, randomwalk's visit-counters v3/v4) marches
+    away forever and NEVER revisits — gridding it carpets the plane with one
+    uniform sign-region and fabricates a field the program never lives on.
+
+    Honest signals that disqualify a sign-field here:
+      * EITHER axis is constant on the reachable set (life's pop ≡ 3) — there is
+        no second continuous coordinate, so it is not a plane.
+      * the trajectory is strictly monotone on BOTH axes and never revisits a
+        cell — a clock/counter pair, not a flow with structure.
+    Returns True only when the axes carry real recurrent / non-monotone motion."""
+    states, _ = m.reachable(limit=3000)
+    xn, vn = xv["name"], vv["name"]
+    xvals = {s[xn] for s in states if xn in s}
+    vvals = {s[vn] for s in states if vn in s}
+    if len(xvals) <= 1 or len(vvals) <= 1:
+        return False                      # a constant axis → not a 2D plane
+
+    traj = m.trajectory(steps=600)
+    if len(traj) < 4:
+        return False
+    xs = [s[xn] for s in traj if xn in s]
+    vs = [s[vn] for s in traj if vn in s]
+    cells = list(zip(xs, vs))
+    distinct = len(set(cells))
+    revisits = len(cells) - distinct
+    # A revisit only means RECURRENCE if the orbit traverses several distinct
+    # cells before returning (a genuine loop). An orbit frozen on ONE cell
+    # (randomwalk's deterministic trajectory sits at (0,0) forever) revisits
+    # constantly but is a stuck fixed point, not a field — reject it.
+    if revisits > 0 and distinct >= 4:
+        return True                       # the orbit loops back — a real cycle
+
+    def _monotone(seq):
+        nd = all(seq[i] <= seq[i + 1] for i in range(len(seq) - 1))
+        ni = all(seq[i] >= seq[i + 1] for i in range(len(seq) - 1))
+        return nd or ni
+    # No revisit AND each axis only ever moves one way → counter/clock, not a field.
+    if _monotone(xs) and _monotone(vs):
+        return False
+    return True
 
 
 def _recurrent_extent(m, xv, vv, seeds):
@@ -188,12 +271,15 @@ def axis_extent(m, xv, vv):
     box = None
     if rec_box and ((rec_box[1] - rec_box[0]) + (rec_box[3] - rec_box[2]) > reach_span):
         box = rec_box
-    elif have_reach and n_states >= MIN_FIELD_POINTS:
+    elif have_reach and n_states >= MIN_FIELD_POINTS and _is_recurrent_field(m, xv, vv):
         box = reach_box
         # NB: a wide value RANGE is not enough — a finite terminating trajectory
         # (csv_stats' sum 0..242, ls' sizes to 65536) is not a continuous vector
-        # field however wide it spans; only a genuinely dense/recurrent reachable
-        # set earns a sign-field, else we route to N/A below.
+        # field however wide it spans; and a monotone counter/clock pair (life's
+        # gen×pop, randomwalk's visit-counters v3×v4) spans a huge reachable box
+        # but NEVER recurs — gridding it carpets the plane with one fabricated
+        # sign-region. Only a genuinely recurrent / non-monotone reachable set
+        # (_is_recurrent_field) earns a sign-field; else we route to N/A below.
 
     if box is None:
         return None
@@ -225,11 +311,26 @@ def render_numeric(m, out_path, xv, vv):
     extent = axis_extent(m, xv, vv)
     if extent is None:
         states, _ = m.reachable(limit=3000)
-        n = len({(s.get(xv["name"]), s.get(vv["name"])) for s in states})
-        placeholder(m, out_path,
-                    f"reachable set is {n} point(s) / finite",
-                    detail=("a sign-field over a finite reachable set would\n"
-                            "fabricate flow-regions the program never enters."))
+        xn, vn = xv["name"], vv["name"]
+        n = len({(s.get(xn), s.get(vn)) for s in states})
+        nx = len({s[xn] for s in states if xn in s})
+        nv = len({s[vn] for s in states if vn in s})
+        if nx <= 1 or nv <= 1:
+            const_axis = _short(xv) if nx <= 1 else _short(vv)
+            reason = f"{const_axis} is constant on the reachable set"
+            detail = ("a sign-field needs two varying coordinates; one axis here\n"
+                      "never changes, so there is no phase plane to shade.")
+        elif n >= MIN_FIELD_POINTS:
+            reason = (f"{_short(xv)} × {_short(vv)} is a monotone counter/clock, "
+                      "not a flow")
+            detail = ("these axes only ever increase and never revisit a state —\n"
+                      "gridding them would fabricate a sign-field the program\n"
+                      "never enters (no recurrent / 2D structure).")
+        else:
+            reason = f"reachable set is {n} point(s) / finite"
+            detail = ("a sign-field over a finite reachable set would\n"
+                      "fabricate flow-regions the program never enters.")
+        placeholder(m, out_path, reason, detail=detail)
         return
     xlo, xhi, vlo, vhi = extent
     xs = np.linspace(xlo, xhi, GRID)
@@ -270,7 +371,11 @@ def render_numeric(m, out_path, xv, vv):
               scale=32, width=0.0026, pivot="mid")
 
     near0 = mask & (np.abs(DX) <= _tol(DX)) & (np.abs(DV) <= _tol(DV))
-    if near0.any():
+    # Only mark fixed points when they are SPARSE — isolated equilibria. If most
+    # of the plane reads near-zero, the field is degenerate (a clock/constant that
+    # slipped through), and carpeting it with dots both lies and overprints the
+    # legend into illegible glyphs; skip the scatter in that case.
+    if near0.any() and near0.sum() <= 0.25 * mask.sum():
         ax.scatter(X[near0], V[near0], s=70, facecolor="black",
                    edgecolor="white", zorder=6, label="≈ fixed point")
 
@@ -286,7 +391,7 @@ def render_numeric(m, out_path, xv, vv):
         Patch(facecolor="#ffe0cc", label="d{0}↑ d{1}↓".format(_short(xv), _short(vv))),
         Patch(facecolor="#cfe8ff", label="d{0}↓ d{1}↓".format(_short(xv), _short(vv))),
     ]
-    ax.legend(handles=leg, loc="upper right", fontsize=8, framealpha=0.9)
+    ax.legend(handles=leg, loc="upper right", fontsize=8, framealpha=1.0).set_zorder(20)
     ax.grid(alpha=0.15, linewidth=0.5)
     fig.tight_layout()
     fig.savefig(out_path, dpi=120)

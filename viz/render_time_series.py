@@ -61,24 +61,51 @@ def pick_seed(m):
     return init
 
 
+def _advance(m, cur, prefer_change, visited):
+    """One step of the walk. For DISCRETE programs (prefer_change), pick a
+    successor that actually CHANGES the state — and, when possible, one not yet
+    visited — so the trajectory explores the program rather than parking on a
+    self-loop. This mirrors render_timing_diagram._advance: on a discrete graph
+    the lone successor() can sit on a legal self-edge (dungeon's Entrance->Entrance
+    is satisfiable, and z3 may pick it), which would report a genuinely-dynamic
+    program as static. Falls back to the lone successor() for non-discrete
+    (driven difference-equation) systems."""
+    if not prefer_change:
+        return m.successor(cur)
+    succ = m.successors(cur, limit=32)
+    if not succ:
+        return None
+    changed = [s for s in succ if m._key(s) != m._key(cur)]
+    pool = changed or succ
+    fresh = [s for s in pool if m._key(s) not in visited]
+    return (fresh or pool)[0]
+
+
 def walk(m, seed, steps):
-    """Follow a trajectory, but for nondeterministic transitions prefer a
-    successor we have not visited yet — so a discrete system with self-loops
-    (e.g. an adjacency graph where staying put is legal) produces an exploring
-    walk instead of immediately parking on a self-edge. Generic: it just asks
-    successors() for the fan and picks a fresh one when available."""
+    """Follow one successor chain from `seed`, stopping at a fixed point / revisit.
+
+    For DRIVEN difference equations (numeric / mixed: brackets streams
+    ⟨LParen,LBrack,…,BEnd⟩) the next state is DETERMINISTIC given the full previous
+    state, so we follow the lone successor() — picking a 'fresh' state out of an
+    out-of-bounds fan would fabricate a trace that never occurs on the declared run.
+
+    For DISCRETE programs (all-categorical interface — an adjacency graph like
+    dungeon) the lone successor() can park on a legal self-edge: Entrance->Entrance
+    is satisfiable and z3 may pick it, which would make a genuinely-dynamic program
+    look static. There we prefer a STATE-CHANGING, not-yet-visited successor — exactly
+    what render_timing_diagram already does — so the trajectory walks
+    Entrance->Hall->Gate instead of stalling at the seed."""
+    prefer_change = m.is_discrete()
     cur = seed
     path = [cur]
     seen = {m._key(cur)}
     for _ in range(steps):
-        nxts = m.successors(cur)
-        if not nxts:
+        nxt = _advance(m, cur, prefer_change, seen)
+        if nxt is None:
             break
-        fresh = [s for s in nxts if m._key(s) not in seen]
-        nxt = fresh[0] if fresh else nxts[0]
         path.append(nxt)
         k = m._key(nxt)
-        if k in seen:        # only self-loops / already-seen remain -> stop
+        if k in seen:        # fixed point / revisit -> stop
             break
         seen.add(k)
         cur = nxt
@@ -128,6 +155,38 @@ def render(smt2, schema, out_path):
     if not ordered:
         ordered = list(m.state_vars)
 
+    # Drop CONSTANT rows. A variable that holds one value for the entire declared
+    # trajectory carries zero information as a time series — its row is a flat
+    # line that wastes vertical space (find's state.s5 never leaves Unseen; a
+    # balanced brackets run pins st.ok=true throughout). Suppress those rows but
+    # report them as a one-line "held constant" note so no value is hidden — the
+    # READER still sees "st.ok stayed true / s5 stayed Unseen", just not as a row.
+    def held_value(var):
+        vals = [s[var["name"]] for s in traj]
+        first = vals[0]
+        return first if all(v == first for v in vals) else None
+
+    constants = [(v, held_value(v)) for v in ordered]
+    constants = [(v, hv) for v, hv in constants if hv is not None]
+    varying = [v for v in ordered if held_value(v) is None]
+
+    if not varying:
+        # Every variable is constant (a fixed point / degenerate seed): nothing to
+        # plot over time. Render an honest summary card instead of N empty rows.
+        fig, ax = plt.subplots(figsize=(10, max(3.0, 0.4 * len(constants) + 2)))
+        ax.axis("off")
+        lines = "\n".join(f"  {v['name']} = {hv}" for v, hv in constants)
+        ax.text(0.5, 0.5,
+                f"N/A — every state variable is constant over the trajectory\n"
+                f"({len(traj)} ticks from seed {m.label(seed)}; no dynamics to plot)\n\n"
+                f"{lines}",
+                ha="center", va="center", fontsize=12, family="monospace")
+        fig.suptitle(f"{m.fsm} — time_series", fontsize=14, fontweight="bold")
+        fig.savefig(out_path, dpi=120, bbox_inches="tight")
+        plt.close(fig)
+        return
+
+    ordered = varying
     nvars = len(ordered)
     fig, axes = plt.subplots(nvars, 1, sharex=True,
                              figsize=(11, max(2.2 * nvars, 3.0)))
@@ -174,9 +233,14 @@ def render(smt2, schema, out_path):
     axes[-1].set_xlabel("tick")
     fig.suptitle(
         f"{m.fsm} — time_series  (seed {m.label(seed)}, {len(traj)} ticks; "
-        f"{len(quant)} numeric + {len(cat)} categorical, importance-ordered)",
+        f"{nvars} varying of {len(quant) + len(cat)} vars, importance-ordered)",
         fontsize=13, fontweight="bold")
-    fig.tight_layout(rect=[0, 0, 1, 0.97])
+    if constants:
+        held = ",  ".join(f"{v['name']}={hv}" for v, hv in constants)
+        fig.text(0.5, 0.005,
+                 f"held constant (suppressed): {held}",
+                 ha="center", va="bottom", fontsize=8, color="#666")
+    fig.tight_layout(rect=[0, 0.02 if constants else 0, 1, 0.97])
     fig.savefig(out_path, dpi=120, bbox_inches="tight")
     plt.close(fig)
 

@@ -46,10 +46,45 @@ NUMERIC_SEEDS = [
 ]
 
 
+def _robust_bounds(vals, pad=0.06):
+    """ROBUST [lo,hi] of the PLOTTED column itself — frame each parallel axis on the
+    real spread of the data drawn on it, not on an independent reachable sample.
+
+    `m.axis_bounds(name)` samples its OWN reachable set, which for a continuous
+    system (vanderpol) degenerates to a single fixed point at the origin and
+    returns (-1, 1) — so per-axis normalization then clamped every trajectory
+    point onto two rails (the X/box artifact). Here we instead span the actual
+    `vals` plotted on this axis.
+
+    Sentinel-robust via an IQR fence: ±1e6 fold initializers / far-out -1 'none'
+    markers get rejected so one out-of-domain seed can't blow the axis out; the
+    sentinels themselves then clamp to the boundary in norm() rather than
+    rescaling everything onto a flat rail."""
+    nums = sorted(float(v) for v in vals if type(v) in (int, float))
+    if not nums:
+        return 0.0, 1.0
+    n = len(nums)
+    q1, q3 = nums[n // 4], nums[(3 * n) // 4]
+    iqr = q3 - q1
+    if iqr > 0:                                 # reject ±1e6 / far-out sentinels
+        lof, hif = q1 - 3 * iqr, q3 + 3 * iqr
+        nums = [v for v in nums if lof <= v <= hif] or nums
+    lo, hi = min(nums), max(nums)
+    if lo == hi:
+        return lo - 1.0, hi + 1.0
+    m = (hi - lo) * pad
+    return lo - m, hi + m
+
+
 def _axis_meta(m, samples):
     """For each state var, build (kind, value->position fn, ticks).
 
-    Numeric axes: position = the value itself, ticks = min/mid/max.
+    Numeric axes: position = the value itself, scaled to a ROBUST [lo,hi] taken
+    from the PLOTTED column (`_robust_bounds` over the drawn samples — rejects
+    ±1e6 fold sentinels / -1 'none' markers so one out-of-domain seed doesn't
+    blow the axis out); ticks = lo/mid/hi. Values outside that range (the
+    sentinels themselves) clamp to the boundary in norm() rather than escaping
+    the frame.
     Categorical axes (bool/enum/string): map each distinct value to an integer
     ordinal; ticks label every category.
     """
@@ -59,7 +94,7 @@ def _axis_meta(m, samples):
         kind = v["kind"]
         vals = [s[name] for s in samples]
         if kind in ("int", "real"):
-            lo, hi = min(vals), max(vals)
+            lo, hi = _robust_bounds(vals)       # robust extent of the plotted column
             if lo == hi:
                 lo, hi = lo - 1, hi + 1
             mid = (lo + hi) / 2.0
@@ -130,19 +165,21 @@ def _cat_label(c):
 
 
 def _collect_samples(m):
-    """Return (samples, note) — a list of state dicts to draw as polylines."""
-    if m.is_discrete():
-        states, _ = m.reachable()
+    """Return (samples, note) — a list of state dicts to draw as polylines.
+
+    HONESTY RULE: a program with a finite reachable set (≥2 distinct states) is a
+    terminating computation with a REAL, bounded state domain — plot exactly that
+    set, whether or not it has numeric axes. The earlier code routed every program
+    with a numeric axis (ps, csv_stats, ls, top, scheduler, histogram, …) into a
+    fabricated seed-grid trajectory sweep over ±1500, inventing states the program
+    never enters. Only a GENUINELY continuous/unbounded system — whose reachable
+    BFS degenerates to ≤1 distinct state (e.g. an integer-rounded limit cycle that
+    settles to a fixed point, like vanderpol) — falls through to trajectory sweeps,
+    and those seeds trace the real orbit, not a guessed box."""
+    states, _ = m.reachable(limit=400)
+    if len({m._key(s) for s in states}) >= 2:
         return states, "reachable set"
-    # mixed (has at least one numeric axis): if there's an enum/bool too, the
-    # reachable BFS may still be a sensible finite cycle (e.g. vending). Try it
-    # first; fall back to numeric seeding if it's tiny/degenerate.
-    has_cat = any(v["kind"] in ("bool", "enum", "string") for v in m.state_vars)
-    if has_cat:
-        states, _ = m.reachable(limit=400)
-        if len(states) >= 2:
-            return states, "reachable set"
-    # pure-numeric (or degenerate): sweep trajectories from several seeds.
+    # Genuinely continuous/degenerate: sweep trajectories from several seeds.
     xname = next((v["name"] for v in m.state_vars if v["name"].endswith(".x")), None)
     vname = next((v["name"] for v in m.state_vars if v["name"].endswith(".v")), None)
     numeric = [v for v in m.state_vars if v["kind"] in ("int", "real")]
@@ -200,7 +237,9 @@ def render(smt2, schema, out_path):
             p = meta["pos"](value)
         if hi == lo:
             return 0.5
-        return (p - lo) / (hi - lo)
+        # Clamp into [0,1]: a sentinel value outside the robust bounds lands on
+        # the axis edge instead of escaping the frame and rescaling everything.
+        return max(0.0, min(1.0, (p - lo) / (hi - lo)))
 
     segments = []
     for s in samples:

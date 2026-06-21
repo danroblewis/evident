@@ -49,14 +49,45 @@ from evident_viz import load
 
 # --- channel mapping: node var (categorical position) + arc-color var ----------
 
+MIN_NODE_CLASSES = 3   # a chord with <3 nodes degenerates to 2 dots / 1 arc
+
+
+def _observed_cardinality(m, name):
+    """Number of DISTINCT values a var actually takes over the REACHABLE set
+    (not the schema's declared variant count). A bool that latches false->true,
+    or an enum the program only ever sits in one state of, is degenerate as a
+    node axis even though its declared cardinality is >1."""
+    try:
+        states, _ = m.reachable()
+    except Exception:
+        states = m.trajectory(steps=200)
+    return len({st.get(name) for st in states if name in st})
+
+
 def pick_primary(m):
-    """NODE channel = categorical_vars[0] (top enum/bool/string). Return
-    (var_dict, node_labels, project_fn, mode_str). Falls back to binning the top
-    numeric var when the model has no categorical structure at all."""
+    """NODE channel = the categorical var with the HIGHEST OBSERVED cardinality
+    over the reachable set (NOT categorical_vars[0] in schema order — that can be
+    a latching bool that collapses the whole picture to 2 nodes / 1 arc). Return
+    (var_dict, node_labels, project_fn, mode_str).
+
+    Selection / degeneracy guard:
+      - Among categoricals, rank by how many distinct values they actually take.
+      - Require >= MIN_NODE_CLASSES distinct node classes; a 2-value bool (or an
+        enum stuck in <3 states) makes a degenerate chord and is rejected here.
+      - If no categorical clears the bar, fall back to binning the top numeric
+        var (a real banded flow). If there's no numeric var either, return None
+        for the var and let draw() route to an honest N/A card."""
     cats = m.categorical_vars
 
-    if cats:
-        v = cats[0]
+    # rank categoricals by OBSERVED cardinality (highest first), break ties toward
+    # enums (named labels read better than true/false) then shorter names.
+    ranked = sorted(
+        ((v, _observed_cardinality(m, v["name"])) for v in cats),
+        key=lambda vc: (-vc[1], 0 if vc[0]["kind"] == "enum" else 1, len(vc[0]["name"])),
+    )
+
+    if ranked and ranked[0][1] >= MIN_NODE_CLASSES:
+        v = ranked[0][0]
         if v["kind"] == "enum":
             labels = list(m.enum_variants[v["name"]])
             return v, labels, (lambda st: st[v["name"]]), "enum"
@@ -66,27 +97,111 @@ def pick_primary(m):
         # string: labels discovered dynamically from observed values
         return v, None, (lambda st: st[v["name"]]), "string"
 
-    # no categorical var (pure numeric) — bin the top numeric var into bands
-    v = m.numeric_vars[0]
-    return v, None, None, "numeric"   # binning resolved after we know range
+    # no categorical with enough distinct node classes — bin the top numeric var
+    # into bands over its REAL reachable extent (still honest, non-fabricated).
+    if m.numeric_vars:
+        v = m.numeric_vars[0]
+        return v, None, None, "numeric"   # binning resolved after we know range
+
+    # nothing to put on the node axis at all — caller renders the N/A card.
+    return None, None, None, "none"
 
 
-def pick_color_var(m, node_var):
-    """COLOR channel = a SECOND categorical var (not the node var), if one exists.
-    Returns (var_dict, color_labels, project_fn) or None. Color is excellent for
-    categorical, so a low-cardinality bool/enum rides the color channel to ADD a
-    dimension on top of the node->node flow."""
+def _color_proj(v):
+    """A (var_dict, labels, project_fn) triple for a candidate color var."""
+    name = v["name"]
+    if v["kind"] == "enum":
+        labels = list(m_enum_variants_safe(v))
+        return v, labels, (lambda st, n=name: st[n])
+    if v["kind"] == "bool":
+        return v, ["false", "true"], (lambda st, n=name: "true" if st[n] else "false")
+    return v, None, (lambda st, n=name: st[n])   # string: dynamic labels
+
+
+def m_enum_variants_safe(v):
+    # set lazily by pick_color_var's caller; kept here to avoid a closure over m
+    return _COLOR_ENUM_VARIANTS.get(v["name"], [])
+
+
+_COLOR_ENUM_VARIANTS = {}
+
+
+def pick_color_var(m, node_var, proj):
+    """COLOR channel = a SECOND categorical var (not the node var) whose value, as
+    PROJECTED ONTO THE ARCS WE ACTUALLY DRAW, genuinely VARIES. Returns
+    (var_dict, color_labels, project_fn) or None.
+
+    The subtlety this guards (the dungeon round-3 defect): a bool can vary across
+    the raw reachable states yet still be MONOCHROME on the chord, because many
+    full-states collapse onto one (src_room -> dst_room) arc and the per-arc
+    MAJORITY vote washes the variation out. d.has_key / d.has_torch / d.escaped all
+    do this — the room you land in fixes the flag, so every arc's majority is the
+    same value and the color channel carries zero information. We therefore rank
+    candidate color vars by how much their per-ARC majority projection varies
+    (Gini-style: 1 means a perfect split, 0 means monochrome) and pick the most
+    varying one. If NO candidate's arc projection varies, return None so draw()
+    drops the color channel entirely rather than rendering it monochrome."""
+    _COLOR_ENUM_VARIANTS.clear()
+    for v in m.carried:
+        if v["kind"] == "enum":
+            _COLOR_ENUM_VARIANTS[v["name"]] = list(m.enum_variants.get(v["name"], []))
+
+    # the exact node->node arcs we will draw, as (src_label, dst_label) -> [dst states]
+    arc_dst_states = _arc_destination_states(m, node_var, proj)
+    if not arc_dst_states:
+        return None
+
+    best = None
+    best_var = -1.0
     for v in m.categorical_vars:
         if v["name"] == node_var["name"]:
             continue
-        if v["kind"] == "enum":
-            labels = list(m.enum_variants[v["name"]])
-            return v, labels, (lambda st: st[v["name"]])
-        if v["kind"] == "bool":
-            return v, ["false", "true"], (lambda st: "true" if st[v["name"]] else "false")
-        # string: dynamic labels resolved while gathering
-        return v, None, (lambda st: st[v["name"]])
-    return None
+        cand = _color_proj(v)
+        cproj = cand[2]
+        # per-arc majority label, then how varied those majorities are across arcs
+        majorities = []
+        for dst_states in arc_dst_states.values():
+            votes = {}
+            for st in dst_states:
+                lab = cproj(st)
+                votes[lab] = votes.get(lab, 0) + 1
+            majorities.append(max(votes, key=votes.get))
+        variation = _label_variation(majorities)
+        if variation > best_var:
+            best_var, best = variation, cand
+
+    # require the chosen var to ACTUALLY vary across arcs; monochrome => no color.
+    if best is None or best_var <= 0.0:
+        return None
+    return best
+
+
+def _arc_destination_states(m, node_var, proj):
+    """{(src_label, dst_label): [destination full-states]} for the reachable edge
+    set, projected onto the node var. This is exactly the arc set draw() renders,
+    so color-variance measured here reflects what the eye actually sees."""
+    try:
+        states, edges = m.reachable()
+    except Exception:
+        return {}
+    arcs = {}
+    for (i, j) in edges:
+        key = (proj(states[i]), proj(states[j]))
+        arcs.setdefault(key, []).append(states[j])
+    return arcs
+
+
+def _label_variation(labels):
+    """1 - sum(p_k^2) over the label distribution (Gini impurity): 0 when all arcs
+    share one majority label (monochrome — useless color channel), approaching 1
+    as the arcs split evenly across labels."""
+    if not labels:
+        return 0.0
+    counts = {}
+    for lab in labels:
+        counts[lab] = counts.get(lab, 0) + 1
+    n = len(labels)
+    return 1.0 - sum((c / n) ** 2 for c in counts.values())
 
 
 # --- gather transition flow as a dict {(src_label, dst_label): count} ----------
@@ -207,7 +322,16 @@ def bin_label(c):
 
 def draw(m, viz_title, out_path):
     var, labels, proj, mode = pick_primary(m)
-    color = pick_color_var(m, var)
+    if mode == "none" or var is None:
+        cats = m.categorical_vars
+        cards = ", ".join(f"{v['name']}={_observed_cardinality(m, v['name'])}"
+                          for v in cats) or "none"
+        return placeholder(
+            m, viz_title, out_path,
+            "no variable forms >= 3 distinct node classes "
+            f"(categoricals: {cards}; no numeric var to bin) — "
+            "a chord diagram needs >= 3 nodes to be meaningful")
+    color = pick_color_var(m, var, proj) if mode in ("enum", "bool", "string") else None
     labels, flow, numrange, arc_cat, color_labels = gather_flow(
         m, var, labels, proj, mode, color)
 

@@ -238,6 +238,32 @@ def _build_orbits(model, xvar, yvar):
     return [], [], "autonomous"
 
 
+# ---- collision-only offset for discrete axes ---------------------------------
+def _offset_collisions(pts, xvar, yvar):
+    """Keep every point on its true integer/categorical grid node; only when 2+
+    points share a node, spread that group on a tiny ring AROUND the node so the
+    coincidence is visible. Distinct points are untouched (no fabricated spread),
+    and the ring radius is small enough to stay between grid lines."""
+    groups = {}
+    for p in pts:
+        groups.setdefault((p["gx"], p["gy"]), []).append(p)
+    # An enum/bool axis is categorical (its floor is variant 0); an int axis must
+    # never show a dot below its true minimum value. Clamp ring offsets to that.
+    xmin = min(p["gx"] for p in pts)
+    ymin = min(p["gy"] for p in pts)
+    for (gx, gy), group in groups.items():
+        if len(group) < 2:
+            continue                      # distinct: leave exactly on the grid node
+        # One representative stays dead-on the grid node; the rest fan out on a tiny
+        # ring around it (small enough to stay between grid lines, clamped above each
+        # discrete axis's true minimum so nothing dips below the floor).
+        rad = 0.16
+        for i, p in enumerate(group[1:], start=1):
+            ang = 2 * math.pi * (i - 1) / (len(group) - 1)
+            p["x"] = max(xmin, gx + rad * math.cos(ang))
+            p["y"] = max(ymin, gy + rad * math.sin(ang))
+
+
 # ---- axis tick labelling -----------------------------------------------------
 def _label_axis(model, ax, var, which):
     setter, getter = ((ax.set_xticks, ax.set_xticklabels) if which == "x"
@@ -269,6 +295,16 @@ def render(smt2_path, schema_path, out_path):
         return
 
     orbits, point_time, mode = _build_orbits(model, xvar, yvar)
+
+    # Faceting cuts the plotted points across panels. That is only honest when the
+    # panels are INDEPENDENT runs (multi-seed 'numeric' mode). For a single
+    # autonomous orbit or the reachable set, the points form ONE connected
+    # sequence threaded through changing state — faceting by a var that flips along
+    # the orbit (grep's state.done) would slice the climb into separate panels and
+    # crop each to its tail. Never facet those modes; keep the whole orbit on one axis.
+    if mode != "numeric":
+        facet_var = None
+
     if not orbits:
         fig, ax = plt.subplots(figsize=(8, 7))
         ax.text(0.5, 0.5,
@@ -310,15 +346,55 @@ def render(smt2_path, schema_path, out_path):
                 "st": st,
             })
 
+    # Record the true (un-jittered) grid coordinate per point — axis limits must
+    # frame the WHOLE orbit on its real integer/categorical grid, not the nudged
+    # display coords.
+    for p in pts:
+        p["gx"], p["gy"] = p["x"], p["y"]
+
+    # HONEST degenerate-axis guard. An orbit scatter reads from its two axes; if an
+    # axis is CONSTANT over every plotted point, the projection has collapsed onto a
+    # line (or a single node) and the picture is misleading — it looks like a real
+    # orbit, but one whole dimension never moves. This is the selector handing us a
+    # constant coordinate (life's state.pop pinned at 3; randomwalk's v3/v4 both
+    # pinned at 0); the renderer can't pick better axes, but it MUST NOT dress a
+    # flat line up as dynamics. Render an N/A card naming the collapsed axis instead.
+    x_distinct = len({p["gx"] for p in pts})
+    y_distinct = len({p["gy"] for p in pts})
+    if x_distinct <= 1 or y_distinct <= 1:
+        flat = []
+        if x_distinct <= 1:
+            flat.append(f'{xvar["name"]} (x) = {pts[0]["st"][xvar["name"]]}')
+        if y_distinct <= 1:
+            flat.append(f'{yvar["name"]} (y) = {pts[0]["st"][yvar["name"]]}')
+        both = x_distinct <= 1 and y_distinct <= 1
+        detail = ("both chosen axes are constant — the orbit is a single point"
+                  if both else
+                  "the chosen y-axis is constant" if y_distinct <= 1 else
+                  "the chosen x-axis is constant")
+        fig, ax = plt.subplots(figsize=(8, 7))
+        ax.text(0.5, 0.5,
+                f"N/A — {detail} over all {len(pts)} plotted states.\n"
+                f"({'; '.join(flat)})\n"
+                "An orbit scatter on these axes would be a misleading flat line.",
+                ha="center", va="center", fontsize=12)
+        ax.set_title(title)
+        ax.axis("off")
+        fig.savefig(out_path, dpi=120, bbox_inches="tight")
+        plt.close(fig)
+        return
+
     discrete = not (xvar["kind"] in ("int", "real")
                     and yvar["kind"] in ("int", "real"))
-    # jitter overlapping discrete projections so coincident dots are visible
+    # On a discrete (int / enum / bool) axis the data LIVES on integer grid lines;
+    # continuous jitter would smear points off-grid into fabricated fractional
+    # positions (vending balance landing at -0.1, 1.07, …) and even below an
+    # integer axis's true minimum. So: leave distinct points exactly on their grid
+    # node, and only when several points genuinely COLLIDE on the same node fan
+    # them out in a tiny ring around that node — visible, but still centered on the
+    # real coordinate and never pushed below the axis floor.
     if discrete:
-        for p in pts:
-            h = (hash((round(p["x"], 3), round(p["y"], 3), p["t"], p["seed"]))
-                 & 0xffff) / 0xffff
-            p["x"] += 0.11 * math.sin(h * 6.283 + p["t"] * 0.7)
-            p["y"] += 0.11 * math.cos(h * 6.283 + p["t"] * 0.7)
+        _offset_collisions(pts, xvar, yvar)
 
     # ---- panels (facet) ------------------------------------------------------
     if facet_var is not None:
@@ -385,6 +461,32 @@ def render(smt2_path, schema_path, out_path):
         ax.grid(True, linestyle=":", alpha=0.4)
         _label_axis(model, ax, xvar, "x")
         _label_axis(model, ax, yvar, "y")
+        # Frame the WHOLE orbit on its true grid. Limits come from EVERY plotted
+        # point's un-jittered grid coordinate (`gx`/`gy`) across ALL panels — not the
+        # surviving subset of one panel — so the autonomous walk's full visited
+        # sequence (grep's (0,0)→(1,1)→(2,2) climb) is never cropped to its tail.
+        for which, var, gk in (("x", xvar, "gx"), ("y", yvar, "gy")):
+            if var["kind"] == "enum":
+                lo, hi = 0, len(model.enum_variants[var["name"]]) - 1
+                pad = 0.5
+            elif var["kind"] == "bool":
+                lo, hi, pad = 0, 1, 0.5
+            else:
+                # Numeric axis: span all real grid values. Only the multi-seed
+                # 'numeric' mode (vanderpol spiral) needs the IQR fence to reject a
+                # ±1e6 sentinel; an autonomous/reachable orbit is framed whole.
+                vals = sorted(p[gk] for p in pts)
+                if len(vals) < 2:
+                    continue
+                if mode == "numeric":
+                    nn = len(vals)
+                    q1, q3 = vals[nn // 4], vals[(3 * nn) // 4]
+                    if q3 > q1:
+                        fence = 3 * (q3 - q1)
+                        vals = [v for v in vals if q1 - fence <= v <= q3 + fence] or vals
+                lo, hi = min(vals), max(vals)
+                pad = (hi - lo) * 0.08 if hi > lo else 1.0
+            (ax.set_xlim if which == "x" else ax.set_ylim)(lo - pad, hi + pad)
         if pv is not None:
             ax.set_title(f'{facet_var["name"]} = {_cat_key(model, facet_var, pv)}',
                          fontsize=10)

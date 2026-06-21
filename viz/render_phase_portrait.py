@@ -200,7 +200,29 @@ def _orbit_extent(m, axx, axy, pin):
     return -span, span, -span, span
 
 
-def render_numeric_panel(m, ax, axx, axy, pin, draw_colorbar, extent):
+def _robust_span(vals, fallback_lo, fallback_hi, pad=0.06):
+    """Robust [lo, hi] of plotted data on one axis: IQR-fence to drop a lone
+    off-domain point, then pad lightly. Falls back to the grid box when there's
+    too little data to fence. Never returns an inverted or zero-width span."""
+    vals = [v for v in vals if v is not None]
+    if len(vals) < 4:
+        return fallback_lo, fallback_hi
+    s = sorted(vals)
+    n = len(s)
+    q1, q3 = s[n // 4], s[(3 * n) // 4]
+    iqr = q3 - q1
+    if iqr > 0:
+        lof, hif = q1 - 3 * iqr, q3 + 3 * iqr
+        s = [v for v in s if lof <= v <= hif] or s
+    lo, hi = float(min(s)), float(max(s))
+    if hi - lo < 1e-9:
+        return lo - 1.0, hi + 1.0
+    m = (hi - lo) * pad
+    return lo - m, hi + m
+
+
+def render_numeric_panel(m, ax, axx, axy, pin, draw_colorbar, extent,
+                         fit_to_data=False):
     """A magnitude-colored vector field over a grid of pinned numeric points.
 
     `pin` carries the values of every NON-axis var (facet value, off-axis vars);
@@ -208,11 +230,22 @@ def render_numeric_panel(m, ax, axx, axy, pin, draw_colorbar, extent):
     (xlo, xhi, ylo, yhi) is the REACHABLE-orbit domain (from `_orbit_extent`) —
     we grid within it, never a guessed ±3000 box. Seeds for the overlaid
     trajectories are placed off-origin (the origin is often the fixed point of an
-    oscillator, which a centered seed would never leave)."""
+    oscillator, which a centered seed would never leave).
+
+    `fit_to_data` (bounded/reachable mode): after we have the field + trajectory
+    points, snap the axis limits to the ROBUST extent of what we actually PLOTTED
+    (grid cells with a valid successor, plus the trajectory points), lightly
+    padded — so a small-data program never shows a frame far larger than its data
+    (lru's dwell sits at k0≈1..40, not the full [0,81] grid: an empty upper grid
+    is a framing lie). For the orbit mode (vanderpol) we keep the symmetric box so
+    the limit cycle reads centred."""
     nx_, ny_ = axx["name"], axy["name"]
 
     xlo, xhi, ylo, yhi = extent
-    span = max(abs(xlo), abs(xhi), abs(ylo), abs(yhi), 1.0)
+    # box-relative geometry: works for a 0-centered orbit box (vanderpol) AND a
+    # one-sided reachable box (lru x∈[0,81]) without flagging boundary cells.
+    xc, yc = 0.5 * (xlo + xhi), 0.5 * (ylo + yhi)
+    xhw, yhw = max(0.5 * (xhi - xlo), 1e-9), max(0.5 * (yhi - ylo), 1e-9)
 
     n = 21
     xs = np.linspace(xlo, xhi, n)
@@ -234,7 +267,7 @@ def render_numeric_panel(m, ax, axx, axy, pin, draw_colorbar, extent):
             GX.append(xv); GY.append(yv)
             U.append(dx); V.append(dy)
             MAG.append((dx * dx + dy * dy) ** 0.5)
-            interior = (abs(xv) < 0.92 * span and abs(yv) < 0.92 * span)
+            interior = (abs(xv - xc) < 0.92 * xhw and abs(yv - yc) < 0.92 * yhw)
             if abs(dx) < 1e-9 and abs(dy) < 1e-9 and interior:
                 fixed_x.append(xv); fixed_y.append(yv)
 
@@ -250,10 +283,14 @@ def render_numeric_panel(m, ax, axx, axy, pin, draw_colorbar, extent):
             cb = plt.colorbar(q, ax=ax, fraction=0.046, pad=0.04)
             cb.set_label("step magnitude")
 
-    # overlaid trajectories from a spread of off-origin seeds
-    seeds = [(xhi * 0.85, 0), (xhi * 0.12, 0), (0, yhi * 0.85),
-             (-xhi * 0.45, yhi * 0.55), (-xhi * 0.85, 0), (0, -yhi * 0.85)]
+    # overlaid trajectories from a spread of seeds placed INSIDE the box (the box
+    # may be one-sided, e.g. [0,81], so seed off the centre, not off the origin).
+    def _seed(fx, fy):
+        return (xc + fx * xhw, yc + fy * yhw)
+    seeds = [_seed(0.7, 0.0), _seed(0.1, 0.0), _seed(0.0, 0.7),
+             _seed(-0.4, 0.5), _seed(-0.7, 0.0), _seed(0.0, -0.7)]
     cmap = plt.get_cmap("autumn")
+    traj_x, traj_y = [], []
     for i, (sx0, sy0) in enumerate(seeds):
         state = dict(pin)
         state[nx_] = int(round(sx0)) if axx["kind"] == "int" else sx0
@@ -263,6 +300,7 @@ def render_numeric_panel(m, ax, axx, axy, pin, draw_colorbar, extent):
             continue
         px = [_numeric(m, axx, s[nx_]) for s in traj]
         py = [_numeric(m, axy, s[ny_]) for s in traj]
+        traj_x += px; traj_y += py
         ax.plot(px, py, "-", lw=1.6, color=cmap(i / max(1, len(seeds) - 1)),
                 alpha=0.95, zorder=5)
         ax.plot(px[0], py[0], "o", color="white", mec="black", ms=6, zorder=6)
@@ -272,8 +310,21 @@ def render_numeric_panel(m, ax, axx, axy, pin, draw_colorbar, extent):
                 label="fixed point", zorder=7)
         ax.legend(loc="upper right", fontsize=8)
 
-    ax.set_xlim(xlo, xhi)
-    ax.set_ylim(ylo, yhi)
+    # Frame to the robust extent of what we actually plotted, not the raw grid box
+    # (bounded mode only). The grid covers axis_bounds, but the dynamics may dwell
+    # in a sub-region; an empty grid quadrant is a framing lie. Use the union of
+    # the live-field cells (a successor exists there) and the trajectory points,
+    # IQR-fenced on each axis to shed a lone off-domain cell, lightly padded.
+    if fit_to_data:
+        dx_pts = list(GX) + traj_x
+        dy_pts = list(GY) + traj_y
+        fx = _robust_span(dx_pts, xlo, xhi)
+        fy = _robust_span(dy_pts, ylo, yhi)
+        ax.set_xlim(*fx)
+        ax.set_ylim(*fy)
+    else:
+        ax.set_xlim(xlo, xhi)
+        ax.set_ylim(ylo, yhi)
     return q
 
 
@@ -300,13 +351,37 @@ def render_discrete_panel(m, ax, axx, axy, states, edges, init_key,
         bucket[(x, y)] = k + 1
         base.append((x, y, k))
 
+    # Coincident states share a cell; we fan them out with a small jitter so the
+    # nodes don't overprint. The jitter must NOT push a point past the real
+    # min/max of the axis's reachable values (e.g. an integer balance ∈ {0,1,2,3}
+    # must never render at x ≈ -0.12 — that fabricates an off-domain state). We
+    # clamp the jittered coordinate into [min,max] of the plotted data per axis.
+    all_x = [b[0] for b in base]
+    all_y = [b[1] for b in base]
+    xmin, xmax = min(all_x), max(all_x)
+    ymin, ymax = min(all_y), max(all_y)
+
+    def _reflect(v, lo, hi):
+        """Fold an out-of-range jitter back inside [lo,hi] (preserves separation
+        better than a hard clamp, which would re-stack boundary nodes)."""
+        if hi <= lo:
+            return lo
+        if v < lo:
+            return lo + (lo - v)
+        if v > hi:
+            return hi - (v - hi)
+        return v
+
     def place(i):
         x, y, k = base[i]
         if k == 0:
             return x, y
         ang = k * 2.399963
         r = 0.10 + 0.06 * k
-        return x + r * np.cos(ang), y + r * np.sin(ang)
+        # never let the fan exceed the per-axis reachable extent
+        jx = _reflect(x + r * np.cos(ang), xmin, xmax)
+        jy = _reflect(y + r * np.sin(ang), ymin, ymax)
+        return jx, jy
 
     P = [place(i) for i in range(len(states))]
 
@@ -421,16 +496,41 @@ def render(smt2_path, schema_path, out_path):
         if kind == "finite":
             # finite reachable march -> the honest transition graph, NOT a field
             _render_discrete(m, axx, axy, facet_var, facet_vals, "mixed", out_path)
+        elif kind == "bounded":
+            # large/non-terminating reachable march but a BOUNDED real domain
+            # (lru's caches, randomwalk's visit counters, life's clock): grid the
+            # field over axis_bounds — the robust reachable extent — never the
+            # perturbation-grown box that fabricated ±20000/±470000 axes.
+            _render_numeric(m, axx, axy, facet_var, facet_vals, out_path,
+                            extent_mode="reachable")
         elif kind == "continuous":
-            _render_numeric(m, axx, axy, facet_var, facet_vals, out_path)
-        else:  # "degenerate": a lone fixed point, no orbit -> no meaningful field
-            _render_na(
-                m, axx, axy,
-                "N/A — reachable set is a single fixed point;\n"
-                "no continuum and no orbit for a phase portrait", out_path)
+            # genuine continuum (vanderpol's limit cycle): the reachable set is a
+            # lone fixed point, so the orbit must be discovered by perturbation.
+            _render_numeric(m, axx, axy, facet_var, facet_vals, out_path,
+                            extent_mode="orbit")
+        else:  # "degenerate": no 2D field (a constant axis, or no orbit)
+            _render_na(m, axx, axy, _na_reason(m, axx, axy), out_path)
     else:
         _render_discrete(m, axx, axy, facet_var, facet_vals, regime, out_path)
     return out_path
+
+
+def _na_reason(m, axx, axy):
+    """Why a 2-numeric program has no meaningful phase portrait — a constant axis
+    (one variable never moves over the program's followed trajectory) or a lone
+    fixed point. We judge constancy on the DWELL (the trajectory the program truly
+    visits), not on m.reachable()'s relational fan: that fan can move an axis the
+    real run holds fixed (randomwalk's v3/v4), which would mislabel the reason."""
+    nx_, ny_ = axx["name"], axy["name"]
+    dwell = _dwell_span(m, axx, axy)
+    if dwell is not None:
+        (xlo, xhi), (ylo, yhi) = dwell
+        if xhi - xlo < 1e-9 or yhi - ylo < 1e-9:
+            flat = nx_ if xhi - xlo < 1e-9 else ny_
+            return (f"N/A — {flat} is constant across the reachable trajectory;\n"
+                    "a phase portrait needs two varying axes")
+    return ("N/A — reachable set is a single fixed point;\n"
+            "no continuum and no orbit for a phase portrait")
 
 
 def _render_na(m, axx, axy, msg, out_path):
@@ -444,32 +544,69 @@ def _render_na(m, axx, axy, msg, out_path):
     plt.close(fig)
 
 
+# A reachable set this small is a drawable transition GRAPH (points + arrows);
+# above it the graph is an unreadable hairball and a magnitude-colored vector
+# field over the bounded reachable domain is the honest picture instead.
+_FINITE_STATE_CAP = 60
+
+
 def _numeric_regime(m, axx, axy):
     """Classify a >=2-numeric program by its REACHABLE dynamics, so we pick the
-    honest picture instead of always gridding a field:
+    honest picture instead of always gridding a guessed field:
 
-      * "finite"     — the reachable BFS terminates with a small set of distinct
-                       states spanning >1 point on the axes. A real, drawable
-                       transition graph (e.g. a `wc` counter, 11 states in
-                       0..10). Render those points + arrows, NOT a vector field.
-      * "continuous" — the reachable set from the initial state is degenerate
-                       (a fixed point) OR very large, BUT perturbation orbits
-                       trace a non-trivial cycle. Genuinely continuous dynamics —
-                       a vector field scaled to the ORBIT extent is the honest
-                       picture (vanderpol's limit cycle).
-      * "degenerate" — a lone fixed point with no orbit. Nothing to draw.
+      * "finite"     — the reachable BFS terminates with a SMALL set of distinct
+                       states, both axes moving. A real, drawable transition graph
+                       (`wc`, 11 states in 0..10). Render the points + arrows.
+      * "bounded"    — a large or non-terminating reachable march, but BOTH axes
+                       move AND axis_bounds gives a finite real extent (lru's
+                       caches in {-1..~80}, randomwalk's visit counters in
+                       {0..~400}). Grid a vector field over THAT reachable extent
+                       — never the perturbation box that fabricated ±20000 axes.
+      * "continuous" — the reachable set is a lone fixed point (so axis_bounds
+                       collapses to a point), but perturbation orbits trace a
+                       non-trivial cycle. Genuine continuum (vanderpol's limit
+                       cycle); the orbit extent IS the honest domain.
+      * "degenerate" — a constant axis (one variable never moves), or a lone
+                       fixed point with no orbit. No 2D field to draw.
     """
     nx_, ny_ = axx["name"], axy["name"]
     states, _ = m.reachable(limit=3000)
 
-    def axis_spread(sts):
-        xs = {_numeric(m, axx, s[nx_]) for s in sts}
-        ys = {_numeric(m, axy, s[ny_]) for s in sts}
-        return len(xs) > 1 or len(ys) > 1
+    dx = len({_numeric(m, axx, s[nx_]) for s in states}) if states else 0
+    dy = len({_numeric(m, axy, s[ny_]) for s in states}) if states else 0
 
-    # a small, terminating reachable set that actually moves on the axes = finite
-    if 2 <= len(states) < 3000 and axis_spread(states):
+    # a MULTI-state reachable march where one axis never moves = no 2D portrait
+    # (life: many gen values but pop ≡ 3, so a (gen, pop) field is a row of flat
+    # arrows). A SINGLE-state reachable set (an unstable fixed point) is NOT this
+    # case — its orbit lives off the initial point, so fall through to the probe
+    # (vanderpol's reachable set is the lone fixed point; perturbing reveals the
+    # limit cycle). Guard on len(states) > 1 so we don't kill that.
+    if len(states) > 1 and (dx <= 1 or dy <= 1):
+        return "degenerate"
+
+    # a small terminating march that moves on both axes = a drawable graph
+    if 2 <= len(states) <= _FINITE_STATE_CAP and dx > 1 and dy > 1:
         return "finite"
+
+    # both axes move AND the reachable extent is bounded (robust axis_bounds, which
+    # rejects ±1e6 / -1 sentinels) = a real but large/unbounded march. Grid the
+    # field over the reachable domain, not a fabricated box. BUT the `states` above
+    # come from m.reachable(), which pins only the two axis vars and lets the other
+    # carried leaves float — so its fan can move both axes even when the program's
+    # FOLLOWED trajectory holds one axis constant (randomwalk's v3/v4 are pinned at 0
+    # along the real walk; the [0,400] spread is pure relational cloud). A bounded
+    # field is only honest if the actual dwell moves on BOTH axes — else it's a flat
+    # row of arrows over a fabricated box, so report N/A instead.
+    if dx > 1 and dy > 1:
+        bx = m.axis_bounds(nx_)
+        by = m.axis_bounds(ny_)
+        if bx is not None and by is not None:
+            dwell = _dwell_span(m, axx, axy)
+            if dwell is not None:
+                (xlo, xhi), (ylo, yhi) = dwell
+                if xhi - xlo < 1e-9 or yhi - ylo < 1e-9:
+                    return "degenerate"
+            return "bounded"
 
     # otherwise probe for a continuous orbit by perturbing off the initial state
     init = m.initial_state() or {v["name"]: 0 for v in m.state_vars}
@@ -484,30 +621,97 @@ def _numeric_regime(m, axx, axy):
     return "degenerate"
 
 
+def _dwell_span(m, axx, axy):
+    """The per-axis extent of the states the program actually DWELLS in — its real
+    deterministic trajectory — as ((xlo,xhi),(ylo,yhi)). This is the honest framing
+    source for a bounded march: `m.reachable()` pins only the two axis vars and
+    leaves the other carried leaves free, so its BFS fans into a relational cloud
+    (lru: k0∈[-1,75], miss_count∈[0,51]) that has nothing to do with where the
+    program goes (k0∈{-1,1}, miss_count∈{0..4}). `axis_bounds` is fed by that same
+    fan, so gridding over it frames a mostly-empty box — the blow-out. The followed
+    trajectory is the set of states the difference equation truly visits; framing to
+    its robust span is the fix. Returns None for an axis if the trajectory is empty."""
+    tr = m.trajectory(steps=400)
+    if len(tr) < 2:
+        return None
+    out = []
+    for v in (axx, axy):
+        nm = v["name"]
+        vals = sorted(_numeric(m, v, s[nm]) for s in tr)
+        # IQR-fence a lone off-domain visit, but keep the RAW span (no zero-width
+        # widening): a genuinely-constant axis must report lo==hi so the caller can
+        # detect the collapse, not be hidden behind an artificial ±1 pad.
+        if len(vals) >= 4:
+            q1, q3 = vals[len(vals) // 4], vals[(3 * len(vals)) // 4]
+            iqr = q3 - q1
+            if iqr > 0:
+                lof, hif = q1 - 3 * iqr, q3 + 3 * iqr
+                vals = [x for x in vals if lof <= x <= hif] or vals
+        out.append((float(min(vals)), float(max(vals))))
+    return tuple(out)
+
+
+def _reachable_extent(m, axx, axy):
+    """The field domain for a BOUNDED numeric march: the robust extent of the states
+    the program actually VISITS (its followed trajectory), lightly padded so the
+    field reads. NOT axis_bounds — that helper is fed by the relational reachable
+    fan and blows the frame out to a mostly-empty box (lru's [0,81]×[0,30] when the
+    dwell is [-1,1]×[0,4]). NEVER the perturbation-grown box either. Falls back to
+    axis_bounds only when no trajectory is available. Returns (xlo,xhi,ylo,yhi)."""
+    dwell = _dwell_span(m, axx, axy)
+    if dwell is not None:
+        (xlo, xhi), (ylo, yhi) = dwell
+    else:
+        bx = m.axis_bounds(axx["name"]) or (0.0, 1.0)
+        by = m.axis_bounds(axy["name"]) or (0.0, 1.0)
+        xlo, xhi, ylo, yhi = bx[0], bx[1], by[0], by[1]
+    # light pad so boundary states aren't pinned to the frame edge; never invert
+    px = max((xhi - xlo) * 0.08, 0.5)
+    py = max((yhi - ylo) * 0.08, 0.5)
+    return xlo - px, xhi + px, ylo - py, yhi + py
+
+
 def _panel_grid(n):
     cols = min(n, 3)
     rows = (n + cols - 1) // cols
     return rows, cols
 
 
-def _render_numeric(m, axx, axy, facet_var, facet_vals, out_path):
+def _render_numeric(m, axx, axy, facet_var, facet_vals, out_path,
+                    extent_mode="orbit"):
+    """`extent_mode` selects the field DOMAIN — the one lever that decides whether
+    the picture is honest or fabricated:
+      * "reachable" — grid over axis_bounds (the robust reachable extent). Used
+        for a bounded march (lru/randomwalk); never invents an off-domain box.
+      * "orbit"     — grow a perturbation orbit off the fixed point. Used ONLY
+        for a genuine continuum whose reachable set is a single point (vanderpol).
+    """
     init = m.initial_state() or {v["name"]: 0 for v in m.state_vars}
-    other = [v for v in m.state_vars
-             if v["name"] not in (axx["name"], axy["name"])
-             and (facet_var is None or v["name"] != facet_var["name"])]
+
+    def _extent(pin):
+        if extent_mode == "reachable":
+            return _reachable_extent(m, axx, axy)
+        return _orbit_extent(m, axx, axy, pin)
+
+    subtitle = ("(numeric vector field, reachable extent)"
+                if extent_mode == "reachable"
+                else "(numeric vector field, reachable-orbit extent)")
+
+    # In reachable mode the grid covers axis_bounds, but the dynamics may dwell in
+    # a sub-region; let the panel snap its frame to the data it plotted. (Orbit
+    # mode keeps its symmetric box — the limit cycle must read centred.)
+    fit = (extent_mode == "reachable")
 
     if facet_var is None:
         fig, ax = plt.subplots(figsize=(8.5, 7.5))
         pin = {v["name"]: init[v["name"]] for v in m.state_vars}
-        extent = _orbit_extent(m, axx, axy, pin)
+        extent = _extent(pin)
         render_numeric_panel(m, ax, axx, axy, pin, draw_colorbar=True,
-                             extent=extent)
+                             extent=extent, fit_to_data=fit)
         ax.set_xlabel(_axis_label(axx)); ax.set_ylabel(_axis_label(axy))
         _decorate_axes(m, ax, axx, axy)
         ax.grid(True, ls=":", alpha=0.3)
-        ax.set_title(f"{m.fsm} — phase portrait\n"
-                     "(numeric vector field, reachable-orbit extent)",
-                     fontsize=13)
+        ax.set_title(f"{m.fsm} — phase portrait\n" + subtitle, fontsize=13)
         fig.tight_layout()
         fig.savefig(out_path, dpi=120)
         plt.close(fig)
@@ -518,19 +722,31 @@ def _render_numeric(m, axx, axy, facet_var, facet_vals, out_path):
                              squeeze=False)
     flat = [axes[r][c] for r in range(rows) for c in range(cols)]
     last_q = None
+    # Faceted panels MUST share one frame so they're comparable; in reachable mode
+    # snap that shared frame to the union of all panels' plotted data (so an empty
+    # upper grid isn't carried across every panel).
+    panel_xlims, panel_ylims = [], []
     for idx, fval in enumerate(facet_vals):
         ax = flat[idx]
         pin = {v["name"]: init[v["name"]] for v in m.state_vars}
         pin[facet_var["name"]] = fval
-        extent = _orbit_extent(m, axx, axy, pin)
+        extent = _extent(pin)
         q = render_numeric_panel(m, ax, axx, axy, pin, draw_colorbar=False,
-                                 extent=extent)
+                                 extent=extent, fit_to_data=fit)
+        if fit:
+            panel_xlims.append(ax.get_xlim()); panel_ylims.append(ax.get_ylim())
         if q is not None:
             last_q = q
         ax.set_xlabel(_axis_label(axx)); ax.set_ylabel(_axis_label(axy))
         _decorate_axes(m, ax, axx, axy)
         ax.grid(True, ls=":", alpha=0.3)
         ax.set_title(f"{facet_var['name']} = {fval}", fontsize=11)
+    # unify the per-panel data-fit frames so the small multiples stay comparable
+    if fit and panel_xlims:
+        sxlo = min(l for l, _ in panel_xlims); sxhi = max(h for _, h in panel_xlims)
+        sylo = min(l for l, _ in panel_ylims); syhi = max(h for _, h in panel_ylims)
+        for idx in range(len(facet_vals)):
+            flat[idx].set_xlim(sxlo, sxhi); flat[idx].set_ylim(sylo, syhi)
     for j in range(len(facet_vals), len(flat)):
         flat[j].axis("off")
     if last_q is not None:
@@ -579,6 +795,11 @@ def _render_discrete(m, axx, axy, facet_var, facet_vals, regime, out_path):
     # cross-facet edge would need a 3rd axis to draw honestly, so we annotate
     # the count instead of drawing a misleading in-plane arrow).
     fname = facet_var["name"]
+    # Only facet over values that actually occur in the reachable set. An enum
+    # may declare variants the program never reaches (find's s5: Unseen declared
+    # but never visited) — drawing an empty panel for each is noise, not a view.
+    present = {s[fname] for s in states}
+    facet_vals = [v for v in facet_vals if v in present]
     rows, cols = _panel_grid(len(facet_vals))
     fig, axes = plt.subplots(rows, cols, figsize=(5.4 * cols, 4.8 * rows),
                              squeeze=False)

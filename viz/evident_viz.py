@@ -419,8 +419,13 @@ class Model:
 
         if best_pair:
             a, b = best_pair
-            if indep_score(b) > indep_score(a):
-                a, b = b, a                                    # driver first (X axis)
+            ia, ib = indep_score(a), indep_score(b)
+            # The driver (higher net-determination) goes on X. If NEITHER drives (a
+            # relational/cyclic model, ia == ib), put the higher-information variable on
+            # X — so a rich enum (dungeon's 7-room d.room) beats a 2-value bool (d.has_key)
+            # rather than collapsing the scatter onto one or two vertical lines.
+            if ib > ia or (ib == ia and relevance[b] > relevance[a]):
+                a, b = b, a
             best_pair = (a, b)
             rest = sorted((nm for nm in names if nm not in best_pair),
                           key=lambda nm: -relevance[nm])
@@ -611,12 +616,18 @@ class Model:
     def facet_var(self, max_card=6, max_change=0.25):
         """The variable to FACET by (small multiples), or None — then DON'T facet.
         Must be a low-cardinality CATEGORICAL that stays ~constant within a run, so
-        the dynamics live INSIDE a panel rather than being cut across panels."""
+        the dynamics live INSIDE a panel rather than being cut across panels — but it
+        must ACTUALLY PARTITION the run (>=2 distinct reachable values). Faceting by a
+        var that is constant across the whole reachable set (e.g. find's s5, always
+        Unseen) gives one populated panel and the rest empty — worse than not faceting."""
         rates = self.change_rates
+        states = self._sample_states()
         cands = []
         for v in self.categorical_vars:
             card = len(self.enum_variants.get(v["name"], [])) or 2   # bool -> 2
-            if card <= max_card and rates.get(v["name"], 1.0) <= max_change:
+            distinct = len({s[v["name"]] for s in states})           # actual reachable values
+            if (2 <= distinct <= max_card and card <= max_card
+                    and rates.get(v["name"], 1.0) <= max_change):
                 cands.append(v)
-        cands.sort(key=lambda v: rates[v["name"]])      # most static first
+        cands.sort(key=lambda v: rates[v["name"]])      # most static (but varying) first
         return cands[0] if cands else None

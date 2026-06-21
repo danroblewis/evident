@@ -145,6 +145,7 @@ def render(smt2, schema, out_path):
     cat = None
     cat_palette = {}
     cat_order = []
+    node_id = {}
 
     if len(G) == 0:
         ax.text(0.5, 0.5, "empty reachable tree", ha="center", va="center",
@@ -210,15 +211,23 @@ def render(smt2, schema, out_path):
                 edge_cols.append("#333333")
                 edge_widths.append(1.0)
 
-        labels = {nk: m.label(states[nk]) for nk in G.nodes()}
+        # Short node IDs (S0, S1, …) in BFS-discovery order. The full state
+        # tuple is NOT printed on the node — long tuples (du's 8-element states,
+        # wc's 5-element states) overprint into illegible mashed text, especially
+        # where siblings share a y-level. Instead each node shows a compact ID,
+        # and a side legend maps every ID to its full tuple.
+        node_id.update({nk: f"S{i}" for i, nk in enumerate(G.nodes())})
+        id_labels = {nk: node_id[nk] for nk in G.nodes()}
 
         nx.draw_networkx_edges(G, pos, ax=ax, arrows=True,
                                arrowstyle="-|>", arrowsize=11,
                                edge_color="#888888", width=1.2)
         nx.draw_networkx_nodes(G, pos, ax=ax, node_color=node_colors,
-                               node_size=900, edgecolors=edge_cols,
+                               node_size=520, edgecolors=edge_cols,
                                linewidths=edge_widths)
-        nx.draw_networkx_labels(G, pos, labels=labels, ax=ax, font_size=6.5)
+        nx.draw_networkx_labels(G, pos, labels=id_labels, ax=ax,
+                                font_size=7.5, font_weight="bold",
+                                font_color="#111111")
 
     subtitle = (f"BFS reachability tree (first-discovery edges)  ·  "
                 f"{len(G)} nodes, depth {max(depth.values()) if depth else 0}  ·  "
@@ -254,6 +263,26 @@ def render(smt2, schema, out_path):
                          markeredgecolor="#e74c3c", markeredgewidth=2.5,
                          markersize=10, label="absorbing / goal"))
     ax.legend(handles=legend, loc="lower right", fontsize=8, framealpha=0.9)
+
+    # ID → full-state-tuple legend (left margin). This is where the long tuples
+    # live — once, in a readable column — instead of overprinted on every node.
+    if node_id:
+        field_order = ", ".join(v["name"].split(".")[-1] for v in m.interface_vars)
+        ordered = sorted(node_id.items(), key=lambda kv: int(kv[1][1:]))
+        lines = [f"{sid} = {m.label(states[nk])}" for nk, sid in ordered]
+        # Cap how many we print so the column never itself becomes a smear.
+        cap = 40
+        if len(lines) > cap:
+            lines = lines[:cap] + [f"… (+{len(node_id) - cap} more)"]
+        n = len(lines)
+        # font shrinks as the list grows so it always fits the canvas height
+        fs = 8 if n <= 18 else (6.5 if n <= 30 else 5.5)
+        body = "\n".join(lines)
+        fig.text(0.012, 0.5,
+                 f"node key  (fields: {field_order})\n" + body,
+                 ha="left", va="center", fontsize=fs, family="monospace",
+                 bbox=dict(boxstyle="round", facecolor="#fbfbf6",
+                           edgecolor="#cccccc", alpha=0.95))
 
     fig.savefig(out_path, dpi=120, bbox_inches="tight")
     plt.close(fig)
