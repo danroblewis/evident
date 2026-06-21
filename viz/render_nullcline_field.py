@@ -48,11 +48,19 @@ from evident_viz import load
 
 VIZ = "nullcline_field"
 GRID = 41            # samples per numeric axis
-PAD = 1.10           # extent padding beyond the seed-derived range
+PAD = 1.10           # extent padding beyond the reachable-derived range
 
-# Probe scale for seeding the numeric extent. The natural fixed point of these
-# limit-cycle systems can be the origin, so we seed our own spread of points.
-PROBES = [-3200, -2800, -1600, -800, -400, 0, 400, 800, 1600, 2800, 3200]
+# Degeneracy guard: a sign-field over a handful of reachable points (a counter
+# that terminates, a single fixed point) fabricates sign-regions the program
+# never enters. Below this many distinct reachable states with no recurrent
+# orbit, route to an honest N/A instead of gridding a guessed box.
+MIN_FIELD_POINTS = 24
+
+# Escalating perturbation magnitudes used ONLY to recover the recurrent extent of
+# a continuous oscillator whose initial state is a fixed point (e.g. vanderpol's
+# origin). These are not a plotting box — they are kicks to escape the fixed point;
+# the actual grid extent is read off the orbit the *transition relation* produces.
+_KICKS = [4, 16, 64, 256, 1024, 4096]
 
 
 def _short(v):
@@ -63,7 +71,7 @@ def _short(v):
 # --------------------------------------------------------------------------- #
 # discrete / undefined placeholder
 # --------------------------------------------------------------------------- #
-def placeholder(m, out_path, reason):
+def placeholder(m, out_path, reason, detail=None):
     fig, ax = plt.subplots(figsize=(8, 6))
     ax.axis("off")
     ax.text(0.5, 0.62, f"N/A for this state: {reason}",
@@ -72,9 +80,10 @@ def placeholder(m, out_path, reason):
     kinds = ", ".join(f"{v['name']}:{v['kind']}" for v in m.state_vars)
     ax.text(0.5, 0.42, f"state = [{kinds}]", ha="center", va="center",
             fontsize=10, color="#555", transform=ax.transAxes)
-    ax.text(0.5, 0.30,
-            "nullcline_field needs a numeric axis\n"
-            "(sign of d(var) requires a continuous coordinate).",
+    if detail is None:
+        detail = ("nullcline_field needs a numeric axis\n"
+                  "(sign of d(var) requires a continuous coordinate).")
+    ax.text(0.5, 0.30, detail,
             ha="center", va="center", fontsize=10, color="#777",
             transform=ax.transAxes)
     ax.set_title(f"{m.fsm} — {VIZ}", fontsize=13, fontweight="bold")
@@ -86,20 +95,106 @@ def placeholder(m, out_path, reason):
 # --------------------------------------------------------------------------- #
 # two-numeric-axis sign-field (the canonical case)
 # --------------------------------------------------------------------------- #
+def _orbit_pts(m, xv, vv, seed, steps=600):
+    """Follow the transition relation from `seed`, collecting visited (x, v)
+    points. The orbit is whatever m.successor produces — never hardcoded."""
+    xn, vn = xv["name"], vv["name"]
+    cur = {xn: int(seed[0]), vn: int(seed[1])}
+    pts = []
+    for _ in range(steps):
+        nxt = m.successor(cur)
+        if nxt is None:
+            break
+        cur = {xn: nxt[xn], vn: nxt[vn]}
+        pts.append((cur[xn], cur[vn]))
+    return pts
+
+
+def _recurrent_extent(m, xv, vv, seeds):
+    """If the relation has a recurrent set (a limit cycle) reachable by kicking
+    OFF a fixed point, return its bounding box read off the orbit's second half
+    (the transient settles into the cycle). None if no bounded recurrence found.
+
+    This is the honest extent for a continuous oscillator whose initial state is
+    a fixed point: the ±2030 of vanderpol EMERGES from solving the transition, it
+    is not a guessed box."""
+    best = None
+    for s in seeds:
+        pts = _orbit_pts(m, xv, vv, s)
+        if len(pts) < 8:
+            continue
+        tail = pts[len(pts) // 2:]
+        if len(tail) < 4:
+            continue
+        xs = [p[0] for p in tail]
+        vs = [p[1] for p in tail]
+        spanx, spanv = max(xs) - min(xs), max(vs) - min(vs)
+        # require a genuine recurrent loop, not a stuck point or a runaway
+        if spanx < 2 and spanv < 2:
+            continue
+        box = (min(xs), max(xs), min(vs), max(vs))
+        # keep the largest stable recurrent box seen across kicks
+        if best is None or (spanx + spanv) > (best[1] - best[0]) + (best[3] - best[2]):
+            best = box
+    return best
+
+
 def axis_extent(m, xv, vv):
-    """Derive a plotting window by probing a spread of seed points (not the
-    initial state, which may be a fixed point) and keeping accepted ones."""
-    xs, vs = [], []
-    for px in PROBES:
-        for pv in PROBES:
-            nxt = m.successor({xv["name"]: px, vv["name"]: pv})
-            if nxt is not None:
-                xs += [px, nxt[xv["name"]]]
-                vs += [pv, nxt[vv["name"]]]
-    if xs:
-        xlo, xhi, vlo, vhi = min(xs), max(xs), min(vs), max(vs)
-    else:
-        xlo, xhi, vlo, vhi = -3200, 3200, -3200, 3200
+    """Derive the sign-field plotting window from the program's REACHABLE /
+    visited states — never a hardcoded ±3000 box (the fabrication bug).
+
+    Domain sources, in order of honesty:
+      1. axis_bounds over the reachable sample (the real visited extent).
+      2. for an oscillator whose reachable set collapses to a fixed point, the
+         recurrent (limit-cycle) extent read off the transition's own orbit.
+
+    Returns (xlo, xhi, vlo, vhi) or None when the reachable structure is too
+    small / finite for a sign-field to be meaningful — the caller then routes to
+    an honest N/A rather than carpeting a guessed plane."""
+    states, _ = m.reachable(limit=3000)
+    bx = m.axis_bounds(xv["name"])
+    bv = m.axis_bounds(vv["name"])
+
+    have_reach = bx is not None and bv is not None
+    reach_box = None
+    if have_reach:
+        reach_box = (bx[0], bx[1], bv[0], bv[1])
+
+    # Is the reachable set a real continuous structure, or a handful of points?
+    n_states = len({(s.get(xv["name"]), s.get(vv["name"])) for s in states})
+    reach_span = 0.0
+    if reach_box:
+        reach_span = (reach_box[1] - reach_box[0]) + (reach_box[3] - reach_box[2])
+
+    # Probe for a recurrent orbit ONLY when the reachable set is a single fixed
+    # point — the signature of a continuous oscillator (e.g. vanderpol's origin)
+    # whose limit cycle isn't reached from the seeded initial state. A program
+    # with a real multi-state reachable trajectory that simply TERMINATES (wc:
+    # 11 states in 0..10) must NOT be kicked off-domain — that would fabricate a
+    # cycle from out-of-domain prev-states. Kicks derive from the fixed point +
+    # escalating perturbations, NOT a fixed ±3200 spread.
+    rec_box = None
+    if n_states <= 1:
+        cx = 0.5 * (reach_box[0] + reach_box[1]) if reach_box else 0.0
+        cv = 0.5 * (reach_box[2] + reach_box[3]) if reach_box else 0.0
+        seeds = []
+        for k in _KICKS:
+            seeds += [(cx + k, cv), (cx, cv + k), (cx + k, cv + k)]
+        rec_box = _recurrent_extent(m, xv, vv, seeds)
+
+    # Choose the domain: prefer a real recurrent orbit if it's larger than the
+    # reachable extent (the limit cycle the program lives on); else the reachable
+    # extent; degenerate-and-no-cycle -> None (honest N/A).
+    box = None
+    if rec_box and ((rec_box[1] - rec_box[0]) + (rec_box[3] - rec_box[2]) > reach_span):
+        box = rec_box
+    elif have_reach and (n_states >= MIN_FIELD_POINTS or reach_span >= 64):
+        box = reach_box
+
+    if box is None:
+        return None
+
+    xlo, xhi, vlo, vhi = box
 
     def pad(lo, hi):
         c = 0.5 * (lo + hi)
@@ -123,7 +218,16 @@ def _sign_grid(m, xv, vv, xs, vs):
 
 
 def render_numeric(m, out_path, xv, vv):
-    xlo, xhi, vlo, vhi = axis_extent(m, xv, vv)
+    extent = axis_extent(m, xv, vv)
+    if extent is None:
+        states, _ = m.reachable(limit=3000)
+        n = len({(s.get(xv["name"]), s.get(vv["name"])) for s in states})
+        placeholder(m, out_path,
+                    f"reachable set is {n} point(s) / finite",
+                    detail=("a sign-field over a finite reachable set would\n"
+                            "fabricate flow-regions the program never enters."))
+        return
+    xlo, xhi, vlo, vhi = extent
     xs = np.linspace(xlo, xhi, GRID)
     vs = np.linspace(vlo, vhi, GRID)
     DX, DV = _sign_grid(m, xv, vv, xs, vs)

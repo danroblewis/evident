@@ -119,17 +119,50 @@ def _select_channels(model):
 
 
 # ---- orbits ------------------------------------------------------------------
+def _expanding_orbit_radius(model, xvar, yvar, center):
+    """Probe OUTWARD from the fixed point `center` along +x to find the smallest
+    radius at which the dynamics expand into a non-trivial orbit (length > 2),
+    rather than sitting at a fixed point. Returns that radius, or None if no probe
+    out to a generous cap expands — i.e. the system really is a fixed point and the
+    seed-and-reveal trick has nothing to reveal. This is how we discover the
+    attractor's SCALE from the program itself instead of hardcoding a ±3000 box:
+    the limit cycle's own extent then sets the plot, self-scaling per program."""
+    cx = center.get(xvar["name"], 0)
+    cy = center.get(yvar["name"], 0)
+    r = 1
+    while r <= 1 << 16:          # generous cap; geometric so ~17 probes max
+        seed = {v["name"]: center.get(v["name"], 0) for v in model.state_vars}
+        seed[xvar["name"]] = int(round(cx + r))
+        seed[yvar["name"]] = int(round(cy))
+        if len(model.trajectory(start=seed, steps=64)) > 2:
+            return r
+        r *= 2
+    return None
+
+
 def _numeric_seeds(model, xvar, yvar):
-    """For a 2D numeric system, several initial points so the attractor shows."""
-    base = [
-        {xvar["name"]: 2800, yvar["name"]: 0},
-        {xvar["name"]: 400, yvar["name"]: 0},
-        {xvar["name"]: 0, yvar["name"]: 2700},
-        {xvar["name"]: -1500, yvar["name"]: 1500},
-    ]
+    """Seed points for a 2D numeric system whose REACHABLE set from the initial
+    state is degenerate (a single fixed point the integer/continuous dynamics sit
+    at). We DON'T guess a box: we probe outward from the fixed point to find the
+    radius at which the dynamics come alive, then place a small spread of starts at
+    that self-discovered scale so the attractor / limit cycle reveals itself. Seeds
+    whose orbit does NOT expand are dropped by the caller, so a wide plane is never
+    carpeted with dead fixed dots. Returns [] when nothing expands (true fixed
+    point) — the caller then renders an honest N/A."""
+    center = model.initial_state() or {v["name"]: 0 for v in model.state_vars}
+    cx = center.get(xvar["name"], 0)
+    cy = center.get(yvar["name"], 0)
+    r = _expanding_orbit_radius(model, xvar, yvar, center)
+    if r is None:
+        return []
+    # A spread of starts at the discovered scale: along each axis + an off-axis
+    # diagonal, so a closed orbit is sampled from several entry angles.
+    offsets = [(r, 0), (0, r), (-r, r), (r // 2, 0)]
     seeds = []
-    for s in base:
-        full = {v["name"]: s.get(v["name"], 0) for v in model.state_vars}
+    for dx, dy in offsets:
+        full = {v["name"]: center.get(v["name"], 0) for v in model.state_vars}
+        full[xvar["name"]] = int(round(cx + dx))
+        full[yvar["name"]] = int(round(cy + dy))
         seeds.append(full)
     return seeds
 
@@ -160,25 +193,46 @@ def _reachable_with_depth(model, limit=400):
 def _build_orbits(model, xvar, yvar):
     """Return (orbits, point_time, mode) where orbits is a list of state-dict
     lists, point_time[oi] is a parallel list of time/depth values per point, and
-    mode is one of 'numeric' | 'autonomous' | 'reachable'."""
+    mode is one of 'numeric' | 'autonomous' | 'reachable'.
+
+    We ALWAYS prefer the program's actual reachable states / orbit and plot THOSE
+    directly — never a hardcoded wide box. Multi-seed 'numeric' mode is used ONLY
+    when the reachable set from the initial state is degenerate (a single fixed
+    point the integer/continuous dynamics sit at), so that an attractor / limit
+    cycle has a chance to reveal itself; even then the seeds are derived from the
+    reachable extent (axis_bounds), and dead (non-expanding) seeds are dropped."""
+    # 1. The honest autonomous orbit: one successor chain from the initial state.
+    init = model.initial_state()
+    orb = model.trajectory(start=init, steps=400) if init is not None else []
+    if len(orb) > 2:
+        return [orb], [list(range(len(orb)))], "autonomous"
+
+    # 2. The full reachable set (handles branching dynamics a single chain dead-ends
+    #    on — e.g. a terminating counter like wc, whose 0..10 states fan out).
+    states, depths = _reachable_with_depth(model)
+    if len(states) > 2:
+        return [states], [depths], "reachable"
+
+    # 3. Reachable set is degenerate (<=2 distinct states): the initial state is a
+    #    fixed point and nothing expands from it. ONLY for a genuinely-continuous
+    #    numeric 2D system do we seed across the reachable extent to expose an
+    #    attractor; each kept seed must produce an orbit that actually expands, so a
+    #    dead seed never becomes a lone fabricated dot on a wide plane.
     numeric_2d = (xvar["kind"] in ("int", "real")
                   and yvar["kind"] in ("int", "real")
                   and xvar["name"] != yvar["name"])
     if numeric_2d:
         orbits, times = [], []
         for seed in _numeric_seeds(model, xvar, yvar):
-            orb = model.trajectory(start=seed, steps=400)
-            if orb:
-                orbits.append(orb)
-                times.append(list(range(len(orb))))
-        return orbits, times, "numeric"
+            o = model.trajectory(start=seed, steps=400)
+            if len(o) > 2:                  # drop dead seeds (single fixed dot)
+                orbits.append(o)
+                times.append(list(range(len(o))))
+        if orbits:
+            return orbits, times, "numeric"
 
-    init = model.initial_state()
-    orb = model.trajectory(start=init, steps=400) if init is not None else []
-    if len(orb) > 2:
-        return [orb], [list(range(len(orb)))], "autonomous"
-
-    states, depths = _reachable_with_depth(model)
+    # 4. Whatever small reachable set we have (1-2 states) — render it honestly;
+    #    the caller routes a too-small set to an N/A card.
     if states:
         return [states], [depths], "reachable"
     return [], [], "autonomous"
@@ -219,6 +273,23 @@ def render(smt2_path, schema_path, out_path):
         fig, ax = plt.subplots(figsize=(8, 7))
         ax.text(0.5, 0.5,
                 "N/A: no orbit produced\n(no initial state and no successor)",
+                ha="center", va="center", fontsize=13)
+        ax.set_title(title)
+        ax.axis("off")
+        fig.savefig(out_path, dpi=120, bbox_inches="tight")
+        plt.close(fig)
+        return
+
+    # HONEST degenerate guard: a scatter over a finite handful of states is not a
+    # meaningful orbit view — the program halts at / sits on a fixed point. Render an
+    # N/A card with the real reachable count instead of inflating it into a plane.
+    n_states = sum(len(o) for o in orbits)
+    if n_states <= 2:
+        fig, ax = plt.subplots(figsize=(8, 7))
+        ax.text(0.5, 0.5,
+                f"N/A — reachable set is {n_states} "
+                f"state{'s' if n_states != 1 else ''} (fixed point /\n"
+                "immediate halt); an orbit scatter is not meaningful.",
                 ha="center", va="center", fontsize=13)
         ax.set_title(title)
         ax.axis("off")
