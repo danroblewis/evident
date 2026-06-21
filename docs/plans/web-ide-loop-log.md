@@ -143,3 +143,62 @@ source-level delta-debugging (`/api/solve` removes each constraint line, re-quer
 lines = the core); (2) **enumeration** via iterated source-level blocking (solve → append
 `¬(witness)` → re-solve, up to a limit, with "showing k of N · complete/≥N" honesty); (3) clear
 the pin box on sample load. Then re-run all three on round 4.
+
+---
+
+## Round 4 — UNSAT core + witness enumeration
+
+**Build (commit 721459a):** UNSAT core (delta-debug the source — a line whose removal flips to
+SAT is in the conflict); enumeration ("all ⊨*" — iterated `¬(witness)` blocking until UNSAT
+[complete] or limit [≥N]); pin box clears on sample switch. All backend-only, no runtime change.
+Verified: x>8 ∧ x<3 → core {line 4, line 5}; 4-queens → both boards complete; sum_pair → 11.
+
+- **Ana (expert): NEEDS_WORK** — immediacy 4 · diagram-helps 5 · **directness 5** · honesty 4 ·
+  first-run 5 · recovery 3 · promises 4. **Zero blockers.** UNSAT core + enumeration verified
+  *real and sound* (directness 3→5). Her ONE remaining major: a CSS bug introduced this round —
+  `#solve { display:flex }` (ID selector) overrides `[hidden]`, so the panel never hides → ✕
+  dead + a stale UNSAT core bled across sample switches. Her other note (line-granular core weak
+  on quantified conflicts) she called acceptable/documented. (Marek/Sam not re-run — round 4
+  additive; both confirmed on round 5.)
+
+**Next (round 5):** one-line CSS fix `#solve[hidden] { display:none; }`.
+
+---
+
+## Round 5 — fix the solve-panel [hidden] override · **ALL THREE SHIP** ✅✅✅
+
+**Build (commit b455108):** `#solve[hidden] { display:none; }` — the round-4 pin-clear/close
+logic now actually hides the panel.
+
+- **Ana (expert): SHIP** ✅ — immediacy 5 · diagram-helps 5 · directness 5 · honesty 5 ·
+  first-run 5 · recovery 4 · promises 5. "This now clears the formal-methods bar I hold Alloy
+  to… I'd reach for this over opening Alloy." Stale-result defect gone (✕ works, no bleed across
+  samples); UNSAT core, enumeration, solve-for-X, banner, no-fabrication all re-confirmed.
+- **Marek (ide-critic): SHIP** ✅ — immediacy 4 · diagram-helps 5 · directness 4 · honesty 5 ·
+  first-run 5 · recovery 5 · promises 4. "The diagram still earns its headline, and now the
+  solver does too." His cyclic-vs-terminating banner nit fixed; UNSAT core + solve-for-X
+  delighted; round-2 wins held.
+- **Sam (newcomer): SHIP** ✅ — **straight 5s** (5·5·5·5·5·5·5). Zero blockers, zero majors. "I
+  landed cold, hit a live diagram in zero clicks, typed a program with symbols I can't normally
+  type, broke it on purpose and got told how to fix it, and watched the solver fill in y=7 from
+  my x=3." Pin x=3 → y=7 is the moment that sold him.
+
+### 🎯 GOAL MET — all three reviewers SHIP on the round-5 build (http://localhost:5173).
+
+**Remaining minors (non-blocking — a backlog for future polish, none gated SHIP):**
+- Solve panel doesn't grey/stale when the program then hits a parse error (Marek) — share the
+  diagram's stale treatment.
+- A stray `/api/solve` 422 from an empty/malformed `given` (Ana, Sam) — harden the endpoint to
+  degrade gracefully (never user-reproduced by clicking).
+- Legend / right-edge clipping on the state-graph and the tab strip at narrow widths (Marek, Sam).
+- ⊨/⊭ and "witness" want a one-tooltip glossary; no in-tool hover-to-learn yet (Sam).
+- A puzzle Solve returns a raw array (`[1,3,0,2]`), not a board picture (Sam) — the one spot Solve
+  stops short of the visual promise.
+- Latency ~1–2.3 s on unbounded machines (all three, acknowledged — real solver+render cost,
+  honestly labeled "capped sample"); 6 of 16 views; diagram interactivity; editor auto-indent
+  (a deliberate trade-off — the critics type pre-indented strings, so bare-newline Enter is
+  correct for them).
+
+**Arc:** M0 baseline (Marek NEEDS_WORK, auto-indent blocker) → R1 (nondeterminism visible) → R2
+(banner soundness; Marek+Sam SHIP) → R3 (solve/query + cyclic banner) → R4 (UNSAT core +
+enumeration) → R5 (CSS fix; all three SHIP). Iris seeded the backlog in R1.
