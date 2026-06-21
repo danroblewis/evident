@@ -120,8 +120,10 @@ ones that fit your persona:
   errors and 500s the happy path hides.
 - **Time the feedback.** Snapshot before an edit, change input, snapshot after — roughly
   how long until the view moves? Latency is a first-class finding.
-- **Name your screenshots** `<persona>-<step>.png` (e.g. `marek-cold-open.png`) so the
-  saved session reads as a clean flipbook afterward.
+- **Save every screenshot INTO the recordings dir** by passing an ABSOLUTE filename:
+  `/Users/daniellewis/evident/ide/critics/recordings/<persona>-<step>.png`
+  (e.g. `…/recordings/marek-cold-open.png`). A bare filename lands in the repo root
+  instead — always use the full path, so your session is a clean flipbook in one place.
 - Be a real user, not a script: sit in confusion when you're confused; say so when
   you're delighted. Do **not** edit the codebase — you may `Read`/`Grep` source only to
   confirm a suspicion (server vs client lag), never to fix.
