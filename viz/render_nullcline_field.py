@@ -72,23 +72,57 @@ def _short(v):
 # discrete / undefined placeholder
 # --------------------------------------------------------------------------- #
 def placeholder(m, out_path, reason, detail=None):
-    fig, ax = plt.subplots(figsize=(8, 6))
-    ax.axis("off")
-    ax.text(0.5, 0.62, f"N/A for this state: {reason}",
-            ha="center", va="center", fontsize=14, wrap=True,
-            transform=ax.transAxes)
-    kinds = ", ".join(f"{v['name']}:{v['kind']}" for v in m.state_vars)
-    ax.text(0.5, 0.42, f"state = [{kinds}]", ha="center", va="center",
-            fontsize=10, color="#555", transform=ax.transAxes)
+    import textwrap
+
+    # The variable list can be long (toposort: 12 carried vars). A single line
+    # overflows both figure margins and clips. Wrap it onto multiple lines on
+    # comma boundaries so every entry stays inside the frame.
+    kinds_items = [f"{_short(v)}:{v['kind']}" for v in m.state_vars]
+    kinds_line = ", ".join(kinds_items)
+    state_lines = textwrap.wrap(kinds_line, width=64,
+                                break_long_words=False, break_on_hyphens=False)
+    reason_lines = textwrap.wrap(f"N/A for this state: {reason}", width=58,
+                                 break_long_words=False, break_on_hyphens=False)
+
     if detail is None:
         detail = ("nullcline_field needs a numeric axis\n"
                   "(sign of d(var) requires a continuous coordinate).")
-    ax.text(0.5, 0.30, detail,
-            ha="center", va="center", fontsize=10, color="#777",
-            transform=ax.transAxes)
+    detail_lines = []
+    for para in detail.split("\n"):
+        detail_lines += textwrap.wrap(para, width=60,
+                                      break_long_words=False,
+                                      break_on_hyphens=False) or [""]
+
+    # Size the figure to the content so nothing is clipped regardless of how
+    # many state vars / how long the detail text is.
+    n_lines = len(reason_lines) + len(state_lines) + len(detail_lines)
+    fig_h = max(6.0, 2.6 + 0.32 * n_lines)
+    fig, ax = plt.subplots(figsize=(9, fig_h))
+    ax.axis("off")
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1)
+
+    y = 0.88
+    ax.text(0.5, y, "\n".join(reason_lines), ha="center", va="top",
+            fontsize=14, transform=ax.transAxes)
+    y -= 0.08 + 0.05 * len(reason_lines)
+
+    ax.text(0.5, y, "state = [", ha="center", va="top",
+            fontsize=10, color="#555", transform=ax.transAxes)
+    y -= 0.06
+    ax.text(0.5, y, "\n".join(state_lines), ha="center", va="top",
+            fontsize=10, color="#555", transform=ax.transAxes)
+    y -= 0.04 + 0.045 * len(state_lines)
+    ax.text(0.5, y, "]", ha="center", va="top",
+            fontsize=10, color="#555", transform=ax.transAxes)
+    y -= 0.08
+
+    ax.text(0.5, y, "\n".join(detail_lines), ha="center", va="top",
+            fontsize=10, color="#777", transform=ax.transAxes)
+
     ax.set_title(f"{m.fsm} — {VIZ}", fontsize=13, fontweight="bold")
-    fig.tight_layout()
-    fig.savefig(out_path, dpi=120)
+    fig.subplots_adjust(top=0.90, bottom=0.06, left=0.06, right=0.94)
+    fig.savefig(out_path, dpi=120, bbox_inches="tight")
     plt.close(fig)
 
 

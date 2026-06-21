@@ -61,28 +61,46 @@ def pick_seed(m):
     return init
 
 
+def _advance(m, cur, prefer_change, visited):
+    """One step of the walk. For DISCRETE programs (prefer_change), pick a
+    successor that actually CHANGES the state — and, when possible, one not yet
+    visited — so the trajectory explores the program rather than parking on a
+    self-loop. This mirrors render_timing_diagram._advance: on a discrete graph
+    the lone successor() can sit on a legal self-edge (dungeon's Entrance->Entrance
+    is satisfiable, and z3 may pick it), which would report a genuinely-dynamic
+    program as static. Falls back to the lone successor() for non-discrete
+    (driven difference-equation) systems."""
+    if not prefer_change:
+        return m.successor(cur)
+    succ = m.successors(cur, limit=32)
+    if not succ:
+        return None
+    changed = [s for s in succ if m._key(s) != m._key(cur)]
+    pool = changed or succ
+    fresh = [s for s in pool if m._key(s) not in visited]
+    return (fresh or pool)[0]
+
+
 def walk(m, seed, steps):
-    """Follow the DETERMINISTIC successor chain from `seed` — the declared seed's
-    actual trajectory, identical to evident_viz.trajectory() and what
-    timing_diagram traces. Stops at a fixed point (self-loop) or a revisit.
+    """Follow one successor chain from `seed`, stopping at a fixed point / revisit.
 
-    Why successor() and not successors()+fresh-preference: a difference equation
-    with a fixed input (brackets streams ⟨LParen,LBrack,…,BEnd⟩) is DETERMINISTIC
-    in the next state given the full previous state. The old fresh-preference
-    explore wandered OFF that path: once the input cursor runs past the fixed
-    input (done=true), the out-of-bounds token is unconstrained, so successors()
-    returns a FAN of spurious states that never occur on the declared run — and
-    picking a 'fresh' one from that fan fabricated a trace where st.ok flips false
-    on a balanced input. The deterministic chain stays on the real trajectory.
+    For DRIVEN difference equations (numeric / mixed: brackets streams
+    ⟨LParen,LBrack,…,BEnd⟩) the next state is DETERMINISTIC given the full previous
+    state, so we follow the lone successor() — picking a 'fresh' state out of an
+    out-of-bounds fan would fabricate a trace that never occurs on the declared run.
 
-    Only when the deterministic chain immediately parks on a self-loop at the seed
-    (e.g. an adjacency graph where staying put is legal AND the solver picks the
-    self-edge) do we fall back to fan-exploration to produce a moving walk."""
+    For DISCRETE programs (all-categorical interface — an adjacency graph like
+    dungeon) the lone successor() can park on a legal self-edge: Entrance->Entrance
+    is satisfiable and z3 may pick it, which would make a genuinely-dynamic program
+    look static. There we prefer a STATE-CHANGING, not-yet-visited successor — exactly
+    what render_timing_diagram already does — so the trajectory walks
+    Entrance->Hall->Gate instead of stalling at the seed."""
+    prefer_change = m.is_discrete()
     cur = seed
     path = [cur]
     seen = {m._key(cur)}
     for _ in range(steps):
-        nxt = m.successor(cur)
+        nxt = _advance(m, cur, prefer_change, seen)
         if nxt is None:
             break
         path.append(nxt)
@@ -91,26 +109,6 @@ def walk(m, seed, steps):
             break
         seen.add(k)
         cur = nxt
-
-    # Genuinely-stuck-at-seed nondeterministic graph: deterministic following
-    # parked on tick 0 but the fan offers somewhere fresh to go. Re-walk via the
-    # fan only in that degenerate case (a discrete graph, not a driven equation).
-    if len(path) <= 1:
-        fan0 = m.successors(seed)
-        if len(fan0) > 1 or (fan0 and m._key(fan0[0]) != m._key(seed)):
-            cur, path, seen = seed, [seed], {m._key(seed)}
-            for _ in range(steps):
-                nxts = m.successors(cur)
-                if not nxts:
-                    break
-                fresh = [s for s in nxts if m._key(s) not in seen]
-                nxt = fresh[0] if fresh else nxts[0]
-                path.append(nxt)
-                k = m._key(nxt)
-                if k in seen:
-                    break
-                seen.add(k)
-                cur = nxt
     return path
 
 
