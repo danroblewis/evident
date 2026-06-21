@@ -93,5 +93,66 @@ On the failing cases this flips the pick to the reviewer's choice: `csv_stats` �
 remaining `state_vars` (for the color / facet channels) are ranked by `w(v)·H(v)`
 descending, after dedup, so trivial counters stop hijacking those channels too.
 
-Implemented in `viz/evident_viz.py`; re-measured with the same harness (see the
-re-run results appended below).
+Implemented in `viz/evident_viz.py`; re-measured with the same harness.
+
+---
+
+## Re-run results: a real but partial improvement, and a confound
+
+19 fresh critic agents re-judged the **new** picks on the same rubric and ruled
+better/worse/same vs the old pick. On the **original 16** programs:
+
+| metric | old (mRMR) | new (structure) |
+|---|---|---|
+| acceptable (`reasonable`+) | **6 / 16** (37%) | **9 / 16** (56%) |
+| avg verdict rank (0–3) | 1.44 | **1.69** |
+
+| | wins (↑) | regressions (↓) | unchanged |
+|---|---|---|---|
+| programs | cut, ps, histogram, wc, scheduler | grep, ledger, tokenizer | csv_stats, dungeon, ls, pstree, randomwalk, top, uniq, vending |
+
+The headline wins are exactly the failure modes we diagnosed: **`ps`**
+`cursor,zombie → cursor,max_mem` (the cursor now pairs with the *meaningful*
+accumulator instead of a near-empty count), **`cut`** now nails the two carrying
+variables over the string-noise axis, **`histogram`/`wc`** climbed out of
+"hallucinated." `vending`'s `balance,mode` survived (the injective fix stopped the
+cyclic balance being mistaken for a counter).
+
+The regressions expose the cost of dropping the redundancy penalty entirely:
+**`grep`** went `line_no,matched → done,line_no`, and `done = (line_no ≥ 4)` is a
+*deterministic function* of `line_no` — a redundant pair the old min-redundancy term
+would have rejected. So the right answer is not "no redundancy penalty" but "penalize
+*functional* redundancy (one axis determines the other) while still rewarding
+*correlated co-variation* (a staircase)."
+
+### The confound: the renderer junks all-numeric pairs (the fabrication bug, again)
+
+The three new 8-var programs (`brackets`, `calc`, `du`) all scored `hallucinated` —
+but the reviewers were explicit that this is **a renderer artifact, not a selector
+error**: `orbit_scatter` renders an *all-numeric* axis pair in a "multiple seeds →
+attractor" mode that scatters random points across a ±3000 junk range, crushing the
+real orbit to an invisible blob. Pairs that include a bool/enum axis render the true
+autonomous orbit. So on numeric-heavy programs the selector can pick a perfectly good
+numeric pair and the renderer still junks it — **the fabrication bug from the gallery
+review now caps the selector's achievable score.** This is the same root cause flagged
+in `README.md` (sample the reachable domain, don't grid/seed a fixed box).
+
+### Verdict
+
+The structure-based selector is a genuine improvement — from a **failing 37%** to a
+**passing-ish 56%** — and it fixed the precise cases the diagnosis predicted. But two
+ceilings remain, and neither is more statistical tuning:
+
+1. **The renderer fabrication bug is now the bigger lever.** Until `orbit_scatter`
+   (and the numeric family) sample the *reachable* domain instead of seeding a ±3000
+   box, numeric-pair picks get junked regardless of how good the selection is.
+2. **A semantic ceiling.** ~4 programs (`csv_stats`, `uniq`, `ls`, `randomwalk`) stay
+   `missed_better` because the reviewers prefer *domain-meaningful* pairs (two
+   co-moving accumulators; the cursor-anchored staircase) that are statistically
+   dominated by a higher-entropy alternative. Closing these needs either functional-
+   redundancy demotion (see grep) or a notion of "domain salience" that pure
+   entropy/spread can't express.
+
+Inter-agent variance is ~±1 verdict level (the same pick was rated `reasonable` by one
+agent and `nailed_it` by another), so treat the per-program deltas as indicative and
+the aggregate (6 → 9 acceptable) as the reliable signal.
