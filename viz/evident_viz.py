@@ -288,6 +288,23 @@ class Model:
         states, _ = self.reachable(limit=limit)
         return states if len(states) >= 2 else self.trajectory(steps=400)
 
+    def axis_bounds(self, name, pad=0.08):
+        """(lo, hi) of a NUMERIC variable over the REACHABLE sample — the real domain a
+        renderer should grid / scale / seed within, INSTEAD of a hardcoded ±3000 box
+        (the 'fabrication' bug: gridding a guessed range invents cycles/basins the
+        program never enters). Returns None for a non-numeric var or an empty sample;
+        callers fall back to a default box only for genuinely unbounded continuous
+        dynamics. bool is excluded (it's categorical, encode ordinally elsewhere)."""
+        states = self._sample_states()
+        vals = [s[name] for s in states if type(s.get(name)) in (int, float)]
+        if not vals:
+            return None
+        lo, hi = float(min(vals)), float(max(vals))
+        if lo == hi:
+            return (lo - 1.0, hi + 1.0)
+        m = (hi - lo) * pad
+        return (lo - m, hi + m)
+
     def _rank_and_dedup(self):
         import math
         vs = list(self.interface_vars)
@@ -350,6 +367,23 @@ class Model:
         W = {nm: (INDEX_DISCOUNT if is_unit_counter(nm) else 1.0) for nm in reps}
         relevance = {nm: W[nm] * H[nm] for nm in reps}             # discounted single-var score
 
+        # functional-redundancy guard: a pair where one axis is a DETERMINISTIC function
+        # of the other AND that dependent has tiny cardinality is a degenerate "flat line
+        # with a step" (e.g. grep `done = line_no >= 4`). Demote it. A RICH functional
+        # curve (a staircase, `sum = f(cursor)`) keeps full score — high cardinality means
+        # it traces a real shape, not a step. (This is the targeted alternative to mRMR's
+        # blanket redundancy penalty, which wrongly punished staircases too.)
+        def determines(a, b):                  # does a determine b? (b is a function of a)
+            m = {}
+            for va, vb in zip(series[a], series[b]):
+                if m.get(va, vb) != vb:
+                    return False
+                m[va] = vb
+            return True
+
+        def low_card(nm):
+            return len(set(series[nm])) <= 3
+
         names = list(reps)
         best_pair, best_score = None, -1.0
         for i in range(len(names)):
@@ -357,7 +391,9 @@ class Model:
                 a, b = names[i], names[j]
                 if H[a] <= 0 or H[b] <= 0:                         # a constant axis = a flat line
                     continue
-                s = relevance[a] * relevance[b]                    # both axes vary; counters discounted; no redundancy penalty
+                s = relevance[a] * relevance[b]                    # both axes vary; counters discounted
+                if (determines(a, b) and low_card(b)) or (determines(b, a) and low_card(a)):
+                    s *= 0.4                                        # degenerate functional step (not a rich curve)
                 if s > best_score:
                     best_pair, best_score = (a, b), s
 
