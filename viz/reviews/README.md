@@ -6,6 +6,17 @@ ranked them by how informative and faithful they are to the program's actual
 behavior. Per-program reviews are the `<program>.md` files in this directory; this
 is the synthesis.
 
+> **Update — the fabrication bug is fixed.** All 8 numeric renderers were retrofitted
+> to sample the program's *reachable* set instead of a hardcoded ±3000 box. A 12-program
+> × 8-renderer recheck found **88% already honest** (80% faithful + 8% honest N/A) on
+> the first pass; the remaining 11 cells were two concentrated issues, both since fixed:
+> `grep` was *under-constrained* (its `line_no` grew unbounded past EOF, so the renderers
+> faithfully drew an infinite reachable set — now frozen at EOF), and `nullcline_field`
+> drew a field for any *wide* value range (now requires a genuinely dense/recurrent set,
+> else honest N/A). The selector eval re-ran on the fixed gallery rose to **10/19 nailed,
+> 62% acceptable** (`selector-eval.md`). Net: the gallery is now honest — faithful where
+> it can be, an explicit N/A where the viz doesn't fit, and never fabricating.
+
 ---
 
 ## The headline finding: the numeric renderers FABRICATE structure
