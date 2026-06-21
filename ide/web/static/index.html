@@ -5,9 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Evident IDE</title>
 <link rel="icon" href="data:,">
-<link rel="stylesheet" href="/static/vendor/codemirror.css">
-<link rel="stylesheet" href="/static/vendor/dracula.css">
-<link rel="stylesheet" href="/static/app.css?v=6">
+<link rel="stylesheet" href="/static/app.css?v=7">
 </head>
 <body>
 <div id="app">
@@ -22,7 +20,7 @@
   </header>
 
   <main id="editor-pane">
-    <textarea id="code"></textarea>
+    <div id="code"></div>
     <div id="errors" hidden></div>
   </main>
 
@@ -46,7 +44,8 @@
   </aside>
 </div>
 
-<script src="/static/vendor/codemirror.js"></script>
-<script src="/static/app.js?v=6"></script>
+<script src="/static/vendor/ace-ace.js"></script>
+<script src="/static/vendor/ace-theme-dracula.js"></script>
+<script src="/static/app.js?v=7"></script>
 </body>
 </html>

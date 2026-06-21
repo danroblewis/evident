@@ -1,6 +1,10 @@
 "use strict";
 
-// LaTeX-style Unicode input: type \word + a non-letter, get the operator.
+// --- typable-token input -----------------------------------------------------------
+// Two ways to type the Unicode operators Evident's lexer expects:
+//  (1) LaTeX-style backslash input: \word + a non-letter  →  the operator.
+//  (2) bare mnemonic auto-replacement (Task #34): a standalone word/op-pair converts
+//      as you type, WORD-BOUNDARY SAFE — `in`→∈ but `Int`/`min`/`Coining` stay put.
 const UNI = {
   in: "∈", notin: "∉", forall: "∀", all: "∀", exists: "∃", any: "∃",
   implies: "⇒", imp: "⇒", then: "⇒", Rightarrow: "⇒", impliedby: "⟸", when: "⟸",
@@ -9,6 +13,20 @@ const UNI = {
   land: "∧", and: "∧", lor: "∨", or: "∨",
   cup: "∪", cap: "∩", times: "×", cdot: "·", subseteq: "⊆", emptyset: "∅",
 };
+
+// Bare mnemonics that convert when the COMPLETE preceding word is one of these and a
+// non-word char is then typed. The lexer accepts only `in`/`mapsto` as words and the
+// four ASCII op-pairs natively; everything else here MUST be converted to the real glyph
+// so the program lexes. (Task #34.)
+const WORD_MNEMONICS = {
+  in: "∈", notin: "∉", implies: "⇒", impliedby: "⟸", when: "⟸",
+  forall: "∀", all: "∀", exists: "∃", any: "∃", delta: "Δ",
+  and: "∧", or: "∨", not: "¬", mapsto: "↦", to: "→",
+  langle: "⟨", rangle: "⟩", leq: "≤", geq: "≥", neq: "≠",
+  times: "×", cdot: "·", cup: "∪", cap: "∩", subseteq: "⊆", emptyset: "∅",
+};
+// Two-char ASCII operator pairs: convert the instant the 2nd char is typed.
+const OP_PAIRS = { "<=": "≤", ">=": "≥", "!=": "≠", "=>": "⇒" };
 
 const DEFAULT_PROGRAM =
 `fsm accumulate
@@ -152,82 +170,151 @@ claim graph_coloring
 
 const $ = (s) => document.querySelector(s);
 
-// --- Evident syntax-highlighting mode ---------------------------------------------
-// A code editor with no language mode shows undifferentiated grey text. This tokenizes
-// Evident: keywords, the Unicode/ASCII operators, comments, strings, numbers, _prev
-// reads, Type/Variant capitals, and booleans — each mapped to a dracula-themed class.
-CodeMirror.defineMode("evident", function () {
-  const KEYWORDS = new Set([
-    "claim", "type", "enum", "fsm", "schema", "import", "assert", "match",
-    "subclaim", "in", "is_first_tick", "coindexed", "edges",
-  ]);
-  const ATOMS = new Set(["true", "false"]);
-  const OPS = "∈∉∀∃⇒⟸↦→⟨⟩≤≥≠Δ¬∧∨∪∩×·⊆∅=<>+-*/?:.,";
-  return {
-    startState() { return {}; },
-    token(stream) {
-      if (stream.eatSpace()) return null;
-      if (stream.match("--")) { stream.skipToEnd(); return "comment"; }
-      const ch = stream.peek();
-      if (ch === '"') {
-        stream.next();
-        while (!stream.eol()) { const c = stream.next(); if (c === '"') break; if (c === "\\") stream.next(); }
-        return "string";
-      }
-      if (/[0-9]/.test(ch)) { stream.eatWhile(/[0-9.]/); return "number"; }
-      if (/[A-Za-z_]/.test(ch)) {
-        stream.eatWhile(/[A-Za-z0-9_]/);
-        const w = stream.current();
-        if (KEYWORDS.has(w)) return "keyword";
-        if (ATOMS.has(w)) return "atom";
-        if (w[0] === "_") return "variable-2";     // previous-tick read (_state)
-        if (/^[A-Z]/.test(w)) return "def";        // Type name / enum Variant
-        return "variable";
-      }
-      if (OPS.indexOf(ch) >= 0) { stream.next(); return "operator"; }
-      stream.next();
-      return null;
-    },
-  };
+// --- Evident syntax-highlighting Ace mode -----------------------------------------
+// A code editor with no language mode shows undifferentiated grey text. This Ace mode
+// tokenizes Evident: keywords, the Unicode/ASCII operators, comments, strings, numbers,
+// _prev reads, Type/Variant capitals, and booleans — mapped to dracula token classes.
+ace.define("ace/mode/evident", [
+  "require", "exports", "module",
+  "ace/lib/oop", "ace/mode/text", "ace/mode/text_highlight_rules",
+], function (require, exports) {
+  const oop = require("ace/lib/oop");
+  const TextMode = require("ace/mode/text").Mode;
+  const TextHighlightRules = require("ace/mode/text_highlight_rules").TextHighlightRules;
+
+  const KEYWORDS =
+    "claim|type|enum|fsm|schema|import|assert|match|matches|subclaim|in|is" +
+    "_first_tick|coindexed|edges";
+  // The Unicode/ASCII operator glyphs. Escaped for use inside a character class.
+  const OPS = "∈∉∀∃⇒⟸↦→⟨⟩≤≥≠Δ¬∧∨∪∩×·⊆∅=<>+\\-*/?:.,#|";
+
+  function EvidentHighlightRules() {
+    this.$rules = {
+      start: [
+        { token: "comment.line", regex: "--.*$" },
+        { token: "string", regex: '"(?:\\\\.|[^"\\\\])*"' },
+        { token: "constant.numeric", regex: "\\b\\d+(?:\\.\\d+)?\\b" },
+        // booleans (lowercase) — capital True/False are unbound names, left as identifiers
+        { token: "constant.language.boolean", regex: "\\b(?:true|false)\\b" },
+        // keywords (word-boundary; is_first_tick handled by the regex alternation)
+        { token: "keyword", regex: "\\b(?:" + KEYWORDS + ")\\b" },
+        // previous-tick read: _foo
+        { token: "variable.parameter", regex: "_[A-Za-z]\\w*\\b" },
+        // Type name / enum Variant — Capitalized identifier
+        { token: "entity.name.type", regex: "\\b[A-Z]\\w*\\b" },
+        // plain identifiers
+        { token: "identifier", regex: "\\b[a-z_]\\w*\\b" },
+        // operators (Unicode + ASCII)
+        { token: "keyword.operator", regex: "[" + OPS + "]" },
+      ],
+    };
+  }
+  oop.inherits(EvidentHighlightRules, TextHighlightRules);
+
+  function Mode() {
+    this.HighlightRules = EvidentHighlightRules;
+    this.lineCommentStart = "--";
+  }
+  oop.inherits(Mode, TextMode);
+  exports.Mode = Mode;
 });
 
-const cm = CodeMirror.fromTextArea($("#code"), {
-  mode: "evident",
-  theme: "dracula", lineNumbers: true, lineWrapping: true,
-  viewportMargin: Infinity, value: DEFAULT_PROGRAM,
-  smartIndent: false, electricChars: false, indentWithTabs: false, indentUnit: 4,
-  extraKeys: {
-    // Evident is indentation-sensitive. Auto-indent on Enter: copy the current line's
-    // leading whitespace, and add one level after a block opener (an fsm/claim/type/enum
-    // header, or a line ending in ⇒) — so a hand-typed body lands correctly indented
-    // instead of at column 0 (which the parser rejects). Tab inserts 4 spaces.
-    "Enter": (e) => {
-      const cur = e.getCursor();
-      const line = e.getLine(cur.line);
-      const indent = (line.match(/^[ \t]*/) || [""])[0];
-      const opener = /^\s*(fsm|claim|type|enum|schema)\b/.test(line) || /⇒\s*$/.test(line);
-      e.replaceSelection("\n" + indent + (opener ? "    " : ""));
-    },
-    "Tab": (e) => e.replaceSelection("    "),
-    "Shift-Tab": (e) => e.execCommand("indentLess"),
-  },
+// --- editor construction ----------------------------------------------------------
+const editor = ace.edit("code");
+editor.setTheme("ace/theme/dracula");
+editor.session.setMode("ace/mode/evident");
+editor.session.setUseWrapMode(true);          // line wrapping on
+editor.session.setTabSize(4);
+editor.session.setUseSoftTabs(true);
+editor.setOptions({
+  fontSize: "14px",
+  showPrintMargin: false,
+  highlightActiveLine: true,
+  useWorker: false,                            // no built-in linter; analyze() is our diagnostics
+  newLineMode: "unix",
 });
+editor.renderer.setShowGutter(true);
+
 // Persist the buffer across reloads — losing your work on an accidental refresh is the
 // fastest way to lose a user's trust.
 const SAVED = (() => { try { return localStorage.getItem("evident-buffer"); } catch (e) { return null; } })();
-cm.setValue(SAVED != null ? SAVED : DEFAULT_PROGRAM);
+editor.setValue(SAVED != null ? SAVED : DEFAULT_PROGRAM, -1);   // -1 = cursor to start
 
-// --- Unicode input method ---------------------------------------------------------
-cm.on("inputRead", (cm_, change) => {
-  const typed = change.text.join("");
-  if (!typed || /[a-zA-Z\\]/.test(typed[typed.length - 1])) return; // commit on a non-letter
-  const cur = cm_.getCursor();
-  const before = cm_.getLine(cur.line).slice(0, cur.ch);
-  const mt = before.match(/\\([a-zA-Z]+)(.)$/);
-  if (mt && UNI[mt[1]]) {
-    const start = { line: cur.line, ch: cur.ch - mt[0].length };
-    cm_.replaceRange(UNI[mt[1]] + mt[2], start, cur);
+// --- auto-indent on Enter ---------------------------------------------------------
+// Evident is indentation-sensitive. On Enter: copy the current line's leading whitespace,
+// and add one level after a block opener (an fsm/claim/type/enum/schema header, or a line
+// ending in ⇒) — so a hand-typed body lands correctly indented instead of at column 0
+// (which the parser rejects).
+editor.commands.addCommand({
+  name: "evidentNewline",
+  bindKey: { win: "Enter", mac: "Enter" },
+  exec: function (ed) {
+    const cursor = ed.getCursorPosition();
+    const line = ed.session.getLine(cursor.row);
+    const indent = (line.match(/^[ \t]*/) || [""])[0];
+    const opener = /^\s*(fsm|claim|type|enum|schema)\b/.test(line) || /⇒\s*$/.test(line);
+    ed.insert("\n" + indent + (opener ? "    " : ""));
+  },
+});
+
+// --- typable-token input (backslash + bare mnemonic auto-replacement) -------------
+// Driven off session 'change'. We inspect the text just inserted and the word/op-pair
+// immediately preceding the cursor, then splice in the glyph. Splices go through a single
+// undo group with the triggering keystroke so Ctrl-Z reverts one replacement at a time.
+let _replacing = false;        // guard against re-entrancy from our own splice
+function applyTokenInput(delta) {
+  if (_replacing) return;
+  if (!delta || delta.action !== "insert") return;
+  const inserted = delta.lines.length === 1 ? delta.lines[0] : null;
+  if (!inserted || inserted.length !== 1) return;     // only single-char keystrokes trigger
+  const ch = inserted;
+  const row = delta.end.row, col = delta.end.column;  // cursor sits just after the inserted char
+  const line = editor.session.getLine(row);
+  const before = line.slice(0, col);                  // text up to and including the trigger char
+
+  // (1) ASCII operator pair — convert the instant the 2nd char lands.
+  const pair = before.slice(-2);
+  if (OP_PAIRS[pair]) {
+    spliceReplace(row, col - 2, col, OP_PAIRS[pair]);
+    return;
   }
+
+  // (2) backslash LaTeX input: \word + a non-letter committed it.
+  if (!/[a-zA-Z\\]/.test(ch)) {
+    const bs = before.match(/\\([a-zA-Z]+)(.)$/);
+    if (bs && UNI[bs[1]]) {
+      // replace "\word<trigger>" with "<glyph><trigger>"
+      spliceReplace(row, col - bs[0].length, col, UNI[bs[1]] + bs[2]);
+      return;
+    }
+  }
+
+  // (3) bare word mnemonic — convert when a non-word char follows a COMPLETE word that is
+  //     a mnemonic. Word-boundary safe: the char before the word must be a non-word char
+  //     (or start of line), so `Int`/`min`/`Coining` never convert — only a standalone word.
+  if (!/[A-Za-z0-9_]/.test(ch)) {
+    const wm = before.match(/(^|[^A-Za-z0-9_])([A-Za-z]+)(.)$/);
+    if (wm && WORD_MNEMONICS[wm[2]]) {
+      const wordStart = col - wm[3].length - wm[2].length;   // start of the matched word
+      spliceReplace(row, wordStart, col - wm[3].length, WORD_MNEMONICS[wm[2]]);
+    }
+  }
+}
+
+// Replace the [startCol, endCol) range on `row` with `text`, keeping the cursor after the
+// inserted text and the operation in the same undo group as the triggering keystroke (so a
+// single Ctrl-Z reverts exactly one replacement).
+function spliceReplace(row, startCol, endCol, text) {
+  _replacing = true;
+  const Range = ace.require("ace/range").Range;
+  editor.session.replace(new Range(row, startCol, row, endCol), text);
+  editor.moveCursorTo(row, startCol + text.length);
+  _replacing = false;
+}
+
+editor.session.on("change", (delta) => {
+  applyTokenInput(delta);
+  scheduleAnalyze();
 });
 
 // --- hover-to-learn glossary ------------------------------------------------------
@@ -263,32 +350,55 @@ function glossFor(t) {
   if (t === "true" || t === "false") return `${t} — Boolean literal (lowercase). Capital True/False is an unbound name — a silent bug.`;
   return null;
 }
-cm.getWrapperElement().addEventListener("mousemove", (e) => {
-  const cls = (e.target && e.target.className) || "";
-  if (typeof cls === "string" && /\bcm-(keyword|operator|variable-2|atom)\b/.test(cls)) {
-    const g = glossFor((e.target.textContent || "").trim());
-    if (g) {
-      gloss.textContent = g; gloss.hidden = false;
-      gloss.style.left = Math.min(e.clientX + 12, window.innerWidth - 380) + "px";
-      gloss.style.top = (e.clientY + 18) + "px";
-      return;
+// Ace renders tokens as spans with ace_<type> classes inside the text layer. We resolve
+// the token under the cursor via the session tokenizer (precise) and show a gloss for
+// keyword/operator/_prev/boolean tokens.
+const editorEl = $("#code");
+editorEl.addEventListener("mousemove", (e) => {
+  const pos = editor.renderer.screenToTextCoordinates(e.clientX, e.clientY);
+  if (!pos) { gloss.hidden = true; return; }
+  const tok = editor.session.getTokenAt(pos.row, pos.column + 1);
+  if (tok) {
+    const ty = tok.type || "";
+    const isHoverable = /keyword|operator|variable\.parameter|boolean/.test(ty);
+    if (isHoverable) {
+      const g = glossFor((tok.value || "").trim());
+      if (g) {
+        gloss.textContent = g; gloss.hidden = false;
+        gloss.style.left = Math.min(e.clientX + 12, window.innerWidth - 380) + "px";
+        gloss.style.top = (e.clientY + 18) + "px";
+        return;
+      }
     }
   }
   gloss.hidden = true;
 });
-cm.getWrapperElement().addEventListener("mouseleave", () => { gloss.hidden = true; });
+editorEl.addEventListener("mouseleave", () => { gloss.hidden = true; });
 
 // --- inline error line marker -----------------------------------------------------
+// Tint the offending line. Ace marks a line via a full-width marker; the simplest robust
+// approach is a gutter-decoration + a row marker class (.ace_error-line) on that row.
 let _errLine = null;
 function clearErrorLine() {
-  if (_errLine != null) { cm.removeLineClass(_errLine, "background", "cm-error-line"); _errLine = null; }
+  if (_errLine != null) {
+    editor.session.removeGutterDecoration(_errLine, "error-gutter");
+    if (_errMarker != null) { editor.session.removeMarker(_errMarker); _errMarker = null; }
+    _errLine = null;
+  }
 }
+let _errMarker = null;
 function markErrorLine(err) {
   clearErrorLine();
   const m = (err || "").match(/line (\d+)/i);
   if (m) {
     const ln = parseInt(m[1], 10) - 1;
-    if (ln >= 0 && ln < cm.lineCount()) { cm.addLineClass(ln, "background", "cm-error-line"); _errLine = ln; }
+    if (ln >= 0 && ln < editor.session.getLength()) {
+      const Range = ace.require("ace/range").Range;
+      _errMarker = editor.session.addMarker(
+        new Range(ln, 0, ln, Infinity), "ace-error-line", "fullLine");
+      editor.session.addGutterDecoration(ln, "error-gutter");
+      _errLine = ln;
+    }
   }
 }
 
@@ -362,6 +472,7 @@ function paint(data, ms) {
       $("#banner").className = "live";
       $("#banner").textContent = "◆ a claim (a relation) — solve it for a witness assignment";
       $("#honesty").innerHTML = '<span class="dim">⊨ Solve runs the constraints → SAT (with a witness) or UNSAT</span>';
+      clearErrorLine();
       return;
     }
     setStatus("error", "err");
@@ -425,7 +536,7 @@ function paint(data, ms) {
 }
 
 async function run(view) {
-  const source = cm.getValue();
+  const source = editor.getValue();
   lastSource = source;
   const nm = source.match(/^\s*(?:fsm|claim|type|schema)\s+([A-Za-z_]\w*)/m);
   $("#fname").textContent = (nm ? nm[1] : "untitled") + ".ev";
@@ -449,10 +560,11 @@ async function run(view) {
   }
 }
 
-cm.on("change", () => {
-  try { localStorage.setItem("evident-buffer", cm.getValue()); } catch (e) {}
+// Persist + debounced analyze, driven from the single session 'change' handler above.
+function scheduleAnalyze() {
+  try { localStorage.setItem("evident-buffer", editor.getValue()); } catch (e) {}
   clearTimeout(timer); timer = setTimeout(() => run(), 350);
-});
+}
 
 // --- solve/query: run a claim → SAT witness or UNSAT; pin vars for solve-for-X --------
 function parsePins(s) {
@@ -506,7 +618,7 @@ function renderSolve(d, given) {
 }
 
 async function solve(enumerate) {
-  const source = cm.getValue();
+  const source = editor.getValue();
   const given = parsePins($("#solve-given").value);
   $("#solve").hidden = false;
   $("#solve-head").innerHTML = `<span class="dim">${enumerate ? "enumerating…" : "solving…"}</span>`;
@@ -534,7 +646,7 @@ sel.innerHTML = '<option value="">open sample…</option>' +
   Object.keys(SAMPLES).map((k) => `<option value="${k}">${k}</option>`).join("");
 sel.onchange = () => {
   if (SAMPLES[sel.value]) {
-    cm.setValue(SAMPLES[sel.value]);
+    editor.setValue(SAMPLES[sel.value], -1);
     $("#solve-given").value = "";   // a fresh sample must not inherit the last pin…
     $("#solve").hidden = true;       // …nor leave a stale UNSAT/witness over the new program
     run();
