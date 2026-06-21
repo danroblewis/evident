@@ -23,6 +23,7 @@ Values: int -> python int, bool -> bool, enum -> variant name (str),
 real -> float, string -> str.
 """
 import json
+import os
 import z3
 
 
@@ -260,7 +261,19 @@ class Model:
         """Interface variables, deduplicated (informationally-equivalent vars merged)
         and ranked by how much they vary — the recommended axis ORDER. Renderers take
         as many as they need (top 2 for a phase portrait, all for a scatter matrix).
-        Falls back to raw interface order if sampling is degenerate. Cached."""
+        Falls back to raw interface order if sampling is degenerate. Cached.
+
+        Override (for the selector-evaluation sweep): if the env var
+        EVIDENT_VIZ_VARS is set to a comma-separated list of leaf names, return
+        exactly those (in that order) instead of the ranked selection — this lets a
+        driver force any variable combination onto a renderer to compare against the
+        selector's own pick."""
+        ov = os.environ.get("EVIDENT_VIZ_VARS")
+        if ov:
+            by_name = {v["name"]: v for v in self.carried}
+            chosen = [by_name[n] for n in ov.split(",") if n in by_name]
+            if chosen:
+                return chosen
         if self._ranked is None:
             try:
                 self._ranked = self._rank_and_dedup()
