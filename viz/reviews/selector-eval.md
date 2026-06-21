@@ -156,3 +156,49 @@ ceilings remain, and neither is more statistical tuning:
 Inter-agent variance is ~±1 verdict level (the same pick was rated `reasonable` by one
 agent and `nailed_it` by another), so treat the per-program deltas as indicative and
 the aggregate (6 → 9 acceptable) as the reliable signal.
+
+---
+
+## Re-run #2: on the FIXED renderers (un-confounding the numeric pairs)
+
+The prior re-run flagged that `orbit_scatter` junks all-numeric pairs (the fabrication
+bug), so numeric-heavy programs scored `hallucinated` for *renderer* reasons, not
+selector reasons. After fixing all 8 numeric renderers to sample the reachable domain
+(see `README.md`), we re-judged the **same structure-selector picks** on the now-faithful
+diagrams:
+
+| run | acceptable (16 originals) | nailed_it (of 19) |
+|---|---|---|
+| mRMR, broken renderers | 6/16 — 37% | ~4 |
+| structure, broken renderers | 9/16 — 56% | 5 |
+| **structure, fixed renderers** | **10/16 — 62%** | **10** |
+
+The renderer fix did exactly what was predicted — it un-confounded the numeric programs
+whose pairs orbit_scatter had been junking: **`calc` hallucinated → nailed_it**, **`du`
+hallucinated → reasonable**. Overall **10 of 19 picks are now `nailed_it`** (63%
+acceptable) — more than double the mRMR baseline's perfect-pick count. The apparent
+"DOWN" moves (`top`, `pstree`, `grep` on *unchanged* picks) are the ±1 inter-agent noise,
+not regressions.
+
+### What's left (genuine, not noise)
+
+- **`brackets`** — the selector picks `pos,s0`, but `s0` (the bottom stack slot) is written
+  once and frozen; the depth staircase (`depth,pos`) is the real story. A real selector
+  miss: a slot that's near-constant *after tick 1* still clears the `H > 0` gate. A
+  "mostly-constant" demotion (entropy concentrated in one transition) would catch it.
+- **`csv_stats`** — still `hallucinated`: `orbit_scatter` plots the raw reachable points and
+  lets matplotlib auto-scale, so the `min=1e6` *sentinel seed* re-blows the axis even
+  though `axis_bounds` would reject it. Small follow-up: the scatter renderers should set
+  their limits from `axis_bounds`, not auto-scale. (The pair `sum,min` is also a weak
+  pick regardless.)
+- **Semantic ceiling** (`uniq`, `randomwalk`) — the reviewers want domain-salient pairs
+  (two co-moving accumulators; node × a specific visit-count) that pure entropy/structure
+  can't distinguish from equally-spread alternatives.
+
+### Bottom line
+
+The two fixes compound: the **structure selector** (37 → 56%) plus the **renderer
+fabrication fix** (56 → 62%, and 5 → 10 nailed) took the corpus from a failing selector
+on a hallucinating gallery to **62% acceptable / 10-of-19 perfect picks** on a faithful
+one. The remaining gap is a couple of targeted fixes (mostly-constant demotion; scatter
+limits from `axis_bounds`) and a genuine semantic ceiling.
