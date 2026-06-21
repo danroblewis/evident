@@ -283,14 +283,40 @@ class Model:
         groups = {}
         for v in vs:
             groups.setdefault(partition(v["name"]), []).append(v)
-        reps = []
+        reps = {}              # name -> (var, entropy, members)
         for members in groups.values():
             rep = self._pick_rep(members)
-            reps.append((entropy(rep["name"]), rep, [m["name"] for m in members]))
-        reps.sort(key=lambda r: -r[0])
-        self.variable_groups = [{"rep": r[1]["name"], "members": r[2],
-                                 "entropy": round(r[0], 3)} for r in reps]
-        return [r[1] for r in reps]
+            reps[rep["name"]] = (rep, entropy(rep["name"]), [m["name"] for m in members])
+
+        def mi(a, b):
+            n = len(states)
+            pa, pb, pab = {}, {}, {}
+            for i in range(n):
+                va, vb = series[a][i], series[b][i]
+                pa[va] = pa.get(va, 0) + 1
+                pb[vb] = pb.get(vb, 0) + 1
+                pab[(va, vb)] = pab.get((va, vb), 0) + 1
+            return sum((c / n) * math.log2((c / n) / ((pa[k[0]] / n) * (pb[k[1]] / n)))
+                       for k, c in pab.items())
+
+        # Greedy max-relevance / min-redundancy ordering: most informative var first,
+        # then each next maximizes entropy while staying least redundant with those
+        # already chosen — so state_vars[:2] is the most EXPRESSIVE axis pair and any
+        # prefix is a good non-redundant set.
+        names = sorted(reps, key=lambda nm: -reps[nm][1])
+        order = [names.pop(0)] if names else []
+        while names:
+            def score(nm):
+                red = max((mi(nm, p) / (min(reps[nm][1], reps[p][1]) or 1e-9)
+                           for p in order), default=0.0)
+                return reps[nm][1] * (1.0 - min(red, 1.0))
+            best = max(names, key=score)
+            names.remove(best)
+            order.append(best)
+
+        self.variable_groups = [{"rep": nm, "members": reps[nm][2],
+                                 "entropy": round(reps[nm][1], 3)} for nm in order]
+        return [reps[nm][0] for nm in order]
 
     @staticmethod
     def _pick_rep(members):

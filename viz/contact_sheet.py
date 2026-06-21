@@ -60,6 +60,22 @@ def export(sample):
     return name, sample, (f"{out}.smt2", f"{out}.schema.json"), ""
 
 
+def interestingness(path):
+    """A crude visual-content score so degenerate / near-blank diagrams sink and
+    busy, structured ones float. Background-agnostic (grayscale contrast + edge
+    density), so it works across the renderers' different themes."""
+    try:
+        import numpy as np
+        import matplotlib.image as mpimg
+        img = mpimg.imread(str(path))
+        a = img[..., :3] if img.ndim == 3 else img
+        g = a.mean(axis=2) if a.ndim == 3 else a
+        gy, gx = np.gradient(g.astype(float))
+        return round(float(g.std()) + 8.0 * float(np.hypot(gx, gy).mean()), 4)
+    except Exception:
+        return 0.0
+
+
 def render(job):
     rp, vt, name, smt2, schema = job
     out = GALLERY / f"{vt}__{name}.png"
@@ -71,7 +87,8 @@ def render(job):
         err = "" if ok else (r.stderr.strip()[-300:] or "no output produced")
     except subprocess.TimeoutExpired:
         ok, err = False, f"timeout >{RENDER_TIMEOUT}s"
-    return vt, name, out, ok, err
+    score = interestingness(out) if ok else 0.0
+    return vt, name, out, ok, err, score
 
 
 def describe(ir):
@@ -125,9 +142,10 @@ def main():
     results = {}       # (vt, name) -> (out, ok, err)
     print()
     with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as ex:
-        for vt, name, out, ok, err in ex.map(render, jobs):
-            results[(vt, name)] = (out, ok, err)
-            print(("  ok   " if ok else "  FAIL ") + f"{vt} / {name}" + ("" if ok else f"  {err}"))
+        for vt, name, out, ok, err, score in ex.map(render, jobs):
+            results[(vt, name)] = (out, ok, err, score)
+            print(("  ok   " if ok else "  FAIL ") + f"{vt} / {name}"
+                  + (f"  [{score:.2f}]" if ok else f"  {err}"))
 
     # Phase 3 — markdown contact sheet, grouped by program.
     write_sheet(order, exported, rs, results, cols)
@@ -152,19 +170,21 @@ def write_sheet(order, exported, rs, results, cols=COLS):
         if not ir:
             out += ["", f"**export failed:** {err}", ""]
             continue
-        out += ["", f"_{describe(ir)}_", ""]
-        for r0 in range(0, len(types), cols):
-            group = types[r0:r0 + cols]
-            imgs = []
+        out += ["", f"_{describe(ir)}_   _(diagrams sorted by interestingness)_", ""]
+        ranked = sorted(types, key=lambda vt: -results.get((vt, name), (None, False, "", 0.0))[3])
+        for r0 in range(0, len(ranked), cols):
+            group = ranked[r0:r0 + cols]
+            labels, imgs = [], []
             for vt in group:
-                o, ok, rerr = results.get((vt, name), (None, False, "missing"))
+                o, ok, rerr, score = results.get((vt, name), (None, False, "missing", 0.0))
+                labels.append(f"{vt} · {score:.2f}" if ok else vt)
                 if ok:
                     imgs.append(f"![{vt}]({os.path.relpath(o, VIZ)})")
                 else:
                     imgs.append("_failed: " + rerr.replace("|", "/").replace("\n", " ") + "_")
-            out.append("| " + " | ".join(group) + " |")     # labels (header row)
+            out.append("| " + " | ".join(labels) + " |")     # labels + score (header row)
             out.append("|" + "---|" * len(group))
-            out.append("| " + " | ".join(imgs) + " |")       # images (data row)
+            out.append("| " + " | ".join(imgs) + " |")        # images (data row)
             out.append("")
     SHEET.write_text("\n".join(out) + "\n")
 
