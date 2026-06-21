@@ -182,8 +182,10 @@ def write_sheet(order, exported, rs, results, cols=COLS):
                     imgs.append(f"![{vt}]({os.path.relpath(o, VIZ)})")
                 else:
                     imgs.append("_failed: " + rerr.replace("|", "/").replace("\n", " ") + "_")
+            labels += [""] * (cols - len(labels))   # pad short rows so a lone
+            imgs += [""] * (cols - len(imgs))        # diagram stays 1/cols width
             out.append("| " + " | ".join(labels) + " |")     # labels + score (header row)
-            out.append("|" + "---|" * len(group))
+            out.append("|" + "---|" * cols)
             out.append("| " + " | ".join(imgs) + " |")        # images (data row)
             out.append("")
     SHEET.write_text("\n".join(out) + "\n")
