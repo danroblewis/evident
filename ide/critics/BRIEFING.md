@@ -120,10 +120,12 @@ ones that fit your persona:
   errors and 500s the happy path hides.
 - **Time the feedback.** Snapshot before an edit, change input, snapshot after — roughly
   how long until the view moves? Latency is a first-class finding.
-- **Save every screenshot INTO the recordings dir** by passing an ABSOLUTE filename:
-  `/Users/daniellewis/evident/ide/critics/recordings/<persona>-<step>.png`
-  (e.g. `…/recordings/marek-cold-open.png`). A bare filename lands in the repo root
-  instead — always use the full path, so your session is a clean flipbook in one place.
+- **Save every screenshot into a PER-RUN TIMESTAMPED folder**, so successive runs never
+  overwrite each other and the full history is kept. FIRST, once at the start, get a run
+  stamp via Bash: `date +%Y%m%d-%H%M%S`. THEN save each screenshot with an absolute
+  filename `/Users/daniellewis/evident/ide/critics/recordings/<persona>-<stamp>/<step>.png`
+  (e.g. `…/recordings/marek-20260621-143000/cold-open.png`). Use the FULL path every time
+  — a bare filename lands in the repo root instead. Your run becomes a clean, dated flipbook.
 - Be a real user, not a script: sit in confusion when you're confused; say so when
   you're delighted. Do **not** edit the codebase — you may `Read`/`Grep` source only to
   confirm a suspicion (server vs client lag), never to fix.
