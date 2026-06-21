@@ -1,0 +1,42 @@
+:root {
+  --bg:#0f1419; --panel:#161b22; --line:#2b3138; --ink:#c9d1d9; --dim:#7d8590;
+  --accent:#58a6ff; --good:#3fb950; --warn:#d29922; --bad:#f85149;
+}
+* { box-sizing:border-box; }
+html,body { margin:0; height:100%; background:var(--bg); color:var(--ink);
+  font:13px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; }
+.dim { color:var(--dim); } .sp { flex:1; }
+
+#app { display:grid; height:100vh;
+  grid-template-columns:1fr 1fr; grid-template-rows:36px 1fr;
+  grid-template-areas:"top top" "editor dynamics"; }
+
+#top { grid-area:top; display:flex; align-items:center; gap:12px; padding:0 14px;
+  background:var(--panel); border-bottom:1px solid var(--line); }
+#top b { color:#fff; }
+#status { padding:1px 8px; border-radius:10px; }
+#status.ok { color:var(--good); } #status.err { color:var(--bad); }
+#status.busy { color:var(--warn); }
+
+#editor-pane { grid-area:editor; position:relative; border-right:1px solid var(--line);
+  display:flex; flex-direction:column; min-width:0; }
+.CodeMirror { height:100%; font:14px/1.7 ui-monospace,Menlo,monospace; background:var(--bg); }
+#errors { position:absolute; left:0; right:0; bottom:0; max-height:42%; overflow:auto;
+  background:#2a1416; border-top:1px solid var(--bad); color:#ffb3ad;
+  padding:8px 12px; white-space:pre-wrap; font-size:12px; }
+
+#dynamics { grid-area:dynamics; background:var(--panel); display:flex; flex-direction:column; min-width:0; }
+#banner { padding:9px 14px; background:#11212e; border-bottom:1px solid var(--line);
+  color:var(--dim); font-size:13px; }
+#banner.live { color:var(--accent); }
+#tabs { display:flex; gap:6px; padding:8px 12px 0; }
+#tabs .tab { padding:3px 10px; border-radius:6px 6px 0 0; background:#1b2129; color:var(--dim);
+  cursor:pointer; border:1px solid transparent; user-select:none; }
+#tabs .tab:hover { color:var(--ink); }
+#tabs .tab.on { color:#fff; background:var(--bg); border-color:var(--line); border-bottom-color:var(--bg); }
+#view { flex:1; display:flex; align-items:center; justify-content:center; overflow:auto; padding:8px; }
+#view img { max-width:100%; max-height:100%; object-fit:contain; }
+#view .ph { color:var(--dim); }
+#honesty { padding:7px 14px; border-top:1px solid var(--line); font-size:12px;
+  display:flex; gap:16px; }
+#honesty .clean { color:var(--good); } #honesty .dropped { color:var(--bad); }

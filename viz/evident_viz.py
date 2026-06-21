@@ -60,6 +60,12 @@ class Model:
         self.carried = schema["state"]                     # [{name, prev, kind, role}]
         self.interface_vars = [v for v in self.carried
                                if v.get("role", "interface") == "interface"]
+        if not self.interface_vars and self.carried:
+            # a bare-body-item fsm (`fsm counter` with `count`/`done` as body items, not
+            # a first-line state param) has no role=interface leaf — its carried state IS
+            # the observable interface. Without this, the selector / independence / banner
+            # see nothing. Only fires when the interface would otherwise be empty.
+            self.interface_vars = list(self.carried)
         self.internal_vars = [v for v in self.carried if v.get("role") == "internal"]
         self._ranked = None          # cached ranked+deduped interface vars (lazy)
         self.variable_groups = []    # [{rep, members, entropy}] redundancy groups

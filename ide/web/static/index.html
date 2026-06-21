@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Evident IDE</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="/static/vendor/codemirror.css">
+<link rel="stylesheet" href="/static/vendor/dracula.css">
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<div id="app">
+  <header id="top">
+    <b>◆ Evident IDE</b>
+    <span class="dim">counter.ev</span>
+    <span class="sp"></span>
+    <span id="latency" class="dim"></span>
+    <span id="status" class="dim">starting…</span>
+  </header>
+
+  <main id="editor-pane">
+    <textarea id="code"></textarea>
+    <div id="errors" hidden></div>
+  </main>
+
+  <aside id="dynamics">
+    <div id="banner">▷ write a constraint to see the dynamics</div>
+    <div id="tabs"></div>
+    <div id="view"><div class="ph">no dynamics yet</div></div>
+    <div id="honesty" class="dim">—</div>
+  </aside>
+</div>
+
+<script src="/static/vendor/codemirror.js"></script>
+<script src="/static/app.js"></script>
+</body>
+</html>
