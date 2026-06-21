@@ -323,34 +323,55 @@ class Model:
             rep = self._pick_rep(members)
             reps[rep["name"]] = (rep, entropy(rep["name"]), [m["name"] for m in members])
 
-        def mi(a, b):
-            n = len(states)
-            pa, pb, pab = {}, {}, {}
-            for i in range(n):
-                va, vb = series[a][i], series[b][i]
-                pa[va] = pa.get(va, 0) + 1
-                pb[vb] = pb.get(vb, 0) + 1
-                pab[(va, vb)] = pab.get((va, vb), 0) + 1
-            return sum((c / n) * math.log2((c / n) / ((pa[k[0]] / n) * (pb[k[1]] / n)))
-                       for k, c in pab.items())
+        # --- structure-based axis-pair selection (replaces mRMR) ---------------
+        # mRMR (max-entropy + min-redundancy) is a feature-SELECTION criterion and is
+        # the wrong tool for choosing PLOT AXES: entropy over-rewards trivial tick
+        # counters, and the redundancy penalty avoids exactly the *correlated* pairs (a
+        # cursor-vs-accumulator staircase, two co-moving counters) that make the best
+        # picture. Instead: score each pair by a structure measure that REWARDS both
+        # axes meaningfully varying and DISCOUNTS unit counters — and never penalizes
+        # correlation. (See viz/reviews/selector-eval.md for the audit that motivated
+        # this.)
+        INDEX_DISCOUNT = float(os.environ.get("EVIDENT_VIZ_DISCOUNT", "0.8"))
 
-        # Greedy max-relevance / min-redundancy ordering: most informative var first,
-        # then each next maximizes entropy while staying least redundant with those
-        # already chosen — so state_vars[:2] is the most EXPRESSIVE axis pair and any
-        # prefix is a good non-redundant set.
-        names = sorted(reps, key=lambda nm: -reps[nm][1])
-        order = [names.pop(0)] if names else []
-        while names:
-            def score(nm):
-                red = max((mi(nm, p) / (min(reps[nm][1], reps[p][1]) or 1e-9)
-                           for p in order), default=0.0)
-                return reps[nm][1] * (1.0 - min(red, 1.0))
-            best = max(names, key=score)
-            names.remove(best)
-            order.append(best)
+        def is_unit_counter(name):
+            # a tick proxy: an integer that takes a DISTINCT consecutive value in every
+            # sampled state — the loop index / time. Must be injective (one value per
+            # state) so a cyclic sawtooth (balance 0,1,2,3,0,1,2,3) is NOT flagged, and
+            # consecutive so an accumulator (sum, total with gaps) is NOT flagged.
+            if reps[name][0]["kind"] != "int":
+                return False
+            vals = series[name]
+            d = sorted(set(vals))
+            return (len(d) >= 3 and len(d) == len(vals)        # injective: one value per state
+                    and (d[-1] - d[0] + 1) == len(d))          # consecutive: a tick index
+
+        H = {nm: reps[nm][1] for nm in reps}                       # marginal entropy
+        W = {nm: (INDEX_DISCOUNT if is_unit_counter(nm) else 1.0) for nm in reps}
+        relevance = {nm: W[nm] * H[nm] for nm in reps}             # discounted single-var score
+
+        names = list(reps)
+        best_pair, best_score = None, -1.0
+        for i in range(len(names)):
+            for j in range(i + 1, len(names)):
+                a, b = names[i], names[j]
+                if H[a] <= 0 or H[b] <= 0:                         # a constant axis = a flat line
+                    continue
+                s = relevance[a] * relevance[b]                    # both axes vary; counters discounted; no redundancy penalty
+                if s > best_score:
+                    best_pair, best_score = (a, b), s
+
+        # state_vars = the structure-optimal axis pair first, then the rest by
+        # discounted relevance (so the color/facet channels also avoid trivial counters).
+        if best_pair:
+            rest = sorted((nm for nm in names if nm not in best_pair),
+                          key=lambda nm: -relevance[nm])
+            order = list(best_pair) + rest
+        else:
+            order = sorted(names, key=lambda nm: -relevance[nm])
 
         self.variable_groups = [{"rep": nm, "members": reps[nm][2],
-                                 "entropy": round(reps[nm][1], 3)} for nm in order]
+                                 "entropy": round(H[nm], 3)} for nm in order]
         return [reps[nm][0] for nm in order]
 
     @staticmethod

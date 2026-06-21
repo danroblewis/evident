@@ -28,7 +28,7 @@ COMBO = VIZ / "combo"
 # 2-axis, selection-using renderer (the axis pair is the thing under test). One
 # faithful renderer keeps the review tractable and isolates the selector's choice.
 RENDERERS = ["orbit_scatter"]
-MAX_VARS = 7          # skip programs with too many vars (unreviewably many pairs)
+MAX_VARS = 8          # skip programs with too many vars (unreviewably many pairs)
 WORKERS = max(4, (os.cpu_count() or 4) - 2)
 TIMEOUT = 180
 
