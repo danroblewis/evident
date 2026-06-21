@@ -346,15 +346,26 @@ def _depends_on_held(m, var, base, grid):
     the 1-D cobweb is not meaningful. Returns (True, (x, held_name, alt)) on the first
     witness, else (False, None)."""
     name = var["name"]
-    held = [v for v in m.state_vars if v["name"] != name]
-    if not held or not grid:
+    # use ALL interface vars, not the DEDUPED state_vars — csv_stats' cursor/count/sum
+    # are partition-equivalent on the trajectory so dedup collapses them, dropping cursor
+    # (the real driver of sum) from the held set and hiding the non-autonomy.
+    held = [v for v in m.interface_vars if v["name"] != name]
+    if not held:
         return False, None
-    # a small spread of scan points: ends + middle of the grid (cheap, representative)
-    n = len(grid)
-    sample = sorted({grid[0], grid[n // 2], grid[-1]})
-    for x in sample:
-        st = dict(base)
-        st[name] = _from_ord(m, var, x)
+    # Probe bases: grid scan-points at the neutral base, PLUS a few REAL reachable
+    # states. A single neutral base can sit where a companion's influence is masked
+    # (e.g. csv_stats' sum is driven by the held cursor, but at a past-EOF/neutral
+    # cursor the scalar is frozen so the dependence hides) — probing reachable states
+    # catches it where the dependence is live.
+    probes = []
+    if grid:
+        n = len(grid)
+        for x in sorted({grid[0], grid[n // 2], grid[-1]}):
+            st = dict(base)
+            st[name] = _from_ord(m, var, x)
+            probes.append(st)
+    probes += m._sample_states()[:5]
+    for st in probes:
         ref = m.successor(st)
         if ref is None:
             continue
@@ -365,7 +376,7 @@ def _depends_on_held(m, var, base, grid):
                     continue
                 pert = m.successor({**st, hv["name"]: alt})
                 if pert is not None and pert.get(name) != refv:
-                    return True, (x, hv["name"], alt)
+                    return True, (st.get(name), hv["name"], alt)
     return False, None
 
 
