@@ -1,11 +1,18 @@
 #!/usr/bin/env python3
 """render_scatter_matrix.py — scatterplot-matrix renderer for ANY Evident IR.
 
-A scatterplot matrix (pairwise projections) over ALL state vars. We sample a
-cloud of states from the transition relation (m.reachable() for discrete; a long
-trajectory + a grid sweep for numeric), map every var to an ordinal axis
-(int/real -> value, bool -> 0/1, enum -> variant index), then draw the NxN grid
-of 2-D scatter panels with the variable name on each diagonal.
+A scatterplot matrix (pairwise projections) over ALL state vars, ordered by
+importance (m.state_vars). We sample a cloud of states from the transition
+relation (m.reachable() for discrete; a long trajectory + a grid sweep for
+numeric), map every var to an ordinal axis (int/real -> value, bool -> 0/1,
+enum -> variant index), then draw the NxN grid of 2-D scatter panels with the
+variable name on each diagonal.
+
+Channel mapping: the two PROJECTION axes of each panel are the matrix's row/col
+vars (position — the strongest channel, carrying every var pairwise). The third
+dimension is COLOR: every point is hued by the top categorical variable
+(m.categorical_vars[0]) — the classic high-D scatter-matrix coloring — with a
+legend. One legend for the whole figure; the panels read from their axes alone.
 
 The dynamics come ONLY from querying the shared evident_viz Model — nothing is
 hardcoded per-program.
@@ -145,6 +152,48 @@ def main():
     # Precompute ordinal columns once.
     cols = {v["name"]: [ordinal(m, v, s[v["name"]]) for s in states] for v in vars_}
 
+    # COLOR channel: hue every point by the top categorical var (enum/bool/string).
+    # This is the classic high-D scatter-matrix coloring — a 3rd dimension carried
+    # on top of every pairwise projection. Falls back to a flat color if the model
+    # has no categorical interface var (e.g. a purely numeric system).
+    cat = m.categorical_vars[0] if m.categorical_vars else None
+    legend_handles = None
+    if cat is not None:
+        cname = cat["name"]
+        # The categories, in a stable order: enum -> variant order, bool -> F/T.
+        if cat["kind"] == "enum":
+            categories = list(m.enum_variants[cname])
+            cat_label = lambda v: v
+        elif cat["kind"] == "bool":
+            categories = [False, True]
+            cat_label = lambda v: "T" if v else "F"
+        else:  # string: discover the distinct values that actually occur
+            categories = sorted({s[cname] for s in states}, key=str)
+            cat_label = str
+        cmap = plt.get_cmap("tab10" if len(categories) <= 10 else "tab20")
+        idx_of = {c: k for k, c in enumerate(categories)}
+        color_of = {c: cmap(k % cmap.N) for k, c in enumerate(categories)}
+        # Only categories that actually occur in the sample get a legend entry.
+        seen = []
+        seen_set = set()
+        point_colors = []
+        for s in states:
+            cv = s[cname]
+            point_colors.append(color_of.get(cv, "#888888"))
+            if cv not in seen_set:
+                seen_set.add(cv)
+                seen.append(cv)
+        order = [c for c in categories if c in seen_set]
+        legend_handles = [
+            plt.Line2D([0], [0], marker="o", linestyle="", markersize=7,
+                       markerfacecolor=color_of[c], markeredgecolor="none",
+                       label=cat_label(c))
+            for c in order
+        ]
+        legend_title = cname
+    else:
+        point_colors = "#2050b0"
+
     sz = max(2.0, 12.0 / n)
     fig, axes = plt.subplots(n, n, figsize=(sz * n, sz * n), squeeze=False)
 
@@ -162,7 +211,7 @@ def main():
                 continue
             x = cols[vj["name"]]
             y = cols[vi["name"]]
-            ax.scatter(x, y, s=8, alpha=0.35, c="#2050b0", edgecolors="none")
+            ax.scatter(x, y, s=10, alpha=0.45, c=point_colors, edgecolors="none")
 
             # Categorical ticks where appropriate; keep it readable for large n.
             tx, txl = tick_info(m, vj)
@@ -191,10 +240,22 @@ def main():
             ax.grid(True, alpha=0.15)
 
     kind = "discrete" if m.is_discrete() else "numeric/mixed"
-    fig.suptitle(f"{title}\n{len(states)} sampled states · {kind}",
-                 fontsize=14, fontweight="bold")
-    fig.tight_layout(rect=[0, 0, 1, 0.97])
-    fig.savefig(out, dpi=120)
+    sub = f"{len(states)} sampled states · {kind}"
+    if legend_handles is not None:
+        sub += f" · color = {legend_title}"
+    fig.suptitle(f"{title}\n{sub}", fontsize=14, fontweight="bold")
+
+    if legend_handles:
+        # One figure-level legend on the right — the panels read from axes alone;
+        # color only ENHANCES with the top categorical var.
+        fig.legend(handles=legend_handles, title=legend_title,
+                   loc="center left", bbox_to_anchor=(1.0, 0.5),
+                   fontsize=9, title_fontsize=10, frameon=True)
+        fig.tight_layout(rect=[0, 0, 0.97, 0.97])
+        fig.savefig(out, dpi=120, bbox_inches="tight")
+    else:
+        fig.tight_layout(rect=[0, 0, 1, 0.97])
+        fig.savefig(out, dpi=120)
 
 
 if __name__ == "__main__":

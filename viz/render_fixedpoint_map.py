@@ -53,17 +53,71 @@ def ordinal(model, var, value):
     return 0.0
 
 
-def pick_axes(model):
-    """Choose two state vars to use as the X and Y axes of the projection.
+def assign_channels(model):
+    """Map the ranked+deduped vars onto this viz's channels by type-effectiveness.
 
-    Prefer numeric vars (they carry the interesting continuous geometry);
-    fall back to enum, then bool. Returns (xvar, yvar) — yvar may be None if
-    the system has only a single var (1-D projection on a baseline)."""
-    order = {"int": 0, "real": 0, "enum": 1, "bool": 2, "string": 3}
-    ranked = sorted(model.state_vars, key=lambda v: order.get(v["kind"], 9))
-    xvar = ranked[0]
-    yvar = ranked[1] if len(ranked) > 1 else None
-    return xvar, yvar
+    AXES come first: if the system carries numeric vars, those ARE the geometry
+    (a limit cycle only lives in a continuous phase plane), so numeric_vars drive
+    x/y directly. Otherwise we let assign_channels rank a discrete projection
+    (enum/bool ordinals). The leftover categoricals decorate the BACKGROUND
+    basin — the derived attractor coloring (red fixed / blue cycle) is preserved,
+    so color/shape/facet only enhance the sampled-state dots, never clobber it.
+
+    Returns a dict: {x, y, color, shape, facet} -> var|None.
+    """
+    ch = {"x": None, "y": None, "color": None, "shape": None, "facet": None}
+    numeric = model.numeric_vars
+    if len(numeric) >= 2:
+        # phase-plane viz: NEEDS numeric axes (continuous orbits).
+        ch["x"], ch["y"] = numeric[0], numeric[1]
+        used = {numeric[0]["name"], numeric[1]["name"]}
+        cats = [v for v in model.categorical_vars if v["name"] not in used]
+    elif len(numeric) == 1:
+        # mixed: one numeric axis + the top categorical as the other ordinal axis.
+        ch["x"] = numeric[0]
+        cats = list(model.categorical_vars)
+        if cats:
+            ch["y"] = cats.pop(0)
+    else:
+        # purely discrete: rank a 2-D ordinal projection over the categoricals.
+        cats = list(model.categorical_vars)
+        if cats:
+            ch["x"] = cats.pop(0)
+        if cats:
+            ch["y"] = cats.pop(0)
+
+    # Remaining categoricals -> secondary channels, by type-effectiveness order:
+    # color (hue, excellent for categorical) > shape > facet. Facet only claims a
+    # LOW-cardinality var (<= 5 distinct), the honest way to add a dimension.
+    for v in list(cats):
+        if ch["color"] is None:
+            ch["color"] = v
+            cats.remove(v)
+        elif ch["shape"] is None:
+            ch["shape"] = v
+            cats.remove(v)
+    for v in list(cats):
+        if ch["facet"] is None and _cardinality(model, v) <= 5:
+            ch["facet"] = v
+            cats.remove(v)
+            break
+    return ch
+
+
+def _cardinality(model, var):
+    if var["kind"] == "bool":
+        return 2
+    if var["kind"] == "enum":
+        return len(model.enum_variants[var["name"]])
+    return 99
+
+
+def _domain(model, var):
+    if var["kind"] == "bool":
+        return [False, True]
+    if var["kind"] == "enum":
+        return list(model.enum_variants[var["name"]])
+    return [None]
 
 
 def axis_label(var):
@@ -360,35 +414,94 @@ def pick_numeric_seeds(model, states):
 # --------------------------------------------------------------------------
 # plotting
 # --------------------------------------------------------------------------
+CAT_PALETTE = ["#7b9acc", "#cc8a5b", "#6fb38a", "#b07cc6", "#c9c05a",
+               "#5fb0c0", "#c47ba0"]
+CAT_SHAPES = ["o", "s", "^", "D", "v", "P", "X"]
+
+
 def render(smt2, schema, out_path):
     model = load(smt2, schema)
-    xvar, yvar = pick_axes(model)
+    ch = assign_channels(model)
+    xvar, yvar = ch["x"], ch["y"]
 
-    fig, ax = plt.subplots(figsize=(9, 8))
     title = f"{model.fsm} — {VIZ_TYPE}"
-
     states, mode = sample_states(model)
 
-    if not states:
+    if not states or xvar is None:
+        fig, ax = plt.subplots(figsize=(9, 8))
         placeholder(ax, title, "no states could be sampled from the transition")
         finish(fig, out_path)
         return out_path
+
+    # attractors are a global property of the dynamics — find them ONCE, then
+    # render them into whichever facet panel each member lands in.
+    fixed, cycles = find_attractors(model, states, mode)
+
+    facet = ch["facet"]
+    if facet is not None:
+        panels = _domain(model, facet)
+    else:
+        panels = [None]
+
+    ncol = min(len(panels), 3)
+    nrow = (len(panels) + ncol - 1) // ncol
+    fig, axes = plt.subplots(nrow, ncol, figsize=(9 * ncol, 8 * nrow),
+                             squeeze=False)
+    flat_axes = [axes[r][c] for r in range(nrow) for c in range(ncol)]
+
+    for ax in flat_axes[len(panels):]:
+        ax.axis("off")
+
+    for ax, pval in zip(flat_axes, panels):
+        sub = ([s for s in states if s[facet["name"]] == pval]
+               if facet is not None else states)
+        sub_fixed = ([s for s in fixed if s[facet["name"]] == pval]
+                     if facet is not None else fixed)
+        sub_cycles = (_filter_cycles(cycles, facet, pval)
+                      if facet is not None else cycles)
+        draw_panel(ax, model, ch, sub, sub_fixed, sub_cycles, len(cycles))
+        if facet is not None:
+            ax.set_title(f"{_short(facet['name'])} = {_fmt(facet, pval)}",
+                         fontsize=12, fontweight="bold")
+
+    fig.suptitle(_super_title(model, ch, mode, fixed, cycles),
+                 fontsize=14, fontweight="bold", y=0.99)
+    finish(fig, out_path)
+    return out_path
+
+
+def _filter_cycles(cycles, facet, pval):
+    """A cycle belongs to a facet panel iff all its members share that facet value
+    (discrete facet axes don't change along a numeric limit cycle)."""
+    out = []
+    for loop in cycles:
+        if all(s[facet["name"]] == pval for s in loop):
+            out.append(loop)
+    return out
+
+
+def draw_panel(ax, model, ch, states, fixed, cycles, total_cycles):
+    xvar, yvar = ch["x"], ch["y"]
+    cvar, svar = ch["color"], ch["shape"]
 
     def proj(st):
         x = ordinal(model, xvar, st[xvar["name"]])
         y = ordinal(model, yvar, st[yvar["name"]]) if yvar else 0.0
         return x, y
 
-    # background: faint dots for every sampled state (the basin).
-    bx = [proj(s)[0] for s in states]
-    by = [proj(s)[1] for s in states]
-    ax.scatter(bx, by, s=10, c="#d9d9e3", alpha=0.55, linewidths=0,
-               zorder=1, label=f"sampled states ({len(states)})")
+    # background basin: sampled states, encoded by a CATEGORICAL color and/or
+    # marker SHAPE. The derived attractor coloring (red/blue) is drawn on top and
+    # untouched — color/shape here only reveal the basin's categorical structure.
+    if states:
+        if cvar is not None or svar is not None:
+            _scatter_categorical(ax, model, states, proj, cvar, svar)
+        else:
+            bx = [proj(s)[0] for s in states]
+            by = [proj(s)[1] for s in states]
+            ax.scatter(bx, by, s=10, c="#d9d9e3", alpha=0.55, linewidths=0,
+                       zorder=1, label=f"sampled states ({len(states)})")
 
-    fixed, cycles = find_attractors(model, states, mode)
-
-    # cycle members + loop arrows. Short cycles -> arrowed polygon; long
-    # (limit-cycle) orbits -> a connected line with sparse direction arrows.
+    # cycle members + loop arrows.
     cyc_pts_x, cyc_pts_y = [], []
     labelled = False
     for loop in cycles:
@@ -397,9 +510,8 @@ def render(smt2, schema, out_path):
         if long_orbit:
             ax.plot([p[0] for p in pts], [p[1] for p in pts],
                     color="#1f77b4", alpha=0.85, lw=1.8, zorder=3,
-                    label=None if labelled else f"limit cycle(s) ({len(cycles)})")
+                    label=None if labelled else f"limit cycle(s) ({total_cycles})")
             labelled = True
-            # a few direction arrows around the orbit
             step = max(1, len(pts) // 8)
             for i in range(0, len(pts) - 1, step):
                 (x0, y0), (x1, y1) = pts[i], pts[i + 1]
@@ -419,43 +531,73 @@ def render(smt2, schema, out_path):
     if cyc_pts_x:
         ax.scatter(cyc_pts_x, cyc_pts_y, s=55, c="#1f77b4",
                    edgecolors="white", linewidths=0.7, zorder=5,
-                   label=None if labelled else f"cycle members ({len(cycles)} cycle(s))")
+                   label=None if labelled else f"cycle members ({total_cycles} cycle(s))")
 
-    # fixed points on top
     if fixed:
         fx = [proj(s)[0] for s in fixed]
         fy = [proj(s)[1] for s in fixed]
-        ax.scatter(fx, fy, s=160, c="#d62728", marker="o",
-                   edgecolors="black", linewidths=1.0, zorder=5,
+        ax.scatter(fx, fy, s=160, c="#d62728", marker="*",
+                   edgecolors="black", linewidths=1.0, zorder=6,
                    label=f"fixed points ({len(fixed)})")
 
-    ax.set_title(title, fontsize=14, fontweight="bold")
     ax.set_xlabel(axis_label(xvar))
     ax.set_ylabel(axis_label(yvar) if yvar else "(single-axis projection)")
-
-    # enum / bool axes: label the ticks with variant names / true-false.
     decorate_axis(ax, model, xvar, "x")
     if yvar:
         decorate_axis(ax, model, yvar, "y")
-
-    subtitle = f"scan: {mode}   |   "
-    if not fixed and not cycles:
-        subtitle += "no fixed points or short cycles found in the scanned region"
-    else:
-        bits = []
-        if fixed:
-            bits.append(f"{len(fixed)} fixed point(s)")
-        if cycles:
-            lens = sorted({len(c) - 1 for c in cycles})
-            bits.append(f"{len(cycles)} cycle(s) (period {lens})")
-        subtitle += "  +  ".join(bits)
-    ax.text(0.5, -0.10, subtitle, transform=ax.transAxes, ha="center",
-            fontsize=9, color="#555555")
-
     ax.legend(loc="upper right", fontsize=8, framealpha=0.9)
     ax.grid(True, alpha=0.2)
-    finish(fig, out_path)
-    return out_path
+
+
+def _scatter_categorical(ax, model, states, proj, cvar, svar):
+    """One scatter call per (color-value, shape-value) cell of the background
+    basin. Color = hue (excellent for categorical), shape = marker glyph."""
+    cvals = _domain(model, cvar) if cvar is not None else [None]
+    svals = _domain(model, svar) if svar is not None else [None]
+    cmap = {v: CAT_PALETTE[i % len(CAT_PALETTE)] for i, v in enumerate(cvals)}
+    smap = {v: CAT_SHAPES[i % len(CAT_SHAPES)] for i, v in enumerate(svals)}
+    for cv in cvals:
+        for sv in svals:
+            pts = [proj(s) for s in states
+                   if (cvar is None or s[cvar["name"]] == cv)
+                   and (svar is None or s[svar["name"]] == sv)]
+            if not pts:
+                continue
+            bits = []
+            if cvar is not None:
+                bits.append(f"{_short(cvar['name'])}={_fmt(cvar, cv)}")
+            if svar is not None:
+                bits.append(f"{_short(svar['name'])}={_fmt(svar, sv)}")
+            ax.scatter([p[0] for p in pts], [p[1] for p in pts],
+                       s=26, c=cmap[cv] if cvar is not None else "#d9d9e3",
+                       marker=smap[sv] if svar is not None else "o",
+                       alpha=0.6, linewidths=0, zorder=1, label=", ".join(bits))
+
+
+def _super_title(model, ch, mode, fixed, cycles):
+    cs = []
+    for chan in ("color", "shape", "facet"):
+        if ch[chan] is not None:
+            cs.append(f"{chan}={_short(ch[chan]['name'])}")
+    chan_note = ("   |   " + ", ".join(cs)) if cs else ""
+    bits = []
+    if fixed:
+        bits.append(f"{len(fixed)} fixed point(s)")
+    if cycles:
+        lens = sorted({len(c) - 1 for c in cycles})
+        bits.append(f"{len(cycles)} cycle(s) (period {lens})")
+    attr = "  +  ".join(bits) if bits else "no fixed points / short cycles found"
+    return f"{model.fsm} — {VIZ_TYPE}   (scan: {mode}{chan_note})\n{attr}"
+
+
+def _short(name):
+    return name.split(".")[-1]
+
+
+def _fmt(var, val):
+    if var["kind"] == "bool":
+        return "true" if val else "false"
+    return str(val)
 
 
 def decorate_axis(ax, model, var, which):

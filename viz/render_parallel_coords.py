@@ -2,11 +2,16 @@
 """render_parallel_coords.py — parallel-coordinates (Inselberg) view of an
 Evident program's reachable state set.
 
-One vertical axis per state variable. Each sampled state is a polyline that
-crosses every axis at the height of its value on that axis. Numeric axes are
-scaled to the observed [min,max]; enum/bool axes map each value to an ordinal
-with the category name printed as a tick. Lines are colored by sample order
-(a perceptual sense of time / trajectory through the reachable set).
+Axes are ordered by importance (m.state_vars). Each sampled state is a polyline
+that crosses every axis at the height of its value on that axis. Numeric axes
+are scaled to the observed [min,max]; enum/bool axes map each value to an ordinal
+with the category name printed as a tick.
+
+COLOR encodes the top CATEGORICAL variable (categorical_vars[0]) — the classic
+parallel-coordinates coloring that makes class structure pop: every polyline of
+the same category shares a hue, so you read which axis-values cluster per class.
+When the model has no categorical variable (pure-numeric, e.g. vanderpol), color
+falls back to sample order (a perceptual sense of time / trajectory).
 
 Reusable CLI for ANY Evident IR:
     python3 viz/render_parallel_coords.py <smt2> <schema> <out.png>
@@ -25,6 +30,7 @@ import matplotlib.pyplot as plt
 from matplotlib.collections import LineCollection
 from matplotlib.cm import ScalarMappable
 from matplotlib.colors import Normalize
+from matplotlib.lines import Line2D
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__)))
 from evident_viz import load
@@ -78,6 +84,37 @@ def _axis_meta(m, samples):
                           "pos": (lambda x, idx=index: float(idx[x])),
                           "ticks": ticks})
     return metas
+
+
+def _line_colors(m, samples, color_var, n):
+    """Per-polyline color + legend handles + a title note.
+
+    With a categorical color var: one qualitative hue per category (the classic
+    class-revealing parallel-coords coloring) and a discrete legend. For enums
+    the category ORDER follows enum_variants so the legend reads in declared
+    order. Without one (pure-numeric): a viridis sample-order gradient, no
+    legend (a colorbar is drawn by the caller)."""
+    if color_var is None:
+        cmap = plt.get_cmap("viridis")
+        colors = [cmap(i / max(1, n - 1)) for i in range(n)]
+        return colors, None, "color = sample order (no categorical var)"
+
+    name = color_var["name"]
+    vals = [s[name] for s in samples]
+    if color_var["kind"] == "enum":
+        cats = [c for c in m.enum_variants[name] if c in set(vals)] or list(set(vals))
+    elif color_var["kind"] == "bool":
+        cats = [c for c in (False, True) if c in set(vals)]
+    else:
+        cats = sorted(set(vals), key=str)
+
+    # tab10 for <=10 classes (high-contrast qualitative), else tab20.
+    qual = plt.get_cmap("tab10" if len(cats) <= 10 else "tab20")
+    cat_color = {c: qual(i % qual.N) for i, c in enumerate(cats)}
+    colors = [cat_color[v] for v in vals]
+    handles = [Line2D([0], [0], color=cat_color[c], lw=2.4, label=_cat_label(c))
+               for c in cats]
+    return colors, handles, f"color = {_short(name)} ({len(cats)} classes)"
 
 
 def _fmt(x):
@@ -170,10 +207,10 @@ def render(smt2, schema, out_path):
         ys = [norm(meta, s[meta["name"]]) for meta in metas]
         segments.append(list(zip(xs, ys)))
 
-    cmap = plt.get_cmap("viridis")
     n = len(segments)
-    colors = [cmap(i / max(1, n - 1)) for i in range(n)]
-    lc = LineCollection(segments, colors=colors, linewidths=1.3, alpha=0.55)
+    color_var = m.categorical_vars[0] if m.categorical_vars else None
+    colors, legend_handles, color_note = _line_colors(m, samples, color_var, n)
+    lc = LineCollection(segments, colors=colors, linewidths=1.3, alpha=0.6)
     ax.add_collection(lc)
 
     # Draw each axis as a vertical line + its category/range ticks.
@@ -197,13 +234,21 @@ def render(smt2, schema, out_path):
     ax.tick_params(length=0)
 
     fig.suptitle(title, fontsize=13, fontweight="bold", y=0.98)
-    ax.set_title(f"{n} states · {note} · color = sample order",
+    ax.set_title(f"{n} states · {note} · {color_note}",
                  fontsize=9, color="#555", pad=10)
 
-    sm = ScalarMappable(norm=Normalize(0, max(1, n - 1)), cmap=cmap)
-    cb = fig.colorbar(sm, ax=ax, fraction=0.025, pad=0.02)
-    cb.set_label("sample order", fontsize=8)
-    cb.ax.tick_params(labelsize=7)
+    if legend_handles is not None:
+        # Categorical color → a discrete legend (one swatch per class).
+        ax.legend(handles=legend_handles, title=_short(color_var["name"]),
+                  fontsize=7.5, title_fontsize=8, loc="upper left",
+                  bbox_to_anchor=(1.01, 1.0), frameon=False)
+    else:
+        # Numeric/time fallback → a continuous colorbar.
+        sm = ScalarMappable(norm=Normalize(0, max(1, n - 1)),
+                            cmap=plt.get_cmap("viridis"))
+        cb = fig.colorbar(sm, ax=ax, fraction=0.025, pad=0.02)
+        cb.set_label("sample order", fontsize=8)
+        cb.ax.tick_params(labelsize=7)
 
     fig.savefig(out_path, dpi=120, bbox_inches="tight")
     plt.close(fig)

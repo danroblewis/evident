@@ -1,21 +1,32 @@
 #!/usr/bin/env python3
 """render_chord_diagram.py — chord/arc diagram of transition flow for ANY Evident IR.
 
-A chord diagram of how the program's *primary variable* flows between its values:
-nodes sit around a circle, an arc from value A to value B is weighted (width +
-opacity) by how often the transition A->B occurs across the program's transitions.
+CHANNEL MAPPING (Cleveland-McGill / Mackinlay): a chord diagram's nodes are a
+single CATEGORICAL axis bent into a circle — the natural home for the model's
+top categorical variable. We map channels by importance x type:
 
-Choice of primary var, in order:
-  1. the first enum state var               (room->room, mode->mode)
-  2. else the first string state var
-  3. else the first numeric var, BINNED into ordinal buckets (so a numeric
-     system still gets a chord picture of "which band flows to which band").
+  - NODES (the position axis)  = categorical_vars[0]: the top-ranked enum/bool/
+    string. room->room, mode->mode. This is the var the picture reads from.
+  - ARC HUE (color channel)    = a SECOND categorical var, if one exists. Each
+    arc is hued by the destination state's value of that var — color is
+    excellent for categorical, so a low-cardinality bool/enum rides the color
+    channel to ADD a dimension (does this room->room move LEAVE you escaped?
+    does this mode->mode move DISPENSE?). When no second categorical exists
+    (pure-numeric model), we keep the informative derived coloring: a
+    weight gradient (transition count).
+  - ARC WIDTH + OPACITY (size) = transition COUNT — a derived quantity that's
+    genuinely informative (how much flow), kept on the size channel.
+  - NODE SIZE                  = outgoing flow total.
 
-Transitions are gathered by *querying the transition relation* (never hardcoded):
-  - discrete / mixed: m.reachable() gives the exact transition edge set; we
-    project each edge onto the primary var.
-  - pure numeric: we sweep a grid of seed states across the var ranges and take
-    m.successor() of each, projecting both onto the binned primary var.
+Fallback when there is NO categorical var (vanderpol): bin the top numeric var
+into ordinal bands and chord between bands — a numeric system still gets a
+"which band flows to which band" picture, colored by the weight gradient.
+
+Transitions come from *querying the transition relation* (never hardcoded):
+  - has categorical structure: m.reachable() gives the exact transition edge
+    set; we project each edge onto the node var (and the color var).
+  - pure numeric: sweep a grid of seed states across numeric ranges and take
+    m.successor() of each, projecting both onto the binned node var.
 
 Usage:
     python3 viz/render_chord_diagram.py <smt2> <schema> <out.png>
@@ -33,44 +44,68 @@ sys.path.insert(0, "viz")
 from evident_viz import load
 
 
-# --- pick the primary variable + a function mapping a state -> a node label ----
+# --- channel mapping: node var (categorical position) + arc-color var ----------
 
 def pick_primary(m):
-    """Return (var_dict, node_labels, project_fn, mode_str)."""
-    enums = [v for v in m.state_vars if v["kind"] == "enum"]
-    strs = [v for v in m.state_vars if v["kind"] == "string"]
-    nums = [v for v in m.state_vars if v["kind"] in ("int", "real")]
+    """NODE channel = categorical_vars[0] (top enum/bool/string). Return
+    (var_dict, node_labels, project_fn, mode_str). Falls back to binning the top
+    numeric var when the model has no categorical structure at all."""
+    cats = m.categorical_vars
 
-    if enums:
-        v = enums[0]
-        labels = list(m.enum_variants[v["name"]])
-        proj = lambda st: st[v["name"]]
-        return v, labels, proj, "enum"
-
-    if strs:
-        v = strs[0]
-        # labels discovered dynamically from observed values
+    if cats:
+        v = cats[0]
+        if v["kind"] == "enum":
+            labels = list(m.enum_variants[v["name"]])
+            return v, labels, (lambda st: st[v["name"]]), "enum"
+        if v["kind"] == "bool":
+            labels = ["false", "true"]
+            return v, labels, (lambda st: "true" if st[v["name"]] else "false"), "bool"
+        # string: labels discovered dynamically from observed values
         return v, None, (lambda st: st[v["name"]]), "string"
 
-    if nums:
-        v = nums[0]
-        return v, None, None, "numeric"   # binning resolved after we know range
+    # no categorical var (pure numeric) — bin the top numeric var into bands
+    v = m.numeric_vars[0]
+    return v, None, None, "numeric"   # binning resolved after we know range
 
-    # only bools — treat the first bool as a 2-value primary
-    v = m.state_vars[0]
-    labels = ["false", "true"]
-    proj = lambda st: "true" if st[v["name"]] else "false"
-    return v, labels, proj, "bool"
+
+def pick_color_var(m, node_var):
+    """COLOR channel = a SECOND categorical var (not the node var), if one exists.
+    Returns (var_dict, color_labels, project_fn) or None. Color is excellent for
+    categorical, so a low-cardinality bool/enum rides the color channel to ADD a
+    dimension on top of the node->node flow."""
+    for v in m.categorical_vars:
+        if v["name"] == node_var["name"]:
+            continue
+        if v["kind"] == "enum":
+            labels = list(m.enum_variants[v["name"]])
+            return v, labels, (lambda st: st[v["name"]])
+        if v["kind"] == "bool":
+            return v, ["false", "true"], (lambda st: "true" if st[v["name"]] else "false")
+        # string: dynamic labels resolved while gathering
+        return v, None, (lambda st: st[v["name"]])
+    return None
 
 
 # --- gather transition flow as a dict {(src_label, dst_label): count} ----------
 
-def gather_flow(m, var, labels, proj, mode):
+def gather_flow(m, var, labels, proj, mode, color):
+    """Returns (labels, flow, numrange, arc_cat, color_labels) where flow maps
+    (src,dst)->count and arc_cat maps (src,dst)->the majority color-var category
+    of the destination (None when no color var)."""
     flow = {}
+    cat_votes = {}            # (src,dst) -> {color_label: count}
     nbins = 8
+    cproj = color[2] if color else None
 
-    def bump(a, b):
+    def bump(a, b, dst_state=None):
         flow[(a, b)] = flow.get((a, b), 0) + 1
+        if cproj is not None and dst_state is not None:
+            d = cat_votes.setdefault((a, b), {})
+            lab = cproj(dst_state)
+            d[lab] = d.get(lab, 0) + 1
+
+    def finish_cat():
+        return {k: max(v, key=v.get) for k, v in cat_votes.items()}
 
     if mode in ("enum", "bool", "string"):
         states, edges = m.reachable()
@@ -81,12 +116,21 @@ def gather_flow(m, var, labels, proj, mode):
                 if lab not in seen:
                     seen.append(lab)
             labels = seen if seen else ["(none)"]
+        # resolve dynamic string color labels from observed dst values
+        clabels = color[1] if color else None
+        if color is not None and clabels is None:
+            seen = []
+            for st in states:
+                lab = cproj(st)
+                if lab not in seen:
+                    seen.append(lab)
+            clabels = seen
         for (i, j) in edges:
-            bump(proj(states[i]), proj(states[j]))
-        return labels, flow, None
+            bump(proj(states[i]), proj(states[j]), states[j])
+        return labels, flow, None, finish_cat(), clabels
 
     # numeric: bin the primary var, sweep a grid of seeds across all numeric vars
-    nums = [v for v in m.state_vars if v["kind"] in ("int", "real")]
+    nums = m.numeric_vars
     # establish a range for the primary var by probing reachable + a default span
     lo, hi = numeric_range(m, var)
     edges_bin = np.linspace(lo, hi, nbins + 1)
@@ -124,9 +168,9 @@ def gather_flow(m, var, labels, proj, mode):
         nxt = m.successor(s)
         if nxt is None:
             continue
-        bump(to_bin(s[var["name"]]), to_bin(nxt[var["name"]]))
+        bump(to_bin(s[var["name"]]), to_bin(nxt[var["name"]]), nxt)
 
-    return labels, flow, (lo, hi)
+    return labels, flow, (lo, hi), finish_cat(), (color[1] if color else None)
 
 
 def numeric_range(m, var):
@@ -159,7 +203,9 @@ def bin_label(c):
 
 def draw(m, viz_title, out_path):
     var, labels, proj, mode = pick_primary(m)
-    labels, flow, numrange = gather_flow(m, var, labels, proj, mode)
+    color = pick_color_var(m, var)
+    labels, flow, numrange, arc_cat, color_labels = gather_flow(
+        m, var, labels, proj, mode, color)
 
     n = len(labels)
     if n == 0:
@@ -174,8 +220,23 @@ def draw(m, viz_title, out_path):
     ax.set_aspect("equal")
     ax.axis("off")
 
-    cmap = plt.get_cmap("viridis")
     maxw = max(flow.values()) if flow else 1
+
+    # COLOR channel: discrete hue per color-var category (if a second categorical
+    # var exists), else the weight gradient (derived: transition count).
+    use_cat_color = bool(color) and bool(color_labels)
+    if use_cat_color:
+        qual = plt.get_cmap("tab10")
+        cat_color = {lab: qual(i % 10) for i, lab in enumerate(color_labels)}
+
+        def arc_rgba(a, b, frac):
+            lab = arc_cat.get((a, b))
+            return cat_color.get(lab, (0.5, 0.5, 0.5, 1.0))
+    else:
+        grad = plt.get_cmap("viridis")
+
+        def arc_rgba(a, b, frac):
+            return grad(0.15 + 0.8 * frac)
 
     # outgoing total per node sets node size
     out_tot = {lab: 0 for lab in labels}
@@ -191,19 +252,19 @@ def draw(m, viz_title, out_path):
         x1, y1 = pos[b]
         frac = w / maxw
         lw = 0.8 + 6.5 * frac
-        alpha = 0.30 + 0.6 * frac
-        color = cmap(0.15 + 0.8 * frac)
+        alpha = (0.55 + 0.4 * frac) if use_cat_color else (0.30 + 0.6 * frac)
+        color_rgba = arc_rgba(a, b, frac)
         if a == b:
-            self_loop(ax, x0, y0, lw, color, alpha)
+            self_loop(ax, x0, y0, lw, color_rgba, alpha)
         else:
             # quadratic Bezier bending toward the circle center for the chord look
             cx, cy = (x0 + x1) * 0.18, (y0 + y1) * 0.18
             path = Path([(x0, y0), (cx, cy), (x1, y1)],
                         [Path.MOVETO, Path.CURVE3, Path.CURVE3])
-            ax.add_patch(PathPatch(path, fill=False, lw=lw, edgecolor=color,
+            ax.add_patch(PathPatch(path, fill=False, lw=lw, edgecolor=color_rgba,
                                    alpha=alpha, capstyle="round"))
             # arrowhead near the destination
-            draw_arrowhead(ax, cx, cy, x1, y1, color, alpha, frac)
+            draw_arrowhead(ax, cx, cy, x1, y1, color_rgba, alpha, frac)
 
     # draw nodes + labels
     for lab in labels:
@@ -221,19 +282,32 @@ def draw(m, viz_title, out_path):
     ax.set_xlim(-1.45, 1.45)
     ax.set_ylim(-1.45, 1.45)
 
-    sub = f"primary var: {var['name']}"
+    sub = f"nodes: {var['name']}"
     if mode == "numeric":
         sub += f"  (binned, range [{numrange[0]:.0f}, {numrange[1]:.0f}])"
     elif mode == "bool":
-        sub += "  (no enum var — using a bool as primary)"
+        sub += "  (top var is a bool)"
+    if use_cat_color:
+        sub += f"   |   arc hue: {color[0]['name']} (of destination)"
     ax.set_title(f"{m.fsm}  —  {viz_title}\n{sub}",
                  fontsize=14, fontweight="bold", pad=18)
 
-    # colorbar-ish legend for arc weight
-    fig.text(0.5, 0.025,
-             f"arc weight = transition count (min 1 … max {maxw});  "
-             f"node size = outgoing flow",
-             ha="center", fontsize=9, color="#555")
+    # discrete-hue legend for the color channel (the second categorical var)
+    if use_cat_color:
+        from matplotlib.lines import Line2D
+        handles = [Line2D([0], [0], color=cat_color[lab], lw=4, label=str(lab))
+                   for lab in color_labels]
+        ax.legend(handles=handles, title=color[0]["name"], loc="upper left",
+                  bbox_to_anchor=(-0.02, 1.0), fontsize=9, title_fontsize=10,
+                  framealpha=0.9)
+
+    legend = (f"arc width/opacity = transition count (max {maxw});  "
+              f"node size = outgoing flow")
+    if use_cat_color:
+        legend += ";  arc hue = destination's " + color[0]["name"]
+    else:
+        legend += ";  arc hue = weight gradient"
+    fig.text(0.5, 0.025, legend, ha="center", fontsize=9, color="#555")
 
     fig.savefig(out_path, dpi=120, bbox_inches="tight")
     plt.close(fig)

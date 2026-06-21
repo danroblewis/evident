@@ -142,6 +142,10 @@ def render(smt2, schema, out_path):
     fig, ax = plt.subplots(figsize=(13, 9))
     ax.axis("off")
 
+    cat = None
+    cat_palette = {}
+    cat_order = []
+
     if len(G) == 0:
         ax.text(0.5, 0.5, "empty reachable tree", ha="center", va="center",
                 transform=ax.transAxes)
@@ -152,16 +156,59 @@ def render(smt2, schema, out_path):
             pos = nx.spring_layout(G, seed=1)
 
         max_d = max(depth.values()) if depth else 0
-        node_colors = []
-        for nk in G.nodes():
-            if nk in absorbing:
-                node_colors.append("#e74c3c")      # absorbing/goal: red
-            elif nk == root_k:
-                node_colors.append("#2ecc71")      # root: green
+
+        # COLOR channel: the top categorical var (enum/bool/string). One hue per
+        # value, with a legend — this is what assign_channels routes to color, and
+        # it reads far better than depth-shading for discrete state. If there's no
+        # categorical var (pure-numeric systems like vanderpol), fall back to the
+        # depth gradient (a legitimate coarse-quantitative use of color).
+        cats = m.categorical_vars
+        cat = cats[0] if cats else None
+
+        # palette over the categorical var's domain
+        if cat is not None:
+            cname = cat["name"]
+            if cat["kind"] == "enum":
+                domain = list(m.enum_variants.get(cname, []))
+            elif cat["kind"] == "bool":
+                domain = [False, True]
             else:
-                # shade by depth
+                # string / other: collect observed values in stable order
+                seen = []
+                for nk in G.nodes():
+                    val = states[nk][cname]
+                    if val not in seen:
+                        seen.append(val)
+                domain = seen
+            # also fold in any observed values not in the declared domain
+            for nk in G.nodes():
+                val = states[nk][cname]
+                if val not in domain:
+                    domain.append(val)
+            cmap = plt.cm.tab10 if len(domain) <= 10 else plt.cm.tab20
+            for i, val in enumerate(domain):
+                cat_palette[val] = cmap(i % cmap.N)
+                cat_order.append(val)
+
+        node_colors = []
+        edge_cols = []        # node border color: root/absorbing markers
+        edge_widths = []
+        for nk in G.nodes():
+            if cat is not None:
+                node_colors.append(cat_palette[states[nk][cat["name"]]])
+            else:
                 t = depth[nk] / max_d if max_d else 0
                 node_colors.append(plt.cm.Blues(0.35 + 0.5 * t))
+            # keep root / absorbing marking via the node border
+            if nk == root_k:
+                edge_cols.append("#2ecc71")    # root: green ring
+                edge_widths.append(3.0)
+            elif nk in absorbing:
+                edge_cols.append("#e74c3c")    # absorbing/goal: red ring
+                edge_widths.append(3.0)
+            else:
+                edge_cols.append("#333333")
+                edge_widths.append(1.0)
 
         labels = {nk: m.label(states[nk]) for nk in G.nodes()}
 
@@ -169,8 +216,8 @@ def render(smt2, schema, out_path):
                                arrowstyle="-|>", arrowsize=11,
                                edge_color="#888888", width=1.2)
         nx.draw_networkx_nodes(G, pos, ax=ax, node_color=node_colors,
-                               node_size=900, edgecolors="#333333",
-                               linewidths=1.0)
+                               node_size=900, edgecolors=edge_cols,
+                               linewidths=edge_widths)
         nx.draw_networkx_labels(G, pos, labels=labels, ax=ax, font_size=6.5)
 
     subtitle = (f"BFS reachability tree (first-discovery edges)  ·  "
@@ -184,16 +231,28 @@ def render(smt2, schema, out_path):
     ax.set_title(f"{fsm} — {VIZ_TYPE}\n{subtitle}",
                  fontsize=12, fontweight="bold")
 
-    # legend
+    # legend — COLOR encodes the top categorical var (one entry per value),
+    # and the root / absorbing markers are shown as ringed swatches.
     from matplotlib.lines import Line2D
-    legend = [
-        Line2D([0], [0], marker="o", color="w", markerfacecolor="#2ecc71",
-               markersize=10, label="root (initial)"),
-        Line2D([0], [0], marker="o", color="w", markerfacecolor="#5b9bd5",
-               markersize=10, label="reachable (shade = depth)"),
-        Line2D([0], [0], marker="o", color="w", markerfacecolor="#e74c3c",
-               markersize=10, label="absorbing / goal"),
-    ]
+    legend = []
+    if cat is not None:
+        legend.append(Line2D([0], [0], marker="", color="w",
+                             label=f"color = {cat['name']}"))
+        for val in cat_order:
+            legend.append(Line2D([0], [0], marker="o", color="w",
+                                 markerfacecolor=cat_palette[val],
+                                 markeredgecolor="#333333", markersize=10,
+                                 label=f"  {val}"))
+    else:
+        legend.append(Line2D([0], [0], marker="o", color="w",
+                             markerfacecolor="#5b9bd5", markeredgecolor="#333333",
+                             markersize=10, label="reachable (shade = depth)"))
+    legend.append(Line2D([0], [0], marker="o", color="w", markerfacecolor="#ffffff",
+                         markeredgecolor="#2ecc71", markeredgewidth=2.5,
+                         markersize=10, label="root (initial)"))
+    legend.append(Line2D([0], [0], marker="o", color="w", markerfacecolor="#ffffff",
+                         markeredgecolor="#e74c3c", markeredgewidth=2.5,
+                         markersize=10, label="absorbing / goal"))
     ax.legend(handles=legend, loc="lower right", fontsize=8, framealpha=0.9)
 
     fig.savefig(out_path, dpi=120, bbox_inches="tight")

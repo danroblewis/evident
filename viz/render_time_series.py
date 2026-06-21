@@ -116,15 +116,30 @@ def render(smt2, schema, out_path):
     traj = walk(m, seed, STEPS)
     ticks = list(range(len(traj)))
 
-    nvars = len(m.state_vars)
+    # CHANNEL MAPPING for a stacked time series: tick is the shared x-axis; each
+    # variable owns one row's y-axis (position — the best channel). We don't need
+    # color/size here, so the channel job is purely ORDER: most-important var on
+    # top, and group the two var TYPES so quantitative lines and categorical step
+    # plots don't interleave. m.state_vars is already importance-ranked+deduped;
+    # numeric_vars / categorical_vars are its type-split projections (same order).
+    quant = m.numeric_vars
+    cat = m.categorical_vars
+    ordered = quant + cat                      # numerics on top, then categoricals
+    if not ordered:
+        ordered = list(m.state_vars)
+
+    nvars = len(ordered)
     fig, axes = plt.subplots(nvars, 1, sharex=True,
                              figsize=(11, max(2.2 * nvars, 3.0)))
     if nvars == 1:
         axes = [axes]
 
-    for ax, var in zip(axes, m.state_vars):
+    for rank, (ax, var) in enumerate(zip(axes, ordered)):
         name = var["name"]
         kind = var["kind"]
+        # importance badge: #1 is the most-varying / least-redundant var
+        ax.set_title(f"#{rank + 1}  {m.var_class(var)}", loc="left",
+                     fontsize=8, color="#888", pad=2)
         if kind in ("int", "real"):
             ys = [s[name] for s in traj]
             ax.plot(ticks, ys, marker="o", markersize=3, linewidth=1.4,
@@ -137,6 +152,15 @@ def render(smt2, schema, out_path):
                 y, lbl = to_ordinal(m, var, s[name])
                 ys.append(y)
                 labels[y] = lbl
+            # full enum ladder as y-ticks (not just visited values), so the row
+            # reads as the variable's whole categorical range
+            if kind == "enum":
+                variants = m.enum_variants.get(name, [])
+                for i, vlbl in enumerate(variants):
+                    labels.setdefault(i, vlbl)
+            elif kind == "bool":
+                labels.setdefault(0, "false")
+                labels.setdefault(1, "true")
             ax.step(ticks, ys, where="post", linewidth=1.6, color="#d62728",
                     marker="o", markersize=3)
             if labels:
@@ -148,8 +172,10 @@ def render(smt2, schema, out_path):
             ax.grid(True, axis="x", alpha=0.3)
 
     axes[-1].set_xlabel("tick")
-    fig.suptitle(f"{m.fsm} — time_series  (seed {m.label(seed)}, {len(traj)} ticks)",
-                 fontsize=13, fontweight="bold")
+    fig.suptitle(
+        f"{m.fsm} — time_series  (seed {m.label(seed)}, {len(traj)} ticks; "
+        f"{len(quant)} numeric + {len(cat)} categorical, importance-ordered)",
+        fontsize=13, fontweight="bold")
     fig.tight_layout(rect=[0, 0, 1, 0.97])
     fig.savefig(out_path, dpi=120, bbox_inches="tight")
     plt.close(fig)

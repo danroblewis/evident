@@ -6,16 +6,18 @@ Where does the system SPEND ITS TIME? We collect a large bag of visited points
 points over them, and draw the density as a heatmap. The bright region is the
 attractor / occupied region of the state space.
 
+Channel mapping (Cleveland-McGill / Mackinlay):
+  - POSITION (x, y): the two top-ranked axes. We prefer NUMERIC vars (the
+    histogram is meaningful on a metric axis); enum -> ordinal index with
+    variant tick labels, bool -> 0/1.
+  - COLOR: KEPT for the derived OCCUPANCY DENSITY (log visits) — the meaningful
+    quantity this viz exists to show. We do NOT overwrite it with a variable.
+  - FACET (small multiples): a LOW-cardinality categorical (<= 5 values) that
+    is NOT one of the axes becomes one heatmap panel per value — the honest way
+    to ADD a third dimension to a high-D model.
+
 Usage:
     python3 viz/render_occupancy_heatmap.py <smt2> <schema> <out.png>
-
-Works for numeric, discrete, and mixed Evident programs:
-  - NUMERIC: grid of seeds across the state box, follow each trajectory, bin the
-    fixed-point coordinates over two numeric axes.
-  - DISCRETE / MIXED: project every var to an ordinal (bool->0/1, enum->index),
-    accumulate occupancy of reachable states, bin over two chosen axes.
-  - DEGRADED: <2 usable axes -> a single-axis 1-D occupancy strip; no states ->
-    a titled placeholder.
 
 Dynamics come ONLY from evident_viz queries — nothing about any specific program
 is hardcoded here.
@@ -32,6 +34,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 
 VIZ_TYPE = "occupancy_heatmap"
+MAX_FACETS = 5  # low-cardinality threshold for small multiples
 
 
 def ordinal(m, var, value):
@@ -46,6 +49,14 @@ def ordinal(m, var, value):
     if k == "string":
         return float(abs(hash(value)) % 997)
     return 0.0
+
+
+def cardinality(m, var):
+    if var["kind"] == "bool":
+        return 2
+    if var["kind"] == "enum":
+        return len(m.enum_variants[var["name"]])
+    return None  # unbounded / numeric
 
 
 def axis_ticklabels(m, var, lo, hi):
@@ -66,8 +77,6 @@ def collect_numeric(m, axes):
     states — successor() accepts arbitrary pinned points), then follow each
     chain. The dwell in the limit cycle / fixed point dominates the histogram.
     """
-    nvars = [v for v in m.state_vars if v["kind"] in ("int", "real")]
-    # estimate a box from the initial state + the documented scale; fall back wide
     init = m.initial_state()
     span = 3200.0  # generous default for fixed-point numeric systems
     seeds = []
@@ -79,8 +88,13 @@ def collect_numeric(m, axes):
             s = dict(other)
             s[ax["name"]] = int(gx) if ax["kind"] == "int" else gx
             s[ay["name"]] = int(gy) if ay["kind"] == "int" else gy
-            # leave any extra numeric vars at 0
             seeds.append(s)
+    # explicit seeds away from the origin fixed point (per sample notes)
+    for sx, sy in ((2800, 0), (400, 0), (0, 2700)):
+        s = dict(other)
+        s[ax["name"]] = sx
+        s[ay["name"]] = sy
+        seeds.append(s)
     if init is not None:
         seeds.append(init)
 
@@ -94,18 +108,24 @@ def collect_numeric(m, axes):
     return np.array(xs), np.array(ys)
 
 
-def collect_discrete(m, axes):
-    """Occupancy over the reachable graph: weight each reachable state by its
-    out-degree-driven dwell, projected onto two ordinal axes."""
+def collect_discrete(m, axes, facet_var=None):
+    """Occupancy over the reachable graph. Returns (xs, ys, fs) where fs is the
+    ordinal-projected facet value per visited point (or None when not faceting).
+
+    We seed every reachable state once (nothing invisible) then walk the
+    successor fan to accumulate genuine dwell traffic."""
     states, edges = m.reachable()
     ax, ay = axes
-    xs, ys = [], []
-    # count visits along a long random-ish walk to get genuine dwell density,
-    # plus every reachable state once so nothing is invisible.
-    for st in states:
+    xs, ys, fs = [], [], []
+
+    def push(st):
         xs.append(ordinal(m, ax, st[ax["name"]]))
         ys.append(ordinal(m, ay, st[ay["name"]]))
-    # walk the successor fan to accumulate traffic
+        if facet_var is not None:
+            fs.append(st[facet_var["name"]])
+
+    for st in states:
+        push(st)
     if states:
         import random
         rng = random.Random(0)
@@ -115,23 +135,92 @@ def collect_discrete(m, axes):
             if not succs:
                 break
             cur = rng.choice(succs)
-            xs.append(ordinal(m, ax, cur[ax["name"]]))
-            ys.append(ordinal(m, ay, cur[ay["name"]]))
-    return np.array(xs), np.array(ys)
+            push(cur)
+    return np.array(xs), np.array(ys), fs
 
 
-def pick_axes(m):
-    """Choose two axes: prefer numeric pairs, else the two most-varied vars."""
-    numeric = [v for v in m.state_vars if v["kind"] in ("int", "real")]
+def pick_facet(m, axis_names):
+    """A low-cardinality categorical (<= MAX_FACETS) not already an axis.
+    Returns the var dict or None. Prefer enums (richer than a single bool)."""
+    cands = []
+    for v in m.categorical_vars:
+        if v["name"] in axis_names:
+            continue
+        c = cardinality(m, v)
+        if c is not None and 2 <= c <= MAX_FACETS:
+            cands.append(v)
+    if not cands:
+        return None
+    # enums (multi-value) before bools; categorical_vars is already importance-ranked
+    cands.sort(key=lambda v: 0 if v["kind"] == "enum" else 1)
+    return cands[0]
+
+
+def pick_axes(m, exclude=()):
+    """Two axes: prefer the two top numeric vars (metric histogram); else fall
+    back to assign_channels' x/y, skipping anything in `exclude`."""
+    numeric = [v for v in m.numeric_vars if v["name"] not in exclude]
     if len(numeric) >= 2:
         return numeric[0], numeric[1]
-    # mixed/discrete: prefer an enum + something, else first two of anything
-    order = sorted(m.state_vars,
-                   key=lambda v: {"enum": 0, "int": 1, "real": 1,
-                                  "bool": 2, "string": 3}.get(v["kind"], 4))
-    if len(order) >= 2:
-        return order[0], order[1]
-    return (order[0], None) if order else (None, None)
+    # mixed/discrete: use channel assignment, then top up from remaining vars
+    ch = m.assign_channels(["x", "y"])
+    chosen, seen = [], set(exclude)
+    for c in ("x", "y"):
+        v = ch[c]
+        if v and v["name"] not in seen:
+            chosen.append(v)
+            seen.add(v["name"])
+    for v in m.state_vars:
+        if len(chosen) >= 2:
+            break
+        if v["name"] not in seen:
+            chosen.append(v)
+            seen.add(v["name"])
+    if len(chosen) >= 2:
+        return chosen[0], chosen[1]
+    return (chosen[0], None) if chosen else (None, None)
+
+
+def nbins(m, v):
+    if v["kind"] == "bool":
+        return np.array([-0.5, 0.5, 1.5])
+    if v["kind"] == "enum":
+        n = len(m.enum_variants[v["name"]])
+        return np.arange(-0.5, n + 0.5, 1.0)
+    return 60
+
+
+def draw_heatmap(fig, ax, m, a0, a1, xs, ys, vmax=None, title=None):
+    """One heatmap panel. Returns the image (for a shared colorbar)."""
+    if len(xs) == 0:
+        ax.text(0.5, 0.5, "(empty)", ha="center", va="center",
+                transform=ax.transAxes, fontsize=11)
+        ax.set_xticks([])
+        ax.set_yticks([])
+        if title:
+            ax.set_title(title, fontsize=10)
+        return None
+    bx, by = nbins(m, a0), nbins(m, a1)
+    h, xedges, yedges = np.histogram2d(xs, ys, bins=[bx, by])
+    hp = np.log1p(h)
+    im = ax.imshow(
+        hp.T, origin="lower", aspect="auto",
+        extent=[xedges[0], xedges[-1], yedges[0], yedges[-1]],
+        cmap="inferno", interpolation="nearest", vmin=0, vmax=vmax,
+    )
+    ax.set_xlabel(a0["name"])
+    ax.set_ylabel(a1["name"])
+    tk0, tl0 = axis_ticklabels(m, a0, xedges[0], xedges[-1])
+    if tk0 is not None:
+        ax.set_xticks(tk0)
+        ax.set_xticklabels(tl0, rotation=30, ha="right")
+    tk1, tl1 = axis_ticklabels(m, a1, yedges[0], yedges[-1])
+    if tk1 is not None:
+        ax.set_yticks(tk1)
+        ax.set_yticklabels(tl1)
+    if title:
+        ax.set_title(title, fontsize=10)
+    return im
 
 
 def placeholder(ax, m, reason):
@@ -143,12 +232,19 @@ def placeholder(ax, m, reason):
 
 def render(smt2, schema, out):
     m = load(smt2, schema)
-    fig, ax = plt.subplots(figsize=(7.5, 6.5))
-    a0, a1 = pick_axes(m)
-
     title = f"{m.fsm} — {VIZ_TYPE}"
 
+    # --- choose facet first, then axes that avoid the facet var ---
+    a0_pre, a1_pre = pick_axes(m)
+    facet = None
+    if a0_pre is not None and a1_pre is not None and m.is_discrete():
+        # faceting only makes sense for the reachable-graph path
+        facet = pick_facet(m, {a0_pre["name"], a1_pre["name"]})
+    a0, a1 = pick_axes(m, exclude=({facet["name"]} if facet else ()))
+
+    # --- no axes at all ---
     if a0 is None:
+        fig, ax = plt.subplots(figsize=(7.5, 6.5))
         placeholder(ax, m, "no state variables")
         ax.set_title(title)
         fig.tight_layout()
@@ -156,10 +252,11 @@ def render(smt2, schema, out):
         plt.close(fig)
         return
 
+    # --- single axis -> 1-D strip ---
     if a1 is None:
-        # single-axis 1-D occupancy strip
+        fig, ax = plt.subplots(figsize=(7.5, 6.5))
         if m.is_discrete():
-            xs, _ = collect_discrete(m, (a0, a0))
+            xs, _, _ = collect_discrete(m, (a0, a0))
         else:
             xs, _ = collect_numeric(m, (a0, a0))
         if len(xs) == 0:
@@ -178,15 +275,59 @@ def render(smt2, schema, out):
         plt.close(fig)
         return
 
-    # Numeric trajectory seeding only works when BOTH axes are numeric (we pin a
-    # grid of prev-values). Any enum/bool/string axis -> walk the reachable graph.
     both_numeric = a0["kind"] in ("int", "real") and a1["kind"] in ("int", "real")
     discrete_path = m.is_discrete() or not both_numeric
+
+    # --- FACETED small multiples (one heatmap per low-card categorical value) ---
+    if facet is not None and discrete_path:
+        xs, ys, fs = collect_discrete(m, (a0, a1), facet_var=facet)
+        if facet["kind"] == "enum":
+            values = m.enum_variants[facet["name"]]
+        else:
+            values = [False, True]
+        fs = np.array([ordinal(m, facet, v) for v in fs]) if len(fs) else np.array([])
+        # global vmax so panels share one density scale
+        gmax = 0.0
+        per = []
+        for val in values:
+            ordv = ordinal(m, facet, val)
+            mask = fs == ordv if len(fs) else np.array([], dtype=bool)
+            pxs = xs[mask] if len(xs) else xs
+            pys = ys[mask] if len(ys) else ys
+            per.append((val, pxs, pys))
+            if len(pxs):
+                bx, by = nbins(m, a0), nbins(m, a1)
+                h, _, _ = np.histogram2d(pxs, pys, bins=[bx, by])
+                gmax = max(gmax, float(np.log1p(h).max()))
+        gmax = gmax or 1.0
+
+        n = len(values)
+        fig, axes = plt.subplots(1, n, figsize=(4.2 * n + 1.2, 5.4),
+                                 squeeze=False)
+        axes = axes[0]
+        im = None
+        flabel = facet["name"].split(".")[-1]
+        for axp, (val, pxs, pys) in zip(axes, per):
+            i = draw_heatmap(fig, axp, m, a0, a1, pxs, pys, vmax=gmax,
+                             title=f"{flabel} = {val}")
+            if i is not None:
+                im = i
+        if im is not None:
+            cb = fig.colorbar(im, ax=list(axes), fraction=0.025, pad=0.02)
+            cb.set_label("log(1 + visits)")
+        fig.suptitle(f"{title}\ndiscrete occupancy, faceted by {flabel} "
+                     f"(small multiples)", fontsize=12)
+        fig.savefig(out, dpi=120, bbox_inches="tight")
+        plt.close(fig)
+        return
+
+    # --- single-panel heatmap ---
     if discrete_path:
-        xs, ys = collect_discrete(m, (a0, a1))
+        xs, ys, _ = collect_discrete(m, (a0, a1))
     else:
         xs, ys = collect_numeric(m, (a0, a1))
 
+    fig, ax = plt.subplots(figsize=(7.5, 6.5))
     if len(xs) == 0:
         placeholder(ax, m, "no visited states (transition unsat)")
         ax.set_title(title)
@@ -195,40 +336,10 @@ def render(smt2, schema, out):
         plt.close(fig)
         return
 
-    # bin count: discrete axes -> one bin per ordinal level; numeric -> 60
-    def nbins(v, data):
-        if v["kind"] == "bool":
-            return [-0.5, 0.5, 1.5]
-        if v["kind"] == "enum":
-            n = len(m.enum_variants[v["name"]])
-            return np.arange(-0.5, n + 0.5, 1.0)
-        return 60
-
-    bx = nbins(a0, xs)
-    by = nbins(a1, ys)
-
-    h, xedges, yedges = np.histogram2d(xs, ys, bins=[bx, by])
-    # log-ish scaling so the attractor and its surroundings are both visible
-    hp = np.log1p(h)
-    im = ax.imshow(
-        hp.T, origin="lower", aspect="auto",
-        extent=[xedges[0], xedges[-1], yedges[0], yedges[-1]],
-        cmap="inferno", interpolation="nearest",
-    )
-    cb = fig.colorbar(im, ax=ax)
-    cb.set_label("log(1 + visits)")
-    ax.set_xlabel(a0["name"])
-    ax.set_ylabel(a1["name"])
-
-    tk0, tl0 = axis_ticklabels(m, a0, xedges[0], xedges[-1])
-    if tk0 is not None:
-        ax.set_xticks(tk0)
-        ax.set_xticklabels(tl0, rotation=30, ha="right")
-    tk1, tl1 = axis_ticklabels(m, a1, yedges[0], yedges[-1])
-    if tk1 is not None:
-        ax.set_yticks(tk1)
-        ax.set_yticklabels(tl1)
-
+    im = draw_heatmap(fig, ax, m, a0, a1, xs, ys)
+    if im is not None:
+        cb = fig.colorbar(im, ax=ax)
+        cb.set_label("log(1 + visits)")
     kind_note = "discrete occupancy" if discrete_path else "numeric attractor"
     ax.set_title(f"{title}\n{kind_note}: where the system dwells")
     fig.tight_layout()

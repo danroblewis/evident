@@ -64,18 +64,61 @@ def _placeholder(out_path, fsm, reason):
 
 
 # --------------------------------------------------------------------------
-# axis selection: pick two state vars to project onto
+# axis / facet selection via the channel-mapping API
 # --------------------------------------------------------------------------
 def _choose_axes(m):
-    """Return up to two state-var dicts to use as the x,y projection axes.
-    Prefer numeric (int/real) axes; fall back to enum/bool. Picks the two with
-    the most distinct values if we can cheaply estimate, else first two."""
-    vs = m.state_vars
-    numeric = [v for v in vs if v["kind"] in ("int", "real")]
-    enums = [v for v in vs if v["kind"] == "enum"]
-    bools = [v for v in vs if v["kind"] == "bool"]
-    ordered = numeric + enums + bools
-    return ordered[:2]
+    """Return up to two state-var dicts for the x,y projection, via the channel
+    API. The basin grid wants NUMERIC axes when available (position is the
+    top-ranked channel and decodes quantitative best), so we prefer numeric_vars
+    and fall back to assign_channels for the remaining slots (enum/bool ordinals).
+    """
+    numeric = m.numeric_vars
+    chans = m.assign_channels(["x", "y"])
+    axes = []
+    # fill from numeric first (best for a continuous seed grid)
+    for v in numeric:
+        if v not in axes:
+            axes.append(v)
+        if len(axes) == 2:
+            return axes
+    # top up from the channel assignment (categorical ordinals as a last resort)
+    for ch in ("x", "y"):
+        v = chans[ch]
+        if v is not None and v not in axes:
+            axes.append(v)
+        if len(axes) == 2:
+            break
+    return axes
+
+
+def _choose_facet(m, axes, max_card=5):
+    """Pick a low-cardinality CATEGORICAL var (enum/bool) to FACET by — one panel
+    per value — the honest way to ADD a dimension. Must not already be an axis.
+    Returns (var, values) or (None, None). Prefers the channel API's facet slot,
+    falling back to the first eligible categorical."""
+    axis_names = {a["name"] for a in axes}
+    chans = m.assign_channels(["x", "y", "color", "facet"])
+    preferred = chans.get("facet")
+
+    def values_of(v):
+        if v["kind"] == "enum":
+            return m.enum_variants[v["name"]]
+        if v["kind"] == "bool":
+            return [False, True]
+        return None
+
+    def eligible(v):
+        if v is None or v["name"] in axis_names:
+            return False
+        vals = values_of(v)
+        return vals is not None and 2 <= len(vals) <= max_card
+
+    if eligible(preferred):
+        return preferred, values_of(preferred)
+    for v in m.categorical_vars:
+        if eligible(v):
+            return v, values_of(v)
+    return None, None
 
 
 def _ordinal(m, var, value):
@@ -211,7 +254,7 @@ def _discrete_basins(m, out_path):
         dom = min(rt, key=lambda s: term_index[s])
         return term_index[dom]
 
-    # axes
+    # axes (channel API: position is the top-ranked channel)
     axes = _choose_axes(m)
     if len(axes) == 0:
         _placeholder(out_path, m.fsm, "no state variables to project")
@@ -219,59 +262,92 @@ def _discrete_basins(m, out_path):
     ax_x = axes[0]
     ax_y = axes[1] if len(axes) > 1 else None
 
-    # Scatter every reachable state at its projected coords, colored by basin.
-    xs, ys, cidx = [], [], []
-    # jitter to separate states colliding on the 2-axis projection
-    rng = np.random.default_rng(7)
-    for node, st in enumerate(states):
-        x = _ordinal(m, ax_x, st[ax_x["name"]])
-        y = _ordinal(m, ax_y, st[ax_y["name"]]) if ax_y else 0.0
-        xs.append(x)
-        ys.append(y)
-        cidx.append(basin_color_idx(node))
+    # FACET by a low-cardinality categorical that isn't an axis — adds a 3rd
+    # dimension as small multiples instead of clobbering the 2-axis projection.
+    facet_var, facet_vals = _choose_facet(m, axes)
 
-    xs = np.array(xs, float)
-    ys = np.array(ys, float)
-    cidx = np.array(cidx, int)
-    # jitter collisions
+    # project every state onto the chosen axes + basin color, once.
+    xs = np.array([_ordinal(m, ax_x, st[ax_x["name"]]) for st in states], float)
+    ys = np.array([_ordinal(m, ax_y, st[ax_y["name"]]) if ax_y else 0.0
+                   for st in states], float)
+    cidx = np.array([basin_color_idx(node) for node in range(n)], int)
+    rng = np.random.default_rng(7)
     jx = (rng.random(n) - 0.5) * 0.22
     jy = (rng.random(n) - 0.5) * 0.22
 
-    fig, ax = plt.subplots(figsize=(9, 7))
-    # draw edges faintly to show flow
-    for a, b in eset:
-        ax.plot([xs[a] + jx[a], xs[b] + jx[b]],
-                [ys[a] + jy[a], ys[b] + jy[b]],
-                color="#cccccc", lw=0.5, alpha=0.5, zorder=1)
-
-    for ci in sorted(set(cidx)):
-        mask = cidx == ci
+    def basin_label(ci):
         if ci < 0:
-            color = "#000000"
-            lbl = "no terminal"
-        else:
-            color = PALETTE[ci % len(PALETTE)]
-            # label terminal by a representative state
-            rep_scc = term_ids[ci]
-            rep_node = sccs[rep_scc][0]
-            cyc = "cycle" if len(sccs[rep_scc]) > 1 else "fixed pt"
-            lbl = f"→ {m.label(states[rep_node])} ({cyc})"
-        ax.scatter(xs[mask] + jx[mask], ys[mask] + jy[mask], s=90,
-                   color=color, edgecolors="black", linewidths=0.5,
-                   zorder=3, label=lbl)
+            return "#000000", "no terminal"
+        color = PALETTE[ci % len(PALETTE)]
+        rep_scc = term_ids[ci]
+        rep_node = sccs[rep_scc][0]
+        cyc = "cycle" if len(sccs[rep_scc]) > 1 else "fixed pt"
+        return color, f"→ {m.label(states[rep_node])} ({cyc})"
 
-    ax.set_xlabel(_axis_label(ax_x))
-    ax.set_ylabel(_axis_label(ax_y) if ax_y else "(single axis)")
-    _decorate_enum_ticks(ax, m, ax_x, ax_y)
-    ax.set_title(f"{m.fsm} — basin_map (discrete: {nscc} SCCs, "
-                 f"{len(term_ids)} terminal)", fontsize=13, weight="bold")
-    ax.legend(loc="center left", bbox_to_anchor=(1.01, 0.5), fontsize=8,
-              title="terminal basin", frameon=True)
-    ax.grid(True, alpha=0.25)
-    fig.savefig(out_path, dpi=120, bbox_inches="tight")
+    def draw(ax, node_ids):
+        nodeset = set(node_ids)
+        for a, b in eset:
+            if a in nodeset and b in nodeset:
+                ax.plot([xs[a] + jx[a], xs[b] + jx[b]],
+                        [ys[a] + jy[a], ys[b] + jy[b]],
+                        color="#cccccc", lw=0.5, alpha=0.5, zorder=1)
+        for ci in sorted(set(cidx[node_ids])):
+            mask = np.array([nd for nd in node_ids if cidx[nd] == ci], int)
+            color, _lbl = basin_label(ci)
+            ax.scatter(xs[mask] + jx[mask], ys[mask] + jy[mask], s=90,
+                       color=color, edgecolors="black", linewidths=0.5,
+                       zorder=3)
+        ax.set_xlabel(_axis_label(ax_x))
+        ax.set_ylabel(_axis_label(ax_y) if ax_y else "(single axis)")
+        _decorate_enum_ticks(ax, m, ax_x, ax_y)
+        ax.grid(True, alpha=0.25)
+
+    # one shared legend covering every terminal basin (faceting splits the nodes
+    # across panels, so a per-panel legend would only show that panel's basins).
+    def legend_handles():
+        h = []
+        for ci in sorted(set(cidx)):
+            color, lbl = basin_label(ci)
+            h.append(Patch(facecolor=color, edgecolor="black", label=lbl))
+        return h
+
+    if facet_var is None:
+        fig, ax = plt.subplots(figsize=(9, 7))
+        draw(ax, list(range(n)))
+        ax.legend(handles=legend_handles(), loc="center left",
+                  bbox_to_anchor=(1.01, 0.5), fontsize=8,
+                  title="terminal basin", frameon=True)
+        ax.set_title(f"{m.fsm} — basin_map (discrete: {nscc} SCCs, "
+                     f"{len(term_ids)} terminal)", fontsize=13, weight="bold")
+        fig.savefig(out_path, dpi=120, bbox_inches="tight")
+        plt.close(fig)
+        return (f"discrete: {n} reachable states, {nscc} SCCs, "
+                f"{len(term_ids)} terminal basins")
+
+    # one panel per facet value
+    npan = len(facet_vals)
+    fig, axarr = plt.subplots(1, npan, figsize=(5.0 * npan, 5.6),
+                              squeeze=False, sharex=True, sharey=True)
+    for i, fv in enumerate(facet_vals):
+        node_ids = [nd for nd, st in enumerate(states)
+                    if st[facet_var["name"]] == fv]
+        disp = fv if facet_var["kind"] != "bool" else ("true" if fv else "false")
+        ax = axarr[0][i]
+        draw(ax, node_ids)
+        ax.set_title(f"{facet_var['name']} = {disp}  ({len(node_ids)} states)",
+                     fontsize=11, weight="bold")
+    leg = fig.legend(handles=legend_handles(), loc="center left",
+                     bbox_to_anchor=(1.0, 0.5), fontsize=8,
+                     title="terminal basin", frameon=True)
+    fig.suptitle(f"{m.fsm} — basin_map (discrete: {nscc} SCCs, "
+                 f"{len(term_ids)} terminal; faceted by {facet_var['name']})",
+                 fontsize=13, weight="bold")
+    fig.savefig(out_path, dpi=120, bbox_inches="tight",
+                bbox_extra_artists=(leg,))
     plt.close(fig)
     return (f"discrete: {n} reachable states, {nscc} SCCs, "
-            f"{len(term_ids)} terminal basins")
+            f"{len(term_ids)} terminal basins; faceted by "
+            f"{facet_var['name']} ({npan} panels)")
 
 
 def _decorate_enum_ticks(ax, m, ax_x, ax_y):
@@ -345,16 +421,9 @@ def _iterate_to_attractor(m, seed_state, cache, resolved, max_steps=4000):
     return sig
 
 
-def _numeric_basins(m, out_path):
-    axes = _choose_axes(m)
-    if len(axes) < 1:
-        _placeholder(out_path, m.fsm, "no axes available")
-        return "numeric: no axes"
-    ax_x = axes[0]
-    ax_y = axes[1] if len(axes) > 1 else None
-
-    # baseline values for the non-axis variables: use initial_state if present,
-    # else 0 / first variant / false.
+def _baseline_fn(m):
+    """Baseline value for a non-axis var: initial_state if present, else a neutral
+    default (0 / false / first variant / "")."""
     init = m.initial_state()
 
     def baseline(v):
@@ -371,52 +440,128 @@ def _numeric_basins(m, out_path):
             return ""
         return 0
 
-    # grid bounds for each axis
-    def axis_grid(v, n):
-        k = v["kind"]
-        if k in ("int", "real"):
-            # heuristic bounds; vanderpol lives in ~[-3200,3200]
-            lo, hi = -3200, 3200
-            return list(np.linspace(lo, hi, n)), (lo, hi), True
-        if k == "bool":
-            return [False, True], (-0.5, 1.5), False
-        if k == "enum":
-            variants = m.enum_variants[v["name"]]
-            return list(variants), (-0.5, len(variants) - 0.5), False
-        return [""], (-0.5, 0.5), False
+    return baseline
 
+
+_BOUNDS_CACHE = {}
+
+
+def _numeric_bounds(m):
+    """Per-numeric-var (lo, hi) from sampled reachable states, so a small-domain
+    axis (vending balance 0..3) gets a tight grid instead of the ±3200 heuristic
+    tuned for the large continuous samples (vanderpol). Returns {} on a
+    degenerate sample (e.g. the origin fixed point), so callers fall back."""
+    key = id(m)
+    if key in _BOUNDS_CACHE:
+        return _BOUNDS_CACHE[key]
+    bounds = {}
+    try:
+        states, _ = m.reachable(limit=2000)
+        nums = [v for v in m.state_vars if v["kind"] in ("int", "real")]
+        for v in nums:
+            vals = [s[v["name"]] for s in states]
+            uniq = set(vals)
+            # only trust the sample if it actually spans a range AND stays small
+            if len(uniq) >= 2 and (max(vals) - min(vals)) <= 64:
+                bounds[v["name"]] = (min(vals), max(vals))
+    except Exception:
+        pass
+    _BOUNDS_CACHE[key] = bounds
+    return bounds
+
+
+def _axis_grid(m, v, n):
+    """Grid samples + display bounds for one axis variable."""
+    k = v["kind"]
+    if k in ("int", "real"):
+        b = _numeric_bounds(m).get(v["name"])
+        if b is not None:
+            lo, hi = b
+            pad = max(1, round((hi - lo) * 0.15))
+            lo, hi = lo - pad, hi + pad
+            steps = min(n, int(hi - lo) + 1) if k == "int" else n
+            return list(np.linspace(lo, hi, max(2, steps))), (lo, hi)
+        # heuristic bounds; vanderpol lives in ~[-3200,3200]
+        lo, hi = -3200, 3200
+        return list(np.linspace(lo, hi, n)), (lo, hi)
+    if k == "bool":
+        return [False, True], (-0.5, 1.5)
+    if k == "enum":
+        variants = m.enum_variants[v["name"]]
+        return list(variants), (-0.5, len(variants) - 0.5)
+    return [""], (-0.5, 0.5)
+
+
+# Explicit limit-cycle probe seeds in (x, y) axis-value space. The autonomous
+# samples (vanderpol, vending) have their initial_state AT a fixed point (origin
+# / Idle-balance-0), so a pure grid can miss the surrounding limit cycle if every
+# interior seed collapses inward. We add a few off-origin probes on the numeric
+# plane to make sure the cycle attractor gets sampled.
+_PROBE_PTS = [(2800, 0), (400, 0), (0, 2700), (-2800, 0), (0, -2700),
+              (1500, 1500)]
+
+
+def _probe_seeds(m, ax_x, ax_y, gy):
+    """Off-origin (x, y) probe seeds in axis-value space. Only when ax_x is a
+    LARGE-range numeric axis (the ±3200 heuristic fallback) — for a tight
+    sampled domain (vending balance 0..3) the grid already covers everything and
+    a ±2800 probe would be out of range. For a numeric ax_y we use the full 2-D
+    probe points; for a categorical ax_y we sweep the probe x-magnitudes across
+    every grid y value (so the cycle is sampled at each enum/bool value)."""
+    if ax_x["kind"] not in ("int", "real"):
+        return []
+    if ax_x["name"] in _numeric_bounds(m):     # tight sampled domain; no probes
+        return []
+    if ax_y is None:
+        return [(x, 0) for (x, _y) in _PROBE_PTS]
+    if ax_y["kind"] in ("int", "real"):
+        return _PROBE_PTS
+    xmags = sorted({x for (x, _y) in _PROBE_PTS})
+    return [(x, yv) for x in xmags for yv in gy]
+
+
+def _panel_basins(m, ax_x, ax_y, fixed, cache, resolved):
+    """Compute one panel of the basin map: seed a grid (plus explicit limit-cycle
+    probes) over the two axes, holding `fixed` (name->value) constant, iterate
+    each seed to its attractor signature. Returns (seeds, sigs) where seeds are
+    (xv, yv) axis-value pairs. `cache`/`resolved` are shared across panels so the
+    z3 work is paid once."""
+    baseline = _baseline_fn(m)
     nx = 28 if ax_x["kind"] in ("int", "real") else None
     ny = 28 if (ax_y and ax_y["kind"] in ("int", "real")) else None
-    gx, bx, _ = axis_grid(ax_x, nx or 8)
+    gx, _bx = _axis_grid(m, ax_x, nx or 8)
     if ax_y is not None:
-        gy, by, _ = axis_grid(ax_y, ny or 8)
+        gy, _by = _axis_grid(m, ax_y, ny or 8)
     else:
-        gy, by = [0], (-0.5, 0.5)
+        gy = [0]
 
-    # Build seeds, iterate each to its attractor, collect attractor centroids.
-    # A shared successor cache makes the grid tractable: once chains merge onto
-    # the attractor they reuse cached transitions instead of re-solving z3.
-    seeds = []
-    sigs = []        # per-seed attractor signature
-    cache = {}
-    resolved = {}
+    def mk_state(xv, yv):
+        st = {v["name"]: baseline(v) for v in m.state_vars}
+        for nm, val in fixed.items():
+            st[nm] = val
+        st[ax_x["name"]] = int(round(xv)) if ax_x["kind"] == "int" else xv
+        if ax_y is not None:
+            st[ax_y["name"]] = int(round(yv)) if ax_y["kind"] == "int" else yv
+        return st
+
+    seeds, sigs = [], []
     for xv in gx:
         for yv in gy:
-            st = {v["name"]: baseline(v) for v in m.state_vars}
-            st[ax_x["name"]] = int(round(xv)) if ax_x["kind"] == "int" else xv
-            if ax_y is not None:
-                st[ax_y["name"]] = (int(round(yv)) if ax_y["kind"] == "int"
-                                    else yv)
-            sig = _iterate_to_attractor(m, st, cache, resolved)
+            sig = _iterate_to_attractor(m, mk_state(xv, yv), cache, resolved)
             seeds.append((xv, yv))
             sigs.append(sig)
+    # off-origin probes so the limit cycle gets sampled (not plotted as markers,
+    # but they feed the global cluster so the cycle basin gets a color/label)
+    for (xv, yv) in _probe_seeds(m, ax_x, ax_y, gy):
+        sig = _iterate_to_attractor(m, mk_state(xv, yv), cache, resolved)
+        seeds.append((xv, yv))
+        sigs.append(sig)
+    return seeds, sigs
 
-    # cluster attractor signatures into regions
-    labels, centers = _cluster(sigs)
-    nregions = len(centers)
 
-    # plot
-    fig, ax = plt.subplots(figsize=(9, 7))
+def _draw_panel(ax, m, ax_x, ax_y, seeds, labels, centers, show_legend):
+    bx = _axis_grid(m, ax_x, 8)[1]
+    by = _axis_grid(m, ax_y, 8)[1] if ax_y is not None else (-0.5, 0.5)
     xs = np.array([_ordinal(m, ax_x, s[0]) for s in seeds], float)
     if ax_y is not None:
         ys = np.array([_ordinal(m, ax_y, s[1]) for s in seeds], float)
@@ -428,19 +573,16 @@ def _numeric_basins(m, out_path):
     for ci in sorted(set(labels)):
         mask = labels == ci
         color = PALETTE[ci % len(PALETTE)]
-        # describe region by its mean attractor radius / signature
-        center = centers[ci]
-        desc = _describe_region(m, center)
+        desc = _describe_region(m, centers[ci])
         ax.scatter(xs[mask], ys[mask], s=marker_size, color=color,
                    edgecolors="none", marker="s",
                    label=f"basin {ci}: {desc}")
 
-    # overlay attractor points (cycle centroids) as black dots, if numeric axes
     if ax_x["kind"] in ("int", "real"):
         cxs, cys = [], []
         for cvec in centers:
             cx, cy = _center_axis_coords(m, cvec, ax_x, ax_y)
-            if cx is not None:
+            if cx is not None and bx[0] <= cx <= bx[1]:
                 cxs.append(cx)
                 cys.append(cy if cy is not None else 0.0)
         if cxs:
@@ -453,15 +595,70 @@ def _numeric_basins(m, out_path):
     if ax_y is not None:
         ax.set_ylim(by)
     _decorate_enum_ticks(ax, m, ax_x, ax_y)
-    kind = "numeric" if m.is_discrete() is False and all(
-        v["kind"] in ("int", "real") for v in m.state_vars) else "mixed"
-    ax.set_title(f"{m.fsm} — basin_map ({kind}: {nregions} basins on "
-                 f"{len(seeds)}-seed grid)", fontsize=13, weight="bold")
-    ax.legend(loc="center left", bbox_to_anchor=(1.01, 0.5), fontsize=8,
-              title="attractor basin", frameon=True)
+    if show_legend:
+        ax.legend(loc="center left", bbox_to_anchor=(1.01, 0.5), fontsize=8,
+                  title="attractor basin", frameon=True)
+
+
+def _numeric_basins(m, out_path):
+    axes = _choose_axes(m)
+    if len(axes) < 1:
+        _placeholder(out_path, m.fsm, "no axes available")
+        return "numeric: no axes"
+    ax_x = axes[0]
+    ax_y = axes[1] if len(axes) > 1 else None
+
+    facet_var, facet_vals = _choose_facet(m, axes)
+    kind = "numeric" if all(v["kind"] in ("int", "real")
+                            for v in m.state_vars) else "mixed"
+
+    # Shared across panels: the z3-backed successor cache, and a SINGLE cluster
+    # so a basin's color/label means the same thing in every panel.
+    cache, resolved = {}, {}
+
+    if facet_var is None:
+        seeds, sigs = _panel_basins(m, ax_x, ax_y, {}, cache, resolved)
+        labels, centers = _cluster(sigs)
+        fig, ax = plt.subplots(figsize=(9, 7))
+        _draw_panel(ax, m, ax_x, ax_y, seeds, labels, centers,
+                    show_legend=True)
+        ax.set_title(f"{m.fsm} — basin_map ({kind}: {len(centers)} basins on "
+                     f"{len(seeds)}-seed grid)", fontsize=13, weight="bold")
+        fig.savefig(out_path, dpi=120, bbox_inches="tight")
+        plt.close(fig)
+        return f"{kind}: {len(seeds)} seeds -> {len(centers)} basins"
+
+    # FACETED: one panel per facet value, holding facet_var fixed. Compute all
+    # panels first so we cluster every signature TOGETHER (consistent colors).
+    panels = []        # (label_str, seeds, sigs)
+    all_sigs = []
+    for fv in facet_vals:
+        seeds, sigs = _panel_basins(m, ax_x, ax_y, {facet_var["name"]: fv},
+                                    cache, resolved)
+        disp = fv if facet_var["kind"] != "bool" else ("true" if fv else "false")
+        panels.append((str(disp), seeds, sigs))
+        all_sigs.extend(sigs)
+    labels_all, centers = _cluster(all_sigs)
+
+    npan = len(panels)
+    fig, axarr = plt.subplots(1, npan, figsize=(5.2 * npan, 6.0),
+                              squeeze=False)
+    off = 0
+    for i, (disp, seeds, sigs) in enumerate(panels):
+        lbl = labels_all[off:off + len(sigs)]
+        off += len(sigs)
+        ax = axarr[0][i]
+        _draw_panel(ax, m, ax_x, ax_y, seeds, lbl, centers,
+                    show_legend=(i == npan - 1))
+        ax.set_title(f"{facet_var['name']} = {disp}", fontsize=11,
+                     weight="bold")
+    fig.suptitle(f"{m.fsm} — basin_map ({kind}: faceted by "
+                 f"{facet_var['name']}, {len(centers)} basins)",
+                 fontsize=13, weight="bold")
     fig.savefig(out_path, dpi=120, bbox_inches="tight")
     plt.close(fig)
-    return f"{kind}: {len(seeds)} seeds -> {nregions} basins"
+    return (f"{kind}: faceted by {facet_var['name']} ({npan} panels), "
+            f"{len(centers)} basins")
 
 
 def _attractor_signature(m, cycle):

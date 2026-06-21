@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """render_timing_diagram — EE-style timing/waveform diagram for any Evident IR.
 
-One horizontal track per state variable, plotted against tick number:
+One horizontal track per state variable, plotted against tick number. Tracks
+are stacked in importance order (m.state_vars): the most informative variable
+sits on top (#1), so the eye reads the dominant signal first. Encoding stays
+keyed to the variable's TYPE (digital / lane / analog):
 
   * bool / enum / string vars  -> DIGITAL waveform. The value is held flat
     between ticks and jumps on a vertical edge at each transition (classic
@@ -152,7 +155,10 @@ def render(m, out_path):
         vals = [trace[t][name] for t in range(n)]
 
         yticks.append(base + lane_h / 2)
-        yticklabels.append(f"{name}\n[{kind}]")
+        # tracks are stacked in m.state_vars order = importance rank (most
+        # informative variable on top). Surface that rank in the lane label so
+        # the ordering is legible, not just implicit in the layout.
+        yticklabels.append(f"#{idx + 1}  {name}\n[{kind}]")
 
         # lane separator background band
         ax.axhspan(base - gap / 2, base + lane_h + gap / 2,

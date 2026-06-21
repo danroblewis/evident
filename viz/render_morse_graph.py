@@ -45,8 +45,49 @@ def _key(m, state):
     return tuple(state[v["name"]] for v in m.state_vars)
 
 
+def _abbrev(name):
+    """Short tag for a (possibly dotted) state-var name: 'd.has_key' -> 'key',
+    'state.balance' -> 'balance', 'state.mode' -> 'mode'."""
+    leaf = name.split(".")[-1]
+    for pre in ("has_", "is_"):
+        if leaf.startswith(pre):
+            leaf = leaf[len(pre):]
+            break
+    return leaf
+
+
+def _fmt_val(val):
+    if val is True:
+        return "T"
+    if val is False:
+        return "F"
+    if isinstance(val, float):
+        return f"{val:.0f}"
+    return str(val)
+
+
 def _label_for_key(m, key):
-    return "(" + ", ".join(str(x) for x in key) + ")"
+    """Label a state by its RANKED vars (top var spelled out, bools as compact
+    flags) rather than an anonymous positional tuple. The first ranked var (the
+    most expressive, often the enum) gets named prominence; remaining vars become
+    a compact key=val strip so the node reads from the axes of meaning, not
+    position."""
+    vs = m.state_vars
+    if not vs:
+        return "()"
+    parts = [f"{_abbrev(vs[0]['name'])}={_fmt_val(key[0])}"]
+    rest = []
+    for v, val in zip(vs[1:], key[1:]):
+        if v["kind"] == "bool":
+            # only surface the True flags — terse and reads as "what's set"
+            if val is True:
+                rest.append(_abbrev(v["name"]))
+        else:
+            rest.append(f"{_abbrev(v['name'])}={_fmt_val(val)}")
+    head = parts[0]
+    if rest:
+        return head + "\n[" + " ".join(rest) + "]"
+    return head
 
 
 def build_discrete_graph(m):
@@ -154,9 +195,27 @@ def build_numeric_graph(m, span=3200, n=13, fp_scale=None):
 # Condensation + classification
 # ----------------------------------------------------------------------------
 
-def condense_and_classify(G):
+def _tint_index(m):
+    """Index into the state-key tuple of the variable used to TINT Morse nodes:
+    the top-ranked CATEGORICAL var (color is excellent for categorical). Returns
+    (index, var) or (None, None) when the model has no categorical var (e.g. a
+    pure-numeric system like vanderpol) — then nodes stay white-filled and read
+    by role/border alone."""
+    cats = m.categorical_vars
+    if not cats:
+        return None, None
+    name = cats[0]["name"]
+    names = [v["name"] for v in m.state_vars]
+    if name not in names:
+        return None, None
+    return names.index(name), cats[0]
+
+
+def condense_and_classify(G, tint_idx=None):
     """Return (C, info) where C is the condensation DAG and info maps each
-    condensation node -> dict(role, is_cycle, size, members, label)."""
+    condensation node -> dict(role, is_cycle, size, members, label). When
+    tint_idx is given, info[n]['dom_cat'] = the dominant value of that categorical
+    var among the SCC's member states (the node-fill tint)."""
     sccs = list(nx.strongly_connected_components(G))
     C = nx.condensation(G, scc=sccs)   # node attr 'members' = set of orig nodes
 
@@ -180,7 +239,17 @@ def condense_and_classify(G):
             role = "isolated"
         else:
             role = "transient"
-        info[cn] = dict(role=role, is_cycle=is_cycle, size=size, members=members)
+        dom = None
+        if tint_idx is not None:
+            counts = {}
+            for k in members:
+                if isinstance(k, tuple) and len(k) > tint_idx:
+                    val = k[tint_idx]
+                    counts[val] = counts.get(val, 0) + 1
+            if counts:
+                dom = max(counts, key=counts.get)
+        info[cn] = dict(role=role, is_cycle=is_cycle, size=size,
+                        members=members, dom_cat=dom)
     return C, info
 
 
@@ -217,7 +286,7 @@ def simplify_skeleton(C, info, labels):
 
     C2.add_node(SUMMARY)
     new_info[SUMMARY] = dict(role="transient", is_cycle=False,
-                             size=len(merged), members={SUMMARY})
+                             size=len(merged), members={SUMMARY}, dom_cat=None)
     new_labels[SUMMARY] = f"{len(merged)} transient\ncells\n(flow-through)"
 
     def remap(n):
@@ -275,17 +344,42 @@ def node_text(info_n, orig_labels):
     if info_n["size"] == 1:
         k = next(iter(members))
         return orig_labels.get(k, str(k))
-    # cycle: show size + a couple of members
-    sample = list(members)[:3]
+    # cycle: show size + a couple of members (now ranked-var labels, not tuples)
+    sample = list(members)[:2]
     txt = f"cycle ×{info_n['size']}\n"
     txt += "\n".join(orig_labels.get(k, str(k)) for k in sample)
-    if info_n["size"] > 3:
+    if info_n["size"] > 2:
         txt += "\n…"
     return txt
 
 
-def draw(C, info, orig_labels, fsm, viz_type, out_path, subtitle=""):
+def _build_tint_map(C, info, tint_var):
+    """Map each distinct dominant-categorical value present in the graph to a
+    light fill color (the COLOR channel, excellent for categorical). Returns
+    {value: hexcolor}. Empty when there's no tint var."""
+    if tint_var is None:
+        return {}
+    vals = []
+    for cn in C.nodes():
+        d = info[cn].get("dom_cat")
+        if d is not None and d not in vals:
+            vals.append(d)
+    if not vals:
+        return {}
+    import matplotlib.colors as mcolors
+    base = plt.get_cmap("tab10")
+    out = {}
+    for i, v in enumerate(vals):
+        r, g, b, _ = base(i % 10)
+        # lighten toward white so the role-colored border + black text stay legible
+        out[v] = mcolors.to_hex((0.55 + 0.45 * r, 0.55 + 0.45 * g, 0.55 + 0.45 * b))
+    return out
+
+
+def draw(C, info, orig_labels, fsm, viz_type, out_path, subtitle="",
+         tint_var=None):
     fig, ax = plt.subplots(figsize=(12, 9))
+    tint_map = _build_tint_map(C, info, tint_var)
 
     if C.number_of_nodes() == 0:
         ax.text(0.5, 0.5, "empty graph", ha="center", va="center",
@@ -336,8 +430,9 @@ def draw(C, info, orig_labels, fsm, viz_type, out_path, subtitle=""):
                              boxstyle="round,pad=0.5",
                              linewidth=0, facecolor="none")
         ax.add_patch(box)
+        fc = tint_map.get(i.get("dom_cat"), "white")
         bbox = dict(boxstyle="round,pad=0.35",
-                    fc="white", ec=color, lw=lw)
+                    fc=fc, ec=color, lw=lw)
         ax.text(x, y, txt, ha="center", va="center", fontsize=8.5,
                 color="#111111", bbox=bbox, zorder=5)
         # role marker dot above the box
@@ -360,8 +455,26 @@ def draw(C, info, orig_labels, fsm, viz_type, out_path, subtitle=""):
                label="cycle SCC (thick border)",
                markerfacecolor="white", markeredgecolor="#333333",
                markeredgewidth=3, markersize=12))
-    ax.legend(handles=legend_elems, loc="lower center",
-              bbox_to_anchor=(0.5, -0.06), ncol=5, frameon=False, fontsize=9)
+    role_legend = ax.legend(handles=legend_elems, loc="lower center",
+                            bbox_to_anchor=(0.5, -0.06), ncol=5,
+                            frameon=False, fontsize=9)
+    ax.add_artist(role_legend)
+
+    # secondary legend: node FILL = dominant value of the top categorical var
+    # (the added COLOR channel — keeps the border=role encoding intact).
+    if tint_map:
+        from matplotlib.patches import Patch
+        tag = _abbrev(tint_var["name"]) if tint_var else "category"
+        tint_elems = [
+            Patch(facecolor=col, edgecolor="#666666", label=f"{tag}={_fmt_val(val)}")
+            for val, col in tint_map.items()
+        ]
+        # outside the axes (right margin) so it never overlaps a DAG node, which
+        # can sit anywhere in the [0,1] layout box.
+        ax.legend(handles=tint_elems, loc="upper left",
+                  bbox_to_anchor=(1.01, 1.0),
+                  title=f"node fill:\ndominant {tag}", title_fontsize=9,
+                  ncol=1, frameon=True, fontsize=8.5, framealpha=0.95)
 
     title = f"{fsm} — Morse graph (condensation of reachable transition graph)"
     fig.suptitle(title, fontsize=15, fontweight="bold", y=0.98)
@@ -403,7 +516,7 @@ def main():
                 lab = {}
                 for s, k in zip(states, keys):
                     G.add_node(k)
-                    lab[k] = m.label(s)
+                    lab[k] = _label_for_key(m, k)
                 for (i, j) in edges:
                     G.add_edge(keys[i], keys[j])
                 labels = lab
@@ -418,11 +531,15 @@ def main():
             G, labels = build_discrete_graph(m)
             sub = f"{G.number_of_nodes()} reachable states"
 
-    C, info = condense_and_classify(G)
+    tint_idx, tint_var = _tint_index(m)
+    C, info = condense_and_classify(G, tint_idx=tint_idx)
     if C.number_of_nodes() > 24:
         C, info, labels, note = simplify_skeleton(C, info, labels)
         sub = sub + note
-    draw(C, info, labels, m.fsm, "morse_graph", out, subtitle=sub)
+    if tint_var is not None:
+        sub = sub + f"  ·  fill = dominant {_abbrev(tint_var['name'])}"
+    draw(C, info, labels, m.fsm, "morse_graph", out, subtitle=sub,
+         tint_var=tint_var)
     print(f"wrote {out}: {C.number_of_nodes()} SCC nodes, "
           f"{C.number_of_edges()} condensation edges")
 

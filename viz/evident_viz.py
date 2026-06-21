@@ -26,6 +26,23 @@ import json
 import z3
 
 
+# Visual-channel effectiveness by variable class (Cleveland & McGill 1984 /
+# Mackinlay 1986): POSITION decodes best for everything; SIZE is good for
+# quantitative but poor for categorical; COLOR (hue) and FACET are excellent for
+# categorical but weak for quantitative. importance(var) x this table decides which
+# variable lands on which channel. Color/size/facet are SECONDARY — a good plot
+# reads from its axes alone.
+CHANNEL_FITNESS = {
+    "x":       {"quant": 1.00, "cat": 0.90},
+    "y":       {"quant": 1.00, "cat": 0.90},
+    "size":    {"quant": 0.70, "cat": 0.25},
+    "opacity": {"quant": 0.60, "cat": 0.25},
+    "color":   {"quant": 0.40, "cat": 0.85},
+    "facet":   {"quant": 0.20, "cat": 0.80},
+    "shape":   {"quant": 0.10, "cat": 0.60},
+}
+
+
 def load(smt2_path, schema_path):
     return Model(smt2_path, schema_path)
 
@@ -323,3 +340,40 @@ class Model:
         # most interpretable kind first, then shortest name
         order = {"enum": 0, "string": 1, "int": 2, "real": 3, "bool": 4}
         return sorted(members, key=lambda v: (order.get(v["kind"], 9), len(v["name"])))[0]
+
+    # ---- channel mapping: ranked vars -> visual channels by type-effectiveness ----
+    @staticmethod
+    def var_class(v):
+        """'quant' (int/real — position/size) or 'cat' (bool/enum/string — color/facet)."""
+        return "cat" if v["kind"] in ("bool", "enum", "string") else "quant"
+
+    @property
+    def numeric_vars(self):
+        """Ranked numeric (quantitative) interface vars — for axes/size."""
+        return [v for v in self.state_vars if self.var_class(v) == "quant"]
+
+    @property
+    def categorical_vars(self):
+        """Ranked categorical (enum/bool/string) interface vars — for color/facet."""
+        return [v for v in self.state_vars if self.var_class(v) == "cat"]
+
+    def assign_channels(self, channels, min_fit=0.3):
+        """Map the ranked+deduped variables onto a renderer's declared visual
+        `channels` (names from CHANNEL_FITNESS) by importance x type-effectiveness:
+        position for the top vars, color/facet for categoricals, size for secondary
+        numerics. Returns {channel: var | None}. A channel stays None if no remaining
+        variable suits it. Color/size/facet are SECONDARY — keep the plot readable
+        from the axes alone."""
+        assignment = {ch: None for ch in channels}
+        free = [ch for ch in channels if ch in CHANNEL_FITNESS]
+        for v in self.state_vars:
+            cls = self.var_class(v)
+            # only channels where this var's type is decoded well enough
+            cand = [ch for ch in free if CHANNEL_FITNESS[ch][cls] >= min_fit]
+            if not cand:
+                continue                       # skip this var; a later one may fit
+            # best fitness, ties broken toward the earlier-declared channel (x < y)
+            best = max(cand, key=lambda ch: (CHANNEL_FITNESS[ch][cls], -channels.index(ch)))
+            assignment[best] = v
+            free.remove(best)
+        return assignment

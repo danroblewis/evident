@@ -15,8 +15,13 @@ Works for ANY Evident IR pair, degrading by program type:
     we sample states visited along a handful of seeded trajectories and the
     nondeterministic fan out of each, then draw that finite subgraph.
 
-Terminal / absorbing nodes (a state whose only successor is itself, or which
-has no successor) are coloured distinctly so fixed points and sinks pop.
+Channel mapping (evident_viz): nodes are whole-vector states, but to surface a
+THIRD variable beyond the (x, y) of the layout we COLOR each node by the
+top-ranked categorical var (`categorical_vars[0]`) — hue is excellent for
+enum/bool — with a legend mapping value -> color. Terminal / absorbing nodes
+(a state whose only successor is itself, or which has no successor) keep a
+distinct ring so fixed points and sinks still pop. Optionally a secondary
+numeric var drives node SIZE (coarse quantitative channel).
 """
 import sys
 import matplotlib
@@ -117,6 +122,72 @@ def numeric_axis_pos(m, G, states):
     return {n: (states[n][ax], states[n][ay]) for n in G.nodes()}, ax, ay
 
 
+def _cat_value(state, name, m):
+    """Stringify a categorical var's value for legend keys. Enum/string values
+    come through as-is; bools as their literal."""
+    v = state.get(name)
+    return str(v)
+
+
+def color_by_categorical(m, G, states):
+    """COLOR channel: map each node to a hue by the top-ranked categorical var.
+    Returns (face_colors list aligned to G.nodes(), legend_pairs [(label,color)],
+    var_name) or (None, None, None) if there's no categorical var to encode."""
+    cats = m.categorical_vars
+    if not cats:
+        return None, None, None
+    name = cats[0]["name"]
+    # Determine the value domain: enum variants give a stable order; otherwise
+    # collect the values actually present.
+    if name in m.enum_variants and m.enum_variants[name]:
+        domain = list(m.enum_variants[name])
+    else:
+        seen = []
+        for n in G.nodes():
+            val = _cat_value(states[n], name, m)
+            if val not in seen:
+                seen.append(val)
+        # bools read nicest in a fixed order
+        if set(seen) <= {"True", "False", "true", "false"}:
+            seen = sorted(seen, key=lambda s: s.lower() != "false")
+        domain = seen
+    # Also fold in any values present but not in the declared domain.
+    for n in G.nodes():
+        val = _cat_value(states[n], name, m)
+        if val not in domain:
+            domain.append(val)
+
+    cmap = plt.get_cmap("tab10" if len(domain) <= 10 else "tab20")
+    palette = {val: cmap(i % cmap.N) for i, val in enumerate(domain)}
+    face = [palette[_cat_value(states[n], name, m)] for n in G.nodes()]
+    legend = [(f"{name.split('.')[-1]} = {val}", palette[val]) for val in domain]
+    return face, legend, name
+
+
+def size_by_numeric(m, G, states, base, lo, hi):
+    """SIZE channel (coarse quantitative): scale node area by a secondary numeric
+    var, if one is available and not already consumed by the axes. Returns a list
+    of node sizes aligned to G.nodes(), plus the var name, or (None, None)."""
+    nums = m.numeric_vars
+    # Axes (when phase layout) already use nums[0], nums[1]; a size var must be a
+    # DIFFERENT numeric. Pick the first numeric whose values actually vary.
+    for v in nums:
+        name = v["name"]
+        vals = [states[n].get(name) for n in G.nodes()]
+        vals = [x for x in vals if isinstance(x, (int, float))]
+        if len(set(vals)) < 2:
+            continue
+        vmin, vmax = min(vals), max(vals)
+        rng = (vmax - vmin) or 1
+        sizes = []
+        for n in G.nodes():
+            x = states[n].get(name)
+            t = (x - vmin) / rng if isinstance(x, (int, float)) else 0.0
+            sizes.append(lo + t * (hi - lo))
+        return sizes, name
+    return None, None
+
+
 def render(smt2, schema, out_path):
     m = load(smt2, schema)
     title_type = "state_graph"
@@ -192,16 +263,44 @@ def render(smt2, schema, out_path):
         h = min(max(8, n_nodes * 0.55), 30)
     fig, ax = plt.subplots(figsize=(w, h))
 
-    node_colors = ["#e8743b" if n in terminal else "#5b9bd5" for n in G.nodes()]
     self_loops = [(u, v) for u, v in G.edges() if u == v]
     plain_edges = [(u, v) for u, v in G.edges() if u != v]
 
-    node_size = 1600 if n_nodes <= 30 else (900 if n_nodes <= 80 else 120)
+    base_size = 1600 if n_nodes <= 30 else (900 if n_nodes <= 80 else 120)
     font_size = 8 if n_nodes <= 30 else (6 if n_nodes <= 80 else 4)
 
-    nx.draw_networkx_nodes(G, pos, ax=ax, node_color=node_colors,
-                           node_size=node_size, edgecolors="#222222",
-                           linewidths=0.6)
+    # COLOR channel: hue by the top categorical var (legend). If the model has no
+    # categorical var (pure-numeric, e.g. vanderpol), fall back to the plain
+    # state/terminal two-tone. Terminal nodes ALWAYS get a heavy ring so fixed
+    # points stay visible regardless of which hue they carry.
+    face_colors, color_legend, color_var = color_by_categorical(m, G, states)
+    if face_colors is None:
+        face_colors = ["#e8743b" if n in terminal else "#5b9bd5"
+                       for n in G.nodes()]
+
+    # SIZE channel (coarse quantitative): a secondary numeric var, only when it
+    # isn't the phase-layout axes and the graph is small enough that size reads.
+    node_size = base_size
+    size_var = None
+    if n_nodes <= 120:
+        consumed = set()
+        if phase is not None:
+            consumed = {axx, axy}
+        sizes, size_var = size_by_numeric(
+            m, G, states, base_size, base_size * 0.45, base_size * 1.7)
+        # Skip if the chosen numeric is already an axis.
+        if size_var in consumed:
+            sizes, size_var = None, None
+        if sizes is not None:
+            node_size = sizes
+
+    # Terminal nodes: heavy dark ring so they pop on top of the hue coloring.
+    edge_colors = ["#e8743b" if n in terminal else "#222222" for n in G.nodes()]
+    line_widths = [2.4 if n in terminal else 0.6 for n in G.nodes()]
+
+    nx.draw_networkx_nodes(G, pos, ax=ax, node_color=face_colors,
+                           node_size=node_size, edgecolors=edge_colors,
+                           linewidths=line_widths)
     nx.draw_networkx_edges(G, pos, ax=ax, edgelist=plain_edges,
                            arrows=True, arrowstyle="-|>", arrowsize=10,
                            edge_color="#888888", width=0.8,
@@ -220,8 +319,14 @@ def render(smt2, schema, out_path):
         nx.draw_networkx_labels(G, pos, labels=labels, ax=ax,
                                 font_size=font_size, font_family="monospace")
 
+    subtitle = ""
+    if color_var is not None:
+        subtitle += f"  color: {color_var.split('.')[-1]}"
+    if size_var is not None:
+        subtitle += f"  size: {size_var.split('.')[-1]}"
     ax.set_title(
-        f"{m.fsm} — {title_type}  ({mode}; {n_nodes} states, {n_edges} edges)",
+        f"{m.fsm} — {title_type}  ({mode}; {n_nodes} states, {n_edges} edges)"
+        + subtitle,
         fontsize=14, fontweight="bold")
     if axis_labels is not None:
         ax.set_xlabel(axis_labels[0])
@@ -231,10 +336,17 @@ def render(smt2, schema, out_path):
     else:
         ax.axis("off")
 
-    legend = [
-        mpatches.Patch(color="#5b9bd5", label="state"),
-        mpatches.Patch(color="#e8743b", label="terminal / fixed point"),
-    ]
+    if color_legend is not None:
+        # Hue legend keyed by the categorical var's value, plus a terminal marker.
+        legend = [mpatches.Patch(color=c, label=lbl) for lbl, c in color_legend]
+        legend.append(
+            mpatches.Patch(facecolor="white", edgecolor="#e8743b", linewidth=2.4,
+                           label="terminal / fixed point (ring)"))
+    else:
+        legend = [
+            mpatches.Patch(color="#5b9bd5", label="state"),
+            mpatches.Patch(color="#e8743b", label="terminal / fixed point"),
+        ]
     ax.legend(handles=legend, loc="upper right", fontsize=9, framealpha=0.9)
 
     fig.savefig(out_path, dpi=120, bbox_inches="tight")
