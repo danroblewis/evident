@@ -1,0 +1,133 @@
+-- grep — a UTILITY program: search each input line for a CONSTANT (fixed)
+-- substring, counting the matches. The state is a streaming counter + flag:
+-- per tick we consume the next input line, set `matched` iff the fixed pattern
+-- occurs as a substring of that line, and advance the match count.
+--
+--   evident phase-portrait examples/daemons/grep.ev --axes state.line_no,state.match_count
+--
+-- The portrait is a staircase in (line_no × match_count) space: line_no climbs
+-- 0,1,2,… each tick; match_count steps up on the ticks whose line contained the
+-- pattern, and stays flat otherwise — the running grep count over the stream.
+--
+-- The substring test is a real character-window scan in Z3, not a precomputed
+-- flag: each line is a fixed Seq(Int) of character codes, the pattern is a fixed
+-- Seq(Int), and `matched = ∃ start : ∀ j : line[start+j] = pat[j]`. There is no
+-- string-substring primitive in the language, so the scan IS the implementation.
+import "stdlib/runtime.ev"
+
+-- Pattern "ab" as character codes (a=97, b=98). Length 2.
+-- Input lines as character codes (length 4 each, space-padded with 32):
+--   line 0 "abxy" → [97, 98,120,121]  matches ("ab" at 0)
+--   line 1 "xyab" → [120,121, 97, 98] matches ("ab" at 2)
+--   line 2 "axby" → [ 97,120, 98,121] no match
+--   line 3 "zzzz" → [122,122,122,122] no match
+-- So over the 4-line stream the running match_count ends at 2.
+
+type GrepState
+    line_no     ∈ Int
+    match_count ∈ Int
+    matched     ∈ Bool
+    done        ∈ Bool
+
+-- The fixed pattern length (P) and line length (L); windows start in {0..L-P}.
+-- pat = [97, 98]; the scan unrolls ∃ start ∈ {0..2} : line[start] = 97 ∧ line[start+1] = 98.
+
+fsm grep(state ∈ GrepState)
+    -- The current line's four character codes, selected by the PREVIOUS line_no.
+    -- (A complete lookup over the line index; sentinel row 32,32,32,32 past EOF.)
+    n ∈ Int = _state.line_no
+    c0 ∈ Int = (n = 0 ? 97  : (n = 1 ? 120 : (n = 2 ? 97  : (n = 3 ? 122 : 32))))
+    c1 ∈ Int = (n = 0 ? 98  : (n = 1 ? 121 : (n = 2 ? 120 : (n = 3 ? 122 : 32))))
+    c2 ∈ Int = (n = 0 ? 120 : (n = 1 ? 97  : (n = 2 ? 98  : (n = 3 ? 122 : 32))))
+    c3 ∈ Int = (n = 0 ? 121 : (n = 1 ? 98  : (n = 2 ? 121 : (n = 3 ? 122 : 32))))
+
+    line ∈ Seq(Int) = ⟨c0, c1, c2, c3⟩
+    pat  ∈ Seq(Int) = ⟨97, 98⟩
+
+    -- substring scan: pattern "ab" occurs iff some window lines up.
+    cur_matched ∈ Bool = (∃ s ∈ {0..2} : (line[s] = pat[0] ∧ line[s + 1] = pat[1]))
+
+    total_lines ∈ Int = 4
+
+    is_first_tick ⇒
+        (state.line_no = 0 ∧ state.match_count = 0 ∧ ¬state.matched ∧ ¬state.done)
+    ¬is_first_tick ⇒
+        (state.line_no    = _state.line_no + 1)
+    ¬is_first_tick ⇒
+        (state.matched    = (cur_matched ∧ (n < total_lines)))
+    ¬is_first_tick ⇒
+        (state.match_count = (state.matched ? _state.match_count + 1 : _state.match_count))
+    ¬is_first_tick ⇒
+        (state.done       = (state.line_no ≥ total_lines))
+
+-- ── Static tests (validate the transition encodes; zero dropped constraints) ──
+
+claim sat_first_tick_seeds_zero
+    _state ∈ GrepState
+    state ∈ GrepState
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = true
+    grep
+    (state.line_no = 0 ∧ state.match_count = 0 ∧ ¬state.matched ∧ ¬state.done)
+
+-- Line 0 "abxy" contains "ab" → matched, count 0 → 1.
+claim sat_line0_matches
+    _state ∈ GrepState
+    state ∈ GrepState
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_state.line_no = 0 ∧ _state.match_count = 0)
+    grep
+    (state.matched ∧ state.match_count = 1 ∧ state.line_no = 1)
+
+-- Line 1 "xyab" contains "ab" at offset 2 → matched, count 1 → 2.
+claim sat_line1_matches_suffix
+    _state ∈ GrepState
+    state ∈ GrepState
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_state.line_no = 1 ∧ _state.match_count = 1)
+    grep
+    (state.matched ∧ state.match_count = 2)
+
+-- Line 2 "axby" does NOT contain "ab" (chars separated) → no match, count holds.
+claim sat_line2_no_match
+    _state ∈ GrepState
+    state ∈ GrepState
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_state.line_no = 2 ∧ _state.match_count = 2)
+    grep
+    (¬state.matched ∧ state.match_count = 2)
+
+-- Past EOF (line_no = 4) → done, no further match.
+claim sat_eof_done
+    _state ∈ GrepState
+    state ∈ GrepState
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_state.line_no = 3 ∧ _state.match_count = 2)
+    grep
+    (state.line_no = 4 ∧ state.done)
+
+-- Line 2 has no "ab" substring — it can NEVER report a match.
+claim unsat_line2_cannot_match
+    _state ∈ GrepState
+    state ∈ GrepState
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_state.line_no = 2 ∧ _state.match_count = 2)
+    grep
+    state.matched

@@ -850,3 +850,80 @@ claim gl_demo(state, state_next ∈ WState,
         WLoop(n) ⇒ (n > 0 ? ⟨frame_seq⟩ : ⟨Println("done"), Exit(0)⟩)
         WEnd     ⇒ ⟨⟩
 ```
+
+## 12. Utility-program corpus (grep / cut / brackets / find / ps)
+
+Found while building the utility daemons in `examples/daemons/`. None blocked a
+correct, exportable, visualizable program (each was worked around), but they are
+real and several are *silent*.
+
+### 12a. Tuple-set membership does NOT act as a relational lookup
+
+**Where:** `cut.ev`, `grep.ev` (both avoided it).
+
+`(key, free₁, …) ∈ {(k₁,a₁,…), …}` with `key` pinned and the other columns free is
+**UNSAT** — it does not select/propagate the matching row's values. Verified
+minimal: `a ∈ Int = 1 ; b ∈ Int ; (a, b) ∈ {(1, 8), (2, 9)} ; b = 8` is **UNSAT**
+(b = 8 should hold). The named-set form (`assert tbl = {…} ; (a, b) ∈ tbl`) errored
+on load in a quick probe.
+
+**This contradicts** the "complete lookup pattern" in `CLAUDE.md` /
+`docs/design/program-structure.md` (`(left, right, vx) ∈ walk_table`), documented as
+*the* way to do discrete input→output dispatch. Either the idiom regressed, needs a
+form we couldn't find, or the docs are aspirational.
+
+Workaround: ternary / `match` selection keyed on the pinned index (what grep.ev and
+cut.ev do). Fix idea: make tuple-membership with free columns propagate the unique
+matching row (a relational join), or correct the docs and ship a working
+`lookup(table, key) → value` stdlib claim.
+
+### 12b. Guarded *positional* claim invocation drops
+
+**Where:** `cut.ev`.
+
+`cond ⇒ ClaimName(arg1, arg2)` (a guarded invocation with **explicit positional
+args**) silently drops ("couldn't translate to Bool"). Only the names-match bare
+form `cond ⇒ ClaimName` composes with the guard. Workaround: inline the body, or
+use names-match.
+
+### 12c. Variable-depth Seq stack isn't expressible; locals can't sit in an implies-block
+
+**Where:** `brackets.ev`.
+
+- `s.stack = ⟨x⟩ ++ _s.stack` (concatenating a literal with an **opaque carried
+  Seq**) drops — consistent with the documented `++` rule (only statically-resolvable
+  operands flatten). So a true variable-depth pushdown stack can't be carried; use a
+  **bounded fixed-width slot stack** (which caps nesting depth).
+- `name ∈ T = expr` local declarations inside an `is_first_tick ⇒ …` /
+  `¬is_first_tick ⇒ …` **indented implies-block** are a parse error ("expected
+  schema/claim/…, got Eq"). Hoist derived locals to the fsm-body top level (they may
+  depend only on `_state`).
+
+### 12d. No string-search / line-IO / filesystem-IO primitives for real data
+
+**Where:** `grep.ev`, `cut.ev` (text), `find.ev`, `ps.ev` (OS).
+
+- No substring / `contains` primitive — only string `=` and `++`. grep implements
+  matching as a fixed-width **character-window scan** over `Seq(Int)` code points.
+- No `getline`-style read effect and no `String → codepoint` decomposition, so real
+  line-by-line text IO isn't available; the text tools model input as a fixed
+  in-program `Seq`.
+- `stdlib/posix.ev` does not expose `readdir` / `stat` / `/proc` reads usable from
+  Evident, so find/ps model a small directory tree / process list as in-program data.
+
+**Consequence:** these programs are correct + exportable + visualizable but operate
+on **modeled** data, not the live system. Real-data versions need: a substring
+builtin (or a KMP stdlib), a line-read effect + char decomposition, and filesystem /
+`/proc` FFI wrappers in stdlib.
+
+### 12e. Post-EOF state is under-constrained — and the diagram shows it
+
+**Where:** `brackets.ev` (visible in `time_series__brackets`).
+
+After the program sets `done = true` (input exhausted), the transition leaves the
+working state (the bracket-stack slots, `ok`) unconstrained, so those leaves *drift*
+nondeterministically on subsequent ticks. The *output during processing* is correct;
+the post-halt drift is harmless for the result but **plainly visible** in the time
+series (tracks wiggling after the done-tick). This is the intended use of the
+visualizations as a correctness lens — under-constraining is not hidden, it is drawn.
+(Fix if desired: pin `state = _state` once `_done` is true.)

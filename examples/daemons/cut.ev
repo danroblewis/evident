@@ -1,0 +1,130 @@
+-- cut -d<delim> -f<N>: a streaming field-extractor as an FSM.
+--
+-- Each tick advances a cursor (line_no) over an input of pre-split lines,
+-- extracts field N of the current line, and records how many fields that
+-- line had. The carried state is a streaming cursor + the extraction result:
+--
+--   line_no      ∈ Int     -- 1-based index of the line just consumed
+--   field        ∈ String  -- field N of that line (sentinel "" if absent)
+--   field_count  ∈ Int     -- number of fields on that line
+--
+-- String-splitting on a delimiter is modelled offline: the input is a fixed
+-- table of already-split lines. We emulate `cut -d: -f2` over four lines:
+--
+--   alice:30:NYC      → field 2 = "30"   (3 fields)
+--   bob:25:LA         → field 2 = "25"   (3 fields)
+--   carol:40:SF:extra → field 2 = "40"   (4 fields)
+--   dave              → field 2 = ""     (1 field, no field 2)
+--
+-- The transition is `line_no := _line_no + 1`, then a COMPLETE lookup over
+-- line_no selects (field, field_count). line_no = 0 is the pre-stream state;
+-- past the last line we land on the END sentinel row.
+--
+--   evident phase-portrait examples/daemons/cut.ev --axes state.line_no,state.field_count
+--
+import "stdlib/runtime.ev"
+
+type CutState
+    line_no     ∈ Int
+    field       ∈ String
+    field_count ∈ Int
+
+fsm cut(state ∈ CutState)
+    -- The new cursor: advance one line, but never past END (line 5).
+    nl ∈ Int = (_state.line_no ≥ 5 ? 5 : _state.line_no + 1)
+
+    -- COMPLETE lookup over the new line index, selecting field 2 and the
+    -- line's field count. Lines 1..4 are the pre-split input; 0 is pre-stream,
+    -- 5 is END. Sentinel "" / 0 for the no-field rows (like grep's EOF padding).
+    --   1 alice:30:NYC      → field2 "30", 3 fields
+    --   2 bob:25:LA         → field2 "25", 3 fields
+    --   3 carol:40:SF:extra → field2 "40", 4 fields
+    --   4 dave              → field2 "",   1 field   (no field 2)
+    sel_field ∈ String = (nl = 1 ? "30" : (nl = 2 ? "25" : (nl = 3 ? "40" : (nl = 4 ? "" : ""))))
+    sel_count ∈ Int = (nl = 1 ? 3 : (nl = 2 ? 3 : (nl = 3 ? 4 : (nl = 4 ? 1 : 0))))
+
+    is_first_tick ⇒
+        (state.line_no = 0 ∧ state.field = "" ∧ state.field_count = 0)
+    ¬is_first_tick ⇒
+        (state.line_no = nl)
+    ¬is_first_tick ⇒
+        (state.field = sel_field)
+    ¬is_first_tick ⇒
+        (state.field_count = sel_count)
+
+-- ── Static tests (validate the transition encodes — no silent drops) ──
+
+-- First tick seeds the pre-stream cursor.
+claim sat_first_tick_seeds_zero
+    _state ∈ CutState
+    state ∈ CutState
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = true
+    cut
+    (state.line_no = 0 ∧ state.field_count = 0)
+
+-- From the pre-stream state, the first line is consumed: field 2 of
+-- "alice:30:NYC" is "30", with 3 fields.
+claim sat_first_line_extracts_field
+    _state ∈ CutState
+    state ∈ CutState
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    _state.line_no = 0
+    cut
+    (state.line_no = 1 ∧ state.field = "30" ∧ state.field_count = 3)
+
+-- A line with extra fields keeps field 2 but reports the larger count:
+-- "carol:40:SF:extra" → field 2 = "40", 4 fields.
+claim sat_extra_fields_counted
+    _state ∈ CutState
+    state ∈ CutState
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    _state.line_no = 2
+    cut
+    (state.line_no = 3 ∧ state.field = "40" ∧ state.field_count = 4)
+
+-- A short line ("dave", 1 field) has no field 2: the sentinel "" is emitted.
+claim sat_missing_field_is_empty
+    _state ∈ CutState
+    state ∈ CutState
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    _state.line_no = 3
+    cut
+    (state.line_no = 4 ∧ state.field = "" ∧ state.field_count = 1)
+
+-- The cursor parks at END and stays there (idempotent past the input).
+claim sat_end_is_fixpoint
+    _state ∈ CutState
+    state ∈ CutState
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    _state.line_no = 5
+    cut
+    state.line_no = 5
+
+-- The cursor strictly advances within the stream — line 1 never follows
+-- the pre-stream state going backward, and never skips. From line 1 the
+-- next line is 2, not 1: no re-reading.
+claim unsat_cursor_does_not_repeat
+    _state ∈ CutState
+    state ∈ CutState
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    _state.line_no = 1
+    cut
+    state.line_no = 1

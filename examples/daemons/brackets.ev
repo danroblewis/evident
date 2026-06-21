@@ -1,0 +1,168 @@
+-- brackets: a balanced-bracket validator — a pushdown automaton run as an FSM.
+--
+-- The classic "validate" utility: stream bracket tokens through a stack. Push on
+-- an opener, pop-and-match on a closer, fail if a closer has no matching opener
+-- (depth would go negative) or mismatches the top (')' closing a '['). The input
+-- is balanced iff, at end of stream, the stack is empty and no mismatch occurred.
+--
+-- STATE SHAPE (new): a PARSER STACK — pushdown depth (Nat) + a bounded typed
+-- stack (s0..s3, capacity 4) + a validity flag. The stack is bounded because a
+-- difference equation carries fixed-width state; this validates inputs nesting
+-- ≤ 4 deep, which is the representative shape. depth is the live prefix length;
+-- the open-kind at slot k is meaningful only for k < depth.
+--
+--   evident phase-portrait examples/daemons/brackets.ev --axes state.depth,state.ok
+--
+-- The portrait traces depth climbing as openers arrive and draining back to 0 as
+-- closers match — a balanced input returns to (depth=0, ok=true); an unbalanced
+-- one latches ok=false.
+import "stdlib/runtime.ev"
+
+-- The input alphabet: six brackets plus an end-of-stream sentinel.
+enum Bracket = LParen | RParen | LBrack | RBrack | LBrace | RBrace | BEnd
+
+-- What a stack slot holds: an open-bracket kind, or ONone for an empty slot.
+enum Open = ONone | ORound | OSquare | OCurly
+
+type Brackets
+    pos   ∈ Int        -- cursor into the input stream
+    depth ∈ Int        -- pushdown depth (Nat): number of unmatched openers
+    s0    ∈ Open        -- stack slot 0 (bottom)
+    s1    ∈ Open        -- stack slot 1
+    s2    ∈ Open        -- stack slot 2
+    s3    ∈ Open        -- stack slot 3 (top of a capacity-4 stack)
+    ok    ∈ Bool        -- has every closer matched its opener so far?
+    done  ∈ Bool        -- has the end-of-stream sentinel been consumed?
+
+fsm brackets(st ∈ Brackets)
+    -- Fixed representative input: ( [ ] { } ) BEnd  — a balanced stream.
+    input ∈ Seq(Bracket) = ⟨LParen, LBrack, RBrack, LBrace, RBrace, RParen, BEnd⟩
+
+    -- The token under the cursor, and its classification (all derived from _st).
+    tok ∈ Bracket = input[_st.pos]
+    is_open ∈ Bool = ((tok = LParen) ∨ (tok = LBrack) ∨ (tok = LBrace))
+    is_close ∈ Bool = ((tok = RParen) ∨ (tok = RBrack) ∨ (tok = RBrace))
+
+    -- Which Open kind this token pushes (ONone if it isn't an opener) …
+    push_kind ∈ Open = match tok
+        LParen ⇒ ORound
+        LBrack ⇒ OSquare
+        LBrace ⇒ OCurly
+        _      ⇒ ONone
+
+    -- … and which Open kind a closer must find on top to match.
+    need_kind ∈ Open = match tok
+        RParen ⇒ ORound
+        RBrack ⇒ OSquare
+        RBrace ⇒ OCurly
+        _      ⇒ ONone
+
+    -- The current top-of-stack open kind (ONone when the stack is empty).
+    top ∈ Open = (_st.depth = 1 ? _st.s0
+                  : (_st.depth = 2 ? _st.s1
+                     : (_st.depth = 3 ? _st.s2
+                        : (_st.depth = 4 ? _st.s3 : ONone))))
+
+    -- A closer is well-matched iff the stack is non-empty and the top matches.
+    close_ok ∈ Bool = (is_close ∧ (_st.depth > 0) ∧ (top = need_kind))
+    -- A closer is a failure iff it's a closer that isn't well-matched.
+    close_bad ∈ Bool = (is_close ∧ ¬close_ok)
+
+    is_first_tick ⇒
+        (st.pos = 0 ∧ st.depth = 0 ∧ st.s0 = ONone ∧ st.s1 = ONone
+         ∧ st.s2 = ONone ∧ st.s3 = ONone ∧ st.ok = true ∧ st.done = false)
+
+    ¬is_first_tick ⇒
+        -- Advance the cursor every tick until the sentinel is consumed.
+        st.pos = (_st.done ? _st.pos : _st.pos + 1)
+        st.done = (_st.done ∨ (tok = BEnd))
+
+        -- depth: +1 on an opener, -1 on a matched closer, unchanged otherwise.
+        st.depth = (_st.done ? _st.depth
+                    : (is_open ? _st.depth + 1
+                       : (close_ok ? _st.depth - 1 : _st.depth)))
+
+        -- ok latches false on the first bad closer; never recovers.
+        st.ok = (_st.ok ∧ ¬close_bad)
+
+        -- Stack slots: pushing writes slot[_depth]; everything else preserves.
+        -- (A popped slot keeps its stale value; it's below `depth` so unread.)
+        st.s0 = ((is_open ∧ (_st.depth = 0)) ? push_kind : _st.s0)
+        st.s1 = ((is_open ∧ (_st.depth = 1)) ? push_kind : _st.s1)
+        st.s2 = ((is_open ∧ (_st.depth = 2)) ? push_kind : _st.s2)
+        st.s3 = ((is_open ∧ (_st.depth = 3)) ? push_kind : _st.s3)
+
+-- ── Static tests (validate the transition encodes — zero silent drops) ──
+
+-- First tick seeds an empty stack.
+claim sat_first_tick_empty
+    _st ∈ Brackets
+    st ∈ Brackets
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = true
+    brackets
+    (st.depth = 0 ∧ st.ok = true ∧ st.s0 = ONone)
+
+-- The first token is '(' → push ORound, depth 0→1.
+claim sat_push_opener
+    _st ∈ Brackets
+    st ∈ Brackets
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_st.pos = 0 ∧ _st.depth = 0 ∧ _st.s0 = ONone ∧ _st.ok = true ∧ _st.done = false)
+    brackets
+    (st.depth = 1 ∧ st.s0 = ORound ∧ st.ok = true)
+
+-- pos=2 is ']' with '[' on top (depth 1, s0=OSquare) → matched pop, depth 1→0.
+claim sat_matched_close
+    _st ∈ Brackets
+    st ∈ Brackets
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_st.pos = 2 ∧ _st.depth = 1 ∧ _st.s0 = OSquare ∧ _st.ok = true ∧ _st.done = false)
+    brackets
+    (st.depth = 0 ∧ st.ok = true)
+
+-- A ']' arriving while '(' is on top is a TYPE MISMATCH → ok latches false.
+claim sat_mismatch_latches_fail
+    _st ∈ Brackets
+    st ∈ Brackets
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_st.pos = 2 ∧ _st.depth = 1 ∧ _st.s0 = ORound ∧ _st.ok = true ∧ _st.done = false)
+    brackets
+    st.ok = false
+
+-- A closer with an empty stack (depth 0) underflows → ok latches false.
+-- (pos=5 in the input is ')', a closer.)
+claim sat_underflow_fails
+    _st ∈ Brackets
+    st ∈ Brackets
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_st.pos = 5 ∧ _st.depth = 0 ∧ _st.ok = true ∧ _st.done = false)
+    brackets
+    st.ok = false
+
+-- A MATCHED closer must NOT mark failure: ']' on top of '[' keeps ok true,
+-- so asserting ok=false here is UNSATISFIABLE.
+claim unsat_matched_close_cannot_fail
+    _st ∈ Brackets
+    st ∈ Brackets
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_st.pos = 2 ∧ _st.depth = 1 ∧ _st.s0 = OSquare ∧ _st.ok = true ∧ _st.done = false)
+    brackets
+    st.ok = false

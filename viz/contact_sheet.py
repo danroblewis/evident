@@ -37,6 +37,11 @@ SAMPLES = [
     "examples/daemons/vanderpol.ev",   # numeric  — limit cycle
     "examples/daemons/dungeon.ev",     # discrete — text-adventure map
     "examples/daemons/vending.ev",     # mixed    — enum + int + bool, limit cycle
+    "examples/daemons/grep.ev",        # utility  — streaming match counter
+    "examples/daemons/cut.ev",         # utility  — field extractor (streaming cursor)
+    "examples/daemons/brackets.ev",    # utility  — pushdown bracket validator
+    "examples/daemons/find.ev",        # utility  — directory-traversal frontier
+    "examples/daemons/ps.ev",          # utility  — process-state histogram + max
 ]
 
 

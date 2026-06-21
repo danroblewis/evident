@@ -1,0 +1,155 @@
+-- A `ps`-like process-stats tool: a UTILITY program whose carried STATE is a
+-- CATEGORICAL HISTOGRAM + a RUNNING MAX. A cursor walks a fixed process list one
+-- record per tick; each process is classified by its scheduler STATE (Running /
+-- Sleeping / Disk / Zombie), the matching counter is bumped, and the top-process-
+-- by-memory accumulator (max_mem + its pid) is updated. The reachable state graph
+-- is the running tally over the scan.
+--
+--   evident phase-portrait examples/daemons/ps.ev --axes state.running,state.max_mem
+--
+-- The scheduler state is carried as an Int CODE on each Proc record
+-- (0=Running 1=Sleeping 2=Disk 3=Zombie). A record type with an *enum* field
+-- inside a Seq(Composite) hits a runtime gap ("unsupported field type … in
+-- Datatype"), which silently drops the whole list — so the code is an Int and
+-- the PS_* claims below name the codes for readability.
+--
+-- /proc FFI status: stdlib/posix.ev exposes only low-level libc FFI *builders*
+-- (open/read/close on raw fds) — no directory enumeration of /proc, no parser for
+-- /proc/[pid]/stat. Reading real processes would need a new stdlib wrapper for
+-- readdir + multi-file read + field parsing, which doesn't exist. So the process
+-- list is modeled in-program as a fixed Seq(Proc); the stats logic over it is real.
+import "stdlib/runtime.ev"
+
+type Proc
+    pid  ∈ Int
+    code ∈ Int        -- scheduler state: 0=Running 1=Sleeping 2=Disk 3=Zombie
+    mem  ∈ Int
+
+-- Histogram over scheduler state + running top-by-memory.
+type Stats
+    cursor   ∈ Int    -- index of the next process to consume
+    running  ∈ Int
+    sleeping ∈ Int
+    disk     ∈ Int
+    zombie   ∈ Int
+    max_mem  ∈ Int    -- largest mem seen so far
+    max_pid  ∈ Int    -- pid owning max_mem (-1 before any process)
+
+fsm ps(state ∈ Stats)
+    -- Fixed representative process list (the "scan input").
+    procs ∈ Seq(Proc)
+    #procs = 6
+    procs[0] = Proc(101, 0, 4096)    -- Running
+    procs[1] = Proc(102, 1, 8192)    -- Sleeping
+    procs[2] = Proc(103, 2, 2048)    -- Disk
+    procs[3] = Proc(104, 1, 16384)   -- Sleeping  (the memory hog)
+    procs[4] = Proc(105, 3, 0)       -- Zombie
+    procs[5] = Proc(106, 0, 1024)    -- Running
+
+    is_first_tick ⇒
+        (state.cursor = 0 ∧ state.running = 0 ∧ state.sleeping = 0
+         ∧ state.disk = 0 ∧ state.zombie = 0
+         ∧ state.max_mem = -1 ∧ state.max_pid = -1)
+
+    -- Once the cursor runs off the end, the tally is frozen (fixpoint → halt).
+    done ∈ Bool = (_state.cursor ≥ 6)
+
+    ¬is_first_tick ⇒ (done ⇒
+        (state.cursor = _state.cursor ∧ state.running = _state.running
+         ∧ state.sleeping = _state.sleeping ∧ state.disk = _state.disk
+         ∧ state.zombie = _state.zombie
+         ∧ state.max_mem = _state.max_mem ∧ state.max_pid = _state.max_pid))
+
+    -- Consume the process at the cursor and fold it into the accumulators.
+    cur ∈ Proc = procs[_state.cursor]
+    is_running  ∈ Bool = (cur.code = 0)
+    is_sleeping ∈ Bool = (cur.code = 1)
+    is_disk     ∈ Bool = (cur.code = 2)
+    is_zombie   ∈ Bool = (cur.code = 3)
+    new_max ∈ Bool = (cur.mem > _state.max_mem)
+
+    ¬is_first_tick ⇒ (¬done ⇒
+        (state.cursor   = _state.cursor + 1
+         ∧ state.running  = (is_running  ? _state.running  + 1 : _state.running)
+         ∧ state.sleeping = (is_sleeping ? _state.sleeping + 1 : _state.sleeping)
+         ∧ state.disk     = (is_disk     ? _state.disk     + 1 : _state.disk)
+         ∧ state.zombie   = (is_zombie   ? _state.zombie   + 1 : _state.zombie)
+         ∧ state.max_mem  = (new_max ? cur.mem : _state.max_mem)
+         ∧ state.max_pid  = (new_max ? cur.pid : _state.max_pid)))
+
+-- ── Static tests (validate the transition encodes, no silent drops) ──
+
+claim sat_first_tick_zeroes
+    _state ∈ Stats
+    state ∈ Stats
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = true
+    ps
+    (state.cursor = 0 ∧ state.running = 0 ∧ state.max_mem = -1 ∧ state.max_pid = -1)
+
+-- First process (pid 101, Running, 4096) bumps running and sets the max.
+claim sat_consume_first_running
+    _state ∈ Stats
+    state ∈ Stats
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_state.cursor = 0 ∧ _state.running = 0 ∧ _state.sleeping = 0 ∧ _state.disk = 0
+     ∧ _state.zombie = 0 ∧ _state.max_mem = -1 ∧ _state.max_pid = -1)
+    ps
+    (state.cursor = 1 ∧ state.running = 1 ∧ state.max_mem = 4096 ∧ state.max_pid = 101)
+
+-- The big sleeper (pid 104, mem 16384 at index 3) overtakes the running max.
+claim sat_consume_updates_max
+    _state ∈ Stats
+    state ∈ Stats
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_state.cursor = 3 ∧ _state.running = 1 ∧ _state.sleeping = 1 ∧ _state.disk = 1
+     ∧ _state.zombie = 0 ∧ _state.max_mem = 8192 ∧ _state.max_pid = 102)
+    ps
+    (state.cursor = 4 ∧ state.sleeping = 2 ∧ state.max_mem = 16384 ∧ state.max_pid = 104)
+
+-- A smaller process (pid 106, mem 1024 at index 5) does NOT displace the max.
+claim sat_smaller_keeps_max
+    _state ∈ Stats
+    state ∈ Stats
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_state.cursor = 5 ∧ _state.running = 1 ∧ _state.sleeping = 2 ∧ _state.disk = 1
+     ∧ _state.zombie = 1 ∧ _state.max_mem = 16384 ∧ _state.max_pid = 104)
+    ps
+    (state.cursor = 6 ∧ state.running = 2 ∧ state.max_mem = 16384 ∧ state.max_pid = 104)
+
+-- Past the end the tally is frozen: counts can't change once done.
+claim sat_done_freezes
+    _state ∈ Stats
+    state ∈ Stats
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_state.cursor = 6 ∧ _state.running = 2 ∧ _state.sleeping = 2 ∧ _state.disk = 1
+     ∧ _state.zombie = 1 ∧ _state.max_mem = 16384 ∧ _state.max_pid = 104)
+    ps
+    (state.cursor = 6 ∧ state.running = 2 ∧ state.max_pid = 104)
+
+-- Consuming the Running process at index 0 can't bump the Sleeping counter.
+claim unsat_running_bumps_sleeping
+    _state ∈ Stats
+    state ∈ Stats
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_state.cursor = 0 ∧ _state.running = 0 ∧ _state.sleeping = 0 ∧ _state.disk = 0
+     ∧ _state.zombie = 0 ∧ _state.max_mem = -1 ∧ _state.max_pid = -1)
+    ps
+    state.sleeping = 1
