@@ -28,3 +28,4 @@ viz/combo/
 .playwright-mcp/
 # critic session recordings (screenshots + session logs — watch later, never committed)
 ide/critics/recordings/
+/ide/tasks.json.lock

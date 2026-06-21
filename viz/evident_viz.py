@@ -259,7 +259,9 @@ class Model:
         return all(v["kind"] in ("bool", "enum", "string") for v in self.interface_vars)
 
     def label(self, state):
-        return "(" + ", ".join(str(state[v["name"]]) for v in self.interface_vars) + ")"
+        # Robust to a state that doesn't carry every interface var (some renderers' BFS
+        # track only a subset) — show "?" rather than KeyError-ing the whole render.
+        return "(" + ", ".join(str(state.get(v["name"], "?")) for v in self.interface_vars) + ")"
 
     # ---- variable ranking: dedup redundant ('same-graph') vars, rank the rest ----
     @property

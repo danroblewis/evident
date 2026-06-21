@@ -32,6 +32,7 @@ Usage (run from the repo root):
   python3 ide/task.py reopen ID --by CRITIC [--concern "..."]
   python3 ide/task.py clear-concern ID --by AUTHOR
   python3 ide/task.py summary
+  python3 ide/task.py serve [--host 127.0.0.1] [--port 8787]   # live web view, reloads every 5s
 """
 import argparse
 import json
@@ -228,6 +229,290 @@ def cmd_show(db, a):
     print(json.dumps(c, indent=2) if c else f"no task/concern #{a.id}")
 
 
+_PAGE = """<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Evident web-IDE — task & concern ledger</title>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #171a21; --line: #262b36; --fg: #e6e9ef;
+    --dim: #8b93a3; --accent: #6ea8fe;
+    --open: #9aa4b2; --prog: #d8a657; --wait: #7daea3; --closed: #4caf50;
+    --warn: #e06c75; --ok: #4caf50;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg);
+         font: 14px/1.5 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  header { padding: 18px 28px; border-bottom: 1px solid var(--line);
+           display: flex; align-items: baseline; gap: 16px; }
+  header h1 { font-size: 18px; margin: 0; font-weight: 600; }
+  header .meta { color: var(--dim); font-size: 12px; }
+  .wrap { max-width: 1500px; margin: 0 auto; padding: 24px 28px 64px; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em;
+       color: var(--dim); margin: 28px 0 14px; }
+  .summary { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 8px; }
+  .pill { background: var(--panel); border: 1px solid var(--line); border-radius: 999px;
+          padding: 4px 12px; font-size: 12px; color: var(--dim); }
+  .pill b { color: var(--fg); }
+
+  /* hero-card flex flow: cards grow to fill the row, wrap to the next */
+  .grid { display: flex; flex-flow: row wrap; gap: 16px; align-items: stretch; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+          padding: 18px 20px 16px; position: relative; overflow: hidden;
+          display: flex; flex-flow: column; gap: 10px;
+          flex: 1 1 360px; min-width: 320px; max-width: 560px; cursor: pointer;
+          box-shadow: 0 1px 0 rgba(255,255,255,.02), 0 8px 24px rgba(0,0,0,.28);
+          transition: transform .12s ease, box-shadow .12s ease, border-color .12s ease; }
+  .card:hover { transform: translateY(-2px); border-color: #38414f;
+                box-shadow: 0 10px 30px rgba(0,0,0,.4); }
+  /* accent strip down the left edge, colored by status */
+  .card::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px;
+                  background: var(--line); }
+  .card.s-open::before { background: var(--open); }
+  .card.s-in_progress::before { background: var(--prog); }
+  .card.s-worker_done::before { background: var(--wait); }
+  .card.s-closed::before { background: var(--closed); }
+  .card.c-open::before { background: var(--warn); }
+
+  .card .top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .id { color: var(--dim); font-variant-numeric: tabular-nums; font-size: 12px; }
+  .title { font-weight: 650; font-size: 16px; line-height: 1.3; flex-basis: 100%; }
+  .badge { font-size: 11px; padding: 2px 8px; border-radius: 6px; border: 1px solid var(--line);
+           text-transform: uppercase; letter-spacing: .04em; }
+  .st-open { color: var(--open); } .st-in_progress { color: var(--prog); }
+  .st-worker_done { color: var(--wait); } .st-closed { color: var(--ok); border-color: var(--ok); }
+  .appr { font-family: ui-monospace, Menlo, monospace; font-size: 12px; color: var(--dim); margin-left: auto; }
+  .appr .yes { color: var(--ok); } .appr .no { color: var(--dim); }
+  .detail { color: var(--dim); white-space: pre-wrap; }
+  .tags { display: flex; flex-wrap: wrap; gap: 5px; }
+  .tag { font-size: 11px; background: #20242e; border-radius: 5px; padding: 1px 7px; color: var(--accent); }
+  .concern.cleared { opacity: .55; }
+  .concern .who { color: var(--dim); font-size: 12px; }
+  .log { margin-top: auto; border-top: 1px solid var(--line); padding-top: 10px;
+         display: flex; flex-flow: column; gap: 2px; }
+  .log .row { color: var(--dim); font-size: 12px; }
+  .log .row .at { color: #5b6270; }
+  .empty { color: var(--dim); font-style: italic; }
+  a.anchor { color: var(--accent); text-decoration: none; }
+
+  /* modal */
+  .overlay { position: fixed; inset: 0; background: rgba(0,0,0,.6); backdrop-filter: blur(2px);
+             display: none; align-items: flex-start; justify-content: center;
+             padding: 6vh 20px; overflow-y: auto; z-index: 50; }
+  .overlay.show { display: flex; }
+  .modal { background: var(--panel); border: 1px solid var(--line); border-radius: 16px;
+           width: 100%; max-width: 640px; padding: 24px 26px; position: relative;
+           box-shadow: 0 20px 60px rgba(0,0,0,.55); }
+  .modal .x { position: absolute; top: 14px; right: 16px; cursor: pointer; color: var(--dim);
+              font-size: 22px; line-height: 1; background: none; border: none; }
+  .modal .x:hover { color: var(--fg); }
+  .modal h3 { margin: 0 26px 12px 0; font-size: 19px; line-height: 1.3; }
+  .modal .meta-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 16px; }
+  .modal .field { margin: 14px 0; }
+  .modal .field .k { font-size: 11px; text-transform: uppercase; letter-spacing: .07em;
+                     color: var(--dim); margin-bottom: 4px; }
+  .modal .field .v { white-space: pre-wrap; }
+  .modal .log { margin-top: 16px; }
+
+  /* mobile-adaptive */
+  @media (max-width: 640px) {
+    header { padding: 14px 16px; flex-direction: column; gap: 4px; }
+    header h1 { font-size: 16px; }
+    .wrap { padding: 16px 14px 48px; }
+    h2 { margin: 20px 0 10px; }
+    .grid { gap: 12px; }
+    .card { flex-basis: 100%; min-width: 0; max-width: none; padding: 14px 16px; border-radius: 12px; }
+    .card:hover { transform: none; }
+    .title { font-size: 15px; }
+    .overlay { padding: 0; align-items: stretch; }
+    .modal { max-width: none; min-height: 100%; border-radius: 0; padding: 20px 18px; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Evident web-IDE ledger</h1>
+  <span class="meta" id="meta">loading…</span>
+</header>
+<div class="wrap">
+  <div class="summary" id="summary"></div>
+  <h2>Open concerns</h2>
+  <div class="grid" id="concerns"></div>
+  <h2>Tasks</h2>
+  <div class="grid" id="tasks"></div>
+</div>
+<div class="overlay" id="overlay">
+  <div class="modal" id="modal" role="dialog" aria-modal="true">
+    <button class="x" id="modalClose" aria-label="close">×</button>
+    <div id="modalBody"></div>
+  </div>
+</div>
+<script>
+const CRITICS = ["ide-critic", "ide-critic-newcomer", "ide-critic-expert"];
+const SHORT = {"ide-critic": "critic", "ide-critic-newcomer": "newcomer", "ide-critic-expert": "expert"};
+function esc(s) {
+  return String(s == null ? "" : s).replace(/[&<>"]/g, c => (
+    {"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c]));
+}
+function appr(t) {
+  return CRITICS.map(c => {
+    const ok = (t.approvals || []).includes(c);
+    return `<span class="${ok ? "yes" : "no"}" title="${esc(c)}">${SHORT[c]}${ok ? "✓" : "·"}</span>`;
+  }).join(" ");
+}
+function logHtml(item) {
+  return (item.log || []).map(l =>
+    `<div class="row"><span class="at">${esc((l.at||"").replace("T"," ").replace("Z",""))}</span> — `
+    + `${esc(l.by)} <b>${esc(l.act)}</b>${l.note ? ": " + esc(l.note) : ""}</div>`).join("");
+}
+let STATE = {tasks: [], concerns: []};
+function taskCard(t) {
+  const tags = (t.tags || []).map(x => `<span class="tag">${esc(x)}</span>`).join("");
+  const ro = t.reopened ? ` <span class="id">reopened×${t.reopened}</span>` : "";
+  const log = logHtml(t);
+  return `<div class="card s-${esc(t.status)}" data-kind="task" data-id="${t.id}">
+    <div class="top">
+      <span class="id">#${t.id}</span>
+      <span class="badge st-${esc(t.status)}">${esc(t.status)}</span>${ro}
+      <span class="appr">${appr(t)}</span>
+    </div>
+    <div class="title">${esc(t.title)}</div>
+    ${tags ? `<div class="tags">${tags}</div>` : ""}
+    ${log ? `<div class="log">${log}</div>` : ""}
+  </div>`;
+}
+function concernCard(c) {
+  const cleared = c.status !== "open";
+  return `<div class="card concern ${cleared ? "cleared" : "c-open"}" data-kind="concern" data-id="${c.id}">
+    <div class="top">
+      <span class="id">#${c.id}</span>
+      <span class="badge">${esc(c.status)}</span>
+      <span class="who" style="margin-left:auto">by ${esc(c.by)}${c.task ? " · task #" + c.task : ""}</span>
+    </div>
+    <div class="title">${esc(c.title)}</div>
+  </div>`;
+}
+function field(k, v) {
+  return v ? `<div class="field"><div class="k">${esc(k)}</div><div class="v">${esc(v)}</div></div>` : "";
+}
+function taskModal(t) {
+  const log = logHtml(t);
+  return `<h3>${esc(t.title)}</h3>
+    <div class="meta-row">
+      <span class="id">#${t.id}</span>
+      <span class="badge st-${esc(t.status)}">${esc(t.status)}</span>
+      ${t.reopened ? `<span class="id">reopened×${t.reopened}</span>` : ""}
+      <span class="appr">${appr(t)}</span>
+    </div>
+    ${field("Detail", t.detail)}
+    ${field("Created by", `${t.created_by || "?"}${t.created ? " · " + t.created.replace("T"," ").replace("Z","") : ""}`)}
+    ${t.addresses_concern ? field("Addresses", "concern #" + t.addresses_concern) : ""}
+    ${(t.tags||[]).length ? `<div class="field"><div class="k">Tags</div><div class="tags">${(t.tags||[]).map(x=>`<span class="tag">${esc(x)}</span>`).join("")}</div></div>` : ""}
+    ${field("Approvals", (t.approvals||[]).join(", ") || "none yet")}
+    ${log ? `<div class="field"><div class="k">Activity</div><div class="log">${log}</div></div>` : ""}`;
+}
+function concernModal(c) {
+  return `<h3>${esc(c.title)}</h3>
+    <div class="meta-row">
+      <span class="id">#${c.id}</span>
+      <span class="badge">${esc(c.status)}</span>
+      <span class="who">by ${esc(c.by)}</span>
+    </div>
+    ${field("Detail", c.detail)}
+    ${field("Raised on", c.created ? c.created.replace("T"," ").replace("Z","") : "")}
+    ${c.task ? field("Linked task", "#" + c.task) : ""}
+    ${c.cleared ? field("Cleared", c.cleared.replace("T"," ").replace("Z","")) : ""}`;
+}
+function openModal(kind, id) {
+  const item = (kind === "task" ? STATE.tasks : STATE.concerns).find(x => x.id === id);
+  if (!item) return;
+  document.getElementById("modalBody").innerHTML =
+    kind === "task" ? taskModal(item) : concernModal(item);
+  document.getElementById("overlay").classList.add("show");
+}
+function closeModal() { document.getElementById("overlay").classList.remove("show"); }
+document.getElementById("modalClose").addEventListener("click", closeModal);
+document.getElementById("overlay").addEventListener("click", e => {
+  if (e.target.id === "overlay") closeModal();
+});
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeModal(); });
+["concerns", "tasks"].forEach(gid => document.getElementById(gid).addEventListener("click", e => {
+  const card = e.target.closest(".card");
+  if (card && card.dataset.id) openModal(card.dataset.kind, Number(card.dataset.id));
+}));
+async function refresh() {
+  try {
+    const db = await (await fetch("/api/data", {cache: "no-store"})).json();
+    const tasks = db.tasks || [], concerns = db.concerns || [];
+    STATE = {tasks, concerns};
+    const byStatus = {};
+    tasks.forEach(t => byStatus[t.status] = (byStatus[t.status] || 0) + 1);
+    const openC = concerns.filter(c => c.status === "open");
+    document.getElementById("summary").innerHTML =
+      `<span class="pill"><b>${tasks.length}</b> tasks</span>`
+      + ["open", "in_progress", "worker_done", "closed"].map(s =>
+          `<span class="pill">${s}: <b>${byStatus[s] || 0}</b></span>`).join("")
+      + `<span class="pill"><b>${openC.length}</b> open concerns</span>`;
+    document.getElementById("concerns").innerHTML =
+      openC.length ? openC.map(concernCard).join("")
+                   : `<div class="empty">no open concerns</div>`;
+    const order = {in_progress: 0, worker_done: 1, open: 2, closed: 3};
+    const sorted = tasks.slice().sort((a, b) =>
+      (order[a.status] ?? 9) - (order[b.status] ?? 9) || a.id - b.id);
+    document.getElementById("tasks").innerHTML =
+      sorted.length ? sorted.map(taskCard).join("") : `<div class="empty">no tasks yet</div>`;
+    const now = new Date().toLocaleTimeString();
+    document.getElementById("meta").textContent =
+      `${tasks.length} tasks · ${openC.length} open concerns · updated ${now}`;
+  } catch (e) {
+    document.getElementById("meta").textContent = "reload failed: " + e;
+  }
+}
+refresh();
+setInterval(refresh, 5000);
+</script>
+</body>
+</html>
+"""
+
+
+def cmd_serve(db, a):
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+
+    class Handler(BaseHTTPRequestHandler):
+        def _send(self, code, body, ctype):
+            data = body.encode("utf-8") if isinstance(body, str) else body
+            self.send_response(code)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+
+        def do_GET(self):
+            if self.path == "/api/data":
+                self._send(200, json.dumps(_load()), "application/json")
+            elif self.path in ("/", "/index.html"):
+                self._send(200, _PAGE, "text/html; charset=utf-8")
+            elif self.path == "/favicon.ico":
+                self.send_response(204); self.end_headers()
+            else:
+                self._send(404, "not found", "text/plain")
+
+        def log_message(self, *args):
+            pass  # quiet
+
+    srv = HTTPServer((a.host, a.port), Handler)
+    url = f"http://{a.host}:{a.port}/"
+    print(f"serving task ledger at {url}  (reloads every 5s; Ctrl-C to stop)")
+    try:
+        srv.serve_forever()
+    except KeyboardInterrupt:
+        print("\nstopped.")
+        srv.server_close()
+
+
 def cmd_summary(db, a):
     ts = db["tasks"]
     by_status = {}
@@ -277,9 +562,20 @@ def main():
     s = sub.add_parser("show"); s.add_argument("id", type=int); s.set_defaults(fn=cmd_show)
     s = sub.add_parser("summary"); s.set_defaults(fn=cmd_summary)
 
+    s = sub.add_parser("serve"); s.add_argument("--host", default="127.0.0.1")
+    s.add_argument("--port", type=int, default=8787); s.set_defaults(fn=cmd_serve)
+
     a = p.parse_args()
-    db = _load()
-    a.fn(db, a)
+    if a.cmd == "serve":
+        a.fn(_load(), a)              # long-lived reader; re-reads on its own — no lock
+        return
+    # Serialize concurrent writers (the worker + the three critics all mutate the ledger):
+    # hold an exclusive lock across the whole load → modify → save so no write clobbers another.
+    import fcntl
+    with open(DB + ".lock", "w") as _lk:
+        fcntl.flock(_lk, fcntl.LOCK_EX)
+        db = _load()
+        a.fn(db, a)
 
 
 if __name__ == "__main__":
