@@ -12,10 +12,12 @@ const DEFAULT_PROGRAM =
 `fsm accumulate
     i   ∈ Int
     sum ∈ Int
-    is_first_tick  ⇒ i = 0
-    is_first_tick  ⇒ sum = 0
-    ¬is_first_tick ⇒ Δi   = (_i < 5 ? 1 : 0)
-    ¬is_first_tick ⇒ Δsum = (_i < 5 ? _i : 0)`;
+    is_first_tick ⇒
+        i = 0
+        sum = 0
+    ¬is_first_tick ⇒
+        Δi   = (_i < 5 ? 1 : 0)
+        Δsum = (_i < 5 ? _i : 0)`;
 
 const $ = (s) => document.querySelector(s);
 

@@ -502,13 +502,27 @@ fsm pick
     1 ≤ step ∈ Int ≤ 3
 ```
 
-Two gotchas, both of which bite silently:
-- **Declare the carried var on its own line, *outside* the guards.** A `name ∈ T`
-  or chained-membership decl placed inside a `⇒` block is a parse error.
-- **Use a single-line `⇒`.** An *indented* multi-line `⇒` block wrapped around a
-  `Δ` silently drops the constraint (couldn't-translate-to-Bool) — the program
-  loses it with no error, the exact silent bug Evident is prone to. One `Δ` per
-  guard line; repeat the guard for multiple deltas.
+**One rule, and it bites silently: declarations live *outside* the guards.** A
+`name ∈ T` or chained-membership decl (`1 ≤ step ∈ Int ≤ 3`) placed *inside* a `⇒`
+block is a parse error; and a carried var that is never declared at all has its
+constraints **silently dropped** as an unbound identifier (no error). Declare every
+carried var on its own line first.
+
+The guard *body* is flexible — a single-line `⇒ Δcount = step`, an **indented
+multi-line `⇒` block grouping several deltas under one guard**, or a paren-wrapped
+conjunction all work and all keep 0 dropped:
+
+```evident
+fsm accumulate
+    i   ∈ Int                         -- declare carried vars first, outside the guards
+    sum ∈ Int
+    is_first_tick ⇒
+        i = 0
+        sum = 0
+    ¬is_first_tick ⇒                  -- one guard, several deltas, indented block
+        Δi   = (_i < 5 ? 1 : 0)
+        Δsum = (_i < 5 ? _i : 0)
+```
 
 `Δ` is for *deltas*. A value that's a fresh function of other vars each tick
 (`state = (x ≤ 7 ? Landed : Falling)`) stays a plain equation — don't force `Δ`
