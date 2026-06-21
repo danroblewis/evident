@@ -385,6 +385,14 @@ def render(smt2_path, schema_path, out_path):
         ax.grid(True, linestyle=":", alpha=0.4)
         _label_axis(model, ax, xvar, "x")
         _label_axis(model, ax, yvar, "y")
+        # Frame the REAL data via robust axis_bounds (numeric axes only): a lone
+        # sentinel point (min=1e6, an empty -1) is clipped off-screen instead of
+        # auto-scaling the whole axis out to it and crushing the orbit to a dot.
+        bx, by = model.axis_bounds(xvar["name"]), model.axis_bounds(yvar["name"])
+        if bx:
+            ax.set_xlim(*bx)
+        if by:
+            ax.set_ylim(*by)
         if pv is not None:
             ax.set_title(f'{facet_var["name"]} = {_cat_key(model, facet_var, pv)}',
                          fontsize=10)
