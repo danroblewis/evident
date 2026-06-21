@@ -419,8 +419,13 @@ class Model:
 
         if best_pair:
             a, b = best_pair
-            if indep_score(b) > indep_score(a):
-                a, b = b, a                                    # driver first (X axis)
+            ia, ib = indep_score(a), indep_score(b)
+            # The driver (higher net-determination) goes on X. If NEITHER drives (a
+            # relational/cyclic model, ia == ib), put the higher-information variable on
+            # X — so a rich enum (dungeon's 7-room d.room) beats a 2-value bool (d.has_key)
+            # rather than collapsing the scatter onto one or two vertical lines.
+            if ib > ia or (ib == ia and relevance[b] > relevance[a]):
+                a, b = b, a
             best_pair = (a, b)
             rest = sorted((nm for nm in names if nm not in best_pair),
                           key=lambda nm: -relevance[nm])
