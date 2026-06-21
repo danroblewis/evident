@@ -479,6 +479,43 @@ fsm counter
     count ∈ Int = (is_first_tick ? 0 : _count + 1)
 ```
 
+### Prefer `Δ` for the carried *delta*
+
+When a carried var *changes by an amount each tick*, write the change as a
+forward-difference `Δ`, not `_var + step` arithmetic. `Δcount` desugars to
+`count − _count`, so the source states the difference equation directly — and
+the sign is the whole feature (`Δx = -1` falls, `+1` climbs). This matches
+Evident's relational framing: you state the relation between ticks, not a
+recomputation of next-from-prev.
+
+```evident
+-- Prefer:
+fsm pick
+    count ∈ Int
+    1 ≤ step ∈ Int ≤ 3
+    is_first_tick  ⇒ count = 0
+    ¬is_first_tick ⇒ Δcount = step
+
+-- Over:
+fsm pick
+    count = (is_first_tick ? 0 : _count + step)
+    1 ≤ step ∈ Int ≤ 3
+```
+
+Two gotchas, both of which bite silently:
+- **Declare the carried var on its own line, *outside* the guards.** A `name ∈ T`
+  or chained-membership decl placed inside a `⇒` block is a parse error.
+- **Use a single-line `⇒`.** An *indented* multi-line `⇒` block wrapped around a
+  `Δ` silently drops the constraint (couldn't-translate-to-Bool) — the program
+  loses it with no error, the exact silent bug Evident is prone to. One `Δ` per
+  guard line; repeat the guard for multiple deltas.
+
+`Δ` is for *deltas*. A value that's a fresh function of other vars each tick
+(`state = (x ≤ 7 ? Landed : Falling)`) stays a plain equation — don't force `Δ`
+on it. Underscore *reads* (`_i` inside a condition) remain fine; the preference is
+about the carry, not a ban on `_var`. Canonical example:
+`examples/test_23_difference.ev`.
+
 ## Keyword Conventions
 
 All three keywords — `type`, `claim`, and `schema` — produce identical AST nodes

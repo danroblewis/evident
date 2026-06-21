@@ -10,8 +10,12 @@ const UNI = {
 
 const DEFAULT_PROGRAM =
 `fsm accumulate
-    i   ∈ Int = (is_first_tick ? 0 : (_i ≥ 5 ? _i : _i + 1))
-    sum ∈ Int = (is_first_tick ? 0 : (_i ≥ 5 ? _sum : _sum + _i))`;
+    i   ∈ Int
+    sum ∈ Int
+    is_first_tick  ⇒ i = 0
+    is_first_tick  ⇒ sum = 0
+    ¬is_first_tick ⇒ Δi   = (_i < 5 ? 1 : 0)
+    ¬is_first_tick ⇒ Δsum = (_i < 5 ? _i : 0)`;
 
 const $ = (s) => document.querySelector(s);
 

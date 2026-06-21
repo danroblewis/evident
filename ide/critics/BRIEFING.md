@@ -40,7 +40,7 @@ family — a relational/constraint modeling tool — with a live visual front en
 - `type` — a record/struct with local invariants. A noun you instantiate (`type IVec2(x, y ∈ Int)`).
 - `claim` — a predicate/relation. Also how you write tests and reusable constraint modules.
 - `enum` — a tagged union; variants may carry payloads and be recursive (`enum Result = Ok(Int) | Err(String)`).
-- `fsm` / the entry claim — carries state across ticks: `_count` reads the previous tick, `count = …` writes this tick (a difference equation).
+- `fsm` / the entry claim — carries state across ticks: `_count` reads the previous tick, `count = …` writes this tick (a difference equation). Idiomatically the *carry* is written as a **delta**: declare the var on its own line, then `is_first_tick ⇒ count = 0` to seed and `¬is_first_tick ⇒ Δcount = step` for the change (`Δcount` desugars to `count − _count`). Prefer this over `count = (is_first_tick ? 0 : _count + step)`. Two gotchas if you author one: the `⇒` must be a **single line** (an indented `⇒` block around a Δ silently drops it), and a `name ∈ T` declaration can't sit inside a `⇒` block (declare it outside).
 - Composition: `..Type` (flat passthrough/mixin), names-match (name a claim, vars bind by name), `↦` (rename), `subclaim` (named nested branch), `⟸` (dispatch: "A applies when B").
 
 ## Part 3 — The notation (so you recognize it on screen)
@@ -92,8 +92,9 @@ finding — not "missing feature," but **"promised and absent."**
 A menu to attempt — by writing, or by opening if the IDE offers samples. Reach for the
 ones that fit your persona:
 
-- **counter** (hello world): `count = is_first_tick ? 0 : _count + 1`; `done = count ≥ 5`.
-  Watch it ramp and terminate. *Good for: first win, latency test.*
+- **counter** (hello world): `count ∈ Int` / `is_first_tick ⇒ count = 0` /
+  `¬is_first_tick ⇒ Δcount = 1`; `done ∈ Bool = (count ≥ 5)`. Watch it ramp and
+  terminate. *Good for: first win, latency test, seeing the Δ idiom.*
 - **vending machine**: enum `mode` (Idle→Coining→Vending) + int `balance` + bool
   `dispensed` — a cyclic machine. Does the banner say "cyclic driver: mode"? *Good for:
   the model-shape claim.*
