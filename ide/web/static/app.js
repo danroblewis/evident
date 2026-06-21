@@ -51,6 +51,20 @@ fsm vending
     (¬is_first_tick ∧ _mode = Idle)    ⇒ mode = Coining
     (¬is_first_tick ∧ _mode = Coining) ⇒ mode = Vending
     (¬is_first_tick ∧ _mode = Vending) ⇒ mode = Idle`,
+  "queens · solve a puzzle (⊨ Solve)":
+`claim queens
+    col ∈ Seq(Int)
+    #col = 4
+    ∀ i ∈ {0..3} : 0 ≤ col[i] ∧ col[i] ≤ 3
+    ∀ i ∈ {0..3} : ∀ j ∈ {0..3} :
+        i < j ⇒ (col[i] ≠ col[j] ∧ col[i] - col[j] ≠ i - j ∧ col[i] - col[j] ≠ j - i)`,
+  "sum-pair · solve-for-X (⊨ Solve, pin x=3)":
+`claim sum_pair
+    x ∈ Int
+    y ∈ Int
+    0 ≤ x ≤ 10
+    0 ≤ y ≤ 10
+    x + y = 10`,
 };
 
 const $ = (s) => document.querySelector(s);
@@ -111,6 +125,18 @@ function paint(data, ms) {
   $("#latency").textContent = ms != null ? `${ms} ms` : "";
   const view = $("#view"), warn = $("#warnings");
   if (!data.ok) {
+    // a pure claim (no FSM) isn't an error — it's a solve target, not a thing to visualize
+    if (/no fsm schemas? found/i.test(data.error || "")) {
+      setStatus("claim — use Solve", "ok");
+      $("#errors").hidden = true; warn.hidden = true;
+      view.classList.remove("stale");
+      view.innerHTML = '<div class="ph">No state machine to visualize.<br>'
+        + 'Press <b>⊨ Solve</b> (top bar) to run this claim → a witness, or UNSAT.</div>';
+      $("#banner").className = "live";
+      $("#banner").textContent = "◆ a claim (a relation) — solve it for a witness assignment";
+      $("#honesty").innerHTML = '<span class="dim">⊨ Solve runs the constraints → SAT (with a witness) or UNSAT</span>';
+      return;
+    }
     setStatus("error", "err");
     $("#errors").hidden = false;
     $("#errors").textContent = humanizeError(data.error || "analysis failed");
@@ -189,6 +215,57 @@ async function run(view) {
 }
 
 cm.on("change", () => { clearTimeout(timer); timer = setTimeout(() => run(), 350); });
+
+// --- solve/query: run a claim → SAT witness or UNSAT; pin vars for solve-for-X --------
+function parsePins(s) {
+  const given = {};
+  (s || "").split(",").forEach((pair) => {
+    const eq = pair.indexOf("=");
+    if (eq > 0) { const k = pair.slice(0, eq).trim(); if (k) given[k] = pair.slice(eq + 1).trim(); }
+  });
+  return given;
+}
+
+function renderSolve(d, given) {
+  const head = $("#solve-head"), body = $("#solve-body");
+  const pinned = Object.keys(given || {});
+  if (!d.ok) { head.innerHTML = `<span class="bad">✕ ${d.error || "query failed"}</span>`; body.innerHTML = ""; return; }
+  if (d.satisfied) {
+    head.innerHTML = `<span class="sat">⊨ SAT</span> — <b>${d.claim || "claim"}</b> has a witness`
+      + (pinned.length ? ` <span class="dim">(pinned: ${pinned.join(", ")})</span>` : "");
+    const keys = Object.keys(d.bindings || {}).sort();
+    body.innerHTML = keys.length
+      ? `<table>${keys.map((k) => `<tr><td class="k">${k}${pinned.includes(k) ? " 📌" : ""}</td>`
+          + `<td class="v">${JSON.stringify(d.bindings[k])}</td></tr>`).join("")}</table>`
+      : '<span class="dim">satisfiable (no free variables to report)</span>';
+  } else {
+    head.innerHTML = `<span class="unsat">⊭ UNSAT</span> — <b>${d.claim || "claim"}</b> has no solution`
+      + (pinned.length ? ` <span class="dim">with ${pinned.join(", ")} pinned</span>` : "");
+    body.innerHTML = `<span class="dim">no assignment satisfies the constraints${pinned.length ? " under those pins — try different ones." : "."}</span>`;
+  }
+}
+
+async function solve() {
+  const source = cm.getValue();
+  const given = parsePins($("#solve-given").value);
+  $("#solve").hidden = false;
+  $("#solve-head").innerHTML = '<span class="dim">solving…</span>';
+  $("#solve-body").innerHTML = "";
+  try {
+    const res = await fetch("/api/solve", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ source, given }),
+    });
+    renderSolve(await res.json(), given);
+  } catch (e) {
+    $("#solve-head").innerHTML = `<span class="bad">solve failed: ${e}</span>`;
+  }
+}
+
+$("#solve-btn").onclick = () => solve();
+$("#solve-resolve").onclick = () => solve();
+$("#solve-close").onclick = () => { $("#solve").hidden = true; };
+$("#solve-given").addEventListener("keydown", (e) => { if (e.key === "Enter") solve(); });
 
 // --- samples menu: open a worked example -----------------------------------------
 const sel = $("#samples");

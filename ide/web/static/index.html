@@ -15,6 +15,7 @@
     <b>◆ Evident IDE</b>
     <span id="fname" class="dim">untitled.ev</span>
     <select id="samples" title="open a worked example"></select>
+    <button id="solve-btn" title="solve a claim — SAT witness or UNSAT">⊨ Solve</button>
     <span class="sp"></span>
     <span id="latency" class="dim"></span>
     <span id="status" class="dim">starting…</span>
@@ -31,6 +32,15 @@
     <div id="view"><div class="ph">no dynamics yet</div></div>
     <div id="honesty" class="dim">—</div>
     <pre id="warnings" hidden></pre>
+    <div id="solve" hidden>
+      <div id="solve-head"></div>
+      <div id="solve-body"></div>
+      <div id="solve-controls">
+        <input id="solve-given" placeholder="solve-for-X — pin e.g.  x=3, y=7">
+        <button id="solve-resolve">re-solve</button>
+        <button id="solve-close" title="close">✕</button>
+      </div>
+    </div>
   </aside>
 </div>
 

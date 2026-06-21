@@ -78,3 +78,42 @@ reachability_tree for branching); (3) newcomer indentation-error translation; (4
 labeling on the honesty line + lower live tick budget + a "sampling…" spinner; (5)
 morse_graph `render()` wrapper; (6) a samples menu; (7) the ⇒ Unicode shortcut. Deferred to
 round 3: **solve/query** (Ana's central gap) and in-tool learning/tooltips.
+
+---
+
+## Round 2 — banner soundness + auto-select + samples + morse_graph
+
+**Build (commit 77a870d):** banner classifier (lone self-carried clock → "Driven", not
+"relational cycle"); auto-select drops the sticky activeView on edits + refined `_recommend`;
+newcomer error translation (humanizeError); capped-sample labeling; morse_graph `render()`
+wrapper (gallery now genuinely 6); samples menu (5 worked examples); ⇒ Unicode shortcut.
+
+- **Marek (ide-critic): SHIP** ✅ — immediacy 4 · diagram-helps 5 · directness 4 · honesty 5 ·
+  first-run 5 · recovery 5 · promises 4. "The banner stopped lying, the right view shows up,
+  and the fan finally fans." Verified the banner fix is analysis-based (his own typed ramp
+  classified right). Non-blocking majors: latency on unbounded (known); no editor auto-indent.
+  Nit: banner doesn't say "cyclic" for vending.
+- **Sam (newcomer): SHIP** ✅ — immediacy 4 · diagram-helps 5 · directness 4 · honesty 5 ·
+  first-run 5 · recovery 5 · promises 4. "The door's open now... a win in under five minutes,
+  made my classic indentation mistake, and the tool talked me back in without a manual."
+  Non-blocking majors: hand-typed indentation friction (flip side of bare-newline); latency.
+  Nit: vending should read "cycle".
+- **Ana (expert): NEEDS_WORK** — immediacy 5 · diagram-helps 5 · directness 2 · honesty 5 ·
+  first-run 5 · recovery 4 · promises 3. **Zero blockers** — both round-1 blockers
+  adversarially verified fixed (a hand-built 2-var mutual cycle `a=¬_b, b=_a` still reads
+  "relational", so the fix didn't over-correct). Majors: (1) banner flattens cyclic-recurrent
+  (vending) and terminating-driven (counter) into one phrase — the Morse view knows ("cycle
+  ×3") but the headline doesn't; (2) solve/query absent. Her SHIP spec: SAT witness + UNSAT
+  core + solve-for-X/enumerate, plus the cyclic-banner fix. Delights: exact-vs-capped labeling,
+  the actionable dropped-constraint detector, the terminating counter's honest self-loop.
+
+**Status: 2 of 3 SHIP.** The editor auto-indent friction (Marek + Sam) is a deliberate
+trade-off: the critics type *pre-indented* strings via the browser, so bare-newline Enter is
+correct for them; any auto-indent re-introduces the round-1 accumulation blocker. Documented,
+not "fixed."
+
+**Next (round 3 — flip Ana):** (1) **cyclic-vs-terminating banner** — say "cyclic driver" when
+the reachable graph has a recurrent SCC (≥2-node) [also Marek/Sam nit]; (2) **solve/query** —
+`evident query` CLI (SAT witness via the existing rt.query engine) + `/api/solve` + a frontend
+solve panel (run a claim → witness/UNSAT; solve-for-X by pinning vars). Deferred to round 4 if
+needed: UNSAT core (needs runtime get_unsat_core) + enumeration (needs blocking clauses).

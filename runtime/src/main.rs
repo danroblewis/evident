@@ -16,6 +16,7 @@ fn main() -> ExitCode {
         "test"        => cmd_test(&args[1..]),
         "effect-run"  => cmd_effect_run(&args[1..]),
         "export"      => cmd_export(&args[1..]),
+        "query"       => cmd_query(&args[1..]),
         "help" | "--help" | "-h" => { usage(); ExitCode::SUCCESS }
         other => {
             eprintln!("unknown subcommand: {}", other);
@@ -30,6 +31,7 @@ fn usage() {
     eprintln!("  evident test         [path] [-v] [--no-color]");
     eprintln!("  evident effect-run   <file>           # run an effect-driven program");
     eprintln!("  evident export       <file> [--out PREFIX]  # dump transition SMT-LIB + schema JSON");
+    eprintln!("  evident query        <file> [claim] [--given NAME=VALUE]... [--json]  # solve a claim, print a witness");
 }
 
 const STDLIB_RUNTIME: &str = "stdlib/runtime.ev";
@@ -345,6 +347,168 @@ fn cmd_test(args: &[String]) -> ExitCode {
 
     let any_fail = runs.iter().any(|r| !matches!(r.outcome, Outcome::Pass));
     if any_fail { ExitCode::from(1) } else { ExitCode::SUCCESS }
+}
+
+// ─────────────────────────── query: solve a claim, emit a witness ───────────────────
+//
+// The relational superpower made runnable: `evident query <file> [claim]` solves the
+// named claim (or the unique non-test schema) and prints a satisfying assignment, or
+// reports UNSAT. `--given NAME=VALUE` pins a variable so the solver fills the rest
+// (solve-for-X). Reuses the same encode+solve path as `test` (rt.query), which already
+// returns {satisfied, bindings}; this just exposes the witness, with --json for the IDE.
+
+fn cmd_query(args: &[String]) -> ExitCode {
+    let mut path: Option<String> = None;
+    let mut claim: Option<String> = None;
+    let mut givens: Vec<(String, String)> = Vec::new();
+    let mut json = false;
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--json" => json = true,
+            "--given" => {
+                i += 1;
+                match args.get(i).and_then(|s| s.split_once('=')) {
+                    Some((k, v)) => givens.push((k.to_string(), v.to_string())),
+                    None => { eprintln!("query: --given expects NAME=VALUE"); return ExitCode::from(2); }
+                }
+            }
+            "-h" | "--help" => {
+                eprintln!("usage: evident query <file> [claim] [--given NAME=VALUE]... [--json]");
+                return ExitCode::SUCCESS;
+            }
+            other if other.starts_with('-') => {
+                eprintln!("query: unknown flag {other:?}"); return ExitCode::from(2);
+            }
+            other => {
+                if path.is_none() { path = Some(other.to_string()); }
+                else if claim.is_none() { claim = Some(other.to_string()); }
+                else { eprintln!("query: unexpected argument {other:?}"); return ExitCode::from(2); }
+            }
+        }
+        i += 1;
+    }
+    let Some(path) = path else { eprintln!("query: no file given"); return ExitCode::from(2); };
+
+    let emit_err = |msg: String| -> ExitCode {
+        if json { println!("{{\"ok\":false,\"error\":{}}}", json_string(&msg)); }
+        else { eprintln!("query: {msg}"); }
+        ExitCode::from(1)
+    };
+
+    let mut rt = EvidentRuntime::new();
+    if let Err(e) = rt.load_file(Path::new(&path)) {
+        return emit_err(format!("load: {e}"));
+    }
+
+    let claim = match claim {
+        Some(c) => c,
+        None => {
+            let cands: Vec<String> = rt.schema_names()
+                .filter(|n| !n.starts_with("sat_") && !n.starts_with("unsat_"))
+                .map(|s| s.to_string()).collect();
+            match cands.len() {
+                1 => cands.into_iter().next().unwrap(),
+                0 => return emit_err("no claim to query (only sat_/unsat_ schemas present)".into()),
+                _ => return emit_err(format!("ambiguous — name a claim. candidates: {}", cands.join(", "))),
+            }
+        }
+    };
+
+    let mut given_map: HashMap<String, Value> = HashMap::new();
+    for (k, v) in &givens {
+        given_map.insert(k.clone(), parse_value_literal(v));
+    }
+
+    match rt.query(&claim, &given_map) {
+        Ok(r) => {
+            if json {
+                let binds: Vec<String> = {
+                    let mut keys: Vec<&String> = r.bindings.keys().collect();
+                    keys.sort();
+                    keys.iter()
+                        .map(|k| format!("{}:{}", json_string(k), value_to_json(&r.bindings[*k])))
+                        .collect()
+                };
+                println!("{{\"ok\":true,\"claim\":{},\"satisfied\":{},\"bindings\":{{{}}}}}",
+                    json_string(&claim), r.satisfied, binds.join(","));
+            } else if r.satisfied {
+                println!("SAT  ({claim})");
+                let mut keys: Vec<&String> = r.bindings.keys().collect();
+                keys.sort();
+                for k in keys { println!("  {k} = {}", value_to_json(&r.bindings[k])); }
+            } else {
+                println!("UNSAT  ({claim})");
+            }
+            ExitCode::SUCCESS
+        }
+        Err(e) => emit_err(format!("{e}")),
+    }
+}
+
+fn parse_value_literal(s: &str) -> Value {
+    if let Ok(i) = s.parse::<i64>() { return Value::Int(i); }
+    if s == "true" { return Value::Bool(true); }
+    if s == "false" { return Value::Bool(false); }
+    if let Ok(f) = s.parse::<f64>() { return Value::Real(f); }
+    Value::Str(s.to_string())
+}
+
+fn json_string(s: &str) -> String {
+    let mut out = String::from("\"");
+    for c in s.chars() {
+        match c {
+            '"'  => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
+}
+
+fn json_arr<I: Iterator<Item = String>>(it: I) -> String {
+    let parts: Vec<String> = it.collect();
+    format!("[{}]", parts.join(","))
+}
+
+fn json_obj(m: &HashMap<String, Value>) -> String {
+    let mut keys: Vec<&String> = m.keys().collect();
+    keys.sort();
+    let parts: Vec<String> = keys.iter()
+        .map(|k| format!("{}:{}", json_string(k), value_to_json(&m[*k])))
+        .collect();
+    format!("{{{}}}", parts.join(","))
+}
+
+fn value_to_json(v: &Value) -> String {
+    match v {
+        Value::Int(i)  => i.to_string(),
+        Value::Real(f) => if f.is_finite() { f.to_string() } else { json_string(&f.to_string()) },
+        Value::Bool(b) => b.to_string(),
+        Value::Str(s)  => json_string(s),
+        Value::SeqInt(xs)  => json_arr(xs.iter().map(|x| x.to_string())),
+        Value::SeqBool(xs) => json_arr(xs.iter().map(|x| x.to_string())),
+        Value::SeqStr(xs)  => json_arr(xs.iter().map(|x| json_string(x))),
+        Value::SetInt(xs)  => json_arr(xs.iter().map(|x| x.to_string())),
+        Value::SetBool(xs) => json_arr(xs.iter().map(|x| x.to_string())),
+        Value::SetStr(xs)  => json_arr(xs.iter().map(|x| json_string(x))),
+        Value::Composite(m)     => json_obj(m),
+        Value::SeqComposite(xs) => json_arr(xs.iter().map(json_obj)),
+        Value::SeqEnum(xs)      => json_arr(xs.iter().map(value_to_json)),
+        Value::Enum { variant, fields, .. } => {
+            if fields.is_empty() {
+                json_string(variant)
+            } else {
+                let inner: Vec<String> = fields.iter().map(value_to_json).collect();
+                json_string(&format!("{}({})", variant, inner.join(", ")))
+            }
+        }
+    }
 }
 
 fn collect_test_files(dir: &Path, out: &mut Vec<PathBuf>) {

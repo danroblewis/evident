@@ -26,6 +26,7 @@ sys.path.insert(0, VIZ)
 
 import matplotlib  # noqa: E402
 matplotlib.use("Agg")
+import networkx as nx  # noqa: E402  (SCC detection for the cyclic-vs-terminating banner)
 
 from evident_viz import load as load_model  # noqa: E402
 
@@ -74,10 +75,11 @@ def _export(source: str, work: str):
     return True, prefix, dropped, err.strip()
 
 
-def _banner(m, max_branch=1):
-    """The model-shape line, from the functional-dependency analysis. Branching in the
-    *reachable* relation wins: a state with multiple successors is nondeterministic no
-    matter what the dependency verdict says — so the banner can't call it a pipeline."""
+def _banner(m, max_branch=1, recurrent=1):
+    """The model-shape line, from the functional-dependency analysis. Two reachable-graph
+    facts override the dependency verdict: BRANCHING (a state with ≥2 successors is
+    nondeterministic no matter what), and a RECURRENT cycle (a ≥2-state SCC is
+    eventually-periodic, not a terminating chain — so the banner must say 'cyclic')."""
     try:
         ind = m.independence()
     except Exception:
@@ -89,12 +91,15 @@ def _banner(m, max_branch=1):
         return (f"Nondeterministic — up to {max_branch} successors from some state "
                 f"(a free choice fans out){hint}")
     if ind["verdict"] == "driven" and ind.get("driver"):
+        drv = short(ind["driver"])
         deps = [short(d) for d in ind.get("dependents", [])[:4]]
         if deps:
-            return (f"Driven pipeline — independent variable: {short(ind['driver'])}"
+            return (f"Driven pipeline — independent variable: {drv}"
                     f" — computed from it: {', '.join(deps)}")
-        return (f"Driven — {short(ind['driver'])} advances on its own clock "
-                f"(a deterministic recurrence)")
+        if recurrent >= 2:
+            return (f"Cyclic — {drv} cycles through a recurrent loop of {recurrent} states "
+                    f"(eventually periodic, no fixpoint)")
+        return f"Driven — {drv} advances on its own clock (a deterministic recurrence)"
     if ind["verdict"] == "nondeterministic":
         return "Nondeterministic — the free choice is the input, not a state variable"
     return "Genuinely relational — no independent variable (a cycle; every variable co-determines)"
@@ -138,12 +143,18 @@ def analyze(req: Source):
             out_deg = Counter(src for src, _ in edges)
             max_branch = max(out_deg.values()) if out_deg else 1
             capped = n_states >= REACH_LIMIT      # the reachable set didn't fit the cap
+            # largest recurrent SCC: ≥2 distinguishes eventually-periodic (vending) from a
+            # terminating-driven chain (counter), which the banner must not flatten.
+            recurrent = 1
+            if edges:
+                g = nx.DiGraph(); g.add_edges_from(edges)
+                recurrent = max((len(c) for c in nx.strongly_connected_components(g)), default=1)
             discrete = m.is_discrete()
             view = req.view if (req.view in VIEWS) else _recommend(m, n_states, max_branch, discrete)
             png = _render_png(view, prefix) if view else b""
             return {
                 "ok": True,
-                "banner": _banner(m, max_branch),
+                "banner": _banner(m, max_branch, recurrent),
                 "dropped": dropped,
                 "branching": max_branch,
                 "states": n_states,
@@ -157,6 +168,36 @@ def analyze(req: Source):
             }
         except Exception as e:
             return {"ok": False, "error": f"analysis failed: {e}", "dropped": dropped}
+
+
+class SolveReq(BaseModel):
+    source: str
+    claim: str | None = None
+    given: dict[str, str] | None = None
+
+
+@app.post("/api/solve")
+def solve(req: SolveReq):
+    """Run a claim through the solver: SAT + a witness assignment, or UNSAT. `given` pins
+    variables so the solver fills the rest (solve-for-X). Reuses `evident query --json` —
+    the same encode+solve path as `test`, just surfacing the model."""
+    import json as _json
+    with _LOCK, tempfile.TemporaryDirectory() as work:
+        ev = os.path.join(work, "prog.ev")
+        with open(ev, "w") as f:
+            f.write(req.source)
+        cmd = [EVIDENT, "query", ev]
+        if req.claim:
+            cmd.append(req.claim)
+        for k, v in (req.given or {}).items():
+            cmd += ["--given", f"{k}={v}"]
+        cmd.append("--json")
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        out = (r.stdout or "").strip()
+        try:
+            return _json.loads(out.splitlines()[-1]) if out else {"ok": False, "error": "no output"}
+        except Exception:
+            return {"ok": False, "error": (r.stderr or out).strip()[-600:] or "query failed"}
 
 
 @app.get("/")
