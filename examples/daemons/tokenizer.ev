@@ -1,0 +1,166 @@
+-- tokenizer: a lexer run as an FSM — classify a fixed char stream into tokens.
+--
+-- The classic scanner: each tick reads the next character's CLASS (digit /
+-- letter / symbol / space), transitions the lexer MODE, and emits a token at
+-- every boundary — the point where the class of the new char differs from the
+-- run we were accumulating. The emission count rises by 1 each time a maximal
+-- run of same-class chars terminates.
+--
+-- STATE SHAPE: a lexer state machine — an enum `mode` (which kind of run we're
+-- inside), a `tok_len` counter (length of the current run), and a
+-- `tokens_emitted` total. A `pos` cursor walks the fixed input; `done` latches
+-- once the end-of-stream sentinel is consumed.
+--
+--   evident phase-portrait examples/daemons/tokenizer.ev --axes state.tokens_emitted,state.mode
+--
+-- The portrait climbs `tokens_emitted` in steps as each run closes, while `mode`
+-- cycles through the four lexer states the input visits.
+import "stdlib/runtime.ev"
+
+-- The input alphabet: four character CLASSES plus an end-of-stream sentinel.
+-- (A real lexer reads bytes; we model the already-classified stream, since the
+-- transition only depends on the class, never the literal char.)
+enum CharClass = Digit | Letter | Symbol | Space | CEnd
+
+-- The lexer mode: which kind of run we are currently accumulating. InSpace is
+-- also the start/between-tokens state (whitespace separates but isn't emitted).
+enum Mode = InNumber | InWord | InSymbol | InSpace
+
+type Lexer
+    pos            ∈ Int      -- cursor into the input stream
+    mode           ∈ Mode     -- which run we're inside right now
+    tok_len        ∈ Int      -- length of the current run (chars accumulated)
+    tokens_emitted ∈ Int      -- count of completed tokens so far
+    done           ∈ Bool     -- has the end-of-stream sentinel been consumed?
+
+fsm tokenizer(state ∈ Lexer)
+    -- Fixed representative input: "12 ab+ c" then end.
+    --   Digit Digit  Space  Letter Letter  Symbol  Space  Letter  CEnd
+    -- Expected tokens: "12", "ab", "+", "c"  →  4 tokens emitted.
+    input ∈ Seq(CharClass) = ⟨Digit, Digit, Space, Letter, Letter, Symbol, Space, Letter, CEnd⟩
+
+    -- The class under the cursor, and the mode that class belongs to.
+    cls ∈ CharClass = input[_state.pos]
+    cls_mode ∈ Mode = match cls
+        Digit  ⇒ InNumber
+        Letter ⇒ InWord
+        Symbol ⇒ InSymbol
+        _      ⇒ InSpace        -- Space and CEnd map to InSpace
+
+    -- We're "inside a token run" iff the previous mode was a non-space run.
+    in_token ∈ Bool = (_state.mode ≠ InSpace)
+    -- A boundary closes the current run: the new char's mode differs from the
+    -- run we were in. (Whitespace closes a token; so does a class change.)
+    boundary ∈ Bool = (in_token ∧ (cls_mode ≠ _state.mode))
+
+    -- This char STARTS a new run iff it's a token char whose mode differs from
+    -- the run we were in (or we weren't in a run).
+    starts_run ∈ Bool = ((cls_mode ≠ InSpace) ∧ (cls_mode ≠ _state.mode))
+    -- This char CONTINUES the current run iff it's the same token mode.
+    continues_run ∈ Bool = ((cls_mode ≠ InSpace) ∧ (cls_mode = _state.mode))
+
+    is_first_tick ⇒
+        (state.pos = 0 ∧ state.mode = InSpace ∧ state.tok_len = 0
+         ∧ state.tokens_emitted = 0 ∧ state.done = false)
+
+    ¬is_first_tick ⇒
+        -- Advance the cursor every tick until the sentinel is consumed.
+        state.pos = (_state.done ? _state.pos : _state.pos + 1)
+        state.done = (_state.done ∨ (cls = CEnd))
+
+        -- mode: adopt the new char's class-mode (InSpace for space/sentinel).
+        state.mode = (_state.done ? _state.mode : cls_mode)
+
+        -- tok_len: a new run starts at 1, a continuation grows, else resets 0.
+        state.tok_len = (_state.done ? _state.tok_len
+                         : (starts_run ? 1
+                            : (continues_run ? _state.tok_len + 1 : 0)))
+
+        -- tokens_emitted: +1 exactly when a run closes (boundary).
+        state.tokens_emitted = ((¬_state.done ∧ boundary)
+                                ? _state.tokens_emitted + 1
+                                : _state.tokens_emitted)
+
+-- ── Static tests (validate the transition encodes — zero silent drops) ──
+
+-- First tick seeds the between-tokens (InSpace) start state.
+claim sat_first_tick_seeds
+    _state ∈ Lexer
+    state ∈ Lexer
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = true
+    tokenizer
+    (state.mode = InSpace ∧ state.tok_len = 0 ∧ state.tokens_emitted = 0)
+
+-- pos=0 is a Digit arriving from the InSpace start → start a number run,
+-- tok_len 0→1, no token emitted yet.
+claim sat_digit_starts_number
+    _state ∈ Lexer
+    state ∈ Lexer
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_state.pos = 0 ∧ _state.mode = InSpace ∧ _state.tok_len = 0
+     ∧ _state.tokens_emitted = 0 ∧ _state.done = false)
+    tokenizer
+    (state.mode = InNumber ∧ state.tok_len = 1 ∧ state.tokens_emitted = 0)
+
+-- pos=1 is a Digit while already InNumber → continue the run, tok_len 1→2,
+-- still no emission (no boundary).
+claim sat_digit_continues_number
+    _state ∈ Lexer
+    state ∈ Lexer
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_state.pos = 1 ∧ _state.mode = InNumber ∧ _state.tok_len = 1
+     ∧ _state.tokens_emitted = 0 ∧ _state.done = false)
+    tokenizer
+    (state.mode = InNumber ∧ state.tok_len = 2 ∧ state.tokens_emitted = 0)
+
+-- pos=2 is a Space while InNumber → the number run CLOSES, +1 emitted,
+-- tok_len resets to 0, mode drops to InSpace.
+claim sat_space_closes_number
+    _state ∈ Lexer
+    state ∈ Lexer
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_state.pos = 2 ∧ _state.mode = InNumber ∧ _state.tok_len = 2
+     ∧ _state.tokens_emitted = 0 ∧ _state.done = false)
+    tokenizer
+    (state.mode = InSpace ∧ state.tok_len = 0 ∧ state.tokens_emitted = 1)
+
+-- pos=5 is a Symbol arriving while InWord ("ab" running) → the word run closes
+-- AND a symbol run opens in the same tick: +1 emitted, mode = InSymbol,
+-- tok_len = 1 (the new run's first char).
+claim sat_class_change_closes_and_opens
+    _state ∈ Lexer
+    state ∈ Lexer
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_state.pos = 5 ∧ _state.mode = InWord ∧ _state.tok_len = 2
+     ∧ _state.tokens_emitted = 1 ∧ _state.done = false)
+    tokenizer
+    (state.mode = InSymbol ∧ state.tok_len = 1 ∧ state.tokens_emitted = 2)
+
+-- A continuing run (Digit while InNumber) must NOT emit a token: asserting an
+-- emission bump here is UNSATISFIABLE.
+claim unsat_continue_cannot_emit
+    _state ∈ Lexer
+    state ∈ Lexer
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_state.pos = 1 ∧ _state.mode = InNumber ∧ _state.tok_len = 1
+     ∧ _state.tokens_emitted = 0 ∧ _state.done = false)
+    tokenizer
+    state.tokens_emitted = 1

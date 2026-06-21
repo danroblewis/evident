@@ -1,0 +1,212 @@
+-- du — recursive disk usage: sum the sizes of every file under a directory tree.
+--
+-- The classic `du` utility walks a directory tree depth-first and ACCUMULATES the
+-- byte sizes it finds. Modelled as an FSM, the carried state is a TRAVERSAL FRONTIER
+-- (a bounded slot stack of per-node pending/visited status) over a VISITED count,
+-- plus the running TOTAL SIZE accumulator. Each tick POPs one pending node; if it is
+-- a directory it PUSHes its children onto the frontier; whatever its own size, that
+-- size is added to the total. When the frontier drains, total_size is the disk usage.
+--
+--   evident phase-portrait examples/daemons/du.ev --axes state.visited,state.total_size
+--
+-- The fixed tree (5 nodes, 0 = root):
+--
+--     0  /            (dir,  size 0)    children {1, 2}
+--     ├─ 1  src/      (dir,  size 0)    children {3, 4}
+--     │   ├─ 3  main.ev   (file, size 30)
+--     │   └─ 4  big.dat   (file, size 200)
+--     └─ 2  data.bin  (file, size 100)
+--
+--   du total = 0 + 0 + 30 + 200 + 100 = 330 bytes.
+--
+-- Real filesystem access (opendir/readdir/stat) is NOT available — see the GAP note
+-- at the bottom — so the tree (structure + per-node sizes) is in-program lookup data.
+import "stdlib/runtime.ev"
+
+-- A node's traversal status: not yet discovered, on the frontier, or already popped.
+enum Status = Unseen | Pending | Visited
+
+type Tree
+    -- per-node frontier/visited status (the live traversal state, 5 nodes)
+    s0 ∈ Status
+    s1 ∈ Status
+    s2 ∈ Status
+    s3 ∈ Status
+    s4 ∈ Status
+    -- the node popped from the frontier this tick (-1 = none / done)
+    current    ∈ Int
+    -- running count of nodes popped (the "visited" aggregate)
+    visited    ∈ Int
+    -- accumulated byte total over every popped node (the du answer)
+    total_size ∈ Int
+
+-- ── Static tree facts (would be opendir/readdir/stat at runtime) ──────────────
+
+-- is_dir(node): node 0 (/) and 1 (src) are directories.
+claim is_dir(node ∈ Int, r ∈ Bool)
+    r = ((node = 0) ∨ (node = 1))
+
+-- size(node): per-node byte size (stat .st_size). Dirs are 0; files carry bytes.
+-- Complete table over all 5 nodes; -1 (no node) contributes 0.
+claim size_of(node ∈ Int, sz ∈ Int)
+    sz = (node = 0 ? 0
+          : (node = 1 ? 0
+             : (node = 2 ? 100
+                : (node = 3 ? 30
+                   : (node = 4 ? 200 : 0)))))
+
+-- child(parent, k): k-th child of parent, or -1 when absent (complete: sentinel -1).
+-- parent 0 → {1, 2}; parent 1 → {3, 4}; everyone else has no children.
+claim child0(parent ∈ Int, c ∈ Int)
+    c = (parent = 0 ? 1 : (parent = 1 ? 3 : -1))
+claim child1(parent ∈ Int, c ∈ Int)
+    c = (parent = 0 ? 2 : (parent = 1 ? 4 : -1))
+
+fsm du(state ∈ Tree)
+    is_first_tick ⇒
+        -- Seed: only the root (node 0) is on the frontier; nothing visited or summed.
+        (state.s0 = Pending ∧ state.s1 = Unseen ∧ state.s2 = Unseen
+         ∧ state.s3 = Unseen ∧ state.s4 = Unseen
+         ∧ state.current = 0 ∧ state.visited = 0 ∧ state.total_size = 0)
+
+    -- Helper facts about the popped node. Declarations + claim invocations stay at
+    -- body level — putting them under a `⇒` guard makes the whole block non-Bool and
+    -- the runtime silently drops it. Only the transition CONSTRAINTS get guarded.
+    cur_is_dir ∈ Bool
+    is_dir(state.current, cur_is_dir)
+    cur_size ∈ Int
+    size_of(state.current, cur_size)
+    c0 ∈ Int
+    child0(state.current, c0)
+    c1 ∈ Int
+    child1(state.current, c1)
+
+    -- POP: nondeterministically pick a node currently on the frontier as `current`.
+    -- (Z3 chooses any Pending node; the reachable walk covers every traversal order.)
+    -- A node can only be popped if it was Pending in the previous state.
+    ¬is_first_tick ⇒ ((state.current = 0) ⇒ (_state.s0 = Pending))
+    ¬is_first_tick ⇒ ((state.current = 1) ⇒ (_state.s1 = Pending))
+    ¬is_first_tick ⇒ ((state.current = 2) ⇒ (_state.s2 = Pending))
+    ¬is_first_tick ⇒ ((state.current = 3) ⇒ (_state.s3 = Pending))
+    ¬is_first_tick ⇒ ((state.current = 4) ⇒ (_state.s4 = Pending))
+    -- current is a valid node index, or -1 (traversal exhausted)
+    ¬is_first_tick ⇒ ((-1 ≤ state.current) ∧ (state.current ≤ 4))
+    -- current = -1 (done) only when nothing is Pending
+    ¬is_first_tick ⇒ ((state.current = -1) ⇒
+        (¬(_state.s0 = Pending) ∧ ¬(_state.s1 = Pending) ∧ ¬(_state.s2 = Pending)
+         ∧ ¬(_state.s3 = Pending) ∧ ¬(_state.s4 = Pending)))
+
+    -- VISIT + PUSH: the popped node becomes Visited; if it is a directory, each Unseen
+    -- child moves Unseen → Pending. Every other node carries its status forward.
+    ¬is_first_tick ⇒ (state.s0 = (state.current = 0 ? Visited
+                : (((cur_is_dir ∧ ((c0 = 0) ∨ (c1 = 0))) ∧ (_state.s0 = Unseen)) ? Pending
+                   : _state.s0)))
+    ¬is_first_tick ⇒ (state.s1 = (state.current = 1 ? Visited
+                : (((cur_is_dir ∧ ((c0 = 1) ∨ (c1 = 1))) ∧ (_state.s1 = Unseen)) ? Pending
+                   : _state.s1)))
+    ¬is_first_tick ⇒ (state.s2 = (state.current = 2 ? Visited
+                : (((cur_is_dir ∧ ((c0 = 2) ∨ (c1 = 2))) ∧ (_state.s2 = Unseen)) ? Pending
+                   : _state.s2)))
+    ¬is_first_tick ⇒ (state.s3 = (state.current = 3 ? Visited
+                : (((cur_is_dir ∧ ((c0 = 3) ∨ (c1 = 3))) ∧ (_state.s3 = Unseen)) ? Pending
+                   : _state.s3)))
+    ¬is_first_tick ⇒ (state.s4 = (state.current = 4 ? Visited
+                : (((cur_is_dir ∧ ((c0 = 4) ∨ (c1 = 4))) ∧ (_state.s4 = Unseen)) ? Pending
+                   : _state.s4)))
+
+    -- visited count rises by one for each real pop (current ≠ -1).
+    ¬is_first_tick ⇒ (state.visited =
+        (_state.visited + ((state.current ≠ -1) ? 1 : 0)))
+
+    -- total_size accumulates the popped node's size (0 when traversal is exhausted).
+    ¬is_first_tick ⇒ (state.total_size =
+        (_state.total_size + ((state.current ≠ -1) ? cur_size : 0)))
+
+-- ── Static tests (validate the transition encodes — zero dropped constraints) ──
+
+-- First tick seeds the frontier to just the root, with empty aggregates.
+claim sat_seed_frontier_is_root
+    _state ∈ Tree
+    state ∈ Tree
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = true
+    du
+    (state.s0 = Pending ∧ state.s1 = Unseen ∧ state.current = 0
+     ∧ state.visited = 0 ∧ state.total_size = 0)
+
+-- Popping the root (a directory, size 0) pushes its children 1 and 2 onto the
+-- frontier and marks the root Visited. Total stays 0 (a dir has no bytes), but the
+-- visited count ticks to 1.
+claim sat_pop_root_pushes_children
+    _state ∈ Tree
+    state ∈ Tree
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_state.s0 = Pending ∧ _state.s1 = Unseen ∧ _state.s2 = Unseen
+     ∧ _state.s3 = Unseen ∧ _state.s4 = Unseen
+     ∧ _state.visited = 0 ∧ _state.total_size = 0)
+    state.current = 0
+    du
+    (state.s0 = Visited ∧ state.s1 = Pending ∧ state.s2 = Pending
+     ∧ state.s3 = Unseen ∧ state.visited = 1 ∧ state.total_size = 0)
+
+-- Popping data.bin (node 2, a file of 100 bytes) adds 100 to the running total
+-- and bumps the visited count. It has no children, so the frontier shrinks.
+claim sat_pop_file_accumulates_size
+    _state ∈ Tree
+    state ∈ Tree
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_state.s2 = Pending ∧ _state.visited = 1 ∧ _state.total_size = 0)
+    state.current = 2
+    du
+    (state.s2 = Visited ∧ state.visited = 2 ∧ state.total_size = 100)
+
+-- Popping big.dat (node 4, 200 bytes) on top of an already-accumulated 130 total
+-- yields 330 — the full du answer once every file is summed.
+claim sat_pop_big_completes_total
+    _state ∈ Tree
+    state ∈ Tree
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_state.s4 = Pending ∧ _state.visited = 4 ∧ _state.total_size = 130)
+    state.current = 4
+    du
+    (state.s4 = Visited ∧ state.visited = 5 ∧ state.total_size = 330)
+
+-- A node can only be popped if it is on the frontier. You CANNOT pop node 4
+-- (big.dat) while it is still Unseen — its parent src/ hasn't been visited yet,
+-- so this is UNSATISFIABLE.
+claim unsat_cannot_pop_unseen
+    _state ∈ Tree
+    state ∈ Tree
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_state.s4 = Unseen)
+    state.current = 4
+    du
+
+-- A directory contributes ZERO bytes to du. Popping the root (size 0) cannot make
+-- total_size jump to 100 — asserting that is UNSATISFIABLE.
+claim unsat_dir_adds_no_bytes
+    _state ∈ Tree
+    state ∈ Tree
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_state.s0 = Pending ∧ _state.s1 = Unseen ∧ _state.s2 = Unseen
+     ∧ _state.s3 = Unseen ∧ _state.s4 = Unseen ∧ _state.total_size = 0)
+    state.current = 0
+    du
+    state.total_size = 100

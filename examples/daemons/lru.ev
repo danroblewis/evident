@@ -1,0 +1,180 @@
+-- lru — an LRU (least-recently-used) cache simulator run as an FSM.
+--
+-- The classic caching utility: a fixed-capacity cache services a stream of key
+-- accesses. On a HIT (key already resident) we BUMP that key's recency; on a MISS
+-- we EVICT the least-recently-used resident key and INSERT the new one in its slot.
+-- hit_count / miss_count accumulate the access statistics.
+--
+-- STATE SHAPE: a bounded CACHE of 3 slots, each carrying a key (k0..k2; -1 = empty)
+-- and a recency rank (r0..r2). Recency is a monotone TIMESTAMP: the access ordinal
+-- (`pos`) stamped onto a slot the tick it is touched. The LRU slot is the resident
+-- slot with the SMALLEST timestamp; an empty slot (key = -1) is always preferred for
+-- insertion. Carried alongside: hit_count + miss_count.
+--
+--   evident phase-portrait examples/daemons/lru.ev --axes state.hit_count,state.miss_count
+--
+-- The portrait traces hits-vs-misses climbing as the access stream is consumed —
+-- cold-start misses dominate first, then a working-set that fits in 3 slots yields
+-- hits. The fixed input below replays a small working set (1 2 3 1 4 1) over cap 3.
+import "stdlib/runtime.ev"
+
+-- A 3-slot cache. key = -1 marks an empty slot; rank is the last-touched timestamp.
+type Cache
+    pos        ∈ Int    -- cursor into the access stream (also the recency clock)
+    k0         ∈ Int    -- slot 0 key (-1 = empty)
+    k1         ∈ Int    -- slot 1 key
+    k2         ∈ Int    -- slot 2 key
+    r0         ∈ Int    -- slot 0 recency timestamp (pos when last touched)
+    r1         ∈ Int    -- slot 1 recency timestamp
+    r2         ∈ Int    -- slot 2 recency timestamp
+    hit_count  ∈ Int    -- accesses served from the cache
+    miss_count ∈ Int    -- accesses that required an insert (cold or evicting)
+    done       ∈ Bool   -- has the stream been fully consumed?
+
+fsm lru(st ∈ Cache)
+    -- Fixed access stream: a small working set replayed over capacity 3.
+    -- 1 2 3 → three cold misses fill the cache; 1 → hit; 4 → miss, evicts LRU (2);
+    -- 1 → hit. Sentinel -1 ends the stream.
+    input ∈ Seq(Int) = ⟨1, 2, 3, 1, 4, 1, -1⟩
+
+    -- The key requested this tick (all derived from _st).
+    key ∈ Int = input[_st.pos]
+    at_end ∈ Bool = (key = -1)
+
+    -- Which slot (if any) currently holds the requested key — a HIT.
+    hit0 ∈ Bool = (¬at_end ∧ (_st.k0 = key))
+    hit1 ∈ Bool = (¬at_end ∧ (_st.k1 = key))
+    hit2 ∈ Bool = (¬at_end ∧ (_st.k2 = key))
+    is_hit ∈ Bool = (hit0 ∨ hit1 ∨ hit2)
+    is_miss ∈ Bool = (¬at_end ∧ ¬is_hit)
+
+    -- For an insert (miss), pick the victim slot: an empty slot first, else the
+    -- resident slot with the smallest recency timestamp (the LRU). Complete and
+    -- deterministic: ties resolve toward the lower-numbered slot.
+    empty0 ∈ Bool = (_st.k0 = -1)
+    empty1 ∈ Bool = (_st.k1 = -1)
+    empty2 ∈ Bool = (_st.k2 = -1)
+    any_empty ∈ Bool = (empty0 ∨ empty1 ∨ empty2)
+
+    -- least-recently-used among the THREE slots (used only when all are full).
+    lru01 ∈ Int = (_st.r0 ≤ _st.r1 ? 0 : 1)
+    lru01_r ∈ Int = (_st.r0 ≤ _st.r1 ? _st.r0 : _st.r1)
+    lru_full ∈ Int = (lru01_r ≤ _st.r2 ? lru01 : 2)
+
+    -- victim slot index for an insert: first empty slot, else the full-cache LRU.
+    victim ∈ Int = (empty0 ? 0 : (empty1 ? 1 : (empty2 ? 2 : lru_full)))
+
+    -- which slot gets written this tick: the hit slot on a hit, the victim on a miss.
+    target ∈ Int = (hit0 ? 0 : (hit1 ? 1 : (hit2 ? 2 : victim)))
+    writing ∈ Bool = (is_hit ∨ is_miss)
+
+    is_first_tick ⇒
+        (st.pos = 0 ∧ st.k0 = -1 ∧ st.k1 = -1 ∧ st.k2 = -1
+         ∧ st.r0 = 0 ∧ st.r1 = 0 ∧ st.r2 = 0
+         ∧ st.hit_count = 0 ∧ st.miss_count = 0 ∧ st.done = false)
+
+    ¬is_first_tick ⇒ (st.pos = (_st.done ? _st.pos : _st.pos + 1))
+    ¬is_first_tick ⇒ (st.done = (_st.done ∨ at_end))
+
+    -- Keys: the target slot takes the requested key (hit keeps it, miss replaces);
+    -- every other slot carries its key forward. pos+1 is the timestamp stamped.
+    ¬is_first_tick ⇒ (st.k0 = ((writing ∧ (target = 0)) ? key : _st.k0))
+    ¬is_first_tick ⇒ (st.k1 = ((writing ∧ (target = 1)) ? key : _st.k1))
+    ¬is_first_tick ⇒ (st.k2 = ((writing ∧ (target = 2)) ? key : _st.k2))
+
+    -- Recency: the touched slot is stamped with the access ordinal (pos+1, strictly
+    -- increasing so timestamps are unique); others preserve their stamp.
+    ¬is_first_tick ⇒ (st.r0 = ((writing ∧ (target = 0)) ? _st.pos + 1 : _st.r0))
+    ¬is_first_tick ⇒ (st.r1 = ((writing ∧ (target = 1)) ? _st.pos + 1 : _st.r1))
+    ¬is_first_tick ⇒ (st.r2 = ((writing ∧ (target = 2)) ? _st.pos + 1 : _st.r2))
+
+    -- Statistics accumulate.
+    ¬is_first_tick ⇒ (st.hit_count = (_st.hit_count + (is_hit ? 1 : 0)))
+    ¬is_first_tick ⇒ (st.miss_count = (_st.miss_count + (is_miss ? 1 : 0)))
+
+-- ── Static tests (validate the transition encodes — zero silent drops) ──
+
+-- First tick seeds an empty cache with zeroed stats.
+claim sat_first_tick_empty
+    _st ∈ Cache
+    st ∈ Cache
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = true
+    lru
+    (st.k0 = -1 ∧ st.k1 = -1 ∧ st.k2 = -1 ∧ st.hit_count = 0 ∧ st.miss_count = 0)
+
+-- pos=0 requests key 1 against an empty cache → a cold MISS fills slot 0.
+claim sat_cold_miss_fills_empty
+    _st ∈ Cache
+    st ∈ Cache
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_st.pos = 0 ∧ _st.k0 = -1 ∧ _st.k1 = -1 ∧ _st.k2 = -1
+     ∧ _st.r0 = 0 ∧ _st.r1 = 0 ∧ _st.r2 = 0
+     ∧ _st.hit_count = 0 ∧ _st.miss_count = 0 ∧ _st.done = false)
+    lru
+    (st.k0 = 1 ∧ st.r0 = 1 ∧ st.miss_count = 1 ∧ st.hit_count = 0)
+
+-- pos=3 requests key 1, which is resident in slot 0 → a HIT, bumps slot 0's recency.
+claim sat_hit_bumps_recency
+    _st ∈ Cache
+    st ∈ Cache
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_st.pos = 3 ∧ _st.k0 = 1 ∧ _st.k1 = 2 ∧ _st.k2 = 3
+     ∧ _st.r0 = 1 ∧ _st.r1 = 2 ∧ _st.r2 = 3
+     ∧ _st.hit_count = 0 ∧ _st.miss_count = 3 ∧ _st.done = false)
+    lru
+    (st.k0 = 1 ∧ st.r0 = 4 ∧ st.hit_count = 1 ∧ st.miss_count = 3)
+
+-- pos=4 requests key 4 against a full cache {1,2,3}. Slot 1 (key 2, r=2) is the
+-- least-recently-used → it is EVICTED and replaced by key 4. Slots 0 and 2 survive.
+claim sat_miss_evicts_lru
+    _st ∈ Cache
+    st ∈ Cache
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_st.pos = 4 ∧ _st.k0 = 1 ∧ _st.k1 = 2 ∧ _st.k2 = 3
+     ∧ _st.r0 = 4 ∧ _st.r1 = 2 ∧ _st.r2 = 3
+     ∧ _st.hit_count = 1 ∧ _st.miss_count = 3 ∧ _st.done = false)
+    lru
+    (st.k1 = 4 ∧ st.k0 = 1 ∧ st.k2 = 3 ∧ st.r1 = 5 ∧ st.miss_count = 4)
+
+-- An eviction must NOT evict a more-recently-used slot. With {1,2,3} and recencies
+-- r0=4, r1=2, r2=3, the LRU is slot 1 (r=2), so slot 0 (the MRU) cannot be the one
+-- overwritten — asserting key 4 lands in slot 0 is UNSATISFIABLE.
+claim unsat_does_not_evict_mru
+    _st ∈ Cache
+    st ∈ Cache
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_st.pos = 4 ∧ _st.k0 = 1 ∧ _st.k1 = 2 ∧ _st.k2 = 3
+     ∧ _st.r0 = 4 ∧ _st.r1 = 2 ∧ _st.r2 = 3
+     ∧ _st.hit_count = 1 ∧ _st.miss_count = 3 ∧ _st.done = false)
+    lru
+    st.k0 = 4
+
+-- A HIT must NOT be counted as a miss: requesting resident key 1 keeps miss_count
+-- unchanged, so asserting it incremented is UNSATISFIABLE.
+claim unsat_hit_is_not_a_miss
+    _st ∈ Cache
+    st ∈ Cache
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_st.pos = 3 ∧ _st.k0 = 1 ∧ _st.k1 = 2 ∧ _st.k2 = 3
+     ∧ _st.r0 = 1 ∧ _st.r1 = 2 ∧ _st.r2 = 3
+     ∧ _st.hit_count = 0 ∧ _st.miss_count = 3 ∧ _st.done = false)
+    lru
+    st.miss_count = 4

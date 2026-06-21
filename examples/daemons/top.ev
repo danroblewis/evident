@@ -1,0 +1,194 @@
+-- top: top-K processes by memory — a running TOP-K accumulator run as an FSM.
+--
+-- The `top`-like utility: stream a fixed process list past a bounded, sorted
+-- leaderboard. The carried STATE is a TOP-K SET — k=3 slots of (pid, mem) kept
+-- in DESCENDING memory order — plus a cursor walking the input one process per
+-- tick. Each tick consumes the next process and INSERTS-IF-LARGER: if its memory
+-- exceeds the smallest kept slot, it lands in its sorted position and the tail
+-- shifts down, evicting the previous third place. This is bounded insertion sort
+-- over a window of 3, which is exactly the difference-equation shape — the
+-- leaderboard is fixed-width state carried tick to tick.
+--
+--   evident phase-portrait examples/daemons/top.ev --axes state.cursor,state.m0
+--
+-- The portrait traces m0 (the reigning max) ratcheting up as bigger processes
+-- arrive, while m2 (third place) churns as the window fills and evicts.
+--
+-- Empty slots carry mem = -1 / pid = -1 (a sentinel below any real memory, so the
+-- "insert if larger than s2" test admits the first three processes unconditionally).
+--
+-- No /proc enumeration exists in stdlib (posix.ev exposes only raw fd FFI), so the
+-- process list is modeled in-program as a fixed Seq(Proc); the top-k logic is real.
+import "stdlib/runtime.ev"
+
+type Proc(pid, mem ∈ Int)
+
+-- The running leaderboard: three (pid, mem) pairs in descending mem order,
+-- plus the input cursor. Slot 0 is the current max, slot 2 is third place.
+type TopK
+    cursor ∈ Int    -- index of the next process to consume
+    p0 ∈ Int        -- pid of 1st place        m0 ∈ Int  -- its memory
+    m0 ∈ Int
+    p1 ∈ Int        -- pid of 2nd place
+    m1 ∈ Int
+    p2 ∈ Int        -- pid of 3rd place
+    m2 ∈ Int
+
+fsm top(state ∈ TopK)
+    -- Fixed representative process list (the "scan input").
+    procs ∈ Seq(Proc)
+    #procs = 6
+    procs[0] = Proc(101, 4096)
+    procs[1] = Proc(102, 8192)
+    procs[2] = Proc(103, 2048)
+    procs[3] = Proc(104, 16384)   -- the memory hog: vaults to first place
+    procs[4] = Proc(105, 512)     -- too small: leaves the board untouched
+    procs[5] = Proc(106, 6144)    -- lands in the middle, evicts third place
+
+    is_first_tick ⇒
+        (state.cursor = 0
+         ∧ state.p0 = -1 ∧ state.m0 = -1
+         ∧ state.p1 = -1 ∧ state.m1 = -1
+         ∧ state.p2 = -1 ∧ state.m2 = -1)
+
+    -- Once the cursor runs off the end, the leaderboard is frozen (fixpoint → halt).
+    done ∈ Bool = (_state.cursor ≥ 6)
+
+    ¬is_first_tick ⇒ (done ⇒
+        (state.cursor = _state.cursor
+         ∧ state.p0 = _state.p0 ∧ state.m0 = _state.m0
+         ∧ state.p1 = _state.p1 ∧ state.m1 = _state.m1
+         ∧ state.p2 = _state.p2 ∧ state.m2 = _state.m2))
+
+    -- Consume the process at the cursor and insert-if-larger into the sorted window.
+    cur ∈ Proc = procs[_state.cursor]
+
+    -- Where does cur land? Descending slots, so compare against each from the top.
+    -- (mem ties go to the incumbent: strict > means an equal value won't displace.)
+    at0 ∈ Bool = (cur.mem > _state.m0)                        -- new first place
+    at1 ∈ Bool = ((¬at0) ∧ (cur.mem > _state.m1))             -- new second place
+    at2 ∈ Bool = ((¬at0) ∧ (¬at1) ∧ (cur.mem > _state.m2))    -- new third place
+    keep ∈ Bool = ((¬at0) ∧ (¬at1) ∧ (¬at2))                  -- too small, no change
+
+    ¬is_first_tick ⇒ (¬done ⇒
+        (state.cursor = _state.cursor + 1
+         -- slot 0: takes cur on at0, else preserved
+         ∧ state.p0 = (at0 ? cur.pid : _state.p0)
+         ∧ state.m0 = (at0 ? cur.mem : _state.m0)
+         -- slot 1: takes the displaced old-s0 on at0, takes cur on at1, else preserved
+         ∧ state.p1 = (at0 ? _state.p0 : (at1 ? cur.pid : _state.p1))
+         ∧ state.m1 = (at0 ? _state.m0 : (at1 ? cur.mem : _state.m1))
+         -- slot 2: takes displaced old-s1 on at0, displaced old-s1 on at1,
+         -- cur on at2, else preserved
+         ∧ state.p2 = (at0 ? _state.p1 : (at1 ? _state.p1 : (at2 ? cur.pid : _state.p2)))
+         ∧ state.m2 = (at0 ? _state.m1 : (at1 ? _state.m1 : (at2 ? cur.mem : _state.m2)))))
+
+-- ── Static tests (validate the transition encodes, no silent drops) ──
+
+claim sat_first_tick_empty
+    _state ∈ TopK
+    state ∈ TopK
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = true
+    top
+    (state.cursor = 0 ∧ state.m0 = -1 ∧ state.m1 = -1 ∧ state.m2 = -1)
+
+-- First process (pid 101, mem 4096) fills the empty top slot.
+claim sat_first_fills_top
+    _state ∈ TopK
+    state ∈ TopK
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_state.cursor = 0 ∧ _state.p0 = -1 ∧ _state.m0 = -1
+     ∧ _state.p1 = -1 ∧ _state.m1 = -1 ∧ _state.p2 = -1 ∧ _state.m2 = -1)
+    top
+    (state.cursor = 1 ∧ state.p0 = 101 ∧ state.m0 = 4096)
+
+-- pid 102 (mem 8192) beats the reigning 4096 → vaults to first, 101 slides to s1.
+claim sat_bigger_takes_top
+    _state ∈ TopK
+    state ∈ TopK
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_state.cursor = 1 ∧ _state.p0 = 101 ∧ _state.m0 = 4096
+     ∧ _state.p1 = -1 ∧ _state.m1 = -1 ∧ _state.p2 = -1 ∧ _state.m2 = -1)
+    top
+    (state.cursor = 2 ∧ state.p0 = 102 ∧ state.m0 = 8192
+     ∧ state.p1 = 101 ∧ state.m1 = 4096)
+
+-- The memory hog at index 3 (pid 104, mem 16384) overtakes a full board:
+-- 104→s0, old s0(8192)→s1, old s1(4096)→s2, old s2(2048) evicted.
+claim sat_hog_evicts_third
+    _state ∈ TopK
+    state ∈ TopK
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_state.cursor = 3 ∧ _state.p0 = 102 ∧ _state.m0 = 8192
+     ∧ _state.p1 = 101 ∧ _state.m1 = 4096 ∧ _state.p2 = 103 ∧ _state.m2 = 2048)
+    top
+    (state.cursor = 4 ∧ state.p0 = 104 ∧ state.m0 = 16384
+     ∧ state.p1 = 102 ∧ state.m1 = 8192 ∧ state.p2 = 101 ∧ state.m2 = 4096)
+
+-- A tiny process (pid 105, mem 512 at index 4) is below third place → no change.
+claim sat_small_no_change
+    _state ∈ TopK
+    state ∈ TopK
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_state.cursor = 4 ∧ _state.p0 = 104 ∧ _state.m0 = 16384
+     ∧ _state.p1 = 102 ∧ _state.m1 = 8192 ∧ _state.p2 = 101 ∧ _state.m2 = 4096)
+    top
+    (state.cursor = 5 ∧ state.p0 = 104 ∧ state.m0 = 16384
+     ∧ state.p1 = 102 ∧ state.m1 = 8192 ∧ state.p2 = 101 ∧ state.m2 = 4096)
+
+-- pid 106 (mem 6144 at index 5) lands BETWEEN s1(8192) and s2(4096):
+-- it takes s2, the old third place (101, 4096) is evicted.
+claim sat_middle_insert
+    _state ∈ TopK
+    state ∈ TopK
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_state.cursor = 5 ∧ _state.p0 = 104 ∧ _state.m0 = 16384
+     ∧ _state.p1 = 102 ∧ _state.m1 = 8192 ∧ _state.p2 = 101 ∧ _state.m2 = 4096)
+    top
+    (state.cursor = 6 ∧ state.p0 = 104 ∧ state.m0 = 16384
+     ∧ state.p1 = 102 ∧ state.m1 = 8192 ∧ state.p2 = 106 ∧ state.m2 = 6144)
+
+-- Past the end the leaderboard is frozen.
+claim sat_done_freezes
+    _state ∈ TopK
+    state ∈ TopK
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_state.cursor = 6 ∧ _state.p0 = 104 ∧ _state.m0 = 16384
+     ∧ _state.p1 = 102 ∧ _state.m1 = 8192 ∧ _state.p2 = 106 ∧ _state.m2 = 6144)
+    top
+    (state.cursor = 6 ∧ state.p0 = 104 ∧ state.m0 = 16384 ∧ state.p2 = 106)
+
+-- A SMALLER process cannot displace the reigning max: inserting 512 below a full
+-- board can't put it at slot 0, so asserting m0 = 512 here is UNSATISFIABLE.
+claim unsat_small_cannot_take_top
+    _state ∈ TopK
+    state ∈ TopK
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_state.cursor = 4 ∧ _state.p0 = 104 ∧ _state.m0 = 16384
+     ∧ _state.p1 = 102 ∧ _state.m1 = 8192 ∧ _state.p2 = 101 ∧ _state.m2 = 4096)
+    top
+    state.m0 = 512

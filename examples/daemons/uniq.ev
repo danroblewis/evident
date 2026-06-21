@@ -1,0 +1,144 @@
+-- A `uniq`-like tool: a UTILITY program whose carried STATE is a RUN-LENGTH
+-- accumulator over consecutive equal lines. A cursor walks a fixed line list one
+-- record per tick; each line (modeled as an Int id) is compared to the PREVIOUS
+-- line. On a match the current run grows (run_count + 1); on a change the previous
+-- run is "emitted" (out_count + 1) and a fresh run of length 1 begins. The
+-- reachable state graph is the run-length / previous-value comparison evolving
+-- over the scan.
+--
+--   evident phase-portrait examples/daemons/uniq.ev --axes state.run_count,state.out_count
+--
+-- The portrait is a sawtooth in (run_count × out_count) space: run_count climbs
+-- inside a run of duplicates, then snaps back to 1 as out_count steps up at each
+-- boundary.
+--
+-- Lines are modeled as Int ids (uniq compares whole lines for equality; the id is
+-- the line's identity). No line-read / substring primitive exists, so the input is
+-- a fixed in-program Seq(Int); the run-length logic over it is real.
+import "stdlib/runtime.ev"
+
+type UniqState
+    cursor    ∈ Int    -- index of the next line to consume
+    prev_line ∈ Int    -- id of the most recently consumed line (-1 before any)
+    run_count ∈ Int    -- length of the current run of equal lines
+    out_count ∈ Int    -- number of completed distinct runs emitted so far
+    line_no   ∈ Int    -- count of lines consumed (1-based position)
+
+fsm uniq(state ∈ UniqState)
+    -- Fixed representative line list (the "scan input").
+    -- ids: a a a b c c  → 3 runs, last run still open at end of scan.
+    lines ∈ Seq(Int)
+    #lines = 6
+    lines[0] = 10
+    lines[1] = 10
+    lines[2] = 10
+    lines[3] = 20
+    lines[4] = 30
+    lines[5] = 30
+
+    is_first_tick ⇒
+        (state.cursor = 0 ∧ state.prev_line = -1 ∧ state.run_count = 0
+         ∧ state.out_count = 0 ∧ state.line_no = 0)
+
+    -- Once the cursor runs off the end, the accumulator is frozen (fixpoint → halt).
+    done ∈ Bool = (_state.cursor ≥ 6)
+
+    ¬is_first_tick ⇒ (done ⇒
+        (state.cursor = _state.cursor ∧ state.prev_line = _state.prev_line
+         ∧ state.run_count = _state.run_count ∧ state.out_count = _state.out_count
+         ∧ state.line_no = _state.line_no))
+
+    -- Consume the line at the cursor and fold it into the run-length accumulator.
+    cur ∈ Int = lines[_state.cursor]
+    starting ∈ Bool = (_state.line_no = 0)          -- very first line consumed
+    same     ∈ Bool = (cur = _state.prev_line)      -- continues the current run
+    boundary ∈ Bool = ((¬starting) ∧ (¬same))       -- a run just ended
+
+    ¬is_first_tick ⇒ (¬done ⇒
+        (state.cursor    = _state.cursor + 1
+         ∧ state.prev_line = cur
+         ∧ state.line_no   = _state.line_no + 1
+         ∧ state.run_count = (same ? _state.run_count + 1 : 1)
+         ∧ state.out_count = (boundary ? _state.out_count + 1 : _state.out_count)))
+
+-- ── Static tests (validate the transition encodes, no silent drops) ──
+
+claim sat_first_tick_zeroes
+    _state ∈ UniqState
+    state ∈ UniqState
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = true
+    uniq
+    (state.cursor = 0 ∧ state.prev_line = -1 ∧ state.run_count = 0
+     ∧ state.out_count = 0 ∧ state.line_no = 0)
+
+-- First line (id 10) opens a run of length 1, no boundary yet.
+claim sat_consume_first_line
+    _state ∈ UniqState
+    state ∈ UniqState
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_state.cursor = 0 ∧ _state.prev_line = -1 ∧ _state.run_count = 0
+     ∧ _state.out_count = 0 ∧ _state.line_no = 0)
+    uniq
+    (state.cursor = 1 ∧ state.prev_line = 10 ∧ state.run_count = 1
+     ∧ state.out_count = 0 ∧ state.line_no = 1)
+
+-- A consecutive duplicate (cursor=1, line id 10 again) grows the run, no emit.
+claim sat_duplicate_grows_run
+    _state ∈ UniqState
+    state ∈ UniqState
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_state.cursor = 1 ∧ _state.prev_line = 10 ∧ _state.run_count = 1
+     ∧ _state.out_count = 0 ∧ _state.line_no = 1)
+    uniq
+    (state.cursor = 2 ∧ state.prev_line = 10 ∧ state.run_count = 2
+     ∧ state.out_count = 0 ∧ state.line_no = 2)
+
+-- The change at cursor=3 (id 20 ≠ 10) closes the first run: out_count steps to 1,
+-- run_count snaps back to 1.
+claim sat_change_emits_run
+    _state ∈ UniqState
+    state ∈ UniqState
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_state.cursor = 3 ∧ _state.prev_line = 10 ∧ _state.run_count = 3
+     ∧ _state.out_count = 0 ∧ _state.line_no = 3)
+    uniq
+    (state.cursor = 4 ∧ state.prev_line = 20 ∧ state.run_count = 1
+     ∧ state.out_count = 1 ∧ state.line_no = 4)
+
+-- Past the end the accumulator is frozen: nothing changes once done.
+claim sat_done_freezes
+    _state ∈ UniqState
+    state ∈ UniqState
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_state.cursor = 6 ∧ _state.prev_line = 30 ∧ _state.run_count = 2
+     ∧ _state.out_count = 2 ∧ _state.line_no = 6)
+    uniq
+    (state.cursor = 6 ∧ state.run_count = 2 ∧ state.out_count = 2 ∧ state.line_no = 6)
+
+-- A duplicate line can NEVER emit a run: out_count must not advance on a match.
+claim unsat_duplicate_emits_run
+    _state ∈ UniqState
+    state ∈ UniqState
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_state.cursor = 1 ∧ _state.prev_line = 10 ∧ _state.run_count = 1
+     ∧ _state.out_count = 0 ∧ _state.line_no = 1)
+    uniq
+    state.out_count = 1

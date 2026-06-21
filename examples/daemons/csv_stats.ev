@@ -1,0 +1,137 @@
+-- A `csv-stats`-like aggregator: a UTILITY program whose carried STATE is a set
+-- of STREAMING ACCUMULATORS over a numeric column. A cursor walks a fixed column
+-- of Ints one cell per tick; each value folds into count / sum / min / max. The
+-- reachable state graph is the running aggregation over the scan.
+--
+--   evident phase-portrait examples/daemons/csv_stats.ev --axes state.sum,state.max
+--
+-- No CSV parser / line-read primitive exists in the runtime (stdlib/posix.ev
+-- exposes only raw libc fd builders — no readline, no field splitting). So the
+-- column is modeled in-program as a fixed Seq(Int); the aggregation over it is real.
+import "stdlib/runtime.ev"
+
+-- Streaming aggregation over a numeric column.
+type Stats
+    cursor ∈ Int    -- index of the next cell to consume
+    count  ∈ Int    -- number of values folded so far
+    sum    ∈ Int    -- running total
+    min    ∈ Int    -- smallest value seen (sentinel before any value)
+    max    ∈ Int    -- largest value seen (sentinel before any value)
+
+fsm csv_stats(state ∈ Stats)
+    -- Fixed numeric column (the "scan input"): the values of one CSV column.
+    col ∈ Seq(Int)
+    #col = 6
+    col[0] = 40
+    col[1] = 15
+    col[2] = 80
+    col[3] = 23
+    col[4] = 80
+    col[5] = 4
+
+    -- Sentinels: min starts high, max starts low, so the first value wins both.
+    is_first_tick ⇒
+        (state.cursor = 0 ∧ state.count = 0 ∧ state.sum = 0
+         ∧ state.min = 1000000 ∧ state.max = -1000000)
+
+    -- Once the cursor runs off the end, the aggregates are frozen (fixpoint → halt).
+    done ∈ Bool = (_state.cursor ≥ 6)
+
+    ¬is_first_tick ⇒ (done ⇒
+        (state.cursor = _state.cursor ∧ state.count = _state.count
+         ∧ state.sum = _state.sum ∧ state.min = _state.min
+         ∧ state.max = _state.max))
+
+    -- Consume the cell at the cursor and fold it into the accumulators.
+    cur ∈ Int = col[_state.cursor]
+    new_min ∈ Bool = (cur < _state.min)
+    new_max ∈ Bool = (cur > _state.max)
+
+    ¬is_first_tick ⇒ (¬done ⇒
+        (state.cursor = _state.cursor + 1
+         ∧ state.count = _state.count + 1
+         ∧ state.sum   = _state.sum + cur
+         ∧ state.min   = (new_min ? cur : _state.min)
+         ∧ state.max   = (new_max ? cur : _state.max)))
+
+-- ── Static tests (validate the transition encodes, no silent drops) ──
+
+claim sat_first_tick_seeds
+    _state ∈ Stats
+    state ∈ Stats
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = true
+    csv_stats
+    (state.cursor = 0 ∧ state.count = 0 ∧ state.sum = 0
+     ∧ state.min = 1000000 ∧ state.max = -1000000)
+
+-- First cell (40) sets count/sum and wins both min and max off the sentinels.
+claim sat_consume_first
+    _state ∈ Stats
+    state ∈ Stats
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_state.cursor = 0 ∧ _state.count = 0 ∧ _state.sum = 0
+     ∧ _state.min = 1000000 ∧ _state.max = -1000000)
+    csv_stats
+    (state.cursor = 1 ∧ state.count = 1 ∧ state.sum = 40
+     ∧ state.min = 40 ∧ state.max = 40)
+
+-- Cell at index 2 (80) lifts the max but leaves the min alone.
+claim sat_consume_updates_max
+    _state ∈ Stats
+    state ∈ Stats
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_state.cursor = 2 ∧ _state.count = 2 ∧ _state.sum = 55
+     ∧ _state.min = 15 ∧ _state.max = 40)
+    csv_stats
+    (state.cursor = 3 ∧ state.count = 3 ∧ state.sum = 135
+     ∧ state.min = 15 ∧ state.max = 80)
+
+-- Cell at index 5 (4) lowers the min but leaves the max alone.
+claim sat_consume_updates_min
+    _state ∈ Stats
+    state ∈ Stats
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_state.cursor = 5 ∧ _state.count = 5 ∧ _state.sum = 238
+     ∧ _state.min = 15 ∧ _state.max = 80)
+    csv_stats
+    (state.cursor = 6 ∧ state.count = 6 ∧ state.sum = 242
+     ∧ state.min = 4 ∧ state.max = 80)
+
+-- Past the end the aggregates are frozen: nothing changes once done.
+claim sat_done_freezes
+    _state ∈ Stats
+    state ∈ Stats
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_state.cursor = 6 ∧ _state.count = 6 ∧ _state.sum = 242
+     ∧ _state.min = 4 ∧ _state.max = 80)
+    csv_stats
+    (state.cursor = 6 ∧ state.count = 6 ∧ state.sum = 242
+     ∧ state.min = 4 ∧ state.max = 80)
+
+-- Consuming a single cell can only ever bump count by exactly one.
+claim unsat_count_jumps_by_two
+    _state ∈ Stats
+    state ∈ Stats
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_state.cursor = 0 ∧ _state.count = 0 ∧ _state.sum = 0
+     ∧ _state.min = 1000000 ∧ _state.max = -1000000)
+    csv_stats
+    state.count = 2

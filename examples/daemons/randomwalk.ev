@@ -1,0 +1,135 @@
+-- randomwalk — a Markov random walk on a small fixed graph. The carried state is the
+-- current node (an enum) plus a per-node VISIT-COUNT vector. Each tick the walker
+-- moves to a NONDETERMINISTICALLY chosen NEIGHBOUR of the current node (every neighbour
+-- is a valid successor — the transition is left under-constrained on purpose) and
+-- increments that node's visit count. The reachable-state fan IS the stochastic walk:
+-- the portrait spreads over (node × visits) space as the walk explores the graph.
+--
+--   evident phase-portrait examples/daemons/randomwalk.ev --axes state.node,state.v0
+--
+-- The fixed undirected graph (5 nodes):
+--
+--        A(0) ─── B(1)
+--         │  ╲   ╱ │
+--         │   ╳    │
+--         │  ╱   ╲ │
+--        C(2) ─── ?  D(3)
+--         │         │
+--         └── E(4) ──┘
+--
+-- adjacency:
+--   A(0) ↔ {B, C}
+--   B(1) ↔ {A, C, D}
+--   C(2) ↔ {A, B, E}
+--   D(3) ↔ {B, E}
+--   E(4) ↔ {C, D}
+--
+-- No randomness primitive exists — the nondeterminism is Z3's free choice among the
+-- neighbour disjunction, so the reachable walk covers every possible step sequence.
+import "stdlib/runtime.ev"
+
+enum Node = A | B | C | D | E
+
+type Walk
+    -- current node of the walker
+    node ∈ Node
+    -- per-node visit counts (incremented each time the walker lands there)
+    v0 ∈ Int
+    v1 ∈ Int
+    v2 ∈ Int
+    v3 ∈ Int
+    v4 ∈ Int
+
+fsm randomwalk(state ∈ Walk)
+    -- bind the previous node to a local so `match` works (match on field-access drops)
+    pn ∈ Node = _state.node
+
+    is_first_tick ⇒
+        -- Seed: start at A, having visited A once, everything else zero.
+        (state.node = A ∧ state.v0 = 1 ∧ state.v1 = 0 ∧ state.v2 = 0
+         ∧ state.v3 = 0 ∧ state.v4 = 0)
+
+    -- STEP: the next node is a NEIGHBOUR of the previous node. Each disjunction lists
+    -- every neighbour; Z3 picks any one (the stochastic fan of successors).
+    ¬is_first_tick ⇒
+        (pn = A ⇒ (state.node = B ∨ state.node = C))
+    ¬is_first_tick ⇒
+        (pn = B ⇒ (state.node = A ∨ state.node = C ∨ state.node = D))
+    ¬is_first_tick ⇒
+        (pn = C ⇒ (state.node = A ∨ state.node = B ∨ state.node = E))
+    ¬is_first_tick ⇒
+        (pn = D ⇒ (state.node = B ∨ state.node = E))
+    ¬is_first_tick ⇒
+        (pn = E ⇒ (state.node = C ∨ state.node = D))
+
+    -- VISIT COUNTS: the node the walker lands on this tick gets +1; all others carry.
+    ¬is_first_tick ⇒ (state.v0 = (_state.v0 + (state.node = A ? 1 : 0)))
+    ¬is_first_tick ⇒ (state.v1 = (_state.v1 + (state.node = B ? 1 : 0)))
+    ¬is_first_tick ⇒ (state.v2 = (_state.v2 + (state.node = C ? 1 : 0)))
+    ¬is_first_tick ⇒ (state.v3 = (_state.v3 + (state.node = D ? 1 : 0)))
+    ¬is_first_tick ⇒ (state.v4 = (_state.v4 + (state.node = E ? 1 : 0)))
+
+-- ── Static tests (validate the transition encodes — zero dropped constraints) ──
+
+-- First tick seeds the walker at A with v0 = 1.
+claim sat_seed_at_a
+    _state ∈ Walk
+    state ∈ Walk
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = true
+    randomwalk
+    (state.node = A ∧ state.v0 = 1 ∧ state.v1 = 0)
+
+-- From A, moving to C is a valid step; C's visit count increments, A's holds.
+claim sat_a_to_c_increments
+    _state ∈ Walk
+    state ∈ Walk
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_state.node = A ∧ _state.v0 = 1 ∧ _state.v1 = 0 ∧ _state.v2 = 0
+     ∧ _state.v3 = 0 ∧ _state.v4 = 0)
+    state.node = C
+    randomwalk
+    (state.v2 = 1 ∧ state.v0 = 1)
+
+-- From B, moving to D is valid (B ↔ D are neighbours); D's count rises.
+claim sat_b_to_d_increments
+    _state ∈ Walk
+    state ∈ Walk
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_state.node = B ∧ _state.v3 = 2)
+    state.node = D
+    randomwalk
+    (state.v3 = 3)
+
+-- The fan is genuinely nondeterministic: from A, moving to B is ALSO valid.
+claim sat_a_to_b_also_valid
+    _state ∈ Walk
+    state ∈ Walk
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_state.node = A ∧ _state.v1 = 0)
+    state.node = B
+    randomwalk
+    (state.v1 = 1)
+
+-- A and D are NOT neighbours — you cannot step from A directly to D.
+claim unsat_a_to_d_not_adjacent
+    _state ∈ Walk
+    state ∈ Walk
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_state.node = A)
+    state.node = D
+    randomwalk

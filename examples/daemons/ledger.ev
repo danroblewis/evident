@@ -1,0 +1,138 @@
+-- ledger: a bank-account transaction machine run as an FSM.
+--
+-- The classic "apply a journal of transactions" utility: stream a fixed Seq of
+-- transactions (account id, amount, deposit/withdraw) through a small fixed bank
+-- of account balances. A deposit credits the named account; a withdraw debits it,
+-- but only if the funds are there — an overdraft is REJECTED (balance unchanged)
+-- and latches an `ok` invariant flag to false for the rest of the run.
+--
+-- STATE SHAPE: a BALANCE VECTOR (b0..b2, three accounts) + a transaction cursor
+-- (pos) + a latched invariant (ok). The vector is fixed-width because a
+-- difference equation carries fixed-width state; this models a 3-account bank,
+-- the representative shape. `ok` is the never-overdrawn invariant: true while
+-- every withdraw has been covered, latching false forever on the first overdraft.
+--
+--   evident phase-portrait examples/daemons/ledger.ev --axes state.b0,state.ok
+--
+-- The portrait traces b0 stepping up on deposits and down on covered withdraws;
+-- an attempted overdraft flips ok=false and the balance holds.
+import "stdlib/runtime.ev"
+
+-- A transaction kind: credit (deposit) or debit (withdraw).
+enum TxnKind = Deposit | Withdraw
+
+type Ledger
+    pos ∈ Int        -- cursor into the transaction journal
+    b0  ∈ Int        -- balance of account 0
+    b1  ∈ Int        -- balance of account 1
+    b2  ∈ Int        -- balance of account 2
+    ok  ∈ Bool        -- has every withdraw been covered (no overdraft yet)?
+    done ∈ Bool      -- has the whole journal been consumed?
+
+fsm ledger(st ∈ Ledger)
+    -- Fixed representative journal. A Seq-of-record carrying an enum field can't
+    -- be encoded into a Z3 Datatype, so the journal is held as three parallel
+    -- per-field Seqs and selected by the cursor — the indexing IS the lookup.
+    accts   ∈ Seq(Int)     = ⟨0,   1,  0,  2,  1,  0⟩
+    amounts ∈ Seq(Int)     = ⟨100, 50, 30, 20, 80, 70⟩
+    kinds   ∈ Seq(TxnKind) = ⟨Deposit, Deposit, Withdraw, Deposit, Withdraw, Withdraw⟩
+
+    n ∈ Int = 6                       -- journal length
+
+    -- The transaction under the cursor (all derived from _st.pos).
+    acct   ∈ Int     = accts[_st.pos]
+    amount ∈ Int     = amounts[_st.pos]
+    kind   ∈ TxnKind = kinds[_st.pos]
+
+    -- The live balance of the targeted account, before this txn.
+    cur ∈ Int = (acct = 0 ? _st.b0
+                 : (acct = 1 ? _st.b1
+                    : _st.b2))
+
+    -- A withdraw is an overdraft iff it asks for more than the account holds.
+    is_withdraw ∈ Bool = (kind = Withdraw)
+    overdraft   ∈ Bool = (is_withdraw ∧ (amount > cur))
+
+    -- Signed delta to apply to the targeted account this tick:
+    --   deposit → +amount; covered withdraw → -amount; overdraft → 0 (rejected).
+    delta ∈ Int = (is_withdraw ? (overdraft ? 0 : 0 - amount) : amount)
+
+    is_first_tick ⇒
+        (st.pos = 0 ∧ st.b0 = 0 ∧ st.b1 = 0 ∧ st.b2 = 0
+         ∧ st.ok = true ∧ st.done = false)
+
+    ¬is_first_tick ⇒
+        -- Advance the cursor every tick until the journal is exhausted.
+        st.pos  = (_st.done ? _st.pos : _st.pos + 1)
+        st.done = (_st.done ∨ (_st.pos + 1 ≥ n))
+
+        -- Apply delta to the targeted account; the other two are preserved.
+        st.b0 = (_st.done ? _st.b0 : (acct = 0 ? _st.b0 + delta : _st.b0))
+        st.b1 = (_st.done ? _st.b1 : (acct = 1 ? _st.b1 + delta : _st.b1))
+        st.b2 = (_st.done ? _st.b2 : (acct = 2 ? _st.b2 + delta : _st.b2))
+
+        -- ok latches false on the first overdraft; never recovers.
+        st.ok = (_st.ok ∧ ¬overdraft)
+
+-- ── Static tests (validate the transition encodes — zero silent drops) ──
+
+-- First tick seeds an all-zero bank that is still ok.
+claim sat_first_tick_zero
+    _st ∈ Ledger
+    st ∈ Ledger
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = true
+    ledger
+    (st.b0 = 0 ∧ st.b1 = 0 ∧ st.b2 = 0 ∧ st.ok = true)
+
+-- pos=0 is a 100 deposit to account 0 → b0 0→100.
+claim sat_deposit_credits
+    _st ∈ Ledger
+    st ∈ Ledger
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_st.pos = 0 ∧ _st.b0 = 0 ∧ _st.b1 = 0 ∧ _st.b2 = 0 ∧ _st.ok = true ∧ _st.done = false)
+    ledger
+    (st.b0 = 100 ∧ st.b1 = 0 ∧ st.ok = true)
+
+-- pos=2 is a 30 withdraw from account 0 holding 100 → covered, b0 100→70.
+claim sat_covered_withdraw
+    _st ∈ Ledger
+    st ∈ Ledger
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_st.pos = 2 ∧ _st.b0 = 100 ∧ _st.b1 = 50 ∧ _st.b2 = 0 ∧ _st.ok = true ∧ _st.done = false)
+    ledger
+    (st.b0 = 70 ∧ st.ok = true)
+
+-- pos=5 is a 70 withdraw from account 0 holding only 20 → OVERDRAFT: ok latches
+-- false and the balance is left unchanged (the withdraw is rejected).
+claim sat_overdraft_latches_fail
+    _st ∈ Ledger
+    st ∈ Ledger
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_st.pos = 5 ∧ _st.b0 = 20 ∧ _st.b1 = 50 ∧ _st.b2 = 20 ∧ _st.ok = true ∧ _st.done = false)
+    ledger
+    (st.ok = false ∧ st.b0 = 20)
+
+-- A COVERED withdraw must NOT mark failure: 30 out of 100 keeps ok true, so
+-- asserting ok=false here is UNSATISFIABLE.
+claim unsat_covered_withdraw_cannot_fail
+    _st ∈ Ledger
+    st ∈ Ledger
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_st.pos = 2 ∧ _st.b0 = 100 ∧ _st.b1 = 50 ∧ _st.b2 = 0 ∧ _st.ok = true ∧ _st.done = false)
+    ledger
+    st.ok = false

@@ -155,8 +155,12 @@ class Model:
         return {v["name"]: self._read(model, v) for v in self.carried}
 
     def _pin_prev(self, solver, state):
+        # Pin only the leaves the caller supplied; a renderer may pass a PARTIAL
+        # state (e.g. just the deduped axis vars), leaving the rest free. Pinning
+        # all of self.carried would KeyError on a leaf the caller omitted.
         for v in self.carried:
-            solver.add(self.consts[v["prev"]] == self._lit(v, state[v["name"]]))
+            if v["name"] in state:
+                solver.add(self.consts[v["prev"]] == self._lit(v, state[v["name"]]))
 
     # ---- queries ------------------------------------------------------------
     def initial_state(self):

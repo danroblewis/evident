@@ -1,0 +1,137 @@
+-- histogram: a binning accumulator over a fixed numeric stream.
+--
+-- The classic "bucket a column of numbers" utility. A cursor walks a fixed Seq of
+-- sample values one per tick; each value is classified into one of four numeric
+-- BINS by a range comparison, and the matching bin counter is bumped. The carried
+-- STATE is the binning vector itself — bin0..bin3 + a total + the cursor — and the
+-- reachable state graph is the running histogram as the scan folds each sample in.
+--
+--   evident phase-portrait examples/daemons/histogram.ev --axes state.cursor,state.bin2
+--
+-- Bin edges (half-open, complete cover of the Int line via the final catch-all):
+--   bin0: v <  25        bin1: 25 ≤ v <  50
+--   bin2: 50 ≤ v <  75   bin3: 75 ≤ v          (everything ≥ 75)
+-- Every value lands in exactly one bin, so total = bin0+bin1+bin2+bin3 always.
+import "stdlib/runtime.ev"
+
+-- The binning vector: four bucket counts + a running total + the scan cursor.
+type Hist
+    cursor ∈ Int     -- index of the next sample to consume
+    bin0   ∈ Int     -- count of samples in [-∞, 25)
+    bin1   ∈ Int     -- count of samples in [25, 50)
+    bin2   ∈ Int     -- count of samples in [50, 75)
+    bin3   ∈ Int     -- count of samples in [75, +∞)
+    total  ∈ Int     -- total samples binned so far
+
+fsm histogram(state ∈ Hist)
+    -- Fixed representative numeric stream (the "column" being bucketed).
+    samples ∈ Seq(Int) = ⟨10, 30, 60, 90, 25, 49, 74, 75, 0, 50⟩
+
+    is_first_tick ⇒
+        (state.cursor = 0 ∧ state.bin0 = 0 ∧ state.bin1 = 0
+         ∧ state.bin2 = 0 ∧ state.bin3 = 0 ∧ state.total = 0)
+
+    -- Once the cursor runs off the end, the histogram is frozen (fixpoint → halt).
+    done ∈ Bool = (_state.cursor ≥ 10)
+
+    ¬is_first_tick ⇒ (done ⇒
+        (state.cursor = _state.cursor ∧ state.bin0 = _state.bin0
+         ∧ state.bin1 = _state.bin1 ∧ state.bin2 = _state.bin2
+         ∧ state.bin3 = _state.bin3 ∧ state.total = _state.total))
+
+    -- Consume the sample at the cursor and classify it by range.
+    v ∈ Int = samples[_state.cursor]
+    in0 ∈ Bool = (v < 25)
+    in1 ∈ Bool = ((v ≥ 25) ∧ (v < 50))
+    in2 ∈ Bool = ((v ≥ 50) ∧ (v < 75))
+    in3 ∈ Bool = (v ≥ 75)
+
+    ¬is_first_tick ⇒ (¬done ⇒
+        (state.cursor = _state.cursor + 1
+         ∧ state.bin0 = (in0 ? _state.bin0 + 1 : _state.bin0)
+         ∧ state.bin1 = (in1 ? _state.bin1 + 1 : _state.bin1)
+         ∧ state.bin2 = (in2 ? _state.bin2 + 1 : _state.bin2)
+         ∧ state.bin3 = (in3 ? _state.bin3 + 1 : _state.bin3)
+         ∧ state.total = _state.total + 1))
+
+-- ── Static tests (validate the transition encodes — zero silent drops) ──
+
+-- First tick seeds an all-zero histogram.
+claim sat_first_tick_zeroes
+    _state ∈ Hist
+    state ∈ Hist
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = true
+    histogram
+    (state.cursor = 0 ∧ state.bin0 = 0 ∧ state.bin1 = 0
+     ∧ state.bin2 = 0 ∧ state.bin3 = 0 ∧ state.total = 0)
+
+-- Sample[0] = 10 → bin0 (v < 25). cursor 0→1, total 0→1.
+claim sat_consume_low_bumps_bin0
+    _state ∈ Hist
+    state ∈ Hist
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_state.cursor = 0 ∧ _state.bin0 = 0 ∧ _state.bin1 = 0
+     ∧ _state.bin2 = 0 ∧ _state.bin3 = 0 ∧ _state.total = 0)
+    histogram
+    (state.cursor = 1 ∧ state.bin0 = 1 ∧ state.bin1 = 0
+     ∧ state.bin2 = 0 ∧ state.bin3 = 0 ∧ state.total = 1)
+
+-- Sample[2] = 60 → bin2 (50 ≤ v < 75). Only bin2 moves.
+claim sat_consume_mid_bumps_bin2
+    _state ∈ Hist
+    state ∈ Hist
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_state.cursor = 2 ∧ _state.bin0 = 1 ∧ _state.bin1 = 1
+     ∧ _state.bin2 = 0 ∧ _state.bin3 = 0 ∧ _state.total = 2)
+    histogram
+    (state.cursor = 3 ∧ state.bin0 = 1 ∧ state.bin1 = 1
+     ∧ state.bin2 = 1 ∧ state.bin3 = 0 ∧ state.total = 3)
+
+-- Sample[7] = 75 is the lower edge of bin3 (v ≥ 75, half-open) → bin3, NOT bin2.
+claim sat_edge_75_lands_in_bin3
+    _state ∈ Hist
+    state ∈ Hist
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_state.cursor = 7 ∧ _state.bin0 = 1 ∧ _state.bin1 = 2
+     ∧ _state.bin2 = 2 ∧ _state.bin3 = 2 ∧ _state.total = 7)
+    histogram
+    (state.cursor = 8 ∧ state.bin2 = 2 ∧ state.bin3 = 3 ∧ state.total = 8)
+
+-- Past the end the histogram is frozen: counts can't change once done.
+claim sat_done_freezes
+    _state ∈ Hist
+    state ∈ Hist
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_state.cursor = 10 ∧ _state.bin0 = 3 ∧ _state.bin1 = 2
+     ∧ _state.bin2 = 3 ∧ _state.bin3 = 2 ∧ _state.total = 10)
+    histogram
+    (state.cursor = 10 ∧ state.bin0 = 3 ∧ state.total = 10)
+
+-- Consuming the low sample[0]=10 (bin0) CANNOT bump bin2 — asserting it does
+-- is UNSATISFIABLE.
+claim unsat_low_bumps_bin2
+    _state ∈ Hist
+    state ∈ Hist
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_state.cursor = 0 ∧ _state.bin0 = 0 ∧ _state.bin1 = 0
+     ∧ _state.bin2 = 0 ∧ _state.bin3 = 0 ∧ _state.total = 0)
+    histogram
+    state.bin2 = 1

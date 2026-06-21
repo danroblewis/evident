@@ -1,0 +1,199 @@
+-- life: Conway's Game of Life on a FIXED 4×4 grid — a 2-D cellular automaton
+-- run as a difference equation. The carried state IS the grid: 16 Bool cells
+-- (c00..c33, row-major) plus a generation counter. Each tick recomputes every
+-- cell from its live-neighbour count under the B3/S23 rule:
+--
+--   a live cell survives iff it has 2 or 3 live neighbours (S23);
+--   a dead cell is born  iff it has exactly 3 live neighbours (B3).
+--
+-- The grid is bounded (no wraparound) — out-of-bounds neighbours count as dead,
+-- so the live-neighbour count of an edge/corner cell sums only its in-bounds
+-- neighbours. This is the representative shape; a torus would just change which
+-- neighbours each cell sums.
+--
+--   evident phase-portrait examples/daemons/life.ev --axes state.pop,state.gen
+--
+-- The portrait traces population over generations: a blinker oscillates pop
+-- with period 2; a block stays fixed; a glider would drift (off-grid here it
+-- dies). pop is a derived census carried alongside the cells for visualization.
+import "stdlib/runtime.ev"
+
+-- The grid: 16 cells in a 4×4 row-major layout, a generation counter, and a
+-- live-cell census (pop) carried for the phase portrait.
+type Grid
+    c00 ∈ Bool
+    c01 ∈ Bool
+    c02 ∈ Bool
+    c03 ∈ Bool
+    c10 ∈ Bool
+    c11 ∈ Bool
+    c12 ∈ Bool
+    c13 ∈ Bool
+    c20 ∈ Bool
+    c21 ∈ Bool
+    c22 ∈ Bool
+    c23 ∈ Bool
+    c30 ∈ Bool
+    c31 ∈ Bool
+    c32 ∈ Bool
+    c33 ∈ Bool
+    gen ∈ Int        -- generation number (ticks since seed)
+    pop ∈ Int        -- live-cell census of THIS grid (derived, carried)
+
+fsm life(state ∈ Grid)
+    -- A 1/0 view of every previous cell, so neighbour counts are integer sums.
+    -- (Edge/corner cells simply omit the off-grid neighbours from their sum.)
+    b00 ∈ Int = (_state.c00 ? 1 : 0)
+    b01 ∈ Int = (_state.c01 ? 1 : 0)
+    b02 ∈ Int = (_state.c02 ? 1 : 0)
+    b03 ∈ Int = (_state.c03 ? 1 : 0)
+    b10 ∈ Int = (_state.c10 ? 1 : 0)
+    b11 ∈ Int = (_state.c11 ? 1 : 0)
+    b12 ∈ Int = (_state.c12 ? 1 : 0)
+    b13 ∈ Int = (_state.c13 ? 1 : 0)
+    b20 ∈ Int = (_state.c20 ? 1 : 0)
+    b21 ∈ Int = (_state.c21 ? 1 : 0)
+    b22 ∈ Int = (_state.c22 ? 1 : 0)
+    b23 ∈ Int = (_state.c23 ? 1 : 0)
+    b30 ∈ Int = (_state.c30 ? 1 : 0)
+    b31 ∈ Int = (_state.c31 ? 1 : 0)
+    b32 ∈ Int = (_state.c32 ? 1 : 0)
+    b33 ∈ Int = (_state.c33 ? 1 : 0)
+
+    -- Live-neighbour count for each cell (the 8-neighbourhood, clipped to grid).
+    n00 ∈ Int = b01 + b10 + b11
+    n01 ∈ Int = b00 + b02 + b10 + b11 + b12
+    n02 ∈ Int = b01 + b03 + b11 + b12 + b13
+    n03 ∈ Int = b02 + b12 + b13
+    n10 ∈ Int = b00 + b01 + b11 + b20 + b21
+    n11 ∈ Int = b00 + b01 + b02 + b10 + b12 + b20 + b21 + b22
+    n12 ∈ Int = b01 + b02 + b03 + b11 + b13 + b21 + b22 + b23
+    n13 ∈ Int = b02 + b03 + b12 + b22 + b23
+    n20 ∈ Int = b10 + b11 + b21 + b30 + b31
+    n21 ∈ Int = b10 + b11 + b12 + b20 + b22 + b30 + b31 + b32
+    n22 ∈ Int = b11 + b12 + b13 + b21 + b23 + b31 + b32 + b33
+    n23 ∈ Int = b12 + b13 + b22 + b32 + b33
+    n30 ∈ Int = b20 + b21 + b31
+    n31 ∈ Int = b20 + b21 + b22 + b30 + b32
+    n32 ∈ Int = b21 + b22 + b23 + b31 + b33
+    n33 ∈ Int = b22 + b23 + b32
+
+    -- First tick: seed a blinker (a 3-in-a-row period-2 oscillator) in row 1.
+    is_first_tick ⇒
+        (state.c00 = false ∧ state.c01 = false ∧ state.c02 = false ∧ state.c03 = false
+         ∧ state.c10 = true  ∧ state.c11 = true  ∧ state.c12 = true  ∧ state.c13 = false
+         ∧ state.c20 = false ∧ state.c21 = false ∧ state.c22 = false ∧ state.c23 = false
+         ∧ state.c30 = false ∧ state.c31 = false ∧ state.c32 = false ∧ state.c33 = false
+         ∧ state.gen = 0)
+
+    -- Ongoing: each cell steps under B3/S23 from its previous liveness + count.
+    -- next = born-on-3, or survives if it was alive with exactly 2 neighbours:
+    --   (n = 3) ∨ (was_alive ∧ n = 2)   ≡   alive ? n∈{2,3} : n=3
+    ¬is_first_tick ⇒ (state.gen = _state.gen + 1)
+    ¬is_first_tick ⇒ (state.c00 = ((n00 = 3) ∨ (_state.c00 ∧ (n00 = 2))))
+    ¬is_first_tick ⇒ (state.c01 = ((n01 = 3) ∨ (_state.c01 ∧ (n01 = 2))))
+    ¬is_first_tick ⇒ (state.c02 = ((n02 = 3) ∨ (_state.c02 ∧ (n02 = 2))))
+    ¬is_first_tick ⇒ (state.c03 = ((n03 = 3) ∨ (_state.c03 ∧ (n03 = 2))))
+    ¬is_first_tick ⇒ (state.c10 = ((n10 = 3) ∨ (_state.c10 ∧ (n10 = 2))))
+    ¬is_first_tick ⇒ (state.c11 = ((n11 = 3) ∨ (_state.c11 ∧ (n11 = 2))))
+    ¬is_first_tick ⇒ (state.c12 = ((n12 = 3) ∨ (_state.c12 ∧ (n12 = 2))))
+    ¬is_first_tick ⇒ (state.c13 = ((n13 = 3) ∨ (_state.c13 ∧ (n13 = 2))))
+    ¬is_first_tick ⇒ (state.c20 = ((n20 = 3) ∨ (_state.c20 ∧ (n20 = 2))))
+    ¬is_first_tick ⇒ (state.c21 = ((n21 = 3) ∨ (_state.c21 ∧ (n21 = 2))))
+    ¬is_first_tick ⇒ (state.c22 = ((n22 = 3) ∨ (_state.c22 ∧ (n22 = 2))))
+    ¬is_first_tick ⇒ (state.c23 = ((n23 = 3) ∨ (_state.c23 ∧ (n23 = 2))))
+    ¬is_first_tick ⇒ (state.c30 = ((n30 = 3) ∨ (_state.c30 ∧ (n30 = 2))))
+    ¬is_first_tick ⇒ (state.c31 = ((n31 = 3) ∨ (_state.c31 ∧ (n31 = 2))))
+    ¬is_first_tick ⇒ (state.c32 = ((n32 = 3) ∨ (_state.c32 ∧ (n32 = 2))))
+    ¬is_first_tick ⇒ (state.c33 = ((n33 = 3) ∨ (_state.c33 ∧ (n33 = 2))))
+
+    -- pop is the live-cell census of the NEW grid (derived; carried for the portrait).
+    p0 ∈ Int = (state.c00 ? 1 : 0) + (state.c01 ? 1 : 0) + (state.c02 ? 1 : 0) + (state.c03 ? 1 : 0)
+    p1 ∈ Int = (state.c10 ? 1 : 0) + (state.c11 ? 1 : 0) + (state.c12 ? 1 : 0) + (state.c13 ? 1 : 0)
+    p2 ∈ Int = (state.c20 ? 1 : 0) + (state.c21 ? 1 : 0) + (state.c22 ? 1 : 0) + (state.c23 ? 1 : 0)
+    p3 ∈ Int = (state.c30 ? 1 : 0) + (state.c31 ? 1 : 0) + (state.c32 ? 1 : 0) + (state.c33 ? 1 : 0)
+    state.pop = p0 + p1 + p2 + p3
+
+-- ── Static tests (validate the transition encodes — zero silent drops) ──
+
+-- First tick seeds the horizontal blinker: row 1 cells 0..2 live, gen 0.
+claim sat_first_tick_seeds_blinker
+    _state ∈ Grid
+    state ∈ Grid
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = true
+    life
+    (state.c10 = true ∧ state.c11 = true ∧ state.c12 = true
+     ∧ state.c00 = false ∧ state.gen = 0 ∧ state.pop = 3)
+
+-- A horizontal blinker (row 1, cols 0..2) → vertical blinker (col 1, rows 0..2).
+-- The middle cell c11 has 2 live neighbours (survives); c01 and c21 each have
+-- exactly 3 → born; the ends c10,c12 drop to 1 neighbour → die.
+claim sat_blinker_oscillates
+    _state ∈ Grid
+    state ∈ Grid
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_state.c00 = false ∧ _state.c01 = false ∧ _state.c02 = false ∧ _state.c03 = false
+     ∧ _state.c10 = true  ∧ _state.c11 = true  ∧ _state.c12 = true  ∧ _state.c13 = false
+     ∧ _state.c20 = false ∧ _state.c21 = false ∧ _state.c22 = false ∧ _state.c23 = false
+     ∧ _state.c30 = false ∧ _state.c31 = false ∧ _state.c32 = false ∧ _state.c33 = false
+     ∧ _state.gen = 0)
+    life
+    (state.c01 = true ∧ state.c11 = true ∧ state.c21 = true
+     ∧ state.c10 = false ∧ state.c12 = false ∧ state.pop = 3 ∧ state.gen = 1)
+
+-- A 2×2 block (c00,c01,c10,c11) is a STILL LIFE: each cell has exactly 3
+-- neighbours and survives/stays; the grid is unchanged.
+claim sat_block_is_still_life
+    _state ∈ Grid
+    state ∈ Grid
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_state.c00 = true ∧ _state.c01 = true ∧ _state.c02 = false ∧ _state.c03 = false
+     ∧ _state.c10 = true  ∧ _state.c11 = true  ∧ _state.c12 = false ∧ _state.c13 = false
+     ∧ _state.c20 = false ∧ _state.c21 = false ∧ _state.c22 = false ∧ _state.c23 = false
+     ∧ _state.c30 = false ∧ _state.c31 = false ∧ _state.c32 = false ∧ _state.c33 = false
+     ∧ _state.gen = 5)
+    life
+    (state.c00 = true ∧ state.c01 = true ∧ state.c10 = true ∧ state.c11 = true
+     ∧ state.c02 = false ∧ state.c22 = false ∧ state.pop = 4 ∧ state.gen = 6)
+
+-- A single live cell has 0 neighbours → dies (under-population). The grid goes empty.
+claim sat_loner_dies
+    _state ∈ Grid
+    state ∈ Grid
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_state.c00 = false ∧ _state.c01 = false ∧ _state.c02 = false ∧ _state.c03 = false
+     ∧ _state.c10 = false ∧ _state.c11 = true  ∧ _state.c12 = false ∧ _state.c13 = false
+     ∧ _state.c20 = false ∧ _state.c21 = false ∧ _state.c22 = false ∧ _state.c23 = false
+     ∧ _state.c30 = false ∧ _state.c31 = false ∧ _state.c32 = false ∧ _state.c33 = false
+     ∧ _state.gen = 0)
+    life
+    (state.c11 = false ∧ state.pop = 0)
+
+-- A 2×2 BLOCK cannot vanish: it is a still life, so asserting its centre region
+-- goes empty next tick is UNSATISFIABLE.
+claim unsat_block_cannot_die
+    _state ∈ Grid
+    state ∈ Grid
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_state.c00 = true ∧ _state.c01 = true ∧ _state.c02 = false ∧ _state.c03 = false
+     ∧ _state.c10 = true  ∧ _state.c11 = true  ∧ _state.c12 = false ∧ _state.c13 = false
+     ∧ _state.c20 = false ∧ _state.c21 = false ∧ _state.c22 = false ∧ _state.c23 = false
+     ∧ _state.c30 = false ∧ _state.c31 = false ∧ _state.c32 = false ∧ _state.c33 = false
+     ∧ _state.gen = 0)
+    life
+    state.c00 = false

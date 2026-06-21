@@ -1,0 +1,150 @@
+-- scheduler: a priority job-queue simulation run as an FSM.
+--
+-- A fixed set of three jobs, each with a FIXED priority and a carried
+-- remaining_time. Every tick the scheduler picks the highest-priority job
+-- with remaining_time > 0, runs it for one quantum (decrement its remaining),
+-- and advances the wall clock. When no job has work left, the system is idle
+-- and the clock freezes (a fixpoint → halt).
+--
+-- STATE SHAPE: the scheduling queue + clock. Per-job remaining_time is carried
+-- as a bounded fixed-width set of scalar slots (r0,r1,r2) — a difference
+-- equation carries fixed-width state, so a fixed job count is the representative
+-- shape (cf. brackets.ev's bounded stack slots). `running` is the id of the job
+-- selected THIS tick (-1 when idle); `clock` is the elapsed quantum count.
+--
+-- Priorities are fixed data (higher number = scheduled first):
+--   job0 priority 1 (lowest), job1 priority 3 (highest), job2 priority 2.
+-- So the dispatch order is job1, then job2, then job0 — each chosen only when
+-- every strictly-higher-priority job has already drained to zero.
+--
+--   evident phase-portrait examples/daemons/scheduler.ev --axes state.clock,state.running
+--
+-- The portrait shows `running` walking down the priority ladder (1 → 2 → 0)
+-- as each job exhausts its budget, with `clock` climbing monotonically until
+-- the queue empties and running latches to -1.
+import "stdlib/runtime.ev"
+
+-- The scheduling queue (three carried remaining-time slots) + the clock.
+type SchedState
+    r0      ∈ Int     -- remaining quantums for job0 (priority 1)
+    r1      ∈ Int     -- remaining quantums for job1 (priority 3, highest)
+    r2      ∈ Int     -- remaining quantums for job2 (priority 2)
+    running ∈ Int     -- id of the job run this tick (-1 = idle / nothing to run)
+    clock   ∈ Int     -- elapsed quantums (advances while any job has work)
+
+fsm scheduler(state ∈ SchedState)
+    -- Initial workload: job0 needs 1 quantum, job1 needs 2, job2 needs 1.
+    init_r0 ∈ Int = 1
+    init_r1 ∈ Int = 2
+    init_r2 ∈ Int = 1
+
+    -- Pick the highest-priority READY job (remaining > 0), in fixed priority
+    -- order: job1 (prio 3) ▸ job2 (prio 2) ▸ job0 (prio 1); -1 if all drained.
+    -- A fork between distinct job sources, not a clamp of one value.
+    pick ∈ Int = (_state.r1 > 0 ? 1
+                  : (_state.r2 > 0 ? 2
+                     : (_state.r0 > 0 ? 0 : -1)))
+    idle ∈ Bool = (pick = -1)
+
+    is_first_tick ⇒
+        (state.r0 = init_r0 ∧ state.r1 = init_r1 ∧ state.r2 = init_r2
+         ∧ state.running = -1 ∧ state.clock = 0)
+
+    ¬is_first_tick ⇒
+        -- running reflects this tick's selection.
+        state.running = pick
+
+        -- The selected job's slot decrements by one quantum; the others hold.
+        state.r0 = ((pick = 0) ? _state.r0 - 1 : _state.r0)
+        state.r1 = ((pick = 1) ? _state.r1 - 1 : _state.r1)
+        state.r2 = ((pick = 2) ? _state.r2 - 1 : _state.r2)
+
+        -- The clock advances only while there was work to do; idle freezes it.
+        state.clock = (idle ? _state.clock : _state.clock + 1)
+
+-- ── Static tests (validate the transition encodes — zero silent drops) ──
+
+-- First tick seeds the workload and an idle/clock-zero start.
+claim sat_first_tick_seeds
+    _state ∈ SchedState
+    state ∈ SchedState
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = true
+    scheduler
+    (state.r0 = 1 ∧ state.r1 = 2 ∧ state.r2 = 1
+     ∧ state.running = -1 ∧ state.clock = 0)
+
+-- Full queue: job1 is highest priority and ready → it runs, r1 2→1, clock +1.
+claim sat_highest_priority_runs_first
+    _state ∈ SchedState
+    state ∈ SchedState
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_state.r0 = 1 ∧ _state.r1 = 2 ∧ _state.r2 = 1 ∧ _state.running = -1 ∧ _state.clock = 0)
+    scheduler
+    (state.running = 1 ∧ state.r1 = 1 ∧ state.r0 = 1 ∧ state.r2 = 1 ∧ state.clock = 1)
+
+-- job1 still has a quantum left, so it keeps the CPU before job2/job0.
+claim sat_highest_priority_keeps_cpu
+    _state ∈ SchedState
+    state ∈ SchedState
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_state.r0 = 1 ∧ _state.r1 = 1 ∧ _state.r2 = 1 ∧ _state.running = 1 ∧ _state.clock = 1)
+    scheduler
+    (state.running = 1 ∧ state.r1 = 0 ∧ state.clock = 2)
+
+-- job1 drained → job2 (priority 2) is selected over job0 (priority 1).
+claim sat_second_priority_after_top_drains
+    _state ∈ SchedState
+    state ∈ SchedState
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_state.r0 = 1 ∧ _state.r1 = 0 ∧ _state.r2 = 1 ∧ _state.running = 1 ∧ _state.clock = 2)
+    scheduler
+    (state.running = 2 ∧ state.r2 = 0 ∧ state.r0 = 1 ∧ state.clock = 3)
+
+-- Only job0 left → the lowest-priority job finally runs, r0 1→0.
+claim sat_lowest_priority_runs_last
+    _state ∈ SchedState
+    state ∈ SchedState
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_state.r0 = 1 ∧ _state.r1 = 0 ∧ _state.r2 = 0 ∧ _state.running = 2 ∧ _state.clock = 3)
+    scheduler
+    (state.running = 0 ∧ state.r0 = 0 ∧ state.clock = 4)
+
+-- All jobs drained → idle: running = -1 and the clock freezes.
+claim sat_all_drained_idles
+    _state ∈ SchedState
+    state ∈ SchedState
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_state.r0 = 0 ∧ _state.r1 = 0 ∧ _state.r2 = 0 ∧ _state.running = 0 ∧ _state.clock = 4)
+    scheduler
+    (state.running = -1 ∧ state.clock = 4)
+
+-- With job1 ready, job2 CANNOT be the one that runs — higher priority wins.
+-- Asserting running = 2 here is UNSATISFIABLE.
+claim unsat_lower_priority_cannot_preempt
+    _state ∈ SchedState
+    state ∈ SchedState
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_state.r0 = 1 ∧ _state.r1 = 2 ∧ _state.r2 = 1 ∧ _state.running = -1 ∧ _state.clock = 0)
+    scheduler
+    state.running = 2

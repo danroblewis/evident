@@ -1,0 +1,192 @@
+-- A `wc`-like counter: a UTILITY program whose carried STATE is a MULTI-COUNTER
+-- plus a WORD-BOUNDARY FLAG. A cursor walks a fixed Seq(Int) of codepoints one
+-- char per tick. Each char bumps `chars`; a newline (10) bumps `lines`; the
+-- IN_WORD flag tracks whether we're inside a word, and `words` increments only on
+-- the boundary transition out-of-word → in-word (a rising edge on word-ness).
+--
+--   evident phase-portrait examples/daemons/wc.ev --axes state.words,state.chars
+--
+-- The reachable state graph is the running (lines, words, chars) tally over the
+-- scan, with `in_word` toggling at every whitespace boundary.
+--
+-- No substring / line-read primitives exist, so the input text is modeled in
+-- program as a fixed Seq(Int) of codepoints. The text is "hi  yo\nok\n":
+--   h i SP SP y o NL o k NL   (two spaces between words, a trailing newline)
+-- giving lines=2, words=3, chars=10.
+import "stdlib/runtime.ev"
+
+-- A char is "word material" iff it is neither a space (32) nor a newline (10).
+-- (A real wc treats tab/CR as whitespace too; this fixed input uses only SP/NL.)
+
+type WcState
+    cursor  ∈ Int     -- index of the next char to consume
+    lines   ∈ Int
+    words   ∈ Int
+    chars   ∈ Int
+    in_word ∈ Bool    -- are we currently inside a word?
+
+fsm wc(state ∈ WcState)
+    -- Fixed input text "hi  yo\nok\n" as codepoints (the scan input).
+    text ∈ Seq(Int)
+    #text = 10
+    text[0] = 104    -- h
+    text[1] = 105    -- i
+    text[2] = 32     -- SP
+    text[3] = 32     -- SP
+    text[4] = 121    -- y
+    text[5] = 111    -- o
+    text[6] = 10     -- NL
+    text[7] = 111    -- o
+    text[8] = 107    -- k
+    text[9] = 10     -- NL
+
+    is_first_tick ⇒
+        (state.cursor = 0 ∧ state.lines = 0 ∧ state.words = 0
+         ∧ state.chars = 0 ∧ state.in_word = false)
+
+    -- Once the cursor runs off the end, the tally is frozen (fixpoint → halt).
+    done ∈ Bool = (_state.cursor ≥ 10)
+
+    ¬is_first_tick ⇒ (done ⇒
+        (state.cursor = _state.cursor ∧ state.lines = _state.lines
+         ∧ state.words = _state.words ∧ state.chars = _state.chars
+         ∧ state.in_word = _state.in_word))
+
+    -- Consume the char at the cursor and fold it into the counters.
+    cur ∈ Int = text[_state.cursor]
+    is_newline ∈ Bool = (cur = 10)
+    is_space   ∈ Bool = (cur = 32)
+    now_word   ∈ Bool = (¬is_newline ∧ ¬is_space)
+    -- Rising edge: a word starts when this char is word-material and we were not
+    -- already inside a word.
+    word_start ∈ Bool = (now_word ∧ ¬_state.in_word)
+
+    ¬is_first_tick ⇒ (¬done ⇒
+        (state.cursor  = _state.cursor + 1
+         ∧ state.chars = _state.chars + 1
+         ∧ state.lines = (is_newline ? _state.lines + 1 : _state.lines)
+         ∧ state.words = (word_start ? _state.words + 1 : _state.words)
+         ∧ state.in_word = now_word))
+
+-- ── Static tests (validate the transition encodes, no silent drops) ──
+
+claim sat_first_tick_zeroes
+    _state ∈ WcState
+    state ∈ WcState
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = true
+    wc
+    (state.cursor = 0 ∧ state.lines = 0 ∧ state.words = 0
+     ∧ state.chars = 0 ∧ state.in_word = false)
+
+-- First char (h at index 0) is word-material with in_word=false → word_start:
+-- words goes 0→1, in_word flips true, chars 0→1, no newline.
+claim sat_consume_first_starts_word
+    _state ∈ WcState
+    state ∈ WcState
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_state.cursor = 0 ∧ _state.lines = 0 ∧ _state.words = 0
+     ∧ _state.chars = 0 ∧ _state.in_word = false)
+    wc
+    (state.cursor = 1 ∧ state.words = 1 ∧ state.chars = 1
+     ∧ state.in_word = true ∧ state.lines = 0)
+
+-- Second char (i at index 1) continues the word: already in_word, so words does
+-- NOT bump; chars and cursor advance, in_word stays true.
+claim sat_continue_word_no_bump
+    _state ∈ WcState
+    state ∈ WcState
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_state.cursor = 1 ∧ _state.lines = 0 ∧ _state.words = 1
+     ∧ _state.chars = 1 ∧ _state.in_word = true)
+    wc
+    (state.cursor = 2 ∧ state.words = 1 ∧ state.chars = 2 ∧ state.in_word = true)
+
+-- A space (index 2) is whitespace: clears in_word, bumps chars only.
+claim sat_space_clears_in_word
+    _state ∈ WcState
+    state ∈ WcState
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_state.cursor = 2 ∧ _state.lines = 0 ∧ _state.words = 1
+     ∧ _state.chars = 2 ∧ _state.in_word = true)
+    wc
+    (state.cursor = 3 ∧ state.words = 1 ∧ state.chars = 3 ∧ state.in_word = false)
+
+-- The second space (index 3): still whitespace, in_word already false → words
+-- unchanged. Consecutive whitespace does NOT start a word.
+claim sat_double_space_no_word
+    _state ∈ WcState
+    state ∈ WcState
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_state.cursor = 3 ∧ _state.lines = 0 ∧ _state.words = 1
+     ∧ _state.chars = 3 ∧ _state.in_word = false)
+    wc
+    (state.cursor = 4 ∧ state.words = 1 ∧ state.in_word = false)
+
+-- 'y' at index 4 after whitespace: rising edge again → words 1→2.
+claim sat_word_restarts_after_space
+    _state ∈ WcState
+    state ∈ WcState
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_state.cursor = 4 ∧ _state.lines = 0 ∧ _state.words = 1
+     ∧ _state.chars = 4 ∧ _state.in_word = false)
+    wc
+    (state.cursor = 5 ∧ state.words = 2 ∧ state.in_word = true)
+
+-- The newline at index 6 ends "yo": bumps lines, clears in_word, no word bump.
+claim sat_newline_bumps_lines
+    _state ∈ WcState
+    state ∈ WcState
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_state.cursor = 6 ∧ _state.lines = 0 ∧ _state.words = 2
+     ∧ _state.chars = 6 ∧ _state.in_word = true)
+    wc
+    (state.cursor = 7 ∧ state.lines = 1 ∧ state.words = 2
+     ∧ state.chars = 7 ∧ state.in_word = false)
+
+-- Past the end the tally is frozen: counts can't change once done.
+claim sat_done_freezes
+    _state ∈ WcState
+    state ∈ WcState
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_state.cursor = 10 ∧ _state.lines = 2 ∧ _state.words = 3
+     ∧ _state.chars = 10 ∧ _state.in_word = false)
+    wc
+    (state.cursor = 10 ∧ state.lines = 2 ∧ state.words = 3 ∧ state.chars = 10)
+
+-- A space can NEVER start a word: consuming the space at index 2 cannot raise
+-- the word count.
+claim unsat_space_starts_word
+    _state ∈ WcState
+    state ∈ WcState
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_state.cursor = 2 ∧ _state.lines = 0 ∧ _state.words = 1
+     ∧ _state.chars = 2 ∧ _state.in_word = true)
+    wc
+    state.words = 2

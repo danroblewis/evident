@@ -1,0 +1,158 @@
+-- pstree — build a process TREE from ppid links. The classic utility: given a
+-- flat list of (pid, ppid) rows, recover the forest by walking each process up
+-- its parent chain and assigning it a DEPTH (root = 0, child = parent depth + 1).
+--
+-- STATE SHAPE: tree construction from parent pointers. The carried state is a
+-- per-process DEPTH array (d0..d5) plus a cursor. Each tick advances the cursor
+-- to the next process and SETS its depth from its parent's already-computed depth
+-- (parents have lower pid than their children, so the cursor reaches a parent
+-- before any of its children — a topological sweep). Depth -1 means "not yet
+-- computed". Per-process root-ness is classified by depth = 0.
+--
+--   evident phase-portrait examples/daemons/pstree.ev --axes state.cursor,state.d5
+--
+-- The portrait traces the cursor sweeping 0→5 while each dN latches from -1 to its
+-- tree depth in topological order — the forest materialising one node per tick.
+--
+-- The fixed process table (6 processes, pid = index, root has ppid -1):
+--
+--     0  init     ppid -1   depth 0   (root)
+--     ├─ 1  shell    ppid 0    depth 1
+--     │   ├─ 3  editor   ppid 1    depth 2
+--     │   └─ 4  compiler ppid 1    depth 2
+--     └─ 2  daemon   ppid 0    depth 1
+--         └─ 5  worker   ppid 2    depth 2
+--
+-- Real /proc access (readdir + read of /proc/<pid>/stat) is NOT available — see the
+-- GAP note at the bottom — so the table is modelled as an in-program lookup.
+import "stdlib/runtime.ev"
+
+type Forest
+    -- per-process depth in the tree (-1 = not yet computed by the sweep)
+    d0 ∈ Int
+    d1 ∈ Int
+    d2 ∈ Int
+    d3 ∈ Int
+    d4 ∈ Int
+    d5 ∈ Int
+    -- the process whose depth is computed this tick (-1 = sweep not started)
+    cursor ∈ Int
+
+-- ── Static process facts (would be /proc/<pid>/stat ppid fields at runtime) ──
+
+-- ppid(pid): parent of each process, or -1 for a root (process 0). Complete:
+-- every pid 0..5 has a row, sentinel -1 marks the (single) root.
+claim ppid_of(pid ∈ Int, p ∈ Int)
+    p = (pid = 0 ? -1
+         : (pid = 1 ? 0
+            : (pid = 2 ? 0
+               : (pid = 3 ? 1
+                  : (pid = 4 ? 1
+                     : (pid = 5 ? 2 : -1))))))
+
+fsm pstree(state ∈ Forest)
+    -- ppid of the process the cursor lands on AFTER advancing this tick (clamped at
+    -- the last pid, so a settled sweep re-reads pid 5 instead of running off the end).
+    nc ∈ Int = (is_first_tick ? 0 : (_state.cursor ≥ 5 ? 5 : _state.cursor + 1))
+    par ∈ Int
+    ppid_of(nc, par)
+
+    -- The parent's already-computed depth (the cursor swept it on an earlier tick,
+    -- since ppid < pid). -1 (root) reads as depth 0; otherwise read the parent slot.
+    par_depth ∈ Int = (par = -1 ? 0
+                       : (par = 0 ? _state.d0
+                          : (par = 1 ? _state.d1
+                             : (par = 2 ? _state.d2
+                                : (par = 3 ? _state.d3
+                                   : (par = 4 ? _state.d4 : _state.d5))))))
+
+    -- This process's depth = parent depth + 1 (root parent contributes 0 → depth 0).
+    new_depth ∈ Int = (par = -1 ? 0 : par_depth + 1)
+
+    is_first_tick ⇒
+        -- Seed: nothing computed (all depths -1), cursor lands on process 0 and gets
+        -- depth 0 immediately (it is the root).
+        (state.cursor = 0 ∧ state.d0 = 0
+         ∧ state.d1 = -1 ∧ state.d2 = -1 ∧ state.d3 = -1
+         ∧ state.d4 = -1 ∧ state.d5 = -1)
+
+    ¬is_first_tick ⇒
+        -- Advance the cursor one process per tick, clamping at the last pid (5).
+        state.cursor = (_state.cursor ≥ 5 ? 5 : _state.cursor + 1)
+
+    -- Each slot latches its depth on the tick the cursor reaches it; otherwise it
+    -- carries its previous value forward (parents are reached before children).
+    ¬is_first_tick ⇒ (state.d0 = (state.cursor = 0 ? new_depth : _state.d0))
+    ¬is_first_tick ⇒ (state.d1 = (state.cursor = 1 ? new_depth : _state.d1))
+    ¬is_first_tick ⇒ (state.d2 = (state.cursor = 2 ? new_depth : _state.d2))
+    ¬is_first_tick ⇒ (state.d3 = (state.cursor = 3 ? new_depth : _state.d3))
+    ¬is_first_tick ⇒ (state.d4 = (state.cursor = 4 ? new_depth : _state.d4))
+    ¬is_first_tick ⇒ (state.d5 = (state.cursor = 5 ? new_depth : _state.d5))
+
+-- ── Static tests (validate the transition encodes — zero dropped constraints) ──
+
+-- First tick seeds the root: cursor at 0, d0 = 0 (depth of init), the rest unknown.
+claim sat_seed_root_depth_zero
+    _state ∈ Forest
+    state ∈ Forest
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = true
+    pstree
+    (state.cursor = 0 ∧ state.d0 = 0 ∧ state.d1 = -1 ∧ state.d5 = -1)
+
+-- Cursor at 0 (root depth set), next tick reaches process 1 (shell, ppid 0). Its
+-- depth = d0 + 1 = 1. d0 carries forward; later slots stay -1.
+claim sat_child_of_root_depth_one
+    _state ∈ Forest
+    state ∈ Forest
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_state.cursor = 0 ∧ _state.d0 = 0 ∧ _state.d1 = -1 ∧ _state.d2 = -1
+     ∧ _state.d3 = -1 ∧ _state.d4 = -1 ∧ _state.d5 = -1)
+    pstree
+    (state.cursor = 1 ∧ state.d1 = 1 ∧ state.d0 = 0 ∧ state.d2 = -1)
+
+-- Cursor at 2 (daemon, depth 1 already set), next tick reaches process 3 (editor,
+-- ppid 1). Parent 1's depth is 1, so editor lands at depth 2.
+claim sat_grandchild_depth_two
+    _state ∈ Forest
+    state ∈ Forest
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_state.cursor = 2 ∧ _state.d0 = 0 ∧ _state.d1 = 1 ∧ _state.d2 = 1
+     ∧ _state.d3 = -1 ∧ _state.d4 = -1 ∧ _state.d5 = -1)
+    pstree
+    (state.cursor = 3 ∧ state.d3 = 2 ∧ state.d1 = 1)
+
+-- Cursor at the last pid (5) stays clamped at 5; the fully-built forest is preserved.
+claim sat_cursor_clamps_at_end
+    _state ∈ Forest
+    state ∈ Forest
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_state.cursor = 5 ∧ _state.d0 = 0 ∧ _state.d1 = 1 ∧ _state.d2 = 1
+     ∧ _state.d3 = 2 ∧ _state.d4 = 2 ∧ _state.d5 = 2)
+    pstree
+    (state.cursor = 5 ∧ state.d5 = 2 ∧ state.d3 = 2)
+
+-- worker (process 5) is a child of daemon (process 2, depth 1), so its depth MUST be
+-- 2. Asserting depth 1 for it after the cursor reaches it is UNSATISFIABLE.
+claim unsat_worker_is_not_depth_one
+    _state ∈ Forest
+    state ∈ Forest
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_state.cursor = 4 ∧ _state.d0 = 0 ∧ _state.d1 = 1 ∧ _state.d2 = 1
+     ∧ _state.d3 = 2 ∧ _state.d4 = 2 ∧ _state.d5 = -1)
+    pstree
+    state.d5 = 1

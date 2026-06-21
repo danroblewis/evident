@@ -1,0 +1,146 @@
+-- An `ls`-like directory-listing tool: a UTILITY program whose carried STATE is a
+-- CURSOR + a set of ACCUMULATORS. A cursor walks a fixed directory listing one
+-- entry per tick; each entry contributes its size to a running TOTAL, bumps the
+-- entry COUNT, and updates the LARGEST-file accumulator. The reachable state graph
+-- is the running summary over the scan — the `ls -l … | summarize` of it.
+--
+--   evident phase-portrait examples/daemons/ls.ev --axes state.cursor,state.total_size
+--
+-- Each entry's name is carried as an Int NAME-ID (a stand-in for the filename
+-- string), since there is no string table / readdir primitive. The DIR_* claims
+-- below name the ids for readability.
+--
+-- readdir FFI status: stdlib/posix.ev exposes only raw libc fd builders
+-- (open/read/close) — no directory enumeration, no stat() size parsing. Listing a
+-- real directory would need a new stdlib wrapper for opendir/readdir/stat, which
+-- doesn't exist. So the listing is modeled in-program as a fixed Seq(Entry); the
+-- summary logic over it is real.
+import "stdlib/runtime.ev"
+
+type Entry
+    name_id ∈ Int     -- stand-in for the filename (0=README 1=main 2=… )
+    size    ∈ Int     -- bytes
+
+-- Running summary over the directory scan.
+type Summary
+    cursor     ∈ Int   -- index of the next entry to consume
+    total_size ∈ Int   -- sum of sizes seen so far
+    count      ∈ Int   -- number of entries seen so far
+    largest    ∈ Int   -- largest size seen so far (-1 before any entry)
+    largest_id ∈ Int   -- name_id owning `largest` (-1 before any entry)
+
+fsm ls(state ∈ Summary)
+    -- Fixed representative directory listing (the "readdir input").
+    entries ∈ Seq(Entry)
+    #entries = 6
+    entries[0] = Entry(0, 1024)     -- README     1K
+    entries[1] = Entry(1, 8192)     -- main.rs     8K
+    entries[2] = Entry(2, 512)      -- Makefile  512B
+    entries[3] = Entry(3, 65536)    -- data.bin   64K  (the big one)
+    entries[4] = Entry(4, 4096)     -- notes.md    4K
+    entries[5] = Entry(5, 2048)     -- LICENSE     2K
+
+    is_first_tick ⇒
+        (state.cursor = 0 ∧ state.total_size = 0 ∧ state.count = 0
+         ∧ state.largest = -1 ∧ state.largest_id = -1)
+
+    -- Once the cursor runs off the end, the summary is frozen (fixpoint → halt).
+    done ∈ Bool = (_state.cursor ≥ 6)
+
+    ¬is_first_tick ⇒ (done ⇒
+        (state.cursor = _state.cursor ∧ state.total_size = _state.total_size
+         ∧ state.count = _state.count ∧ state.largest = _state.largest
+         ∧ state.largest_id = _state.largest_id))
+
+    -- Consume the entry at the cursor and fold it into the accumulators.
+    cur ∈ Entry = entries[_state.cursor]
+    new_largest ∈ Bool = (cur.size > _state.largest)
+
+    ¬is_first_tick ⇒ (¬done ⇒
+        (state.cursor     = _state.cursor + 1
+         ∧ state.total_size = _state.total_size + cur.size
+         ∧ state.count      = _state.count + 1
+         ∧ state.largest    = (new_largest ? cur.size    : _state.largest)
+         ∧ state.largest_id = (new_largest ? cur.name_id : _state.largest_id)))
+
+-- ── Static tests (validate the transition encodes, no silent drops) ──
+
+claim sat_first_tick_zeroes
+    _state ∈ Summary
+    state ∈ Summary
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = true
+    ls
+    (state.cursor = 0 ∧ state.total_size = 0 ∧ state.count = 0
+     ∧ state.largest = -1 ∧ state.largest_id = -1)
+
+-- First entry (README, 1024) sets total/count and seeds the largest.
+claim sat_consume_first
+    _state ∈ Summary
+    state ∈ Summary
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_state.cursor = 0 ∧ _state.total_size = 0 ∧ _state.count = 0
+     ∧ _state.largest = -1 ∧ _state.largest_id = -1)
+    ls
+    (state.cursor = 1 ∧ state.total_size = 1024 ∧ state.count = 1
+     ∧ state.largest = 1024 ∧ state.largest_id = 0)
+
+-- The big file (data.bin, 65536 at index 3) overtakes the running largest.
+claim sat_consume_updates_largest
+    _state ∈ Summary
+    state ∈ Summary
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_state.cursor = 3 ∧ _state.total_size = 9728 ∧ _state.count = 3
+     ∧ _state.largest = 8192 ∧ _state.largest_id = 1)
+    ls
+    (state.cursor = 4 ∧ state.total_size = 75264 ∧ state.count = 4
+     ∧ state.largest = 65536 ∧ state.largest_id = 3)
+
+-- A smaller entry (LICENSE, 2048 at index 5) accumulates but does NOT displace the largest.
+claim sat_smaller_keeps_largest
+    _state ∈ Summary
+    state ∈ Summary
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_state.cursor = 5 ∧ _state.total_size = 79360 ∧ _state.count = 5
+     ∧ _state.largest = 65536 ∧ _state.largest_id = 3)
+    ls
+    (state.cursor = 6 ∧ state.total_size = 81408 ∧ state.count = 6
+     ∧ state.largest = 65536 ∧ state.largest_id = 3)
+
+-- Past the end the summary is frozen: accumulators can't change once done.
+claim sat_done_freezes
+    _state ∈ Summary
+    state ∈ Summary
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_state.cursor = 6 ∧ _state.total_size = 81408 ∧ _state.count = 6
+     ∧ _state.largest = 65536 ∧ _state.largest_id = 3)
+    ls
+    (state.cursor = 6 ∧ state.total_size = 81408 ∧ state.count = 6
+     ∧ state.largest = 65536 ∧ state.largest_id = 3)
+
+-- Consuming the first entry (size 1024) can't make the total jump past its size.
+claim unsat_first_overcounts
+    _state ∈ Summary
+    state ∈ Summary
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_state.cursor = 0 ∧ _state.total_size = 0 ∧ _state.count = 0
+     ∧ _state.largest = -1 ∧ _state.largest_id = -1)
+    ls
+    state.total_size = 2048

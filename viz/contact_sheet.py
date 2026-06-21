@@ -42,6 +42,22 @@ SAMPLES = [
     "examples/daemons/brackets.ev",    # utility  — pushdown bracket validator
     "examples/daemons/find.ev",        # utility  — directory-traversal frontier
     "examples/daemons/ps.ev",          # utility  — process-state histogram + max
+    "examples/daemons/wc.ev",          # utility  — multi-counter + word-boundary flag
+    "examples/daemons/uniq.ev",        # utility  — run-length (prev-value compare)
+    "examples/daemons/csv_stats.ev",   # utility  — streaming numeric aggregation
+    "examples/daemons/calc.ev",        # utility  — RPN evaluation stack
+    "examples/daemons/tokenizer.ev",   # utility  — lexer state machine
+    "examples/daemons/ls.ev",          # utility  — cursor + size accumulators
+    "examples/daemons/du.ev",          # utility  — traversal + recursive size
+    "examples/daemons/top.ev",         # utility  — running top-k
+    "examples/daemons/pstree.ev",      # utility  — tree from parent pointers
+    "examples/daemons/toposort.ev",    # utility  — partial order + ready-set
+    "examples/daemons/scheduler.ev",   # utility  — priority queue + clock
+    "examples/daemons/ledger.ev",      # utility  — balance vector + latched invariant
+    "examples/daemons/lru.ev",         # utility  — cache + recency + hit/miss
+    "examples/daemons/randomwalk.ev",  # utility  — stochastic walk (nondeterministic)
+    "examples/daemons/histogram.ev",   # utility  — binning (vector of counts)
+    "examples/daemons/life.ev",        # utility  — 2-D cellular grid
 ]
 
 

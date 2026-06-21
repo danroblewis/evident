@@ -1,0 +1,194 @@
+-- calc: a postfix (RPN) arithmetic evaluator — a stack machine run as an FSM.
+--
+-- The classic "evaluate" utility: stream RPN tokens through an operand stack.
+-- A number token PUSHES its value; a binary operator (Add/Sub/Mul) POPS two
+-- operands, combines them, and PUSHES the result. A well-formed RPN expression
+-- leaves exactly one value on the stack (depth = 1) at end of stream — that
+-- value is the result.
+--
+-- STATE SHAPE: an EVALUATION STACK — a pushdown of Int values (slots s0..s3,
+-- capacity 4) + a depth (Nat) + a cursor. The stack is bounded because a
+-- difference equation carries fixed-width state; this evaluates expressions
+-- whose operand stack never exceeds 4 deep, the representative shape. The
+-- value at slot k is meaningful only for k < depth. `ok` latches false on a
+-- stack underflow (an operator with fewer than two operands available).
+--
+--   evident phase-portrait examples/daemons/calc.ev --axes state.depth,state.s0
+--
+-- The portrait traces depth climbing as numbers arrive and dipping by one on
+-- each operator (pop two, push one) — a valid RPN expression returns to
+-- (depth = 1), with s0 holding the evaluated result.
+import "stdlib/runtime.ev"
+
+-- The token alphabet: a number-carrying token, three binary ops, and an
+-- end-of-stream sentinel. Numbers carry their literal value in the payload.
+enum Tok = Num(Int) | Add | Sub | Mul | TEnd
+
+type Calc
+    pos   ∈ Int        -- cursor into the input stream
+    depth ∈ Int        -- operand-stack depth (Nat): live values on the stack
+    s0    ∈ Int        -- stack slot 0 (bottom)
+    s1    ∈ Int        -- stack slot 1
+    s2    ∈ Int        -- stack slot 2
+    s3    ∈ Int        -- stack slot 3 (top of a capacity-4 stack)
+    ok    ∈ Bool        -- has every operator found its two operands so far?
+    done  ∈ Bool        -- has the end-of-stream sentinel been consumed?
+
+fsm calc(st ∈ Calc)
+    -- Fixed representative input:  3 4 + 5 *  TEnd   evaluates (3+4)*5 = 35.
+    input ∈ Seq(Tok) = ⟨Num(3), Num(4), Add, Num(5), Mul, TEnd⟩
+
+    -- The token under the cursor and its classification (all derived from _st).
+    tok ∈ Tok = input[_st.pos]
+    is_num ∈ Bool = (tok matches Num(_))
+    is_op  ∈ Bool = ((tok = Add) ∨ (tok = Sub) ∨ (tok = Mul))
+
+    -- The literal value a Num token pushes (0 for non-number tokens).
+    push_val ∈ Int = match tok
+        Num(n) ⇒ n
+        _      ⇒ 0
+
+    -- The top two operands (the operator's right and left arguments). The top
+    -- is at slot[depth-1]; the second-from-top at slot[depth-2]. Read as 0 when
+    -- the stack is too shallow — `ok` will latch false in that case anyway.
+    rhs ∈ Int = (_st.depth = 1 ? _st.s0
+                 : (_st.depth = 2 ? _st.s1
+                    : (_st.depth = 3 ? _st.s2
+                       : (_st.depth = 4 ? _st.s3 : 0))))
+    lhs ∈ Int = (_st.depth = 2 ? _st.s0
+                 : (_st.depth = 3 ? _st.s1
+                    : (_st.depth = 4 ? _st.s2 : 0)))
+
+    -- The combined value an operator pushes back (lhs OP rhs).
+    op_val ∈ Int = (tok = Add ? lhs + rhs
+                    : (tok = Sub ? lhs - rhs
+                       : (tok = Mul ? lhs * rhs : 0)))
+
+    -- An operator is well-formed iff at least two operands are on the stack.
+    op_ok  ∈ Bool = (is_op ∧ (_st.depth ≥ 2))
+    -- An operator underflows iff it's an operator without two operands.
+    op_bad ∈ Bool = (is_op ∧ ¬op_ok)
+
+    -- After this tick, depth becomes new_depth and the pushed value (if any)
+    -- lands at slot[new_depth - 1]. A number lands at the old depth; an
+    -- operator's result lands at old depth - 2 (two popped, one pushed).
+    new_depth ∈ Int = (_st.done ? _st.depth
+                       : (is_num ? _st.depth + 1
+                          : (op_ok ? _st.depth - 1 : _st.depth)))
+    -- The slot index the result occupies (new_depth - 1), or -1 if nothing
+    -- is pushed this tick (sentinel, or a bad operator that latches failure).
+    write_idx ∈ Int = (_st.done ? -1
+                       : (is_num ? _st.depth
+                          : (op_ok ? _st.depth - 2 : -1)))
+    -- The value written into write_idx.
+    write_val ∈ Int = (is_num ? push_val : op_val)
+
+    is_first_tick ⇒
+        (st.pos = 0 ∧ st.depth = 0 ∧ st.s0 = 0 ∧ st.s1 = 0
+         ∧ st.s2 = 0 ∧ st.s3 = 0 ∧ st.ok = true ∧ st.done = false)
+
+    ¬is_first_tick ⇒
+        -- Advance the cursor every tick until the sentinel is consumed.
+        st.pos = (_st.done ? _st.pos : _st.pos + 1)
+        st.done = (_st.done ∨ (tok = TEnd))
+
+        st.depth = new_depth
+
+        -- ok latches false on the first underflowing operator; never recovers.
+        st.ok = (_st.ok ∧ ¬op_bad)
+
+        -- Stack slots: the pushed value lands at write_idx; others preserve.
+        -- (A popped slot keeps its stale value; it's at or above `depth` so
+        -- unread — except when overwritten by this tick's push.)
+        st.s0 = ((write_idx = 0) ? write_val : _st.s0)
+        st.s1 = ((write_idx = 1) ? write_val : _st.s1)
+        st.s2 = ((write_idx = 2) ? write_val : _st.s2)
+        st.s3 = ((write_idx = 3) ? write_val : _st.s3)
+
+-- ── Static tests (validate the transition encodes — zero silent drops) ──
+
+-- First tick seeds an empty stack.
+claim sat_first_tick_empty
+    _st ∈ Calc
+    st ∈ Calc
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = true
+    calc
+    (st.depth = 0 ∧ st.ok = true ∧ st.s0 = 0)
+
+-- The first token is Num(3) → push 3 at slot 0, depth 0→1.
+claim sat_push_number
+    _st ∈ Calc
+    st ∈ Calc
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_st.pos = 0 ∧ _st.depth = 0 ∧ _st.s0 = 0 ∧ _st.ok = true ∧ _st.done = false)
+    calc
+    (st.depth = 1 ∧ st.s0 = 3 ∧ st.ok = true)
+
+-- pos=2 is Add with [3, 4] on the stack (depth 2) → pop two, push 7, depth 2→1.
+claim sat_apply_add
+    _st ∈ Calc
+    st ∈ Calc
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_st.pos = 2 ∧ _st.depth = 2 ∧ _st.s0 = 3 ∧ _st.s1 = 4 ∧ _st.ok = true ∧ _st.done = false)
+    calc
+    (st.depth = 1 ∧ st.s0 = 7 ∧ st.ok = true)
+
+-- pos=4 is Mul with [7, 5] on the stack (depth 2) → pop two, push 35, depth 2→1.
+claim sat_apply_mul
+    _st ∈ Calc
+    st ∈ Calc
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_st.pos = 4 ∧ _st.depth = 2 ∧ _st.s0 = 7 ∧ _st.s1 = 5 ∧ _st.ok = true ∧ _st.done = false)
+    calc
+    (st.depth = 1 ∧ st.s0 = 35 ∧ st.ok = true)
+
+-- An operator (pos=2 is Add) arriving with only ONE operand (depth 1)
+-- underflows → ok latches false.
+claim sat_underflow_fails
+    _st ∈ Calc
+    st ∈ Calc
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_st.pos = 2 ∧ _st.depth = 1 ∧ _st.s0 = 3 ∧ _st.ok = true ∧ _st.done = false)
+    calc
+    st.ok = false
+
+-- A WELL-FORMED operator (Add over [3, 4]) must NOT latch failure, so
+-- asserting ok=false here is UNSATISFIABLE.
+claim unsat_valid_op_cannot_fail
+    _st ∈ Calc
+    st ∈ Calc
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_st.pos = 2 ∧ _st.depth = 2 ∧ _st.s0 = 3 ∧ _st.s1 = 4 ∧ _st.ok = true ∧ _st.done = false)
+    calc
+    st.ok = false
+
+-- Add is commutative-valued but the combine must compute 3+4=7, not some
+-- other value — asserting the result is 8 is UNSATISFIABLE.
+claim unsat_add_result_pinned
+    _st ∈ Calc
+    st ∈ Calc
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    (_st.pos = 2 ∧ _st.depth = 2 ∧ _st.s0 = 3 ∧ _st.s1 = 4 ∧ _st.ok = true ∧ _st.done = false)
+    calc
+    st.s0 = 8
