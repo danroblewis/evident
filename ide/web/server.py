@@ -16,6 +16,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+from collections import Counter
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 VIZ = os.path.join(ROOT, "viz")
@@ -44,7 +45,9 @@ for _v in ("time_series", "state_graph", "phase_portrait", "morse_graph",
     except Exception as e:                     # a renderer that won't import just isn't offered
         print(f"[server] render_{_v} unavailable: {e}", file=sys.stderr)
 
-VIEWS = [v for v in ("time_series", "state_graph", "phase_portrait") if v in RENDERERS]
+VIEWS = [v for v in ("time_series", "state_graph", "phase_portrait",
+                     "reachability_tree", "morse_graph", "occupancy_heatmap")
+         if v in RENDERERS]
 _LOCK = threading.Lock()                       # matplotlib + z3 are not thread-safe; serialize
 
 app = FastAPI(title="Evident IDE")
@@ -70,13 +73,20 @@ def _export(source: str, work: str):
     return True, prefix, dropped, err.strip()
 
 
-def _banner(m):
-    """The model-shape line, from the functional-dependency analysis."""
+def _banner(m, max_branch=1):
+    """The model-shape line, from the functional-dependency analysis. Branching in the
+    *reachable* relation wins: a state with multiple successors is nondeterministic no
+    matter what the dependency verdict says — so the banner can't call it a pipeline."""
     try:
         ind = m.independence()
     except Exception:
         return "model shape: (unavailable)"
     short = lambda n: n.split(".")[-1]
+    if max_branch >= 2:
+        drv = ind.get("driver")
+        hint = f"; candidate driver of the deterministic part: {short(drv)}" if drv else ""
+        return (f"Nondeterministic — up to {max_branch} successors from some state "
+                f"(a free choice fans out){hint}")
     if ind["verdict"] == "driven" and ind.get("driver"):
         deps = [short(d) for d in ind.get("dependents", [])[:4]]
         tail = (" — computed from it: " + ", ".join(f"{d}" for d in deps)) if deps else ""
@@ -86,9 +96,16 @@ def _banner(m):
     return "Genuinely relational — no independent variable (a cycle; every variable co-determines)"
 
 
-def _recommend(m, n_states, discrete):
-    """Pick the lead view (M0 heuristic): small discrete → the structure graph;
-    otherwise the time series, which is faithful and fast for almost everything."""
+def _recommend(m, n_states, max_branch, discrete):
+    """Pick the lead view from the model's shape:
+      - any branching (some state has ≥2 successors) → reachability_tree, so the fan of
+        choices is VISIBLE instead of collapsing to a single witness line. Keyed on the
+        branching factor, not edge count, so it still fires when a large reachable set
+        hits the exploration cap (where n_edges ≈ n_states);
+      - small discrete state space → the structure graph;
+      - otherwise the time series (faithful and fast for almost everything)."""
+    if "reachability_tree" in VIEWS and max_branch >= 2:
+        return "reachability_tree"
     if "state_graph" in VIEWS and discrete and n_states <= 30:
         return "state_graph"
     return "time_series" if "time_series" in VIEWS else (VIEWS[0] if VIEWS else None)
@@ -111,13 +128,16 @@ def analyze(req: Source):
             m = load_model(prefix + ".smt2", prefix + ".schema.json")
             states, edges = m.reachable(limit=400)
             n_states, n_edges = len(states), len(edges)
+            out_deg = Counter(src for src, _ in edges)
+            max_branch = max(out_deg.values()) if out_deg else 1
             discrete = m.is_discrete()
-            view = req.view if (req.view in VIEWS) else _recommend(m, n_states, discrete)
+            view = req.view if (req.view in VIEWS) else _recommend(m, n_states, max_branch, discrete)
             png = _render_png(view, prefix) if view else b""
             return {
                 "ok": True,
-                "banner": _banner(m),
+                "banner": _banner(m, max_branch),
                 "dropped": dropped,
+                "branching": max_branch,
                 "states": n_states,
                 "edges": n_edges,
                 "vars": [v["name"].split(".")[-1] for v in m.interface_vars],
