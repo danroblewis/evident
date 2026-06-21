@@ -194,9 +194,17 @@ class Model:
         self._pin_prev(s, state)
         out = []
         while len(out) < limit and s.check() == z3.sat:
-            st = self._read_state(s.model())
+            mod = s.model()
+            st = self._read_state(mod)
             out.append(st)
-            s.add(z3.Or([self.consts[v["name"]] != self._lit(v, st[v["name"]])
+            # Block against the model's EXACT value of each const, not a re-literal of
+            # the decoded Python value. For reals, _read collapses an exact rational
+            # (175/3) to a lossy float (58.333…); re-blocking with RealVal(float) never
+            # excludes the true 175/3, so a DETERMINISTIC real FSM reports the one true
+            # successor over and over as 'distinct' (the 64-fan mislabel). model.eval is
+            # exact for every kind, so a single next state blocks to UNSAT as it should.
+            s.add(z3.Or([self.consts[v["name"]] != mod.eval(self.consts[v["name"]],
+                                                            model_completion=True)
                          for v in self.carried]))
         return out
 

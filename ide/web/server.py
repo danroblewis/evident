@@ -157,6 +157,13 @@ def _banner(m, max_branch=1, recurrent=1):
         return f"Driven — {drv} advances on its own clock (a deterministic recurrence)"
     if ind["verdict"] == "nondeterministic":
         return "Nondeterministic — the free choice is the input, not a state variable"
+    # A relational (no single driver) machine whose reachable graph has a real recurrent
+    # SCC is a CYCLE, not just a tangle: the variables co-determine in a loop and the orbit
+    # eventually repeats. Say 'cyclic' (traffic: light+timer recur every N ticks) rather than
+    # the static 'genuinely relational' phrasing, which read as terminating.
+    if recurrent >= 2:
+        return (f"Cyclic — {recurrent} states recur; the variables co-determine in a loop "
+                f"(eventually periodic, no fixpoint)")
     return "Genuinely relational — no independent variable (a cycle; every variable co-determines)"
 
 
@@ -169,12 +176,21 @@ def _recommend(m, n_states, max_branch, discrete):
         fan is visible where the full graph would be an unreadable noodle. Keyed on the
         branching factor (not edge count) so it still fires when a large reachable set hits
         the exploration cap (n_edges ≈ n_states).
+      - otherwise, a DETERMINISTIC system with ≥2 interacting NUMERIC variables →
+        phase_portrait: the compelling view is the orbit in (var₁, var₂) space, not a pair
+        of separate time-series lines. The oscillator spirals in (pos, vel); a time series
+        would split that single trajectory across two flat plots and hide the spiral. Gated
+        on ¬discrete (a tiny discrete machine reads as state_graph above) and on the
+        deterministic path (max_branch < 2) so the genuinely-branching numeric systems —
+        vending, pick — still go to reachability_tree above, not here.
       - otherwise the time series: a deterministic numeric ramp/trajectory reads as a clean
         line, faithful and fast for almost everything."""
     if "state_graph" in VIEWS and discrete and n_states <= 30:
         return "state_graph"
     if "reachability_tree" in VIEWS and max_branch >= 2:
         return "reachability_tree"
+    if "phase_portrait" in VIEWS and not discrete and len(m.numeric_vars) >= 2:
+        return "phase_portrait"
     return "time_series" if "time_series" in VIEWS else (VIEWS[0] if VIEWS else None)
 
 
