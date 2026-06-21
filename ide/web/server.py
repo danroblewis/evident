@@ -11,6 +11,7 @@ Run:  python3 -m uvicorn ide.web.server:app --host 0.0.0.0 --port 5173
 (or:  python3 ide/web/server.py)
 """
 import base64
+import inspect
 import os
 import subprocess
 import sys
@@ -36,23 +37,76 @@ from fastapi.staticfiles import StaticFiles  # noqa: E402
 from pydantic import BaseModel  # noqa: E402
 
 # --- renderers: import once, call in-process (matplotlib stays warm) ----------------
-RENDERERS = {}            # view name -> module.render(smt2, schema, out_path)
-for _v in ("time_series", "state_graph", "phase_portrait", "morse_graph",
-           "occupancy_heatmap", "reachability_tree"):
+# The full promised gallery — all sixteen views. A renderer exposes
+# render(smt2, schema, out_path); the few that only ship a CLI main() are wrapped by
+# patching argv around the call (serialized by _LOCK, so the global mutation is safe).
+ALL_VIEWS = (
+    "time_series", "state_graph", "phase_portrait", "reachability_tree",
+    "morse_graph", "occupancy_heatmap", "timing_diagram", "transition_matrix",
+    "basin_map", "orbit_scatter", "scatter_matrix", "parallel_coords",
+    "chord_diagram", "nullcline_field", "fixedpoint_map", "cobweb",
+)
+
+
+def _render_via_main(mod):
+    """A renderer that only ships a CLI main(smt2 schema out via argv): patch argv around
+    the call (serialized by _LOCK, so the global mutation is safe)."""
+    def render(smt2, schema, out_path):
+        saved = sys.argv
+        sys.argv = ["render", smt2, schema, out_path]
+        try:
+            mod.main()
+        finally:
+            sys.argv = saved
+    return render
+
+
+def _render_via_model(fn):
+    """A renderer whose render() takes a loaded Model + out_path, not file paths."""
+    def render(smt2, schema, out_path):
+        fn(load_model(smt2, schema), out_path)
+    return render
+
+
+def _adapt(mod):
+    """Normalize a renderer to render(smt2, schema, out_path), whatever shape it ships:
+    render(smt2, schema, out) · render(model, out) · or a CLI main()."""
+    if hasattr(mod, "render"):
+        try:
+            n = len(inspect.signature(mod.render).parameters)
+        except (TypeError, ValueError):
+            n = 3
+        return mod.render if n >= 3 else _render_via_model(mod.render)
+    if hasattr(mod, "main"):
+        return _render_via_main(mod)
+    return None
+
+
+RENDERERS = {}            # view name -> render(smt2, schema, out_path)
+for _v in ALL_VIEWS:
     try:
-        _m = __import__(f"render_{_v}")
-        if hasattr(_m, "render"):
-            RENDERERS[_v] = _m.render
+        _fn = _adapt(__import__(f"render_{_v}"))
+        if _fn is not None:
+            RENDERERS[_v] = _fn
+        else:
+            print(f"[server] render_{_v}: no render()/main()", file=sys.stderr)
     except Exception as e:                     # a renderer that won't import just isn't offered
         print(f"[server] render_{_v} unavailable: {e}", file=sys.stderr)
 
-VIEWS = [v for v in ("time_series", "state_graph", "phase_portrait",
-                     "reachability_tree", "morse_graph", "occupancy_heatmap")
-         if v in RENDERERS]
+VIEWS = [v for v in ALL_VIEWS if v in RENDERERS]
 REACH_LIMIT = 400                              # bounded exploration cap for the live stats
 _LOCK = threading.Lock()                       # matplotlib + z3 are not thread-safe; serialize
 
 app = FastAPI(title="Evident IDE")
+
+
+@app.middleware("http")
+async def _no_cache(request, call_next):
+    # This is a live-iterated dev tool: never let a browser serve a stale app.js/css, or a
+    # reviewer ends up auditing an old build. Force revalidation on every response.
+    resp = await call_next(request)
+    resp.headers["Cache-Control"] = "no-store, must-revalidate"
+    return resp
 
 
 class Source(BaseModel):
@@ -67,7 +121,7 @@ def _export(source: str, work: str):
         f.write(source)
     prefix = os.path.join(work, "prog")
     r = subprocess.run([EVIDENT, "export", ev, "--out", prefix],
-                       capture_output=True, text=True, timeout=30)
+                       capture_output=True, text=True, timeout=30, cwd=ROOT)
     err = (r.stderr or "") + (r.stdout or "")
     dropped = sum(1 for ln in err.splitlines() if "dropped" in ln.lower())
     if r.returncode != 0 or not os.path.exists(prefix + ".smt2"):
@@ -193,7 +247,7 @@ def _run_query(source, claim, given, work):
     for k, v in (given or {}).items():
         cmd += ["--given", f"{k}={v}"]
     cmd.append("--json")
-    r = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+    r = subprocess.run(cmd, capture_output=True, text=True, timeout=30, cwd=ROOT)
     out = (r.stdout or "").strip()
     try:
         return _json.loads(out.splitlines()[-1]) if out else {"ok": False, "error": "no output"}

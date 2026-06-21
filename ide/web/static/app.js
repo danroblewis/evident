@@ -69,7 +69,47 @@ fsm vending
 
 const $ = (s) => document.querySelector(s);
 
+// --- Evident syntax-highlighting mode ---------------------------------------------
+// A code editor with no language mode shows undifferentiated grey text. This tokenizes
+// Evident: keywords, the Unicode/ASCII operators, comments, strings, numbers, _prev
+// reads, Type/Variant capitals, and booleans — each mapped to a dracula-themed class.
+CodeMirror.defineMode("evident", function () {
+  const KEYWORDS = new Set([
+    "claim", "type", "enum", "fsm", "schema", "import", "assert", "match",
+    "subclaim", "in", "is_first_tick", "coindexed", "edges",
+  ]);
+  const ATOMS = new Set(["true", "false"]);
+  const OPS = "∈∉∀∃⇒⟸↦→⟨⟩≤≥≠Δ¬∧∨∪∩×·⊆∅=<>+-*/?:.,";
+  return {
+    startState() { return {}; },
+    token(stream) {
+      if (stream.eatSpace()) return null;
+      if (stream.match("--")) { stream.skipToEnd(); return "comment"; }
+      const ch = stream.peek();
+      if (ch === '"') {
+        stream.next();
+        while (!stream.eol()) { const c = stream.next(); if (c === '"') break; if (c === "\\") stream.next(); }
+        return "string";
+      }
+      if (/[0-9]/.test(ch)) { stream.eatWhile(/[0-9.]/); return "number"; }
+      if (/[A-Za-z_]/.test(ch)) {
+        stream.eatWhile(/[A-Za-z0-9_]/);
+        const w = stream.current();
+        if (KEYWORDS.has(w)) return "keyword";
+        if (ATOMS.has(w)) return "atom";
+        if (w[0] === "_") return "variable-2";     // previous-tick read (_state)
+        if (/^[A-Z]/.test(w)) return "def";        // Type name / enum Variant
+        return "variable";
+      }
+      if (OPS.indexOf(ch) >= 0) { stream.next(); return "operator"; }
+      stream.next();
+      return null;
+    },
+  };
+});
+
 const cm = CodeMirror.fromTextArea($("#code"), {
+  mode: "evident",
   theme: "dracula", lineNumbers: true, lineWrapping: false,
   viewportMargin: Infinity, value: DEFAULT_PROGRAM,
   smartIndent: false, electricChars: false, indentWithTabs: false, indentUnit: 4,
