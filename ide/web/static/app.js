@@ -110,21 +110,29 @@ CodeMirror.defineMode("evident", function () {
 
 const cm = CodeMirror.fromTextArea($("#code"), {
   mode: "evident",
-  theme: "dracula", lineNumbers: true, lineWrapping: false,
+  theme: "dracula", lineNumbers: true, lineWrapping: true,
   viewportMargin: Infinity, value: DEFAULT_PROGRAM,
   smartIndent: false, electricChars: false, indentWithTabs: false, indentUnit: 4,
   extraKeys: {
-    // Evident is indentation-sensitive (like Python). CodeMirror's default Enter
-    // (newlineAndIndent) COPIES the previous line's indent, which then stacks on top
-    // of the leading whitespace already present in typed/pasted text — so every line
-    // drifts further right until the parser rejects the program. Insert a bare newline;
-    // the text carries its own indentation. Tab inserts 4 spaces so nesting stays easy.
-    "Enter": (e) => e.replaceSelection("\n"),
+    // Evident is indentation-sensitive. Auto-indent on Enter: copy the current line's
+    // leading whitespace, and add one level after a block opener (an fsm/claim/type/enum
+    // header, or a line ending in ⇒) — so a hand-typed body lands correctly indented
+    // instead of at column 0 (which the parser rejects). Tab inserts 4 spaces.
+    "Enter": (e) => {
+      const cur = e.getCursor();
+      const line = e.getLine(cur.line);
+      const indent = (line.match(/^[ \t]*/) || [""])[0];
+      const opener = /^\s*(fsm|claim|type|enum|schema)\b/.test(line) || /⇒\s*$/.test(line);
+      e.replaceSelection("\n" + indent + (opener ? "    " : ""));
+    },
     "Tab": (e) => e.replaceSelection("    "),
     "Shift-Tab": (e) => e.execCommand("indentLess"),
   },
 });
-cm.setValue(DEFAULT_PROGRAM);
+// Persist the buffer across reloads — losing your work on an accidental refresh is the
+// fastest way to lose a user's trust.
+const SAVED = (() => { try { return localStorage.getItem("evident-buffer"); } catch (e) { return null; } })();
+cm.setValue(SAVED != null ? SAVED : DEFAULT_PROGRAM);
 
 // --- Unicode input method ---------------------------------------------------------
 cm.on("inputRead", (cm_, change) => {
@@ -138,6 +146,68 @@ cm.on("inputRead", (cm_, change) => {
     cm_.replaceRange(UNI[mt[1]] + mt[2], start, cur);
   }
 });
+
+// --- hover-to-learn glossary ------------------------------------------------------
+// The notation is unfamiliar and several constructs are sugar whose expansion IS the
+// semantics. Hover a keyword/operator/_prev/Bool to learn it — without leaving for docs.
+const GLOSSARY = {
+  fsm: "fsm — a state machine: a claim that carries state across ticks. _x reads the previous tick; x = … writes this tick (a difference equation).",
+  claim: "claim — a predicate / relation. Also how you write tests and reusable constraint modules. Run ⊨ Solve to get a witness.",
+  type: "type — a record/struct with local invariants. A noun you instantiate, e.g. type IVec2(x, y ∈ Int).",
+  enum: "enum — a tagged union; variants may carry payloads and recurse, e.g. enum Result = Ok(Int) | Err(String).",
+  schema: "schema — a named set defined by membership conditions (synonym for type).",
+  is_first_tick: "is_first_tick — Bool, true only on the FSM's first tick. Used to seed the initial state.",
+  match: "match — pattern-match an enum value across its variants.",
+  subclaim: "subclaim — a named nested claim, scoped to its parent's variables.",
+  "∈": "∈  membership / typing — 'x ∈ Int' declares x has type Int.   type \\in",
+  "⇒": "⇒  implies — 'A ⇒ B' means: if A then B.   type \\imp",
+  "⟸": "⟸  reverse-implies (dispatch) — 'A ⟸ B' means A applies when B.   type \\when",
+  "∀": "∀  for-all — '∀ x ∈ s : P' means P holds for every x in s.   type \\all",
+  "∃": "∃  there-exists.   type \\exists",
+  "Δ": "Δ  forward difference — 'Δx' = x − _x (this tick minus last). 'Δx = 1' means x rises by 1 each tick.   type \\Delta",
+  "↦": "↦  maps-to / rename, e.g. (slot ↦ value).   type \\mapsto",
+  "≤": "≤  less-than-or-equal.   type \\le", "≥": "≥  greater-than-or-equal.   type \\ge",
+  "≠": "≠  not-equal.   type \\ne", "¬": "¬  logical not.   type \\neg",
+  "∧": "∧  logical and.   type \\and", "∨": "∨  logical or.   type \\or",
+  "⟨": "⟨ ⟩  sequence literal ⟨a, b, c⟩.   type \\langle \\rangle",
+  "⟩": "⟨ ⟩  sequence literal ⟨a, b, c⟩.   type \\langle \\rangle",
+};
+const gloss = document.createElement("div");
+gloss.id = "gloss"; gloss.hidden = true; document.body.appendChild(gloss);
+function glossFor(t) {
+  if (GLOSSARY[t]) return GLOSSARY[t];
+  if (t && t[0] === "_") return `${t} — previous-tick read: the value of ${t.slice(1)} on the prior tick.`;
+  if (t === "true" || t === "false") return `${t} — Boolean literal (lowercase). Capital True/False is an unbound name — a silent bug.`;
+  return null;
+}
+cm.getWrapperElement().addEventListener("mousemove", (e) => {
+  const cls = (e.target && e.target.className) || "";
+  if (typeof cls === "string" && /\bcm-(keyword|operator|variable-2|atom)\b/.test(cls)) {
+    const g = glossFor((e.target.textContent || "").trim());
+    if (g) {
+      gloss.textContent = g; gloss.hidden = false;
+      gloss.style.left = Math.min(e.clientX + 12, window.innerWidth - 380) + "px";
+      gloss.style.top = (e.clientY + 18) + "px";
+      return;
+    }
+  }
+  gloss.hidden = true;
+});
+cm.getWrapperElement().addEventListener("mouseleave", () => { gloss.hidden = true; });
+
+// --- inline error line marker -----------------------------------------------------
+let _errLine = null;
+function clearErrorLine() {
+  if (_errLine != null) { cm.removeLineClass(_errLine, "background", "cm-error-line"); _errLine = null; }
+}
+function markErrorLine(err) {
+  clearErrorLine();
+  const m = (err || "").match(/line (\d+)/i);
+  if (m) {
+    const ln = parseInt(m[1], 10) - 1;
+    if (ln >= 0 && ln < cm.lineCount()) { cm.addLineClass(ln, "background", "cm-error-line"); _errLine = ln; }
+  }
+}
 
 // --- the live loop ----------------------------------------------------------------
 let timer = null, activeView = null, lastSource = "";
@@ -180,6 +250,7 @@ function paint(data, ms) {
     setStatus("error", "err");
     $("#errors").hidden = false;
     $("#errors").textContent = humanizeError(data.error || "analysis failed");
+    markErrorLine(data.error);                     // highlight the offending line in the gutter
     // the diagram on screen is from a PREVIOUS good run — mark it stale; never show
     // green reachable-state stats next to a red parse error.
     view.classList.add("stale");
@@ -193,6 +264,7 @@ function paint(data, ms) {
   }
   view.classList.remove("stale");
   $("#errors").hidden = true;
+  clearErrorLine();
   setStatus("ok", "ok");
   $("#banner").className = "live";
   $("#banner").textContent = "◆ " + data.banner;
@@ -224,9 +296,14 @@ function paint(data, ms) {
     `<span class="dim">${nStates} reachable states · ${data.edges} transitions${branch}</span>` +
     `<span class="dim">vars: ${(data.vars || []).join(", ")}</span>`;
 
-  // which constraint(s) vanished — the actual dropped text, not just a count
+  // which constraint(s) vanished — the actual dropped text, not just a count, with a
+  // did-you-mean for the capital-True/False footgun.
   warn.hidden = !(data.dropped && data.warnings);
-  if (!warn.hidden) warn.textContent = data.warnings;
+  if (!warn.hidden) {
+    const tf = /\bTrue\b|\bFalse\b/.test(data.warnings)
+      ? "→ Booleans are lowercase in Evident: use true / false, not True / False.\n\n" : "";
+    warn.textContent = tf + data.warnings;
+  }
 }
 
 async function run(view) {
@@ -254,7 +331,10 @@ async function run(view) {
   }
 }
 
-cm.on("change", () => { clearTimeout(timer); timer = setTimeout(() => run(), 350); });
+cm.on("change", () => {
+  try { localStorage.setItem("evident-buffer", cm.getValue()); } catch (e) {}
+  clearTimeout(timer); timer = setTimeout(() => run(), 350);
+});
 
 // --- solve/query: run a claim → SAT witness or UNSAT; pin vars for solve-for-X --------
 function parsePins(s) {
