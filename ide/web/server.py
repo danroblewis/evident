@@ -13,6 +13,7 @@ Run:  python3 -m uvicorn ide.web.server:app --host 0.0.0.0 --port 5173
 import base64
 import inspect
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -344,9 +345,29 @@ def solve(req: SolveReq):
         return r
 
 
+_NOCACHE = {"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+           "Pragma": "no-cache", "Expires": "0"}
+
+
 @app.get("/")
 def index():
-    return FileResponse(os.path.join(STATIC, "index.html"))
+    # Serve index.html with every app.js/app.css reference stamped by its file mtime, so a
+    # changed asset ALWAYS busts the browser cache (a no-store header alone does not evict an
+    # already-cached entry — which was silently feeding reviewers a stale build). Index
+    # itself is hard no-cache so the browser re-pulls the current stamps.
+    with open(os.path.join(STATIC, "index.html")) as f:
+        html = f.read()
+
+    def stamp(m):
+        name = m.group(1)
+        try:
+            v = int(os.path.getmtime(os.path.join(STATIC, name)))
+        except OSError:
+            v = 0
+        return f"{name}?v={v}"
+
+    html = re.sub(r'(app\.(?:js|css))(?:\?v=[^"\']*)?', stamp, html)
+    return Response(html, media_type="text/html", headers=_NOCACHE)
 
 
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
