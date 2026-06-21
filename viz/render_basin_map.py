@@ -102,13 +102,20 @@ def _choose_axes(m):
     return axes
 
 
-def _choose_facet(m, axes):
+def _choose_facet(m, axes, states):
     """Pick the SUITABLE facet variable via the shared faceting guard
     (m.facet_var): a low-cardinality categorical that stays ~constant within a
     run. Faceting by a var that CHANGES along the trajectory (e.g. vending's
     state.mode on the limit cycle) splits the dynamics across panels — the guard
     rejects those. Must not already be an axis. Returns (var, values) or
-    (None, None)."""
+    (None, None).
+
+    The returned `values` are ONLY those the facet var actually TAKES across the
+    reachable `states` — a declared enum variant that no reachable state visits
+    (e.g. find's state.s5 ∈ {Unseen, Pending, Visited} but every reachable state
+    is Unseen) would otherwise render a permanently-empty panel. And if fewer
+    than 2 distinct values occur, the var is constant: it carries zero faceting
+    information, so DON'T facet at all."""
     axis_names = {a["name"] for a in axes}
 
     def values_of(v):
@@ -123,6 +130,12 @@ def _choose_facet(m, axes):
         return None, None
     vals = values_of(v)
     if vals is None:
+        return None, None
+    # Keep only declared values that some reachable state actually visits, in the
+    # declared order. Suppresses empty panels (and rejects a constant facet var).
+    present = {st[v["name"]] for st in states if v["name"] in st}
+    vals = [x for x in vals if x in present]
+    if len(vals) < 2:
         return None, None
     return v, vals
 
@@ -270,7 +283,7 @@ def _discrete_basins(m, out_path):
 
     # FACET by a low-cardinality categorical that isn't an axis — adds a 3rd
     # dimension as small multiples instead of clobbering the 2-axis projection.
-    facet_var, facet_vals = _choose_facet(m, axes)
+    facet_var, facet_vals = _choose_facet(m, axes, states)
 
     # project every state onto the chosen axes + basin color, once.
     xs = np.array([_ordinal(m, ax_x, st[ax_x["name"]]) for st in states], float)
@@ -697,7 +710,7 @@ def _numeric_basins(m, out_path):
                      "with no surrounding attractor; basin map not meaningful")
         return "degenerate: lone fixed point (N/A)"
 
-    facet_var, facet_vals = _choose_facet(m, axes)
+    facet_var, facet_vals = _choose_facet(m, axes, states)
     kind = "numeric" if all(v["kind"] in ("int", "real")
                             for v in m.state_vars) else "mixed"
 

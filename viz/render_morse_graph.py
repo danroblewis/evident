@@ -106,89 +106,82 @@ def build_discrete_graph(m):
     return G, {k: _label_for_key(m, k) for k in keys}
 
 
-def build_numeric_graph(m, span=3200, n=13, fp_scale=None):
-    """Approximate flow graph for a numeric system.
+def build_numeric_orbit_graph(m, steps=400):
+    """Exact recurrence graph for a numeric system whose reachable() collapses
+    (e.g. the encoded seed is a fixed point) — walk the ACTUAL forward orbit
+    from the encoded initial state and quantize coincident points so a limit
+    cycle closes into one SCC.
 
-    Sample a grid of seed points over [-span, span] in every int/real var,
-    step each one forward once, and quantize both endpoints onto a coarse cell
-    lattice. Edges between cells form a flow graph whose recurrent SCCs trace
-    the attracting set (e.g. a limit cycle)."""
+    This never invents off-domain seeds: every node corresponds to a state the
+    program REALLY visits from its initial condition. Returns (G, labels) or
+    (None, None) when the orbit does not settle (diverges / stays non-recurrent),
+    in which case the caller renders an honest N/A card rather than fabricating
+    a grid."""
     numeric_vars = [v for v in m.state_vars if v["kind"] in ("int", "real")]
-    other_vars = [v for v in m.state_vars if v["kind"] not in ("int", "real")]
+    base = m.initial_state()
+    if base is None:
+        return None, None
 
-    # Quantization cell size: ~ 2*span / cells_per_axis. Coarse on purpose — the
-    # Morse graph is about the RECURRENCE SKELETON, not a fine flow field, so we
-    # want the limit set to collapse into one (or few) nontrivial SCC.
-    cells = 8
-    cell = (2.0 * span) / cells
+    traj = m.trajectory(start=base, steps=steps)
+    if not traj or len(traj) < 1:
+        return None, None
+
+    # Robust quantization step per numeric axis from the orbit's OWN spread
+    # (not a hardcoded box). One cell ~ 1/40 of the realized range, min 1.
+    cell = {}
+    for v in numeric_vars:
+        vals = [s[v["name"]] for s in traj]
+        rng = (max(vals) - min(vals)) if vals else 0.0
+        cell[v["name"]] = max(rng / 40.0, 1.0)
 
     def quant(state):
         parts = []
         for v in m.state_vars:
             val = state[v["name"]]
             if v["kind"] in ("int", "real"):
-                parts.append(round(val / cell))
+                parts.append(round(val / cell[v["name"]]))
             else:
                 parts.append(val)
         return tuple(parts)
 
-    # Grid of seeds over the numeric axes (other vars seeded from initial state).
-    base = m.initial_state() or {}
-    axis = [(-span) + (2 * span) * i / (n - 1) for i in range(n)]
-
-    import itertools
-    seeds = []
-    grids = [axis for _ in numeric_vars]
-    for combo in itertools.product(*grids):
-        s = dict(base)
-        for v, val in zip(numeric_vars, combo):
-            s[v["name"]] = int(round(val)) if v["kind"] == "int" else val
-        # ensure non-numeric vars have *some* value
-        for v in other_vars:
-            if v["name"] not in s:
-                if v["kind"] == "bool":
-                    s[v["name"]] = False
-                elif v["kind"] == "enum":
-                    s[v["name"]] = m.enum_variants[v["name"]][0]
-        seeds.append(s)
-
     G = nx.DiGraph()
-    centroids = {}   # cell -> representative numeric coords (for layout/label)
+    rep = {}   # cell-key -> representative real coords (for label)
+    prev = None
+    for s in traj:
+        k = quant(s)
+        rep.setdefault(k, tuple(s[v["name"]] for v in numeric_vars))
+        G.add_node(k)
+        if prev is not None and prev != k:
+            G.add_edge(prev, k)
+        elif prev == k:
+            G.add_edge(k, k)   # fixed point self-loop
+        prev = k
 
-    def record_centroid(cell_key, state):
-        coords = tuple(state[v["name"]] for v in numeric_vars)
-        centroids.setdefault(cell_key, coords)
-
-    for s in seeds:
-        nxt = m.successor(s)
-        if nxt is None:
-            continue
-        a = quant(s)
-        b = quant(nxt)
-        record_centroid(a, s)
-        record_centroid(b, nxt)
-        G.add_node(a)
-        G.add_node(b)
-        G.add_edge(a, b)
-        # follow the chain a few steps so the limit set closes into a cycle
-        cur = nxt
-        for _ in range(40):
-            nx2 = m.successor(cur)
-            if nx2 is None:
-                break
-            ca = quant(cur)
-            cb = quant(nx2)
-            record_centroid(ca, cur)
-            record_centroid(cb, nx2)
-            G.add_node(ca)
-            G.add_node(cb)
-            G.add_edge(ca, cb)
-            cur = nx2
+    if G.number_of_nodes() == 0:
+        return None, None
 
     labels = {}
-    for ck, coords in centroids.items():
-        labels[ck] = "(" + ", ".join(f"{int(round(c))}" for c in coords) + ")"
+    for k, coords in rep.items():
+        labels[k] = "(" + ", ".join(f"{c:.0f}" if isinstance(c, float)
+                                    else str(c) for c in coords) + ")"
     return G, labels
+
+
+def draw_na_card(m, out_path, reason):
+    """Render an honest 'not meaningful for this program' card instead of a
+    fabricated graph."""
+    fig, ax = plt.subplots(figsize=(12, 9))
+    ax.axis("off")
+    ax.text(0.5, 0.62, "N/A — Morse graph not meaningful here",
+            ha="center", va="center", fontsize=20, fontweight="bold",
+            color="#444444", transform=ax.transAxes)
+    ax.text(0.5, 0.46, reason, ha="center", va="center", fontsize=12,
+            color="#666666", wrap=True, transform=ax.transAxes)
+    fig.suptitle(f"{m.fsm} — Morse graph (condensation of reachable "
+                 f"transition graph)", fontsize=15, fontweight="bold", y=0.9)
+    fig.savefig(out_path, dpi=120, bbox_inches="tight")
+    plt.close(fig)
+    print(f"wrote {out_path}: N/A card ({reason})")
 
 
 # ----------------------------------------------------------------------------
@@ -405,7 +398,11 @@ def draw(C, info, orig_labels, fsm, viz_type, out_path, subtitle="",
     spany = max(maxy - miny, 1)
 
     def norm(p):
-        return ((p[0] - minx) / spanx, (p[1] - miny) / spany)
+        # center a single node (and any degenerate axis) instead of pinning to a
+        # corner; spread multi-node layouts across the [0,1] box.
+        nx_ = 0.5 if (maxx - minx) < 1e-9 else (p[0] - minx) / spanx
+        ny_ = 0.5 if (maxy - miny) < 1e-9 else (p[1] - miny) / spany
+        return (nx_, ny_)
 
     npos = {n: norm(p) for n, p in pos.items()}
 
@@ -503,9 +500,12 @@ def main():
         numeric_vars = [v for v in m.state_vars
                         if v["kind"] in ("int", "real")]
         if numeric_vars:
-            # mixed or pure numeric: try exact reachable first (finite mixed
-            # systems like vending terminate); fall back to grid sampling if it
-            # collapses to a trivial graph.
+            # mixed or pure numeric: use the EXACT reachable set (finite mixed
+            # systems like vending/wc terminate). If reachable() collapses to a
+            # single state, the encoded seed sits at a fixed point — walk the
+            # real forward orbit (which may close into a limit cycle). We NEVER
+            # invent off-domain grid seeds: every plotted node is a state the
+            # program really visits.
             try:
                 states, edges = m.reachable(limit=4000)
             except Exception:
@@ -522,11 +522,29 @@ def main():
                 labels = lab
                 sub = (f"{G.number_of_nodes()} reachable states, "
                        f"{G.number_of_edges()} transitions  (exact, mixed)")
+            elif len(states) == 1:
+                # reachable() found a single state — either a true fixed point
+                # or the explorer can't unfold a continuous orbit. Try the real
+                # forward orbit from the seed; only that, never a fabricated grid.
+                G, labels = build_numeric_orbit_graph(m)
+                if G is None or G.number_of_nodes() <= 1:
+                    # genuine fixed point: plot the one real reachable state.
+                    G = nx.DiGraph()
+                    keys = [_key(m, s) for s in states]
+                    G.add_node(keys[0])
+                    G.add_edge(keys[0], keys[0])
+                    labels = {keys[0]: _label_for_key(m, keys[0])}
+                    sub = ("1 reachable state — the encoded seed is a fixed "
+                           "point (no further dynamics)  (exact)")
+                else:
+                    sub = (f"{G.number_of_nodes()} states on the real forward "
+                           f"orbit from the initial condition  (exact orbit)")
             else:
-                G, labels = build_numeric_graph(m)
-                sub = ("grid-sampled flow on a quantized lattice  "
-                       f"({G.number_of_nodes()} cells, "
-                       f"{G.number_of_edges()} edges) — approximate")
+                draw_na_card(m, out,
+                             "the reachable transition set could not be "
+                             "enumerated for this numeric program — a Morse "
+                             "graph would require fabricating off-domain states.")
+                return
         else:
             G, labels = build_discrete_graph(m)
             sub = f"{G.number_of_nodes()} reachable states"

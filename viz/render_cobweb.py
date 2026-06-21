@@ -50,6 +50,35 @@ def _facet_values(m, var):
     return [False, True]
 
 
+def _map_fingerprint(m, var, mode, base, grid):
+    """A canonical fingerprint of the map x_{n+1} = f(x_n) under `base`. Two facet
+    values that yield the SAME fingerprint produce IDENTICAL cobweb scatters — the
+    facet doesn't enter the primary var's transition, so a panel per value is a
+    duplicate (the `find` bug: s5=Unseen and s5=Visited are pixel-identical because
+    holding-s5 doesn't change f). Used to dedup facet values before drawing."""
+    xs, ys = _sample_map(m, var, mode, base, grid)
+    return tuple(sorted(zip(xs, ys)))
+
+
+def _distinct_facet_groups(m, var, mode, base, grid, facet):
+    """Group facet values by the map they produce, keeping insertion order. Returns
+    a list of (representative_values, fingerprint): values sharing a fingerprint are
+    collapsed into one group (one panel labelled with all of them). A facet whose
+    values ALL collapse to one group adds no information and should be dropped."""
+    groups = []          # [(values, fingerprint)]
+    index = {}           # fingerprint -> position in groups
+    for val in _facet_values(m, facet):
+        panel_base = dict(base)
+        panel_base[facet["name"]] = val
+        fp = _map_fingerprint(m, var, mode, panel_base, grid)
+        if fp in index:
+            groups[index[fp]][0].append(val)
+        else:
+            index[fp] = len(groups)
+            groups.append(([val], fp))
+    return groups
+
+
 # --------------------------------------------------------------------------
 # State construction + ordinal <-> value plumbing.
 # --------------------------------------------------------------------------
@@ -91,20 +120,61 @@ def _from_ord(m, var, o):
     return int(round(o))
 
 
-def _numeric_range(m, var, base):
-    """Determine the cobweb x-range for a numeric var FROM THE REACHABLE SET, never
-    a hardcoded ±3000 box (that's the fabrication bug: gridding a guessed window
-    invents a map continuum / fixed-point line the program never enters).
+def _orbit_values(m, var, base):
+    """The DISTINCT values the primary var actually takes along the REAL orbit — the
+    single successor-chain (trajectory) starting from `base`, with the non-primary
+    vars carried by the transition itself.
 
-    Grid over `axis_bounds(var)` — the (padded) extent of the var over the actual
-    reachable sample. When the reachable extent is bounded and small, grid it at
-    integer resolution; when it's large (genuinely wide continuous dynamics) sample
-    it at a fixed resolution. Returns (grid_values, is_bounded). Returns (None, None)
-    when axis_bounds is None — a non-numeric var or an empty sample — so the caller
-    routes to the honest fallback/N-A path instead of fabricating."""
+    This is the honest domain for a cobweb. `axis_bounds`/`reachable` over-approximate:
+    they leave the OTHER carried vars free, so they report every value the var COULD
+    take across all branches (lru's `k0` -> {-1,1,9,10,...,75}), not the values it
+    visits on the orbit the staircase actually follows (lru's `k0` -> {-1, 1}).
+    Gridding the over-approximation fabricates a y=x continuum the program never
+    enters. Returns a sorted list of orbit values (possibly empty)."""
     name = var["name"]
-    # pad=0: grid EXACTLY the reachable integer extent (no padding outside the set —
-    # padding would re-introduce stray points just outside what the program reaches).
+    traj = m.trajectory(start=base, steps=400)
+    seen = []
+    s = set()
+    for st in traj:
+        v = st.get(name)
+        if v is not None and v not in s:
+            s.add(v)
+            seen.append(v)
+    return sorted(seen)
+
+
+def _numeric_range(m, var, base):
+    """Determine the cobweb x-range for a numeric var FROM THE REAL ORBIT, never a
+    hardcoded ±3000 box AND never the over-approximated reachable extent (both are
+    fabrication: gridding values the staircase never visits invents a map continuum /
+    y=x line the program never enters — the lru `k0` bug).
+
+    Grid over the distinct values the primary var takes along the trajectory, padded
+    by one step on each side so the map's local neighborhood is visible. When the orbit
+    only ever sits at a couple of values (lru's `k0 ∈ {-1, 1}`), the grid is just those
+    points — no fake continuum. Falls back to `axis_bounds` only when the orbit is empty
+    (no trajectory), and to a wide window only when even that is unbounded.
+
+    Returns (grid_values, is_bounded). Returns (None, None) when no honest range exists
+    so the caller routes to the N/A path instead of fabricating."""
+    name = var["name"]
+    orbit = _orbit_values(m, var, base)
+    if orbit:
+        olo, ohi = orbit[0], orbit[-1]
+        span = ohi - olo
+        # Grid the orbit's own extent, padded by ONE unit on each side (so the
+        # neighborhood of each visited value shows), capped at a readable resolution.
+        # No wide window: a 2-value orbit grids ~4 points, not 0..75.
+        ilo, ihi = int(round(olo)) - 1, int(round(ohi)) + 1
+        ispan = ihi - ilo
+        if ispan <= 0:
+            return [int(round(olo))], True
+        if ispan <= 200:
+            return list(range(ilo, ihi + 1)), True
+        n = 161
+        return [ilo + ispan * i // (n - 1) for i in range(n)], True
+
+    # No orbit (no trajectory at all) — fall back to the reachable extent.
     bounds = m.axis_bounds(name, pad=0.0)
     if bounds is None:
         # genuinely unbounded continuous dynamics with no finite reachable sample:
@@ -289,19 +359,30 @@ def render(smt2, schema, out_path):
     if mode == "enum-ordinal":
         sup += "  (enum -> ordinal)"
 
-    # ---- faceted: one cobweb panel per categorical value (adds a dimension) ----
+    # Drop a facet that doesn't ENTER the primary var's map: if every facet value
+    # yields the same cobweb (find's s5 — Unseen/Visited are identical), faceting just
+    # duplicates one panel N times. Collapse identical panels; only keep the facet if
+    # >= 2 genuinely-distinct maps survive. Otherwise fall through to a single panel.
+    groups = None
     if facet is not None:
-        values = _facet_values(m, facet)
-        n = len(values)
+        groups = _distinct_facet_groups(m, var, mode, base, grid, facet)
+        if len(groups) < 2:
+            facet = None
+
+    # ---- faceted: one cobweb panel per DISTINCT map (collapsed facet values) ----
+    if facet is not None:
+        n = len(groups)
         ncol = min(n, 3)
         nrow = (n + ncol - 1) // ncol
         fig, axes = plt.subplots(nrow, ncol, figsize=(4.6 * ncol, 4.6 * nrow),
                                  squeeze=False)
-        for k, val in enumerate(values):
+        for k, (vals, _fp) in enumerate(groups):
             ax = axes[k // ncol][k % ncol]
             panel_base = dict(base)
-            panel_base[facet["name"]] = val
-            label = f"{facet['name']} = {val}"
+            panel_base[facet["name"]] = vals[0]
+            label = f"{facet['name']} = " + (
+                str(vals[0]) if len(vals) == 1
+                else "{" + ", ".join(str(v) for v in vals) + "}")
             _draw_panel(ax, m, var, mode, panel_base, grid,
                         bounded, panel_label=label)
         # blank any unused cells

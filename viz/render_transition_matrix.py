@@ -8,13 +8,19 @@ states. This renderer orders a representative set of states and draws the
 adjacency MATRIX as a heatmap: cell (row i, col j) is lit iff there is a
 transition from state i to state j (queried from z3, never hardcoded).
 
-  * DISCRETE (bool/enum/string only) — exact reachable state set, ordered, and
-    the full adjacency matrix with per-state labels on both axes.
-  * NUMERIC / MIXED — we can't enumerate an infinite state space, so we sample a
-    representative grid of states (numeric axes gridded, discrete axes swept over
-    their variants), query each one's successor(s), and bin the resulting
-    next-states back onto the same sampled set. The matrix then shows the
-    coarse-grained flow structure (limit cycles show as off-diagonal bands).
+  * FINITE — whenever the reachable set (BFS over the real z3 transition) CLOSES
+    into a small, non-trivial set, we draw the EXACT reachable graph: every state
+    plotted, every transition queried. This is chosen by asking the program (does
+    BFS terminate below a cap?), NOT by the static variable kinds — a terminating
+    program whose state carries Ints (a clock 0..4, a cursor) still has a finite
+    reachable chain and must NOT be gridded into a fabricated state space.
+  * NUMERIC / MIXED (unbounded or continuous) — when the reachable set doesn't
+    close (the BFS hits the cap, or the seed is a lone fixed point), we can't
+    enumerate an infinite state space, so we sample a representative grid of
+    states (numeric axes gridded, discrete axes swept over their variants), query
+    each one's successor(s), and bin the resulting next-states back onto the same
+    sampled set. The matrix then shows the coarse-grained flow structure (limit
+    cycles show as off-diagonal bands).
 
 Channel mapping (Cleveland-McGill / Mackinlay):
   * The two MATRIX AXES (row order = column order) carry the full state — this is
@@ -52,12 +58,6 @@ from evident_viz import load
 # --------------------------------------------------------------------------- #
 # State-set construction
 # --------------------------------------------------------------------------- #
-def discrete_states_and_edges(m):
-    """Exact reachable graph for a purely discrete program."""
-    states, edges = m.reachable()
-    return states, edges
-
-
 def sample_states(m, num_grid=7):
     """A representative finite state set for numeric / mixed programs.
 
@@ -329,10 +329,27 @@ def draw_legend(fig, ax, legend):
 # Rendering
 # --------------------------------------------------------------------------- #
 def render(m, out_path):
-    discrete = m.is_discrete()
+    # Decide between the EXACT reachable graph and the sampled grid by asking the
+    # program, not by the static var kinds. A program is "finite" for our purposes
+    # iff its reachable set (BFS over the real z3 transition) closes — the frontier
+    # exhausts BELOW a cap — into a small, non-trivial set. That catches the
+    # terminating mixed/numeric programs (scheduler: clock 0..4, 6 states; wc;
+    # vending) whose state happens to carry Ints but whose reachable graph is a
+    # short chain, NOT a continuous space. Sampling those over a guessed numeric
+    # grid is the fabrication bug ("64 states" for a 6-state program). A 1-state
+    # result (a fixed-point seed like vanderpol's origin) is NOT renderable as a
+    # matrix, so it falls through to the sampled-flow path; hitting the cap
+    # (life / lru / randomwalk) means genuinely unbounded -> also sample.
+    FINITE_CAP = 200
     try:
-        if discrete:
-            states, edges = discrete_states_and_edges(m)
+        exact_states, exact_edges = m.reachable(limit=FINITE_CAP)
+    except Exception:  # noqa: BLE001
+        exact_states, exact_edges = [], []
+    finite = 2 <= len(exact_states) < FINITE_CAP
+
+    try:
+        if finite:
+            states, edges = exact_states, exact_edges
             # Order states meaningfully (cluster by top categorical), then
             # remap the exact edge index-pairs through the permutation.
             ordered, ribbon_var, ribbon_values = order_states(m, states)

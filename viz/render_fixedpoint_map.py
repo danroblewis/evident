@@ -443,7 +443,16 @@ def render(smt2, schema, out_path):
 
     facet = ch["facet"]
     if facet is not None:
-        panels = _domain(model, facet)
+        # Suppress empty facet panels: only render facet values that actually
+        # occur in the sampled/reachable set. A facet var that is constant
+        # across the run (e.g. find's state.s5 == Unseen everywhere) would
+        # otherwise draw permanently-empty subplots for its unreached variants.
+        present = {s[facet["name"]] for s in states}
+        panels = [v for v in _domain(model, facet) if v in present]
+        if len(panels) <= 1:
+            # facet carries no information (one occupied value) -> single panel.
+            facet = None
+            panels = [None]
     else:
         panels = [None]
 
@@ -549,7 +558,13 @@ def draw_panel(ax, model, ch, states, fixed, cycles, total_cycles):
     decorate_axis(ax, model, xvar, "x")
     if yvar:
         decorate_axis(ax, model, yvar, "y")
-    ax.legend(loc="upper right", fontsize=8, framealpha=0.9)
+    # Place the legend OUTSIDE the axes (upper-left, anchored just past the
+    # right edge) so it never overprints plotted markers — notably a fixed-point
+    # star that lands in a top-right corner (wc's absorbing state at (10, 3)).
+    handles, labels = ax.get_legend_handles_labels()
+    if handles:
+        ax.legend(loc="upper left", bbox_to_anchor=(1.01, 1.0),
+                  fontsize=8, framealpha=0.95, borderaxespad=0.0)
     ax.grid(True, alpha=0.2)
 
 

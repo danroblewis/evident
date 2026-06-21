@@ -62,26 +62,55 @@ def pick_seed(m):
 
 
 def walk(m, seed, steps):
-    """Follow a trajectory, but for nondeterministic transitions prefer a
-    successor we have not visited yet — so a discrete system with self-loops
-    (e.g. an adjacency graph where staying put is legal) produces an exploring
-    walk instead of immediately parking on a self-edge. Generic: it just asks
-    successors() for the fan and picks a fresh one when available."""
+    """Follow the DETERMINISTIC successor chain from `seed` — the declared seed's
+    actual trajectory, identical to evident_viz.trajectory() and what
+    timing_diagram traces. Stops at a fixed point (self-loop) or a revisit.
+
+    Why successor() and not successors()+fresh-preference: a difference equation
+    with a fixed input (brackets streams ⟨LParen,LBrack,…,BEnd⟩) is DETERMINISTIC
+    in the next state given the full previous state. The old fresh-preference
+    explore wandered OFF that path: once the input cursor runs past the fixed
+    input (done=true), the out-of-bounds token is unconstrained, so successors()
+    returns a FAN of spurious states that never occur on the declared run — and
+    picking a 'fresh' one from that fan fabricated a trace where st.ok flips false
+    on a balanced input. The deterministic chain stays on the real trajectory.
+
+    Only when the deterministic chain immediately parks on a self-loop at the seed
+    (e.g. an adjacency graph where staying put is legal AND the solver picks the
+    self-edge) do we fall back to fan-exploration to produce a moving walk."""
     cur = seed
     path = [cur]
     seen = {m._key(cur)}
     for _ in range(steps):
-        nxts = m.successors(cur)
-        if not nxts:
+        nxt = m.successor(cur)
+        if nxt is None:
             break
-        fresh = [s for s in nxts if m._key(s) not in seen]
-        nxt = fresh[0] if fresh else nxts[0]
         path.append(nxt)
         k = m._key(nxt)
-        if k in seen:        # only self-loops / already-seen remain -> stop
+        if k in seen:        # fixed point / revisit -> stop
             break
         seen.add(k)
         cur = nxt
+
+    # Genuinely-stuck-at-seed nondeterministic graph: deterministic following
+    # parked on tick 0 but the fan offers somewhere fresh to go. Re-walk via the
+    # fan only in that degenerate case (a discrete graph, not a driven equation).
+    if len(path) <= 1:
+        fan0 = m.successors(seed)
+        if len(fan0) > 1 or (fan0 and m._key(fan0[0]) != m._key(seed)):
+            cur, path, seen = seed, [seed], {m._key(seed)}
+            for _ in range(steps):
+                nxts = m.successors(cur)
+                if not nxts:
+                    break
+                fresh = [s for s in nxts if m._key(s) not in seen]
+                nxt = fresh[0] if fresh else nxts[0]
+                path.append(nxt)
+                k = m._key(nxt)
+                if k in seen:
+                    break
+                seen.add(k)
+                cur = nxt
     return path
 
 
@@ -128,6 +157,38 @@ def render(smt2, schema, out_path):
     if not ordered:
         ordered = list(m.state_vars)
 
+    # Drop CONSTANT rows. A variable that holds one value for the entire declared
+    # trajectory carries zero information as a time series — its row is a flat
+    # line that wastes vertical space (find's state.s5 never leaves Unseen; a
+    # balanced brackets run pins st.ok=true throughout). Suppress those rows but
+    # report them as a one-line "held constant" note so no value is hidden — the
+    # READER still sees "st.ok stayed true / s5 stayed Unseen", just not as a row.
+    def held_value(var):
+        vals = [s[var["name"]] for s in traj]
+        first = vals[0]
+        return first if all(v == first for v in vals) else None
+
+    constants = [(v, held_value(v)) for v in ordered]
+    constants = [(v, hv) for v, hv in constants if hv is not None]
+    varying = [v for v in ordered if held_value(v) is None]
+
+    if not varying:
+        # Every variable is constant (a fixed point / degenerate seed): nothing to
+        # plot over time. Render an honest summary card instead of N empty rows.
+        fig, ax = plt.subplots(figsize=(10, max(3.0, 0.4 * len(constants) + 2)))
+        ax.axis("off")
+        lines = "\n".join(f"  {v['name']} = {hv}" for v, hv in constants)
+        ax.text(0.5, 0.5,
+                f"N/A — every state variable is constant over the trajectory\n"
+                f"({len(traj)} ticks from seed {m.label(seed)}; no dynamics to plot)\n\n"
+                f"{lines}",
+                ha="center", va="center", fontsize=12, family="monospace")
+        fig.suptitle(f"{m.fsm} — time_series", fontsize=14, fontweight="bold")
+        fig.savefig(out_path, dpi=120, bbox_inches="tight")
+        plt.close(fig)
+        return
+
+    ordered = varying
     nvars = len(ordered)
     fig, axes = plt.subplots(nvars, 1, sharex=True,
                              figsize=(11, max(2.2 * nvars, 3.0)))
@@ -174,9 +235,14 @@ def render(smt2, schema, out_path):
     axes[-1].set_xlabel("tick")
     fig.suptitle(
         f"{m.fsm} — time_series  (seed {m.label(seed)}, {len(traj)} ticks; "
-        f"{len(quant)} numeric + {len(cat)} categorical, importance-ordered)",
+        f"{nvars} varying of {len(quant) + len(cat)} vars, importance-ordered)",
         fontsize=13, fontweight="bold")
-    fig.tight_layout(rect=[0, 0, 1, 0.97])
+    if constants:
+        held = ",  ".join(f"{v['name']}={hv}" for v, hv in constants)
+        fig.text(0.5, 0.005,
+                 f"held constant (suppressed): {held}",
+                 ha="center", va="bottom", fontsize=8, color="#666")
+    fig.tight_layout(rect=[0, 0.02 if constants else 0, 1, 0.97])
     fig.savefig(out_path, dpi=120, bbox_inches="tight")
     plt.close(fig)
 

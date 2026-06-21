@@ -49,14 +49,45 @@ from evident_viz import load
 
 # --- channel mapping: node var (categorical position) + arc-color var ----------
 
+MIN_NODE_CLASSES = 3   # a chord with <3 nodes degenerates to 2 dots / 1 arc
+
+
+def _observed_cardinality(m, name):
+    """Number of DISTINCT values a var actually takes over the REACHABLE set
+    (not the schema's declared variant count). A bool that latches false->true,
+    or an enum the program only ever sits in one state of, is degenerate as a
+    node axis even though its declared cardinality is >1."""
+    try:
+        states, _ = m.reachable()
+    except Exception:
+        states = m.trajectory(steps=200)
+    return len({st.get(name) for st in states if name in st})
+
+
 def pick_primary(m):
-    """NODE channel = categorical_vars[0] (top enum/bool/string). Return
-    (var_dict, node_labels, project_fn, mode_str). Falls back to binning the top
-    numeric var when the model has no categorical structure at all."""
+    """NODE channel = the categorical var with the HIGHEST OBSERVED cardinality
+    over the reachable set (NOT categorical_vars[0] in schema order — that can be
+    a latching bool that collapses the whole picture to 2 nodes / 1 arc). Return
+    (var_dict, node_labels, project_fn, mode_str).
+
+    Selection / degeneracy guard:
+      - Among categoricals, rank by how many distinct values they actually take.
+      - Require >= MIN_NODE_CLASSES distinct node classes; a 2-value bool (or an
+        enum stuck in <3 states) makes a degenerate chord and is rejected here.
+      - If no categorical clears the bar, fall back to binning the top numeric
+        var (a real banded flow). If there's no numeric var either, return None
+        for the var and let draw() route to an honest N/A card."""
     cats = m.categorical_vars
 
-    if cats:
-        v = cats[0]
+    # rank categoricals by OBSERVED cardinality (highest first), break ties toward
+    # enums (named labels read better than true/false) then shorter names.
+    ranked = sorted(
+        ((v, _observed_cardinality(m, v["name"])) for v in cats),
+        key=lambda vc: (-vc[1], 0 if vc[0]["kind"] == "enum" else 1, len(vc[0]["name"])),
+    )
+
+    if ranked and ranked[0][1] >= MIN_NODE_CLASSES:
+        v = ranked[0][0]
         if v["kind"] == "enum":
             labels = list(m.enum_variants[v["name"]])
             return v, labels, (lambda st: st[v["name"]]), "enum"
@@ -66,9 +97,14 @@ def pick_primary(m):
         # string: labels discovered dynamically from observed values
         return v, None, (lambda st: st[v["name"]]), "string"
 
-    # no categorical var (pure numeric) — bin the top numeric var into bands
-    v = m.numeric_vars[0]
-    return v, None, None, "numeric"   # binning resolved after we know range
+    # no categorical with enough distinct node classes — bin the top numeric var
+    # into bands over its REAL reachable extent (still honest, non-fabricated).
+    if m.numeric_vars:
+        v = m.numeric_vars[0]
+        return v, None, None, "numeric"   # binning resolved after we know range
+
+    # nothing to put on the node axis at all — caller renders the N/A card.
+    return None, None, None, "none"
 
 
 def pick_color_var(m, node_var):
@@ -207,6 +243,15 @@ def bin_label(c):
 
 def draw(m, viz_title, out_path):
     var, labels, proj, mode = pick_primary(m)
+    if mode == "none" or var is None:
+        cats = m.categorical_vars
+        cards = ", ".join(f"{v['name']}={_observed_cardinality(m, v['name'])}"
+                          for v in cats) or "none"
+        return placeholder(
+            m, viz_title, out_path,
+            "no variable forms >= 3 distinct node classes "
+            f"(categoricals: {cards}; no numeric var to bin) — "
+            "a chord diagram needs >= 3 nodes to be meaningful")
     color = pick_color_var(m, var)
     labels, flow, numrange, arc_cat, color_labels = gather_flow(
         m, var, labels, proj, mode, color)

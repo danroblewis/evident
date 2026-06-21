@@ -205,12 +205,27 @@ def pick_axes(m, exclude=()):
     return (chosen[0], None) if chosen else (None, None)
 
 
-def nbins(m, v):
+# An int axis with at most this many distinct reachable values is treated as a
+# discrete categorical axis: each value gets one full-width integer-centered
+# cell, instead of being smeared into a single thin sliver of a 60-bin grid.
+_MAX_INT_DISCRETE = 24
+
+
+def nbins(m, v, data=None):
     if v["kind"] == "bool":
         return np.array([-0.5, 0.5, 1.5])
     if v["kind"] == "enum":
         n = len(m.enum_variants[v["name"]])
         return np.arange(-0.5, n + 0.5, 1.0)
+    if v["kind"] == "int" and data is not None and len(data):
+        d = np.asarray(data, float)
+        d = d[np.isfinite(d)]
+        if len(d):
+            lo, hi = int(np.floor(d.min())), int(np.ceil(d.max()))
+            span = hi - lo
+            # Few distinct integer columns -> integer-centered full-width cells.
+            if 0 <= span <= _MAX_INT_DISCRETE:
+                return np.arange(lo - 0.5, hi + 1.5, 1.0)
     return 60
 
 
@@ -224,7 +239,7 @@ def draw_heatmap(fig, ax, m, a0, a1, xs, ys, vmax=None, title=None):
         if title:
             ax.set_title(title, fontsize=10)
         return None
-    bx, by = nbins(m, a0), nbins(m, a1)
+    bx, by = nbins(m, a0, xs), nbins(m, a1, ys)
     h, xedges, yedges = np.histogram2d(xs, ys, bins=[bx, by])
     hp = np.log1p(h)
     im = ax.imshow(
@@ -325,7 +340,7 @@ def render(smt2, schema, out):
             pys = ys[mask] if len(ys) else ys
             per.append((val, pxs, pys))
             if len(pxs):
-                bx, by = nbins(m, a0), nbins(m, a1)
+                bx, by = nbins(m, a0, pxs), nbins(m, a1, pys)
                 h, _, _ = np.histogram2d(pxs, pys, bins=[bx, by])
                 gmax = max(gmax, float(np.log1p(h).max()))
         gmax = gmax or 1.0
