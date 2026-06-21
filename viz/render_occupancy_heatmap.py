@@ -226,6 +226,24 @@ def _clip_to_extent(xs, ys, ex, ey):
     return xs[keep], ys[keep]
 
 
+# On a LARGE numeric grid, a heatmap is only honest if the system DWELLS — returns
+# to cells repeatedly, concentrating visits. lru sweeps a monotone counter against a
+# spread of key values: each (k0, miss_count) cell is touched ~once, so the picture
+# is a sparse trajectory smear spanning a blown-out key axis, not a density. When
+# most occupied cells are singletons (visited exactly once) on a big grid, there is
+# no occupancy to show -> N/A. A small integer grid (wc's staircase) is exempt: it's
+# a complete, readable lattice where per-cell counts are naturally low.
+_BIG_GRID = 100        # cells; below this it's a discrete lattice, not a plane
+_SMEAR_FRAC = 0.6      # >this fraction of occupied cells visited once = a smear
+
+
+def occupancy_smear(h):
+    occ = h[h > 0]
+    if h.size < _BIG_GRID or len(occ) == 0:
+        return False
+    return float((occ <= 1).sum()) / len(occ) > _SMEAR_FRAC
+
+
 def collect_discrete(m, axes, facet_var=None):
     """Occupancy over the reachable graph. Returns (xs, ys, fs) where fs is the
     ordinal-projected facet value per visited point (or None when not faceting).
@@ -493,6 +511,18 @@ def render(smt2, schema, out):
         if ndistinct < MIN_DISTINCT:
             placeholder(ax, m, f"reachable set is {ndistinct} point(s), finite —\n"
                                "occupancy heatmap not meaningful")
+            ax.set_title(title)
+            fig.tight_layout()
+            fig.savefig(out, dpi=120)
+            plt.close(fig)
+            return
+        # Large grid + ~no repeat visits = a sparse trajectory smear (lru's monotone
+        # counter swept across a spread of key values), not a dwell density. N/A.
+        bx, by = nbins(m, a0, xs, extent=ex), nbins(m, a1, ys, extent=ey)
+        h, _, _ = np.histogram2d(xs, ys, bins=[bx, by])
+        if occupancy_smear(h):
+            placeholder(ax, m, "no dwell concentration — the trajectory sweeps the\n"
+                               "plane without returning (a smear, not occupancy)")
             ax.set_title(title)
             fig.tight_layout()
             fig.savefig(out, dpi=120)
