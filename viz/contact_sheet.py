@@ -126,19 +126,28 @@ def describe(ir):
 
 
 def independence_note(ir):
-    """One-line functional-dependency insight: the model's INDEPENDENT variable (the
-    driver/clock that determines the others), or that it is genuinely relational."""
+    """One-line functional-dependency insight, combining the reachable-behavior CLOCK
+    and the structural (solver-sensitivity) DRIVER: the model's independent variable, a
+    cyclic driver, an honest nondeterministic-choice signal, or genuinely relational."""
     try:
         sys.path.insert(0, str(VIZ))
         from evident_viz import load
-        ind = load(ir[0], ir[1]).independence()
+        m = load(ir[0], ir[1])
+        r, s = m.independence(), m.independence_structural()
     except Exception:
         return ""
-    if ind["verdict"] == "relational":
+    if s["verdict"] == "nondeterministic":
+        return ("**Nondeterministic** — the independent variable is the *choice* itself "
+                "(a free input), not a state variable.")
+    if s["verdict"] == "driven" and r["verdict"] == "relational":
+        drv = s["driver"].split(".")[-1]
+        return (f"**Cyclic driver:** `{drv}` — a deterministic cycle with no monotone "
+                f"clock, but `{drv}` sequences the rest.")
+    if r["verdict"] == "relational":
         return ("**Genuinely relational** — no independent variable; every variable "
-                "co-determines (a cycle / nondeterministic relation).")
-    drv = ind["driver"].split(".")[-1]
-    deps = [d.split(".")[-1] for d in ind["dependents"][:4]]
+                "co-determines (a coupled / cyclic relation).")
+    drv = (r["driver"] or s["driver"]).split(".")[-1]
+    deps = [d.split(".")[-1] for d in r["dependents"][:4]]
     tail = (" — computed from it: " + ", ".join(f"`{d}`" for d in deps)) if deps else ""
     return f"**Independent variable:** `{drv}` (the driver/clock){tail}."
 

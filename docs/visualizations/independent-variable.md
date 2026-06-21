@@ -65,12 +65,46 @@ The split is clean and meaningful:
 API: `Model.independence()` in `viz/evident_viz.py` → `{verdict, driver, drivers,
 dependents, score}`.
 
-## Caveat and the rigorous follow-up
+## The structural (solver-sensitivity) version — `independence_structural()`
 
-This is the **reachable-behavior** notion — functional dependencies that hold on the
-sampled states. It's a good proxy, but a finite/degenerate sample can miss or invent a
-dependency. The **inherent** version reads the *transition relation* syntactically —
-which variable's update equation references which — giving the dependency DAG
-independent of any trajectory (its sources are the drivers). That is more robust and is
-the natural next step; it requires analyzing the `.ev` source or the exported IR rather
-than the reachable set.
+The reachable-behavior version above infers dependencies from the sampled trajectory,
+so a finite/degenerate sample can miss or invent one. The rigorous form probes the
+transition RELATION directly, via the solver:
+
+> `state.X` depends on `_state.Y` iff perturbing `_Y` — holding the rest of the previous
+> state — CHANGES `state.X`.
+
+For each of a few reachable previous states, perturb each field to another observed
+value and re-solve the transition; record which next-fields move. This reads off the
+actual computational form (`state.sum = _sum + val[_cursor]` responds to `_cursor`)
+regardless of whether the sample exposed it. Driver = a SOURCE of the resulting DAG
+(high out-degree, low in-degree — its next value is a function of itself, the rest are
+computed from it).
+
+**Determinism gate.** A nondeterministic `successor()` returns one arbitrary choice, so
+perturb-vs-base would conflate dependency with that choice. When any probed state has
+> 1 successor, the analysis returns `nondeterministic` — and that *is* the answer: the
+independent variable is the nondeterministic CHOICE (the free input), not a state field.
+
+## Two complementary lenses
+
+The two methods answer different questions, and the corpus shows exactly where they
+agree and diverge:
+
+| | reachable `independence()` | structural `independence_structural()` |
+|---|---|---|
+| what it finds | the temporal **clock** (bijective with progress) | the computational **driver** (what propagates) |
+| pipelines (cut, grep, ps, wc) | the clock | **agrees** — clock *is* the driver |
+| deterministic CYCLE (vending) | `relational` (no monotone clock) | `driven: mode` — the **cyclic driver** that sequences the machine |
+| nondeterministic (dungeon, du, find, randomwalk, toposort) | picks a clock-ish field | honest **`nondeterministic`** — reveals the free choice the clock view masked |
+| continuous coupled (vanderpol) | `relational` | `relational` — agrees (mutually coupled, no source) |
+
+So `du`/`find` looked "driven" to the reachable view but are actually nondeterministic
+traversals — the structural probe surfaces that. And `vending`'s cyclic driver `mode` is
+invisible to the clock view but caught structurally. The contact-sheet note combines
+both: clock, cyclic driver, nondeterministic-choice, or genuinely relational.
+
+A purely *syntactic* variant (parse which variable's update equation references which,
+straight from the `.ev`/IR) would give the same DAG without any solving — cheaper, but
+it needs an Evident expression walker; the solver-sensitivity probe gets the directed,
+trajectory-independent dependency today, reusing the transition we already encode.
