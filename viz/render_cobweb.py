@@ -92,35 +92,39 @@ def _from_ord(m, var, o):
 
 
 def _numeric_range(m, var, base):
-    """Determine the cobweb x-range for a numeric var. If the system is bounded
-    and small (a counter-like state, found via reachable/sampled states), grid
-    that exact range; otherwise span a generous window for big-scale fixed-point
-    systems (van der Pol etc.). Returns (grid_values, is_bounded)."""
+    """Determine the cobweb x-range for a numeric var FROM THE REACHABLE SET, never
+    a hardcoded ±3000 box (that's the fabrication bug: gridding a guessed window
+    invents a map continuum / fixed-point line the program never enters).
+
+    Grid over `axis_bounds(var)` — the (padded) extent of the var over the actual
+    reachable sample. When the reachable extent is bounded and small, grid it at
+    integer resolution; when it's large (genuinely wide continuous dynamics) sample
+    it at a fixed resolution. Returns (grid_values, is_bounded). Returns (None, None)
+    when axis_bounds is None — a non-numeric var or an empty sample — so the caller
+    routes to the honest fallback/N-A path instead of fabricating."""
     name = var["name"]
-    vals = set()
-    try:
-        states, _ = m.reachable(limit=400)
-        for s in states:
-            v = s.get(name)
-            if isinstance(v, (int, float)):
-                vals.add(int(v))
-    except Exception:
-        pass
-    # A genuinely BOUNDED counter (vending: balance 0..3) reaches several
-    # distinct small values. A big fixed-point system (van der Pol) seeded at the
-    # origin reaches only the fixed point — 1-3 clustered points — which we must
-    # NOT mistake for a small range. Require a real spread of distinct values.
-    if len(vals) >= 4:
-        lo, hi = min(vals), max(vals)
-        span = hi - lo
-        if span <= 64:                      # small bounded counter: grid it exactly
-            pad = max(1, span // 2)
-            grid = list(range(lo - pad, hi + pad + 1))
-            return grid, True
-    # large-scale / fixed-point-at-origin: generous symmetric window.
-    lo, hi, n = -3200, 3200, 121
-    grid = [lo + (hi - lo) * i // (n - 1) for i in range(n)]
-    return grid, False
+    # pad=0: grid EXACTLY the reachable integer extent (no padding outside the set —
+    # padding would re-introduce stray points just outside what the program reaches).
+    bounds = m.axis_bounds(name, pad=0.0)
+    if bounds is None:
+        # genuinely unbounded continuous dynamics with no finite reachable sample:
+        # the ONLY case a generous window is honest. (Rare — most numeric Evident
+        # FSMs have a finite reachable set.)
+        lo, hi, n = -3200, 3200, 121
+        grid = [lo + (hi - lo) * i // (n - 1) for i in range(n)]
+        return grid, False
+    lo, hi = bounds
+    ilo, ihi = int(round(lo)), int(round(hi))
+    span = ihi - ilo
+    if span <= 0:
+        return [ilo], True
+    if span <= 400:                          # bounded reachable counter: grid exactly
+        return list(range(ilo, ihi + 1)), True
+    # bounded but wide: sample the reachable extent at fixed resolution (no padding
+    # beyond what axis_bounds already added).
+    n = 161
+    grid = [ilo + span * i // (n - 1) for i in range(n)]
+    return grid, True
 
 
 # --------------------------------------------------------------------------
@@ -165,12 +169,14 @@ def _staircase(m, var, mode, base, seed, steps=60):
 
 
 def _seed_for(mode, lo, hi, bounded, base, var, m):
+    """Seed the cobweb staircase from a REACHABLE state — the initial state's value
+    of this var (clamped into the gridded range), never a fabricated wide start
+    (the old `seed=2000` invented an orbit through a region the program never
+    enters)."""
+    seed = _to_ord(m, var, base[var["name"]])
     if mode == "int":
-        if bounded:
-            return _to_ord(m, var, base.get(var["name"], lo))
-        seed = 2000                       # near the limit cycle for big systems
-        return seed if lo <= seed <= hi else int((lo + hi) / 2)
-    return _to_ord(m, var, base[var["name"]])
+        return max(lo, min(hi, seed))
+    return seed
 
 
 # --------------------------------------------------------------------------
@@ -222,23 +228,56 @@ def _draw_panel(ax, m, var, mode, base, grid, bounded, panel_label=None):
     return True
 
 
+def _na_card(out_path, fsm, msg):
+    """Honest placeholder instead of fabricating structure over a guessed range."""
+    fig, ax = plt.subplots(figsize=(7.5, 7.5))
+    ax.text(0.5, 0.5, msg, ha="center", va="center", fontsize=13, wrap=True)
+    ax.set_axis_off()
+    ax.set_title(f"{fsm}  —  cobweb")
+    fig.savefig(out_path, dpi=120, bbox_inches="tight")
+    plt.close(fig)
+
+
+def _reachable_count(m):
+    """Number of distinct reachable states (capped) — for the degeneracy guard."""
+    try:
+        states, _ = m.reachable(limit=64)
+        return len(states)
+    except Exception:
+        return None
+
+
 def render(smt2, schema, out_path):
     m = load(smt2, schema)
     var, mode = _pick_primary(m)
 
     if var is None:
-        fig, ax = plt.subplots(figsize=(7.5, 7.5))
-        ax.text(0.5, 0.5, "N/A: no state var to cobweb",
-                ha="center", va="center", fontsize=13)
-        ax.set_axis_off()
-        ax.set_title(f"{m.fsm}  —  cobweb")
-        fig.savefig(out_path, dpi=120, bbox_inches="tight")
-        plt.close(fig)
+        _na_card(out_path, m.fsm, "N/A: no state var to cobweb")
         return
+
+    # Degeneracy guard: a cobweb staircases an ORBIT over a 1-D map. A reachable set
+    # of one or two states (e.g. a fixed point at the origin — van der Pol seeded at
+    # (0,0)) has no orbit to trace and no real axis extent; gridding a map over it
+    # would fabricate a fixed-point continuum the program never enters. Render an
+    # honest N/A instead. (Numeric vars only — a discrete/enum mode legitimately
+    # cobwebs over its few categorical values.)
+    if mode == "int":
+        nstates = _reachable_count(m)
+        if nstates is not None and nstates <= 2:
+            _na_card(out_path, m.fsm,
+                     f"N/A — reachable set is {nstates} "
+                     f"state{'s' if nstates != 1 else ''} (degenerate / fixed "
+                     f"point);\ncobweb (a 1-D map orbit) not meaningful.")
+            return
 
     base = _base_state(m)
     if mode == "int":
         grid, bounded = _numeric_range(m, var, base)
+        if grid is None:                    # axis_bounds None AND no fallback fired
+            _na_card(out_path, m.fsm,
+                     f"N/A — no numeric range for {var['name']}; "
+                     "cobweb not meaningful.")
+            return
     else:
         grid = list(range(len(m.enum_variants[var["name"]])))
         bounded = True

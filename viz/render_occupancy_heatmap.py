@@ -70,42 +70,83 @@ def axis_ticklabels(m, var, lo, hi):
     return None, None
 
 
-def collect_numeric(m, axes):
-    """Many seeds x trajectory steps -> (xs, ys) for two numeric axes.
+# A heatmap over < this many distinct (x, y) cells is not a density — it's a
+# scatter of a few points. Route those to the honest N/A card.
+MIN_DISTINCT = 4
+# Exploratory grid resolution used ONLY in the continuous fallback below.
+_SEED_GRID_N = 7
+_DEFAULT_SPAN = 3000.0  # last-resort box, only for genuinely unbounded continuous dynamics
 
-    Grid seeds across the full numeric box (we are NOT limited to reachable
-    states — successor() accepts arbitrary pinned points), then follow each
-    chain. The dwell in the limit cycle / fixed point dominates the histogram.
-    """
-    init = m.initial_state()
-    span = 3200.0  # generous default for fixed-point numeric systems
-    seeds = []
-    grid = np.linspace(-span, span, 9)
-    ax, ay = axes
+
+def _reachable_points(m, ax, ay):
+    """The points the program ACTUALLY visits: the reachable state set plus one
+    trajectory from the defined initial state. This is the honest occupancy —
+    where the program lives, not a guessed box. Empty if there's no init."""
+    states, _ = m.reachable(limit=2000)
+    pts = list(states) + m.trajectory(steps=400)
+    xs = [ordinal(m, ax, s[ax["name"]]) for s in pts]
+    ys = [ordinal(m, ay, s[ay["name"]]) for s in pts]
+    return np.array(xs, float), np.array(ys, float)
+
+
+def _seed_span(m, var, default):
+    """Seed span for the continuous fallback: the reachable extent (axis_bounds)
+    when it's wide enough to matter, else a default wide box. We seed within
+    this, but the HISTOGRAM extent is always clipped to the points actually
+    visited — so the picture is scaled to the orbit, never to the seed box."""
+    if var["kind"] not in ("int", "real"):
+        return default
+    b = m.axis_bounds(var["name"])
+    if b is None:
+        return default
+    half = max(abs(b[0]), abs(b[1]))
+    return half if half > 1.0 else default
+
+
+def _explore(m, ax, ay):
+    """Continuous fallback: the program's pinned init is an unstable fixed point
+    that never reaches the limit cycle (van der Pol's origin), so the reachable
+    set is degenerate. Seed an exploratory grid, follow each chain, drop the
+    transient, and keep the VISITED points — the attractor the chains converge
+    onto. The returned extent is the orbit's, derived from visited states."""
+    sx = _seed_span(m, ax, _DEFAULT_SPAN)
+    sy = _seed_span(m, ay, _DEFAULT_SPAN)
     other = {v["name"]: 0 for v in m.state_vars}
-    for gx in grid:
-        for gy in grid:
-            s = dict(other)
-            s[ax["name"]] = int(gx) if ax["kind"] == "int" else gx
-            s[ay["name"]] = int(gy) if ay["kind"] == "int" else gy
-            seeds.append(s)
-    # explicit seeds away from the origin fixed point (per sample notes)
-    for sx, sy in ((2800, 0), (400, 0), (0, 2700)):
-        s = dict(other)
-        s[ax["name"]] = sx
-        s[ay["name"]] = sy
-        seeds.append(s)
-    if init is not None:
-        seeds.append(init)
-
+    gx = np.linspace(-sx, sx, _SEED_GRID_N)
+    gy = np.linspace(-sy, sy, _SEED_GRID_N)
     xs, ys = [], []
-    for seed in seeds:
-        traj = m.trajectory(start=seed, steps=120)
-        # skip an initial transient so the heatmap reflects the attractor
-        for st in traj[10:]:
-            xs.append(ordinal(m, ax, st[ax["name"]]))
-            ys.append(ordinal(m, ay, st[ay["name"]]))
-    return np.array(xs), np.array(ys)
+    for vx in gx:
+        for vy in gy:
+            s = dict(other)
+            s[ax["name"]] = int(vx) if ax["kind"] == "int" else vx
+            s[ay["name"]] = int(vy) if ay["kind"] == "int" else vy
+            traj = m.trajectory(start=s, steps=160)
+            for st in traj[20:]:           # skip the transient: keep the attractor
+                xs.append(ordinal(m, ax, st[ax["name"]]))
+                ys.append(ordinal(m, ay, st[ay["name"]]))
+    return np.array(xs, float), np.array(ys, float)
+
+
+def collect_numeric(m, axes):
+    """(xs, ys) of where the system dwells, for two numeric axes — derived from
+    the REACHABLE states, never a hardcoded box.
+
+    Primary: plot the reachable set + the trajectory from the initial state
+    directly. For a bounded/terminating program (a counter to 10) this is the
+    real, tight occupied region — no fabricated structure outside it.
+
+    Fallback (genuinely continuous dynamics whose limit cycle isn't reached from
+    the pinned init): seed an exploratory grid and keep the VISITED attractor;
+    the binning extent is the orbit's, not the seed box's."""
+    ax, ay = axes
+    xs, ys = _reachable_points(m, ax, ay)
+    distinct = len({p for p in zip(xs.tolist(), ys.tolist())})
+    if distinct >= MIN_DISTINCT:
+        return xs, ys
+    # degenerate reachable set: either a genuinely continuous attractor we must
+    # explore for, or a true single-point system. _explore returns the visited
+    # attractor (or stays degenerate, which the caller routes to N/A).
+    return _explore(m, ax, ay)
 
 
 def collect_discrete(m, axes, facet_var=None):
@@ -323,6 +364,19 @@ def render(smt2, schema, out):
         fig.savefig(out, dpi=120)
         plt.close(fig)
         return
+    # A density over a handful of cells is a fabrication waiting to happen — the
+    # reachable set is too small/degenerate for an occupancy heatmap to mean
+    # anything. Render the honest N/A card instead of painting a guessed plane.
+    if not discrete_path:
+        ndistinct = len({p for p in zip(xs.tolist(), ys.tolist())})
+        if ndistinct < MIN_DISTINCT:
+            placeholder(ax, m, f"reachable set is {ndistinct} point(s), finite —\n"
+                               "occupancy heatmap not meaningful")
+            ax.set_title(title)
+            fig.tight_layout()
+            fig.savefig(out, dpi=120)
+            plt.close(fig)
+            return
 
     im = draw_heatmap(fig, ax, m, a0, a1, xs, ys)
     if im is not None:

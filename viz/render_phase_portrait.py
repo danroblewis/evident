@@ -137,46 +137,82 @@ def plan_channels(m):
     return axx, axy, facet, regime
 
 
-# ----- numeric regime (a single field panel) --------------------------------
-def _value_range(m, ax_var, pin):
-    """Heuristic sampling range for a numeric axis. Probe the initial state and a
-    few successors to scale; fall back to a symmetric default. `pin` fixes the
-    OTHER carried vars (e.g. the facet value + the off-axis numeric)."""
-    name = ax_var["name"]
-    vals = []
-    init = m.initial_state()
-    if init is not None:
-        vals.append(init[name])
-    for seed_scale in (100, 1000, 3000):
-        st = dict(pin)
-        st[name] = seed_scale
-        nxt = m.successor(st)
-        if nxt is not None:
-            vals.append(nxt[name])
-    if not vals:
-        return -10.0, 10.0
-    mag = max(abs(float(v)) for v in vals)
-    if mag < 1:
-        mag = 10.0
-    span = mag * 1.4
-    return -span, span
+# ----- numeric regime: derive the field domain from the REACHABLE orbit ------
+def _orbit_extent(m, axx, axy, pin):
+    """The bounding box of the actually-VISITED states for a continuous numeric
+    field, derived from the program's reachable dynamics — NEVER a hardcoded box.
+
+    Two reachable sources, unioned:
+      * axis_bounds(name): the padded extent of each axis over the reachable
+        BFS sample (the real domain helper). For a limit cycle whose initial
+        state is the unstable fixed point this collapses to ~a point, so we also
+        probe the orbit directly.
+      * perturbation trajectories: seed a spread of off-origin starts and follow
+        the successor chain; the bbox of the visited orbit IS the limit-cycle
+        extent (vanderpol: ~±2700, NOT ±3200). The seeds are scaled to whatever
+        axis_bounds suggests, then grown geometrically until the orbit stops
+        expanding, so we discover the cycle's real reach rather than guessing it.
+
+    `pin` fixes the non-axis carried vars while the two axes sweep.
+    Returns (xlo, xhi, ylo, yhi)."""
+    nx_, ny_ = axx["name"], axy["name"]
+    xs, ys = [], []
+
+    bx = m.axis_bounds(nx_)
+    by = m.axis_bounds(ny_)
+    if bx is not None:
+        xs += [bx[0], bx[1]]
+    if by is not None:
+        ys += [by[0], by[1]]
+
+    # scale of the perturbation seeds: start from whatever the reachable sample
+    # spans (so we don't impose a magnitude), grow until the orbit stops growing.
+    base = max([abs(v) for v in xs + ys] + [1.0])
+    prev_reach = -1.0
+    for mult in (1, 4, 16, 64, 256):
+        scale = base * mult
+        seeds = [(scale, 0), (0, scale), (-scale, 0), (0, -scale),
+                 (scale * 0.5, scale * 0.5)]
+        ox, oy = [], []
+        for sx0, sy0 in seeds:
+            st = dict(pin)
+            st[nx_] = int(round(sx0)) if axx["kind"] == "int" else sx0
+            st[ny_] = int(round(sy0)) if axy["kind"] == "int" else sy0
+            tr = m.trajectory(start=st, steps=400)
+            for s in tr:
+                ox.append(_numeric(m, axx, s[nx_]))
+                oy.append(_numeric(m, axy, s[ny_]))
+        if ox:
+            xs += [min(ox), max(ox)]
+            ys += [min(oy), max(oy)]
+            reach = max(abs(min(ox)), abs(max(ox)), abs(min(oy)), abs(max(oy)))
+            # the orbit has stopped expanding with bigger seeds -> found its reach
+            if reach <= prev_reach * 1.05:
+                break
+            prev_reach = reach
+
+    if not xs or not ys:
+        return -10.0, 10.0, -10.0, 10.0
+    xlo, xhi = min(xs), max(xs)
+    ylo, yhi = min(ys), max(ys)
+    # square + pad so the field reads symmetrically around the cycle
+    span = max(abs(xlo), abs(xhi), abs(ylo), abs(yhi), 1.0) * 1.15
+    return -span, span, -span, span
 
 
-def render_numeric_panel(m, ax, axx, axy, pin, draw_colorbar):
+def render_numeric_panel(m, ax, axx, axy, pin, draw_colorbar, extent):
     """A magnitude-colored vector field over a grid of pinned numeric points.
 
     `pin` carries the values of every NON-axis var (facet value, off-axis vars);
-    those are fixed while we sweep the two axis vars over a grid. Seeds for the
-    overlaid trajectories are placed off-origin (the origin is often the fixed
-    point of an oscillator, which a centered seed would never leave)."""
+    those are fixed while we sweep the two axis vars over a grid. `extent` =
+    (xlo, xhi, ylo, yhi) is the REACHABLE-orbit domain (from `_orbit_extent`) —
+    we grid within it, never a guessed ±3000 box. Seeds for the overlaid
+    trajectories are placed off-origin (the origin is often the fixed point of an
+    oscillator, which a centered seed would never leave)."""
     nx_, ny_ = axx["name"], axy["name"]
 
-    xlo, xhi = _value_range(m, axx, pin)
-    ylo, yhi = _value_range(m, axy, pin)
-    # honor the caller's grid floor for oscillators (e.g. +-3200 for vanderpol)
-    span = max(abs(xlo), abs(xhi), abs(ylo), abs(yhi), 3200.0)
-    xlo = ylo = -span
-    xhi = yhi = span
+    xlo, xhi, ylo, yhi = extent
+    span = max(abs(xlo), abs(xhi), abs(ylo), abs(yhi), 1.0)
 
     n = 21
     xs = np.linspace(xlo, xhi, n)
@@ -375,10 +411,77 @@ def render(smt2_path, schema_path, out_path):
     facet_vals = _facet_values(m, facet_var) if facet_var is not None else None
 
     if regime == "numeric":
-        _render_numeric(m, axx, axy, facet_var, facet_vals, out_path)
+        # A continuous vector field is only HONEST when the reachable dynamics are
+        # genuinely continuous/unbounded — a limit cycle, an open orbit. A
+        # TERMINATING numeric program (a counter that marches 0..10 and halts) has
+        # a small FINITE reachable set; gridding a guessed field over it fabricates
+        # cycles/basins/fixed-point stars the program never enters (the bug).
+        # Classify by the program's OWN reachable set, never a guessed box.
+        kind = _numeric_regime(m, axx, axy)
+        if kind == "finite":
+            # finite reachable march -> the honest transition graph, NOT a field
+            _render_discrete(m, axx, axy, facet_var, facet_vals, "mixed", out_path)
+        elif kind == "continuous":
+            _render_numeric(m, axx, axy, facet_var, facet_vals, out_path)
+        else:  # "degenerate": a lone fixed point, no orbit -> no meaningful field
+            _render_na(
+                m, axx, axy,
+                "N/A — reachable set is a single fixed point;\n"
+                "no continuum and no orbit for a phase portrait", out_path)
     else:
         _render_discrete(m, axx, axy, facet_var, facet_vals, regime, out_path)
     return out_path
+
+
+def _render_na(m, axx, axy, msg, out_path):
+    fig, ax = plt.subplots(figsize=(8.5, 7.5))
+    ax.text(0.5, 0.5, msg, ha="center", va="center",
+            transform=ax.transAxes, fontsize=13)
+    ax.set_xticks([]); ax.set_yticks([])
+    ax.set_title(f"{m.fsm} — phase portrait", fontsize=13)
+    fig.tight_layout()
+    fig.savefig(out_path, dpi=120)
+    plt.close(fig)
+
+
+def _numeric_regime(m, axx, axy):
+    """Classify a >=2-numeric program by its REACHABLE dynamics, so we pick the
+    honest picture instead of always gridding a field:
+
+      * "finite"     — the reachable BFS terminates with a small set of distinct
+                       states spanning >1 point on the axes. A real, drawable
+                       transition graph (e.g. a `wc` counter, 11 states in
+                       0..10). Render those points + arrows, NOT a vector field.
+      * "continuous" — the reachable set from the initial state is degenerate
+                       (a fixed point) OR very large, BUT perturbation orbits
+                       trace a non-trivial cycle. Genuinely continuous dynamics —
+                       a vector field scaled to the ORBIT extent is the honest
+                       picture (vanderpol's limit cycle).
+      * "degenerate" — a lone fixed point with no orbit. Nothing to draw.
+    """
+    nx_, ny_ = axx["name"], axy["name"]
+    states, _ = m.reachable(limit=3000)
+
+    def axis_spread(sts):
+        xs = {_numeric(m, axx, s[nx_]) for s in sts}
+        ys = {_numeric(m, axy, s[ny_]) for s in sts}
+        return len(xs) > 1 or len(ys) > 1
+
+    # a small, terminating reachable set that actually moves on the axes = finite
+    if 2 <= len(states) < 3000 and axis_spread(states):
+        return "finite"
+
+    # otherwise probe for a continuous orbit by perturbing off the initial state
+    init = m.initial_state() or {v["name"]: 0 for v in m.state_vars}
+    pin = {v["name"]: init[v["name"]] for v in m.state_vars}
+    xlo, xhi, ylo, yhi = _orbit_extent(m, axx, axy, pin)
+    orbit_span = max(abs(xlo), abs(xhi), abs(ylo), abs(yhi))
+    init_mag = max(abs(_numeric(m, axx, init[nx_])),
+                   abs(_numeric(m, axy, init[ny_])), 1.0)
+    # the orbit reaches well beyond the initial state -> real continuous dynamics
+    if orbit_span > 4.0 * init_mag and orbit_span > 4.0:
+        return "continuous"
+    return "degenerate"
 
 
 def _panel_grid(n):
@@ -396,11 +499,14 @@ def _render_numeric(m, axx, axy, facet_var, facet_vals, out_path):
     if facet_var is None:
         fig, ax = plt.subplots(figsize=(8.5, 7.5))
         pin = {v["name"]: init[v["name"]] for v in m.state_vars}
-        render_numeric_panel(m, ax, axx, axy, pin, draw_colorbar=True)
+        extent = _orbit_extent(m, axx, axy, pin)
+        render_numeric_panel(m, ax, axx, axy, pin, draw_colorbar=True,
+                             extent=extent)
         ax.set_xlabel(_axis_label(axx)); ax.set_ylabel(_axis_label(axy))
         _decorate_axes(m, ax, axx, axy)
         ax.grid(True, ls=":", alpha=0.3)
-        ax.set_title(f"{m.fsm} — phase portrait\n(numeric vector field)",
+        ax.set_title(f"{m.fsm} — phase portrait\n"
+                     "(numeric vector field, reachable-orbit extent)",
                      fontsize=13)
         fig.tight_layout()
         fig.savefig(out_path, dpi=120)
@@ -416,7 +522,9 @@ def _render_numeric(m, axx, axy, facet_var, facet_vals, out_path):
         ax = flat[idx]
         pin = {v["name"]: init[v["name"]] for v in m.state_vars}
         pin[facet_var["name"]] = fval
-        q = render_numeric_panel(m, ax, axx, axy, pin, draw_colorbar=False)
+        extent = _orbit_extent(m, axx, axy, pin)
+        q = render_numeric_panel(m, ax, axx, axy, pin, draw_colorbar=False,
+                                 extent=extent)
         if q is not None:
             last_q = q
         ax.set_xlabel(_axis_label(axx)); ax.set_ylabel(_axis_label(axy))

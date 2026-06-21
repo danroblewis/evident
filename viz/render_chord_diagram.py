@@ -25,8 +25,11 @@ into ordinal bands and chord between bands — a numeric system still gets a
 Transitions come from *querying the transition relation* (never hardcoded):
   - has categorical structure: m.reachable() gives the exact transition edge
     set; we project each edge onto the node var (and the color var).
-  - pure numeric: sweep a grid of seed states across numeric ranges and take
-    m.successor() of each, projecting both onto the binned node var.
+  - pure numeric: follow the ACTUAL orbit (m.trajectory) and bin its consecutive
+    states onto the node var. The bin range is the REACHABLE extent
+    (m.axis_bounds / the orbit), NEVER a hardcoded ±3000 box — that fabrication
+    invents bands the program never enters. A finite/degenerate reachable set
+    that is too small to bin meaningfully routes to an honest N/A placeholder.
 
 Usage:
     python3 viz/render_chord_diagram.py <smt2> <schema> <out.png>
@@ -129,10 +132,14 @@ def gather_flow(m, var, labels, proj, mode, color):
             bump(proj(states[i]), proj(states[j]), states[j])
         return labels, flow, None, finish_cat(), clabels
 
-    # numeric: bin the primary var, sweep a grid of seeds across all numeric vars
-    nums = m.numeric_vars
-    # establish a range for the primary var by probing reachable + a default span
-    lo, hi = numeric_range(m, var)
+    # numeric: bin the primary var over its REACHABLE extent, and chord between
+    # the consecutive states of the ACTUAL orbit (never a fabricated grid sweep
+    # over a guessed ±3000 box). orbit() returns the real visited successor chain.
+    orbit = orbit_states(m, var)
+    lo, hi = orbit_extent(orbit, var["name"])
+    if lo is None or (hi - lo) <= 1:
+        # reachable set is a single point / degenerate — nothing to chord.
+        return [], flow, None, {}, None
     edges_bin = np.linspace(lo, hi, nbins + 1)
     centers = (edges_bin[:-1] + edges_bin[1:]) / 2.0
     labels = [bin_label(centers[k]) for k in range(nbins)]
@@ -141,56 +148,53 @@ def gather_flow(m, var, labels, proj, mode, color):
         k = int(np.clip(np.searchsorted(edges_bin, val, side="right") - 1, 0, nbins - 1))
         return labels[k]
 
-    # build a coarse grid over the (1 or 2) leading numeric vars
-    grid_axes = []
-    for nv in nums[:2]:
-        glo, ghi = numeric_range(m, nv)
-        grid_axes.append((nv, np.linspace(glo, ghi, 11)))
-
-    seeds = [{}]
-    for (nv, pts) in grid_axes:
-        seeds = [dict(s, **{nv["name"]: int(round(p))}) for s in seeds for p in pts]
-    # any numeric var not on a grid axis: pin to 0
-    for nv in nums:
-        if nv not in [g[0] for g in grid_axes]:
-            for s in seeds:
-                s[nv["name"]] = 0
-    # non-numeric vars (rare in numeric mode): pin to a default
-    for v in m.state_vars:
-        if v["kind"] == "bool":
-            for s in seeds:
-                s.setdefault(v["name"], False)
-        elif v["kind"] == "enum":
-            for s in seeds:
-                s.setdefault(v["name"], m.enum_variants[v["name"]][0])
-
-    for s in seeds:
-        nxt = m.successor(s)
-        if nxt is None:
-            continue
-        bump(to_bin(s[var["name"]]), to_bin(nxt[var["name"]]), nxt)
+    for cur, nxt in zip(orbit, orbit[1:]):
+        bump(to_bin(cur[var["name"]]), to_bin(nxt[var["name"]]), nxt)
 
     return labels, flow, (lo, hi), finish_cat(), (color[1] if color else None)
 
 
-def numeric_range(m, var):
-    """Best-effort range for a numeric var: probe the initial state + reachable,
-    else fall back to a symmetric span."""
-    vals = []
-    init = m.initial_state()
-    if init is not None:
-        vals.append(init[var["name"]])
-    try:
-        states, _ = m.reachable(limit=200)
-        vals += [s[var["name"]] for s in states]
-    except Exception:
-        pass
-    if vals and (max(vals) - min(vals)) > 1:
-        span = max(abs(min(vals)), abs(max(vals)))
-        # widen a touch so a limit cycle isn't clipped at the seed
-        return -max(span * 1.2, 1), max(span * 1.2, 1)
-    # vanderpol-style fixed-point initial: use the documented ~±3200 span
-    return -3200, 3200
+def orbit_states(m, var):
+    """The ACTUAL visited states for the numeric node var, as a successor chain.
+    Prefers the orbit from the initial state; if that is a degenerate single point
+    (an unstable fixed point at the seed — vanderpol's origin), probe a few
+    off-origin seeds and keep the richest real orbit. Every state here comes from
+    m.successor / m.trajectory — never a hardcoded box."""
+    best = m.trajectory(steps=400)
+    if _spread(best, var["name"]) > 1:
+        return best
+    # degenerate from the default init: the attractor may live off the seed.
+    # Probe a handful of small off-origin seeds (still REAL dynamics) to recover
+    # a limit-cycle / spiral orbit. We do NOT widen to a guessed plotting box;
+    # these seeds just kick the system off an unstable fixed point.
+    nums = m.numeric_vars
+    base = m.initial_state() or {}
+    for kick in (16, 64, 256, 1024):
+        seed = dict(base)
+        if nums:
+            seed[nums[0]["name"]] = (base.get(nums[0]["name"], 0) or 0) + kick
+        cand = m.trajectory(start=seed, steps=400)
+        if _spread(cand, var["name"]) > _spread(best, var["name"]):
+            best = cand
+    return best
+
+
+def _spread(states, name):
+    vals = [s[name] for s in states if name in s]
+    return (max(vals) - min(vals)) if vals else 0
+
+
+def orbit_extent(orbit, name):
+    """(lo, hi) of the node var over the ACTUAL orbit, padded slightly. None when
+    the orbit is empty/degenerate — the caller then routes to an honest N/A."""
+    vals = [s[name] for s in orbit if name in s]
+    if not vals:
+        return None, None
+    lo, hi = float(min(vals)), float(max(vals))
+    if hi - lo <= 1:
+        return lo, hi
+    pad = (hi - lo) * 0.02
+    return lo - pad, hi + pad
 
 
 def bin_label(c):
@@ -209,6 +213,13 @@ def draw(m, viz_title, out_path):
 
     n = len(labels)
     if n == 0:
+        if mode == "numeric":
+            orbit = orbit_states(m, var)
+            npts = len({tuple(sorted(s.items())) for s in orbit})
+            return placeholder(
+                m, viz_title, out_path,
+                f"reachable set is {npts} point{'s' if npts != 1 else ''} / degenerate — "
+                f"chord flow over '{var['name']}' not meaningful")
         return placeholder(m, viz_title, out_path, "no values for primary var")
 
     # node angles around the circle (top, clockwise)

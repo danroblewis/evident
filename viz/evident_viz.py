@@ -23,6 +23,7 @@ Values: int -> python int, bool -> bool, enum -> variant name (str),
 real -> float, string -> str.
 """
 import json
+import os
 import z3
 
 
@@ -260,7 +261,19 @@ class Model:
         """Interface variables, deduplicated (informationally-equivalent vars merged)
         and ranked by how much they vary — the recommended axis ORDER. Renderers take
         as many as they need (top 2 for a phase portrait, all for a scatter matrix).
-        Falls back to raw interface order if sampling is degenerate. Cached."""
+        Falls back to raw interface order if sampling is degenerate. Cached.
+
+        Override (for the selector-evaluation sweep): if the env var
+        EVIDENT_VIZ_VARS is set to a comma-separated list of leaf names, return
+        exactly those (in that order) instead of the ranked selection — this lets a
+        driver force any variable combination onto a renderer to compare against the
+        selector's own pick."""
+        ov = os.environ.get("EVIDENT_VIZ_VARS")
+        if ov:
+            by_name = {v["name"]: v for v in self.carried}
+            chosen = [by_name[n] for n in ov.split(",") if n in by_name]
+            if chosen:
+                return chosen
         if self._ranked is None:
             try:
                 self._ranked = self._rank_and_dedup()
@@ -274,6 +287,43 @@ class Model:
     def _sample_states(self, limit=1500):
         states, _ = self.reachable(limit=limit)
         return states if len(states) >= 2 else self.trajectory(steps=400)
+
+    def axis_bounds(self, name, pad=0.08):
+        """(lo, hi) of a NUMERIC variable over the REACHABLE sample — the real domain a
+        renderer should grid / scale / seed within, INSTEAD of a hardcoded ±3000 box
+        (the 'fabrication' bug: gridding a guessed range invents cycles/basins the
+        program never enters). Returns None for a non-numeric var or an empty sample;
+        callers fall back to a default box only for genuinely unbounded continuous
+        dynamics. bool is excluded (it's categorical, encode ordinally elsewhere).
+
+        ROBUST to sentinel values: programs mark 'empty / uninitialized' with extreme
+        seeds — -1 for 'none' (an empty cache slot, no node popped yet) and ±1e6 for a
+        fold initializer (max seeded low, min seeded high so the first real value wins).
+        A single such point would otherwise blow the axis out to ±1e6 and crush the real
+        data. We (1) reject points outside an IQR fence, killing the ±1e6 sentinels, and
+        (2) floor at 0 when the only remaining sub-zero value is a unit -1 'none' marker
+        — while PRESERVING genuinely-negative data (a balance that really overdrafts,
+        whose bulk sits below 0, keeps its negative range)."""
+        states = self._sample_states()
+        vals = sorted(s[name] for s in states if type(s.get(name)) in (int, float))
+        if not vals:
+            return None
+        n = len(vals)
+        q1, q3 = vals[n // 4], vals[(3 * n) // 4]
+        iqr = q3 - q1
+        if iqr > 0:                                  # reject ±1e6 / far-out sentinels
+            lof, hif = q1 - 3 * iqr, q3 + 3 * iqr
+            vals = [v for v in vals if lof <= v <= hif] or vals
+        lo, hi = float(min(vals)), float(max(vals))
+        if lo == hi:
+            return (lo - 1.0, hi + 1.0)
+        m = (hi - lo) * pad
+        lo_out, hi_out = lo - m, hi + m
+        if lo >= 0:                                  # non-negative-domain var: never pad below 0
+            lo_out = max(0.0, lo_out)
+        elif -1.0 <= lo < 0 < hi:                    # only sub-zero is a '-1 = none' sentinel: drop it
+            lo_out = 0.0
+        return (lo_out, hi_out)
 
     def _rank_and_dedup(self):
         import math
@@ -310,34 +360,74 @@ class Model:
             rep = self._pick_rep(members)
             reps[rep["name"]] = (rep, entropy(rep["name"]), [m["name"] for m in members])
 
-        def mi(a, b):
-            n = len(states)
-            pa, pb, pab = {}, {}, {}
-            for i in range(n):
-                va, vb = series[a][i], series[b][i]
-                pa[va] = pa.get(va, 0) + 1
-                pb[vb] = pb.get(vb, 0) + 1
-                pab[(va, vb)] = pab.get((va, vb), 0) + 1
-            return sum((c / n) * math.log2((c / n) / ((pa[k[0]] / n) * (pb[k[1]] / n)))
-                       for k, c in pab.items())
+        # --- structure-based axis-pair selection (replaces mRMR) ---------------
+        # mRMR (max-entropy + min-redundancy) is a feature-SELECTION criterion and is
+        # the wrong tool for choosing PLOT AXES: entropy over-rewards trivial tick
+        # counters, and the redundancy penalty avoids exactly the *correlated* pairs (a
+        # cursor-vs-accumulator staircase, two co-moving counters) that make the best
+        # picture. Instead: score each pair by a structure measure that REWARDS both
+        # axes meaningfully varying and DISCOUNTS unit counters — and never penalizes
+        # correlation. (See viz/reviews/selector-eval.md for the audit that motivated
+        # this.)
+        INDEX_DISCOUNT = float(os.environ.get("EVIDENT_VIZ_DISCOUNT", "0.8"))
 
-        # Greedy max-relevance / min-redundancy ordering: most informative var first,
-        # then each next maximizes entropy while staying least redundant with those
-        # already chosen — so state_vars[:2] is the most EXPRESSIVE axis pair and any
-        # prefix is a good non-redundant set.
-        names = sorted(reps, key=lambda nm: -reps[nm][1])
-        order = [names.pop(0)] if names else []
-        while names:
-            def score(nm):
-                red = max((mi(nm, p) / (min(reps[nm][1], reps[p][1]) or 1e-9)
-                           for p in order), default=0.0)
-                return reps[nm][1] * (1.0 - min(red, 1.0))
-            best = max(names, key=score)
-            names.remove(best)
-            order.append(best)
+        def is_unit_counter(name):
+            # a tick proxy: an integer that takes a DISTINCT consecutive value in every
+            # sampled state — the loop index / time. Must be injective (one value per
+            # state) so a cyclic sawtooth (balance 0,1,2,3,0,1,2,3) is NOT flagged, and
+            # consecutive so an accumulator (sum, total with gaps) is NOT flagged.
+            if reps[name][0]["kind"] != "int":
+                return False
+            vals = series[name]
+            d = sorted(set(vals))
+            return (len(d) >= 3 and len(d) == len(vals)        # injective: one value per state
+                    and (d[-1] - d[0] + 1) == len(d))          # consecutive: a tick index
+
+        H = {nm: reps[nm][1] for nm in reps}                       # marginal entropy
+        W = {nm: (INDEX_DISCOUNT if is_unit_counter(nm) else 1.0) for nm in reps}
+        relevance = {nm: W[nm] * H[nm] for nm in reps}             # discounted single-var score
+
+        # functional-redundancy guard: a pair where one axis is a DETERMINISTIC function
+        # of the other AND that dependent has tiny cardinality is a degenerate "flat line
+        # with a step" (e.g. grep `done = line_no >= 4`). Demote it. A RICH functional
+        # curve (a staircase, `sum = f(cursor)`) keeps full score — high cardinality means
+        # it traces a real shape, not a step. (This is the targeted alternative to mRMR's
+        # blanket redundancy penalty, which wrongly punished staircases too.)
+        def determines(a, b):                  # does a determine b? (b is a function of a)
+            m = {}
+            for va, vb in zip(series[a], series[b]):
+                if m.get(va, vb) != vb:
+                    return False
+                m[va] = vb
+            return True
+
+        def low_card(nm):
+            return len(set(series[nm])) <= 3
+
+        names = list(reps)
+        best_pair, best_score = None, -1.0
+        for i in range(len(names)):
+            for j in range(i + 1, len(names)):
+                a, b = names[i], names[j]
+                if H[a] <= 0 or H[b] <= 0:                         # a constant axis = a flat line
+                    continue
+                s = relevance[a] * relevance[b]                    # both axes vary; counters discounted
+                if (determines(a, b) and low_card(b)) or (determines(b, a) and low_card(a)):
+                    s *= 0.4                                        # degenerate functional step (not a rich curve)
+                if s > best_score:
+                    best_pair, best_score = (a, b), s
+
+        # state_vars = the structure-optimal axis pair first, then the rest by
+        # discounted relevance (so the color/facet channels also avoid trivial counters).
+        if best_pair:
+            rest = sorted((nm for nm in names if nm not in best_pair),
+                          key=lambda nm: -relevance[nm])
+            order = list(best_pair) + rest
+        else:
+            order = sorted(names, key=lambda nm: -relevance[nm])
 
         self.variable_groups = [{"rep": nm, "members": reps[nm][2],
-                                 "entropy": round(reps[nm][1], 3)} for nm in order]
+                                 "entropy": round(H[nm], 3)} for nm in order]
         return [reps[nm][0] for nm in order]
 
     @staticmethod

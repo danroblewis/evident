@@ -17,18 +17,29 @@ by *which terminal* each start ends up in.
     scatter; the rest collapse (a point may carry several colors -> drawn as a
     small multi-wedge, but we keep it simple with the dominant terminal).
 
-  * NUMERIC programs: we lay a grid of seeds across two chosen integer axes
-    (holding any other axes at 0), iterate each seed forward to convergence,
-    and color the seed by which terminal *region* it lands in (regions are
-    clustered from the set of observed attractor points). This is the classic
-    basin-of-attraction image.
+  * NUMERIC programs: the plotting / seed / grid domain is derived from the
+    program's REACHABLE states (model.axis_bounds / model.reachable / the
+    iterated probe-visited set) — NEVER a hardcoded ±3000 box. The old code
+    seeded a fixed ±3200 plane, which fabricated cycles/basins/fixed-point stars
+    on programs whose state never leaves a tiny region (e.g. a counter that runs
+    to 10 and halts). The honest routing now is:
+      - reachable set is FINITE with ≥2 states  -> plot ONLY those real states,
+        colored by the terminal SCC each can reach (the exact-graph basin, same
+        machinery the discrete path uses). No grid, no invented plane.
+      - reachable set is a single fixed point   -> probe off-init seeds to look
+        for a surrounding continuous attractor (e.g. van der Pol's limit cycle,
+        whose init sits exactly on the unstable origin so BFS-from-init sees one
+        point). If probes reveal an attractor, grid + plot over the ACTUAL
+        VISITED extent (van der Pol: ~±2.5 in real units). If nothing surrounds
+        the fixed point, render an honest N/A card rather than a fabricated plane.
 
   * MIXED programs: same as numeric but enum/bool axes are projected to
     ordinals (enum -> index in variant list, bool -> 0/1) when chosen as an
     axis, and held at their initial value otherwise.
 
 Everything dynamic comes from querying the transition via evident_viz; nothing
-about any specific program is hardcoded.
+about any specific program is hardcoded, and no axis is gridded outside the
+reachable / actually-visited set.
 """
 import sys
 import os
@@ -438,47 +449,136 @@ def _baseline_fn(m):
     return baseline
 
 
-_BOUNDS_CACHE = {}
+# Per-model numeric domain, derived from the program's REACHABLE / VISITED set.
+# Each entry is name -> (lo, hi). NEVER a hardcoded box: the domain is what the
+# dynamics actually touch. For a degenerate-from-init fixed point (van der Pol's
+# unstable origin) we widen by iterating off-init probe seeds and taking the
+# extent those orbits VISIT — so the grid covers the limit cycle, but only out to
+# where the program's own dynamics go, not a fabricated ±3000 plane.
+_DOMAIN_CACHE = {}
+
+# Off-init probe DIRECTIONS, expressed as fractions of a search radius. They are
+# NOT absolute coordinates: the radius is grown geometrically until an orbit
+# escapes the single fixed point, so we discover the attractor's scale from the
+# dynamics instead of hardcoding it.
+_PROBE_DIRS = [(1.0, 0.0), (-1.0, 0.0), (0.0, 1.0), (0.0, -1.0),
+               (0.7, 0.7), (-0.7, 0.7), (0.15, 0.0)]
 
 
-def _numeric_bounds(m):
-    """Per-numeric-var (lo, hi) from sampled reachable states, so a small-domain
-    axis (vending balance 0..3) gets a tight grid instead of the ±3200 heuristic
-    tuned for the large continuous samples (vanderpol). Returns {} on a
-    degenerate sample (e.g. the origin fixed point), so callers fall back."""
+def _numeric_axes(m):
+    return [v for v in m.state_vars if v["kind"] in ("int", "real")]
+
+
+def _visited_extent_from_probes(m, ax_x, ax_y):
+    """Grow off-init probe seeds outward (geometric radius) and follow each
+    orbit; return {name: (lo, hi)} of every numeric state var the orbits VISIT.
+    Used only when the reachable-from-init set is a single fixed point but the
+    program may have a surrounding continuous attractor (van der Pol). Returns {}
+    if no probe escapes — i.e. a genuine lone fixed point, route to N/A."""
+    init = m.initial_state() or {}
+    nums = _numeric_axes(m)
+    seen_vals = {v["name"]: [] for v in nums}
+    escaped = False
+    # axis-value-space directions for the two chosen axes; other numeric axes
+    # stay at their init (the probe perturbs only the plotted plane).
+    dirs = []
+    for dx, dy in _PROBE_DIRS:
+        dirs.append((dx, dy))
+    for radius in (16, 64, 256, 1024, 2867):
+        for dx, dy in dirs:
+            st = dict(init) if init else {v["name"]: 0 for v in m.state_vars}
+            st[ax_x["name"]] = int(round(radius * dx))
+            if ax_y is not None and ax_y["kind"] in ("int", "real"):
+                st[ax_y["name"]] = int(round(radius * dy))
+            cur = st
+            local = []
+            keyseen = set()
+            for _ in range(2000):
+                nxt = m.successor(cur)
+                if nxt is None:
+                    break
+                k = m._key(nxt)
+                if k in keyseen:
+                    break
+                keyseen.add(k)
+                local.append(nxt)
+                cur = nxt
+            # did this orbit move away from the seed AND not collapse to a point?
+            if local:
+                for v in nums:
+                    vals = [s[v["name"]] for s in local]
+                    seen_vals[v["name"]].extend(vals)
+                # escape = the orbit visited more than one distinct state
+                if len({m._key(s) for s in local}) > 1:
+                    escaped = True
+        if escaped:
+            break
+    if not escaped:
+        return {}
+    out = {}
+    for v in nums:
+        vals = seen_vals[v["name"]]
+        if vals and max(vals) > min(vals):
+            out[v["name"]] = (float(min(vals)), float(max(vals)))
+    return out
+
+
+def _numeric_domain(m, ax_x, ax_y):
+    """name -> (lo, hi) for each numeric state var, derived from the reachable /
+    visited set — the honest plotting & seeding domain. Order of preference:
+      1. model.axis_bounds(name) — the padded reachable extent (correct whenever
+         the reachable set spans a real range: van der Pol's limit cycle when the
+         sample walks it, vending balance 0..3, etc.).
+      2. probe-visited extent — when the reachable-from-init set is a single fixed
+         point, grow off-init orbits and take what they actually VISIT.
+    A var with neither (a genuinely lone fixed point on that axis) is absent from
+    the dict; callers treat that as 'no meaningful grid here'."""
     key = id(m)
-    if key in _BOUNDS_CACHE:
-        return _BOUNDS_CACHE[key]
-    bounds = {}
-    try:
-        states, _ = m.reachable(limit=2000)
-        nums = [v for v in m.state_vars if v["kind"] in ("int", "real")]
-        for v in nums:
-            vals = [s[v["name"]] for s in states]
-            uniq = set(vals)
-            # only trust the sample if it actually spans a range AND stays small
-            if len(uniq) >= 2 and (max(vals) - min(vals)) <= 64:
-                bounds[v["name"]] = (min(vals), max(vals))
-    except Exception:
-        pass
-    _BOUNDS_CACHE[key] = bounds
-    return bounds
+    if key in _DOMAIN_CACHE:
+        return _DOMAIN_CACHE[key]
+    dom = {}
+    nums = _numeric_axes(m)
+    # Which numeric vars actually VARY in the reachable sample? axis_bounds pads a
+    # flat (lo==hi) fixed-point var to ±1, which would masquerade as a real span —
+    # so trust it only where the sample has ≥2 distinct values.
+    sample = m._sample_states()
+    varies = {}
+    for v in nums:
+        vals = [s[v["name"]] for s in sample if v["name"] in s]
+        varies[v["name"]] = len(set(vals)) >= 2
+    degenerate = []
+    for v in nums:
+        b = m.axis_bounds(v["name"])
+        if b is not None and varies[v["name"]]:      # a real reachable span
+            dom[v["name"]] = b
+        else:
+            degenerate.append(v)                     # flat in sample (fixed pt)
+    if degenerate:                                   # try to find a surrounding
+        probed = _visited_extent_from_probes(m, ax_x, ax_y)   # continuous attractor
+        for v in degenerate:
+            if v["name"] in probed:
+                lo, hi = probed[v["name"]]
+                pad = (hi - lo) * 0.08
+                dom[v["name"]] = (lo - pad, hi + pad)
+    _DOMAIN_CACHE[key] = dom
+    return dom
 
 
-def _axis_grid(m, v, n):
-    """Grid samples + display bounds for one axis variable."""
+def _axis_grid(m, v, n, dom):
+    """Grid samples + display bounds for one axis variable, scaled to the
+    reachable/visited domain `dom` (NEVER a hardcoded box). A numeric axis with no
+    domain entry (a lone fixed point) gets a tiny window around its init value —
+    there is nothing to grid, and the caller will have routed to N/A anyway."""
     k = v["kind"]
     if k in ("int", "real"):
-        b = _numeric_bounds(m).get(v["name"])
-        if b is not None:
-            lo, hi = b
-            pad = max(1, round((hi - lo) * 0.15))
-            lo, hi = lo - pad, hi + pad
-            steps = min(n, int(hi - lo) + 1) if k == "int" else n
-            return list(np.linspace(lo, hi, max(2, steps))), (lo, hi)
-        # heuristic bounds; vanderpol lives in ~[-3200,3200]
-        lo, hi = -3200, 3200
-        return list(np.linspace(lo, hi, n)), (lo, hi)
+        b = dom.get(v["name"])
+        if b is None:
+            init = m.initial_state() or {}
+            c = float(init.get(v["name"], 0))
+            return [c], (c - 1.0, c + 1.0)
+        lo, hi = b
+        steps = min(n, int(hi - lo) + 1) if k == "int" else n
+        return list(np.linspace(lo, hi, max(2, steps))), (lo, hi)
     if k == "bool":
         return [False, True], (-0.5, 1.5)
     if k == "enum":
@@ -487,46 +587,19 @@ def _axis_grid(m, v, n):
     return [""], (-0.5, 0.5)
 
 
-# Explicit limit-cycle probe seeds in (x, y) axis-value space. The autonomous
-# samples (vanderpol, vending) have their initial_state AT a fixed point (origin
-# / Idle-balance-0), so a pure grid can miss the surrounding limit cycle if every
-# interior seed collapses inward. We add a few off-origin probes on the numeric
-# plane to make sure the cycle attractor gets sampled.
-_PROBE_PTS = [(2800, 0), (400, 0), (0, 2700), (-2800, 0), (0, -2700),
-              (1500, 1500)]
-
-
-def _probe_seeds(m, ax_x, ax_y, gy):
-    """Off-origin (x, y) probe seeds in axis-value space. Only when ax_x is a
-    LARGE-range numeric axis (the ±3200 heuristic fallback) — for a tight
-    sampled domain (vending balance 0..3) the grid already covers everything and
-    a ±2800 probe would be out of range. For a numeric ax_y we use the full 2-D
-    probe points; for a categorical ax_y we sweep the probe x-magnitudes across
-    every grid y value (so the cycle is sampled at each enum/bool value)."""
-    if ax_x["kind"] not in ("int", "real"):
-        return []
-    if ax_x["name"] in _numeric_bounds(m):     # tight sampled domain; no probes
-        return []
-    if ax_y is None:
-        return [(x, 0) for (x, _y) in _PROBE_PTS]
-    if ax_y["kind"] in ("int", "real"):
-        return _PROBE_PTS
-    xmags = sorted({x for (x, _y) in _PROBE_PTS})
-    return [(x, yv) for x in xmags for yv in gy]
-
-
-def _panel_basins(m, ax_x, ax_y, fixed, cache, resolved):
-    """Compute one panel of the basin map: seed a grid (plus explicit limit-cycle
-    probes) over the two axes, holding `fixed` (name->value) constant, iterate
-    each seed to its attractor signature. Returns (seeds, sigs) where seeds are
-    (xv, yv) axis-value pairs. `cache`/`resolved` are shared across panels so the
-    z3 work is paid once."""
+def _panel_basins(m, ax_x, ax_y, fixed, cache, resolved, dom):
+    """Compute one panel of the basin map: seed a grid over the two axes, scaled
+    to the reachable/visited `dom` (NO hardcoded box, NO off-plane probes — the
+    grid already spans the actual attractor extent), holding `fixed`
+    (name->value) constant, iterate each seed to its attractor signature. Returns
+    (seeds, sigs) where seeds are (xv, yv) axis-value pairs. `cache`/`resolved`
+    are shared across panels so the z3 work is paid once."""
     baseline = _baseline_fn(m)
     nx = 28 if ax_x["kind"] in ("int", "real") else None
     ny = 28 if (ax_y and ax_y["kind"] in ("int", "real")) else None
-    gx, _bx = _axis_grid(m, ax_x, nx or 8)
+    gx, _bx = _axis_grid(m, ax_x, nx or 8, dom)
     if ax_y is not None:
-        gy, _by = _axis_grid(m, ax_y, ny or 8)
+        gy, _by = _axis_grid(m, ax_y, ny or 8, dom)
     else:
         gy = [0]
 
@@ -545,18 +618,12 @@ def _panel_basins(m, ax_x, ax_y, fixed, cache, resolved):
             sig = _iterate_to_attractor(m, mk_state(xv, yv), cache, resolved)
             seeds.append((xv, yv))
             sigs.append(sig)
-    # off-origin probes so the limit cycle gets sampled (not plotted as markers,
-    # but they feed the global cluster so the cycle basin gets a color/label)
-    for (xv, yv) in _probe_seeds(m, ax_x, ax_y, gy):
-        sig = _iterate_to_attractor(m, mk_state(xv, yv), cache, resolved)
-        seeds.append((xv, yv))
-        sigs.append(sig)
     return seeds, sigs
 
 
-def _draw_panel(ax, m, ax_x, ax_y, seeds, labels, centers, show_legend):
-    bx = _axis_grid(m, ax_x, 8)[1]
-    by = _axis_grid(m, ax_y, 8)[1] if ax_y is not None else (-0.5, 0.5)
+def _draw_panel(ax, m, ax_x, ax_y, seeds, labels, centers, show_legend, dom):
+    bx = _axis_grid(m, ax_x, 8, dom)[1]
+    by = _axis_grid(m, ax_y, 8, dom)[1] if ax_y is not None else (-0.5, 0.5)
     xs = np.array([_ordinal(m, ax_x, s[0]) for s in seeds], float)
     if ax_y is not None:
         ys = np.array([_ordinal(m, ax_y, s[1]) for s in seeds], float)
@@ -603,6 +670,33 @@ def _numeric_basins(m, out_path):
     ax_x = axes[0]
     ax_y = axes[1] if len(axes) > 1 else None
 
+    # --- reachable-set routing (the fabrication fix) -----------------------
+    # A basin map seeded over a guessed plane invents cycles/basins a terminating
+    # program never enters. So first ask what the program ACTUALLY reaches.
+    rcap = 1200
+    states, _edges = m.reachable(limit=rcap)
+    distinct = len({m._key(s) for s in states})
+    finite = 0 < len(states) < rcap
+
+    # FINITE reachable structure with >1 state (a terminating counter like wc):
+    # plot ONLY the real reachable states, colored by the terminal SCC each can
+    # reach — the exact-graph basin. No grid, no invented plane.
+    if finite and distinct >= 2:
+        note = _discrete_basins(m, out_path)
+        return f"finite-reachable -> {note}"
+
+    # Single reachable state: the reachable-from-init set is one fixed point. There
+    # may still be a surrounding continuous attractor (van der Pol's init sits on
+    # the unstable origin), discovered by off-init probes inside _numeric_domain.
+    dom = _numeric_domain(m, ax_x, ax_y)
+    has_numeric_domain = any(v["name"] in dom for v in axes
+                             if v["kind"] in ("int", "real"))
+    if distinct <= 1 and not has_numeric_domain:
+        _placeholder(out_path, m.fsm,
+                     f"reachable set is {distinct} point(s) — a lone fixed point "
+                     "with no surrounding attractor; basin map not meaningful")
+        return "degenerate: lone fixed point (N/A)"
+
     facet_var, facet_vals = _choose_facet(m, axes)
     kind = "numeric" if all(v["kind"] in ("int", "real")
                             for v in m.state_vars) else "mixed"
@@ -612,11 +706,11 @@ def _numeric_basins(m, out_path):
     cache, resolved = {}, {}
 
     if facet_var is None:
-        seeds, sigs = _panel_basins(m, ax_x, ax_y, {}, cache, resolved)
+        seeds, sigs = _panel_basins(m, ax_x, ax_y, {}, cache, resolved, dom)
         labels, centers = _cluster(sigs)
         fig, ax = plt.subplots(figsize=(9, 7))
         _draw_panel(ax, m, ax_x, ax_y, seeds, labels, centers,
-                    show_legend=True)
+                    show_legend=True, dom=dom)
         ax.set_title(f"{m.fsm} — basin_map ({kind}: {len(centers)} basins on "
                      f"{len(seeds)}-seed grid)", fontsize=13, weight="bold")
         fig.savefig(out_path, dpi=120, bbox_inches="tight")
@@ -629,7 +723,7 @@ def _numeric_basins(m, out_path):
     all_sigs = []
     for fv in facet_vals:
         seeds, sigs = _panel_basins(m, ax_x, ax_y, {facet_var["name"]: fv},
-                                    cache, resolved)
+                                    cache, resolved, dom)
         disp = fv if facet_var["kind"] != "bool" else ("true" if fv else "false")
         panels.append((str(disp), seeds, sigs))
         all_sigs.extend(sigs)
@@ -644,7 +738,7 @@ def _numeric_basins(m, out_path):
         off += len(sigs)
         ax = axarr[0][i]
         _draw_panel(ax, m, ax_x, ax_y, seeds, lbl, centers,
-                    show_legend=(i == npan - 1))
+                    show_legend=(i == npan - 1), dom=dom)
         ax.set_title(f"{facet_var['name']} = {disp}", fontsize=11,
                      weight="bold")
     fig.suptitle(f"{m.fsm} — basin_map ({kind}: faceted by "
