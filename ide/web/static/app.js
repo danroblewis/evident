@@ -166,6 +166,178 @@ claim graph_coloring
     0 ≤ x ≤ 10
     0 ≤ y ≤ 10
     x + y = 10`,
+
+  // --- algorithms as constraints (run with ⊨ Solve — the solver replaces the algorithm) ---
+  "topo sort · a DAG's linear order (⊨ Solve)":
+`-- A DAG's edges as constraints; the solver finds a linear order respecting them.
+-- No traversal, no visited-set — just "every edge points forward in the order".
+type Edge(from, to ∈ Int)
+
+claim toposort
+    edges ∈ Seq(Edge)
+    pos   ∈ Seq(Int)
+    #edges = 5
+    #pos   = 5
+
+    edges[0] = Edge(0, 1)
+    edges[1] = Edge(0, 2)
+    edges[2] = Edge(1, 3)
+    edges[3] = Edge(2, 3)
+    edges[4] = Edge(3, 4)
+
+    ∀ i ∈ {0..4} :
+        0 ≤ pos[i]
+        pos[i] ≤ 4
+    ∀ i ∈ {0..4} :
+        ∀ j ∈ {0..4} :
+            i < j ⇒ pos[i] ≠ pos[j]
+    ∀ e ∈ edges :
+        pos[e.from] < pos[e.to]`,
+  "4×4 sudoku · fill the grid (⊨ Solve)":
+`-- 4×4 Sudoku: state the rules (each row, column, and 2×2 box holds 1..4 once)
+-- and pin a few givens. The solver fills the rest — no backtracking written.
+type Box(a, b, c, d ∈ Int)
+
+claim sudoku
+    cell  ∈ Seq(Int)
+    boxes ∈ Seq(Box)
+    #cell  = 16
+    #boxes = 4
+
+    ∀ i ∈ {0..15} :
+        1 ≤ cell[i]
+        cell[i] ≤ 4
+
+    -- givens
+    cell[0]  = 1
+    cell[2]  = 3
+    cell[8]  = 2
+    cell[15] = 1
+
+    -- rows distinct
+    ∀ r ∈ {0..3} :
+        ∀ a ∈ {0..3} :
+            ∀ b ∈ {0..3} :
+                a < b ⇒ cell[r * 4 + a] ≠ cell[r * 4 + b]
+    -- columns distinct
+    ∀ c ∈ {0..3} :
+        ∀ a ∈ {0..3} :
+            ∀ b ∈ {0..3} :
+                a < b ⇒ cell[a * 4 + c] ≠ cell[b * 4 + c]
+    -- the four 2×2 boxes, named by their member cells
+    boxes[0] = Box(cell[0],  cell[1],  cell[4],  cell[5])
+    boxes[1] = Box(cell[2],  cell[3],  cell[6],  cell[7])
+    boxes[2] = Box(cell[8],  cell[9],  cell[12], cell[13])
+    boxes[3] = Box(cell[10], cell[11], cell[14], cell[15])
+    ∀ x ∈ boxes :
+        x.a ≠ x.b
+        x.a ≠ x.c
+        x.a ≠ x.d
+        x.b ≠ x.c
+        x.b ≠ x.d
+        x.c ≠ x.d`,
+  "subset-sum · pick items hitting a target (⊨ Solve)":
+`-- Subset-sum: choose a subset of these weights that totals exactly the target.
+-- 'take' is a yes/no per item; the solver finds which items to take.
+type Item(weight ∈ Int, take ∈ Bool)
+
+claim subset_sum
+    items ∈ Seq(Item)
+    #items = 6
+    target ∈ Int = 15
+
+    items[0].weight = 3
+    items[1].weight = 7
+    items[2].weight = 1
+    items[3].weight = 8
+    items[4].weight = 4
+    items[5].weight = 11
+
+    -- the taken weights must total exactly the target
+    chosen ∈ Int = (items[0].take ? 3 : 0) + (items[1].take ? 7 : 0) + (items[2].take ? 1 : 0) + (items[3].take ? 8 : 0) + (items[4].take ? 4 : 0) + (items[5].take ? 11 : 0)
+    chosen = target`,
+  "sort · output a sorted permutation (⊨ Solve)":
+`-- Sorting as constraints: 'out' is the SAME multiset as 'input', but ascending.
+-- No compare-and-swap; just "ordered" + "a permutation of the input".
+claim sort_constraints
+    input ∈ Seq(Int)
+    out   ∈ Seq(Int)
+    #input = 5
+    #out   = 5
+
+    input[0] = 30
+    input[1] = 10
+    input[2] = 50
+    input[3] = 20
+    input[4] = 40
+
+    -- out is ascending
+    ∀ (a, b) ∈ edges(out) :
+        a ≤ b
+
+    -- out is a permutation of input: each is a rearrangement of the other.
+    -- (inputs are distinct, so multiset-equality = mutual element membership)
+    ∀ i ∈ {0..4} :
+        ∃ j ∈ {0..4} : out[j] = input[i]
+    ∀ j ∈ {0..4} :
+        ∃ i ∈ {0..4} : input[i] = out[j]`,
+
+  // --- diagram-value demos (each FSM picked to make one underused view shine) ---
+  "bistable · two basins of attraction (FSM, basin_map)":
+`-- A random walk between two absorbing walls at 0 and 6 (gambler's ruin).
+-- Each tick a free step ±1, unless already at a wall, where it sticks. From the
+-- middle the walk can end at EITHER wall, so the reachable graph has two terminal
+-- states. Open basin_map: it colors each reachable state by the wall it falls to.
+fsm bistable
+    x ∈ Int
+    step ∈ Int
+    -1 ≤ step ≤ 1
+    is_first_tick ⇒ x = 3
+    ¬is_first_tick ⇒
+        0 ≤ x
+        x ≤ 6
+        Δx = (_x = 0 ? 0 : (_x = 6 ? 0 : step))`,
+  "fixed point · a 1-D map's staircase (FSM, cobweb)":
+`-- A 1-D contraction map: each tick x moves a quarter of the way to 40.
+-- It converges monotonically to the fixed point. Open the cobweb view: the
+-- red staircase climbs from the seed to where the map line meets y = x.
+fsm fixedpoint
+    x ∈ Int
+    is_first_tick ⇒ x = 4
+    ¬is_first_tick ⇒ x = _x + (40 - _x) / 4`,
+  "four signals · a 4-variable system (FSM, scatter_matrix)":
+`-- Four genuinely-carried sawtooths on coprime periods (11, 5, 7, 3). Each pair
+-- sweeps a different lattice. Open scatter_matrix: every pairwise plane at once,
+-- with each variable's distribution on the diagonal. (parallel_coords also fits.)
+fsm fourvar
+    a ∈ Int
+    b ∈ Int
+    c ∈ Int
+    d ∈ Int
+    is_first_tick ⇒ (a = 0 ∧ b = 0 ∧ c = 0 ∧ d = 0)
+    ¬is_first_tick ⇒
+        a = (_a ≥ 10 ? 0 : _a + 1)
+        b = (_b ≥ 4  ? 0 : _b + 1)
+        c = (_c ≥ 6  ? 0 : _c + 1)
+        d = (_d ≥ 2  ? 0 : _d + 1)`,
+  "digital block · clock + flags (FSM, timing_diagram)":
+`-- A small synchronous digital block, all four signals genuinely carried tick-to-tick:
+--   clk   — toggles every tick (the master clock)
+--   clk2  — a divide-by-2 clock: toggles only on clk's rising edge
+--   count — a 2-bit counter advancing each tick, wrapping at 3
+--   pulse — a one-tick strobe, high only on the tick the counter wraps
+-- Open timing_diagram: all four stack as waveforms on one time axis (a logic analyzer).
+fsm timing
+    clk   ∈ Bool
+    clk2  ∈ Bool
+    count ∈ Int
+    pulse ∈ Bool
+    is_first_tick ⇒ (clk = false ∧ clk2 = false ∧ count = 0 ∧ pulse = false)
+    ¬is_first_tick ⇒
+        clk = ¬_clk
+        clk2 = (¬_clk ? ¬_clk2 : _clk2)
+        count = (_count ≥ 3 ? 0 : _count + 1)
+        pulse = (¬_pulse ∧ _count ≥ 3)`,
 };
 
 const $ = (s) => document.querySelector(s);
