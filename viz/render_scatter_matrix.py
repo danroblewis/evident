@@ -325,7 +325,11 @@ def main():
             ax.grid(True, alpha=0.15)
 
     kind = "discrete" if m.is_discrete() else "numeric/mixed"
-    sub = f"{len(states)} sampled states · {kind}"
+    # This view draws its OWN denser cloud (reachable up to 5000 + an attractor trajectory), so its
+    # point count legitimately differs from the analyze stats' reachable count (capped at 400). Label
+    # it as POINTS, not "states", so the two counts don't read as a contradiction (Ana #201/#77).
+    pts = "point" if len(states) == 1 else "points"
+    sub = f"{len(states)} sample {pts} (reachable cloud + trajectory) · {kind}"
     if legend_handles is not None:
         sub += f" · color = {legend_title}"
     fig.suptitle(f"{title}\n{sub}", fontsize=14, fontweight="bold")
