@@ -357,6 +357,37 @@ class Model:
                 edges.append((i, index[k]))
         return states, edges
 
+    def reachable_from(self, start_state, limit=400):
+        """Forward BFS from an ARBITRARY state — "assume the machine is HERE,
+        what's reachable forward?" Identical to `reachable()`'s single-tick BFS
+        (same `successors` fan, dedup-by-`_key`, edge collection, cap) but seeded
+        from `start_state` instead of the initial state, which lands at index 0.
+        Returns (states, edges) with edges as (from_index, to_index).
+
+        `reachable_from(self.initial_state())` equals `reachable()` for a
+        single-tick model. For a two-tick (ΔΔ) model the transition depends on a
+        prior snapshot the clicked state doesn't carry; `successors` pins only
+        `_x = start` (no `__x`), so the forward image is the bootstrap fan and may
+        differ from the pair-graph `reachable()` builds — fine for the explore
+        view, which wants "what follows from here", and exact for the common
+        discrete single-tick case."""
+        if start_state is None:
+            return [], []
+        states = [dict(start_state)]
+        index = {self._key(start_state): 0}
+        edges = []
+        frontier = [0]
+        while frontier and len(states) < limit:
+            i = frontier.pop()
+            for nxt in self.successors(states[i]):
+                k = self._key(nxt)
+                if k not in index:
+                    index[k] = len(states)
+                    states.append(nxt)
+                    frontier.append(index[k])
+                edges.append((i, index[k]))
+        return states, edges
+
     def check_invariant(self, var, op, value, limit=400):
         """VERIFY a safety property over the reachable set: does `var op value` hold
         on EVERY reachable state? If not, return the first reachable counterexample.
@@ -621,6 +652,49 @@ class Model:
                 "checked": len(states), "exhaustive": exhaustive,
                 "trace": self._trace_to(first_idx, edges, states),  # path init→witness
                 "predicate": predicate}
+
+    def explore(self, state, limit=400):
+        """EXPLORE from a clicked state — "assume the machine is HERE": answer the
+        two reachability questions at once. Forward = `reachable_from(state)` (what
+        runs follow from here); backward = `_trace_to` over the WHOLE reachable graph
+        (a run init→state, "what leads here").
+
+        `state` is a (possibly partial) carried-state dict — the clicked diagram
+        point. We locate it in the global reachable set by `state_key` to get the
+        init→state trace and to tell whether it's the initial state. `reaches_init`
+        asks: from here, is the initial state forward-reachable (i.e. this state sits
+        on a cycle back through init)?
+
+        Returns:
+          {
+            "forward_count": int,                # distinct states reachable forward
+            "forward_capped": bool,              # did the forward BFS hit `limit`?
+            "forward": [state, ...],             # ≤40 sample of the forward set
+            "trace_to": [state, ...] | None,     # init→state, or None if state IS init
+            "reaches_init": bool,                # is init forward-reachable from here?
+            "is_initial": bool,                  # is the clicked state the initial state?
+          }
+        """
+        states, edges = self.reachable(limit=limit)
+        init_key = self._key(states[0]) if states else None
+        target_key = self._key(state)
+        idx = next((i for i, s in enumerate(states)
+                    if self._key(s) == target_key), None)
+
+        fwd_states, _ = self.reachable_from(state, limit=limit)
+        is_initial = (target_key == init_key)
+        reaches_init = (init_key is not None
+                        and any(self._key(s) == init_key for s in fwd_states))
+        trace_to = (None if is_initial or idx is None
+                    else self._trace_to(idx, edges, states))
+        return {
+            "forward_count": len(fwd_states),
+            "forward_capped": len(fwd_states) >= limit,
+            "forward": [dict(s) for s in fwd_states[:40]],
+            "trace_to": trace_to,
+            "reaches_init": reaches_init,
+            "is_initial": is_initial,
+        }
 
     def check_temporal(self, var, op, value, modality="eventually",
                        p_var=None, p_op=None, p_value=None, limit=400):
