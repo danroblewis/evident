@@ -69,6 +69,9 @@ html,body { margin:0; height:100%; background:var(--bg); color:var(--ink);
 #banner { padding:9px 14px; background:#11212e; border-bottom:1px solid var(--line);
   color:var(--dim); font-size:13px; }
 #banner.live { color:var(--accent); }
+/* dimmed while a slow (>400ms) analysis recomputes — never read the previous program's
+   verdict as if it were the current one. */
+#banner.recomputing, #structure.recomputing { opacity:0.3; transition:opacity .12s; }
 #structure { padding:6px 14px; background:#0e1a16; border-bottom:1px solid var(--line);
   font-size:12px; display:flex; flex-wrap:wrap; gap:6px 16px; align-items:center; }
 #structure .verdict { font-weight:bold; }

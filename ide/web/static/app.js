@@ -578,7 +578,7 @@ function markErrorLine(err) {
 }
 
 // --- the live loop ----------------------------------------------------------------
-let timer = null, activeView = null, lastSource = "";
+let timer = null, activeView = null, lastSource = "", _dimTimer = null;
 
 function setStatus(text, cls) { const s = $("#status"); s.textContent = text; s.className = cls || "dim"; }
 
@@ -634,6 +634,9 @@ function renderStructure(s) {
 
 function paint(data, ms) {
   $("#latency").textContent = ms != null ? `${ms} ms` : "";
+  clearTimeout(_dimTimer);                              // analysis returned — undim
+  $("#banner").classList.remove("recomputing");
+  $("#structure").classList.remove("recomputing");
   const view = $("#view"), warn = $("#warnings");
   if (!data.ok) {
     $("#structure").hidden = true;
@@ -716,6 +719,14 @@ async function run(view) {
   const nm = source.match(/^\s*(?:fsm|claim|type|schema)\s+([A-Za-z_]\w*)/m);
   $("#fname").textContent = (nm ? nm[1] : "untitled") + ".ev";
   setStatus("computing…", "busy");
+  // Dim the (now-stale) banner + Structure if analysis is slow (>400ms), so a multi-second
+  // solve never shows the PREVIOUS program's verdict as if it were current — but a fast edit
+  // (~80ms) doesn't flicker. paint() clears it.
+  clearTimeout(_dimTimer);
+  _dimTimer = setTimeout(() => {
+    $("#banner").classList.add("recomputing");
+    $("#structure").classList.add("recomputing");
+  }, 400);
   const t0 = performance.now();
   try {
     const res = await fetch("/api/analyze", {
@@ -795,13 +806,17 @@ function renderSolve(d, given) {
 async function solve(enumerate) {
   const source = editor.getValue();
   const given = parsePins($("#solve-given").value);
+  // Name the claim explicitly so the solver doesn't choke on "ambiguous" when the file also
+  // declares a type/enum (e.g. toposort's `type Edge` + `claim toposort`).
+  const cm = source.match(/^\s*claim\s+([A-Za-z_]\w*)/m);
+  const claim = cm ? cm[1] : null;
   $("#solve").hidden = false;
   $("#solve-head").innerHTML = `<span class="dim">${enumerate ? "enumerating…" : "solving…"}</span>`;
   $("#solve-body").innerHTML = "";
   try {
     const res = await fetch("/api/solve", {
       method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ source, given, enumerate: !!enumerate, limit: 20 }),
+      body: JSON.stringify({ source, claim, given, enumerate: !!enumerate, limit: 20 }),
     });
     renderSolve(await res.json(), given);
   } catch (e) {
