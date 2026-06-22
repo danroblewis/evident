@@ -98,6 +98,22 @@ if [ "$EXAMPLES_ONLY" -eq 0 ]; then
     echo
 fi
 
+# ── Phase 2.5: lint ratchet (Python code-quality guardrail) ───
+# Fails ONLY when ide/ + viz/ pick up NEW violations over ide/.lint-baseline
+# (file/function length, free-function count, coupling). Existing debt is
+# grandfathered; this just stops it growing. `ide/lint.py --write-baseline`
+# after an intentional refactor that legitimately changes the counts.
+if [ "$EXAMPLES_ONLY" -eq 0 ] && command -v python3 >/dev/null 2>&1; then
+    phase "Phase 2.5: lint ratchet (ide/ + viz/)"
+    if python3 ide/lint.py --ratchet; then
+        ok "lint"
+    else
+        fail "lint: new code-quality violations introduced (see above)"
+        failures+=("lint")
+    fi
+    echo
+fi
+
 # ── Optional: examples runner ────────────────────────────────
 # Walks examples/, runs each via effect-run. For visual demos (anything
 # that imports packages/sdl/), spawn the program, screenshot the Xvfb

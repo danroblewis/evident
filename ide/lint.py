@@ -267,13 +267,53 @@ def report(violations: list[Violation], quiet: bool) -> None:
         print(f"  TOTAL: {len(violations)}")
 
 
+def _baseline_path() -> Path:
+    return Path(__file__).resolve().parent / ".lint-baseline"
+
+
+def _counts(violations: list[Violation]) -> dict[str, int]:
+    c: dict[str, int] = {}
+    for v in violations:
+        c[v.rule] = c.get(v.rule, 0) + 1
+    return c
+
+
 def main(argv: list[str] | None = None) -> int:
+    import json
     parser = argparse.ArgumentParser(description="Lint the Evident IDE Python codebase.")
     parser.add_argument("--quiet", action="store_true", help="print only the summary")
+    parser.add_argument("--ratchet", action="store_true",
+                        help="fail ONLY when a rule's count rose above .lint-baseline "
+                             "(grandfathers the existing violations; blocks new ones)")
+    parser.add_argument("--write-baseline", action="store_true",
+                        help="record current per-rule counts as the ratchet baseline")
     args = parser.parse_args(argv)
 
     repo_root = Path(__file__).resolve().parent.parent
     violations = lint_repo(repo_root)
+    counts = _counts(violations)
+
+    if args.write_baseline:
+        _baseline_path().write_text(json.dumps(counts, indent=2, sort_keys=True) + "\n")
+        print(f"wrote lint baseline ({sum(counts.values())} violations) → {_baseline_path()}")
+        return 0
+
+    if args.ratchet:
+        bp = _baseline_path()
+        base = json.loads(bp.read_text()) if bp.exists() else {}
+        worse = [(r, counts.get(r, 0), base.get(r, 0)) for r in set(counts) | set(base)
+                 if counts.get(r, 0) > base.get(r, 0)]
+        if worse:
+            print("✗ lint ratchet: NEW violations introduced (the baseline grandfathers the rest):")
+            for r, now, was in sorted(worse):
+                print(f"    {RULE_TITLES.get(r, r)}: {was} → {now}  (+{now - was})")
+            print("  Reorganize (split a file / shorten a function / move code) rather than adding to "
+                  "the debt — or run `python3 ide/lint.py --write-baseline` if the rise is intentional.")
+            return 1
+        print(f"✓ lint ratchet: no new violations ({sum(counts.values())} ≤ baseline "
+              f"{sum(base.values())})")
+        return 0
+
     report(violations, args.quiet)
     return 1 if violations else 0
 
