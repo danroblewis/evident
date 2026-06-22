@@ -17,6 +17,7 @@ fn main() -> ExitCode {
         "effect-run"  => cmd_effect_run(&args[1..]),
         "export"      => cmd_export(&args[1..]),
         "query"       => cmd_query(&args[1..]),
+        "fmt"         => cmd_fmt(&args[1..]),
         "help" | "--help" | "-h" => { usage(); ExitCode::SUCCESS }
         other => {
             eprintln!("unknown subcommand: {}", other);
@@ -32,6 +33,82 @@ fn usage() {
     eprintln!("  evident effect-run   <file>           # run an effect-driven program");
     eprintln!("  evident export       <file> [--out PREFIX]  # dump transition SMT-LIB + schema JSON");
     eprintln!("  evident query        <file> [claim] [--given NAME=VALUE]... [--json]  # solve a claim, print a witness");
+    eprintln!("  evident fmt          <file>... [--write] [--check]  # gofmt-style formatter");
+}
+
+/// `evident fmt <file>... [--write] [--check]` — a gofmt-style formatter.
+///
+/// Default: print the formatted source to stdout (single file) and leave files
+/// untouched. `--write` rewrites each file in place. `--check` exits non-zero if
+/// any file is not already formatted (prints the offending paths), writing
+/// nothing — for CI. The formatter is comment-preserving and self-verifying: it
+/// refuses to emit output that isn't token-equivalent to the input.
+fn cmd_fmt(args: &[String]) -> ExitCode {
+    let mut paths: Vec<String> = Vec::new();
+    let mut write = false;
+    let mut check = false;
+    for a in args {
+        match a.as_str() {
+            "--write" | "-w" => write = true,
+            "--check"        => check = true,
+            "-h" | "--help"  => {
+                eprintln!("usage: evident fmt <file>... [--write] [--check]");
+                eprintln!("  default      print formatted source to stdout");
+                eprintln!("  --write, -w  rewrite each file in place");
+                eprintln!("  --check      exit non-zero if any file is unformatted (writes nothing)");
+                return ExitCode::SUCCESS;
+            }
+            other if other.starts_with('-') => {
+                eprintln!("fmt: unknown flag {other:?}");
+                return ExitCode::from(2);
+            }
+            other => paths.push(other.to_string()),
+        }
+    }
+    if paths.is_empty() {
+        eprintln!("fmt: need at least one file path");
+        return ExitCode::from(2);
+    }
+    if write && check {
+        eprintln!("fmt: --write and --check are mutually exclusive");
+        return ExitCode::from(2);
+    }
+    if paths.len() > 1 && !write && !check {
+        eprintln!("fmt: refusing to print multiple files to stdout — pass --write or --check");
+        return ExitCode::from(2);
+    }
+
+    let mut had_error = false;
+    let mut needs_format = false;
+    for p in &paths {
+        let src = match std::fs::read_to_string(p) {
+            Ok(s) => s,
+            Err(e) => { eprintln!("fmt: read {p}: {e}"); had_error = true; continue; }
+        };
+        let formatted = match evident_runtime::fmt::format_source(&src) {
+            Ok(f) => f,
+            Err(e) => { eprintln!("fmt: {p}: {e}"); had_error = true; continue; }
+        };
+        if check {
+            if formatted != src {
+                println!("{p}");
+                needs_format = true;
+            }
+        } else if write {
+            if formatted != src {
+                if let Err(e) = std::fs::write(p, &formatted) {
+                    eprintln!("fmt: write {p}: {e}"); had_error = true; continue;
+                }
+                eprintln!("formatted {p}");
+            }
+        } else {
+            print!("{formatted}");
+        }
+    }
+
+    if had_error { ExitCode::from(1) }
+    else if check && needs_format { ExitCode::from(1) }
+    else { ExitCode::SUCCESS }
 }
 
 const STDLIB_RUNTIME: &str = "stdlib/runtime.ev";
