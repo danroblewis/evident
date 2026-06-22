@@ -98,6 +98,9 @@ function renderSolve(d, given) {
   body.innerHTML = (viz ? `<div class="viz-wrap">${viz}</div>` : "")
     + (rawKeys.length ? `<table>${rawKeys.map((k) => `<tr><td class="k">${k}${pinned.includes(k) ? " 📌" : ""}</td>`
         + `<td class="v">${escapeHtml(JSON.stringify(d.bindings[k]))}</td></tr>`).join("")}</table>` : "");
+  // The board IS the domain answer — lead with it. When the witness draws as a board/grid, scroll the
+  // solve panel into view so the filled answer isn't missed below the abstract feasibility heatmap (Sam #247).
+  if (viz) requestAnimationFrame(() => { const p = $("#solve"); if (p) p.scrollIntoView({ behavior: "smooth", block: "nearest" }); });
 }
 
 // --- domain-picture rendering for Seq witnesses (Task #68 / #196) -----------------
