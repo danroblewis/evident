@@ -175,7 +175,11 @@ def sample_states(model):
     `edges` are the (state, next_state) pairs of the reachable graph — faint
     connecting structure that turns the basin from scattered dots into a legible
     transition graph the fixed points sit in. Empty for grid mode."""
-    reach, idx_edges = model.reachable(limit=5000)
+    # Cap the cloud at 800: the fixed-point/cycle map runs successor() + short-cycle detection on
+    # EVERY sampled state, so reachable(5000) on a real-valued FSM (oscillator) meant ~70s and a held
+    # server lock. A fixed-point map reads the same at 800 — the attractors and their basins are
+    # unchanged; only redundant orbit dots are dropped. (Same fix as scatter_matrix #217.)
+    reach, idx_edges = model.reachable(limit=800)
     has_numeric = any(v["kind"] in ("int", "real") for v in model.state_vars)
     if len(reach) > 2 or (reach and not has_numeric):
         edges = [(reach[i], reach[j]) for i, j in idx_edges]
