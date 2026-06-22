@@ -69,8 +69,11 @@ def sample_states(m):
     REACHABLE extent (m.axis_bounds), so the off-diagonal panels show the real
     vector field over the domain the program enters, not invented structure over a
     guessed plane."""
-    # Reachable graph: exact for discrete, the true visited cloud for numeric.
-    states, edges = m.reachable(limit=5000)
+    # Reachable graph: exact for discrete, the true visited cloud for numeric. A scatter cloud reads
+    # the same at ~800 points as at 5000 — overplotting adds nothing but seconds (reachable(5000) on a
+    # 4-var FSM was ~6s, the dominant cost of that analyze; #217). Cap the cloud; the boundary box +
+    # the analyze's own bounds still convey the full extent.
+    states, edges = m.reachable(limit=800)
     if m.is_discrete():
         return states, edges
 
