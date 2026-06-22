@@ -202,6 +202,10 @@ html,body { margin:0; height:100%; background:var(--bg); color:var(--ink);
 #view { flex:1; display:flex; align-items:center; justify-content:center; overflow:auto; padding:8px; }
 #view img { max-width:100%; max-height:100%; object-fit:contain; }
 #view .ph { color:var(--dim); }
+/* the one-line "what am I looking at?" caption under the diagram — subtle, doesn't take a row when empty */
+#view-caption { flex:0 0 auto; color:var(--dim); font-size:11px; line-height:1.4;
+  padding:2px 10px 0; font-style:italic; }
+#view-caption:empty { display:none; }
 
 /* interactive-diagram overlay (#184): the wrapper hugs the rendered image so the point
    targets — positioned in figure fractions — land exactly on the plotted dots. */
