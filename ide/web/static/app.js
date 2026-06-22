@@ -318,10 +318,15 @@ function paint(data, ms) {
   const dropCls = data.dropped ? "dropped" : "clean";
   const dropTxt = data.dropped ? `⚠ ${data.dropped} dropped constraint(s)` : "✓ 0 dropped constraints";
   const branch = data.branching >= 2 ? ` · branching ×${data.branching}` : "";
-  const nStates = data.capped ? `≥${data.states} (capped sample)` : `${data.states}`;
+  // Scope certification (Ana #243): is "no more reachable" a PROOF or a CAP? When the BFS reached a
+  // fixpoint it's the COMPLETE set (sound to reason over); when it hit the limit it's a bounded
+  // sample. Say which, so "9 reachable states" can't be mistaken for a proof when it's a sample.
+  const scopeCert = data.capped
+    ? `<span class="scope-cap" title="The reachability search stopped at its ${data.states}-state limit — the true reachable set may be LARGER. This is a bounded SAMPLE, not a complete enumeration; treat &quot;not found&quot; results as inconclusive.">≥${data.states} reachable (capped — sample)</span>`
+    : `<span class="scope-exh" title="The reachability search reached a FIXPOINT: every state the machine can enter from its start has been found. This is the COMPLETE reachable set — a proof, not a sample, so &quot;no state satisfies P&quot; is conclusive.">${data.states} reachable (✓ complete)</span>`;
   $("#honesty").innerHTML =
     `<span class="${dropCls}">${dropTxt}</span>` +
-    `<span class="dim">${nStates} reachable states · ${data.edges} transitions${branch}</span>` +
+    `<span class="dim">${scopeCert} · ${data.edges} transitions${branch}</span>` +
     `<span class="dim">vars: ${(data.vars || []).join(", ")}</span>`;
 
   // which constraint(s) vanished — the actual dropped text, not just a count, with a

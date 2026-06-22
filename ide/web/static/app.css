@@ -347,6 +347,8 @@ html,body { margin:0; height:100%; background:var(--bg); color:var(--ink);
 #honesty { padding:7px 14px; border-top:1px solid var(--line); font-size:12px;
   display:flex; gap:16px; flex-wrap:wrap; }
 #honesty .clean { color:var(--good); } #honesty .dropped { color:var(--bad); }
+#honesty .scope-exh { color:var(--good); cursor:help; }   /* complete reachable set — a proof (Ana #243) */
+#honesty .scope-cap { color:var(--warn); cursor:help; }   /* capped — a bounded sample, not complete */
 
 /* which constraint(s) vanished — the silent-bug surface, not just a count */
 #warnings { margin:0; padding:8px 14px; max-height:24%; overflow:auto;
