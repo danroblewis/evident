@@ -620,10 +620,58 @@ def temporal(req: TemporalReq):
             return {"ok": False, "error": str(e)}
 
 
+def _z3_path():
+    for p in ("z3", "/usr/local/bin/z3", "/opt/homebrew/bin/z3"):
+        try:
+            if subprocess.run([p, "-version"], capture_output=True, timeout=5).returncode == 0:
+                return p
+        except Exception:
+            continue
+    return None
+
+
+def _named_asserts(smt: str):
+    """Wrap each one-line top-level `(assert X)` as `(assert (! X :named aK))` so an unsat-core
+    names them back — z3's own minimal core then points at specific assertions."""
+    out, k = [], 0
+    for ln in smt.splitlines():
+        s = ln.strip()
+        if s.startswith("(assert ") and s.endswith(")"):
+            k += 1
+            out.append(f"(assert (! {s[len('(assert '):-1]} :named a{k}))")
+        else:
+            out.append(ln)
+    return "\n".join(out)
+
+
+def _ready_to_run(raw: str):
+    """A one-paste z3 session. Pick the tail that MATCHES the verdict: `(get-model)` errors on an
+    UNSAT script and `(get-unsat-core)` errors on a SAT one (Ana #203), so check first — and on
+    UNSAT hand z3 its own minimal NAMED core (Ana #204). Falls back to a neutral, never-erroring
+    tail + a hint when z3 isn't available."""
+    if "(check-sat)" in raw:
+        return raw
+    z3, verdict = _z3_path(), None
+    if z3:
+        try:
+            r = subprocess.run([z3, "-in"], input=raw + "\n(check-sat)\n",
+                               capture_output=True, text=True, timeout=10)
+            lines = (r.stdout or "").strip().splitlines()
+            verdict = lines[0].strip() if lines else None
+        except Exception:
+            verdict = None
+    if verdict == "unsat":
+        return "(set-option :produce-unsat-cores true)\n" + _named_asserts(raw) + "\n(check-sat)\n(get-unsat-core)\n"
+    if verdict == "sat":
+        return raw + "\n(check-sat)\n(get-model)\n"
+    return (raw + "\n(check-sat)\n"
+            "; SAT → add (get-model)   UNSAT → add (set-option :produce-unsat-cores true) above + (get-unsat-core)\n")
+
+
 @app.post("/api/smtlib")
 def smtlib(req: Source):
     """Return the SMT-LIB the runtime emits for this program — so a user can re-run the exact
-    encoding in z3 directly, diff two encodings, or paste a model into notes (Ana #200)."""
+    encoding in z3 directly, diff two encodings, or paste a model/core into notes (Ana #200)."""
     with _LOCK, tempfile.TemporaryDirectory() as work:
         ok, prefix, dropped, msg = _export(req.source, work)
         if not ok:
@@ -631,10 +679,7 @@ def smtlib(req: Source):
         try:
             with open(prefix + ".smt2") as f:
                 raw = f.read()
-            # Append a ready-to-run z3 footer so the dump is a one-paste z3 session
-            # (declarations + assertions + check-sat + get-model). Ana #196.
-            footer = "" if "(check-sat)" in raw else "\n(check-sat)\n(get-model)\n"
-            return {"ok": True, "smtlib": raw + footer, "dropped": dropped}
+            return {"ok": True, "smtlib": _ready_to_run(raw), "dropped": dropped}
         except Exception as e:
             return {"ok": False, "error": str(e)}
 
