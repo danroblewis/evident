@@ -102,7 +102,13 @@ def render(smt2_path, schema_path, out_path):
     if not numeric:
         return _na(out_path, f"{m.fsm} — solution space",
                    "solution space needs a numeric variable\n(this program's state is categorical —\nsee state_graph for its boundary)")
-    have2d = len(numeric) >= 2
+    enums = [_SHORT(v["name"]) for v in m.carried if v.get("kind") == "enum"]
+    # The right panel needs a SECOND axis. Prefer a 2nd numeric var; failing that, put an ENUM on a
+    # categorical y-axis so an enum+numeric machine (traffic: light × timer) still shows WHICH
+    # (state, value) combinations are reachable — "is timer ever 2 while light=Green?" — instead of
+    # dropping the enum and showing the numeric bar alone (Ana #115).
+    pair_mode = "numeric" if len(numeric) >= 2 else ("enum" if enums else None)
+    have2d = pair_mode is not None
     fig, axes = plt.subplots(1, 2 if have2d else 1,
                              figsize=(14 if have2d else 8.5, 6.5))
     axL = axes[0] if have2d else axes
@@ -124,7 +130,35 @@ def render(smt2_path, schema_path, out_path):
     # --- right: feasible region of the top-2 vars as a SET (no trajectory) + boundary box ---
     plotted = []   # (data_x, data_y, full_state_dict) for each scatter point — for the hover sidecar
     axR = None
-    if have2d:
+    if pair_mode == "enum":
+        # categorical y (enum variants) × numeric x — the reachable (state, value) pairs.
+        axR = axes[1]
+        vx, en = numeric[0], enums[0]
+        fxn, fen = _full(m, vx), _full(m, en)
+        variants = m.enum_variants.get(fen) or sorted({s.get(fen) for s in states if s.get(fen) is not None})
+        vidx = {nm: i for i, nm in enumerate(variants)}
+        for s in states:
+            x, e = s.get(fxn), s.get(fen)
+            if isinstance(x, (int, float)) and e in vidx:
+                plotted.append((x, vidx[e], {_SHORT(k): v for k, v in s.items()}))
+        if plotted:
+            axR.scatter([p[0] for p in plotted], [p[1] for p in plotted], s=44, color="#58a6ff",
+                        alpha=0.55, edgecolors="none", label="reachable")
+        for f in fps:                                      # equilibria, if any land on this pair
+            if vx in f and f.get(en) in vidx:
+                axR.scatter([f[vx]], [vidx[f[en]]], marker="*", s=280, color="#c9a8ff",
+                            edgecolors="#0f1419", zorder=5, label="fixed point")
+        handles, labels = axR.get_legend_handles_labels()
+        uniq = dict(zip(labels, handles))
+        if uniq:
+            axR.legend(uniq.values(), uniq.keys(), loc="best", fontsize=9)
+        axR.set_yticks(range(len(variants))); axR.set_yticklabels(variants)
+        axR.set_ylim(-0.6, len(variants) - 0.4)
+        axR.set_xlabel(vx); axR.set_ylabel(en)
+        axR.set_title(f"reachable ({en}, {vx}) pairs — every state×value combination the machine enters",
+                      fontsize=11)
+        axR.grid(axis="x", alpha=0.2)
+    elif have2d:
         axR = axes[1]
         vx, vy = numeric[0], numeric[1]
         fxn, fyn = _full(m, vx), _full(m, vy)
