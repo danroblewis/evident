@@ -33,6 +33,42 @@ def _reachable_stats(m, limit):
     return states, edges, n_states, n_edges, max_branch, capped, recurrent
 
 
+def _model_diff(model_a, model_b, limit, cap=40):
+    """The relational analog of a text diff: align the reachable sets of two models that
+    share a carried-var set, and report which states APPEARED (in B not A), VANISHED (in A
+    not B), and the COMMON count. States are aligned by `state_key` — the same identity the
+    reachable graph dedups on — so the delta is on the *relation*, not on source text.
+
+    Returns a dict ready to serialize: {ok, vars, appeared, vanished, common, a_total,
+    b_total, appeared_truncated, vanished_truncated}. When A and B carry different var sets,
+    returns {ok:False, error:…} — aligning by key across mismatched vars is meaningless."""
+    a_names, b_names = model_a.carried_names(), model_b.carried_names()
+    if a_names != b_names:
+        fmt = lambda s: "{" + ", ".join(sorted(n.split(".")[-1] for n in s)) + "}"
+        return {"ok": False,
+                "error": f"diff needs the same variables — A has {fmt(a_names)}, "
+                         f"B has {fmt(b_names)}"}
+    states_a, _ = model_a.reachable(limit=limit)
+    states_b, _ = model_b.reachable(limit=limit)
+    by_key_a = {model_a.state_key(s): s for s in states_a}
+    by_key_b = {model_b.state_key(s): s for s in states_b}
+    keys_a, keys_b = set(by_key_a), set(by_key_b)
+    appeared = [by_key_b[k] for k in keys_b - keys_a]
+    vanished = [by_key_a[k] for k in keys_a - keys_b]
+    short = sorted(n.split(".")[-1] for n in a_names)
+    return {
+        "ok": True,
+        "vars": short,
+        "appeared": appeared[:cap],
+        "vanished": vanished[:cap],
+        "common": len(keys_a & keys_b),
+        "a_total": len(keys_a),
+        "b_total": len(keys_b),
+        "appeared_truncated": len(appeared) > cap,
+        "vanished_truncated": len(vanished) > cap,
+    }
+
+
 def _error_loc(msg: str):
     """Pull a 1-based (line, col) out of a parse/lex error message — the runtime
     formats them as 'parse error at line N, col N: …'. Returns None when absent."""

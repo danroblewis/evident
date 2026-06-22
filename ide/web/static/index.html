@@ -21,6 +21,7 @@
     <button id="export-btn" title="download this buffer as a .ev file">↧ .ev</button>
     <button id="share-btn" title="copy a share link — a URL that loads this exact program">🔗 Share</button>
     <button id="pin-btn" title="pin this result as 'A' — the next analysis renders beside it, so changing a constraint shows what shifted">📌 pin</button>
+    <button id="diff-btn" title="model-diff — pin a result (📌), change a constraint, then diff: which reachable states appeared / vanished" hidden>⇄ diff</button>
     <button id="cmdk-hint" title="command palette — search every action (⌘K / Ctrl-K)">⌘K</button>
     <span class="sp"></span>
     <span id="latency" class="dim"></span>
@@ -51,6 +52,7 @@
     <div id="tabs"></div>
     <div id="view"><div class="ph">no dynamics yet</div></div>
     <div id="view-caption" class="dim"></div>
+    <div id="diff-panel" hidden></div>
     <div id="history" title="recent analyses — click a thumbnail to look back at a past run"></div>
     <div id="honesty" class="dim">—</div>
     <pre id="warnings" hidden></pre>

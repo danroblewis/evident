@@ -158,6 +158,7 @@ function buildCommands() {
   cmds.push({ label: "Solve claim — ⊨ witness or UNSAT", run: () => solve(false) });
   if ($("#smtlib-btn")) cmds.push({ label: "Copy SMT-LIB encoding", run: () => clickIf("#smtlib-btn") });
   if ($("#pin-btn")) cmds.push({ label: pinnedA ? "Unpin compare (A)" : "Pin this result — compare next beside it", run: () => togglePin() });
+  if (pinnedA && pinnedA.source) cmds.push({ label: "⇄ Model-diff — which reachable states appeared / vanished vs pinned A", run: () => runDiff() });
   if ($("#symbols-btn")) cmds.push({ label: "Symbols palette — how to type ∈ ⇒ Δ", run: () => togglePalette(true) });
   if ($("#tour-btn")) cmds.push({ label: "Guided tour", run: () => startTour() });
   // one command per live view tab (the #tabs strip is rebuilt by paint())

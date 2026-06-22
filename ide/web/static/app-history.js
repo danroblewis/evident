@@ -133,8 +133,75 @@ function setPinned(snap) {
   pinnedA = snap;
   const btn = $("#pin-btn");
   if (btn) { btn.classList.toggle("on", !!snap); btn.textContent = snap ? "📌 unpin" : "📌 pin"; }
+  syncDiffBtn();
   // re-render the live view in the new layout, using the freshest history snapshot as B.
   if (!pastView && history.length) renderLiveView($("#view"), history[0]);
+}
+
+// ⇄ diff is meaningful only with a pinned A that carries its source (the model-diff needs both
+// programs). Hidden otherwise, so it degrades gracefully to "pin something first".
+function syncDiffBtn() {
+  const btn = $("#diff-btn");
+  if (!btn) return;
+  const ready = !!(pinnedA && pinnedA.source);
+  btn.hidden = !ready;
+  if (!ready) { const panel = $("#diff-panel"); if (panel) panel.hidden = true; }
+}
+
+// ==============================================================================
+// Model-diff (#223): POST {source_a: pinnedA, source_b: live editor} → /api/diff and render the
+// relational delta — which reachable states APPEARED in B, which VANISHED from A, how many stayed.
+// The relational analog of a text diff; aligns on the reachable-graph state identity, server-side.
+// ==============================================================================
+async function runDiff() {
+  const panel = $("#diff-panel");
+  if (!panel) return;
+  if (!pinnedA || !pinnedA.source) {           // no pin → nothing to diff against (degrade gracefully)
+    panel.hidden = true;
+    return;
+  }
+  panel.hidden = false;
+  panel.className = "diff-busy";
+  panel.innerHTML = `<div class="diff-head dim">⇄ diffing pinned A vs live B…</div>`;
+  try {
+    const res = await fetch("/api/diff", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ source_a: pinnedA.source, source_b: editor.getValue() }),
+    });
+    const data = res.ok ? await res.json() : { ok: false, error: `the solver returned HTTP ${res.status}` };
+    renderDiff(panel, data);
+  } catch (e) {
+    renderDiff(panel, { ok: false, error: String(e) });
+  }
+}
+
+// One state row: `var=val · var=val` over the diff's shared var set, in the var order the server
+// returned (so A's and B's rows read in the same column order).
+function diffStateRow(state, vars) {
+  return vars.map((v) => `${v}=${state[v]}`).join(" · ");
+}
+
+function renderDiff(panel, data) {
+  panel.className = "";
+  if (!data.ok) {
+    panel.classList.add("diff-err");
+    panel.innerHTML = `<div class="diff-head">⇄ diff</div><div class="diff-msg">${(data.error || "diff failed").replace(/</g, "&lt;")}</div>`;
+    return;
+  }
+  const { vars, appeared, vanished, common, a_total, b_total } = data;
+  const list = (rows, cls, sym, truncated) => {
+    if (!rows.length) return `<div class="diff-none dim">${sym} none</div>`;
+    const items = rows.map((s) => `<li>${diffStateRow(s, vars).replace(/</g, "&lt;")}</li>`).join("");
+    const more = truncated ? `<li class="dim">… (capped)</li>` : "";
+    return `<ul class="diff-list ${cls}">${items}${more}</ul>`;
+  };
+  panel.innerHTML =
+    `<div class="diff-head">▲ ${appeared.length} appeared · ▼ ${vanished.length} vanished · = ${common} unchanged`
+    + `<span class="dim"> &nbsp;(A ${a_total} → B ${b_total} reachable states)</span></div>`
+    + `<div class="diff-cols">`
+    + `<div class="diff-col"><div class="diff-col-h appeared">▲ appeared in B</div>${list(appeared, "appeared", "▲", data.appeared_truncated)}</div>`
+    + `<div class="diff-col"><div class="diff-col-h vanished">▼ vanished from A</div>${list(vanished, "vanished", "▼", data.vanished_truncated)}</div>`
+    + `</div>`;
 }
 
 // On error / claim / backend-down we must not leave a two-up or a past view over a dead/changed
@@ -142,4 +209,6 @@ function setPinned(snap) {
 function exitCompareModes() {
   pastView = null;
   if (pinnedA) setPinned(null);
+  const panel = $("#diff-panel");
+  if (panel) panel.hidden = true;             // a stale diff must not linger over a changed/dead backend
 }

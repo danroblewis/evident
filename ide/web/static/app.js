@@ -296,6 +296,7 @@ function paint(data, ms) {
     pushHistory(history, {
       ts: Date.now(), fname: $("#fname").textContent, banner: data.banner || data.view || "",
       view: data.view, png: data.png, points: data.points || [], ms,
+      source: lastSource,    // the source that produced this picture — the model-diff (📌 ⇄ diff) pins A's source
     }, HISTORY_CAP);
   }
   renderHistory();
@@ -455,6 +456,7 @@ $("#smtlib-btn").onclick = async () => {
 };
 $("#solve-all").onclick = () => solve(true);
 if ($("#pin-btn")) $("#pin-btn").onclick = () => togglePin();
+if ($("#diff-btn")) $("#diff-btn").onclick = () => runDiff();
 
 // kick off
 // The concern files (app-*.js) define their handlers/helpers but defer their DOM wiring to an

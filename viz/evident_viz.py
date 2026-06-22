@@ -639,6 +639,17 @@ class Model:
         return str(x)
 
     # ---- helpers ------------------------------------------------------------
+    def state_key(self, state):
+        """Public wrapper over `_key`: the identity tuple a reachable state keys on
+        (sorted (name, value) pairs over the carried leaves). The model-diff aligns
+        states across two programs by this key, so they must share the carried set."""
+        return self._key(state)
+
+    def carried_names(self):
+        """The set of carried-leaf names — the var set the diff requires A and B to
+        share. Excludes derived vars (never part of the reachable-graph identity)."""
+        return {v["name"] for v in self.carried}
+
     def _key(self, state):
         # Identity keys on CARRIED leaves only. Derived vars live in the state dict for
         # display but are a pure function of carried state, so including them in the key

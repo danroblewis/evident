@@ -289,10 +289,25 @@ html,body { margin:0; height:100%; background:var(--bg); color:var(--ink);
 .compare-unpin:hover { color:var(--bad); }
 .compare-cap { font-size:11px; text-align:center; }
 
-#pin-btn { background:#1b2129; color:var(--ink); border:1px solid var(--line);
+#pin-btn, #diff-btn { background:#1b2129; color:var(--ink); border:1px solid var(--line);
   border-radius:6px; padding:3px 9px; cursor:pointer; }
-#pin-btn:hover { border-color:var(--accent); }
+#pin-btn:hover, #diff-btn:hover { border-color:var(--accent); }
 #pin-btn.on { border-color:var(--accent); color:var(--accent); background:#16313f; }
+
+/* model-diff panel (#223): the relational delta between pinned A and live B — which reachable
+   states appeared (green) / vanished (red). Lives under the two-up compare view. */
+#diff-panel { flex:0 0 auto; padding:6px 12px 8px; border-top:1px solid var(--line);
+  font-size:12px; max-height:220px; overflow-y:auto; }
+#diff-panel.diff-err .diff-msg { color:var(--bad); }
+.diff-head { font-weight:bold; margin-bottom:6px; }
+.diff-cols { display:flex; gap:18px; }
+.diff-col { flex:1 1 0; min-width:0; }
+.diff-col-h { font-size:11px; margin-bottom:3px; }
+.diff-col-h.appeared { color:var(--good); } .diff-col-h.vanished { color:var(--bad); }
+.diff-list { list-style:none; margin:0; padding:0; font-family:var(--mono, monospace); }
+.diff-list li { padding:1px 0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.diff-list.appeared li { color:var(--good); } .diff-list.vanished li { color:var(--bad); }
+.diff-none { padding:1px 0; }
 
 #honesty { padding:7px 14px; border-top:1px solid var(--line); font-size:12px;
   display:flex; gap:16px; flex-wrap:wrap; }

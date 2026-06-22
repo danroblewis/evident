@@ -38,7 +38,7 @@ from fastapi.staticfiles import StaticFiles  # noqa: E402
 from pydantic import BaseModel  # noqa: E402
 
 from analysis import (  # noqa: E402
-    _banner, _dropped_locs, _error_loc, _reachable_stats, _recommend)
+    _banner, _dropped_locs, _error_loc, _model_diff, _reachable_stats, _recommend)
 from render import RENDERERS, VIEWS, _maybe_claim, _render_png  # noqa: E402
 from runtime_io import _export, _run_query  # noqa: E402
 from solve import _all_unsat_cores, _enumerate, _unsat_core  # noqa: E402
@@ -238,6 +238,38 @@ def query(req: QueryReq):
             return {"ok": True, **m.query([tuple(t) for t in terms], limit=REACH_LIMIT)}
         except Exception as e:
             return {"ok": False, "error": str(e)}
+
+
+class DiffReq(BaseModel):
+    source_a: str          # the PINNED program (A)
+    source_b: str          # the LIVE program (B) — the same model with a constraint changed
+
+
+def _load_for_diff(source, work):
+    """Export+load one source into a Model, or return (None, error). Reused for A and B."""
+    ok, prefix, dropped, msg = _export(source, work)
+    if not ok:
+        return None, msg
+    return load_model(prefix + ".smt2", prefix + ".schema.json"), None
+
+
+@app.post("/api/diff")
+def diff(req: DiffReq):
+    """The relational analog of a text diff between two programs that share a var set: which
+    reachable states APPEARED (in B not A), VANISHED (in A not B), and how many stayed COMMON.
+    States align by `state_key` — the reachable-graph identity — so the delta is on the model's
+    behavior, not its source. A and B must carry the same variables (else a clear error)."""
+    with _LOCK, tempfile.TemporaryDirectory() as wa, tempfile.TemporaryDirectory() as wb:
+        try:
+            ma, err = _load_for_diff(req.source_a, wa)
+            if err:
+                return {"ok": False, "error": f"pinned program A: {err}"}
+            mb, err = _load_for_diff(req.source_b, wb)
+            if err:
+                return {"ok": False, "error": f"live program B: {err}"}
+            return _model_diff(ma, mb, REACH_LIMIT)
+        except Exception as e:
+            return {"ok": False, "error": f"diff failed: {e}"}
 
 
 @app.post("/api/smtlib")
