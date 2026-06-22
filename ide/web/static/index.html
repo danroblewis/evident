@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Evident IDE</title>
 <link rel="icon" href="data:,">
-<link rel="stylesheet" href="/static/app.css?v=13">
+<link rel="stylesheet" href="/static/app.css?v=14">
 </head>
 <body>
 <div id="app">
@@ -17,6 +17,9 @@
     <button id="tour-btn" title="a guided lap around the IDE (Esc to close)">? tour</button>
     <button id="solve-btn" title="solve a claim — SAT witness or UNSAT">⊨ Solve</button>
     <button id="smtlib-btn" title="copy this program's SMT-LIB encoding (re-run it in z3, or save it)">⧉ SMT-LIB</button>
+    <button id="save-btn" title="save this program in a named slot — keep several experiments (⌘K → Save as…)">💾 Save</button>
+    <button id="export-btn" title="download this buffer as a .ev file">↧ .ev</button>
+    <button id="share-btn" title="copy a share link — a URL that loads this exact program">🔗 Share</button>
     <button id="pin-btn" title="pin this result as 'A' — the next analysis renders beside it, so changing a constraint shows what shifted">📌 pin</button>
     <button id="cmdk-hint" title="command palette — search every action (⌘K / Ctrl-K)">⌘K</button>
     <span class="sp"></span>
@@ -60,6 +63,6 @@
 
 <script src="/static/vendor/ace-ace.js"></script>
 <script src="/static/vendor/ace-theme-dracula.js"></script>
-<script src="/static/app.js?v=13"></script>
+<script src="/static/app.js?v=14"></script>
 </body>
 </html>

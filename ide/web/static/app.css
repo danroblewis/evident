@@ -24,9 +24,10 @@ html,body { margin:0; height:100%; background:var(--bg); color:var(--ink);
   border-radius:6px; padding:2px 10px; font:12px ui-monospace,Menlo,monospace; cursor:pointer; }
 #symbols-btn:hover { border-color:var(--accent); }
 #symbols-btn.on { border-color:var(--accent); color:var(--accent); background:#16313f; }
-#tour-btn, #smtlib-btn { background:#1b2129; color:var(--ink); border:1px solid var(--line);
+#tour-btn, #smtlib-btn, #save-btn, #export-btn, #share-btn {
+  background:#1b2129; color:var(--ink); border:1px solid var(--line);
   border-radius:6px; padding:2px 10px; font:12px ui-monospace,Menlo,monospace; cursor:pointer; }
-#tour-btn:hover, #smtlib-btn:hover { border-color:var(--accent); }
+#tour-btn:hover, #smtlib-btn:hover, #save-btn:hover, #export-btn:hover, #share-btn:hover { border-color:var(--accent); }
 
 /* guided first-run walkthrough — coachmark tour (Task #164) */
 #tour-backdrop { position:fixed; inset:0; z-index:80; background:#0009; }

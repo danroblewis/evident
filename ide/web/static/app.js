@@ -440,10 +440,59 @@ editor.setOptions({
 });
 editor.renderer.setShowGutter(true);
 
+// --- save / export / share: keeping more than one experiment (Task #213) ----------
+// Three orthogonal escape-hatches for a buffer, each a pair of PURE helpers (no DOM/editor
+// dependency) so they can be unit-tested headless:
+//   • named slots   — a localStorage map of {name → source}, separate from the single-buffer
+//                      auto-persist (evident-buffer). Survives reload; appears in #samples.
+//   • export .ev    — a text/plain Blob download (the file leaves the browser).
+//   • share link    — the source packed into the URL hash; a friend pastes the link and gets
+//                      the program. Round-trip is lossless for unicode (∈ ⇒ Δ ∀).
+const SLOTS_KEY = "evident-slots";
+function loadSlots() {                              // corrupt / missing map → {} (never throw)
+  try {
+    const raw = localStorage.getItem(SLOTS_KEY);
+    if (!raw) return {};
+    const obj = JSON.parse(raw);
+    if (!obj || typeof obj !== "object" || Array.isArray(obj)) return {};
+    const out = {};                                // keep only string→string entries
+    for (const k of Object.keys(obj)) if (typeof obj[k] === "string") out[k] = obj[k];
+    return out;
+  } catch (e) { return {}; }
+}
+function writeSlots(map) { try { localStorage.setItem(SLOTS_KEY, JSON.stringify(map)); } catch (e) {} }
+function saveSlot(name, source) {                  // add/overwrite; returns the new map
+  const map = loadSlots(); map[name] = source; writeSlots(map); return map;
+}
+function deleteSlot(name) {                         // remove one; returns the new map
+  const map = loadSlots(); delete map[name]; writeSlots(map); return map;
+}
+
+// Share link: base64 of UTF-8 bytes, then URL-encoded. btoa wants a binary string, so the
+// unescape(encodeURIComponent(…)) dance widens unicode to bytes first; decode reverses it.
+// Any malformed input (bad base64, non-UTF-8) returns null — the caller falls back to a
+// normal load instead of throwing.
+function encodeShare(source) {
+  return encodeURIComponent(btoa(unescape(encodeURIComponent(source))));
+}
+function decodeShare(token) {
+  try {
+    const src = decodeURIComponent(decodeURIComponent(token).replace(/^src=/, ""));
+    return decodeURIComponent(escape(atob(src)));
+  } catch (e) { return null; }
+}
+// Pull a shared program out of a location.hash like "#src=<token>"; null if absent/undecodable.
+function sharedFromHash(hash) {
+  const m = (hash || "").match(/^#src=(.+)$/);
+  return m ? decodeShare(m[1]) : null;
+}
+
 // Persist the buffer across reloads — losing your work on an accidental refresh is the
-// fastest way to lose a user's trust.
+// fastest way to lose a user's trust. A shared link (#src=…) takes precedence over the
+// auto-persisted buffer: the whole point of the link is to override what's already there.
+const SHARED = sharedFromHash(location.hash);
 const SAVED = (() => { try { return localStorage.getItem("evident-buffer"); } catch (e) { return null; } })();
-editor.setValue(SAVED != null ? SAVED : DEFAULT_PROGRAM, -1);   // -1 = cursor to start
+editor.setValue(SHARED != null ? SHARED : (SAVED != null ? SAVED : DEFAULT_PROGRAM), -1);   // -1 = cursor to start
 // The buffer is saved on every edit (scheduleAnalyze), but a refresh during the 350ms analyze
 // debounce — or before the first edit — could miss the latest keystrokes; flush on unload too so
 // reload NEVER loses work (Marek #174).
@@ -790,6 +839,7 @@ const HISTORY_CAP = 8;
 let history = [];
 let pinnedA = null;
 let pastView = null;
+let currentSlotName = null;   // the active saved-slot name; overrides the derived #fname (Task #213)
 
 // Push a snapshot onto a newest-first ring buffer, capping length. Pure (returns the
 // array) so it's unit-testable headless; mutates in place for the module array.
@@ -1181,8 +1231,14 @@ function backendDown(detail) {
 async function run(view) {
   const source = editor.getValue();
   lastSource = source;
-  const nm = source.match(/^\s*(?:fsm|claim|type|schema)\s+([A-Za-z_]\w*)/m);
-  $("#fname").textContent = (nm ? nm[1] : "untitled") + ".ev";
+  // A saved-slot name (set on Save / on opening a slot) wins over the derived declaration
+  // name — the user named this buffer, so honor it. Cleared when a sample/slot loads fresh.
+  if (currentSlotName) {
+    $("#fname").textContent = currentSlotName.replace(/\.ev$/, "") + ".ev";
+  } else {
+    const nm = source.match(/^\s*(?:fsm|claim|type|schema)\s+([A-Za-z_]\w*)/m);
+    $("#fname").textContent = (nm ? nm[1] : "untitled") + ".ev";
+  }
   setStatus("computing…", "busy");
   // Immediately mark the derived panels recomputing — the PREVIOUS program's Structure verdict,
   // verify result and solve witness must NEVER read as current while a new analysis runs, on a
@@ -1447,6 +1503,52 @@ $("#smtlib-btn").onclick = async () => {
 $("#solve-all").onclick = () => solve(true);
 if ($("#pin-btn")) $("#pin-btn").onclick = () => togglePin();
 
+// --- save / export / share actions (Task #213) ------------------------------------
+// "Save as…" prompts for a slot name, stores {name → source} in the evident-slots map, makes
+// it the active buffer name, and re-renders the dropdown so it's immediately re-openable.
+function saveAsPrompt() {
+  const suggested = currentSlotName || ($("#fname").textContent || "untitled.ev").replace(/\.ev$/, "");
+  const name = (window.prompt("Save program as:", suggested) || "").trim();
+  if (!name) return;
+  saveSlot(name, editor.getValue());
+  currentSlotName = name;
+  $("#fname").textContent = name.replace(/\.ev$/, "") + ".ev";
+  refreshSamplesMenu();
+  setStatus("saved “" + name + "” ✓", "ok");
+}
+function deletePrompt() {
+  const slots = loadSlots(), keys = Object.keys(slots).sort();
+  if (!keys.length) { setStatus("no saved programs to delete", "dim"); return; }
+  const name = (window.prompt("Delete which saved program?\n" + keys.join(", "), keys[0]) || "").trim();
+  if (!name) return;
+  if (slots[name] == null) { setStatus("no saved program named “" + name + "”", "err"); return; }
+  deleteSlot(name);
+  if (currentSlotName === name) currentSlotName = null;
+  refreshSamplesMenu();
+  setStatus("deleted “" + name + "” ✓", "ok");
+}
+function exportEv() {
+  const name = ($("#fname").textContent || "model").replace(/\.ev$/, "") || "model";
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([editor.getValue()], { type: "text/plain" }));
+  a.download = name + ".ev";
+  a.click(); URL.revokeObjectURL(a.href);
+  setStatus("exported " + name + ".ev ✓", "ok");
+}
+async function copyShareLink() {
+  const url = location.origin + location.pathname + "#src=" + encodeShare(editor.getValue());
+  try {
+    await navigator.clipboard.writeText(url);
+    setStatus("share link copied ✓", "ok");
+  } catch (_) {                                      // clipboard blocked → put it in the hash so it's at least visible
+    location.hash = "src=" + encodeShare(editor.getValue());
+    setStatus("share link in the address bar — copy the URL", "ok");
+  }
+}
+if ($("#save-btn"))   $("#save-btn").onclick   = () => saveAsPrompt();
+if ($("#export-btn")) $("#export-btn").onclick = () => exportEv();
+if ($("#share-btn"))  $("#share-btn").onclick  = () => copyShareLink();
+
 // Assert-and-check a safety invariant over the reachable set — verify `var op value` holds on
 // EVERY reachable state (a proof when the set is finite & fully explored), or get a reachable
 // counterexample. The other half of the relational pitch: not just "watch", but "prove".
@@ -1612,21 +1714,46 @@ $("#inv-prop").addEventListener("keydown", (e) => { if (e.key === "Enter") check
 $("#solve-close").onclick = () => { $("#solve").hidden = true; };
 $("#solve-given").addEventListener("keydown", (e) => { if (e.key === "Enter") solve(false); });
 
-// --- samples menu: open a worked example -----------------------------------------
+// --- samples menu: open a worked example, or one of your saved programs ------------
+// Built-in samples and the user's saved slots share this one dropdown; saved slots live under
+// a "── my saved ──" optgroup with slot:-prefixed values so they can't collide with a sample
+// name. refreshSamplesMenu() rebuilds it after a save/delete so a just-saved program appears.
 const sel = $("#samples");
-sel.innerHTML = '<option value="">open sample…</option>' +
-  Object.keys(SAMPLES).map((k) => `<option value="${k}">${k}</option>`).join("");
-sel.onchange = () => {
-  if (SAMPLES[sel.value]) {
-    editor.setValue(SAMPLES[sel.value], -1);
-    $("#solve-given").value = "";   // a fresh sample must not inherit the last pin…
-    $("#solve").hidden = true;       // …nor leave a stale UNSAT/witness over the new program
-    $("#inv-prop").value = "";       // …nor a stale verify assertion (Sam #107)
-    $("#inv-result").textContent = "";
-    clearTrace();
-    run();
+function refreshSamplesMenu() {
+  const slots = loadSlots();
+  const slotKeys = Object.keys(slots).sort();
+  let html = '<option value="">open sample…</option>' +
+    Object.keys(SAMPLES).map((k) => `<option value="${escapeHtml(k)}">${escapeHtml(k)}</option>`).join("");
+  if (slotKeys.length) {
+    html += '<optgroup label="── my saved ──">' +
+      slotKeys.map((k) => `<option value="slot:${escapeHtml(k)}">${escapeHtml(k)}</option>`).join("") +
+      '</optgroup>';
   }
-  sel.value = "";          // reset the label so the same sample can be re-opened
+  sel.innerHTML = html;
+}
+refreshSamplesMenu();
+// Load a program into the editor and clear every per-program panel that must not bleed across
+// (pin, solve board, verify assertion + result, counterexample scrubber). Shared by samples,
+// slots, and the shared-link loader.
+function loadProgram(source, slotName) {
+  currentSlotName = slotName || null;
+  editor.setValue(source, -1);
+  $("#solve-given").value = "";   // a fresh program must not inherit the last pin…
+  $("#solve").hidden = true;       // …nor leave a stale UNSAT/witness over the new program
+  $("#inv-prop").value = "";       // …nor a stale verify assertion (Sam #107)
+  $("#inv-result").textContent = "";
+  clearTrace();
+  run();
+}
+sel.onchange = () => {
+  const v = sel.value;
+  if (v.startsWith("slot:")) {
+    const name = v.slice(5), slots = loadSlots();
+    if (slots[name] != null) loadProgram(slots[name], name);
+  } else if (SAMPLES[v]) {
+    loadProgram(SAMPLES[v], null);
+  }
+  sel.value = "";          // reset the label so the same entry can be re-opened
 };
 
 // --- symbol palette / cheat-sheet (Task #62) --------------------------------------
@@ -1754,13 +1881,17 @@ function buildCommands() {
   const clickIf = (id) => { const el = $(id); if (el) el.click(); };
   // open a sample — same path as the #samples select onchange
   Object.keys(SAMPLES).forEach((name) => {
-    cmds.push({ label: "Open sample: " + name, run: () => {
-      editor.setValue(SAMPLES[name], -1);
-      $("#solve-given").value = ""; $("#solve").hidden = true;
-      $("#inv-prop").value = ""; $("#inv-result").textContent = "";
-      clearTrace(); run();
-    }});
+    cmds.push({ label: "Open sample: " + name, run: () => loadProgram(SAMPLES[name], null) });
   });
+  // open one of your saved programs
+  const slots = loadSlots();
+  Object.keys(slots).sort().forEach((name) => {
+    cmds.push({ label: "Open saved: " + name, run: () => loadProgram(slots[name], name) });
+  });
+  cmds.push({ label: "Save as… — keep this program in a named slot", run: () => saveAsPrompt() });
+  if (Object.keys(slots).length) cmds.push({ label: "Delete saved…", run: () => deletePrompt() });
+  cmds.push({ label: "Export .ev — download this buffer as a file", run: () => exportEv() });
+  cmds.push({ label: "Copy share link — a URL that loads this program", run: () => copyShareLink() });
   cmds.push({ label: "Solve claim — ⊨ witness or UNSAT", run: () => solve(false) });
   if ($("#smtlib-btn")) cmds.push({ label: "Copy SMT-LIB encoding", run: () => clickIf("#smtlib-btn") });
   if ($("#pin-btn")) cmds.push({ label: pinnedA ? "Unpin compare (A)" : "Pin this result — compare next beside it", run: () => togglePin() });
@@ -1994,7 +2125,7 @@ document.addEventListener("click", (e) => {
   if (act === "next") {
     if (tourIdx >= TOUR_STEPS.length - 1) {
       // last step "Done": open the sudoku sample so ⊨ Solve has something to chew on
-      if (SAMPLES[SUDOKU_SAMPLE]) { editor.setValue(SAMPLES[SUDOKU_SAMPLE], -1); run(); }
+      if (SAMPLES[SUDOKU_SAMPLE]) loadProgram(SAMPLES[SUDOKU_SAMPLE], null);
       endTour();
     } else { tourIdx++; renderTourStep(); }
   }
@@ -2019,3 +2150,8 @@ function maybeAutoTour() {
 // kick off
 run();
 maybeAutoTour();
+// If we loaded a program from a shared link, say so — but only after run()'s "computing…"
+// settles, so the message isn't immediately clobbered. Subtle, dismissed by the next action.
+if (SHARED != null) {
+  setTimeout(() => { setStatus("loaded from a shared link ✓", "ok"); }, 900);
+}
