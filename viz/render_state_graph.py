@@ -31,6 +31,7 @@ COLOR encodes the top categorical var (enum/bool) by hue, with a legend.
 Terminal / absorbing nodes (a state whose only successor is itself, or which has
 no successor) keep a heavy ring so fixed points and sinks pop.
 """
+import json
 import sys
 import matplotlib
 matplotlib.use("Agg")
@@ -41,6 +42,59 @@ from networkx.drawing.nx_pydot import graphviz_layout
 
 sys.path.insert(0, "viz")
 from evident_viz import load
+
+# Interactive node-hover overlay (#184 increment 2): cap the overlay targets so a
+# several-hundred-node graph doesn't paint hundreds of hit-zones over the picture.
+OVERLAY_CAP = 60
+
+_SHORT = lambda n: n.split(".")[-1]
+
+
+def _write_points(out_path, points):
+    """Sidecar for the interactive node-hover overlay (#184 increment 2): each NODE's
+    FRACTIONAL position within the SAVED image (fx, fy from the TOP-LEFT, both 0..1) plus
+    its full state dict. The server reads `<out>.points.json` GENERICALLY for any view; the
+    frontend overlays a transparent target at fx*100%/fy*100% — hover → state tooltip,
+    click → pin. Empty list (overlay no-ops) on any failure."""
+    try:
+        with open(out_path + ".points.json", "w") as f:
+            json.dump(points, f)
+    except Exception:
+        pass
+
+
+def _node_points(fig, ax, G, pos, states):
+    """Map each graph node's DATA position → fraction of the SAVED (tight-bbox) image.
+
+    Unlike solution_space (which saves the whole figure), state_graph saves with
+    bbox_inches="tight" — matplotlib crops to a tight bbox, so the fractions must be taken
+    RELATIVE TO THAT CROP, not the full figure, or the overlay targets drift. We read the
+    same tight bbox savefig will use, map transData → display px → fraction within the crop,
+    and flip y to a top-left origin (matching the frontend wrapper). Capped to OVERLAY_CAP
+    nodes so a large graph stays light. Returns [] if anything is off-canvas/degenerate."""
+    fig.canvas.draw()                                       # finalize layout before measuring
+    dpi = fig.dpi
+    tb = fig.get_tightbbox(fig.canvas.get_renderer())       # inches, figure-relative (the crop)
+    x0, y0 = tb.x0 * dpi, tb.y0 * dpi
+    w, h = tb.width * dpi, tb.height * dpi
+    if w <= 0 or h <= 0:
+        return []
+    points = []
+    for n in G.nodes():
+        if n not in pos:
+            continue
+        dx, dy = pos[n]
+        px, py = ax.transData.transform((dx, dy))           # display px, bottom-left origin
+        ffx = (px - x0) / w
+        ffy = (py - y0) / h
+        if 0.0 <= ffx <= 1.0 and 0.0 <= ffy <= 1.0:         # keep only ON-CANVAS nodes
+            st = {_SHORT(k): v for k, v in states[n].items()}
+            points.append({"fx": round(float(ffx), 4),
+                           "fy": round(float(1.0 - ffy), 4), "state": st})
+        if len(points) >= OVERLAY_CAP:                      # cap the visible hit-zones
+            break
+    return points
+
 
 # Graph construction (reachable / trajectory / seeded), the terminal classifier
 # and the legibility down-sampler live in the sibling build module.
@@ -262,6 +316,7 @@ def render(smt2, schema, out_path):
         ax.set_title(f"{m.fsm} — {title_type}", fontsize=14, fontweight="bold")
         fig.savefig(out_path, dpi=120, bbox_inches="tight")
         plt.close(fig)
+        _write_points(out_path, [])            # no nodes → no overlay targets
         return out_path, 0, 0, "n/a"
 
     G, states, pos, terminal, axis_labels, sample_note, n_nodes, n_edges = \
@@ -289,8 +344,12 @@ def render(smt2, schema, out_path):
                              axis_labels, color_legend, color_var, mode,
                              sample_note, n_nodes, n_edges, title_type)
 
+    # Interactive overlay sidecar (#184 increment 2): compute the per-node figure
+    # fractions BEFORE saving (the draw() inside finalizes the same layout savefig uses).
+    points = _node_points(fig, ax, G, pos, states)
     fig.savefig(out_path, dpi=120, bbox_inches="tight")
     plt.close(fig)
+    _write_points(out_path, points)
     return out_path, n_nodes, n_edges, (mode + f" — {sample_note}" if sample_note else mode)
 
 
