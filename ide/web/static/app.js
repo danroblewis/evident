@@ -956,12 +956,26 @@ function paint(data, ms) {
   // tabs
   const tabs = $("#tabs");
   tabs.innerHTML = "";
-  (data.views || []).forEach((v) => {
+  tabs.setAttribute("role", "tablist");
+  (data.views || []).forEach((v, i) => {
+    // Real tabs: keyboard- and screen-reader-navigable, not bare clickable divs (Marek/Ana #31).
+    // Roving tabindex — only the active tab is in the tab order; ←/→ move focus between tabs.
     const el = document.createElement("div");
     el.className = "tab" + (v === activeView ? " on" : "");
     el.textContent = v.replace(/_/g, " ");
+    el.setAttribute("role", "tab");
+    el.setAttribute("aria-selected", v === activeView ? "true" : "false");
+    el.tabIndex = v === activeView ? 0 : -1;
     if (VIEW_CAPTIONS[v]) el.dataset.gloss = VIEW_CAPTIONS[v];   // hover a tab → its "what am I looking at?" gloss
     el.onclick = () => run(v);
+    el.onkeydown = (e) => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); run(v); }
+      else if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+        e.preventDefault();
+        const els = [...tabs.children];
+        els[(i + (e.key === "ArrowRight" ? 1 : els.length - 1)) % els.length].focus();
+      }
+    };
     tabs.appendChild(el);
   });
 
