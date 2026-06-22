@@ -256,7 +256,14 @@ fn run_loop(
     // for all state — scalars, records, and enums carry identically. There is
     // no seeding: the first tick has `is_first_tick = true` and the program
     // initializes explicitly.
+    //
+    // Two-tick history: `prev_values` is one tick ago (`_var`); `prev2_values`
+    // is two ticks ago (`__var`). Each tick they shift forward
+    // (prev → prev2, current → prev). `is_second_tick` is true only at tick 1,
+    // when `prev_values` exists but `prev2_values` does not — the program uses
+    // it to set the second initial condition before any `__var` is referenced.
     let mut prev_values: HashMap<String, Value> = HashMap::new();
+    let mut prev2_values: HashMap<String, Value> = HashMap::new();
 
     let mut step_count = 0usize;
 
@@ -278,30 +285,36 @@ fn run_loop(
             fsm_view.insert(lr_var.clone(), lr);
         }
 
-        // `_var` time-shift: expose the previous tick's value of each
-        // `_`-prefixed membership (whole value, plus per-field for records),
-        // and set `is_first_tick` whenever any `_var` is present.
+        // `_var` / `__var` time-shift: expose the previous tick's value of each
+        // `_`-prefixed membership (whole value, plus per-field for records).
+        // A membership with `k` leading underscores reads from the k-th history
+        // map (1 = previous tick, 2 = two ticks ago). Set `is_first_tick`
+        // (tick 0) and `is_second_tick` (tick 1) bootstrap flags.
         if let Some(claim) = rt.get_schema(&fsm.claim_name) {
             let is_first = prev_values.is_empty();
+            let is_second = !prev_values.is_empty() && prev2_values.is_empty();
             let mut sees_underscore = false;
             for item in &claim.body {
                 if let BodyItem::Membership { name, .. } = item {
-                    if let Some(stripped) = name.strip_prefix('_') {
-                        sees_underscore = true;
-                        if let Some(prev) = prev_values.get(stripped) {
-                            fsm_view.insert(name.clone(), prev.clone());
-                        }
-                        let prefix = format!("{stripped}.");
-                        for (k, v) in &prev_values {
-                            if let Some(field) = k.strip_prefix(&prefix) {
-                                fsm_view.insert(format!("{name}.{field}"), v.clone());
-                            }
+                    let depth = name.chars().take_while(|c| *c == '_').count();
+                    if depth == 0 { continue; }
+                    sees_underscore = true;
+                    let base = &name[depth..];
+                    let src = if depth >= 2 { &prev2_values } else { &prev_values };
+                    if let Some(prev) = src.get(base) {
+                        fsm_view.insert(name.clone(), prev.clone());
+                    }
+                    let prefix = format!("{base}.");
+                    for (k, v) in src {
+                        if let Some(field) = k.strip_prefix(&prefix) {
+                            fsm_view.insert(format!("{name}.{field}"), v.clone());
                         }
                     }
                 }
             }
             if sees_underscore {
                 fsm_view.insert("is_first_tick".to_string(), Value::Bool(is_first));
+                fsm_view.insert("is_second_tick".to_string(), Value::Bool(is_second));
             }
         }
 
@@ -324,14 +337,22 @@ fn run_loop(
 
         // Roll this tick's bindings into the carried state, noting whether any
         // carried value actually changed — that, together with effects, is the
-        // halt signal. `_`-prefixed bindings and `is_first_tick` are inputs.
+        // halt signal. `_`-prefixed bindings, `is_first_tick`, and
+        // `is_second_tick` are inputs, not carried state.
+        //
+        // Two-tick shift: this tick's `prev_values` becomes next tick's
+        // `prev2_values` (`__var`), and this tick's bindings become next tick's
+        // `prev_values` (`_var`). Build the new `prev_values` fresh so the
+        // change-check compares against the right (one-tick-ago) snapshot.
+        let mut new_prev: HashMap<String, Value> = HashMap::new();
         let mut values_changed = false;
         for (k, v) in r.bindings.iter() {
             if k.starts_with('_') { continue; }
-            if k == "is_first_tick" { continue; }
+            if k == "is_first_tick" || k == "is_second_tick" { continue; }
             if prev_values.get(k) != Some(v) { values_changed = true; }
-            prev_values.insert(k.clone(), v.clone());
+            new_prev.insert(k.clone(), v.clone());
         }
+        prev2_values = std::mem::replace(&mut prev_values, new_prev);
 
         let any_effect = !effects.is_empty();
         last_results = dispatch_all(ctx, &effects);

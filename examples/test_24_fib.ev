@@ -1,0 +1,63 @@
+-- 24_fib — two-tick history (`__var`) carried state.
+--
+-- `_n` is `n` one tick ago; `__n` is `n` two ticks ago. The runtime carries
+-- TWO ticks of history, exactly the way `_var` carries one. Fibonacci is the
+-- canonical recurrence that needs both: `n = _n + __n`.
+--
+-- Bootstrap is two initial conditions, not one. `is_first_tick` (tick 0) and
+-- `is_second_tick` (tick 1) seed the base cases `n = 1`; from tick 2 on the
+-- recurrence runs. `__n` is only referenced under `¬is_second_tick`, so it is
+-- never read before two ticks of history exist.
+--
+--   1, 1, 2, 3, 5, 8, 13, 21, ...
+
+import "stdlib/runtime.ev"
+
+fsm fib
+    n ∈ Int
+    is_first_tick  ⇒ n = 1
+    is_second_tick ⇒ n = 1
+    (¬is_first_tick ∧ ¬is_second_tick) ⇒ n = _n + __n
+
+    n_str ∈ String = to_str(n)
+
+    halting ∈ Bool = (n > 100)
+
+    effects = (halting ? ⟨Println("done at " ++ n_str), Exit(0)⟩
+               : ⟨Println("fib = " ++ n_str)⟩)
+
+-- ── Static tests ─────────────────────────────────────────────
+
+-- At tick ≥ 2 the recurrence `n = _n + __n` holds: _n = 5, __n = 3 ⟹ n = 8.
+claim sat_fib_recurrence
+    n ∈ Int
+    _n ∈ Int
+    __n ∈ Int
+    is_first_tick ∈ Bool
+    is_second_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+
+    is_first_tick = false
+    is_second_tick = false
+    _n = 5
+    __n = 3
+    fib
+    n = 8                   -- n = _n + __n  ✓
+
+-- The recurrence is a sum, not a difference: _n = 5, __n = 3 forbids n = 2.
+claim unsat_fib_is_not_difference
+    n ∈ Int
+    _n ∈ Int
+    __n ∈ Int
+    is_first_tick ∈ Bool
+    is_second_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+
+    is_first_tick = false
+    is_second_tick = false
+    _n = 5
+    __n = 3
+    fib
+    n = 2                   -- would be _n - __n  ✗

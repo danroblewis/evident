@@ -99,6 +99,21 @@ const EXPECTATIONS: &[DemoExpect] = &[
         forbid_exact_lines: &["x = 11", "landed at 6"],
         max_steps: 10, tick_ms: 0, stdin: None,
     },
+    DemoExpect {
+        name: "test_24_fib", exit: 0,
+        must_lines: &["fib = 1", "fib = 2", "fib = 3", "fib = 5", "fib = 8",
+                      "fib = 13", "fib = 89", "done at 144"],
+        forbid_exact_lines: &["fib = 4", "fib = 7"],
+        max_steps: 14, tick_ms: 0, stdin: None,
+    },
+    DemoExpect {
+        name: "test_25_oscillator", exit: 0,
+        must_lines: &["milli = 60000", "milli = 58333", "milli = 55138",
+                      "milli = 50590", "milli = 38257", "milli = 7198",
+                      "crossed zero at milli -526"],
+        forbid_exact_lines: &["milli = 60001"],
+        max_steps: 14, tick_ms: 0, stdin: None,
+    },
 ];
 
 #[test]
