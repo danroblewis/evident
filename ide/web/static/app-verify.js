@@ -336,6 +336,44 @@ async function runTemporal(out, body) {
   } catch (e) { out.className = "bad"; out.textContent = "✕ " + e; }
 }
 
+// --- ad-hoc query (⊨? / ∃): the EXISTENTIAL dual of ⊢ verify's □ (Ana #195) -------------
+// `var op value ∧ …` — find a REACHABLE state satisfying the conjunction (sat-witness + count +
+// trace), instead of checking it holds everywhere. Reuses _INV_RE/_coerce to parse each term,
+// the same split as the editor, and showTrace/_fmtTrace to render the path init→witness.
+async function runQuery() {
+  const out = $("#query-result");
+  clearTrace();                                          // a new query invalidates the old scrubber
+  const raw = $("#query-prop").value.trim();
+  if (!raw) { out.textContent = ""; return; }
+  // Split the conjunction on ∧ / /\ / the word "and", then parse each term as  var op value.
+  const parts = raw.split(/\s*(?:∧|\/\\|\band\b)\s*/).filter((p) => p.trim());
+  const terms = [];
+  for (const part of parts) {
+    const m = part.match(_INV_RE);
+    if (!m) { out.className = "bad"; out.textContent = `✕ bad term “${part.trim()}” — write  var op value  (e.g. timer = 2)`; return; }
+    terms.push([m[1], m[2], _coerce(m[3])]);
+  }
+  out.className = "dim"; out.textContent = "searching…";
+  try {
+    const res = await fetch("/api/query", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ source: editor.getValue(), terms }),
+    });
+    const d = await res.json();
+    if (!d.ok) { out.className = "bad"; out.textContent = "✕ " + (d.error || "query failed"); return; }
+    if (!d.satisfiable) {
+      out.className = "bad";
+      out.textContent = `✗ no reachable state satisfies it — ${d.predicate}`
+        + (d.exhaustive ? ` (searched all ${d.checked} reachable states)` : ` (searched ${d.checked}; capped)`);
+      return;
+    }
+    const w = Object.entries(d.witness || {}).map(([k, v]) => `${k.split(".").pop()}=${v}`).join(" ");
+    out.className = "good";
+    out.textContent = `✓ reachable — ${w} (${d.count} of ${d.checked} state${d.checked === 1 ? "" : "s"})`;
+    if (d.trace && d.trace.length >= 2) showTrace(d.trace, `a run reaching: ${d.predicate}`);
+  } catch (e) { out.className = "bad"; out.textContent = "✕ " + e; }
+}
+
 // --- wiring: attach the verify console + field-shortcut listeners ------------------
 // Mirrors the original top-level wiring (same elements, same listeners).
 function initVerify() {
@@ -347,4 +385,8 @@ function initVerify() {
   $("#inv-prop").addEventListener("keydown", (e) => { if (e.key === "Enter") checkInvariant(); });
   $("#solve-close").onclick = () => { $("#solve").hidden = true; };
   $("#solve-given").addEventListener("keydown", (e) => { if (e.key === "Enter") solve(false); });
+  // ad-hoc query row (⊨?) — same field-shortcut expansion, Enter-to-run (Ana #195).
+  $("#query-btn").onclick = runQuery;
+  $("#query-prop").addEventListener("input", () => expandFieldSymbols($("#query-prop")));
+  $("#query-prop").addEventListener("keydown", (e) => { if (e.key === "Enter") runQuery(); });
 }

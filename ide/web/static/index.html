@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Evident IDE</title>
 <link rel="icon" href="data:,">
-<link rel="stylesheet" href="/static/app.css?v=14">
+<link rel="stylesheet" href="/static/app.css?v=15">
 </head>
 <body>
 <div id="app">
@@ -41,6 +41,12 @@
       <button id="inv-btn">check</button>
       <span id="inv-result" class="dim"></span>
     </div>
+    <div id="query-row" hidden>
+      <span class="query-label" title="ad-hoc existential query — find a reachable state satisfying it (the ∃ dual of ⊢ verify's □)">⊨? query</span>
+      <input id="query-prop" placeholder="find a reachable state — a conjunction:  light = Green ∧ timer = 2">
+      <button id="query-btn">find</button>
+      <span id="query-result" class="dim"></span>
+    </div>
     <div id="inv-trace" hidden></div>
     <div id="tabs"></div>
     <div id="view"><div class="ph">no dynamics yet</div></div>
@@ -72,8 +78,8 @@
 <script src="/static/app-editor.js?v=1"></script>
 <script src="/static/app-buffer.js?v=1"></script>
 <script src="/static/app-history.js?v=1"></script>
-<script src="/static/app-verify.js?v=1"></script>
-<script src="/static/app-palette.js?v=1"></script>
-<script src="/static/app.js?v=14"></script>
+<script src="/static/app-verify.js?v=2"></script>
+<script src="/static/app-palette.js?v=2"></script>
+<script src="/static/app.js?v=15"></script>
 </body>
 </html>

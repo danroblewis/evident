@@ -621,6 +621,67 @@ def temporal(req: TemporalReq):
             return {"ok": False, "error": str(e)}
 
 
+# ad-hoc query: the same `var op value` shape the frontend's _INV_RE parses, so a raw
+# predicate string ("light = Green ∧ timer = 2") can be split + parsed server-side too.
+_QUERY_TERM_RE = re.compile(r"^\s*([A-Za-z_]\w*(?:\.\w+)?)\s*(<=|>=|!=|<|>|=|≤|≥|≠)\s*(.+?)\s*$")
+
+
+def _coerce_query_value(s: str):
+    """Coerce a raw term value the way the frontend's _coerce does: int, float, bool, else str
+    (an enum variant name like 'Green')."""
+    s = s.strip()
+    if re.fullmatch(r"-?\d+", s):
+        return int(s)
+    if re.fullmatch(r"-?\d*\.\d+", s):
+        return float(s)
+    if s in ("true", "false"):
+        return s == "true"
+    return s
+
+
+def _parse_predicate(pred: str):
+    """Split a raw conjunction `t1 ∧ t2 ∧ …` (also accepts 'and' / '&&') into (var, op, value)
+    triples — the server-side mirror of the frontend term split."""
+    terms = []
+    for part in re.split(r"\s*(?:∧|&&|\band\b)\s*", pred.strip()):
+        if not part:
+            continue
+        m = _QUERY_TERM_RE.match(part)
+        if not m:
+            raise ValueError(f"bad query term {part!r}; write  var op value  (e.g. timer = 2)")
+        terms.append([m.group(1), m.group(2), _coerce_query_value(m.group(3))])
+    return terms
+
+
+class QueryReq(BaseModel):
+    source: str
+    # Either a list of [var, op, value] triples (a conjunction), OR a raw predicate string the
+    # server parses with the same regex the frontend uses. Provide one or the other.
+    terms: list[list[str | int | float | bool]] | None = None
+    predicate: str | None = None
+
+
+@app.post("/api/query")
+def query(req: QueryReq):
+    """Ad-hoc EXISTENTIAL query over the reachable set — the dual of /api/invariant. Instead of
+    "does P hold on EVERY reachable state (□)", asks "does ANY reachable state satisfy the
+    conjunction P₁ ∧ P₂ ∧ … (◇/∃)" — the Z3/Alloy `(assert)(check-sat)` move against the loaded
+    model without editing source. Returns satisfiable + a witness state, the count of reachable
+    states satisfying it, and the trace init→witness."""
+    with _LOCK, tempfile.TemporaryDirectory() as work:
+        ok, prefix, dropped, msg = _export(req.source, work)
+        if not ok:
+            return {"ok": False, "error": msg}
+        try:
+            terms = req.terms
+            if terms is None:
+                terms = _parse_predicate(req.predicate or "")
+            m = load_model(prefix + ".smt2", prefix + ".schema.json")
+            return {"ok": True, **m.query([tuple(t) for t in terms], limit=REACH_LIMIT)}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+
 def _z3_path():
     for p in ("z3", "/usr/local/bin/z3", "/opt/homebrew/bin/z3"):
         try:

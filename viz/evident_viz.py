@@ -497,6 +497,53 @@ class Model:
             return True if name not in sv else cmp(sv[name])
         return name, f"{name.split('.')[-1]} {pretty} {self._fmt_val(target)}", fn
 
+    def query(self, terms, limit=400):
+        """SOLVE an existential query over the reachable set: is there a reachable state
+        satisfying the CONJUNCTION of `terms`? This is the dual of check_invariant —
+        instead of "does P hold on EVERY reachable state (□)", it asks "does ANY reachable
+        state satisfy P₁ ∧ P₂ ∧ … (◇/∃)" — the Z3/Alloy `(assert)(check-sat)` move, run
+        against the loaded model without editing the source.
+
+        `terms` is a list of `(var, op, value)` triples (each in the same spec as
+        check_invariant); the query is their conjunction. An empty `terms` matches every
+        reachable state (so `count` == #reachable).
+
+        Returns:
+          {
+            "satisfiable": bool,                 # some reachable state satisfies all terms
+            "witness": {var: value, ...} | None, # first such FULL state (BFS order), or None
+            "count": int,                        # how many reachable states satisfy it
+            "checked": int,                      # number of reachable states scanned
+            "exhaustive": bool,                  # did the BFS exhaust the reachable set?
+            "trace": [state, ...] | None,        # path init→witness, or None
+            "predicate": "light = Green ∧ timer = 2",  # human-readable conjunction
+          }
+        """
+        # Build a (full_name, pretty, fn) per term, reusing _predicate (no duplication).
+        built = [self._predicate(var, op, value) for (var, op, value) in terms]
+        predicate = " ∧ ".join(p for (_, p, _) in built) if built else "true"
+
+        def sat(sv):
+            return all(fn(sv) for (_, _, fn) in built)
+
+        states, edges = self.reachable(limit=limit)
+        exhaustive = len(states) < limit          # BFS stopped on its own, not capped
+        count = 0
+        first_idx = None
+        for idx, sv in enumerate(states):          # BFS-discovery order = deterministic
+            if sat(sv):
+                count += 1
+                if first_idx is None:
+                    first_idx = idx
+        if first_idx is None:
+            return {"satisfiable": False, "witness": None, "count": 0,
+                    "checked": len(states), "exhaustive": exhaustive,
+                    "trace": None, "predicate": predicate}
+        return {"satisfiable": True, "witness": dict(states[first_idx]), "count": count,
+                "checked": len(states), "exhaustive": exhaustive,
+                "trace": self._trace_to(first_idx, edges, states),  # path init→witness
+                "predicate": predicate}
+
     def check_temporal(self, var, op, value, modality="eventually",
                        p_var=None, p_op=None, p_value=None, limit=400):
         """VERIFY a LIVENESS property over the reachable graph (the model-checker move beyond the

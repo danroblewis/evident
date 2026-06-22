@@ -166,6 +166,7 @@ function buildCommands() {
     cmds.push({ label: "View: " + tab.textContent.trim(), run: () => run(view) });
   });
   cmds.push({ label: "Verify — focus the ⊢ property field", run: () => { const f = $("#inv-prop"); if (f) f.focus(); } });
+  cmds.push({ label: "Query — find a reachable state (⊨? ∃)", run: () => { const f = $("#query-prop"); if (f) f.focus(); } });
   return cmds;
 }
 
