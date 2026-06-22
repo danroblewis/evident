@@ -636,12 +636,13 @@ function renderStructure(s) {
 
 function paint(data, ms) {
   $("#latency").textContent = ms != null ? `${ms} ms` : "";
-  clearTimeout(_dimTimer);                              // analysis returned — undim
-  $("#banner").classList.remove("recomputing");
+  $("#banner").classList.remove("recomputing");        // analysis returned — undim
   $("#structure").classList.remove("recomputing");
   const view = $("#view"), warn = $("#warnings");
   if (!data.ok) {
     $("#structure").hidden = true;
+    $("#invariant").hidden = true;                     // no reachable set → no verify row
+    $("#inv-result").textContent = "";
     // a pure claim (no FSM) isn't an error — it's a solve target, not a thing to visualize
     if (/no fsm schemas? found/i.test(data.error || "")) {
       setStatus("claim — use Solve", "ok");
@@ -663,6 +664,7 @@ function paint(data, ms) {
     // green reachable-state stats next to a red parse error.
     view.classList.add("stale");
     $("#banner").className = "stale";
+    $("#banner").textContent = "▷ source has an error — fix it to refresh the analysis";
     $("#honesty").innerHTML = data.dropped
       ? `<span class="dropped">⚠ ${data.dropped} dropped constraint(s)</span><span class="dim">diagram stale — fix the error</span>`
       : `<span class="dim">diagram stale — fix the error above</span>`;
@@ -721,14 +723,14 @@ async function run(view) {
   const nm = source.match(/^\s*(?:fsm|claim|type|schema)\s+([A-Za-z_]\w*)/m);
   $("#fname").textContent = (nm ? nm[1] : "untitled") + ".ev";
   setStatus("computing…", "busy");
-  // Dim the (now-stale) banner + Structure if analysis is slow (>400ms), so a multi-second
-  // solve never shows the PREVIOUS program's verdict as if it were current — but a fast edit
-  // (~80ms) doesn't flicker. paint() clears it.
-  clearTimeout(_dimTimer);
-  _dimTimer = setTimeout(() => {
-    $("#banner").classList.add("recomputing");
-    $("#structure").classList.add("recomputing");
-  }, 400);
+  // Immediately mark the derived panels recomputing — the PREVIOUS program's Structure verdict,
+  // verify result and solve witness must NEVER read as current while a new analysis runs, on a
+  // switch / edit / error alike (Marek #64/#91/#93). paint() repaints or hides them on result.
+  $("#banner").classList.add("recomputing");
+  $("#structure").classList.add("recomputing");
+  $("#inv-result").textContent = "";                       // last verify result is stale on any edit
+  if (!$("#solve").hidden)                                  // stale witness/UNSAT under a changed source
+    $("#solve-head").innerHTML = '<span class="dim">source changed — press re-solve</span>';
   const t0 = performance.now();
   try {
     const res = await fetch("/api/analyze", {
@@ -818,11 +820,13 @@ function seqViz(name, val, source) {
   // only primitive-Int seqs get a picture; arrays of records/objects keep the raw table
   if (!val.every((v) => typeof v === "number" && Number.isInteger(v))) return null;
   const n = val.length;
-  // N-queens detection: length N, all values in 0..N-1. Also honor an explicit `#name = N`
-  // in the source as a strong signal (it's how the queens sample pins the board size).
-  const pinned = pinnedLen(source, name);
-  const looksQueens = n >= 4 && val.every((v) => v >= 0 && v < n) && (pinned == null || pinned === n);
-  if (looksQueens) return queensBoard(name, val);
+  // A queens board needs TWO honest signals, not just "values in 0..N-1" — that also matches a
+  // topological order (pos=[0,1,2,3,4]) and a sudoku row (cell, 16 values in 0..3), which both
+  // drew a wrong chessboard (Marek #68/#92). Require: a queens-like variable NAME *and* a true
+  // permutation of 0..N-1 (one queen per row AND column). Everything else gets the honest strip.
+  const queensName = /^(col|cols|queen|queens|row|rows|board)$/.test(name.toLowerCase());
+  const isPermutation = n >= 4 && new Set(val).size === n && val.every((v) => v >= 0 && v < n);
+  if (queensName && isPermutation) return queensBoard(name, val);
   return cellStrip(name, val);
 }
 
