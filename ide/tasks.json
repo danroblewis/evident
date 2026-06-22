@@ -1,5 +1,5 @@
 {
-  "seq": 252,
+  "seq": 253,
   "tasks": [
     {
       "id": 1,
@@ -4559,6 +4559,28 @@
           "by": "worker",
           "act": "done",
           "note": "shipped 17d4e743: numeric_vars\u2192cheap n_numeric kind-count in _recommend. oscillator 1.5s\u21920.60s; views unchanged; ./test.sh green. Ana to assess if it clears her latency concern #217."
+        }
+      ]
+    },
+    {
+      "id": 253,
+      "title": "Perf: eliminate the render's redundant reachable BFS (~230ms). _render_png re-loads the model + re-runs reachable inside the renderer, duplicating the analyze's. Fix: cache load() by (smt2-path, mtime) with a small LRU so the renderer's internal load(smt2,schema) returns the analyze's warm model (reachable now memoized). Expected: real-valued analyze 0.60s\u2192~0.37s. Load-bearing (the render path) \u2014 verify every view renders byte-identical + ./test.sh + latency before/after.",
+      "detail": "",
+      "status": "worker_done",
+      "created_by": "worker",
+      "created": "2026-06-22T23:22:13Z",
+      "worker_done": true,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "perf"
+      ],
+      "log": [
+        {
+          "at": "2026-06-22T23:36:20Z",
+          "by": "worker",
+          "act": "done",
+          "note": "shipped: load() cached by (paths,mtime) FIFO(4); render reuses the analyze's warm model. oscillator 0.60s\u21920.36s, byte-identical PNGs verified, ./test.sh green."
         }
       ]
     }
