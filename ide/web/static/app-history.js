@@ -39,8 +39,19 @@ function viewPane(data, withOverlay) {
   if (!data.png) return `<div class="ph">no view for this program</div>`;
   const pane = document.createElement("div");
   pane.className = "view-wrap";
-  // Descriptive alt-text for screen readers — the per-view caption, not the bare slug (Ana #216/#49).
-  const alt = `${(data.view || "diagram").replace(/_/g, " ")} — ${VIEW_CAPTIONS[data.view] || ""}`.replace(/"/g, "&quot;");
+  // Descriptive alt-text for screen readers — the per-view caption PLUS the live verdict, reachable
+  // count, and proven bounds, so a screen-reader user gets what the picture actually shows for THIS
+  // program, not a generic description (Ana #216/#49/#238).
+  const live = [];
+  if (data.banner) live.push(String(data.banner));
+  if (data.states != null) live.push(`${data.states}${data.capped ? "+" : ""} reachable state${data.states === 1 ? "" : "s"}`);
+  const b = data.structure && data.structure.bounds;
+  if (b) {
+    const ranges = Object.entries(b).map(([k, v]) => `${k} in [${v[0]}, ${v[1]}]`).join(", ");
+    if (ranges) live.push(ranges);
+  }
+  const alt = (`${(data.view || "diagram").replace(/_/g, " ")} — ${VIEW_CAPTIONS[data.view] || ""}`
+    + (live.length ? " · " + live.join(" · ") : "")).replace(/"/g, "&quot;");
   pane.innerHTML = `<img alt="${alt}" src="data:image/png;base64,${data.png}">`;
   if (withOverlay) overlayPoints(pane, data.points || []);
   return pane;
