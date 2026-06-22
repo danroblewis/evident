@@ -647,6 +647,62 @@ document.addEventListener("mouseout", (e) => {
   if (e.target.closest && e.target.closest(".concept")) gloss.hidden = true;
 });
 
+// --- per-view captions: "what am I looking at?" ----------------------------------
+// A newcomer can decode solution_space, but "morse graph" / "nullcline field" / "chord diagram"
+// are just names (Sam #189). One faithful line per view, derived from what the renderer ACTUALLY
+// draws (viz/render_<view>.py docstrings) — shown two ways: a hover gloss on each tab (reusing the
+// #gloss delegation) AND a caption line under the rendered diagram. Shape: "shows X · read it as Y
+// · tells you Z". Must match ALL_VIEWS in ide/web/server.py exactly (coverage is checked).
+const VIEW_CAPTIONS = {
+  solution_space:
+    "shows the SOLVED boundary of the program, not one run · read it as each variable's full range (left) + the feasible region of the two principal vars (right) · tells you what states are possible at all, with fixed points marked.",
+  time_series:
+    "shows one trajectory (~60 ticks) from the initial state · read it as every state variable plotted against tick number on stacked tracks (numeric=line, bool/enum=step) · tells you how each value evolves over time.",
+  state_graph:
+    "shows the reachable state-transition graph · read it as nodes=states, arrows=transitions of state=f(_state), terminal/absorbing states ringed · tells you every state the machine can enter and how they connect.",
+  phase_portrait:
+    "shows the difference-equation vector field · read it as each point's displacement successor(p)−p as an arrow, colored by step magnitude, faceted per categorical value · tells you which way the dynamics flow across value-space.",
+  reachability_tree:
+    "shows the breadth-first reachability tree from the initial state · read it as each node at its depth = shortest-path length from the start, keeping only first-discovery edges · tells you how many steps it takes to reach each state.",
+  morse_graph:
+    "shows the recurrence skeleton — the condensation DAG of the reachable graph · read it as one node per strongly-connected component (cycle), classified attractor/repeller/transient · tells you where the dynamics get trapped vs pass through.",
+  occupancy_heatmap:
+    "shows where the system spends its time · read it as a 2-D histogram of many-seed/many-step visited points over two axes, brightness = visit density (log) · tells you the occupied region / attractor of state-space.",
+  timing_diagram:
+    "shows one ~40-tick run as EE-style waveforms · read it as one stacked track per variable (bool/enum=digital edges, numeric=analog line) ordered most-informative on top · tells you when each signal changes relative to the others.",
+  transition_matrix:
+    "shows the transition relation as an adjacency-matrix heatmap · read it as cell (i,j) lit iff state i → state j, states ordered so the top categorical forms blocks · tells you whether transitions stay within a mode (block-diagonal) or switch.",
+  basin_map:
+    "shows the basins of attraction · read it as a 2-axis projection of start states colored by WHICH terminal (fixed point / cycle / terminal SCC) each eventually settles into · tells you where each starting state ends up.",
+  orbit_scatter:
+    "shows one trajectory as discrete unconnected dots in two state axes · read it as each dot = one tick's state, gaps = the jump the equation makes; categorical on color, time gradient when none · tells you the orbit's shape (loop=cycle, pile-up=fixed point).",
+  scatter_matrix:
+    "shows pairwise projections of all state variables · read it as an N×N grid of scatter panels (one per variable pair), hued by the top categorical var · tells you which variables correlate or separate across the reachable set.",
+  parallel_coords:
+    "shows the reachable state set as polylines (Inselberg) · read it as each state a line crossing every variable's axis at its value, hued by the top categorical · tells you which value-combinations cluster per class.",
+  chord_diagram:
+    "shows transition flow on a circular categorical axis · read it as nodes = values of the top categorical (room→room, mode→mode), arc width/opacity = transition count, arc hue = a second categorical · tells you how much flow goes between which categories.",
+  nullcline_field:
+    "shows the qualitative phase-plane sign field over two numeric axes · read it as the plane shaded by the sign of each component's change, with nullclines (zero-change curves) overlaid; their crossings are fixed points · tells you which way each variable is pushed everywhere.",
+  fixedpoint_map:
+    "shows where the system comes to rest · read it as a 2-axis projection with fixed points as large markers, short cycles as arrowed loops, other sampled states as faint dots · tells you the attractors standing out against the basin.",
+  cobweb:
+    "shows a 1-D map x_n → x_{n+1} as a cobweb plot · read it as both axes the same scalar, staircasing between the map curve and the diagonal; faceted per categorical mode · tells you whether iterating the scalar converges, cycles, or diverges.",
+};
+
+// Extend the #gloss delegation to tabs too: a hover on a view tab shows its caption.
+document.addEventListener("mouseover", (e) => {
+  const t = e.target.closest && e.target.closest("#tabs .tab");
+  if (t && t.dataset.gloss) {
+    gloss.textContent = t.dataset.gloss; gloss.hidden = false;
+    gloss.style.left = Math.min(e.clientX + 12, window.innerWidth - 380) + "px";
+    gloss.style.top = (e.clientY + 18) + "px";
+  }
+});
+document.addEventListener("mouseout", (e) => {
+  if (e.target.closest && e.target.closest("#tabs .tab")) gloss.hidden = true;
+});
+
 // --- inline error line marker -----------------------------------------------------
 // Tint the offending line. Ace marks a line via a full-width marker; the simplest robust
 // approach is a gutter-decoration + a row marker class (.ace_error-line) on that row.
@@ -849,6 +905,8 @@ function paint(data, ms) {
   // here too: an empty/absent dropped_locs wipes the previous run's amber markers.
   markDroppedLines(data.dropped_locs, data.warnings);
   const view = $("#view"), warn = $("#warnings");
+  $("#view-caption").textContent = "";                   // clear the per-view caption on any result;
+                                                         // the OK path below re-sets it for the new view.
   if (!data.ok) {
     $("#structure").hidden = true;
     $("#invariant").hidden = true;                     // no reachable set → no verify row
@@ -901,6 +959,7 @@ function paint(data, ms) {
     const el = document.createElement("div");
     el.className = "tab" + (v === activeView ? " on" : "");
     el.textContent = v.replace(/_/g, " ");
+    if (VIEW_CAPTIONS[v]) el.dataset.gloss = VIEW_CAPTIONS[v];   // hover a tab → its "what am I looking at?" gloss
     el.onclick = () => run(v);
     tabs.appendChild(el);
   });
@@ -913,6 +972,10 @@ function paint(data, ms) {
   } else {
     view.innerHTML = `<div class="ph">no view for this program</div>`;
   }
+
+  // the one-line "what am I looking at?" caption under the diagram — set on every render, cleared
+  // when the view has no caption (so a stale caption never lingers under a different picture).
+  $("#view-caption").textContent = (data.png && VIEW_CAPTIONS[data.view]) ? VIEW_CAPTIONS[data.view] : "";
 
   // the honesty line (branching ×N surfaces nondeterminism right next to the stats)
   const dropCls = data.dropped ? "dropped" : "clean";
@@ -944,6 +1007,7 @@ function backendDown(detail) {
   $("#banner").textContent = "⚠ backend unavailable — the solver isn't responding";
   $("#structure").hidden = true; $("#invariant").hidden = true;
   $("#tabs").innerHTML = "";
+  $("#view-caption").textContent = "";                   // no live diagram → no caption
   // BLANK the diagram entirely — a greyed-but-plausible picture (with its old title) can still read
   // as a believable lie when the backend is dead (Marek #177). Replace it with a clear placeholder.
   $("#view").classList.remove("recomputing", "stale");
