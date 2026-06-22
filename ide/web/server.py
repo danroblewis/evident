@@ -7,98 +7,42 @@ endpoint that matters is POST /api/analyze: source text in, and out comes the
 model-shape banner, the dropped-constraint honesty count, the reachable-set stats, and
 the recommended view rendered to a PNG — i.e. everything the live write→see loop needs.
 
+This module is the FastAPI wiring only — the `app`, middleware, request models, the
+`@app.post` endpoints (each a thin wrapper over an extracted helper), and the index/static
+serving. The work lives in sibling modules: `runtime_io` (`evident` subprocess calls),
+`render` (the renderer registry + claim view), `analysis` (banner/recommend + dropped-locs),
+`solve` (witness enumeration + unsat core), `smtlib_tools` (SMT-LIB export + query parse),
+and `config` (shared paths + the serialization lock).
+
 Run:  python3 -m uvicorn ide.web.server:app --host 0.0.0.0 --port 5173
 (or:  python3 ide/web/server.py)
 """
 import base64
-import inspect
-import json
 import os
 import re
-import subprocess
 import sys
 import tempfile
-import threading
-from collections import Counter
 
-ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-VIZ = os.path.join(ROOT, "viz")
-STATIC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
-EVIDENT = os.path.join(ROOT, "runtime", "target", "release", "evident")
+from config import EVIDENT, REACH_LIMIT, STATIC, VIZ, _LOCK
+
 sys.path.insert(0, VIZ)
 
 import matplotlib  # noqa: E402
 matplotlib.use("Agg")
-import networkx as nx  # noqa: E402  (SCC detection for the cyclic-vs-terminating banner)
 
 from evident_viz import load as load_model  # noqa: E402
 
 from fastapi import FastAPI  # noqa: E402
-from fastapi.responses import FileResponse, Response  # noqa: E402
+from fastapi.responses import Response  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 from pydantic import BaseModel  # noqa: E402
 
-# --- renderers: import once, call in-process (matplotlib stays warm) ----------------
-# The full promised gallery — all sixteen views. A renderer exposes
-# render(smt2, schema, out_path); the few that only ship a CLI main() are wrapped by
-# patching argv around the call (serialized by _LOCK, so the global mutation is safe).
-ALL_VIEWS = (
-    "solution_space",                                  # the SOLVED boundary, not a run — lead view
-    "time_series", "state_graph", "phase_portrait", "reachability_tree",
-    "morse_graph", "occupancy_heatmap", "timing_diagram", "transition_matrix",
-    "basin_map", "orbit_scatter", "scatter_matrix", "parallel_coords",
-    "chord_diagram", "nullcline_field", "fixedpoint_map", "cobweb",
-)
-
-
-def _render_via_main(mod):
-    """A renderer that only ships a CLI main(smt2 schema out via argv): patch argv around
-    the call (serialized by _LOCK, so the global mutation is safe)."""
-    def render(smt2, schema, out_path):
-        saved = sys.argv
-        sys.argv = ["render", smt2, schema, out_path]
-        try:
-            mod.main()
-        finally:
-            sys.argv = saved
-    return render
-
-
-def _render_via_model(fn):
-    """A renderer whose render() takes a loaded Model + out_path, not file paths."""
-    def render(smt2, schema, out_path):
-        fn(load_model(smt2, schema), out_path)
-    return render
-
-
-def _adapt(mod):
-    """Normalize a renderer to render(smt2, schema, out_path), whatever shape it ships:
-    render(smt2, schema, out) · render(model, out) · or a CLI main()."""
-    if hasattr(mod, "render"):
-        try:
-            n = len(inspect.signature(mod.render).parameters)
-        except (TypeError, ValueError):
-            n = 3
-        return mod.render if n >= 3 else _render_via_model(mod.render)
-    if hasattr(mod, "main"):
-        return _render_via_main(mod)
-    return None
-
-
-RENDERERS = {}            # view name -> render(smt2, schema, out_path)
-for _v in ALL_VIEWS:
-    try:
-        _fn = _adapt(__import__(f"render_{_v}"))
-        if _fn is not None:
-            RENDERERS[_v] = _fn
-        else:
-            print(f"[server] render_{_v}: no render()/main()", file=sys.stderr)
-    except Exception as e:                     # a renderer that won't import just isn't offered
-        print(f"[server] render_{_v} unavailable: {e}", file=sys.stderr)
-
-VIEWS = [v for v in ALL_VIEWS if v in RENDERERS]
-REACH_LIMIT = 400                              # bounded exploration cap for the live stats
-_LOCK = threading.Lock()                       # matplotlib + z3 are not thread-safe; serialize
+from analysis import (  # noqa: E402
+    _banner, _dropped_locs, _error_loc, _reachable_stats, _recommend)
+from render import RENDERERS, VIEWS, _maybe_claim, _render_png  # noqa: E402
+from runtime_io import _export, _run_query  # noqa: E402
+from solve import _enumerate, _unsat_core  # noqa: E402
+from smtlib_tools import _parse_predicate, _ready_to_run  # noqa: E402
 
 app = FastAPI(title="Evident IDE")
 
@@ -117,232 +61,6 @@ class Source(BaseModel):
     view: str | None = None
 
 
-def _export(source: str, work: str):
-    """Write source, run `evident export`. Returns (ok, prefix, dropped, message)."""
-    ev = os.path.join(work, "prog.ev")
-    with open(ev, "w") as f:
-        f.write(source)
-    prefix = os.path.join(work, "prog")
-    r = subprocess.run([EVIDENT, "export", ev, "--out", prefix],
-                       capture_output=True, text=True, timeout=30, cwd=ROOT)
-    err = (r.stderr or "") + (r.stdout or "")
-    dropped = sum(1 for ln in err.splitlines() if "dropped" in ln.lower())
-    # Strip the internal temp-dir plumbing from anything shown to the user (Sam/Marek #190):
-    # "export: load /tmp/tmpXXX/prog.ev: …" → "…", and drop the "wrote …prog.smt2" success noise.
-    err = (err.replace(ev + ":", "").replace(ev, "your program")
-              .replace(prefix + ".smt2", "the model").replace(prefix + ".schema.json", "the schema")
-              .replace(work + "/", "").replace("export: ", ""))
-    err = "\n".join(ln for ln in err.splitlines() if not ln.lstrip().startswith("wrote ")).strip()
-    if r.returncode != 0 or not os.path.exists(prefix + ".smt2"):
-        return False, prefix, dropped, err[-1200:] or "export failed"
-    return True, prefix, dropped, err
-
-
-_LOC_RE = re.compile(r"\bline (\d+), col (\d+)\b")
-
-
-def _error_loc(msg: str):
-    """Pull a 1-based (line, col) out of a parse/lex error message — the runtime
-    formats them as 'parse error at line N, col N: …'. Returns None when absent."""
-    m = _LOC_RE.search(msg or "")
-    return {"line": int(m.group(1)), "col": int(m.group(2))} if m else None
-
-
-# A dropped-constraint warning carries the DESUGARED expr, not a source line — the
-# runtime can't cheaply thread a line through BodyItem::Constraint (huge match-site
-# blast radius). So locate it in the source by token overlap: tokenize the dropped
-# pretty-text and each source line into identifiers, and pick the line that shares the
-# most DISTINCTIVE identifiers (rarer in the source ⇒ heavier — the typo'd/undeclared
-# name like `stp` is what pins the right line). Robust for the common case.
-_DROP_RE = re.compile(r"dropped constraint \(couldn't translate to Bool\):\s*(.+)$")
-_IDENT_RE = re.compile(r"[A-Za-z_]\w*")
-# desugaring noise that doesn't map back to a distinctive source token
-_IDENT_STOP = {"is_first_tick"}
-
-
-def _idents(text: str):
-    """Identifiers in `text`, lowered to their source form: a desugared `_count`
-    prev-read traces back to the carried name `count`, so strip a single leading `_`."""
-    out = set()
-    for tok in _IDENT_RE.findall(text or ""):
-        bare = tok[1:] if tok.startswith("_") and len(tok) > 1 else tok
-        if bare and bare not in _IDENT_STOP:
-            out.add(bare)
-    return out
-
-
-def _dropped_pretties(msg: str):
-    """The desugared expr text of each dropped-constraint warning line."""
-    return [m.group(1).strip()
-            for ln in (msg or "").splitlines()
-            if (m := _DROP_RE.search(ln))]
-
-
-def _dropped_locs(source: str, msg: str):
-    """1-based source line numbers for each dropped constraint, by distinctive-token
-    overlap. Frequency-weight each shared identifier by 1/(source occurrences) so the
-    rarest name (the typo) dominates; ties keep the first (earliest) line."""
-    pretties = _dropped_pretties(msg)
-    if not pretties:
-        return []
-    lines = (source or "").splitlines()
-    line_idents = [_idents(ln) for ln in lines]
-    freq = Counter(name for s in line_idents for name in s)
-    locs = []
-    for pretty in pretties:
-        want = _idents(pretty)
-        best_n, best_score = None, 0.0
-        for i, have in enumerate(line_idents):
-            shared = want & have
-            if not shared:
-                continue
-            score = sum(1.0 / freq[name] for name in shared)
-            if score > best_score + 1e-9:
-                best_n, best_score = i + 1, score
-        if best_n is not None:
-            locs.append(best_n)
-    return locs
-
-
-def _banner(m, max_branch=1, recurrent=1, states=None):
-    """The model-shape line, from the functional-dependency analysis. Two reachable-graph
-    facts override the dependency verdict: BRANCHING (a state with ≥2 successors is
-    nondeterministic no matter what), and a RECURRENT cycle (a ≥2-state SCC is
-    eventually-periodic, not a terminating chain — so the banner must say 'cyclic')."""
-    try:
-        ind = m.independence(states=states)      # reuse the analyze's reachable sample (#217)
-    except Exception:
-        return "model shape: (unavailable)"
-    short = lambda n: n.split(".")[-1]
-    if max_branch >= 2:
-        drv = ind.get("driver")
-        hint = f"; candidate driver of the deterministic part: {short(drv)}" if drv else ""
-        return (f"Nondeterministic — up to {max_branch} successors from some state "
-                f"(a free choice fans out){hint}")
-    if ind["verdict"] == "driven" and ind.get("driver"):
-        drv = short(ind["driver"])
-        deps = [short(d) for d in ind.get("dependents", [])[:4]]
-        if deps:
-            return (f"Driven pipeline — independent variable: {drv}"
-                    f" — computed from it: {', '.join(deps)}")
-        if recurrent >= 2:
-            return (f"Cyclic — {drv} cycles through a recurrent loop of {recurrent} states "
-                    f"(eventually periodic, no fixpoint)")
-        return f"Driven — {drv} advances on its own clock (a deterministic recurrence)"
-    if ind["verdict"] == "nondeterministic":
-        return "Nondeterministic — the free choice is the input, not a state variable"
-    # A relational (no single driver) machine whose reachable graph has a real recurrent
-    # SCC is a CYCLE, not just a tangle: the variables co-determine in a loop and the orbit
-    # eventually repeats. Say 'cyclic' (traffic: light+timer recur every N ticks) rather than
-    # the static 'genuinely relational' phrasing, which read as terminating.
-    if recurrent >= 2:
-        return (f"Cyclic — {recurrent} states recur; the variables co-determine in a loop "
-                f"(eventually periodic, no fixpoint)")
-    return "Genuinely relational — no independent variable (a cycle; every variable co-determines)"
-
-
-def _recommend(m, n_states, max_branch, discrete):
-    """Pick the lead view from the model's shape:
-      - a SMALL DISCRETE machine → state_graph: it draws the whole structure at once —
-        branch out-edges AND back-edges/cycles — which a tree would hide and a noodle
-        would bury. (A 3-state vending loop reads as a loop here, not a fanned tree.)
-      - otherwise, any BRANCHING (some state has ≥2 successors) → reachability_tree, so the
-        fan is visible where the full graph would be an unreadable noodle. Keyed on the
-        branching factor (not edge count) so it still fires when a large reachable set hits
-        the exploration cap (n_edges ≈ n_states).
-      - otherwise, a DETERMINISTIC system with ≥2 interacting NUMERIC variables →
-        phase_portrait: the compelling view is the orbit in (var₁, var₂) space, not a pair
-        of separate time-series lines. The oscillator spirals in (pos, vel); a time series
-        would split that single trajectory across two flat plots and hide the spiral. Gated
-        on ¬discrete (a tiny discrete machine reads as state_graph above) and on the
-        deterministic path (max_branch < 2) so the genuinely-branching numeric systems —
-        vending, pick — still go to reachability_tree above, not here.
-      - otherwise the time series: a deterministic numeric ramp/trajectory reads as a clean
-        line, faithful and fast for almost everything.
-
-      BUT lead with solution_space whenever there's a numeric variable: the DEFAULT picture
-      should be the BOUNDARY of what the variables can be (the solved range of each var + the
-      feasible set + fixed points), not one trajectory through it. The dynamics views are one
-      tab click away. (Purely categorical machines have no numeric boundary, so they fall
-      through to state_graph below.)"""
-    if "solution_space" in VIEWS and m.numeric_vars:
-        return "solution_space"
-    if "state_graph" in VIEWS and discrete and n_states <= 30:
-        return "state_graph"
-    if "reachability_tree" in VIEWS and max_branch >= 2:
-        return "reachability_tree"
-    if "phase_portrait" in VIEWS and not discrete and len(m.numeric_vars) >= 2:
-        return "phase_portrait"
-    return "time_series" if "time_series" in VIEWS else (VIEWS[0] if VIEWS else None)
-
-
-def _render_png(view, prefix):
-    """Render the view PNG and return (bytes, points). `points` is the interactive
-    hover-overlay sidecar (`<out>.points.json`, written by renderers that support it —
-    currently solution_space): a list of {fx, fy, state}; [] when no sidecar exists."""
-    out = prefix + f".{view}.png"
-    RENDERERS[view](prefix + ".smt2", prefix + ".schema.json", out)
-    with open(out, "rb") as f:
-        png = f.read()
-    points = []
-    try:
-        with open(out + ".points.json") as pf:
-            loaded = json.load(pf)
-            if isinstance(loaded, list):
-                points = loaded
-    except (OSError, ValueError):
-        pass
-    return png, points
-
-
-def _maybe_claim(prefix, dropped, source="", msg=""):
-    """If the export produced a CLAIM schema (no FSM), render its SOLVED solution space (exact
-    z3-Optimize bounds + per-cell feasible region) and return the analyze response; else None so
-    the FSM path runs. A claim has no run to step — this is the purest solved-boundary view."""
-    import z3, json as _json
-    try:
-        sch = _json.load(open(prefix + ".schema.json"))
-    except Exception:
-        return None
-    if "claim" not in sch or "fsm" in sch:
-        return None
-    smt2, schema = prefix + ".smt2", prefix + ".schema.json"
-    import render_claim_space as RC
-    feasible, bounds = True, {}
-    try:
-        _, body, consts = RC._load_claim(smt2, schema)
-        s = z3.Solver(); s.add(body)
-        feasible = s.check() == z3.sat
-        for v in sch.get("vars", []):
-            if v.get("kind") in ("int", "real") and v["name"] in consts:
-                lo = RC._opt_bound(body, consts[v["name"]], False)
-                hi = RC._opt_bound(body, consts[v["name"]], True)
-                if lo is not None and hi is not None:
-                    bounds[v["name"].split(".")[-1]] = [lo, hi]
-    except Exception as e:
-        print(f"[server] claim bounds failed: {type(e).__name__}: {e}", file=sys.stderr)
-    png = b""
-    try:
-        RC.render(smt2, schema, prefix + "_claim.png")
-        png = open(prefix + "_claim.png", "rb").read()
-    except Exception as e:
-        print(f"[server] claim render failed: {type(e).__name__}: {e}", file=sys.stderr)
-    return {
-        "ok": True,
-        "banner": ("a claim (a relation) — its SOLUTION SPACE, fully solved (no run; "
-                   "press ⊨ Solve for one witness)" if feasible else
-                   "a claim — UNSATISFIABLE (no assignment satisfies it; ⊨ Solve to see why)"),
-        "structure": {"verdict": "satisfiable" if feasible else "unsatisfiable", "claim": True,
-                      "fixed_points": [], "bounds": bounds, "reachable": 0, "capped": False,
-                      "branching": 1},
-        "dropped": dropped, "branching": 1, "states": 0, "edges": 0, "capped": False,
-        "vars": list(bounds.keys()), "view": "claim_space", "views": ["claim_space"],
-        "png": base64.b64encode(png).decode() if png else None,
-        "warnings": msg if dropped else "",
-        "dropped_locs": _dropped_locs(source, msg) if dropped else [],
-    }
-
-
 @app.post("/api/analyze")
 def analyze(req: Source):
     with _LOCK, tempfile.TemporaryDirectory() as work:
@@ -356,17 +74,8 @@ def analyze(req: Source):
             return claim_resp
         try:
             m = load_model(prefix + ".smt2", prefix + ".schema.json")
-            states, edges = m.reachable(limit=REACH_LIMIT)
-            n_states, n_edges = len(states), len(edges)
-            out_deg = Counter(src for src, _ in edges)
-            max_branch = max(out_deg.values()) if out_deg else 1
-            capped = n_states >= REACH_LIMIT      # the reachable set didn't fit the cap
-            # largest recurrent SCC: ≥2 distinguishes eventually-periodic (vending) from a
-            # terminating-driven chain (counter), which the banner must not flatten.
-            recurrent = 1
-            if edges:
-                g = nx.DiGraph(); g.add_edges_from(edges)
-                recurrent = max((len(c) for c in nx.strongly_connected_components(g)), default=1)
+            (states, edges, n_states, n_edges,
+             max_branch, capped, recurrent) = _reachable_stats(m, REACH_LIMIT)
             try:
                 structure = m.solution_structure(states=states, edges=edges)
             except Exception as _e:
@@ -377,7 +86,7 @@ def analyze(req: Source):
                                         # green "Terminates" card under the red "under-constrained"
                                         # banner (Marek #94). The dropped-constraint surface stands.
             discrete = m.is_discrete()
-            view = req.view if (req.view in VIEWS) else _recommend(m, n_states, max_branch, discrete)
+            view = req.view if (req.view in VIEWS) else _recommend(m, n_states, max_branch, discrete, VIEWS)
             # Resilient render: a single buggy renderer must never sink the whole analysis.
             # Try the chosen view, then fall back to dependable ones; report what rendered.
             png, points = b"", []
@@ -426,129 +135,6 @@ class SolveReq(BaseModel):
     given: dict[str, str] | None = None
     enumerate: bool = False
     limit: int | None = None
-
-
-_HEADER_KW = ("claim", "type", "enum", "fsm", "schema", "import", "assert")
-
-# A pure declaration: `names ∈ Type` with NO constraining comparison. Removing one un-declares
-# its variable, which silently DROPS the constraints that referenced it — flipping the claim to
-# SAT and making the declaration falsely look like a core member ("remove any one makes it
-# solvable" is false for `x ∈ Int`). Exclude these from the delta-debug. A chained-membership
-# that carries a bound (`0 ≤ x ∈ Int ≤ 5`) does NOT match (it has `≤`), so its bound stays a
-# candidate.
-_PURE_DECL = re.compile(r'^[A-Za-z_][\w, ]*∈\s*[A-Za-z_]\w*(\([^)]*\))?$')
-
-
-def _run_query(source, claim, given, work):
-    """One `evident query --json` call → parsed {ok, satisfied, claim, bindings}."""
-    import json as _json
-    ev = os.path.join(work, "prog.ev")
-    with open(ev, "w") as f:
-        f.write(source)
-    cmd = [EVIDENT, "query", ev]
-    if claim:
-        cmd.append(claim)
-    for k, v in (given or {}).items():
-        cmd += ["--given", f"{k}={v}"]
-    cmd.append("--json")
-    r = subprocess.run(cmd, capture_output=True, text=True, timeout=30, cwd=ROOT)
-    out = (r.stdout or "").strip()
-    try:
-        return _json.loads(out.splitlines()[-1]) if out else {"ok": False, "error": "no output"}
-    except Exception:
-        return {"ok": False, "error": (r.stderr or out).strip()[-600:] or "query failed"}
-
-
-def _block_term(name, val):
-    """An Evident expression true for THIS witness value — assembled into a ¬(…) blocking
-    constraint so enumeration can ask for a *different* solution."""
-    if isinstance(val, bool):
-        return f"{name} = {'true' if val else 'false'}"
-    if isinstance(val, (int, float)):
-        return f"{name} = {val}"
-    if isinstance(val, str):
-        # an enum-variant label (Idle) compares bare; a quoted string compares quoted.
-        ident = val and (val[0].isalpha() or val[0] == "_") and "(" not in val
-        return f"{name} = {val}" if ident else f'{name} = "{val}"'
-    if isinstance(val, list):
-        terms = []
-        for i, el in enumerate(val):
-            t = _block_term(f"{name}[{i}]", el)
-            if t is None:
-                return None
-            terms.append(t)
-        return "(" + " ∧ ".join(terms) + ")" if terms else None
-    if isinstance(val, dict):                      # a record witness (e.g. sudoku's boxes elements,
-        terms = []                                 # toposort edges) — block each field by dotted name
-        for fld, fv in sorted(val.items()):
-            t = _block_term(f"{name}.{fld}", fv)
-            if t is None:
-                return None
-            terms.append(t)
-        return "(" + " ∧ ".join(terms) + ")" if terms else None
-    return None                                    # genuinely unsupported → can't block
-
-
-def _block_clause(bindings):
-    terms = []
-    for k, v in sorted(bindings.items()):
-        t = _block_term(k, v)
-        if t is None:
-            return None
-        terms.append(t)
-    return "¬(" + " ∧ ".join(terms) + ")" if terms else None
-
-
-def _enumerate(source, claim, given, limit, work):
-    """Walk distinct witnesses by iterated source-level blocking: solve, append a ¬(witness)
-    constraint to the claim body, re-solve, until UNSAT (complete) or the limit (≥limit)."""
-    sols, blocks, resolved_claim = [], [], claim
-    for _ in range(limit):
-        src = source if not blocks else source.rstrip() + "\n" + "\n".join("    " + b for b in blocks) + "\n"
-        r = _run_query(src, claim, given, work)
-        if not r.get("ok"):
-            return resolved_claim, sols, len(sols) > 0, r.get("error")  # blocking broke parse → stop
-        resolved_claim = r.get("claim") or resolved_claim
-        if not r.get("satisfied"):
-            return resolved_claim, sols, True, None                     # exhausted → complete
-        b = r.get("bindings", {})
-        sols.append(b)
-        clause = _block_clause(b)
-        if clause is None:
-            return resolved_claim, sols, False, None                    # can't block → incomplete
-        blocks.append(clause)
-    return resolved_claim, sols, False, None                            # hit limit → ≥limit
-
-
-def _unsat_core(source, claim, work):
-    """A MINIMAL unsat core by deletion-based minimization over the source's constraint lines.
-
-    The naive "a line whose individual removal flips to SAT is in the core" is UNSOUND when
-    constraints are redundant: for {x>3, x>5, y>5, y<100, x+y<10} it drops x>5 (removing it still
-    leaves x>3 ⇒ SAT) yet reports a SATISFIABLE set as 'the core'. Instead: start with every
-    constraint line, and drop a line ONLY when the program stays UNSAT without it. The residual is
-    a genuine minimal core — every member is necessary AND the set itself is unsatisfiable.
-
-    Header/decl/comment lines are never candidates (a pure decl's removal un-declares a var and
-    cascades to drop its constraints). Line granularity; multi-line ∀ blocks may be missed."""
-    lines = source.split("\n")
-    cand = []
-    for i, ln in enumerate(lines):
-        s = ln.strip()
-        if (not s or s.startswith("--") or s.split(" ", 1)[0] in _HEADER_KW
-                or _PURE_DECL.match(s)):
-            continue
-        cand.append(i)
-    cand_set = set(cand)
-    keep = set(cand)
-    for i in cand:
-        trial_keep = keep - {i}
-        trial = "\n".join(ln for j, ln in enumerate(lines)
-                          if j not in cand_set or j in trial_keep)
-        r = _run_query(trial, claim, None, work)
-        if r.get("ok") and r.get("satisfied") is False:   # still UNSAT without line i → redundant
-            keep = trial_keep
-    return [{"line": i + 1, "text": lines[i].strip()} for i in sorted(keep)]
 
 
 @app.post("/api/solve")
@@ -621,38 +207,6 @@ def temporal(req: TemporalReq):
             return {"ok": False, "error": str(e)}
 
 
-# ad-hoc query: the same `var op value` shape the frontend's _INV_RE parses, so a raw
-# predicate string ("light = Green ∧ timer = 2") can be split + parsed server-side too.
-_QUERY_TERM_RE = re.compile(r"^\s*([A-Za-z_]\w*(?:\.\w+)?)\s*(<=|>=|!=|<|>|=|≤|≥|≠)\s*(.+?)\s*$")
-
-
-def _coerce_query_value(s: str):
-    """Coerce a raw term value the way the frontend's _coerce does: int, float, bool, else str
-    (an enum variant name like 'Green')."""
-    s = s.strip()
-    if re.fullmatch(r"-?\d+", s):
-        return int(s)
-    if re.fullmatch(r"-?\d*\.\d+", s):
-        return float(s)
-    if s in ("true", "false"):
-        return s == "true"
-    return s
-
-
-def _parse_predicate(pred: str):
-    """Split a raw conjunction `t1 ∧ t2 ∧ …` (also accepts 'and' / '&&') into (var, op, value)
-    triples — the server-side mirror of the frontend term split."""
-    terms = []
-    for part in re.split(r"\s*(?:∧|&&|\band\b)\s*", pred.strip()):
-        if not part:
-            continue
-        m = _QUERY_TERM_RE.match(part)
-        if not m:
-            raise ValueError(f"bad query term {part!r}; write  var op value  (e.g. timer = 2)")
-        terms.append([m.group(1), m.group(2), _coerce_query_value(m.group(3))])
-    return terms
-
-
 class QueryReq(BaseModel):
     source: str
     # Either a list of [var, op, value] triples (a conjunction), OR a raw predicate string the
@@ -680,54 +234,6 @@ def query(req: QueryReq):
             return {"ok": True, **m.query([tuple(t) for t in terms], limit=REACH_LIMIT)}
         except Exception as e:
             return {"ok": False, "error": str(e)}
-
-
-def _z3_path():
-    for p in ("z3", "/usr/local/bin/z3", "/opt/homebrew/bin/z3"):
-        try:
-            if subprocess.run([p, "-version"], capture_output=True, timeout=5).returncode == 0:
-                return p
-        except Exception:
-            continue
-    return None
-
-
-def _named_asserts(smt: str):
-    """Wrap each one-line top-level `(assert X)` as `(assert (! X :named aK))` so an unsat-core
-    names them back — z3's own minimal core then points at specific assertions."""
-    out, k = [], 0
-    for ln in smt.splitlines():
-        s = ln.strip()
-        if s.startswith("(assert ") and s.endswith(")"):
-            k += 1
-            out.append(f"(assert (! {s[len('(assert '):-1]} :named a{k}))")
-        else:
-            out.append(ln)
-    return "\n".join(out)
-
-
-def _ready_to_run(raw: str):
-    """A one-paste z3 session. Pick the tail that MATCHES the verdict: `(get-model)` errors on an
-    UNSAT script and `(get-unsat-core)` errors on a SAT one (Ana #203), so check first — and on
-    UNSAT hand z3 its own minimal NAMED core (Ana #204). Falls back to a neutral, never-erroring
-    tail + a hint when z3 isn't available."""
-    if "(check-sat)" in raw:
-        return raw
-    z3, verdict = _z3_path(), None
-    if z3:
-        try:
-            r = subprocess.run([z3, "-in"], input=raw + "\n(check-sat)\n",
-                               capture_output=True, text=True, timeout=10)
-            lines = (r.stdout or "").strip().splitlines()
-            verdict = lines[0].strip() if lines else None
-        except Exception:
-            verdict = None
-    if verdict == "unsat":
-        return "(set-option :produce-unsat-cores true)\n" + _named_asserts(raw) + "\n(check-sat)\n(get-unsat-core)\n"
-    if verdict == "sat":
-        return raw + "\n(check-sat)\n(get-model)\n"
-    return (raw + "\n(check-sat)\n"
-            "; SAT → add (get-model)   UNSAT → add (set-option :produce-unsat-cores true) above + (get-unsat-core)\n")
 
 
 @app.post("/api/smtlib")
