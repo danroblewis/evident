@@ -65,14 +65,44 @@ fsm vending
     0 ≤ vault   ∈ Int ≤ 12     -- money the operator has collected
     act     ∈ Act              -- free customer/operator choice each tick
 
-    is_first_tick ⇒ (mode = Idle ∧ balance = 0 ∧ stock = 3 ∧ vault = 0)
+    is_first_tick ⇒
+        mode = Idle
+        balance = 0
+        stock = 3
+        vault = 0
 
-    (¬is_first_tick ∧ act = InsertCoin ∧ _balance < 5) ⇒ (mode = Coining ∧ balance = _balance + 1 ∧ stock = _stock ∧ vault = _vault)
-    (¬is_first_tick ∧ act = InsertCoin ∧ _balance ≥ 5) ⇒ (mode = Coining ∧ balance = _balance ∧ stock = _stock ∧ vault = _vault)
-    (¬is_first_tick ∧ act = Purchase ∧ _balance ≥ 3 ∧ _stock > 0) ⇒ (mode = Dispensing ∧ balance = _balance - 3 ∧ stock = _stock - 1 ∧ vault = _vault + 3)
-    (¬is_first_tick ∧ act = Purchase ∧ (_balance < 3 ∨ _stock = 0)) ⇒ (mode = Idle ∧ balance = _balance ∧ stock = _stock ∧ vault = _vault)
-    (¬is_first_tick ∧ act = Cancel)  ⇒ (mode = Refunding ∧ balance = 0 ∧ stock = _stock ∧ vault = _vault)
-    (¬is_first_tick ∧ act = Service) ⇒ (mode = Servicing ∧ balance = _balance ∧ stock = 3 ∧ vault = 0)`,
+    ¬is_first_tick ⇒
+        act = InsertCoin ⇒
+            _balance < 5 ⇒
+                mode = Coining
+                balance = _balance + 1
+                stock = _stock
+                vault = _vault
+            _balance ≥ 5 ⇒
+                mode = Coining
+                balance = _balance
+                stock = _stock
+                vault = _vault
+        (act = Purchase ∧ _balance ≥ 3 ∧ _stock > 0) ⇒
+            mode = Dispensing
+            balance = _balance - 3
+            stock = _stock - 1
+            vault = _vault + 3
+        (act = Purchase ∧ (_balance < 3 ∨ _stock = 0)) ⇒
+            mode = Idle
+            balance = _balance
+            stock = _stock
+            vault = _vault
+        act = Cancel ⇒
+            mode = Refunding
+            balance = 0
+            stock = _stock
+            vault = _vault
+        act = Service ⇒
+            mode = Servicing
+            balance = _balance
+            stock = 3
+            vault = 0`,
   "traffic light · a cyclic state machine (FSM)":
 `enum Light = Red | Green | Yellow
 
@@ -80,12 +110,15 @@ fsm traffic
     light ∈ Light
     timer ∈ Int
     is_first_tick ⇒ (light = Red ∧ timer = 0)
-    (¬is_first_tick ∧ _timer ≥ 2) ⇒ timer = 0
-    (¬is_first_tick ∧ _timer < 2) ⇒ Δtimer = 1
-    (¬is_first_tick ∧ _timer < 2) ⇒ light = _light
-    (¬is_first_tick ∧ _timer ≥ 2 ∧ _light = Red)    ⇒ light = Green
-    (¬is_first_tick ∧ _timer ≥ 2 ∧ _light = Green)  ⇒ light = Yellow
-    (¬is_first_tick ∧ _timer ≥ 2 ∧ _light = Yellow) ⇒ light = Red`,
+    ¬is_first_tick ⇒
+        _timer ≥ 2 ⇒
+            timer = 0
+            _light = Red    ⇒ light = Green
+            _light = Green  ⇒ light = Yellow
+            _light = Yellow ⇒ light = Red
+        _timer < 2 ⇒
+            Δtimer = 1
+            light = _light`,
   "oscillator · a damped spring (FSM, phase spiral)":
 `-- Two interacting real variables — position and velocity. Open the phase_portrait view:
 -- the trajectory spirals in (pos, vel) space. The solver finds the equilibrium at the
