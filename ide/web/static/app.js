@@ -134,7 +134,7 @@ function renderStructure(s) {
   // the invariant checker only makes sense for an FSM with a reachable set — not a raw claim
   $("#invariant").hidden = !s || !!s.claim;
   $("#query-row").hidden = !s || !!s.claim;            // ad-hoc query shares the verify row's gate
-  if ($("#query-row").hidden) $("#query-stack").hidden = true;  // hide the assumption chips too
+  if ($("#query-row").hidden) { $("#query-stack").hidden = true; $("#query-suggest").hidden = true; }  // hide the chips too
   if (!s) { el.hidden = true; return; }
   el.hidden = false;
   const [icon, name, note] = VERDICTS[s.verdict] || ["·", s.verdict, ""];
@@ -225,7 +225,7 @@ function paint(data, ms) {
     exitCompareModes();                                // never a two-up / past view over an error or claim
     $("#structure").hidden = true;
     $("#invariant").hidden = true;                     // no reachable set → no verify row
-    $("#query-row").hidden = true; $("#query-stack").hidden = true;
+    $("#query-row").hidden = true; $("#query-stack").hidden = true; $("#query-suggest").hidden = true;
     $("#inv-result").textContent = "";
     $("#tabs").innerHTML = "";                          // no current valid view — don't leave the
                                                        // 16-tab strip inviting clicks over a stale
@@ -266,6 +266,7 @@ function paint(data, ms) {
   $("#banner").className = "live";
   $("#banner").innerHTML = "◆ " + annotateConcepts(data.banner);
   renderStructure(data.structure);
+  renderQuerySuggestions(data);                            // example-query chips (Sam #248)
   activeView = data.view;
 
   // tabs

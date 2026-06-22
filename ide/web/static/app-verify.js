@@ -556,6 +556,31 @@ async function clearAssumptions() {
   await queryUnderStack();
 }
 
+// Example-query chips so a newcomer isn't typing blind, guessing var names (Sam #248). Built from a
+// REAL reachable state when the lead view carries sample points (clicking is then a guaranteed hit
+// that shows a witness + trace), else from the bare var names. Called by paint() with the analyze data.
+function renderQuerySuggestions(data) {
+  const row = $("#query-suggest");
+  if (!row) return;
+  if (!data || $("#query-row").hidden) { row.hidden = true; row.innerHTML = ""; return; }
+  const sample = (data.points && data.points[0] && data.points[0].state) || null;
+  let chips = [];
+  if (sample) chips = Object.entries(sample).slice(0, 4).map(([k, v]) => `${k.split(".").pop()} = ${v}`);
+  else if (data.vars && data.vars.length) chips = data.vars.slice(0, 4).map((v) => `${v} = `);
+  if (!chips.length) { row.hidden = true; row.innerHTML = ""; return; }
+  row.hidden = false;
+  row.innerHTML = `<span class="suggest-label">try:</span>`
+    + chips.map((c) => `<button class="suggest-chip" type="button">${escapeHtml(c)}</button>`).join("");
+  row.querySelectorAll(".suggest-chip").forEach((btn) => {
+    btn.onclick = () => {
+      const f = $("#query-prop");
+      f.value = btn.textContent.trim();
+      f.focus();
+      if (!/=\s*$/.test(f.value)) runQuery();   // a complete "var = value" chip → run it; a bare "var =" waits for input
+    };
+  });
+}
+
 // --- wiring: attach the verify console + field-shortcut listeners ------------------
 // Mirrors the original top-level wiring (same elements, same listeners).
 function initVerify() {

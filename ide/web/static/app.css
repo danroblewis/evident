@@ -229,6 +229,13 @@ html,body { margin:0; height:100%; background:var(--bg); color:var(--ink);
 #query-result.good { color:var(--good); } #query-result.bad { color:var(--bad); }
 #query-result.searching { animation:solving-pulse 1s ease-in-out infinite; }   /* busy signal on the ~1.5s search (Sam #249) */
 #query-row button:disabled { opacity:0.5; cursor:default; }
+/* example-query chips — click to fill the query so a newcomer isn't guessing var names (Sam #248) */
+#query-suggest { display:flex; align-items:center; gap:6px; flex-wrap:wrap; padding:0 14px 6px; }
+#query-suggest[hidden] { display:none; }
+.suggest-label { color:var(--dim); font-size:11px; }
+.suggest-chip { background:#16313f; color:#8fb6e0; border:1px solid #2d5a72; border-radius:10px;
+  padding:1px 9px; font:11px ui-monospace,Menlo,monospace; cursor:pointer; }
+.suggest-chip:hover { border-color:var(--accent); color:var(--accent); }
 
 /* assumption stack (Z3 push/pop) — removable chips under the query row (Ana #240) */
 #query-stack { display:flex; align-items:center; flex-wrap:wrap; gap:6px; padding:5px 14px;
