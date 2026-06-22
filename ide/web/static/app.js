@@ -611,12 +611,29 @@ const CONCEPTS = {
 };
 const _CONCEPT_KEYS = Object.keys(CONCEPTS).sort((a, b) => b.length - a.length);  // longest first
 function annotateConcepts(text) {
-  let out = escapeHtml(text);                       // escape first; concept words have no HTML chars
-  for (const k of _CONCEPT_KEYS) {
+  // Collect non-overlapping concept matches on the ORIGINAL text, then wrap in ONE left-to-right
+  // pass. A previous version did iterated `.replace` over the accumulating HTML, so a later key
+  // ("recurrence") matched the same word INSIDE an earlier span's data-gloss attribute and nested a
+  // broken span — leaking a stray `">` into the banner (Sam #185). Building once from the source
+  // text makes inserted markup unreachable to the matcher.
+  const esc = escapeHtml(text);
+  const spans = [];                                 // {s, e, k} on `esc`, longest key wins
+  for (const k of _CONCEPT_KEYS) {                  // _CONCEPT_KEYS is longest-first
     const re = new RegExp("(?<![\\w-])(" + k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + ")(?![\\w-])", "g");
-    out = out.replace(re, `<span class="concept" data-gloss="${escapeHtml(CONCEPTS[k])}">$1</span>`);
+    let m;
+    while ((m = re.exec(esc)) !== null) {
+      const s = m.index, e = s + m[0].length;
+      if (!spans.some((sp) => s < sp.e && e > sp.s)) spans.push({ s, e, k });   // skip overlaps
+    }
   }
-  return out;
+  spans.sort((a, b) => a.s - b.s);
+  let out = "", pos = 0;
+  for (const sp of spans) {
+    out += esc.slice(pos, sp.s)
+         + `<span class="concept" data-gloss="${escapeHtml(CONCEPTS[sp.k])}">${esc.slice(sp.s, sp.e)}</span>`;
+    pos = sp.e;
+  }
+  return out + esc.slice(pos);
 }
 document.addEventListener("mouseover", (e) => {
   const c = e.target.closest && e.target.closest(".concept");
