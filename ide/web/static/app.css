@@ -239,9 +239,11 @@ html,body { margin:0; height:100%; background:var(--bg); color:var(--ink);
 .trace-nav:disabled { opacity:.35; cursor:default; }
 .trace-step { color:var(--dim); white-space:nowrap; }
 .trace-flag { color:var(--bad); white-space:nowrap; }
+.trace-flag.cycle { color:#e0b050; }                       /* lasso loop, not a single violation */
 .trace-state { font:12px ui-monospace,Menlo,monospace; color:var(--ink); white-space:pre-wrap;
   padding:3px 6px; background:#0f1419; border:1px solid var(--line); border-radius:6px; }
 .trace-state.bad { color:var(--bad); border-color:var(--bad); }
+.trace-state.cycle { color:#e0b050; border-color:#e0b050; }   /* a state on the dodging cycle */
 
 #tabs { display:flex; flex-wrap:wrap; gap:5px; padding:8px 12px 4px; }
 #tabs .tab { padding:3px 10px; border-radius:6px 6px 0 0; background:#1b2129; color:var(--dim);

@@ -306,9 +306,9 @@ async function checkInvariant() {
 // Step through it one state at a time, reading the FULL assignment at each step — not the
 // one-line collapse. Pure helpers (_traceClamp / _traceStepLabel / _traceStateLine) carry the
 // index + format logic so they're unit-testable without a DOM.
-const _trace = { states: [], i: 0, label: "" };
+const _trace = { states: [], i: 0, label: "", cycleStart: null };
 function clearTrace() {
-  _trace.states = []; _trace.i = 0; _trace.label = "";
+  _trace.states = []; _trace.i = 0; _trace.label = ""; _trace.cycleStart = null;
   const el = $("#inv-trace"); el.hidden = true; el.innerHTML = "";
 }
 function _renderTrace() {
@@ -325,17 +325,24 @@ function _renderTrace() {
   const next = document.createElement("button"); next.className = "trace-nav"; next.textContent = "▶"; next.disabled = last;
   next.onclick = () => { _trace.i = _traceClamp(_trace.i + 1, n); _renderTrace(); };
   head.appendChild(prev); head.appendChild(step); head.appendChild(next);
-  if (last) { const flag = document.createElement("span"); flag.className = "trace-flag"; flag.textContent = "● violation here"; head.appendChild(flag); }
+  // A liveness lasso marks the steps from cycle_start on as the dodging CYCLE (Ana #239) —
+  // "↻ loops here, never reaches Q" — instead of a single "violation here" flag.
+  const cs = _trace.cycleStart;
+  const inCycle = cs != null && i >= cs;
+  if (inCycle) { const flag = document.createElement("span"); flag.className = "trace-flag cycle"; flag.textContent = "↻ loops here — never reaches Q"; head.appendChild(flag); }
+  else if (last) { const flag = document.createElement("span"); flag.className = "trace-flag"; flag.textContent = "● violation here"; head.appendChild(flag); }
   el.appendChild(head);
   const line = document.createElement("div");
-  line.className = "trace-state" + (last ? " bad" : "");
+  line.className = "trace-state" + (inCycle ? " cycle" : (last ? " bad" : ""));
   line.textContent = _traceStateLine(_trace.states[i]);
   el.appendChild(line);
 }
-// Open the stepper on a fresh trace, parked at the violating (final) step.
-function showTrace(trace, label) {
+// Open the stepper on a fresh trace, parked at the violating (final) step. `cycleStart`, when
+// given, marks where a liveness lasso's dodging cycle begins (steps ≥ it are the loop).
+function showTrace(trace, label, cycleStart) {
   if (!trace || trace.length < 2) { clearTrace(); return; }
   _trace.states = trace; _trace.i = trace.length - 1; _trace.label = label || "";
+  _trace.cycleStart = (cycleStart != null && cycleStart >= 0) ? cycleStart : null;
   _renderTrace();
 }
 // Liveness check (◇ / ⤳) against /api/temporal, with the dodging-run trace on failure.
@@ -354,11 +361,19 @@ async function runTemporal(out, body) {
       out.textContent = (d.exhaustive ? "✓ proven" : "✓ holds (bounded)")
         + ` — ${d.predicate} on all ${d.checked} reachable states`;
     } else {
+      // Lasso (Ana #239): the run is a STEM into a CYCLE that dodges Q forever, classified by
+      // fairness. forced ⇒ the cycle literally can't escape to Q (a counterexample even under
+      // weak fairness); !forced ⇒ some cycle state has a fair successor that reaches Q, so the
+      // dodge survives only WITHOUT fairness.
       const tr = _fmtTrace(d.trace);
+      const verdict = d.cycle && d.cycle.length
+        ? (d.forced
+            ? "a run dodges it forever — forced cycle, no escape to Q"
+            : "a run can dodge it — but under fairness the cycle escapes to Q; only a counterexample without fairness")
+        : "a run gets stuck in a ¬Q sink — never reaches Q";
       out.className = "bad";
-      out.textContent = `✗ violated — ${d.predicate}; a run dodges it forever`
-        + (tr ? `:  ${tr}` : "");
-      if (d.trace && d.trace.length >= 2) showTrace(d.trace, "a run that dodges it forever");
+      out.textContent = `✗ violated — ${d.predicate}; ${verdict}` + (tr ? `:  ${tr}` : "");
+      if (d.trace && d.trace.length >= 2) showTrace(d.trace, verdict, d.cycle_start);
     }
   } catch (e) { out.className = "bad"; out.textContent = "✕ " + e; }
 }

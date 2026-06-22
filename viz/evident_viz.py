@@ -450,14 +450,28 @@ class Model:
         """The shortest path of STATES from the initial state (index 0) to `target`, via BFS over
         the reachable graph — so a counterexample comes with the trajectory that reaches it
         (Ana #173/#175), not just the offending state."""
+        path = self._bfs_indices(0, target, edges, restrict=None)
+        if path is None:
+            return [dict(states[target])]
+        return [dict(states[k]) for k in path]
+
+    @staticmethod
+    def _bfs_indices(source, target, edges, restrict=None):
+        """Shortest path of node INDICES from `source` to `target` via BFS over `edges`.
+        `restrict`, if given, is a node set the path must stay inside (every visited node
+        must be in it) — used to keep the stem inside the ¬Q subgraph so it genuinely
+        dodges Q. Returns the index list (inclusive of both ends) or None if unreachable."""
         import collections
-        if target == 0:
-            return [dict(states[0])]
+        if restrict is not None and (source not in restrict or target not in restrict):
+            return None
+        if source == target:
+            return [source]
         adj = collections.defaultdict(list)
         for a, b in edges:
-            adj[a].append(b)
-        prev = {0: None}
-        q = collections.deque([0])
+            if restrict is None or (a in restrict and b in restrict):
+                adj[a].append(b)
+        prev = {source: None}
+        q = collections.deque([source])
         while q:
             u = q.popleft()
             if u == target:
@@ -467,12 +481,75 @@ class Model:
                     prev[w] = u
                     q.append(w)
         if target not in prev:
-            return [dict(states[target])]
+            return None
         path, u = [], target
         while u is not None:
             path.append(u)
             u = prev[u]
-        return [dict(states[k]) for k in reversed(path)]
+        return list(reversed(path))
+
+    def _lasso(self, start_idx, bad, sub, g, can_reach_q, edges, states):
+        """Build the STEM + CYCLE lasso witnessing that a run from `start_idx` dodges Q forever,
+        plus the FAIRNESS classification (Ana #239). The stem is the shortest path INSIDE the ¬Q
+        subgraph from `start_idx` to the entry of a dodging cycle/sink; the cycle is the actual ¬Q
+        loop back to that entry (or [] when the dodge is a terminal ¬Q sink). `forced` is True iff
+        NO state on the cycle has an out-edge in the FULL graph to a state from which Q is reachable
+        — i.e. the run literally cannot escape to Q even under weak fairness.
+
+        Returns (stem_states, cycle_states, forced). `stem` always includes the cycle entry as its
+        last element; `cycle` is the entry-to-entry loop (entry repeated at the end) or [] for a sink.
+        """
+        import networkx as nx
+        # Pick the nearest dodging target inside ¬Q reachable from start (shortest stem).
+        entry, stem_idx = None, None
+        seen = self._bfs_reach(start_idx, sub)            # ¬Q nodes reachable from start, by distance
+        for cand in sorted(seen, key=seen.get):
+            if cand in bad:
+                entry, stem_idx = cand, self._bfs_indices(start_idx, cand, edges, restrict=set(sub.nodes))
+                if stem_idx is not None:
+                    break
+        if entry is None or stem_idx is None:             # defensive: fall back to a plain trace
+            return [dict(states[start_idx])], [], True
+        stem = [dict(states[k]) for k in stem_idx]
+
+        # The cycle: a ¬Q loop from entry back to entry. A terminal ¬Q sink has none.
+        cycle_idx = []
+        if g.out_degree(entry) > 0:                       # not a stuck terminal
+            if sub.has_edge(entry, entry):                # self-loop ¬Q cycle
+                cycle_idx = [entry, entry]
+            else:
+                try:                                       # a directed cycle through entry within ¬Q
+                    found = nx.find_cycle(sub, source=entry)
+                    cyc_nodes = [u for (u, _v) in found]
+                    cycle_idx = cyc_nodes + [cyc_nodes[0]]
+                except nx.NetworkXNoCycle:
+                    cycle_idx = []
+        cycle = [dict(states[k]) for k in cycle_idx]
+
+        # FAIRNESS: forced iff no cycle state can step (in the FULL graph) into can_reach_q.
+        cyc_states = set(cycle_idx[:-1]) if cycle_idx else set()
+        forced = True
+        for u in cyc_states:
+            for w in g.successors(u):
+                if w in can_reach_q:
+                    forced = False
+                    break
+            if not forced:
+                break
+        return stem, cycle, forced
+
+    @staticmethod
+    def _bfs_reach(source, graph):
+        """{node: distance} for every node reachable from `source` within `graph` (BFS)."""
+        import collections
+        dist, q = {source: 0}, collections.deque([source])
+        while q:
+            u = q.popleft()
+            for w in graph.successors(u):
+                if w not in dist:
+                    dist[w] = dist[u] + 1
+                    q.append(w)
+        return dist
 
     def _predicate(self, var, op, value):
         """Build (full_name, short_pretty_predicate, fn) for a `var op value` comparison —
@@ -552,8 +629,17 @@ class Model:
           - modality "leads_to"   (P ⤳ Q): from every reachable P-state, is Q eventually reached?
         A run can AVOID Q forever iff it reaches a ¬Q cycle or gets stuck in a ¬Q terminal. We
         compute that 'avoid' set (backward reachability, within the ¬Q subgraph, from ¬Q cycles ∪
-        ¬Q sinks); ◇Q holds iff the initial state isn't in it, P⤳Q iff no P-state is. Returns a
-        concrete counterexample state (one that can dodge Q forever) when it fails."""
+        ¬Q sinks); ◇Q holds iff the initial state isn't in it, P⤳Q iff no P-state is.
+
+        On failure we return a verifiable STEM+CYCLE LASSO (Ana #239), not just a single state:
+          - `stem`:  shortest path INSIDE ¬Q from the offending state to the dodging-cycle entry.
+          - `cycle`: the actual ¬Q loop back to that entry ([] for a stuck terminal ¬Q sink).
+          - `trace`: stem + cycle (one walk), kept for the stepper; `cycle_start` indexes where
+                     the cycle begins inside `trace`.
+          - `forced`: the FAIRNESS verdict — True iff no cycle state can step (in the FULL graph)
+                     into a state from which Q is reachable (a real counterexample even under weak
+                     fairness); False (AVOIDABLE) iff some cycle state has a fair successor that
+                     escapes to Q — under fairness that successor eventually fires and Q holds."""
         import networkx as nx
         qname, qpred, qfn = self._predicate(var, op, value)
         states, edges = self.reachable(limit=limit)
@@ -575,23 +661,50 @@ class Model:
                 if w not in avoid:
                     avoid.add(w); stack.append(w)
 
+        # can_reach_q: every node from which a Q-state is reachable in the FULL graph (reverse
+        # reachability from Q over g) — the fairness oracle, computed once.
+        qset = [i for i in range(n) if qfn(states[i])]
+        can_reach_q, qstack = set(qset), list(qset)
+        while qstack:
+            for w in g.predecessors(qstack.pop()):
+                if w not in can_reach_q:
+                    can_reach_q.add(w); qstack.append(w)
+
         if modality == "leads_to":
             _, ppred, pfn = self._predicate(p_var, p_op, p_value)
             offenders = [i for i in range(n) if pfn(states[i]) and i in avoid]
             holds = not offenders
-            cex = dict(states[offenders[0]]) if offenders else None
-            trace = self._trace_to(offenders[0], edges, states) if offenders else None
-            return {"holds": holds, "checked": n, "exhaustive": exhaustive,
-                    "counterexample": cex, "trace": trace, "predicate": f"{ppred} ⤳ {qpred}"}
+            pred = f"{ppred} ⤳ {qpred}"
+            if holds:
+                return {"holds": True, "checked": n, "exhaustive": exhaustive,
+                        "counterexample": None, "trace": None, "stem": None, "cycle": None,
+                        "cycle_start": None, "forced": None, "predicate": pred}
+            return self._fail_result(offenders[0], bad, sub, g, can_reach_q, edges, states,
+                                     n, exhaustive, pred)
+
         holds = 0 not in avoid                                 # initial state is index 0
-        # counterexample trace: a path from init to a state stuck dodging Q forever
-        trace = None
-        if not holds:
-            target = next((i for i in range(n) if i in bad), 0)   # a ¬Q cycle/sink it reaches
-            trace = self._trace_to(target, edges, states)
-        return {"holds": holds, "checked": n, "exhaustive": exhaustive,
-                "counterexample": dict(states[0]) if not holds else None,
-                "trace": trace, "predicate": f"◇ {qpred}"}
+        pred = f"◇ {qpred}"
+        if holds:
+            return {"holds": True, "checked": n, "exhaustive": exhaustive,
+                    "counterexample": None, "trace": None, "stem": None, "cycle": None,
+                    "cycle_start": None, "forced": None, "predicate": pred}
+        return self._fail_result(0, bad, sub, g, can_reach_q, edges, states,
+                                 n, exhaustive, pred)
+
+    def _fail_result(self, start_idx, bad, sub, g, can_reach_q, edges, states, n, exhaustive, pred):
+        """Package a failing liveness check as the stem+cycle lasso + fairness flag. `trace`
+        (= stem + cycle, the cycle entry not repeated) stays for back-compat with the stepper;
+        `cycle_start` is the index into `trace` where the loop begins."""
+        stem, cycle, forced = self._lasso(start_idx, bad, sub, g, can_reach_q, edges, states)
+        # trace = stem then the cycle body (drop the repeated entry: stem already ends on it,
+        # and the cycle's trailing entry is the same node — so the walk reads init→…→entry→…→entry).
+        cycle_body = cycle[1:] if cycle else []                # cycle = [entry, …, entry]; skip lead entry
+        trace = stem + cycle_body
+        cycle_start = len(stem) - 1 if cycle else None         # the entry (last stem state) opens the loop
+        return {"holds": False, "checked": n, "exhaustive": exhaustive,
+                "counterexample": dict(states[start_idx]),
+                "trace": trace, "stem": stem, "cycle": cycle,
+                "cycle_start": cycle_start, "forced": forced, "predicate": pred}
 
     def _resolve_carried(self, var):
         for w in self.carried:                     # exact full-name match first
