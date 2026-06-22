@@ -779,7 +779,7 @@ function markDroppedLines(locs, warnings) {
 }
 
 // --- the live loop ----------------------------------------------------------------
-let timer = null, activeView = null, lastSource = "", _dimTimer = null;
+let timer = null, activeView = null, lastSource = "", _dimTimer = null, _elapsedTimer = null;
 
 function setStatus(text, cls) { const s = $("#status"); s.textContent = text; s.className = cls || "dim"; }
 
@@ -893,6 +893,7 @@ function overlayPoints(wrap, points) {
 }
 
 function paint(data, ms) {
+  clearInterval(_elapsedTimer);                          // stop the elapsed ticker — result is in
   $("#latency").textContent = ms != null ? `${ms} ms` : "";
   gloss.hidden = true;                                  // clear any pinned overlay tooltip from the
                                                        // previous program — a ghost pin must not
@@ -1001,7 +1002,7 @@ function paint(data, ms) {
 // NEVER leave the prior picture/verdict looking live (Ana #202, Marek #206): mark everything stale,
 // hide the verdict, and say so loudly so a stale diagram is never mistaken for the current program's.
 function backendDown(detail) {
-  clearTimeout(_dimTimer);
+  clearTimeout(_dimTimer); clearInterval(_elapsedTimer);
   setStatus("backend down", "err");
   $("#banner").className = "stale";
   $("#banner").textContent = "⚠ backend unavailable — the solver isn't responding";
@@ -1034,6 +1035,13 @@ async function run(view) {
   if (!$("#solve").hidden)                                  // stale witness/UNSAT under a changed source
     $("#solve-head").innerHTML = '<span class="dim">source changed — press re-solve</span>';
   const t0 = performance.now();
+  // A live elapsed counter so a multi-second solve (real-valued / high-fanout FSMs run 1–8s) reads
+  // as WORKING, not frozen (Ana/Marek #202). Only kicks in after 400ms so fast analyses don't flicker.
+  clearInterval(_elapsedTimer);
+  _elapsedTimer = setInterval(() => {
+    const s = (performance.now() - t0) / 1000;
+    if (s > 0.4) setStatus(`solving… ${s.toFixed(1)}s`, "busy");
+  }, 100);
   try {
     const res = await fetch("/api/analyze", {
       method: "POST", headers: { "content-type": "application/json" },
