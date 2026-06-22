@@ -449,4 +449,57 @@ impl EvidentRuntime {
         Ok((smt2, json))
     }
 
+    /// Export a (non-FSM) claim's constraint as SMT-LIB plus a JSON schema of its
+    /// variables. A claim is a *static* constraint — no transition — so we build the
+    /// cache at snapshot count 1 (no `_prev` twin). The Python visualization tools
+    /// load these to explore the claim's solution space (sample/enumerate witnesses).
+    ///
+    /// Schema shape:
+    ///   {"claim": "<name>", "vars": [{"name": "x", "kind": "int|real|bool|string|enum",
+    ///                                 "role": "interface|internal"}, ...]}
+    /// `role` is "interface" iff the var's prefix is one of the claim's first
+    /// `param_count` Membership params, else "internal". Returns (smt2, json).
+    pub fn export_claim(&self, name: &str) -> Result<(String, String), RuntimeError> {
+        let schema = self.schemas.get(name)
+            .ok_or_else(|| RuntimeError::UnknownSchema(name.to_string()))?;
+        let empty: HashMap<String, Value> = HashMap::new();
+        let cached = crate::encode::build_cache(
+            schema, &self.schemas, self.z3_ctx, &self.datatypes, Some(&self.enums), &empty, 1);
+        let smt2 = format!("{}", cached.solver);
+
+        // Same interface/internal split as export_transition: the first `param_count`
+        // body items are the claim's first-line params (the observable contract).
+        let interface: std::collections::HashSet<&str> = schema.body.iter()
+            .take(schema.param_count)
+            .filter_map(|it| match it {
+                crate::core::ast::BodyItem::Membership { name, .. } => Some(name.as_str()),
+                _ => None,
+            })
+            .collect();
+
+        let mut names: Vec<&String> = cached.env.keys().collect();
+        names.sort();
+        let mut rows: Vec<String> = Vec::new();
+        for n in names {
+            // At snapshot=1 a claim has no `_prev` twins; skip any stray underscore var.
+            if n.starts_with('_') { continue; }
+            let kind = match cached.env.get(n) {
+                Some(crate::encode::Var::IntVar(_))    => "int",
+                Some(crate::encode::Var::RealVar(_))   => "real",
+                Some(crate::encode::Var::BoolVar(_))   => "bool",
+                Some(crate::encode::Var::StrVar(_))    => "string",
+                Some(crate::encode::Var::EnumVar { .. }) => "enum",
+                _ => continue,
+            };
+            let role = if interface.contains(n.split('.').next().unwrap_or(n))
+                { "interface" } else { "internal" };
+            rows.push(format!(
+                "    {{\"name\": \"{n}\", \"kind\": \"{kind}\", \"role\": \"{role}\"}}"));
+        }
+        let json = format!(
+            "{{\n  \"claim\": \"{name}\",\n  \"vars\": [\n{}\n  ]\n}}\n",
+            rows.join(",\n"));
+        Ok((smt2, json))
+    }
+
 }
