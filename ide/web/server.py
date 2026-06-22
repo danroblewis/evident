@@ -12,6 +12,7 @@ Run:  python3 -m uvicorn ide.web.server:app --host 0.0.0.0 --port 5173
 """
 import base64
 import inspect
+import json
 import os
 import re
 import subprocess
@@ -210,10 +211,22 @@ def _recommend(m, n_states, max_branch, discrete):
 
 
 def _render_png(view, prefix):
+    """Render the view PNG and return (bytes, points). `points` is the interactive
+    hover-overlay sidecar (`<out>.points.json`, written by renderers that support it —
+    currently solution_space): a list of {fx, fy, state}; [] when no sidecar exists."""
     out = prefix + f".{view}.png"
     RENDERERS[view](prefix + ".smt2", prefix + ".schema.json", out)
     with open(out, "rb") as f:
-        return f.read()
+        png = f.read()
+    points = []
+    try:
+        with open(out + ".points.json") as pf:
+            loaded = json.load(pf)
+            if isinstance(loaded, list):
+                points = loaded
+    except (OSError, ValueError):
+        pass
+    return png, points
 
 
 def _maybe_claim(prefix, dropped):
@@ -297,11 +310,11 @@ def analyze(req: Source):
             view = req.view if (req.view in VIEWS) else _recommend(m, n_states, max_branch, discrete)
             # Resilient render: a single buggy renderer must never sink the whole analysis.
             # Try the chosen view, then fall back to dependable ones; report what rendered.
-            png = b""
+            png, points = b"", []
             for cand in [view, "state_graph", "time_series"]:
                 if cand in RENDERERS:
                     try:
-                        png = _render_png(cand, prefix)
+                        png, points = _render_png(cand, prefix)
                         view = cand
                         break
                     except Exception as _re:
@@ -326,6 +339,7 @@ def analyze(req: Source):
                 "view": view,
                 "views": VIEWS,
                 "png": base64.b64encode(png).decode() if png else None,
+                "points": points,        # interactive hover overlay (solution_space); [] otherwise
                 "warnings": msg if dropped else "",
             }
         except Exception as e:
