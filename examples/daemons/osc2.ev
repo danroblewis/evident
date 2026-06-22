@@ -1,0 +1,55 @@
+-- A pos-only second-difference (ΔΔ) damped oscillator — a DAEMON (no FFI effects),
+-- so its exported transition IR loads cleanly into evident_viz for the dynamics
+-- views. The whole oscillation lives in `pos` alone via the second forward
+-- difference: ΔΔpos = pos − 2·_pos + __pos IS the discrete acceleration, so a
+-- one-line recurrence in pos reproduces the classic two-variable (pos, vel) form.
+--
+--   evident phase-portrait examples/daemons/osc2.ev --axes pos
+--
+-- Two initial conditions bootstrap it: is_first_tick (tick 0) and is_second_tick
+-- (tick 1) both seed pos = 60 (released from rest). From tick 2 on the recurrence
+-- runs; __pos is read only under ¬is_second_tick, never before two ticks exist.
+--
+--   pos:  60, 60, 58.333, 55.139, 50.590, 44.889, 38.258, 30.932, ...
+import "stdlib/runtime.ev"
+
+fsm oscillator
+    pos ∈ Real
+    is_first_tick  ⇒ pos = 60
+    is_second_tick ⇒ pos = 60
+    (¬is_first_tick ∧ ¬is_second_tick) ⇒ ΔΔpos = (2 * __pos - 3 * _pos) / 36
+
+-- ── Static tests ─────────────────────────────────────────────
+
+-- With _pos = __pos = 60: pos = 60 − 5/3 = 175/3 (≈ 58.3333). Pin it exactly.
+claim sat_second_difference
+    pos ∈ Real
+    _pos ∈ Real
+    __pos ∈ Real
+    is_first_tick ∈ Bool
+    is_second_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    is_second_tick = false
+    _pos = 60
+    __pos = 60
+    oscillator
+    3 * pos = 175
+
+-- The second difference is pos − 2·_pos + __pos, NOT pos − _pos. Pin a value the
+-- true ΔΔ recurrence forbids when __pos ≠ _pos.
+claim unsat_not_single_delta
+    pos ∈ Real
+    _pos ∈ Real
+    __pos ∈ Real
+    is_first_tick ∈ Bool
+    is_second_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+    is_first_tick = false
+    is_second_tick = false
+    _pos = 60
+    __pos = 0
+    oscillator
+    3 * pos = 175

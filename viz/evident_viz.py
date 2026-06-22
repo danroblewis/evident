@@ -72,6 +72,16 @@ class Model:
         self._change_rates_cache = None
         self._first_tick_name = schema["is_first_tick"]
 
+        # Two-tick (ΔΔ / second-difference) models read TWO ticks back: a carried
+        # leaf with hist==2 has a `__x` (two-ticks-ago) twin bound in the transition.
+        # Such a model's "state" for reachability is the PAIR (cur, prev) — the next
+        # tick depends on both _x=cur AND __x=prev — and tick 1 is bootstrapped by an
+        # is_second_tick flag. One-tick models (every existing demo) have no hist-2
+        # leaf, no is_second_tick field, and take the unchanged single-snapshot path.
+        self.two_tick_vars = [v for v in self.carried if v.get("hist", 1) == 2]
+        self.has_two_tick = bool(self.two_tick_vars)
+        self._second_tick_name = schema.get("is_second_tick")
+
         # Parse the self-contained SMT-LIB (datatype decls + transition asserts).
         self.assertions = z3.parse_smt2_file(smt2_path)
 
@@ -107,6 +117,8 @@ class Model:
                     self.consts[nm] = z3.Const(nm, sort)
 
         self.first_tick = self.consts.get(self._first_tick_name)
+        self.second_tick = (self.consts.get(self._second_tick_name)
+                            if self._second_tick_name else None)
 
         # For each enum state var, map variant-name -> z3 value (nullary ctor).
         self.enum_variants = {}            # state-var name -> [variant names]
@@ -168,6 +180,70 @@ class Model:
         for v in self.carried:
             if v["name"] in state:
                 solver.add(self.consts[v["prev"]] == self._lit(v, state[v["name"]]))
+
+    def _pin_prev2(self, solver, prev_state):
+        # Pin the TWO-ticks-ago twin (`__x`) for the hist-2 leaves. Only the two-tick
+        # vars have a `__x` const; one-tick vars have nothing two ticks back.
+        for v in self.two_tick_vars:
+            if v["name"] in prev_state:
+                c = self.consts.get("__" + v["name"])
+                if c is not None:
+                    solver.add(c == self._lit(v, prev_state[v["name"]]))
+
+    def _successors_two(self, cur, prev, limit=64):
+        """ALL distinct next CURRENT-snapshots from the (cur, prev) pair of a two-tick
+        model: pin `_x = cur` AND `__x = prev`, with is_first_tick = is_second_tick =
+        false. When `prev` is None (the step OUT of the first tick) we pin only `_x =
+        cur` and set is_second_tick = true — the bootstrap tick the model handles
+        without a two-ago value. Returns a list of current-snapshot state dicts."""
+        s = self._base()
+        if self.first_tick is not None:
+            s.add(self.first_tick == False)  # noqa: E712
+        self._pin_prev(s, cur)
+        if prev is None:
+            if self.second_tick is not None:
+                s.add(self.second_tick == True)  # noqa: E712
+        else:
+            if self.second_tick is not None:
+                s.add(self.second_tick == False)  # noqa: E712
+            self._pin_prev2(s, prev)
+        out = []
+        while len(out) < limit and s.check() == z3.sat:
+            mod = s.model()
+            out.append(self._read_state(mod))
+            s.add(z3.Or([self.consts[v["name"]] != mod.eval(self.consts[v["name"]],
+                                                            model_completion=True)
+                         for v in self.carried]))
+        return out
+
+    def _reachable_two(self, limit=5000):
+        """Reachable set for a two-tick (ΔΔ) model. A NODE is the pair (cur, prev):
+        the transition depends on both. We BFS over pairs, but the returned `states`
+        are the CURRENT snapshots only (and `edges` index into them) so every
+        downstream consumer — phase_portrait / solution_space / solved_bounds /
+        check_invariant / check_temporal — sees ordinary single-snapshot states and
+        works unchanged. Dedup is on the (cur, prev) pair."""
+        init = self.initial_state()
+        if init is None:
+            return [], []
+        # The pair-graph: each node carries (cur, prev); states[] holds the cur dicts.
+        states = [init]
+        pairs = [(init, None)]                       # tick-0 node: no prev yet
+        pair_index = {(self._key(init), None): 0}
+        edges = []
+        frontier = [0]
+        while frontier and len(states) < limit:
+            i = frontier.pop()
+            cur, prev = pairs[i]
+            for nxt in self._successors_two(cur, prev):
+                pk = (self._key(nxt), self._key(cur))
+                if pk not in pair_index:
+                    pair_index[pk] = len(states)
+                    states.append(nxt)
+                    pairs.append((nxt, cur))
+                    frontier.append(pair_index[pk])
+                edges.append((i, pair_index[pk]))
+        return states, edges
 
     # ---- queries ------------------------------------------------------------
     def initial_state(self):
@@ -235,6 +311,8 @@ class Model:
         edges is a list of (from_index, to_index). For discrete programs this is
         the exact reachable state graph; for numeric ones it may not terminate,
         so it's capped by `limit`."""
+        if self.has_two_tick:
+            return self._reachable_two(limit)
         init = self.initial_state()
         if init is None:
             return [], []

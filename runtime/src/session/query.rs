@@ -426,6 +426,7 @@ impl EvidentRuntime {
         let mut names: Vec<&String> = cached.env.keys().collect();
         names.sort();
         let mut rows: Vec<String> = Vec::new();
+        let mut any_two_tick = false;
         for n in names {
             if n.starts_with('_') { continue; }
             let prev = format!("_{n}");
@@ -440,11 +441,21 @@ impl EvidentRuntime {
             };
             let role = if interface.contains(n.split('.').next().unwrap_or(n))
                 { "interface" } else { "internal" };
+            // History depth: how many ticks back the transition reads this var.
+            // 1 = only `_x` referenced (the normal case); 2 = `__x` (two ticks
+            // back) is also bound in env — a ΔΔ / second-difference model, which
+            // needs a two-snapshot (cur, prev) reachability node in the viz.
+            let prev2 = format!("__{n}");
+            let hist = if cached.env.contains_key(&prev2) { 2 } else { 1 };
+            if hist == 2 { any_two_tick = true; }
             rows.push(format!(
-                "    {{\"name\": \"{n}\", \"prev\": \"{prev}\", \"kind\": \"{kind}\", \"role\": \"{role}\"}}"));
+                "    {{\"name\": \"{n}\", \"prev\": \"{prev}\", \"kind\": \"{kind}\", \"role\": \"{role}\", \"hist\": {hist}}}"));
         }
+        let second_tick_field = if any_two_tick {
+            ",\n  \"is_second_tick\": \"is_second_tick\""
+        } else { "" };
         let json = format!(
-            "{{\n  \"fsm\": \"{name}\",\n  \"is_first_tick\": \"is_first_tick\",\n  \"state\": [\n{}\n  ]\n}}\n",
+            "{{\n  \"fsm\": \"{name}\",\n  \"is_first_tick\": \"is_first_tick\"{second_tick_field},\n  \"state\": [\n{}\n  ]\n}}\n",
             rows.join(",\n"));
         Ok((smt2, json))
     }
