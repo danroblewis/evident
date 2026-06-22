@@ -268,6 +268,14 @@ class SolveReq(BaseModel):
 
 _HEADER_KW = ("claim", "type", "enum", "fsm", "schema", "import", "assert")
 
+# A pure declaration: `names ∈ Type` with NO constraining comparison. Removing one un-declares
+# its variable, which silently DROPS the constraints that referenced it — flipping the claim to
+# SAT and making the declaration falsely look like a core member ("remove any one makes it
+# solvable" is false for `x ∈ Int`). Exclude these from the delta-debug. A chained-membership
+# that carries a bound (`0 ≤ x ∈ Int ≤ 5`) does NOT match (it has `≤`), so its bound stays a
+# candidate.
+_PURE_DECL = re.compile(r'^[A-Za-z_][\w, ]*∈\s*[A-Za-z_]\w*(\([^)]*\))?$')
+
 
 def _run_query(source, claim, given, work):
     """One `evident query --json` call → parsed {ok, satisfied, claim, bindings}."""
@@ -351,6 +359,8 @@ def _unsat_core(source, claim, work):
     for i, ln in enumerate(lines):
         s = ln.strip()
         if not s or s.startswith("--") or s.split(" ", 1)[0] in _HEADER_KW:
+            continue
+        if _PURE_DECL.match(s):       # un-declaring a var cascades to drop its constraints
             continue
         trial = "\n".join(lines[:i] + lines[i + 1:])
         r = _run_query(trial, claim, None, work)
