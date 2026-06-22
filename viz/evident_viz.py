@@ -44,8 +44,28 @@ CHANNEL_FITNESS = {
 }
 
 
+_LOAD_CACHE = {}          # (smt2_path, schema_path, mtime) -> Model
+_LOAD_ORDER = []          # FIFO of keys, bounding the cache (each Model holds a z3 context)
+
+
 def load(smt2_path, schema_path):
-    return Model(smt2_path, schema_path)
+    """Construct a Model from the exported smt2 + schema, cached by (paths, smt2 mtime) with a tiny
+    FIFO. Within one /api/analyze the model is built for the analysis AND re-built inside the renderer;
+    caching returns the SAME warm model (whose reachable() is memoized), so the render skips a redundant
+    parse + BFS — the analyze's dominant remaining cost on real-valued FSMs. The mtime key invalidates
+    on a rewrite; per-request tempdir paths are unique, so a cache hit only happens within one request
+    (the renderers are read-only on the model, so sharing is safe)."""
+    try:
+        key = (smt2_path, schema_path, os.path.getmtime(smt2_path))
+    except OSError:
+        return Model(smt2_path, schema_path)        # can't stat → build uncached
+    m = _LOAD_CACHE.get(key)
+    if m is None:
+        m = _LOAD_CACHE[key] = Model(smt2_path, schema_path)
+        _LOAD_ORDER.append(key)
+        while len(_LOAD_ORDER) > 4:
+            _LOAD_CACHE.pop(_LOAD_ORDER.pop(0), None)
+    return m
 
 
 class Model:
