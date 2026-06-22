@@ -394,6 +394,29 @@ def solve(req: SolveReq):
         return r
 
 
+class InvariantReq(BaseModel):
+    source: str
+    var: str
+    op: str
+    value: str | int | float | bool
+
+
+@app.post("/api/invariant")
+def invariant(req: InvariantReq):
+    """Assert-and-check a safety invariant over the reachable set: does `var op value` hold on
+    EVERY reachable state? Returns holds + (when finite & fully explored) a proof flag, or the
+    first reachable counterexample state."""
+    with _LOCK, tempfile.TemporaryDirectory() as work:
+        ok, prefix, dropped, msg = _export(req.source, work)
+        if not ok:
+            return {"ok": False, "error": msg}
+        try:
+            m = load_model(prefix + ".smt2", prefix + ".schema.json")
+            return {"ok": True, **m.check_invariant(req.var, req.op, req.value, limit=REACH_LIMIT)}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+
 _NOCACHE = {"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
            "Pragma": "no-cache", "Expires": "0"}
 
