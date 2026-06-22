@@ -241,6 +241,37 @@ html,body { margin:0; height:100%; background:var(--bg); color:var(--ink);
 .pt-target { position:absolute; width:14px; height:14px; transform:translate(-50%, -50%);
   border-radius:50%; cursor:pointer; background:transparent; }
 .pt-target:hover { background:#58a6ff55; box-shadow:0 0 0 1px var(--accent); }
+
+/* run-history strip (#209): a thin row of dim thumbnails of recent analyses — click to look
+   back. Subtle and out of the way; collapses to nothing when there's no history. */
+#history { flex:0 0 auto; display:flex; gap:5px; padding:4px 10px 2px; overflow-x:auto; }
+#history:empty { display:none; }
+.hist-thumb { height:34px; width:auto; border:1px solid var(--line); border-radius:3px;
+  opacity:0.55; cursor:pointer; background:#0b0f14; flex:0 0 auto; transition:opacity .1s; }
+.hist-thumb:hover { opacity:1; border-color:var(--accent); }
+.hist-thumb.on { opacity:1; border-color:var(--accent); box-shadow:0 0 0 1px var(--accent); }
+
+/* a read-only past run (#209): the picture plus a note saying how long ago + how to return */
+.past-wrap { display:flex; flex-direction:column; align-items:center; gap:6px; max-width:100%; max-height:100%; }
+.past-note { color:var(--dim); font-size:11px; font-style:italic; }
+
+/* two-up pin/compare (#207): pinned A beside live B, A ghosted so B reads as current */
+.compare-row { display:flex; gap:12px; width:100%; height:100%; align-items:stretch; justify-content:center; }
+.compare-pane { display:flex; flex-direction:column; align-items:center; gap:4px;
+  flex:1 1 0; min-width:0; overflow:hidden; }
+.compare-pane.ghost { opacity:0.7; }
+.compare-pane .view-wrap { max-width:100%; max-height:100%; }
+.compare-label { color:var(--dim); font-size:11px; letter-spacing:.04em; text-transform:uppercase; }
+.compare-pane.ghost .compare-label { color:var(--accent); }
+.compare-unpin { margin-left:6px; cursor:pointer; color:var(--dim); }
+.compare-unpin:hover { color:var(--bad); }
+.compare-cap { font-size:11px; text-align:center; }
+
+#pin-btn { background:#1b2129; color:var(--ink); border:1px solid var(--line);
+  border-radius:6px; padding:3px 9px; cursor:pointer; }
+#pin-btn:hover { border-color:var(--accent); }
+#pin-btn.on { border-color:var(--accent); color:var(--accent); background:#16313f; }
+
 #honesty { padding:7px 14px; border-top:1px solid var(--line); font-size:12px;
   display:flex; gap:16px; flex-wrap:wrap; }
 #honesty .clean { color:var(--good); } #honesty .dropped { color:var(--bad); }

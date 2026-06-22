@@ -781,6 +781,35 @@ function markDroppedLines(locs, warnings) {
 // --- the live loop ----------------------------------------------------------------
 let timer = null, activeView = null, lastSource = "", _dimTimer = null, _elapsedTimer = null;
 
+// --- run-history + pin/compare (tasks #209, #207) ---------------------------------
+// `history` is a ring buffer of the last good analyses (newest first), so you can flip
+// back to "what did this look like 3 edits ago" (#209). `pinnedA` holds one snapshot
+// captured by the 📌 button so the live result renders BESIDE it (#207). `pastView`,
+// when set, means we're looking at a past snapshot read-only — the next edit returns live.
+const HISTORY_CAP = 8;
+let history = [];
+let pinnedA = null;
+let pastView = null;
+
+// Push a snapshot onto a newest-first ring buffer, capping length. Pure (returns the
+// array) so it's unit-testable headless; mutates in place for the module array.
+function pushHistory(arr, snap, cap) {
+  arr.unshift(snap);
+  if (arr.length > cap) arr.length = cap;
+  return arr;
+}
+
+// Human "relative age" of a past timestamp vs now. Pure — unit-tested headless.
+function relativeAge(deltaMs) {
+  const s = Math.max(0, Math.floor(deltaMs / 1000));
+  if (s < 5) return "just now";
+  if (s < 60) return s + "s ago";
+  const m = Math.floor(s / 60);
+  if (m < 60) return m + "m ago";
+  const h = Math.floor(m / 60);
+  return h + "h ago";
+}
+
 function setStatus(text, cls) { const s = $("#status"); s.textContent = text; s.className = cls || "dim"; }
 
 // Translate parser jargon into something a newcomer can act on. The raw error stays
@@ -909,6 +938,7 @@ function paint(data, ms) {
   $("#view-caption").textContent = "";                   // clear the per-view caption on any result;
                                                          // the OK path below re-sets it for the new view.
   if (!data.ok) {
+    exitCompareModes();                                // never a two-up / past view over an error or claim
     $("#structure").hidden = true;
     $("#invariant").hidden = true;                     // no reachable set → no verify row
     $("#inv-result").textContent = "";
@@ -979,18 +1009,24 @@ function paint(data, ms) {
     tabs.appendChild(el);
   });
 
-  // the rendered view, with an optional interactive hover overlay (solution_space points)
-  if (data.png) {
-    view.innerHTML = `<div class="view-wrap"><img alt="${data.view}" `
-      + `src="data:image/png;base64,${data.png}"></div>`;
-    overlayPoints(view.querySelector(".view-wrap"), data.points || []);
-  } else {
-    view.innerHTML = `<div class="ph">no view for this program</div>`;
-  }
+  // We're back to a live result — leave any read-only "past run" mode.
+  pastView = null;
+  // the rendered view: single live picture, or — when something is pinned — two-up (#207).
+  renderLiveView(view, data);
 
   // the one-line "what am I looking at?" caption under the diagram — set on every render, cleared
   // when the view has no caption (so a stale caption never lingers under a different picture).
   $("#view-caption").textContent = (data.png && VIEW_CAPTIONS[data.view]) ? VIEW_CAPTIONS[data.view] : "";
+
+  // run-history (#209): snapshot only SUCCESSFUL, drawable results — never errors / claims /
+  // backend-down, and never a result with no png (nothing to thumbnail).
+  if (data.png) {
+    pushHistory(history, {
+      ts: Date.now(), fname: $("#fname").textContent, banner: data.banner || data.view || "",
+      view: data.view, png: data.png, points: data.points || [], ms,
+    }, HISTORY_CAP);
+  }
+  renderHistory();
 
   // the honesty line (branching ×N surfaces nondeterminism right next to the stats)
   const dropCls = data.dropped ? "dropped" : "clean";
@@ -1012,11 +1048,121 @@ function paint(data, ms) {
   }
 }
 
+// One picture as a `.view-wrap` (image + optional hover overlay), or a placeholder when the
+// program has no view. Shared by the single-view and two-up (#207) paths.
+function viewPane(data, withOverlay) {
+  if (!data.png) return `<div class="ph">no view for this program</div>`;
+  const pane = document.createElement("div");
+  pane.className = "view-wrap";
+  pane.innerHTML = `<img alt="${data.view}" src="data:image/png;base64,${data.png}">`;
+  if (withOverlay) overlayPoints(pane, data.points || []);
+  return pane;
+}
+
+// Render the live result into #view. Single picture normally; two-up (pinned A · live B) once
+// the 📌 button has captured a snapshot (#207). Only the live B pane carries the #184 overlay.
+function renderLiveView(view, data) {
+  view.innerHTML = "";
+  if (!pinnedA) {
+    const pane = viewPane(data, true);
+    if (typeof pane === "string") view.innerHTML = pane; else view.appendChild(pane);
+    return;
+  }
+  const row = document.createElement("div");
+  row.className = "compare-row";
+  row.appendChild(comparePane("A · pinned", pinnedA.banner, viewPane(pinnedA, false), true));
+  row.appendChild(comparePane("B · live", data.banner || data.view || "", viewPane(data, true), false));
+  view.appendChild(row);
+}
+
+// One labelled column of the two-up compare. `ghost` dims the pinned A so the live B reads as
+// the current picture. The A column carries an ✕ to unpin.
+function comparePane(label, caption, body, ghost) {
+  const col = document.createElement("div");
+  col.className = "compare-pane" + (ghost ? " ghost" : "");
+  const head = document.createElement("div");
+  head.className = "compare-label";
+  head.textContent = label;
+  if (ghost) {
+    const x = document.createElement("span");
+    x.className = "compare-unpin"; x.textContent = "✕"; x.title = "unpin A — back to single live view";
+    x.onclick = () => setPinned(null);
+    head.appendChild(x);
+  }
+  col.appendChild(head);
+  if (typeof body === "string") { const ph = document.createElement("div"); ph.innerHTML = body; col.appendChild(ph); }
+  else col.appendChild(body);
+  const cap = document.createElement("div");
+  cap.className = "compare-cap dim"; cap.textContent = caption;
+  col.appendChild(cap);
+  return col;
+}
+
+// The history strip (#209): up to HISTORY_CAP thumbnails, newest first. Click → read-only past
+// view. Empty strip when there's no history. The current past-view thumb (if any) is outlined.
+function renderHistory() {
+  const strip = $("#history");
+  if (!strip) return;
+  strip.innerHTML = "";
+  if (!history.length) return;
+  const now = Date.now();
+  history.forEach((snap, i) => {
+    if (!snap.png) return;            // skip a snapshot with no picture (degrade gracefully)
+    const age = relativeAge(now - snap.ts);
+    const thumb = document.createElement("img");
+    thumb.className = "hist-thumb" + (pastView === snap ? " on" : "");
+    thumb.src = `data:image/png;base64,${snap.png}`;
+    thumb.alt = snap.view;
+    thumb.title = `${snap.banner}  ·  ${age}`;
+    thumb.onclick = () => viewPastRun(snap);
+    strip.appendChild(thumb);
+  });
+}
+
+// Open a past snapshot read-only in #view (#209). A note says how long ago + how to return; the
+// next edit / analyze (paint clears pastView) bounces back to live.
+function viewPastRun(snap) {
+  if (!snap || !snap.png) return;
+  pastView = snap;
+  const view = $("#view");
+  view.classList.remove("stale", "recomputing");
+  const age = relativeAge(Date.now() - snap.ts);
+  view.innerHTML = `<div class="past-wrap"><div class="past-note">⟲ past run (${age}) — edit to return to live</div>`
+    + `<div class="view-wrap"><img alt="${snap.view}" src="data:image/png;base64,${snap.png}"></div></div>`;
+  $("#view-caption").textContent = snap.banner || "";
+  renderHistory();   // re-outline the active thumbnail
+}
+
+// 📌 toggle (#207): capture the most-recent live result as A, or unpin if already pinned. We pin
+// the newest history snapshot (it mirrors the current live result), so A is a real drawable run.
+function togglePin() {
+  if (pinnedA) { setPinned(null); return; }
+  const snap = history.find((s) => s.png);
+  if (!snap) return;                 // nothing drawable to pin yet — no-op
+  setPinned(snap);
+}
+
+function setPinned(snap) {
+  pinnedA = snap;
+  const btn = $("#pin-btn");
+  if (btn) { btn.classList.toggle("on", !!snap); btn.textContent = snap ? "📌 unpin" : "📌 pin"; }
+  // re-render the live view in the new layout, using the freshest history snapshot as B.
+  if (!pastView && history.length) renderLiveView($("#view"), history[0]);
+}
+
+// On error / claim / backend-down we must not leave a two-up or a past view over a dead/changed
+// backend (degrade gracefully). Drop back to single-view mode; history itself is preserved.
+function exitCompareModes() {
+  pastView = null;
+  if (pinnedA) setPinned(null);
+}
+
 // The backend (solver) is unreachable OR returned an error status — it crashed or was stopped.
 // NEVER leave the prior picture/verdict looking live (Ana #202, Marek #206): mark everything stale,
 // hide the verdict, and say so loudly so a stale diagram is never mistaken for the current program's.
 function backendDown(detail) {
   clearTimeout(_dimTimer); clearInterval(_elapsedTimer);
+  exitCompareModes();                                    // don't show a stale two-up / past view over a dead backend
   setStatus("backend down", "err");
   $("#banner").className = "stale";
   $("#banner").textContent = "⚠ backend unavailable — the solver isn't responding";
@@ -1296,6 +1442,7 @@ $("#smtlib-btn").onclick = async () => {
   } catch (e) { setStatus("✕ " + e, "err"); }
 };
 $("#solve-all").onclick = () => solve(true);
+if ($("#pin-btn")) $("#pin-btn").onclick = () => togglePin();
 
 // Assert-and-check a safety invariant over the reachable set — verify `var op value` holds on
 // EVERY reachable state (a proof when the set is finite & fully explored), or get a reachable
@@ -1597,6 +1744,7 @@ function buildCommands() {
   });
   cmds.push({ label: "Solve claim — ⊨ witness or UNSAT", run: () => solve(false) });
   if ($("#smtlib-btn")) cmds.push({ label: "Copy SMT-LIB encoding", run: () => clickIf("#smtlib-btn") });
+  if ($("#pin-btn")) cmds.push({ label: pinnedA ? "Unpin compare (A)" : "Pin this result — compare next beside it", run: () => togglePin() });
   if ($("#symbols-btn")) cmds.push({ label: "Symbols palette — how to type ∈ ⇒ Δ", run: () => togglePalette(true) });
   if ($("#tour-btn")) cmds.push({ label: "Guided tour", run: () => startTour() });
   // one command per live view tab (the #tabs strip is rebuilt by paint())
