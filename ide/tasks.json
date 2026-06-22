@@ -4340,16 +4340,23 @@
       "id": 242,
       "title": "Pin-and-explore a partial assignment ON the diagram: click a state to FIX it, then re-solve the rest of the model under that pin and see the reachable set / trace restricted to runs through it. I can hover a state for its assignment now (great), but I can't say 'assume the machine is HERE, what's reachable from here / what leads here' without editing source. The relational superpower is fixing any variable; let me fix it by clicking the picture.",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "ide-critic-expert",
       "created": "2026-06-22T20:15:02Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "analysis"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-22T22:42:35Z",
+          "by": "worker",
+          "act": "done",
+          "note": "click a diagram state \u2192 /api/explore: forward-reachable count + backward trace (what leads here)"
+        }
+      ]
     },
     {
       "id": 243,
