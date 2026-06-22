@@ -42,196 +42,12 @@ from networkx.drawing.nx_pydot import graphviz_layout
 sys.path.insert(0, "viz")
 from evident_viz import load
 
-
-# A reachable BFS larger than this is treated as input-dominated / non-finite:
-# we stop trusting it as "the honest reachable set" and fall back to the
-# deterministic trajectory (the real run).
-FINITE_CAP = 220
-
-# A graph with more nodes than this can't be drawn legibly — the dots collapse
-# into a single tangled smear. Beyond this we sample a representative connected
-# subgraph (the first N states of the real run, which IS a faithful prefix of
-# the deterministic trajectory) and stamp a "showing N of M states" note, rather
-# than render an illegible N-hundred-node line. Programs whose internal counter
-# (a random seed, a generation clock) never lets the trajectory revisit produce
-# exactly such a never-settling line: randomwalk / life run the full 400 steps
-# with every state distinct.
-READABLE_CAP = 48
-
-
-def _key(state):
-    return tuple(sorted(state.items()))
-
-
-def build_reachable_graph(m):
-    """Exact reachable graph. Returns (G, states) or None if the reachable set is
-    too large to be the honest finite set (input-dominated — caller falls back to
-    the trajectory)."""
-    states, edges = m.reachable(limit=FINITE_CAP)
-    if not states or len(states) >= FINITE_CAP:
-        return None
-    G = nx.DiGraph()
-    for i, st in enumerate(states):
-        G.add_node(i, state=st)
-    for a, b in edges:
-        G.add_edge(a, b)
-    return G, states
-
-
-def build_trajectory_graph(m):
-    """The deterministic single run as a path graph — the real, finite run when
-    the full reachable BFS would fabricate by exploring every free input.
-
-    Nodes are keyed by the INTERFACE state (the observable contract we plot), not
-    the full carried set: an internal counter that keeps ticking after the
-    interface state has settled must not split one absorbing state into hundreds
-    of look-alike nodes (lru reaches its fixed interface state at tick 7 but a
-    carried counter runs to 400)."""
-    path = m.trajectory(steps=400)
-    if not path:
-        return None
-    iface = [v["name"] for v in m.interface_vars]
-
-    # If the FSM latches a 'done'-style bool true, the meaningful run ends there:
-    # keep the FIRST terminal state and drop the tail (some programs keep ticking
-    # an internal counter forever after done, which would otherwise stretch the
-    # graph into a meaningless 400-node line).
-    done_var = next((v["name"] for v in m.interface_vars
-                     if v["kind"] == "bool" and "done" in v["name"].lower()), None)
-    if done_var is not None:
-        for i, st in enumerate(path):
-            if st.get(done_var):
-                path = path[:i + 1]
-                break
-
-    def ikey(st):
-        return tuple((n, st.get(n)) for n in iface)
-
-    index = {}
-    states = []
-
-    def node_for(st):
-        k = ikey(st)
-        if k not in index:
-            index[k] = len(states)
-            states.append(st)
-        return index[k]
-
-    G = nx.DiGraph()
-    prev = None
-    for st in path:
-        j = node_for(st)
-        if prev is not None:
-            G.add_edge(prev, j)
-        prev = j
-    for i, st in enumerate(states):
-        if i not in G:
-            G.add_node(i, state=st)
-        G.nodes[i]["state"] = states[i]
-    return G, states
-
-
-def build_seeded_graph(m, seeds, fan_limit=4, max_nodes=400):
-    """Genuinely-continuous numeric flow (vanderpol): BFS the transition from
-    seeded phase-space points, taking a small nondeterministic fan, capped so the
-    picture stays a legible trajectory cloud."""
-    init = m.initial_state()
-    starts = []
-    if init is not None:
-        starts.append(init)
-    starts.extend(seeds)
-
-    index = {}
-    states = []
-
-    def node_for(st):
-        k = _key(st)
-        if k not in index:
-            index[k] = len(states)
-            states.append(st)
-        return index[k]
-
-    G = nx.DiGraph()
-    frontier = []
-    for s in starts:
-        i = node_for(s)
-        if i not in frontier:
-            frontier.append(i)
-    visited = set()
-    while frontier and len(states) < max_nodes:
-        i = frontier.pop(0)
-        if i in visited:
-            continue
-        visited.add(i)
-        for nxt in m.successors(states[i], limit=fan_limit):
-            j = node_for(nxt)
-            G.add_edge(i, j)
-            if j not in visited and len(states) < max_nodes:
-                frontier.append(j)
-    for i, st in enumerate(states):
-        if i not in G:
-            G.add_node(i, state=st)
-        G.nodes[i]["state"] = states[i]
-    return G, states
-
-
-def classify_terminal(G):
-    """A node is terminal/absorbing if it has no successor, or its only successor
-    is itself (a fixed point)."""
-    terminal = set()
-    for n in G.nodes():
-        succ = set(G.successors(n))
-        if not succ or succ == {n}:
-            terminal.add(n)
-    return terminal
-
-
-def sample_subgraph(G, states, init_node, cap=READABLE_CAP):
-    """When G is too large to draw legibly, return a representative CONNECTED
-    subgraph of `cap` nodes (and a 'showing N of M' note); otherwise return G
-    unchanged with no note.
-
-    We grow the sample by BFS from the initial node, so the kept nodes are a
-    connected neighbourhood of the real run's start — for a deterministic
-    trajectory that is exactly its first `cap` states (a faithful prefix), and
-    for a branching reachable/seeded graph it is the start basin rather than an
-    arbitrary slice. Returns (G2, states2, note, remap) where remap maps old
-    node id -> new node id (None if a node was dropped)."""
-    n = G.number_of_nodes()
-    if n <= cap:
-        return G, states, None, {i: i for i in G.nodes()}
-
-    start = init_node if (init_node is not None and init_node in G) else (
-        next(iter(G.nodes())) if n else None)
-    keep = []
-    seen = set()
-    frontier = [start]
-    # BFS over the UNDIRECTED view so we still reach predecessors of the start.
-    und = G.to_undirected(as_view=True)
-    while frontier and len(keep) < cap:
-        node = frontier.pop(0)
-        if node in seen:
-            continue
-        seen.add(node)
-        keep.append(node)
-        for nb in und.neighbors(node):
-            if nb not in seen:
-                frontier.append(nb)
-    keep_set = set(keep)
-
-    remap = {old: None for old in G.nodes()}
-    G2 = nx.DiGraph()
-    states2 = []
-    for old in keep:
-        new = len(states2)
-        remap[old] = new
-        states2.append(states[old])
-        G2.add_node(new, state=states[old])
-    for u, v in G.edges():
-        if u in keep_set and v in keep_set:
-            G2.add_edge(remap[u], remap[v])
-    note = f"showing {len(keep)} of {n} states"
-    return G2, states2, note, remap
+# Graph construction (reachable / trajectory / seeded), the terminal classifier
+# and the legibility down-sampler live in the sibling build module.
+from state_graph_build import (
+    _key, build_reachable_graph, build_trajectory_graph, build_seeded_graph,
+    classify_terminal, sample_subgraph, READABLE_CAP,
+)
 
 
 def axis_pair(m):
@@ -302,12 +118,13 @@ def color_by_categorical(m, G, states):
     return face, legend, name
 
 
-def render(smt2, schema, out_path):
-    m = load(smt2, schema)
-    title_type = "state_graph"
-
-    # --- pick the honest finite reachable set ---------------------------------
+def _select_graph(m):
+    """Pick the honest finite graph to draw: the exact reachable graph when it
+    closes, seeded phase-space trajectories for a vanderpol-shaped continuous
+    flow, else the deterministic trajectory. Returns (G, states, mode); G is None
+    if nothing could be built."""
     G = states = None
+    mode = None
     if m.is_discrete():
         built = build_reachable_graph(m)
         if built is not None:
@@ -340,23 +157,14 @@ def render(smt2, schema, out_path):
         if built is not None:
             G, states = built
             mode = "deterministic run (trajectory)"
+    return G, states, mode
 
-    n_nodes = G.number_of_nodes() if G is not None else 0
-    n_edges = G.number_of_edges() if G is not None else 0
 
-    if n_nodes == 0:
-        fig, ax = plt.subplots(figsize=(8, 6))
-        ax.axis("off")
-        ax.text(0.5, 0.5,
-                f"N/A — not meaningful for {m.fsm}\n"
-                f"(no reachable states to graph)",
-                ha="center", va="center", fontsize=14, wrap=True)
-        ax.set_title(f"{m.fsm} — {title_type}", fontsize=14, fontweight="bold")
-        fig.savefig(out_path, dpi=120, bbox_inches="tight")
-        plt.close(fig)
-        return out_path, 0, 0, "n/a"
-
-    # --- is there a meaningful phase layout? ----------------------------------
+def _compute_layout(m, G, states, n_nodes, n_edges):
+    """Decide phase-space vs topology layout, down-sample an illegible topology
+    graph, and compute node positions. Returns the (possibly down-sampled) graph
+    + the layout context:
+    (G, states, pos, terminal, axis_labels, sample_note, n_nodes, n_edges)."""
     # A real phase-space scatter (vanderpol: state.v × state.x) stays legible at
     # hundreds of points — that cloud IS the picture. Only a topology layout
     # (graphviz/spring) collapses a several-hundred-node chain into an illegible
@@ -372,7 +180,6 @@ def render(smt2, schema, out_path):
             axis_labels = (axx, axy)
             phase_pos = True                           # recomputed after sampling
 
-    # --- down-sample an illegible topology graph to a connected subgraph -------
     # A several-hundred-node line/tangle conveys nothing (randomwalk / life run
     # the full 400 ticks with every state distinct because an internal counter
     # never lets the trajectory revisit). Keep a connected neighbourhood of the
@@ -393,13 +200,9 @@ def render(smt2, schema, out_path):
         terminal = {remap[o] for o in full_terminal
                     if remap.get(o) is not None}
 
-    # --- layout ---------------------------------------------------------------
     if phase_pos is not None:
         axx, axy = axis_labels
-        phase_pos = {n: (states[n][axx], states[n][axy]) for n in G.nodes()}
-
-    if phase_pos is not None:
-        pos = phase_pos
+        pos = {n: (states[n][axx], states[n][axy]) for n in G.nodes()}
     else:
         try:
             pos = graphviz_layout(G, prog="dot")
@@ -407,29 +210,12 @@ def render(smt2, schema, out_path):
             pos = nx.spring_layout(G, seed=0)
         if pos:
             pos = {n: (x * 2.0, y) for n, (x, y) in pos.items()}
+    return G, states, pos, terminal, axis_labels, sample_note, n_nodes, n_edges
 
-    # --- node-label strategy --------------------------------------------------
-    # Never print the full state-tuple on every node. Small graphs get short IDs
-    # (S0, S1 …) with a compact legend mapping each ID to its selected-axis
-    # values; larger graphs drop per-node text and tag only init/terminal nodes.
-    SHORT_ID_CAP = 26      # graphs at/under this get an S0.. id-and-legend scheme
-    LEGEND_CAP = 30        # legend rows beyond this would overflow — skip it
-    use_ids = n_nodes <= SHORT_ID_CAP
 
-    init_key = _key(m.initial_state()) if m.initial_state() is not None else None
-    init_node = next((n for n in G.nodes()
-                      if _key(states[n]) == init_key), None) if init_key else None
-
-    # Width/height scale with node count so things stay readable. A pure chain
-    # (a sampled trajectory laid out vertically by dot) needs height, not width —
-    # a wide canvas would strand the column in whitespace.
-    if sample_note is not None and phase_pos is None:
-        w, h = 10, min(max(8, n_nodes * 0.32), 22)
-    else:
-        w = min(max(11, n_nodes * 0.7), 30)
-        h = min(max(7, n_nodes * 0.45), 22)
-    fig, ax = plt.subplots(figsize=(w, h))
-
+def _draw_graph_nodes(ax, m, G, pos, states, terminal, n_nodes):
+    """Draw the nodes + plain/self-loop edges, colored by the top categorical var
+    (else terminal/state hue). Returns (base_size, color_legend, color_var)."""
     self_loops = [(u, v) for u, v in G.edges() if u == v]
     plain_edges = [(u, v) for u, v in G.edges() if u != v]
 
@@ -453,9 +239,72 @@ def render(smt2, schema, out_path):
         nx.draw_networkx_edges(G, pos, ax=ax, edgelist=self_loops,
                                arrows=True, arrowstyle="-|>", arrowsize=10,
                                edge_color="#e8743b", width=1.2, node_size=base_size)
+    return base_size, color_legend, color_var
 
+
+def render(smt2, schema, out_path):
+    m = load(smt2, schema)
+    title_type = "state_graph"
+
+    # --- pick the honest finite reachable set ---------------------------------
+    G, states, mode = _select_graph(m)
+
+    n_nodes = G.number_of_nodes() if G is not None else 0
+    n_edges = G.number_of_edges() if G is not None else 0
+
+    if n_nodes == 0:
+        fig, ax = plt.subplots(figsize=(8, 6))
+        ax.axis("off")
+        ax.text(0.5, 0.5,
+                f"N/A — not meaningful for {m.fsm}\n"
+                f"(no reachable states to graph)",
+                ha="center", va="center", fontsize=14, wrap=True)
+        ax.set_title(f"{m.fsm} — {title_type}", fontsize=14, fontweight="bold")
+        fig.savefig(out_path, dpi=120, bbox_inches="tight")
+        plt.close(fig)
+        return out_path, 0, 0, "n/a"
+
+    G, states, pos, terminal, axis_labels, sample_note, n_nodes, n_edges = \
+        _compute_layout(m, G, states, n_nodes, n_edges)
+
+    init_key = _key(m.initial_state()) if m.initial_state() is not None else None
+    init_node = next((n for n in G.nodes()
+                      if _key(states[n]) == init_key), None) if init_key else None
+
+    # Width/height scale with node count so things stay readable. A pure chain
+    # (a sampled trajectory laid out vertically by dot) needs height, not width —
+    # a wide canvas would strand the column in whitespace. (No phase layout <=>
+    # axis_labels is None, the down-sample-eligible topology case.)
+    if sample_note is not None and axis_labels is None:
+        w, h = 10, min(max(8, n_nodes * 0.32), 22)
+    else:
+        w = min(max(11, n_nodes * 0.7), 30)
+        h = min(max(7, n_nodes * 0.45), 22)
+    fig, ax = plt.subplots(figsize=(w, h))
+
+    base_size, color_legend, color_var = _draw_graph_nodes(
+        ax, m, G, pos, states, terminal, n_nodes)
+
+    _draw_labels_and_legends(ax, m, G, pos, states, terminal, init_node,
+                             axis_labels, color_legend, color_var, mode,
+                             sample_note, n_nodes, n_edges, title_type)
+
+    fig.savefig(out_path, dpi=120, bbox_inches="tight")
+    plt.close(fig)
+    return out_path, n_nodes, n_edges, (mode + f" — {sample_note}" if sample_note else mode)
+
+
+def _draw_node_labels(ax, m, G, pos, states, terminal, init_node, n_nodes):
+    """Per-node text. Returns (id_legend, id_header): the compact S0.. -> values
+    legend for small graphs (None for large graphs, which only tag init/terminal)."""
+    # Never print the full state-tuple on every node. Small graphs get short IDs
+    # (S0, S1 …) with a compact legend mapping each ID to its selected-axis
+    # values; larger graphs drop per-node text and tag only init/terminal nodes.
+    SHORT_ID_CAP = 26      # graphs at/under this get an S0.. id-and-legend scheme
+    LEGEND_CAP = 30        # legend rows beyond this would overflow — skip it
     id_legend = None
-    if use_ids:
+    id_header = ""
+    if n_nodes <= SHORT_ID_CAP:
         # Short IDs on the nodes; legend maps id -> selected-axis values only.
         labels = {n: f"S{n}" for n in G.nodes()}
         nx.draw_networkx_labels(G, pos, labels=labels, ax=ax,
@@ -485,6 +334,16 @@ def render(smt2, schema, out_path):
             nx.draw_networkx_labels(G, pos, labels=tags, ax=ax, font_size=7,
                                     font_family="monospace",
                                     font_color="#111111")
+    return id_legend, id_header
+
+
+def _draw_labels_and_legends(ax, m, G, pos, states, terminal, init_node,
+                             axis_labels, color_legend, color_var, mode,
+                             sample_note, n_nodes, n_edges, title_type):
+    """Node labels (short IDs + value legend, or init/terminal tags), the title,
+    the phase axes, and the color / id legends."""
+    id_legend, id_header = _draw_node_labels(ax, m, G, pos, states, terminal,
+                                             init_node, n_nodes)
 
     subtitle = ""
     if color_var is not None:
@@ -510,7 +369,6 @@ def render(smt2, schema, out_path):
         ax.axis("off")
 
     # --- legends --------------------------------------------------------------
-    handles = []
     if color_legend is not None:
         handles = [mpatches.Patch(color=c, label=lbl) for lbl, c in color_legend]
         handles.append(mpatches.Patch(facecolor="white", edgecolor="#e8743b",
@@ -531,10 +389,6 @@ def render(smt2, schema, out_path):
                 fontsize=7, family="monospace",
                 bbox=dict(boxstyle="round", facecolor="#f7f7f7",
                           edgecolor="#cccccc", alpha=0.95))
-
-    fig.savefig(out_path, dpi=120, bbox_inches="tight")
-    plt.close(fig)
-    return out_path, n_nodes, n_edges, (mode + f" — {sample_note}" if sample_note else mode)
 
 
 def main(argv):
