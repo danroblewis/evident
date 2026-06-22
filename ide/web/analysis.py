@@ -210,12 +210,18 @@ def _recommend(m, n_states, max_branch, discrete, views):
       feasible set + fixed points), not one trajectory through it. The dynamics views are one
       tab click away. (Purely categorical machines have no numeric boundary, so they fall
       through to state_graph below.)"""
-    if "solution_space" in views and m.numeric_vars:
+    # `not discrete` ⟺ ≥1 numeric var, and `n_numeric` counts them — both from interface-var KINDS
+    # (cheap), NOT the ranked `numeric_vars`/`state_vars` property, which RE-SAMPLES to order vars by
+    # variation and cost ~830ms on a real-valued model. The lead-view pick needs the kinds, not the
+    # ranking, so this alone roughly halves real-valued analyze latency (Ana #217). The ranking still
+    # happens lazily for renderers that actually need axis order.
+    n_numeric = sum(1 for v in m.interface_vars if v["kind"] not in ("bool", "enum", "string"))
+    if "solution_space" in views and n_numeric:
         return "solution_space"
     if "state_graph" in views and discrete and n_states <= 30:
         return "state_graph"
     if "reachability_tree" in views and max_branch >= 2:
         return "reachability_tree"
-    if "phase_portrait" in views and not discrete and len(m.numeric_vars) >= 2:
+    if "phase_portrait" in views and not discrete and n_numeric >= 2:
         return "phase_portrait"
     return "time_series" if "time_series" in views else (views[0] if views else None)
