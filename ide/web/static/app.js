@@ -952,7 +952,21 @@ async function checkInvariant() {
   const out = $("#inv-result");
   const raw = $("#inv-prop").value.trim();
   if (!raw) { out.textContent = ""; return; }
-  // a two-sided range becomes TWO predicates (var ≥ lo ∧ var ≤ hi); else a single comparison.
+  // LIVENESS first: P ⤳ Q (leads-to), or ◇/eventually Q — routed to the temporal checker (#142).
+  const lt = raw.split(/\s*(?:⤳|~>|\bleads to\b)\s*/);
+  if (lt.length === 2) {
+    const P = lt[0].match(_INV_RE), Q = lt[1].match(_INV_RE);
+    if (!P || !Q) { out.className = "bad"; out.textContent = "✕ leads-to: write  P ⤳ Q  (e.g. mode = Coining ⤳ mode = Idle)"; return; }
+    return runTemporal(out, { var: Q[1], op: Q[2], value: _coerce(Q[3]), modality: "leads_to",
+                              p_var: P[1], p_op: P[2], p_value: _coerce(P[3]) });
+  }
+  const ev = raw.match(/^\s*(?:◇|eventually)\s+(.+)$/i);
+  if (ev) {
+    const Q = ev[1].match(_INV_RE);
+    if (!Q) { out.className = "bad"; out.textContent = "✕ eventually: write  ◇ var op value  (e.g. ◇ done = true)"; return; }
+    return runTemporal(out, { var: Q[1], op: Q[2], value: _coerce(Q[3]), modality: "eventually" });
+  }
+  // SAFETY (□): a two-sided range becomes TWO predicates (var ≥ lo ∧ var ≤ hi); else a single comparison.
   let preds;
   const rg = raw.match(_INV_RANGE);
   if (rg) {
@@ -972,13 +986,44 @@ async function checkInvariant() {
       texts.push(d.predicate); checked = Math.max(checked, d.checked || 0); exhaustive = exhaustive && d.exhaustive;
       if (!d.holds) {
         const cex = Object.entries(d.counterexample || {}).map(([k, v]) => `${k}=${v}`).join(", ");
-        out.className = "bad"; out.textContent = `✗ violated (${d.predicate}) — counterexample  ${cex}`;
+        const tr = _fmtTrace(d.trace);
+        out.className = "bad";
+        out.textContent = `✗ violated (${d.predicate}) — counterexample  ${cex}` + (tr ? `   ·   trace: ${tr}` : "");
         return;
       }
     }
     out.className = "good";
     out.textContent = (exhaustive ? "✓ proven" : "✓ holds (bounded)")
       + ` — ${texts.join(" ∧ ")} on all ${checked} reachable states`;
+  } catch (e) { out.className = "bad"; out.textContent = "✕ " + e; }
+}
+// A counterexample run as a compact trace: init → … → the offending state (Ana #173/#175).
+function _fmtTrace(trace) {
+  if (!trace || trace.length < 2) return "";
+  const steps = trace.map((s) => Object.entries(s).map(([k, v]) => `${k.split(".").pop()}=${v}`).join(" "));
+  return steps.length > 8 ? steps.slice(0, 4).join(" → ") + " → … → " + steps[steps.length - 1]
+                          : steps.join(" → ");
+}
+// Liveness check (◇ / ⤳) against /api/temporal, with the dodging-run trace on failure.
+async function runTemporal(out, body) {
+  out.className = "dim"; out.textContent = "checking…";
+  try {
+    const res = await fetch("/api/temporal", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ source: editor.getValue(), ...body }),
+    });
+    const d = await res.json();
+    if (!d.ok) { out.className = "bad"; out.textContent = "✕ " + (d.error || "check failed"); return; }
+    if (d.holds) {
+      out.className = "good";
+      out.textContent = (d.exhaustive ? "✓ proven" : "✓ holds (bounded)")
+        + ` — ${d.predicate} on all ${d.checked} reachable states`;
+    } else {
+      const tr = _fmtTrace(d.trace);
+      out.className = "bad";
+      out.textContent = `✗ violated — ${d.predicate}; a run dodges it forever`
+        + (tr ? `:  ${tr}` : "");
+    }
   } catch (e) { out.className = "bad"; out.textContent = "✕ " + e; }
 }
 $("#inv-btn").onclick = checkInvariant;

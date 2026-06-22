@@ -479,7 +479,7 @@ class InvariantReq(BaseModel):
 def invariant(req: InvariantReq):
     """Assert-and-check a safety invariant over the reachable set: does `var op value` hold on
     EVERY reachable state? Returns holds + (when finite & fully explored) a proof flag, or the
-    first reachable counterexample state."""
+    first reachable counterexample state (with the trace that reaches it)."""
     with _LOCK, tempfile.TemporaryDirectory() as work:
         ok, prefix, dropped, msg = _export(req.source, work)
         if not ok:
@@ -487,6 +487,34 @@ def invariant(req: InvariantReq):
         try:
             m = load_model(prefix + ".smt2", prefix + ".schema.json")
             return {"ok": True, **m.check_invariant(req.var, req.op, req.value, limit=REACH_LIMIT)}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+
+class TemporalReq(BaseModel):
+    source: str
+    var: str
+    op: str
+    value: str | int | float | bool
+    modality: str = "eventually"          # "eventually" (◇Q) | "leads_to" (P ⤳ Q)
+    p_var: str | None = None
+    p_op: str | None = None
+    p_value: str | int | float | bool | None = None
+
+
+@app.post("/api/temporal")
+def temporal(req: TemporalReq):
+    """Check a LIVENESS property over the reachable graph: ◇Q (eventually) / P⤳Q (leads-to).
+    Returns holds + a counterexample state and the TRACE (a run that dodges Q forever)."""
+    with _LOCK, tempfile.TemporaryDirectory() as work:
+        ok, prefix, dropped, msg = _export(req.source, work)
+        if not ok:
+            return {"ok": False, "error": msg}
+        try:
+            m = load_model(prefix + ".smt2", prefix + ".schema.json")
+            return {"ok": True, **m.check_temporal(
+                req.var, req.op, req.value, modality=req.modality,
+                p_var=req.p_var, p_op=req.p_op, p_value=req.p_value, limit=REACH_LIMIT)}
         except Exception as e:
             return {"ok": False, "error": str(e)}
 

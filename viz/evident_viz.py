@@ -328,17 +328,47 @@ class Model:
                 return x >= target
             return x > target  # ">"
 
-        states, _edges = self.reachable(limit=limit)
+        states, edges = self.reachable(limit=limit)
         exhaustive = len(states) < limit          # BFS stopped on its own, not capped
         checked = 0
-        for sv in states:                          # BFS-discovery order = deterministic
+        for idx, sv in enumerate(states):          # BFS-discovery order = deterministic
             checked += 1
             if not ok(sv):
                 return {"holds": False, "checked": checked, "exhaustive": exhaustive,
                         "counterexample": dict(sv), "violating_value": sv.get(name),
+                        "trace": self._trace_to(idx, edges, states),  # the path init→violation
                         "predicate": predicate}
         return {"holds": True, "checked": checked, "exhaustive": exhaustive,
-                "counterexample": None, "violating_value": None, "predicate": predicate}
+                "counterexample": None, "violating_value": None, "trace": None,
+                "predicate": predicate}
+
+    def _trace_to(self, target, edges, states):
+        """The shortest path of STATES from the initial state (index 0) to `target`, via BFS over
+        the reachable graph — so a counterexample comes with the trajectory that reaches it
+        (Ana #173/#175), not just the offending state."""
+        import collections
+        if target == 0:
+            return [dict(states[0])]
+        adj = collections.defaultdict(list)
+        for a, b in edges:
+            adj[a].append(b)
+        prev = {0: None}
+        q = collections.deque([0])
+        while q:
+            u = q.popleft()
+            if u == target:
+                break
+            for w in adj[u]:
+                if w not in prev:
+                    prev[w] = u
+                    q.append(w)
+        if target not in prev:
+            return [dict(states[target])]
+        path, u = [], target
+        while u is not None:
+            path.append(u)
+            u = prev[u]
+        return [dict(states[k]) for k in reversed(path)]
 
     def _predicate(self, var, op, value):
         """Build (full_name, short_pretty_predicate, fn) for a `var op value` comparison —
@@ -399,12 +429,18 @@ class Model:
             offenders = [i for i in range(n) if pfn(states[i]) and i in avoid]
             holds = not offenders
             cex = dict(states[offenders[0]]) if offenders else None
+            trace = self._trace_to(offenders[0], edges, states) if offenders else None
             return {"holds": holds, "checked": n, "exhaustive": exhaustive,
-                    "counterexample": cex, "predicate": f"{ppred} ⤳ {qpred}"}
+                    "counterexample": cex, "trace": trace, "predicate": f"{ppred} ⤳ {qpred}"}
         holds = 0 not in avoid                                 # initial state is index 0
+        # counterexample trace: a path from init to a state stuck dodging Q forever
+        trace = None
+        if not holds:
+            target = next((i for i in range(n) if i in bad), 0)   # a ¬Q cycle/sink it reaches
+            trace = self._trace_to(target, edges, states)
         return {"holds": holds, "checked": n, "exhaustive": exhaustive,
                 "counterexample": dict(states[0]) if not holds else None,
-                "predicate": f"◇ {qpred}"}
+                "trace": trace, "predicate": f"◇ {qpred}"}
 
     def _resolve_carried(self, var):
         for w in self.carried:                     # exact full-name match first
