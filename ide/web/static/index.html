@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Evident IDE</title>
 <link rel="icon" href="data:,">
-<link rel="stylesheet" href="/static/app.css?v=15">
+<link rel="stylesheet" href="/static/app.css?v=16">
 </head>
 <body>
 <div id="app">
@@ -43,10 +43,16 @@
       <span id="inv-result" class="dim"></span>
     </div>
     <div id="query-row" hidden>
-      <span class="query-label" title="ad-hoc existential query — find a reachable state satisfying it (the ∃ dual of ⊢ verify's □)">⊨? query</span>
-      <input id="query-prop" placeholder="find a reachable state — a conjunction:  light = Green ∧ timer = 2">
-      <button id="query-btn">find</button>
+      <span class="query-label" title="ad-hoc existential query — find a reachable state satisfying it (the ∃ dual of ⊢ verify's □). 'find' searches the bare conjunction; 'assert ⊢+' (or Enter) stacks it as an assumption and re-queries under the whole stack.">⊨? query</span>
+      <input id="query-prop" placeholder="find a reachable state — a conjunction:  light = Green ∧ timer = 2     (Enter / assert ⊢+ stacks it)">
+      <button id="query-btn" title="one-shot: search the bare conjunction, leave the stack untouched">find</button>
+      <button id="query-assert" title="push this term onto the assumption stack and re-query under the whole stack (Enter does the same)">assert ⊢+</button>
       <span id="query-result" class="dim"></span>
+    </div>
+    <div id="query-stack" hidden>
+      <span class="assume-label" title="the stacked assumptions — every push/pop re-queries the model under ALL of them (Z3 push/pop)">assumptions:</span>
+      <span id="query-chips"></span>
+      <button id="query-clear" title="retract every assumption">clear all</button>
     </div>
     <div id="inv-trace" hidden></div>
     <div id="tabs"></div>
@@ -80,7 +86,7 @@
 <script src="/static/app-editor.js?v=1"></script>
 <script src="/static/app-buffer.js?v=1"></script>
 <script src="/static/app-history.js?v=1"></script>
-<script src="/static/app-verify.js?v=2"></script>
+<script src="/static/app-verify.js?v=3"></script>
 <script src="/static/app-palette.js?v=3"></script>
 <script src="/static/app-panzoom.js?v=1"></script>
 <script src="/static/app.js?v=16"></script>
