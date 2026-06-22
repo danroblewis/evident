@@ -691,6 +691,42 @@ function renderStructure(s) {
   el.innerHTML = html;
 }
 
+// Interactive diagram overlay (#184): drop transparent hover targets over the rendered
+// solution_space scatter — hover → tooltip of that point's full state; click → pin it until
+// the next hover. fx/fy are figure fractions from the top-left, so they map directly to a
+// wrapper sized exactly to the image. No-op (and clears) when there are no points.
+function fmtState(st) {
+  return Object.entries(st || {})
+    .map(([k, v]) => `${k}=${v}`).join("  ");
+}
+function overlayPoints(wrap, points) {
+  if (!wrap) return;
+  let pinned = false;
+  const show = (txt, x, y) => {
+    gloss.textContent = txt; gloss.hidden = false;
+    gloss.style.left = Math.min(x + 12, window.innerWidth - 380) + "px";
+    gloss.style.top = (y + 18) + "px";
+  };
+  const hide = () => { if (!pinned) gloss.hidden = true; };
+  if (!points || !points.length) return;
+  points.forEach((p) => {
+    if (typeof p.fx !== "number" || typeof p.fy !== "number") return;
+    const t = document.createElement("div");
+    t.className = "pt-target";
+    t.style.left = (p.fx * 100) + "%";
+    t.style.top = (p.fy * 100) + "%";
+    const txt = fmtState(p.state);
+    t.title = txt;       // native tooltip fallback
+    t.addEventListener("mouseenter", (e) => { pinned = false; show(txt, e.clientX, e.clientY); });
+    t.addEventListener("mousemove", (e) => { if (!pinned) show(txt, e.clientX, e.clientY); });
+    t.addEventListener("mouseleave", hide);
+    t.addEventListener("click", (e) => {
+      e.stopPropagation(); pinned = true; show(txt, e.clientX, e.clientY);
+    });
+    wrap.appendChild(t);
+  });
+}
+
 function paint(data, ms) {
   $("#latency").textContent = ms != null ? `${ms} ms` : "";
   $("#banner").classList.remove("recomputing");        // analysis returned — undim
@@ -750,10 +786,14 @@ function paint(data, ms) {
     tabs.appendChild(el);
   });
 
-  // the rendered view
-  view.innerHTML = data.png
-    ? `<img alt="${data.view}" src="data:image/png;base64,${data.png}">`
-    : `<div class="ph">no view for this program</div>`;
+  // the rendered view, with an optional interactive hover overlay (solution_space points)
+  if (data.png) {
+    view.innerHTML = `<div class="view-wrap"><img alt="${data.view}" `
+      + `src="data:image/png;base64,${data.png}"></div>`;
+    overlayPoints(view.querySelector(".view-wrap"), data.points || []);
+  } else {
+    view.innerHTML = `<div class="ph">no view for this program</div>`;
+  }
 
   // the honesty line (branching ×N surfaces nondeterminism right next to the stats)
   const dropCls = data.dropped ? "dropped" : "clean";

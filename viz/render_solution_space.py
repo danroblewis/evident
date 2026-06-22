@@ -8,6 +8,7 @@ This view draws the BOUNDARY of what is possible:
   * right — the feasible REGION of the two principal variables as a SET of points inside
             their bounding box, with fixed points / equilibria marked. The set, not a path.
 """
+import json
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -15,6 +16,17 @@ from matplotlib.patches import Rectangle
 from evident_viz import load
 
 _SHORT = lambda n: n.split(".")[-1]
+
+
+def _write_points(out_path, points):
+    """Sidecar for the interactive hover overlay: each plotted scatter point's FRACTIONAL
+    position within the figure (fx, fy from the TOP-LEFT, both 0..1) plus its full state dict.
+    Empty list for the 1-var / no-scatter / N-A cases — the overlay then no-ops."""
+    try:
+        with open(out_path + ".points.json", "w") as f:
+            json.dump(points, f)
+    except Exception:
+        pass
 
 
 def _full(m, short_name):
@@ -30,6 +42,7 @@ def _na(out_path, title, msg):
     ax.set_xticks([]); ax.set_yticks([])
     ax.set_title(title, fontsize=13)
     fig.tight_layout(); fig.savefig(out_path, dpi=120); plt.close(fig)
+    _write_points(out_path, [])
     return out_path
 
 
@@ -109,14 +122,18 @@ def render(smt2_path, schema_path, out_path):
     axL.grid(axis="x", alpha=0.2)
 
     # --- right: feasible region of the top-2 vars as a SET (no trajectory) + boundary box ---
+    plotted = []   # (data_x, data_y, full_state_dict) for each scatter point — for the hover sidecar
+    axR = None
     if have2d:
         axR = axes[1]
         vx, vy = numeric[0], numeric[1]
-        fx, fy = _full(m, vx), _full(m, vy)
-        pts = [(s.get(fx), s.get(fy)) for s in states]
-        pts = [(x, y) for x, y in pts if isinstance(x, (int, float)) and isinstance(y, (int, float))]
-        if pts:
-            px, py = zip(*pts)
+        fxn, fyn = _full(m, vx), _full(m, vy)
+        for s in states:
+            x, y = s.get(fxn), s.get(fyn)
+            if isinstance(x, (int, float)) and isinstance(y, (int, float)):
+                plotted.append((x, y, {_SHORT(k): v for k, v in s.items()}))
+        if plotted:
+            px = [p[0] for p in plotted]; py = [p[1] for p in plotted]
             axR.scatter(px, py, s=24, color="#58a6ff", alpha=0.5, edgecolors="none",
                         label="reachable set")
         (xlo, xhi), (ylo, yhi) = bounds[vx], bounds[vy]
@@ -141,7 +158,19 @@ def render(smt2_path, schema_path, out_path):
                else "boundary sampled (capped)")
     fig.suptitle(f"{m.fsm} — solution space · {verdict} · {framing}", fontsize=13)
     fig.tight_layout(rect=[0, 0, 1, 0.96])
+    # Layout is final after tight_layout: map each scatter point's DATA coords → figure fraction.
+    # transData → display px → transFigure⁻¹ → fraction with bottom-left origin; flip y to top-left.
+    points = []
+    if axR is not None and plotted:
+        inv = fig.transFigure.inverted()
+        for dx, dy, st in plotted:
+            disp = axR.transData.transform((dx, dy))
+            ffx, ffy = inv.transform(disp)
+            if 0.0 <= ffx <= 1.0 and 0.0 <= ffy <= 1.0:
+                points.append({"fx": round(float(ffx), 4),
+                               "fy": round(float(1.0 - ffy), 4), "state": st})
     fig.savefig(out_path, dpi=120); plt.close(fig)
+    _write_points(out_path, points)
     return out_path
 
 

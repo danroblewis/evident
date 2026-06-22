@@ -148,6 +148,14 @@ html,body { margin:0; height:100%; background:var(--bg); color:var(--ink);
 #view { flex:1; display:flex; align-items:center; justify-content:center; overflow:auto; padding:8px; }
 #view img { max-width:100%; max-height:100%; object-fit:contain; }
 #view .ph { color:var(--dim); }
+
+/* interactive-diagram overlay (#184): the wrapper hugs the rendered image so the point
+   targets — positioned in figure fractions — land exactly on the plotted dots. */
+.view-wrap { position:relative; display:inline-block; max-width:100%; max-height:100%; line-height:0; }
+.view-wrap img { display:block; }
+.pt-target { position:absolute; width:14px; height:14px; transform:translate(-50%, -50%);
+  border-radius:50%; cursor:pointer; background:transparent; }
+.pt-target:hover { background:#58a6ff55; box-shadow:0 0 0 1px var(--accent); }
 #honesty { padding:7px 14px; border-top:1px solid var(--line); font-size:12px;
   display:flex; gap:16px; flex-wrap:wrap; }
 #honesty .clean { color:var(--good); } #honesty .dropped { color:var(--bad); }
