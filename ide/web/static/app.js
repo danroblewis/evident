@@ -586,6 +586,44 @@ editorEl.addEventListener("mousemove", (e) => {
 });
 editorEl.addEventListener("mouseleave", () => { gloss.hidden = true; });
 
+// --- concept hover in the banner -------------------------------------------------
+// The model-shape banner uses words a newcomer hasn't met ("Driven pipeline", "fixed point",
+// "inductive invariant"). The editor glossary can't reach them — they're in the banner, not the
+// source — so annotate the banner text: wrap each known concept in a hoverable span explained by
+// the SAME #gloss tooltip (Sam #163/#165).
+const CONCEPTS = {
+  "inductive invariant": "a bound z3 PROVED is closed under the transition: true now ⇒ true next tick ⇒ true forever. A proof, not a sample.",
+  "Driven pipeline": "a deterministic recurrence: one independent variable (the clock/driver) advances on its own; the rest are computed from it.",
+  "Driven": "a deterministic recurrence: one variable advances on its own clock; the others follow from it.",
+  "fixed point": "a state the transition maps to itself — reach it and the machine stays. The equilibrium of the dynamics.",
+  "Nondeterministic": "from some state there are ≥2 legal next states — a free choice fans the future out.",
+  "Cyclic": "the machine revisits states forever in a loop — eventually periodic, with no fixed point.",
+  "Unbounded": "a variable grows without limit — the reachable set never closes.",
+  "Unstable": "a fixed point the dynamics move AWAY from — a tiny nudge and the orbit diverges.",
+  "reachable": "the states the machine can actually enter from its start, found by SOLVING the transition — not guessed.",
+  "recurrence": "each tick's value is defined from the previous tick(s): x = f(_x).",
+};
+const _CONCEPT_KEYS = Object.keys(CONCEPTS).sort((a, b) => b.length - a.length);  // longest first
+function annotateConcepts(text) {
+  let out = escapeHtml(text);                       // escape first; concept words have no HTML chars
+  for (const k of _CONCEPT_KEYS) {
+    const re = new RegExp("(?<![\\w-])(" + k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + ")(?![\\w-])", "g");
+    out = out.replace(re, `<span class="concept" data-gloss="${escapeHtml(CONCEPTS[k])}">$1</span>`);
+  }
+  return out;
+}
+document.addEventListener("mouseover", (e) => {
+  const c = e.target.closest && e.target.closest(".concept");
+  if (c && c.dataset.gloss) {
+    gloss.textContent = c.dataset.gloss; gloss.hidden = false;
+    gloss.style.left = Math.min(e.clientX + 12, window.innerWidth - 380) + "px";
+    gloss.style.top = (e.clientY + 18) + "px";
+  }
+});
+document.addEventListener("mouseout", (e) => {
+  if (e.target.closest && e.target.closest(".concept")) gloss.hidden = true;
+});
+
 // --- inline error line marker -----------------------------------------------------
 // Tint the offending line. Ace marks a line via a full-width marker; the simplest robust
 // approach is a gutter-decoration + a row marker class (.ace_error-line) on that row.
@@ -776,7 +814,7 @@ function paint(data, ms) {
   clearErrorLine();
   setStatus("ok", "ok");
   $("#banner").className = "live";
-  $("#banner").textContent = "◆ " + data.banner;
+  $("#banner").innerHTML = "◆ " + annotateConcepts(data.banner);
   renderStructure(data.structure);
   activeView = data.view;
 
