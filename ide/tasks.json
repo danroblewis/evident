@@ -1,5 +1,5 @@
 {
-  "seq": 222,
+  "seq": 235,
   "tasks": [
     {
       "id": 1,
@@ -3255,16 +3255,31 @@
       "id": 195,
       "title": "Ad-hoc query/assertion console against the current model. The wall: to ask 'is timer ever 2 while light=Green' I had to read it off the scatter panel; in Z3/Alloy I type an assertion (eval/run) against the loaded model without editing source. Add a console that evaluates a constraint/assertion against the current reachable set and returns sat-witness / unsat / a count, separate from the source.",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "ide-critic-expert",
       "created": "2026-06-22T13:03:04Z",
-      "worker_done": false,
-      "approvals": [],
+      "worker_done": true,
+      "approvals": [
+        "ide-critic"
+      ],
       "reopened": 0,
       "tags": [
         "solve"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-22T16:13:58Z",
+          "by": "worker",
+          "act": "done",
+          "note": "ad-hoc query console \u2014 existential predicate over the reachable set, with witness+trace"
+        },
+        {
+          "at": "2026-06-22T19:13:34Z",
+          "by": "ide-critic",
+          "act": "approved",
+          "note": ""
+        }
+      ]
     },
     {
       "id": 196,
@@ -3485,16 +3500,31 @@
       "id": 205,
       "title": "UNSAT core: the panel shows ONE minimal core ({x<5,x=7} on the cold-open unsat_demo) but the over-constrained claim has THREE minimal cores ({x>10,x<5},{x>10,x=7},{x<5,x=7}). A real MUS/unsat-core tool (Z3 incremental, MARCO) can enumerate ALL minimal cores. Offer 'show all conflicting cores' so a user fixing an over-constrained model sees every independent contradiction, not just the first the solver returned \u2014 otherwise they fix one and the next surfaces only on re-solve.",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "ide-critic-expert",
       "created": "2026-06-22T13:26:19Z",
-      "worker_done": false,
-      "approvals": [],
+      "worker_done": true,
+      "approvals": [
+        "ide-critic"
+      ],
       "reopened": 0,
       "tags": [
         "solve"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-22T16:41:08Z",
+          "by": "worker",
+          "act": "done",
+          "note": "enumerate ALL minimal unsat cores (MUSes), not just one"
+        },
+        {
+          "at": "2026-06-22T19:13:34Z",
+          "by": "ide-critic",
+          "act": "approved",
+          "note": ""
+        }
+      ]
     },
     {
       "id": 206,
@@ -3652,7 +3682,8 @@
       "created": "2026-06-22T14:26:45Z",
       "worker_done": true,
       "approvals": [
-        "ide-critic-expert"
+        "ide-critic-expert",
+        "ide-critic"
       ],
       "reopened": 0,
       "tags": [
@@ -3668,6 +3699,12 @@
         {
           "at": "2026-06-22T14:56:29Z",
           "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
+        },
+        {
+          "at": "2026-06-22T19:13:34Z",
+          "by": "ide-critic",
           "act": "approved",
           "note": ""
         }
@@ -3760,6 +3797,256 @@
       "reopened": 0,
       "tags": [
         "refactor"
+      ],
+      "log": []
+    },
+    {
+      "id": 223,
+      "title": "Model-diff: reachable-set delta between pinned A and live B",
+      "detail": "",
+      "status": "worker_done",
+      "created_by": "worker",
+      "created": "2026-06-22T16:46:04Z",
+      "worker_done": true,
+      "approvals": [
+        "ide-critic"
+      ],
+      "reopened": 0,
+      "tags": [
+        "feature"
+      ],
+      "log": [
+        {
+          "at": "2026-06-22T19:13:34Z",
+          "by": "ide-critic",
+          "act": "approved",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": 224,
+      "title": "fixedpoint_map times out on real-valued FSMs \u2014 sample_states caps at 5000 (cap to ~800 like scatter_matrix #217)",
+      "detail": "Stabilization check: /api/analyze view=fixedpoint_map on the oscillator hangs >70s. Cause: render_fixedpoint_map.sample_states returns 5000 states (3.88s) then per-state successor()+short-cycle detection over all 5000 \u2192 timeout. Other 16 views render fine (cobweb's earlier timeout was CPU contention from a concurrent agent, not a real hang \u2014 it's 1.4s alone). FIX (after #220 render-split lands, since render_fixedpoint_map is being split): cap the sample at ~800 like render_scatter_matrix's reachable(800) fix in #217 \u2014 a fixed-point/cycle map reads the same at 800 sampled states. Check the cap lives in render_fixedpoint_map (or render_common.py post-#220).",
+      "status": "worker_done",
+      "created_by": "worker",
+      "created": "2026-06-22T17:40:03Z",
+      "worker_done": true,
+      "approvals": [
+        "ide-critic"
+      ],
+      "reopened": 0,
+      "tags": [
+        "perf"
+      ],
+      "log": [
+        {
+          "at": "2026-06-22T18:03:08Z",
+          "by": "worker",
+          "act": "done",
+          "note": "fixed: sample_states capped reachable 5000\u2192800 (commit 8cb4f7ad); fixedpoint_map 70s+ hang \u2192 17.3s, all 17 views render. Verified live via the all-views sweep."
+        },
+        {
+          "at": "2026-06-22T19:13:34Z",
+          "by": "ide-critic",
+          "act": "approved",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": 225,
+      "title": "Interactive state_graph nodes \u2014 hover/click a node for its assignment (#184 increment 2)",
+      "detail": "",
+      "status": "worker_done",
+      "created_by": "worker",
+      "created": "2026-06-22T18:11:25Z",
+      "worker_done": true,
+      "approvals": [
+        "ide-critic"
+      ],
+      "reopened": 0,
+      "tags": [
+        "feature"
+      ],
+      "log": [
+        {
+          "at": "2026-06-22T19:13:34Z",
+          "by": "ide-critic",
+          "act": "approved",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": 226,
+      "title": "Interactive phase_portrait / orbit_scatter / basin_map points (#184 increment 3)",
+      "detail": "",
+      "status": "worker_done",
+      "created_by": "worker",
+      "created": "2026-06-22T18:34:42Z",
+      "worker_done": true,
+      "approvals": [
+        "ide-critic"
+      ],
+      "reopened": 0,
+      "tags": [
+        "feature"
+      ],
+      "log": [
+        {
+          "at": "2026-06-22T18:34:45Z",
+          "by": "worker",
+          "act": "started"
+        },
+        {
+          "at": "2026-06-22T19:13:34Z",
+          "by": "ide-critic",
+          "act": "approved",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": 227,
+      "title": "Interactive fixedpoint_map + reachability_tree points (#184 increment 4 \u2014 all state-plot views interactive)",
+      "detail": "",
+      "status": "worker_done",
+      "created_by": "worker",
+      "created": "2026-06-22T18:59:18Z",
+      "worker_done": true,
+      "approvals": [
+        "ide-critic"
+      ],
+      "reopened": 0,
+      "tags": [
+        "feature"
+      ],
+      "log": [
+        {
+          "at": "2026-06-22T19:13:34Z",
+          "by": "ide-critic",
+          "act": "approved",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": 228,
+      "title": "Round hover-tooltip floats to ~4 sig figs. The new interactive points (#226) on phase_portrait show 'pos=-0.012319949034860988 vel=0.008775820321828581' \u2014 full f64 noise. A point inspector should read 'pos=-0.0123 vel=0.0088' like every plot tool (matplotlib/plotly tooltips round). Wall: hovered the spiral, got 18-digit garbage.",
+      "detail": "",
+      "status": "worker_done",
+      "created_by": "ide-critic",
+      "created": "2026-06-22T19:14:09Z",
+      "worker_done": true,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "viz"
+      ],
+      "log": [
+        {
+          "at": "2026-06-22T19:17:00Z",
+          "by": "worker",
+          "act": "done",
+          "note": "fixed: fmtState rounds non-integer hover values to 4 sig figs (commit 027e5a07)"
+        }
+      ]
+    },
+    {
+      "id": 229,
+      "title": "Clear the \u22a8? query result when the source/sample changes. I ran 'timer=5' on traffic, switched to counter, and the stale '\u2717 no reachable state satisfies it \u2014 timer=5' verdict was still painted next to the counter (which has no timer var). Same staleness the diagram already clears \u2014 thread it to the query row.",
+      "detail": "",
+      "status": "worker_done",
+      "created_by": "ide-critic",
+      "created": "2026-06-22T19:14:09Z",
+      "worker_done": true,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "solve"
+      ],
+      "log": [
+        {
+          "at": "2026-06-22T19:17:00Z",
+          "by": "worker",
+          "act": "done",
+          "note": "fixed: run() clears #query-result on every edit/switch alongside the verify result (commit 027e5a07)"
+        }
+      ]
+    },
+    {
+      "id": 231,
+      "title": "Query console: return a WITNESS TRACE, not just the satisfying state. '\u2713 reachable \u2014 light=Green timer=2 (1 of 9)' tells me it exists; I want the shortest path from init that reaches it (the \u2203 dual of verify's counterexample trace #141), scrubbable through the state_graph. TLA+'s eval gives me the trace; the query row gives me the endpoint.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic",
+      "created": "2026-06-22T19:14:31Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "analysis"
+      ],
+      "log": []
+    },
+    {
+      "id": 232,
+      "title": "Model-diff should diff TRANSITIONS, not only states. The reachable-set delta (appeared/vanished states) is great, but a rewired transition whose endpoint set is unchanged is invisible \u2014 e.g. flipping a guard so Green\u2192Red becomes Green\u2192Yellow with the same 9 states shows '0 appeared 0 vanished'. Add an edges-appeared / edges-vanished section so I see the relation change, not just the support.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic",
+      "created": "2026-06-22T19:14:31Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "analysis"
+      ],
+      "log": []
+    },
+    {
+      "id": 233,
+      "title": "Zoom/pan the diagram surface. state_graph at 9 nodes is legible, but reachable graphs hit hundreds of nodes; a static fit-to-box becomes a hairball. Scroll-to-zoom + drag-to-pan (and a fit button) is table stakes \u2014 every graph tool (Graphviz viewers, yEd, even DevTools' layers) gives it. Wall: I imagined opening a 400-state machine and couldn't read it.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic",
+      "created": "2026-06-22T19:14:31Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "viz"
+      ],
+      "log": []
+    },
+    {
+      "id": 234,
+      "title": "Pin two DIAGRAMS of the SAME program side-by-side (phase_portrait | state_graph), not just program-A vs program-B. The diff two-up proves the layout exists; I want it for cross-view comparison of one model so I can watch a node in the graph and its dot in the phase portrait at once.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic",
+      "created": "2026-06-22T19:14:31Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "viz"
+      ],
+      "log": []
+    },
+    {
+      "id": 235,
+      "title": "Saved-witness gallery for solve-for-X / enumerate. 'all \u22a8*' enumerates, but I can't KEEP witness #1 beside #3 and flip between them, or diff two witnesses (which item changed between two subset-sum solutions). Alloy's instance browser lets me page + bookmark instances; here each new solve replaces the board.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic",
+      "created": "2026-06-22T19:14:31Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "solve"
       ],
       "log": []
     }
@@ -4338,9 +4625,10 @@
       "title": "claim_space feasible-positions heatmap renders for Int-element Seqs (sudoku cell\u2208Seq(Int), toposort pos\u2208Seq(Int) both show a rich per-cell CAN-equal-value grid \u2014 excellent) but DEGRADES to the bare N/A card for record-element Seqs (subset-sum items\u2208Seq(Item) shows 'this claim has no numeric variable to bound'). The witness table below compensates, but the lead diagram is inconsistent: extend the per-cell feasible-value view to record-element Seqs (e.g. a column per record field, or feasibility of the Bool 'take' field per item).",
       "detail": "marek-20260622 screenshots 11 (sudoku heatmap) vs 12 (subset-sum N/A). Same view, two Seq element types, two very different results.",
       "by": "ide-critic",
-      "status": "open",
+      "status": "cleared",
       "task": null,
-      "created": "2026-06-22T11:46:20Z"
+      "created": "2026-06-22T11:46:20Z",
+      "cleared": "2026-06-22T19:13:55Z"
     },
     {
       "id": 177,
@@ -4495,6 +4783,15 @@
       "status": "open",
       "task": null,
       "created": "2026-06-22T15:34:47Z"
+    },
+    {
+      "id": 230,
+      "title": "Query result row bleeds across sample switch: ran 'timer=5' query on traffic, loaded counter, and the traffic query verdict ('\u2717 no reachable state\u2026 timer=5, searched all 9') stayed visible next to counter \u2014 a var counter doesn't even have. Clear #query-result on source/sample change like the diagram does.",
+      "detail": "repro: traffic \u2192 query 'timer=5' \u2192 open counter sample; stale verdict persists",
+      "by": "ide-critic",
+      "status": "open",
+      "task": null,
+      "created": "2026-06-22T19:14:09Z"
     }
   ]
 }
