@@ -68,6 +68,17 @@ html,body { margin:0; height:100%; background:var(--bg); color:var(--ink);
   background:#10151b; overflow:hidden; }
 .cell-idx { color:var(--dim); font-size:10px; padding:1px 4px; border-bottom:1px solid var(--line); background:#161b22; }
 .cell-val { color:var(--accent); padding:4px 6px; }
+/* sudoku-shaped Int-Seq → K×K filled grid (Task #196) */
+.sgrid { display:grid; width:max-content; border:1px solid var(--line); }
+.scell { width:28px; height:28px; display:flex; align-items:center; justify-content:center;
+  background:#10151b; color:var(--accent); font-size:15px; border:1px solid var(--line); }
+.scell.box { background:#161b22; }
+/* record-Seq → table, one row per element (Task #196) */
+.rec-table { border-collapse:collapse; }
+.rec-table th { color:var(--dim); font-size:10px; font-weight:normal; text-align:left;
+  padding:2px 8px; border-bottom:1px solid var(--line); }
+.rec-table td { padding:2px 8px; color:var(--ink); border-bottom:1px solid #1b2129; }
+.rec-table td.rt-i { color:var(--dim); }
 #solve-controls { display:flex; gap:6px; padding:7px 14px; border-top:1px solid var(--line); }
 #solve-given { flex:1; background:#0f1419; color:var(--ink); border:1px solid var(--line);
   border-radius:6px; padding:3px 8px; font:12px ui-monospace,Menlo,monospace; }
