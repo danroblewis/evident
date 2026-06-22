@@ -204,13 +204,13 @@ def _dropped_locs(source: str, msg: str):
     return locs
 
 
-def _banner(m, max_branch=1, recurrent=1):
+def _banner(m, max_branch=1, recurrent=1, states=None):
     """The model-shape line, from the functional-dependency analysis. Two reachable-graph
     facts override the dependency verdict: BRANCHING (a state with ≥2 successors is
     nondeterministic no matter what), and a RECURRENT cycle (a ≥2-state SCC is
     eventually-periodic, not a terminating chain — so the banner must say 'cyclic')."""
     try:
-        ind = m.independence()
+        ind = m.independence(states=states)      # reuse the analyze's reachable sample (#217)
     except Exception:
         return "model shape: (unavailable)"
     short = lambda n: n.split(".")[-1]
@@ -398,7 +398,7 @@ def analyze(req: Source):
                 "banner": (
                     f"⚠ Under-constrained — {dropped} dropped constraint(s); this model is "
                     f"BROKEN, not a real relation (the freed variables fan the state space)"
-                    if dropped else _banner(m, max_branch, recurrent)),
+                    if dropped else _banner(m, max_branch, recurrent, states=states)),
                 "structure": structure,
                 "dropped": dropped,
                 "branching": max_branch,

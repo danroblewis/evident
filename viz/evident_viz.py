@@ -816,7 +816,7 @@ class Model:
         d = sorted(set(vals))
         return len(d) >= 3 and len(d) == len(vals) and (d[-1] - d[0] + 1) == len(d)
 
-    def independence(self):
+    def independence(self, states=None):
         """Functional-dependency analysis of the interface variables: which behave as an
         INDEPENDENT variable — a driver/clock that determines the others without being
         determined by them — vs DEPENDENT (computed from the drivers).
@@ -832,7 +832,12 @@ class Model:
         net = #(vars it determines) − #(vars that determine it): positive = a driver,
         negative = a pure dependent, ~0 = mutual / cyclic."""
         vs = [v["name"] for v in self.interface_vars]
-        states = self._sample_states()
+        # Reuse a caller-supplied reachable sample when available (the server already has reachable(400)
+        # for the stats) — recomputing _sample_states' reachable(1500) here was ~0.6-0.9s of the
+        # real-FSM analyze latency for nothing (Ana/Marek #217). 400 states is ample for a
+        # functional-dependency check.
+        if states is None:
+            states = self._sample_states()
         if not vs or len({self._key(s) for s in states}) < 2:
             # nothing varies across the sample (constant / degenerate) — no driver to find
             return {"verdict": "relational", "driver": None, "drivers": [],
