@@ -480,6 +480,7 @@ initEditorInput();   // auto-indent + token-input + hover tooltips (app-editor.j
 initBuffer();    // save/export/share buttons + #samples menu (app-buffer.js)
 initVerify();    // verify-console listeners (app-verify.js)
 initPalette();
+setupPanZoom();  // wheel-zoom / drag-pan / dbl-click-reset on #view — listeners attached ONCE (#233)
 run();
 maybeAutoTour();
 // If we loaded a program from a shared link, say so — but only after run()'s "computing…"
