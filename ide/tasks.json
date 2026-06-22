@@ -1,5 +1,5 @@
 {
-  "seq": 244,
+  "seq": 250,
   "tasks": [
     {
       "id": 1,
@@ -1484,7 +1484,8 @@
       "created": "2026-06-22T00:41:34Z",
       "worker_done": true,
       "approvals": [
-        "ide-critic-expert"
+        "ide-critic-expert",
+        "ide-critic-newcomer"
       ],
       "reopened": 0,
       "tags": [
@@ -1500,6 +1501,12 @@
         {
           "at": "2026-06-22T20:14:16Z",
           "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
+        },
+        {
+          "at": "2026-06-22T20:46:45Z",
+          "by": "ide-critic-newcomer",
           "act": "approved",
           "note": ""
         }
@@ -4004,7 +4011,8 @@
       "created": "2026-06-22T19:14:09Z",
       "worker_done": true,
       "approvals": [
-        "ide-critic-expert"
+        "ide-critic-expert",
+        "ide-critic-newcomer"
       ],
       "reopened": 0,
       "tags": [
@@ -4022,6 +4030,12 @@
           "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
+        },
+        {
+          "at": "2026-06-22T20:46:45Z",
+          "by": "ide-critic-newcomer",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -4034,7 +4048,8 @@
       "created": "2026-06-22T19:14:09Z",
       "worker_done": true,
       "approvals": [
-        "ide-critic-expert"
+        "ide-critic-expert",
+        "ide-critic-newcomer"
       ],
       "reopened": 0,
       "tags": [
@@ -4050,6 +4065,12 @@
         {
           "at": "2026-06-22T20:14:16Z",
           "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
+        },
+        {
+          "at": "2026-06-22T20:46:45Z",
+          "by": "ide-critic-newcomer",
           "act": "approved",
           "note": ""
         }
@@ -4079,7 +4100,8 @@
       "created": "2026-06-22T19:14:31Z",
       "worker_done": true,
       "approvals": [
-        "ide-critic-expert"
+        "ide-critic-expert",
+        "ide-critic-newcomer"
       ],
       "reopened": 0,
       "tags": [
@@ -4097,6 +4119,12 @@
           "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
+        },
+        {
+          "at": "2026-06-22T20:46:45Z",
+          "by": "ide-critic-newcomer",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -4109,7 +4137,8 @@
       "created": "2026-06-22T19:14:31Z",
       "worker_done": true,
       "approvals": [
-        "ide-critic-expert"
+        "ide-critic-expert",
+        "ide-critic-newcomer"
       ],
       "reopened": 0,
       "tags": [
@@ -4125,6 +4154,12 @@
         {
           "at": "2026-06-22T20:14:16Z",
           "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
+        },
+        {
+          "at": "2026-06-22T20:46:45Z",
+          "by": "ide-critic-newcomer",
           "act": "approved",
           "note": ""
         }
@@ -4169,7 +4204,8 @@
       "created": "2026-06-22T19:28:18Z",
       "worker_done": true,
       "approvals": [
-        "ide-critic-expert"
+        "ide-critic-expert",
+        "ide-critic-newcomer"
       ],
       "reopened": 0,
       "tags": [
@@ -4187,6 +4223,12 @@
           "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
+        },
+        {
+          "at": "2026-06-22T20:46:45Z",
+          "by": "ide-critic-newcomer",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -4198,7 +4240,9 @@
       "created_by": "ide-critic-expert",
       "created": "2026-06-22T20:14:36Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-newcomer"
+      ],
       "reopened": 0,
       "tags": [
         "viz"
@@ -4209,6 +4253,12 @@
           "by": "worker",
           "act": "done",
           "note": "shipped: viewPane alt now includes data.banner + reachable count + structure.bounds (commit 60dc4516)"
+        },
+        {
+          "at": "2026-06-22T20:46:45Z",
+          "by": "ide-critic-newcomer",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -4220,7 +4270,9 @@
       "created_by": "ide-critic-expert",
       "created": "2026-06-22T20:15:02Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-newcomer"
+      ],
       "reopened": 0,
       "tags": [
         "analysis"
@@ -4231,6 +4283,12 @@
           "by": "worker",
           "act": "done",
           "note": "liveness counterexample as a stem+cycle lasso + forced/avoidable fairness classification"
+        },
+        {
+          "at": "2026-06-22T20:46:45Z",
+          "by": "ide-critic-newcomer",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -4238,16 +4296,23 @@
       "id": 240,
       "title": "Incremental assert/retract in the query console (push/pop). I can run ONE ad-hoc \u2203 query, but I can't STACK assumptions \u2014 assert 'light=Green', keep it, then probe 'timer=0' / 'timer=1' / 'timer=2' under it and see the witness narrow. Z3's push/pop + check-sat-assuming is the daily interrogation loop; the console is currently one-shot. Let me build a context and explore under it without re-typing the conjunction each time.",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "ide-critic-expert",
       "created": "2026-06-22T20:15:02Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "solve"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-22T20:54:58Z",
+          "by": "worker",
+          "act": "done",
+          "note": "query console gained a push/pop assumption stack (chips); re-queries under the full stack via the existing /api/query terms"
+        }
+      ]
     },
     {
       "id": 241,
@@ -4306,6 +4371,88 @@
       "reopened": 0,
       "tags": [
         "solve"
+      ],
+      "log": []
+    },
+    {
+      "id": 245,
+      "title": "Hover-to-learn on CODE keywords in the editor. A newcomer's instinct is to hover the word 'fsm' / '\u0394' / '\u21d2' / '\u2208' / 'claim' / 'enum' in their own source to learn what it MEANS (not how to type it). The banner pills and diagram axes already have explanatory title-tooltips, and the symbols palette teaches typing \u2014 but the editor tokens have none. Wall: I hovered 'fsm' (a highlighted ace_keyword) expecting a one-line definition and got nothing; the ace_content intercepts pointer events so even native hover fails. Add an editor hover-provider that pops a one-line plain-English definition + a 'see in glossary' link for each Evident keyword/operator.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-newcomer",
+      "created": "2026-06-22T20:47:36Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "learn"
+      ],
+      "log": []
+    },
+    {
+      "id": 246,
+      "title": "An in-tool GLOSSARY panel for the LANGUAGE concepts (claim vs fsm vs type vs enum; what _var/\u0394/is_first_tick mean; what 'driven' vs 'cyclic' vs 'nondeterministic' mean). The 4-step tour teaches the UI panels and the symbols palette teaches typing, but neither defines the language nouns. Wall: after the tour I understood the editor/banner/honesty-line/solve buttons but still couldn't have told a friend what a 'claim' IS vs an 'fsm'. A searchable glossary (openable from \u2318K and the ? menu) closes the last gap so a newcomer never leaves for a manual.",
+      "detail": "",
+      "status": "worker_done",
+      "created_by": "ide-critic-newcomer",
+      "created": "2026-06-22T20:47:37Z",
+      "worker_done": true,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "learn"
+      ],
+      "log": [
+        {
+          "at": "2026-06-22T20:56:27Z",
+          "by": "worker",
+          "act": "done",
+          "note": "shipped: glossaryItems() + \ud83d\udcd6 palette entries + showGlossCentered; 35 concepts searchable from \u2318K (commit 87746420)"
+        }
+      ]
+    },
+    {
+      "id": 247,
+      "title": "Solve view should default to / prominently surface the DOMAIN witness (the filled board), not the feasibility heatmap. On 4x4 sudoku, \u22a8 Solve's main diagram renders a 'feasible positions per cell' heatmap; the actual filled 4\u00d74 grid (the answer I wanted) lives in the #solve-body panel which I nearly scrolled past. Wall: as a newcomer I solved sudoku and looked for 'my completed grid' and the lead picture was an abstract feasibility matrix instead. Make the filled-board witness the headline result for Solve samples, with the feasibility heatmap as a secondary 'all solutions' view.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-newcomer",
+      "created": "2026-06-22T20:47:37Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "viz"
+      ],
+      "log": []
+    },
+    {
+      "id": 248,
+      "title": "A 'load this query as an example' / one-click example queries on the \u22a8? query and \u22a2 verify rows. The placeholders teach the syntax ('light = Green \u2227 timer = 2') but a newcomer benefits from a clickable chip that fills a real, runnable example for the CURRENTLY loaded model (e.g. on counter offer 'count = 5', on traffic offer '\u25c7 light = Red'). Wall: I had to hand-type a conjunction and guess valid var names; a per-model suggested-query chip would teach me what's askable without typing blind.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-newcomer",
+      "created": "2026-06-22T20:47:37Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "learn"
+      ],
+      "log": []
+    },
+    {
+      "id": 249,
+      "title": "Latency: query/find took ~1.7s and first analyze ~115ms on traffic but several samples felt like a 1-2s wait with no visible spinner on the \u22a8? query row specifically. (Known roadmap sub-300ms.) For the newcomer, add an inline 'searching\u2026' indicator on the find/check buttons so the row doesn't look frozen for ~1.7s while it computes the witness run.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-newcomer",
+      "created": "2026-06-22T20:47:37Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "perf"
       ],
       "log": []
     }
@@ -4685,9 +4832,10 @@
       "title": "CORRECTION to task #106: I retested \u2014 editor content DOES persist across a full page reload (my hand-typed scratch '-- MY SCRATCH WORK' survived navigate-away-and-back). So localStorage persistence already works (delight, don't regress). The remaining gap in #106 is narrower: there is no explicit Save/name/share affordance \u2014 no 'export .ev', no 'copy shareable link', no named slots. I wanted to keep my over-constrained example AND show a friend; auto-persist covers 'come back to it' but not 'share it' or 'keep several'.",
       "detail": "verified via navigate reload; recordings/sam-20260622-013353",
       "by": "ide-critic-newcomer",
-      "status": "open",
+      "status": "cleared",
       "task": null,
-      "created": "2026-06-22T01:45:53Z"
+      "created": "2026-06-22T01:45:53Z",
+      "cleared": "2026-06-22T20:47:07Z"
     },
     {
       "id": 110,
@@ -5003,18 +5151,20 @@
       "title": "Residual of cleared #187 (polish nit, not a blocker): after a source edit post-Solve, #solve-head correctly reads 'source changed \u2014 press re-solve' but #solve-body (the witness board) stays filter:none opacity:1 \u2014 full brightness \u2014 while the main #view diagram greys out. For visual consistency apply the same grayscale/dim to the stale witness board so it reads as out-of-date the way the main diagram does.",
       "detail": "Repro: open 4\u00d74 sudoku, \u22a8 Solve (board renders), edit a given (cell[0]=1 \u2192 2). Measured: #solve-head text='source changed \u2014 press re-solve', getComputedStyle(#solve-body).filter='none', opacity='1'.",
       "by": "ide-critic-newcomer",
-      "status": "open",
+      "status": "cleared",
       "task": null,
-      "created": "2026-06-22T14:26:29Z"
+      "created": "2026-06-22T14:26:29Z",
+      "cleared": "2026-06-22T20:47:07Z"
     },
     {
       "id": 212,
       "title": "Residual of cleared #160 (nice-to-have parity nit): the \u22a2verify box still does NOT expand backslash abbreviations the editor taught me \u2014 typing 'count \\ge 0' is sent literally and rejected. The rejection is now KIND ('\u2715 write var op value (e.g. count \u2264 5 or 0 \u2264 x \u2264 6)') so the silent-bounce is gone \u2014 but a newcomer who just learned \\ge\u2192\u2265 in the editor will reasonably expect the same expansion here. Fix: run the same abbreviation expansion in the verify input.",
       "detail": "Repro: counter sample, type 'count \\ge 0' slowly into #verify, press check. Value stays 'count \\ge 0'; check shows the example-error. '>=' and '\u2265' both work.",
       "by": "ide-critic-newcomer",
-      "status": "open",
+      "status": "cleared",
       "task": null,
-      "created": "2026-06-22T14:26:29Z"
+      "created": "2026-06-22T14:26:29Z",
+      "cleared": "2026-06-22T20:47:07Z"
     },
     {
       "id": 216,
@@ -5061,6 +5211,15 @@
       "status": "open",
       "task": null,
       "created": "2026-06-22T20:14:36Z"
+    },
+    {
+      "id": 250,
+      "title": "Newcomer learning gap: nothing in the editor explains what the LANGUAGE keywords MEAN. Hovering 'fsm'/'\u0394'/'\u21d2'/'claim' in my own code gives no definition; there's no glossary of the nouns (claim vs fsm vs enum vs type). The tour teaches the UI and the symbols palette teaches typing, but a newcomer still can't answer 'what is a claim?' from inside the tool. This is the single biggest thing keeping the learn-it-here promise from being complete (tasks #245, #246).",
+      "detail": "Verified live: ace_keyword tokens have no hover-provider; ace_content intercepts pointer events. ? tour = 4 UI steps; \u2328 symbols = typing cheat-sheet only. No concept glossary.",
+      "by": "ide-critic-newcomer",
+      "status": "open",
+      "task": null,
+      "created": "2026-06-22T20:47:45Z"
     }
   ]
 }
