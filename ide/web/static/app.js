@@ -620,11 +620,21 @@ function setStatus(text, cls) { const s = $("#status"); s.textContent = text; s.
 
 // Translate parser jargon into something a newcomer can act on. The raw error stays
 // (it's precise); we append a plain-language hint for the common footguns.
+// Rust lexer token names → the literal the user actually typed (Sam #195: "got Eq" is jargon).
+const _TOKEN_NAMES = {
+  Eq: "'='", Lt: "'<'", Gt: "'>'", Le: "'≤'", Ge: "'≥'", Ne: "'≠'", Plus: "'+'", Minus: "'-'",
+  Star: "'*'", Slash: "'/'", LParen: "'('", RParen: "')'", LBrace: "'{'", RBrace: "'}'",
+  Colon: "':'", Comma: "','", Dot: "'.'", Implies: "'⇒'", In: "'∈'", Forall: "'∀'",
+  Newline: "a line break", Indent: "indentation", Dedent: "a dedent", Eof: "end of input",
+};
 function humanizeError(err) {
-  let hint = "";
+  let hint = "";                                     // pick the hint from the RAW message first
   if (/got Ident\(/.test(err) || /expected schema\/claim\/type\/import\/enum/i.test(err)) {
     hint = "\n\n→ This usually means a body line isn't indented. Indent declarations and "
          + "constraints 4 spaces under their fsm/claim/type.";
+  } else if (/\bgot Eq\b/.test(err)) {
+    hint = "\n\n→ Unexpected '=' — Evident uses a single '=' for equality (there is no '=='); "
+         + "check for a doubled '= =', or an '=' where an expression was expected.";
   } else if (/couldn't translate to Bool/i.test(err)) {
     hint = "\n\n→ A constraint was dropped — often a typo'd or undeclared name, or a capital "
          + "True/False (Evident uses lowercase true/false).";
@@ -632,6 +642,9 @@ function humanizeError(err) {
     hint = "\n\n→ An unrecognized character. For operators, type a backslash word "
          + "(e.g. \\in → ∈, \\implies → ⇒, \\Delta → Δ).";
   }
+  // then humanize the token names for display
+  err = err.replace(/got Ident\("([^"]*)"\)/g, "got '$1'")
+           .replace(/\bgot ([A-Z]\w+)\b/g, (m, t) => _TOKEN_NAMES[t] ? "got " + _TOKEN_NAMES[t] : m);
   return err + hint;
 }
 

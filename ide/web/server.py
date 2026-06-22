@@ -126,9 +126,15 @@ def _export(source: str, work: str):
                        capture_output=True, text=True, timeout=30, cwd=ROOT)
     err = (r.stderr or "") + (r.stdout or "")
     dropped = sum(1 for ln in err.splitlines() if "dropped" in ln.lower())
+    # Strip the internal temp-dir plumbing from anything shown to the user (Sam/Marek #190):
+    # "export: load /tmp/tmpXXX/prog.ev: …" → "…", and drop the "wrote …prog.smt2" success noise.
+    err = (err.replace(ev + ":", "").replace(ev, "your program")
+              .replace(prefix + ".smt2", "the model").replace(prefix + ".schema.json", "the schema")
+              .replace(work + "/", "").replace("export: ", ""))
+    err = "\n".join(ln for ln in err.splitlines() if not ln.lstrip().startswith("wrote ")).strip()
     if r.returncode != 0 or not os.path.exists(prefix + ".smt2"):
-        return False, prefix, dropped, err.strip()[-1200:] or "export failed"
-    return True, prefix, dropped, err.strip()
+        return False, prefix, dropped, err[-1200:] or "export failed"
+    return True, prefix, dropped, err
 
 
 def _banner(m, max_branch=1, recurrent=1):
