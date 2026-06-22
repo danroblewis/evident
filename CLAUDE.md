@@ -133,6 +133,20 @@ The critic and Iris subagents use the SAME CLI (their prompts instruct them): th
 own concerns. Only the three critics approve/reopen; only an author clears their concern;
 you (the worker) never approve or clear. `ide/task.py --help` lists every command.
 
+### Reorganize freely — don't pile onto the nearest file
+
+When you change `ide/` or `viz/` code, **move code to where it belongs** rather than appending to
+whatever file you're already in. If a file has outgrown its concern, SPLIT it (new module along the
+seam, fix the imports — check `get_callers` first); if a function is too long, break it along its
+phases; if you've copy-pasted a shape, extract a helper. A behavior-preserving reorganization that
+keeps `./test.sh` green is always welcome — you don't need permission to tidy the house.
+
+Two things keep this honest: a **lint ratchet** (`ide/lint.py`, wired into `./test.sh` Phase 2.5 —
+fails when `ide/`+`viz/` gain NEW file-length / function-length / free-function / coupling violations
+over `ide/.lint-baseline`; `--write-baseline` after a real reduction), and the **`ide-architect`
+agent** (Dijkstra), who surveys structure, does the safe splits himself, and files `--tag refactor`
+tasks + concerns for the larger ones. Spawn him when the IDE code starts to feel heavy.
+
 ## Where to read first
 
 Before writing code in this repo, check whether one of these guides covers
