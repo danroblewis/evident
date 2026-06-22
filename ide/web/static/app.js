@@ -296,7 +296,10 @@ function applyTokenInput(delta) {
     const wm = before.match(/(^|[^A-Za-z0-9_])([A-Za-z]+)(.)$/);
     if (wm && WORD_MNEMONICS[wm[2]]) {
       const wordStart = col - wm[3].length - wm[2].length;   // start of the matched word
-      spliceReplace(row, wordStart, col - wm[3].length, WORD_MNEMONICS[wm[2]]);
+      // Replace "word<trigger>" with "<glyph><trigger>" (keep the boundary char and land
+      // the cursor AFTER it) — otherwise the cursor sits before the trigger space and the
+      // next keystroke wedges between glyph and space (`in `+`Int` → `∈Int `).
+      spliceReplace(row, wordStart, col, WORD_MNEMONICS[wm[2]] + wm[3]);
     }
   }
 }
