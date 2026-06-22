@@ -29,6 +29,12 @@ import matplotlib.pyplot as plt
 import networkx as nx
 from networkx.drawing.nx_pydot import graphviz_layout
 
+# Interactive hover-overlay sidecar (#184 increment 4). The tree NODES are states
+# (like state_graph), so each node's layout position + full state dict becomes a
+# hover target. reachability_tree ALWAYS saves with bbox_inches="tight", so the
+# per-node fractions use the tight-bbox mapping.
+from overlay_points import write_points, tight_fraction, OVERLAY_CAP
+
 VIZ_TYPE = "reachability_tree"
 
 # Caps so numeric / large systems still terminate and stay legible.
@@ -132,6 +138,7 @@ def render(smt2, schema, out_path):
                 transform=ax.transAxes)
         fig.savefig(out_path, dpi=120, bbox_inches="tight")
         plt.close(fig)
+        write_points(out_path, [])       # no seed → no tree → no overlay targets
         return
 
     G, states, depth, absorbing, root_k, truncated = build_tree(m, seed)
@@ -146,6 +153,7 @@ def render(smt2, schema, out_path):
     cat_palette = {}
     cat_order = []
     node_id = {}
+    overlay = []          # (ax, node_x, node_y, full_state) per tree node — hover sidecar
 
     if len(G) == 0:
         ax.text(0.5, 0.5, "empty reachable tree", ha="center", va="center",
@@ -229,6 +237,13 @@ def render(smt2, schema, out_path):
                                 font_size=7.5, font_weight="bold",
                                 font_color="#111111")
 
+        # Each tree NODE is a state: its layout position + full assignment is a
+        # hover target. Capped to OVERLAY_CAP (MAX_NODES=60 already ≤ cap).
+        for nk in list(G.nodes())[:OVERLAY_CAP]:
+            if nk in pos:
+                dx, dy = pos[nk]
+                overlay.append((ax, dx, dy, states[nk]))
+
     subtitle = (f"BFS reachability tree (first-discovery edges)  ·  "
                 f"{len(G)} nodes, depth {max(depth.values()) if depth else 0}  ·  "
                 f"seed: {seed_src}  ·  state: {kind}")
@@ -284,8 +299,12 @@ def render(smt2, schema, out_path):
                  bbox=dict(boxstyle="round", facecolor="#fbfbf6",
                            edgecolor="#cccccc", alpha=0.95))
 
+    # Compute per-node fractions BEFORE savefig (tight_fraction's draw() finalizes
+    # the same layout savefig will crop), then write the sidecar after the image.
+    points = tight_fraction(fig, overlay)
     fig.savefig(out_path, dpi=120, bbox_inches="tight")
     plt.close(fig)
+    write_points(out_path, points)
 
 
 def main(argv):

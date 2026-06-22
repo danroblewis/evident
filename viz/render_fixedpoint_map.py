@@ -42,6 +42,12 @@ from fixedpoint_attractors import ordinal, find_attractors, near
 from fixedpoint_states import (
     assign_channels, sample_states, _domain, axis_label, _short, _fmt,
 )
+# Interactive hover-overlay sidecar (#184 increment 4). fixedpoint_map ALWAYS
+# saves with bbox_inches="tight", so per-dot/star fractions use the tight-bbox
+# mapping. We emit only for the MAIN state-plot axis (the first/only panel) —
+# faceted small-multiples split one state cloud across panels, so a single
+# panel's plotted states are the canonical (coord, state) set to overlay.
+from overlay_points import write_points, tight_fraction, OVERLAY_CAP
 
 VIZ_TYPE = "fixedpoint_map"
 
@@ -65,7 +71,7 @@ def render(smt2, schema, out_path):
     if not states or xvar is None:
         fig, ax = plt.subplots(figsize=(9, 8))
         placeholder(ax, title, "no states could be sampled from the transition")
-        finish(fig, out_path)
+        finish(fig, out_path)           # overlay=None → write_points([]) (no targets)
         return out_path
 
     # attractors are a global property of the dynamics — find them ONCE, then
@@ -96,6 +102,7 @@ def render(smt2, schema, out_path):
     for ax in flat_axes[len(panels):]:
         ax.axis("off")
 
+    main_ax, main_sub = None, None
     for ax, pval in zip(flat_axes, panels):
         sub = ([s for s in states if s[facet["name"]] == pval]
                if facet is not None else states)
@@ -108,14 +115,32 @@ def render(smt2, schema, out_path):
                      if facet is not None else edges)
         draw_panel(ax, model, ch, sub, sub_fixed, sub_cycles, len(cycles),
                    sub_edges)
+        if main_ax is None:                 # MAIN state-plot axis: first panel
+            main_ax, main_sub = ax, sub
         if facet is not None:
             ax.set_title(f"{_short(facet['name'])} = {_fmt(facet, pval)}",
                          fontsize=12, fontweight="bold")
 
     fig.suptitle(_super_title(model, ch, mode, fixed, cycles),
                  fontsize=14, fontweight="bold", y=0.99)
-    finish(fig, out_path)
+    finish(fig, out_path, _overlay_entries(model, ch, main_ax, main_sub))
     return out_path
+
+
+def _overlay_entries(model, ch, ax, sub):
+    """(ax, data_x, data_y, full_state) per plotted state in the MAIN panel — the
+    same ordinal projection draw_panel plots dots/stars at. Fixed-point stars sit
+    at these same coords (fixed ⊆ sampled), so this one set covers dots AND stars.
+    Capped to OVERLAY_CAP so a large basin doesn't paint hundreds of hit-zones."""
+    if ax is None or not sub:
+        return []
+    xvar, yvar = ch["x"], ch["y"]
+    entries = []
+    for st in sub[:OVERLAY_CAP]:
+        x = ordinal(model, xvar, st[xvar["name"]])
+        y = ordinal(model, yvar, st[yvar["name"]]) if yvar else 0.0
+        entries.append((ax, x, y, st))
+    return entries
 
 
 def _filter_cycles(cycles, facet, pval):
@@ -300,11 +325,16 @@ def placeholder(ax, title, reason):
     ax.set_yticks([])
 
 
-def finish(fig, out_path):
+def finish(fig, out_path, overlay=None):
     os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
     fig.tight_layout()
+    # Compute the per-state figure fractions AFTER tight_layout (which moves the
+    # axes) but BEFORE savefig — savefig uses bbox_inches="tight", so the tight-
+    # bbox mapping is the right one. write the sidecar after the image lands.
+    points = tight_fraction(fig, overlay) if overlay else []
     fig.savefig(out_path, dpi=120, bbox_inches="tight")
     plt.close(fig)
+    write_points(out_path, points)
 
 
 def main():
