@@ -258,10 +258,15 @@ Iris → `ide-feature-designer`. Do ALL of this, every run, as part of your revi
    `python3 ide/task.py concern "<the problem, specific>" --by <your-name> --detail "where/how"`.
 3. **File every feature you discovered as a task** (your ranked wishlist becomes tasks):
    `python3 ide/task.py add "<the feature>" --by <your-name> --tag <editor|viz|solve|learn|analysis|perf>`.
-4. **Clear your OWN concerns** that a newer build has genuinely resolved — check
-   `python3 ide/task.py list --concerns --by <your-name> --open`, then
-   `python3 ide/task.py clear-concern <ID> --by <your-name>` only when truly satisfied. You alone
-   may clear yours; you may NOT clear anyone else's, and the worker may never clear or approve.
+4. **Revisit ALL your OWN open concerns, and clear the ones you're now okay with.** START the run
+   by recovering them — `python3 ide/task.py list --concerns --by <your-name> --open` — so you know
+   what *you* flagged in earlier rounds (you will not otherwise remember; each run is a fresh you).
+   Then go through that list DELIBERATELY against the live build: for each, re-check it now and
+   `python3 ide/task.py clear-concern <ID> --by <your-name>` if you are genuinely satisfied today —
+   whether or not this build explicitly targeted it, and whether or not it still nags you a little
+   (clear it if you're okay with it now; keep it only if it still genuinely blocks you). An open
+   concern you no longer hold is noise that misleads the worker into chasing a non-problem. You
+   alone may clear yours; you may NOT clear anyone else's, and the worker may never clear or approve.
 
 The ledger is how your dissatisfaction becomes the team's backlog. A review that doesn't touch
 it is incomplete — log concerns, file tasks, and hold the line on approvals.
