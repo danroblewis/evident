@@ -181,12 +181,15 @@ function overlayPoints(wrap, points) {
     t.style.left = (p.fx * 100) + "%";
     t.style.top = (p.fy * 100) + "%";
     const txt = fmtState(p.state);
-    t.title = txt;       // native tooltip fallback
+    t.title = txt + " — click to explore from here";   // native tooltip + explore hint (#242)
     t.addEventListener("mouseenter", (e) => { pinned = false; show(txt, e.clientX, e.clientY); });
     t.addEventListener("mousemove", (e) => { if (!pinned) show(txt, e.clientX, e.clientY); });
     t.addEventListener("mouseleave", hide);
+    // Click → pin the tooltip AND explore from this state (#242): "assume the machine is HERE",
+    // what's reachable forward + what run leads here. explorePoint lives in app-verify.js.
     t.addEventListener("click", (e) => {
       e.stopPropagation(); pinned = true; show(txt, e.clientX, e.clientY);
+      if (typeof explorePoint === "function" && p.state) explorePoint(p.state);
     });
     wrap.appendChild(t);
   });

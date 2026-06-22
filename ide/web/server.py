@@ -240,6 +240,29 @@ def query(req: QueryReq):
             return {"ok": False, "error": str(e)}
 
 
+class ExploreReq(BaseModel):
+    source: str
+    state: dict            # the clicked diagram point's carried-state assignment
+
+
+@app.post("/api/explore")
+def explore(req: ExploreReq):
+    """EXPLORE from a clicked diagram state — "assume the machine is HERE". Returns
+    what's reachable FORWARD from it (count + a sample) and the run that LEADS here
+    (init→state trace), plus whether init is forward-reachable from here (a cycle
+    back through start). Loads the model exactly like /api/query, then delegates to
+    Model.explore, which finds the clicked state by `state_key` and runs the BFS."""
+    with _LOCK, tempfile.TemporaryDirectory() as work:
+        ok, prefix, dropped, msg = _export(req.source, work)
+        if not ok:
+            return {"ok": False, "error": msg}
+        try:
+            m = load_model(prefix + ".smt2", prefix + ".schema.json")
+            return {"ok": True, **m.explore(req.state, limit=REACH_LIMIT)}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+
 class DiffReq(BaseModel):
     source_a: str          # the PINNED program (A)
     source_b: str          # the LIVE program (B) — the same model with a constraint changed

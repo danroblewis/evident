@@ -401,6 +401,60 @@ async function runQuery() {
   } catch (e) { out.className = "bad"; out.textContent = "✕ " + e; }
 }
 
+// --- explore-from-a-clicked-state (#242): "assume the machine is HERE" --------------
+// A diagram point (overlayPoints in app.js) is clicked → POST /api/explore for that point's
+// `state` and answer Ana's two reachability questions: what runs FORWARD from here (count +
+// a csv of the set) and what run LEADS here (init→state, scrubbed onto the diagram via the
+// same showTrace ring the query/verify paths use). Renders into the shared #query-result line.
+async function explorePoint(state) {
+  const out = $("#query-result");
+  if (!out) return;
+  clearTrace();                                          // a new explore invalidates the old scrubber
+  const here = fmtState(state);
+  out.className = "dim"; out.textContent = `▸ from ${here} — exploring…`;
+  try {
+    const res = await fetch("/api/explore", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ source: editor.getValue(), state }),
+    });
+    const d = await res.json();
+    if (!d.ok) { out.className = "bad"; out.textContent = "✕ " + (d.error || "explore failed"); return; }
+    const fwd = `${d.forward_count}${d.forward_capped ? "+" : ""} state${d.forward_count === 1 ? "" : "s"} reachable forward`;
+    const back = d.is_initial ? "0 steps from init (this is the start)"
+      : (d.trace_to ? `${d.trace_to.length - 1} steps from init` : "unreachable from init");
+    const cyc = d.reaches_init && !d.is_initial ? " · ↺ returns to init" : "";
+    out.className = "good";
+    out.innerHTML = "";
+    out.appendChild(document.createTextNode(`▸ from ${here} — ${fwd} · ${back}${cyc}  `));
+    if (d.forward && d.forward.length) out.appendChild(_exploreCsvLink(d.forward, state));
+    if (d.trace_to && d.trace_to.length >= 2) {
+      out.appendChild(_exploreScrubLink(d.trace_to));
+      showTrace(d.trace_to, "a run reaching this state");
+    }
+  } catch (e) { out.className = "bad"; out.textContent = "✕ " + e; }
+}
+
+// "↧ csv" download of the forward-reachable set (the states explore found from the click).
+function _exploreCsvLink(forward, start) {
+  const cols = Object.keys(start || forward[0] || {});
+  const esc = (v) => /[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : String(v);
+  const rows = [cols.join(","), ...forward.map((s) => cols.map((c) => esc(s[c])).join(","))];
+  const a = document.createElement("a");
+  a.className = "explore-link"; a.textContent = "↧ csv"; a.title = "download the forward-reachable set";
+  a.href = URL.createObjectURL(new Blob([rows.join("\n")], { type: "text/csv" }));
+  a.download = "reachable-forward.csv";
+  return a;
+}
+
+// "↧ scrub" — re-open the init→state stepper if the user dismissed it (showTrace already opened it).
+function _exploreScrubLink(trace) {
+  const a = document.createElement("a");
+  a.className = "explore-link"; a.textContent = "↧ scrub run";
+  a.title = "step through the run that leads here"; a.href = "#";
+  a.onclick = (e) => { e.preventDefault(); showTrace(trace, "a run reaching this state"); };
+  return a;
+}
+
 // --- wiring: attach the verify console + field-shortcut listeners ------------------
 // Mirrors the original top-level wiring (same elements, same listeners).
 function initVerify() {

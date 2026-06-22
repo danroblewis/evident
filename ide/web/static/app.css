@@ -227,6 +227,7 @@ html,body { margin:0; height:100%; background:var(--bg); color:var(--ink);
   padding:2px 10px; cursor:pointer; font:12px ui-monospace,Menlo,monospace; }
 #query-btn:hover { background:#1d4255; border-color:var(--accent); }
 #query-result.good { color:var(--good); } #query-result.bad { color:var(--bad); }
+.explore-link { color:var(--good); text-decoration:underline; cursor:pointer; margin-left:8px; }
 
 /* scrubbable counterexample trace — a thin panel under the verify row (Ana #198) */
 #inv-trace { padding:6px 14px; background:#0e1a16; border-bottom:1px solid var(--line); font-size:12px; }
