@@ -161,8 +161,11 @@ function renderStructure(s) {
 // the next hover. fx/fy are figure fractions from the top-left, so they map directly to a
 // wrapper sized exactly to the image. No-op (and clears) when there are no points.
 function fmtState(st) {
+  // Round float values to ~4 significant figures — a raw f64 like -0.012319949034860988 is noise
+  // in a hover tooltip (Marek #228). Integers/bools/enums pass through unchanged.
+  const fmtVal = (v) => (typeof v === "number" && !Number.isInteger(v)) ? Number(v.toPrecision(4)) : v;
   return Object.entries(st || {})
-    .map(([k, v]) => `${k}=${v}`).join("  ");
+    .map(([k, v]) => `${k}=${fmtVal(v)}`).join("  ");
 }
 function overlayPoints(wrap, points) {
   if (!wrap) return;
@@ -362,6 +365,7 @@ async function run(view) {
   $("#structure").classList.add("recomputing");
   $("#view").classList.add("recomputing");                 // dim the OLD picture, not just the banner
   $("#inv-result").textContent = "";                       // last verify result is stale on any edit
+  $("#query-result").textContent = "";                     // …and the ad-hoc query verdict (Marek #230)
   clearTrace();                                            // …and so is the counterexample scrubber
   if (!$("#solve").hidden) {                                // stale witness/UNSAT under a changed source
     $("#solve-head").innerHTML = '<span class="dim">source changed — press re-solve</span>';
