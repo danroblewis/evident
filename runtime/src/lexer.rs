@@ -82,8 +82,17 @@ impl std::fmt::Display for LexError {
 
 impl std::error::Error for LexError {}
 
+/// Tokenize, dropping position info. Thin wrapper over [`tokenize_with_locs`].
 pub fn tokenize(src: &str) -> Result<Vec<Token>, LexError> {
+    tokenize_with_locs(src).map(|(toks, _locs)| toks)
+}
+
+/// Tokenize, returning a `(line, col)` position parallel to each token
+/// (same index; the trailing `Eof` carries the final position). The parser
+/// uses these to stamp parse errors with the offending token's location.
+pub fn tokenize_with_locs(src: &str) -> Result<(Vec<Token>, Vec<(usize, usize)>), LexError> {
     let mut tokens = Vec::new();
+    let mut locs: Vec<(usize, usize)> = Vec::new();
     let mut chars = src.chars().peekable();
     let mut line = 1usize;
     let mut col = 1usize;
@@ -93,7 +102,18 @@ pub fn tokenize(src: &str) -> Result<Vec<Token>, LexError> {
 
     let mut paren_depth: usize = 0;
 
+    // After each scan step we backfill `locs` so it stays index-parallel with
+    // `tokens`: the position recorded is where that token *started*.
+    macro_rules! sync_locs {
+        ($pos:expr) => {
+            while locs.len() < tokens.len() {
+                locs.push($pos);
+            }
+        };
+    }
+
     while let Some(&c) = chars.peek() {
+        let tok_start = (line, col);
         if at_line_start {
 
             current_indent = 0;
@@ -129,6 +149,7 @@ pub fn tokenize(src: &str) -> Result<Vec<Token>, LexError> {
                 break;
             }
             tokens.push(Token::Indent(current_indent));
+            sync_locs!(tok_start);
             at_line_start = false;
             continue;
         }
@@ -324,10 +345,12 @@ pub fn tokenize(src: &str) -> Result<Vec<Token>, LexError> {
                 });
             }
         }
+        sync_locs!(tok_start);
     }
 
     tokens.push(Token::Eof);
-    Ok(tokens)
+    sync_locs!((line, col));
+    Ok((tokens, locs))
 }
 
 fn is_ident_start(c: char) -> bool {

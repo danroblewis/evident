@@ -2,11 +2,26 @@ use crate::core::ast::*;
 use crate::lexer::Token;
 
 #[derive(Debug)]
-pub struct ParseError(pub String);
+pub struct ParseError {
+    pub msg: String,
+    /// 1-based `(line, col)` of the offending token, when known.
+    pub loc: Option<(usize, usize)>,
+}
+
+impl ParseError {
+    /// A positionless parse error (e.g. wrapping a lex error that already
+    /// carries its own location text).
+    pub fn new(msg: impl Into<String>) -> Self {
+        ParseError { msg: msg.into(), loc: None }
+    }
+}
 
 impl std::fmt::Display for ParseError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "parse error: {}", self.0)
+        match self.loc {
+            Some((line, col)) => write!(f, "parse error at line {}, col {}: {}", line, col, self.msg),
+            None => write!(f, "parse error: {}", self.msg),
+        }
     }
 }
 
@@ -16,12 +31,20 @@ type Result<T> = std::result::Result<T, ParseError>;
 
 pub struct Parser {
     toks: Vec<Token>,
+    /// `(line, col)` parallel to `toks` (same index), from the lexer.
+    locs: Vec<(usize, usize)>,
     pos: usize,
 }
 
 impl Parser {
-    pub fn new(toks: Vec<Token>) -> Self {
-        Parser { toks, pos: 0 }
+    pub fn with_locs(toks: Vec<Token>, locs: Vec<(usize, usize)>) -> Self {
+        Parser { toks, locs, pos: 0 }
+    }
+
+    /// Build a parse error stamped with the current token's `(line, col)`.
+    fn err(&self, msg: impl Into<String>) -> ParseError {
+        let loc = self.locs.get(self.pos).copied().filter(|&(l, _)| l != 0);
+        ParseError { msg: msg.into(), loc }
     }
 
     fn peek(&self) -> &Token { &self.toks[self.pos] }
@@ -35,7 +58,7 @@ impl Parser {
             self.bump();
             Ok(())
         } else {
-            Err(ParseError(format!("expected {:?}, got {:?}", expected, self.peek())))
+            Err(self.err(format!("expected {:?}, got {:?}", expected, self.peek())))
         }
     }
 
@@ -73,7 +96,7 @@ impl Parser {
                     self.bump();
                     let path = match self.bump() {
                         Token::Str(s) => s,
-                        other => return Err(ParseError(format!(
+                        other => return Err(self.err(format!(
                             "expected string literal after 'import', got {:?}", other))),
                     };
                     program.imports.push(path);
@@ -83,7 +106,7 @@ impl Parser {
                     program.enums.push(e);
                 }
                 other => {
-                    return Err(ParseError(format!(
+                    return Err(self.err(format!(
                         "expected schema/claim/type/import/enum, got {:?}", other)));
                 }
             }
@@ -95,12 +118,12 @@ impl Parser {
         self.bump();
         let name = match self.bump() {
             Token::Ident(s) => s,
-            other => return Err(ParseError(format!(
+            other => return Err(self.err(format!(
                 "expected enum name, got {:?}", other))),
         };
         match self.bump() {
             Token::Eq => {}
-            other => return Err(ParseError(format!(
+            other => return Err(self.err(format!(
                 "expected '=' after enum name, got {:?}", other))),
         }
 
@@ -126,7 +149,7 @@ impl Parser {
         loop {
             let v_name = match self.bump() {
                 Token::Ident(s) => s,
-                other => return Err(ParseError(format!(
+                other => return Err(self.err(format!(
                     "expected variant name in enum, got {:?}", other))),
             };
 
@@ -134,7 +157,7 @@ impl Parser {
             if matches!(self.peek(), Token::LParen) {
                 self.bump();
                 if matches!(self.peek(), Token::RParen) {
-                    return Err(ParseError(format!(
+                    return Err(self.err(format!(
                         "variant `{}` has empty payload — drop the parens for nullary",
                         v_name)));
                 }
@@ -154,7 +177,7 @@ impl Parser {
                 }
                 match self.bump() {
                     Token::RParen => {}
-                    other => return Err(ParseError(format!(
+                    other => return Err(self.err(format!(
                         "expected ')' after variant payload, got {:?}", other))),
                 }
             }
@@ -193,7 +216,7 @@ impl Parser {
             break;
         }
         if variants.is_empty() {
-            return Err(ParseError(
+            return Err(self.err(
                 "enum must have at least one variant".to_string()));
         }
         Ok(crate::core::ast::EnumDecl { name, variants })
@@ -202,7 +225,7 @@ impl Parser {
     fn parse_enum_field_type(&mut self, v_name: &str) -> Result<String> {
         let head = match self.bump() {
             Token::Ident(s) => s,
-            other => return Err(ParseError(format!(
+            other => return Err(self.err(format!(
                 "expected field type in variant `{}`, got {:?}",
                 v_name, other))),
         };
@@ -212,7 +235,7 @@ impl Parser {
             let inner = self.parse_enum_field_type(v_name)?;
             match self.bump() {
                 Token::RParen => {}
-                other => return Err(ParseError(format!(
+                other => return Err(self.err(format!(
                     "expected ')' after compound type in variant `{}`, got {:?}",
                     v_name, other))),
             }
@@ -225,7 +248,7 @@ impl Parser {
         self.bump();
         let name = match self.bump() {
             Token::Ident(s) => s,
-            other => return Err(ParseError(format!(
+            other => return Err(self.err(format!(
                 "expected name after subclaim, got {:?}", other))),
         };
 
@@ -275,7 +298,7 @@ impl Parser {
         let keyword = match self.bump() {
             Token::Schema => {
                 if external {
-                    return Err(ParseError(
+                    return Err(self.err(
                         "`external schema` is not allowed — use \
                          `external type` (`schema` is deprecated anyway)".to_string()));
                 }
@@ -285,12 +308,12 @@ impl Parser {
             Token::Type   => Keyword::Type,
             Token::Fsm    => Keyword::Fsm,
             Token::Fti    => Keyword::Fti,
-            other => return Err(ParseError(format!(
+            other => return Err(self.err(format!(
                 "expected keyword, got {:?}", other))),
         };
         let name = match self.bump() {
             Token::Ident(s) => s,
-            other => return Err(ParseError(format!(
+            other => return Err(self.err(format!(
                 "expected schema name, got {:?}", other))),
         };
 
@@ -316,20 +339,20 @@ impl Parser {
             loop {
                 match self.bump() {
                     Token::Ident(s) => names.push(s),
-                    other => return Err(ParseError(format!(
+                    other => return Err(self.err(format!(
                         "expected param name, got {:?}", other))),
                 }
                 match self.peek() {
                     Token::Comma => { self.bump(); continue; }
                     Token::In => { self.bump(); break; }
-                    other => return Err(ParseError(format!(
+                    other => return Err(self.err(format!(
                         "expected ',' or '∈' after param name, got {:?}", other))),
                 }
             }
 
             let head = match self.bump() {
                 Token::Ident(s) => s,
-                other => return Err(ParseError(format!(
+                other => return Err(self.err(format!(
                     "expected type name in first-line params, got {:?}", other))),
             };
             let type_name = if matches!(head.as_str(), "Seq" | "Set")
@@ -338,7 +361,7 @@ impl Parser {
                 self.bump();
                 let inner = match self.bump() {
                     Token::Ident(s) => s,
-                    other => return Err(ParseError(format!(
+                    other => return Err(self.err(format!(
                         "expected inner type for {}, got {:?}", head, other))),
                 };
                 self.eat(&Token::RParen)?;
@@ -356,7 +379,7 @@ impl Parser {
             match self.peek() {
                 Token::Comma => { self.bump(); continue; }
                 Token::RParen => { self.bump(); break; }
-                other => return Err(ParseError(format!(
+                other => return Err(self.err(format!(
                     "expected ',' or ')' after param group, got {:?}", other))),
             }
         }
@@ -534,7 +557,7 @@ impl Parser {
                 loop {
                     let slot = match self.bump() {
                         Token::Ident(s) => s,
-                        other => return Err(ParseError(format!(
+                        other => return Err(self.err(format!(
                             "expected pin slot name, got {:?}", other))),
                     };
                     self.eat(&Token::MapsTo)?;
@@ -588,7 +611,7 @@ impl Parser {
             self.bump();
             match self.bump() {
                 Token::Ident(name) => return Ok(vec![BodyItem::Passthrough(name)]),
-                other => return Err(ParseError(format!(
+                other => return Err(self.err(format!(
                     "expected claim name after '..', got {:?}", other))),
             }
         }
@@ -621,7 +644,7 @@ impl Parser {
                             loop {
                                 let slot = match self.bump() {
                                     Token::Ident(s) => s,
-                                    other => return Err(ParseError(format!(
+                                    other => return Err(self.err(format!(
                                         "expected mapping slot name, got {:?}", other))),
                                 };
                                 self.eat(&Token::MapsTo)?;
@@ -701,6 +724,6 @@ fn peek_compare_op(tok: &Token) -> Option<BinOp> {
 }
 
 pub fn parse(src: &str) -> Result<Program> {
-    let toks = crate::lexer::tokenize(src).map_err(|e| ParseError(e.to_string()))?;
-    Parser::new(toks).parse_program()
+    let (toks, locs) = crate::lexer::tokenize_with_locs(src).map_err(|e| ParseError::new(e.to_string()))?;
+    Parser::with_locs(toks, locs).parse_program()
 }

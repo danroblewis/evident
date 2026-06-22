@@ -598,18 +598,23 @@ function clearErrorLine() {
   }
 }
 let _errMarker = null;
-function markErrorLine(err) {
+// Mark the offending line. Prefer the structured {line, col} from /api/analyze
+// (parser now emits it); fall back to scraping "line N" out of the message text.
+function markErrorLine(err, loc) {
   clearErrorLine();
-  const m = (err || "").match(/line (\d+)/i);
-  if (m) {
-    const ln = parseInt(m[1], 10) - 1;
-    if (ln >= 0 && ln < editor.session.getLength()) {
-      const Range = ace.require("ace/range").Range;
-      _errMarker = editor.session.addMarker(
-        new Range(ln, 0, ln, Infinity), "ace-error-line", "fullLine");
-      editor.session.addGutterDecoration(ln, "error-gutter");
-      _errLine = ln;
-    }
+  let ln = null;
+  if (loc && Number.isInteger(loc.line)) {
+    ln = loc.line - 1;
+  } else {
+    const m = (err || "").match(/line (\d+)/i);
+    if (m) ln = parseInt(m[1], 10) - 1;
+  }
+  if (ln != null && ln >= 0 && ln < editor.session.getLength()) {
+    const Range = ace.require("ace/range").Range;
+    _errMarker = editor.session.addMarker(
+      new Range(ln, 0, ln, Infinity), "ace-error-line", "fullLine");
+    editor.session.addGutterDecoration(ln, "error-gutter");
+    _errLine = ln;
   }
 }
 
@@ -753,7 +758,7 @@ function paint(data, ms) {
     setStatus("error", "err");
     $("#errors").hidden = false;
     $("#errors").textContent = humanizeError(data.error || "analysis failed");
-    markErrorLine(data.error);                     // highlight the offending line in the gutter
+    markErrorLine(data.error, data.error_loc);     // highlight the offending line in the gutter
     // the diagram on screen is from a PREVIOUS good run — mark it stale; never show
     // green reachable-state stats next to a red parse error.
     view.classList.add("stale");
