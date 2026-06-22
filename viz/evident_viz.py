@@ -713,11 +713,48 @@ class Model:
             b2 = bounds_at(2 * k)
         except Exception:
             return None
+        # Inductive-invariant check (Ana #138): k-vs-2k agreement is strong evidence but a finite
+        # horizon, not a proof. The 2k box is PROVABLY the exact reachable range iff it's closed
+        # under one transition — every value in it is attained by the unroll (so reachable) AND no
+        # reachable state escapes it (the inductive check). Then "exact" is a genuine invariant.
+        box = {nm: (lo, hi) for nm, (lo, hi) in b2.items() if lo is not None and hi is not None}
+        try:
+            inductive = self._inductive(box)
+        except Exception:
+            inductive = False
         result = {}
-        for nm, (lo, hi) in b2.items():           # the 2k bound is the tighter/wider proven one
-            exact = b1.get(nm) == (lo, hi) and lo is not None and hi is not None
-            result[nm] = {"lo": lo, "hi": hi, "exact": exact, "k": 2 * k}
+        for nm, (lo, hi) in b2.items():
+            tight = b1.get(nm) == (lo, hi) and lo is not None and hi is not None
+            result[nm] = {"lo": lo, "hi": hi, "exact": bool(inductive and tight),
+                          "tight": tight, "inductive": bool(inductive), "k": 2 * k}
         return result
+
+    def _inductive(self, box):
+        """Is the box {var ∈ [lo,hi]} closed under one transition from a ¬first state? If it's
+        UNSAT for 'prev ∈ box ∧ T ∧ some current var escapes box', the box is an inductive
+        invariant — so the reachable range is PROVABLY exactly the box (attained + inescapable)."""
+        ft = self.consts.get(self._first_tick_name)
+        if ft is None or not box:
+            return False
+        s = z3.Solver()
+        for a in self.assertions:
+            s.add(a)
+        s.add(z3.Not(ft))
+        escape = []
+        for v in self.carried:
+            nm = v["name"].split(".")[-1]
+            if nm not in box:
+                continue
+            lo, hi = box[nm]
+            cp, cc = self.consts.get(v["prev"]), self.consts.get(v["name"])
+            if cp is None or cc is None:
+                continue
+            s.add(cp >= lo, cp <= hi)                 # the previous state sits in the box
+            escape.append(z3.Or(cc < lo, cc > hi))    # …can the next state leave it?
+        if not escape:
+            return False
+        s.add(z3.Or(escape))
+        return s.check() == z3.unsat
 
     @staticmethod
     def _num(z):

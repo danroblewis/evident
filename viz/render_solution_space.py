@@ -53,10 +53,22 @@ def render(smt2_path, schema_path, out_path):
     if solved:
         bounds = {nm: [d["lo"], d["hi"]] for nm, d in solved.items()
                   if d["lo"] is not None and d["hi"] is not None}
-        all_exact = bool(bounds) and all(solved[nm]["exact"] for nm in bounds)
         kk = next(iter(solved.values()))["k"]
-        boundtag = ("exact — z3-proven over the transition relation (fixpoint reached)" if all_exact
-                    else f"z3-proven over a {kk}-step unrolling (Optimize) — may extend further")
+        capped = struct.get("capped", False)
+        all_inductive = bool(bounds) and all(solved[nm]["inductive"] for nm in bounds)
+        all_tight = bool(bounds) and all(solved[nm]["tight"] for nm in bounds)
+        # Honest epistemic ladder (Ana #138): an inductive invariant is a PROOF; a finite reachable
+        # set fully explored is exact by exhaustion; k-vs-2k agreement alone is strong evidence over
+        # a horizon, not a proof; otherwise it's only proven for the unrolled horizon.
+        if all_inductive:
+            boundtag = "exact — z3-proven INDUCTIVE invariant (the box is closed under the transition)"
+        elif not capped:
+            boundtag = "exact — finite reachable set, exhaustively explored"
+        elif all_tight:
+            boundtag = f"tight — k and 2k-step z3 Optimize agree (a {kk}-step horizon, not an inductive proof)"
+        else:
+            boundtag = f"z3-proven over a {kk}-step unrolling (Optimize) — may extend further"
+        all_exact = all_inductive or not capped
         proven = True
     else:
         bounds = struct.get("bounds", {})
@@ -116,7 +128,7 @@ def render(smt2_path, schema_path, out_path):
                       fontsize=11)
         axR.grid(alpha=0.2)
 
-    framing = ("boundary z3-proven exact (fixpoint)" if (proven and all_exact)
+    framing = ("boundary z3-proven exact" if (proven and all_exact)
                else "boundary z3-proven over horizon" if proven
                else "boundary exhaustively solved" if all_exact
                else "boundary sampled (capped)")
