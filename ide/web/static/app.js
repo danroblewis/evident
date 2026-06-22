@@ -612,6 +612,8 @@ const VERDICTS = {
 };
 function renderStructure(s) {
   const el = $("#structure");
+  // the invariant checker only makes sense when there's a reachable set (an FSM with structure)
+  $("#invariant").hidden = !s;
   if (!s) { el.hidden = true; return; }
   el.hidden = false;
   const [icon, name, note] = VERDICTS[s.verdict] || ["·", s.verdict, ""];
@@ -876,6 +878,42 @@ async function solve(enumerate) {
 $("#solve-btn").onclick = () => solve(false);
 $("#solve-resolve").onclick = () => solve(false);
 $("#solve-all").onclick = () => solve(true);
+
+// Assert-and-check a safety invariant over the reachable set — verify `var op value` holds on
+// EVERY reachable state (a proof when the set is finite & fully explored), or get a reachable
+// counterexample. The other half of the relational pitch: not just "watch", but "prove".
+const _INV_RE = /^\s*([A-Za-z_]\w*(?:\.\w+)?)\s*(<=|>=|!=|<|>|=|≤|≥|≠)\s*(.+?)\s*$/;
+async function checkInvariant() {
+  const out = $("#inv-result");
+  const raw = $("#inv-prop").value.trim();
+  if (!raw) { out.textContent = ""; return; }
+  const mt = raw.match(_INV_RE);
+  if (!mt) { out.className = "bad"; out.textContent = "✕ write  var op value  (e.g. count ≤ 5)"; return; }
+  const [, varName, op, valStr] = mt;
+  let value = valStr;
+  if (/^-?\d+$/.test(valStr)) value = parseInt(valStr, 10);
+  else if (/^-?\d*\.\d+$/.test(valStr)) value = parseFloat(valStr);
+  else if (valStr === "true" || valStr === "false") value = (valStr === "true");
+  out.className = "dim"; out.textContent = "checking…";
+  try {
+    const res = await fetch("/api/invariant", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ source: editor.getValue(), var: varName, op, value }),
+    });
+    const d = await res.json();
+    if (!d.ok) { out.className = "bad"; out.textContent = "✕ " + (d.error || "check failed"); return; }
+    if (d.holds) {
+      out.className = "good";
+      out.textContent = (d.exhaustive ? "✓ proven" : "✓ holds (bounded)")
+        + ` — ${d.predicate} on all ${d.checked} reachable states`;
+    } else {
+      const cex = Object.entries(d.counterexample || {}).map(([k, v]) => `${k}=${v}`).join(", ");
+      out.className = "bad"; out.textContent = `✗ violated — counterexample  ${cex}`;
+    }
+  } catch (e) { out.className = "bad"; out.textContent = "✕ " + e; }
+}
+$("#inv-btn").onclick = checkInvariant;
+$("#inv-prop").addEventListener("keydown", (e) => { if (e.key === "Enter") checkInvariant(); });
 $("#solve-close").onclick = () => { $("#solve").hidden = true; };
 $("#solve-given").addEventListener("keydown", (e) => { if (e.key === "Enter") solve(false); });
 
