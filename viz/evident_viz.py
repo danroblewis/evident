@@ -234,6 +234,138 @@ class Model:
                 edges.append((i, index[k]))
         return states, edges
 
+    def check_invariant(self, var, op, value, limit=400):
+        """VERIFY a safety property over the reachable set: does `var op value` hold
+        on EVERY reachable state? If not, return the first reachable counterexample.
+
+        This is the *verification* counterpart to the dynamics queries above: instead
+        of watching the orbit, it asks "is this predicate an invariant of the whole
+        reachable set?" — the question a model-checker answers.
+
+        Predicate spec — a single comparison over ONE carried var (by short or full
+        name, e.g. "balance" or "state.balance"):
+          op ∈ {"<=", "<", ">=", ">", "=", "!="}  (aliases: "==", "≤", "≥", "≠")
+          value: a python int/float for numeric vars, a bool for bool vars
+                 (true/false, "true"/"false", 1/0), a variant NAME (str) for enums.
+        Examples: check_invariant("count", "<=", 5), ("balance", ">=", 0),
+                  ("done", "=", True), ("mode", "!=", "Vending").
+
+        SOUNDNESS: this checks the predicate on the BFS-enumerated reachable set
+        (`reachable(limit)`). For a finite reachable set the BFS exhausts
+        (`exhaustive=True`), HOLDS is a genuine proof — every reachable state was
+        tested. When the BFS hit `limit` (`exhaustive=False`), a 'holds' is only
+        "holds on the states explored so far"; a counterexample is ALWAYS real (the
+        violating state IS reachable). For enum/bool/`=`/`!=` predicates the
+        reachable set is the exact thing to check; for unbounded numeric dynamics
+        raise `limit` or read HOLDS as bounded.
+
+        DETERMINISM: states are tested in BFS-discovery order (the order `reachable`
+        appends them), so the returned counterexample is stable run to run — the
+        first reachable violator, not an arbitrary z3 model.
+
+        Returns:
+          {
+            "holds": bool,                       # predicate true on every checked state
+            "checked": int,                      # number of reachable states tested
+            "exhaustive": bool,                  # did the BFS exhaust the reachable set?
+            "counterexample": {var: value, ...}  # first violating FULL state, or None
+                              | None,
+            "violating_value": <value> | None,   # the var's value in the counterexample
+            "predicate": "balance ≥ 0",          # human-readable, with the short var name
+          }
+        """
+        OPS = {"<=": "<=", "≤": "<=", "<": "<", ">=": ">=", "≥": ">=", ">": ">",
+               "=": "=", "==": "=", "!=": "!=", "≠": "!="}
+        canon = OPS.get(op)
+        if canon is None:
+            raise ValueError(f"unknown op {op!r}; use one of <= < >= > = !=")
+
+        # Resolve the var by full name ("state.balance") or short name ("balance").
+        v = self._resolve_carried(var)
+        if v is None:
+            known = ", ".join(sorted({w["name"] for w in self.carried}))
+            raise ValueError(f"unknown carried var {var!r}; known: {known}")
+        name = v["name"]
+
+        target = self._coerce_predicate_value(v, value, canon)
+        pretty = {"<=": "≤", "<": "<", ">=": "≥", ">": ">", "=": "=", "!=": "≠"}[canon]
+        predicate = f"{name.split('.')[-1]} {pretty} {self._fmt_val(target)}"
+
+        def ok(sv):
+            # A state that doesn't carry this leaf can't be judged — treat as
+            # vacuously satisfying so a partial state never fabricates a violation.
+            if name not in sv:
+                return True
+            x = sv[name]
+            if canon == "=":
+                return x == target
+            if canon == "!=":
+                return x != target
+            if canon == "<=":
+                return x <= target
+            if canon == "<":
+                return x < target
+            if canon == ">=":
+                return x >= target
+            return x > target  # ">"
+
+        states, _edges = self.reachable(limit=limit)
+        exhaustive = len(states) < limit          # BFS stopped on its own, not capped
+        checked = 0
+        for sv in states:                          # BFS-discovery order = deterministic
+            checked += 1
+            if not ok(sv):
+                return {"holds": False, "checked": checked, "exhaustive": exhaustive,
+                        "counterexample": dict(sv), "violating_value": sv.get(name),
+                        "predicate": predicate}
+        return {"holds": True, "checked": checked, "exhaustive": exhaustive,
+                "counterexample": None, "violating_value": None, "predicate": predicate}
+
+    def _resolve_carried(self, var):
+        for w in self.carried:                     # exact full-name match first
+            if w["name"] == var:
+                return w
+        for w in self.carried:                     # then short-name (leaf) match
+            if w["name"].split(".")[-1] == var:
+                return w
+        return None
+
+    def _coerce_predicate_value(self, v, value, canon):
+        """Turn the caller's predicate `value` into the same python type `_read`
+        decodes this var into, so == / <= compare like-with-like."""
+        kind = v["kind"]
+        if kind == "int":
+            return int(value)
+        if kind == "real":
+            return float(value)
+        if kind == "bool":
+            if isinstance(value, str):
+                s = value.strip().lower()
+                if s in ("true", "1", "yes"):
+                    return True
+                if s in ("false", "0", "no"):
+                    return False
+                raise ValueError(f"bad bool literal {value!r}")
+            return bool(value)
+        if kind == "enum":
+            variants = self.enum_variants.get(v["name"], [])
+            val = str(value)
+            if variants and val not in variants:
+                raise ValueError(f"{val!r} is not a variant of {v['name']} "
+                                 f"({', '.join(variants)})")
+            if canon in ("<=", "<", ">=", ">"):
+                raise ValueError(f"ordered op {canon!r} is undefined on enum "
+                                 f"{v['name'].split('.')[-1]}; use = or !=")
+            return val
+        # string / fallback
+        return str(value) if kind == "string" else value
+
+    @staticmethod
+    def _fmt_val(x):
+        if isinstance(x, bool):
+            return "true" if x else "false"
+        return str(x)
+
     # ---- helpers ------------------------------------------------------------
     @staticmethod
     def _key(state):
