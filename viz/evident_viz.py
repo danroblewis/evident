@@ -537,24 +537,8 @@ class Model:
         nf = (z3.Not(self.consts[self._first_tick_name])
               if self.consts.get(self._first_tick_name) is not None else z3.BoolVal(True))
 
-        # (1) rigorous fixed points: solve T(s, s)
-        self_eqs = [self.consts[v["name"]] == self.consts[v["prev"]] for v in self.carried
-                    if self.consts.get(v["name"]) is not None and self.consts.get(v["prev"]) is not None]
-        fps = []
-        if self_eqs:
-            sfp = z3.Solver()
-            for a in self.assertions:
-                sfp.add(a)
-            sfp.add(nf)
-            sfp.add(z3.And(*self_eqs))
-            while sfp.check() == z3.sat and len(fps) < 8:
-                mod = sfp.model()
-                fps.append({short(v["name"]): fmt(mod.eval(self.consts[v["name"]], True))
-                            for v in self.carried})
-                sfp.add(z3.Or(*[self.consts[v["name"]] != mod.eval(self.consts[v["name"]], True)
-                                for v in self.carried if self.consts.get(v["name"]) is not None]))
-
-        # (2) reachable set → stability + exact bounds (reuse the caller's if provided)
+        # (1) reachable set FIRST — its self-loops ARE the reachable fixed points, and it
+        # gives the exact bounds (reuse the caller's reachable set if provided).
         if states is None:
             try:
                 states, edges = self.reachable(limit=limit)
@@ -564,27 +548,54 @@ class Model:
         n = len(states)
         capped = n >= limit
         terminal = any(i == j for (i, j) in edges)        # an absorbing self-loop
+
+        # (2) reachable fixed points: a reachable state that maps to ITSELF (a self-loop edge).
+        # Reading them off the reachable graph keeps them TRUE — never an unreachable state
+        # (Marek's #50) — and DETERMINISTIC once sorted (Marek's #51), unlike enumerating raw
+        # T(s,s) solutions, which also returns unreachable equilibria in non-deterministic order.
+        fp_idx = sorted({i for (i, j) in edges if i == j})
+        fps = sorted(
+            ({short(v["name"]): states[i][v["name"]]
+              for v in self.carried if v["name"] in states[i]} for i in fp_idx),
+            key=lambda d: [(k, str(d[k])) for k in sorted(d)])[:8]
+
+        # Does ANY equilibrium exist (T(s,s)), reachable or not? A reachable one already shows
+        # up above; an UNREACHABLE one — the oscillator's origin, which the orbit diverges from
+        # — yields no fixed point but flips the verdict to 'unstable'.
+        self_eqs = [self.consts[v["name"]] == self.consts[v["prev"]] for v in self.carried
+                    if self.consts.get(v["name"]) is not None and self.consts.get(v["prev"]) is not None]
+        equilibria_exist = False
+        if self_eqs:
+            sfp = z3.Solver()
+            for a in self.assertions:
+                sfp.add(a)
+            sfp.add(nf)
+            sfp.add(z3.And(*self_eqs))
+            equilibria_exist = sfp.check() == z3.sat
+
+        # (3) exact bounds over the reachable set (floats rounded — Marek's #39).
+        rnd = lambda x: round(x, 3) if isinstance(x, float) else x
         bounds = {}
         for v in self.carried:
             if v.get("kind") in ("int", "real"):
                 nums = [s[v["name"]] for s in states
                         if isinstance(s.get(v["name"]), (int, float))]
                 if nums:
-                    bounds[short(v["name"])] = [min(nums), max(nums)]
+                    bounds[short(v["name"])] = [rnd(min(nums)), rnd(max(nums))]
 
         out_deg = {}
         for (i, j) in edges:
             out_deg[i] = out_deg.get(i, 0) + 1
         max_branch = max(out_deg.values()) if out_deg else 1
 
-        has_fp = bool(fps)
+        has_fp = bool(fps)                    # rests at a REACHABLE fixed point
         if max_branch >= 2:
-            verdict = "nondeterministic"      # a free choice fans out; fps are rest states
+            verdict = "nondeterministic"      # a free choice fans out
         elif has_fp and terminal and not capped:
-            verdict = "terminates"            # the orbit converges to a fixed point
-        elif has_fp and capped:
-            verdict = "unstable"              # an equilibrium exists but the orbit diverges
-        elif not has_fp and not capped:
+            verdict = "terminates"            # the orbit converges to a reachable fixed point
+        elif equilibria_exist and capped:
+            verdict = "unstable"              # an equilibrium exists but the orbit diverges from it
+        elif not equilibria_exist and not capped:
             verdict = "cyclic"                # revisits states, no fixed point
         elif capped:
             verdict = "unbounded"             # grows without bound
