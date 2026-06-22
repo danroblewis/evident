@@ -1,5 +1,5 @@
 {
-  "seq": 250,
+  "seq": 251,
   "tasks": [
     {
       "id": 1,
@@ -4377,16 +4377,23 @@
       "id": 244,
       "title": "Export the diagram as SVG/PNG for a paper, and export a trace as a state table (CSV/markdown). SMT-LIB copy + .ev download landed (verified the SMT-LIB runs in z3 directly \u2014 delight), but I still can't take the FIGURE or the counterexample TRACE out as an artifact. Alloy exports the instance, the TLA+ toolbox exports the trace; I want the phase spiral as SVG and the init\u2192witness path as a table I can paste into a writeup.",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "ide-critic-expert",
       "created": "2026-06-22T20:15:02Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "solve"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-22T22:21:54Z",
+          "by": "worker",
+          "act": "done",
+          "note": "trace-table half shipped (commit 12acb1ea): \u21a7 csv button on the trace stepper downloads a step\u00d7var CSV. Verified live. Figure-as-SVG half split to a new task (larger backend change)."
+        }
+      ]
     },
     {
       "id": 245,
@@ -4490,6 +4497,21 @@
           "note": "shipped: _execQuery pulses '\u22ef searching\u2026' + disables query buttons during the search (commit 7156cc29)"
         }
       ]
+    },
+    {
+      "id": 251,
+      "title": "Export the diagram as SVG (vector, publication-quality) \u2014 the figure half of #244; needs a backend SVG-render path (matplotlib savefig svg) + a download button. The trace-table half shipped in #244.",
+      "detail": "",
+      "status": "open",
+      "created_by": "worker",
+      "created": "2026-06-22T22:21:54Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "feature"
+      ],
+      "log": []
     }
   ],
   "concerns": [
