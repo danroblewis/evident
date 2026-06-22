@@ -5,7 +5,7 @@
 
 use crate::core::ast::*;
 use crate::lexer::Token;
-use super::{Parser, ParseError, Result, peek_compare_op};
+use super::{Parser, Result, peek_compare_op};
 
 impl Parser {
     pub(super) fn parse_expr(&mut self) -> Result<Expr> {
@@ -26,7 +26,7 @@ impl Parser {
             loop {
                 match self.bump() {
                     Token::Ident(s) => names.push(s),
-                    other => return Err(ParseError(format!(
+                    other => return Err(self.err(format!(
                         "expected bound variable name in tuple binding, got {:?}", other))),
                 }
                 if matches!(self.peek(), Token::Comma) { self.bump(); continue; }
@@ -34,7 +34,7 @@ impl Parser {
             }
             self.eat(&Token::RParen)?;
             if names.len() < 2 {
-                return Err(ParseError(format!(
+                return Err(self.err(format!(
                     "tuple binding `(…)` must contain ≥ 2 names; got {}", names.len()
                 )));
             }
@@ -42,7 +42,7 @@ impl Parser {
         } else {
             match self.bump() {
                 Token::Ident(s) => vec![s],
-                other => return Err(ParseError(format!(
+                other => return Err(self.err(format!(
                     "expected bound variable name, got {:?}", other))),
             }
         };
@@ -157,7 +157,7 @@ impl Parser {
         let then_branch = self.parse_ternary()?;
         match self.bump() {
             Token::Colon => {}
-            other => return Err(ParseError(format!(
+            other => return Err(self.err(format!(
                 "expected `:` after ternary then-branch, got {:?}", other,
             ))),
         }
@@ -328,7 +328,7 @@ impl Parser {
                         Token::Ident(field) => {
                             e = Expr::Field(Box::new(e), field);
                         }
-                        other => return Err(ParseError(format!(
+                        other => return Err(self.err(format!(
                             "expected field name after '.', got {:?}", other))),
                     }
                 }
@@ -343,15 +343,15 @@ impl Parser {
         let scrutinee = self.parse_or()?;
 
         if !matches!(self.peek(), Token::Newline) {
-            return Err(ParseError(
-                "expected newline + indented arms after `match scrutinee`".into()));
+            return Err(self.err(
+                "expected newline + indented arms after `match scrutinee`"));
         }
         self.bump();
         while matches!(self.peek(), Token::Newline) { self.bump(); }
         let arm_indent = match self.peek() {
             Token::Indent(n) if *n > 0 => *n,
-            _ => return Err(ParseError(
-                "expected indented arms after `match`".into())),
+            _ => return Err(self.err(
+                "expected indented arms after `match`")),
         };
         let mut arms = Vec::new();
         loop {
@@ -362,7 +362,7 @@ impl Parser {
             let pattern = self.parse_match_pattern()?;
             match self.bump() {
                 Token::Implies => {}
-                other => return Err(ParseError(format!(
+                other => return Err(self.err(format!(
                     "expected `⇒` after pattern, got {:?}", other))),
             }
             let body = self.parse_or()?;
@@ -373,7 +373,7 @@ impl Parser {
             while matches!(self.peek(), Token::Newline) { self.bump(); }
         }
         if arms.is_empty() {
-            return Err(ParseError("match must have at least one arm".into()));
+            return Err(self.err("match must have at least one arm"));
         }
         Ok(Expr::Match(Box::new(scrutinee), arms))
     }
@@ -399,7 +399,7 @@ impl Parser {
                     let bind = match self.bump() {
                         Token::Ident(b) if b == "_" => None,
                         Token::Ident(b) => Some(b),
-                        other => return Err(ParseError(format!(
+                        other => return Err(self.err(format!(
                             "expected identifier or `_` in pattern, got {:?}", other))),
                     };
                     binds.push(bind);
@@ -413,7 +413,7 @@ impl Parser {
             self.eat(&Token::RParen)?;
             return Ok(crate::core::ast::MatchPattern::Ctor { name: s, binds });
         }
-        Err(ParseError(format!(
+        Err(self.err(format!(
             "expected pattern (Ctor or `_`), got {:?}", self.peek())))
     }
 
@@ -433,7 +433,7 @@ impl Parser {
                     self.bump();
                     match self.bump() {
                         Token::Ident(field) => { name.push('.'); name.push_str(&field); }
-                        other => return Err(ParseError(format!(
+                        other => return Err(self.err(format!(
                             "expected field name after '.', got {:?}", other))),
                     }
                 }
@@ -511,7 +511,7 @@ impl Parser {
                 self.eat(&Token::RSeq)?;
                 Ok(Expr::SeqLit(items))
             }
-            other => Err(ParseError(format!("expected expression, got {:?}", other))),
+            other => Err(self.err(format!("expected expression, got {:?}", other))),
         }
     }
 }

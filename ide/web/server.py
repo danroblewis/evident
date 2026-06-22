@@ -138,6 +138,16 @@ def _export(source: str, work: str):
     return True, prefix, dropped, err
 
 
+_LOC_RE = re.compile(r"\bline (\d+), col (\d+)\b")
+
+
+def _error_loc(msg: str):
+    """Pull a 1-based (line, col) out of a parse/lex error message — the runtime
+    formats them as 'parse error at line N, col N: …'. Returns None when absent."""
+    m = _LOC_RE.search(msg or "")
+    return {"line": int(m.group(1)), "col": int(m.group(2))} if m else None
+
+
 def _banner(m, max_branch=1, recurrent=1):
     """The model-shape line, from the functional-dependency analysis. Two reachable-graph
     facts override the dependency verdict: BRANCHING (a state with ≥2 successors is
@@ -280,7 +290,8 @@ def analyze(req: Source):
     with _LOCK, tempfile.TemporaryDirectory() as work:
         ok, prefix, dropped, msg = _export(req.source, work)
         if not ok:
-            return {"ok": False, "error": msg, "dropped": dropped}
+            return {"ok": False, "error": msg, "dropped": dropped,
+                    "error_loc": _error_loc(msg)}
         claim_resp = _maybe_claim(prefix, dropped)     # a raw claim renders its solved solution space
         if claim_resp is not None:
             return claim_resp
