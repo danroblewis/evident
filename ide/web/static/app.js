@@ -576,16 +576,16 @@ editorEl.addEventListener("mousemove", (e) => {
   if (!pos) { gloss.hidden = true; return; }
   const tok = editor.session.getTokenAt(pos.row, pos.column + 1);
   if (tok) {
-    const ty = tok.type || "";
-    const isHoverable = /keyword|operator|variable\.parameter|boolean/.test(ty);
-    if (isHoverable) {
-      const g = glossFor((tok.value || "").trim());
-      if (g) {
-        gloss.textContent = g; gloss.hidden = false;
-        gloss.style.left = Math.min(e.clientX + 12, window.innerWidth - 380) + "px";
-        gloss.style.top = (e.clientY + 18) + "px";
-        return;
-      }
+    // Don't gate on Ace's token TYPE — the Evident mode classifies the unicode operators
+    // inconsistently, so hovering ∈/⇒/Δ in the editor did nothing despite a glossary entry
+    // (Marek/Sam #45). glossFor() returns null for anything not in the glossary, so trying it on
+    // every token is safe and lets operators/keywords/_prev all teach themselves.
+    const g = glossFor((tok.value || "").trim());
+    if (g) {
+      gloss.textContent = g; gloss.hidden = false;
+      gloss.style.left = Math.min(e.clientX + 12, window.innerWidth - 380) + "px";
+      gloss.style.top = (e.clientY + 18) + "px";
+      return;
     }
   }
   gloss.hidden = true;
