@@ -248,7 +248,11 @@ html,body { margin:0; height:100%; background:var(--bg); color:var(--ink);
   cursor:pointer; border:1px solid transparent; user-select:none; }
 #tabs .tab:hover { color:var(--ink); }
 #tabs .tab.on { color:#fff; background:var(--bg); border-color:var(--line); border-bottom-color:var(--bg); }
-#view { flex:1; display:flex; align-items:center; justify-content:center; overflow:auto; padding:8px; }
+/* overflow:hidden so wheel-zoomed content clips cleanly inside the pane (#233) — pan/zoom
+   replaces native scrollbars. cursor:grab signals the surface is draggable; .grabbing while held. */
+#view { flex:1; display:flex; align-items:center; justify-content:center; overflow:hidden; padding:8px;
+  cursor:grab; }
+#view.grabbing { cursor:grabbing; }
 #view img { max-width:100%; max-height:100%; object-fit:contain; }
 #view .ph { color:var(--dim); }
 /* the one-line "what am I looking at?" caption under the diagram — subtle, doesn't take a row when empty */
@@ -325,4 +329,11 @@ html,body { margin:0; height:100%; background:var(--bg); color:var(--ink);
 #view.stale::after { content:"stale — fix the error to refresh"; position:absolute;
   color:var(--dim); background:var(--panel); padding:2px 8px; border-radius:6px; }
 #view { position:relative; }
+/* a dim corner hint for the pan/zoom affordance (#233): visible at rest, fades on hover so it
+   never obscures the diagram you're inspecting. Only shows when there's a picture to pan/zoom. */
+#view::after { content:"scroll to zoom · drag to pan · dbl-click reset"; position:absolute;
+  right:10px; bottom:8px; color:var(--dim); background:#0b0f1499; padding:1px 7px; border-radius:5px;
+  font-size:10px; pointer-events:none; opacity:0.55; transition:opacity .2s; z-index:30; }
+#view:hover::after { opacity:0; }
+#view:has(.ph)::after { content:none; }   /* no pan/zoom hint over a placeholder (no picture) */
 #banner.stale { color:var(--dim); font-style:italic; }

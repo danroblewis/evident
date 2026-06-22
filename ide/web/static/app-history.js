@@ -52,7 +52,8 @@ function renderLiveView(view, data) {
   view.innerHTML = "";
   if (!pinnedA) {
     const pane = viewPane(data, true);
-    if (typeof pane === "string") view.innerHTML = pane; else view.appendChild(pane);
+    if (typeof pane === "string") view.innerHTML = pane;
+    else { view.appendChild(pane); resetPanZoom(pane); }   // identity zoom for the new picture (#233)
     return;
   }
   const row = document.createElement("div");
@@ -60,6 +61,7 @@ function renderLiveView(view, data) {
   row.appendChild(comparePane("A · pinned", pinnedA.banner, viewPane(pinnedA, false), true));
   row.appendChild(comparePane("B · live", data.banner || data.view || "", viewPane(data, true), false));
   view.appendChild(row);
+  resetPanZoom(row.querySelector(".view-wrap"));            // reset zoom on a fresh render (#233)
 }
 
 // One labelled column of the two-up compare. `ghost` dims the pinned A so the live B reads as
