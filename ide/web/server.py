@@ -390,7 +390,15 @@ def _block_term(name, val):
                 return None
             terms.append(t)
         return "(" + " ∧ ".join(terms) + ")" if terms else None
-    return None                                    # composite / unsupported → can't block
+    if isinstance(val, dict):                      # a record witness (e.g. sudoku's boxes elements,
+        terms = []                                 # toposort edges) — block each field by dotted name
+        for fld, fv in sorted(val.items()):
+            t = _block_term(f"{name}.{fld}", fv)
+            if t is None:
+                return None
+            terms.append(t)
+        return "(" + " ∧ ".join(terms) + ")" if terms else None
+    return None                                    # genuinely unsupported → can't block
 
 
 def _block_clause(bindings):
