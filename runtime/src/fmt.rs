@@ -44,8 +44,15 @@ pub fn format_source(src: &str) -> Result<String, String> {
     let new_tokens = tokenize(&formatted)
         .map_err(|e| format!("internal: formatted output failed to lex: {e}"))?;
     if !tokens_equivalent(&orig_tokens, &new_tokens) {
-        return Err("internal: formatter changed the token stream — refusing to \
-                    emit (this is a formatter bug; file left unchanged)"
+        // Not a formatter bug — the SOURCE's indentation is inconsistent enough that a clean
+        // re-indent would change which lines nest under which (the block structure). The
+        // formatter refuses to guess and silently change your program's meaning. Fix the ragged
+        // indentation by hand — align sibling lines to the same depth — then re-run fmt. (#53)
+        return Err("could not re-indent safely: the indentation is inconsistent enough that a \
+                    clean re-indent would change the block structure (which lines nest under \
+                    which). The formatter won't guess and risk changing the program's meaning — \
+                    align the ragged sibling lines to the same depth, then re-run. File left \
+                    unchanged."
             .to_string());
     }
 
