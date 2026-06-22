@@ -620,6 +620,21 @@ def temporal(req: TemporalReq):
             return {"ok": False, "error": str(e)}
 
 
+@app.post("/api/smtlib")
+def smtlib(req: Source):
+    """Return the SMT-LIB the runtime emits for this program — so a user can re-run the exact
+    encoding in z3 directly, diff two encodings, or paste a model into notes (Ana #200)."""
+    with _LOCK, tempfile.TemporaryDirectory() as work:
+        ok, prefix, dropped, msg = _export(req.source, work)
+        if not ok:
+            return {"ok": False, "error": msg}
+        try:
+            with open(prefix + ".smt2") as f:
+                return {"ok": True, "smtlib": f.read(), "dropped": dropped}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+
 _NOCACHE = {"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
            "Pragma": "no-cache", "Expires": "0"}
 

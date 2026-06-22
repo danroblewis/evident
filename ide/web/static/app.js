@@ -1184,6 +1184,31 @@ async function solve(enumerate) {
 
 $("#solve-btn").onclick = () => solve(false);
 $("#solve-resolve").onclick = () => solve(false);
+
+// Export the SMT-LIB encoding (Ana #200): copy to clipboard so you can re-run it in z3 / paste it
+// into notes; fall back to a .smt2 download where the clipboard is blocked.
+$("#smtlib-btn").onclick = async () => {
+  setStatus("exporting SMT-LIB…", "busy");
+  try {
+    const res = await fetch("/api/smtlib", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ source: editor.getValue() }),
+    });
+    if (!res.ok) { backendDown(`the solver returned HTTP ${res.status}`); return; }
+    const d = await res.json();
+    if (!d.ok) { setStatus("✕ " + (d.error || "export failed"), "err"); return; }
+    try {
+      await navigator.clipboard.writeText(d.smtlib);
+      setStatus("SMT-LIB copied to clipboard ✓", "ok");
+    } catch (_) {                                       // clipboard blocked → download instead
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(new Blob([d.smtlib], { type: "text/plain" }));
+      a.download = ($("#fname").textContent || "model").replace(/\.ev$/, "") + ".smt2";
+      a.click(); URL.revokeObjectURL(a.href);
+      setStatus("SMT-LIB downloaded ✓", "ok");
+    }
+  } catch (e) { setStatus("✕ " + e, "err"); }
+};
 $("#solve-all").onclick = () => solve(true);
 
 // Assert-and-check a safety invariant over the reachable set — verify `var op value` holds on
