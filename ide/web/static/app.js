@@ -1498,6 +1498,200 @@ document.addEventListener("click", (e) => {
   if (!palette.hidden && !palette.contains(e.target) && e.target.id !== "symbols-btn") togglePalette(false);
 });
 
+// --- command palette + keyboard shortcuts (Task #182) -----------------------------
+// The app was mouse-only for everything but typing — every critic reached for a Cmd-K
+// command menu and shortcuts for Solve / comment-toggle. This adds a centered, fuzzy-
+// filtered command overlay (↑/↓ Enter Esc) plus three global chords. Commands are built
+// FRESH on each open so the live #tabs views and any missing target element are honored;
+// a command whose target is gone is simply skipped, never throws.
+
+const $$ = (s) => Array.from(document.querySelectorAll(s));
+
+// @pure-helpers-start  (sliced + eval'd by the headless node test — keep self-contained)
+// Subsequence fuzzy match: every char of `q` appears in `label` in order (case-insensitive).
+// Returns the matched index list (for highlighting) or null when it doesn't match. An empty
+// query matches everything with an empty (no-highlight) index list.
+function fuzzyMatch(label, q) {
+  const text = String(label).toLowerCase();
+  const query = String(q || "").toLowerCase().replace(/\s+/g, "");
+  if (!query) return [];
+  const idx = [];
+  let j = 0;
+  for (let i = 0; i < text.length && j < query.length; i++) {
+    if (text[i] === query[j]) { idx.push(i); j++; }
+  }
+  return j === query.length ? idx : null;
+}
+
+// Line-comment toggle over a block of source lines (the rows the selection spans). If EVERY
+// non-blank line already starts with a `--` comment prefix, strip it; otherwise add `-- `.
+// Blank lines are untouched. Pure: takes/returns an array of strings, so it's unit-testable
+// without Ace. Mirrors the Evident `-- ` comment convention.
+function toggleCommentLines(lines) {
+  const prefix = "-- ";
+  const codeLines = lines.filter((l) => l.trim() !== "");
+  const allCommented = codeLines.length > 0
+    && codeLines.every((l) => /^\s*-- ?/.test(l));
+  return lines.map((l) => {
+    if (l.trim() === "") return l;
+    if (allCommented) return l.replace(/^(\s*)-- ?/, "$1");
+    return l.replace(/^(\s*)/, "$1" + prefix);
+  });
+}
+// @pure-helpers-end
+
+// Apply the comment toggle to the editor's currently selected rows (or the cursor's line).
+function toggleCommentSelection() {
+  const sess = editor.session;
+  const range = editor.getSelectionRange();
+  const startRow = range.start.row;
+  // a selection ending exactly at column 0 of a later row shouldn't pull in that empty next line
+  const endRow = range.end.column === 0 && range.end.row > startRow
+    ? range.end.row - 1 : range.end.row;
+  const rows = [];
+  for (let r = startRow; r <= endRow; r++) rows.push(sess.getLine(r));
+  const out = toggleCommentLines(rows);
+  const Range = ace.require("ace/range").Range;
+  for (let r = startRow; r <= endRow; r++) {
+    const cur = sess.getLine(r), next = out[r - startRow];
+    if (next !== cur) sess.replace(new Range(r, 0, r, cur.length), next);
+  }
+  editor.focus();
+}
+
+// Build the live command list. Each command: { label, run }. Targets are resolved at build
+// time; a command whose target element is missing is omitted so .run never throws.
+function buildCommands() {
+  const cmds = [];
+  const clickIf = (id) => { const el = $(id); if (el) el.click(); };
+  // open a sample — same path as the #samples select onchange
+  Object.keys(SAMPLES).forEach((name) => {
+    cmds.push({ label: "Open sample: " + name, run: () => {
+      editor.setValue(SAMPLES[name], -1);
+      $("#solve-given").value = ""; $("#solve").hidden = true;
+      $("#inv-prop").value = ""; $("#inv-result").textContent = "";
+      clearTrace(); run();
+    }});
+  });
+  cmds.push({ label: "Solve claim — ⊨ witness or UNSAT", run: () => solve(false) });
+  if ($("#smtlib-btn")) cmds.push({ label: "Copy SMT-LIB encoding", run: () => clickIf("#smtlib-btn") });
+  if ($("#symbols-btn")) cmds.push({ label: "Symbols palette — how to type ∈ ⇒ Δ", run: () => togglePalette(true) });
+  if ($("#tour-btn")) cmds.push({ label: "Guided tour", run: () => startTour() });
+  // one command per live view tab (the #tabs strip is rebuilt by paint())
+  $$("#tabs .tab").forEach((tab) => {
+    const view = tab.textContent.trim().replace(/ /g, "_");
+    cmds.push({ label: "View: " + tab.textContent.trim(), run: () => run(view) });
+  });
+  cmds.push({ label: "Verify — focus the ⊢ property field", run: () => { const f = $("#inv-prop"); if (f) f.focus(); } });
+  return cmds;
+}
+
+// --- the overlay DOM ---
+const cmdk = document.createElement("div");
+cmdk.id = "cmdk"; cmdk.hidden = true;
+cmdk.innerHTML =
+  '<div id="cmdk-box">'
+  + '<input id="cmdk-input" placeholder="Type a command…  (open a sample, solve, switch view)" autocomplete="off" spellcheck="false">'
+  + '<div id="cmdk-list"></div>'
+  + '<div id="cmdk-foot" class="dim">⌘K commands · ⌘⏎ solve · ⌘/ comment · ↑↓ move · ⏎ run · Esc close</div>'
+  + '</div>';
+document.body.appendChild(cmdk);
+const cmdkInput = $("#cmdk-input"), cmdkList = $("#cmdk-list");
+let cmdkCommands = [], cmdkFiltered = [], cmdkActive = 0;
+
+function highlightLabel(label, idx) {
+  if (!idx || !idx.length) return escapeHtml(label);
+  let out = "", set = new Set(idx);
+  for (let i = 0; i < label.length; i++) {
+    const c = escapeHtml(label[i]);
+    out += set.has(i) ? `<b>${c}</b>` : c;
+  }
+  return out;
+}
+
+function renderCmdk() {
+  const q = cmdkInput.value;
+  cmdkFiltered = [];
+  cmdkCommands.forEach((c) => {
+    const m = fuzzyMatch(c.label, q);
+    if (m !== null) cmdkFiltered.push({ cmd: c, idx: m });
+  });
+  if (cmdkActive >= cmdkFiltered.length) cmdkActive = Math.max(0, cmdkFiltered.length - 1);
+  if (!cmdkFiltered.length) {
+    cmdkList.innerHTML = '<div class="cmdk-empty dim">no matching command</div>';
+    return;
+  }
+  cmdkList.innerHTML = cmdkFiltered.map((f, i) =>
+    `<div class="cmdk-row${i === cmdkActive ? " on" : ""}" data-i="${i}">${highlightLabel(f.cmd.label, f.idx)}</div>`
+  ).join("");
+  const on = cmdkList.querySelector(".cmdk-row.on");
+  if (on) on.scrollIntoView({ block: "nearest" });
+}
+
+function runCmdk(i) {
+  const f = cmdkFiltered[i];
+  closeCmdk();
+  if (f) { try { f.cmd.run(); } catch (e) { /* a stale target — never let the palette throw */ } }
+}
+
+function openCmdk() {
+  togglePalette(false);                 // don't stack the symbols popover under the modal
+  cmdkCommands = buildCommands();
+  cmdkInput.value = ""; cmdkActive = 0;
+  cmdk.hidden = false;
+  renderCmdk();
+  cmdkInput.focus();
+}
+
+function closeCmdk() { cmdk.hidden = true; editor.focus(); }
+function cmdkOpen() { return !cmdk.hidden; }
+function toggleCmdk() { cmdkOpen() ? closeCmdk() : openCmdk(); }
+
+cmdkInput.addEventListener("input", () => { cmdkActive = 0; renderCmdk(); });
+cmdkInput.addEventListener("keydown", (e) => {
+  if (e.key === "ArrowDown") { e.preventDefault(); cmdkActive = Math.min(cmdkActive + 1, cmdkFiltered.length - 1); renderCmdk(); }
+  else if (e.key === "ArrowUp") { e.preventDefault(); cmdkActive = Math.max(cmdkActive - 1, 0); renderCmdk(); }
+  else if (e.key === "Enter") { e.preventDefault(); runCmdk(cmdkActive); }
+  else if (e.key === "Escape") { e.preventDefault(); closeCmdk(); }
+});
+cmdkList.addEventListener("click", (e) => {
+  const row = e.target.closest(".cmdk-row");
+  if (row) runCmdk(+row.dataset.i);
+});
+cmdk.addEventListener("mousedown", (e) => { if (e.target === cmdk) closeCmdk(); });  // backdrop click closes
+if ($("#cmdk-hint")) $("#cmdk-hint").onclick = (e) => { e.stopPropagation(); openCmdk(); };
+
+// --- editor-scoped chords (Ace owns keystrokes while the editor is focused) ---
+editor.commands.addCommand({
+  name: "cmdkPalette", bindKey: { win: "Ctrl-K", mac: "Command-K" },
+  exec: () => toggleCmdk(),
+});
+editor.commands.addCommand({
+  name: "cmdkSolve", bindKey: { win: "Ctrl-Enter", mac: "Command-Enter" },
+  exec: () => solve(false),
+});
+editor.commands.addCommand({
+  name: "cmdkComment", bindKey: { win: "Ctrl-/", mac: "Command-/" },
+  exec: () => toggleCommentSelection(),
+});
+
+// --- global chords (fire when focus is OUTSIDE the editor / inputs) ---
+// Cmd-K toggles the palette from anywhere. Cmd-Enter / Cmd-/ also work globally, but a plain
+// keystroke must NEVER fire a shortcut while you're typing in an input or the editor (those
+// paths are handled by the Ace commands / the palette's own keydown above).
+document.addEventListener("keydown", (e) => {
+  const mod = e.metaKey || e.ctrlKey;
+  if (!mod) return;
+  const k = e.key.toLowerCase();
+  if (k === "k") { e.preventDefault(); toggleCmdk(); return; }
+  if (cmdkOpen()) return;                       // the palette's own input owns the rest
+  const inField = e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement
+    || (e.target.closest && e.target.closest("#code"));   // Ace already handles its own chords
+  if (inField) return;
+  if (k === "enter") { e.preventDefault(); solve(false); }
+  else if (k === "/") { e.preventDefault(); toggleCommentSelection(); }
+});
+
 // --- guided first-run walkthrough — coachmark tour (Task #164) ---------------------
 // A newcomer lands on a loaded sample but no "try this" path. This is a ~4-step lap:
 // each step spotlights one target element (translucent backdrop + a ring) and shows a

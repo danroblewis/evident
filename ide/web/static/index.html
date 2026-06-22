@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Evident IDE</title>
 <link rel="icon" href="data:,">
-<link rel="stylesheet" href="/static/app.css?v=11">
+<link rel="stylesheet" href="/static/app.css?v=12">
 </head>
 <body>
 <div id="app">
@@ -17,6 +17,7 @@
     <button id="tour-btn" title="a guided lap around the IDE (Esc to close)">? tour</button>
     <button id="solve-btn" title="solve a claim — SAT witness or UNSAT">⊨ Solve</button>
     <button id="smtlib-btn" title="copy this program's SMT-LIB encoding (re-run it in z3, or save it)">⧉ SMT-LIB</button>
+    <button id="cmdk-hint" title="command palette — search every action (⌘K / Ctrl-K)">⌘K</button>
     <span class="sp"></span>
     <span id="latency" class="dim"></span>
     <span id="status" class="dim">starting…</span>
@@ -57,6 +58,6 @@
 
 <script src="/static/vendor/ace-ace.js"></script>
 <script src="/static/vendor/ace-theme-dracula.js"></script>
-<script src="/static/app.js?v=11"></script>
+<script src="/static/app.js?v=12"></script>
 </body>
 </html>

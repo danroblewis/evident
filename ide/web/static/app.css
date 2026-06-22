@@ -70,6 +70,33 @@ html,body { margin:0; height:100%; background:var(--bg); color:var(--ink);
 .palette-name { color:var(--ink); }
 .palette-mn { font-size:11px; }
 
+/* the ⌘K top-bar hint button */
+#cmdk-hint { background:#1b2129; color:var(--dim); border:1px solid var(--line);
+  border-radius:6px; padding:2px 8px; font:11px ui-monospace,Menlo,monospace; cursor:pointer; }
+#cmdk-hint:hover { border-color:var(--accent); color:var(--accent); }
+
+/* command palette — a centered modal overlay (Task #182). Cmd-K opens it: a fuzzy-filter
+   input over a scrollable command list (↑/↓ Enter Esc), styled like #palette but modal. */
+#cmdk { position:fixed; inset:0; z-index:90; background:#0008;
+  display:flex; align-items:flex-start; justify-content:center; }
+#cmdk[hidden] { display:none; }
+#cmdk-box { margin-top:12vh; width:560px; max-width:calc(100vw - 32px); max-height:70vh;
+  display:flex; flex-direction:column; background:#0b0f14; border:1px solid var(--accent);
+  border-radius:10px; box-shadow:0 16px 48px #000c; overflow:hidden;
+  font:13px/1.5 ui-monospace,Menlo,monospace; }
+#cmdk-input { background:#0f1419; color:var(--ink); border:none; border-bottom:1px solid var(--line);
+  padding:11px 14px; font:14px ui-monospace,Menlo,monospace; outline:none; }
+#cmdk-input::placeholder { color:var(--dim); }
+#cmdk-list { overflow:auto; flex:1; }
+.cmdk-row { padding:7px 14px; cursor:pointer; color:var(--ink); border-bottom:1px solid #141a21;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.cmdk-row:hover { background:#16313f; }
+.cmdk-row.on { background:#1d4255; color:#fff; }
+.cmdk-row b { color:var(--accent); font-weight:bold; }
+.cmdk-row.on b { color:#9ecbff; }
+.cmdk-empty { padding:12px 14px; }
+#cmdk-foot { padding:7px 14px; border-top:1px solid var(--line); color:var(--dim); font-size:11px; }
+
 /* the solve panel — run a claim, read a witness (or UNSAT) */
 #solve { border-top:1px solid var(--line); background:#11212e; max-height:46%;
   display:flex; flex-direction:column; }
