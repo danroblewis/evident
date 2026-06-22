@@ -384,12 +384,33 @@ function _renderTrace() {
   const inCycle = cs != null && i >= cs;
   if (inCycle) { const flag = document.createElement("span"); flag.className = "trace-flag cycle"; flag.textContent = "↻ loops here — never reaches Q"; head.appendChild(flag); }
   else if (last) { const flag = document.createElement("span"); flag.className = "trace-flag" + (goal ? " good" : ""); flag.textContent = goal ? "● witness here" : "● violation here"; head.appendChild(flag); }
+  // Export the whole trace as a state table — so a counterexample / witness run can leave for a
+  // spreadsheet, a paper, or a regression fixture (Ana #244).
+  const dl = document.createElement("button");
+  dl.className = "trace-nav trace-dl"; dl.textContent = "↧ csv"; dl.title = "download this trace as a CSV state table";
+  dl.onclick = exportTraceCSV;
+  head.appendChild(dl);
   el.appendChild(head);
   const line = document.createElement("div");
   line.className = "trace-state" + (inCycle ? " cycle" : (last ? (goal ? " good" : " bad") : ""));
   line.textContent = _traceStateLine(_trace.states[i]);
   el.appendChild(line);
   highlightTraceStep(_trace.states[i]);      // ring this step's state on the diagram (#231/#206)
+}
+// Download the current trace as a CSV state table (Ana #244): a header of leaf var names + one row per
+// step. So a counterexample / witness run can leave for a spreadsheet, a paper, or a regression fixture.
+function exportTraceCSV() {
+  const states = _trace.states;
+  if (!states || !states.length) return;
+  const keys = Object.keys(states[0]);
+  const esc = (v) => { const s = typeof v === "string" ? v : JSON.stringify(v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+  const rows = [["step", ...keys.map((k) => k.split(".").pop())].join(",")];
+  states.forEach((s, i) => rows.push([i, ...keys.map((k) => esc(s[k]))].join(",")));
+  const blob = new Blob([rows.join("\n")], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = "evident-trace.csv"; document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
 }
 // Open the stepper on a fresh trace, parked at the final step. `kind` is "goal" for a query witness
 // (else a violation); `cycleStart`, when given, marks where a liveness lasso's dodging cycle begins
