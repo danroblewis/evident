@@ -340,6 +340,72 @@ class Model:
         return {"holds": True, "checked": checked, "exhaustive": exhaustive,
                 "counterexample": None, "violating_value": None, "predicate": predicate}
 
+    def _predicate(self, var, op, value):
+        """Build (full_name, short_pretty_predicate, fn) for a `var op value` comparison —
+        the shared core of check_invariant/check_temporal. fn(state)→bool, vacuously true on a
+        state that doesn't carry the leaf."""
+        OPS = {"<=": "<=", "≤": "<=", "<": "<", ">=": ">=", "≥": ">=", ">": ">",
+               "=": "=", "==": "=", "!=": "!=", "≠": "!="}
+        canon = OPS.get(op)
+        if canon is None:
+            raise ValueError(f"unknown op {op!r}; use one of <= < >= > = !=")
+        v = self._resolve_carried(var)
+        if v is None:
+            known = ", ".join(sorted({w["name"] for w in self.carried}))
+            raise ValueError(f"unknown carried var {var!r}; known: {known}")
+        name = v["name"]
+        target = self._coerce_predicate_value(v, value, canon)
+        pretty = {"<=": "≤", "<": "<", ">=": "≥", ">": ">", "=": "=", "!=": "≠"}[canon]
+        cmp = {"=": lambda x: x == target, "!=": lambda x: x != target,
+               "<=": lambda x: x <= target, "<": lambda x: x < target,
+               ">=": lambda x: x >= target, ">": lambda x: x > target}[canon]
+        def fn(sv):
+            return True if name not in sv else cmp(sv[name])
+        return name, f"{name.split('.')[-1]} {pretty} {self._fmt_val(target)}", fn
+
+    def check_temporal(self, var, op, value, modality="eventually",
+                       p_var=None, p_op=None, p_value=None, limit=400):
+        """VERIFY a LIVENESS property over the reachable graph (the model-checker move beyond the
+        safety □ that check_invariant does):
+          - modality "eventually" (◇Q): does EVERY run from the initial state reach a Q-state?
+          - modality "leads_to"   (P ⤳ Q): from every reachable P-state, is Q eventually reached?
+        A run can AVOID Q forever iff it reaches a ¬Q cycle or gets stuck in a ¬Q terminal. We
+        compute that 'avoid' set (backward reachability, within the ¬Q subgraph, from ¬Q cycles ∪
+        ¬Q sinks); ◇Q holds iff the initial state isn't in it, P⤳Q iff no P-state is. Returns a
+        concrete counterexample state (one that can dodge Q forever) when it fails."""
+        import networkx as nx
+        qname, qpred, qfn = self._predicate(var, op, value)
+        states, edges = self.reachable(limit=limit)
+        n = len(states)
+        if n == 0:
+            return {"holds": True, "checked": 0, "exhaustive": True,
+                    "counterexample": None, "predicate": f"◇ {qpred}"}
+        exhaustive = n < limit
+        g = nx.DiGraph(); g.add_nodes_from(range(n)); g.add_edges_from(edges)
+        notq = [i for i in range(n) if not qfn(states[i])]
+        sub = g.subgraph(notq)
+        bad = {i for i in notq if g.out_degree(i) == 0}        # ¬Q terminal: stuck, never Q
+        for comp in nx.strongly_connected_components(sub):     # ¬Q cycle: loop forever in ¬Q
+            if len(comp) >= 2 or any(sub.has_edge(c, c) for c in comp):
+                bad |= set(comp)
+        avoid, stack = set(bad), list(bad)                     # states that can dodge Q forever
+        while stack:                                           # backward reach within the ¬Q subgraph
+            for w in sub.predecessors(stack.pop()):            # w → (a bad/avoiding state), staying ¬Q
+                if w not in avoid:
+                    avoid.add(w); stack.append(w)
+
+        if modality == "leads_to":
+            _, ppred, pfn = self._predicate(p_var, p_op, p_value)
+            offenders = [i for i in range(n) if pfn(states[i]) and i in avoid]
+            holds = not offenders
+            cex = dict(states[offenders[0]]) if offenders else None
+            return {"holds": holds, "checked": n, "exhaustive": exhaustive,
+                    "counterexample": cex, "predicate": f"{ppred} ⤳ {qpred}"}
+        holds = 0 not in avoid                                 # initial state is index 0
+        return {"holds": holds, "checked": n, "exhaustive": exhaustive,
+                "counterexample": dict(states[0]) if not holds else None,
+                "predicate": f"◇ {qpred}"}
+
     def _resolve_carried(self, var):
         for w in self.carried:                     # exact full-name match first
             if w["name"] == var:
