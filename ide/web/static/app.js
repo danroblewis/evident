@@ -100,6 +100,12 @@ solving.id = "solving"; solving.hidden = true; $("#dynamics").appendChild(solvin
 // --- the live loop ----------------------------------------------------------------
 let timer = null, activeView = null, lastSource = "", _dimTimer = null, _elapsedTimer = null;
 
+// The most recent diagram overlay (the live `.view-wrap` + its identifiable points), so the
+// trace scrubber can locate the current step's state ON the diagram and ring it (#231/#206 —
+// "the trace lights up the explorer"). Set when overlayPoints draws the live overlay; cleared
+// by a render with no points so a stale ring never floats over a different picture.
+let lastOverlay = null;
+
 // --- run-history + pin/compare (tasks #209, #207) ---------------------------------
 // `history` is a ring buffer of the last good analyses (newest first), so you can flip
 // back to "what did this look like 3 edits ago" (#209). `pinnedA` holds one snapshot
@@ -165,7 +171,10 @@ function fmtState(st) {
     .map(([k, v]) => `${k}=${v}`).join("  ");
 }
 function overlayPoints(wrap, points) {
-  if (!wrap) return;
+  if (!wrap) { lastOverlay = null; return; }
+  // Record the live overlay so the trace scrubber can ring the current step's state on it.
+  // Only a wrap WITH plottable points is a useful target; otherwise clear (no ring possible).
+  lastOverlay = (points && points.length) ? { wrap, points } : null;
   let pinned = false;
   const show = (txt, x, y) => {
     gloss.textContent = txt; gloss.hidden = false;

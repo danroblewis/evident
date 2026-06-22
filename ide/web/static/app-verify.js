@@ -306,14 +306,62 @@ async function checkInvariant() {
 // Step through it one state at a time, reading the FULL assignment at each step — not the
 // one-line collapse. Pure helpers (_traceClamp / _traceStepLabel / _traceStateLine) carry the
 // index + format logic so they're unit-testable without a DOM.
+// --- trace → diagram highlight (#231/#206: the TLA+/Alloy "trace lights up the explorer") ----
+// `lastOverlay` (app.js) holds the live `.view-wrap` + its identifiable points; the scrubber rings
+// the point matching the current step. A trace step is a state dict; a point carries the same shape
+// as `point.state`. Match on the SHARED leaf keys: a point matches iff every key present in BOTH
+// agrees (after the k.split('.').pop() leaf-name normalization the rest of the code uses). Pure +
+// total → unit-testable headless. Returns the matching point, or null (no points / no agreement).
+function _matchPoint(points, stepState) {
+  if (!points || !points.length || !stepState) return null;
+  const leaf = (o) => {
+    const m = {};
+    for (const k of Object.keys(o || {})) m[k.split(".").pop()] = String(o[k]);
+    return m;
+  };
+  const want = leaf(stepState);
+  for (const p of points) {
+    if (typeof p.fx !== "number" || typeof p.fy !== "number") continue;
+    const have = leaf(p.state);
+    let shared = 0, ok = true;
+    for (const k of Object.keys(want)) {
+      if (k in have) { shared++; if (have[k] !== want[k]) { ok = false; break; } }
+    }
+    if (ok && shared > 0) return p;
+  }
+  return null;
+}
+// Remove any prior trace-step ring from the live overlay (each scrub step replaces it).
+function clearTraceRing() {
+  if (lastOverlay && lastOverlay.wrap) {
+    const old = lastOverlay.wrap.querySelector(".trace-ring");
+    if (old) old.remove();
+  }
+}
+// Ring the diagram point matching the current trace step, over the live `.view-wrap`. No-op when
+// there's no live overlay, no points, or no match — the stepper still works regardless. The ring
+// is pointer-events:none (app.css) so it never blocks the underlying .pt-target hover targets.
+function highlightTraceStep(stepState) {
+  clearTraceRing();
+  if (!lastOverlay || !lastOverlay.wrap) return;
+  const p = _matchPoint(lastOverlay.points, stepState);
+  if (!p) return;
+  const ring = document.createElement("div");
+  ring.className = "trace-ring";
+  ring.style.left = (p.fx * 100) + "%";
+  ring.style.top = (p.fy * 100) + "%";
+  lastOverlay.wrap.appendChild(ring);
+}
+
 const _trace = { states: [], i: 0, label: "" };
 function clearTrace() {
   _trace.states = []; _trace.i = 0; _trace.label = "";
   const el = $("#inv-trace"); el.hidden = true; el.innerHTML = "";
+  clearTraceRing();                          // drop any diagram highlight from the old scrubber (#231/#206)
 }
 function _renderTrace() {
   const el = $("#inv-trace"), n = _trace.states.length;
-  if (n < 2) { el.hidden = true; el.innerHTML = ""; return; }
+  if (n < 2) { el.hidden = true; el.innerHTML = ""; clearTraceRing(); return; }
   const i = _trace.i, last = i === n - 1;
   el.hidden = false;
   el.innerHTML = "";
@@ -331,6 +379,7 @@ function _renderTrace() {
   line.className = "trace-state" + (last ? " bad" : "");
   line.textContent = _traceStateLine(_trace.states[i]);
   el.appendChild(line);
+  highlightTraceStep(_trace.states[i]);      // ring this step's state on the diagram (#231/#206)
 }
 // Open the stepper on a fresh trace, parked at the violating (final) step.
 function showTrace(trace, label) {

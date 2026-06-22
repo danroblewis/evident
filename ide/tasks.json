@@ -1,5 +1,5 @@
 {
-  "seq": 222,
+  "seq": 223,
   "tasks": [
     {
       "id": 1,
@@ -3760,6 +3760,21 @@
       "reopened": 0,
       "tags": [
         "refactor"
+      ],
+      "log": []
+    },
+    {
+      "id": 223,
+      "title": "Trace scrubber highlights the current state on the diagram (#231/#206 \u2014 trace lights up the explorer)",
+      "detail": "",
+      "status": "worker_done",
+      "created_by": "worker",
+      "created": "2026-06-22T19:25:49Z",
+      "worker_done": true,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "feature"
       ],
       "log": []
     }
