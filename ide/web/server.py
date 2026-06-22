@@ -244,9 +244,9 @@ def _maybe_claim(prefix, dropped):
         print(f"[server] claim render failed: {type(e).__name__}: {e}", file=sys.stderr)
     return {
         "ok": True,
-        "banner": ("◆ a claim (a relation) — its SOLUTION SPACE, fully solved (no run; "
+        "banner": ("a claim (a relation) — its SOLUTION SPACE, fully solved (no run; "
                    "press ⊨ Solve for one witness)" if feasible else
-                   "◆ a claim — UNSATISFIABLE (no assignment satisfies it; ⊨ Solve to see why)"),
+                   "a claim — UNSATISFIABLE (no assignment satisfies it; ⊨ Solve to see why)"),
         "structure": {"verdict": "satisfiable" if feasible else "unsatisfiable", "claim": True,
                       "fixed_points": [], "bounds": bounds, "reachable": 0, "capped": False,
                       "branching": 1},
