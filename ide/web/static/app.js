@@ -1339,5 +1339,141 @@ document.addEventListener("click", (e) => {
   if (!palette.hidden && !palette.contains(e.target) && e.target.id !== "symbols-btn") togglePalette(false);
 });
 
+// --- guided first-run walkthrough — coachmark tour (Task #164) ---------------------
+// A newcomer lands on a loaded sample but no "try this" path. This is a ~4-step lap:
+// each step spotlights one target element (translucent backdrop + a ring) and shows a
+// small card naming the panel and the one thing to try. Auto-runs ONCE on first visit;
+// the "? tour" button replays it. Targets are looked up live; a missing one is skipped.
+const TOUR_FLAG = "evident-tour-done";
+const SUDOKU_SAMPLE = "4×4 sudoku · fill the grid (⊨ Solve)";
+const TOUR_STEPS = [
+  { sel: "#editor-pane", title: "1 · The editor",
+    body: "Write constraints here. This is a live counter — try changing "
+      + "<code>count = 0</code> to <code>count = 3</code>. Operators autocomplete: "
+      + "type <code>\\le</code> → ≤." },
+  { sel: "#banner", title: "2 · The dynamics panel",
+    body: "Every edit re-solves instantly. The banner names your model's SHAPE; the "
+      + "diagram below shows the solved behavior — hover the dots to inspect a state." },
+  { sel: "#honesty", title: "3 · The honesty line",
+    body: "Evident never hides a problem: a dropped constraint is flagged here AND "
+      + "marked amber on its line in the editor. That's the silent bug, surfaced." },
+  { sel: "#solve-btn", title: "4 · ⊨ Solve",
+    body: "Some programs are claims, not machines — press ⊨ Solve for a witness "
+      + "assignment (or UNSAT). Try it on the sudoku sample." },
+];
+
+let tourIdx = 0;
+let tourEls = null;
+
+function buildTourDom() {
+  if (tourEls) return tourEls;
+  const backdrop = document.createElement("div");
+  backdrop.id = "tour-backdrop"; backdrop.hidden = true;
+  const ring = document.createElement("div");
+  ring.id = "tour-ring"; ring.hidden = true;
+  const card = document.createElement("div");
+  card.id = "tour-card"; card.hidden = true;
+  backdrop.appendChild(ring); backdrop.appendChild(card);
+  document.body.appendChild(backdrop);
+  // a backdrop click (outside the card) closes the tour without marking it "seen"-only
+  backdrop.addEventListener("click", (e) => { if (e.target === backdrop) endTour(); });
+  tourEls = { backdrop, ring, card };
+  return tourEls;
+}
+
+// place the ring over `target` and the card just below/above it, clamped to the viewport.
+function positionTour(target) {
+  const { ring, card } = tourEls;
+  const r = target.getBoundingClientRect();
+  const pad = 4;
+  ring.style.top = (r.top - pad) + "px";
+  ring.style.left = (r.left - pad) + "px";
+  ring.style.width = (r.width + pad * 2) + "px";
+  ring.style.height = (r.height + pad * 2) + "px";
+  const cw = card.offsetWidth || 300, ch = card.offsetHeight || 140;
+  let top = r.bottom + 12;
+  if (top + ch > window.innerHeight - 8) top = Math.max(8, r.top - ch - 12);
+  let left = r.left;
+  left = Math.min(left, window.innerWidth - cw - 8);
+  left = Math.max(8, left);
+  card.style.top = top + "px";
+  card.style.left = left + "px";
+}
+
+function renderTourStep() {
+  const total = TOUR_STEPS.length;
+  // skip forward over any step whose target is missing from the DOM
+  while (tourIdx < total && !$(TOUR_STEPS[tourIdx].sel)) tourIdx++;
+  if (tourIdx >= total) { endTour(); return; }
+  const step = TOUR_STEPS[tourIdx];
+  const target = $(step.sel);
+  if (!target) { endTour(); return; }
+  const { ring, card } = tourEls;
+  const last = tourIdx === total - 1;
+  card.innerHTML =
+    `<div class="tour-title">${step.title}</div>`
+    + `<div class="tour-body">${step.body}</div>`
+    + `<div class="tour-foot">`
+    + `<span class="tour-step">${tourIdx + 1} / ${total}</span>`
+    + `<span class="sp"></span>`
+    + `<span class="tour-skip" data-act="skip">Skip</span>`
+    + (tourIdx > 0 ? `<button data-act="back">Back</button>` : "")
+    + `<button class="primary" data-act="next">${last ? "Done" : "Next"}</button>`
+    + `</div>`;
+  ring.hidden = false; card.hidden = false;
+  positionTour(target);
+}
+
+function startTour() {
+  buildTourDom();
+  togglePalette(false);            // don't let the palette overlap the tour
+  tourIdx = 0;
+  tourEls.backdrop.hidden = false;
+  renderTourStep();
+}
+
+function endTour() {
+  try { localStorage.setItem(TOUR_FLAG, "1"); } catch (_) {}
+  if (!tourEls) return;
+  tourEls.backdrop.hidden = true;
+  tourEls.ring.hidden = true;
+  tourEls.card.hidden = true;
+}
+
+function tourActive() { return tourEls && !tourEls.backdrop.hidden; }
+
+// card-button delegation
+document.addEventListener("click", (e) => {
+  const btn = e.target.closest("[data-act]");
+  if (!btn || !tourActive()) return;
+  const act = btn.dataset.act;
+  if (act === "skip") { endTour(); return; }
+  if (act === "back") { tourIdx = Math.max(0, tourIdx - 1); renderTourStep(); return; }
+  if (act === "next") {
+    if (tourIdx >= TOUR_STEPS.length - 1) {
+      // last step "Done": open the sudoku sample so ⊨ Solve has something to chew on
+      if (SAMPLES[SUDOKU_SAMPLE]) { editor.setValue(SAMPLES[SUDOKU_SAMPLE], -1); run(); }
+      endTour();
+    } else { tourIdx++; renderTourStep(); }
+  }
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && tourActive()) { e.stopPropagation(); endTour(); }
+});
+window.addEventListener("resize", () => {
+  if (!tourActive()) return;
+  const t = $(TOUR_STEPS[tourIdx].sel);
+  if (t) positionTour(t);
+});
+$("#tour-btn").onclick = (e) => { e.stopPropagation(); startTour(); };
+
+// auto-run once on first visit
+function maybeAutoTour() {
+  let seen = false;
+  try { seen = localStorage.getItem(TOUR_FLAG) === "1"; } catch (_) { seen = true; }
+  if (!seen) startTour();
+}
+
 // kick off
 run();
+maybeAutoTour();

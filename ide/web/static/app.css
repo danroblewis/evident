@@ -24,6 +24,37 @@ html,body { margin:0; height:100%; background:var(--bg); color:var(--ink);
   border-radius:6px; padding:2px 10px; font:12px ui-monospace,Menlo,monospace; cursor:pointer; }
 #symbols-btn:hover { border-color:var(--accent); }
 #symbols-btn.on { border-color:var(--accent); color:var(--accent); background:#16313f; }
+#tour-btn { background:#1b2129; color:var(--ink); border:1px solid var(--line);
+  border-radius:6px; padding:2px 10px; font:12px ui-monospace,Menlo,monospace; cursor:pointer; }
+#tour-btn:hover { border-color:var(--accent); }
+
+/* guided first-run walkthrough — coachmark tour (Task #164) */
+#tour-backdrop { position:fixed; inset:0; z-index:80; background:#0009; }
+#tour-backdrop[hidden] { display:none; }
+/* the highlight ring is drawn as a box-shadow "spotlight": a fat ring around the
+   target, plus a huge spread that darkens everything outside it. */
+#tour-ring { position:fixed; z-index:81; border-radius:8px; pointer-events:none;
+  box-shadow:0 0 0 3px var(--accent), 0 0 0 4000px #0009; transition:all .18s ease; }
+#tour-ring[hidden] { display:none; }
+#tour-card { position:fixed; z-index:82; width:300px; max-width:calc(100vw - 24px);
+  background:#0b0f14; border:1px solid var(--accent); border-radius:8px;
+  box-shadow:0 8px 28px #000b; font:12px/1.5 ui-monospace,Menlo,monospace;
+  transition:top .18s ease, left .18s ease; }
+#tour-card[hidden] { display:none; }
+.tour-title { padding:8px 12px 4px; color:var(--accent); font-weight:bold; font-size:13px; }
+.tour-body { padding:0 12px 8px; color:var(--ink); }
+.tour-body code { color:var(--good); background:#161b22; border-radius:3px; padding:0 3px; }
+.tour-foot { display:flex; align-items:center; gap:8px; padding:7px 12px;
+  border-top:1px solid var(--line); }
+.tour-step { color:var(--dim); font-size:11px; }
+.tour-foot .sp { flex:1; }
+.tour-foot button { background:#1b2129; color:var(--ink); border:1px solid var(--line);
+  border-radius:6px; padding:2px 10px; cursor:pointer; font:12px ui-monospace,Menlo,monospace; }
+.tour-foot button:hover { border-color:var(--accent); }
+.tour-foot button.primary { background:#16313f; color:var(--accent); border-color:#2d5a72; }
+.tour-foot button.primary:hover { background:#1d4255; border-color:var(--accent); }
+.tour-skip { color:var(--dim); cursor:pointer; text-decoration:underline; }
+.tour-skip:hover { color:var(--ink); }
 
 /* symbol palette / cheat-sheet popover (Task #62) */
 #palette { position:fixed; z-index:60; top:38px; left:14px; width:340px; max-height:70vh;
