@@ -609,6 +609,10 @@ const GLOSSARY = {
 };
 const gloss = document.createElement("div");
 gloss.id = "gloss"; gloss.hidden = true; document.body.appendChild(gloss);
+// A PROMINENT solving badge centered over the diagram — the top-bar status counter was too easy to
+// miss, so a >0.4s analyze read as "frozen" (Marek #202/#132). This sits where the user is looking.
+const solving = document.createElement("div");
+solving.id = "solving"; solving.hidden = true; $("#dynamics").appendChild(solving);
 function glossFor(t) {
   if (GLOSSARY[t]) return GLOSSARY[t];
   if (t && t.startsWith("__")) return `${t} — two-ticks-ago read: the value of ${t.slice(2)} two ticks back (the history a ΔΔ second-order model carries).`;
@@ -972,7 +976,7 @@ function overlayPoints(wrap, points) {
 }
 
 function paint(data, ms) {
-  clearInterval(_elapsedTimer);                          // stop the elapsed ticker — result is in
+  clearInterval(_elapsedTimer); solving.hidden = true;   // stop the elapsed ticker — result is in
   $("#latency").textContent = ms != null ? `${ms} ms` : "";
   gloss.hidden = true;                                  // clear any pinned overlay tooltip from the
                                                        // previous program — a ghost pin must not
@@ -1211,7 +1215,7 @@ function exitCompareModes() {
 // NEVER leave the prior picture/verdict looking live (Ana #202, Marek #206): mark everything stale,
 // hide the verdict, and say so loudly so a stale diagram is never mistaken for the current program's.
 function backendDown(detail) {
-  clearTimeout(_dimTimer); clearInterval(_elapsedTimer);
+  clearTimeout(_dimTimer); clearInterval(_elapsedTimer); solving.hidden = true;
   exitCompareModes();                                    // don't show a stale two-up / past view over a dead backend
   setStatus("backend down", "err");
   $("#banner").className = "stale";
@@ -1258,7 +1262,10 @@ async function run(view) {
   clearInterval(_elapsedTimer);
   _elapsedTimer = setInterval(() => {
     const s = (performance.now() - t0) / 1000;
-    if (s > 0.4) setStatus(`solving… ${s.toFixed(1)}s`, "busy");
+    if (s > 0.4) {
+      setStatus(`solving… ${s.toFixed(1)}s`, "busy");
+      solving.hidden = false; solving.textContent = `⟳ solving… ${s.toFixed(1)}s`;
+    }
   }, 100);
   try {
     const res = await fetch("/api/analyze", {
