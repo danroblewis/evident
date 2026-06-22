@@ -152,20 +152,38 @@ fn cmd_export(args: &[String]) -> ExitCode {
         eprintln!("export: load {STDLIB_RUNTIME}: {e}");
         return ExitCode::from(1);
     }
+    // Snapshot stdlib's schema names so the claim-fallback resolver only considers
+    // claims the USER's file introduced (stdlib brings in many helper schemas).
+    let stdlib_names: std::collections::HashSet<String> =
+        rt.schema_names().map(|s| s.to_string()).collect();
     if let Err(e) = rt.load_file(Path::new(&path)) {
         eprintln!("export: load {path}: {e}");
         return ExitCode::from(1);
     }
-    let fsm = match trampoline::single_fsm(&rt) {
-        Ok(s) => s.claim_name,
-        Err(e) => { eprintln!("export: no single fsm in {path}: {e}"); return ExitCode::from(2); }
-    };
-    let (smt2, json) = match rt.export_transition(&fsm) {
-        Ok(x) => x,
-        Err(e) => { eprintln!("export: {e}"); return ExitCode::from(1); }
+    // Try the FSM export first. If the program has no fsm-shaped claim, fall back to
+    // exporting the lone top-level (non-test) claim as a static constraint + var schema.
+    let (smt2, json, what, kind_label) = match trampoline::single_fsm(&rt) {
+        Ok(s) => {
+            let fsm = s.claim_name;
+            match rt.export_transition(&fsm) {
+                Ok((smt2, json)) => (smt2, json, fsm, "fsm"),
+                Err(e) => { eprintln!("export: {e}"); return ExitCode::from(1); }
+            }
+        }
+        Err(e) if e.starts_with("no fsm") => {
+            let claim = match resolve_export_claim(&rt, &stdlib_names) {
+                Ok(c) => c,
+                Err(msg) => { eprintln!("export: {msg}"); return ExitCode::from(2); }
+            };
+            match rt.export_claim(&claim) {
+                Ok((smt2, json)) => (smt2, json, claim, "claim"),
+                Err(e) => { eprintln!("export: {e}"); return ExitCode::from(1); }
+            }
+        }
+        Err(e) => { eprintln!("export: {e}"); return ExitCode::from(2); }
     };
     let prefix = out.unwrap_or_else(|| {
-        Path::new(&path).file_stem().and_then(|s| s.to_str()).unwrap_or(&fsm).to_string()
+        Path::new(&path).file_stem().and_then(|s| s.to_str()).unwrap_or(&what).to_string()
     });
     let smt_path = format!("{prefix}.smt2");
     let json_path = format!("{prefix}.schema.json");
@@ -175,8 +193,30 @@ fn cmd_export(args: &[String]) -> ExitCode {
     if let Err(e) = std::fs::write(&json_path, json) {
         eprintln!("export: write {json_path}: {e}"); return ExitCode::from(1);
     }
-    println!("wrote {smt_path} + {json_path}  (fsm: {fsm})");
+    println!("wrote {smt_path} + {json_path}  ({kind_label}: {what})");
     ExitCode::SUCCESS
+}
+
+/// Resolve the entry claim to export when the program has no FSM: the single
+/// top-level non-test (`sat_*`/`unsat_*`) schema. Mirrors the FSM-discovery
+/// ambiguity rules — errors helpfully when zero or many candidates exist.
+fn resolve_export_claim(
+    rt: &EvidentRuntime, stdlib_names: &std::collections::HashSet<String>,
+) -> Result<String, String> {
+    let mut claims: Vec<String> = rt.schema_names()
+        .filter(|n| !n.starts_with("sat_") && !n.starts_with("unsat_"))
+        .filter(|n| !stdlib_names.contains(*n))
+        .map(|s| s.to_string())
+        .collect();
+    claims.sort();
+    match claims.len() {
+        0 => Err("no claims found to export".to_string()),
+        1 => Ok(claims.pop().unwrap()),
+        _ => Err(format!(
+            "ambiguous: {} candidate claims ([{}]) — name one with `export <file> <claim>` \
+             is not yet supported; the file must contain exactly one top-level claim",
+            claims.len(), claims.join(", "))),
+    }
 }
 
 #[derive(Debug, Clone)]
