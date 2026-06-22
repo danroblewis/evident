@@ -1,5 +1,5 @@
 {
-  "seq": 236,
+  "seq": 244,
   "tasks": [
     {
       "id": 1,
@@ -1483,7 +1483,9 @@
       "created_by": "ide-critic-expert",
       "created": "2026-06-22T00:41:34Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "analysis"
@@ -1494,6 +1496,12 @@
           "by": "worker",
           "act": "done",
           "note": "fully shipped: model-diff over states (#223) AND transitions (#232) \u2014 pin A, change a constraint, \u21c4 diff shows appeared/vanished states + transitions"
+        },
+        {
+          "at": "2026-06-22T20:14:16Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -3267,7 +3275,8 @@
       "created": "2026-06-22T13:03:04Z",
       "worker_done": true,
       "approvals": [
-        "ide-critic"
+        "ide-critic",
+        "ide-critic-expert"
       ],
       "reopened": 0,
       "tags": [
@@ -3283,6 +3292,12 @@
         {
           "at": "2026-06-22T19:13:34Z",
           "by": "ide-critic",
+          "act": "approved",
+          "note": ""
+        },
+        {
+          "at": "2026-06-22T20:14:16Z",
+          "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
         }
@@ -3512,7 +3527,8 @@
       "created": "2026-06-22T13:26:19Z",
       "worker_done": true,
       "approvals": [
-        "ide-critic"
+        "ide-critic",
+        "ide-critic-expert"
       ],
       "reopened": 0,
       "tags": [
@@ -3528,6 +3544,12 @@
         {
           "at": "2026-06-22T19:13:34Z",
           "by": "ide-critic",
+          "act": "approved",
+          "note": ""
+        },
+        {
+          "at": "2026-06-22T20:14:16Z",
+          "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
         }
@@ -3816,7 +3838,8 @@
       "created": "2026-06-22T16:46:04Z",
       "worker_done": true,
       "approvals": [
-        "ide-critic"
+        "ide-critic",
+        "ide-critic-expert"
       ],
       "reopened": 0,
       "tags": [
@@ -3826,6 +3849,12 @@
         {
           "at": "2026-06-22T19:13:34Z",
           "by": "ide-critic",
+          "act": "approved",
+          "note": ""
+        },
+        {
+          "at": "2026-06-22T20:14:16Z",
+          "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
         }
@@ -3840,7 +3869,8 @@
       "created": "2026-06-22T17:40:03Z",
       "worker_done": true,
       "approvals": [
-        "ide-critic"
+        "ide-critic",
+        "ide-critic-expert"
       ],
       "reopened": 0,
       "tags": [
@@ -3858,6 +3888,12 @@
           "by": "ide-critic",
           "act": "approved",
           "note": ""
+        },
+        {
+          "at": "2026-06-22T20:14:16Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -3870,7 +3906,8 @@
       "created": "2026-06-22T18:11:25Z",
       "worker_done": true,
       "approvals": [
-        "ide-critic"
+        "ide-critic",
+        "ide-critic-expert"
       ],
       "reopened": 0,
       "tags": [
@@ -3880,6 +3917,12 @@
         {
           "at": "2026-06-22T19:13:34Z",
           "by": "ide-critic",
+          "act": "approved",
+          "note": ""
+        },
+        {
+          "at": "2026-06-22T20:14:16Z",
+          "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
         }
@@ -3894,7 +3937,8 @@
       "created": "2026-06-22T18:34:42Z",
       "worker_done": true,
       "approvals": [
-        "ide-critic"
+        "ide-critic",
+        "ide-critic-expert"
       ],
       "reopened": 0,
       "tags": [
@@ -3911,6 +3955,12 @@
           "by": "ide-critic",
           "act": "approved",
           "note": ""
+        },
+        {
+          "at": "2026-06-22T20:14:16Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -3923,7 +3973,8 @@
       "created": "2026-06-22T18:59:18Z",
       "worker_done": true,
       "approvals": [
-        "ide-critic"
+        "ide-critic",
+        "ide-critic-expert"
       ],
       "reopened": 0,
       "tags": [
@@ -3933,6 +3984,12 @@
         {
           "at": "2026-06-22T19:13:34Z",
           "by": "ide-critic",
+          "act": "approved",
+          "note": ""
+        },
+        {
+          "at": "2026-06-22T20:14:16Z",
+          "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
         }
@@ -3946,7 +4003,9 @@
       "created_by": "ide-critic",
       "created": "2026-06-22T19:14:09Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "viz"
@@ -3957,6 +4016,12 @@
           "by": "worker",
           "act": "done",
           "note": "fixed: fmtState rounds non-integer hover values to 4 sig figs (commit 027e5a07)"
+        },
+        {
+          "at": "2026-06-22T20:14:16Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -3968,7 +4033,9 @@
       "created_by": "ide-critic",
       "created": "2026-06-22T19:14:09Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "solve"
@@ -3979,6 +4046,12 @@
           "by": "worker",
           "act": "done",
           "note": "fixed: run() clears #query-result on every edit/switch alongside the verify result (commit 027e5a07)"
+        },
+        {
+          "at": "2026-06-22T20:14:16Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -4005,7 +4078,9 @@
       "created_by": "ide-critic",
       "created": "2026-06-22T19:14:31Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "analysis"
@@ -4016,6 +4091,12 @@
           "by": "worker",
           "act": "done",
           "note": "shipped c655b996: _model_diff diffs edges (src\u2192dst keys); renderDiff shows transition delta. Verified: counter 3\u21925 \u2192 new 3\u21924/4\u21925/5\u21925, vanished 3\u21923."
+        },
+        {
+          "at": "2026-06-22T20:14:16Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -4027,7 +4108,9 @@
       "created_by": "ide-critic",
       "created": "2026-06-22T19:14:31Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "viz"
@@ -4038,6 +4121,12 @@
           "by": "worker",
           "act": "done",
           "note": "wheel-zoom-to-cursor + drag-pan + dbl-click reset on the diagram; overlay + ring transform with it"
+        },
+        {
+          "at": "2026-06-22T20:14:16Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -4079,7 +4168,9 @@
       "created_by": "worker",
       "created": "2026-06-22T19:28:18Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "feature"
@@ -4090,8 +4181,133 @@
           "by": "worker",
           "act": "done",
           "note": "merged 3c32bed4: highlightTraceStep + _matchPoint ring the trace step's state on the interactive overlay; 22 headless cases pass"
+        },
+        {
+          "at": "2026-06-22T20:14:16Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
+    },
+    {
+      "id": 238,
+      "title": "Diagram alt-text: interpolate the LIVE verdict + var ranges + reachable-state count, not just a static per-view description. #216 is cleared (alt is now a real multi-sentence description of what the view shows), but it's the same string regardless of the loaded model. A screen-reader user still can't hear 'cyclic; timer in [0,2]; 9 reachable states' \u2014 only the generic 'what solution_space means'. Thread the banner verdict, the z3 boundary, and the reachable count into the alt so the picture's actual CONTENT is spoken, like a good figure caption.",
+      "detail": "",
+      "status": "worker_done",
+      "created_by": "ide-critic-expert",
+      "created": "2026-06-22T20:14:36Z",
+      "worker_done": true,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "viz"
+      ],
+      "log": [
+        {
+          "at": "2026-06-22T20:21:07Z",
+          "by": "worker",
+          "act": "done",
+          "note": "shipped: viewPane alt now includes data.banner + reachable count + structure.bounds (commit 60dc4516)"
+        }
+      ]
+    },
+    {
+      "id": 239,
+      "title": "Temporal/liveness checking that actually closes the loop: \u25c7/\u2933 over the infinite (lasso) unfolding, not just safety over the finite reachable set. The \u22a2verify box accepts 'P \u2933 Q' syntax (placeholder advertises it) but I want a CONFIRMED fairness-aware liveness check: 'eventually light=Red on every fair path', with a lasso counterexample (stem + cycle) when it fails \u2014 the TLA+ move. Right now \u25a1 safety is solid; the \u25c7/leads-to half needs the cycle-detection and a fairness toggle to be trustworthy.",
+      "detail": "",
+      "status": "worker_done",
+      "created_by": "ide-critic-expert",
+      "created": "2026-06-22T20:15:02Z",
+      "worker_done": true,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "analysis"
+      ],
+      "log": [
+        {
+          "at": "2026-06-22T20:28:36Z",
+          "by": "worker",
+          "act": "done",
+          "note": "liveness counterexample as a stem+cycle lasso + forced/avoidable fairness classification"
+        }
+      ]
+    },
+    {
+      "id": 240,
+      "title": "Incremental assert/retract in the query console (push/pop). I can run ONE ad-hoc \u2203 query, but I can't STACK assumptions \u2014 assert 'light=Green', keep it, then probe 'timer=0' / 'timer=1' / 'timer=2' under it and see the witness narrow. Z3's push/pop + check-sat-assuming is the daily interrogation loop; the console is currently one-shot. Let me build a context and explore under it without re-typing the conjunction each time.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-expert",
+      "created": "2026-06-22T20:15:02Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "solve"
+      ],
+      "log": []
+    },
+    {
+      "id": 241,
+      "title": "Enumerate-ALL witnesses with symmetry breaking (the SAT dual of the all-cores feature). The query console gives ONE witness + a count ('1 of 9'); Alloy walks me through EVERY minimal instance with isomorph-elimination. For 'solve-for-X' over a finite domain I want next/prev through all distinct models, with a symmetry-breaking toggle so I'm not drowning in permutations of the same solution (e.g. N-queens, graph-coloring). All-cores landed; give me all-models to match.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-expert",
+      "created": "2026-06-22T20:15:02Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "solve"
+      ],
+      "log": []
+    },
+    {
+      "id": 242,
+      "title": "Pin-and-explore a partial assignment ON the diagram: click a state to FIX it, then re-solve the rest of the model under that pin and see the reachable set / trace restricted to runs through it. I can hover a state for its assignment now (great), but I can't say 'assume the machine is HERE, what's reachable from here / what leads here' without editing source. The relational superpower is fixing any variable; let me fix it by clicking the picture.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-expert",
+      "created": "2026-06-22T20:15:02Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "analysis"
+      ],
+      "log": []
+    },
+    {
+      "id": 243,
+      "title": "Bounded-vs-unbounded honesty as a CONTROL on the trace/reachability depth, not just a label. When the reachable-set is capped (the '\u2265400 capped sample' footer) I can't tell whether 'no more reachable' is a proof or a cap I hit. Give me a depth/scope spinner (Alloy's scope) and a clear 'EXHAUSTED at depth k \u2014 this IS the full reachable set' vs 'CAPPED at k \u2014 there may be more' verdict, so completeness is something I set and the tool certifies.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-expert",
+      "created": "2026-06-22T20:15:02Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "analysis"
+      ],
+      "log": []
+    },
+    {
+      "id": 244,
+      "title": "Export the diagram as SVG/PNG for a paper, and export a trace as a state table (CSV/markdown). SMT-LIB copy + .ev download landed (verified the SMT-LIB runs in z3 directly \u2014 delight), but I still can't take the FIGURE or the counterexample TRACE out as an artifact. Alloy exports the instance, the TLA+ toolbox exports the trace; I want the phase spiral as SVG and the init\u2192witness path as a table I can paste into a writeup.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-expert",
+      "created": "2026-06-22T20:15:02Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "solve"
+      ],
+      "log": []
     }
   ],
   "concerns": [
@@ -4805,9 +5021,10 @@
       "title": "Tab half is DONE (role=tab + roving tabindex + aria-selected, verified live). But the diagram-img descriptive long-alt half is NOT: the diagram img's alt is the bare view slug 'cobweb' and aria-label is empty. A screen-reader user gets one word, nothing about what the picture shows (banner verdict, var ranges, fixed points, what's plotted). Set a descriptive alt/aria-label, e.g. 'solution_space \u2014 cyclic; reachable (light,timer) pairs; timer in [0,2]; 9 reachable states'.",
       "detail": "",
       "by": "ide-critic-expert",
-      "status": "open",
+      "status": "cleared",
       "task": 49,
-      "created": "2026-06-22T14:57:22Z"
+      "created": "2026-06-22T14:57:22Z",
+      "cleared": "2026-06-22T20:14:21Z"
     },
     {
       "id": 217,
@@ -4835,6 +5052,15 @@
       "status": "open",
       "task": null,
       "created": "2026-06-22T19:14:09Z"
+    },
+    {
+      "id": 237,
+      "title": "Query-console TRACE mislabels its witness as a violation. Ran '\u22a8? query: timer = 2 \u2227 light = Green' on traffic \u2014 the init\u2192witness trace appears and scrubs correctly (delight), but its final step is flagged '\u25cf violation here' and the state carries class 'trace-state bad'. For an existential reachability query the target state is the GOAL, not a violated invariant \u2014 that wording/styling is carried over from the \u22a2verify counterexample path. A reachability witness should read 'reached here' / styled as a goal (green), reserving 'violation'/red for \u22a2verify refutations. Z3/TLA+ never call a sought witness a violation.",
+      "detail": "where: trace-head after clicking 'find' on traffic; DOM: span.trace-flag '\u25cf violation here' + div.trace-state.bad 'light = Green timer = 2'",
+      "by": "ide-critic-expert",
+      "status": "open",
+      "task": null,
+      "created": "2026-06-22T20:14:36Z"
     }
   ]
 }
