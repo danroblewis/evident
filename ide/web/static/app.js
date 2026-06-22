@@ -803,9 +803,18 @@ async function run(view) {
     const data = await res.json();
     paint(data, Math.round(performance.now() - t0));
   } catch (e) {
-    setStatus("server error", "err");
+    // The backend (solver) is unreachable — it crashed or was stopped. NEVER leave the prior
+    // picture/verdict looking live (Ana #202): mark everything stale, hide the verdict, and say so
+    // loudly so a stale diagram is never mistaken for the current program's.
+    clearTimeout(_dimTimer);
+    setStatus("backend down", "err");
+    $("#banner").className = "stale";
+    $("#banner").textContent = "⚠ backend unavailable — the solver isn't responding";
+    $("#structure").hidden = true; $("#invariant").hidden = true;
+    $("#view").classList.add("stale"); $("#view").classList.remove("recomputing");
     $("#errors").hidden = false;
-    $("#errors").textContent = "could not reach the backend: " + e;
+    $("#errors").textContent = "Could not reach the backend (it may have crashed or been stopped). "
+      + "The picture above is stale. Restart it:\n\n    python3 ide/web/server.py\n\n(" + e + ")";
   }
 }
 
