@@ -164,8 +164,141 @@ them with their failure mode turns the gallery into a guided path in, not a blan
 Table stakes, noted: command palette, theming, keybindings, multi-file tabs, settings —
 build when convenient, not vision.
 
----
+### Proposed — 2026-06-21 (Iris, round 6)
 
-## Parked / out of scope (with the reason)
+Grounded in the live build, which is further than the spec implies: the UNSAT core already
+names lines ("removing any one makes it solvable"), the banner already reads branching-factor
+("up to 3 successors · ×3"), solve-for-X / re-solve / enumerate-all are wired, and the reachability
+tree draws the fan. Round 1's spine has largely landed. So this round reaches **past the now-solved
+gaps** to the things a *demanding* expert reaches for and doesn't find — a counterexample **trace**
+(not a state), a **temporal/invariant property** checked over the dynamics, a **named** minimal
+core, **scoped enumeration with symmetry breaking**, and an **ad-hoc query console** — plus the
+newcomer's hover-to-learn and the power user's compare/persist. Every item is framed on a substrate
+no other tool has: a live solver over a relational transition system, with sixteen faithful views.
+
+### counterexample trace, not a counterexample state   ★   · effort M · depends BE
+When a property fails over the reachable set, return the **shortest witnessing trajectory** from an
+initial state to the violating state — the full `s₀ → s₁ → … → s_bad` path — and play it on the tick
+transport with every view scrubbing to each step. **Only-Evident:** the failure of a temporal claim
+in a *difference-equation* model is a path, and only a solver over the transition relation can
+produce the minimal one (BFS over `successors()` to the first violator). **Lens:** steal-from-masters
+(TLA+'s error-trace is the single feature that makes TLC usable — a state alone is useless; the
+*sequence that reaches it* is the debugging gold). Round 1's "prove-over-all-reachable" drops you on
+a state; this completes it by handing you the story of how the machine got there, scrubbable.
+
+### temporal-property bar (eventually / always / until over the trace)   ★   · effort M · depends BE
+A property bar that accepts more than per-state predicates: **`◇ done`** (eventually halts),
+**`□ (balance ≥ 0)`** (always), **`mode = Coining ⇒ ◇ mode = Vending`** (every coining eventually
+vends). The IDE checks each over the reachable trace set and greens it or hands back the
+counterexample trace above. **Only-Evident:** these are liveness/safety claims about the *induced
+dynamics of a relational FSM* — meaningless for a function, native for a transition system; Evident
+already ticks the difference equation, so the trace set to check against exists. **Lens:**
+steal-from-masters (TLA+/temporal logic). This is the form an expert's real questions take —
+"does it ever get stuck?", "can balance go negative?" — and none of them is a single-state predicate.
+Start with `◇`/`□` over finite reachable traces; that covers the vast majority and needs no new runtime.
+
+### the minimal core, named and minimized   ⬆   · effort M · depends BE
+Upgrade the UNSAT core from "the conflicting lines" to a **minimized, named, ranked** core: shrink it
+to a true MUS (drop-and-recheck until every remaining constraint is essential), label each by its
+source construct ("upper bound on `x`", "the `step ≤ 3` range"), and offer **one-click "relax this
+one"** that re-solves with it removed so you watch SAT return. **Only-Evident:** a Z3 unsat core is
+rarely minimal — extra constraints ride along; minimizing it (and showing which single relaxation
+unblocks) is a solver-only operation, and the relational "remove one, re-solve" gesture is the
+inverse of the bug hunt. **Lens:** solver. The current core lists raw lines; an expert wants the
+*irreducible* conflict and a way to test each relaxation without hand-editing source.
+
+### scoped enumeration with symmetry breaking   ⬆   · effort M · depends BE
+For a static `claim`, an enumeration panel with **a scope control** (bound the universe: `#queens ≤
+8`, `Int ∈ 0..15`) and a **"break symmetries" toggle** that adds lex-leader constraints so the
+stream shows *structurally distinct* solutions, not 8 rotations of one board, plus a true count
+("12 distinct instances; 96 with symmetry"). **Only-Evident / steal-from-masters:** scoped finite
+enumeration is Alloy's core loop, and symmetry breaking is *the* reason Alloy's enumeration is usable
+on combinatorial problems — Evident's block-and-resolve enumerator already exists but floods you with
+isomorphs. **Lens:** steal-from-masters. The briefing's N-queens / coloring tasks are unbearable
+without this; "all witnesses" on queens currently streams near-duplicates.
+
+### ad-hoc query console (the evaluator pane)   ⬆   · effort M · depends BE
+A REPL line under the dynamics panel that evaluates an **arbitrary Evident expression against the
+current witness / selected state**: `sum + i`, `mode = Coining`, `∀ d ∈ dots : d.y < 540`,
+`count − _count`. It re-encodes the expression in the loaded model's context and prints the value or
+SAT/UNSAT. **Only-Evident / steal-from-masters:** this is Alloy's Evaluator pane and Lean's `#eval`
+on the *goal state* — ask the live model questions the source didn't pre-write, including quantified
+ones the solver answers. **Lens:** steal-from-masters. The solve panel runs whole claims; an expert
+wants to poke a sub-expression ("is THIS invariant actually holding on the state I'm looking at?")
+without editing the program and re-running.
+
+### hover-to-learn: the notation glossary on the symbol   ★   · effort S · depends FE
+Hover any operator or keyword (`Δ`, `⟸`, `∀`, `is_first_tick`, `_state`, `fsm`, `⟨⟩`) → a tooltip
+card with its meaning, a one-line example, and *what it desugars to* (`Δcount` → `count − _count`;
+`A ⟸ B` → `B ⇒ A`). **Only-Evident:** Evident's identity is a dense notation no one has seen before,
+and several constructs are *desugarings* whose expansion is the whole point — surfacing "this is sugar
+for X" on hover is teaching the language's actual semantics, not generic doc-hover. **Lens:**
+lower-the-floor. A newcomer staring at `¬is_first_tick ⇒ Δcount = step` has no way in; the glossary
+on the glyph is the on-ramp, and it teaches the desugarings the diagram depends on.
+
+### "what am I looking at" overlay on every view   ⬆   · effort S · depends FE
+A persistent `?` affordance on the active diagram that flips it into an **annotated explainer**:
+arrows labeling what the axes/nodes/edges/color mean *for this view type*, and a sentence tying it to
+this program ("each dot is a reachable state; an edge is one tick; the green node is where you start").
+**Only-Evident:** the sixteen views are unfamiliar and the briefing's whole thesis is "the diagram is
+the debugger" — but a newcomer can't debug with a morse graph they can't read. Round 1's
+"explain-this-diagram sentence" describes the *result*; this teaches the *grammar of the view*. **Lens:**
+lower-the-floor. Pairs with the auto-selection: when the IDE picks a phase portrait, it should also be
+able to say what a phase portrait is.
+
+### compare two programs side-by-side (the dynamics diff, made A/B)   ⬆   · effort M · depends FE+BE
+A split mode: two editors, two dynamics panels, **linked tick transport and shared axes**, so an edit
+in B (drop a bound, change a transition) is read against A's dynamics simultaneously — the fan that
+widened, the terminal that disappeared, the state count delta, all aligned frame-by-frame. **Only-Evident:**
+this diffs *two solved state-spaces under one scrubber*, not two texts; only a tool that computes the
+meaning can A/B the meaning. **Lens:** solver. Round 1's "diff two dynamics" overlays before/after of
+one program on its own timeline; this is the deliberate experiment — hold two variants and watch them
+diverge under the same input — which is how you actually choose between two model designs.
+
+### persist & deep-link a session (the model AND where you were standing)   ⬆   · effort S · depends FE
+URL-encode the full session — source + active view + selected state + pins + the property you typed —
+so a link reopens **not just the program but the exact thing you were looking at**: this transition,
+this counterexample, these pins. **Only-Evident:** the shareable artifact isn't a file, it's *a vantage
+point into a solved state-space* — "look at THIS state where balance went negative under THESE pins" is
+a coordinate in the dynamics, not a line number. **Lens:** steal-from-masters (Observable's
+forkable-notebook URL, but pointed at a reachable state). The spec parks persistence in M5; the *deep
+link to a state* is the Evident-specific half and is cheap once state-selection exists.
+
+### the freedom budget (under-constraining, quantified)   ⬆   · effort S · depends BE
+A panel readout that names, per variable, **how much freedom the solver still has**: the unconstrained
+ones, the ones with a multi-value reachable range, and the lone "fully pinned" ones — "`step` is free
+(3 values); `i` is determined; `seed` is unconstrained (∞)." **Only-Evident:** under-constraining is
+Evident's signature silent bug and the diagram's reason to exist; this measures it directly off the
+reachable set + solver, turning "the looseness you didn't intend" from a thing you must *spot in a fan*
+into a number you can read. **Lens:** critic-pain. Complements round 1's reachable-range chips (per-var
+extent) with a model-level *audit* — the first place to look when the diagram fans out and you don't
+know why.
+
+### freeze-frame inspector with per-variable provenance   •   · effort M · depends BE
+Click a state in any view → an inspector that, beside each variable's value, shows **which previous-state
+variables forced it** (from the `independence_structural` perturbation probe) and **which source
+constraint produced it** — `sum = 10  ← _sum(+10), _i  · line 9`. **Only-Evident:** per-leaf causal
+attribution on a transition is a re-solve-under-perturbation claim, not a stack frame; only the live
+solver can say "this value would change if `_i` had differed." **Lens:** solver. Extends round 1's
+"why-this-edge" arrows from an edge-level overlay to a per-field ledger on the state card — the
+spreadsheet "trace precedents" move, but over a relation rather than a formula graph.
+
+### relax-to-SAT / tighten-to-UNSAT slider on a failing claim   •   · effort M · depends FE+BE
+On any UNSAT claim, a control that **automatically searches the boundary**: loosen the named core
+constraints by the smallest step until SAT (and show the witness at the edge), or on a too-loose model,
+tighten until the fan collapses to one. **Only-Evident:** walking the SAT/UNSAT frontier is a binary
+search the solver runs for you — "what's the tightest bound that's still satisfiable?" is a question
+only a solver can answer, and it's the quantitative version of the bug hunt. **Lens:** solver. Turns
+round 1's manual tighten-until cursor into an automatic frontier-finder; useful when you know it's
+broken but not by how much.
+
+### model metrics strip (the dynamics, summarized honestly)   •   · effort S · depends BE
+A compact always-on strip of solver-derived facts the views imply but don't state: **# reachable
+states, # terminals, max branching factor, longest acyclic path, # SCCs (cyclic vs terminating),
+average fan-out**. **Only-Evident:** each number is a property of the *transition relation* computed
+from the reachable graph (SCC count answers "cyclic or terminating" with no guessing), the kind of
+summary a `git diff --stat` gives for code — but for dynamics. **Lens:** critic-pain. The honesty line
+already shows state/transition counts; this is the rest of the shape an expert reads at a glance before
+opening any single view, and most of it is one pass over the already-computed reachable graph.
 
 _None yet._

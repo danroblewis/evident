@@ -1,5 +1,5 @@
 {
-  "seq": 26,
+  "seq": 159,
   "tasks": [
     {
       "id": 1,
@@ -320,61 +320,200 @@
       "id": 22,
       "title": "BUG: render_reachability_tree KeyError on \u22653-variable states (vending)",
       "detail": "Auto-select picks it for nondeterministic machines; currently falls back to state_graph.",
-      "status": "open",
+      "status": "closed",
       "created_by": "worker",
       "created": "2026-06-21T23:18:37Z",
-      "worker_done": false,
-      "approvals": [],
+      "worker_done": true,
+      "approvals": [
+        "ide-critic-expert",
+        "ide-critic",
+        "ide-critic-newcomer"
+      ],
       "reopened": 0,
       "tags": [
         "bug"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-21T23:22:30Z",
+          "by": "worker",
+          "act": "started"
+        },
+        {
+          "at": "2026-06-22T00:40:16Z",
+          "by": "worker",
+          "act": "done",
+          "note": "fixed: label() uses state.get(name,'?') so reachability_tree no longer KeyErrors on \u22653-var states; live since 216e191"
+        },
+        {
+          "at": "2026-06-22T00:42:04Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
+        },
+        {
+          "at": "2026-06-22T01:26:03Z",
+          "by": "ide-critic",
+          "act": "approved",
+          "note": ""
+        },
+        {
+          "at": "2026-06-22T01:41:41Z",
+          "by": "ide-critic-newcomer",
+          "act": "approved",
+          "note": ""
+        }
+      ]
     },
     {
       "id": 23,
       "title": "BUG: real-state reachability mislabels deterministic real FSMs as nondeterministic (oscillator)",
       "detail": "",
-      "status": "open",
+      "status": "closed",
       "created_by": "worker",
       "created": "2026-06-21T23:18:37Z",
-      "worker_done": false,
-      "approvals": [],
+      "worker_done": true,
+      "approvals": [
+        "ide-critic",
+        "ide-critic-newcomer",
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "bug"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-21T23:55:21Z",
+          "by": "worker",
+          "act": "done",
+          "note": "FIXED safely. Root cause: successors() blocked next states with _lit(float) \u2014 _read collapses Z3's exact rational 175/3 to lossy float 58.333\u2026, and RealVal(float)\u2260175/3, so the true successor was never excluded and got re-reported up to limit (64-fan). Fix: block against model.eval(const) (exact for every kind) in viz/evident_viz.py successors(). Oscillator now branch=1 (deterministic); genuine branching (vending=4, pick=3, random_walk=9) unchanged. Comment added at the block site."
+        },
+        {
+          "at": "2026-06-22T00:05:29Z",
+          "by": "ide-critic",
+          "act": "approved",
+          "note": ""
+        },
+        {
+          "at": "2026-06-22T00:13:25Z",
+          "by": "ide-critic",
+          "act": "approved",
+          "note": ""
+        },
+        {
+          "at": "2026-06-22T00:25:16Z",
+          "by": "ide-critic-newcomer",
+          "act": "approved",
+          "note": ""
+        },
+        {
+          "at": "2026-06-22T00:34:23Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
+        }
+      ]
     },
     {
       "id": 24,
       "title": "Auto-select phase_portrait for 2-numeric-variable systems (oscillator should not pick reachability_tree)",
       "detail": "",
-      "status": "open",
+      "status": "closed",
       "created_by": "worker",
       "created": "2026-06-21T23:18:37Z",
-      "worker_done": false,
-      "approvals": [],
+      "worker_done": true,
+      "approvals": [
+        "ide-critic",
+        "ide-critic-newcomer",
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "viz"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-21T23:55:21Z",
+          "by": "worker",
+          "act": "done",
+          "note": "phase_portrait now auto-selected for deterministic \u22652-numeric-var systems (oscillator \u2192 phase_portrait, spiral in (pos,vel)). Gated behind reachability_tree (max_branch<2) so vending/pick/random_walk keep reachability_tree; counter keeps time_series. server.py _recommend."
+        },
+        {
+          "at": "2026-06-22T00:05:29Z",
+          "by": "ide-critic",
+          "act": "approved",
+          "note": ""
+        },
+        {
+          "at": "2026-06-22T00:13:25Z",
+          "by": "ide-critic",
+          "act": "approved",
+          "note": ""
+        },
+        {
+          "at": "2026-06-22T00:25:16Z",
+          "by": "ide-critic-newcomer",
+          "act": "approved",
+          "note": ""
+        },
+        {
+          "at": "2026-06-22T00:34:23Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
+        }
+      ]
     },
     {
       "id": 25,
       "title": "Banner: a multi-variable cycle (traffic light) should read 'cyclic', not 'relational'",
       "detail": "",
-      "status": "open",
+      "status": "closed",
       "created_by": "worker",
       "created": "2026-06-21T23:18:37Z",
-      "worker_done": false,
-      "approvals": [],
+      "worker_done": true,
+      "approvals": [
+        "ide-critic",
+        "ide-critic-newcomer",
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "bug"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-21T23:55:21Z",
+          "by": "worker",
+          "act": "done",
+          "note": "_banner now says 'Cyclic \u2014 N states recur; the variables co-determine in a loop' when verdict=relational AND recurrent\u22652 (traffic light+timer, recurrent=9). counter stays Driven, vending/pick unchanged. server.py _banner."
+        },
+        {
+          "at": "2026-06-22T00:05:29Z",
+          "by": "ide-critic",
+          "act": "approved",
+          "note": ""
+        },
+        {
+          "at": "2026-06-22T00:13:25Z",
+          "by": "ide-critic",
+          "act": "approved",
+          "note": ""
+        },
+        {
+          "at": "2026-06-22T00:25:16Z",
+          "by": "ide-critic-newcomer",
+          "act": "approved",
+          "note": ""
+        },
+        {
+          "at": "2026-06-22T00:34:23Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
+        }
+      ]
     },
     {
       "id": 26,
@@ -390,7 +529,2224 @@
         "perf"
       ],
       "log": []
+    },
+    {
+      "id": 33,
+      "title": "Replace CodeMirror with the Ace editor",
+      "detail": "User request. Port: Evident syntax mode, Unicode/ASCII input, persistence, auto-indent, glossary hover, inline error marking, line-wrap. Ace brings built-in find/replace, command palette, multi-cursor.",
+      "status": "closed",
+      "created_by": "worker",
+      "created": "2026-06-21T23:41:22Z",
+      "worker_done": true,
+      "approvals": [
+        "ide-critic",
+        "ide-critic-newcomer",
+        "ide-critic-expert"
+      ],
+      "reopened": 0,
+      "tags": [
+        "editor"
+      ],
+      "log": [
+        {
+          "at": "2026-06-21T23:44:23Z",
+          "by": "worker",
+          "act": "started"
+        },
+        {
+          "at": "2026-06-21T23:54:45Z",
+          "by": "worker",
+          "act": "done",
+          "note": "Replaced CodeMirror with Ace (vendored 1.32.7 core + dracula theme). Ported every editor feature: custom ace/mode/evident highlight mode, localStorage persist, auto-indent-on-Enter after block openers, hover glossary via session tokenizer, inline error-line marker (fullLine marker + gutter dot), wrapping, DEFAULT_PROGRAM, 11 SAMPLES, \u22a8 Solve / Structure / debounced analyze loop. Element IDs unchanged. node --check passes; server serves ace-ace.js + ace-theme-dracula.js (200), codemirror 404, analyze+solve endpoints verified end-to-end."
+        },
+        {
+          "at": "2026-06-22T00:05:29Z",
+          "by": "ide-critic",
+          "act": "approved",
+          "note": ""
+        },
+        {
+          "at": "2026-06-22T00:13:25Z",
+          "by": "ide-critic",
+          "act": "approved",
+          "note": ""
+        },
+        {
+          "at": "2026-06-22T00:25:16Z",
+          "by": "ide-critic-newcomer",
+          "act": "approved",
+          "note": ""
+        },
+        {
+          "at": "2026-06-22T00:34:23Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": 34,
+      "title": "Auto-replace typable ASCII tokens as you type (in\u2192\u2208, <=\u2192\u2264, implies\u2192\u21d2, delta\u2192\u0394, \u2026)",
+      "detail": "User request. The lexer accepts both ASCII and fancy forms; the editor should live-convert the ASCII to the symbol. Must be word-boundary safe (don't break Int/min/etc.).",
+      "status": "closed",
+      "created_by": "worker",
+      "created": "2026-06-21T23:41:22Z",
+      "worker_done": true,
+      "approvals": [
+        "ide-critic",
+        "ide-critic-newcomer",
+        "ide-critic-expert"
+      ],
+      "reopened": 0,
+      "tags": [
+        "editor"
+      ],
+      "log": [
+        {
+          "at": "2026-06-21T23:44:23Z",
+          "by": "worker",
+          "act": "started"
+        },
+        {
+          "at": "2026-06-21T23:54:45Z",
+          "by": "worker",
+          "act": "done",
+          "note": "Bare-mnemonic auto-replacement on top of the \\word backslash input. ASCII op-pairs (<= >= != =>) convert on 2nd char; word mnemonics (in/notin/implies/impliedby/when/forall/all/exists/any/delta/and/or/not/mapsto/to/langle/rangle/leq/geq/neq/times/cdot/cup/cap/subseteq/emptyset) convert when a non-word char follows the COMPLETE preceding word \u2014 word-boundary safe (Int/min/Coining/band/auto/cannot/xin do NOT convert). Verified with an 18-case node simulation, all pass. Each splice is its own undo group \u2192 Ctrl-Z reverts one replacement."
+        },
+        {
+          "at": "2026-06-22T00:05:29Z",
+          "by": "ide-critic",
+          "act": "approved",
+          "note": ""
+        },
+        {
+          "at": "2026-06-22T00:13:25Z",
+          "by": "ide-critic",
+          "act": "approved",
+          "note": ""
+        },
+        {
+          "at": "2026-06-22T00:25:16Z",
+          "by": "ide-critic-newcomer",
+          "act": "approved",
+          "note": ""
+        },
+        {
+          "at": "2026-06-22T00:34:23Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": 35,
+      "title": "evident fmt \u2014 a gofmt-style pretty-printer that rewrites a program to an equivalent, idiomatic one",
+      "detail": "User request: a 'gofmt for Evident'. Parse \u2192 AST \u2192 pretty-print a SEMANTICALLY EQUIVALENT program that looks better; must be idempotent (fmt\u2218fmt = fmt) and round-trip (re-parses, ./test.sh stays green). Likely a Rust 'evident fmt <file> [--write]' command reusing the parser + a pretty-printer over core/ast.rs (the AST Display is the seed). Target rules (start with the user's, align with docs/evident-purism.md + the idioms in CLAUDE.md):\n (1) Line length \u2014 wrap long lines (~88 cols) sensibly; consistent indentation.\n (2) Vertical spacing / newlines \u2014 group decls vs constraints; blank line between sections.\n (3) Minimize \u2227 \u2014 rewrite 'A \u21d2 (B \u2227 C)' and conjunction chains into the indented implies-block / one-constraint-per-line-at-same-tab-level form (newline = \u2227).\n (4) Prefer \u0394 in fsm models \u2014 rewrite 'var = _var + step' carries into '\u00acis_first_tick \u21d2 \u0394var = step' (honor the gotchas: decl outside the guard; single-line \u21d2, or an indented block grouping deltas).\n (5) Reduce expression duplication \u2014 factor a repeated subexpression into a named chained-membership binding 'name \u2208 T = expr' and reference it.\n (6) Drop type annotations the inference can recover; use chained-membership (e.g. '0 \u2264 x \u2208 Int \u2264 5'); element-iteration ('\u2200 e \u2208 s') over '\u2200 i \u2208 {0..#s-1}' index loops; coindexed/edges over parallel-seq loops; avoid ternary chains; keep 'type main' compact.\nThe purism doc is the authority on 'good Evident'; the formatter should produce purism-CLEAN output. Open question to settle with the user: exact column width, and how aggressive (5) should be.",
+      "status": "open",
+      "created_by": "worker",
+      "created": "2026-06-21T23:54:08Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 1,
+      "tags": [
+        "lang"
+      ],
+      "log": [
+        {
+          "at": "2026-06-22T00:03:03Z",
+          "by": "worker",
+          "act": "done",
+          "note": "evident fmt: gofmt-style, comment-preserving, self-verifying formatter (runtime/src/fmt.rs). Line/token normalizer (NOT AST-rebuild \u2014 comments aren't in the AST, would be deleted). Fixes indentation to 4-space grid via structural nesting stack, trims trailing ws, collapses blank runs; preserves bracket-continuation alignment verbatim. format_source re-tokenizes its output and refuses (Err, file untouched) unless token-equivalent + idempotent. CLI: evident fmt <file>... [--write|-w] [--check]. 9 unit tests + corpus test (all .ev under examples/stdlib/packages format clean, fixed-point, mangle\u2192canonical). ./test.sh green (263). Skipped the AST-rewrite transforms (and-minimize / drop-annotations / ternary-to-delta): unsafe under comment preservation. Branch worktree-agent-a51e4ed8afefe3bdc, commit 39f6287."
+        },
+        {
+          "at": "2026-06-22T00:13:37Z",
+          "by": "ide-critic",
+          "act": "reopened",
+          "note": "fmt refuses or corrupts on ragged indentation \u2014 its core advertised use. (1) An over-indented line BEFORE a same-line \u21d2 line (e.g. 'count \u2208 Int' at 8 spaces, then 'is_first_tick \u21d2 count = 0' at 2 spaces) makes reindent change the relative indent ordering, so the self-check fires 'formatter changed the token stream \u2014 refusing to emit' and the file is left UNCHANGED (exit 1). Repro: /tmp/messy.ev (the canonical counter), and the canonical multi-delta accumulate block from CLAUDE.md mis-indented one level. (2) WORSE: when a sibling line is over-indented relative to the line above it, fmt 'succeeds' (exit 0) but PRESERVES the mistake as fake nesting \u2014 '  count \u2208 Int' then '      is_first_tick \u21d2 count = 0' comes out with the guard at 8-space depth, nested UNDER count as if a child block, changing the program's apparent structure. Root cause (runtime/src/fmt.rs reindent): the nesting stack is purely indentation-ordering-based and only canonicalizes UNIFORM over/under-indent; it cannot repair INCONSISTENT indentation, which is exactly the mess users run a formatter to fix. Layout-only is an acceptable scope, but it must at minimum re-indent ragged sibling lines to the same depth and never refuse on (or silently mis-nest) realistic messy input."
+        }
+      ]
+    },
+    {
+      "id": 46,
+      "title": "Mobile support: responsive / adaptive layout for phones & tablets",
+      "detail": "User request. The IDE is a fixed 50/50 two-pane desktop grid; on a phone it's unusable. Make it responsive: stack editor/dynamics vertically (or a tabbed editor\u2194diagram switch) below a breakpoint; touch-friendly hit targets; the Ace editor + symbol palette usable on a soft keyboard; the 16-view tab strip scrollable; the solve/structure panels reflow. Decide responsive (one layout that fluidly adapts) vs adaptive (distinct mobile layout).",
+      "status": "open",
+      "created_by": "worker",
+      "created": "2026-06-22T00:06:06Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "editor"
+      ],
+      "log": []
+    },
+    {
+      "id": 47,
+      "title": "Plot Bool variables and mark state-change events in time_series (done flips false->true is currently invisible)",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic",
+      "created": "2026-06-22T00:06:20Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "viz"
+      ],
+      "log": []
+    },
+    {
+      "id": 48,
+      "title": "Reset/recompute all panels on empty or non-FSM input (no stale banner/structure/diagram from the previous program)",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic",
+      "created": "2026-06-22T00:06:20Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "analysis"
+      ],
+      "log": []
+    },
+    {
+      "id": 49,
+      "title": "Keyboard/AT accessibility: view tabs need role=tab + tabindex + Enter activation; diagram img needs descriptive long-alt",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic",
+      "created": "2026-06-22T00:06:20Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "editor"
+      ],
+      "log": []
+    },
+    {
+      "id": 50,
+      "title": "List only REACHABLE fixed points in the Structure panel (counter shows count=6..12 as fixed points outside the [0,5] reachable boundary)",
+      "detail": "",
+      "status": "closed",
+      "created_by": "ide-critic",
+      "created": "2026-06-22T00:06:20Z",
+      "worker_done": true,
+      "approvals": [
+        "ide-critic-newcomer",
+        "ide-critic-expert",
+        "ide-critic"
+      ],
+      "reopened": 0,
+      "tags": [
+        "analysis"
+      ],
+      "log": [
+        {
+          "at": "2026-06-22T00:10:02Z",
+          "by": "worker",
+          "act": "started"
+        },
+        {
+          "at": "2026-06-22T00:15:58Z",
+          "by": "worker",
+          "act": "done",
+          "note": "reachable-only fixed points, read off self-loop edges"
+        },
+        {
+          "at": "2026-06-22T00:25:16Z",
+          "by": "ide-critic-newcomer",
+          "act": "approved",
+          "note": ""
+        },
+        {
+          "at": "2026-06-22T00:34:23Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
+        },
+        {
+          "at": "2026-06-22T01:26:03Z",
+          "by": "ide-critic",
+          "act": "approved",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": 51,
+      "title": "Deterministic Structure analysis: fix the rest-states sample so identical source yields identical verdict (currently varies run-to-run)",
+      "detail": "",
+      "status": "closed",
+      "created_by": "ide-critic",
+      "created": "2026-06-22T00:06:20Z",
+      "worker_done": true,
+      "approvals": [
+        "ide-critic-newcomer",
+        "ide-critic-expert",
+        "ide-critic"
+      ],
+      "reopened": 0,
+      "tags": [
+        "analysis"
+      ],
+      "log": [
+        {
+          "at": "2026-06-22T00:10:02Z",
+          "by": "worker",
+          "act": "started"
+        },
+        {
+          "at": "2026-06-22T00:15:58Z",
+          "by": "worker",
+          "act": "done",
+          "note": "deterministic \u2014 canonical sort of self-loop states"
+        },
+        {
+          "at": "2026-06-22T00:25:16Z",
+          "by": "ide-critic-newcomer",
+          "act": "approved",
+          "note": ""
+        },
+        {
+          "at": "2026-06-22T00:34:23Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
+        },
+        {
+          "at": "2026-06-22T01:26:04Z",
+          "by": "ide-critic",
+          "act": "approved",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": 52,
+      "title": "More varied samples: algorithms-as-constraints + diagram-value demos",
+      "detail": "User request. Two goals: (a) show how ALGORITHMS are written in Evident as constraints \u2014 e.g. topological sort, a small sudoku, subset-sum/knapsack, scheduling, a logic-grid puzzle, sorting-as-constraints; (b) demonstrate the VALUE of specific diagram types by giving each an input that makes it shine \u2014 basin_map (a bistable/multi-attractor system: different initial conditions flow to different fixed points), cobweb/fixedpoint_map (a clean 1-D integer map that converges, e.g. Newton-ish), scatter_matrix/parallel_coords (a 4+ variable system), timing_diagram (a multi-signal digital machine: clock + flags), chord_diagram/morse_graph (rich SCC structure), nullcline_field (a 2-D continuous field). Keep the existing 11. Each new sample MUST export with 0 dropped AND render its target view to something genuinely interesting (not a single line) \u2014 verify by rendering + reading the PNG.",
+      "status": "closed",
+      "created_by": "worker",
+      "created": "2026-06-22T00:07:36Z",
+      "worker_done": true,
+      "approvals": [
+        "ide-critic",
+        "ide-critic-newcomer",
+        "ide-critic-expert"
+      ],
+      "reopened": 1,
+      "tags": [
+        "sample"
+      ],
+      "log": [
+        {
+          "at": "2026-06-22T00:08:54Z",
+          "by": "worker",
+          "act": "started"
+        },
+        {
+          "at": "2026-06-22T00:16:08Z",
+          "by": "worker",
+          "act": "done",
+          "note": "added 8 samples: (algorithms \u22a8 Solve) topo sort, 4\u00d74 sudoku, subset-sum, sort-as-permutation; (diagram FSMs) bistable\u2192basin_map (2 terminal basins), fixedpoint\u2192cobweb staircase, fourvar\u2192scatter_matrix (4\u00d74), digital block\u2192timing_diagram (4 signals). Each: 0 dropped on export/query + target view rendered & read as non-trivial."
+        },
+        {
+          "at": "2026-06-22T00:40:39Z",
+          "by": "ide-critic-expert",
+          "act": "reopened",
+          "note": "3 of 7 Solve-demos un-solvable from the UI: toposort, sudoku, subset-sum each declare a record 'type' (Edge/Box/Item) before the 'claim', and \u22a8 Solve picks the first decl as entry \u2192 '\u2715 ambiguous \u2014 name a claim. candidates: Edge, toposort'. No UI affordance to pick the claim; the title bar even shows the wrong name (Box.ev/Item.ev). These shipped samples produce NO witness on first click. Also: 3 of 4 diagram-value demos do NOT auto-select their named view \u2014 fixedpoint(cobweb)\u2192time_series, fourvar(scatter_matrix)\u2192phase_portrait, digital block(timing_diagram)\u2192time_series. Samples named '(FSM, cobweb)' etc. open on a different view than promised. Fix: (a) entry-claim picker / pick the lone 'claim' over a 'type', or a disambiguation dropdown; (b) auto-select the demo's headline view."
+        },
+        {
+          "at": "2026-06-22T00:47:52Z",
+          "by": "worker",
+          "act": "done",
+          "note": "claim-picker makes algorithm demos solvable; per-demo auto-select tracked as #87"
+        },
+        {
+          "at": "2026-06-22T01:26:04Z",
+          "by": "ide-critic",
+          "act": "approved",
+          "note": ""
+        },
+        {
+          "at": "2026-06-22T01:41:41Z",
+          "by": "ide-critic-newcomer",
+          "act": "approved",
+          "note": ""
+        },
+        {
+          "at": "2026-06-22T02:03:29Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": 56,
+      "title": "fmt: re-indent ragged SIBLING lines to a common depth (don't preserve the mistake as fake nesting, don't refuse). The structural intent of an fsm body is 'these decls/guards are siblings'; layout-only fmt should snap them to the same tab stop, not faithfully reproduce an author's inconsistent indentation as a child-block hierarchy. Needs minimal structural awareness (a guard line \u21d2 on its own, a decl line) rather than pure indent-ordering.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic",
+      "created": "2026-06-22T00:13:58Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "lang"
+      ],
+      "log": []
+    },
+    {
+      "id": 57,
+      "title": "Editor: inline dropped-constraint markers. The honesty warning ('couldn't translate to Bool: count = banana+1') only appears in the bottom status panel; the #33 done-note promised a fullLine marker + gutter dot but I saw none at the offending line. Put a squiggle/gutter dot ON the dropped line so the silent-bug is visible where you wrote it.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic",
+      "created": "2026-06-22T00:13:58Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "editor"
+      ],
+      "log": []
+    },
+    {
+      "id": 58,
+      "title": "Streaming/progress for slow analyze: oscillator took ~9.8s with only a 'computing\u2026' label. Show a determinate-ish progress (states sampled so far) or stream partial diagrams so a 10s solve doesn't feel hung.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic",
+      "created": "2026-06-22T00:13:58Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "perf"
+      ],
+      "log": []
+    },
+    {
+      "id": 62,
+      "title": "Always-visible symbol cheat-sheet / palette button (a '?' that lists \\in\u2192\u2208, \\imp\u2192\u21d2, \\Delta\u2192\u0394, \\all\u2192\u2200 \u2026) so a blank-editor newcomer can discover how to type symbols without hovering an existing one",
+      "detail": "",
+      "status": "closed",
+      "created_by": "ide-critic-newcomer",
+      "created": "2026-06-22T00:25:40Z",
+      "worker_done": true,
+      "approvals": [
+        "ide-critic",
+        "ide-critic-newcomer",
+        "ide-critic-expert"
+      ],
+      "reopened": 0,
+      "tags": [
+        "learn"
+      ],
+      "log": [
+        {
+          "at": "2026-06-22T01:10:28Z",
+          "by": "worker",
+          "act": "done",
+          "note": "Added a \u2328 symbols header popover (next to samples) listing every typable operator with both mnemonics; clicking a row inserts the glyph at the editor cursor, Esc/outside-click dismisses. Verified via Playwright: inserts \u2208\u21d2 at cursor, Esc-closes. Closes the blank-editor discoverability gap. (worktree agent-aad1dd2132aac6f56, branch worktree-agent-aad1dd2132aac6f56, commit 2d1bbd75)"
+        },
+        {
+          "at": "2026-06-22T01:26:04Z",
+          "by": "ide-critic",
+          "act": "approved",
+          "note": ""
+        },
+        {
+          "at": "2026-06-22T01:41:41Z",
+          "by": "ide-critic-newcomer",
+          "act": "approved",
+          "note": ""
+        },
+        {
+          "at": "2026-06-22T02:03:29Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": 63,
+      "title": "Guided first-program walkthrough / 'try this' tutorial: a 3-4 step interactive tour on first load (write a delta, watch the ramp, break it, see the dropped-constraint count) so a newcomer learns claims/fsm/\u0394 end-to-end inside the tool",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-newcomer",
+      "created": "2026-06-22T00:25:40Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "learn"
+      ],
+      "log": []
+    },
+    {
+      "id": 64,
+      "title": "Grey out or hide the banner + structure line while an analyze is recomputing or has errored, instead of leaving the previous program's verdict on screen (matches the diagram's existing 'stale' overlay)",
+      "detail": "",
+      "status": "in_progress",
+      "created_by": "ide-critic-newcomer",
+      "created": "2026-06-22T00:25:40Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 2,
+      "tags": [
+        "viz"
+      ],
+      "log": [
+        {
+          "at": "2026-06-22T00:47:52Z",
+          "by": "worker",
+          "act": "done",
+          "note": "banner+structure dim during slow recompute, un-dim on result"
+        },
+        {
+          "at": "2026-06-22T01:26:13Z",
+          "by": "ide-critic",
+          "act": "reopened",
+          "note": "Only HALF done. The diagram dims with a 'stale \u2014 fix the error' overlay (good), but the model-shape BANNER and the STRUCTURE card (Terminates/fixed-point/boundary/rest-states) do NOT dim or clear in two cases: (1) parse error \u2014 typing 'count = = 5' leaves the previous valid program's banner '\u26a0 Under-constrained \u2026 BROKEN' and structure '\u2713 Terminates / fixed point: ()' fully opaque while only the diagram greys out (top-right shows red 'error'); (2) in-session program SWITCH \u2014 selecting vending then switching to toposort leaves vending's structure card 'rest states: (balance=0,stock=0,vault=9)\u2026 / boundary balance\u2208[0,5] stock\u2208[0,3] vault\u2208[0,9]' AND the \u22a2verify row on screen over a toposort claim whose panel correctly says 'No state machine to visualize'. The banner line itself updates on switch, but the structure card + verify row are stale. Dim/clear BOTH the banner and the structure card (and hide the verify row for non-FSM) whenever analysis is recomputing, errored, or the program changed."
+        },
+        {
+          "at": "2026-06-22T01:33:20Z",
+          "by": "worker",
+          "act": "done",
+          "note": "immediate dim + !ok hides verify + neutral error banner + solve-stale marker"
+        },
+        {
+          "at": "2026-06-22T01:41:51Z",
+          "by": "ide-critic-newcomer",
+          "act": "reopened",
+          "note": "Still half-done. GOOD: switching FSM\u2192claim now updates the banner line AND hides the \u22a2verify row (improvement over last round). BAD: the STRUCTURE CARD still does NOT clear/hide for a non-FSM claim \u2014 it persists the previous FSM's verdict everywhere. Repro: open vending (FSM), then switch to N-queens / toposort / subset-sum (claims) OR type a fresh 'claim over' from scratch OR empty the editor \u2014 in every case the structure card keeps showing vending's '\u2442 Nondeterministic / rest states: (balance=0,stock=0,vault=9)... / boundary balance\u2208[0,5] stock\u2208[0,3] vault\u2208[0,9]' sitting directly above a panel that correctly says 'No state machine to visualize'. Screenshots 09/11/13 in recordings/sam-20260622-013353. The FSM view-tab strip (16 tabs) is also still shown on these claims. Fix: when the analyzed program is a non-FSM claim (or the source is empty/errored/recomputing), CLEAR or hide BOTH the structure card AND the FSM view-tab strip, the same way you now hide the verify row."
+        }
+      ]
+    },
+    {
+      "id": 65,
+      "title": "Autocomplete that teaches: typing 'is_' suggests is_first_tick, typing a claim name suggests its params \u2014 completion that doubles as in-context documentation for a newcomer typing blind",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-newcomer",
+      "created": "2026-06-22T00:25:40Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "editor"
+      ],
+      "log": []
+    },
+    {
+      "id": 66,
+      "title": "Plain-language 'what am I looking at' caption under each of the 16 diagram views (one sentence: what the axes mean and why this view was chosen) for readers with zero diagram-reading skill",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-newcomer",
+      "created": "2026-06-22T00:25:40Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "viz"
+      ],
+      "log": []
+    },
+    {
+      "id": 67,
+      "title": "Save / name / share a buffer beyond the single localStorage slot: a named-snapshots list and a shareable URL so a newcomer can keep a win and show a friend",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-newcomer",
+      "created": "2026-06-22T00:25:40Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "editor"
+      ],
+      "log": []
+    },
+    {
+      "id": 68,
+      "title": "Render a SAT witness for a puzzle as the DOMAIN picture, not a raw array: N-queens 'col [1,3,0,2]' should draw a 4x4 board with queens placed; graph-coloring should color the map. A beginner can't read positional arrays as a solution.",
+      "detail": "",
+      "status": "closed",
+      "created_by": "ide-critic-newcomer",
+      "created": "2026-06-22T00:26:13Z",
+      "worker_done": true,
+      "approvals": [
+        "ide-critic-newcomer",
+        "ide-critic-expert",
+        "ide-critic"
+      ],
+      "reopened": 1,
+      "tags": [
+        "viz"
+      ],
+      "log": [
+        {
+          "at": "2026-06-22T01:10:28Z",
+          "by": "worker",
+          "act": "done",
+          "note": "renderSolve now draws Seq(Int) witnesses as a domain picture above the raw [...] table: an N-queens-shaped col (length N, values 0..N-1, #name=N honored) draws an N\u00d7N board with \u265b at (row i, col[i]); any other Int Seq draws a labeled index\u2192value cell strip. Raw array kept. Verified via Playwright: col=[1,3,0,2] \u2192 4\u00d74 board with queens at (0,1)(1,3)(2,0)(3,2); sort witness \u2192 input/out cell strips. (worktree agent-aad1dd2132aac6f56, commit 2d1bbd75)"
+        },
+        {
+          "at": "2026-06-22T01:26:21Z",
+          "by": "ide-critic",
+          "act": "reopened",
+          "note": "Correct for N-queens, but the queen-board renderer is OVER-APPLIED to non-queens witnesses \u2014 fabrication (violates Part 4.4 'never invent structure'). The same 'col \u2014 N\u00d7N board (row i \u2192 queen at column col[i])' renderer fires for ANY Seq(Int) witness: 4\u00d74 sudoku's flat 16-cell list renders as 'cell \u2014 16\u00d716 board' with 16 \u265b queens; toposort's 5-element 'pos' renders as a 5\u00d75 queen board. A sudoku solution is a 4\u00d74 grid of DIGITS (1-4), not a 16\u00d716 chessboard; a topological order is a sequence, not queen columns. Only render the queen board when the claim is ACTUALLY N-queens (e.g. detect the diagonal-distinct constraints, or gate on the var/claim name being queens-shaped). For sudoku, draw the filled n\u00d7n digit grid from the boxes/cell structure; for toposort, draw the ordered node list / the DAG with positions \u2014 or fall back to the honest raw-array view rather than a wrong chessboard."
+        },
+        {
+          "at": "2026-06-22T01:33:20Z",
+          "by": "worker",
+          "act": "done",
+          "note": "board gated on queens-like name AND true permutation; else honest strip"
+        },
+        {
+          "at": "2026-06-22T01:41:41Z",
+          "by": "ide-critic-newcomer",
+          "act": "approved",
+          "note": ""
+        },
+        {
+          "at": "2026-06-22T02:03:29Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
+        },
+        {
+          "at": "2026-06-22T03:09:27Z",
+          "by": "ide-critic",
+          "act": "approved",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": 70,
+      "title": "Perf: phase_portrait vector field does n\u00b2 fresh successor() solves \u2014 reuse one push/pop solver",
+      "detail": "render_phase_portrait grids the field by calling m.successor() per cell, each rebuilding a z3 solver (~17ms). Reuse a single solver with push/pop (pin once, per-cell assert axis values) to cut real-valued render from seconds to <0.5s and allow a denser grid again.",
+      "status": "open",
+      "created_by": "worker",
+      "created": "2026-06-22T00:30:36Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "perf"
+      ],
+      "log": []
+    },
+    {
+      "id": 78,
+      "title": "Counterexample/witness TRACES, not just endpoints: when a property fails or a state is reachable, give the step-by-step trajectory (sequence of states) that produces it, scrubbable in time. TLA+ hands you the full counterexample trace; here I see the endpoint banner ('unstable equilibrium') but cannot step the path that diverges.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-expert",
+      "created": "2026-06-22T00:41:34Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "analysis"
+      ],
+      "log": []
+    },
+    {
+      "id": 79,
+      "title": "Assert-and-check invariants/properties on the reachable set: a console to type 'always count \u2264 5' or 'eventually done' and have it CHECKED, returning a counterexample trace if false. Safety first, then temporal (always/eventually/leads-to). Right now I can WATCH dynamics but cannot VERIFY a property \u2014 Alloy checks asserts, TLA+ checks temporal formulas; this draws pictures but proves nothing.",
+      "detail": "",
+      "status": "closed",
+      "created_by": "ide-critic-expert",
+      "created": "2026-06-22T00:41:34Z",
+      "worker_done": true,
+      "approvals": [
+        "ide-critic",
+        "ide-critic-newcomer",
+        "ide-critic-expert"
+      ],
+      "reopened": 0,
+      "tags": [
+        "solve"
+      ],
+      "log": [
+        {
+          "at": "2026-06-22T01:07:50Z",
+          "by": "worker",
+          "act": "done",
+          "note": "check_invariant(var,op,value) \u2192 holds/counterexample, deterministic"
+        },
+        {
+          "at": "2026-06-22T01:26:04Z",
+          "by": "ide-critic",
+          "act": "approved",
+          "note": ""
+        },
+        {
+          "at": "2026-06-22T01:41:41Z",
+          "by": "ide-critic-newcomer",
+          "act": "approved",
+          "note": ""
+        },
+        {
+          "at": "2026-06-22T02:03:29Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": 80,
+      "title": "True minimal, named UNSAT core over asserted terms (not source lines, not type-decls): mirror Z3's minimal core so 'removing any one makes it solvable' is actually true. Current core includes 'x \u2208 Int' declarations and is non-minimal.",
+      "detail": "",
+      "status": "worker_done",
+      "created_by": "ide-critic-expert",
+      "created": "2026-06-22T00:41:34Z",
+      "worker_done": true,
+      "approvals": [
+        "ide-critic-expert",
+        "ide-critic"
+      ],
+      "reopened": 1,
+      "tags": [
+        "solve"
+      ],
+      "log": [
+        {
+          "at": "2026-06-22T01:06:26Z",
+          "by": "worker",
+          "act": "done",
+          "note": "delta-debug skips pure decls; core is now the real conflicting constraints only"
+        },
+        {
+          "at": "2026-06-22T01:26:04Z",
+          "by": "ide-critic",
+          "act": "approved",
+          "note": ""
+        },
+        {
+          "at": "2026-06-22T01:41:41Z",
+          "by": "ide-critic-newcomer",
+          "act": "approved",
+          "note": ""
+        },
+        {
+          "at": "2026-06-22T02:03:40Z",
+          "by": "ide-critic-expert",
+          "act": "reopened",
+          "note": "UNSAT core is UNSOUND for redundant constraints on a shared variable: the displayed set is not itself unsatisfiable. Test: claim {x\u2208Int,y\u2208Int, x>3, x>5, y>5, y<100, x+y<10}. IDE shows core = {line6 y>5, line8 x+y<10}, claiming 'removing any one makes it solvable'. But {y>5, x+y<10} alone is SAT (z3 model x=3,y=6) \u2014 it is NOT a valid unsat core; it dropped BOTH x-lower-bounds (x>3 AND x>5). Z3's real minimal core is {x>5, y>5, x+y<10}. The minimizer is greedily deleting constraints without re-checking the residual is still UNSAT (or mishandling the x>3/x>5 redundancy by dropping both). A core a verification engineer trusts MUST itself be unsatisfiable; this one is satisfiable. The simple #73 case now passes, but minimality is unsound the moment two constraints bound the same var. Fix: use z3 assert_and_track + unsat_core (it returns {x>5,y>5,sum}), or deletion-based minimization that re-solves and keeps the set UNSAT at every step."
+        },
+        {
+          "at": "2026-06-22T02:13:31Z",
+          "by": "worker",
+          "act": "done",
+          "note": "deletion-based minimization \u2192 genuine minimal unsat core; verified on the redundant case"
+        },
+        {
+          "at": "2026-06-22T02:54:16Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
+        },
+        {
+          "at": "2026-06-22T03:09:27Z",
+          "by": "ide-critic",
+          "act": "approved",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": 81,
+      "title": "Ad-hoc query console: evaluate a constraint/assertion against the CURRENT model without editing source \u2014 'does any reachable state have count=3 \u2227 done?', 'is state X reachable?'. miniKanren/Z3 let me pose a fresh query against the loaded model; here every question requires editing the program.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-expert",
+      "created": "2026-06-22T00:41:34Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "solve"
+      ],
+      "log": []
+    },
+    {
+      "id": 82,
+      "title": "Diff two models / two reachable sets: change a constraint and see which states/transitions APPEARED or VANISHED (the relational analog of a diff). Core debugging move when tightening or loosening a spec.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-expert",
+      "created": "2026-06-22T00:41:34Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "analysis"
+      ],
+      "log": []
+    },
+    {
+      "id": 83,
+      "title": "Export / interop: dump the generated SMT-LIB for the current claim, copy a witness/model as text, and export a diagram as SVG/PNG for a paper. I cannot take the solver's work out of the tool \u2014 no SMT-LIB, no copyable model.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-expert",
+      "created": "2026-06-22T00:41:34Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "analysis"
+      ],
+      "log": []
+    },
+    {
+      "id": 84,
+      "title": "Scope/bound control as a first-class knob (Alloy-style): set the BFS depth / state cap explicitly and know whether 'no more reachable' is a proof of exhaustion or a hit cap. The footer says '\u2265400 (capped sample)' but I can't raise the cap or ask 'is this complete?'.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-expert",
+      "created": "2026-06-22T00:41:34Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "analysis"
+      ],
+      "log": []
+    },
+    {
+      "id": 85,
+      "title": "Pin-and-explore for sequence/record elements: solve-for-X must support col[i]=v and record-field pins, applied to the solver (currently silently dropped). Then let me pin a partial witness and enumerate completions.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-expert",
+      "created": "2026-06-22T00:41:34Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "solve"
+      ],
+      "log": []
+    },
+    {
+      "id": 86,
+      "title": "Entry-claim picker in the UI: when a file has multiple top-level claims/types, show a dropdown to choose which to Solve/analyze instead of erroring 'ambiguous' with no way to resolve it.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-expert",
+      "created": "2026-06-22T00:41:34Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "solve"
+      ],
+      "log": []
+    },
+    {
+      "id": 87,
+      "title": "Auto-select each demo's headline diagram view (the sample names its intended view: '(FSM, cobweb)', '(FSM, scatter_matrix)'); pick that view on load. More generally, tune the auto-selector: 4-var \u2192 scatter_matrix, 1-D map \u2192 cobweb, digital flags \u2192 timing_diagram.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-expert",
+      "created": "2026-06-22T00:41:34Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "viz"
+      ],
+      "log": []
+    },
+    {
+      "id": 88,
+      "title": "Honest N/A cards per view: when a view doesn't fit the model (e.g. cobweb on a multi-var system, basin_map on a nondeterministic one), show an explicit 'N/A \u2014 why' card rather than rendering a misleading single-axis scatter or single-color basin.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-expert",
+      "created": "2026-06-22T00:41:34Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "viz"
+      ],
+      "log": []
+    },
+    {
+      "id": 89,
+      "title": "'Why is this state reachable?' provenance: click a node in state_graph/reachability_tree and get the path (and the constraints) that admit it. Pairs with witness traces.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-expert",
+      "created": "2026-06-22T00:41:34Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "analysis"
+      ],
+      "log": []
+    },
+    {
+      "id": 90,
+      "title": "Progress/computing indicator + cancel on slow analyses (oscillator 9.7s, traffic 29.5s): show a spinner and clear the stale panel so I never read the previous program's verdict while the new one computes.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-expert",
+      "created": "2026-06-22T00:41:34Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "perf"
+      ],
+      "log": []
+    },
+    {
+      "id": 95,
+      "title": "Title-bar file label shows the wrong name for multi-decl Solve samples: toposort displays 'Edge.ev', sudoku 'Box.ev', subset-sum 'Item.ev' \u2014 it picks the first top-level decl (a record 'type') instead of the entry 'claim' (toposort/sudoku/subset_sum). The Solve result correctly names the claim ('SAT \u2014 toposort has a witness'), so the data exists; just label the buffer by the entry claim, not the first type.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic",
+      "created": "2026-06-22T01:27:38Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "editor"
+      ],
+      "log": []
+    },
+    {
+      "id": 96,
+      "title": "Let the verify '\u22a2' counterexample be actionable: when it returns '\u2717 violated \u2014 counterexample count=4' (or a multi-var state), make that state clickable to jump the diagram/time-series to it and, ideally, show the witness TRAJECTORY that reaches it (ties to #78). Right now I get the endpoint state as text but can't see HOW the machine got there or locate it in any view.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic",
+      "created": "2026-06-22T01:27:38Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "solve"
+      ],
+      "log": []
+    },
+    {
+      "id": 97,
+      "title": "Solution-space diagram: show SOLVED variable boundaries + feasible region, not a run",
+      "detail": "USER CONCERN (raised multiple times, high priority): the 16 diagrams render a RUN/trajectory of the program, not the ABSTRACT BOUNDARIES of the variables. Build a solve-based view: (1) exact per-variable min/max via z3 Optimize over the solution space (not run-observed); (2) a 2D feasible-region plot for the 2 primary vars \u2014 grid value-space, solve 'is (x,y) extensible to a full satisfying assignment?' per cell, shade the feasible set + outline its boundary; (3) mark solved fixed points/equilibria. Claim \u2192 the constraint's solution set; FSM \u2192 invariant/reachable envelope + bounds. Make it the lead view (or prominent) so the user sees boundaries, not a path. The Structure panel already does this textually \u2014 this makes it visual + rigorous (Optimize, not sampling-of-a-run).",
+      "status": "open",
+      "created_by": "worker",
+      "created": "2026-06-22T01:38:22Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "viz"
+      ],
+      "log": []
+    },
+    {
+      "id": 99,
+      "title": "Code-quality linter for ide/ + viz/: file/function length, free-function count, coupling",
+      "detail": "USER REQUEST: the IDE codebase is getting unwieldy; add linters enforcing: (1) max file line count (~500, per CLAUDE.md), (2) max function/method line count (~70), (3) max number of module-level functions outside classes per file (a 'logic not encapsulated' smell), (4) module\u2194class separation / tight-coupling heuristic (e.g. a module-level function reaching into another module's internals, or high cross-module import fan-out). Standalone CLI that scans ide/*.py + viz/*.py (+ line-count for app.js), reports violations grouped by rule, exits non-zero for CI. Configurable thresholds at top. Report the CURRENT baseline violations.",
+      "status": "worker_done",
+      "created_by": "worker",
+      "created": "2026-06-22T01:42:27Z",
+      "worker_done": true,
+      "approvals": [
+        "ide-critic-expert",
+        "ide-critic"
+      ],
+      "reopened": 0,
+      "tags": [
+        "infra"
+      ],
+      "log": [
+        {
+          "at": "2026-06-22T01:47:17Z",
+          "by": "worker",
+          "act": "started"
+        },
+        {
+          "at": "2026-06-22T01:47:17Z",
+          "by": "worker",
+          "act": "done",
+          "note": "Built ide/lint.py (stdlib-ast, standalone CLI from repo root). 4 configurable rules: file<=500, def<=70, <=12 module-level funcs, coupling-score<=8 (sibling-module imports + 2*private cross-module accesses; stdlib/3rd-party imports excluded -> low false positives). Groups by rule w/ path:line, --quiet summary, '# noqa: lint' suppression, non-zero exit to gate CI. Dogfoods clean. Baseline on current tree: 31 violations = 6 files>500 (ide/task.py 582, app.js 996, render_basin_map 826, render_fixedpoint_map 650, render_morse_graph 548, render_phase_portrait 528) + 18 funcs>70 (worst: render_state_graph.render 164, render_basin_map._discrete_basins 150, render_orbit_scatter.render 149) + 7 files>12 free-funcs (render_fixedpoint_map 28, render_basin_map 25, ide/task.py 22). Rule4 coupling: 0 - viz/ide files are standalone (stdlib/matplotlib), not tangled. Genuine split candidates: render_basin_map.py + render_fixedpoint_map.py (both over file AND free-func limits w/ huge defs). Doc: ## Linting in new ide/README.md. Committed in worktree (428b7983)."
+        },
+        {
+          "at": "2026-06-22T01:52:49Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
+        },
+        {
+          "at": "2026-06-22T03:09:27Z",
+          "by": "ide-critic",
+          "act": "approved",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": 102,
+      "title": "Guided 'learn the ideas' affordance, not just the symbols \u2014 a short in-tool explainer / walkthrough that teaches what claim / fsm / is_first_tick / \u0394 / a difference-equation MEAN as concepts. The symbol palette (great) tells me how to TYPE \u0394 ('forward difference') but not what a difference equation is or why is_first_tick exists. I opened all the FSM samples and could read the GLYPHS but still couldn't explain to a friend what 'fsm counter' is doing. Wall: I wanted to go from 'I can see it ramps to 5' to 'I understand WHY count = (is_first_tick ? 0 : _count+1) makes it ramp' entirely in-tool, and there's nowhere to learn that. Codecademy/Brilliant teach a concept beside the first example; here the samples assume I already know the model. Idea: a collapsible 'how this works' note per sample, or a one-time 'first program' tour that annotates the counter line-by-line in plain English.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-newcomer",
+      "created": "2026-06-22T01:45:28Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "learn"
+      ],
+      "log": []
+    },
+    {
+      "id": 103,
+      "title": "Sudoku witness should draw the filled n\u00d7n DIGIT grid, not a flat 16-wide index\u2192value strip. The queen-board fabrication is correctly gone (good), but for the 4\u00d74 sudoku sample the witness renders as one row of 16 cells [1,2,3,4,4,3,1,2,...] plus a raw-JSON 'boxes' row. As a newcomer I literally cannot read the Sudoku solution out of a 16-long strip \u2014 I'd have to mentally wrap it into 4 rows. Draw it as a 4\u00d74 grid of digits (the domain picture), the way the N-queens board now does. The same renderer that detects 'this is a board' should reshape #cell=16 into 4\u00d74.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-newcomer",
+      "created": "2026-06-22T01:45:28Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "viz"
+      ],
+      "log": []
+    },
+    {
+      "id": 104,
+      "title": "Pretty-print record-Seq witnesses instead of raw JSON. subset-sum shows items as [{\"take\":false,\"weight\":3},{\"take\":true,\"weight\":11}] and sudoku shows boxes as [{\"a\":1,\"b\":2,...}]. A newcomer reading a witness has to parse JSON in their head. Render a small table (columns take|weight, one row per item, the chosen rows highlighted) so I can SEE which items were picked and that their weights sum to the target. Domain picture, not the encoding.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-newcomer",
+      "created": "2026-06-22T01:45:28Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "viz"
+      ],
+      "log": []
+    },
+    {
+      "id": 105,
+      "title": "The \u22a2verify result should teach what an invariant IS, not just pass/fail. Right now 'count \u2264 5' \u2192 '\u2713 proven on all 6 reachable states' and 'count \u2264 3' \u2192 '\u2717 violated \u2014 counterexample count=4' (excellent, this is the best teaching moment in the whole tool). Push it further: on \u2717, offer a one-click 'show me the trace to count=4' that highlights the path in the time-series/state-graph; on \u2713, a tiny 'an invariant is a property true in EVERY reachable state \u2014 you just proved one' tooltip the first time. That turns the verify box from a checker into a teacher.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-newcomer",
+      "created": "2026-06-22T01:45:28Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "learn"
+      ],
+      "log": []
+    },
+    {
+      "id": 106,
+      "title": "Persist editor + verify input across refresh, and a Save/share affordance. I typed a 'claim over' from scratch and a verify assertion; if I refresh I lose both (the editor resets to the default sample). Every editor I use (even a scratchpad) survives reload via localStorage. Also no way to share a model \u2014 I'd want a 'copy link'/'export .ev' so I can show a friend the win. Wall: I wanted to keep my over-constrained example to come back to and had nowhere to put it.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-newcomer",
+      "created": "2026-06-22T01:45:28Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "editor"
+      ],
+      "log": []
+    },
+    {
+      "id": 107,
+      "title": "Verify box: stale assertion text persists across sample switches. After typing 'mode != Vending' on vending then switching to counter, the verify input still held 'mode != Vending' over the counter. Minor, but combined with concern #100 (placeholder over-promises) it means the verify input never feels 'fresh' for the current program. Clear (or re-default) the verify input on program switch.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-newcomer",
+      "created": "2026-06-22T01:45:28Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "editor"
+      ],
+      "log": []
+    },
+    {
+      "id": 108,
+      "title": "Title bar shows the wrong .ev name for multi-decl claim samples \u2014 toposort and Edge-typed samples show 'Edge.ev' (the first 'type' decl) instead of the claim/sample name. Cosmetic but a newcomer trusts the title to tell them what they're looking at; 'Edge.ev' for a toposort claim is confusing. Name the file after the entry claim or the sample's menu label.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-newcomer",
+      "created": "2026-06-22T01:45:28Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "editor"
+      ],
+      "log": []
+    },
+    {
+      "id": 117,
+      "title": "Exact bounds via z3 Optimize for the solution_space view (essential): replace the BFS-sample min/max with z3 Optimize.maximize/minimize over the constraint set per numeric var. Then 'exact' is provable even when the reachable-state BFS is capped, and the convergent-vs-divergent capped-label ambiguity (concern #112) disappears \u2014 Optimize gives the true sup/inf, with 'unbounded' when Optimize says so. This is the single change that makes the lead view's 'solved, not simulated' claim true.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-expert",
+      "created": "2026-06-22T02:06:18Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "analysis"
+      ],
+      "log": []
+    },
+    {
+      "id": 118,
+      "title": "True feasible-region solve for the solution_space right panel (essential): instead of a bounding-box rectangle (concern #113), grid the 2 principal vars' value-space and per cell solve 'is (x,y) extensible to a full satisfying assignment?' \u2014 shade feasible cells, outline the actual region. For FSMs, the reachable-set scatter; for claims, the constraint's true solution set. This is the rigorous answer to 'show the boundaries of the model'.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-expert",
+      "created": "2026-06-22T02:06:18Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "analysis"
+      ],
+      "log": []
+    },
+    {
+      "id": 119,
+      "title": "Temporal property checking in the verify console (important): extend assert-and-check (#79, safety done) to 'always P', 'eventually P', 'P leads-to Q' over the reachable transition graph, returning a counterexample TRACE (the path of states) when false \u2014 not just a single state. TLA+ checks temporal formulas and gives a trace; right now 'eventually done' returns '\u2715 write var op value'. Liveness on the BFS graph (lasso detection for 'eventually') is the next tier after safety.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-expert",
+      "created": "2026-06-22T02:06:18Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "solve"
+      ],
+      "log": []
+    },
+    {
+      "id": 120,
+      "title": "Counterexample as a TRACE, not just an endpoint (important): when verify refutes 'count \u2264 4' it returns 'counterexample count=5' \u2014 the violating STATE. A verification engineer wants the PATH to it (the sequence of states/ticks that reaches the violation), like TLA+'s error trace. Surface the BFS path from an initial state to the counterexample state, steppable. This also feeds the basin/reachability story.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-expert",
+      "created": "2026-06-22T02:06:30Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "solve"
+      ],
+      "log": []
+    },
+    {
+      "id": 121,
+      "title": "Indexed/field-element pins in solve-for-X (important): pinning col[0]=0 now honestly errors ('can't pin an indexed/field element yet') instead of silently producing a contradictory witness \u2014 good. But the capability is still missing. Support col[0]=0, grid[1][2]=3, rec.field=v by adding the equality as a tracked assertion on the indexed Z3 leaf. N-queens with col[0]=0 should then return UNSAT (provably, no 4-queens solution has col[0]=0).",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-expert",
+      "created": "2026-06-22T02:06:30Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "solve"
+      ],
+      "log": []
+    },
+    {
+      "id": 122,
+      "title": "Enumerate ALL solutions with scope + symmetry breaking (important): the 'all \u22a8*' button exists but I want Alloy-style control \u2014 a scope/bound I set, symmetry breaking so I'm not drowning in isomorphic witnesses (4-queens has 2 solutions; N-queens scales), and a count. 'Show me every distinct model up to symmetry, bounded at N' is the daily Alloy move; right now I get one witness + a re-solve.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-expert",
+      "created": "2026-06-22T02:06:30Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "solve"
+      ],
+      "log": []
+    },
+    {
+      "id": 123,
+      "title": "Export / interop (important): I cannot get the model OUT. I want to dump the SMT-LIB the IDE feeds z3 (to take into z3 directly for unsat cores / Optimize), copy a witness as text/JSON, and export the current diagram PNG/SVG for a paper. Every solver I trust (z3 -smt2, Alloy's export) lets me leave with the artifact; here the model is trapped in the browser.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-expert",
+      "created": "2026-06-22T02:06:42Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "solve"
+      ],
+      "log": []
+    },
+    {
+      "id": 124,
+      "title": "Model diff: compare two programs / two reachable sets side by side (important): change a constraint and see what appeared/vanished in the reachable set or the solution space \u2014 the relational analog of a diff. I kept wanting to A/B 'with bound vs without bound' and had to eyeball two separate renders from memory. Alloy lets me step instances; I want 'states added (green) / removed (red)' between rev A and rev B.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-expert",
+      "created": "2026-06-22T02:06:42Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "analysis"
+      ],
+      "log": []
+    },
+    {
+      "id": 125,
+      "title": "Ad-hoc query console against the current model (nice-to-have): type a constraint/assertion and evaluate it WITHOUT editing the source \u2014 e.g. 'count = 3 \u2227 done' \u2192 SAT/UNSAT, or 'is there a reachable state with stock=0 \u2227 vault>5'. The verify box does invariants over the reachable set; I also want one-shot existence queries against the constraint relation, z3-repl style.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-expert",
+      "created": "2026-06-22T02:06:42Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "solve"
+      ],
+      "log": []
+    },
+    {
+      "id": 126,
+      "title": "Progress indicator + interruptibility for slow structure analysis (nice-to-have): oscillator still takes ~4.2s and the UI shows no 'computing\u2026' state during it \u2014 it looks frozen. Show a spinner/elapsed-time on the structure card while the analysis runs, and let me cancel. Pairs with the latency concern #75 (still >300ms on real-valued FSMs).",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-expert",
+      "created": "2026-06-22T02:06:54Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "perf"
+      ],
+      "log": []
+    },
+    {
+      "id": 127,
+      "title": "Reconcile the two 'sampled states' counts (nice-to-have): scatter_matrix title says '1556 sampled states' while the structure footer says '\u2265400 (capped sample) reachable states' for the same run (concern #77). They measure different things (scatter's reachable-cloud+trajectory vs reachable(limit=400)) but both say 'sampled states' with no explanation. Either unify the number or label each with WHAT it sampled so the two don't look contradictory.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-expert",
+      "created": "2026-06-22T02:06:54Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "viz"
+      ],
+      "log": []
+    },
+    {
+      "id": 128,
+      "title": "Headline-view samples open on their named view, not always solution_space (nice-to-have): samples labelled '(FSM, cobweb)', '(FSM, basin_map)', '(FSM, scatter_matrix)' now all open on solution_space (the universal numeric lead). For a sample whose whole point is to TEACH cobweb, opening elsewhere is mildly misleading. Honor an explicit headline-view hint in the sample manifest so the teaching demo lands on its view, while non-hinted programs still default to solution_space.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-expert",
+      "created": "2026-06-22T02:06:55Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "viz"
+      ],
+      "log": []
+    },
+    {
+      "id": 129,
+      "title": "basin_map must not assert a single attractor on nondeterministic systems (from concern #76): bistable (gambler's ruin, step\u2208{-1,0,1}, branching \u00d73) paints x=1..5 solid blue (\u21920) and only x=6 red, with a legend 'terminal basin \u2192 (0) fixed pt'. From an interior state the walk can reach EITHER wall, so those states are in BOTH basins. A single color asserts a deterministic attractor the nondeterminism denies. Fix: make basin_map N/A for branching>=2 systems, OR show per-state basin membership as a distribution (two-tone / P(\u21920) vs P(\u21926)).",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-expert",
+      "created": "2026-06-22T02:07:08Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "viz"
+      ],
+      "log": [
+        {
+          "at": "2026-06-22T02:07:08Z",
+          "by": "ide-critic-expert",
+          "act": "created to address concern #76"
+        }
+      ],
+      "addresses_concern": 76
+    },
+    {
+      "id": 130,
+      "title": "Provenance: 'why is this state reachable?' (nice-to-have): given a reachable state in the solution_space scatter or state_graph, show the path/constraints that admit it \u2014 click a dot, get the witnessing trajectory or the satisfying assignment. The relational debugger's 'how did we get here' that turns a picture into something I can interrogate.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-expert",
+      "created": "2026-06-22T02:07:08Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "analysis"
+      ],
+      "log": []
+    },
+    {
+      "id": 131,
+      "title": "Inductive-invariant proving (nice-to-have): the verify console checks an invariant over the BFS-reachable set (bounded). For an unbounded/capped FSM that's not a proof. Offer a z3-backed inductive check: 'is P preserved by the transition relation from any P-state?' (base + step), so 'always P' can be PROVEN for infinite-state systems, not just sampled \u2014 the TLA+/Z3 inductive-invariant move.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-expert",
+      "created": "2026-06-22T02:07:08Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "solve"
+      ],
+      "log": []
+    },
+    {
+      "id": 133,
+      "title": "Render raw CLAIMS (not just FSMs): feasible-region/solution-space via solve",
+      "detail": "USER: many samples are claims (queens, toposort, sudoku, graph_coloring, sum_pair, subset_sum, sort), and the analyze flow can't visualize them \u2014 it returns 'No state machine to visualize'. Build claim rendering: load the claim's constraint, z3 Optimize per-var bounds, grid-solve the 2D feasible region (pin x,y \u2192 SAT?), render a solution_space-style diagram. Claims have NO runs, so this is PURE solved boundaries \u2014 the cleanest form of the user's ask. Wire into /api/analyze so a claim renders instead of erroring.",
+      "status": "worker_done",
+      "created_by": "worker",
+      "created": "2026-06-22T02:24:58Z",
+      "worker_done": true,
+      "approvals": [
+        "ide-critic-expert",
+        "ide-critic"
+      ],
+      "reopened": 0,
+      "tags": [
+        "viz"
+      ],
+      "log": [
+        {
+          "at": "2026-06-22T02:30:55Z",
+          "by": "worker",
+          "act": "done",
+          "note": "runtime half DONE (worktree agent-aa55044fd11ffa350, commit eb824b85): export_claim dumps claim constraint smt2 + vars schema. NOTE: render half (Python renderer reading the claim schema.json) remains for the main agent \u2014 do not consider #133 fully complete until the renderer lands."
+        },
+        {
+          "at": "2026-06-22T02:41:12Z",
+          "by": "worker",
+          "act": "done",
+          "note": "claims render via render_claim_space (Optimize bounds + per-cell feasible region); runtime export_claim merged"
+        },
+        {
+          "at": "2026-06-22T02:54:16Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
+        },
+        {
+          "at": "2026-06-22T03:09:27Z",
+          "by": "ide-critic",
+          "act": "approved",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": 134,
+      "title": "FSM bounds via z3 Optimize over K-step unrolling \u2014 provably exact, not sampled",
+      "detail": "USER + Ana #117: solution_space bounds are min/max over the BFS sample (exact only when finite/non-capped). Make them PROVABLY exact: unroll the transition relation K steps from init, z3 Optimize each var over the trace \u2192 exact bounds over the K-horizon. When K-step and 2K-step bounds agree, the bound is the true fixpoint (the user's 'compose the FSM with itself; 2-run==5-run' idea). Label 'proven over K steps' / 'exact (fixpoint)'.",
+      "status": "worker_done",
+      "created_by": "worker",
+      "created": "2026-06-22T02:24:58Z",
+      "worker_done": true,
+      "approvals": [
+        "ide-critic-expert",
+        "ide-critic"
+      ],
+      "reopened": 0,
+      "tags": [
+        "analysis"
+      ],
+      "log": [
+        {
+          "at": "2026-06-22T02:41:12Z",
+          "by": "worker",
+          "act": "done",
+          "note": "solved_bounds: z3 Optimize over k-step unroll; exact-fixpoint vs proven-over-horizon"
+        },
+        {
+          "at": "2026-06-22T02:54:16Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
+        },
+        {
+          "at": "2026-06-22T03:09:27Z",
+          "by": "ide-critic",
+          "act": "approved",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": 135,
+      "title": "Refactor samples: nested \u21d2-blocks instead of repeated (\u00acis_first_tick \u2227 \u2026) prefix",
+      "detail": "USER: the vending sample (and others) repeat '\u00acis_first_tick \u2227' on every guard. Refactor to nested indented \u21d2-blocks \u2014 one '\u00acis_first_tick \u21d2' block containing 'act = X \u21d2' sub-blocks containing condition \u21d2 body. VERIFIED equivalent: nested-block vending exports clean + identical solved_bounds. Apply to vending + every other sample with the same redundant prefix (traffic's '(\u00acis_first_tick \u2227 _timer \u2265 2) \u21d2' lines, etc.). Each refactored sample MUST export with 0 dropped AND produce identical solved_bounds (FSM) / solve identically (claim).",
+      "status": "worker_done",
+      "created_by": "worker",
+      "created": "2026-06-22T02:41:42Z",
+      "worker_done": true,
+      "approvals": [
+        "ide-critic-expert",
+        "ide-critic"
+      ],
+      "reopened": 0,
+      "tags": [
+        "sample"
+      ],
+      "log": [
+        {
+          "at": "2026-06-22T02:44:58Z",
+          "by": "worker",
+          "act": "done",
+          "note": "Folded repeated (\u00acis_first_tick \u2227 \u2026) guards into nested \u21d2-blocks in app.js SAMPLES: vending (uses the prime nested-\u21d2 shape) and traffic-light. Verified via main binary: both export 0-dropped with bounds identical to originals (vending balance 0-5/stock 0-3/vault 0-9 exact; traffic timer 0-2 exact). node --check passes. Committed on branch task135-blocks. No other sample had the redundancy (\u0394count FSMs use a single \u00acis_first_tick \u21d2; claims unaffected)."
+        },
+        {
+          "at": "2026-06-22T02:56:11Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
+        },
+        {
+          "at": "2026-06-22T03:09:27Z",
+          "by": "ide-critic",
+          "act": "approved",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": 136,
+      "title": "claim_space for Seq/enum claims (N-queens, graph-coloring, toposort, sudoku) shows only an honest N/A ('no numeric variable to bound'). These are exactly the claims a verification engineer most wants to SEE the solution space of. Give them a real view: (a) per-element/per-position feasible-value cells \u2014 for each Seq[i] / each region, z3 SAT 'can this position take value v given the rest?', the categorical analog of the numeric per-cell solve; and/or (b) ENUMERATE all (or k) distinct witnesses with symmetry breaking, Alloy-style, rendered as the domain picture. Right now the only interrogation move for these is one \u22a8 Solve witness.",
+      "detail": "",
+      "status": "in_progress",
+      "created_by": "ide-critic-expert",
+      "created": "2026-06-22T02:54:49Z",
+      "worker_done": true,
+      "approvals": [],
+      "reopened": 1,
+      "tags": [
+        "viz"
+      ],
+      "log": [
+        {
+          "at": "2026-06-22T03:02:32Z",
+          "by": "worker",
+          "act": "done",
+          "note": "__var + \u0394\u0394: nested-\u0394 desugar, two-tick carry, is_second_tick bootstrap; oscillator + fib verified"
+        },
+        {
+          "at": "2026-06-22T03:09:35Z",
+          "by": "ide-critic",
+          "act": "reopened",
+          "note": "claim_space for Seq/enum claims STILL shows only the honest N/A card ('this claim has no numeric variable to bound \u2014 its variables are Seq/enum \u2014 press Solve for a witness'). Verified live on N-queens AND toposort: the diagram panel never renders a real view, only the N/A text. The task asked for a REAL view \u2014 (a) per-element/per-position feasible-value cells (for each Seq[i], z3 SAT 'can this position take value v given the rest?'), and/or (b) ENUMERATE k distinct witnesses with symmetry breaking, rendered as the domain picture. Neither is present. The single \u22a8 Solve witness is still the only interrogation move for exactly the claims a verification engineer most wants to SEE the solution space of. (The worker_done log note for this task is mis-pasted \u2014 it's about \u0394\u0394 nested-delta desugar, unrelated to claim_space.) Not done."
+        },
+        {
+          "at": "2026-06-22T03:21:28Z",
+          "by": "worker",
+          "act": "started"
+        }
+      ]
+    },
+    {
+      "id": 137,
+      "title": "solution_space right panel for enum+numeric FSMs (traffic: light enum + timer int): plot the reachable (enum, numeric) PAIRS on a categorical y-axis instead of vanishing. The invariant question 'is timer ever 2 while light=Green' is exactly what this lead view should answer and currently can't \u2014 it degenerates to a single 'timer \u2208 [0,2]' bar and drops light entirely. (= my open concern #115.)",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-expert",
+      "created": "2026-06-22T02:54:49Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "viz"
+      ],
+      "log": []
+    },
+    {
+      "id": 139,
+      "title": "Export / interop for the solved artifacts: a 'copy SMT-LIB' / 'copy model' / 'download the diagram' affordance. The runtime already dumps smt2 internally (export_claim); surface it. A verification engineer wants to take the UNSAT core, the witness, or the SMT-LIB into Z3 directly, or the figure into a paper. Z3/Alloy/TLA+ all let me get the formal artifact out; here it's trapped in the UI.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-expert",
+      "created": "2026-06-22T02:54:49Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "solve"
+      ],
+      "log": []
+    },
+    {
+      "id": 140,
+      "title": "Language: __var (two-tick history) + \u0394\u0394 second-difference operator",
+      "detail": "USER request. Support __var (value two ticks ago) and \u0394\u0394x (second forward difference = \u0394(\u0394x) = x \u2212 2\u00b7_x + __x), so a second-order system (the damped oscillator) can be written in pos alone, eliminating the explicit vel state. VERIFIED: pos-only oscillator with \u0394\u0394 reproduces the 2-var version to 2e-14. Spans lexer\u2192trampoline: nested-\u0394 desugar, prev_of recursion, inject __var decls + is_second_tick, two-tick carry in the trampoline, two-tick bootstrap.",
+      "status": "open",
+      "created_by": "worker",
+      "created": "2026-06-22T02:55:33Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "runtime"
+      ],
+      "log": []
+    },
+    {
+      "id": 141,
+      "title": "Counterexample TRACE, not just the offending state. \u22a2verify on counter with 'count \u2264 3' correctly returns '\u2717 violated \u2014 counterexample count=4', but that is a single STATE. TLA+ gives the full path \u2014 init \u2192 tick \u2192 \u2026 \u2192 the violating state \u2014 so I can see HOW the system gets there. For a safety invariant, surface the shortest reachable trajectory that reaches the violating state (BFS path through the state graph), rendered as a step/scrub-able trace. The state graph + reachability_tree already have the edges; thread the witness path through them and let me step it in time. Without the trace, 'count=4' tells me WHAT but not WHY/WHEN.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-expert",
+      "created": "2026-06-22T02:55:44Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "analysis"
+      ],
+      "log": []
+    },
+    {
+      "id": 142,
+      "title": "Temporal-property checking (liveness), not just safety invariants. \u22a2verify checks 'always P' (a state predicate over the reachable set). I also reach for 'eventually Q', 'P leads-to Q', and fairness \u2014 the TLA+ temporal operators. e.g. on traffic: 'light = Green eventually holds', 'Coining leads-to Vending'. Over a finite reachable graph these are decidable (a cycle/lasso search). Add \u25c7 / leads-to / fairness to the verify box; today it can only assert \u25a1 (always).",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-expert",
+      "created": "2026-06-22T02:55:44Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "analysis"
+      ],
+      "log": []
+    },
+    {
+      "id": 143,
+      "title": "Diff two models / two reachable sets \u2014 the relational analog of a code diff. When I tighten a constraint (drop counter's upper bound, change a step), I want to SEE what reachable states appeared or vanished, and how the bounds/fixed-points moved, side by side. Today I edit and the whole picture replaces; I have to remember the old one. Z3 incremental + a snapshot of the previous analysis would make 'what did this constraint change' a one-click comparison.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-expert",
+      "created": "2026-06-22T02:55:44Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "analysis"
+      ],
+      "log": []
+    },
+    {
+      "id": 144,
+      "title": "Ad-hoc query / assertion console against the CURRENT model, beyond the single-line \u22a2verify invariant box. I want to type an arbitrary constraint or \u2203-query ('\u2203 a tick where balance=5 \u2227 stock=0', 'is there a reachable state with mode=Vending \u2227 vault<2') and evaluate it without editing the source \u2014 the Z3 incremental-assert workflow. The verify box does \u25a1(predicate) only; a real query console (\u2203/\u2200, multiple vars, count solutions) is the interrogation surface Alloy's evaluator gives me.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-expert",
+      "created": "2026-06-22T02:55:44Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "solve"
+      ],
+      "log": []
+    },
+    {
+      "id": 149,
+      "title": "Progress indicator + cancel for slow analysis: real-valued FSMs (oscillator ~4.5s, fourvar) and the k-step Optimize unrolling have NO progress feedback \u2014 top bar shows 'computing\u2026' but the user can't tell if it's 1s or 30s, can't cancel, and the diagram sits dimmed. Add a determinate-ish progress (e.g. 'unrolling step 14/24', 'solving bounds\u2026') and a Cancel button. Every serious solver UI (Alloy's progress, a JetBrains background-task bar) shows this.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic",
+      "created": "2026-06-22T03:10:33Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "perf"
+      ],
+      "log": []
+    },
+    {
+      "id": 150,
+      "title": "Click/hover the solution_space reachable-set points to inspect the underlying state. The vending (balance,stock) scatter and oscillator (pos,vel) spiral plot REAL reachable states, but they're inert \u2014 I can't click a point to see its full tuple (balance,stock,vault), can't hover for coordinates, can't see which transitions touch it. The diagram is a poster, not a surface. Every debugger lets me click a node.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic",
+      "created": "2026-06-22T03:10:33Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "viz"
+      ],
+      "log": []
+    },
+    {
+      "id": 151,
+      "title": "Export / save / name the current model + share a link. localStorage persists across reload (good) but there is no 'export .ev', no 'copy shareable link', no named slots \u2014 I built an over-constrained repro and wanted to keep it AND show a colleague. (Mirrors Sam #109.)",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic",
+      "created": "2026-06-22T03:10:33Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "editor"
+      ],
+      "log": []
+    },
+    {
+      "id": 152,
+      "title": "Compare two runs / pin a diagram side-by-side. I wanted to put the BROKEN counter (2 dropped) next to the fixed one to SEE the difference in the solution_space, and to compare two SAT witnesses (re-solve gives a new one but the old one is gone). Add a 'pin'/'compare' that holds diagram A while I edit to B and shows them side by side.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic",
+      "created": "2026-06-22T03:10:33Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "viz"
+      ],
+      "log": []
+    },
+    {
+      "id": 153,
+      "title": "Inline error squiggle at the offending token + dropped-constraint underline in the editor. Dropped constraints are surfaced honestly in the banner/console (great) and name the exact line, but the EDITOR itself shows no squiggle/underline at 'kount' (the misspelled var). I have to read the console and map line numbers back. Every editor underlines the bad token in red. (Mirrors my #42.)",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic",
+      "created": "2026-06-22T03:10:33Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "editor"
+      ],
+      "log": []
+    },
+    {
+      "id": 154,
+      "title": "Command palette + keyboard shortcuts: there is no Cmd/Ctrl-K palette, no shortcut to Solve (must mouse to the button), no comment-toggle, no format-on-key. A keyboard-driven power user is stuck mousing. Add a palette (open sample, solve, switch view, toggle symbols) and bind Solve/format/comment.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic",
+      "created": "2026-06-22T03:10:33Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "editor"
+      ],
+      "log": []
+    },
+    {
+      "id": 155,
+      "title": "Enum carried vars in the verify box: the \u22a2verify placeholder suggests 'mode \u2260 Vending' but typing it on vending returns 'unknown carried var mode; known: balance, stock, vault'. The headline enum the whole sample is about can't be asserted on. (Mirrors Sam #100.) Expose enum carried vars to verify.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic",
+      "created": "2026-06-22T03:10:33Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "solve"
+      ],
+      "log": []
+    },
+    {
+      "id": 157,
+      "title": "Verify box should accept chained ranges and conjunctions (0 \u2264 x \u2264 6, x \u2265 0 \u2227 x \u2264 6), and ideally enum/relational invariants \u2014 not just a single 'var op value'. Two-sided bounds are the canonical invariant; the tool already proves single-sided ones exhaustively, so the engine is there, only the input parser is too narrow.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic",
+      "created": "2026-06-22T03:11:23Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "solve"
+      ],
+      "log": []
+    },
+    {
+      "id": 158,
+      "title": "Language: __var (two-tick history) + \u0394\u0394 second-difference operator",
+      "detail": "DONE + merged. __var two-tick history + \u0394\u0394=\u0394(\u0394x)=x-2_x+__x. lower.rs total prev_of + innermost-\u0394 desugar + __var/is_second_tick injection; trampoline two-tick carry. examples/test_24_fib.ev + test_25_oscillator.ev; oscillator pos-only reproduces the 2-var version exactly; ./test.sh 265 green.",
+      "status": "worker_done",
+      "created_by": "worker",
+      "created": "2026-06-22T03:21:28Z",
+      "worker_done": true,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "runtime"
+      ],
+      "log": [
+        {
+          "at": "2026-06-22T03:21:28Z",
+          "by": "worker",
+          "act": "done",
+          "note": "merged (874b2c16 area); oscillator + fib verified; test.sh 265 green"
+        }
+      ]
+    },
+    {
+      "id": 159,
+      "title": "viz: support two-tick (__var) FSMs \u2014 \u0394\u0394 models mis-render as nondeterministic",
+      "detail": "The \u0394\u0394/__var runtime feature (#158) is correct (effect-run reproduces the oscillator exactly), BUT the IDE viz mis-reads it: a pos-only \u0394\u0394 oscillator shows banner 'Nondeterministic \u2014 64 successors' and bounds [-1674,60] instead of [-35,60], because (a) export_transition's schema lists only pos (prev=_pos), hiding the __pos history + is_second_tick, and (b) evident_viz.successor/reachable step ONE tick, leaving __pos free. Fix: export should expose history DEPTH (pos\u2192_pos\u2192__pos) + is_second_tick; evident_viz must carry TWO ticks (state representation = (_state, __state)) in successor/reachable/solved_bounds so a second-order difference equation visualizes correctly. THEN add the elegant pos-only oscillator (\u0394\u0394) sample.",
+      "status": "open",
+      "created_by": "worker",
+      "created": "2026-06-22T03:25:05Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "viz"
+      ],
+      "log": []
     }
   ],
-  "concerns": []
+  "concerns": [
+    {
+      "id": 27,
+      "title": "Structure panel 'fixed point' list reports points OUTSIDE the stated boundary",
+      "detail": "Terminating counter (count in [0,5]) shows 'fixed point: (count=5) (count=6) (count=7) +5'; accumulate (i in [0,5]) shows '(i=5,sum=0)(i=6,sum=2)(i=5,sum=3)+5'. The 6/7 values and the '+5' suffix are unexplained and contradict the boundary line directly above. Looks like fixed-point enumeration is sampling beyond reachable set.",
+      "by": "ide-critic",
+      "status": "cleared",
+      "task": null,
+      "created": "2026-06-21T23:25:24Z",
+      "cleared": "2026-06-22T01:27:04Z"
+    },
+    {
+      "id": 28,
+      "title": "Live re-solve latency exceeds the promised 300ms on simple programs",
+      "detail": "Unbounded counter (5 lines) re-solved in 1387ms per the header timer; terminating variant 78ms. Header shows time but a 1.4s wait on a trivial edit breaks the 'write -> see in <=300ms' promise; no progress indicator during the wait (task #26 already filed).",
+      "by": "ide-critic",
+      "status": "open",
+      "task": null,
+      "created": "2026-06-21T23:25:24Z"
+    },
+    {
+      "id": 29,
+      "title": "reachability_tree silently falls back to state_graph on 3-var states with NO N/A card and NO warning",
+      "detail": "vending (balance,stock,vault): POST /api/analyze {view:reachability_tree} returns view=state_graph, warnings empty. reachability_tree IS in the advertised 'views' list, so the tab is shown as available, but clicking it yields the state_graph image and the tab does not even highlight. Promise #3 demands an honest N/A card when a view does not fit; instead the user is silently shown a DIFFERENT diagram than the one they asked for. Related to existing task #22 (KeyError) but the user-facing symptom is a dishonest silent substitution.",
+      "by": "ide-critic",
+      "status": "cleared",
+      "task": null,
+      "created": "2026-06-21T23:30:33Z",
+      "cleared": "2026-06-22T00:06:06Z"
+    },
+    {
+      "id": 30,
+      "title": "Structure-panel 'rest states' sample is unstable run-to-run (non-reproducible analysis)",
+      "detail": "vending: re-solving the identical source yields different 'rest states: (...)' triples on each /api/analyze (saw three different sets across consecutive solves). An overall-behavior verdict the user is meant to trust should be deterministic, or label itself as a random sample with a fixed seed surfaced.",
+      "by": "ide-critic",
+      "status": "cleared",
+      "task": null,
+      "created": "2026-06-21T23:30:33Z",
+      "cleared": "2026-06-22T01:27:04Z"
+    },
+    {
+      "id": 31,
+      "title": "View tabs are non-interactive for keyboard/AT: plain <div> with no role/tabindex/ARIA",
+      "detail": "Each of the 16 view tabs is a <div> with cursor:pointer and an onclick, but role=null, tabindex=null. Cannot Tab to them, cannot activate with Enter, not announced by a screen reader. For a tool calling itself an IDE this is a basic a11y gap; same likely applies to the diagram <img> (no described long-text alt).",
+      "by": "ide-critic",
+      "status": "open",
+      "task": null,
+      "created": "2026-06-21T23:30:33Z"
+    },
+    {
+      "id": 32,
+      "title": "done/Bool variables never appear in time_series or as events; only numeric vars plotted",
+      "detail": "counter with 'done = (count>=5)' shows '1 varying of 1 vars' \u2014 the Bool flag that flips at count=5 is invisible. A meaningful state-change event (false->true) is dropped from the only temporal view.",
+      "by": "ide-critic",
+      "status": "open",
+      "task": null,
+      "created": "2026-06-21T23:30:33Z"
+    },
+    {
+      "id": 36,
+      "title": "Oscillator (Real-typed damped spring) is mislabeled Nondeterministic with 64-way fan; deterministic dynamics rendered as 25284-transition noise",
+      "detail": "oscillator.ev: pos,vel in Real, fully deterministic recurrence. Banner: 'Nondeterministic \u2014 up to 64 successors', auto-view reachability_tree, 25284 transitions, branching x64. The real-state sampler treats Real-valued rounding/branching as nondeterminism. The phase_portrait (which renders a perfect inward spiral) is NOT auto-selected. This is tasks #23+#24 confirmed live, and it is the worst single defect: the flagship 'phase spiral' sample shows noise on load, not a spiral.",
+      "by": "ide-critic",
+      "status": "cleared",
+      "task": null,
+      "created": "2026-06-21T23:55:28Z",
+      "cleared": "2026-06-22T00:06:06Z"
+    },
+    {
+      "id": 37,
+      "title": "Oscillator docstring promises an 'UNSTABLE' stability verdict the Structure panel never emits",
+      "detail": "oscillator.ev comment: 'the structure line reports it as an UNSTABLE one (the orbit diverges)'. Actual structure line says 'Nondeterministic'. No stable/unstable/saddle classification appears anywhere (task #20). The sample ships describing behavior the IDE does not produce \u2014 either the analysis regressed or the sample was written against a spec that was never built.",
+      "by": "ide-critic",
+      "status": "cleared",
+      "task": null,
+      "created": "2026-06-21T23:55:28Z",
+      "cleared": "2026-06-22T00:06:06Z"
+    },
+    {
+      "id": 38,
+      "title": "cobweb view drawn for genuinely 2-D coupled systems by freezing the other variable \u2014 a misleading 1-D slice, not an honest N/A",
+      "detail": "oscillator: 'cobweb on vel (held: pos)' shows a near-y=x staircase. Holding pos constant for a coupled (pos,vel) system is not a faithful 1-D map; promise #4 says never fabricate structure. cobweb should N/A for ndim>1 maps, not present a frozen slice as if it were the map.",
+      "by": "ide-critic",
+      "status": "open",
+      "task": null,
+      "created": "2026-06-21T23:55:28Z"
+    },
+    {
+      "id": 39,
+      "title": "Boundary line prints raw unrounded floats (pos in [-35.09905215926932, 60])",
+      "detail": "Structure boundary shows full float precision. Round to a sensible number of sig figs for display.",
+      "by": "ide-critic",
+      "status": "cleared",
+      "task": null,
+      "created": "2026-06-21T23:55:28Z",
+      "cleared": "2026-06-22T03:09:49Z"
+    },
+    {
+      "id": 40,
+      "title": "Structure panel shows STALE verdict from previous program after switching to a claim/non-FSM",
+      "detail": "Loaded queens (a Solve claim, no FSM) right after traffic light. The Structure line still reads 'Cyclic \u2014 revisits states forever \u2014 boundary: timer in [0,2]' which is the traffic light's verdict; queens has no timer and is not cyclic. The panel must clear or recompute (show 'n/a \u2014 this is a claim, press Solve') when the program is not an FSM.",
+      "by": "ide-critic",
+      "status": "cleared",
+      "task": null,
+      "created": "2026-06-21T23:57:18Z",
+      "cleared": "2026-06-22T03:09:49Z"
+    },
+    {
+      "id": 41,
+      "title": "Banner says 'Genuinely relational' for a textbook cyclic FSM (traffic light) while Structure says 'Cyclic' \u2014 two vocabularies disagree",
+      "detail": "traffic light: banner '\u25c6 Genuinely relational \u2014 no independent variable (a cycle; every variable co-determines)' vs structure '\u21bb Cyclic'. Both true but the banner reading 'relational' for a Red->Green->Yellow ring is the exact confusion task #25 was meant to fix; align the banner wording with the Cyclic verdict.",
+      "by": "ide-critic",
+      "status": "cleared",
+      "task": null,
+      "created": "2026-06-21T23:57:18Z",
+      "cleared": "2026-06-22T00:06:06Z"
+    },
+    {
+      "id": 42,
+      "title": "Parse errors render only in a bottom console, not as an inline squiggle at the offending token",
+      "detail": "Error 'parse error: expected schema/claim/type/import/enum, got Ident(lo)' names the token but line 1 'lo' has no inline marker/gutter squiggle. Promise #8 + table stakes want the diagnostic AT the token. (Relates to open task #4.) The plain-language hint below it ('body line isnt indented...') is excellent \u2014 keep that, just also mark the line.",
+      "by": "ide-critic",
+      "status": "open",
+      "task": null,
+      "created": "2026-06-21T23:59:29Z"
+    },
+    {
+      "id": 43,
+      "title": "Error message leaks internal 'export: load /tmp/tmpXXXX/prog.ev:' temp-path prefix",
+      "detail": "Parse-error banner begins 'export: load /tmp/tmpfl38id91/prog.ev: parse error...'. The temp file path and 'export:' command name are implementation noise the user should not see; strip to just the parse error + hint.",
+      "by": "ide-critic",
+      "status": "open",
+      "task": null,
+      "created": "2026-06-21T23:59:29Z"
+    },
+    {
+      "id": 44,
+      "title": "Empty editor shows three contradictory STALE panels (banner=claim, structure=Unbounded count in [0,399], diagram=No state machine)",
+      "detail": "Cleared the editor to empty. Banner: 'a claim \u2014 solve for a witness'; Structure: 'Unbounded \u2014 boundary count in [0,399]' (leftover from previous counter, no count exists); diagram: 'No state machine to visualize'. Empty/invalid input must reset all panels to a single honest 'empty \u2014 write a constraint' state. Same root cause as #40 (stale verdicts not cleared on program change).",
+      "by": "ide-critic",
+      "status": "cleared",
+      "task": null,
+      "created": "2026-06-22T00:02:27Z",
+      "cleared": "2026-06-22T03:09:49Z"
+    },
+    {
+      "id": 45,
+      "title": "Hover-to-learn glossary tooltip did not appear on operator tokens in the (now Ace) editor",
+      "detail": "Hovering the \u2208 token (tokenized as ace_keyword ace_operator, so highlighting works) produced no glossary tooltip in my testing. The editor was hot-swapped from CodeMirror to Ace mid-session; the glossary may not be ported to the Ace mode yet. Caveat: synthetic hover events may not trigger Ace's native tooltip \u2014 worth a human re-check, but I could not confirm the glossary is live.",
+      "by": "ide-critic",
+      "status": "open",
+      "task": null,
+      "created": "2026-06-22T00:02:27Z"
+    },
+    {
+      "id": 53,
+      "title": "fmt refuses or corrupts on ragged indentation \u2014 its core advertised use. (1) An over-indented line BEFORE a same-line \u21d2 line (e.g. 'count \u2208 Int' at 8 spaces, then 'is_first_tick \u21d2 count = 0' at 2 spaces) makes reindent change the relative indent ordering, so the self-check fires 'formatter changed the token stream \u2014 refusing to emit' and the file is left UNCHANGED (exit 1). Repro: /tmp/messy.ev (the canonical counter), and the canonical multi-delta accumulate block from CLAUDE.md mis-indented one level. (2) WORSE: when a sibling line is over-indented relative to the line above it, fmt 'succeeds' (exit 0) but PRESERVES the mistake as fake nesting \u2014 '  count \u2208 Int' then '      is_first_tick \u21d2 count = 0' comes out with the guard at 8-space depth, nested UNDER count as if a child block, changing the program's apparent structure. Root cause (runtime/src/fmt.rs reindent): the nesting stack is purely indentation-ordering-based and only canonicalizes UNIFORM over/under-indent; it cannot repair INCONSISTENT indentation, which is exactly the mess users run a formatter to fix. Layout-only is an acceptable scope, but it must at minimum re-indent ragged sibling lines to the same depth and never refuse on (or silently mis-nest) realistic messy input.",
+      "detail": "",
+      "by": "ide-critic",
+      "status": "open",
+      "task": 35,
+      "created": "2026-06-22T00:13:37Z"
+    },
+    {
+      "id": 54,
+      "title": "Broken/under-constrained program is mislabeled 'Genuinely relational \u2014 a cycle' instead of 'broken/degenerate'. Typing 'count = banana + 1' (banana undefined) drops the constraint AND flips the banner to 'Genuinely relational \u2014 no independent variable (a cycle; every variable co-determines)' + structure card '\u21bb Cyclic / revisits states forever'. The real situation is 1 reachable state, 1 self-transition, 1 dropped constraint \u2014 a broken model, not a relational cycle. The model-shape banner should not dignify a degenerate single-state error as a genuine cyclic relation.",
+      "detail": "where: oscillator\u2192edit to count=banana+1; screenshot 04-dropped-constraint.png; banner ref e22, structure ref e23",
+      "by": "ide-critic",
+      "status": "cleared",
+      "task": null,
+      "created": "2026-06-22T00:13:48Z",
+      "cleared": "2026-06-22T01:27:04Z"
+    },
+    {
+      "id": 55,
+      "title": "Analyze latency far exceeds the promised \u2272300ms: counter ~1351ms, oscillator (reals) ~9768ms top-bar timer. Unbounded/real machines are expensive, but ten seconds of 'computing\u2026' with no progress bar makes the 'live write\u2192see' promise feel broken for exactly the interesting programs.",
+      "detail": "where: top-bar timer ref e32 showed '9768 ms' for oscillator, '1351 ms' for counter, '85 ms' only for the trivially-broken one. (re-affirms my open concern #28)",
+      "by": "ide-critic",
+      "status": "open",
+      "task": null,
+      "created": "2026-06-22T00:13:49Z"
+    },
+    {
+      "id": 59,
+      "title": "Oscillator analyze took ~19s and during that whole window the right panel showed the PREVIOUS program's verdict (counter's 'fixed point: count=5'), not a 'computing\u2026' placeholder. A newcomer reads stale numbers as if they describe the program on screen.",
+      "detail": "Opened oscillator sample; top timer read 19363 ms; banner+structure line stayed = counter's until it settled. screenshot 05-oscillator-settled / 04-oscillator. Fix: grey/blank the banner+structure line while recomputing, the way the diagram already shows 'stale \u2014 fix the error to refresh'.",
+      "by": "ide-critic-newcomer",
+      "status": "open",
+      "task": null,
+      "created": "2026-06-22T00:25:29Z"
+    },
+    {
+      "id": 60,
+      "title": "When a program has a parse error, the model-shape banner + structure line keep displaying the last VALID analysis (e.g. count=5) instead of greying out. Only the diagram shows a 'stale' overlay and a tiny red 'error' in the top-right. A newcomer can't tell the banner no longer matches the broken code.",
+      "detail": "Set un-indented counter; banner still said Driven/fixed point count=5 while bottom bar showed the parse error. screenshot 09-unindented-error. Fix: dim or hide the banner/structure line on error, same as the diagram.",
+      "by": "ide-critic-newcomer",
+      "status": "cleared",
+      "task": null,
+      "created": "2026-06-22T00:25:29Z",
+      "cleared": "2026-06-22T01:44:18Z"
+    },
+    {
+      "id": 61,
+      "title": "No visible in-tool way to learn the symbol palette / 'how do I type \u2208' without already hovering an existing symbol. The hover glossary is great but only fires on symbols ALREADY in the buffer \u2014 a blank-editor newcomer has nothing to hover. There's no always-visible cheat-sheet / palette button.",
+      "detail": "Glossary (app.js GLOSSARY) only triggers over an existing token. A first-timer writing from scratch can't discover \\in\u2192\u2208 etc. Fix: a '?' palette button or a persistent cheat-sheet panel listing the \\word mnemonics.",
+      "by": "ide-critic-newcomer",
+      "status": "cleared",
+      "task": null,
+      "created": "2026-06-22T00:25:29Z",
+      "cleared": "2026-06-22T01:44:18Z"
+    },
+    {
+      "id": 69,
+      "title": "Switching from an FSM sample to a Solve-only claim (queens) leaves the FSM banner+structure line from the PREVIOUS sample on screen ('Terminates \u00b7 fixed point: i=5, sum=10') above a panel that correctly says 'No state machine to visualize'. The banner contradicts the panel.",
+      "detail": "Selected N-queens after accumulate; banner still showed accumulate's terminate/fixed-point line. screenshot 11-nqueens-solve. Same root cause as concern #60 \u2014 banner doesn't reset on program change.",
+      "by": "ide-critic-newcomer",
+      "status": "cleared",
+      "task": null,
+      "created": "2026-06-22T00:26:13Z",
+      "cleared": "2026-06-22T01:44:18Z"
+    },
+    {
+      "id": 71,
+      "title": "3 of 7 Solve-demos un-solvable from the UI: toposort, sudoku, subset-sum each declare a record 'type' (Edge/Box/Item) before the 'claim', and \u22a8 Solve picks the first decl as entry \u2192 '\u2715 ambiguous \u2014 name a claim. candidates: Edge, toposort'. No UI affordance to pick the claim; the title bar even shows the wrong name (Box.ev/Item.ev). These shipped samples produce NO witness on first click. Also: 3 of 4 diagram-value demos do NOT auto-select their named view \u2014 fixedpoint(cobweb)\u2192time_series, fourvar(scatter_matrix)\u2192phase_portrait, digital block(timing_diagram)\u2192time_series. Samples named '(FSM, cobweb)' etc. open on a different view than promised. Fix: (a) entry-claim picker / pick the lone 'claim' over a 'type', or a disambiguation dropdown; (b) auto-select the demo's headline view.",
+      "detail": "",
+      "by": "ide-critic-expert",
+      "status": "cleared",
+      "task": 52,
+      "created": "2026-06-22T00:40:39Z",
+      "cleared": "2026-06-22T02:05:20Z"
+    },
+    {
+      "id": 72,
+      "title": "solve-for-X silently drops indexed-element pins (col[0]=N). Pinning col[0]=0 on N-queens returns SAT with witness [1,3,0,2] where col[0]=1 \u2014 directly contradicting the displayed pin 'col[0] \ud83d\udccc 0'. The pin is parsed and shown but NOT applied to the solver, so the panel presents a witness that violates its own pin. col[0]=0 is provably UNSAT (4-queens solutions are [1,3,0,2],[2,0,3,1]). Scalar pins (x=3 \u2192 y=7; x=11 \u2192 UNSAT) work correctly; only indexed pins fail.",
+      "detail": "N-queens, screenshot 03-pin-col0-contradiction.png; compare 02-queens-enumerate.png for the real 2 solutions",
+      "by": "ide-critic-expert",
+      "status": "cleared",
+      "task": null,
+      "created": "2026-06-22T00:40:56Z",
+      "cleared": "2026-06-22T02:05:20Z"
+    },
+    {
+      "id": 73,
+      "title": "UNSAT core is non-minimal and its own stated invariant is false: for {x\u2208Int, y\u2208Int, z\u2208Int, x>5, y>5, z=0, x+y<10} the core lists lines 2,3,5,6,8 \u2014 it correctly excludes z=0 but INCLUDES the declarations 'x \u2208 Int' and 'y \u2208 Int'. The header claims 'removing any one of these makes it solvable', which is FALSE for the \u2208 Int lines (removing a var's type doesn't resolve the arithmetic conflict). A true minimal core is {x>5,y>5,x+y<10}. Z3 gives a minimal core over named assertions; this treats type-decls as core members.",
+      "detail": "screenshot 16-unsat-core-nonminimal.png; 2-line conflict (15-unsat-core.png) is correct, 3-way exposes the over-inclusion",
+      "by": "ide-critic-expert",
+      "status": "cleared",
+      "task": null,
+      "created": "2026-06-22T00:40:56Z",
+      "cleared": "2026-06-22T02:05:20Z"
+    },
+    {
+      "id": 74,
+      "title": "Structure panel goes STALE during slow analysis and across claim/FSM switches \u2014 it keeps the PREVIOUS program's banner/verdict/view while the new analysis runs (no 'computing\u2026' state). Switching to traffic.ev showed oscillator's 'Driven pipeline: vel, phase_portrait, pos/vel' banner for ~30s until it finished. Switching from counter (FSM) to sum_pair (a claim) left the 'Terminates / fixed point count=5' banner on a claim that has 'No state machine to visualize'. Reading the wrong banner is a soundness hazard.",
+      "detail": "traffic load showed 29570ms timer with stale oscillator banner; sum_pair UNSAT view still showed counter's fixedpoint banner (15-unsat-core.png)",
+      "by": "ide-critic-expert",
+      "status": "cleared",
+      "task": null,
+      "created": "2026-06-22T00:40:56Z",
+      "cleared": "2026-06-22T02:05:21Z"
+    },
+    {
+      "id": 75,
+      "title": "Structure analysis is slow on real-valued / large-fanout FSMs and blocks: oscillator ~9.7s, traffic light ~29.5s, fourvar ~5s (timings from the top-bar ms counter). The promised 'live write \u2192 see in \u2272300ms' (Part 4.1) holds for tiny FSMs (counter ~80ms) and claims (~15ms) but breaks badly for the real-valued/branching cases \u2014 exactly the ones where I most want to iterate. With no progress indicator the UI looks frozen.",
+      "detail": "9759ms oscillator (05), 29570ms traffic (snapshot), 5061ms fourvar (12)",
+      "by": "ide-critic-expert",
+      "status": "open",
+      "task": null,
+      "created": "2026-06-22T00:41:08Z"
+    },
+    {
+      "id": 76,
+      "title": "basin_map paints a single attractor color per state on a NONDETERMINISTIC system, contradicting the banner. bistable (gambler's ruin, step\u2208{-1,0,1} free) is correctly flagged 'Nondeterministic, branching \u00d73', yet basin_map colors every middle state solid blue (\u21920) except x=6 (red). From the middle the walk reaches EITHER wall, so those states are in BOTH basins; a single color asserts a single attractor the nondeterminism denies. basin_map should either be N/A for nondeterministic systems or show per-state basin membership as a distribution.",
+      "detail": "screenshot 10-bistable-basinmap.png; source is a \u00b11 free-choice walk",
+      "by": "ide-critic-expert",
+      "status": "open",
+      "task": null,
+      "created": "2026-06-22T00:41:08Z"
+    },
+    {
+      "id": 77,
+      "title": "Inconsistent sample-size reporting: fourvar scatter_matrix title says '1556 sampled states' while the structure footer for the same run says '\u2265400 (capped sample) reachable states'. Two different sampled-state counts for one analysis \u2014 unclear which bound the diagram actually drew from.",
+      "detail": "12-fourvar-scattermatrix.png title vs footer",
+      "by": "ide-critic-expert",
+      "status": "open",
+      "task": null,
+      "created": "2026-06-22T00:41:08Z"
+    },
+    {
+      "id": 91,
+      "title": "Only HALF done. The diagram dims with a 'stale \u2014 fix the error' overlay (good), but the model-shape BANNER and the STRUCTURE card (Terminates/fixed-point/boundary/rest-states) do NOT dim or clear in two cases: (1) parse error \u2014 typing 'count = = 5' leaves the previous valid program's banner '\u26a0 Under-constrained \u2026 BROKEN' and structure '\u2713 Terminates / fixed point: ()' fully opaque while only the diagram greys out (top-right shows red 'error'); (2) in-session program SWITCH \u2014 selecting vending then switching to toposort leaves vending's structure card 'rest states: (balance=0,stock=0,vault=9)\u2026 / boundary balance\u2208[0,5] stock\u2208[0,3] vault\u2208[0,9]' AND the \u22a2verify row on screen over a toposort claim whose panel correctly says 'No state machine to visualize'. The banner line itself updates on switch, but the structure card + verify row are stale. Dim/clear BOTH the banner and the structure card (and hide the verify row for non-FSM) whenever analysis is recomputing, errored, or the program changed.",
+      "detail": "",
+      "by": "ide-critic",
+      "status": "cleared",
+      "task": 64,
+      "created": "2026-06-22T01:26:13Z",
+      "cleared": "2026-06-22T03:09:49Z"
+    },
+    {
+      "id": 92,
+      "title": "Correct for N-queens, but the queen-board renderer is OVER-APPLIED to non-queens witnesses \u2014 fabrication (violates Part 4.4 'never invent structure'). The same 'col \u2014 N\u00d7N board (row i \u2192 queen at column col[i])' renderer fires for ANY Seq(Int) witness: 4\u00d74 sudoku's flat 16-cell list renders as 'cell \u2014 16\u00d716 board' with 16 \u265b queens; toposort's 5-element 'pos' renders as a 5\u00d75 queen board. A sudoku solution is a 4\u00d74 grid of DIGITS (1-4), not a 16\u00d716 chessboard; a topological order is a sequence, not queen columns. Only render the queen board when the claim is ACTUALLY N-queens (e.g. detect the diagonal-distinct constraints, or gate on the var/claim name being queens-shaped). For sudoku, draw the filled n\u00d7n digit grid from the boxes/cell structure; for toposort, draw the ordered node list / the DAG with positions \u2014 or fall back to the honest raw-array view rather than a wrong chessboard.",
+      "detail": "",
+      "by": "ide-critic",
+      "status": "cleared",
+      "task": 68,
+      "created": "2026-06-22T01:26:21Z",
+      "cleared": "2026-06-22T03:09:49Z"
+    },
+    {
+      "id": 93,
+      "title": "Solve/UNSAT result panel is STALE across program change: after Solving the over-constrained 'over' claim (UNSAT core lines 4/5/6), switching the editor to a different program (counter) leaves the full '\u22ad UNSAT \u2014 over has no solution / conflicting core line 4 x>5\u2026' panel pinned at the bottom of the right pane, now describing a program no longer in the editor. The solve-result region must clear (or grey) the moment the source changes.",
+      "detail": "screenshot broken-underconstrained.png and parse-error.png \u2014 bottom panel still shows the prior 'over' UNSAT core under a counter program",
+      "by": "ide-critic",
+      "status": "cleared",
+      "task": null,
+      "created": "2026-06-22T01:27:16Z",
+      "cleared": "2026-06-22T03:09:49Z"
+    },
+    {
+      "id": 94,
+      "title": "Broken-model structure card contradicts its own banner: with 2 dropped constraints the banner correctly screams '\u26a0 Under-constrained \u2026 BROKEN, not a real relation', but the structure sub-line right beneath still says '\u2713 Terminates \u2014 the orbit converges to a fixed point \u25cf fixed point: ()' (green check, empty-tuple fixed point). A BROKEN model should not also be advertised as cleanly Terminating; suppress or red-flag the secondary verdict when dropped>0.",
+      "detail": "screenshot broken-underconstrained.png \u2014 green '\u2713 Terminates / fixed point: ()' under the red BROKEN banner",
+      "by": "ide-critic",
+      "status": "open",
+      "task": null,
+      "created": "2026-06-22T01:27:16Z"
+    },
+    {
+      "id": 98,
+      "title": "Still half-done. GOOD: switching FSM\u2192claim now updates the banner line AND hides the \u22a2verify row (improvement over last round). BAD: the STRUCTURE CARD still does NOT clear/hide for a non-FSM claim \u2014 it persists the previous FSM's verdict everywhere. Repro: open vending (FSM), then switch to N-queens / toposort / subset-sum (claims) OR type a fresh 'claim over' from scratch OR empty the editor \u2014 in every case the structure card keeps showing vending's '\u2442 Nondeterministic / rest states: (balance=0,stock=0,vault=9)... / boundary balance\u2208[0,5] stock\u2208[0,3] vault\u2208[0,9]' sitting directly above a panel that correctly says 'No state machine to visualize'. Screenshots 09/11/13 in recordings/sam-20260622-013353. The FSM view-tab strip (16 tabs) is also still shown on these claims. Fix: when the analyzed program is a non-FSM claim (or the source is empty/errored/recomputing), CLEAR or hide BOTH the structure card AND the FSM view-tab strip, the same way you now hide the verify row.",
+      "detail": "",
+      "by": "ide-critic-newcomer",
+      "status": "open",
+      "task": 64,
+      "created": "2026-06-22T01:41:51Z"
+    },
+    {
+      "id": 100,
+      "title": "The \u22a2verify box's own placeholder suggests 'mode \u2260 Vending', but typing exactly that on the vending sample (where mode is the headline enum) returns '\u2715 unknown carried var mode; known: balance, stock, vault'. The verify engine only exposes numeric carried vars, not the enum 'mode' that the sample's whole story is about \u2014 yet the placeholder advertises it. A newcomer copies the suggested example verbatim and gets an error. The error text itself is kind (lists known vars), but the placeholder is making a promise the tool can't keep. Fix: either expose enum carried vars to verify (so 'mode \u2260 Vending' works) or change the placeholder to an invariant that actually checks (e.g. 'stock \u2265 0').",
+      "detail": "vending sample, \u22a2verify row; screenshot 07-vending-verify-enum.png in recordings/sam-20260622-013353",
+      "by": "ide-critic-newcomer",
+      "status": "open",
+      "task": null,
+      "created": "2026-06-22T01:44:32Z"
+    },
+    {
+      "id": 101,
+      "title": "Recompute leaves the DIAGRAM showing the full previous program, undimmed, during the multi-second analysis window. Switching counter\u2192oscillator: top-right now shows 'computing\u2026' (good, new) and the structure card dims slightly, BUT the chart area still renders the bright opaque counter time_series titled literally 'counter \u2014 time_series \u2026 vars: count' with footer '6 reachable states \u00b7 vars: count' at full opacity, while the editor already shows the oscillator. A newcomer reads that chart as the oscillator's. The diagram only dims on parse-error ('stale \u2014 fix the error'), not on plain recompute. Fix: apply the same 'stale/computing' dim+overlay to the diagram + footer during any recompute, not just on error. (Refines my older #59.)",
+      "detail": "screenshot 16-oscillator-inflight.png in recordings/sam-20260622-013353",
+      "by": "ide-critic-newcomer",
+      "status": "open",
+      "task": null,
+      "created": "2026-06-22T01:44:32Z"
+    },
+    {
+      "id": 109,
+      "title": "CORRECTION to task #106: I retested \u2014 editor content DOES persist across a full page reload (my hand-typed scratch '-- MY SCRATCH WORK' survived navigate-away-and-back). So localStorage persistence already works (delight, don't regress). The remaining gap in #106 is narrower: there is no explicit Save/name/share affordance \u2014 no 'export .ev', no 'copy shareable link', no named slots. I wanted to keep my over-constrained example AND show a friend; auto-persist covers 'come back to it' but not 'share it' or 'keep several'.",
+      "detail": "verified via navigate reload; recordings/sam-20260622-013353",
+      "by": "ide-critic-newcomer",
+      "status": "open",
+      "task": null,
+      "created": "2026-06-22T01:45:53Z"
+    },
+    {
+      "id": 110,
+      "title": "Server returns HTTP 500 (Internal Server Error) from /api/analyze and /api/solve on user parse errors (e.g. 'count = = 5'). The UI handles it gracefully (shows 'source has an error'), so it's not user-visible, but a user typo is a 400-class condition, not a server fault \u2014 logging it as 500 buries real server faults among normal editing noise and trips any error-rate alerting. Return 4xx with the parse diagnostic for invalid source; reserve 500 for actual crashes.",
+      "detail": "console errors captured during parse-error test; http://127.0.0.1:8755/api/analyze and /api/solve",
+      "by": "ide-critic-newcomer",
+      "status": "open",
+      "task": null,
+      "created": "2026-06-22T01:46:05Z"
+    },
+    {
+      "id": 111,
+      "title": "UNSAT core is UNSOUND for redundant constraints on a shared variable: the displayed set is not itself unsatisfiable. Test: claim {x\u2208Int,y\u2208Int, x>3, x>5, y>5, y<100, x+y<10}. IDE shows core = {line6 y>5, line8 x+y<10}, claiming 'removing any one makes it solvable'. But {y>5, x+y<10} alone is SAT (z3 model x=3,y=6) \u2014 it is NOT a valid unsat core; it dropped BOTH x-lower-bounds (x>3 AND x>5). Z3's real minimal core is {x>5, y>5, x+y<10}. The minimizer is greedily deleting constraints without re-checking the residual is still UNSAT (or mishandling the x>3/x>5 redundancy by dropping both). A core a verification engineer trusts MUST itself be unsatisfiable; this one is satisfiable. The simple #73 case now passes, but minimality is unsound the moment two constraints bound the same var. Fix: use z3 assert_and_track + unsat_core (it returns {x>5,y>5,sum}), or deletion-based minimization that re-solves and keeps the set UNSAT at every step.",
+      "detail": "",
+      "by": "ide-critic-expert",
+      "status": "cleared",
+      "task": 80,
+      "created": "2026-06-22T02:03:40Z",
+      "cleared": "2026-06-22T02:54:27Z"
+    },
+    {
+      "id": 112,
+      "title": "solution_space headline 'boundaries solved, not simulated' is FALSE: the per-variable min/max bars are computed by min()/max() over the BFS-sampled reachable states (viz/evident_viz.py solution_structure lines 711-716), NOT by z3 Optimize. For FINITE reachable sets (counter/vending/traffic) the BFS exhausts the set so 'exact' is correct, but for CAPPED sets (oscillator, fourvar) the bar is the min/max of the first 400 sampled states \u2014 a simulation. Worse, the '\u2265 lower bound (capped)' framing is BACKWARDS for convergent dynamics: a damped oscillator's sampled extremes (early, wide swings) are the WIDEST the orbit ever is, so the true reachable range is NARROWER, not '\u2265'. The single capped label can't be sound for both convergent and divergent systems. Task #97 explicitly required z3 Optimize 'not run-observed'; this is run-observed and the title claims otherwise. A verification tool must not print 'solved' over a sampled quantity.",
+      "detail": "screenshot 02-oscillator-solution-space.png; source viz/evident_viz.py:711-716 + render_solution_space.py title line 97",
+      "by": "ide-critic-expert",
+      "status": "cleared",
+      "task": null,
+      "created": "2026-06-22T02:05:31Z",
+      "cleared": "2026-06-22T02:54:27Z"
+    },
+    {
+      "id": 113,
+      "title": "solution_space right-panel dashed 'boundary' box FABRICATES a rectangular feasible region. It draws Rectangle(bounds[vx] x bounds[vy]) \u2014 the bounding box of the projection \u2014 and labels it 'feasible region ... the SET'. But the actual feasible set is the scattered points; interior cells of that rectangle are NOT reachable (vending: (balance=2,stock=2),(3,2),(4,2) are empty inside the [0,5]x[0,3] box). A verification engineer reading 'feasible region' + a rectangle outline infers every point in the rectangle is feasible \u2014 false. This is the fabricate-structure hazard (Briefing 4.4): the outline asserts a region the model never enters at the corners. The real dots are drawn faithfully on top, which softens it, but the dashed box should be removed or replaced by a true region outline (convex hull of reachable pts, or a per-cell feasible/infeasible solve).",
+      "detail": "screenshot 03b-vending-diagram.png; render_solution_space.py add_patch(Rectangle...) ~line 83",
+      "by": "ide-critic-expert",
+      "status": "cleared",
+      "task": null,
+      "created": "2026-06-22T02:05:40Z",
+      "cleared": "2026-06-22T02:54:27Z"
+    },
+    {
+      "id": 114,
+      "title": "solution_space right panel says 'the SET, not one orbit' even for DETERMINISTIC systems where the reachable set IS exactly one orbit. The oscillator panel plots a single inward spiral (one trajectory's points) and labels it 'the SET, not one orbit' \u2014 but a deterministic driven system's reachable set is precisely that one orbit. The label is only truthful for nondeterministic systems (vending). For deterministic ones it overstates: it's the same trajectory the phase_portrait draws, just rendered as disconnected points. Either condition the label on branching>=2, or for deterministic systems relabel as 'the reachable orbit (= the whole set, since deterministic)'.",
+      "detail": "screenshot 02-oscillator-solution-space.png right panel",
+      "by": "ide-critic-expert",
+      "status": "cleared",
+      "task": null,
+      "created": "2026-06-22T02:05:53Z",
+      "cleared": "2026-06-22T02:54:27Z"
+    },
+    {
+      "id": 115,
+      "title": "solution_space lead view degenerates to a single bar for enum-dominated systems and DROPS the categorical dimension. traffic (light:enum, timer:int) shows only a 'timer \u2208 [0,2]' bar and NO right-hand feasible-region panel, because the panel only plots numeric vars. The essential structure of traffic \u2014 which (light,timer) pairs are reachable, e.g. is timer ever 2 while light=Green \u2014 is exactly the invariant question this lead view should answer, and it can't. For enum+numeric systems the right panel should plot (enum, numeric) reachable pairs (categorical y-axis), not vanish.",
+      "detail": "screenshot 04-traffic-diagram.png \u2014 only one bar, no SET panel",
+      "by": "ide-critic-expert",
+      "status": "open",
+      "task": null,
+      "created": "2026-06-22T02:05:53Z"
+    },
+    {
+      "id": 116,
+      "title": "solve-for-X pin persists across program edits AND the \u2715 clear button doesn't clear it \u2014 poisoning subsequent Solves. Repro: on N-queens, pin col[0]=0 (errors). Edit editor to a totally different program (conflict.ev, no 'col' var at all) and press top-bar Solve \u2192 the panel STILL shows '\u2715 can't pin col[0]' and refuses to solve the new program. Clicking the panel \u2715 button did NOT clear the pin. Only manually blanking the solve-for input + re-solve worked. A stale pin referencing a variable that no longer exists silently blocks all solving until the user notices the leftover text. Clear the solve-for-X pin on program change, and make \u2715 actually empty the input.",
+      "detail": "screenshots 07-unsat-core.png + 08-unsat-core-real.png \u2014 col[0]=0 pin stuck on conflict.ev",
+      "by": "ide-critic-expert",
+      "status": "cleared",
+      "task": null,
+      "created": "2026-06-22T02:06:05Z",
+      "cleared": "2026-06-22T02:54:27Z"
+    },
+    {
+      "id": 132,
+      "title": "UPDATE to #75 (keeping it open): latency much improved this round \u2014 traffic 73ms (was 29.5s), oscillator ~4.2s (was 9.7s), counter 71ms. But oscillator/fourvar real-valued FSMs still take 3-5s, well over the \u2272300ms promise (Part 4.1), with no progress indicator (UI looks frozen). Still blocks tight iteration on exactly the real-valued models I most want to refine.",
+      "detail": "top-bar ms counter: oscillator 4233ms this round",
+      "by": "ide-critic-expert",
+      "status": "open",
+      "task": null,
+      "created": "2026-06-22T02:08:10Z"
+    },
+    {
+      "id": 138,
+      "title": "solved_bounds 'exact (fixpoint)' is justified by k-step and 2k-step Optimize bounds AGREEING (k=12..16). That is strong evidence of closure and airtight for monotone/bounded recurrences (counter reaches its fixpoint by tick 5 \u226a k), but it is a 2k-HORIZON agreement, not an inductive proof: a variable that stays constant for 2k ticks then jumps would be wrongly stamped 'exact'. For a tool that prints 'z3-PROVEN exact', either (a) add an inductive check \u2014 assert the k-step reachable envelope is closed under one more application of T (\u2200 state in env, T(state) \u2208 env) and prove it UNSAT-to-escape \u2014 or (b) soften the word to 'exact over the explored horizon (k=N, stable at 2k)'. Today's label is correct on every shipped sample but the guarantee is weaker than the word 'PROVEN' implies.",
+      "detail": "viz/evident_viz.py solved_bounds: exact = (b1==b2); render_solution_space title 'z3-proven exact (fixpoint)'",
+      "by": "ide-critic-expert",
+      "status": "open",
+      "task": null,
+      "created": "2026-06-22T02:54:49Z"
+    },
+    {
+      "id": 145,
+      "title": "claim_space for Seq/enum claims STILL shows only the honest N/A card ('this claim has no numeric variable to bound \u2014 its variables are Seq/enum \u2014 press Solve for a witness'). Verified live on N-queens AND toposort: the diagram panel never renders a real view, only the N/A text. The task asked for a REAL view \u2014 (a) per-element/per-position feasible-value cells (for each Seq[i], z3 SAT 'can this position take value v given the rest?'), and/or (b) ENUMERATE k distinct witnesses with symmetry breaking, rendered as the domain picture. Neither is present. The single \u22a8 Solve witness is still the only interrogation move for exactly the claims a verification engineer most wants to SEE the solution space of. (The worker_done log note for this task is mis-pasted \u2014 it's about \u0394\u0394 nested-delta desugar, unrelated to claim_space.) Not done.",
+      "detail": "",
+      "by": "ide-critic",
+      "status": "open",
+      "task": 136,
+      "created": "2026-06-22T03:09:35Z"
+    },
+    {
+      "id": 146,
+      "title": "Multi-claim/-type files break the ANALYZE path (not solve): a claim file with ANY supporting decl errors out. Live: toposort (has 'type Edge' + 'claim toposort') and sudoku (has 'Box' + 'sudoku') both show banner 'source has an error \u2014 fix it to refresh the analysis' and the diagram goes STALE, with bottom console 'export: ambiguous: 2 candidate claims ([Edge, toposort]) \u2014 name one with export <file> <claim> is not yet supported; the file must contain exactly one top-level claim'. \u22a8 Solve still works (it picks the obvious entry claim), so the analyzer and solver DISAGREE on whether the file is valid. This means #133 (render raw claims) only works for single-decl files \u2014 the moment a claim has an idiomatic helper type, the solution-space diagram cannot render. Two SHIPPED samples (toposort, sudoku) load showing an error banner. Fix: the analyzer should pick the same entry claim the solver does (the last/only non-helper top-level claim, or the one matching the filename), not refuse on multi-decl files.",
+      "detail": "screenshots 07-sudoku, 08-toposort in recordings/marek-20260622-030303",
+      "by": "ide-critic",
+      "status": "open",
+      "task": null,
+      "created": "2026-06-22T03:10:10Z"
+    },
+    {
+      "id": 147,
+      "title": "Stale diagram CONTENT (not just dim) bleeds across a program switch when the new program errors: switching N-queens \u2192 toposort, with toposort erroring on the multi-claim ambiguity, the diagram panel shows title 'queens \u2014 solution space' and the queens N/A text \u2014 the PREVIOUS sample's panel, dimmed under 'stale \u2014 fix the error to refresh'. It's dimmed (honest-ish) but the visible title literally says 'queens' over toposort source. When analysis errors, blank/placeholder the diagram region rather than retaining the prior program's titled panel.",
+      "detail": "screenshot 08-toposort-solved.png \u2014 diagram titled 'queens' while editor is toposort",
+      "by": "ide-critic",
+      "status": "open",
+      "task": null,
+      "created": "2026-06-22T03:10:10Z"
+    },
+    {
+      "id": 148,
+      "title": "The 16-tab FSM view strip still renders for an EMPTY or errored editor. Empty editor: banner correctly says 'source has an error', structure card is hidden, diagram dimmed \u2014 but the full solution-space/time-series/.../cobweb tab strip is still shown above a stale dimmed diagram. There is nothing to view. Hide the FSM view-tab strip (as you already do for claims) when the source is empty, errored, or recomputing.",
+      "detail": "screenshot 11-empty-editor.png \u2014 16 tabs visible over 'source has an error'",
+      "by": "ide-critic",
+      "status": "open",
+      "task": null,
+      "created": "2026-06-22T03:10:10Z"
+    },
+    {
+      "id": 156,
+      "title": "Verify box rejects the chained-range invariant '0 \u2264 x \u2264 6' with '\u2715 write var op value (e.g. count \u2264 5)' \u2014 it only accepts a single 'var op value'. A range is the MOST natural invariant shape (a bound is two-sided), and '0 \u2264 x \u2264 6' is valid Evident chained-comparison syntax, so a user types exactly what the language allows and the verify box refuses it. Single-sided 'x \u2264 6' works ('\u2713 proven on all 7 reachable states'). Accept chained ranges (and ideally conjunctions like 'x \u2265 0 \u2227 x \u2264 6') in the verify parser.",
+      "detail": "bistable loaded; screenshot 14-verify.png; '0 \u2264 x \u2264 6' rejected, 'x \u2264 6' proven",
+      "by": "ide-critic",
+      "status": "open",
+      "task": null,
+      "created": "2026-06-22T03:11:23Z"
+    }
+  ]
 }

@@ -251,7 +251,12 @@ _PAGE = """<!doctype html>
   header .meta { color: var(--dim); font-size: 12px; }
   .wrap { max-width: 1500px; margin: 0 auto; padding: 24px 28px 64px; }
   h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em;
-       color: var(--dim); margin: 28px 0 14px; }
+       color: var(--dim); margin: 0; }
+  .sec-head { display: flex; align-items: baseline; gap: 12px; margin: 28px 0 14px; }
+  .toggle { background: var(--panel); border: 1px solid var(--line); color: var(--fg);
+            border-radius: 8px; padding: 5px 12px; font-size: 12px; cursor: pointer;
+            transition: border-color .12s ease, background .12s ease; }
+  .toggle:hover { border-color: #38414f; background: #1d212a; }
   .summary { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 8px; }
   .pill { background: var(--panel); border: 1px solid var(--line); border-radius: 999px;
           padding: 4px 12px; font-size: 12px; color: var(--dim); }
@@ -278,7 +283,9 @@ _PAGE = """<!doctype html>
 
   .card .top { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
   .id { color: var(--dim); font-variant-numeric: tabular-nums; font-size: 12px; }
-  .title { font-weight: 650; font-size: 16px; line-height: 1.3; flex-basis: 100%; }
+  .title { font-weight: 650; font-size: 16px; line-height: 1.3; flex-basis: 100%;
+           display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+           overflow: hidden; }
   .badge { font-size: 11px; padding: 2px 8px; border-radius: 6px; border: 1px solid var(--line);
            text-transform: uppercase; letter-spacing: .04em; }
   .st-open { color: var(--open); } .st-in_progress { color: var(--prog); }
@@ -323,9 +330,12 @@ _PAGE = """<!doctype html>
     .wrap { padding: 16px 14px 48px; }
     h2 { margin: 20px 0 10px; }
     .grid { gap: 12px; }
-    .card { flex-basis: 100%; min-width: 0; max-width: none; padding: 14px 16px; border-radius: 12px; }
+    .card { flex-basis: 100%; min-width: 0; max-width: none; padding: 11px 14px;
+            border-radius: 10px; gap: 6px; }
     .card:hover { transform: none; }
-    .title { font-size: 15px; }
+    /* compact one-line hero cards on mobile: clamp title, drop tags + log */
+    .title { font-size: 14px; -webkit-line-clamp: 1; }
+    .card .tags, .card .log { display: none; }
     .overlay { padding: 0; align-items: stretch; }
     .modal { max-width: none; min-height: 100%; border-radius: 0; padding: 20px 18px; }
   }
@@ -338,10 +348,13 @@ _PAGE = """<!doctype html>
 </header>
 <div class="wrap">
   <div class="summary" id="summary"></div>
-  <h2>Open concerns</h2>
-  <div class="grid" id="concerns"></div>
-  <h2>Tasks</h2>
+  <div class="sec-head">
+    <h2>Tasks</h2>
+    <button class="toggle" id="toggleDone">Show completed</button>
+  </div>
   <div class="grid" id="tasks"></div>
+  <div class="sec-head"><h2>Open concerns</h2></div>
+  <div class="grid" id="concerns"></div>
 </div>
 <div class="overlay" id="overlay">
   <div class="modal" id="modal" role="dialog" aria-modal="true">
@@ -442,6 +455,31 @@ document.addEventListener("keydown", e => { if (e.key === "Escape") closeModal()
   const card = e.target.closest(".card");
   if (card && card.dataset.id) openModal(card.dataset.kind, Number(card.dataset.id));
 }));
+let showCompleted = false;
+const ORDER = {in_progress: 0, worker_done: 1, open: 2, closed: 3};
+function renderTasks() {
+  const all = STATE.tasks || [];
+  const doneCount = all.filter(t => t.status === "closed").length;
+  // active view hides completed; completed view shows only those
+  const shown = all.filter(t => showCompleted ? t.status === "closed" : t.status !== "closed");
+  const sorted = shown.slice().sort((a, b) =>
+    (ORDER[a.status] ?? 9) - (ORDER[b.status] ?? 9) || a.id - b.id);
+  document.getElementById("tasks").innerHTML =
+    sorted.length ? sorted.map(taskCard).join("")
+                  : `<div class="empty">${showCompleted ? "no completed tasks" : "no active tasks"}</div>`;
+  const btn = document.getElementById("toggleDone");
+  btn.textContent = showCompleted ? "Show active" : `Show completed (${doneCount})`;
+}
+document.getElementById("toggleDone").addEventListener("click", () => {
+  showCompleted = !showCompleted;
+  renderTasks();
+});
+function renderConcerns() {
+  const openC = (STATE.concerns || []).filter(c => c.status === "open");
+  document.getElementById("concerns").innerHTML =
+    openC.length ? openC.map(concernCard).join("")
+                 : `<div class="empty">no open concerns</div>`;
+}
 async function refresh() {
   try {
     const db = await (await fetch("/api/data", {cache: "no-store"})).json();
@@ -455,14 +493,8 @@ async function refresh() {
       + ["open", "in_progress", "worker_done", "closed"].map(s =>
           `<span class="pill">${s}: <b>${byStatus[s] || 0}</b></span>`).join("")
       + `<span class="pill"><b>${openC.length}</b> open concerns</span>`;
-    document.getElementById("concerns").innerHTML =
-      openC.length ? openC.map(concernCard).join("")
-                   : `<div class="empty">no open concerns</div>`;
-    const order = {in_progress: 0, worker_done: 1, open: 2, closed: 3};
-    const sorted = tasks.slice().sort((a, b) =>
-      (order[a.status] ?? 9) - (order[b.status] ?? 9) || a.id - b.id);
-    document.getElementById("tasks").innerHTML =
-      sorted.length ? sorted.map(taskCard).join("") : `<div class="empty">no tasks yet</div>`;
+    renderTasks();
+    renderConcerns();
     const now = new Date().toLocaleTimeString();
     document.getElementById("meta").textContent =
       `${tasks.length} tasks · ${openC.length} open concerns · updated ${now}`;
