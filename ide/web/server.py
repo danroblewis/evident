@@ -241,7 +241,13 @@ def analyze(req: Source):
                               file=sys.stderr)
             return {
                 "ok": True,
-                "banner": _banner(m, max_branch, recurrent),
+                # A model with dropped constraints is BROKEN, not a valid relation — the freed
+                # variables fan the state space and any "shape" read off it is an artifact, not
+                # the program's. Say so in the headline, don't describe it as relational/cyclic.
+                "banner": (
+                    f"⚠ Under-constrained — {dropped} dropped constraint(s); this model is "
+                    f"BROKEN, not a real relation (the freed variables fan the state space)"
+                    if dropped else _banner(m, max_branch, recurrent)),
                 "structure": structure,
                 "dropped": dropped,
                 "branching": max_branch,
