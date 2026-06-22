@@ -323,9 +323,12 @@ def _held_alts(m, hv):
         return list(m.enum_variants[hv["name"]])
     if hv["kind"] == "bool":
         return [False, True]
-    # numeric companion: sample a handful of values it actually takes on the orbit
+    # numeric companion: sample a handful of values it actually takes on the orbit. Must accept
+    # float (Real) too — restricting to int silently returned [] for a continuous companion like
+    # the oscillator's `pos`, so the non-autonomy probe never perturbed it and drew a misleading
+    # 1-D slice of a genuinely 2-D coupled system (Marek #38).
     vals = sorted({s.get(hv["name"]) for s in m._sample_states()
-                   if isinstance(s.get(hv["name"]), int)})
+                   if isinstance(s.get(hv["name"]), (int, float)) and not isinstance(s.get(hv["name"]), bool)})
     return vals[:4]
 
 
