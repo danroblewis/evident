@@ -455,7 +455,11 @@ function _termText(t) { return `${t[0]} ${t[1]} ${t[2]}`; }
 // Run /api/query for `terms` and render the verdict into `out`. `nAssume` ≥ 0 tunes the UNSAT
 // copy to name the assumption stack ("the last one made it unsat"). Shared by one-shot + stack.
 async function _execQuery(out, terms, nAssume) {
-  out.className = "dim"; out.textContent = "searching…";
+  // Busy signal: the search can take ~1.5s on a real-valued model; without it the row looks frozen
+  // (Sam #249). Pulse the result + disable the query buttons until it returns.
+  out.className = "dim searching"; out.textContent = "⋯ searching…";
+  const btns = ["#query-btn", "#query-assert", "#query-clear"].map((s) => $(s)).filter(Boolean);
+  btns.forEach((b) => { b.disabled = true; });
   try {
     const res = await fetch("/api/query", {
       method: "POST", headers: { "content-type": "application/json" },
@@ -478,6 +482,7 @@ async function _execQuery(out, terms, nAssume) {
     out.textContent = `✓ ${under}reachable — ${w} (${d.count} of ${d.checked} state${d.checked === 1 ? "" : "s"})`;
     if (d.trace && d.trace.length >= 2) showTrace(d.trace, `a run reaching: ${d.predicate}`, "goal");
   } catch (e) { out.className = "bad"; out.textContent = "✕ " + e; }
+  finally { btns.forEach((b) => { b.disabled = false; }); }
 }
 
 // One-shot ⊨? query: parse the whole conjunction in #query-prop and search, leaving the stack
