@@ -1,5 +1,5 @@
 {
-  "seq": 235,
+  "seq": 236,
   "tasks": [
     {
       "id": 1,
@@ -1479,16 +1479,23 @@
       "id": 82,
       "title": "Diff two models / two reachable sets: change a constraint and see which states/transitions APPEARED or VANISHED (the relational analog of a diff). Core debugging move when tightening or loosening a spec.",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "ide-critic-expert",
       "created": "2026-06-22T00:41:34Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "analysis"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-22T19:37:06Z",
+          "by": "worker",
+          "act": "done",
+          "note": "fully shipped: model-diff over states (#223) AND transitions (#232) \u2014 pin A, change a constraint, \u21c4 diff shows appeared/vanished states + transitions"
+        }
+      ]
     },
     {
       "id": 83,
@@ -3994,31 +4001,45 @@
       "id": 232,
       "title": "Model-diff should diff TRANSITIONS, not only states. The reachable-set delta (appeared/vanished states) is great, but a rewired transition whose endpoint set is unchanged is invisible \u2014 e.g. flipping a guard so Green\u2192Red becomes Green\u2192Yellow with the same 9 states shows '0 appeared 0 vanished'. Add an edges-appeared / edges-vanished section so I see the relation change, not just the support.",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "ide-critic",
       "created": "2026-06-22T19:14:31Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "analysis"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-22T19:37:06Z",
+          "by": "worker",
+          "act": "done",
+          "note": "shipped c655b996: _model_diff diffs edges (src\u2192dst keys); renderDiff shows transition delta. Verified: counter 3\u21925 \u2192 new 3\u21924/4\u21925/5\u21925, vanished 3\u21923."
+        }
+      ]
     },
     {
       "id": 233,
       "title": "Zoom/pan the diagram surface. state_graph at 9 nodes is legible, but reachable graphs hit hundreds of nodes; a static fit-to-box becomes a hairball. Scroll-to-zoom + drag-to-pan (and a fit button) is table stakes \u2014 every graph tool (Graphviz viewers, yEd, even DevTools' layers) gives it. Wall: I imagined opening a 400-state machine and couldn't read it.",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "ide-critic",
       "created": "2026-06-22T19:14:31Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "viz"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-22T19:56:43Z",
+          "by": "worker",
+          "act": "done",
+          "note": "wheel-zoom-to-cursor + drag-pan + dbl-click reset on the diagram; overlay + ring transform with it"
+        }
+      ]
     },
     {
       "id": 234,
@@ -4049,6 +4070,28 @@
         "solve"
       ],
       "log": []
+    },
+    {
+      "id": 236,
+      "title": "Trace scrubber rings the current state on the diagram (#231/#206 \u2014 trace lights up the explorer)",
+      "detail": "",
+      "status": "worker_done",
+      "created_by": "worker",
+      "created": "2026-06-22T19:28:18Z",
+      "worker_done": true,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "feature"
+      ],
+      "log": [
+        {
+          "at": "2026-06-22T19:28:18Z",
+          "by": "worker",
+          "act": "done",
+          "note": "merged 3c32bed4: highlightTraceStep + _matchPoint ring the trace step's state on the interactive overlay; 22 headless cases pass"
+        }
+      ]
     }
   ],
   "concerns": [
