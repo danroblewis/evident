@@ -168,7 +168,29 @@ function buildCommands() {
   });
   cmds.push({ label: "Verify — focus the ⊢ property field", run: () => { const f = $("#inv-prop"); if (f) f.focus(); } });
   cmds.push({ label: "Query — find a reachable state (⊨? ∃)", run: () => { const f = $("#query-prop"); if (f) f.focus(); } });
+  // Searchable concept glossary (Sam #246): every language noun (claim/fsm/type/enum), operator
+  // (∈/⇒/Δ), and dynamics term (cyclic/driven/fixed point) as a ⌘K entry — select one to read its
+  // full definition. So a newcomer can look up "what IS a claim" without leaving for a manual.
+  glossaryItems().forEach(({ def }) => {
+    cmds.push({ label: "📖 " + def, run: () => showGlossCentered(def) });
+  });
   return cmds;
+}
+
+// Show a glossary definition centered near the top, dismissed on the next click/key (Sam #246).
+// Reuses #gloss (pointer-events:none, so the dismiss click passes through) and resets the positioning
+// it borrows, so a later hover tooltip isn't left shifted.
+function showGlossCentered(text) {
+  const g = $("#gloss");
+  if (!g) return;
+  g.textContent = text;
+  g.style.left = "50%"; g.style.top = "12%"; g.style.transform = "translateX(-50%)"; g.style.maxWidth = "560px";
+  g.hidden = false;
+  const hide = () => {
+    g.hidden = true; g.style.transform = ""; g.style.maxWidth = "";
+    document.removeEventListener("click", hide, true); document.removeEventListener("keydown", hide, true);
+  };
+  setTimeout(() => { document.addEventListener("click", hide, true); document.addEventListener("keydown", hide, true); }, 0);
 }
 
 function renderCmdk() {

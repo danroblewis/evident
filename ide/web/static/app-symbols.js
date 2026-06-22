@@ -44,6 +44,17 @@ function glossFor(t) {
   return null;
 }
 
+// Flat {term, def} list over the keyword/operator glossary AND the dynamics concepts, for the
+// searchable ⌘K glossary (Sam #246) — so a newcomer can look up "claim" / "Δ" / "cyclic" and read
+// what it means without leaving the editor. GLOSSARY values already lead with "term — …"; CONCEPTS
+// values are bare definitions, so prefix the key. `term` drives the fuzzy match, `def` is the full text.
+function glossaryItems() {
+  const items = [];
+  for (const [k, v] of Object.entries(GLOSSARY)) items.push({ term: k, def: v });
+  for (const [k, v] of Object.entries(CONCEPTS)) items.push({ term: k, def: `${k} — ${v}` });
+  return items;
+}
+
 // --- banner concept glosses --------------------------------------------------------
 const CONCEPTS = {
   "inductive invariant": "a bound z3 PROVED is closed under the transition: true now ⇒ true next tick ⇒ true forever. A proof, not a sample.",
