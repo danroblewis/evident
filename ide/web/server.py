@@ -630,7 +630,11 @@ def smtlib(req: Source):
             return {"ok": False, "error": msg}
         try:
             with open(prefix + ".smt2") as f:
-                return {"ok": True, "smtlib": f.read(), "dropped": dropped}
+                raw = f.read()
+            # Append a ready-to-run z3 footer so the dump is a one-paste z3 session
+            # (declarations + assertions + check-sat + get-model). Ana #196.
+            footer = "" if "(check-sat)" in raw else "\n(check-sat)\n(get-model)\n"
+            return {"ok": True, "smtlib": raw + footer, "dropped": dropped}
         except Exception as e:
             return {"ok": False, "error": str(e)}
 

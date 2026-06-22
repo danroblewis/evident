@@ -23,6 +23,7 @@ pub mod effect_encoder {
 }
 
 pub use eval::{build_cache,
+                build_cache_opts,
                 evaluate,
                 evaluate_with_extra_assertions,
                 run_cached};

@@ -477,8 +477,11 @@ impl EvidentRuntime {
         let schema = self.schemas.get(name)
             .ok_or_else(|| RuntimeError::UnknownSchema(name.to_string()))?;
         let empty: HashMap<String, Value> = HashMap::new();
-        let cached = crate::encode::build_cache(
-            schema, &self.schemas, self.z3_ctx, &self.datatypes, Some(&self.enums), &empty, 1);
+        // `pin_ints = false`: do NOT constant-fold `x = 7` into a literal. Ana's
+        // export must DECLARE every named var and keep `x = 7` as `(assert (= x 7))`
+        // — her relational model, not z3's simplifier residue `(= 7 7)` (#192).
+        let cached = crate::encode::build_cache_opts(
+            schema, &self.schemas, self.z3_ctx, &self.datatypes, Some(&self.enums), &empty, 1, false);
         let smt2 = format!("{}", cached.solver);
 
         // Same interface/internal split as export_transition: the first `param_count`

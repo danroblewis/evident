@@ -265,6 +265,27 @@ pub fn build_cache(
     given: &HashMap<String, Value>,
     arith_solver: u32,
 ) -> CompiledModel<'static> {
+    build_cache_opts(schema, schemas, ctx, registry, enums, given, arith_solver, true)
+}
+
+/// Like `build_cache`, but `pin_ints` controls the equality-constant-folding
+/// optimization. With `pin_ints = true` (the query/viz default), a body
+/// constraint like `x = 7` folds `x` into the literal `7` so the solver never
+/// declares `x` — faster, but the residue (`(> 7 10)`) is what serializes to
+/// SMT-LIB. The user-facing `export_claim` passes `false` so every named var
+/// stays a declared Z3 constant and `x = 7` survives as `(assert (= x 7))` —
+/// the faithful relational model Ana hands to z3 (#192).
+#[allow(clippy::too_many_arguments)]
+pub fn build_cache_opts(
+    schema: &SchemaDecl,
+    schemas: &HashMap<String, SchemaDecl>,
+    ctx: &'static Context,
+    registry: &DatatypeRegistry,
+    enums: Option<&EnumRegistry>,
+    given: &HashMap<String, Value>,
+    arith_solver: u32,
+    pin_ints: bool,
+) -> CompiledModel<'static> {
 
     let _enum_guard = super::exprs::EnumRegistryGuard::new(enums);
     let solver = make_tuned_solver(ctx, arith_solver);
@@ -294,8 +315,10 @@ pub fn build_cache(
 
     let seq_lens = super::declare::collect_seq_lengths_with_schemas(
         &schema.body, given, Some(schemas));
-    let pinned   = collect_pinned_ints(&schema.body, given, &seq_lens);
-    apply_pinned_ints(&mut env, &pinned);
+    if pin_ints {
+        let pinned = collect_pinned_ints(&schema.body, given, &seq_lens);
+        apply_pinned_ints(&mut env, &pinned);
+    }
     apply_seq_lengths(&mut env, &seq_lens, ctx);
 
     apply_set_candidates(&env, given);

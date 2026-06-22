@@ -282,8 +282,10 @@ fn cmd_export(args: &[String]) -> ExitCode {
 fn resolve_export_claim(
     rt: &EvidentRuntime, stdlib_names: &std::collections::HashSet<String>,
 ) -> Result<String, String> {
+    // `sat_*`/`unsat_*` are FSM-discovery sentinels (the trampoline skips them as
+    // candidate state machines), but for EXPORT they are exactly the test-assertion
+    // claims Ana hands to z3 for its own minimal core (#193) — so we keep them here.
     let mut claims: Vec<String> = rt.schema_names()
-        .filter(|n| !n.starts_with("sat_") && !n.starts_with("unsat_"))
         .filter(|n| !stdlib_names.contains(*n))
         .map(|s| s.to_string())
         .collect();
