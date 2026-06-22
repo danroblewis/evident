@@ -5,6 +5,7 @@ pub mod ffi;
 mod lexer;
 mod parser;
 pub mod encode;
+pub mod fmt;
 mod session;
 
 #[cfg(test)]
