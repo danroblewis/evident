@@ -484,8 +484,38 @@ async function _execQuery(out, terms, nAssume) {
     const under = nAssume ? `⊨ under ${nAssume} assumption${nAssume === 1 ? "" : "s"} — ` : "";
     out.textContent = `✓ ${under}reachable — ${w} (${d.count} of ${d.checked} state${d.checked === 1 ? "" : "s"})`;
     if (d.trace && d.trace.length >= 2) showTrace(d.trace, `a run reaching: ${d.predicate}`, "goal");
+    renderMatchWalker(out, d);                 // walk every matching reachable state (Ana #241)
   } catch (e) { out.className = "bad"; out.textContent = "✕ " + e; }
   finally { btns.forEach((b) => { b.disabled = false; }); }
+}
+
+// Walk ALL matching reachable states (Ana #241) — the SAT dual of the all-cores enumeration (Alloy's
+// "every instance"). When the query matches >1 state, append a ◀ k/N ▶ stepper that cycles through
+// them, ringing each on the diagram. fmtState (app.js) + highlightTraceStep are reused.
+const _matchWalk = { list: [], i: 0 };
+function renderMatchWalker(out, d) {
+  const list = (d && d.matches) || [];
+  if (list.length < 2) { _matchWalk.list = []; return; }
+  _matchWalk.list = list; _matchWalk.i = 0;
+  const nav = document.createElement("span");
+  nav.className = "match-walk";
+  const draw = () => {
+    nav.innerHTML = "";
+    const m = _matchWalk.list[_matchWalk.i];
+    const prev = document.createElement("button");
+    prev.className = "trace-nav"; prev.textContent = "◀"; prev.disabled = _matchWalk.i === 0;
+    prev.onclick = () => { _matchWalk.i--; draw(); };
+    const lab = document.createElement("span");
+    lab.className = "match-lab";
+    lab.textContent = ` walk matches ${_matchWalk.i + 1}/${_matchWalk.list.length}${d.matches_capped ? "+" : ""}: ${fmtState(m)} `;
+    const next = document.createElement("button");
+    next.className = "trace-nav"; next.textContent = "▶"; next.disabled = _matchWalk.i >= _matchWalk.list.length - 1;
+    next.onclick = () => { _matchWalk.i++; draw(); };
+    nav.append(prev, lab, next);
+    highlightTraceStep(m);                     // ring this match on the diagram
+  };
+  draw();
+  out.appendChild(nav);
 }
 
 // One-shot ⊨? query: parse the whole conjunction in #query-prop and search, leaving the stack

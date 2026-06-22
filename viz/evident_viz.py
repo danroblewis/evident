@@ -605,18 +605,19 @@ class Model:
 
         states, edges = self.reachable(limit=limit)
         exhaustive = len(states) < limit          # BFS stopped on its own, not capped
-        count = 0
-        first_idx = None
-        for idx, sv in enumerate(states):          # BFS-discovery order = deterministic
-            if sat(sv):
-                count += 1
-                if first_idx is None:
-                    first_idx = idx
-        if first_idx is None:
-            return {"satisfiable": False, "witness": None, "count": 0,
+        match_idxs = [idx for idx, sv in enumerate(states) if sat(sv)]   # BFS order = deterministic
+        count = len(match_idxs)
+        if not match_idxs:
+            return {"satisfiable": False, "witness": None, "count": 0, "matches": [],
                     "checked": len(states), "exhaustive": exhaustive,
                     "trace": None, "predicate": predicate}
+        first_idx = match_idxs[0]
+        # Enumerate ALL matching reachable states so the caller can WALK them (the SAT dual of the
+        # all-cores enumeration — Alloy's "every instance", Ana #241). Capped; `matches_capped` flags more.
+        MATCH_CAP = 40
+        matches = [dict(states[i]) for i in match_idxs[:MATCH_CAP]]
         return {"satisfiable": True, "witness": dict(states[first_idx]), "count": count,
+                "matches": matches, "matches_capped": count > MATCH_CAP,
                 "checked": len(states), "exhaustive": exhaustive,
                 "trace": self._trace_to(first_idx, edges, states),  # path init→witness
                 "predicate": predicate}
