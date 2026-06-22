@@ -613,8 +613,17 @@ class Model:
         return self.state_vars
 
     def _sample_states(self, limit=1500):
-        states, _ = self.reachable(limit=limit)
-        return states if len(states) >= 2 else self.trajectory(steps=400)
+        # Cached: independence/axis_bounds/change_rates/ranked_vars/facet all sample the same
+        # reachable set every analyze — re-running reachable(1500) per caller was most of the
+        # real-FSM latency (#171). Compute once per Model, reuse. (Keyed on the default limit; a
+        # non-default limit bypasses the cache.)
+        if limit != 1500:
+            states, _ = self.reachable(limit=limit)
+            return states if len(states) >= 2 else self.trajectory(steps=400)
+        if getattr(self, "_sample_cache", None) is None:
+            states, _ = self.reachable(limit=limit)
+            self._sample_cache = states if len(states) >= 2 else self.trajectory(steps=400)
+        return self._sample_cache
 
     def axis_bounds(self, name, pad=0.08):
         """(lo, hi) of a NUMERIC variable over the REACHABLE sample — the real domain a
