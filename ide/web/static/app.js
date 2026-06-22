@@ -638,6 +638,7 @@ function paint(data, ms) {
   $("#latency").textContent = ms != null ? `${ms} ms` : "";
   $("#banner").classList.remove("recomputing");        // analysis returned — undim
   $("#structure").classList.remove("recomputing");
+  $("#view").classList.remove("recomputing");
   const view = $("#view"), warn = $("#warnings");
   if (!data.ok) {
     $("#structure").hidden = true;
@@ -728,6 +729,7 @@ async function run(view) {
   // switch / edit / error alike (Marek #64/#91/#93). paint() repaints or hides them on result.
   $("#banner").classList.add("recomputing");
   $("#structure").classList.add("recomputing");
+  $("#view").classList.add("recomputing");                 // dim the OLD picture, not just the banner
   $("#inv-result").textContent = "";                       // last verify result is stale on any edit
   if (!$("#solve").hidden)                                  // stale witness/UNSAT under a changed source
     $("#solve-head").innerHTML = '<span class="dim">source changed — press re-solve</span>';
@@ -930,6 +932,8 @@ sel.onchange = () => {
     editor.setValue(SAMPLES[sel.value], -1);
     $("#solve-given").value = "";   // a fresh sample must not inherit the last pin…
     $("#solve").hidden = true;       // …nor leave a stale UNSAT/witness over the new program
+    $("#inv-prop").value = "";       // …nor a stale verify assertion (Sam #107)
+    $("#inv-result").textContent = "";
     run();
   }
   sel.value = "";          // reset the label so the same sample can be re-opened

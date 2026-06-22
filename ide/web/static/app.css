@@ -106,6 +106,9 @@ html,body { margin:0; height:100%; background:var(--bg); color:var(--ink);
 #banner.recomputing, #structure.recomputing { opacity:0.3; transition:opacity .12s; }
 #structure { padding:6px 14px; background:#0e1a16; border-bottom:1px solid var(--line);
   font-size:12px; display:flex; flex-wrap:wrap; gap:6px 16px; align-items:center; }
+/* the ID's display:flex beats the UA [hidden] rule — restore it, or `hidden=true` never hides
+   and the card leaks the PREVIOUS program's verdict onto a claim/empty/error (Sam #98). */
+#structure[hidden] { display:none; }
 #structure .verdict { font-weight:bold; }
 #structure .v-terminates { color:var(--good); }
 #structure .v-cyclic { color:#58a6ff; }
@@ -145,6 +148,7 @@ html,body { margin:0; height:100%; background:var(--bg); color:var(--ink);
 
 /* a diagram left over from the last good run, shown while the current source errors:
    never let stale pixels read as live. */
+#view.recomputing { opacity:0.4; transition:opacity .12s; }   /* dim the OLD picture mid-recompute */
 #view.stale { filter:grayscale(1) opacity(0.35); }
 #view.stale::after { content:"stale — fix the error to refresh"; position:absolute;
   color:var(--dim); background:var(--panel); padding:2px 8px; border-radius:6px; }
