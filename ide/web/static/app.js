@@ -949,6 +949,7 @@ async function run(view) {
   $("#structure").classList.add("recomputing");
   $("#view").classList.add("recomputing");                 // dim the OLD picture, not just the banner
   $("#inv-result").textContent = "";                       // last verify result is stale on any edit
+  clearTrace();                                            // …and so is the counterexample scrubber
   if (!$("#solve").hidden)                                  // stale witness/UNSAT under a changed source
     $("#solve-head").innerHTML = '<span class="dim">source changed — press re-solve</span>';
   const t0 = performance.now();
@@ -1189,6 +1190,7 @@ async function _checkOne(varName, op, value) {
 }
 async function checkInvariant() {
   const out = $("#inv-result");
+  clearTrace();                              // a new check invalidates the old scrubber
   const raw = $("#inv-prop").value.trim();
   if (!raw) { out.textContent = ""; return; }
   // LIVENESS first: P ⤳ Q (leads-to), or ◇/eventually Q — routed to the temporal checker (#142).
@@ -1228,6 +1230,7 @@ async function checkInvariant() {
         const tr = _fmtTrace(d.trace);
         out.className = "bad";
         out.textContent = `✗ violated (${d.predicate}) — counterexample  ${cex}` + (tr ? `   ·   trace: ${tr}` : "");
+        if (d.trace && d.trace.length >= 2) showTrace(d.trace, d.predicate);
         return;
       }
     }
@@ -1243,8 +1246,52 @@ function _fmtTrace(trace) {
   return steps.length > 8 ? steps.slice(0, 4).join(" → ") + " → … → " + steps[steps.length - 1]
                           : steps.join(" → ");
 }
+
+// --- scrubbable counterexample trace (TLA+-Toolbox style, Ana #198/#120/#175) ----------
+// The trace array is the BFS path init→violation (safety) or the dodging/lasso run (liveness).
+// Step through it one state at a time, reading the FULL assignment at each step — not the
+// one-line collapse. Pure helpers (_traceClamp / _traceStepLabel / _traceStateLine) carry the
+// index + format logic so they're unit-testable without a DOM.
+function _traceClamp(i, n) { return i < 0 ? 0 : (i > n - 1 ? n - 1 : i); }
+function _traceStepLabel(i, n) { return `step ${i + 1} / ${n}`; }       // 1-based for humans
+function _traceStateLine(state) {
+  return Object.entries(state || {}).map(([k, v]) => `${k.split(".").pop()} = ${v}`).join("   ");
+}
+const _trace = { states: [], i: 0, label: "" };
+function clearTrace() {
+  _trace.states = []; _trace.i = 0; _trace.label = "";
+  const el = $("#inv-trace"); el.hidden = true; el.innerHTML = "";
+}
+function _renderTrace() {
+  const el = $("#inv-trace"), n = _trace.states.length;
+  if (n < 2) { el.hidden = true; el.innerHTML = ""; return; }
+  const i = _trace.i, last = i === n - 1;
+  el.hidden = false;
+  el.innerHTML = "";
+  const head = document.createElement("div"); head.className = "trace-head";
+  if (_trace.label) { const lab = document.createElement("span"); lab.className = "trace-label"; lab.textContent = _trace.label; head.appendChild(lab); }
+  const prev = document.createElement("button"); prev.className = "trace-nav"; prev.textContent = "◀"; prev.disabled = i === 0;
+  prev.onclick = () => { _trace.i = _traceClamp(_trace.i - 1, n); _renderTrace(); };
+  const step = document.createElement("span"); step.className = "trace-step"; step.textContent = _traceStepLabel(i, n);
+  const next = document.createElement("button"); next.className = "trace-nav"; next.textContent = "▶"; next.disabled = last;
+  next.onclick = () => { _trace.i = _traceClamp(_trace.i + 1, n); _renderTrace(); };
+  head.appendChild(prev); head.appendChild(step); head.appendChild(next);
+  if (last) { const flag = document.createElement("span"); flag.className = "trace-flag"; flag.textContent = "● violation here"; head.appendChild(flag); }
+  el.appendChild(head);
+  const line = document.createElement("div");
+  line.className = "trace-state" + (last ? " bad" : "");
+  line.textContent = _traceStateLine(_trace.states[i]);
+  el.appendChild(line);
+}
+// Open the stepper on a fresh trace, parked at the violating (final) step.
+function showTrace(trace, label) {
+  if (!trace || trace.length < 2) { clearTrace(); return; }
+  _trace.states = trace; _trace.i = trace.length - 1; _trace.label = label || "";
+  _renderTrace();
+}
 // Liveness check (◇ / ⤳) against /api/temporal, with the dodging-run trace on failure.
 async function runTemporal(out, body) {
+  clearTrace();
   out.className = "dim"; out.textContent = "checking…";
   try {
     const res = await fetch("/api/temporal", {
@@ -1262,6 +1309,7 @@ async function runTemporal(out, body) {
       out.className = "bad";
       out.textContent = `✗ violated — ${d.predicate}; a run dodges it forever`
         + (tr ? `:  ${tr}` : "");
+      if (d.trace && d.trace.length >= 2) showTrace(d.trace, "a run that dodges it forever");
     }
   } catch (e) { out.className = "bad"; out.textContent = "✕ " + e; }
 }
@@ -1281,6 +1329,7 @@ sel.onchange = () => {
     $("#solve").hidden = true;       // …nor leave a stale UNSAT/witness over the new program
     $("#inv-prop").value = "";       // …nor a stale verify assertion (Sam #107)
     $("#inv-result").textContent = "";
+    clearTrace();
     run();
   }
   sel.value = "";          // reset the label so the same sample can be re-opened

@@ -179,6 +179,21 @@ html,body { margin:0; height:100%; background:var(--bg); color:var(--ink);
 #inv-btn:hover { background:#1d4255; border-color:var(--accent); }
 #inv-result.good { color:var(--good); } #inv-result.bad { color:var(--bad); }
 
+/* scrubbable counterexample trace — a thin panel under the verify row (Ana #198) */
+#inv-trace { padding:6px 14px; background:#0e1a16; border-bottom:1px solid var(--line); font-size:12px; }
+#inv-trace[hidden] { display:none; }
+.trace-head { display:flex; align-items:center; gap:8px; margin-bottom:4px; }
+.trace-label { color:#7ee0c0; }
+.trace-nav { background:#16313f; color:var(--accent); border:1px solid #2d5a72; border-radius:6px;
+  padding:1px 8px; cursor:pointer; font:12px ui-monospace,Menlo,monospace; line-height:1.4; }
+.trace-nav:hover:not(:disabled) { background:#1d4255; border-color:var(--accent); }
+.trace-nav:disabled { opacity:.35; cursor:default; }
+.trace-step { color:var(--dim); white-space:nowrap; }
+.trace-flag { color:var(--bad); white-space:nowrap; }
+.trace-state { font:12px ui-monospace,Menlo,monospace; color:var(--ink); white-space:pre-wrap;
+  padding:3px 6px; background:#0f1419; border:1px solid var(--line); border-radius:6px; }
+.trace-state.bad { color:var(--bad); border-color:var(--bad); }
+
 #tabs { display:flex; flex-wrap:wrap; gap:5px; padding:8px 12px 4px; }
 #tabs .tab { padding:3px 10px; border-radius:6px 6px 0 0; background:#1b2129; color:var(--dim);
   cursor:pointer; border:1px solid transparent; user-select:none; }
