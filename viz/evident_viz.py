@@ -647,6 +647,94 @@ class Model:
         return {"verdict": "driven" if drivers else "relational", "driver": driver,
                 "drivers": drivers, "dependents": dependents, "score": score}
 
+    def solved_bounds(self, k=16):
+        """PROVABLY-exact per-variable bounds via z3 Optimize over a k-step UNROLLING of the
+        transition relation — not the BFS sample. We compose T with itself k times from the
+        initial tick: every variable gets a fresh copy per tick, and each carried var's `_prev`
+        at tick s is wired to its value at tick s-1. Then for each numeric carried var we maximize
+        and minimize its value over ALL ticks (a single Optimize call each, via an Or-selector).
+
+        Returns {short_name: {"lo", "hi", "exact", "k"}}. `exact` is True when the k-step and
+        2k-step bounds agree — the unrolled reachable set has CLOSED, so the bound is the true
+        reachable extent (the 'compose with itself until 2-run == k-run' fixpoint). When they
+        disagree (a diverging/unbounded var) the bound is proven only over the k-step horizon.
+        Returns None if there's nothing numeric/carried to bound."""
+        ft = self.consts.get(self._first_tick_name)
+        carried = [v for v in self.carried
+                   if v.get("kind") in ("int", "real")
+                   and self.consts.get(v["name"]) is not None
+                   and self.consts.get(v["prev"]) is not None]
+        if ft is None or not carried:
+            return None
+        body = z3.And(*self.assertions) if len(self.assertions) != 1 else self.assertions[0]
+        ft_name = self._first_tick_name
+        prev_to_cur = {self.consts[v["prev"]].get_id(): v["name"] for v in carried}
+        non_ft = [(n, c) for n, c in self.consts.items() if n != ft_name]
+
+        def fresh(c, tag):
+            return z3.Const(f"{c.decl().name()}@{tag}", c.sort())
+
+        def bounds_at(k):
+            opt = z3.Optimize()
+            # fresh per-tick copy of every non-prev variable; a pre-initial fresh for tick-0 prevs
+            stepv = [{n: fresh(c, s) for n, c in non_ft if c.get_id() not in prev_to_cur}
+                     for s in range(k + 1)]
+            initprev = {v["name"]: fresh(self.consts[v["prev"]], "init") for v in carried}
+            for s in range(k + 1):
+                subs = [(ft, z3.BoolVal(s == 0))]
+                for n, c in non_ft:
+                    if c.get_id() in prev_to_cur:                  # a carried _prev
+                        cur = prev_to_cur[c.get_id()]
+                        subs.append((c, stepv[s - 1][cur] if s >= 1 else initprev[cur]))
+                    else:
+                        subs.append((c, stepv[s][n]))
+                opt.add(z3.substitute(body, *subs))
+            out = {}
+            for v in carried:
+                cn = v["name"]
+                vals = [stepv[s][cn] for s in range(k + 1)]
+                sel = z3.Const(f"sel@{cn}", self.consts[cn].sort())
+                lo = hi = None
+                opt.push(); opt.add(z3.Or([sel == x for x in vals]))
+                opt.maximize(sel)
+                if opt.check() == z3.sat:
+                    hi = self._num(opt.model().eval(sel, model_completion=True))
+                opt.pop()
+                opt.push(); opt.add(z3.Or([sel == x for x in vals]))
+                opt.minimize(sel)
+                if opt.check() == z3.sat:
+                    lo = self._num(opt.model().eval(sel, model_completion=True))
+                opt.pop()
+                out[cn.split(".")[-1]] = (lo, hi)
+            return out
+
+        try:
+            b1 = bounds_at(k)
+            b2 = bounds_at(2 * k)
+        except Exception:
+            return None
+        result = {}
+        for nm, (lo, hi) in b2.items():           # the 2k bound is the tighter/wider proven one
+            exact = b1.get(nm) == (lo, hi) and lo is not None and hi is not None
+            result[nm] = {"lo": lo, "hi": hi, "exact": exact, "k": 2 * k}
+        return result
+
+    @staticmethod
+    def _num(z):
+        """A z3 numeral → python int/float. as_long() raises on a non-integer rational, so try
+        it first (ints stay ints) and fall back to the exact rational as a float."""
+        try:
+            return z.as_long()
+        except Exception:
+            pass
+        try:
+            return round(float(z.as_fraction()), 3)
+        except Exception:
+            try:
+                return round(float(z.as_decimal(8).rstrip("?")), 3)
+            except Exception:
+                return None
+
     def solution_structure(self, limit=300, states=None, edges=None):
         """Solver-computed structure of the WHOLE model — not a single sampled run.
 

@@ -37,23 +37,39 @@ def render(smt2_path, schema_path, out_path):
     m = load(smt2_path, schema_path)
     states, edges = m.reachable(limit=400)
     struct = m.solution_structure(states=states, edges=edges)
-    bounds = struct.get("bounds", {})            # {short: [lo, hi]} over the reachable set
     fps = struct.get("fixed_points", [])
-    capped = struct.get("capped", False)
     verdict = struct.get("verdict", "")
+    n = struct.get("reachable", len(states))
+
+    # PROVEN bounds via z3 Optimize over a k-step unrolling of the transition (#134) — NOT the BFS
+    # sample. `exact` means the k-step and 2k-step bounds agree, so the reachable extent has closed
+    # (the user's "compose with itself until 2-run == k-run" fixpoint). Fall back to the BFS bounds
+    # (exact only when the reachable set was finite & fully explored) if Optimize is unavailable.
+    solved = None
+    try:
+        solved = m.solved_bounds(k=12)
+    except Exception:
+        solved = None
+    if solved:
+        bounds = {nm: [d["lo"], d["hi"]] for nm, d in solved.items()
+                  if d["lo"] is not None and d["hi"] is not None}
+        all_exact = bool(bounds) and all(solved[nm]["exact"] for nm in bounds)
+        kk = next(iter(solved.values()))["k"]
+        boundtag = ("exact — z3-proven over the transition relation (fixpoint reached)" if all_exact
+                    else f"z3-proven over a {kk}-step unrolling (Optimize) — may extend further")
+        proven = True
+    else:
+        bounds = struct.get("bounds", {})
+        capped = struct.get("capped", False)
+        all_exact, proven = (not capped), False
+        boundtag = (f"sampled over {n} reachable states — not exhaustive (true range may differ)"
+                    if capped else f"exact — all {n} reachable states (exhaustively explored)")
 
     numeric = [_SHORT(v["name"]) for v in m.carried if v.get("kind") in ("int", "real")]
-    numeric = [n for n in numeric if n in bounds]
+    numeric = [nm for nm in numeric if nm in bounds]
     if not numeric:
         return _na(out_path, f"{m.fsm} — solution space",
                    "solution space needs a numeric variable\n(this program's state is categorical —\nsee state_graph for its boundary)")
-
-    n = struct.get("reachable", len(states))
-    # Honesty (Ana #112): the bounds are min/max over the reachable BFS. When the set is finite
-    # and fully explored (not capped), that IS exact — every reachable state was seen. When capped,
-    # it's a SAMPLE, not a proven bound — don't claim "solved", and don't assert a direction.
-    boundtag = (f"sampled over {n} reachable states — not exhaustive (true range may differ)"
-                if capped else f"exact — all {n} reachable states (exhaustively explored)")
     have2d = len(numeric) >= 2
     fig, axes = plt.subplots(1, 2 if have2d else 1,
                              figsize=(14 if have2d else 8.5, 6.5))
@@ -100,7 +116,10 @@ def render(smt2_path, schema_path, out_path):
                       fontsize=11)
         axR.grid(alpha=0.2)
 
-    framing = "boundary exhaustively solved" if not capped else "boundary sampled (capped — not exhaustive)"
+    framing = ("boundary z3-proven exact (fixpoint)" if (proven and all_exact)
+               else "boundary z3-proven over horizon" if proven
+               else "boundary exhaustively solved" if all_exact
+               else "boundary sampled (capped)")
     fig.suptitle(f"{m.fsm} — solution space · {verdict} · {framing}", fontsize=13)
     fig.tight_layout(rect=[0, 0, 1, 0.96])
     fig.savefig(out_path, dpi=120); plt.close(fig)
