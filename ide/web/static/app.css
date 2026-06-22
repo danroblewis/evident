@@ -20,6 +20,24 @@ html,body { margin:0; height:100%; background:var(--bg); color:var(--ink);
 #solve-btn { background:#16313f; color:var(--accent); border:1px solid #2d5a72;
   border-radius:6px; padding:2px 10px; font:12px ui-monospace,Menlo,monospace; cursor:pointer; }
 #solve-btn:hover { background:#1d4255; border-color:var(--accent); }
+#symbols-btn { background:#1b2129; color:var(--ink); border:1px solid var(--line);
+  border-radius:6px; padding:2px 10px; font:12px ui-monospace,Menlo,monospace; cursor:pointer; }
+#symbols-btn:hover { border-color:var(--accent); }
+#symbols-btn.on { border-color:var(--accent); color:var(--accent); background:#16313f; }
+
+/* symbol palette / cheat-sheet popover (Task #62) */
+#palette { position:fixed; z-index:60; top:38px; left:14px; width:340px; max-height:70vh;
+  overflow:auto; background:#0b0f14; border:1px solid var(--accent); border-radius:8px;
+  box-shadow:0 8px 28px #000b; font:12px/1.4 ui-monospace,Menlo,monospace; }
+#palette[hidden] { display:none; }
+.palette-head { padding:7px 12px; border-bottom:1px solid var(--line); color:var(--dim);
+  position:sticky; top:0; background:#0b0f14; }
+.palette-row { display:grid; grid-template-columns:28px 1fr auto; align-items:center; gap:10px;
+  padding:5px 12px; cursor:pointer; border-bottom:1px solid #141a21; }
+.palette-row:hover { background:#16313f; }
+.palette-glyph { color:var(--accent); font-size:16px; text-align:center; }
+.palette-name { color:var(--ink); }
+.palette-mn { font-size:11px; }
 
 /* the solve panel — run a claim, read a witness (or UNSAT) */
 #solve { border-top:1px solid var(--line); background:#11212e; max-height:46%;
@@ -36,6 +54,20 @@ html,body { margin:0; height:100%; background:var(--bg); color:var(--ink);
 #solve-body td.k { color:var(--accent); } #solve-body td.v { color:var(--ink); white-space:pre-wrap; }
 #solve-body .sol { padding:2px 0; border-bottom:1px solid #1b2129; }
 #solve-body .sol .dim { margin-right:8px; }
+
+/* domain-picture rendering of Seq witnesses (Task #68) */
+.viz-wrap { display:flex; flex-wrap:wrap; gap:18px; margin:4px 0 10px; }
+.viz-label { color:var(--dim); font-size:11px; margin-bottom:5px; }
+.qboard { display:grid; width:max-content; border:1px solid var(--line); }
+.qsq { width:26px; height:26px; display:flex; align-items:center; justify-content:center;
+  background:#1b2129; color:var(--good); font-size:18px; }
+.qsq.dark { background:#10151b; }
+.qsq.q { color:var(--accent); }
+.strip { display:flex; gap:4px; }
+.cell { min-width:30px; border:1px solid var(--line); border-radius:4px; text-align:center;
+  background:#10151b; overflow:hidden; }
+.cell-idx { color:var(--dim); font-size:10px; padding:1px 4px; border-bottom:1px solid var(--line); background:#161b22; }
+.cell-val { color:var(--accent); padding:4px 6px; }
 #solve-controls { display:flex; gap:6px; padding:7px 14px; border-top:1px solid var(--line); }
 #solve-given { flex:1; background:#0f1419; color:var(--ink); border:1px solid var(--line);
   border-radius:6px; padding:3px 8px; font:12px ui-monospace,Menlo,monospace; }
