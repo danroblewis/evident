@@ -154,6 +154,7 @@ function buildCommands() {
   cmds.push({ label: "Save as… — keep this program in a named slot", run: () => saveAsPrompt() });
   if (Object.keys(slots).length) cmds.push({ label: "Delete saved…", run: () => deletePrompt() });
   cmds.push({ label: "Export .ev — download this buffer as a file", run: () => exportEv() });
+  cmds.push({ label: "Export diagram as SVG — vector, for a paper or slide", run: () => exportSVG() });
   cmds.push({ label: "Copy share link — a URL that loads this program", run: () => copyShareLink() });
   cmds.push({ label: "Solve claim — ⊨ witness or UNSAT", run: () => solve(false) });
   if ($("#smtlib-btn")) cmds.push({ label: "Copy SMT-LIB encoding", run: () => clickIf("#smtlib-btn") });

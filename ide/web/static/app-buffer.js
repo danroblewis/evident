@@ -87,6 +87,25 @@ function exportEv() {
   a.click(); URL.revokeObjectURL(a.href);
   setStatus("exported " + name + ".ev ✓", "ok");
 }
+// Download the current diagram as SVG (vector, publication-quality) — the figure half of Ana #244.
+// Re-renders the active view server-side as SVG (same renderer, .svg out path) and saves it.
+async function exportSVG() {
+  if (typeof activeView === "undefined" || !activeView) { setStatus("no diagram to export yet", "dim"); return; }
+  setStatus("rendering " + activeView + ".svg…", "dim");
+  try {
+    const res = await fetch("/api/figure", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ source: editor.getValue(), view: activeView }),
+    });
+    const d = await res.json();
+    if (!d.ok || !d.svg) { setStatus("svg export failed: " + (d.error || "?"), "err"); return; }
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([d.svg], { type: "image/svg+xml" }));
+    a.download = `evident-${activeView}.svg`;
+    a.click(); URL.revokeObjectURL(a.href);
+    setStatus("exported " + activeView + ".svg ✓", "ok");
+  } catch (e) { setStatus("svg export error: " + e, "err"); }
+}
 async function copyShareLink() {
   const url = location.origin + location.pathname + "#src=" + encodeShare(editor.getValue());
   try {

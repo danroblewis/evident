@@ -39,7 +39,7 @@ from pydantic import BaseModel  # noqa: E402
 
 from analysis import (  # noqa: E402
     _banner, _dropped_locs, _error_loc, _model_diff, _reachable_stats, _recommend)
-from render import RENDERERS, VIEWS, _maybe_claim, _render_png  # noqa: E402
+from render import RENDERERS, VIEWS, _maybe_claim, _render_png, _render_svg  # noqa: E402
 from runtime_io import _export, _run_query  # noqa: E402
 from solve import _all_unsat_cores, _enumerate, _unsat_core  # noqa: E402
 from smtlib_tools import _parse_predicate, _ready_to_run  # noqa: E402
@@ -259,6 +259,27 @@ def explore(req: ExploreReq):
         try:
             m = load_model(prefix + ".smt2", prefix + ".schema.json")
             return {"ok": True, **m.explore(req.state, limit=REACH_LIMIT)}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+
+class FigureReq(BaseModel):
+    source: str
+    view: str              # which view to render as SVG
+
+
+@app.post("/api/figure")
+def figure(req: FigureReq):
+    """Render a view as SVG (vector, publication-quality) for download — the figure half of Ana #244.
+    Same export + renderer path as /api/analyze; matplotlib infers SVG from the .svg out path."""
+    if req.view not in RENDERERS:
+        return {"ok": False, "error": f"unknown view {req.view}"}
+    with _LOCK, tempfile.TemporaryDirectory() as work:
+        ok, prefix, dropped, msg = _export(req.source, work)
+        if not ok:
+            return {"ok": False, "error": msg}
+        try:
+            return {"ok": True, "svg": _render_svg(req.view, prefix)}
         except Exception as e:
             return {"ok": False, "error": str(e)}
 

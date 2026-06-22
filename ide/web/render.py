@@ -96,6 +96,15 @@ def _render_png(view, prefix):
     return png, points
 
 
+def _render_svg(view, prefix):
+    """Render the view as SVG (vector, publication-quality) and return the SVG text — the figure half
+    of Ana #244. Same renderer code path as the PNG; matplotlib infers the format from the .svg out path."""
+    out = prefix + f".{view}.svg"
+    RENDERERS[view](prefix + ".smt2", prefix + ".schema.json", out)
+    with open(out) as f:
+        return f.read()
+
+
 def _maybe_claim(prefix, dropped, source="", msg=""):
     """If the export produced a CLAIM schema (no FSM), render its SOLVED solution space (exact
     z3-Optimize bounds + per-cell feasible region) and return the analyze response; else None so
