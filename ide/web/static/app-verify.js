@@ -367,19 +367,26 @@ async function runTemporal(out, body) {
 // `var op value ∧ …` — find a REACHABLE state satisfying the conjunction (sat-witness + count +
 // trace), instead of checking it holds everywhere. Reuses _INV_RE/_coerce to parse each term,
 // the same split as the editor, and showTrace/_fmtTrace to render the path init→witness.
-async function runQuery() {
-  const out = $("#query-result");
-  clearTrace();                                          // a new query invalidates the old scrubber
-  const raw = $("#query-prop").value.trim();
-  if (!raw) { out.textContent = ""; return; }
-  // Split the conjunction on ∧ / /\ / the word "and", then parse each term as  var op value.
-  const parts = raw.split(/\s*(?:∧|\/\\|\band\b)\s*/).filter((p) => p.trim());
+
+// Parse a conjunction string into a list of `[var, op, value]` terms (the /api/query payload).
+// Returns { terms } on success or { error: "<bad term>" } on the first unparseable term — the
+// single source of truth for both the one-shot query and an asserted assumption (Ana #240).
+function _parseTerms(raw) {
+  const parts = (raw || "").split(/\s*(?:∧|\/\\|\band\b)\s*/).filter((p) => p.trim());
   const terms = [];
   for (const part of parts) {
     const m = part.match(_INV_RE);
-    if (!m) { out.className = "bad"; out.textContent = `✕ bad term “${part.trim()}” — write  var op value  (e.g. timer = 2)`; return; }
+    if (!m) return { error: part.trim() };
     terms.push([m[1], m[2], _coerce(m[3])]);
   }
+  return { terms };
+}
+// A `[var, op, value]` term rendered back to source text (chip label / readable conjunction).
+function _termText(t) { return `${t[0]} ${t[1]} ${t[2]}`; }
+
+// Run /api/query for `terms` and render the verdict into `out`. `nAssume` ≥ 0 tunes the UNSAT
+// copy to name the assumption stack ("the last one made it unsat"). Shared by one-shot + stack.
+async function _execQuery(out, terms, nAssume) {
   out.className = "dim"; out.textContent = "searching…";
   try {
     const res = await fetch("/api/query", {
@@ -390,15 +397,87 @@ async function runQuery() {
     if (!d.ok) { out.className = "bad"; out.textContent = "✕ " + (d.error || "query failed"); return; }
     if (!d.satisfiable) {
       out.className = "bad";
-      out.textContent = `✗ no reachable state satisfies it — ${d.predicate}`
+      const lead = nAssume
+        ? `✗ no reachable state satisfies all ${nAssume} assumption${nAssume === 1 ? "" : "s"} — the last one made it unsat`
+        : `✗ no reachable state satisfies it`;
+      out.textContent = `${lead} — ${d.predicate}`
         + (d.exhaustive ? ` (searched all ${d.checked} reachable states)` : ` (searched ${d.checked}; capped)`);
       return;
     }
     const w = Object.entries(d.witness || {}).map(([k, v]) => `${k.split(".").pop()}=${v}`).join(" ");
     out.className = "good";
-    out.textContent = `✓ reachable — ${w} (${d.count} of ${d.checked} state${d.checked === 1 ? "" : "s"})`;
+    const under = nAssume ? `⊨ under ${nAssume} assumption${nAssume === 1 ? "" : "s"} — ` : "";
+    out.textContent = `✓ ${under}reachable — ${w} (${d.count} of ${d.checked} state${d.checked === 1 ? "" : "s"})`;
     if (d.trace && d.trace.length >= 2) showTrace(d.trace, `a run reaching: ${d.predicate}`);
   } catch (e) { out.className = "bad"; out.textContent = "✕ " + e; }
+}
+
+// One-shot ⊨? query: parse the whole conjunction in #query-prop and search, leaving the stack
+// untouched (the additive original behaviour — a bare conjunction still works, Ana #240).
+async function runQuery() {
+  const out = $("#query-result");
+  clearTrace();                                          // a new query invalidates the old scrubber
+  const raw = $("#query-prop").value.trim();
+  if (!raw) { out.textContent = ""; return; }
+  const p = _parseTerms(raw);
+  if (p.error) { out.className = "bad"; out.textContent = `✕ bad term “${p.error}” — write  var op value  (e.g. timer = 2)`; return; }
+  await _execQuery(out, p.terms, 0);
+}
+
+// --- assumption stack (Z3 push/pop interrogation, Ana #240) -----------------------------
+// An accumulated list of asserted terms. Assert pushes onto it; ✕ on a chip retracts; every
+// push/pop re-queries under the FULL stack via the same /api/query primitive. Pure list ops
+// (`_pushAssumption` / `_popAssumption`) return NEW arrays so they're unit-testable DOM-free.
+const _assumptions = [];
+function _pushAssumption(list, term) { return list.concat([term]); }
+function _popAssumption(list, idx) { return list.filter((_, i) => i !== idx); }
+
+// Re-render the chip row from `_assumptions`; ✕ retracts that chip. Hidden when empty.
+function renderAssumptions() {
+  const row = $("#query-stack"), chips = $("#query-chips");
+  row.hidden = _assumptions.length === 0;
+  chips.innerHTML = "";
+  _assumptions.forEach((t, i) => {
+    const chip = document.createElement("span"); chip.className = "assume-chip";
+    const lab = document.createElement("span"); lab.textContent = _termText(t); chip.appendChild(lab);
+    const x = document.createElement("button"); x.className = "assume-x"; x.textContent = "✕";
+    x.title = "retract this assumption"; x.onclick = () => retractAssumption(i);
+    chip.appendChild(x); chips.appendChild(chip);
+  });
+}
+// Search under the current stack (or clear the result + trace when the stack empties).
+async function queryUnderStack() {
+  const out = $("#query-result");
+  clearTrace();
+  if (!_assumptions.length) { out.className = "dim"; out.textContent = ""; return; }
+  await _execQuery(out, _assumptions.slice(), _assumptions.length);
+}
+// Assert (push): parse #query-prop's conjunction, push each term, clear the input, re-query.
+async function assertAssumption() {
+  const inp = $("#query-prop"), out = $("#query-result");
+  const raw = inp.value.trim();
+  if (!raw) return;
+  const p = _parseTerms(raw);
+  if (p.error) { out.className = "bad"; out.textContent = `✕ bad term “${p.error}” — write  var op value  (e.g. timer = 2)`; return; }
+  let next = _assumptions;
+  for (const t of p.terms) next = _pushAssumption(next, t);
+  _assumptions.length = 0; _assumptions.push(...next);
+  inp.value = "";                                        // cleared, ready for the next assertion
+  renderAssumptions();
+  await queryUnderStack();
+}
+// Retract (pop): drop assumption `idx` and re-query under the remaining stack.
+async function retractAssumption(idx) {
+  const next = _popAssumption(_assumptions, idx);
+  _assumptions.length = 0; _assumptions.push(...next);
+  renderAssumptions();
+  await queryUnderStack();
+}
+// Clear all: reset the stack and the result.
+async function clearAssumptions() {
+  _assumptions.length = 0;
+  renderAssumptions();
+  await queryUnderStack();
 }
 
 // --- wiring: attach the verify console + field-shortcut listeners ------------------
@@ -412,8 +491,12 @@ function initVerify() {
   $("#inv-prop").addEventListener("keydown", (e) => { if (e.key === "Enter") checkInvariant(); });
   $("#solve-close").onclick = () => { $("#solve").hidden = true; };
   $("#solve-given").addEventListener("keydown", (e) => { if (e.key === "Enter") solve(false); });
-  // ad-hoc query row (⊨?) — same field-shortcut expansion, Enter-to-run (Ana #195).
+  // ad-hoc query row (⊨?) — same field-shortcut expansion (Ana #195). "find" runs a one-shot
+  // query (bare conjunction, original behaviour); "assert ⊢+" / Enter pushes onto the assumption
+  // stack and re-queries under the FULL stack; "clear" resets it (the push/pop loop, Ana #240).
   $("#query-btn").onclick = runQuery;
+  $("#query-assert").onclick = assertAssumption;
+  $("#query-clear").onclick = clearAssumptions;
   $("#query-prop").addEventListener("input", () => expandFieldSymbols($("#query-prop")));
-  $("#query-prop").addEventListener("keydown", (e) => { if (e.key === "Enter") runQuery(); });
+  $("#query-prop").addEventListener("keydown", (e) => { if (e.key === "Enter") assertAssumption(); });
 }
