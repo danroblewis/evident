@@ -405,7 +405,8 @@ def analyze(req: Source):
                 "states": n_states,
                 "edges": n_edges,
                 "capped": capped,
-                "vars": [v["name"].split(".")[-1] for v in m.interface_vars],
+                "vars": [v["name"].split(".")[-1] for v in m.interface_vars]
+                        + [v["name"].split(".")[-1] for v in getattr(m, "derived", [])],
                 "view": view,
                 "views": VIEWS,
                 "png": base64.b64encode(png).decode() if png else None,

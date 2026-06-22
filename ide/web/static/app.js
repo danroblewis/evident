@@ -1108,7 +1108,9 @@ function viewPane(data, withOverlay) {
   if (!data.png) return `<div class="ph">no view for this program</div>`;
   const pane = document.createElement("div");
   pane.className = "view-wrap";
-  pane.innerHTML = `<img alt="${data.view}" src="data:image/png;base64,${data.png}">`;
+  // Descriptive alt-text for screen readers — the per-view caption, not the bare slug (Ana #216/#49).
+  const alt = `${(data.view || "diagram").replace(/_/g, " ")} — ${VIEW_CAPTIONS[data.view] || ""}`.replace(/"/g, "&quot;");
+  pane.innerHTML = `<img alt="${alt}" src="data:image/png;base64,${data.png}">`;
   if (withOverlay) overlayPoints(pane, data.points || []);
   return pane;
 }
@@ -1182,7 +1184,7 @@ function viewPastRun(snap) {
   view.classList.remove("stale", "recomputing");
   const age = relativeAge(Date.now() - snap.ts);
   view.innerHTML = `<div class="past-wrap"><div class="past-note">⟲ past run (${age}) — edit to return to live</div>`
-    + `<div class="view-wrap"><img alt="${snap.view}" src="data:image/png;base64,${snap.png}"></div></div>`;
+    + `<div class="view-wrap"><img alt="${(snap.banner || snap.view || "").replace(/"/g, "&quot;")}" src="data:image/png;base64,${snap.png}"></div></div>`;
   $("#view-caption").textContent = snap.banner || "";
   renderHistory();   // re-outline the active thumbnail
 }
