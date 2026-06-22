@@ -1,5 +1,5 @@
 {
-  "file-too-long": 15,
+  "file-too-long": 14,
   "function-too-long": 31,
   "too-many-free-functions": 12
 }
