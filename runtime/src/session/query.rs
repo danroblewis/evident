@@ -451,11 +451,77 @@ impl EvidentRuntime {
             rows.push(format!(
                 "    {{\"name\": \"{n}\", \"prev\": \"{prev}\", \"kind\": \"{kind}\", \"role\": \"{role}\", \"hist\": {hist}}}"));
         }
+        // DERIVED vars: scalars the transition CONSTRAINS but does NOT carry (no `_x`
+        // prev-twin) and that are a pure function of the CURRENT carried state — e.g.
+        // `done ∈ Bool = (count ≥ 5)`. They're determined in every solved state but
+        // never appear in `state` (not carried), so the viz can't plot them. Surface
+        // them in a SEPARATE `"derived"` array (role "derived") so the renderer can
+        // read+plot their value WITHOUT them entering the reachable-graph IDENTITY —
+        // a derived var is a function of the carried state, so it must never widen the
+        // dedup key.
+        //
+        // Two filters keep this to *genuine current-state observables*:
+        //   1. VARIES — it can take ≥2 values over the transition. A global config
+        //      constant (`red.red = 255`) is determined but invariant; skip it (no
+        //      flat track per config leaf).
+        //   2. DETERMINED BY THE CURRENT CARRIED STATE — fixing every CURRENT carried
+        //      leaf (`count`) + is_first_tick fixes this var's value. `done = (count≥5)`
+        //      is an observation OF the post-state, so it passes. A prev-lag alias
+        //      (`pm = _state.mode`, `pb = _state.balance`) is determined by the PREVIOUS
+        //      state, not the current one, so fixing current carried leaves it free → it
+        //      fails. Likewise prev-only arithmetic intermediates (`term = f(_state.x)`).
+        //      This is exactly "a pure function of the carried (current) state".
+        let current_carried: Vec<(String, z3::ast::Dynamic<'static>)> = cached.env.iter()
+            .filter(|(n, _)| !n.starts_with('_') && cached.env.contains_key(&format!("_{n}")))
+            .filter_map(|(n, v)| carried_ast(v).map(|a| (n.clone(), a)))
+            .collect();
+
+        // The varies/determinism probes solve the transition with extra pins. On a
+        // nonlinear/division-heavy transition (vanderpol) that can be hard, so cap each
+        // probe with a per-check timeout — z3 returns Unknown, which both helpers treat
+        // CONSERVATIVELY (exclude the var). A derived track we can't prove is just
+        // omitted; we never hang the export.
+        let mut probe_params = Params::new(self.z3_ctx);
+        probe_params.set_u32("timeout", 1500);
+        cached.solver.set_params(&probe_params);
+
+        let mut names2: Vec<&String> = cached.env.keys().collect();
+        names2.sort();
+        let mut derived_rows: Vec<String> = Vec::new();
+        for n in names2 {
+            if n.starts_with('_') { continue; }                 // prev-twins / __x
+            if n == "is_first_tick" || n == "is_second_tick" { continue; }  // selectors
+            if n.ends_with("__len") || n.ends_with("__arr") { continue; }   // seq plumbing
+            if cached.env.contains_key(&format!("_{n}")) { continue; }      // carried (already in state)
+            let (kind, ast): (&str, z3::ast::Dynamic<'static>) = match cached.env.get(n) {
+                Some(crate::encode::Var::IntVar(i))  => ("int",  z3::ast::Dynamic::from_ast(i)),
+                Some(crate::encode::Var::RealVar(r)) => ("real", z3::ast::Dynamic::from_ast(r)),
+                Some(crate::encode::Var::BoolVar(b)) => ("bool", z3::ast::Dynamic::from_ast(b)),
+                Some(crate::encode::Var::EnumVar { ast, .. }) => ("enum", z3::ast::Dynamic::from_ast(ast)),
+                _ => continue,   // string/seq/set/array — not a plottable derived scalar
+            };
+            if !varies_in_transition(&cached.solver, &ast) { continue; }
+            if !determined_by_current_state(&cached.solver, &ast, &current_carried) { continue; }
+            let extra = if kind == "enum" {
+                if let Some(crate::encode::Var::EnumVar { enum_name, .. }) = cached.env.get(n) {
+                    let variants = self.enums.by_name.borrow().get(enum_name)
+                        .map(|(_, vs)| vs.iter()
+                            .map(|v| format!("\"{}\"", v.name))
+                            .collect::<Vec<_>>().join(", "))
+                        .unwrap_or_default();
+                    format!(", \"variants\": [{variants}]")
+                } else { String::new() }
+            } else { String::new() };
+            derived_rows.push(format!(
+                "    {{\"name\": \"{n}\", \"kind\": \"{kind}\", \"role\": \"derived\"{extra}}}"));
+        }
+
         let second_tick_field = if any_two_tick {
             ",\n  \"is_second_tick\": \"is_second_tick\""
         } else { "" };
+        let derived_field = format!(",\n  \"derived\": [\n{}\n  ]", derived_rows.join(",\n"));
         let json = format!(
-            "{{\n  \"fsm\": \"{name}\",\n  \"is_first_tick\": \"is_first_tick\"{second_tick_field},\n  \"state\": [\n{}\n  ]\n}}\n",
+            "{{\n  \"fsm\": \"{name}\",\n  \"is_first_tick\": \"is_first_tick\"{second_tick_field},\n  \"state\": [\n{}\n  ]{derived_field}\n}}\n",
             rows.join(",\n"));
         Ok((smt2, json))
     }
@@ -543,6 +609,65 @@ impl EvidentRuntime {
         Ok((smt2, json))
     }
 
+}
+
+/// A var "varies" over the transition iff the constraint admits TWO models that
+/// disagree on it. A derived var that's a pure function of carried state still
+/// varies (different carried states give different values); a global config
+/// constant (`red.red = 255`) is pinned to one value and does NOT vary — we skip
+/// those so the time_series doesn't gain a flat track per config leaf. Solve once
+/// for a witness value, then ask whether `ast != witness` is also satisfiable.
+fn varies_in_transition(solver: &Solver, ast: &z3::ast::Dynamic<'static>) -> bool {
+    if solver.check() != SatResult::Sat { return false; }
+    let Some(model) = solver.get_model() else { return false };
+    let Some(v0) = model.eval(ast, true) else { return false };
+    solver.push();
+    solver.assert(&ast._eq(&v0).not());
+    let varies = solver.check() == SatResult::Sat;
+    solver.pop(1);
+    varies
+}
+
+/// The z3 AST of a scalar (int/real/bool/enum) carried var, for pinning. None for
+/// composite vars (seq/set/array) — those don't participate in the determinism pin.
+fn carried_ast(v: &crate::encode::Var<'static>) -> Option<z3::ast::Dynamic<'static>> {
+    match v {
+        crate::encode::Var::IntVar(i)  => Some(z3::ast::Dynamic::from_ast(i)),
+        crate::encode::Var::RealVar(r) => Some(z3::ast::Dynamic::from_ast(r)),
+        crate::encode::Var::BoolVar(b) => Some(z3::ast::Dynamic::from_ast(b)),
+        crate::encode::Var::EnumVar { ast, .. } => Some(z3::ast::Dynamic::from_ast(ast)),
+        _ => None,
+    }
+}
+
+/// Is `ast` a pure function of the CURRENT carried state? Solve once for a model, pin
+/// every current carried var to its model value, then ask whether `ast` can still take
+/// a DIFFERENT value. If not, `ast` is determined by the current carried state — a
+/// genuine derived observable (`done = count≥5`). If it can still vary with the current
+/// state fixed, it depends on something else (a prev-tick read like `pm = _state.mode`,
+/// or an under-determined intermediate) → not a current-state observable; exclude it.
+fn determined_by_current_state(
+    solver: &Solver,
+    ast: &z3::ast::Dynamic<'static>,
+    current_carried: &[(String, z3::ast::Dynamic<'static>)],
+) -> bool {
+    if solver.check() != SatResult::Sat { return false; }
+    let Some(model) = solver.get_model() else { return false };
+    solver.push();
+    for (_, cast) in current_carried {
+        if let Some(val) = model.eval(cast, true) {
+            solver.assert(&cast._eq(&val));
+        }
+    }
+    let determined = match model.eval(ast, true) {
+        Some(v0) => {
+            solver.assert(&ast._eq(&v0).not());
+            solver.check() == SatResult::Unsat
+        }
+        None => false,
+    };
+    solver.pop(1);
+    determined
 }
 
 /// A Seq's length `#name` is pinned to N iff its min and max over the constraint

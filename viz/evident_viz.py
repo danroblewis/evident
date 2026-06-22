@@ -67,6 +67,13 @@ class Model:
             # see nothing. Only fires when the interface would otherwise be empty.
             self.interface_vars = list(self.carried)
         self.internal_vars = [v for v in self.carried if v.get("role") == "internal"]
+        # DERIVED vars: scalars the transition determines as a pure function of the
+        # carried state (e.g. `done ∈ Bool = (count ≥ 5)`) but does NOT carry. Read for
+        # DISPLAY only and kept OUT of `self.carried` so they never widen the
+        # reachable-graph identity (_key / dedup / pin all key on carried). The
+        # time_series renderer plots their bool/enum/int values as extra tracks. See
+        # export_transition's "derived" array (query.rs).
+        self.derived = schema.get("derived", [])           # [{name, kind, role, variants?}]
         self._ranked = None          # cached ranked+deduped interface vars (lazy)
         self.variable_groups = []    # [{rep, members, entropy}] redundancy groups
         self._change_rates_cache = None
@@ -120,11 +127,13 @@ class Model:
         self.second_tick = (self.consts.get(self._second_tick_name)
                             if self._second_tick_name else None)
 
-        # For each enum state var, map variant-name -> z3 value (nullary ctor).
-        self.enum_variants = {}            # state-var name -> [variant names]
-        self._enum_lit = {}                # state-var name -> {variant: z3 value}
-        for v in self.carried:
-            if v["kind"] == "enum":
+        # For each enum state var (carried OR derived), map variant-name -> z3 value
+        # (nullary ctor). Derived enums are included so a derived enum track can be
+        # rendered/coerced the same way a carried one is.
+        self.enum_variants = {}            # var name -> [variant names]
+        self._enum_lit = {}                # var name -> {variant: z3 value}
+        for v in self.carried + self.derived:
+            if v["kind"] == "enum" and v["name"] in self.consts:
                 sort = self.consts[v["name"]].sort()
                 names, lits = [], {}
                 for i in range(sort.num_constructors()):
@@ -171,7 +180,24 @@ class Model:
         return s
 
     def _read_state(self, model):
-        return {v["name"]: self._read(model, v) for v in self.carried}
+        # Carried leaves define the state; derived vars are read too (for DISPLAY) but
+        # never enter `_key` — a derived var is a function of carried state, so it must
+        # not change the reachable-graph identity. `_read_derived` swallows any var the
+        # solved model doesn't bind (e.g. a derived var dropped by z3's parser).
+        st = {v["name"]: self._read(model, v) for v in self.carried}
+        for v in self.derived:
+            val = self._read_derived(model, v)
+            if val is not None:
+                st[v["name"]] = val
+        return st
+
+    def _read_derived(self, model, var):
+        """Read a derived var's value from the solved model for display. Returns None
+        if the var isn't in the parsed smt2 (so it never fabricates a value)."""
+        c = self.consts.get(var["name"])
+        if c is None:
+            return None
+        return self._read(model, var)
 
     def _pin_prev(self, solver, state):
         # Pin only the leaves the caller supplied; a renderer may pass a PARTIAL
@@ -566,9 +592,15 @@ class Model:
         return str(x)
 
     # ---- helpers ------------------------------------------------------------
-    @staticmethod
-    def _key(state):
-        return tuple(sorted(state.items()))
+    def _key(self, state):
+        # Identity keys on CARRIED leaves only. Derived vars live in the state dict for
+        # display but are a pure function of carried state, so including them in the key
+        # would be redundant at best and could split nodes if a derived value were ever
+        # read inconsistently — exclude them so the reachable graph is unchanged whether
+        # or not the model has derived vars.
+        carried_names = {v["name"] for v in self.carried}
+        return tuple(sorted((k, val) for k, val in state.items()
+                            if k in carried_names))
 
     @staticmethod
     def _basic_sort(kind):

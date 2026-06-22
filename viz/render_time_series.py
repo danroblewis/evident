@@ -137,7 +137,13 @@ def render(smt2, schema, out_path):
     # numeric_vars / categorical_vars are its type-split projections (same order).
     quant = m.numeric_vars
     cat = m.categorical_vars
-    ordered = quant + cat                      # numerics on top, then categoricals
+    # DERIVED vars (e.g. `done ∈ Bool = (count ≥ 5)`) are a pure function of the
+    # carried state — not carried, so they're absent from state_vars/numeric/categorical
+    # — but every trajectory state already carries their value (Model._read_state reads
+    # them for display). Plot them too: bool/enum derived as step tracks, int/real as
+    # lines. They go LAST (after the carried interface vars) so the carried dynamics lead.
+    derived = [v for v in m.derived if v["name"] in traj[0]]
+    ordered = quant + cat + derived            # numerics, categoricals, then derived
     if not ordered:
         ordered = list(m.state_vars)
 
@@ -182,8 +188,11 @@ def render(smt2, schema, out_path):
     for rank, (ax, var) in enumerate(zip(axes, ordered)):
         name = var["name"]
         kind = var["kind"]
-        # importance badge: #1 is the most-varying / least-redundant var
-        ax.set_title(f"#{rank + 1}  {m.var_class(var)}", loc="left",
+        # importance badge: #1 is the most-varying / least-redundant var. Derived vars
+        # (role "derived") are tagged so the reader knows the track is a function of the
+        # carried state, not itself carried.
+        badge = "derived" if var.get("role") == "derived" else m.var_class(var)
+        ax.set_title(f"#{rank + 1}  {badge}", loc="left",
                      fontsize=8, color="#888", pad=2)
         if kind in ("int", "real"):
             ys = [s[name] for s in traj]
@@ -219,7 +228,7 @@ def render(smt2, schema, out_path):
     axes[-1].set_xlabel("tick")
     fig.suptitle(
         f"{m.fsm} — time_series  (seed {m.label(seed)}, {len(traj)} ticks; "
-        f"{nvars} varying of {len(quant) + len(cat)} vars, importance-ordered)",
+        f"{nvars} varying of {len(quant) + len(cat) + len(derived)} vars, importance-ordered)",
         fontsize=13, fontweight="bold")
     if constants:
         held = ",  ".join(f"{v['name']}={hv}" for v, hv in constants)
