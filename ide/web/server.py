@@ -41,7 +41,7 @@ from analysis import (  # noqa: E402
     _banner, _dropped_locs, _error_loc, _reachable_stats, _recommend)
 from render import RENDERERS, VIEWS, _maybe_claim, _render_png  # noqa: E402
 from runtime_io import _export, _run_query  # noqa: E402
-from solve import _enumerate, _unsat_core  # noqa: E402
+from solve import _all_unsat_cores, _enumerate, _unsat_core  # noqa: E402
 from smtlib_tools import _parse_predicate, _ready_to_run  # noqa: E402
 
 app = FastAPI(title="Evident IDE")
@@ -152,7 +152,11 @@ def solve(req: SolveReq):
                     "count": len(sols), "complete": complete, "limit": limit}
         r = _run_query(req.source, req.claim, req.given, work)
         if r.get("ok") and r.get("satisfied") is False and not req.given:
-            r["core"] = _unsat_core(req.source, r.get("claim") or req.claim, work)
+            claim = r.get("claim") or req.claim
+            r["core"] = _unsat_core(req.source, claim, work)             # one (back-compat)
+            cores, complete = _all_unsat_cores(req.source, claim, work)  # every independent core
+            r["cores"] = cores
+            r["cores_complete"] = complete
         return r
 
 

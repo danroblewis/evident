@@ -114,6 +114,7 @@ html,body { margin:0; height:100%; background:var(--bg); color:var(--ink);
 #solve-body td.k { color:var(--accent); } #solve-body td.v { color:var(--ink); white-space:pre-wrap; }
 #solve-body .sol { padding:2px 0; border-bottom:1px solid #1b2129; }
 #solve-body .sol .dim { margin-right:8px; }
+#solve-body .core-group { margin-top:8px; padding-left:8px; border-left:2px solid var(--warn); }   /* each independent unsat core, visually separated (Ana #205) */
 
 /* domain-picture rendering of Seq witnesses (Task #68) */
 .viz-wrap { display:flex; flex-wrap:wrap; gap:18px; margin:4px 0 10px; }

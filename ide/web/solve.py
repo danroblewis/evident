@@ -2,9 +2,11 @@
 
 `_enumerate` walks distinct witnesses by iterated source-level blocking (solve,
 append a ¬(witness) constraint, re-solve until UNSAT or the limit). `_unsat_core`
-does deletion-based minimization over the source's constraint lines. Both drive
-`runtime_io._run_query`; `_block_term`/`_block_clause` assemble the blocking
-constraints from a witness's bindings.
+does deletion-based minimization over the source's constraint lines for ONE minimal
+core; `_all_unsat_cores` block-and-recurses over that machinery to enumerate EVERY
+minimal core (MUS), so an over-constrained model shows all its independent
+contradictions at once. Both drive `runtime_io._run_query`; `_block_term`/
+`_block_clause` assemble the blocking constraints from a witness's bindings.
 """
 import re
 
@@ -82,18 +84,10 @@ def _enumerate(source, claim, given, limit, work):
     return resolved_claim, sols, False, None                            # hit limit → ≥limit
 
 
-def _unsat_core(source, claim, work):
-    """A MINIMAL unsat core by deletion-based minimization over the source's constraint lines.
-
-    The naive "a line whose individual removal flips to SAT is in the core" is UNSOUND when
-    constraints are redundant: for {x>3, x>5, y>5, y<100, x+y<10} it drops x>5 (removing it still
-    leaves x>3 ⇒ SAT) yet reports a SATISFIABLE set as 'the core'. Instead: start with every
-    constraint line, and drop a line ONLY when the program stays UNSAT without it. The residual is
-    a genuine minimal core — every member is necessary AND the set itself is unsatisfiable.
-
-    Header/decl/comment lines are never candidates (a pure decl's removal un-declares a var and
-    cascades to drop its constraints). Line granularity; multi-line ∀ blocks may be missed."""
-    lines = source.split("\n")
+def _candidate_lines(lines):
+    """Indices of constraint lines eligible for the core: not header/comment/blank, and not a
+    PURE declaration (removing `x ∈ Int` un-declares the var and cascades to drop its constraints,
+    which would flip the claim SAT and falsely mark the decl a core member)."""
     cand = []
     for i, ln in enumerate(lines):
         s = ln.strip()
@@ -101,13 +95,83 @@ def _unsat_core(source, claim, work):
                 or _PURE_DECL.match(s)):
             continue
         cand.append(i)
-    cand_set = set(cand)
-    keep = set(cand)
-    for i in cand:
+    return cand
+
+
+def _is_unsat(lines, cand_set, keep, claim, work):
+    """True iff the program with exactly `keep` of the candidate lines retained is UNSAT."""
+    trial = "\n".join(ln for j, ln in enumerate(lines)
+                      if j not in cand_set or j in keep)
+    r = _run_query(trial, claim, None, work)
+    return r.get("ok") and r.get("satisfied") is False
+
+
+def _minimize(lines, cand_set, candidates, claim, work):
+    """Deletion-based minimization restricted to `candidates` (a subset of the eligible lines).
+
+    Returns a frozenset of line indices forming a genuine MINIMAL core (every member necessary,
+    the set itself UNSAT) when `candidates` is unsatisfiable, else None. Starts from the whole
+    candidate set and drops a line only when the program stays UNSAT without it — sound under
+    redundant constraints, where "individual removal flips to SAT" would not be."""
+    if not _is_unsat(lines, cand_set, set(candidates), claim, work):
+        return None                                       # this candidate set is satisfiable
+    keep = set(candidates)
+    for i in list(candidates):
+        if i not in keep:
+            continue
         trial_keep = keep - {i}
-        trial = "\n".join(ln for j, ln in enumerate(lines)
-                          if j not in cand_set or j in trial_keep)
-        r = _run_query(trial, claim, None, work)
-        if r.get("ok") and r.get("satisfied") is False:   # still UNSAT without line i → redundant
-            keep = trial_keep
-    return [{"line": i + 1, "text": lines[i].strip()} for i in sorted(keep)]
+        if _is_unsat(lines, cand_set, trial_keep, claim, work):
+            keep = trial_keep                             # still UNSAT without i → redundant
+    return frozenset(keep)
+
+
+def _fmt_core(lines, core):
+    return [{"line": i + 1, "text": lines[i].strip()} for i in sorted(core)]
+
+
+def _ordered(cores):
+    """Stable ordering of cores: by first line, then size — so the panel reads top-to-bottom."""
+    return sorted(cores, key=lambda c: (min(c) if c else -1, len(c), sorted(c)))
+
+
+def _unsat_core(source, claim, work):
+    """A single MINIMAL unsat core by deletion-based minimization over the source's constraint
+    lines. Header/decl/comment lines are never candidates. Line granularity; multi-line ∀ blocks
+    may be missed."""
+    lines = source.split("\n")
+    cand = _candidate_lines(lines)
+    core = _minimize(lines, set(cand), cand, claim, work)
+    return _fmt_core(lines, core if core is not None else cand)
+
+
+def _all_unsat_cores(source, claim, work, cap=8):
+    """Enumerate ALL minimal unsat cores (MUSes), not just the one the solver returns first.
+
+    An over-constrained model has independent contradictions; a user must fix ONE constraint from
+    EACH to make it solvable. `x ∈ Int; x>10; x<5; x=7` has THREE: {x>10,x<5}, {x>10,x=7},
+    {x<5,x=7} — show one and they fix it, only to have the next surface on re-solve.
+
+    Block-and-recurse, bounded for the IDE's small claims (≤~12 constraints): find one MUS over the
+    full candidate set; record it; then for each constraint in it, search for another MUS in the
+    candidates with that line EXCLUDED (so any MUS independent of that line surfaces). Recurse on
+    each new MUS the same way. Dedup by frozenset identity; cap the count. Each returned core is
+    genuinely minimal (`_minimize` proves it). Returns (cores, complete): cores is a list of
+    line-groups, complete is False when the cap was hit (more may exist)."""
+    lines = source.split("\n")
+    cand = _candidate_lines(lines)
+    cand_set = set(cand)
+    root = _minimize(lines, cand_set, cand, claim, work)
+    if root is None:
+        return [], True                                   # satisfiable → no cores
+    found, stack = {root}, [(root, frozenset(cand))]
+    while stack:
+        if len(found) >= cap:
+            return [_fmt_core(lines, c) for c in _ordered(found)], False
+        core, pool = stack.pop()
+        for i in core:                                    # exclude one member, hunt the rest
+            sub = pool - {i}
+            mus = _minimize(lines, cand_set, sorted(sub), claim, work)
+            if mus is not None and mus not in found:
+                found.add(mus)
+                stack.append((mus, sub))
+    return [_fmt_core(lines, c) for c in _ordered(found)], True

@@ -23,6 +23,34 @@ function parsePins(s) {
 
 // escapeHtml lives in app-data.js (first-loaded), shared by every concern file.
 
+// One conflicting core as a line-number/text table.
+function coreTable(core) {
+  return `<table>${core.map((c) =>
+    `<tr><td class="k">line ${c.line}</td><td class="v">${escapeHtml(c.text)}</td></tr>`).join("")}</table>`;
+}
+
+// The UNSAT body: every minimal core. `d.cores` (a list of cores) is preferred; we fall back to
+// the single `d.core` for older responses. One core → "remove any one"; N independent cores →
+// "fix one constraint from EACH", each core its own visually-separated group.
+function renderCores(d, pinned) {
+  const cores = (d.cores && d.cores.length) ? d.cores
+              : (d.core && d.core.length ? [d.core] : []);
+  if (!cores.length) {
+    return `<span class="dim">no assignment satisfies the constraints${
+      pinned.length ? " under those pins — try different ones." : "."}</span>`;
+  }
+  if (cores.length === 1) {
+    return `<div class="dim">conflicting core — removing any one of these makes it solvable:</div>`
+      + coreTable(cores[0]);
+  }
+  const more = d.cores_complete === false ? " (at least)" : "";
+  return `<div class="dim">${cores.length}${more} independent contradictions — `
+    + `fix one constraint from EACH to make it solvable:</div>`
+    + cores.map((core, i) =>
+        `<div class="core-group"><div class="dim">contradiction #${i + 1}</div>${coreTable(core)}</div>`
+      ).join("");
+}
+
 function renderSolve(d, given) {
   const head = $("#solve-head"), body = $("#solve-body");
   body.classList.remove("stale");                          // fresh result — undim (Sam #211)
@@ -42,14 +70,13 @@ function renderSolve(d, given) {
     return;
   }
 
-  // UNSAT — with a delta-debugged core (which constraints conflict)
+  // UNSAT — with the minimal conflicting cores (which constraints conflict). One core renders
+  // as before ("remove any one"); multiple INDEPENDENT cores each render as their own group, so
+  // a user fixing an over-constrained model sees every contradiction at once (Ana #205).
   if (d.satisfied === false) {
     head.innerHTML = `<span class="unsat">⊭ UNSAT</span> — <b>${d.claim || "claim"}</b> has no solution`
       + (pinned.length ? ` <span class="dim">with ${pinned.join(", ")} pinned</span>` : "");
-    body.innerHTML = (d.core && d.core.length)
-      ? `<div class="dim">conflicting core — removing any one of these makes it solvable:</div>`
-        + `<table>${d.core.map((c) => `<tr><td class="k">line ${c.line}</td><td class="v">${escapeHtml(c.text)}</td></tr>`).join("")}</table>`
-      : `<span class="dim">no assignment satisfies the constraints${pinned.length ? " under those pins — try different ones." : "."}</span>`;
+    body.innerHTML = renderCores(d, pinned);
     return;
   }
 
