@@ -353,9 +353,9 @@ function highlightTraceStep(stepState) {
   lastOverlay.wrap.appendChild(ring);
 }
 
-const _trace = { states: [], i: 0, label: "" };
+const _trace = { states: [], i: 0, label: "", kind: "violation", cycleStart: null };
 function clearTrace() {
-  _trace.states = []; _trace.i = 0; _trace.label = "";
+  _trace.states = []; _trace.i = 0; _trace.label = ""; _trace.kind = "violation"; _trace.cycleStart = null;
   const el = $("#inv-trace"); el.hidden = true; el.innerHTML = "";
   clearTraceRing();                          // drop any diagram highlight from the old scrubber (#231/#206)
 }
@@ -373,21 +373,29 @@ function _renderTrace() {
   const next = document.createElement("button"); next.className = "trace-nav"; next.textContent = "▶"; next.disabled = last;
   next.onclick = () => { _trace.i = _traceClamp(_trace.i + 1, n); _renderTrace(); };
   head.appendChild(prev); head.appendChild(step); head.appendChild(next);
-  // The final step is the WITNESS for an existential query (a goal — good) but the VIOLATION for a
-  // refuted safety/liveness check (bad). Don't paint a query's sought state red (Ana #237).
+  // The final step is the WITNESS for an existential query (a goal — good), the VIOLATION for a
+  // refuted safety check (bad), or — for a liveness lasso — every step from cycle_start on is the
+  // dodging CYCLE ("↻ loops here, never reaches Q", amber). Don't paint a query's goal red (#237/#239).
   const goal = _trace.kind === "goal";
-  if (last) { const flag = document.createElement("span"); flag.className = "trace-flag" + (goal ? " good" : ""); flag.textContent = goal ? "● witness here" : "● violation here"; head.appendChild(flag); }
+  const cs = _trace.cycleStart;
+  const inCycle = cs != null && i >= cs;
+  if (inCycle) { const flag = document.createElement("span"); flag.className = "trace-flag cycle"; flag.textContent = "↻ loops here — never reaches Q"; head.appendChild(flag); }
+  else if (last) { const flag = document.createElement("span"); flag.className = "trace-flag" + (goal ? " good" : ""); flag.textContent = goal ? "● witness here" : "● violation here"; head.appendChild(flag); }
   el.appendChild(head);
   const line = document.createElement("div");
-  line.className = "trace-state" + (last ? (goal ? " good" : " bad") : "");
+  line.className = "trace-state" + (inCycle ? " cycle" : (last ? (goal ? " good" : " bad") : ""));
   line.textContent = _traceStateLine(_trace.states[i]);
   el.appendChild(line);
   highlightTraceStep(_trace.states[i]);      // ring this step's state on the diagram (#231/#206)
 }
-// Open the stepper on a fresh trace, parked at the violating (final) step.
-function showTrace(trace, label, kind) {
+// Open the stepper on a fresh trace, parked at the final step. `kind` is "goal" for a query witness
+// (else a violation); `cycleStart`, when given, marks where a liveness lasso's dodging cycle begins
+// (steps ≥ it are the loop).
+function showTrace(trace, label, kind, cycleStart) {
   if (!trace || trace.length < 2) { clearTrace(); return; }
-  _trace.states = trace; _trace.i = trace.length - 1; _trace.label = label || ""; _trace.kind = kind || "violation";
+  _trace.states = trace; _trace.i = trace.length - 1; _trace.label = label || "";
+  _trace.kind = kind || "violation";
+  _trace.cycleStart = (cycleStart != null && cycleStart >= 0) ? cycleStart : null;
   _renderTrace();
 }
 // Liveness check (◇ / ⤳) against /api/temporal, with the dodging-run trace on failure.
@@ -406,11 +414,19 @@ async function runTemporal(out, body) {
       out.textContent = (d.exhaustive ? "✓ proven" : "✓ holds (bounded)")
         + ` — ${d.predicate} on all ${d.checked} reachable states`;
     } else {
+      // Lasso (Ana #239): the run is a STEM into a CYCLE that dodges Q forever, classified by
+      // fairness. forced ⇒ the cycle literally can't escape to Q (a counterexample even under
+      // weak fairness); !forced ⇒ some cycle state has a fair successor that reaches Q, so the
+      // dodge survives only WITHOUT fairness.
       const tr = _fmtTrace(d.trace);
+      const verdict = d.cycle && d.cycle.length
+        ? (d.forced
+            ? "a run dodges it forever — forced cycle, no escape to Q"
+            : "a run can dodge it — but under fairness the cycle escapes to Q; only a counterexample without fairness")
+        : "a run gets stuck in a ¬Q sink — never reaches Q";
       out.className = "bad";
-      out.textContent = `✗ violated — ${d.predicate}; a run dodges it forever`
-        + (tr ? `:  ${tr}` : "");
-      if (d.trace && d.trace.length >= 2) showTrace(d.trace, "a run that dodges it forever");
+      out.textContent = `✗ violated — ${d.predicate}; ${verdict}` + (tr ? `:  ${tr}` : "");
+      if (d.trace && d.trace.length >= 2) showTrace(d.trace, verdict, "violation", d.cycle_start);
     }
   } catch (e) { out.className = "bad"; out.textContent = "✕ " + e; }
 }
