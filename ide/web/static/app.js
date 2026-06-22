@@ -535,6 +535,8 @@ const GLOSSARY = {
   enum: "enum — a tagged union; variants may carry payloads and recurse, e.g. enum Result = Ok(Int) | Err(String).",
   schema: "schema — a named set defined by membership conditions (synonym for type).",
   is_first_tick: "is_first_tick — Bool, true only on the FSM's first tick. Used to seed the initial state.",
+  is_second_tick: "is_second_tick — Bool, true only on the SECOND tick. Sets the 2nd initial condition for a ΔΔ (second-order) model.",
+  "ΔΔ": "ΔΔ  second difference — 'ΔΔx' = x − 2·_x + __x (needs two ticks of history, __x). Lets a 2nd-order system, e.g. an oscillator, be written in ONE variable — the runtime carries velocity as history.   type \\Delta\\Delta",
   match: "match — pattern-match an enum value across its variants.",
   subclaim: "subclaim — a named nested claim, scoped to its parent's variables.",
   "∈": "∈  membership / typing — 'x ∈ Int' declares x has type Int.   type \\in",
@@ -554,6 +556,7 @@ const gloss = document.createElement("div");
 gloss.id = "gloss"; gloss.hidden = true; document.body.appendChild(gloss);
 function glossFor(t) {
   if (GLOSSARY[t]) return GLOSSARY[t];
+  if (t && t.startsWith("__")) return `${t} — two-ticks-ago read: the value of ${t.slice(2)} two ticks back (the history a ΔΔ second-order model carries).`;
   if (t && t[0] === "_") return `${t} — previous-tick read: the value of ${t.slice(1)} on the prior tick.`;
   if (t === "true" || t === "false") return `${t} — Boolean literal (lowercase). Capital True/False is an unbound name — a silent bug.`;
   return null;
@@ -650,19 +653,27 @@ function renderStructure(s) {
   if (!s) { el.hidden = true; return; }
   el.hidden = false;
   const [icon, name, note] = VERDICTS[s.verdict] || ["·", s.verdict, ""];
-  let html = `<span class="verdict v-${s.verdict}">${icon} ${name}</span>`
+  // title= tooltips teach the verification concepts in place — the words appear in the panel,
+  // not the editor, so the editor glossary can't reach them (Sam #163).
+  const vhelp = "the model's GLOBAL behaviour, solved from the transition relation over the whole "
+    + "reachable set — not one simulated run.";
+  let html = `<span class="verdict v-${s.verdict}" title="${vhelp}">${icon} ${name}</span>`
     + (note ? `<span class="dim">${note}</span>` : "");
   if (s.fixed_points && s.fixed_points.length) {
     const fp = s.fixed_points.slice(0, 3).map(
       (f) => "(" + Object.entries(f).map(([k, v]) => `${k}=${v}`).join(", ") + ")").join("  ");
     const more = s.fixed_points.length > 3 ? ` +${s.fixed_points.length - 3}` : "";
     const label = s.verdict === "nondeterministic" ? "rest states" : "fixed point";
-    html += `<span class="struct-fp">● ${label}: ${fp}${more}</span>`;
+    const fhelp = "a REACHABLE state the system maps to itself — once here it stays. Found by "
+      + "solving T(s,s), then intersected with the reachable set so it's never a phantom.";
+    html += `<span class="struct-fp" title="${fhelp}">● ${label}: ${fp}${more}</span>`;
   }
   const b = s.bounds || {}, keys = Object.keys(b);
   if (keys.length) {
     const bstr = keys.map((k) => `${k} ∈ [${b[k][0]}, ${b[k][1]}]`).join("   ");
-    html += `<span class="struct-bounds">⊏ boundary${s.capped ? " (≥, capped)" : ""}: ${bstr}</span>`;
+    const bhelp = "the exact range each variable spans over the solution space — z3-proven "
+      + "(Optimize over the unrolled transition), not the min/max of one run.";
+    html += `<span class="struct-bounds" title="${bhelp}">⊏ boundary${s.capped ? " (≥, capped)" : ""}: ${bstr}</span>`;
   }
   el.innerHTML = html;
 }
