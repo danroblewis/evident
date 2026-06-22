@@ -21,7 +21,7 @@ from datetime import datetime, timezone
 
 DB = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tasks.json")
 CRITICS = ("ide-critic", "ide-critic-newcomer", "ide-critic-expert")
-ROLES = set(CRITICS) | {"worker", "ide-feature-designer"}
+ROLES = set(CRITICS) | {"worker", "ide-feature-designer", "ide-architect"}
 
 
 def _now():
