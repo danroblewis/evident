@@ -287,13 +287,26 @@ fn resolve_export_claim(
         .filter(|n| !stdlib_names.contains(*n))
         .map(|s| s.to_string())
         .collect();
+    // A claim file routinely declares helper `type`s (toposort's `Edge`, sudoku's `Box`). Those are
+    // schemas too, so a naive count sees "2 candidates" and bails — even though only one is a CLAIM,
+    // the solvable predicate the user means. Prefer the `claim`-keyword schemas; the helper types are
+    // pulled in by membership, not exported on their own. (Mirrors how the solver resolves the entry.)
+    let only_claims: Vec<String> = claims.iter()
+        .filter(|n| matches!(rt.get_schema(n).map(|s| &s.keyword),
+                             Some(evident_runtime::ast::Keyword::Claim)))
+        .cloned().collect();
+    if only_claims.len() == 1 {
+        return Ok(only_claims.into_iter().next().unwrap());
+    }
+    if !only_claims.is_empty() {
+        claims = only_claims;            // disambiguate among genuine claims only
+    }
     claims.sort();
     match claims.len() {
         0 => Err("no claims found to export".to_string()),
         1 => Ok(claims.pop().unwrap()),
         _ => Err(format!(
-            "ambiguous: {} candidate claims ([{}]) — name one with `export <file> <claim>` \
-             is not yet supported; the file must contain exactly one top-level claim",
+            "ambiguous: {} candidate claims ([{}]); the file must contain exactly one top-level claim",
             claims.len(), claims.join(", "))),
     }
 }
