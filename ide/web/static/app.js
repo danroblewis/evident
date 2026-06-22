@@ -797,10 +797,59 @@ function renderSolve(d, given) {
   head.innerHTML = `<span class="sat">⊨ SAT</span> — <b>${d.claim || "claim"}</b> has a witness`
     + (pinned.length ? ` <span class="dim">(pinned: ${pinned.join(", ")})</span>` : "");
   const keys = Object.keys(d.bindings || {}).sort();
-  body.innerHTML = keys.length
-    ? `<table>${keys.map((k) => `<tr><td class="k">${k}${pinned.includes(k) ? " 📌" : ""}</td>`
-        + `<td class="v">${escapeHtml(JSON.stringify(d.bindings[k]))}</td></tr>`).join("")}</table>`
-    : '<span class="dim">satisfiable (no free variables to report)</span>';
+  if (!keys.length) { body.innerHTML = '<span class="dim">satisfiable (no free variables to report)</span>'; return; }
+  // Domain picture(s): any Seq binding draws as a board / cell strip ABOVE the raw table
+  // (Task #68) — a beginner can't read positional arrays as a solution.
+  const src = (typeof editor !== "undefined") ? editor.getValue() : "";
+  const viz = keys.map((k) => seqViz(k, d.bindings[k], src)).filter(Boolean).join("");
+  body.innerHTML = (viz ? `<div class="viz-wrap">${viz}</div>` : "")
+    + `<table>${keys.map((k) => `<tr><td class="k">${k}${pinned.includes(k) ? " 📌" : ""}</td>`
+        + `<td class="v">${escapeHtml(JSON.stringify(d.bindings[k]))}</td></tr>`).join("")}</table>`;
+}
+
+// --- domain-picture rendering for Seq witnesses (Task #68) ------------------------
+// A Seq(Int) witness is hard to read as an array. Draw it: an N-queens board when the
+// values look like one column-per-row placement (length N, every value in 0..N-1), else
+// a simple labeled index→value cell strip.
+function seqViz(name, val, source) {
+  if (!Array.isArray(val) || !val.length) return null;
+  // only primitive-Int seqs get a picture; arrays of records/objects keep the raw table
+  if (!val.every((v) => typeof v === "number" && Number.isInteger(v))) return null;
+  const n = val.length;
+  // N-queens detection: length N, all values in 0..N-1. Also honor an explicit `#name = N`
+  // in the source as a strong signal (it's how the queens sample pins the board size).
+  const pinned = pinnedLen(source, name);
+  const looksQueens = n >= 4 && val.every((v) => v >= 0 && v < n) && (pinned == null || pinned === n);
+  if (looksQueens) return queensBoard(name, val);
+  return cellStrip(name, val);
+}
+
+// `#name = N` in the source → N (the pinned Seq length), else null.
+function pinnedLen(source, name) {
+  const m = (source || "").match(new RegExp("#\\s*" + name.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\$&") + "\\s*=\\s*(\\d+)"));
+  return m ? parseInt(m[1], 10) : null;
+}
+
+function queensBoard(name, cols) {
+  const n = cols.length;
+  let cells = "";
+  for (let r = 0; r < n; r++) {
+    for (let c = 0; c < n; c++) {
+      const dark = (r + c) % 2 === 1;
+      const q = cols[r] === c;
+      cells += `<div class="qsq${dark ? " dark" : ""}${q ? " q" : ""}">${q ? "♛" : ""}</div>`;
+    }
+  }
+  return `<div class="viz"><div class="viz-label">${escapeHtml(name)} — ${n}×${n} board`
+    + ` <span class="dim">(row i → queen at column ${escapeHtml(name)}[i])</span></div>`
+    + `<div class="qboard" style="grid-template-columns:repeat(${n},1fr)">${cells}</div></div>`;
+}
+
+function cellStrip(name, arr) {
+  const cells = arr.map((v, i) =>
+    `<div class="cell"><div class="cell-idx">${i}</div><div class="cell-val">${escapeHtml(String(v))}</div></div>`).join("");
+  return `<div class="viz"><div class="viz-label">${escapeHtml(name)} `
+    + `<span class="dim">(index → value)</span></div><div class="strip">${cells}</div></div>`;
 }
 
 async function solve(enumerate) {
@@ -843,6 +892,63 @@ sel.onchange = () => {
   }
   sel.value = "";          // reset the label so the same sample can be re-opened
 };
+
+// --- symbol palette / cheat-sheet (Task #62) --------------------------------------
+// A blank-editor newcomer can't discover how to type ∈/⇒/Δ — the hover glossary only
+// fires on glyphs already in the buffer. This popover lists every typable operator with
+// BOTH mnemonics; clicking a row inserts the glyph at the cursor. Esc dismisses it.
+const PALETTE = [
+  ["∈", "membership / typing",  "\\in  or  in"],
+  ["⇒", "implies",              "\\imp / =>  or  implies"],
+  ["⟸", "reverse-implies",      "\\when  or  when"],
+  ["∀", "for-all",              "\\all  or  forall"],
+  ["∃", "there-exists",         "\\exists  or  exists"],
+  ["¬", "not",                  "\\neg  or  not"],
+  ["∧", "and",                  "\\and  or  and"],
+  ["∨", "or",                   "\\or  or  or"],
+  ["≤", "less-or-equal",        "\\le  or  <="],
+  ["≥", "greater-or-equal",     "\\ge  or  >="],
+  ["≠", "not-equal",            "\\ne  or  !="],
+  ["Δ", "forward difference",   "\\Delta  or  delta"],
+  ["↦", "maps-to / rename",     "\\mapsto"],
+  ["→", "to",                   "\\to"],
+  ["⟨", "seq-literal open",     "\\langle"],
+  ["⟩", "seq-literal close",    "\\rangle"],
+  ["∪", "set union",            "\\cup"],
+  ["∩", "set intersection",     "\\cap"],
+];
+const palette = document.createElement("div");
+palette.id = "palette"; palette.hidden = true;
+palette.innerHTML =
+  '<div class="palette-head">type these operators — click a row to insert it'
+  + ' <span class="dim">(Esc closes)</span></div>'
+  + PALETTE.map(([g, name, mn], i) =>
+      `<div class="palette-row" data-i="${i}">`
+      + `<span class="palette-glyph">${escapeHtml(g)}</span>`
+      + `<span class="palette-name">${escapeHtml(name)}</span>`
+      + `<span class="palette-mn dim">${escapeHtml(mn)}</span></div>`).join("");
+document.body.appendChild(palette);
+
+function insertGlyph(glyph) {
+  editor.session.insert(editor.getCursorPosition(), glyph);
+  editor.focus();
+}
+function togglePalette(show) {
+  const open = show != null ? show : palette.hidden;
+  palette.hidden = !open;
+  $("#symbols-btn").classList.toggle("on", open);
+}
+palette.addEventListener("click", (e) => {
+  const row = e.target.closest(".palette-row");
+  if (!row) return;
+  insertGlyph(PALETTE[+row.dataset.i][0]);   // keep the palette open for multi-insert
+});
+$("#symbols-btn").onclick = (e) => { e.stopPropagation(); togglePalette(); };
+// dismiss: Esc anywhere, or a click outside the popover/button
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !palette.hidden) togglePalette(false); });
+document.addEventListener("click", (e) => {
+  if (!palette.hidden && !palette.contains(e.target) && e.target.id !== "symbols-btn") togglePalette(false);
+});
 
 // kick off
 run();
