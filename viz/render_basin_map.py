@@ -278,8 +278,9 @@ def _discrete_basins_on(m, out_path, states, edges, projected_out=None):
         rt = reach_term[scc_of[node]]
         if not rt:
             return -1
-        dom = min(rt, key=lambda s: term_index[s])
-        return term_index[dom]
+        if len(rt) > 1:        # reaches MULTIPLE terminals — it is NOT in one basin (Ana #76).
+            return -2          # a nondeterministic state can flow to >1 attractor; don't fabricate.
+        return term_index[next(iter(rt))]
 
     # axes (channel API: position is the top-ranked channel)
     axes = _choose_axes(m)
@@ -303,6 +304,8 @@ def _discrete_basins_on(m, out_path, states, edges, projected_out=None):
     jy = (rng.random(n) - 0.5) * 0.22
 
     def basin_label(ci):
+        if ci == -2:           # multi-basin: reaches >1 attractor (nondeterministic) — honest, not faked
+            return "#d29922", "→ MULTIPLE attractors (nondeterministic — not a single basin)"
         if ci < 0:
             return "#000000", "no terminal"
         color = PALETTE[ci % len(PALETTE)]
