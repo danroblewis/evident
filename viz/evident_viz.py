@@ -336,7 +336,16 @@ class Model:
         relation. Returns (states, edges) where states is a list of dicts and
         edges is a list of (from_index, to_index). For discrete programs this is
         the exact reachable state graph; for numeric ones it may not terminate,
-        so it's capped by `limit`."""
+        so it's capped by `limit`. Memoized by `limit` — the model is immutable
+        after load, so a second call (e.g. explore's reachable + _trace_to) is free."""
+        cache = self.__dict__.setdefault("_reach_cache", {})
+        if limit in cache:
+            return cache[limit]
+        result = self._reachable_uncached(limit)
+        cache[limit] = result
+        return result
+
+    def _reachable_uncached(self, limit=5000):
         if self.has_two_tick:
             return self._reachable_two(limit)
         init = self.initial_state()
