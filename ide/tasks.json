@@ -115,16 +115,23 @@
       "id": 6,
       "title": "Diagram export / copy (PNG / SVG)",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "worker",
       "created": "2026-06-21T23:18:36Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "viz"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-22T22:52:26Z",
+          "by": "worker",
+          "act": "done",
+          "note": "DUP \u2014 satisfied: SVG export shipped (#251/c58cafc5, \u2318K \u2192 Export diagram as SVG); PNG already saveable via right-click on the diagram img."
+        }
+      ]
     },
     {
       "id": 7,
@@ -4515,16 +4522,23 @@
       "id": 251,
       "title": "Export the diagram as SVG (vector, publication-quality) \u2014 the figure half of #244; needs a backend SVG-render path (matplotlib savefig svg) + a download button. The trace-table half shipped in #244.",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "worker",
       "created": "2026-06-22T22:21:54Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "feature"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-22T22:52:26Z",
+          "by": "worker",
+          "act": "done",
+          "note": "shipped c58cafc5: /api/figure + _render_svg + exportSVG (\u2318K \u2192 Export diagram as SVG). Verified live: state_graph \u2192 65KB valid SVG."
+        }
+      ]
     }
   ],
   "concerns": [
