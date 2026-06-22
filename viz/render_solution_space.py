@@ -64,35 +64,37 @@ def render(smt2_path, schema_path, out_path):
     # ~2s — yet the BFS bounds are ALREADY exact there when the reachable set is finite. So gate the
     # expensive prover on determinism; nondeterministic systems take the fast exact-by-exhaustion BFS
     # bounds. (Latency #188: vending 2.5s → ~0.1s, no loss of correctness.)
+    rbounds = struct.get("bounds", {})            # BFS reachable extent — the GROUND TRUTH
+    capped = struct.get("capped", False)
     solved = None
-    if struct.get("branching", 1) <= 1:
+    if struct.get("branching", 1) <= 1 and not m.has_two_tick:
         try:
-            solved = m.solved_bounds(k=12)
+            sb = m.solved_bounds(k=12)
+            # Trust the z3 unroll ONLY when it is a genuine INDUCTIVE invariant — closed under the
+            # transition, hence provably ⊇ every reachable state. A horizon-only result can DISAGREE
+            # with the true reachable extent (Ana #191: a cyclic spring's unroll drew 9..12 while the
+            # reachable set was [-12,10]; the oscillator's vel under-reported 23.7 vs the reachable
+            # 28.0). Two-tick (ΔΔ) systems are excluded entirely — solved_bounds unrolls a one-tick
+            # transition and invents spurious states for them. Everything else falls to the honest BFS
+            # bounds, which the solution_structure / banner also report (so picture == caption).
+            if sb and all(d.get("inductive") for d in sb.values()
+                          if d.get("lo") is not None and d.get("hi") is not None):
+                solved = sb
         except Exception:
             solved = None
     if solved:
-        bounds = {nm: [d["lo"], d["hi"]] for nm, d in solved.items()
-                  if d["lo"] is not None and d["hi"] is not None}
-        kk = next(iter(solved.values()))["k"]
-        capped = struct.get("capped", False)
-        all_inductive = bool(bounds) and all(solved[nm]["inductive"] for nm in bounds)
-        all_tight = bool(bounds) and all(solved[nm]["tight"] for nm in bounds)
-        # Honest epistemic ladder (Ana #138): an inductive invariant is a PROOF; a finite reachable
-        # set fully explored is exact by exhaustion; k-vs-2k agreement alone is strong evidence over
-        # a horizon, not a proof; otherwise it's only proven for the unrolled horizon.
-        if all_inductive:
-            boundtag = "exact — z3-proven INDUCTIVE invariant (the box is closed under the transition)"
-        elif not capped:
-            boundtag = "exact — finite reachable set, exhaustively explored"
-        elif all_tight:
-            boundtag = f"tight — k and 2k-step z3 Optimize agree (a {kk}-step horizon, not an inductive proof)"
-        else:
-            boundtag = f"z3-proven over a {kk}-step unrolling (Optimize) — may extend further"
-        all_exact = all_inductive or not capped
-        proven = True
+        # inductive ⊇ reachable; union with the BFS extent as a guard so a bar can NEVER read
+        # narrower than a state that actually occurs.
+        bounds = {}
+        for nm, d in solved.items():
+            if d["lo"] is None or d["hi"] is None:
+                continue
+            rb = rbounds.get(nm)
+            bounds[nm] = [min(d["lo"], rb[0]), max(d["hi"], rb[1])] if rb else [d["lo"], d["hi"]]
+        boundtag = "exact — z3-proven INDUCTIVE invariant (the box is closed under the transition)"
+        all_exact, proven = True, True
     else:
-        bounds = struct.get("bounds", {})
-        capped = struct.get("capped", False)
+        bounds = rbounds
         all_exact, proven = (not capped), False
         boundtag = (f"sampled over {n} reachable states — not exhaustive (true range may differ)"
                     if capped else f"exact — all {n} reachable states (exhaustively explored)")
