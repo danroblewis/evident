@@ -1,0 +1,83 @@
+-- 25_oscillator — the `ΔΔ` (second forward-difference) primitive + `__var`.
+--
+-- `ΔΔpos ≡ Δ(Δpos) = (pos − _pos) − (_pos − __pos) = pos − 2·_pos + __pos`,
+-- where `_pos` is pos one tick ago and `__pos` is pos TWO ticks ago. The
+-- runtime carries two ticks of history (the `__var` time-shift) the same way
+-- it carries one (`_var`).
+--
+-- A damped harmonic oscillator written in `pos` ALONE, using `ΔΔ`, reproduces
+-- the classic two-variable (position, velocity) form EXACTLY — the second
+-- difference IS the discrete acceleration, so a one-line recurrence in pos
+-- carries the whole dynamics. No `vel` variable is needed.
+--
+-- Bootstrap is two initial conditions: `is_first_tick` (tick 0) and
+-- `is_second_tick` (tick 1) both seed pos = 60 (released from rest). From
+-- tick 2 on the recurrence runs; `__pos` is only read under
+-- `¬is_second_tick`, so never before two ticks of history exist.
+--
+--   pos:  60, 60, 58.333, 55.139, 50.590, 44.889, 38.258, 30.932, ...
+--
+-- `Real` has no string formatter yet, so the demo prints pos in integer
+-- milli-units (floor(pos · 1000)) to show the exact trajectory; the static
+-- tests below pin the exact rational `pos`.
+
+import "stdlib/runtime.ev"
+
+fsm oscillator
+    pos ∈ Real
+    is_first_tick  ⇒ pos = 60
+    is_second_tick ⇒ pos = 60
+    (¬is_first_tick ∧ ¬is_second_tick) ⇒ ΔΔpos = (2 * __pos - 3 * _pos) / 36
+
+    -- floor(pos · 1000), for an exactly-printable integer view of the Real.
+    pos_milli ∈ Int
+    pos_milli ≤ pos * 1000
+    pos * 1000 < pos_milli + 1
+
+    milli_str ∈ String = to_str(pos_milli)
+
+    -- Halt cleanly at the first zero-crossing (pos goes negative ~tick 11).
+    crossed ∈ Bool = (pos < 0)
+
+    effects = (crossed ? ⟨Println("crossed zero at milli " ++ milli_str), Exit(0)⟩
+               : ⟨Println("milli = " ++ milli_str)⟩)
+
+-- ── Static tests ─────────────────────────────────────────────
+
+-- ΔΔpos = (pos − 2·_pos + __pos). With _pos = __pos = 60:
+--   pos − 120 + 60 = (2·60 − 3·60)/36 = −60/36 = −5/3
+--   ⟹ pos = 60 − 5/3 = 175/3 (≈ 58.3333). Pin it exactly.
+claim sat_second_difference
+    pos ∈ Real
+    _pos ∈ Real
+    __pos ∈ Real
+    is_first_tick ∈ Bool
+    is_second_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+
+    is_first_tick = false
+    is_second_tick = false
+    _pos = 60
+    __pos = 60
+    oscillator
+    3 * pos = 175           -- pos = 175/3, the exact second-difference step
+
+-- The second difference is `pos − 2·_pos + __pos`, NOT `pos − _pos`. If `ΔΔ`
+-- collapsed to a single `Δ` the step would be pos = 60 − 5/3 from `_pos` only
+-- (different equation); pin a value the true ΔΔ recurrence forbids.
+claim unsat_not_single_delta
+    pos ∈ Real
+    _pos ∈ Real
+    __pos ∈ Real
+    is_first_tick ∈ Bool
+    is_second_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+
+    is_first_tick = false
+    is_second_tick = false
+    _pos = 60
+    __pos = 0               -- __pos differs from _pos: ΔΔ ≠ Δ now
+    oscillator
+    3 * pos = 175           -- only holds when __pos = 60; forbidden here

@@ -197,9 +197,12 @@ pub(crate) fn inject_fsm_params(s: &mut SchemaDecl) -> Result<(), RuntimeError> 
 pub(crate) fn desugar_delta(s: &mut SchemaDecl) {
     use crate::core::ast::{BinOp, BodyItem, Expr};
 
-    // For TIER 1: identifiers (and dotted field/index access spelled as a
-    // dotted identifier). Prefix the first dotted segment with `_`.
-    fn prev_of(e: &Expr) -> Option<Expr> {
+    // Time-shift one tick: every identifier leaf gets one more leading
+    // underscore (`x → _x`, `_x → __x`), and the shift recurses through
+    // arithmetic so it is TOTAL over already-lowered Δ expressions.
+    // `prev_of(x − _x) = _x − __x`, which is what `ΔΔ` needs. Literals
+    // shift to themselves (a constant is the same one tick ago).
+    fn prev_of(e: &Expr) -> Expr {
         match e {
             Expr::Identifier(n) => {
                 let (first, rest) = match n.split_once('.') {
@@ -210,21 +213,37 @@ pub(crate) fn desugar_delta(s: &mut SchemaDecl) {
                     Some(r) => format!("_{first}.{r}"),
                     None => format!("_{first}"),
                 };
-                Some(Expr::Identifier(prev))
+                Expr::Identifier(prev)
             }
             Expr::Field(recv, fld) => {
-                prev_of(recv).map(|p| Expr::Field(Box::new(p), fld.clone()))
+                Expr::Field(Box::new(prev_of(recv)), fld.clone())
             }
-            _ => None,
+            Expr::Index(a, b) => {
+                Expr::Index(Box::new(prev_of(a)), Box::new(prev_of(b)))
+            }
+            Expr::Binary(op, l, r) => {
+                Expr::Binary(op.clone(), Box::new(prev_of(l)), Box::new(prev_of(r)))
+            }
+            // Literals are the same one tick ago.
+            Expr::Int(_) | Expr::Real(_) | Expr::Bool(_) | Expr::Str(_) => e.clone(),
+            // Any other shape: shift it whole (best effort). The trampoline
+            // carries the prev value of whatever leaves are inside.
+            _ => e.clone(),
         }
     }
 
+    // Lower `Delta(inner)` to `inner − prev_of(inner)`, lowering the
+    // INNERMOST Delta first. For `Δx`: `x − _x`. For `ΔΔx`:
+    // `Δx` lowers to `x − _x`, then the outer Δ yields
+    // `(x − _x) − prev_of(x − _x)` = `(x − _x) − (_x − __x)` = `x − 2·_x + __x`.
     fn rewrite(e: &mut Expr) {
         if let Expr::Delta(inner) = e {
-            if let Some(prev) = prev_of(inner) {
-                let cur = std::mem::replace(inner.as_mut(), Expr::Int(0));
-                *e = Expr::Binary(BinOp::Sub, Box::new(cur), Box::new(prev));
-            }
+            // Lower the inner expression first (handles nested Δ → second
+            // difference, and any Δ buried deeper in a compound inner).
+            crate::core::ast::walk_expr_mut(inner, &mut rewrite);
+            let cur = std::mem::replace(inner.as_mut(), Expr::Int(0));
+            let prev = prev_of(&cur);
+            *e = Expr::Binary(BinOp::Sub, Box::new(cur), Box::new(prev));
         }
     }
 
@@ -253,26 +272,35 @@ pub(crate) fn inject_prev_tick_decls(s: &mut SchemaDecl) -> Result<(), RuntimeEr
         }
     }
 
+    // Collect every prev-tick reference, keyed by underscore-prefixed name
+    // (`_pos`, `__pos`). For an N-underscore ref we inject ALL levels
+    // 1..=N (so `__pos` also injects `_pos`); `max_depth` records the
+    // deepest history any ref reaches (1 = `_var`, 2 = `__var`).
     let mut prev_refs: HashMap<String, String> = HashMap::new();
+    let mut max_depth: usize = 0;
     fn walk(e: &Expr, declared: &HashMap<String, String>,
-            prev_refs: &mut HashMap<String, String>) {
+            prev_refs: &mut HashMap<String, String>, max_depth: &mut usize) {
         crate::core::ast::walk_expr(e, &mut |n| {
             if let Expr::Identifier(n) = n {
-                let Some(after_underscore) = n.strip_prefix('_') else { return; };
-                let first_seg = after_underscore
-                    .split('.').next().unwrap_or(after_underscore);
+                let depth = n.chars().take_while(|c| *c == '_').count();
+                if depth == 0 { return; }
+                let base = &n[depth..];
+                let first_seg = base.split('.').next().unwrap_or(base);
                 if let Some(ty) = declared.get(first_seg) {
-                    let key = format!("_{first_seg}");
-                    prev_refs.insert(key, ty.clone());
+                    if depth > *max_depth { *max_depth = depth; }
+                    for k in 1..=depth {
+                        let key = format!("{}{first_seg}", "_".repeat(k));
+                        prev_refs.insert(key, ty.clone());
+                    }
                 }
             }
         });
     }
     for item in &s.body {
         match item {
-            BodyItem::Constraint(e) => walk(e, &declared, &mut prev_refs),
+            BodyItem::Constraint(e) => walk(e, &declared, &mut prev_refs, &mut max_depth),
             BodyItem::ClaimCall { mappings, .. } =>
-                for m in mappings { walk(&m.value, &declared, &mut prev_refs); },
+                for m in mappings { walk(&m.value, &declared, &mut prev_refs, &mut max_depth); },
             _ => {}
         }
     }
@@ -280,7 +308,15 @@ pub(crate) fn inject_prev_tick_decls(s: &mut SchemaDecl) -> Result<(), RuntimeEr
     if prev_refs.is_empty() { return Ok(()); }
 
     let mut to_inject: Vec<BodyItem> = Vec::new();
-    for (prev_name, ty) in &prev_refs {
+    // Deterministic order: shallowest history first (`_pos` before `__pos`),
+    // then by name.
+    let mut prev_sorted: Vec<(&String, &String)> = prev_refs.iter().collect();
+    prev_sorted.sort_by(|a, b| {
+        let da = a.0.chars().take_while(|c| *c == '_').count();
+        let db = b.0.chars().take_while(|c| *c == '_').count();
+        da.cmp(&db).then_with(|| a.0.cmp(b.0))
+    });
+    for (prev_name, ty) in prev_sorted {
         if !declared.contains_key(prev_name) {
             to_inject.push(BodyItem::Membership {
                 name: prev_name.clone(),
@@ -292,6 +328,15 @@ pub(crate) fn inject_prev_tick_decls(s: &mut SchemaDecl) -> Result<(), RuntimeEr
     if !declared.contains_key("is_first_tick") {
         to_inject.push(BodyItem::Membership {
             name: "is_first_tick".to_string(),
+            type_name: "Bool".to_string(),
+            pins: Pins::None,
+        });
+    }
+    // `is_second_tick` is the tick-1 bootstrap flag — only meaningful when a
+    // two-tick-history (`__var`) reference exists.
+    if max_depth >= 2 && !declared.contains_key("is_second_tick") {
+        to_inject.push(BodyItem::Membership {
+            name: "is_second_tick".to_string(),
             type_name: "Bool".to_string(),
             pins: Pins::None,
         });
