@@ -148,6 +148,62 @@ def _error_loc(msg: str):
     return {"line": int(m.group(1)), "col": int(m.group(2))} if m else None
 
 
+# A dropped-constraint warning carries the DESUGARED expr, not a source line — the
+# runtime can't cheaply thread a line through BodyItem::Constraint (huge match-site
+# blast radius). So locate it in the source by token overlap: tokenize the dropped
+# pretty-text and each source line into identifiers, and pick the line that shares the
+# most DISTINCTIVE identifiers (rarer in the source ⇒ heavier — the typo'd/undeclared
+# name like `stp` is what pins the right line). Robust for the common case.
+_DROP_RE = re.compile(r"dropped constraint \(couldn't translate to Bool\):\s*(.+)$")
+_IDENT_RE = re.compile(r"[A-Za-z_]\w*")
+# desugaring noise that doesn't map back to a distinctive source token
+_IDENT_STOP = {"is_first_tick"}
+
+
+def _idents(text: str):
+    """Identifiers in `text`, lowered to their source form: a desugared `_count`
+    prev-read traces back to the carried name `count`, so strip a single leading `_`."""
+    out = set()
+    for tok in _IDENT_RE.findall(text or ""):
+        bare = tok[1:] if tok.startswith("_") and len(tok) > 1 else tok
+        if bare and bare not in _IDENT_STOP:
+            out.add(bare)
+    return out
+
+
+def _dropped_pretties(msg: str):
+    """The desugared expr text of each dropped-constraint warning line."""
+    return [m.group(1).strip()
+            for ln in (msg or "").splitlines()
+            if (m := _DROP_RE.search(ln))]
+
+
+def _dropped_locs(source: str, msg: str):
+    """1-based source line numbers for each dropped constraint, by distinctive-token
+    overlap. Frequency-weight each shared identifier by 1/(source occurrences) so the
+    rarest name (the typo) dominates; ties keep the first (earliest) line."""
+    pretties = _dropped_pretties(msg)
+    if not pretties:
+        return []
+    lines = (source or "").splitlines()
+    line_idents = [_idents(ln) for ln in lines]
+    freq = Counter(name for s in line_idents for name in s)
+    locs = []
+    for pretty in pretties:
+        want = _idents(pretty)
+        best_n, best_score = None, 0.0
+        for i, have in enumerate(line_idents):
+            shared = want & have
+            if not shared:
+                continue
+            score = sum(1.0 / freq[name] for name in shared)
+            if score > best_score + 1e-9:
+                best_n, best_score = i + 1, score
+        if best_n is not None:
+            locs.append(best_n)
+    return locs
+
+
 def _banner(m, max_branch=1, recurrent=1):
     """The model-shape line, from the functional-dependency analysis. Two reachable-graph
     facts override the dependency verdict: BRANCHING (a state with ≥2 successors is
@@ -239,7 +295,7 @@ def _render_png(view, prefix):
     return png, points
 
 
-def _maybe_claim(prefix, dropped):
+def _maybe_claim(prefix, dropped, source="", msg=""):
     """If the export produced a CLAIM schema (no FSM), render its SOLVED solution space (exact
     z3-Optimize bounds + per-cell feasible region) and return the analyze response; else None so
     the FSM path runs. A claim has no run to step — this is the purest solved-boundary view."""
@@ -281,7 +337,9 @@ def _maybe_claim(prefix, dropped):
                       "branching": 1},
         "dropped": dropped, "branching": 1, "states": 0, "edges": 0, "capped": False,
         "vars": list(bounds.keys()), "view": "claim_space", "views": ["claim_space"],
-        "png": base64.b64encode(png).decode() if png else None, "warnings": "",
+        "png": base64.b64encode(png).decode() if png else None,
+        "warnings": msg if dropped else "",
+        "dropped_locs": _dropped_locs(source, msg) if dropped else [],
     }
 
 
@@ -291,8 +349,9 @@ def analyze(req: Source):
         ok, prefix, dropped, msg = _export(req.source, work)
         if not ok:
             return {"ok": False, "error": msg, "dropped": dropped,
-                    "error_loc": _error_loc(msg)}
-        claim_resp = _maybe_claim(prefix, dropped)     # a raw claim renders its solved solution space
+                    "error_loc": _error_loc(msg),
+                    "dropped_locs": _dropped_locs(req.source, msg)}
+        claim_resp = _maybe_claim(prefix, dropped, req.source, msg)  # a raw claim renders its solved solution space
         if claim_resp is not None:
             return claim_resp
         try:
@@ -352,6 +411,9 @@ def analyze(req: Source):
                 "png": base64.b64encode(png).decode() if png else None,
                 "points": points,        # interactive hover overlay (solution_space); [] otherwise
                 "warnings": msg if dropped else "",
+                # source lines of each dropped constraint (token-overlap heuristic), so the
+                # editor can tint the line where the silent bug was WRITTEN — the product's point.
+                "dropped_locs": _dropped_locs(req.source, msg) if dropped else [],
             }
         except Exception as e:
             return {"ok": False, "error": f"analysis failed: {e}", "dropped": dropped}

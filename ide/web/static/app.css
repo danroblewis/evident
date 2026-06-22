@@ -101,6 +101,11 @@ html,body { margin:0; height:100%; background:var(--bg); color:var(--ink);
 /* inline error-line tint (Ace fullLine marker) + a red gutter dot */
 .ace_marker-layer .ace-error-line { position:absolute; background:rgba(248,81,73,0.16); z-index:2; }
 .ace_gutter-cell.error-gutter { color:var(--bad); }
+/* dropped-constraint line: AMBER, distinct from the red parse-error mark. A parse error
+   blocks; a dropped constraint runs but silently leaves a variable free. */
+.ace_marker-layer .ace-warn-line { position:absolute; background:rgba(210,153,34,0.15); z-index:2; }
+.ace_gutter-cell.warn-gutter { color:var(--warn); border-left:2px solid var(--warn); }
+.ace_gutter-cell.ace_warning { background:none; color:var(--warn); }
 
 /* hover-to-learn glossary tooltip */
 #gloss { position:fixed; z-index:50; max-width:360px; pointer-events:none;
