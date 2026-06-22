@@ -45,11 +45,18 @@ def render(smt2_path, schema_path, out_path):
     # sample. `exact` means the k-step and 2k-step bounds agree, so the reachable extent has closed
     # (the user's "compose with itself until 2-run == k-run" fixpoint). Fall back to the BFS bounds
     # (exact only when the reachable set was finite & fully explored) if Optimize is unavailable.
+    # solved_bounds (z3 Optimize over the unroll) is cheap for DETERMINISTIC systems (counter ~10ms,
+    # oscillator ~20ms) and gives the inductive/horizon proof. For NONDETERMINISTIC ones (vending,
+    # pick — a free input each tick) the Optimize searches every input sequence over the unroll —
+    # ~2s — yet the BFS bounds are ALREADY exact there when the reachable set is finite. So gate the
+    # expensive prover on determinism; nondeterministic systems take the fast exact-by-exhaustion BFS
+    # bounds. (Latency #188: vending 2.5s → ~0.1s, no loss of correctness.)
     solved = None
-    try:
-        solved = m.solved_bounds(k=12)
-    except Exception:
-        solved = None
+    if struct.get("branching", 1) <= 1:
+        try:
+            solved = m.solved_bounds(k=12)
+        except Exception:
+            solved = None
     if solved:
         bounds = {nm: [d["lo"], d["hi"]] for nm, d in solved.items()
                   if d["lo"] is not None and d["hi"] is not None}
