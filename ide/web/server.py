@@ -706,7 +706,8 @@ def index():
             v = 0
         return f"{name}?v={v}"
 
-    html = re.sub(r'(app\.(?:js|css))(?:\?v=[^"\']*)?', stamp, html)
+    # app.css, app.js, and the app-<concern>.js split files (Dijkstra's app.js split).
+    html = re.sub(r'(app(?:-[\w-]+)?\.(?:js|css))(?:\?v=[^"\']*)?', stamp, html)
     return Response(html, media_type="text/html", headers=_NOCACHE)
 
 
