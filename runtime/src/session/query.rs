@@ -455,8 +455,11 @@ impl EvidentRuntime {
     /// load these to explore the claim's solution space (sample/enumerate witnesses).
     ///
     /// Schema shape:
-    ///   {"claim": "<name>", "vars": [{"name": "x", "kind": "int|real|bool|string|enum",
-    ///                                 "role": "interface|internal"}, ...]}
+    ///   {"claim": "<name>", "vars": [{"name": "x", "kind": "int|real|bool|string|enum|seq",
+    ///                                 "role": "interface|internal", ...}, ...]}
+    /// A `seq` var adds `"elem"` (the element kind) and, when its length is pinned
+    /// (`#name = N`), `"len": N`. An `enum` var adds `"variants": ["Red", ...]` so
+    /// the renderer can draw a feasibility grid without re-reading the smt2 datatypes.
     /// `role` is "interface" iff the var's prefix is one of the claim's first
     /// `param_count` Membership params, else "internal". Returns (smt2, json).
     pub fn export_claim(&self, name: &str) -> Result<(String, String), RuntimeError> {
@@ -483,18 +486,42 @@ impl EvidentRuntime {
         for n in names {
             // At snapshot=1 a claim has no `_prev` twins; skip any stray underscore var.
             if n.starts_with('_') { continue; }
-            let kind = match cached.env.get(n) {
-                Some(crate::encode::Var::IntVar(_))    => "int",
-                Some(crate::encode::Var::RealVar(_))   => "real",
-                Some(crate::encode::Var::BoolVar(_))   => "bool",
-                Some(crate::encode::Var::StrVar(_))    => "string",
-                Some(crate::encode::Var::EnumVar { .. }) => "enum",
-                _ => continue,
-            };
             let role = if interface.contains(n.split('.').next().unwrap_or(n))
                 { "interface" } else { "internal" };
+            // Scalar (int/real/bool/string) emit `{name,kind,role}`; Seq and enum
+            // vars also live in the smt2 (Seq as an Array `name` + `name__len`, enum
+            // as a datatype) so the renderer can solve over them — but it needs their
+            // shape, which the smt2 doesn't surface conveniently. Emit it here.
+            let extra: Option<(&str, String)> = match cached.env.get(n) {
+                Some(crate::encode::Var::IntVar(_))    => Some(("int", String::new())),
+                Some(crate::encode::Var::RealVar(_))   => Some(("real", String::new())),
+                Some(crate::encode::Var::BoolVar(_))   => Some(("bool", String::new())),
+                Some(crate::encode::Var::StrVar(_))    => Some(("string", String::new())),
+                Some(crate::encode::Var::SeqVar { len, elem, .. }) => {
+                    let elem_kind = match elem {
+                        crate::core::SeqElem::Int  => "int",
+                        crate::core::SeqElem::Bool => "bool",
+                        crate::core::SeqElem::Str  => "string",
+                    };
+                    let mut e = format!(", \"elem\": \"{elem_kind}\"");
+                    if let Some(len) = pinned_len(&cached.solver, len) {
+                        e.push_str(&format!(", \"len\": {len}"));
+                    }
+                    Some(("seq", e))
+                }
+                Some(crate::encode::Var::EnumVar { enum_name, .. }) => {
+                    let variants = self.enums.by_name.borrow().get(enum_name)
+                        .map(|(_, vs)| vs.iter()
+                            .map(|v| format!("\"{}\"", v.name))
+                            .collect::<Vec<_>>().join(", "))
+                        .unwrap_or_default();
+                    Some(("enum", format!(", \"variants\": [{variants}]")))
+                }
+                _ => None,
+            };
+            let Some((kind, extra)) = extra else { continue };
             rows.push(format!(
-                "    {{\"name\": \"{n}\", \"kind\": \"{kind}\", \"role\": \"{role}\"}}"));
+                "    {{\"name\": \"{n}\", \"kind\": \"{kind}\", \"role\": \"{role}\"{extra}}}"));
         }
         let json = format!(
             "{{\n  \"claim\": \"{name}\",\n  \"vars\": [\n{}\n  ]\n}}\n",
@@ -502,4 +529,21 @@ impl EvidentRuntime {
         Ok((smt2, json))
     }
 
+}
+
+/// A Seq's length `#name` is pinned to N iff its min and max over the constraint
+/// agree. Optimize both against the solver's assertions; return `Some(N)` only
+/// when the length is fully determined, else `None` (renderer omits `"len"`).
+fn pinned_len(solver: &Solver, len: &z3::ast::Int<'static>) -> Option<i64> {
+    let assertions = solver.get_assertions();
+    let bound = |maximize: bool| -> Option<i64> {
+        let opt = z3::Optimize::new(len.get_ctx());
+        for a in &assertions { opt.assert(a); }
+        if maximize { opt.maximize(len); } else { opt.minimize(len); }
+        if opt.check(&[]) != SatResult::Sat { return None; }
+        opt.get_model()?.eval(len, true)?.as_i64()
+    };
+    let lo = bound(false)?;
+    let hi = bound(true)?;
+    (lo == hi).then_some(lo)
 }
