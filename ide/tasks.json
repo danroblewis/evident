@@ -1,5 +1,5 @@
 {
-  "seq": 251,
+  "seq": 252,
   "tasks": [
     {
       "id": 1,
@@ -4537,6 +4537,28 @@
           "by": "worker",
           "act": "done",
           "note": "shipped c58cafc5: /api/figure + _render_svg + exportSVG (\u2318K \u2192 Export diagram as SVG). Verified live: state_graph \u2192 65KB valid SVG."
+        }
+      ]
+    },
+    {
+      "id": 252,
+      "title": "Latency: real-valued analyze 1.5s\u21920.60s (~2.5x) \u2014 _recommend was re-ranking vars (830ms) just to pick a view; now a cheap kind-count. Relates to #217.",
+      "detail": "",
+      "status": "worker_done",
+      "created_by": "worker",
+      "created": "2026-06-22T23:13:26Z",
+      "worker_done": true,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "perf"
+      ],
+      "log": [
+        {
+          "at": "2026-06-22T23:13:26Z",
+          "by": "worker",
+          "act": "done",
+          "note": "shipped 17d4e743: numeric_vars\u2192cheap n_numeric kind-count in _recommend. oscillator 1.5s\u21920.60s; views unchanged; ./test.sh green. Ana to assess if it clears her latency concern #217."
         }
       ]
     }
