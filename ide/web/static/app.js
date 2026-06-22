@@ -926,7 +926,11 @@ function backendDown(detail) {
   $("#banner").className = "stale";
   $("#banner").textContent = "⚠ backend unavailable — the solver isn't responding";
   $("#structure").hidden = true; $("#invariant").hidden = true;
-  $("#view").classList.add("stale"); $("#view").classList.remove("recomputing");
+  $("#tabs").innerHTML = "";
+  // BLANK the diagram entirely — a greyed-but-plausible picture (with its old title) can still read
+  // as a believable lie when the backend is dead (Marek #177). Replace it with a clear placeholder.
+  $("#view").classList.remove("recomputing", "stale");
+  $("#view").innerHTML = '<div class="ph">⚠ backend unreachable — no live diagram.<br>Restart the server, then edit to refresh.</div>';
   $("#errors").hidden = false;
   $("#errors").textContent = "Could not reach the backend (it may have crashed or been stopped). "
     + "The picture above is stale. Restart it:\n\n    ./ide/web/run.sh   (or  python3 ide/web/server.py)\n\n(" + detail + ")";
