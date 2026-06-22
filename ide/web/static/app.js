@@ -815,6 +815,21 @@ function paint(data, ms) {
   }
 }
 
+// The backend (solver) is unreachable OR returned an error status — it crashed or was stopped.
+// NEVER leave the prior picture/verdict looking live (Ana #202, Marek #206): mark everything stale,
+// hide the verdict, and say so loudly so a stale diagram is never mistaken for the current program's.
+function backendDown(detail) {
+  clearTimeout(_dimTimer);
+  setStatus("backend down", "err");
+  $("#banner").className = "stale";
+  $("#banner").textContent = "⚠ backend unavailable — the solver isn't responding";
+  $("#structure").hidden = true; $("#invariant").hidden = true;
+  $("#view").classList.add("stale"); $("#view").classList.remove("recomputing");
+  $("#errors").hidden = false;
+  $("#errors").textContent = "Could not reach the backend (it may have crashed or been stopped). "
+    + "The picture above is stale. Restart it:\n\n    ./ide/web/run.sh   (or  python3 ide/web/server.py)\n\n(" + detail + ")";
+}
+
 async function run(view) {
   const source = editor.getValue();
   lastSource = source;
@@ -840,21 +855,13 @@ async function run(view) {
       // A tab click (run("phase_portrait")) passes its view explicitly and is honored.
       body: JSON.stringify({ source, view: view || null }),
     });
+    // A 500 RESOLVES the fetch (only a network drop rejects it), so without this check an HTTP
+    // error would fall through and silently leave the prior picture looking live (Marek #206).
+    if (!res.ok) { backendDown(`the solver returned HTTP ${res.status} — it likely crashed on that input`); return; }
     const data = await res.json();
     paint(data, Math.round(performance.now() - t0));
   } catch (e) {
-    // The backend (solver) is unreachable — it crashed or was stopped. NEVER leave the prior
-    // picture/verdict looking live (Ana #202): mark everything stale, hide the verdict, and say so
-    // loudly so a stale diagram is never mistaken for the current program's.
-    clearTimeout(_dimTimer);
-    setStatus("backend down", "err");
-    $("#banner").className = "stale";
-    $("#banner").textContent = "⚠ backend unavailable — the solver isn't responding";
-    $("#structure").hidden = true; $("#invariant").hidden = true;
-    $("#view").classList.add("stale"); $("#view").classList.remove("recomputing");
-    $("#errors").hidden = false;
-    $("#errors").textContent = "Could not reach the backend (it may have crashed or been stopped). "
-      + "The picture above is stale. Restart it:\n\n    python3 ide/web/server.py\n\n(" + e + ")";
+    backendDown(String(e));
   }
 }
 
@@ -913,10 +920,16 @@ function renderSolve(d, given) {
   // Domain picture(s): any Seq binding draws as a board / cell strip ABOVE the raw table
   // (Task #68) — a beginner can't read positional arrays as a solution.
   const src = (typeof editor !== "undefined") ? editor.getValue() : "";
-  const viz = keys.map((k) => seqViz(k, d.bindings[k], src)).filter(Boolean).join("");
+  // A var that draws as a domain picture (board / grid / record table) is shown ONLY as that
+  // picture — the raw JSON row underneath read like a debug dump (Marek #204). Scalars (no
+  // picture) keep their row; the picture IS the source of truth for the rest.
+  const vizByKey = {};
+  keys.forEach((k) => { const v = seqViz(k, d.bindings[k], src); if (v) vizByKey[k] = v; });
+  const viz = keys.map((k) => vizByKey[k]).filter(Boolean).join("");
+  const rawKeys = keys.filter((k) => !vizByKey[k]);
   body.innerHTML = (viz ? `<div class="viz-wrap">${viz}</div>` : "")
-    + `<table>${keys.map((k) => `<tr><td class="k">${k}${pinned.includes(k) ? " 📌" : ""}</td>`
-        + `<td class="v">${escapeHtml(JSON.stringify(d.bindings[k]))}</td></tr>`).join("")}</table>`;
+    + (rawKeys.length ? `<table>${rawKeys.map((k) => `<tr><td class="k">${k}${pinned.includes(k) ? " 📌" : ""}</td>`
+        + `<td class="v">${escapeHtml(JSON.stringify(d.bindings[k]))}</td></tr>`).join("")}</table>` : "");
 }
 
 // --- domain-picture rendering for Seq witnesses (Task #68 / #196) -----------------
