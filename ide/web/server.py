@@ -42,6 +42,7 @@ from pydantic import BaseModel  # noqa: E402
 # render(smt2, schema, out_path); the few that only ship a CLI main() are wrapped by
 # patching argv around the call (serialized by _LOCK, so the global mutation is safe).
 ALL_VIEWS = (
+    "solution_space",                                  # the SOLVED boundary, not a run — lead view
     "time_series", "state_graph", "phase_portrait", "reachability_tree",
     "morse_graph", "occupancy_heatmap", "timing_diagram", "transition_matrix",
     "basin_map", "orbit_scatter", "scatter_matrix", "parallel_coords",
@@ -184,7 +185,15 @@ def _recommend(m, n_states, max_branch, discrete):
         deterministic path (max_branch < 2) so the genuinely-branching numeric systems —
         vending, pick — still go to reachability_tree above, not here.
       - otherwise the time series: a deterministic numeric ramp/trajectory reads as a clean
-        line, faithful and fast for almost everything."""
+        line, faithful and fast for almost everything.
+
+      BUT lead with solution_space whenever there's a numeric variable: the DEFAULT picture
+      should be the BOUNDARY of what the variables can be (the solved range of each var + the
+      feasible set + fixed points), not one trajectory through it. The dynamics views are one
+      tab click away. (Purely categorical machines have no numeric boundary, so they fall
+      through to state_graph below.)"""
+    if "solution_space" in VIEWS and m.numeric_vars:
+        return "solution_space"
     if "state_graph" in VIEWS and discrete and n_states <= 30:
         return "state_graph"
     if "reachability_tree" in VIEWS and max_branch >= 2:
