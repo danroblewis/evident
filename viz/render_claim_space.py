@@ -1,16 +1,23 @@
 """claim_space — the solution space of a raw CLAIM (a static constraint, not an FSM).
 
-A claim has NO runs — so this view is entirely SOLVED, never sampled:
+A claim has NO runs — so this view is entirely SOLVED, never sampled. Two shapes:
+
+NUMERIC (≥2 numeric vars) — the original feasible-region view:
   * left  — each numeric variable's EXACT range over the solution set, via z3 Optimize
             (a provable sup/inf of the variable subject to the whole constraint).
   * right — the real FEASIBLE REGION of the two principal variables: we grid value-space and
             ask the solver, per cell, "is (x, y) extensible to a full satisfying assignment?"
             — shading the cells that are, so the boundary is the true edge of the solution set
-            (not a bounding box). A few witness points are overlaid.
+            (not a bounding box).
 
-Consumes the `{"claim", "vars":[{name,kind,role}]}` schema that `evident export` emits for claims.
-Seq/enum vars aren't listed (they live in the smt2 as arrays/datatypes); we render over the numeric
-vars and tolerate an empty list.
+CATEGORICAL (Seq(Int)/enum-shaped claims — queens, graph-coloring, toposort, sudoku) — a
+feasibility grid solved per cell, the discrete analog of the numeric per-cell solve:
+  * enum vars   → rows = vars, cols = variants; cell shaded iff `var == variant` is sat.
+  * one Seq(Int) of length N → N × value-range grid; cell (i, v) shaded iff `seq[i] == v` is sat.
+
+Consumes the `{"claim", "vars":[{name,kind,role,...}]}` schema `evident export` emits: scalars
+carry just kind; a `seq` var also carries `elem` + (if pinned) `len`; an `enum` var carries
+`variants`. Record-element Seqs (Seq(Edge)) aren't listed and are skipped.
 """
 import json
 import matplotlib
@@ -73,15 +80,110 @@ def _opt_bound(body, c, maximize):
     return val
 
 
+def _ctor_by_name(sort, vname):
+    """The nullary constructor of an enum sort whose name is `vname`, or None."""
+    for k in range(sort.num_constructors()):
+        d = sort.constructor(k)
+        if d.name() == vname:
+            return d
+    return None
+
+
+def _grid(out_path, name, title, row_labels, col_labels, mask, xlabel, ylabel):
+    """Shared categorical-feasibility heatmap: a row × col grid, cell shaded iff
+    mask[r][c] (the value is feasible in SOME satisfying assignment)."""
+    fig, ax = plt.subplots(figsize=(max(7, 0.8 * len(col_labels) + 3),
+                                    max(4.5, 0.55 * len(row_labels) + 2)))
+    grid = np.array(mask, dtype=float)
+    ax.imshow(grid, aspect="auto", cmap="Greens", vmin=0, vmax=1,
+              interpolation="nearest", alpha=0.85)
+    ax.set_xticks(range(len(col_labels))); ax.set_xticklabels(col_labels, fontsize=9)
+    ax.set_yticks(range(len(row_labels))); ax.set_yticklabels(row_labels, fontsize=9)
+    ax.set_xlabel(xlabel); ax.set_ylabel(ylabel)
+    for r in range(len(row_labels)):
+        for c in range(len(col_labels)):
+            ax.text(c, r, "✓" if grid[r][c] else "·", ha="center", va="center",
+                    fontsize=9, color="#0f1419" if grid[r][c] else "#aab1ba")
+    ax.set_xticks(np.arange(-0.5, len(col_labels), 1), minor=True)
+    ax.set_yticks(np.arange(-0.5, len(row_labels), 1), minor=True)
+    ax.grid(which="minor", color="#d0d7de", linewidth=0.6)
+    ax.tick_params(which="minor", length=0)
+    fig.suptitle(title, fontsize=13)
+    fig.tight_layout(rect=[0, 0, 1, 0.95])
+    fig.savefig(out_path, dpi=120); plt.close(fig)
+    return out_path
+
+
+def _feasible_enums(out_path, name, body, consts, enums):
+    """rows = enum vars, cols = the (shared) variants; cell (var, variant) shaded
+    iff `var == variant` holds in some satisfying assignment. graph-coloring: the
+    colors each region CAN take."""
+    variants = enums[0].get("variants", [])
+    rows = [_SHORT(v["name"]) for v in enums]
+    sol = z3.Solver(); sol.add(body)
+    mask = []
+    for v in enums:
+        c = consts[v["name"]]
+        row = []
+        for vn in variants:
+            ctor = _ctor_by_name(c.sort(), vn)
+            ok = False
+            if ctor is not None:
+                sol.push(); sol.add(c == ctor()); ok = sol.check() == z3.sat; sol.pop()
+            row.append(1 if ok else 0)
+        mask.append(row)
+    return _grid(out_path, name,
+                 f"{name} — feasible values (solved per cell)\n"
+                 "shaded = the variable CAN take this value in some solution",
+                 rows, variants, mask, xlabel="value", ylabel="variable")
+
+
+def _feasible_seq(out_path, name, body, consts, seq):
+    """A Seq(Int) of length N → an N × value-range grid; cell (i, v) shaded iff
+    `seq[i] == v` holds in some satisfying assignment. queens `col`: the board
+    squares a queen CAN occupy across all solutions."""
+    arr = consts[seq["name"]]
+    n = int(seq["len"])
+    # value range: each element's solved [min, max] (clamped so the grid stays sane)
+    lo, hi = None, None
+    for i in range(n):
+        cell = z3.Select(arr, i)
+        emn = _opt_bound(body, cell, maximize=False)
+        emx = _opt_bound(body, cell, maximize=True)
+        if emn is not None:
+            lo = emn if lo is None else min(lo, emn)
+        if emx is not None:
+            hi = emx if hi is None else max(hi, emx)
+    if lo is None or hi is None:
+        return _na(out_path, f"{name} — solution space",
+                   "this claim's Seq values are unbounded\n(no finite feasibility grid)")
+    lo, hi = int(round(lo)), int(round(hi))
+    if hi - lo > 40:
+        hi = lo + 40
+    values = list(range(lo, hi + 1))
+    sol = z3.Solver(); sol.add(body)
+    mask = []
+    for i in range(n):
+        cell = z3.Select(arr, i)
+        row = []
+        for vv in values:
+            sol.push(); sol.add(cell == vv); ok = sol.check() == z3.sat; sol.pop()
+            row.append(1 if ok else 0)
+        mask.append(row)
+    short = _SHORT(seq["name"])
+    return _grid(out_path, name,
+                 f"{name} — feasible positions (solved per cell)\n"
+                 f"shaded = {short}[i] CAN equal this value in some solution",
+                 [f"{short}[{i}]" for i in range(n)], [str(v) for v in values],
+                 mask, xlabel="value", ylabel="index")
+
+
 def render(smt2_path, schema_path, out_path):
     sch, body, consts = _load_claim(smt2_path, schema_path)
     name = sch.get("claim", "claim")
-    numeric = [v for v in sch.get("vars", [])
+    vars_ = sch.get("vars", [])
+    numeric = [v for v in vars_
                if v.get("kind") in ("int", "real") and v["name"] in consts]
-    if not numeric:
-        return _na(out_path, f"{name} — solution space",
-                   "this claim has no numeric variable to bound\n"
-                   "(its variables are Seq/enum — press ⊨ Solve for a witness)")
 
     # exact bounds (z3 Optimize) for every numeric var
     bounds = {}
@@ -92,10 +194,33 @@ def render(smt2_path, schema_path, out_path):
         bounds[_SHORT(v["name"])] = (lo, hi)
     shown = [n for n in (_SHORT(v["name"]) for v in numeric)
              if None not in bounds[n]]
+
+    # The numeric feasible-region panel needs two solved axes. With fewer, a
+    # Seq/enum-shaped claim (queens, graph-coloring, sudoku, toposort) gets a
+    # categorical FEASIBILITY view instead — the set of values each variable CAN
+    # take in some satisfying assignment, solved per cell. Honest analog of the
+    # numeric per-cell solve, for the discrete domains the bounds panel can't show.
+    if len(shown) < 2:
+        enums = [v for v in vars_ if v.get("kind") == "enum" and v["name"] in consts]
+        seqs  = [v for v in vars_ if v.get("kind") == "seq" and v.get("elem") == "int"
+                 and v["name"] in consts and v.get("len")]
+        if enums:
+            return _feasible_enums(out_path, name, body, consts, enums)
+        if seqs:
+            return _feasible_seq(out_path, name, body, consts, seqs[0])
+        if not numeric:
+            return _na(out_path, f"{name} — solution space",
+                       "this claim has no numeric variable to bound\n"
+                       "(its variables are Seq/enum — press ⊨ Solve for a witness)")
     if not shown:
         return _na(out_path, f"{name} — solution space",
                    "the claim's numeric variables are unbounded\n(no finite solution-space boundary)")
+    return _numeric_view(out_path, name, body, consts, numeric, bounds, shown)
 
+
+def _numeric_view(out_path, name, body, consts, numeric, bounds, shown):
+    """Left: each numeric var's exact solved range. Right (≥2 vars): the real
+    feasible region of the two principal vars, solved per cell (not a box)."""
     have2d = len(shown) >= 2
     fig, axes = plt.subplots(1, 2 if have2d else 1, figsize=(14 if have2d else 8.5, 6.5))
     axL = axes[0] if have2d else axes
@@ -118,10 +243,11 @@ def render(smt2_path, schema_path, out_path):
     if have2d:
         axR = axes[1]
         vx, vy = shown[0], shown[1]
-        cx, cy = consts[_full(numeric, vx)], consts[_full(numeric, vy)]
+        dx, dy = _var_by_short(numeric, vx), _var_by_short(numeric, vy)
+        cx, cy = consts[dx["name"]], consts[dy["name"]]
         (xlo, xhi), (ylo, yhi) = bounds[vx], bounds[vy]
-        intx = _kind(numeric, vx) == "int"
-        inty = _kind(numeric, vy) == "int"
+        intx = dx["kind"] == "int"
+        inty = dy["kind"] == "int"
         nx = int(min(40, xhi - xlo + 1)) if intx else 40
         ny = int(min(40, yhi - ylo + 1)) if inty else 40
         xs = (np.arange(int(xlo), int(xhi) + 1) if intx and (xhi - xlo) <= 40
@@ -155,18 +281,12 @@ def render(smt2_path, schema_path, out_path):
     return out_path
 
 
-def _full(numeric, short):
+def _var_by_short(numeric, short):
+    """The var dict whose short name is `short` (full name + kind), or a default."""
     for v in numeric:
         if _SHORT(v["name"]) == short:
-            return v["name"]
-    return short
-
-
-def _kind(numeric, short):
-    for v in numeric:
-        if _SHORT(v["name"]) == short:
-            return v["kind"]
-    return "int"
+            return v
+    return {"name": short, "kind": "int"}
 
 
 def main(argv):
