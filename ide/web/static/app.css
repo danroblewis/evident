@@ -107,6 +107,7 @@ html,body { margin:0; height:100%; background:var(--bg); color:var(--ink);
 #solve-head .sat { color:var(--good); } #solve-head .unsat { color:var(--warn); }
 #solve-head .bad { color:var(--bad); }
 #solve-body { overflow:auto; padding:6px 14px; font-size:12px; }
+#solve-body.stale { filter:grayscale(1) opacity(0.4); transition:filter .12s; }   /* witness stale under a changed source (Sam #211) */
 #solve-body table { border-collapse:collapse; }
 #solve-body td { padding:2px 14px 2px 0; vertical-align:top; }
 #solve-body td.k { color:var(--accent); } #solve-body td.v { color:var(--ink); white-space:pre-wrap; }

@@ -1192,8 +1192,10 @@ async function run(view) {
   $("#view").classList.add("recomputing");                 // dim the OLD picture, not just the banner
   $("#inv-result").textContent = "";                       // last verify result is stale on any edit
   clearTrace();                                            // …and so is the counterexample scrubber
-  if (!$("#solve").hidden)                                  // stale witness/UNSAT under a changed source
+  if (!$("#solve").hidden) {                                // stale witness/UNSAT under a changed source
     $("#solve-head").innerHTML = '<span class="dim">source changed — press re-solve</span>';
+    $("#solve-body").classList.add("stale");               // grey the board too, like #view (Sam #211)
+  }
   const t0 = performance.now();
   // A live elapsed counter so a multi-second solve (real-valued / high-fanout FSMs run 1–8s) reads
   // as WORKING, not frozen (Ana/Marek #202). Only kicks in after 400ms so fast analyses don't flicker.
@@ -1241,6 +1243,7 @@ function escapeHtml(s) { return (s || "").replace(/&/g, "&amp;").replace(/</g, "
 
 function renderSolve(d, given) {
   const head = $("#solve-head"), body = $("#solve-body");
+  body.classList.remove("stale");                          // fresh result — undim (Sam #211)
   const pinned = Object.keys(given || {});
   if (!d.ok) { head.innerHTML = `<span class="bad">✕ ${escapeHtml(d.error || "query failed")}</span>`; body.innerHTML = ""; return; }
 
@@ -1589,6 +1592,22 @@ async function runTemporal(out, body) {
   } catch (e) { out.className = "bad"; out.textContent = "✕ " + e; }
 }
 $("#inv-btn").onclick = checkInvariant;
+// The ⊢ verify box accepts the SAME typable shortcuts as the editor — a newcomer who learned
+// `\ge → ≥` / `>=` shouldn't get bounced when they reuse it here (Sam #212/#160).
+function expandFieldSymbols(el) {
+  const v = el.value, pos = el.selectionStart;
+  const before = v.slice(0, pos);
+  let start = -1, rep = "";
+  const bs = before.match(/\\([a-zA-Z]+)([^a-zA-Z])$/);     // \word + a just-typed non-letter
+  if (bs && UNI[bs[1]]) { start = pos - bs[0].length; rep = UNI[bs[1]] + bs[2]; }
+  else if (OP_PAIRS[before.slice(-2)]) { start = pos - 2; rep = OP_PAIRS[before.slice(-2)]; }
+  if (start >= 0) {
+    el.value = v.slice(0, start) + rep + v.slice(pos);
+    el.setSelectionRange(start + rep.length, start + rep.length);
+  }
+}
+$("#inv-prop").addEventListener("input", () => expandFieldSymbols($("#inv-prop")));
+$("#solve-given").addEventListener("input", () => expandFieldSymbols($("#solve-given")));
 $("#inv-prop").addEventListener("keydown", (e) => { if (e.key === "Enter") checkInvariant(); });
 $("#solve-close").onclick = () => { $("#solve").hidden = true; };
 $("#solve-given").addEventListener("keydown", (e) => { if (e.key === "Enter") solve(false); });
