@@ -4399,6 +4399,12 @@
           "by": "worker",
           "act": "done",
           "note": "trace-table half shipped (commit 12acb1ea): \u21a7 csv button on the trace stepper downloads a step\u00d7var CSV. Verified live. Figure-as-SVG half split to a new task (larger backend change)."
+        },
+        {
+          "at": "2026-06-22T22:51:55Z",
+          "by": "worker",
+          "act": "done",
+          "note": "shipped c58cafc5: /api/figure + _render_svg renders the active view as SVG; exportSVG downloads it (\u2318K). Verified live: state_graph \u2192 65KB valid SVG. #244 now fully complete (trace + figure)."
         }
       ]
     },
