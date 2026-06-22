@@ -870,23 +870,81 @@ function renderSolve(d, given) {
         + `<td class="v">${escapeHtml(JSON.stringify(d.bindings[k]))}</td></tr>`).join("")}</table>`;
 }
 
-// --- domain-picture rendering for Seq witnesses (Task #68) ------------------------
-// A Seq(Int) witness is hard to read as an array. Draw it: an N-queens board when the
-// values look like one column-per-row placement (length N, every value in 0..N-1), else
-// a simple labeled index→value cell strip.
+// --- domain-picture rendering for Seq witnesses (Task #68 / #196) -----------------
+// A Seq witness is hard to read as a flat array. Draw it as the domain shape it is:
+//   • record-Seq (array of objects)            → a small TABLE, one row per element
+//   • sudoku-shaped Int-Seq (length K², 1..K)  → a K×K filled grid
+//   • N-queens column-Seq (permutation + name) → a chessboard with pieces
+//   • anything else                            → the honest index→value cell strip
+// Shapes are detected from the witness itself plus the source (`#name = N`), generically —
+// no sample names are hardcoded.
 function seqViz(name, val, source) {
   if (!Array.isArray(val) || !val.length) return null;
-  // only primitive-Int seqs get a picture; arrays of records/objects keep the raw table
-  if (!val.every((v) => typeof v === "number" && Number.isInteger(v))) return null;
   const n = val.length;
+
+  // record-Seq: every element is a plain object (a record). Render columns = field names.
+  if (val.every((v) => v && typeof v === "object" && !Array.isArray(v))) {
+    return recordTable(name, val);
+  }
+
+  // only primitive-Int seqs get a numeric picture; mixed/non-int seqs fall through.
+  if (!val.every((v) => typeof v === "number" && Number.isInteger(v))) return null;
+
   // A queens board needs TWO honest signals, not just "values in 0..N-1" — that also matches a
-  // topological order (pos=[0,1,2,3,4]) and a sudoku row (cell, 16 values in 0..3), which both
-  // drew a wrong chessboard (Marek #68/#92). Require: a queens-like variable NAME *and* a true
-  // permutation of 0..N-1 (one queen per row AND column). Everything else gets the honest strip.
+  // topological order (pos=[0,1,2,3,4]) and a sudoku row, which would draw a wrong chessboard
+  // (Marek #68/#92). Require: a queens-like variable NAME *and* a true permutation of 0..N-1
+  // (one queen per row AND column).
   const queensName = /^(col|cols|queen|queens|row|rows|board)$/.test(name.toLowerCase());
   const isPermutation = n >= 4 && new Set(val).size === n && val.every((v) => v >= 0 && v < n);
   if (queensName && isPermutation) return queensBoard(name, val);
+
+  // sudoku-shaped: a flat Int-Seq whose length is a perfect square K² (4, 9, 16, 25),
+  // with every value a single symbol in 1..K (or 0..K-1). Reshape it into the K×K grid the
+  // values already imply — Sam shouldn't reshape 16 index=value lines in his head.
+  const k = Math.round(Math.sqrt(n));
+  if (k >= 2 && k * k === n) {
+    const min = Math.min(...val), max = Math.max(...val);
+    const oneBased = min >= 1 && max <= k;        // 1..K (the canonical sudoku numbering)
+    const zeroBased = min >= 0 && max <= k - 1;   // 0..K-1
+    if (oneBased || zeroBased) return sudokuGrid(name, val, k);
+  }
+
   return cellStrip(name, val);
+}
+
+// One row per element, one column per record field. Replaces a raw-JSON array of objects with a
+// scannable table (subset-sum's {weight, take} items, toposort's {from, to} edges, sudoku boxes).
+function recordTable(name, rows) {
+  // union of field names across rows, in first-seen order (rows are homogeneous in practice).
+  const cols = [];
+  rows.forEach((r) => Object.keys(r).forEach((c) => { if (!cols.includes(c)) cols.push(c); }));
+  const fmt = (v) =>
+    typeof v === "boolean" ? (v ? "✓" : "·")
+      : (v && typeof v === "object") ? escapeHtml(JSON.stringify(v))
+      : escapeHtml(String(v));
+  const head = `<tr><th>#</th>${cols.map((c) => `<th>${escapeHtml(c)}</th>`).join("")}</tr>`;
+  const trs = rows.map((r, i) =>
+    `<tr><td class="rt-i">${i}</td>`
+    + cols.map((c) => `<td>${c in r ? fmt(r[c]) : ""}</td>`).join("") + `</tr>`).join("");
+  return `<div class="viz"><div class="viz-label">${escapeHtml(name)} `
+    + `<span class="dim">(${rows.length} × {${cols.map(escapeHtml).join(", ")}})</span></div>`
+    + `<table class="rec-table">${head}${trs}</table></div>`;
+}
+
+// A flat Int-Seq reshaped into the K×K grid its values imply (sudoku / latin-square style).
+function sudokuGrid(name, vals, k) {
+  let cells = "";
+  for (let r = 0; r < k; r++) {
+    for (let c = 0; c < k; c++) {
+      // subgrid shading when K is itself a perfect square (4→2×2 boxes, 9→3×3) — purely visual.
+      const sub = Math.round(Math.sqrt(k));
+      const boxed = sub * sub === k && (Math.floor(r / sub) + Math.floor(c / sub)) % 2 === 1;
+      cells += `<div class="scell${boxed ? " box" : ""}">${escapeHtml(String(vals[r * k + c]))}</div>`;
+    }
+  }
+  return `<div class="viz"><div class="viz-label">${escapeHtml(name)} — ${k}×${k} grid`
+    + ` <span class="dim">(${escapeHtml(name)}[r·${k}+c] → cell at row r, col c)</span></div>`
+    + `<div class="sgrid" style="grid-template-columns:repeat(${k},1fr)">${cells}</div></div>`;
 }
 
 // `#name = N` in the source → N (the pinned Seq length), else null.
