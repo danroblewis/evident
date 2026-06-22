@@ -25,6 +25,9 @@ from basin_support import (  # noqa: E402
 from basin_domain import (  # noqa: E402
     baseline_fn, numeric_domain, axis_grid,
 )
+# Interactive hover-overlay sidecar (#184 increment 3): each seed dot → its full
+# start state. basin_map always saves tight, so use the tight-bbox mapping.
+from overlay_points import write_points, tight_fraction  # noqa: E402
 
 
 def _iterate_to_attractor(m, seed_state, cache, resolved, max_steps=600):
@@ -78,8 +81,9 @@ def _panel_basins(m, ax_x, ax_y, fixed, cache, resolved, dom):
     to the reachable/visited `dom` (NO hardcoded box, NO off-plane probes — the
     grid already spans the actual attractor extent), holding `fixed`
     (name->value) constant, iterate each seed to its attractor signature. Returns
-    (seeds, sigs) where seeds are (xv, yv) axis-value pairs. `cache`/`resolved`
-    are shared across panels so the z3 work is paid once."""
+    (seeds, sigs, seed_states): seeds are (xv, yv) axis-value pairs, seed_states
+    the FULL start-state dicts behind each plotted dot (for the hover overlay).
+    `cache`/`resolved` are shared across panels so the z3 work is paid once."""
     baseline = baseline_fn(m)
     nx = 14 if ax_x["kind"] in ("int", "real") else None
     ny = 14 if (ax_y and ax_y["kind"] in ("int", "real")) else None
@@ -98,17 +102,19 @@ def _panel_basins(m, ax_x, ax_y, fixed, cache, resolved, dom):
             st[ax_y["name"]] = int(round(yv)) if ax_y["kind"] == "int" else yv
         return st
 
-    seeds, sigs = [], []
+    seeds, sigs, seed_states = [], [], []
     for xv in gx:
         for yv in gy:
-            sig = _iterate_to_attractor(m, mk_state(xv, yv), cache, resolved)
+            st = mk_state(xv, yv)
+            sig = _iterate_to_attractor(m, st, cache, resolved)
             seeds.append((xv, yv))
             sigs.append(sig)
-    return seeds, sigs
+            seed_states.append(st)
+    return seeds, sigs, seed_states
 
 
 def _draw_panel(ax, m, ax_x, ax_y, seeds, labels, centers, show_legend, dom,
-                decorate_enum_ticks):
+                decorate_enum_ticks, seed_states=None, overlay=None):
     bx = axis_grid(m, ax_x, 8, dom)[1]
     by = axis_grid(m, ax_y, 8, dom)[1] if ax_y is not None else (-0.5, 0.5)
     xs = np.array([_ordinal(m, ax_x, s[0]) for s in seeds], float)
@@ -117,6 +123,10 @@ def _draw_panel(ax, m, ax_x, ax_y, seeds, labels, centers, show_legend, dom,
     else:
         ys = np.zeros(len(seeds))
     labels = np.array(labels, int)
+    # Each seed dot is hoverable → its full start state (#184 increment 3).
+    if overlay is not None and seed_states is not None:
+        overlay.extend((ax, float(xs[i]), float(ys[i]), seed_states[i])
+                       for i in range(len(seed_states)))
 
     marker_size = 36 if (ax_x["kind"] in ("int", "real")) else 140
     for ci in sorted(set(labels)):
@@ -369,16 +379,20 @@ def numeric_basins(m, out_path, discrete_basins, discrete_basins_on,
 def _basins_single(m, out_path, ax_x, ax_y, dom, kind, cache, resolved,
                    decorate_enum_ticks):
     """Single (un-faceted) panel: one grid of seeds → cluster → draw."""
-    seeds, sigs = _panel_basins(m, ax_x, ax_y, {}, cache, resolved, dom)
+    seeds, sigs, seed_states = _panel_basins(m, ax_x, ax_y, {}, cache, resolved, dom)
     labels, centers = _cluster(sigs)
     fig, ax = plt.subplots(figsize=(9, 7))
+    overlay = []
     _draw_panel(ax, m, ax_x, ax_y, seeds, labels, centers,
                 show_legend=True, dom=dom,
-                decorate_enum_ticks=decorate_enum_ticks)
+                decorate_enum_ticks=decorate_enum_ticks,
+                seed_states=seed_states, overlay=overlay)
     ax.set_title(f"{m.fsm} — basin_map ({kind}: {len(centers)} basins on "
                  f"{len(seeds)}-seed grid)", fontsize=13, weight="bold")
+    points = tight_fraction(fig, overlay)
     fig.savefig(out_path, dpi=120, bbox_inches="tight")
     plt.close(fig)
+    write_points(out_path, points)
     return f"{kind}: {len(seeds)} seeds -> {len(centers)} basins"
 
 
@@ -386,13 +400,13 @@ def _basins_faceted(m, out_path, ax_x, ax_y, dom, kind, cache, resolved,
                     facet_var, facet_vals, decorate_enum_ticks):
     """One panel per facet value, holding facet_var fixed. Compute all panels
     first so we cluster every signature TOGETHER (consistent colors)."""
-    panels = []        # (label_str, seeds, sigs)
+    panels = []        # (label_str, seeds, sigs, seed_states)
     all_sigs = []
     for fv in facet_vals:
-        seeds, sigs = _panel_basins(m, ax_x, ax_y, {facet_var["name"]: fv},
-                                    cache, resolved, dom)
+        seeds, sigs, seed_states = _panel_basins(
+            m, ax_x, ax_y, {facet_var["name"]: fv}, cache, resolved, dom)
         disp = fv if facet_var["kind"] != "bool" else ("true" if fv else "false")
-        panels.append((str(disp), seeds, sigs))
+        panels.append((str(disp), seeds, sigs, seed_states))
         all_sigs.extend(sigs)
     labels_all, centers = _cluster(all_sigs)
 
@@ -400,19 +414,23 @@ def _basins_faceted(m, out_path, ax_x, ax_y, dom, kind, cache, resolved,
     fig, axarr = plt.subplots(1, npan, figsize=(5.2 * npan, 6.0),
                               squeeze=False)
     off = 0
-    for i, (disp, seeds, sigs) in enumerate(panels):
+    overlay = []
+    for i, (disp, seeds, sigs, seed_states) in enumerate(panels):
         lbl = labels_all[off:off + len(sigs)]
         off += len(sigs)
         ax = axarr[0][i]
         _draw_panel(ax, m, ax_x, ax_y, seeds, lbl, centers,
                     show_legend=(i == npan - 1), dom=dom,
-                    decorate_enum_ticks=decorate_enum_ticks)
+                    decorate_enum_ticks=decorate_enum_ticks,
+                    seed_states=seed_states, overlay=overlay)
         ax.set_title(f"{facet_var['name']} = {disp}", fontsize=11,
                      weight="bold")
     fig.suptitle(f"{m.fsm} — basin_map ({kind}: faceted by "
                  f"{facet_var['name']}, {len(centers)} basins)",
                  fontsize=13, weight="bold")
+    points = tight_fraction(fig, overlay)
     fig.savefig(out_path, dpi=120, bbox_inches="tight")
     plt.close(fig)
+    write_points(out_path, points)
     return (f"{kind}: faceted by {facet_var['name']} ({npan} panels), "
             f"{len(centers)} basins")

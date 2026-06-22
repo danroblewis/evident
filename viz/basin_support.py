@@ -12,6 +12,8 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 
+from overlay_points import write_points  # noqa: E402
+
 
 # A qualitative palette big enough for the terminal sets we see.
 PALETTE = [
@@ -31,6 +33,7 @@ def _placeholder(out_path, fsm, reason):
     ax.set_title(f"{fsm} — basin_map", fontsize=14, weight="bold")
     fig.savefig(out_path, dpi=120, bbox_inches="tight")
     plt.close(fig)
+    write_points(out_path, [])           # N/A card → no hoverable points
 
 
 # --------------------------------------------------------------------------

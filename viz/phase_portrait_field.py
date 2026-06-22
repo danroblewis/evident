@@ -151,7 +151,7 @@ def _robust_span(vals, fallback_lo, fallback_hi, pad=0.06):
 
 
 def render_numeric_panel(m, ax, axx, axy, pin, draw_colorbar, extent,
-                         fit_to_data=False):
+                         fit_to_data=False, overlay=None):
     """A magnitude-colored vector field over a grid of pinned numeric points.
 
     `pin` carries the values of every NON-axis var (facet value, off-axis vars);
@@ -233,6 +233,8 @@ def render_numeric_panel(m, ax, axx, axy, pin, draw_colorbar, extent,
         ax.plot(px, py, "-", lw=1.6, color=cmap(i / max(1, len(seeds) - 1)),
                 alpha=0.95, zorder=5)
         ax.plot(px[0], py[0], "o", color="white", mec="black", ms=6, zorder=6)
+        if overlay is not None:                # orbit states are the hoverable points (#184)
+            overlay.extend((ax, px[j], py[j], traj[j]) for j in range(len(traj)))
 
     if fixed_x:
         ax.plot(fixed_x, fixed_y, "*", color="red", ms=18, mec="black",
@@ -386,7 +388,7 @@ def _reachable_extent(m, axx, axy):
 
 # ----- discrete / mixed regime (projected transition graph) -----------------
 def render_discrete_panel(m, ax, axx, axy, states, edges, init_key,
-                          all_xy_bounds=None):
+                          all_xy_bounds=None, overlay=None):
     """Project a (sub)set of reachable states onto the two axes and draw the
     real transition arrows. `states` is a list of state dicts; `edges` a list of
     (i, j) into that list. Absorbing states (only successor is self) are starred.
@@ -440,6 +442,8 @@ def render_discrete_panel(m, ax, axx, axy, states, edges, init_key,
         return jx, jy
 
     P = [place(i) for i in range(len(states))]
+    if overlay is not None:                    # hoverable points (#184): placed coords
+        overlay.extend((ax, P[i][0], P[i][1], states[i]) for i in range(len(states)))
 
     succ = {}
     for (a, b) in edges:
