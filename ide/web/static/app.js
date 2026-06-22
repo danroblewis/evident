@@ -836,6 +836,9 @@ function paint(data, ms) {
     $("#structure").hidden = true;
     $("#invariant").hidden = true;                     // no reachable set → no verify row
     $("#inv-result").textContent = "";
+    $("#tabs").innerHTML = "";                          // no current valid view — don't leave the
+                                                       // 16-tab strip inviting clicks over a stale
+                                                       // / empty diagram (Marek #147/#148).
     // a pure claim (no FSM) isn't an error — it's a solve target, not a thing to visualize
     if (/no fsm schemas? found/i.test(data.error || "")) {
       setStatus("claim — use Solve", "ok");
