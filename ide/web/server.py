@@ -366,22 +366,34 @@ def _enumerate(source, claim, given, limit, work):
 
 
 def _unsat_core(source, claim, work):
-    """A practical UNSAT core by delta-debugging the source: a line whose removal flips the
-    claim to SAT is part of the conflict. Header/decl lines error on removal (undefined name),
-    so they self-exclude. Line granularity; multi-line ∀ blocks may be missed (noted in UI)."""
+    """A MINIMAL unsat core by deletion-based minimization over the source's constraint lines.
+
+    The naive "a line whose individual removal flips to SAT is in the core" is UNSOUND when
+    constraints are redundant: for {x>3, x>5, y>5, y<100, x+y<10} it drops x>5 (removing it still
+    leaves x>3 ⇒ SAT) yet reports a SATISFIABLE set as 'the core'. Instead: start with every
+    constraint line, and drop a line ONLY when the program stays UNSAT without it. The residual is
+    a genuine minimal core — every member is necessary AND the set itself is unsatisfiable.
+
+    Header/decl/comment lines are never candidates (a pure decl's removal un-declares a var and
+    cascades to drop its constraints). Line granularity; multi-line ∀ blocks may be missed."""
     lines = source.split("\n")
-    core = []
+    cand = []
     for i, ln in enumerate(lines):
         s = ln.strip()
-        if not s or s.startswith("--") or s.split(" ", 1)[0] in _HEADER_KW:
+        if (not s or s.startswith("--") or s.split(" ", 1)[0] in _HEADER_KW
+                or _PURE_DECL.match(s)):
             continue
-        if _PURE_DECL.match(s):       # un-declaring a var cascades to drop its constraints
-            continue
-        trial = "\n".join(lines[:i] + lines[i + 1:])
+        cand.append(i)
+    cand_set = set(cand)
+    keep = set(cand)
+    for i in cand:
+        trial_keep = keep - {i}
+        trial = "\n".join(ln for j, ln in enumerate(lines)
+                          if j not in cand_set or j in trial_keep)
         r = _run_query(trial, claim, None, work)
-        if r.get("ok") and r.get("satisfied"):
-            core.append({"line": i + 1, "text": s})
-    return core
+        if r.get("ok") and r.get("satisfied") is False:   # still UNSAT without line i → redundant
+            keep = trial_keep
+    return [{"line": i + 1, "text": lines[i].strip()} for i in sorted(keep)]
 
 
 @app.post("/api/solve")

@@ -48,7 +48,12 @@ def render(smt2_path, schema_path, out_path):
         return _na(out_path, f"{m.fsm} — solution space",
                    "solution space needs a numeric variable\n(this program's state is categorical —\nsee state_graph for its boundary)")
 
-    boundtag = "≥ lower bound (capped)" if capped else "exact (reachable set fully solved)"
+    n = struct.get("reachable", len(states))
+    # Honesty (Ana #112): the bounds are min/max over the reachable BFS. When the set is finite
+    # and fully explored (not capped), that IS exact — every reachable state was seen. When capped,
+    # it's a SAMPLE, not a proven bound — don't claim "solved", and don't assert a direction.
+    boundtag = (f"sampled over {n} reachable states — not exhaustive (true range may differ)"
+                if capped else f"exact — all {n} reachable states (exhaustively explored)")
     have2d = len(numeric) >= 2
     fig, axes = plt.subplots(1, 2 if have2d else 1,
                              figsize=(14 if have2d else 8.5, 6.5))
@@ -81,7 +86,7 @@ def render(smt2_path, schema_path, out_path):
                         label="reachable set")
         (xlo, xhi), (ylo, yhi) = bounds[vx], bounds[vy]
         axR.add_patch(Rectangle((xlo, ylo), (xhi - xlo) or 1, (yhi - ylo) or 1, fill=False,
-                                edgecolor="#7ee0c0", lw=1.6, ls="--", label="boundary"))
+                                edgecolor="#7ee0c0", lw=1.6, ls="--", label="bounding box"))
         for f in fps:
             if vx in f and vy in f:
                 axR.scatter([f[vx]], [f[vy]], marker="*", s=280, color="#c9a8ff",
@@ -91,11 +96,12 @@ def render(smt2_path, schema_path, out_path):
         if uniq:
             axR.legend(uniq.values(), uniq.keys(), loc="best", fontsize=9)
         axR.set_xlabel(vx); axR.set_ylabel(vy)
-        axR.set_title(f"feasible region ({vx}, {vy}) — the SET, not one orbit", fontsize=11)
+        axR.set_title(f"reachable set ({vx}, {vy}) — every reachable combination + its extent",
+                      fontsize=11)
         axR.grid(alpha=0.2)
 
-    fig.suptitle(f"{m.fsm} — solution space · {verdict} · boundaries solved, not simulated",
-                 fontsize=13)
+    framing = "boundary exhaustively solved" if not capped else "boundary sampled (capped — not exhaustive)"
+    fig.suptitle(f"{m.fsm} — solution space · {verdict} · {framing}", fontsize=13)
     fig.tight_layout(rect=[0, 0, 1, 0.96])
     fig.savefig(out_path, dpi=120); plt.close(fig)
     return out_path
