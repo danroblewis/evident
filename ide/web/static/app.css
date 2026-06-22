@@ -242,6 +242,8 @@ html,body { margin:0; height:100%; background:var(--bg); color:var(--ink);
 .trace-state { font:12px ui-monospace,Menlo,monospace; color:var(--ink); white-space:pre-wrap;
   padding:3px 6px; background:#0f1419; border:1px solid var(--line); border-radius:6px; }
 .trace-state.bad { color:var(--bad); border-color:var(--bad); }
+.trace-flag.good { color:var(--good); }                                  /* query witness = a goal, not a violation (Ana #237) */
+.trace-state.good { color:var(--good); border-color:var(--good); }
 
 #tabs { display:flex; flex-wrap:wrap; gap:5px; padding:8px 12px 4px; }
 #tabs .tab { padding:3px 10px; border-radius:6px 6px 0 0; background:#1b2129; color:var(--dim);

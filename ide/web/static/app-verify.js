@@ -373,18 +373,21 @@ function _renderTrace() {
   const next = document.createElement("button"); next.className = "trace-nav"; next.textContent = "▶"; next.disabled = last;
   next.onclick = () => { _trace.i = _traceClamp(_trace.i + 1, n); _renderTrace(); };
   head.appendChild(prev); head.appendChild(step); head.appendChild(next);
-  if (last) { const flag = document.createElement("span"); flag.className = "trace-flag"; flag.textContent = "● violation here"; head.appendChild(flag); }
+  // The final step is the WITNESS for an existential query (a goal — good) but the VIOLATION for a
+  // refuted safety/liveness check (bad). Don't paint a query's sought state red (Ana #237).
+  const goal = _trace.kind === "goal";
+  if (last) { const flag = document.createElement("span"); flag.className = "trace-flag" + (goal ? " good" : ""); flag.textContent = goal ? "● witness here" : "● violation here"; head.appendChild(flag); }
   el.appendChild(head);
   const line = document.createElement("div");
-  line.className = "trace-state" + (last ? " bad" : "");
+  line.className = "trace-state" + (last ? (goal ? " good" : " bad") : "");
   line.textContent = _traceStateLine(_trace.states[i]);
   el.appendChild(line);
   highlightTraceStep(_trace.states[i]);      // ring this step's state on the diagram (#231/#206)
 }
 // Open the stepper on a fresh trace, parked at the violating (final) step.
-function showTrace(trace, label) {
+function showTrace(trace, label, kind) {
   if (!trace || trace.length < 2) { clearTrace(); return; }
-  _trace.states = trace; _trace.i = trace.length - 1; _trace.label = label || "";
+  _trace.states = trace; _trace.i = trace.length - 1; _trace.label = label || ""; _trace.kind = kind || "violation";
   _renderTrace();
 }
 // Liveness check (◇ / ⤳) against /api/temporal, with the dodging-run trace on failure.
@@ -446,7 +449,7 @@ async function runQuery() {
     const w = Object.entries(d.witness || {}).map(([k, v]) => `${k.split(".").pop()}=${v}`).join(" ");
     out.className = "good";
     out.textContent = `✓ reachable — ${w} (${d.count} of ${d.checked} state${d.checked === 1 ? "" : "s"})`;
-    if (d.trace && d.trace.length >= 2) showTrace(d.trace, `a run reaching: ${d.predicate}`);
+    if (d.trace && d.trace.length >= 2) showTrace(d.trace, `a run reaching: ${d.predicate}`, "goal");
   } catch (e) { out.className = "bad"; out.textContent = "✕ " + e; }
 }
 
