@@ -307,6 +307,7 @@ html,body { margin:0; height:100%; background:var(--bg); color:var(--ink);
   font-size:12px; max-height:220px; overflow-y:auto; }
 #diff-panel.diff-err .diff-msg { color:var(--bad); }
 .diff-head { font-weight:bold; margin-bottom:6px; }
+.diff-head.diff-edges { margin-top:9px; border-top:1px solid var(--line); padding-top:7px; }   /* transition delta (#232) */
 .diff-cols { display:flex; gap:18px; }
 .diff-col { flex:1 1 0; min-width:0; }
 .diff-col-h { font-size:11px; margin-bottom:3px; }

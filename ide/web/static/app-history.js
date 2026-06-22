@@ -188,20 +188,34 @@ function renderDiff(panel, data) {
     panel.innerHTML = `<div class="diff-head">⇄ diff</div><div class="diff-msg">${(data.error || "diff failed").replace(/</g, "&lt;")}</div>`;
     return;
   }
-  const { vars, appeared, vanished, common, a_total, b_total } = data;
+  const { vars, appeared, vanished, common, a_total, b_total,
+          appeared_edges = [], vanished_edges = [], common_edges = 0, a_edges = 0, b_edges = 0 } = data;
   const list = (rows, cls, sym, truncated) => {
     if (!rows.length) return `<div class="diff-none dim">${sym} none</div>`;
     const items = rows.map((s) => `<li>${diffStateRow(s, vars).replace(/</g, "&lt;")}</li>`).join("");
     const more = truncated ? `<li class="dim">… (capped)</li>` : "";
     return `<ul class="diff-list ${cls}">${items}${more}</ul>`;
   };
+  // Transition delta — only shown when edges actually changed; catches a rewired guard whose
+  // reachable STATE set is identical but whose RELATION differs (Marek #232).
+  const edgeRow = (e) => `${diffStateRow(e.src, vars)} → ${diffStateRow(e.dst, vars)}`.replace(/</g, "&lt;");
+  const edgeList = (rows, cls, sym, truncated) => rows.length
+    ? `<ul class="diff-list ${cls}">${rows.map((e) => `<li>${edgeRow(e)}</li>`).join("")}${truncated ? '<li class="dim">… (capped)</li>' : ""}</ul>`
+    : `<div class="diff-none dim">${sym} none</div>`;
+  const edgeSection = (appeared_edges.length || vanished_edges.length)
+    ? `<div class="diff-head diff-edges">⇄ ${appeared_edges.length} transition${appeared_edges.length === 1 ? "" : "s"} appeared · ${vanished_edges.length} vanished · = ${common_edges} unchanged`
+      + `<span class="dim"> &nbsp;(A ${a_edges} → B ${b_edges} transitions)</span></div>`
+      + `<div class="diff-cols"><div class="diff-col"><div class="diff-col-h appeared">▲ new transitions</div>${edgeList(appeared_edges, "appeared", "▲", data.edges_appeared_truncated)}</div>`
+      + `<div class="diff-col"><div class="diff-col-h vanished">▼ removed transitions</div>${edgeList(vanished_edges, "vanished", "▼", data.edges_vanished_truncated)}</div></div>`
+    : "";
   panel.innerHTML =
     `<div class="diff-head">▲ ${appeared.length} appeared · ▼ ${vanished.length} vanished · = ${common} unchanged`
     + `<span class="dim"> &nbsp;(A ${a_total} → B ${b_total} reachable states)</span></div>`
     + `<div class="diff-cols">`
     + `<div class="diff-col"><div class="diff-col-h appeared">▲ appeared in B</div>${list(appeared, "appeared", "▲", data.appeared_truncated)}</div>`
     + `<div class="diff-col"><div class="diff-col-h vanished">▼ vanished from A</div>${list(vanished, "vanished", "▼", data.vanished_truncated)}</div>`
-    + `</div>`;
+    + `</div>`
+    + edgeSection;
 }
 
 // On error / claim / backend-down we must not leave a two-up or a past view over a dead/changed

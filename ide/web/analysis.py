@@ -48,13 +48,23 @@ def _model_diff(model_a, model_b, limit, cap=40):
         return {"ok": False,
                 "error": f"diff needs the same variables — A has {fmt(a_names)}, "
                          f"B has {fmt(b_names)}"}
-    states_a, _ = model_a.reachable(limit=limit)
-    states_b, _ = model_b.reachable(limit=limit)
+    states_a, edges_a = model_a.reachable(limit=limit)
+    states_b, edges_b = model_b.reachable(limit=limit)
     by_key_a = {model_a.state_key(s): s for s in states_a}
     by_key_b = {model_b.state_key(s): s for s in states_b}
     keys_a, keys_b = set(by_key_a), set(by_key_b)
     appeared = [by_key_b[k] for k in keys_b - keys_a]
     vanished = [by_key_a[k] for k in keys_a - keys_b]
+    # Edge delta: an edge is keyed (src_state_key, dst_state_key). This catches a CHANGED RELATION
+    # even when the state set is identical — rewire a guard so Green→Red becomes Green→Yellow and the
+    # states are unchanged but the transitions differ (Marek #232).
+    def _edge_map(model, states, edges):
+        sk = [model.state_key(s) for s in states]
+        return {(sk[i], sk[j]): (states[i], states[j]) for i, j in edges}
+    em_a, em_b = _edge_map(model_a, states_a, edges_a), _edge_map(model_b, states_b, edges_b)
+    ek_a, ek_b = set(em_a), set(em_b)
+    appeared_edges = [{"src": em_b[k][0], "dst": em_b[k][1]} for k in ek_b - ek_a]
+    vanished_edges = [{"src": em_a[k][0], "dst": em_a[k][1]} for k in ek_a - ek_b]
     short = sorted(n.split(".")[-1] for n in a_names)
     return {
         "ok": True,
@@ -66,6 +76,13 @@ def _model_diff(model_a, model_b, limit, cap=40):
         "b_total": len(keys_b),
         "appeared_truncated": len(appeared) > cap,
         "vanished_truncated": len(vanished) > cap,
+        "appeared_edges": appeared_edges[:cap],
+        "vanished_edges": vanished_edges[:cap],
+        "common_edges": len(ek_a & ek_b),
+        "a_edges": len(ek_a),
+        "b_edges": len(ek_b),
+        "edges_appeared_truncated": len(appeared_edges) > cap,
+        "edges_vanished_truncated": len(vanished_edges) > cap,
     }
 
 
