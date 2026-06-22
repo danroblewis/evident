@@ -662,6 +662,49 @@ function markErrorLine(err, loc) {
   }
 }
 
+// --- dropped-constraint line markers ----------------------------------------------
+// A DROPPED constraint is Evident's signature silent bug: the line parsed, but couldn't
+// translate to a Z3 Bool, so it was discarded — the variable it constrained is left FREE,
+// and the model is under-constrained while looking valid. Surface that AT the line the
+// user wrote it. Distinct AMBER style from the red parse-error marker (a parse error
+// blocks; a dropped constraint runs but silently lies). The gutter cell carries an Ace
+// warning annotation whose tooltip = the desugared dropped-constraint text.
+let _droppedRows = [];
+function clearDroppedLines() {
+  for (const d of _droppedRows) {
+    editor.session.removeMarker(d.marker);
+    editor.session.removeGutterDecoration(d.row, "warn-gutter");
+  }
+  _droppedRows = [];
+  editor.session.clearAnnotations();
+}
+// locs: 1-based source lines; warnings: the raw `warning: dropped …` block (for tooltips).
+function markDroppedLines(locs, warnings) {
+  clearDroppedLines();
+  if (!Array.isArray(locs) || !locs.length) return;
+  const Range = ace.require("ace/range").Range;
+  const pretties = (warnings || "")
+    .split("\n")
+    .map((l) => (l.match(/couldn't translate to Bool\):\s*(.+)$/) || [])[1])
+    .filter(Boolean);
+  const annotations = [];
+  locs.forEach((line, i) => {
+    const row = line - 1;
+    if (!Number.isInteger(row) || row < 0 || row >= editor.session.getLength()) return;
+    const marker = editor.session.addMarker(
+      new Range(row, 0, row, Infinity), "ace-warn-line", "fullLine");
+    editor.session.addGutterDecoration(row, "warn-gutter");
+    _droppedRows.push({ row, marker });
+    annotations.push({
+      row, column: 0, type: "warning",
+      text: pretties[i]
+        ? "dropped constraint (left FREE — not translated to a Z3 Bool):\n  " + pretties[i]
+        : "dropped constraint — couldn't translate to a Z3 Bool (variable left free)",
+    });
+  });
+  if (annotations.length) editor.session.setAnnotations(annotations);
+}
+
 // --- the live loop ----------------------------------------------------------------
 let timer = null, activeView = null, lastSource = "", _dimTimer = null;
 
@@ -784,6 +827,10 @@ function paint(data, ms) {
   $("#banner").classList.remove("recomputing");        // analysis returned — undim
   $("#structure").classList.remove("recomputing");
   $("#view").classList.remove("recomputing");
+  // Tint each dropped-constraint line in the editor, on every result (ok / error / claim
+  // alike) — the silent bug surfaces AT the line, not just in the console banner. Cleared
+  // here too: an empty/absent dropped_locs wipes the previous run's amber markers.
+  markDroppedLines(data.dropped_locs, data.warnings);
   const view = $("#view"), warn = $("#warnings");
   if (!data.ok) {
     $("#structure").hidden = true;
