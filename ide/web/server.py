@@ -210,12 +210,61 @@ def _render_png(view, prefix):
         return f.read()
 
 
+def _maybe_claim(prefix, dropped):
+    """If the export produced a CLAIM schema (no FSM), render its SOLVED solution space (exact
+    z3-Optimize bounds + per-cell feasible region) and return the analyze response; else None so
+    the FSM path runs. A claim has no run to step — this is the purest solved-boundary view."""
+    import z3, json as _json
+    try:
+        sch = _json.load(open(prefix + ".schema.json"))
+    except Exception:
+        return None
+    if "claim" not in sch or "fsm" in sch:
+        return None
+    smt2, schema = prefix + ".smt2", prefix + ".schema.json"
+    import render_claim_space as RC
+    feasible, bounds = True, {}
+    try:
+        _, body, consts = RC._load_claim(smt2, schema)
+        s = z3.Solver(); s.add(body)
+        feasible = s.check() == z3.sat
+        for v in sch.get("vars", []):
+            if v.get("kind") in ("int", "real") and v["name"] in consts:
+                lo = RC._opt_bound(body, consts[v["name"]], False)
+                hi = RC._opt_bound(body, consts[v["name"]], True)
+                if lo is not None and hi is not None:
+                    bounds[v["name"].split(".")[-1]] = [lo, hi]
+    except Exception as e:
+        print(f"[server] claim bounds failed: {type(e).__name__}: {e}", file=sys.stderr)
+    png = b""
+    try:
+        RC.render(smt2, schema, prefix + "_claim.png")
+        png = open(prefix + "_claim.png", "rb").read()
+    except Exception as e:
+        print(f"[server] claim render failed: {type(e).__name__}: {e}", file=sys.stderr)
+    return {
+        "ok": True,
+        "banner": ("◆ a claim (a relation) — its SOLUTION SPACE, fully solved (no run; "
+                   "press ⊨ Solve for one witness)" if feasible else
+                   "◆ a claim — UNSATISFIABLE (no assignment satisfies it; ⊨ Solve to see why)"),
+        "structure": {"verdict": "satisfiable" if feasible else "unsatisfiable", "claim": True,
+                      "fixed_points": [], "bounds": bounds, "reachable": 0, "capped": False,
+                      "branching": 1},
+        "dropped": dropped, "branching": 1, "states": 0, "edges": 0, "capped": False,
+        "vars": list(bounds.keys()), "view": "claim_space", "views": ["claim_space"],
+        "png": base64.b64encode(png).decode() if png else None, "warnings": "",
+    }
+
+
 @app.post("/api/analyze")
 def analyze(req: Source):
     with _LOCK, tempfile.TemporaryDirectory() as work:
         ok, prefix, dropped, msg = _export(req.source, work)
         if not ok:
             return {"ok": False, "error": msg, "dropped": dropped}
+        claim_resp = _maybe_claim(prefix, dropped)     # a raw claim renders its solved solution space
+        if claim_resp is not None:
+            return claim_resp
         try:
             m = load_model(prefix + ".smt2", prefix + ".schema.json")
             states, edges = m.reachable(limit=REACH_LIMIT)

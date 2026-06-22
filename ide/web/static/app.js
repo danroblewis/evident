@@ -612,8 +612,8 @@ const VERDICTS = {
 };
 function renderStructure(s) {
   const el = $("#structure");
-  // the invariant checker only makes sense when there's a reachable set (an FSM with structure)
-  $("#invariant").hidden = !s;
+  // the invariant checker only makes sense for an FSM with a reachable set — not a raw claim
+  $("#invariant").hidden = !s || !!s.claim;
   if (!s) { el.hidden = true; return; }
   el.hidden = false;
   const [icon, name, note] = VERDICTS[s.verdict] || ["·", s.verdict, ""];
