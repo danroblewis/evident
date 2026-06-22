@@ -4318,16 +4318,23 @@
       "id": 241,
       "title": "Enumerate-ALL witnesses with symmetry breaking (the SAT dual of the all-cores feature). The query console gives ONE witness + a count ('1 of 9'); Alloy walks me through EVERY minimal instance with isomorph-elimination. For 'solve-for-X' over a finite domain I want next/prev through all distinct models, with a symmetry-breaking toggle so I'm not drowning in permutations of the same solution (e.g. N-queens, graph-coloring). All-cores landed; give me all-models to match.",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "ide-critic-expert",
       "created": "2026-06-22T20:15:02Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "solve"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-22T22:06:45Z",
+          "by": "worker",
+          "act": "done",
+          "note": "shipped afee86b1: Model.query returns matches[] (capped 40); _execQuery walks them with a \u25c0 k/N \u25b6 stepper, ringing each on the diagram. Verified live: light=Red \u2192 3 matches walkable."
+        }
+      ]
     },
     {
       "id": 242,
@@ -4348,16 +4355,23 @@
       "id": 243,
       "title": "Bounded-vs-unbounded honesty as a CONTROL on the trace/reachability depth, not just a label. When the reachable-set is capped (the '\u2265400 capped sample' footer) I can't tell whether 'no more reachable' is a proof or a cap I hit. Give me a depth/scope spinner (Alloy's scope) and a clear 'EXHAUSTED at depth k \u2014 this IS the full reachable set' vs 'CAPPED at k \u2014 there may be more' verdict, so completeness is something I set and the tool certifies.",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "ide-critic-expert",
       "created": "2026-06-22T20:15:02Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "analysis"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-22T21:06:38Z",
+          "by": "worker",
+          "act": "done",
+          "note": "shipped: honesty line certifies 'N reachable (\u2713 complete)' vs '\u2265N (capped \u2014 sample)' with soundness tooltips (commit 20528d70)"
+        }
+      ]
     },
     {
       "id": 244,
@@ -4415,46 +4429,67 @@
       "id": 247,
       "title": "Solve view should default to / prominently surface the DOMAIN witness (the filled board), not the feasibility heatmap. On 4x4 sudoku, \u22a8 Solve's main diagram renders a 'feasible positions per cell' heatmap; the actual filled 4\u00d74 grid (the answer I wanted) lives in the #solve-body panel which I nearly scrolled past. Wall: as a newcomer I solved sudoku and looked for 'my completed grid' and the lead picture was an abstract feasibility matrix instead. Make the filled-board witness the headline result for Solve samples, with the feasibility heatmap as a secondary 'all solutions' view.",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "ide-critic-newcomer",
       "created": "2026-06-22T20:47:37Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "viz"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-22T21:35:10Z",
+          "by": "worker",
+          "act": "done",
+          "note": "shipped: renderSolve scrolls #solve into view when the witness draws as a board (commit 30360399)"
+        }
+      ]
     },
     {
       "id": 248,
       "title": "A 'load this query as an example' / one-click example queries on the \u22a8? query and \u22a2 verify rows. The placeholders teach the syntax ('light = Green \u2227 timer = 2') but a newcomer benefits from a clickable chip that fills a real, runnable example for the CURRENTLY loaded model (e.g. on counter offer 'count = 5', on traffic offer '\u25c7 light = Red'). Wall: I had to hand-type a conjunction and guess valid var names; a per-model suggested-query chip would teach me what's askable without typing blind.",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "ide-critic-newcomer",
       "created": "2026-06-22T20:47:37Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "learn"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-22T21:51:42Z",
+          "by": "worker",
+          "act": "done",
+          "note": "shipped: renderQuerySuggestions builds clickable chips from a sample reachable state; click fills+runs (commit 89607b95). Verified live."
+        }
+      ]
     },
     {
       "id": 249,
       "title": "Latency: query/find took ~1.7s and first analyze ~115ms on traffic but several samples felt like a 1-2s wait with no visible spinner on the \u22a8? query row specifically. (Known roadmap sub-300ms.) For the newcomer, add an inline 'searching\u2026' indicator on the find/check buttons so the row doesn't look frozen for ~1.7s while it computes the witness run.",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "ide-critic-newcomer",
       "created": "2026-06-22T20:47:37Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "perf"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-22T21:20:31Z",
+          "by": "worker",
+          "act": "done",
+          "note": "shipped: _execQuery pulses '\u22ef searching\u2026' + disables query buttons during the search (commit 7156cc29)"
+        }
+      ]
     }
   ],
   "concerns": [
