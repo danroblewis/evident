@@ -34,31 +34,17 @@ STEPS = 60
 
 
 def pick_seed(m):
-    """Choose a START state for the trajectory.
+    """The trajectory starts at the program's ACTUAL initial_state — the only faithful seed, so
+    every plotted value is genuinely reachable.
 
-    initial_state() is correct for most programs, but for the numeric phase
-    systems it is the origin (a fixed point) — a flat, boring trajectory. When
-    the initial state is a numeric fixed point, nudge off it so the time series
-    actually shows the dynamics. This is generic: detect "numeric + initial is a
-    self-loop" and offset, rather than hardcoding the van der Pol name.
-    """
-    init = m.initial_state()
-    numeric = [v for v in m.state_vars if v["kind"] in ("int", "real")]
-    if init is not None and numeric:
-        nxt = m.successor(init)
-        is_fixed = nxt is not None and all(
-            init[v["name"]] == nxt[v["name"]] for v in m.state_vars
-        )
-        if is_fixed:
-            seed = dict(init)
-            # Offset along the first numeric axis to leave the fixed point.
-            v0 = numeric[0]["name"]
-            cur = init.get(v0, 0)
-            seed[v0] = (cur if isinstance(cur, (int, float)) else 0) + 2000
-            # Verify the offset is a live state; if not, fall back to init.
-            if m.successor(seed) is not None:
-                return seed
-    return init
+    An earlier version nudged the first numeric var by +2000 to escape a flat fixed-point origin,
+    but that seeded an UNREACHABLE state and could plot a variable far outside its proven bound
+    (vending init has a self-loop under one nondeterministic choice, so it was misread as a fixed
+    point and balance was seeded to 2000 ∉ [0,5] — Marek #183, a faithfulness violation). A
+    genuinely-flat trajectory from a true fixed-point init is HONEST; the off-origin limit-cycle
+    dynamics of a continuous system are shown by phase_portrait, which probes within the reachable
+    set — never by fabricating an out-of-domain start here."""
+    return m.initial_state()
 
 
 def _advance(m, cur, prefer_change, visited):
