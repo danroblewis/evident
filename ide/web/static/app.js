@@ -444,6 +444,12 @@ editor.renderer.setShowGutter(true);
 // fastest way to lose a user's trust.
 const SAVED = (() => { try { return localStorage.getItem("evident-buffer"); } catch (e) { return null; } })();
 editor.setValue(SAVED != null ? SAVED : DEFAULT_PROGRAM, -1);   // -1 = cursor to start
+// The buffer is saved on every edit (scheduleAnalyze), but a refresh during the 350ms analyze
+// debounce — or before the first edit — could miss the latest keystrokes; flush on unload too so
+// reload NEVER loses work (Marek #174).
+window.addEventListener("beforeunload", () => {
+  try { localStorage.setItem("evident-buffer", editor.getValue()); } catch (e) {}
+});
 
 // --- auto-indent on Enter ---------------------------------------------------------
 // Evident is indentation-sensitive. On Enter: copy the current line's leading whitespace,
@@ -772,6 +778,9 @@ function overlayPoints(wrap, points) {
 
 function paint(data, ms) {
   $("#latency").textContent = ms != null ? `${ms} ms` : "";
+  gloss.hidden = true;                                  // clear any pinned overlay tooltip from the
+                                                       // previous program — a ghost pin must not
+                                                       // float over the new diagram (Marek #172).
   $("#banner").classList.remove("recomputing");        // analysis returned — undim
   $("#structure").classList.remove("recomputing");
   $("#view").classList.remove("recomputing");
