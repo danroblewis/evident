@@ -922,33 +922,52 @@ $("#solve-all").onclick = () => solve(true);
 // EVERY reachable state (a proof when the set is finite & fully explored), or get a reachable
 // counterexample. The other half of the relational pitch: not just "watch", but "prove".
 const _INV_RE = /^\s*([A-Za-z_]\w*(?:\.\w+)?)\s*(<=|>=|!=|<|>|=|≤|≥|≠)\s*(.+?)\s*$/;
+// two-sided range — lo (<|≤) var (<|≤) hi — the canonical invariant shape (Marek #156)
+const _INV_RANGE = /^\s*(-?\d+(?:\.\d+)?)\s*(<=|<|≤)\s*([A-Za-z_]\w*(?:\.\w+)?)\s*(<=|<|≤)\s*(-?\d+(?:\.\d+)?)\s*$/;
+function _coerce(s) {
+  if (/^-?\d+$/.test(s)) return parseInt(s, 10);
+  if (/^-?\d*\.\d+$/.test(s)) return parseFloat(s);
+  if (s === "true" || s === "false") return s === "true";
+  return s;
+}
+async function _checkOne(varName, op, value) {
+  const res = await fetch("/api/invariant", {
+    method: "POST", headers: { "content-type": "application/json" },
+    body: JSON.stringify({ source: editor.getValue(), var: varName, op, value }),
+  });
+  return res.json();
+}
 async function checkInvariant() {
   const out = $("#inv-result");
   const raw = $("#inv-prop").value.trim();
   if (!raw) { out.textContent = ""; return; }
-  const mt = raw.match(_INV_RE);
-  if (!mt) { out.className = "bad"; out.textContent = "✕ write  var op value  (e.g. count ≤ 5)"; return; }
-  const [, varName, op, valStr] = mt;
-  let value = valStr;
-  if (/^-?\d+$/.test(valStr)) value = parseInt(valStr, 10);
-  else if (/^-?\d*\.\d+$/.test(valStr)) value = parseFloat(valStr);
-  else if (valStr === "true" || valStr === "false") value = (valStr === "true");
+  // a two-sided range becomes TWO predicates (var ≥ lo ∧ var ≤ hi); else a single comparison.
+  let preds;
+  const rg = raw.match(_INV_RANGE);
+  if (rg) {
+    const [, lo, lop, varName, hop, hi] = rg;
+    preds = [[varName, lop === "<" ? ">" : ">=", _coerce(lo)], [varName, hop, _coerce(hi)]];
+  } else {
+    const mt = raw.match(_INV_RE);
+    if (!mt) { out.className = "bad"; out.textContent = "✕ write  var op value  (e.g. count ≤ 5  or  0 ≤ x ≤ 6)"; return; }
+    preds = [[mt[1], mt[2], _coerce(mt[3])]];
+  }
   out.className = "dim"; out.textContent = "checking…";
   try {
-    const res = await fetch("/api/invariant", {
-      method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ source: editor.getValue(), var: varName, op, value }),
-    });
-    const d = await res.json();
-    if (!d.ok) { out.className = "bad"; out.textContent = "✕ " + (d.error || "check failed"); return; }
-    if (d.holds) {
-      out.className = "good";
-      out.textContent = (d.exhaustive ? "✓ proven" : "✓ holds (bounded)")
-        + ` — ${d.predicate} on all ${d.checked} reachable states`;
-    } else {
-      const cex = Object.entries(d.counterexample || {}).map(([k, v]) => `${k}=${v}`).join(", ");
-      out.className = "bad"; out.textContent = `✗ violated — counterexample  ${cex}`;
+    let checked = 0, exhaustive = true; const texts = [];
+    for (const [varName, op, value] of preds) {
+      const d = await _checkOne(varName, op, value);
+      if (!d.ok) { out.className = "bad"; out.textContent = "✕ " + (d.error || "check failed"); return; }
+      texts.push(d.predicate); checked = Math.max(checked, d.checked || 0); exhaustive = exhaustive && d.exhaustive;
+      if (!d.holds) {
+        const cex = Object.entries(d.counterexample || {}).map(([k, v]) => `${k}=${v}`).join(", ");
+        out.className = "bad"; out.textContent = `✗ violated (${d.predicate}) — counterexample  ${cex}`;
+        return;
+      }
     }
+    out.className = "good";
+    out.textContent = (exhaustive ? "✓ proven" : "✓ holds (bounded)")
+      + ` — ${texts.join(" ∧ ")} on all ${checked} reachable states`;
   } catch (e) { out.className = "bad"; out.textContent = "✕ " + e; }
 }
 $("#inv-btn").onclick = checkInvariant;

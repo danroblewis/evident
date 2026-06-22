@@ -283,6 +283,10 @@ def analyze(req: Source):
             except Exception as _e:
                 print(f"[server] structure failed: {type(_e).__name__}: {_e}", file=sys.stderr)
                 structure = None
+            if dropped:
+                structure = None        # a BROKEN model has no trustworthy verdict — don't show a
+                                        # green "Terminates" card under the red "under-constrained"
+                                        # banner (Marek #94). The dropped-constraint surface stands.
             discrete = m.is_discrete()
             view = req.view if (req.view in VIEWS) else _recommend(m, n_states, max_branch, discrete)
             # Resilient render: a single buggy renderer must never sink the whole analysis.
