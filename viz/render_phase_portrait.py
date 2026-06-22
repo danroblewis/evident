@@ -54,6 +54,11 @@ from phase_portrait_field import (
     _numeric_regime, _dwell_span, _reachable_extent, _FINITE_STATE_CAP,
     render_discrete_panel, _bounds_of,
 )
+# Interactive hover-overlay sidecar (#184 increment 3): only the MAIN scatter
+# axis is hoverable — the numeric orbit's trajectory states / the discrete
+# regime's reachable states (never the vector-field grid arrows). Un-faceted
+# panels save PLAIN (figure_fraction); faceted panels save TIGHT (tight_fraction).
+from overlay_points import write_points, figure_fraction, tight_fraction
 
 
 # ----- channel assignment: axes (numeric-first) + a facet categorical -------
@@ -147,6 +152,7 @@ def render(smt2_path, schema_path, out_path):
         fig.tight_layout()
         fig.savefig(out_path, dpi=120)
         plt.close(fig)
+        write_points(out_path, [])           # degenerate → no hoverable points
         return out_path
 
     facet_vals = _facet_values(m, facet_var) if facet_var is not None else None
@@ -208,6 +214,7 @@ def _render_na(m, axx, axy, msg, out_path):
     fig.tight_layout()
     fig.savefig(out_path, dpi=120)
     plt.close(fig)
+    write_points(out_path, [])               # N/A → no hoverable points
 
 
 def _panel_grid(n):
@@ -245,15 +252,18 @@ def _render_numeric(m, axx, axy, facet_var, facet_vals, out_path,
         fig, ax = plt.subplots(figsize=(8.5, 7.5))
         pin = {v["name"]: init[v["name"]] for v in m.state_vars}
         extent = _extent(pin)
+        overlay = []
         render_numeric_panel(m, ax, axx, axy, pin, draw_colorbar=True,
-                             extent=extent, fit_to_data=fit)
+                             extent=extent, fit_to_data=fit, overlay=overlay)
         ax.set_xlabel(_axis_label(axx)); ax.set_ylabel(_axis_label(axy))
         _decorate_axes(m, ax, axx, axy)
         ax.grid(True, ls=":", alpha=0.3)
         ax.set_title(f"{m.fsm} — phase portrait\n" + subtitle, fontsize=13)
         fig.tight_layout()
+        points = figure_fraction(fig, overlay)   # plain savefig → figure-relative
         fig.savefig(out_path, dpi=120)
         plt.close(fig)
+        write_points(out_path, points)
         return
 
     rows, cols = _panel_grid(len(facet_vals))
@@ -265,13 +275,14 @@ def _render_numeric(m, axx, axy, facet_var, facet_vals, out_path,
     # snap that shared frame to the union of all panels' plotted data (so an empty
     # upper grid isn't carried across every panel).
     panel_xlims, panel_ylims = [], []
+    overlay = []
     for idx, fval in enumerate(facet_vals):
         ax = flat[idx]
         pin = {v["name"]: init[v["name"]] for v in m.state_vars}
         pin[facet_var["name"]] = fval
         extent = _extent(pin)
         q = render_numeric_panel(m, ax, axx, axy, pin, draw_colorbar=False,
-                                 extent=extent, fit_to_data=fit)
+                                 extent=extent, fit_to_data=fit, overlay=overlay)
         if fit:
             panel_xlims.append(ax.get_xlim()); panel_ylims.append(ax.get_ylim())
         if q is not None:
@@ -293,8 +304,10 @@ def _render_numeric(m, axx, axy, facet_var, facet_vals, out_path,
                      pad=0.02, label="step magnitude")
     fig.suptitle(f"{m.fsm} — phase portrait  (faceted by {facet_var['name']})",
                  fontsize=14)
+    points = tight_fraction(fig, overlay)        # tight savefig → crop-relative
     fig.savefig(out_path, dpi=120, bbox_inches="tight")
     plt.close(fig)
+    write_points(out_path, points)
 
 
 def _render_discrete(m, axx, axy, facet_var, facet_vals, regime, out_path):
@@ -307,6 +320,7 @@ def _render_discrete(m, axx, axy, facet_var, facet_vals, regime, out_path):
         fig.tight_layout()
         fig.savefig(out_path, dpi=120)
         plt.close(fig)
+        write_points(out_path, [])           # no reachable states → no points
         return
 
     init_key = m._key(states[0])
@@ -314,7 +328,9 @@ def _render_discrete(m, axx, axy, facet_var, facet_vals, regime, out_path):
 
     if facet_var is None:
         fig, ax = plt.subplots(figsize=(8.5, 7.5))
-        render_discrete_panel(m, ax, axx, axy, states, edges, init_key, bounds)
+        overlay = []
+        render_discrete_panel(m, ax, axx, axy, states, edges, init_key, bounds,
+                              overlay=overlay)
         ax.legend(loc="upper right", fontsize=8)
         ax.set_xlabel(_axis_label(axx)); ax.set_ylabel(_axis_label(axy))
         _decorate_axes(m, ax, axx, axy)
@@ -325,8 +341,10 @@ def _render_discrete(m, axx, axy, facet_var, facet_vals, regime, out_path):
         ax.set_title(f"{m.fsm} — phase portrait\n(discrete transition graph)",
                      fontsize=13)
         fig.tight_layout()
+        points = figure_fraction(fig, overlay)   # plain savefig → figure-relative
         fig.savefig(out_path, dpi=120)
         plt.close(fig)
+        write_points(out_path, points)
         return
 
     # FACET: one panel per facet value. A state belongs to a panel by its facet
@@ -344,6 +362,7 @@ def _render_discrete(m, axx, axy, facet_var, facet_vals, regime, out_path):
                              squeeze=False)
     flat = [axes[r][c] for r in range(rows) for c in range(cols)]
 
+    overlay = []
     for idx, fval in enumerate(facet_vals):
         ax = flat[idx]
         keep = [i for i, s in enumerate(states) if s[fname] == fval]
@@ -355,7 +374,7 @@ def _render_discrete(m, axx, axy, facet_var, facet_vals, regime, out_path):
                        if (a in remap) != (b in remap)
                        and (a in remap or b in remap))
         render_discrete_panel(m, ax, axx, axy, sub_states, sub_edges,
-                              init_key, bounds)
+                              init_key, bounds, overlay=overlay)
         ax.set_xlabel(_axis_label(axx)); ax.set_ylabel(_axis_label(axy))
         _decorate_axes(m, ax, axx, axy)
         ax.grid(True, ls=":", alpha=0.3)
@@ -377,8 +396,10 @@ def _render_discrete(m, axx, axy, facet_var, facet_vals, regime, out_path):
         f"{m.fsm} — phase portrait  (faceted by {fname}; "
         f"{len(states)} states, {len(edges)} transitions)", fontsize=13)
     fig.tight_layout(rect=(0, 0.05, 1, 0.96))
+    points = figure_fraction(fig, overlay)   # plain savefig → figure-relative
     fig.savefig(out_path, dpi=120)
     plt.close(fig)
+    write_points(out_path, points)
 
 
 def main(argv):

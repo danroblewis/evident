@@ -41,6 +41,9 @@ from orbit_scatter_build import (
     _project, _axis_label, _cat_key, _select_channels, _build_orbits,
     _offset_collisions,
 )
+# Interactive hover-overlay sidecar (#184 increment 3). orbit_scatter ALWAYS saves
+# with bbox_inches="tight", so the per-point fractions use the tight-bbox mapping.
+from overlay_points import write_points, tight_fraction
 
 
 # ---- axis tick labelling -----------------------------------------------------
@@ -71,6 +74,7 @@ def render(smt2_path, schema_path, out_path):
         ax.axis("off")
         fig.savefig(out_path, dpi=120, bbox_inches="tight")
         plt.close(fig)
+        write_points(out_path, [])           # no orbit / degenerate → overlay no-ops
         return
 
     orbits, point_time, mode = _build_orbits(model, xvar, yvar)
@@ -93,6 +97,7 @@ def render(smt2_path, schema_path, out_path):
         ax.axis("off")
         fig.savefig(out_path, dpi=120, bbox_inches="tight")
         plt.close(fig)
+        write_points(out_path, [])           # no orbit / degenerate → overlay no-ops
         return
 
     # HONEST degenerate guard: a scatter over a finite handful of states is not a
@@ -110,6 +115,7 @@ def render(smt2_path, schema_path, out_path):
         ax.axis("off")
         fig.savefig(out_path, dpi=120, bbox_inches="tight")
         plt.close(fig)
+        write_points(out_path, [])           # no orbit / degenerate → overlay no-ops
         return
 
     # Flatten orbit points, carrying (x, y, time, seed-index, state) per point.
@@ -161,6 +167,7 @@ def render(smt2_path, schema_path, out_path):
         ax.axis("off")
         fig.savefig(out_path, dpi=120, bbox_inches="tight")
         plt.close(fig)
+        write_points(out_path, [])           # no orbit / degenerate → overlay no-ops
         return
 
     discrete = not (xvar["kind"] in ("int", "real")
@@ -213,9 +220,11 @@ def render(smt2_path, schema_path, out_path):
         color_label = "steps from start" if mode == "reachable" else "tick (time)"
 
     scatter_for_bar = None
+    overlay = []   # (ax, data_x, data_y, full_state) per plotted point — hover sidecar
     for pi, (ax, pv) in enumerate(zip(axes, panel_vals)):
         panel_pts = [p for p in pts
                      if pv is None or p["st"][facet_var["name"]] == pv]
+        overlay += [(ax, p["x"], p["y"], p["st"]) for p in panel_pts]
         if color_var is not None:
             colors = [cat_color[p["st"][color_var["name"]]] for p in panel_pts]
             ax.scatter([p["x"] for p in panel_pts], [p["y"] for p in panel_pts],
@@ -298,8 +307,12 @@ def render(smt2_path, schema_path, out_path):
         subtitle_bits.append(f"faceted by {facet_var['name']}")
     fig.suptitle(f"{title}\n{' · '.join(subtitle_bits)}", fontsize=12)
 
+    # Map each plotted point's data coords → tight-bbox fraction BEFORE saving
+    # (tight_fraction's draw() finalizes the same layout savefig uses).
+    points = tight_fraction(fig, overlay)
     fig.savefig(out_path, dpi=120, bbox_inches="tight")
     plt.close(fig)
+    write_points(out_path, points)
 
 
 def main(argv):

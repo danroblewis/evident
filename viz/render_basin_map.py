@@ -61,6 +61,9 @@ from basin_support import (  # noqa: E402
 # The numeric/mixed basin path lives in its own module (this file keeps the
 # dispatch + the exact-graph discrete path).
 from basin_numeric import numeric_basins  # noqa: E402
+# Interactive hover-overlay sidecar (#184 increment 3). basin_map ALWAYS saves
+# with bbox_inches="tight", so per-dot fractions use the tight-bbox mapping.
+from overlay_points import write_points, tight_fraction  # noqa: E402
 
 
 # --------------------------------------------------------------------------
@@ -175,6 +178,8 @@ def _discrete_basins_on(m, out_path, states, edges, projected_out=None):
         cyc = "cycle" if len(sccs[rep_scc]) > 1 else "fixed pt"
         return color, f"→ {m.label(states[rep_node])} ({cyc})"
 
+    overlay = []   # (ax, dot_x, dot_y, full_state) per plotted dot — hover sidecar
+
     def draw(ax, node_ids):
         nodeset = set(node_ids)
         for a, b in eset:
@@ -188,6 +193,8 @@ def _discrete_basins_on(m, out_path, states, edges, projected_out=None):
             ax.scatter(xs[mask] + jx[mask], ys[mask] + jy[mask], s=90,
                        color=color, edgecolors="black", linewidths=0.5,
                        zorder=3)
+        overlay.extend((ax, xs[nd] + jx[nd], ys[nd] + jy[nd], states[nd])
+                       for nd in node_ids)
         ax.set_xlabel(_axis_label(ax_x))
         ax.set_ylabel(_axis_label(ax_y) if ax_y else "(single axis)")
         _decorate_enum_ticks(ax, m, ax_x, ax_y)
@@ -210,8 +217,10 @@ def _discrete_basins_on(m, out_path, states, edges, projected_out=None):
                   title="terminal basin", frameon=True)
         ax.set_title(f"{m.fsm} — basin_map (discrete: {nscc} SCCs, "
                      f"{len(term_ids)} terminal)", fontsize=13, weight="bold")
+        points = tight_fraction(fig, overlay)
         fig.savefig(out_path, dpi=120, bbox_inches="tight")
         plt.close(fig)
+        write_points(out_path, points)
         return (f"discrete: {n} reachable states, {nscc} SCCs, "
                 f"{len(term_ids)} terminal basins")
 
@@ -233,9 +242,11 @@ def _discrete_basins_on(m, out_path, states, edges, projected_out=None):
     fig.suptitle(f"{m.fsm} — basin_map (discrete: {nscc} SCCs, "
                  f"{len(term_ids)} terminal; faceted by {facet_var['name']})",
                  fontsize=13, weight="bold")
+    points = tight_fraction(fig, overlay)
     fig.savefig(out_path, dpi=120, bbox_inches="tight",
                 bbox_extra_artists=(leg,))
     plt.close(fig)
+    write_points(out_path, points)
     return (f"discrete: {n} reachable states, {nscc} SCCs, "
             f"{len(term_ids)} terminal basins; faceted by "
             f"{facet_var['name']} ({npan} panels)")
