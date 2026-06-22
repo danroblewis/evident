@@ -264,6 +264,13 @@ html,body { margin:0; height:100%; background:var(--bg); color:var(--ink);
   border-radius:50%; cursor:pointer; background:transparent; }
 .pt-target:hover { background:#58a6ff55; box-shadow:0 0 0 1px var(--accent); }
 
+/* trace scrubber → diagram highlight (#231/#206): a pulsing accent ring over the point matching
+   the current trace step. pointer-events:none so it never blocks the .pt-target hover targets. */
+.trace-ring { position:absolute; width:18px; height:18px; transform:translate(-50%, -50%);
+  border-radius:50%; border:2px solid var(--accent); background:#58a6ff33; pointer-events:none;
+  z-index:25; box-shadow:0 0 0 2px #58a6ff44, 0 0 8px var(--accent);
+  animation:solving-pulse 1.1s ease-in-out infinite; }
+
 /* run-history strip (#209): a thin row of dim thumbnails of recent analyses — click to look
    back. Subtle and out of the way; collapses to nothing when there's no history. */
 #history { flex:0 0 auto; display:flex; gap:5px; padding:4px 10px 2px; overflow-x:auto; }
