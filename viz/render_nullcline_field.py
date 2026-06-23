@@ -144,14 +144,21 @@ def _numeric_na(m, out_path, xv, vv):
 
 
 def render_numeric(m, out_path, xv, vv):
-    extent = axis_extent(m, xv, vv)
-    if extent is None:
+    # A diverging continuous map (Lotka-Volterra) can blow the reachable extent out
+    # to the codec's ±1e18 clamp; guard the whole sample so a non-finite / overflowing
+    # axis degrades to the honest N/A card instead of crashing the renderer.
+    try:
+        extent = axis_extent(m, xv, vv)
+        if extent is None or not all(np.isfinite(v) for v in extent):
+            _numeric_na(m, out_path, xv, vv)
+            return
+        xlo, xhi, vlo, vhi = extent
+        xs = np.linspace(xlo, xhi, GRID)
+        vs = np.linspace(vlo, vhi, GRID)
+        DX, DV = _sign_grid(m, xv, vv, xs, vs)
+    except (OverflowError, ValueError, FloatingPointError):
         _numeric_na(m, out_path, xv, vv)
         return
-    xlo, xhi, vlo, vhi = extent
-    xs = np.linspace(xlo, xhi, GRID)
-    vs = np.linspace(vlo, vhi, GRID)
-    DX, DV = _sign_grid(m, xv, vv, xs, vs)
 
     sdx, sdv = np.sign(DX), np.sign(DV)
     region = np.full((GRID, GRID), np.nan)
@@ -226,7 +233,11 @@ def _tol(arr):
 # faceted mixed sign-field: one panel per categorical value (the dimension-add)
 # --------------------------------------------------------------------------- #
 def _cat_levels(m, cv):
-    """Ordinal levels + tick labels for a categorical axis var."""
+    """Ordinal levels + tick labels for a categorical axis var. `cv` may be None
+    (no second categorical axis exists — thermostat/elevator), in which case there
+    are no levels and the caller falls back to a single ['·'] row."""
+    if cv is None:
+        return [], []
     if cv["kind"] == "bool":
         return [False, True], ["false", "true"]
     if cv["kind"] == "enum":
@@ -246,9 +257,15 @@ def _num_range(m, xv):
     vals = [s[xv["name"]] for s in states if xv["name"] in s]
     if not vals:
         return list(range(0, 4))
-    lo, hi = min(vals), max(vals)
+    # A Real-valued numeric var (thermostat's temp) yields float min/max; range()
+    # demands ints. Floor/ceil to an integer window so the faceted panel always has
+    # an integer x-axis (the sign-field samples one column per integer step).
+    import math
+    lo, hi = int(math.floor(min(vals))), int(math.ceil(max(vals)))
     if hi - lo > 32:                         # cap the window for sanity
         hi = lo + 32
+    if hi <= lo:                             # degenerate (constant axis)
+        hi = lo + 1
     return list(range(lo, hi + 1))
 
 

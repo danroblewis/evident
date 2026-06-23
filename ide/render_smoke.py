@@ -57,6 +57,41 @@ SAMPLES = {
         '    #xs = 3\n'
         '    is_first_tick ⇒ xs = ⟨1, 2, 3⟩\n'
         '    ¬is_first_tick ⇒ ∀ (cur, nxt) ∈ coindexed(_xs, xs) : nxt = cur + 1\n'),
+    # CONTINUOUS / CHAOTIC Real-valued samples — the crash-robustness guard set. These
+    # used to throw uncaught exceptions out of the dynamics renderers instead of clamping
+    # or rendering an honest N/A card:
+    #   * logistic map → chord_diagram: OverflowError in model_codec float(as_fraction())
+    #     when the chaotic orbit's Z3 rational blows up (and in the numeric bin aggregation).
+    #   * predator-prey (Lotka-Volterra) → nullcline_field / occupancy_heatmap: the diverging
+    #     coupled map overflows the same float(as_fraction()) codec read.
+    #   * thermostat → nullcline_field: the single-numeric+facet path with no second
+    #     categorical (yv=None) hit a TypeError in _cat_levels(None) / _num_range on Real temp.
+    # Guarded in viz/model_codec.py (clamp ±1e18), viz/chord_channels.py (numeric-bin try/except),
+    # and viz/render_nullcline_field.py (None yv + Real-range + overflow → N/A). render_smoke renders
+    # EVERY view for each sample, so these assert no view raises on a continuous/chaotic model.
+    "logistic": (
+        'fsm logistic\n'
+        '    x ∈ Real\n'
+        '    is_first_tick ⇒ x = 0.3\n'
+        '    ¬is_first_tick ⇒ x = 3.7 * _x * (1.0 - _x)\n'),
+    "predator_prey": (
+        'fsm predator_prey\n'
+        '    prey ∈ Real\n'
+        '    pred ∈ Real\n'
+        '    is_first_tick ⇒ (prey = 40.0 ∧ pred = 9.0)\n'
+        '    ¬is_first_tick ⇒ Δprey = _prey * 0.1 - _prey * _pred * 0.01\n'
+        '    ¬is_first_tick ⇒ Δpred = _prey * _pred * 0.005 - _pred * 0.1\n'),
+    "thermostat": (
+        'enum Mode = Heating | Idle\n'
+        'fsm thermostat\n'
+        '    temp ∈ Real\n'
+        '    mode ∈ Mode\n'
+        '    is_first_tick ⇒ (temp = 15.0 ∧ mode = Heating)\n'
+        '    (¬is_first_tick ∧ _mode = Heating) ⇒ Δtemp = 1.0\n'
+        '    (¬is_first_tick ∧ _mode = Idle) ⇒ Δtemp = 0.0 - 0.5\n'
+        '    (¬is_first_tick ∧ _temp ≥ 22.0) ⇒ mode = Idle\n'
+        '    (¬is_first_tick ∧ _temp ≤ 18.0) ⇒ mode = Heating\n'
+        '    (¬is_first_tick ∧ 18.0 < _temp ∧ _temp < 22.0) ⇒ mode = _mode\n'),
 }
 
 
