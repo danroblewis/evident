@@ -139,6 +139,8 @@ const VIEW_CAPTIONS = {
     "shows what the solver COMPILED vs what stayed a CONSTRAINT — the functions (the JIT's update law) beside the residual invariants (e.g. 0≤timer≤2) that never reduced to a function · tells you how much of your relational program is computation and where it's still truly relational.",
   function_guards:
     "shows the GUARD DECISION TREES of the piecewise functions — each guarded variable's branch conditions tried into the nested decision the solver found (is_first_tick? → _timer<2? → _light==?) · tells you the branching control-flow each variable's next value is computed by.",
+  function_behavior:
+    "shows the BEHAVIOUR of each extracted function — its next value sampled over the variables it reads (their previous values) · for an enum output it's the guard PARTITION (which branch wins where), for numeric the transfer surface · tells you what each compiled function actually computes, not just its shape.",
 };
 
 // --- parser-jargon humanization ----------------------------------------------------
