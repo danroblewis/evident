@@ -44,7 +44,19 @@ class CodecMixin:
         if kind == "bool":
             return z3.is_true(mv)
         if kind == "real":
-            return float(mv.as_fraction())
+            # A diverging continuous map (logistic, Lotka-Volterra) drives Z3's exact
+            # rational to an astronomical numerator/denominator; float() of that Fraction
+            # raises OverflowError. Clamp to a large finite magnitude so decoding never
+            # crashes a renderer — a blown-up value reads as ±1e18, not an exception.
+            CLAMP = 1e18
+            try:
+                fv = float(mv.as_fraction())
+            except (OverflowError, ValueError):
+                frac = mv.as_fraction()
+                fv = CLAMP if frac > 0 else (-CLAMP if frac < 0 else 0.0)
+            if fv != fv:  # NaN guard
+                return 0.0
+            return max(-CLAMP, min(CLAMP, fv))
         if kind == "string":
             return mv.as_string()
         if kind == "enum":

@@ -223,21 +223,30 @@ def gather_flow(m, var, labels, proj, mode, color):
     # numeric: bin the primary var over its REACHABLE extent, and chord between
     # the consecutive states of the ACTUAL orbit (never a fabricated grid sweep
     # over a guessed ±3000 box). orbit() returns the real visited successor chain.
-    orbit = orbit_states(m, var)
-    lo, hi = orbit_extent(orbit, var["name"])
-    if lo is None or (hi - lo) <= 1:
-        # reachable set is a single point / degenerate — nothing to chord.
+    #
+    # Chaotic/continuous maps (logistic) drive the orbit's values to astronomical
+    # magnitudes (the codec clamps these to ±1e18). Binning math on such huge floats
+    # — np.linspace, searchsorted, the bin-label format — must never raise; on any
+    # numeric/overflow error we degrade to the honest N/A card rather than crash.
+    try:
+        orbit = orbit_states(m, var)
+        lo, hi = orbit_extent(orbit, var["name"])
+        if lo is None or not np.isfinite(lo) or not np.isfinite(hi) or (hi - lo) <= 1:
+            # reachable set is a single point / degenerate / non-finite — nothing to chord.
+            return [], flow, None, {}, None
+        edges_bin = np.linspace(lo, hi, nbins + 1)
+        centers = (edges_bin[:-1] + edges_bin[1:]) / 2.0
+        labels = [bin_label(centers[k]) for k in range(nbins)]
+
+        def to_bin(val):
+            k = int(np.clip(np.searchsorted(edges_bin, val, side="right") - 1,
+                            0, nbins - 1))
+            return labels[k]
+
+        for cur, nxt in zip(orbit, orbit[1:]):
+            bump(to_bin(cur[var["name"]]), to_bin(nxt[var["name"]]), nxt)
+    except (OverflowError, ValueError, FloatingPointError):
         return [], flow, None, {}, None
-    edges_bin = np.linspace(lo, hi, nbins + 1)
-    centers = (edges_bin[:-1] + edges_bin[1:]) / 2.0
-    labels = [bin_label(centers[k]) for k in range(nbins)]
-
-    def to_bin(val):
-        k = int(np.clip(np.searchsorted(edges_bin, val, side="right") - 1, 0, nbins - 1))
-        return labels[k]
-
-    for cur, nxt in zip(orbit, orbit[1:]):
-        bump(to_bin(cur[var["name"]]), to_bin(nxt[var["name"]]), nxt)
 
     return labels, flow, (lo, hi), finish_cat(), (color[1] if color else None)
 
