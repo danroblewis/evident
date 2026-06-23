@@ -5710,16 +5710,23 @@
       "id": 272,
       "title": "Named/annotated SMT-LIB export so the UNSAT core round-trips to z3. The in-tool core is excellent (minimal, line-exact: 'line4 x>10, line5 x<5', correctly omits the irrelevant y=x+1). But the EXPORTED SMT-LIB has no (! ... :named cN) annotations and no (get-unsat-core)/(set-option :produce-unsat-cores true), so a user taking it into z3 directly can't reproduce the named core the IDE shows. Emit named asserts keyed to source lines + the unsat-core preamble, so the artifact carries the same provenance out of the tool.",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "ide-critic-expert",
       "created": "2026-06-23T12:41:40Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "analysis"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-23T13:06:36Z",
+          "by": "worker",
+          "act": "done",
+          "note": "ALREADY DONE \u2014 _ready_to_run emits (set-option :produce-unsat-cores true) + _named_asserts (each top-level assert wrapped (! X :named aK)) + (get-unsat-core) for the UNSAT verdict. Verified ROUND-TRIP: exported an UNSAT claim, ran through z3 \u2192 'unsat' + minimal core (a1 a2), correctly excluding the irrelevant assert. Ana saw it on SAT exports (get-model applies there, not the core)."
+        }
+      ]
     },
     {
       "id": 273,
@@ -5762,16 +5769,23 @@
       "id": 275,
       "title": "Persist named buffers / a model library, not one localStorage slot + share-link. I wrote several throwaway adversarial models this session (contradiction, core2, coupled-swap, settle) and each setValue blew away the last \u2014 no way to keep a NAMED set of my own repros next to the samples. Save (\ud83d\udcbe) and Share (\ud83d\udd17) exist, but I want a left-rail list of my saved models (rename, delete, duplicate) so a verification engineer building a regression suite of specs can keep them all in-tool. Alloy keeps my .als files; TLA+ keeps a spec library.",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "ide-critic-expert",
       "created": "2026-06-23T12:42:11Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "editor"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-23T13:06:36Z",
+          "by": "worker",
+          "act": "done",
+          "note": "ALREADY DONE \u2014 named-slot save/open (Save as\u2026 \u2192 named slots in app-buffer.js, #151/#67): keep several named experiments, re-openable from the samples dropdown."
+        }
+      ]
     },
     {
       "id": 276,
