@@ -38,7 +38,8 @@ from fastapi.staticfiles import StaticFiles  # noqa: E402
 from pydantic import BaseModel  # noqa: E402
 
 from analysis import (  # noqa: E402
-    _banner, _dropped_locs, _error_loc, _model_diff, _reachable_stats, _recommend)
+    _analyze_banner, _dropped_locs, _error_loc, _model_diff, _reachable_stats,
+    _recommend)
 from render import (  # noqa: E402
     RENDERERS, VIEWS, _function_response, _maybe_claim, _render_png, _render_svg)
 from functionize import function_diff  # noqa: E402
@@ -91,8 +92,11 @@ def analyze(req: Source):
             if req.view in FUNCTION_VIEWS:                 # fast path: no dynamics solve (#301)
                 return _function_response(m, req.view, prefix, dropped, req.source, msg)
             scope = effective_scope(req)
-            (states, edges, n_states, n_edges,
-             max_branch, capped, recurrent) = _reachable_stats(m, scope)
+            # all_conditions on the state_graph view ⇒ the stats/banner summarize the same GLOBAL
+            # graph the PNG draws (full_state_graph), not the from-init orbit (#316 follow-up).
+            global_dynamics = bool(req.all_conditions) and req.view == "state_graph"
+            (states, edges, n_states, n_edges, max_branch, capped, recurrent) = \
+                _reachable_stats(m, scope, all_conditions=global_dynamics)
             try:
                 structure = m.solution_structure(states=states, edges=edges)
             except Exception as _e:
@@ -118,11 +122,8 @@ def analyze(req: Source):
                               file=sys.stderr)
             return {
                 "ok": True,
-                # A broken (dropped-constraint) model isn't a real relation — say so in the headline.
-                "banner": (
-                    f"⚠ Under-constrained — {dropped} dropped constraint(s); this model is "
-                    f"BROKEN, not a real relation (the freed variables fan the state space)"
-                    if dropped else _banner(m, max_branch, recurrent, states=states)),
+                "banner": _analyze_banner(m, dropped, max_branch, recurrent,
+                                          states, n_states, global_dynamics),
                 "structure": structure,
                 "dropped": dropped,
                 "branching": max_branch,
