@@ -320,15 +320,15 @@ function maybeAutoTour() {
 // --- wiring: build the overlay DOM + attach all listeners --------------------------
 // Called from app.js's bootstrap once `editor` and the core globals exist. Mirrors the
 // original top-level wiring exactly (same elements, same listeners).
-function initPalette() {
-  // symbol palette / cheat-sheet popover
+// The ⌨ symbols popover: the typing cheat-sheet (operator glyph → name → mnemonic), plus a signpost to
+// ⌘K so a user who lands here looking for ACTIONS (Solve/export/verify) is redirected, not stranded
+// (Ana #256). Split out of initPalette to keep that wiring function under length.
+function initSymbolsPalette() {
   palette = document.createElement("div");
   palette.id = "palette"; palette.hidden = true;
   palette.innerHTML =
     '<div class="palette-head">type these operators — click a row to insert it'
     + ' <span class="dim">(Esc closes)</span>'
-    // Signpost to ⌘K: this is ONLY the typing cheat-sheet; a user looking for actions (Solve, export,
-    // verify…) lands here by mistake and thinks they're missing (Ana #256). Point them at ⌘K.
     + '<div class="dim" style="margin-top:3px">looking for actions? press <b>⌘K</b> for the command palette</div></div>'
     + PALETTE.map(([g, name, mn], i) =>
         `<div class="palette-row" data-i="${i}">`
@@ -347,6 +347,41 @@ function initPalette() {
   document.addEventListener("click", (e) => {
     if (!palette.hidden && !palette.contains(e.target) && e.target.id !== "symbols-btn") togglePalette(false);
   });
+}
+
+// ⌘K and the editor chords: Ctrl/Cmd-K toggles the command palette (editor-scoped via Ace + a global
+// keydown for when focus is outside), Cmd-Enter solves, Cmd-/ comments. Split out of initPalette.
+function initKeybindings() {
+  // editor-scoped chords (Ace owns keystrokes while the editor is focused)
+  editor.commands.addCommand({
+    name: "cmdkPalette", bindKey: { win: "Ctrl-K", mac: "Command-K" },
+    exec: () => toggleCmdk(),
+  });
+  editor.commands.addCommand({
+    name: "cmdkSolve", bindKey: { win: "Ctrl-Enter", mac: "Command-Enter" },
+    exec: () => solve(false),
+  });
+  editor.commands.addCommand({
+    name: "cmdkComment", bindKey: { win: "Ctrl-/", mac: "Command-/" },
+    exec: () => toggleCommentSelection(),
+  });
+  // global chords (fire when focus is OUTSIDE the editor / inputs)
+  document.addEventListener("keydown", (e) => {
+    const mod = e.metaKey || e.ctrlKey;
+    if (!mod) return;
+    const k = e.key.toLowerCase();
+    if (k === "k") { e.preventDefault(); toggleCmdk(); return; }
+    if (cmdkOpen()) return;                       // the palette's own input owns the rest
+    const inField = e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement
+      || (e.target.closest && e.target.closest("#code"));   // Ace already handles its own chords
+    if (inField) return;
+    if (k === "enter") { e.preventDefault(); solve(false); }
+    else if (k === "/") { e.preventDefault(); toggleCommentSelection(); }
+  });
+}
+
+function initPalette() {
+  initSymbolsPalette();
 
   // command palette (⌘K) overlay DOM
   cmdk = document.createElement("div");
@@ -373,33 +408,7 @@ function initPalette() {
   cmdk.addEventListener("mousedown", (e) => { if (e.target === cmdk) closeCmdk(); });  // backdrop click closes
   if ($("#cmdk-hint")) $("#cmdk-hint").onclick = (e) => { e.stopPropagation(); openCmdk(); };
 
-  // editor-scoped chords (Ace owns keystrokes while the editor is focused)
-  editor.commands.addCommand({
-    name: "cmdkPalette", bindKey: { win: "Ctrl-K", mac: "Command-K" },
-    exec: () => toggleCmdk(),
-  });
-  editor.commands.addCommand({
-    name: "cmdkSolve", bindKey: { win: "Ctrl-Enter", mac: "Command-Enter" },
-    exec: () => solve(false),
-  });
-  editor.commands.addCommand({
-    name: "cmdkComment", bindKey: { win: "Ctrl-/", mac: "Command-/" },
-    exec: () => toggleCommentSelection(),
-  });
-
-  // global chords (fire when focus is OUTSIDE the editor / inputs)
-  document.addEventListener("keydown", (e) => {
-    const mod = e.metaKey || e.ctrlKey;
-    if (!mod) return;
-    const k = e.key.toLowerCase();
-    if (k === "k") { e.preventDefault(); toggleCmdk(); return; }
-    if (cmdkOpen()) return;                       // the palette's own input owns the rest
-    const inField = e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement
-      || (e.target.closest && e.target.closest("#code"));   // Ace already handles its own chords
-    if (inField) return;
-    if (k === "enter") { e.preventDefault(); solve(false); }
-    else if (k === "/") { e.preventDefault(); toggleCommentSelection(); }
-  });
+  initKeybindings();
 
   // tour card-button delegation + Esc + resize + the ? tour button
   document.addEventListener("click", (e) => {
