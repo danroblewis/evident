@@ -1,5 +1,5 @@
 {
-  "seq": 309,
+  "seq": 311,
   "tasks": [
     {
       "id": 1,
@@ -7518,7 +7518,7 @@
       "id": 295,
       "title": "Cleaner syntax for FSM initial values \u2014 'is_first_tick \u21d2 (x = 0 \u2227 y = 0)' reads awful",
       "detail": "FSM initial values today require 'is_first_tick \u21d2 (x = 0 \u2227 y = 0)' \u2014 verbose; the is_first_tick guard + the \u2227-conjunction clutter the model, and the indented-block form is no better. DESIGN a cleaner, readable initial-value syntax. Candidates to evaluate (not prescriptive): inline 'x \u2208 Int := 0' or 'x \u2208 Int <- 0' (an INITIAL value, distinct from '= 0' which pins x always); a dedicated 'initial:' / 'start:' block listing the seeds; per-var '@init 0'; or subscript 'x0 = 0'. COMPLETION CRITERIA: (1) propose 2-3 options + a recommendation; (2) the chosen syntax reads cleanly for scalars, records, AND multi-name decls, and composes; (3) parse it + lower to the existing is_first_tick seed (semantics unchanged); (4) old 'is_first_tick \u21d2 ...' still works (backward-compat); (5) update the samples to the new form; (6) ./test.sh green + a parse-and-lower test.",
-      "status": "open",
+      "status": "in_progress",
       "created_by": "worker",
       "created": "2026-06-23T20:19:30Z",
       "worker_done": false,
@@ -7527,7 +7527,13 @@
       "tags": [
         "language"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-23T21:09:26Z",
+          "by": "worker",
+          "act": "started"
+        }
+      ]
     },
     {
       "id": 296,
@@ -7746,7 +7752,7 @@
       "id": 308,
       "title": "New 'space_time' view: render Seq-carried-state evolution as a tick\u00d7position raster (Rule 90 \u2192 Sierpinski)",
       "detail": "A Seq-carried-state FSM whose state evolves over ticks (1D CA like Rule 90, a diffusion buffer, a shift register) has NO good current view \u2014 occupancy_heatmap is blank, timing_diagram shows per-cell tracks (readable but not iconic). Add a GENERIC 'space_time' view: simulate the FSM forward N ticks from init (deterministic \u2192 the trajectory; nondeterministic \u2192 one sampled run), collect the Seq state per tick, draw a 2D raster (rows=ticks, cols=Seq positions, color=value \u2014 binary for 0/1, colormap for Int/enum). PROVEN: a proof-of-concept already rendered Rule 90's Sierpinski triangle. CRITERIA: (1) new 'space_time' renderer in the registry; (2) renders the tick\u00d7position raster; (3) Rule 90 \u2192 Sierpinski; (4) GENERIC (any Seq(Int/enum)-carried FSM, not CA-specific); (5) headline view for Rule 90 + digital-block; (6) render_smoke + ./test.sh green + test; (7) nondeterministic handled honestly (sample one run, labeled).",
-      "status": "open",
+      "status": "in_progress",
       "created_by": "worker",
       "created": "2026-06-23T20:48:07Z",
       "worker_done": false,
@@ -7755,13 +7761,19 @@
       "tags": [
         "diagram"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-23T21:09:26Z",
+          "by": "worker",
+          "act": "started"
+        }
+      ]
     },
     {
       "id": 309,
       "title": "Make the web IDE mobile-friendly / responsive (currently renders weirdly + unusable on mobile)",
       "detail": "The web IDE renders very weirdly and is UNUSABLE on mobile/small screens \u2014 desktop-only layout (editor + diagram panel + side panels + palette). Make it responsive. COMPLETION CRITERIA: (1) usable on phone-width (~375px) + tablet \u2014 no horizontal overflow, no overlapping panels, readable text; (2) the editor + diagram view + core controls (analyze, samples, view picker) all reachable + functional on mobile (likely a stacked/collapsible layout below a breakpoint); (3) adequate touch-target sizes; (4) tested at 375px + 768px + desktop \u2014 DESKTOP UNCHANGED; (5) verified via playwright at mobile viewport, before/after screenshots. BIG responsive-CSS task (ide/web/static/*.css + layout JS) \u2014 may warrant splitting into sub-tasks: layout breakpoints, panel stacking, editor/diagram resize, palette/menus. User flagged it explicitly as a major gap.",
-      "status": "open",
+      "status": "in_progress",
       "created_by": "worker",
       "created": "2026-06-23T20:53:58Z",
       "worker_done": false,
@@ -7770,7 +7782,55 @@
       "tags": [
         "ui"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-23T21:09:26Z",
+          "by": "worker",
+          "act": "started"
+        }
+      ]
+    },
+    {
+      "id": 310,
+      "title": "Diagrams: timing_diagram from all initial conditions (ensemble/envelope, not one trajectory; digital 0/1 traces)",
+      "detail": "timing_diagram scored NO in the review \u2014 renders ONE forward trajectory from the single seed. Root from the set of initial conditions (full_state_graph); show an ensemble/reachable-envelope; treat 0/1 Seq/enum signals as digital traces. Criteria: not one trajectory; traffic/counter render over all inits; real fallback honest; ./test.sh green + test (Phase 2.19).",
+      "status": "in_progress",
+      "created_by": "worker",
+      "created": "2026-06-23T21:09:26Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "diagram"
+      ],
+      "log": [
+        {
+          "at": "2026-06-23T21:09:26Z",
+          "by": "worker",
+          "act": "started"
+        }
+      ]
+    },
+    {
+      "id": 311,
+      "title": "Diagrams: scatter_matrix claim/Solve support (sample the solution space, not just FSM state)",
+      "detail": "scatter_matrix (and the sampling views) only handle FSM carried-state \u2014 KeyError/empty on a pure claim/Solve program. Add claim/Solve support: enumerate N satisfying assignments (block-and-resolve) + render the pairwise scatter over the claim's numeric decision vars. FSM path unchanged; honest empty if UNSAT/no numeric vars. Criteria: a claim/Solve program renders a real solution cloud; FSM samples unchanged; ./test.sh green + test (Phase 2.20).",
+      "status": "in_progress",
+      "created_by": "worker",
+      "created": "2026-06-23T21:09:26Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "diagram"
+      ],
+      "log": [
+        {
+          "at": "2026-06-23T21:09:26Z",
+          "by": "worker",
+          "act": "started"
+        }
+      ]
     }
   ],
   "concerns": [
