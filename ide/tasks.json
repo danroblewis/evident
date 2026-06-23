@@ -5740,16 +5740,23 @@
       "id": 274,
       "title": "Seq-state in the SMT-LIB export uses a length-unconstrained (Array Int Int) \u2014 bound it. The rule90 single-tick export models cells as (Array Int Int) with (assert (>= cells__len 0)) but never pins cells__len=11 in the array's index domain, and asserts (= 11 11) as a no-op. Taken into z3 standalone, the array is defined over all Int indices; a property quantifying \u2200i could pick out-of-range cells. Pin the index domain (0\u2264i<11) explicitly in the export, or emit a finite tuple/datatype, so the exported Seq-state model is self-contained and can't be satisfied by phantom out-of-range cells.",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "ide-critic-expert",
       "created": "2026-06-23T12:41:40Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "analysis"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-23T13:00:27Z",
+          "by": "worker",
+          "act": "done",
+          "note": "DONE (merged 23313a9f): apply_seq_lengths now reconstructs the symbolic <name>__len const + asserts ==N (base + twins) at all 3 solver-building sites; the literal len stays for the unroll (no Seq-state risk). Verified: shift export emits (= cells__len 11), cells__len=5 \u2192 UNSAT, in-tool unchanged. ./test.sh green (276 tests)."
+        }
+      ]
     },
     {
       "id": 275,
