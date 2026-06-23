@@ -1377,10 +1377,10 @@
       "id": 64,
       "title": "Grey out or hide the banner + structure line while an analyze is recomputing or has errored, instead of leaving the previous program's verdict on screen (matches the diagram's existing 'stale' overlay)",
       "detail": "",
-      "status": "in_progress",
+      "status": "worker_done",
       "created_by": "ide-critic-newcomer",
       "created": "2026-06-22T00:25:40Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 2,
       "tags": [
@@ -1410,6 +1410,12 @@
           "by": "ide-critic-newcomer",
           "act": "reopened",
           "note": "Still half-done. GOOD: switching FSM\u2192claim now updates the banner line AND hides the \u22a2verify row (improvement over last round). BAD: the STRUCTURE CARD still does NOT clear/hide for a non-FSM claim \u2014 it persists the previous FSM's verdict everywhere. Repro: open vending (FSM), then switch to N-queens / toposort / subset-sum (claims) OR type a fresh 'claim over' from scratch OR empty the editor \u2014 in every case the structure card keeps showing vending's '\u2442 Nondeterministic / rest states: (balance=0,stock=0,vault=9)... / boundary balance\u2208[0,5] stock\u2208[0,3] vault\u2208[0,9]' sitting directly above a panel that correctly says 'No state machine to visualize'. Screenshots 09/11/13 in recordings/sam-20260622-013353. The FSM view-tab strip (16 tabs) is also still shown on these claims. Fix: when the analyzed program is a non-FSM claim (or the source is empty/errored/recomputing), CLEAR or hide BOTH the structure card AND the FSM view-tab strip, the same way you now hide the verify row."
+        },
+        {
+          "at": "2026-06-23T19:31:14Z",
+          "by": "worker",
+          "act": "done",
+          "note": "shipped (merged 044736e8): the dim/error treatment was ALREADY complete at HEAD (concerns #91/#98 cleared by their authors) \u2014 agent verified all 3 scenarios live (recompute\u2192.recomputing greys banner+structure opacity 0.3; error\u2192.stale neutral + structure hidden; switch\u2192cleared) + fixed the one gap: backendDown() left a stale .recomputing on #structure \u2192 added the removal. 0 console errors."
         }
       ]
     },
@@ -6229,10 +6235,10 @@
       "id": 290,
       "title": "IDE/runtime: support multiple fsms + claims in one program (for testing composition) \u2014 render the LAST-DEFINED fsm or claim; entry picker lists all + defaults to last",
       "detail": "",
-      "status": "in_progress",
+      "status": "worker_done",
       "created_by": "worker",
       "created": "2026-06-23T19:13:57Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [],
@@ -6241,6 +6247,12 @@
           "at": "2026-06-23T19:15:03Z",
           "by": "worker",
           "act": "started"
+        },
+        {
+          "at": "2026-06-23T19:31:12Z",
+          "by": "worker",
+          "act": "done",
+          "note": "shipped (merged ff249bc5): multiple fsms+claims valid; resolve_export_entry walks schema_names() source order, picks the LATER of {last fsm, last claim} \u2192 ExportEntry::Fsm|Claim; --entry override; picker lists all + defaults last; alphabetical sort gone. Confirmed live: 6 cases all ok=True (was erroring); fsm a;fsm b\u2192b, claim p;claim q\u2192q, claim helper;fsm main\u2192main, fsm main;claim test\u2192test. ./test.sh 279 green (Phase 2.11). No regression."
         }
       ]
     },
