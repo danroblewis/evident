@@ -8,14 +8,19 @@ states. This renderer orders a representative set of states and draws the
 adjacency MATRIX as a heatmap: cell (row i, col j) is lit iff there is a
 transition from state i to state j (queried from z3, never hardcoded).
 
-  * FINITE — whenever the reachable set (BFS over the real z3 transition) CLOSES
-    into a small, non-trivial set, we draw the EXACT reachable graph: every state
-    plotted, every transition queried. This is chosen by asking the program (does
-    BFS terminate below a cap?), NOT by the static variable kinds — a terminating
-    program whose state carries Ints (a clock 0..4, a cursor) still has a finite
-    reachable chain and must NOT be gridded into a fabricated state space.
-  * NUMERIC / MIXED (unbounded or continuous) — when the reachable set doesn't
-    close (the BFS hits the cap, or the seed is a lone fixed point), we can't
+  * ALL INITIAL CONDITIONS — for a finitely-discrete program the matrix rows/cols
+    are EVERY valid carried-state assignment (Model.full_state_graph, ignoring
+    is_first_tick), and the cells come from the real transition edges. cell (i,j)
+    lit ⇔ state_i → state_j. This is the honest state×state incidence over the
+    WHOLE space — the same global root set basin_map / state_graph use — NOT one
+    z3 model's from-init orbit (which for a deterministic FSM is a single chain).
+  * EXACT REACHABLE GRAPH (from init) — when the program isn't discretely
+    enumerable but its from-init BFS still CLOSES below a cap (a terminating
+    mixed/numeric chain whose state carries Ints — a clock 0..4, a cursor — but
+    whose reachable graph is a short chain, NOT a continuous space). The seed
+    orbit is all we can enumerate without gridding a continuous axis.
+  * NUMERIC / MIXED (unbounded or continuous) — when no real-transition state set
+    closes (the BFS hits the cap, or the seed is a lone fixed point), we can't
     enumerate an infinite state space, so we sample a representative grid of
     states (numeric axes gridded, discrete axes swept over their variants), query
     each one's successor(s), and bin the resulting next-states back onto the same
@@ -145,51 +150,58 @@ def draw_legend(fig, ax, legend):
 # --------------------------------------------------------------------------- #
 # Rendering
 # --------------------------------------------------------------------------- #
-def _build_states_matrix(m, out_path):
-    """Build the ordered state set + adjacency matrix (exact reachable graph when
-    it closes below the cap, else a sampled grid), subsampled to a legible size.
-    Returns (states, mat, ribbon_var, ribbon_values, mode, sampled_note,
-    total_states) or None if it already emitted a placeholder."""
-    # Decide between the EXACT reachable graph and the sampled grid by asking the
-    # program, not by the static var kinds. A program is "finite" for our purposes
-    # iff its reachable set (BFS over the real z3 transition) closes — the frontier
-    # exhausts BELOW a cap — into a small, non-trivial set. That catches the
-    # terminating mixed/numeric programs (scheduler: clock 0..4, 6 states; wc;
-    # vending) whose state happens to carry Ints but whose reachable graph is a
-    # short chain, NOT a continuous space. Sampling those over a guessed numeric
-    # grid is the fabrication bug ("64 states" for a 6-state program). A 1-state
-    # result (a fixed-point seed like vanderpol's origin) is NOT renderable as a
-    # matrix, so it falls through to the sampled-flow path; hitting the cap
-    # (life / lru / randomwalk) means genuinely unbounded -> also sample.
+def _select_root(m):
+    """Choose the matrix's root state set + cells, strongest first:
+      1. ALL INITIAL CONDITIONS — for a finitely-discrete program the rows/cols are
+         EVERY valid carried-state assignment (full_state_graph) and the cells come
+         from the real transition edges: the honest state×state incidence over the
+         WHOLE space, not one z3 model's orbit. The same global root basin_map /
+         state_graph use. (full_state_graph's own discrete flag decides
+         enumerability — NOT m.is_discrete(), so a bounded-int carry like counter
+         0..5 / traffic's timer 0..2 takes the global root, not the from-init orbit.)
+      2. exact reachable graph (from init) — not discretely enumerable but the
+         from-init BFS closes below a cap (a terminating mixed/numeric chain).
+      3. sampled state grid — genuinely unbounded / continuous: grid the numeric
+         axes, sweep discrete ones, bin successors.
+    Returns (states, mat, ribbon_var, ribbon_values, mode).
+
+    Cases 1 and 2 share `_exact`: both have a REAL edge set, so we order the states
+    and remap the edge index-pairs through the ordering permutation, then fill the
+    matrix from those edges (no fabricated grid)."""
+    def _exact(states, edges, mode):
+        ordered, rv, rvals = order_states(m, states)
+        pos = {m._key(s): i for i, s in enumerate(states)}
+        perm = [pos[m._key(s)] for s in ordered]          # ordered[i] = states[perm[i]]
+        inv = {old: new for new, old in enumerate(perm)}
+        edges = {(inv[i], inv[j]) for (i, j) in edges}
+        return ordered, build_matrix(m, ordered, edges=edges), rv, rvals, mode
+
     FINITE_CAP = 200
+    g_states, g_edges, info = m.full_state_graph(limit=5000)
+    if info["discrete"] and not info["capped"] and 2 <= len(g_states):
+        return _exact(g_states, g_edges, "all initial conditions")
     try:
         exact_states, exact_edges = m.reachable(limit=FINITE_CAP)
     except Exception:  # noqa: BLE001
         exact_states, exact_edges = [], []
-    finite = 2 <= len(exact_states) < FINITE_CAP
+    if 2 <= len(exact_states) < FINITE_CAP:
+        return _exact(exact_states, exact_edges, "exact reachable graph (from init)")
+    # Genuinely unbounded / continuous: no real-transition state set closes, so grid
+    # the numeric axes (coarser when discrete axes already multiply the count up) and
+    # bin successors onto the sampled set.
+    disc = any(v["kind"] in ("bool", "enum") for v in m.state_vars)
+    states = sample_states(m, num_grid=5 if disc else 9)
+    states, ribbon_var, ribbon_values = order_states(m, states)
+    return states, build_matrix(m, states, edges=None), \
+        ribbon_var, ribbon_values, "sampled state grid"
 
+
+def _build_states_matrix(m, out_path):
+    """Build the ordered state set + adjacency matrix (via _select_root), subsampled
+    to a legible size. Returns (states, mat, ribbon_var, ribbon_values, mode,
+    sampled_note, total_states) or None if it already emitted a placeholder."""
     try:
-        if finite:
-            states, edges = exact_states, exact_edges
-            # Order states meaningfully (cluster by top categorical), then
-            # remap the exact edge index-pairs through the permutation.
-            ordered, ribbon_var, ribbon_values = order_states(m, states)
-            pos = {m._key(s): i for i, s in enumerate(states)}
-            perm = [pos[m._key(s)] for s in ordered]          # ordered[i] = states[perm[i]]
-            inv = {old: new for new, old in enumerate(perm)}
-            states = ordered
-            edges = {(inv[i], inv[j]) for (i, j) in edges}
-            mat = build_matrix(m, states, edges=edges)
-            mode = "exact reachable graph"
-        else:
-            # Finer grid when the state is purely numeric (the matrix is the
-            # only place the flow structure shows); coarser when discrete axes
-            # already multiply the count up.
-            disc = any(v["kind"] in ("bool", "enum") for v in m.state_vars)
-            states = sample_states(m, num_grid=5 if disc else 9)
-            states, ribbon_var, ribbon_values = order_states(m, states)
-            mat = build_matrix(m, states, edges=None)
-            mode = "sampled state grid"
+        states, mat, ribbon_var, ribbon_values, mode = _select_root(m)
     except Exception as e:  # noqa: BLE001
         placeholder(m, out_path, f"could not build state set: {e}")
         return None
