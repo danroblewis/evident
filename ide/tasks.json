@@ -7758,10 +7758,10 @@
       "id": 308,
       "title": "New 'space_time' view: render Seq-carried-state evolution as a tick\u00d7position raster (Rule 90 \u2192 Sierpinski)",
       "detail": "A Seq-carried-state FSM whose state evolves over ticks (1D CA like Rule 90, a diffusion buffer, a shift register) has NO good current view \u2014 occupancy_heatmap is blank, timing_diagram shows per-cell tracks (readable but not iconic). Add a GENERIC 'space_time' view: simulate the FSM forward N ticks from init (deterministic \u2192 the trajectory; nondeterministic \u2192 one sampled run), collect the Seq state per tick, draw a 2D raster (rows=ticks, cols=Seq positions, color=value \u2014 binary for 0/1, colormap for Int/enum). PROVEN: a proof-of-concept already rendered Rule 90's Sierpinski triangle. CRITERIA: (1) new 'space_time' renderer in the registry; (2) renders the tick\u00d7position raster; (3) Rule 90 \u2192 Sierpinski; (4) GENERIC (any Seq(Int/enum)-carried FSM, not CA-specific); (5) headline view for Rule 90 + digital-block; (6) render_smoke + ./test.sh green + test; (7) nondeterministic handled honestly (sample one run, labeled).",
-      "status": "in_progress",
+      "status": "worker_done",
       "created_by": "worker",
       "created": "2026-06-23T20:48:07Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
@@ -7772,6 +7772,12 @@
           "at": "2026-06-23T21:09:26Z",
           "by": "worker",
           "act": "started"
+        },
+        {
+          "at": "2026-06-23T21:32:04Z",
+          "by": "worker",
+          "act": "done",
+          "note": "space_time view \u2014 Rule 90 \u2192 Sierpi\u0144ski raster (verified), viridis for Int-Seq; render.py registry + Rule 90 headline + render_smoke + Phase 2.17; ./test.sh green"
         }
       ]
     },
@@ -7806,10 +7812,10 @@
       "id": 310,
       "title": "Diagrams: timing_diagram from all initial conditions (ensemble/envelope, not one trajectory; digital 0/1 traces)",
       "detail": "timing_diagram scored NO in the review \u2014 renders ONE forward trajectory from the single seed. Root from the set of initial conditions (full_state_graph); show an ensemble/reachable-envelope; treat 0/1 Seq/enum signals as digital traces. Criteria: not one trajectory; traffic/counter render over all inits; real fallback honest; ./test.sh green + test (Phase 2.19).",
-      "status": "in_progress",
+      "status": "worker_done",
       "created_by": "worker",
       "created": "2026-06-23T21:09:26Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
@@ -7820,6 +7826,12 @@
           "at": "2026-06-23T21:09:26Z",
           "by": "worker",
           "act": "started"
+        },
+        {
+          "at": "2026-06-23T21:32:04Z",
+          "by": "worker",
+          "act": "done",
+          "note": "timing_diagram \u2192 all-conditions ensemble over full_state_graph (per-tick reachable envelope + overlaid timelines, bool\u2192digital); Phase 2.19; ./test.sh green"
         }
       ]
     },
@@ -7827,10 +7839,10 @@
       "id": 311,
       "title": "Diagrams: scatter_matrix claim/Solve support (sample the solution space, not just FSM state)",
       "detail": "scatter_matrix (and the sampling views) only handle FSM carried-state \u2014 KeyError/empty on a pure claim/Solve program. Add claim/Solve support: enumerate N satisfying assignments (block-and-resolve) + render the pairwise scatter over the claim's numeric decision vars. FSM path unchanged; honest empty if UNSAT/no numeric vars. Criteria: a claim/Solve program renders a real solution cloud; FSM samples unchanged; ./test.sh green + test (Phase 2.20).",
-      "status": "in_progress",
+      "status": "worker_done",
       "created_by": "worker",
       "created": "2026-06-23T21:09:26Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
@@ -7841,6 +7853,12 @@
           "at": "2026-06-23T21:09:26Z",
           "by": "worker",
           "act": "started"
+        },
+        {
+          "at": "2026-06-23T21:32:04Z",
+          "by": "worker",
+          "act": "done",
+          "note": "scatter_matrix \u2192 claim/Solve solution-space sampling (block-and-resolve witnesses, every point satisfies the constraint); FSM path unchanged; Phase 2.20; ./test.sh green"
         }
       ]
     },
