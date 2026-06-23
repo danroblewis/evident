@@ -20,7 +20,8 @@ const GLOSSARY = {
   is_first_tick: "is_first_tick — Bool, true only on the FSM's first tick. Used to seed the initial state.",
   is_second_tick: "is_second_tick — Bool, true only on the SECOND tick. Sets the 2nd initial condition for a ΔΔ (second-order) model.",
   "ΔΔ": "ΔΔ  second difference — 'ΔΔx' = x − 2·_x + __x (needs two ticks of history, __x). Lets a 2nd-order system, e.g. an oscillator, be written in ONE variable — the runtime carries velocity as history.   type \\Delta\\Delta",
-  match: "match — pattern-match an enum value across its variants.",
+  match: "match — pattern-match an enum value across its variants: indented 'Ctor(b) ⇒ body' arms, lowered to nested if-then-else.",
+  matches: "matches — variant recognizer: 'e matches Ctor(_)' is a Bool, true when e is that variant (payload ignored). Use match to extract a payload.",
   subclaim: "subclaim — a named nested claim, scoped to its parent's variables.",
   "∈": "∈  membership / typing — 'x ∈ Int' declares x has type Int.   type \\in",
   "⇒": "⇒  implies — 'A ⇒ B' means: if A then B.   type \\imp",
@@ -32,6 +33,8 @@ const GLOSSARY = {
   "≤": "≤  less-than-or-equal.   type \\le", "≥": "≥  greater-than-or-equal.   type \\ge",
   "≠": "≠  not-equal.   type \\ne", "¬": "¬  logical not.   type \\neg",
   "∧": "∧  logical and.   type \\and", "∨": "∨  logical or.   type \\or",
+  "+": "+  addition. '++' (two pluses) concatenates sequences: 'a ++ b ++ ⟨c⟩' flattens named chunks into one Seq at load time.",
+  ".": ".  field access (win.renderer). Two dots '..TypeName' is passthrough / trait-mixin — it brings another type's fields and constraints into this scope WITHOUT a dotted prefix.",
   "⟨": "⟨ ⟩  sequence literal ⟨a, b, c⟩.   type \\langle \\rangle",
   "⟩": "⟨ ⟩  sequence literal ⟨a, b, c⟩.   type \\langle \\rangle",
 };
