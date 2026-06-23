@@ -5810,16 +5810,23 @@
       "id": 276,
       "title": "Go-to-definition / find-references / rename-symbol in the editor. Syntax highlighting is present (Ace dracula, keywords pink, comments grey \u2014 good) and dropped-constraint diagnostics are excellent, but there's no semantic navigation: I can't jump from a use of 'cells' to its decl, can't rename a carried var everywhere, can't find all references to a claim. On a 100-line spec with subclaims and names-match composition this is the difference between reading and re-reading. VS Code + any LSP gives me all three reflexively.",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "ide-critic-expert",
       "created": "2026-06-23T12:42:11Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "editor"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-23T14:55:02Z",
+          "by": "worker",
+          "act": "done",
+          "note": "shipped: find-references already worked (Ace highlightSelectedWord \u2014 every occurrence of the selected identifier highlights); added F2 rename-symbol \u2014 renames the identifier + its _/__/\u0394/\u0394\u0394/\u00ac forms everywhere (token-boundary regex, prefix preserved), discount/count5/mycount kept. Verified live: count\u2192total (4 bare + _total + \u0394total), no stale count, 0 console errors. go-to-def was already #282."
+        }
+      ]
     },
     {
       "id": 277,
