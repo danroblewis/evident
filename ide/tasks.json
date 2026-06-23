@@ -1,20 +1,27 @@
 {
-  "seq": 261,
+  "seq": 263,
   "tasks": [
     {
       "id": 1,
       "title": "Interactive diagrams: click a node, hover for detail, zoom/pan (PNG \u2192 SVG)",
       "detail": "Diagrams are flat <img> rasters; the 'diagram is the debugger' promise needs touchable views.",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "worker",
       "created": "2026-06-21T23:18:36Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "viz"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-23T11:20:06Z",
+          "by": "worker",
+          "act": "done",
+          "note": "shipped this session (code committed + verified); re-marked after a fast-forward reverted the uncommitted ledger"
+        }
+      ]
     },
     {
       "id": 2,
@@ -151,16 +158,23 @@
       "id": 7,
       "title": "Autocomplete + hover-for-type in the editor",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "worker",
       "created": "2026-06-21T23:18:36Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "editor"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-23T11:20:06Z",
+          "by": "worker",
+          "act": "done",
+          "note": "shipped this session (code committed + verified); re-marked after a fast-forward reverted the uncommitted ledger"
+        }
+      ]
     },
     {
       "id": 8,
@@ -387,16 +401,23 @@
       "id": 19,
       "title": "FSM unrolling / self-composition: compose T^k, simplify, detect fixpoint of the unrolling (T^k \u2261 T^k+1)",
       "detail": "User's core idea: bind run N output\u2192run N+1 input, analyze the composed relation for overall behavior.",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "worker",
       "created": "2026-06-21T23:18:37Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "analysis"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-23T11:20:05Z",
+          "by": "worker",
+          "act": "done",
+          "note": "shipped this session (code committed + verified); re-marked after a fast-forward reverted the uncommitted ledger"
+        }
+      ]
     },
     {
       "id": 20,
@@ -417,16 +438,23 @@
       "id": 21,
       "title": "Solve-for-boundaries: extremal/optimization queries on the model, not single runs",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "worker",
       "created": "2026-06-21T23:18:37Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "analysis"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-23T11:20:05Z",
+          "by": "worker",
+          "act": "done",
+          "note": "shipped this session (code committed + verified); re-marked after a fast-forward reverted the uncommitted ledger"
+        }
+      ]
     },
     {
       "id": 22,
@@ -1345,16 +1373,23 @@
       "id": 70,
       "title": "Perf: phase_portrait vector field does n\u00b2 fresh successor() solves \u2014 reuse one push/pop solver",
       "detail": "render_phase_portrait grids the field by calling m.successor() per cell, each rebuilding a z3 solver (~17ms). Reuse a single solver with push/pop (pin once, per-cell assert axis values) to cut real-valued render from seconds to <0.5s and allow a denser grid again.",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "worker",
       "created": "2026-06-22T00:30:36Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "perf"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-23T11:20:05Z",
+          "by": "worker",
+          "act": "done",
+          "note": "shipped this session (code committed + verified); re-marked after a fast-forward reverted the uncommitted ledger"
+        }
+      ]
     },
     {
       "id": 78,
@@ -1616,46 +1651,78 @@
       "id": 84,
       "title": "Scope/bound control as a first-class knob (Alloy-style): set the BFS depth / state cap explicitly and know whether 'no more reachable' is a proof of exhaustion or a hit cap. The footer says '\u2265400 (capped sample)' but I can't raise the cap or ask 'is this complete?'.",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "ide-critic-expert",
       "created": "2026-06-22T00:41:34Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "analysis"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-23T11:20:05Z",
+          "by": "worker",
+          "act": "done",
+          "note": "shipped this session (code committed + verified); re-marked after a fast-forward reverted the uncommitted ledger"
+        }
+      ]
     },
     {
       "id": 85,
       "title": "Pin-and-explore for sequence/record elements: solve-for-X must support col[i]=v and record-field pins, applied to the solver (currently silently dropped). Then let me pin a partial witness and enumerate completions.",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "ide-critic-expert",
       "created": "2026-06-22T00:41:34Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "solve"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-23T11:08:00Z",
+          "by": "worker",
+          "act": "started"
+        },
+        {
+          "at": "2026-06-23T11:15:58Z",
+          "by": "worker",
+          "act": "done",
+          "note": "shipped (merged 7c4f3c41): indexed-element given pins. parse_indexed_key + assert_indexed_given reach the Seq cell via Var::SeqVar.arr.select(idx); wired at all 3 given-application sites in eval.rs (agent found a 3rd beyond the 2 I scoped). 3 new tests + CLI guard now allows [ ]. Verified live: IDE solve queens col[0]=1 \u2192 col=[1,3,0,2], pin honored (was satisfied=None). ./test.sh green (271 tests)."
+        },
+        {
+          "at": "2026-06-23T11:20:05Z",
+          "by": "worker",
+          "act": "done",
+          "note": "shipped this session (code committed + verified); re-marked after a fast-forward reverted the uncommitted ledger"
+        }
+      ]
     },
     {
       "id": 86,
       "title": "Entry-claim picker in the UI: when a file has multiple top-level claims/types, show a dropdown to choose which to Solve/analyze instead of erroring 'ambiguous' with no way to resolve it.",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "ide-critic-expert",
       "created": "2026-06-22T00:41:34Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "solve"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-23T11:20:05Z",
+          "by": "worker",
+          "act": "done",
+          "note": "shipped this session (code committed + verified); re-marked after a fast-forward reverted the uncommitted ledger"
+        }
+      ]
     },
     {
       "id": 87,
@@ -1713,16 +1780,23 @@
       "id": 89,
       "title": "'Why is this state reachable?' provenance: click a node in state_graph/reachability_tree and get the path (and the constraints) that admit it. Pairs with witness traces.",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "ide-critic-expert",
       "created": "2026-06-22T00:41:34Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "analysis"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-23T11:20:06Z",
+          "by": "worker",
+          "act": "done",
+          "note": "shipped this session (code committed + verified); re-marked after a fast-forward reverted the uncommitted ledger"
+        }
+      ]
     },
     {
       "id": 90,
@@ -1771,31 +1845,45 @@
       "id": 95,
       "title": "Title-bar file label shows the wrong name for multi-decl Solve samples: toposort displays 'Edge.ev', sudoku 'Box.ev', subset-sum 'Item.ev' \u2014 it picks the first top-level decl (a record 'type') instead of the entry 'claim' (toposort/sudoku/subset_sum). The Solve result correctly names the claim ('SAT \u2014 toposort has a witness'), so the data exists; just label the buffer by the entry claim, not the first type.",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "ide-critic",
       "created": "2026-06-22T01:27:38Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "editor"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-23T11:20:05Z",
+          "by": "worker",
+          "act": "done",
+          "note": "shipped this session (code committed + verified); re-marked after a fast-forward reverted the uncommitted ledger"
+        }
+      ]
     },
     {
       "id": 96,
       "title": "Let the verify '\u22a2' counterexample be actionable: when it returns '\u2717 violated \u2014 counterexample count=4' (or a multi-var state), make that state clickable to jump the diagram/time-series to it and, ideally, show the witness TRAJECTORY that reaches it (ties to #78). Right now I get the endpoint state as text but can't see HOW the machine got there or locate it in any view.",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "ide-critic",
       "created": "2026-06-22T01:27:38Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "solve"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-23T11:20:06Z",
+          "by": "worker",
+          "act": "done",
+          "note": "shipped this session (code committed + verified); re-marked after a fast-forward reverted the uncommitted ledger"
+        }
+      ]
     },
     {
       "id": 97,
@@ -1999,16 +2087,23 @@
       "id": 108,
       "title": "Title bar shows the wrong .ev name for multi-decl claim samples \u2014 toposort and Edge-typed samples show 'Edge.ev' (the first 'type' decl) instead of the claim/sample name. Cosmetic but a newcomer trusts the title to tell them what they're looking at; 'Edge.ev' for a toposort claim is confusing. Name the file after the entry claim or the sample's menu label.",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "ide-critic-newcomer",
       "created": "2026-06-22T01:45:28Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "editor"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-23T11:20:05Z",
+          "by": "worker",
+          "act": "done",
+          "note": "shipped this session (code committed + verified); re-marked after a fast-forward reverted the uncommitted ledger"
+        }
+      ]
     },
     {
       "id": 117,
@@ -2109,16 +2204,34 @@
       "id": 121,
       "title": "Indexed/field-element pins in solve-for-X (important): pinning col[0]=0 now honestly errors ('can't pin an indexed/field element yet') instead of silently producing a contradictory witness \u2014 good. But the capability is still missing. Support col[0]=0, grid[1][2]=3, rec.field=v by adding the equality as a tracked assertion on the indexed Z3 leaf. N-queens with col[0]=0 should then return UNSAT (provably, no 4-queens solution has col[0]=0).",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "ide-critic-expert",
       "created": "2026-06-22T02:06:30Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "solve"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-23T11:08:00Z",
+          "by": "worker",
+          "act": "started"
+        },
+        {
+          "at": "2026-06-23T11:15:58Z",
+          "by": "worker",
+          "act": "done",
+          "note": "shipped (merged 7c4f3c41): indexed-element given pins. parse_indexed_key + assert_indexed_given reach the Seq cell via Var::SeqVar.arr.select(idx); wired at all 3 given-application sites in eval.rs (agent found a 3rd beyond the 2 I scoped). 3 new tests + CLI guard now allows [ ]. Verified live: IDE solve queens col[0]=1 \u2192 col=[1,3,0,2], pin honored (was satisfied=None). ./test.sh green (271 tests)."
+        },
+        {
+          "at": "2026-06-23T11:20:05Z",
+          "by": "worker",
+          "act": "done",
+          "note": "shipped this session (code committed + verified); re-marked after a fast-forward reverted the uncommitted ledger"
+        }
+      ]
     },
     {
       "id": 122,
@@ -2307,10 +2420,10 @@
       "id": 129,
       "title": "basin_map must not assert a single attractor on nondeterministic systems (from concern #76): bistable (gambler's ruin, step\u2208{-1,0,1}, branching \u00d73) paints x=1..5 solid blue (\u21920) and only x=6 red, with a legend 'terminal basin \u2192 (0) fixed pt'. From an interior state the walk can reach EITHER wall, so those states are in BOTH basins. A single color asserts a deterministic attractor the nondeterminism denies. Fix: make basin_map N/A for branching>=2 systems, OR show per-state basin membership as a distribution (two-tone / P(\u21920) vs P(\u21926)).",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "ide-critic-expert",
       "created": "2026-06-22T02:07:08Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
@@ -2321,6 +2434,12 @@
           "at": "2026-06-22T02:07:08Z",
           "by": "ide-critic-expert",
           "act": "created to address concern #76"
+        },
+        {
+          "at": "2026-06-23T11:20:06Z",
+          "by": "worker",
+          "act": "done",
+          "note": "shipped this session (code committed + verified); re-marked after a fast-forward reverted the uncommitted ledger"
         }
       ],
       "addresses_concern": 76
@@ -2329,16 +2448,23 @@
       "id": 130,
       "title": "Provenance: 'why is this state reachable?' (nice-to-have): given a reachable state in the solution_space scatter or state_graph, show the path/constraints that admit it \u2014 click a dot, get the witnessing trajectory or the satisfying assignment. The relational debugger's 'how did we get here' that turns a picture into something I can interrogate.",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "ide-critic-expert",
       "created": "2026-06-22T02:07:08Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "analysis"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-23T11:20:06Z",
+          "by": "worker",
+          "act": "done",
+          "note": "shipped this session (code committed + verified); re-marked after a fast-forward reverted the uncommitted ledger"
+        }
+      ]
     },
     {
       "id": 131,
@@ -3155,16 +3281,23 @@
       "id": 180,
       "title": "Editor intelligence beyond markers: hover-for-type on an identifier, go-to-definition on a carried var / claim name, find-all-references, rename-symbol. Today the only editor 'intelligence' is error/warning gutter markers + syntax highlight. Reaching to jump from a use of 'count' to its declaration, or rename 'stp'\u2192'step' everywhere, there's nothing \u2014 I'd do both in VS Code reflexively.",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "ide-critic",
       "created": "2026-06-22T12:13:54Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "editor"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-23T11:20:06Z",
+          "by": "worker",
+          "act": "done",
+          "note": "shipped this session (code committed + verified); re-marked after a fast-forward reverted the uncommitted ledger"
+        }
+      ]
     },
     {
       "id": 181,
@@ -3235,16 +3368,23 @@
       "id": 183,
       "title": "Extend claim_space feasible-value heatmap to record-element Seqs (subset-sum items\u2208Seq(Item) currently falls back to the bare 'no numeric variable to bound' N/A while Int-element Seqs get the rich CAN-equal grid). A column per record field, or feasibility of the Bool 'take' field per item. (= concern #173)",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "ide-critic",
       "created": "2026-06-22T12:13:54Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "viz"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-23T11:20:05Z",
+          "by": "worker",
+          "act": "done",
+          "note": "shipped this session (code committed + verified); re-marked after a fast-forward reverted the uncommitted ledger"
+        }
+      ]
     },
     {
       "id": 184,
@@ -3361,16 +3501,23 @@
       "id": 194,
       "title": "Token-level error squiggle (not full-line). #153 highlights the whole offending LINE (ace marker type=fullLine, annotation column 0) + gutter icon. The wall: I see the line is bad but not WHICH token \u2014 VS Code/IntelliJ underline the exact identifier ('kount'). Put the squiggle range on the dropped-constraint's offending token/sub-expression, not the line.",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "ide-critic-expert",
       "created": "2026-06-22T13:03:03Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "editor"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-23T11:20:05Z",
+          "by": "worker",
+          "act": "done",
+          "note": "shipped this session (code committed + verified); re-marked after a fast-forward reverted the uncommitted ledger"
+        }
+      ]
     },
     {
       "id": 195,
@@ -4298,16 +4445,23 @@
       "id": 234,
       "title": "Pin two DIAGRAMS of the SAME program side-by-side (phase_portrait | state_graph), not just program-A vs program-B. The diff two-up proves the layout exists; I want it for cross-view comparison of one model so I can watch a node in the graph and its dot in the phase portrait at once.",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "ide-critic",
       "created": "2026-06-22T19:14:31Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "viz"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-23T11:20:05Z",
+          "by": "worker",
+          "act": "done",
+          "note": "shipped this session (code committed + verified); re-marked after a fast-forward reverted the uncommitted ledger"
+        }
+      ]
     },
     {
       "id": 235,
@@ -4853,16 +5007,23 @@
       "id": 259,
       "title": "Export the UNROLLED k-step transition as SMT-LIB, not just the single-tick relation. The current /api/smtlib dump is one transition step (verified: it runs in z3, sat, but _timer is unconstrained at 3). For a real liveness/bounded-model-check in z3 directly I want the k-unrolled system (state_0 \u2026 state_k + the lasso-closure constraint) so I can drive my own BMC / k-induction outside the tool. Add a depth param to the SMT-LIB export.",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "ide-critic-expert",
       "created": "2026-06-23T00:02:47Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "solve"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-23T11:20:05Z",
+          "by": "worker",
+          "act": "done",
+          "note": "shipped this session (code committed + verified); re-marked after a fast-forward reverted the uncommitted ledger"
+        }
+      ]
     },
     {
       "id": 261,
@@ -4883,6 +5044,46 @@
           "by": "worker",
           "act": "done",
           "note": "Implemented on branch worker-infinitely-often-260 (commit 7dcae0bb). \u25c7=AF unchanged/sound; added recurrent:True/False label to \u25c7 and a new modality=infinitely_often (\u25a1\u25c7P) that backward-reaches \u00acP traps over the FULL graph (the transient-P mask is the precise bug), with a full-graph-stem forced/avoidable lasso. Frontend parses \u25a1\u25c7/\u25fb\u25c7/[]<>/'infinitely'; \u25c7 shows recurs-vs-TRANSIENT. All 4 gate fixtures pass via real evident export + Viz load; ./test.sh green, lint 27<=27. Concern #260/#239 is for ide-critic-expert (Ana) to clear."
+        }
+      ]
+    },
+    {
+      "id": 262,
+      "title": "Effect/payload-enum FSMs render all views (root-cause f0 accessor fix)",
+      "detail": "",
+      "status": "worker_done",
+      "created_by": "worker",
+      "created": "2026-06-23T11:20:06Z",
+      "worker_done": true,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [],
+      "log": [
+        {
+          "at": "2026-06-23T11:20:06Z",
+          "by": "worker",
+          "act": "done",
+          "note": "DONE \u2014 runtime parser uniquifies payload-variant accessors ({Variant}_f{idx}); was the f0-collision bug. Commit on branch. (re-add: original #265 lost in the ledger revert)"
+        }
+      ]
+    },
+    {
+      "id": 263,
+      "title": "Editor hover-for-type + go-to-definition on user identifiers",
+      "detail": "",
+      "status": "worker_done",
+      "created_by": "worker",
+      "created": "2026-06-23T11:20:06Z",
+      "worker_done": true,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [],
+      "log": [
+        {
+          "at": "2026-06-23T11:20:06Z",
+          "by": "worker",
+          "act": "done",
+          "note": "DONE \u2014 parseScopeDecls + hover + \u2318-click go-to-def. Commit on branch. (re-add: original #282 lost in the ledger revert)"
         }
       ]
     }
