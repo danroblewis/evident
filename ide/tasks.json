@@ -7518,10 +7518,10 @@
       "id": 295,
       "title": "Cleaner syntax for FSM initial values \u2014 'is_first_tick \u21d2 (x = 0 \u2227 y = 0)' reads awful",
       "detail": "FSM initial values today require 'is_first_tick \u21d2 (x = 0 \u2227 y = 0)' \u2014 verbose; the is_first_tick guard + the \u2227-conjunction clutter the model, and the indented-block form is no better. DESIGN a cleaner, readable initial-value syntax. Candidates to evaluate (not prescriptive): inline 'x \u2208 Int := 0' or 'x \u2208 Int <- 0' (an INITIAL value, distinct from '= 0' which pins x always); a dedicated 'initial:' / 'start:' block listing the seeds; per-var '@init 0'; or subscript 'x0 = 0'. COMPLETION CRITERIA: (1) propose 2-3 options + a recommendation; (2) the chosen syntax reads cleanly for scalars, records, AND multi-name decls, and composes; (3) parse it + lower to the existing is_first_tick seed (semantics unchanged); (4) old 'is_first_tick \u21d2 ...' still works (backward-compat); (5) update the samples to the new form; (6) ./test.sh green + a parse-and-lower test.",
-      "status": "in_progress",
+      "status": "worker_done",
       "created_by": "worker",
       "created": "2026-06-23T20:19:30Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
@@ -7532,6 +7532,12 @@
           "at": "2026-06-23T21:09:26Z",
           "by": "worker",
           "act": "started"
+        },
+        {
+          "at": "2026-06-23T21:26:16Z",
+          "by": "worker",
+          "act": "done",
+          "note": "x \u2208 Int := 0 initial-value syntax \u2014 lowers to byte-identical AST as the is_first_tick seed; scalars/records/multi-name; Phase 2.18 (AST-identity + trace-equivalence) + example test_26; cargo 286, ./test.sh green"
         }
       ]
     },
