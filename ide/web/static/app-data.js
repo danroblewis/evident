@@ -86,6 +86,47 @@ fsm ball
     is_first_tick ⇒ (pos = 50.0 ∧ vel = 0.0)
     (¬is_first_tick ∧ _pos > 0.0) ⇒ (Δpos = _vel ∧ Δvel = 0.0 - 9.8)
     (¬is_first_tick ∧ _pos ≤ 0.0) ⇒ (pos = 0.0 ∧ vel = 0.0 - _vel * 0.7)`,
+  "spring chain · 6 coupled masses (dense data-flow)":
+`-- Three masses connected by springs (Hooke's law, nearest-neighbour coupling). The functionizer
+-- compiles SIX coupled functions; the middle mass reads both its neighbours — open function_graph
+-- for the dense coupling DAG (the most cross-edges of any sample).
+fsm springs
+    x1, x2, x3 ∈ Real
+    v1, v2, v3 ∈ Real
+    is_first_tick ⇒ (x1 = 10.0 ∧ x2 = 0.0 ∧ x3 = 0.0 ∧ v1 = 0.0 ∧ v2 = 0.0 ∧ v3 = 0.0)
+    ¬is_first_tick ⇒ Δx1 = _v1 * 0.1
+    ¬is_first_tick ⇒ Δx2 = _v2 * 0.1
+    ¬is_first_tick ⇒ Δx3 = _v3 * 0.1
+    ¬is_first_tick ⇒ Δv1 = (0.0 - _x1 * 2.0 + _x2) * 0.1
+    ¬is_first_tick ⇒ Δv2 = (_x1 - _x2 * 2.0 + _x3) * 0.1
+    ¬is_first_tick ⇒ Δv3 = (_x2 - _x3 * 2.0) * 0.1`,
+  "thermostat · hysteresis (mode-switching guards)":
+`-- A heater with hysteresis: temp rises while Heating, falls while Idle; the mode switches when temp
+-- crosses 22 (→ Idle) or 18 (→ Heating). The functionizer compiles a 4-branch GUARDED mode function
+-- and a per-mode temp function — open function_guards (and the ✓ total & unambiguous verdict).
+enum Mode = Heating | Idle
+fsm thermostat
+    temp ∈ Real
+    mode ∈ Mode
+    is_first_tick ⇒ (temp = 15.0 ∧ mode = Heating)
+    (¬is_first_tick ∧ _mode = Heating) ⇒ Δtemp = 1.0
+    (¬is_first_tick ∧ _mode = Idle) ⇒ Δtemp = 0.0 - 0.5
+    (¬is_first_tick ∧ _temp ≥ 22.0) ⇒ mode = Idle
+    (¬is_first_tick ∧ _temp ≤ 18.0) ⇒ mode = Heating
+    (¬is_first_tick ∧ 18.0 < _temp ∧ _temp < 22.0) ⇒ mode = _mode`,
+  "DVD bounce · 4-wall (guard partition)":
+`-- The bouncing-logo screensaver: position drifts, each velocity flips at its two walls. The
+-- functionizer compiles 3-branch GUARDED velocity functions (in-bounds vs the two wall conditions)
+-- — open function_behavior for the wall-flip partition map.
+fsm dvd
+    px, py, vx, vy ∈ Real
+    is_first_tick ⇒ (px = 50.0 ∧ py = 30.0 ∧ vx = 3.0 ∧ vy = 2.0)
+    ¬is_first_tick ⇒ Δpx = _vx
+    ¬is_first_tick ⇒ Δpy = _vy
+    (¬is_first_tick ∧ 0.0 < _px ∧ _px < 100.0) ⇒ vx = _vx
+    (¬is_first_tick ∧ (_px ≤ 0.0 ∨ _px ≥ 100.0)) ⇒ vx = 0.0 - _vx
+    (¬is_first_tick ∧ 0.0 < _py ∧ _py < 60.0) ⇒ vy = _vy
+    (¬is_first_tick ∧ (_py ≤ 0.0 ∨ _py ≥ 60.0)) ⇒ vy = 0.0 - _vy`,
   "vending · stock, coins & a vault (FSM)":
 `-- A real vending machine: coins accumulate (up to a capacity), products sell from stock
 -- into the operator's vault, the customer can cancel for a refund, and the operator
