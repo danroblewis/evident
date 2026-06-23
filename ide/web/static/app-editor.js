@@ -173,12 +173,20 @@ function markErrorLine(err, loc) {
     const m = (err || "").match(/line (\d+)/i);
     if (m) ln = parseInt(m[1], 10) - 1;
   }
-  if (ln != null && ln >= 0 && ln < editor.session.getLength()) {
-    const Range = ace.require("ace/range").Range;
-    _errMarker = editor.session.addMarker(
-      new Range(ln, 0, ln, Infinity), "ace-error-line", "fullLine");
-    editor.session.addGutterDecoration(ln, "error-gutter");
-    _errLine = ln;
+  if (ln == null || ln < 0 || ln >= editor.session.getLength()) return;
+  const Range = ace.require("ace/range").Range;
+  editor.session.addGutterDecoration(ln, "error-gutter");
+  _errLine = ln;
+  // Token-level squiggle when the parser gave a column: underline just the offending token (the
+  // non-space run at col), not the whole line (Marek #194). Fall back to full-line without a col.
+  if (loc && Number.isInteger(loc.col) && loc.col >= 1) {
+    const lineText = editor.session.getLine(ln);
+    const c0 = Math.min(Math.max(0, loc.col - 1), lineText.length);
+    const tok = lineText.slice(c0).match(/^\S+/);
+    const c1 = c0 + (tok ? tok[0].length : 1);
+    _errMarker = editor.session.addMarker(new Range(ln, c0, ln, c1), "ace-error-token", "text");
+  } else {
+    _errMarker = editor.session.addMarker(new Range(ln, 0, ln, Infinity), "ace-error-line", "fullLine");
   }
 }
 

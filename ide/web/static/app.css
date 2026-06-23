@@ -165,6 +165,9 @@ html,body { margin:0; height:100%; background:var(--bg); color:var(--ink);
   padding:8px 12px; white-space:pre-wrap; font-size:12px; z-index:5; }
 /* inline error-line tint (Ace fullLine marker) + a red gutter dot */
 .ace_marker-layer .ace-error-line { position:absolute; background:rgba(248,81,73,0.16); z-index:2; }
+/* token-level error squiggle: tint + a red dotted underline under just the offending token (#194) */
+.ace_marker-layer .ace-error-token { position:absolute; background:rgba(248,81,73,0.16);
+  border-bottom:2px dotted var(--bad); z-index:2; }
 .ace_gutter-cell.error-gutter { color:var(--bad); }
 /* dropped-constraint line: AMBER, distinct from the red parse-error mark. A parse error
    blocks; a dropped constraint runs but silently leaves a variable free. */
