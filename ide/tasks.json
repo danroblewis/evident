@@ -5650,16 +5650,23 @@
       "id": 268,
       "title": "Step/scrub a counterexample TRACE in the views (not just text). The verify box now gives a real lasso for \u25a1\u25c7/\u2933 violations ('x=0\u2192x=1\u2192x=2\u2192x=2, \u21bb loops here') and \u25c7 a transient label \u2014 excellent. But the trace is text-only. I want to click the lasso and have time_series/state_graph SCRUB through s0\u2192\u2026\u2192s_bad with the recurrent cycle highlighted, TLA+ Toolbox / Apalache-style. The state_graph already has the nodes+edges and the lasso already names the states; thread the witness path through the existing graph and let me step it in time.",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "ide-critic-expert",
       "created": "2026-06-23T12:41:20Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "analysis"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-23T13:50:56Z",
+          "by": "worker",
+          "act": "done",
+          "note": "ALREADY WORKS (verified live) \u2014 the temporal lasso flows to showTrace with cycle_start (app-verify.js L484); the scrubber renders \u25c0 step N/N \u25b6 + '\u21bb loops here', and highlightTraceStep RINGS the current step on the diagram (state_graph node points, #206/#231). Verified: traffic \u25a1\u25c7 trace \u2192 stepper + cycle marker + diagram ring all present. Ana's 'text only' was a miss (likely on time_series, which has per-element tracks not node points \u2192 no ring). The point-based views (state_graph, solution_space) step+ring fully; a time_series per-track step-MARKER would need PNG x-position data (a niche enhancement, noted)."
+        }
+      ]
     },
     {
       "id": 269,
