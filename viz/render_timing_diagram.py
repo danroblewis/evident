@@ -13,10 +13,19 @@ keyed to the variable's TYPE (digital / lane / analog):
   * int / real vars            -> ANALOG track. The numeric value is drawn as a
     line over ticks, normalized into the track's band.
 
-The dynamics come entirely from querying the transition relation via
-evident_viz (z3). We follow ONE successor chain for ~40 ticks. For purely
-autonomous systems whose own initial state is a fixed point (e.g. vanderpol's
-origin), we pick a non-trivial seed so the waveform actually moves; otherwise
+ALL INITIAL CONDITIONS (the diagram-review upgrade). For a finitely-DISCRETE
+program the timing diagram roots on the GLOBAL all-initial-conditions graph
+(`Model.full_state_graph` — the same root state_graph / basin_map / transition_matrix
+use), follows EVERY valid starting state forward via the existing successor relation,
+and draws an ENSEMBLE of timelines. Per signal we show the reachable ENVELOPE at each
+tick: where all timelines agree the trace is crisp; where they diverge it fans into a
+filled band — so a 0/1 Seq/enum/bool signal reads as a proper digital trace bounded by
+what ANY initial condition can do, not one run. (See `timing_ensemble.py`.)
+
+The HONEST SINGLE-SEED FALLBACK is kept for real / string / seq / unbounded-int /
+two-tick models (not finitely enumerable): there we follow ONE successor chain for
+~40 ticks. For purely autonomous systems whose own initial state is a fixed point
+(e.g. vanderpol's origin) we pick a non-trivial seed so the waveform moves; otherwise
 we start from the program's initial_state.
 
 Usage:
@@ -33,6 +42,7 @@ import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 
 from evident_viz import load
+from timing_ensemble import build_ensemble, track_band
 
 TICKS = 40
 DIGITAL = ("bool", "enum", "string")
@@ -134,128 +144,195 @@ def _expand_tracks(state_vars):
     return tracks
 
 
-def render(m, out_path):
-    trace = build_trace(m)
-    fig_title = f"{m.fsm}  —  timing_diagram"
+LANE_H = 1.0
+GAP = 0.55
+DIGITAL_COLOR = "#1f77b4"
+ANALOG_COLOR = "#d62728"
+ENUM_COLOR = "#2ca02c"
 
-    if not trace:
-        fig, ax = plt.subplots(figsize=(11, 3))
-        ax.axis("off")
-        ax.text(0.5, 0.5, "N/A: no transition (no reachable trajectory)",
-                ha="center", va="center", fontsize=13)
-        ax.set_title(fig_title, fontsize=13, fontweight="bold")
-        fig.savefig(out_path, dpi=120, bbox_inches="tight")
-        plt.close(fig)
-        return
 
-    n = len(trace)
+def _ordinal_levels(m, track, observed):
+    """The y-ORDINAL map for a track: (level_of(value) -> [0,1], lo_label, hi_label).
+    bool -> {False:0, True:1}; enum -> index in the declared variant list; string ->
+    rank in the observed-value order; int/real -> linear over the observed [min,max]
+    span. Shared by the single-seed AND ensemble paths so a value maps to the SAME lane
+    height in both — `observed` is every value the lane shows (one trace, or the union
+    over the ensemble)."""
+    kind = track["kind"]
+    if kind == "bool":
+        return (lambda v: 1.0 if v else 0.0), "0", "1"
+    if kind in ("enum", "string"):
+        if kind == "enum":
+            variants = m.enum_variants[track["name"].split("[")[0]]
+        else:
+            variants = sorted(set(observed), key=lambda s: (s != "", s))
+        nv = max(1, len(variants))
+        order = {variant: i for i, variant in enumerate(variants)}
+        lo = str(variants[0]) if variants else ""
+        hi = str(variants[-1]) if nv > 1 else ""
+        return (lambda v: order.get(v, 0) / max(1, nv - 1)), lo, hi
+    vmin, vmax = (min(observed), max(observed)) if observed else (0, 1)
+    span = (vmax - vmin) or 1.0
+    return (lambda v: (v - vmin) / span), f"{vmin}", f"{vmax}"
+
+
+def _lane_chrome(ax, idx, base, track, lo, hi):
+    """Per-lane background band, baseline, and the lo/hi axis labels — shared by both
+    drawers so the lane frame is identical whether we plot a single trace or a band."""
+    ax.axhspan(base - GAP / 2, base + LANE_H + GAP / 2,
+               facecolor="#f7f7f7" if idx % 2 == 0 else "#ffffff", zorder=0)
+    ax.axhline(base, color="#cccccc", lw=0.5, zorder=1)
+    if lo:
+        ax.text(-0.6, base, lo, va="center", ha="right", fontsize=7, color="#888")
+    if hi:
+        ax.text(-0.6, base + LANE_H, hi, va="center", ha="right", fontsize=7,
+                color="#888")
+
+
+def _draw_single_lane(ax, m, track, base, vals, n):
+    """One trace (the from-init / fallback path): a crisp digital/analog waveform."""
     ticks = list(range(n))
-    tracks = _expand_tracks(m.state_vars)
-    nvar = len(tracks)
-
-    # vertical layout: each var gets a unit-height lane, stacked top to bottom
-    lane_h = 1.0
-    gap = 0.55
-    fig_h = max(2.4, 0.95 * nvar + 1.4)
-    fig, ax = plt.subplots(figsize=(12, fig_h))
-
-    digital_color = "#1f77b4"
-    analog_color = "#d62728"
-    enum_color = "#2ca02c"
-
-    yticklabels = []
-    yticks = []
-
-    for idx, v in enumerate(tracks):
-        # lanes top-to-bottom: first track at top
-        base = (nvar - 1 - idx) * (lane_h + gap)
-        name = v["name"]
-        kind = v["kind"]
-        vals = [v["get"](trace[t]) for t in range(n)]
-
-        yticks.append(base + lane_h / 2)
-        # tracks are stacked in m.state_vars order = importance rank (most
-        # informative variable on top). Surface that rank in the lane label so
-        # the ordering is legible, not just implicit in the layout.
-        yticklabels.append(f"#{idx + 1}  {name}\n[{kind}]")
-
-        # lane separator background band
-        ax.axhspan(base - gap / 2, base + lane_h + gap / 2,
-                   facecolor="#f7f7f7" if idx % 2 == 0 else "#ffffff",
-                   zorder=0)
-
+    level, lo, hi = _ordinal_levels(m, track, vals)
+    kind = track["kind"]
+    ys = [base + level(vals[t]) * LANE_H for t in range(n)]
+    if kind in ("bool", "enum", "string"):
+        color = DIGITAL_COLOR if kind == "bool" else ENUM_COLOR
+        ax.step(ticks, ys, where="post", color=color, lw=2, zorder=3)
         if kind == "bool":
-            ys = [base + (lane_h if vals[t] else 0.0) for t in range(n)]
-            ax.step(ticks, ys, where="post", color=digital_color, lw=2, zorder=3)
             ax.fill_between(ticks, base, ys, step="post",
-                            color=digital_color, alpha=0.12, zorder=2)
-            ax.text(-0.6, base, "0", va="center", ha="right",
-                    fontsize=7, color="#888")
-            ax.text(-0.6, base + lane_h, "1", va="center", ha="right",
-                    fontsize=7, color="#888")
-
-        elif kind in ("enum", "string"):
-            if kind == "enum":
-                variants = m.enum_variants[name]
-            else:
-                # build an ordinal order from observed string values
-                variants = sorted(set(vals), key=lambda s: (s != "", s))
-            nv = max(1, len(variants))
-            order = {variant: i for i, variant in enumerate(variants)}
-            ys = [base + (order.get(vals[t], 0) / max(1, nv - 1)) * lane_h
-                  for t in range(n)]
-            ax.step(ticks, ys, where="post", color=enum_color, lw=2, zorder=3)
-            # annotate each held segment with the variant name on a transition
+                            color=color, alpha=0.12, zorder=2)
+        else:
             last = None
             for t in range(n):
                 if vals[t] != last:
-                    ax.text(t + 0.08, ys[t] + 0.06, str(vals[t]),
-                            fontsize=7, color="#1a661a", va="bottom", zorder=4)
+                    ax.text(t + 0.08, ys[t] + 0.06, str(vals[t]), fontsize=7,
+                            color="#1a661a", va="bottom", zorder=4)
                     last = vals[t]
-            # lane min/max variant labels
-            ax.text(-0.6, base, str(variants[0]), va="center", ha="right",
-                    fontsize=6, color="#888")
-            if nv > 1:
-                ax.text(-0.6, base + lane_h, str(variants[-1]),
-                        va="center", ha="right", fontsize=6, color="#888")
+    else:
+        ax.plot(ticks, ys, color=ANALOG_COLOR, lw=1.6, marker="o",
+                markersize=2.5, zorder=3)
+    _lane_chrome(ax, track["_idx"], base, track, lo, hi)
 
-        else:  # int / real -> analog
-            vmin, vmax = min(vals), max(vals)
-            span = (vmax - vmin) or 1.0
-            ys = [base + (vals[t] - vmin) / span * lane_h for t in range(n)]
-            ax.plot(ticks, ys, color=analog_color, lw=1.6, marker="o",
-                    markersize=2.5, zorder=3)
-            ax.text(-0.6, base, f"{vmin}", va="center", ha="right",
-                    fontsize=7, color="#888")
-            ax.text(-0.6, base + lane_h, f"{vmax}", va="center", ha="right",
-                    fontsize=7, color="#888")
 
-        # baseline grid line for the lane
-        ax.axhline(base, color="#cccccc", lw=0.5, zorder=1)
+_ENSEMBLE_OVERLAY = 12   # how many individual timelines to draw faintly over the band
 
-    ax.set_yticks(yticks)
-    ax.set_yticklabels(yticklabels, fontsize=8)
+
+def _draw_ensemble_lane(ax, m, track, base, bands, n, ensemble):
+    """The ALL-INITIAL-CONDITIONS envelope for one signal: bands[t] is the set of values
+    the signal takes at tick t over every timeline. We draw, per tick, the [min,max] of
+    the reachable LEVELS as a filled band (step-held) plus its min/max edges — so a tick
+    where all timelines agree collapses to a crisp digital edge, and a tick where they
+    diverge shows the spread the program can be in from SOME initial condition. A faint
+    sample of the actual individual timelines is overlaid so the ensemble reads as real
+    trajectories (their shape), not just an opaque envelope."""
+    ticks = list(range(n))
+    observed = [v for band in bands for v in band]
+    level, lo, hi = _ordinal_levels(m, track, observed)
+    kind = track["kind"]
+    digital = kind in ("bool", "enum", "string")
+    color = DIGITAL_COLOR if kind == "bool" else (ENUM_COLOR if digital else ANALOG_COLOR)
+    los = [base + min(level(v) for v in bands[t]) * LANE_H for t in range(n)]
+    his = [base + max(level(v) for v in bands[t]) * LANE_H for t in range(n)]
+    ax.fill_between(ticks, los, his, step="post" if digital else None,
+                    color=color, alpha=0.18, zorder=2)
+    # faint individual timelines (a stable evenly-spaced sample of the ensemble), so the
+    # picture shows the real per-initial-condition runs inside the reachable envelope.
+    get = track["get"]
+    step = max(1, len(ensemble) // _ENSEMBLE_OVERLAY)
+    for trace in ensemble[::step]:
+        ys = [base + level(get(trace[t])) * LANE_H for t in range(n)]
+        if digital:
+            ax.step(ticks, ys, where="post", color=color, lw=0.8, alpha=0.45, zorder=3)
+        else:
+            ax.plot(ticks, ys, color=color, lw=0.8, alpha=0.45, zorder=3)
+    # envelope edges on top, so the reachable bound stays crisp over the sampled runs.
+    if digital:
+        ax.step(ticks, los, where="post", color=color, lw=1.6, zorder=4)
+        ax.step(ticks, his, where="post", color=color, lw=1.6, zorder=4)
+    else:
+        ax.plot(ticks, los, color=color, lw=1.4, zorder=4)
+        ax.plot(ticks, his, color=color, lw=1.4, zorder=4)
+    if kind in ("enum", "string"):
+        last = None
+        for t in range(n):
+            v = bands[t][0]
+            if v != last:
+                ax.text(t + 0.08, los[t] + 0.06, str(v), fontsize=6,
+                        color="#1a661a", va="bottom", zorder=5)
+                last = v
+    _lane_chrome(ax, track["_idx"], base, track, lo, hi)
+
+
+def _placeholder_fig(out_path, title, msg):
+    fig, ax = plt.subplots(figsize=(11, 3))
+    ax.axis("off")
+    ax.text(0.5, 0.5, msg, ha="center", va="center", fontsize=13)
+    ax.set_title(title, fontsize=13, fontweight="bold")
+    fig.savefig(out_path, dpi=120, bbox_inches="tight")
+    plt.close(fig)
+
+
+def _finish(fig, ax, n, nvar, fig_title, subtitle):
     ax.set_xlim(-0.5, n - 1 + 0.5)
-    ax.set_ylim(-gap, nvar * (lane_h + gap) - gap / 2)
+    ax.set_ylim(-GAP, nvar * (LANE_H + GAP) - GAP / 2)
     ax.set_xlabel("tick", fontsize=10)
-    # tick grid
     ax.set_xticks(range(0, n, max(1, n // 20)))
     ax.grid(axis="x", color="#eeeeee", lw=0.5, zorder=0)
     for spine in ("top", "right", "left"):
         ax.spines[spine].set_visible(False)
-
-    legend = [
-        Line2D([0], [0], color=digital_color, lw=2, label="bool (digital)"),
-        Line2D([0], [0], color=enum_color, lw=2, label="enum/string (lanes)"),
-        Line2D([0], [0], color=analog_color, lw=1.6, marker="o",
-               markersize=3, label="int/real (analog)"),
-    ]
-    ax.legend(handles=legend, loc="upper right", fontsize=7,
-              framealpha=0.9, ncol=3)
-
-    ax.set_title(fig_title + f"   ({n - 1} ticks, seed = {m.label(trace[0])})",
-                 fontsize=12, fontweight="bold")
+    ax.legend(handles=[
+        Line2D([0], [0], color=DIGITAL_COLOR, lw=2, label="bool (digital)"),
+        Line2D([0], [0], color=ENUM_COLOR, lw=2, label="enum/string (lanes)"),
+        Line2D([0], [0], color=ANALOG_COLOR, lw=1.6, marker="o", markersize=3,
+               label="int/real (analog)"),
+    ], loc="upper right", fontsize=7, framealpha=0.9, ncol=3)
+    ax.set_title(fig_title + subtitle, fontsize=12, fontweight="bold")
     fig.tight_layout()
+
+
+def render(m, out_path):
+    fig_title = f"{m.fsm}  —  timing_diagram"
+    tracks = _expand_tracks(m.state_vars)
+    for idx, tr in enumerate(tracks):
+        tr["_idx"] = idx
+    nvar = len(tracks)
+
+    # ALL-INITIAL-CONDITIONS ensemble for finitely-discrete programs; honest single-seed
+    # fallback (None) for real / string / seq / unbounded / two-tick / over-cap.
+    ensemble = build_ensemble(m, TICKS)
+    if ensemble is None:
+        trace = build_trace(m)
+        if not trace:
+            _placeholder_fig(out_path, fig_title,
+                             "N/A: no transition (no reachable trajectory)")
+            return
+        n = len(trace)
+    else:
+        n = len(ensemble[0])
+
+    fig_h = max(2.4, 0.95 * nvar + 1.4)
+    fig, ax = plt.subplots(figsize=(12, fig_h))
+    yticks, yticklabels = [], []
+
+    for idx, track in enumerate(tracks):
+        base = (nvar - 1 - idx) * (LANE_H + GAP)   # first track on top
+        yticks.append(base + LANE_H / 2)
+        yticklabels.append(f"#{idx + 1}  {track['name']}\n[{track['kind']}]")
+        if ensemble is None:
+            vals = [track["get"](trace[t]) for t in range(n)]
+            _draw_single_lane(ax, m, track, base, vals, n)
+        else:
+            bands = track_band(track, ensemble, n)
+            _draw_ensemble_lane(ax, m, track, base, bands, n, ensemble)
+
+    ax.set_yticks(yticks)
+    ax.set_yticklabels(yticklabels, fontsize=8)
+    if ensemble is None:
+        subtitle = f"   ({n - 1} ticks, single seed = {m.label(trace[0])})"
+    else:
+        subtitle = (f"   ({n - 1} ticks, ensemble over all {len(ensemble)} "
+                    f"initial conditions — band = reachable envelope)")
+    _finish(fig, ax, n, nvar, fig_title, subtitle)
     fig.savefig(out_path, dpi=120, bbox_inches="tight")
     plt.close(fig)
 
