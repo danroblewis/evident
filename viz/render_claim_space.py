@@ -14,6 +14,10 @@ CATEGORICAL (Seq(Int)/enum-shaped claims — queens, graph-coloring, toposort, s
 feasibility grid solved per cell, the discrete analog of the numeric per-cell solve:
   * enum vars   → rows = vars, cols = variants; cell shaded iff `var == variant` is sat.
   * one Seq(Int) of length N → N × value-range grid; cell (i, v) shaded iff `seq[i] == v` is sat.
+  * record-element Seq (Seq(Edge)) → one row per (index, numeric field).
+`_categorical(...)` computes the grid dict (`{rows, cols, mask, …}` or `{"na": …}`) and `_draw_grid`
+renders it; `categorical_grid(smt2, schema)` is the headless seam (returns the dict, or None for a
+genuinely structure-free claim) that `ide/test_claim_space.py` asserts on.
 
 Consumes the `{"claim", "vars":[{name,kind,role,...}]}` schema `evident export` emits: scalars
 carry just kind; a `seq` var also carries `elem` + (if pinned) `len`; an `enum` var carries
@@ -114,36 +118,13 @@ def _grid(out_path, name, title, row_labels, col_labels, mask, xlabel, ylabel):
     return out_path
 
 
-def _feasible_enums(out_path, name, body, consts, enums):
-    """rows = enum vars, cols = the (shared) variants; cell (var, variant) shaded
-    iff `var == variant` holds in some satisfying assignment. graph-coloring: the
-    colors each region CAN take."""
-    variants = enums[0].get("variants", [])
-    rows = [_SHORT(v["name"]) for v in enums]
-    sol = z3.Solver(); sol.add(body)
-    mask = []
-    for v in enums:
-        c = consts[v["name"]]
-        row = []
-        for vn in variants:
-            ctor = _ctor_by_name(c.sort(), vn)
-            ok = False
-            if ctor is not None:
-                sol.push(); sol.add(c == ctor()); ok = sol.check() == z3.sat; sol.pop()
-            row.append(1 if ok else 0)
-        mask.append(row)
-    return _grid(out_path, name,
-                 f"{name} — feasible values (solved per cell)\n"
-                 "shaded = the variable CAN take this value in some solution",
-                 rows, variants, mask, xlabel="value", ylabel="variable")
-
-
-def _feasible_seq(out_path, name, body, consts, seq):
-    """A Seq → a per-cell feasibility grid; cell shaded iff that value holds in some satisfying
-    assignment. A Seq(Int) of length N gives N rows `seq[i]` (queens `col`: squares a queen CAN
-    occupy across all solutions). A Seq of records (Seq(Edge), #183) gives one row per (index,
-    numeric field) — `edges[i].frm` — since a record element has several fields. The only change
-    is the cell expression: `seq[i]` vs `field(seq[i])`."""
+def _seq_grid(name, body, consts, seq):
+    """Compute (not draw) the per-position Seq feasibility grid. Returns the {rows, cols,
+    mask, …} grid dict, or `{"na": msg}` when the Seq is unbounded / has no numeric field
+    (no finite grid). A Seq(Int) of length N gives N rows `seq[i]` (queens `col`: squares a
+    queen CAN occupy across all solutions). A Seq of records (Seq(Edge), #183) gives one row
+    per (index, numeric field) — `edges[i].frm`. The only change is the cell expression:
+    `seq[i]` vs `field(seq[i])`."""
     arr = consts[seq["name"]]
     short = _SHORT(seq["name"])
     n = int(seq["len"])
@@ -152,8 +133,7 @@ def _feasible_seq(out_path, name, body, consts, seq):
         fields = [elem.accessor(0, j) for j in range(elem.constructor(0).arity())
                   if elem.accessor(0, j).range().kind() in (z3.Z3_INT_SORT, z3.Z3_REAL_SORT)]
         if not fields:
-            return _na(out_path, f"{name} — solution space",
-                       "the Seq's record has no numeric field to bound")
+            return {"na": "the Seq's record has no numeric field to bound"}
         cells = [(i, f) for i in range(n) for f in fields]
         cexpr = (lambda i, f: f(z3.Select(arr, i)))
         rlab = (lambda i, f: f"{short}[{i}].{f.name()}")
@@ -173,8 +153,7 @@ def _feasible_seq(out_path, name, body, consts, seq):
         if emx is not None:
             hi = emx if hi is None else max(hi, emx)
     if lo is None or hi is None:
-        return _na(out_path, f"{name} — solution space",
-                   "this claim's Seq values are unbounded\n(no finite feasibility grid)")
+        return {"na": "this claim's Seq values are unbounded\n(no finite feasibility grid)"}
     lo, hi = int(round(lo)), int(round(hi))
     if hi - lo > 40:
         hi = lo + 40
@@ -188,11 +167,72 @@ def _feasible_seq(out_path, name, body, consts, seq):
             sol.push(); sol.add(cell == vv); ok = sol.check() == z3.sat; sol.pop()
             row.append(1 if ok else 0)
         mask.append(row)
-    return _grid(out_path, name,
-                 f"{name} — feasible positions (solved per cell)\n"
-                 f"shaded = {what} CAN equal this value in some solution",
-                 [rlab(i, f) for i, f in cells], [str(v) for v in values],
-                 mask, xlabel="value", ylabel=ylabel)
+    return {"rows": [rlab(i, f) for i, f in cells], "cols": [str(v) for v in values],
+            "mask": mask, "xlabel": "value", "ylabel": ylabel,
+            "title": f"{name} — feasible positions (solved per cell)\n"
+                     f"shaded = {what} CAN equal this value in some solution"}
+
+
+def categorical_grid(smt2_path, schema_path):
+    """The categorical feasibility grid for a Seq/enum/board claim, computed via z3 (no
+    drawing). Returns the {rows, cols, mask, title, …} dict, or None when the claim has no
+    Seq/enum/board structure to show (the genuine N/A case). This is the test seam: a real
+    grid is `mask` non-empty with ≥1 feasible cell; the N/A card is `None`."""
+    sch, body, consts = _load_claim(smt2_path, schema_path)
+    name = sch.get("claim", "claim")
+    g = _categorical(name, body, consts, sch.get("vars", []))
+    return g if (g is not None and "na" not in g) else None
+
+
+def _categorical(name, body, consts, vars_):
+    """Shared Seq/enum/board → grid-dict dispatch used by both `render` and `categorical_grid`.
+    Returns a grid dict (possibly `{"na": msg}`) or None if there's no categorical structure.
+    enum vars → the variants each region CAN take; Seq(Int) → per-position feasible values;
+    record-element Seq (Seq(Edge)) → per-(index, numeric field)."""
+    enums = [v for v in vars_ if v.get("kind") == "enum" and v["name"] in consts]
+    seqs  = [v for v in vars_ if v.get("kind") == "seq" and v.get("elem") == "int"
+             and v["name"] in consts and v.get("len")]
+    if enums:
+        # rows = enum vars, cols = the shared variants; cell = 1 iff `var == variant` is sat.
+        variants = enums[0].get("variants", [])
+        sol = z3.Solver(); sol.add(body); mask = []
+        for v in enums:
+            c, row = consts[v["name"]], []
+            for vn in variants:
+                ctor = _ctor_by_name(c.sort(), vn)
+                ok = False
+                if ctor is not None:
+                    sol.push(); sol.add(c == ctor()); ok = sol.check() == z3.sat; sol.pop()
+                row.append(1 if ok else 0)
+            mask.append(row)
+        return {"rows": [_SHORT(v["name"]) for v in enums], "cols": list(variants), "mask": mask,
+                "xlabel": "value", "ylabel": "variable",
+                "title": f"{name} — feasible values (solved per cell)\n"
+                         "shaded = the variable CAN take this value in some solution"}
+    if seqs:
+        return _seq_grid(name, body, consts, seqs[0])
+    # record-element Seqs (Seq(Edge)) aren't in the schema vars — detect from the encoding (an
+    # `(Array Int <datatype>)` const). The export pins the elements via the ∀ unroll but leaves
+    # __len free, so the length is the max literal index the constraints touch via select (#183).
+    rec = next((nm for nm, c in consts.items()
+                if z3.is_array(c) and c.sort().range().kind() == z3.Z3_DATATYPE_SORT), None)
+    if rec is not None:
+        arr = consts[rec]; idxs, seen = set(), set()
+
+        def _idx(e):
+            if e.get_id() in seen:
+                return
+            seen.add(e.get_id())
+            if z3.is_select(e) and e.arg(0).eq(arr) and z3.is_int_value(e.arg(1)):
+                idxs.add(e.arg(1).as_long())
+            for ch in e.children():
+                _idx(ch)
+
+        _idx(body)
+        ln = (max(idxs) + 1) if idxs else 0
+        if 0 < ln <= 16:
+            return _seq_grid(name, body, consts, {"name": rec, "len": ln})
+    return None
 
 
 def render(smt2_path, schema_path, out_path):
@@ -218,34 +258,12 @@ def render(smt2_path, schema_path, out_path):
     # take in some satisfying assignment, solved per cell. Honest analog of the
     # numeric per-cell solve, for the discrete domains the bounds panel can't show.
     if len(shown) < 2:
-        enums = [v for v in vars_ if v.get("kind") == "enum" and v["name"] in consts]
-        seqs  = [v for v in vars_ if v.get("kind") == "seq" and v.get("elem") == "int"
-                 and v["name"] in consts and v.get("len")]
-        if enums:
-            return _feasible_enums(out_path, name, body, consts, enums)
-        if seqs:
-            return _feasible_seq(out_path, name, body, consts, seqs[0])
-        # record-element Seqs (Seq(Edge)) aren't in the schema vars — detect from the encoding (an
-        # `(Array Int <datatype>)` const). The export pins the elements via the ∀ unroll but leaves
-        # __len free, so the length is the max literal index the constraints touch via select (#183).
-        rec = next((nm for nm, c in consts.items()
-                    if z3.is_array(c) and c.sort().range().kind() == z3.Z3_DATATYPE_SORT), None)
-        if rec is not None:
-            arr = consts[rec]; idxs, seen = set(), set()
-
-            def _idx(e):
-                if e.get_id() in seen:
-                    return
-                seen.add(e.get_id())
-                if z3.is_select(e) and e.arg(0).eq(arr) and z3.is_int_value(e.arg(1)):
-                    idxs.add(e.arg(1).as_long())
-                for ch in e.children():
-                    _idx(ch)
-
-            _idx(body)
-            ln = (max(idxs) + 1) if idxs else 0
-            if 0 < ln <= 16:
-                return _feasible_seq(out_path, name, body, consts, {"name": rec, "len": ln})
+        g = _categorical(name, body, consts, vars_)
+        if g is not None:                      # a Seq/enum/board claim → its feasibility grid
+            if "na" in g:                      # bounded-detection failed (unbounded Seq) → honest N/A
+                return _na(out_path, f"{name} — solution space", g["na"])
+            return _grid(out_path, name, g["title"], g["rows"], g["cols"], g["mask"],
+                         xlabel=g["xlabel"], ylabel=g["ylabel"])
         if not numeric:
             return _na(out_path, f"{name} — solution space",
                        "this claim has no numeric variable to bound\n"
@@ -277,11 +295,15 @@ def _numeric_view(out_path, name, body, consts, numeric, bounds, shown):
     axL.set_title("variable boundaries — exact (z3 Optimize over the constraint)", fontsize=11)
     axL.grid(axis="x", alpha=0.2)
 
+    def _by_short(short):                      # the var dict (full name + kind) for a short name
+        return next((v for v in numeric if _SHORT(v["name"]) == short),
+                    {"name": short, "kind": "int"})
+
     # --- right: the real feasible region — per-cell solve, not a bounding box ---
     if have2d:
         axR = axes[1]
         vx, vy = shown[0], shown[1]
-        dx, dy = _var_by_short(numeric, vx), _var_by_short(numeric, vy)
+        dx, dy = _by_short(vx), _by_short(vy)
         cx, cy = consts[dx["name"]], consts[dy["name"]]
         (xlo, xhi), (ylo, yhi) = bounds[vx], bounds[vy]
         intx = dx["kind"] == "int"
@@ -317,14 +339,6 @@ def _numeric_view(out_path, name, body, consts, numeric, bounds, shown):
     fig.tight_layout(rect=[0, 0, 1, 0.96])
     fig.savefig(out_path, dpi=120); plt.close(fig)
     return out_path
-
-
-def _var_by_short(numeric, short):
-    """The var dict whose short name is `short` (full name + kind), or a default."""
-    for v in numeric:
-        if _SHORT(v["name"]) == short:
-            return v
-    return {"name": short, "kind": "int"}
 
 
 def main(argv):

@@ -198,6 +198,25 @@ if [ "$EXAMPLES_ONLY" -eq 0 ] && command -v python3 >/dev/null 2>&1; then
     echo
 fi
 
+# ── Phase 2.11: claim_space categorical feasibility grid (#136) ──
+# claim_space used to DEGRADE to a bare N/A card ("no numeric variable to bound") for exactly the
+# Seq(Int)/enum claims a verification engineer most wants to see — N-queens, sudoku, graph-coloring,
+# toposort. Now each gets a per-POSITION feasibility grid (z3 SAT of `body ∧ seq[i] == v` per cell).
+# This pins BOTH directions: a Seq/enum claim yields a REAL grid (N-queens has infeasible corner
+# cells — information, not a flat sheet), and a scalar-only claim stays an honest N/A (None, no
+# fabricated grid).
+if [ "$EXAMPLES_ONLY" -eq 0 ] && command -v python3 >/dev/null 2>&1; then
+    phase "Phase 2.11: claim_space categorical grid"
+    if python3 ide/test_claim_space.py > /tmp/evident-claimspace.log 2>&1; then
+        ok "claim-space grid ($(tail -1 /tmp/evident-claimspace.log))"
+    else
+        fail "claim-space grid: Seq/enum claim fell back to N/A, or a scalar claim fabricated a grid"
+        cat /tmp/evident-claimspace.log >&2
+        failures+=("claim-space grid")
+    fi
+    echo
+fi
+
 # ── Optional: examples runner ────────────────────────────────
 # Walks examples/, runs each via effect-run. For visual demos (anything
 # that imports packages/sdl/), spawn the program, screenshot the Xvfb
