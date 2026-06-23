@@ -58,8 +58,9 @@ def render(smt2, schema, out_path):
         kind = "piecewise" if r[1] == "guarded" else "scalar"
         ax.text(r[4] + 0.15, i, f"  {kind}: {r[2]} branch · {r[3]} ops  (cost {r[4]})",
                 va="center", fontsize=8, color="#7d8590")
-    ax.set_xlabel("compilation weight  (per-tick work the JIT emits)")
-    ax.set_title(f"{m.fsm}  —  function cost (which variables are expensive to compute)", fontsize=12)
+    ax.set_xlabel("AST weight  (branches × 2 + arithmetic ops — a STRUCTURAL proxy, not Cranelift's op count)")
+    ax.set_title(f"{m.fsm}  —  function cost (AST-size heuristic — relative weight from the z3 AST, "
+                 f"NOT measured from the JIT)", fontsize=11)
     ax.legend(loc="lower right", fontsize=8)
     ax.margins(x=0.18)
     fig.savefig(out_path, dpi=120, bbox_inches="tight")

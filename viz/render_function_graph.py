@@ -21,7 +21,7 @@ import networkx as nx
 
 sys.path.insert(0, "viz")
 from evident_viz import load
-from functionize import extract_functions
+from functionize import extract_functions, function_summary
 
 DEP_C = "#1f77b4"      # dependent (functionized)
 DRV_C = "#7d8590"      # independent driver
@@ -32,6 +32,19 @@ def _summary(step):
     if step["kind"] == "scalar":
         return step["expr"][:34]
     return f"piecewise · {len(step['branches'])} branches"
+
+
+def _draw_edges(g, pos, on_cycle, ax):
+    """Cross-edges (cycle edges red), then self-loops as a ↻ glyph (networkx hides them under nodes)."""
+    cross = [(u, v) for (u, v) in g.edges if u != v]
+    nx.draw_networkx_edges(g, pos, edgelist=[e for e in cross if e not in on_cycle],
+                           edge_color="#566", width=1.6, arrowsize=18, ax=ax, connectionstyle="arc3,rad=0.12")
+    if any(e in on_cycle for e in cross):
+        nx.draw_networkx_edges(g, pos, edgelist=[e for e in cross if e in on_cycle],
+                               edge_color=CYC_C, width=2.6, arrowsize=20, ax=ax, connectionstyle="arc3,rad=0.12")
+    for (u, _v) in [(u, v) for (u, v) in g.edges if u == v]:
+        x, y = pos[u]
+        ax.annotate("↻", (x, y + 0.10), fontsize=15, ha="center", color="#566")
 
 
 def render(smt2, schema, out_path):
@@ -71,31 +84,22 @@ def render(smt2, schema, out_path):
     node_colors = [DEP_C if g.nodes[n].get("dependent") else DRV_C for n in g.nodes]
     nx.draw_networkx_nodes(g, pos, node_color=node_colors, node_size=2200, ax=ax,
                            edgecolors="#0b0f14", linewidths=1.5)
-    # self-loops drawn separately (networkx hides them under the node otherwise)
-    selfs = [(u, v) for (u, v) in g.edges if u == v]
-    cross = [(u, v) for (u, v) in g.edges if u != v]
-    nx.draw_networkx_edges(g, pos, edgelist=[e for e in cross if e not in on_cycle],
-                           edge_color="#566", width=1.6, arrowsize=18, ax=ax,
-                           connectionstyle="arc3,rad=0.12")
-    if any(e in on_cycle for e in cross):
-        nx.draw_networkx_edges(g, pos, edgelist=[e for e in cross if e in on_cycle],
-                               edge_color=CYC_C, width=2.6, arrowsize=20, ax=ax,
-                               connectionstyle="arc3,rad=0.12")
-    for (u, _v) in selfs:                            # a recurrence: V reads its own previous value
-        x, y = pos[u]
-        ax.annotate("↻", (x, y + 0.10), fontsize=15, ha="center", color="#566")
+    _draw_edges(g, pos, on_cycle, ax)
 
-    labels = {}
+    # var NAME inside the node (short); the function summary BELOW it so it never clips the circle (#308).
+    nx.draw_networkx_labels(g, pos, {n: n for n in g.nodes}, font_size=9, font_color="#fff", ax=ax)
     for n in g.nodes:
         if n in step_by_var:
-            labels[n] = f"{n}\n{_summary(step_by_var[n])}"
-        else:
-            labels[n] = n
-    nx.draw_networkx_labels(g, pos, labels, font_size=8, font_color="#fff", ax=ax)
+            x, y = pos[n]
+            ax.annotate(_summary(step_by_var[n]), (x, y - 0.135), fontsize=6.5, ha="center",
+                        va="top", color="#9aa5b1")
 
-    cyc_n = sum(1 for c in nx.simple_cycles(g) if len(c) >= 2)
-    sub = (f"{len(f['steps'])} functionized vars · {len(drivers)} drivers · "
-           + (f"{cyc_n} feedback cycle(s) — coupled dynamics" if cyc_n else "no feedback cycle — driven pipeline"))
+    # coupling class from the shared classifier (#307): coupled / driven / autonomous self-map.
+    summ = function_summary(m)
+    label = {"coupled": f"{len(summ['cycles'])} feedback cycle(s) — coupled dynamics",
+             "driven": "no feedback cycle — driven pipeline (a driver feeds the cascade)",
+             "autonomous": "no cross-coupling — autonomous self-map (closed recurrence)"}[summ["coupling"]]
+    sub = f"{len(f['steps'])} functionized vars · {len(drivers)} driver(s) · {label}"
     ax.set_title(f"{m.fsm}  —  compiled data-flow graph\n{sub}", fontsize=12)
     ax.legend(handles=[mpatches.Patch(color=DEP_C, label="dependent (functionized)"),
                        mpatches.Patch(color=DRV_C, label="independent driver"),

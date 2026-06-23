@@ -71,15 +71,22 @@ def render(smt2, schema, out_path):
         v = ga.get(s["var"])
         if v is not None:
             if v["complete"] and v["disjoint"]:
-                badge, col = "✓ total & unambiguous (a well-formed function)", "#3fb950"
+                badge, col = "✓ total & unambiguous (over the declared type domain)", "#3fb950"
             elif not v["complete"]:
-                badge, col = "⚠ INCOMPLETE — some valid input hits no branch (partial function)", "#d29922"
+                w = v.get("gap_witness")
+                badge = f"⚠ INCOMPLETE — no branch for  {w}" if w else "⚠ INCOMPLETE — some input hits no branch"
+                col = "#d29922"
             else:
-                badge, col = "⚠ OVERLAPPING guards — two branches can fire (ambiguous dispatch)", "#d29922"
-            ax.text(0.02, 0.985, badge, ha="left", va="top", fontsize=8.5, color=col, weight="bold")
+                w = v.get("overlap_witness")
+                badge = (f"⚠ OVERLAPPING {v['overlap']} — both fire at  {w}" if w
+                         else f"⚠ OVERLAPPING guards {v['overlap']} — ambiguous dispatch")
+                col = "#d29922"
+            ax.text(0.02, 0.985, badge, ha="left", va="top", fontsize=8, color=col, weight="bold")
         ax.set_title(f"{s['var']}   ({len(s['branches'])} branches)", color="#58a6ff", fontsize=12)
-    fig.suptitle(f"{m.fsm}  —  guard decision trees (the branching the JIT compiles)",
-                 color="#c9d1d9", fontsize=13)
+    fig.suptitle(f"{m.fsm}  —  guard decision trees (the branching the JIT compiles)\n"
+                 "verdict checked over the DECLARED type domain (∩ type invariants), not the reachable "
+                 "set — a ⚠ may name an input the system never actually reaches",
+                 color="#c9d1d9", fontsize=11)
     fig.savefig(out_path, dpi=120, bbox_inches="tight", facecolor="#0f1419")
     plt.close(fig)
 

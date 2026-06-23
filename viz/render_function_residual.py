@@ -19,7 +19,7 @@ import matplotlib.pyplot as plt
 
 sys.path.insert(0, "viz")
 from evident_viz import load
-from functionize import extract_functions
+from functionize import extract_functions, function_summary
 
 FN_C = "#16313f"; FN_E = "#3fb950"      # function box fill / edge (computed — green)
 RS_C = "#2a1d12"; RS_E = "#d29922"      # residual box fill / edge (constraint — amber)
@@ -58,16 +58,19 @@ def _col(ax, x, w, title, items, fill, edge, empty):
 def render(smt2, schema, out_path):
     m = load(smt2, schema)
     f = extract_functions(m)
+    summ = function_summary(m)
     fn_items = [_fn_text(s) for s in f["steps"]]
     rs_items = [r["expr"] for r in f["residual"]]
-    n_total = len(f["steps"]) + len(f["residual"])
-    pct = (len(f["steps"]) / n_total * 100) if n_total else 0
+    # HONEST framing (Ana #305): "% computed" = carried vars WITH an update law / total carried. The
+    # residual is STANDING INVARIANTS (type bounds always true), NOT un-computed work — so a 100%-
+    # functionized program with type bounds reads "100% · 2 standing invariants", never "50%".
+    nfc, nc, n_resid = summ["n_func_carried"], summ["n_carried"], len(f["residual"])
+    inv = f" · {n_resid} standing invariant(s)" if n_resid else ""
 
     fig, ax = plt.subplots(figsize=(11, 7.5))
     ax.set_xlim(0, 1); ax.set_ylim(0, 1); ax.set_axis_off()
     ax.set_title(f"{m.fsm}  —  what the solver compiled\n"
-                 f"{len(f['steps'])} variable(s) reduced to FUNCTIONS · "
-                 f"{len(f['residual'])} residual CONSTRAINT(s) — {pct:.0f}% computed",
+                 f"{nfc} of {nc} carried var(s) have an update law — {summ['pct']:.0f}% computed{inv}",
                  fontsize=12, color="#c9d1d9")
     ax.axvline(0.5, color="#2b3138", linewidth=1)
     _col(ax, 0.02, 0.46, "⚙ FUNCTIONS  (computed)",

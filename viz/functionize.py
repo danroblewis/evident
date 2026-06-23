@@ -157,7 +157,13 @@ def function_summary(model):
     uses). Returns {functionized, residual, pct, coupling, cycles}."""
     import networkx as nx
     f = extract_functions(model)
-    nf, nr = len(f["steps"]), len(f["residual"])
+    # HONEST denominator (Ana #305): carried vars that have an update law / total carried vars. A
+    # residual type-bound invariant (0≤floor≤3) is a STANDING CONSTRAINT, not un-computed work — so it
+    # must NOT count against "% computed". Elevator with both vars functionized is 100%, not 50%.
+    step_vars = {s["var"] for s in f["steps"]}
+    carried = [v["name"] for v in model.carried]
+    n_carried = len(carried)
+    n_func = sum(1 for v in carried if v in step_vars)
     prev_to_var = {v["prev"]: v["name"] for v in model.carried if v.get("prev")}
     g = nx.DiGraph()
     for s in f["steps"]:
@@ -167,10 +173,19 @@ def function_summary(model):
             if src and src != s["var"]:                # cross-var coupling (ignore self-recurrence)
                 g.add_edge(src, s["var"])
     cycles = [c for c in nx.simple_cycles(g) if len(c) >= 2]
-    return {"functionized": nf, "residual": nr,
-            "pct": (nf / (nf + nr) * 100) if (nf + nr) else 0,
-            "coupling": "coupled" if cycles else "driven",
-            "cycles": cycles}
+    # Three classes (Ana #307): a cross-var feedback cycle ⇒ coupled; an acyclic cross-edge cascade ⇒
+    # driven (a real driver feeds it); NO cross-edges (only self-recurrences x'=f(_x)) ⇒ autonomous —
+    # a closed self-map with no driver, NOT a "driven pipeline".
+    if cycles:
+        coupling = "coupled"
+    elif g.number_of_edges() > 0:
+        coupling = "driven"
+    else:
+        coupling = "autonomous"
+    return {"functionized": len(f["steps"]), "residual": len(f["residual"]),
+            "n_carried": n_carried, "n_func_carried": n_func,
+            "pct": (n_func / n_carried * 100) if n_carried else 0,
+            "coupling": coupling, "cycles": cycles}
 
 
 def guard_analysis(model, steps, residual):
@@ -194,18 +209,30 @@ def guard_analysis(model, steps, residual):
         guards = [b["_guard_z3"] for b in s["branches"] if "_guard_z3" in b]
         if not guards:
             continue
-        overlap = None
+        overlap = overlap_witness = None
         for i in range(len(guards)):
             for j in range(i + 1, len(guards)):
                 sv = z3.Solver(); sv.add(domain); sv.add(guards[i]); sv.add(guards[j])
                 if sv.check() == z3.sat:
-                    overlap = (i, j); break
+                    overlap, overlap_witness = (i, j), _witness(sv.model()); break
             if overlap:
                 break
         sv = z3.Solver(); sv.add(domain); sv.add(z3.Not(z3.Or(guards)))
-        complete = sv.check() == z3.unsat
-        out[s["var"]] = {"disjoint": overlap is None, "complete": complete, "overlap": overlap}
+        res = sv.check()
+        complete = res == z3.unsat
+        # The Z3 WITNESS is already in hand (Ana #303): the input that hits no branch (gap) / where two
+        # branches both fire (overlap). A failed property must yield its counterexample — surface it.
+        gap_witness = _witness(sv.model()) if res == z3.sat else None
+        out[s["var"]] = {"disjoint": overlap is None, "complete": complete, "overlap": overlap,
+                         "gap_witness": gap_witness, "overlap_witness": overlap_witness}
     return out
+
+
+def _witness(mdl):
+    """A compact input assignment from a z3 model — the prev-var values (+ is_first_tick) that witness
+    a gap or overlap. The decls are the guard inputs, so this is exactly the counterexample input."""
+    parts = [f"{d.name()} = {mdl[d]}" for d in mdl.decls()]
+    return ", ".join(sorted(parts)) or "(any input)"
 
 
 if __name__ == "__main__":

@@ -39,8 +39,10 @@ def _domain(m, var, ranges):
     return "num", list(np.linspace(lo - pad, hi + pad, GRID))
 
 
-def _panel(ax, m, V, inputs, base, ranges):
-    """Draw V's transfer map over (up to) its two primary input variables."""
+def _panel(ax, m, V, inputs, base, ranges, discrete):
+    """Draw V's transfer map over (up to) its two primary input variables. `discrete` (a guarded or
+    integer/enum output) ⇒ draw UNCONNECTED points — never line-connect, which would fabricate a
+    continuity the map doesn't have (Ana #304: Collatz's even/odd sawtooth is not a smooth curve)."""
     inputs = inputs[:2]
     if not inputs:
         ax.text(0.5, 0.5, f"{V} = constant", ha="center", va="center", transform=ax.transAxes,
@@ -59,11 +61,12 @@ def _panel(ax, m, V, inputs, base, ranges):
         ys = [sample({iv: p}) for p in pts]
         if out_enum:
             idx = [variants.index(y) if y in variants else -1 for y in ys]
-            ax.step(range(len(pts)), idx, where="mid", color="#1f77b4", lw=2)
+            ax.plot(range(len(pts)), idx, "o", color="#1f77b4", markersize=7)   # discrete: points only
             ax.set_yticks(range(len(variants))); ax.set_yticklabels(variants, fontsize=8)
         else:
-            xs = range(len(pts)) if kind == "enum" else pts
-            ax.plot(xs, [y if y is not None else np.nan for y in ys], "o-", color="#1f77b4")
+            xs = list(range(len(pts))) if kind == "enum" else pts
+            style = "o" if discrete else "o-"           # connect ONLY a continuous (Real, single-branch) map
+            ax.plot(xs, [y if y is not None else np.nan for y in ys], style, color="#1f77b4")
         ax.set_xlabel(iv + "  (prev)"); ax.set_ylabel(V + "  (next)")
         if kind == "enum":
             ax.set_xticks(range(len(pts))); ax.set_xticklabels([str(p) for p in pts], fontsize=8)
@@ -107,12 +110,15 @@ def render(smt2, schema, out_path):
         vals = [s[nm] for s in states if isinstance(s.get(nm), (int, float)) and not isinstance(s.get(nm), bool)]
         if vals:
             ranges[nm] = (min(vals), max(vals))
+    kind_of = {v["name"]: v["kind"] for v in m.carried}
     n = len(steps)
     fig, axes = plt.subplots(1, n, figsize=(5.6 * n, 4.8), squeeze=False)
     for ax, s in zip(axes[0], steps):
         deps = sorted({d for b in s.get("branches", []) for d in b["deps"]} | set(s.get("deps", [])))
         inputs = [prev_to_var[d] for d in deps if d in prev_to_var]
-        _panel(ax, m, s["var"], inputs, base, ranges)
+        # discrete = a piecewise (guarded) map OR a non-Real output → unconnected points, no fake curve.
+        discrete = s["kind"] == "guarded" or kind_of.get(s["var"]) in ("int", "bool", "enum")
+        _panel(ax, m, s["var"], inputs, base, ranges, discrete)
         ax.set_title(f"{s['var']} = f({', '.join(inputs) or '·'})", fontsize=11)
     fig.suptitle(f"{m.fsm}  —  function behaviour (each variable's next value over its inputs)",
                  fontsize=12)
