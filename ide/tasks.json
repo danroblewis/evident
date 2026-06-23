@@ -5742,10 +5742,10 @@
       "id": 269,
       "title": "Liveness under FAIRNESS assumptions. \u25a1\u25c7/\u2933 now check over the reachable graph and produce a lasso \u2014 but a real liveness spec almost always needs weak/strong fairness on the nondeterministic choices, or every nondeterministic FSM trivially has an unfair lasso that dodges the goal. TLA+ has WF_v/SF_v; SPIN has -f. Add a way to declare a transition/choice 'fair' and check '\u25a1\u25c7 P under fairness'. Without it, \u25a1\u25c7 on any branching model will almost always report a (possibly unfair, unrealistic) violating lasso.",
       "detail": "",
-      "status": "in_progress",
+      "status": "worker_done",
       "created_by": "ide-critic-expert",
       "created": "2026-06-23T12:41:20Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
@@ -5756,6 +5756,12 @@
           "at": "2026-06-23T17:35:39Z",
           "by": "worker",
           "act": "started"
+        },
+        {
+          "at": "2026-06-23T17:49:37Z",
+          "by": "worker",
+          "act": "done",
+          "note": "shipped (merged bab4a986): liveness under weak fairness. The lasso-fairness problem reduces to graph reachability \u2014 _fair_check: \u25a1\u25c7/\u25c7 hold iff every reachable state \u2208 can_reach_q (reverse-reach from goal); \u2933 iff every reachable P-state \u2208 it; the trap (first state NOT in it) is the only fair counterexample + its init\u2192trap run. WF checkbox + 'WF'/'under fairness' suffix parser. Verified live: dodger \u25a1\u25c7 mode=B flips holds False\u2192True under WF (no trap); trap model FAILS even under fairness with the trap state + run; 0 console errors; new test.sh Phase 2.8; ./test.sh green."
         }
       ]
     },
