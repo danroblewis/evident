@@ -485,6 +485,7 @@ if ($("#diff-btn")) $("#diff-btn").onclick = () => runDiff();
 // file owns and creates above) don't exist at their top level. initEditorInput runs first so the
 // change/analyze handler is attached (after the initial setValue, matching the original order).
 initEditorInput();   // auto-indent + token-input + hover tooltips (app-editor.js)
+initAutocomplete();  // keyword/type/in-scope-var completer (app-editor.js, Marek #276/#279)
 initBuffer();    // save/export/share buttons + #samples menu (app-buffer.js)
 initVerify();    // verify-console listeners (app-verify.js)
 initPalette();

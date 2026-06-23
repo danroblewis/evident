@@ -69,6 +69,89 @@ function spliceReplace(row, startCol, endCol, text) {
   _replacing = false;
 }
 
+// --- autocomplete (Marek #276/#279) ----------------------------------------------
+// The editor had NO completion: a typo'd `Δcountt` silently dropped its constraint and
+// nothing offered `count`. Three completion groups feed Ace's Autocomplete:
+//   keyword — the language words (fsm, claim, type, …)
+//   type    — the built-in type names (Int, Bool, Seq, …)
+//   var     — IN-SCOPE identifiers parsed from the CURRENT buffer (the typo-defense:
+//             when you type `Δcoun`, `count` is offered so the drop never happens).
+// keyword/type lists are the explicit name-sets below; their gloss text still lives in
+// the GLOSSARY (single source) — these lists are just which keys belong to which group.
+const COMPLETE_KEYWORDS = [
+  "fsm", "claim", "type", "enum", "schema", "subclaim",
+  "match", "matches", "import", "is_first_tick",
+];
+const COMPLETE_TYPES = ["Int", "Bool", "Nat", "Real", "String", "Seq", "Set"];
+
+// Strip the carried-var read/delta prefixes (ΔΔ, Δ, __, _, ¬) so the BASE name is what we
+// store and match against — `Δcount`, `_count`, `¬done` all reduce to `count`/`done`, and a
+// prefix typed at the call site (`Δcoun`) still completes the declared base (`count`).
+function stripIdentPrefix(name) {
+  return (name || "").replace(/^(?:ΔΔ|Δ|__|_|¬)+/, "");
+}
+
+// Parse the buffer for declared/carried names: the LHS of `name ∈ Type` and chained-membership
+// decls (`0 ≤ count ∈ Int ≤ 5` → count; `x, y, z ∈ Int` → x,y,z; first-line params
+// `type IVec2(x, y ∈ Int)`), plus `name = expr` carried/assignment LHS. Returns the base names,
+// de-duplicated, prefixes stripped. Pure (text → string[]) so it's unit-testable headless.
+function parseScopeIdents(text) {
+  const out = new Set();
+  const IDENT = "[A-Za-zΔ¬_][A-Za-z0-9_]*";
+  // (1) Every `… name ∈` (and comma-separated `a, b, c ∈`): grab the identifier run sitting
+  //     immediately left of an ∈. A chained comparison (`0 ≤ count ∈`) leaves `count` as the
+  //     token right before ∈, so the trailing-run capture lands exactly the declared name(s).
+  const memb = new RegExp("(" + IDENT + "(?:\\s*,\\s*" + IDENT + ")*)\\s*∈", "g");
+  let m;
+  while ((m = memb.exec(text)) !== null) {
+    for (const raw of m[1].split(",")) {
+      const base = stripIdentPrefix(raw.trim());
+      if (base && !/^[0-9]/.test(base)) out.add(base);
+    }
+  }
+  // (2) Assignment / carried LHS: a line whose first token is `name =` (not `==`).
+  const asg = new RegExp("^\\s*(" + IDENT + ")\\s*=(?!=)", "gm");
+  while ((m = asg.exec(text)) !== null) {
+    const base = stripIdentPrefix(m[1]);
+    if (base && !/^[0-9]/.test(base)) out.add(base);
+  }
+  return [...out];
+}
+
+// The Ace completer. Offers the three groups, prefix-matched. The prefix Ace hands us is the
+// word under the cursor; we ALSO strip its Δ/_/¬ prefix so `Δcoun` matches the declared `count`
+// (the whole point — typo-defense against the silent Δcountt drop).
+const evidentCompleter = {
+  getCompletions(ed, session, pos, prefix, callback) {
+    const base = stripIdentPrefix(prefix || "");
+    const lower = base.toLowerCase();
+    const matches = (name) => !lower || name.toLowerCase().startsWith(lower);
+    const items = [];
+    for (const k of COMPLETE_KEYWORDS) if (matches(k)) items.push({ caption: k, value: k, meta: "keyword", score: 900 });
+    for (const t of COMPLETE_TYPES) if (matches(t)) items.push({ caption: t, value: t, meta: "type", score: 800 });
+    // in-scope vars score HIGHEST — they're the typo-defense and the most specific to this buffer.
+    for (const v of parseScopeIdents(session.getValue())) {
+      if (v !== base && matches(v)) items.push({ caption: v, value: v, meta: "var", score: 1000 });
+    }
+    callback(null, items);
+  },
+};
+
+// Wire autocomplete: load the language_tools ext (provides the Autocomplete machinery +
+// the enable*Autocompletion options), then point the editor at ONLY our completer (drop the
+// default text/keyword completers so live-complete stays quiet and never fights `\`-input).
+function initAutocomplete() {
+  try { ace.require("ace/ext/language_tools"); } catch (e) { /* ext not present — Ctrl-Space no-op */ }
+  editor.setOptions({
+    enableBasicAutocompletion: true,        // Ctrl-Space
+    enableLiveAutocompletion: true,         // as-you-type (unobtrusive: only our completer feeds it)
+    enableSnippets: false,
+    liveAutocompletionThreshold: 2,         // need ≥2 chars before the live popup — keeps single
+                                            // keystrokes (incl. the `\` of a `\in`→∈ mnemonic) quiet.
+  });
+  editor.completers = [evidentCompleter];
+}
+
 // --- inline error line marker -----------------------------------------------------
 let _errLine = null;
 function clearErrorLine() {
