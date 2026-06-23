@@ -144,6 +144,9 @@ function loadProgram(source, slotName) {
   $("#solve").hidden = true;       // …nor leave a stale UNSAT/witness over the new program
   $("#inv-prop").value = "";       // …nor a stale verify assertion (Sam #107)
   $("#inv-result").textContent = "";
+  $("#query-prop").value = "";      // …nor a stale ad-hoc query or assumption stack (Ana #255):
+  $("#query-result").textContent = "";   // the `light = Green` chip must not persist onto `counter`.
+  if (typeof clearAssumptions === "function") clearAssumptions();
   clearTrace();
   run();
 }
