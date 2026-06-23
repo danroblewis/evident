@@ -169,6 +169,18 @@ fsm collatz
     is_first_tick ⇒ n = 27
     (¬is_first_tick ∧ _n = 2 * (_n / 2)) ⇒ n = _n / 2
     (¬is_first_tick ∧ _n ≠ 2 * (_n / 2)) ⇒ n = 3 * _n + 1`,
+  "double pendulum · full coupling (densest functions)":
+`-- Two coupled pendula (linearized): each angular velocity is driven by BOTH angles and the other
+-- velocity. The functionizer compiles 4 functions where each velocity reads all four variables —
+-- a near-complete coupling graph (6 feedback cycles). Open function_graph.
+fsm pendulum
+    a1, a2 ∈ Real
+    w1, w2 ∈ Real
+    is_first_tick ⇒ (a1 = 1.0 ∧ a2 = 0.5 ∧ w1 = 0.0 ∧ w2 = 0.0)
+    ¬is_first_tick ⇒ Δa1 = _w1 * 0.1
+    ¬is_first_tick ⇒ Δa2 = _w2 * 0.1
+    ¬is_first_tick ⇒ Δw1 = (0.0 - _a1 * 3.0 + _a2 * 2.0 - _w2 * 0.5) * 0.1
+    ¬is_first_tick ⇒ Δw2 = (_a1 * 2.0 - _a2 * 3.0 + _w1 * 0.5) * 0.1`,
   "vending · stock, coins & a vault (FSM)":
 `-- A real vending machine: coins accumulate (up to a capacity), products sell from stock
 -- into the operator's vault, the customer can cancel for a refund, and the operator
