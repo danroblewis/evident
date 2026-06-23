@@ -1,5 +1,5 @@
 {
-  "seq": 264,
+  "seq": 279,
   "tasks": [
     {
       "id": 1,
@@ -249,7 +249,9 @@
       "created_by": "worker",
       "created": "2026-06-21T23:18:36Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "viz"
@@ -260,6 +262,12 @@
           "by": "worker",
           "act": "done",
           "note": "reconciled this session as already-shipped (code predates/committed); re-applied after the ledger revert"
+        },
+        {
+          "at": "2026-06-23T12:40:21Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -293,7 +301,9 @@
       "created_by": "worker",
       "created": "2026-06-21T23:18:36Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "solve"
@@ -304,6 +314,12 @@
           "by": "worker",
           "act": "done",
           "note": "reconciled this session as already-shipped (code predates/committed); re-applied after the ledger revert"
+        },
+        {
+          "at": "2026-06-23T12:40:21Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -315,7 +331,9 @@
       "created_by": "worker",
       "created": "2026-06-21T23:18:36Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "solve"
@@ -326,6 +344,12 @@
           "by": "worker",
           "act": "done",
           "note": "reconciled this session as already-shipped (code predates/committed); re-applied after the ledger revert"
+        },
+        {
+          "at": "2026-06-23T12:40:21Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -366,6 +390,12 @@
         },
         {
           "at": "2026-06-23T00:01:05Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
+        },
+        {
+          "at": "2026-06-23T12:40:20Z",
           "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
@@ -449,6 +479,12 @@
           "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
+        },
+        {
+          "at": "2026-06-23T12:40:20Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -460,7 +496,9 @@
       "created_by": "worker",
       "created": "2026-06-21T23:18:37Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "analysis"
@@ -471,6 +509,12 @@
           "by": "worker",
           "act": "done",
           "note": "shipped this session (code committed + verified); re-marked after a fast-forward reverted the uncommitted ledger"
+        },
+        {
+          "at": "2026-06-23T12:40:21Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -943,6 +987,12 @@
         },
         {
           "at": "2026-06-22T14:56:29Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
+        },
+        {
+          "at": "2026-06-23T12:40:21Z",
           "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
@@ -1533,6 +1583,12 @@
           "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
+        },
+        {
+          "at": "2026-06-23T12:40:21Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -1710,6 +1766,12 @@
           "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
+        },
+        {
+          "at": "2026-06-23T12:40:21Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -1753,6 +1815,12 @@
           "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
+        },
+        {
+          "at": "2026-06-23T12:40:21Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -1764,7 +1832,9 @@
       "created_by": "ide-critic-expert",
       "created": "2026-06-22T00:41:34Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "analysis"
@@ -1775,6 +1845,12 @@
           "by": "worker",
           "act": "done",
           "note": "shipped this session (code committed + verified); re-marked after a fast-forward reverted the uncommitted ledger"
+        },
+        {
+          "at": "2026-06-23T12:40:21Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -1786,7 +1862,9 @@
       "created_by": "ide-critic-expert",
       "created": "2026-06-22T00:41:34Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "solve"
@@ -1808,6 +1886,12 @@
           "by": "worker",
           "act": "done",
           "note": "shipped this session (code committed + verified); re-marked after a fast-forward reverted the uncommitted ledger"
+        },
+        {
+          "at": "2026-06-23T12:40:21Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -1879,6 +1963,12 @@
         },
         {
           "at": "2026-06-22T14:56:29Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
+        },
+        {
+          "at": "2026-06-23T12:40:21Z",
           "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
@@ -2002,7 +2092,9 @@
       "created_by": "worker",
       "created": "2026-06-22T01:38:22Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "viz"
@@ -2013,6 +2105,12 @@
           "by": "worker",
           "act": "done",
           "note": "reconciled this session as already-shipped (code predates/committed); re-applied after the ledger revert"
+        },
+        {
+          "at": "2026-06-23T12:40:21Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -2250,7 +2348,9 @@
       "created_by": "ide-critic-expert",
       "created": "2026-06-22T02:06:18Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "analysis"
@@ -2261,6 +2361,12 @@
           "by": "worker",
           "act": "done",
           "note": "reconciled this session as already-shipped (code predates/committed); re-applied after the ledger revert"
+        },
+        {
+          "at": "2026-06-23T12:40:21Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -2272,7 +2378,9 @@
       "created_by": "ide-critic-expert",
       "created": "2026-06-22T02:06:18Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "analysis"
@@ -2283,6 +2391,12 @@
           "by": "worker",
           "act": "done",
           "note": "reconciled this session as already-shipped (code predates/committed); re-applied after the ledger revert"
+        },
+        {
+          "at": "2026-06-23T12:40:21Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -2294,7 +2408,9 @@
       "created_by": "ide-critic-expert",
       "created": "2026-06-22T02:06:18Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "solve"
@@ -2305,6 +2421,12 @@
           "by": "worker",
           "act": "done",
           "note": "reconciled this session as already-shipped (code predates/committed); re-applied after the ledger revert"
+        },
+        {
+          "at": "2026-06-23T12:40:21Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -2366,7 +2488,9 @@
       "created_by": "ide-critic-expert",
       "created": "2026-06-22T02:06:30Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "solve"
@@ -2388,6 +2512,12 @@
           "by": "worker",
           "act": "done",
           "note": "shipped this session (code committed + verified); re-marked after a fast-forward reverted the uncommitted ledger"
+        },
+        {
+          "at": "2026-06-23T12:40:21Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -2446,6 +2576,12 @@
           "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
+        },
+        {
+          "at": "2026-06-23T12:40:21Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -2457,7 +2593,9 @@
       "created_by": "ide-critic-expert",
       "created": "2026-06-22T02:06:42Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "analysis"
@@ -2468,6 +2606,12 @@
           "by": "worker",
           "act": "done",
           "note": "reconciled this session as already-shipped (code predates/committed); re-applied after the ledger revert"
+        },
+        {
+          "at": "2026-06-23T12:40:21Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -2646,7 +2790,9 @@
       "created_by": "ide-critic-expert",
       "created": "2026-06-22T02:07:08Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "solve"
@@ -2657,6 +2803,12 @@
           "by": "worker",
           "act": "done",
           "note": "reconciled this session as already-shipped (code predates/committed); re-applied after the ledger revert"
+        },
+        {
+          "at": "2026-06-23T12:40:21Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -2914,6 +3066,12 @@
           "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
+        },
+        {
+          "at": "2026-06-23T12:40:21Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -2994,6 +3152,12 @@
           "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
+        },
+        {
+          "at": "2026-06-23T12:40:21Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -3005,7 +3169,9 @@
       "created_by": "ide-critic-expert",
       "created": "2026-06-22T02:55:44Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "analysis"
@@ -3016,6 +3182,12 @@
           "by": "worker",
           "act": "done",
           "note": "reconciled this session as already-shipped (code predates/committed); re-applied after the ledger revert"
+        },
+        {
+          "at": "2026-06-23T12:40:21Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -3027,7 +3199,9 @@
       "created_by": "ide-critic-expert",
       "created": "2026-06-22T02:55:44Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "analysis"
@@ -3038,6 +3212,12 @@
           "by": "worker",
           "act": "done",
           "note": "reconciled this session as already-shipped (code predates/committed); re-applied after the ledger revert"
+        },
+        {
+          "at": "2026-06-23T12:40:21Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -5465,6 +5645,219 @@
           "note": "DONE end-to-end via two fixes: runtime (7e98eea4 \u2014 apply_seq_lengths propagates pinned length to _xs twin so coindexed(_xs,xs) translates; export emits kind=seq state) + viz (003fa647 \u2014 CodecMixin decode/pin/key/sort for kind=seq, block on observable cells not the whole unbounded array, renderers expand Seq into per-element tracks). Verified live: shift FSM ok=True, dropped=0, states=400, xs carried, renders. ./test.sh green (275 tests + render smoke 4\u00d722 incl shift)."
         }
       ]
+    },
+    {
+      "id": 268,
+      "title": "Step/scrub a counterexample TRACE in the views (not just text). The verify box now gives a real lasso for \u25a1\u25c7/\u2933 violations ('x=0\u2192x=1\u2192x=2\u2192x=2, \u21bb loops here') and \u25c7 a transient label \u2014 excellent. But the trace is text-only. I want to click the lasso and have time_series/state_graph SCRUB through s0\u2192\u2026\u2192s_bad with the recurrent cycle highlighted, TLA+ Toolbox / Apalache-style. The state_graph already has the nodes+edges and the lasso already names the states; thread the witness path through the existing graph and let me step it in time.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-expert",
+      "created": "2026-06-23T12:41:20Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "analysis"
+      ],
+      "log": []
+    },
+    {
+      "id": 269,
+      "title": "Liveness under FAIRNESS assumptions. \u25a1\u25c7/\u2933 now check over the reachable graph and produce a lasso \u2014 but a real liveness spec almost always needs weak/strong fairness on the nondeterministic choices, or every nondeterministic FSM trivially has an unfair lasso that dodges the goal. TLA+ has WF_v/SF_v; SPIN has -f. Add a way to declare a transition/choice 'fair' and check '\u25a1\u25c7 P under fairness'. Without it, \u25a1\u25c7 on any branching model will almost always report a (possibly unfair, unrealistic) violating lasso.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-expert",
+      "created": "2026-06-23T12:41:20Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "analysis"
+      ],
+      "log": []
+    },
+    {
+      "id": 270,
+      "title": "Minimize the BMC unrolling to a PROOF, not just a bounded check. Today unroll=k exports a fixed k-step transition (sound, verified in z3). The next tier is the actual model-checking move: detect the k where T^k's reachable set stops growing (simple-path / no-new-states) and report 'reachable set is COMPLETE at depth k \u2014 this is now a proof, not a bound' vs 'still growing at k, raise it'. The scope knob already does this for the in-tool BFS ('\u2713 complete' vs 'capped, raise it'); carry the same completeness verdict into the exported BMC so the SMT-LIB itself can certify exhaustion (k-induction / IC3-lite).",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-expert",
+      "created": "2026-06-23T12:41:21Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "analysis"
+      ],
+      "log": []
+    },
+    {
+      "id": 271,
+      "title": "Enumerate ALL solutions / witnesses with symmetry breaking (Alloy-style instance walk). The 'all \u22a8*' button exists and the per-cell feasibility grid is great, but for N-queens I want to WALK every distinct solution (Alloy 'New' through all minimal instances) with isomorphic copies suppressed \u2014 and a count. Right now I get one witness + a per-cell CAN-equal grid, not the enumerated instance set. Add: enumerate-all (blocking-clause loop), a solution counter, next/prev through the instances, and optional symmetry breaking so I'm not drowning in rotations/reflections.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-expert",
+      "created": "2026-06-23T12:41:40Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "solve"
+      ],
+      "log": []
+    },
+    {
+      "id": 272,
+      "title": "Named/annotated SMT-LIB export so the UNSAT core round-trips to z3. The in-tool core is excellent (minimal, line-exact: 'line4 x>10, line5 x<5', correctly omits the irrelevant y=x+1). But the EXPORTED SMT-LIB has no (! ... :named cN) annotations and no (get-unsat-core)/(set-option :produce-unsat-cores true), so a user taking it into z3 directly can't reproduce the named core the IDE shows. Emit named asserts keyed to source lines + the unsat-core preamble, so the artifact carries the same provenance out of the tool.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-expert",
+      "created": "2026-06-23T12:41:40Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "analysis"
+      ],
+      "log": []
+    },
+    {
+      "id": 273,
+      "title": "Quantitative / optimization queries beyond feasibility (z3 Optimize at the query surface). I can pin col[0]=1 and solve, and the solution_space claims z3-proven exact bounds \u2014 but I can't ASK an optimization query from the UI: 'maximize timer subject to light=Green', 'the minimal #cells re-lighting cell 5', 'lexicographic-min witness'. Expose Optimize.maximize/minimize and a 'minimal-/maximal-witness' toggle in the solve box, returning the optimum + the optimizing assignment, the way I drive z3's Optimize directly.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-expert",
+      "created": "2026-06-23T12:41:40Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "solve"
+      ],
+      "log": []
+    },
+    {
+      "id": 274,
+      "title": "Seq-state in the SMT-LIB export uses a length-unconstrained (Array Int Int) \u2014 bound it. The rule90 single-tick export models cells as (Array Int Int) with (assert (>= cells__len 0)) but never pins cells__len=11 in the array's index domain, and asserts (= 11 11) as a no-op. Taken into z3 standalone, the array is defined over all Int indices; a property quantifying \u2200i could pick out-of-range cells. Pin the index domain (0\u2264i<11) explicitly in the export, or emit a finite tuple/datatype, so the exported Seq-state model is self-contained and can't be satisfied by phantom out-of-range cells.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-expert",
+      "created": "2026-06-23T12:41:40Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "analysis"
+      ],
+      "log": []
+    },
+    {
+      "id": 275,
+      "title": "Persist named buffers / a model library, not one localStorage slot + share-link. I wrote several throwaway adversarial models this session (contradiction, core2, coupled-swap, settle) and each setValue blew away the last \u2014 no way to keep a NAMED set of my own repros next to the samples. Save (\ud83d\udcbe) and Share (\ud83d\udd17) exist, but I want a left-rail list of my saved models (rename, delete, duplicate) so a verification engineer building a regression suite of specs can keep them all in-tool. Alloy keeps my .als files; TLA+ keeps a spec library.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-expert",
+      "created": "2026-06-23T12:42:11Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "editor"
+      ],
+      "log": []
+    },
+    {
+      "id": 276,
+      "title": "Go-to-definition / find-references / rename-symbol in the editor. Syntax highlighting is present (Ace dracula, keywords pink, comments grey \u2014 good) and dropped-constraint diagnostics are excellent, but there's no semantic navigation: I can't jump from a use of 'cells' to its decl, can't rename a carried var everywhere, can't find all references to a claim. On a 100-line spec with subclaims and names-match composition this is the difference between reading and re-reading. VS Code + any LSP gives me all three reflexively.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-expert",
+      "created": "2026-06-23T12:42:11Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "editor"
+      ],
+      "log": []
+    },
+    {
+      "id": 277,
+      "title": "BMC unrolled SMT-LIB export must append (get-model) \u2014 else no counterexample trace",
+      "detail": "",
+      "status": "worker_done",
+      "created_by": "worker",
+      "created": "2026-06-23T12:44:11Z",
+      "worker_done": true,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [],
+      "log": [
+        {
+          "at": "2026-06-23T12:44:11Z",
+          "by": "worker",
+          "act": "created to address concern #265"
+        },
+        {
+          "at": "2026-06-23T12:49:33Z",
+          "by": "worker",
+          "act": "done",
+          "note": "fixed + verified (commit on branch); awaiting Ana's re-verify to clear the concern"
+        }
+      ],
+      "addresses_concern": 265
+    },
+    {
+      "id": 278,
+      "title": "Solve panel: clear the stale UNSAT core / pin across a source change",
+      "detail": "",
+      "status": "worker_done",
+      "created_by": "worker",
+      "created": "2026-06-23T12:44:11Z",
+      "worker_done": true,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [],
+      "log": [
+        {
+          "at": "2026-06-23T12:44:11Z",
+          "by": "worker",
+          "act": "created to address concern #266"
+        },
+        {
+          "at": "2026-06-23T12:49:33Z",
+          "by": "worker",
+          "act": "done",
+          "note": "fixed + verified (commit on branch); awaiting Ana's re-verify to clear the concern"
+        }
+      ],
+      "addresses_concern": 266
+    },
+    {
+      "id": 279,
+      "title": "Pin (\ud83d\udccc) should not silently no-op before the picture renders",
+      "detail": "",
+      "status": "worker_done",
+      "created_by": "worker",
+      "created": "2026-06-23T12:44:11Z",
+      "worker_done": true,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [],
+      "log": [
+        {
+          "at": "2026-06-23T12:44:11Z",
+          "by": "worker",
+          "act": "created to address concern #267"
+        },
+        {
+          "at": "2026-06-23T12:49:33Z",
+          "by": "worker",
+          "act": "done",
+          "note": "fixed + verified (commit on branch); awaiting Ana's re-verify to clear the concern"
+        }
+      ],
+      "addresses_concern": 267
     }
   ],
   "concerns": [
@@ -6248,27 +6641,57 @@
       "title": "Assumption-stack (#240) leaks across sample switch. Pushed 'light = Green' as an assumption on traffic, then loaded counter: the query RESULT cleared correctly (#229/#230 fixed \u2014 good) but the 'assumptions: light = Green \u2715 clear all' chip STAYED, sitting next to counter which has no 'light' var. The assumption stack must clear on source/sample change like the diagram and query-result now do. Screenshot ana-20260622-234930 (counter loaded, stale Green chip).",
       "detail": "complementary panel, assumptions row",
       "by": "ide-critic-expert",
-      "status": "open",
+      "status": "cleared",
       "task": null,
-      "created": "2026-06-23T00:00:13Z"
+      "created": "2026-06-23T00:00:13Z",
+      "cleared": "2026-06-23T12:40:28Z"
     },
     {
       "id": 256,
       "title": "The header '\u2318K' BUTTON opens the symbols/operators palette ('type these operators'), but the actual \u2318K keyboard shortcut opens the real COMMAND palette (Save as, Export diagram as SVG, Copy SMT-LIB, glossary, view-switch). Two different surfaces behind the same label \u2014 I clicked the button expecting commands and got only symbols, and nearly reported SVG-export missing before trying the keystroke. Either make the button open the command palette (with symbols as a section) or relabel the button '\u2328 symbols'.",
       "detail": "header \u2318K button vs Cmd+K keydown",
       "by": "ide-critic-expert",
-      "status": "open",
+      "status": "cleared",
       "task": null,
-      "created": "2026-06-23T00:00:13Z"
+      "created": "2026-06-23T00:00:13Z",
+      "cleared": "2026-06-23T12:40:28Z"
     },
     {
       "id": 260,
       "title": "CORRECTS+SUPERSEDES #254 (which I cleared \u2014 its mechanism diagnosis and one-line fix were WRONG; coordinator empirically refuted both). Accurate finding: the tool's \u25c7 computes AF (sound \u2014 verified by coordinator: on branching Init\u2192nondet[Goal-cycle|Sink-cycle], \u25c7Goal=False because the Sink path never reaches Goal; EF would say True). Under standard LTL \u25c7=F, my rho's \u25c7Red is GENUINELY TRUE (Red holds at t=0; TLA+ <>Red agrees). So \u25c7 is NOT unsound as F \u2014 my 'false proven' was me reading F's verdict as a RECURRENCE/stability guarantee it never claimed. The REAL defect is two-part: (1) LABELING \u2014 '\u2713 proven \u2014 \u25c7 light=Red on all 9 reachable states' invites the recurrence misreading; on the rho, Red is reached once at step 0 then NEVER recurs (settles into the Yellow cycle), and the verdict must say so: '\u2713 \u25c7Red holds (reached at step 0) \u2014 but TRANSIENT: does not recur, settles into {Yellow0,1,2}'. (2) MISSING OPERATOR \u2014 there is no working strong-liveness check (\u2200 paths.\u25a1\u25c7P, 'P infinitely often on every run'), which is the actual TLA+ move #239 was opened for and the property whose counterexample IS the stem+cycle lasso already wired. DO NOT overload the \u25c7 SYMBOL to mean \u25a1\u25c7 \u2014 \u25c7=F is standard in TLA+/SPIN/NuSMV and a verification engineer types \u25c7 meaning 'eventually \u2265once'; silently making it 'infinitely often' is a different lie. Endorsed fix = coordinator option (b) wired to its OWN name (\u25a1\u25c7 and/or the already-advertised P\u2933Q), NOT to \u25c7: keep \u25c7=AF(F) but add the transient/recurrent label; add \u25a1\u25c7/\u2933 = universal strong liveness with the lasso counterexample. The precise bug under (b): the holds-decision restricts trap-reachability to \u00acP-only paths, so a transient P at init masks the downstream \u00acP trap while the lasso is GF-shaped (internal inconsistency) \u2014 reach the \u00acP cycle through the FULL graph and let the stem pass through P-states. Screenshots 07/08 in ana-20260622-234930 still show the mislabel. My option-(c) suggestion in #254 was existentially unsound (made \u25c7Goal=True on the branching case) \u2014 discard it.",
       "detail": "\u22a2verify temporal path; coordinator refuted EF-mechanism + recurrent-set fix; answer = (a)-for-\u25c7 + (b)-for-\u25a1\u25c7/\u2933",
       "by": "ide-critic-expert",
+      "status": "cleared",
+      "task": null,
+      "created": "2026-06-23T00:14:43Z",
+      "cleared": "2026-06-23T12:40:28Z"
+    },
+    {
+      "id": 265,
+      "title": "BMC unrolled SMT-LIB export omits (get-model). Single-tick export ends with (check-sat)(get-model); the k-step unrolled export (unroll=N) ends with only (check-sat). Verified by curl to /api/smtlib: smt_single has 1 get-model, smt_unroll8 has 0. The whole point of BMC is the counterexample TRACE \u2014 a user who pastes the unrolled artifact, adds a property, and runs z3 gets bare sat/unsat with no witness unless they know to append (get-model). I ran it through z3 4.15.4: the unroll is otherwise sound (cells@0..@8 chain the seed through the transition faithfully, recurrence probe proved unsat correctly), but the missing get-model is a real friction for the headline BMC workflow. Append (get-model) (or get-value over the @-vars) to the unrolled export too.",
+      "detail": "Screenshots/files: /tmp/smt_single.txt vs /tmp/smt_unroll8.txt; tail of unroll ends at (check-sat).",
+      "by": "ide-critic-expert",
       "status": "open",
       "task": null,
-      "created": "2026-06-23T00:14:43Z"
+      "created": "2026-06-23T12:40:46Z"
+    },
+    {
+      "id": 266,
+      "title": "Solve-result panel persists a STALE UNSAT core / pin across a source change. Repro: write a contradictory 'claim core2' with a pin like col[0]=0 left in #solve-given, then load a different program (counter): the solve panel keeps showing 'conflicting core \u2014 line5 a+b=10 line6 a+b=20' and an earlier run showed '\u22ae UNSAT \u2014 contradiction has no solution WITH col[0] pinned' next to a counter that has no col var. It IS labeled 'source changed \u2014 press re-solve' (milder than the old #255 leak, and the assumption CHIPS and the #solve-given/#query/#inv inputs all clear correctly now), but the result BODY still renders the previous program's core/pin until you re-solve. A stale UNSAT core referencing variables that don't exist in the current model is misleading at a glance. Clear the solve-result body on source/sample change like the chips and diagram already do (or auto-re-solve).",
+      "detail": "Screenshots ana-20260623-122010/08-unsat-core.png (stale col[0] pinned over contradiction) and 09 (after clearing pin).",
+      "by": "ide-critic-expert",
+      "status": "open",
+      "task": null,
+      "created": "2026-06-23T12:40:55Z"
+    },
+    {
+      "id": 267,
+      "title": "Pin (\ud83d\udccc) silently no-ops when clicked before the live picture has rendered a PNG, and gives no feedback. togglePin() does 'const snap = history.find(s=>s.png); if(!snap) return;' \u2014 so if you pin right after editing/solving (before the render settles) nothing happens and the \u21c4 diff button stays hidden, with no toast explaining why. I hit this: pinned, edited, clicked diff \u2192 button reported hidden=true, dead end. Re-pinning after the picture settled worked (label\u2192'\ud83d\udccc unpin', diff un-hid) and the diff itself is excellent. Fix: when pin can't capture yet, say so ('nothing to pin yet \u2014 solve first') instead of a silent no-op; ideally pin the pending render once it lands.",
+      "detail": "Verified /api/diff engine is correct via direct fetch (A ceiling3 vs B ceiling5: appeared [x:5,x:4], 3 edges appeared, 1 vanished \u2014 caught the rewired self-loop). Screenshot 16-diff-panel.png shows the working two-up diff after a settled pin.",
+      "by": "ide-critic-expert",
+      "status": "open",
+      "task": null,
+      "created": "2026-06-23T12:41:04Z"
     }
   ]
 }
