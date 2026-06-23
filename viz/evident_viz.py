@@ -356,6 +356,69 @@ class Model(CodecMixin, RankingMixin, AnalysisMixin, QueryMixin, TemporalMixin):
                 edges.append((i, index[k]))
         return states, edges
 
+    def closing_depth(self, limit=5000):
+        """The BFS depth at which the reachable set CLOSES — the level whose expansion
+        adds no new state. Returns (k, complete):
+
+          - `k`        — the depth (distance from the initial state) at which the LAST new
+                         state was discovered; one more level of BFS adds nothing reachable.
+          - `complete` — True iff the reachable set was fully enumerated within `limit` (the
+                         frontier emptied before the cap). When the BFS hits the cap the set
+                         is still growing, so `complete` is False and `k` is only a lower bound.
+
+        For a CONTINUOUS model (any real-valued carried var) the reachable set isn't a finite
+        enumerable graph; `complete` is forced False so no caller can mistake a capped
+        real-valued exploration for a proof (Ana's honesty bar — `is_discrete()` / the real gate).
+
+        Runs its OWN level-order BFS rather than reusing reachable()'s LIFO frontier (which has
+        no per-level structure) — same successor relation, same dedup key, so the reachable set
+        is identical; the only addition is the per-level counter. The two-tick (ΔΔ) graph is
+        handled by the pair-keyed variant, matching _reachable_two."""
+        if any(v.get("kind") == "real" for v in self.carried):
+            k, _ = self._closing_depth_bfs(limit)
+            return k, False           # never certify a real-valued model complete
+        return self._closing_depth_bfs(limit)
+
+    def _closing_depth_bfs(self, limit):
+        init = self.initial_state()
+        if init is None:
+            return 0, True
+        two = self.has_two_tick
+        if two:
+            seen = {(self._key(init), None)}
+            level = [(init, None)]
+        else:
+            seen = {self._key(init)}
+            level = [init]
+        depth = 0
+        closing = 0
+        capped = False
+        while level:
+            nxt_level = []
+            for node in level:
+                if two:
+                    cur, prev = node
+                    succs = self._successors_two(cur, prev)
+                else:
+                    cur = node
+                    succs = self.successors(cur)
+                for s in succs:
+                    key = (self._key(s), self._key(cur)) if two else self._key(s)
+                    if key in seen:
+                        continue
+                    if len(seen) >= limit:
+                        capped = True
+                        continue
+                    seen.add(key)
+                    nxt_level.append((s, cur) if two else s)
+            if nxt_level:
+                depth += 1
+                closing = depth        # this level introduced new reachable states
+            level = nxt_level
+            if capped:
+                break
+        return closing, not capped
+
     # ---- helpers ------------------------------------------------------------
     def state_key(self, state):
         """Public wrapper over `_key`: the identity tuple a reachable state keys on

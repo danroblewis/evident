@@ -130,6 +130,22 @@ if [ "$EXAMPLES_ONLY" -eq 0 ] && command -v python3 >/dev/null 2>&1; then
     echo
 fi
 
+# ── Phase 2.7: BMC completeness-certification test (Ana #270) ──
+# The unroll export prepends a COMPLETE-vs-BOUNDED verdict driven by the reachable set's closing
+# depth. This pins the right verdict for terminating (counter), cyclic (traffic), unbounded, and
+# real-valued models — so a regression can never silently claim "complete" for a capped/real model.
+if [ "$EXAMPLES_ONLY" -eq 0 ] && command -v python3 >/dev/null 2>&1; then
+    phase "Phase 2.7: BMC completeness certification"
+    if python3 ide/test_completeness.py > /tmp/evident-completeness.log 2>&1; then
+        ok "completeness ($(tail -1 /tmp/evident-completeness.log))"
+    else
+        fail "completeness: wrong COMPLETE/BOUNDED verdict (see above)"
+        cat /tmp/evident-completeness.log >&2
+        failures+=("completeness certification")
+    fi
+    echo
+fi
+
 # ── Optional: examples runner ────────────────────────────────
 # Walks examples/, runs each via effect-run. For visual demos (anything
 # that imports packages/sdl/), spawn the program, screenshot the Xvfb

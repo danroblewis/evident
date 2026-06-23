@@ -114,7 +114,13 @@ class AnalysisMixin:
         wired to the prior tick's value, is_first_tick true only at tick 0. For bounded model
         checking in z3 (add a property over the `@s` vars, then check-sat). Returns the SMT-LIB text,
         or None if there's no transition. Faithful: ALL carried prevs are wired (unlike solved_bounds,
-        which wires only the numeric ones for its bounds Optimize)."""
+        which wires only the numeric ones for its bounds Optimize).
+
+        Prepends a COMPLETENESS CERTIFICATION (Ana #270): the reachable set's CLOSING DEPTH turns this
+        bounded check into a PROOF when the set closes within scope. If the BFS reaches a level that
+        adds no new state at depth d ≤ k and the set was fully enumerated (discrete, not capped), the
+        unroll to k covers EVERY reachable state — so an unsat property check is a proof, not a bound.
+        Otherwise the comment says BOUNDED honestly (still growing at the cap, or real-valued)."""
         ft = self.consts.get(self._first_tick_name)
         if ft is None or not self.assertions:
             return None
@@ -142,7 +148,29 @@ class AnalysisMixin:
         # to_smt2() ends with (check-sat); append (get-model) so the BMC workflow surfaces the
         # WITNESS TRACE — add a property over the @k vars, check-sat, and read the violating
         # assignment across all ticks (Ana #265: a bare check-sat gives sat/unsat with no trace).
-        return s.to_smt2() + "(get-model)\n"
+        return self._completeness_comment(k) + s.to_smt2() + "(get-model)\n"
+
+    def _completeness_comment(self, k):
+        """The completeness certification prepended to the unroll export (Ana #270). Returns the
+        comment lines: COMPLETE when the reachable set closes at a depth d ≤ k within scope (k-step
+        unroll covers EVERY reachable state — an unsat check is a PROOF), else BOUNDED (k is a lower
+        bound; an unsat check only rules out violations within k steps). Continuous/real models and
+        capped explorations are NEVER certified complete — the closing_depth gate forces that."""
+        try:
+            d, complete = self.closing_depth()
+        except Exception:
+            d, complete = None, False
+        if complete and d is not None and d <= k:
+            return (f"; COMPLETE at depth k={d} — the reachable set closed (no new states beyond "
+                    f"depth {d}); this k-step unroll covers EVERY reachable state, so an unsat "
+                    f"property check here is a PROOF, not a bound.\n")
+        if complete and d is not None:
+            # closed, but deeper than this unroll — honest: raise k to k≥d to make it a proof.
+            return (f"; BOUNDED — reachable set closes at depth {d}, but this unroll only reaches "
+                    f"k={k} (< {d}); k is a lower bound. Re-export with k≥{d} for a completeness "
+                    f"PROOF; as-is an unsat check only rules out violations within {k} steps.\n")
+        return (f"; BOUNDED — reachable set still growing at the scope cap; k={k} is a lower bound, "
+                f"an unsat check only rules out violations within k steps.\n")
 
     def _inductive(self, box):
         """Is the box {var ∈ [lo,hi]} closed under one transition from a ¬first state? If it's
