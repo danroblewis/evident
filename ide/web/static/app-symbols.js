@@ -150,7 +150,7 @@ const VIEW_CAPTIONS = {
   occupancy_heatmap:
     "shows where the system spends its time · read it as a 2-D histogram of many-seed/many-step visited points over two axes, brightness = visit density (log) · tells you the occupied region / attractor of state-space.",
   timing_diagram:
-    "shows one ~40-tick run as EE-style waveforms · read it as one stacked track per variable (bool/enum=digital edges, numeric=analog line) ordered most-informative on top · tells you when each signal changes relative to the others.",
+    "shows an ENSEMBLE over all initial conditions as EE-style waveforms · read it as one stacked track per variable (bool/enum=digital edges, numeric=analog line), the shaded band = the reachable value envelope at each tick (real/unbounded models fall back to one seeded run) · tells you what every signal can do from any start, not just one trajectory.",
   transition_matrix:
     "shows the transition relation as an adjacency-matrix heatmap · read it as cell (i,j) lit iff state i → state j, states ordered so the top categorical forms blocks · tells you whether transitions stay within a mode (block-diagonal) or switch.",
   basin_map:
