@@ -6293,10 +6293,10 @@
       "id": 292,
       "title": "Diagrams: fixedpoint_map over all initial conditions \u2014 color states by attractor across the global graph, not the from-init orbit",
       "detail": "",
-      "status": "in_progress",
+      "status": "worker_done",
       "created_by": "worker",
       "created": "2026-06-23T19:32:31Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
@@ -6307,6 +6307,12 @@
           "at": "2026-06-23T19:32:31Z",
           "by": "worker",
           "act": "started"
+        },
+        {
+          "at": "2026-06-23T19:47:32Z",
+          "by": "worker",
+          "act": "done",
+          "note": "shipped (merged f58f07a5): fixedpoint_map roots on full_state_graph (all states) via new viz/fixedpoint_basins.py sample_all_conditions, colors each state by terminal SCC; reuses render_basin_map._condense_terminals read-only. Verified: bistable shows both attractors (x=0,x=6) as fixed-point stars, x\u2208{0,1,2} basin1 + x\u2208{3,4,5,6} basin2, 'over all initial conditions'; real falls back 'from init'. Python all-conditions check green, lint 24\u226424."
         }
       ]
     },
