@@ -1,5 +1,5 @@
 {
-  "seq": 312,
+  "seq": 313,
   "tasks": [
     {
       "id": 1,
@@ -7850,6 +7850,21 @@
       "reopened": 0,
       "tags": [
         "ui"
+      ],
+      "log": []
+    },
+    {
+      "id": 313,
+      "title": "test.sh: auto-discover ide/test_*.py phases (eliminate the recurring merge-conflict from every agent appending a Phase block)",
+      "detail": "Every feature agent appends a 'Phase 2.NN' if/fi block to test.sh at the same spot, so concurrent agents ALWAYS conflict there at merge (resolved 4+ times this session by hand). Refactor: have test.sh LOOP over ide/test_*.py (or a manifest) and run each as a numbered phase automatically, so an agent adds ONLY its test file \u2014 no test.sh edit, no conflict. Keep the per-test pass/fail reporting + the failures[] array. Criteria: adding a new ide/test_X.py auto-runs it in ./test.sh with no test.sh change; existing phases still run + report; ./test.sh green. This is a merge-throughput win for the parallel-agent loop.",
+      "status": "open",
+      "created_by": "worker",
+      "created": "2026-06-23T21:17:44Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "refactor"
       ],
       "log": []
     }
