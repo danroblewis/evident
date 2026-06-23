@@ -27,6 +27,7 @@ import os
 import z3
 
 from model_const import CHANNEL_FITNESS, SOLVE_TIMEOUT_MS  # noqa: F401 (SOLVE_TIMEOUT_MS used below; both re-exported)
+from model_codec import CodecMixin
 from model_ranking import RankingMixin
 from model_analysis import AnalysisMixin
 from model_query import QueryMixin
@@ -35,6 +36,14 @@ from model_temporal import TemporalMixin
 
 _LOAD_CACHE = {}          # (smt2_path, schema_path, mtime) -> Model
 _LOAD_ORDER = []          # FIFO of keys, bounding the cache (each Model holds a z3 context)
+
+
+def hashable_value(val):
+    """Make a decoded state value hashable for node-dedup keys. A Seq decodes to a
+    Python list (the ONLY unhashable decoded value); everything else passes through.
+    Shared so every renderer that builds a node/state key over raw state values stays
+    Seq-safe without each reinventing the tuple-ify (mirrors Model._key)."""
+    return tuple(val) if isinstance(val, list) else val
 
 
 def load(smt2_path, schema_path):
@@ -57,15 +66,17 @@ def load(smt2_path, schema_path):
     return m
 
 
-class Model(RankingMixin, AnalysisMixin, QueryMixin, TemporalMixin):
-    # The analysis methods are inherited from four mixins: RankingMixin
-    # (viz/model_ranking.py — variable ranking/selection, axis bounds, independence),
-    # AnalysisMixin (viz/model_analysis.py — solver bounds, solution_structure, channel
-    # + facet mapping), QueryMixin (viz/model_query.py — safety □ check_invariant, ∃
-    # query, explore + predicate/graph helpers), and TemporalMixin (viz/model_temporal.py
-    # — liveness ◇/□◇/⤳ check_temporal + the witness lasso). This file keeps the
-    # load/decode core: __init__ + z3 setup, the value decoders, successor/successors/
-    # reachable/trajectory/initial_state, and _key/state_key.
+class Model(CodecMixin, RankingMixin, AnalysisMixin, QueryMixin, TemporalMixin):
+    # The methods are inherited from five mixins: CodecMixin (viz/model_codec.py — the
+    # value <-> z3 codec: scalar/seq decode, element-wise pin, successor-block clause,
+    # leaf sorts), RankingMixin (viz/model_ranking.py — variable ranking/selection, axis
+    # bounds, independence), AnalysisMixin (viz/model_analysis.py — solver bounds,
+    # solution_structure, channel + facet mapping), QueryMixin (viz/model_query.py —
+    # safety □ check_invariant, ∃ query, explore + predicate/graph helpers), and
+    # TemporalMixin (viz/model_temporal.py — liveness ◇/□◇/⤳ check_temporal + the witness
+    # lasso). This file keeps the load/decode core: __init__ + z3 setup, the solver
+    # builders + _read_state, successor/successors/reachable/trajectory/initial_state,
+    # and _key/state_key.
     def __init__(self, smt2_path, schema_path):
         with open(schema_path) as fh:
             schema = json.load(fh)
@@ -135,7 +146,7 @@ class Model(RankingMixin, AnalysisMixin, QueryMixin, TemporalMixin):
             present = self.consts.get(v["name"])
             if present is None:
                 present = self.consts.get(v["prev"])
-            sort = present.sort() if present is not None else self._basic_sort(v["kind"])
+            sort = present.sort() if present is not None else self._var_sort(v)
             for nm in (v["name"], v["prev"]):
                 if nm not in self.consts:
                     self.consts[nm] = z3.Const(nm, sort)
@@ -160,37 +171,7 @@ class Model(RankingMixin, AnalysisMixin, QueryMixin, TemporalMixin):
                 self.enum_variants[v["name"]] = names
                 self._enum_lit[v["name"]] = lits
 
-    # ---- value <-> z3 -------------------------------------------------------
-    def _lit(self, var, value):
-        k = var["kind"]
-        if k == "int":
-            return z3.IntVal(int(value))
-        if k == "bool":
-            return z3.BoolVal(bool(value))
-        if k == "real":
-            return z3.RealVal(value)
-        if k == "string":
-            return z3.StringVal(value)
-        if k == "enum":
-            return self._enum_lit[var["name"]][value]
-        raise ValueError(f"unknown kind {k}")
-
-    def _read(self, model, var):
-        c = self.consts[var["name"]]
-        mv = model.eval(c, model_completion=True)
-        k = var["kind"]
-        if k == "int":
-            return mv.as_long()
-        if k == "bool":
-            return z3.is_true(mv)
-        if k == "real":
-            return float(mv.as_fraction())
-        if k == "string":
-            return mv.as_string()
-        if k == "enum":
-            return mv.decl().name()
-        raise ValueError(f"unknown kind {k}")
-
+    # ---- value <-> z3 + pin/block/sort: see CodecMixin (model_codec.py) ------
     def _base(self):
         s = z3.Solver()
         s.set("timeout", SOLVE_TIMEOUT_MS)
@@ -229,23 +210,6 @@ class Model(RankingMixin, AnalysisMixin, QueryMixin, TemporalMixin):
             return None
         return self._read(model, var)
 
-    def _pin_prev(self, solver, state):
-        # Pin only the leaves the caller supplied; a renderer may pass a PARTIAL
-        # state (e.g. just the deduped axis vars), leaving the rest free. Pinning
-        # all of self.carried would KeyError on a leaf the caller omitted.
-        for v in self.carried:
-            if v["name"] in state:
-                solver.add(self.consts[v["prev"]] == self._lit(v, state[v["name"]]))
-
-    def _pin_prev2(self, solver, prev_state):
-        # Pin the TWO-ticks-ago twin (`__x`) for the hist-2 leaves. Only the two-tick
-        # vars have a `__x` const; one-tick vars have nothing two ticks back.
-        for v in self.two_tick_vars:
-            if v["name"] in prev_state:
-                c = self.consts.get("__" + v["name"])
-                if c is not None:
-                    solver.add(c == self._lit(v, prev_state[v["name"]]))
-
     def _successors_two(self, cur, prev, limit=64):
         """ALL distinct next CURRENT-snapshots from the (cur, prev) pair of a two-tick
         model: pin `_x = cur` AND `__x = prev`, with is_first_tick = is_second_tick =
@@ -267,9 +231,7 @@ class Model(RankingMixin, AnalysisMixin, QueryMixin, TemporalMixin):
         while len(out) < limit and s.check() == z3.sat:
             mod = s.model()
             out.append(self._read_state(mod))
-            s.add(z3.Or([self.consts[v["name"]] != mod.eval(self.consts[v["name"]],
-                                                            model_completion=True)
-                         for v in self.carried]))
+            s.add(self._block_clause(mod))
         return out
 
     def _reachable_two(self, limit=5000):
@@ -335,15 +297,7 @@ class Model(RankingMixin, AnalysisMixin, QueryMixin, TemporalMixin):
             mod = s.model()
             st = self._read_state(mod)
             out.append(st)
-            # Block against the model's EXACT value of each const, not a re-literal of
-            # the decoded Python value. For reals, _read collapses an exact rational
-            # (175/3) to a lossy float (58.333…); re-blocking with RealVal(float) never
-            # excludes the true 175/3, so a DETERMINISTIC real FSM reports the one true
-            # successor over and over as 'distinct' (the 64-fan mislabel). model.eval is
-            # exact for every kind, so a single next state blocks to UNSAT as it should.
-            s.add(z3.Or([self.consts[v["name"]] != mod.eval(self.consts[v["name"]],
-                                                            model_completion=True)
-                         for v in self.carried]))
+            s.add(self._block_clause(mod))
         return out
 
     def trajectory(self, start=None, steps=400):
@@ -421,13 +375,10 @@ class Model(RankingMixin, AnalysisMixin, QueryMixin, TemporalMixin):
         # read inconsistently — exclude them so the reachable graph is unchanged whether
         # or not the model has derived vars.
         carried_names = {v["name"] for v in self.carried}
-        return tuple(sorted((k, val) for k, val in state.items()
+        # A Seq decodes to a Python list, which isn't hashable; tuple-ify it (via the
+        # shared hashable_value) so the reachable-graph dedup keys on the Seq's contents.
+        return tuple(sorted((k, hashable_value(val)) for k, val in state.items()
                             if k in carried_names))
-
-    @staticmethod
-    def _basic_sort(kind):
-        return {"int": z3.IntSort(), "bool": z3.BoolSort(),
-                "real": z3.RealSort(), "string": z3.StringSort()}.get(kind, z3.IntSort())
 
     def is_discrete(self):
         return all(v["kind"] in ("bool", "enum", "string") for v in self.interface_vars)

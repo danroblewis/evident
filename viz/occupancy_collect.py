@@ -251,7 +251,9 @@ def pick_axes(m, exclude=()):
     for v in m.state_vars:
         if len(chosen) >= 2:
             break
-        if v["name"] not in seen:
+        # A Seq is a vector, not a scalar occupancy axis (no ordinal to bin / pin as a
+        # grid seed) — skip it so a Seq-only FSM falls through to the "no axes" card.
+        if v["name"] not in seen and v["kind"] != "seq":
             chosen.append(v)
             seen.add(v["name"])
     if len(chosen) >= 2:

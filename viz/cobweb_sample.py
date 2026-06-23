@@ -17,7 +17,10 @@ def _pick_primary(m):
     for v in m.state_vars:
         if v["kind"] == "enum":
             return v, "enum-ordinal"
-    return (m.state_vars[0], "enum-ordinal") if m.state_vars else (None, None)
+    # A cobweb is a 1-D scalar map x_{n+1}=f(x_n); a Seq is a vector with no single
+    # scalar to staircase, so skip it. (None, None) routes render to its N/A card.
+    scalars = [v for v in m.state_vars if v["kind"] != "seq"]
+    return (scalars[0], "enum-ordinal") if scalars else (None, None)
 
 
 def _distinct_facet_groups(m, var, mode, base, grid, facet):

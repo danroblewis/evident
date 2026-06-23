@@ -116,6 +116,24 @@ def build_trace(m, steps=TICKS):
     return trace
 
 
+def _expand_tracks(state_vars):
+    """One lane per SCALAR track. A scalar var is one track; a Seq(elem) of length L
+    becomes L analog tracks `name[0..L-1]` (a Seq is a vector — a single lane can't show
+    its per-element dynamics). Each track carries a `get(state)` that pulls its scalar
+    value out of a trajectory state dict, so the lane loop never touches list values."""
+    tracks = []
+    for v in state_vars:
+        if v["kind"] == "seq":
+            elem = v.get("elem", "int")
+            for i in range(v.get("len", 0)):
+                tracks.append({"name": f"{v['name']}[{i}]", "kind": elem,
+                               "get": (lambda s, nm=v["name"], j=i: s[nm][j])})
+        else:
+            tracks.append({"name": v["name"], "kind": v["kind"],
+                           "get": (lambda s, nm=v["name"]: s[nm])})
+    return tracks
+
+
 def render(m, out_path):
     trace = build_trace(m)
     fig_title = f"{m.fsm}  —  timing_diagram"
@@ -132,7 +150,8 @@ def render(m, out_path):
 
     n = len(trace)
     ticks = list(range(n))
-    nvar = len(m.state_vars)
+    tracks = _expand_tracks(m.state_vars)
+    nvar = len(tracks)
 
     # vertical layout: each var gets a unit-height lane, stacked top to bottom
     lane_h = 1.0
@@ -147,12 +166,12 @@ def render(m, out_path):
     yticklabels = []
     yticks = []
 
-    for idx, v in enumerate(m.state_vars):
-        # lanes top-to-bottom: first var at top
+    for idx, v in enumerate(tracks):
+        # lanes top-to-bottom: first track at top
         base = (nvar - 1 - idx) * (lane_h + gap)
         name = v["name"]
         kind = v["kind"]
-        vals = [trace[t][name] for t in range(n)]
+        vals = [v["get"](trace[t]) for t in range(n)]
 
         yticks.append(base + lane_h / 2)
         # tracks are stacked in m.state_vars order = importance rank (most

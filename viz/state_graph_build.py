@@ -9,6 +9,8 @@ terminal-node classifier and the legibility down-sampler. No plotting policy.
 """
 import networkx as nx
 
+from evident_viz import hashable_value
+
 
 # A reachable BFS larger than this is treated as input-dominated / non-finite:
 # we stop trusting it as "the honest reachable set" and fall back to the
@@ -22,7 +24,7 @@ READABLE_CAP = 48
 
 
 def _key(state):
-    return tuple(sorted(state.items()))
+    return tuple(sorted((k, hashable_value(v)) for k, v in state.items()))
 
 
 def build_reachable_graph(m):
@@ -67,7 +69,7 @@ def build_trajectory_graph(m):
                 break
 
     def ikey(st):
-        return tuple((n, st.get(n)) for n in iface)
+        return tuple((n, hashable_value(st.get(n))) for n in iface)
 
     index = {}
     states = []

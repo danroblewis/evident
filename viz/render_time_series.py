@@ -111,6 +111,27 @@ def to_ordinal(m, var, value):
     return 0, str(value)
 
 
+def _flatten_seqs(state_vars, traj):
+    """Expand each Seq var into per-element scalar pseudo-vars (`xs[0]`, `xs[1]`, …) and
+    mirror their values into every trajectory state dict, so the row loop plots each Seq
+    element as its own line (a Seq is a vector — a single flat row hides its dynamics).
+    Returns (vars2, traj2): `vars2` has each seq var replaced IN PLACE by its element
+    pseudo-vars (preserving rank order); `traj2` is the states with `xs[i]` keys added."""
+    traj2 = [dict(s) for s in traj]
+    vars2 = []
+    for v in state_vars:
+        if v["kind"] == "seq":
+            elem = v.get("elem", "int")
+            for i in range(v.get("len", 0)):
+                pseudo = f"{v['name']}[{i}]"
+                vars2.append({"name": pseudo, "kind": elem, "role": v.get("role")})
+                for s in traj2:
+                    s[pseudo] = s[v["name"]][i]
+        else:
+            vars2.append(v)
+    return vars2, traj2
+
+
 def render(smt2, schema, out_path):
     m = load(smt2, schema)
     seed = pick_seed(m)
@@ -127,6 +148,9 @@ def render(smt2, schema, out_path):
         return
 
     traj = walk(m, seed, STEPS)
+    # Expand any Seq var into per-element scalar tracks (and mirror the values into the
+    # trajectory states), so a Seq plots as one line per element rather than a flat row.
+    flat_vars, traj = _flatten_seqs(m.state_vars, traj)
     ticks = list(range(len(traj)))
 
     # CHANNEL MAPPING for a stacked time series: tick is the shared x-axis; each
@@ -145,7 +169,7 @@ def render(smt2, schema, out_path):
     derived = [v for v in m.derived if v["name"] in traj[0]]
     ordered = quant + cat + derived            # numerics, categoricals, then derived
     if not ordered:
-        ordered = list(m.state_vars)
+        ordered = list(flat_vars)              # seq-only fsm: its per-element tracks
 
     # Drop CONSTANT rows. A variable that holds one value for the entire declared
     # trajectory carries zero information as a time series — its row is a flat

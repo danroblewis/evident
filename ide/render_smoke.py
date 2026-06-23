@@ -46,6 +46,17 @@ SAMPLES = {
         '    is_first_tick ⇒ count = 0\n'
         '    ¬is_first_tick ⇒ Δcount = 1\n'
         '    effects ∈ Seq(Effect) = ⟨Println("tick")⟩\n'),
+    # A SEQ-CARRYING FSM: the whole carried state is a Seq(Int) shifted +1 each tick (an
+    # unbounded orbit [1,2,3]→[2,3,4]→…). Guards the viz's kind=="seq" handling end-to-end —
+    # the value decoders, element-wise pinning, list-hashable node keys, and every renderer's
+    # treatment of a vector-valued (non-scalar-axis) state var. Without seq support the model
+    # loads but every reachable()/initial_state() query raised "unknown kind seq".
+    "shift": (
+        'fsm shift\n'
+        '    xs ∈ Seq(Int)\n'
+        '    #xs = 3\n'
+        '    is_first_tick ⇒ xs = ⟨1, 2, 3⟩\n'
+        '    ¬is_first_tick ⇒ ∀ (cur, nxt) ∈ coindexed(_xs, xs) : nxt = cur + 1\n'),
 }
 
 

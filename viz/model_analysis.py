@@ -352,8 +352,13 @@ class AnalysisMixin:
 
     @property
     def numeric_vars(self):
-        """Ranked numeric (quantitative) interface vars — for axes/size."""
-        return [v for v in self.state_vars if self.var_class(v) == "quant"]
+        """Ranked numeric (quantitative) interface vars — for axes/size. Excludes Seq
+        vars: a Seq is a VECTOR, not a scalar position/size channel, so it can't drive a
+        continuous axis (the channel-mapping + phase-portrait renderers would feed a
+        Python list into arithmetic). The time-series renderer plots its elements as
+        parallel tracks instead, reading the Seq directly off the state dict."""
+        return [v for v in self.state_vars
+                if self.var_class(v) == "quant" and v["kind"] != "seq"]
 
     @property
     def categorical_vars(self):
@@ -370,6 +375,8 @@ class AnalysisMixin:
         assignment = {ch: None for ch in channels}
         free = [ch for ch in channels if ch in CHANNEL_FITNESS]
         for v in self.state_vars:
+            if v["kind"] == "seq":
+                continue                       # a Seq is a vector, not a scalar channel
             cls = self.var_class(v)
             # only channels where this var's type is decoded well enough
             cand = [ch for ch in free if CHANNEL_FITNESS[ch][cls] >= min_fit]

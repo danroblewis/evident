@@ -22,9 +22,11 @@ drawing legend.
 """
 import networkx as nx
 
+from evident_viz import hashable_value
+
 
 def _key(m, state):
-    return tuple(state[v["name"]] for v in m.state_vars)
+    return tuple(hashable_value(state[v["name"]]) for v in m.state_vars)
 
 
 def _abbrev(name):

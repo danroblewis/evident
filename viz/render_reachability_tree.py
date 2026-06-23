@@ -20,7 +20,7 @@ import sys
 import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__))))
-from evident_viz import load
+from evident_viz import load, hashable_value
 
 import matplotlib
 matplotlib.use("Agg")
@@ -43,7 +43,7 @@ MAX_DEPTH = 8
 
 
 def _key(state):
-    return tuple(sorted(state.items()))
+    return tuple(sorted((k, hashable_value(v)) for k, v in state.items()))
 
 
 def _pick_seed(m):
