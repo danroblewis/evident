@@ -77,6 +77,11 @@
         <button id="solve-all" title="enumerate distinct witnesses">all ⊨*</button>
         <button id="solve-close" title="close">✕</button>
       </div>
+      <div id="opt-controls" title="optimize a numeric variable subject to the claim (z3 Optimize)">
+        <input id="opt-var" placeholder="optimize var — e.g.  x">
+        <button id="opt-max" title="maximize this variable over the claim">⤒ max</button>
+        <button id="opt-min" title="minimize this variable over the claim">⤓ min</button>
+      </div>
     </div>
   </aside>
 </div>
@@ -94,7 +99,7 @@
 <script src="/static/app-editor.js?v=2"></script>
 <script src="/static/app-buffer.js?v=3"></script>
 <script src="/static/app-history.js?v=2"></script>
-<script src="/static/app-verify.js?v=11"></script>
+<script src="/static/app-verify.js?v=12"></script>
 <script src="/static/app-palette.js?v=6"></script>
 <script src="/static/app-panzoom.js?v=1"></script>
 <script src="/static/app.js?v=21"></script>

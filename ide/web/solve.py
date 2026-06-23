@@ -7,6 +7,9 @@ core; `_all_unsat_cores` block-and-recurses over that machinery to enumerate EVE
 minimal core (MUS), so an over-constrained model shows all its independent
 contradictions at once. Both drive `runtime_io._run_query`; `_block_term`/
 `_block_clause` assemble the blocking constraints from a witness's bindings.
+
+The QUANTITATIVE move (maximize/minimize a numeric var via z3 Optimize) lives in the
+sibling `optimize` module — a separate concern from feasibility enumeration.
 """
 import re
 

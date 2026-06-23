@@ -114,6 +114,54 @@ function renderSolve(d, given) {
   if (viz) requestAnimationFrame(() => { const p = $("#solve"); if (p) p.scrollIntoView({ behavior: "smooth", block: "nearest" }); });
 }
 
+// --- optimize: the QUANTITATIVE move (z3 Optimize) — maximize/minimize a numeric var ----------
+// The solve surface answers feasibility (SAT/UNSAT); this answers "what's the extremal value of
+// var subject to the claim, and which assignment achieves it" — the optimization query Ana drives
+// daily. Reuses the same claim-name resolution as solve(); renders into the solve panel.
+function _resolveClaim() {
+  const source = (typeof editor !== "undefined") ? editor.getValue() : "";
+  const sel = $("#claim-select");
+  const cm = source.match(/^\s*claim\s+([A-Za-z_]\w*)/m);
+  return (sel && !sel.hidden && sel.value) ? sel.value : (cm ? cm[1] : null);
+}
+
+async function runOptimize(direction) {
+  const source = (typeof editor !== "undefined") ? editor.getValue() : "";
+  const v = $("#opt-var").value.trim();
+  if (!v) { $("#opt-var").focus(); return; }
+  $("#solve").hidden = false;
+  $("#solve-head").innerHTML = `<span class="dim">${direction === "min" ? "minimizing" : "maximizing"} ${escapeHtml(v)}…</span>`;
+  $("#solve-body").innerHTML = "";
+  try {
+    const res = await fetch("/api/optimize", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ source, claim: _resolveClaim(), var: v, direction }),
+    });
+    renderOptimize(await res.json());
+  } catch (e) {
+    $("#solve-head").innerHTML = `<span class="bad">optimize failed: ${escapeHtml(String(e))}</span>`;
+  }
+}
+
+function renderOptimize(d) {
+  const head = $("#solve-head"), body = $("#solve-body");
+  body.classList.remove("stale");
+  if (!d.ok) { head.innerHTML = `<span class="bad">✕ ${escapeHtml(d.error || "optimize failed")}</span>`; body.innerHTML = ""; return; }
+  const arrow = d.direction === "min" ? "⤓ min" : "⤒ max";
+  if (d.satisfied === false) {
+    head.innerHTML = `<span class="unsat">∄ extremum</span> — <b>${escapeHtml(d.var)}</b> is unbounded (or the claim is UNSAT)`;
+    body.innerHTML = `<span class="dim">no finite ${arrow} of ${escapeHtml(d.var)} over <b>${escapeHtml(d.claim || "claim")}</b></span>`;
+    return;
+  }
+  head.innerHTML = `<span class="sat">${arrow}</span> <b>${escapeHtml(d.var)}</b> = `
+    + `<span class="extremal">${escapeHtml(String(d.extremal))}</span> over <b>${escapeHtml(d.claim || "claim")}</b>`;
+  const b = d.bindings || {};
+  const keys = Object.keys(b).sort();
+  body.innerHTML = `<div class="opt-result"><span class="dim">optimizing assignment</span>`
+    + `<table>${keys.map((k) => `<tr><td class="k">${escapeHtml(k)}${k === d.var ? " ★" : ""}</td>`
+        + `<td class="v">${escapeHtml(JSON.stringify(b[k]))}</td></tr>`).join("")}</table></div>`;
+}
+
 // --- domain-picture rendering for Seq witnesses (Task #68 / #196) -----------------
 // --- domain-picture rendering for Seq witnesses (Task #68 / #196) -----------------
 // A Seq witness is hard to read as a flat array. Draw it as the domain shape it is:
@@ -752,4 +800,8 @@ function initVerify() {
   $("#query-clear").onclick = clearAssumptions;
   $("#query-prop").addEventListener("input", () => expandFieldSymbols($("#query-prop")));
   $("#query-prop").addEventListener("keydown", (e) => { if (e.key === "Enter") assertAssumption(); });
+  // optimize row (⤒ max / ⤓ min) — the quantitative query; Enter maximizes by default.
+  $("#opt-max").onclick = () => runOptimize("max");
+  $("#opt-min").onclick = () => runOptimize("min");
+  $("#opt-var").addEventListener("keydown", (e) => { if (e.key === "Enter") runOptimize("max"); });
 }

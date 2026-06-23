@@ -50,6 +50,7 @@ from runtime_io import _export, _run_query  # noqa: E402
 # (now timeout-bounded, but still slow) dynamics solve for nothing (Ana #301).
 FUNCTION_VIEWS = {v for v in VIEWS if v.startswith("function_")}
 from solve import _all_unsat_cores, _enumerate, _unsat_core  # noqa: E402
+from optimize import _optimize  # noqa: E402
 from smtlib_tools import _parse_predicate, _ready_to_run  # noqa: E402
 
 app = FastAPI(title="Evident IDE")
@@ -172,6 +173,22 @@ def solve(req: SolveReq):
             r["cores"] = cores
             r["cores_complete"] = complete
         return r
+
+
+class OptimizeReq(BaseModel):
+    source: str
+    claim: str | None = None
+    var: str                              # the numeric variable to optimize
+    direction: str = "max"                # "max" → maximize, "min" → minimize
+
+
+@app.post("/api/optimize")
+def optimize(req: OptimizeReq):
+    """QUANTITATIVE query over a claim — z3 Optimize. Maximize/minimize a numeric var subject to
+    the claim, returning the EXTREMAL value AND the optimizing assignment (the numeric vars). On an
+    unsatisfiable or unbounded objective, returns satisfied=False (an honest "no finite extremum")."""
+    with _LOCK, tempfile.TemporaryDirectory() as work:
+        return _optimize(req.source, req.claim, req.var, req.direction, work)
 
 
 class InvariantReq(BaseModel):
@@ -303,20 +320,19 @@ class DiffReq(BaseModel):
     source_b: str          # the LIVE program (B) — the same model with a constraint changed
 
 
-def _load_for_diff(source, work):
-    """Export+load one source into a Model, or return (None, error). Reused for A and B."""
-    ok, prefix, dropped, msg = _export(source, work)
-    if not ok:
-        return None, msg
-    return load_model(prefix + ".smt2", prefix + ".schema.json"), None
-
-
 @app.post("/api/diff")
 def diff(req: DiffReq):
     """The relational analog of a text diff between two programs that share a var set: which
     reachable states APPEARED (in B not A), VANISHED (in A not B), and how many stayed COMMON.
     States align by `state_key` — the reachable-graph identity — so the delta is on the model's
     behavior, not its source. A and B must carry the same variables (else a clear error)."""
+    def _load_for_diff(source, work):
+        """Export+load one source into a Model, or return (None, error). Reused for A and B."""
+        ok, prefix, dropped, msg = _export(source, work)
+        if not ok:
+            return None, msg
+        return load_model(prefix + ".smt2", prefix + ".schema.json"), None
+
     with _LOCK, tempfile.TemporaryDirectory() as wa, tempfile.TemporaryDirectory() as wb:
         try:
             ma, err = _load_for_diff(req.source_a, wa)
