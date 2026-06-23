@@ -141,6 +141,8 @@ const VIEW_CAPTIONS = {
     "shows the GUARD DECISION TREES of the piecewise functions — each guarded variable's branch conditions tried into the nested decision the solver found (is_first_tick? → _timer<2? → _light==?) · tells you the branching control-flow each variable's next value is computed by.",
   function_behavior:
     "shows the BEHAVIOUR of each extracted function — its next value sampled over the variables it reads (their previous values) · for an enum output it's the guard PARTITION (which branch wins where), for numeric the transfer surface · tells you what each compiled function actually computes, not just its shape.",
+  function_complexity:
+    "shows the COMPILATION COST of each function — its branching plus arithmetic, ranked · read it as the per-tick work the JIT emits for each variable (a constant is cheap, a deep guarded function with big expressions is expensive) · tells you where the program's compute actually goes, invisible in the dynamics views.",
 };
 
 // --- parser-jargon humanization ----------------------------------------------------
