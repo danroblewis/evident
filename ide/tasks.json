@@ -6037,7 +6037,7 @@
       "id": 280,
       "title": "Diagrams: seed dynamics renderers from ALL initial conditions, not forward-from-one-init [foundational \u2014 basin_map/fixedpoint_map/morse_graph/orbit_scatter/parallel_coords/phase_portrait/reachability_tree/scatter_matrix/solution_space/state_graph/transition_matrix]",
       "detail": "",
-      "status": "open",
+      "status": "in_progress",
       "created_by": "worker",
       "created": "2026-06-23T18:19:04Z",
       "worker_done": false,
@@ -6046,7 +6046,13 @@
       "tags": [
         "diagram"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-23T18:21:56Z",
+          "by": "worker",
+          "act": "started"
+        }
+      ]
     },
     {
       "id": 281,
