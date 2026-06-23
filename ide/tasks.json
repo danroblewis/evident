@@ -5742,7 +5742,7 @@
       "id": 269,
       "title": "Liveness under FAIRNESS assumptions. \u25a1\u25c7/\u2933 now check over the reachable graph and produce a lasso \u2014 but a real liveness spec almost always needs weak/strong fairness on the nondeterministic choices, or every nondeterministic FSM trivially has an unfair lasso that dodges the goal. TLA+ has WF_v/SF_v; SPIN has -f. Add a way to declare a transition/choice 'fair' and check '\u25a1\u25c7 P under fairness'. Without it, \u25a1\u25c7 on any branching model will almost always report a (possibly unfair, unrealistic) violating lasso.",
       "detail": "",
-      "status": "open",
+      "status": "in_progress",
       "created_by": "ide-critic-expert",
       "created": "2026-06-23T12:41:20Z",
       "worker_done": false,
@@ -5751,7 +5751,13 @@
       "tags": [
         "analysis"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-23T17:35:39Z",
+          "by": "worker",
+          "act": "started"
+        }
+      ]
     },
     {
       "id": 270,
