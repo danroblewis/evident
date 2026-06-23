@@ -610,12 +610,13 @@ fn cmd_query(args: &[String]) -> ExitCode {
 
     let mut given_map: HashMap<String, Value> = HashMap::new();
     for (k, v) in &givens {
-        // rt.query can only pin a whole scalar variable. An indexed/field pin (col[0], p.x)
-        // would be SILENTLY IGNORED — producing a witness that violates the displayed pin.
-        // Reject it loudly instead of lying. (Indexed solve-for-X is a tracked feature.)
-        if k.contains('[') || k.contains('.') {
+        // Indexed pins (`col[0]`) on a Seq variable are supported — eval.rs asserts
+        // `arr[idx] = value`. Field pins (`p.x`) are NOT yet: they'd be SILENTLY
+        // IGNORED, producing a witness that violates the displayed pin, so reject
+        // those loudly instead of lying. (Field solve-for-X is a tracked feature.)
+        if k.contains('.') {
             return emit_err(format!(
-                "can't pin an indexed/field element yet ({k:?}); pin a whole scalar variable"));
+                "can't pin a field element yet ({k:?}); pin a whole scalar variable or an indexed element"));
         }
         given_map.insert(k.clone(), parse_value_literal(v));
     }

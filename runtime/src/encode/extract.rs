@@ -209,6 +209,43 @@ pub(super) fn extract_seq_composite<'ctx>(
     Some(Value::SeqComposite(out))
 }
 
+/// Parse an indexed given key `<base>[<idx>]` into `(base, idx)`. Returns None
+/// for any key that isn't exactly that shape (e.g. a bare name, or a field pin).
+pub(super) fn parse_indexed_key(name: &str) -> Option<(&str, usize)> {
+    let open = name.find('[')?;
+    if !name.ends_with(']') { return None; }
+    let base = &name[..open];
+    if base.is_empty() { return None; }
+    let idx: usize = name[open + 1..name.len() - 1].parse().ok()?;
+    Some((base, idx))
+}
+
+/// Apply an indexed-element given pin like `col[0] = 1` on a `Seq` variable.
+/// `name` is the full key (`col[0]`); `env` supplies the base Seq var.
+/// Returns the `Bool` constraint to assert, or None if `name` isn't an indexed
+/// key, the base isn't a Seq, or the element type doesn't match the value.
+pub(super) fn assert_indexed_given<'ctx>(
+    env: &HashMap<String, Var<'ctx>>,
+    name: &str,
+    value: &Value,
+    ctx: &'ctx Context,
+) -> Option<Bool<'ctx>> {
+    let (base, idx) = parse_indexed_key(name)?;
+    let (arr, _len, elem) = env.get(base)?.as_seq()?;
+    let cell = arr.select(&Int::from_i64(ctx, idx as i64));
+    match (elem, value) {
+        (SeqElem::Int, Value::Int(n)) =>
+            Some(cell.as_int()?._eq(&Int::from_i64(ctx, *n))),
+        (SeqElem::Bool, Value::Bool(b)) =>
+            Some(cell.as_bool()?._eq(&Bool::from_bool(ctx, *b))),
+        (SeqElem::Str, Value::Str(s)) => {
+            let want = Z3Str::from_str(ctx, s).ok()?;
+            Some(cell.as_string()?._eq(&want))
+        }
+        _ => None,
+    }
+}
+
 pub(super) fn assert_seq_given<'ctx>(
     var: &Var<'ctx>,
     value: &Value,

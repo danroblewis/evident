@@ -11,7 +11,7 @@ use crate::core::ast::*;
 use crate::core::{CompiledModel, DatatypeRegistry, EnumRegistry, EvalResult, SeqElem, Value, Var};
 
 use super::declare::{apply_seq_lengths, apply_set_candidates, declare_var};
-use super::extract::{assert_seq_given, assert_set_given, extract_seq, extract_seq_composite, extract_set, unescape_z3_string};
+use super::extract::{assert_indexed_given, assert_seq_given, assert_set_given, extract_seq, extract_seq_composite, extract_set, unescape_z3_string};
 use super::inline::inline_body_items;
 use super::declare::{apply_pinned_ints, collect_pinned_ints};
 
@@ -72,7 +72,12 @@ pub fn evaluate(
     inline_body_items(&schema.body, &mut env, &solver, schemas, ctx, registry, enums, &mut visited, false);
 
     for (name, value) in given {
-        let Some(var) = env.get(name) else { continue };
+        let Some(var) = env.get(name) else {
+            if let Some(b) = assert_indexed_given(&env, name, value, ctx) {
+                solver.assert(&b);
+            }
+            continue;
+        };
         match (var, value) {
             (Var::IntVar(v),  Value::Int(n))  => solver.assert(&v._eq(&Int::from_i64(ctx, *n))),
             (Var::BoolVar(v), Value::Bool(b)) => solver.assert(&v._eq(&Bool::from_bool(ctx, *b))),
@@ -339,7 +344,12 @@ pub fn run_cached<'ctx>(
 
     cached.solver.push();
     for (name, value) in given {
-        let Some(var) = cached.env.get(name) else { continue };
+        let Some(var) = cached.env.get(name) else {
+            if let Some(b) = assert_indexed_given(&cached.env, name, value, ctx) {
+                cached.solver.assert(&b);
+            }
+            continue;
+        };
         match (var, value) {
             (Var::IntVar(v),  Value::Int(n))  => cached.solver.assert(&v._eq(&Int::from_i64(ctx, *n))),
             (Var::BoolVar(v), Value::Bool(b)) => cached.solver.assert(&v._eq(&Bool::from_bool(ctx, *b))),
@@ -490,7 +500,12 @@ pub fn evaluate_with_extra_assertions(
     }
 
     for (name, value) in given {
-        let Some(var) = env.get(name) else { continue };
+        let Some(var) = env.get(name) else {
+            if let Some(b) = assert_indexed_given(&env, name, value, ctx) {
+                solver.assert(&b);
+            }
+            continue;
+        };
         match (var, value) {
             (Var::IntVar(v),  Value::Int(n))  => solver.assert(&v._eq(&Int::from_i64(ctx, *n))),
             (Var::BoolVar(v), Value::Bool(b)) => solver.assert(&v._eq(&Bool::from_bool(ctx, *b))),
