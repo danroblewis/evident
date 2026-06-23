@@ -228,7 +228,30 @@ function renderDiff(panel, data) {
     + `<div class="diff-col"><div class="diff-col-h appeared">▲ appeared in B</div>${list(appeared, "appeared", "▲", data.appeared_truncated)}</div>`
     + `<div class="diff-col"><div class="diff-col-h vanished">▼ vanished from A</div>${list(vanished, "vanished", "▼", data.vanished_truncated)}</div>`
     + `</div>`
-    + edgeSection;
+    + edgeSection
+    + functionDiffSection(data.function_diff);
+}
+
+// The COMPILED-STRUCTURE delta (#318): which per-variable functions appeared/vanished/changed when the
+// source was edited — the layer beneath the reachable-state diff. A rewired guard that leaves the
+// reachable states identical still shows here as a changed function.
+function functionDiffSection(fd) {
+  if (!fd) return "";
+  const esc = (s) => String(s == null ? "" : s).replace(/</g, "&lt;");
+  const row = (r) => {
+    const sym = { appeared: "▲", vanished: "▼", changed: "~" }[r.status] || "=";
+    const cls = r.status === "vanished" ? "vanished" : "appeared";
+    const detail = r.status === "changed" ? `${esc(r.before)} → ${esc(r.after)}`
+      : r.status === "appeared" ? `= ${esc(r.after)}` : `was ${esc(r.before)}`;
+    return `<li class="${cls}">${sym} <b>${esc(r.var)}</b><span class="dim"> &nbsp;${detail}</span></li>`;
+  };
+  const couplingShift = fd.coupling_before !== fd.coupling_after
+    ? `${fd.coupling_before} → ${fd.coupling_after}` : fd.coupling_after;
+  return `<div class="diff-head diff-fns">⚙ compiled structure — ${fd.changed.length} function${fd.changed.length === 1 ? "" : "s"} changed`
+    + `<span class="dim"> &nbsp;(${fd.pct_before}% → ${fd.pct_after}% computed · ${couplingShift})</span></div>`
+    + (fd.changed.length
+      ? `<ul class="diff-list">${fd.changed.map(row).join("")}</ul>`
+      : `<div class="diff-none dim">= no function changed (only state values differ)</div>`);
 }
 
 // On error / claim / backend-down we must not leave a two-up or a past view over a dead/changed
