@@ -284,6 +284,9 @@ html,body { margin:0; height:100%; background:var(--bg); color:var(--ink);
   cursor:pointer; border:1px solid transparent; user-select:none; }
 #tabs .tab:hover { color:var(--ink); }
 #tabs .tab.on { color:#fff; background:var(--bg); border-color:var(--line); border-bottom-color:var(--bg); }
+/* seam before the compiled-structure (function_*) views — a different KIND of view (Marek #278) */
+#tabs .tab.group-start { margin-left:10px; border-left:2px solid var(--line); padding-left:12px; }
+#tabs .tab.group-start::before { content:"⚙"; opacity:0.5; margin-right:5px; font-size:0.85em; }
 /* overflow:hidden so wheel-zoomed content clips cleanly inside the pane (#233) — pan/zoom
    replaces native scrollbars. cursor:grab signals the surface is draggable; .grabbing while held. */
 #view { flex:1; display:flex; align-items:center; justify-content:center; overflow:hidden; padding:8px;

@@ -280,7 +280,11 @@ function paint(data, ms) {
     // Real tabs: keyboard- and screen-reader-navigable, not bare clickable divs (Marek/Ana #31).
     // Roving tabindex — only the active tab is in the tab order; ←/→ move focus between tabs.
     const el = document.createElement("div");
-    el.className = "tab" + (v === activeView ? " on" : "");
+    // a visual seam before the first compiled-structure (function_*) view — they're a different KIND
+    // of view than the dynamics ones, so the strip should signal the group like ⌘K does (Marek #278).
+    const groupStart = v.startsWith("function_") && !(data.views[i - 1] || "").startsWith("function_");
+    el.className = "tab" + (v === activeView ? " on" : "") + (groupStart ? " group-start" : "");
+    if (groupStart) el.title = "compiled-structure views — how the solver reduced the program to functions";
     el.textContent = v.replace(/_/g, " ");
     el.setAttribute("role", "tab");
     el.setAttribute("aria-selected", v === activeView ? "true" : "false");
