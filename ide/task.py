@@ -203,22 +203,50 @@ _PAGE = """<!doctype html>
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--fg);
          font: 14px/1.5 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
-  header { padding: 18px 28px; border-bottom: 1px solid var(--line);
-           display: flex; align-items: baseline; gap: 16px; }
-  header h1 { font-size: 18px; margin: 0; font-weight: 600; }
-  header .meta { color: var(--dim); font-size: 12px; }
-  .wrap { max-width: 1500px; margin: 0 auto; padding: 24px 28px 64px; }
+  .wrap { max-width: 1500px; margin: 0 auto; padding: 28px 28px 64px; }
   h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .08em;
        color: var(--dim); margin: 0; }
-  .sec-head { display: flex; align-items: baseline; gap: 12px; margin: 28px 0 14px; }
+  .sec-head { display: flex; align-items: baseline; gap: 12px; margin: 30px 0 14px; }
+  .count { color: var(--dim); font-size: 12px; }
   .toggle { background: var(--panel); border: 1px solid var(--line); color: var(--fg);
             border-radius: 8px; padding: 5px 12px; font-size: 12px; cursor: pointer;
-            transition: border-color .12s ease, background .12s ease; }
+            margin-left: auto; transition: border-color .12s ease, background .12s ease; }
   .toggle:hover { border-color: #38414f; background: #1d212a; }
-  .summary { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 8px; }
-  .pill { background: var(--panel); border: 1px solid var(--line); border-radius: 999px;
-          padding: 4px 12px; font-size: 12px; color: var(--dim); }
-  .pill b { color: var(--fg); }
+
+  /* ── status dashboard ───────────────────────────────────────── */
+  .dash { background: var(--panel); border: 1px solid var(--line); border-radius: 18px;
+          padding: 22px 24px; box-shadow: 0 8px 24px rgba(0,0,0,.28); }
+  .dash-head { display: flex; align-items: baseline; justify-content: space-between;
+               gap: 12px; margin-bottom: 18px; }
+  .dash-head h1 { font-size: 17px; margin: 0; font-weight: 650; letter-spacing: .01em; }
+  .updated { color: var(--dim); font-size: 12px; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 14px; }
+  .stat { background: var(--bg); border: 1px solid var(--line); border-radius: 13px;
+          padding: 16px 18px; position: relative; overflow: hidden; }
+  .stat::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--line); }
+  .stat.open::before { background: var(--open); }
+  .stat.prog::before { background: var(--prog); }
+  .stat.wait::before { background: var(--wait); }
+  .stat.closed::before { background: var(--closed); }
+  .stat.warn::before { background: var(--warn); }
+  .stat .num { font-size: 40px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
+  .stat .lbl { margin-top: 9px; font-size: 12px; text-transform: uppercase;
+               letter-spacing: .06em; color: var(--dim); }
+  .stat .sub { font-size: 11px; color: var(--dim); margin-top: 3px; }
+  /* shared status color keys (bar segments + legend dots + tiles) */
+  .k-open { background: var(--open); } .k-in_progress { background: var(--prog); }
+  .k-worker_done { background: var(--wait); } .k-closed { background: var(--closed); }
+  .bar { display: flex; height: 12px; border-radius: 6px; overflow: hidden;
+         margin: 22px 0 12px; background: var(--bg); }
+  .bar > span { display: block; min-width: 2px; }
+  .bar-legend { display: flex; flex-wrap: wrap; gap: 16px; font-size: 12px; color: var(--dim); }
+  .dot { display: inline-block; width: 9px; height: 9px; border-radius: 2px;
+         margin-right: 6px; vertical-align: middle; }
+  .labels { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px;
+            padding-top: 16px; border-top: 1px solid var(--line); }
+  .chip { background: var(--bg); border: 1px solid var(--line); border-radius: 999px;
+          padding: 4px 11px; font-size: 12px; color: var(--dim); }
+  .chip b { color: var(--accent); margin-left: 5px; }
 
   /* hero-card flex flow: cards grow to fill the row, wrap to the next */
   .grid { display: flex; flex-flow: row wrap; gap: 16px; align-items: stretch; }
@@ -244,10 +272,12 @@ _PAGE = """<!doctype html>
   .title { font-weight: 650; font-size: 16px; line-height: 1.3; flex-basis: 100%;
            display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
            overflow: hidden; }
-  .badge { font-size: 11px; padding: 2px 8px; border-radius: 6px; border: 1px solid var(--line);
-           text-transform: uppercase; letter-spacing: .04em; }
-  .st-open { color: var(--open); } .st-in_progress { color: var(--prog); }
-  .st-worker_done { color: var(--wait); } .st-closed { color: var(--ok); border-color: var(--ok); }
+  .badge { font-size: 12px; padding: 3px 10px; border-radius: 7px; border: 1px solid var(--line);
+           text-transform: uppercase; letter-spacing: .04em; font-weight: 600; }
+  .st-open { color: var(--open); border-color: rgba(154,164,178,.35); background: rgba(154,164,178,.10); }
+  .st-in_progress { color: var(--prog); border-color: rgba(216,166,87,.4); background: rgba(216,166,87,.12); }
+  .st-worker_done { color: var(--wait); border-color: rgba(125,174,163,.4); background: rgba(125,174,163,.12); }
+  .st-closed { color: var(--ok); border-color: rgba(76,175,80,.45); background: rgba(76,175,80,.12); }
   .appr { font-family: ui-monospace, Menlo, monospace; font-size: 12px; color: var(--dim); margin-left: auto; }
   .appr .yes { color: var(--ok); } .appr .no { color: var(--dim); }
   .detail { color: var(--dim); white-space: pre-wrap; }
@@ -283,36 +313,48 @@ _PAGE = """<!doctype html>
 
   /* mobile-adaptive */
   @media (max-width: 640px) {
-    header { padding: 14px 16px; flex-direction: column; gap: 4px; }
-    header h1 { font-size: 16px; }
     .wrap { padding: 16px 14px 48px; }
-    h2 { margin: 20px 0 10px; }
+    .dash { padding: 16px 16px; border-radius: 14px; }
+    .stats { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+    .stat { padding: 12px 14px; }
+    .stat .num { font-size: 30px; }
+    .sec-head { margin: 22px 0 10px; }
     .grid { gap: 12px; }
     .card { flex-basis: 100%; min-width: 0; max-width: none; padding: 11px 14px;
             border-radius: 10px; gap: 6px; }
     .card:hover { transform: none; }
-    /* compact one-line hero cards on mobile: clamp title, drop tags + log */
+    /* compact one-line hero cards on mobile: clamp title, drop tags */
     .title { font-size: 14px; -webkit-line-clamp: 1; }
-    .card .tags, .card .log { display: none; }
+    .card .tags { display: none; }
     .overlay { padding: 0; align-items: stretch; }
     .modal { max-width: none; min-height: 100%; border-radius: 0; padding: 20px 18px; }
   }
 </style>
 </head>
 <body>
-<header>
-  <h1>Evident web-IDE ledger</h1>
-  <span class="meta" id="meta">loading…</span>
-</header>
 <div class="wrap">
-  <div class="summary" id="summary"></div>
-  <div class="sec-head">
-    <h2>Tasks</h2>
-    <button class="toggle" id="toggleDone">Show completed</button>
+  <div class="dash">
+    <div class="dash-head">
+      <h1>Task ledger</h1>
+      <span class="updated" id="updated">loading…</span>
+    </div>
+    <div class="stats" id="stats"></div>
+    <div class="bar" id="bar"></div>
+    <div class="bar-legend" id="barLegend"></div>
+    <div class="labels" id="labels"></div>
   </div>
+
+  <div class="sec-head"><h2>Active</h2><span class="count" id="activeCount"></span></div>
   <div class="grid" id="tasks"></div>
-  <div class="sec-head"><h2>Open concerns</h2></div>
+
+  <div class="sec-head"><h2>Open concerns</h2><span class="count" id="concernCount"></span></div>
   <div class="grid" id="concerns"></div>
+
+  <div class="sec-head">
+    <h2>Done &amp; completed</h2>
+    <button class="toggle" id="toggleDone">Show</button>
+  </div>
+  <div class="grid" id="done" hidden></div>
 </div>
 <div class="overlay" id="overlay">
   <div class="modal" id="modal" role="dialog" aria-modal="true">
@@ -342,7 +384,6 @@ let STATE = {tasks: [], concerns: []};
 function taskCard(t) {
   const tags = (t.tags || []).map(x => `<span class="tag">${esc(x)}</span>`).join("");
   const ro = t.reopened ? ` <span class="id">reopened×${t.reopened}</span>` : "";
-  const log = logHtml(t);
   return `<div class="card s-${esc(t.status)}" data-kind="task" data-id="${t.id}">
     <div class="top">
       <span class="id">#${t.id}</span>
@@ -351,7 +392,6 @@ function taskCard(t) {
     </div>
     <div class="title">${esc(t.title)}</div>
     ${tags ? `<div class="tags">${tags}</div>` : ""}
-    ${log ? `<div class="log">${log}</div>` : ""}
   </div>`;
 }
 function concernCard(c) {
@@ -409,55 +449,89 @@ document.getElementById("overlay").addEventListener("click", e => {
   if (e.target.id === "overlay") closeModal();
 });
 document.addEventListener("keydown", e => { if (e.key === "Escape") closeModal(); });
-["concerns", "tasks"].forEach(gid => document.getElementById(gid).addEventListener("click", e => {
+["tasks", "concerns", "done"].forEach(gid => document.getElementById(gid).addEventListener("click", e => {
   const card = e.target.closest(".card");
   if (card && card.dataset.id) openModal(card.dataset.kind, Number(card.dataset.id));
 }));
-let showCompleted = false;
-const ORDER = {in_progress: 0, worker_done: 1, open: 2, closed: 3};
-function renderTasks() {
-  const all = STATE.tasks || [];
-  const doneCount = all.filter(t => t.status === "closed").length;
-  // active view hides completed; completed view shows only those
-  const shown = all.filter(t => showCompleted ? t.status === "closed" : t.status !== "closed");
-  const sorted = shown.slice().sort((a, b) =>
-    (ORDER[a.status] ?? 9) - (ORDER[b.status] ?? 9) || a.id - b.id);
-  document.getElementById("tasks").innerHTML =
-    sorted.length ? sorted.map(taskCard).join("")
-                  : `<div class="empty">${showCompleted ? "no completed tasks" : "no active tasks"}</div>`;
-  const btn = document.getElementById("toggleDone");
-  btn.textContent = showCompleted ? "Show active" : `Show completed (${doneCount})`;
+
+const ORDER = {in_progress: 0, open: 1, worker_done: 2, closed: 3};
+const STATUSES = ["open", "in_progress", "worker_done", "closed"];
+const STAT_DEFS = [
+  {key: "open",        lbl: "Open",              cls: "open"},
+  {key: "in_progress", lbl: "In progress",       cls: "prog"},
+  {key: "worker_done", lbl: "Awaiting approval", cls: "wait"},
+  {key: "closed",      lbl: "Completed",         cls: "closed"},
+];
+const LEG = {open: "Open", in_progress: "In progress", worker_done: "Awaiting", closed: "Completed"};
+
+function renderDashboard() {
+  const tasks = STATE.tasks || [], concerns = STATE.concerns || [];
+  const c = {open: 0, in_progress: 0, worker_done: 0, closed: 0};
+  tasks.forEach(t => { if (c[t.status] != null) c[t.status]++; });
+  const openC = concerns.filter(x => x.status === "open").length;
+  const total = tasks.length || 1;
+  const pct = Math.round((c.closed / total) * 100);
+
+  const tiles = STAT_DEFS.map(s =>
+    `<div class="stat ${s.cls}"><div class="num">${c[s.key]}</div><div class="lbl">${s.lbl}</div>`
+    + (s.key === "closed" ? `<div class="sub">${pct}% of all</div>` : "") + `</div>`).join("")
+    + `<div class="stat warn"><div class="num">${openC}</div><div class="lbl">Open concerns</div></div>`;
+  document.getElementById("stats").innerHTML = tiles;
+
+  document.getElementById("bar").innerHTML = STATUSES.map(s => {
+    const w = (c[s] / total) * 100;
+    return w > 0 ? `<span class="k-${s}" style="width:${w}%" title="${LEG[s]}: ${c[s]}"></span>` : "";
+  }).join("");
+  document.getElementById("barLegend").innerHTML = STATUSES.map(s =>
+    `<span><span class="dot k-${s}"></span>${LEG[s]} ${c[s]}</span>`).join("");
+
+  const tagCount = {};
+  tasks.forEach(t => (t.tags || []).forEach(tg => tagCount[tg] = (tagCount[tg] || 0) + 1));
+  const tags = Object.entries(tagCount).sort((a, b) => b[1] - a[1]);
+  document.getElementById("labels").innerHTML = tags.length
+    ? tags.map(([tg, n]) => `<span class="chip">${esc(tg)}<b>${n}</b></span>`).join("")
+    : `<span class="count">no labels yet</span>`;
+
+  document.getElementById("updated").textContent = "updated " + new Date().toLocaleTimeString();
 }
-document.getElementById("toggleDone").addEventListener("click", () => {
-  showCompleted = !showCompleted;
-  renderTasks();
-});
+function byStatusThenId(a, b) { return (ORDER[a.status] ?? 9) - (ORDER[b.status] ?? 9) || a.id - b.id; }
+function renderActive() {
+  const active = (STATE.tasks || [])
+    .filter(t => t.status === "open" || t.status === "in_progress").sort(byStatusThenId);
+  document.getElementById("tasks").innerHTML =
+    active.length ? active.map(taskCard).join("") : `<div class="empty">no active tasks</div>`;
+  document.getElementById("activeCount").textContent = `${active.length} task${active.length === 1 ? "" : "s"}`;
+}
 function renderConcerns() {
   const openC = (STATE.concerns || []).filter(c => c.status === "open");
   document.getElementById("concerns").innerHTML =
-    openC.length ? openC.map(concernCard).join("")
-                 : `<div class="empty">no open concerns</div>`;
+    openC.length ? openC.map(concernCard).join("") : `<div class="empty">no open concerns</div>`;
+  document.getElementById("concernCount").textContent = `${openC.length}`;
 }
+let showDone = false;
+function renderDone() {
+  const done = (STATE.tasks || [])
+    .filter(t => t.status === "worker_done" || t.status === "closed")
+    .sort((a, b) => (ORDER[a.status] - ORDER[b.status]) || b.id - a.id);  // newest first within group
+  const el = document.getElementById("done");
+  el.hidden = !showDone;
+  el.innerHTML = done.length ? done.map(taskCard).join("") : `<div class="empty">none yet</div>`;
+  document.getElementById("toggleDone").textContent = `${showDone ? "Hide" : "Show"} (${done.length})`;
+}
+document.getElementById("toggleDone").addEventListener("click", () => {
+  showDone = !showDone;
+  renderDone();
+});
 async function refresh() {
   try {
     const db = await (await fetch("/api/data", {cache: "no-store"})).json();
-    const tasks = db.tasks || [], concerns = db.concerns || [];
-    STATE = {tasks, concerns};
-    const byStatus = {};
-    tasks.forEach(t => byStatus[t.status] = (byStatus[t.status] || 0) + 1);
-    const openC = concerns.filter(c => c.status === "open");
-    document.getElementById("summary").innerHTML =
-      `<span class="pill"><b>${tasks.length}</b> tasks</span>`
-      + ["open", "in_progress", "worker_done", "closed"].map(s =>
-          `<span class="pill">${s}: <b>${byStatus[s] || 0}</b></span>`).join("")
-      + `<span class="pill"><b>${openC.length}</b> open concerns</span>`;
-    renderTasks();
+    STATE = {tasks: db.tasks || [], concerns: db.concerns || []};
+    renderDashboard();
+    renderActive();
     renderConcerns();
-    const now = new Date().toLocaleTimeString();
-    document.getElementById("meta").textContent =
-      `${tasks.length} tasks · ${openC.length} open concerns · updated ${now}`;
+    renderDone();
   } catch (e) {
-    document.getElementById("meta").textContent = "reload failed: " + e;
+    document.getElementById("updated").textContent = "reload failed: " + e;
   }
 }
 refresh();
