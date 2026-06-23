@@ -15,7 +15,7 @@ import matplotlib.pyplot as plt
 
 sys.path.insert(0, "viz")
 from evident_viz import load
-from functionize import extract_functions
+from functionize import extract_functions, guard_analysis
 
 
 def _build_trie(branches):
@@ -53,6 +53,10 @@ def render(smt2, schema, out_path):
         _placeholder(out_path, m.fsm, "no piecewise (guarded) functions — nothing to branch")
         return
 
+    try:
+        ga = guard_analysis(m, f["steps"], f["residual"])
+    except Exception:
+        ga = {}
     n = len(guarded)
     fig, axes = plt.subplots(1, n, figsize=(6.2 * n, 6.5), squeeze=False)
     fig.patch.set_facecolor("#0f1419")
@@ -61,8 +65,18 @@ def render(smt2, schema, out_path):
         ax.set_xlim(0, 1); ax.set_ylim(0, 1)
         trie = _build_trie(s["branches"])
         lines = [f"{s['var']}  ="] + _trie_lines(trie)
-        ax.text(0.02, 0.97, "\n".join(lines), ha="left", va="top", fontsize=9.5,
+        ax.text(0.02, 0.93, "\n".join(lines), ha="left", va="top", fontsize=9.5,
                 family="monospace", color="#e6edf3")
+        # z3 verdict: is this piecewise dispatch a TOTAL, UNAMBIGUOUS function?
+        v = ga.get(s["var"])
+        if v is not None:
+            if v["complete"] and v["disjoint"]:
+                badge, col = "✓ total & unambiguous (a well-formed function)", "#3fb950"
+            elif not v["complete"]:
+                badge, col = "⚠ INCOMPLETE — some valid input hits no branch (partial function)", "#d29922"
+            else:
+                badge, col = "⚠ OVERLAPPING guards — two branches can fire (ambiguous dispatch)", "#d29922"
+            ax.text(0.02, 0.985, badge, ha="left", va="top", fontsize=8.5, color=col, weight="bold")
         ax.set_title(f"{s['var']}   ({len(s['branches'])} branches)", color="#58a6ff", fontsize=12)
     fig.suptitle(f"{m.fsm}  —  guard decision trees (the branching the JIT compiles)",
                  color="#c9d1d9", fontsize=13)

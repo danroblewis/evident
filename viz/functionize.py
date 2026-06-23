@@ -104,6 +104,7 @@ def extract_functions(model):
                         st = steps[var] = {"var": var, "kind": "guarded", "branches": []}
                     st["branches"].append({
                         "guard": _pretty(guard), "guard_atoms": gatoms, "body": _pretty(body),
+                        "_guard_z3": guard,                # in-process only (for guard_analysis); not JSON
                         "deps": gdeps + [d for d in _free_vars(body) if d not in gdeps],
                     })
                 continue
@@ -115,7 +116,7 @@ def extract_functions(model):
                 steps[v] = {"var": v, "kind": "scalar", "expr": _pretty(body), "deps": _free_vars(body)}
                 continue
         # Residual: a genuine constraint the solver did NOT reduce to a function.
-        residual.append({"expr": _pretty(a), "deps": _free_vars(a)})
+        residual.append({"expr": _pretty(a), "_z3": a, "deps": _free_vars(a)})
 
     step_list = list(steps.values())
     referenced = {d for st in step_list for d in _step_deps(st)}
@@ -137,6 +138,41 @@ def _step_deps(st):
 def _pretty(e):
     """A compact one-line z3-expr string (z3's default repr already drops newlines for small exprs)."""
     return " ".join(str(e).split())
+
+
+def guard_analysis(model, steps, residual):
+    """For each guarded step, check whether the piecewise DISPATCH is a TOTAL function — the guards
+    cover the whole valid INPUT space — and UNAMBIGUOUS — no two guards are simultaneously satisfiable.
+    Both z3-decidable. Returns {var: {complete, disjoint, overlap:(i,j)|None}}. A gap ⇒ a partial
+    function (undefined behaviour for some valid input); an overlap ⇒ ambiguous dispatch.
+
+    The input domain is the type-invariants on the PREV variables the guards read — obtained by
+    substituting each next-var → its prev-var in the residual (0≤timer≤2 ⇒ 0≤_timer≤2); without that
+    the prev reads are unconstrained and z3 reports a spurious gap at _timer=5."""
+    rez_next = [r["_z3"] for r in residual if "_z3" in r]
+    consts = getattr(model, "consts", {})
+    subs = [(consts[v["name"]], consts[v["prev"]]) for v in model.carried
+            if v.get("prev") and v["name"] in consts and v["prev"] in consts]
+    domain = [z3.substitute(r, subs) for r in rez_next] if subs else rez_next
+    out = {}
+    for s in steps:
+        if s["kind"] != "guarded":
+            continue
+        guards = [b["_guard_z3"] for b in s["branches"] if "_guard_z3" in b]
+        if not guards:
+            continue
+        overlap = None
+        for i in range(len(guards)):
+            for j in range(i + 1, len(guards)):
+                sv = z3.Solver(); sv.add(domain); sv.add(guards[i]); sv.add(guards[j])
+                if sv.check() == z3.sat:
+                    overlap = (i, j); break
+            if overlap:
+                break
+        sv = z3.Solver(); sv.add(domain); sv.add(z3.Not(z3.Or(guards)))
+        complete = sv.check() == z3.unsat
+        out[s["var"]] = {"disjoint": overlap is None, "complete": complete, "overlap": overlap}
+    return out
 
 
 if __name__ == "__main__":
