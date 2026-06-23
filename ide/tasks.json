@@ -3991,16 +3991,23 @@
       "id": 190,
       "title": "Verify box should accept the editor's backslash abbreviations (or auto-expand them). A newcomer who learned '\\ge \u2192 \u2265' from the palette/editor will type 'count \\ge 0' in the \u22a2verify box and get the generic '\u2715 write var op value' error. Run the same abbreviation expansion in the verify input (and any symbol-accepting input), OR make the error explicitly say 'use >= or \u2265, not \\ge here'. (Re-files Sam #160 as a tracked task.)",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "ide-critic-newcomer",
       "created": "2026-06-22T12:40:07Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "editor"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-23T16:24:34Z",
+          "by": "worker",
+          "act": "done",
+          "note": "shipped: verify/query boxes now accept the editor's full typable-token input \u2014 \\-abbreviations (\\in\u2192\u2208, \\box\u2192\u25a1, \\diamond\u2192\u25c7) + op pairs (<=\u2192\u2264) were already there via expandFieldSymbols; added the bare word mnemonics (and\u2192\u2227, forall\u2192\u2200, exists\u2192\u2203) for parity. Verified live on #inv-prop: all three flavors + 'Walking'/'into' correctly unchanged, 0 console errors. ./test.sh green."
+        }
+      ]
     },
     {
       "id": 194,
