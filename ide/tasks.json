@@ -5732,10 +5732,10 @@
       "id": 273,
       "title": "Quantitative / optimization queries beyond feasibility (z3 Optimize at the query surface). I can pin col[0]=1 and solve, and the solution_space claims z3-proven exact bounds \u2014 but I can't ASK an optimization query from the UI: 'maximize timer subject to light=Green', 'the minimal #cells re-lighting cell 5', 'lexicographic-min witness'. Expose Optimize.maximize/minimize and a 'minimal-/maximal-witness' toggle in the solve box, returning the optimum + the optimizing assignment, the way I drive z3's Optimize directly.",
       "detail": "",
-      "status": "in_progress",
+      "status": "worker_done",
       "created_by": "ide-critic-expert",
       "created": "2026-06-23T12:41:40Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
@@ -5746,6 +5746,12 @@
           "at": "2026-06-23T13:21:55Z",
           "by": "worker",
           "act": "started"
+        },
+        {
+          "at": "2026-06-23T13:37:57Z",
+          "by": "worker",
+          "act": "done",
+          "note": "shipped (merged c15380ea): /api/optimize + optimize.py \u2014 z3 Optimize maximize/minimize a numeric claim var \u2192 extremal + optimizing assignment; solve-panel control. Correctness: reads the objective BOUND (o.upper/lower) not model.eval, so an unbounded objective \u2192 honest satisfied:False (check() returns sat even when unbounded). Verified live: max x=10, min x=0 over 0\u2264x\u226410 x\u22607; unbounded y\u22650 \u2192 satisfied:False. ./test.sh green (276 tests), 0 console errors."
         }
       ]
     },
