@@ -1,5 +1,5 @@
 {
-  "seq": 297,
+  "seq": 301,
   "tasks": [
     {
       "id": 1,
@@ -6353,7 +6353,7 @@
       "id": 294,
       "title": "Parameterized passthrough: '..Name(field \u21a6 other)' must parse + compose (e.g. 2D random walk from two 1D walks)",
       "detail": "User hit a parse error composing fsm instances via renamed passthrough:\n  fsm random_walk\n      x, y \u2208 Int\n      ..one_d_random_walk(a \u21a6 x)\n      ..one_d_random_walk(a \u21a6 y)\n\u2192 'parse error at line 11 col 24: expected schema/claim/type/import/enum, got (('. The parser accepts bare '..Name' passthrough but NOT '..Name(field \u21a6 other)' with rename args. COMPLETION CRITERIA: (1) '..Name(a \u21a6 x)' parses (the (...) after ..Name is rename-args, not a new decl); (2) it inlines the included fsm/claim with field 'a' renamed to 'x' + all its constraints; (3) two passthroughs of the same fsm with different renames compose into INDEPENDENT sub-systems (x-walk and y-walk, each its own da carried separately \u2014 resolve the da name collision); (4) a 2D random_walk sample loads + analyzes; (5) ./test.sh green + a parse-and-compose test.",
-      "status": "open",
+      "status": "in_progress",
       "created_by": "worker",
       "created": "2026-06-23T20:16:22Z",
       "worker_done": false,
@@ -6362,7 +6362,13 @@
       "tags": [
         "language"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-23T20:29:10Z",
+          "by": "worker",
+          "act": "started"
+        }
+      ]
     },
     {
       "id": 295,
@@ -6408,6 +6414,90 @@
         "example"
       ],
       "log": []
+    },
+    {
+      "id": 298,
+      "title": "Refactor examples: drop the unnecessary '\u00acis_first_tick \u21d2' guards",
+      "detail": "Most examples wrap per-tick constraints in '\u00acis_first_tick \u21d2' even when the constraint holds on the first tick anyway (doesn't reference _var, or the runtime handles the first-tick delta). The guard is noise \u2014 models read cleaner without it (see the new random_walk: '-1 \u2264 \u0394x \u2264 1' unguarded). Refactor app-data.js SAMPLES + examples/*.ev to REMOVE the unnecessary guards. SOUNDNESS (critical \u2014 the dropped-constraint policy makes wrong edits SILENT): for EACH guard removed, re-analyze the example before vs after and confirm IDENTICAL behavior \u2014 same reachable states + edges + 0 dropped + same verdict. KEEP a guard only where removing it changes behavior/drops a constraint (a constraint that genuinely can't hold on tick 0 and isn't covered by the seed). COMPLETION CRITERIA: (1) majority of '\u00acis_first_tick \u21d2' guards removed; (2) EVERY example analyzes IDENTICALLY before/after (a before/after reachable-set + dropped-count diff per example, all matching); (3) the demo tests (examples/test_*.ev sat_/unsat_ claims) still pass; (4) ./test.sh fully green. Report which guards you kept + why.",
+      "status": "in_progress",
+      "created_by": "worker",
+      "created": "2026-06-23T20:26:32Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "refactor"
+      ],
+      "log": [
+        {
+          "at": "2026-06-23T20:29:10Z",
+          "by": "worker",
+          "act": "started"
+        }
+      ]
+    },
+    {
+      "id": 299,
+      "title": "Diagrams: reachability_tree roots from ALL initial conditions + shows the tree CLOSING (closing_depth), not a depth-8 cap",
+      "detail": "reachability_tree roots from one seed + caps at depth 8. Root from the full init set (full_state_graph) + use closing_depth to show the tree CLOSING for finite discrete systems. Criteria: roots from all inits; closes at the real depth not a fixed cap; bistable/traffic render; ./test.sh green + test.",
+      "status": "in_progress",
+      "created_by": "worker",
+      "created": "2026-06-23T20:29:09Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "diagram"
+      ],
+      "log": [
+        {
+          "at": "2026-06-23T20:29:10Z",
+          "by": "worker",
+          "act": "started"
+        }
+      ]
+    },
+    {
+      "id": 300,
+      "title": "Diagrams: transition_matrix over all initial conditions (real transition relation, not a fabricated linspace grid)",
+      "detail": "transition_matrix uses one z3 model + a fabricated linspace grid in SAMPLED mode. Root on the global graph (full_state_graph, all discrete inits) + the REAL transition relation. Criteria: matrix over the global state set; no fabricated grid; traffic/counter render; ./test.sh green + test.",
+      "status": "in_progress",
+      "created_by": "worker",
+      "created": "2026-06-23T20:29:10Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "diagram"
+      ],
+      "log": [
+        {
+          "at": "2026-06-23T20:29:10Z",
+          "by": "worker",
+          "act": "started"
+        }
+      ]
+    },
+    {
+      "id": 301,
+      "title": "Diagrams: all_conditions drives the stats/banner too (state_graph shows 7 but banner reads from-init 2)",
+      "detail": "When all_conditions is on, the analyze stats/banner still reflect from-init \u2014 state_graph PNG shows 7 states but banner says 2. Thread all_conditions into _reachable_stats so the banner/structure reflect the global graph when on; default unchanged. Criteria: bistable all_conditions=true \u2192 7 states reported; false \u2192 2; ./test.sh green + test.",
+      "status": "in_progress",
+      "created_by": "worker",
+      "created": "2026-06-23T20:29:10Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "diagram"
+      ],
+      "log": [
+        {
+          "at": "2026-06-23T20:29:10Z",
+          "by": "worker",
+          "act": "started"
+        }
+      ]
     }
   ],
   "concerns": [
