@@ -188,6 +188,43 @@ def function_summary(model):
             "coupling": coupling, "cycles": cycles}
 
 
+def _step_sig(step):
+    """A canonical comparable string of a step's function — scalar expr, or its guarded branches sorted
+    (order-independent) so a reordering isn't reported as a change."""
+    if step["kind"] == "scalar":
+        return step["expr"]
+    if step["kind"] == "guarded":
+        return "  |  ".join(sorted(f"{b['guard']} ⇒ {b['body']}" for b in step["branches"]))
+    return repr(step.get("expr") or step.get("value"))
+
+
+def function_diff(ma, mb):
+    """The compiled-structure DELTA between two programs (Ana #318): which per-variable functions
+    APPEARED, VANISHED, or CHANGED when the source was edited — the functionizer's view of a diff,
+    deeper than a text diff or a reachable-state diff. Aligns by variable name; also reports the
+    coupling-class and %-computed shift."""
+    fa, fb = extract_functions(ma), extract_functions(mb)
+    sa = {s["var"]: s for s in fa["steps"]}
+    sb = {s["var"]: s for s in fb["steps"]}
+    rows = []
+    for v in sorted(set(sa) | set(sb)):
+        a, b = sa.get(v), sb.get(v)
+        if a and not b:
+            status = "vanished"
+        elif b and not a:
+            status = "appeared"
+        elif _step_sig(a) != _step_sig(b):
+            status = "changed"
+        else:
+            status = "unchanged"
+        rows.append({"var": v, "status": status,
+                     "before": _step_sig(a) if a else None, "after": _step_sig(b) if b else None})
+    ca, cb = function_summary(ma), function_summary(mb)
+    return {"vars": rows, "changed": [r for r in rows if r["status"] != "unchanged"],
+            "coupling_before": ca["coupling"], "coupling_after": cb["coupling"],
+            "pct_before": round(ca["pct"]), "pct_after": round(cb["pct"])}
+
+
 def guard_analysis(model, steps, residual):
     """For each guarded step, check whether the piecewise DISPATCH is a TOTAL function — the guards
     cover the whole valid INPUT space — and UNAMBIGUOUS — no two guards are simultaneously satisfiable.

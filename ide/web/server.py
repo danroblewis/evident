@@ -41,6 +41,7 @@ from analysis import (  # noqa: E402
     _banner, _dropped_locs, _error_loc, _model_diff, _reachable_stats, _recommend)
 from render import (  # noqa: E402
     RENDERERS, VIEWS, _function_response, _maybe_claim, _render_png, _render_svg)
+from functionize import function_diff  # noqa: E402
 from runtime_io import _export, _run_query  # noqa: E402
 
 # The functionizer family renders from the CHEAP decomposition (extract/guard_analysis/summary, all
@@ -317,7 +318,12 @@ def diff(req: DiffReq):
             mb, err = _load_for_diff(req.source_b, wb)
             if err:
                 return {"ok": False, "error": f"live program B: {err}"}
-            return _model_diff(ma, mb, REACH_LIMIT)
+            # Behavior delta (reachable states) PLUS compiled-structure delta (which per-variable
+            # functions appeared/vanished/changed) — one diff, both layers (Ana #318). The structure
+            # diff is cheap and var-set-tolerant, so it's attached even when the state diff is thin.
+            result = _model_diff(ma, mb, REACH_LIMIT)
+            result["function_diff"] = function_diff(ma, mb)
+            return result
         except Exception as e:
             return {"ok": False, "error": f"diff failed: {e}"}
 
