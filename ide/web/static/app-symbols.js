@@ -222,13 +222,19 @@ const VERDICTS = {
 
 // --- typable shortcuts in the ⊢ verify / solve input fields (Sam #212/#160) --------
 // The same \\word / >= expansion as the editor, for plain <input>s. Wired in app.js.
+// Live symbol expansion for the verify/query inputs — the editor's typable-token input (#190), in
+// three flavors: \word LaTeX (UNI), ASCII op pairs (<= → ≤), and bare word mnemonics (and → ∧). The
+// bare case excludes a \-prefixed word (the LaTeX case owns those). A lowercase var that would
+// collide can't exist — the editor converts the same words when the model is written.
 function expandFieldSymbols(el) {
   const v = el.value, pos = el.selectionStart;
   const before = v.slice(0, pos);
   let start = -1, rep = "";
   const bs = before.match(/\\([a-zA-Z]+)([^a-zA-Z])$/);     // \word + a just-typed non-letter
+  const wm = before.match(/(?:^|[^A-Za-z0-9_\\])([A-Za-z]+)([^A-Za-z0-9_])$/);   // a bare mnemonic word, not \-prefixed
   if (bs && UNI[bs[1]]) { start = pos - bs[0].length; rep = UNI[bs[1]] + bs[2]; }
   else if (OP_PAIRS[before.slice(-2)]) { start = pos - 2; rep = OP_PAIRS[before.slice(-2)]; }
+  else if (wm && WORD_MNEMONICS[wm[1]]) { start = pos - wm[2].length - wm[1].length; rep = WORD_MNEMONICS[wm[1]] + wm[2]; }
   if (start >= 0) {
     el.value = v.slice(0, start) + rep + v.slice(pos);
     el.setSelectionRange(start + rep.length, start + rep.length);
