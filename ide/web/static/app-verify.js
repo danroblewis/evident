@@ -64,9 +64,20 @@ function renderSolve(d, given) {
     head.innerHTML = `<span class="sat">⊨ ${d.complete ? "all " + n : "≥ " + n}</span> distinct witness${n === 1 ? "" : "es"} of <b>${d.claim || "claim"}</b>`
       + (d.complete ? ` <span class="dim">(complete — the solver exhausted the space)</span>`
                     : ` <span class="dim">(showing ${n}; stopped at the limit, more may exist)</span>`);
-    body.innerHTML = d.solutions.map((s, i) =>
-      `<div class="sol"><span class="dim">#${i + 1}</span> `
-      + Object.keys(s).sort().map((k) => `${k}=${escapeHtml(JSON.stringify(s[k]))}`).join("&nbsp;&nbsp;") + `</div>`).join("");
+    // Each witness draws as its DOMAIN PICTURE (board / grid), same as the single-solve path —
+    // a beginner who just learned to read the board shouldn't get raw vectors here (Marek #283, Sam #269).
+    const esrc = (typeof editor !== "undefined") ? editor.getValue() : "";
+    body.innerHTML = d.solutions.map((s, i) => {
+      const ks = Object.keys(s).sort();
+      const vizByKey = {};
+      ks.forEach((k) => { const v = seqViz(k, s[k], esrc); if (v) vizByKey[k] = v; });
+      const viz = ks.map((k) => vizByKey[k]).filter(Boolean).join("");
+      const raw = ks.filter((k) => !vizByKey[k])
+        .map((k) => `${k}=${escapeHtml(JSON.stringify(s[k]))}`).join("&nbsp;&nbsp;");
+      return `<div class="sol"><span class="dim">#${i + 1}</span> `
+        + (viz ? `<div class="viz-wrap">${viz}</div>` : "")
+        + (raw ? `<span>${raw}</span>` : "") + `</div>`;
+    }).join("");
     return;
   }
 
