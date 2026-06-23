@@ -16,6 +16,7 @@ fn main() -> ExitCode {
         "test"        => cmd_test(&args[1..]),
         "effect-run"  => cmd_effect_run(&args[1..]),
         "export"      => cmd_export(&args[1..]),
+        "functions"   => cmd_functions(&args[1..]),
         "query"       => cmd_query(&args[1..]),
         "fmt"         => cmd_fmt(&args[1..]),
         "help" | "--help" | "-h" => { usage(); ExitCode::SUCCESS }
@@ -32,6 +33,7 @@ fn usage() {
     eprintln!("  evident test         [path] [-v] [--no-color]");
     eprintln!("  evident effect-run   <file>           # run an effect-driven program");
     eprintln!("  evident export       <file> [--out PREFIX]  # dump transition SMT-LIB + schema JSON");
+    eprintln!("  evident functions    <file> [--out PREFIX]  # dump the functionizer Z3Program as JSON");
     eprintln!("  evident query        <file> [claim] [--given NAME=VALUE]... [--json]  # solve a claim, print a witness");
     eprintln!("  evident fmt          <file>... [--write] [--check]  # gofmt-style formatter");
 }
@@ -273,6 +275,65 @@ fn cmd_export(args: &[String]) -> ExitCode {
         eprintln!("export: write {json_path}: {e}"); return ExitCode::from(1);
     }
     println!("wrote {smt_path} + {json_path}  ({kind_label}: {what})");
+    ExitCode::SUCCESS
+}
+
+/// `evident functions <file> [--out PREFIX]` — dump the AUTHORITATIVE functionizer
+/// decomposition (`Z3Program`) of the program's single FSM as JSON. Default: print
+/// to stdout. `--out PREFIX` writes `<prefix>.functions.json`. This is the real
+/// compiled per-variable decomposition (Scalar/Guarded/Seq/PreBaked steps + residual
+/// checks/predicates), not a re-derivation — the source of truth the web-IDE's
+/// function views should consume (see `EvidentRuntime::export_functions`).
+fn cmd_functions(args: &[String]) -> ExitCode {
+    let mut path: Option<String> = None;
+    let mut out: Option<String> = None;
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--out" => { i += 1; out = args.get(i).cloned(); }
+            "-h" | "--help" => {
+                eprintln!("usage: evident functions <file> [--out PREFIX]");
+                return ExitCode::SUCCESS;
+            }
+            other if other.starts_with('-') => {
+                eprintln!("functions: unknown flag {other:?}");
+                return ExitCode::from(2);
+            }
+            other => { path = Some(other.to_string()); }
+        }
+        i += 1;
+    }
+    let Some(path) = path else {
+        eprintln!("functions: need a program path");
+        return ExitCode::from(2);
+    };
+    let mut rt = EvidentRuntime::new();
+    if let Err(e) = rt.load_file(Path::new(STDLIB_RUNTIME)) {
+        eprintln!("functions: load {STDLIB_RUNTIME}: {e}");
+        return ExitCode::from(1);
+    }
+    if let Err(e) = rt.load_file(Path::new(&path)) {
+        eprintln!("functions: load {path}: {e}");
+        return ExitCode::from(1);
+    }
+    let fsm = match trampoline::single_fsm(&rt) {
+        Ok(s) => s.claim_name,
+        Err(e) => { eprintln!("functions: no single fsm in {path}: {e}"); return ExitCode::from(2); }
+    };
+    let json = match rt.export_functions(&fsm) {
+        Ok(x) => x,
+        Err(e) => { eprintln!("functions: {e}"); return ExitCode::from(1); }
+    };
+    match out {
+        Some(prefix) => {
+            let json_path = format!("{prefix}.functions.json");
+            if let Err(e) = std::fs::write(&json_path, json) {
+                eprintln!("functions: write {json_path}: {e}"); return ExitCode::from(1);
+            }
+            println!("wrote {json_path}  (fsm: {fsm})");
+        }
+        None => { print!("{json}"); }
+    }
     ExitCode::SUCCESS
 }
 

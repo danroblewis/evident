@@ -1,4 +1,4 @@
-use crate::core::{CompiledModel, QueryResult, RuntimeError, Var, Z3Step};
+use crate::core::{CompiledModel, GuardedBody, QueryResult, RuntimeError, Var, Z3Program, Z3Step};
 use crate::functionize::cranelift::JitProgram;
 use super::{EvidentRuntime, Value};
 use crate::encode::run_cached;
@@ -609,6 +609,138 @@ impl EvidentRuntime {
         Ok((smt2, json))
     }
 
+    /// Export the AUTHORITATIVE functionizer decomposition of FSM `name` as JSON: the
+    /// REAL `Z3Program` (per-output `Scalar`/`Guarded`/`Seq`/`PreBaked` steps + residual
+    /// `checks`/`predicates`) the runtime's functionizer actually compiles — not a
+    /// re-derivation. Mirrors the live functionizer (build_cache at arith=2 →
+    /// `simplify_assertions` → per-component `extract_program_partial`), then serializes
+    /// the program in-place (the `'ctx` lifetime forbids returning the `Z3Program`; each
+    /// z3 expr is stringified via its SMT-LIB `Display` while `self.z3_ctx` is alive).
+    pub fn export_functions(&self, name: &str) -> Result<String, RuntimeError> {
+        let schema = self.schemas.get(name)
+            .ok_or_else(|| RuntimeError::UnknownSchema(name.to_string()))?;
+        let empty: HashMap<String, Value> = HashMap::new();
+        let cached = crate::encode::build_cache(
+            schema, &self.schemas, self.z3_ctx, &self.datatypes, Some(&self.enums), &empty, 2);
+        let assertions_local = cached.solver.get_assertions();
+        let assertions: Vec<Bool<'static>> = unsafe {
+            std::mem::transmute::<Vec<Bool<'_>>, Vec<Bool<'static>>>(assertions_local)
+        };
+        let simplify_result = simplify_assertions(self.z3_ctx, &assertions);
+        let simplified = &simplify_result.formulas;
+        let mut touched: HashSet<String> = HashSet::new();
+        for a in simplified {
+            collect_touched_names(a, &mut touched);
+        }
+        let outputs: Vec<String> = cached.env.iter()
+            .filter(|(_, v)| !matches!(v,
+                Var::EnumValue { .. } | Var::EnumCtor { .. } | Var::PinnedInt(_)))
+            .filter(|(name, _)| touched.contains(name.as_str()))
+            .map(|(n, _)| n.clone())
+            .collect();
+        // Walk connected components — the same per-component path the live functionizer
+        // compiles. Whole-transition `extract_program` is all-or-nothing (bails if ANY
+        // output stays relational), so it under-reports; component-walking surfaces exactly
+        // the steps the functionizer actually emits, routing the rest to residual.
+        let (comp_vars, comp_assert_idx, global_idx) =
+            decompose_simplified(simplified, &outputs);
+        let mut steps: Vec<Z3Step<'static>> = Vec::new();
+        let mut checks: Vec<(z3::ast::Dynamic<'static>, z3::ast::Dynamic<'static>)> = Vec::new();
+        let mut predicates: Vec<Bool<'static>> = Vec::new();
+        let mut residual_idx: Vec<usize> = Vec::new();
+        for (ci, cvars) in comp_vars.iter().enumerate() {
+            let casserts: Vec<Bool<'static>> =
+                comp_assert_idx[ci].iter().map(|&i| simplified[i].clone()).collect();
+            match extract_program_partial(&casserts, cvars) {
+                Some((mut program, missing)) if missing.is_empty() => {
+                    steps.append(&mut program.steps);
+                    checks.append(&mut program.checks);
+                    predicates.append(&mut program.predicates);
+                }
+                _ => residual_idx.extend(comp_assert_idx[ci].iter().copied()),
+            }
+        }
+        residual_idx.extend(global_idx);
+        for i in residual_idx {
+            predicates.push(simplified[i].clone());
+        }
+        let program = Z3Program { steps, checks, predicates };
+        Ok(serialize_program(name, &program))
+    }
+
+}
+
+/// Serialize a `Z3Program` to the `viz/functionize.py`-shaped JSON. Each z3 expr is
+/// rendered via its SMT-LIB `Display`; `json_str` escapes it as a JSON string.
+fn serialize_program(name: &str, program: &Z3Program) -> String {
+    let mut steps: Vec<String> = Vec::new();
+    for step in &program.steps {
+        match step {
+            Z3Step::Scalar { var, expr } => {
+                steps.push(format!(
+                    "    {{\"kind\": \"scalar\", \"var\": {}, \"expr\": {}}}",
+                    json_str(var), json_str(&format!("{expr}"))));
+            }
+            Z3Step::Seq { var, elem_exprs } => {
+                let elems: Vec<String> = elem_exprs.iter()
+                    .map(|e| json_str(&format!("{e}"))).collect();
+                steps.push(format!(
+                    "    {{\"kind\": \"seq\", \"var\": {}, \"elems\": [{}]}}",
+                    json_str(var), elems.join(", ")));
+            }
+            Z3Step::Guarded { var, branches } => {
+                let brs: Vec<String> = branches.iter().map(|b| {
+                    let body = match &b.body {
+                        GuardedBody::Scalar(d) => format!("{d}"),
+                        GuardedBody::Seq(elems) => {
+                            let parts: Vec<String> = elems.iter()
+                                .map(|e| format!("{e}")).collect();
+                            format!("({})", parts.join(" "))
+                        }
+                    };
+                    format!("{{\"guard\": {}, \"body\": {}}}",
+                        json_str(&format!("{}", b.guard)), json_str(&body))
+                }).collect();
+                steps.push(format!(
+                    "    {{\"kind\": \"guarded\", \"var\": {}, \"branches\": [{}]}}",
+                    json_str(var), brs.join(", ")));
+            }
+            Z3Step::PreBaked { var, value } => {
+                steps.push(format!(
+                    "    {{\"kind\": \"prebaked\", \"var\": {}, \"value\": {}}}",
+                    json_str(var), json_str(&format!("{value:?}"))));
+            }
+        }
+    }
+    let checks: Vec<String> = program.checks.iter()
+        .map(|(l, r)| format!("[{}, {}]",
+            json_str(&format!("{l}")), json_str(&format!("{r}"))))
+        .collect();
+    let preds: Vec<String> = program.predicates.iter()
+        .map(|p| json_str(&format!("{p}"))).collect();
+    format!(
+        "{{\n  \"fsm\": {},\n  \"steps\": [\n{}\n  ],\n  \"checks\": [{}],\n  \"predicates\": [{}]\n}}\n",
+        json_str(name), steps.join(",\n"), checks.join(", "), preds.join(", "))
+}
+
+/// Minimal JSON string encoder — escapes `"`, `\`, and control chars. z3's SMT-LIB
+/// `Display` output can carry quotes (string literals), so escape rather than interpolate.
+fn json_str(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('"');
+    for c in s.chars() {
+        match c {
+            '"'  => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            c if (c as u32) < 0x20 => out.push_str(&format!("\\u{:04x}", c as u32)),
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
 }
 
 /// A var "varies" over the transition iff the constraint admits TWO models that
