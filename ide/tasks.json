@@ -4932,16 +4932,23 @@
       "id": 231,
       "title": "Query console: return a WITNESS TRACE, not just the satisfying state. '\u2713 reachable \u2014 light=Green timer=2 (1 of 9)' tells me it exists; I want the shortest path from init that reaches it (the \u2203 dual of verify's counterexample trace #141), scrubbable through the state_graph. TLA+'s eval gives me the trace; the query row gives me the endpoint.",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "ide-critic",
       "created": "2026-06-22T19:14:31Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "analysis"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-23T17:06:25Z",
+          "by": "worker",
+          "act": "done",
+          "note": "ALREADY DONE \u2014 /api/query (m.query) returns d.trace = the init\u2192witness path; _execQuery (app-verify.js:602) shows it via showTrace('a run reaching: P', 'goal') + the trace scrubber. Verified live: query 'light = Green' on traffic \u2192 d.trace = Red/t0\u2192Red/t1\u2192Red/t2\u2192Green/t0 (4 states), rendered as a steppable run. (The explore endpoint separately uses trace_to.)"
+        }
+      ]
     },
     {
       "id": 232,
