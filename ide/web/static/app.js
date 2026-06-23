@@ -3,55 +3,6 @@
 
 const $ = (s) => document.querySelector(s);
 
-// --- Evident syntax-highlighting Ace mode -----------------------------------------
-// A code editor with no language mode shows undifferentiated grey text. This Ace mode
-// tokenizes Evident: keywords, the Unicode/ASCII operators, comments, strings, numbers,
-// _prev reads, Type/Variant capitals, and booleans — mapped to dracula token classes.
-ace.define("ace/mode/evident", [
-  "require", "exports", "module",
-  "ace/lib/oop", "ace/mode/text", "ace/mode/text_highlight_rules",
-], function (require, exports) {
-  const oop = require("ace/lib/oop");
-  const TextMode = require("ace/mode/text").Mode;
-  const TextHighlightRules = require("ace/mode/text_highlight_rules").TextHighlightRules;
-
-  const KEYWORDS =
-    "claim|type|enum|fsm|schema|import|assert|match|matches|subclaim|in|is" +
-    "_first_tick|coindexed|edges";
-  // The Unicode/ASCII operator glyphs. Escaped for use inside a character class.
-  const OPS = "∈∉∀∃⇒⟸↦→⟨⟩≤≥≠Δ¬∧∨∪∩×·⊆∅=<>+\\-*/?:.,#|";
-
-  function EvidentHighlightRules() {
-    this.$rules = {
-      start: [
-        { token: "comment.line", regex: "--.*$" },
-        { token: "string", regex: '"(?:\\\\.|[^"\\\\])*"' },
-        { token: "constant.numeric", regex: "\\b\\d+(?:\\.\\d+)?\\b" },
-        // booleans (lowercase) — capital True/False are unbound names, left as identifiers
-        { token: "constant.language.boolean", regex: "\\b(?:true|false)\\b" },
-        // keywords (word-boundary; is_first_tick handled by the regex alternation)
-        { token: "keyword", regex: "\\b(?:" + KEYWORDS + ")\\b" },
-        // previous-tick read: _foo
-        { token: "variable.parameter", regex: "_[A-Za-z]\\w*\\b" },
-        // Type name / enum Variant — Capitalized identifier
-        { token: "entity.name.type", regex: "\\b[A-Z]\\w*\\b" },
-        // plain identifiers
-        { token: "identifier", regex: "\\b[a-z_]\\w*\\b" },
-        // operators (Unicode + ASCII)
-        { token: "keyword.operator", regex: "[" + OPS + "]" },
-      ],
-    };
-  }
-  oop.inherits(EvidentHighlightRules, TextHighlightRules);
-
-  function Mode() {
-    this.HighlightRules = EvidentHighlightRules;
-    this.lineCommentStart = "--";
-  }
-  oop.inherits(Mode, TextMode);
-  exports.Mode = Mode;
-});
-
 // --- editor construction ----------------------------------------------------------
 const editor = ace.edit("code");
 editor.setTheme("ace/theme/dracula");
