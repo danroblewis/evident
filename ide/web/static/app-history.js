@@ -53,6 +53,8 @@ function viewPane(data, withOverlay) {
   const alt = (`${(data.view || "diagram").replace(/_/g, " ")} — ${VIEW_CAPTIONS[data.view] || ""}`
     + (live.length ? " · " + live.join(" · ") : "")).replace(/"/g, "&quot;");
   pane.innerHTML = `<img alt="${alt}" src="data:image/png;base64,${data.png}">`;
+  const _im = pane.querySelector("img");                   // the base64 img has no size until decoded —
+  if (_im) _im.addEventListener("load", () => resetPanZoom(pane));   // re-fit once its size is known (#176)
   if (withOverlay) overlayPoints(pane, data.points || []);
   return pane;
 }

@@ -37,8 +37,23 @@ function applyPanZoom(wrap) {
 // Reset to identity and re-apply, so a zoom from one program never carries into the next render
 // (called by renderLiveView on every paint). At scale 1, tx/ty 0 the transform is a no-op.
 function resetPanZoom(wrap) {
-  _panzoom = { scale: 1, tx: 0, ty: 0 };
-  applyPanZoom(wrap || $("#view").querySelector(".view-wrap"));
+  wrap = wrap || $("#view").querySelector(".view-wrap");
+  let scale = 1, tx = 0, ty = 0;
+  const view = $("#view");
+  // Single-view only (the wrap sits directly in #view, which flex-centers it): scale a SMALL diagram
+  // UP to fill a larger pane (#176) so it doesn't float in empty space on a big monitor. CSS max-width
+  // already handles the down-scale case, so only act when fit > 1. Overlays live in the wrap and scale
+  // with it (stay aligned). transform-origin is 0 0 and flex pre-centers the unscaled wrap, so the
+  // scaled wrap re-centers with tx = ww·(1−s)/2. Clamp the up-scale so a tiny figure doesn't over-blur.
+  if (wrap && view && wrap.parentElement === view) {
+    const vb = view.getBoundingClientRect(), ww = wrap.offsetWidth, wh = wrap.offsetHeight;
+    if (ww > 0 && wh > 0 && vb.width > 0 && vb.height > 0) {
+      const fit = Math.min((vb.width - 16) / ww, (vb.height - 16) / wh);
+      if (fit > 1.02) { scale = Math.min(fit, 2.5); tx = ww * (1 - scale) / 2; ty = wh * (1 - scale) / 2; }
+    }
+  }
+  _panzoom = { scale, tx, ty };
+  applyPanZoom(wrap);
 }
 
 // Wire wheel-zoom / drag-pan / dbl-click-reset ONCE to #view; every handler operates on the
