@@ -198,6 +198,24 @@ if [ "$EXAMPLES_ONLY" -eq 0 ] && command -v python3 >/dev/null 2>&1; then
     echo
 fi
 
+# ── Phase 2.11: multiple fsms / claims — last-defined entry (#290) ──
+# A program may declare several fsms AND several claims; export renders the LAST-DEFINED fsm-or-claim
+# in source order, and the entry picker overrides with an explicit name. Pins the six routing cases
+# (claim-then-fsm, fsm-then-claim, two-fsms, two-claims, single-fsm, single-claim) + the override +
+# a bogus-entry error — so a regression can't re-introduce the old "exactly one" hard-error or pick
+# the wrong entry.
+if [ "$EXAMPLES_ONLY" -eq 0 ] && command -v python3 >/dev/null 2>&1; then
+    phase "Phase 2.11: multi-entry (last-defined) routing"
+    if python3 ide/test_multi_entry.py > /tmp/evident-multientry.log 2>&1; then
+        ok "multi-entry ($(tail -1 /tmp/evident-multientry.log))"
+    else
+        fail "multi-entry: wrong entry rendered (see above)"
+        cat /tmp/evident-multientry.log >&2
+        failures+=("multi-entry routing")
+    fi
+    echo
+fi
+
 # ── Optional: examples runner ────────────────────────────────
 # Walks examples/, runs each via effect-run. For visual demos (anything
 # that imports packages/sdl/), spawn the program, screenshot the Xvfb

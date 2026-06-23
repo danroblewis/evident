@@ -156,24 +156,23 @@ pub fn resolve_fsm(rt: &EvidentRuntime, claim_name: &str) -> Option<MainShape> {
     })
 }
 
-pub fn single_fsm(rt: &EvidentRuntime) -> Result<MainShape, String> {
-    let mut fsms: Vec<MainShape> = rt.schema_names()
-        .map(|s| s.to_string())
-        .collect::<Vec<_>>()
-        .into_iter()
+/// Every fsm-shaped top-level claim, in SOURCE-DECLARATION order (`schema_names()`
+/// iterates `schema_order`). `sat_`/`unsat_` test sentinels are skipped.
+pub fn all_fsms(rt: &EvidentRuntime) -> Vec<MainShape> {
+    rt.schema_names()
         .filter(|n| !n.starts_with("sat_") && !n.starts_with("unsat_"))
-        .filter_map(|n| resolve_fsm(rt, &n))
-        .collect();
-    match fsms.len() {
-        0 => Err("no fsm schemas found (declare one with the `fsm` keyword)".to_string()),
-        1 => Ok(fsms.pop().unwrap()),
-        n => {
-            let names: Vec<&str> = fsms.iter().map(|f| f.claim_name.as_str()).collect();
-            Err(format!(
-                "{n} fsm-shaped claims found ([{}]) but exactly one is allowed \
-                 (one FSM per program)",
-                names.join(", ")))
-        }
+        .filter_map(|n| resolve_fsm(rt, n))
+        .collect()
+}
+
+/// The FSM the trampoline / export should tick: the LAST-DEFINED fsm-shaped claim
+/// (multiple are now allowed, so we can test composing programs — #290). Errors
+/// only when there is NO fsm at all (the export router keys off `"no fsm"`).
+pub fn single_fsm(rt: &EvidentRuntime) -> Result<MainShape, String> {
+    let mut fsms = all_fsms(rt);
+    match fsms.pop() {
+        Some(last) => Ok(last),
+        None => Err("no fsm schemas found (declare one with the `fsm` keyword)".to_string()),
     }
 }
 
