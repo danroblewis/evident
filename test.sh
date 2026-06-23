@@ -311,6 +311,24 @@ if [ "$EXAMPLES_ONLY" -eq 0 ] && command -v python3 >/dev/null 2>&1; then
     echo
 fi
 
+# ── Phase 2.19: timing_diagram roots on ALL INITIAL CONDITIONS (diagram review) ──
+# The diagram review scored timing_diagram NO: it rendered ONE forward trajectory from the
+# single seed. This pins the fix — for a finitely-discrete program the diagram traces an
+# ENSEMBLE over full_state_graph (every initial condition), one real successor-chain timeline
+# per start; the per-signal band == the real per-tick value envelope; bool signals read as 0/1
+# digital traces; a real-valued model falls back to the honest single-seed trace.
+if [ "$EXAMPLES_ONLY" -eq 0 ] && command -v python3 >/dev/null 2>&1; then
+    phase "Phase 2.19: timing_diagram all-conditions ensemble"
+    if python3 ide/test_timing_ensemble.py > /tmp/evident-timing-ensemble.log 2>&1; then
+        ok "timing ensemble ($(tail -1 /tmp/evident-timing-ensemble.log))"
+    else
+        fail "timing ensemble: not rooted on all initial conditions, or band ≠ real envelope"
+        cat /tmp/evident-timing-ensemble.log >&2
+        failures+=("timing-diagram all-conditions")
+    fi
+    echo
+fi
+
 # ── Optional: examples runner ────────────────────────────────
 # Walks examples/, runs each via effect-run. For visual demos (anything
 # that imports packages/sdl/), spawn the program, screenshot the Xvfb
