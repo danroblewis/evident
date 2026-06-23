@@ -133,6 +133,12 @@ const VIEW_CAPTIONS = {
     "shows where the system comes to rest · read it as a 2-axis projection with fixed points as large markers, short cycles as arrowed loops, other sampled states as faint dots · tells you the attractors standing out against the basin.",
   cobweb:
     "shows a 1-D map x_n → x_{n+1} as a cobweb plot · read it as both axes the same scalar, staircasing between the map curve and the diagonal; faceted per categorical mode · tells you whether iterating the scalar converges, cycles, or diverges.",
+  function_graph:
+    "shows the COMPILED data-flow graph — how the solver reduced the constraints to per-variable functions · read it as an edge W→V when V's next value is computed from W's previous; a feedback cycle (pos↔vel) is coupled dynamics, a pure DAG is a driven pipeline · tells you the program's coupling structure, not its runs.",
+  function_residual:
+    "shows what the solver COMPILED vs what stayed a CONSTRAINT — the functions (the JIT's update law) beside the residual invariants (e.g. 0≤timer≤2) that never reduced to a function · tells you how much of your relational program is computation and where it's still truly relational.",
+  function_guards:
+    "shows the GUARD DECISION TREES of the piecewise functions — each guarded variable's branch conditions tried into the nested decision the solver found (is_first_tick? → _timer<2? → _light==?) · tells you the branching control-flow each variable's next value is computed by.",
 };
 
 // --- parser-jargon humanization ----------------------------------------------------

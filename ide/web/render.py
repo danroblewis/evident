@@ -26,6 +26,9 @@ ALL_VIEWS = (
     "morse_graph", "occupancy_heatmap", "timing_diagram", "transition_matrix",
     "basin_map", "orbit_scatter", "scatter_matrix", "parallel_coords",
     "chord_diagram", "nullcline_field", "fixedpoint_map", "cobweb",
+    # functionizer family — the COMPILED structure (how the solver reduced the constraints to
+    # per-variable functions), not the dynamics. Opt-in tabs; never auto-recommended.
+    "function_graph", "function_residual", "function_guards",
 )
 
 
