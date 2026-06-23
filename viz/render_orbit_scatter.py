@@ -1,24 +1,22 @@
 #!/usr/bin/env python3
-"""render_orbit_scatter — the honest discrete-time orbit view, on visual channels.
+"""render_orbit_scatter — the all-initial-conditions orbit view, on visual channels.
 
-Plot a trajectory as DISCRETE DOTS (not connected) in two chosen state axes.
-Each dot is one sampled state of the FSM at one tick; the gap between dots is
-the actual jump the difference equation makes. For limit cycles the dots trace
-a closed loop; for fixed points they pile up.
+PRIMARY mode (the diagram-review fix): sample MANY initial conditions, not one seeded
+orbit. We seed from the model's bounded state space (`full_state_graph` discrete /
+`proven_range` grid continuous, via the shared `time_series_ensemble` seeder), forward-
+simulate each with the EXISTING successor relation (clamping divergence), DROP the first
+few transient ticks, and scatter the resulting attractor points. Each orbit is tagged with
+the attractor it settles into, so a MULTI-ATTRACTOR system (bistable) shows BOTH basins —
+the old single-from-init orbit only ever showed the seed's basin.
 
-Channels (Cleveland-McGill / Mackinlay), mapping ranked vars by type:
-  - POSITION (x, y): the top-ranked vars. Numeric pair when the system is
-    continuous (vanderpol); else assign_channels picks the most expressive pair,
-    enum -> ordinal, bool -> 0/1.
-  - COLOR: a CATEGORICAL var (mode / dispensed / has_torch) — color reads
-    categories best. When NO categorical var is free (pure-numeric vanderpol),
-    KEEP the derived time/depth gradient — a coarse quantitative gradient is the
-    one good quantitative use of color.
-  - FACET: a low-cardinality categorical (<= 5 values) not already on an axis ->
-    one panel per value. The honest way to ADD a dimension for a high-D model.
-  - SIZE: a secondary numeric var, when one is free and helps.
+For a SINGLE numeric var, x-vs-x is a useless 45° diagonal, so we DELAY-EMBED: plot
+(x_t, x_{t+1}). The scatter then traces the map's graph — the logistic parabola, a fixed
+point as one dot on the diagonal, a 2-cycle as two mirrored off-diagonal dots.
 
-The plot reads from its AXES alone; color/size/facet only ENHANCE.
+For ≥2 numeric vars we scatter the two principal vars (the honest phase plane).
+
+FALLBACK (only when no honest ensemble box exists — an unbounded carried var): the old
+single-orbit construction (autonomous chain / reachable set), faithfully flagged.
 
 Usage:
     python3 viz/render_orbit_scatter.py <smt2> <schema> <out_path>
@@ -35,15 +33,21 @@ from matplotlib.lines import Line2D
 
 from evident_viz import load
 
-# Channel selection + orbit construction (the data layer) live in the
-# sibling build module; this file keeps the drawing + dispatch.
 from orbit_scatter_build import (
-    _project, _axis_label, _cat_key, _select_channels, _build_orbits,
-    _offset_collisions,
+    _project, _axis_label, _cat_key, _select_channels, _ensemble_orbits,
+    fallback_orbits, is_delay_embed, basins_separable, _offset_collisions,
 )
-# Interactive hover-overlay sidecar (#184 increment 3). orbit_scatter ALWAYS saves
-# with bbox_inches="tight", so the per-point fractions use the tight-bbox mapping.
 from overlay_points import write_points, tight_fraction
+
+
+def _na_card(out_path, title, msg, fontsize=13):
+    fig, ax = plt.subplots(figsize=(8, 7))
+    ax.text(0.5, 0.5, msg, ha="center", va="center", fontsize=fontsize)
+    ax.set_title(title)
+    ax.axis("off")
+    fig.savefig(out_path, dpi=120, bbox_inches="tight")
+    plt.close(fig)
+    write_points(out_path, [])
 
 
 # ---- axis tick labelling -----------------------------------------------------
@@ -60,6 +64,83 @@ def _label_axis(model, ax, var, which):
         getter(["false", "true"], fontsize=9)
 
 
+# ---- point construction ------------------------------------------------------
+def _ensemble_points(model, orbits, tags, xvar, yvar, delay):
+    """Flatten the transient-trimmed ensemble orbits into plotted points. For the
+    single-numeric-var DELAY embedding each consecutive pair (x_t, x_{t+1}) is one point;
+    otherwise each state is one point at (xvar, yvar). Every point carries its attractor
+    tag (`attr`) so multi-attractor systems color both basins."""
+    pts = []
+    for oi, (orb, tag) in enumerate(zip(orbits, tags)):
+        if delay:
+            for ti in range(len(orb) - 1):
+                pts.append({
+                    "x": _project(model, xvar, orb[ti][xvar["name"]]),
+                    "y": _project(model, xvar, orb[ti + 1][xvar["name"]]),
+                    "seed": oi, "attr": tag, "first": ti == 0, "st": orb[ti],
+                })
+        else:
+            for ti, st in enumerate(orb):
+                pts.append({
+                    "x": _project(model, xvar, st[xvar["name"]]),
+                    "y": _project(model, yvar, st[yvar["name"]]),
+                    "seed": oi, "attr": tag, "first": ti == 0, "st": st,
+                })
+    return pts
+
+
+def _fallback_points(model, orbits, point_time, xvar, yvar, delay):
+    """Flatten the single-orbit fallback into plotted points, carrying `t` for the
+    time/depth color gradient (no attractor tag — one orbit, one basin)."""
+    pts = []
+    for oi, orb in enumerate(orbits):
+        if delay:
+            for ti in range(len(orb) - 1):
+                pts.append({
+                    "x": _project(model, xvar, orb[ti][xvar["name"]]),
+                    "y": _project(model, xvar, orb[ti + 1][xvar["name"]]),
+                    "t": point_time[oi][ti], "seed": oi, "attr": None,
+                    "first": ti == 0, "st": orb[ti],
+                })
+        else:
+            for ti, st in enumerate(orb):
+                pts.append({
+                    "x": _project(model, xvar, st[xvar["name"]]),
+                    "y": _project(model, yvar, st[yvar["name"]]),
+                    "t": point_time[oi][ti], "seed": oi, "attr": None,
+                    "first": ti == 0, "st": st,
+                })
+    return pts
+
+
+def _axis_var(yvar, xvar, delay):
+    """The var whose grid/label drives the y-axis: xvar (delayed: y is x's next value)
+    or yvar (the second principal var)."""
+    return xvar if delay else yvar
+
+
+def _set_limits(model, ax, pts, xvar, yvar, delay):
+    """Frame the whole scatter on its true grid; an IQR fence rejects a divergence
+    sentinel on a continuous axis."""
+    for which, var, gk in (("x", xvar, "gx"), ("y", _axis_var(yvar, xvar, delay), "gy")):
+        if var["kind"] == "enum":
+            lo, hi, pad = 0, len(model.enum_variants[var["name"]]) - 1, 0.5
+        elif var["kind"] == "bool":
+            lo, hi, pad = 0, 1, 0.5
+        else:
+            vals = sorted(p[gk] for p in pts)
+            if len(vals) < 2:
+                continue
+            nn = len(vals)
+            q1, q3 = vals[nn // 4], vals[(3 * nn) // 4]
+            if q3 > q1:
+                fence = 3 * (q3 - q1)
+                vals = [v for v in vals if q1 - fence <= v <= q3 + fence] or vals
+            lo, hi = min(vals), max(vals)
+            pad = (hi - lo) * 0.08 if hi > lo else 1.0
+        (ax.set_xlim if which == "x" else ax.set_ylim)(lo - pad, hi + pad)
+
+
 # ---- main render -------------------------------------------------------------
 def render(smt2_path, schema_path, out_path):
     model = load(smt2_path, schema_path)
@@ -67,252 +148,178 @@ def render(smt2_path, schema_path, out_path):
 
     xvar, yvar, color_var, facet_var = _select_channels(model)
     if xvar is None:
-        fig, ax = plt.subplots(figsize=(8, 7))
-        ax.text(0.5, 0.5, "N/A for state: no state variables",
-                ha="center", va="center", fontsize=14)
-        ax.set_title(title)
-        ax.axis("off")
-        fig.savefig(out_path, dpi=120, bbox_inches="tight")
-        plt.close(fig)
-        write_points(out_path, [])           # no orbit / degenerate → overlay no-ops
-        return
+        _na_card(out_path, title, "N/A for state: no state variables", 14)
+        return "orbit_scatter: N/A (no state variables)"
 
-    orbits, point_time, mode = _build_orbits(model, xvar, yvar)
+    delay = is_delay_embed(xvar, yvar)
 
-    # Faceting cuts the plotted points across panels. That is only honest when the
-    # panels are INDEPENDENT runs (multi-seed 'numeric' mode). For a single
-    # autonomous orbit or the reachable set, the points form ONE connected
-    # sequence threaded through changing state — faceting by a var that flips along
-    # the orbit (grep's state.done) would slice the climb into separate panels and
-    # crop each to its tail. Never facet those modes; keep the whole orbit on one axis.
-    if mode != "numeric":
-        facet_var = None
+    # PRIMARY: the all-initial-conditions ensemble. Falls back only when there is no honest
+    # bounded box to seed (an unbounded carried var) — then the single-orbit construction.
+    ens = _ensemble_orbits(model)
+    if ens is not None:
+        orbits, tags = ens
+        mode = "ensemble"
+        pts = _ensemble_points(model, orbits, tags, xvar, yvar, delay)
+        n_attractors = len({t for t in tags if t is not None})
+    else:
+        orbits, point_time, mode = fallback_orbits(model)
+        if not orbits:
+            _na_card(out_path, title,
+                     "N/A: no orbit produced\n(no initial state and no successor)")
+            return "orbit_scatter: N/A (no orbit)"
+        pts = _fallback_points(model, orbits, point_time, xvar, yvar, delay)
+        n_attractors = 0
 
-    if not orbits:
-        fig, ax = plt.subplots(figsize=(8, 7))
-        ax.text(0.5, 0.5,
-                "N/A: no orbit produced\n(no initial state and no successor)",
-                ha="center", va="center", fontsize=13)
-        ax.set_title(title)
-        ax.axis("off")
-        fig.savefig(out_path, dpi=120, bbox_inches="tight")
-        plt.close(fig)
-        write_points(out_path, [])           # no orbit / degenerate → overlay no-ops
-        return
+    if not pts:
+        _na_card(out_path, title, "N/A: orbit produced no plottable points")
+        return "orbit_scatter: N/A (no points)"
 
-    # HONEST degenerate guard: a scatter over a finite handful of states is not a
-    # meaningful orbit view — the program halts at / sits on a fixed point. Render an
-    # N/A card with the real reachable count instead of inflating it into a plane.
-    n_states = sum(len(o) for o in orbits)
-    if n_states <= 2:
-        fig, ax = plt.subplots(figsize=(8, 7))
-        ax.text(0.5, 0.5,
-                f"N/A — reachable set is {n_states} "
-                f"state{'s' if n_states != 1 else ''} (fixed point /\n"
-                "immediate halt); an orbit scatter is not meaningful.",
-                ha="center", va="center", fontsize=13)
-        ax.set_title(title)
-        ax.axis("off")
-        fig.savefig(out_path, dpi=120, bbox_inches="tight")
-        plt.close(fig)
-        write_points(out_path, [])           # no orbit / degenerate → overlay no-ops
-        return
-
-    # Flatten orbit points, carrying (x, y, time, seed-index, state) per point.
-    pts = []
-    for oi, orb in enumerate(orbits):
-        for ti, st in enumerate(orb):
-            pts.append({
-                "x": _project(model, xvar, st[xvar["name"]]),
-                "y": _project(model, yvar, st[yvar["name"]]),
-                "t": point_time[oi][ti],
-                "seed": oi,
-                "first": ti == 0,
-                "st": st,
-            })
-
-    # Record the true (un-jittered) grid coordinate per point — axis limits must
-    # frame the WHOLE orbit on its real integer/categorical grid, not the nudged
-    # display coords.
+    # Record the true (un-jittered) grid coordinate per point.
     for p in pts:
         p["gx"], p["gy"] = p["x"], p["y"]
 
-    # HONEST degenerate-axis guard. An orbit scatter reads from its two axes; if an
-    # axis is CONSTANT over every plotted point, the projection has collapsed onto a
-    # line (or a single node) and the picture is misleading — it looks like a real
-    # orbit, but one whole dimension never moves. This is the selector handing us a
-    # constant coordinate (life's state.pop pinned at 3; randomwalk's v3/v4 both
-    # pinned at 0); the renderer can't pick better axes, but it MUST NOT dress a
-    # flat line up as dynamics. Render an N/A card naming the collapsed axis instead.
+    # HONEST degenerate-axis guard. The scatter reads from its two axes; if an axis is
+    # CONSTANT over every plotted point the projection collapsed onto a line. For the DELAY
+    # embedding a constant axis means the orbit is genuinely a single fixed point (x_t ==
+    # x_{t+1} everywhere) — still report it, but as a fixed point, not fake dynamics.
     x_distinct = len({p["gx"] for p in pts})
     y_distinct = len({p["gy"] for p in pts})
-    if x_distinct <= 1 or y_distinct <= 1:
-        flat = []
-        if x_distinct <= 1:
-            flat.append(f'{xvar["name"]} (x) = {pts[0]["st"][xvar["name"]]}')
-        if y_distinct <= 1:
-            flat.append(f'{yvar["name"]} (y) = {pts[0]["st"][yvar["name"]]}')
-        both = x_distinct <= 1 and y_distinct <= 1
-        detail = ("both chosen axes are constant — the orbit is a single point"
-                  if both else
-                  "the chosen y-axis is constant" if y_distinct <= 1 else
-                  "the chosen x-axis is constant")
-        fig, ax = plt.subplots(figsize=(8, 7))
-        ax.text(0.5, 0.5,
-                f"N/A — {detail} over all {len(pts)} plotted states.\n"
-                f"({'; '.join(flat)})\n"
-                "An orbit scatter on these axes would be a misleading flat line.",
-                ha="center", va="center", fontsize=12)
-        ax.set_title(title)
-        ax.axis("off")
-        fig.savefig(out_path, dpi=120, bbox_inches="tight")
-        plt.close(fig)
-        write_points(out_path, [])           # no orbit / degenerate → overlay no-ops
-        return
+    if x_distinct <= 1 and y_distinct <= 1:
+        v0 = pts[0]["st"][xvar["name"]]
+        _na_card(out_path, title,
+                 f"N/A — every orbit settles to the single fixed point "
+                 f"{xvar['name']} = {v0}.\nThere is no orbit to scatter.", 12)
+        return "orbit_scatter: N/A (single fixed point)"
+    if (x_distinct <= 1 or y_distinct <= 1) and not delay:
+        flat = (f'{xvar["name"]} (x) = {pts[0]["st"][xvar["name"]]}' if x_distinct <= 1
+                else f'{yvar["name"]} (y) = {pts[0]["st"][yvar["name"]]}')
+        _na_card(out_path, title,
+                 f"N/A — the chosen {'x' if x_distinct <= 1 else 'y'}-axis is constant "
+                 f"over all {len(pts)} plotted states.\n({flat})\n"
+                 "An orbit scatter on these axes would be a misleading flat line.", 12)
+        return "orbit_scatter: N/A (collapsed axis)"
 
+    yaxis_var = _axis_var(yvar, xvar, delay)
     discrete = not (xvar["kind"] in ("int", "real")
-                    and yvar["kind"] in ("int", "real"))
-    # On a discrete (int / enum / bool) axis the data LIVES on integer grid lines;
-    # continuous jitter would smear points off-grid into fabricated fractional
-    # positions (vending balance landing at -0.1, 1.07, …) and even below an
-    # integer axis's true minimum. So: leave distinct points exactly on their grid
-    # node, and only when several points genuinely COLLIDE on the same node fan
-    # them out in a tiny ring around that node — visible, but still centered on the
-    # real coordinate and never pushed below the axis floor.
+                    and yaxis_var["kind"] in ("int", "real"))
     if discrete:
-        _offset_collisions(pts, xvar, yvar)
+        _offset_collisions(pts, xvar, yaxis_var)
 
-    # ---- panels (facet) ------------------------------------------------------
-    if facet_var is not None:
-        panel_vals = (model.enum_variants[facet_var["name"]]
-                      if facet_var["kind"] == "enum" else [False, True])
-        # keep only values that actually occur
-        present = {st_v for st_v in
-                   (p["st"][facet_var["name"]] for p in pts)}
-        panel_vals = [v for v in panel_vals if v in present] or list(present)
-    else:
-        panel_vals = [None]
-
-    ncols = len(panel_vals)
-    fig, axes = plt.subplots(1, ncols, figsize=(6.6 * ncols if ncols > 1 else 8, 7),
-                             squeeze=False, sharex=True, sharey=True)
-    axes = axes[0]
-
-    # ---- color scheme: categorical var, or a time/depth gradient -------------
+    # ---- color: attractor (ensemble multi-basin), categorical, or time gradient ----
+    fig, ax = plt.subplots(figsize=(8, 7))
     cmap = plt.get_cmap("viridis")
     color_legend = []
-    if color_var is not None:
-        # categorical: one hue per value
-        if color_var["kind"] == "enum":
-            cvals = model.enum_variants[color_var["name"]]
-        else:
-            cvals = [False, True]
+    # Color BY ATTRACTOR only for a genuine, SPATIALLY-SEPARATE basin partition (a bistable's
+    # walls at 0 and 6) — `basins_separable` rejects a chaotic map's near-identical clustered
+    # tags (one strange attractor, not N basins). Otherwise fall through to seed coloring.
+    color_by_attr = (mode == "ensemble"
+                     and basins_separable(model, orbits, tags, xvar, yvar, delay))
+    scatter_for_bar = None
+
+    if color_by_attr:
+        # The headline: color each point by the ATTRACTOR its orbit settled into, so a
+        # bistable shows both basins as distinct hues. Tags are opaque keys → stable order.
+        tag_order = sorted({p["attr"] for p in pts}, key=lambda t: str(t))
+        catmap = plt.get_cmap("tab10")
+        attr_color = {t: catmap(i % 10) for i, t in enumerate(tag_order)}
+        ax.scatter([p["x"] for p in pts], [p["y"] for p in pts],
+                   c=[attr_color[p["attr"]] for p in pts], s=46,
+                   edgecolors="black", linewidths=0.4, alpha=0.85, zorder=3)
+        for i, t in enumerate(tag_order):
+            color_legend.append(Line2D([0], [0], marker="o", color="w",
+                                       markerfacecolor=attr_color[t], markeredgecolor="black",
+                                       markersize=8, label=f"basin {i + 1}"))
+        color_label = "attractor (basin)"
+    elif color_var is not None and mode != "ensemble":
+        cvals = (model.enum_variants[color_var["name"]]
+                 if color_var["kind"] == "enum" else [False, True])
         catmap = plt.get_cmap("tab10")
         cat_color = {cv: catmap(i % 10) for i, cv in enumerate(cvals)}
+        ax.scatter([p["x"] for p in pts], [p["y"] for p in pts],
+                   c=[cat_color[p["st"][color_var["name"]]] for p in pts], s=46,
+                   edgecolors="black", linewidths=0.4, alpha=0.85, zorder=3)
         for cv in cvals:
-            color_legend.append(
-                Line2D([0], [0], marker="o", color="w",
-                       markerfacecolor=cat_color[cv], markeredgecolor="black",
-                       markersize=8, label=_cat_key(model, color_var, cv)))
+            color_legend.append(Line2D([0], [0], marker="o", color="w",
+                                       markerfacecolor=cat_color[cv], markeredgecolor="black",
+                                       markersize=8, label=_cat_key(model, color_var, cv)))
         color_label = color_var["name"]
+    elif mode == "ensemble":
+        # Single attractor (or untagged): color by SEED so the fan of initial conditions is
+        # visible — every orbit converging to the one attractor reads as its own track.
+        nseed = max((p["seed"] for p in pts), default=0) + 1
+        sc = ax.scatter([p["x"] for p in pts], [p["y"] for p in pts],
+                        c=[p["seed"] for p in pts], cmap=cmap, vmin=0,
+                        vmax=nseed - 1 if nseed > 1 else 1, s=46,
+                        edgecolors="black", linewidths=0.4, alpha=0.85, zorder=3)
+        scatter_for_bar = sc
+        color_label = "initial condition (seed #)"
     else:
         max_t = max((p["t"] for p in pts), default=1) + 1
+        sc = ax.scatter([p["x"] for p in pts], [p["y"] for p in pts],
+                        c=[p["t"] for p in pts], cmap=cmap, vmin=0,
+                        vmax=max_t - 1 if max_t > 1 else 1, s=46,
+                        edgecolors="black", linewidths=0.4, alpha=0.85, zorder=3)
+        scatter_for_bar = sc
         color_label = "steps from start" if mode == "reachable" else "tick (time)"
 
-    scatter_for_bar = None
-    overlay = []   # (ax, data_x, data_y, full_state) per plotted point — hover sidecar
-    for pi, (ax, pv) in enumerate(zip(axes, panel_vals)):
-        panel_pts = [p for p in pts
-                     if pv is None or p["st"][facet_var["name"]] == pv]
-        overlay += [(ax, p["x"], p["y"], p["st"]) for p in panel_pts]
-        if color_var is not None:
-            colors = [cat_color[p["st"][color_var["name"]]] for p in panel_pts]
-            ax.scatter([p["x"] for p in panel_pts], [p["y"] for p in panel_pts],
-                       c=colors, s=46, edgecolors="black", linewidths=0.4,
-                       alpha=0.85, zorder=3)
-        else:
-            sc = ax.scatter(
-                [p["x"] for p in panel_pts], [p["y"] for p in panel_pts],
-                c=[p["t"] for p in panel_pts], cmap=cmap, vmin=0,
-                vmax=max_t - 1 if max_t > 1 else 1,
-                s=46, edgecolors="black", linewidths=0.4, alpha=0.85, zorder=3)
-            scatter_for_bar = sc
-        # seed / start rings
-        for p in panel_pts:
+    # seed / start rings — only for a SMALL ensemble (a handful of orbits, where marking each
+    # start aids reading). Across a dense fan (a chaotic map's 64 orbits) a ring per orbit
+    # just carpets the attractor in red, so we drop them and let the scatter speak.
+    show_seed_rings = len(orbits) <= 12
+    if show_seed_rings:
+        for p in pts:
             if p["first"]:
                 ax.scatter([p["x"]], [p["y"]], s=160, facecolors="none",
                            edgecolors="red", linewidths=1.6, zorder=4)
 
-        ax.set_xlabel(_axis_label(xvar))
-        if pi == 0:
-            ax.set_ylabel(_axis_label(yvar))
-        ax.grid(True, linestyle=":", alpha=0.4)
-        _label_axis(model, ax, xvar, "x")
-        _label_axis(model, ax, yvar, "y")
-        # Frame the WHOLE orbit on its true grid. Limits come from EVERY plotted
-        # point's un-jittered grid coordinate (`gx`/`gy`) across ALL panels — not the
-        # surviving subset of one panel — so the autonomous walk's full visited
-        # sequence (grep's (0,0)→(1,1)→(2,2) climb) is never cropped to its tail.
-        for which, var, gk in (("x", xvar, "gx"), ("y", yvar, "gy")):
-            if var["kind"] == "enum":
-                lo, hi = 0, len(model.enum_variants[var["name"]]) - 1
-                pad = 0.5
-            elif var["kind"] == "bool":
-                lo, hi, pad = 0, 1, 0.5
-            else:
-                # Numeric axis: span all real grid values. Only the multi-seed
-                # 'numeric' mode (vanderpol spiral) needs the IQR fence to reject a
-                # ±1e6 sentinel; an autonomous/reachable orbit is framed whole.
-                vals = sorted(p[gk] for p in pts)
-                if len(vals) < 2:
-                    continue
-                if mode == "numeric":
-                    nn = len(vals)
-                    q1, q3 = vals[nn // 4], vals[(3 * nn) // 4]
-                    if q3 > q1:
-                        fence = 3 * (q3 - q1)
-                        vals = [v for v in vals if q1 - fence <= v <= q3 + fence] or vals
-                lo, hi = min(vals), max(vals)
-                pad = (hi - lo) * 0.08 if hi > lo else 1.0
-            (ax.set_xlim if which == "x" else ax.set_ylim)(lo - pad, hi + pad)
-        if pv is not None:
-            ax.set_title(f'{facet_var["name"]} = {_cat_key(model, facet_var, pv)}',
-                         fontsize=10)
+    # ---- diagonal guide on the delay embedding (x_t = x_{t+1} → fixed points) -------
+    if delay:
+        lo = min(min(p["gx"] for p in pts), min(p["gy"] for p in pts))
+        hi = max(max(p["gx"] for p in pts), max(p["gy"] for p in pts))
+        ax.plot([lo, hi], [lo, hi], linestyle="--", color="gray",
+                linewidth=1.0, alpha=0.6, zorder=1)
 
-    # ---- color key: colorbar (gradient) or legend (categorical) --------------
-    if color_var is None and scatter_for_bar is not None:
-        cbar = fig.colorbar(scatter_for_bar, ax=list(axes), pad=0.02)
+    ax.set_xlabel(_axis_label(xvar) + (r"   ($x_t$)" if delay else ""))
+    ax.set_ylabel((_axis_label(xvar) + r"   ($x_{t+1}$)") if delay
+                  else _axis_label(yvar))
+    ax.grid(True, linestyle=":", alpha=0.4)
+    _label_axis(model, ax, xvar, "x")
+    _label_axis(model, ax, yaxis_var, "y")
+    _set_limits(model, ax, pts, xvar, yvar, delay)
+
+    # ---- color key ----------------------------------------------------------
+    if scatter_for_bar is not None:
+        cbar = fig.colorbar(scatter_for_bar, ax=ax, pad=0.02)
         cbar.set_label(color_label)
 
-    # ---- legend assembled on the last axis -----------------------------------
     legend_bits = list(color_legend)
-    legend_bits.append(
-        Line2D([0], [0], marker="o", color="w", markerfacecolor="none",
-               markeredgecolor="red", markersize=11, label="seed / start"))
-    if mode == "numeric" and len(orbits) > 1:
-        legend_bits.append(
-            Line2D([0], [0], marker="o", color="w", markerfacecolor="gray",
-                   markeredgecolor="black", markersize=8,
-                   label=f"{len(orbits)} numeric seeds"))
-    title_color = (f"color = {color_var['name']} [{color_var['kind']}]"
-                   if color_var is not None else f"color = {color_label}")
-    axes[-1].legend(handles=legend_bits, loc="best", fontsize=8, framealpha=0.9,
-                    title=title_color, title_fontsize=8)
+    if show_seed_rings:
+        legend_bits.append(Line2D([0], [0], marker="o", color="w", markerfacecolor="none",
+                                  markeredgecolor="red", markersize=11, label="seed / start"))
+    if delay:
+        legend_bits.append(Line2D([0], [0], linestyle="--", color="gray",
+                                  label="x_t = x_{t+1}"))
+    title_color = f"color = {color_label}"
+    ax.legend(handles=legend_bits, loc="best", fontsize=8, framealpha=0.9,
+              title=title_color, title_fontsize=8)
 
-    subtitle_bits = [{"numeric": "numeric: multiple seeds → attractor",
-                      "autonomous": "autonomous orbit from initial state",
-                      "reachable": f"{len(pts)} reachable states, by steps from start",
-                      }[mode]]
-    if facet_var is not None:
-        subtitle_bits.append(f"faceted by {facet_var['name']}")
-    fig.suptitle(f"{title}\n{' · '.join(subtitle_bits)}", fontsize=12)
+    embed = "delay-embedded (x_t vs x_{t+1})" if delay else "two principal vars"
+    subtitle = {
+        "ensemble": (f"all initial conditions: {len(orbits)} orbits, transients dropped"
+                     + (f" · {n_attractors} basins" if color_by_attr else "")
+                     + f" · {embed}"),
+        "autonomous": f"single autonomous orbit (unbounded — no ensemble box) · {embed}",
+        "reachable": f"{len(pts)} reachable states (unbounded fallback) · {embed}",
+    }[mode]
+    fig.suptitle(f"{title}\n{subtitle}", fontsize=12)
 
-    # Map each plotted point's data coords → tight-bbox fraction BEFORE saving
-    # (tight_fraction's draw() finalizes the same layout savefig uses).
+    overlay = [(ax, p["x"], p["y"], p["st"]) for p in pts]
     points = tight_fraction(fig, overlay)
     fig.savefig(out_path, dpi=120, bbox_inches="tight")
     plt.close(fig)
     write_points(out_path, points)
+    return (f"orbit_scatter: {mode} · {len(orbits)} orbits · "
+            f"{n_attractors} attractors · {'delay-embed' if delay else '2-var'}")
 
 
 def main(argv):
@@ -320,8 +327,8 @@ def main(argv):
         print("usage: render_orbit_scatter.py <smt2> <schema> <out_path>",
               file=sys.stderr)
         return 2
-    render(argv[1], argv[2], argv[3])
-    print(f"wrote {argv[3]}")
+    note = render(argv[1], argv[2], argv[3])
+    print(f"wrote {argv[3]} ({note})")
     return 0
 
 

@@ -3,11 +3,38 @@
 render_orbit_scatter.py.
 
 The DATA layer: value->coordinate projection, the axis/color/facet channel
-choice, building the orbits to plot (the honest autonomous chain, the reachable
-set, or self-scaled seeds for a degenerate fixed point), and collision-only
-jitter for discrete grids. No plotting policy lives here.
+choice, building the orbits to plot, and collision-only jitter for discrete grids.
+No plotting policy lives here.
+
+The PRIMARY orbit-scatter mode samples MANY initial conditions (not one seeded
+orbit): it seeds from `full_state_graph()` (discrete) / a `proven_range` grid
+(continuous) via the SHARED ensemble seeder (`time_series_ensemble.ensemble_inits`,
+the exact seed-set the all-conditions time-series uses), forward-simulates each with
+the model's EXISTING successor relation (`time_series_ensemble.step_trajectory`,
+clamping divergence), and DROPS the first few transient ticks so only the attractor /
+limit-cycle structure is scattered. Each kept orbit is tagged with the attractor it
+settles into, so a multi-attractor system (bistable) shows BOTH basins by color.
+
+For a SINGLE numeric var an x-vs-x scatter is a useless 45° diagonal, so we DELAY-EMBED:
+plot (x_t, x_{t+1}). The scatter then traces the map's graph (the logistic parabola, a
+fixed point as a single dot on the diagonal, a 2-cycle as two off-diagonal dots).
+
+If no honest ensemble box exists (some carried var is unbounded) we fall back to the old
+single-orbit construction (autonomous chain / reachable set), so an unbounded model still
+renders something faithful.
 """
 import math
+
+# Transient ticks dropped from the FRONT of each forward-simulated orbit, so the scatter
+# shows the attractor the orbit settles ONTO, not the path it took to get there. Kept small
+# (a short orbit that halts fast — a 2-state bistable basin — must still contribute its
+# attractor point), and never more than the orbit minus one (always keep the final state).
+_TRANSIENT = 4
+
+# Forward-sim horizon per init. Long enough for a transient to die and a limit cycle to
+# show, short enough to stay cheap across up to _MAX_INITS seeds.
+_STEPS = 80
+
 
 def _project(model, var, value):
     """Map a state value to a float coordinate. int/real pass through;
@@ -40,9 +67,10 @@ def _cat_key(model, var, value):
 def _select_channels(model):
     """Decide axes / color-var / facet-var from the ranked, typed interface vars.
 
-    Returns (xvar, yvar, color_var, facet_var). color_var/facet_var may be None,
-    in which case the renderer falls back to the time/depth gradient (color) or a
-    single panel (facet)."""
+    Returns (xvar, yvar, color_var, facet_var). When there is exactly ONE expressive
+    var, yvar is returned EQUAL to xvar — the renderer reads that (via `is_delay_embed`)
+    as the single-numeric-var case and delay-embeds (x_t vs x_{t+1}) rather than plotting
+    a degenerate x-vs-x diagonal. color_var/facet_var may be None."""
     numeric = model.numeric_vars
     cats = model.categorical_vars
 
@@ -53,7 +81,7 @@ def _select_channels(model):
         ch = model.assign_channels(["x", "y"])
         xvar, yvar = ch["x"], ch["y"]
         # assign_channels gives best two by type-effectiveness; if it left one
-        # empty (single state var), reuse / bail later.
+        # empty (single state var), reuse it — the renderer delay-embeds when x==y.
         if xvar is None:
             return None, None, None, None
         if yvar is None:
@@ -79,59 +107,103 @@ def _select_channels(model):
     return xvar, yvar, color_var, facet_var
 
 
-# ---- orbits ------------------------------------------------------------------
-def _expanding_orbit_radius(model, xvar, yvar, center):
-    """Probe OUTWARD from the fixed point `center` along +x to find the smallest
-    radius at which the dynamics expand into a non-trivial orbit (length > 2),
-    rather than sitting at a fixed point. Returns that radius, or None if no probe
-    out to a generous cap expands — i.e. the system really is a fixed point and the
-    seed-and-reveal trick has nothing to reveal. This is how we discover the
-    attractor's SCALE from the program itself instead of hardcoding a ±3000 box:
-    the limit cycle's own extent then sets the plot, self-scaling per program."""
-    cx = center.get(xvar["name"], 0)
-    cy = center.get(yvar["name"], 0)
-    r = 1
-    while r <= 1 << 16:          # generous cap; geometric so ~17 probes max
-        seed = {v["name"]: center.get(v["name"], 0) for v in model.state_vars}
-        seed[xvar["name"]] = int(round(cx + r))
-        seed[yvar["name"]] = int(round(cy))
-        if len(model.trajectory(start=seed, steps=64)) > 2:
-            return r
-        r *= 2
-    return None
+def is_delay_embed(xvar, yvar):
+    """True when the two chosen axes are the SAME numeric var — the single-numeric-var
+    case where x-vs-x is a useless diagonal and we delay-embed (x_t vs x_{t+1}) instead."""
+    return (xvar is not None and yvar is not None
+            and xvar["name"] == yvar["name"]
+            and xvar["kind"] in ("int", "real"))
 
 
-def _numeric_seeds(model, xvar, yvar):
-    """Seed points for a 2D numeric system whose REACHABLE set from the initial
-    state is degenerate (a single fixed point the integer/continuous dynamics sit
-    at). We DON'T guess a box: we probe outward from the fixed point to find the
-    radius at which the dynamics come alive, then place a small spread of starts at
-    that self-discovered scale so the attractor / limit cycle reveals itself. Seeds
-    whose orbit does NOT expand are dropped by the caller, so a wide plane is never
-    carpeted with dead fixed dots. Returns [] when nothing expands (true fixed
-    point) — the caller then renders an honest N/A."""
-    center = model.initial_state() or {v["name"]: 0 for v in model.state_vars}
-    cx = center.get(xvar["name"], 0)
-    cy = center.get(yvar["name"], 0)
-    r = _expanding_orbit_radius(model, xvar, yvar, center)
-    if r is None:
-        return []
-    # A spread of starts at the discovered scale: along each axis + an off-axis
-    # diagonal, so a closed orbit is sampled from several entry angles.
-    offsets = [(r, 0), (0, r), (-r, r), (r // 2, 0)]
-    seeds = []
-    for dx, dy in offsets:
-        full = {v["name"]: center.get(v["name"], 0) for v in model.state_vars}
-        full[xvar["name"]] = int(round(cx + dx))
-        full[yvar["name"]] = int(round(cy + dy))
-        seeds.append(full)
-    return seeds
+# ---- ensemble orbits (the PRIMARY multi-initial-condition mode) --------------
+def _attractor_key(model, orbit):
+    """A hashable tag for the attractor an orbit settles into: the carried-leaf key of its
+    LAST state (a fixed point) — or, when the orbit ends on a cycle, the smallest member key
+    in the recurring tail (so two orbits on the same limit cycle share a tag regardless of
+    phase). `step_trajectory` stops at the first revisit, so the tail from that revisit point
+    to the end is the cycle; we key on the min of the visited keys in that recurrent set."""
+    if not orbit:
+        return None
+    last_key = model._key(orbit[-1])
+    # An earlier occurrence of the final key means [j..end] is the recurrent cycle.
+    for j in range(len(orbit) - 1):
+        if model._key(orbit[j]) == last_key:
+            return min(model._key(s) for s in orbit[j:])
+    return last_key                                # fixed point (no revisit): its own key
 
 
+def basins_separable(model, orbits, tags, xvar, yvar, delay):
+    """True iff the attractor tags name GENUINELY-SEPARATE basins worth coloring — a few
+    attractors whose settled points are spread WIDE across the plotted plane (a bistable's
+    walls at 0 and 6). A CHAOTIC integer map also produces several tags, but its 'attractors'
+    are near-identical points clustered in one corner of the strange attractor (logistic:
+    259/278/287 across a 0..930 range) — coloring those as basins would be a lie. So we
+    require: 2..6 tags, each shared by ≥2 orbits, AND the min gap between distinct settled
+    centroids exceeds 20% of the plotted spread. Otherwise it's one attractor; color by seed."""
+    real = [t for t in tags if t is not None]
+    distinct = set(real)
+    if not (2 <= len(distinct) <= 6):
+        return False
+    # Each real basin should attract MULTIPLE inits (a saddle attracting one seed is still a
+    # fixed point, but we still want ≥2 well-populated basins for the partition to read).
+    counts = {t: real.count(t) for t in distinct}
+    if sum(1 for c in counts.values() if c >= 2) < 2:
+        return False
+    # Settled centroid (x of the final state) per tag; require them spread across the plane.
+    centroid = {}
+    for orb, t in zip(orbits, tags):
+        if t is None:
+            continue
+        centroid.setdefault(t, []).append(_project(model, xvar, orb[-1][xvar["name"]]))
+    cxs = sorted(sum(v) / len(v) for v in centroid.values())
+    if len(cxs) < 2:
+        return False
+    spread = cxs[-1] - cxs[0]
+    if spread <= 0:
+        return False
+    min_gap = min(b - a for a, b in zip(cxs, cxs[1:]))
+    return min_gap >= 0.2 * spread
+
+
+def _ensemble_orbits(model):
+    """The PRIMARY mode: forward-simulate from MANY initial conditions and scatter the
+    settled (post-transient) orbit points. Returns (orbits, attractor_tags) or None.
+
+      orbits         — list of state-dict lists, transient-trimmed, one per kept init.
+      attractor_tags — parallel list: the attractor key each orbit settled into (for basin
+                       coloring); distinct tags ⇒ distinct basins (bistable shows both).
+
+    Returns None when there's no honest ensemble box (an unbounded carried var) — the caller
+    then falls back to the single-orbit construction."""
+    from time_series_ensemble import ensemble_inits, step_trajectory
+    inits, _kind, _note = ensemble_inits(model)
+    if inits is None:
+        return None
+    prefer_change = model.is_discrete()
+    orbits, tags = [], []
+    for init in inits:
+        traj = step_trajectory(model, init, _STEPS, prefer_change)
+        if not traj:
+            continue
+        tag = _attractor_key(model, traj)
+        # Drop transient ticks, but keep at least the last TWO states: the delay embedding
+        # needs a consecutive pair (x_t, x_{t+1}) per orbit, and a fast-halting basin (a
+        # 2-state bistable orbit like 1→0) must still contribute its attractor point. A
+        # 1-state orbit keeps its single state (it IS the fixed point).
+        keep_min = min(2, len(traj))
+        drop = min(_TRANSIENT, max(0, len(traj) - keep_min))
+        kept = traj[drop:]
+        orbits.append(kept)
+        tags.append(tag)
+    if not orbits:
+        return None
+    return orbits, tags
+
+
+# ---- single-orbit fallback (unbounded models, no ensemble box) ---------------
 def _reachable_with_depth(model, limit=400):
     """BFS the reachable set, returning (states, depths) parallel lists where
-    depths[i] is the minimum number of steps from the initial state. Used for
-    nondeterministic discrete systems where a single chain dead-ends."""
+    depths[i] is the minimum number of steps from the initial state."""
     init = model.initial_state()
     if init is None:
         return [], []
@@ -151,49 +223,15 @@ def _reachable_with_depth(model, limit=400):
     return states, depth
 
 
-def _build_orbits(model, xvar, yvar):
-    """Return (orbits, point_time, mode) where orbits is a list of state-dict
-    lists, point_time[oi] is a parallel list of time/depth values per point, and
-    mode is one of 'numeric' | 'autonomous' | 'reachable'.
-
-    We ALWAYS prefer the program's actual reachable states / orbit and plot THOSE
-    directly — never a hardcoded wide box. Multi-seed 'numeric' mode is used ONLY
-    when the reachable set from the initial state is degenerate (a single fixed
-    point the integer/continuous dynamics sit at), so that an attractor / limit
-    cycle has a chance to reveal itself; even then the seeds are derived from the
-    reachable extent (axis_bounds), and dead (non-expanding) seeds are dropped."""
-    # 1. The honest autonomous orbit: one successor chain from the initial state.
+def fallback_orbits(model):
+    """Single-orbit construction for the no-ensemble (unbounded) case: the honest autonomous
+    chain from the initial state, else the reachable set. Returns (orbits, point_time, mode)
+    where mode is 'autonomous' | 'reachable'."""
     init = model.initial_state()
     orb = model.trajectory(start=init, steps=400) if init is not None else []
     if len(orb) > 2:
         return [orb], [list(range(len(orb)))], "autonomous"
-
-    # 2. The full reachable set (handles branching dynamics a single chain dead-ends
-    #    on — e.g. a terminating counter like wc, whose 0..10 states fan out).
     states, depths = _reachable_with_depth(model)
-    if len(states) > 2:
-        return [states], [depths], "reachable"
-
-    # 3. Reachable set is degenerate (<=2 distinct states): the initial state is a
-    #    fixed point and nothing expands from it. ONLY for a genuinely-continuous
-    #    numeric 2D system do we seed across the reachable extent to expose an
-    #    attractor; each kept seed must produce an orbit that actually expands, so a
-    #    dead seed never becomes a lone fabricated dot on a wide plane.
-    numeric_2d = (xvar["kind"] in ("int", "real")
-                  and yvar["kind"] in ("int", "real")
-                  and xvar["name"] != yvar["name"])
-    if numeric_2d:
-        orbits, times = [], []
-        for seed in _numeric_seeds(model, xvar, yvar):
-            o = model.trajectory(start=seed, steps=400)
-            if len(o) > 2:                  # drop dead seeds (single fixed dot)
-                orbits.append(o)
-                times.append(list(range(len(o))))
-        if orbits:
-            return orbits, times, "numeric"
-
-    # 4. Whatever small reachable set we have (1-2 states) — render it honestly;
-    #    the caller routes a too-small set to an N/A card.
     if states:
         return [states], [depths], "reachable"
     return [], [], "autonomous"
@@ -208,16 +246,11 @@ def _offset_collisions(pts, xvar, yvar):
     groups = {}
     for p in pts:
         groups.setdefault((p["gx"], p["gy"]), []).append(p)
-    # An enum/bool axis is categorical (its floor is variant 0); an int axis must
-    # never show a dot below its true minimum value. Clamp ring offsets to that.
     xmin = min(p["gx"] for p in pts)
     ymin = min(p["gy"] for p in pts)
     for (gx, gy), group in groups.items():
         if len(group) < 2:
-            continue                      # distinct: leave exactly on the grid node
-        # One representative stays dead-on the grid node; the rest fan out on a tiny
-        # ring around it (small enough to stay between grid lines, clamped above each
-        # discrete axis's true minimum so nothing dips below the floor).
+            continue
         rad = 0.16
         for i, p in enumerate(group[1:], start=1):
             ang = 2 * math.pi * (i - 1) / (len(group) - 1)
