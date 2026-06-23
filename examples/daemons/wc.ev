@@ -47,7 +47,7 @@ fsm wc(state ∈ WcState)
     -- Once the cursor runs off the end, the tally is frozen (fixpoint → halt).
     done ∈ Bool = (_state.cursor ≥ 10)
 
-    ¬is_first_tick ⇒ (done ⇒
+    (done ⇒
         (state.cursor = _state.cursor ∧ state.lines = _state.lines
          ∧ state.words = _state.words ∧ state.chars = _state.chars
          ∧ state.in_word = _state.in_word))
@@ -61,7 +61,7 @@ fsm wc(state ∈ WcState)
     -- already inside a word.
     word_start ∈ Bool = (now_word ∧ ¬_state.in_word)
 
-    ¬is_first_tick ⇒ (¬done ⇒
+    (¬done ⇒
         (state.cursor  = _state.cursor + 1
          ∧ state.chars = _state.chars + 1
          ∧ state.lines = (is_newline ? _state.lines + 1 : _state.lines)

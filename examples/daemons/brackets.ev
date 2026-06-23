@@ -72,25 +72,24 @@ fsm brackets(st ∈ Brackets)
         (st.pos = 0 ∧ st.depth = 0 ∧ st.s0 = ONone ∧ st.s1 = ONone
          ∧ st.s2 = ONone ∧ st.s3 = ONone ∧ st.ok = true ∧ st.done = false)
 
-    ¬is_first_tick ⇒
-        -- Advance the cursor every tick until the sentinel is consumed.
-        st.pos = (_st.done ? _st.pos : _st.pos + 1)
-        st.done = (_st.done ∨ (tok = BEnd))
+    -- Advance the cursor every tick until the sentinel is consumed.
+    st.pos = (_st.done ? _st.pos : _st.pos + 1)
+    st.done = (_st.done ∨ (tok = BEnd))
 
-        -- depth: +1 on an opener, -1 on a matched closer, unchanged otherwise.
-        st.depth = (_st.done ? _st.depth
-                    : (is_open ? _st.depth + 1
-                       : (close_ok ? _st.depth - 1 : _st.depth)))
+    -- depth: +1 on an opener, -1 on a matched closer, unchanged otherwise.
+    st.depth = (_st.done ? _st.depth
+                : (is_open ? _st.depth + 1
+                   : (close_ok ? _st.depth - 1 : _st.depth)))
 
-        -- ok latches false on the first bad closer; never recovers.
-        st.ok = (_st.ok ∧ ¬close_bad)
+    -- ok latches false on the first bad closer; never recovers.
+    st.ok = (_st.ok ∧ ¬close_bad)
 
-        -- Stack slots: pushing writes slot[_depth]; everything else preserves.
-        -- (A popped slot keeps its stale value; it's below `depth` so unread.)
-        st.s0 = ((is_open ∧ (_st.depth = 0)) ? push_kind : _st.s0)
-        st.s1 = ((is_open ∧ (_st.depth = 1)) ? push_kind : _st.s1)
-        st.s2 = ((is_open ∧ (_st.depth = 2)) ? push_kind : _st.s2)
-        st.s3 = ((is_open ∧ (_st.depth = 3)) ? push_kind : _st.s3)
+    -- Stack slots: pushing writes slot[_depth]; everything else preserves.
+    -- (A popped slot keeps its stale value; it's below `depth` so unread.)
+    st.s0 = ((is_open ∧ (_st.depth = 0)) ? push_kind : _st.s0)
+    st.s1 = ((is_open ∧ (_st.depth = 1)) ? push_kind : _st.s1)
+    st.s2 = ((is_open ∧ (_st.depth = 2)) ? push_kind : _st.s2)
+    st.s3 = ((is_open ∧ (_st.depth = 3)) ? push_kind : _st.s3)
 
 -- ── Static tests (validate the transition encodes — zero silent drops) ──
 

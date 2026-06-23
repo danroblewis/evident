@@ -87,23 +87,22 @@ fsm calc(st ∈ Calc)
         (st.pos = 0 ∧ st.depth = 0 ∧ st.s0 = 0 ∧ st.s1 = 0
          ∧ st.s2 = 0 ∧ st.s3 = 0 ∧ st.ok = true ∧ st.done = false)
 
-    ¬is_first_tick ⇒
-        -- Advance the cursor every tick until the sentinel is consumed.
-        st.pos = (_st.done ? _st.pos : _st.pos + 1)
-        st.done = (_st.done ∨ (tok = TEnd))
+    -- Advance the cursor every tick until the sentinel is consumed.
+    st.pos = (_st.done ? _st.pos : _st.pos + 1)
+    st.done = (_st.done ∨ (tok = TEnd))
 
-        st.depth = new_depth
+    st.depth = new_depth
 
-        -- ok latches false on the first underflowing operator; never recovers.
-        st.ok = (_st.ok ∧ ¬op_bad)
+    -- ok latches false on the first underflowing operator; never recovers.
+    st.ok = (_st.ok ∧ ¬op_bad)
 
-        -- Stack slots: the pushed value lands at write_idx; others preserve.
-        -- (A popped slot keeps its stale value; it's at or above `depth` so
-        -- unread — except when overwritten by this tick's push.)
-        st.s0 = ((write_idx = 0) ? write_val : _st.s0)
-        st.s1 = ((write_idx = 1) ? write_val : _st.s1)
-        st.s2 = ((write_idx = 2) ? write_val : _st.s2)
-        st.s3 = ((write_idx = 3) ? write_val : _st.s3)
+    -- Stack slots: the pushed value lands at write_idx; others preserve.
+    -- (A popped slot keeps its stale value; it's at or above `depth` so
+    -- unread — except when overwritten by this tick's push.)
+    st.s0 = ((write_idx = 0) ? write_val : _st.s0)
+    st.s1 = ((write_idx = 1) ? write_val : _st.s1)
+    st.s2 = ((write_idx = 2) ? write_val : _st.s2)
+    st.s3 = ((write_idx = 3) ? write_val : _st.s3)
 
 -- ── Static tests (validate the transition encodes — zero silent drops) ──
 

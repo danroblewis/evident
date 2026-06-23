@@ -37,7 +37,7 @@ fsm csv_stats(state ∈ Stats)
     -- Once the cursor runs off the end, the aggregates are frozen (fixpoint → halt).
     done ∈ Bool = (_state.cursor ≥ 6)
 
-    ¬is_first_tick ⇒ (done ⇒
+    (done ⇒
         (state.cursor = _state.cursor ∧ state.count = _state.count
          ∧ state.sum = _state.sum ∧ state.min = _state.min
          ∧ state.max = _state.max))

@@ -63,23 +63,22 @@ fsm tokenizer(state ∈ Lexer)
         (state.pos = 0 ∧ state.mode = InSpace ∧ state.tok_len = 0
          ∧ state.tokens_emitted = 0 ∧ state.done = false)
 
-    ¬is_first_tick ⇒
-        -- Advance the cursor every tick until the sentinel is consumed.
-        state.pos = (_state.done ? _state.pos : _state.pos + 1)
-        state.done = (_state.done ∨ (cls = CEnd))
+    -- Advance the cursor every tick until the sentinel is consumed.
+    state.pos = (_state.done ? _state.pos : _state.pos + 1)
+    state.done = (_state.done ∨ (cls = CEnd))
 
-        -- mode: adopt the new char's class-mode (InSpace for space/sentinel).
-        state.mode = (_state.done ? _state.mode : cls_mode)
+    -- mode: adopt the new char's class-mode (InSpace for space/sentinel).
+    state.mode = (_state.done ? _state.mode : cls_mode)
 
-        -- tok_len: a new run starts at 1, a continuation grows, else resets 0.
-        state.tok_len = (_state.done ? _state.tok_len
-                         : (starts_run ? 1
-                            : (continues_run ? _state.tok_len + 1 : 0)))
+    -- tok_len: a new run starts at 1, a continuation grows, else resets 0.
+    state.tok_len = (_state.done ? _state.tok_len
+                     : (starts_run ? 1
+                        : (continues_run ? _state.tok_len + 1 : 0)))
 
-        -- tokens_emitted: +1 exactly when a run closes (boundary).
-        state.tokens_emitted = ((¬_state.done ∧ boundary)
-                                ? _state.tokens_emitted + 1
-                                : _state.tokens_emitted)
+    -- tokens_emitted: +1 exactly when a run closes (boundary).
+    state.tokens_emitted = ((¬_state.done ∧ boundary)
+                            ? _state.tokens_emitted + 1
+                            : _state.tokens_emitted)
 
 -- ── Static tests (validate the transition encodes — zero silent drops) ──
 

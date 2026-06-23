@@ -73,36 +73,36 @@ fsm toposort(state ∈ Graph)
 
     -- PICK: nondeterministically choose a READY node — remaining in-degree 0 in
     -- the previous state AND not yet emitted. A node is pickable only if ready.
-    ¬is_first_tick ⇒ ((state.picked = 0) ⇒ ((_state.d0 = 0) ∧ ¬_state.o0))
-    ¬is_first_tick ⇒ ((state.picked = 1) ⇒ ((_state.d1 = 0) ∧ ¬_state.o1))
-    ¬is_first_tick ⇒ ((state.picked = 2) ⇒ ((_state.d2 = 0) ∧ ¬_state.o2))
-    ¬is_first_tick ⇒ ((state.picked = 3) ⇒ ((_state.d3 = 0) ∧ ¬_state.o3))
-    ¬is_first_tick ⇒ ((state.picked = 4) ⇒ ((_state.d4 = 0) ∧ ¬_state.o4))
+    ((state.picked = 0) ⇒ ((_state.d0 = 0) ∧ ¬_state.o0))
+    ((state.picked = 1) ⇒ ((_state.d1 = 0) ∧ ¬_state.o1))
+    ((state.picked = 2) ⇒ ((_state.d2 = 0) ∧ ¬_state.o2))
+    ((state.picked = 3) ⇒ ((_state.d3 = 0) ∧ ¬_state.o3))
+    ((state.picked = 4) ⇒ ((_state.d4 = 0) ∧ ¬_state.o4))
     -- picked is a valid node, or -1 (no ready node ⇒ sort complete)
-    ¬is_first_tick ⇒ ((-1 ≤ state.picked) ∧ (state.picked ≤ 4))
+    ((-1 ≤ state.picked) ∧ (state.picked ≤ 4))
     -- picked = -1 (done) only when NO node is ready (degree 0 and unemitted)
-    ¬is_first_tick ⇒ ((state.picked = -1) ⇒
+    ((state.picked = -1) ⇒
         (¬((_state.d0 = 0) ∧ ¬_state.o0) ∧ ¬((_state.d1 = 0) ∧ ¬_state.o1)
          ∧ ¬((_state.d2 = 0) ∧ ¬_state.o2) ∧ ¬((_state.d3 = 0) ∧ ¬_state.o3)
          ∧ ¬((_state.d4 = 0) ∧ ¬_state.o4)))
 
     -- EMIT: the picked node's output flag latches true; others carry forward.
-    ¬is_first_tick ⇒ (state.o0 = (_state.o0 ∨ (state.picked = 0)))
-    ¬is_first_tick ⇒ (state.o1 = (_state.o1 ∨ (state.picked = 1)))
-    ¬is_first_tick ⇒ (state.o2 = (_state.o2 ∨ (state.picked = 2)))
-    ¬is_first_tick ⇒ (state.o3 = (_state.o3 ∨ (state.picked = 3)))
-    ¬is_first_tick ⇒ (state.o4 = (_state.o4 ∨ (state.picked = 4)))
+    (state.o0 = (_state.o0 ∨ (state.picked = 0)))
+    (state.o1 = (_state.o1 ∨ (state.picked = 1)))
+    (state.o2 = (_state.o2 ∨ (state.picked = 2)))
+    (state.o3 = (_state.o3 ∨ (state.picked = 3)))
+    (state.o4 = (_state.o4 ∨ (state.picked = 4)))
 
     -- DECREMENT: each successor of the picked node loses one remaining in-degree.
     -- (A node with an incoming edge from `picked` drops by 1; others unchanged.)
     ¬is_first_tick ⇒ (state.d0 = (e0 ? _state.d0 - 1 : _state.d0))
     ¬is_first_tick ⇒ (state.d1 = (e1 ? _state.d1 - 1 : _state.d1))
-    ¬is_first_tick ⇒ (state.d2 = (e2 ? _state.d2 - 1 : _state.d2))
-    ¬is_first_tick ⇒ (state.d3 = (e3 ? _state.d3 - 1 : _state.d3))
-    ¬is_first_tick ⇒ (state.d4 = (e4 ? _state.d4 - 1 : _state.d4))
+    (state.d2 = (e2 ? _state.d2 - 1 : _state.d2))
+    (state.d3 = (e3 ? _state.d3 - 1 : _state.d3))
+    (state.d4 = (e4 ? _state.d4 - 1 : _state.d4))
 
     -- output cursor advances by one exactly when a node was emitted this tick
-    ¬is_first_tick ⇒ (state.n_out = (_state.n_out + ((state.picked ≠ -1) ? 1 : 0)))
+    (state.n_out = (_state.n_out + ((state.picked ≠ -1) ? 1 : 0)))
 
 -- ── Static tests (validate the transition encodes — zero dropped constraints) ──
 

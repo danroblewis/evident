@@ -61,18 +61,17 @@ fsm ledger(st ∈ Ledger)
         (st.pos = 0 ∧ st.b0 = 0 ∧ st.b1 = 0 ∧ st.b2 = 0
          ∧ st.ok = true ∧ st.done = false)
 
-    ¬is_first_tick ⇒
-        -- Advance the cursor every tick until the journal is exhausted.
-        st.pos  = (_st.done ? _st.pos : _st.pos + 1)
-        st.done = (_st.done ∨ (_st.pos + 1 ≥ n))
+    -- Advance the cursor every tick until the journal is exhausted.
+    st.pos  = (_st.done ? _st.pos : _st.pos + 1)
+    st.done = (_st.done ∨ (_st.pos + 1 ≥ n))
 
-        -- Apply delta to the targeted account; the other two are preserved.
-        st.b0 = (_st.done ? _st.b0 : (acct = 0 ? _st.b0 + delta : _st.b0))
-        st.b1 = (_st.done ? _st.b1 : (acct = 1 ? _st.b1 + delta : _st.b1))
-        st.b2 = (_st.done ? _st.b2 : (acct = 2 ? _st.b2 + delta : _st.b2))
+    -- Apply delta to the targeted account; the other two are preserved.
+    st.b0 = (_st.done ? _st.b0 : (acct = 0 ? _st.b0 + delta : _st.b0))
+    st.b1 = (_st.done ? _st.b1 : (acct = 1 ? _st.b1 + delta : _st.b1))
+    st.b2 = (_st.done ? _st.b2 : (acct = 2 ? _st.b2 + delta : _st.b2))
 
-        -- ok latches false on the first overdraft; never recovers.
-        st.ok = (_st.ok ∧ ¬overdraft)
+    -- ok latches false on the first overdraft; never recovers.
+    st.ok = (_st.ok ∧ ¬overdraft)
 
 -- ── Static tests (validate the transition encodes — zero silent drops) ──
 

@@ -17,7 +17,7 @@ fsm oscillator
     pos ∈ Real
     is_first_tick  ⇒ pos = 60
     is_second_tick ⇒ pos = 60
-    (¬is_first_tick ∧ ¬is_second_tick) ⇒ ΔΔpos = (2 * __pos - 3 * _pos) / 36
+    (¬is_second_tick) ⇒ ΔΔpos = (2 * __pos - 3 * _pos) / 36
 
 -- ── Static tests ─────────────────────────────────────────────
 
