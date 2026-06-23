@@ -36,7 +36,7 @@ pub fn evaluate(
             BodyItem::Membership { name, type_name, .. } => {
                 declare_and_assert(ctx, &solver, &mut env, name, type_name, schemas, Some(registry), enums);
             }
-            BodyItem::Passthrough(claim_name) => {
+            BodyItem::Passthrough { name: claim_name, .. } => {
                 if let Some(claim) = schemas.get(claim_name) {
                     for sub in &claim.body {
                         if let BodyItem::Membership { name, type_name, .. } = sub {
@@ -304,7 +304,7 @@ pub fn build_cache_opts(
             BodyItem::Membership { name, type_name, .. } => {
                 declare_and_assert(ctx, &solver, &mut env, name, type_name, schemas, Some(registry), enums);
             }
-            BodyItem::Passthrough(claim_name) => {
+            BodyItem::Passthrough { name: claim_name, .. } => {
                 if let Some(claim) = schemas.get(claim_name) {
                     for sub in &claim.body {
                         if let BodyItem::Membership { name, type_name, .. } = sub {
@@ -465,7 +465,7 @@ pub fn evaluate_with_extra_assertions(
             BodyItem::Membership { name, type_name, .. } => {
                 declare_and_assert(ctx, &solver, &mut env, name, type_name, schemas, Some(registry), enums);
             }
-            BodyItem::Passthrough(claim_name) => {
+            BodyItem::Passthrough { name: claim_name, .. } => {
 
                 if let Some(claim) = schemas.get(claim_name) {
                     for sub in &claim.body {

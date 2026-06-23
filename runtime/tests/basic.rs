@@ -788,6 +788,78 @@ fn passthrough_composes_claim_body() {
     } else { panic!(); }
 }
 
+// `..Name(a ↦ x)` — the included 1D walk's carried field `a` renamed onto the
+// outer name, `da` freshened per instance. Shared base for the three tests below.
+const ONE_D_WALK_SRC: &str = "\
+fsm one_d
+    a, da ∈ Int
+    -1 ≤ da ≤ 1
+    is_first_tick ⇒ a = 0
+    ¬is_first_tick ⇒ Δa = da
+";
+
+#[test]
+fn parameterized_passthrough_renames_carried_field() {
+    let mut rt = EvidentRuntime::new();
+    let src = format!(
+        "{ONE_D_WALK_SRC}\
+claim seeded
+    x ∈ Int
+    ..one_d(a ↦ x)
+    is_first_tick
+");
+    rt.load_source(&src).unwrap();
+    let r = rt.query_free("seeded").unwrap();
+    assert!(r.satisfied);
+    // First tick seeds the renamed field to 0.
+    assert_eq!(r.bindings.get("x"), Some(&Value::Int(0)));
+}
+
+#[test]
+fn two_parameterized_passthroughs_compose_independently() {
+    // Two passthroughs of the SAME claim with DIFFERENT renames must give
+    // INDEPENDENT sub-systems: from _x=_y=5 the two ±1 walks can step in
+    // opposite directions (x→6, y→4) — only possible if `da` is freshened
+    // per instance rather than shared.
+    let mut rt = EvidentRuntime::new();
+    let src = format!(
+        "{ONE_D_WALK_SRC}\
+claim opposite
+    x ∈ Int
+    y ∈ Int
+    ..one_d(a ↦ x)
+    ..one_d(a ↦ y)
+    ¬is_first_tick
+    _x = 5
+    _y = 5
+    x = 6
+    y = 4
+");
+    rt.load_source(&src).unwrap();
+    let r = rt.query_free("opposite").unwrap();
+    assert!(r.satisfied, "two walks must be able to step independently");
+}
+
+#[test]
+fn parameterized_passthrough_respects_per_instance_bound() {
+    // Each freshened instance keeps its own ±1 bound: a jump of 2 is unsat.
+    let mut rt = EvidentRuntime::new();
+    let src = format!(
+        "{ONE_D_WALK_SRC}\
+claim jump
+    x ∈ Int
+    y ∈ Int
+    ..one_d(a ↦ x)
+    ..one_d(a ↦ y)
+    ¬is_first_tick
+    _x = 0
+    x = 2
+");
+    rt.load_source(&src).unwrap();
+    let r = rt.query_free("jump").unwrap();
+    assert!(!r.satisfied, "a ±2 step must violate the per-instance ±1 bound");
+}
+
 #[test]
 fn bare_bool_var_still_works_after_passthrough_change() {
     let mut rt = EvidentRuntime::new();

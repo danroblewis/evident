@@ -5,6 +5,7 @@ mod exprs;
 pub(crate) mod extract;
 mod inline;
 pub(crate) mod lower;
+pub(crate) mod passthrough;
 
 pub mod effect_decoder {
 

@@ -118,7 +118,7 @@ pub fn resolve_fsm(rt: &EvidentRuntime, claim_name: &str) -> Option<MainShape> {
     ) {
         for item in items {
             out.push(item);
-            if let BodyItem::Passthrough(name) = item {
+            if let BodyItem::Passthrough { name, .. } = item {
                 if visited.insert(name.clone()) {
                     if let Some(sub) = rt.get_schema(name) {
 

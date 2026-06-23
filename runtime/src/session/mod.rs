@@ -156,6 +156,13 @@ impl EvidentRuntime {
         for s in &prog.schemas {
             let mut s = s.clone();
 
+            // Expand parameterized passthroughs (`..Name(slot ↦ other, …)`) into
+            // the referenced claim's renamed + freshened body FIRST, so the
+            // pulled-in `_renamed` prev-tick reads get their decls + is_first_tick
+            // injected by the passes below. The referenced claim is already in
+            // `self.schemas`, fully lowered.
+            crate::encode::passthrough::expand_parameterized_passthroughs(&mut s, &self.schemas);
+
             lower::desugar_seq_concat(&mut s);
             lower::desugar_delta(&mut s);
             lower::inject_fsm_params(&mut s)?;

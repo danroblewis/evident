@@ -235,6 +235,26 @@ if [ "$EXAMPLES_ONLY" -eq 0 ] && command -v python3 >/dev/null 2>&1; then
     echo
 fi
 
+# ── Phase 2.13: parameterized passthrough `..Name(field ↦ other)` (#294) ──
+# The parser used to ERROR on `..Name(...)`. Now it parses as a rename-arg list, and the
+# included claim's un-renamed carried vars are freshened per instance so two passthroughs of
+# the SAME claim with DIFFERENT renames compose into INDEPENDENT sub-systems. This pins both
+# halves: the parameterized-passthrough fsm exports with 0 dropped constraints (two-instance,
+# single, and bare forms), and the runtime sat/unsat claims prove the compose semantics —
+# both walks seed independently, each respects its own ±1 bound, and the two can step in
+# opposite directions on one tick (only possible if `da` is freshened, not shared).
+if [ "$EXAMPLES_ONLY" -eq 0 ] && command -v python3 >/dev/null 2>&1; then
+    phase "Phase 2.13: parameterized passthrough compose"
+    if python3 ide/test_passthrough_params.py > /tmp/evident-passthrough.log 2>&1; then
+        ok "parameterized passthrough ($(tail -1 /tmp/evident-passthrough.log))"
+    else
+        fail "parameterized passthrough: parse/compose regressed (drop or wrong semantics)"
+        cat /tmp/evident-passthrough.log >&2
+        failures+=("parameterized passthrough")
+    fi
+    echo
+fi
+
 # ── Optional: examples runner ────────────────────────────────
 # Walks examples/, runs each via effect-run. For visual demos (anything
 # that imports packages/sdl/), spawn the program, screenshot the Xvfb

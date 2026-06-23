@@ -487,7 +487,7 @@ fn inline_body_items_guarded(
                     }
                 }
             }
-            BodyItem::Passthrough(claim_name) => {
+            BodyItem::Passthrough { name: claim_name, .. } => {
                 if !guard_is_satisfiable(solver, guard) { continue; }
                 if try_enter(visited, claim_name).is_none() { continue; }
                 let Some(claim) = schemas.get(claim_name) else {

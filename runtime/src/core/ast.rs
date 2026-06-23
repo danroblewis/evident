@@ -27,7 +27,11 @@ pub enum BodyItem {
 
     Membership { name: String, type_name: String, pins: Pins },
 
-    Passthrough(String),
+    /// `..Name` (flat mixin) — or `..Name(slot ↦ other, …)` (parameterized).
+    /// `renames` is the optional rename-arg list: each `Mapping` renames a
+    /// carried field of the included claim to an outer-scope name. Empty for
+    /// the bare `..Name` form, which composes unchanged.
+    Passthrough { name: String, renames: Vec<Mapping> },
 
     SubclaimDecl(SchemaDecl),
 
@@ -433,7 +437,14 @@ impl std::fmt::Display for BodyItem {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let s = match self {
             BodyItem::Membership { name, type_name, .. } => format!("{} ∈ {}", name, type_name),
-            BodyItem::Passthrough(c) => format!("..{}", c),
+            BodyItem::Passthrough { name, renames } => {
+                if renames.is_empty() {
+                    format!("..{}", name)
+                } else {
+                    format!("..{} ({})", name,
+                        renames.iter().map(|m| m.to_string()).collect::<Vec<_>>().join(", "))
+                }
+            }
             BodyItem::SubclaimDecl(s) => format!("subclaim {} (…)", s.name),
             BodyItem::ClaimCall { name, mappings } => {
                 if mappings.is_empty() {
