@@ -446,6 +446,19 @@ claim sort_constraints
         ∃ i ∈ {0..4} : input[i] = out[j]`,
 
   // --- diagram-value demos (each FSM picked to make one underused view shine) ---
+  "Rule 90 · a cellular-automaton fractal (Seq-state FSM, timing_diagram)":
+`-- Rule 90 elementary cellular automaton: each cell becomes the XOR of its two
+-- neighbours (1 iff exactly one neighbour is 1). The WHOLE carried state is a
+-- Seq(Int) of 0/1 — a sequence-valued FSM, where the next sequence is a function
+-- of the previous one. A single seed grows the Sierpinski-triangle fractal. Open
+-- timing_diagram (each cell is a lane) or time_series (each cell a track) and step
+-- through the trace to watch the pattern evolve.
+fsm rule90
+    cells ∈ Seq(Int)
+    #cells = 11
+    is_first_tick ⇒ cells = ⟨0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0⟩
+    ¬is_first_tick ⇒ ∀ i ∈ {1..9} : cells[i] = ((_cells[i-1] + _cells[i+1]) = 1 ? 1 : 0)
+    ¬is_first_tick ⇒ (cells[0] = 0 ∧ cells[10] = 0)`,
   "bistable · two basins of attraction (FSM, basin_map)":
 `-- A random walk between two absorbing walls at 0 and 6 (gambler's ruin).
 -- Each tick a free step ±1, unless already at a wall, where it sticks. From the
