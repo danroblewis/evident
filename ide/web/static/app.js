@@ -68,6 +68,7 @@ let pinnedA = null;
 let pastView = null;
 let currentSlotName = null;   // the active saved-slot name; overrides the derived #fname (Task #213)
 let scopeBound = null;        // the scope knob's value (#21/#84); null ⇒ server default (REACH_LIMIT)
+let allConditions = false;    // state_graph: GLOBAL dynamics (every initial condition) vs from-init (diagram #1)
 
 // Push a snapshot onto a newest-first ring buffer, capping length. Pure (returns the
 // array) so it's unit-testable headless; mutates in place for the module array.
@@ -236,6 +237,19 @@ function paint(data, ms) {
   // when the view has no caption (so a stale caption never lingers under a different picture).
   $("#view-caption").textContent = (data.png && VIEW_CAPTIONS[data.view]) ? VIEW_CAPTIONS[data.view] : "";
 
+  // ALL-INITIAL-CONDITIONS toggle (diagram #1): only meaningful for state_graph. Show it under
+  // that view, hide it elsewhere, and append an honest phrase to the caption telling the reader
+  // WHICH dynamics they're seeing — global (every init) vs reachable from the seeded init.
+  const sg = data.png && data.view === "state_graph";
+  $("#allcond-ctl").hidden = !sg;
+  if (sg) {
+    $("#allcond-in").checked = allConditions;
+    const phrase = data.all_conditions
+      ? " — global dynamics: every initial condition"
+      : " — reachable from the seeded init";
+    $("#view-caption").textContent += phrase;
+  }
+
   // run-history (#209): snapshot only SUCCESSFUL, drawable results — never errors / claims /
   // backend-down, and never a result with no png (nothing to thumbnail).
   if (data.png) {
@@ -353,7 +367,7 @@ async function run(view) {
       // lead view for what was just written — otherwise a tab click pins the view and a
       // later edit that turns the machine nondeterministic keeps showing a flat line.
       // A tab click (run("phase_portrait")) passes its view explicitly and is honored.
-      body: JSON.stringify({ source, view: view || null, scope: scopeBound }),
+      body: JSON.stringify({ source, view: view || null, scope: scopeBound, all_conditions: allConditions }),
     });
     // A 500 RESOLVES the fetch (only a network drop rejects it), so without this check an HTTP
     // error would fall through and silently leave the prior picture looking live (Marek #206).
@@ -449,6 +463,12 @@ $("#scope-in").addEventListener("change", () => {
   const v = parseInt($("#scope-in").value, 10);
   scopeBound = (v && v > 0) ? v : null;
   run();
+});
+// ALL-INITIAL-CONDITIONS toggle (diagram #1): flip global vs from-init dynamics, then re-analyze
+// pinned to state_graph (an explicit view, so the re-run isn't re-recommended off the graph).
+$("#allcond-in").addEventListener("change", () => {
+  allConditions = $("#allcond-in").checked;
+  run("state_graph");
 });
 run();
 maybeAutoTour();

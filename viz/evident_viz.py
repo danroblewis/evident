@@ -32,6 +32,7 @@ from model_ranking import RankingMixin
 from model_analysis import AnalysisMixin
 from model_query import QueryMixin
 from model_temporal import TemporalMixin
+from model_global import GlobalGraphMixin
 
 
 _LOAD_CACHE = {}          # (smt2_path, schema_path, mtime) -> Model
@@ -66,7 +67,8 @@ def load(smt2_path, schema_path):
     return m
 
 
-class Model(CodecMixin, RankingMixin, AnalysisMixin, QueryMixin, TemporalMixin):
+class Model(CodecMixin, RankingMixin, AnalysisMixin, QueryMixin, TemporalMixin,
+            GlobalGraphMixin):
     # The methods are inherited from five mixins: CodecMixin (viz/model_codec.py — the
     # value <-> z3 codec: scalar/seq decode, element-wise pin, successor-block clause,
     # leaf sorts), RankingMixin (viz/model_ranking.py — variable ranking/selection, axis

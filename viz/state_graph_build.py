@@ -42,6 +42,23 @@ def build_reachable_graph(m):
     return G, states
 
 
+def build_global_graph(m):
+    """The ALL-INITIAL-CONDITIONS graph: the transition graph over EVERY valid
+    carried assignment (Model.full_state_graph), not the forward orbit of the one
+    seeded init. Returns (G, states) for a finite discrete product that fits, or
+    None when the model isn't finitely enumerable (real/string/unbounded) or the
+    product exceeds FINITE_CAP — the caller then falls back to the from-init path."""
+    states, edges, info = m.full_state_graph(limit=FINITE_CAP)
+    if not info["discrete"] or info["capped"] or not states:
+        return None
+    G = nx.DiGraph()
+    for i, st in enumerate(states):
+        G.add_node(i, state=st)
+    for a, b in edges:
+        G.add_edge(a, b)
+    return G, states
+
+
 def build_trajectory_graph(m):
     """The deterministic single run as a path graph — the real, finite run when
     the full reachable BFS would fabricate by exploring every free input.

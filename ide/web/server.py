@@ -71,6 +71,7 @@ class Source(BaseModel):
     view: str | None = None
     scope: int | None = None        # reachable-exploration bound — the scope knob (#21/#84)
     unroll: int | None = None       # k-step transition unroll for /api/smtlib (#259/#19)
+    all_conditions: bool = False    # state_graph: GLOBAL dynamics (every initial condition) vs from-init (diagram #1)
 
 
 @app.post("/api/analyze")
@@ -108,7 +109,7 @@ def analyze(req: Source):
             for cand in [view, "state_graph", "time_series"]:
                 if cand in RENDERERS:
                     try:
-                        png, points = _render_png(cand, prefix)
+                        png, points = _render_png(cand, prefix, all_conditions=req.all_conditions)
                         view = cand
                         break
                     except Exception as _re:
@@ -134,6 +135,7 @@ def analyze(req: Source):
                         + [v["name"].split(".")[-1] for v in getattr(m, "derived", [])],
                 "view": view,
                 "views": VIEWS,
+                "all_conditions": bool(req.all_conditions) and view == "state_graph",  # global dynamics vs from-init (diagram #1)
                 "png": base64.b64encode(png).decode() if png else None,
                 "points": points,        # interactive hover overlay (solution_space); [] otherwise
                 "warnings": msg if dropped else "",
