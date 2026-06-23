@@ -439,12 +439,28 @@ impl EvidentRuntime {
             if n.starts_with('_') { continue; }
             let prev = format!("_{n}");
             if !cached.env.contains_key(&prev) { continue; }
-            let kind = match cached.env.get(n) {
-                Some(crate::encode::Var::IntVar(_))    => "int",
-                Some(crate::encode::Var::RealVar(_))   => "real",
-                Some(crate::encode::Var::BoolVar(_))   => "bool",
-                Some(crate::encode::Var::StrVar(_))    => "string",
-                Some(crate::encode::Var::EnumVar { .. }) => "enum",
+            // Scalars emit `{name,…}`; a carried Seq also emits `elem` (+ `len` when
+            // pinned) so the viz knows its shape — mirrors `export_claim`. Without
+            // this a Seq-carrying fsm reported `state: []` (the renderers saw no
+            // carried vars at all).
+            let (kind, extra): (&str, String) = match cached.env.get(n) {
+                Some(crate::encode::Var::IntVar(_))    => ("int", String::new()),
+                Some(crate::encode::Var::RealVar(_))   => ("real", String::new()),
+                Some(crate::encode::Var::BoolVar(_))   => ("bool", String::new()),
+                Some(crate::encode::Var::StrVar(_))    => ("string", String::new()),
+                Some(crate::encode::Var::EnumVar { .. }) => ("enum", String::new()),
+                Some(crate::encode::Var::SeqVar { len, elem, .. }) => {
+                    let elem_kind = match elem {
+                        crate::core::SeqElem::Int  => "int",
+                        crate::core::SeqElem::Bool => "bool",
+                        crate::core::SeqElem::Str  => "string",
+                    };
+                    let mut e = format!(", \"elem\": \"{elem_kind}\"");
+                    if let Some(len) = pinned_len(&cached.solver, len) {
+                        e.push_str(&format!(", \"len\": {len}"));
+                    }
+                    ("seq", e)
+                }
                 _ => continue,
             };
             let role = if interface.contains(n.split('.').next().unwrap_or(n))
@@ -457,7 +473,7 @@ impl EvidentRuntime {
             let hist = if cached.env.contains_key(&prev2) { 2 } else { 1 };
             if hist == 2 { any_two_tick = true; }
             rows.push(format!(
-                "    {{\"name\": \"{n}\", \"prev\": \"{prev}\", \"kind\": \"{kind}\", \"role\": \"{role}\", \"hist\": {hist}}}"));
+                "    {{\"name\": \"{n}\", \"prev\": \"{prev}\", \"kind\": \"{kind}\", \"role\": \"{role}\", \"hist\": {hist}{extra}}}"));
         }
         // DERIVED vars: scalars the transition CONSTRAINS but does NOT carry (no `_x`
         // prev-twin) and that are a pure function of the CURRENT carried state — e.g.

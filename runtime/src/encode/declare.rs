@@ -202,7 +202,23 @@ pub(super) fn apply_seq_lengths<'ctx>(
     seq_lengths: &HashMap<String, i64>,
     ctx: &'ctx Context,
 ) {
+    // A previous-tick Seq twin (`_xs`, `__xs`) carries the SAME length as its
+    // base (`xs`): the trampoline copies the whole `Value::Seq*` across ticks,
+    // so `#_xs = #xs`. The length-pin collector only sees the base's `#xs = N`,
+    // never an explicit `#_xs = N`, so propagate the base length to every
+    // `_`-prefixed twin present in env. Without this, `coindexed(_xs, xs)` can't
+    // resolve `_xs`'s length and the ongoing transition is silently dropped.
+    let mut effective: HashMap<String, i64> = seq_lengths.clone();
     for (name, n) in seq_lengths {
+        for depth in 1..=2 {
+            let twin = format!("{}{name}", "_".repeat(depth));
+            if env.contains_key(&twin) {
+                effective.entry(twin).or_insert(*n);
+            }
+        }
+    }
+
+    for (name, n) in &effective {
         let Some(var) = env.get(name) else { continue };
         let new_len = Int::from_i64(ctx, *n);
         let new_var = match var {
