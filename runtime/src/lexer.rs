@@ -56,6 +56,7 @@ pub enum Token {
     DotDot,
     Dot,
     Colon,
+    ColonEq,
     ForAll,
     Exists,
     MapsTo,
@@ -273,7 +274,15 @@ pub fn tokenize_with_locs(src: &str) -> Result<(Vec<Token>, Vec<(usize, usize)>)
             ']' => { chars.next(); col += 1; tokens.push(Token::RBracket); paren_depth = paren_depth.saturating_sub(1); }
             '#' => { chars.next(); col += 1; tokens.push(Token::Hash); }
             ',' => { chars.next(); col += 1; tokens.push(Token::Comma); }
-            ':' => { chars.next(); col += 1; tokens.push(Token::Colon); }
+            ':' => {
+                chars.next(); col += 1;
+                if chars.peek() == Some(&'=') {
+                    chars.next(); col += 1;
+                    tokens.push(Token::ColonEq);
+                } else {
+                    tokens.push(Token::Colon);
+                }
+            }
             '.' => {
                 chars.next(); col += 1;
                 if chars.peek() == Some(&'.') {

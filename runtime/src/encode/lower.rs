@@ -278,10 +278,17 @@ pub(crate) fn inject_prev_tick_decls(s: &mut SchemaDecl) -> Result<(), RuntimeEr
     // deepest history any ref reaches (1 = `_var`, 2 = `__var`).
     let mut prev_refs: HashMap<String, String> = HashMap::new();
     let mut max_depth: usize = 0;
+    // A bare `is_first_tick` reference (e.g. from a `:=` initial-value seed, or
+    // a hand-written `is_first_tick ⇒ …` guard with no `_var` read) must also
+    // trigger the Bool decl below — otherwise the seed constraint references an
+    // undeclared name and is silently dropped.
+    let mut refs_first_tick = false;
     fn walk(e: &Expr, declared: &HashMap<String, String>,
-            prev_refs: &mut HashMap<String, String>, max_depth: &mut usize) {
+            prev_refs: &mut HashMap<String, String>, max_depth: &mut usize,
+            refs_first_tick: &mut bool) {
         crate::core::ast::walk_expr(e, &mut |n| {
             if let Expr::Identifier(n) = n {
+                if n == "is_first_tick" { *refs_first_tick = true; return; }
                 let depth = n.chars().take_while(|c| *c == '_').count();
                 if depth == 0 { return; }
                 let base = &n[depth..];
@@ -298,14 +305,14 @@ pub(crate) fn inject_prev_tick_decls(s: &mut SchemaDecl) -> Result<(), RuntimeEr
     }
     for item in &s.body {
         match item {
-            BodyItem::Constraint(e) => walk(e, &declared, &mut prev_refs, &mut max_depth),
+            BodyItem::Constraint(e) => walk(e, &declared, &mut prev_refs, &mut max_depth, &mut refs_first_tick),
             BodyItem::ClaimCall { mappings, .. } =>
-                for m in mappings { walk(&m.value, &declared, &mut prev_refs, &mut max_depth); },
+                for m in mappings { walk(&m.value, &declared, &mut prev_refs, &mut max_depth, &mut refs_first_tick); },
             _ => {}
         }
     }
 
-    if prev_refs.is_empty() { return Ok(()); }
+    if prev_refs.is_empty() && !refs_first_tick { return Ok(()); }
 
     let mut to_inject: Vec<BodyItem> = Vec::new();
     // Deterministic order: shallowest history first (`_pos` before `__pos`),

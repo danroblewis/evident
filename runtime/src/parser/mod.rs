@@ -402,6 +402,11 @@ impl Parser {
         let mut ops: Vec<BinOp> = Vec::new();
 
         let mut membership_at: Option<(usize, String, Vec<String>)> = None;
+        // `x ∈ Int := v` — an INITIAL value (first-tick seed), distinct from the
+        // always-pin `= v`. Captured here and lowered to `is_first_tick ⇒ x = v`
+        // at emission, so it produces the identical Z3 encoding to the explicit
+        // `is_first_tick ⇒ x = v` form.
+        let mut initial_seed: Option<Expr> = None;
 
         loop {
 
@@ -450,7 +455,8 @@ impl Parser {
                 };
                 let after_head = self.toks.get(self.pos + 1).cloned();
                 let after_chain_class = |t: &Option<Token>| matches!(t,
-                    Some(Token::Newline) | Some(Token::Eof) | Some(Token::Indent(_)) | None
+                    Some(Token::Newline) | Some(Token::Eof) | Some(Token::Indent(_))
+                    | Some(Token::ColonEq) | None
                 ) || peek_compare_op(t.as_ref().unwrap_or(&Token::Eof)).is_some();
 
                 let is_compound = matches!(after_head, Some(Token::LParen))
@@ -490,6 +496,22 @@ impl Parser {
                 membership_at = Some((var_idx, type_name, all_names));
                 continue;
             }
+            if matches!(self.peek(), Token::ColonEq) {
+                // `:=` only makes sense once a membership has been seen
+                // (`x ∈ Int := 0`); a bare `x := 0` is not a typed initial-value
+                // decl — bail so it parses as a normal expression elsewhere.
+                if membership_at.is_none() {
+                    self.pos = saved;
+                    return Ok(None);
+                }
+                self.bump();
+                let rhs = match self.parse_expr() {
+                    Ok(e) => e,
+                    Err(_) => { self.pos = saved; return Ok(None); }
+                };
+                initial_seed = Some(rhs);
+                break;
+            }
             if let Some(op) = peek_compare_op(self.peek()) {
                 self.bump();
                 let rhs = match self.parse_addsub() {
@@ -527,6 +549,19 @@ impl Parser {
                 let rhs = if i + 1 == var_idx { var_expr.clone() } else { operands[i + 1].clone() };
                 items.push(BodyItem::Constraint(Expr::Binary(
                     op.clone(), Box::new(lhs), Box::new(rhs),
+                )));
+            }
+            // `:=` initial value → `is_first_tick ⇒ name = seed`. Identical AST
+            // to writing the explicit guarded seed by hand.
+            if let Some(seed) = &initial_seed {
+                items.push(BodyItem::Constraint(Expr::Binary(
+                    BinOp::Implies,
+                    Box::new(Expr::Identifier("is_first_tick".to_string())),
+                    Box::new(Expr::Binary(
+                        BinOp::Eq,
+                        Box::new(var_expr.clone()),
+                        Box::new(seed.clone()),
+                    )),
                 )));
             }
         }
