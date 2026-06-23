@@ -1,19 +1,31 @@
 #!/usr/bin/env python3
-"""render_time_series — trajectory-over-tick renderer for ANY Evident IR.
+"""render_time_series — ENSEMBLE-over-initial-conditions renderer for ANY Evident IR.
 
-Follows one successor chain (~60 ticks) from a seed state and plots every
-state variable against tick number on stacked subplots that share the tick
-axis:
+A single from-init chain shows only the basin the seed falls into — a bistable seeded at
+x=1 looks like it ALWAYS decays to 0, hiding the second attractor at 6. So this renderer
+forward-simulates an ENSEMBLE of initial conditions (`time_series_ensemble.ensemble_inits`)
+and, per state variable, plots:
 
-  * numeric vars (int/real)  -> line plot
-  * bool/enum/string vars    -> step plot (post-step), y-ticks labelled with
-                                the variant / true|false names
+  * every trajectory as a faint line (per-var track layout, tick on the shared x-axis),
+  * a BOLD reachable ENVELOPE — the min–max band (+ median) per tick across the ensemble.
+    This is the headline all-conditions signal: the SPREAD of values reachable at each step,
+    not one line.
 
-The dynamics come entirely from querying the transition relation via
-evident_viz — nothing about the three sample programs is hardcoded here. A
-small per-program seed table only chooses an interesting START point for the
-numeric phase systems (whose own initial_state is a fixed point at the origin);
-everything else falls back to m.initial_state().
+The inits come from the EXISTING all-conditions machinery, and each trajectory is stepped
+with the EXISTING successor relation (`step_trajectory` reuses `_advance`) — the transition
+is never reimplemented:
+
+  * DISCRETE / bounded → inits = full_state_graph()'s enumerated state set (every valid
+    carried assignment), sampled if huge.
+  * CONTINUOUS / Real → inits = a proven-bounds product grid over the carried vars.
+  * UNBOUNDED carried var → no honest ensemble box; falls back to a single from-init run with
+    an explicit "single run (unbounded init)" note.
+
+Divergence is clamped: a chaotic / continuous model can overflow to 1e300; `step_trajectory`
+truncates such a chain so the envelope never crashes on an OverflowError.
+
+  * numeric vars (int/real)  -> ensemble lines + min–max band + median
+  * bool/enum/string vars    -> ensemble step lines + reached-value band (ordinal extent)
 
 Usage:
     python3 viz/render_time_series.py <smt2> <schema> <out_path.png>
@@ -27,241 +39,253 @@ sys.path.insert(0, "viz")
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+import numpy as np
 
 from evident_viz import load
+from time_series_ensemble import ensemble_inits, step_trajectory
+from time_series_walk import pick_seed, walk, to_ordinal, _flatten_seqs
 
 STEPS = 60
 
 
-def pick_seed(m):
-    """The trajectory starts at the program's ACTUAL initial_state — the only faithful seed, so
-    every plotted value is genuinely reachable.
-
-    An earlier version nudged the first numeric var by +2000 to escape a flat fixed-point origin,
-    but that seeded an UNREACHABLE state and could plot a variable far outside its proven bound
-    (vending init has a self-loop under one nondeterministic choice, so it was misread as a fixed
-    point and balance was seeded to 2000 ∉ [0,5] — Marek #183, a faithfulness violation). A
-    genuinely-flat trajectory from a true fixed-point init is HONEST; the off-origin limit-cycle
-    dynamics of a continuous system are shown by phase_portrait, which probes within the reachable
-    set — never by fabricating an out-of-domain start here."""
-    return m.initial_state()
-
-
-def _advance(m, cur, prefer_change, visited):
-    """One step of the walk. For DISCRETE programs (prefer_change), pick a
-    successor that actually CHANGES the state — and, when possible, one not yet
-    visited — so the trajectory explores the program rather than parking on a
-    self-loop. This mirrors render_timing_diagram._advance: on a discrete graph
-    the lone successor() can sit on a legal self-edge (dungeon's Entrance->Entrance
-    is satisfiable, and z3 may pick it), which would report a genuinely-dynamic
-    program as static. Falls back to the lone successor() for non-discrete
-    (driven difference-equation) systems."""
-    if not prefer_change:
-        return m.successor(cur)
-    succ = m.successors(cur, limit=32)
-    if not succ:
-        return None
-    changed = [s for s in succ if m._key(s) != m._key(cur)]
-    pool = changed or succ
-    fresh = [s for s in pool if m._key(s) not in visited]
-    return (fresh or pool)[0]
-
-
-def walk(m, seed, steps):
-    """Follow one successor chain from `seed`, stopping at a fixed point / revisit.
-
-    For DRIVEN difference equations (numeric / mixed: brackets streams
-    ⟨LParen,LBrack,…,BEnd⟩) the next state is DETERMINISTIC given the full previous
-    state, so we follow the lone successor() — picking a 'fresh' state out of an
-    out-of-bounds fan would fabricate a trace that never occurs on the declared run.
-
-    For DISCRETE programs (all-categorical interface — an adjacency graph like
-    dungeon) the lone successor() can park on a legal self-edge: Entrance->Entrance
-    is satisfiable and z3 may pick it, which would make a genuinely-dynamic program
-    look static. There we prefer a STATE-CHANGING, not-yet-visited successor — exactly
-    what render_timing_diagram already does — so the trajectory walks
-    Entrance->Hall->Gate instead of stalling at the seed."""
-    prefer_change = m.is_discrete()
-    cur = seed
-    path = [cur]
-    seen = {m._key(cur)}
-    for _ in range(steps):
-        nxt = _advance(m, cur, prefer_change, seen)
-        if nxt is None:
-            break
-        path.append(nxt)
-        k = m._key(nxt)
-        if k in seen:        # fixed point / revisit -> stop
-            break
-        seen.add(k)
-        cur = nxt
-    return path
-
-
-def to_ordinal(m, var, value):
-    """Map a non-numeric value to a y-coordinate + its label."""
-    k = var["kind"]
-    if k == "bool":
-        return (1 if value else 0), str(bool(value)).lower()
-    if k == "enum":
-        variants = m.enum_variants.get(var["name"], [])
-        idx = variants.index(value) if value in variants else 0
-        return idx, str(value)
-    # string
-    return 0, str(value)
-
-
-def _flatten_seqs(state_vars, traj):
-    """Expand each Seq var into per-element scalar pseudo-vars (`xs[0]`, `xs[1]`, …) and
-    mirror their values into every trajectory state dict, so the row loop plots each Seq
-    element as its own line (a Seq is a vector — a single flat row hides its dynamics).
-    Returns (vars2, traj2): `vars2` has each seq var replaced IN PLACE by its element
-    pseudo-vars (preserving rank order); `traj2` is the states with `xs[i]` keys added."""
-    traj2 = [dict(s) for s in traj]
-    vars2 = []
-    for v in state_vars:
-        if v["kind"] == "seq":
-            elem = v.get("elem", "int")
-            for i in range(v.get("len", 0)):
-                pseudo = f"{v['name']}[{i}]"
-                vars2.append({"name": pseudo, "kind": elem, "role": v.get("role")})
-                for s in traj2:
-                    s[pseudo] = s[v["name"]][i]
-        else:
-            vars2.append(v)
-    return vars2, traj2
-
-
-def render(smt2, schema, out_path):
-    m = load(smt2, schema)
-    seed = pick_seed(m)
-
-    if seed is None:
-        fig, ax = plt.subplots(figsize=(10, 4))
-        ax.axis("off")
-        ax.text(0.5, 0.5,
-                f"N/A for {m.fsm}: no initial state\n(transition has no first-tick model)",
-                ha="center", va="center", fontsize=14)
-        fig.suptitle(f"{m.fsm} — time_series", fontsize=14, fontweight="bold")
-        fig.savefig(out_path, dpi=120, bbox_inches="tight")
-        plt.close(fig)
+def _categorical_yticks(ax, m, var):
+    """Label a categorical var's row with its FULL ladder (every enum variant / false|true),
+    not just the visited values, so the row reads as the variable's whole range. Shared by the
+    ensemble and single-run tracks."""
+    kind = var["kind"]
+    if kind == "enum":
+        labels = {i: vlbl for i, vlbl in enumerate(m.enum_variants.get(var["name"], []))}
+    elif kind == "bool":
+        labels = {0: "false", 1: "true"}
+    else:
         return
+    if labels:
+        ks = sorted(labels)
+        ax.set_yticks(ks)
+        ax.set_yticklabels([labels[k] for k in ks], fontsize=8)
+        ax.set_ylim(min(ks) - 0.4, max(ks) + 0.4)
 
-    traj = walk(m, seed, STEPS)
-    # Expand any Seq var into per-element scalar tracks (and mirror the values into the
-    # trajectory states), so a Seq plots as one line per element rather than a flat row.
-    flat_vars, traj = _flatten_seqs(m.state_vars, traj)
-    ticks = list(range(len(traj)))
 
-    # CHANNEL MAPPING for a stacked time series: tick is the shared x-axis; each
-    # variable owns one row's y-axis (position — the best channel). We don't need
-    # color/size here, so the channel job is purely ORDER: most-important var on
-    # top, and group the two var TYPES so quantitative lines and categorical step
-    # plots don't interleave. m.state_vars is already importance-ranked+deduped;
-    # numeric_vars / categorical_vars are its type-split projections (same order).
-    quant = m.numeric_vars
-    cat = m.categorical_vars
-    # DERIVED vars (e.g. `done ∈ Bool = (count ≥ 5)`) are a pure function of the
-    # carried state — not carried, so they're absent from state_vars/numeric/categorical
-    # — but every trajectory state already carries their value (Model._read_state reads
-    # them for display). Plot them too: bool/enum derived as step tracks, int/real as
-    # lines. They go LAST (after the carried interface vars) so the carried dynamics lead.
-    derived = [v for v in m.derived if v["name"] in traj[0]]
-    ordered = quant + cat + derived            # numerics, categoricals, then derived
-    if not ordered:
-        ordered = list(flat_vars)              # seq-only fsm: its per-element tracks
+def _na_card(m, out_path, msg):
+    fig, ax = plt.subplots(figsize=(10, 4))
+    ax.axis("off")
+    ax.text(0.5, 0.5, msg, ha="center", va="center", fontsize=14)
+    fig.suptitle(f"{m.fsm} — time_series", fontsize=14, fontweight="bold")
+    fig.savefig(out_path, dpi=120, bbox_inches="tight")
+    plt.close(fig)
 
-    # Drop CONSTANT rows. A variable that holds one value for the entire declared
-    # trajectory carries zero information as a time series — its row is a flat
-    # line that wastes vertical space (find's state.s5 never leaves Unseen; a
-    # balanced brackets run pins st.ok=true throughout). Suppress those rows but
-    # report them as a one-line "held constant" note so no value is hidden — the
-    # READER still sees "st.ok stayed true / s5 stayed Unseen", just not as a row.
-    def held_value(var):
-        vals = [s[var["name"]] for s in traj]
-        first = vals[0]
-        return first if all(v == first for v in vals) else None
 
-    constants = [(v, held_value(v)) for v in ordered]
-    constants = [(v, hv) for v, hv in constants if hv is not None]
-    varying = [v for v in ordered if held_value(v) is None]
+def _ordered_vars(m, sample_state, flat_vars):
+    """The plot ROW order: numeric, then categorical, then derived interface vars (each a
+    type-split projection of the importance-ranked state_vars), falling back to a seq-only
+    fsm's per-element tracks. `sample_state` gates the derived vars (only those actually
+    present in the trajectory states)."""
+    derived = [v for v in m.derived if v["name"] in sample_state]
+    ordered = m.numeric_vars + m.categorical_vars + derived
+    return ordered if ordered else list(flat_vars)
 
+
+def _track_matrix(m, var, trajs, nticks):
+    """A (n_trajectories × nticks) float matrix of `var`'s ordinal value per trajectory per
+    tick, padded with NaN past each trajectory's end (so a short chain doesn't fabricate a
+    flat tail). Numeric vars keep their value; categorical vars map to their ordinal."""
+    name = var["kind"]
+    rows = []
+    for tr in trajs:
+        row = [np.nan] * nticks
+        for t, s in enumerate(tr):
+            if name in ("int", "real"):
+                v = s.get(var["name"])
+                row[t] = float(v) if isinstance(v, (int, float)) else np.nan
+            else:
+                row[t] = to_ordinal(m, var, s[var["name"]])[0]
+        rows.append(row)
+    return np.array(rows, float)
+
+
+def _draw_track(ax, m, var, mat, ticks, rank):
+    """One row: every trajectory faint, plus the bold reachable envelope (min–max band +
+    median) across the ensemble at each tick. `mat` is _track_matrix's NaN-padded matrix."""
+    kind = var["kind"]
+    badge = "derived" if var.get("role") == "derived" else m.var_class(var)
+    ax.set_title(f"#{rank + 1}  {badge}", loc="left", fontsize=8, color="#888", pad=2)
+    numeric = kind in ("int", "real")
+    line_color = "#1f77b4" if numeric else "#d62728"
+
+    # faint individual trajectories
+    for row in mat:
+        if numeric:
+            ax.plot(ticks, row, color=line_color, lw=0.6, alpha=0.18, zorder=1)
+        else:
+            ax.step(ticks, row, where="post", color=line_color, lw=0.6,
+                    alpha=0.18, zorder=1)
+
+    # reachable ENVELOPE: min–max band + median, computed per tick over the ensemble
+    # (ignoring NaN-padded tails — nanmin/nanmax of an all-NaN column is itself NaN,
+    # which matplotlib simply skips, so a tick no trajectory reaches leaves a gap).
+    with np.errstate(all="ignore"):
+        lo = np.nanmin(mat, axis=0)
+        hi = np.nanmax(mat, axis=0)
+        med = np.nanmedian(mat, axis=0)
+    valid = ~np.isnan(lo)
+    tk = np.array(ticks, float)
+    ax.fill_between(tk[valid], lo[valid], hi[valid], color=line_color, alpha=0.22,
+                    zorder=2, label="reachable envelope (min–max)")
+    if numeric:
+        ax.plot(tk[valid], med[valid], color=line_color, lw=2.0, zorder=3,
+                label="ensemble median")
+    else:
+        ax.step(tk[valid], med[valid], where="post", color=line_color, lw=2.0,
+                zorder=3, label="ensemble median")
+
+    ax.set_ylabel(var["name"], rotation=0, ha="right", va="center", fontsize=9)
+    if numeric:
+        ax.grid(True, alpha=0.3)
+    else:
+        _categorical_yticks(ax, m, var)
+        ax.grid(True, axis="x", alpha=0.3)
+
+
+def _render_ensemble(m, out_path, inits, kind, note):
+    """Forward-simulate every init, expand seqs, drop constant rows, and draw the per-var
+    ensemble + envelope. Returns a one-line render note (string)."""
+    prefer_change = m.is_discrete()
+    raw = [step_trajectory(m, init, STEPS, prefer_change) for init in inits]
+    trajs = [tr for tr in raw if tr]
+    if not trajs:
+        _na_card(m, out_path, f"N/A for {m.fsm}: no trajectories from any initial condition")
+        return "ensemble: empty"
+
+    # Expand seqs per trajectory (each gets the same pseudo-var set; state_vars is shared).
+    flat_vars = m.state_vars
+    flat_trajs = []
+    for tr in trajs:
+        fv, ftr = _flatten_seqs(m.state_vars, tr)
+        flat_vars = fv
+        flat_trajs.append(ftr)
+    trajs = flat_trajs
+    nticks = max(len(tr) for tr in trajs)
+    ticks = list(range(nticks))
+
+    ordered = _ordered_vars(m, trajs[0][0], flat_vars)
+
+    # A var is CONSTANT only if it never moves across the WHOLE ensemble (not just one run) —
+    # otherwise the ensemble's whole point (the fan) would be suppressed. Report the held set.
+    def held(var):
+        seen = set()
+        for tr in trajs:
+            for s in tr:
+                if var["name"] in s:
+                    seen.add(s[var["name"]])
+        return next(iter(seen)) if len(seen) == 1 else None
+
+    constants = [(v, held(v)) for v in ordered if held(v) is not None]
+    varying = [v for v in ordered if held(v) is None]
     if not varying:
-        # Every variable is constant (a fixed point / degenerate seed): nothing to
-        # plot over time. Render an honest summary card instead of N empty rows.
         fig, ax = plt.subplots(figsize=(10, max(3.0, 0.4 * len(constants) + 2)))
         ax.axis("off")
         lines = "\n".join(f"  {v['name']} = {hv}" for v, hv in constants)
         ax.text(0.5, 0.5,
-                f"N/A — every state variable is constant over the trajectory\n"
-                f"({len(traj)} ticks from seed {m.label(seed)}; no dynamics to plot)\n\n"
-                f"{lines}",
+                f"N/A — every state variable is constant across the ensemble\n"
+                f"({len(trajs)} initial conditions; no dynamics to plot)\n\n{lines}",
                 ha="center", va="center", fontsize=12, family="monospace")
         fig.suptitle(f"{m.fsm} — time_series", fontsize=14, fontweight="bold")
         fig.savefig(out_path, dpi=120, bbox_inches="tight")
         plt.close(fig)
-        return
+        return f"ensemble: all {len(ordered)} vars constant"
 
-    ordered = varying
-    nvars = len(ordered)
+    nvars = len(varying)
     fig, axes = plt.subplots(nvars, 1, sharex=True,
                              figsize=(11, max(2.2 * nvars, 3.0)))
     if nvars == 1:
         axes = [axes]
-
-    for rank, (ax, var) in enumerate(zip(axes, ordered)):
-        name = var["name"]
-        kind = var["kind"]
-        # importance badge: #1 is the most-varying / least-redundant var. Derived vars
-        # (role "derived") are tagged so the reader knows the track is a function of the
-        # carried state, not itself carried.
-        badge = "derived" if var.get("role") == "derived" else m.var_class(var)
-        ax.set_title(f"#{rank + 1}  {badge}", loc="left",
-                     fontsize=8, color="#888", pad=2)
-        if kind in ("int", "real"):
-            ys = [s[name] for s in traj]
-            ax.plot(ticks, ys, marker="o", markersize=3, linewidth=1.4,
-                    color="#1f77b4")
-            ax.set_ylabel(name, rotation=0, ha="right", va="center", fontsize=9)
-            ax.grid(True, alpha=0.3)
-        else:
-            ys, labels = [], {}
-            for s in traj:
-                y, lbl = to_ordinal(m, var, s[name])
-                ys.append(y)
-                labels[y] = lbl
-            # full enum ladder as y-ticks (not just visited values), so the row
-            # reads as the variable's whole categorical range
-            if kind == "enum":
-                variants = m.enum_variants.get(name, [])
-                for i, vlbl in enumerate(variants):
-                    labels.setdefault(i, vlbl)
-            elif kind == "bool":
-                labels.setdefault(0, "false")
-                labels.setdefault(1, "true")
-            ax.step(ticks, ys, where="post", linewidth=1.6, color="#d62728",
-                    marker="o", markersize=3)
-            if labels:
-                ks = sorted(labels)
-                ax.set_yticks(ks)
-                ax.set_yticklabels([labels[k] for k in ks], fontsize=8)
-                ax.set_ylim(min(ks) - 0.4, max(ks) + 0.4)
-            ax.set_ylabel(name, rotation=0, ha="right", va="center", fontsize=9)
-            ax.grid(True, axis="x", alpha=0.3)
-
+    for rank, (ax, var) in enumerate(zip(axes, varying)):
+        mat = _track_matrix(m, var, trajs, nticks)
+        _draw_track(ax, m, var, mat, ticks, rank)
+    axes[0].legend(loc="upper right", fontsize=7, framealpha=0.85)
     axes[-1].set_xlabel("tick")
     fig.suptitle(
-        f"{m.fsm} — time_series  (seed {m.label(seed)}, {len(traj)} ticks; "
-        f"{nvars} varying of {len(quant) + len(cat) + len(derived)} vars, importance-ordered)",
+        f"{m.fsm} — time_series  ({note}; {len(trajs)} trajectories, ≤{nticks} ticks; "
+        f"{nvars} varying vars)",
         fontsize=13, fontweight="bold")
     if constants:
-        held = ",  ".join(f"{v['name']}={hv}" for v, hv in constants)
-        fig.text(0.5, 0.005,
-                 f"held constant (suppressed): {held}",
+        held_s = ",  ".join(f"{v['name']}={hv}" for v, hv in constants)
+        fig.text(0.5, 0.005, f"held constant across the ensemble: {held_s}",
                  ha="center", va="bottom", fontsize=8, color="#666")
     fig.tight_layout(rect=[0, 0.02 if constants else 0, 1, 0.97])
     fig.savefig(out_path, dpi=120, bbox_inches="tight")
     plt.close(fig)
+    return (f"{kind} ensemble: {len(trajs)} trajectories, {nvars} varying vars")
+
+
+def _render_single_run(m, out_path, reason):
+    """The honest single-trajectory fallback for an UNBOUNDED model (no finite ensemble box):
+    follow one chain from initial_state() and plot each var as one line, captioned with WHY
+    the ensemble couldn't be built."""
+    seed = pick_seed(m)
+    if seed is None:
+        _na_card(m, out_path,
+                 f"N/A for {m.fsm}: no initial state\n(transition has no first-tick model)")
+        return "single-run: no init"
+    traj = walk(m, seed, STEPS)
+    flat_vars, traj = _flatten_seqs(m.state_vars, traj)
+    ticks = list(range(len(traj)))
+    ordered = _ordered_vars(m, traj[0], flat_vars)
+
+    def held_value(var):
+        vals = [s[var["name"]] for s in traj]
+        return vals[0] if all(v == vals[0] for v in vals) else None
+
+    constants = [(v, held_value(v)) for v in ordered if held_value(v) is not None]
+    varying = [v for v in ordered if held_value(v) is None]
+    if not varying:
+        _na_card(m, out_path,
+                 f"N/A — every state variable is constant over the trajectory\n"
+                 f"({len(traj)} ticks from seed {m.label(seed)}; no dynamics to plot)")
+        return "single-run: all constant"
+
+    nvars = len(varying)
+    fig, axes = plt.subplots(nvars, 1, sharex=True,
+                             figsize=(11, max(2.2 * nvars, 3.0)))
+    if nvars == 1:
+        axes = [axes]
+    for rank, (ax, var) in enumerate(zip(axes, varying)):
+        name, kind = var["name"], var["kind"]
+        badge = "derived" if var.get("role") == "derived" else m.var_class(var)
+        ax.set_title(f"#{rank + 1}  {badge}", loc="left", fontsize=8, color="#888", pad=2)
+        if kind in ("int", "real"):
+            ax.plot(ticks, [s[name] for s in traj], marker="o", markersize=3,
+                    linewidth=1.4, color="#1f77b4")
+            ax.grid(True, alpha=0.3)
+        else:
+            ys = [to_ordinal(m, var, s[name])[0] for s in traj]
+            ax.step(ticks, ys, where="post", linewidth=1.6, color="#d62728",
+                    marker="o", markersize=3)
+            _categorical_yticks(ax, m, var)
+            ax.grid(True, axis="x", alpha=0.3)
+        ax.set_ylabel(name, rotation=0, ha="right", va="center", fontsize=9)
+    axes[-1].set_xlabel("tick")
+    fig.suptitle(
+        f"{m.fsm} — time_series  (single run (unbounded init): {reason}; "
+        f"seed {m.label(seed)}, {len(traj)} ticks)",
+        fontsize=12, fontweight="bold")
+    if constants:
+        held = ",  ".join(f"{v['name']}={hv}" for v, hv in constants)
+        fig.text(0.5, 0.005, f"held constant (suppressed): {held}",
+                 ha="center", va="bottom", fontsize=8, color="#666")
+    fig.tight_layout(rect=[0, 0.02 if constants else 0, 1, 0.97])
+    fig.savefig(out_path, dpi=120, bbox_inches="tight")
+    plt.close(fig)
+    return f"single-run (unbounded): {nvars} varying vars"
+
+
+def render(smt2, schema, out_path):
+    m = load(smt2, schema)
+    inits, kind, note = ensemble_inits(m)
+    if inits is None:
+        # No finite ensemble box (some carried var unbounded) — honest single-run fallback.
+        return _render_single_run(m, out_path, note)
+    return _render_ensemble(m, out_path, inits, kind, note)
 
 
 if __name__ == "__main__":

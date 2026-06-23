@@ -186,6 +186,69 @@ def check_real_fallback():
         return fails
 
 
+def check_time_series_ensemble():
+    """time_series must show an ENSEMBLE over all initial conditions, not one from-init chain.
+
+    For bistable, a single from-init run (seeded x=1) reaches only the LEFT basin (0) — it would
+    plot one line decaying to 0, hiding the right attractor at 6. The ensemble forward-simulates
+    EVERY enumerated init via the SAME successor relation; the per-tick reachable ENVELOPE's final
+    spread must include BOTH 0 and 6. This pins the headline diagram-review fix.
+
+    Also renders the PNG (asserting a non-empty file) so the renderer's ensemble path is exercised
+    end-to-end, and confirms a from-init single run would NOT reach 6 (the contrast the fan shows)."""
+    import numpy as np
+    import os
+    sys.path.insert(0, "viz")
+    from time_series_ensemble import ensemble_inits, step_trajectory  # noqa: E402
+    import render_time_series as RT                                    # noqa: E402
+    fails = []
+    with tempfile.TemporaryDirectory() as work:
+        ok, prefix, _dropped, msg = _export(BISTABLE, work)
+        if not ok:
+            return [f"time_series: export failed: {msg.splitlines()[0][:80]}"]
+        m = load_model(prefix + ".smt2", prefix + ".schema.json")
+
+        # The single from-init run (the OLD behavior) reaches only the left basin {0,1}.
+        from_init = {s["x"] for s in RT.walk(m, m.initial_state(), 60)}
+        if 6 in from_init:
+            fails.append(f"time_series: a from-init run unexpectedly reaches 6 — the contrast "
+                         f"the ensemble shows would be moot ({sorted(from_init)})")
+
+        inits, kind, note = ensemble_inits(m)
+        if kind != "discrete":
+            fails.append(f"time_series: bistable ensemble kind={kind!r}, expected 'discrete' "
+                         f"(a 7-state bounded int enumerates)")
+        if "initial conditions" not in note:
+            fails.append(f"time_series: ensemble note {note!r} should mention 'initial conditions'")
+
+        # Forward-simulate every init; the per-tick envelope's FINAL spread must span both walls.
+        trajs = [step_trajectory(m, init, 60, m.is_discrete()) for init in inits]
+        nt = max(len(t) for t in trajs)
+        mat = np.full((len(trajs), nt), np.nan)
+        for r, t in enumerate(trajs):
+            for c, s in enumerate(t):
+                mat[r, c] = s["x"]
+        final = mat[:, -1]
+        reached = set(final[~np.isnan(final)])
+        if not ({0.0, 6.0} <= reached):
+            fails.append(f"time_series: ensemble final-tick envelope missing a basin — "
+                         f"expected {{0,6}} ⊆ {sorted(reached)} (the fan must reach BOTH attractors, "
+                         f"where a single from-init run reaches only 0)")
+        # The envelope band must genuinely SPREAD (a single line would have lo==hi every tick).
+        with np.errstate(all="ignore"):
+            band = float(np.nanmax(final) - np.nanmin(final))
+        if band < 6.0:
+            fails.append(f"time_series: final-tick envelope spread {band} < 6 — not a fan")
+
+        out = work + "/time_series.png"
+        rnote = RT.render(prefix + ".smt2", prefix + ".schema.json", out)
+        if not (os.path.exists(out) and os.path.getsize(out) > 0):
+            fails.append(f"time_series: renderer produced no PNG (note={rnote!r})")
+        elif "ensemble" not in rnote:
+            fails.append(f"time_series: render note {rnote!r} is not the ensemble path")
+    return fails
+
+
 def main():
     fails = []
     fails += check_bistable()
@@ -193,6 +256,7 @@ def main():
     fails += check_ergodic("traffic", TRAFFIC)
     fails += check_basin_map_global()
     fails += check_real_fallback()
+    fails += check_time_series_ensemble()
     if fails:
         print("ALL-INITIAL-CONDITIONS TEST FAILURES:")
         for f in fails:
@@ -200,7 +264,7 @@ def main():
         return 1
     print("✓ all-initial-conditions: bistable ⊋ from-init (both basins); "
           "counter/traffic enumerate; basin_map partitions on the global graph; "
-          "real falls back")
+          "time_series ensemble fans to BOTH attractors; real falls back")
     return 0
 
 

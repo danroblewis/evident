@@ -29,13 +29,28 @@ from model_const import SOLVE_TIMEOUT_MS
 _MAX_VAR_DOMAIN = 4096
 
 
+def _finite_numeric(bound):
+    """The Python int/float value of a z3 numeral objective bound, or None if it is the
+    ±∞ sentinel (`oo`) z3 Optimize returns for an UNBOUNDED objective. Handles both the
+    int path (`is_int_value`) and the rational path a Real objective produces."""
+    if z3.is_int_value(bound):
+        return bound.as_long()
+    if z3.is_rational_value(bound):
+        return float(bound.as_fraction())
+    return None                                    # unbounded (±∞) → no finite bound
+
+
 class GlobalGraphMixin:
-    def _int_range(self, var):
-        """The proven reachable [lo, hi] of an INT carried var, via z3 Optimize over the
-        transition (max/min its current const with is_first_tick=false). Returns (lo, hi)
-        inclusive, or None if either bound is missing (unbounded → not enumerable). Same
-        machinery solved_bounds uses, but per-var and keyed by the var itself (no short-name
-        collision) since we need the exact const, not a display label."""
+    def proven_range(self, var):
+        """The PROVEN reachable [lo, hi] of a numeric (int OR real) carried var, via z3
+        Optimize over the transition (max/min its current const with is_first_tick=false).
+        Returns (lo, hi) — Python ints for an int var, floats for a real var — or None if
+        either bound is ±∞ / missing (unbounded → no finite range to enumerate or grid).
+
+        This is the SINGLE bounds source for both the discrete-enumeration path (`_int_range`
+        wraps it for ints) and the continuous-ensemble grid (render_time_series seeds reals
+        within this proven box). Same machinery solved_bounds uses, but per-var and keyed by
+        the var's own const (no short-name collision) since we need the exact const."""
         c = self.consts.get(var["name"])
         if c is None:
             return None
@@ -51,15 +66,26 @@ class GlobalGraphMixin:
                 return None
             # Read the PROVEN optimum from the objective handle, not model.eval(c): a model is
             # just one satisfying witness, but the handle is ±∞ (`oo`) for an unbounded objective.
-            # An unbounded var has no finite domain to enumerate → not finitely enumerable.
-            bound = handle.upper() if sense == "max" else handle.lower()
-            if not z3.is_int_value(bound):
-                return None                        # unbounded objective (±∞) → not enumerable
+            # An unbounded var has no finite domain to enumerate / grid → not bounded.
+            val = _finite_numeric(handle.upper() if sense == "max" else handle.lower())
+            if val is None:
+                return None                        # unbounded objective (±∞) → not bounded
             if sense == "max":
-                hi = bound.as_long()
+                hi = val
             else:
-                lo = bound.as_long()
+                lo = val
         return (lo, hi) if lo is not None and hi is not None and lo <= hi else None
+
+    def _int_range(self, var):
+        """The proven reachable [lo, hi] of an INT carried var as Python ints, or None if
+        unbounded / non-integral. Thin int-typed wrapper over `proven_range`."""
+        rng = self.proven_range(var)
+        if rng is None:
+            return None
+        lo, hi = rng
+        if lo != int(lo) or hi != int(hi):
+            return None
+        return (int(lo), int(hi))
 
     def _var_domain(self, var):
         """The finite list of values a single carried var can take, or None if it is not
