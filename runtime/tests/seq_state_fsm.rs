@@ -72,6 +72,29 @@ fn export_state_includes_the_carried_seq() {
 }
 
 #[test]
+fn exported_smt2_pins_the_seq_length() {
+    // The standalone exported SMT-LIB must be SELF-CONTAINED: the carried Seq's
+    // length const `<seq>__len` has to be ASSERTED `= N`, not left at the bare
+    // `>= 0` from declaration. Before the fix the source's `#xs = N` lowered
+    // against the in-memory literal `len` to the no-op `(= N N)`, so a z3 user
+    // pasting the export could pick any `xs__len` and a `∀ i` property would read
+    // out-of-range cells. Both the base `xs` and its prev-twin `_xs` must pin.
+    let mut rt = EvidentRuntime::new();
+    rt.load_source(SHIFT).unwrap();
+    let (smt2, _json) = rt.export_transition("shift").unwrap();
+    assert!(
+        smt2.contains("(= xs__len 3)"),
+        "exported smt2 must pin the carried Seq length (xs__len = 3), not leave \
+         it at `>= 0` with a tautological `(= 3 3)`:\n{smt2}"
+    );
+    assert!(
+        smt2.contains("(= _xs__len 3)"),
+        "the prev-tick twin's length must pin too (_xs__len = 3) so the ongoing \
+         transition's `coindexed(_xs, xs)` is length-bounded:\n{smt2}"
+    );
+}
+
+#[test]
 fn ongoing_transition_is_not_dropped() {
     // Direct exercise of the dropped-constraint bug: if the transition were
     // dropped, pinning `_xs` would leave `xs` unconstrained and a contradictory

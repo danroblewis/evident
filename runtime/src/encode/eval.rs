@@ -64,7 +64,9 @@ pub fn evaluate(
         &schema.body, given, Some(schemas));
     let pinned   = collect_pinned_ints(&schema.body, given, &seq_lens);
     apply_pinned_ints(&mut env, &pinned);
-    apply_seq_lengths(&mut env, &seq_lens, ctx);
+    for len_eq in apply_seq_lengths(&mut env, &seq_lens, ctx) {
+        solver.assert(&len_eq);
+    }
 
     apply_set_candidates(&env, given);
 
@@ -324,7 +326,9 @@ pub fn build_cache_opts(
         let pinned = collect_pinned_ints(&schema.body, given, &seq_lens);
         apply_pinned_ints(&mut env, &pinned);
     }
-    apply_seq_lengths(&mut env, &seq_lens, ctx);
+    for len_eq in apply_seq_lengths(&mut env, &seq_lens, ctx) {
+        solver.assert(&len_eq);
+    }
 
     apply_set_candidates(&env, given);
 
@@ -483,7 +487,9 @@ pub fn evaluate_with_extra_assertions(
         &schema.body, given, Some(schemas));
     let pinned   = collect_pinned_ints(&schema.body, given, &seq_lens);
     apply_pinned_ints(&mut env, &pinned);
-    apply_seq_lengths(&mut env, &seq_lens, ctx);
+    for len_eq in apply_seq_lengths(&mut env, &seq_lens, ctx) {
+        solver.assert(&len_eq);
+    }
 
     apply_set_candidates(&env, given);
 

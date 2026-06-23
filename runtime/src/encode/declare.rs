@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicU64, Ordering};
-use z3::ast::{Array, Bool, Int, Real, Set, String as Z3Str};
+use z3::ast::{Array, Ast, Bool, Int, Real, Set, String as Z3Str};
 use z3::{Context, DatatypeAccessor, DatatypeBuilder, DatatypeSort, Sort};
 
 use crate::core::ast::*;
@@ -197,11 +197,29 @@ pub(super) fn declare_var_named(
     post
 }
 
+/// Pin each Seq var's length to its source-declared `N`, and return the
+/// `<seq>__len = N` equalities so callers can ASSERT them into the solver.
+///
+/// Two distinct mechanisms, both required:
+///   1. The in-memory `len` field is REPLACED with a literal `Int::from_i64(N)`.
+///      The `coindexed` unroller reads `len.simplify().as_i64()` and needs a
+///      concrete value to unroll the per-element transition — without the
+///      literal the ongoing transition is silently dropped.
+///   2. The symbolic `<seq>__len` const (made in `declare_var_named`, only
+///      asserted `≥ 0`) is left ORPHANED by step 1, and the source's `#xs = N`
+///      lowers against the literal to the tautology `(= N N)`. So the EXPORTED
+///      SMT-LIB never pins the length — a downstream z3 user pasting it can pick
+///      any `cells__len` and a `∀ i` property reads out-of-range cells. We
+///      reconstruct that const (Z3 interns by name+sort, so `Int::new_const`
+///      with the same `<name>__len` recovers the identical handle) and return
+///      `<seq>__len = N`. The caller asserts it, so the export is self-contained:
+///      satisfiable only for length-N sequences.
+#[must_use]
 pub(super) fn apply_seq_lengths<'ctx>(
     env: &mut HashMap<String, Var<'ctx>>,
     seq_lengths: &HashMap<String, i64>,
     ctx: &'ctx Context,
-) {
+) -> Vec<Bool<'ctx>> {
     // A previous-tick Seq twin (`_xs`, `__xs`) carries the SAME length as its
     // base (`xs`): the trampoline copies the whole `Value::Seq*` across ticks,
     // so `#_xs = #xs`. The length-pin collector only sees the base's `#xs = N`,
@@ -218,6 +236,7 @@ pub(super) fn apply_seq_lengths<'ctx>(
         }
     }
 
+    let mut len_eqs: Vec<Bool<'ctx>> = Vec::new();
     for (name, n) in &effective {
         let Some(var) = env.get(name) else { continue };
         let new_len = Int::from_i64(ctx, *n);
@@ -236,8 +255,15 @@ pub(super) fn apply_seq_lengths<'ctx>(
             }
             _ => continue,
         };
+        // Pin the symbolic `<name>__len` const so the EXPORTED encoding is
+        // self-contained (the literal `len` above is for the unroll only and
+        // never lands in the smt2). The env key == the z3 var prefix for every
+        // declared Seq leaf, so this reconstructs the const made in declare.
+        let len_const = Int::new_const(ctx, format!("{name}__len").as_str());
+        len_eqs.push(len_const._eq(&Int::from_i64(ctx, *n)));
         env.insert(name.clone(), new_var);
     }
+    len_eqs
 }
 
 pub(super) fn apply_set_candidates<'ctx>(
