@@ -255,6 +255,26 @@ if [ "$EXAMPLES_ONLY" -eq 0 ] && command -v python3 >/dev/null 2>&1; then
     echo
 fi
 
+# ── Phase 2.14: reachability_tree rooted from ALL initial conditions (diagram review) ──
+# The reachability tree used to root from initial_state() (one seed) and stop at a hard
+# MAX_DEPTH=8 cap. The diagram review scored that NO: root from the SET of initial conditions
+# (a forest off a synthetic ∅ root) and use closing_depth() to show the tree CLOSING at its
+# true saturation depth for finite discrete systems — not a misleading depth-8 cap. Pins the
+# all-conditions forest (traffic closes cyclically; a terminating counter closes at its true
+# depth with the fixed point marked absorbing; a free-init FSM fans to MANY roots) AND the
+# real/unbounded honesty fallback (no false 'complete', single-seed depth-capped sample).
+if [ "$EXAMPLES_ONLY" -eq 0 ] && command -v python3 >/dev/null 2>&1; then
+    phase "Phase 2.14: reachability_tree from all initial conditions"
+    if python3 ide/test_reachability_tree.py > /tmp/evident-reachtree.log 2>&1; then
+        ok "reachability-tree ($(tail -1 /tmp/evident-reachtree.log))"
+    else
+        fail "reachability-tree: did not root from all inits / didn't close / false fallback"
+        cat /tmp/evident-reachtree.log >&2
+        failures+=("reachability-tree rooting")
+    fi
+    echo
+fi
+
 # ── Optional: examples runner ────────────────────────────────
 # Walks examples/, runs each via effect-run. For visual demos (anything
 # that imports packages/sdl/), spawn the program, screenshot the Xvfb
