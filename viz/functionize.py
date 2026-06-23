@@ -97,12 +97,13 @@ def extract_functions(model):
             asgs = _consequent_assignments(cons, output_set)
             if asgs:
                 gdeps = _free_vars(guard)
+                gatoms = [_pretty(c) for c in guard.children()] if z3.is_and(guard) else [_pretty(guard)]
                 for var, body in asgs:
                     st = steps.get(var)
                     if st is None or st["kind"] != "guarded":
                         st = steps[var] = {"var": var, "kind": "guarded", "branches": []}
                     st["branches"].append({
-                        "guard": _pretty(guard), "body": _pretty(body),
+                        "guard": _pretty(guard), "guard_atoms": gatoms, "body": _pretty(body),
                         "deps": gdeps + [d for d in _free_vars(body) if d not in gdeps],
                     })
                 continue
