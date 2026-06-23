@@ -11,12 +11,19 @@ sampled state goes, and surfaces the attractors:
 It plots a 2-axis projection of the state space:
   * fixed points as large filled markers,
   * cycle members as smaller markers linked by arrows around their loop,
-  * the rest of the sampled states as faint dots, so the attractors stand out
-    against the basin.
+  * the rest of the sampled states as basin-colored dots — each state painted by
+    WHICH attractor it converges to — so a bistable system shows BOTH attractors
+    and the partition of the space between their basins.
 
-Numeric systems (int/real vars) are GRID-scanned over an auto-ranged box.
-Discrete systems (bool/enum/string) are scanned over their exact reachable set.
-Mixed systems grid-scan their numeric axes and pin discrete axes per slice.
+Seeding (the whole point of the review fix): a finitely-enumerable DISCRETE/mixed
+system is seeded from ALL initial conditions — Model.full_state_graph() enumerates
+EVERY valid carried-state assignment (ignoring is_first_tick) — NOT the from-init
+orbit, which for a deterministic FSM is one trajectory into one attractor. We then
+SCC-condense that global graph (reusing basin_map's machinery) and color each state
+by the terminal it flows to. If the system isn't finitely enumerable (real/unbounded
+int / over-cap) we fall back to the from-init reachable() sample; numeric systems
+grid-scan their phase plane (the continuous-grid all-conditions sweep is a separate
+task — the existing fallback is kept).
 
 CLI:  python3 viz/render_fixedpoint_map.py <smt2> <schema> <out.png>
 Works for any exported Evident program, not just the bundled samples.
@@ -40,8 +47,11 @@ from fixedpoint_attractors import ordinal, find_attractors, near
 # Channel assignment + state sampling (the data layer) live in their own
 # sibling module; plotting stays here.
 from fixedpoint_states import (
-    assign_channels, sample_states, _domain, axis_label, _short, _fmt,
+    assign_channels, _domain, axis_label, _short, _fmt,
 )
+# All-conditions seeding + attractor basin coloring (the "which attractor does each
+# state converge to" partition) live in their own sibling module; plotting stays here.
+from fixedpoint_basins import sample_all_conditions, basin_of, scatter_basins
 # Interactive hover-overlay sidecar (#184 increment 4). fixedpoint_map ALWAYS
 # saves with bbox_inches="tight", so per-dot/star fractions use the tight-bbox
 # mapping. We emit only for the MAIN state-plot axis (the first/only panel) —
@@ -66,7 +76,7 @@ def render(smt2, schema, out_path):
     xvar, yvar = ch["x"], ch["y"]
 
     title = f"{model.fsm} — {VIZ_TYPE}"
-    states, mode, edges = sample_states(model)
+    states, mode, edges = sample_all_conditions(model)
 
     if not states or xvar is None:
         fig, ax = plt.subplots(figsize=(9, 8))
@@ -77,6 +87,10 @@ def render(smt2, schema, out_path):
     # attractors are a global property of the dynamics — find them ONCE, then
     # render them into whichever facet panel each member lands in.
     fixed, cycles = find_attractors(model, states, mode)
+
+    # Color each state by the attractor (terminal SCC) it converges to — the basin
+    # partition. Empty when there's no edge graph (numeric grid scan → plain dots).
+    state_basins = basin_of(states, edges)
 
     facet = ch["facet"]
     if facet is not None:
@@ -114,7 +128,7 @@ def render(smt2, schema, out_path):
                       if a[facet["name"]] == pval and b[facet["name"]] == pval]
                      if facet is not None else edges)
         draw_panel(ax, model, ch, sub, sub_fixed, sub_cycles, len(cycles),
-                   sub_edges)
+                   sub_edges, state_basins)
         if main_ax is None:                 # MAIN state-plot axis: first panel
             main_ax, main_sub = ax, sub
         if facet is not None:
@@ -208,7 +222,8 @@ def _draw_cycles(ax, proj, cycles, total_cycles):
                    label=None if labelled else f"cycle members ({total_cycles} cycle(s))")
 
 
-def draw_panel(ax, model, ch, states, fixed, cycles, total_cycles, edges=None):
+def draw_panel(ax, model, ch, states, fixed, cycles, total_cycles, edges=None,
+               basin_of=None):
     xvar, yvar = ch["x"], ch["y"]
     cvar, svar = ch["color"], ch["shape"]
 
@@ -219,11 +234,18 @@ def draw_panel(ax, model, ch, states, fixed, cycles, total_cycles, edges=None):
 
     _draw_edges(ax, proj, edges)
 
-    # background basin: sampled states, encoded by a CATEGORICAL color and/or
-    # marker SHAPE. The derived attractor coloring (red/blue) is drawn on top and
-    # untouched — color/shape here only reveal the basin's categorical structure.
+    # background basin: sampled states colored by WHICH attractor each converges to
+    # (the basin partition — the whole point of this view). When the basin coloring
+    # is available (all-conditions / reachable graph), it takes priority: this is the
+    # derived attractor partition, not just categorical structure. Falls back to
+    # categorical color/shape, then plain grey, when no basin coloring exists (numeric
+    # grid scan has no edge graph).
+    have_basin = basin_of is not None and any(
+        basin_of.get(id(s)) is not None for s in states)
     if states:
-        if cvar is not None or svar is not None:
+        if have_basin:
+            scatter_basins(ax, states, proj, basin_of)
+        elif cvar is not None or svar is not None:
             _scatter_categorical(ax, model, states, proj, cvar, svar)
         else:
             bx = [proj(s)[0] for s in states]
@@ -288,6 +310,11 @@ def _super_title(model, ch, mode, fixed, cycles):
         if ch[chan] is not None:
             cs.append(f"{chan}={_short(ch[chan]['name'])}")
     chan_note = ("   |   " + ", ".join(cs)) if cs else ""
+    # Honest scope: "all-conditions" seeds from EVERY valid starting state (the real
+    # basin partition); "reachable"/"grid" are the from-init fallbacks.
+    scope = {"all-conditions": "over all initial conditions",
+             "reachable": "from init (reachable)",
+             "grid": "phase-grid scan"}.get(mode, mode)
     bits = []
     if fixed:
         bits.append(f"{len(fixed)} fixed point(s)")
@@ -295,7 +322,7 @@ def _super_title(model, ch, mode, fixed, cycles):
         lens = sorted({len(c) - 1 for c in cycles})
         bits.append(f"{len(cycles)} cycle(s) (period {lens})")
     attr = "  +  ".join(bits) if bits else "no fixed points / short cycles found"
-    return f"{model.fsm} — {VIZ_TYPE}   (scan: {mode}{chan_note})\n{attr}"
+    return f"{model.fsm} — {VIZ_TYPE}   ({scope}{chan_note})\n{attr}"
 
 
 def decorate_axis(ax, model, var, which):

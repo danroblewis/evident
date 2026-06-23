@@ -174,6 +174,60 @@ def check_basin_map_global():
     return fails
 
 
+def check_fixedpoint_map_global():
+    """The fixedpoint_map renderer must SEED from all initial conditions and color each
+    state by the attractor it converges to — across the WHOLE discrete state space, not
+    the from-init orbit (which for bistable is one trajectory into the LEFT basin).
+
+    Drive sample_all_conditions (the renderer's seeding) + basin_colors (its attractor
+    coloring), and assert it (a) took the all-conditions root, (b) saw all 7 bistable
+    states, (c) found BOTH wall fixed points {0,6}, and (d) partitioned the space into
+    two DISTINCT basin colors split at the saddle. Then render the PNG end-to-end."""
+    import os
+    sys.path.insert(0, "viz")
+    import render_fixedpoint_map as RF                          # noqa: E402
+    from fixedpoint_basins import sample_all_conditions, basin_colors  # noqa: E402
+    from fixedpoint_attractors import find_attractors           # noqa: E402
+    fails = []
+    with tempfile.TemporaryDirectory() as work:
+        ok, prefix, _dropped, msg = _export(BISTABLE, work)
+        if not ok:
+            return [f"fixedpoint_map: export failed: {msg.splitlines()[0][:80]}"]
+        m = load_model(prefix + ".smt2", prefix + ".schema.json")
+
+        states, mode, edges = sample_all_conditions(m)
+        if mode != "all-conditions":
+            fails.append(f"fixedpoint_map: seeding mode={mode!r}, expected 'all-conditions' "
+                         f"(a 7-state bounded-int bistable enumerates)")
+        if {st["x"] for st in states} != set(range(7)):
+            fails.append(f"fixedpoint_map: seeded states missing — got "
+                         f"{sorted(st['x'] for st in states)}, expected 0..6")
+
+        # BOTH fixed points (0 and 6) surface from the all-conditions sample; the from-init
+        # orbit would have found only the left wall (0).
+        fixed, _cycles = find_attractors(m, states, mode)
+        fixed_x = {s["x"] for s in fixed}
+        if not ({0, 6} <= fixed_x):
+            fails.append(f"fixedpoint_map: all-conditions missing a fixed point — "
+                         f"expected {{0,6}} ⊆ {sorted(fixed_x)}")
+
+        # Basin coloring partitions the space: x=0 and x=6 get DIFFERENT colors, and at least
+        # two distinct real-basin colors exist (the two walls' basins).
+        colors, n_term = basin_colors(states, edges)
+        cof = {states[i]["x"]: colors[i] for i in range(len(states))}
+        if n_term < 2:
+            fails.append(f"fixedpoint_map: basin_colors found {n_term} terminals, expected ≥2")
+        if cof.get(0) is None or cof.get(6) is None or cof[0] == cof[6]:
+            fails.append(f"fixedpoint_map: x=0 and x=6 not in distinct basins "
+                         f"(colors {cof.get(0)!r} vs {cof.get(6)!r})")
+
+        out = work + "/fixedpoint_map.png"
+        RF.render(prefix + ".smt2", prefix + ".schema.json", out)
+        if not (os.path.exists(out) and os.path.getsize(out) > 0):
+            fails.append("fixedpoint_map: renderer produced no PNG")
+    return fails
+
+
 def check_real_fallback():
     with tempfile.TemporaryDirectory() as work:
         m = _load(REAL, work)
@@ -255,6 +309,7 @@ def main():
     fails += check_ergodic("counter", COUNTER)
     fails += check_ergodic("traffic", TRAFFIC)
     fails += check_basin_map_global()
+    fails += check_fixedpoint_map_global()
     fails += check_real_fallback()
     fails += check_time_series_ensemble()
     if fails:
@@ -263,8 +318,8 @@ def main():
             print("  ✗", f)
         return 1
     print("✓ all-initial-conditions: bistable ⊋ from-init (both basins); "
-          "counter/traffic enumerate; basin_map partitions on the global graph; "
-          "time_series ensemble fans to BOTH attractors; real falls back")
+          "counter/traffic enumerate; basin_map + fixedpoint_map partition on the "
+          "global graph; time_series ensemble fans to BOTH attractors; real falls back")
     return 0
 
 
