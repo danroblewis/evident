@@ -60,6 +60,32 @@ const SAMPLES = {
     ¬is_first_tick ⇒ Δcount = (_count < 5 ? 1 : 0)
     done ∈ Bool = (count ≥ 5)`,
   "accumulate · a driven pipeline (FSM)": DEFAULT_PROGRAM,
+  "predator-prey · Lotka-Volterra (coupled functions)":
+`-- Lotka-Volterra: prey grow, predators eat prey and starve. The functionizer compiles two COUPLED
+-- functions (the prey↔predator feedback, with _prey·_pred product terms) — open the function_graph
+-- tab to see the coupling cycle, or function_behavior for the transfer surfaces.
+fsm predator_prey
+    prey ∈ Real
+    pred ∈ Real
+    is_first_tick ⇒ (prey = 40.0 ∧ pred = 9.0)
+    ¬is_first_tick ⇒ Δprey = _prey * 0.1 - _prey * _pred * 0.01
+    ¬is_first_tick ⇒ Δpred = _prey * _pred * 0.005 - _pred * 0.1`,
+  "logistic map · chaos (nonlinear function)":
+`-- The logistic map x' = r·x·(1-x), r = 3.7 — the canonical route to chaos. A single nonlinear
+-- function; open function_behavior for its parabolic transfer map, or cobweb for the dynamics.
+fsm logistic
+    x ∈ Real
+    is_first_tick ⇒ x = 0.3
+    ¬is_first_tick ⇒ x = 3.7 * _x * (1.0 - _x)`,
+  "bouncing ball · hybrid (guarded functions)":
+`-- A ball under gravity that bounces off the floor (pos ≤ 0 flips & damps the velocity). The
+-- functionizer compiles 3-branch GUARDED functions (init / free-fall / bounce) — open function_guards.
+fsm ball
+    pos ∈ Real
+    vel ∈ Real
+    is_first_tick ⇒ (pos = 50.0 ∧ vel = 0.0)
+    (¬is_first_tick ∧ _pos > 0.0) ⇒ (Δpos = _vel ∧ Δvel = 0.0 - 9.8)
+    (¬is_first_tick ∧ _pos ≤ 0.0) ⇒ (pos = 0.0 ∧ vel = 0.0 - _vel * 0.7)`,
   "vending · stock, coins & a vault (FSM)":
 `-- A real vending machine: coins accumulate (up to a capacity), products sell from stock
 -- into the operator's vault, the customer can cancel for a refund, and the operator
