@@ -1,5 +1,5 @@
 {
-  "seq": 289,
+  "seq": 290,
   "tasks": [
     {
       "id": 1,
@@ -6208,6 +6208,25 @@
       "log": [
         {
           "at": "2026-06-23T19:01:28Z",
+          "by": "worker",
+          "act": "started"
+        }
+      ]
+    },
+    {
+      "id": 290,
+      "title": "IDE/runtime: support multiple fsms + claims in one program (for testing composition) \u2014 render the LAST-DEFINED fsm or claim; entry picker lists all + defaults to last",
+      "detail": "",
+      "status": "in_progress",
+      "created_by": "worker",
+      "created": "2026-06-23T19:13:57Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [],
+      "log": [
+        {
+          "at": "2026-06-23T19:15:03Z",
           "by": "worker",
           "act": "started"
         }
