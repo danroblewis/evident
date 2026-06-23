@@ -114,6 +114,22 @@ if [ "$EXAMPLES_ONLY" -eq 0 ] && command -v python3 >/dev/null 2>&1; then
     echo
 fi
 
+# ── Phase 2.6: render smoke-test (the viz/ Python renderers) ───
+# The Rust tests + demos do NOT exercise the IDE's view renderers — a refactor that breaks a
+# renderer is otherwise caught only by manually driving the browser. This renders EVERY view on a
+# couple of scalar/enum samples headlessly and fails if any errors or produces no PNG.
+if [ "$EXAMPLES_ONLY" -eq 0 ] && command -v python3 >/dev/null 2>&1; then
+    phase "Phase 2.6: render smoke-test (viz/ renderers)"
+    if python3 ide/render_smoke.py > /tmp/evident-render-smoke.log 2>&1; then
+        ok "render smoke-test ($(tail -1 /tmp/evident-render-smoke.log))"
+    else
+        fail "render smoke-test: a renderer errored or produced no PNG"
+        cat /tmp/evident-render-smoke.log >&2
+        failures+=("render smoke-test")
+    fi
+    echo
+fi
+
 # ── Optional: examples runner ────────────────────────────────
 # Walks examples/, runs each via effect-run. For visual demos (anything
 # that imports packages/sdl/), spawn the program, screenshot the Xvfb
