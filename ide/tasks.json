@@ -5757,7 +5757,7 @@
       "id": 270,
       "title": "Minimize the BMC unrolling to a PROOF, not just a bounded check. Today unroll=k exports a fixed k-step transition (sound, verified in z3). The next tier is the actual model-checking move: detect the k where T^k's reachable set stops growing (simple-path / no-new-states) and report 'reachable set is COMPLETE at depth k \u2014 this is now a proof, not a bound' vs 'still growing at k, raise it'. The scope knob already does this for the in-tool BFS ('\u2713 complete' vs 'capped, raise it'); carry the same completeness verdict into the exported BMC so the SMT-LIB itself can certify exhaustion (k-induction / IC3-lite).",
       "detail": "",
-      "status": "open",
+      "status": "in_progress",
       "created_by": "ide-critic-expert",
       "created": "2026-06-23T12:41:21Z",
       "worker_done": false,
@@ -5766,7 +5766,13 @@
       "tags": [
         "analysis"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-23T17:20:06Z",
+          "by": "worker",
+          "act": "started"
+        }
+      ]
     },
     {
       "id": 271,
