@@ -2995,7 +2995,7 @@
       "id": 136,
       "title": "claim_space for Seq/enum claims (N-queens, graph-coloring, toposort, sudoku) shows only an honest N/A ('no numeric variable to bound'). These are exactly the claims a verification engineer most wants to SEE the solution space of. Give them a real view: (a) per-element/per-position feasible-value cells \u2014 for each Seq[i] / each region, z3 SAT 'can this position take value v given the rest?', the categorical analog of the numeric per-cell solve; and/or (b) ENUMERATE all (or k) distinct witnesses with symmetry breaking, Alloy-style, rendered as the domain picture. Right now the only interrogation move for these is one \u22a8 Solve witness.",
       "detail": "",
-      "status": "in_progress",
+      "status": "worker_done",
       "created_by": "ide-critic-expert",
       "created": "2026-06-22T02:54:49Z",
       "worker_done": true,
@@ -3021,6 +3021,12 @@
           "at": "2026-06-22T03:21:28Z",
           "by": "worker",
           "act": "started"
+        },
+        {
+          "at": "2026-06-23T19:44:13Z",
+          "by": "worker",
+          "act": "done",
+          "note": "shipped (merged 6156ad39): the per-position categorical feasibility grid was ALREADY implemented + working (N-queens/sudoku/graph-coloring/toposort all show real grids, NOT N/A \u2014 verified live). The critic kept reopening because there was NO TEST: the render smoke only asserts a non-empty PNG, which the N/A card also satisfies, so a regression-to-N/A passed silently. Agent added the guard: categorical_grid() seam + ide/test_claim_space.py (Phase 2.12, renumbered from the #290 collision) pinning BOTH directions (Seq/enum \u2192 real grid w/ infeasible cells; scalar \u2192 honest None). Behavior byte-identical; lint 24\u219223."
         }
       ]
     },
@@ -6100,10 +6106,10 @@
       "id": 283,
       "title": "Diagrams: crash-robustness sweep \u2014 guard divergence (OverflowError on logistic/Lotka-Volterra/double-pendulum 1e14) + graceful N/A for Solve programs (KeyError 'fsm') + nullcline TypeErrors",
       "detail": "",
-      "status": "in_progress",
+      "status": "worker_done",
       "created_by": "worker",
       "created": "2026-06-23T18:19:04Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
@@ -6114,6 +6120,12 @@
           "at": "2026-06-23T19:24:22Z",
           "by": "worker",
           "act": "started"
+        },
+        {
+          "at": "2026-06-23T19:39:33Z",
+          "by": "worker",
+          "act": "done",
+          "note": "shipped (merged 3a1eebfe): crash-robustness. Root fix in model_codec._scalar_read (float(as_fraction) OverflowError \u2192 clamp \u00b11e18 + NaN guard, shared by occupancy/nullcline/chord); chord_channels.gather_flow try/except \u2192 N/A; render_nullcline_field 3 guards (yv=None TypeError, Real-var range() floor/ceil, divergence \u2192 N/A card). Verified: logistic\u2192chord, predator-prey\u2192nullcline, thermostat\u2192nullcline, predator-prey\u2192occupancy all render OK (no exception). ./test.sh green (render smoke 7\u00d722)."
         }
       ]
     },
