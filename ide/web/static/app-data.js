@@ -284,18 +284,13 @@ fsm collatz
     is_first_tick ⇒ n = 27
     ¬is_first_tick ⇒ n = (_n ≤ 1 ? 1 : (2 * (_n / 2) = _n ? _n / 2 : 3 * _n + 1))`,
   "random walk · nondeterministic drift (FSM)":
-`-- Each tick the walker steps freely in x and y. The free dx/dy make it nondeterministic;
--- the occupancy_heatmap shows where it dwells, the reachability_tree shows the fan.
+`-- Each tick the walker steps freely in x and y: the free per-tick change Δx, Δy ∈ {-1, 0, 1} makes
+-- it nondeterministic. The occupancy_heatmap shows where it dwells, the reachability_tree the fan.
 fsm random_walk
-    x ∈ Int
-    y ∈ Int
-    dx ∈ Int
-    dy ∈ Int
-    -1 ≤ dx ≤ 1
-    -1 ≤ dy ≤ 1
+    x, y ∈ Int
     is_first_tick ⇒ (x = 0 ∧ y = 0)
-    ¬is_first_tick ⇒ Δx = dx
-    ¬is_first_tick ⇒ Δy = dy`,
+    -1 ≤ Δx ≤ 1
+    -1 ≤ Δy ≤ 1`,
   "pick · a nondeterministic choice (FSM)":
 `fsm pick
     count ∈ Int

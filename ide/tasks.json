@@ -1,5 +1,5 @@
 {
-  "seq": 293,
+  "seq": 295,
   "tasks": [
     {
       "id": 1,
@@ -6336,6 +6336,36 @@
           "act": "started"
         }
       ]
+    },
+    {
+      "id": 294,
+      "title": "Parameterized passthrough: '..Name(field \u21a6 other)' must parse + compose (e.g. 2D random walk from two 1D walks)",
+      "detail": "User hit a parse error composing fsm instances via renamed passthrough:\n  fsm random_walk\n      x, y \u2208 Int\n      ..one_d_random_walk(a \u21a6 x)\n      ..one_d_random_walk(a \u21a6 y)\n\u2192 'parse error at line 11 col 24: expected schema/claim/type/import/enum, got (('. The parser accepts bare '..Name' passthrough but NOT '..Name(field \u21a6 other)' with rename args. COMPLETION CRITERIA: (1) '..Name(a \u21a6 x)' parses (the (...) after ..Name is rename-args, not a new decl); (2) it inlines the included fsm/claim with field 'a' renamed to 'x' + all its constraints; (3) two passthroughs of the same fsm with different renames compose into INDEPENDENT sub-systems (x-walk and y-walk, each its own da carried separately \u2014 resolve the da name collision); (4) a 2D random_walk sample loads + analyzes; (5) ./test.sh green + a parse-and-compose test.",
+      "status": "open",
+      "created_by": "worker",
+      "created": "2026-06-23T20:16:22Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "language"
+      ],
+      "log": []
+    },
+    {
+      "id": 295,
+      "title": "Cleaner syntax for FSM initial values \u2014 'is_first_tick \u21d2 (x = 0 \u2227 y = 0)' reads awful",
+      "detail": "FSM initial values today require 'is_first_tick \u21d2 (x = 0 \u2227 y = 0)' \u2014 verbose; the is_first_tick guard + the \u2227-conjunction clutter the model, and the indented-block form is no better. DESIGN a cleaner, readable initial-value syntax. Candidates to evaluate (not prescriptive): inline 'x \u2208 Int := 0' or 'x \u2208 Int <- 0' (an INITIAL value, distinct from '= 0' which pins x always); a dedicated 'initial:' / 'start:' block listing the seeds; per-var '@init 0'; or subscript 'x0 = 0'. COMPLETION CRITERIA: (1) propose 2-3 options + a recommendation; (2) the chosen syntax reads cleanly for scalars, records, AND multi-name decls, and composes; (3) parse it + lower to the existing is_first_tick seed (semantics unchanged); (4) old 'is_first_tick \u21d2 ...' still works (backward-compat); (5) update the samples to the new form; (6) ./test.sh green + a parse-and-lower test.",
+      "status": "open",
+      "created_by": "worker",
+      "created": "2026-06-23T20:19:30Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "language"
+      ],
+      "log": []
     }
   ],
   "concerns": [
