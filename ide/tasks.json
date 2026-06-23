@@ -1,5 +1,5 @@
 {
-  "seq": 253,
+  "seq": 261,
   "tasks": [
     {
       "id": 1,
@@ -108,6 +108,12 @@
           "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
+        },
+        {
+          "at": "2026-06-23T00:01:17Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -119,7 +125,9 @@
       "created_by": "worker",
       "created": "2026-06-21T23:18:36Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "viz"
@@ -130,6 +138,12 @@
           "by": "worker",
           "act": "done",
           "note": "DUP \u2014 satisfied: SVG export shipped (#251/c58cafc5, \u2318K \u2192 Export diagram as SVG); PNG already saveable via right-click on the diagram img."
+        },
+        {
+          "at": "2026-06-23T00:01:17Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -287,6 +301,12 @@
           "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
+        },
+        {
+          "at": "2026-06-23T00:01:05Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -351,6 +371,12 @@
         },
         {
           "at": "2026-06-22T14:56:28Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
+        },
+        {
+          "at": "2026-06-23T00:01:05Z",
           "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
@@ -632,6 +658,12 @@
         },
         {
           "at": "2026-06-22T14:56:28Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
+        },
+        {
+          "at": "2026-06-23T00:01:05Z",
           "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
@@ -1100,6 +1132,12 @@
           "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
+        },
+        {
+          "at": "2026-06-23T00:01:05Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -1352,6 +1390,12 @@
           "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
+        },
+        {
+          "at": "2026-06-23T00:01:46Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -1516,6 +1560,12 @@
           "by": "ide-critic-newcomer",
           "act": "approved",
           "note": ""
+        },
+        {
+          "at": "2026-06-23T00:01:05Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -1550,6 +1600,12 @@
         },
         {
           "at": "2026-06-22T14:56:29Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
+        },
+        {
+          "at": "2026-06-23T00:01:05Z",
           "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
@@ -1699,6 +1755,12 @@
         },
         {
           "at": "2026-06-22T14:56:29Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
+        },
+        {
+          "at": "2026-06-23T00:01:05Z",
           "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
@@ -2107,6 +2169,12 @@
           "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
+        },
+        {
+          "at": "2026-06-23T00:01:05Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -2171,6 +2239,12 @@
         },
         {
           "at": "2026-06-22T14:56:29Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
+        },
+        {
+          "at": "2026-06-23T00:01:05Z",
           "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
@@ -2486,6 +2560,12 @@
           "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
+        },
+        {
+          "at": "2026-06-23T00:01:05Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -2520,6 +2600,12 @@
         },
         {
           "at": "2026-06-22T14:56:29Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
+        },
+        {
+          "at": "2026-06-23T00:01:05Z",
           "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
@@ -2594,6 +2680,12 @@
         },
         {
           "at": "2026-06-22T14:56:29Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
+        },
+        {
+          "at": "2026-06-23T00:01:46Z",
           "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
@@ -3314,6 +3406,12 @@
           "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
+        },
+        {
+          "at": "2026-06-23T00:01:05Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -3563,6 +3661,12 @@
         },
         {
           "at": "2026-06-22T20:14:16Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
+        },
+        {
+          "at": "2026-06-23T00:01:05Z",
           "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
@@ -3871,6 +3975,12 @@
           "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
+        },
+        {
+          "at": "2026-06-23T00:01:05Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -4080,6 +4190,12 @@
           "by": "ide-critic-newcomer",
           "act": "approved",
           "note": ""
+        },
+        {
+          "at": "2026-06-23T00:00:57Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -4130,6 +4246,12 @@
         {
           "at": "2026-06-22T20:46:45Z",
           "by": "ide-critic-newcomer",
+          "act": "approved",
+          "note": ""
+        },
+        {
+          "at": "2026-06-23T00:01:05Z",
+          "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
         }
@@ -4248,7 +4370,8 @@
       "created": "2026-06-22T20:14:36Z",
       "worker_done": true,
       "approvals": [
-        "ide-critic-newcomer"
+        "ide-critic-newcomer",
+        "ide-critic-expert"
       ],
       "reopened": 0,
       "tags": [
@@ -4266,6 +4389,12 @@
           "by": "ide-critic-newcomer",
           "act": "approved",
           "note": ""
+        },
+        {
+          "at": "2026-06-23T00:02:09Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -4273,14 +4402,12 @@
       "id": 239,
       "title": "Temporal/liveness checking that actually closes the loop: \u25c7/\u2933 over the infinite (lasso) unfolding, not just safety over the finite reachable set. The \u22a2verify box accepts 'P \u2933 Q' syntax (placeholder advertises it) but I want a CONFIRMED fairness-aware liveness check: 'eventually light=Red on every fair path', with a lasso counterexample (stem + cycle) when it fails \u2014 the TLA+ move. Right now \u25a1 safety is solid; the \u25c7/leads-to half needs the cycle-detection and a fairness toggle to be trustworthy.",
       "detail": "",
-      "status": "worker_done",
+      "status": "open",
       "created_by": "ide-critic-expert",
       "created": "2026-06-22T20:15:02Z",
-      "worker_done": true,
-      "approvals": [
-        "ide-critic-newcomer"
-      ],
-      "reopened": 0,
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 1,
       "tags": [
         "analysis"
       ],
@@ -4296,6 +4423,12 @@
           "by": "ide-critic-newcomer",
           "act": "approved",
           "note": ""
+        },
+        {
+          "at": "2026-06-22T23:59:58Z",
+          "by": "ide-critic-expert",
+          "act": "reopened",
+          "note": "LIVENESS UNSOUND \u2014 \u25c7 returns a FALSE 'proven'. On a rho-shaped traffic light (added '_light=Yellow \u21d2 light=Yellow' so Yellow self-loops; Red/Green become transient, recurrent set = {Yellow0,1,2}), '\u25c7 light = Red' returns holds:true ('\u2713 proven \u2014 \u25c7 light = Red on all 9 reachable states') and '\u25c7 light = Green' likewise. Both are WRONG: the single infinite path enters the Yellow cycle and never revisits Red/Green \u2014 \u25c7Red is FALSE and must return a stem+Yellow-cycle lasso (verified in real UI, not just API). The \u25c7 decision is implemented as set-reachability 'does ANY reachable state satisfy P' (EF P / \u2203 reachable state.P), not the liveness 'P holds somewhere in the CYCLE'. Proof the machinery is otherwise wired: '\u25c7 timer=5' (a value absent from BOTH stem and cycle) correctly returns holds:false WITH the real lasso stem=[Red0..Yellow0] cycle=[Yellow0\u2192Yellow1\u2192Yellow2\u2192Yellow0]. So the fix is narrow: \u25c7P must be decided by 'P intersects the recurrent set / the lasso cycle', not 'P intersects the reachable set'. The wording 'on all 9 reachable states' is itself the tell \u2014 that is a SET predicate, not a PATH predicate. A verification tool printing '\u2713 proven' for a false liveness property is the most dangerous failure mode (it invites belief). Screenshots: ana-20260622-234930/07-liveness-false-positive-239.png, 08-liveness-false-proven-UI.png. Safety (\u25a1) and the lasso renderer are sound; only the \u25c7/\u2933 verdict is wrong."
         }
       ]
     },
@@ -4307,7 +4440,9 @@
       "created_by": "ide-critic-expert",
       "created": "2026-06-22T20:15:02Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "solve"
@@ -4318,6 +4453,12 @@
           "by": "worker",
           "act": "done",
           "note": "query console gained a push/pop assumption stack (chips); re-queries under the full stack via the existing /api/query terms"
+        },
+        {
+          "at": "2026-06-23T00:00:57Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -4329,7 +4470,9 @@
       "created_by": "ide-critic-expert",
       "created": "2026-06-22T20:15:02Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "solve"
@@ -4340,6 +4483,12 @@
           "by": "worker",
           "act": "done",
           "note": "shipped afee86b1: Model.query returns matches[] (capped 40); _execQuery walks them with a \u25c0 k/N \u25b6 stepper, ringing each on the diagram. Verified live: light=Red \u2192 3 matches walkable."
+        },
+        {
+          "at": "2026-06-23T00:00:57Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -4351,7 +4500,9 @@
       "created_by": "ide-critic-expert",
       "created": "2026-06-22T20:15:02Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "analysis"
@@ -4362,6 +4513,12 @@
           "by": "worker",
           "act": "done",
           "note": "click a diagram state \u2192 /api/explore: forward-reachable count + backward trace (what leads here)"
+        },
+        {
+          "at": "2026-06-23T00:00:57Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -4373,7 +4530,9 @@
       "created_by": "ide-critic-expert",
       "created": "2026-06-22T20:15:02Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "analysis"
@@ -4384,6 +4543,12 @@
           "by": "worker",
           "act": "done",
           "note": "shipped: honesty line certifies 'N reachable (\u2713 complete)' vs '\u2265N (capped \u2014 sample)' with soundness tooltips (commit 20528d70)"
+        },
+        {
+          "at": "2026-06-23T00:00:57Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -4395,7 +4560,9 @@
       "created_by": "ide-critic-expert",
       "created": "2026-06-22T20:15:02Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "solve"
@@ -4412,6 +4579,12 @@
           "by": "worker",
           "act": "done",
           "note": "shipped c58cafc5: /api/figure + _render_svg renders the active view as SVG; exportSVG downloads it (\u2318K). Verified live: state_graph \u2192 65KB valid SVG. #244 now fully complete (trace + figure)."
+        },
+        {
+          "at": "2026-06-23T00:00:57Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -4438,7 +4611,9 @@
       "created_by": "ide-critic-newcomer",
       "created": "2026-06-22T20:47:37Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "learn"
@@ -4449,6 +4624,12 @@
           "by": "worker",
           "act": "done",
           "note": "shipped: glossaryItems() + \ud83d\udcd6 palette entries + showGlossCentered; 35 concepts searchable from \u2318K (commit 87746420)"
+        },
+        {
+          "at": "2026-06-23T00:01:17Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -4460,7 +4641,9 @@
       "created_by": "ide-critic-newcomer",
       "created": "2026-06-22T20:47:37Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "viz"
@@ -4471,6 +4654,18 @@
           "by": "worker",
           "act": "done",
           "note": "shipped: renderSolve scrolls #solve into view when the witness draws as a board (commit 30360399)"
+        },
+        {
+          "at": "2026-06-23T00:00:57Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
+        },
+        {
+          "at": "2026-06-23T00:01:06Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -4482,7 +4677,9 @@
       "created_by": "ide-critic-newcomer",
       "created": "2026-06-22T20:47:37Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "learn"
@@ -4493,6 +4690,12 @@
           "by": "worker",
           "act": "done",
           "note": "shipped: renderQuerySuggestions builds clickable chips from a sample reachable state; click fills+runs (commit 89607b95). Verified live."
+        },
+        {
+          "at": "2026-06-23T00:01:17Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -4504,7 +4707,9 @@
       "created_by": "ide-critic-newcomer",
       "created": "2026-06-22T20:47:37Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "perf"
@@ -4515,6 +4720,12 @@
           "by": "worker",
           "act": "done",
           "note": "shipped: _execQuery pulses '\u22ef searching\u2026' + disables query buttons during the search (commit 7156cc29)"
+        },
+        {
+          "at": "2026-06-23T00:02:25Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -4526,7 +4737,9 @@
       "created_by": "worker",
       "created": "2026-06-22T22:21:54Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "feature"
@@ -4537,6 +4750,12 @@
           "by": "worker",
           "act": "done",
           "note": "shipped c58cafc5: /api/figure + _render_svg + exportSVG (\u2318K \u2192 Export diagram as SVG). Verified live: state_graph \u2192 65KB valid SVG."
+        },
+        {
+          "at": "2026-06-23T00:00:57Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -4548,7 +4767,9 @@
       "created_by": "worker",
       "created": "2026-06-22T23:13:26Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "perf"
@@ -4559,6 +4780,12 @@
           "by": "worker",
           "act": "done",
           "note": "shipped 17d4e743: numeric_vars\u2192cheap n_numeric kind-count in _recommend. oscillator 1.5s\u21920.60s; views unchanged; ./test.sh green. Ana to assess if it clears her latency concern #217."
+        },
+        {
+          "at": "2026-06-23T00:01:05Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -4570,7 +4797,9 @@
       "created_by": "worker",
       "created": "2026-06-22T23:22:13Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "perf"
@@ -4581,6 +4810,79 @@
           "by": "worker",
           "act": "done",
           "note": "shipped: load() cached by (paths,mtime) FIFO(4); render reuses the analyze's warm model. oscillator 0.60s\u21920.36s, byte-identical PNGs verified, ./test.sh green."
+        },
+        {
+          "at": "2026-06-23T00:01:05Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
+        }
+      ]
+    },
+    {
+      "id": 257,
+      "title": "Symmetry-breaking TOGGLE on walk-all-witnesses (#241) and all-cores. The witness stepper walks all 3 Red states on traffic (great), but on N-queens / graph-coloring the distinct-model enumeration will drown in isomorphic permutations (board rotations/reflections, color-class relabelings). Alloy's whole value is isomorph-elimination so you see each STRUCTURALLY distinct instance once. Add a 'break symmetries' toggle that adds lex-leader / canonicalizing constraints so 'next model' jumps to a genuinely different solution, with a count of distinct-up-to-symmetry vs raw.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-expert",
+      "created": "2026-06-23T00:02:47Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "solve"
+      ],
+      "log": []
+    },
+    {
+      "id": 258,
+      "title": "\u25c7/\u2933 over a derived predicate, not just a single var=value. The temporal box accepts 'var \u2264 5' and '\u25c7 light = Red' but I want '\u25c7 (timer = 0 \u2227 light = Red)' (a conjunction) and 'P \u2933 Q' where P,Q are both compound. TLA+/CTL let the temporal operand be any state formula; right now the parser looks one-var-one-op. Generalize the temporal operand to the same conjunction grammar the \u22a8? query already accepts.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-expert",
+      "created": "2026-06-23T00:02:47Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "analysis"
+      ],
+      "log": []
+    },
+    {
+      "id": 259,
+      "title": "Export the UNROLLED k-step transition as SMT-LIB, not just the single-tick relation. The current /api/smtlib dump is one transition step (verified: it runs in z3, sat, but _timer is unconstrained at 3). For a real liveness/bounded-model-check in z3 directly I want the k-unrolled system (state_0 \u2026 state_k + the lasso-closure constraint) so I can drive my own BMC / k-induction outside the tool. Add a depth param to the SMT-LIB export.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-expert",
+      "created": "2026-06-23T00:02:47Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "solve"
+      ],
+      "log": []
+    },
+    {
+      "id": 261,
+      "title": "Strong-liveness \u25a1\u25c7 operator + \u25c7 transient/recurrent label (Ana #260/#239)",
+      "detail": "",
+      "status": "worker_done",
+      "created_by": "worker",
+      "created": "2026-06-23T00:26:34Z",
+      "worker_done": true,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "feature"
+      ],
+      "log": [
+        {
+          "at": "2026-06-23T00:26:46Z",
+          "by": "worker",
+          "act": "done",
+          "note": "Implemented on branch worker-infinitely-often-260 (commit 7dcae0bb). \u25c7=AF unchanged/sound; added recurrent:True/False label to \u25c7 and a new modality=infinitely_often (\u25a1\u25c7P) that backward-reaches \u00acP traps over the FULL graph (the transient-P mask is the precise bug), with a full-graph-stem forced/avoidable lasso. Frontend parses \u25a1\u25c7/\u25fb\u25c7/[]<>/'infinitely'; \u25c7 shows recurs-vs-TRANSIENT. All 4 gate fixtures pass via real evident export + Viz load; ./test.sh green, lint 27<=27. Concern #260/#239 is for ide-critic-expert (Ana) to clear."
         }
       ]
     }
@@ -5309,9 +5611,10 @@
       "title": "Latency itself (supersedes #132; the 'no progress indicator' clause of #132 is now STALE \u2014 the centered pulsing '\u27f3 solving\u2026 N.Ns' badge IS live, verified at diagram-center during a fresh solve). Residual: bounded fourvar /api/analyze measured 3.8s this round, well over the \u2272300ms promise (Part 4.1). The badge fixes the PERCEPTION of frozen-ness but not the iteration speed on real-valued / multi-var FSMs. Known roadmap = streaming-BFS sub-second; tracking as the lone perf gap, not a blocker.",
       "detail": "fourvar (periods 10/4/6/2) = 3.8s wall; oscillator ~ same. counter/traffic are ~100ms and fine.",
       "by": "ide-critic-expert",
-      "status": "open",
+      "status": "cleared",
       "task": null,
-      "created": "2026-06-22T14:57:49Z"
+      "created": "2026-06-22T14:57:49Z",
+      "cleared": "2026-06-22T23:59:40Z"
     },
     {
       "id": 222,
@@ -5336,9 +5639,10 @@
       "title": "Query-console TRACE mislabels its witness as a violation. Ran '\u22a8? query: timer = 2 \u2227 light = Green' on traffic \u2014 the init\u2192witness trace appears and scrubs correctly (delight), but its final step is flagged '\u25cf violation here' and the state carries class 'trace-state bad'. For an existential reachability query the target state is the GOAL, not a violated invariant \u2014 that wording/styling is carried over from the \u22a2verify counterexample path. A reachability witness should read 'reached here' / styled as a goal (green), reserving 'violation'/red for \u22a2verify refutations. Z3/TLA+ never call a sought witness a violation.",
       "detail": "where: trace-head after clicking 'find' on traffic; DOM: span.trace-flag '\u25cf violation here' + div.trace-state.bad 'light = Green timer = 2'",
       "by": "ide-critic-expert",
-      "status": "open",
+      "status": "cleared",
       "task": null,
-      "created": "2026-06-22T20:14:36Z"
+      "created": "2026-06-22T20:14:36Z",
+      "cleared": "2026-06-22T23:59:40Z"
     },
     {
       "id": 250,
@@ -5348,6 +5652,43 @@
       "status": "open",
       "task": null,
       "created": "2026-06-22T20:47:45Z"
+    },
+    {
+      "id": 254,
+      "title": "LIVENESS UNSOUND \u2014 \u25c7 returns a FALSE 'proven'. On a rho-shaped traffic light (added '_light=Yellow \u21d2 light=Yellow' so Yellow self-loops; Red/Green become transient, recurrent set = {Yellow0,1,2}), '\u25c7 light = Red' returns holds:true ('\u2713 proven \u2014 \u25c7 light = Red on all 9 reachable states') and '\u25c7 light = Green' likewise. Both are WRONG: the single infinite path enters the Yellow cycle and never revisits Red/Green \u2014 \u25c7Red is FALSE and must return a stem+Yellow-cycle lasso (verified in real UI, not just API). The \u25c7 decision is implemented as set-reachability 'does ANY reachable state satisfy P' (EF P / \u2203 reachable state.P), not the liveness 'P holds somewhere in the CYCLE'. Proof the machinery is otherwise wired: '\u25c7 timer=5' (a value absent from BOTH stem and cycle) correctly returns holds:false WITH the real lasso stem=[Red0..Yellow0] cycle=[Yellow0\u2192Yellow1\u2192Yellow2\u2192Yellow0]. So the fix is narrow: \u25c7P must be decided by 'P intersects the recurrent set / the lasso cycle', not 'P intersects the reachable set'. The wording 'on all 9 reachable states' is itself the tell \u2014 that is a SET predicate, not a PATH predicate. A verification tool printing '\u2713 proven' for a false liveness property is the most dangerous failure mode (it invites belief). Screenshots: ana-20260622-234930/07-liveness-false-positive-239.png, 08-liveness-false-proven-UI.png. Safety (\u25a1) and the lasso renderer are sound; only the \u25c7/\u2933 verdict is wrong.",
+      "detail": "",
+      "by": "ide-critic-expert",
+      "status": "cleared",
+      "task": 239,
+      "created": "2026-06-22T23:59:58Z",
+      "cleared": "2026-06-23T00:14:23Z"
+    },
+    {
+      "id": 255,
+      "title": "Assumption-stack (#240) leaks across sample switch. Pushed 'light = Green' as an assumption on traffic, then loaded counter: the query RESULT cleared correctly (#229/#230 fixed \u2014 good) but the 'assumptions: light = Green \u2715 clear all' chip STAYED, sitting next to counter which has no 'light' var. The assumption stack must clear on source/sample change like the diagram and query-result now do. Screenshot ana-20260622-234930 (counter loaded, stale Green chip).",
+      "detail": "complementary panel, assumptions row",
+      "by": "ide-critic-expert",
+      "status": "open",
+      "task": null,
+      "created": "2026-06-23T00:00:13Z"
+    },
+    {
+      "id": 256,
+      "title": "The header '\u2318K' BUTTON opens the symbols/operators palette ('type these operators'), but the actual \u2318K keyboard shortcut opens the real COMMAND palette (Save as, Export diagram as SVG, Copy SMT-LIB, glossary, view-switch). Two different surfaces behind the same label \u2014 I clicked the button expecting commands and got only symbols, and nearly reported SVG-export missing before trying the keystroke. Either make the button open the command palette (with symbols as a section) or relabel the button '\u2328 symbols'.",
+      "detail": "header \u2318K button vs Cmd+K keydown",
+      "by": "ide-critic-expert",
+      "status": "open",
+      "task": null,
+      "created": "2026-06-23T00:00:13Z"
+    },
+    {
+      "id": 260,
+      "title": "CORRECTS+SUPERSEDES #254 (which I cleared \u2014 its mechanism diagnosis and one-line fix were WRONG; coordinator empirically refuted both). Accurate finding: the tool's \u25c7 computes AF (sound \u2014 verified by coordinator: on branching Init\u2192nondet[Goal-cycle|Sink-cycle], \u25c7Goal=False because the Sink path never reaches Goal; EF would say True). Under standard LTL \u25c7=F, my rho's \u25c7Red is GENUINELY TRUE (Red holds at t=0; TLA+ <>Red agrees). So \u25c7 is NOT unsound as F \u2014 my 'false proven' was me reading F's verdict as a RECURRENCE/stability guarantee it never claimed. The REAL defect is two-part: (1) LABELING \u2014 '\u2713 proven \u2014 \u25c7 light=Red on all 9 reachable states' invites the recurrence misreading; on the rho, Red is reached once at step 0 then NEVER recurs (settles into the Yellow cycle), and the verdict must say so: '\u2713 \u25c7Red holds (reached at step 0) \u2014 but TRANSIENT: does not recur, settles into {Yellow0,1,2}'. (2) MISSING OPERATOR \u2014 there is no working strong-liveness check (\u2200 paths.\u25a1\u25c7P, 'P infinitely often on every run'), which is the actual TLA+ move #239 was opened for and the property whose counterexample IS the stem+cycle lasso already wired. DO NOT overload the \u25c7 SYMBOL to mean \u25a1\u25c7 \u2014 \u25c7=F is standard in TLA+/SPIN/NuSMV and a verification engineer types \u25c7 meaning 'eventually \u2265once'; silently making it 'infinitely often' is a different lie. Endorsed fix = coordinator option (b) wired to its OWN name (\u25a1\u25c7 and/or the already-advertised P\u2933Q), NOT to \u25c7: keep \u25c7=AF(F) but add the transient/recurrent label; add \u25a1\u25c7/\u2933 = universal strong liveness with the lasso counterexample. The precise bug under (b): the holds-decision restricts trap-reachability to \u00acP-only paths, so a transient P at init masks the downstream \u00acP trap while the lasso is GF-shaped (internal inconsistency) \u2014 reach the \u00acP cycle through the FULL graph and let the stem pass through P-states. Screenshots 07/08 in ana-20260622-234930 still show the mislabel. My option-(c) suggestion in #254 was existentially unsound (made \u25c7Goal=True on the branching case) \u2014 discard it.",
+      "detail": "\u22a2verify temporal path; coordinator refuted EF-mechanism + recurrent-set fix; answer = (a)-for-\u25c7 + (b)-for-\u25a1\u25c7/\u2933",
+      "by": "ide-critic-expert",
+      "status": "open",
+      "task": null,
+      "created": "2026-06-23T00:14:43Z"
     }
   ]
 }
