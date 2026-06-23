@@ -27,16 +27,23 @@
       "id": 2,
       "title": "Find / replace / rename / go-to-definition in the editor",
       "detail": "Ctrl-F does nothing; wire CodeMirror search addon + AST-based rename.",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "worker",
       "created": "2026-06-21T23:18:36Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "editor"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-23T16:07:36Z",
+          "by": "worker",
+          "act": "done",
+          "note": "DONE \u2014 find/replace: Ace's built-in Ctrl-F/Ctrl-H; rename: F2 renameSymbol (#276, renames _/\u0394 forms too); go-to-definition: \u2318-click (#282); find-references: Ace highlightSelectedWord. All four affordances present."
+        }
+      ]
     },
     {
       "id": 3,
@@ -1921,16 +1928,23 @@
       "id": 87,
       "title": "Auto-select each demo's headline diagram view (the sample names its intended view: '(FSM, cobweb)', '(FSM, scatter_matrix)'); pick that view on load. More generally, tune the auto-selector: 4-var \u2192 scatter_matrix, 1-D map \u2192 cobweb, digital flags \u2192 timing_diagram.",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "ide-critic-expert",
       "created": "2026-06-22T00:41:34Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "viz"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-23T16:16:42Z",
+          "by": "worker",
+          "act": "done",
+          "note": "shipped: samples open on their headline view \u2014 headlineView(name,source) parses 'open the X view/tab' or the first headline view-token, loadProgram threads it to run(view); fixed the debounced-re-analyze override (run() cancels the pending timer when a view is passed). Verified live: Rule 90\u2192timing_diagram, oscillator\u2192phase_portrait, predator-prey\u2192function_graph, logistic\u2192cobweb, random walk\u2192occupancy_heatmap; headline-less samples recommend. ./test.sh green, 0 console errors."
+        }
+      ]
     },
     {
       "id": 88,
@@ -2721,16 +2735,23 @@
       "id": 128,
       "title": "Headline-view samples open on their named view, not always solution_space (nice-to-have): samples labelled '(FSM, cobweb)', '(FSM, basin_map)', '(FSM, scatter_matrix)' now all open on solution_space (the universal numeric lead). For a sample whose whole point is to TEACH cobweb, opening elsewhere is mildly misleading. Honor an explicit headline-view hint in the sample manifest so the teaching demo lands on its view, while non-hinted programs still default to solution_space.",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "ide-critic-expert",
       "created": "2026-06-22T02:06:55Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "viz"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-23T16:16:42Z",
+          "by": "worker",
+          "act": "done",
+          "note": "shipped: samples open on their headline view \u2014 headlineView(name,source) parses 'open the X view/tab' or the first headline view-token, loadProgram threads it to run(view); fixed the debounced-re-analyze override (run() cancels the pending timer when a view is passed). Verified live: Rule 90\u2192timing_diagram, oscillator\u2192phase_portrait, predator-prey\u2192function_graph, logistic\u2192cobweb, random walk\u2192occupancy_heatmap; headline-less samples recommend. ./test.sh green, 0 console errors."
+        }
+      ]
     },
     {
       "id": 129,
@@ -3627,16 +3648,23 @@
       "id": 168,
       "title": "Auto-select the recommended view per sample (samples are NAMED for a view but open on solution_space). 'four signals \u00b7 (FSM, scatter_matrix)', 'bistable \u00b7 (basin_map)', 'fixed point \u00b7 (cobweb)' etc. all open on solution_space, not the view their name advertises. As a newcomer I'd never find the cobweb/basin view unless I knew to click it. Either auto-open the view named in the sample, or add a 'recommended: scatter_matrix' nudge highlighting that tab.",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "ide-critic-newcomer",
       "created": "2026-06-22T11:02:33Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "viz"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-23T16:16:42Z",
+          "by": "worker",
+          "act": "done",
+          "note": "shipped: samples open on their headline view \u2014 headlineView(name,source) parses 'open the X view/tab' or the first headline view-token, loadProgram threads it to run(view); fixed the debounced-re-analyze override (run() cancels the pending timer when a view is passed). Verified live: Rule 90\u2192timing_diagram, oscillator\u2192phase_portrait, predator-prey\u2192function_graph, logistic\u2192cobweb, random walk\u2192occupancy_heatmap; headline-less samples recommend. ./test.sh green, 0 console errors."
+        }
+      ]
     },
     {
       "id": 169,
