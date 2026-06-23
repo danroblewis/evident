@@ -310,11 +310,23 @@ async function _checkOne(varName, op, value) {
   });
   return res.json();
 }
+// Strip a trailing WEAK-FAIRNESS suffix (`… WF` / `… under fairness`, Ana #269) from a liveness
+// property and OR it with the WF checkbox. Returns { text, fair }: `text` is the property with the
+// suffix removed, `fair` true iff either the suffix is present or the checkbox is ticked. Applied
+// only on the liveness branches — fairness is meaningless for a □ safety invariant.
+function _fairFlag(raw) {
+  const m = raw.match(/^(.*?)\s*(?:\bunder\s+fairness\b|\bweak\s+fairness\b|\bWF\b)\s*$/i);
+  const checked = (() => { const el = $("#fair-in"); return !!(el && el.checked); })();
+  return m ? { text: m[1].trim(), fair: true } : { text: raw, fair: checked };
+}
 async function checkInvariant() {
   const out = $("#inv-result");
   clearTrace();                              // a new check invalidates the old scrubber
-  const raw = $("#inv-prop").value.trim();
-  if (!raw) { out.textContent = ""; return; }
+  const rawIn = $("#inv-prop").value.trim();
+  if (!rawIn) { out.textContent = ""; return; }
+  // A `WF` / `under fairness` suffix (or the WF checkbox) requests WEAK-FAIRNESS liveness (#269):
+  // exclude unfair lassos. Strip the suffix before the modality parse; `fair` rides the temporal body.
+  const { text: raw, fair } = _fairFlag(rawIn);
   // LIVENESS first: P ⤳ Q (leads-to), or ◇/□◇ Q. Q and P are CONJUNCTIONS — ◇(timer = 0 ∧ light = Red)
   // — parsed via _parseTerms (the same ∧-splitter the ⊨? query uses), so they're not limited to one
   // var op value (Ana #258/#142).
@@ -324,7 +336,7 @@ async function checkInvariant() {
     if (P.error || Q.error || !(P.terms || []).length || !(Q.terms || []).length) {
       out.className = "bad"; out.textContent = "✕ leads-to: write  P ⤳ Q  (e.g. mode = Coining ⤳ mode = Idle)"; return;
     }
-    return runTemporal(out, { terms: Q.terms, modality: "leads_to", p_terms: P.terms });
+    return runTemporal(out, { terms: Q.terms, modality: "leads_to", p_terms: P.terms, fair });
   }
   // STRONG liveness □◇Q (infinitely often) — checked BEFORE plain ◇ so the □ prefix isn't
   // swallowed by the ◇ branch. Holds iff no run gets permanently trapped in ¬Q (Ana #260).
@@ -332,14 +344,16 @@ async function checkInvariant() {
   if (io) {
     const Q = _parseTerms(io[1]);
     if (Q.error || !(Q.terms || []).length) { out.className = "bad"; out.textContent = "✕ infinitely-often: write  □◇ var op value  (e.g. □◇ light = Yellow)"; return; }
-    return runTemporal(out, { terms: Q.terms, modality: "infinitely_often" });
+    return runTemporal(out, { terms: Q.terms, modality: "infinitely_often", fair });
   }
   const ev = raw.match(/^\s*(?:◇|<>|eventually)\s+(.+)$/i);
   if (ev) {
     const Q = _parseTerms(ev[1]);
     if (Q.error || !(Q.terms || []).length) { out.className = "bad"; out.textContent = "✕ eventually: write  ◇ var op value  (e.g. ◇ done = true)"; return; }
-    return runTemporal(out, { terms: Q.terms, modality: "eventually" });
+    return runTemporal(out, { terms: Q.terms, modality: "eventually", fair });
   }
+  // WF on a non-liveness property is a user error — fairness only changes a liveness verdict.
+  if (fair) { out.className = "bad"; out.textContent = "✕ fairness (WF) applies to LIVENESS only — write  □◇ P  ·  ◇ P  ·  P ⤳ Q"; return; }
   // SAFETY (□): a two-sided range becomes TWO predicates (var ≥ lo ∧ var ≤ hi); else a single comparison.
   let preds;
   const rg = raw.match(_INV_RANGE);
@@ -503,7 +517,18 @@ async function runTemporal(out, body) {
     });
     const d = await res.json();
     if (!d.ok) { out.className = "bad"; out.textContent = "✕ " + (d.error || "check failed"); return; }
-    if (d.holds) {
+    if (d.holds && d.fair) {
+      // (b) — the WHOLE POINT of #269. Under WEAK FAIRNESS the property HOLDS: the goal is reachable
+      // from every reachable (P-)state. WITHOUT fairness an unfair lasso dodges P forever; every
+      // such dodging run that ignores the always-available path to P is excluded. Make it
+      // unmistakable that this verdict depended on fairness — it is NOT an unconditional proof.
+      out.className = "good";
+      out.textContent = (d.exhaustive ? "✓ holds UNDER FAIRNESS" : "✓ holds UNDER FAIRNESS (bounded)")
+        + ` — ${d.predicate} on all ${d.checked} reachable states.`
+        + " Without fairness an unfair lasso dodges it forever; every dodging run that ignores the"
+        + " always-available path to the goal is excluded.";
+    } else if (d.holds) {
+      // (a) — HOLDS even WITHOUT fairness (the lasso search found no dodging run at all).
       out.className = "good";
       // For ◇ (AF: every run reaches Q at least once), distinguish RECURRENT (□◇ also holds —
       // Q recurs forever) from TRANSIENT (Q reached, then the system can settle into ¬Q forever).
@@ -516,16 +541,25 @@ async function runTemporal(out, body) {
       }
       out.textContent = (d.exhaustive ? "✓ proven" : "✓ holds (bounded)")
         + ` — ${d.predicate} on all ${d.checked} reachable states` + note;
+    } else if (d.trap) {
+      // (c) — FAILS even under fairness: a reachable TRAP (a state from which the goal is UNREACHABLE).
+      // No escaping cycle to show — the witness is the trap state + the init→trap run.
+      const tr = _fmtTrace(d.trace);
+      const cex = Object.entries(d.counterexample || {}).map(([k, v]) => `${k.split(".").pop()}=${v}`).join(", ");
+      const verdict = `a reachable TRAP (no path to the goal): ${cex} — fairness can't save it`;
+      out.className = "bad";
+      out.textContent = `✗ violated even UNDER FAIRNESS — ${d.predicate}; ${verdict}` + (tr ? `.  run: ${tr}` : "");
+      if (d.trace && d.trace.length >= 2) showTrace(d.trace, verdict, "violation", null);
     } else {
       // Lasso (Ana #239): the run is a STEM into a CYCLE that dodges Q forever, classified by
       // fairness. forced ⇒ the cycle literally can't escape to Q (a counterexample even under
       // weak fairness); !forced ⇒ some cycle state has a fair successor that reaches Q, so the
-      // dodge survives only WITHOUT fairness.
+      // dodge survives only WITHOUT fairness (re-run with WF to confirm it holds under fairness).
       const tr = _fmtTrace(d.trace);
       const verdict = d.cycle && d.cycle.length
         ? (d.forced
             ? "a run dodges it forever — forced cycle, no escape to Q"
-            : "a run can dodge it — but under fairness the cycle escapes to Q; only a counterexample without fairness")
+            : "a run can dodge it — but under fairness the cycle escapes to Q; only a counterexample without fairness (tick WF)")
         : "a run gets stuck in a ¬Q sink — never reaches Q";
       out.className = "bad";
       out.textContent = `✗ violated — ${d.predicate}; ${verdict}` + (tr ? `:  ${tr}` : "");
@@ -714,12 +748,12 @@ function updateVerifyPlaceholder(data) {
   const en = entries.find(([, v]) => typeof v === "string");      // a real enum var + value (light = Green)
   const nu = entries.find(([, v]) => typeof v === "number");      // a real numeric var (timer)
   if (!en && !nu) {
-    el.placeholder = "verify (use your own vars) — safety:  var ≤ 5  ·  0 ≤ var ≤ 10     liveness:  ◇ var = 5  ·  □◇ var = 5  ·  P ⤳ Q";
+    el.placeholder = "verify (use your own vars) — safety:  var ≤ 5  ·  0 ≤ var ≤ 10     liveness:  ◇ var = 5  ·  □◇ var = 5  ·  P ⤳ Q  (tick WF / add ‘WF’ for under-fairness)";
     return;
   }
   const safety = nu ? `${nu[0]} ≤ 5` : `${en[0]} = ${en[1]}`;
   const live = en ? `${en[0]} = ${en[1]}` : `${nu[0]} = 5`;
-  el.placeholder = `verify your vars — safety:  ${safety}     liveness:  ◇ ${live}  ·  □◇ ${live}`;
+  el.placeholder = `verify your vars — safety:  ${safety}     liveness:  ◇ ${live}  ·  □◇ ${live}  ·  □◇ ${live} WF`;
 }
 
 // Example-query chips so a newcomer isn't typing blind, guessing var names (Sam #248). Built from a

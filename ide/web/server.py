@@ -220,6 +220,7 @@ class TemporalReq(BaseModel):
     terms: list                           # [[var, op, value], …] — the Q conjunction (#258)
     modality: str = "eventually"          # "eventually" (◇Q) | "leads_to" (P ⤳ Q) | "infinitely_often" (□◇Q)
     p_terms: list | None = None           # [[var, op, value], …] — the P conjunction, for leads_to
+    fair: bool = False                    # WEAK-FAIRNESS mode — exclude unfair lassos (#269)
     scope: int | None = None              # verification bound — the scope knob (#21/#84)
 
 
@@ -228,7 +229,9 @@ def temporal(req: TemporalReq):
     """Check a LIVENESS property over the reachable graph: ◇Q (eventually) / P⤳Q (leads-to) /
     □◇Q (infinitely often). Q (and P) are CONJUNCTIONS of var-op-value terms (#258). Returns holds +
     a counterexample state and the TRACE (a run that dodges Q forever); ◇ also returns `recurrent`
-    (□◇ also holds) to flag a TRANSIENT ◇."""
+    (□◇ also holds) to flag a TRANSIENT ◇. With `fair=True` (#269) the check runs under WEAK FAIRNESS
+    — unfair lassos that ignore an always-available path to Q are excluded, so it HOLDS whenever Q is
+    reachable from every reachable (P-)state; the only fair counterexample is a TRAP (`trap=True`)."""
     with _LOCK, tempfile.TemporaryDirectory() as work:
         ok, prefix, dropped, msg = _export(req.source, work)
         if not ok:
@@ -236,7 +239,8 @@ def temporal(req: TemporalReq):
         try:
             m = load_model(prefix + ".smt2", prefix + ".schema.json")
             return {"ok": True, **m.check_temporal(
-                req.terms, modality=req.modality, p_terms=req.p_terms, limit=effective_scope(req))}
+                req.terms, modality=req.modality, p_terms=req.p_terms, fair=req.fair,
+                limit=effective_scope(req))}
         except Exception as e:
             return {"ok": False, "error": str(e)}
 

@@ -101,7 +101,39 @@ class TemporalMixin:
                     q.append(w)
         return dist
 
-    def check_temporal(self, terms, modality="eventually", p_terms=None, limit=400):
+    def _fair_check(self, states, edges, a, p_idxs, exhaustive, pred):
+        """WEAK-FAIRNESS liveness verdict — a GRAPH-REACHABILITY check that EXCLUDES unfair lassos
+        (Ana #269). The lasso search above refutes □◇P / P⤳Q on ANY dodging run, including UNFAIR
+        ones that perpetually ignore an always-available path to P; every branching FSM has such a
+        lasso, so liveness almost always 'fails'. Under weak fairness those unfair runs are excluded,
+        and the formulation collapses to reachability:
+
+          □◇P (and ◇P) holds under fairness  ⟺  from EVERY reachable state, a P-state is reachable.
+          P⤳Q holds under fairness            ⟺  from every reachable P-state, a Q-state is reachable.
+
+        A fair run that can always re-reach P does so infinitely often; the ONLY fair counterexample
+        is a TRAP — a reachable (P-)state from which P is UNREACHABLE. `a['can_reach_q']` is exactly
+        the set of states that can reach a Q/P-state (reverse-reach from the goal over the full graph),
+        so the trap is the first `p_idxs` state NOT in it. On a trap we hand back the init→trap run
+        (the existing `_trace_to`), not a lasso — there is no escaping cycle to show.
+
+        `p_idxs` is the iterable of indices the goal must be reachable FROM: every reachable state for
+        □◇/◇, the reachable P-states for ⤳. Returns the same verdict-dict shape as `_holds_result` /
+        `_fail_result`, plus `fair=True` (and `trap=True` on the failing case)."""
+        can_reach = a["can_reach_q"]
+        n = len(states)
+        trap = next((i for i in p_idxs if i not in can_reach), None)
+        if trap is None:                                       # every (P-)state can reach the goal
+            r = self._holds_result(n, exhaustive, pred)
+            r["fair"] = True
+            return r
+        return {"holds": False, "checked": n, "exhaustive": exhaustive, "fair": True,
+                "counterexample": dict(states[trap]),
+                "trace": self._trace_to(trap, edges, states),  # init→trap run (no escaping cycle)
+                "stem": None, "cycle": None, "cycle_start": None, "forced": True,
+                "trap": True, "predicate": pred}
+
+    def check_temporal(self, terms, modality="eventually", p_terms=None, limit=400, fair=False):
         """VERIFY a LIVENESS property over the reachable graph (the model-checker move beyond the
         safety □ that check_invariant does):
           - modality "eventually" (◇Q): does EVERY run from the initial state reach a Q-state?
@@ -125,7 +157,14 @@ class TemporalMixin:
           - `forced`: the FAIRNESS verdict — True iff no cycle state can step (in the FULL graph)
                      into a state from which Q is reachable (a real counterexample even under weak
                      fairness); False (AVOIDABLE) iff some cycle state has a fair successor that
-                     escapes to Q — under fairness that successor eventually fires and Q holds."""
+                     escapes to Q — under fairness that successor eventually fires and Q holds.
+
+        `fair=True` switches the whole check into WEAK-FAIRNESS mode (Ana #269): instead of the
+        lasso search — which refutes on any dodging run, including UNFAIR ones that perpetually
+        ignore an always-available path to Q — it runs the reachability oracle in `_fair_check`:
+        □◇/◇ hold iff EVERY reachable state can reach Q; P⤳Q iff every reachable P-state can. The
+        only fair counterexample is a TRAP (a reachable state from which Q is unreachable); on a
+        trap the verdict carries `trap=True` + the init→trap run (no escaping cycle to show)."""
         qpred, qfn = self._conj_predicate(terms)
         states, edges = self.reachable(limit=limit)
         n = len(states)
@@ -134,9 +173,20 @@ class TemporalMixin:
                     "counterexample": None, "predicate": f"◇ {qpred}"}
         exhaustive = n < limit
         a = self._liveness_analysis(states, edges, qfn)        # graphs + trap/avoid/fairness sets
+        return self._temporal_verdict(modality, qpred, qfn, p_terms, fair,
+                                      states, edges, a, n, exhaustive)
 
+    def _temporal_verdict(self, modality, qpred, qfn, p_terms, fair, states, edges, a, n, exhaustive):
+        """Pick the per-modality liveness verdict over the analyzed graph (extracted from
+        `check_temporal` so each owns one concern). `fair=True` routes every modality through the
+        `_fair_check` reachability oracle (#269); otherwise the lasso/avoid-set search runs:
+          - □◇: holds iff init can't fall into a ¬Q trap over the FULL graph (else a full-stem lasso).
+          - ⤳:  holds iff no reachable P-state is in the ¬Q avoid set (else a lasso from one).
+          - ◇:  holds iff init isn't in the ¬Q avoid set; on holds, `recurrent` flags □◇ (#260)."""
         if modality == "infinitely_often":
             pred = f"□◇ {qpred}"
+            if fair:                                           # exclude unfair lassos (#269): every
+                return self._fair_check(states, edges, a, range(n), exhaustive, pred)  # state reaches Q?
             if 0 not in a["avoid_full"]:                       # init can't be trapped in ¬Q
                 return self._holds_result(n, exhaustive, pred)
             return self._fail_result(0, a["bad"], a["sub"], a["g"], a["can_reach_q"], edges, states,
@@ -144,14 +194,19 @@ class TemporalMixin:
 
         if modality == "leads_to":
             ppred, pfn = self._conj_predicate(p_terms)
-            offenders = [i for i in range(n) if pfn(states[i]) and i in a["avoid"]]
             pred = f"{ppred} ⤳ {qpred}"
+            if fair:                                           # every reachable P-state reaches Q?
+                p_idxs = [i for i in range(n) if pfn(states[i])]
+                return self._fair_check(states, edges, a, p_idxs, exhaustive, pred)
+            offenders = [i for i in range(n) if pfn(states[i]) and i in a["avoid"]]
             if not offenders:
                 return self._holds_result(n, exhaustive, pred)
             return self._fail_result(offenders[0], a["bad"], a["sub"], a["g"], a["can_reach_q"],
                                      edges, states, n, exhaustive, pred)
 
         pred = f"◇ {qpred}"                                    # eventually (AF), the default
+        if fair:                                               # ◇ under fairness ≡ □◇ under fairness:
+            return self._fair_check(states, edges, a, range(n), exhaustive, pred)  # every state reaches Q
         if 0 not in a["avoid"]:                                # initial state is index 0
             # ◇Q holds. Distinguish RECURRENT (□◇ also holds — Q hit infinitely often) from
             # TRANSIENT (Q reached but the run can then settle into ¬Q forever): recurrent iff

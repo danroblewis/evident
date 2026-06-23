@@ -44,6 +44,7 @@
     <div id="invariant" hidden>
       <span class="inv-label">⊢ verify</span>
       <input id="inv-prop" placeholder="verify (use your own vars) — safety:  var ≤ 5  ·  0 ≤ var ≤ 10     liveness:  ◇ var = 5  ·  □◇ var = 5  ·  P ⤳ Q">
+      <label id="fair-ctl" title="WEAK FAIRNESS (liveness only): exclude UNFAIR runs that perpetually ignore an always-available path to the goal. □◇/◇/⤳ then hold iff the goal is reachable from every reachable (P-)state; the only fair counterexample is a TRAP. Or type a 'WF' / 'under fairness' suffix on the property."><input id="fair-in" type="checkbox"> WF</label>
       <button id="inv-btn">check</button>
       <span id="inv-result" class="dim"></span>
     </div>
@@ -99,7 +100,7 @@
 <script src="/static/app-editor.js?v=2"></script>
 <script src="/static/app-buffer.js?v=3"></script>
 <script src="/static/app-history.js?v=2"></script>
-<script src="/static/app-verify.js?v=12"></script>
+<script src="/static/app-verify.js?v=13"></script>
 <script src="/static/app-palette.js?v=6"></script>
 <script src="/static/app-panzoom.js?v=1"></script>
 <script src="/static/app.js?v=21"></script>

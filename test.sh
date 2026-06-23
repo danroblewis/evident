@@ -146,6 +146,23 @@ if [ "$EXAMPLES_ONLY" -eq 0 ] && command -v python3 >/dev/null 2>&1; then
     echo
 fi
 
+# ── Phase 2.8: liveness-under-fairness verdicts (Ana #269) ────
+# The temporal check's `fair` mode excludes UNFAIR lassos: □◇/◇/⤳ hold iff the goal is reachable
+# from every reachable (P-)state. This pins both directions — a dodger model where fairness flips
+# REFUTED→HOLDS (no trap), and a TRAP model that FAILS even under fairness with the trap + its run —
+# so a regression can't silently re-refute on unfair runs or claim HOLDS over a real trap.
+if [ "$EXAMPLES_ONLY" -eq 0 ] && command -v python3 >/dev/null 2>&1; then
+    phase "Phase 2.8: liveness under fairness"
+    if python3 ide/test_fairness.py > /tmp/evident-fairness.log 2>&1; then
+        ok "fairness ($(tail -1 /tmp/evident-fairness.log))"
+    else
+        fail "fairness: wrong under-fairness verdict (see above)"
+        cat /tmp/evident-fairness.log >&2
+        failures+=("fairness liveness")
+    fi
+    echo
+fi
+
 # ── Optional: examples runner ────────────────────────────────
 # Walks examples/, runs each via effect-run. For visual demos (anything
 # that imports packages/sdl/), spawn the program, screenshot the Xvfb
