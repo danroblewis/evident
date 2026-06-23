@@ -264,7 +264,15 @@ async function checkInvariant() {
     return runTemporal(out, { var: Q[1], op: Q[2], value: _coerce(Q[3]), modality: "leads_to",
                               p_var: P[1], p_op: P[2], p_value: _coerce(P[3]) });
   }
-  const ev = raw.match(/^\s*(?:◇|eventually)\s+(.+)$/i);
+  // STRONG liveness □◇Q (infinitely often) — checked BEFORE plain ◇ so the □ prefix isn't
+  // swallowed by the ◇ branch. Holds iff no run gets permanently trapped in ¬Q (Ana #260).
+  const io = raw.match(/^\s*(?:□◇|◻◇|\[\]<>|infinitely(?:\s+often)?)\s+(.+)$/i);
+  if (io) {
+    const Q = io[1].match(_INV_RE);
+    if (!Q) { out.className = "bad"; out.textContent = "✕ infinitely-often: write  □◇ var op value  (e.g. □◇ light = Yellow)"; return; }
+    return runTemporal(out, { var: Q[1], op: Q[2], value: _coerce(Q[3]), modality: "infinitely_often" });
+  }
+  const ev = raw.match(/^\s*(?:◇|<>|eventually)\s+(.+)$/i);
   if (ev) {
     const Q = ev[1].match(_INV_RE);
     if (!Q) { out.className = "bad"; out.textContent = "✕ eventually: write  ◇ var op value  (e.g. ◇ done = true)"; return; }
@@ -435,8 +443,17 @@ async function runTemporal(out, body) {
     if (!d.ok) { out.className = "bad"; out.textContent = "✕ " + (d.error || "check failed"); return; }
     if (d.holds) {
       out.className = "good";
+      // For ◇ (AF: every run reaches Q at least once), distinguish RECURRENT (□◇ also holds —
+      // Q recurs forever) from TRANSIENT (Q reached, then the system can settle into ¬Q forever).
+      // The bare "✓ proven" on a transient ◇ invites a false recurrence reading (Ana #260).
+      let note = "";
+      if (body.modality === "eventually" && d.recurrent !== undefined) {
+        note = d.recurrent
+          ? " — and recurs (infinitely often)"
+          : " — but TRANSIENT: reached, does not recur (the system settles into ¬Q)";
+      }
       out.textContent = (d.exhaustive ? "✓ proven" : "✓ holds (bounded)")
-        + ` — ${d.predicate} on all ${d.checked} reachable states`;
+        + ` — ${d.predicate} on all ${d.checked} reachable states` + note;
     } else {
       // Lasso (Ana #239): the run is a STEM into a CYCLE that dodges Q forever, classified by
       // fairness. forced ⇒ the cycle literally can't escape to Q (a counterexample even under

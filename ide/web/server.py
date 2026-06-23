@@ -188,7 +188,7 @@ class TemporalReq(BaseModel):
     var: str
     op: str
     value: str | int | float | bool
-    modality: str = "eventually"          # "eventually" (◇Q) | "leads_to" (P ⤳ Q)
+    modality: str = "eventually"          # "eventually" (◇Q) | "leads_to" (P ⤳ Q) | "infinitely_often" (□◇Q)
     p_var: str | None = None
     p_op: str | None = None
     p_value: str | int | float | bool | None = None
@@ -196,8 +196,9 @@ class TemporalReq(BaseModel):
 
 @app.post("/api/temporal")
 def temporal(req: TemporalReq):
-    """Check a LIVENESS property over the reachable graph: ◇Q (eventually) / P⤳Q (leads-to).
-    Returns holds + a counterexample state and the TRACE (a run that dodges Q forever)."""
+    """Check a LIVENESS property over the reachable graph: ◇Q (eventually) / P⤳Q (leads-to) /
+    □◇Q (infinitely often). Returns holds + a counterexample state and the TRACE (a run that
+    dodges Q forever); ◇ also returns `recurrent` (□◇ also holds) to flag a TRANSIENT ◇."""
     with _LOCK, tempfile.TemporaryDirectory() as work:
         ok, prefix, dropped, msg = _export(req.source, work)
         if not ok:

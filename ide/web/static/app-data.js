@@ -19,6 +19,8 @@ const UNI = {
   ge: "≥", neq: "≠", ne: "≠", Delta: "Δ", delta: "Δ", neg: "¬", not: "¬",
   land: "∧", and: "∧", lor: "∨", or: "∨",
   cup: "∪", cap: "∩", times: "×", cdot: "·", subseteq: "⊆", emptyset: "∅",
+  // Liveness operators for the ⊢ verify field: ◇ (eventually / AF) and □◇ (infinitely often).
+  diamond: "◇", eventually: "◇", box: "□", always: "□", infinitely: "□◇",
 };
 
 // Bare mnemonics that convert when the COMPLETE preceding word is one of these and a
