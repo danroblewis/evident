@@ -253,7 +253,7 @@ fsm vending
 
 fsm traffic
     light ∈ Light
-    timer ∈ Int
+    0 ≤ timer ∈ Int ≤ 2
     is_first_tick ⇒ (light = Red ∧ timer = 0)
     _timer ≥ 2 ⇒
         timer = 0
