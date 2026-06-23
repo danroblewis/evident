@@ -313,6 +313,27 @@ function initEditorInput() {
     },
   });
 
+  // F2 → rename the identifier at the cursor, and its _/__/Δ/ΔΔ/¬ forms, everywhere (Ana #276).
+  // Find-references already works (Ace highlights every occurrence of the selected word). The token
+  // boundaries (lookbehind/ahead on identifier chars, with the prefix captured + preserved) keep
+  // `discount`/`count5` safe and rename `_count`→`_new` alongside `count`→`new`.
+  editor.commands.addCommand({
+    name: "renameSymbol",
+    bindKey: { win: "F2", mac: "F2" },
+    exec: function (ed) {
+      const pos = ed.getCursorPosition();
+      const base = stripIdentPrefix((ed.session.getTextRange(ed.session.getWordRange(pos.row, pos.column)) || "").trim());
+      if (!/^[A-Za-z_]\w*$/.test(base)) { setStatus("put the cursor on an identifier to rename (F2)", "dim"); return; }
+      const next = window.prompt(`Rename "${base}" (and its _ / Δ forms) to:`, base);
+      if (!next || next === base) return;
+      if (!/^[A-Za-z_]\w*$/.test(next)) { setStatus(`"${next}" isn't a valid identifier`, "err"); return; }
+      const esc = base.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const re = new RegExp("(?<![A-Za-z0-9_])((?:ΔΔ|Δ|__|_|¬)*)" + esc + "(?![A-Za-z0-9_])", "g");
+      ed.setValue(ed.getValue().replace(re, "$1" + next), -1);   // one undo group reverts the whole rename
+      setStatus(`renamed ${base} → ${next} (everywhere, prefixes preserved)`, "ok");
+    },
+  });
+
   // typable-token input + the debounced analyze, both driven off the one change handler.
   editor.session.on("change", (delta) => {
     applyTokenInput(delta);
