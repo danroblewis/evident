@@ -3524,16 +3524,23 @@
       "id": 163,
       "title": "Hover-to-learn glossary on the jargon (fsm, claim, \u2208, \u0394, \u21d2, is_first_tick, 'Driven pipeline', 'Cyclic', 'fixed point', 'reachable set', 'inductive invariant'). I understood the diagrams but had to already know what 'fsm', 'claim', '\u0394', and the banner's words MEAN. There is no in-tool explanation of the core vocabulary \u2014 the symbols PALETTE tells me how to TYPE \u2208 but not what it MEANS. A newcomer who doesn't already know the constraint-modeling family is left guessing. Want: hover a keyword/symbol in the editor or the banner and get a one-sentence plain-language tooltip ('claim = a relation/property; also how you write tests'). Every doc site I trust (MDN, TS playground) does this.",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "ide-critic-newcomer",
       "created": "2026-06-22T11:02:33Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "learn"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-23T16:35:53Z",
+          "by": "worker",
+          "act": "done",
+          "note": "ALREADY DONE \u2014 GLOSSARY (app-symbols.js) + glossFor cover the full jargon (fsm, claim, type, enum, is_first_tick, \u0394, \u0394\u0394, \u21d2, \u27f8, \u2208, \u2200, \u2203, match, subclaim, Int/Real/Nat/Bool/Seq/Set, coindexed/edges, _var prev-tick, __var two-ticks-ago, true/false), shown by the editor hover-to-learn handler (#282). Verified glossFor resolves all probes live."
+        }
+      ]
     },
     {
       "id": 164,
@@ -5313,16 +5320,23 @@
       "id": 245,
       "title": "Hover-to-learn on CODE keywords in the editor. A newcomer's instinct is to hover the word 'fsm' / '\u0394' / '\u21d2' / '\u2208' / 'claim' / 'enum' in their own source to learn what it MEANS (not how to type it). The banner pills and diagram axes already have explanatory title-tooltips, and the symbols palette teaches typing \u2014 but the editor tokens have none. Wall: I hovered 'fsm' (a highlighted ace_keyword) expecting a one-line definition and got nothing; the ace_content intercepts pointer events so even native hover fails. Add an editor hover-provider that pops a one-line plain-English definition + a 'see in glossary' link for each Evident keyword/operator.",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "ide-critic-newcomer",
       "created": "2026-06-22T20:47:36Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "learn"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-23T16:35:53Z",
+          "by": "worker",
+          "act": "done",
+          "note": "ALREADY DONE \u2014 same GLOSSARY + editor hover (#163/#282): hovering a code keyword (fsm/claim/enum/is_first_tick/\u2026) shows its plain-language gloss in the tooltip. Verified live."
+        }
+      ]
     },
     {
       "id": 246,
