@@ -139,17 +139,35 @@ def _feasible_enums(out_path, name, body, consts, enums):
 
 
 def _feasible_seq(out_path, name, body, consts, seq):
-    """A Seq(Int) of length N → an N × value-range grid; cell (i, v) shaded iff
-    `seq[i] == v` holds in some satisfying assignment. queens `col`: the board
-    squares a queen CAN occupy across all solutions."""
+    """A Seq → a per-cell feasibility grid; cell shaded iff that value holds in some satisfying
+    assignment. A Seq(Int) of length N gives N rows `seq[i]` (queens `col`: squares a queen CAN
+    occupy across all solutions). A Seq of records (Seq(Edge), #183) gives one row per (index,
+    numeric field) — `edges[i].frm` — since a record element has several fields. The only change
+    is the cell expression: `seq[i]` vs `field(seq[i])`."""
     arr = consts[seq["name"]]
+    short = _SHORT(seq["name"])
     n = int(seq["len"])
-    # value range: each element's solved [min, max] (clamped so the grid stays sane)
+    elem = arr.sort().range()
+    if elem.kind() == z3.Z3_DATATYPE_SORT:        # Seq(record) → one row per (index, numeric field)
+        fields = [elem.accessor(0, j) for j in range(elem.constructor(0).arity())
+                  if elem.accessor(0, j).range().kind() in (z3.Z3_INT_SORT, z3.Z3_REAL_SORT)]
+        if not fields:
+            return _na(out_path, f"{name} — solution space",
+                       "the Seq's record has no numeric field to bound")
+        cells = [(i, f) for i in range(n) for f in fields]
+        cexpr = (lambda i, f: f(z3.Select(arr, i)))
+        rlab = (lambda i, f: f"{short}[{i}].{f.name()}")
+        ylabel, what = "index.field", f"{short}[i].field"
+    else:                                          # Seq(Int) → one row per index (the original view)
+        cells = [(i, None) for i in range(n)]
+        cexpr = (lambda i, f: z3.Select(arr, i))
+        rlab = (lambda i, f: f"{short}[{i}]")
+        ylabel, what = "index", f"{short}[i]"
+    # value range: each cell's solved [min, max] (clamped so the grid stays sane)
     lo, hi = None, None
-    for i in range(n):
-        cell = z3.Select(arr, i)
-        emn = _opt_bound(body, cell, maximize=False)
-        emx = _opt_bound(body, cell, maximize=True)
+    for i, f in cells:
+        emn = _opt_bound(body, cexpr(i, f), maximize=False)
+        emx = _opt_bound(body, cexpr(i, f), maximize=True)
         if emn is not None:
             lo = emn if lo is None else min(lo, emn)
         if emx is not None:
@@ -163,19 +181,18 @@ def _feasible_seq(out_path, name, body, consts, seq):
     values = list(range(lo, hi + 1))
     sol = z3.Solver(); sol.add(body)
     mask = []
-    for i in range(n):
-        cell = z3.Select(arr, i)
+    for i, f in cells:
+        cell = cexpr(i, f)
         row = []
         for vv in values:
             sol.push(); sol.add(cell == vv); ok = sol.check() == z3.sat; sol.pop()
             row.append(1 if ok else 0)
         mask.append(row)
-    short = _SHORT(seq["name"])
     return _grid(out_path, name,
                  f"{name} — feasible positions (solved per cell)\n"
-                 f"shaded = {short}[i] CAN equal this value in some solution",
-                 [f"{short}[{i}]" for i in range(n)], [str(v) for v in values],
-                 mask, xlabel="value", ylabel="index")
+                 f"shaded = {what} CAN equal this value in some solution",
+                 [rlab(i, f) for i, f in cells], [str(v) for v in values],
+                 mask, xlabel="value", ylabel=ylabel)
 
 
 def render(smt2_path, schema_path, out_path):
@@ -208,6 +225,27 @@ def render(smt2_path, schema_path, out_path):
             return _feasible_enums(out_path, name, body, consts, enums)
         if seqs:
             return _feasible_seq(out_path, name, body, consts, seqs[0])
+        # record-element Seqs (Seq(Edge)) aren't in the schema vars — detect from the encoding (an
+        # `(Array Int <datatype>)` const). The export pins the elements via the ∀ unroll but leaves
+        # __len free, so the length is the max literal index the constraints touch via select (#183).
+        rec = next((nm for nm, c in consts.items()
+                    if z3.is_array(c) and c.sort().range().kind() == z3.Z3_DATATYPE_SORT), None)
+        if rec is not None:
+            arr = consts[rec]; idxs, seen = set(), set()
+
+            def _idx(e):
+                if e.get_id() in seen:
+                    return
+                seen.add(e.get_id())
+                if z3.is_select(e) and e.arg(0).eq(arr) and z3.is_int_value(e.arg(1)):
+                    idxs.add(e.arg(1).as_long())
+                for ch in e.children():
+                    _idx(ch)
+
+            _idx(body)
+            ln = (max(idxs) + 1) if idxs else 0
+            if 0 < ln <= 16:
+                return _feasible_seq(out_path, name, body, consts, {"name": rec, "len": ln})
         if not numeric:
             return _na(out_path, f"{name} — solution space",
                        "this claim has no numeric variable to bound\n"
