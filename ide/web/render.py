@@ -14,6 +14,7 @@ import json
 import sys
 
 from evident_viz import load as load_model
+from functionize import function_summary
 
 from analysis import _dropped_locs
 
@@ -151,6 +152,31 @@ def _maybe_claim(prefix, dropped, source="", msg=""):
         "dropped": dropped, "branching": 1, "states": 0, "edges": 0, "capped": False,
         "vars": list(bounds.keys()), "view": "claim_space", "views": ["claim_space"],
         "png": base64.b64encode(png).decode() if png else None,
+        "warnings": msg if dropped else "",
+        "dropped_locs": _dropped_locs(source, msg) if dropped else [],
+    }
+
+
+def _function_response(m, view, prefix, dropped, source, msg):
+    """Render a functionizer-family view from the cheap decomposition alone — no reachable()/structure
+    (Ana #301). Sibling of _maybe_claim: builds the analyze response for a model that needs no dynamics
+    solve. The banner is the compiled-structure summary, not the dynamics shape."""
+    summ = function_summary(m)
+    banner = (f"compiled structure — {summ['n_func_carried']} of {summ['n_carried']} carried var(s) "
+              f"functionized ({summ['pct']:.0f}%) · {summ['coupling']}"
+              + (f" · {len(summ['cycles'])} feedback cycle(s)" if summ['cycles'] else ""))
+    png, points = b"", []
+    try:
+        png, points = _render_png(view, prefix)
+    except Exception as e:
+        print(f"[server] render {view} failed: {type(e).__name__}: {e}", file=sys.stderr)
+    return {
+        "ok": True, "banner": banner, "structure": None, "dropped": dropped,
+        "branching": 1, "states": 0, "edges": 0, "capped": False,
+        "vars": [v["name"].split(".")[-1] for v in m.interface_vars]
+                + [v["name"].split(".")[-1] for v in getattr(m, "derived", [])],
+        "view": view, "views": VIEWS,
+        "png": base64.b64encode(png).decode() if png else None, "points": points,
         "warnings": msg if dropped else "",
         "dropped_locs": _dropped_locs(source, msg) if dropped else [],
     }

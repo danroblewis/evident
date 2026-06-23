@@ -39,8 +39,15 @@ from pydantic import BaseModel  # noqa: E402
 
 from analysis import (  # noqa: E402
     _banner, _dropped_locs, _error_loc, _model_diff, _reachable_stats, _recommend)
-from render import RENDERERS, VIEWS, _maybe_claim, _render_png, _render_svg  # noqa: E402
+from render import (  # noqa: E402
+    RENDERERS, VIEWS, _function_response, _maybe_claim, _render_png, _render_svg)
 from runtime_io import _export, _run_query  # noqa: E402
+
+# The functionizer family renders from the CHEAP decomposition (extract/guard_analysis/summary, all
+# <100ms) and needs NO reachable-set solve — so these views get a fast path that skips the dynamics
+# bundle entirely. Without it, opening a function tab on a nonlinear-Real sample waits out the whole
+# (now timeout-bounded, but still slow) dynamics solve for nothing (Ana #301).
+FUNCTION_VIEWS = {v for v in VIEWS if v.startswith("function_")}
 from solve import _all_unsat_cores, _enumerate, _unsat_core  # noqa: E402
 from smtlib_tools import _parse_predicate, _ready_to_run  # noqa: E402
 
@@ -74,6 +81,8 @@ def analyze(req: Source):
             return claim_resp
         try:
             m = load_model(prefix + ".smt2", prefix + ".schema.json")
+            if req.view in FUNCTION_VIEWS:                 # fast path: no dynamics solve (#301)
+                return _function_response(m, req.view, prefix, dropped, req.source, msg)
             (states, edges, n_states, n_edges,
              max_branch, capped, recurrent) = _reachable_stats(m, REACH_LIMIT)
             try:
