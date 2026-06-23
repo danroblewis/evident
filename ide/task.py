@@ -19,7 +19,9 @@ Roles:
   ide-critic-expert     /   each may also add tasks and concerns, and clear its OWN concerns.
   ide-feature-designer  — Iris; may add tasks and concerns and clear her own concerns.
 
-A task needs ALL THREE critic approvals (plus the worker's `done`) to close.
+A task closes on the EXPERT's approval (ide-critic-expert) plus the worker's `done`. Marek + Sam are
+PAUSED (Expert-only reviews, user decision 2026-06-23) — they may still approve/reopen when brought
+back, but the close gate is the expert alone.
 
 Usage (run from the repo root):
   python3 ide/task.py add "<title>" [--detail "..."] [--by ROLE] [--tag T] [--from-concern ID]
@@ -39,7 +41,7 @@ import json
 
 # Storage + model layer (ledger shape, load/save/find, role/close rules).
 from task_store import (
-    DB, CRITICS, ROLES,
+    DB, CRITICS, REQUIRED_CRITICS, ROLES,
     _now, _load, _save, _nid, _find, _die, _check_role, _maybe_close,
 )
 
@@ -85,7 +87,7 @@ def cmd_done(db, a):
         t["log"].append({"at": _now(), "by": "worker", "act": "done", "note": a.note})
     _maybe_close(t)
     _save(db)
-    need = [c for c in CRITICS if c not in t["approvals"]]
+    need = [c for c in REQUIRED_CRITICS if c not in t["approvals"]]
     print(f"task #{a.id} marked done by worker." +
           (f" awaiting approval from: {', '.join(need)}" if t["status"] != "closed"
            else " ALL approvals in — CLOSED."))
@@ -101,9 +103,9 @@ def cmd_approve(db, a):
     t["log"].append({"at": _now(), "by": a.by, "act": "approved", "note": a.note or ""})
     _maybe_close(t)
     _save(db)
-    need = [c for c in CRITICS if c not in t["approvals"]]
+    need = [c for c in REQUIRED_CRITICS if c not in t["approvals"]]
     print(f"task #{a.id} approved by {a.by}." +
-          (" CLOSED — all three critics approved + worker done." if t["status"] == "closed"
+          (" CLOSED — the expert approved + worker done." if t["status"] == "closed"
            else f" still awaiting: {', '.join(need)}"))
 
 

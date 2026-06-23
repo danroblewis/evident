@@ -21,6 +21,10 @@ from datetime import datetime, timezone
 
 DB = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tasks.json")
 CRITICS = ("ide-critic", "ide-critic-newcomer", "ide-critic-expert")
+# Only the EXPERT's approval is REQUIRED to close a task (user decision 2026-06-23: Expert-only
+# reviews; Marek + Sam are paused, brought back occasionally). All three may still approve/reopen,
+# but the close gate is the expert alone — the worker is no longer blocked on a 3-critic quorum.
+REQUIRED_CRITICS = ("ide-critic-expert",)
 ROLES = set(CRITICS) | {"worker", "ide-feature-designer", "ide-architect"}
 
 
@@ -61,5 +65,5 @@ def _check_role(by, allowed, what):
 
 
 def _maybe_close(t):
-    if t["worker_done"] and all(c in t["approvals"] for c in CRITICS):
+    if t["worker_done"] and all(c in t["approvals"] for c in REQUIRED_CRITICS):
         t["status"] = "closed"
