@@ -235,6 +235,23 @@ if [ "$EXAMPLES_ONLY" -eq 0 ] && command -v python3 >/dev/null 2>&1; then
     echo
 fi
 
+# ── Phase 2.16: all_conditions analyze STATS/BANNER follow the toggle (#316) ──
+# The all_conditions toggle re-roots the state_graph PNG on the GLOBAL graph (full_state_graph,
+# every initial condition). This pins that the analyze STATS + banner follow the SAME graph: the
+# bistable flips 2 (from-init) → 7 (global) with the flag; the banner says "over all initial
+# conditions" only when on; non-state_graph views are unaffected; a real-valued model falls back.
+if [ "$EXAMPLES_ONLY" -eq 0 ] && command -v python3 >/dev/null 2>&1; then
+    phase "Phase 2.16: all_conditions stats/banner toggle"
+    if python3 ide/test_all_conditions_stats.py > /tmp/evident-allcond-stats.log 2>&1; then
+        ok "all-conditions stats ($(tail -1 /tmp/evident-allcond-stats.log))"
+    else
+        fail "all-conditions stats: banner/stats did not follow the global graph (see above)"
+        cat /tmp/evident-allcond-stats.log >&2
+        failures+=("all-conditions stats")
+    fi
+    echo
+fi
+
 # ── Optional: examples runner ────────────────────────────────
 # Walks examples/, runs each via effect-run. For visual demos (anything
 # that imports packages/sdl/), spawn the program, screenshot the Xvfb

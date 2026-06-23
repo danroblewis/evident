@@ -15,17 +15,32 @@ import networkx as nx  # SCC detection for the cyclic-vs-terminating banner
 _LOC_RE = re.compile(r"\bline (\d+), col (\d+)\b")
 
 
-def _reachable_stats(m, limit):
-    """Explore the model's reachable graph (bounded by `limit`) and summarize it for the
+def _reachable_stats(m, limit, all_conditions=False):
+    """Explore the model's transition graph (bounded by `limit`) and summarize it for the
     analyze response: returns (states, edges, n_states, n_edges, max_branch, capped, recurrent).
     `max_branch` is the largest out-degree; `recurrent` is the largest SCC size — ≥2
     distinguishes eventually-periodic (vending) from a terminating-driven chain (counter),
-    which the banner must not flatten; `capped` flags that the reachable set didn't fit `limit`."""
-    states, edges = m.reachable(limit=limit)
+    which the banner must not flatten; `capped` flags that the graph didn't fit `limit`.
+
+    When `all_conditions` is set AND the model is fully discrete, the stats come from the
+    GLOBAL `full_state_graph` (every initial condition) instead of the from-init reachable
+    set — so the banner/structure verdict matches what the all_conditions state_graph PNG
+    draws (7 states for the bistable fsm, not the 2 reachable from x=1). A non-discrete
+    model has no global product, so it falls back to the from-init path, keeping the banner
+    honest rather than silently empty."""
+    capped_override = None
+    if all_conditions:
+        states, edges, info = m.full_state_graph(limit=limit)
+        if info.get("discrete"):
+            capped_override = bool(info.get("capped"))
+        else:
+            states, edges = m.reachable(limit=limit)
+    else:
+        states, edges = m.reachable(limit=limit)
     n_states, n_edges = len(states), len(edges)
     out_deg = Counter(src for src, _ in edges)
     max_branch = max(out_deg.values()) if out_deg else 1
-    capped = n_states >= limit
+    capped = capped_override if capped_override is not None else n_states >= limit
     recurrent = 1
     if edges:
         g = nx.DiGraph(); g.add_edges_from(edges)
@@ -184,6 +199,21 @@ def _banner(m, max_branch=1, recurrent=1, states=None):
         return (f"Cyclic — {recurrent} states recur; the variables co-determine in a loop "
                 f"(eventually periodic, no fixpoint)")
     return "Genuinely relational — no independent variable (a cycle; every variable co-determines)"
+
+
+def _analyze_banner(m, dropped, max_branch, recurrent, states, n_states, global_dynamics):
+    """The headline the analyze response shows, with two overrides on the model-shape line:
+      - a BROKEN (dropped-constraint) model isn't a real relation — say so, not "Terminates".
+      - when `global_dynamics` is on (the all_conditions state_graph view), prefix the honest
+        '{n} states over all initial conditions —' so the banner matches the GLOBAL graph the
+        PNG draws (the stats already came from `full_state_graph`), not the from-init orbit."""
+    if dropped:
+        return (f"⚠ Under-constrained — {dropped} dropped constraint(s); this model is "
+                f"BROKEN, not a real relation (the freed variables fan the state space)")
+    shape = _banner(m, max_branch, recurrent, states=states)
+    if global_dynamics:
+        return f"{n_states} states over all initial conditions — {shape}"
+    return shape
 
 
 def _recommend(m, n_states, max_branch, discrete, views):
