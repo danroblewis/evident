@@ -1,5 +1,5 @@
 {
-  "seq": 287,
+  "seq": 288,
   "tasks": [
     {
       "id": 1,
@@ -6164,6 +6164,27 @@
         "diagram"
       ],
       "log": []
+    },
+    {
+      "id": 288,
+      "title": "Diagrams: basin_map discrete path uses the GLOBAL graph \u2014 color all states by attractor (real basin partition), not the from-init orbit",
+      "detail": "",
+      "status": "in_progress",
+      "created_by": "worker",
+      "created": "2026-06-23T18:50:33Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "diagram"
+      ],
+      "log": [
+        {
+          "at": "2026-06-23T18:50:33Z",
+          "by": "worker",
+          "act": "started"
+        }
+      ]
     }
   ],
   "concerns": [
