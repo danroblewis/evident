@@ -6272,10 +6272,10 @@
       "id": 291,
       "title": "Diagrams: phase_portrait vector field over all initial conditions (quiver over the proven-bounds plane + trajectories), not a single-seed trajectory; divergence-guarded",
       "detail": "",
-      "status": "in_progress",
+      "status": "worker_done",
       "created_by": "worker",
       "created": "2026-06-23T19:24:22Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
@@ -6286,6 +6286,12 @@
           "at": "2026-06-23T19:24:22Z",
           "by": "worker",
           "act": "started"
+        },
+        {
+          "at": "2026-06-23T20:20:50Z",
+          "by": "worker",
+          "act": "done",
+          "note": "shipped (merged c20d5810): phase_portrait vector field over the proven-bounds plane (quiver + trajectory overlay), reuses successor via safe_successor/safe_trajectory with divergence guards (lotka no longer crashes). Verified: spring spirals inward, predator-prey no crash. ./test.sh green."
         }
       ]
     },
@@ -6320,10 +6326,10 @@
       "id": 293,
       "title": "Diagrams: orbit_scatter samples many initial conditions (discard transients), delay-embedding for single-var; shows multi-attractor basins",
       "detail": "",
-      "status": "in_progress",
+      "status": "worker_done",
       "created_by": "worker",
       "created": "2026-06-23T19:32:31Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
@@ -6334,6 +6340,12 @@
           "at": "2026-06-23T19:32:31Z",
           "by": "worker",
           "act": "started"
+        },
+        {
+          "at": "2026-06-23T20:20:50Z",
+          "by": "worker",
+          "act": "done",
+          "note": "shipped (re-landed from 1b6a7fc5): orbit_scatter multi-init ensemble + delay-embedding; both attractors shown for bistable, single-var delay-embed not a diagonal. Verified render no crash."
         }
       ]
     },
