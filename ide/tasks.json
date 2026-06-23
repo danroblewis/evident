@@ -1,5 +1,5 @@
 {
-  "seq": 290,
+  "seq": 291,
   "tasks": [
     {
       "id": 1,
@@ -6094,7 +6094,7 @@
       "id": 283,
       "title": "Diagrams: crash-robustness sweep \u2014 guard divergence (OverflowError on logistic/Lotka-Volterra/double-pendulum 1e14) + graceful N/A for Solve programs (KeyError 'fsm') + nullcline TypeErrors",
       "detail": "",
-      "status": "open",
+      "status": "in_progress",
       "created_by": "worker",
       "created": "2026-06-23T18:19:04Z",
       "worker_done": false,
@@ -6103,7 +6103,13 @@
       "tags": [
         "diagram"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-23T19:24:22Z",
+          "by": "worker",
+          "act": "started"
+        }
+      ]
     },
     {
       "id": 284,
@@ -6233,6 +6239,27 @@
       "log": [
         {
           "at": "2026-06-23T19:15:03Z",
+          "by": "worker",
+          "act": "started"
+        }
+      ]
+    },
+    {
+      "id": 291,
+      "title": "Diagrams: phase_portrait vector field over all initial conditions (quiver over the proven-bounds plane + trajectories), not a single-seed trajectory; divergence-guarded",
+      "detail": "",
+      "status": "in_progress",
+      "created_by": "worker",
+      "created": "2026-06-23T19:24:22Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "diagram"
+      ],
+      "log": [
+        {
+          "at": "2026-06-23T19:24:22Z",
           "by": "worker",
           "act": "started"
         }
