@@ -455,7 +455,7 @@ mod parser {
         assert_eq!(e.variants.len(), 2);
         assert_eq!(e.variants[0].name, "Ok");
         assert_eq!(e.variants[0].fields.len(), 1);
-        assert_eq!(e.variants[0].fields[0].name, "f0");
+        assert_eq!(e.variants[0].fields[0].name, "Ok_f0");   // variant-prefixed so accessors are unique
         assert_eq!(e.variants[0].fields[0].type_name, "Int");
         assert_eq!(e.variants[1].name, "Err");
         assert_eq!(e.variants[1].fields[0].type_name, "String");

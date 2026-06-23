@@ -165,7 +165,12 @@ impl Parser {
                 loop {
                     let field_type = self.parse_enum_field_type(&v_name)?;
                     fields.push(crate::core::ast::EnumField {
-                        name: format!("f{}", idx),
+                        // Prefix with the variant name so the accessor is UNIQUE within the datatype.
+                        // Bare `f{idx}` repeats across variants (Ok.f0 AND Err.f0), which z3's C API
+                        // tolerates but its SMT-LIB parser rejects ("repeated accessor f0") — so the
+                        // exported encoding couldn't be re-parsed by the viz layer for ANY payload-enum
+                        // / effect FSM. Variant names are globally unique, so `{Variant}_f{idx}` is too.
+                        name: format!("{}_f{}", v_name, idx),
                         type_name: field_type,
                     });
                     idx += 1;

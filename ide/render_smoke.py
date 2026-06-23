@@ -6,10 +6,10 @@ browser; this exercises the exact server render path headlessly. For a couple of
 exports the transition + renders EVERY registered view, asserting each produces a non-empty PNG with no
 exception. Run from the repo root: `python3 ide/render_smoke.py` (exit non-zero on any failure).
 
-Scoped to scalar/enum samples on purpose: effect-heavy FSMs round-trip a datatype through
-z3.parse_smt2_file, which a newer z3 rejects ("repeated accessor f0") — a separate runtime/z3 concern,
-not a render regression. These two samples load in the dev env's z3 and exercise both the dynamics and
-the function views.
+Covers scalar, enum, AND effect (payload-enum) FSMs. Effect FSMs used to fail the z3 re-parse with
+"repeated accessor f0" (the runtime named every variant's fields f0/f1, colliding across constructors);
+that's fixed at the source (the parser uniquifies them per variant), and the `effects` sample guards it.
+All samples load in the dev env's z3 and exercise both the dynamics and the function views.
 """
 import os
 import sys
@@ -38,6 +38,14 @@ SAMPLES = {
         "    is_first_tick ⇒ count = 0\n"
         "    ¬is_first_tick ⇒ Δcount = (_count < 5 ? 1 : 0)\n"
         "    done ∈ Bool = (count ≥ 5)\n"),
+    # An EFFECT FSM (payload-enum datatype): used to fail the z3 re-parse with "repeated accessor f0"
+    # until the parser was fixed to uniquify variant-field accessors. This sample guards that fix.
+    "effects": (
+        'fsm ticker\n'
+        '    count ∈ Int\n'
+        '    is_first_tick ⇒ count = 0\n'
+        '    ¬is_first_tick ⇒ Δcount = 1\n'
+        '    effects ∈ Seq(Effect) = ⟨Println("tick")⟩\n'),
 }
 
 
