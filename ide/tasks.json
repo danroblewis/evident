@@ -5732,7 +5732,7 @@
       "id": 273,
       "title": "Quantitative / optimization queries beyond feasibility (z3 Optimize at the query surface). I can pin col[0]=1 and solve, and the solution_space claims z3-proven exact bounds \u2014 but I can't ASK an optimization query from the UI: 'maximize timer subject to light=Green', 'the minimal #cells re-lighting cell 5', 'lexicographic-min witness'. Expose Optimize.maximize/minimize and a 'minimal-/maximal-witness' toggle in the solve box, returning the optimum + the optimizing assignment, the way I drive z3's Optimize directly.",
       "detail": "",
-      "status": "open",
+      "status": "in_progress",
       "created_by": "ide-critic-expert",
       "created": "2026-06-23T12:41:40Z",
       "worker_done": false,
@@ -5741,7 +5741,13 @@
       "tags": [
         "solve"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-23T13:21:55Z",
+          "by": "worker",
+          "act": "started"
+        }
+      ]
     },
     {
       "id": 274,
