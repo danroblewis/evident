@@ -197,6 +197,18 @@ class Model(RankingMixin, AnalysisMixin, QueryMixin, TemporalMixin):
         s.add(self.assertions)
         return s
 
+    def _base_cached(self):
+        """A reusable base solver with the transition assertions added ONCE, for the hot
+        per-point successor() path (#70: the phase-portrait vector field calls successor()
+        over an n×n grid — a fresh _base() per point re-adds the whole transition n² times,
+        the dominant cost). Callers push()/pop() around their per-call pins so the base is
+        left clean. Safe to share: the assertions are immutable after load and the server
+        serves one request at a time over a given Model."""
+        s = getattr(self, "_cached_base", None)
+        if s is None:
+            s = self._cached_base = self._base()
+        return s
+
     def _read_state(self, model):
         # Carried leaves define the state; derived vars are read too (for DISPLAY) but
         # never enter `_key` — a derived var is a function of carried state, so it must
@@ -298,12 +310,18 @@ class Model(RankingMixin, AnalysisMixin, QueryMixin, TemporalMixin):
         return self._read_state(s.model()) if s.check() == z3.sat else None
 
     def successor(self, state):
-        """One next state from `state` (None if the transition is unsat here)."""
-        s = self._base()
-        if self.first_tick is not None:
-            s.add(self.first_tick == False)  # noqa: E712
-        self._pin_prev(s, state)
-        return self._read_state(s.model()) if s.check() == z3.sat else None
+        """One next state from `state` (None if the transition is unsat here). Uses the
+        cached base solver + push/pop so an n×n successor() grid adds the transition once,
+        not n² times (#70)."""
+        s = self._base_cached()
+        s.push()
+        try:
+            if self.first_tick is not None:
+                s.add(self.first_tick == False)  # noqa: E712
+            self._pin_prev(s, state)
+            return self._read_state(s.model()) if s.check() == z3.sat else None
+        finally:
+            s.pop()
 
     def successors(self, state, limit=64):
         """ALL distinct next states (the set-valued image / fan). Blocks each
