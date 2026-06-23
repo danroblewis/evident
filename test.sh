@@ -366,6 +366,23 @@ if [ "$EXAMPLES_ONLY" -eq 0 ] && command -v python3 >/dev/null 2>&1; then
     echo
 fi
 
+# ── Phase 2.20: scatter_matrix over a CLAIM/Solve solution space (diagram review #5) ──
+# scatter_matrix used to handle only FSM carried-state; a pure claim/Solve program (free decision
+# vars, no transition) KeyError'd or rendered empty. This pins the new claim path: a 2-Int claim's
+# scatter matrix samples its SOLUTION SPACE (distinct block-and-resolve z3 witnesses, every one
+# satisfying the constraint), and UNSAT / categorical-only claims fall to the honest empty card.
+if [ "$EXAMPLES_ONLY" -eq 0 ] && command -v python3 >/dev/null 2>&1; then
+    phase "Phase 2.20: scatter_matrix claim/Solve solution space"
+    if python3 ide/test_scatter_claim.py > /tmp/evident-scatter-claim.log 2>&1; then
+        ok "scatter_matrix claim ($(tail -1 /tmp/evident-scatter-claim.log))"
+    else
+        fail "scatter_matrix claim: solution-space sampling did not render (see above)"
+        cat /tmp/evident-scatter-claim.log >&2
+        failures+=("scatter_matrix claim")
+    fi
+    echo
+fi
+
 # ── Optional: examples runner ────────────────────────────────
 # Walks examples/, runs each via effect-run. For visual demos (anything
 # that imports packages/sdl/), spawn the program, screenshot the Xvfb

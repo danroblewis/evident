@@ -25,6 +25,7 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__))))
 from evident_viz import load  # noqa: E402
 
+import z3  # noqa: E402
 import matplotlib  # noqa: E402
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
@@ -154,18 +155,16 @@ def sample_states(m):
     return states, edges
 
 
-def main():
-    if len(sys.argv) != 4:
-        print("usage: render_scatter_matrix.py <smt2> <schema> <out.png>", file=sys.stderr)
-        sys.exit(2)
-    smt2, schema, out = sys.argv[1], sys.argv[2], sys.argv[3]
-    m = load(smt2, schema)
-    vars_ = m.state_vars
+def _draw_scatter_matrix(m, vars_, states, title, subtag, out):
+    """Draw the NxN pairwise scatter matrix over `vars_` for the sampled `states`.
+
+    Shared by BOTH the FSM path (states = a reachable/trajectory cloud) and the
+    claim path (states = block-and-resolve witnesses of the constraint). `m` only
+    needs to answer `ordinal`/`tick_info` (via the two module helpers) plus
+    `enum_variants` / `categorical_vars` / `is_discrete()` — an FSM Model and the
+    lightweight ClaimModel below both qualify. `subtag` is the per-cloud caption
+    ("reachable cloud + trajectory" for FSM, "z3 witnesses" for a claim)."""
     n = len(vars_)
-
-    title = f"{m.fsm} — scatter_matrix"
-
-    states, _ = sample_states(m)
 
     # Degrade gracefully: nothing to plot, or single var.
     if not states or n < 1:
@@ -332,7 +331,7 @@ def main():
     # point count legitimately differs from the analyze stats' reachable count (capped at 400). Label
     # it as POINTS, not "states", so the two counts don't read as a contradiction (Ana #201/#77).
     pts = "point" if len(states) == 1 else "points"
-    sub = f"{len(states)} sample {pts} (reachable cloud + trajectory) · {kind}"
+    sub = f"{len(states)} sample {pts} ({subtag}) · {kind}"
     if legend_handles is not None:
         sub += f" · color = {legend_title}"
     fig.suptitle(f"{title}\n{sub}", fontsize=14, fontweight="bold")
@@ -348,6 +347,147 @@ def main():
     else:
         fig.tight_layout(rect=[0, 0, 1, 0.97])
         fig.savefig(out, dpi=120)
+
+
+class ClaimModel:
+    """A minimal stand-in for the FSM `Model` that the scatter-matrix DRAWER needs,
+    backed by a CLAIM's solution-space witnesses rather than a reachable cloud.
+
+    A raw claim (no fsm) has no transition, so the FSM `load()` (which reads
+    `schema["fsm"]` and BFS-walks `reachable()`) doesn't apply. Instead the claim's
+    SOLUTION SPACE is the cloud: we enumerate distinct satisfying assignments
+    (block-and-resolve) and plot the pairwise scatter matrix over its numeric (and
+    categorical, for color) variables — exactly the FSM picture, sampling solutions
+    instead of states. Exposes just the surface the drawer queries."""
+
+    def __init__(self, name, plot_vars, enum_variants, cat_vars):
+        self.fsm = name                       # used only in the title
+        self.state_vars = plot_vars           # numeric vars drive the matrix axes
+        self.enum_variants = enum_variants    # var name -> [variant names]
+        self._cat_vars = cat_vars             # enum/bool vars (the color channel)
+
+    @property
+    def categorical_vars(self):
+        return self._cat_vars
+
+    def is_discrete(self):
+        # A claim's witness sample is a discrete set of solutions; label it "discrete"
+        # so the caption ("N points · discrete") reads honestly.
+        return True
+
+
+def claim_witnesses(smt2_path, schema_path, limit=600):
+    """Enumerate up to `limit` DISTINCT satisfying assignments of a claim and the vars to
+    plot. Block-and-resolve over the claim's int/real/bool/enum vars — the same witness
+    enumeration the solve panel / successors() use, but over a static constraint with no
+    transition. Returns (states, plot_vars, cat_vars, enum_variants, feasible):
+      * states        — list of dicts {full_var_name -> python value}, one per witness
+      * plot_vars     — the numeric (int/real) vars to put on the matrix axes
+      * cat_vars      — enum/bool vars (the color channel + categorical axes)
+      * enum_variants — {var name -> [variant names]} for ordinal/tick mapping
+      * feasible      — False iff the claim is UNSAT (states is then empty)
+
+    A purely categorical claim (no numeric var) yields plot_vars=[] → the caller renders
+    the honest empty state. Reuses render_claim_space._load_claim for the smt2 parse."""
+    import render_claim_space as RC
+
+    sch, body, consts = RC._load_claim(smt2_path, schema_path)
+    vars_ = sch.get("vars", [])
+    # Only scalars we can map to an axis or a color: int/real (numeric axes),
+    # bool/enum (categorical color/axes). Seq/string/set vars aren't scatter-plottable.
+    plot_vars = [v for v in vars_ if v.get("kind") in ("int", "real")
+                 and v["name"] in consts]
+    cat_vars = [v for v in vars_ if v.get("kind") in ("bool", "enum")
+                and v["name"] in consts]
+    enum_variants = {v["name"]: v.get("variants", [])
+                     for v in cat_vars if v.get("kind") == "enum"}
+
+    sample_vars = plot_vars + cat_vars
+    s = z3.Solver()
+    s.add(body)
+    feasible = s.check() == z3.sat
+    states = []
+    if not feasible or not sample_vars:
+        return states, plot_vars, cat_vars, enum_variants, feasible
+
+    while len(states) < limit and s.check() == z3.sat:
+        mod = s.model()
+        st, block = {}, []
+        for v in sample_vars:
+            c = consts[v["name"]]
+            mv = mod.eval(c, model_completion=True)
+            st[v["name"]] = _decode(mv, v["kind"])
+            block.append(c != mv)              # differ on SOME observed var → distinct
+        states.append(st)
+        s.add(z3.Or(*block))
+    return states, plot_vars, cat_vars, enum_variants, feasible
+
+
+def _decode(mv, kind):
+    """One z3 model value → python, by the var's declared kind."""
+    if kind == "bool":
+        return z3.is_true(mv)
+    if kind == "enum":
+        return mv.decl().name()
+    try:
+        return mv.as_long()
+    except Exception:
+        try:
+            return round(float(mv.as_fraction()), 6)
+        except Exception:
+            return 0.0
+
+
+def _render_claim(smt2, schema, out):
+    """Render the scatter matrix for a CLAIM (no fsm): the solution space sampled as a
+    cloud of witnesses. Honest empty-state when UNSAT or when the claim has no numeric
+    variable to put on an axis."""
+    import json as _json
+    name = _json.load(open(schema)).get("claim", "claim")
+    states, plot_vars, cat_vars, enum_variants, feasible = claim_witnesses(smt2, schema)
+    title = f"{name} — scatter_matrix"
+
+    if not feasible:
+        return _empty(out, title, "claim is UNSATISFIABLE\n(no assignment satisfies it — nothing to scatter)")
+    if len(plot_vars) < 1:
+        return _empty(out, title,
+                      "claim has no numeric variable to scatter\n"
+                      "(its solution space is categorical — see claim_space for its feasibility grid)")
+
+    m = ClaimModel(name, plot_vars, enum_variants, cat_vars)
+    _draw_scatter_matrix(m, plot_vars, states, title, "z3 witnesses of the constraint", out)
+    return out
+
+
+def _empty(out, title, msg):
+    """Honest empty-state card — UNSAT claim, or no numeric var to scatter."""
+    fig, ax = plt.subplots(figsize=(7, 7))
+    ax.axis("off")
+    ax.text(0.5, 0.5, msg, ha="center", va="center", fontsize=13, wrap=True)
+    ax.set_title(title)
+    fig.savefig(out, dpi=120, bbox_inches="tight")
+    return out
+
+
+def main():
+    if len(sys.argv) != 4:
+        print("usage: render_scatter_matrix.py <smt2> <schema> <out.png>", file=sys.stderr)
+        sys.exit(2)
+    smt2, schema, out = sys.argv[1], sys.argv[2], sys.argv[3]
+
+    # A CLAIM schema (no "fsm" key) has no transition to BFS — sample its SOLUTION SPACE
+    # instead. The FSM path is unchanged.
+    import json as _json
+    sch = _json.load(open(schema))
+    if "fsm" not in sch and "claim" in sch:
+        _render_claim(smt2, schema, out)
+        return
+
+    m = load(smt2, schema)
+    vars_ = m.state_vars
+    title = f"{m.fsm} — scatter_matrix"
+    states, _ = sample_states(m)
+    _draw_scatter_matrix(m, vars_, states, title, "reachable cloud + trajectory", out)
 
 
 if __name__ == "__main__":
