@@ -235,6 +235,25 @@ if [ "$EXAMPLES_ONLY" -eq 0 ] && command -v python3 >/dev/null 2>&1; then
     echo
 fi
 
+# ── Phase 2.15: transition_matrix over all initial conditions (diagram review) ──
+# The transition_matrix is a state×state incidence (cell (i,j) lit ⇔ state_i → state_j). The
+# diagram review scored it PARTIAL: it rooted on ONE z3 model's from-init orbit and, in SAMPLED
+# mode, fabricated a linspace grid. It now roots the discrete path on full_state_graph (EVERY valid
+# carried assignment) and fills the cells from the REAL transition edges. Pins: counter (6) + traffic
+# (9) take the global root (mode='all initial conditions'), state set == full_state_graph (⊇ from-init),
+# lit cells == the true successor relation (no sampled grid); a real-valued model falls back honestly.
+if [ "$EXAMPLES_ONLY" -eq 0 ] && command -v python3 >/dev/null 2>&1; then
+    phase "Phase 2.15: transition_matrix all-conditions root"
+    if python3 ide/test_transition_matrix_global.py > /tmp/evident-tmxglobal.log 2>&1; then
+        ok "transition-matrix global ($(tail -1 /tmp/evident-tmxglobal.log))"
+    else
+        fail "transition-matrix: not rooted on the global graph, or cells aren't the real transition"
+        cat /tmp/evident-tmxglobal.log >&2
+        failures+=("transition-matrix global root")
+    fi
+    echo
+fi
+
 # ── Optional: examples runner ────────────────────────────────
 # Walks examples/, runs each via effect-run. For visual demos (anything
 # that imports packages/sdl/), spawn the program, screenshot the Xvfb
