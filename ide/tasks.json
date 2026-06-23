@@ -1,5 +1,5 @@
 {
-  "seq": 286,
+  "seq": 287,
   "tasks": [
     {
       "id": 1,
@@ -6037,10 +6037,10 @@
       "id": 280,
       "title": "Diagrams: seed dynamics renderers from ALL initial conditions, not forward-from-one-init [foundational \u2014 basin_map/fixedpoint_map/morse_graph/orbit_scatter/parallel_coords/phase_portrait/reachability_tree/scatter_matrix/solution_space/state_graph/transition_matrix]",
       "detail": "",
-      "status": "in_progress",
+      "status": "worker_done",
       "created_by": "worker",
       "created": "2026-06-23T18:19:04Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
@@ -6051,6 +6051,12 @@
           "at": "2026-06-23T18:21:56Z",
           "by": "worker",
           "act": "started"
+        },
+        {
+          "at": "2026-06-23T18:40:55Z",
+          "by": "worker",
+          "act": "done",
+          "note": "shipped (merged dd57c86c): full_state_graph(limit) in viz/model_global.py enumerates the carried-var product (bool\u2192[T,F], enum\u2192variants, int\u2192proven range via Optimize OBJECTIVE HANDLE not model.eval) IGNORING is_first_tick, reusing the existing successors()+_key (transition never reimplemented \u2014 only the root set differs); non-enumerable/over-cap \u2192 discrete=False fallback. Wired into state_graph via build_global_graph + an 'all initial conditions' toggle (analyze all_conditions flag \u2192 renderer under render _LOCK). VERIFIED VISUALLY: bistable from-init=2 nodes (left basin only) \u2192 all-conditions=7 nodes 'global dynamics \u2014 every initial condition' showing BOTH attractors (x=0 and x=6) + both basins + the separatrix. Toggle fires, 0 console errors, ./test.sh Phase 2.10 green."
         }
       ]
     },
@@ -6136,6 +6142,21 @@
       "status": "open",
       "created_by": "worker",
       "created": "2026-06-23T18:19:04Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "diagram"
+      ],
+      "log": []
+    },
+    {
+      "id": 287,
+      "title": "Diagrams: all_conditions should drive the stats/banner/structure too \u2014 when on, the 'N reachable states' banner + fixed-points should reflect the GLOBAL graph (currently the state_graph PNG shows 7 while the banner still reads the from-init 2)",
+      "detail": "",
+      "status": "open",
+      "created_by": "worker",
+      "created": "2026-06-23T18:40:55Z",
       "worker_done": false,
       "approvals": [],
       "reopened": 0,
