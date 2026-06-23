@@ -441,18 +441,21 @@ $("#solve-resolve").onclick = () => solve(false);
 // Export the SMT-LIB encoding (Ana #200): copy to clipboard so you can re-run it in z3 / paste it
 // into notes; fall back to a .smt2 download where the clipboard is blocked.
 $("#smtlib-btn").onclick = async () => {
-  setStatus("exporting SMT-LIB…", "busy");
+  const ku = parseInt($("#unroll-in") && $("#unroll-in").value, 10);
+  const unroll = (ku && ku > 0) ? ku : null;
+  setStatus(unroll ? `unrolling ${unroll} steps…` : "exporting SMT-LIB…", "busy");
   try {
     const res = await fetch("/api/smtlib", {
       method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ source: editor.getValue() }),
+      body: JSON.stringify({ source: editor.getValue(), unroll }),
     });
     if (!res.ok) { backendDown(`the solver returned HTTP ${res.status}`); return; }
     const d = await res.json();
     if (!d.ok) { setStatus("✕ " + (d.error || "export failed"), "err"); return; }
+    const okMsg = unroll ? `unrolled SMT-LIB (${unroll} steps) copied ✓` : "SMT-LIB copied to clipboard ✓";
     try {
       await navigator.clipboard.writeText(d.smtlib);
-      setStatus("SMT-LIB copied to clipboard ✓", "ok");
+      setStatus(okMsg, "ok");
     } catch (_) {                                       // clipboard blocked → download instead
       const a = document.createElement("a");
       a.href = URL.createObjectURL(new Blob([d.smtlib], { type: "text/plain" }));

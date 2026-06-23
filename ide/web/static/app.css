@@ -21,6 +21,11 @@ html,body { margin:0; height:100%; background:var(--bg); color:var(--ink);
 #samples { background:#1b2129; color:var(--ink); border:1px solid var(--line);
   border-radius:6px; padding:2px 6px; font:12px ui-monospace,Menlo,monospace; cursor:pointer; }
 #samples:hover { border-color:var(--accent); }
+/* compact top-bar number inputs: the scope knob (#21/#84) + the BMC unroll (#259) */
+#scope-ctl { font:12px ui-monospace,Menlo,monospace; color:var(--ink); }
+#scope-in, #unroll-in { width:50px; background:#1b2129; color:var(--ink); border:1px solid var(--line);
+  border-radius:6px; padding:2px 5px; font:12px ui-monospace,Menlo,monospace; }
+#scope-in:focus, #unroll-in:focus { border-color:var(--accent); outline:none; }
 #solve-btn { background:#16313f; color:var(--accent); border:1px solid #2d5a72;
   border-radius:6px; padding:2px 10px; font:12px ui-monospace,Menlo,monospace; cursor:pointer; }
 #solve-btn:hover { background:#1d4255; border-color:var(--accent); }

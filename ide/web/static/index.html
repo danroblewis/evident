@@ -17,7 +17,8 @@
     <button id="tour-btn" title="a guided lap around the IDE (Esc to close)">? tour</button>
     <button id="solve-btn" title="solve a claim — SAT witness or UNSAT">⊨ Solve</button>
     <label id="scope-ctl" title="exploration / verification bound (Alloy-style scope): how many reachable states to explore. Raise it to push a capped set toward ✓ complete; lower it for speed.">scope <input id="scope-in" type="number" min="1" max="5000" placeholder="400"></label>
-    <button id="smtlib-btn" title="copy this program's SMT-LIB encoding (re-run it in z3, or save it)">⧉ SMT-LIB</button>
+    <input id="unroll-in" type="number" min="1" max="64" placeholder="unroll" title="Bounded model checking: ⧉ SMT-LIB then exports the transition UNROLLED this many steps (fresh vars per tick, count@0…count@k) instead of one tick — add a property over the @ vars and (check-sat) in z3. Empty = single tick.">
+    <button id="smtlib-btn" title="copy this program's SMT-LIB encoding (re-run it in z3, or save it). Set 'unroll' first for a k-step bounded-model-checking unroll.">⧉ SMT-LIB</button>
     <button id="save-btn" title="save this program in a named slot — keep several experiments (⌘K → Save as…)">💾 Save</button>
     <button id="export-btn" title="download this buffer as a .ev file">↧ .ev</button>
     <button id="share-btn" title="copy a share link — a URL that loads this exact program">🔗 Share</button>

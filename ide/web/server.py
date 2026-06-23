@@ -68,6 +68,7 @@ class Source(BaseModel):
     source: str
     view: str | None = None
     scope: int | None = None        # reachable-exploration bound — the scope knob (#21/#84)
+    unroll: int | None = None       # k-step transition unroll for /api/smtlib (#259/#19)
 
 
 @app.post("/api/analyze")
@@ -343,6 +344,12 @@ def smtlib(req: Source):
         if not ok:
             return {"ok": False, "error": msg}
         try:
+            if req.unroll:               # k-step BMC unroll (#259/#19) instead of the single tick
+                m = load_model(prefix + ".smt2", prefix + ".schema.json")
+                smt = m.unroll_smt2(max(1, min(req.unroll, 64)))
+                if smt is None:
+                    return {"ok": False, "error": "nothing to unroll — no carried-state transition"}
+                return {"ok": True, "smtlib": smt, "dropped": dropped, "unrolled": req.unroll}
             with open(prefix + ".smt2") as f:
                 raw = f.read()
             return {"ok": True, "smtlib": _ready_to_run(raw), "dropped": dropped}

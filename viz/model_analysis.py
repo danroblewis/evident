@@ -108,6 +108,39 @@ class AnalysisMixin:
                           "tight": tight, "inductive": bool(inductive), "k": 2 * k}
         return result
 
+    def unroll_smt2(self, k=8):
+        """The k-step UNROLLED transition as SMT-LIB (#259/#19): the single-tick relation composed
+        with itself k times — a fresh copy of every variable per tick (`x@s`), each tick's `_prev`
+        wired to the prior tick's value, is_first_tick true only at tick 0. For bounded model
+        checking in z3 (add a property over the `@s` vars, then check-sat). Returns the SMT-LIB text,
+        or None if there's no transition. Faithful: ALL carried prevs are wired (unlike solved_bounds,
+        which wires only the numeric ones for its bounds Optimize)."""
+        ft = self.consts.get(self._first_tick_name)
+        if ft is None or not self.assertions:
+            return None
+        body = z3.And(*self.assertions) if len(self.assertions) != 1 else self.assertions[0]
+        prev_to_cur = {self.consts[v["prev"]].get_id(): v["name"] for v in self.carried
+                       if self.consts.get(v["prev"]) is not None and self.consts.get(v["name"]) is not None}
+        non_ft = [(n, c) for n, c in self.consts.items() if n != self._first_tick_name]
+
+        def fresh(c, tag):
+            return z3.Const(f"{c.decl().name()}@{tag}", c.sort())
+
+        stepv = [{n: fresh(c, s) for n, c in non_ft if c.get_id() not in prev_to_cur}
+                 for s in range(k + 1)]
+        initprev = {cur: fresh(self.consts[cur], "init") for cur in set(prev_to_cur.values())}
+        s = z3.Solver()
+        for step in range(k + 1):
+            subs = [(ft, z3.BoolVal(step == 0))]
+            for n, c in non_ft:
+                if c.get_id() in prev_to_cur:
+                    cur = prev_to_cur[c.get_id()]
+                    subs.append((c, stepv[step - 1][cur] if step >= 1 else initprev[cur]))
+                else:
+                    subs.append((c, stepv[step][n]))
+            s.add(z3.substitute(body, *subs))
+        return s.to_smt2()
+
     def _inductive(self, box):
         """Is the box {var ∈ [lo,hi]} closed under one transition from a ¬first state? If it's
         UNSAT for 'prev ∈ box ∧ T ∧ some current var escapes box', the box is an inductive
