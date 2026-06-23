@@ -124,9 +124,7 @@ def analyze(req: Source):
                 "states": n_states,
                 "edges": n_edges,
                 "capped": capped,
-                # Real-valued domains aren't exhaustively enumerable — the reachable BFS samples
-                # trajectories. The honesty line must NOT call that "✓ complete" (Marek #274). Int/
-                # Bool/enum ARE enumerable (is_discrete() wrongly excludes Int, so test for Real here).
+                # has-a-Real-var → continuous, not exhaustively enumerable; never "✓ complete" (Marek #274).
                 "continuous": any(v.get("kind") == "real" for v in m.carried),
                 "vars": [v["name"].split(".")[-1] for v in m.interface_vars]
                         + [v["name"].split(".")[-1] for v in getattr(m, "derived", [])],
