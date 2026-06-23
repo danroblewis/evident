@@ -1,5 +1,5 @@
 {
-  "seq": 263,
+  "seq": 264,
   "tasks": [
     {
       "id": 1,
@@ -5443,6 +5443,26 @@
           "by": "worker",
           "act": "done",
           "note": "DONE \u2014 parseScopeDecls + hover + \u2318-click go-to-def. Commit on branch. (re-add: original #282 lost in the ledger revert)"
+        }
+      ]
+    },
+    {
+      "id": 264,
+      "title": "Seq-carried-state FSMs analyze + render (cellular-automata / Seq-evolving)",
+      "detail": "",
+      "status": "worker_done",
+      "created_by": "worker",
+      "created": "2026-06-23T12:02:37Z",
+      "worker_done": true,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [],
+      "log": [
+        {
+          "at": "2026-06-23T12:02:37Z",
+          "by": "worker",
+          "act": "done",
+          "note": "DONE end-to-end via two fixes: runtime (7e98eea4 \u2014 apply_seq_lengths propagates pinned length to _xs twin so coindexed(_xs,xs) translates; export emits kind=seq state) + viz (003fa647 \u2014 CodecMixin decode/pin/key/sort for kind=seq, block on observable cells not the whole unbounded array, renderers expand Seq into per-element tracks). Verified live: shift FSM ok=True, dropped=0, states=400, xs carried, renders. ./test.sh green (275 tests + render smoke 4\u00d722 incl shift)."
         }
       ]
     }
