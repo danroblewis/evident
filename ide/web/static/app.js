@@ -294,6 +294,7 @@ function backendDown(detail) {
   setStatus("backend down", "err");
   $("#banner").className = "stale";
   $("#banner").textContent = "⚠ backend unavailable — the solver isn't responding";
+  $("#structure").classList.remove("recomputing");      // drop the mid-recompute dim too — mirror #view below
   $("#structure").hidden = true; $("#invariant").hidden = true; $("#query-row").hidden = true; $("#query-stack").hidden = true;
   $("#tabs").innerHTML = "";
   $("#view-caption").textContent = "";                   // no live diagram → no caption
