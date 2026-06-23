@@ -78,3 +78,26 @@ function setupPanZoom() {
   window.addEventListener("mouseup", () => { drag = null; view.classList.remove("grabbing"); });
   view.addEventListener("dblclick", () => resetPanZoom(wrap()));
 }
+
+// Draggable splitter — drag #splitter to set --split (the editor pane's width), persisted so the
+// layout survives a reload (Marek #277). Self-contained IIFE; the DOM exists by the time this loads.
+(function initSplitter() {
+  const sp = document.querySelector("#splitter"), app = document.querySelector("#app");
+  if (!sp || !app) return;
+  try { const s = localStorage.getItem("evident-split"); if (s) app.style.setProperty("--split", s); } catch (e) {}
+  let dragging = false;
+  sp.addEventListener("mousedown", (e) => {
+    dragging = true; sp.classList.add("dragging");
+    document.body.style.cursor = "col-resize"; document.body.style.userSelect = "none"; e.preventDefault();
+  });
+  window.addEventListener("mousemove", (e) => {
+    if (!dragging) return;
+    app.style.setProperty("--split", Math.max(220, Math.min(window.innerWidth - 260, e.clientX)) + "px");
+  });
+  window.addEventListener("mouseup", () => {
+    if (!dragging) return;
+    dragging = false; sp.classList.remove("dragging");
+    document.body.style.cursor = ""; document.body.style.userSelect = "";
+    try { localStorage.setItem("evident-split", getComputedStyle(app).getPropertyValue("--split").trim()); } catch (e) {}
+  });
+})();
