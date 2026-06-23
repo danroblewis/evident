@@ -702,6 +702,26 @@ async function clearAssumptions() {
   await queryUnderStack();
 }
 
+// The ⊢verify placeholder, made concrete from the model's OWN vars + a real reachable value (#155):
+// an enum carried var becomes a "◇ light = Green" liveness example a newcomer can actually run; a
+// numeric var a "timer ≤ 5" safety one — instead of the abstract "var ≤ 5". Falls back to the generic
+// hint when there's no sampled state (e.g. a continuous/over-fanned model with no points).
+function updateVerifyPlaceholder(data) {
+  const el = $("#inv-prop");
+  if (!el) return;
+  const state = (data && data.points && data.points[0] && data.points[0].state) || null;
+  const entries = state ? Object.entries(state).map(([k, v]) => [k.split(".").pop(), v]) : [];
+  const en = entries.find(([, v]) => typeof v === "string");      // a real enum var + value (light = Green)
+  const nu = entries.find(([, v]) => typeof v === "number");      // a real numeric var (timer)
+  if (!en && !nu) {
+    el.placeholder = "verify (use your own vars) — safety:  var ≤ 5  ·  0 ≤ var ≤ 10     liveness:  ◇ var = 5  ·  □◇ var = 5  ·  P ⤳ Q";
+    return;
+  }
+  const safety = nu ? `${nu[0]} ≤ 5` : `${en[0]} = ${en[1]}`;
+  const live = en ? `${en[0]} = ${en[1]}` : `${nu[0]} = 5`;
+  el.placeholder = `verify your vars — safety:  ${safety}     liveness:  ◇ ${live}  ·  □◇ ${live}`;
+}
+
 // Example-query chips so a newcomer isn't typing blind, guessing var names (Sam #248). Built from a
 // REAL reachable state when the lead view carries sample points (clicking is then a guaranteed hit
 // that shows a witness + trace), else from the bare var names. Called by paint() with the analyze data.

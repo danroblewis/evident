@@ -222,6 +222,7 @@ function paint(data, ms) {
   $("#banner").innerHTML = "◆ " + annotateConcepts(data.banner);
   renderStructure(data.structure);
   renderQuerySuggestions(data);                            // example-query chips (Sam #248)
+  updateVerifyPlaceholder(data);                           // concrete ⊢verify hint from the model's own vars (#155)
   activeView = data.view;
 
   renderViewTabs(data, activeView, run);             // the view tab strip (app-history.js)
