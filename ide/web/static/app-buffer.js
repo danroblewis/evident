@@ -169,3 +169,20 @@ function initBuffer() {
     sel.value = "";          // reset the label so the same entry can be re-opened
   };
 }
+
+// Entry-claim picker (#86): when the buffer declares MORE THAN ONE non-test claim, auto-pick can't
+// choose between them (solve returns satisfied=null), so surface a dropdown to target ⊨ Solve at one.
+// Hidden for single-claim / FSM files. Called from run() on every analyze; preserves the selection.
+function updateClaimPicker(source) {
+  const sel = document.querySelector("#claim-select");
+  if (!sel) return;
+  const claims = [...source.matchAll(/^\s*claim\s+([A-Za-z_]\w*)/gm)]
+    .map((m) => m[1]).filter((n) => !/^(?:sat|unsat)_/.test(n));
+  if (claims.length > 1) {
+    const cur = sel.value;
+    sel.innerHTML = claims.map((c) => `<option${c === cur ? " selected" : ""}>${c}</option>`).join("");
+    sel.hidden = false;
+  } else {
+    sel.hidden = true; sel.innerHTML = "";
+  }
+}

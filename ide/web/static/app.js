@@ -294,6 +294,7 @@ function backendDown(detail) {
 async function run(view) {
   const source = editor.getValue();
   lastSource = source;
+  updateClaimPicker(source);   // show the entry-claim dropdown for multi-claim files (#86)
   // A saved-slot name (set on Save / on opening a slot) wins over the derived declaration
   // name — the user named this buffer, so honor it. Cleared when a sample/slot loads fresh.
   if (currentSlotName) {
@@ -370,8 +371,9 @@ async function solve(enumerate) {
   const given = parsePins($("#solve-given").value);
   // Name the claim explicitly so the solver doesn't choke on "ambiguous" when the file also
   // declares a type/enum (e.g. toposort's `type Edge` + `claim toposort`).
+  const sel = $("#claim-select");
   const cm = source.match(/^\s*claim\s+([A-Za-z_]\w*)/m);
-  const claim = cm ? cm[1] : null;
+  const claim = (sel && !sel.hidden && sel.value) ? sel.value : (cm ? cm[1] : null);   // picker wins (#86)
   $("#solve").hidden = false;
   $("#solve-head").innerHTML = `<span class="dim">${enumerate ? "enumerating…" : "solving…"}</span>`;
   $("#solve-body").innerHTML = "";

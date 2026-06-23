@@ -15,6 +15,7 @@
     <select id="samples" title="open a worked example"></select>
     <button id="symbols-btn" title="how to type the operators (Esc to close)">⌨ symbols</button>
     <button id="tour-btn" title="a guided lap around the IDE (Esc to close)">? tour</button>
+    <select id="claim-select" hidden title="this file has several claims — pick which one ⊨ Solve targets (auto-pick can't choose between them)"></select>
     <button id="solve-btn" title="solve a claim — SAT witness or UNSAT">⊨ Solve</button>
     <label id="scope-ctl" title="exploration / verification bound (Alloy-style scope): how many reachable states to explore. Raise it to push a capped set toward ✓ complete; lower it for speed.">scope <input id="scope-in" type="number" min="1" max="5000" placeholder="400"></label>
     <input id="unroll-in" type="number" min="1" max="64" placeholder="unroll" title="Bounded model checking: ⧉ SMT-LIB then exports the transition UNROLLED this many steps (fresh vars per tick, count@0…count@k) instead of one tick — add a property over the @ vars and (check-sat) in z3. Empty = single tick.">
