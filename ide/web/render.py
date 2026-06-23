@@ -24,6 +24,7 @@ from analysis import _dropped_locs
 # patching argv around the call (serialized by _LOCK, so the global mutation is safe).
 ALL_VIEWS = (
     "solution_space",                                  # the SOLVED boundary, not a run — lead view
+    "terminal_map",                                    # the ABSTRACT end-state map (where it can rest), Z3 over the one-step relation — not a run
     "time_series", "state_graph", "phase_portrait", "reachability_tree",
     "morse_graph", "occupancy_heatmap", "timing_diagram", "transition_matrix",
     "basin_map", "orbit_scatter", "scatter_matrix", "parallel_coords",

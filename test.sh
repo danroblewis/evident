@@ -383,6 +383,24 @@ if [ "$EXAMPLES_ONLY" -eq 0 ] && command -v python3 >/dev/null 2>&1; then
     echo
 fi
 
+# ── Phase 2.21: abstract terminal-state map (where an FSM can come to rest) ──
+# terminal_states.py solves the ABSORBING set {s : s->s allowed AND no successor != s} as a
+# quantified Z3 query over the one-step relation — no trajectory walk, no state enumeration. Pins the
+# daemon-vs-terminates verdict: terminating counter -> {count=5}, cyclic counter -> ∅ (daemon), the
+# bistable -> {0,3,6} (incl. the unstable saddle), and the UNBOUNDED random walk -> ∅ (decided
+# abstractly — where full_state_graph can't even enumerate).
+if [ "$EXAMPLES_ONLY" -eq 0 ] && command -v python3 >/dev/null 2>&1; then
+    phase "Phase 2.21: abstract terminal-state map"
+    if python3 ide/test_terminal_map.py > /tmp/evident-terminal.log 2>&1; then
+        ok "terminal-state map ($(tail -1 /tmp/evident-terminal.log))"
+    else
+        fail "terminal-state: wrong absorbing set / daemon-vs-terminates verdict (see above)"
+        cat /tmp/evident-terminal.log >&2
+        failures+=("terminal-state map")
+    fi
+    echo
+fi
+
 # ── Optional: examples runner ────────────────────────────────
 # Walks examples/, runs each via effect-run. For visual demos (anything
 # that imports packages/sdl/), spawn the program, screenshot the Xvfb
