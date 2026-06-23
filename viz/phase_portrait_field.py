@@ -25,6 +25,15 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 
+# The vector field grids the successor over a whole plane and follows trajectories from many
+# seeds; a chaotic / continuous system (predator-prey, spring) diverges at some points and the
+# next z3 literal blows up. These guarded reads SKIP / TRUNCATE there instead of crashing —
+# reusing the EXISTING transition, only clamping the read. (phase_portrait_guard.py)
+from phase_portrait_guard import (
+    diverged as _diverged,
+    safe_successor as _safe_successor, safe_trajectory as _safe_trajectory,
+)
+
 
 # ----- value <-> plane coordinate ------------------------------------------
 def _numeric(m, var, value):
@@ -64,69 +73,6 @@ def _cardinality(m, var):
     if k == "bool":
         return 2
     return 1000  # numeric: treated as high-resolution
-
-
-# ----- numeric regime: derive the field domain from the REACHABLE orbit ------
-def _orbit_extent(m, axx, axy, pin):
-    """The bounding box of the actually-VISITED states for a continuous numeric
-    field, derived from the program's reachable dynamics — NEVER a hardcoded box.
-
-    Two reachable sources, unioned:
-      * axis_bounds(name): the padded extent of each axis over the reachable
-        BFS sample (the real domain helper). For a limit cycle whose initial
-        state is the unstable fixed point this collapses to ~a point, so we also
-        probe the orbit directly.
-      * perturbation trajectories: seed a spread of off-origin starts and follow
-        the successor chain; the bbox of the visited orbit IS the limit-cycle
-        extent (vanderpol: ~±2700, NOT ±3200). The seeds are scaled to whatever
-        axis_bounds suggests, then grown geometrically until the orbit stops
-        expanding, so we discover the cycle's real reach rather than guessing it.
-
-    `pin` fixes the non-axis carried vars while the two axes sweep.
-    Returns (xlo, xhi, ylo, yhi)."""
-    nx_, ny_ = axx["name"], axy["name"]
-    xs, ys = [], []
-
-    bx = m.axis_bounds(nx_)
-    by = m.axis_bounds(ny_)
-    if bx is not None:
-        xs += [bx[0], bx[1]]
-    if by is not None:
-        ys += [by[0], by[1]]
-
-    # scale of the perturbation seeds: start from whatever the reachable sample
-    # spans (so we don't impose a magnitude), grow until the orbit stops growing.
-    base = max([abs(v) for v in xs + ys] + [1.0])
-    prev_reach = -1.0
-    for mult in (1, 4, 16, 64, 256):
-        scale = base * mult
-        seeds = [(scale, 0), (0, scale), (-scale, 0), (0, -scale),
-                 (scale * 0.5, scale * 0.5)]
-        ox, oy = [], []
-        for sx0, sy0 in seeds:
-            st = dict(pin)
-            st[nx_] = int(round(sx0)) if axx["kind"] == "int" else sx0
-            st[ny_] = int(round(sy0)) if axy["kind"] == "int" else sy0
-            tr = m.trajectory(start=st, steps=400)
-            for s in tr:
-                ox.append(_numeric(m, axx, s[nx_]))
-                oy.append(_numeric(m, axy, s[ny_]))
-        if ox:
-            xs += [min(ox), max(ox)]
-            ys += [min(oy), max(oy)]
-            reach = max(abs(min(ox)), abs(max(ox)), abs(min(oy)), abs(max(oy)))
-            # the orbit has stopped expanding with bigger seeds -> found its reach
-            if reach <= prev_reach * 1.05:
-                break
-            prev_reach = reach
-
-    if not xs or not ys:
-        return -10.0, 10.0, -10.0, 10.0
-    xlo, xhi = min(xs), max(xs)
-    ylo, yhi = min(ys), max(ys)
-    # square + pad so the field reads symmetrically around the cycle
-    span = max(abs(xlo), abs(xhi), abs(ylo), abs(yhi), 1.0) * 1.15
-    return -span, span, -span, span
 
 
 def _robust_span(vals, fallback_lo, fallback_hi, pad=0.06):
@@ -188,8 +134,8 @@ def render_numeric_panel(m, ax, axx, axy, pin, draw_colorbar, extent,
             state = dict(pin)
             state[nx_] = int(round(xv)) if axx["kind"] == "int" else xv
             state[ny_] = int(round(yv)) if axy["kind"] == "int" else yv
-            nxt = m.successor(state)
-            if nxt is None:
+            nxt = _safe_successor(m, state)          # None if this cell's step blows up
+            if nxt is None or _diverged(nxt):        # skip a runaway cell, never crash/skew
                 continue
             dx = _numeric(m, axx, nxt[nx_]) - xv
             dy = _numeric(m, axy, nxt[ny_]) - yv
@@ -224,7 +170,7 @@ def render_numeric_panel(m, ax, axx, axy, pin, draw_colorbar, extent,
         state = dict(pin)
         state[nx_] = int(round(sx0)) if axx["kind"] == "int" else sx0
         state[ny_] = int(round(sy0)) if axy["kind"] == "int" else sy0
-        traj = m.trajectory(start=state, steps=400)
+        traj = _safe_trajectory(m, state, 400)       # diverging overlay truncates, never crashes
         if len(traj) < 2:
             continue
         px = [_numeric(m, axx, s[nx_]) for s in traj]
@@ -257,133 +203,6 @@ def render_numeric_panel(m, ax, axx, axy, pin, draw_colorbar, extent,
         ax.set_xlim(xlo, xhi)
         ax.set_ylim(ylo, yhi)
     return q
-
-
-# A reachable set this small is a drawable transition GRAPH (points + arrows);
-# above it the graph is an unreadable hairball and a magnitude-colored vector
-# field over the bounded reachable domain is the honest picture instead.
-_FINITE_STATE_CAP = 60
-
-
-def _numeric_regime(m, axx, axy):
-    """Classify a >=2-numeric program by its REACHABLE dynamics, so we pick the
-    honest picture instead of always gridding a guessed field:
-
-      * "finite"     — the reachable BFS terminates with a SMALL set of distinct
-                       states, both axes moving. A real, drawable transition graph
-                       (`wc`, 11 states in 0..10). Render the points + arrows.
-      * "bounded"    — a large or non-terminating reachable march, but BOTH axes
-                       move AND axis_bounds gives a finite real extent (lru's
-                       caches in {-1..~80}, randomwalk's visit counters in
-                       {0..~400}). Grid a vector field over THAT reachable extent
-                       — never the perturbation box that fabricated ±20000 axes.
-      * "continuous" — the reachable set is a lone fixed point (so axis_bounds
-                       collapses to a point), but perturbation orbits trace a
-                       non-trivial cycle. Genuine continuum (vanderpol's limit
-                       cycle); the orbit extent IS the honest domain.
-      * "degenerate" — a constant axis (one variable never moves), or a lone
-                       fixed point with no orbit. No 2D field to draw.
-    """
-    nx_, ny_ = axx["name"], axy["name"]
-    states, _ = m.reachable(limit=3000)
-
-    dx = len({_numeric(m, axx, s[nx_]) for s in states}) if states else 0
-    dy = len({_numeric(m, axy, s[ny_]) for s in states}) if states else 0
-
-    # a MULTI-state reachable march where one axis never moves = no 2D portrait
-    # (life: many gen values but pop ≡ 3, so a (gen, pop) field is a row of flat
-    # arrows). A SINGLE-state reachable set (an unstable fixed point) is NOT this
-    # case — its orbit lives off the initial point, so fall through to the probe
-    # (vanderpol's reachable set is the lone fixed point; perturbing reveals the
-    # limit cycle). Guard on len(states) > 1 so we don't kill that.
-    if len(states) > 1 and (dx <= 1 or dy <= 1):
-        return "degenerate"
-
-    # a small terminating march that moves on both axes = a drawable graph
-    if 2 <= len(states) <= _FINITE_STATE_CAP and dx > 1 and dy > 1:
-        return "finite"
-
-    # both axes move AND the reachable extent is bounded (robust axis_bounds, which
-    # rejects ±1e6 / -1 sentinels) = a real but large/unbounded march. Grid the
-    # field over the reachable domain, not a fabricated box. BUT the `states` above
-    # come from m.reachable(), which pins only the two axis vars and lets the other
-    # carried leaves float — so its fan can move both axes even when the program's
-    # FOLLOWED trajectory holds one axis constant (randomwalk's v3/v4 are pinned at 0
-    # along the real walk; the [0,400] spread is pure relational cloud). A bounded
-    # field is only honest if the actual dwell moves on BOTH axes — else it's a flat
-    # row of arrows over a fabricated box, so report N/A instead.
-    if dx > 1 and dy > 1:
-        bx = m.axis_bounds(nx_)
-        by = m.axis_bounds(ny_)
-        if bx is not None and by is not None:
-            dwell = _dwell_span(m, axx, axy)
-            if dwell is not None:
-                (xlo, xhi), (ylo, yhi) = dwell
-                if xhi - xlo < 1e-9 or yhi - ylo < 1e-9:
-                    return "degenerate"
-            return "bounded"
-
-    # otherwise probe for a continuous orbit by perturbing off the initial state
-    init = m.initial_state() or {v["name"]: 0 for v in m.state_vars}
-    pin = {v["name"]: init[v["name"]] for v in m.state_vars}
-    xlo, xhi, ylo, yhi = _orbit_extent(m, axx, axy, pin)
-    orbit_span = max(abs(xlo), abs(xhi), abs(ylo), abs(yhi))
-    init_mag = max(abs(_numeric(m, axx, init[nx_])),
-                   abs(_numeric(m, axy, init[ny_])), 1.0)
-    # the orbit reaches well beyond the initial state -> real continuous dynamics
-    if orbit_span > 4.0 * init_mag and orbit_span > 4.0:
-        return "continuous"
-    return "degenerate"
-
-
-def _dwell_span(m, axx, axy):
-    """The per-axis extent of the states the program actually DWELLS in — its real
-    deterministic trajectory — as ((xlo,xhi),(ylo,yhi)). This is the honest framing
-    source for a bounded march: `m.reachable()` pins only the two axis vars and
-    leaves the other carried leaves free, so its BFS fans into a relational cloud
-    (lru: k0∈[-1,75], miss_count∈[0,51]) that has nothing to do with where the
-    program goes (k0∈{-1,1}, miss_count∈{0..4}). `axis_bounds` is fed by that same
-    fan, so gridding over it frames a mostly-empty box — the blow-out. The followed
-    trajectory is the set of states the difference equation truly visits; framing to
-    its robust span is the fix. Returns None for an axis if the trajectory is empty."""
-    tr = m.trajectory(steps=400)
-    if len(tr) < 2:
-        return None
-    out = []
-    for v in (axx, axy):
-        nm = v["name"]
-        vals = sorted(_numeric(m, v, s[nm]) for s in tr)
-        # IQR-fence a lone off-domain visit, but keep the RAW span (no zero-width
-        # widening): a genuinely-constant axis must report lo==hi so the caller can
-        # detect the collapse, not be hidden behind an artificial ±1 pad.
-        if len(vals) >= 4:
-            q1, q3 = vals[len(vals) // 4], vals[(3 * len(vals)) // 4]
-            iqr = q3 - q1
-            if iqr > 0:
-                lof, hif = q1 - 3 * iqr, q3 + 3 * iqr
-                vals = [x for x in vals if lof <= x <= hif] or vals
-        out.append((float(min(vals)), float(max(vals))))
-    return tuple(out)
-
-
-def _reachable_extent(m, axx, axy):
-    """The field domain for a BOUNDED numeric march: the robust extent of the states
-    the program actually VISITS (its followed trajectory), lightly padded so the
-    field reads. NOT axis_bounds — that helper is fed by the relational reachable
-    fan and blows the frame out to a mostly-empty box (lru's [0,81]×[0,30] when the
-    dwell is [-1,1]×[0,4]). NEVER the perturbation-grown box either. Falls back to
-    axis_bounds only when no trajectory is available. Returns (xlo,xhi,ylo,yhi)."""
-    dwell = _dwell_span(m, axx, axy)
-    if dwell is not None:
-        (xlo, xhi), (ylo, yhi) = dwell
-    else:
-        bx = m.axis_bounds(axx["name"]) or (0.0, 1.0)
-        by = m.axis_bounds(axy["name"]) or (0.0, 1.0)
-        xlo, xhi, ylo, yhi = bx[0], bx[1], by[0], by[1]
-    # light pad so boundary states aren't pinned to the frame edge; never invert
-    px = max((xhi - xlo) * 0.08, 0.5)
-    py = max((yhi - ylo) * 0.08, 0.5)
-    return xlo - px, xhi + px, ylo - py, yhi + py
 
 
 # ----- discrete / mixed regime (projected transition graph) -----------------
