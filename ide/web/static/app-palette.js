@@ -326,7 +326,10 @@ function initPalette() {
   palette.id = "palette"; palette.hidden = true;
   palette.innerHTML =
     '<div class="palette-head">type these operators — click a row to insert it'
-    + ' <span class="dim">(Esc closes)</span></div>'
+    + ' <span class="dim">(Esc closes)</span>'
+    // Signpost to ⌘K: this is ONLY the typing cheat-sheet; a user looking for actions (Solve, export,
+    // verify…) lands here by mistake and thinks they're missing (Ana #256). Point them at ⌘K.
+    + '<div class="dim" style="margin-top:3px">looking for actions? press <b>⌘K</b> for the command palette</div></div>'
     + PALETTE.map(([g, name, mn], i) =>
         `<div class="palette-row" data-i="${i}">`
         + `<span class="palette-glyph">${escapeHtml(g)}</span>`
