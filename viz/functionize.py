@@ -140,6 +140,30 @@ def _pretty(e):
     return " ".join(str(e).split())
 
 
+def function_summary(model):
+    """High-level metrics over the functionizer decomposition: how much of the program reduced to
+    COMPUTATION (functionized vars) vs stayed a CONSTRAINT (residual), and the COUPLING shape read off
+    the data-flow DAG — a feedback cycle (pos↔vel) ⇒ coupled dynamics, acyclic ⇒ a driven pipeline.
+    A reusable structural classifier (distinct from the independence-sampling the model-shape banner
+    uses). Returns {functionized, residual, pct, coupling, cycles}."""
+    import networkx as nx
+    f = extract_functions(model)
+    nf, nr = len(f["steps"]), len(f["residual"])
+    prev_to_var = {v["prev"]: v["name"] for v in model.carried if v.get("prev")}
+    g = nx.DiGraph()
+    for s in f["steps"]:
+        deps = {d for b in s.get("branches", []) for d in b["deps"]} | set(s.get("deps", []))
+        for d in deps:
+            src = prev_to_var.get(d)
+            if src and src != s["var"]:                # cross-var coupling (ignore self-recurrence)
+                g.add_edge(src, s["var"])
+    cycles = [c for c in nx.simple_cycles(g) if len(c) >= 2]
+    return {"functionized": nf, "residual": nr,
+            "pct": (nf / (nf + nr) * 100) if (nf + nr) else 0,
+            "coupling": "coupled" if cycles else "driven",
+            "cycles": cycles}
+
+
 def guard_analysis(model, steps, residual):
     """For each guarded step, check whether the piecewise DISPATCH is a TOTAL function — the guards
     cover the whole valid INPUT space — and UNAMBIGUOUS — no two guards are simultaneously satisfiable.
