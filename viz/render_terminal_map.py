@@ -37,7 +37,7 @@ def _axis_limits(model, var, vals):
     extent — padded to a readable span so a lone end-state isn't zoomed to sub-unit scale."""
     lo = hi = None
     try:
-        r = model.proven_range(var["name"])
+        r = model.proven_range(var)            # proven_range takes the var DICT, not the name
         if r:
             lo, hi = r
     except Exception:
