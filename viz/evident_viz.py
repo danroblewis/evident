@@ -26,6 +26,12 @@ import json
 import os
 import z3
 
+# Per-solve wall-clock cap (ms). Every z3 Solver/Optimize the dynamics layer builds gets this, so a
+# single intractable check — e.g. an NRA reachable-step on a nonlinear-Real sample (predator-prey's
+# _prey·_pred) — returns `unknown` instead of hanging the whole server unboundedly (Ana #300). A timed
+# check that returns unknown is treated exactly like unsat (no successor), so sampling stops cleanly.
+SOLVE_TIMEOUT_MS = 4000
+
 
 # Visual-channel effectiveness by variable class (Cleveland & McGill 1984 /
 # Mackinlay 1986): POSITION decodes best for everything; SIZE is good for
@@ -196,6 +202,7 @@ class Model:
 
     def _base(self):
         s = z3.Solver()
+        s.set("timeout", SOLVE_TIMEOUT_MS)
         s.add(self.assertions)
         return s
 
@@ -1231,6 +1238,7 @@ class Model:
 
         def bounds_at(k):
             opt = z3.Optimize()
+            opt.set("timeout", SOLVE_TIMEOUT_MS)
             # fresh per-tick copy of every non-prev variable; a pre-initial fresh for tick-0 prevs
             stepv = [{n: fresh(c, s) for n, c in non_ft if c.get_id() not in prev_to_cur}
                      for s in range(k + 1)]
@@ -1292,6 +1300,7 @@ class Model:
         if ft is None or not box:
             return False
         s = z3.Solver()
+        s.set("timeout", SOLVE_TIMEOUT_MS)
         for a in self.assertions:
             s.add(a)
         s.add(z3.Not(ft))
@@ -1379,6 +1388,7 @@ class Model:
         equilibria_exist = False
         if self_eqs:
             sfp = z3.Solver()
+            sfp.set("timeout", SOLVE_TIMEOUT_MS)
             for a in self.assertions:
                 sfp.add(a)
             sfp.add(nf)
