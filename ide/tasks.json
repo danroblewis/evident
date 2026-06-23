@@ -1,5 +1,5 @@
 {
-  "seq": 295,
+  "seq": 297,
   "tasks": [
     {
       "id": 1,
@@ -6376,6 +6376,36 @@
       "reopened": 0,
       "tags": [
         "language"
+      ],
+      "log": []
+    },
+    {
+      "id": 296,
+      "title": "Maze-solving example: walls + solving player both visible in solution_space + occupancy_heatmap",
+      "detail": "Add a maze-solving example (FSM or claim): a player navigates a wall-bounded maze from start to goal, moving only to open adjacent cells (not through walls). Both the static MAZE WALLS and the dynamic SOLVING PLAYER (its path / dwell positions) must be VISIBLE TOGETHER in the solution_space AND the occupancy_heatmap. COMPLETION CRITERIA: (1) example loads + analyzes, 0 dropped constraints; (2) solution_space draws the maze walls (the static structure) WITH the player's feasible positions/path overlaid + distinguishable; (3) occupancy_heatmap shows where the player dwells over the wall layout; (4) it's a genuine maze \u2014 a wall grid + start + goal + open-cell move constraints; (5) added to app-data.js SAMPLES + render_smoke + headlineView; ./test.sh green. LIKELY needs a renderer change to draw a static-wall background under the dynamic player overlay \u2014 call that out if so.",
+      "status": "open",
+      "created_by": "worker",
+      "created": "2026-06-23T20:24:26Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "example"
+      ],
+      "log": []
+    },
+    {
+      "id": 297,
+      "title": "Example showcasing the prettier initial-value syntax (blocked-by #295)",
+      "detail": "Once #295 (cleaner FSM initial-value syntax) lands, add a sample to app-data.js that showcases it \u2014 a clean readable FSM whose initial values use the NEW syntax instead of 'is_first_tick \u21d2 (...)'. COMPLETION CRITERIA: (1) BLOCKED-BY #295 (do not start until that design+impl is done); (2) a sample using the new init syntax that reads noticeably cleaner than the is_first_tick form; (3) loads + analyzes; (4) added to SAMPLES + render_smoke; ./test.sh green.",
+      "status": "open",
+      "created_by": "worker",
+      "created": "2026-06-23T20:24:26Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "example"
       ],
       "log": []
     }
