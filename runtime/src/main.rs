@@ -208,12 +208,14 @@ fn cmd_effect_run(args: &[String]) -> ExitCode {
 fn cmd_export(args: &[String]) -> ExitCode {
     let mut path: Option<String> = None;
     let mut out: Option<String> = None;
+    let mut entry: Option<String> = None;
     let mut i = 0;
     while i < args.len() {
         match args[i].as_str() {
             "--out" => { i += 1; out = args.get(i).cloned(); }
+            "--entry" => { i += 1; entry = args.get(i).cloned(); }
             "-h" | "--help" => {
-                eprintln!("usage: evident export <file> [--out PREFIX]");
+                eprintln!("usage: evident export <file> [--out PREFIX] [--entry NAME]");
                 return ExitCode::SUCCESS;
             }
             other if other.starts_with('-') => {
@@ -241,27 +243,23 @@ fn cmd_export(args: &[String]) -> ExitCode {
         eprintln!("export: load {path}: {e}");
         return ExitCode::from(1);
     }
-    // Try the FSM export first. If the program has no fsm-shaped claim, fall back to
-    // exporting the lone top-level (non-test) claim as a static constraint + var schema.
-    let (smt2, json, what, kind_label) = match trampoline::single_fsm(&rt) {
-        Ok(s) => {
-            let fsm = s.claim_name;
-            match rt.export_transition(&fsm) {
-                Ok((smt2, json)) => (smt2, json, fsm, "fsm"),
-                Err(e) => { eprintln!("export: {e}"); return ExitCode::from(1); }
-            }
-        }
-        Err(e) if e.starts_with("no fsm") => {
-            let claim = match resolve_export_claim(&rt, &stdlib_names) {
-                Ok(c) => c,
-                Err(msg) => { eprintln!("export: {msg}"); return ExitCode::from(2); }
-            };
-            match rt.export_claim(&claim) {
-                Ok((smt2, json)) => (smt2, json, claim, "claim"),
-                Err(e) => { eprintln!("export: {e}"); return ExitCode::from(1); }
-            }
-        }
-        Err(e) => { eprintln!("export: {e}"); return ExitCode::from(2); }
+    // Pick the entry to render: an explicit `--entry NAME` override (the IDE's entry
+    // picker), else the LAST-DEFINED of {last fsm, last genuine claim} in source order
+    // (#290 — multiple fsms/claims are now allowed; the later-declared one is the entry).
+    // Route to the transition (fsm) or solution-space (claim) export by its keyword.
+    let entry = match resolve_export_entry(&rt, &stdlib_names, entry.as_deref()) {
+        Ok(e) => e,
+        Err(msg) => { eprintln!("export: {msg}"); return ExitCode::from(2); }
+    };
+    let (smt2, json, what, kind_label) = match entry {
+        ExportEntry::Fsm(fsm) => match rt.export_transition(&fsm) {
+            Ok((smt2, json)) => (smt2, json, fsm, "fsm"),
+            Err(e) => { eprintln!("export: {e}"); return ExitCode::from(1); }
+        },
+        ExportEntry::Claim(claim) => match rt.export_claim(&claim) {
+            Ok((smt2, json)) => (smt2, json, claim, "claim"),
+            Err(e) => { eprintln!("export: {e}"); return ExitCode::from(1); }
+        },
     };
     let prefix = out.unwrap_or_else(|| {
         Path::new(&path).file_stem().and_then(|s| s.to_str()).unwrap_or(&what).to_string()
@@ -337,40 +335,55 @@ fn cmd_functions(args: &[String]) -> ExitCode {
     ExitCode::SUCCESS
 }
 
-/// Resolve the entry claim to export when the program has no FSM: the single
-/// top-level non-test (`sat_*`/`unsat_*`) schema. Mirrors the FSM-discovery
-/// ambiguity rules — errors helpfully when zero or many candidates exist.
-fn resolve_export_claim(
-    rt: &EvidentRuntime, stdlib_names: &std::collections::HashSet<String>,
-) -> Result<String, String> {
-    // `sat_*`/`unsat_*` are FSM-discovery sentinels (the trampoline skips them as
-    // candidate state machines), but for EXPORT they are exactly the test-assertion
-    // claims Ana hands to z3 for its own minimal core (#193) — so we keep them here.
-    let mut claims: Vec<String> = rt.schema_names()
-        .filter(|n| !stdlib_names.contains(*n))
-        .map(|s| s.to_string())
-        .collect();
-    // A claim file routinely declares helper `type`s (toposort's `Edge`, sudoku's `Box`). Those are
-    // schemas too, so a naive count sees "2 candidates" and bails — even though only one is a CLAIM,
-    // the solvable predicate the user means. Prefer the `claim`-keyword schemas; the helper types are
-    // pulled in by membership, not exported on their own. (Mirrors how the solver resolves the entry.)
-    let only_claims: Vec<String> = claims.iter()
-        .filter(|n| matches!(rt.get_schema(n).map(|s| &s.keyword),
-                             Some(evident_runtime::ast::Keyword::Claim)))
-        .cloned().collect();
-    if only_claims.len() == 1 {
-        return Ok(only_claims.into_iter().next().unwrap());
+/// The schema the `export` command renders: an fsm (transition relation) or a
+/// genuine claim (solution space). The keyword decides which export path runs.
+enum ExportEntry { Fsm(String), Claim(String) }
+
+/// Resolve the entry to export (#290): an explicit `--entry NAME` override wins;
+/// else the LAST-DEFINED of {last fsm, last genuine claim} in SOURCE-DECLARATION
+/// order (`schema_names()` iterates `schema_order`). Multiple fsms AND multiple
+/// claims are now valid — the later-declared one is the entry, so a file can mix
+/// helper claims with the headline fsm (or vice-versa) and the right one renders.
+fn resolve_export_entry(
+    rt: &EvidentRuntime,
+    stdlib_names: &std::collections::HashSet<String>,
+    override_name: Option<&str>,
+) -> Result<ExportEntry, String> {
+    // An fsm is fsm-shaped regardless of name; a genuine claim is a user-file,
+    // `claim`-keyword, non-test schema (helper `type`s like toposort's `Edge` are
+    // pulled in by membership, not exported on their own).
+    let is_fsm = |n: &str| trampoline::resolve_fsm(rt, n).is_some();
+    let is_claim = |n: &str| {
+        !stdlib_names.contains(n)
+            && !n.starts_with("sat_") && !n.starts_with("unsat_")
+            && matches!(rt.get_schema(n).map(|s| &s.keyword),
+                        Some(evident_runtime::ast::Keyword::Claim))
+            && !is_fsm(n)
+    };
+
+    if let Some(name) = override_name {
+        if is_fsm(name) { return Ok(ExportEntry::Fsm(name.to_string())); }
+        if rt.get_schema(name).is_some() { return Ok(ExportEntry::Claim(name.to_string())); }
+        return Err(format!("entry {name:?} not found in the program"));
     }
-    if !only_claims.is_empty() {
-        claims = only_claims;            // disambiguate among genuine claims only
+
+    // Walk source order; remember the last fsm and last genuine claim, then take
+    // whichever appeared LATER. `sat_`/`unsat_` test claims are export targets for
+    // Ana's minimal-core path elsewhere, but never the default rendered entry.
+    let mut last_fsm: Option<String> = None;
+    let mut last_claim: Option<String> = None;
+    let mut last_kind_is_fsm = false;
+    for n in rt.schema_names() {
+        if is_fsm(n) { last_fsm = Some(n.to_string()); last_kind_is_fsm = true; }
+        else if is_claim(n) { last_claim = Some(n.to_string()); last_kind_is_fsm = false; }
     }
-    claims.sort();
-    match claims.len() {
-        0 => Err("no claims found to export".to_string()),
-        1 => Ok(claims.pop().unwrap()),
-        _ => Err(format!(
-            "ambiguous: {} candidate claims ([{}]); the file must contain exactly one top-level claim",
-            claims.len(), claims.join(", "))),
+    match (last_kind_is_fsm, last_fsm, last_claim) {
+        (true, Some(f), _) => Ok(ExportEntry::Fsm(f)),
+        (false, _, Some(c)) => Ok(ExportEntry::Claim(c)),
+        // last-seen kind had no member (impossible) — fall back to whichever exists.
+        (_, Some(f), None) => Ok(ExportEntry::Fsm(f)),
+        (_, None, Some(c)) => Ok(ExportEntry::Claim(c)),
+        (_, None, None) => Err("no fsm or claim found to export".to_string()),
     }
 }
 
@@ -597,13 +610,21 @@ fn cmd_query(args: &[String]) -> ExitCode {
     let claim = match claim {
         Some(c) => c,
         None => {
-            let cands: Vec<String> = rt.schema_names()
+            // Default to the LAST-DEFINED claim (#290): multiple claims/fsms are valid,
+            // and the later-declared one is the entry. Prefer genuine `claim`-keyword
+            // schemas (helper `type`s like toposort's `Edge` are pulled in by membership,
+            // not queried on their own); fall back to the last non-test schema. The IDE
+            // names the claim explicitly via its picker — this is the no-name fallback.
+            let non_test: Vec<String> = rt.schema_names()
                 .filter(|n| !n.starts_with("sat_") && !n.starts_with("unsat_"))
                 .map(|s| s.to_string()).collect();
-            match cands.len() {
-                1 => cands.into_iter().next().unwrap(),
-                0 => return emit_err("no claim to query (only sat_/unsat_ schemas present)".into()),
-                _ => return emit_err(format!("ambiguous — name a claim. candidates: {}", cands.join(", "))),
+            let last_claim = non_test.iter().rev().find(|n|
+                matches!(rt.get_schema(n).map(|s| &s.keyword),
+                         Some(evident_runtime::ast::Keyword::Claim)
+                       | Some(evident_runtime::ast::Keyword::Fsm)));
+            match last_claim.cloned().or_else(|| non_test.into_iter().last()) {
+                Some(c) => c,
+                None => return emit_err("no claim to query (only sat_/unsat_ schemas present)".into()),
             }
         }
     };

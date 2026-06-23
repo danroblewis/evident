@@ -72,12 +72,13 @@ class Source(BaseModel):
     scope: int | None = None        # reachable-exploration bound — the scope knob (#21/#84)
     unroll: int | None = None       # k-step transition unroll for /api/smtlib (#259/#19)
     all_conditions: bool = False    # state_graph: GLOBAL dynamics (every initial condition) vs from-init (diagram #1)
+    entry: str | None = None        # which top-level fsm/claim to render — the entry picker (#290)
 
 
 @app.post("/api/analyze")
 def analyze(req: Source):
     with _LOCK, tempfile.TemporaryDirectory() as work:
-        ok, prefix, dropped, msg = _export(req.source, work)
+        ok, prefix, dropped, msg = _export(req.source, work, req.entry)
         if not ok:
             return {"ok": False, "error": msg, "dropped": dropped,
                     "error_loc": _error_loc(msg),

@@ -11,14 +11,19 @@ import subprocess
 from config import EVIDENT, ROOT
 
 
-def _export(source: str, work: str):
-    """Write source, run `evident export`. Returns (ok, prefix, dropped, message)."""
+def _export(source: str, work: str, entry: str | None = None):
+    """Write source, run `evident export`. Returns (ok, prefix, dropped, message).
+
+    `entry` names which top-level fsm/claim to render (the IDE's entry picker, #290);
+    when omitted the binary defaults to the LAST-DEFINED fsm-or-claim in source order."""
     ev = os.path.join(work, "prog.ev")
     with open(ev, "w") as f:
         f.write(source)
     prefix = os.path.join(work, "prog")
-    r = subprocess.run([EVIDENT, "export", ev, "--out", prefix],
-                       capture_output=True, text=True, timeout=30, cwd=ROOT)
+    cmd = [EVIDENT, "export", ev, "--out", prefix]
+    if entry:
+        cmd += ["--entry", entry]
+    r = subprocess.run(cmd, capture_output=True, text=True, timeout=30, cwd=ROOT)
     err = (r.stderr or "") + (r.stdout or "")
     dropped = sum(1 for ln in err.splitlines() if "dropped" in ln.lower())
     # Strip the internal temp-dir plumbing from anything shown to the user (Sam/Marek #190):

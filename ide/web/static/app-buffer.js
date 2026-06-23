@@ -170,17 +170,27 @@ function initBuffer() {
   };
 }
 
-// Entry-claim picker (#86): when the buffer declares MORE THAN ONE non-test claim, auto-pick can't
-// choose between them (solve returns satisfied=null), so surface a dropdown to target ⊨ Solve at one.
-// Hidden for single-claim / FSM files. Called from run() on every analyze; preserves the selection.
+// All top-level ENTRIES the file declares, in source-declaration order: every `fsm` plus every
+// genuine `claim` (sat_/unsat_ test claims excluded). The LAST one is the default entry the
+// runtime renders (#290) — helper claims/types come first, the headline entry last.
+function topLevelEntries(source) {
+  return [...source.matchAll(/^\s*(?:fsm|claim)\s+([A-Za-z_]\w*)/gm)]
+    .map((m) => m[1]).filter((n) => !/^(?:sat|unsat)_/.test(n));
+}
+
+// Entry picker (#86/#290): when the buffer declares MORE THAN ONE top-level entry (fsm or claim),
+// surface a dropdown so the user can choose which one to RENDER and ⊨ Solve — the runtime defaults
+// to the LAST-DEFINED, so the dropdown defaults there too. Hidden for single-entry files. Called
+// from run() on every analyze; preserves an explicit selection across edits.
 function updateClaimPicker(source) {
   const sel = document.querySelector("#claim-select");
   if (!sel) return;
-  const claims = [...source.matchAll(/^\s*claim\s+([A-Za-z_]\w*)/gm)]
-    .map((m) => m[1]).filter((n) => !/^(?:sat|unsat)_/.test(n));
-  if (claims.length > 1) {
-    const cur = sel.value;
-    sel.innerHTML = claims.map((c) => `<option${c === cur ? " selected" : ""}>${c}</option>`).join("");
+  const entries = topLevelEntries(source);
+  if (entries.length > 1) {
+    // Keep a still-valid selection; otherwise default to the LAST-DEFINED entry (the runtime's default).
+    const cur = entries.includes(sel.value) ? sel.value : entries[entries.length - 1];
+    sel.innerHTML = entries.map((c) => `<option${c === cur ? " selected" : ""}>${c}</option>`).join("");
+    sel.value = cur;
     sel.hidden = false;
   } else {
     sel.hidden = true; sel.innerHTML = "";

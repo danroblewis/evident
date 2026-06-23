@@ -367,7 +367,8 @@ async function run(view) {
       // lead view for what was just written — otherwise a tab click pins the view and a
       // later edit that turns the machine nondeterministic keeps showing a flat line.
       // A tab click (run("phase_portrait")) passes its view explicitly and is honored.
-      body: JSON.stringify({ source, view: view || null, scope: scopeBound, all_conditions: allConditions }),
+      // entry: which top-level fsm/claim to render — the picker, else the runtime's last-defined default (#290).
+      body: JSON.stringify({ source, view: view || null, scope: scopeBound, all_conditions: allConditions, entry: pickedEntry() }),
     });
     // A 500 RESOLVES the fetch (only a network drop rejects it), so without this check an HTTP
     // error would fall through and silently leave the prior picture looking live (Marek #206).
@@ -388,14 +389,21 @@ function scheduleAnalyze() {
 // --- solve/query: run a claim → SAT witness or UNSAT; pin vars for solve-for-X --------
 // The witness/UNSAT rendering + domain-picture renderers live in app-verify.js; this is the
 // fetch orchestration that drives them.
+// The entry the user picked, or null to let the runtime default to the LAST-DEFINED fsm/claim (#290).
+// The visible picker wins; otherwise null (no override) so the binary's source-order default applies.
+function pickedEntry() {
+  const sel = $("#claim-select");
+  return (sel && !sel.hidden && sel.value) ? sel.value : null;
+}
+
 async function solve(enumerate) {
   const source = editor.getValue();
   const given = parsePins($("#solve-given").value);
-  // Name the claim explicitly so the solver doesn't choke on "ambiguous" when the file also
-  // declares a type/enum (e.g. toposort's `type Edge` + `claim toposort`).
-  const sel = $("#claim-select");
-  const cm = source.match(/^\s*claim\s+([A-Za-z_]\w*)/m);
-  const claim = (sel && !sel.hidden && sel.value) ? sel.value : (cm ? cm[1] : null);   // picker wins (#86)
+  // Name the entry explicitly so the solver doesn't choke when the file declares several entries
+  // or a helper type/enum (e.g. toposort's `type Edge` + `claim toposort`). The picker wins; else
+  // fall back to the LAST-DEFINED entry — the runtime's default (#86/#290).
+  const entries = topLevelEntries(source);
+  const claim = pickedEntry() || (entries.length ? entries[entries.length - 1] : null);
   $("#solve").hidden = false;
   $("#solve-head").innerHTML = `<span class="dim">${enumerate ? "enumerating…" : "solving…"}</span>`;
   $("#solve-body").innerHTML = "";
@@ -470,6 +478,9 @@ $("#allcond-in").addEventListener("change", () => {
   allConditions = $("#allcond-in").checked;
   run("state_graph");
 });
+// Entry picker (#290): choosing a different top-level fsm/claim re-renders THAT entry. Re-analyze
+// with no explicit view so the server re-recommends the lead view for the newly-selected entry.
+$("#claim-select").addEventListener("change", () => run());
 run();
 maybeAutoTour();
 // If we loaded a program from a shared link, say so — but only after run()'s "computing…"
