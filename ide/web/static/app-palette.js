@@ -89,6 +89,10 @@ const TOUR_STEPS = [
   { sel: "#solve-btn", title: "4 · ⊨ Solve",
     body: "Some programs are claims, not machines — press ⊨ Solve for a witness "
       + "assignment (or UNSAT). Try it on the sudoku sample." },
+  { sel: "#editor-pane", title: "5 · Learn it here",
+    body: "Stuck on a word? <b>Hover any keyword</b> in your code — <code>fsm</code>, "
+      + "<code>claim</code>, <code>Δ</code>, <code>Int</code> — for a plain-English definition. "
+      + "Or press <kbd>⌘K</kbd> and type a term (\"claim\", \"Δ\") to search the glossary without leaving the editor." },
 ];
 
 // =============================================================================

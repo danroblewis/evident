@@ -37,6 +37,18 @@ const GLOSSARY = {
   ".": ".  field access (win.renderer). Two dots '..TypeName' is passthrough / trait-mixin — it brings another type's fields and constraints into this scope WITHOUT a dotted prefix.",
   "⟨": "⟨ ⟩  sequence literal ⟨a, b, c⟩.   type \\langle \\rangle",
   "⟩": "⟨ ⟩  sequence literal ⟨a, b, c⟩.   type \\langle \\rangle",
+  // built-in TYPE names — the first thing a newcomer hovers after 'x ∈ ' (Sam #266)
+  Int: "Int — the integers (…, -1, 0, 1, …). 'x ∈ Int' declares x an integer; '0 ≤ x ∈ Int ≤ 9' declares and bounds it in one line.",
+  Real: "Real — the real numbers (the solver keeps them exact). Use for a continuous quantity — a position, a rate.",
+  Nat: "Nat — the natural numbers 0, 1, 2, … (non-negative integers).",
+  Bool: "Bool — a truth value: true or false (lowercase). Comparisons (<, =) and logic (∧, ∨, ¬) produce Bool.",
+  String: "String — text. Join with ++; build from an Int with to_str.",
+  Seq: "Seq(T) — an ordered sequence of T. Build with ⟨a, b, c⟩, join with ++, iterate ∀ x ∈ s; #s is its length.",
+  Set: "Set T — an unordered collection of T (no order, no duplicates). Membership is x ∈ s.",
+  coindexed: "coindexed(a, b, …) — zip parallel sequences by position: ∀ (x, y) ∈ coindexed(a, b) pairs a[i] with b[i].",
+  edges: "edges(s) — iterate a sequence's adjacent pairs: ∀ (a, b) ∈ edges(s) gives (s[i], s[i+1]) — e.g. for monotonicity.",
+  Distinct: "Distinct(s, n) — a stdlib claim: the first n elements of s are pairwise different (e.g. N-queens columns).",
+  assert: "assert — pin a ground fact (a value or a complete lookup table), e.g. 'assert exits = { … }'.",
 };
 
 function glossFor(t) {
@@ -70,6 +82,14 @@ const CONCEPTS = {
   "Unstable": "a fixed point the dynamics move AWAY from — a tiny nudge and the orbit diverges.",
   "reachable": "the states the machine can actually enter from its start, found by SOLVING the transition — not guessed.",
   "recurrence": "each tick's value is defined from the previous tick(s): x = f(_x).",
+  // functionizer-view vocabulary — so the function_* banners get glossed like the dynamics ones (Sam #271)
+  "functionized": "reduced by the solver to a COMPUTATION — a per-variable function (the JIT's update law), not a residual constraint.",
+  "residual": "a constraint the solver did NOT reduce to a function — the genuinely-relational part it keeps as a standing invariant (e.g. a type bound 0 ≤ timer ≤ 2).",
+  "autonomous": "a closed self-map x' = f(_x): the dynamics depend only on their own past, with no external driver.",
+  "self-map": "a closed recurrence x' = f(_x) with no external driver — see autonomous.",
+  "piecewise": "a function defined by cases — guarded branches, each a different body under a different condition.",
+  "coupled": "variables feed back into each other (a cycle in the data-flow graph), e.g. an oscillator's position ↔ velocity.",
+  "driver": "an independent variable that advances on its own and feeds the computed ones — the clock of a driven pipeline.",
 };
 const _CONCEPT_KEYS = Object.keys(CONCEPTS).sort((a, b) => b.length - a.length);  // longest first
 
