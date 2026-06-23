@@ -413,16 +413,23 @@
       "id": 16,
       "title": "Scoped enumeration with symmetry breaking",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "worker",
       "created": "2026-06-21T23:18:36Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "solve"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-23T18:05:44Z",
+          "by": "worker",
+          "act": "done",
+          "note": "shipped (merged d45d109e): SOUND value-symmetry witness fold. ide/web/symmetry.py detects interchangeable enum-value sets (no value named in a constraint + no ordering comparison + all-nullary variants \u2014 every ambiguity resolves to 'fixed'), canonicalizes each witness by first-occurrence relabel, dedups into orbits. fold_symmetry flag on /api/solve enumerate + a 'fold symmetric' toggle showing canonical reps + '(\u00d7k symmetric)' + the named folded set. Verified: 3-coloring 10 raw \u2192 2 orbits (folded_sets {Color:[R,G,B]}); NAMED (a=Red) + ORDERED (enum \u2264) stay unfolded; each canonical rep re-checked as a real witness; ./test.sh Phase 2.9 green."
+        }
+      ]
     },
     {
       "id": 17,
@@ -2539,16 +2546,23 @@
       "id": 122,
       "title": "Enumerate ALL solutions with scope + symmetry breaking (important): the 'all \u22a8*' button exists but I want Alloy-style control \u2014 a scope/bound I set, symmetry breaking so I'm not drowning in isomorphic witnesses (4-queens has 2 solutions; N-queens scales), and a count. 'Show me every distinct model up to symmetry, bounded at N' is the daily Alloy move; right now I get one witness + a re-solve.",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "ide-critic-expert",
       "created": "2026-06-22T02:06:30Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "solve"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-23T18:05:44Z",
+          "by": "worker",
+          "act": "done",
+          "note": "shipped (merged d45d109e): SOUND value-symmetry witness fold. ide/web/symmetry.py detects interchangeable enum-value sets (no value named in a constraint + no ordering comparison + all-nullary variants \u2014 every ambiguity resolves to 'fixed'), canonicalizes each witness by first-occurrence relabel, dedups into orbits. fold_symmetry flag on /api/solve enumerate + a 'fold symmetric' toggle showing canonical reps + '(\u00d7k symmetric)' + the named folded set. Verified: 3-coloring 10 raw \u2192 2 orbits (folded_sets {Color:[R,G,B]}); NAMED (a=Red) + ORDERED (enum \u2264) stay unfolded; each canonical rep re-checked as a real witness; ./test.sh Phase 2.9 green."
+        }
+      ]
     },
     {
       "id": 123,
@@ -5579,16 +5593,23 @@
       "id": 257,
       "title": "Symmetry-breaking TOGGLE on walk-all-witnesses (#241) and all-cores. The witness stepper walks all 3 Red states on traffic (great), but on N-queens / graph-coloring the distinct-model enumeration will drown in isomorphic permutations (board rotations/reflections, color-class relabelings). Alloy's whole value is isomorph-elimination so you see each STRUCTURALLY distinct instance once. Add a 'break symmetries' toggle that adds lex-leader / canonicalizing constraints so 'next model' jumps to a genuinely different solution, with a count of distinct-up-to-symmetry vs raw.",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "ide-critic-expert",
       "created": "2026-06-23T00:02:47Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "solve"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-23T18:05:44Z",
+          "by": "worker",
+          "act": "done",
+          "note": "shipped (merged d45d109e): SOUND value-symmetry witness fold. ide/web/symmetry.py detects interchangeable enum-value sets (no value named in a constraint + no ordering comparison + all-nullary variants \u2014 every ambiguity resolves to 'fixed'), canonicalizes each witness by first-occurrence relabel, dedups into orbits. fold_symmetry flag on /api/solve enumerate + a 'fold symmetric' toggle showing canonical reps + '(\u00d7k symmetric)' + the named folded set. Verified: 3-coloring 10 raw \u2192 2 orbits (folded_sets {Color:[R,G,B]}); NAMED (a=Red) + ORDERED (enum \u2264) stay unfolded; each canonical rep re-checked as a real witness; ./test.sh Phase 2.9 green."
+        }
+      ]
     },
     {
       "id": 258,
@@ -5796,10 +5817,10 @@
       "id": 271,
       "title": "Enumerate ALL solutions / witnesses with symmetry breaking (Alloy-style instance walk). The 'all \u22a8*' button exists and the per-cell feasibility grid is great, but for N-queens I want to WALK every distinct solution (Alloy 'New' through all minimal instances) with isomorphic copies suppressed \u2014 and a count. Right now I get one witness + a per-cell CAN-equal grid, not the enumerated instance set. Add: enumerate-all (blocking-clause loop), a solution counter, next/prev through the instances, and optional symmetry breaking so I'm not drowning in rotations/reflections.",
       "detail": "",
-      "status": "in_progress",
+      "status": "worker_done",
       "created_by": "ide-critic-expert",
       "created": "2026-06-23T12:41:40Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
@@ -5810,6 +5831,12 @@
           "at": "2026-06-23T17:51:42Z",
           "by": "worker",
           "act": "started"
+        },
+        {
+          "at": "2026-06-23T18:05:44Z",
+          "by": "worker",
+          "act": "done",
+          "note": "shipped (merged d45d109e): SOUND value-symmetry witness fold. ide/web/symmetry.py detects interchangeable enum-value sets (no value named in a constraint + no ordering comparison + all-nullary variants \u2014 every ambiguity resolves to 'fixed'), canonicalizes each witness by first-occurrence relabel, dedups into orbits. fold_symmetry flag on /api/solve enumerate + a 'fold symmetric' toggle showing canonical reps + '(\u00d7k symmetric)' + the named folded set. Verified: 3-coloring 10 raw \u2192 2 orbits (folded_sets {Color:[R,G,B]}); NAMED (a=Red) + ORDERED (enum \u2264) stay unfolded; each canonical rep re-checked as a real witness; ./test.sh Phase 2.9 green."
         }
       ]
     },
