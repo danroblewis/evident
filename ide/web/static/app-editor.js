@@ -91,31 +91,45 @@ function stripIdentPrefix(name) {
   return (name || "").replace(/^(?:ΔΔ|Δ|__|_|¬)+/, "");
 }
 
-// Parse the buffer for declared/carried names: the LHS of `name ∈ Type` and chained-membership
-// decls (`0 ≤ count ∈ Int ≤ 5` → count; `x, y, z ∈ Int` → x,y,z; first-line params
-// `type IVec2(x, y ∈ Int)`), plus `name = expr` carried/assignment LHS. Returns the base names,
-// de-duplicated, prefixes stripped. Pure (text → string[]) so it's unit-testable headless.
-function parseScopeIdents(text) {
-  const out = new Set();
+// Parse the buffer for declared/carried names → {type, line}: the LHS of `name ∈ Type` and
+// chained-membership decls (`0 ≤ count ∈ Int ≤ 5` → count:Int; `x, y, z ∈ Int`; first-line params
+// `type IVec2(x, y ∈ Int)`), plus `name = expr` carried/assignment LHS (type inferred → null).
+// `line` is 1-based. First declaration wins. Pure (text → Map) so it's unit-testable headless.
+function parseScopeDecls(text) {
+  const decls = new Map();
   const IDENT = "[A-Za-zΔ¬_][A-Za-z0-9_]*";
-  // (1) Every `… name ∈` (and comma-separated `a, b, c ∈`): grab the identifier run sitting
-  //     immediately left of an ∈. A chained comparison (`0 ≤ count ∈`) leaves `count` as the
-  //     token right before ∈, so the trailing-run capture lands exactly the declared name(s).
-  const memb = new RegExp("(" + IDENT + "(?:\\s*,\\s*" + IDENT + ")*)\\s*∈", "g");
+  const lineOf = (idx) => text.slice(0, idx).split("\n").length;
+  // (1) `… name(, name)* ∈ Type` — grab the ident run left of ∈ AND the type token right of it
+  //     (an identifier with an optional `(…)` for Seq(Int)/IVec2). Chained `0 ≤ count ∈ Int ≤ 5`
+  //     leaves `count` as the token before ∈ and `Int` as the type after it.
+  const memb = new RegExp("(" + IDENT + "(?:\\s*,\\s*" + IDENT + ")*)\\s*∈\\s*([A-Za-z_]\\w*(?:\\s*\\([^)]*\\))?)", "g");
   let m;
   while ((m = memb.exec(text)) !== null) {
+    const ln = lineOf(m.index), type = m[2].replace(/\s+/g, "");
     for (const raw of m[1].split(",")) {
       const base = stripIdentPrefix(raw.trim());
-      if (base && !/^[0-9]/.test(base)) out.add(base);
+      if (base && !/^[0-9]/.test(base) && !decls.has(base)) decls.set(base, { type, line: ln });
     }
   }
-  // (2) Assignment / carried LHS: a line whose first token is `name =` (not `==`).
+  // (2) `name = expr` assignment / carried LHS (not `==`); type inferred from the RHS → null.
   const asg = new RegExp("^\\s*(" + IDENT + ")\\s*=(?!=)", "gm");
   while ((m = asg.exec(text)) !== null) {
     const base = stripIdentPrefix(m[1]);
-    if (base && !/^[0-9]/.test(base)) out.add(base);
+    if (base && !/^[0-9]/.test(base) && !decls.has(base)) decls.set(base, { type: null, line: lineOf(m.index) });
   }
-  return [...out];
+  return decls;
+}
+
+// Names only (the completer's view), de-duplicated, prefixes stripped.
+function parseScopeIdents(text) { return [...parseScopeDecls(text).keys()]; }
+
+// Cached decls for the hover / go-to-def handlers — the hover fires on every mousemove, so we
+// re-parse only when the buffer text actually changed.
+let _declsCache = { src: null, decls: null };
+function scopeDecls() {
+  const src = editor.session.getValue();
+  if (src !== _declsCache.src) _declsCache = { src, decls: parseScopeDecls(src) };
+  return _declsCache.decls;
 }
 
 // The Ace completer. Offers the three groups, prefix-matched. The prefix Ace hands us is the
@@ -262,9 +276,19 @@ function initEditorInput() {
     if (!pos) { gloss.hidden = true; return; }
     const tok = editor.session.getTokenAt(pos.row, pos.column + 1);
     if (tok) {
-      const g = glossFor((tok.value || "").trim());
-      if (g) {
-        gloss.textContent = g; gloss.hidden = false;
+      const raw = (tok.value || "").trim();
+      const g = glossFor(raw);
+      // Not a keyword? If it's a user identifier we can resolve, show its declared type + line
+      // (hover-for-type, Marek #282). ⌘/Ctrl-click then jumps to the declaration (below).
+      const base = stripIdentPrefix(raw);
+      const d = !g && (tok.type === "identifier" || tok.type === "variable.parameter") ? scopeDecls().get(base) : null;
+      const html = d
+        ? `<b>${base}</b>${d.type ? "  ∈  " + d.type : "  <span style='opacity:.6'>(type inferred)</span>"}`
+          + `<span style="opacity:.6">  ·  line ${d.line}  ·  ⌘-click to jump</span>`
+        : null;
+      if (g || html) {
+        if (g) gloss.textContent = g; else gloss.innerHTML = html;
+        gloss.hidden = false;
         gloss.style.left = Math.min(e.clientX + 12, window.innerWidth - 380) + "px";
         gloss.style.top = (e.clientY + 18) + "px";
         return;
@@ -273,6 +297,22 @@ function initEditorInput() {
     gloss.hidden = true;
   });
   editorEl.addEventListener("mouseleave", () => { gloss.hidden = true; });
+
+  // ⌘/Ctrl-click a user identifier → jump to its declaration (go-to-definition, Marek #282).
+  editorEl.addEventListener("mousedown", (e) => {
+    if (!(e.metaKey || e.ctrlKey)) return;
+    const pos = editor.renderer.screenToTextCoordinates(e.clientX, e.clientY);
+    if (!pos) return;
+    const tok = editor.session.getTokenAt(pos.row, pos.column + 1);
+    if (!tok || (tok.type !== "identifier" && tok.type !== "variable.parameter")) return;
+    const d = scopeDecls().get(stripIdentPrefix((tok.value || "").trim()));
+    if (d) {
+      e.preventDefault();
+      editor.gotoLine(d.line, 0, true);     // 1-based; flash the decl line so the jump is visible
+      editor.selection.selectLine();
+      gloss.hidden = true;
+    }
+  });
 
   // concept hover in the banner (Sam #163/#165) — same #gloss tooltip, delegated.
   document.addEventListener("mouseover", (e) => {
