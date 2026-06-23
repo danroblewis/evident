@@ -1,0 +1,163 @@
+#!/usr/bin/env python3
+"""functionize.py — surface the functionizer's per-variable decomposition, for visualization.
+
+The Rust runtime's functionizer (runtime/src/functionize/extract_program.rs) splits the solved,
+simplified transition relation into per-output-variable FUNCTIONS — Scalar (a pure expr of other
+vars), Guarded (a piecewise `guard ⇒ body`), Seq (element-wise) — plus the residual CONSTRAINTS
+that did NOT reduce to a function (the genuinely-relational part). That structure is exactly what's
+interesting to SEE: the compiled data-flow DAG, the functionized-vs-residual boundary, and the guard
+decision-trees.
+
+This module re-derives the same decomposition in Python from the model's already-loaded z3 assertions
+(the viz layer has them in `model.assertions`), so the renderers can draw it with no runtime export
+round-trip. It mirrors extract_program's logic: peel `Implies(guard, var = body)` → Guarded, `var =
+expr` → Scalar, everything else → residual. (If this proves out, the authoritative path is a
+`evident functions` JSON dump from the Rust functionizer itself.)
+"""
+import z3
+
+
+def _free_vars(e):
+    """Ordered, de-duplicated uninterpreted-constant (variable) names referenced in a z3 expr."""
+    seen, out = set(), []
+
+    def walk(x):
+        xid = x.get_id()
+        if xid in seen:
+            return
+        seen.add(xid)
+        if z3.is_const(x) and x.decl().kind() == z3.Z3_OP_UNINTERPRETED:
+            out.append(x.decl().name())
+        for c in x.children():
+            walk(c)
+    walk(e)
+    return out
+
+
+def _bare_var(e):
+    """The name of `e` if it is a bare uninterpreted constant (a variable leaf), else None."""
+    if z3.is_const(e) and e.decl().kind() == z3.Z3_OP_UNINTERPRETED:
+        return e.decl().name()
+    return None
+
+
+def _solve_for_output(lhs, rhs, output_set):
+    """Express an output var as a function `var = body` from `lhs == rhs`. Handles a bare var on
+    either side (var = the other side) AND the Δ-FORM `var - rest == rhs` → `var = rhs + rest` — the
+    difference-equation shape the FSM lowering emits for carried state (Δx). Returns (var, body) | None."""
+    for x, y in ((lhs, rhs), (rhs, lhs)):
+        v = _bare_var(x)
+        if v and v in output_set and v not in _free_vars(y):
+            return v, y
+    for x, y in ((lhs, rhs), (rhs, lhs)):          # var - rest == y  ⇒  var = y + rest
+        if z3.is_app(x) and x.decl().kind() == z3.Z3_OP_SUB and x.num_args() == 2:
+            v, rest = _bare_var(x.arg(0)), x.arg(1)
+            if v and v in output_set and v not in _free_vars(rest) and v not in _free_vars(y):
+                return v, y + rest
+    return None
+
+
+def _consequent_assignments(cons, output_set):
+    """A guarded branch's consequent assigns output vars: `var = body`, possibly several inside an
+    And (`light = Green ∧ timer = 0`). Return [(var, body), …] for every such equality (a branch can
+    set more than one variable — each gets its own guarded entry)."""
+    out, todo = [], [cons]
+    while todo:
+        e = todo.pop()
+        if z3.is_and(e):
+            todo.extend(reversed(e.children()))
+            continue
+        if z3.is_eq(e):
+            asg = _solve_for_output(e.arg(0), e.arg(1), output_set)
+            if asg is not None:
+                out.append(asg)
+    return out
+
+
+def extract_functions(model):
+    """Decompose `model.assertions` (the transition relation) into per-output-variable functions +
+    residual constraints. Returns a JSON-able dict:
+
+      { "outputs": [...], "inputs": [...],
+        "steps":   [ {var, kind: scalar|guarded, expr|branches, deps:[...]} ... ],
+        "residual":[ {expr, deps:[...]} ... ] }
+
+    `inputs` are the INDEPENDENT variables (referenced but not themselves an output of a step) — the
+    drivers; `steps`' vars are the DEPENDENT variables (computed). That split is the principled axis
+    signal: dependent → Y, independent → X."""
+    outputs = [v["name"] for v in model.carried]
+    output_set = set(outputs)
+    steps = {}                  # var -> step dict (insertion-ordered)
+    residual = []
+
+    for a in model.assertions:
+        # Guarded:  Implies(guard, <assignment(s)>)
+        if z3.is_app(a) and a.decl().kind() == z3.Z3_OP_IMPLIES and a.num_args() == 2:
+            guard, cons = a.arg(0), a.arg(1)
+            asgs = _consequent_assignments(cons, output_set)
+            if asgs:
+                gdeps = _free_vars(guard)
+                for var, body in asgs:
+                    st = steps.get(var)
+                    if st is None or st["kind"] != "guarded":
+                        st = steps[var] = {"var": var, "kind": "guarded", "branches": []}
+                    st["branches"].append({
+                        "guard": _pretty(guard), "body": _pretty(body),
+                        "deps": gdeps + [d for d in _free_vars(body) if d not in gdeps],
+                    })
+                continue
+        # Scalar:  var == expr (or the Δ-form var - rest == expr), var an output not yet bound.
+        if z3.is_eq(a):
+            asg = _solve_for_output(a.arg(0), a.arg(1), output_set)
+            if asg is not None and asg[0] not in steps:
+                v, body = asg
+                steps[v] = {"var": v, "kind": "scalar", "expr": _pretty(body), "deps": _free_vars(body)}
+                continue
+        # Residual: a genuine constraint the solver did NOT reduce to a function.
+        residual.append({"expr": _pretty(a), "deps": _free_vars(a)})
+
+    step_list = list(steps.values())
+    referenced = {d for st in step_list for d in _step_deps(st)}
+    referenced |= {d for r in residual for d in r["deps"]}
+    # INDEPENDENT = referenced but NOT an output (the prev-tick reads _x + is_first_tick — the true
+    # drivers). An output that isn't a step is "constrained, not functionized" — not a driver.
+    inputs = sorted(v for v in referenced if v not in output_set)
+    unfunctionized = [v for v in outputs if v not in steps]
+    return {"outputs": outputs, "inputs": inputs, "unfunctionized": unfunctionized,
+            "steps": step_list, "residual": residual}
+
+
+def _step_deps(st):
+    if st["kind"] == "scalar":
+        return st["deps"]
+    return [d for b in st.get("branches", []) for d in b["deps"]]
+
+
+def _pretty(e):
+    """A compact one-line z3-expr string (z3's default repr already drops newlines for small exprs)."""
+    return " ".join(str(e).split())
+
+
+if __name__ == "__main__":
+    import sys
+    sys.path.insert(0, "viz")
+    from evident_viz import load
+    if len(sys.argv) != 3:
+        print("usage: functionize.py <smt2> <schema>", file=sys.stderr)
+        sys.exit(2)
+    m = load(sys.argv[1], sys.argv[2])
+    f = extract_functions(m)
+    print(f"OUTPUTS (dependent): {[s['var'] for s in f['steps']]}")
+    print(f"INPUTS  (independent/drivers): {f['inputs']}")
+    print("STEPS:")
+    for s in f["steps"]:
+        if s["kind"] == "scalar":
+            print(f"  {s['var']}  =  {s['expr']}          [deps: {', '.join(s['deps'])}]")
+        else:
+            print(f"  {s['var']}  (guarded, {len(s['branches'])} branches):")
+            for b in s["branches"]:
+                print(f"      {b['guard']}  ⇒  {s['var']} = {b['body']}")
+    if f["residual"]:
+        print(f"RESIDUAL ({len(f['residual'])} un-functionized constraints):")
+        for r in f["residual"][:8]:
+            print(f"  {r['expr']}")
