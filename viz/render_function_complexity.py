@@ -14,8 +14,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 sys.path.insert(0, "viz")
-from evident_viz import load
-from functionize import extract_functions
+from render_function_common import cli_main, load_functions, placeholder
 
 OPS = ("+", "-", "*", "/")
 
@@ -36,14 +35,13 @@ def _cost(step):
 
 
 def render(smt2, schema, out_path):
-    m = load(smt2, schema)
-    f = extract_functions(m)
+    m, f = load_functions(smt2, schema)
     rows = []
     for s in f["steps"]:
         nb, o, w = _cost(s)
         rows.append((s["var"], s["kind"], nb, o, w))
     if not rows:
-        _placeholder(out_path, m.fsm, "no functionized variables to weigh"); return
+        placeholder(out_path, m.fsm, "function cost", "no functionized variables to weigh"); return
     rows.sort(key=lambda r: r[4])                       # lightest at the bottom
 
     fig, ax = plt.subplots(figsize=(9, max(3.0, 0.62 * len(rows) + 1.6)))
@@ -67,14 +65,5 @@ def render(smt2, schema, out_path):
     plt.close(fig)
 
 
-def _placeholder(out_path, fsm, msg):
-    fig, ax = plt.subplots(figsize=(8, 5))
-    ax.text(0.5, 0.5, msg, ha="center", va="center", fontsize=13)
-    ax.set_axis_off(); ax.set_title(f"{fsm}  —  function cost")
-    fig.savefig(out_path, dpi=120, bbox_inches="tight"); plt.close(fig)
-
-
 if __name__ == "__main__":
-    if len(sys.argv) != 4:
-        print("usage: render_function_complexity.py <smt2> <schema> <out>", file=sys.stderr); sys.exit(2)
-    render(sys.argv[1], sys.argv[2], sys.argv[3])
+    cli_main(render, sys.argv, "render_function_complexity.py")

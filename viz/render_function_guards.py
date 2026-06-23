@@ -14,8 +14,8 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 sys.path.insert(0, "viz")
-from evident_viz import load
-from functionize import extract_functions, guard_analysis
+from functionize import guard_analysis
+from render_function_common import cli_main, load_functions, placeholder
 
 
 def _build_trie(branches):
@@ -46,11 +46,11 @@ def _trie_lines(node, prefix=""):
 
 
 def render(smt2, schema, out_path):
-    m = load(smt2, schema)
-    f = extract_functions(m)
+    m, f = load_functions(smt2, schema)
     guarded = [s for s in f["steps"] if s["kind"] == "guarded"]
     if not guarded:
-        _placeholder(out_path, m.fsm, "no piecewise (guarded) functions — nothing to branch")
+        placeholder(out_path, m.fsm, "guard decision trees",
+                    "no piecewise (guarded) functions — nothing to branch", dark=True)
         return
 
     try:
@@ -91,14 +91,5 @@ def render(smt2, schema, out_path):
     plt.close(fig)
 
 
-def _placeholder(out_path, fsm, msg):
-    fig, ax = plt.subplots(figsize=(8, 6)); fig.patch.set_facecolor("#0f1419")
-    ax.text(0.5, 0.5, msg, ha="center", va="center", fontsize=13, color="#c9d1d9")
-    ax.set_axis_off(); ax.set_title(f"{fsm}  —  guard decision trees", color="#c9d1d9")
-    fig.savefig(out_path, dpi=120, bbox_inches="tight", facecolor="#0f1419"); plt.close(fig)
-
-
 if __name__ == "__main__":
-    if len(sys.argv) != 4:
-        print("usage: render_function_guards.py <smt2> <schema> <out>", file=sys.stderr); sys.exit(2)
-    render(sys.argv[1], sys.argv[2], sys.argv[3])
+    cli_main(render, sys.argv, "render_function_guards.py")

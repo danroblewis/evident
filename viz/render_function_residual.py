@@ -18,8 +18,8 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 sys.path.insert(0, "viz")
-from evident_viz import load
-from functionize import extract_functions, function_summary
+from functionize import function_summary
+from render_function_common import cli_main, load_functions
 
 FN_C = "#16313f"; FN_E = "#3fb950"      # function box fill / edge (computed — green)
 RS_C = "#2a1d12"; RS_E = "#d29922"      # residual box fill / edge (constraint — amber)
@@ -56,8 +56,7 @@ def _col(ax, x, w, title, items, fill, edge, empty):
 
 
 def render(smt2, schema, out_path):
-    m = load(smt2, schema)
-    f = extract_functions(m)
+    m, f = load_functions(smt2, schema)
     summ = function_summary(m)
     fn_items = [_fn_text(s) for s in f["steps"]]
     rs_items = [r["expr"] for r in f["residual"]]
@@ -82,6 +81,4 @@ def render(smt2, schema, out_path):
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 4:
-        print("usage: render_function_residual.py <smt2> <schema> <out>", file=sys.stderr); sys.exit(2)
-    render(sys.argv[1], sys.argv[2], sys.argv[3])
+    cli_main(render, sys.argv, "render_function_residual.py")

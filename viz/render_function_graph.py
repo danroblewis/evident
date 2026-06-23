@@ -20,8 +20,8 @@ import matplotlib.patches as mpatches
 import networkx as nx
 
 sys.path.insert(0, "viz")
-from evident_viz import load
-from functionize import extract_functions, function_summary
+from functionize import function_summary
+from render_function_common import cli_main, load_functions, placeholder, step_dep_vars
 
 DEP_C = "#1f77b4"      # dependent (functionized)
 DRV_C = "#7d8590"      # independent driver
@@ -48,8 +48,7 @@ def _draw_edges(g, pos, on_cycle, ax):
 
 
 def render(smt2, schema, out_path):
-    m = load(smt2, schema)
-    f = extract_functions(m)
+    m, f = load_functions(smt2, schema)
     prev_to_var = {v["prev"]: v["name"] for v in m.carried if v.get("prev")}
     step_by_var = {s["var"]: s for s in f["steps"]}
 
@@ -59,8 +58,7 @@ def render(smt2, schema, out_path):
     # edges: a dep `_W` (prev of W) means this var reads W's previous value → W feeds V.
     drivers = set()
     for s in f["steps"]:
-        deps = sorted({d for b in s.get("branches", []) for d in b["deps"]} | set(s.get("deps", [])))
-        for d in deps:
+        for d in step_dep_vars(s):
             src = prev_to_var.get(d)
             if src is None:                          # a non-carried driver (e.g. is_first_tick)
                 if d not in step_by_var:
@@ -69,7 +67,7 @@ def render(smt2, schema, out_path):
             g.add_edge(src, s["var"])
 
     if g.number_of_nodes() == 0:
-        _placeholder(out_path, m.fsm, "no functionized variables to graph")
+        placeholder(out_path, m.fsm, "data-flow graph", "no functionized variables to graph")
         return
 
     # edges that lie on a directed cycle (feedback) — the oscillation signal.
@@ -110,14 +108,5 @@ def render(smt2, schema, out_path):
     plt.close(fig)
 
 
-def _placeholder(out_path, fsm, msg):
-    fig, ax = plt.subplots(figsize=(8, 6))
-    ax.text(0.5, 0.5, msg, ha="center", va="center", fontsize=13)
-    ax.set_axis_off(); ax.set_title(f"{fsm}  —  data-flow graph")
-    fig.savefig(out_path, dpi=120, bbox_inches="tight"); plt.close(fig)
-
-
 if __name__ == "__main__":
-    if len(sys.argv) != 4:
-        print("usage: render_function_graph.py <smt2> <schema> <out>", file=sys.stderr); sys.exit(2)
-    render(sys.argv[1], sys.argv[2], sys.argv[3])
+    cli_main(render, sys.argv, "render_function_graph.py")

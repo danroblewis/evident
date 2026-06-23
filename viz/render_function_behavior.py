@@ -19,8 +19,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 sys.path.insert(0, "viz")
-from evident_viz import load
-from functionize import extract_functions
+from render_function_common import cli_main, load_functions, placeholder, step_inputs
 
 GRID = 13
 
@@ -93,15 +92,15 @@ def _panel(ax, m, V, inputs, base, ranges, discrete):
 
 
 def render(smt2, schema, out_path):
-    m = load(smt2, schema)
-    f = extract_functions(m)
+    m, f = load_functions(smt2, schema)
     prev_to_var = {v["prev"]: v["name"] for v in m.carried if v.get("prev")}
     base = m.initial_state() or {v["name"]: None for v in m.carried}
     # Derived vars are same-tick functions of CURRENT state (no prev inputs to sweep) — their behaviour
     # is read off the carried vars they depend on, so they don't get a transfer-map panel here.
     steps = [s for s in f["steps"] if not s.get("derived")]
     if not steps:
-        _placeholder(out_path, m.fsm, "no carried functions to sample (derived vars shown elsewhere)"); return
+        placeholder(out_path, m.fsm, "function behaviour",
+                    "no carried functions to sample (derived vars shown elsewhere)"); return
     # Reachable excursion per variable — the real input range to sample over.
     states, _ = m.reachable(limit=400)
     ranges = {}
@@ -114,8 +113,7 @@ def render(smt2, schema, out_path):
     n = len(steps)
     fig, axes = plt.subplots(1, n, figsize=(5.6 * n, 4.8), squeeze=False)
     for ax, s in zip(axes[0], steps):
-        deps = sorted({d for b in s.get("branches", []) for d in b["deps"]} | set(s.get("deps", [])))
-        inputs = [prev_to_var[d] for d in deps if d in prev_to_var]
+        inputs = step_inputs(s, prev_to_var)
         # discrete = a piecewise (guarded) map OR a non-Real output → unconnected points, no fake curve.
         discrete = s["kind"] == "guarded" or kind_of.get(s["var"]) in ("int", "bool", "enum")
         _panel(ax, m, s["var"], inputs, base, ranges, discrete)
@@ -126,14 +124,5 @@ def render(smt2, schema, out_path):
     plt.close(fig)
 
 
-def _placeholder(out_path, fsm, msg):
-    fig, ax = plt.subplots(figsize=(8, 6))
-    ax.text(0.5, 0.5, msg, ha="center", va="center", fontsize=13)
-    ax.set_axis_off(); ax.set_title(f"{fsm}  —  function behaviour")
-    fig.savefig(out_path, dpi=120, bbox_inches="tight"); plt.close(fig)
-
-
 if __name__ == "__main__":
-    if len(sys.argv) != 4:
-        print("usage: render_function_behavior.py <smt2> <schema> <out>", file=sys.stderr); sys.exit(2)
-    render(sys.argv[1], sys.argv[2], sys.argv[3])
+    cli_main(render, sys.argv, "render_function_behavior.py")
