@@ -3758,16 +3758,23 @@
       "id": 176,
       "title": "Diagram should fill the right pane: at laptop width (1280) and even at full width there's large dead space between the view-tab strip and the diagram, and below it; the plot doesn't grow to use it. Make the active diagram expand to fill available height (it's currently a fixed-aspect PNG floated in a tall empty column).",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "ide-critic",
       "created": "2026-06-22T11:46:34Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "viz"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-23T17:02:35Z",
+          "by": "worker",
+          "act": "done",
+          "note": "shipped: resetPanZoom scales the .view-wrap UP to fill a pane larger than the figure (single-view, gated fit>1.02 so laptop/letterbox cases unchanged), re-centered for transform-origin 0 0 + flex (tx=ww(1-s)/2), clamped 2.5\u00d7; re-fits on img load. Overlay points/trace ring are wrap children \u2192 scale together, stay aligned. Verified: 2400\u00d71400 fills 98-99% centered, 1440\u00d7900 unchanged (1.00), N-queens board fills, zoom composes from fitted base + reset re-fits, 0 console errors, ./test.sh green."
+        }
+      ]
     },
     {
       "id": 180,
