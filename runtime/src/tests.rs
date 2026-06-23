@@ -392,6 +392,81 @@ mod parser {
         }
     }
 
+    // ── `:=` initial-value seed: lowers to `is_first_tick ⇒ name = val` ──
+
+    #[test]
+    fn parse_initial_value_seed_scalar() {
+        // `x ∈ Int := 0` → Membership(x: Int) + Constraint(is_first_tick ⇒ x = 0).
+        let p = parse("fsm t\n    x ∈ Int := 0\n").unwrap();
+        let s = &p.schemas[0];
+        assert_eq!(s.body.len(), 2, "expected Membership + seed Constraint");
+        assert!(matches!(&s.body[0], BodyItem::Membership { name, type_name, .. }
+            if name == "x" && type_name == "Int"));
+        match &s.body[1] {
+            BodyItem::Constraint(Expr::Binary(BinOp::Implies, ante, cons)) => {
+                assert!(matches!(ante.as_ref(), Expr::Identifier(n) if n == "is_first_tick"));
+                assert!(matches!(cons.as_ref(),
+                    Expr::Binary(BinOp::Eq, l, r)
+                        if matches!(l.as_ref(), Expr::Identifier(n) if n == "x")
+                        && matches!(r.as_ref(), Expr::Int(0))));
+            }
+            other => panic!("expected is_first_tick ⇒ x = 0, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn parse_initial_value_seed_equals_explicit_is_first_tick() {
+        // The whole point: `:=` must parse to the IDENTICAL AST as the explicit
+        // `is_first_tick ⇒ x = 0` form (same Z3 encoding, 0 dropped, no silent bug).
+        let via_seed = parse("fsm t\n    x ∈ Int := 0\n").unwrap();
+        let via_explicit =
+            parse("fsm t\n    x ∈ Int\n    is_first_tick ⇒ x = 0\n").unwrap();
+        // Both produce: [Membership(x), Constraint(is_first_tick ⇒ x = 0)].
+        let seed_body = format!("{:?}", via_seed.schemas[0].body);
+        let explicit_body = format!("{:?}", via_explicit.schemas[0].body);
+        assert_eq!(seed_body, explicit_body,
+            "`:=` seed must lower to the identical AST as explicit is_first_tick");
+    }
+
+    #[test]
+    fn parse_initial_value_seed_multi_name() {
+        // `x, y ∈ Int := 0` → 2 Memberships + 2 is_first_tick-guarded seeds.
+        let p = parse("fsm t\n    x, y ∈ Int := 0\n").unwrap();
+        let s = &p.schemas[0];
+        assert_eq!(s.body.len(), 4, "expected 2 Memberships + 2 seed Constraints");
+        assert!(matches!(&s.body[0], BodyItem::Membership { name, .. } if name == "x"));
+        assert!(matches!(&s.body[1], BodyItem::Membership { name, .. } if name == "y"));
+        for (i, var) in [(2, "x"), (3, "y")] {
+            match &s.body[i] {
+                BodyItem::Constraint(Expr::Binary(BinOp::Implies, ante, cons)) => {
+                    assert!(matches!(ante.as_ref(),
+                        Expr::Identifier(n) if n == "is_first_tick"));
+                    assert!(matches!(cons.as_ref(),
+                        Expr::Binary(BinOp::Eq, l, _)
+                            if matches!(l.as_ref(), Expr::Identifier(n) if n == var)));
+                }
+                other => panic!("expected seed for {var}, got {:?}", other),
+            }
+        }
+    }
+
+    #[test]
+    fn parse_initial_value_seed_record_ctor() {
+        // `pos ∈ IVec2 := IVec2(3, 4)` — the seed RHS is a record literal (Call).
+        let p = parse("fsm t\n    pos ∈ IVec2 := IVec2(3, 4)\n").unwrap();
+        let s = &p.schemas[0];
+        assert!(matches!(&s.body[0], BodyItem::Membership { name, type_name, .. }
+            if name == "pos" && type_name == "IVec2"));
+        match &s.body[1] {
+            BodyItem::Constraint(Expr::Binary(BinOp::Implies, _, cons)) => {
+                assert!(matches!(cons.as_ref(),
+                    Expr::Binary(BinOp::Eq, _, r)
+                        if matches!(r.as_ref(), Expr::Call(n, _) if n == "IVec2")));
+            }
+            other => panic!("expected record seed, got {:?}", other),
+        }
+    }
+
     #[test]
     fn parse_chained_membership_multi_name() {
 

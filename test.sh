@@ -311,6 +311,25 @@ if [ "$EXAMPLES_ONLY" -eq 0 ] && command -v python3 >/dev/null 2>&1; then
     echo
 fi
 
+# ── Phase 2.18: `:=` initial-value seed ≡ explicit is_first_tick (#295) ──
+# `x ∈ Int := 0` is sugar for `is_first_tick ⇒ x = 0`. A dropped/malformed seed
+# is a SILENT bug, so this pins end-to-end equivalence: the `:=` form and the
+# explicit guarded form must produce byte-identical effect-run traces (scalar,
+# multi-name, and record-ctor seeds). Needs only the release binary.
+if [ "$EXAMPLES_ONLY" -eq 0 ]; then
+    phase "Phase 2.18: := initial-value ≡ is_first_tick seed"
+    EVIDENT_BIN="$PWD/runtime/target/release/evident"
+    if bash runtime/tests/initial_value_equiv.sh "$EVIDENT_BIN" \
+            > /tmp/evident-initval-equiv.log 2>&1; then
+        ok ":= seed equivalence ($(tail -1 /tmp/evident-initval-equiv.log))"
+    else
+        fail ":= seed did NOT match the explicit is_first_tick form (see above)"
+        cat /tmp/evident-initval-equiv.log >&2
+        failures+=(":= initial-value equivalence")
+    fi
+    echo
+fi
+
 # ── Optional: examples runner ────────────────────────────────
 # Walks examples/, runs each via effect-run. For visual demos (anything
 # that imports packages/sdl/), spawn the program, screenshot the Xvfb

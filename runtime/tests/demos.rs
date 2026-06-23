@@ -114,6 +114,12 @@ const EXPECTATIONS: &[DemoExpect] = &[
         forbid_exact_lines: &["milli = 60001"],
         max_steps: 14, tick_ms: 0, stdin: None,
     },
+    DemoExpect {
+        name: "test_26_initial", exit: 0,
+        must_lines: &["sum = 0", "sum = 3", "sum = 6", "sum = 9"],
+        forbid_exact_lines: &["sum = 1", "sum = 2"],
+        max_steps: 10, tick_ms: 0, stdin: None,
+    },
 ];
 
 #[test]

@@ -1,0 +1,73 @@
+-- 26_initial — the `:=` initial-value (first-tick seed) primitive.
+--
+-- `x ∈ Int := 0` declares `x` AND seeds it on the FIRST tick only — it is
+-- sugar for `is_first_tick ⇒ x = 0`, distinct from `x ∈ Int = 0` (which would
+-- pin `x = 0` on EVERY tick). The seed attaches to the declaration, so the
+-- "what's the starting value" lives on one line with the type, not in a
+-- separate guarded block. Compare the verbose explicit form in test_23.
+--
+-- Both scalar and multi-name decls take `:=`. Here two counters seed to 0 on
+-- tick 0, then climb by their own deltas (`Δx = 1`, `Δy = 2`); the run prints
+-- the running sum 0, 3, 6, 9 and halts.
+
+import "stdlib/runtime.ev"
+
+fsm climb
+    x, y ∈ Int := 0          -- multi-name initial seed: both start at 0
+    Δx = 1
+    Δy = 2
+
+    sum  ∈ Int    = x + y
+    s    ∈ String = to_str(sum)
+    done ∈ Bool   = (sum ≥ 9)
+
+    effects = (done ? ⟨Println("sum = " ++ s), Exit(0)⟩
+                    : ⟨Println("sum = " ++ s)⟩)
+
+-- ── Static tests ─────────────────────────────────────────────
+
+-- On the first tick the seed fires: `x, y ∈ Int := 0` ⇒ both are 0, sum 0.
+claim sat_seed_fires_on_first_tick
+    x ∈ Int
+    y ∈ Int
+    _x ∈ Int
+    _y ∈ Int
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+
+    is_first_tick = true
+    climb
+    x = 0
+    y = 0
+
+-- After the first tick the seed does NOT apply; only the deltas constrain the
+-- carry. With _x = 4, `Δx = 1` forces x = 5 — the seed must not pin x back to 0.
+claim sat_seed_inert_after_first_tick
+    x ∈ Int
+    y ∈ Int
+    _x ∈ Int
+    _y ∈ Int
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+
+    is_first_tick = false
+    _x = 4
+    climb
+    x = 5                    -- Δx = 1 ⇒ x = _x + 1, seed inert
+
+-- The seed must NOT force x = 0 once past the first tick.
+claim unsat_seed_does_not_repin_after_first
+    x ∈ Int
+    y ∈ Int
+    _x ∈ Int
+    _y ∈ Int
+    is_first_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+
+    is_first_tick = false
+    _x = 4
+    climb
+    x = 0                    -- would need the seed to fire off-tick  ✗
