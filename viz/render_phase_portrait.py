@@ -45,14 +45,17 @@ import matplotlib.pyplot as plt
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__))))
 from evident_viz import load
-# The numeric (continuous vector-field / orbit) machinery + the value<->plane
-# projection primitives live in phase_portrait_field; this file owns channel
-# planning, the discrete-graph regime, faceting layout, and orchestration.
+# The per-panel DRAWING + value<->plane projection primitives live in
+# phase_portrait_field; the field-DOMAIN derivation (regime classification + extent
+# helpers) lives in phase_portrait_extent. This file owns channel planning, the
+# discrete-graph regime, faceting layout, and orchestration.
 from phase_portrait_field import (
     _numeric, _is_numeric, _axis_ticks, _cardinality,
-    _orbit_extent, _robust_span, render_numeric_panel,
-    _numeric_regime, _dwell_span, _reachable_extent, _FINITE_STATE_CAP,
-    render_discrete_panel, _bounds_of,
+    render_numeric_panel, render_discrete_panel, _bounds_of,
+)
+from phase_portrait_extent import (
+    orbit_extent as _orbit_extent, numeric_regime as _numeric_regime,
+    dwell_span as _dwell_span, reachable_extent as _reachable_extent,
 )
 # Interactive hover-overlay sidecar (#184 increment 3): only the MAIN scatter
 # axis is hoverable — the numeric orbit's trajectory states / the discrete

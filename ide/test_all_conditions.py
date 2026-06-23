@@ -303,6 +303,81 @@ def check_time_series_ensemble():
     return fails
 
 
+def check_phase_portrait_field():
+    """A phase portrait's value is the VECTOR FIELD over the whole plane — the flow at EVERY
+    point — not one seeded trajectory. Pins both halves of the diagram-review fix:
+
+      - the damped-spring oscillator (a 2-var Real-ish continuous system) must render a genuine
+        QUIVER vector field (ax.quiver called over a grid), with trajectories OVERLAID — proved
+        by counting quiver calls (the field) AND plotted lines (the overlay).
+      - predator-prey (lotka) must NOT CRASH: a diverging successor produces a 1000+-digit z3
+        numeral whose as_long() raises — the renderer must guard it (skip/clamp) so the field
+        never crashes, where the unguarded path raised ValueError mid-render.
+
+    Both render the daemon .ev files end-to-end through render_phase_portrait, asserting a
+    non-empty PNG. The field is checked by patching matplotlib's quiver/plot to record calls."""
+    import os
+    sys.path.insert(0, "viz")
+    import matplotlib
+    matplotlib.use("Agg")
+    from matplotlib.axes import Axes
+    import render_phase_portrait as RP                                  # noqa: E402
+
+    fails = []
+    daemons = "examples/daemons"
+    spring_src = open(os.path.join(daemons, "spring.ev")).read()
+    lotka_src = open(os.path.join(daemons, "lotka.ev")).read()
+
+    # --- spring: a real QUIVER field + overlaid trajectories -----------------
+    with tempfile.TemporaryDirectory() as work:
+        ok, prefix, _dropped, msg = _export(spring_src, work)
+        if not ok:
+            return [f"phase_portrait: spring export failed: {msg.splitlines()[0][:80]}"]
+        out = work + "/spring.phase_portrait.png"
+        counts = {"quiver": 0, "plot": 0}
+        orig_q, orig_p = Axes.quiver, Axes.plot
+
+        def _q(self, *a, **k):
+            counts["quiver"] += 1
+            return orig_q(self, *a, **k)
+
+        def _p(self, *a, **k):
+            counts["plot"] += 1
+            return orig_p(self, *a, **k)
+
+        Axes.quiver, Axes.plot = _q, _p
+        try:
+            RP.render(prefix + ".smt2", prefix + ".schema.json", out)
+        except Exception as e:
+            fails.append(f"phase_portrait: spring render crashed: {type(e).__name__}: {e}")
+        finally:
+            Axes.quiver, Axes.plot = orig_q, orig_p
+        if not (os.path.exists(out) and os.path.getsize(out) > 0):
+            fails.append("phase_portrait: spring produced no PNG")
+        if counts["quiver"] < 1:
+            fails.append("phase_portrait: spring drew NO quiver vector field "
+                         "(a phase portrait must show the flow at every point, not one curve)")
+        if counts["plot"] < 1:
+            fails.append("phase_portrait: spring drew no overlaid trajectory line")
+
+    # --- lotka (predator-prey): must NOT crash on divergence ------------------
+    with tempfile.TemporaryDirectory() as work:
+        ok, prefix, _dropped, msg = _export(lotka_src, work)
+        if not ok:
+            return fails + [f"phase_portrait: lotka export failed: {msg.splitlines()[0][:80]}"]
+        out = work + "/lotka.phase_portrait.png"
+        try:
+            RP.render(prefix + ".smt2", prefix + ".schema.json", out)
+        except (OverflowError, ValueError) as e:
+            fails.append(f"phase_portrait: lotka (predator-prey) CRASHED on divergence — "
+                         f"the field must guard a runaway successor: {type(e).__name__}: {e}")
+        except Exception as e:
+            fails.append(f"phase_portrait: lotka render crashed: {type(e).__name__}: {e}")
+        if not (os.path.exists(out) and os.path.getsize(out) > 0):
+            fails.append("phase_portrait: lotka produced no PNG")
+    return fails
+
+
 def main():
     fails = []
     fails += check_bistable()
@@ -312,6 +387,7 @@ def main():
     fails += check_fixedpoint_map_global()
     fails += check_real_fallback()
     fails += check_time_series_ensemble()
+    fails += check_phase_portrait_field()
     if fails:
         print("ALL-INITIAL-CONDITIONS TEST FAILURES:")
         for f in fails:
@@ -319,7 +395,8 @@ def main():
         return 1
     print("✓ all-initial-conditions: bistable ⊋ from-init (both basins); "
           "counter/traffic enumerate; basin_map + fixedpoint_map partition on the "
-          "global graph; time_series ensemble fans to BOTH attractors; real falls back")
+          "global graph; time_series ensemble fans to BOTH attractors; phase_portrait "
+          "draws the vector field + overlay and lotka doesn't crash; real falls back")
     return 0
 
 
