@@ -483,8 +483,24 @@ async function runTemporal(out, body) {
 // Parse a conjunction string into a list of `[var, op, value]` terms (the /api/query payload).
 // Returns { terms } on success or { error: "<bad term>" } on the first unparseable term — the
 // single source of truth for both the one-shot query and an asserted assumption (Ana #240).
+function _stripOuterParens(s) {
+  // Drop ONE matched outer paren: `(P ∧ Q)` → `P ∧ Q`. A verification engineer parenthesizes the
+  // operand by reflex — `□◇ (P ∧ Q)` must parse like `□◇ P ∧ Q` (Ana #263). Only strips when the
+  // leading `(` closes at the very end (balanced), so `(a) ∧ (b)` is left alone.
+  let t = (s || "").trim();
+  while (t.startsWith("(") && t.endsWith(")")) {
+    let depth = 0, matched = true;
+    for (let i = 0; i < t.length; i++) {
+      if (t[i] === "(") depth++;
+      else if (t[i] === ")") { depth--; if (depth === 0 && i < t.length - 1) { matched = false; break; } }
+    }
+    if (!matched || depth !== 0) break;
+    t = t.slice(1, -1).trim();
+  }
+  return t;
+}
 function _parseTerms(raw) {
-  const parts = (raw || "").split(/\s*(?:∧|\/\\|\band\b)\s*/).filter((p) => p.trim());
+  const parts = _stripOuterParens(raw).split(/\s*(?:∧|\/\\|\band\b)\s*/).filter((p) => p.trim());
   const terms = [];
   for (const part of parts) {
     const m = part.match(_INV_RE);
