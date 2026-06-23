@@ -58,12 +58,8 @@ pub fn extract_program<'ctx>(
 
     for a in assertions {
 
-        if let Some((guard, consequent)) = try_guarded(a) {
-            if classify_guarded_consequent(&consequent, &output_set,
-                &mut guarded, &guard).is_some()
-            {
-                continue;
-            }
+        if try_classify_guarded(a, &output_set, &mut guarded).is_some() {
+            continue;
         }
 
         let Some((lhs, rhs)) = split_equality(a) else {
@@ -88,21 +84,9 @@ pub fn extract_program<'ctx>(
             }
         }
 
-        if let Some(name) = ast_app_name(&lhs) {
-            if output_set.contains(name.as_str())
-                && !scalar_assign.contains_key(&name)
-                && !mentions_name(&rhs, &name)
-            {
-                scalar_assign.insert(name, rhs);
-                continue;
-            }
-        }
-        if let Some(name) = ast_app_name(&rhs) {
-            if output_set.contains(name.as_str())
-                && !scalar_assign.contains_key(&name)
-                && !mentions_name(&lhs, &name)
-            {
-                scalar_assign.insert(name, lhs);
+        if let Some((name, body)) = solve_output_eq(&lhs, &rhs, &output_set) {
+            if !scalar_assign.contains_key(&name) {
+                scalar_assign.insert(name, body);
                 continue;
             }
         }
@@ -182,12 +166,8 @@ pub fn extract_program_partial<'ctx>(
     let mut predicates: Vec<Bool<'ctx>> = Vec::new();
 
     for a in assertions {
-        if let Some((guard, consequent)) = try_guarded(a) {
-            if classify_guarded_consequent(&consequent, &output_set,
-                &mut guarded, &guard).is_some()
-            {
-                continue;
-            }
+        if try_classify_guarded(a, &output_set, &mut guarded).is_some() {
+            continue;
         }
 
         if let Some(inner) = try_negation(a) {
@@ -236,21 +216,9 @@ pub fn extract_program_partial<'ctx>(
                 continue;
             }
         }
-        if let Some(name) = ast_app_name(&lhs) {
-            if output_set.contains(name.as_str())
-                && !scalar_assign.contains_key(&name)
-                && !mentions_name(&rhs, &name)
-            {
-                scalar_assign.insert(name, rhs);
-                continue;
-            }
-        }
-        if let Some(name) = ast_app_name(&rhs) {
-            if output_set.contains(name.as_str())
-                && !scalar_assign.contains_key(&name)
-                && !mentions_name(&lhs, &name)
-            {
-                scalar_assign.insert(name, lhs);
+        if let Some((name, body)) = solve_output_eq(&lhs, &rhs, &output_set) {
+            if !scalar_assign.contains_key(&name) {
+                scalar_assign.insert(name, body);
                 continue;
             }
         }
@@ -670,24 +638,63 @@ fn try_negation<'ctx>(a: &Bool<'ctx>) -> Option<Bool<'ctx>> {
     child.as_bool()
 }
 
-fn try_guarded<'ctx>(a: &Bool<'ctx>) -> Option<(Dynamic<'ctx>, Bool<'ctx>)> {
-    if a.kind() != AstKind::App { return None; }
-    let decl = a.safe_decl().ok()?;
-    if decl.kind() != DeclKind::OR { return None; }
+/// Enumerate the candidate `(guard, consequent)` readings of a 2-ary `Or` that could be a guarded
+/// assignment — the assignment holds whenever `guard` is true. Two lowerings produce this shape:
+///   `g ⇒ x = e`  lowers to  `(or (not g) (= x e))`  → guard `g`, consequent `(= x e)`.
+///   `¬g ⇒ x = e` lowers to  `(or g (= x e))`        → guard `(not g)`, consequent `(= x e)`.
+/// We don't know which `Or` operand is the guard vs. the body (Z3 may order them either way), and the
+/// positive-pred reading (negate one side, treat the other as the body) applies to ANY operand — so
+/// we return ALL plausible readings and let the caller's `classify_guarded_consequent` pick the one
+/// whose consequent is an actual output assignment. A plain disjunction with no output equality
+/// classifies in none and is left a residual predicate. Negated-pred readings come first (they're the
+/// `g ⇒ …` direct form); positive-pred readings (the `¬g ⇒ …` form) follow.
+fn guarded_candidates<'ctx>(a: &Bool<'ctx>) -> Vec<(Dynamic<'ctx>, Bool<'ctx>)> {
+    let mut out: Vec<(Dynamic<'ctx>, Bool<'ctx>)> = Vec::new();
+    if a.kind() != AstKind::App { return out; }
+    let Ok(decl) = a.safe_decl() else { return out; };
+    if decl.kind() != DeclKind::OR { return out; }
     let children = a.children();
-    if children.len() != 2 { return None; }
-    let try_pair = |neg: &Dynamic<'ctx>, conseq: &Dynamic<'ctx>|
+    if children.len() != 2 { return out; }
+    let neg_pair = |neg: &Dynamic<'ctx>, conseq: &Dynamic<'ctx>|
         -> Option<(Dynamic<'ctx>, Bool<'ctx>)>
     {
         if neg.kind() != AstKind::App { return None; }
         let nd = neg.safe_decl().ok()?;
         if nd.kind() != DeclKind::NOT { return None; }
         let pred = neg.children().into_iter().next()?;
-        let conseq_bool = conseq.as_bool()?;
-        Some((pred, conseq_bool))
+        Some((pred, conseq.as_bool()?))
     };
-    try_pair(&children[0], &children[1])
-        .or_else(|| try_pair(&children[1], &children[0]))
+    let pos_pair = |pred: &Dynamic<'ctx>, conseq: &Dynamic<'ctx>|
+        -> Option<(Dynamic<'ctx>, Bool<'ctx>)>
+    {
+        let pred_bool = pred.as_bool()?;
+        let conseq_bool = conseq.as_bool()?;
+        Some((Dynamic::from_ast(&pred_bool.not()), conseq_bool))
+    };
+    for (g, c) in [(&children[0], &children[1]), (&children[1], &children[0])] {
+        if let Some(r) = neg_pair(g, c) { out.push(r); }
+    }
+    for (g, c) in [(&children[0], &children[1]), (&children[1], &children[0])] {
+        if let Some(r) = pos_pair(g, c) { out.push(r); }
+    }
+    out
+}
+
+/// Classify a 2-ary `Or` as a guarded output assignment by trying every candidate reading from
+/// `guarded_candidates` until one's consequent is an output assignment. Returns `Some(())` on the
+/// first that classifies (recording its branch in `guarded`), else None — leaving the assertion to
+/// the caller's residual path.
+fn try_classify_guarded<'ctx>(
+    a: &Bool<'ctx>,
+    output_set: &std::collections::HashSet<&str>,
+    guarded: &mut HashMap<String, Vec<GuardedBranch<'ctx>>>,
+) -> Option<()> {
+    for (guard, consequent) in guarded_candidates(a) {
+        if classify_guarded_consequent(&consequent, output_set, guarded, &guard).is_some() {
+            return Some(());
+        }
+    }
+    None
 }
 
 fn classify_guarded_consequent<'ctx>(
@@ -698,23 +705,13 @@ fn classify_guarded_consequent<'ctx>(
 ) -> Option<()> {
 
     if let Some((lhs, rhs)) = split_equality_dyn(conseq) {
-        if let Some(name) = ast_app_name(&lhs) {
-            if output_set.contains(name.as_str()) {
-                guarded.entry(name).or_default().push(GuardedBranch {
-                    guard: guard.clone(),
-                    body:  GuardedBody::Scalar(rhs),
-                });
-                return Some(());
-            }
-        }
-        if let Some(name) = ast_app_name(&rhs) {
-            if output_set.contains(name.as_str()) {
-                guarded.entry(name).or_default().push(GuardedBranch {
-                    guard: guard.clone(),
-                    body:  GuardedBody::Scalar(lhs),
-                });
-                return Some(());
-            }
+        // Handles both bare-var (`x = e`) and the Δ-form (`x − _x = δ` ⇒ `x = δ + _x`).
+        if let Some((name, body)) = solve_output_eq(&lhs, &rhs, output_set) {
+            guarded.entry(name).or_default().push(GuardedBranch {
+                guard: guard.clone(),
+                body:  GuardedBody::Scalar(body),
+            });
+            return Some(());
         }
     }
 
@@ -918,6 +915,89 @@ fn ast_app_name<'ctx>(a: &Dynamic<'ctx>) -> Option<String> {
     if a.num_children() != 0 { return None; }
     let decl = a.safe_decl().ok()?;
     Some(decl.name())
+}
+
+/// Solve an equality `lhs == rhs` for an output variable `var`, returning `(var, body)` such that
+/// `var = body`. Beyond the bare-var-on-either-side form (`var == e` ⇒ `var = e`), this recognizes
+/// the **Δ-form** the carried-state lowering emits — `Δvar` desugars to `var − _var`, which Z3's
+/// simplifier normalizes to a SUM `(+ var (* (- 1) _var))` (or a SUB `(- var rest)`). When a bare
+/// output `var` appears as an addend of that sum with `rhs` being the delta, we solve:
+///   `(+ var rest…) == rhs`  ⇒  `var = rhs − (rest…)`
+///   `(- var rest)   == rhs`  ⇒  `var = rhs + rest`
+/// `var` must not appear in `rhs` or in the residual `rest` (so it's genuinely a function, not a
+/// recurrence we'd have to fix-point). Returns None if no output var can be isolated.
+fn solve_output_eq<'ctx>(
+    lhs: &Dynamic<'ctx>,
+    rhs: &Dynamic<'ctx>,
+    output_set: &std::collections::HashSet<&str>,
+) -> Option<(String, Dynamic<'ctx>)> {
+    // Bare var on either side: var == other  ⇒  var = other.
+    for (x, y) in [(lhs, rhs), (rhs, lhs)] {
+        if let Some(name) = ast_app_name(x) {
+            if output_set.contains(name.as_str()) && !mentions_name(y, &name) {
+                return Some((name, y.clone()));
+            }
+        }
+    }
+    // Δ-form: an arithmetic combination on one side, the delta on the other.
+    for (x, y) in [(lhs, rhs), (rhs, lhs)] {
+        if let Some(res) = solve_delta_side(x, y, output_set) {
+            return Some(res);
+        }
+    }
+    None
+}
+
+/// Isolate a bare output var from `x == y` where `x` is `(+ var rest…)` or `(- var rest)`.
+fn solve_delta_side<'ctx>(
+    x: &Dynamic<'ctx>,
+    y: &Dynamic<'ctx>,
+    output_set: &std::collections::HashSet<&str>,
+) -> Option<(String, Dynamic<'ctx>)> {
+    if x.kind() != AstKind::App { return None; }
+    let decl = x.safe_decl().ok()?;
+    let kind = decl.kind();
+    let children = x.children();
+    let rhs_int = y.as_int()?;        // Δ-form is integer arithmetic
+    match kind {
+        DeclKind::ADD => {
+            // Exactly one addend is a bare output var; the rest sum to `rest`.
+            let mut var_pos: Option<(usize, String)> = None;
+            for (i, c) in children.iter().enumerate() {
+                if let Some(name) = ast_app_name(c) {
+                    if output_set.contains(name.as_str()) {
+                        if var_pos.is_some() { return None; } // ambiguous — two output addends
+                        var_pos = Some((i, name));
+                    }
+                }
+            }
+            let (vi, name) = var_pos?;
+            if mentions_name(y, &name) { return None; }
+            // rest = sum of every other addend; var must not appear there either.
+            let mut rest: Option<Int<'ctx>> = None;
+            for (i, c) in children.iter().enumerate() {
+                if i == vi { continue; }
+                if mentions_name(c, &name) { return None; }
+                let ci = c.as_int()?;
+                rest = Some(match rest { Some(r) => r + &ci, None => ci });
+            }
+            let body = match rest {
+                Some(r) => &rhs_int - &r,   // var = rhs − rest
+                None => rhs_int,            // degenerate single-addend sum
+            };
+            Some((name, Dynamic::from_ast(&body)))
+        }
+        DeclKind::SUB if children.len() == 2 => {
+            // (- var rest) == y  ⇒  var = y + rest
+            let name = ast_app_name(&children[0])?;
+            if !output_set.contains(name.as_str()) { return None; }
+            if mentions_name(y, &name) || mentions_name(&children[1], &name) { return None; }
+            let rest = children[1].as_int()?;
+            let body = &rhs_int + &rest;
+            Some((name, Dynamic::from_ast(&body)))
+        }
+        _ => None,
+    }
 }
 
 fn mentions_name<'ctx>(a: &Dynamic<'ctx>, name: &str) -> bool {
