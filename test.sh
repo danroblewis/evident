@@ -311,6 +311,24 @@ if [ "$EXAMPLES_ONLY" -eq 0 ] && command -v python3 >/dev/null 2>&1; then
     echo
 fi
 
+# ── Phase 2.17: space_time raster of a Seq-carried FSM (#308) ──
+# The space_time view rasters a Seq-carried FSM's evolution: rows = ticks, columns = Seq positions,
+# color = cell value. For Rule 90 seeded with a single 1 the raster IS the Sierpiński triangle. This
+# pins the GENERIC machinery: the raster shape == (#ticks × #cells), Rule 90's tick-1 row is the
+# exact neighbour-XOR of the seed (so the fractal is real, not decoration), and an Int-valued Seq
+# (diffusion buffer) takes the non-binary colormap path. Renderer-independent: asserts on the grid.
+if [ "$EXAMPLES_ONLY" -eq 0 ] && command -v python3 >/dev/null 2>&1; then
+    phase "Phase 2.17: space_time Seq-FSM raster (Rule 90 Sierpiński)"
+    if python3 ide/test_space_time.py > /tmp/evident-spacetime.log 2>&1; then
+        ok "space-time raster ($(tail -1 /tmp/evident-spacetime.log))"
+    else
+        fail "space-time: raster shape wrong, or Rule 90 tick-1 XOR pattern mismatched (see above)"
+        cat /tmp/evident-spacetime.log >&2
+        failures+=("space-time raster")
+    fi
+    echo
+fi
+
 # ── Optional: examples runner ────────────────────────────────
 # Walks examples/, runs each via effect-run. For visual demos (anything
 # that imports packages/sdl/), spawn the program, screenshot the Xvfb

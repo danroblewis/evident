@@ -57,6 +57,25 @@ SAMPLES = {
         '    #xs = 3\n'
         '    is_first_tick ⇒ xs = ⟨1, 2, 3⟩\n'
         '    ¬is_first_tick ⇒ ∀ (cur, nxt) ∈ coindexed(_xs, xs) : nxt = cur + 1\n'),
+    # Rule 90 — the HEADLINE space_time case: a Seq(Int) of 0/1 whose next row is the
+    # cellwise XOR of its neighbours. The space_time raster of this is the Sierpiński
+    # triangle (binary cmap). Guards the deterministic-trajectory + binary-raster path.
+    "rule90": (
+        'fsm rule90\n'
+        '    cells ∈ Seq(Int)\n'
+        '    #cells = 11\n'
+        '    is_first_tick ⇒ cells = ⟨0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0⟩\n'
+        '    ∀ i ∈ {1..9} : cells[i] = ((_cells[i-1] + _cells[i+1]) = 1 ? 1 : 0)\n'
+        '    (cells[0] = 0 ∧ cells[10] = 0)\n'),
+    # A multi-VALUED Seq(Int) diffusion buffer — exercises space_time's COLORMAP (non-binary)
+    # path: a 1-D box-blur smooths an initial spike, so cells take a range of integer values.
+    "diffuse": (
+        'fsm diffuse\n'
+        '    buf ∈ Seq(Int)\n'
+        '    #buf = 9\n'
+        '    is_first_tick ⇒ buf = ⟨0, 0, 0, 0, 64, 0, 0, 0, 0⟩\n'
+        '    ∀ i ∈ {1..7} : buf[i] = (_buf[i-1] + 2 * _buf[i] + _buf[i+1]) / 4\n'
+        '    (buf[0] = 0 ∧ buf[8] = 0)\n'),
     # CONTINUOUS / CHAOTIC Real-valued samples — the crash-robustness guard set. These
     # used to throw uncaught exceptions out of the dynamics renderers instead of clamping
     # or rendering an honest N/A card:

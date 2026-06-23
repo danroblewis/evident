@@ -56,7 +56,7 @@ const DEFAULT_PROGRAM =
 // to that view instead of the generic recommendation (#87/#128/#168). Special/headline views are
 // listed BEFORE the generic ones so an incidental "state_graph" mention never beats the real one;
 // the server validates the token and falls back to the recommended view if it's unknown.
-const VIEW_TOKENS = ["phase_portrait", "cobweb", "nullcline_field", "timing_diagram",
+const VIEW_TOKENS = ["space_time", "phase_portrait", "cobweb", "nullcline_field", "timing_diagram",
   "function_graph", "function_behavior", "function_guards", "function_complexity", "function_residual",
   "morse_graph", "basin_map", "fixedpoint_map", "chord_diagram", "transition_matrix",
   "occupancy_heatmap", "orbit_scatter", "parallel_coords", "reachability_tree", "scatter_matrix",
@@ -455,13 +455,14 @@ claim sort_constraints
         ∃ i ∈ {0..4} : input[i] = out[j]`,
 
   // --- diagram-value demos (each FSM picked to make one underused view shine) ---
-  "Rule 90 · a cellular-automaton fractal (Seq-state FSM, timing_diagram)":
+  "Rule 90 · a cellular-automaton fractal (Seq-state FSM, space_time)":
 `-- Rule 90 elementary cellular automaton: each cell becomes the XOR of its two
 -- neighbours (1 iff exactly one neighbour is 1). The WHOLE carried state is a
 -- Seq(Int) of 0/1 — a sequence-valued FSM, where the next sequence is a function
 -- of the previous one. A single seed grows the Sierpinski-triangle fractal. Open
--- timing_diagram (each cell is a lane) or time_series (each cell a track) and step
--- through the trace to watch the pattern evolve.
+-- the space_time view — it stacks every tick into one raster (rows = ticks, columns
+-- = cells), and the Sierpiński triangle falls straight out. (timing_diagram puts
+-- each cell on its own lane; time_series tracks them too.)
 fsm rule90
     cells ∈ Seq(Int)
     #cells = 11
