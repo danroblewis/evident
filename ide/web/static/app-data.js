@@ -127,6 +127,48 @@ fsm dvd
     (¬is_first_tick ∧ (_px ≤ 0.0 ∨ _px ≥ 100.0)) ⇒ vx = 0.0 - _vx
     (¬is_first_tick ∧ 0.0 < _py ∧ _py < 60.0) ⇒ vy = _vy
     (¬is_first_tick ∧ (_py ≤ 0.0 ∨ _py ≥ 60.0)) ⇒ vy = 0.0 - _vy`,
+  "SIR epidemic · 3 coupled compartments":
+`-- The SIR model: susceptibles get infected (the S·I product), infected recover. THREE coupled
+-- functions — a driven cascade S→I→R with one product coupling. Open function_graph.
+fsm sir
+    s ∈ Real
+    i ∈ Real
+    r ∈ Real
+    is_first_tick ⇒ (s = 99.0 ∧ i = 1.0 ∧ r = 0.0)
+    ¬is_first_tick ⇒ Δs = 0.0 - _s * _i * 0.001
+    ¬is_first_tick ⇒ Δi = _s * _i * 0.001 - _i * 0.05
+    ¬is_first_tick ⇒ Δr = _i * 0.05`,
+  "cruise control · PID loop (coupled feedback)":
+`-- A speed controller: error = target − speed, an integral accumulates error, and speed responds.
+-- A feedback LOOP (speed↔error↔integral) — open function_graph for the controller cycle.
+fsm cruise
+    speed ∈ Real
+    error ∈ Real
+    integ ∈ Real
+    is_first_tick ⇒ (speed = 0.0 ∧ error = 0.0 ∧ integ = 0.0)
+    ¬is_first_tick ⇒ error = 60.0 - _speed
+    ¬is_first_tick ⇒ Δinteg = _error
+    ¬is_first_tick ⇒ Δspeed = _error * 0.3 + _integ * 0.05`,
+  "elevator · bouncing controller (deep dispatch)":
+`-- An elevator that rides to the top then back to the bottom. The functionizer compiles 5-branch
+-- GUARDED functions on (dir, floor) — open function_guards for the deep decision tree.
+enum Dir = Up | Down
+fsm elevator
+    0 ≤ floor ∈ Int ≤ 3
+    dir ∈ Dir
+    is_first_tick ⇒ (floor = 0 ∧ dir = Up)
+    (¬is_first_tick ∧ _dir = Up ∧ _floor < 3) ⇒ (floor = _floor + 1 ∧ dir = Up)
+    (¬is_first_tick ∧ _dir = Up ∧ _floor = 3) ⇒ (floor = _floor ∧ dir = Down)
+    (¬is_first_tick ∧ _dir = Down ∧ _floor > 0) ⇒ (floor = _floor - 1 ∧ dir = Down)
+    (¬is_first_tick ∧ _dir = Down ∧ _floor = 0) ⇒ (floor = _floor ∧ dir = Up)`,
+  "Collatz · 3n+1 (guarded integer map)":
+`-- The Collatz map: n even → n/2, n odd → 3n+1 (even tested as n = 2·(n/2)). A clean 2-way guarded
+-- integer function — open function_guards for the even/odd decision.
+fsm collatz
+    1 ≤ n ∈ Int ≤ 100000
+    is_first_tick ⇒ n = 27
+    (¬is_first_tick ∧ _n = 2 * (_n / 2)) ⇒ n = _n / 2
+    (¬is_first_tick ∧ _n ≠ 2 * (_n / 2)) ⇒ n = 3 * _n + 1`,
   "vending · stock, coins & a vault (FSM)":
 `-- A real vending machine: coins accumulate (up to a capacity), products sell from stock
 -- into the operator's vault, the customer can cancel for a refund, and the operator
