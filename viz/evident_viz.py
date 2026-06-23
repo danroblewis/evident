@@ -655,6 +655,14 @@ class Model:
             return True if name not in sv else cmp(sv[name])
         return name, f"{name.split('.')[-1]} {pretty} {self._fmt_val(target)}", fn
 
+    def _conj_predicate(self, terms):
+        """Build (pretty, fn) for the CONJUNCTION of `terms` (each [var, op, value]) — lets a temporal
+        check take a COMPOUND property like ◇(timer = 0 ∧ light = Red), not just one var op value
+        (Ana #258). fn(state) holds iff every term holds; per-term vacuity is handled in _predicate."""
+        built = [self._predicate(v, o, val) for (v, o, val) in terms]
+        fns = [f for (_, _, f) in built]
+        return " ∧ ".join(p for (_, p, _) in built), (lambda sv: all(f(sv) for f in fns))
+
     def query(self, terms, limit=400):
         """SOLVE an existential query over the reachable set: is there a reachable state
         satisfying the CONJUNCTION of `terms`? This is the dual of check_invariant —
@@ -746,8 +754,7 @@ class Model:
             "is_initial": is_initial,
         }
 
-    def check_temporal(self, var, op, value, modality="eventually",
-                       p_var=None, p_op=None, p_value=None, limit=400):
+    def check_temporal(self, terms, modality="eventually", p_terms=None, limit=400):
         """VERIFY a LIVENESS property over the reachable graph (the model-checker move beyond the
         safety □ that check_invariant does):
           - modality "eventually" (◇Q): does EVERY run from the initial state reach a Q-state?
@@ -772,7 +779,7 @@ class Model:
                      into a state from which Q is reachable (a real counterexample even under weak
                      fairness); False (AVOIDABLE) iff some cycle state has a fair successor that
                      escapes to Q — under fairness that successor eventually fires and Q holds."""
-        qpred, qfn = self._predicate(var, op, value)[1:]
+        qpred, qfn = self._conj_predicate(terms)
         states, edges = self.reachable(limit=limit)
         n = len(states)
         if n == 0:
@@ -789,7 +796,7 @@ class Model:
                                      n, exhaustive, pred, full_stem=True)
 
         if modality == "leads_to":
-            _, ppred, pfn = self._predicate(p_var, p_op, p_value)
+            ppred, pfn = self._conj_predicate(p_terms)
             offenders = [i for i in range(n) if pfn(states[i]) and i in a["avoid"]]
             pred = f"{ppred} ⤳ {qpred}"
             if not offenders:

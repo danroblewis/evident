@@ -185,20 +185,17 @@ def invariant(req: InvariantReq):
 
 class TemporalReq(BaseModel):
     source: str
-    var: str
-    op: str
-    value: str | int | float | bool
+    terms: list                           # [[var, op, value], …] — the Q conjunction (#258)
     modality: str = "eventually"          # "eventually" (◇Q) | "leads_to" (P ⤳ Q) | "infinitely_often" (□◇Q)
-    p_var: str | None = None
-    p_op: str | None = None
-    p_value: str | int | float | bool | None = None
+    p_terms: list | None = None           # [[var, op, value], …] — the P conjunction, for leads_to
 
 
 @app.post("/api/temporal")
 def temporal(req: TemporalReq):
     """Check a LIVENESS property over the reachable graph: ◇Q (eventually) / P⤳Q (leads-to) /
-    □◇Q (infinitely often). Returns holds + a counterexample state and the TRACE (a run that
-    dodges Q forever); ◇ also returns `recurrent` (□◇ also holds) to flag a TRANSIENT ◇."""
+    □◇Q (infinitely often). Q (and P) are CONJUNCTIONS of var-op-value terms (#258). Returns holds +
+    a counterexample state and the TRACE (a run that dodges Q forever); ◇ also returns `recurrent`
+    (□◇ also holds) to flag a TRANSIENT ◇."""
     with _LOCK, tempfile.TemporaryDirectory() as work:
         ok, prefix, dropped, msg = _export(req.source, work)
         if not ok:
@@ -206,8 +203,7 @@ def temporal(req: TemporalReq):
         try:
             m = load_model(prefix + ".smt2", prefix + ".schema.json")
             return {"ok": True, **m.check_temporal(
-                req.var, req.op, req.value, modality=req.modality,
-                p_var=req.p_var, p_op=req.p_op, p_value=req.p_value, limit=REACH_LIMIT)}
+                req.terms, modality=req.modality, p_terms=req.p_terms, limit=REACH_LIMIT)}
         except Exception as e:
             return {"ok": False, "error": str(e)}
 

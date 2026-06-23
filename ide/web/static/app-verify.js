@@ -256,27 +256,30 @@ async function checkInvariant() {
   clearTrace();                              // a new check invalidates the old scrubber
   const raw = $("#inv-prop").value.trim();
   if (!raw) { out.textContent = ""; return; }
-  // LIVENESS first: P ⤳ Q (leads-to), or ◇/eventually Q — routed to the temporal checker (#142).
+  // LIVENESS first: P ⤳ Q (leads-to), or ◇/□◇ Q. Q and P are CONJUNCTIONS — ◇(timer = 0 ∧ light = Red)
+  // — parsed via _parseTerms (the same ∧-splitter the ⊨? query uses), so they're not limited to one
+  // var op value (Ana #258/#142).
   const lt = raw.split(/\s*(?:⤳|~>|\bleads to\b)\s*/);
   if (lt.length === 2) {
-    const P = lt[0].match(_INV_RE), Q = lt[1].match(_INV_RE);
-    if (!P || !Q) { out.className = "bad"; out.textContent = "✕ leads-to: write  P ⤳ Q  (e.g. mode = Coining ⤳ mode = Idle)"; return; }
-    return runTemporal(out, { var: Q[1], op: Q[2], value: _coerce(Q[3]), modality: "leads_to",
-                              p_var: P[1], p_op: P[2], p_value: _coerce(P[3]) });
+    const P = _parseTerms(lt[0]), Q = _parseTerms(lt[1]);
+    if (P.error || Q.error || !(P.terms || []).length || !(Q.terms || []).length) {
+      out.className = "bad"; out.textContent = "✕ leads-to: write  P ⤳ Q  (e.g. mode = Coining ⤳ mode = Idle)"; return;
+    }
+    return runTemporal(out, { terms: Q.terms, modality: "leads_to", p_terms: P.terms });
   }
   // STRONG liveness □◇Q (infinitely often) — checked BEFORE plain ◇ so the □ prefix isn't
   // swallowed by the ◇ branch. Holds iff no run gets permanently trapped in ¬Q (Ana #260).
   const io = raw.match(/^\s*(?:□◇|◻◇|\[\]<>|infinitely(?:\s+often)?)\s+(.+)$/i);
   if (io) {
-    const Q = io[1].match(_INV_RE);
-    if (!Q) { out.className = "bad"; out.textContent = "✕ infinitely-often: write  □◇ var op value  (e.g. □◇ light = Yellow)"; return; }
-    return runTemporal(out, { var: Q[1], op: Q[2], value: _coerce(Q[3]), modality: "infinitely_often" });
+    const Q = _parseTerms(io[1]);
+    if (Q.error || !(Q.terms || []).length) { out.className = "bad"; out.textContent = "✕ infinitely-often: write  □◇ var op value  (e.g. □◇ light = Yellow)"; return; }
+    return runTemporal(out, { terms: Q.terms, modality: "infinitely_often" });
   }
   const ev = raw.match(/^\s*(?:◇|<>|eventually)\s+(.+)$/i);
   if (ev) {
-    const Q = ev[1].match(_INV_RE);
-    if (!Q) { out.className = "bad"; out.textContent = "✕ eventually: write  ◇ var op value  (e.g. ◇ done = true)"; return; }
-    return runTemporal(out, { var: Q[1], op: Q[2], value: _coerce(Q[3]), modality: "eventually" });
+    const Q = _parseTerms(ev[1]);
+    if (Q.error || !(Q.terms || []).length) { out.className = "bad"; out.textContent = "✕ eventually: write  ◇ var op value  (e.g. ◇ done = true)"; return; }
+    return runTemporal(out, { terms: Q.terms, modality: "eventually" });
   }
   // SAFETY (□): a two-sided range becomes TWO predicates (var ≥ lo ∧ var ≤ hi); else a single comparison.
   let preds;
