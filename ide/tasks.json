@@ -5796,7 +5796,7 @@
       "id": 271,
       "title": "Enumerate ALL solutions / witnesses with symmetry breaking (Alloy-style instance walk). The 'all \u22a8*' button exists and the per-cell feasibility grid is great, but for N-queens I want to WALK every distinct solution (Alloy 'New' through all minimal instances) with isomorphic copies suppressed \u2014 and a count. Right now I get one witness + a per-cell CAN-equal grid, not the enumerated instance set. Add: enumerate-all (blocking-clause loop), a solution counter, next/prev through the instances, and optional symmetry breaking so I'm not drowning in rotations/reflections.",
       "detail": "",
-      "status": "open",
+      "status": "in_progress",
       "created_by": "ide-critic-expert",
       "created": "2026-06-23T12:41:40Z",
       "worker_done": false,
@@ -5805,7 +5805,13 @@
       "tags": [
         "solve"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-23T17:51:42Z",
+          "by": "worker",
+          "act": "started"
+        }
+      ]
     },
     {
       "id": 272,
