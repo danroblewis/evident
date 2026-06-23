@@ -325,7 +325,10 @@ async function run(view) {
   clearTrace();                                            // …and so is the counterexample scrubber
   if (!$("#solve").hidden) {                                // stale witness/UNSAT under a changed source
     $("#solve-head").innerHTML = '<span class="dim">source changed — press re-solve</span>';
-    $("#solve-body").classList.add("stale");               // grey the board too, like #view (Sam #211)
+    // A witness BOARD: grey it, keep it visible (Sam #211). A text UNSAT core / scalar witness:
+    // CLEAR it — a core naming variables the new source no longer has is misleading (Ana #266).
+    if ($("#solve-body").querySelector(".viz-wrap")) $("#solve-body").classList.add("stale");
+    else $("#solve-body").innerHTML = "";
   }
   const t0 = performance.now();
   // A live elapsed counter so a multi-second solve (real-valued / high-fanout FSMs run 1–8s) reads

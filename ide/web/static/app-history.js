@@ -138,7 +138,10 @@ function viewPastRun(snap) {
 function togglePin() {
   if (pinnedA) { setPinned(null); return; }
   const snap = history.find((s) => s.png);
-  if (!snap) return;                 // nothing drawable to pin yet — no-op
+  if (!snap) {                       // nothing drawable to pin yet — say so, don't silently no-op (Ana #267)
+    setStatus("nothing to pin yet — wait for the picture to render, then 📌", "dim");
+    return;
+  }
   setPinned(snap);
 }
 

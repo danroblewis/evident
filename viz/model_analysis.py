@@ -139,7 +139,10 @@ class AnalysisMixin:
                 else:
                     subs.append((c, stepv[step][n]))
             s.add(z3.substitute(body, *subs))
-        return s.to_smt2()
+        # to_smt2() ends with (check-sat); append (get-model) so the BMC workflow surfaces the
+        # WITNESS TRACE — add a property over the @k vars, check-sat, and read the violating
+        # assignment across all ticks (Ana #265: a bare check-sat gives sat/unsat with no trace).
+        return s.to_smt2() + "(get-model)\n"
 
     def _inductive(self, box):
         """Is the box {var ∈ [lo,hi]} closed under one transition from a ¬first state? If it's
