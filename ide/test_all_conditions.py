@@ -1,0 +1,166 @@
+#!/usr/bin/env python3
+"""Test the ALL-INITIAL-CONDITIONS transition graph (diagram task #1).
+
+`Model.reachable()` walks the successor relation FORWARD from the single seeded init
+(`is_first_tick = true`). For a DETERMINISTIC FSM that is one trajectory — it shows only
+the basin the seed falls into. `Model.full_state_graph()` (viz/model_global.py) instead
+enumerates EVERY valid carried assignment (the product of the bounded discrete carried
+vars, ignoring the seed) and applies the SAME successor relation — the GLOBAL dynamics.
+
+This pins the headline win and the honesty fallback:
+
+  - bistable (two deterministic basins) → all-conditions ⊋ from-init: it has STRICTLY MORE
+    states AND surfaces BOTH attractors (0 and 6), where from-init reaches only the seed's
+    basin (0). This is the foundational difference the diagram review demanded.
+  - counter / traffic (ergodic-ish) → all-conditions covers the discrete product; no crash,
+    discrete=True, and the from-init reachable set is a SUBSET of it.
+  - real-valued → full_state_graph returns discrete=False (no enumeration attempted), so the
+    caller falls back to from-init. The honesty gate.
+
+Run from repo root: `python3 ide/test_all_conditions.py` (exit non-zero on any failure)."""
+import sys
+import tempfile
+
+sys.path.insert(0, "ide/web")
+sys.path.insert(0, "viz")
+
+from runtime_io import _export                              # noqa: E402
+from evident_viz import load as load_model                  # noqa: E402
+
+# A DETERMINISTIC bistable: x flows to the nearest wall (0 or 6). x=3 is the saddle.
+# From init x=1 the orbit reaches only {1,0} — the left basin. The GLOBAL graph over
+# every x ∈ 0..6 surfaces BOTH attractors (0 and 6) and all seven states.
+BISTABLE = (
+    "fsm bistable\n"
+    "    x ∈ Int\n"
+    "    is_first_tick ⇒ x = 1\n"
+    "    ¬is_first_tick ⇒\n"
+    "        0 ≤ x\n"
+    "        x ≤ 6\n"
+    "        x = (_x < 3 ? (_x = 0 ? 0 : _x - 1)\n"
+    "             : (_x > 3 ? (_x = 6 ? 6 : _x + 1) : 3))\n")
+
+# A BOUNDED cyclic counter (wraps 0→5→0): its single orbit already visits every state, and
+# the range is finite, so the all-conditions enumeration covers exactly the same set. (An
+# UNBOUNDED `count ∈ Int` climbing forever is correctly NOT enumerable — that's the real/
+# unbounded fallback case, covered by REAL below.)
+COUNTER = (
+    "fsm counter\n"
+    "    0 ≤ count ∈ Int ≤ 5\n"
+    "    is_first_tick ⇒ count = 0\n"
+    "    ¬is_first_tick ⇒ count = (_count ≥ 5 ? 0 : _count + 1)\n")
+
+TRAFFIC = (
+    "enum Light = Red | Green | Yellow\n"
+    "fsm traffic\n"
+    "    light ∈ Light\n"
+    "    0 ≤ timer ∈ Int ≤ 2\n"
+    "    is_first_tick ⇒ (light = Red ∧ timer = 0)\n"
+    "    (¬is_first_tick ∧ _timer < 2) ⇒ (light = _light ∧ timer = _timer + 1)\n"
+    "    (¬is_first_tick ∧ _timer = 2 ∧ _light = Red) ⇒ (light = Green ∧ timer = 0)\n"
+    "    (¬is_first_tick ∧ _timer = 2 ∧ _light = Green) ⇒ (light = Yellow ∧ timer = 0)\n"
+    "    (¬is_first_tick ∧ _timer = 2 ∧ _light = Yellow) ⇒ (light = Red ∧ timer = 0)\n")
+
+# Real-valued state: not a finite enumerable graph → discrete=False, caller falls back.
+REAL = (
+    "fsm decay\n"
+    "    x ∈ Real\n"
+    "    is_first_tick ⇒ x = 100\n"
+    "    ¬is_first_tick ⇒ x = _x / 2\n")
+
+
+def _load(src, work):
+    ok, prefix, dropped, msg = _export(src, work)
+    if not ok:
+        raise RuntimeError(f"export failed: {msg.splitlines()[0][:80]}")
+    return load_model(prefix + ".smt2", prefix + ".schema.json")
+
+
+def _attractors(m, states, edges):
+    """The absorbing states (self-loop or no out-edge) in a (states, edges) graph,
+    as a set of x-values — the basins' fixed points."""
+    out = {i: [] for i in range(len(states))}
+    for a, b in edges:
+        out[a].append(b)
+    return {states[i]["x"] for i, succ in out.items()
+            if not succ or succ == [i]}
+
+
+def check_bistable():
+    fails = []
+    with tempfile.TemporaryDirectory() as work:
+        m = _load(BISTABLE, work)
+        fi_states, fi_edges = m.reachable()
+        gl_states, gl_edges, info = m.full_state_graph()
+
+        if not info["discrete"]:
+            return ["bistable: full_state_graph discrete=False (bounded int should enumerate)"]
+        if info["capped"]:
+            return ["bistable: full_state_graph capped (7-state product should fit)"]
+
+        fi_keys = {m.state_key(s) for s in fi_states}
+        gl_keys = {m.state_key(s) for s in gl_states}
+        # The headline: all-conditions ⊋ from-init — strictly more states, and a superset.
+        if not (fi_keys < gl_keys):
+            fails.append(f"bistable: all-conditions ({len(gl_keys)}) is not a strict superset "
+                         f"of from-init ({len(fi_keys)}): {sorted(s['x'] for s in fi_states)} "
+                         f"vs {sorted(s['x'] for s in gl_states)}")
+        # from-init reaches only the LEFT basin (attractor 0); all-conditions surfaces BOTH.
+        fi_attr = _attractors(m, fi_states, fi_edges)
+        gl_attr = _attractors(m, gl_states, gl_edges)
+        if 6 in fi_attr:
+            fails.append(f"bistable: from-init unexpectedly reaches the right wall: {fi_attr}")
+        if not ({0, 6} <= gl_attr):
+            fails.append(f"bistable: all-conditions missing a basin attractor — "
+                         f"expected {{0,6}} ⊆ {gl_attr}")
+    return fails
+
+
+def check_ergodic(name, src):
+    fails = []
+    with tempfile.TemporaryDirectory() as work:
+        m = _load(src, work)
+        fi_states, _ = m.reachable()
+        gl_states, _, info = m.full_state_graph()
+        if not info["discrete"]:
+            return [f"{name}: full_state_graph discrete=False (bounded/enum should enumerate)"]
+        fi_keys = {m.state_key(s) for s in fi_states}
+        gl_keys = {m.state_key(s) for s in gl_states}
+        # The orbit already covers the space, so from-init ⊆ all-conditions (every reachable
+        # state is an enumerated initial condition too). No crash, honest discrete flag.
+        if not (fi_keys <= gl_keys):
+            fails.append(f"{name}: from-init not a subset of all-conditions "
+                         f"({len(fi_keys - gl_keys)} states only reachable, not enumerated)")
+    return fails
+
+
+def check_real_fallback():
+    with tempfile.TemporaryDirectory() as work:
+        m = _load(REAL, work)
+        states, edges, info = m.full_state_graph()
+        fails = []
+        if info["discrete"]:
+            fails.append("real: full_state_graph discrete=True — a Real var must NOT be enumerated")
+        if states or edges:
+            fails.append(f"real: expected empty graph on fallback, got {len(states)} states")
+        return fails
+
+
+def main():
+    fails = []
+    fails += check_bistable()
+    fails += check_ergodic("counter", COUNTER)
+    fails += check_ergodic("traffic", TRAFFIC)
+    fails += check_real_fallback()
+    if fails:
+        print("ALL-INITIAL-CONDITIONS TEST FAILURES:")
+        for f in fails:
+            print("  ✗", f)
+        return 1
+    print("✓ all-initial-conditions: bistable ⊋ from-init (both basins); "
+          "counter/traffic enumerate; real falls back")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

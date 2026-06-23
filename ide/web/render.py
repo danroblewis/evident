@@ -9,6 +9,7 @@ claim's SOLVED solution space (a claim has no run to step).
 Requires `viz/` on `sys.path` (server inserts it before importing this module).
 """
 import base64
+import contextlib
 import inspect
 import json
 import sys
@@ -81,12 +82,34 @@ for _v in ALL_VIEWS:
 VIEWS = [v for v in ALL_VIEWS if v in RENDERERS]
 
 
-def _render_png(view, prefix):
+@contextlib.contextmanager
+def _all_conditions(view, on):
+    """Set render_state_graph's ALL_CONDITIONS module flag for the duration of one render,
+    then restore it. A no-op for any other view (only state_graph reads it). Safe because the
+    server serializes renders under _LOCK, so the global never overlaps another request."""
+    if view != "state_graph" or not on:
+        yield
+        return
+    import render_state_graph as RSG
+    saved = RSG.ALL_CONDITIONS
+    RSG.ALL_CONDITIONS = True
+    try:
+        yield
+    finally:
+        RSG.ALL_CONDITIONS = saved
+
+
+def _render_png(view, prefix, all_conditions=False):
     """Render the view PNG and return (bytes, points). `points` is the interactive
     hover-overlay sidecar (`<out>.points.json`, written by renderers that support it —
-    currently solution_space): a list of {fx, fy, state}; [] when no sidecar exists."""
+    currently solution_space): a list of {fx, fy, state}; [] when no sidecar exists.
+
+    `all_conditions` requests state_graph's GLOBAL-dynamics graph (every initial
+    condition). Threaded via the renderer module flag under the server's render _LOCK
+    (the renderers ship a fixed 3-arg signature), then restored so it never leaks."""
     out = prefix + f".{view}.png"
-    RENDERERS[view](prefix + ".smt2", prefix + ".schema.json", out)
+    with _all_conditions(view, all_conditions):
+        RENDERERS[view](prefix + ".smt2", prefix + ".schema.json", out)
     with open(out, "rb") as f:
         png = f.read()
     points = []

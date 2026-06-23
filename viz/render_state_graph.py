@@ -47,6 +47,12 @@ from evident_viz import load
 # several-hundred-node graph doesn't paint hundreds of hit-zones over the picture.
 OVERLAY_CAP = 60
 
+# ALL-INITIAL-CONDITIONS toggle (diagram task #1). The server calls render() through a
+# fixed render(smt2, schema, out) signature, so it sets this module flag (under its render
+# _LOCK) to request the global-dynamics graph; render() consults it when its own
+# `all_conditions` arg is left None. Default False = the unchanged from-init behavior.
+ALL_CONDITIONS = False
+
 _SHORT = lambda n: n.split(".")[-1]
 
 
@@ -100,7 +106,7 @@ def _node_points(fig, ax, G, pos, states):
 # and the legibility down-sampler live in the sibling build module.
 from state_graph_build import (
     _key, build_reachable_graph, build_trajectory_graph, build_seeded_graph,
-    classify_terminal, sample_subgraph, READABLE_CAP,
+    build_global_graph, classify_terminal, sample_subgraph, READABLE_CAP,
 )
 
 
@@ -172,11 +178,23 @@ def color_by_categorical(m, G, states):
     return face, legend, name
 
 
-def _select_graph(m):
+def _select_graph(m, all_conditions=False):
     """Pick the honest finite graph to draw: the exact reachable graph when it
     closes, seeded phase-space trajectories for a vanderpol-shaped continuous
     flow, else the deterministic trajectory. Returns (G, states, mode); G is None
-    if nothing could be built."""
+    if nothing could be built.
+
+    When `all_conditions` is set, prefer the GLOBAL dynamics — the transition graph
+    over EVERY initial condition (Model.full_state_graph), not the forward orbit of
+    the seeded init. For a real-valued / unbounded / too-large model the global build
+    returns None and we fall back to the from-init path below, so the toggle is
+    always safe (the caption then says it fell back)."""
+    if all_conditions:
+        built = build_global_graph(m)
+        if built is not None:
+            G, states = built
+            return G, states, "global dynamics — every initial condition"
+        # not finitely enumerable (real/unbounded/too-large) → from-init fallback
     G = states = None
     mode = None
     if m.is_discrete():
@@ -296,12 +314,18 @@ def _draw_graph_nodes(ax, m, G, pos, states, terminal, n_nodes):
     return base_size, color_legend, color_var
 
 
-def render(smt2, schema, out_path):
+def render(smt2, schema, out_path, all_conditions=None):
     m = load(smt2, schema)
     title_type = "state_graph"
 
+    # ALL-INITIAL-CONDITIONS toggle (diagram task #1). Threaded explicitly when called
+    # in-process; the server's fixed 3-arg renderer signature passes it via the module
+    # flag set under its render _LOCK (ALL_CONDITIONS), so a from-init default is unchanged.
+    if all_conditions is None:
+        all_conditions = ALL_CONDITIONS
+
     # --- pick the honest finite reachable set ---------------------------------
-    G, states, mode = _select_graph(m)
+    G, states, mode = _select_graph(m, all_conditions=all_conditions)
 
     n_nodes = G.number_of_nodes() if G is not None else 0
     n_edges = G.number_of_edges() if G is not None else 0

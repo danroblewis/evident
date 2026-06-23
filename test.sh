@@ -180,6 +180,24 @@ if [ "$EXAMPLES_ONLY" -eq 0 ] && command -v python3 >/dev/null 2>&1; then
     echo
 fi
 
+# ── Phase 2.10: all-initial-conditions transition graph (diagram #1) ──
+# full_state_graph enumerates EVERY valid carried assignment (the bounded discrete product,
+# ignoring the seed) and applies the EXISTING successor relation — the GLOBAL dynamics, not the
+# forward orbit of one init. Pins the headline win (a deterministic bistable's all-conditions graph
+# ⊋ its from-init graph, surfacing BOTH basins) and the honesty fallback (a real-valued model is NOT
+# enumerated → discrete=False, caller falls back to from-init).
+if [ "$EXAMPLES_ONLY" -eq 0 ] && command -v python3 >/dev/null 2>&1; then
+    phase "Phase 2.10: all-initial-conditions graph"
+    if python3 ide/test_all_conditions.py > /tmp/evident-allcond.log 2>&1; then
+        ok "all-conditions ($(tail -1 /tmp/evident-allcond.log))"
+    else
+        fail "all-conditions: wrong global-dynamics graph (see above)"
+        cat /tmp/evident-allcond.log >&2
+        failures+=("all-conditions graph")
+    fi
+    echo
+fi
+
 # ── Optional: examples runner ────────────────────────────────
 # Walks examples/, runs each via effect-run. For visual demos (anything
 # that imports packages/sdl/), spawn the program, screenshot the Xvfb
