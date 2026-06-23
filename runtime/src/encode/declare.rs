@@ -604,7 +604,7 @@ fn scan_int_pins(
                     }
                 }
             }
-            BodyItem::Passthrough(claim_name) => {
+            BodyItem::Passthrough { name: claim_name, .. } => {
                 if let Some(schemas) = schemas {
                     if let Some(claim) = schemas.get(claim_name) {
                         scan_int_pins(&claim.body, Some(schemas), pinned, seq_lens, changed);
@@ -649,7 +649,7 @@ fn walk_constraints(
                     }
                 }
             }
-            BodyItem::Passthrough(claim_name) => {
+            BodyItem::Passthrough { name: claim_name, .. } => {
                 if let Some(schemas) = schemas {
                     if let Some(claim) = schemas.get(claim_name) {
                         walk_constraints(&claim.body, Some(schemas), no_pinned, out, changed);

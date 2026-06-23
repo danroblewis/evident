@@ -614,11 +614,35 @@ impl Parser {
 
         if matches!(self.peek(), Token::DotDot) {
             self.bump();
-            match self.bump() {
-                Token::Ident(name) => return Ok(vec![BodyItem::Passthrough(name)]),
+            let name = match self.bump() {
+                Token::Ident(name) => name,
                 other => return Err(self.err(format!(
                     "expected claim name after '..', got {:?}", other))),
+            };
+            // Optional parameterized rename-arg list: `..Name(slot ↦ other, …)`.
+            // The `(...)` here is NOT a new decl — it renames carried fields of
+            // the included claim to outer-scope names, reusing the same `↦`
+            // arg shape as a ClaimCall.
+            let mut renames = Vec::new();
+            if matches!(self.peek(), Token::LParen) {
+                self.bump();
+                if !matches!(self.peek(), Token::RParen) {
+                    loop {
+                        let slot = match self.bump() {
+                            Token::Ident(s) => s,
+                            other => return Err(self.err(format!(
+                                "expected rename slot name in `..{}(…)`, got {:?}", name, other))),
+                        };
+                        self.eat(&Token::MapsTo)?;
+                        let value = self.parse_expr()?;
+                        renames.push(crate::core::ast::Mapping { slot, value });
+                        if matches!(self.peek(), Token::Comma) { self.bump(); continue; }
+                        break;
+                    }
+                }
+                self.eat(&Token::RParen)?;
             }
+            return Ok(vec![BodyItem::Passthrough { name, renames }]);
         }
 
         if matches!(self.peek(), Token::Subclaim) {
