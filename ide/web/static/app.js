@@ -347,8 +347,18 @@ async function run(view) {
   if (currentSlotName) {
     $("#fname").textContent = currentSlotName.replace(/\.ev$/, "") + ".ev";
   } else {
-    const nm = source.match(/^\s*(?:fsm|claim|type|schema)\s+([A-Za-z_]\w*)/m);
-    $("#fname").textContent = (nm ? nm[1] : "untitled") + ".ev";
+    // Pick the ENTRY decl, not the first one: an `fsm` is the entry; else the headline `claim` (the
+    // LAST non-test claim — helper types/claims come first, e.g. toposort); else any type/enum. The old
+    // "first fsm|claim|type|schema" showed a helper type's name for multi-decl samples (Marek #95/#108).
+    const fsm = source.match(/^\s*fsm\s+([A-Za-z_]\w*)/m);
+    let nm = fsm && fsm[1];
+    if (!nm) {
+      const claims = [...source.matchAll(/^\s*claim\s+([A-Za-z_]\w*)/gm)]
+        .map((c) => c[1]).filter((n) => !/^(?:sat|unsat)_/.test(n));
+      nm = claims.length ? claims[claims.length - 1] : null;
+    }
+    if (!nm) { const h = source.match(/^\s*(?:type|schema|enum)\s+([A-Za-z_]\w*)/m); nm = h ? h[1] : "untitled"; }
+    $("#fname").textContent = nm + ".ev";
   }
   setStatus("computing…", "busy");
   // Immediately mark the derived panels recomputing — the PREVIOUS program's Structure verdict,
