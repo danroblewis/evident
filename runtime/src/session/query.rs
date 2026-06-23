@@ -46,6 +46,14 @@ enum ComponentOutcome {
 
 use super::UnionFind;
 
+/// A var that DRIVES the transition rather than being computed by it: a prev-tick read (`_x`) or a
+/// tick selector (`is_first_tick` / `is_second_tick`). The live functionizer excludes these via the
+/// per-tick `given`; `export_functions` runs with an empty `given`, so it must exclude them here so
+/// they aren't mistaken for un-functionizable outputs.
+fn is_driver_var(name: &str) -> bool {
+    name.starts_with('_') || name == "is_first_tick" || name == "is_second_tick"
+}
+
 fn decompose_simplified(
     simplified: &[Bool<'static>],
     outputs: &[String],
@@ -635,6 +643,11 @@ impl EvidentRuntime {
         let outputs: Vec<String> = cached.env.iter()
             .filter(|(_, v)| !matches!(v,
                 Var::EnumValue { .. } | Var::EnumCtor { .. } | Var::PinnedInt(_)))
+            // Exclude DRIVERS, not outputs: prev-tick reads (`_x`) and the tick selectors are
+            // INPUTS the functionizer's per-tick `given` pins (the live path filters them via
+            // `!given.contains_key`). Here `given` is empty, so filter them explicitly — otherwise
+            // they'd land in a component as un-functionizable "outputs" and sink the whole component.
+            .filter(|(name, _)| !is_driver_var(name))
             .filter(|(name, _)| touched.contains(name.as_str()))
             .map(|(n, _)| n.clone())
             .collect();
