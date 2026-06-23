@@ -406,3 +406,88 @@ html,body { margin:0; height:100%; background:var(--bg); color:var(--ink);
 #view:hover::after { opacity:0; }
 #view:has(.ph)::after { content:none; }   /* no pan/zoom hint over a placeholder (no picture) */
 #banner.stale { color:var(--dim); font-style:italic; }
+
+/* ============================================================================
+   RESPONSIVE / MOBILE (#309) — everything below is GATED behind a max-width
+   media query, so the desktop layout above is byte-for-byte unchanged. Below
+   the breakpoint the three-column "editor | splitter | dynamics" grid reflows
+   to a single stacked column (editor over dynamics), the top bar wraps into a
+   touch-friendly control strip, and the page scrolls instead of locking 100vh.
+   Tap targets are bumped to ≥44px. Goal: usable + zero horizontal overflow at
+   375px, fully unchanged at desktop widths.
+   ========================================================================== */
+@media (max-width: 820px) {
+  /* the page scrolls now — the panes stack and can together exceed the viewport */
+  html, body { height:auto; min-height:100%; }
+
+  /* single column: top, then editor, then dynamics. --split (set inline by the
+     desktop splitter drag) is irrelevant here — we override the template wholesale. */
+  #app { display:grid; height:auto; min-height:100vh;
+    grid-template-columns:1fr; grid-template-rows:auto auto auto;
+    grid-template-areas:"top" "editor" "dynamics"; }
+
+  /* the col-resize splitter is a desktop affordance — no place in a stacked,
+     touch layout. Hidden, and it takes no grid cell. */
+  #splitter { display:none; }
+
+  /* top bar: wrap the controls onto multiple rows instead of overflowing right.
+     Auto height, comfortable vertical padding, smaller horizontal gap. */
+  #top { flex-wrap:wrap; height:auto; min-height:44px; gap:8px 8px; padding:8px 10px; }
+  #top .sp { flex-basis:100%; height:0; }   /* the spacer becomes a line break, pushing status to its own row */
+
+  /* touch-friendly controls: ≥44px tall hit targets across every top-bar
+     button + dropdown + the in-pane action buttons & inputs. */
+  #top button, #top select, #top label,
+  #samples, #claim-select, #solve-btn, #symbols-btn, #tour-btn,
+  #smtlib-btn, #save-btn, #export-btn, #share-btn, #pin-btn, #diff-btn, #cmdk-hint {
+    min-height:44px; padding-top:8px; padding-bottom:8px; }
+  #scope-in, #unroll-in { min-height:44px; }
+
+  /* the samples / claim <select> sizes to its widest option (some sample names are
+     long) and, as a flex item with min-content width, drags the whole top bar past
+     the viewport. Cap it and let it ellipsize — it's a dropdown, the full text shows
+     when open. min-width:0 lets every control shrink rather than force overflow. */
+  #top > * { min-width:0; }
+  #samples, #claim-select { max-width:170px; }
+
+  /* the in-pane verify / query / solve controls are real touch targets too */
+  #inv-btn, #query-btn, #query-assert, #query-clear,
+  #solve-controls button, #opt-controls button,
+  #solve-given, #opt-var, #inv-prop, #query-prop,
+  #solve-resolve, #solve-all, #solve-close { min-height:44px; }
+
+  /* editor pane: give it a real height (Ace mounts absolutely inside it, so the
+     pane must size itself — the grid track no longer does). Border moves to the
+     bottom seam between the stacked panes. */
+  #editor-pane { grid-area:editor; height:52vh; min-height:300px;
+    border-right:none; border-bottom:1px solid var(--line); }
+
+  /* dynamics pane: flows naturally, scrolls within the page. min-height keeps a
+     diagram visible without an awkward squeeze; it can grow past that. */
+  #dynamics { grid-area:dynamics; height:auto; min-height:60vh; }
+
+  /* the diagram surface needs a floor so it doesn't collapse to nothing when the
+     pane is laid out by content rather than by a flex parent of fixed height. */
+  #view { min-height:240px; }
+
+  /* the solve panel's 46% cap is a fraction of a fixed-height pane on desktop;
+     on a content-height pane that resolves oddly — let it size to its content. */
+  #solve { max-height:none; }
+
+  /* popovers/modals: keep them inside the viewport on a narrow screen */
+  #palette { left:8px; right:8px; width:auto; }
+
+  /* belt-and-braces: nothing should be able to force a horizontal scrollbar */
+  #app { overflow-x:hidden; }
+  #app, #top, #editor-pane, #dynamics { max-width:100%; min-width:0; }
+  #dynamics > * { max-width:100%; }
+}
+
+/* phone-specific tightening (≤480px): the top bar's many controls read better
+   when each row's items can shrink, and the in-pane label+input rows stack so
+   the input isn't crushed to a few characters wide. */
+@media (max-width: 480px) {
+  #invariant, #query-row { flex-wrap:wrap; }
+  #inv-prop, #query-prop { flex-basis:100%; }
+  #solve-controls, #opt-controls { flex-wrap:wrap; }
+}
