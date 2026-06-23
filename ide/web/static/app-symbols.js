@@ -70,6 +70,19 @@ function glossaryItems() {
   return items;
 }
 
+// The honesty line's reachable-scope certification. "✓ complete" is only honest for a DISCRETE machine
+// whose BFS reached a fixpoint WITH states found — a 0 count (claim / continuous / gave-up) or a
+// real-valued domain must never read as proven-complete (Marek #274).
+function scopeCertHtml(data) {
+  if (!data.states)
+    return `<span class="scope-cap" title="No reachable-state enumeration: a claim (a relation, not a machine), a continuous/non-enumerable domain, or the solver gave up. NOT a proof that the machine reaches nothing.">no enumerable reachable set</span>`;
+  if (data.capped)
+    return `<span class="scope-cap" title="The reachability search stopped at its ${data.states}-state limit — the true reachable set may be LARGER. A bounded SAMPLE, not a complete enumeration; treat &quot;not found&quot; as inconclusive.">≥${data.states} reachable (capped — sample)</span>`;
+  if (data.discrete === false)
+    return `<span class="scope-cap" title="Real-valued (continuous) domain: the reachable set is SAMPLED along trajectories, not exhaustively enumerated — the true set is uncountable. &quot;not found&quot; is inconclusive.">${data.states} reachable (sampled — continuous)</span>`;
+  return `<span class="scope-exh" title="The reachability search reached a FIXPOINT: every state the machine can enter from its start has been found. The COMPLETE reachable set — a proof, not a sample, so &quot;no state satisfies P&quot; is conclusive.">${data.states} reachable (✓ complete)</span>`;
+}
+
 // --- banner concept glosses --------------------------------------------------------
 const CONCEPTS = {
   "inductive invariant": "a bound z3 PROVED is closed under the transition: true now ⇒ true next tick ⇒ true forever. A proof, not a sample.",
