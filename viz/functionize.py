@@ -139,9 +139,9 @@ def extract_functions(model):
 
 
 def _step_deps(st):
-    if st["kind"] == "scalar":
-        return st["deps"]
-    return [d for b in st.get("branches", []) for d in b["deps"]]
+    if st["kind"] == "guarded":
+        return [d for b in st.get("branches", []) for d in b["deps"]]
+    return st.get("deps", [])              # scalar | seq carry deps at the top level
 
 
 def _pretty(e):
