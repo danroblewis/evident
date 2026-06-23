@@ -34,7 +34,7 @@ fsm histogram(state ∈ Hist)
     -- Once the cursor runs off the end, the histogram is frozen (fixpoint → halt).
     done ∈ Bool = (_state.cursor ≥ 10)
 
-    ¬is_first_tick ⇒ (done ⇒
+    (done ⇒
         (state.cursor = _state.cursor ∧ state.bin0 = _state.bin0
          ∧ state.bin1 = _state.bin1 ∧ state.bin2 = _state.bin2
          ∧ state.bin3 = _state.bin3 ∧ state.total = _state.total))
@@ -46,7 +46,7 @@ fsm histogram(state ∈ Hist)
     in2 ∈ Bool = ((v ≥ 50) ∧ (v < 75))
     in3 ∈ Bool = (v ≥ 75)
 
-    ¬is_first_tick ⇒ (¬done ⇒
+    (¬done ⇒
         (state.cursor = _state.cursor + 1
          ∧ state.bin0 = (in0 ? _state.bin0 + 1 : _state.bin0)
          ∧ state.bin1 = (in1 ? _state.bin1 + 1 : _state.bin1)

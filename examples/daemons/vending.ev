@@ -19,16 +19,14 @@ fsm vending(state ∈ VendState)
     pm ∈ VendMode = _state.mode
     pb ∈ Int = _state.balance
     is_first_tick ⇒ (state.mode = Idle ∧ state.balance = 0 ∧ state.dispensed = false)
-    ¬is_first_tick ⇒
-        state.mode = match pm
-            Idle    ⇒ Coining
-            Coining ⇒ (pb < 3 ? Coining : Vending)
-            Vending ⇒ Idle
-    ¬is_first_tick ⇒
-        state.balance = match pm
-            Idle    ⇒ 0
-            Coining ⇒ (pb < 3 ? pb + 1 : pb)
-            Vending ⇒ 0
+    state.mode = match pm
+        Idle    ⇒ Coining
+        Coining ⇒ (pb < 3 ? Coining : Vending)
+        Vending ⇒ Idle
+    state.balance = match pm
+        Idle    ⇒ 0
+        Coining ⇒ (pb < 3 ? pb + 1 : pb)
+        Vending ⇒ 0
     ¬is_first_tick ⇒
         state.dispensed = (_state.mode = Vending)
 

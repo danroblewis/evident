@@ -84,15 +84,15 @@ fsm du(state ∈ Tree)
     -- POP: nondeterministically pick a node currently on the frontier as `current`.
     -- (Z3 chooses any Pending node; the reachable walk covers every traversal order.)
     -- A node can only be popped if it was Pending in the previous state.
-    ¬is_first_tick ⇒ ((state.current = 0) ⇒ (_state.s0 = Pending))
-    ¬is_first_tick ⇒ ((state.current = 1) ⇒ (_state.s1 = Pending))
-    ¬is_first_tick ⇒ ((state.current = 2) ⇒ (_state.s2 = Pending))
-    ¬is_first_tick ⇒ ((state.current = 3) ⇒ (_state.s3 = Pending))
-    ¬is_first_tick ⇒ ((state.current = 4) ⇒ (_state.s4 = Pending))
+    ((state.current = 0) ⇒ (_state.s0 = Pending))
+    ((state.current = 1) ⇒ (_state.s1 = Pending))
+    ((state.current = 2) ⇒ (_state.s2 = Pending))
+    ((state.current = 3) ⇒ (_state.s3 = Pending))
+    ((state.current = 4) ⇒ (_state.s4 = Pending))
     -- current is a valid node index, or -1 (traversal exhausted)
-    ¬is_first_tick ⇒ ((-1 ≤ state.current) ∧ (state.current ≤ 4))
+    ((-1 ≤ state.current) ∧ (state.current ≤ 4))
     -- current = -1 (done) only when nothing is Pending
-    ¬is_first_tick ⇒ ((state.current = -1) ⇒
+    ((state.current = -1) ⇒
         (¬(_state.s0 = Pending) ∧ ¬(_state.s1 = Pending) ∧ ¬(_state.s2 = Pending)
          ∧ ¬(_state.s3 = Pending) ∧ ¬(_state.s4 = Pending)))
 
@@ -107,19 +107,19 @@ fsm du(state ∈ Tree)
     ¬is_first_tick ⇒ (state.s2 = (state.current = 2 ? Visited
                 : (((cur_is_dir ∧ ((c0 = 2) ∨ (c1 = 2))) ∧ (_state.s2 = Unseen)) ? Pending
                    : _state.s2)))
-    ¬is_first_tick ⇒ (state.s3 = (state.current = 3 ? Visited
+    (state.s3 = (state.current = 3 ? Visited
                 : (((cur_is_dir ∧ ((c0 = 3) ∨ (c1 = 3))) ∧ (_state.s3 = Unseen)) ? Pending
                    : _state.s3)))
-    ¬is_first_tick ⇒ (state.s4 = (state.current = 4 ? Visited
+    (state.s4 = (state.current = 4 ? Visited
                 : (((cur_is_dir ∧ ((c0 = 4) ∨ (c1 = 4))) ∧ (_state.s4 = Unseen)) ? Pending
                    : _state.s4)))
 
     -- visited count rises by one for each real pop (current ≠ -1).
-    ¬is_first_tick ⇒ (state.visited =
+    (state.visited =
         (_state.visited + ((state.current ≠ -1) ? 1 : 0)))
 
     -- total_size accumulates the popped node's size (0 when traversal is exhausted).
-    ¬is_first_tick ⇒ (state.total_size =
+    (state.total_size =
         (_state.total_size + ((state.current ≠ -1) ? cur_size : 0)))
 
 -- ── Static tests (validate the transition encodes — zero dropped constraints) ──

@@ -54,7 +54,7 @@ fsm ps(state ∈ Stats)
     -- Once the cursor runs off the end, the tally is frozen (fixpoint → halt).
     done ∈ Bool = (_state.cursor ≥ 6)
 
-    ¬is_first_tick ⇒ (done ⇒
+    (done ⇒
         (state.cursor = _state.cursor ∧ state.running = _state.running
          ∧ state.sleeping = _state.sleeping ∧ state.disk = _state.disk
          ∧ state.zombie = _state.zombie
@@ -68,7 +68,7 @@ fsm ps(state ∈ Stats)
     is_zombie   ∈ Bool = (cur.code = 3)
     new_max ∈ Bool = (cur.mem > _state.max_mem)
 
-    ¬is_first_tick ⇒ (¬done ⇒
+    (¬done ⇒
         (state.cursor   = _state.cursor + 1
          ∧ state.running  = (is_running  ? _state.running  + 1 : _state.running)
          ∧ state.sleeping = (is_sleeping ? _state.sleeping + 1 : _state.sleeping)

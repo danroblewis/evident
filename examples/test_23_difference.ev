@@ -21,7 +21,7 @@ fsm gravity
     -- Seed at 10 on the first tick; afterward fall by one per tick.
     x ∈ Int
     is_first_tick ⇒ x = 10
-    ¬is_first_tick ⇒ Δx = -1
+    Δx = -1
 
     state ∈ FallState = (x ≤ 7 ? Landed : Falling)
 

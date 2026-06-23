@@ -54,14 +54,10 @@ fsm grep(state ∈ GrepState)
     -- Advance one line per tick, but FREEZE at EOF — otherwise line_no grows
     -- unboundedly past the 4-line input and the reachable set is infinite (the
     -- portrait would show a line_no axis running to thousands).
-    ¬is_first_tick ⇒
-        (state.line_no    = (_state.line_no ≥ total_lines ? _state.line_no : _state.line_no + 1))
-    ¬is_first_tick ⇒
-        (state.matched    = (cur_matched ∧ (n < total_lines)))
-    ¬is_first_tick ⇒
-        (state.match_count = (state.matched ? _state.match_count + 1 : _state.match_count))
-    ¬is_first_tick ⇒
-        (state.done       = (state.line_no ≥ total_lines))
+    (state.line_no    = (_state.line_no ≥ total_lines ? _state.line_no : _state.line_no + 1))
+    (state.matched    = (cur_matched ∧ (n < total_lines)))
+    (state.match_count = (state.matched ? _state.match_count + 1 : _state.match_count))
+    (state.done       = (state.line_no ≥ total_lines))
 
 -- ── Static tests (validate the transition encodes; zero dropped constraints) ──
 

@@ -45,12 +45,9 @@ fsm cut(state ∈ CutState)
 
     is_first_tick ⇒
         (state.line_no = 0 ∧ state.field = "" ∧ state.field_count = 0)
-    ¬is_first_tick ⇒
-        (state.line_no = nl)
-    ¬is_first_tick ⇒
-        (state.field = sel_field)
-    ¬is_first_tick ⇒
-        (state.field_count = sel_count)
+    (state.line_no = nl)
+    (state.field = sel_field)
+    (state.field_count = sel_count)
 
 -- ── Static tests (validate the transition encodes — no silent drops) ──
 

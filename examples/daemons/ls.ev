@@ -47,7 +47,7 @@ fsm ls(state ∈ Summary)
     -- Once the cursor runs off the end, the summary is frozen (fixpoint → halt).
     done ∈ Bool = (_state.cursor ≥ 6)
 
-    ¬is_first_tick ⇒ (done ⇒
+    (done ⇒
         (state.cursor = _state.cursor ∧ state.total_size = _state.total_size
          ∧ state.count = _state.count ∧ state.largest = _state.largest
          ∧ state.largest_id = _state.largest_id))
@@ -56,7 +56,7 @@ fsm ls(state ∈ Summary)
     cur ∈ Entry = entries[_state.cursor]
     new_largest ∈ Bool = (cur.size > _state.largest)
 
-    ¬is_first_tick ⇒ (¬done ⇒
+    (¬done ⇒
         (state.cursor     = _state.cursor + 1
          ∧ state.total_size = _state.total_size + cur.size
          ∧ state.count      = _state.count + 1

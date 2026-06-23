@@ -44,9 +44,8 @@ const DEFAULT_PROGRAM =
     is_first_tick ⇒
         i = 0
         sum = 0
-    ¬is_first_tick ⇒
-        Δi   = (_i < 5 ? 1 : 0)
-        Δsum = (_i < 5 ? _i : 0)`;
+    Δi   = (_i < 5 ? 1 : 0)
+    Δsum = (_i < 5 ? _i : 0)`;
 
 // Worked examples chosen to demonstrate DISTINCT model shapes and language features — not
 // seven counters. The FSMs exercise different dynamics (a terminating ramp, a real cyclic
@@ -74,7 +73,7 @@ const SAMPLES = {
 `fsm counter
     count ∈ Int
     is_first_tick ⇒ count = 0
-    ¬is_first_tick ⇒ Δcount = (_count < 5 ? 1 : 0)
+    Δcount = (_count < 5 ? 1 : 0)
     done ∈ Bool = (count ≥ 5)`,
   "accumulate · a driven pipeline (FSM)": DEFAULT_PROGRAM,
   "predator-prey · Lotka-Volterra (coupled functions)":
@@ -85,15 +84,15 @@ fsm predator_prey
     prey ∈ Real
     pred ∈ Real
     is_first_tick ⇒ (prey = 40.0 ∧ pred = 9.0)
-    ¬is_first_tick ⇒ Δprey = _prey * 0.1 - _prey * _pred * 0.01
-    ¬is_first_tick ⇒ Δpred = _prey * _pred * 0.005 - _pred * 0.1`,
+    Δprey = _prey * 0.1 - _prey * _pred * 0.01
+    Δpred = _prey * _pred * 0.005 - _pred * 0.1`,
   "logistic map · chaos (nonlinear function)":
 `-- The logistic map x' = r·x·(1-x), r = 3.7 — the canonical route to chaos. A single nonlinear
 -- function; open function_behavior for its parabolic transfer map, or cobweb for the dynamics.
 fsm logistic
     x ∈ Real
     is_first_tick ⇒ x = 0.3
-    ¬is_first_tick ⇒ x = 3.7 * _x * (1.0 - _x)`,
+    x = 3.7 * _x * (1.0 - _x)`,
   "bouncing ball · hybrid (guarded functions)":
 `-- A ball under gravity that bounces off the floor (pos ≤ 0 flips & damps the velocity). The
 -- functionizer compiles 3-branch GUARDED functions (init / free-fall / bounce) — open function_guards.
@@ -101,8 +100,8 @@ fsm ball
     pos ∈ Real
     vel ∈ Real
     is_first_tick ⇒ (pos = 50.0 ∧ vel = 0.0)
-    (¬is_first_tick ∧ _pos > 0.0) ⇒ (Δpos = _vel ∧ Δvel = 0.0 - 9.8)
-    (¬is_first_tick ∧ _pos ≤ 0.0) ⇒ (pos = 0.0 ∧ vel = 0.0 - _vel * 0.7)`,
+    (_pos > 0.0) ⇒ (Δpos = _vel ∧ Δvel = 0.0 - 9.8)
+    (_pos ≤ 0.0) ⇒ (pos = 0.0 ∧ vel = 0.0 - _vel * 0.7)`,
   "spring chain · 6 coupled masses (dense data-flow)":
 `-- Three masses connected by springs (Hooke's law, nearest-neighbour coupling). The functionizer
 -- compiles SIX coupled functions; the middle mass reads both its neighbours — open function_graph
@@ -111,12 +110,12 @@ fsm springs
     x1, x2, x3 ∈ Real
     v1, v2, v3 ∈ Real
     is_first_tick ⇒ (x1 = 10.0 ∧ x2 = 0.0 ∧ x3 = 0.0 ∧ v1 = 0.0 ∧ v2 = 0.0 ∧ v3 = 0.0)
-    ¬is_first_tick ⇒ Δx1 = _v1 * 0.1
-    ¬is_first_tick ⇒ Δx2 = _v2 * 0.1
-    ¬is_first_tick ⇒ Δx3 = _v3 * 0.1
-    ¬is_first_tick ⇒ Δv1 = (0.0 - _x1 * 2.0 + _x2) * 0.1
-    ¬is_first_tick ⇒ Δv2 = (_x1 - _x2 * 2.0 + _x3) * 0.1
-    ¬is_first_tick ⇒ Δv3 = (_x2 - _x3 * 2.0) * 0.1`,
+    Δx1 = _v1 * 0.1
+    Δx2 = _v2 * 0.1
+    Δx3 = _v3 * 0.1
+    Δv1 = (0.0 - _x1 * 2.0 + _x2) * 0.1
+    Δv2 = (_x1 - _x2 * 2.0 + _x3) * 0.1
+    Δv3 = (_x2 - _x3 * 2.0) * 0.1`,
   "thermostat · hysteresis (mode-switching guards)":
 `-- A heater with hysteresis: temp rises while Heating, falls while Idle; the mode switches when temp
 -- crosses 22 (→ Idle) or 18 (→ Heating). The functionizer compiles a 4-branch GUARDED mode function
@@ -126,11 +125,11 @@ fsm thermostat
     temp ∈ Real
     mode ∈ Mode
     is_first_tick ⇒ (temp = 15.0 ∧ mode = Heating)
-    (¬is_first_tick ∧ _mode = Heating) ⇒ Δtemp = 1.0
-    (¬is_first_tick ∧ _mode = Idle) ⇒ Δtemp = 0.0 - 0.5
-    (¬is_first_tick ∧ _temp ≥ 22.0) ⇒ mode = Idle
-    (¬is_first_tick ∧ _temp ≤ 18.0) ⇒ mode = Heating
-    (¬is_first_tick ∧ 18.0 < _temp ∧ _temp < 22.0) ⇒ mode = _mode`,
+    (_mode = Heating) ⇒ Δtemp = 1.0
+    (_mode = Idle) ⇒ Δtemp = 0.0 - 0.5
+    (_temp ≥ 22.0) ⇒ mode = Idle
+    (_temp ≤ 18.0) ⇒ mode = Heating
+    (18.0 < _temp ∧ _temp < 22.0) ⇒ mode = _mode`,
   "DVD bounce · 4-wall (guard partition)":
 `-- The bouncing-logo screensaver: position drifts, each velocity flips at its two walls. The
 -- functionizer compiles 3-branch GUARDED velocity functions (in-bounds vs the two wall conditions)
@@ -138,12 +137,12 @@ fsm thermostat
 fsm dvd
     px, py, vx, vy ∈ Real
     is_first_tick ⇒ (px = 50.0 ∧ py = 30.0 ∧ vx = 3.0 ∧ vy = 2.0)
-    ¬is_first_tick ⇒ Δpx = _vx
-    ¬is_first_tick ⇒ Δpy = _vy
-    (¬is_first_tick ∧ 0.0 < _px ∧ _px < 100.0) ⇒ vx = _vx
-    (¬is_first_tick ∧ (_px ≤ 0.0 ∨ _px ≥ 100.0)) ⇒ vx = 0.0 - _vx
-    (¬is_first_tick ∧ 0.0 < _py ∧ _py < 60.0) ⇒ vy = _vy
-    (¬is_first_tick ∧ (_py ≤ 0.0 ∨ _py ≥ 60.0)) ⇒ vy = 0.0 - _vy`,
+    Δpx = _vx
+    Δpy = _vy
+    (0.0 < _px ∧ _px < 100.0) ⇒ vx = _vx
+    ((_px ≤ 0.0 ∨ _px ≥ 100.0)) ⇒ vx = 0.0 - _vx
+    (0.0 < _py ∧ _py < 60.0) ⇒ vy = _vy
+    ((_py ≤ 0.0 ∨ _py ≥ 60.0)) ⇒ vy = 0.0 - _vy`,
   "SIR epidemic · 3 coupled compartments":
 `-- The SIR model: susceptibles get infected (the S·I product), infected recover. THREE coupled
 -- functions — a driven cascade S→I→R with one product coupling. Open function_graph.
@@ -152,9 +151,9 @@ fsm sir
     i ∈ Real
     r ∈ Real
     is_first_tick ⇒ (s = 99.0 ∧ i = 1.0 ∧ r = 0.0)
-    ¬is_first_tick ⇒ Δs = 0.0 - _s * _i * 0.001
-    ¬is_first_tick ⇒ Δi = _s * _i * 0.001 - _i * 0.05
-    ¬is_first_tick ⇒ Δr = _i * 0.05`,
+    Δs = 0.0 - _s * _i * 0.001
+    Δi = _s * _i * 0.001 - _i * 0.05
+    Δr = _i * 0.05`,
   "cruise control · PID loop (coupled feedback)":
 `-- A speed controller: error = target − speed, an integral accumulates error, and speed responds.
 -- A feedback LOOP (speed↔error↔integral) — open function_graph for the controller cycle.
@@ -163,9 +162,9 @@ fsm cruise
     error ∈ Real
     integ ∈ Real
     is_first_tick ⇒ (speed = 0.0 ∧ error = 0.0 ∧ integ = 0.0)
-    ¬is_first_tick ⇒ error = 60.0 - _speed
-    ¬is_first_tick ⇒ Δinteg = _error
-    ¬is_first_tick ⇒ Δspeed = _error * 0.3 + _integ * 0.05`,
+    error = 60.0 - _speed
+    Δinteg = _error
+    Δspeed = _error * 0.3 + _integ * 0.05`,
   "elevator · bouncing controller (deep dispatch)":
 `-- An elevator that rides to the top then back to the bottom. The functionizer compiles 5-branch
 -- GUARDED functions on (dir, floor) — open function_guards for the deep decision tree.
@@ -174,18 +173,18 @@ fsm elevator
     0 ≤ floor ∈ Int ≤ 3
     dir ∈ Dir
     is_first_tick ⇒ (floor = 0 ∧ dir = Up)
-    (¬is_first_tick ∧ _dir = Up ∧ _floor < 3) ⇒ (floor = _floor + 1 ∧ dir = Up)
-    (¬is_first_tick ∧ _dir = Up ∧ _floor = 3) ⇒ (floor = _floor ∧ dir = Down)
-    (¬is_first_tick ∧ _dir = Down ∧ _floor > 0) ⇒ (floor = _floor - 1 ∧ dir = Down)
-    (¬is_first_tick ∧ _dir = Down ∧ _floor = 0) ⇒ (floor = _floor ∧ dir = Up)`,
+    (_dir = Up ∧ _floor < 3) ⇒ (floor = _floor + 1 ∧ dir = Up)
+    (_dir = Up ∧ _floor = 3) ⇒ (floor = _floor ∧ dir = Down)
+    (_dir = Down ∧ _floor > 0) ⇒ (floor = _floor - 1 ∧ dir = Down)
+    (_dir = Down ∧ _floor = 0) ⇒ (floor = _floor ∧ dir = Up)`,
   "Collatz · 3n+1 (guarded integer map)":
 `-- The Collatz map: n even → n/2, n odd → 3n+1 (even tested as n = 2·(n/2)). A clean 2-way guarded
 -- integer function — open function_guards for the even/odd decision.
 fsm collatz
     1 ≤ n ∈ Int ≤ 100000
     is_first_tick ⇒ n = 27
-    (¬is_first_tick ∧ _n = 2 * (_n / 2)) ⇒ n = _n / 2
-    (¬is_first_tick ∧ _n ≠ 2 * (_n / 2)) ⇒ n = 3 * _n + 1`,
+    (_n = 2 * (_n / 2)) ⇒ n = _n / 2
+    (_n ≠ 2 * (_n / 2)) ⇒ n = 3 * _n + 1`,
   "double pendulum · full coupling (densest functions)":
 `-- Two coupled pendula (linearized): each angular velocity is driven by BOTH angles and the other
 -- velocity. The functionizer compiles 4 functions where each velocity reads all four variables —
@@ -194,10 +193,10 @@ fsm pendulum
     a1, a2 ∈ Real
     w1, w2 ∈ Real
     is_first_tick ⇒ (a1 = 1.0 ∧ a2 = 0.5 ∧ w1 = 0.0 ∧ w2 = 0.0)
-    ¬is_first_tick ⇒ Δa1 = _w1 * 0.1
-    ¬is_first_tick ⇒ Δa2 = _w2 * 0.1
-    ¬is_first_tick ⇒ Δw1 = (0.0 - _a1 * 3.0 + _a2 * 2.0 - _w2 * 0.5) * 0.1
-    ¬is_first_tick ⇒ Δw2 = (_a1 * 2.0 - _a2 * 3.0 + _w1 * 0.5) * 0.1`,
+    Δa1 = _w1 * 0.1
+    Δa2 = _w2 * 0.1
+    Δw1 = (0.0 - _a1 * 3.0 + _a2 * 2.0 - _w2 * 0.5) * 0.1
+    Δw2 = (_a1 * 2.0 - _a2 * 3.0 + _w1 * 0.5) * 0.1`,
   "vending · stock, coins & a vault (FSM)":
 `-- A real vending machine: coins accumulate (up to a capacity), products sell from stock
 -- into the operator's vault, the customer can cancel for a refund, and the operator
@@ -218,38 +217,37 @@ fsm vending
         stock = 3
         vault = 0
 
-    ¬is_first_tick ⇒
-        act = InsertCoin ⇒
-            _balance < 5 ⇒
-                mode = Coining
-                balance = _balance + 1
-                stock = _stock
-                vault = _vault
-            _balance ≥ 5 ⇒
-                mode = Coining
-                balance = _balance
-                stock = _stock
-                vault = _vault
-        (act = Purchase ∧ _balance ≥ 3 ∧ _stock > 0) ⇒
-            mode = Dispensing
-            balance = _balance - 3
-            stock = _stock - 1
-            vault = _vault + 3
-        (act = Purchase ∧ (_balance < 3 ∨ _stock = 0)) ⇒
-            mode = Idle
+    act = InsertCoin ⇒
+        _balance < 5 ⇒
+            mode = Coining
+            balance = _balance + 1
+            stock = _stock
+            vault = _vault
+        _balance ≥ 5 ⇒
+            mode = Coining
             balance = _balance
             stock = _stock
             vault = _vault
-        act = Cancel ⇒
-            mode = Refunding
-            balance = 0
-            stock = _stock
-            vault = _vault
-        act = Service ⇒
-            mode = Servicing
-            balance = _balance
-            stock = 3
-            vault = 0`,
+    (act = Purchase ∧ _balance ≥ 3 ∧ _stock > 0) ⇒
+        mode = Dispensing
+        balance = _balance - 3
+        stock = _stock - 1
+        vault = _vault + 3
+    (act = Purchase ∧ (_balance < 3 ∨ _stock = 0)) ⇒
+        mode = Idle
+        balance = _balance
+        stock = _stock
+        vault = _vault
+    act = Cancel ⇒
+        mode = Refunding
+        balance = 0
+        stock = _stock
+        vault = _vault
+    act = Service ⇒
+        mode = Servicing
+        balance = _balance
+        stock = 3
+        vault = 0`,
   "traffic light · a cyclic state machine (FSM)":
 `enum Light = Red | Green | Yellow
 
@@ -257,15 +255,14 @@ fsm traffic
     light ∈ Light
     timer ∈ Int
     is_first_tick ⇒ (light = Red ∧ timer = 0)
-    ¬is_first_tick ⇒
-        _timer ≥ 2 ⇒
-            timer = 0
-            _light = Red    ⇒ light = Green
-            _light = Green  ⇒ light = Yellow
-            _light = Yellow ⇒ light = Red
-        _timer < 2 ⇒
-            Δtimer = 1
-            light = _light`,
+    _timer ≥ 2 ⇒
+        timer = 0
+        _light = Red    ⇒ light = Green
+        _light = Green  ⇒ light = Yellow
+        _light = Yellow ⇒ light = Red
+    _timer < 2 ⇒
+        Δtimer = 1
+        light = _light`,
   "oscillator · a damped spring (FSM, phase spiral)":
 `-- Two interacting real variables — position and velocity. Open the phase_portrait view:
 -- the trajectory spirals in (pos, vel) space. The solver finds the equilibrium at the
@@ -274,15 +271,15 @@ fsm oscillator
     pos ∈ Real
     vel ∈ Real
     is_first_tick ⇒ (pos = 60.0 ∧ vel = 0.0)
-    ¬is_first_tick ⇒ Δpos = _vel / 6.0
-    ¬is_first_tick ⇒ Δvel = (0.0 - _pos - _vel / 2.0) / 6.0`,
+    Δpos = _vel / 6.0
+    Δvel = (0.0 - _pos - _vel / 2.0) / 6.0`,
   "collatz · the 3n+1 orbit (FSM)":
 `-- The Collatz map: halve n if even, else 3n+1. A wild integer orbit that always falls to 1.
 -- (No modulo operator yet, so even-ness is 2·(n/2) = n via integer division.)
 fsm collatz
     n ∈ Int
     is_first_tick ⇒ n = 27
-    ¬is_first_tick ⇒ n = (_n ≤ 1 ? 1 : (2 * (_n / 2) = _n ? _n / 2 : 3 * _n + 1))`,
+    n = (_n ≤ 1 ? 1 : (2 * (_n / 2) = _n ? _n / 2 : 3 * _n + 1))`,
   "random walk · nondeterministic drift (FSM)":
 `-- Each tick the walker steps freely in x and y: the free per-tick change Δx, Δy ∈ {-1, 0, 1} makes
 -- it nondeterministic. The occupancy_heatmap shows where it dwells, the reachability_tree the fan.
@@ -296,7 +293,7 @@ fsm random_walk
     count ∈ Int
     1 ≤ step ∈ Int ≤ 3
     is_first_tick ⇒ count = 0
-    ¬is_first_tick ⇒ Δcount = step`,
+    Δcount = step`,
   "N-queens · an algorithm as constraints (⊨ Solve)":
 `-- No search algorithm: just state what a valid board IS, and the solver finds one.
 -- Indented lines after a ⇒ (or a ∀ :) are a conjunction — all must hold.
@@ -469,8 +466,8 @@ fsm rule90
     cells ∈ Seq(Int)
     #cells = 11
     is_first_tick ⇒ cells = ⟨0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0⟩
-    ¬is_first_tick ⇒ ∀ i ∈ {1..9} : cells[i] = ((_cells[i-1] + _cells[i+1]) = 1 ? 1 : 0)
-    ¬is_first_tick ⇒ (cells[0] = 0 ∧ cells[10] = 0)`,
+    ∀ i ∈ {1..9} : cells[i] = ((_cells[i-1] + _cells[i+1]) = 1 ? 1 : 0)
+    (cells[0] = 0 ∧ cells[10] = 0)`,
   "bistable · two basins of attraction (FSM, basin_map)":
 `-- A random walk between two absorbing walls at 0 and 6 (gambler's ruin).
 -- Each tick a free step ±1, unless already at a wall, where it sticks. From the
@@ -481,10 +478,9 @@ fsm bistable
     step ∈ Int
     -1 ≤ step ≤ 1
     is_first_tick ⇒ x = 3
-    ¬is_first_tick ⇒
-        0 ≤ x
-        x ≤ 6
-        Δx = (_x = 0 ? 0 : (_x = 6 ? 0 : step))`,
+    0 ≤ x
+    x ≤ 6
+    Δx = (_x = 0 ? 0 : (_x = 6 ? 0 : step))`,
   "fixed point · a 1-D map's staircase (FSM, cobweb)":
 `-- A 1-D contraction map: each tick x moves a quarter of the way to 40.
 -- It converges monotonically to the fixed point. Open the cobweb view: the
@@ -492,7 +488,7 @@ fsm bistable
 fsm fixedpoint
     x ∈ Int
     is_first_tick ⇒ x = 4
-    ¬is_first_tick ⇒ x = _x + (40 - _x) / 4`,
+    x = _x + (40 - _x) / 4`,
   "four signals · a 4-variable system (FSM, scatter_matrix)":
 `-- Four genuinely-carried sawtooths on coprime periods (11, 5, 7, 3). Each pair
 -- sweeps a different lattice. Open scatter_matrix: every pairwise plane at once,
@@ -503,11 +499,10 @@ fsm fourvar
     c ∈ Int
     d ∈ Int
     is_first_tick ⇒ (a = 0 ∧ b = 0 ∧ c = 0 ∧ d = 0)
-    ¬is_first_tick ⇒
-        a = (_a ≥ 10 ? 0 : _a + 1)
-        b = (_b ≥ 4  ? 0 : _b + 1)
-        c = (_c ≥ 6  ? 0 : _c + 1)
-        d = (_d ≥ 2  ? 0 : _d + 1)`,
+    a = (_a ≥ 10 ? 0 : _a + 1)
+    b = (_b ≥ 4  ? 0 : _b + 1)
+    c = (_c ≥ 6  ? 0 : _c + 1)
+    d = (_d ≥ 2  ? 0 : _d + 1)`,
   "digital block · clock + flags (FSM, timing_diagram)":
 `-- A small synchronous digital block, all four signals genuinely carried tick-to-tick:
 --   clk   — toggles every tick (the master clock)
@@ -521,11 +516,10 @@ fsm timing
     count ∈ Int
     pulse ∈ Bool
     is_first_tick ⇒ (clk = false ∧ clk2 = false ∧ count = 0 ∧ pulse = false)
-    ¬is_first_tick ⇒
-        clk = ¬_clk
-        clk2 = (¬_clk ? ¬_clk2 : _clk2)
-        count = (_count ≥ 3 ? 0 : _count + 1)
-        pulse = (¬_pulse ∧ _count ≥ 3)`,
+    clk = ¬_clk
+    clk2 = (¬_clk ? ¬_clk2 : _clk2)
+    count = (_count ≥ 3 ? 0 : _count + 1)
+    pulse = (¬_pulse ∧ _count ≥ 3)`,
 };
 
 // --- shared pure helper ------------------------------------------------------------

@@ -82,16 +82,16 @@ fsm find(state ∈ Tree)
     -- POP: nondeterministically pick a node currently on the frontier as `current`.
     -- (Z3 chooses any Pending node; the reachable walk covers every search order.)
     -- A node can only be popped if it was Pending in the previous state.
-    ¬is_first_tick ⇒ ((state.current = 0) ⇒ (_state.s0 = Pending))
-    ¬is_first_tick ⇒ ((state.current = 1) ⇒ (_state.s1 = Pending))
-    ¬is_first_tick ⇒ ((state.current = 2) ⇒ (_state.s2 = Pending))
-    ¬is_first_tick ⇒ ((state.current = 3) ⇒ (_state.s3 = Pending))
-    ¬is_first_tick ⇒ ((state.current = 4) ⇒ (_state.s4 = Pending))
-    ¬is_first_tick ⇒ ((state.current = 5) ⇒ (_state.s5 = Pending))
+    ((state.current = 0) ⇒ (_state.s0 = Pending))
+    ((state.current = 1) ⇒ (_state.s1 = Pending))
+    ((state.current = 2) ⇒ (_state.s2 = Pending))
+    ((state.current = 3) ⇒ (_state.s3 = Pending))
+    ((state.current = 4) ⇒ (_state.s4 = Pending))
+    ((state.current = 5) ⇒ (_state.s5 = Pending))
     -- current is a valid node index, or -1 (search exhausted)
-    ¬is_first_tick ⇒ ((-1 ≤ state.current) ∧ (state.current ≤ 5))
+    ((-1 ≤ state.current) ∧ (state.current ≤ 5))
     -- current = -1 (done) only when nothing is Pending
-    ¬is_first_tick ⇒ ((state.current = -1) ⇒
+    ((state.current = -1) ⇒
         (¬(_state.s0 = Pending) ∧ ¬(_state.s1 = Pending) ∧ ¬(_state.s2 = Pending)
          ∧ ¬(_state.s3 = Pending) ∧ ¬(_state.s4 = Pending) ∧ ¬(_state.s5 = Pending)))
 
@@ -106,26 +106,26 @@ fsm find(state ∈ Tree)
     ¬is_first_tick ⇒ (state.s2 = (state.current = 2 ? Visited
                 : (((cur_is_dir ∧ ((c0 = 2) ∨ (c1 = 2))) ∧ (_state.s2 = Unseen)) ? Pending
                    : _state.s2)))
-    ¬is_first_tick ⇒ (state.s3 = (state.current = 3 ? Visited
+    (state.s3 = (state.current = 3 ? Visited
                 : (((cur_is_dir ∧ ((c0 = 3) ∨ (c1 = 3))) ∧ (_state.s3 = Unseen)) ? Pending
                    : _state.s3)))
-    ¬is_first_tick ⇒ (state.s4 = (state.current = 4 ? Visited
+    (state.s4 = (state.current = 4 ? Visited
                 : (((cur_is_dir ∧ ((c0 = 4) ∨ (c1 = 4))) ∧ (_state.s4 = Unseen)) ? Pending
                    : _state.s4)))
-    ¬is_first_tick ⇒ (state.s5 = (state.current = 5 ? Visited
+    (state.s5 = (state.current = 5 ? Visited
                 : (((cur_is_dir ∧ ((c0 = 5) ∨ (c1 = 5))) ∧ (_state.s5 = Unseen)) ? Pending
                    : _state.s5)))
 
     -- MATCH accumulator: a node's flag latches true once it is popped AND matches.
-    ¬is_first_tick ⇒ (state.m0 = (_state.m0 ∨ ((state.current = 0) ∧ cur_is_match)))
-    ¬is_first_tick ⇒ (state.m1 = (_state.m1 ∨ ((state.current = 1) ∧ cur_is_match)))
-    ¬is_first_tick ⇒ (state.m2 = (_state.m2 ∨ ((state.current = 2) ∧ cur_is_match)))
-    ¬is_first_tick ⇒ (state.m3 = (_state.m3 ∨ ((state.current = 3) ∧ cur_is_match)))
-    ¬is_first_tick ⇒ (state.m4 = (_state.m4 ∨ ((state.current = 4) ∧ cur_is_match)))
-    ¬is_first_tick ⇒ (state.m5 = (_state.m5 ∨ ((state.current = 5) ∧ cur_is_match)))
+    (state.m0 = (_state.m0 ∨ ((state.current = 0) ∧ cur_is_match)))
+    (state.m1 = (_state.m1 ∨ ((state.current = 1) ∧ cur_is_match)))
+    (state.m2 = (_state.m2 ∨ ((state.current = 2) ∧ cur_is_match)))
+    (state.m3 = (_state.m3 ∨ ((state.current = 3) ∧ cur_is_match)))
+    (state.m4 = (_state.m4 ∨ ((state.current = 4) ∧ cur_is_match)))
+    (state.m5 = (_state.m5 ∨ ((state.current = 5) ∧ cur_is_match)))
 
     -- count rises by one exactly when this tick popped a matching node
-    ¬is_first_tick ⇒ (state.n_matched =
+    (state.n_matched =
         (_state.n_matched + ((cur_is_match ∧ (state.current ≠ -1)) ? 1 : 0)))
 
 -- ── Static tests (validate the transition encodes — zero dropped constraints) ──

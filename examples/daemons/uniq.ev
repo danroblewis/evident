@@ -43,7 +43,7 @@ fsm uniq(state ∈ UniqState)
     -- Once the cursor runs off the end, the accumulator is frozen (fixpoint → halt).
     done ∈ Bool = (_state.cursor ≥ 6)
 
-    ¬is_first_tick ⇒ (done ⇒
+    (done ⇒
         (state.cursor = _state.cursor ∧ state.prev_line = _state.prev_line
          ∧ state.run_count = _state.run_count ∧ state.out_count = _state.out_count
          ∧ state.line_no = _state.line_no))
@@ -54,7 +54,7 @@ fsm uniq(state ∈ UniqState)
     same     ∈ Bool = (cur = _state.prev_line)      -- continues the current run
     boundary ∈ Bool = ((¬starting) ∧ (¬same))       -- a run just ended
 
-    ¬is_first_tick ⇒ (¬done ⇒
+    (¬done ⇒
         (state.cursor    = _state.cursor + 1
          ∧ state.prev_line = cur
          ∧ state.line_no   = _state.line_no + 1

@@ -76,18 +76,17 @@ fsm pstree(state ∈ Forest)
          ∧ state.d1 = -1 ∧ state.d2 = -1 ∧ state.d3 = -1
          ∧ state.d4 = -1 ∧ state.d5 = -1)
 
-    ¬is_first_tick ⇒
-        -- Advance the cursor one process per tick, clamping at the last pid (5).
-        state.cursor = (_state.cursor ≥ 5 ? 5 : _state.cursor + 1)
+    -- Advance the cursor one process per tick, clamping at the last pid (5).
+    state.cursor = (_state.cursor ≥ 5 ? 5 : _state.cursor + 1)
 
     -- Each slot latches its depth on the tick the cursor reaches it; otherwise it
     -- carries its previous value forward (parents are reached before children).
-    ¬is_first_tick ⇒ (state.d0 = (state.cursor = 0 ? new_depth : _state.d0))
-    ¬is_first_tick ⇒ (state.d1 = (state.cursor = 1 ? new_depth : _state.d1))
-    ¬is_first_tick ⇒ (state.d2 = (state.cursor = 2 ? new_depth : _state.d2))
-    ¬is_first_tick ⇒ (state.d3 = (state.cursor = 3 ? new_depth : _state.d3))
-    ¬is_first_tick ⇒ (state.d4 = (state.cursor = 4 ? new_depth : _state.d4))
-    ¬is_first_tick ⇒ (state.d5 = (state.cursor = 5 ? new_depth : _state.d5))
+    (state.d0 = (state.cursor = 0 ? new_depth : _state.d0))
+    (state.d1 = (state.cursor = 1 ? new_depth : _state.d1))
+    (state.d2 = (state.cursor = 2 ? new_depth : _state.d2))
+    (state.d3 = (state.cursor = 3 ? new_depth : _state.d3))
+    (state.d4 = (state.cursor = 4 ? new_depth : _state.d4))
+    (state.d5 = (state.cursor = 5 ? new_depth : _state.d5))
 
 -- ── Static tests (validate the transition encodes — zero dropped constraints) ──
 
