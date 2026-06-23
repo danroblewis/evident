@@ -272,35 +272,7 @@ function paint(data, ms) {
   renderQuerySuggestions(data);                            // example-query chips (Sam #248)
   activeView = data.view;
 
-  // tabs
-  const tabs = $("#tabs");
-  tabs.innerHTML = "";
-  tabs.setAttribute("role", "tablist");
-  (data.views || []).forEach((v, i) => {
-    // Real tabs: keyboard- and screen-reader-navigable, not bare clickable divs (Marek/Ana #31).
-    // Roving tabindex — only the active tab is in the tab order; ←/→ move focus between tabs.
-    const el = document.createElement("div");
-    // a visual seam before the first compiled-structure (function_*) view — they're a different KIND
-    // of view than the dynamics ones, so the strip should signal the group like ⌘K does (Marek #278).
-    const groupStart = v.startsWith("function_") && !(data.views[i - 1] || "").startsWith("function_");
-    el.className = "tab" + (v === activeView ? " on" : "") + (groupStart ? " group-start" : "");
-    if (groupStart) el.title = "compiled-structure views — how the solver reduced the program to functions";
-    el.textContent = v.replace(/_/g, " ");
-    el.setAttribute("role", "tab");
-    el.setAttribute("aria-selected", v === activeView ? "true" : "false");
-    el.tabIndex = v === activeView ? 0 : -1;
-    if (VIEW_CAPTIONS[v]) el.dataset.gloss = VIEW_CAPTIONS[v];   // hover a tab → its "what am I looking at?" gloss
-    el.onclick = () => run(v);
-    el.onkeydown = (e) => {
-      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); run(v); }
-      else if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
-        e.preventDefault();
-        const els = [...tabs.children];
-        els[(i + (e.key === "ArrowRight" ? 1 : els.length - 1)) % els.length].focus();
-      }
-    };
-    tabs.appendChild(el);
-  });
+  renderViewTabs(data, activeView, run);             // the view tab strip (app-history.js)
 
   // We're back to a live result — leave any read-only "past run" mode.
   pastView = null;

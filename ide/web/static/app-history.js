@@ -262,3 +262,33 @@ function exitCompareModes() {
   const panel = $("#diff-panel");
   if (panel) panel.hidden = true;             // a stale diff must not linger over a changed/dead backend
 }
+
+// The view tab strip — one keyboard-navigable tab per available view (roving tabindex; ←/→ move
+// focus), with a ⚙ seam before the compiled-structure (function_*) group (Marek #278). Extracted from
+// app.js to keep it under the length ratchet; uses the global VIEW_CAPTIONS + the passed-in onRun.
+function renderViewTabs(data, activeView, onRun) {
+  const tabs = $("#tabs");
+  tabs.innerHTML = "";
+  tabs.setAttribute("role", "tablist");
+  (data.views || []).forEach((v, i) => {
+    const el = document.createElement("div");
+    const groupStart = v.startsWith("function_") && !(data.views[i - 1] || "").startsWith("function_");
+    el.className = "tab" + (v === activeView ? " on" : "") + (groupStart ? " group-start" : "");
+    if (groupStart) el.title = "compiled-structure views — how the solver reduced the program to functions";
+    el.textContent = v.replace(/_/g, " ");
+    el.setAttribute("role", "tab");
+    el.setAttribute("aria-selected", v === activeView ? "true" : "false");
+    el.tabIndex = v === activeView ? 0 : -1;
+    if (VIEW_CAPTIONS[v]) el.dataset.gloss = VIEW_CAPTIONS[v];   // hover a tab → its caption
+    el.onclick = () => onRun(v);
+    el.onkeydown = (e) => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onRun(v); }
+      else if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+        e.preventDefault();
+        const els = [...tabs.children];
+        els[(i + (e.key === "ArrowRight" ? 1 : els.length - 1)) % els.length].focus();
+      }
+    };
+    tabs.appendChild(el);
+  });
+}
