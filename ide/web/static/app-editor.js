@@ -307,12 +307,12 @@ function initEditorInput() {
     if (!tok || (tok.type !== "identifier" && tok.type !== "variable.parameter")) return;
     const d = scopeDecls().get(stripIdentPrefix((tok.value || "").trim()));
     if (d) {
-      e.preventDefault();
-      editor.gotoLine(d.line, 0, true);     // 1-based; flash the decl line so the jump is visible
+      e.preventDefault(); e.stopPropagation();
+      editor.gotoLine(d.line, 0, true);   // 1-based; flash the decl line so the jump is visible
       editor.selection.selectLine();
       gloss.hidden = true;
     }
-  });
+  }, true);   // capture phase: run BEFORE Ace's own mousedown so stopPropagation pre-empts its caret-place
 
   // concept hover in the banner (Sam #163/#165) — same #gloss tooltip, delegated.
   document.addEventListener("mouseover", (e) => {
