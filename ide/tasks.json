@@ -3415,16 +3415,23 @@
       "id": 155,
       "title": "Enum carried vars in the verify box: the \u22a2verify placeholder suggests 'mode \u2260 Vending' but typing it on vending returns 'unknown carried var mode; known: balance, stock, vault'. The headline enum the whole sample is about can't be asserted on. (Mirrors Sam #100.) Expose enum carried vars to verify.",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "ide-critic",
       "created": "2026-06-22T03:10:33Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "solve"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-23T16:43:37Z",
+          "by": "worker",
+          "act": "done",
+          "note": "shipped: updateVerifyPlaceholder(data) builds a concrete \u22a2verify hint from a real reachable state (data.points[0].state) \u2014 an enum carried var \u2192 '\u25c7 light = Red / \u25a1\u25c7 light = Red', a numeric var \u2192 'timer \u2264 5'; generic fallback when no sampled state. Verified live: traffic \u2192 light/timer placeholder, 0 console errors, ./test.sh green."
+        }
+      ]
     },
     {
       "id": 157,
