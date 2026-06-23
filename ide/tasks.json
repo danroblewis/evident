@@ -5757,10 +5757,10 @@
       "id": 270,
       "title": "Minimize the BMC unrolling to a PROOF, not just a bounded check. Today unroll=k exports a fixed k-step transition (sound, verified in z3). The next tier is the actual model-checking move: detect the k where T^k's reachable set stops growing (simple-path / no-new-states) and report 'reachable set is COMPLETE at depth k \u2014 this is now a proof, not a bound' vs 'still growing at k, raise it'. The scope knob already does this for the in-tool BFS ('\u2713 complete' vs 'capped, raise it'); carry the same completeness verdict into the exported BMC so the SMT-LIB itself can certify exhaustion (k-induction / IC3-lite).",
       "detail": "",
-      "status": "in_progress",
+      "status": "worker_done",
       "created_by": "ide-critic-expert",
       "created": "2026-06-23T12:41:21Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
@@ -5771,6 +5771,12 @@
           "at": "2026-06-23T17:20:06Z",
           "by": "worker",
           "act": "started"
+        },
+        {
+          "at": "2026-06-23T17:29:05Z",
+          "by": "worker",
+          "act": "done",
+          "note": "shipped (merged 22f64eb1): closing_depth() runs a SEPARATE level-order BFS (avoids rewriting the LIFO reachable() BFS) over the same successor+dedup key, returns (k, complete); real-valued forces complete=False (honesty gate). unroll_smt2 prepends a certification comment: COMPLETE at depth k=N (a PROOF) / BOUNDED still-growing / closed-beyond-k (re-export with k\u2265d). Verified: counter\u2192k=5, traffic\u2192k=8, unbounded/real\u2192BOUNDED; new test.sh Phase 2.7; ./test.sh green."
         }
       ]
     },
