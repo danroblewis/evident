@@ -325,8 +325,16 @@ function paint(data, ms) {
   // Scope certification (Ana #243): is "no more reachable" a PROOF or a CAP? When the BFS reached a
   // fixpoint it's the COMPLETE set (sound to reason over); when it hit the limit it's a bounded
   // sample. Say which, so "9 reachable states" can't be mistaken for a proof when it's a sample.
-  const scopeCert = data.capped
+  // A "✓ complete" claim is only honest for a DISCRETE machine whose BFS reached a fixpoint with
+  // states found. A 0 count (a claim, a continuous domain that enumerates nothing, or a solver that
+  // gave up) must NEVER read as "✓ complete" (Marek #274); a real-valued domain is sampled along
+  // trajectories, not exhaustively enumerated — so it's a sample, never "complete".
+  const scopeCert = !data.states
+    ? `<span class="scope-cap" title="No reachable-state enumeration: this is a claim (a relation, not a machine), a continuous/non-enumerable domain, or the solver gave up. This is NOT a proof that the machine reaches nothing.">no enumerable reachable set</span>`
+    : data.capped
     ? `<span class="scope-cap" title="The reachability search stopped at its ${data.states}-state limit — the true reachable set may be LARGER. This is a bounded SAMPLE, not a complete enumeration; treat &quot;not found&quot; results as inconclusive.">≥${data.states} reachable (capped — sample)</span>`
+    : data.discrete === false
+    ? `<span class="scope-cap" title="Real-valued (continuous) domain: the reachable set is SAMPLED along trajectories, not exhaustively enumerated — the true set is uncountable. &quot;not found&quot; is inconclusive.">${data.states} reachable (sampled — continuous)</span>`
     : `<span class="scope-exh" title="The reachability search reached a FIXPOINT: every state the machine can enter from its start has been found. This is the COMPLETE reachable set — a proof, not a sample, so &quot;no state satisfies P&quot; is conclusive.">${data.states} reachable (✓ complete)</span>`;
   $("#honesty").innerHTML =
     `<span class="${dropCls}">${dropTxt}</span>` +

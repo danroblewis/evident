@@ -124,6 +124,9 @@ def analyze(req: Source):
                 "states": n_states,
                 "edges": n_edges,
                 "capped": capped,
+                # Real-valued domains aren't exhaustively enumerable — the reachable BFS samples
+                # trajectories. The honesty line must NOT call that "✓ complete" (Marek #274).
+                "discrete": m.is_discrete(),
                 "vars": [v["name"].split(".")[-1] for v in m.interface_vars]
                         + [v["name"].split(".")[-1] for v in getattr(m, "derived", [])],
                 "view": view,
