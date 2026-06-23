@@ -1,15 +1,17 @@
 {
-  "seq": 301,
+  "seq": 309,
   "tasks": [
     {
       "id": 1,
       "title": "Interactive diagrams: click a node, hover for detail, zoom/pan (PNG \u2192 SVG)",
       "detail": "Diagrams are flat <img> rasters; the 'diagram is the debugger' promise needs touchable views.",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "worker",
       "created": "2026-06-21T23:18:36Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "viz"
@@ -20,6 +22,12 @@
           "by": "worker",
           "act": "done",
           "note": "shipped this session (code committed + verified); re-marked after a fast-forward reverted the uncommitted ledger"
+        },
+        {
+          "at": "2026-06-23T20:41:42Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -27,11 +35,13 @@
       "id": 2,
       "title": "Find / replace / rename / go-to-definition in the editor",
       "detail": "Ctrl-F does nothing; wire CodeMirror search addon + AST-based rename.",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "worker",
       "created": "2026-06-21T23:18:36Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "editor"
@@ -42,6 +52,12 @@
           "by": "worker",
           "act": "done",
           "note": "DONE \u2014 find/replace: Ace's built-in Ctrl-F/Ctrl-H; rename: F2 renameSymbol (#276, renames _/\u0394 forms too); go-to-definition: \u2318-click (#282); find-references: Ace highlightSelectedWord. All four affordances present."
+        },
+        {
+          "at": "2026-06-23T20:41:42Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -49,11 +65,13 @@
       "id": 3,
       "title": "Compare two runs side by side (pin / split / run history)",
       "detail": "The headline 'compare broken vs fixed' move has no pin/split.",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "worker",
       "created": "2026-06-21T23:18:36Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "editor"
@@ -64,6 +82,12 @@
           "by": "worker",
           "act": "done",
           "note": "reconciled this session as already-shipped (code predates/committed); re-applied after the ledger revert"
+        },
+        {
+          "at": "2026-06-23T20:41:42Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -71,11 +95,13 @@
       "id": 4,
       "title": "Parser errors must carry line/col so the inline marker fires",
       "detail": "Inline error tint only fires on lexer errors with 'line N'; parser errors have none.",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "worker",
       "created": "2026-06-21T23:18:36Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 1,
       "tags": [
         "editor"
@@ -98,6 +124,12 @@
           "by": "worker",
           "act": "done",
           "note": "reconciled this session as already-shipped (code predates/committed); re-applied after the ledger revert"
+        },
+        {
+          "at": "2026-06-23T20:41:42Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -105,7 +137,7 @@
       "id": 5,
       "title": "Command palette + keyboard shortcuts + comment-toggle",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "worker",
       "created": "2026-06-21T23:18:36Z",
       "worker_done": true,
@@ -141,6 +173,12 @@
           "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
+        },
+        {
+          "at": "2026-06-23T20:42:10Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -148,7 +186,7 @@
       "id": 6,
       "title": "Diagram export / copy (PNG / SVG)",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "worker",
       "created": "2026-06-21T23:18:36Z",
       "worker_done": true,
@@ -171,6 +209,12 @@
           "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
+        },
+        {
+          "at": "2026-06-23T20:42:10Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -178,11 +222,13 @@
       "id": 7,
       "title": "Autocomplete + hover-for-type in the editor",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "worker",
       "created": "2026-06-21T23:18:36Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "editor"
@@ -193,6 +239,12 @@
           "by": "worker",
           "act": "done",
           "note": "shipped this session (code committed + verified); re-marked after a fast-forward reverted the uncommitted ledger"
+        },
+        {
+          "at": "2026-06-23T20:41:42Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -230,11 +282,13 @@
       "id": 10,
       "title": "Symbol palette / cheat-sheet button (\\in\u2192\u2208, \\Delta\u2192\u0394, ...)",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "worker",
       "created": "2026-06-21T23:18:36Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "learn"
@@ -245,6 +299,12 @@
           "by": "worker",
           "act": "done",
           "note": "reconciled this session as already-shipped (code predates/committed); re-applied after the ledger revert"
+        },
+        {
+          "at": "2026-06-23T20:41:42Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -252,7 +312,7 @@
       "id": 11,
       "title": "Render a solve witness domain-shaped (a chessboard for queens, not [1,3,0,2])",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "worker",
       "created": "2026-06-21T23:18:36Z",
       "worker_done": true,
@@ -275,6 +335,12 @@
           "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
+        },
+        {
+          "at": "2026-06-23T20:42:10Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -282,11 +348,13 @@
       "id": 12,
       "title": "Per-view caption: what this diagram shows and when it is useful",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "worker",
       "created": "2026-06-21T23:18:36Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "learn"
@@ -297,6 +365,12 @@
           "by": "worker",
           "act": "done",
           "note": "reconciled this session as already-shipped (code predates/committed); re-applied after the ledger revert"
+        },
+        {
+          "at": "2026-06-23T20:41:42Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -304,7 +378,7 @@
       "id": 13,
       "title": "Counterexample traces: step through s0 \u2192 \u2026 \u2192 s_bad for a failing property",
       "detail": "TLA+ gives a path; a failing claim in a difference-equation model IS a path.",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "worker",
       "created": "2026-06-21T23:18:36Z",
       "worker_done": true,
@@ -327,6 +401,12 @@
           "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
+        },
+        {
+          "at": "2026-06-23T20:42:10Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -334,7 +414,7 @@
       "id": 14,
       "title": "Temporal-property checking: \u25c7 / \u25a1 / until (safety + liveness)",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "worker",
       "created": "2026-06-21T23:18:36Z",
       "worker_done": true,
@@ -357,6 +437,12 @@
           "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
+        },
+        {
+          "at": "2026-06-23T20:42:10Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -364,7 +450,7 @@
       "id": 15,
       "title": "Minimal, named UNSAT core (real Z3 core, not line-granular delta-debug)",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "worker",
       "created": "2026-06-21T23:18:36Z",
       "worker_done": true,
@@ -406,6 +492,12 @@
           "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
+        },
+        {
+          "at": "2026-06-23T20:42:10Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -413,11 +505,13 @@
       "id": 16,
       "title": "Scoped enumeration with symmetry breaking",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "worker",
       "created": "2026-06-21T23:18:36Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "solve"
@@ -428,6 +522,12 @@
           "by": "worker",
           "act": "done",
           "note": "shipped (merged d45d109e): SOUND value-symmetry witness fold. ide/web/symmetry.py detects interchangeable enum-value sets (no value named in a constraint + no ordering comparison + all-nullary variants \u2014 every ambiguity resolves to 'fixed'), canonicalizes each witness by first-occurrence relabel, dedups into orbits. fold_symmetry flag on /api/solve enumerate + a 'fold symmetric' toggle showing canonical reps + '(\u00d7k symmetric)' + the named folded set. Verified: 3-coloring 10 raw \u2192 2 orbits (folded_sets {Color:[R,G,B]}); NAMED (a=Red) + ORDERED (enum \u2264) stay unfolded; each canonical rep re-checked as a real witness; ./test.sh Phase 2.9 green."
+        },
+        {
+          "at": "2026-06-23T20:41:42Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -435,11 +535,13 @@
       "id": 17,
       "title": "Ad-hoc query console / evaluator pane over the current model",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "worker",
       "created": "2026-06-21T23:18:36Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "solve"
@@ -450,6 +552,12 @@
           "by": "worker",
           "act": "done",
           "note": "reconciled this session as already-shipped (code predates/committed); re-applied after the ledger revert"
+        },
+        {
+          "at": "2026-06-23T20:41:42Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -457,7 +565,7 @@
       "id": 18,
       "title": "Export SMT-LIB / model; diff two models",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "worker",
       "created": "2026-06-21T23:18:37Z",
       "worker_done": true,
@@ -499,6 +607,12 @@
           "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
+        },
+        {
+          "at": "2026-06-23T20:42:10Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -506,7 +620,7 @@
       "id": 19,
       "title": "FSM unrolling / self-composition: compose T^k, simplify, detect fixpoint of the unrolling (T^k \u2261 T^k+1)",
       "detail": "User's core idea: bind run N output\u2192run N+1 input, analyze the composed relation for overall behavior.",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "worker",
       "created": "2026-06-21T23:18:37Z",
       "worker_done": true,
@@ -526,6 +640,12 @@
         },
         {
           "at": "2026-06-23T12:40:21Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
+        },
+        {
+          "at": "2026-06-23T20:42:10Z",
           "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
@@ -551,11 +671,13 @@
       "id": 21,
       "title": "Solve-for-boundaries: extremal/optimization queries on the model, not single runs",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "worker",
       "created": "2026-06-21T23:18:37Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "analysis"
@@ -566,6 +688,12 @@
           "by": "worker",
           "act": "done",
           "note": "shipped this session (code committed + verified); re-marked after a fast-forward reverted the uncommitted ledger"
+        },
+        {
+          "at": "2026-06-23T20:41:42Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -772,7 +900,7 @@
       "id": 26,
       "title": "Latency: stream / progress indicator for unbounded machines (1-2s solve+render)",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "worker",
       "created": "2026-06-21T23:18:37Z",
       "worker_done": true,
@@ -805,6 +933,12 @@
         },
         {
           "at": "2026-06-23T00:01:05Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
+        },
+        {
+          "at": "2026-06-23T20:42:10Z",
           "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
@@ -925,12 +1059,12 @@
       "id": 35,
       "title": "evident fmt \u2014 a gofmt-style pretty-printer that rewrites a program to an equivalent, idiomatic one",
       "detail": "User request: a 'gofmt for Evident'. Parse \u2192 AST \u2192 pretty-print a SEMANTICALLY EQUIVALENT program that looks better; must be idempotent (fmt\u2218fmt = fmt) and round-trip (re-parses, ./test.sh stays green). Likely a Rust 'evident fmt <file> [--write]' command reusing the parser + a pretty-printer over core/ast.rs (the AST Display is the seed). Target rules (start with the user's, align with docs/evident-purism.md + the idioms in CLAUDE.md):\n (1) Line length \u2014 wrap long lines (~88 cols) sensibly; consistent indentation.\n (2) Vertical spacing / newlines \u2014 group decls vs constraints; blank line between sections.\n (3) Minimize \u2227 \u2014 rewrite 'A \u21d2 (B \u2227 C)' and conjunction chains into the indented implies-block / one-constraint-per-line-at-same-tab-level form (newline = \u2227).\n (4) Prefer \u0394 in fsm models \u2014 rewrite 'var = _var + step' carries into '\u00acis_first_tick \u21d2 \u0394var = step' (honor the gotchas: decl outside the guard; single-line \u21d2, or an indented block grouping deltas).\n (5) Reduce expression duplication \u2014 factor a repeated subexpression into a named chained-membership binding 'name \u2208 T = expr' and reference it.\n (6) Drop type annotations the inference can recover; use chained-membership (e.g. '0 \u2264 x \u2208 Int \u2264 5'); element-iteration ('\u2200 e \u2208 s') over '\u2200 i \u2208 {0..#s-1}' index loops; coindexed/edges over parallel-seq loops; avoid ternary chains; keep 'type main' compact.\nThe purism doc is the authority on 'good Evident'; the formatter should produce purism-CLEAN output. Open question to settle with the user: exact column width, and how aggressive (5) should be.",
-      "status": "worker_done",
+      "status": "in_progress",
       "created_by": "worker",
       "created": "2026-06-21T23:54:08Z",
-      "worker_done": true,
+      "worker_done": false,
       "approvals": [],
-      "reopened": 1,
+      "reopened": 2,
       "tags": [
         "lang"
       ],
@@ -952,6 +1086,12 @@
           "by": "worker",
           "act": "done",
           "note": "reconciled this session as already-shipped (code predates/committed); re-applied after the ledger revert"
+        },
+        {
+          "at": "2026-06-23T20:41:37Z",
+          "by": "ide-critic-expert",
+          "act": "reopened",
+          "note": "fmt still refuses on ragged indentation \u2014 the exact input a formatter exists to clean (verified: /tmp/messy.ev and a parseable-but-over-indented sibling both exit 1, file unchanged). The SEVERE half of concern #53 (silent fake-nesting / corruption) IS fixed \u2014 it now refuses cleanly with an honest, well-explained message and never mis-nests. But a layout formatter that cannot re-indent ragged siblings to a uniform column declines its core advertised use; treat as a roadmap item, not done."
         }
       ]
     },
@@ -974,7 +1114,7 @@
       "id": 47,
       "title": "Plot Bool variables and mark state-change events in time_series (done flips false->true is currently invisible)",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic",
       "created": "2026-06-22T00:06:20Z",
       "worker_done": true,
@@ -1010,6 +1150,12 @@
           "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
+        },
+        {
+          "at": "2026-06-23T20:42:10Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -1017,11 +1163,13 @@
       "id": 48,
       "title": "Reset/recompute all panels on empty or non-FSM input (no stale banner/structure/diagram from the previous program)",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic",
       "created": "2026-06-22T00:06:20Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "analysis"
@@ -1032,6 +1180,12 @@
           "by": "worker",
           "act": "done",
           "note": "reconciled this session as already-shipped (code predates/committed); re-applied after the ledger revert"
+        },
+        {
+          "at": "2026-06-23T20:41:42Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -1039,11 +1193,13 @@
       "id": 49,
       "title": "Keyboard/AT accessibility: view tabs need role=tab + tabindex + Enter activation; diagram img needs descriptive long-alt",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic",
       "created": "2026-06-22T00:06:20Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 1,
       "tags": [
         "editor"
@@ -1072,6 +1228,12 @@
           "by": "worker",
           "act": "done",
           "note": "reconciled this session as already-shipped (code predates/committed); re-applied after the ledger revert"
+        },
+        {
+          "at": "2026-06-23T20:41:42Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -1253,11 +1415,13 @@
       "id": 57,
       "title": "Editor: inline dropped-constraint markers. The honesty warning ('couldn't translate to Bool: count = banana+1') only appears in the bottom status panel; the #33 done-note promised a fullLine marker + gutter dot but I saw none at the offending line. Put a squiggle/gutter dot ON the dropped line so the silent-bug is visible where you wrote it.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic",
       "created": "2026-06-22T00:13:58Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "editor"
@@ -1268,6 +1432,12 @@
           "by": "worker",
           "act": "done",
           "note": "reconciled this session as already-shipped (code predates/committed); re-applied after the ledger revert"
+        },
+        {
+          "at": "2026-06-23T20:41:42Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -1275,7 +1445,7 @@
       "id": 58,
       "title": "Streaming/progress for slow analyze: oscillator took ~9.8s with only a 'computing\u2026' label. Show a determinate-ish progress (states sampled so far) or stream partial diagrams so a 10s solve doesn't feel hung.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic",
       "created": "2026-06-22T00:13:58Z",
       "worker_done": true,
@@ -1308,6 +1478,12 @@
         },
         {
           "at": "2026-06-23T00:01:05Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
+        },
+        {
+          "at": "2026-06-23T20:42:10Z",
           "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
@@ -1377,11 +1553,13 @@
       "id": 64,
       "title": "Grey out or hide the banner + structure line while an analyze is recomputing or has errored, instead of leaving the previous program's verdict on screen (matches the diagram's existing 'stale' overlay)",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-newcomer",
       "created": "2026-06-22T00:25:40Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 2,
       "tags": [
         "viz"
@@ -1416,6 +1594,12 @@
           "by": "worker",
           "act": "done",
           "note": "shipped (merged 044736e8): the dim/error treatment was ALREADY complete at HEAD (concerns #91/#98 cleared by their authors) \u2014 agent verified all 3 scenarios live (recompute\u2192.recomputing greys banner+structure opacity 0.3; error\u2192.stale neutral + structure hidden; switch\u2192cleared) + fixed the one gap: backendDown() left a stale .recomputing on #structure \u2192 added the removal. 0 console errors."
+        },
+        {
+          "at": "2026-06-23T20:41:42Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -1423,11 +1607,13 @@
       "id": 65,
       "title": "Autocomplete that teaches: typing 'is_' suggests is_first_tick, typing a claim name suggests its params \u2014 completion that doubles as in-context documentation for a newcomer typing blind",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-newcomer",
       "created": "2026-06-22T00:25:40Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "editor"
@@ -1438,6 +1624,12 @@
           "by": "worker",
           "act": "done",
           "note": "reconciled this session as already-shipped (code predates/committed); re-applied after the ledger revert"
+        },
+        {
+          "at": "2026-06-23T20:41:42Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -1445,11 +1637,13 @@
       "id": 66,
       "title": "Plain-language 'what am I looking at' caption under each of the 16 diagram views (one sentence: what the axes mean and why this view was chosen) for readers with zero diagram-reading skill",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-newcomer",
       "created": "2026-06-22T00:25:40Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "viz"
@@ -1460,6 +1654,12 @@
           "by": "worker",
           "act": "done",
           "note": "reconciled this session as already-shipped (code predates/committed); re-applied after the ledger revert"
+        },
+        {
+          "at": "2026-06-23T20:41:42Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -1467,11 +1667,13 @@
       "id": 67,
       "title": "Save / name / share a buffer beyond the single localStorage slot: a named-snapshots list and a shareable URL so a newcomer can keep a win and show a friend",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-newcomer",
       "created": "2026-06-22T00:25:40Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "editor"
@@ -1482,6 +1684,12 @@
           "by": "worker",
           "act": "done",
           "note": "reconciled this session as already-shipped (code predates/committed); re-applied after the ledger revert"
+        },
+        {
+          "at": "2026-06-23T20:41:42Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -1545,11 +1753,13 @@
       "id": 70,
       "title": "Perf: phase_portrait vector field does n\u00b2 fresh successor() solves \u2014 reuse one push/pop solver",
       "detail": "render_phase_portrait grids the field by calling m.successor() per cell, each rebuilding a z3 solver (~17ms). Reuse a single solver with push/pop (pin once, per-cell assert axis values) to cut real-valued render from seconds to <0.5s and allow a denser grid again.",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "worker",
       "created": "2026-06-22T00:30:36Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "perf"
@@ -1560,6 +1770,12 @@
           "by": "worker",
           "act": "done",
           "note": "shipped this session (code committed + verified); re-marked after a fast-forward reverted the uncommitted ledger"
+        },
+        {
+          "at": "2026-06-23T20:41:42Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -1567,7 +1783,7 @@
       "id": 78,
       "title": "Counterexample/witness TRACES, not just endpoints: when a property fails or a state is reachable, give the step-by-step trajectory (sequence of states) that produces it, scrubbable in time. TLA+ hands you the full counterexample trace; here I see the endpoint banner ('unstable equilibrium') but cannot step the path that diverges.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-expert",
       "created": "2026-06-22T00:41:34Z",
       "worker_done": true,
@@ -1606,6 +1822,12 @@
         },
         {
           "at": "2026-06-23T12:40:21Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
+        },
+        {
+          "at": "2026-06-23T20:42:10Z",
           "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
@@ -1728,11 +1950,13 @@
       "id": 81,
       "title": "Ad-hoc query console: evaluate a constraint/assertion against the CURRENT model without editing source \u2014 'does any reachable state have count=3 \u2227 done?', 'is state X reachable?'. miniKanren/Z3 let me pose a fresh query against the loaded model; here every question requires editing the program.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-expert",
       "created": "2026-06-22T00:41:34Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "solve"
@@ -1743,6 +1967,12 @@
           "by": "worker",
           "act": "done",
           "note": "reconciled this session as already-shipped (code predates/committed); re-applied after the ledger revert"
+        },
+        {
+          "at": "2026-06-23T20:41:42Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -1750,7 +1980,7 @@
       "id": 82,
       "title": "Diff two models / two reachable sets: change a constraint and see which states/transitions APPEARED or VANISHED (the relational analog of a diff). Core debugging move when tightening or loosening a spec.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-expert",
       "created": "2026-06-22T00:41:34Z",
       "worker_done": true,
@@ -1792,6 +2022,12 @@
           "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
+        },
+        {
+          "at": "2026-06-23T20:42:10Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -1799,7 +2035,7 @@
       "id": 83,
       "title": "Export / interop: dump the generated SMT-LIB for the current claim, copy a witness/model as text, and export a diagram as SVG/PNG for a paper. I cannot take the solver's work out of the tool \u2014 no SMT-LIB, no copyable model.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-expert",
       "created": "2026-06-22T00:41:34Z",
       "worker_done": true,
@@ -1841,6 +2077,12 @@
           "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
+        },
+        {
+          "at": "2026-06-23T20:42:10Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -1848,7 +2090,7 @@
       "id": 84,
       "title": "Scope/bound control as a first-class knob (Alloy-style): set the BFS depth / state cap explicitly and know whether 'no more reachable' is a proof of exhaustion or a hit cap. The footer says '\u2265400 (capped sample)' but I can't raise the cap or ask 'is this complete?'.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-expert",
       "created": "2026-06-22T00:41:34Z",
       "worker_done": true,
@@ -1871,6 +2113,12 @@
           "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
+        },
+        {
+          "at": "2026-06-23T20:42:10Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -1878,7 +2126,7 @@
       "id": 85,
       "title": "Pin-and-explore for sequence/record elements: solve-for-X must support col[i]=v and record-field pins, applied to the solver (currently silently dropped). Then let me pin a partial witness and enumerate completions.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-expert",
       "created": "2026-06-22T00:41:34Z",
       "worker_done": true,
@@ -1912,6 +2160,12 @@
           "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
+        },
+        {
+          "at": "2026-06-23T20:42:10Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -1919,11 +2173,13 @@
       "id": 86,
       "title": "Entry-claim picker in the UI: when a file has multiple top-level claims/types, show a dropdown to choose which to Solve/analyze instead of erroring 'ambiguous' with no way to resolve it.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-expert",
       "created": "2026-06-22T00:41:34Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "solve"
@@ -1934,6 +2190,12 @@
           "by": "worker",
           "act": "done",
           "note": "shipped this session (code committed + verified); re-marked after a fast-forward reverted the uncommitted ledger"
+        },
+        {
+          "at": "2026-06-23T20:41:42Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -1941,11 +2203,13 @@
       "id": 87,
       "title": "Auto-select each demo's headline diagram view (the sample names its intended view: '(FSM, cobweb)', '(FSM, scatter_matrix)'); pick that view on load. More generally, tune the auto-selector: 4-var \u2192 scatter_matrix, 1-D map \u2192 cobweb, digital flags \u2192 timing_diagram.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-expert",
       "created": "2026-06-22T00:41:34Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "viz"
@@ -1956,6 +2220,12 @@
           "by": "worker",
           "act": "done",
           "note": "shipped: samples open on their headline view \u2014 headlineView(name,source) parses 'open the X view/tab' or the first headline view-token, loadProgram threads it to run(view); fixed the debounced-re-analyze override (run() cancels the pending timer when a view is passed). Verified live: Rule 90\u2192timing_diagram, oscillator\u2192phase_portrait, predator-prey\u2192function_graph, logistic\u2192cobweb, random walk\u2192occupancy_heatmap; headline-less samples recommend. ./test.sh green, 0 console errors."
+        },
+        {
+          "at": "2026-06-23T20:41:42Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -1963,7 +2233,7 @@
       "id": 88,
       "title": "Honest N/A cards per view: when a view doesn't fit the model (e.g. cobweb on a multi-var system, basin_map on a nondeterministic one), show an explicit 'N/A \u2014 why' card rather than rendering a misleading single-axis scatter or single-color basin.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-expert",
       "created": "2026-06-22T00:41:34Z",
       "worker_done": true,
@@ -1999,6 +2269,12 @@
           "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
+        },
+        {
+          "at": "2026-06-23T20:42:10Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -2006,11 +2282,13 @@
       "id": 89,
       "title": "'Why is this state reachable?' provenance: click a node in state_graph/reachability_tree and get the path (and the constraints) that admit it. Pairs with witness traces.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-expert",
       "created": "2026-06-22T00:41:34Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "analysis"
@@ -2021,6 +2299,12 @@
           "by": "worker",
           "act": "done",
           "note": "shipped this session (code committed + verified); re-marked after a fast-forward reverted the uncommitted ledger"
+        },
+        {
+          "at": "2026-06-23T20:41:42Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -2028,7 +2312,7 @@
       "id": 90,
       "title": "Progress/computing indicator + cancel on slow analyses (oscillator 9.7s, traffic 29.5s): show a spinner and clear the stale panel so I never read the previous program's verdict while the new one computes.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-expert",
       "created": "2026-06-22T00:41:34Z",
       "worker_done": true,
@@ -2064,6 +2348,12 @@
           "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
+        },
+        {
+          "at": "2026-06-23T20:42:10Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -2071,11 +2361,13 @@
       "id": 95,
       "title": "Title-bar file label shows the wrong name for multi-decl Solve samples: toposort displays 'Edge.ev', sudoku 'Box.ev', subset-sum 'Item.ev' \u2014 it picks the first top-level decl (a record 'type') instead of the entry 'claim' (toposort/sudoku/subset_sum). The Solve result correctly names the claim ('SAT \u2014 toposort has a witness'), so the data exists; just label the buffer by the entry claim, not the first type.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic",
       "created": "2026-06-22T01:27:38Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "editor"
@@ -2086,6 +2378,12 @@
           "by": "worker",
           "act": "done",
           "note": "shipped this session (code committed + verified); re-marked after a fast-forward reverted the uncommitted ledger"
+        },
+        {
+          "at": "2026-06-23T20:41:42Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -2093,11 +2391,13 @@
       "id": 96,
       "title": "Let the verify '\u22a2' counterexample be actionable: when it returns '\u2717 violated \u2014 counterexample count=4' (or a multi-var state), make that state clickable to jump the diagram/time-series to it and, ideally, show the witness TRAJECTORY that reaches it (ties to #78). Right now I get the endpoint state as text but can't see HOW the machine got there or locate it in any view.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic",
       "created": "2026-06-22T01:27:38Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "solve"
@@ -2108,6 +2408,12 @@
           "by": "worker",
           "act": "done",
           "note": "shipped this session (code committed + verified); re-marked after a fast-forward reverted the uncommitted ledger"
+        },
+        {
+          "at": "2026-06-23T20:41:43Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -2115,7 +2421,7 @@
       "id": 97,
       "title": "Solution-space diagram: show SOLVED variable boundaries + feasible region, not a run",
       "detail": "USER CONCERN (raised multiple times, high priority): the 16 diagrams render a RUN/trajectory of the program, not the ABSTRACT BOUNDARIES of the variables. Build a solve-based view: (1) exact per-variable min/max via z3 Optimize over the solution space (not run-observed); (2) a 2D feasible-region plot for the 2 primary vars \u2014 grid value-space, solve 'is (x,y) extensible to a full satisfying assignment?' per cell, shade the feasible set + outline its boundary; (3) mark solved fixed points/equilibria. Claim \u2192 the constraint's solution set; FSM \u2192 invariant/reachable envelope + bounds. Make it the lead view (or prominent) so the user sees boundaries, not a path. The Structure panel already does this textually \u2014 this makes it visual + rigorous (Optimize, not sampling-of-a-run).",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "worker",
       "created": "2026-06-22T01:38:22Z",
       "worker_done": true,
@@ -2135,6 +2441,12 @@
         },
         {
           "at": "2026-06-23T12:40:21Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
+        },
+        {
+          "at": "2026-06-23T20:42:10Z",
           "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
@@ -2209,11 +2521,13 @@
       "id": 103,
       "title": "Sudoku witness should draw the filled n\u00d7n DIGIT grid, not a flat 16-wide index\u2192value strip. The queen-board fabrication is correctly gone (good), but for the 4\u00d74 sudoku sample the witness renders as one row of 16 cells [1,2,3,4,4,3,1,2,...] plus a raw-JSON 'boxes' row. As a newcomer I literally cannot read the Sudoku solution out of a 16-long strip \u2014 I'd have to mentally wrap it into 4 rows. Draw it as a 4\u00d74 grid of digits (the domain picture), the way the N-queens board now does. The same renderer that detects 'this is a board' should reshape #cell=16 into 4\u00d74.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-newcomer",
       "created": "2026-06-22T01:45:28Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "viz"
@@ -2224,6 +2538,12 @@
           "by": "worker",
           "act": "done",
           "note": "reconciled this session as already-shipped (code predates/committed); re-applied after the ledger revert"
+        },
+        {
+          "at": "2026-06-23T20:41:43Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -2231,7 +2551,7 @@
       "id": 104,
       "title": "Pretty-print record-Seq witnesses instead of raw JSON. subset-sum shows items as [{\"take\":false,\"weight\":3},{\"take\":true,\"weight\":11}] and sudoku shows boxes as [{\"a\":1,\"b\":2,...}]. A newcomer reading a witness has to parse JSON in their head. Render a small table (columns take|weight, one row per item, the chosen rows highlighted) so I can SEE which items were picked and that their weights sum to the target. Domain picture, not the encoding.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-newcomer",
       "created": "2026-06-22T01:45:28Z",
       "worker_done": true,
@@ -2261,6 +2581,12 @@
           "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
+        },
+        {
+          "at": "2026-06-23T20:42:10Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -2268,11 +2594,13 @@
       "id": 105,
       "title": "The \u22a2verify result should teach what an invariant IS, not just pass/fail. Right now 'count \u2264 5' \u2192 '\u2713 proven on all 6 reachable states' and 'count \u2264 3' \u2192 '\u2717 violated \u2014 counterexample count=4' (excellent, this is the best teaching moment in the whole tool). Push it further: on \u2717, offer a one-click 'show me the trace to count=4' that highlights the path in the time-series/state-graph; on \u2713, a tiny 'an invariant is a property true in EVERY reachable state \u2014 you just proved one' tooltip the first time. That turns the verify box from a checker into a teacher.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-newcomer",
       "created": "2026-06-22T01:45:28Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "learn"
@@ -2283,6 +2611,12 @@
           "by": "worker",
           "act": "done",
           "note": "reconciled this session as already-shipped (code predates/committed); re-applied after the ledger revert"
+        },
+        {
+          "at": "2026-06-23T20:41:43Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -2290,7 +2624,7 @@
       "id": 106,
       "title": "Persist editor + verify input across refresh, and a Save/share affordance. I typed a 'claim over' from scratch and a verify assertion; if I refresh I lose both (the editor resets to the default sample). Every editor I use (even a scratchpad) survives reload via localStorage. Also no way to share a model \u2014 I'd want a 'copy link'/'export .ev' so I can show a friend the win. Wall: I wanted to keep my over-constrained example to come back to and had nowhere to put it.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-newcomer",
       "created": "2026-06-22T01:45:28Z",
       "worker_done": true,
@@ -2320,6 +2654,12 @@
           "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
+        },
+        {
+          "at": "2026-06-23T20:42:10Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -2327,11 +2667,13 @@
       "id": 107,
       "title": "Verify box: stale assertion text persists across sample switches. After typing 'mode != Vending' on vending then switching to counter, the verify input still held 'mode != Vending' over the counter. Minor, but combined with concern #100 (placeholder over-promises) it means the verify input never feels 'fresh' for the current program. Clear (or re-default) the verify input on program switch.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-newcomer",
       "created": "2026-06-22T01:45:28Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "editor"
@@ -2342,6 +2684,12 @@
           "by": "worker",
           "act": "done",
           "note": "reconciled this session as already-shipped (code predates/committed); re-applied after the ledger revert"
+        },
+        {
+          "at": "2026-06-23T20:41:43Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -2349,11 +2697,13 @@
       "id": 108,
       "title": "Title bar shows the wrong .ev name for multi-decl claim samples \u2014 toposort and Edge-typed samples show 'Edge.ev' (the first 'type' decl) instead of the claim/sample name. Cosmetic but a newcomer trusts the title to tell them what they're looking at; 'Edge.ev' for a toposort claim is confusing. Name the file after the entry claim or the sample's menu label.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-newcomer",
       "created": "2026-06-22T01:45:28Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "editor"
@@ -2364,6 +2714,12 @@
           "by": "worker",
           "act": "done",
           "note": "shipped this session (code committed + verified); re-marked after a fast-forward reverted the uncommitted ledger"
+        },
+        {
+          "at": "2026-06-23T20:41:43Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -2371,7 +2727,7 @@
       "id": 117,
       "title": "Exact bounds via z3 Optimize for the solution_space view (essential): replace the BFS-sample min/max with z3 Optimize.maximize/minimize over the constraint set per numeric var. Then 'exact' is provable even when the reachable-state BFS is capped, and the convergent-vs-divergent capped-label ambiguity (concern #112) disappears \u2014 Optimize gives the true sup/inf, with 'unbounded' when Optimize says so. This is the single change that makes the lead view's 'solved, not simulated' claim true.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-expert",
       "created": "2026-06-22T02:06:18Z",
       "worker_done": true,
@@ -2391,6 +2747,12 @@
         },
         {
           "at": "2026-06-23T12:40:21Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
+        },
+        {
+          "at": "2026-06-23T20:42:10Z",
           "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
@@ -2401,7 +2763,7 @@
       "id": 118,
       "title": "True feasible-region solve for the solution_space right panel (essential): instead of a bounding-box rectangle (concern #113), grid the 2 principal vars' value-space and per cell solve 'is (x,y) extensible to a full satisfying assignment?' \u2014 shade feasible cells, outline the actual region. For FSMs, the reachable-set scatter; for claims, the constraint's true solution set. This is the rigorous answer to 'show the boundaries of the model'.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-expert",
       "created": "2026-06-22T02:06:18Z",
       "worker_done": true,
@@ -2424,6 +2786,12 @@
           "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
+        },
+        {
+          "at": "2026-06-23T20:42:10Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -2431,7 +2799,7 @@
       "id": 119,
       "title": "Temporal property checking in the verify console (important): extend assert-and-check (#79, safety done) to 'always P', 'eventually P', 'P leads-to Q' over the reachable transition graph, returning a counterexample TRACE (the path of states) when false \u2014 not just a single state. TLA+ checks temporal formulas and gives a trace; right now 'eventually done' returns '\u2715 write var op value'. Liveness on the BFS graph (lasso detection for 'eventually') is the next tier after safety.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-expert",
       "created": "2026-06-22T02:06:18Z",
       "worker_done": true,
@@ -2451,6 +2819,12 @@
         },
         {
           "at": "2026-06-23T12:40:21Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
+        },
+        {
+          "at": "2026-06-23T20:42:10Z",
           "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
@@ -2511,7 +2885,7 @@
       "id": 121,
       "title": "Indexed/field-element pins in solve-for-X (important): pinning col[0]=0 now honestly errors ('can't pin an indexed/field element yet') instead of silently producing a contradictory witness \u2014 good. But the capability is still missing. Support col[0]=0, grid[1][2]=3, rec.field=v by adding the equality as a tracked assertion on the indexed Z3 leaf. N-queens with col[0]=0 should then return UNSAT (provably, no 4-queens solution has col[0]=0).",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-expert",
       "created": "2026-06-22T02:06:30Z",
       "worker_done": true,
@@ -2545,6 +2919,12 @@
           "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
+        },
+        {
+          "at": "2026-06-23T20:42:10Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -2552,11 +2932,13 @@
       "id": 122,
       "title": "Enumerate ALL solutions with scope + symmetry breaking (important): the 'all \u22a8*' button exists but I want Alloy-style control \u2014 a scope/bound I set, symmetry breaking so I'm not drowning in isomorphic witnesses (4-queens has 2 solutions; N-queens scales), and a count. 'Show me every distinct model up to symmetry, bounded at N' is the daily Alloy move; right now I get one witness + a re-solve.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-expert",
       "created": "2026-06-22T02:06:30Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "solve"
@@ -2567,6 +2949,12 @@
           "by": "worker",
           "act": "done",
           "note": "shipped (merged d45d109e): SOUND value-symmetry witness fold. ide/web/symmetry.py detects interchangeable enum-value sets (no value named in a constraint + no ordering comparison + all-nullary variants \u2014 every ambiguity resolves to 'fixed'), canonicalizes each witness by first-occurrence relabel, dedups into orbits. fold_symmetry flag on /api/solve enumerate + a 'fold symmetric' toggle showing canonical reps + '(\u00d7k symmetric)' + the named folded set. Verified: 3-coloring 10 raw \u2192 2 orbits (folded_sets {Color:[R,G,B]}); NAMED (a=Red) + ORDERED (enum \u2264) stay unfolded; each canonical rep re-checked as a real witness; ./test.sh Phase 2.9 green."
+        },
+        {
+          "at": "2026-06-23T20:41:43Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -2574,7 +2962,7 @@
       "id": 123,
       "title": "Export / interop (important): I cannot get the model OUT. I want to dump the SMT-LIB the IDE feeds z3 (to take into z3 directly for unsat cores / Optimize), copy a witness as text/JSON, and export the current diagram PNG/SVG for a paper. Every solver I trust (z3 -smt2, Alloy's export) lets me leave with the artifact; here the model is trapped in the browser.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-expert",
       "created": "2026-06-22T02:06:42Z",
       "worker_done": true,
@@ -2616,6 +3004,12 @@
           "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
+        },
+        {
+          "at": "2026-06-23T20:42:11Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -2623,7 +3017,7 @@
       "id": 124,
       "title": "Model diff: compare two programs / two reachable sets side by side (important): change a constraint and see what appeared/vanished in the reachable set or the solution space \u2014 the relational analog of a diff. I kept wanting to A/B 'with bound vs without bound' and had to eyeball two separate renders from memory. Alloy lets me step instances; I want 'states added (green) / removed (red)' between rev A and rev B.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-expert",
       "created": "2026-06-22T02:06:42Z",
       "worker_done": true,
@@ -2646,6 +3040,12 @@
           "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
+        },
+        {
+          "at": "2026-06-23T20:42:11Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -2653,11 +3053,13 @@
       "id": 125,
       "title": "Ad-hoc query console against the current model (nice-to-have): type a constraint/assertion and evaluate it WITHOUT editing the source \u2014 e.g. 'count = 3 \u2227 done' \u2192 SAT/UNSAT, or 'is there a reachable state with stock=0 \u2227 vault>5'. The verify box does invariants over the reachable set; I also want one-shot existence queries against the constraint relation, z3-repl style.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-expert",
       "created": "2026-06-22T02:06:42Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "solve"
@@ -2668,6 +3070,12 @@
           "by": "worker",
           "act": "done",
           "note": "reconciled this session as already-shipped (code predates/committed); re-applied after the ledger revert"
+        },
+        {
+          "at": "2026-06-23T20:41:43Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -2675,7 +3083,7 @@
       "id": 126,
       "title": "Progress indicator + interruptibility for slow structure analysis (nice-to-have): oscillator still takes ~4.2s and the UI shows no 'computing\u2026' state during it \u2014 it looks frozen. Show a spinner/elapsed-time on the structure card while the analysis runs, and let me cancel. Pairs with the latency concern #75 (still >300ms on real-valued FSMs).",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-expert",
       "created": "2026-06-22T02:06:54Z",
       "worker_done": true,
@@ -2711,6 +3119,12 @@
           "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
+        },
+        {
+          "at": "2026-06-23T20:42:11Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -2718,7 +3132,7 @@
       "id": 127,
       "title": "Reconcile the two 'sampled states' counts (nice-to-have): scatter_matrix title says '1556 sampled states' while the structure footer says '\u2265400 (capped sample) reachable states' for the same run (concern #77). They measure different things (scatter's reachable-cloud+trajectory vs reachable(limit=400)) but both say 'sampled states' with no explanation. Either unify the number or label each with WHAT it sampled so the two don't look contradictory.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-expert",
       "created": "2026-06-22T02:06:54Z",
       "worker_done": true,
@@ -2748,6 +3162,12 @@
           "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
+        },
+        {
+          "at": "2026-06-23T20:42:11Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -2755,11 +3175,13 @@
       "id": 128,
       "title": "Headline-view samples open on their named view, not always solution_space (nice-to-have): samples labelled '(FSM, cobweb)', '(FSM, basin_map)', '(FSM, scatter_matrix)' now all open on solution_space (the universal numeric lead). For a sample whose whole point is to TEACH cobweb, opening elsewhere is mildly misleading. Honor an explicit headline-view hint in the sample manifest so the teaching demo lands on its view, while non-hinted programs still default to solution_space.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-expert",
       "created": "2026-06-22T02:06:55Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "viz"
@@ -2770,6 +3192,12 @@
           "by": "worker",
           "act": "done",
           "note": "shipped: samples open on their headline view \u2014 headlineView(name,source) parses 'open the X view/tab' or the first headline view-token, loadProgram threads it to run(view); fixed the debounced-re-analyze override (run() cancels the pending timer when a view is passed). Verified live: Rule 90\u2192timing_diagram, oscillator\u2192phase_portrait, predator-prey\u2192function_graph, logistic\u2192cobweb, random walk\u2192occupancy_heatmap; headline-less samples recommend. ./test.sh green, 0 console errors."
+        },
+        {
+          "at": "2026-06-23T20:41:43Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -2777,11 +3205,13 @@
       "id": 129,
       "title": "basin_map must not assert a single attractor on nondeterministic systems (from concern #76): bistable (gambler's ruin, step\u2208{-1,0,1}, branching \u00d73) paints x=1..5 solid blue (\u21920) and only x=6 red, with a legend 'terminal basin \u2192 (0) fixed pt'. From an interior state the walk can reach EITHER wall, so those states are in BOTH basins. A single color asserts a deterministic attractor the nondeterminism denies. Fix: make basin_map N/A for branching>=2 systems, OR show per-state basin membership as a distribution (two-tone / P(\u21920) vs P(\u21926)).",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-expert",
       "created": "2026-06-22T02:07:08Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "viz"
@@ -2797,6 +3227,12 @@
           "by": "worker",
           "act": "done",
           "note": "shipped this session (code committed + verified); re-marked after a fast-forward reverted the uncommitted ledger"
+        },
+        {
+          "at": "2026-06-23T20:41:43Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ],
       "addresses_concern": 76
@@ -2805,11 +3241,13 @@
       "id": 130,
       "title": "Provenance: 'why is this state reachable?' (nice-to-have): given a reachable state in the solution_space scatter or state_graph, show the path/constraints that admit it \u2014 click a dot, get the witnessing trajectory or the satisfying assignment. The relational debugger's 'how did we get here' that turns a picture into something I can interrogate.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-expert",
       "created": "2026-06-22T02:07:08Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "analysis"
@@ -2820,6 +3258,12 @@
           "by": "worker",
           "act": "done",
           "note": "shipped this session (code committed + verified); re-marked after a fast-forward reverted the uncommitted ledger"
+        },
+        {
+          "at": "2026-06-23T20:41:43Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -2827,7 +3271,7 @@
       "id": 131,
       "title": "Inductive-invariant proving (nice-to-have): the verify console checks an invariant over the BFS-reachable set (bounded). For an unbounded/capped FSM that's not a proof. Offer a z3-backed inductive check: 'is P preserved by the transition relation from any P-state?' (base + step), so 'always P' can be PROVEN for infinite-state systems, not just sampled \u2014 the TLA+/Z3 inductive-invariant move.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-expert",
       "created": "2026-06-22T02:07:08Z",
       "worker_done": true,
@@ -2847,6 +3291,12 @@
         },
         {
           "at": "2026-06-23T12:40:21Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
+        },
+        {
+          "at": "2026-06-23T20:42:11Z",
           "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
@@ -2995,11 +3445,13 @@
       "id": 136,
       "title": "claim_space for Seq/enum claims (N-queens, graph-coloring, toposort, sudoku) shows only an honest N/A ('no numeric variable to bound'). These are exactly the claims a verification engineer most wants to SEE the solution space of. Give them a real view: (a) per-element/per-position feasible-value cells \u2014 for each Seq[i] / each region, z3 SAT 'can this position take value v given the rest?', the categorical analog of the numeric per-cell solve; and/or (b) ENUMERATE all (or k) distinct witnesses with symmetry breaking, Alloy-style, rendered as the domain picture. Right now the only interrogation move for these is one \u22a8 Solve witness.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-expert",
       "created": "2026-06-22T02:54:49Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 1,
       "tags": [
         "viz"
@@ -3027,6 +3479,12 @@
           "by": "worker",
           "act": "done",
           "note": "shipped (merged 6156ad39): the per-position categorical feasibility grid was ALREADY implemented + working (N-queens/sudoku/graph-coloring/toposort all show real grids, NOT N/A \u2014 verified live). The critic kept reopening because there was NO TEST: the render smoke only asserts a non-empty PNG, which the N/A card also satisfies, so a regression-to-N/A passed silently. Agent added the guard: categorical_grid() seam + ide/test_claim_space.py (Phase 2.12, renumbered from the #290 collision) pinning BOTH directions (Seq/enum \u2192 real grid w/ infeasible cells; scalar \u2192 honest None). Behavior byte-identical; lint 24\u219223."
+        },
+        {
+          "at": "2026-06-23T20:41:43Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -3034,7 +3492,7 @@
       "id": 137,
       "title": "solution_space right panel for enum+numeric FSMs (traffic: light enum + timer int): plot the reachable (enum, numeric) PAIRS on a categorical y-axis instead of vanishing. The invariant question 'is timer ever 2 while light=Green' is exactly what this lead view should answer and currently can't \u2014 it degenerates to a single 'timer \u2208 [0,2]' bar and drops light entirely. (= my open concern #115.)",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-expert",
       "created": "2026-06-22T02:54:49Z",
       "worker_done": true,
@@ -3070,6 +3528,12 @@
           "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
+        },
+        {
+          "at": "2026-06-23T20:42:11Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -3077,7 +3541,7 @@
       "id": 139,
       "title": "Export / interop for the solved artifacts: a 'copy SMT-LIB' / 'copy model' / 'download the diagram' affordance. The runtime already dumps smt2 internally (export_claim); surface it. A verification engineer wants to take the UNSAT core, the witness, or the SMT-LIB into Z3 directly, or the figure into a paper. Z3/Alloy/TLA+ all let me get the formal artifact out; here it's trapped in the UI.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-expert",
       "created": "2026-06-22T02:54:49Z",
       "worker_done": true,
@@ -3119,6 +3583,12 @@
           "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
+        },
+        {
+          "at": "2026-06-23T20:42:11Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -3126,7 +3596,7 @@
       "id": 140,
       "title": "Language: __var (two-tick history) + \u0394\u0394 second-difference operator",
       "detail": "USER request. Support __var (value two ticks ago) and \u0394\u0394x (second forward difference = \u0394(\u0394x) = x \u2212 2\u00b7_x + __x), so a second-order system (the damped oscillator) can be written in pos alone, eliminating the explicit vel state. VERIFIED: pos-only oscillator with \u0394\u0394 reproduces the 2-var version to 2e-14. Spans lexer\u2192trampoline: nested-\u0394 desugar, prev_of recursion, inject __var decls + is_second_tick, two-tick carry in the trampoline, two-tick bootstrap.",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "worker",
       "created": "2026-06-22T02:55:33Z",
       "worker_done": true,
@@ -3156,6 +3626,12 @@
           "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
+        },
+        {
+          "at": "2026-06-23T20:42:11Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -3163,7 +3639,7 @@
       "id": 141,
       "title": "Counterexample TRACE, not just the offending state. \u22a2verify on counter with 'count \u2264 3' correctly returns '\u2717 violated \u2014 counterexample count=4', but that is a single STATE. TLA+ gives the full path \u2014 init \u2192 tick \u2192 \u2026 \u2192 the violating state \u2014 so I can see HOW the system gets there. For a safety invariant, surface the shortest reachable trajectory that reaches the violating state (BFS path through the state graph), rendered as a step/scrub-able trace. The state graph + reachability_tree already have the edges; thread the witness path through them and let me step it in time. Without the trace, 'count=4' tells me WHAT but not WHY/WHEN.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-expert",
       "created": "2026-06-22T02:55:44Z",
       "worker_done": true,
@@ -3205,6 +3681,12 @@
           "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
+        },
+        {
+          "at": "2026-06-23T20:42:11Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -3212,7 +3694,7 @@
       "id": 142,
       "title": "Temporal-property checking (liveness), not just safety invariants. \u22a2verify checks 'always P' (a state predicate over the reachable set). I also reach for 'eventually Q', 'P leads-to Q', and fairness \u2014 the TLA+ temporal operators. e.g. on traffic: 'light = Green eventually holds', 'Coining leads-to Vending'. Over a finite reachable graph these are decidable (a cycle/lasso search). Add \u25c7 / leads-to / fairness to the verify box; today it can only assert \u25a1 (always).",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-expert",
       "created": "2026-06-22T02:55:44Z",
       "worker_done": true,
@@ -3235,6 +3717,12 @@
           "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
+        },
+        {
+          "at": "2026-06-23T20:42:11Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -3242,7 +3730,7 @@
       "id": 143,
       "title": "Diff two models / two reachable sets \u2014 the relational analog of a code diff. When I tighten a constraint (drop counter's upper bound, change a step), I want to SEE what reachable states appeared or vanished, and how the bounds/fixed-points moved, side by side. Today I edit and the whole picture replaces; I have to remember the old one. Z3 incremental + a snapshot of the previous analysis would make 'what did this constraint change' a one-click comparison.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-expert",
       "created": "2026-06-22T02:55:44Z",
       "worker_done": true,
@@ -3265,6 +3753,12 @@
           "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
+        },
+        {
+          "at": "2026-06-23T20:42:11Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -3272,11 +3766,13 @@
       "id": 144,
       "title": "Ad-hoc query / assertion console against the CURRENT model, beyond the single-line \u22a2verify invariant box. I want to type an arbitrary constraint or \u2203-query ('\u2203 a tick where balance=5 \u2227 stock=0', 'is there a reachable state with mode=Vending \u2227 vault<2') and evaluate it without editing the source \u2014 the Z3 incremental-assert workflow. The verify box does \u25a1(predicate) only; a real query console (\u2203/\u2200, multiple vars, count solutions) is the interrogation surface Alloy's evaluator gives me.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-expert",
       "created": "2026-06-22T02:55:44Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "solve"
@@ -3287,6 +3783,12 @@
           "by": "worker",
           "act": "done",
           "note": "reconciled this session as already-shipped (code predates/committed); re-applied after the ledger revert"
+        },
+        {
+          "at": "2026-06-23T20:41:43Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -3309,11 +3811,13 @@
       "id": 150,
       "title": "Click/hover the solution_space reachable-set points to inspect the underlying state. The vending (balance,stock) scatter and oscillator (pos,vel) spiral plot REAL reachable states, but they're inert \u2014 I can't click a point to see its full tuple (balance,stock,vault), can't hover for coordinates, can't see which transitions touch it. The diagram is a poster, not a surface. Every debugger lets me click a node.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic",
       "created": "2026-06-22T03:10:33Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "viz"
@@ -3324,6 +3828,12 @@
           "by": "worker",
           "act": "done",
           "note": "reconciled this session as already-shipped (code predates/committed); re-applied after the ledger revert"
+        },
+        {
+          "at": "2026-06-23T20:41:43Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -3331,11 +3841,13 @@
       "id": 151,
       "title": "Export / save / name the current model + share a link. localStorage persists across reload (good) but there is no 'export .ev', no 'copy shareable link', no named slots \u2014 I built an over-constrained repro and wanted to keep it AND show a colleague. (Mirrors Sam #109.)",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic",
       "created": "2026-06-22T03:10:33Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "editor"
@@ -3346,6 +3858,12 @@
           "by": "worker",
           "act": "done",
           "note": "reconciled this session as already-shipped (code predates/committed); re-applied after the ledger revert"
+        },
+        {
+          "at": "2026-06-23T20:41:43Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -3353,11 +3871,13 @@
       "id": 152,
       "title": "Compare two runs / pin a diagram side-by-side. I wanted to put the BROKEN counter (2 dropped) next to the fixed one to SEE the difference in the solution_space, and to compare two SAT witnesses (re-solve gives a new one but the old one is gone). Add a 'pin'/'compare' that holds diagram A while I edit to B and shows them side by side.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic",
       "created": "2026-06-22T03:10:33Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "viz"
@@ -3368,6 +3888,12 @@
           "by": "worker",
           "act": "done",
           "note": "reconciled this session as already-shipped (code predates/committed); re-applied after the ledger revert"
+        },
+        {
+          "at": "2026-06-23T20:41:43Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -3419,11 +3945,13 @@
       "id": 154,
       "title": "Command palette + keyboard shortcuts: there is no Cmd/Ctrl-K palette, no shortcut to Solve (must mouse to the button), no comment-toggle, no format-on-key. A keyboard-driven power user is stuck mousing. Add a palette (open sample, solve, switch view, toggle symbols) and bind Solve/format/comment.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic",
       "created": "2026-06-22T03:10:33Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "editor"
@@ -3434,6 +3962,12 @@
           "by": "worker",
           "act": "done",
           "note": "reconciled this session as already-shipped (code predates/committed); re-applied after the ledger revert"
+        },
+        {
+          "at": "2026-06-23T20:41:43Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -3441,11 +3975,13 @@
       "id": 155,
       "title": "Enum carried vars in the verify box: the \u22a2verify placeholder suggests 'mode \u2260 Vending' but typing it on vending returns 'unknown carried var mode; known: balance, stock, vault'. The headline enum the whole sample is about can't be asserted on. (Mirrors Sam #100.) Expose enum carried vars to verify.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic",
       "created": "2026-06-22T03:10:33Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "solve"
@@ -3456,6 +3992,12 @@
           "by": "worker",
           "act": "done",
           "note": "shipped: updateVerifyPlaceholder(data) builds a concrete \u22a2verify hint from a real reachable state (data.points[0].state) \u2014 an enum carried var \u2192 '\u25c7 light = Red / \u25a1\u25c7 light = Red', a numeric var \u2192 'timer \u2264 5'; generic fallback when no sampled state. Verified live: traffic \u2192 light/timer placeholder, 0 console errors, ./test.sh green."
+        },
+        {
+          "at": "2026-06-23T20:41:43Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -3463,11 +4005,13 @@
       "id": 157,
       "title": "Verify box should accept chained ranges and conjunctions (0 \u2264 x \u2264 6, x \u2265 0 \u2227 x \u2264 6), and ideally enum/relational invariants \u2014 not just a single 'var op value'. Two-sided bounds are the canonical invariant; the tool already proves single-sided ones exhaustively, so the engine is there, only the input parser is too narrow.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic",
       "created": "2026-06-22T03:11:23Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "solve"
@@ -3478,6 +4022,12 @@
           "by": "worker",
           "act": "done",
           "note": "reconciled this session as already-shipped (code predates/committed); re-applied after the ledger revert"
+        },
+        {
+          "at": "2026-06-23T20:41:43Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -3535,11 +4085,13 @@
       "id": 159,
       "title": "viz: support two-tick (__var) FSMs \u2014 \u0394\u0394 models mis-render as nondeterministic",
       "detail": "The \u0394\u0394/__var runtime feature (#158) is correct (effect-run reproduces the oscillator exactly), BUT the IDE viz mis-reads it: a pos-only \u0394\u0394 oscillator shows banner 'Nondeterministic \u2014 64 successors' and bounds [-1674,60] instead of [-35,60], because (a) export_transition's schema lists only pos (prev=_pos), hiding the __pos history + is_second_tick, and (b) evident_viz.successor/reachable step ONE tick, leaving __pos free. Fix: export should expose history DEPTH (pos\u2192_pos\u2192__pos) + is_second_tick; evident_viz must carry TWO ticks (state representation = (_state, __state)) in successor/reachable/solved_bounds so a second-order difference equation visualizes correctly. THEN add the elegant pos-only oscillator (\u0394\u0394) sample.",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "worker",
       "created": "2026-06-22T03:25:05Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "viz"
@@ -3550,6 +4102,12 @@
           "by": "worker",
           "act": "done",
           "note": "reconciled this session as already-shipped (code predates/committed); re-applied after the ledger revert"
+        },
+        {
+          "at": "2026-06-23T20:41:43Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -3557,11 +4115,13 @@
       "id": 163,
       "title": "Hover-to-learn glossary on the jargon (fsm, claim, \u2208, \u0394, \u21d2, is_first_tick, 'Driven pipeline', 'Cyclic', 'fixed point', 'reachable set', 'inductive invariant'). I understood the diagrams but had to already know what 'fsm', 'claim', '\u0394', and the banner's words MEAN. There is no in-tool explanation of the core vocabulary \u2014 the symbols PALETTE tells me how to TYPE \u2208 but not what it MEANS. A newcomer who doesn't already know the constraint-modeling family is left guessing. Want: hover a keyword/symbol in the editor or the banner and get a one-sentence plain-language tooltip ('claim = a relation/property; also how you write tests'). Every doc site I trust (MDN, TS playground) does this.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-newcomer",
       "created": "2026-06-22T11:02:33Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "learn"
@@ -3572,6 +4132,12 @@
           "by": "worker",
           "act": "done",
           "note": "ALREADY DONE \u2014 GLOSSARY (app-symbols.js) + glossFor cover the full jargon (fsm, claim, type, enum, is_first_tick, \u0394, \u0394\u0394, \u21d2, \u27f8, \u2208, \u2200, \u2203, match, subclaim, Int/Real/Nat/Bool/Seq/Set, coindexed/edges, _var prev-tick, __var two-ticks-ago, true/false), shown by the editor hover-to-learn handler (#282). Verified glossFor resolves all probes live."
+        },
+        {
+          "at": "2026-06-23T20:41:43Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -3644,11 +4210,13 @@
       "id": 166,
       "title": "Explicit Save / export-.ev / share-link / named slots (refines #109). Autosave-across-reload works (delight), but there is no way to KEEP SEVERAL experiments or SHOW A FRIEND. I built an over-constrained example and wanted to (a) keep it alongside the sample, (b) copy a shareable link, (c) download the .ev. Every editor I use (CodeSandbox, TS playground) has 'copy link' + 'download'. Add an explicit Save/Export/Share affordance.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-newcomer",
       "created": "2026-06-22T11:02:33Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "editor"
@@ -3659,6 +4227,12 @@
           "by": "worker",
           "act": "done",
           "note": "reconciled this session as already-shipped (code predates/committed); re-applied after the ledger revert"
+        },
+        {
+          "at": "2026-06-23T20:41:43Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -3666,11 +4240,13 @@
       "id": 167,
       "title": "Autocomplete that teaches (keyword + var + claim-name completion). I typed the counter blind \u2014 no completion offered 'is_first_tick', '\u0394', 'fsm', or my own declared 'count'. A newcomer types in the dark and finds out it was wrong only on the error line. Want editor completion of keywords, declared vars, and in-scope claim names, with the same one-line meaning as the hover glossary. Table stakes in every modern editor.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-newcomer",
       "created": "2026-06-22T11:02:33Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "editor"
@@ -3681,6 +4257,12 @@
           "by": "worker",
           "act": "done",
           "note": "reconciled this session as already-shipped (code predates/committed); re-applied after the ledger revert"
+        },
+        {
+          "at": "2026-06-23T20:41:43Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -3688,11 +4270,13 @@
       "id": 168,
       "title": "Auto-select the recommended view per sample (samples are NAMED for a view but open on solution_space). 'four signals \u00b7 (FSM, scatter_matrix)', 'bistable \u00b7 (basin_map)', 'fixed point \u00b7 (cobweb)' etc. all open on solution_space, not the view their name advertises. As a newcomer I'd never find the cobweb/basin view unless I knew to click it. Either auto-open the view named in the sample, or add a 'recommended: scatter_matrix' nudge highlighting that tab.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-newcomer",
       "created": "2026-06-22T11:02:33Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "viz"
@@ -3703,6 +4287,12 @@
           "by": "worker",
           "act": "done",
           "note": "shipped: samples open on their headline view \u2014 headlineView(name,source) parses 'open the X view/tab' or the first headline view-token, loadProgram threads it to run(view); fixed the debounced-re-analyze override (run() cancels the pending timer when a view is passed). Verified live: Rule 90\u2192timing_diagram, oscillator\u2192phase_portrait, predator-prey\u2192function_graph, logistic\u2192cobweb, random walk\u2192occupancy_heatmap; headline-less samples recommend. ./test.sh green, 0 console errors."
+        },
+        {
+          "at": "2026-06-23T20:41:43Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -3710,11 +4300,13 @@
       "id": 169,
       "title": "Make the symbols palette insert-at-cursor work from the editor (and reachable via keyboard). The palette lists shortcuts beautifully and says 'click a row to insert it', but it sits as a separate overlay; for a newcomer a one-key 'insert \u2208 here' (or a slash-menu in the editor like Notion '/') would beat memorizing '\\in'. Nice-to-have on top of the already-good palette.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-newcomer",
       "created": "2026-06-22T11:02:33Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "editor"
@@ -3725,6 +4317,12 @@
           "by": "worker",
           "act": "done",
           "note": "reconciled this session as already-shipped (code predates/committed); re-applied after the ledger revert"
+        },
+        {
+          "at": "2026-06-23T20:41:43Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -3747,11 +4345,13 @@
       "id": 174,
       "title": "Persist editor content across page refresh (localStorage): reloading the page discards my work and resets to the broken default 'count = 5'. Every editor I use (CodeMirror/Monaco playgrounds, even jsfiddle) keeps your buffer across reload. At minimum, restore the last-edited source; ideally named local files.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic",
       "created": "2026-06-22T11:46:34Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "editor"
@@ -3762,6 +4362,12 @@
           "by": "worker",
           "act": "done",
           "note": "reconciled this session as already-shipped (code predates/committed); re-applied after the ledger revert"
+        },
+        {
+          "at": "2026-06-23T20:41:43Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -3784,11 +4390,13 @@
       "id": 176,
       "title": "Diagram should fill the right pane: at laptop width (1280) and even at full width there's large dead space between the view-tab strip and the diagram, and below it; the plot doesn't grow to use it. Make the active diagram expand to fill available height (it's currently a fixed-aspect PNG floated in a tall empty column).",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic",
       "created": "2026-06-22T11:46:34Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "viz"
@@ -3799,6 +4407,12 @@
           "by": "worker",
           "act": "done",
           "note": "shipped: resetPanZoom scales the .view-wrap UP to fill a pane larger than the figure (single-view, gated fit>1.02 so laptop/letterbox cases unchanged), re-centered for transform-origin 0 0 + flex (tx=ww(1-s)/2), clamped 2.5\u00d7; re-fits on img load. Overlay points/trace ring are wrap children \u2192 scale together, stay aligned. Verified: 2400\u00d71400 fills 98-99% centered, 1440\u00d7900 unchanged (1.00), N-queens board fills, zoom composes from fitted base + reset re-fits, 0 console errors, ./test.sh green."
+        },
+        {
+          "at": "2026-06-23T20:41:43Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -3806,11 +4420,13 @@
       "id": 180,
       "title": "Editor intelligence beyond markers: hover-for-type on an identifier, go-to-definition on a carried var / claim name, find-all-references, rename-symbol. Today the only editor 'intelligence' is error/warning gutter markers + syntax highlight. Reaching to jump from a use of 'count' to its declaration, or rename 'stp'\u2192'step' everywhere, there's nothing \u2014 I'd do both in VS Code reflexively.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic",
       "created": "2026-06-22T12:13:54Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "editor"
@@ -3821,6 +4437,12 @@
           "by": "worker",
           "act": "done",
           "note": "shipped this session (code committed + verified); re-marked after a fast-forward reverted the uncommitted ledger"
+        },
+        {
+          "at": "2026-06-23T20:41:43Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -3828,11 +4450,13 @@
       "id": 181,
       "title": "Diagram compare: pin a diagram (e.g. the broken under-constrained run) and put it side-by-side with the fixed run, so the fan vs the tight box are visible together. The pin-tooltip overlay proves the diagram is already a live surface; the missing move is holding TWO of them at once.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic",
       "created": "2026-06-22T12:13:54Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "viz"
@@ -3843,6 +4467,12 @@
           "by": "worker",
           "act": "done",
           "note": "reconciled this session as already-shipped (code predates/committed); re-applied after the ledger revert"
+        },
+        {
+          "at": "2026-06-23T20:41:44Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -3900,11 +4530,13 @@
       "id": 183,
       "title": "Extend claim_space feasible-value heatmap to record-element Seqs (subset-sum items\u2208Seq(Item) currently falls back to the bare 'no numeric variable to bound' N/A while Int-element Seqs get the rich CAN-equal grid). A column per record field, or feasibility of the Bool 'take' field per item. (= concern #173)",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic",
       "created": "2026-06-22T12:13:54Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "viz"
@@ -3915,6 +4547,12 @@
           "by": "worker",
           "act": "done",
           "note": "shipped this session (code committed + verified); re-marked after a fast-forward reverted the uncommitted ledger"
+        },
+        {
+          "at": "2026-06-23T20:41:44Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -3922,11 +4560,13 @@
       "id": 184,
       "title": "Backend-down: blank the stale diagram region (not just dim) when /api is unreachable",
       "detail": "Marek #177 was an ARTIFACT \u2014 my concurrent #164 worktree agent bound the fallback port :5273 with its half-built tour; Marek's browser bled onto it and saw a 'redirect to dead port' + 'unbidden tour'. NOT product bugs (orchestration error, recorded in memory). The KERNEL of truth worth fixing: when backend-down fires, the stale diagram still shows a plausible title ('sudoku \u2014 feasible positions'). Blank the #view image (not just grayscale-dim it) so a dead backend can never read as a believable picture.",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "worker",
       "created": "2026-06-22T12:16:34Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "ide"
@@ -3937,6 +4577,12 @@
           "by": "worker",
           "act": "done",
           "note": "reconciled this session as already-shipped (code predates/committed); re-applied after the ledger revert"
+        },
+        {
+          "at": "2026-06-23T20:41:44Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -3944,11 +4590,13 @@
       "id": 186,
       "title": "Fix annotateConcepts HTML corruption: it string-replaces concept keywords across already-inserted span/attribute HTML, so 'recurrence' gets re-wrapped inside the 'Driven' span's data-gloss attr and leaks a visible '\">' into the Driven-pipeline banner. Annotate only text (not inside tags/attrs).",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-newcomer",
       "created": "2026-06-22T12:38:39Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "learn"
@@ -3964,6 +4612,12 @@
           "by": "worker",
           "act": "done",
           "note": "reconciled this session as already-shipped (code predates/committed); re-applied after the ledger revert"
+        },
+        {
+          "at": "2026-06-23T20:41:44Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ],
       "addresses_concern": 185
@@ -3972,11 +4626,13 @@
       "id": 188,
       "title": "Cold-open should load a WORKING sample, not the pre-broken counter. On a fresh first run a newcomer lands on a giant red 'Under-constrained \u2014 this model is BROKEN' banner (the default c.ev has \u0394count = stp with stp undeclared). It's a clever setup for the tour's honesty-line step, but a beginner's literal first impression is 'I broke it / it's broken' before the tour explains why. Open on the working counter; have the tour step 3 actively DEMONSTRATE breaking it (delete the bound) so the dropped-constraint/BROKEN banner appears as a guided teaching moment, then restores it.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-newcomer",
       "created": "2026-06-22T12:39:56Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "learn"
@@ -3987,6 +4643,12 @@
           "by": "worker",
           "act": "done",
           "note": "reconciled this session as already-shipped (code predates/committed); re-applied after the ledger revert"
+        },
+        {
+          "at": "2026-06-23T20:41:44Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -4038,11 +4700,13 @@
       "id": 190,
       "title": "Verify box should accept the editor's backslash abbreviations (or auto-expand them). A newcomer who learned '\\ge \u2192 \u2265' from the palette/editor will type 'count \\ge 0' in the \u22a2verify box and get the generic '\u2715 write var op value' error. Run the same abbreviation expansion in the verify input (and any symbol-accepting input), OR make the error explicitly say 'use >= or \u2265, not \\ge here'. (Re-files Sam #160 as a tracked task.)",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-newcomer",
       "created": "2026-06-22T12:40:07Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "editor"
@@ -4053,6 +4717,12 @@
           "by": "worker",
           "act": "done",
           "note": "shipped: verify/query boxes now accept the editor's full typable-token input \u2014 \\-abbreviations (\\in\u2192\u2208, \\box\u2192\u25a1, \\diamond\u2192\u25c7) + op pairs (<=\u2192\u2264) were already there via expandFieldSymbols; added the bare word mnemonics (and\u2192\u2227, forall\u2192\u2200, exists\u2192\u2203) for parity. Verified live on #inv-prop: all three flavors + 'Walking'/'into' correctly unchanged, 0 console errors. ./test.sh green."
+        },
+        {
+          "at": "2026-06-23T20:41:44Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -4060,11 +4730,13 @@
       "id": 194,
       "title": "Token-level error squiggle (not full-line). #153 highlights the whole offending LINE (ace marker type=fullLine, annotation column 0) + gutter icon. The wall: I see the line is bad but not WHICH token \u2014 VS Code/IntelliJ underline the exact identifier ('kount'). Put the squiggle range on the dropped-constraint's offending token/sub-expression, not the line.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-expert",
       "created": "2026-06-22T13:03:03Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "editor"
@@ -4075,6 +4747,12 @@
           "by": "worker",
           "act": "done",
           "note": "shipped this session (code committed + verified); re-marked after a fast-forward reverted the uncommitted ledger"
+        },
+        {
+          "at": "2026-06-23T20:41:44Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -4082,7 +4760,7 @@
       "id": 195,
       "title": "Ad-hoc query/assertion console against the current model. The wall: to ask 'is timer ever 2 while light=Green' I had to read it off the scatter panel; in Z3/Alloy I type an assertion (eval/run) against the loaded model without editing source. Add a console that evaluates a constraint/assertion against the current reachable set and returns sat-witness / unsat / a count, separate from the source.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-expert",
       "created": "2026-06-22T13:03:04Z",
       "worker_done": true,
@@ -4115,6 +4793,12 @@
         },
         {
           "at": "2026-06-23T00:01:05Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
+        },
+        {
+          "at": "2026-06-23T20:42:11Z",
           "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
@@ -4310,11 +4994,13 @@
       "id": 203,
       "title": "SMT-LIB export: emit (get-unsat-core) for unsat_*-named / known-UNSAT claims instead of (get-model). The wall: the unsat_demo export ends with (check-sat)(get-model); real z3 returns 'unsat' then errors 'model is not available' on the get-model line. For a claim the IDE already knows is UNSAT, the one-paste session should append (set-option :produce-unsat-cores true) + name each assertion + (check-sat)(get-unsat-core) so z3 hands back ITS minimal core. I verified by hand that adding :named tags gives z3 the core {x>10,x<5}; the export should do this for me.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-expert",
       "created": "2026-06-22T13:26:19Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "solve"
@@ -4325,6 +5011,12 @@
           "by": "worker",
           "act": "done",
           "note": "reconciled this session as already-shipped (code predates/committed); re-applied after the ledger revert"
+        },
+        {
+          "at": "2026-06-23T20:41:44Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -4332,11 +5024,13 @@
       "id": 204,
       "title": "SMT-LIB export: tag each assertion with (! ... :named c_lineN) keyed to source lines, so z3's (get-unsat-core) output maps back to the .ev lines. Right now even the with-core path (if added) returns opaque z3 names; naming them by source line closes the loop from z3's core back to my editor \u2014 the provenance a verification engineer needs.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-expert",
       "created": "2026-06-22T13:26:19Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "solve"
@@ -4347,6 +5041,12 @@
           "by": "worker",
           "act": "done",
           "note": "reconciled this session as already-shipped (code predates/committed); re-applied after the ledger revert"
+        },
+        {
+          "at": "2026-06-23T20:41:44Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -4354,7 +5054,7 @@
       "id": 205,
       "title": "UNSAT core: the panel shows ONE minimal core ({x<5,x=7} on the cold-open unsat_demo) but the over-constrained claim has THREE minimal cores ({x>10,x<5},{x>10,x=7},{x<5,x=7}). A real MUS/unsat-core tool (Z3 incremental, MARCO) can enumerate ALL minimal cores. Offer 'show all conflicting cores' so a user fixing an over-constrained model sees every independent contradiction, not just the first the solver returned \u2014 otherwise they fix one and the next surfaces only on re-solve.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-expert",
       "created": "2026-06-22T13:26:19Z",
       "worker_done": true,
@@ -4390,6 +5090,12 @@
           "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
+        },
+        {
+          "at": "2026-06-23T20:42:11Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -4397,11 +5103,13 @@
       "id": 206,
       "title": "Counterexample trace: make the steppable trace drive the diagram panel (scrub the trace step \u2192 the phase_portrait/time_series highlights that state). Today the trace stepper (count=0\u2192\u2026\u21925) lives in the verify strip but the diagram below doesn't follow the scrub. TLA+ Toolbox / Alloy highlight the trace state in the visualization as you step; coupling the two would make 'why is this reachable' visual.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-expert",
       "created": "2026-06-22T13:26:20Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "viz"
@@ -4412,6 +5120,12 @@
           "by": "worker",
           "act": "done",
           "note": "reconciled this session as already-shipped (code predates/committed); re-applied after the ledger revert"
+        },
+        {
+          "at": "2026-06-23T20:41:44Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -4551,7 +5265,7 @@
       "id": 213,
       "title": "Explicit save/name/share: an 'export .ev' download, a 'copy shareable link' (source in URL hash), and named slots so I can keep SEVERAL experiments. Auto-persist covers come-back-to-it but I wanted to keep my over-constrained example AND show a friend AND keep my edited counter beside the original \u2014 there's no way to do that. (CodePen/Observable give a shareable URL; the SMT-LIB copy proves clipboard-export is already in reach.)",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-newcomer",
       "created": "2026-06-22T14:26:45Z",
       "worker_done": true,
@@ -4581,6 +5295,12 @@
           "by": "ide-critic",
           "act": "approved",
           "note": ""
+        },
+        {
+          "at": "2026-06-23T20:42:11Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -4588,11 +5308,13 @@
       "id": 214,
       "title": "Autocomplete-that-teaches in the editor: when I type a var name or start a constraint, suggest valid completions with the same plain-English gloss the hover gives (e.g. typing 'is_' offers is_first_tick with its meaning). A newcomer types blind right now \u2014 the hover gloss exists but only AFTER I've typed the right thing. Surfacing it as I type would let me discover is_first_tick / \u0394 / matches without already knowing them.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-newcomer",
       "created": "2026-06-22T14:26:45Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "editor"
@@ -4603,6 +5325,12 @@
           "by": "worker",
           "act": "done",
           "note": "reconciled this session as already-shipped (code predates/committed); re-applied after the ledger revert"
+        },
+        {
+          "at": "2026-06-23T20:41:44Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -4625,11 +5353,13 @@
       "id": 218,
       "title": "Derived bools missing from the 'vars' list / footer even though they're plotted. counter with 'done \u2208 Bool = (count \u2265 5)' renders a correct 'done' step track in time_series (title says '2 varying of 2 vars'), but /api/analyze returns vars:['count'] and the structure footer lists 'vars: count' \u2014 the derived bool is dropped from the variable inventory. A verification reader scanning the footer would not know 'done' is even tracked. Include derived/computed bools in the vars list (perhaps tagged 'derived') so the inventory matches what's drawn.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-expert",
       "created": "2026-06-22T14:58:00Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "viz"
@@ -4640,6 +5370,12 @@
           "by": "worker",
           "act": "done",
           "note": "reconciled this session as already-shipped (code predates/committed); re-applied after the ledger revert"
+        },
+        {
+          "at": "2026-06-23T20:41:44Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -4662,11 +5398,13 @@
       "id": 220,
       "title": "Split the over-long render_*.py viz modules (each ~500-808 lines with a single giant render() and >12 module-level helpers): render_basin_map.py (808), render_state_graph.py (551), render_occupancy_heatmap.py (548), render_orbit_scatter.py (537), render_transition_matrix.py (533), render_cobweb.py (514), render_chord_diagram.py (505), render_nullcline_field.py (579). Pattern per file: lift the shared sampling/projection/legend helpers into viz/render_common.py (the same shapes are copy-pasted across renderers per find_duplicates), and break each render() along its phases (data-prep / layout / draw / annotate). Behavior-preserving; gate on ./test.sh --examples + Read the screenshots. Do one renderer per commit.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-architect",
       "created": "2026-06-22T15:34:39Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "refactor"
@@ -4677,6 +5415,12 @@
           "by": "worker",
           "act": "done",
           "note": "reconciled this session as already-shipped (code predates/committed); re-applied after the ledger revert"
+        },
+        {
+          "at": "2026-06-23T20:41:44Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -4684,11 +5428,13 @@
       "id": 221,
       "title": "Split ide/web/server.py (721 lines, 27 module-level functions, Rule 3 violation): extract the SMT-LIB / unsat-core / dropped-locs helper functions and the per-endpoint analysis helpers into focused modules (e.g. ide/web/smtlib.py, ide/web/analysis.py), leaving server.py as the FastAPI route wiring. Check get_callers before moving each; behavior-preserving; gate on ./test.sh (server must still import: python3 -c 'import ast; ast.parse(...)').",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-architect",
       "created": "2026-06-22T15:34:39Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "refactor"
@@ -4699,6 +5445,12 @@
           "by": "worker",
           "act": "done",
           "note": "reconciled this session as already-shipped (code predates/committed); re-applied after the ledger revert"
+        },
+        {
+          "at": "2026-06-23T20:41:44Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -4706,7 +5458,7 @@
       "id": 223,
       "title": "Model-diff: reachable-set delta between pinned A and live B",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "worker",
       "created": "2026-06-22T16:46:04Z",
       "worker_done": true,
@@ -4736,6 +5488,12 @@
           "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
+        },
+        {
+          "at": "2026-06-23T20:42:11Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -4743,7 +5501,7 @@
       "id": 224,
       "title": "fixedpoint_map times out on real-valued FSMs \u2014 sample_states caps at 5000 (cap to ~800 like scatter_matrix #217)",
       "detail": "Stabilization check: /api/analyze view=fixedpoint_map on the oscillator hangs >70s. Cause: render_fixedpoint_map.sample_states returns 5000 states (3.88s) then per-state successor()+short-cycle detection over all 5000 \u2192 timeout. Other 16 views render fine (cobweb's earlier timeout was CPU contention from a concurrent agent, not a real hang \u2014 it's 1.4s alone). FIX (after #220 render-split lands, since render_fixedpoint_map is being split): cap the sample at ~800 like render_scatter_matrix's reachable(800) fix in #217 \u2014 a fixed-point/cycle map reads the same at 800 sampled states. Check the cap lives in render_fixedpoint_map (or render_common.py post-#220).",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "worker",
       "created": "2026-06-22T17:40:03Z",
       "worker_done": true,
@@ -4773,6 +5531,12 @@
           "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
+        },
+        {
+          "at": "2026-06-23T20:42:11Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -4780,7 +5544,7 @@
       "id": 225,
       "title": "Interactive state_graph nodes \u2014 hover/click a node for its assignment (#184 increment 2)",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "worker",
       "created": "2026-06-22T18:11:25Z",
       "worker_done": true,
@@ -4804,6 +5568,12 @@
           "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
+        },
+        {
+          "at": "2026-06-23T20:42:11Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -4811,7 +5581,7 @@
       "id": 226,
       "title": "Interactive phase_portrait / orbit_scatter / basin_map points (#184 increment 3)",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "worker",
       "created": "2026-06-22T18:34:42Z",
       "worker_done": true,
@@ -4840,6 +5610,12 @@
           "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
+        },
+        {
+          "at": "2026-06-23T20:42:11Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -4847,7 +5623,7 @@
       "id": 227,
       "title": "Interactive fixedpoint_map + reachability_tree points (#184 increment 4 \u2014 all state-plot views interactive)",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "worker",
       "created": "2026-06-22T18:59:18Z",
       "worker_done": true,
@@ -4871,6 +5647,12 @@
           "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
+        },
+        {
+          "at": "2026-06-23T20:42:11Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -4878,7 +5660,7 @@
       "id": 228,
       "title": "Round hover-tooltip floats to ~4 sig figs. The new interactive points (#226) on phase_portrait show 'pos=-0.012319949034860988 vel=0.008775820321828581' \u2014 full f64 noise. A point inspector should read 'pos=-0.0123 vel=0.0088' like every plot tool (matplotlib/plotly tooltips round). Wall: hovered the spiral, got 18-digit garbage.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic",
       "created": "2026-06-22T19:14:09Z",
       "worker_done": true,
@@ -4908,6 +5690,12 @@
           "by": "ide-critic-newcomer",
           "act": "approved",
           "note": ""
+        },
+        {
+          "at": "2026-06-23T20:42:11Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -4915,7 +5703,7 @@
       "id": 229,
       "title": "Clear the \u22a8? query result when the source/sample changes. I ran 'timer=5' on traffic, switched to counter, and the stale '\u2717 no reachable state satisfies it \u2014 timer=5' verdict was still painted next to the counter (which has no timer var). Same staleness the diagram already clears \u2014 thread it to the query row.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic",
       "created": "2026-06-22T19:14:09Z",
       "worker_done": true,
@@ -4951,6 +5739,12 @@
           "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
+        },
+        {
+          "at": "2026-06-23T20:42:11Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -4958,11 +5752,13 @@
       "id": 231,
       "title": "Query console: return a WITNESS TRACE, not just the satisfying state. '\u2713 reachable \u2014 light=Green timer=2 (1 of 9)' tells me it exists; I want the shortest path from init that reaches it (the \u2203 dual of verify's counterexample trace #141), scrubbable through the state_graph. TLA+'s eval gives me the trace; the query row gives me the endpoint.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic",
       "created": "2026-06-22T19:14:31Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "analysis"
@@ -4973,6 +5769,12 @@
           "by": "worker",
           "act": "done",
           "note": "ALREADY DONE \u2014 /api/query (m.query) returns d.trace = the init\u2192witness path; _execQuery (app-verify.js:602) shows it via showTrace('a run reaching: P', 'goal') + the trace scrubber. Verified live: query 'light = Green' on traffic \u2192 d.trace = Red/t0\u2192Red/t1\u2192Red/t2\u2192Green/t0 (4 states), rendered as a steppable run. (The explore endpoint separately uses trace_to.)"
+        },
+        {
+          "at": "2026-06-23T20:41:44Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -4980,7 +5782,7 @@
       "id": 232,
       "title": "Model-diff should diff TRANSITIONS, not only states. The reachable-set delta (appeared/vanished states) is great, but a rewired transition whose endpoint set is unchanged is invisible \u2014 e.g. flipping a guard so Green\u2192Red becomes Green\u2192Yellow with the same 9 states shows '0 appeared 0 vanished'. Add an edges-appeared / edges-vanished section so I see the relation change, not just the support.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic",
       "created": "2026-06-22T19:14:31Z",
       "worker_done": true,
@@ -5016,6 +5818,12 @@
           "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
+        },
+        {
+          "at": "2026-06-23T20:42:11Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -5023,7 +5831,7 @@
       "id": 233,
       "title": "Zoom/pan the diagram surface. state_graph at 9 nodes is legible, but reachable graphs hit hundreds of nodes; a static fit-to-box becomes a hairball. Scroll-to-zoom + drag-to-pan (and a fit button) is table stakes \u2014 every graph tool (Graphviz viewers, yEd, even DevTools' layers) gives it. Wall: I imagined opening a 400-state machine and couldn't read it.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic",
       "created": "2026-06-22T19:14:31Z",
       "worker_done": true,
@@ -5053,6 +5861,12 @@
           "by": "ide-critic-newcomer",
           "act": "approved",
           "note": ""
+        },
+        {
+          "at": "2026-06-23T20:42:11Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -5060,11 +5874,13 @@
       "id": 234,
       "title": "Pin two DIAGRAMS of the SAME program side-by-side (phase_portrait | state_graph), not just program-A vs program-B. The diff two-up proves the layout exists; I want it for cross-view comparison of one model so I can watch a node in the graph and its dot in the phase portrait at once.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic",
       "created": "2026-06-22T19:14:31Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "viz"
@@ -5075,6 +5891,12 @@
           "by": "worker",
           "act": "done",
           "note": "shipped this session (code committed + verified); re-marked after a fast-forward reverted the uncommitted ledger"
+        },
+        {
+          "at": "2026-06-23T20:41:44Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -5097,7 +5919,7 @@
       "id": 236,
       "title": "Trace scrubber rings the current state on the diagram (#231/#206 \u2014 trace lights up the explorer)",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "worker",
       "created": "2026-06-22T19:28:18Z",
       "worker_done": true,
@@ -5127,6 +5949,12 @@
           "by": "ide-critic-newcomer",
           "act": "approved",
           "note": ""
+        },
+        {
+          "at": "2026-06-23T20:42:11Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -5134,7 +5962,7 @@
       "id": 238,
       "title": "Diagram alt-text: interpolate the LIVE verdict + var ranges + reachable-state count, not just a static per-view description. #216 is cleared (alt is now a real multi-sentence description of what the view shows), but it's the same string regardless of the loaded model. A screen-reader user still can't hear 'cyclic; timer in [0,2]; 9 reachable states' \u2014 only the generic 'what solution_space means'. Thread the banner verdict, the z3 boundary, and the reachable count into the alt so the picture's actual CONTENT is spoken, like a good figure caption.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-expert",
       "created": "2026-06-22T20:14:36Z",
       "worker_done": true,
@@ -5164,6 +5992,12 @@
           "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
+        },
+        {
+          "at": "2026-06-23T20:42:11Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -5171,11 +6005,13 @@
       "id": 239,
       "title": "Temporal/liveness checking that actually closes the loop: \u25c7/\u2933 over the infinite (lasso) unfolding, not just safety over the finite reachable set. The \u22a2verify box accepts 'P \u2933 Q' syntax (placeholder advertises it) but I want a CONFIRMED fairness-aware liveness check: 'eventually light=Red on every fair path', with a lasso counterexample (stem + cycle) when it fails \u2014 the TLA+ move. Right now \u25a1 safety is solid; the \u25c7/leads-to half needs the cycle-detection and a fairness toggle to be trustworthy.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-expert",
       "created": "2026-06-22T20:15:02Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 1,
       "tags": [
         "analysis"
@@ -5204,6 +6040,12 @@
           "by": "worker",
           "act": "done",
           "note": "reconciled this session as already-shipped (code predates/committed); re-applied after the ledger revert"
+        },
+        {
+          "at": "2026-06-23T20:41:44Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -5211,7 +6053,7 @@
       "id": 240,
       "title": "Incremental assert/retract in the query console (push/pop). I can run ONE ad-hoc \u2203 query, but I can't STACK assumptions \u2014 assert 'light=Green', keep it, then probe 'timer=0' / 'timer=1' / 'timer=2' under it and see the witness narrow. Z3's push/pop + check-sat-assuming is the daily interrogation loop; the console is currently one-shot. Let me build a context and explore under it without re-typing the conjunction each time.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-expert",
       "created": "2026-06-22T20:15:02Z",
       "worker_done": true,
@@ -5234,6 +6076,12 @@
           "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
+        },
+        {
+          "at": "2026-06-23T20:42:12Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -5241,7 +6089,7 @@
       "id": 241,
       "title": "Enumerate-ALL witnesses with symmetry breaking (the SAT dual of the all-cores feature). The query console gives ONE witness + a count ('1 of 9'); Alloy walks me through EVERY minimal instance with isomorph-elimination. For 'solve-for-X' over a finite domain I want next/prev through all distinct models, with a symmetry-breaking toggle so I'm not drowning in permutations of the same solution (e.g. N-queens, graph-coloring). All-cores landed; give me all-models to match.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-expert",
       "created": "2026-06-22T20:15:02Z",
       "worker_done": true,
@@ -5264,6 +6112,12 @@
           "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
+        },
+        {
+          "at": "2026-06-23T20:42:12Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -5271,7 +6125,7 @@
       "id": 242,
       "title": "Pin-and-explore a partial assignment ON the diagram: click a state to FIX it, then re-solve the rest of the model under that pin and see the reachable set / trace restricted to runs through it. I can hover a state for its assignment now (great), but I can't say 'assume the machine is HERE, what's reachable from here / what leads here' without editing source. The relational superpower is fixing any variable; let me fix it by clicking the picture.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-expert",
       "created": "2026-06-22T20:15:02Z",
       "worker_done": true,
@@ -5294,6 +6148,12 @@
           "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
+        },
+        {
+          "at": "2026-06-23T20:42:12Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -5301,7 +6161,7 @@
       "id": 243,
       "title": "Bounded-vs-unbounded honesty as a CONTROL on the trace/reachability depth, not just a label. When the reachable-set is capped (the '\u2265400 capped sample' footer) I can't tell whether 'no more reachable' is a proof or a cap I hit. Give me a depth/scope spinner (Alloy's scope) and a clear 'EXHAUSTED at depth k \u2014 this IS the full reachable set' vs 'CAPPED at k \u2014 there may be more' verdict, so completeness is something I set and the tool certifies.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-expert",
       "created": "2026-06-22T20:15:02Z",
       "worker_done": true,
@@ -5324,6 +6184,12 @@
           "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
+        },
+        {
+          "at": "2026-06-23T20:42:12Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -5331,7 +6197,7 @@
       "id": 244,
       "title": "Export the diagram as SVG/PNG for a paper, and export a trace as a state table (CSV/markdown). SMT-LIB copy + .ev download landed (verified the SMT-LIB runs in z3 directly \u2014 delight), but I still can't take the FIGURE or the counterexample TRACE out as an artifact. Alloy exports the instance, the TLA+ toolbox exports the trace; I want the phase spiral as SVG and the init\u2192witness path as a table I can paste into a writeup.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-expert",
       "created": "2026-06-22T20:15:02Z",
       "worker_done": true,
@@ -5360,6 +6226,12 @@
           "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
+        },
+        {
+          "at": "2026-06-23T20:42:12Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -5367,11 +6239,13 @@
       "id": 245,
       "title": "Hover-to-learn on CODE keywords in the editor. A newcomer's instinct is to hover the word 'fsm' / '\u0394' / '\u21d2' / '\u2208' / 'claim' / 'enum' in their own source to learn what it MEANS (not how to type it). The banner pills and diagram axes already have explanatory title-tooltips, and the symbols palette teaches typing \u2014 but the editor tokens have none. Wall: I hovered 'fsm' (a highlighted ace_keyword) expecting a one-line definition and got nothing; the ace_content intercepts pointer events so even native hover fails. Add an editor hover-provider that pops a one-line plain-English definition + a 'see in glossary' link for each Evident keyword/operator.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-newcomer",
       "created": "2026-06-22T20:47:36Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "learn"
@@ -5382,6 +6256,12 @@
           "by": "worker",
           "act": "done",
           "note": "ALREADY DONE \u2014 same GLOSSARY + editor hover (#163/#282): hovering a code keyword (fsm/claim/enum/is_first_tick/\u2026) shows its plain-language gloss in the tooltip. Verified live."
+        },
+        {
+          "at": "2026-06-23T20:41:44Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -5389,7 +6269,7 @@
       "id": 246,
       "title": "An in-tool GLOSSARY panel for the LANGUAGE concepts (claim vs fsm vs type vs enum; what _var/\u0394/is_first_tick mean; what 'driven' vs 'cyclic' vs 'nondeterministic' mean). The 4-step tour teaches the UI panels and the symbols palette teaches typing, but neither defines the language nouns. Wall: after the tour I understood the editor/banner/honesty-line/solve buttons but still couldn't have told a friend what a 'claim' IS vs an 'fsm'. A searchable glossary (openable from \u2318K and the ? menu) closes the last gap so a newcomer never leaves for a manual.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-newcomer",
       "created": "2026-06-22T20:47:37Z",
       "worker_done": true,
@@ -5412,6 +6292,12 @@
           "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
+        },
+        {
+          "at": "2026-06-23T20:42:12Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -5419,7 +6305,7 @@
       "id": 247,
       "title": "Solve view should default to / prominently surface the DOMAIN witness (the filled board), not the feasibility heatmap. On 4x4 sudoku, \u22a8 Solve's main diagram renders a 'feasible positions per cell' heatmap; the actual filled 4\u00d74 grid (the answer I wanted) lives in the #solve-body panel which I nearly scrolled past. Wall: as a newcomer I solved sudoku and looked for 'my completed grid' and the lead picture was an abstract feasibility matrix instead. Make the filled-board witness the headline result for Solve samples, with the feasibility heatmap as a secondary 'all solutions' view.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-newcomer",
       "created": "2026-06-22T20:47:37Z",
       "worker_done": true,
@@ -5448,6 +6334,12 @@
           "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
+        },
+        {
+          "at": "2026-06-23T20:42:12Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -5455,7 +6347,7 @@
       "id": 248,
       "title": "A 'load this query as an example' / one-click example queries on the \u22a8? query and \u22a2 verify rows. The placeholders teach the syntax ('light = Green \u2227 timer = 2') but a newcomer benefits from a clickable chip that fills a real, runnable example for the CURRENTLY loaded model (e.g. on counter offer 'count = 5', on traffic offer '\u25c7 light = Red'). Wall: I had to hand-type a conjunction and guess valid var names; a per-model suggested-query chip would teach me what's askable without typing blind.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-newcomer",
       "created": "2026-06-22T20:47:37Z",
       "worker_done": true,
@@ -5478,6 +6370,12 @@
           "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
+        },
+        {
+          "at": "2026-06-23T20:42:12Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -5485,7 +6383,7 @@
       "id": 249,
       "title": "Latency: query/find took ~1.7s and first analyze ~115ms on traffic but several samples felt like a 1-2s wait with no visible spinner on the \u22a8? query row specifically. (Known roadmap sub-300ms.) For the newcomer, add an inline 'searching\u2026' indicator on the find/check buttons so the row doesn't look frozen for ~1.7s while it computes the witness run.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-newcomer",
       "created": "2026-06-22T20:47:37Z",
       "worker_done": true,
@@ -5508,6 +6406,12 @@
           "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
+        },
+        {
+          "at": "2026-06-23T20:42:12Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -5515,7 +6419,7 @@
       "id": 251,
       "title": "Export the diagram as SVG (vector, publication-quality) \u2014 the figure half of #244; needs a backend SVG-render path (matplotlib savefig svg) + a download button. The trace-table half shipped in #244.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "worker",
       "created": "2026-06-22T22:21:54Z",
       "worker_done": true,
@@ -5538,6 +6442,12 @@
           "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
+        },
+        {
+          "at": "2026-06-23T20:42:12Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -5545,7 +6455,7 @@
       "id": 252,
       "title": "Latency: real-valued analyze 1.5s\u21920.60s (~2.5x) \u2014 _recommend was re-ranking vars (830ms) just to pick a view; now a cheap kind-count. Relates to #217.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "worker",
       "created": "2026-06-22T23:13:26Z",
       "worker_done": true,
@@ -5568,6 +6478,12 @@
           "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
+        },
+        {
+          "at": "2026-06-23T20:42:12Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -5575,7 +6491,7 @@
       "id": 253,
       "title": "Perf: eliminate the render's redundant reachable BFS (~230ms). _render_png re-loads the model + re-runs reachable inside the renderer, duplicating the analyze's. Fix: cache load() by (smt2-path, mtime) with a small LRU so the renderer's internal load(smt2,schema) returns the analyze's warm model (reachable now memoized). Expected: real-valued analyze 0.60s\u2192~0.37s. Load-bearing (the render path) \u2014 verify every view renders byte-identical + ./test.sh + latency before/after.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "worker",
       "created": "2026-06-22T23:22:13Z",
       "worker_done": true,
@@ -5598,6 +6514,12 @@
           "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
+        },
+        {
+          "at": "2026-06-23T20:42:12Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -5605,11 +6527,13 @@
       "id": 257,
       "title": "Symmetry-breaking TOGGLE on walk-all-witnesses (#241) and all-cores. The witness stepper walks all 3 Red states on traffic (great), but on N-queens / graph-coloring the distinct-model enumeration will drown in isomorphic permutations (board rotations/reflections, color-class relabelings). Alloy's whole value is isomorph-elimination so you see each STRUCTURALLY distinct instance once. Add a 'break symmetries' toggle that adds lex-leader / canonicalizing constraints so 'next model' jumps to a genuinely different solution, with a count of distinct-up-to-symmetry vs raw.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-expert",
       "created": "2026-06-23T00:02:47Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "solve"
@@ -5620,6 +6544,12 @@
           "by": "worker",
           "act": "done",
           "note": "shipped (merged d45d109e): SOUND value-symmetry witness fold. ide/web/symmetry.py detects interchangeable enum-value sets (no value named in a constraint + no ordering comparison + all-nullary variants \u2014 every ambiguity resolves to 'fixed'), canonicalizes each witness by first-occurrence relabel, dedups into orbits. fold_symmetry flag on /api/solve enumerate + a 'fold symmetric' toggle showing canonical reps + '(\u00d7k symmetric)' + the named folded set. Verified: 3-coloring 10 raw \u2192 2 orbits (folded_sets {Color:[R,G,B]}); NAMED (a=Red) + ORDERED (enum \u2264) stay unfolded; each canonical rep re-checked as a real witness; ./test.sh Phase 2.9 green."
+        },
+        {
+          "at": "2026-06-23T20:41:44Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -5627,11 +6557,13 @@
       "id": 258,
       "title": "\u25c7/\u2933 over a derived predicate, not just a single var=value. The temporal box accepts 'var \u2264 5' and '\u25c7 light = Red' but I want '\u25c7 (timer = 0 \u2227 light = Red)' (a conjunction) and 'P \u2933 Q' where P,Q are both compound. TLA+/CTL let the temporal operand be any state formula; right now the parser looks one-var-one-op. Generalize the temporal operand to the same conjunction grammar the \u22a8? query already accepts.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-expert",
       "created": "2026-06-23T00:02:47Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "analysis"
@@ -5642,6 +6574,12 @@
           "by": "worker",
           "act": "done",
           "note": "reconciled this session as already-shipped (code predates/committed); re-applied after the ledger revert"
+        },
+        {
+          "at": "2026-06-23T20:41:44Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -5649,11 +6587,13 @@
       "id": 259,
       "title": "Export the UNROLLED k-step transition as SMT-LIB, not just the single-tick relation. The current /api/smtlib dump is one transition step (verified: it runs in z3, sat, but _timer is unconstrained at 3). For a real liveness/bounded-model-check in z3 directly I want the k-unrolled system (state_0 \u2026 state_k + the lasso-closure constraint) so I can drive my own BMC / k-induction outside the tool. Add a depth param to the SMT-LIB export.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-expert",
       "created": "2026-06-23T00:02:47Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "solve"
@@ -5664,6 +6604,12 @@
           "by": "worker",
           "act": "done",
           "note": "shipped this session (code committed + verified); re-marked after a fast-forward reverted the uncommitted ledger"
+        },
+        {
+          "at": "2026-06-23T20:41:44Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -5671,11 +6617,13 @@
       "id": 261,
       "title": "Strong-liveness \u25a1\u25c7 operator + \u25c7 transient/recurrent label (Ana #260/#239)",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "worker",
       "created": "2026-06-23T00:26:34Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "feature"
@@ -5686,6 +6634,12 @@
           "by": "worker",
           "act": "done",
           "note": "Implemented on branch worker-infinitely-often-260 (commit 7dcae0bb). \u25c7=AF unchanged/sound; added recurrent:True/False label to \u25c7 and a new modality=infinitely_often (\u25a1\u25c7P) that backward-reaches \u00acP traps over the FULL graph (the transient-P mask is the precise bug), with a full-graph-stem forced/avoidable lasso. Frontend parses \u25a1\u25c7/\u25fb\u25c7/[]<>/'infinitely'; \u25c7 shows recurs-vs-TRANSIENT. All 4 gate fixtures pass via real evident export + Viz load; ./test.sh green, lint 27<=27. Concern #260/#239 is for ide-critic-expert (Ana) to clear."
+        },
+        {
+          "at": "2026-06-23T20:41:44Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -5693,11 +6647,13 @@
       "id": 262,
       "title": "Effect/payload-enum FSMs render all views (root-cause f0 accessor fix)",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "worker",
       "created": "2026-06-23T11:20:06Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [],
       "log": [
@@ -5706,6 +6662,12 @@
           "by": "worker",
           "act": "done",
           "note": "DONE \u2014 runtime parser uniquifies payload-variant accessors ({Variant}_f{idx}); was the f0-collision bug. Commit on branch. (re-add: original #265 lost in the ledger revert)"
+        },
+        {
+          "at": "2026-06-23T20:41:44Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -5713,11 +6675,13 @@
       "id": 263,
       "title": "Editor hover-for-type + go-to-definition on user identifiers",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "worker",
       "created": "2026-06-23T11:20:06Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [],
       "log": [
@@ -5726,6 +6690,12 @@
           "by": "worker",
           "act": "done",
           "note": "DONE \u2014 parseScopeDecls + hover + \u2318-click go-to-def. Commit on branch. (re-add: original #282 lost in the ledger revert)"
+        },
+        {
+          "at": "2026-06-23T20:41:44Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -5733,11 +6703,13 @@
       "id": 264,
       "title": "Seq-carried-state FSMs analyze + render (cellular-automata / Seq-evolving)",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "worker",
       "created": "2026-06-23T12:02:37Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [],
       "log": [
@@ -5746,6 +6718,12 @@
           "by": "worker",
           "act": "done",
           "note": "DONE end-to-end via two fixes: runtime (7e98eea4 \u2014 apply_seq_lengths propagates pinned length to _xs twin so coindexed(_xs,xs) translates; export emits kind=seq state) + viz (003fa647 \u2014 CodecMixin decode/pin/key/sort for kind=seq, block on observable cells not the whole unbounded array, renderers expand Seq into per-element tracks). Verified live: shift FSM ok=True, dropped=0, states=400, xs carried, renders. ./test.sh green (275 tests + render smoke 4\u00d722 incl shift)."
+        },
+        {
+          "at": "2026-06-23T20:41:44Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -5753,11 +6731,13 @@
       "id": 268,
       "title": "Step/scrub a counterexample TRACE in the views (not just text). The verify box now gives a real lasso for \u25a1\u25c7/\u2933 violations ('x=0\u2192x=1\u2192x=2\u2192x=2, \u21bb loops here') and \u25c7 a transient label \u2014 excellent. But the trace is text-only. I want to click the lasso and have time_series/state_graph SCRUB through s0\u2192\u2026\u2192s_bad with the recurrent cycle highlighted, TLA+ Toolbox / Apalache-style. The state_graph already has the nodes+edges and the lasso already names the states; thread the witness path through the existing graph and let me step it in time.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-expert",
       "created": "2026-06-23T12:41:20Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "analysis"
@@ -5768,6 +6748,12 @@
           "by": "worker",
           "act": "done",
           "note": "ALREADY WORKS (verified live) \u2014 the temporal lasso flows to showTrace with cycle_start (app-verify.js L484); the scrubber renders \u25c0 step N/N \u25b6 + '\u21bb loops here', and highlightTraceStep RINGS the current step on the diagram (state_graph node points, #206/#231). Verified: traffic \u25a1\u25c7 trace \u2192 stepper + cycle marker + diagram ring all present. Ana's 'text only' was a miss (likely on time_series, which has per-element tracks not node points \u2192 no ring). The point-based views (state_graph, solution_space) step+ring fully; a time_series per-track step-MARKER would need PNG x-position data (a niche enhancement, noted)."
+        },
+        {
+          "at": "2026-06-23T20:41:44Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -5775,11 +6761,13 @@
       "id": 269,
       "title": "Liveness under FAIRNESS assumptions. \u25a1\u25c7/\u2933 now check over the reachable graph and produce a lasso \u2014 but a real liveness spec almost always needs weak/strong fairness on the nondeterministic choices, or every nondeterministic FSM trivially has an unfair lasso that dodges the goal. TLA+ has WF_v/SF_v; SPIN has -f. Add a way to declare a transition/choice 'fair' and check '\u25a1\u25c7 P under fairness'. Without it, \u25a1\u25c7 on any branching model will almost always report a (possibly unfair, unrealistic) violating lasso.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-expert",
       "created": "2026-06-23T12:41:20Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "analysis"
@@ -5795,6 +6783,12 @@
           "by": "worker",
           "act": "done",
           "note": "shipped (merged bab4a986): liveness under weak fairness. The lasso-fairness problem reduces to graph reachability \u2014 _fair_check: \u25a1\u25c7/\u25c7 hold iff every reachable state \u2208 can_reach_q (reverse-reach from goal); \u2933 iff every reachable P-state \u2208 it; the trap (first state NOT in it) is the only fair counterexample + its init\u2192trap run. WF checkbox + 'WF'/'under fairness' suffix parser. Verified live: dodger \u25a1\u25c7 mode=B flips holds False\u2192True under WF (no trap); trap model FAILS even under fairness with the trap state + run; 0 console errors; new test.sh Phase 2.8; ./test.sh green."
+        },
+        {
+          "at": "2026-06-23T20:41:44Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -5802,11 +6796,13 @@
       "id": 270,
       "title": "Minimize the BMC unrolling to a PROOF, not just a bounded check. Today unroll=k exports a fixed k-step transition (sound, verified in z3). The next tier is the actual model-checking move: detect the k where T^k's reachable set stops growing (simple-path / no-new-states) and report 'reachable set is COMPLETE at depth k \u2014 this is now a proof, not a bound' vs 'still growing at k, raise it'. The scope knob already does this for the in-tool BFS ('\u2713 complete' vs 'capped, raise it'); carry the same completeness verdict into the exported BMC so the SMT-LIB itself can certify exhaustion (k-induction / IC3-lite).",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-expert",
       "created": "2026-06-23T12:41:21Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "analysis"
@@ -5822,6 +6818,12 @@
           "by": "worker",
           "act": "done",
           "note": "shipped (merged 22f64eb1): closing_depth() runs a SEPARATE level-order BFS (avoids rewriting the LIFO reachable() BFS) over the same successor+dedup key, returns (k, complete); real-valued forces complete=False (honesty gate). unroll_smt2 prepends a certification comment: COMPLETE at depth k=N (a PROOF) / BOUNDED still-growing / closed-beyond-k (re-export with k\u2265d). Verified: counter\u2192k=5, traffic\u2192k=8, unbounded/real\u2192BOUNDED; new test.sh Phase 2.7; ./test.sh green."
+        },
+        {
+          "at": "2026-06-23T20:41:45Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -5829,11 +6831,13 @@
       "id": 271,
       "title": "Enumerate ALL solutions / witnesses with symmetry breaking (Alloy-style instance walk). The 'all \u22a8*' button exists and the per-cell feasibility grid is great, but for N-queens I want to WALK every distinct solution (Alloy 'New' through all minimal instances) with isomorphic copies suppressed \u2014 and a count. Right now I get one witness + a per-cell CAN-equal grid, not the enumerated instance set. Add: enumerate-all (blocking-clause loop), a solution counter, next/prev through the instances, and optional symmetry breaking so I'm not drowning in rotations/reflections.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-expert",
       "created": "2026-06-23T12:41:40Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "solve"
@@ -5849,6 +6853,12 @@
           "by": "worker",
           "act": "done",
           "note": "shipped (merged d45d109e): SOUND value-symmetry witness fold. ide/web/symmetry.py detects interchangeable enum-value sets (no value named in a constraint + no ordering comparison + all-nullary variants \u2014 every ambiguity resolves to 'fixed'), canonicalizes each witness by first-occurrence relabel, dedups into orbits. fold_symmetry flag on /api/solve enumerate + a 'fold symmetric' toggle showing canonical reps + '(\u00d7k symmetric)' + the named folded set. Verified: 3-coloring 10 raw \u2192 2 orbits (folded_sets {Color:[R,G,B]}); NAMED (a=Red) + ORDERED (enum \u2264) stay unfolded; each canonical rep re-checked as a real witness; ./test.sh Phase 2.9 green."
+        },
+        {
+          "at": "2026-06-23T20:41:45Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -5856,11 +6866,13 @@
       "id": 272,
       "title": "Named/annotated SMT-LIB export so the UNSAT core round-trips to z3. The in-tool core is excellent (minimal, line-exact: 'line4 x>10, line5 x<5', correctly omits the irrelevant y=x+1). But the EXPORTED SMT-LIB has no (! ... :named cN) annotations and no (get-unsat-core)/(set-option :produce-unsat-cores true), so a user taking it into z3 directly can't reproduce the named core the IDE shows. Emit named asserts keyed to source lines + the unsat-core preamble, so the artifact carries the same provenance out of the tool.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-expert",
       "created": "2026-06-23T12:41:40Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "analysis"
@@ -5871,6 +6883,12 @@
           "by": "worker",
           "act": "done",
           "note": "ALREADY DONE \u2014 _ready_to_run emits (set-option :produce-unsat-cores true) + _named_asserts (each top-level assert wrapped (! X :named aK)) + (get-unsat-core) for the UNSAT verdict. Verified ROUND-TRIP: exported an UNSAT claim, ran through z3 \u2192 'unsat' + minimal core (a1 a2), correctly excluding the irrelevant assert. Ana saw it on SAT exports (get-model applies there, not the core)."
+        },
+        {
+          "at": "2026-06-23T20:41:45Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -5878,11 +6896,13 @@
       "id": 273,
       "title": "Quantitative / optimization queries beyond feasibility (z3 Optimize at the query surface). I can pin col[0]=1 and solve, and the solution_space claims z3-proven exact bounds \u2014 but I can't ASK an optimization query from the UI: 'maximize timer subject to light=Green', 'the minimal #cells re-lighting cell 5', 'lexicographic-min witness'. Expose Optimize.maximize/minimize and a 'minimal-/maximal-witness' toggle in the solve box, returning the optimum + the optimizing assignment, the way I drive z3's Optimize directly.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-expert",
       "created": "2026-06-23T12:41:40Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "solve"
@@ -5898,6 +6918,12 @@
           "by": "worker",
           "act": "done",
           "note": "shipped (merged c15380ea): /api/optimize + optimize.py \u2014 z3 Optimize maximize/minimize a numeric claim var \u2192 extremal + optimizing assignment; solve-panel control. Correctness: reads the objective BOUND (o.upper/lower) not model.eval, so an unbounded objective \u2192 honest satisfied:False (check() returns sat even when unbounded). Verified live: max x=10, min x=0 over 0\u2264x\u226410 x\u22607; unbounded y\u22650 \u2192 satisfied:False. ./test.sh green (276 tests), 0 console errors."
+        },
+        {
+          "at": "2026-06-23T20:41:45Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -5905,11 +6931,13 @@
       "id": 274,
       "title": "Seq-state in the SMT-LIB export uses a length-unconstrained (Array Int Int) \u2014 bound it. The rule90 single-tick export models cells as (Array Int Int) with (assert (>= cells__len 0)) but never pins cells__len=11 in the array's index domain, and asserts (= 11 11) as a no-op. Taken into z3 standalone, the array is defined over all Int indices; a property quantifying \u2200i could pick out-of-range cells. Pin the index domain (0\u2264i<11) explicitly in the export, or emit a finite tuple/datatype, so the exported Seq-state model is self-contained and can't be satisfied by phantom out-of-range cells.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-expert",
       "created": "2026-06-23T12:41:40Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "analysis"
@@ -5920,6 +6948,12 @@
           "by": "worker",
           "act": "done",
           "note": "DONE (merged 23313a9f): apply_seq_lengths now reconstructs the symbolic <name>__len const + asserts ==N (base + twins) at all 3 solver-building sites; the literal len stays for the unroll (no Seq-state risk). Verified: shift export emits (= cells__len 11), cells__len=5 \u2192 UNSAT, in-tool unchanged. ./test.sh green (276 tests)."
+        },
+        {
+          "at": "2026-06-23T20:41:45Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -5927,11 +6961,13 @@
       "id": 275,
       "title": "Persist named buffers / a model library, not one localStorage slot + share-link. I wrote several throwaway adversarial models this session (contradiction, core2, coupled-swap, settle) and each setValue blew away the last \u2014 no way to keep a NAMED set of my own repros next to the samples. Save (\ud83d\udcbe) and Share (\ud83d\udd17) exist, but I want a left-rail list of my saved models (rename, delete, duplicate) so a verification engineer building a regression suite of specs can keep them all in-tool. Alloy keeps my .als files; TLA+ keeps a spec library.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-expert",
       "created": "2026-06-23T12:42:11Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "editor"
@@ -5942,6 +6978,12 @@
           "by": "worker",
           "act": "done",
           "note": "ALREADY DONE \u2014 named-slot save/open (Save as\u2026 \u2192 named slots in app-buffer.js, #151/#67): keep several named experiments, re-openable from the samples dropdown."
+        },
+        {
+          "at": "2026-06-23T20:41:45Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -5949,11 +6991,13 @@
       "id": 276,
       "title": "Go-to-definition / find-references / rename-symbol in the editor. Syntax highlighting is present (Ace dracula, keywords pink, comments grey \u2014 good) and dropped-constraint diagnostics are excellent, but there's no semantic navigation: I can't jump from a use of 'cells' to its decl, can't rename a carried var everywhere, can't find all references to a claim. On a 100-line spec with subclaims and names-match composition this is the difference between reading and re-reading. VS Code + any LSP gives me all three reflexively.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-expert",
       "created": "2026-06-23T12:42:11Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "editor"
@@ -5964,6 +7008,12 @@
           "by": "worker",
           "act": "done",
           "note": "shipped: find-references already worked (Ace highlightSelectedWord \u2014 every occurrence of the selected identifier highlights); added F2 rename-symbol \u2014 renames the identifier + its _/__/\u0394/\u0394\u0394/\u00ac forms everywhere (token-boundary regex, prefix preserved), discount/count5/mycount kept. Verified live: count\u2192total (4 bare + _total + \u0394total), no stale count, 0 console errors. go-to-def was already #282."
+        },
+        {
+          "at": "2026-06-23T20:41:45Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -5971,11 +7021,13 @@
       "id": 277,
       "title": "BMC unrolled SMT-LIB export must append (get-model) \u2014 else no counterexample trace",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "worker",
       "created": "2026-06-23T12:44:11Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [],
       "log": [
@@ -5989,6 +7041,12 @@
           "by": "worker",
           "act": "done",
           "note": "fixed + verified (commit on branch); awaiting Ana's re-verify to clear the concern"
+        },
+        {
+          "at": "2026-06-23T20:41:45Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ],
       "addresses_concern": 265
@@ -5997,11 +7055,13 @@
       "id": 278,
       "title": "Solve panel: clear the stale UNSAT core / pin across a source change",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "worker",
       "created": "2026-06-23T12:44:11Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [],
       "log": [
@@ -6015,6 +7075,12 @@
           "by": "worker",
           "act": "done",
           "note": "fixed + verified (commit on branch); awaiting Ana's re-verify to clear the concern"
+        },
+        {
+          "at": "2026-06-23T20:41:45Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ],
       "addresses_concern": 266
@@ -6023,11 +7089,13 @@
       "id": 279,
       "title": "Pin (\ud83d\udccc) should not silently no-op before the picture renders",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "worker",
       "created": "2026-06-23T12:44:11Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [],
       "log": [
@@ -6041,6 +7109,12 @@
           "by": "worker",
           "act": "done",
           "note": "fixed + verified (commit on branch); awaiting Ana's re-verify to clear the concern"
+        },
+        {
+          "at": "2026-06-23T20:41:45Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ],
       "addresses_concern": 267
@@ -6049,11 +7123,13 @@
       "id": 280,
       "title": "Diagrams: seed dynamics renderers from ALL initial conditions, not forward-from-one-init [foundational \u2014 basin_map/fixedpoint_map/morse_graph/orbit_scatter/parallel_coords/phase_portrait/reachability_tree/scatter_matrix/solution_space/state_graph/transition_matrix]",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "worker",
       "created": "2026-06-23T18:19:04Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "diagram"
@@ -6069,6 +7145,12 @@
           "by": "worker",
           "act": "done",
           "note": "shipped (merged dd57c86c): full_state_graph(limit) in viz/model_global.py enumerates the carried-var product (bool\u2192[T,F], enum\u2192variants, int\u2192proven range via Optimize OBJECTIVE HANDLE not model.eval) IGNORING is_first_tick, reusing the existing successors()+_key (transition never reimplemented \u2014 only the root set differs); non-enumerable/over-cap \u2192 discrete=False fallback. Wired into state_graph via build_global_graph + an 'all initial conditions' toggle (analyze all_conditions flag \u2192 renderer under render _LOCK). VERIFIED VISUALLY: bistable from-init=2 nodes (left basin only) \u2192 all-conditions=7 nodes 'global dynamics \u2014 every initial condition' showing BOTH attractors (x=0 and x=6) + both basins + the separatrix. Toggle fires, 0 console errors, ./test.sh Phase 2.10 green."
+        },
+        {
+          "at": "2026-06-23T20:41:45Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -6106,11 +7188,13 @@
       "id": 283,
       "title": "Diagrams: crash-robustness sweep \u2014 guard divergence (OverflowError on logistic/Lotka-Volterra/double-pendulum 1e14) + graceful N/A for Solve programs (KeyError 'fsm') + nullcline TypeErrors",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "worker",
       "created": "2026-06-23T18:19:04Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "diagram"
@@ -6126,6 +7210,12 @@
           "by": "worker",
           "act": "done",
           "note": "shipped (merged 3a1eebfe): crash-robustness. Root fix in model_codec._scalar_read (float(as_fraction) OverflowError \u2192 clamp \u00b11e18 + NaN guard, shared by occupancy/nullcline/chord); chord_channels.gather_flow try/except \u2192 N/A; render_nullcline_field 3 guards (yv=None TypeError, Real-var range() floor/ceil, divergence \u2192 N/A card). Verified: logistic\u2192chord, predator-prey\u2192nullcline, thermostat\u2192nullcline, predator-prey\u2192occupancy all render OK (no exception). ./test.sh green (render smoke 7\u00d722)."
+        },
+        {
+          "at": "2026-06-23T20:41:45Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -6193,11 +7283,13 @@
       "id": 288,
       "title": "Diagrams: basin_map discrete path uses the GLOBAL graph \u2014 color all states by attractor (real basin partition), not the from-init orbit",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "worker",
       "created": "2026-06-23T18:50:33Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "diagram"
@@ -6213,6 +7305,12 @@
           "by": "worker",
           "act": "done",
           "note": "shipped (merged bcab909f): basin_map discrete path now roots on m.full_state_graph(5000) (all valid states) instead of m.reachable() (from-init orbit), feeding the UNCHANGED _discrete_basins_on (SCC condense \u2192 terminal detect \u2192 basin coloring) \u2014 only the root set changed. Default (not toggle-gated; a from-init basin map is vacuous); real/unbounded \u2192 reachable() fallback with an honest 'from init' title. VERIFIED VISUALLY: bistable basin_map shows all 7 states partitioned by terminal basin (x\u2208{0,1,2}\u21920 blue, x\u2208{3,4,5,6}\u21926 red), title 'over all initial conditions: 7 SCCs, 2 terminal' \u2014 a real basin partition, not one orbit. ./test.sh Phase 2.10 extended + green."
+        },
+        {
+          "at": "2026-06-23T20:41:45Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -6220,11 +7318,13 @@
       "id": 289,
       "title": "Diagrams: time_series ensemble over all initial conditions + reachable envelope (min-max band per tick), not one chain",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "worker",
       "created": "2026-06-23T19:01:28Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "diagram"
@@ -6240,6 +7340,12 @@
           "by": "worker",
           "act": "done",
           "note": "shipped (merged a6bcf4f3): time_series ensemble + reachable envelope. Inits from full_state_graph (discrete) or a proven-bounds grid (continuous, via proven_range generalized to reals); stepping REUSES _advance (the exact single-run step, never reimplements the transition); divergence clamped (>1e14/NaN/OverflowError \u2192 truncate). Per var/tick: bold min-max fill_between band + median over faint per-trajectory lines. VERIFIED VISUALLY: bistable shows 'ensemble over all 7 initial conditions', envelope spans 0..6 (BOTH attractors), median rises to 6; from-init would show one line to 0. Spring/continuous: grid band no crash. Unbounded: honest single-run fallback. ./test.sh Phase 2.10 extended + green; lint NET REDUCTION 23\u226424."
+        },
+        {
+          "at": "2026-06-23T20:41:45Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -6247,11 +7353,13 @@
       "id": 290,
       "title": "IDE/runtime: support multiple fsms + claims in one program (for testing composition) \u2014 render the LAST-DEFINED fsm or claim; entry picker lists all + defaults to last",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "worker",
       "created": "2026-06-23T19:13:57Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [],
       "log": [
@@ -6265,6 +7373,12 @@
           "by": "worker",
           "act": "done",
           "note": "shipped (merged ff249bc5): multiple fsms+claims valid; resolve_export_entry walks schema_names() source order, picks the LATER of {last fsm, last claim} \u2192 ExportEntry::Fsm|Claim; --entry override; picker lists all + defaults last; alphabetical sort gone. Confirmed live: 6 cases all ok=True (was erroring); fsm a;fsm b\u2192b, claim p;claim q\u2192q, claim helper;fsm main\u2192main, fsm main;claim test\u2192test. ./test.sh 279 green (Phase 2.11). No regression."
+        },
+        {
+          "at": "2026-06-23T20:41:45Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -6272,11 +7386,13 @@
       "id": 291,
       "title": "Diagrams: phase_portrait vector field over all initial conditions (quiver over the proven-bounds plane + trajectories), not a single-seed trajectory; divergence-guarded",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "worker",
       "created": "2026-06-23T19:24:22Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "diagram"
@@ -6292,6 +7408,12 @@
           "by": "worker",
           "act": "done",
           "note": "shipped (merged c20d5810): phase_portrait vector field over the proven-bounds plane (quiver + trajectory overlay), reuses successor via safe_successor/safe_trajectory with divergence guards (lotka no longer crashes). Verified: spring spirals inward, predator-prey no crash. ./test.sh green."
+        },
+        {
+          "at": "2026-06-23T20:41:45Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -6299,11 +7421,13 @@
       "id": 292,
       "title": "Diagrams: fixedpoint_map over all initial conditions \u2014 color states by attractor across the global graph, not the from-init orbit",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "worker",
       "created": "2026-06-23T19:32:31Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "diagram"
@@ -6319,6 +7443,12 @@
           "by": "worker",
           "act": "done",
           "note": "shipped (merged f58f07a5): fixedpoint_map roots on full_state_graph (all states) via new viz/fixedpoint_basins.py sample_all_conditions, colors each state by terminal SCC; reuses render_basin_map._condense_terminals read-only. Verified: bistable shows both attractors (x=0,x=6) as fixed-point stars, x\u2208{0,1,2} basin1 + x\u2208{3,4,5,6} basin2, 'over all initial conditions'; real falls back 'from init'. Python all-conditions check green, lint 24\u226424."
+        },
+        {
+          "at": "2026-06-23T20:41:45Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -6326,11 +7456,13 @@
       "id": 293,
       "title": "Diagrams: orbit_scatter samples many initial conditions (discard transients), delay-embedding for single-var; shows multi-attractor basins",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "worker",
       "created": "2026-06-23T19:32:31Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "diagram"
@@ -6346,6 +7478,12 @@
           "by": "worker",
           "act": "done",
           "note": "shipped (re-landed from 1b6a7fc5): orbit_scatter multi-init ensemble + delay-embedding; both attractors shown for bistable, single-var delay-embed not a diagonal. Verified render no crash."
+        },
+        {
+          "at": "2026-06-23T20:41:45Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -6353,10 +7491,10 @@
       "id": 294,
       "title": "Parameterized passthrough: '..Name(field \u21a6 other)' must parse + compose (e.g. 2D random walk from two 1D walks)",
       "detail": "User hit a parse error composing fsm instances via renamed passthrough:\n  fsm random_walk\n      x, y \u2208 Int\n      ..one_d_random_walk(a \u21a6 x)\n      ..one_d_random_walk(a \u21a6 y)\n\u2192 'parse error at line 11 col 24: expected schema/claim/type/import/enum, got (('. The parser accepts bare '..Name' passthrough but NOT '..Name(field \u21a6 other)' with rename args. COMPLETION CRITERIA: (1) '..Name(a \u21a6 x)' parses (the (...) after ..Name is rename-args, not a new decl); (2) it inlines the included fsm/claim with field 'a' renamed to 'x' + all its constraints; (3) two passthroughs of the same fsm with different renames compose into INDEPENDENT sub-systems (x-walk and y-walk, each its own da carried separately \u2014 resolve the da name collision); (4) a 2D random_walk sample loads + analyzes; (5) ./test.sh green + a parse-and-compose test.",
-      "status": "in_progress",
+      "status": "worker_done",
       "created_by": "worker",
       "created": "2026-06-23T20:16:22Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
@@ -6367,6 +7505,12 @@
           "at": "2026-06-23T20:29:10Z",
           "by": "worker",
           "act": "started"
+        },
+        {
+          "at": "2026-06-23T21:05:45Z",
+          "by": "worker",
+          "act": "done",
+          "note": "parameterized passthrough ..Name(a\u21a6x) parses + composes independently (da freshened per instance); Phase 2.13 + 3 Rust tests; ./test.sh green"
         }
       ]
     },
@@ -6419,10 +7563,10 @@
       "id": 298,
       "title": "Refactor examples: drop the unnecessary '\u00acis_first_tick \u21d2' guards",
       "detail": "Most examples wrap per-tick constraints in '\u00acis_first_tick \u21d2' even when the constraint holds on the first tick anyway (doesn't reference _var, or the runtime handles the first-tick delta). The guard is noise \u2014 models read cleaner without it (see the new random_walk: '-1 \u2264 \u0394x \u2264 1' unguarded). Refactor app-data.js SAMPLES + examples/*.ev to REMOVE the unnecessary guards. SOUNDNESS (critical \u2014 the dropped-constraint policy makes wrong edits SILENT): for EACH guard removed, re-analyze the example before vs after and confirm IDENTICAL behavior \u2014 same reachable states + edges + 0 dropped + same verdict. KEEP a guard only where removing it changes behavior/drops a constraint (a constraint that genuinely can't hold on tick 0 and isn't covered by the seed). COMPLETION CRITERIA: (1) majority of '\u00acis_first_tick \u21d2' guards removed; (2) EVERY example analyzes IDENTICALLY before/after (a before/after reachable-set + dropped-count diff per example, all matching); (3) the demo tests (examples/test_*.ev sat_/unsat_ claims) still pass; (4) ./test.sh fully green. Report which guards you kept + why.",
-      "status": "in_progress",
+      "status": "worker_done",
       "created_by": "worker",
       "created": "2026-06-23T20:26:32Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
@@ -6433,6 +7577,12 @@
           "at": "2026-06-23T20:29:10Z",
           "by": "worker",
           "act": "started"
+        },
+        {
+          "at": "2026-06-23T21:05:45Z",
+          "by": "worker",
+          "act": "done",
+          "note": "151 \u00acis_first_tick guards removed, 65 kept \u2014 each verified by exact before/after reachable-set/stdout diff; enum-seed guards correctly kept"
         }
       ]
     },
@@ -6440,10 +7590,10 @@
       "id": 299,
       "title": "Diagrams: reachability_tree roots from ALL initial conditions + shows the tree CLOSING (closing_depth), not a depth-8 cap",
       "detail": "reachability_tree roots from one seed + caps at depth 8. Root from the full init set (full_state_graph) + use closing_depth to show the tree CLOSING for finite discrete systems. Criteria: roots from all inits; closes at the real depth not a fixed cap; bistable/traffic render; ./test.sh green + test.",
-      "status": "in_progress",
+      "status": "worker_done",
       "created_by": "worker",
       "created": "2026-06-23T20:29:09Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
@@ -6454,6 +7604,12 @@
           "at": "2026-06-23T20:29:10Z",
           "by": "worker",
           "act": "started"
+        },
+        {
+          "at": "2026-06-23T21:05:45Z",
+          "by": "worker",
+          "act": "done",
+          "note": "reachability_tree roots from ALL inits (forest off \u2205 root) + closes at true depth via closing_depth, not a depth-8 cap; Phase 2.14"
         }
       ]
     },
@@ -6461,10 +7617,10 @@
       "id": 300,
       "title": "Diagrams: transition_matrix over all initial conditions (real transition relation, not a fabricated linspace grid)",
       "detail": "transition_matrix uses one z3 model + a fabricated linspace grid in SAMPLED mode. Root on the global graph (full_state_graph, all discrete inits) + the REAL transition relation. Criteria: matrix over the global state set; no fabricated grid; traffic/counter render; ./test.sh green + test.",
-      "status": "in_progress",
+      "status": "worker_done",
       "created_by": "worker",
       "created": "2026-06-23T20:29:10Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
@@ -6475,6 +7631,12 @@
           "at": "2026-06-23T20:29:10Z",
           "by": "worker",
           "act": "started"
+        },
+        {
+          "at": "2026-06-23T21:05:45Z",
+          "by": "worker",
+          "act": "done",
+          "note": "transition_matrix roots on full_state_graph + real transition cells (no fabricated linspace grid); Phase 2.15"
         }
       ]
     },
@@ -6482,10 +7644,10 @@
       "id": 301,
       "title": "Diagrams: all_conditions drives the stats/banner too (state_graph shows 7 but banner reads from-init 2)",
       "detail": "When all_conditions is on, the analyze stats/banner still reflect from-init \u2014 state_graph PNG shows 7 states but banner says 2. Thread all_conditions into _reachable_stats so the banner/structure reflect the global graph when on; default unchanged. Criteria: bistable all_conditions=true \u2192 7 states reported; false \u2192 2; ./test.sh green + test.",
-      "status": "in_progress",
+      "status": "worker_done",
       "created_by": "worker",
       "created": "2026-06-23T20:29:10Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
@@ -6496,8 +7658,119 @@
           "at": "2026-06-23T20:29:10Z",
           "by": "worker",
           "act": "started"
+        },
+        {
+          "at": "2026-06-23T21:05:45Z",
+          "by": "worker",
+          "act": "done",
+          "note": "all_conditions stats/banner follow the global graph (bistable 2\u21927 with the flag); Phase 2.16"
         }
       ]
+    },
+    {
+      "id": 303,
+      "title": "Diff two reachable sets / two models (relational diff): change a constraint and see which states/transitions APPEARED vs VANISHED \u2014 the Alloy/TLA+ 'what did my edit do' move. Pin captures one render; I want a structural set-diff of the global state graph across an edit, not just two side-by-side pictures.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-expert",
+      "created": "2026-06-23T20:42:39Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "analysis"
+      ],
+      "log": []
+    },
+    {
+      "id": 304,
+      "title": "Strong fairness (SF), not just weak (WF): WF excludes runs that PERPETUALLY ignore an always-enabled path; SF excludes runs that ignore a path enabled infinitely often. TLA+ has SF_v. A choice that's enabled intermittently (not continuously) needs SF to verify \u25a1\u25c7 correctly; today only WF is offered.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-expert",
+      "created": "2026-06-23T20:42:39Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "analysis"
+      ],
+      "log": []
+    },
+    {
+      "id": 305,
+      "title": "Multi-step counterexample trace as a scrubbable timeline, not a one-line arrow string: the verify \u2717 trace ('count=0 \u2192 count=1 \u2192 ...') is text; let me click each state to jump every diagram to it and scrub time (TLA+ Toolbox / the trace explorer). #96 wired click-to-jump for the endpoint; extend it to every step of the trace.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-expert",
+      "created": "2026-06-23T20:42:39Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "viz"
+      ],
+      "log": []
+    },
+    {
+      "id": 306,
+      "title": "k-induction / IC3 for UNBOUNDED safety proofs on infinite-state (unbounded Int) models: BMC unroll + the inductive-box check prove the bounded/finite case, but a genuinely unbounded counter with no upper bound needs an inductive invariant to prove safety for ALL time. Surface a 'prove by induction' that attempts k-induction and reports the certificate or the CTI (counterexample-to-induction).",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-expert",
+      "created": "2026-06-23T20:42:39Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "analysis"
+      ],
+      "log": []
+    },
+    {
+      "id": 307,
+      "title": "Exact AST line provenance for dropped constraints (promote #179): the dropped-constraint line marker uses a token-overlap heuristic that can mis-pin when all identifiers in a dropped expr appear equally often on surviving lines. Thread BodyItem::Constraint source line through encode so the gutter dot is exact, not heuristic \u2014 the honesty line must be exactly right.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-expert",
+      "created": "2026-06-23T20:42:39Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "analysis"
+      ],
+      "log": []
+    },
+    {
+      "id": 308,
+      "title": "New 'space_time' view: render Seq-carried-state evolution as a tick\u00d7position raster (Rule 90 \u2192 Sierpinski)",
+      "detail": "A Seq-carried-state FSM whose state evolves over ticks (1D CA like Rule 90, a diffusion buffer, a shift register) has NO good current view \u2014 occupancy_heatmap is blank, timing_diagram shows per-cell tracks (readable but not iconic). Add a GENERIC 'space_time' view: simulate the FSM forward N ticks from init (deterministic \u2192 the trajectory; nondeterministic \u2192 one sampled run), collect the Seq state per tick, draw a 2D raster (rows=ticks, cols=Seq positions, color=value \u2014 binary for 0/1, colormap for Int/enum). PROVEN: a proof-of-concept already rendered Rule 90's Sierpinski triangle. CRITERIA: (1) new 'space_time' renderer in the registry; (2) renders the tick\u00d7position raster; (3) Rule 90 \u2192 Sierpinski; (4) GENERIC (any Seq(Int/enum)-carried FSM, not CA-specific); (5) headline view for Rule 90 + digital-block; (6) render_smoke + ./test.sh green + test; (7) nondeterministic handled honestly (sample one run, labeled).",
+      "status": "open",
+      "created_by": "worker",
+      "created": "2026-06-23T20:48:07Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "diagram"
+      ],
+      "log": []
+    },
+    {
+      "id": 309,
+      "title": "Make the web IDE mobile-friendly / responsive (currently renders weirdly + unusable on mobile)",
+      "detail": "The web IDE renders very weirdly and is UNUSABLE on mobile/small screens \u2014 desktop-only layout (editor + diagram panel + side panels + palette). Make it responsive. COMPLETION CRITERIA: (1) usable on phone-width (~375px) + tablet \u2014 no horizontal overflow, no overlapping panels, readable text; (2) the editor + diagram view + core controls (analyze, samples, view picker) all reachable + functional on mobile (likely a stacked/collapsible layout below a breakpoint); (3) adequate touch-target sizes; (4) tested at 375px + 768px + desktop \u2014 DESKTOP UNCHANGED; (5) verified via playwright at mobile viewport, before/after screenshots. BIG responsive-CSS task (ide/web/static/*.css + layout JS) \u2014 may warrant splitting into sub-tasks: layout breakpoints, panel stacking, editor/diagram resize, palette/menus. User flagged it explicitly as a major gap.",
+      "status": "open",
+      "created_by": "worker",
+      "created": "2026-06-23T20:53:58Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "ui"
+      ],
+      "log": []
     }
   ],
   "concerns": [
@@ -7311,27 +8584,39 @@
       "title": "BMC unrolled SMT-LIB export omits (get-model). Single-tick export ends with (check-sat)(get-model); the k-step unrolled export (unroll=N) ends with only (check-sat). Verified by curl to /api/smtlib: smt_single has 1 get-model, smt_unroll8 has 0. The whole point of BMC is the counterexample TRACE \u2014 a user who pastes the unrolled artifact, adds a property, and runs z3 gets bare sat/unsat with no witness unless they know to append (get-model). I ran it through z3 4.15.4: the unroll is otherwise sound (cells@0..@8 chain the seed through the transition faithfully, recurrence probe proved unsat correctly), but the missing get-model is a real friction for the headline BMC workflow. Append (get-model) (or get-value over the @-vars) to the unrolled export too.",
       "detail": "Screenshots/files: /tmp/smt_single.txt vs /tmp/smt_unroll8.txt; tail of unroll ends at (check-sat).",
       "by": "ide-critic-expert",
-      "status": "open",
+      "status": "cleared",
       "task": null,
-      "created": "2026-06-23T12:40:46Z"
+      "created": "2026-06-23T12:40:46Z",
+      "cleared": "2026-06-23T20:38:31Z"
     },
     {
       "id": 266,
       "title": "Solve-result panel persists a STALE UNSAT core / pin across a source change. Repro: write a contradictory 'claim core2' with a pin like col[0]=0 left in #solve-given, then load a different program (counter): the solve panel keeps showing 'conflicting core \u2014 line5 a+b=10 line6 a+b=20' and an earlier run showed '\u22ae UNSAT \u2014 contradiction has no solution WITH col[0] pinned' next to a counter that has no col var. It IS labeled 'source changed \u2014 press re-solve' (milder than the old #255 leak, and the assumption CHIPS and the #solve-given/#query/#inv inputs all clear correctly now), but the result BODY still renders the previous program's core/pin until you re-solve. A stale UNSAT core referencing variables that don't exist in the current model is misleading at a glance. Clear the solve-result body on source/sample change like the chips and diagram already do (or auto-re-solve).",
       "detail": "Screenshots ana-20260623-122010/08-unsat-core.png (stale col[0] pinned over contradiction) and 09 (after clearing pin).",
       "by": "ide-critic-expert",
-      "status": "open",
+      "status": "cleared",
       "task": null,
-      "created": "2026-06-23T12:40:55Z"
+      "created": "2026-06-23T12:40:55Z",
+      "cleared": "2026-06-23T20:38:31Z"
     },
     {
       "id": 267,
       "title": "Pin (\ud83d\udccc) silently no-ops when clicked before the live picture has rendered a PNG, and gives no feedback. togglePin() does 'const snap = history.find(s=>s.png); if(!snap) return;' \u2014 so if you pin right after editing/solving (before the render settles) nothing happens and the \u21c4 diff button stays hidden, with no toast explaining why. I hit this: pinned, edited, clicked diff \u2192 button reported hidden=true, dead end. Re-pinning after the picture settled worked (label\u2192'\ud83d\udccc unpin', diff un-hid) and the diff itself is excellent. Fix: when pin can't capture yet, say so ('nothing to pin yet \u2014 solve first') instead of a silent no-op; ideally pin the pending render once it lands.",
       "detail": "Verified /api/diff engine is correct via direct fetch (A ceiling3 vs B ceiling5: appeared [x:5,x:4], 3 edges appeared, 1 vanished \u2014 caught the rewired self-loop). Screenshot 16-diff-panel.png shows the working two-up diff after a settled pin.",
       "by": "ide-critic-expert",
-      "status": "open",
+      "status": "cleared",
       "task": null,
-      "created": "2026-06-23T12:41:04Z"
+      "created": "2026-06-23T12:41:04Z",
+      "cleared": "2026-06-23T20:38:31Z"
+    },
+    {
+      "id": 302,
+      "title": "fmt still refuses on ragged indentation \u2014 the exact input a formatter exists to clean (verified: /tmp/messy.ev and a parseable-but-over-indented sibling both exit 1, file unchanged). The SEVERE half of concern #53 (silent fake-nesting / corruption) IS fixed \u2014 it now refuses cleanly with an honest, well-explained message and never mis-nests. But a layout formatter that cannot re-indent ragged siblings to a uniform column declines its core advertised use; treat as a roadmap item, not done.",
+      "detail": "",
+      "by": "ide-critic-expert",
+      "status": "open",
+      "task": 35,
+      "created": "2026-06-23T20:41:37Z"
     }
   ]
 }
