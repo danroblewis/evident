@@ -1,5 +1,5 @@
 {
-  "seq": 311,
+  "seq": 312,
   "tasks": [
     {
       "id": 1,
@@ -7773,10 +7773,10 @@
       "id": 309,
       "title": "Make the web IDE mobile-friendly / responsive (currently renders weirdly + unusable on mobile)",
       "detail": "The web IDE renders very weirdly and is UNUSABLE on mobile/small screens \u2014 desktop-only layout (editor + diagram panel + side panels + palette). Make it responsive. COMPLETION CRITERIA: (1) usable on phone-width (~375px) + tablet \u2014 no horizontal overflow, no overlapping panels, readable text; (2) the editor + diagram view + core controls (analyze, samples, view picker) all reachable + functional on mobile (likely a stacked/collapsible layout below a breakpoint); (3) adequate touch-target sizes; (4) tested at 375px + 768px + desktop \u2014 DESKTOP UNCHANGED; (5) verified via playwright at mobile viewport, before/after screenshots. BIG responsive-CSS task (ide/web/static/*.css + layout JS) \u2014 may warrant splitting into sub-tasks: layout breakpoints, panel stacking, editor/diagram resize, palette/menus. User flagged it explicitly as a major gap.",
-      "status": "in_progress",
+      "status": "worker_done",
       "created_by": "worker",
       "created": "2026-06-23T20:53:58Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
@@ -7787,6 +7787,12 @@
           "at": "2026-06-23T21:09:26Z",
           "by": "worker",
           "act": "started"
+        },
+        {
+          "at": "2026-06-23T21:15:37Z",
+          "by": "worker",
+          "act": "done",
+          "note": "responsive: 3-col grid stacks to 1 column \u2264820px, samples-select width cap fixes the overflow root cause, tap targets \u226544px, splitter hidden; playwright-verified 375/768/1280, desktop byte-for-byte unchanged"
         }
       ]
     },
@@ -7831,6 +7837,21 @@
           "act": "started"
         }
       ]
+    },
+    {
+      "id": 312,
+      "title": "Desktop top bar overflows horizontally ~1280px (pre-existing) \u2014 wrap it or collapse less-used controls into an overflow menu / \u2318K palette above ~1100px",
+      "detail": "Flagged during #309: the DESKTOP #top bar is display:flex with no wrap, so controls run off-screen (#share-btn\u2026#status to x\u22481512) at ~1280px and narrower-desktop widths. Pre-existing (not introduced by the mobile work, which is gated \u2264820px). Fix: let the desktop top bar wrap, or collapse less-used controls into the \u2318K palette / an overflow menu above ~1100px. Keep mobile + the core controls intact.",
+      "status": "open",
+      "created_by": "worker",
+      "created": "2026-06-23T21:15:37Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "ui"
+      ],
+      "log": []
     }
   ],
   "concerns": [
