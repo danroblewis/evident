@@ -258,7 +258,7 @@ function _coerce(s) {
 async function _checkOne(varName, op, value) {
   const res = await fetch("/api/invariant", {
     method: "POST", headers: { "content-type": "application/json" },
-    body: JSON.stringify({ source: editor.getValue(), var: varName, op, value }),
+    body: JSON.stringify({ source: editor.getValue(), var: varName, op, value, scope: scopeBound }),
   });
   return res.json();
 }
@@ -451,7 +451,7 @@ async function runTemporal(out, body) {
   try {
     const res = await fetch("/api/temporal", {
       method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ source: editor.getValue(), ...body }),
+      body: JSON.stringify({ source: editor.getValue(), scope: scopeBound, ...body }),
     });
     const d = await res.json();
     if (!d.ok) { out.className = "bad"; out.textContent = "✕ " + (d.error || "check failed"); return; }
@@ -534,7 +534,7 @@ async function _execQuery(out, terms, nAssume) {
   try {
     const res = await fetch("/api/query", {
       method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ source: editor.getValue(), terms }),
+      body: JSON.stringify({ source: editor.getValue(), terms, scope: scopeBound }),
     });
     const d = await res.json();
     if (!d.ok) { out.className = "bad"; out.textContent = "✕ " + (d.error || "query failed"); return; }

@@ -77,7 +77,7 @@ function scopeCertHtml(data) {
   if (!data.states)
     return `<span class="scope-cap" title="No reachable-state enumeration: a claim (a relation, not a machine), a continuous/non-enumerable domain, or the solver gave up. NOT a proof that the machine reaches nothing.">no enumerable reachable set</span>`;
   if (data.capped)
-    return `<span class="scope-cap" title="The reachability search stopped at its ${data.states}-state limit — the true reachable set may be LARGER. A bounded SAMPLE, not a complete enumeration; treat &quot;not found&quot; as inconclusive.">≥${data.states} reachable (capped — sample)</span>`;
+    return `<span class="scope-cap" title="The reachability search stopped at the scope bound (${data.scope}) — the true reachable set may be LARGER. A bounded SAMPLE, not a complete enumeration; raise the scope knob to explore further (or push toward ✓ complete). Treat &quot;not found&quot; as inconclusive.">≥${data.states} reachable (capped at scope ${data.scope} — raise it)</span>`;
   if (data.continuous)
     return `<span class="scope-cap" title="Real-valued (continuous) domain: the reachable set is SAMPLED along trajectories, not exhaustively enumerated — the true set is uncountable. &quot;not found&quot; is inconclusive.">${data.states} reachable (sampled — continuous)</span>`;
   return `<span class="scope-exh" title="The reachability search reached a FIXPOINT: every state the machine can enter from its start has been found. The COMPLETE reachable set — a proof, not a sample, so &quot;no state satisfies P&quot; is conclusive.">${data.states} reachable (✓ complete)</span>`;

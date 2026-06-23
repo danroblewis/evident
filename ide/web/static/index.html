@@ -16,6 +16,7 @@
     <button id="symbols-btn" title="how to type the operators (Esc to close)">⌨ symbols</button>
     <button id="tour-btn" title="a guided lap around the IDE (Esc to close)">? tour</button>
     <button id="solve-btn" title="solve a claim — SAT witness or UNSAT">⊨ Solve</button>
+    <label id="scope-ctl" title="exploration / verification bound (Alloy-style scope): how many reachable states to explore. Raise it to push a capped set toward ✓ complete; lower it for speed.">scope <input id="scope-in" type="number" min="1" max="5000" placeholder="400"></label>
     <button id="smtlib-btn" title="copy this program's SMT-LIB encoding (re-run it in z3, or save it)">⧉ SMT-LIB</button>
     <button id="save-btn" title="save this program in a named slot — keep several experiments (⌘K → Save as…)">💾 Save</button>
     <button id="export-btn" title="download this buffer as a .ev file">↧ .ev</button>

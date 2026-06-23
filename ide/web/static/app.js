@@ -116,6 +116,7 @@ let history = [];
 let pinnedA = null;
 let pastView = null;
 let currentSlotName = null;   // the active saved-slot name; overrides the derived #fname (Task #213)
+let scopeBound = null;        // the scope knob's value (#21/#84); null ⇒ server default (REACH_LIMIT)
 
 // Push a snapshot onto a newest-first ring buffer, capping length. Pure (returns the
 // array) so it's unit-testable headless; mutates in place for the module array.
@@ -392,7 +393,7 @@ async function run(view) {
       // lead view for what was just written — otherwise a tab click pins the view and a
       // later edit that turns the machine nondeterministic keeps showing a flat line.
       // A tab click (run("phase_portrait")) passes its view explicitly and is honored.
-      body: JSON.stringify({ source, view: view || null }),
+      body: JSON.stringify({ source, view: view || null, scope: scopeBound }),
     });
     // A 500 RESOLVES the fetch (only a network drop rejects it), so without this check an HTTP
     // error would fall through and silently leave the prior picture looking live (Marek #206).
@@ -476,6 +477,12 @@ initBuffer();    // save/export/share buttons + #samples menu (app-buffer.js)
 initVerify();    // verify-console listeners (app-verify.js)
 initPalette();
 setupPanZoom();  // wheel-zoom / drag-pan / dbl-click-reset on #view — listeners attached ONCE (#233)
+// Scope knob (#21/#84): set the exploration/verification bound, then re-analyze. Empty ⇒ server default.
+$("#scope-in").addEventListener("change", () => {
+  const v = parseInt($("#scope-in").value, 10);
+  scopeBound = (v && v > 0) ? v : null;
+  run();
+});
 run();
 maybeAutoTour();
 // If we loaded a program from a shared link, say so — but only after run()'s "computing…"

@@ -23,7 +23,7 @@ import re
 import sys
 import tempfile
 
-from config import EVIDENT, REACH_LIMIT, STATIC, VIZ, _LOCK
+from config import EVIDENT, REACH_LIMIT, STATIC, VIZ, _LOCK, effective_scope
 
 sys.path.insert(0, VIZ)
 
@@ -67,6 +67,7 @@ async def _no_cache(request, call_next):
 class Source(BaseModel):
     source: str
     view: str | None = None
+    scope: int | None = None        # reachable-exploration bound — the scope knob (#21/#84)
 
 
 @app.post("/api/analyze")
@@ -84,8 +85,9 @@ def analyze(req: Source):
             m = load_model(prefix + ".smt2", prefix + ".schema.json")
             if req.view in FUNCTION_VIEWS:                 # fast path: no dynamics solve (#301)
                 return _function_response(m, req.view, prefix, dropped, req.source, msg)
+            scope = effective_scope(req)
             (states, edges, n_states, n_edges,
-             max_branch, capped, recurrent) = _reachable_stats(m, REACH_LIMIT)
+             max_branch, capped, recurrent) = _reachable_stats(m, scope)
             try:
                 structure = m.solution_structure(states=states, edges=edges)
             except Exception as _e:
@@ -111,9 +113,7 @@ def analyze(req: Source):
                               file=sys.stderr)
             return {
                 "ok": True,
-                # A model with dropped constraints is BROKEN, not a valid relation — the freed
-                # variables fan the state space and any "shape" read off it is an artifact, not
-                # the program's. Say so in the headline, don't describe it as relational/cyclic.
+                # A broken (dropped-constraint) model isn't a real relation — say so in the headline.
                 "banner": (
                     f"⚠ Under-constrained — {dropped} dropped constraint(s); this model is "
                     f"BROKEN, not a real relation (the freed variables fan the state space)"
@@ -124,6 +124,7 @@ def analyze(req: Source):
                 "states": n_states,
                 "edges": n_edges,
                 "capped": capped,
+                "scope": scope, "scope_default": REACH_LIMIT,   # the scope knob's effective + default bound
                 # has-a-Real-var → continuous, not exhaustively enumerable; never "✓ complete" (Marek #274).
                 "continuous": any(v.get("kind") == "real" for v in m.carried),
                 "vars": [v["name"].split(".")[-1] for v in m.interface_vars]
@@ -177,6 +178,7 @@ class InvariantReq(BaseModel):
     var: str
     op: str
     value: str | int | float | bool
+    scope: int | None = None        # verification bound — the scope knob (#21/#84)
 
 
 @app.post("/api/invariant")
@@ -190,7 +192,7 @@ def invariant(req: InvariantReq):
             return {"ok": False, "error": msg}
         try:
             m = load_model(prefix + ".smt2", prefix + ".schema.json")
-            return {"ok": True, **m.check_invariant(req.var, req.op, req.value, limit=REACH_LIMIT)}
+            return {"ok": True, **m.check_invariant(req.var, req.op, req.value, limit=effective_scope(req))}
         except Exception as e:
             return {"ok": False, "error": str(e)}
 
@@ -200,6 +202,7 @@ class TemporalReq(BaseModel):
     terms: list                           # [[var, op, value], …] — the Q conjunction (#258)
     modality: str = "eventually"          # "eventually" (◇Q) | "leads_to" (P ⤳ Q) | "infinitely_often" (□◇Q)
     p_terms: list | None = None           # [[var, op, value], …] — the P conjunction, for leads_to
+    scope: int | None = None              # verification bound — the scope knob (#21/#84)
 
 
 @app.post("/api/temporal")
@@ -215,7 +218,7 @@ def temporal(req: TemporalReq):
         try:
             m = load_model(prefix + ".smt2", prefix + ".schema.json")
             return {"ok": True, **m.check_temporal(
-                req.terms, modality=req.modality, p_terms=req.p_terms, limit=REACH_LIMIT)}
+                req.terms, modality=req.modality, p_terms=req.p_terms, limit=effective_scope(req))}
         except Exception as e:
             return {"ok": False, "error": str(e)}
 
@@ -226,6 +229,7 @@ class QueryReq(BaseModel):
     # server parses with the same regex the frontend uses. Provide one or the other.
     terms: list[list[str | int | float | bool]] | None = None
     predicate: str | None = None
+    scope: int | None = None        # verification bound — the scope knob (#21/#84)
 
 
 @app.post("/api/query")
@@ -244,7 +248,7 @@ def query(req: QueryReq):
             if terms is None:
                 terms = _parse_predicate(req.predicate or "")
             m = load_model(prefix + ".smt2", prefix + ".schema.json")
-            return {"ok": True, **m.query([tuple(t) for t in terms], limit=REACH_LIMIT)}
+            return {"ok": True, **m.query([tuple(t) for t in terms], limit=effective_scope(req))}
         except Exception as e:
             return {"ok": False, "error": str(e)}
 
@@ -267,7 +271,7 @@ def explore(req: ExploreReq):
             return {"ok": False, "error": msg}
         try:
             m = load_model(prefix + ".smt2", prefix + ".schema.json")
-            return {"ok": True, **m.explore(req.state, limit=REACH_LIMIT)}
+            return {"ok": True, **m.explore(req.state, limit=effective_scope(req))}
         except Exception as e:
             return {"ok": False, "error": str(e)}
 
