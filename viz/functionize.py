@@ -84,8 +84,14 @@ def extract_functions(model):
 
     `inputs` are the INDEPENDENT variables (referenced but not themselves an output of a step) — the
     drivers; `steps`' vars are the DEPENDENT variables (computed). That split is the principled axis
-    signal: dependent → Y, independent → X."""
-    outputs = [v["name"] for v in model.carried]
+    signal: dependent → Y, independent → X.
+
+    Outputs include both CARRIED state (a function of the prev tick) and DERIVED vars (a same-tick
+    function of the current state, e.g. `done = count ≥ 5`). Both are genuine functions the runtime
+    functionizer compiles — a derived var is the *purest* function, so it belongs in `steps`, not
+    miscounted as a residual constraint."""
+    derived_set = {v["name"] for v in getattr(model, "derived", [])}
+    outputs = [v["name"] for v in model.carried] + sorted(derived_set)
     output_set = set(outputs)
     steps = {}                  # var -> step dict (insertion-ordered)
     residual = []
@@ -119,6 +125,9 @@ def extract_functions(model):
         residual.append({"expr": _pretty(a), "_z3": a, "deps": _free_vars(a)})
 
     step_list = list(steps.values())
+    for st in step_list:                               # tag derived (same-tick) functions
+        if st["var"] in derived_set:
+            st["derived"] = True
     referenced = {d for st in step_list for d in _step_deps(st)}
     referenced |= {d for r in residual for d in r["deps"]}
     # INDEPENDENT = referenced but NOT an output (the prev-tick reads _x + is_first_tick — the true

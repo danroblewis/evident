@@ -94,9 +94,11 @@ def render(smt2, schema, out_path):
     f = extract_functions(m)
     prev_to_var = {v["prev"]: v["name"] for v in m.carried if v.get("prev")}
     base = m.initial_state() or {v["name"]: None for v in m.carried}
-    steps = f["steps"]
+    # Derived vars are same-tick functions of CURRENT state (no prev inputs to sweep) — their behaviour
+    # is read off the carried vars they depend on, so they don't get a transfer-map panel here.
+    steps = [s for s in f["steps"] if not s.get("derived")]
     if not steps:
-        _placeholder(out_path, m.fsm, "no functionized variables to sample"); return
+        _placeholder(out_path, m.fsm, "no carried functions to sample (derived vars shown elsewhere)"); return
     # Reachable excursion per variable — the real input range to sample over.
     states, _ = m.reachable(limit=400)
     ranges = {}
