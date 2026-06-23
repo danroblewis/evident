@@ -1,5 +1,5 @@
 {
-  "seq": 279,
+  "seq": 286,
   "tasks": [
     {
       "id": 1,
@@ -6032,6 +6032,111 @@
         }
       ],
       "addresses_concern": 267
+    },
+    {
+      "id": 280,
+      "title": "Diagrams: seed dynamics renderers from ALL initial conditions, not forward-from-one-init [foundational \u2014 basin_map/fixedpoint_map/morse_graph/orbit_scatter/parallel_coords/phase_portrait/reachability_tree/scatter_matrix/solution_space/state_graph/transition_matrix]",
+      "detail": "",
+      "status": "open",
+      "created_by": "worker",
+      "created": "2026-06-23T18:19:04Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "diagram"
+      ],
+      "log": []
+    },
+    {
+      "id": 281,
+      "title": "Diagrams: reachable envelope + ensemble for time-based views (time_series, timing_diagram) \u2014 multi-seed overlay + min-max band per tick, not one chain",
+      "detail": "",
+      "status": "open",
+      "created_by": "worker",
+      "created": "2026-06-23T18:19:04Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "diagram"
+      ],
+      "log": []
+    },
+    {
+      "id": 282,
+      "title": "Diagrams: continuous state-space GRID sweep for Real-valued programs (basin_map/cobweb/morse_graph/occupancy_heatmap) \u2014 grid + iterate each cell instead of the N/A card",
+      "detail": "",
+      "status": "open",
+      "created_by": "worker",
+      "created": "2026-06-23T18:19:04Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "diagram"
+      ],
+      "log": []
+    },
+    {
+      "id": 283,
+      "title": "Diagrams: crash-robustness sweep \u2014 guard divergence (OverflowError on logistic/Lotka-Volterra/double-pendulum 1e14) + graceful N/A for Solve programs (KeyError 'fsm') + nullcline TypeErrors",
+      "detail": "",
+      "status": "open",
+      "created_by": "worker",
+      "created": "2026-06-23T18:19:04Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "diagram"
+      ],
+      "log": []
+    },
+    {
+      "id": 284,
+      "title": "Diagrams: claim/Solve program support in sampling views (scatter_matrix, parallel_coords, solution_space) \u2014 sample the satisfying-assignment set, not just FSM reachable graphs",
+      "detail": "",
+      "status": "open",
+      "created_by": "worker",
+      "created": "2026-06-23T18:19:04Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "diagram"
+      ],
+      "log": []
+    },
+    {
+      "id": 285,
+      "title": "Diagrams: visually distinguish proven-all-conditions content from sampled/single-run content (solution_space region vs scatter) \u2014 the honesty marker",
+      "detail": "",
+      "status": "open",
+      "created_by": "worker",
+      "created": "2026-06-23T18:19:04Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "diagram"
+      ],
+      "log": []
+    },
+    {
+      "id": 286,
+      "title": "Diagrams: function-view honesty + layout \u2014 surface real guard/transition logic (not 'piecewise \u00b7 N branches'), fix false INCOMPLETE/OVERLAP verdicts + the %-computed metric + label clipping",
+      "detail": "",
+      "status": "open",
+      "created_by": "worker",
+      "created": "2026-06-23T18:19:04Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "diagram"
+      ],
+      "log": []
     }
   ],
   "concerns": [
