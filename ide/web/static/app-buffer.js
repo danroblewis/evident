@@ -137,7 +137,7 @@ function refreshSamplesMenu() {
 // Load a program into the editor and clear every per-program panel that must not bleed
 // across (pin, solve board, verify assertion + result, scrubber). Shared by samples,
 // slots, and the shared-link loader.
-function loadProgram(source, slotName) {
+function loadProgram(source, slotName, view) {
   currentSlotName = slotName || null;
   editor.setValue(source, -1);
   $("#solve-given").value = "";   // a fresh program must not inherit the last pin…
@@ -148,7 +148,7 @@ function loadProgram(source, slotName) {
   $("#query-result").textContent = "";   // the `light = Green` chip must not persist onto `counter`.
   if (typeof clearAssumptions === "function") clearAssumptions();
   clearTrace();
-  run();
+  run(view);                       // a sample jumps to its headline view; a slot/share → undefined → recommend
 }
 
 // --- wiring: save/export/share buttons + the #samples dropdown ---------------------
@@ -164,7 +164,7 @@ function initBuffer() {
       const name = v.slice(5), slots = loadSlots();
       if (slots[name] != null) loadProgram(slots[name], name);
     } else if (SAMPLES[v]) {
-      loadProgram(SAMPLES[v], null);
+      loadProgram(SAMPLES[v], null, headlineView(v, SAMPLES[v]));
     }
     sel.value = "";          // reset the label so the same entry can be re-opened
   };

@@ -52,6 +52,23 @@ const DEFAULT_PROGRAM =
 // seven counters. The FSMs exercise different dynamics (a terminating ramp, a real cyclic
 // machine, a 2-D phase spiral, a wild integer orbit, nondeterministic drift); the claims
 // show algorithms expressed as constraints (solve them with ⊨ Solve).
+// The headline diagram for a sample — the view it's NAMED for ("Rule 90 · … timing_diagram") or
+// that its comment says to open ("Open the phase_portrait view"). Loading a sample jumps straight
+// to that view instead of the generic recommendation (#87/#128/#168). Special/headline views are
+// listed BEFORE the generic ones so an incidental "state_graph" mention never beats the real one;
+// the server validates the token and falls back to the recommended view if it's unknown.
+const VIEW_TOKENS = ["phase_portrait", "cobweb", "nullcline_field", "timing_diagram",
+  "function_graph", "function_behavior", "function_guards", "function_complexity", "function_residual",
+  "morse_graph", "basin_map", "fixedpoint_map", "chord_diagram", "transition_matrix",
+  "occupancy_heatmap", "orbit_scatter", "parallel_coords", "reachability_tree", "scatter_matrix",
+  "state_graph", "time_series", "solution_space"];
+function headlineView(name, source) {
+  const t = (name || "") + " " + (source || "");
+  const m = t.match(/open the ([a-z_]+)\s*(?:--\s*)?(?:view|tab)/i);   // explicit instruction (tolerates a wrapped "-- tab")
+  if (m && VIEW_TOKENS.includes(m[1].toLowerCase())) return m[1].toLowerCase();
+  return VIEW_TOKENS.find((v) => t.includes(v)) || null;              // else the first headline token mentioned
+}
+
 const SAMPLES = {
   "counter · a terminating clock (FSM)":
 `fsm counter

@@ -148,7 +148,7 @@ function buildCommands() {
   const clickIf = (id) => { const el = $(id); if (el) el.click(); };
   // open a sample — same path as the #samples select onchange
   Object.keys(SAMPLES).forEach((name) => {
-    cmds.push({ label: "Open sample: " + name, run: () => loadProgram(SAMPLES[name], null) });
+    cmds.push({ label: "Open sample: " + name, run: () => loadProgram(SAMPLES[name], null, headlineView(name, SAMPLES[name])) });
   });
   // open one of your saved programs
   const slots = loadSlots();
@@ -424,7 +424,7 @@ function initPalette() {
     if (act === "next") {
       if (tourIdx >= TOUR_STEPS.length - 1) {
         // last step "Done": open the sudoku sample so ⊨ Solve has something to chew on
-        if (SAMPLES[SUDOKU_SAMPLE]) loadProgram(SAMPLES[SUDOKU_SAMPLE], null);
+        if (SAMPLES[SUDOKU_SAMPLE]) loadProgram(SAMPLES[SUDOKU_SAMPLE], null, headlineView(SUDOKU_SAMPLE, SAMPLES[SUDOKU_SAMPLE]));
         endTour();
       } else { tourIdx++; renderTourStep(); }
     }

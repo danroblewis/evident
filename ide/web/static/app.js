@@ -292,6 +292,10 @@ function backendDown(detail) {
 }
 
 async function run(view) {
+  // An explicit view (a sample's headline #87/#128/#168, or a tab click) must not be clobbered by
+  // a debounced re-analyze that setValue/edits just scheduled — that run() carries no view and would
+  // re-recommend over it. Cancel the pending timer so the explicit view is the one that lands.
+  if (view !== undefined) clearTimeout(timer);
   const source = editor.getValue();
   lastSource = source;
   updateClaimPicker(source);   // show the entry-claim dropdown for multi-claim files (#86)
