@@ -51,6 +51,23 @@ function renderCores(d, pinned) {
       ).join("");
 }
 
+// The one-line honesty banner for the symmetry fold (Ana #271). Names the interchangeable value-set
+// it broke and the orbit/raw counts; when NO set is provably interchangeable, says so (no-op toggle).
+function foldNote(d) {
+  const sets = d.folded_sets || {};
+  const names = Object.keys(sets);
+  if (!names.length) {
+    return `<div class="dim sym-note">no provable value symmetry to fold — every witness shown as-is `
+      + `<span class="dim">(a value is foldable only when it is never named in a constraint and never ordered)</span></div>`;
+  }
+  const desc = names.map((e) => `{${(sets[e] || []).join(", ")}}`).join(" and ");
+  const orbits = d.folded_count != null ? d.folded_count : (d.folded || []).length;
+  const raw = d.raw_count != null ? d.raw_count : (d.solutions || []).length;
+  return `<div class="dim sym-note">folded the interchangeable ${escapeHtml(desc)} — `
+    + `${orbits} orbit${orbits === 1 ? "" : "s"} of ${raw} raw solution${raw === 1 ? "" : "s"} `
+    + `<span class="dim">(each rep is one genuine witness; "(×k symmetric)" counts its relabelings)</span></div>`;
+}
+
 function renderSolve(d, given) {
   const head = $("#solve-head"), body = $("#solve-body");
   body.classList.remove("stale");                          // fresh result — undim (Sam #211)
@@ -61,20 +78,31 @@ function renderSolve(d, given) {
   if (d.solutions) {
     const n = d.count != null ? d.count : d.solutions.length;
     if (!n) { head.innerHTML = `<span class="unsat">⊭ UNSAT</span> — <b>${d.claim || "claim"}</b> has no solutions`; body.innerHTML = ""; return; }
-    head.innerHTML = `<span class="sat">⊨ ${d.complete ? "all " + n : "≥ " + n}</span> distinct witness${n === 1 ? "" : "es"} of <b>${d.claim || "claim"}</b>`
+    // SYMMETRY FOLD (Ana #271): when `d.folded` is present, the backend collapsed value-symmetric
+    // witnesses into orbits. Show one canonical rep per orbit + "(×k symmetric)". The fold is SOUND
+    // — only PROVABLY-interchangeable enums (no value named, no ordering) are folded; with none
+    // provable, `folded_sets` is empty and we say so (the toggle is then a no-op).
+    const folded = d.folded && Object.keys(d.folded_sets || {}).length ? d.folded : null;
+    const items = folded || d.solutions.map((s) => ({ bindings: s, multiplicity: 1 }));
+    const shown = items.length;
+    head.innerHTML = `<span class="sat">⊨ ${d.complete ? "all " + shown : "≥ " + shown}</span> `
+      + (folded ? `canonical witness${shown === 1 ? "" : "es"}` : `distinct witness${shown === 1 ? "" : "es"}`)
+      + ` of <b>${d.claim || "claim"}</b>`
       + (d.complete ? ` <span class="dim">(complete — the solver exhausted the space)</span>`
-                    : ` <span class="dim">(showing ${n}; stopped at the limit, more may exist)</span>`);
+                    : ` <span class="dim">(showing ${n} raw; stopped at the limit, more may exist)</span>`);
+    body.innerHTML = d.fold_requested ? foldNote(d) : "";
     // Each witness draws as its DOMAIN PICTURE (board / grid), same as the single-solve path —
     // a beginner who just learned to read the board shouldn't get raw vectors here (Marek #283, Sam #269).
     const esrc = (typeof editor !== "undefined") ? editor.getValue() : "";
-    body.innerHTML = d.solutions.map((s, i) => {
-      const ks = Object.keys(s).sort();
+    body.innerHTML += items.map((o, i) => {
+      const s = o.bindings, ks = Object.keys(s).sort();
       const vizByKey = {};
       ks.forEach((k) => { const v = seqViz(k, s[k], esrc); if (v) vizByKey[k] = v; });
       const viz = ks.map((k) => vizByKey[k]).filter(Boolean).join("");
       const raw = ks.filter((k) => !vizByKey[k])
         .map((k) => `${k}=${escapeHtml(JSON.stringify(s[k]))}`).join("&nbsp;&nbsp;");
-      return `<div class="sol"><span class="dim">#${i + 1}</span> `
+      const mult = o.multiplicity > 1 ? ` <span class="sym-mult" title="this orbit has ${o.multiplicity} witnesses that differ only by permuting interchangeable values">(×${o.multiplicity} symmetric)</span>` : "";
+      return `<div class="sol"><span class="dim">#${i + 1}</span>${mult} `
         + (viz ? `<div class="viz-wrap">${viz}</div>` : "")
         + (raw ? `<span>${raw}</span>` : "") + `</div>`;
     }).join("");

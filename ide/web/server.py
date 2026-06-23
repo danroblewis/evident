@@ -50,6 +50,7 @@ from runtime_io import _export, _run_query  # noqa: E402
 # (now timeout-bounded, but still slow) dynamics solve for nothing (Ana #301).
 FUNCTION_VIEWS = {v for v in VIEWS if v.startswith("function_")}
 from solve import _all_unsat_cores, _enumerate, _unsat_core  # noqa: E402
+from symmetry import fold_witnesses  # noqa: E402
 from optimize import _optimize  # noqa: E402
 from smtlib_tools import _parse_predicate, _ready_to_run  # noqa: E402
 
@@ -150,6 +151,7 @@ class SolveReq(BaseModel):
     given: dict[str, str] | None = None
     enumerate: bool = False
     limit: int | None = None
+    fold_symmetry: bool = False           # collapse value-symmetric witnesses (Ana #271)
 
 
 @app.post("/api/solve")
@@ -163,8 +165,18 @@ def solve(req: SolveReq):
             claim, sols, complete, err = _enumerate(req.source, req.claim, req.given, limit, work)
             if not sols and err:
                 return {"ok": False, "error": err}
-            return {"ok": True, "satisfied": bool(sols), "claim": claim, "solutions": sols,
+            resp = {"ok": True, "satisfied": bool(sols), "claim": claim, "solutions": sols,
                     "count": len(sols), "complete": complete, "limit": limit}
+            if req.fold_symmetry:
+                # Collapse value-symmetric witnesses to one canonical rep + orbit count. SOUND: folds
+                # only PROVABLY-interchangeable enums (no value named, no ordering); a no-op otherwise.
+                folded, folded_sets, raw = fold_witnesses(req.source, sols)
+                resp["fold_requested"] = True
+                resp["folded"] = folded
+                resp["folded_count"] = len(folded)
+                resp["folded_sets"] = folded_sets        # {enum: [values]} the fold broke ({} if none)
+                resp["raw_count"] = raw
+            return resp
         r = _run_query(req.source, req.claim, req.given, work)
         if r.get("ok") and r.get("satisfied") is False and not req.given:
             claim = r.get("claim") or req.claim

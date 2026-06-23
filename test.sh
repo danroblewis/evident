@@ -163,6 +163,23 @@ if [ "$EXAMPLES_ONLY" -eq 0 ] && command -v python3 >/dev/null 2>&1; then
     echo
 fi
 
+# ── Phase 2.9: value-symmetry witness fold (Ana #271) ────────
+# The enumerate fold collapses witnesses that differ only by permuting INTERCHANGEABLE enum values
+# to one canonical rep + a count. Soundness is the whole bar: this pins BOTH directions — a colouring
+# whose colours are PROVABLY interchangeable folds into S_3 orbits ×6 (each rep a real witness), and
+# models that NAME a value or ORDER an enum stay UNFOLDED — so a regression can't silently over-claim.
+if [ "$EXAMPLES_ONLY" -eq 0 ] && command -v python3 >/dev/null 2>&1; then
+    phase "Phase 2.9: value-symmetry witness fold"
+    if python3 ide/test_symmetry.py > /tmp/evident-symmetry.log 2>&1; then
+        ok "symmetry ($(tail -1 /tmp/evident-symmetry.log))"
+    else
+        fail "symmetry: wrong fold verdict (see above)"
+        cat /tmp/evident-symmetry.log >&2
+        failures+=("symmetry fold")
+    fi
+    echo
+fi
+
 # ── Optional: examples runner ────────────────────────────────
 # Walks examples/, runs each via effect-run. For visual demos (anything
 # that imports packages/sdl/), spawn the program, screenshot the Xvfb

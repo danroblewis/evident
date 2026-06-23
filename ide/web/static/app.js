@@ -386,9 +386,10 @@ async function solve(enumerate) {
   $("#solve-head").innerHTML = `<span class="dim">${enumerate ? "enumerating…" : "solving…"}</span>`;
   $("#solve-body").innerHTML = "";
   try {
+    const fold = enumerate && $("#fold-sym") && $("#fold-sym").checked;   // fold value-symmetric witnesses (Ana #271)
     const res = await fetch("/api/solve", {
       method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ source, claim, given, enumerate: !!enumerate, limit: 20 }),
+      body: JSON.stringify({ source, claim, given, enumerate: !!enumerate, limit: 20, fold_symmetry: !!fold }),
     });
     renderSolve(await res.json(), given);
   } catch (e) {
@@ -398,6 +399,8 @@ async function solve(enumerate) {
 
 $("#solve-btn").onclick = () => solve(false);
 $("#solve-resolve").onclick = () => solve(false);
+// Toggling fold re-runs the enumeration so the canonical/raw view switches live (Ana #271).
+if ($("#fold-sym")) $("#fold-sym").onchange = () => solve(true);
 
 // Export the SMT-LIB encoding (Ana #200): copy to clipboard so you can re-run it in z3 / paste it
 // into notes; fall back to a .smt2 download where the clipboard is blocked.
