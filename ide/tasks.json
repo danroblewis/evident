@@ -1,5 +1,5 @@
 {
-  "seq": 291,
+  "seq": 293,
   "tasks": [
     {
       "id": 1,
@@ -6272,6 +6272,48 @@
       "log": [
         {
           "at": "2026-06-23T19:24:22Z",
+          "by": "worker",
+          "act": "started"
+        }
+      ]
+    },
+    {
+      "id": 292,
+      "title": "Diagrams: fixedpoint_map over all initial conditions \u2014 color states by attractor across the global graph, not the from-init orbit",
+      "detail": "",
+      "status": "in_progress",
+      "created_by": "worker",
+      "created": "2026-06-23T19:32:31Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "diagram"
+      ],
+      "log": [
+        {
+          "at": "2026-06-23T19:32:31Z",
+          "by": "worker",
+          "act": "started"
+        }
+      ]
+    },
+    {
+      "id": 293,
+      "title": "Diagrams: orbit_scatter samples many initial conditions (discard transients), delay-embedding for single-var; shows multi-attractor basins",
+      "detail": "",
+      "status": "in_progress",
+      "created_by": "worker",
+      "created": "2026-06-23T19:32:31Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "diagram"
+      ],
+      "log": [
+        {
+          "at": "2026-06-23T19:32:31Z",
           "by": "worker",
           "act": "started"
         }
