@@ -6169,10 +6169,10 @@
       "id": 288,
       "title": "Diagrams: basin_map discrete path uses the GLOBAL graph \u2014 color all states by attractor (real basin partition), not the from-init orbit",
       "detail": "",
-      "status": "in_progress",
+      "status": "worker_done",
       "created_by": "worker",
       "created": "2026-06-23T18:50:33Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
@@ -6183,6 +6183,12 @@
           "at": "2026-06-23T18:50:33Z",
           "by": "worker",
           "act": "started"
+        },
+        {
+          "at": "2026-06-23T18:59:45Z",
+          "by": "worker",
+          "act": "done",
+          "note": "shipped (merged bcab909f): basin_map discrete path now roots on m.full_state_graph(5000) (all valid states) instead of m.reachable() (from-init orbit), feeding the UNCHANGED _discrete_basins_on (SCC condense \u2192 terminal detect \u2192 basin coloring) \u2014 only the root set changed. Default (not toggle-gated; a from-init basin map is vacuous); real/unbounded \u2192 reachable() fallback with an honest 'from init' title. VERIFIED VISUALLY: bistable basin_map shows all 7 states partitioned by terminal basin (x\u2208{0,1,2}\u21920 blue, x\u2208{3,4,5,6}\u21926 red), title 'over all initial conditions: 7 SCCs, 2 terminal' \u2014 a real basin partition, not one orbit. ./test.sh Phase 2.10 extended + green."
         }
       ]
     }
