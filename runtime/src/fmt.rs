@@ -24,6 +24,22 @@
 //! parse exactly. [`format_source`] runs this check on its own output and
 //! refuses (returns `Err`) to emit anything that fails it — so a bug in the
 //! formatter can never silently corrupt a program.
+//!
+//! ## Why `fmt` refuses to format non-parsing source (#53)
+//!
+//! The token-equivalence oracle guarantees `fmt` never *changes* a program —
+//! but it can't, on its own, tell a *valid* program from a malformed one, and
+//! malformed input is where a naive re-indent does damage. The parser groups a
+//! block's members by an exact-match indent column (first child fixes it, every
+//! sibling must match it exactly). So *ragged* indentation — a sibling typed at
+//! a different column than the rest of its block — is never a valid program: it
+//! has no parse, hence no block structure to re-indent against, and any
+//! indentation `fmt` picked would be a guess that could turn a syntax error
+//! into a *silently different* (token-equivalent yet mis-nested) program. To
+//! foreclose that, [`format_source`] first requires the *input* to parse; if it
+//! doesn't, it refuses and leaves the file untouched, surfacing the parse error
+//! so the author fixes the source and re-runs. `fmt` formats programs, not
+//! guesses.
 
 use crate::lexer::{tokenize, Token};
 
@@ -38,23 +54,70 @@ pub fn format_source(src: &str) -> Result<String, String> {
     // to format — surface the error.
     let orig_tokens = tokenize(src).map_err(|e| e.to_string())?;
 
+    // Parse-validity gate (#53). A formatter has no business rewriting source
+    // that isn't a valid program — like gofmt, we refuse to format what doesn't
+    // parse. This is the load-bearing guard against silent structural
+    // corruption, and it closes both failure modes #53 describes.
+    //
+    // The parser groups a block's members by an EXACT-match indent rule: the
+    // first child fixes the block's indent column, and every subsequent sibling
+    // must match it *exactly* (`*m == body_indent` — see `parse_indented_body`
+    // and the `⇒` / `∀` / `match` block loops in `parser/`). A shallower indent
+    // pops to an ancestor; a *strictly deeper* one opens a sub-block. So RAGGED
+    // indentation — a line the author meant as a sibling but typed at a
+    // different column than the rest of its block — is never a valid program:
+    // the parser breaks the block at the mismatch and rejects what follows.
+    //
+    // That has a sharp consequence for the formatter. Ragged input has *no
+    // parse*, hence no block structure to re-indent against. Any indentation
+    // `fmt` chose would be a *guess* at the author's intent — and a guess can
+    // be token-equivalent yet structurally wrong (the worst #53 case: a sibling
+    // over-indented relative to the line above gets emitted as fake nesting
+    // under it, which lexes the same but reads as a different program). The
+    // formatter must not gamble with a program's meaning. So instead of
+    // guessing, we surface the parse error and leave the file untouched; the
+    // author fixes the source — aligning the ragged siblings to one column —
+    // and re-runs. Files that genuinely parse are wholly unaffected by this
+    // gate (`parse` here is pure lex+parse, no import resolution).
+    crate::parser::parse(src).map_err(|e| {
+        format!(
+            "refusing to format: the source does not parse, so there is no \
+             program structure to format against. Ragged / inconsistent \
+             indentation is the usual cause — the parser groups sibling lines \
+             by an exact-match indent column, so a line indented differently \
+             from the rest of its block breaks the block. Align the sibling \
+             lines to the same column, then re-run. File left unchanged.\n  {e}"
+        )
+    })?;
+
     let formatted = reindent(src);
 
     // Self-check: the formatted text must lex to an equivalent token stream.
     let new_tokens = tokenize(&formatted)
         .map_err(|e| format!("internal: formatted output failed to lex: {e}"))?;
     if !tokens_equivalent(&orig_tokens, &new_tokens) {
-        // Not a formatter bug — the SOURCE's indentation is inconsistent enough that a clean
-        // re-indent would change which lines nest under which (the block structure). The
-        // formatter refuses to guess and silently change your program's meaning. Fix the ragged
-        // indentation by hand — align sibling lines to the same depth — then re-run fmt. (#53)
-        return Err("could not re-indent safely: the indentation is inconsistent enough that a \
-                    clean re-indent would change the block structure (which lines nest under \
-                    which). The formatter won't guess and risk changing the program's meaning — \
-                    align the ragged sibling lines to the same depth, then re-run. File left \
-                    unchanged."
+        // We already proved the input parses; a clean 4-space re-indent only
+        // rescales `Indent` widths, preserving every relative comparison the
+        // parser keys block structure off of — so this branch is unreachable
+        // for valid input. If it ever fires, it is a formatter bug (not the
+        // author's fault): refuse rather than risk emitting a structurally
+        // different program.
+        return Err("internal: re-indent perturbed the token stream — refusing \
+                    to emit. This is a formatter bug, please report it. File \
+                    left unchanged."
             .to_string());
     }
+
+    // Belt-and-suspenders: the formatted output must itself still parse. Given
+    // the input parsed and the token stream is equivalent this always holds,
+    // but re-parsing it is cheap insurance against any re-indent edge case the
+    // token check doesn't cover.
+    crate::parser::parse(&formatted).map_err(|e| {
+        format!(
+            "internal: formatted output failed to parse — refusing to emit. \
+             This is a formatter bug, please report it.\n  {e}"
+        )
+    })?;
 
     // Idempotence guard: a second pass must be a fixed point. Cheap insurance.
     let twice = reindent(&formatted);
@@ -384,6 +447,45 @@ mod tests {
     fn empty_input() {
         assert_eq!(format_source("").unwrap(), "");
         assert_eq!(format_source("\n\n\n").unwrap(), "");
+    }
+
+    // #53, case 1: a sibling OVER-indented relative to a same-block `⇒` line.
+    // `count` at 8 spaces, the guard at 2 — ragged siblings that the parser
+    // rejects (it breaks the fsm body at the indent mismatch). `fmt` must
+    // refuse and surface the parse error, NOT mangle the file.
+    #[test]
+    fn ragged_over_indent_before_guard_is_refused() {
+        let src = "fsm counter\n        count ∈ Int\n  is_first_tick ⇒ count = 0\n";
+        let err = format_source(src).expect_err("ragged input must be refused");
+        assert!(
+            err.contains("does not parse"),
+            "expected a parse-refusal message, got: {err}"
+        );
+    }
+
+    // #53, case 2 (the WORSE one): a sibling over-indented relative to the line
+    // ABOVE — `count` at 2, the guard at 6. The old formatter "succeeded" but
+    // emitted the guard fake-nested UNDER count, silently changing the apparent
+    // structure. The program never parsed, so `fmt` must now refuse rather than
+    // produce mis-nested output.
+    #[test]
+    fn ragged_sibling_not_silently_renested() {
+        let src = "fsm counter\n  count ∈ Int\n      is_first_tick ⇒ count = 0\n";
+        let err = format_source(src).expect_err("ragged input must be refused");
+        assert!(
+            err.contains("does not parse"),
+            "expected a parse-refusal message, got: {err}"
+        );
+    }
+
+    // The clean version of the #53 repros — both lines at the same column — is a
+    // valid program; `fmt` formats it to a 4-space grid and is a fixed point.
+    #[test]
+    fn aligned_siblings_format_cleanly() {
+        let src = "fsm counter\n  count ∈ Int\n  is_first_tick ⇒ count = 0\n";
+        let out = format_source(src).unwrap();
+        assert_eq!(out, "fsm counter\n    count ∈ Int\n    is_first_tick ⇒ count = 0\n");
+        roundtrips(src);
     }
 
     #[test]
