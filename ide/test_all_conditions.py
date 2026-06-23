@@ -134,6 +134,46 @@ def check_ergodic(name, src):
     return fails
 
 
+def check_basin_map_global():
+    """The basin_map renderer's DISCRETE path must root on the GLOBAL graph, not the
+    from-init orbit — a basin map's purpose is to PARTITION the state space by which
+    attractor each STARTING state flows to. Drive _discrete_basins (the renderer entry
+    the numeric finite-reachable route also calls), then SCC-condense the same root graph
+    it used and assert it (a) saw all 7 bistable states and (b) surfaces BOTH wall
+    attractors {0,6} — the from-init version saw only the left basin (2 states, attractor 0)."""
+    import render_basin_map as RB                              # noqa: E402
+    fails = []
+    with tempfile.TemporaryDirectory() as work:
+        m = _load(BISTABLE, work)
+        out = work + "/basin.png"
+        note = RB._discrete_basins(m, out)
+
+        # The renderer must have taken the all-initial-conditions root (the honest caption),
+        # NOT the from-init fallback — for a bounded-int bistable the global graph fits.
+        if "all initial conditions" not in note:
+            fails.append(f"basin_map: discrete path did not use the global graph "
+                         f"(note={note!r}) — expected the all-initial-conditions root")
+
+        # Re-derive the exact graph the renderer rooted on and check the basin partition:
+        # every one of the 7 states present, BOTH wall attractors {0,6} terminal.
+        states, edges, info = m.full_state_graph(limit=5000)
+        n = len(states)
+        _eset, sccs, scc_of, term_ids, _ti, _rt = RB._condense_terminals(n, edges)
+        term_x = {states[sccs[s][0]]["x"] for s in term_ids}
+        if {st["x"] for st in states} != set(range(7)):
+            fails.append(f"basin_map: global graph missing states — "
+                         f"got {sorted(st['x'] for st in states)}, expected 0..6")
+        if not ({0, 6} <= term_x):
+            fails.append(f"basin_map: global basin partition missing a wall attractor — "
+                         f"expected {{0,6}} ⊆ terminal x-values {sorted(term_x)}")
+        # Two DISTINCT basins at minimum: x=0 and x=6 land in different terminal SCCs.
+        if scc_of[next(i for i, st in enumerate(states) if st["x"] == 0)] == \
+           scc_of[next(i for i, st in enumerate(states) if st["x"] == 6)]:
+            fails.append("basin_map: x=0 and x=6 collapsed into one terminal SCC — "
+                         "the two basins are not partitioned")
+    return fails
+
+
 def check_real_fallback():
     with tempfile.TemporaryDirectory() as work:
         m = _load(REAL, work)
@@ -151,6 +191,7 @@ def main():
     fails += check_bistable()
     fails += check_ergodic("counter", COUNTER)
     fails += check_ergodic("traffic", TRAFFIC)
+    fails += check_basin_map_global()
     fails += check_real_fallback()
     if fails:
         print("ALL-INITIAL-CONDITIONS TEST FAILURES:")
@@ -158,7 +199,8 @@ def main():
             print("  ✗", f)
         return 1
     print("✓ all-initial-conditions: bistable ⊋ from-init (both basins); "
-          "counter/traffic enumerate; real falls back")
+          "counter/traffic enumerate; basin_map partitions on the global graph; "
+          "real falls back")
     return 0
 
 

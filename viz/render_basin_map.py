@@ -10,12 +10,16 @@ strongly-connected component (SCC). The "basin" of a terminal is every start
 state that flows there. This renderer colors a 2-D projection of state space
 by *which terminal* each start ends up in.
 
-  * DISCRETE programs (all bool/enum/string): we have the exact reachable
-    graph from evident_viz.reachable(). We condense it into SCCs, find the
-    terminal SCCs (no outgoing edge to another SCC), and color every reachable
-    state by the terminal SCC it can reach. Two state axes are chosen for the
-    scatter; the rest collapse (a point may carry several colors -> drawn as a
-    small multi-wedge, but we keep it simple with the dominant terminal).
+  * DISCRETE programs (all bool/enum/string): we root on the GLOBAL
+    all-initial-conditions transition graph (Model.full_state_graph: EVERY valid
+    carried-state assignment, ignoring is_first_tick) — NOT the from-init orbit,
+    which for a deterministic FSM is one trajectory (one basin). We condense that
+    graph into SCCs, find the terminal SCCs (no outgoing edge to another SCC), and
+    color every STARTING state by the terminal SCC it flows to — the real basin
+    partition. (If the model isn't finitely enumerable, we fall back to the
+    from-init reachable() graph.) Two state axes are chosen for the scatter; the
+    rest collapse (a point may carry several colors -> drawn as a small
+    multi-wedge, but we keep it simple with the dominant terminal).
 
   * NUMERIC programs: the plotting / seed / grid domain is derived from the
     program's REACHABLE states (model.axis_bounds / model.reachable / the
@@ -72,8 +76,28 @@ from overlay_points import write_points, tight_fraction  # noqa: E402
 
 
 def _discrete_basins(m, out_path):
-    states, edges = m.reachable()
-    return _discrete_basins_on(m, out_path, states, edges)
+    """Basin map over ALL initial conditions (the real basin partition).
+
+    A basin map's whole purpose is to PARTITION the state space by which
+    attractor each STARTING state flows to. The from-init `reachable()` orbit is
+    ONE trajectory for a deterministic FSM — it can only ever show the single
+    basin the seed falls into ("every basin map is one orbit"). So the discrete
+    path roots on `full_state_graph()` — EVERY valid carried-state assignment,
+    ignoring is_first_tick — and SCC-condenses THAT global graph. The dynamics
+    (the successor relation) and the dedup key are identical; only the ROOT SET
+    changes (all states vs the single seed).
+
+    This is unconditionally all-conditions: a from-init basin map is meaningless,
+    so we do NOT gate it behind any toggle. If the model isn't finitely
+    enumerable (real/string/seq/unbounded int) or the discrete product exceeds the
+    cap, `full_state_graph` returns discrete=False/capped — keep the existing
+    from-init fallback (the continuous grid-sweep is a separate task)."""
+    states, edges, info = m.full_state_graph(limit=5000)
+    all_conditions = bool(info["discrete"] and not info["capped"] and states)
+    if not all_conditions:
+        states, edges = m.reachable()        # not enumerable / over-cap → from-init fallback
+    return _discrete_basins_on(m, out_path, states, edges,
+                               all_conditions=all_conditions)
 
 
 def _condense_terminals(n, edges):
@@ -123,11 +147,18 @@ def _condense_terminals(n, edges):
     return eset, sccs, scc_of, term_ids, term_index, reach_term
 
 
-def _discrete_basins_on(m, out_path, states, edges, projected_out=None):
+def _discrete_basins_on(m, out_path, states, edges, projected_out=None,
+                        all_conditions=False):
     """Exact terminal-SCC basin map over a PRE-COMPUTED reachable graph (states +
-    edges). Used both for genuinely-discrete programs (states from m.reachable())
+    edges). Used both for genuinely-discrete programs (states from
+    m.full_state_graph() — all initial conditions — or m.reachable() fallback)
     and for the counter-projected path (states from _projected_reachable, with the
-    free-running counter collapsed out — `projected_out` names it for the title)."""
+    free-running counter collapsed out — `projected_out` names it for the title).
+
+    `all_conditions=True` means the ROOT graph is the global all-initial-conditions
+    transition graph (every valid starting state, the real basin partition); the
+    caption says so. False means the from-init orbit (one trajectory / fallback)."""
+    scope = "over all initial conditions" if all_conditions else "from init"
     if not states:
         _placeholder(out_path, m.fsm,
                      "no reachable states (initial_state() is None)")
@@ -215,13 +246,13 @@ def _discrete_basins_on(m, out_path, states, edges, projected_out=None):
         ax.legend(handles=legend_handles(), loc="center left",
                   bbox_to_anchor=(1.01, 0.5), fontsize=8,
                   title="terminal basin", frameon=True)
-        ax.set_title(f"{m.fsm} — basin_map (discrete: {nscc} SCCs, "
+        ax.set_title(f"{m.fsm} — basin_map (discrete, {scope}: {nscc} SCCs, "
                      f"{len(term_ids)} terminal)", fontsize=13, weight="bold")
         points = tight_fraction(fig, overlay)
         fig.savefig(out_path, dpi=120, bbox_inches="tight")
         plt.close(fig)
         write_points(out_path, points)
-        return (f"discrete: {n} reachable states, {nscc} SCCs, "
+        return (f"discrete {scope}: {n} states, {nscc} SCCs, "
                 f"{len(term_ids)} terminal basins")
 
     # one panel per facet value
@@ -239,7 +270,7 @@ def _discrete_basins_on(m, out_path, states, edges, projected_out=None):
     leg = fig.legend(handles=legend_handles(), loc="center left",
                      bbox_to_anchor=(1.0, 0.5), fontsize=8,
                      title="terminal basin", frameon=True)
-    fig.suptitle(f"{m.fsm} — basin_map (discrete: {nscc} SCCs, "
+    fig.suptitle(f"{m.fsm} — basin_map (discrete, {scope}: {nscc} SCCs, "
                  f"{len(term_ids)} terminal; faceted by {facet_var['name']})",
                  fontsize=13, weight="bold")
     points = tight_fraction(fig, overlay)
@@ -247,7 +278,7 @@ def _discrete_basins_on(m, out_path, states, edges, projected_out=None):
                 bbox_extra_artists=(leg,))
     plt.close(fig)
     write_points(out_path, points)
-    return (f"discrete: {n} reachable states, {nscc} SCCs, "
+    return (f"discrete {scope}: {n} states, {nscc} SCCs, "
             f"{len(term_ids)} terminal basins; faceted by "
             f"{facet_var['name']} ({npan} panels)")
 
