@@ -71,8 +71,7 @@ function headlineView(name, source) {
 const SAMPLES = {
   "counter · a terminating clock (FSM)":
 `fsm counter
-    count ∈ Int
-    is_first_tick ⇒ count = 0
+    count ∈ Int := 0
     Δcount = (_count < 5 ? 1 : 0)
     done ∈ Bool = (count ≥ 5)`,
   "accumulate · a driven pipeline (FSM)": DEFAULT_PROGRAM,
@@ -81,25 +80,22 @@ const SAMPLES = {
 -- functions (the prey↔predator feedback, with _prey·_pred product terms) — open the function_graph
 -- tab to see the coupling cycle, or function_behavior for the transfer surfaces.
 fsm predator_prey
-    prey ∈ Real
-    pred ∈ Real
-    is_first_tick ⇒ (prey = 40.0 ∧ pred = 9.0)
+    prey ∈ Real := 40.0
+    pred ∈ Real := 9.0
     Δprey = _prey * 0.1 - _prey * _pred * 0.01
     Δpred = _prey * _pred * 0.005 - _pred * 0.1`,
   "logistic map · chaos (nonlinear function)":
 `-- The logistic map x' = r·x·(1-x), r = 3.7 — the canonical route to chaos. A single nonlinear
 -- function; open function_behavior for its parabolic transfer map, or cobweb for the dynamics.
 fsm logistic
-    x ∈ Real
-    is_first_tick ⇒ x = 0.3
+    x ∈ Real := 0.3
     x = 3.7 * _x * (1.0 - _x)`,
   "bouncing ball · hybrid (guarded functions)":
 `-- A ball under gravity that bounces off the floor (pos ≤ 0 flips & damps the velocity). The
 -- functionizer compiles 3-branch GUARDED functions (init / free-fall / bounce) — open function_guards.
 fsm ball
-    pos ∈ Real
-    vel ∈ Real
-    is_first_tick ⇒ (pos = 50.0 ∧ vel = 0.0)
+    pos ∈ Real := 50.0
+    vel ∈ Real := 0.0
     (_pos > 0.0) ⇒ (Δpos = _vel ∧ Δvel = 0.0 - 9.8)
     (_pos ≤ 0.0) ⇒ (pos = 0.0 ∧ vel = 0.0 - _vel * 0.7)`,
   "spring chain · 6 coupled masses (dense data-flow)":
@@ -107,9 +103,9 @@ fsm ball
 -- compiles SIX coupled functions; the middle mass reads both its neighbours — open function_graph
 -- for the dense coupling DAG (the most cross-edges of any sample).
 fsm springs
-    x1, x2, x3 ∈ Real
-    v1, v2, v3 ∈ Real
-    is_first_tick ⇒ (x1 = 10.0 ∧ x2 = 0.0 ∧ x3 = 0.0 ∧ v1 = 0.0 ∧ v2 = 0.0 ∧ v3 = 0.0)
+    x1 ∈ Real := 10.0
+    x2, x3 ∈ Real := 0.0
+    v1, v2, v3 ∈ Real := 0.0
     Δx1 = _v1 * 0.1
     Δx2 = _v2 * 0.1
     Δx3 = _v3 * 0.1
@@ -122,9 +118,8 @@ fsm springs
 -- and a per-mode temp function — open function_guards (and the ✓ total & unambiguous verdict).
 enum Mode = Heating | Idle
 fsm thermostat
-    temp ∈ Real
-    mode ∈ Mode
-    is_first_tick ⇒ (temp = 15.0 ∧ mode = Heating)
+    temp ∈ Real := 15.0
+    mode ∈ Mode := Heating
     (_mode = Heating) ⇒ Δtemp = 1.0
     (_mode = Idle) ⇒ Δtemp = 0.0 - 0.5
     (_temp ≥ 22.0) ⇒ mode = Idle
@@ -135,8 +130,10 @@ fsm thermostat
 -- functionizer compiles 3-branch GUARDED velocity functions (in-bounds vs the two wall conditions)
 -- — open function_behavior for the wall-flip partition map.
 fsm dvd
-    px, py, vx, vy ∈ Real
-    is_first_tick ⇒ (px = 50.0 ∧ py = 30.0 ∧ vx = 3.0 ∧ vy = 2.0)
+    px ∈ Real := 50.0
+    py ∈ Real := 30.0
+    vx ∈ Real := 3.0
+    vy ∈ Real := 2.0
     Δpx = _vx
     Δpy = _vy
     (0.0 < _px ∧ _px < 100.0) ⇒ vx = _vx
@@ -147,10 +144,9 @@ fsm dvd
 `-- The SIR model: susceptibles get infected (the S·I product), infected recover. THREE coupled
 -- functions — a driven cascade S→I→R with one product coupling. Open function_graph.
 fsm sir
-    s ∈ Real
-    i ∈ Real
-    r ∈ Real
-    is_first_tick ⇒ (s = 99.0 ∧ i = 1.0 ∧ r = 0.0)
+    s ∈ Real := 99.0
+    i ∈ Real := 1.0
+    r ∈ Real := 0.0
     Δs = 0.0 - _s * _i * 0.001
     Δi = _s * _i * 0.001 - _i * 0.05
     Δr = _i * 0.05`,
@@ -158,10 +154,9 @@ fsm sir
 `-- A speed controller: error = target − speed, an integral accumulates error, and speed responds.
 -- A feedback LOOP (speed↔error↔integral) — open function_graph for the controller cycle.
 fsm cruise
-    speed ∈ Real
-    error ∈ Real
-    integ ∈ Real
-    is_first_tick ⇒ (speed = 0.0 ∧ error = 0.0 ∧ integ = 0.0)
+    speed ∈ Real := 0.0
+    error ∈ Real := 0.0
+    integ ∈ Real := 0.0
     error = 60.0 - _speed
     Δinteg = _error
     Δspeed = _error * 0.3 + _integ * 0.05`,
@@ -536,8 +531,9 @@ const EXPLAIN_FSM_PREAMBLE =
   "An <b>fsm</b> is a state machine written as a <i>difference equation</i>: instead of "
   + "looping in your head, you state how each variable RELATES from one tick to the next, and "
   + "the solver replays it. <code>_count</code> reads the value on the <i>previous</i> tick; "
-  + "<code>count = …</code> writes <i>this</i> tick. <code>is_first_tick</code> is true only on "
-  + "tick 0 — that's where you SEED the start state, because there's no previous tick to read. "
+  + "<code>count = …</code> writes <i>this</i> tick, <code>_count</code> reads the PREVIOUS tick. "
+  + "You SEED the start value with <code>:=</code> on the declaration "
+  + "(<code>count ∈ Int := 0</code> — sugar for \"on tick 0, count = 0\") since there's no previous tick. "
   + "<code>Δcount</code> is shorthand for <code>count − _count</code> — the <i>change</i> each "
   + "tick — so <code>Δcount = 1</code> literally says \"count rises by one every tick\".";
 
@@ -550,9 +546,8 @@ const EXPLAINERS = {
       + "below 5, otherwise rise by 0\". So count goes 0,1,2,3,4,5 and then sits at 5 forever: a "
       + "<i>fixed point</i>. The diagram's structure line calls this <b>Terminates</b> because the "
       + "machine reaches a state it can never leave.",
-    tryit: "Change the <code>5</code> to <code>8</code> and watch the ramp grow. Or delete the "
-      + "<code>is_first_tick ⇒ count = 0</code> line — the seed vanishes, count is unconstrained on "
-      + "tick 0, and the dynamics change completely.",
+    tryit: "Change the <code>5</code> to <code>8</code> and watch the ramp grow. Or change "
+      + "<code>count ∈ Int := 0</code> to <code>:= 3</code> — the seed shifts, so the ramp starts at 3.",
   },
   "accumulate · a driven pipeline (FSM)": {
     what: "Two coupled variables: a driver (i) counts up, and a follower (sum) accumulates it — "
