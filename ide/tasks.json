@@ -1,5 +1,5 @@
 {
-  "seq": 321,
+  "seq": 330,
   "tasks": [
     {
       "id": 1,
@@ -661,7 +661,7 @@
       "created": "2026-06-21T23:18:37Z",
       "worker_done": true,
       "approvals": [],
-      "reopened": 0,
+      "reopened": 1,
       "tags": [
         "analysis"
       ],
@@ -676,6 +676,23 @@
           "by": "worker",
           "act": "done",
           "note": "terminal_map fixed points coloured by local stability (perturb \u00b11, one step, toward/away): bistable 0,6 stable, 3 unstable saddle; banner counts; tested + gated green"
+        },
+        {
+          "at": "2026-06-24T03:51:09Z",
+          "by": "ide-critic-expert",
+          "act": "reopened",
+          "note": "Stability classification is built ON TOP of the unsound absorbing set (#322) and is itself unsound on nondeterministic FSMs. On the IDE's shipped bistable sample the terminal_map draws x=0,1,2,3,4 as green 'stable (attractor)' circles, x=6 as 'saddle', x=5 'unknown' \u2014 none of which is the promised '0,6 stable, 3 unstable repeller, banner 2 stable/1 unstable'. Reproduced: stability per reported state = {0:stable,1:stable,6:saddle,5:stable,4:unknown,3:unknown,2:unknown}. Two distinct bugs: (1) the set being classified is wrong (#322); (2) terminal_states.stability() perturbs \u00b11 then takes ONE m.successor(n) \u2014 but successor() picks an ARBITRARY successor of a nondeterministic state, so 'toward/away' is solver-dependent and meaningless when the state branches (the bistable branches \u00d73). Stability of a fixed point under nondeterminism needs to consider ALL successors of the perturbation (does EVERY successor move toward => stable; SOME away => not), not one. The gated test passes only on the deterministic bistable. FIX #322 first, then make stability quantify over all successors (or restrict the view to deterministic-near-the-point and say so). Verified live. (where: ide/critics/recordings/ana-20260624-033710/terminal-map-bistable.png)"
+        },
+        {
+          "at": "2026-06-24T04:03:26Z",
+          "by": "worker",
+          "act": "started"
+        },
+        {
+          "at": "2026-06-24T04:03:26Z",
+          "by": "worker",
+          "act": "done",
+          "note": "FIXED (Ana #323): stability returns 'unknown' on nondeterministic FSMs (_is_deterministic check) instead of one arbitrary successor; deterministic bistable still 0,6 stable/3 unstable. Pinned both cases."
         }
       ]
     },
@@ -3808,11 +3825,13 @@
       "id": 149,
       "title": "Progress indicator + cancel for slow analysis: real-valued FSMs (oscillator ~4.5s, fourvar) and the k-step Optimize unrolling have NO progress feedback \u2014 top bar shows 'computing\u2026' but the user can't tell if it's 1s or 30s, can't cancel, and the diagram sits dimmed. Add a determinate-ish progress (e.g. 'unrolling step 14/24', 'solving bounds\u2026') and a Cancel button. Every serious solver UI (Alloy's progress, a JetBrains background-task bar) shows this.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic",
       "created": "2026-06-22T03:10:33Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "perf"
@@ -3828,6 +3847,12 @@
           "by": "worker",
           "act": "done",
           "note": "BOTH halves done: progress = live 'solving\u2026 Xs' timer (already in place, #175/#198); cancel = AbortController + Esc-to-abort + 'cancelled' status. Playwright-verified abort on an NRA solve."
+        },
+        {
+          "at": "2026-06-24T03:50:40Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -4399,11 +4424,13 @@
       "id": 175,
       "title": "Progress affordance for slow analyzes: real/unbounded programs now take 1.8-2.6s (fib 1870ms, oscillator 2626ms) \u2014 far better than before, but the top-right ms timer just sits with no spinner/bar, so for >1s it reads as 'frozen'. Show a determinate-ish progress or at least an animated 'computing\u2026' so the live-write promise doesn't feel stalled on exactly the interesting (real-valued) machines.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic",
       "created": "2026-06-22T11:46:34Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "perf"
@@ -4419,6 +4446,12 @@
           "by": "worker",
           "act": "done",
           "note": "already addressed: app.js:336 setStatus('computing\u2026','busy') + app.js:360 a LIVE 'solving\u2026 Xs' elapsed timer during the analyze fetch \u2014 the progress feedback for slow/real-valued analyses is in place (verified in code)"
+        },
+        {
+          "at": "2026-06-24T03:50:40Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -4894,11 +4927,13 @@
       "id": 197,
       "title": "Reconcile the two sampled-state counts (concern #77): scatter_matrix title '1556 sampled states' vs footer '\u2265400 (capped sample)'. Either unify to one number or label what each counts (plotted points vs reachable states) so it's unambiguous which bound the diagram drew from.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-expert",
       "created": "2026-06-22T13:03:04Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "viz"
@@ -4914,6 +4949,12 @@
           "by": "worker",
           "act": "done",
           "note": "already reconciled: render_scatter_matrix title says 'N sample points' (not 'states'), with a comment (Ana #201/#77) explaining the view's denser cloud (reachable\u22645000 + attractor trajectory) legitimately differs from the banner's reachable count \u2014 verified in place"
+        },
+        {
+          "at": "2026-06-24T03:50:40Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -4921,11 +4962,13 @@
       "id": 198,
       "title": "Progress indicator for slow (real-valued/high-fanout) analyses. oscillator/fourvar still take 2.5-3.2s with only the static ms counter + 'ok' pill; the UI looks frozen. Show a spinner/'solving\u2026' state on the diagram panel during the solve so a 3s wait reads as working, not hung.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-expert",
       "created": "2026-06-22T13:03:04Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "perf"
@@ -4941,6 +4984,12 @@
           "by": "worker",
           "act": "done",
           "note": "already addressed: app.js:336 setStatus('computing\u2026','busy') + app.js:360 a LIVE 'solving\u2026 Xs' elapsed timer during the analyze fetch \u2014 the progress feedback for slow/real-valued analyses is in place (verified in code)"
+        },
+        {
+          "at": "2026-06-24T03:50:40Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -7218,11 +7267,13 @@
       "id": 281,
       "title": "Diagrams: reachable envelope + ensemble for time-based views (time_series, timing_diagram) \u2014 multi-seed overlay + min-max band per tick, not one chain",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "worker",
       "created": "2026-06-23T18:19:04Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "diagram"
@@ -7238,6 +7289,12 @@
           "by": "worker",
           "act": "done",
           "note": "DONE: time_series is an ENSEMBLE over all initial conditions with a reachable-value envelope band (#289); timing_diagram likewise (test_timing_ensemble.py, green in the gate). Both verified \u2014 captions updated to match this session."
+        },
+        {
+          "at": "2026-06-24T03:50:40Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -7340,11 +7397,13 @@
       "id": 287,
       "title": "Diagrams: all_conditions should drive the stats/banner/structure too \u2014 when on, the 'N reachable states' banner + fixed-points should reflect the GLOBAL graph (currently the state_graph PNG shows 7 while the banner still reads the from-init 2)",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "worker",
       "created": "2026-06-23T18:40:55Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "diagram"
@@ -7360,6 +7419,12 @@
           "by": "worker",
           "act": "done",
           "note": "DONE: all_conditions drives the banner stats (test_all_conditions_stats.py, green in the gate) \u2014 when on, the reachable-states stat reflects the all-initial-conditions enumeration, not one run."
+        },
+        {
+          "at": "2026-06-24T03:50:40Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -7575,11 +7640,13 @@
       "id": 294,
       "title": "Parameterized passthrough: '..Name(field \u21a6 other)' must parse + compose (e.g. 2D random walk from two 1D walks)",
       "detail": "User hit a parse error composing fsm instances via renamed passthrough:\n  fsm random_walk\n      x, y \u2208 Int\n      ..one_d_random_walk(a \u21a6 x)\n      ..one_d_random_walk(a \u21a6 y)\n\u2192 'parse error at line 11 col 24: expected schema/claim/type/import/enum, got (('. The parser accepts bare '..Name' passthrough but NOT '..Name(field \u21a6 other)' with rename args. COMPLETION CRITERIA: (1) '..Name(a \u21a6 x)' parses (the (...) after ..Name is rename-args, not a new decl); (2) it inlines the included fsm/claim with field 'a' renamed to 'x' + all its constraints; (3) two passthroughs of the same fsm with different renames compose into INDEPENDENT sub-systems (x-walk and y-walk, each its own da carried separately \u2014 resolve the da name collision); (4) a 2D random_walk sample loads + analyzes; (5) ./test.sh green + a parse-and-compose test.",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "worker",
       "created": "2026-06-23T20:16:22Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "language"
@@ -7595,6 +7662,12 @@
           "by": "worker",
           "act": "done",
           "note": "parameterized passthrough ..Name(a\u21a6x) parses + composes independently (da freshened per instance); Phase 2.13 + 3 Rust tests; ./test.sh green"
+        },
+        {
+          "at": "2026-06-24T03:50:40Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -7652,11 +7725,13 @@
       "id": 297,
       "title": "Example showcasing the prettier initial-value syntax (blocked-by #295)",
       "detail": "Once #295 (cleaner FSM initial-value syntax) lands, add a sample to app-data.js that showcases it \u2014 a clean readable FSM whose initial values use the NEW syntax instead of 'is_first_tick \u21d2 (...)'. COMPLETION CRITERIA: (1) BLOCKED-BY #295 (do not start until that design+impl is done); (2) a sample using the new init syntax that reads noticeably cleaner than the is_first_tick form; (3) loads + analyzes; (4) added to SAMPLES + render_smoke; ./test.sh green.",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "worker",
       "created": "2026-06-23T20:24:26Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "example"
@@ -7672,6 +7747,12 @@
           "by": "worker",
           "act": "done",
           "note": "random_walk sample now showcases 'x, y \u2208 Int := 0' (the := syntax from #295) \u2014 closes the user's original 'is_first_tick \u21d2 (x=0 \u2227 y=0) is awful' complaint; identical behavior"
+        },
+        {
+          "at": "2026-06-24T03:50:40Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -7679,11 +7760,13 @@
       "id": 298,
       "title": "Refactor examples: drop the unnecessary '\u00acis_first_tick \u21d2' guards",
       "detail": "Most examples wrap per-tick constraints in '\u00acis_first_tick \u21d2' even when the constraint holds on the first tick anyway (doesn't reference _var, or the runtime handles the first-tick delta). The guard is noise \u2014 models read cleaner without it (see the new random_walk: '-1 \u2264 \u0394x \u2264 1' unguarded). Refactor app-data.js SAMPLES + examples/*.ev to REMOVE the unnecessary guards. SOUNDNESS (critical \u2014 the dropped-constraint policy makes wrong edits SILENT): for EACH guard removed, re-analyze the example before vs after and confirm IDENTICAL behavior \u2014 same reachable states + edges + 0 dropped + same verdict. KEEP a guard only where removing it changes behavior/drops a constraint (a constraint that genuinely can't hold on tick 0 and isn't covered by the seed). COMPLETION CRITERIA: (1) majority of '\u00acis_first_tick \u21d2' guards removed; (2) EVERY example analyzes IDENTICALLY before/after (a before/after reachable-set + dropped-count diff per example, all matching); (3) the demo tests (examples/test_*.ev sat_/unsat_ claims) still pass; (4) ./test.sh fully green. Report which guards you kept + why.",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "worker",
       "created": "2026-06-23T20:26:32Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "refactor"
@@ -7699,6 +7782,12 @@
           "by": "worker",
           "act": "done",
           "note": "151 \u00acis_first_tick guards removed, 65 kept \u2014 each verified by exact before/after reachable-set/stdout diff; enum-seed guards correctly kept"
+        },
+        {
+          "at": "2026-06-24T03:50:40Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -7706,11 +7795,13 @@
       "id": 299,
       "title": "Diagrams: reachability_tree roots from ALL initial conditions + shows the tree CLOSING (closing_depth), not a depth-8 cap",
       "detail": "reachability_tree roots from one seed + caps at depth 8. Root from the full init set (full_state_graph) + use closing_depth to show the tree CLOSING for finite discrete systems. Criteria: roots from all inits; closes at the real depth not a fixed cap; bistable/traffic render; ./test.sh green + test.",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "worker",
       "created": "2026-06-23T20:29:09Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "diagram"
@@ -7726,6 +7817,12 @@
           "by": "worker",
           "act": "done",
           "note": "reachability_tree roots from ALL inits (forest off \u2205 root) + closes at true depth via closing_depth, not a depth-8 cap; Phase 2.14"
+        },
+        {
+          "at": "2026-06-24T03:50:40Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -7733,11 +7830,13 @@
       "id": 300,
       "title": "Diagrams: transition_matrix over all initial conditions (real transition relation, not a fabricated linspace grid)",
       "detail": "transition_matrix uses one z3 model + a fabricated linspace grid in SAMPLED mode. Root on the global graph (full_state_graph, all discrete inits) + the REAL transition relation. Criteria: matrix over the global state set; no fabricated grid; traffic/counter render; ./test.sh green + test.",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "worker",
       "created": "2026-06-23T20:29:10Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "diagram"
@@ -7753,6 +7852,12 @@
           "by": "worker",
           "act": "done",
           "note": "transition_matrix roots on full_state_graph + real transition cells (no fabricated linspace grid); Phase 2.15"
+        },
+        {
+          "at": "2026-06-24T03:50:40Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -7760,11 +7865,13 @@
       "id": 301,
       "title": "Diagrams: all_conditions drives the stats/banner too (state_graph shows 7 but banner reads from-init 2)",
       "detail": "When all_conditions is on, the analyze stats/banner still reflect from-init \u2014 state_graph PNG shows 7 states but banner says 2. Thread all_conditions into _reachable_stats so the banner/structure reflect the global graph when on; default unchanged. Criteria: bistable all_conditions=true \u2192 7 states reported; false \u2192 2; ./test.sh green + test.",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "worker",
       "created": "2026-06-23T20:29:10Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "diagram"
@@ -7780,6 +7887,12 @@
           "by": "worker",
           "act": "done",
           "note": "all_conditions stats/banner follow the global graph (bistable 2\u21927 with the flag); Phase 2.16"
+        },
+        {
+          "at": "2026-06-24T03:50:40Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -8002,11 +8115,13 @@
       "id": 312,
       "title": "Desktop top bar overflows horizontally ~1280px (pre-existing) \u2014 wrap it or collapse less-used controls into an overflow menu / \u2318K palette above ~1100px",
       "detail": "Flagged during #309: the DESKTOP #top bar is display:flex with no wrap, so controls run off-screen (#share-btn\u2026#status to x\u22481512) at ~1280px and narrower-desktop widths. Pre-existing (not introduced by the mobile work, which is gated \u2264820px). Fix: let the desktop top bar wrap, or collapse less-used controls into the \u2318K palette / an overflow menu above ~1100px. Keep mobile + the core controls intact.",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "worker",
       "created": "2026-06-23T21:15:37Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "ui"
@@ -8022,6 +8137,12 @@
           "by": "worker",
           "act": "done",
           "note": "flex-wrap:wrap on #top + minmax(36px,auto) top grid row \u2014 wraps cleanly below ~1512px (playwright-verified 1000/1500px), one row above; no overflow/clipping"
+        },
+        {
+          "at": "2026-06-24T03:50:40Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -8029,11 +8150,13 @@
       "id": 313,
       "title": "test.sh: auto-discover ide/test_*.py phases (eliminate the recurring merge-conflict from every agent appending a Phase block)",
       "detail": "Every feature agent appends a 'Phase 2.NN' if/fi block to test.sh at the same spot, so concurrent agents ALWAYS conflict there at merge (resolved 4+ times this session by hand). Refactor: have test.sh LOOP over ide/test_*.py (or a manifest) and run each as a numbered phase automatically, so an agent adds ONLY its test file \u2014 no test.sh edit, no conflict. Keep the per-test pass/fail reporting + the failures[] array. Criteria: adding a new ide/test_X.py auto-runs it in ./test.sh with no test.sh change; existing phases still run + report; ./test.sh green. This is a merge-throughput win for the parallel-agent loop.",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "worker",
       "created": "2026-06-23T21:17:44Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "refactor"
@@ -8049,6 +8172,12 @@
           "by": "worker",
           "act": "done",
           "note": "test.sh now loops over ls ide/test_*.py (16 tests auto-run); bash 2.18 kept explicit; ~250 lines removed; gated green (all 16 + bash + lint + render + cargo pass). New test files no longer need a test.sh edit \u2192 no phase-append conflicts."
+        },
+        {
+          "at": "2026-06-24T03:50:41Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -8061,7 +8190,7 @@
       "created": "2026-06-23T23:52:33Z",
       "worker_done": true,
       "approvals": [],
-      "reopened": 0,
+      "reopened": 1,
       "tags": [
         "diagram"
       ],
@@ -8076,6 +8205,23 @@
           "by": "worker",
           "act": "done",
           "note": "shipped + live + tested (Phase 2.21); bistable\u2192{0,3,6}, random_walk\u2192\u2205; framing proven_range bug fixed"
+        },
+        {
+          "at": "2026-06-24T03:50:59Z",
+          "by": "ide-critic-expert",
+          "act": "reopened",
+          "note": "terminal_map absorbing-set query is UNSOUND on nondeterministic FSMs. The IDE's own shipped 'bistable' sample (free step\u2208{-1,0,1}, sticks at 0 and 6) renders 0,1,2,3,4,5,6 ALL as terminal/absorbing \u2014 but x=1 is NOT absorbing (from x=1, step=+1 gives x=2\u22601, a real escaping successor). ROOT CAUSE: in terminal_states.absorbing_states the escape copy esc_rel = substitute(reln, next->esc) renames ONLY the carried next-state const; a FREE INPUT var (here 'step', non-carried) is NOT re-quantified, so the outer self-loop constraint (x==_x) pins step to the stay-value and the SAME pinned step is reused in esc_rel, making Exists(esc, escape) UNSAT. Every FSM with a free choice/input var is affected \u2014 exactly the nondeterministic class. The gated test passes only because it uses a DIFFERENT, deterministic bistable (single ternary, no free var) -> {0,3,6}; it never exercises the shipped sample. FIX: collect the non-carried free input consts and existentially re-quantify them (fresh copies) in BOTH the relation's successor and the escape copy, OR equivalently ask 'is there ANY successor s'!=s' with fresh inputs each side'. Add a test on the ACTUAL shipped bistable sample. Verified live + reproduced in /tmp/repro_bistable.py. (where: ide/critics/recordings/ana-20260624-033710/terminal-map-bistable.png)"
+        },
+        {
+          "at": "2026-06-24T04:03:26Z",
+          "by": "worker",
+          "act": "started"
+        },
+        {
+          "at": "2026-06-24T04:03:26Z",
+          "by": "worker",
+          "act": "done",
+          "note": "FIXED (Ana #322): _escape_copy freshens every non-prev const (free inputs too), so the escape query is sound on nondeterministic FSMs. Shipped free-step bistable \u2192 {0,6} not all 7; pinned as a regression test. Gated green."
         }
       ]
     },
@@ -8083,11 +8229,13 @@
       "id": 317,
       "title": "Abstract reachable-region view (k-induction bounding box \u2014 bounded vs unbounded)",
       "detail": "PROVEN tractable (spike): base+step UNSAT \u21d2 reachable \u2286 box (sound over-approx; k>1 tightens); proven_range per numeric var, None\u21d2UNBOUNDED. cyclic-counter\u2192[0,5], walk-in-box\u2192[0,10]\u00b2, unbounded-walk\u2192UNBOUNDED. Build as the dynamics-abstract counterpart to terminal_map.",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "worker",
       "created": "2026-06-23T23:52:33Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "diagram"
@@ -8103,6 +8251,12 @@
           "by": "worker",
           "act": "done",
           "note": "shipped + live + tested (Phase 2.22): k-induction bounding box; counter\u2286[0,5], walk_box\u2286[0,10]\u00b2 (proven 1-inductive), unbounded random_walk flagged. Both abstract quadrants now have a shipped view."
+        },
+        {
+          "at": "2026-06-24T03:50:41Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -8140,11 +8294,13 @@
       "id": 320,
       "title": "Claim solution-structure view (backbone/free/implied-equalities) + claims get 2 view tabs",
       "detail": "SHIPPED: viz/claim_structure.py + render_solution_structure.py + _maybe_claim dispatch (CLAIM_VIEWS=[claim_space, solution_structure]), Phase 2.23. Backbone (forced vars) / free (ranges) / equalities \u2014 what a claim DETERMINES. Partial #315 (claims 1\u21922 tabs). Part of #319 (claims abstract suite).",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "worker",
       "created": "2026-06-24T00:59:18Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "claims"
@@ -8160,6 +8316,12 @@
           "by": "worker",
           "act": "done",
           "note": "shipped + tested (Phase 2.23): sys\u2192{a,b} backbone + c free, coupled\u2192x=y, packing\u2192both free; claims now 2 tabs"
+        },
+        {
+          "at": "2026-06-24T03:50:41Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -8175,6 +8337,81 @@
       "reopened": 0,
       "tags": [
         "refactor"
+      ],
+      "log": []
+    },
+    {
+      "id": 326,
+      "title": "terminal_map / reachable_region need a WITNESS TRACE: clicking a terminal/absorbing state (or the UNBOUNDED arrow) should give the path that reaches it (or the divergent trajectory), TLA+-style \u2014 the abstract verdict is sound but uninterrogable. I can see 'TERMINATES at {5}' or 'UNBOUNDED' but cannot step the path that gets there.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-expert",
+      "created": "2026-06-24T03:52:03Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "analysis"
+      ],
+      "log": []
+    },
+    {
+      "id": 327,
+      "title": "Make reachable_region's k-induction depth a first-class control (k=1,2,3\u2026) like Alloy scope: when a box is NOT proven 1-inductive, let me raise k from the UI and watch the box tighten / the invariant close, and report 'proven at k=N' vs 'indeterminate up to k=N'. Right now k=1 is hardcoded and INDETERMINATE is terminal with no knob to push.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-expert",
+      "created": "2026-06-24T03:52:03Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "analysis"
+      ],
+      "log": []
+    },
+    {
+      "id": 328,
+      "title": "terminal_map should report WHICH-RUNS-REACH-REST: a non-empty absorbing set says the FSM CAN halt, not that every run does. Layer the BMC/fairness check ('does every fair trajectory reach the absorbing set?') so the daemon-vs-terminates verdict distinguishes 'can rest' from 'must rest' \u2014 the liveness companion to the safety absorbing-set.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-expert",
+      "created": "2026-06-24T03:52:03Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "analysis"
+      ],
+      "log": []
+    },
+    {
+      "id": 329,
+      "title": "solution_structure for >2-var claims should expose the full backbone/free DECOMPOSITION as an interrogable table, and surface forced relations beyond pairs (a+b=c implied sums, ordering a<b forced) \u2014 currently only pairwise = and \u2260 are detected. Z3 gives me implied equalities over arbitrary terms; mirror that.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-expert",
+      "created": "2026-06-24T03:52:03Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "analysis"
+      ],
+      "log": []
+    },
+    {
+      "id": 330,
+      "title": "A FABRICATION-PROBE self-check / soundness lint for the abstract views: each Z3-query view (terminal_map, reachable_region) should, on bounded-discrete models, CROSS-CHECK its abstract verdict against the brute-force enumerated reachable set and flag any disagreement in-UI. The terminal_map nondeterministic-bistable bug (#322) would have been caught: abstract said {0..6} all-terminal, enumeration says only {0,6} are absorbing. A view that fabricates structure a finite model never enters must be self-detecting.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-expert",
+      "created": "2026-06-24T03:52:03Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "analysis"
       ],
       "log": []
     }
@@ -9029,9 +9266,10 @@
       "title": "timing_diagram a11y alt-text is stale: the rendered PNG correctly says 'ensemble over all 9 initial conditions \u2014 band = reachable envelope', but the img alt/tooltip string still reads 'shows one ~40-tick run as EE-style waveforms'. The honest text and the sighted picture disagree; a screen-reader user gets the OLD (now-wrong) single-trajectory framing. Update the alt-text generator for timing_diagram to match the ensemble rendering.",
       "detail": "traffic light sample, timing diagram tab; img[alt^='timing diagram'] alt vs PNG title. recordings/ana-20260623-214033/310-timing-zoom.png",
       "by": "ide-critic-expert",
-      "status": "open",
+      "status": "cleared",
       "task": null,
-      "created": "2026-06-23T21:46:16Z"
+      "created": "2026-06-23T21:46:16Z",
+      "cleared": "2026-06-24T03:51:20Z"
     },
     {
       "id": 315,
@@ -9041,6 +9279,42 @@
       "status": "open",
       "task": null,
       "created": "2026-06-23T21:46:16Z"
+    },
+    {
+      "id": 322,
+      "title": "terminal_map absorbing-set query is UNSOUND on nondeterministic FSMs. The IDE's own shipped 'bistable' sample (free step\u2208{-1,0,1}, sticks at 0 and 6) renders 0,1,2,3,4,5,6 ALL as terminal/absorbing \u2014 but x=1 is NOT absorbing (from x=1, step=+1 gives x=2\u22601, a real escaping successor). ROOT CAUSE: in terminal_states.absorbing_states the escape copy esc_rel = substitute(reln, next->esc) renames ONLY the carried next-state const; a FREE INPUT var (here 'step', non-carried) is NOT re-quantified, so the outer self-loop constraint (x==_x) pins step to the stay-value and the SAME pinned step is reused in esc_rel, making Exists(esc, escape) UNSAT. Every FSM with a free choice/input var is affected \u2014 exactly the nondeterministic class. The gated test passes only because it uses a DIFFERENT, deterministic bistable (single ternary, no free var) -> {0,3,6}; it never exercises the shipped sample. FIX: collect the non-carried free input consts and existentially re-quantify them (fresh copies) in BOTH the relation's successor and the escape copy, OR equivalently ask 'is there ANY successor s'!=s' with fresh inputs each side'. Add a test on the ACTUAL shipped bistable sample. Verified live + reproduced in /tmp/repro_bistable.py. (where: ide/critics/recordings/ana-20260624-033710/terminal-map-bistable.png)",
+      "detail": "",
+      "by": "ide-critic-expert",
+      "status": "open",
+      "task": 316,
+      "created": "2026-06-24T03:50:59Z"
+    },
+    {
+      "id": 323,
+      "title": "Stability classification is built ON TOP of the unsound absorbing set (#322) and is itself unsound on nondeterministic FSMs. On the IDE's shipped bistable sample the terminal_map draws x=0,1,2,3,4 as green 'stable (attractor)' circles, x=6 as 'saddle', x=5 'unknown' \u2014 none of which is the promised '0,6 stable, 3 unstable repeller, banner 2 stable/1 unstable'. Reproduced: stability per reported state = {0:stable,1:stable,6:saddle,5:stable,4:unknown,3:unknown,2:unknown}. Two distinct bugs: (1) the set being classified is wrong (#322); (2) terminal_states.stability() perturbs \u00b11 then takes ONE m.successor(n) \u2014 but successor() picks an ARBITRARY successor of a nondeterministic state, so 'toward/away' is solver-dependent and meaningless when the state branches (the bistable branches \u00d73). Stability of a fixed point under nondeterminism needs to consider ALL successors of the perturbation (does EVERY successor move toward => stable; SOME away => not), not one. The gated test passes only on the deterministic bistable. FIX #322 first, then make stability quantify over all successors (or restrict the view to deterministic-near-the-point and say so). Verified live. (where: ide/critics/recordings/ana-20260624-033710/terminal-map-bistable.png)",
+      "detail": "",
+      "by": "ide-critic-expert",
+      "status": "open",
+      "task": 20,
+      "created": "2026-06-24T03:51:09Z"
+    },
+    {
+      "id": 324,
+      "title": "Cross-view bound HONESTY inconsistency on the same program. On the plain 'counter' (count \u2208 Int, bound [0,5] DERIVED from the recurrence, not declared): reachable_region PROVES count\u2286[0,5] BOUNDED via k-induction, but reachability_tree's subtitle reads 'reachable set unbounded \u2014 capped sample' and time-based views fall to single-seed, and the structure banner shows a capped sample range. Two views on screen for one program disagree on whether the state is bounded. The discreteness/bound detector (model_global) should consult proven_range (the same k-induction reachable_region uses) before declaring a numeric carried var 'unbounded \u2014 capped'; a var with a PROVEN finite box is enumerable and should drive the all-conditions forest, not the single-seed fallback. Verified live on counter. (where: ide/critics/recordings/ana-20260624-033710/reachability-tree-counter.png vs reachable-region-bistable.png)",
+      "detail": "reachable_region uses proven_range/k-induction; reachability_tree + structure use the discrete-product enumerability check which treats unbounded-Int as uncapped",
+      "by": "ide-critic-expert",
+      "status": "open",
+      "task": null,
+      "created": "2026-06-24T03:51:20Z"
+    },
+    {
+      "id": 325,
+      "title": "PROGRESS NOTE on #302 (do not treat as new): re-verified live \u2014 fmt STILL refuses ragged sibling indentation (the core advertised use of a layout formatter). The severe half (silent fake-nesting/corruption) remains fixed and the refusal message is now clear and honest (exit 0, file unchanged). Keeping #302 open as a roadmap item: a layout formatter should SNAP ragged siblings to a common tab stop (minimal structural awareness: a \u21d2-guard line vs a decl line), not decline. Re-verified on /tmp/messy.ev.",
+      "detail": "evident fmt /tmp/messy.ev still refuses; this is a progress note pinned to existing concern #302, not a request to clear it",
+      "by": "ide-critic-expert",
+      "status": "open",
+      "task": null,
+      "created": "2026-06-24T03:51:44Z"
     }
   ]
 }
