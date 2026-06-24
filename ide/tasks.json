@@ -656,16 +656,28 @@
       "id": 20,
       "title": "Stability classification of fixed points (stable / unstable / saddle)",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "worker",
       "created": "2026-06-21T23:18:37Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "analysis"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-24T02:59:20Z",
+          "by": "worker",
+          "act": "started"
+        },
+        {
+          "at": "2026-06-24T02:59:20Z",
+          "by": "worker",
+          "act": "done",
+          "note": "terminal_map fixed points coloured by local stability (perturb \u00b11, one step, toward/away): bistable 0,6 stable, 3 unstable saddle; banner counts; tested + gated green"
+        }
+      ]
     },
     {
       "id": 21,
