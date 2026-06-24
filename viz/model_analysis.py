@@ -254,7 +254,13 @@ class AnalysisMixin:
         # Reading them off the reachable graph keeps them TRUE — never an unreachable state
         # (Marek's #50) — and DETERMINISTIC once sorted (Marek's #51), unlike enumerating raw
         # T(s,s) solutions, which also returns unreachable equilibria in non-deterministic order.
-        fp_idx = sorted({i for (i, j) in edges if i == j})
+        # A reachable state is at REST iff its ONLY successor is itself. A self-edge that ALSO has
+        # other exits is not at rest — it can leave (the #322 fabrication class: a free `step` gives
+        # x=1 a self-edge AND →0,→2, so keying on self-edges alone mislabels all 7 states absorbing).
+        out_targets = {}
+        for (i, j) in edges:
+            out_targets.setdefault(i, set()).add(j)
+        fp_idx = sorted(i for i, js in out_targets.items() if js == {i})
         fps = sorted(
             ({short(v["name"]): states[i][v["name"]]
               for v in self.carried if v["name"] in states[i]} for i in fp_idx),
