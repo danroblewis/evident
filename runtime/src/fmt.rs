@@ -25,21 +25,34 @@
 //! refuses (returns `Err`) to emit anything that fails it — so a bug in the
 //! formatter can never silently corrupt a program.
 //!
-//! ## Why `fmt` refuses to format non-parsing source (#53)
+//! ## Repairing ragged sibling indentation (#35 / #53)
 //!
-//! The token-equivalence oracle guarantees `fmt` never *changes* a program —
-//! but it can't, on its own, tell a *valid* program from a malformed one, and
-//! malformed input is where a naive re-indent does damage. The parser groups a
-//! block's members by an exact-match indent column (first child fixes it, every
-//! sibling must match it exactly). So *ragged* indentation — a sibling typed at
-//! a different column than the rest of its block — is never a valid program: it
-//! has no parse, hence no block structure to re-indent against, and any
-//! indentation `fmt` picked would be a guess that could turn a syntax error
-//! into a *silently different* (token-equivalent yet mis-nested) program. To
-//! foreclose that, [`format_source`] first requires the *input* to parse; if it
-//! doesn't, it refuses and leaves the file untouched, surfacing the parse error
-//! so the author fixes the source and re-runs. `fmt` formats programs, not
-//! guesses.
+//! A *layout* formatter's whole job is to fix indentation — including the
+//! common mistake of typing two sibling lines (two decls, a decl and a guard,
+//! two `⇒`-guards) at different columns. The parser groups a block's members by
+//! an exact-match indent column, so such *ragged* input has no parse on its own.
+//! A naive indentation-ordering re-indent can't repair it — worse, it would
+//! preserve the mistake as *fake nesting*: an over-indented sibling comes out
+//! nested as a child of the line above it (token-equivalent, yet a structurally
+//! different program — the worst #53 case).
+//!
+//! [`reindent`] therefore carries minimal **structural** awareness. It mirrors
+//! the parser's block model: a line opens an indented child block only if it is
+//! a *block opener* — a decl/`subclaim` header, a trailing-`⇒` (implies-block),
+//! a trailing-`:` quantifier, or a `match` line. A deeper-indented line whose
+//! predecessor is NOT an opener is a ragged sibling, and gets snapped back to
+//! its block's column rather than mis-nested under the line above. This lets
+//! `fmt` *repair* realistic messy-but-intended input to a uniform 4-space grid
+//! instead of refusing or fake-nesting it.
+//!
+//! The anti-corruption guarantee is unchanged: [`format_source`] still proves
+//! its output via the token oracle (every real token preserved, in order, same
+//! value) AND a final re-parse. For input that already parses, it additionally
+//! pins the block structure unchanged. For ragged input — which has no raw
+//! parse to pin against — it requires the *repaired* output to parse, so the
+//! snap is verified to produce a real program with the author's exact tokens.
+//! `fmt` only refuses when the input is *un-repairable* (genuinely malformed:
+//! a token-level syntax error the re-indent can't be responsible for).
 
 use crate::lexer::{tokenize, Token};
 
@@ -54,69 +67,64 @@ pub fn format_source(src: &str) -> Result<String, String> {
     // to format — surface the error.
     let orig_tokens = tokenize(src).map_err(|e| e.to_string())?;
 
-    // Parse-validity gate (#53). A formatter has no business rewriting source
-    // that isn't a valid program — like gofmt, we refuse to format what doesn't
-    // parse. This is the load-bearing guard against silent structural
-    // corruption, and it closes both failure modes #53 describes.
-    //
-    // The parser groups a block's members by an EXACT-match indent rule: the
-    // first child fixes the block's indent column, and every subsequent sibling
-    // must match it *exactly* (`*m == body_indent` — see `parse_indented_body`
-    // and the `⇒` / `∀` / `match` block loops in `parser/`). A shallower indent
-    // pops to an ancestor; a *strictly deeper* one opens a sub-block. So RAGGED
-    // indentation — a line the author meant as a sibling but typed at a
-    // different column than the rest of its block — is never a valid program:
-    // the parser breaks the block at the mismatch and rejects what follows.
-    //
-    // That has a sharp consequence for the formatter. Ragged input has *no
-    // parse*, hence no block structure to re-indent against. Any indentation
-    // `fmt` chose would be a *guess* at the author's intent — and a guess can
-    // be token-equivalent yet structurally wrong (the worst #53 case: a sibling
-    // over-indented relative to the line above gets emitted as fake nesting
-    // under it, which lexes the same but reads as a different program). The
-    // formatter must not gamble with a program's meaning. So instead of
-    // guessing, we surface the parse error and leave the file untouched; the
-    // author fixes the source — aligning the ragged siblings to one column —
-    // and re-runs. Files that genuinely parse are wholly unaffected by this
-    // gate (`parse` here is pure lex+parse, no import resolution).
-    crate::parser::parse(src).map_err(|e| {
-        format!(
-            "refusing to format: the source does not parse, so there is no \
-             program structure to format against. Ragged / inconsistent \
-             indentation is the usual cause — the parser groups sibling lines \
-             by an exact-match indent column, so a line indented differently \
-             from the rest of its block breaks the block. Align the sibling \
-             lines to the same column, then re-run. File left unchanged.\n  {e}"
-        )
-    })?;
+    // Does the *input* already parse? If so, formatting must be structure-
+    // preserving (the strict gofmt guarantee). If not, the usual cause is
+    // ragged sibling indentation — and a layout formatter's job is to REPAIR
+    // that, not refuse it. The structurally-aware `reindent` snaps ragged
+    // siblings to a common column; we then verify the repaired output parses
+    // and carries the author's exact tokens (below). We only refuse when the
+    // input is genuinely malformed in a way the re-indent can't repair.
+    let input_parsed = crate::parser::parse(src).is_ok();
 
     let formatted = reindent(src);
 
-    // Self-check: the formatted text must lex to an equivalent token stream.
+    // Self-check: the formatted text must lex to a token stream that preserves
+    // every *real* token (no identifier/operator/literal added, dropped, merged,
+    // split, or re-valued). This is the load-bearing anti-corruption guard — it
+    // holds for both the structure-preserving path and the ragged-repair path.
     let new_tokens = tokenize(&formatted)
         .map_err(|e| format!("internal: formatted output failed to lex: {e}"))?;
-    if !tokens_equivalent(&orig_tokens, &new_tokens) {
-        // We already proved the input parses; a clean 4-space re-indent only
-        // rescales `Indent` widths, preserving every relative comparison the
-        // parser keys block structure off of — so this branch is unreachable
-        // for valid input. If it ever fires, it is a formatter bug (not the
-        // author's fault): refuse rather than risk emitting a structurally
-        // different program.
+    if real_tokens(&orig_tokens) != real_tokens(&new_tokens) {
         return Err("internal: re-indent perturbed the token stream — refusing \
                     to emit. This is a formatter bug, please report it. File \
                     left unchanged."
             .to_string());
     }
 
-    // Belt-and-suspenders: the formatted output must itself still parse. Given
-    // the input parsed and the token stream is equivalent this always holds,
-    // but re-parsing it is cheap insurance against any re-indent edge case the
-    // token check doesn't cover.
+    if input_parsed {
+        // The input was a valid program: formatting it must not change its
+        // block structure. A clean re-indent only rescales `Indent` widths,
+        // preserving every relative comparison the parser keys off — so the
+        // structural signature is stable. If it ever isn't, that's a formatter
+        // bug; refuse rather than risk emitting a structurally different program.
+        if structure_signature(&orig_tokens) != structure_signature(&new_tokens) {
+            return Err("internal: re-indent changed the block structure of a \
+                        valid program — refusing to emit. This is a formatter \
+                        bug, please report it. File left unchanged."
+                .to_string());
+        }
+    }
+
+    // The formatted output must parse. For valid input this is belt-and-
+    // suspenders; for ragged-but-repairable input it is the proof that the
+    // structural snap produced a real program (combined with the real-token
+    // check above, the author's tokens in the author's structure). If even the
+    // repaired output won't parse, the source was malformed beyond what
+    // re-indentation can fix — surface that and leave the file untouched.
     crate::parser::parse(&formatted).map_err(|e| {
-        format!(
-            "internal: formatted output failed to parse — refusing to emit. \
-             This is a formatter bug, please report it.\n  {e}"
-        )
+        if input_parsed {
+            format!(
+                "internal: formatted output failed to parse — refusing to emit. \
+                 This is a formatter bug, please report it.\n  {e}"
+            )
+        } else {
+            format!(
+                "refusing to format: the source does not parse even after \
+                 re-indentation, so it is malformed beyond a layout fix (a \
+                 token-level syntax error, not just ragged indentation). Fix the \
+                 source and re-run. File left unchanged.\n  {e}"
+            )
+        }
     })?;
 
     // Idempotence guard: a second pass must be a fixed point. Cheap insurance.
@@ -149,14 +157,32 @@ fn classify(line: &str) -> LineKind {
     }
 }
 
+/// One entry in the nesting stack: the source column at which this depth's
+/// block begins, plus whether the line that *opened* this depth is a block
+/// opener (so a deeper child under it is legitimate).
+struct Level {
+    /// Original source column at which depth `d` begins.
+    col: usize,
+    /// Did the most-recent logical line at this depth open an indented block?
+    /// Only when this is true may the *next* deeper line legitimately descend.
+    prev_opens_block: bool,
+}
+
 /// Re-derive indentation structurally and clean up whitespace.
 ///
-/// Strategy: walk physical lines. Track an indent *stack* of the original
-/// leading-space widths seen at logical-line starts; map each width to its
-/// position in the stack (its nesting depth) and emit `INDENT_WIDTH * depth`
-/// spaces. This preserves every equal/greater/less relationship among the
-/// indents the lexer would emit, so the parse is unchanged — while snapping the
-/// physical indentation onto a clean 4-space grid.
+/// Strategy: walk physical lines, tracking a nesting stack. Unlike a pure
+/// indentation-ordering re-indent, this mirrors the parser's block model so it
+/// can *repair* ragged sibling indentation rather than mis-nesting it.
+///
+/// The parser opens an indented child block only after a *block opener* — a
+/// decl/`subclaim` header, a trailing-`⇒` (implies-block), a trailing-`:`
+/// quantifier, or a `match` line ([`opens_block`]). So a line indented deeper
+/// than the current block's column descends to a new child level ONLY when the
+/// preceding logical line was an opener. A line that is deeper but whose
+/// predecessor is a *leaf* (a decl, a single-line `is_first_tick ⇒ x = 0`
+/// guard, a constraint) is a ragged over-indented sibling: we snap it back to
+/// the current block's column instead of fake-nesting it under the line above.
+/// This is the #35 fix — siblings at one logical level land in one column.
 ///
 /// Continuation lines (physical lines that start while a bracket/paren/seq is
 /// still open) are *not* logical-line starts: the lexer emits no `Indent` for
@@ -166,19 +192,21 @@ fn classify(line: &str) -> LineKind {
 /// mechanical rule we could impose, and touching them risks nothing but loses
 /// intent.
 fn reindent(src: &str) -> String {
+    let phys: Vec<&str> = src.split('\n').collect();
     let mut out_lines: Vec<String> = Vec::new();
 
-    // Stack of original indent widths defining the current nesting. stack[d] is
-    // the source column at which depth `d` begins. depth 0 is always column 0.
-    let mut indent_stack: Vec<usize> = vec![0];
+    // Nesting stack. stack[0] is depth 0 at column 0. Each frame records the
+    // source column its block begins at, and whether the last line seen at that
+    // depth was a block opener (gate for descending into a child).
+    let mut stack: Vec<Level> = vec![Level { col: 0, prev_opens_block: true }];
     // Bracket nesting carried across physical lines (paren/brace/bracket/seq).
     let mut bracket_depth: i32 = 0;
     // Pending blank lines, so we can collapse runs and drop leading/trailing.
     let mut pending_blank = false;
     let mut emitted_any = false;
 
-    for raw in src.split('\n') {
-        let line = raw;
+    for (i, raw) in phys.iter().enumerate() {
+        let line = *raw;
         match classify(line) {
             LineKind::Blank => {
                 if emitted_any {
@@ -202,19 +230,43 @@ fn reindent(src: &str) -> String {
         }
 
         // Logical line start: compute its original indent width and re-map it
-        // onto the depth stack.
+        // onto the nesting stack with structural awareness.
         let orig_indent = leading_ws_width(content);
         let trimmed = content.trim_start();
+        let code = code_part(content);
+        // A full-line comment is never a block opener and carries no code.
+        let is_comment = matches!(classify(content), LineKind::Comment);
+        // Whether this logical line opens a child block is decided from the
+        // WHOLE logical line — head plus any bracket-continuation physical
+        // lines — because a `⇒` / `:` that opens a block can land on a
+        // continuation line (e.g. a guard whose condition spans two lines).
+        // Looking only at the head would misread such an opener as a leaf and
+        // pull its genuine child up a level.
+        let this_opens = !is_comment && logical_line_opens_block(&phys, i);
 
-        // Pop levels deeper than this line.
-        while indent_stack.len() > 1 && *indent_stack.last().unwrap() > orig_indent {
-            indent_stack.pop();
+        // Pop levels whose block column is deeper than this line — this line
+        // belongs to an ancestor block.
+        while stack.len() > 1 && stack.last().unwrap().col > orig_indent {
+            stack.pop();
         }
-        // If strictly deeper than the current top, this opens a new level.
-        if orig_indent > *indent_stack.last().unwrap() {
-            indent_stack.push(orig_indent);
+        // Strictly deeper than the current block column: descend to a child
+        // level ONLY if the previous line at this level opened a block.
+        // Otherwise this is a ragged over-indented sibling — snap it to the
+        // current block's column (no descent).
+        if orig_indent > stack.last().unwrap().col {
+            if stack.last().unwrap().prev_opens_block {
+                stack.push(Level { col: orig_indent, prev_opens_block: this_opens });
+            } else {
+                // Ragged sibling: stay at the current depth, record whether THIS
+                // line opens a block so a genuine child after it can descend.
+                stack.last_mut().unwrap().prev_opens_block = this_opens;
+            }
+        } else {
+            // Same column (or shallower, after popping): a sibling at this
+            // depth. Update the opener flag for the next line's descent test.
+            stack.last_mut().unwrap().prev_opens_block = this_opens;
         }
-        let depth = indent_stack.len() - 1;
+        let depth = stack.len() - 1;
 
         flush_blank(&mut out_lines, &mut pending_blank, &mut emitted_any);
         out_lines.push(format!("{}{}", " ".repeat(INDENT_WIDTH * depth), trimmed));
@@ -222,7 +274,7 @@ fn reindent(src: &str) -> String {
 
         // Update bracket depth from this logical line's *code* (ignoring its
         // trailing comment, which can contain stray brackets).
-        bracket_depth += net_bracket_delta(code_part(content));
+        bracket_depth += net_bracket_delta(code);
         if bracket_depth < 0 {
             bracket_depth = 0;
         }
@@ -234,6 +286,90 @@ fn reindent(src: &str) -> String {
         result.push('\n');
     }
     result
+}
+
+/// Does the logical line *starting* at physical-line index `head` open an
+/// indented child block? A logical line is the head line plus every following
+/// continuation line while a bracket/paren/seq stays open. We join their code
+/// (stripping trailing comments) and run [`opens_block`] on the whole thing,
+/// because the block-opening `⇒` / `:` can appear on a continuation line (a
+/// guard whose condition wraps across lines). Blank/comment physical lines
+/// inside an open bracket are still part of the logical line and are skipped.
+fn logical_line_opens_block(phys: &[&str], head: usize) -> bool {
+    let mut joined = String::new();
+    let mut bracket: i32 = 0;
+    let mut i = head;
+    while i < phys.len() {
+        let content = phys[i].trim_end();
+        // A full-line comment contributes no code and doesn't move brackets.
+        if !matches!(classify(content), LineKind::Comment) {
+            let code = code_part(content);
+            if !joined.is_empty() {
+                joined.push(' ');
+            }
+            joined.push_str(code);
+            bracket += net_bracket_delta(code);
+            if bracket < 0 {
+                bracket = 0;
+            }
+        }
+        if bracket == 0 {
+            break;
+        }
+        i += 1;
+    }
+    opens_block(&joined)
+}
+
+/// Does this logical line's code open an indented child block, mirroring the
+/// parser's block-opening rules? A line opens a block iff:
+///   * it is a decl/`subclaim` header (first token is a decl keyword), or
+///   * its last real token is `⇒` (an implies-block: `cond ⇒` + indented body), or
+///   * its last real token is `:` (a quantifier: `∀ x ∈ s :` + indented body), or
+///   * it contains a top-level `match` token (a `match scrutinee` + indented arms).
+///
+/// A leaf line — a decl, a single-line `cond ⇒ body` guard, a constraint, a
+/// names-match invocation, a `..Mixin` — opens no block. We tokenize the code
+/// (not the raw text) so `⇒`/`:`/`match` inside string literals don't fool us,
+/// and a re-lex failure conservatively reports "not an opener".
+fn opens_block(code: &str) -> bool {
+    let toks = match tokenize(code) {
+        Ok(t) => t,
+        Err(_) => return false,
+    };
+    let real: Vec<&Token> = toks
+        .iter()
+        .filter(|t| !matches!(t, Token::Newline | Token::Indent(_) | Token::Eof))
+        .collect();
+    if real.is_empty() {
+        return false;
+    }
+
+    // Decl/subclaim header: a block always follows.
+    if matches!(
+        real[0],
+        Token::Schema
+            | Token::Claim
+            | Token::Type
+            | Token::Fsm
+            | Token::Fti
+            | Token::Enum
+            | Token::Subclaim
+            | Token::External
+    ) {
+        return true;
+    }
+
+    // A top-level `match scrutinee` line opens an indented arm block. `matches`
+    // (the recognizer) lexes to a distinct token, so this is not fooled by it.
+    if real.iter().any(|t| matches!(t, Token::Match)) {
+        return true;
+    }
+
+    // Trailing `⇒` (implies-block) or trailing `:` (quantifier body). A `⇒`
+    // with content after it on the same line is a single-line guard — a leaf,
+    // not an opener — so only the *last* token counts.
+    matches!(real.last().unwrap(), Token::Implies | Token::Colon)
 }
 
 fn flush_blank(out: &mut Vec<String>, pending: &mut bool, emitted_any: &mut bool) {
@@ -323,6 +459,11 @@ fn net_bracket_delta(code: &str) -> i32 {
 /// match. The real-token check guarantees no token was added, dropped, merged,
 /// split, or re-valued; the structure check guarantees no two blocks were
 /// merged and no line moved to a different nesting level.
+///
+/// `format_source` checks these two conditions separately (it relaxes the
+/// structure half for ragged-repair input), so the combined predicate is now a
+/// test-only convenience used by the round-trip harness.
+#[cfg(test)]
 fn tokens_equivalent(a: &[Token], b: &[Token]) -> bool {
     real_tokens(a) == real_tokens(b) && structure_signature(a) == structure_signature(b)
 }
@@ -449,36 +590,84 @@ mod tests {
         assert_eq!(format_source("\n\n\n").unwrap(), "");
     }
 
-    // #53, case 1: a sibling OVER-indented relative to a same-block `⇒` line.
-    // `count` at 8 spaces, the guard at 2 — ragged siblings that the parser
-    // rejects (it breaks the fsm body at the indent mismatch). `fmt` must
-    // refuse and surface the parse error, NOT mangle the file.
+    // #35, repair case 1: a sibling OVER-indented relative to a same-block `⇒`
+    // line — `count` at 8 spaces, the guard at 4. These are siblings in the fsm
+    // body (a decl + a single-line guard, neither of which opens a block). A
+    // *layout* formatter must SNAP them to one column, not refuse. `count` was
+    // never a block opener, so the deeper guard is a ragged sibling, not a
+    // child: both land at 4 spaces.
     #[test]
-    fn ragged_over_indent_before_guard_is_refused() {
-        let src = "fsm counter\n        count ∈ Int\n  is_first_tick ⇒ count = 0\n";
-        let err = format_source(src).expect_err("ragged input must be refused");
-        assert!(
-            err.contains("does not parse"),
-            "expected a parse-refusal message, got: {err}"
+    fn ragged_over_indent_snaps_to_sibling_column() {
+        let src = "fsm counter\n        count ∈ Int\n    is_first_tick ⇒ count = 0\n";
+        let out = format_source(src).unwrap();
+        assert_eq!(
+            out,
+            "fsm counter\n    count ∈ Int\n    is_first_tick ⇒ count = 0\n"
         );
+        // Idempotent fixed point.
+        assert_eq!(format_source(&out).unwrap(), out);
     }
 
-    // #53, case 2 (the WORSE one): a sibling over-indented relative to the line
-    // ABOVE — `count` at 2, the guard at 6. The old formatter "succeeded" but
-    // emitted the guard fake-nested UNDER count, silently changing the apparent
-    // structure. The program never parsed, so `fmt` must now refuse rather than
-    // produce mis-nested output.
+    // #35, repair case 2 (the worst #53 case): a sibling over-indented relative
+    // to the line ABOVE — `count` at 2, the guard at 6. A pure indentation-
+    // ordering re-indent would fake-nest the guard UNDER `count` (a single-line
+    // `⇒ count = 0` is NOT a block opener, so it can have no child). The
+    // structural re-indent recognizes `count ∈ Int` as a leaf and snaps the
+    // guard back to the same column — NEVER fake-nesting it.
     #[test]
     fn ragged_sibling_not_silently_renested() {
         let src = "fsm counter\n  count ∈ Int\n      is_first_tick ⇒ count = 0\n";
-        let err = format_source(src).expect_err("ragged input must be refused");
-        assert!(
-            err.contains("does not parse"),
-            "expected a parse-refusal message, got: {err}"
+        let out = format_source(src).unwrap();
+        assert_eq!(
+            out,
+            "fsm counter\n    count ∈ Int\n    is_first_tick ⇒ count = 0\n"
         );
     }
 
-    // The clean version of the #53 repros — both lines at the same column — is a
+    // The canonical CLAUDE.md `accumulate` multi-delta block, with its two
+    // implies-block bodies over-indented one level AND a ragged delta sibling.
+    // The `⇒` lines ARE openers, so their children stay nested (snapped to one
+    // level under); the ragged Δsum snaps to match its sibling Δi.
+    #[test]
+    fn accumulate_multidelta_block_repaired() {
+        let src = "fsm accumulate\n    i ∈ Int\n    sum ∈ Int\n    \
+                   is_first_tick ⇒\n            i = 0\n            sum = 0\n    \
+                   ¬ is_first_tick ⇒\n        Δi = (_i < 5 ? 1 : 0)\n              \
+                   Δsum = (_i < 5 ? _i : 0)\n";
+        let out = format_source(src).unwrap();
+        assert_eq!(
+            out,
+            "fsm accumulate\n    i ∈ Int\n    sum ∈ Int\n    is_first_tick ⇒\n        \
+             i = 0\n        sum = 0\n    ¬ is_first_tick ⇒\n        \
+             Δi = (_i < 5 ? 1 : 0)\n        Δsum = (_i < 5 ? _i : 0)\n"
+        );
+        assert_eq!(format_source(&out).unwrap(), out, "not a fixed point");
+    }
+
+    // A `⇒` guard line that DOES open a block keeps its genuine children nested.
+    // Distinguishing this from the single-line-guard leaf case is the whole #35
+    // fix: openers nest, leaves snap.
+    #[test]
+    fn implies_block_children_stay_nested() {
+        let src = "fsm c\n    is_first_tick ⇒\n        x = 0\n        y = 1\n";
+        let out = format_source(src).unwrap();
+        assert_eq!(out, src);
+        roundtrips(src);
+    }
+
+    // Genuinely malformed input (a token-level syntax error, not ragged layout)
+    // must still be refused — the re-indent can't manufacture a valid program.
+    #[test]
+    fn malformed_beyond_layout_is_refused() {
+        let src = "fsm c\n    count ∈ Int = = 5\n";
+        let err = format_source(src).expect_err("token-level syntax error must refuse");
+        assert!(
+            err.contains("malformed beyond a layout fix"),
+            "expected a beyond-layout refusal, got: {err}"
+        );
+    }
+
+    // The clean version of the repros — both lines at the same column — is a
     // valid program; `fmt` formats it to a 4-space grid and is a fixed point.
     #[test]
     fn aligned_siblings_format_cleanly() {
@@ -496,3 +685,4 @@ mod tests {
         assert_eq!(out, src);
     }
 }
+
