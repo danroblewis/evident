@@ -1,5 +1,5 @@
 {
-  "seq": 360,
+  "seq": 366,
   "tasks": [
     {
       "id": 1,
@@ -1662,7 +1662,9 @@
       "created_by": "ide-critic-newcomer",
       "created": "2026-06-22T00:25:40Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic"
+      ],
       "reopened": 0,
       "tags": [
         "learn"
@@ -1678,6 +1680,12 @@
           "by": "worker",
           "act": "done",
           "note": "Concept-teaching first-run tour (6-step claim\u2192fsm\u2192\u0394\u2192ramp\u2192explainer\u2192Solve) \u2014 app-palette.js TOUR_STEPS, merged."
+        },
+        {
+          "at": "2026-06-24T21:38:22Z",
+          "by": "ide-critic",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -2643,7 +2651,7 @@
       "created": "2026-06-22T01:45:28Z",
       "worker_done": true,
       "approvals": [],
-      "reopened": 0,
+      "reopened": 1,
       "tags": [
         "learn"
       ],
@@ -2658,6 +2666,23 @@
           "by": "worker",
           "act": "done",
           "note": "Per-sample 'how this works' explainer (EXPLAINERS + renderExplainer) teaching the concepts \u2014 merged; addresses concern #250."
+        },
+        {
+          "at": "2026-06-24T21:38:31Z",
+          "by": "ide-critic",
+          "act": "reopened",
+          "note": "Per-sample explainer teaches concepts well (and teaches := correctly), but FAILS the task's two acceptance halves. (1) DOES NOT HIDE for a hand-typed buffer: cleared the buffer to untitled.ev (select-all+delete) and appended a stray char to the counter \u2014 the 'how this works' note stays up in both cases. (2) STALE BY ONE SAMPLE (reproducible): selecting vending then 'four signals' then 'thermostat' from the dropdown leaves the explainer showing VENDING's 'A real vending machine: coins accumulate...' note under thermostat AND fourvar. The note lags the dropdown by one selection and sticks. Repro: load vending, then four-signals, read the explainer's first line \u2014 it's vending's. Fix: key the explainer to the CURRENT analyzed buffer's sample id (recompute on sample change, clear when the buffer diverges from any sample), and hide it entirely for a non-sample/hand-typed buffer as the task requires."
+        },
+        {
+          "at": "2026-06-24T21:53:11Z",
+          "by": "worker",
+          "act": "started"
+        },
+        {
+          "at": "2026-06-24T21:53:11Z",
+          "by": "worker",
+          "act": "done",
+          "note": "Marek #361 fixed: explainer clears stale text on hide + updates instantly on edit (was stale-by-one + 350ms lag). Playwright-verified."
         }
       ]
     },
@@ -4518,7 +4543,9 @@
       "created_by": "ide-critic-newcomer",
       "created": "2026-06-22T11:02:33Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic"
+      ],
       "reopened": 0,
       "tags": [
         "solve"
@@ -4534,6 +4561,12 @@
           "by": "worker",
           "act": "done",
           "note": "Side-by-side witness compare (app-gallery.js diff table, \u0394-highlighted) \u2014 merged."
+        },
+        {
+          "at": "2026-06-24T21:38:22Z",
+          "by": "ide-critic",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -6184,7 +6217,9 @@
       "created_by": "ide-critic",
       "created": "2026-06-22T19:14:31Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic"
+      ],
       "reopened": 0,
       "tags": [
         "solve"
@@ -6200,6 +6235,12 @@
           "by": "worker",
           "act": "done",
           "note": "Saved-witness gallery (page/bookmark/flip enumerated witnesses) \u2014 app-gallery.js, merged."
+        },
+        {
+          "at": "2026-06-24T21:38:22Z",
+          "by": "ide-critic",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -7988,7 +8029,9 @@
       "created_by": "worker",
       "created": "2026-06-23T20:24:26Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic"
+      ],
       "reopened": 0,
       "tags": [
         "example"
@@ -8004,6 +8047,12 @@
           "by": "worker",
           "act": "done",
           "note": "Maze-solving example (examples/test_27_maze.ev) \u2014 walls + solver-found path, EXPECTATIONS row, merged."
+        },
+        {
+          "at": "2026-06-24T21:38:22Z",
+          "by": "ide-critic",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -8704,7 +8753,9 @@
       "created_by": "worker",
       "created": "2026-06-24T01:52:38Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic"
+      ],
       "reopened": 0,
       "tags": [
         "refactor"
@@ -8731,6 +8782,12 @@
           "by": "worker",
           "act": "done",
           "note": "Samples/examples refactored to := (every is_first_tick seed eliminated except record/two-tick cases) + the sample parse-gate \u2014 merged, 31/31 parse, demos green."
+        },
+        {
+          "at": "2026-06-24T21:38:22Z",
+          "by": "ide-critic",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -9473,10 +9530,10 @@
       "id": 348,
       "title": "When a relation is forced partly by INEQUALITIES (e.g. a<=4 \u2227 a>=4 \u21d2 a=4, verified live: combo=None, core=['a<=4','a>=4']), #345 correctly suppresses the equality-only combo \u2014 but the honest derivation here is a Farkas certificate WITH non-negative multipliers on the inequalities (Motzkin transposition / the LP-duality certificate). Show 'a\u22644 and a\u22654 together pin a=4' as a real derivation, not just the bare core list. This is the bound-forced subset that 'derived as' currently can't explain.",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "ide-critic-expert",
       "created": "2026-06-24T13:36:05Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 1,
       "tags": [
@@ -9499,6 +9556,17 @@
           "by": "ide-critic-expert",
           "act": "reopened",
           "note": "Motzkin/Farkas machinery is SOUND and fuzz-clean (267 certs across 300 random claims, 0 fabricated; reconstruction self-check rejects a fabricated lambda; relations only emit after _verify_core assert-and-track UNSAT + minimal deletion). It DOES fire live on inequality-forced 3-var relations: 'a+b-c<=0, c-a-b<=0' surfaces 'a+b=c' with motzkin='(a+b-c<=0) pins <= ; (c-a-b<=0) pins >= \u2014 together forcing the equality', Z3-verified sound. BUT it does NOT surface on EITHER of #348's own acceptance examples: (1) TITLE 'a<=4 AND a>=4 => a=4' makes a BACKBONE (value 4) with NO certificate \u2014 backbones carry no Farkas derivation, so 'show a<=4 and a>=4 together pin a=4 as a real derivation' is unmet. (2) BODY 'a-b<=0, b-a<=0, c=a+b' (wanting 2a=c) surfaces ONLY equality-forced 'a+b=c' (no motzkin); the inequality-forced 2a=c is dropped by lattice_relations' cap (max-coeff 2 > cleanest-basis cap 1) \u2014 verified: 'motzkin' NOT in the API response for the body example. Also 2-var inequality-forced relations (2a-b<=0,b-2a<=0 forcing b=2a) never reach _nonpairwise: solution_structure gates it behind len(free_num)>=3, so relations=[] even though _emit_relation([2,-1]) DOES produce a correct cert when called directly. FIX: (a) attach a Motzkin derivation to a bound-FORCED backbone (the a=4 title case); (b) surface the inequality-forced relation even when its coeff exceeds the equality basis cap, or run _nonpairwise for 2 free vars. Feature is built and sound; it just doesn't reach the cases #348 was written to demonstrate. Screenshots ana-20260624-212102/348-*.png."
+        },
+        {
+          "at": "2026-06-24T21:53:10Z",
+          "by": "worker",
+          "act": "started"
+        },
+        {
+          "at": "2026-06-24T21:53:10Z",
+          "by": "worker",
+          "act": "done",
+          "note": "Ana #360 fixed: _ineq_cert extends the Motzkin/Farkas cert to inequality-forced BACKBONES (a=4 from a\u22644 \u2227 a\u22654) + EQUALITIES (a=b from a-b\u22640 \u2227 b-a\u22640); forced_certs field + clickable '\u22a2 pinned by \u2264/\u2265' panel line. Both reconstruction-checked sound. test pins both."
         }
       ]
     },
@@ -9703,6 +9771,81 @@
       "reopened": 0,
       "tags": [
         "editor"
+      ],
+      "log": []
+    },
+    {
+      "id": 362,
+      "title": "Witness-compare two-pick UX is fiddly: in compare mode, navigating to a chip and pressing the body 'compare' button picks the CURRENT witness, so to set both A and B you must (pick A) \u2192 navigate-without-picking to another chip \u2192 (pick B). Navigating after picking can deselect. It took several tries to land a two-up diff. Make picking direct: a small \u25c6 pick-target ON each chip (Alloy-style), or 'shift-click a second chip = compare these two', with a persistent 'A / B' affordance so the user never has to reason about current-vs-picked.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic",
+      "created": "2026-06-24T21:39:01Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "solve"
+      ],
+      "log": []
+    },
+    {
+      "id": 363,
+      "title": "Right-panel re-renders so frequently that accessibility refs invalidate within ~100ms, making the panel nearly undriveable by stable selectors (every Solve/sample-load churns the DOM). Beyond automation pain, this risks focus loss and flicker for users. Memoize/stabilize the analysis panel so unchanged subtrees (tab strip, gallery chips, banner) keep stable nodes across recompute.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic",
+      "created": "2026-06-24T21:39:01Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "viz"
+      ],
+      "log": []
+    },
+    {
+      "id": 364,
+      "title": "The editor can accumulate junk: stray keystrokes during a sample swap left a buffer with hundreds of garbage chars (He/X runs) that the IDE happily kept and the gutter rendered, with no 'discard changes / revert to sample' affordance. Add an explicit 'revert to sample' / 'new empty file' control and guard sample-load so it cleanly REPLACES the buffer rather than racing with in-flight edits.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic",
+      "created": "2026-06-24T21:39:01Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "editor"
+      ],
+      "log": []
+    },
+    {
+      "id": 365,
+      "title": "Witness gallery: add 'save witness to .json / copy as Evident pins' and 'export the two-up diff as an image'. After landing a side-by-side compare I wanted to keep the diff (e.g. paste into a bug report) and to re-pin a witness as constraints to explore around it. Alloy lets you save/export an instance; here the witness evaporates on the next Solve.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic",
+      "created": "2026-06-24T21:39:10Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "solve"
+      ],
+      "log": []
+    },
+    {
+      "id": 366,
+      "title": "Concept glossary on hover (overlaps newcomer #250): hovering 'fsm'/'claim'/'\u0394'/'\u21d2'/':=' in MY OWN code gives no definition. The per-sample explainer (when it works) teaches the loaded sample, but once I hand-write a buffer there's nowhere in-tool to answer 'what is :=?' or 'what is a claim?'. Add hover-cards / a glossary keyed to the keyword under the cursor, available for any buffer not just samples.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic",
+      "created": "2026-06-24T21:39:10Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "learn"
       ],
       "log": []
     }
@@ -10312,9 +10455,10 @@
       "title": "Dropped-constraint line marker (#153) uses a frontend/server token-overlap heuristic (1/source-freq weighting) rather than exact AST line threading. Correct for the common case (an undeclared/typo'd name is rarest, so it pins the right line \u2014 verified), but a dropped expr whose identifiers ALL appear with equal frequency on surviving lines could mis-pin. Worth promoting to exact BodyItem::Constraint line provenance eventually.",
       "detail": "Per worker note on #153: exact threading skipped due to ~48 nested Constraint(Expr::Binary) match sites. Heuristic verified correct for stp-typo (line 4) and two-typo ([6,7]) this session.",
       "by": "ide-critic",
-      "status": "open",
+      "status": "cleared",
       "task": null,
-      "created": "2026-06-22T12:13:39Z"
+      "created": "2026-06-22T12:13:39Z",
+      "cleared": "2026-06-24T21:38:47Z"
     },
     {
       "id": 185,
@@ -10668,6 +10812,15 @@
       "status": "open",
       "task": 348,
       "created": "2026-06-24T21:32:14Z"
+    },
+    {
+      "id": 361,
+      "title": "Per-sample explainer teaches concepts well (and teaches := correctly), but FAILS the task's two acceptance halves. (1) DOES NOT HIDE for a hand-typed buffer: cleared the buffer to untitled.ev (select-all+delete) and appended a stray char to the counter \u2014 the 'how this works' note stays up in both cases. (2) STALE BY ONE SAMPLE (reproducible): selecting vending then 'four signals' then 'thermostat' from the dropdown leaves the explainer showing VENDING's 'A real vending machine: coins accumulate...' note under thermostat AND fourvar. The note lags the dropdown by one selection and sticks. Repro: load vending, then four-signals, read the explainer's first line \u2014 it's vending's. Fix: key the explainer to the CURRENT analyzed buffer's sample id (recompute on sample change, clear when the buffer diverges from any sample), and hide it entirely for a non-sample/hand-typed buffer as the task requires.",
+      "detail": "",
+      "by": "ide-critic",
+      "status": "open",
+      "task": 102,
+      "created": "2026-06-24T21:38:31Z"
     }
   ]
 }
