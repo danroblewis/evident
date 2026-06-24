@@ -14,14 +14,10 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt                          # noqa: E402
 
 from claim_structure import solution_structure           # noqa: E402
-
-_GREEN = "#2e7d32"
-_BLUE = "#1565c0"
-_GREY = "#777777"
-
-
-def _short(n):
-    return n.split(".")[-1]
+from render_common import (                                # noqa: E402
+    GREEN as _GREEN, BLUE as _BLUE, GREY as _GREY,
+    short as _short, verdict_banner,
+)
 
 
 def _num(v):
@@ -95,8 +91,5 @@ def render(smt2_path, schema_path, out_path):
         msg = (f"{nb} forced (backbone) · {nf} free · {nrel} implied relation"
                f"{'' if nrel == 1 else 's'}{reltxt} — what the claim DETERMINES, solved abstractly (Z3)")
         col = _GREEN
-    ax.set_title(f"{name} — solution structure", fontsize=13, fontweight="bold")
-    fig.text(0.5, 0.02, msg, ha="center", va="bottom", fontsize=8.5, color=col, wrap=True)
-    fig.tight_layout(rect=[0, 0.06, 1, 1])
-    fig.savefig(out_path, dpi=120)
-    plt.close(fig)
+    verdict_banner(fig, ax, out_path, f"{name} — solution structure", msg, col,
+                   rect_bottom=0.06)

@@ -18,19 +18,15 @@ import matplotlib.pyplot as plt                     # noqa: E402
 from matplotlib.patches import Rectangle            # noqa: E402
 
 from reachable_region import bounding_box           # noqa: E402
-
-_GREEN = "#2e7d32"
-_AMBER = "#b8860b"
-_GREY = "#777777"
-_BLUE = "#1565c0"
-
-
-def _name(model):
-    return getattr(model, "fsm", None) or "model"
+from render_common import (                          # noqa: E402
+    GREEN as _GREEN, AMBER as _AMBER, GREY as _GREY, BLUE as _BLUE,
+    short, model_name as _name, empty_panel, verdict_banner,
+)
 
 
 def _short(v):
-    return v["name"].split(".")[-1]
+    """Short name of a carried-var DICT (this renderer threads var dicts, not names)."""
+    return short(v["name"])
 
 
 def _draw_bounded(ax, numeric, box, inductive, init):
@@ -82,16 +78,10 @@ def _draw_unbounded(ax, numeric, init):
 
 
 def _draw_unknown(ax, note):
-    ax.text(0.5, 0.55, "?", ha="center", va="center", fontsize=72, color=_GREY,
-            transform=ax.transAxes)
     label = note or "no numeric state to bound"
     if len(label) > 48:                                # the full reason rides in the banner below
         label = "bound undetermined"
-    ax.text(0.5, 0.32, label, ha="center", va="center", fontsize=13, color=_GREY,
-            transform=ax.transAxes)
-    ax.set_xticks([]); ax.set_yticks([])
-    for sp in ax.spines.values():
-        sp.set_visible(False)
+    empty_panel(ax, "?", label, _GREY)
 
 
 def _banner(verdict, unbounded, inductive, note):
@@ -120,9 +110,5 @@ def render(model, out_path):
     else:
         _draw_unknown(ax, r.get("note"))
     msg, col = _banner(verdict, unbounded, inductive, r.get("note"))
-    ax.set_title(f"{_name(model)} — reachable region  ·  {verdict.upper()}",
-                 fontsize=13, fontweight="bold")
-    fig.text(0.5, 0.02, msg, ha="center", va="bottom", fontsize=8.5, color=col, wrap=True)
-    fig.tight_layout(rect=[0, 0.07, 1, 1])
-    fig.savefig(out_path, dpi=120)
-    plt.close(fig)
+    verdict_banner(fig, ax, out_path,
+                   f"{_name(model)} — reachable region  ·  {verdict.upper()}", msg, col)

@@ -17,12 +17,10 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt          # noqa: E402
 
 from terminal_states import classify, stability     # noqa: E402
-
-_GREEN = "#2e7d32"
-_AMBER = "#b8860b"
-_GREY = "#777777"
-_RED = "#c62828"
-_ORANGE = "#e65100"
+from render_common import (                          # noqa: E402
+    GREEN as _GREEN, AMBER as _AMBER, GREY as _GREY, RED as _RED, ORANGE as _ORANGE,
+    short as _short, model_name as _name, empty_panel, verdict_banner,
+)
 
 # fixed-point stability → (colour, marker, legend label) for the terminal markers (#20)
 _STAB = {
@@ -73,14 +71,6 @@ def _draw_terminals(ax, model, states, numeric):
     return stabs
 
 
-def _name(model):
-    return getattr(model, "fsm", None) or "model"
-
-
-def _short(k):
-    return k.split(".")[-1]
-
-
 def _cell(s):
     return "(" + ", ".join(f"{_short(k)}={v}" for k, v in s.items()) + ")"
 
@@ -126,13 +116,7 @@ def render(model, out_path):
         # daemon (∅) or unknown — an empty end-state map, with an honest centerpiece
         glyph = "∅" if verdict == "daemon" else "?"
         sub = "no terminal states" if verdict == "daemon" else (note or "Z3 could not decide")
-        ax.text(0.5, 0.55, glyph, ha="center", va="center", fontsize=72,
-                color=_AMBER if verdict == "daemon" else _GREY, transform=ax.transAxes)
-        ax.text(0.5, 0.32, sub, ha="center", va="center", fontsize=13,
-                color=_AMBER if verdict == "daemon" else _GREY, transform=ax.transAxes)
-        ax.set_xticks([]); ax.set_yticks([])
-        for sp in ax.spines.values():
-            sp.set_visible(False)
+        empty_panel(ax, glyph, sub, _AMBER if verdict == "daemon" else _GREY)
 
     if must is True:
         term = (f"TERMINATES — EVERY run reaches rest · {len(states)} terminal state(s) · the "
@@ -160,9 +144,5 @@ def render(model, out_path):
         parts = [f"{stabs.count(k)} {k}" for k in ("stable", "unstable", "saddle", "unknown")
                  if stabs.count(k)]
         msg += " · " + ", ".join(parts)
-    ax.set_title(f"{_name(model)} — terminal-state map  ·  {verdict.upper()}",
-                 fontsize=13, fontweight="bold")
-    fig.text(0.5, 0.02, msg, ha="center", va="bottom", fontsize=8.5, color=col, wrap=True)
-    fig.tight_layout(rect=[0, 0.07, 1, 1])
-    fig.savefig(out_path, dpi=120)
-    plt.close(fig)
+    verdict_banner(fig, ax, out_path,
+                   f"{_name(model)} — terminal-state map  ·  {verdict.upper()}", msg, col)
