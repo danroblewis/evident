@@ -120,6 +120,15 @@ const EXPECTATIONS: &[DemoExpect] = &[
         forbid_exact_lines: &["sum = 1", "sum = 2"],
         max_steps: 10, tick_ms: 0, stdin: None,
     },
+    DemoExpect {
+        // The solver routes the player around the wall column: it must
+        // visit (0,1) and (0,2) to get from start to goal, and must
+        // NEVER step onto a wall cell (1,0) or (1,1).
+        name: "test_27_maze", exit: 0,
+        must_lines: &["at (0,0)", "at (0,1)", "at (0,2)", "reached goal at (2,2)"],
+        forbid_exact_lines: &["at (1,0)", "at (1,1)"],
+        max_steps: 12, tick_ms: 0, stdin: None,
+    },
 ];
 
 #[test]

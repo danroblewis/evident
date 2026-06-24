@@ -1,0 +1,148 @@
+-- 24_maze — a constraint-solved MAZE. The walls are FIXED data; the
+-- player's path is what the SOLVER finds.
+--
+-- This is the constraint-programming pitch in one file: you state the
+-- maze (a grid + a Seq of wall cells) and the rules of a legal walk
+-- (stay in bounds, never step on a wall, only move to a grid-adjacent
+-- cell, make progress toward the goal), and Z3 produces a satisfying
+-- path. We never write the path; we constrain it and read it back.
+--
+-- Two halves, the usual demo shape:
+--
+--   * fsm `solve` — the runnable trajectory. It carries `pos ∈ IVec2`
+--     tick-to-tick; each tick the solver picks a legal next cell that
+--     is strictly closer to the goal. Because BOTH the walls (carried
+--     as a Seq in the model) and the moving `pos` are state the run
+--     exposes, the solution_space / occupancy_heatmap diagrams show
+--     the maze AND the player threading through it.
+--
+--   * static `sat_*` / `unsat_*` claims — the pure constraint problem,
+--     no ticks: a fixed-length `path ∈ Seq(IVec2)` whose interior cells
+--     the solver fills in. sat: a path exists for the open maze. unsat:
+--     a wall dropped into the only corridor makes the goal unreachable.
+--
+-- Idioms (CLAUDE.md): cells are a record-as-vector `IVec2`, NOT parallel
+-- x/y Seqs; walls are a single `Seq(IVec2)` (one cell per element, no
+-- pairing to drift); every rule is element-iteration (`∀ c ∈ path`,
+-- `∀ w ∈ walls`, `edges(path)`), never a `{0..n-1}` index loop;
+-- adjacency is manhattan distance 1 via `abs`.
+
+import "stdlib/runtime.ev"
+
+type IVec2(x, y ∈ Int)
+
+-- ── The maze ─────────────────────────────────────────────────
+-- A 3×3 grid. Walls block the middle column's lower two cells,
+-- (1,0) and (1,1), so the only way from (0,0) to (2,2) is up the
+-- left edge, across the top, and down — an L around the barrier.
+--
+--   y=2  . . G        '.' open   'G' goal
+--   y=1  . # .        '#' wall   'S' start
+--   y=0  S # .
+--        x: 0 1 2
+
+-- A legal walk over `cells` against `walls`, on a `size`×`size` grid:
+-- in bounds, off every wall, each consecutive pair grid-adjacent.
+claim LegalWalk(cells ∈ Seq, walls ∈ Seq, size ∈ Int)
+    ∀ c ∈ cells : (0 ≤ c.x ∧ c.x ≤ size - 1 ∧ 0 ≤ c.y ∧ c.y ≤ size - 1)
+    ∀ c ∈ cells : (∀ w ∈ walls : c ≠ w)
+    ∀ (a, b) ∈ edges(cells) : abs(a.x - b.x) + abs(a.y - b.y) = 1
+
+-- ── The runnable solver: walk the maze, one solved step per tick ──
+fsm solve
+    goal ∈ IVec2 = IVec2(2, 2)
+
+    walls ∈ Seq(IVec2)
+    #walls = 2
+    walls[0] = IVec2(1, 0)
+    walls[1] = IVec2(1, 1)
+
+    pos ∈ IVec2
+    is_first_tick ⇒ pos = IVec2(0, 0)
+
+    -- in bounds, never on a wall (holds every tick, including the seed)
+    0 ≤ pos.x ∧ pos.x ≤ 2 ∧ 0 ≤ pos.y ∧ pos.y ≤ 2
+    ∀ w ∈ walls : pos ≠ w
+
+    at_goal ∈ Bool = (pos.x = goal.x ∧ pos.y = goal.y)
+
+    -- manhattan distance to the goal, this tick and last tick
+    dist      ∈ Int = abs(pos.x  - goal.x) + abs(pos.y  - goal.y)
+    prev_dist ∈ Int = abs(_pos.x - goal.x) + abs(_pos.y - goal.y)
+    was_at_goal ∈ Bool = (_pos.x = goal.x ∧ _pos.y = goal.y)
+
+    -- Off the goal: step to a grid-adjacent cell strictly closer to it.
+    -- The solver picks WHICH adjacent cell — that's the pathfinding.
+    (¬is_first_tick ∧ ¬was_at_goal) ⇒
+        (abs(pos.x - _pos.x) + abs(pos.y - _pos.y) = 1 ∧ dist = prev_dist - 1)
+    -- At the goal: stay put (so the run reaches a fixpoint and halts).
+    (¬is_first_tick ∧ was_at_goal) ⇒ (pos.x = _pos.x ∧ pos.y = _pos.y)
+
+    sx ∈ String = to_str(pos.x)
+    sy ∈ String = to_str(pos.y)
+    here ∈ String = "(" ++ sx ++ "," ++ sy ++ ")"
+    effects = (at_goal
+        ? ⟨Println("reached goal at " ++ here), Exit(0)⟩
+        : ⟨Println("at " ++ here)⟩)
+
+-- ── Static tests: the maze as a pure constraint problem ──────────
+
+-- SAT: the open maze admits an L-shaped 5-cell path around the wall
+-- column. The solver fills in path[1..3]; we pin only start and goal.
+claim sat_open_maze_has_path
+    path ∈ Seq(IVec2)
+    walls ∈ Seq(IVec2)
+    #path = 5
+    #walls = 2
+    path[0] = IVec2(0, 0)
+    path[4] = IVec2(2, 2)
+    walls[0] = IVec2(1, 0)
+    walls[1] = IVec2(1, 1)
+    LegalWalk(path, walls, 3)
+
+-- UNSAT: a 1×5 corridor (cells (0,0)..(0,4)) with a wall dropped at
+-- (0,2) — the single chokepoint. No legal walk from (0,0) to (0,4)
+-- can avoid it, so the solver reports no path exists.
+claim unsat_wall_blocks_corridor
+    path ∈ Seq(IVec2)
+    walls ∈ Seq(IVec2)
+    #path = 5
+    #walls = 1
+    path[0] = IVec2(0, 0)
+    path[4] = IVec2(0, 4)
+    walls[0] = IVec2(0, 2)
+    -- 1-wide corridor: x pinned to 0, y free in 0..4
+    ∀ c ∈ path : (c.x = 0 ∧ 0 ≤ c.y ∧ c.y ≤ 4)
+    ∀ c ∈ path : (∀ w ∈ walls : c ≠ w)
+    ∀ (a, b) ∈ edges(path) : abs(a.x - b.x) + abs(a.y - b.y) = 1
+
+-- SAT: the same corridor with NO wall — the straight walk exists.
+-- (Pins the contrast: it's the wall, not the geometry, that blocks.)
+claim sat_open_corridor
+    path ∈ Seq(IVec2)
+    walls ∈ Seq(IVec2)
+    #path = 5
+    #walls = 0
+    path[0] = IVec2(0, 0)
+    path[4] = IVec2(0, 4)
+    LegalWalk(path, walls, 5)
+
+-- SAT: an open cell is off every wall. (0,1) is open in the 3×3 maze,
+-- so it satisfies the off-every-wall rule — a direct check that the
+-- wall set actually constrains.
+claim sat_open_cell_off_walls
+    walls ∈ Seq(IVec2)
+    #walls = 2
+    walls[0] = IVec2(1, 0)
+    walls[1] = IVec2(1, 1)
+    c ∈ IVec2 = IVec2(0, 1)
+    ∀ w ∈ walls : c ≠ w
+
+-- UNSAT: the mirror — a cell pinned ON a wall cannot be off every wall.
+claim unsat_cell_on_wall
+    walls ∈ Seq(IVec2)
+    #walls = 2
+    walls[0] = IVec2(1, 0)
+    walls[1] = IVec2(1, 1)
+    c ∈ IVec2 = IVec2(1, 1)
+    ∀ w ∈ walls : c ≠ w
