@@ -65,13 +65,24 @@ def main():
         if ineq != {("a", "b")}:
             fails.append(f"xor: inequalities {ineq} != {{('a', 'b')}}")
 
+    # #329: non-pairwise IMPLIED relations — c=a+b and the affine a=b+3 surface (sampled then Z3-verified).
+    for src, want in [
+        ("claim t\n    0 ≤ a ∈ Int ≤ 10\n    0 ≤ b ∈ Int ≤ 10\n    0 ≤ c ∈ Int ≤ 20\n    c = a + b", "c = a + b"),
+        ("claim t\n    0 ≤ a ∈ Int ≤ 10\n    0 ≤ b ∈ Int ≤ 10\n    0 ≤ d ∈ Int ≤ 10\n    a = b + 3", "a = b + 3"),
+    ]:
+        with tempfile.TemporaryDirectory() as w:
+            ok, prefix, *_ = _export(src, w)
+            rel = solution_structure(prefix + ".smt2", prefix + ".schema.json").get("relations", [])
+            if want not in rel:
+                fails.append(f"non-pairwise: {want!r} not in {rel}")
+
     if fails:
         print("SOLUTION-STRUCTURE FAILURES:")
         for f in fails:
             print("  ✗", f)
         return 1
     print("✓ solution_structure: sys → backbone {a,b} + free c, coupled → forces x=y, xor → forces "
-          "a≠b, packing → both free — what a claim DETERMINES, solved abstractly (Z3)")
+          "a≠b, packing → both free; #329 non-pairwise → c=a+b, a=b+3 — what a claim DETERMINES (Z3)")
     return 0
 
 

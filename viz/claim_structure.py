@@ -10,11 +10,65 @@ into what it DETERMINES vs leaves free — pure Z3 over the claim body, no sampl
 
   solution_structure(smt2_path, schema_path) -> {"sat", "backbone", "free", "equalities", "inequalities"}
 """
+import numpy as np
 import z3
 
 from render_claim_space import _load_claim, _opt_bound
 
 _SCALAR = ("int", "real", "bool", "enum")
+
+
+def _fmt_relation(coeffs, const, names):
+    """Render an integer affine relation Σ cᵢ·varᵢ = const as 'lhs = rhs' (positive terms left,
+    negatives + the constant right): -a-b+c=0 → 'c = a + b'; a-b=3 → 'a = b + 3'."""
+    pos, neg = [], []
+    for c, n in zip(coeffs, names):
+        if c == 0:
+            continue
+        term = n if abs(c) == 1 else f"{abs(c)}·{n}"
+        (pos if c > 0 else neg).append(term)
+    lhs = " + ".join(pos) if pos else "0"
+    rhs = neg + ([str(const)] if const else [])
+    return f"{lhs} = {' + '.join(rhs) if rhs else '0'}"
+
+
+def _nonpairwise(body, consts, names):
+    """IMPLIED affine relations among the free INTEGER vars beyond pairwise (a+b=c, a=b+3): sample
+    solutions, take the affine null space (numpy) of the sampled points, then VERIFY each candidate via
+    Z3 (body ∧ relation≠const UNSAT) so a sampling coincidence is never reported. Skips pure pairwise
+    (a=b — that's the equalities pass). Returns equation strings."""
+    sol = z3.Solver(); sol.add(body)
+    pts = []
+    for _ in range(len(names) + 4):
+        if sol.check() != z3.sat:
+            break
+        m = sol.model()
+        pts.append([m.eval(consts[n], model_completion=True).as_long() for n in names])
+        sol.add(z3.Or(*[consts[n] != m.eval(consts[n], model_completion=True) for n in names]))
+    if len(pts) < 2:
+        return []
+    V = np.array(pts, dtype=float)
+    diffs = V[1:] - V[0]
+    if diffs.shape[0] == 0:
+        return []
+    _, sv, vh = np.linalg.svd(diffs)
+    rank = int(np.sum(sv > 1e-6))
+    out = []
+    for w in vh[rank:]:
+        nz = np.abs(w[np.abs(w) > 1e-6])
+        if len(nz) == 0:
+            continue
+        ints = np.round(w / nz.min()).astype(int)
+        if not (np.allclose(w / nz.min(), ints, atol=1e-4) and np.any(ints != 0)):
+            continue
+        const = int(round(float(np.dot(ints, V[0]))))
+        if np.count_nonzero(ints) < 3 and const == 0:     # pure pairwise a=b — equalities handles it
+            continue
+        expr = z3.Sum([int(ints[i]) * consts[names[i]] for i in range(len(ints))])
+        s2 = z3.Solver(); s2.add(body); s2.add(expr != const)
+        if s2.check() == z3.unsat:
+            out.append(_fmt_relation(ints.tolist(), const, names))
+    return out
 
 
 def solution_structure(smt2_path, schema_path):
@@ -23,7 +77,7 @@ def solution_structure(smt2_path, schema_path):
              if v["name"] in consts and v["kind"] in _SCALAR]
     sol = z3.Solver(); sol.add(body)
     if sol.check() != z3.sat:
-        return {"sat": False, "backbone": [], "free": [], "equalities": [], "inequalities": []}
+        return {"sat": False, "backbone": [], "free": [], "equalities": [], "inequalities": [], "relations": []}
     mdl = sol.model()
 
     backbone, free = [], []
@@ -53,4 +107,7 @@ def solution_structure(smt2_path, schema_path):
             s2 = z3.Solver(); s2.add(body); s2.add(ci == cj)   # forced DIFFERENT in every solution
             if s2.check() == z3.unsat:
                 ineqs.append((freev[i]["name"], freev[j]["name"]))
-    return {"sat": True, "backbone": backbone, "free": free, "equalities": eqs, "inequalities": ineqs}
+    free_int = [v["name"] for v in freev if v["kind"] == "int"]
+    relations = _nonpairwise(body, consts, free_int) if len(free_int) >= 3 else []
+    return {"sat": True, "backbone": backbone, "free": free, "equalities": eqs,
+            "inequalities": ineqs, "relations": relations}

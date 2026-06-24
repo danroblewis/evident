@@ -86,7 +86,9 @@ def render(smt2_path, schema_path, out_path):
             rels.append("forced equal: " + ", ".join(f"{_short(a)}={_short(b)}" for a, b in r["equalities"]))
         if r.get("inequalities"):
             rels.append("forced different: " + ", ".join(f"{_short(a)}≠{_short(b)}" for a, b in r["inequalities"]))
-        nrel = len(r["equalities"]) + len(r.get("inequalities", []))
+        if r.get("relations"):
+            rels.append("implied: " + "; ".join(r["relations"]))
+        nrel = len(r["equalities"]) + len(r.get("inequalities", [])) + len(r.get("relations", []))
         reltxt = (" · " + " · ".join(rels)) if rels else ""
         msg = (f"{nb} forced (backbone) · {nf} free · {nrel} implied relation"
                f"{'' if nrel == 1 else 's'}{reltxt} — what the claim DETERMINES, solved abstractly (Z3)")
