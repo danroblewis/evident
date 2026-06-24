@@ -7568,16 +7568,28 @@
       "id": 297,
       "title": "Example showcasing the prettier initial-value syntax (blocked-by #295)",
       "detail": "Once #295 (cleaner FSM initial-value syntax) lands, add a sample to app-data.js that showcases it \u2014 a clean readable FSM whose initial values use the NEW syntax instead of 'is_first_tick \u21d2 (...)'. COMPLETION CRITERIA: (1) BLOCKED-BY #295 (do not start until that design+impl is done); (2) a sample using the new init syntax that reads noticeably cleaner than the is_first_tick form; (3) loads + analyzes; (4) added to SAMPLES + render_smoke; ./test.sh green.",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "worker",
       "created": "2026-06-23T20:24:26Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "example"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-24T01:51:03Z",
+          "by": "worker",
+          "act": "started"
+        },
+        {
+          "at": "2026-06-24T01:51:03Z",
+          "by": "worker",
+          "act": "done",
+          "note": "random_walk sample now showcases 'x, y \u2208 Int := 0' (the := syntax from #295) \u2014 closes the user's original 'is_first_tick \u21d2 (x=0 \u2227 y=0) is awful' complaint; identical behavior"
+        }
+      ]
     },
     {
       "id": 298,
