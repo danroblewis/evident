@@ -191,6 +191,20 @@ def main():
         if ineq != {("a", "b")}:
             fails.append(f"xor: inequalities {ineq} != {{('a', 'b')}}")
 
+    # #348 (Ana #360): inequality-forced BACKBONES (a=4 from a≤4 ∧ a≥4) + EQUALITIES (a=b from a-b≤0 ∧
+    # b-a≤0) now carry the Motzkin/Farkas λ≥0 certificate — extends #348 beyond the non-pairwise relations.
+    with tempfile.TemporaryDirectory() as w:
+        ok, prefix, *_ = _export("claim t\n    0 ≤ a ∈ Int ≤ 10\n    a ≤ 4\n    a ≥ 4", w)
+        fc = solution_structure(prefix + ".smt2", prefix + ".schema.json").get("forced_certs", [])
+        if not any(c["what"] == "a = 4" and "pins" in c["cert"] for c in fc):
+            fails.append(f"#348: a=4 backbone should carry a Motzkin certificate, got {fc}")
+    with tempfile.TemporaryDirectory() as w:
+        ok, prefix, *_ = _export("claim t\n    0 ≤ a ∈ Int ≤ 10\n    0 ≤ b ∈ Int ≤ 10\n    0 ≤ c ∈ Int ≤ 20\n"
+                                 "    a - b ≤ 0\n    b - a ≤ 0\n    c = a + b", w)
+        fc = solution_structure(prefix + ".smt2", prefix + ".schema.json").get("forced_certs", [])
+        if not any(c["what"] == "a = b" and "pins" in c["cert"] for c in fc):
+            fails.append(f"#348: a=b equality should carry a Motzkin certificate, got {fc}")
+
     _check_relations(fails)
     _check_inequality_forced(fails)       # #348 — Farkas/Motzkin certificate for inequality-forced relations
     _check_richer_basis(fails)            # #350 — lattice surfaces minimal relations the sparse basis misses

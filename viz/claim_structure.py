@@ -217,22 +217,45 @@ def _nonpairwise(body, consts, names, is_real):
     return out
 
 
+def _ineq_cert(body, consts, names, ints, const, is_real):
+    """#348 — the Motzkin/Farkas λ≥0 certificate for a fact pinned by INEQUALITIES: a backbone (a=4 from
+    a≤4 ∧ a≥4) or an equality (a=b from a−b≤0 ∧ b−a≤0). _emit_relation already supplies this for the
+    non-pairwise RELATIONS; this extends it to the backbones + equalities that #348's own examples hit.
+    None when the fact is equality-forced (no inequality in the core) or unverifiable. Reconstruction-
+    checked inside motzkin_certificate, so a returned cert is sound by construction."""
+    expr = z3.Sum([ints[i] * consts[names[i]] for i in range(len(ints))])
+    rhs = z3.RealVal(str(const)) if is_real else int(const)
+    core = _verify_core(body, expr, rhs)
+    if core is None or _farkas_combo(body, consts, names, core, ints, const, is_real) is not None:
+        return None                                              # unverifiable, or purely equality-forced
+    by_str = {str(c): c for c in conjuncts(body)}
+    core_objs = [by_str[s] for s in core if s in by_str]
+    if len(core_objs) != len(core):
+        return None
+    return motzkin_certificate(core_objs, core, consts, names, ints, const, is_real)
+
+
 def solution_structure(smt2_path, schema_path):
     sch, body, consts = _load_claim(smt2_path, schema_path)
     vars_ = [v for v in sch.get("vars", [])
              if v["name"] in consts and v["kind"] in _SCALAR]
     sol = z3.Solver(); sol.add(body)
     if sol.check() != z3.sat:
-        return {"sat": False, "backbone": [], "free": [], "equalities": [], "inequalities": [], "relations": []}
+        return {"sat": False, "backbone": [], "free": [], "equalities": [], "inequalities": [],
+                "relations": [], "forced_certs": []}
     mdl = sol.model()
 
-    backbone, free = [], []
+    backbone, free, forced_certs = [], [], []
     for v in vars_:
         c = consts[v["name"]]
         v0 = mdl.eval(c, model_completion=True)
         s = z3.Solver(); s.add(body); s.add(c != v0)
         if s.check() == z3.unsat:
             backbone.append((v["name"], str(v0)))
+            if z3.is_int_value(v0):                             # #348: INEQUALITIES pin the value → show the cert
+                cert = _ineq_cert(body, consts, [v["name"]], [1], v0.as_long(), False)
+                if cert:
+                    forced_certs.append({"what": f"{v['name'].split('.')[-1]} = {v0}", "cert": cert})
         else:
             rng = (_opt_bound(body, c, False), _opt_bound(body, c, True)) \
                 if v["kind"] in ("int", "real") else None
@@ -249,6 +272,10 @@ def solution_structure(smt2_path, schema_path):
             s = z3.Solver(); s.add(body); s.add(ci != cj)
             if s.check() == z3.unsat:
                 eqs.append((freev[i]["name"], freev[j]["name"]))
+                ec = _ineq_cert(body, consts, [freev[i]["name"], freev[j]["name"]], [1, -1], 0,
+                                freev[i]["kind"] == "real")      # #348: a=b pinned by a≤b ∧ b≤a
+                if ec:
+                    forced_certs.append({"what": f"{freev[i]['name'].split('.')[-1]} = {freev[j]['name'].split('.')[-1]}", "cert": ec})
                 continue
             s2 = z3.Solver(); s2.add(body); s2.add(ci == cj)   # forced DIFFERENT in every solution
             if s2.check() == z3.unsat:
@@ -257,4 +284,4 @@ def solution_structure(smt2_path, schema_path):
     is_real = any(v["kind"] == "real" for v in freev if v["name"] in free_num)
     relations = _nonpairwise(body, consts, free_num, is_real) if len(free_num) >= 3 else []
     return {"sat": True, "backbone": backbone, "free": free, "equalities": eqs,
-            "inequalities": ineqs, "relations": relations}
+            "inequalities": ineqs, "relations": relations, "forced_certs": forced_certs}

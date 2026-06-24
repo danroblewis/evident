@@ -71,6 +71,13 @@ function renderStructure(s) {
       `<span class="struct-rel" data-i="${i}" title="click for the proof — which constraints force this">${r.eq}</span>`).join("  ");
     html += `<span class="struct-relations" title="${rhelp}">⊢ implied: ${rels}</span><span id="rel-proof" class="dim"></span>`;
   }
+  // #348: values/equalities pinned by INEQUALITIES (a sandwich a≤v ∧ a≥v) — each carries the Farkas/
+  // Motzkin λ≥0 certificate, distinct from the equality-derived relations above. Click for the cert.
+  if (s.forced_certs && s.forced_certs.length) {
+    const fcs = s.forced_certs.map((c, i) =>
+      `<span class="struct-rel" data-fc="${i}" title="click for the Farkas/Motzkin certificate — which inequalities pin this">${c.what}</span>`).join("  ");
+    html += `<span class="struct-relations" title="a value or equality pinned by INEQUALITIES — the Farkas/Motzkin λ≥0 certificate (#348)">⊢ pinned by ≤/≥: ${fcs}</span><span id="fc-proof" class="dim"></span>`;
+  }
   // #334: a witnessing lasso means NOT every run rests — offer to REPLAY the dodging loop in the step
   // scrubber (the same one verify/liveness uses), ringing each state on the live view as you step.
   const lasso = s.rest_cycle && s.rest_cycle.length >= 2 ? s.rest_cycle : null;
@@ -109,6 +116,11 @@ function renderStructure(s) {
   // fall back to the #341 unsat-core list (which constraints) when neither is available.
   el.querySelectorAll(".struct-rel").forEach((sp) => {
     sp.onclick = () => {
+      if (sp.dataset.fc !== undefined) {                        // #348: a forced_cert (backbone/equality), not a relation
+        const c = s.forced_certs[+sp.dataset.fc];
+        $("#fc-proof").textContent = ` ⊢ ${c.what} — Farkas/Motzkin certificate (λ≥0 over the inequalities):  ${c.cert} `;
+        return;
+      }
       const r = s.relations[+sp.dataset.i];
       const why = r.combo
         ? `derived as  ${r.combo}`
