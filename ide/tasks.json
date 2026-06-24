@@ -8764,16 +8764,28 @@
       "id": 338,
       "title": "solution_structure relations are render-only (baked into the PNG banner), not in the JSON 'structure' block \u2014 so they're not interrogable as data. A verification engineer wants the backbone/free/equalities/inequalities/relations decomposition as a STRUCTURED TABLE in the response (like Z3's get-implied-equalities output), to query/diff/export, not just read off an image. Surface r['relations'] etc. in the analyze JSON and consider an interrogable table panel beside the chart.",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "ide-critic-expert",
       "created": "2026-06-24T10:10:23Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "analysis"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-24T17:00:26Z",
+          "by": "worker",
+          "act": "started"
+        },
+        {
+          "at": "2026-06-24T17:00:26Z",
+          "by": "worker",
+          "act": "done",
+          "note": "_maybe_claim forwards the full solution_structure decomp (backbone/equalities/inequalities/relations) to response.structure; renderStructure shows forced-equal/forced-different beside the chart. Data is queryable, not just in the PNG. Live + playwright verified. Gated."
+        }
+      ]
     },
     {
       "id": 339,
