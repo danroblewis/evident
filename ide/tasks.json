@@ -8882,16 +8882,28 @@
       "id": 345,
       "title": "Show the relation proof as a Z3 PROOF TERM / derivation, not just the forcing-constraint list. Right now I see WHICH constraints force a=c-2; I'd like to see HOW (a+b=10 minus b+c=12 gives a-c=-2 \u2014 the linear combination / Farkas coefficients). Z3 (set-option produce-proofs) and the rational null-space already computed in _nonpairwise both carry this; surface the integer combination so the proof is a derivation I can check by eye, the way an Alloy unsat skeleton or a Farkas certificate reads.",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "ide-critic-expert",
       "created": "2026-06-24T13:13:49Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "analysis"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-24T13:29:04Z",
+          "by": "worker",
+          "act": "started"
+        },
+        {
+          "at": "2026-06-24T13:29:05Z",
+          "by": "worker",
+          "act": "done",
+          "note": "Each relation carries its Farkas derivation (_farkas_combo: _coef_vec extraction + sympy linsolve for \u03bb + const check). Derived a=c-2 \u2192 '(a+b==10) \u2212 (b+c==12)'. Proof click shows 'derived as <combo>', falls back to the core list for reals. Playwright-verified. Gated."
+        }
+      ]
     },
     {
       "id": 346,
