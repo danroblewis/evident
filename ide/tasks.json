@@ -1,5 +1,5 @@
 {
-  "seq": 330,
+  "seq": 331,
   "tasks": [
     {
       "id": 1,
@@ -656,11 +656,13 @@
       "id": 20,
       "title": "Stability classification of fixed points (stable / unstable / saddle)",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "worker",
       "created": "2026-06-21T23:18:37Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 1,
       "tags": [
         "analysis"
@@ -693,6 +695,12 @@
           "by": "worker",
           "act": "done",
           "note": "FIXED (Ana #323): stability returns 'unknown' on nondeterministic FSMs (_is_deterministic check) instead of one arbitrary successor; deterministic bistable still 0,6 stable/3 unstable. Pinned both cases."
+        },
+        {
+          "at": "2026-06-24T04:07:11Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": "Stability honestly 'unknown' under nondeterminism; deterministic path still stable/unstable/saddle. Verified live + module."
         }
       ]
     },
@@ -8185,11 +8193,13 @@
       "id": 316,
       "title": "Abstract terminal-state map view (Z3 absorbing set \u2014 daemon vs terminates)",
       "detail": "SHIPPED: viz/terminal_states.py + render_terminal_map.py, registered, Phase 2.21, live. Absorbing set {s: relation allows s->s AND no successor != s} via quantified Z3 query \u2014 no enumeration; works on unbounded models.",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "worker",
       "created": "2026-06-23T23:52:33Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 1,
       "tags": [
         "diagram"
@@ -8222,6 +8232,12 @@
           "by": "worker",
           "act": "done",
           "note": "FIXED (Ana #322): _escape_copy freshens every non-prev const (free inputs too), so the escape query is sound on nondeterministic FSMs. Shipped free-step bistable \u2192 {0,6} not all 7; pinned as a regression test. Gated green."
+        },
+        {
+          "at": "2026-06-24T04:07:11Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": "Absorbing set now sound on nondeterministic FSMs (the shipped free-step bistable repro). Verified 3 ways: ground-truth enumeration, authoritative module, live IDE."
         }
       ]
     },
@@ -8414,6 +8430,33 @@
         "analysis"
       ],
       "log": []
+    },
+    {
+      "id": 331,
+      "title": "solution_space 'rest states' sidebar fabricated fixed points on nondeterministic FSMs (Ana scope note after #316 re-check) \u2014 keyed on self-edges not the absorbing set",
+      "detail": "",
+      "status": "worker_done",
+      "created_by": "worker",
+      "created": "2026-06-24T04:17:23Z",
+      "worker_done": true,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "bug"
+      ],
+      "log": [
+        {
+          "at": "2026-06-24T04:17:23Z",
+          "by": "worker",
+          "act": "started"
+        },
+        {
+          "at": "2026-06-24T04:17:23Z",
+          "by": "worker",
+          "act": "done",
+          "note": "FIXED: model_analysis.solution_structure now keys fixed_points on absorbing (out-targets=={i}), not self-edges. nondeterministic bistable\u2192{0,6}, counter\u2192{5}, cyclic\u2192\u2205; ide/test_fixed_points.py pins it. Gated green."
+        }
+      ]
     }
   ],
   "concerns": [
@@ -9285,18 +9328,20 @@
       "title": "terminal_map absorbing-set query is UNSOUND on nondeterministic FSMs. The IDE's own shipped 'bistable' sample (free step\u2208{-1,0,1}, sticks at 0 and 6) renders 0,1,2,3,4,5,6 ALL as terminal/absorbing \u2014 but x=1 is NOT absorbing (from x=1, step=+1 gives x=2\u22601, a real escaping successor). ROOT CAUSE: in terminal_states.absorbing_states the escape copy esc_rel = substitute(reln, next->esc) renames ONLY the carried next-state const; a FREE INPUT var (here 'step', non-carried) is NOT re-quantified, so the outer self-loop constraint (x==_x) pins step to the stay-value and the SAME pinned step is reused in esc_rel, making Exists(esc, escape) UNSAT. Every FSM with a free choice/input var is affected \u2014 exactly the nondeterministic class. The gated test passes only because it uses a DIFFERENT, deterministic bistable (single ternary, no free var) -> {0,3,6}; it never exercises the shipped sample. FIX: collect the non-carried free input consts and existentially re-quantify them (fresh copies) in BOTH the relation's successor and the escape copy, OR equivalently ask 'is there ANY successor s'!=s' with fresh inputs each side'. Add a test on the ACTUAL shipped bistable sample. Verified live + reproduced in /tmp/repro_bistable.py. (where: ide/critics/recordings/ana-20260624-033710/terminal-map-bistable.png)",
       "detail": "",
       "by": "ide-critic-expert",
-      "status": "open",
+      "status": "cleared",
       "task": 316,
-      "created": "2026-06-24T03:50:59Z"
+      "created": "2026-06-24T03:50:59Z",
+      "cleared": "2026-06-24T04:07:17Z"
     },
     {
       "id": 323,
       "title": "Stability classification is built ON TOP of the unsound absorbing set (#322) and is itself unsound on nondeterministic FSMs. On the IDE's shipped bistable sample the terminal_map draws x=0,1,2,3,4 as green 'stable (attractor)' circles, x=6 as 'saddle', x=5 'unknown' \u2014 none of which is the promised '0,6 stable, 3 unstable repeller, banner 2 stable/1 unstable'. Reproduced: stability per reported state = {0:stable,1:stable,6:saddle,5:stable,4:unknown,3:unknown,2:unknown}. Two distinct bugs: (1) the set being classified is wrong (#322); (2) terminal_states.stability() perturbs \u00b11 then takes ONE m.successor(n) \u2014 but successor() picks an ARBITRARY successor of a nondeterministic state, so 'toward/away' is solver-dependent and meaningless when the state branches (the bistable branches \u00d73). Stability of a fixed point under nondeterminism needs to consider ALL successors of the perturbation (does EVERY successor move toward => stable; SOME away => not), not one. The gated test passes only on the deterministic bistable. FIX #322 first, then make stability quantify over all successors (or restrict the view to deterministic-near-the-point and say so). Verified live. (where: ide/critics/recordings/ana-20260624-033710/terminal-map-bistable.png)",
       "detail": "",
       "by": "ide-critic-expert",
-      "status": "open",
+      "status": "cleared",
       "task": 20,
-      "created": "2026-06-24T03:51:09Z"
+      "created": "2026-06-24T03:51:09Z",
+      "cleared": "2026-06-24T04:07:17Z"
     },
     {
       "id": 324,
