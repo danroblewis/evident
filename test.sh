@@ -418,6 +418,23 @@ if [ "$EXAMPLES_ONLY" -eq 0 ] && command -v python3 >/dev/null 2>&1; then
     echo
 fi
 
+# ── Phase 2.23: abstract claim solution-structure (backbone / free / implied equalities) ──
+# claim_structure.py decomposes a CLAIM's solution space (Z3 over the body): BACKBONE = vars forced
+# to one value in all solutions, FREE = the rest + proven ranges, EQUALITIES = vars forced equal.
+# Pins: a+b=10 ∧ a-b=4 ⇒ backbone {a=7,b=3} + free c; y=x ⇒ implied equality x=y; under-constrained ⇒
+# both free. The new abstract analysis claims get beyond claim_space's bare ranges (#319).
+if [ "$EXAMPLES_ONLY" -eq 0 ] && command -v python3 >/dev/null 2>&1; then
+    phase "Phase 2.23: abstract claim solution-structure"
+    if python3 ide/test_solution_structure.py > /tmp/evident-solstruct.log 2>&1; then
+        ok "solution-structure ($(tail -1 /tmp/evident-solstruct.log))"
+    else
+        fail "solution-structure: wrong backbone/free/equality decomposition (see above)"
+        cat /tmp/evident-solstruct.log >&2
+        failures+=("solution structure")
+    fi
+    echo
+fi
+
 # ── Optional: examples runner ────────────────────────────────
 # Walks examples/, runs each via effect-run. For visual demos (anything
 # that imports packages/sdl/), spawn the program, screenshot the Xvfb

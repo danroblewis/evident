@@ -84,7 +84,7 @@ def analyze(req: Source):
             return {"ok": False, "error": msg, "dropped": dropped,
                     "error_loc": _error_loc(msg),
                     "dropped_locs": _dropped_locs(req.source, msg)}
-        claim_resp = _maybe_claim(prefix, dropped, req.source, msg)  # a raw claim renders its solved solution space
+        claim_resp = _maybe_claim(prefix, dropped, req.source, msg, req.view)  # a raw claim: solved space + structure
         if claim_resp is not None:
             return claim_resp
         try:

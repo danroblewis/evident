@@ -134,7 +134,7 @@ def _render_svg(view, prefix):
         return f.read()
 
 
-def _maybe_claim(prefix, dropped, source="", msg=""):
+def _maybe_claim(prefix, dropped, source="", msg="", view="claim_space"):
     """If the export produced a CLAIM schema (no FSM), render its SOLVED solution space (exact
     z3-Optimize bounds + per-cell feasible region) and return the analyze response; else None so
     the FSM path runs. A claim has no run to step — this is the purest solved-boundary view."""
@@ -160,9 +160,17 @@ def _maybe_claim(prefix, dropped, source="", msg=""):
                     bounds[v["name"].split(".")[-1]] = [lo, hi]
     except Exception as e:
         print(f"[server] claim bounds failed: {type(e).__name__}: {e}", file=sys.stderr)
+    # A claim is static, so it gets the views that work without a run. claim_space = the solved
+    # feasible region; solution_structure = what it DETERMINES (backbone / free / implied equalities).
+    CLAIM_VIEWS = ["claim_space", "solution_structure"]
+    view = view if view in CLAIM_VIEWS else "claim_space"
     png = b""
     try:
-        RC.render(smt2, schema, prefix + "_claim.png")
+        if view == "solution_structure":
+            import render_solution_structure as RSS
+            RSS.render(smt2, schema, prefix + "_claim.png")
+        else:
+            RC.render(smt2, schema, prefix + "_claim.png")
         png = open(prefix + "_claim.png", "rb").read()
     except Exception as e:
         print(f"[server] claim render failed: {type(e).__name__}: {e}", file=sys.stderr)
@@ -175,7 +183,7 @@ def _maybe_claim(prefix, dropped, source="", msg=""):
                       "fixed_points": [], "bounds": bounds, "reachable": 0, "capped": False,
                       "branching": 1},
         "dropped": dropped, "branching": 1, "states": 0, "edges": 0, "capped": False,
-        "vars": list(bounds.keys()), "view": "claim_space", "views": ["claim_space"],
+        "vars": list(bounds.keys()), "view": view, "views": CLAIM_VIEWS,
         "png": base64.b64encode(png).decode() if png else None,
         "warnings": msg if dropped else "",
         "dropped_locs": _dropped_locs(source, msg) if dropped else [],
