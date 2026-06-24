@@ -1,5 +1,5 @@
 {
-  "seq": 331,
+  "seq": 333,
   "tasks": [
     {
       "id": 1,
@@ -8390,11 +8390,13 @@
       "id": 328,
       "title": "terminal_map should report WHICH-RUNS-REACH-REST: a non-empty absorbing set says the FSM CAN halt, not that every run does. Layer the BMC/fairness check ('does every fair trajectory reach the absorbing set?') so the daemon-vs-terminates verdict distinguishes 'can rest' from 'must rest' \u2014 the liveness companion to the safety absorbing-set.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-expert",
       "created": "2026-06-24T03:52:03Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "analysis"
@@ -8410,6 +8412,12 @@
           "by": "worker",
           "act": "done",
           "note": "terminal_map now shows must-rest vs can-rest: every run reaches the absorbing set iff the non-rest reachable subgraph is acyclic (Kahn's); nondet bistable CAN rest at {0,6} but a run can loop at x=3 forever. Banner: 'EVERY run reaches rest' (green) vs 'CAN REST (not always)' (amber). Bounded-discrete; unbounded\u2192None honest. Tested + gated green."
+        },
+        {
+          "at": "2026-06-24T05:55:06Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -8432,11 +8440,13 @@
       "id": 330,
       "title": "A FABRICATION-PROBE self-check / soundness lint for the abstract views: each Z3-query view (terminal_map, reachable_region) should, on bounded-discrete models, CROSS-CHECK its abstract verdict against the brute-force enumerated reachable set and flag any disagreement in-UI. The terminal_map nondeterministic-bistable bug (#322) would have been caught: abstract said {0..6} all-terminal, enumeration says only {0,6} are absorbing. A view that fabricates structure a finite model never enters must be self-detecting.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-expert",
       "created": "2026-06-24T03:52:03Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "analysis"
@@ -8452,6 +8462,12 @@
           "by": "worker",
           "act": "done",
           "note": "CI-time core DONE: ide/test_fabrication_probe.py cross-checks abstract absorbing-set vs brute-force reachable graph on 6 bounded-discrete FSMs (det+nondeterministic), no hardcoded oracle. Confirmed it catches the #322 class; checked==0 guard prevents vacuous pass; gated green. REMAINING half: the in-UI live flag (warn in the analyze response when abstract\u2260brute on a bounded model). Critic: approve the CI core or reopen for the in-UI part."
+        },
+        {
+          "at": "2026-06-24T05:55:06Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -8479,6 +8495,48 @@
           "by": "worker",
           "act": "done",
           "note": "FIXED: model_analysis.solution_structure now keys fixed_points on absorbing (out-targets=={i}), not self-edges. nondeterministic bistable\u2192{0,6}, counter\u2192{5}, cyclic\u2192\u2205; ide/test_fixed_points.py pins it. Gated green."
+        }
+      ]
+    },
+    {
+      "id": 332,
+      "title": "On-demand 'verify soundness' action in the terminal_map / reachable_region panel: run the #330 differential cross-check (abstract Z3 absorbing-set + k-induction box vs brute-force reachable graph) against the USER'S CURRENT bounded-discrete model and surface a pass/fail badge in-UI. The CI probe (#330) only covers 6 fixtures; an expert wants to push the button on their own model. Cheaper than an always-on badge (worker's reasoning) but closes the 'is THIS picture sound?' gap the CI core can't.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-expert",
+      "created": "2026-06-24T05:55:06Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "analysis"
+      ],
+      "log": []
+    },
+    {
+      "id": 333,
+      "title": "When terminal_map reports 'CAN REST (not always)' (#328 must_rest=False), surface the WITNESSING non-rest cycle \u2014 the stem+cycle lasso the FSM can ride to dodge the absorbing set forever (e.g. bistable x=3 via step=0, or a 0\u21921\u21922\u21920 loop). model_temporal already computes exactly this lasso for liveness; the must-rest banner states the verdict but gives no trace to step through. TLA+ hands you the counterexample TRACE, not just 'liveness fails' \u2014 the can-rest banner should let me click into the loop that avoids rest.",
+      "detail": "",
+      "status": "worker_done",
+      "created_by": "ide-critic-expert",
+      "created": "2026-06-24T05:55:17Z",
+      "worker_done": true,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "analysis"
+      ],
+      "log": [
+        {
+          "at": "2026-06-24T06:04:53Z",
+          "by": "worker",
+          "act": "started"
+        },
+        {
+          "at": "2026-06-24T06:04:53Z",
+          "by": "worker",
+          "act": "done",
+          "note": "terminal_map now shows the witnessing cycle when must_rest=False: rest_cycle (DFS back-edge on the non-absorbing reachable subgraph) \u2192 the banner appends 'e.g. loops (x=1)\u2192(x=1)'. Reuses the #328 must-rest graph; nondet bistable \u2192 closed non-absorbing loop, det \u2192 None. Tested + gated green."
         }
       ]
     }
