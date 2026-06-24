@@ -66,8 +66,35 @@ function viewPane(data, withOverlay) {
   }
   const _im = pane.querySelector("img");                   // the base64 img has no size until decoded —
   if (_im) _im.addEventListener("load", () => resetPanZoom(pane));   // re-fit once its size is known (#176)
+  kKnob(pane, data);                                       // #327: the k-induction depth knob (reachable_region only)
   if (withOverlay) overlayPoints(pane, data.points || []);
   return pane;
+}
+
+
+function kKnob(pane, data) {
+  // #327: raise k to deepen the unrolling and watch the reachable box CLOSE (proven inductive) or keep
+  // growing (unbounded). The rigor badge above flips proven/sampled with closure — knob + badge, one story.
+  if (data.view !== "reachable_region") return;
+  const cur = data.k || 1;
+  const knob = document.createElement("div");
+  knob.className = "k-knob";
+  const lbl = document.createElement("span");
+  lbl.textContent = "k-induction";
+  lbl.title = "k-induction depth — deepen the unrolling to try to PROVE the reachable box closed";
+  knob.appendChild(lbl);
+  const mk = (label, nk, title, off) => {
+    const b = document.createElement("button");
+    b.textContent = label; b.title = title; b.disabled = !!off;
+    b.onclick = () => { kDepth = nk; run("reachable_region"); };
+    return b;
+  };
+  knob.appendChild(mk("−", Math.max(1, cur - 1), "lower the induction depth", cur <= 1));
+  const val = document.createElement("span"); val.className = "k-val"; val.textContent = "k=" + cur;
+  knob.appendChild(val);
+  knob.appendChild(mk("+", Math.min(64, cur + 1),
+    "raise the depth — deeper unrolling, the box tightens toward closing", cur >= 64));
+  pane.appendChild(knob);
 }
 
 // Render the live result into #view. Single picture normally; two-up (pinned A · live B) once

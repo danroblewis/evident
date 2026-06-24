@@ -17,7 +17,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt                     # noqa: E402
 from matplotlib.patches import Rectangle            # noqa: E402
 
-from reachable_region import bounding_box           # noqa: E402
+from reachable_region import bounding_box, k_induction_box  # noqa: E402
 from render_common import (                          # noqa: E402
     GREEN as _GREEN, AMBER as _AMBER, GREY as _GREY, BLUE as _BLUE,
     short, model_name as _name, empty_panel, verdict_banner,
@@ -97,7 +97,36 @@ def _banner(verdict, unbounded, inductive, note):
     return (note or "no numeric carried state to bound", _GREY)
 
 
+K_DEPTH = 1   # #327: k-induction depth, threaded by render.py's _k_depth ctx (like state_graph's ALL_CONDITIONS)
+
+
+def _render_k(model, out_path, k):
+    """#327: the reachable box at k-induction depth k — solved_bounds(k) drawn, with an honest CLOSED
+    (proven inductive — provably contains every reachable state) vs OPEN (k-step extent only — raise k,
+    or it's unbounded) banner. Raise k and watch the box close (a saturating counter) or keep growing
+    (a free counter that never closes)."""
+    kr = k_induction_box(model, k)
+    box, closed = kr["box"], kr["closed"]
+    numeric = [v for v in model.carried if v["kind"] in ("int", "real")]
+    init = model.initial_state() or {}
+    fig, ax = plt.subplots(figsize=(8.2, 5.6))
+    if box:
+        _draw_bounded(ax, numeric, box, closed, init)
+    else:
+        _draw_unknown(ax, kr.get("note"))
+    if closed:
+        msg, col = (f"PROVEN CLOSED at k={k} (≈{kr['horizon']}-step unrolling) — the box is inductive: it "
+                    "provably contains EVERY reachable state · sound, no enumeration", _GREEN)
+    else:
+        msg, col = (f"k-step extent at k={k} (≈{kr['horizon']}-step unrolling) — NOT yet proven closed; "
+                    "raise k to tighten/close, or the set is unbounded (a box that grows with every k)", _AMBER)
+    verdict_banner(fig, ax, out_path,
+                   f"{_name(model)} — reachable region  ·  k-INDUCTION k={k}", msg, col)
+
+
 def render(model, out_path):
+    if K_DEPTH and K_DEPTH > 1:
+        return _render_k(model, out_path, K_DEPTH)
     r = bounding_box(model)
     verdict, box, unbounded, inductive = r["verdict"], r["box"], r["unbounded"], r["inductive"]
     numeric = [v for v in model.carried if v["kind"] in ("int", "real")]

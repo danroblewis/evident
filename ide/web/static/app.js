@@ -67,6 +67,7 @@ let pinnedA = null;
 let pastView = null;
 let currentSlotName = null;   // the active saved-slot name; overrides the derived #fname (Task #213)
 let scopeBound = null;        // the scope knob's value (#21/#84); null ⇒ server default (REACH_LIMIT)
+let kDepth = null;            // #327: reachable_region k-induction depth; null ⇒ k=1 (the one-step box)
 let allConditions = false;    // state_graph: GLOBAL dynamics (every initial condition) vs from-init (diagram #1)
 
 // Push a snapshot onto a newest-first ring buffer, capping length. Pure (returns the
@@ -291,7 +292,7 @@ async function run(view) {
       // later edit that turns the machine nondeterministic keeps showing a flat line.
       // A tab click (run("phase_portrait")) passes its view explicitly and is honored.
       // entry: which top-level fsm/claim to render — the picker, else the runtime's last-defined default (#290).
-      body: JSON.stringify({ source, view: view || null, scope: scopeBound, all_conditions: allConditions, entry: pickedEntry() }),
+      body: JSON.stringify({ source, view: view || null, scope: scopeBound, k: kDepth, all_conditions: allConditions, entry: pickedEntry() }),
     });
     // A 500 RESOLVES the fetch (only a network drop rejects it), so without this check an HTTP
     // error would fall through and silently leave the prior picture looking live (Marek #206).

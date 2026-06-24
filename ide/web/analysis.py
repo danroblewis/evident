@@ -302,7 +302,8 @@ def _dynamics_response(req, prefix, dropped, msg):
     for cand in [view, "state_graph", "time_series"]:
         if cand in RENDERERS:
             try:
-                png, points = _render_png(cand, prefix, all_conditions=req.all_conditions)
+                png, points = _render_png(cand, prefix, all_conditions=req.all_conditions,
+                                          k=getattr(req, "k", None))   # #327: k-induction depth
                 view = cand
                 break
             except Exception as _re:
@@ -325,6 +326,14 @@ def _analyze_payload(req, m, dropped, msg, structure, view, png, points, scope,
     from config import REACH_LIMIT
     from render import VIEWS, view_rigor
     cont = any(v.get("kind") == "real" for v in m.carried)
+    k_depth = getattr(req, "k", None)
+    rigor = view_rigor(view, capped, cont)
+    if view == "reachable_region" and k_depth and k_depth > 1:   # #327: proven only if the box CLOSED at k
+        try:
+            from reachable_region import k_induction_box
+            rigor = "proven" if k_induction_box(m, k_depth)["closed"] else "sampled"
+        except Exception:
+            pass
 
     return {
         "ok": True,
@@ -341,7 +350,8 @@ def _analyze_payload(req, m, dropped, msg, structure, view, png, points, scope,
         "continuous": cont,
         "vars": [v["name"].split(".")[-1] for v in m.interface_vars]
                 + [v["name"].split(".")[-1] for v in getattr(m, "derived", [])],
-        "view": view, "rigor": view_rigor(view, capped, cont),   # #285: proven/exhaustive/sampled honesty
+        "view": view, "rigor": rigor,   # #285/#327: proven/exhaustive/sampled (k-aware for reachable_region)
+        "k": k_depth,                    # #327: the active k-induction depth (None until the knob is used)
         "views": VIEWS,
         "all_conditions": bool(req.all_conditions) and view == "state_graph",  # global dynamics vs from-init (diagram #1)
         "png": base64.b64encode(png).decode() if png else None,

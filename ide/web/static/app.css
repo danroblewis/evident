@@ -233,6 +233,15 @@ html,body { margin:0; height:100%; background:var(--bg); color:var(--ink);
   font-weight:600; cursor:help; z-index:4; }
 .rigor-proven, .rigor-exhaustive { background:rgba(46,125,50,0.88); color:#fff; }
 .rigor-sampled { background:rgba(245,166,35,0.9); color:#3a2a00; }
+/* #327: the k-induction depth knob — bottom-left of the reachable_region pane */
+.k-knob { position:absolute; bottom:8px; left:8px; display:flex; align-items:center; gap:5px; z-index:5;
+  background:rgba(15,20,25,0.86); border:1px solid #2a3340; border-radius:6px; padding:3px 7px;
+  font-size:11px; color:#8fa3b8; line-height:1; }
+.k-knob button { background:#1b2430; color:#cdd9e5; border:1px solid #2a3340; border-radius:4px;
+  width:20px; height:20px; cursor:pointer; font-size:14px; padding:0; }
+.k-knob button:hover:not(:disabled) { background:#243040; }
+.k-knob button:disabled { opacity:.4; cursor:default; }
+.k-knob .k-val { min-width:30px; text-align:center; color:#cdd9e5; font-variant-numeric:tabular-nums; }
 
 /* assert-and-check an invariant over the reachable set */
 #invariant { display:flex; align-items:center; gap:8px; padding:6px 14px;

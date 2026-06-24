@@ -97,3 +97,22 @@ def bounding_box(m):
     return {"verdict": "bounded", "box": box, "unbounded": [], "indeterminate": [],
             "inductive": inductive, "note": None if inductive else
             "per-var one-step range; not proven closed under the transition (over-approximation only)"}
+
+
+def k_induction_box(m, k):
+    """#327: the k-STEP reachable box via solved_bounds(k) — raise k to deepen the unrolling and watch
+    the box close. A CLOSED box (every var inductive over the unrolled horizon) provably contains every
+    reachable state, so "proven at k=N" is honest; an OPEN box is only the k-step extent — raise k, or
+    the set is genuinely unbounded (a free counter's box grows with every k and never closes)."""
+    sb = m.solved_bounds(k)
+    if not sb:
+        return {"k": k, "horizon": 2 * k, "box": {}, "closed": False, "open_vars": [],
+                "note": "no numeric carried state to bound at this depth"}
+    box = {nm: [v["lo"], v["hi"]] for nm, v in sb.items() if v["lo"] is not None and v["hi"] is not None}
+    open_vars = [nm for nm, v in sb.items() if v["lo"] is None or v["hi"] is None]
+    closed = bool(box) and not open_vars and all(v["inductive"] for v in sb.values())
+    horizon = max((v["k"] for v in sb.values()), default=2 * k)
+    return {"k": k, "horizon": horizon, "box": box, "closed": closed, "open_vars": open_vars,
+            "note": None if closed else
+            f"k-step extent over a {horizon}-step horizon — not yet proven closed; raise k "
+            "(or the reachable set is unbounded — a box that keeps growing with k will never close)"}

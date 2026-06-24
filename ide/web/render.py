@@ -134,16 +134,33 @@ def _all_conditions(view, on):
         RSG.ALL_CONDITIONS = saved
 
 
-def _render_png(view, prefix, all_conditions=False):
+@contextlib.contextmanager
+def _k_depth(view, k):
+    """#327: set render_reachable_region's K_DEPTH module flag for one render (the same fixed-3-arg
+    pattern as _all_conditions), capped at 64, then restore. A no-op for any other view or k≤1."""
+    if view != "reachable_region" or not k or k <= 1:
+        yield
+        return
+    import render_reachable_region as RRR
+    saved = RRR.K_DEPTH
+    RRR.K_DEPTH = max(1, min(int(k), 64))
+    try:
+        yield
+    finally:
+        RRR.K_DEPTH = saved
+
+
+def _render_png(view, prefix, all_conditions=False, k=None):
     """Render the view PNG and return (bytes, points). `points` is the interactive
     hover-overlay sidecar (`<out>.points.json`, written by renderers that support it —
     currently solution_space): a list of {fx, fy, state}; [] when no sidecar exists.
 
     `all_conditions` requests state_graph's GLOBAL-dynamics graph (every initial
-    condition). Threaded via the renderer module flag under the server's render _LOCK
-    (the renderers ship a fixed 3-arg signature), then restored so it never leaks."""
+    condition); `k` requests reachable_region's k-induction depth (#327). Threaded via
+    the renderer module flag under the server's render _LOCK (the renderers ship a fixed
+    3-arg signature), then restored so they never leak."""
     out = prefix + f".{view}.png"
-    with _all_conditions(view, all_conditions):
+    with _all_conditions(view, all_conditions), _k_depth(view, k):
         RENDERERS[view](prefix + ".smt2", prefix + ".schema.json", out)
     with open(out, "rb") as f:
         png = f.read()
