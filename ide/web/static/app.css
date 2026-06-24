@@ -8,14 +8,14 @@ html,body { margin:0; height:100%; background:var(--bg); color:var(--ink);
 .dim { color:var(--dim); } .sp { flex:1; }
 
 #app { display:grid; height:100vh;
-  grid-template-columns:var(--split, 1fr) 6px 1fr; grid-template-rows:36px 1fr;
+  grid-template-columns:var(--split, 1fr) 6px 1fr; grid-template-rows:minmax(36px, auto) 1fr;
   grid-template-areas:"top top top" "editor split dynamics"; }
 /* draggable splitter — resize the editor vs dynamics panes (Marek #277). Width persisted in --split. */
 #splitter { grid-area:split; cursor:col-resize; background:var(--line);
   transition:background .12s; }
 #splitter:hover, #splitter.dragging { background:var(--accent); }
 
-#top { grid-area:top; display:flex; align-items:center; gap:12px; padding:0 14px;
+#top { grid-area:top; display:flex; flex-wrap:wrap; align-items:center; gap:12px; padding:0 14px;
   background:var(--panel); border-bottom:1px solid var(--line); }
 #top b { color:#fff; }
 #samples, #claim-select { background:#1b2129; color:var(--ink); border:1px solid var(--line);
