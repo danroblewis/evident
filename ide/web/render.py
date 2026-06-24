@@ -205,12 +205,16 @@ def _maybe_claim(prefix, dropped, source="", msg="", view="claim_space"):
     # A claim is static, so it gets the views that work without a run. claim_space = the solved
     # feasible region; solution_structure = what it DETERMINES (backbone / free / implied equalities).
     CLAIM_VIEWS = ["claim_space", "solution_structure"]
+    if len(bounds) >= 2:                            # #356: ≥2 numeric vars → also the witness-cloud sampling
+        CLAIM_VIEWS += ["scatter_matrix", "parallel_coords"]   # views (the #284 claim renderers were dead-ended)
     view = view if view in CLAIM_VIEWS else "claim_space"
     png = b""
     try:
         if view == "solution_structure":
             import render_solution_structure as RSS
             RSS.render(smt2, schema, prefix + "_claim.png")
+        elif view in ("scatter_matrix", "parallel_coords"):
+            RENDERERS[view](smt2, schema, prefix + "_claim.png")   # #356: their claim paths sample the witnesses
         else:
             RC.render(smt2, schema, prefix + "_claim.png")
         png = open(prefix + "_claim.png", "rb").read()
