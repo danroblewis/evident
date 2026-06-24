@@ -56,13 +56,22 @@ def main():
                 fails.append(f"{name}: free {fr} != {want_free}")
             if eqs != want_eqs:
                 fails.append(f"{name}: equalities {eqs} != {want_eqs}")
+
+    # forced INEQUALITIES — a claim that forces two vars DIFFERENT (xor) must surface a≠b.
+    with tempfile.TemporaryDirectory() as w:
+        ok, prefix, *_ = _export("claim xor\n    a, b ∈ Bool\n    a ≠ b", w)
+        r = solution_structure(prefix + ".smt2", prefix + ".schema.json")
+        ineq = {tuple(sorted((_short(a), _short(b)))) for a, b in r.get("inequalities", [])}
+        if ineq != {("a", "b")}:
+            fails.append(f"xor: inequalities {ineq} != {{('a', 'b')}}")
+
     if fails:
         print("SOLUTION-STRUCTURE FAILURES:")
         for f in fails:
             print("  ✗", f)
         return 1
-    print("✓ solution_structure: sys → backbone {a,b} + free c, coupled → forces x=y, packing → both "
-          "free — what a claim DETERMINES, solved abstractly (Z3)")
+    print("✓ solution_structure: sys → backbone {a,b} + free c, coupled → forces x=y, xor → forces "
+          "a≠b, packing → both free — what a claim DETERMINES, solved abstractly (Z3)")
     return 0
 
 

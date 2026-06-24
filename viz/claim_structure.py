@@ -6,8 +6,9 @@ into what it DETERMINES vs leaves free — pure Z3 over the claim body, no sampl
   * BACKBONE   — variables forced to a single value in EVERY solution (claim ∧ v ≠ v0 is UNSAT).
   * FREE       — the remaining variables, with their proven [lo, hi] ranges (Optimize).
   * EQUALITIES — pairs of (free) variables forced equal in every solution (claim ∧ a ≠ b UNSAT).
+  * INEQUALITIES — pairs forced DIFFERENT in every solution (claim ∧ a = b UNSAT — e.g. XOR's a≠b).
 
-  solution_structure(smt2_path, schema_path) -> {"sat", "backbone", "free", "equalities"}
+  solution_structure(smt2_path, schema_path) -> {"sat", "backbone", "free", "equalities", "inequalities"}
 """
 import z3
 
@@ -22,7 +23,7 @@ def solution_structure(smt2_path, schema_path):
              if v["name"] in consts and v["kind"] in _SCALAR]
     sol = z3.Solver(); sol.add(body)
     if sol.check() != z3.sat:
-        return {"sat": False, "backbone": [], "free": [], "equalities": []}
+        return {"sat": False, "backbone": [], "free": [], "equalities": [], "inequalities": []}
     mdl = sol.model()
 
     backbone, free = [], []
@@ -39,7 +40,7 @@ def solution_structure(smt2_path, schema_path):
 
     free_names = {n for n, _ in free}
     freev = [v for v in vars_ if v["name"] in free_names]
-    eqs = []
+    eqs, ineqs = [], []
     for i in range(len(freev)):
         for j in range(i + 1, len(freev)):
             if freev[i]["kind"] != freev[j]["kind"]:
@@ -48,4 +49,8 @@ def solution_structure(smt2_path, schema_path):
             s = z3.Solver(); s.add(body); s.add(ci != cj)
             if s.check() == z3.unsat:
                 eqs.append((freev[i]["name"], freev[j]["name"]))
-    return {"sat": True, "backbone": backbone, "free": free, "equalities": eqs}
+                continue
+            s2 = z3.Solver(); s2.add(body); s2.add(ci == cj)   # forced DIFFERENT in every solution
+            if s2.check() == z3.unsat:
+                ineqs.append((freev[i]["name"], freev[j]["name"]))
+    return {"sat": True, "backbone": backbone, "free": free, "equalities": eqs, "inequalities": ineqs}

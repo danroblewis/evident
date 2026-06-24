@@ -84,12 +84,16 @@ def render(smt2_path, schema_path, out_path):
         msg, col = "no solution structure — the claim is unsatisfiable", _GREY
     else:
         _draw(ax, r)
-        nb, nf, ne = len(r["backbone"]), len(r["free"]), len(r["equalities"])
-        eqtxt = ""
+        nb, nf = len(r["backbone"]), len(r["free"])
+        rels = []
         if r["equalities"]:
-            eqtxt = " · forced equal: " + ", ".join(f"{_short(a)}={_short(b)}" for a, b in r["equalities"])
-        msg = (f"{nb} forced (backbone) · {nf} free · {ne} implied equalit"
-               f"{'y' if ne == 1 else 'ies'}{eqtxt} — what the claim DETERMINES, solved abstractly (Z3)")
+            rels.append("forced equal: " + ", ".join(f"{_short(a)}={_short(b)}" for a, b in r["equalities"]))
+        if r.get("inequalities"):
+            rels.append("forced different: " + ", ".join(f"{_short(a)}≠{_short(b)}" for a, b in r["inequalities"]))
+        nrel = len(r["equalities"]) + len(r.get("inequalities", []))
+        reltxt = (" · " + " · ".join(rels)) if rels else ""
+        msg = (f"{nb} forced (backbone) · {nf} free · {nrel} implied relation"
+               f"{'' if nrel == 1 else 's'}{reltxt} — what the claim DETERMINES, solved abstractly (Z3)")
         col = _GREEN
     ax.set_title(f"{name} — solution structure", fontsize=13, fontweight="bold")
     fig.text(0.5, 0.02, msg, ha="center", va="bottom", fontsize=8.5, color=col, wrap=True)
