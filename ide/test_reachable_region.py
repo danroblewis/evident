@@ -27,11 +27,17 @@ CASES = [
     ("random_walk (UNBOUNDED — provably grows; full_state_graph N/A)",
      "fsm random_walk\n    x, y ∈ Int := 0\n    -1 ≤ Δx ≤ 1\n    -1 ≤ Δy ≤ 1",
      "unbounded", False, None),
-    # The soundness case: x=_x/2's one-step IMAGE is unbounded, but the reachable set is bounded by
-    # the contraction. Must NOT be falsely "unbounded" — there's no growth proof, so INDETERMINATE.
-    ("decay (Real contraction — INDETERMINATE, not falsely UNBOUNDED)",
+    # #352: x=_x/2's one-step IMAGE is unbounded, but the reachable set IS bounded by the contraction.
+    # The candidate-box k-induction (solved_bounds + _inductive) now PROVES it: [0,100] is closed under
+    # x→x/2 and contains the init, a sound inductive over-approximation (was honestly indeterminate before).
+    ("decay (Real contraction — #352 proves bounded [0,100] via candidate-box k-induction)",
      "fsm decay\n    x ∈ Real\n    is_first_tick ⇒ x = 100.0\n    ¬is_first_tick ⇒ x = _x / 2.0",
-     "indeterminate", False, None),
+     "bounded", True, {"x": (0.0, 100.0)}),
+    # #352: a counter with NO declared bound — proven_range(count)=None (one-step image unbounded below),
+    # but the reachable set is [0,5]; the candidate-box k-induction proves it (not indeterminate).
+    ("no-declared-bound counter (#352 candidate-box proves [0,5])",
+     "fsm c\n    count ∈ Int\n    is_first_tick ⇒ count = 0\n    ¬is_first_tick ⇒ count = (_count ≥ 5 ? 5 : _count + 1)",
+     "bounded", True, {"count": (0, 5)}),
 ]
 
 
@@ -61,8 +67,9 @@ def main():
         for f in fails:
             print("  ✗", f)
         return 1
-    print("✓ reachable_region: counter⊆[0,5], walk_box⊆[0,10]² (PROVEN 1-inductive), random_walk "
-          "provably UNBOUNDED, decay (x=_x/2 contraction) honestly INDETERMINATE not false-unbounded")
+    print("✓ reachable_region: counter⊆[0,5], walk_box⊆[0,10]² (PROVEN 1-inductive), random_walk provably "
+          "UNBOUNDED; #352 candidate-box k-induction proves the x=_x/2 contraction bounded [0,100] + a "
+          "no-declared-bound counter [0,5] (one-step image None ⇒ try the init-seeded inductive box)")
     return 0
 
 

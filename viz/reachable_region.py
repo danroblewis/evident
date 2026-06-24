@@ -76,10 +76,19 @@ def bounding_box(m):
         return {"verdict": "unbounded", "box": box, "unbounded": unbounded,
                 "indeterminate": indeterminate, "inductive": False, "note": None}
     if indeterminate:
+        # #352: proven_range is the one-step IMAGE (unbounded below for a free _prev), but the REACHABLE
+        # set from init may be bounded + inductively closed. Before giving up, try the candidate-box
+        # k-induction — the init-seeded solved_bounds(k) + _inductive check that #327 uses (Ana-certified).
+        kr = k_induction_box(m, 16)
+        if kr["closed"]:
+            return {"verdict": "bounded", "box": kr["box"], "unbounded": [], "indeterminate": [],
+                    "inductive": True,
+                    "note": "proven by k-induction candidate-box search (init-seeded reachable extent, "
+                            "verified inductive #352) — the one-step image was unbounded, the reachable set is not"}
         return {"verdict": "indeterminate", "box": box, "unbounded": [],
                 "indeterminate": indeterminate, "inductive": False,
-                "note": "one-step image unbounded but no growth proof — the reachable set may be "
-                        "bounded by the dynamics (e.g. a contraction); a tighter invariant could decide"}
+                "note": "one-step image unbounded and the k-induction candidate-box didn't close at k=16 — "
+                        "raise k (the depth knob), or the reachable set may be genuinely unbounded"}
 
     reln = z3.And(*list(m.assertions))
     base = z3.Solver(); base.set("timeout", 5000)
