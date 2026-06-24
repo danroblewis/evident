@@ -73,16 +73,30 @@ def _verify_core(body, relation_expr, rhs):
     return [str(tracked[p.get_id()]) for p in s.unsat_core() if tracked.get(p.get_id()) is not None]
 
 
-def _coef_vec(constraint, consts, names):
-    """A linear equality `lhs == rhs` → (coeffs over names, rhs). Extract by substitution: coef of a var =
-    (lhs−rhs at that var=1, rest 0) − (at all 0); the constant term gives the rhs. Int constraints only."""
+def _coef_vec(constraint, consts, names, is_real):
+    """A linear equality `lhs == rhs` → (coeffs over names, rhs) as exact sympy numbers. Extract by
+    substitution: coef of a var = (lhs−rhs at that var=1, rest 0) − (at all 0); the constant gives the rhs.
+    Handles int + real (#347, rational coeffs). None if a value isn't an exact number (nonlinear)."""
     diff = constraint.arg(0) - constraint.arg(1)          # constraint is diff == 0
+    val = z3.RealVal if is_real else z3.IntVal
 
     def ev(assign):
-        e = z3.substitute(diff, *[(consts[n], z3.IntVal(assign.get(n, 0))) for n in names])
-        return z3.simplify(e).as_long()
+        e = z3.simplify(z3.substitute(diff, *[(consts[n], val(assign.get(n, 0))) for n in names]))
+        if z3.is_int_value(e):
+            return sympy.Integer(e.as_long())
+        if z3.is_rational_value(e):
+            return sympy.Rational(e.numerator_as_long(), e.denominator_as_long())
+        return None
     base = ev({})
-    return [ev({n: 1}) - base for n in names], -base
+    if base is None:
+        return None
+    coefs = []
+    for n in names:
+        c = ev({n: 1})
+        if c is None:
+            return None
+        coefs.append(c - base)
+    return coefs, -base
 
 
 def _fmt_combo(combo):
@@ -98,15 +112,14 @@ def _fmt_combo(combo):
 def _farkas_combo(body, consts, names, core_strs, rel_ints, rel_const, is_real):
     """The integer linear combination of the core constraints that DERIVES the relation (#345, the Farkas
     certificate — 'how' the constraints force it, not just 'which'). Solve Σλⱼ·constraintⱼ = relation per
-    variable, then check the constant. Int claims only; None if real / underdetermined / const mismatch."""
-    if is_real:
-        return None
+    variable, then check the constant. Int + real / rational λ (#347); None if underdetermined, a constraint
+    isn't a linear equality, or the const mismatches (then the caller shows the bare core list)."""
     try:
         by_str = {str(c): c for c in conjuncts(body)}
         cores = [by_str[s] for s in core_strs if s in by_str]
-        if not cores:
+        vecs = [_coef_vec(c, consts, names, is_real) for c in cores]
+        if not cores or any(v is None for v in vecs):                     # an inequality / nonlinear core
             return None
-        vecs = [_coef_vec(c, consts, names) for c in cores]
         m = sympy.Matrix([[v[0][i] for v in vecs] for i in range(len(names))])
         sol = sympy.linsolve((m, sympy.Matrix(rel_ints)))
         if not sol:
@@ -116,8 +129,8 @@ def _farkas_combo(body, consts, names, core_strs, rel_ints, rel_const, is_real):
             return None
         if sum(lam[j] * vecs[j][1] for j in range(len(vecs))) != rel_const:
             return None
-        used = [(int(lam[j]), core_strs[j]) for j in range(len(cores)) if lam[j] != 0]
-        used.sort(key=lambda x: x[0] < 0)                                 # positive terms first (cleaner)
+        used = [(lam[j], core_strs[j]) for j in range(len(cores)) if lam[j] != 0]
+        used.sort(key=lambda x: bool(x[0] < 0))                           # positive terms first (cleaner)
         return _fmt_combo(used) if used else None
     except Exception:
         return None

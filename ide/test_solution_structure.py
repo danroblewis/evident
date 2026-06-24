@@ -58,9 +58,13 @@ def _check_relations(fails):
     with tempfile.TemporaryDirectory() as w:
         ok, prefix, *_ = _export("claim t\n    0.0 ≤ x ∈ Real ≤ 10.0\n    y ∈ Real\n    z ∈ Real\n"
                                  "    y = 2.0 * x\n    z = x + y", w)
-        rel = [x["eq"] for x in solution_structure(prefix + ".smt2", prefix + ".schema.json").get("relations", [])]
-        if "2·x = y" not in rel:
-            fails.append(f"#339 real: '2·x = y' not in {rel}")
+        rels = solution_structure(prefix + ".smt2", prefix + ".schema.json").get("relations", [])
+        if "2·x = y" not in [x["eq"] for x in rels]:
+            fails.append(f"#339 real: '2·x = y' not in {[x['eq'] for x in rels]}")
+        # #347: real-valued relations also carry their Farkas derivation (rational λ); 2·x=y derives from y==2*x.
+        yx = next((x for x in rels if x["eq"] == "2·x = y"), None)
+        if yx and not (yx.get("combo") and "y == 2*x" in yx["combo"]):
+            fails.append(f"#347 real combo: '2·x = y' should derive from y==2*x, got {yx.get('combo')}")
     # #341: each relation carries its UNSAT-core proof. A DERIVED relation (a+b=10 ∧ b+c=12 together force
     # c=a+2) must cite BOTH forcing constraints in its core — the interrogable "why is this forced".
     with tempfile.TemporaryDirectory() as w:
