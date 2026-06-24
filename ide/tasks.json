@@ -7375,16 +7375,28 @@
       "id": 285,
       "title": "Diagrams: visually distinguish proven-all-conditions content from sampled/single-run content (solution_space region vs scatter) \u2014 the honesty marker",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "worker",
       "created": "2026-06-23T18:19:04Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "diagram"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-24T16:51:57Z",
+          "by": "worker",
+          "act": "started"
+        },
+        {
+          "at": "2026-06-24T16:51:57Z",
+          "by": "worker",
+          "act": "done",
+          "note": "render.view_rigor classifies each view proven/exhaustive/sampled (enumerate views downgrade to sampled when capped/continuous); response.rigor \u2192 corner badge in viewPane. test_rigor.py pins it. Playwright-verified all 3 badges. Gated."
+        }
+      ]
     },
     {
       "id": 286,
