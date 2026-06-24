@@ -50,8 +50,7 @@ solving.id = "solving"; solving.hidden = true; $("#dynamics").appendChild(solvin
 
 // --- the live loop ----------------------------------------------------------------
 let timer = null, activeView = null, lastSource = "", _dimTimer = null, _elapsedTimer = null, _analyzeCtrl = null;
-// Esc aborts an in-flight analyze (#149) — guarded on _analyzeCtrl so it never steals Esc from a modal/palette.
-window.addEventListener("keydown", (e) => { if (e.key === "Escape" && _analyzeCtrl) _analyzeCtrl.abort(); });
+window.addEventListener("keydown", (e) => { if (e.key === "Escape" && _analyzeCtrl) _analyzeCtrl.abort(); });  // Esc cancels an in-flight analyze (#149); guard avoids stealing Esc from modals
 
 // The most recent diagram overlay (the live `.view-wrap` + its identifiable points), so the
 // trace scrubber can locate the current step's state ON the diagram and ring it (#231/#206 —
@@ -384,8 +383,7 @@ async function run(view) {
     if (e.name === "AbortError") {            // #149: user pressed Esc — not a backend failure
       clearInterval(_elapsedTimer); solving.hidden = true;
       for (const id of ["banner", "structure", "view"]) $("#" + id).classList.remove("recomputing");
-      setStatus("cancelled — edit to re-run", "dim");
-      return;
+      setStatus("cancelled — edit to re-run", "dim"); return;
     }
     backendDown(String(e));
   }
