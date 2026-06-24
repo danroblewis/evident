@@ -53,7 +53,17 @@ function renderStructure(s) {
       + "(Optimize over the unrolled transition), not the min/max of one run.";
     html += `<span class="struct-bounds" title="${bhelp}">⊏ boundary${s.capped ? " (≥, capped)" : ""}: ${bstr}</span>`;
   }
+  // #334: a witnessing lasso means NOT every run rests — offer to REPLAY the dodging loop in the step
+  // scrubber (the same one verify/liveness uses), ringing each state on the live view as you step.
+  const lasso = s.rest_cycle && s.rest_cycle.length >= 2 ? s.rest_cycle : null;
+  if (lasso) {
+    html += ` <button id="replay-lasso" class="struct-replay" title="step through a run that loops forever among non-rest states, never reaching the absorbing set — the witness that not every run rests">▶ replay a dodging loop</button>`;
+  }
   el.innerHTML = html;
+  if (lasso) {
+    const rb = el.querySelector("#replay-lasso");
+    if (rb) rb.onclick = () => showTrace(lasso, "a run looping forever — never resting (#333/#334)", "violation", 0);
+  }
 }
 
 // Interactive diagram overlay (#184): drop transparent hover targets over the rendered

@@ -310,8 +310,13 @@ class AnalysisMixin:
         else:
             verdict = "settles"
 
+        rest_cycle = None                              # #334: a non-rest lasso the frontend can replay
+        if 0 < len(fp_idx) < len(states):
+            from terminal_states import extract_cycle
+            rest_cycle = extract_cycle(states, edges, set(fp_idx))
         return {"fixed_points": fps, "has_fixed_point": has_fp, "verdict": verdict,
-                "bounds": bounds, "reachable": n, "capped": capped, "branching": max_branch}
+                "bounds": bounds, "reachable": n, "capped": capped, "branching": max_branch,
+                "rest_cycle": rest_cycle}
 
     def independence_structural(self, seeds=4, alts_per_field=2):
         """Directed dependency by solver SENSITIVITY — the RIGOROUS form of

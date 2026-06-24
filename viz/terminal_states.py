@@ -138,6 +138,12 @@ def rest_cycle(m, absorbing_keys):
     if len(states) >= 500 or not states:
         return None
     absorbing = {i for i, s in enumerate(states) if _key(s) in absorbing_keys}
+    return extract_cycle(states, edges, absorbing)
+
+
+def extract_cycle(states, edges, absorbing):
+    """DFS back-edge on the NON-absorbing subgraph → one cycle [s0, …, s0] (states) or None. Pure graph
+    fn (no model) so terminal_map AND the server's structure path reuse it without re-fetching (#334)."""
     adj = {}
     for (i, j) in edges:
         if i not in absorbing and j not in absorbing:
