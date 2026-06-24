@@ -83,6 +83,13 @@ def main():
         rel = solution_structure(prefix + ".smt2", prefix + ".schema.json").get("relations", [])
         if len(rel) != 2:
             fails.append(f"#337 two-relation: expected 2 relations, got {rel}")
+    # #339: REAL-typed relations — a scaling y=2x surfaces (NOT skipped as pairwise), Z3-verified over Real.
+    with tempfile.TemporaryDirectory() as w:
+        ok, prefix, *_ = _export("claim t\n    0.0 ≤ x ∈ Real ≤ 10.0\n    y ∈ Real\n    z ∈ Real\n"
+                                 "    y = 2.0 * x\n    z = x + y", w)
+        rel = solution_structure(prefix + ".smt2", prefix + ".schema.json").get("relations", [])
+        if "2·x = y" not in rel:
+            fails.append(f"#339 real: '2·x = y' not in {rel}")
 
     if fails:
         print("SOLUTION-STRUCTURE FAILURES:")
@@ -90,8 +97,8 @@ def main():
             print("  ✗", f)
         return 1
     print("✓ solution_structure: sys → backbone {a,b} + free c, coupled → forces x=y, xor → forces "
-          "a≠b, packing → both free; #329/#337 non-pairwise → a+b=c, a=b+3, AND ≥2 co-existing — "
-          "what a claim DETERMINES (Z3)")
+          "a≠b, packing → both free; #329/#337/#339 non-pairwise → a+b=c, a=b+3, ≥2 co-existing, "
+          "real 2x=y — what a claim DETERMINES (Z3)")
     return 0
 
 

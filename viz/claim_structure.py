@@ -36,19 +36,33 @@ def _fmt_relation(coeffs, const, names):
     return f"{lhs} = {rhs or '0'}"
 
 
-def _nonpairwise(body, consts, names):
-    """IMPLIED affine relations among the free INTEGER vars beyond pairwise (a+b=c, a=b+3): sample
-    solutions, take the EXACT rational null space (sympy) of the sampled points — exact so ≥2 co-existing
-    relations stay clean integer vectors (#337) — then VERIFY each candidate via Z3 (body ∧ relation≠const
-    UNSAT) so a sampling coincidence is never reported. Skips pure pairwise (the equalities pass owns a=b).
-    Returns equation strings."""
+def _val(m, c):
+    """A Z3 model value as an exact sympy number — Integer or Rational (#339 reals). None for an
+    algebraic/irrational value (a linear claim never produces one; bail rather than approximate)."""
+    v = m.eval(c, model_completion=True)
+    if z3.is_int_value(v):
+        return sympy.Integer(v.as_long())
+    if z3.is_rational_value(v):
+        return sympy.Rational(v.numerator_as_long(), v.denominator_as_long())
+    return None
+
+
+def _nonpairwise(body, consts, names, is_real):
+    """IMPLIED affine relations among the free numeric vars beyond pairwise (a+b=c, a=b+3, and for reals
+    y=2x): sample solutions, take the EXACT rational null space (sympy) of the sampled points — exact so ≥2
+    co-existing relations stay clean integer vectors (#337) — then VERIFY each candidate via Z3 (body ∧
+    relation≠const UNSAT) so a sampling coincidence is never reported. Handles int + real vars (#339).
+    Skips pure pairwise (the equalities pass owns a=b). Returns equation strings."""
     sol = z3.Solver(); sol.add(body)
     pts = []
     for _ in range(len(names) + 4):
         if sol.check() != z3.sat:
             break
         m = sol.model()
-        pts.append([m.eval(consts[n], model_completion=True).as_long() for n in names])
+        row = [_val(m, consts[n]) for n in names]
+        if any(x is None for x in row):                   # algebraic value — can't do an exact null space
+            break
+        pts.append(row)
         sol.add(z3.Or(*[consts[n] != m.eval(consts[n], model_completion=True) for n in names]))
     if len(pts) < 2:
         return []
@@ -63,11 +77,12 @@ def _nonpairwise(body, consts, names):
             continue
         if next(x for x in ints if x) < 0:                # sign-normalize: leading coeff positive (stable)
             ints = [-x for x in ints]
-        const = int((sympy.Matrix([ints]) * v0.T)[0])
-        if sum(1 for x in ints if x) < 3 and const == 0:  # pure pairwise a=b — equalities handles it
-            continue
+        const = (sympy.Matrix([ints]) * v0.T)[0]          # sympy Integer (int claim) or Rational (real)
+        if sorted(c for c in ints if c) == [-1, 1] and const == 0:  # EXACTLY a=b — equalities pass owns
+            continue                                                # it (but keep scaling y=2x, [2,-1])
         expr = z3.Sum([ints[i] * consts[names[i]] for i in range(len(ints))])
-        s2 = z3.Solver(); s2.add(body); s2.add(expr != const)
+        rhs = z3.RealVal(str(const)) if is_real else int(const)
+        s2 = z3.Solver(); s2.add(body); s2.add(expr != rhs)
         if s2.check() == z3.unsat:
             out.append(_fmt_relation(ints, const, names))
     return out
@@ -109,7 +124,8 @@ def solution_structure(smt2_path, schema_path):
             s2 = z3.Solver(); s2.add(body); s2.add(ci == cj)   # forced DIFFERENT in every solution
             if s2.check() == z3.unsat:
                 ineqs.append((freev[i]["name"], freev[j]["name"]))
-    free_int = [v["name"] for v in freev if v["kind"] == "int"]
-    relations = _nonpairwise(body, consts, free_int) if len(free_int) >= 3 else []
+    free_num = [v["name"] for v in freev if v["kind"] in ("int", "real")]
+    is_real = any(v["kind"] == "real" for v in freev if v["name"] in free_num)
+    relations = _nonpairwise(body, consts, free_num, is_real) if len(free_num) >= 3 else []
     return {"sat": True, "backbone": backbone, "free": free, "equalities": eqs,
             "inequalities": ineqs, "relations": relations}
