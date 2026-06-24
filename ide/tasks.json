@@ -8615,11 +8615,13 @@
       "id": 335,
       "title": "verify-soundness '\u00e2\u0153\u201c cross-checked' is VACUOUS when BOTH checks are None (#332 hardening). _fmtSoundness (app-structure.js:84) computes ok = absorbing_ok !== false && box_ok !== false, so {applicable:true, absorbing_ok:null, box_ok:null} \u00e2\u2020\u2019 '\u00e2\u0153\u201c cross-checked \u00e2\u20ac\u201d the abstract verdict matches a brute-force enumeration' when ZERO cross-checks actually ran (Z3 unknown on absorbing AND box not bounded). A soundness verifier must never claim a match it didn't compute \u00e2\u20ac\u201d this is the exact fabrication the button exists to catch, turned on itself. Latent (I could not trigger both-None on a live discrete <=500-state model \u00e2\u20ac\u201d Z3 decides those; NIA via % doesn't parse), but a real correctness defect. Fix: require at least one of absorbing_ok/box_ok === true for '\u00e2\u0153\u201c', else report 'soundness: inconclusive \u00e2\u20ac\u201d neither cross-check was decidable on this model'. The CI probe (test_fabrication_probe.py:52-59) has the SAME per-model blind spot (both-None \u00e2\u2020\u2019 checked+=1, no fail) \u00e2\u20ac\u201d harden both with the shared invariant.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "worker",
       "created": "2026-06-24T08:00:39Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "analysis"
@@ -8635,6 +8637,12 @@
           "by": "worker",
           "act": "done",
           "note": "soundness_report now returns a verdict; 'sound' requires \u22651 check actually ran AND passed, both-None \u2192 'inconclusive' (not a false-\u2713). Button + CI probe both switch on verdict \u2014 one shared rule. Verified both-None\u2192inconclusive; gated green."
+        },
+        {
+          "at": "2026-06-24T08:51:37Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -8642,11 +8650,13 @@
       "id": 336,
       "title": "Lasso replay of a SELF-LOOP renders two identical scrubber frames (#334 polish). bistable's rest_cycle is [{x:1},{x:1}] \u00e2\u20ac\u201d a genuine forever-dodge witness (sit at x=1 via step=0, sound and matches must_rest semantics), but stepping shows 'step 1/2: x=1' \u00e2\u2020\u2019 'step 2/2: x=1' with no visible motion. Consider labeling a length-1 self-loop distinctly (e.g. 'self-loop: x=1 held forever via step=0') rather than a 2-frame scrub, OR preferring a longer non-trivial cycle (x=1\u00e2\u2020\u2019x=2\u00e2\u2020\u2019x=1) as the witness when one exists, so the replay visibly MOVES. The current witness is correct; this is about the step-through reading as a loop.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "worker",
       "created": "2026-06-24T08:00:39Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "analysis"
@@ -8662,6 +8672,12 @@
           "by": "worker",
           "act": "done",
           "note": "extract_cycle now prefers a non-trivial cycle (two-pass: exclude self-edges first, fall back to self-loops). bistable witness [1,1]\u2192[2,1,2] (oscillates 2\u21941). Genuine reachable non-rest cycle; #333 test holds; gated green."
+        },
+        {
+          "at": "2026-06-24T08:51:37Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     }
