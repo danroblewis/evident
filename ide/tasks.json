@@ -7218,16 +7218,28 @@
       "id": 281,
       "title": "Diagrams: reachable envelope + ensemble for time-based views (time_series, timing_diagram) \u2014 multi-seed overlay + min-max band per tick, not one chain",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "worker",
       "created": "2026-06-23T18:19:04Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "diagram"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-24T03:35:27Z",
+          "by": "worker",
+          "act": "started"
+        },
+        {
+          "at": "2026-06-24T03:35:27Z",
+          "by": "worker",
+          "act": "done",
+          "note": "DONE: time_series is an ENSEMBLE over all initial conditions with a reachable-value envelope band (#289); timing_diagram likewise (test_timing_ensemble.py, green in the gate). Both verified \u2014 captions updated to match this session."
+        }
+      ]
     },
     {
       "id": 282,
@@ -7328,16 +7340,28 @@
       "id": 287,
       "title": "Diagrams: all_conditions should drive the stats/banner/structure too \u2014 when on, the 'N reachable states' banner + fixed-points should reflect the GLOBAL graph (currently the state_graph PNG shows 7 while the banner still reads the from-init 2)",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "worker",
       "created": "2026-06-23T18:40:55Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "diagram"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-24T03:35:27Z",
+          "by": "worker",
+          "act": "started"
+        },
+        {
+          "at": "2026-06-24T03:35:27Z",
+          "by": "worker",
+          "act": "done",
+          "note": "DONE: all_conditions drives the banner stats (test_all_conditions_stats.py, green in the gate) \u2014 when on, the reachable-states stat reflects the all-initial-conditions enumeration, not one run."
+        }
+      ]
     },
     {
       "id": 288,
