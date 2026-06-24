@@ -1136,10 +1136,10 @@
       "id": 35,
       "title": "evident fmt \u2014 a gofmt-style pretty-printer that rewrites a program to an equivalent, idiomatic one",
       "detail": "User request: a 'gofmt for Evident'. Parse \u2192 AST \u2192 pretty-print a SEMANTICALLY EQUIVALENT program that looks better; must be idempotent (fmt\u2218fmt = fmt) and round-trip (re-parses, ./test.sh stays green). Likely a Rust 'evident fmt <file> [--write]' command reusing the parser + a pretty-printer over core/ast.rs (the AST Display is the seed). Target rules (start with the user's, align with docs/evident-purism.md + the idioms in CLAUDE.md):\n (1) Line length \u2014 wrap long lines (~88 cols) sensibly; consistent indentation.\n (2) Vertical spacing / newlines \u2014 group decls vs constraints; blank line between sections.\n (3) Minimize \u2227 \u2014 rewrite 'A \u21d2 (B \u2227 C)' and conjunction chains into the indented implies-block / one-constraint-per-line-at-same-tab-level form (newline = \u2227).\n (4) Prefer \u0394 in fsm models \u2014 rewrite 'var = _var + step' carries into '\u00acis_first_tick \u21d2 \u0394var = step' (honor the gotchas: decl outside the guard; single-line \u21d2, or an indented block grouping deltas).\n (5) Reduce expression duplication \u2014 factor a repeated subexpression into a named chained-membership binding 'name \u2208 T = expr' and reference it.\n (6) Drop type annotations the inference can recover; use chained-membership (e.g. '0 \u2264 x \u2208 Int \u2264 5'); element-iteration ('\u2200 e \u2208 s') over '\u2200 i \u2208 {0..#s-1}' index loops; coindexed/edges over parallel-seq loops; avoid ternary chains; keep 'type main' compact.\nThe purism doc is the authority on 'good Evident'; the formatter should produce purism-CLEAN output. Open question to settle with the user: exact column width, and how aggressive (5) should be.",
-      "status": "in_progress",
+      "status": "worker_done",
       "created_by": "worker",
       "created": "2026-06-21T23:54:08Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 2,
       "tags": [
@@ -1169,6 +1169,17 @@
           "by": "ide-critic-expert",
           "act": "reopened",
           "note": "fmt still refuses on ragged indentation \u2014 the exact input a formatter exists to clean (verified: /tmp/messy.ev and a parseable-but-over-indented sibling both exit 1, file unchanged). The SEVERE half of concern #53 (silent fake-nesting / corruption) IS fixed \u2014 it now refuses cleanly with an honest, well-explained message and never mis-nests. But a layout formatter that cannot re-indent ragged siblings to a uniform column declines its core advertised use; treat as a roadmap item, not done."
+        },
+        {
+          "at": "2026-06-24T21:19:45Z",
+          "by": "worker",
+          "act": "started"
+        },
+        {
+          "at": "2026-06-24T21:19:46Z",
+          "by": "worker",
+          "act": "done",
+          "note": "evident fmt re-indents ragged siblings to a common column instead of refusing/fake-nesting (runtime/src/fmt.rs) \u2014 merged."
         }
       ]
     },
@@ -1497,16 +1508,28 @@
       "id": 56,
       "title": "fmt: re-indent ragged SIBLING lines to a common depth (don't preserve the mistake as fake nesting, don't refuse). The structural intent of an fsm body is 'these decls/guards are siblings'; layout-only fmt should snap them to the same tab stop, not faithfully reproduce an author's inconsistent indentation as a child-block hierarchy. Needs minimal structural awareness (a guard line \u21d2 on its own, a decl line) rather than pure indent-ordering.",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "ide-critic",
       "created": "2026-06-22T00:13:58Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "lang"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-24T21:19:46Z",
+          "by": "worker",
+          "act": "started"
+        },
+        {
+          "at": "2026-06-24T21:19:46Z",
+          "by": "worker",
+          "act": "done",
+          "note": "fmt ragged-sibling reindent (the #35 sibling) \u2014 done in the same fmt.rs change, merged."
+        }
+      ]
     },
     {
       "id": 57,
@@ -1635,16 +1658,28 @@
       "id": 63,
       "title": "Guided first-program walkthrough / 'try this' tutorial: a 3-4 step interactive tour on first load (write a delta, watch the ramp, break it, see the dropped-constraint count) so a newcomer learns claims/fsm/\u0394 end-to-end inside the tool",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "ide-critic-newcomer",
       "created": "2026-06-22T00:25:40Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "learn"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-24T21:19:46Z",
+          "by": "worker",
+          "act": "started"
+        },
+        {
+          "at": "2026-06-24T21:19:46Z",
+          "by": "worker",
+          "act": "done",
+          "note": "Concept-teaching first-run tour (6-step claim\u2192fsm\u2192\u0394\u2192ramp\u2192explainer\u2192Solve) \u2014 app-palette.js TOUR_STEPS, merged."
+        }
+      ]
     },
     {
       "id": 64,
@@ -2603,16 +2638,28 @@
       "id": 102,
       "title": "Guided 'learn the ideas' affordance, not just the symbols \u2014 a short in-tool explainer / walkthrough that teaches what claim / fsm / is_first_tick / \u0394 / a difference-equation MEAN as concepts. The symbol palette (great) tells me how to TYPE \u0394 ('forward difference') but not what a difference equation is or why is_first_tick exists. I opened all the FSM samples and could read the GLYPHS but still couldn't explain to a friend what 'fsm counter' is doing. Wall: I wanted to go from 'I can see it ramps to 5' to 'I understand WHY count = (is_first_tick ? 0 : _count+1) makes it ramp' entirely in-tool, and there's nowhere to learn that. Codecademy/Brilliant teach a concept beside the first example; here the samples assume I already know the model. Idea: a collapsible 'how this works' note per sample, or a one-time 'first program' tour that annotates the counter line-by-line in plain English.",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "ide-critic-newcomer",
       "created": "2026-06-22T01:45:28Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "learn"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-24T21:19:46Z",
+          "by": "worker",
+          "act": "started"
+        },
+        {
+          "at": "2026-06-24T21:19:46Z",
+          "by": "worker",
+          "act": "done",
+          "note": "Per-sample 'how this works' explainer (EXPLAINERS + renderExplainer) teaching the concepts \u2014 merged; addresses concern #250."
+        }
+      ]
     },
     {
       "id": 103,
@@ -4467,16 +4514,28 @@
       "id": 170,
       "title": "Compare two witnesses / two programs side by side. After Solve I wanted to press 'all \u22a8*' and SEE two sudoku boards next to each other to compare solutions, or diff my over-constrained version against the sample. Currently witnesses replace each other. (Known in-progress as compare-witnesses; filing the newcomer provenance.)",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "ide-critic-newcomer",
       "created": "2026-06-22T11:02:33Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "solve"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-24T21:19:46Z",
+          "by": "worker",
+          "act": "started"
+        },
+        {
+          "at": "2026-06-24T21:19:46Z",
+          "by": "worker",
+          "act": "done",
+          "note": "Side-by-side witness compare (app-gallery.js diff table, \u0394-highlighted) \u2014 merged."
+        }
+      ]
     },
     {
       "id": 174,
@@ -6121,16 +6180,28 @@
       "id": 235,
       "title": "Saved-witness gallery for solve-for-X / enumerate. 'all \u22a8*' enumerates, but I can't KEEP witness #1 beside #3 and flip between them, or diff two witnesses (which item changed between two subset-sum solutions). Alloy's instance browser lets me page + bookmark instances; here each new solve replaces the board.",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "ide-critic",
       "created": "2026-06-22T19:14:31Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "solve"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-24T21:19:46Z",
+          "by": "worker",
+          "act": "started"
+        },
+        {
+          "at": "2026-06-24T21:19:46Z",
+          "by": "worker",
+          "act": "done",
+          "note": "Saved-witness gallery (page/bookmark/flip enumerated witnesses) \u2014 app-gallery.js, merged."
+        }
+      ]
     },
     {
       "id": 236,
@@ -7913,16 +7984,28 @@
       "id": 296,
       "title": "Maze-solving example: walls + solving player both visible in solution_space + occupancy_heatmap",
       "detail": "Add a maze-solving example (FSM or claim): a player navigates a wall-bounded maze from start to goal, moving only to open adjacent cells (not through walls). Both the static MAZE WALLS and the dynamic SOLVING PLAYER (its path / dwell positions) must be VISIBLE TOGETHER in the solution_space AND the occupancy_heatmap. COMPLETION CRITERIA: (1) example loads + analyzes, 0 dropped constraints; (2) solution_space draws the maze walls (the static structure) WITH the player's feasible positions/path overlaid + distinguishable; (3) occupancy_heatmap shows where the player dwells over the wall layout; (4) it's a genuine maze \u2014 a wall grid + start + goal + open-cell move constraints; (5) added to app-data.js SAMPLES + render_smoke + headlineView; ./test.sh green. LIKELY needs a renderer change to draw a static-wall background under the dynamic player overlay \u2014 call that out if so.",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "worker",
       "created": "2026-06-23T20:24:26Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "example"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-24T21:19:45Z",
+          "by": "worker",
+          "act": "started"
+        },
+        {
+          "at": "2026-06-24T21:19:45Z",
+          "by": "worker",
+          "act": "done",
+          "note": "Maze-solving example (examples/test_27_maze.ev) \u2014 walls + solver-found path, EXPECTATIONS row, merged."
+        }
+      ]
     },
     {
       "id": 297,
@@ -8617,7 +8700,7 @@
       "id": 321,
       "title": "Convert remaining samples' 'is_first_tick \u21d2 (seed)' to the := initial-value form (~22 samples)",
       "detail": "After #297 (random_walk) the := syntax (#295) is shipped + showcased, but ~22 app-data.js samples + some examples/*.ev still use the verbose 'is_first_tick \u21d2 (x=0 \u2227 y=0)' seed the user called 'awful and weird'. Convert each to per-var ':= value' (split multi-var conjunctions across declarations; handle enum/Real; verify Seq seeds like cells=\u27e8\u2026\u27e9 work or skip). SOUNDNESS like #298: verify each sample analyzes IDENTICALLY before/after (same reachable set, 0 dropped) \u2014 keep the is_first_tick line for any seed := can't express. Bump app-data cache-bust; ./test.sh green. Good candidate to DELEGATE when the user is back on sample/aesthetic work.",
-      "status": "in_progress",
+      "status": "worker_done",
       "created_by": "worker",
       "created": "2026-06-24T01:52:38Z",
       "worker_done": true,
@@ -8637,6 +8720,17 @@
           "at": "2026-06-24T19:42:03Z",
           "by": "worker",
           "act": "started"
+        },
+        {
+          "at": "2026-06-24T21:19:46Z",
+          "by": "worker",
+          "act": "started"
+        },
+        {
+          "at": "2026-06-24T21:19:46Z",
+          "by": "worker",
+          "act": "done",
+          "note": "Samples/examples refactored to := (every is_first_tick seed eliminated except record/two-tick cases) + the sample parse-gate \u2014 merged, 31/31 parse, demos green."
         }
       ]
     },
@@ -9379,16 +9473,28 @@
       "id": 348,
       "title": "When a relation is forced partly by INEQUALITIES (e.g. a<=4 \u2227 a>=4 \u21d2 a=4, verified live: combo=None, core=['a<=4','a>=4']), #345 correctly suppresses the equality-only combo \u2014 but the honest derivation here is a Farkas certificate WITH non-negative multipliers on the inequalities (Motzkin transposition / the LP-duality certificate). Show 'a\u22644 and a\u22654 together pin a=4' as a real derivation, not just the bare core list. This is the bound-forced subset that 'derived as' currently can't explain.",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "ide-critic-expert",
       "created": "2026-06-24T13:36:05Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "analysis"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-24T21:19:45Z",
+          "by": "worker",
+          "act": "started"
+        },
+        {
+          "at": "2026-06-24T21:19:45Z",
+          "by": "worker",
+          "act": "done",
+          "note": "Farkas/Motzkin certificate for inequality-forced relations (viz/farkas.py) \u2014 merged to main 91e52366, gate-green."
+        }
+      ]
     },
     {
       "id": 349,
@@ -9429,16 +9535,28 @@
       "id": 350,
       "title": "Farkas combo: surface MORE fractional-\u03bb relations, not just integer-\u03bb nullspace basis vectors. The fractional-\u03bb derivation path (#347) is sound and renders exactly (verified live: 3\u00b7a=2\u00b7b \u2192 3/2\u00b7(2a==b+c) \u2212 1/2\u00b7(b==3c)), but it only fires for relations whose displayed integer coefficient vector happens to require dividing a core constraint. For many real claims (e.g. 2x=y \u2227 2z=y) the tool surfaces only the integer-\u03bb pairwise-scaled relation (2\u00b7x=y) and never displays the genuinely 3-var relation (x+z=y) whose \u03bb would be fractional \u2014 sympy .nullspace() returns sparse single-constraint-forced basis vectors with \u03bb=1. Consider surfacing a richer relation basis (or all minimal relations) so the most interesting fractional derivations are reachable through ordinary modeling, not only hand-crafted coupled systems.",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "ide-critic-expert",
       "created": "2026-06-24T14:27:42Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "analysis"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-24T21:19:45Z",
+          "by": "worker",
+          "act": "started"
+        },
+        {
+          "at": "2026-06-24T21:19:45Z",
+          "by": "worker",
+          "act": "done",
+          "note": "Richer relation basis (lattice short-vectors beyond the sparse nullspace) \u2014 viz/farkas.py, merged, gate-green."
+        }
+      ]
     },
     {
       "id": 351,
@@ -9466,10 +9584,10 @@
       "id": 352,
       "title": "Bound detector: prove the REACHABLE bound via k-induction candidate-box SEARCH, not just one-step-image proven_range. Root cause of #324 (corrected by empirical test): on the no-declared-bound counter, proven_range(count)=None because the one-step image is unbounded below (unconstrained _count\u2192-\u221e \u21d2 count\u2192-\u221e), yet the reachable set is [0,5]. BOTH reachable_region.bounding_box AND full_state_graph get None \u2192 indeterminate/single-seed \u2014 so #324's premise (reachable_region proves [0,5] while tree says unbounded) does NOT reproduce on this counter (Ana's reachable-region screenshot was bistable, not counter). The real fix: try the init-seeded reachable extent as a candidate box and verify it inductively (base: init\u2208box; step: box\u21d2next\u2208box), instead of using one-step-image proven_range as the only candidate. SOUNDNESS-SENSITIVE \u2014 a wrong box = unsound enumeration; gate with the fabrication-probe. Affects reachable_region + model_global (shared candidate source).",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "worker",
       "created": "2026-06-24T15:08:08Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
@@ -9480,6 +9598,17 @@
           "at": "2026-06-24T15:08:08Z",
           "by": "worker",
           "act": "created to address concern #324"
+        },
+        {
+          "at": "2026-06-24T21:19:46Z",
+          "by": "worker",
+          "act": "started"
+        },
+        {
+          "at": "2026-06-24T21:19:46Z",
+          "by": "worker",
+          "act": "done",
+          "note": "Candidate-box k-induction bound search (reachable_region falls back to solved_bounds when proven_range is None) \u2014 sound, fabrication-probe clean, merged."
         }
       ],
       "addresses_concern": 324
