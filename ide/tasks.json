@@ -8642,16 +8642,28 @@
       "id": 336,
       "title": "Lasso replay of a SELF-LOOP renders two identical scrubber frames (#334 polish). bistable's rest_cycle is [{x:1},{x:1}] \u00e2\u20ac\u201d a genuine forever-dodge witness (sit at x=1 via step=0, sound and matches must_rest semantics), but stepping shows 'step 1/2: x=1' \u00e2\u2020\u2019 'step 2/2: x=1' with no visible motion. Consider labeling a length-1 self-loop distinctly (e.g. 'self-loop: x=1 held forever via step=0') rather than a 2-frame scrub, OR preferring a longer non-trivial cycle (x=1\u00e2\u2020\u2019x=2\u00e2\u2020\u2019x=1) as the witness when one exists, so the replay visibly MOVES. The current witness is correct; this is about the step-through reading as a loop.",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "worker",
       "created": "2026-06-24T08:00:39Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "analysis"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-24T08:24:29Z",
+          "by": "worker",
+          "act": "started"
+        },
+        {
+          "at": "2026-06-24T08:24:29Z",
+          "by": "worker",
+          "act": "done",
+          "note": "extract_cycle now prefers a non-trivial cycle (two-pass: exclude self-edges first, fall back to self-loops). bistable witness [1,1]\u2192[2,1,2] (oscillates 2\u21941). Genuine reachable non-rest cycle; #333 test holds; gated green."
+        }
+      ]
     }
   ],
   "concerns": [
