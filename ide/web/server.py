@@ -17,7 +17,6 @@ and `config` (shared paths + the serialization lock).
 Run:  python3 -m uvicorn ide.web.server:app --host 0.0.0.0 --port 5173
 (or:  python3 ide/web/server.py)
 """
-import base64
 import os
 import re
 import sys
@@ -38,18 +37,11 @@ from fastapi.staticfiles import StaticFiles  # noqa: E402
 from pydantic import BaseModel  # noqa: E402
 
 from analysis import (  # noqa: E402
-    _analyze_banner, _dropped_locs, _error_loc, _model_diff, _reachable_stats,
-    _recommend)
+    _dropped_locs, _dynamics_response, _error_loc, _model_diff)
 from render import (  # noqa: E402
-    RENDERERS, VIEWS, _function_response, _maybe_claim, _render_png, _render_svg)
+    RENDERERS, VIEWS, _maybe_claim, _render_svg)
 from functionize import function_diff  # noqa: E402
 from runtime_io import _export, _run_query  # noqa: E402
-
-# The functionizer family renders from the CHEAP decomposition (extract/guard_analysis/summary, all
-# <100ms) and needs NO reachable-set solve — so these views get a fast path that skips the dynamics
-# bundle entirely. Without it, opening a function tab on a nonlinear-Real sample waits out the whole
-# (now timeout-bounded, but still slow) dynamics solve for nothing (Ana #301).
-FUNCTION_VIEWS = {v for v in VIEWS if v.startswith("function_")}
 from solve import _all_unsat_cores, _enumerate, _unsat_core  # noqa: E402
 from symmetry import fold_witnesses  # noqa: E402
 from optimize import _optimize  # noqa: E402
@@ -88,63 +80,7 @@ def analyze(req: Source):
         if claim_resp is not None:
             return claim_resp
         try:
-            m = load_model(prefix + ".smt2", prefix + ".schema.json")
-            if req.view in FUNCTION_VIEWS:                 # fast path: no dynamics solve (#301)
-                return _function_response(m, req.view, prefix, dropped, req.source, msg)
-            scope = effective_scope(req)
-            # all_conditions on the state_graph view ⇒ the stats/banner summarize the same GLOBAL
-            # graph the PNG draws (full_state_graph), not the from-init orbit (#316 follow-up).
-            global_dynamics = bool(req.all_conditions) and req.view == "state_graph"
-            (states, edges, n_states, n_edges, max_branch, capped, recurrent) = \
-                _reachable_stats(m, scope, all_conditions=global_dynamics)
-            try:
-                structure = m.solution_structure(states=states, edges=edges)
-            except Exception as _e:
-                print(f"[server] structure failed: {type(_e).__name__}: {_e}", file=sys.stderr)
-                structure = None
-            if dropped:
-                structure = None        # a BROKEN model has no trustworthy verdict — don't show a
-                                        # green "Terminates" card under the red "under-constrained"
-                                        # banner (Marek #94). The dropped-constraint surface stands.
-            discrete = m.is_discrete()
-            view = req.view if (req.view in VIEWS) else _recommend(m, n_states, max_branch, discrete, VIEWS)
-            # Resilient render: a single buggy renderer must never sink the whole analysis.
-            # Try the chosen view, then fall back to dependable ones; report what rendered.
-            png, points = b"", []
-            for cand in [view, "state_graph", "time_series"]:
-                if cand in RENDERERS:
-                    try:
-                        png, points = _render_png(cand, prefix, all_conditions=req.all_conditions)
-                        view = cand
-                        break
-                    except Exception as _re:
-                        print(f"[server] render {cand} failed: {type(_re).__name__}: {_re}",
-                              file=sys.stderr)
-            return {
-                "ok": True,
-                "banner": _analyze_banner(m, dropped, max_branch, recurrent,
-                                          states, n_states, global_dynamics),
-                "structure": structure,
-                "dropped": dropped,
-                "branching": max_branch,
-                "states": n_states,
-                "edges": n_edges,
-                "capped": capped,
-                "scope": scope, "scope_default": REACH_LIMIT,   # the scope knob's effective + default bound
-                # has-a-Real-var → continuous, not exhaustively enumerable; never "✓ complete" (Marek #274).
-                "continuous": any(v.get("kind") == "real" for v in m.carried),
-                "vars": [v["name"].split(".")[-1] for v in m.interface_vars]
-                        + [v["name"].split(".")[-1] for v in getattr(m, "derived", [])],
-                "view": view,
-                "views": VIEWS,
-                "all_conditions": bool(req.all_conditions) and view == "state_graph",  # global dynamics vs from-init (diagram #1)
-                "png": base64.b64encode(png).decode() if png else None,
-                "points": points,        # interactive hover overlay (solution_space); [] otherwise
-                "warnings": msg if dropped else "",
-                # source lines of each dropped constraint (token-overlap heuristic), so the
-                # editor can tint the line where the silent bug was WRITTEN — the product's point.
-                "dropped_locs": _dropped_locs(req.source, msg) if dropped else [],
-            }
+            return _dynamics_response(req, prefix, dropped, msg)
         except Exception as e:
             return {"ok": False, "error": f"analysis failed: {e}", "dropped": dropped}
 

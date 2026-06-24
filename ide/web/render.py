@@ -83,6 +83,12 @@ for _v in ALL_VIEWS:
 
 VIEWS = [v for v in ALL_VIEWS if v in RENDERERS]
 
+# The functionizer family renders from the CHEAP decomposition (extract/guard_analysis/summary, all
+# <100ms) and needs NO reachable-set solve — so these views get a fast path that skips the dynamics
+# bundle entirely. Without it, opening a function tab on a nonlinear-Real sample waits out the whole
+# (now timeout-bounded, but still slow) dynamics solve for nothing (Ana #301).
+FUNCTION_VIEWS = {v for v in VIEWS if v.startswith("function_")}
+
 
 @contextlib.contextmanager
 def _all_conditions(view, on):
