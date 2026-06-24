@@ -252,31 +252,55 @@
       "id": 8,
       "title": "Resizable / pop-out panes",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "worker",
       "created": "2026-06-21T23:18:36Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "editor"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-24T17:33:49Z",
+          "by": "worker",
+          "act": "started"
+        },
+        {
+          "at": "2026-06-24T17:33:50Z",
+          "by": "worker",
+          "act": "done",
+          "note": "STALE-DONE: resizable panes \u2014 index.html splitter + app-panzoom.js drag-resize-with-persistence."
+        }
+      ]
     },
     {
       "id": 9,
       "title": "Guided first-run / tutorial walkthrough",
       "detail": "Cold open gives no onboarding; a 4-step coachmark would turn it into a win.",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "worker",
       "created": "2026-06-21T23:18:36Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "learn"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-24T17:33:49Z",
+          "by": "worker",
+          "act": "started"
+        },
+        {
+          "at": "2026-06-24T17:33:50Z",
+          "by": "worker",
+          "act": "done",
+          "note": "STALE-DONE: first-run tour \u2014 app-palette.js TOUR_STEPS (5 coachmarks, localStorage first-visit flag), button in index.html."
+        }
+      ]
     },
     {
       "id": 10,
@@ -4252,16 +4276,28 @@
       "id": 165,
       "title": "Per-sample 'what am I looking at / why it matters' caption. Each sample's docstring lives in the EDITOR as a comment, but the right-hand diagram has no plain-language 'this sample teaches X; the picture shows Y' note tied to the view. The vending/oscillator/sum_pair diagrams are gorgeous but a newcomer needs one sentence per view connecting picture\u2192concept ('this spiral = the orbit converging; that's why it's a fixed point'). Put it under the diagram title.",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "ide-critic-newcomer",
       "created": "2026-06-22T11:02:33Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "learn"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-24T17:33:49Z",
+          "by": "worker",
+          "act": "started"
+        },
+        {
+          "at": "2026-06-24T17:33:50Z",
+          "by": "worker",
+          "act": "done",
+          "note": "STALE-DONE: VIEW_CAPTIONS (app-symbols.js:137-190, 22 views) rendered under each diagram title."
+        }
+      ]
     },
     {
       "id": 166,
@@ -5500,16 +5536,28 @@
       "id": 219,
       "title": "Split viz/evident_viz.py (1231 lines, one Model class with ~50 methods) along its two concerns: a solver/reachability core (Model.__init__, _successors_two, _reachable_two, successor(s), trajectory, reachable, check_invariant, check_temporal, _trace_to, _predicate) vs a structure/analysis layer (solved_bounds, solution_structure, _rank_and_dedup, independence(_structural), var_class, numeric/categorical_vars, assign_channels, facet_var). Extract the analysis layer to viz/model_analysis.py as free functions taking the model (or a thin mixin), leaving Model as the reachability core. Behavior-preserving; prove with ./test.sh --examples (the viz renderers consume these). Drops the worst file-too-long offender.",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "ide-architect",
       "created": "2026-06-22T15:34:28Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "refactor"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-24T17:33:49Z",
+          "by": "worker",
+          "act": "started"
+        },
+        {
+          "at": "2026-06-24T17:33:50Z",
+          "by": "worker",
+          "act": "done",
+          "note": "STALE-DONE (audit-verified): evident_viz.py split to 454 lines + model_analysis.py AnalysisMixin (485). Model god-class split landed."
+        }
+      ]
     },
     {
       "id": 220,
@@ -7310,16 +7358,28 @@
       "id": 282,
       "title": "Diagrams: continuous state-space GRID sweep for Real-valued programs (basin_map/cobweb/morse_graph/occupancy_heatmap) \u2014 grid + iterate each cell instead of the N/A card",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "worker",
       "created": "2026-06-23T18:19:04Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "diagram"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-24T17:33:49Z",
+          "by": "worker",
+          "act": "started"
+        },
+        {
+          "at": "2026-06-24T17:33:50Z",
+          "by": "worker",
+          "act": "done",
+          "note": "STALE-DONE: Real-valued grid sweep \u2014 basin_numeric.py grid _explore/_panel_basins; render_basin_map dispatches Real\u2192numeric basins; no N/A for continuous."
+        }
+      ]
     },
     {
       "id": 283,
@@ -7949,16 +8009,28 @@
       "id": 303,
       "title": "Diff two reachable sets / two models (relational diff): change a constraint and see which states/transitions APPEARED vs VANISHED \u2014 the Alloy/TLA+ 'what did my edit do' move. Pin captures one render; I want a structural set-diff of the global state graph across an edit, not just two side-by-side pictures.",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "ide-critic-expert",
       "created": "2026-06-23T20:42:39Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "analysis"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-24T17:27:51Z",
+          "by": "worker",
+          "act": "started"
+        },
+        {
+          "at": "2026-06-24T17:27:51Z",
+          "by": "worker",
+          "act": "done",
+          "note": "ALREADY IMPLEMENTED (the #223 model-diff): /api/diff endpoint + frontend \u21c4 Model-diff button/palette/runDiff render appeared-vs-vanished states+transitions across an edit. Stale-open duplicate; verified live."
+        }
+      ]
     },
     {
       "id": 304,
