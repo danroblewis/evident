@@ -19,8 +19,7 @@ sys.path.insert(0, "viz")
 
 from runtime_io import _export                          # noqa: E402
 from evident_viz import load as load_model              # noqa: E402
-from terminal_states import absorbing_states            # noqa: E402
-from reachable_region import bounding_box               # noqa: E402
+from soundness_check import soundness_report            # noqa: E402
 
 MODELS = [
     ("terminating counter", "fsm c\n    0 ≤ count ∈ Int ≤ 5 := 0\n"
@@ -41,40 +40,6 @@ MODELS = [
 ]
 
 
-def _key(s):
-    return tuple(sorted((k.split(".")[-1], v) for k, v in s.items()))
-
-
-def _brute_absorbing(m):
-    """Absorbing set + reachable set + capped flag from the EXPLORED graph: a state is absorbing iff
-    its out-edges are exactly the single self-edge (it can stay AND has no other exit). `capped` means
-    the BFS hit its limit, so the reachable set is incomplete and the cross-check can't be trusted."""
-    states, edges = m.reachable(limit=500)
-    out = {}
-    for (i, j) in edges:
-        out.setdefault(i, set()).add(j)
-    absorbing = {_key(states[i]) for i, js in out.items() if js == {i}}
-    return absorbing, {_key(s) for s in states}, len(states) >= 500
-
-
-def _box_violations(m):
-    """reachable_region soundness: a k-induction box claimed BOUNDED must CONTAIN every reachable
-    state (it is an over-approximation). A reachable state outside the proven box = an unsound box."""
-    r = bounding_box(m)
-    if r["verdict"] != "bounded":
-        return []
-    states, _ = m.reachable(limit=500)
-    if len(states) >= 500:
-        return []                                          # reachable incomplete — can't cross-check
-    bad = []
-    for s in states:
-        for v, (lo, hi) in r["box"].items():
-            val = s.get(v)
-            if val is not None and not (lo <= val <= hi):
-                bad.append((v, val, (lo, hi)))
-    return bad
-
-
 def main():
     fails, checked = [], 0
     for name, src in MODELS:
@@ -84,22 +49,13 @@ def main():
                 fails.append(f"{name}: export failed: {msg.splitlines()[0][:60]}")
                 continue
             m = load_model(prefix + ".smt2", prefix + ".schema.json")
-            if any(v.get("kind") == "real" for v in m.carried):
-                continue                                  # real-valued — not exactly enumerable
-            for (v, val, rng) in _box_violations(m):      # reachable_region: brute-reachable ⊆ proven box
-                fails.append(f"{name}: reachable {v}={val} OUTSIDE the proven box {rng}")
-            abs_states, decided = absorbing_states(m)
-            if not decided:
-                continue                                  # Z3 unknown — nothing to cross-check
-            brute, reachable, capped = _brute_absorbing(m)
-            if capped:
-                continue                                  # reachable BFS hit the cap — brute incomplete
-            abstract = {_key(s) for s in abs_states}
-            # Compare on the reachable domain: the abstract query may also surface UNREACHABLE
-            # absorbing states, which the explored graph can't see.
-            if (abstract & reachable) != brute:
-                fails.append(f"{name}: abstract∩reachable={sorted(abstract & reachable)} "
-                             f"!= brute-force={sorted(brute)}")
+            r = soundness_report(m)
+            if not r["applicable"]:
+                continue                                  # real-valued / capped — not exactly enumerable
+            if r["absorbing_ok"] is False:
+                fails.append(f"{name}: ABSORBING fabrication — {r['detail']}")
+            if r["box_ok"] is False:
+                fails.append(f"{name}: BOX unsound — {r['detail']}")
             checked += 1
     if checked == 0:
         fails.append("probe checked 0 models — the enumerable gate is too strict (a vacuous pass)")
@@ -108,9 +64,9 @@ def main():
         for f in fails:
             print("  ✗", f)
         return 1
-    print(f"✓ fabrication_probe (#330): on {checked} bounded-discrete FSMs (det + nondeterministic) the "
-          f"abstract Z3 absorbing-set == brute-force reachable graph AND every k-induction reachable box "
-          f"CONTAINS its reachable states — no fabrication in either abstract dynamical view")
+    print(f"✓ fabrication_probe (#330): soundness_check.soundness_report finds NO fabrication on {checked} "
+          f"bounded-discrete FSMs (abstract Z3 absorbing-set == brute graph, k-induction box ⊇ reachable) "
+          f"— the SAME cross-check the on-demand 'verify soundness' button runs (#332)")
     return 0
 
 
