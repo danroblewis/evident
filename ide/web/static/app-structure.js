@@ -53,6 +53,15 @@ function renderStructure(s) {
       + "(Optimize over the unrolled transition), not the min/max of one run.";
     html += `<span class="struct-bounds" title="${bhelp}">⊏ boundary${s.capped ? " (≥, capped)" : ""}: ${bstr}</span>`;
   }
+  // #338: the pairwise forced-equal / forced-different decomposition as interrogable text beside the
+  // chart (not just baked into the PNG); the relations panel below adds the affine implied ones.
+  const _sn = (n) => String(n).split(".").pop();
+  if (s.equalities && s.equalities.length) {
+    html += `<span class="struct-relations" title="variables forced EQUAL in every solution (claim ∧ a≠b is UNSAT)">= forced equal: ${s.equalities.map(([a, b]) => `${_sn(a)}=${_sn(b)}`).join(", ")}</span>`;
+  }
+  if (s.inequalities && s.inequalities.length) {
+    html += `<span class="struct-relations" title="variables forced DIFFERENT in every solution (claim ∧ a=b is UNSAT)">≠ forced different: ${s.inequalities.map(([a, b]) => `${_sn(a)}≠${_sn(b)}`).join(", ")}</span>`;
+  }
   // #341: implied relations are CLICKABLE — each reveals its unsat-core PROOF (which claim constraints
   // force it, "the claim ∧ ¬relation is UNSAT"). Ana's interrogability ask — don't just trust green text.
   if (s.relations && s.relations.length) {
