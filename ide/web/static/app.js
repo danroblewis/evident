@@ -89,6 +89,7 @@ let currentSlotName = null;   // the active saved-slot name; overrides the deriv
 let scopeBound = null;        // the scope knob's value (#21/#84); null ⇒ server default (REACH_LIMIT)
 let kDepth = null;            // #327: reachable_region k-induction depth; null ⇒ k=1 (the one-step box)
 let allConditions = false;    // state_graph: GLOBAL dynamics (every initial condition) vs from-init (diagram #1)
+let _loadV = 0;               // #359: load-version token — a debounced analyze checks it so a stale buffer can't clobber a newer load
 
 // Push a snapshot onto a newest-first ring buffer, capping length. Pure (returns the
 // array) so it's unit-testable headless; mutates in place for the module array.
@@ -334,7 +335,8 @@ async function run(view) {
 function scheduleAnalyze() {
   try { localStorage.setItem("evident-buffer", editor.getValue()); } catch (e) {}
   renderExplainer(editor.getValue());   // #361: hide/update the explainer INSTANTLY on edit, not 350ms later
-  clearTimeout(timer); timer = setTimeout(() => run(), 350);
+  const v = _loadV;                      // #359: skip this run if a newer program loaded before the debounce fired
+  clearTimeout(timer); timer = setTimeout(() => { if (v === _loadV) run(); }, 350);
 }
 
 // --- solve/query: run a claim → SAT witness or UNSAT; pin vars for solve-for-X --------

@@ -138,6 +138,7 @@ function refreshSamplesMenu() {
 // across (pin, solve board, verify assertion + result, scrubber). Shared by samples,
 // slots, and the shared-link loader.
 function loadProgram(source, slotName, view) {
+  _loadV++;                        // #359: bump the load token so any in-flight debounced analyze skips
   currentSlotName = slotName || null;
   editor.setValue(source, -1);
   $("#solve-given").value = "";   // a fresh program must not inherit the last pin…
