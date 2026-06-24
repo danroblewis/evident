@@ -77,6 +77,10 @@ def _check_relations(fails):
         # #345: the DERIVED relation's Farkas combo derives it as a linear combination of BOTH constraints.
         elif not (forced[0].get("combo") and "a + b" in forced[0]["combo"] and "b + c" in forced[0]["combo"]):
             fails.append(f"#345: derived combo should cite both constraints, got {forced[0].get('combo')}")
+        # #344: the core is provably MINIMAL — exactly the 2 forcing equalities, NO redundant bound (the
+        # claim has 0≤a≤10 etc., but they don't force the relation, so the deletion pass drops them).
+        if forced and (len(forced[0]["core"]) != 2 or any("<=" in cc for cc in forced[0]["core"])):
+            fails.append(f"#344: core should be minimal (2 equalities, no bound), got {forced[0]['core']}")
 
 
 def main():

@@ -60,7 +60,8 @@ def conjuncts(e):
 def _verify_core(body, relation_expr, rhs):
     """Verify the relation holds (body ∧ relation≠rhs UNSAT) AND extract the unsat core — the minimal claim
     constraints that FORCE the relation (#341, the interrogable proof). assert_and_track each body conjunct
-    + the negated relation; the core's tracked constraints are the forcing ones. None if not UNSAT."""
+    + the negated relation; the core's tracked constraints are the forcing ones, made PROVABLY MINIMAL by
+    a deletion pass (#344). None if not UNSAT."""
     s = z3.Solver()
     tracked = {}
     for k, c in enumerate(conjuncts(body)):
@@ -70,7 +71,20 @@ def _verify_core(body, relation_expr, rhs):
     s.assert_and_track(relation_expr != rhs, pn)
     if s.check() != z3.unsat:
         return None
-    return [str(tracked[p.get_id()]) for p in s.unsat_core() if tracked.get(p.get_id()) is not None]
+    core = [tracked[p.get_id()] for p in s.unsat_core() if tracked.get(p.get_id()) is not None]
+    # #344: Z3's unsat_core() returns *an* unsat core, not necessarily MINIMAL. Make it provably minimal by
+    # DELETION — drop each constraint and keep it only if the relation is still forced without it. So every
+    # constraint the proof cites is load-bearing (matching Z3's own minimize-on-cores idiom).
+    i = 0
+    while i < len(core):
+        s2 = z3.Solver(); s2.add(relation_expr != rhs)
+        for c in core[:i] + core[i + 1:]:
+            s2.add(c)
+        if s2.check() == z3.unsat:
+            del core[i]                                    # constraint i was redundant — drop it
+        else:
+            i += 1
+    return [str(c) for c in core]
 
 
 def _coef_vec(constraint, consts, names, is_real):
