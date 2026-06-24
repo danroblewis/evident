@@ -1,5 +1,5 @@
 {
-  "seq": 358,
+  "seq": 359,
   "tasks": [
     {
       "id": 1,
@@ -7569,7 +7569,9 @@
       "created_by": "worker",
       "created": "2026-06-23T18:19:04Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic"
+      ],
       "reopened": 0,
       "tags": [
         "diagram"
@@ -7585,6 +7587,12 @@
           "by": "worker",
           "act": "done",
           "note": "STALE-DONE: function-view honesty addressed across all 4 parts \u2014 real guard decision-trees (render_function_guards, not 'piecewise\u00b7N branches'); INCOMPLETE/OVERLAP verdicts are Z3-DECIDED with gap/overlap witnesses (functionize.py:231-264, sound not heuristic \u2014 the original 'false verdict' complaint predates this); %-metric (functionize.py:187); label-clipping via bbox_inches='tight' (all function renderers). A critic should confirm no false verdict live if doubted."
+        },
+        {
+          "at": "2026-06-24T18:56:13Z",
+          "by": "ide-critic",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -8526,7 +8534,9 @@
       "created_by": "worker",
       "created": "2026-06-23T23:52:33Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic"
+      ],
       "reopened": 1,
       "tags": [
         "diagram"
@@ -8559,6 +8569,12 @@
           "by": "worker",
           "act": "done",
           "note": "Now LIVE via #356 (Marek reopened pre-restart): a claim exposes 4 tabs (claim_space, solution_structure, scatter_matrix, parallel_coords); parallel_coords/scatter render the witness cloud. Restart-verified: views=[...4...], png True."
+        },
+        {
+          "at": "2026-06-24T18:52:44Z",
+          "by": "ide-critic",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -8651,11 +8667,13 @@
       "id": 327,
       "title": "Make reachable_region's k-induction depth a first-class control (k=1,2,3\u2026) like Alloy scope: when a box is NOT proven 1-inductive, let me raise k from the UI and watch the box tighten / the invariant close, and report 'proven at k=N' vs 'indeterminate up to k=N'. Right now k=1 is hardcoded and INDETERMINATE is terminal with no knob to push.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-expert",
       "created": "2026-06-24T03:52:03Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "analysis"
@@ -8671,6 +8689,12 @@
           "by": "worker",
           "act": "done",
           "note": "k-induction depth knob on reachable_region: k_induction_box(m,k) reuses solved_bounds(k); [\u2212 k=N +] stepper deepens the unrolling. VISUALLY VERIFIED: saturating counter \u2192 solid green [0,5] 'PROVEN CLOSED at k=8'; unbounded \u2192 hatched amber [0,16] 'NOT yet closed; raise k or unbounded'. Rigor badge k-aware (proven iff closed). Gated green, test_k_induction pins it."
+        },
+        {
+          "at": "2026-06-24T18:59:33Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": "VERIFIED end-to-end (live API + cold z3 + direct PNG renders). SOUNDNESS: closed iff k_induction_box has not open_vars AND all(inductive); _inductive is a real closed-under-T UNSAT proof (prev\u2208box \u2227 T \u2227 \u00acfirst \u2227 some-var-escapes \u2192 unsat), so 'PROVEN CLOSED' is genuine k-induction (init\u2208box + box inductive \u27f9 contains all reachable), NOT just k-step extent. HONESTY: unbounded counter stays sampled at EVERY k 1..64 \u2014 box grows monotonically [0,2]\u2192[0,128], assert-not-closed never trips. Saturating: hatched-amber [0,4] at k=2 \u2192 solid-green 'PROVEN CLOSED [0,5]' at k\u22654; rigor badge flips proven\u2194sampled with closed. UI: [\u2212 k=N +] stepper present on reachable_region only, floor k=1, cap k=64. test_k_induction green. No false-proven at any depth."
         }
       ]
     },
@@ -9172,7 +9196,9 @@
       "created_by": "ide-architect",
       "created": "2026-06-24T11:45:23Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic"
+      ],
       "reopened": 0,
       "tags": [
         "refactor"
@@ -9188,6 +9214,12 @@
           "by": "worker",
           "act": "done",
           "note": "Dijkstra split server.py routing into figure_router + solve_router APIRouters (12\u21922 module-level fns); all 11 endpoints curl-verified live (200, or 422-validation for a wrong body \u2014 none 404/500); OpenAPI same paths. Restart-verified."
+        },
+        {
+          "at": "2026-06-24T19:00:34Z",
+          "by": "ide-critic",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -9400,16 +9432,23 @@
       "id": 351,
       "title": "Inequality-forced relation: show the FARKAS combo with non-negative multipliers (the real Farkas lemma for inequalities), not just the bare core list. Verified live (2\u00b7a=c forced by c==a+b \u2227 a-b\u22640 \u2227 b-a\u22640): the tool correctly falls back to 'forced by: <core>' and never fabricates an equality combo \u2014 sound. But Z3's produce-proofs DOES give a Farkas certificate for inequality-forced facts (\u03bb\u22650 over the half-spaces). The bare core is honest but less interrogable than the equality case; surfacing the signed/non-negative inequality combo would close the gap with what Z3's farkas-lemma proof rule emits.",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "ide-critic-expert",
       "created": "2026-06-24T14:27:42Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "analysis"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-24T19:02:24Z",
+          "by": "worker",
+          "act": "done",
+          "note": "DUPLICATE of #348 \u2014 both ask for the Farkas/Motzkin certificate (non-negative multipliers) for inequality-forced relations. Folded into #348's build."
+        }
+      ]
     },
     {
       "id": 352,
@@ -9452,11 +9491,13 @@
       "id": 356,
       "title": "Expose the claim witness-cloud renderers (parallel_coords \u22653 numeric vars; scatter_matrix >2 vars) as real selectable tabs for a claim, not just claim_space. The renderers already work (render_parallel_coords/_claim_setup verified at 600 witnesses/0 violations, test_parallel_claim green) but ide/web/render.py _maybe_claim CLAIM_VIEWS hardcodes ['claim_space','solution_structure'] and redirects every other view to claim_space, so the #284 capability is unreachable from the UI. Add the named tabs + route them to the witness renderers; keep the honest N/A on UNSAT.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-expert",
       "created": "2026-06-24T17:52:42Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "diagram"
@@ -9477,9 +9518,30 @@
           "by": "worker",
           "act": "done",
           "note": "_maybe_claim CLAIM_VIEWS += scatter_matrix/parallel_coords when \u22652 numeric vars; dispatched via RENDERERS[view]. Claim now exposes 4 tabs; witness views render (rigor sampled). Addresses #315/#355 exposure gap."
+        },
+        {
+          "at": "2026-06-24T18:59:33Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": "VERIFIED via live API: claim with \u22652 numeric vars now exposes views=[claim_space,solution_structure,scatter_matrix,parallel_coords] as real tabs; all four PNG md5s DISTINCT (the #355 dead-end was all-identical-to-claim_space \u2014 gone). scatter_matrix renders 121 true z3 witnesses with the c=a+b diagonal band visible (rigor sampled, honest); parallel_coords renders the 3-axis witness cloud. UNSAT claim \u2192 honest N/A card, no fabricated cloud (fabrication probe clean). test_parallel_claim + test_scatter_claim green."
         }
       ],
       "addresses_concern": 355
+    },
+    {
+      "id": 359,
+      "title": "Editor/sample source-of-truth can momentarily desync under rapid programmatic edits: setting editor content out-of-band (ace.setValue) immediately before/after a dropdown sample-load left the rendered editor showing the OTHER program (collatz in the model, counter rendered) and once swapped content with no user action. Clean dropdown\u2192dropdown and clean type\u2192analyze paths are fine; only the race between an external setValue and the sample loader exposes it. Guard the editor change-handler against in-flight sample loads (debounce/version-token the load) so the buffer and the rendered source can't diverge.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic",
+      "created": "2026-06-24T19:02:05Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "editor"
+      ],
+      "log": []
     }
   ],
   "concerns": [
@@ -10225,9 +10287,10 @@
       "title": "Query result row bleeds across sample switch: ran 'timer=5' query on traffic, loaded counter, and the traffic query verdict ('\u2717 no reachable state\u2026 timer=5, searched all 9') stayed visible next to counter \u2014 a var counter doesn't even have. Clear #query-result on source/sample change like the diagram does.",
       "detail": "repro: traffic \u2192 query 'timer=5' \u2192 open counter sample; stale verdict persists",
       "by": "ide-critic",
-      "status": "open",
+      "status": "cleared",
       "task": null,
-      "created": "2026-06-22T19:14:09Z"
+      "created": "2026-06-22T19:14:09Z",
+      "cleared": "2026-06-24T19:01:40Z"
     },
     {
       "id": 237,
@@ -10409,9 +10472,10 @@
       "title": "VERIFIED (#284 follow-up): the parallel_coords/scatter_matrix CLAIM renderers are REAL and SOUND (render_parallel_coords._claim_setup \u2192 600 z3 witnesses on a 3-var claim, 0 violations; UNSAT\u2192N/A; test_parallel_claim green). BUT they are UNREACHABLE in the live tool: ide/web/render.py _maybe_claim (line 207-208) hardcodes CLAIM_VIEWS=['claim_space','solution_structure'] and forces 'view = view if view in CLAIM_VIEWS else claim_space', so /api/analyze with view=parallel_coords|scatter_matrix|solution_space all return the IDENTICAL claim_space PNG (same md5, verified), and the claim tablist shows only 'claim space'/'solution structure'. The witness-cloud capability the worker built for #284 is dead-ended behind the server router. Fix: when a claim has \u22653 numeric vars, expose 'parallel coords' (and 'scatter matrix' for >2) as real tabs that call the witness renderers, not just claim_space. This is the live-UI half of #315.",
       "detail": "ide/web/render.py:207-208; evidence ide/critics/recordings/ana-20260624-174458/284-parallel-coords-claim-600witnesses.png (renderer works) vs the 2-tab claim tablist (UI doesn't expose it)",
       "by": "ide-critic-expert",
-      "status": "open",
+      "status": "cleared",
       "task": null,
-      "created": "2026-06-24T17:52:34Z"
+      "created": "2026-06-24T17:52:34Z",
+      "cleared": "2026-06-24T18:59:51Z"
     },
     {
       "id": 357,
