@@ -129,6 +129,36 @@ def must_rest(m, absorbing_keys):
     return removed == len(non_a)
 
 
+def rest_cycle(m, absorbing_keys):
+    """A single cycle of NON-rest states the FSM can ride forever to dodge rest — the concrete WITNESS
+    behind a 'CAN REST (not always)' verdict (Ana #333). DFS back-edge on the non-absorbing reachable
+    subgraph (≤500 nodes, so recursion depth stays under the default limit). Returns [s0, …, s0]
+    (states, the loop closed) or None when every run rests / not a complete enumeration."""
+    states, edges = m.reachable(limit=500)
+    if len(states) >= 500 or not states:
+        return None
+    absorbing = {i for i, s in enumerate(states) if _key(s) in absorbing_keys}
+    adj = {}
+    for (i, j) in edges:
+        if i not in absorbing and j not in absorbing:
+            adj.setdefault(i, []).append(j)
+    color, path, found = {}, [], []
+
+    def dfs(u):
+        color[u] = 1; path.append(u)
+        for v in adj.get(u, []):
+            if color.get(v, 0) == 1:
+                found.append(path[path.index(v):] + [v]); return True
+            if color.get(v, 0) == 0 and dfs(v):
+                return True
+        path.pop(); color[u] = 2; return False
+
+    for n in list(adj.keys()):
+        if color.get(n, 0) == 0 and dfs(n):
+            break
+    return [states[i] for i in found[0]] if found else None
+
+
 def classify(m):
     """{'verdict': 'terminates'|'daemon'|'unknown', 'states': [...], 'decided': bool, 'note'}."""
     if any(v["kind"] not in _SCALAR for v in m.carried):
@@ -137,13 +167,17 @@ def classify(m):
                         "not supported yet"}
     states, decided = absorbing_states(m)
     verdict = "unknown" if not decided else ("terminates" if states else "daemon")
-    mr = None
+    mr, lasso = None, None
     if verdict == "terminates":
         try:
-            mr = must_rest(m, {_key(s) for s in states})
+            keys = {_key(s) for s in states}
+            mr = must_rest(m, keys)
+            if mr is False:
+                lasso = rest_cycle(m, keys)
         except Exception:
             mr = None
-    return {"verdict": verdict, "states": states, "decided": decided, "note": None, "must_rest": mr}
+    return {"verdict": verdict, "states": states, "decided": decided, "note": None,
+            "must_rest": mr, "rest_cycle": lasso}
 
 
 def _is_deterministic(m):

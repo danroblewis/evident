@@ -88,6 +88,16 @@ def main():
             if got_mr != want_mr:
                 fails.append(f"must_rest {got_mr} != {want_mr}")
 
+    # #333 witness: 'can rest, not always' must come with a concrete non-rest cycle the FSM can ride
+    # forever — a closed loop of states none of which are absorbing (0,6 for the bistable).
+    with tempfile.TemporaryDirectory() as w:
+        ok, prefix, *_ = _export(nd, w)
+        m = load_model(prefix + ".smt2", prefix + ".schema.json")
+        cyc = classify(m).get("rest_cycle")
+        xs = [list(s.values())[0] for s in cyc] if cyc else []
+        if not cyc or xs[0] != xs[-1] or any(x in (0, 6) for x in xs):
+            fails.append(f"rest_cycle {xs} is not a closed non-absorbing loop")
+
     if fails:
         print("TERMINAL-MAP FAILURES:")
         for f in fails:
@@ -96,7 +106,7 @@ def main():
     print("✓ terminal_map: absorbing set SOUND on nondeterministic FSMs (shipped free-step "
           "bistable→{0,6}, not all 7); counter→{5}, cyclic→∅, det-bistable→{0,3,6}, random_walk→∅; "
           "stability: det 0,6 stable/3 unstable, nondeterministic→unknown; must-rest (#328): "
-          "det+counter every-run-rests, nondet can-loop-at-3")
+          "det+counter every-run-rests, nondet can-loop-at-3 (+ #333 witness cycle)")
     return 0
 
 

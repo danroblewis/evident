@@ -81,6 +81,10 @@ def _short(k):
     return k.split(".")[-1]
 
 
+def _cell(s):
+    return "(" + ", ".join(f"{_short(k)}={v}" for k, v in s.items()) + ")"
+
+
 def _axis_limits(model, var, vals):
     """[lo, hi] for an axis: the var's PROVEN range if finite, else the terminal points'
     extent — padded to a readable span so a lone end-state isn't zoomed to sub-unit scale."""
@@ -134,8 +138,10 @@ def render(model, out_path):
         term = (f"TERMINATES — EVERY run reaches rest · {len(states)} terminal state(s) · the "
                 "non-rest states form a DAG into the absorbing set (#328)", _GREEN)
     elif must is False:
-        term = (f"CAN REST (not always) — {len(states)} terminal state(s), but a run can loop "
-                "forever among non-rest states; a cycle avoids the absorbing set (#328)", _AMBER)
+        cyc = c.get("rest_cycle")
+        loop = (" · e.g. loops " + "→".join(_cell(s) for s in cyc)) if cyc else ""
+        term = (f"CAN REST (not always) — {len(states)} terminal state(s), but a run can loop forever "
+                f"among non-rest states{loop}; a cycle avoids the absorbing set (#328, #333)", _AMBER)
     else:
         term = (f"TERMINATES — {len(states)} terminal state(s) · the FSM can come to rest here · "
                 "solved abstractly from the one-step relation (Z3), not by enumerating runs", _GREEN)
