@@ -130,185 +130,24 @@ if [ "$EXAMPLES_ONLY" -eq 0 ] && command -v python3 >/dev/null 2>&1; then
     echo
 fi
 
-# ── Phase 2.7: BMC completeness-certification test (Ana #270) ──
-# The unroll export prepends a COMPLETE-vs-BOUNDED verdict driven by the reachable set's closing
-# depth. This pins the right verdict for terminating (counter), cyclic (traffic), unbounded, and
-# real-valued models — so a regression can never silently claim "complete" for a capped/real model.
+# ── Phases: every ide/test_*.py, AUTO-DISCOVERED (#313) ──
+# Each ide/test_*.py is a self-contained check that prints a "✓ …" summary line on pass. Adding a
+# new one auto-runs it here — no test.sh edit — so concurrent agents adding tests never conflict on
+# this file (the recurring Phase-block append conflict). The bash equivalence test below isn't an
+# ide/test_*.py, so it stays explicit.
 if [ "$EXAMPLES_ONLY" -eq 0 ] && command -v python3 >/dev/null 2>&1; then
-    phase "Phase 2.7: BMC completeness certification"
-    if python3 ide/test_completeness.py > /tmp/evident-completeness.log 2>&1; then
-        ok "completeness ($(tail -1 /tmp/evident-completeness.log))"
-    else
-        fail "completeness: wrong COMPLETE/BOUNDED verdict (see above)"
-        cat /tmp/evident-completeness.log >&2
-        failures+=("completeness certification")
-    fi
-    echo
-fi
-
-# ── Phase 2.8: liveness-under-fairness verdicts (Ana #269) ────
-# The temporal check's `fair` mode excludes UNFAIR lassos: □◇/◇/⤳ hold iff the goal is reachable
-# from every reachable (P-)state. This pins both directions — a dodger model where fairness flips
-# REFUTED→HOLDS (no trap), and a TRAP model that FAILS even under fairness with the trap + its run —
-# so a regression can't silently re-refute on unfair runs or claim HOLDS over a real trap.
-if [ "$EXAMPLES_ONLY" -eq 0 ] && command -v python3 >/dev/null 2>&1; then
-    phase "Phase 2.8: liveness under fairness"
-    if python3 ide/test_fairness.py > /tmp/evident-fairness.log 2>&1; then
-        ok "fairness ($(tail -1 /tmp/evident-fairness.log))"
-    else
-        fail "fairness: wrong under-fairness verdict (see above)"
-        cat /tmp/evident-fairness.log >&2
-        failures+=("fairness liveness")
-    fi
-    echo
-fi
-
-# ── Phase 2.9: value-symmetry witness fold (Ana #271) ────────
-# The enumerate fold collapses witnesses that differ only by permuting INTERCHANGEABLE enum values
-# to one canonical rep + a count. Soundness is the whole bar: this pins BOTH directions — a colouring
-# whose colours are PROVABLY interchangeable folds into S_3 orbits ×6 (each rep a real witness), and
-# models that NAME a value or ORDER an enum stay UNFOLDED — so a regression can't silently over-claim.
-if [ "$EXAMPLES_ONLY" -eq 0 ] && command -v python3 >/dev/null 2>&1; then
-    phase "Phase 2.9: value-symmetry witness fold"
-    if python3 ide/test_symmetry.py > /tmp/evident-symmetry.log 2>&1; then
-        ok "symmetry ($(tail -1 /tmp/evident-symmetry.log))"
-    else
-        fail "symmetry: wrong fold verdict (see above)"
-        cat /tmp/evident-symmetry.log >&2
-        failures+=("symmetry fold")
-    fi
-    echo
-fi
-
-# ── Phase 2.10: all-initial-conditions transition graph (diagram #1) ──
-# full_state_graph enumerates EVERY valid carried assignment (the bounded discrete product,
-# ignoring the seed) and applies the EXISTING successor relation — the GLOBAL dynamics, not the
-# forward orbit of one init. Pins the headline win (a deterministic bistable's all-conditions graph
-# ⊋ its from-init graph, surfacing BOTH basins) and the honesty fallback (a real-valued model is NOT
-# enumerated → discrete=False, caller falls back to from-init).
-if [ "$EXAMPLES_ONLY" -eq 0 ] && command -v python3 >/dev/null 2>&1; then
-    phase "Phase 2.10: all-initial-conditions graph"
-    if python3 ide/test_all_conditions.py > /tmp/evident-allcond.log 2>&1; then
-        ok "all-conditions ($(tail -1 /tmp/evident-allcond.log))"
-    else
-        fail "all-conditions: wrong global-dynamics graph (see above)"
-        cat /tmp/evident-allcond.log >&2
-        failures+=("all-conditions graph")
-    fi
-    echo
-fi
-
-# ── Phase 2.11: multiple fsms / claims — last-defined entry (#290) ──
-# A program may declare several fsms AND several claims; export renders the LAST-DEFINED fsm-or-claim
-# in source order, and the entry picker overrides with an explicit name. Pins the six routing cases
-# (claim-then-fsm, fsm-then-claim, two-fsms, two-claims, single-fsm, single-claim) + the override +
-# a bogus-entry error — so a regression can't re-introduce the old "exactly one" hard-error or pick
-# the wrong entry.
-if [ "$EXAMPLES_ONLY" -eq 0 ] && command -v python3 >/dev/null 2>&1; then
-    phase "Phase 2.11: multi-entry (last-defined) routing"
-    if python3 ide/test_multi_entry.py > /tmp/evident-multientry.log 2>&1; then
-        ok "multi-entry ($(tail -1 /tmp/evident-multientry.log))"
-    else
-        fail "multi-entry: wrong entry rendered (see above)"
-        cat /tmp/evident-multientry.log >&2
-        failures+=("multi-entry routing")
-    fi
-    echo
-fi
-
-# ── Phase 2.12: claim_space categorical feasibility grid (#136) ──
-# claim_space used to DEGRADE to a bare N/A card ("no numeric variable to bound") for exactly the
-# Seq(Int)/enum claims a verification engineer most wants to see — N-queens, sudoku, graph-coloring,
-# toposort. Now each gets a per-POSITION feasibility grid (z3 SAT of `body ∧ seq[i] == v` per cell).
-# This pins BOTH directions: a Seq/enum claim yields a REAL grid (N-queens has infeasible corner
-# cells — information, not a flat sheet), and a scalar-only claim stays an honest N/A (None, no
-# fabricated grid).
-if [ "$EXAMPLES_ONLY" -eq 0 ] && command -v python3 >/dev/null 2>&1; then
-    phase "Phase 2.12: claim_space categorical grid"
-    if python3 ide/test_claim_space.py > /tmp/evident-claimspace.log 2>&1; then
-        ok "claim-space grid ($(tail -1 /tmp/evident-claimspace.log))"
-    else
-        fail "claim-space grid: Seq/enum claim fell back to N/A, or a scalar claim fabricated a grid"
-        cat /tmp/evident-claimspace.log >&2
-        failures+=("claim-space grid")
-    fi
-    echo
-fi
-
-# ── Phase 2.13: parameterized passthrough `..Name(field ↦ other)` (#294) ──
-# The parser used to ERROR on `..Name(...)`. Now it parses as a rename-arg list, and the
-# included claim's un-renamed carried vars are freshened per instance so two passthroughs of
-# the SAME claim with DIFFERENT renames compose into INDEPENDENT sub-systems. This pins both
-# halves: the parameterized-passthrough fsm exports with 0 dropped constraints (two-instance,
-# single, and bare forms), and the runtime sat/unsat claims prove the compose semantics —
-# both walks seed independently, each respects its own ±1 bound, and the two can step in
-# opposite directions on one tick (only possible if `da` is freshened, not shared).
-if [ "$EXAMPLES_ONLY" -eq 0 ] && command -v python3 >/dev/null 2>&1; then
-    phase "Phase 2.13: parameterized passthrough compose"
-    if python3 ide/test_passthrough_params.py > /tmp/evident-passthrough.log 2>&1; then
-        ok "parameterized passthrough ($(tail -1 /tmp/evident-passthrough.log))"
-    else
-        fail "parameterized passthrough: parse/compose regressed (drop or wrong semantics)"
-        cat /tmp/evident-passthrough.log >&2
-        failures+=("parameterized passthrough")
-    fi
-    echo
-fi
-
-# ── Phase 2.14: reachability_tree rooted from ALL initial conditions (diagram review) ──
-# The reachability tree used to root from initial_state() (one seed) and stop at a hard
-# MAX_DEPTH=8 cap. The diagram review scored that NO: root from the SET of initial conditions
-# (a forest off a synthetic ∅ root) and use closing_depth() to show the tree CLOSING at its
-# true saturation depth for finite discrete systems — not a misleading depth-8 cap. Pins the
-# all-conditions forest (traffic closes cyclically; a terminating counter closes at its true
-# depth with the fixed point marked absorbing; a free-init FSM fans to MANY roots) AND the
-# real/unbounded honesty fallback (no false 'complete', single-seed depth-capped sample).
-if [ "$EXAMPLES_ONLY" -eq 0 ] && command -v python3 >/dev/null 2>&1; then
-    phase "Phase 2.14: reachability_tree from all initial conditions"
-    if python3 ide/test_reachability_tree.py > /tmp/evident-reachtree.log 2>&1; then
-        ok "reachability-tree ($(tail -1 /tmp/evident-reachtree.log))"
-    else
-        fail "reachability-tree: did not root from all inits / didn't close / false fallback"
-        cat /tmp/evident-reachtree.log >&2
-        failures+=("reachability-tree rooting")
-    fi
-    echo
-fi
-
-# ── Phase 2.15: transition_matrix over all initial conditions (diagram review) ──
-# The transition_matrix is a state×state incidence (cell (i,j) lit ⇔ state_i → state_j). The
-# diagram review scored it PARTIAL: it rooted on ONE z3 model's from-init orbit and, in SAMPLED
-# mode, fabricated a linspace grid. It now roots the discrete path on full_state_graph (EVERY valid
-# carried assignment) and fills the cells from the REAL transition edges. Pins: counter (6) + traffic
-# (9) take the global root (mode='all initial conditions'), state set == full_state_graph (⊇ from-init),
-# lit cells == the true successor relation (no sampled grid); a real-valued model falls back honestly.
-if [ "$EXAMPLES_ONLY" -eq 0 ] && command -v python3 >/dev/null 2>&1; then
-    phase "Phase 2.15: transition_matrix all-conditions root"
-    if python3 ide/test_transition_matrix_global.py > /tmp/evident-tmxglobal.log 2>&1; then
-        ok "transition-matrix global ($(tail -1 /tmp/evident-tmxglobal.log))"
-    else
-        fail "transition-matrix: not rooted on the global graph, or cells aren't the real transition"
-        cat /tmp/evident-tmxglobal.log >&2
-        failures+=("transition-matrix global root")
-    fi
-    echo
-fi
-
-# ── Phase 2.16: all_conditions analyze STATS/BANNER follow the toggle (#316) ──
-# The all_conditions toggle re-roots the state_graph PNG on the GLOBAL graph (full_state_graph,
-# every initial condition). This pins that the analyze STATS + banner follow the SAME graph: the
-# bistable flips 2 (from-init) → 7 (global) with the flag; the banner says "over all initial
-# conditions" only when on; non-state_graph views are unaffected; a real-valued model falls back.
-if [ "$EXAMPLES_ONLY" -eq 0 ] && command -v python3 >/dev/null 2>&1; then
-    phase "Phase 2.16: all_conditions stats/banner toggle"
-    if python3 ide/test_all_conditions_stats.py > /tmp/evident-allcond-stats.log 2>&1; then
-        ok "all-conditions stats ($(tail -1 /tmp/evident-allcond-stats.log))"
-    else
-        fail "all-conditions stats: banner/stats did not follow the global graph (see above)"
-        cat /tmp/evident-allcond-stats.log >&2
-        failures+=("all-conditions stats")
-    fi
-    echo
+    for _t in $(ls ide/test_*.py | sort); do
+        _nm=$(basename "$_t" .py | sed 's/^test_//')
+        phase "Phase: $_nm"
+        if python3 "$_t" > "/tmp/evident-$_nm.log" 2>&1; then
+            ok "$(tail -1 /tmp/evident-$_nm.log)"
+        else
+            fail "$_nm failed (see output)"
+            cat "/tmp/evident-$_nm.log" >&2
+            failures+=("$_nm")
+        fi
+        echo
+    done
 fi
 
 # ── Phase 2.18: `:=` initial-value seed ≡ explicit is_first_tick (#295) ──
@@ -326,111 +165,6 @@ if [ "$EXAMPLES_ONLY" -eq 0 ]; then
         fail ":= seed did NOT match the explicit is_first_tick form (see above)"
         cat /tmp/evident-initval-equiv.log >&2
         failures+=(":= initial-value equivalence")
-    fi
-    echo
-fi
-
-# ── Phase 2.17: space_time raster of a Seq-carried FSM (#308) ──
-# The space_time view rasters a Seq-carried FSM's evolution: rows = ticks, columns = Seq positions,
-# color = cell value. For Rule 90 seeded with a single 1 the raster IS the Sierpiński triangle. This
-# pins the GENERIC machinery: the raster shape == (#ticks × #cells), Rule 90's tick-1 row is the
-# exact neighbour-XOR of the seed (so the fractal is real, not decoration), and an Int-valued Seq
-# (diffusion buffer) takes the non-binary colormap path. Renderer-independent: asserts on the grid.
-if [ "$EXAMPLES_ONLY" -eq 0 ] && command -v python3 >/dev/null 2>&1; then
-    phase "Phase 2.17: space_time Seq-FSM raster (Rule 90 Sierpiński)"
-    if python3 ide/test_space_time.py > /tmp/evident-spacetime.log 2>&1; then
-        ok "space-time raster ($(tail -1 /tmp/evident-spacetime.log))"
-    else
-        fail "space-time: raster shape wrong, or Rule 90 tick-1 XOR pattern mismatched (see above)"
-        cat /tmp/evident-spacetime.log >&2
-        failures+=("space-time raster")
-    fi
-    echo
-fi
-
-# ── Phase 2.19: timing_diagram roots on ALL INITIAL CONDITIONS (diagram review) ──
-# The diagram review scored timing_diagram NO: it rendered ONE forward trajectory from the
-# single seed. This pins the fix — for a finitely-discrete program the diagram traces an
-# ENSEMBLE over full_state_graph (every initial condition), one real successor-chain timeline
-# per start; the per-signal band == the real per-tick value envelope; bool signals read as 0/1
-# digital traces; a real-valued model falls back to the honest single-seed trace.
-if [ "$EXAMPLES_ONLY" -eq 0 ] && command -v python3 >/dev/null 2>&1; then
-    phase "Phase 2.19: timing_diagram all-conditions ensemble"
-    if python3 ide/test_timing_ensemble.py > /tmp/evident-timing-ensemble.log 2>&1; then
-        ok "timing ensemble ($(tail -1 /tmp/evident-timing-ensemble.log))"
-    else
-        fail "timing ensemble: not rooted on all initial conditions, or band ≠ real envelope"
-        cat /tmp/evident-timing-ensemble.log >&2
-        failures+=("timing-diagram all-conditions")
-    fi
-    echo
-fi
-
-# ── Phase 2.20: scatter_matrix over a CLAIM/Solve solution space (diagram review #5) ──
-# scatter_matrix used to handle only FSM carried-state; a pure claim/Solve program (free decision
-# vars, no transition) KeyError'd or rendered empty. This pins the new claim path: a 2-Int claim's
-# scatter matrix samples its SOLUTION SPACE (distinct block-and-resolve z3 witnesses, every one
-# satisfying the constraint), and UNSAT / categorical-only claims fall to the honest empty card.
-if [ "$EXAMPLES_ONLY" -eq 0 ] && command -v python3 >/dev/null 2>&1; then
-    phase "Phase 2.20: scatter_matrix claim/Solve solution space"
-    if python3 ide/test_scatter_claim.py > /tmp/evident-scatter-claim.log 2>&1; then
-        ok "scatter_matrix claim ($(tail -1 /tmp/evident-scatter-claim.log))"
-    else
-        fail "scatter_matrix claim: solution-space sampling did not render (see above)"
-        cat /tmp/evident-scatter-claim.log >&2
-        failures+=("scatter_matrix claim")
-    fi
-    echo
-fi
-
-# ── Phase 2.21: abstract terminal-state map (where an FSM can come to rest) ──
-# terminal_states.py solves the ABSORBING set {s : s->s allowed AND no successor != s} as a
-# quantified Z3 query over the one-step relation — no trajectory walk, no state enumeration. Pins the
-# daemon-vs-terminates verdict: terminating counter -> {count=5}, cyclic counter -> ∅ (daemon), the
-# bistable -> {0,3,6} (incl. the unstable saddle), and the UNBOUNDED random walk -> ∅ (decided
-# abstractly — where full_state_graph can't even enumerate).
-if [ "$EXAMPLES_ONLY" -eq 0 ] && command -v python3 >/dev/null 2>&1; then
-    phase "Phase 2.21: abstract terminal-state map"
-    if python3 ide/test_terminal_map.py > /tmp/evident-terminal.log 2>&1; then
-        ok "terminal-state map ($(tail -1 /tmp/evident-terminal.log))"
-    else
-        fail "terminal-state: wrong absorbing set / daemon-vs-terminates verdict (see above)"
-        cat /tmp/evident-terminal.log >&2
-        failures+=("terminal-state map")
-    fi
-    echo
-fi
-
-# ── Phase 2.22: abstract reachable region (k-induction bounding box) ──
-# reachable_region.py PROVES a bounding box for the reachable set by 1-induction over the one-step
-# relation (base: init ⊆ box; step: box closed under the transition — both UNSAT, no enumeration).
-# Pins: cyclic counter ⊆ [0,5] and the [0,10]² boxed walk ⊆ [0,10]² (both proven 1-inductive), and
-# the UNBOUNDED free random walk flagged unbounded (where full_state_graph can't even enumerate).
-if [ "$EXAMPLES_ONLY" -eq 0 ] && command -v python3 >/dev/null 2>&1; then
-    phase "Phase 2.22: abstract reachable region"
-    if python3 ide/test_reachable_region.py > /tmp/evident-reachregion.log 2>&1; then
-        ok "reachable-region ($(tail -1 /tmp/evident-reachregion.log))"
-    else
-        fail "reachable-region: wrong bounding box / bounded-vs-unbounded verdict (see above)"
-        cat /tmp/evident-reachregion.log >&2
-        failures+=("reachable region")
-    fi
-    echo
-fi
-
-# ── Phase 2.23: abstract claim solution-structure (backbone / free / implied equalities) ──
-# claim_structure.py decomposes a CLAIM's solution space (Z3 over the body): BACKBONE = vars forced
-# to one value in all solutions, FREE = the rest + proven ranges, EQUALITIES = vars forced equal.
-# Pins: a+b=10 ∧ a-b=4 ⇒ backbone {a=7,b=3} + free c; y=x ⇒ implied equality x=y; under-constrained ⇒
-# both free. The new abstract analysis claims get beyond claim_space's bare ranges (#319).
-if [ "$EXAMPLES_ONLY" -eq 0 ] && command -v python3 >/dev/null 2>&1; then
-    phase "Phase 2.23: abstract claim solution-structure"
-    if python3 ide/test_solution_structure.py > /tmp/evident-solstruct.log 2>&1; then
-        ok "solution-structure ($(tail -1 /tmp/evident-solstruct.log))"
-    else
-        fail "solution-structure: wrong backbone/free/equality decomposition (see above)"
-        cat /tmp/evident-solstruct.log >&2
-        failures+=("solution structure")
     fi
     echo
 fi
