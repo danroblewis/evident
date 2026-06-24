@@ -1,5 +1,5 @@
 {
-  "seq": 320,
+  "seq": 321,
   "tasks": [
     {
       "id": 1,
@@ -8054,6 +8054,21 @@
           "note": "shipped + tested (Phase 2.23): sys\u2192{a,b} backbone + c free, coupled\u2192x=y, packing\u2192both free; claims now 2 tabs"
         }
       ]
+    },
+    {
+      "id": 321,
+      "title": "Convert remaining samples' 'is_first_tick \u21d2 (seed)' to the := initial-value form (~22 samples)",
+      "detail": "After #297 (random_walk) the := syntax (#295) is shipped + showcased, but ~22 app-data.js samples + some examples/*.ev still use the verbose 'is_first_tick \u21d2 (x=0 \u2227 y=0)' seed the user called 'awful and weird'. Convert each to per-var ':= value' (split multi-var conjunctions across declarations; handle enum/Real; verify Seq seeds like cells=\u27e8\u2026\u27e9 work or skip). SOUNDNESS like #298: verify each sample analyzes IDENTICALLY before/after (same reachable set, 0 dropped) \u2014 keep the is_first_tick line for any seed := can't express. Bump app-data cache-bust; ./test.sh green. Good candidate to DELEGATE when the user is back on sample/aesthetic work.",
+      "status": "open",
+      "created_by": "worker",
+      "created": "2026-06-24T01:52:38Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "refactor"
+      ],
+      "log": []
     }
   ],
   "concerns": [
