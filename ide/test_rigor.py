@@ -12,10 +12,15 @@ sys.path.insert(0, "viz")
 from render import view_rigor                            # noqa: E402
 
 CASES = [
-    ("terminal_map", 0, 0, "proven"),                   # abstract Z3 over the one-step relation
-    ("reachable_region", 0, 0, "proven"),               # k-induction bounding box
+    ("terminal_map", 0, 0, "proven"),                   # discrete bounded — abstract Z3, exhaustive
+    ("reachable_region", 0, 0, "proven"),               # k-induction bounding box, exact
     ("solution_space", 0, 0, "proven"),
+    ("terminal_map", 0, 1, "sampled"),                  # #353: continuous → bound/region capped, NOT a proof
+    ("reachable_region", 1, 0, "sampled"),              # #353: capped → not exhaustive, badge must agree
+    ("solution_space", 0, 1, "sampled"),                # #353: continuous → samples the reachable cloud
+    ("claim_space", 0, 0, "proven"),                    # claim views: Optimize-exact / static — always proven
     ("solution_structure", 0, 0, "proven"),
+    ("solution_structure", 0, 1, "proven"),             # a real-var claim is still Optimize-exact (no run/cap)
     ("function_guards", 0, 0, "proven"),                # the compiled structure
     ("state_graph", 0, 0, "exhaustive"),                # the COMPLETE bounded-discrete graph
     ("state_graph", 1, 0, "sampled"),                   # capped → not exhaustive, honestly downgraded
