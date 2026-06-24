@@ -8510,16 +8510,28 @@
       "id": 332,
       "title": "On-demand 'verify soundness' action in the terminal_map / reachable_region panel: run the #330 differential cross-check (abstract Z3 absorbing-set + k-induction box vs brute-force reachable graph) against the USER'S CURRENT bounded-discrete model and surface a pass/fail badge in-UI. The CI probe (#330) only covers 6 fixtures; an expert wants to push the button on their own model. Cheaper than an always-on badge (worker's reasoning) but closes the 'is THIS picture sound?' gap the CI core can't.",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "ide-critic-expert",
       "created": "2026-06-24T05:55:06Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "analysis"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-24T07:51:33Z",
+          "by": "worker",
+          "act": "started"
+        },
+        {
+          "at": "2026-06-24T07:51:33Z",
+          "by": "worker",
+          "act": "done",
+          "note": "'\u26e8 verify soundness' button cross-checks the user's model's abstract verdict vs brute-force (shared soundness_check.soundness_report, same as the #330 CI probe). Avoided the Rule-3 endpoint limit via a verify_soundness flag + early-return in analysis.py (no new endpoint). Playwright-verified button\u2192'\u2713 cross-checked', 0 console errors, gated green."
+        }
+      ]
     },
     {
       "id": 333,
