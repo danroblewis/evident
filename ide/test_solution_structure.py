@@ -81,6 +81,12 @@ def _check_relations(fails):
         # claim has 0≤a≤10 etc., but they don't force the relation, so the deletion pass drops them).
         if forced and (len(forced[0]["core"]) != 2 or any("<=" in cc for cc in forced[0]["core"])):
             fails.append(f"#344: core should be minimal (2 equalities, no bound), got {forced[0]['core']}")
+        # #346/#349: the exported SMT-LIB obligation re-parses in z3 to UNSAT (so the user can re-derive it).
+        if forced and forced[0].get("smtlib"):
+            import z3
+            zs = z3.Solver(); zs.set(unsat_core=True); zs.from_string(forced[0]["smtlib"])
+            if zs.check() != z3.unsat:
+                fails.append("#346: exported SMT-LIB obligation should be UNSAT (proving the relation)")
 
 
 def main():

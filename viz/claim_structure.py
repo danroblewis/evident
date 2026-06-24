@@ -150,6 +150,16 @@ def _farkas_combo(body, consts, names, core_strs, rel_ints, rel_const, is_real):
         return None
 
 
+def _smtlib_obligation(body, consts, relation_expr, rhs):
+    """The relation's proof obligation as named-assert SMT-LIB (#346/#349): the claim constraints + the
+    NEGATED relation + (check-sat)(get-unsat-core). Paste into z3 — UNSAT proves the relation, the unsat
+    core names the forcing constraints, so the interrogation can leave the IDE into your own solver."""
+    decls = "\n".join(f"(declare-fun {c} () {c.sort().sexpr()})" for c in consts.values())
+    asserts = "\n".join(f"(assert (! {c.sexpr()} :named c{i}))" for i, c in enumerate(conjuncts(body)))
+    return (f"(set-option :produce-unsat-cores true)\n{decls}\n{asserts}\n"
+            f"(assert (! {z3.Not(relation_expr == rhs).sexpr()} :named goal))\n(check-sat)\n(get-unsat-core)")
+
+
 def _nonpairwise(body, consts, names, is_real):
     """IMPLIED affine relations among the free numeric vars beyond pairwise (a+b=c, a=b+3, and for reals
     y=2x): sample solutions, take the EXACT rational null space (sympy) of the sampled points — exact so ≥2
@@ -189,7 +199,8 @@ def _nonpairwise(body, consts, names, is_real):
         core = _verify_core(body, expr, rhs)              # verify + the constraints that force it (#341)
         if core is not None:
             combo = _farkas_combo(body, consts, names, core, ints, const, is_real)  # the derivation (#345)
-            out.append({"eq": _fmt_relation(ints, const, names), "core": core, "combo": combo})
+            out.append({"eq": _fmt_relation(ints, const, names), "core": core, "combo": combo,
+                        "smtlib": _smtlib_obligation(body, consts, expr, rhs)})   # #346/#349 export
     return out
 
 

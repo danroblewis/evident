@@ -109,7 +109,20 @@ function renderStructure(s) {
     sp.onclick = () => {
       const r = s.relations[+sp.dataset.i];
       const why = r.combo ? `derived as  ${r.combo}` : `forced by: ${(r.core || []).join("  ∧  ") || "the claim"}`;
-      $("#rel-proof").textContent = ` ⊢ ${r.eq} — ${why}  (Z3-proven: claim ∧ ¬(${r.eq}) is UNSAT)`;
+      const out = $("#rel-proof");
+      out.textContent = ` ⊢ ${r.eq} — ${why}  (Z3-proven: claim ∧ ¬(${r.eq}) is UNSAT) `;
+      // #346/#349: take the certificate OUT of the IDE — copy the derivation + the SMT-LIB proof obligation.
+      if (r.smtlib) {
+        const b = document.createElement("button");
+        b.className = "struct-replay"; b.textContent = "⧉ copy proof";
+        b.title = "copy the derivation + the SMT-LIB proof obligation (paste into z3: UNSAT proves it, get-unsat-core names the forcing constraints)";
+        b.onclick = (e) => {
+          e.stopPropagation();
+          navigator.clipboard.writeText(`${r.eq}\n${why}\n\n; SMT-LIB proof obligation — paste into z3:\n${r.smtlib}`);
+          b.textContent = "✓ copied";
+        };
+        out.appendChild(b);
+      }
     };
   });
 }
