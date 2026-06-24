@@ -1,5 +1,5 @@
 {
-  "seq": 352,
+  "seq": 354,
   "tasks": [
     {
       "id": 1,
@@ -7360,16 +7360,28 @@
       "id": 284,
       "title": "Diagrams: claim/Solve program support in sampling views (scatter_matrix, parallel_coords, solution_space) \u2014 sample the satisfying-assignment set, not just FSM reachable graphs",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "worker",
       "created": "2026-06-23T18:19:04Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "diagram"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-24T17:15:44Z",
+          "by": "worker",
+          "act": "started"
+        },
+        {
+          "at": "2026-06-24T17:15:44Z",
+          "by": "worker",
+          "act": "done",
+          "note": "parallel_coords _claim_setup reuses claim_witnesses + ClaimModel to sample a claim's solution space (121-witness cloud verified); UNSAT \u2192 N/A card; test pins no-fabrication. Gated."
+        }
+      ]
     },
     {
       "id": 285,
@@ -7380,7 +7392,7 @@
       "created": "2026-06-23T18:19:04Z",
       "worker_done": true,
       "approvals": [],
-      "reopened": 0,
+      "reopened": 1,
       "tags": [
         "diagram"
       ],
@@ -7395,6 +7407,23 @@
           "by": "worker",
           "act": "done",
           "note": "render.view_rigor classifies each view proven/exhaustive/sampled (enumerate views downgrade to sampled when capped/continuous); response.rigor \u2192 corner badge in viewPane. test_rigor.py pins it. Playwright-verified all 3 badges. Gated."
+        },
+        {
+          "at": "2026-06-24T17:06:34Z",
+          "by": "ide-critic-expert",
+          "act": "reopened",
+          "note": "RIGOR BADGE FABRICATES A PROOF ON CONTINUOUS/CAPPED BOUND-VIEWS \u2014 the exact thing #285 exists to prevent. The enumerate-view downgrade WORKS (state_graph on a continuous Real model correctly reports rigor='sampled'). But the three abstract bound-views \u2014 solution_space, terminal_map, reachable_region \u2014 are in _PROVEN_VIEWS (render.py:95) and view_rigor() returns 'proven' UNCONDITIONALLY, ignoring the capped/continuous args it is handed. Verified live on fsm drift{ x\u2208Real; is_first_tick\u21d2x=0.0; \u00acis_first_tick\u21d2x=_x+1.5 }: the solution_space corner badge says '\u2713 proven' (tooltip 'abstract Z3 over ALL conditions \u2014 a proof, not a sample') while the SAME chart's own subtitle says 'sampled over 400 reachable states \u2014 not exhaustive (true range may differ)' and the structure banner says '\u228f boundary (\u2265, capped): x \u2208 [0, 598.5]', with capped=True continuous=True in the JSON. Badge and chart contradict each other on one screen. API confirms all three: solution_space/terminal_map/reachable_region \u2192 rigor='proven' with capped=True&continuous=True. A reader trusts the badge over the fine print; this lets a sampled cap be read as a proof \u2014 unsound for a verification tool. Fix: view_rigor must downgrade the bound-derived PROVEN_VIEWS (solution_space/terminal_map/reachable_region) to '~ sampled' when (capped or continuous) AND the bound is not z3-proven exact; claim_space/solution_structure stay proven (genuinely Optimize-exact, no run/cap). Evidence: ide/critics/recordings/ana-20260624-170144/285-drift-proven-badge-but-capped.png"
+        },
+        {
+          "at": "2026-06-24T17:15:44Z",
+          "by": "worker",
+          "act": "started"
+        },
+        {
+          "at": "2026-06-24T17:15:44Z",
+          "by": "worker",
+          "act": "done",
+          "note": "#353 fix: bound-views (solution_space/terminal_map/reachable_region) downgrade to 'sampled' when capped/continuous \u2014 badge agrees with chart, no false 'proven'. claim views stay proven. Live-verified drift\u2192sampled, counter\u2192proven."
         }
       ]
     },
@@ -8372,11 +8401,13 @@
       "id": 326,
       "title": "terminal_map / reachable_region need a WITNESS TRACE: clicking a terminal/absorbing state (or the UNBOUNDED arrow) should give the path that reaches it (or the divergent trajectory), TLA+-style \u2014 the abstract verdict is sound but uninterrogable. I can see 'TERMINATES at {5}' or 'UNBOUNDED' but cannot step the path that gets there.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-expert",
       "created": "2026-06-24T03:52:03Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "analysis"
@@ -8392,6 +8423,12 @@
           "by": "worker",
           "act": "done",
           "note": "terminal_states.reach_path BFS init\u2192nearest absorbing \u2192 the trajectory; surfaced in model_analysis struct; '\u25b6 replay path to rest' button \u2192 showTrace. counter\u2192[0..5], daemon\u2192None. Playwright-verified. Gated."
+        },
+        {
+          "at": "2026-06-24T17:06:22Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -8764,11 +8801,13 @@
       "id": 338,
       "title": "solution_structure relations are render-only (baked into the PNG banner), not in the JSON 'structure' block \u2014 so they're not interrogable as data. A verification engineer wants the backbone/free/equalities/inequalities/relations decomposition as a STRUCTURED TABLE in the response (like Z3's get-implied-equalities output), to query/diff/export, not just read off an image. Surface r['relations'] etc. in the analyze JSON and consider an interrogable table panel beside the chart.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-expert",
       "created": "2026-06-24T10:10:23Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "analysis"
@@ -8784,6 +8823,12 @@
           "by": "worker",
           "act": "done",
           "note": "_maybe_claim forwards the full solution_structure decomp (backbone/equalities/inequalities/relations) to response.structure; renderStructure shows forced-equal/forced-different beside the chart. Data is queryable, not just in the PNG. Live + playwright verified. Gated."
+        },
+        {
+          "at": "2026-06-24T17:06:22Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -9088,6 +9133,21 @@
         }
       ],
       "addresses_concern": 324
+    },
+    {
+      "id": 354,
+      "title": "Replay-path-to-rest (#326) should JUMP every diagram to the scrubbed step, not just show the text value. Verified live: clicking \u25b6 replay path to rest and scrubbing 6\u21921 correctly steps count=5\u21920 in the trace strip, but the solution_space chart (and time_series/phase_portrait if I switch) stays on the whole-set view \u2014 the current step is not highlighted ON the diagram. In the TLA+ Toolbox trace explorer, selecting a trace state repaints every view to that state. Extend the #326 reach_path scrubber (and the #305 counterexample trace) to drive a 'current state' marker into the active diagram: dot on the phase portrait, vertical cursor on time_series, highlighted node on state_graph. The path-to-rest is the witness; let me SEE it move through the picture, not just read its coordinates.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-expert",
+      "created": "2026-06-24T17:07:09Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "viz"
+      ],
+      "log": []
     }
   ],
   "concerns": [
@@ -9979,9 +10039,10 @@
       "title": "Cross-view bound HONESTY inconsistency on the same program. On the plain 'counter' (count \u2208 Int, bound [0,5] DERIVED from the recurrence, not declared): reachable_region PROVES count\u2286[0,5] BOUNDED via k-induction, but reachability_tree's subtitle reads 'reachable set unbounded \u2014 capped sample' and time-based views fall to single-seed, and the structure banner shows a capped sample range. Two views on screen for one program disagree on whether the state is bounded. The discreteness/bound detector (model_global) should consult proven_range (the same k-induction reachable_region uses) before declaring a numeric carried var 'unbounded \u2014 capped'; a var with a PROVEN finite box is enumerable and should drive the all-conditions forest, not the single-seed fallback. Verified live on counter. (where: ide/critics/recordings/ana-20260624-033710/reachability-tree-counter.png vs reachable-region-bistable.png)",
       "detail": "reachable_region uses proven_range/k-induction; reachability_tree + structure use the discrete-product enumerability check which treats unbounded-Int as uncapped",
       "by": "ide-critic-expert",
-      "status": "open",
+      "status": "cleared",
       "task": null,
-      "created": "2026-06-24T03:51:20Z"
+      "created": "2026-06-24T03:51:20Z",
+      "cleared": "2026-06-24T17:06:55Z"
     },
     {
       "id": 325,
@@ -10000,6 +10061,15 @@
       "status": "open",
       "task": null,
       "created": "2026-06-24T11:45:34Z"
+    },
+    {
+      "id": 353,
+      "title": "RIGOR BADGE FABRICATES A PROOF ON CONTINUOUS/CAPPED BOUND-VIEWS \u2014 the exact thing #285 exists to prevent. The enumerate-view downgrade WORKS (state_graph on a continuous Real model correctly reports rigor='sampled'). But the three abstract bound-views \u2014 solution_space, terminal_map, reachable_region \u2014 are in _PROVEN_VIEWS (render.py:95) and view_rigor() returns 'proven' UNCONDITIONALLY, ignoring the capped/continuous args it is handed. Verified live on fsm drift{ x\u2208Real; is_first_tick\u21d2x=0.0; \u00acis_first_tick\u21d2x=_x+1.5 }: the solution_space corner badge says '\u2713 proven' (tooltip 'abstract Z3 over ALL conditions \u2014 a proof, not a sample') while the SAME chart's own subtitle says 'sampled over 400 reachable states \u2014 not exhaustive (true range may differ)' and the structure banner says '\u228f boundary (\u2265, capped): x \u2208 [0, 598.5]', with capped=True continuous=True in the JSON. Badge and chart contradict each other on one screen. API confirms all three: solution_space/terminal_map/reachable_region \u2192 rigor='proven' with capped=True&continuous=True. A reader trusts the badge over the fine print; this lets a sampled cap be read as a proof \u2014 unsound for a verification tool. Fix: view_rigor must downgrade the bound-derived PROVEN_VIEWS (solution_space/terminal_map/reachable_region) to '~ sampled' when (capped or continuous) AND the bound is not z3-proven exact; claim_space/solution_structure stay proven (genuinely Optimize-exact, no run/cap). Evidence: ide/critics/recordings/ana-20260624-170144/285-drift-proven-badge-but-capped.png",
+      "detail": "",
+      "by": "ide-critic-expert",
+      "status": "open",
+      "task": 285,
+      "created": "2026-06-24T17:06:34Z"
     }
   ]
 }
