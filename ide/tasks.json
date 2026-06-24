@@ -8420,16 +8420,28 @@
       "id": 330,
       "title": "A FABRICATION-PROBE self-check / soundness lint for the abstract views: each Z3-query view (terminal_map, reachable_region) should, on bounded-discrete models, CROSS-CHECK its abstract verdict against the brute-force enumerated reachable set and flag any disagreement in-UI. The terminal_map nondeterministic-bistable bug (#322) would have been caught: abstract said {0..6} all-terminal, enumeration says only {0,6} are absorbing. A view that fabricates structure a finite model never enters must be self-detecting.",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "ide-critic-expert",
       "created": "2026-06-24T03:52:03Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "analysis"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-24T04:26:48Z",
+          "by": "worker",
+          "act": "started"
+        },
+        {
+          "at": "2026-06-24T04:26:48Z",
+          "by": "worker",
+          "act": "done",
+          "note": "CI-time core DONE: ide/test_fabrication_probe.py cross-checks abstract absorbing-set vs brute-force reachable graph on 6 bounded-discrete FSMs (det+nondeterministic), no hardcoded oracle. Confirmed it catches the #322 class; checked==0 guard prevents vacuous pass; gated green. REMAINING half: the in-UI live flag (warn in the analyze response when abstract\u2260brute on a bounded model). Critic: approve the CI core or reopen for the in-UI part."
+        }
+      ]
     },
     {
       "id": 331,
