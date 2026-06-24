@@ -49,7 +49,9 @@ const solving = document.createElement("div");
 solving.id = "solving"; solving.hidden = true; $("#dynamics").appendChild(solving);
 
 // --- the live loop ----------------------------------------------------------------
-let timer = null, activeView = null, lastSource = "", _dimTimer = null, _elapsedTimer = null;
+let timer = null, activeView = null, lastSource = "", _dimTimer = null, _elapsedTimer = null, _analyzeCtrl = null;
+// Esc aborts an in-flight analyze (#149) — guarded on _analyzeCtrl so it never steals Esc from a modal/palette.
+window.addEventListener("keydown", (e) => { if (e.key === "Escape" && _analyzeCtrl) _analyzeCtrl.abort(); });
 
 // The most recent diagram overlay (the live `.view-wrap` + its identifiable points), so the
 // trace scrubber can locate the current step's state ON the diagram and ring it (#231/#206 —
@@ -353,17 +355,19 @@ async function run(view) {
   const t0 = performance.now();
   // A live elapsed counter so a multi-second solve (real-valued / high-fanout FSMs run 1–8s) reads
   // as WORKING, not frozen (Ana/Marek #202). Only kicks in after 400ms so fast analyses don't flicker.
+  _analyzeCtrl = new AbortController();   // #149: a handle so Esc can abort this analyze mid-solve
   clearInterval(_elapsedTimer);
   _elapsedTimer = setInterval(() => {
     const s = (performance.now() - t0) / 1000;
     if (s > 0.4) {
-      setStatus(`solving… ${s.toFixed(1)}s`, "busy");
-      solving.hidden = false; solving.textContent = `⟳ solving… ${s.toFixed(1)}s`;
+      setStatus(`solving… ${s.toFixed(1)}s · Esc to cancel`, "busy");
+      solving.hidden = false; solving.textContent = `⟳ solving… ${s.toFixed(1)}s · Esc to cancel`;
     }
   }, 100);
   try {
     const res = await fetch("/api/analyze", {
       method: "POST", headers: { "content-type": "application/json" },
+      signal: _analyzeCtrl.signal,
       // A source edit (run() with no view) sends null so the server RE-RECOMMENDS the
       // lead view for what was just written — otherwise a tab click pins the view and a
       // later edit that turns the machine nondeterministic keeps showing a flat line.
@@ -377,6 +381,12 @@ async function run(view) {
     const data = await res.json();
     paint(data, Math.round(performance.now() - t0));
   } catch (e) {
+    if (e.name === "AbortError") {            // #149: user pressed Esc — not a backend failure
+      clearInterval(_elapsedTimer); solving.hidden = true;
+      for (const id of ["banner", "structure", "view"]) $("#" + id).classList.remove("recomputing");
+      setStatus("cancelled — edit to re-run", "dim");
+      return;
+    }
     backendDown(String(e));
   }
 }
