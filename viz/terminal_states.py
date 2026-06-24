@@ -24,6 +24,36 @@ machinery on top. This module answers "where can it end", abstractly.
 import z3
 
 
+def _consts(expr):
+    """Every uninterpreted 0-arg const in expr, deduped by id (iterative — these ASTs get deep)."""
+    seen, out, stack = set(), [], [expr]
+    while stack:
+        e = stack.pop()
+        if e.num_args() == 0 and e.decl().kind() == z3.Z3_OP_UNINTERPRETED:
+            if e.get_id() not in seen:
+                seen.add(e.get_id()); out.append(e)
+        else:
+            stack.extend(e.children())
+    return out
+
+
+def _escape_copy(reln, nexts, prevs, tag):
+    """A fresh copy of the relation sharing ONLY the carried PREVs (the candidate state s); the carried
+    next-states AND every free input are freshened. Sharing a free input (e.g. a nondeterministic
+    `step`) would let the self-loop pin it, hiding the escaping successor — the unsoundness Ana #322
+    found. Returns (fresh_vars, copied_reln, fresh_nexts)."""
+    prev_ids = {p.get_id() for p in prevs}
+    freevars = [c for c in _consts(reln) if c.get_id() not in prev_ids]
+    have = {c.get_id() for c in freevars}
+    for n in nexts:                       # a carried next absent from reln (unconstrained) still freshens
+        if n.get_id() not in have:
+            freevars.append(n); have.add(n.get_id())
+    fresh = [z3.Const(str(c) + tag, c.sort()) for c in freevars]
+    copied = z3.substitute(reln, *list(zip(freevars, fresh)))
+    by_id = {c.get_id(): f for c, f in zip(freevars, fresh)}
+    return fresh, copied, [by_id[n.get_id()] for n in nexts]
+
+
 def absorbing_states(m, limit=64):
     """The terminal set {s : relation allows s->s AND no successor != s}, via Z3.
     Returns (list-of-state-dicts, decided); decided=False iff Z3 returned unknown."""
@@ -35,11 +65,11 @@ def absorbing_states(m, limit=64):
     reln = z3.And(*list(m.assertions))
     if m.first_tick is not None:
         reln = z3.And(reln, m.first_tick == False)             # noqa: E712  steady-state dynamics
-    # A renamed copy of the relation whose next-state is `esc`, used to ask "is there a
-    # DIFFERENT successor from the same prev?". The prev consts stay shared (the candidate s).
-    esc = [z3.Const(v["name"] + "__esc", nexts[i].sort()) for i, v in enumerate(carried)]
-    esc_rel = z3.substitute(reln, *[(nexts[i], esc[i]) for i in range(len(nexts))])
-    escape = z3.And(esc_rel, z3.Or(*[esc[i] != prevs[i] for i in range(len(prevs))]))
+    # "Is there a DIFFERENT successor from the same prev?" — a fresh relation copy sharing only the
+    # prevs (candidate s), with the nexts AND free inputs freshened so a nondeterministic input can
+    # pick an escaping successor instead of being pinned by the self-loop (Ana #322).
+    esc, esc_rel, esc_nexts = _escape_copy(reln, nexts, prevs, "__esc")
+    escape = z3.And(esc_rel, z3.Or(*[esc_nexts[i] != prevs[i] for i in range(len(prevs))]))
     s = z3.Solver()
     s.set("timeout", 5000)
     s.add(reln)
@@ -74,6 +104,26 @@ def classify(m):
     return {"verdict": verdict, "states": states, "decided": decided, "note": None}
 
 
+def _is_deterministic(m):
+    """Does the FSM have a UNIQUE successor per state (next a function of prev)? Two relation copies
+    sharing prev (the 2nd with fresh nexts + inputs), asserting the nexts differ: UNSAT ⟹ deterministic.
+    A free input that branches the successor makes the perturb-and-step direction ambiguous, so
+    stability must not claim stable/unstable on it (Ana #323)."""
+    carried = m.carried
+    if not carried:
+        return True
+    nexts = [m.consts[v["name"]] for v in carried]
+    prevs = [m.consts[v["prev"]] for v in carried]
+    reln = z3.And(*list(m.assertions))
+    if m.first_tick is not None:
+        reln = z3.And(reln, m.first_tick == False)             # noqa: E712
+    _, rel2, nexts2 = _escape_copy(reln, nexts, prevs, "__d2")
+    s = z3.Solver(); s.set("timeout", 5000)
+    s.add(reln); s.add(rel2)
+    s.add(z3.Or(*[nexts[i] != nexts2[i] for i in range(len(nexts))]))
+    return s.check() == z3.unsat
+
+
 def _dist(a, b, numeric):
     return sum((a[v["name"]] - b[v["name"]]) ** 2 for v in numeric) ** 0.5
 
@@ -85,6 +135,8 @@ def stability(m, state, numeric):
     'unknown' when there are no numeric vars or no valid perturbation resolves. This is the bistable's
     0,6 (stable walls) vs 3 (unstable watershed) distinction the bare terminal set can't show."""
     if not numeric:
+        return "unknown"
+    if not _is_deterministic(m):           # a free input branches the successor — direction ambiguous (Ana #323)
         return "unknown"
     toward = away = 0
     for v in numeric:

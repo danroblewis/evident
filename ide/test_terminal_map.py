@@ -29,6 +29,10 @@ CASES = [
      "fsm bistable\n    x ∈ Int\n    is_first_tick ⇒ x = 1\n    ¬is_first_tick ⇒\n        0 ≤ x\n"
      "        x ≤ 6\n        x = (_x < 3 ? (_x = 0 ? 0 : _x - 1) : (_x > 3 ? (_x = 6 ? 6 : _x + 1) : 3))",
      "terminates", [{"x": 0}, {"x": 3}, {"x": 6}]),
+    ("SHIPPED bistable (free step ±1 — NONDETERMINISTIC; the absorbing-soundness repro, Ana #322)",
+     "fsm bistable\n    x ∈ Int\n    step ∈ Int\n    -1 ≤ step ≤ 1\n    is_first_tick ⇒ x = 3\n"
+     "    0 ≤ x\n    x ≤ 6\n    Δx = (_x = 0 ? 0 : (_x = 6 ? 0 : step))",
+     "terminates", [{"x": 0}, {"x": 6}]),
     ("random_walk (UNBOUNDED 2D — brute-force can't enumerate)",
      "fsm random_walk\n    x, y ∈ Int := 0\n    -1 ≤ Δx ≤ 1\n    -1 ≤ Δy ≤ 1",
      "daemon", []),
@@ -57,23 +61,29 @@ def main():
                 fails.append(f"{name}: verdict {c['verdict']!r} != {want_verdict!r}")
             elif _set(c["states"]) != _set(want_states):
                 fails.append(f"{name}: terminal set {[_short(s) for s in c['states']]} != {want_states}")
-    # #20: fixed-point stability — the bistable's walls 0,6 are stable, the saddle 3 is unstable.
-    bist = next(c[1] for c in CASES if "bistable" in c[0])
-    with tempfile.TemporaryDirectory() as w:
-        ok, prefix, *_ = _export(bist, w)
-        m = load_model(prefix + ".smt2", prefix + ".schema.json")
-        numeric = [v for v in m.carried if v["kind"] in ("int", "real")]
-        got = {s[numeric[0]["name"]]: stability(m, s, numeric) for s in classify(m)["states"]}
-        if got != {0: "stable", 3: "unstable", 6: "stable"}:
-            fails.append(f"bistable stability {got} != {{0:stable, 3:unstable, 6:stable}}")
+    # #20 stability + #323 soundness: the DETERMINISTIC bistable's walls 0,6 are stable, saddle 3
+    # unstable; the NONDETERMINISTIC shipped bistable (free step) must claim NO stability — the
+    # perturb-and-step direction is ambiguous, so every terminal is 'unknown'.
+    det = next(c[1] for c in CASES if "gambler" in c[0])
+    nd = next(c[1] for c in CASES if "free step" in c[0])
+    for src, want in [(det, {0: "stable", 3: "unstable", 6: "stable"}),
+                      (nd, {0: "unknown", 6: "unknown"})]:
+        with tempfile.TemporaryDirectory() as w:
+            ok, prefix, *_ = _export(src, w)
+            m = load_model(prefix + ".smt2", prefix + ".schema.json")
+            numeric = [v for v in m.carried if v["kind"] in ("int", "real")]
+            got = {s[numeric[0]["name"]]: stability(m, s, numeric) for s in classify(m)["states"]}
+            if got != want:
+                fails.append(f"stability {got} != {want}")
 
     if fails:
         print("TERMINAL-MAP FAILURES:")
         for f in fails:
             print("  ✗", f)
         return 1
-    print("✓ terminal_map: absorbing set decides daemon-vs-terminates (counter→{5}, cyclic→∅, "
-          "bistable→{0,3,6}, random_walk→∅); + stability: bistable 0,6 stable, 3 unstable (saddle)")
+    print("✓ terminal_map: absorbing set SOUND on nondeterministic FSMs (shipped free-step "
+          "bistable→{0,6}, not all 7); counter→{5}, cyclic→∅, det-bistable→{0,3,6}, random_walk→∅; "
+          "stability: det 0,6 stable/3 unstable, nondeterministic→unknown")
     return 0
 
 
