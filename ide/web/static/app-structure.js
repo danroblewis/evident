@@ -59,11 +59,31 @@ function renderStructure(s) {
   if (lasso) {
     html += ` <button id="replay-lasso" class="struct-replay" title="step through a run that loops forever among non-rest states, never reaching the absorbing set — the witness that not every run rests">▶ replay a dodging loop</button>`;
   }
+  // #332: on-demand soundness — cross-check this model's abstract verdict against brute-force enumeration.
+  html += ` <button id="verify-snd" class="struct-replay" title="cross-check the abstract verdict (terminal set / reachable box) against a brute-force enumeration of THIS model — a fabrication self-check (#332/#330)">⛨ verify soundness</button><span id="snd-result" class="dim"></span>`;
   el.innerHTML = html;
   if (lasso) {
     const rb = el.querySelector("#replay-lasso");
     if (rb) rb.onclick = () => showTrace(lasso, "a run looping forever — never resting (#333/#334)", "violation", 0);
   }
+  const vb = el.querySelector("#verify-snd");
+  if (vb) vb.onclick = async () => {
+    const out = $("#snd-result"); out.textContent = " checking…";
+    try {
+      const body = JSON.stringify({ source: editor.getValue(), verify_soundness: true });
+      const d = await (await fetch("/api/analyze", { method: "POST", headers: { "content-type": "application/json" }, body })).json();
+      out.textContent = " " + _fmtSoundness(d.soundness);
+    } catch (e) { out.textContent = " ✕ " + e; }
+  };
+}
+
+
+function _fmtSoundness(snd) {
+  if (!snd) return "no result";
+  if (!snd.applicable) return "soundness: n/a — " + (snd.detail || "not exactly enumerable here");
+  const ok = snd.absorbing_ok !== false && snd.box_ok !== false;
+  return ok ? "✓ cross-checked — the abstract verdict matches a brute-force enumeration of this model"
+            : "⚠ SOUNDNESS MISMATCH — " + (snd.detail || "abstract ≠ brute-force; please report");
 }
 
 // Interactive diagram overlay (#184): drop transparent hover targets over the rendered

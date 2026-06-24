@@ -274,6 +274,9 @@ def _dynamics_response(req, prefix, dropped, msg):
         FUNCTION_VIEWS, RENDERERS, VIEWS, _function_response, _render_png)
 
     m = load_model(prefix + ".smt2", prefix + ".schema.json")
+    if getattr(req, "verify_soundness", False):       # #332: on-demand cross-check, no render needed
+        from soundness_check import soundness_report
+        return {"ok": True, "soundness": soundness_report(m)}
     if req.view in FUNCTION_VIEWS:                     # fast path: no dynamics solve (#301)
         return _function_response(m, req.view, prefix, dropped, req.source, msg)
     scope = effective_scope(req)
