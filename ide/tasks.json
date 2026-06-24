@@ -8390,16 +8390,28 @@
       "id": 328,
       "title": "terminal_map should report WHICH-RUNS-REACH-REST: a non-empty absorbing set says the FSM CAN halt, not that every run does. Layer the BMC/fairness check ('does every fair trajectory reach the absorbing set?') so the daemon-vs-terminates verdict distinguishes 'can rest' from 'must rest' \u2014 the liveness companion to the safety absorbing-set.",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "ide-critic-expert",
       "created": "2026-06-24T03:52:03Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "analysis"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-24T05:44:03Z",
+          "by": "worker",
+          "act": "started"
+        },
+        {
+          "at": "2026-06-24T05:44:03Z",
+          "by": "worker",
+          "act": "done",
+          "note": "terminal_map now shows must-rest vs can-rest: every run reaches the absorbing set iff the non-rest reachable subgraph is acyclic (Kahn's); nondet bistable CAN rest at {0,6} but a run can loop at x=3 forever. Banner: 'EVERY run reaches rest' (green) vs 'CAN REST (not always)' (amber). Bounded-discrete; unbounded\u2192None honest. Tested + gated green."
+        }
+      ]
     },
     {
       "id": 329,
