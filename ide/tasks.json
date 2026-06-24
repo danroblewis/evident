@@ -8747,16 +8747,28 @@
       "id": 339,
       "title": "solution_structure non-pairwise pass only handles INTEGER vars (free_int filter, line 110-111). Real-typed free vars get no implied-relation analysis at all \u2014 but affine relations over reals (c = 2.5a + b) are equally Z3-verifiable. Extend _nonpairwise to reals (rationalize coefficients, keep the Z3 UNSAT guard).",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "ide-critic-expert",
       "created": "2026-06-24T10:10:23Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "analysis"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-24T10:46:14Z",
+          "by": "worker",
+          "act": "started"
+        },
+        {
+          "at": "2026-06-24T10:46:14Z",
+          "by": "worker",
+          "act": "done",
+          "note": "Real-typed relations: _val extracts exact sympy rationals, RealVal verification. y=2x \u2227 z=x+y \u2192 '2\u00b7x = y','3\u00b7x = z'. Also fixed the over-broad pairwise skip (was discarding scaling y=2x); now skips EXACTLY a=b. Tested + gated. NOT live (batched restart)."
+        }
+      ]
     }
   ],
   "concerns": [
