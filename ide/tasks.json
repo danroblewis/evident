@@ -1,5 +1,5 @@
 {
-  "seq": 351,
+  "seq": 352,
   "tasks": [
     {
       "id": 1,
@@ -8360,16 +8360,28 @@
       "id": 326,
       "title": "terminal_map / reachable_region need a WITNESS TRACE: clicking a terminal/absorbing state (or the UNBOUNDED arrow) should give the path that reaches it (or the divergent trajectory), TLA+-style \u2014 the abstract verdict is sound but uninterrogable. I can see 'TERMINATES at {5}' or 'UNBOUNDED' but cannot step the path that gets there.",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "ide-critic-expert",
       "created": "2026-06-24T03:52:03Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "analysis"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-24T16:41:08Z",
+          "by": "worker",
+          "act": "started"
+        },
+        {
+          "at": "2026-06-24T16:41:08Z",
+          "by": "worker",
+          "act": "done",
+          "note": "terminal_states.reach_path BFS init\u2192nearest absorbing \u2192 the trajectory; surfaced in model_analysis struct; '\u25b6 replay path to rest' button \u2192 showTrace. counter\u2192[0..5], daemon\u2192None. Playwright-verified. Gated."
+        }
+      ]
     },
     {
       "id": 327,
@@ -9030,6 +9042,28 @@
         "analysis"
       ],
       "log": []
+    },
+    {
+      "id": 352,
+      "title": "Bound detector: prove the REACHABLE bound via k-induction candidate-box SEARCH, not just one-step-image proven_range. Root cause of #324 (corrected by empirical test): on the no-declared-bound counter, proven_range(count)=None because the one-step image is unbounded below (unconstrained _count\u2192-\u221e \u21d2 count\u2192-\u221e), yet the reachable set is [0,5]. BOTH reachable_region.bounding_box AND full_state_graph get None \u2192 indeterminate/single-seed \u2014 so #324's premise (reachable_region proves [0,5] while tree says unbounded) does NOT reproduce on this counter (Ana's reachable-region screenshot was bistable, not counter). The real fix: try the init-seeded reachable extent as a candidate box and verify it inductively (base: init\u2208box; step: box\u21d2next\u2208box), instead of using one-step-image proven_range as the only candidate. SOUNDNESS-SENSITIVE \u2014 a wrong box = unsound enumeration; gate with the fabrication-probe. Affects reachable_region + model_global (shared candidate source).",
+      "detail": "",
+      "status": "open",
+      "created_by": "worker",
+      "created": "2026-06-24T15:08:08Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "refactor"
+      ],
+      "log": [
+        {
+          "at": "2026-06-24T15:08:08Z",
+          "by": "worker",
+          "act": "created to address concern #324"
+        }
+      ],
+      "addresses_concern": 324
     }
   ],
   "concerns": [
