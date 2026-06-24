@@ -8522,10 +8522,10 @@
       "id": 319,
       "title": "Extend the abstract analysis suite to CLAIMS (only get claim_space today)",
       "detail": "User: claims are under-served \u2014 far more abstract analysis possible (solution boundary, feasible/terminal decomposition, relational structure). The bigger win. Make the abstract suite claim-aware.",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "worker",
       "created": "2026-06-23T23:52:33Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 1,
       "tags": [
@@ -8548,6 +8548,17 @@
           "by": "ide-critic-expert",
           "act": "reopened",
           "note": "VERIFIED LIVE FAIL on the exact #319 program (claim t; 0\u2264a\u2208Int\u226410; 0\u2264b\u2208Int\u226410; 0\u2264c\u2208Int\u226420; c=a+b). The claim offers only TWO tabs \u2014 'claim space' and 'solution structure' \u2014 NOT the multiple named views the task requires (claim_space, solution_structure, scatter_matrix, parallel_coords as separately selectable tabs). scatter_matrix and parallel_coords are absent from the tab strip for a claim. The claim_space panel IS good (z3-exact variable boundaries + a single 2-var (a,b) feasible-region scatter, implied a+b=c surfaced), but a 2-var embedded scatter is not the promised pairwise scatter_matrix across all 3 vars, and there is no parallel_coords view at all. This is the same gap as still-open expert concern #315 \u2014 the claim/Solve gallery collapses to a single 'claim space' tab and the named per-pair views are not discoverable. Acceptance requires the 4 named views selectable for a claim. Screenshot: marek-claim.png."
+        },
+        {
+          "at": "2026-06-24T18:08:04Z",
+          "by": "worker",
+          "act": "started"
+        },
+        {
+          "at": "2026-06-24T18:08:04Z",
+          "by": "worker",
+          "act": "done",
+          "note": "Now LIVE via #356 (Marek reopened pre-restart): a claim exposes 4 tabs (claim_space, solution_structure, scatter_matrix, parallel_coords); parallel_coords/scatter render the witness cloud. Restart-verified: views=[...4...], png True."
         }
       ]
     },
@@ -9145,16 +9156,28 @@
       "id": 342,
       "title": "Split ide/web/server.py endpoint routing off the FastAPI app to relieve the Rule-3 free-function ceiling. server.py is at 11 module-level functions, ONE below the lint cap of 12 \u2014 the next clean endpoint (the #332 case) trips the ratchet, which forced a flag-based workaround instead of a new route. Group the 11 endpoint handlers (analyze, solve, optimize, invariant, temporal, query, explore, figure, diff, smtlib, index) into APIRouter modules by concern: an analysis/solve router (solve, optimize, invariant, temporal, query, explore) and a figure/export router (analyze, figure, diff, smtlib, index), each in its own file under ide/web/, included via app.include_router(...). The Req pydantic models move with their handlers. Behavior-preserving: same paths, same request/response shapes \u2014 verify every endpoint with curl against a restarted server (NOT during a critic review; the user restarts + spot-checks). Drops server.py's module-level-function count well under the cap, unblocking future endpoints.",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "ide-architect",
       "created": "2026-06-24T11:45:23Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "refactor"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-24T18:08:04Z",
+          "by": "worker",
+          "act": "started"
+        },
+        {
+          "at": "2026-06-24T18:08:04Z",
+          "by": "worker",
+          "act": "done",
+          "note": "Dijkstra split server.py routing into figure_router + solve_router APIRouters (12\u21922 module-level fns); all 11 endpoints curl-verified live (200, or 422-validation for a wrong body \u2014 none 404/500); OpenAPI same paths. Restart-verified."
+        }
+      ]
     },
     {
       "id": 344,
