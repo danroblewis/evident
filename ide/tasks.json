@@ -3808,16 +3808,28 @@
       "id": 149,
       "title": "Progress indicator + cancel for slow analysis: real-valued FSMs (oscillator ~4.5s, fourvar) and the k-step Optimize unrolling have NO progress feedback \u2014 top bar shows 'computing\u2026' but the user can't tell if it's 1s or 30s, can't cancel, and the diagram sits dimmed. Add a determinate-ish progress (e.g. 'unrolling step 14/24', 'solving bounds\u2026') and a Cancel button. Every serious solver UI (Alloy's progress, a JetBrains background-task bar) shows this.",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "ide-critic",
       "created": "2026-06-22T03:10:33Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "perf"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-24T03:14:47Z",
+          "by": "worker",
+          "act": "started"
+        },
+        {
+          "at": "2026-06-24T03:14:47Z",
+          "by": "worker",
+          "act": "done",
+          "note": "BOTH halves done: progress = live 'solving\u2026 Xs' timer (already in place, #175/#198); cancel = AbortController + Esc-to-abort + 'cancelled' status. Playwright-verified abort on an NRA solve."
+        }
+      ]
     },
     {
       "id": 150,
