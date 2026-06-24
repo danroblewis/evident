@@ -58,7 +58,7 @@ function renderExplainer(source) {
   const el = $("#explainer");
   if (!el) return;
   const ex = explainerFor(source);
-  if (!ex) { el.hidden = true; el.open = false; return; }
+  if (!ex) { el.hidden = true; el.open = false; el.querySelector(".ex-body").innerHTML = ""; return; }  // #361: clear, no stale text
   el.querySelector(".ex-body").innerHTML =
     `<div class="ex-what">${ex.what}</div>`
     + `<div class="ex-why">${ex.why}</div>`
@@ -333,6 +333,7 @@ async function run(view) {
 // Persist + debounced analyze, driven from the single session 'change' handler above.
 function scheduleAnalyze() {
   try { localStorage.setItem("evident-buffer", editor.getValue()); } catch (e) {}
+  renderExplainer(editor.getValue());   // #361: hide/update the explainer INSTANTLY on edit, not 350ms later
   clearTimeout(timer); timer = setTimeout(() => run(), 350);
 }
 
