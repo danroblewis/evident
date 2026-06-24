@@ -1,5 +1,5 @@
 {
-  "seq": 336,
+  "seq": 339,
   "tasks": [
     {
       "id": 1,
@@ -8425,11 +8425,13 @@
       "id": 329,
       "title": "solution_structure for >2-var claims should expose the full backbone/free DECOMPOSITION as an interrogable table, and surface forced relations beyond pairs (a+b=c implied sums, ordering a<b forced) \u2014 currently only pairwise = and \u2260 are detected. Z3 gives me implied equalities over arbitrary terms; mirror that.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-expert",
       "created": "2026-06-24T03:52:03Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "analysis"
@@ -8445,6 +8447,12 @@
           "by": "worker",
           "act": "done",
           "note": "solution_structure now surfaces non-pairwise affine relations: sample solutions \u2192 affine null space (numpy SVD) \u2192 rationalize \u2192 Z3-verify each (no sampling coincidence reported). c=a+b \u2192 'c = a + b', a=b+3 \u2192 'a = b + 3'; banner 'implied: \u2026'. Tested + render-verified + gated green."
+        },
+        {
+          "at": "2026-06-24T10:10:28Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -8692,6 +8700,63 @@
           "note": ""
         }
       ]
+    },
+    {
+      "id": 337,
+      "title": "solution_structure._nonpairwise misses ALL relations when >=2 independent affine relations co-exist (rank>=2 null space). Root cause: float SVD (numpy) returns an arbitrary orthonormal basis for the null space, mixing the clean integer relations into non-rational vectors; the rationalize-by-min-nonzero step then fails allclose and discards every candidate. VERIFIED live: 'c=a+b \u2227 d=a-b+10' (both Z3-implied) renders '0 implied relations'; the single-relation 4-var control correctly shows 'implied: a+b=c'. This is a false-NEGATIVE only (never fabricates \u2014 soundness intact). Fix: compute the integer/rational null space (sympy rational nullspace, or Z3 implied-equality extraction over the augmented [vars,1] lattice / row-reduce over Q), then Z3-verify each as today. Z3 itself gives implied equalities over arbitrary terms \u2014 that's the right primitive, mirrors what the task asked for. (where: ide/critics/recordings/case4_two_rel.png vs case5_single_4var.png)",
+      "detail": "",
+      "status": "worker_done",
+      "created_by": "ide-critic-expert",
+      "created": "2026-06-24T10:10:11Z",
+      "worker_done": true,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "analysis"
+      ],
+      "log": [
+        {
+          "at": "2026-06-24T10:28:14Z",
+          "by": "worker",
+          "act": "started"
+        },
+        {
+          "at": "2026-06-24T10:28:14Z",
+          "by": "worker",
+          "act": "done",
+          "note": "Swapped float SVD \u2192 sympy exact rational null space: \u22652 co-existing relations now BOTH surface (c=a+b \u2227 d=a-b+10 \u2192 'a+b=c' AND 'a=b+d-10'). Sign-normalized + fixed negative-const formatting. Still Z3-verified per relation. Tested + render-verified. NOT yet live (no restart \u2014 batched)."
+        }
+      ]
+    },
+    {
+      "id": 338,
+      "title": "solution_structure relations are render-only (baked into the PNG banner), not in the JSON 'structure' block \u2014 so they're not interrogable as data. A verification engineer wants the backbone/free/equalities/inequalities/relations decomposition as a STRUCTURED TABLE in the response (like Z3's get-implied-equalities output), to query/diff/export, not just read off an image. Surface r['relations'] etc. in the analyze JSON and consider an interrogable table panel beside the chart.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-expert",
+      "created": "2026-06-24T10:10:23Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "analysis"
+      ],
+      "log": []
+    },
+    {
+      "id": 339,
+      "title": "solution_structure non-pairwise pass only handles INTEGER vars (free_int filter, line 110-111). Real-typed free vars get no implied-relation analysis at all \u2014 but affine relations over reals (c = 2.5a + b) are equally Z3-verifiable. Extend _nonpairwise to reals (rationalize coefficients, keep the Z3 UNSAT guard).",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-expert",
+      "created": "2026-06-24T10:10:23Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "analysis"
+      ],
+      "log": []
     }
   ],
   "concerns": [
