@@ -1,5 +1,5 @@
 {
-  "seq": 349,
+  "seq": 351,
   "tasks": [
     {
       "id": 1,
@@ -8940,11 +8940,13 @@
       "id": 347,
       "title": "Farkas certificate for REAL claims: #345 falls back to the bare core list for reals (rational \u03bb suppressed). A real linear claim still has a rational Farkas combination (e.g. 2\u00b7x=y \u2190 y==ToReal(2)*x with \u03bb=1; 3\u00b7x=z \u2190 (y==2x)+(z==x+y)). Surface the RATIONAL linear combination for reals too \u2014 display \u03bb as exact fractions (1/2\u00b7(...)), the way Z3's produce-proofs Farkas lemma does. Right now the real case shows 'forced by:' but never 'derived as:', so the most interesting derivations (the ones with fractional coefficients) are exactly the ones we can't see.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-expert",
       "created": "2026-06-24T13:36:05Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "analysis"
@@ -8960,6 +8962,12 @@
           "by": "worker",
           "act": "done",
           "note": "_coef_vec extracts exact sympy coefficients via RealVal substitution (int+real/rational \u03bb); _farkas_combo dropped the is_real guard. Real y=2x \u2227 z=x+y \u2192 3\u00b7x=z derives as '\u2212(y==2*x) \u2212 (z==x+y)'. Fixed a sympy-Boolean sort-key regression. Tested + gated."
+        },
+        {
+          "at": "2026-06-24T14:27:42Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -8985,6 +8993,36 @@
       "status": "open",
       "created_by": "ide-critic-expert",
       "created": "2026-06-24T13:36:05Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "analysis"
+      ],
+      "log": []
+    },
+    {
+      "id": 350,
+      "title": "Farkas combo: surface MORE fractional-\u03bb relations, not just integer-\u03bb nullspace basis vectors. The fractional-\u03bb derivation path (#347) is sound and renders exactly (verified live: 3\u00b7a=2\u00b7b \u2192 3/2\u00b7(2a==b+c) \u2212 1/2\u00b7(b==3c)), but it only fires for relations whose displayed integer coefficient vector happens to require dividing a core constraint. For many real claims (e.g. 2x=y \u2227 2z=y) the tool surfaces only the integer-\u03bb pairwise-scaled relation (2\u00b7x=y) and never displays the genuinely 3-var relation (x+z=y) whose \u03bb would be fractional \u2014 sympy .nullspace() returns sparse single-constraint-forced basis vectors with \u03bb=1. Consider surfacing a richer relation basis (or all minimal relations) so the most interesting fractional derivations are reachable through ordinary modeling, not only hand-crafted coupled systems.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-expert",
+      "created": "2026-06-24T14:27:42Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "analysis"
+      ],
+      "log": []
+    },
+    {
+      "id": 351,
+      "title": "Inequality-forced relation: show the FARKAS combo with non-negative multipliers (the real Farkas lemma for inequalities), not just the bare core list. Verified live (2\u00b7a=c forced by c==a+b \u2227 a-b\u22640 \u2227 b-a\u22640): the tool correctly falls back to 'forced by: <core>' and never fabricates an equality combo \u2014 sound. But Z3's produce-proofs DOES give a Farkas certificate for inequality-forced facts (\u03bb\u22650 over the half-spaces). The bare core is honest but less interrogable than the equality case; surfacing the signed/non-negative inequality combo would close the gap with what Z3's farkas-lemma proof rule emits.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-expert",
+      "created": "2026-06-24T14:27:42Z",
       "worker_done": false,
       "approvals": [],
       "reopened": 0,
