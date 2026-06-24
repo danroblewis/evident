@@ -227,6 +227,13 @@ html,body { margin:0; height:100%; background:var(--bg); color:var(--ink);
 #structure .struct-rel { cursor:pointer; border-bottom:1px dotted; }
 #structure .struct-rel:hover { text-decoration:underline; }
 
+/* #285: rigor/honesty badge on each diagram — proven/exhaustive (green) vs sampled (amber) */
+.view-wrap { position:relative; }
+.rigor-badge { position:absolute; top:6px; right:6px; font-size:11px; padding:2px 8px; border-radius:10px;
+  font-weight:600; cursor:help; z-index:4; }
+.rigor-proven, .rigor-exhaustive { background:rgba(46,125,50,0.88); color:#fff; }
+.rigor-sampled { background:rgba(245,166,35,0.9); color:#3a2a00; }
+
 /* assert-and-check an invariant over the reachable set */
 #invariant { display:flex; align-items:center; gap:8px; padding:6px 14px;
   background:#0e1a16; border-bottom:1px solid var(--line); font-size:12px; }

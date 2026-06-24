@@ -323,7 +323,8 @@ def _analyze_payload(req, m, dropped, msg, structure, view, png, points, scope,
     import base64
 
     from config import REACH_LIMIT
-    from render import VIEWS
+    from render import VIEWS, view_rigor
+    cont = any(v.get("kind") == "real" for v in m.carried)
 
     return {
         "ok": True,
@@ -337,10 +338,10 @@ def _analyze_payload(req, m, dropped, msg, structure, view, png, points, scope,
         "capped": capped,
         "scope": scope, "scope_default": REACH_LIMIT,   # the scope knob's effective + default bound
         # has-a-Real-var → continuous, not exhaustively enumerable; never "✓ complete" (Marek #274).
-        "continuous": any(v.get("kind") == "real" for v in m.carried),
+        "continuous": cont,
         "vars": [v["name"].split(".")[-1] for v in m.interface_vars]
                 + [v["name"].split(".")[-1] for v in getattr(m, "derived", [])],
-        "view": view,
+        "view": view, "rigor": view_rigor(view, capped, cont),   # #285: proven/exhaustive/sampled honesty
         "views": VIEWS,
         "all_conditions": bool(req.all_conditions) and view == "state_graph",  # global dynamics vs from-init (diagram #1)
         "png": base64.b64encode(png).decode() if png else None,

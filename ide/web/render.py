@@ -89,6 +89,24 @@ VIEWS = [v for v in ALL_VIEWS if v in RENDERERS]
 # (now timeout-bounded, but still slow) dynamics solve for nothing (Ana #301).
 FUNCTION_VIEWS = {v for v in VIEWS if v.startswith("function_")}
 
+# #285: each view's RIGOR class — the HONESTY marker. Is the content PROVEN over all conditions (abstract
+# Z3), EXHAUSTIVE (the full bounded-discrete state graph), or SAMPLED (trajectories / a capped or
+# continuous fallback)? So a viewer never mistakes a sampled cloud for a proof.
+_PROVEN_VIEWS = {"solution_space", "terminal_map", "reachable_region", "claim_space", "solution_structure"}
+_ENUMERATE_VIEWS = {"state_graph", "basin_map", "fixedpoint_map", "transition_matrix", "timing_diagram",
+                    "time_series", "reachability_tree", "orbit_scatter"}
+
+
+def view_rigor(view, capped=False, continuous=False):
+    """The honesty class of a rendered view: 'proven' (abstract Z3 over all conditions), 'exhaustive' (the
+    full bounded-discrete state graph), or 'sampled' (trajectories / a capped or continuous fallback). An
+    ENUMERATE view degrades to 'sampled' when the graph capped or the model is continuous (#285)."""
+    if view in _PROVEN_VIEWS or view.startswith("function_"):
+        return "proven"
+    if view in _ENUMERATE_VIEWS:
+        return "exhaustive" if not (capped or continuous) else "sampled"
+    return "sampled"
+
 
 @contextlib.contextmanager
 def _all_conditions(view, on):
@@ -198,7 +216,7 @@ def _maybe_claim(prefix, dropped, source="", msg="", view="claim_space"):
                       "fixed_points": [], "bounds": bounds, "relations": relations, "reachable": 0,
                       "capped": False, "branching": 1},
         "dropped": dropped, "branching": 1, "states": 0, "edges": 0, "capped": False,
-        "vars": list(bounds.keys()), "view": view, "views": CLAIM_VIEWS,
+        "vars": list(bounds.keys()), "view": view, "rigor": view_rigor(view), "views": CLAIM_VIEWS,
         "png": base64.b64encode(png).decode() if png else None,
         "warnings": msg if dropped else "",
         "dropped_locs": _dropped_locs(source, msg) if dropped else [],

@@ -53,6 +53,17 @@ function viewPane(data, withOverlay) {
   const alt = (`${(data.view || "diagram").replace(/_/g, " ")} — ${VIEW_CAPTIONS[data.view] || ""}`
     + (live.length ? " · " + live.join(" · ") : "")).replace(/"/g, "&quot;");
   pane.innerHTML = `<img alt="${alt}" src="data:image/png;base64,${data.png}">`;
+  // #285: the HONESTY marker — is this picture PROVEN (abstract Z3 over all conditions), EXHAUSTIVE (the
+  // full state graph), or SAMPLED (trajectories / a capped fallback)? Never let a sampled cloud read as a proof.
+  const R = { proven: ["✓ proven", "abstract Z3 over ALL conditions — a proof, not a sample"],
+    exhaustive: ["✓ all states", "the COMPLETE bounded-discrete state graph — every reachable state, not a sample"],
+    sampled: ["~ sampled", "sampled trajectories / a capped or continuous run — NOT exhaustive; don't read it as a proof"] };
+  if (data.rigor && R[data.rigor]) {
+    const badge = document.createElement("div");
+    badge.className = "rigor-badge rigor-" + data.rigor;
+    badge.textContent = R[data.rigor][0]; badge.title = R[data.rigor][1];
+    pane.appendChild(badge);
+  }
   const _im = pane.querySelector("img");                   // the base64 img has no size until decoded —
   if (_im) _im.addEventListener("load", () => resetPanZoom(pane));   // re-fit once its size is known (#176)
   if (withOverlay) overlayPoints(pane, data.points || []);
