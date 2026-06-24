@@ -1,5 +1,5 @@
 {
-  "seq": 354,
+  "seq": 356,
   "tasks": [
     {
       "id": 1,
@@ -7432,11 +7432,13 @@
       "id": 284,
       "title": "Diagrams: claim/Solve program support in sampling views (scatter_matrix, parallel_coords, solution_space) \u2014 sample the satisfying-assignment set, not just FSM reachable graphs",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "worker",
       "created": "2026-06-23T18:19:04Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "diagram"
@@ -7452,6 +7454,12 @@
           "by": "worker",
           "act": "done",
           "note": "parallel_coords _claim_setup reuses claim_witnesses + ClaimModel to sample a claim's solution space (121-witness cloud verified); UNSAT \u2192 N/A card; test pins no-fabrication. Gated."
+        },
+        {
+          "at": "2026-06-24T17:52:20Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -7459,11 +7467,13 @@
       "id": 285,
       "title": "Diagrams: visually distinguish proven-all-conditions content from sampled/single-run content (solution_space region vs scatter) \u2014 the honesty marker",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "worker",
       "created": "2026-06-23T18:19:04Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 1,
       "tags": [
         "diagram"
@@ -7496,6 +7506,12 @@
           "by": "worker",
           "act": "done",
           "note": "#353 fix: bound-views (solution_space/terminal_map/reachable_region) downgrade to 'sampled' when capped/continuous \u2014 badge agrees with chart, no false 'proven'. claim views stay proven. Live-verified drift\u2192sampled, counter\u2192proven."
+        },
+        {
+          "at": "2026-06-24T17:52:20Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -9064,11 +9080,13 @@
       "id": 344,
       "title": "Guarantee unsat-core MINIMALITY for relation proofs with a deletion-based minimization pass (Z3's unsat_core() returns *an* unsat core, not a minimal one \u2014 empirically tight for the current linear-int claims, but no guarantee for nonlinear/mixed or a near-vacuous body that slips past the SAT gate). Loop: for each core constraint, drop it and re-check body\u2227\u00acrelation; keep only if still UNSAT. Makes the cited core provably minimal, matching Z3's own minimize-on-cores idiom.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-expert",
       "created": "2026-06-24T13:13:49Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "analysis"
@@ -9084,6 +9102,12 @@
           "by": "worker",
           "act": "done",
           "note": "_verify_core runs a deletion pass: drop each core constraint, keep only if the relation is still forced without it \u2192 provably minimal core. Verified bounds dropped from a=c-2's core. Test pins it. Gated."
+        },
+        {
+          "at": "2026-06-24T17:52:20Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -9126,11 +9150,13 @@
       "id": 346,
       "title": "Let me COPY/EXPORT a relation's proof obligation as SMT-LIB \u2014 the asserted body conjuncts + (assert (not relation)) + (check-sat) + (get-unsat-core) \u2014 so I can paste it into z3 directly and re-derive the core myself. The \u29c9 SMT-LIB button exports the transition; add a per-relation 'copy proof obligation' so the interrogation leaves the IDE and lands in my own solver, which is how I actually verify a claim I'm betting on.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-expert",
       "created": "2026-06-24T13:13:49Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "solve"
@@ -9146,6 +9172,12 @@
           "by": "worker",
           "act": "done",
           "note": "_smtlib_obligation generates named-assert SMT-LIB (produce-unsat-cores + negated relation + check-sat + get-unsat-core); test re-parses to UNSAT. Per relation in response."
+        },
+        {
+          "at": "2026-06-24T17:52:20Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -9203,11 +9235,13 @@
       "id": 349,
       "title": "Export the relation + its Farkas certificate: I can read 'a=c-2 derived as (a+b==10)\u2212(b+c==12)' on screen but cannot COPY it (into a proof, a paper, an issue). Add a copy/export on the relation proof \u2014 both human-readable ('a\u2212c=\u22122 = 1\u00b7(a+b\u221210) \u2212 1\u00b7(b+c\u221212)') and machine (the \u03bb vector + the SMT-LIB unsat-core / proof term). Z3's get_proof and Alloy's evaluator both let me take the certificate out of the tool.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-expert",
       "created": "2026-06-24T13:36:05Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "analysis"
@@ -9223,6 +9257,12 @@
           "by": "worker",
           "act": "done",
           "note": "'\u29c9 copy proof' button on each relation copies the human-readable derivation + the SMT-LIB obligation. Playwright-verified the button. Shares #346's smtlib."
+        },
+        {
+          "at": "2026-06-24T17:52:20Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -9292,6 +9332,28 @@
         "viz"
       ],
       "log": []
+    },
+    {
+      "id": 356,
+      "title": "Expose the claim witness-cloud renderers (parallel_coords \u22653 numeric vars; scatter_matrix >2 vars) as real selectable tabs for a claim, not just claim_space. The renderers already work (render_parallel_coords/_claim_setup verified at 600 witnesses/0 violations, test_parallel_claim green) but ide/web/render.py _maybe_claim CLAIM_VIEWS hardcodes ['claim_space','solution_structure'] and redirects every other view to claim_space, so the #284 capability is unreachable from the UI. Add the named tabs + route them to the witness renderers; keep the honest N/A on UNSAT.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-expert",
+      "created": "2026-06-24T17:52:42Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "diagram"
+      ],
+      "log": [
+        {
+          "at": "2026-06-24T17:52:42Z",
+          "by": "ide-critic-expert",
+          "act": "created to address concern #355"
+        }
+      ],
+      "addresses_concern": 355
     }
   ],
   "concerns": [
@@ -10211,9 +10273,19 @@
       "title": "RIGOR BADGE FABRICATES A PROOF ON CONTINUOUS/CAPPED BOUND-VIEWS \u2014 the exact thing #285 exists to prevent. The enumerate-view downgrade WORKS (state_graph on a continuous Real model correctly reports rigor='sampled'). But the three abstract bound-views \u2014 solution_space, terminal_map, reachable_region \u2014 are in _PROVEN_VIEWS (render.py:95) and view_rigor() returns 'proven' UNCONDITIONALLY, ignoring the capped/continuous args it is handed. Verified live on fsm drift{ x\u2208Real; is_first_tick\u21d2x=0.0; \u00acis_first_tick\u21d2x=_x+1.5 }: the solution_space corner badge says '\u2713 proven' (tooltip 'abstract Z3 over ALL conditions \u2014 a proof, not a sample') while the SAME chart's own subtitle says 'sampled over 400 reachable states \u2014 not exhaustive (true range may differ)' and the structure banner says '\u228f boundary (\u2265, capped): x \u2208 [0, 598.5]', with capped=True continuous=True in the JSON. Badge and chart contradict each other on one screen. API confirms all three: solution_space/terminal_map/reachable_region \u2192 rigor='proven' with capped=True&continuous=True. A reader trusts the badge over the fine print; this lets a sampled cap be read as a proof \u2014 unsound for a verification tool. Fix: view_rigor must downgrade the bound-derived PROVEN_VIEWS (solution_space/terminal_map/reachable_region) to '~ sampled' when (capped or continuous) AND the bound is not z3-proven exact; claim_space/solution_structure stay proven (genuinely Optimize-exact, no run/cap). Evidence: ide/critics/recordings/ana-20260624-170144/285-drift-proven-badge-but-capped.png",
       "detail": "",
       "by": "ide-critic-expert",
-      "status": "open",
+      "status": "cleared",
       "task": 285,
-      "created": "2026-06-24T17:06:34Z"
+      "created": "2026-06-24T17:06:34Z",
+      "cleared": "2026-06-24T17:52:20Z"
+    },
+    {
+      "id": 355,
+      "title": "VERIFIED (#284 follow-up): the parallel_coords/scatter_matrix CLAIM renderers are REAL and SOUND (render_parallel_coords._claim_setup \u2192 600 z3 witnesses on a 3-var claim, 0 violations; UNSAT\u2192N/A; test_parallel_claim green). BUT they are UNREACHABLE in the live tool: ide/web/render.py _maybe_claim (line 207-208) hardcodes CLAIM_VIEWS=['claim_space','solution_structure'] and forces 'view = view if view in CLAIM_VIEWS else claim_space', so /api/analyze with view=parallel_coords|scatter_matrix|solution_space all return the IDENTICAL claim_space PNG (same md5, verified), and the claim tablist shows only 'claim space'/'solution structure'. The witness-cloud capability the worker built for #284 is dead-ended behind the server router. Fix: when a claim has \u22653 numeric vars, expose 'parallel coords' (and 'scatter matrix' for >2) as real tabs that call the witness renderers, not just claim_space. This is the live-UI half of #315.",
+      "detail": "ide/web/render.py:207-208; evidence ide/critics/recordings/ana-20260624-174458/284-parallel-coords-claim-600witnesses.png (renderer works) vs the 2-tab claim tablist (UI doesn't expose it)",
+      "by": "ide-critic-expert",
+      "status": "open",
+      "task": null,
+      "created": "2026-06-24T17:52:34Z"
     }
   ]
 }
