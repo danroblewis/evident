@@ -284,8 +284,7 @@ fsm collatz
 `-- Each tick the walker steps freely in x and y: the free per-tick change Δx, Δy ∈ {-1, 0, 1} makes
 -- it nondeterministic. The occupancy_heatmap shows where it dwells, the reachability_tree the fan.
 fsm random_walk
-    x, y ∈ Int
-    is_first_tick ⇒ (x = 0 ∧ y = 0)
+    x, y ∈ Int := 0
     -1 ≤ Δx ≤ 1
     -1 ≤ Δy ≤ 1`,
   "pick · a nondeterministic choice (FSM)":
