@@ -102,6 +102,7 @@ def _axis_limits(model, var, vals):
 def render(model, out_path):
     c = classify(model)
     verdict, states, note = c["verdict"], c["states"], c.get("note")
+    must = c.get("must_rest")
     carried = model.carried
     numeric = [v for v in carried if v["kind"] in ("int", "real")]
     stabs = []
@@ -129,10 +130,17 @@ def render(model, out_path):
         for sp in ax.spines.values():
             sp.set_visible(False)
 
+    if must is True:
+        term = (f"TERMINATES — EVERY run reaches rest · {len(states)} terminal state(s) · the "
+                "non-rest states form a DAG into the absorbing set (#328)", _GREEN)
+    elif must is False:
+        term = (f"CAN REST (not always) — {len(states)} terminal state(s), but a run can loop "
+                "forever among non-rest states; a cycle avoids the absorbing set (#328)", _AMBER)
+    else:
+        term = (f"TERMINATES — {len(states)} terminal state(s) · the FSM can come to rest here · "
+                "solved abstractly from the one-step relation (Z3), not by enumerating runs", _GREEN)
     banners = {
-        "terminates": (f"TERMINATES — {len(states)} terminal state(s) · the FSM can come "
-                       "to rest here · solved abstractly from the one-step relation (Z3), "
-                       "not by enumerating runs", _GREEN),
+        "terminates": term,
         "daemon": ("DAEMON — no terminal state · the FSM runs indefinitely; its value is "
                    "in the ongoing/recurrent behavior, not an end state · decided abstractly "
                    "(works even when the state space is unbounded)", _AMBER),

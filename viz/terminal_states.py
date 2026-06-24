@@ -93,15 +93,57 @@ def absorbing_states(m, limit=64):
 _SCALAR = {"int", "real", "bool", "enum"}
 
 
+def _key(s):
+    return tuple(sorted((k.split(".")[-1], v) for k, v in s.items()))
+
+
+def must_rest(m, absorbing_keys):
+    """Does EVERY run from init reach the absorbing set? True iff the reachable NON-absorbing subgraph
+    is ACYCLIC — a finite DAG flows into the rest set, so no run can avoid resting. A cycle among
+    non-rest states (including a self-loop the FSM can keep choosing — the nondeterministic bistable
+    sitting at x=3 via step=0) means a run can loop forever without resting (Ana #328: 'must rest' vs
+    the absorbing-set's 'can rest'). None when the reachable set isn't a complete bounded-discrete
+    enumeration (can't decide from a finite graph)."""
+    states, edges = m.reachable(limit=500)
+    if len(states) >= 500:
+        return None
+    absorbing = {i for i, s in enumerate(states) if _key(s) in absorbing_keys}
+    non_a = [i for i in range(len(states)) if i not in absorbing]
+    indeg = {i: 0 for i in non_a}
+    adj = {i: [] for i in non_a}
+    for (i, j) in edges:
+        if i not in absorbing and j not in absorbing:
+            adj[i].append(j)
+            indeg[j] = indeg.get(j, 0) + 1
+    # Kahn's peel: zero-in-degree non-rest nodes drop out; any survivor sits on a cycle (incl. a
+    # self-loop) the FSM can ride forever, so not every run rests.
+    queue = [i for i in non_a if indeg[i] == 0]
+    removed = 0
+    while queue:
+        u = queue.pop()
+        removed += 1
+        for v in adj[u]:
+            indeg[v] -= 1
+            if indeg[v] == 0:
+                queue.append(v)
+    return removed == len(non_a)
+
+
 def classify(m):
     """{'verdict': 'terminates'|'daemon'|'unknown', 'states': [...], 'decided': bool, 'note'}."""
     if any(v["kind"] not in _SCALAR for v in m.carried):
-        return {"verdict": "unknown", "states": [], "decided": False,
+        return {"verdict": "unknown", "states": [], "decided": False, "must_rest": None,
                 "note": "non-scalar carried state (Seq/record) — abstract terminal analysis "
                         "not supported yet"}
     states, decided = absorbing_states(m)
     verdict = "unknown" if not decided else ("terminates" if states else "daemon")
-    return {"verdict": verdict, "states": states, "decided": decided, "note": None}
+    mr = None
+    if verdict == "terminates":
+        try:
+            mr = must_rest(m, {_key(s) for s in states})
+        except Exception:
+            mr = None
+    return {"verdict": verdict, "states": states, "decided": decided, "note": None, "must_rest": mr}
 
 
 def _is_deterministic(m):

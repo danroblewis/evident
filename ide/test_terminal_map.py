@@ -76,6 +76,18 @@ def main():
             if got != want:
                 fails.append(f"stability {got} != {want}")
 
+    # #328 must-rest: deterministic bistable + counter — EVERY run reaches rest (non-rest is a DAG);
+    # the nondeterministic bistable — a run can loop at x=3 forever (a cycle in non-rest), so NOT every
+    # run rests.
+    counter = next(c[1] for c in CASES if "terminating counter" in c[0])
+    for src, want_mr in [(det, True), (nd, False), (counter, True)]:
+        with tempfile.TemporaryDirectory() as w:
+            ok, prefix, *_ = _export(src, w)
+            m = load_model(prefix + ".smt2", prefix + ".schema.json")
+            got_mr = classify(m).get("must_rest")
+            if got_mr != want_mr:
+                fails.append(f"must_rest {got_mr} != {want_mr}")
+
     if fails:
         print("TERMINAL-MAP FAILURES:")
         for f in fails:
@@ -83,7 +95,8 @@ def main():
         return 1
     print("✓ terminal_map: absorbing set SOUND on nondeterministic FSMs (shipped free-step "
           "bistable→{0,6}, not all 7); counter→{5}, cyclic→∅, det-bistable→{0,3,6}, random_walk→∅; "
-          "stability: det 0,6 stable/3 unstable, nondeterministic→unknown")
+          "stability: det 0,6 stable/3 unstable, nondeterministic→unknown; must-rest (#328): "
+          "det+counter every-run-rests, nondet can-loop-at-3")
     return 0
 
 
