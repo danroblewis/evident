@@ -16,12 +16,61 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt          # noqa: E402
 
-from terminal_states import classify     # noqa: E402
+from terminal_states import classify, stability     # noqa: E402
 
 _GREEN = "#2e7d32"
 _AMBER = "#b8860b"
 _GREY = "#777777"
 _RED = "#c62828"
+_ORANGE = "#e65100"
+
+# fixed-point stability → (colour, marker, legend label) for the terminal markers (#20)
+_STAB = {
+    "stable":   (_GREEN,  "o", "stable (attractor)"),
+    "unstable": (_RED,    "X", "unstable (repeller)"),
+    "saddle":   (_ORANGE, "D", "saddle"),
+    "unknown":  (_GREY,   "s", "terminal"),
+}
+
+
+def _draw_terminals(ax, model, states, numeric):
+    """Plot the terminal states coloured by LOCAL STABILITY (#20: a bistable's stable walls 0,6 vs
+    its unstable saddle 3). Returns the per-state stability list for the banner."""
+    stabs = [stability(model, s, numeric) for s in states]
+    seen = set()
+
+    def _style(st):
+        col, mk, lbl = _STAB[st]
+        lab = lbl if st not in seen else None
+        seen.add(st)
+        return col, mk, lab
+
+    if len(numeric) >= 2:
+        vx, vy = numeric[0], numeric[1]
+        for s, st in zip(states, stabs):
+            col, mk, lab = _style(st)
+            ax.scatter([s[vx["name"]]], [s[vy["name"]]], marker=mk, s=240, color=col,
+                       edgecolor="black", linewidth=1.2, zorder=3, label=lab)
+        xs = [s[vx["name"]] for s in states]; ys = [s[vy["name"]] for s in states]
+        ax.set_xlabel(_short(vx["name"])); ax.set_ylabel(_short(vy["name"]))
+        ax.set_xlim(*_axis_limits(model, vx, xs)); ax.set_ylim(*_axis_limits(model, vy, ys))
+        ax.grid(True, alpha=0.25)
+    else:
+        vx = numeric[0]
+        xs = [s[vx["name"]] for s in states]
+        for s, st in sorted(zip(states, stabs), key=lambda p: p[0][vx["name"]]):
+            col, mk, lab = _style(st); x = s[vx["name"]]
+            ax.scatter([x], [0], marker=mk, s=300, color=col, edgecolor="black",
+                       linewidth=1.2, zorder=3, label=lab)
+            ax.annotate(f"{x}\n{st}", (x, 0), textcoords="offset points", xytext=(0, 14),
+                        ha="center", fontsize=9, fontweight="bold", color=col)
+        lo, hi = _axis_limits(model, vx, xs)
+        ax.plot([lo, hi], [0, 0], color=_GREY, lw=1, zorder=1)
+        ax.set_xlim(lo, hi); ax.set_yticks([]); ax.set_ylim(-1.2, 1)
+        ax.set_xlabel(_short(vx["name"])); ax.spines["left"].set_visible(False)
+    ax.legend(loc="upper right", fontsize=8)
+    ax.spines["top"].set_visible(False); ax.spines["right"].set_visible(False)
+    return stabs
 
 
 def _name(model):
@@ -55,35 +104,12 @@ def render(model, out_path):
     verdict, states, note = c["verdict"], c["states"], c.get("note")
     carried = model.carried
     numeric = [v for v in carried if v["kind"] in ("int", "real")]
+    stabs = []
 
     fig, ax = plt.subplots(figsize=(8.2, 5.2))
 
     if verdict == "terminates" and numeric and states:
-        if len(numeric) >= 2:
-            vx, vy = numeric[0], numeric[1]
-            xs = [s[vx["name"]] for s in states]
-            ys = [s[vy["name"]] for s in states]
-            ax.scatter(xs, ys, marker="s", s=240, color=_RED, edgecolor="black",
-                       linewidth=1.2, zorder=3, label="terminal state")
-            ax.set_xlabel(_short(vx["name"])); ax.set_ylabel(_short(vy["name"]))
-            ax.set_xlim(*_axis_limits(model, vx, xs))
-            ax.set_ylim(*_axis_limits(model, vy, ys))
-            ax.grid(True, alpha=0.25)
-        else:
-            vx = numeric[0]
-            xs = sorted(s[vx["name"]] for s in states)
-            ax.scatter(xs, [0] * len(xs), marker="s", s=300, color=_RED,
-                       edgecolor="black", linewidth=1.2, zorder=3)
-            for x in xs:
-                ax.annotate(str(x), (x, 0), textcoords="offset points", xytext=(0, 16),
-                            ha="center", fontsize=11, fontweight="bold")
-            lo, hi = _axis_limits(model, vx, xs)
-            ax.plot([lo, hi], [0, 0], color=_GREY, lw=1, zorder=1)
-            ax.set_xlim(lo, hi)
-            ax.set_yticks([]); ax.set_ylim(-1, 1)
-            ax.set_xlabel(_short(vx["name"]))
-            ax.spines["left"].set_visible(False)
-        ax.spines["top"].set_visible(False); ax.spines["right"].set_visible(False)
+        stabs = _draw_terminals(ax, model, states, numeric)
     elif verdict == "terminates" and states:
         labels = ["  ".join(f"{_short(k)}={v}" for k, v in s.items()) for s in states]
         ax.barh(range(len(labels)), [1] * len(labels), color=_RED, alpha=0.55, zorder=2)
@@ -116,6 +142,10 @@ def render(model, out_path):
     msg, col = banners[verdict]
     if verdict == "unknown" and note:
         msg = note
+    if stabs:
+        parts = [f"{stabs.count(k)} {k}" for k in ("stable", "unstable", "saddle", "unknown")
+                 if stabs.count(k)]
+        msg += " · " + ", ".join(parts)
     ax.set_title(f"{_name(model)} — terminal-state map  ·  {verdict.upper()}",
                  fontsize=13, fontweight="bold")
     fig.text(0.5, 0.02, msg, ha="center", va="bottom", fontsize=8.5, color=col, wrap=True)

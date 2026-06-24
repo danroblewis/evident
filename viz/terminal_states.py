@@ -72,3 +72,37 @@ def classify(m):
     states, decided = absorbing_states(m)
     verdict = "unknown" if not decided else ("terminates" if states else "daemon")
     return {"verdict": verdict, "states": states, "decided": decided, "note": None}
+
+
+def _dist(a, b, numeric):
+    return sum((a[v["name"]] - b[v["name"]]) ** 2 for v in numeric) ** 0.5
+
+
+def stability(m, state, numeric):
+    """Classify a fixed point by LOCAL FLOW: perturb each numeric var by ±1, take one step, and see
+    whether the perturbed state moves TOWARD the fixed point (attracting), AWAY (repelling), or both
+    (saddle). Discrete + deterministic-near-the-point; returns one of stable / unstable / saddle, or
+    'unknown' when there are no numeric vars or no valid perturbation resolves. This is the bistable's
+    0,6 (stable walls) vs 3 (unstable watershed) distinction the bare terminal set can't show."""
+    if not numeric:
+        return "unknown"
+    toward = away = 0
+    for v in numeric:
+        for d in (-1, 1):
+            n = dict(state)
+            n[v["name"]] = state[v["name"]] + d
+            succ = m.successor(n)
+            if succ is None:
+                continue
+            d_before, d_after = _dist(n, state, numeric), _dist(succ, state, numeric)
+            if d_after < d_before - 1e-9:
+                toward += 1
+            elif d_after > d_before + 1e-9:
+                away += 1
+    if toward and away:
+        return "saddle"
+    if toward:
+        return "stable"
+    if away:
+        return "unstable"
+    return "unknown"
