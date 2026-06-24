@@ -1,5 +1,5 @@
 {
-  "seq": 359,
+  "seq": 360,
   "tasks": [
     {
       "id": 1,
@@ -9473,12 +9473,12 @@
       "id": 348,
       "title": "When a relation is forced partly by INEQUALITIES (e.g. a<=4 \u2227 a>=4 \u21d2 a=4, verified live: combo=None, core=['a<=4','a>=4']), #345 correctly suppresses the equality-only combo \u2014 but the honest derivation here is a Farkas certificate WITH non-negative multipliers on the inequalities (Motzkin transposition / the LP-duality certificate). Show 'a\u22644 and a\u22654 together pin a=4' as a real derivation, not just the bare core list. This is the bound-forced subset that 'derived as' currently can't explain.",
       "detail": "",
-      "status": "worker_done",
+      "status": "open",
       "created_by": "ide-critic-expert",
       "created": "2026-06-24T13:36:05Z",
-      "worker_done": true,
+      "worker_done": false,
       "approvals": [],
-      "reopened": 0,
+      "reopened": 1,
       "tags": [
         "analysis"
       ],
@@ -9493,6 +9493,12 @@
           "by": "worker",
           "act": "done",
           "note": "Farkas/Motzkin certificate for inequality-forced relations (viz/farkas.py) \u2014 merged to main 91e52366, gate-green."
+        },
+        {
+          "at": "2026-06-24T21:32:14Z",
+          "by": "ide-critic-expert",
+          "act": "reopened",
+          "note": "Motzkin/Farkas machinery is SOUND and fuzz-clean (267 certs across 300 random claims, 0 fabricated; reconstruction self-check rejects a fabricated lambda; relations only emit after _verify_core assert-and-track UNSAT + minimal deletion). It DOES fire live on inequality-forced 3-var relations: 'a+b-c<=0, c-a-b<=0' surfaces 'a+b=c' with motzkin='(a+b-c<=0) pins <= ; (c-a-b<=0) pins >= \u2014 together forcing the equality', Z3-verified sound. BUT it does NOT surface on EITHER of #348's own acceptance examples: (1) TITLE 'a<=4 AND a>=4 => a=4' makes a BACKBONE (value 4) with NO certificate \u2014 backbones carry no Farkas derivation, so 'show a<=4 and a>=4 together pin a=4 as a real derivation' is unmet. (2) BODY 'a-b<=0, b-a<=0, c=a+b' (wanting 2a=c) surfaces ONLY equality-forced 'a+b=c' (no motzkin); the inequality-forced 2a=c is dropped by lattice_relations' cap (max-coeff 2 > cleanest-basis cap 1) \u2014 verified: 'motzkin' NOT in the API response for the body example. Also 2-var inequality-forced relations (2a-b<=0,b-2a<=0 forcing b=2a) never reach _nonpairwise: solution_structure gates it behind len(free_num)>=3, so relations=[] even though _emit_relation([2,-1]) DOES produce a correct cert when called directly. FIX: (a) attach a Motzkin derivation to a bound-FORCED backbone (the a=4 title case); (b) surface the inequality-forced relation even when its coeff exceeds the equality basis cap, or run _nonpairwise for 2 free vars. Feature is built and sound; it just doesn't reach the cases #348 was written to demonstrate. Screenshots ana-20260624-212102/348-*.png."
         }
       ]
     },
@@ -9535,11 +9541,13 @@
       "id": 350,
       "title": "Farkas combo: surface MORE fractional-\u03bb relations, not just integer-\u03bb nullspace basis vectors. The fractional-\u03bb derivation path (#347) is sound and renders exactly (verified live: 3\u00b7a=2\u00b7b \u2192 3/2\u00b7(2a==b+c) \u2212 1/2\u00b7(b==3c)), but it only fires for relations whose displayed integer coefficient vector happens to require dividing a core constraint. For many real claims (e.g. 2x=y \u2227 2z=y) the tool surfaces only the integer-\u03bb pairwise-scaled relation (2\u00b7x=y) and never displays the genuinely 3-var relation (x+z=y) whose \u03bb would be fractional \u2014 sympy .nullspace() returns sparse single-constraint-forced basis vectors with \u03bb=1. Consider surfacing a richer relation basis (or all minimal relations) so the most interesting fractional derivations are reachable through ordinary modeling, not only hand-crafted coupled systems.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-expert",
       "created": "2026-06-24T14:27:42Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "analysis"
@@ -9555,6 +9563,12 @@
           "by": "worker",
           "act": "done",
           "note": "Richer relation basis (lattice short-vectors beyond the sparse nullspace) \u2014 viz/farkas.py, merged, gate-green."
+        },
+        {
+          "at": "2026-06-24T21:31:47Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -9584,11 +9598,13 @@
       "id": 352,
       "title": "Bound detector: prove the REACHABLE bound via k-induction candidate-box SEARCH, not just one-step-image proven_range. Root cause of #324 (corrected by empirical test): on the no-declared-bound counter, proven_range(count)=None because the one-step image is unbounded below (unconstrained _count\u2192-\u221e \u21d2 count\u2192-\u221e), yet the reachable set is [0,5]. BOTH reachable_region.bounding_box AND full_state_graph get None \u2192 indeterminate/single-seed \u2014 so #324's premise (reachable_region proves [0,5] while tree says unbounded) does NOT reproduce on this counter (Ana's reachable-region screenshot was bistable, not counter). The real fix: try the init-seeded reachable extent as a candidate box and verify it inductively (base: init\u2208box; step: box\u21d2next\u2208box), instead of using one-step-image proven_range as the only candidate. SOUNDNESS-SENSITIVE \u2014 a wrong box = unsound enumeration; gate with the fabrication-probe. Affects reachable_region + model_global (shared candidate source).",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "worker",
       "created": "2026-06-24T15:08:08Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "refactor"
@@ -9609,6 +9625,12 @@
           "by": "worker",
           "act": "done",
           "note": "Candidate-box k-induction bound search (reachable_region falls back to solved_bounds when proven_range is None) \u2014 sound, fabrication-probe clean, merged."
+        },
+        {
+          "at": "2026-06-24T21:31:48Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ],
       "addresses_concern": 324
@@ -10546,9 +10568,10 @@
       "title": "claim/Solve programs collapse the 24-tab gallery to a single 'claim space' tab \u2014 the scatter cloud of witnesses is good (and is the #311 deliverable) but the named views (scatter_matrix, parallel_coords) are not separately selectable for a claim, so a user looking for 'scatter matrix' on a claim won't find that label. Consider either exposing the per-pair scatter_matrix as its own tab for >2-var claims, or labeling the claim-space right panel as 'scatter matrix (feasible region)' so the promised view name is discoverable.",
       "detail": "packing claim; tablist shows only 'claim space'. recordings/ana-20260623-214033/311-claimspace.png",
       "by": "ide-critic-expert",
-      "status": "open",
+      "status": "cleared",
       "task": null,
-      "created": "2026-06-23T21:46:16Z"
+      "created": "2026-06-23T21:46:16Z",
+      "cleared": "2026-06-24T21:32:18Z"
     },
     {
       "id": 322,
@@ -10632,9 +10655,19 @@
       "title": "VERIFIED LIVE FAIL on the exact #319 program (claim t; 0\u2264a\u2208Int\u226410; 0\u2264b\u2208Int\u226410; 0\u2264c\u2208Int\u226420; c=a+b). The claim offers only TWO tabs \u2014 'claim space' and 'solution structure' \u2014 NOT the multiple named views the task requires (claim_space, solution_structure, scatter_matrix, parallel_coords as separately selectable tabs). scatter_matrix and parallel_coords are absent from the tab strip for a claim. The claim_space panel IS good (z3-exact variable boundaries + a single 2-var (a,b) feasible-region scatter, implied a+b=c surfaced), but a 2-var embedded scatter is not the promised pairwise scatter_matrix across all 3 vars, and there is no parallel_coords view at all. This is the same gap as still-open expert concern #315 \u2014 the claim/Solve gallery collapses to a single 'claim space' tab and the named per-pair views are not discoverable. Acceptance requires the 4 named views selectable for a claim. Screenshot: marek-claim.png.",
       "detail": "",
       "by": "ide-critic-expert",
-      "status": "open",
+      "status": "cleared",
       "task": 319,
-      "created": "2026-06-24T18:01:38Z"
+      "created": "2026-06-24T18:01:38Z",
+      "cleared": "2026-06-24T21:32:18Z"
+    },
+    {
+      "id": 360,
+      "title": "Motzkin/Farkas machinery is SOUND and fuzz-clean (267 certs across 300 random claims, 0 fabricated; reconstruction self-check rejects a fabricated lambda; relations only emit after _verify_core assert-and-track UNSAT + minimal deletion). It DOES fire live on inequality-forced 3-var relations: 'a+b-c<=0, c-a-b<=0' surfaces 'a+b=c' with motzkin='(a+b-c<=0) pins <= ; (c-a-b<=0) pins >= \u2014 together forcing the equality', Z3-verified sound. BUT it does NOT surface on EITHER of #348's own acceptance examples: (1) TITLE 'a<=4 AND a>=4 => a=4' makes a BACKBONE (value 4) with NO certificate \u2014 backbones carry no Farkas derivation, so 'show a<=4 and a>=4 together pin a=4 as a real derivation' is unmet. (2) BODY 'a-b<=0, b-a<=0, c=a+b' (wanting 2a=c) surfaces ONLY equality-forced 'a+b=c' (no motzkin); the inequality-forced 2a=c is dropped by lattice_relations' cap (max-coeff 2 > cleanest-basis cap 1) \u2014 verified: 'motzkin' NOT in the API response for the body example. Also 2-var inequality-forced relations (2a-b<=0,b-2a<=0 forcing b=2a) never reach _nonpairwise: solution_structure gates it behind len(free_num)>=3, so relations=[] even though _emit_relation([2,-1]) DOES produce a correct cert when called directly. FIX: (a) attach a Motzkin derivation to a bound-FORCED backbone (the a=4 title case); (b) surface the inequality-forced relation even when its coeff exceeds the equality basis cap, or run _nonpairwise for 2 free vars. Feature is built and sound; it just doesn't reach the cases #348 was written to demonstrate. Screenshots ana-20260624-212102/348-*.png.",
+      "detail": "",
+      "by": "ide-critic-expert",
+      "status": "open",
+      "task": 348,
+      "created": "2026-06-24T21:32:14Z"
     }
   ]
 }
