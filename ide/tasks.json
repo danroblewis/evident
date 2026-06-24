@@ -1,5 +1,5 @@
 {
-  "seq": 334,
+  "seq": 336,
   "tasks": [
     {
       "id": 1,
@@ -8510,11 +8510,13 @@
       "id": 332,
       "title": "On-demand 'verify soundness' action in the terminal_map / reachable_region panel: run the #330 differential cross-check (abstract Z3 absorbing-set + k-induction box vs brute-force reachable graph) against the USER'S CURRENT bounded-discrete model and surface a pass/fail badge in-UI. The CI probe (#330) only covers 6 fixtures; an expert wants to push the button on their own model. Cheaper than an always-on badge (worker's reasoning) but closes the 'is THIS picture sound?' gap the CI core can't.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-expert",
       "created": "2026-06-24T05:55:06Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "analysis"
@@ -8530,6 +8532,12 @@
           "by": "worker",
           "act": "done",
           "note": "'\u26e8 verify soundness' button cross-checks the user's model's abstract verdict vs brute-force (shared soundness_check.soundness_report, same as the #330 CI probe). Avoided the Rule-3 endpoint limit via a verify_soundness flag + early-return in analysis.py (no new endpoint). Playwright-verified button\u2192'\u2713 cross-checked', 0 console errors, gated green."
+        },
+        {
+          "at": "2026-06-24T08:01:01Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": "VERIFIED LIVE + ADVERSARIAL. bistable \u00e2\u2020\u2019 '\u26e8 verify soundness' \u00e2\u2020\u2019 '\u2713 cross-checked' with a REAL two-axis check (raw report {absorbing_ok:true, box_ok:true}). decay (Real) \u00e2\u2020\u2019 'n/a \u00e2\u20ac\u201d real-valued, not exactly enumerable'. unbounded ramp \u00e2\u2020\u2019 'n/a \u00e2\u20ac\u201d exceeds 500-state cap'. cyclic/traffic-like \u00e2\u2020\u2019 '\u2713 cross-checked' with absorbing_ok:true (abstract empty-rest-set == brute) even though box_ok:null \u00e2\u20ac\u201d still a genuine check, honest. Confirmed it runs the SAME viz/soundness_check.soundness_report the #330 CI probe (test_fabrication_probe.py) now imports \u00e2\u20ac\u201d one shared cross-check at CI AND on click. Implemented via verify_soundness flag + early-return in analysis.py, no new endpoint (rule-3 limit respected). ADVERSARIAL FINDING (filed #335, NOT a blocker): _fmtSoundness reports '\u2713 cross-checked' VACUOUSLY when BOTH absorbing_ok and box_ok are None (ok = x!==false && y!==false is true for null,null) \u00e2\u20ac\u201d a soundness verifier claiming a match it never computed. I could NOT trigger both-None on any live discrete <=500-state model (Z3 decides those; the only way to None-out absorbing is Z3 unknown, which doesn't happen on enumerable models). Latent, not demonstrated \u00e2\u20ac\u201d so approving the shipped behavior, which is sound and genuinely useful on every model I could construct, with #335 tracking the hardening."
         }
       ]
     },
@@ -8572,11 +8580,13 @@
       "id": 334,
       "title": "terminal_map 'CAN REST (not always)' witness cycle is now SURFACED as banner text (#333 done) but not yet INTERACTIVE \u2014 make the rest_cycle lasso clickable into a stepped trajectory: select it and drive the time-series / state-graph / space-time views to ANIMATE the loop (highlight s0\u2192\u2026\u2192s0, scrub the steps). #333's title aspired to 'click into the loop'; the text witness resolved the trace gap, this closes the interaction gap. The lasso states are already computed in terminal_states.rest_cycle \u2014 the missing piece is plumbing them to the frontend as a selectable trace the dynamics views can replay. This is the TLA+ 'step through the counterexample' experience vs 'here is the counterexample, printed'.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-expert",
       "created": "2026-06-24T06:23:15Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "analysis"
@@ -8592,8 +8602,56 @@
           "by": "worker",
           "act": "done",
           "note": "Replay button in the structure panel feeds the rest_cycle lasso to the existing showTrace scrubber (steppable, each state ringed on the live view). extract_cycle extracted as a pure graph fn; lasso surfaced via model_analysis.solution_structure (not server.py \u2014 #222 limits). Playwright-verified button\u2192replay, 0 console errors, gated green."
+        },
+        {
+          "at": "2026-06-24T08:01:01Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": "VERIFIED LIVE. Loaded shipped bistable (free step) \u00e2\u2020\u2019 structure panel shows rest states (x=0)(x=6), boundary x\u00e2\u02c6\u02c6[0,6], and '\u25b6 replay a dodging loop'. Clicked \u00e2\u2020\u2019 the SAME showTrace scrubber I know from liveness counterexamples replays the cycle ('a run looping forever \u00e2\u20ac\u201d never resting', step 1/2\u00e2\u2020\u20192/2, '\u21bb loops here \u00e2\u20ac\u201d never reaches Q', \u21a7csv present). The witness is a GENUINE reachable non-rest cycle: rest_cycle=[{x:1},{x:1}] \u00e2\u20ac\u201d the self-loop x=1\u00e2\u2020\u2019x=1 via the free step=0, sound and matching must_rest's documented 'sit forever via step=0' semantics (extract_cycle is a real DFS back-edge on m.reachable()'s non-absorbing subgraph, not a fabricated path). Deterministic ramp (must_rest=True) \u00e2\u2020\u2019 rest_cycle:null \u00e2\u2020\u2019 NO button, confirmed. 0 console errors, test.sh green (terminal_map phase asserts the #333 witness). This is the TLA+ 'step through the counterexample' experience, not a printed trace. Filed #336 (self-loop renders 2 identical frames \u00e2\u20ac\u201d polish, witness is correct) as a follow-up, NOT a blocker."
         }
       ]
+    },
+    {
+      "id": 335,
+      "title": "verify-soundness '\u00e2\u0153\u201c cross-checked' is VACUOUS when BOTH checks are None (#332 hardening). _fmtSoundness (app-structure.js:84) computes ok = absorbing_ok !== false && box_ok !== false, so {applicable:true, absorbing_ok:null, box_ok:null} \u00e2\u2020\u2019 '\u00e2\u0153\u201c cross-checked \u00e2\u20ac\u201d the abstract verdict matches a brute-force enumeration' when ZERO cross-checks actually ran (Z3 unknown on absorbing AND box not bounded). A soundness verifier must never claim a match it didn't compute \u00e2\u20ac\u201d this is the exact fabrication the button exists to catch, turned on itself. Latent (I could not trigger both-None on a live discrete <=500-state model \u00e2\u20ac\u201d Z3 decides those; NIA via % doesn't parse), but a real correctness defect. Fix: require at least one of absorbing_ok/box_ok === true for '\u00e2\u0153\u201c', else report 'soundness: inconclusive \u00e2\u20ac\u201d neither cross-check was decidable on this model'. The CI probe (test_fabrication_probe.py:52-59) has the SAME per-model blind spot (both-None \u00e2\u2020\u2019 checked+=1, no fail) \u00e2\u20ac\u201d harden both with the shared invariant.",
+      "detail": "",
+      "status": "worker_done",
+      "created_by": "worker",
+      "created": "2026-06-24T08:00:39Z",
+      "worker_done": true,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "analysis"
+      ],
+      "log": [
+        {
+          "at": "2026-06-24T08:07:38Z",
+          "by": "worker",
+          "act": "started"
+        },
+        {
+          "at": "2026-06-24T08:07:38Z",
+          "by": "worker",
+          "act": "done",
+          "note": "soundness_report now returns a verdict; 'sound' requires \u22651 check actually ran AND passed, both-None \u2192 'inconclusive' (not a false-\u2713). Button + CI probe both switch on verdict \u2014 one shared rule. Verified both-None\u2192inconclusive; gated green."
+        }
+      ]
+    },
+    {
+      "id": 336,
+      "title": "Lasso replay of a SELF-LOOP renders two identical scrubber frames (#334 polish). bistable's rest_cycle is [{x:1},{x:1}] \u00e2\u20ac\u201d a genuine forever-dodge witness (sit at x=1 via step=0, sound and matches must_rest semantics), but stepping shows 'step 1/2: x=1' \u00e2\u2020\u2019 'step 2/2: x=1' with no visible motion. Consider labeling a length-1 self-loop distinctly (e.g. 'self-loop: x=1 held forever via step=0') rather than a 2-frame scrub, OR preferring a longer non-trivial cycle (x=1\u00e2\u2020\u2019x=2\u00e2\u2020\u2019x=1) as the witness when one exists, so the replay visibly MOVES. The current witness is correct; this is about the step-through reading as a loop.",
+      "detail": "",
+      "status": "open",
+      "created_by": "worker",
+      "created": "2026-06-24T08:00:39Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "analysis"
+      ],
+      "log": []
     }
   ],
   "concerns": [
