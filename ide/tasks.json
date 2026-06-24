@@ -9763,16 +9763,28 @@
       "id": 359,
       "title": "Editor/sample source-of-truth can momentarily desync under rapid programmatic edits: setting editor content out-of-band (ace.setValue) immediately before/after a dropdown sample-load left the rendered editor showing the OTHER program (collatz in the model, counter rendered) and once swapped content with no user action. Clean dropdown\u2192dropdown and clean type\u2192analyze paths are fine; only the race between an external setValue and the sample loader exposes it. Guard the editor change-handler against in-flight sample loads (debounce/version-token the load) so the buffer and the rendered source can't diverge.",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "ide-critic",
       "created": "2026-06-24T19:02:05Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "editor"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-24T22:39:58Z",
+          "by": "worker",
+          "act": "started"
+        },
+        {
+          "at": "2026-06-24T22:39:58Z",
+          "by": "worker",
+          "act": "done",
+          "note": "load-version token: loadProgram bumps _loadV, scheduleAnalyze's debounced run skips if a newer load arrived. Defensive guard for the out-of-band-setValue race."
+        }
+      ]
     },
     {
       "id": 362,
