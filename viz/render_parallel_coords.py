@@ -205,9 +205,35 @@ def _collect_samples(m):
     return samples, "trajectory sweep"
 
 
+def _claim_setup(smt2, schema, out_path):
+    """#284: a claim has no transition — sample its SOLUTION SPACE (z3 witnesses) instead. Returns
+    (ClaimModel, witnesses, note), or None after drawing an honest N/A card (UNSAT / <2 numeric axes)."""
+    import json as _json
+    from render_scatter_matrix import claim_witnesses, ClaimModel
+    states, plot_vars, cat_vars, enum_variants, feasible = claim_witnesses(smt2, schema)
+    name = _json.load(open(schema)).get("claim", "claim")
+    if not feasible or len(plot_vars) < 2:
+        fig, ax = plt.subplots(figsize=(8, 5)); ax.set_axis_off()
+        msg = ("claim is UNSATISFIABLE — no assignment to plot" if not feasible
+               else f"only {len(plot_vars)} numeric axis — need ≥2 for parallel coords")
+        ax.text(0.5, 0.5, f"N/A for this claim:\n{msg}", ha="center", va="center", fontsize=14, color="#444")
+        ax.set_title(f"{name}  ·  parallel_coords", fontsize=13, fontweight="bold")
+        fig.savefig(out_path, dpi=120, bbox_inches="tight"); plt.close(fig)
+        return None
+    return ClaimModel(name, plot_vars, enum_variants, cat_vars), states, "z3 witnesses of the constraint"
+
+
 def render(smt2, schema, out_path):
-    m = load(smt2, schema)
-    samples, note = _collect_samples(m)
+    import json as _json
+    sch = _json.load(open(schema))
+    if "fsm" not in sch and "claim" in sch:                 # #284: claim → sample the solution space
+        setup = _claim_setup(smt2, schema, out_path)
+        if setup is None:
+            return out_path, 0                              # N/A card drawn
+        m, samples, note = setup
+    else:
+        m = load(smt2, schema)
+        samples, note = _collect_samples(m)
 
     fig, ax = plt.subplots(figsize=(max(6, 2.2 * len(m.state_vars)), 6))
     title = f"{m.fsm}  ·  parallel_coords"
