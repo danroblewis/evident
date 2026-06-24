@@ -8940,16 +8940,28 @@
       "id": 347,
       "title": "Farkas certificate for REAL claims: #345 falls back to the bare core list for reals (rational \u03bb suppressed). A real linear claim still has a rational Farkas combination (e.g. 2\u00b7x=y \u2190 y==ToReal(2)*x with \u03bb=1; 3\u00b7x=z \u2190 (y==2x)+(z==x+y)). Surface the RATIONAL linear combination for reals too \u2014 display \u03bb as exact fractions (1/2\u00b7(...)), the way Z3's produce-proofs Farkas lemma does. Right now the real case shows 'forced by:' but never 'derived as:', so the most interesting derivations (the ones with fractional coefficients) are exactly the ones we can't see.",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "ide-critic-expert",
       "created": "2026-06-24T13:36:05Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "analysis"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-24T14:13:41Z",
+          "by": "worker",
+          "act": "started"
+        },
+        {
+          "at": "2026-06-24T14:13:41Z",
+          "by": "worker",
+          "act": "done",
+          "note": "_coef_vec extracts exact sympy coefficients via RealVal substitution (int+real/rational \u03bb); _farkas_combo dropped the is_real guard. Real y=2x \u2227 z=x+y \u2192 3\u00b7x=z derives as '\u2212(y==2*x) \u2212 (z==x+y)'. Fixed a sympy-Boolean sort-key regression. Tested + gated."
+        }
+      ]
     },
     {
       "id": 348,
