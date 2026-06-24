@@ -8651,16 +8651,28 @@
       "id": 327,
       "title": "Make reachable_region's k-induction depth a first-class control (k=1,2,3\u2026) like Alloy scope: when a box is NOT proven 1-inductive, let me raise k from the UI and watch the box tighten / the invariant close, and report 'proven at k=N' vs 'indeterminate up to k=N'. Right now k=1 is hardcoded and INDETERMINATE is terminal with no knob to push.",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "ide-critic-expert",
       "created": "2026-06-24T03:52:03Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "analysis"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-24T18:26:12Z",
+          "by": "worker",
+          "act": "started"
+        },
+        {
+          "at": "2026-06-24T18:44:48Z",
+          "by": "worker",
+          "act": "done",
+          "note": "k-induction depth knob on reachable_region: k_induction_box(m,k) reuses solved_bounds(k); [\u2212 k=N +] stepper deepens the unrolling. VISUALLY VERIFIED: saturating counter \u2192 solid green [0,5] 'PROVEN CLOSED at k=8'; unbounded \u2192 hatched amber [0,16] 'NOT yet closed; raise k or unbounded'. Rigor badge k-aware (proven iff closed). Gated green, test_k_induction pins it."
+        }
+      ]
     },
     {
       "id": 328,
