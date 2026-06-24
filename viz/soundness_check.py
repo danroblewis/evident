@@ -20,10 +20,11 @@ from reachable_region import bounding_box
 
 def soundness_report(m):
     if any(v.get("kind") == "real" for v in m.carried):
-        return {"applicable": False, "detail": "real-valued — not exactly enumerable"}
+        return {"applicable": False, "verdict": "n/a", "detail": "real-valued — not exactly enumerable"}
     states, edges = m.reachable(limit=500)
     if len(states) >= 500 or not states:
-        return {"applicable": False, "detail": "reachable set exceeds the 500-state enumeration cap"}
+        return {"applicable": False, "verdict": "n/a",
+                "detail": "reachable set exceeds the 500-state enumeration cap"}
 
     # ABSORBING cross-check: abstract Z3 query vs the brute reachable graph (out-targets == {i}).
     absorbing_ok, detail = None, ""
@@ -49,4 +50,14 @@ def soundness_report(m):
         if bad:
             detail = (detail + f"; box: reachable {bad[0][0]}={bad[0][1]} outside {bad[0][2]}").strip("; ")
 
-    return {"applicable": True, "absorbing_ok": absorbing_ok, "box_ok": box_ok, "detail": detail}
+    # A verdict that NEVER claims a match it didn't compute (Ana #335): "sound" requires at least one
+    # check to have actually run AND passed; both-None (Z3 undecided on absorbing + box not bounded) is
+    # "inconclusive", not "✓". The exact fabrication this verifier exists to catch — turned on itself.
+    if absorbing_ok is False or box_ok is False:
+        verdict = "mismatch"
+    elif absorbing_ok is True or box_ok is True:
+        verdict = "sound"
+    else:
+        verdict = "inconclusive"
+    return {"applicable": True, "verdict": verdict, "absorbing_ok": absorbing_ok,
+            "box_ok": box_ok, "detail": detail}

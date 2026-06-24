@@ -52,10 +52,8 @@ def main():
             r = soundness_report(m)
             if not r["applicable"]:
                 continue                                  # real-valued / capped — not exactly enumerable
-            if r["absorbing_ok"] is False:
-                fails.append(f"{name}: ABSORBING fabrication — {r['detail']}")
-            if r["box_ok"] is False:
-                fails.append(f"{name}: BOX unsound — {r['detail']}")
+            if r["verdict"] != "sound":                   # mismatch OR inconclusive — a bounded-discrete
+                fails.append(f"{name}: verdict {r['verdict']!r} (not 'sound') — {r['detail']}")  # model must verify (#335)
             checked += 1
     if checked == 0:
         fails.append("probe checked 0 models — the enumerable gate is too strict (a vacuous pass)")

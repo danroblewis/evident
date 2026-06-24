@@ -80,10 +80,10 @@ function renderStructure(s) {
 
 function _fmtSoundness(snd) {
   if (!snd) return "no result";
-  if (!snd.applicable) return "soundness: n/a — " + (snd.detail || "not exactly enumerable here");
-  const ok = snd.absorbing_ok !== false && snd.box_ok !== false;
-  return ok ? "✓ cross-checked — the abstract verdict matches a brute-force enumeration of this model"
-            : "⚠ SOUNDNESS MISMATCH — " + (snd.detail || "abstract ≠ brute-force; please report");
+  if (snd.verdict === "n/a" || !snd.applicable) return "soundness: n/a — " + (snd.detail || "not exactly enumerable here");
+  if (snd.verdict === "mismatch") return "⚠ SOUNDNESS MISMATCH — " + (snd.detail || "abstract ≠ brute-force; please report");
+  if (snd.verdict === "sound") return "✓ cross-checked — the abstract verdict matches a brute-force enumeration of this model";
+  return "inconclusive — neither check could run (Z3 undecided + box unbounded); no claim made (#335)";
 }
 
 // Interactive diagram overlay (#184): drop transparent hover targets over the rendered
