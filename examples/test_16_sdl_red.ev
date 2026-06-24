@@ -15,8 +15,7 @@ import "packages/sdl/render.ev"
 enum RState = Init | Loop(Int) | Done
 
 fsm red_window
-    state ∈ RState
-    is_first_tick ⇒ (state = Init)
+    state ∈ RState := Init
     ¬is_first_tick ⇒
         state = match _state
             Init    ⇒ Loop(60)

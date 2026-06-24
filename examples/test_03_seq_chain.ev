@@ -11,8 +11,7 @@ import "stdlib/runtime.ev"
 enum SeqState = Init | Done
 
 fsm seq_demo
-    state ∈ SeqState
-    is_first_tick ⇒ (state = Init)
+    state ∈ SeqState := Init
     ¬is_first_tick ⇒
         state = match _state
             Init ⇒ Done

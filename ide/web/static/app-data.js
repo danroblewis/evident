@@ -162,9 +162,9 @@ fsm cruise
 -- GUARDED functions on (dir, floor) — open function_guards for the deep decision tree.
 enum Dir = Up | Down
 fsm elevator
-    0 ≤ floor ∈ Int ≤ 3
-    dir ∈ Dir
-    is_first_tick ⇒ (floor = 0 ∧ dir = Up)
+    floor ∈ Int := 0
+    0 ≤ floor ≤ 3
+    dir ∈ Dir := Up
     (_dir = Up ∧ _floor < 3) ⇒ (floor = _floor + 1 ∧ dir = Up)
     (_dir = Up ∧ _floor = 3) ⇒ (floor = _floor ∧ dir = Down)
     (_dir = Down ∧ _floor > 0) ⇒ (floor = _floor - 1 ∧ dir = Down)
@@ -173,8 +173,8 @@ fsm elevator
 `-- The Collatz map: n even → n/2, n odd → 3n+1 (even tested as n = 2·(n/2)). A clean 2-way guarded
 -- integer function — open function_guards for the even/odd decision.
 fsm collatz
-    1 ≤ n ∈ Int ≤ 100000
-    is_first_tick ⇒ n = 27
+    n ∈ Int := 27
+    1 ≤ n ≤ 100000
     (_n = 2 * (_n / 2)) ⇒ n = _n / 2
     (_n ≠ 2 * (_n / 2)) ⇒ n = 3 * _n + 1`,
   "double pendulum · full coupling (densest functions)":
@@ -197,17 +197,14 @@ enum Mode = Idle | Coining | Dispensing | Refunding | Servicing
 enum Act  = InsertCoin | Purchase | Cancel | Service
 
 fsm vending
-    mode    ∈ Mode
-    0 ≤ balance ∈ Int ≤ 5      -- coins in the receptacle (capacity 5)
-    0 ≤ stock   ∈ Int ≤ 3      -- units of product remaining
-    0 ≤ vault   ∈ Int ≤ 12     -- money the operator has collected
+    mode    ∈ Mode := Idle
+    balance ∈ Int := 0
+    0 ≤ balance ≤ 5            -- coins in the receptacle (capacity 5)
+    stock   ∈ Int := 3
+    0 ≤ stock ≤ 3             -- units of product remaining
+    vault   ∈ Int := 0
+    0 ≤ vault ≤ 12            -- money the operator has collected
     act     ∈ Act              -- free customer/operator choice each tick
-
-    is_first_tick ⇒
-        mode = Idle
-        balance = 0
-        stock = 3
-        vault = 0
 
     act = InsertCoin ⇒
         _balance < 5 ⇒
@@ -244,9 +241,9 @@ fsm vending
 `enum Light = Red | Green | Yellow
 
 fsm traffic
-    light ∈ Light
-    0 ≤ timer ∈ Int ≤ 2
-    is_first_tick ⇒ (light = Red ∧ timer = 0)
+    light ∈ Light := Red
+    timer ∈ Int := 0
+    0 ≤ timer ≤ 2
     _timer ≥ 2 ⇒
         timer = 0
         _light = Red    ⇒ light = Green
@@ -452,9 +449,8 @@ claim sort_constraints
 -- = cells), and the Sierpiński triangle falls straight out. (timing_diagram puts
 -- each cell on its own lane; time_series tracks them too.)
 fsm rule90
-    cells ∈ Seq(Int)
+    cells ∈ Seq(Int) := ⟨0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0⟩
     #cells = 11
-    is_first_tick ⇒ cells = ⟨0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0⟩
     ∀ i ∈ {1..9} : cells[i] = ((_cells[i-1] + _cells[i+1]) = 1 ? 1 : 0)
     (cells[0] = 0 ∧ cells[10] = 0)`,
   "bistable · two basins of attraction (FSM, basin_map)":

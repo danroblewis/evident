@@ -17,8 +17,7 @@ import "packages/sdl/render.ev"
 enum TState = Init | Done
 
 fsm triangle
-    state ∈ TState
-    is_first_tick ⇒ (state = Init)
+    state ∈ TState := Init
     ¬is_first_tick ⇒
         state = match _state
             Init ⇒ Done

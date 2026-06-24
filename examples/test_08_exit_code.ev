@@ -9,8 +9,7 @@ import "stdlib/runtime.ev"
 enum XState = Init | Done
 
 fsm exit_demo
-    state ∈ XState
-    is_first_tick ⇒ (state = Init)
+    state ∈ XState := Init
     ¬is_first_tick ⇒
         state = match _state
             Init ⇒ Done

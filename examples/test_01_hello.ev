@@ -14,8 +14,7 @@ import "stdlib/runtime.ev"
 enum HelloState = Init | Done
 
 fsm hello
-    state ∈ HelloState
-    is_first_tick ⇒ (state = Init)
+    state ∈ HelloState := Init
     ¬is_first_tick ⇒
         state = match _state
             Init ⇒ Done
