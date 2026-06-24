@@ -13,6 +13,7 @@ into what it DETERMINES vs leaves free — pure Z3 over the claim body, no sampl
 import sympy
 import z3
 
+from farkas import lattice_relations, motzkin_certificate
 from render_claim_space import _load_claim, _opt_bound
 
 _SCALAR = ("int", "real", "bool", "enum")
@@ -160,13 +161,37 @@ def _smtlib_obligation(body, consts, relation_expr, rhs):
             f"(assert (! {z3.Not(relation_expr == rhs).sexpr()} :named goal))\n(check-sat)\n(get-unsat-core)")
 
 
+def _emit_relation(body, consts, names, ints, const, is_real):
+    """One candidate integer relation `Σ ints·var = const` → its emitted dict, or None if Z3 can't
+    confirm it's forced (a sampling/lattice coincidence). Carries the unsat-core proof (#341), the
+    equality Farkas derivation (#345) OR — when an inequality does the forcing — the Motzkin/Farkas
+    λ≥0 certificate (#348), and the SMT-LIB obligation (#346/#349)."""
+    if sorted(c for c in ints if c) == [-1, 1] and const == 0:    # EXACTLY a=b — the equalities pass
+        return None                                               # owns it (but keep scaling y=2x, [2,-1])
+    expr = z3.Sum([ints[i] * consts[names[i]] for i in range(len(ints))])
+    rhs = z3.RealVal(str(const)) if is_real else int(const)
+    core = _verify_core(body, expr, rhs)                          # verify + forcing constraints (#341)
+    if core is None:
+        return None
+    combo = _farkas_combo(body, consts, names, core, ints, const, is_real)   # equality derivation (#345)
+    rec = {"eq": _fmt_relation(ints, const, names), "core": core, "combo": combo,
+           "smtlib": _smtlib_obligation(body, consts, expr, rhs)}            # #346/#349 export
+    if combo is None:                                             # #348: an inequality forces it — the
+        by_str = {str(c): c for c in conjuncts(body)}             # equality combo is None, so reach for
+        core_objs = [by_str[s] for s in core if s in by_str]      # the Farkas/Motzkin λ≥0 certificate.
+        if len(core_objs) == len(core):
+            rec["motzkin"] = motzkin_certificate(core_objs, core, consts, names, ints, const, is_real)
+    return rec
+
+
 def _nonpairwise(body, consts, names, is_real):
     """IMPLIED affine relations among the free numeric vars beyond pairwise (a+b=c, a=b+3, and for reals
     y=2x): sample solutions, take the EXACT rational null space (sympy) of the sampled points — exact so ≥2
-    co-existing relations stay clean integer vectors (#337) — then VERIFY each candidate via Z3 (body ∧
-    relation≠const UNSAT) so a sampling coincidence is never reported. Handles int + real vars (#339).
-    Skips pure pairwise (the equalities pass owns a=b). Returns {"eq", "core"} dicts — the relation string
-    + the claim constraints that force it (#341, the interrogable proof)."""
+    co-existing relations stay clean integer vectors (#337) — then enumerate the SHORT integer vectors in
+    that null-space LATTICE (#350, so x+z=y surfaces alongside 2x=y/2z=y, not just sympy's sparse basis)
+    and VERIFY each via Z3 (body ∧ relation≠const UNSAT) so a sampling/lattice coincidence is never
+    reported. Handles int + real vars (#339). Skips pure pairwise (the equalities pass owns a=b). Returns
+    {"eq", "core", "combo"/"motzkin", "smtlib"} dicts — the relation + its interrogable proof (#341)."""
     sol = z3.Solver(); sol.add(body)
     pts = []
     for _ in range(len(names) + 4):
@@ -183,24 +208,12 @@ def _nonpairwise(body, consts, names, is_real):
     V = sympy.Matrix(pts)
     v0 = V.row(0)
     diffs = sympy.Matrix([V.row(i) - v0 for i in range(1, V.rows)])
-    out = []
-    for w in diffs.nullspace():                           # EXACT rational null space — ≥2 co-existing
-        w = w * sympy.lcm([t.q for t in w])               # relations stay clean integer vectors (#337)
-        ints = [int(x) for x in w]
-        if not any(ints):
-            continue
-        if next(x for x in ints if x) < 0:                # sign-normalize: leading coeff positive (stable)
-            ints = [-x for x in ints]
+    out, seen = [], set()
+    for ints in lattice_relations(diffs.nullspace()):     # #350 short lattice vectors, ranked low-var-first
         const = (sympy.Matrix([ints]) * v0.T)[0]          # sympy Integer (int claim) or Rational (real)
-        if sorted(c for c in ints if c) == [-1, 1] and const == 0:  # EXACTLY a=b — equalities pass owns
-            continue                                                # it (but keep scaling y=2x, [2,-1])
-        expr = z3.Sum([ints[i] * consts[names[i]] for i in range(len(ints))])
-        rhs = z3.RealVal(str(const)) if is_real else int(const)
-        core = _verify_core(body, expr, rhs)              # verify + the constraints that force it (#341)
-        if core is not None:
-            combo = _farkas_combo(body, consts, names, core, ints, const, is_real)  # the derivation (#345)
-            out.append({"eq": _fmt_relation(ints, const, names), "core": core, "combo": combo,
-                        "smtlib": _smtlib_obligation(body, consts, expr, rhs)})   # #346/#349 export
+        rec = _emit_relation(body, consts, names, ints, const, is_real)
+        if rec and rec["eq"] not in seen:                 # dedupe by the rendered relation (sign-normalized)
+            seen.add(rec["eq"]); out.append(rec)
     return out
 
 

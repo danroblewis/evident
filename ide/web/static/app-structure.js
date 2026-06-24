@@ -103,12 +103,18 @@ function renderStructure(s) {
       out.textContent = " " + _fmtSoundness(d.soundness);
     } catch (e) { out.textContent = " ✕ " + e; }
   };
-  // #341/#345: click a relation → show its proof. Prefer the #345 Farkas DERIVATION (how the constraints
-  // combine to yield it); fall back to the #341 unsat-core list (which constraints) when no combo (reals).
+  // #341/#345/#348: click a relation → show its proof. Prefer the #345 Farkas DERIVATION (how the equality
+  // constraints combine to yield it); when an INEQUALITY does the forcing (no equality combo), show the
+  // #348 Farkas/MOTZKIN certificate — λ≥0 multipliers pinning the relation from both sides (≤ and ≥);
+  // fall back to the #341 unsat-core list (which constraints) when neither is available.
   el.querySelectorAll(".struct-rel").forEach((sp) => {
     sp.onclick = () => {
       const r = s.relations[+sp.dataset.i];
-      const why = r.combo ? `derived as  ${r.combo}` : `forced by: ${(r.core || []).join("  ∧  ") || "the claim"}`;
+      const why = r.combo
+        ? `derived as  ${r.combo}`
+        : (r.motzkin
+          ? `Farkas/Motzkin certificate (λ≥0 over the inequalities):  ${r.motzkin}`
+          : `forced by: ${(r.core || []).join("  ∧  ") || "the claim"}`);
       const out = $("#rel-proof");
       out.textContent = ` ⊢ ${r.eq} — ${why}  (Z3-proven: claim ∧ ¬(${r.eq}) is UNSAT) `;
       // #346/#349: take the certificate OUT of the IDE — copy the derivation + the SMT-LIB proof obligation.

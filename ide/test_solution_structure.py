@@ -89,6 +89,77 @@ def _check_relations(fails):
                 fails.append("#346: exported SMT-LIB obligation should be UNSAT (proving the relation)")
 
 
+def _reverify_smtlib(rec):
+    """A relation's exported SMT-LIB obligation must re-parse to UNSAT in z3 — the relation truly holds,
+    so no emitted certificate (combo or Motzkin) can be a lie."""
+    import z3
+    zs = z3.Solver(); zs.set(unsat_core=True); zs.from_string(rec["smtlib"])
+    return zs.check() == z3.unsat
+
+
+def _check_inequality_forced(fails):
+    """#348 — a relation forced by INEQUALITIES (no equality combo) carries the FARKAS/MOTZKIN certificate:
+    λ≥0 multipliers over the inequalities that pin it from both sides. The bare combo is None there."""
+    # x+y ≤ 10 ∧ x+y ≥ 10 together force x+y=10 — a relation with NO equality core. The Motzkin
+    # certificate must cite both inequalities (≤ pins one side, ≥ the other); and it must Z3-re-verify.
+    with tempfile.TemporaryDirectory() as w:
+        ok, prefix, *_ = _export("claim t\n    0 ≤ x ∈ Int ≤ 10\n    0 ≤ y ∈ Int ≤ 10\n    0 ≤ z ∈ Int ≤ 10\n"
+                                 "    x + y ≤ 10\n    x + y ≥ 10", w)
+        rels = solution_structure(prefix + ".smt2", prefix + ".schema.json").get("relations", [])
+        rec = next((r for r in rels if r["eq"] == "x + y = 10"), None)
+        if rec is None:
+            fails.append(f"#348: 'x + y = 10' not surfaced; got {[r['eq'] for r in rels]}")
+        else:
+            if rec.get("combo") is not None:
+                fails.append(f"#348: inequality-forced relation should have NO equality combo, got {rec['combo']}")
+            mz = rec.get("motzkin")
+            if not (mz and "<=" in mz and ">=" in mz and "pins" in mz):
+                fails.append(f"#348: Motzkin certificate should pin from both sides, got {mz!r}")
+            if not _reverify_smtlib(rec):  # the emitted certificate's relation truly holds in z3
+                fails.append("#348: inequality-forced relation's obligation should re-verify UNSAT in z3")
+    # Unit re-verification of the certificate machinery on the task's exact named cases — including the
+    # ANTI-LIE guard: an UNforced relation yields NO certificate (the reconstruction self-check rejects it).
+    import z3
+    sys.path.insert(0, "viz")
+    from farkas import motzkin_certificate                  # noqa: E402
+    a, b, c, x, y = z3.Ints("a b c x y")
+    cases = [
+        (([c == a + b, a - b <= 0, b - a <= 0], {"a": a, "b": b, "c": c}, ["a", "b", "c"], [2, 0, -1], 0), True),
+        (([a <= 4, a >= 4], {"a": a}, ["a"], [1], 4), True),
+        (([x + y <= 10, x + y >= 10], {"x": x, "y": y}, ["x", "y"], [1, 1], 99), False),  # NOT forced → None
+    ]
+    for (co, cs, nm, ints, k), want in cases:
+        cert = motzkin_certificate(co, [str(z) for z in co], cs, nm, ints, k, False)
+        if want and not cert:
+            fails.append(f"#348 unit: expected a certificate for ints={ints} const={k}, got None")
+        if not want and cert:
+            fails.append(f"#348 anti-lie: an UNforced relation must yield NO certificate, got {cert!r}")
+
+
+def _check_richer_basis(fails):
+    """#350 — sympy's sparse .nullspace() returns integer-λ basis vectors only, so 2x=y ∧ 2z=y surfaces
+    2·x=y/2·z=y but never the cleaner 3-var x+z=y (a fractional combo of the basis). The lattice
+    enumeration must surface that minimal relation, Z3-verified."""
+    with tempfile.TemporaryDirectory() as w:
+        ok, prefix, *_ = _export("claim t\n    0 ≤ x ∈ Int ≤ 10\n    0 ≤ y ∈ Int ≤ 20\n    0 ≤ z ∈ Int ≤ 10\n"
+                                 "    y = 2 * x\n    y = 2 * z", w)
+        rels = solution_structure(prefix + ".smt2", prefix + ".schema.json").get("relations", [])
+        eqs = [r["eq"] for r in rels]
+        if "x + z = y" not in eqs:
+            fails.append(f"#350: cleaner 3-var 'x + z = y' (fractional combo of the basis) not surfaced; got {eqs}")
+        rec = next((r for r in rels if r["eq"] == "x + z = y"), None)
+        if rec and not _reverify_smtlib(rec):   # the lattice candidate is genuinely forced, not a coincidence
+            fails.append("#350: 'x + z = y' obligation should re-verify UNSAT in z3")
+    # #350 must NOT flood: the #337 two-relation claim still surfaces EXACTLY its 2 minimal relations
+    # (every larger-coefficient combination is dropped — only the cleanest generators survive).
+    with tempfile.TemporaryDirectory() as w:
+        ok, prefix, *_ = _export("claim t\n    0 ≤ a ∈ Int ≤ 5\n    0 ≤ b ∈ Int ≤ 5\n    0 ≤ c ∈ Int ≤ 10\n"
+                                 "    0 ≤ d ∈ Int ≤ 15\n    c = a + b\n    d = a - b + 10", w)
+        rels = solution_structure(prefix + ".smt2", prefix + ".schema.json").get("relations", [])
+        if len(rels) != 2:
+            fails.append(f"#350 no-flood: #337 claim must stay at 2 minimal relations, got {[r['eq'] for r in rels]}")
+
+
 def main():
     fails = []
     for name, src, want_bb, want_free, want_eqs in CASES:
@@ -121,6 +192,8 @@ def main():
             fails.append(f"xor: inequalities {ineq} != {{('a', 'b')}}")
 
     _check_relations(fails)
+    _check_inequality_forced(fails)       # #348 — Farkas/Motzkin certificate for inequality-forced relations
+    _check_richer_basis(fails)            # #350 — lattice surfaces minimal relations the sparse basis misses
 
     if fails:
         print("SOLUTION-STRUCTURE FAILURES:")
@@ -129,7 +202,9 @@ def main():
         return 1
     print("✓ solution_structure: sys → backbone {a,b} + free c, coupled → forces x=y, xor → forces "
           "a≠b, packing → both free; #329/#337/#339 non-pairwise → a+b=c, a=b+3, ≥2 co-existing, "
-          "real 2x=y; #341 each relation carries its forcing-constraint proof core — what a claim "
+          "real 2x=y; #341 each relation carries its forcing-constraint proof core; #348 inequality-"
+          "forced relations carry the Farkas/Motzkin λ≥0 certificate (x+y=10 from ≤10 ∧ ≥10); #350 "
+          "lattice surfaces the minimal x+z=y the sparse basis misses (no flood) — what a claim "
           "DETERMINES (Z3)")
     return 0
 
