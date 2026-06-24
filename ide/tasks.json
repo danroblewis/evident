@@ -1,5 +1,5 @@
 {
-  "seq": 339,
+  "seq": 341,
   "tasks": [
     {
       "id": 1,
@@ -8705,11 +8705,13 @@
       "id": 337,
       "title": "solution_structure._nonpairwise misses ALL relations when >=2 independent affine relations co-exist (rank>=2 null space). Root cause: float SVD (numpy) returns an arbitrary orthonormal basis for the null space, mixing the clean integer relations into non-rational vectors; the rationalize-by-min-nonzero step then fails allclose and discards every candidate. VERIFIED live: 'c=a+b \u2227 d=a-b+10' (both Z3-implied) renders '0 implied relations'; the single-relation 4-var control correctly shows 'implied: a+b=c'. This is a false-NEGATIVE only (never fabricates \u2014 soundness intact). Fix: compute the integer/rational null space (sympy rational nullspace, or Z3 implied-equality extraction over the augmented [vars,1] lattice / row-reduce over Q), then Z3-verify each as today. Z3 itself gives implied equalities over arbitrary terms \u2014 that's the right primitive, mirrors what the task asked for. (where: ide/critics/recordings/case4_two_rel.png vs case5_single_4var.png)",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-expert",
       "created": "2026-06-24T10:10:11Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "analysis"
@@ -8725,6 +8727,12 @@
           "by": "worker",
           "act": "done",
           "note": "Swapped float SVD \u2192 sympy exact rational null space: \u22652 co-existing relations now BOTH surface (c=a+b \u2227 d=a-b+10 \u2192 'a+b=c' AND 'a=b+d-10'). Sign-normalized + fixed negative-const formatting. Still Z3-verified per relation. Tested + render-verified. NOT yet live (no restart \u2014 batched)."
+        },
+        {
+          "at": "2026-06-24T11:11:00Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -8747,11 +8755,13 @@
       "id": 339,
       "title": "solution_structure non-pairwise pass only handles INTEGER vars (free_int filter, line 110-111). Real-typed free vars get no implied-relation analysis at all \u2014 but affine relations over reals (c = 2.5a + b) are equally Z3-verifiable. Extend _nonpairwise to reals (rationalize coefficients, keep the Z3 UNSAT guard).",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-expert",
       "created": "2026-06-24T10:10:23Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "analysis"
@@ -8767,8 +8777,56 @@
           "by": "worker",
           "act": "done",
           "note": "Real-typed relations: _val extracts exact sympy rationals, RealVal verification. y=2x \u2227 z=x+y \u2192 '2\u00b7x = y','3\u00b7x = z'. Also fixed the over-broad pairwise skip (was discarding scaling y=2x); now skips EXACTLY a=b. Tested + gated. NOT live (batched restart)."
+        },
+        {
+          "at": "2026-06-24T11:11:00Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
+    },
+    {
+      "id": 340,
+      "title": "solution_structure footer count mismatch: the '#337' int case shows 'N implied relations' where N counts equalities+inequalities+affine-relations lumped together, but the prose then lists only the affine relations (e.g. '3 implied relations \u00b7 forced different: a\u2260d \u00b7 implied: a+b=c; a=b+d-10' \u2014 the '3' includes the a\u2260d inequality, only 2 affine listed). Either label it 'N structural facts' or split the count so 'implied relations: 2' matches what's listed. Cosmetic, not a soundness issue.",
+      "detail": "",
+      "status": "worker_done",
+      "created_by": "ide-critic-expert",
+      "created": "2026-06-24T11:11:12Z",
+      "worker_done": true,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "analysis"
+      ],
+      "log": [
+        {
+          "at": "2026-06-24T11:18:10Z",
+          "by": "worker",
+          "act": "started"
+        },
+        {
+          "at": "2026-06-24T11:18:10Z",
+          "by": "worker",
+          "act": "done",
+          "note": "Banner count relabeled 'N implied relations' \u2192 'N relations' (the count spans forced-equal + forced-different + implied-affine; only the affine subset is 'implied'). Render-verified '3 relations \u00b7 forced different: a\u2260d \u00b7 implied: \u2026'. Gated green."
+        }
+      ]
+    },
+    {
+      "id": 341,
+      "title": "solution_structure relations are Z3-VERIFIED affine equalities but the panel never offers the WITNESS/CORE behind each: clicking 'a + b = c' should show the UNSAT proof obligation (body \u2227 a+b\u2260c is UNSAT) the way Z3's unsat-core / Alloy's instance does \u2014 currently I trust the green text without being able to interrogate WHY it holds. Add a per-relation 'show the UNSAT check' affordance (the asserted body + the negated relation) so the claim is interrogable, not just displayed.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-expert",
+      "created": "2026-06-24T11:11:12Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "analysis"
+      ],
+      "log": []
     }
   ],
   "concerns": [
