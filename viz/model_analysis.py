@@ -261,13 +261,15 @@ class AnalysisMixin:
         has_fp = bool(fps)                    # rests at a REACHABLE fixed point
         verdict = self._structure_verdict(max_branch, has_fp, terminal, capped, equilibria_exist)
 
-        rest_cycle = None                              # #334: a non-rest lasso the frontend can replay
-        if 0 < len(fp_idx) < len(states):
-            from terminal_states import extract_cycle
-            rest_cycle = extract_cycle(states, edges, set(fp_idx))
+        rest_cycle = reach = None
+        if fp_idx:
+            from terminal_states import extract_cycle, reach_path
+            if 0 < len(fp_idx) < len(states):
+                rest_cycle = extract_cycle(states, edges, set(fp_idx))  # #334: a non-rest lasso to replay
+            reach = reach_path(states, edges, set(fp_idx))              # #326: init→terminal path to replay
         return {"fixed_points": fps, "has_fixed_point": has_fp, "verdict": verdict,
                 "bounds": bounds, "reachable": n, "capped": capped, "branching": max_branch,
-                "rest_cycle": rest_cycle}
+                "rest_cycle": rest_cycle, "reach_path": reach}
 
     def _reachable_fixed_points(self, states, edges):
         """(solution_structure phase 2a) Reachable fixed points: a reachable state whose ONLY

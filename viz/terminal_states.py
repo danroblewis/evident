@@ -171,6 +171,31 @@ def extract_cycle(states, edges, absorbing):
     return None
 
 
+def reach_path(states, edges, absorbing):
+    """BFS from the init (index 0) to the NEAREST absorbing state on the reachable graph → the path
+    [init, …, terminal] (states) the frontend can step (#326). The concrete witness behind 'TERMINATES
+    at {…}': HOW a run gets to rest, not just WHERE. None if init is already absorbing, no path, or not a
+    complete bounded-discrete enumeration. Pure graph fn (no model), like extract_cycle."""
+    if not states or 0 in absorbing:
+        return None
+    adj = {}
+    for (i, j) in edges:
+        if i != j:
+            adj.setdefault(i, []).append(j)
+    prev, queue = {0: None}, [0]
+    while queue:
+        u = queue.pop(0)
+        if u in absorbing:
+            path = []
+            while u is not None:
+                path.append(u); u = prev[u]
+            return [states[i] for i in reversed(path)]
+        for v in adj.get(u, []):
+            if v not in prev:
+                prev[v] = u; queue.append(v)
+    return None
+
+
 def classify(m):
     """{'verdict': 'terminates'|'daemon'|'unknown', 'states': [...], 'decided': bool, 'note'}."""
     if any(v["kind"] not in _SCALAR for v in m.carried):

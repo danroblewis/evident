@@ -16,7 +16,7 @@ sys.path.insert(0, "viz")
 
 from runtime_io import _export                          # noqa: E402
 from evident_viz import load as load_model              # noqa: E402
-from terminal_states import classify, stability                    # noqa: E402
+from terminal_states import classify, stability, reach_path        # noqa: E402
 
 CASES = [
     ("terminating counter (0→5, then stays)",
@@ -45,6 +45,17 @@ def _short(s):
 
 def _set(states):
     return {frozenset(_short(s).items()) for s in states}
+
+
+def _check_reach_path(fails):
+    """#326: reach_path — BFS from init (index 0) to the nearest absorbing state → the trajectory to rest."""
+    rp = [{"x": 0}, {"x": 1}, {"x": 2}]
+    if reach_path(rp, [(0, 1), (1, 2), (2, 2)], {2}) != rp:
+        fails.append("#326 reach_path: 0→1→2 (2 absorbing) should be the full path")
+    if reach_path(rp, [(0, 1), (1, 2), (2, 2)], {0}) is not None:
+        fails.append("#326 reach_path: init already absorbing → None")
+    if reach_path([{"x": 0}, {"x": 1}], [(0, 0)], {1}) is not None:
+        fails.append("#326 reach_path: no path to absorbing → None")
 
 
 def main():
@@ -98,6 +109,8 @@ def main():
         if not cyc or xs[0] != xs[-1] or any(x in (0, 6) for x in xs):
             fails.append(f"rest_cycle {xs} is not a closed non-absorbing loop")
 
+    _check_reach_path(fails)
+
     if fails:
         print("TERMINAL-MAP FAILURES:")
         for f in fails:
@@ -106,7 +119,8 @@ def main():
     print("✓ terminal_map: absorbing set SOUND on nondeterministic FSMs (shipped free-step "
           "bistable→{0,6}, not all 7); counter→{5}, cyclic→∅, det-bistable→{0,3,6}, random_walk→∅; "
           "stability: det 0,6 stable/3 unstable, nondeterministic→unknown; must-rest (#328): "
-          "det+counter every-run-rests, nondet can-loop-at-3 (+ #333 witness cycle)")
+          "det+counter every-run-rests, nondet can-loop-at-3 (+ #333 witness cycle); #326 reach_path "
+          "init→terminal")
     return 0
 
 
