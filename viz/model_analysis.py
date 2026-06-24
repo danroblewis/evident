@@ -45,51 +45,12 @@ class AnalysisMixin:
         if ft is None or not carried:
             return None
         body = z3.And(*self.assertions) if len(self.assertions) != 1 else self.assertions[0]
-        ft_name = self._first_tick_name
         prev_to_cur = {self.consts[v["prev"]].get_id(): v["name"] for v in carried}
-        non_ft = [(n, c) for n, c in self.consts.items() if n != ft_name]
-
-        def fresh(c, tag):
-            return z3.Const(f"{c.decl().name()}@{tag}", c.sort())
-
-        def bounds_at(k):
-            opt = z3.Optimize()
-            opt.set("timeout", SOLVE_TIMEOUT_MS)
-            # fresh per-tick copy of every non-prev variable; a pre-initial fresh for tick-0 prevs
-            stepv = [{n: fresh(c, s) for n, c in non_ft if c.get_id() not in prev_to_cur}
-                     for s in range(k + 1)]
-            initprev = {v["name"]: fresh(self.consts[v["prev"]], "init") for v in carried}
-            for s in range(k + 1):
-                subs = [(ft, z3.BoolVal(s == 0))]
-                for n, c in non_ft:
-                    if c.get_id() in prev_to_cur:                  # a carried _prev
-                        cur = prev_to_cur[c.get_id()]
-                        subs.append((c, stepv[s - 1][cur] if s >= 1 else initprev[cur]))
-                    else:
-                        subs.append((c, stepv[s][n]))
-                opt.add(z3.substitute(body, *subs))
-            out = {}
-            for v in carried:
-                cn = v["name"]
-                vals = [stepv[s][cn] for s in range(k + 1)]
-                sel = z3.Const(f"sel@{cn}", self.consts[cn].sort())
-                lo = hi = None
-                opt.push(); opt.add(z3.Or([sel == x for x in vals]))
-                opt.maximize(sel)
-                if opt.check() == z3.sat:
-                    hi = self._num(opt.model().eval(sel, model_completion=True))
-                opt.pop()
-                opt.push(); opt.add(z3.Or([sel == x for x in vals]))
-                opt.minimize(sel)
-                if opt.check() == z3.sat:
-                    lo = self._num(opt.model().eval(sel, model_completion=True))
-                opt.pop()
-                out[cn.split(".")[-1]] = (lo, hi)
-            return out
+        non_ft = [(n, c) for n, c in self.consts.items() if n != self._first_tick_name]
 
         try:
-            b1 = bounds_at(k)
-            b2 = bounds_at(2 * k)
+            b1 = self._unroll_bounds_at(k, body, ft, carried, non_ft, prev_to_cur)
+            b2 = self._unroll_bounds_at(2 * k, body, ft, carried, non_ft, prev_to_cur)
         except Exception:
             return None
         # Inductive-invariant check (Ana #138): k-vs-2k agreement is strong evidence but a finite
@@ -107,6 +68,46 @@ class AnalysisMixin:
             result[nm] = {"lo": lo, "hi": hi, "exact": bool(inductive and tight),
                           "tight": tight, "inductive": bool(inductive), "k": 2 * k}
         return result
+
+    def _unroll_bounds_at(self, k, body, ft, carried, non_ft, prev_to_cur):
+        """(solved_bounds kernel) Compose the transition relation with itself k times from the
+        initial tick — fresh per-tick copy of every variable, each carried `_prev` wired to the prior
+        tick's value, is_first_tick true only at tick 0 — then z3-Optimize each numeric carried var's
+        min and max over ALL ticks (via an Or-selector). Returns {short_name: (lo, hi)}."""
+        fresh = lambda c, tag: z3.Const(f"{c.decl().name()}@{tag}", c.sort())
+        opt = z3.Optimize()
+        opt.set("timeout", SOLVE_TIMEOUT_MS)
+        # fresh per-tick copy of every non-prev variable; a pre-initial fresh for tick-0 prevs
+        stepv = [{n: fresh(c, s) for n, c in non_ft if c.get_id() not in prev_to_cur}
+                 for s in range(k + 1)]
+        initprev = {v["name"]: fresh(self.consts[v["prev"]], "init") for v in carried}
+        for s in range(k + 1):
+            subs = [(ft, z3.BoolVal(s == 0))]
+            for n, c in non_ft:
+                if c.get_id() in prev_to_cur:                  # a carried _prev
+                    cur = prev_to_cur[c.get_id()]
+                    subs.append((c, stepv[s - 1][cur] if s >= 1 else initprev[cur]))
+                else:
+                    subs.append((c, stepv[s][n]))
+            opt.add(z3.substitute(body, *subs))
+        out = {}
+        for v in carried:
+            cn = v["name"]
+            vals = [stepv[s][cn] for s in range(k + 1)]
+            sel = z3.Const(f"sel@{cn}", self.consts[cn].sort())
+            lo = hi = None
+            opt.push(); opt.add(z3.Or([sel == x for x in vals]))
+            opt.maximize(sel)
+            if opt.check() == z3.sat:
+                hi = self._num(opt.model().eval(sel, model_completion=True))
+            opt.pop()
+            opt.push(); opt.add(z3.Or([sel == x for x in vals]))
+            opt.minimize(sel)
+            if opt.check() == z3.sat:
+                lo = self._num(opt.model().eval(sel, model_completion=True))
+            opt.pop()
+            out[cn.split(".")[-1]] = (lo, hi)
+        return out
 
     def unroll_smt2(self, k=8):
         """The k-step UNROLLED transition as SMT-LIB (#259/#19): the single-tick relation composed
@@ -233,8 +234,6 @@ class AnalysisMixin:
             reachable set: the boundary of the solution space (exact when the set is finite,
             a `≥` floor when the exploration was capped).
         """
-        short = lambda n: n.split(".")[-1]
-        fmt = lambda x: (x.as_long() if hasattr(x, "as_long") else str(x))
         nf = (z3.Not(self.consts[self._first_tick_name])
               if self.consts.get(self._first_tick_name) is not None else z3.BoolVal(True))
 
@@ -250,46 +249,9 @@ class AnalysisMixin:
         capped = n >= limit
         terminal = any(i == j for (i, j) in edges)        # an absorbing self-loop
 
-        # (2) reachable fixed points: a reachable state that maps to ITSELF (a self-loop edge).
-        # Reading them off the reachable graph keeps them TRUE — never an unreachable state
-        # (Marek's #50) — and DETERMINISTIC once sorted (Marek's #51), unlike enumerating raw
-        # T(s,s) solutions, which also returns unreachable equilibria in non-deterministic order.
-        # A reachable state is at REST iff its ONLY successor is itself. A self-edge that ALSO has
-        # other exits is not at rest — it can leave (the #322 fabrication class: a free `step` gives
-        # x=1 a self-edge AND →0,→2, so keying on self-edges alone mislabels all 7 states absorbing).
-        out_targets = {}
-        for (i, j) in edges:
-            out_targets.setdefault(i, set()).add(j)
-        fp_idx = sorted(i for i, js in out_targets.items() if js == {i})
-        fps = sorted(
-            ({short(v["name"]): states[i][v["name"]]
-              for v in self.carried if v["name"] in states[i]} for i in fp_idx),
-            key=lambda d: [(k, str(d[k])) for k in sorted(d)])[:8]
-
-        # Does ANY equilibrium exist (T(s,s)), reachable or not? A reachable one already shows
-        # up above; an UNREACHABLE one — the oscillator's origin, which the orbit diverges from
-        # — yields no fixed point but flips the verdict to 'unstable'.
-        self_eqs = [self.consts[v["name"]] == self.consts[v["prev"]] for v in self.carried
-                    if self.consts.get(v["name"]) is not None and self.consts.get(v["prev"]) is not None]
-        equilibria_exist = False
-        if self_eqs:
-            sfp = z3.Solver()
-            sfp.set("timeout", SOLVE_TIMEOUT_MS)
-            for a in self.assertions:
-                sfp.add(a)
-            sfp.add(nf)
-            sfp.add(z3.And(*self_eqs))
-            equilibria_exist = sfp.check() == z3.sat
-
-        # (3) exact bounds over the reachable set (floats rounded — Marek's #39).
-        rnd = lambda x: round(x, 3) if isinstance(x, float) else x
-        bounds = {}
-        for v in self.carried:
-            if v.get("kind") in ("int", "real"):
-                nums = [s[v["name"]] for s in states
-                        if isinstance(s.get(v["name"]), (int, float))]
-                if nums:
-                    bounds[short(v["name"])] = [rnd(min(nums)), rnd(max(nums))]
+        fp_idx, fps = self._reachable_fixed_points(states, edges)
+        equilibria_exist = self._equilibria_exist(nf)
+        bounds = self._reachable_bounds(states)
 
         out_deg = {}
         for (i, j) in edges:
@@ -297,18 +259,7 @@ class AnalysisMixin:
         max_branch = max(out_deg.values()) if out_deg else 1
 
         has_fp = bool(fps)                    # rests at a REACHABLE fixed point
-        if max_branch >= 2:
-            verdict = "nondeterministic"      # a free choice fans out
-        elif has_fp and terminal and not capped:
-            verdict = "terminates"            # the orbit converges to a reachable fixed point
-        elif equilibria_exist and capped:
-            verdict = "unstable"              # an equilibrium exists but the orbit diverges from it
-        elif not equilibria_exist and not capped:
-            verdict = "cyclic"                # revisits states, no fixed point
-        elif capped:
-            verdict = "unbounded"             # grows without bound
-        else:
-            verdict = "settles"
+        verdict = self._structure_verdict(max_branch, has_fp, terminal, capped, equilibria_exist)
 
         rest_cycle = None                              # #334: a non-rest lasso the frontend can replay
         if 0 < len(fp_idx) < len(states):
@@ -317,6 +268,70 @@ class AnalysisMixin:
         return {"fixed_points": fps, "has_fixed_point": has_fp, "verdict": verdict,
                 "bounds": bounds, "reachable": n, "capped": capped, "branching": max_branch,
                 "rest_cycle": rest_cycle}
+
+    def _reachable_fixed_points(self, states, edges):
+        """(solution_structure phase 2a) Reachable fixed points: a reachable state whose ONLY
+        successor is itself (a self-loop edge with no other exits). Reading them off the reachable
+        graph keeps them TRUE — never an unreachable state (Marek's #50) — and DETERMINISTIC once
+        sorted (Marek's #51), unlike enumerating raw T(s,s) solutions, which also returns unreachable
+        equilibria in non-deterministic order. A self-edge that ALSO has other exits is NOT at rest —
+        it can leave (the #322 fabrication class: a free `step` gives x=1 a self-edge AND →0,→2, so
+        keying on self-edges alone mislabels all 7 states absorbing). Returns (fp_idx, fps)."""
+        short = lambda n: n.split(".")[-1]
+        out_targets = {}
+        for (i, j) in edges:
+            out_targets.setdefault(i, set()).add(j)
+        fp_idx = sorted(i for i, js in out_targets.items() if js == {i})
+        fps = sorted(
+            ({short(v["name"]): states[i][v["name"]]
+              for v in self.carried if v["name"] in states[i]} for i in fp_idx),
+            key=lambda d: [(k, str(d[k])) for k in sorted(d)])[:8]
+        return fp_idx, fps
+
+    def _equilibria_exist(self, nf):
+        """(solution_structure phase 2b) Does ANY equilibrium exist (T(s,s)), reachable or not? A
+        reachable one shows up in the fixed-point list; an UNREACHABLE one — the oscillator's origin,
+        which the orbit diverges from — yields no fixed point but flips the verdict to 'unstable'."""
+        self_eqs = [self.consts[v["name"]] == self.consts[v["prev"]] for v in self.carried
+                    if self.consts.get(v["name"]) is not None and self.consts.get(v["prev"]) is not None]
+        if not self_eqs:
+            return False
+        sfp = z3.Solver()
+        sfp.set("timeout", SOLVE_TIMEOUT_MS)
+        for a in self.assertions:
+            sfp.add(a)
+        sfp.add(nf)
+        sfp.add(z3.And(*self_eqs))
+        return sfp.check() == z3.sat
+
+    def _reachable_bounds(self, states):
+        """(solution_structure phase 3) Exact min..max each numeric carried var spans over the
+        reachable set (floats rounded — Marek's #39)."""
+        short = lambda n: n.split(".")[-1]
+        rnd = lambda x: round(x, 3) if isinstance(x, float) else x
+        bounds = {}
+        for v in self.carried:
+            if v.get("kind") in ("int", "real"):
+                nums = [s[v["name"]] for s in states
+                        if isinstance(s.get(v["name"]), (int, float))]
+                if nums:
+                    bounds[short(v["name"])] = [rnd(min(nums)), rnd(max(nums))]
+        return bounds
+
+    @staticmethod
+    def _structure_verdict(max_branch, has_fp, terminal, capped, equilibria_exist):
+        """(solution_structure verdict) Classify the forward orbit's long-run behavior."""
+        if max_branch >= 2:
+            return "nondeterministic"     # a free choice fans out
+        if has_fp and terminal and not capped:
+            return "terminates"           # the orbit converges to a reachable fixed point
+        if equilibria_exist and capped:
+            return "unstable"             # an equilibrium exists but the orbit diverges from it
+        if not equilibria_exist and not capped:
+            return "cyclic"               # revisits states, no fixed point
+        if capped:
+            return "unbounded"            # grows without bound
+        return "settles"
 
     def independence_structural(self, seeds=4, alts_per_field=2):
         """Directed dependency by solver SENSITIVITY — the RIGOROUS form of

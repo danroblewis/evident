@@ -1,5 +1,5 @@
 {
-  "seq": 341,
+  "seq": 343,
   "tasks": [
     {
       "id": 1,
@@ -8827,6 +8827,21 @@
         "analysis"
       ],
       "log": []
+    },
+    {
+      "id": 342,
+      "title": "Split ide/web/server.py endpoint routing off the FastAPI app to relieve the Rule-3 free-function ceiling. server.py is at 11 module-level functions, ONE below the lint cap of 12 \u2014 the next clean endpoint (the #332 case) trips the ratchet, which forced a flag-based workaround instead of a new route. Group the 11 endpoint handlers (analyze, solve, optimize, invariant, temporal, query, explore, figure, diff, smtlib, index) into APIRouter modules by concern: an analysis/solve router (solve, optimize, invariant, temporal, query, explore) and a figure/export router (analyze, figure, diff, smtlib, index), each in its own file under ide/web/, included via app.include_router(...). The Req pydantic models move with their handlers. Behavior-preserving: same paths, same request/response shapes \u2014 verify every endpoint with curl against a restarted server (NOT during a critic review; the user restarts + spot-checks). Drops server.py's module-level-function count well under the cap, unblocking future endpoints.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-architect",
+      "created": "2026-06-24T11:45:23Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "refactor"
+      ],
+      "log": []
     }
   ],
   "concerns": [
@@ -9730,6 +9745,15 @@
       "status": "open",
       "task": null,
       "created": "2026-06-24T03:51:44Z"
+    },
+    {
+      "id": 343,
+      "title": "ide/web/server.py sits at 11 module-level endpoint functions, one below the Rule-3 lint cap (12). It is not a violation YET, so it carries zero current lint debt \u2014 but it is a latent blocker: the next clean endpoint trips the ratchet, which already forced #332 into a flag-based workaround rather than a new route. The fix (APIRouter split, task #342) is a live-server reorganization that must be smoke-tested against a restarted server, so it was filed rather than shipped blind during this pass.",
+      "detail": "ide/web/server.py: 11 module-level functions (cap 12); analyze/solve/optimize/invariant/temporal/query/explore/figure/diff/smtlib/index. See task #342 for the router-split plan.",
+      "by": "ide-architect",
+      "status": "open",
+      "task": null,
+      "created": "2026-06-24T11:45:34Z"
     }
   ]
 }
