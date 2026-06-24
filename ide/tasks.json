@@ -1,5 +1,5 @@
 {
-  "seq": 319,
+  "seq": 320,
   "tasks": [
     {
       "id": 1,
@@ -8015,6 +8015,33 @@
         "diagram"
       ],
       "log": []
+    },
+    {
+      "id": 320,
+      "title": "Claim solution-structure view (backbone/free/implied-equalities) + claims get 2 view tabs",
+      "detail": "SHIPPED: viz/claim_structure.py + render_solution_structure.py + _maybe_claim dispatch (CLAIM_VIEWS=[claim_space, solution_structure]), Phase 2.23. Backbone (forced vars) / free (ranges) / equalities \u2014 what a claim DETERMINES. Partial #315 (claims 1\u21922 tabs). Part of #319 (claims abstract suite).",
+      "status": "worker_done",
+      "created_by": "worker",
+      "created": "2026-06-24T00:59:18Z",
+      "worker_done": true,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "claims"
+      ],
+      "log": [
+        {
+          "at": "2026-06-24T00:59:18Z",
+          "by": "worker",
+          "act": "started"
+        },
+        {
+          "at": "2026-06-24T00:59:18Z",
+          "by": "worker",
+          "act": "done",
+          "note": "shipped + tested (Phase 2.23): sys\u2192{a,b} backbone + c free, coupled\u2192x=y, packing\u2192both free; claims now 2 tabs"
+        }
+      ]
     }
   ],
   "concerns": [
