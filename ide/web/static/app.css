@@ -150,6 +150,33 @@ html,body { margin:0; height:100%; background:var(--bg); color:var(--ink);
   padding:2px 8px; border-bottom:1px solid var(--line); }
 .rec-table td { padding:2px 8px; color:var(--ink); border-bottom:1px solid #1b2129; }
 .rec-table td.rt-i { color:var(--dim); }
+/* saved-witness gallery + side-by-side compare (Tasks #235/#170) */
+.g-bar { display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin:4px 0 8px; }
+.g-nav { background:#1b2129; color:var(--ink); border:1px solid var(--line); border-radius:6px;
+  padding:1px 8px; cursor:pointer; font:12px ui-monospace,Menlo,monospace; }
+.g-nav:disabled { opacity:.35; cursor:default; }
+.g-nav:hover:not(:disabled), .g-act:hover { border-color:var(--accent); }
+.g-act { background:#16313f; color:var(--accent); border:1px solid #2d5a72; border-radius:6px;
+  padding:1px 9px; cursor:pointer; font:12px ui-monospace,Menlo,monospace; }
+.g-strip { display:flex; flex-wrap:wrap; gap:3px; flex:1; min-width:0; }
+.g-chip { background:#10151b; color:var(--dim); border:1px solid var(--line); border-radius:5px;
+  padding:1px 7px; cursor:pointer; font:11px ui-monospace,Menlo,monospace; white-space:nowrap; }
+.g-chip:hover { border-color:var(--accent); }
+.g-chip.cur { color:var(--accent); border-color:var(--accent); background:#16313f; }
+.g-chip.sel { border-color:var(--good); color:var(--good); }
+.g-ab { margin-left:3px; font-weight:bold; color:var(--good); }
+.g-diffhead { margin:2px 0 8px; }
+.g-clearcmp { margin-left:8px; cursor:pointer; color:var(--dim); }
+.g-clearcmp:hover { color:var(--bad); }
+.g-difftable { border-collapse:collapse; margin-bottom:10px; }
+.g-difftable th { color:var(--dim); font-size:10px; font-weight:normal; text-align:left;
+  padding:2px 12px 2px 0; border-bottom:1px solid var(--line); }
+.g-difftable td { padding:2px 12px 2px 0; color:var(--ink); border-bottom:1px solid #1b2129; vertical-align:top; }
+.g-difftable td.k { color:var(--accent); }
+tr.g-changed > td, tr.g-changed > td.k { background:#2a210e; }   /* a differing var/leaf — amber-tinted row */
+.g-delta { color:var(--warn); font-weight:bold; }
+.g-cmprow { display:flex; gap:18px; align-items:flex-start; flex-wrap:wrap; }
+.g-pane { flex:1 1 0; min-width:0; overflow:auto; }
 #solve-controls, #opt-controls { display:flex; gap:6px; padding:7px 14px; border-top:1px solid var(--line); }
 #opt-controls { padding-top:0; }
 #solve-given, #opt-var { flex:1; background:#0f1419; color:var(--ink); border:1px solid var(--line);

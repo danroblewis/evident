@@ -74,38 +74,19 @@ function renderSolve(d, given) {
   const pinned = Object.keys(given || {});
   if (!d.ok) { head.innerHTML = `<span class="bad">✕ ${escapeHtml(d.error || "query failed")}</span>`; body.innerHTML = ""; return; }
 
-  // enumeration — a list of distinct witnesses, with exhaustive/▸limit honesty
+  // enumeration — a list of distinct witnesses. Routed into the saved-witness GALLERY
+  // (app-gallery.js): each is KEPT so you can page between them, bookmark, and DIFF two
+  // side-by-side (Tasks #235/#170), instead of the prior flat list that you couldn't browse.
   if (d.solutions) {
     const n = d.count != null ? d.count : d.solutions.length;
     if (!n) { head.innerHTML = `<span class="unsat">⊭ UNSAT</span> — <b>${d.claim || "claim"}</b> has no solutions`; body.innerHTML = ""; return; }
-    // SYMMETRY FOLD (Ana #271): when `d.folded` is present, the backend collapsed value-symmetric
-    // witnesses into orbits. Show one canonical rep per orbit + "(×k symmetric)". The fold is SOUND
-    // — only PROVABLY-interchangeable enums (no value named, no ordering) are folded; with none
-    // provable, `folded_sets` is empty and we say so (the toggle is then a no-op).
+    // Route the enumeration into the saved-witness GALLERY (#170/#235 — keep #1 beside #3, compare two),
+    // feeding it the SYMMETRY-FOLDED canonical reps when the backend folded value-symmetric orbits (Ana
+    // #271): the fold's collapsing is preserved (fewer, canonical witnesses), the gallery owns the display.
     const folded = d.folded && Object.keys(d.folded_sets || {}).length ? d.folded : null;
-    const items = folded || d.solutions.map((s) => ({ bindings: s, multiplicity: 1 }));
-    const shown = items.length;
-    head.innerHTML = `<span class="sat">⊨ ${d.complete ? "all " + shown : "≥ " + shown}</span> `
-      + (folded ? `canonical witness${shown === 1 ? "" : "es"}` : `distinct witness${shown === 1 ? "" : "es"}`)
-      + ` of <b>${d.claim || "claim"}</b>`
-      + (d.complete ? ` <span class="dim">(complete — the solver exhausted the space)</span>`
-                    : ` <span class="dim">(showing ${n} raw; stopped at the limit, more may exist)</span>`);
-    body.innerHTML = d.fold_requested ? foldNote(d) : "";
-    // Each witness draws as its DOMAIN PICTURE (board / grid), same as the single-solve path —
-    // a beginner who just learned to read the board shouldn't get raw vectors here (Marek #283, Sam #269).
-    const esrc = (typeof editor !== "undefined") ? editor.getValue() : "";
-    body.innerHTML += items.map((o, i) => {
-      const s = o.bindings, ks = Object.keys(s).sort();
-      const vizByKey = {};
-      ks.forEach((k) => { const v = seqViz(k, s[k], esrc); if (v) vizByKey[k] = v; });
-      const viz = ks.map((k) => vizByKey[k]).filter(Boolean).join("");
-      const raw = ks.filter((k) => !vizByKey[k])
-        .map((k) => `${k}=${escapeHtml(JSON.stringify(s[k]))}`).join("&nbsp;&nbsp;");
-      const mult = o.multiplicity > 1 ? ` <span class="sym-mult" title="this orbit has ${o.multiplicity} witnesses that differ only by permuting interchangeable values">(×${o.multiplicity} symmetric)</span>` : "";
-      return `<div class="sol"><span class="dim">#${i + 1}</span>${mult} `
-        + (viz ? `<div class="viz-wrap">${viz}</div>` : "")
-        + (raw ? `<span>${raw}</span>` : "") + `</div>`;
-    }).join("");
+    const items = folded ? folded.map((o) => o.bindings) : d.solutions;
+    const src = (typeof editor !== "undefined") ? editor.getValue() : "";
+    loadGallery(items, d.claim || "claim", src, !!d.complete);
     return;
   }
 
@@ -134,9 +115,16 @@ function renderSolve(d, given) {
   keys.forEach((k) => { const v = seqViz(k, d.bindings[k], src); if (v) vizByKey[k] = v; });
   const viz = keys.map((k) => vizByKey[k]).filter(Boolean).join("");
   const rawKeys = keys.filter((k) => !vizByKey[k]);
+  // A single witness still gets a "keep in gallery" action — so witness #1 from a plain Solve
+  // can be kept beside #3 from an enumeration and the two diffed (Task #235/#170).
+  const keep = `<div class="g-bar"><button class="g-act" id="solve-keep" `
+    + `title="add this witness to the gallery so you can compare it with another">＋ keep in gallery</button></div>`;
   body.innerHTML = (viz ? `<div class="viz-wrap">${viz}</div>` : "")
     + (rawKeys.length ? `<table>${rawKeys.map((k) => `<tr><td class="k">${k}${pinned.includes(k) ? " 📌" : ""}</td>`
-        + `<td class="v">${escapeHtml(JSON.stringify(d.bindings[k]))}</td></tr>`).join("")}</table>` : "");
+        + `<td class="v">${escapeHtml(JSON.stringify(d.bindings[k]))}</td></tr>`).join("")}</table>` : "")
+    + keep;
+  const kb = $("#solve-keep");
+  if (kb) kb.onclick = () => loadGallery([d.bindings], d.claim || "claim", src, false);
   // The board IS the domain answer — lead with it. When the witness draws as a board/grid, scroll the
   // solve panel into view so the filled answer isn't missed below the abstract feasibility heatmap (Sam #247).
   if (viz) requestAnimationFrame(() => { const p = $("#solve"); if (p) p.scrollIntoView({ behavior: "smooth", block: "nearest" }); });
