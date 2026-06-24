@@ -138,13 +138,13 @@ const VIEW_CAPTIONS = {
   solution_space:
     "shows the SOLVED boundary of the program, not one run · read it as each variable's full range (left) + the feasible region of the two principal vars (right) · tells you what states are possible at all, with fixed points marked.",
   time_series:
-    "shows one trajectory (~60 ticks) from the initial state · read it as every state variable plotted against tick number on stacked tracks (numeric=line, bool/enum=step) · tells you how each value evolves over time.",
+    "shows the ENSEMBLE of trajectories over all initial conditions · read it as every state variable on stacked tracks (numeric=line, bool/enum=step), the shaded band = the reachable value envelope at each tick (real/unbounded models fall back to one seeded run) · tells you how each value CAN evolve from any start, not just one run.",
   state_graph:
     "shows the reachable state-transition graph · read it as nodes=states, arrows=transitions of state=f(_state), terminal/absorbing states ringed · tells you every state the machine can enter and how they connect.",
   phase_portrait:
     "shows the difference-equation vector field · read it as each point's displacement successor(p)−p as an arrow, colored by step magnitude, faceted per categorical value · tells you which way the dynamics flow across value-space.",
   reachability_tree:
-    "shows the breadth-first reachability tree from the initial state · read it as each node at its depth = shortest-path length from the start, keeping only first-discovery edges · tells you how many steps it takes to reach each state.",
+    "shows the reachability forest from ALL initial conditions · read it as a synthetic ∅ root over every start state, each node at its BFS depth = shortest distance from the nearest init; finite discrete systems CLOSE at the true saturation depth (not a fixed cap) · tells you how many steps reach each state, over all starts.",
   morse_graph:
     "shows the recurrence skeleton — the condensation DAG of the reachable graph · read it as one node per strongly-connected component (cycle), classified attractor/repeller/transient · tells you where the dynamics get trapped vs pass through.",
   occupancy_heatmap:
@@ -156,7 +156,7 @@ const VIEW_CAPTIONS = {
   basin_map:
     "shows the basins of attraction · read it as a 2-axis projection of start states colored by WHICH terminal (fixed point / cycle / terminal SCC) each eventually settles into · tells you where each starting state ends up.",
   orbit_scatter:
-    "shows one trajectory as discrete unconnected dots in two state axes · read it as each dot = one tick's state, gaps = the jump the equation makes; categorical on color, time gradient when none · tells you the orbit's shape (loop=cycle, pile-up=fixed point).",
+    "shows the orbit scatter over MANY initial conditions (single-variable systems use a delay embedding, x_t vs x_{t+1}) · read it as each dot = one sampled state, categorical on color, multi-attractor basins distinct · tells you the orbit's shape and where trajectories settle (loop=cycle, pile-up=fixed point).",
   scatter_matrix:
     "shows pairwise projections of all state variables · read it as an N×N grid of scatter panels (one per variable pair), hued by the top categorical var · tells you which variables correlate or separate across the reachable set.",
   parallel_coords:
@@ -179,6 +179,14 @@ const VIEW_CAPTIONS = {
     "shows the BEHAVIOUR of each extracted function — its next value sampled over the variables it reads (their previous values) · for an enum output it's the guard PARTITION (which branch wins where), for numeric the transfer surface · tells you what each compiled function actually computes, not just its shape.",
   function_complexity:
     "shows the COMPILATION COST of each function — its branching plus arithmetic, ranked · read it as the per-tick work the JIT emits for each variable (a constant is cheap, a deep guarded function with big expressions is expensive) · tells you where the program's compute actually goes, invisible in the dynamics views.",
+  space_time:
+    "shows a Seq-carried state's evolution as a space-time raster · read it as rows=ticks, columns=Seq positions, cell colour=value (binary for 0/1, a colormap for wider ranges); for Rule 90 it draws the Sierpiński triangle · tells you the spatial pattern a 1-D cellular-automaton-style FSM produces over time.",
+  terminal_map:
+    "shows the ABSTRACT terminal set — where the FSM can come to rest · read it as the absorbing states (whose only successor is themselves), solved by Z3 over the one-step relation with no enumeration; ∅ means it never stops (a daemon) · tells you whether the machine can complete, and at which end states.",
+  reachable_region:
+    "shows the ABSTRACT reachable region — where the FSM can ever be · read it as a bounding box PROVEN to contain the reachable set by k-induction (sound, no enumeration): bounded / provably-unbounded / indeterminate · tells you whether the state stays in a finite region, even on infinite state spaces.",
+  solution_structure:
+    "shows a claim's SOLUTION-SPACE structure — what it determines vs leaves free · read it as the backbone (variables forced to one value in every solution, green) plus the free variables over their proven ranges (blue), with implied equalities called out · tells you what the claim actually pins down, beyond the bare ranges.",
 };
 
 // --- parser-jargon humanization ----------------------------------------------------
