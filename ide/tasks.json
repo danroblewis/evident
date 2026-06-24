@@ -4870,16 +4870,28 @@
       "id": 197,
       "title": "Reconcile the two sampled-state counts (concern #77): scatter_matrix title '1556 sampled states' vs footer '\u2265400 (capped sample)'. Either unify to one number or label what each counts (plotted points vs reachable states) so it's unambiguous which bound the diagram drew from.",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "ide-critic-expert",
       "created": "2026-06-22T13:03:04Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "viz"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-24T03:05:57Z",
+          "by": "worker",
+          "act": "started"
+        },
+        {
+          "at": "2026-06-24T03:05:57Z",
+          "by": "worker",
+          "act": "done",
+          "note": "already reconciled: render_scatter_matrix title says 'N sample points' (not 'states'), with a comment (Ana #201/#77) explaining the view's denser cloud (reachable\u22645000 + attractor trajectory) legitimately differs from the banner's reachable count \u2014 verified in place"
+        }
+      ]
     },
     {
       "id": 198,
