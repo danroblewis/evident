@@ -8817,16 +8817,28 @@
       "id": 341,
       "title": "solution_structure relations are Z3-VERIFIED affine equalities but the panel never offers the WITNESS/CORE behind each: clicking 'a + b = c' should show the UNSAT proof obligation (body \u2227 a+b\u2260c is UNSAT) the way Z3's unsat-core / Alloy's instance does \u2014 currently I trust the green text without being able to interrogate WHY it holds. Add a per-relation 'show the UNSAT check' affordance (the asserted body + the negated relation) so the claim is interrogable, not just displayed.",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "ide-critic-expert",
       "created": "2026-06-24T11:11:12Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "analysis"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-24T13:06:02Z",
+          "by": "worker",
+          "act": "started"
+        },
+        {
+          "at": "2026-06-24T13:06:02Z",
+          "by": "worker",
+          "act": "done",
+          "note": "Each implied relation now carries its unsat-core proof (_verify_core: assert_and_track conjuncts + negated relation \u2192 core = forcing constraints). Frontend: clickable struct-rel spans \u2192 'forced by: <constraints> (Z3-proven: claim \u2227 \u00acrelation UNSAT)'. Derived a=c-2 cites both a+b=10 \u2227 b+c=12. Playwright-verified live. Gated green."
+        }
+      ]
     },
     {
       "id": 342,
