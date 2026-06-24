@@ -401,6 +401,23 @@ if [ "$EXAMPLES_ONLY" -eq 0 ] && command -v python3 >/dev/null 2>&1; then
     echo
 fi
 
+# ── Phase 2.22: abstract reachable region (k-induction bounding box) ──
+# reachable_region.py PROVES a bounding box for the reachable set by 1-induction over the one-step
+# relation (base: init ⊆ box; step: box closed under the transition — both UNSAT, no enumeration).
+# Pins: cyclic counter ⊆ [0,5] and the [0,10]² boxed walk ⊆ [0,10]² (both proven 1-inductive), and
+# the UNBOUNDED free random walk flagged unbounded (where full_state_graph can't even enumerate).
+if [ "$EXAMPLES_ONLY" -eq 0 ] && command -v python3 >/dev/null 2>&1; then
+    phase "Phase 2.22: abstract reachable region"
+    if python3 ide/test_reachable_region.py > /tmp/evident-reachregion.log 2>&1; then
+        ok "reachable-region ($(tail -1 /tmp/evident-reachregion.log))"
+    else
+        fail "reachable-region: wrong bounding box / bounded-vs-unbounded verdict (see above)"
+        cat /tmp/evident-reachregion.log >&2
+        failures+=("reachable region")
+    fi
+    echo
+fi
+
 # ── Optional: examples runner ────────────────────────────────
 # Walks examples/, runs each via effect-run. For visual demos (anything
 # that imports packages/sdl/), spawn the program, screenshot the Xvfb
