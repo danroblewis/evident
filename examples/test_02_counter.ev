@@ -15,8 +15,7 @@ import "stdlib/runtime.ev"
 enum CountState = Start | Count(Int) | Done
 
 fsm counter
-    state ∈ CountState
-    is_first_tick ⇒ (state = Start)
+    state ∈ CountState := Start
     ¬is_first_tick ⇒
         state = match _state
             Start     ⇒ Count(5)

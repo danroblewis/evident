@@ -14,9 +14,8 @@
 import "stdlib/runtime.ev"
 
 fsm fib
-    n ∈ Int
-    is_first_tick  ⇒ n = 1
-    is_second_tick ⇒ n = 1
+    n ∈ Int := 1                       -- tick-0 base case (is_first_tick seed)
+    is_second_tick ⇒ n = 1             -- tick-1 base case (:= is first-tick only, so this stays)
     ¬is_second_tick ⇒ n = _n + __n
 
     n_str ∈ String = to_str(n)

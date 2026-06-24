@@ -24,9 +24,8 @@
 import "stdlib/runtime.ev"
 
 fsm oscillator
-    pos ∈ Real
-    is_first_tick  ⇒ pos = 60
-    is_second_tick ⇒ pos = 60
+    pos ∈ Real := 60                   -- tick-0 base case (is_first_tick seed)
+    is_second_tick ⇒ pos = 60          -- tick-1 base case (:= is first-tick only)
     ¬is_second_tick ⇒ ΔΔpos = (2 * __pos - 3 * _pos) / 36
 
     -- floor(pos · 1000), for an exactly-printable integer view of the Real.

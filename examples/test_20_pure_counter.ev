@@ -5,7 +5,7 @@
 --
 -- Compare test_02_counter: that demo encodes its state machine
 -- explicitly with an enum. This one expresses the same shape with
--- a plain Int counter and `is_first_tick`.
+-- a plain Int counter — `:=` seeds it, `Δ` advances it.
 --
 -- to_str(count) formats the Int in the same tick, so the line
 -- prints THIS tick's count directly — no emit-then-read dance.
@@ -15,7 +15,8 @@
 import "stdlib/runtime.ev"
 
 fsm counter
-    count ∈ Int = (is_first_tick ? 0 : _count + 1)
+    count ∈ Int := 0
+    Δcount = 1
 
     fmt_str ∈ String = to_str(count)
 

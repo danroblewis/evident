@@ -18,9 +18,8 @@ import "stdlib/runtime.ev"
 enum FallState = Falling | Landed
 
 fsm gravity
-    -- Seed at 10 on the first tick; afterward fall by one per tick.
-    x ∈ Int
-    is_first_tick ⇒ x = 10
+    -- Seed at 10 on the first tick (:=), then fall by one per tick.
+    x ∈ Int := 10
     Δx = -1
 
     state ∈ FallState = (x ≤ 7 ? Landed : Falling)

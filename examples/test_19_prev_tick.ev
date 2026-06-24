@@ -15,7 +15,8 @@ import "stdlib/runtime.ev"
 enum CounterState = Counting | Done
 
 fsm counter
-    count ∈ Int = (is_first_tick ? 0 : _count + 1)
+    count ∈ Int := 0
+    Δcount = 1
 
     state ∈ CounterState = (count ≥ 3 ? Done : Counting)
 
