@@ -7963,16 +7963,28 @@
       "id": 317,
       "title": "Abstract reachable-region view (k-induction bounding box \u2014 bounded vs unbounded)",
       "detail": "PROVEN tractable (spike): base+step UNSAT \u21d2 reachable \u2286 box (sound over-approx; k>1 tightens); proven_range per numeric var, None\u21d2UNBOUNDED. cyclic-counter\u2192[0,5], walk-in-box\u2192[0,10]\u00b2, unbounded-walk\u2192UNBOUNDED. Build as the dynamics-abstract counterpart to terminal_map.",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "worker",
       "created": "2026-06-23T23:52:33Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "diagram"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-24T00:01:37Z",
+          "by": "worker",
+          "act": "started"
+        },
+        {
+          "at": "2026-06-24T00:01:37Z",
+          "by": "worker",
+          "act": "done",
+          "note": "shipped + live + tested (Phase 2.22): k-induction bounding box; counter\u2286[0,5], walk_box\u2286[0,10]\u00b2 (proven 1-inductive), unbounded random_walk flagged. Both abstract quadrants now have a shipped view."
+        }
+      ]
     },
     {
       "id": 318,
