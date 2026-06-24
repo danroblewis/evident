@@ -8956,16 +8956,28 @@
       "id": 344,
       "title": "Guarantee unsat-core MINIMALITY for relation proofs with a deletion-based minimization pass (Z3's unsat_core() returns *an* unsat core, not a minimal one \u2014 empirically tight for the current linear-int claims, but no guarantee for nonlinear/mixed or a near-vacuous body that slips past the SAT gate). Loop: for each core constraint, drop it and re-check body\u2227\u00acrelation; keep only if still UNSAT. Makes the cited core provably minimal, matching Z3's own minimize-on-cores idiom.",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "ide-critic-expert",
       "created": "2026-06-24T13:13:49Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "analysis"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-24T17:27:03Z",
+          "by": "worker",
+          "act": "started"
+        },
+        {
+          "at": "2026-06-24T17:27:03Z",
+          "by": "worker",
+          "act": "done",
+          "note": "_verify_core runs a deletion pass: drop each core constraint, keep only if the relation is still forced without it \u2192 provably minimal core. Verified bounds dropped from a=c-2's core. Test pins it. Gated."
+        }
+      ]
     },
     {
       "id": 345,
