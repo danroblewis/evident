@@ -7918,16 +7918,28 @@
       "id": 312,
       "title": "Desktop top bar overflows horizontally ~1280px (pre-existing) \u2014 wrap it or collapse less-used controls into an overflow menu / \u2318K palette above ~1100px",
       "detail": "Flagged during #309: the DESKTOP #top bar is display:flex with no wrap, so controls run off-screen (#share-btn\u2026#status to x\u22481512) at ~1280px and narrower-desktop widths. Pre-existing (not introduced by the mobile work, which is gated \u2264820px). Fix: let the desktop top bar wrap, or collapse less-used controls into the \u2318K palette / an overflow menu above ~1100px. Keep mobile + the core controls intact.",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "worker",
       "created": "2026-06-23T21:15:37Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "ui"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-24T02:10:34Z",
+          "by": "worker",
+          "act": "started"
+        },
+        {
+          "at": "2026-06-24T02:10:34Z",
+          "by": "worker",
+          "act": "done",
+          "note": "flex-wrap:wrap on #top + minmax(36px,auto) top grid row \u2014 wraps cleanly below ~1512px (playwright-verified 1000/1500px), one row above; no overflow/clipping"
+        }
+      ]
     },
     {
       "id": 313,
