@@ -90,7 +90,9 @@ def render(smt2_path, schema_path, out_path):
             rels.append("implied: " + "; ".join(r["relations"]))
         nrel = len(r["equalities"]) + len(r.get("inequalities", [])) + len(r.get("relations", []))
         reltxt = (" · " + " · ".join(rels)) if rels else ""
-        msg = (f"{nb} forced (backbone) · {nf} free · {nrel} implied relation"
+        # "N relations" (not "implied") — the count spans forced-equal + forced-different + implied-affine,
+        # each labelled in the prose; "implied" is only the affine subset, so it'd overclaim the count (#340).
+        msg = (f"{nb} forced (backbone) · {nf} free · {nrel} relation"
                f"{'' if nrel == 1 else 's'}{reltxt} — what the claim DETERMINES, solved abstractly (Z3)")
         col = _GREEN
     verdict_banner(fig, ax, out_path, f"{name} — solution structure", msg, col,
