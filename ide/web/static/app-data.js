@@ -39,11 +39,8 @@ const OP_PAIRS = { "<=": "≤", ">=": "≥", "!=": "≠", "=>": "⇒" };
 
 const DEFAULT_PROGRAM =
 `fsm accumulate
-    i   ∈ Int
-    sum ∈ Int
-    is_first_tick ⇒
-        i = 0
-        sum = 0
+    i   ∈ Int := 0
+    sum ∈ Int := 0
     Δi   = (_i < 5 ? 1 : 0)
     Δsum = (_i < 5 ? _i : 0)`;
 
@@ -185,9 +182,9 @@ fsm collatz
 -- velocity. The functionizer compiles 4 functions where each velocity reads all four variables —
 -- a near-complete coupling graph (6 feedback cycles). Open function_graph.
 fsm pendulum
-    a1, a2 ∈ Real
-    w1, w2 ∈ Real
-    is_first_tick ⇒ (a1 = 1.0 ∧ a2 = 0.5 ∧ w1 = 0.0 ∧ w2 = 0.0)
+    a1 ∈ Real := 1.0
+    a2 ∈ Real := 0.5
+    w1, w2 ∈ Real := 0.0
     Δa1 = _w1 * 0.1
     Δa2 = _w2 * 0.1
     Δw1 = (0.0 - _a1 * 3.0 + _a2 * 2.0 - _w2 * 0.5) * 0.1
@@ -263,17 +260,15 @@ fsm traffic
 -- the trajectory spirals in (pos, vel) space. The solver finds the equilibrium at the
 -- origin, and the structure line reports it as an UNSTABLE one (the orbit diverges from it).
 fsm oscillator
-    pos ∈ Real
-    vel ∈ Real
-    is_first_tick ⇒ (pos = 60.0 ∧ vel = 0.0)
+    pos ∈ Real := 60.0
+    vel ∈ Real := 0.0
     Δpos = _vel / 6.0
     Δvel = (0.0 - _pos - _vel / 2.0) / 6.0`,
   "collatz · the 3n+1 orbit (FSM)":
 `-- The Collatz map: halve n if even, else 3n+1. A wild integer orbit that always falls to 1.
 -- (No modulo operator yet, so even-ness is 2·(n/2) = n via integer division.)
 fsm collatz
-    n ∈ Int
-    is_first_tick ⇒ n = 27
+    n ∈ Int := 27
     n = (_n ≤ 1 ? 1 : (2 * (_n / 2) = _n ? _n / 2 : 3 * _n + 1))`,
   "random walk · nondeterministic drift (FSM)":
 `-- Each tick the walker steps freely in x and y: the free per-tick change Δx, Δy ∈ {-1, 0, 1} makes
@@ -284,9 +279,8 @@ fsm random_walk
     -1 ≤ Δy ≤ 1`,
   "pick · a nondeterministic choice (FSM)":
 `fsm pick
-    count ∈ Int
+    count ∈ Int := 0
     1 ≤ step ∈ Int ≤ 3
-    is_first_tick ⇒ count = 0
     Δcount = step`,
   "N-queens · an algorithm as constraints (⊨ Solve)":
 `-- No search algorithm: just state what a valid board IS, and the solver finds one.
@@ -469,10 +463,9 @@ fsm rule90
 -- middle the walk can end at EITHER wall, so the reachable graph has two terminal
 -- states. Open basin_map: it colors each reachable state by the wall it falls to.
 fsm bistable
-    x ∈ Int
+    x ∈ Int := 3
     step ∈ Int
     -1 ≤ step ≤ 1
-    is_first_tick ⇒ x = 3
     0 ≤ x
     x ≤ 6
     Δx = (_x = 0 ? 0 : (_x = 6 ? 0 : step))`,
@@ -481,19 +474,14 @@ fsm bistable
 -- It converges monotonically to the fixed point. Open the cobweb view: the
 -- red staircase climbs from the seed to where the map line meets y = x.
 fsm fixedpoint
-    x ∈ Int
-    is_first_tick ⇒ x = 4
+    x ∈ Int := 4
     x = _x + (40 - _x) / 4`,
   "four signals · a 4-variable system (FSM, scatter_matrix)":
 `-- Four genuinely-carried sawtooths on coprime periods (11, 5, 7, 3). Each pair
 -- sweeps a different lattice. Open scatter_matrix: every pairwise plane at once,
 -- with each variable's distribution on the diagonal. (parallel_coords also fits.)
 fsm fourvar
-    a ∈ Int
-    b ∈ Int
-    c ∈ Int
-    d ∈ Int
-    is_first_tick ⇒ (a = 0 ∧ b = 0 ∧ c = 0 ∧ d = 0)
+    a, b, c, d ∈ Int := 0
     a = (_a ≥ 10 ? 0 : _a + 1)
     b = (_b ≥ 4  ? 0 : _b + 1)
     c = (_c ≥ 6  ? 0 : _c + 1)
@@ -506,11 +494,9 @@ fsm fourvar
 --   pulse — a one-tick strobe, high only on the tick the counter wraps
 -- Open timing_diagram: all four stack as waveforms on one time axis (a logic analyzer).
 fsm timing
-    clk   ∈ Bool
-    clk2  ∈ Bool
-    count ∈ Int
-    pulse ∈ Bool
-    is_first_tick ⇒ (clk = false ∧ clk2 = false ∧ count = 0 ∧ pulse = false)
+    clk, clk2 ∈ Bool := false
+    count ∈ Int := 0
+    pulse ∈ Bool := false
     clk = ¬_clk
     clk2 = (¬_clk ? ¬_clk2 : _clk2)
     count = (_count ≥ 3 ? 0 : _count + 1)
@@ -556,8 +542,8 @@ const EXPLAINERS = {
       + "<br><br><b>Why this is a 'pipeline':</b> <code>i</code> advances on its own "
       + "(<code>Δi = 1</code> while below 5), and <code>sum</code> is <i>driven by</i> i — each tick "
       + "it adds the current i (<code>Δsum = _i</code>). One variable leads, the other follows. "
-      + "Note both deltas live under ONE <code>¬is_first_tick ⇒</code> guard as an indented block — "
-      + "that's the idiom for grouping several changes under the same condition.",
+      + "Both <code>i</code> and <code>sum</code> seed to 0 with <code>:=</code> on their declarations, "
+      + "then advance by their own <code>Δ</code> each tick.",
     tryit: "Add a third line <code>Δsum = _i + 1</code>? No — that would be a SECOND constraint on the "
       + "same change and over-constrain it. Instead try changing <code>_i &lt; 5</code> to "
       + "<code>_i &lt; 8</code> in both deltas and watch the total grow.",
