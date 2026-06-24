@@ -238,6 +238,24 @@ tr.g-changed > td, tr.g-changed > td.k { background:#2a210e; }   /* a differing 
 /* dimmed while a slow (>400ms) analysis recomputes — never read the previous program's
    verdict as if it were the current one. */
 #banner.recomputing, #structure.recomputing { opacity:0.3; transition:opacity .12s; }
+/* "how this works" — a collapsible per-sample concept explainer (Task #102 / concern #250).
+   Teaches WHAT the model means, not just what a glyph is. Sits under the banner, collapsed
+   by default so it never crowds an expert; the summary line invites a newcomer to expand. */
+#explainer { border-bottom:1px solid var(--line); background:#0e1622; }
+#explainer[hidden] { display:none; }
+#explainer summary { padding:7px 14px; font-size:12px; color:var(--dim); cursor:pointer;
+  list-style:none; user-select:none; }
+#explainer summary::-webkit-details-marker { display:none; }
+#explainer summary::before { content:"▸ "; color:var(--accent); }
+#explainer[open] summary::before { content:"▾ "; }
+#explainer summary:hover { color:var(--accent); }
+#explainer .ex-body { padding:2px 16px 12px; font-size:12.5px; line-height:1.55; color:var(--ink); }
+#explainer .ex-what { color:var(--accent); margin-bottom:6px; }
+#explainer .ex-why { color:var(--ink); }
+#explainer .ex-try { margin-top:8px; color:var(--good); }
+#explainer .ex-try b { color:var(--good); }
+#explainer code { color:var(--good); background:#161b22; border-radius:3px; padding:0 3px; }
+#explainer b { color:var(--accent); }
 #structure { padding:6px 14px; background:#0e1a16; border-bottom:1px solid var(--line);
   font-size:12px; display:flex; flex-wrap:wrap; gap:6px 16px; align-items:center; }
 /* the ID's display:flex beats the UA [hidden] rule — restore it, or `hidden=true` never hides

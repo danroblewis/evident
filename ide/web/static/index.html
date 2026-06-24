@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Evident IDE</title>
 <link rel="icon" href="data:,">
-<link rel="stylesheet" href="/static/app.css?v=25">
+<link rel="stylesheet" href="/static/app.css?v=26">
 </head>
 <body>
 <div id="app">
@@ -40,6 +40,10 @@
 
   <aside id="dynamics">
     <div id="banner">▷ write a constraint to see the dynamics</div>
+    <details id="explainer" hidden>
+      <summary>how this works</summary>
+      <div class="ex-body"></div>
+    </details>
     <div id="structure" hidden></div>
     <div id="invariant" hidden>
       <span class="inv-label">⊢ verify</span>
@@ -97,16 +101,16 @@
      defers DOM wiring to an initX() that app.js calls once `editor` + the core exist. Order
      matters only for app-data.js (its DEFAULT_PROGRAM / sharedFromHash are used at app.js
      load time); the rest are cross-referenced at call time. -->
-<script src="/static/app-data.js?v=7"></script>
+<script src="/static/app-data.js?v=8"></script>
 <script src="/static/app-symbols.js?v=11"></script>
 <script src="/static/app-editor.js?v=2"></script>
-<script src="/static/app-buffer.js?v=4"></script>
+<script src="/static/app-buffer.js?v=5"></script>
 <script src="/static/app-history.js?v=4"></script>
 <script src="/static/app-verify.js?v=14"></script>
 <script src="/static/app-gallery.js?v=1"></script>
-<script src="/static/app-palette.js?v=6"></script>
+<script src="/static/app-palette.js?v=7"></script>
 <script src="/static/app-panzoom.js?v=1"></script>
 <script src="/static/app-structure.js?v=10"></script>
-<script src="/static/app.js?v=25"></script>
+<script src="/static/app.js?v=26"></script>
 </body>
 </html>

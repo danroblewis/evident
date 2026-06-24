@@ -48,6 +48,26 @@ gloss.id = "gloss"; gloss.hidden = true; document.body.appendChild(gloss);
 const solving = document.createElement("div");
 solving.id = "solving"; solving.hidden = true; $("#dynamics").appendChild(solving);
 
+// --- "how this works" explainer (Task #102 / concern #250) ------------------------
+// Fill the #explainer note from the buffer's matched sample, or hide it for a buffer
+// that isn't one of the explained samples. Driven by content via explainerFor(), so it
+// follows the program however it loaded (menu, ⌘K, share link, tour). Collapsed state is
+// remembered per session so an expert who closes it once isn't re-nagged on the next sample.
+let _explainerOpen = false;
+function renderExplainer(source) {
+  const el = $("#explainer");
+  if (!el) return;
+  const ex = explainerFor(source);
+  if (!ex) { el.hidden = true; el.open = false; return; }
+  el.querySelector(".ex-body").innerHTML =
+    `<div class="ex-what">${ex.what}</div>`
+    + `<div class="ex-why">${ex.why}</div>`
+    + `<div class="ex-try"><b>Try this:</b> ${ex.tryit}</div>`;
+  el.hidden = false;
+  el.open = _explainerOpen;
+  el.ontoggle = () => { _explainerOpen = el.open; };
+}
+
 // --- the live loop ----------------------------------------------------------------
 let timer = null, activeView = null, lastSource = "", _dimTimer = null, _elapsedTimer = null, _analyzeCtrl = null;
 window.addEventListener("keydown", (e) => { if (e.key === "Escape" && _analyzeCtrl) _analyzeCtrl.abort(); });  // Esc cancels an in-flight analyze (#149); guard avoids stealing Esc from modals
@@ -236,6 +256,7 @@ async function run(view) {
   const source = editor.getValue();
   lastSource = source;
   updateClaimPicker(source);   // show the entry-claim dropdown for multi-claim files (#86)
+  renderExplainer(source);     // keep the "how this works" note in sync with the buffer (#102)
   // A saved-slot name (set on Save / on opening a slot) wins over the derived declaration
   // name — the user named this buffer, so honor it. Cleared when a sample/slot loads fresh.
   if (currentSlotName) {

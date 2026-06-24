@@ -148,7 +148,7 @@ function loadProgram(source, slotName, view) {
   $("#query-result").textContent = "";   // the `light = Green` chip must not persist onto `counter`.
   if (typeof clearAssumptions === "function") clearAssumptions();
   clearTrace();
-  run(view);                       // a sample jumps to its headline view; a slot/share → undefined → recommend
+  run(view);                       // a sample jumps to its headline view (run() also refreshes the explainer)
 }
 
 // --- wiring: save/export/share buttons + the #samples dropdown ---------------------

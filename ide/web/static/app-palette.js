@@ -72,27 +72,41 @@ function highlightLabel(label, idx) {
   return out;
 }
 
-// --- guided first-run walkthrough: flag + sample + steps (Task #164) ---------------
+// --- guided first-run walkthrough: flag + samples + steps (Tasks #164 / #63) -------
+// The tour now teaches the IDEAS end-to-end, not just where the panels are: it loads the
+// counter sample so the hands-on steps ("write a delta, watch the ramp, break it, see the
+// dropped-constraint count") land on a concrete program a newcomer can poke. TOUR_SEED
+// is opened when the tour starts; SUDOKU_SAMPLE is opened at "Done" so ⊨ Solve has a claim.
 const TOUR_FLAG = "evident-tour-done";
+const TOUR_SEED = "counter · a terminating clock (FSM)";
 const SUDOKU_SAMPLE = "4×4 sudoku · fill the grid (⊨ Solve)";
 const TOUR_STEPS = [
-  { sel: "#editor-pane", title: "1 · The editor",
-    body: "Write constraints here. This is a live counter — try changing "
-      + "<code>count = 0</code> to <code>count = 3</code>. Operators autocomplete: "
-      + "type <code>\\le</code> → ≤." },
-  { sel: "#banner", title: "2 · The dynamics panel",
-    body: "Every edit re-solves instantly. The banner names your model's SHAPE; the "
-      + "diagram below shows the solved behavior — hover the dots to inspect a state." },
-  { sel: "#honesty", title: "3 · The honesty line",
-    body: "Evident never hides a problem: a dropped constraint is flagged here AND "
-      + "marked amber on its line in the editor. That's the silent bug, surfaced." },
-  { sel: "#solve-btn", title: "4 · ⊨ Solve",
-    body: "Some programs are claims, not machines — press ⊨ Solve for a witness "
-      + "assignment (or UNSAT). Try it on the sudoku sample." },
-  { sel: "#editor-pane", title: "5 · Learn it here",
-    body: "Stuck on a word? <b>Hover any keyword</b> in your code — <code>fsm</code>, "
-      + "<code>claim</code>, <code>Δ</code>, <code>Int</code> — for a plain-English definition. "
-      + "Or press <kbd>⌘K</kbd> and type a term (\"claim\", \"Δ\") to search the glossary without leaving the editor." },
+  { sel: "#editor-pane", title: "1 · A claim is a state machine",
+    body: "This is the <code>counter</code> sample — an <b>fsm</b>: a claim that carries state "
+      + "across ticks. You don't write a loop; you write the RELATION between one tick and the "
+      + "next, and the solver replays it. <code>_count</code> reads the previous tick's value." },
+  { sel: "#editor-pane", title: "2 · Δ is the change each tick",
+    body: "Find the line <code>Δcount = (_count &lt; 5 ? 1 : 0)</code>. <code>Δcount</code> means "
+      + "<code>count − _count</code> — the <i>change</i> per tick. So this reads \"rise by 1 while "
+      + "below 5, else 0\". <b>Try it:</b> change the <code>1</code> to a <code>2</code> and watch the "
+      + "ramp climb twice as fast in the diagram." },
+  { sel: "#banner", title: "3 · Watch the ramp",
+    body: "Every edit re-solves instantly. The banner names your model's SHAPE — here it "
+      + "<b>Terminates</b>, because count reaches 5 and never leaves (a <i>fixed point</i>). Open "
+      + "the <code>time_series</code> view below to literally see the ramp rise and flatten." },
+  { sel: "#explainer", title: "4 · 'How this works'",
+    body: "Stuck on what a keyword MEANS? This collapsible note explains every sample in plain "
+      + "English — what fsm / Δ / is_first_tick are, and WHY this code produces what you see. Click "
+      + "it open now." },
+  { sel: "#honesty", title: "5 · Break it on purpose",
+    body: "Evident never silently ignores a mistake. <b>Try this:</b> delete the line "
+      + "<code>is_first_tick ⇒ count = 0</code> — that's the SEED, the start value. The honesty line "
+      + "here, and an amber mark on the editor line, flag any constraint the solver had to DROP. "
+      + "That surfaced count is the silent bug, made loud." },
+  { sel: "#solve-btn", title: "6 · ⊨ Solve a claim",
+    body: "Not every program is a machine. A plain <b>claim</b> is a relation — press ⊨ Solve for a "
+      + "witness assignment (or UNSAT if none exists). At Done we'll open the sudoku sample so you "
+      + "can try it: the solver fills the grid with no algorithm written." },
 ];
 
 // =============================================================================
@@ -148,7 +162,7 @@ function buildCommands() {
   const clickIf = (id) => { const el = $(id); if (el) el.click(); };
   // open a sample — same path as the #samples select onchange
   Object.keys(SAMPLES).forEach((name) => {
-    cmds.push({ label: "Open sample: " + name, run: () => loadProgram(SAMPLES[name], null, headlineView(name, SAMPLES[name])) });
+    cmds.push({ label: "Open sample: " + name, run: () => loadProgram(SAMPLES[name], null) });
   });
   // open one of your saved programs
   const slots = loadSlots();
@@ -158,7 +172,6 @@ function buildCommands() {
   cmds.push({ label: "Save as… — keep this program in a named slot", run: () => saveAsPrompt() });
   if (Object.keys(slots).length) cmds.push({ label: "Delete saved…", run: () => deletePrompt() });
   cmds.push({ label: "Export .ev — download this buffer as a file", run: () => exportEv() });
-  cmds.push({ label: "Export diagram as SVG — vector, for a paper or slide", run: () => exportSVG() });
   cmds.push({ label: "Copy share link — a URL that loads this program", run: () => copyShareLink() });
   cmds.push({ label: "Solve claim — ⊨ witness or UNSAT", run: () => solve(false) });
   if ($("#smtlib-btn")) cmds.push({ label: "Copy SMT-LIB encoding", run: () => clickIf("#smtlib-btn") });
@@ -173,29 +186,7 @@ function buildCommands() {
   });
   cmds.push({ label: "Verify — focus the ⊢ property field", run: () => { const f = $("#inv-prop"); if (f) f.focus(); } });
   cmds.push({ label: "Query — find a reachable state (⊨? ∃)", run: () => { const f = $("#query-prop"); if (f) f.focus(); } });
-  // Searchable concept glossary (Sam #246): every language noun (claim/fsm/type/enum), operator
-  // (∈/⇒/Δ), and dynamics term (cyclic/driven/fixed point) as a ⌘K entry — select one to read its
-  // full definition. So a newcomer can look up "what IS a claim" without leaving for a manual.
-  glossaryItems().forEach(({ def }) => {
-    cmds.push({ label: "📖 " + def, run: () => showGlossCentered(def) });
-  });
   return cmds;
-}
-
-// Show a glossary definition centered near the top, dismissed on the next click/key (Sam #246).
-// Reuses #gloss (pointer-events:none, so the dismiss click passes through) and resets the positioning
-// it borrows, so a later hover tooltip isn't left shifted.
-function showGlossCentered(text) {
-  const g = $("#gloss");
-  if (!g) return;
-  g.textContent = text;
-  g.style.left = "50%"; g.style.top = "12%"; g.style.transform = "translateX(-50%)"; g.style.maxWidth = "560px";
-  g.hidden = false;
-  const hide = () => {
-    g.hidden = true; g.style.transform = ""; g.style.maxWidth = "";
-    document.removeEventListener("click", hide, true); document.removeEventListener("keydown", hide, true);
-  };
-  setTimeout(() => { document.addEventListener("click", hide, true); document.addEventListener("keydown", hide, true); }, 0);
 }
 
 function renderCmdk() {
@@ -299,6 +290,10 @@ function renderTourStep() {
 function startTour() {
   buildTourDom();
   togglePalette(false);            // don't let the palette overlap the tour
+  // Seed the editor with the counter sample so the hands-on steps ("change the 1 to a 2",
+  // "delete the is_first_tick seed") land on the exact lines they reference. Guarded so the
+  // tour still runs if SAMPLES/loadProgram somehow aren't present.
+  if (typeof loadProgram === "function" && SAMPLES[TOUR_SEED]) loadProgram(SAMPLES[TOUR_SEED], null);
   tourIdx = 0;
   tourEls.backdrop.hidden = false;
   renderTourStep();
@@ -314,26 +309,25 @@ function endTour() {
 
 function tourActive() { return tourEls && !tourEls.backdrop.hidden; }
 
-// auto-run once on first visit
+// auto-run once on first visit. Skipped when a shared link (#src=…) loaded a program — the
+// link is a deliberate override, and the tour now seeds the counter sample, which would
+// clobber it. The user can still launch the tour by hand from the ? button.
 function maybeAutoTour() {
   let seen = false;
   try { seen = localStorage.getItem(TOUR_FLAG) === "1"; } catch (_) { seen = true; }
-  if (!seen) startTour();
+  if (!seen && (typeof SHARED === "undefined" || SHARED == null)) startTour();
 }
 
 // --- wiring: build the overlay DOM + attach all listeners --------------------------
 // Called from app.js's bootstrap once `editor` and the core globals exist. Mirrors the
 // original top-level wiring exactly (same elements, same listeners).
-// The ⌨ symbols popover: the typing cheat-sheet (operator glyph → name → mnemonic), plus a signpost to
-// ⌘K so a user who lands here looking for ACTIONS (Solve/export/verify) is redirected, not stranded
-// (Ana #256). Split out of initPalette to keep that wiring function under length.
-function initSymbolsPalette() {
+function initPalette() {
+  // symbol palette / cheat-sheet popover
   palette = document.createElement("div");
   palette.id = "palette"; palette.hidden = true;
   palette.innerHTML =
     '<div class="palette-head">type these operators — click a row to insert it'
-    + ' <span class="dim">(Esc closes)</span>'
-    + '<div class="dim" style="margin-top:3px">looking for actions? press <b>⌘K</b> for the command palette</div></div>'
+    + ' <span class="dim">(Esc closes)</span></div>'
     + PALETTE.map(([g, name, mn], i) =>
         `<div class="palette-row" data-i="${i}">`
         + `<span class="palette-glyph">${escapeHtml(g)}</span>`
@@ -351,41 +345,6 @@ function initSymbolsPalette() {
   document.addEventListener("click", (e) => {
     if (!palette.hidden && !palette.contains(e.target) && e.target.id !== "symbols-btn") togglePalette(false);
   });
-}
-
-// ⌘K and the editor chords: Ctrl/Cmd-K toggles the command palette (editor-scoped via Ace + a global
-// keydown for when focus is outside), Cmd-Enter solves, Cmd-/ comments. Split out of initPalette.
-function initKeybindings() {
-  // editor-scoped chords (Ace owns keystrokes while the editor is focused)
-  editor.commands.addCommand({
-    name: "cmdkPalette", bindKey: { win: "Ctrl-K", mac: "Command-K" },
-    exec: () => toggleCmdk(),
-  });
-  editor.commands.addCommand({
-    name: "cmdkSolve", bindKey: { win: "Ctrl-Enter", mac: "Command-Enter" },
-    exec: () => solve(false),
-  });
-  editor.commands.addCommand({
-    name: "cmdkComment", bindKey: { win: "Ctrl-/", mac: "Command-/" },
-    exec: () => toggleCommentSelection(),
-  });
-  // global chords (fire when focus is OUTSIDE the editor / inputs)
-  document.addEventListener("keydown", (e) => {
-    const mod = e.metaKey || e.ctrlKey;
-    if (!mod) return;
-    const k = e.key.toLowerCase();
-    if (k === "k") { e.preventDefault(); toggleCmdk(); return; }
-    if (cmdkOpen()) return;                       // the palette's own input owns the rest
-    const inField = e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement
-      || (e.target.closest && e.target.closest("#code"));   // Ace already handles its own chords
-    if (inField) return;
-    if (k === "enter") { e.preventDefault(); solve(false); }
-    else if (k === "/") { e.preventDefault(); toggleCommentSelection(); }
-  });
-}
-
-function initPalette() {
-  initSymbolsPalette();
 
   // command palette (⌘K) overlay DOM
   cmdk = document.createElement("div");
@@ -412,7 +371,33 @@ function initPalette() {
   cmdk.addEventListener("mousedown", (e) => { if (e.target === cmdk) closeCmdk(); });  // backdrop click closes
   if ($("#cmdk-hint")) $("#cmdk-hint").onclick = (e) => { e.stopPropagation(); openCmdk(); };
 
-  initKeybindings();
+  // editor-scoped chords (Ace owns keystrokes while the editor is focused)
+  editor.commands.addCommand({
+    name: "cmdkPalette", bindKey: { win: "Ctrl-K", mac: "Command-K" },
+    exec: () => toggleCmdk(),
+  });
+  editor.commands.addCommand({
+    name: "cmdkSolve", bindKey: { win: "Ctrl-Enter", mac: "Command-Enter" },
+    exec: () => solve(false),
+  });
+  editor.commands.addCommand({
+    name: "cmdkComment", bindKey: { win: "Ctrl-/", mac: "Command-/" },
+    exec: () => toggleCommentSelection(),
+  });
+
+  // global chords (fire when focus is OUTSIDE the editor / inputs)
+  document.addEventListener("keydown", (e) => {
+    const mod = e.metaKey || e.ctrlKey;
+    if (!mod) return;
+    const k = e.key.toLowerCase();
+    if (k === "k") { e.preventDefault(); toggleCmdk(); return; }
+    if (cmdkOpen()) return;                       // the palette's own input owns the rest
+    const inField = e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement
+      || (e.target.closest && e.target.closest("#code"));   // Ace already handles its own chords
+    if (inField) return;
+    if (k === "enter") { e.preventDefault(); solve(false); }
+    else if (k === "/") { e.preventDefault(); toggleCommentSelection(); }
+  });
 
   // tour card-button delegation + Esc + resize + the ? tour button
   document.addEventListener("click", (e) => {
@@ -424,7 +409,7 @@ function initPalette() {
     if (act === "next") {
       if (tourIdx >= TOUR_STEPS.length - 1) {
         // last step "Done": open the sudoku sample so ⊨ Solve has something to chew on
-        if (SAMPLES[SUDOKU_SAMPLE]) loadProgram(SAMPLES[SUDOKU_SAMPLE], null, headlineView(SUDOKU_SAMPLE, SAMPLES[SUDOKU_SAMPLE]));
+        if (SAMPLES[SUDOKU_SAMPLE]) loadProgram(SAMPLES[SUDOKU_SAMPLE], null);
         endTour();
       } else { tourIdx++; renderTourStep(); }
     }
