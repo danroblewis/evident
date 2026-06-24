@@ -24,9 +24,14 @@ CASES = [
     ("random walk in a [0,10]² box",
      "fsm walk_box\n    0 ≤ x ∈ Int ≤ 10 := 5\n    0 ≤ y ∈ Int ≤ 10 := 5\n    -1 ≤ Δx ≤ 1\n    -1 ≤ Δy ≤ 1",
      "bounded", True, {"x": (0, 10), "y": (0, 10)}),
-    ("random_walk (UNBOUNDED — full_state_graph N/A)",
+    ("random_walk (UNBOUNDED — provably grows; full_state_graph N/A)",
      "fsm random_walk\n    x, y ∈ Int := 0\n    -1 ≤ Δx ≤ 1\n    -1 ≤ Δy ≤ 1",
      "unbounded", False, None),
+    # The soundness case: x=_x/2's one-step IMAGE is unbounded, but the reachable set is bounded by
+    # the contraction. Must NOT be falsely "unbounded" — there's no growth proof, so INDETERMINATE.
+    ("decay (Real contraction — INDETERMINATE, not falsely UNBOUNDED)",
+     "fsm decay\n    x ∈ Real\n    is_first_tick ⇒ x = 100.0\n    ¬is_first_tick ⇒ x = _x / 2.0",
+     "indeterminate", False, None),
 ]
 
 
@@ -56,8 +61,8 @@ def main():
         for f in fails:
             print("  ✗", f)
         return 1
-    print("✓ reachable_region: k-induction bounds the reachable set — counter⊆[0,5], walk_box⊆[0,10]² "
-          "(both PROVEN 1-inductive), UNBOUNDED random_walk flagged (brute-force N/A)")
+    print("✓ reachable_region: counter⊆[0,5], walk_box⊆[0,10]² (PROVEN 1-inductive), random_walk "
+          "provably UNBOUNDED, decay (x=_x/2 contraction) honestly INDETERMINATE not false-unbounded")
     return 0
 
 

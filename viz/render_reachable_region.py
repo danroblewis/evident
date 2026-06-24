@@ -84,8 +84,11 @@ def _draw_unbounded(ax, numeric, init):
 def _draw_unknown(ax, note):
     ax.text(0.5, 0.55, "?", ha="center", va="center", fontsize=72, color=_GREY,
             transform=ax.transAxes)
-    ax.text(0.5, 0.32, note or "no numeric state to bound", ha="center", va="center",
-            fontsize=12, color=_GREY, transform=ax.transAxes)
+    label = note or "no numeric state to bound"
+    if len(label) > 48:                                # the full reason rides in the banner below
+        label = "bound undetermined"
+    ax.text(0.5, 0.32, label, ha="center", va="center", fontsize=13, color=_GREY,
+            transform=ax.transAxes)
     ax.set_xticks([]); ax.set_yticks([])
     for sp in ax.spines.values():
         sp.set_visible(False)
