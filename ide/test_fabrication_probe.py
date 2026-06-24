@@ -20,6 +20,7 @@ sys.path.insert(0, "viz")
 from runtime_io import _export                          # noqa: E402
 from evident_viz import load as load_model              # noqa: E402
 from terminal_states import absorbing_states            # noqa: E402
+from reachable_region import bounding_box               # noqa: E402
 
 MODELS = [
     ("terminating counter", "fsm c\n    0 ≤ count ∈ Int ≤ 5 := 0\n"
@@ -56,6 +57,24 @@ def _brute_absorbing(m):
     return absorbing, {_key(s) for s in states}, len(states) >= 500
 
 
+def _box_violations(m):
+    """reachable_region soundness: a k-induction box claimed BOUNDED must CONTAIN every reachable
+    state (it is an over-approximation). A reachable state outside the proven box = an unsound box."""
+    r = bounding_box(m)
+    if r["verdict"] != "bounded":
+        return []
+    states, _ = m.reachable(limit=500)
+    if len(states) >= 500:
+        return []                                          # reachable incomplete — can't cross-check
+    bad = []
+    for s in states:
+        for v, (lo, hi) in r["box"].items():
+            val = s.get(v)
+            if val is not None and not (lo <= val <= hi):
+                bad.append((v, val, (lo, hi)))
+    return bad
+
+
 def main():
     fails, checked = [], 0
     for name, src in MODELS:
@@ -67,6 +86,8 @@ def main():
             m = load_model(prefix + ".smt2", prefix + ".schema.json")
             if any(v.get("kind") == "real" for v in m.carried):
                 continue                                  # real-valued — not exactly enumerable
+            for (v, val, rng) in _box_violations(m):      # reachable_region: brute-reachable ⊆ proven box
+                fails.append(f"{name}: reachable {v}={val} OUTSIDE the proven box {rng}")
             abs_states, decided = absorbing_states(m)
             if not decided:
                 continue                                  # Z3 unknown — nothing to cross-check
@@ -87,8 +108,9 @@ def main():
         for f in fails:
             print("  ✗", f)
         return 1
-    print(f"✓ fabrication_probe (#330): abstract Z3 absorbing-set == brute-force over the reachable "
-          f"graph on {checked} bounded-discrete FSMs (deterministic + nondeterministic) — no fabrication")
+    print(f"✓ fabrication_probe (#330): on {checked} bounded-discrete FSMs (det + nondeterministic) the "
+          f"abstract Z3 absorbing-set == brute-force reachable graph AND every k-induction reachable box "
+          f"CONTAINS its reachable states — no fabrication in either abstract dynamical view")
     return 0
 
 
