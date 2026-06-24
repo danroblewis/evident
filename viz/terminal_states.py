@@ -144,25 +144,31 @@ def rest_cycle(m, absorbing_keys):
 def extract_cycle(states, edges, absorbing):
     """DFS back-edge on the NON-absorbing subgraph → one cycle [s0, …, s0] (states) or None. Pure graph
     fn (no model) so terminal_map AND the server's structure path reuse it without re-fetching (#334)."""
-    adj = {}
-    for (i, j) in edges:
-        if i not in absorbing and j not in absorbing:
-            adj.setdefault(i, []).append(j)
-    color, path, found = {}, [], []
+    # Prefer a NON-TRIVIAL cycle (distinct states) over a bare self-loop — a 1↔2 oscillation is a more
+    # illustrative "dodging" witness than "sits at x=1 forever" (Ana #336). Two passes: first EXCLUDING
+    # self-edges (find a multi-state cycle), then including them (fall back to a self-loop if that's all).
+    for allow_self in (False, True):
+        adj = {}
+        for (i, j) in edges:
+            if i not in absorbing and j not in absorbing and (allow_self or i != j):
+                adj.setdefault(i, []).append(j)
+        color, path, found = {}, [], []
 
-    def dfs(u):
-        color[u] = 1; path.append(u)
-        for v in adj.get(u, []):
-            if color.get(v, 0) == 1:
-                found.append(path[path.index(v):] + [v]); return True
-            if color.get(v, 0) == 0 and dfs(v):
-                return True
-        path.pop(); color[u] = 2; return False
+        def dfs(u):
+            color[u] = 1; path.append(u)
+            for v in adj.get(u, []):
+                if color.get(v, 0) == 1:
+                    found.append(path[path.index(v):] + [v]); return True
+                if color.get(v, 0) == 0 and dfs(v):
+                    return True
+            path.pop(); color[u] = 2; return False
 
-    for n in list(adj.keys()):
-        if color.get(n, 0) == 0 and dfs(n):
-            break
-    return [states[i] for i in found[0]] if found else None
+        for n in list(adj.keys()):
+            if color.get(n, 0) == 0 and dfs(n):
+                break
+        if found:
+            return [states[i] for i in found[0]]
+    return None
 
 
 def classify(m):
