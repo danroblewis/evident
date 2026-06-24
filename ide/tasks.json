@@ -9090,16 +9090,28 @@
       "id": 346,
       "title": "Let me COPY/EXPORT a relation's proof obligation as SMT-LIB \u2014 the asserted body conjuncts + (assert (not relation)) + (check-sat) + (get-unsat-core) \u2014 so I can paste it into z3 directly and re-derive the core myself. The \u29c9 SMT-LIB button exports the transition; add a per-relation 'copy proof obligation' so the interrogation leaves the IDE and lands in my own solver, which is how I actually verify a claim I'm betting on.",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "ide-critic-expert",
       "created": "2026-06-24T13:13:49Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "solve"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-24T17:43:55Z",
+          "by": "worker",
+          "act": "started"
+        },
+        {
+          "at": "2026-06-24T17:43:55Z",
+          "by": "worker",
+          "act": "done",
+          "note": "_smtlib_obligation generates named-assert SMT-LIB (produce-unsat-cores + negated relation + check-sat + get-unsat-core); test re-parses to UNSAT. Per relation in response."
+        }
+      ]
     },
     {
       "id": 347,
@@ -9155,16 +9167,28 @@
       "id": 349,
       "title": "Export the relation + its Farkas certificate: I can read 'a=c-2 derived as (a+b==10)\u2212(b+c==12)' on screen but cannot COPY it (into a proof, a paper, an issue). Add a copy/export on the relation proof \u2014 both human-readable ('a\u2212c=\u22122 = 1\u00b7(a+b\u221210) \u2212 1\u00b7(b+c\u221212)') and machine (the \u03bb vector + the SMT-LIB unsat-core / proof term). Z3's get_proof and Alloy's evaluator both let me take the certificate out of the tool.",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "ide-critic-expert",
       "created": "2026-06-24T13:36:05Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "analysis"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-24T17:43:55Z",
+          "by": "worker",
+          "act": "started"
+        },
+        {
+          "at": "2026-06-24T17:43:55Z",
+          "by": "worker",
+          "act": "done",
+          "note": "'\u29c9 copy proof' button on each relation copies the human-readable derivation + the SMT-LIB obligation. Playwright-verified the button. Shares #346's smtlib."
+        }
+      ]
     },
     {
       "id": 350,
