@@ -246,6 +246,7 @@ def _maybe_claim(prefix, dropped, source="", msg="", view="claim_space"):
                       "fixed_points": [], "bounds": bounds, "relations": decomp.get("relations", []),
                       "backbone": decomp.get("backbone", []), "equalities": decomp.get("equalities", []),
                       "inequalities": decomp.get("inequalities", []),   # #338: full decomp, queryable as data
+                      "forced_certs": decomp.get("forced_certs", []),   # #348: inequality-forced backbone/equality certs
                       "reachable": 0, "capped": False, "branching": 1},
         "dropped": dropped, "branching": 1, "states": 0, "edges": 0, "capped": False,
         "vars": list(bounds.keys()), "view": view, "rigor": view_rigor(view), "views": CLAIM_VIEWS,
