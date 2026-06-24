@@ -8425,16 +8425,28 @@
       "id": 329,
       "title": "solution_structure for >2-var claims should expose the full backbone/free DECOMPOSITION as an interrogable table, and surface forced relations beyond pairs (a+b=c implied sums, ordering a<b forced) \u2014 currently only pairwise = and \u2260 are detected. Z3 gives me implied equalities over arbitrary terms; mirror that.",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "ide-critic-expert",
       "created": "2026-06-24T03:52:03Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "analysis"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-24T09:28:05Z",
+          "by": "worker",
+          "act": "started"
+        },
+        {
+          "at": "2026-06-24T09:28:05Z",
+          "by": "worker",
+          "act": "done",
+          "note": "solution_structure now surfaces non-pairwise affine relations: sample solutions \u2192 affine null space (numpy SVD) \u2192 rationalize \u2192 Z3-verify each (no sampling coincidence reported). c=a+b \u2192 'c = a + b', a=b+3 \u2192 'a = b + 3'; banner 'implied: \u2026'. Tested + render-verified + gated green."
+        }
+      ]
     },
     {
       "id": 330,
