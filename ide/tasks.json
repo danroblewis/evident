@@ -9337,10 +9337,10 @@
       "id": 356,
       "title": "Expose the claim witness-cloud renderers (parallel_coords \u22653 numeric vars; scatter_matrix >2 vars) as real selectable tabs for a claim, not just claim_space. The renderers already work (render_parallel_coords/_claim_setup verified at 600 witnesses/0 violations, test_parallel_claim green) but ide/web/render.py _maybe_claim CLAIM_VIEWS hardcodes ['claim_space','solution_structure'] and redirects every other view to claim_space, so the #284 capability is unreachable from the UI. Add the named tabs + route them to the witness renderers; keep the honest N/A on UNSAT.",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "ide-critic-expert",
       "created": "2026-06-24T17:52:42Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
@@ -9351,6 +9351,17 @@
           "at": "2026-06-24T17:52:42Z",
           "by": "ide-critic-expert",
           "act": "created to address concern #355"
+        },
+        {
+          "at": "2026-06-24T18:00:44Z",
+          "by": "worker",
+          "act": "started"
+        },
+        {
+          "at": "2026-06-24T18:00:44Z",
+          "by": "worker",
+          "act": "done",
+          "note": "_maybe_claim CLAIM_VIEWS += scatter_matrix/parallel_coords when \u22652 numeric vars; dispatched via RENDERERS[view]. Claim now exposes 4 tabs; witness views render (rigor sampled). Addresses #315/#355 exposure gap."
         }
       ],
       "addresses_concern": 355
