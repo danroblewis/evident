@@ -223,6 +223,9 @@ html,body { margin:0; height:100%; background:var(--bg); color:var(--ink);
 #structure .v-unstable, #structure .v-unbounded { color:var(--bad); }
 #structure .struct-fp { color:#c9a8ff; }
 #structure .struct-bounds { color:#7ee0c0; }
+#structure .struct-relations { color:#81c784; }
+#structure .struct-rel { cursor:pointer; border-bottom:1px dotted; }
+#structure .struct-rel:hover { text-decoration:underline; }
 
 /* assert-and-check an invariant over the reachable set */
 #invariant { display:flex; align-items:center; gap:8px; padding:6px 14px;

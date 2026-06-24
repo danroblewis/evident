@@ -53,6 +53,15 @@ function renderStructure(s) {
       + "(Optimize over the unrolled transition), not the min/max of one run.";
     html += `<span class="struct-bounds" title="${bhelp}">⊏ boundary${s.capped ? " (≥, capped)" : ""}: ${bstr}</span>`;
   }
+  // #341: implied relations are CLICKABLE — each reveals its unsat-core PROOF (which claim constraints
+  // force it, "the claim ∧ ¬relation is UNSAT"). Ana's interrogability ask — don't just trust green text.
+  if (s.relations && s.relations.length) {
+    const rhelp = "affine relations forced in every solution, implied by the claim's constraints. "
+      + "Click one to see WHICH constraints force it (the Z3 unsat-core proof).";
+    const rels = s.relations.map((r, i) =>
+      `<span class="struct-rel" data-i="${i}" title="click for the proof — which constraints force this">${r.eq}</span>`).join("  ");
+    html += `<span class="struct-relations" title="${rhelp}">⊢ implied: ${rels}</span><span id="rel-proof" class="dim"></span>`;
+  }
   // #334: a witnessing lasso means NOT every run rests — offer to REPLAY the dodging loop in the step
   // scrubber (the same one verify/liveness uses), ringing each state on the live view as you step.
   const lasso = s.rest_cycle && s.rest_cycle.length >= 2 ? s.rest_cycle : null;
@@ -75,6 +84,14 @@ function renderStructure(s) {
       out.textContent = " " + _fmtSoundness(d.soundness);
     } catch (e) { out.textContent = " ✕ " + e; }
   };
+  // #341: click a relation → show the unsat-core proof (which constraints force it) inline.
+  el.querySelectorAll(".struct-rel").forEach((sp) => {
+    sp.onclick = () => {
+      const r = s.relations[+sp.dataset.i];
+      const core = (r.core || []).join("  ∧  ");
+      $("#rel-proof").textContent = ` ⊢ ${r.eq} — forced by: ${core || "the claim"}  (Z3-proven: claim ∧ ¬(${r.eq}) is UNSAT)`;
+    };
+  });
 }
 
 

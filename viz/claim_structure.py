@@ -47,12 +47,39 @@ def _val(m, c):
     return None
 
 
+def conjuncts(e):
+    """Flatten an And tree into its leaf assertions — the claim's individual constraints (for the core)."""
+    if z3.is_app(e) and e.decl().kind() == z3.Z3_OP_AND:
+        out = []
+        for c in e.children():
+            out.extend(conjuncts(c))
+        return out
+    return [e]
+
+
+def _verify_core(body, relation_expr, rhs):
+    """Verify the relation holds (body ∧ relation≠rhs UNSAT) AND extract the unsat core — the minimal claim
+    constraints that FORCE the relation (#341, the interrogable proof). assert_and_track each body conjunct
+    + the negated relation; the core's tracked constraints are the forcing ones. None if not UNSAT."""
+    s = z3.Solver()
+    tracked = {}
+    for k, c in enumerate(conjuncts(body)):
+        p = z3.Bool(f"__c{k}"); tracked[p.get_id()] = c
+        s.assert_and_track(c, p)
+    pn = z3.Bool("__neg"); tracked[pn.get_id()] = None
+    s.assert_and_track(relation_expr != rhs, pn)
+    if s.check() != z3.unsat:
+        return None
+    return [str(tracked[p.get_id()]) for p in s.unsat_core() if tracked.get(p.get_id()) is not None]
+
+
 def _nonpairwise(body, consts, names, is_real):
     """IMPLIED affine relations among the free numeric vars beyond pairwise (a+b=c, a=b+3, and for reals
     y=2x): sample solutions, take the EXACT rational null space (sympy) of the sampled points — exact so ≥2
     co-existing relations stay clean integer vectors (#337) — then VERIFY each candidate via Z3 (body ∧
     relation≠const UNSAT) so a sampling coincidence is never reported. Handles int + real vars (#339).
-    Skips pure pairwise (the equalities pass owns a=b). Returns equation strings."""
+    Skips pure pairwise (the equalities pass owns a=b). Returns {"eq", "core"} dicts — the relation string
+    + the claim constraints that force it (#341, the interrogable proof)."""
     sol = z3.Solver(); sol.add(body)
     pts = []
     for _ in range(len(names) + 4):
@@ -82,9 +109,9 @@ def _nonpairwise(body, consts, names, is_real):
             continue                                                # it (but keep scaling y=2x, [2,-1])
         expr = z3.Sum([ints[i] * consts[names[i]] for i in range(len(ints))])
         rhs = z3.RealVal(str(const)) if is_real else int(const)
-        s2 = z3.Solver(); s2.add(body); s2.add(expr != rhs)
-        if s2.check() == z3.unsat:
-            out.append(_fmt_relation(ints, const, names))
+        core = _verify_core(body, expr, rhs)              # verify + the constraints that force it (#341)
+        if core is not None:
+            out.append({"eq": _fmt_relation(ints, const, names), "core": core})
     return out
 
 

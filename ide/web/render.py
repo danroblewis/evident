@@ -166,6 +166,15 @@ def _maybe_claim(prefix, dropped, source="", msg="", view="claim_space"):
                     bounds[v["name"].split(".")[-1]] = [lo, hi]
     except Exception as e:
         print(f"[server] claim bounds failed: {type(e).__name__}: {e}", file=sys.stderr)
+    # #341: the implied relations + their forcing-constraint proof cores, for the interrogable structure
+    # panel (shown on either claim tab, independent of the active PNG view).
+    relations = []
+    if feasible:
+        try:
+            from claim_structure import solution_structure
+            relations = solution_structure(smt2, schema).get("relations", [])
+        except Exception as e:
+            print(f"[server] claim relations failed: {type(e).__name__}: {e}", file=sys.stderr)
     # A claim is static, so it gets the views that work without a run. claim_space = the solved
     # feasible region; solution_structure = what it DETERMINES (backbone / free / implied equalities).
     CLAIM_VIEWS = ["claim_space", "solution_structure"]
@@ -186,8 +195,8 @@ def _maybe_claim(prefix, dropped, source="", msg="", view="claim_space"):
                    "press ⊨ Solve for one witness)" if feasible else
                    "a claim — UNSATISFIABLE (no assignment satisfies it; ⊨ Solve to see why)"),
         "structure": {"verdict": "satisfiable" if feasible else "unsatisfiable", "claim": True,
-                      "fixed_points": [], "bounds": bounds, "reachable": 0, "capped": False,
-                      "branching": 1},
+                      "fixed_points": [], "bounds": bounds, "relations": relations, "reachable": 0,
+                      "capped": False, "branching": 1},
         "dropped": dropped, "branching": 1, "states": 0, "edges": 0, "capped": False,
         "vars": list(bounds.keys()), "view": view, "views": CLAIM_VIEWS,
         "png": base64.b64encode(png).decode() if png else None,

@@ -87,7 +87,7 @@ def render(smt2_path, schema_path, out_path):
         if r.get("inequalities"):
             rels.append("forced different: " + ", ".join(f"{_short(a)}≠{_short(b)}" for a, b in r["inequalities"]))
         if r.get("relations"):
-            rels.append("implied: " + "; ".join(r["relations"]))
+            rels.append("implied: " + "; ".join(x["eq"] for x in r["relations"]))  # relations are {eq, core} (#341)
         nrel = len(r["equalities"]) + len(r.get("inequalities", [])) + len(r.get("relations", []))
         reltxt = (" · " + " · ".join(rels)) if rels else ""
         # "N relations" (not "implied") — the count spans forced-equal + forced-different + implied-affine,
