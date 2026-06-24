@@ -1,5 +1,5 @@
 {
-  "seq": 333,
+  "seq": 334,
   "tasks": [
     {
       "id": 1,
@@ -8475,11 +8475,13 @@
       "id": 331,
       "title": "solution_space 'rest states' sidebar fabricated fixed points on nondeterministic FSMs (Ana scope note after #316 re-check) \u2014 keyed on self-edges not the absorbing set",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "worker",
       "created": "2026-06-24T04:17:23Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "bug"
@@ -8495,6 +8497,12 @@
           "by": "worker",
           "act": "done",
           "note": "FIXED: model_analysis.solution_structure now keys fixed_points on absorbing (out-targets=={i}), not self-edges. nondeterministic bistable\u2192{0,6}, counter\u2192{5}, cyclic\u2192\u2205; ide/test_fixed_points.py pins it. Gated green."
+        },
+        {
+          "at": "2026-06-24T06:23:07Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": "VERIFIED LIVE + adversarially. #331: solution_space sidebar reads exactly '\u25cf rest states: (x=0) (x=6)' on the shipped nondeterministic bistable \u2014 NOT all 7. Root cause fix confirmed in model_analysis.solution_structure: fp_idx keys on out_targets=={i} (absorbing: only successor is self), not self-edges. Probed the edge set directly: x=3 (idx0) has self-edge (0,0) AND exits to 1,2 \u2192 correctly NOT a fixed point; only idx4(x=6) and idx6(x=0) have {self} out-targets. counter\u2192{5}, cyclic\u2192\u2205, det-bistable\u2192{0,3,6} all sound. test_fixed_points.py pins it, green. The #322 fabrication class is closed in this sidebar."
         }
       ]
     },
@@ -8517,11 +8525,13 @@
       "id": 333,
       "title": "When terminal_map reports 'CAN REST (not always)' (#328 must_rest=False), surface the WITNESSING non-rest cycle \u2014 the stem+cycle lasso the FSM can ride to dodge the absorbing set forever (e.g. bistable x=3 via step=0, or a 0\u21921\u21922\u21920 loop). model_temporal already computes exactly this lasso for liveness; the must-rest banner states the verdict but gives no trace to step through. TLA+ hands you the counterexample TRACE, not just 'liveness fails' \u2014 the can-rest banner should let me click into the loop that avoids rest.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-expert",
       "created": "2026-06-24T05:55:17Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "analysis"
@@ -8537,6 +8547,39 @@
           "by": "worker",
           "act": "done",
           "note": "terminal_map now shows the witnessing cycle when must_rest=False: rest_cycle (DFS back-edge on the non-absorbing reachable subgraph) \u2192 the banner appends 'e.g. loops (x=1)\u2192(x=1)'. Reuses the #328 must-rest graph; nondet bistable \u2192 closed non-absorbing loop, det \u2192 None. Tested + gated green."
+        },
+        {
+          "at": "2026-06-24T06:23:07Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": "VERIFIED LIVE + adversarially. #333: terminal_map banner now appends a concrete witness \u2014 live screenshot reads 'CAN REST (not always) \u2026 e.g. loops (x=1)\u2192(x=1); a cycle avoids the absorbing set'. Adversarial checks all pass: (1) cycle members NEVER include an absorbing state (filtered via i,j not in absorbing before adj-build); (2) every consecutive pair is a real reachable edge; (3) genuine MULTI-NODE lassos returned, not just self-loops \u2014 constructed a 1\u21922\u21923\u21921 system and rest_cycle returned [1,2,3,1]; (4) deterministic gambler's-ruin (must_rest=True) returns rest_cycle=None, no false witness. This is the TLA+ move: a trace behind the verdict, not just 'liveness fails'. The original concern (verdict stated, no trace) is resolved \u2014 there IS a trace now."
+        }
+      ]
+    },
+    {
+      "id": 334,
+      "title": "terminal_map 'CAN REST (not always)' witness cycle is now SURFACED as banner text (#333 done) but not yet INTERACTIVE \u2014 make the rest_cycle lasso clickable into a stepped trajectory: select it and drive the time-series / state-graph / space-time views to ANIMATE the loop (highlight s0\u2192\u2026\u2192s0, scrub the steps). #333's title aspired to 'click into the loop'; the text witness resolved the trace gap, this closes the interaction gap. The lasso states are already computed in terminal_states.rest_cycle \u2014 the missing piece is plumbing them to the frontend as a selectable trace the dynamics views can replay. This is the TLA+ 'step through the counterexample' experience vs 'here is the counterexample, printed'.",
+      "detail": "",
+      "status": "worker_done",
+      "created_by": "ide-critic-expert",
+      "created": "2026-06-24T06:23:15Z",
+      "worker_done": true,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "analysis"
+      ],
+      "log": [
+        {
+          "at": "2026-06-24T07:09:55Z",
+          "by": "worker",
+          "act": "started"
+        },
+        {
+          "at": "2026-06-24T07:09:55Z",
+          "by": "worker",
+          "act": "done",
+          "note": "Replay button in the structure panel feeds the rest_cycle lasso to the existing showTrace scrubber (steppable, each state ringed on the live view). extract_cycle extracted as a pure graph fn; lasso surfaced via model_analysis.solution_structure (not server.py \u2014 #222 limits). Playwright-verified button\u2192replay, 0 console errors, gated green."
         }
       ]
     }
