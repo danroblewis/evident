@@ -70,6 +70,9 @@ def _check_relations(fails):
         forced = [x for x in rels if any("a + b" in cc for cc in x["core"]) and any("b + c" in cc for cc in x["core"])]
         if not forced:
             fails.append(f"#341: no relation cites both forcing constraints; got {[(x['eq'], x['core']) for x in rels]}")
+        # #345: the DERIVED relation's Farkas combo derives it as a linear combination of BOTH constraints.
+        elif not (forced[0].get("combo") and "a + b" in forced[0]["combo"] and "b + c" in forced[0]["combo"]):
+            fails.append(f"#345: derived combo should cite both constraints, got {forced[0].get('combo')}")
 
 
 def main():

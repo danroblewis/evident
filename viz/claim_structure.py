@@ -73,6 +73,56 @@ def _verify_core(body, relation_expr, rhs):
     return [str(tracked[p.get_id()]) for p in s.unsat_core() if tracked.get(p.get_id()) is not None]
 
 
+def _coef_vec(constraint, consts, names):
+    """A linear equality `lhs == rhs` → (coeffs over names, rhs). Extract by substitution: coef of a var =
+    (lhs−rhs at that var=1, rest 0) − (at all 0); the constant term gives the rhs. Int constraints only."""
+    diff = constraint.arg(0) - constraint.arg(1)          # constraint is diff == 0
+
+    def ev(assign):
+        e = z3.substitute(diff, *[(consts[n], z3.IntVal(assign.get(n, 0))) for n in names])
+        return z3.simplify(e).as_long()
+    base = ev({})
+    return [ev({n: 1}) - base for n in names], -base
+
+
+def _fmt_combo(combo):
+    """[(λ, constraint_str)] → a signed linear-combination string: '(c1) − 2·(c2)'."""
+    parts = []
+    for i, (lam, c) in enumerate(combo):
+        sign = "" if i == 0 and lam > 0 else (" + " if lam > 0 else " − ")
+        mag = "" if abs(lam) == 1 else f"{abs(lam)}·"
+        parts.append(f"{sign}{mag}({c})")
+    return "".join(parts)
+
+
+def _farkas_combo(body, consts, names, core_strs, rel_ints, rel_const, is_real):
+    """The integer linear combination of the core constraints that DERIVES the relation (#345, the Farkas
+    certificate — 'how' the constraints force it, not just 'which'). Solve Σλⱼ·constraintⱼ = relation per
+    variable, then check the constant. Int claims only; None if real / underdetermined / const mismatch."""
+    if is_real:
+        return None
+    try:
+        by_str = {str(c): c for c in conjuncts(body)}
+        cores = [by_str[s] for s in core_strs if s in by_str]
+        if not cores:
+            return None
+        vecs = [_coef_vec(c, consts, names) for c in cores]
+        m = sympy.Matrix([[v[0][i] for v in vecs] for i in range(len(names))])
+        sol = sympy.linsolve((m, sympy.Matrix(rel_ints)))
+        if not sol:
+            return None
+        lam = list(list(sol)[0])
+        if any(getattr(x, "free_symbols", set()) for x in lam):           # underdetermined
+            return None
+        if sum(lam[j] * vecs[j][1] for j in range(len(vecs))) != rel_const:
+            return None
+        used = [(int(lam[j]), core_strs[j]) for j in range(len(cores)) if lam[j] != 0]
+        used.sort(key=lambda x: x[0] < 0)                                 # positive terms first (cleaner)
+        return _fmt_combo(used) if used else None
+    except Exception:
+        return None
+
+
 def _nonpairwise(body, consts, names, is_real):
     """IMPLIED affine relations among the free numeric vars beyond pairwise (a+b=c, a=b+3, and for reals
     y=2x): sample solutions, take the EXACT rational null space (sympy) of the sampled points — exact so ≥2
@@ -111,7 +161,8 @@ def _nonpairwise(body, consts, names, is_real):
         rhs = z3.RealVal(str(const)) if is_real else int(const)
         core = _verify_core(body, expr, rhs)              # verify + the constraints that force it (#341)
         if core is not None:
-            out.append({"eq": _fmt_relation(ints, const, names), "core": core})
+            combo = _farkas_combo(body, consts, names, core, ints, const, is_real)  # the derivation (#345)
+            out.append({"eq": _fmt_relation(ints, const, names), "core": core, "combo": combo})
     return out
 
 

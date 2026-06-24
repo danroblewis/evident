@@ -84,12 +84,13 @@ function renderStructure(s) {
       out.textContent = " " + _fmtSoundness(d.soundness);
     } catch (e) { out.textContent = " ✕ " + e; }
   };
-  // #341: click a relation → show the unsat-core proof (which constraints force it) inline.
+  // #341/#345: click a relation → show its proof. Prefer the #345 Farkas DERIVATION (how the constraints
+  // combine to yield it); fall back to the #341 unsat-core list (which constraints) when no combo (reals).
   el.querySelectorAll(".struct-rel").forEach((sp) => {
     sp.onclick = () => {
       const r = s.relations[+sp.dataset.i];
-      const core = (r.core || []).join("  ∧  ");
-      $("#rel-proof").textContent = ` ⊢ ${r.eq} — forced by: ${core || "the claim"}  (Z3-proven: claim ∧ ¬(${r.eq}) is UNSAT)`;
+      const why = r.combo ? `derived as  ${r.combo}` : `forced by: ${(r.core || []).join("  ∧  ") || "the claim"}`;
+      $("#rel-proof").textContent = ` ⊢ ${r.eq} — ${why}  (Z3-proven: claim ∧ ¬(${r.eq}) is UNSAT)`;
     };
   });
 }
