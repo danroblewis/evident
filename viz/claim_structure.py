@@ -10,7 +10,7 @@ into what it DETERMINES vs leaves free — pure Z3 over the claim body, no sampl
 
   solution_structure(smt2_path, schema_path) -> {"sat", "backbone", "free", "equalities", "inequalities"}
 """
-import numpy as np
+import sympy
 import z3
 
 from render_claim_space import _load_claim, _opt_bound
@@ -20,7 +20,7 @@ _SCALAR = ("int", "real", "bool", "enum")
 
 def _fmt_relation(coeffs, const, names):
     """Render an integer affine relation Σ cᵢ·varᵢ = const as 'lhs = rhs' (positive terms left,
-    negatives + the constant right): -a-b+c=0 → 'c = a + b'; a-b=3 → 'a = b + 3'."""
+    negatives + the constant right): a+b-c=0 → 'a + b = c'; a-b=3 → 'a = b + 3'; a-b-d=-10 → 'a = b + d - 10'."""
     pos, neg = [], []
     for c, n in zip(coeffs, names):
         if c == 0:
@@ -28,15 +28,20 @@ def _fmt_relation(coeffs, const, names):
         term = n if abs(c) == 1 else f"{abs(c)}·{n}"
         (pos if c > 0 else neg).append(term)
     lhs = " + ".join(pos) if pos else "0"
-    rhs = neg + ([str(const)] if const else [])
-    return f"{lhs} = {' + '.join(rhs) if rhs else '0'}"
+    rhs = " + ".join(neg)
+    if const > 0:
+        rhs = f"{rhs} + {const}" if rhs else str(const)
+    elif const < 0:
+        rhs = f"{rhs} - {-const}" if rhs else str(const)
+    return f"{lhs} = {rhs or '0'}"
 
 
 def _nonpairwise(body, consts, names):
     """IMPLIED affine relations among the free INTEGER vars beyond pairwise (a+b=c, a=b+3): sample
-    solutions, take the affine null space (numpy) of the sampled points, then VERIFY each candidate via
-    Z3 (body ∧ relation≠const UNSAT) so a sampling coincidence is never reported. Skips pure pairwise
-    (a=b — that's the equalities pass). Returns equation strings."""
+    solutions, take the EXACT rational null space (sympy) of the sampled points — exact so ≥2 co-existing
+    relations stay clean integer vectors (#337) — then VERIFY each candidate via Z3 (body ∧ relation≠const
+    UNSAT) so a sampling coincidence is never reported. Skips pure pairwise (the equalities pass owns a=b).
+    Returns equation strings."""
     sol = z3.Solver(); sol.add(body)
     pts = []
     for _ in range(len(names) + 4):
@@ -47,27 +52,24 @@ def _nonpairwise(body, consts, names):
         sol.add(z3.Or(*[consts[n] != m.eval(consts[n], model_completion=True) for n in names]))
     if len(pts) < 2:
         return []
-    V = np.array(pts, dtype=float)
-    diffs = V[1:] - V[0]
-    if diffs.shape[0] == 0:
-        return []
-    _, sv, vh = np.linalg.svd(diffs)
-    rank = int(np.sum(sv > 1e-6))
+    V = sympy.Matrix(pts)
+    v0 = V.row(0)
+    diffs = sympy.Matrix([V.row(i) - v0 for i in range(1, V.rows)])
     out = []
-    for w in vh[rank:]:
-        nz = np.abs(w[np.abs(w) > 1e-6])
-        if len(nz) == 0:
+    for w in diffs.nullspace():                           # EXACT rational null space — ≥2 co-existing
+        w = w * sympy.lcm([t.q for t in w])               # relations stay clean integer vectors (#337)
+        ints = [int(x) for x in w]
+        if not any(ints):
             continue
-        ints = np.round(w / nz.min()).astype(int)
-        if not (np.allclose(w / nz.min(), ints, atol=1e-4) and np.any(ints != 0)):
+        if next(x for x in ints if x) < 0:                # sign-normalize: leading coeff positive (stable)
+            ints = [-x for x in ints]
+        const = int((sympy.Matrix([ints]) * v0.T)[0])
+        if sum(1 for x in ints if x) < 3 and const == 0:  # pure pairwise a=b — equalities handles it
             continue
-        const = int(round(float(np.dot(ints, V[0]))))
-        if np.count_nonzero(ints) < 3 and const == 0:     # pure pairwise a=b — equalities handles it
-            continue
-        expr = z3.Sum([int(ints[i]) * consts[names[i]] for i in range(len(ints))])
+        expr = z3.Sum([ints[i] * consts[names[i]] for i in range(len(ints))])
         s2 = z3.Solver(); s2.add(body); s2.add(expr != const)
         if s2.check() == z3.unsat:
-            out.append(_fmt_relation(ints.tolist(), const, names))
+            out.append(_fmt_relation(ints, const, names))
     return out
 
 
