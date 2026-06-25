@@ -35,6 +35,7 @@ from model_analysis import AnalysisMixin
 from model_query import QueryMixin
 from model_temporal import TemporalMixin
 from model_global import GlobalGraphMixin
+from model_reachable import ReachabilityMixin
 
 
 _LOAD_CACHE = {}          # (smt2_path, schema_path, mtime) -> Model
@@ -70,20 +71,32 @@ def load(smt2_path, schema_path):
 
 
 class Model(CodecMixin, RankingMixin, AnalysisMixin, QueryMixin, TemporalMixin,
-            GlobalGraphMixin):
-    # The methods are inherited from five mixins: CodecMixin (viz/model_codec.py — the
-    # value <-> z3 codec: scalar/seq decode, element-wise pin, successor-block clause,
-    # leaf sorts), RankingMixin (viz/model_ranking.py — variable ranking/selection, axis
-    # bounds, independence), AnalysisMixin (viz/model_analysis.py — solver bounds,
-    # solution_structure, channel + facet mapping), QueryMixin (viz/model_query.py —
-    # safety □ check_invariant, ∃ query, explore + predicate/graph helpers), and
-    # TemporalMixin (viz/model_temporal.py — liveness ◇/□◇/⤳ check_temporal + the witness
-    # lasso). This file keeps the load/decode core: __init__ + z3 setup, the solver
-    # builders + _read_state, successor/successors/reachable/trajectory/initial_state,
-    # and _key/state_key.
+            GlobalGraphMixin, ReachabilityMixin):
+    # Methods are inherited from seven mixins, each in its own file:
+    #   CodecMixin (model_codec.py)            — value <-> z3 codec: decode, pin, block, sorts
+    #   RankingMixin (model_ranking.py)        — var ranking/selection, axis bounds, independence
+    #   AnalysisMixin (model_analysis.py)      — solver bounds, solution_structure, channel/facet
+    #   QueryMixin (model_query.py)            — safety □ check_invariant, ∃ query, explore
+    #   TemporalMixin (model_temporal.py)      — liveness ◇/□◇/⤳ check_temporal + witness lasso
+    #   GlobalGraphMixin (model_global.py)     — whole-program graph helpers
+    #   ReachabilityMixin (model_reachable.py) — reachable() / closing_depth() BFS + ΔΔ pair-graph
+    # This file keeps the load/decode core: __init__ (the three load phases below) + the
+    # solver builders + _read_state, the single-step initial_state/successor/successors/
+    # trajectory primitives, and _key/state_key.
     def __init__(self, smt2_path, schema_path):
+        # Three ordered phases, each a private helper: _load_schema (JSON → var lists),
+        # _parse_smt2 (SMT-LIB → self.consts + tick constants), _build_enum_tables
+        # (variant ↔ z3 codec tables). Phase 2 needs phase 1's carried/*_tick_name;
+        # phase 3 needs phase 2's consts. Behaviour-preserving — same attrs, same order.
         with open(schema_path) as fh:
             schema = json.load(fh)
+        self._load_schema(schema)
+        self._parse_smt2(smt2_path)
+        self._build_enum_tables()
+
+    def _load_schema(self, schema):
+        """Phase 1: schema JSON → the var lists that drive the model (carried/interface/
+        internal/derived, lazy caches, tick names, two-tick set)."""
         self.fsm = schema["fsm"]
         # All carried leaves drive the transition; the INTERFACE subset (the fsm's
         # first-line params — the model's observable contract) is the default axis
@@ -121,7 +134,9 @@ class Model(CodecMixin, RankingMixin, AnalysisMixin, QueryMixin, TemporalMixin,
         self.has_two_tick = bool(self.two_tick_vars)
         self._second_tick_name = schema.get("is_second_tick")
 
-        # Parse the self-contained SMT-LIB (datatype decls + transition asserts).
+    def _parse_smt2(self, smt2_path):
+        """Phase 2: parse the SMT-LIB → self.consts + tick constants. Needs phase 1's carried."""
+        # The self-contained SMT-LIB is datatype decls + transition asserts.
         self.assertions = z3.parse_smt2_file(smt2_path)
 
         # Collect every declared (uninterpreted) constant by name: d.room, _d.room,
@@ -159,7 +174,8 @@ class Model(CodecMixin, RankingMixin, AnalysisMixin, QueryMixin, TemporalMixin,
         self.second_tick = (self.consts.get(self._second_tick_name)
                             if self._second_tick_name else None)
 
-        # For each enum state var (carried OR derived), map variant-name -> z3 value.
+    def _build_enum_tables(self):
+        """Phase 3: enum variant ↔ z3 value/constructor tables for the codec. Needs phase 2."""
         # NULLARY variants populate `_enum_lit` (variant name -> the 0-arg z3 value) and
         # `enum_variants` (the categorical domain the renderers colour/ordinal by). PAYLOAD
         # variants (Count(Int)) are NOT in that nullary table — they have no single literal —
@@ -220,88 +236,6 @@ class Model(CodecMixin, RankingMixin, AnalysisMixin, QueryMixin, TemporalMixin,
             return None
         return self._read(model, var)
 
-    def _successors_two(self, cur, prev, limit=64, second=False):
-        """ALL distinct next CURRENT-snapshots from the (cur, prev) pair of a two-tick
-        model: pin `_x = cur`, and `__x = prev` whenever a two-ago value exists. `second`
-        is the tick-1 bootstrap flag (is_second_tick): on the bootstrap step we STILL pin
-        `__x = prev` — the SEEDED tick-0 `_x` (e.g. from `_x := x - 3`), which the runtime's
-        shift register carries into `__x` — so a second-order model stays deterministic
-        instead of fanning out on a free `__x`. Returns current-snapshot state dicts."""
-        s = self._base()
-        if self.first_tick is not None:
-            s.add(self.first_tick == False)  # noqa: E712
-        self._pin_prev(s, cur)
-        if self.second_tick is not None:
-            s.add(self.second_tick == (second or prev is None))  # noqa: E712
-        if prev is not None:
-            self._pin_prev2(s, prev)
-        out = []
-        while len(out) < limit and s.check() == z3.sat:
-            mod = s.model()
-            out.append(self._read_state(mod))
-            s.add(self._block_clause(mod))
-        return out
-
-    def _initial_prev(self):
-        """The tick-0 `_var` values, but ONLY when EVERY carried `_x` is UNIQUELY FORCED on
-        tick 0 — a `_x := …` seed, which the runtime's shift register carries into `__x` on
-        tick 1. Returns the full forced prev-state, or None when any `_var` is free (e.g.
-        fib's `_n`, whose tick-1 bootstrap is the existing is_second_tick path — pinning its
-        `__x` to an arbitrary Z3 pick would collapse the reachable graph)."""
-        s = self._base()
-        if self.first_tick is not None:
-            s.add(self.first_tick == True)  # noqa: E712
-        if s.check() != z3.sat:
-            return None
-        mod = s.model()
-        out = {}
-        for v in self.carried:
-            pn = v.get("prev")
-            if not pn or pn not in self.consts or v["kind"] == "seq":
-                return None
-            val = self._read(mod, {"name": pn, "kind": v["kind"]})
-            s.push()
-            s.add(self.consts[pn] != self._lit(v, val))     # forced ⇔ no other tick-0 value
-            forced = (s.check() == z3.unsat)
-            s.pop()
-            if not forced:
-                return None
-            out[v["name"]] = val
-        return out
-
-    def _reachable_two(self, limit=5000):
-        """Reachable set for a two-tick (ΔΔ) model. A NODE is the pair (cur, prev):
-        the transition depends on both. We BFS over pairs, but the returned `states`
-        are the CURRENT snapshots only (and `edges` index into them) so every
-        downstream consumer — phase_portrait / solution_space / solved_bounds /
-        check_invariant / check_temporal — sees ordinary single-snapshot states and
-        works unchanged. Dedup is on the (cur, prev) pair."""
-        init = self.initial_state()
-        if init is None:
-            return [], []
-        # The seeded tick-0 `_x` (e.g. `_x := x - 3`) is the two-ago value on tick 1 — the
-        # runtime carries it into `__x`. Capture it as the tick-0 node's prev so the bootstrap
-        # step pins `__x` and the second-order transition is deterministic, not a free fan.
-        init_prev = self._initial_prev()
-        # The pair-graph: each node carries (cur, prev); states[] holds the cur dicts.
-        states = [init]
-        pairs = [(init, init_prev)]                  # tick-0 node: prev = the seeded `_x`
-        pair_index = {(self._key(init), self._key(init_prev) if init_prev else None): 0}
-        edges = []
-        frontier = [0]
-        while frontier and len(states) < limit:
-            i = frontier.pop()
-            cur, prev = pairs[i]
-            for nxt in self._successors_two(cur, prev, second=(i == 0)):
-                pk = (self._key(nxt), self._key(cur))
-                if pk not in pair_index:
-                    pair_index[pk] = len(states)
-                    states.append(nxt)
-                    pairs.append((nxt, cur))
-                    frontier.append(pair_index[pk])
-                edges.append((i, pair_index[pk]))
-        return states, edges
-
     # ---- queries ------------------------------------------------------------
     def initial_state(self):
         """The state on the first tick (is_first_tick = true), or None."""
@@ -359,104 +293,6 @@ class Model(CodecMixin, RankingMixin, AnalysisMixin, QueryMixin, TemporalMixin,
             seen.add(k)
             cur = nxt
         return path
-
-    def reachable(self, limit=5000):
-        """All reachable distinct states from the initial state, with the edge
-        relation. Returns (states, edges) where states is a list of dicts and
-        edges is a list of (from_index, to_index). For discrete programs this is
-        the exact reachable state graph; for numeric ones it may not terminate,
-        so it's capped by `limit`. Memoized by `limit` — the model is immutable
-        after load, so a second call (e.g. explore's reachable + _trace_to) is free."""
-        cache = self.__dict__.setdefault("_reach_cache", {})
-        if limit in cache:
-            return cache[limit]
-        result = self._reachable_uncached(limit)
-        cache[limit] = result
-        return result
-
-    def _reachable_uncached(self, limit=5000):
-        if self.has_two_tick:
-            return self._reachable_two(limit)
-        init = self.initial_state()
-        if init is None:
-            return [], []
-        states = [init]
-        index = {self._key(init): 0}
-        edges = []
-        frontier = [0]
-        while frontier and len(states) < limit:
-            i = frontier.pop()
-            for nxt in self.successors(states[i]):
-                k = self._key(nxt)
-                if k not in index:
-                    index[k] = len(states)
-                    states.append(nxt)
-                    frontier.append(index[k])
-                edges.append((i, index[k]))
-        return states, edges
-
-    def closing_depth(self, limit=5000):
-        """The BFS depth at which the reachable set CLOSES — the level whose expansion
-        adds no new state. Returns (k, complete):
-
-          - `k`        — the depth (distance from the initial state) at which the LAST new
-                         state was discovered; one more level of BFS adds nothing reachable.
-          - `complete` — True iff the reachable set was fully enumerated within `limit` (the
-                         frontier emptied before the cap). When the BFS hits the cap the set
-                         is still growing, so `complete` is False and `k` is only a lower bound.
-
-        For a CONTINUOUS model (any real-valued carried var) the reachable set isn't a finite
-        enumerable graph; `complete` is forced False so no caller can mistake a capped
-        real-valued exploration for a proof (Ana's honesty bar — `is_discrete()` / the real gate).
-
-        Runs its OWN level-order BFS rather than reusing reachable()'s LIFO frontier (which has
-        no per-level structure) — same successor relation, same dedup key, so the reachable set
-        is identical; the only addition is the per-level counter. The two-tick (ΔΔ) graph is
-        handled by the pair-keyed variant, matching _reachable_two."""
-        if any(v.get("kind") == "real" for v in self.carried):
-            k, _ = self._closing_depth_bfs(limit)
-            return k, False           # never certify a real-valued model complete
-        return self._closing_depth_bfs(limit)
-
-    def _closing_depth_bfs(self, limit):
-        init = self.initial_state()
-        if init is None:
-            return 0, True
-        two = self.has_two_tick
-        if two:
-            seen = {(self._key(init), None)}
-            level = [(init, None)]
-        else:
-            seen = {self._key(init)}
-            level = [init]
-        depth = 0
-        closing = 0
-        capped = False
-        while level:
-            nxt_level = []
-            for node in level:
-                if two:
-                    cur, prev = node
-                    succs = self._successors_two(cur, prev)
-                else:
-                    cur = node
-                    succs = self.successors(cur)
-                for s in succs:
-                    key = (self._key(s), self._key(cur)) if two else self._key(s)
-                    if key in seen:
-                        continue
-                    if len(seen) >= limit:
-                        capped = True
-                        continue
-                    seen.add(key)
-                    nxt_level.append((s, cur) if two else s)
-            if nxt_level:
-                depth += 1
-                closing = depth        # this level introduced new reachable states
-            level = nxt_level
-            if capped:
-                break
-        return closing, not capped
 
     # ---- helpers ------------------------------------------------------------
     def state_key(self, state):
