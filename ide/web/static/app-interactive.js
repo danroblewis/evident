@@ -55,7 +55,18 @@ function _openQueryView(view) {
   if (qsug) slot.appendChild(qsug);
   if (qtrace) traceSlot.appendChild(qtrace);     // showTrace renders the init→witness path here
   $("#view-caption").textContent = "the reachable state(s) satisfying your query — a witness + the path that reaches one";
+  _staleHint("#query-prop", "#query-result", "press find to search this");   // #459
   const inp = $("#query-prop"); if (inp) inp.focus();
+}
+
+// #459: returning to an interactive view preserves the typed INPUT but the prior RESULT was cleared on the
+// view switch (it's stale — never show a stale answer as current). So a filled-in question must not sit over
+// a silently-blank answer: when the input has a value but the result region is empty, show a subtle "(re-)run"
+// hint. A real result (set by find/check) overwrites it; an empty input shows nothing.
+function _staleHint(inputSel, resultSel, hint) {
+  const inp = $(inputSel), out = $(resultSel);
+  if (!inp || !out) return;
+  if (inp.value.trim() && !out.textContent.trim()) { out.className = "dim"; out.textContent = "↻ " + hint; }
 }
 
 // #437: the verify view — the same primitive as query, with a richer modality-picker input (Mira R.2b).
@@ -88,6 +99,7 @@ function _openVerifyView(view) {
   modSel.onchange = () => _applyVerifyModality(modSel.value);
   _applyVerifyModality(modSel.value);
   $("#view-caption").textContent = "whether the property holds over ALL runs — a proof card, or a scrubbable counterexample trace";
+  _staleHint("#inv-prop", "#inv-result", "press check to verify this");   // #459
   const inp = $("#inv-prop"); if (inp) inp.focus();
 }
 
