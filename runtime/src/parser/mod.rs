@@ -262,14 +262,15 @@ impl Parser {
             body = self.parse_first_line_params()?;
         }
         let param_count = body.len();
-        body.extend(self.parse_indented_body()?);
+        let mut operators = Vec::new();
+        body.extend(self.parse_indented_body(&mut operators)?);
         Ok(BodyItem::SubclaimDecl(SchemaDecl {
             keyword: Keyword::Subclaim, name,
-            body, param_count, external: false,
+            body, param_count, external: false, operators,
         }))
     }
 
-    fn parse_indented_body(&mut self) -> Result<Vec<BodyItem>> {
+    fn parse_indented_body(&mut self, ops: &mut Vec<OperatorDecl>) -> Result<Vec<BodyItem>> {
         self.skip_blank_newlines();
         let body_indent = match self.peek() {
             Token::Indent(n) if *n > 0 => *n,
@@ -281,6 +282,18 @@ impl Parser {
                 Token::Indent(n) if *n == body_indent => { self.bump(); }
                 _ => break,
             }
+            // `operator (a · b) ↦ s ∈ T \n <body>` is stored out-of-band on the
+            // enclosing decl, not as a BodyItem — so every body-item walker stays
+            // untouched and the operator-desugar lowering pass owns the rewrite.
+            if matches!(self.peek(), Token::Operator) {
+                ops.push(self.parse_operator(body_indent)?);
+                match self.peek() {
+                    Token::Newline => { self.bump(); }
+                    Token::Eof => break,
+                    _ => {}
+                }
+                continue;
+            }
             let items = self.parse_body_item()?;
             body.extend(items);
             match self.peek() {
@@ -290,6 +303,50 @@ impl Parser {
             }
         }
         Ok(body)
+    }
+
+    /// Parse `operator (a · b) ↦ s ∈ RType` plus the indented body that relates
+    /// them. `outer_indent` is the indentation of the `operator` line; the body
+    /// must sit deeper, exactly like a `subclaim`'s indented body.
+    fn parse_operator(&mut self, _outer_indent: usize) -> Result<OperatorDecl> {
+        self.bump(); // `operator`
+        self.eat(&Token::LParen)?;
+        let lhs = match self.bump() {
+            Token::Ident(s) => s,
+            other => return Err(self.err(format!(
+                "expected left operand name in `operator (a · b)`, got {:?}", other))),
+        };
+        let symbol = match self.bump() {
+            Token::MidDot => "·".to_string(),
+            Token::Times  => "×".to_string(),
+            other => return Err(self.err(format!(
+                "expected an operator symbol (· or ×) in `operator (…)`, got {:?}", other))),
+        };
+        let rhs = match self.bump() {
+            Token::Ident(s) => s,
+            other => return Err(self.err(format!(
+                "expected right operand name in `operator (a · b)`, got {:?}", other))),
+        };
+        self.eat(&Token::RParen)?;
+        self.eat(&Token::MapsTo)?;
+        let result = match self.bump() {
+            Token::Ident(s) => s,
+            other => return Err(self.err(format!(
+                "expected result name after `↦` in operator decl, got {:?}", other))),
+        };
+        self.eat(&Token::In)?;
+        let result_type = match self.bump() {
+            Token::Ident(s) => s,
+            other => return Err(self.err(format!(
+                "expected result type after `∈` in operator decl, got {:?}", other))),
+        };
+        // The body is a deeper-indented block (the operators of THIS body are
+        // ignored — no operator-defines-operator nesting).
+        let mut nested_ops = Vec::new();
+        let body = self.parse_indented_body(&mut nested_ops)?;
+        Ok(OperatorDecl {
+            symbol, operands: vec![lhs, rhs], result, result_type, body,
+        })
     }
 
     fn parse_schema_decl(&mut self) -> Result<SchemaDecl> {
@@ -327,8 +384,9 @@ impl Parser {
             body = self.parse_first_line_params()?;
         }
         let param_count = body.len();
-        body.extend(self.parse_indented_body()?);
-        Ok(SchemaDecl { keyword, name, body, param_count, external })
+        let mut operators = Vec::new();
+        body.extend(self.parse_indented_body(&mut operators)?);
+        Ok(SchemaDecl { keyword, name, body, param_count, external, operators })
     }
 
     fn parse_first_line_params(&mut self) -> Result<Vec<BodyItem>> {

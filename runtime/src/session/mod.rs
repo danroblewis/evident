@@ -165,6 +165,10 @@ impl EvidentRuntime {
 
             lower::desugar_seq_concat(&mut s);
             lower::desugar_delta(&mut s);
+            // Rewrite user-defined infix operators (`a · b`) into a fresh result
+            // + the operator body. Runs before lhs-eq inference so the fresh
+            // result name's type can be recovered downstream.
+            lower::desugar_operators(&mut s, &self.schemas);
             lower::inject_fsm_params(&mut s)?;
 
             lower::inject_lhs_eq_types(&mut s, &self.schemas, &self.enums);

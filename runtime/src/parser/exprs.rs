@@ -289,6 +289,8 @@ impl Parser {
             let op = match self.peek() {
                 Token::Star  => BinOp::Mul,
                 Token::Slash => BinOp::Div,
+                Token::MidDot => BinOp::UserOp("·".to_string()),
+                Token::Times  => BinOp::UserOp("×".to_string()),
                 _ => break,
             };
             self.bump();

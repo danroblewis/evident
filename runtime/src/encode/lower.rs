@@ -113,6 +113,206 @@ pub(crate) fn desugar_seq_concat(s: &mut SchemaDecl) {
     }
 }
 
+// ═════════════════════════ user-defined operator desugar ═════════════════════════
+
+/// Desugar infix uses of a user-defined operator (`a · b`, `a × b`) into a
+/// fresh result variable + the operator body inlined as constraints.
+///
+/// Dispatch is **type-directed**: for each `Expr::Binary(UserOp(sym), l, r)` we
+/// resolve the operand type from the body's declared memberships (chasing record
+/// fields through `schemas`), find that type's matching `OperatorDecl`, then:
+///   1. mint a fresh result var `__op<N>` of the declared result type,
+///   2. inline the operator body with operand-params → `l`/`r`, result-param →
+///      the fresh var (substitution is dotted-name rewriting, the same canonical
+///      record-leaf form the componentwise lift already uses),
+///   3. replace the `Binary` node in place with `Identifier(fresh)`.
+///
+/// A `UserOp` whose operand type declares no such operator is left untouched —
+/// it survives to encode time and fails loudly there (honest, never silently
+/// dropped). A type with NO operator decl never reaches this rewrite, so the
+/// existing componentwise lift over `+`/`-`/`=`/scalar `*` is wholly unchanged.
+pub(crate) fn desugar_operators(
+    s: &mut SchemaDecl,
+    schemas: &HashMap<String, SchemaDecl>,
+) {
+    use crate::core::ast::{BinOp, BodyItem, Expr, Pins};
+    if s.external { return; }
+
+    // Local name → type map (the body's explicit memberships).
+    let mut declared: HashMap<String, String> = HashMap::new();
+    for item in &s.body {
+        if let BodyItem::Membership { name, type_name, .. } = item {
+            declared.insert(name.clone(), type_name.clone());
+        }
+    }
+
+    // Resolve the static type of an operand expression: a bare identifier, or a
+    // dotted field-chain off one, chasing record fields through `schemas`.
+    fn operand_type(
+        e: &Expr,
+        declared: &HashMap<String, String>,
+        schemas: &HashMap<String, SchemaDecl>,
+    ) -> Option<String> {
+        let dotted = expr_to_dotted(e)?;
+        let mut parts = dotted.split('.');
+        let head = parts.next()?;
+        let mut cur = declared.get(head).cloned()?;
+        for field in parts {
+            let decl = schemas.get(&cur)?;
+            let mut next = None;
+            for item in &decl.body {
+                if let BodyItem::Membership { name, type_name, .. } = item {
+                    if name == field { next = Some(type_name.clone()); break; }
+                }
+            }
+            cur = next?;
+        }
+        Some(cur)
+    }
+
+    let mut fresh_counter: usize = 0;
+    let mut extra: Vec<BodyItem> = Vec::new();
+
+    // Rewrite one expression bottom-up: inner operators desugar first so a fresh
+    // result feeding into an outer operator already carries a resolvable type
+    // (we re-snapshot `declared` with each injected result below).
+    fn rewrite(
+        e: &mut Expr,
+        declared: &mut HashMap<String, String>,
+        schemas: &HashMap<String, SchemaDecl>,
+        fresh_counter: &mut usize,
+        extra: &mut Vec<BodyItem>,
+    ) {
+        // Children first.
+        match e {
+            Expr::Binary(_, l, r)
+            | Expr::Range(l, r)
+            | Expr::InExpr(l, r)
+            | Expr::Index(l, r) => {
+                rewrite(l, declared, schemas, fresh_counter, extra);
+                rewrite(r, declared, schemas, fresh_counter, extra);
+            }
+            Expr::Ternary(c, a, b) => {
+                rewrite(c, declared, schemas, fresh_counter, extra);
+                rewrite(a, declared, schemas, fresh_counter, extra);
+                rewrite(b, declared, schemas, fresh_counter, extra);
+            }
+            Expr::SetLit(es) | Expr::SeqLit(es) | Expr::Tuple(es) | Expr::Call(_, es) => {
+                for x in es { rewrite(x, declared, schemas, fresh_counter, extra); }
+            }
+            Expr::Forall(_, r, b) | Expr::Exists(_, r, b) => {
+                rewrite(r, declared, schemas, fresh_counter, extra);
+                rewrite(b, declared, schemas, fresh_counter, extra);
+            }
+            Expr::Cardinality(i) | Expr::Not(i) | Expr::Delta(i) | Expr::Matches(i, _) => {
+                rewrite(i, declared, schemas, fresh_counter, extra);
+            }
+            Expr::Field(recv, _) => rewrite(recv, declared, schemas, fresh_counter, extra),
+            Expr::Match(scr, arms) => {
+                rewrite(scr, declared, schemas, fresh_counter, extra);
+                for a in arms { rewrite(&mut a.body, declared, schemas, fresh_counter, extra); }
+            }
+            _ => {}
+        }
+
+        // Then this node, if it is a user operator we can resolve.
+        let Expr::Binary(BinOp::UserOp(sym), l, r) = e else { return };
+        let Some(ty) = operand_type(l, declared, schemas) else { return };
+        let Some(decl) = schemas.get(&ty) else { return };
+        let Some(op) = decl.operators.iter().find(|o| &o.symbol == sym) else { return };
+        if op.operands.len() != 2 { return; }
+
+        let fresh = format!("__op{}", *fresh_counter);
+        *fresh_counter += 1;
+
+        // operand/result param → concrete expr substitution.
+        let mut subst: HashMap<String, Expr> = HashMap::new();
+        subst.insert(op.operands[0].clone(), (**l).clone());
+        subst.insert(op.operands[1].clone(), (**r).clone());
+        subst.insert(op.result.clone(), Expr::Identifier(fresh.clone()));
+
+        // Declare the fresh result + inject the substituted body constraints.
+        extra.push(BodyItem::Membership {
+            name: fresh.clone(),
+            type_name: op.result_type.clone(),
+            pins: Pins::None,
+        });
+        declared.insert(fresh.clone(), op.result_type.clone());
+        for item in &op.body {
+            if let BodyItem::Constraint(body_e) = item {
+                let mut sub_e = body_e.clone();
+                substitute_params(&mut sub_e, &subst);
+                extra.push(BodyItem::Constraint(sub_e));
+            }
+        }
+
+        *e = Expr::Identifier(fresh);
+    }
+
+    for item in s.body.iter_mut() {
+        match item {
+            BodyItem::Constraint(e) =>
+                rewrite(e, &mut declared, schemas, &mut fresh_counter, &mut extra),
+            BodyItem::ClaimCall { mappings, .. } =>
+                for m in mappings.iter_mut() {
+                    rewrite(&mut m.value, &mut declared, schemas, &mut fresh_counter, &mut extra);
+                },
+            _ => {}
+        }
+    }
+    s.body.extend(extra);
+
+    for item in s.body.iter_mut() {
+        if let BodyItem::SubclaimDecl(sub) = item {
+            desugar_operators(sub, schemas);
+        }
+    }
+}
+
+/// Render an identifier / dotted field-chain as its canonical dotted name
+/// (`a` → "a", `dot.pos` → "dot.pos"). Returns `None` for anything else.
+fn expr_to_dotted(e: &crate::core::ast::Expr) -> Option<String> {
+    use crate::core::ast::Expr;
+    match e {
+        Expr::Identifier(n) => Some(n.clone()),
+        Expr::Field(recv, field) => Some(format!("{}.{}", expr_to_dotted(recv)?, field)),
+        _ => None,
+    }
+}
+
+/// Substitute operator params throughout a body expr. An operand/result param
+/// name is replaced by its bound expr; a field-chain whose head is a param
+/// (`a.x` with `a` bound to identifier `p`) collapses to the dotted leaf
+/// (`p.x`) — the canonical record-leaf form the encoder's env already keys on.
+fn substitute_params(
+    e: &mut crate::core::ast::Expr,
+    subst: &HashMap<String, crate::core::ast::Expr>,
+) {
+    use crate::core::ast::Expr;
+
+    // A `Field`-chain whose head identifier is a substituted param: rebuild it
+    // as a dotted identifier when the operand is itself dotted/identifier.
+    if let Expr::Field(..) = e {
+        if let Some(dotted) = expr_to_dotted(e) {
+            let head = dotted.split('.').next().unwrap_or(&dotted);
+            if let Some(bound) = subst.get(head) {
+                if let Some(bound_dotted) = expr_to_dotted(bound) {
+                    let rest = &dotted[head.len()..]; // includes leading '.'
+                    *e = Expr::Identifier(format!("{bound_dotted}{rest}"));
+                    return;
+                }
+            }
+        }
+    }
+    if let Expr::Identifier(n) = e {
+        if let Some(bound) = subst.get(n) {
+            *e = bound.clone();
+            return;
+        }
+    }
+    crate::core::ast::walk_children_mut(e, &mut |c| substitute_params(c, subst));
+}
+
 // ═════════════════════════ FSM param + type-inference injection ═════════════════════════
 
 pub(crate) fn inject_fsm_params(s: &mut SchemaDecl) -> Result<(), RuntimeError> {
@@ -562,6 +762,9 @@ pub(crate) fn inject_lhs_eq_types(
                     infer_recursive(l, declared_types, schemas, enums)
                         .or_else(|| infer_recursive(r, declared_types, schemas, enums)),
                 BinOp::Concat => Some("String".to_string()),
+                // A user operator should have been desugared already; if one
+                // survives we cannot infer its result type here.
+                BinOp::UserOp(_) => None,
             },
             Expr::Not(_) => Some("Bool".to_string()),
             Expr::Cardinality(_) => Some("Int".to_string()),

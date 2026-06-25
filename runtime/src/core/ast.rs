@@ -20,6 +20,27 @@ pub struct SchemaDecl {
     pub param_count: usize,
 
     pub external: bool,
+
+    /// User-defined binary operators declared in this type's body
+    /// (`operator (a · b) ↦ s ∈ Real \n s = …`). Stored out-of-band from
+    /// `body` so every body-item walker stays untouched; the operator-desugar
+    /// lowering pass reads them by operand type to rewrite infix `a · b` into a
+    /// fresh result var + the inlined body. A type with NO operator decl carries
+    /// an empty vec and behaves exactly as before (the componentwise lift owns
+    /// `+`/`-`/`=`/scalar `*` unchanged).
+    pub operators: Vec<OperatorDecl>,
+}
+
+/// One `operator (a · b) ↦ s ∈ RType` binding (see [`SchemaDecl::operators`]).
+/// `operands` are the two operand param names, `result` the result param name,
+/// `result_type` its type, `body` the constraints relating them.
+#[derive(Debug, Clone)]
+pub struct OperatorDecl {
+    pub symbol: String,
+    pub operands: Vec<String>,
+    pub result: String,
+    pub result_type: String,
+    pub body: Vec<BodyItem>,
 }
 
 #[derive(Debug, Clone)]
@@ -201,6 +222,50 @@ pub fn walk_expr_mut(e: &mut Expr, f: &mut impl FnMut(&mut Expr)) {
     }
 }
 
+/// Apply `f` to each immediate child `Expr` of `e` (one level only — does NOT
+/// recurse, and does NOT call `f` on `e` itself). The companion to
+/// [`walk_expr_mut`] for callers that drive their own recursion and must not
+/// re-enter on the current node. Exhaustive match, same rationale.
+pub fn walk_children_mut(e: &mut Expr, f: &mut impl FnMut(&mut Expr)) {
+    match e {
+        Expr::Identifier(_)
+        | Expr::Int(_)
+        | Expr::Real(_)
+        | Expr::Bool(_)
+        | Expr::Str(_) => {}
+        Expr::SetLit(es) | Expr::SeqLit(es) | Expr::Tuple(es) => {
+            for x in es { f(x); }
+        }
+        Expr::Range(a, b) | Expr::InExpr(a, b) | Expr::Index(a, b) => {
+            f(a);
+            f(b);
+        }
+        Expr::Forall(_, r, b) | Expr::Exists(_, r, b) => {
+            f(r);
+            f(b);
+        }
+        Expr::Call(_, args) => {
+            for a in args { f(a); }
+        }
+        Expr::Cardinality(i) | Expr::Not(i) | Expr::Delta(i) => f(i),
+        Expr::Field(recv, _) => f(recv),
+        Expr::Binary(_, l, r) => {
+            f(l);
+            f(r);
+        }
+        Expr::Ternary(c, a, b) => {
+            f(c);
+            f(a);
+            f(b);
+        }
+        Expr::Match(scr, arms) => {
+            f(scr);
+            for arm in arms { f(&mut arm.body); }
+        }
+        Expr::Matches(inner, _) => f(inner),
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct MatchArm {
     pub pattern: MatchPattern,
@@ -225,6 +290,12 @@ pub enum BinOp {
     Add, Sub, Mul, Div,
 
     Concat,
+
+    /// A user-defined operator symbol (`·`, `×`, …) carried verbatim from the
+    /// parser. The operator-desugar lowering pass (`encode::lower`) resolves it
+    /// by operand type and rewrites it away; if it survives to encode time the
+    /// type-checker fails loudly (honest — never silently dropped).
+    UserOp(String),
 }
 
 #[derive(Debug, Clone, Default)]
@@ -368,6 +439,7 @@ impl std::fmt::Display for BinOp {
             BinOp::Mul => "*",
             BinOp::Div => "/",
             BinOp::Concat => "++",
+            BinOp::UserOp(sym) => return f.write_str(sym),
         };
         f.write_str(s)
     }

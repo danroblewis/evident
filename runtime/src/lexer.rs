@@ -12,6 +12,7 @@ pub enum Token {
     Claim,
     Type,
     Subclaim,
+    Operator,
     Fsm,
     Fti,
     External,
@@ -34,6 +35,8 @@ pub enum Token {
     Minus,
     Star,
     Slash,
+    MidDot,
+    Times,
 
     And,
     Or,
@@ -343,6 +346,8 @@ pub fn tokenize_with_locs(src: &str) -> Result<(Vec<Token>, Vec<(usize, usize)>)
             '\u{2200}' => { chars.next(); col += 1; tokens.push(Token::ForAll); }
             '\u{2203}' => { chars.next(); col += 1; tokens.push(Token::Exists); }
             '\u{21A6}' => { chars.next(); col += 1; tokens.push(Token::MapsTo); }
+            '\u{00B7}' => { chars.next(); col += 1; tokens.push(Token::MidDot); }
+            '\u{00D7}' => { chars.next(); col += 1; tokens.push(Token::Times); }
             '\u{27E8}' => { chars.next(); col += 1; tokens.push(Token::LSeq); paren_depth += 1; }
             '\u{27E9}' => { chars.next(); col += 1; tokens.push(Token::RSeq); paren_depth = paren_depth.saturating_sub(1); }
             '|' => { chars.next(); col += 1; tokens.push(Token::Pipe); }
@@ -376,6 +381,7 @@ fn keyword_or_ident(s: String) -> Token {
         "claim"    => Token::Claim,
         "type"     => Token::Type,
         "subclaim" => Token::Subclaim,
+        "operator" => Token::Operator,
         "fsm"      => Token::Fsm,
         "fti"      => Token::Fti,
         "external" => Token::External,
