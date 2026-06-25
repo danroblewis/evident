@@ -210,6 +210,15 @@ def build_numeric_scan_graph(m, steps=400):
     if not orbits:
         return None, None, 0
 
+    return _quantize_orbits_to_graph(m, orbits, numeric_vars)
+
+
+def _quantize_orbits_to_graph(m, orbits, numeric_vars):
+    """Quantize a set of real forward orbits into a recurrence DiGraph: derive a per-axis
+    cell size from the orbits' OWN realized spread, collapse coincident points into one
+    node, and emit an edge on each genuine cell-to-cell move so a limit cycle closes into
+    one SCC. Returns (G, labels, nseeds), or (None, None, 0) when the graph degenerates to
+    a single cell. Separable from the seed-scan that walks the orbits in the first place."""
     # Robust quantization step per numeric axis from the orbits' OWN spread (not
     # a hardcoded box). One cell ~ 1/40 of the realized range, min 1.
     allpts = [s for orb in orbits for s in orb]

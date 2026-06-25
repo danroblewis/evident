@@ -89,6 +89,28 @@ class QueryMixin:
             "predicate": "balance ≥ 0",          # human-readable, with the short var name
           }
         """
+        name, predicate, ok = self._build_invariant_check(var, op, value)
+
+        states, edges = self.reachable(limit=limit)
+        exhaustive = len(states) < limit          # BFS stopped on its own, not capped
+        checked = 0
+        for idx, sv in enumerate(states):          # BFS-discovery order = deterministic
+            checked += 1
+            if not ok(sv):
+                return {"holds": False, "checked": checked, "exhaustive": exhaustive,
+                        "counterexample": dict(sv), "violating_value": sv.get(name),
+                        "trace": self._trace_to(idx, edges, states),  # the path init→violation
+                        "predicate": predicate}
+        return {"holds": True, "checked": checked, "exhaustive": exhaustive,
+                "counterexample": None, "violating_value": None, "trace": None,
+                "predicate": predicate}
+
+    def _build_invariant_check(self, var, op, value):
+        """Parse a check_invariant predicate spec into `(name, predicate, ok)`: canonicalize
+        the op, resolve the carried var (full or short name), coerce the target value to the
+        var's domain, render the human-readable predicate string, and build the per-state
+        comparator. Raises ValueError on an unknown op or var. The op/value parsing is its
+        own concern, separable from the reachable-set scan that consumes the comparator."""
         OPS = {"<=": "<=", "≤": "<=", "<": "<", ">=": ">=", "≥": ">=", ">": ">",
                "=": "=", "==": "=", "!=": "!=", "≠": "!="}
         canon = OPS.get(op)
@@ -124,19 +146,7 @@ class QueryMixin:
                 return x >= target
             return x > target  # ">"
 
-        states, edges = self.reachable(limit=limit)
-        exhaustive = len(states) < limit          # BFS stopped on its own, not capped
-        checked = 0
-        for idx, sv in enumerate(states):          # BFS-discovery order = deterministic
-            checked += 1
-            if not ok(sv):
-                return {"holds": False, "checked": checked, "exhaustive": exhaustive,
-                        "counterexample": dict(sv), "violating_value": sv.get(name),
-                        "trace": self._trace_to(idx, edges, states),  # the path init→violation
-                        "predicate": predicate}
-        return {"holds": True, "checked": checked, "exhaustive": exhaustive,
-                "counterexample": None, "violating_value": None, "trace": None,
-                "predicate": predicate}
+        return name, predicate, ok
 
     def _trace_to(self, target, edges, states):
         """The shortest path of STATES from the initial state (index 0) to `target`, via BFS over

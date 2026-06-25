@@ -132,6 +132,19 @@ class RankingMixin:
             rep = self._pick_rep(members)
             reps[rep["name"]] = (rep, entropy(rep["name"]), [m["name"] for m in members])
 
+        H = {nm: reps[nm][1] for nm in reps}                       # marginal entropy
+        order = self._select_axis_order(reps, series, H)
+
+        self.variable_groups = [{"rep": nm, "members": reps[nm][2],
+                                 "entropy": round(H[nm], 3)} for nm in order]
+        return [reps[nm][0] for nm in order]
+
+    def _select_axis_order(self, reps, series, H):
+        """Rank the deduped representatives into a PLOT-AXIS order: the structure-optimal
+        (x, y) pair first (driver on X), then the rest by discounted relevance. `reps` maps
+        name -> (var, entropy, members), `series` maps name -> sampled value list, `H` is the
+        marginal entropy per name. Returns the ordered name list. The scoring is its own
+        concern — separable from the sampling/grouping that produces `reps`/`series`."""
         # --- structure-based axis-pair selection (replaces mRMR) ---------------
         # mRMR (max-entropy + min-redundancy) is a feature-SELECTION criterion and is
         # the wrong tool for choosing PLOT AXES: entropy over-rewards trivial tick
@@ -146,7 +159,6 @@ class RankingMixin:
         def is_unit_counter(name):              # tick proxy: a loop index / clock
             return self._is_unit_counter(reps[name][0]["kind"], series[name])
 
-        H = {nm: reps[nm][1] for nm in reps}                       # marginal entropy
         W = {nm: (INDEX_DISCOUNT if is_unit_counter(nm) else 1.0) for nm in reps}
         relevance = {nm: W[nm] * H[nm] for nm in reps}             # discounted single-var score
 
@@ -180,6 +192,21 @@ class RankingMixin:
                 if s > best_score:
                     best_pair, best_score = (a, b), s
 
+        return self._order_axes(best_pair, names, series, relevance)
+
+    def _order_axes(self, best_pair, names, series, relevance):
+        """Assemble the final axis order: the structure-optimal pair first (driver on X),
+        then the rest by discounted relevance. When no pair scored (a single varying axis),
+        order everything by relevance. `series`/`relevance` are the per-name sampled values
+        and discounted single-var scores from `_select_axis_order`."""
+        def determines(a, b):                  # does a determine b? (b is a function of a)
+            m = {}
+            for va, vb in zip(series[a], series[b]):
+                if m.get(va, vb) != vb:
+                    return False
+                m[va] = vb
+            return True
+
         # state_vars = the structure-optimal axis pair first, then the rest by
         # discounted relevance (so the color/facet channels also avoid trivial counters).
         # Within the pair, the more-INDEPENDENT variable (it determines the other without
@@ -201,13 +228,8 @@ class RankingMixin:
             best_pair = (a, b)
             rest = sorted((nm for nm in names if nm not in best_pair),
                           key=lambda nm: -relevance[nm])
-            order = list(best_pair) + rest
-        else:
-            order = sorted(names, key=lambda nm: -relevance[nm])
-
-        self.variable_groups = [{"rep": nm, "members": reps[nm][2],
-                                 "entropy": round(H[nm], 3)} for nm in order]
-        return [reps[nm][0] for nm in order]
+            return list(best_pair) + rest
+        return sorted(names, key=lambda nm: -relevance[nm])
 
     @staticmethod
     def _is_unit_counter(kind, vals):
