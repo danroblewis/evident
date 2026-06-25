@@ -167,13 +167,17 @@
      defers DOM wiring to an initX() that app.js calls once `editor` + the core exist. Order
      matters only for app-data.js (its DEFAULT_PROGRAM / sharedFromHash are used at app.js
      load time); the rest are cross-referenced at call time. -->
-<script src="/static/app-data.js?v=14"></script>
+<script src="/static/app-symbols-data.js?v=1"></script> <!-- #364-followup: UNI/WORD_MNEMONICS/OP_PAIRS (split from app-data.js) -->
+<script src="/static/app-data.js?v=15"></script>
+<script src="/static/app-explainers.js?v=1"></script>   <!-- per-sample "how this works" copy (split from app-data.js) -->
 <script src="/static/app-symbols.js?v=12"></script>
 <script src="/static/app-symhint.js?v=1"></script>     <!-- #215 inline backslash symbol hint (split from app-editor.js) -->
 <script src="/static/app-editor.js?v=5"></script>
 <script src="/static/app-buffer.js?v=10"></script>
 <script src="/static/app-history.js?v=13"></script>
-<script src="/static/app-verify.js?v=18"></script>
+<script src="/static/app-solve.js?v=1"></script>        <!-- solve/witness result rendering + domain pictures (split from app-verify.js) -->
+<script src="/static/app-trace.js?v=1"></script>        <!-- scrubbable trace + #354 diagram ring/cursor (split from app-verify.js) -->
+<script src="/static/app-verify.js?v=19"></script>
 <script src="/static/app-gallery.js?v=1"></script>
 <script src="/static/app-palette.js?v=10"></script>
 <script src="/static/app-panzoom.js?v=2"></script>
