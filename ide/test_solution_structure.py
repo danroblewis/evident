@@ -173,6 +173,12 @@ def _check_nonlinear(fails):
             fails.append(f"#NIA: nonlinear claim should skip fast, took {time.time() - t0:.1f}s")
         if "nonlinear" not in (r.get("note") or ""):
             fails.append(f"#NIA: expected a 'nonlinear' note, got {r.get('note')!r}")
+    # #369 SOUNDNESS: an UNBOUNDED direction must read OPEN (None), not a fabricated finite witness.
+    with tempfile.TemporaryDirectory() as w:
+        ok, prefix, *_ = _export("claim t\n    a ∈ Int\n    a ≥ 3", w)
+        free = dict(solution_structure(prefix + ".smt2", prefix + ".schema.json").get("free", []))
+        if free.get("a") != (3, None):
+            fails.append(f"#369: a>=3 should bound a to (3, None) — open above — got {free.get('a')!r}")
 
 
 def main():

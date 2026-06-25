@@ -74,16 +74,19 @@ def _na(out_path, title, msg):
 
 
 def _opt_bound(body, c, maximize):
-    """Exact sup/inf of constant c over the constraint, or None if unbounded/unsat."""
+    """Exact sup/inf of constant c over the constraint, or None if UNBOUNDED/unsat. Reads the bound
+    off the objective HANDLE (upper/lower), NOT the witness model: an unbounded objective returns sat
+    with a finite witness while upper/lower = ±∞, so reading the witness fabricated a false finite
+    bound (a≥3 → 3, labelled 'exact'). _finite_numeric returns None for the ±∞ sentinel."""
     from model_const import SOLVE_TIMEOUT_MS
+    from model_global import _finite_numeric
     o = z3.Optimize()
-    o.set("timeout", SOLVE_TIMEOUT_MS)                     # bounded: an unbounded / nonlinear Optimize → None
+    o.set("timeout", SOLVE_TIMEOUT_MS)                     # bounded: a nonlinear Optimize times out → None
     o.add(body)
-    o.maximize(c) if maximize else o.minimize(c)
+    h = o.maximize(c) if maximize else o.minimize(c)
     if o.check() != z3.sat:
         return None
-    val = _num(o.model().eval(c, model_completion=True))
-    return val
+    return _finite_numeric(o.upper(h) if maximize else o.lower(h))
 
 
 def _ctor_by_name(sort, vname):
@@ -238,8 +241,13 @@ def _categorical(name, body, consts, vars_):
 
 
 def render(smt2_path, schema_path, out_path):
+    from z3_budget import _nonlinear
     sch, body, consts = _load_claim(smt2_path, schema_path)
     name = sch.get("claim", "claim")
+    if _nonlinear(body):                          # NIA — Z3 Optimize can't soundly bound a product
+        return _na(out_path, f"{name} — solution space",
+                   "nonlinear claim (a product of variables) — Z3 can't soundly bound it\n"
+                   "(nonlinear integer arithmetic is undecidable)")
     vars_ = sch.get("vars", [])
     numeric = [v for v in vars_
                if v.get("kind") in ("int", "real") and v["name"] in consts]
