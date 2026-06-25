@@ -99,17 +99,17 @@ def placeholder(m, out_path, reason, detail=None):
     y -= 0.08 + 0.05 * len(reason_lines)
 
     ax.text(0.5, y, "state = [", ha="center", va="top",
-            fontsize=10, color="#555", transform=ax.transAxes)
+            fontsize=10, color="#9aa3ad", transform=ax.transAxes)
     y -= 0.06
     ax.text(0.5, y, "\n".join(state_lines), ha="center", va="top",
-            fontsize=10, color="#555", transform=ax.transAxes)
+            fontsize=10, color="#9aa3ad", transform=ax.transAxes)
     y -= 0.04 + 0.045 * len(state_lines)
     ax.text(0.5, y, "]", ha="center", va="top",
-            fontsize=10, color="#555", transform=ax.transAxes)
+            fontsize=10, color="#9aa3ad", transform=ax.transAxes)
     y -= 0.08
 
     ax.text(0.5, y, "\n".join(detail_lines), ha="center", va="top",
-            fontsize=10, color="#777", transform=ax.transAxes)
+            fontsize=10, color="#c9d1d9", transform=ax.transAxes)
 
     ax.set_title(f"{m.fsm} — {VIZ}", fontsize=13, fontweight="bold")
     fig.subplots_adjust(top=0.90, bottom=0.06, left=0.06, right=0.94)
@@ -167,9 +167,12 @@ def render_numeric(m, out_path, xv, vv):
     region[mask] = (sdx[mask] >= 0).astype(float) + 2 * (sdv[mask] >= 0).astype(float)
 
     fig, ax = plt.subplots(figsize=(9, 7.5))
-    cmap = ListedColormap(["#cfe8ff", "#ffe0cc", "#d8f0d0", "#f3d6ec"])
+    # #469 dark page: DEEP region tints at low alpha so the dark page shows through and the four
+    # sign-regions read as subtle washes (not a bright pastel slab over the dark IDE). Same hue
+    # order — blue / orange / green / pink — just darkened and let-through.
+    cmap = ListedColormap(["#1d3a5f", "#5e3a1e", "#214d2a", "#4a2547"])
     ax.imshow(region, origin="lower", extent=[xlo, xhi, vlo, vhi],
-              aspect="auto", cmap=cmap, vmin=-0.5, vmax=3.5, alpha=0.85,
+              aspect="auto", cmap=cmap, vmin=-0.5, vmax=3.5, alpha=0.55,
               interpolation="nearest")
 
     X, V = np.meshgrid(xs, vs)
@@ -191,7 +194,7 @@ def render_numeric(m, out_path, xv, vv):
     with np.errstate(invalid="ignore", divide="ignore"):
         Un = np.where(mag > 0, U / mag, 0)
         Wn = np.where(mag > 0, W / mag, 0)
-    ax.quiver(Xq, Vq, Un, Wn, color="#444", alpha=0.55,
+    ax.quiver(Xq, Vq, Un, Wn, color="#9aa3ad", alpha=0.6,     # #469: flow arrows readable on dark
               scale=32, width=0.0026, pivot="mid")
 
     near0 = mask & (np.abs(DX) <= _tol(DX)) & (np.abs(DV) <= _tol(DV))
@@ -200,8 +203,8 @@ def render_numeric(m, out_path, xv, vv):
     # slipped through), and carpeting it with dots both lies and overprints the
     # legend into illegible glyphs; skip the scatter in that case.
     if near0.any() and near0.sum() <= 0.25 * mask.sum():
-        ax.scatter(X[near0], V[near0], s=70, facecolor="black",
-                   edgecolor="white", zorder=6, label="≈ fixed point")
+        ax.scatter(X[near0], V[near0], s=70, facecolor="#e8eef5",   # #469: light dot on the dark plane
+                   edgecolor="#0f1419", zorder=6, label="≈ fixed point")
 
     ax.set_xlim(xlo, xhi); ax.set_ylim(vlo, vhi)
     ax.set_xlabel(_short(xv)); ax.set_ylabel(_short(vv))
@@ -209,11 +212,11 @@ def render_numeric(m, out_path, xv, vv):
                  f"+ nullclines", fontsize=13, fontweight="bold")
 
     from matplotlib.patches import Patch
-    leg = [
-        Patch(facecolor="#f3d6ec", label="d{0}↑ d{1}↑".format(_short(xv), _short(vv))),
-        Patch(facecolor="#d8f0d0", label="d{0}↓ d{1}↑".format(_short(xv), _short(vv))),
-        Patch(facecolor="#ffe0cc", label="d{0}↑ d{1}↓".format(_short(xv), _short(vv))),
-        Patch(facecolor="#cfe8ff", label="d{0}↓ d{1}↓".format(_short(xv), _short(vv))),
+    leg = [    # #469: match the darkened region tints (brightened a touch so the swatch reads in the legend)
+        Patch(facecolor="#6e3a68", label="d{0}↑ d{1}↑".format(_short(xv), _short(vv))),
+        Patch(facecolor="#2f6e3e", label="d{0}↓ d{1}↑".format(_short(xv), _short(vv))),
+        Patch(facecolor="#8a5630", label="d{0}↑ d{1}↓".format(_short(xv), _short(vv))),
+        Patch(facecolor="#2c5689", label="d{0}↓ d{1}↓".format(_short(xv), _short(vv))),
     ]
     ax.legend(handles=leg, loc="upper right", fontsize=8, framealpha=1.0).set_zorder(20)
     ax.grid(alpha=0.15, linewidth=0.5)
@@ -325,13 +328,13 @@ def _draw_facet_panel(ax, m, xv, facet, yv, fval, ylevels, ylabels, xrange,
             if np.isnan(d) or d == 0:
                 if not np.isnan(d):
                     ax.scatter([i], [j], s=90, marker="o",
-                               facecolor="black", edgecolor="white",
+                               facecolor="#e8eef5", edgecolor="#0f1419",   # #469: light on dark
                                zorder=5)
                 continue
             dirn = 0.30 if d > 0 else -0.30
             ax.annotate("", xy=(i + dirn, j), xytext=(i - dirn, j),
-                        arrowprops=dict(arrowstyle="-|>", color="#333",
-                                        lw=1.3, alpha=0.8), zorder=4)
+                        arrowprops=dict(arrowstyle="-|>", color="#9aa3ad",   # #469: readable on dark
+                                        lw=1.3, alpha=0.85), zorder=4)
 
     ax.set_xticks(range(len(xrange)))
     ax.set_xticklabels([str(x) for x in xrange], fontsize=8)

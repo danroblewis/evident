@@ -12,12 +12,15 @@ hex colours, same font sizes, same banner geometry — so lifting them changes n
 """
 
 # Shared palette — the verdict/stability colours used across the abstract renderers.
-GREEN = "#2e7d32"
-AMBER = "#b8860b"
-GREY = "#777777"
-RED = "#c62828"
-ORANGE = "#e65100"
-BLUE = "#1565c0"
+# #469: the verdict/stability palette, brightened to the page's own colours (app.css --good /
+# --warn / --bad / --accent) so text + region edges read on the DARK IDE page instead of the
+# muted-on-dark saturated tones tuned for a white background.
+GREEN = "#3fb950"     # --good
+AMBER = "#d29922"     # --warn
+GREY = "#9aa3ad"      # a light grey (the old #777 vanished on dark)
+RED = "#f85149"       # --bad
+ORANGE = "#ff7b39"    # a brighter orange (legible on dark)
+BLUE = "#58a6ff"      # --accent
 
 
 def short(name):

@@ -216,7 +216,7 @@ def _claim_setup(smt2, schema, out_path):
         fig, ax = plt.subplots(figsize=(8, 5)); ax.set_axis_off()
         msg = ("claim is UNSATISFIABLE — no assignment to plot" if not feasible
                else f"only {len(plot_vars)} numeric axis — need ≥2 for parallel coords")
-        ax.text(0.5, 0.5, f"N/A for this claim:\n{msg}", ha="center", va="center", fontsize=14, color="#444")
+        ax.text(0.5, 0.5, f"N/A for this claim:\n{msg}", ha="center", va="center", fontsize=14, color="#c9d1d9")
         ax.set_title(f"{name}  ·  parallel_coords", fontsize=13, fontweight="bold")
         fig.savefig(out_path, dpi=120, bbox_inches="tight"); plt.close(fig)
         return None
@@ -242,7 +242,7 @@ def render(smt2, schema, out_path):
         reason = ("no samples from transition" if not samples
                   else f"only {len(m.state_vars)} axis — need ≥2 for parallel coords")
         ax.text(0.5, 0.5, f"N/A for this state:\n{reason}",
-                ha="center", va="center", fontsize=14, color="#444",
+                ha="center", va="center", fontsize=14, color="#c9d1d9",
                 transform=ax.transAxes)
         ax.set_axis_off()
         ax.set_title(title, fontsize=13, fontweight="bold")
@@ -280,12 +280,12 @@ def render(smt2, schema, out_path):
 
     # Draw each axis as a vertical line + its category/range ticks.
     for i, meta in enumerate(metas):
-        ax.axvline(i, color="#333", linewidth=1.2, zorder=1)
+        ax.axvline(i, color="#7d8590", linewidth=1.2, zorder=1)     # #469: dark-page-readable axes
         for raw, lbl in meta["ticks"]:
             y = norm(meta, _inv_for_tick(meta, raw))
-            ax.plot([i - 0.04, i + 0.04], [y, y], color="#333", lw=1.0)
+            ax.plot([i - 0.04, i + 0.04], [y, y], color="#7d8590", lw=1.0)
             ax.text(i - 0.08, y, lbl, ha="right", va="center",
-                    fontsize=8, color="#222")
+                    fontsize=8, color="#c9d1d9")
 
     ax.set_xlim(-0.6, naxes - 0.4)
     ax.set_ylim(-0.05, 1.08)

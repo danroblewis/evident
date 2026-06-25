@@ -104,7 +104,9 @@ def _draw_row(ax, m, var, values, ncols, y):
     extent = (-0.5, ncols - 0.5, y + 0.5, y - 0.5)   # one cell tall, ncols wide
     if kind in ("bool",):
         grid = [[1 if v else 0 for v in values]]
-        cmap = ListedColormap(["#ffffff", "#1a1a1a"])
+        # #469 dark page: 0 = a dark slate (sits near the page bg, not a glaring white slab),
+        # 1 = the light accent — so the CA pattern reads as bright-on-dark instead of a white block.
+        cmap = ListedColormap(["#1b2129", "#58a6ff"])
         norm = BoundaryNorm([-0.5, 0.5, 1.5], cmap.N)
         ax.imshow(grid, cmap=cmap, norm=norm, aspect="auto", extent=extent,
                   interpolation="nearest", zorder=1)

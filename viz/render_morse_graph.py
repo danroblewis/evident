@@ -67,11 +67,11 @@ def draw_na_card(m, out_path, reason):
 # Drawing
 # ----------------------------------------------------------------------------
 
-ROLE_COLOR = {
-    "attractor": "#2e7d32",   # green — flow sinks here
-    "repeller":  "#c62828",   # red   — flow sources
-    "transient": "#1565c0",   # blue  — pass-through
-    "isolated":  "#6a1b9a",   # purple
+ROLE_COLOR = {                # #469: page-bright tones so the node fills read on the dark IDE page
+    "attractor": "#3fb950",   # green — flow sinks here
+    "repeller":  "#f85149",   # red   — flow sources
+    "transient": "#58a6ff",   # blue  — pass-through
+    "isolated":  "#a371f7",   # purple
 }
 
 

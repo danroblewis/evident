@@ -137,7 +137,9 @@ def render(m, out_path):
 
     binary = elem != "enum" and _is_binary(grid)
     if binary:
-        cmap = ListedColormap(["#ffffff", "#1a1a1a"])     # 0 = white, 1 = black (the CA classic)
+        # #469 dark page: 0 = a dark slate near the page bg, 1 = the light accent — the CA pattern
+        # reads as bright-on-dark (a white-cell raster was a glaring slab over the dark IDE).
+        cmap = ListedColormap(["#1b2129", "#58a6ff"])
         norm = BoundaryNorm([-0.5, 0.5, 1.5], cmap.N)
         im = ax.imshow(grid, cmap=cmap, norm=norm, aspect="auto",
                        interpolation="nearest", origin="upper")
@@ -159,8 +161,8 @@ def render(m, out_path):
 
     if binary:
         from matplotlib.patches import Patch
-        ax.legend(handles=[Patch(facecolor="#ffffff", edgecolor="#888", label="0"),
-                           Patch(facecolor="#1a1a1a", label="1")],
+        ax.legend(handles=[Patch(facecolor="#1b2129", edgecolor="#888", label="0"),
+                           Patch(facecolor="#58a6ff", label="1")],
                   loc="upper left", bbox_to_anchor=(1.01, 1.0), fontsize=9,
                   title=f"{elem} cell", framealpha=0.95)
     else:

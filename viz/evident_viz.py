@@ -26,6 +26,8 @@ import json
 import os
 import z3
 
+import viz_theme  # noqa: F401  (#469: installs the dark-page matplotlib theme at import; every
+#                  renderer imports evident_viz, so the transparent/light theme is always active)
 from model_const import CHANNEL_FITNESS, SOLVE_TIMEOUT_MS  # noqa: F401 (SOLVE_TIMEOUT_MS used below; both re-exported)
 from model_codec import CodecMixin
 from model_ranking import RankingMixin

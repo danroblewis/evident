@@ -172,7 +172,7 @@ def draw(m, viz_title, out_path):
         legend += ";  arc hue = destination's " + color[0]["name"]
     else:
         legend += ";  arc hue = weight gradient"
-    fig.text(0.5, 0.025, legend, ha="center", fontsize=9, color="#555")
+    fig.text(0.5, 0.025, legend, ha="center", fontsize=9, color="#9aa3ad")   # #469: readable on dark
 
     fig.savefig(out_path, dpi=120, bbox_inches="tight")
     plt.close(fig)
