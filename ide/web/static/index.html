@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Evident IDE</title>
 <link rel="icon" href="data:,">
-<link rel="stylesheet" href="/static/app.css?v=36">
+<link rel="stylesheet" href="/static/app.css?v=37">
 </head>
 <body>
 <div id="app">
@@ -65,6 +65,16 @@
       <div id="view"><div class="ph">no dynamics yet</div></div>
       <div id="view-caption" class="dim"></div>
       <label id="allcond-ctl" class="dim" hidden title="state_graph: show the GLOBAL dynamics — the transition graph over EVERY initial condition (both basins of a bistable system), not just the orbit reachable from the seeded init. Falls back to from-init for real-valued / unbounded models."><input id="allcond-in" type="checkbox"> all initial conditions</label>
+      <!-- #421: axis selector for the axis-taking views (phase_portrait/nullcline/orbit/occupancy/cobweb).
+           Hidden unless data.axes != null; "axes ▾" reveals two var <select>s (cobweb shows only x). -->
+      <div id="axes-ctl" class="dim" hidden>
+        <button id="axes-toggle" title="choose which variables go on the x / y axes of this diagram">axes ▾</button>
+        <span id="axes-pick" hidden>
+          <label>x <select id="axes-x"></select></label>
+          <label id="axes-y-wrap">y <select id="axes-y"></select></label>
+          <span id="axes-note" class="dim" hidden></span>
+        </span>
+      </div>
       <div id="diff-panel" hidden></div>
     </section>
 
@@ -158,6 +168,6 @@
 <script src="/static/app-palette.js?v=9"></script>
 <script src="/static/app-panzoom.js?v=2"></script>
 <script src="/static/app-structure.js?v=13"></script>
-<script src="/static/app.js?v=30"></script>
+<script src="/static/app.js?v=31"></script>
 </body>
 </html>

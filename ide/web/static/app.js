@@ -77,6 +77,11 @@ let timer = null, activeView = null, lastSource = "", _dimTimer = null, _elapsed
 // so an unavailable preferred view falls back gracefully and the family-sync follows data.view. Null until
 // the first explicit selection ⇒ the first render still uses the recommended view.
 let preferredView = null;
+// #421 AXIS OVERRIDE: per-view {x, y} the user explicitly picked, keyed by view name. Sent on the
+// request for that view (so editing the code keeps the chosen axes, like preferredView); absent ⇒ the
+// backend auto-picks. A different axis-view has its own (usually empty) entry, so switching views echoes
+// that view's defaults rather than forcing the last view's axes onto it.
+let axisOverride = {};
 window.addEventListener("keydown", (e) => { if (e.key === "Escape" && _analyzeCtrl) _analyzeCtrl.abort(); });  // Esc cancels an in-flight analyze (#149); guard avoids stealing Esc from modals
 
 // The #structure panel + the interactive diagram overlay (renderStructure / fmtState /
@@ -136,6 +141,8 @@ function paint(data, ms) {
     $("#tabs").innerHTML = "";                          // no current valid view — don't leave the
                                                        // 16-tab strip inviting clicks over a stale
                                                        // / empty diagram (Marek #147/#148).
+    $("#axes-ctl").hidden = true;                       // #421: no live figure → no axis selector
+    $("#allcond-ctl").hidden = true;
     // a pure claim (no FSM) isn't an error — it's a solve target, not a thing to visualize
     if (/no fsm schemas? found/i.test(data.error || "")) {
       setStatus("claim — use Solve", "ok");
@@ -199,6 +206,11 @@ function paint(data, ms) {
       : " — reachable from the seeded init";
     $("#view-caption").textContent += phrase;
   }
+
+  // #421 AXIS SELECTOR: the backend echoes data.axes = {x, y, requested, fell_back} for the axis-taking
+  // views, else null. Show the "axes ▾" control only when axes != null; reflect the active axes; let the
+  // user override which var rides each axis. cobweb is 1-D (y echoes x) → show only the x select.
+  renderAxesCtl(data);
 
   // run-history (#209): snapshot only SUCCESSFUL, drawable results — never errors / claims /
   // backend-down, and never a result with no png (nothing to thumbnail).
@@ -268,6 +280,8 @@ async function run(view) {
   // the new model, else falls back to the recommended view (and reports which via data.view).
   if (view !== undefined) preferredView = view;
   const requestView = view !== undefined ? view : preferredView;
+  // #421: the axis override for the view we're about to render (if the user picked one); null ⇒ auto-pick.
+  const ax = (requestView && axisOverride[requestView]) || {};
   const source = editor.getValue();
   lastSource = source;
   updateClaimPicker(source);   // show the entry-claim dropdown for multi-claim files (#86)
@@ -328,7 +342,8 @@ async function run(view) {
       // requested view if it's available for the new model, else re-recommends the lead view — so a
       // view that no longer applies falls back gracefully, and data.view reports what actually rendered.
       // entry: which top-level fsm/claim to render — the picker, else the runtime's last-defined default (#290).
-      body: JSON.stringify({ source, view: requestView || null, scope: scopeBound, k: kDepth, all_conditions: allConditions, entry: pickedEntry() }),
+      // x_var/y_var (#421): explicit projection axes for the axis-taking views; null ⇒ the backend auto-picks.
+      body: JSON.stringify({ source, view: requestView || null, scope: scopeBound, k: kDepth, all_conditions: allConditions, entry: pickedEntry(), x_var: ax.x || null, y_var: ax.y || null }),
     });
     // A 500 RESOLVES the fetch (only a network drop rejects it), so without this check an HTTP
     // error would fall through and silently leave the prior picture looking live (Marek #206).
@@ -468,6 +483,50 @@ $("#allcond-in").addEventListener("change", () => {
   allConditions = $("#allcond-in").checked;
   run("state_graph");
 });
+// #421 AXIS SELECTOR: reflect data.axes onto the control, populated from data.vars. Hidden unless the
+// view is axis-taking (data.axes != null). cobweb is 1-D → hide the y select. A fell_back flag (the
+// requested var wasn't usable) shows a subtle note. The toggle stays open across re-renders if the
+// user opened it. lastAxes holds the active view's name so the onchange handlers know which view to
+// re-run with the override.
+let _axesView = null;
+let _axesOpen = false;
+function renderAxesCtl(data) {
+  const ctl = $("#axes-ctl");
+  if (!ctl) return;
+  if (!data.axes || !data.png) { ctl.hidden = true; _axesView = null; return; }
+  _axesView = data.view;
+  const vars = data.vars || [];
+  const oneD = data.view === "cobweb" || data.axes.y == null || data.axes.y === data.axes.x;
+  const fill = (sel, cur) => {
+    sel.innerHTML = vars.map((v) => `<option value="${v}"${v === cur ? " selected" : ""}>${v}</option>`).join("");
+  };
+  fill($("#axes-x"), data.axes.x);
+  fill($("#axes-y"), data.axes.y);
+  $("#axes-y-wrap").style.display = oneD ? "none" : "";
+  const note = $("#axes-note");
+  if (data.axes.fell_back) { note.hidden = false; note.textContent = "— requested var unavailable; using auto-pick"; }
+  else { note.hidden = true; note.textContent = ""; }
+  ctl.hidden = false;
+  // keep the picker's open/closed state across re-renders (don't snap it shut on every analyze)
+  $("#axes-pick").hidden = !_axesOpen;
+  $("#axes-toggle").textContent = _axesOpen ? "axes ▴" : "axes ▾";
+}
+$("#axes-toggle").addEventListener("click", () => {
+  _axesOpen = !_axesOpen;
+  $("#axes-pick").hidden = !_axesOpen;
+  $("#axes-toggle").textContent = _axesOpen ? "axes ▴" : "axes ▾";
+});
+// pick a new axis var → record the override for THIS view and re-render it (sticky like preferredView)
+function _applyAxes() {
+  if (!_axesView) return;
+  const x = $("#axes-x").value;
+  const y = $("#axes-y-wrap").style.display === "none" ? x : $("#axes-y").value;
+  axisOverride[_axesView] = { x, y };
+  run(_axesView);          // explicit view ⇒ the override for it is sent; sticky across later edits
+}
+$("#axes-x").addEventListener("change", _applyAxes);
+$("#axes-y").addEventListener("change", _applyAxes);
+
 // Entry picker (#290): choosing a different top-level fsm/claim re-renders THAT entry. Re-analyze
 // with no explicit view so the server re-recommends the lead view for the newly-selected entry.
 $("#claim-select").addEventListener("change", () => run());

@@ -496,6 +496,22 @@ tr.g-changed > td, tr.g-changed > td.k { background:#2a210e; }   /* a differing 
   padding:2px 10px 0; font-style:italic; }
 #view-caption:empty { display:none; }
 
+/* #421: axis selector — rides under the figure like the all-initial-conditions toggle. The "axes ▾"
+   button reveals two var <select>s; cobweb hides the y select. */
+#axes-ctl { flex:0 0 auto; display:flex; align-items:center; gap:8px; padding:3px 10px; font-size:11px; }
+#axes-ctl[hidden] { display:none; }
+#axes-toggle { background:#1b2129; color:var(--ink); border:1px solid var(--line); border-radius:6px;
+  padding:1px 8px; font-size:11px; cursor:pointer; }
+#axes-toggle:hover { border-color:var(--accent); }
+#axes-pick { display:inline-flex; align-items:center; gap:10px; }
+#axes-pick[hidden] { display:none; }
+#axes-pick label { color:var(--dim); }
+#axes-pick select { background:#1b2129; color:var(--ink); border:1px solid var(--line); border-radius:5px;
+  padding:1px 4px; font:11px ui-monospace,Menlo,monospace; }
+#axes-pick select:hover { border-color:var(--accent); }
+#axes-note { color:var(--warn); }
+#axes-note[hidden] { display:none; }
+
 /* interactive-diagram overlay (#184): the wrapper hugs the rendered image so the point
    targets — positioned in figure fractions — land exactly on the plotted dots. */
 .view-wrap { position:relative; display:inline-block; max-width:100%; max-height:100%; line-height:0; }
