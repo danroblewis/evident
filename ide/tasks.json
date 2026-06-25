@@ -1,5 +1,5 @@
 {
-  "seq": 445,
+  "seq": 469,
   "tasks": [
     {
       "id": 1,
@@ -9848,14 +9848,12 @@
       "id": 359,
       "title": "Editor/sample source-of-truth can momentarily desync under rapid programmatic edits: setting editor content out-of-band (ace.setValue) immediately before/after a dropdown sample-load left the rendered editor showing the OTHER program (collatz in the model, counter rendered) and once swapped content with no user action. Clean dropdown\u2192dropdown and clean type\u2192analyze paths are fine; only the race between an external setValue and the sample loader exposes it. Guard the editor change-handler against in-flight sample loads (debounce/version-token the load) so the buffer and the rendered source can't diverge.",
       "detail": "",
-      "status": "worker_done",
+      "status": "open",
       "created_by": "ide-critic",
       "created": "2026-06-24T19:02:05Z",
-      "worker_done": true,
-      "approvals": [
-        "ide-critic"
-      ],
-      "reopened": 0,
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 1,
       "tags": [
         "editor"
       ],
@@ -9876,6 +9874,12 @@
           "by": "ide-critic",
           "act": "approved",
           "note": ""
+        },
+        {
+          "at": "2026-06-25T18:36:02Z",
+          "by": "ide-critic-expert",
+          "act": "reopened",
+          "note": "Editor/model desync is STILL reproducible \u2014 not via the setValue-vs-loader race this task names, but via a DOSSIER action: with collatz loaded and the verdict dossier open, clicking 'double-check this verdict' reset the editor to the DEFAULT sample (counter.ev) while the dossier kept asserting collatz's verdict (n\u2208[1,9232], fixed point n=1). Also: rapid sample-switching left the header chip+filename on the PRIOR program. The buffer-vs-rendered guard may be in place for the typed path, but a verdict-card interaction must not swap the editor program, and the chip/badge must not lag the editor. See concern #446 + screenshots ana-20260625-182026/10,12,13."
         }
       ]
     },
@@ -10198,11 +10202,13 @@
       "id": 395,
       "title": "Soundness: _opt_bound reads an UNBOUNDED Optimize witness as a finite bound (a>=3 -> [3,3]) and the render stamps 'z3-solved exact/proven'. Capture the maximize/minimize handle, test upper(h)/lower(h) for Z3 infinity, render open (-inf/+inf) and DON'T label 'exact' on a half-open/unbounded bound. Also skip the claim-space bound computation for nonlinear claims (the cuber grinds 16s + false [0,0]).",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "worker",
       "created": "2026-06-25T06:48:50Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [],
       "log": [
@@ -10221,6 +10227,12 @@
           "by": "worker",
           "act": "done",
           "note": "Fixed: _opt_bound reads o.upper(h)/o.lower(h) via _finite_numeric (None on \u00b1\u221e), not the witness; render() early-returns a 'nonlinear claim' N/A; unbounded \u2192 'no finite boundary' N/A. cuber 16s\u21920.03s. Addresses #367/#369/#383."
+        },
+        {
+          "at": "2026-06-25T18:36:02Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ],
       "addresses_concern": 369
@@ -10291,11 +10303,13 @@
       "id": 398,
       "title": "query/invariant/temporal reject DERIVED vars ('unknown carried var done') though they're shown in every state \u2014 let them assert over derived vars too",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "worker",
       "created": "2026-06-25T07:08:03Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [],
       "log": [
@@ -10314,6 +10328,12 @@
           "by": "worker",
           "act": "done",
           "note": "_resolve_carried pools carried + derived; per-state record already carries derived values so the check is non-vacuous. test_derived_query.py. Addresses #376."
+        },
+        {
+          "at": "2026-06-25T18:36:02Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ],
       "addresses_concern": 376
@@ -10322,11 +10342,13 @@
       "id": 399,
       "title": "function_guards reports INCOMPLETE on a \u0394+seed var (analyzes only the seed equation; the \u00acfirst-tick case is the separate \u0394 equation) \u2014 label it 'seed (first tick only)' not a partial function",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "worker",
       "created": "2026-06-25T07:16:59Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [],
       "log": [
@@ -10345,6 +10367,12 @@
           "by": "worker",
           "act": "done",
           "note": "guard_analysis re-checks completeness with is_first_tick assumed \u2192 seed_only; render shows '\u2713 seed (first tick only)' not '\u26a0 INCOMPLETE'. test_seed_guard.py. Addresses #370."
+        },
+        {
+          "at": "2026-06-25T18:36:02Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ],
       "addresses_concern": 370
@@ -10845,11 +10873,13 @@
       "id": 439,
       "title": "[depends-after] verify-view #437 needs the interrogable-view primitive from #436",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-ui-designer",
       "created": "2026-06-25T09:22:29Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "ui"
@@ -10860,6 +10890,12 @@
           "by": "worker",
           "act": "done",
           "note": "Not a real task \u2014 the dependency it records (verify #437 needs the query primitive #436) already lives in #437's body. Disregard; no delete command available."
+        },
+        {
+          "at": "2026-06-25T18:36:02Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -10950,6 +10986,186 @@
       "reopened": 0,
       "tags": [
         "diagram"
+      ],
+      "log": []
+    },
+    {
+      "id": 448,
+      "title": "Bind the verdict dossier (and verify/query result cards) to a model-revision id; on recompute, live-refresh or close+mark-stale any open dossier \u2014 never let a verdict card outlive the model it describes (fixes #447)",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-ux-critic",
+      "created": "2026-06-25T18:33:05Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "analysis"
+      ],
+      "log": []
+    },
+    {
+      "id": 450,
+      "title": "Guard sample/buffer loads with a monotonic request id (ignore resolutions older than the latest user action); make explicit dropdown selection authoritative over autosave-restore; surface (not silently apply) a buffer restore that would overwrite the visible program (fixes #449)",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-ux-critic",
+      "created": "2026-06-25T18:33:22Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "editor"
+      ],
+      "log": []
+    },
+    {
+      "id": 452,
+      "title": "When dropped>0, badge the verify proof card itself ('\u26a0 proven over a BROKEN model \u2014 N constraint(s) dropped; proof is about the truncated program') and de-rate green\u2192amber \u2014 verify must inherit the model's BROKEN flag (fixes #451)",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-ux-critic",
+      "created": "2026-06-25T18:33:40Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "analysis"
+      ],
+      "log": []
+    },
+    {
+      "id": 454,
+      "title": "Make the dropped-constraint banner consequence-aware: state 'N constraint(s) you wrote were not applied \u2014 the model on screen is not the model you wrote' WITHOUT the templated 'fans the state space' claim unless the reachable-set actually broadened; distinguish dropped+inert (#419) from dropped+fanned (fixes #453)",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-ux-critic",
+      "created": "2026-06-25T18:33:59Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "analysis"
+      ],
+      "log": []
+    },
+    {
+      "id": 456,
+      "title": "Co-locate query (\u2203) + verify (\u2200) in ONE family ('interrogate' / 'ask \u00b7 prove') so the duality is taught by adjacency \u2014 or add a persistent top-level 'ask / prove' affordance that jumps to them; move verify out of 'structure \u00b7 law' where its label hides it (fixes #455)",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-ux-critic",
+      "created": "2026-06-25T18:34:22Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "analysis"
+      ],
+      "log": []
+    },
+    {
+      "id": 462,
+      "title": "verify-view: persist results in a SESSION LOG / proof ledger. After I proved 'count\u22645' and refuted 'count\u22643', I wanted both results to STAY visible so I could build up a verification suite (the set of properties I've checked, pass/fail, like a TLA+ .cfg of invariants). Right now each check replaces the last; switching tabs or models loses it. Alloy keeps my run history; I want a checked-properties panel I can re-run all of after an edit.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-expert",
+      "created": "2026-06-25T18:36:27Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "solve"
+      ],
+      "log": []
+    },
+    {
+      "id": 463,
+      "title": "Author temporal/invariant properties INSIDE the .ev source as first-class claims (e.g. 'invariant \u25a1 count \u2264 5' or a 'property' block), not just ad-hoc in the verify box. The whole pitch is 'tests are constraints in the same language' \u2014 but liveness/safety properties live only in a transient UI field. Let me write \u25a1/\u25c7/\u2933 properties in the program, have them checked on every edit, and show pass/fail per property in the gutter. That's the TLA+ .tla+.cfg model and Alloy's 'check' commands.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-expert",
+      "created": "2026-06-25T18:36:28Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "solve"
+      ],
+      "log": []
+    },
+    {
+      "id": 464,
+      "title": "Step the COUNTEREXAMPLE TRACE on the diagram, not just a text strip. The verify view gives a scrubbable trace ('step 5/5, violation here' + CSV \u2014 excellent), but I scrub a text readout while the phase_portrait / state_graph sits inert beside it. In TLA+'s toolbox the counterexample HIGHLIGHTS on the state graph as I step. Link the trace scrubber to the active diagram: as I step, light up the current state/transition on the graph. That closes the loop between 'the property failed HERE' and 'where HERE is in the dynamics'.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-expert",
+      "created": "2026-06-25T18:36:46Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "viz"
+      ],
+      "log": []
+    },
+    {
+      "id": 465,
+      "title": "Wire the continuous grid-sweep into basin_map and morse_graph (occupancy now renders a 1-D strip \u2014 partial credit). The damped rotation 'x=_x*0.9-_y*0.1; y=_x*0.1+_y*0.9' is a textbook spiral SINK with an obvious basin (the origin), yet basin_map still emits 'N/A \u2014 reachable set exceeds 1200 states' and morse_graph bails. These views go through discrete enumeration, hit the cap, and refuse \u2014 instead of grid-sweeping the continuous field like phase_portrait does. A basin map of a 2-D linear sink is exactly what I'd reach for. (Long-standing #357.)",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-expert",
+      "created": "2026-06-25T18:36:46Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "viz"
+      ],
+      "log": []
+    },
+    {
+      "id": 466,
+      "title": "Solve-for-X 'given' should accept domain-typed values, not require strings. /api/solve given={'x':3} 400s ('should be a valid string'); given={'x':'3'} works. An Int pin should take an Int. Minor, but it's the kind of leak that bites when the UI box and the API disagree on types.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-expert",
+      "created": "2026-06-25T18:36:46Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "solve"
+      ],
+      "log": []
+    },
+    {
+      "id": 467,
+      "title": "Two-witness COMPARE needs a clearer flow + a real diff. The compare affordance exists (pick #1 as 'A', browse, the button shows 'picked'/'compare') but pinning the B side and SEEING the delta took several non-obvious clicks and I never got a side-by-side with changed cells highlighted. For two sudoku/queens boards I want them rendered next to each other with the differing cells flagged \u2014 the relational analog of a git diff. Make 'compare' a two-slot A|B with an explicit 'show diff'.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-expert",
+      "created": "2026-06-25T18:36:47Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "solve"
+      ],
+      "log": []
+    },
+    {
+      "id": 469,
+      "title": "Dark/transparent diagram backgrounds: render all diagram PNGs with a TRANSPARENT background (savefig transparent=True / facecolor='none') so they blend with the dark page, AND restyle every drawn element (text, axes, spines, ticks, gridlines, lines, markers, legends, colormaps) to be readable on a dark background \u2014 no black-on-dark. Apply across ALL viz/render_*.py via a shared mpl style/theme, not per-file. Verify each diagram type renders legibly on dark (Read the PNGs).",
+      "detail": "",
+      "status": "open",
+      "created_by": "worker",
+      "created": "2026-06-25T18:56:55Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "ux"
       ],
       "log": []
     }
@@ -11938,27 +12154,30 @@
       "title": "SOUNDNESS: claim boundary card fabricates a finite interval for one-sided/unbounded Int vars and labels it 'z3-solved exact / proven'. Verified live via /api/analyze view=solution_structure & claim_space: (1) 'claim t; a in Int; a>=3' => bounds a:[3,3], rigor=proven, PNG titled 'boundaries z3-solved exact' drawing a as a single tick at 3.00 \u2014 but a>=3 admits a=100 (confirmed: pinning a=5 with b=2a is satisfiable). (2) 'a<=7' => a:[0,7] (false lower bound 0). (3) 'b=2a' (both unbounded) => a:[0,0],b:[0,0] \u2014 a fabricated point box; a=5,b=10 is reachable. The free var 'a in Int' alone correctly emits {} (no bound), so the unbounded case IS detectable \u2014 but as soon as one side is bounded or a linear tie exists, Optimize returns the witness value and it's reported as a hard exact boundary. The FSM path is HONEST by contrast (runaway counter => verdict 'unbounded', capped:true, rigor:sampled). Fix: when Optimize returns unbounded/oo on a direction, render that side as open (-inf/+inf or an arrow), NOT the witness value, and do not stamp 'exact/proven' on a half-open or unbounded boundary. This is a fabricated-structure defect (Part-4 #4) made worse by the 'exact' label \u2014 it invites belief in a false fact. Screenshot ana-20260625-062726/bound-soundness-a-ge-3.png.",
       "detail": "view=solution_structure/claim_space; claims only; FSM solution_space is honest",
       "by": "ide-critic-expert",
-      "status": "open",
+      "status": "cleared",
       "task": null,
-      "created": "2026-06-25T06:31:50Z"
+      "created": "2026-06-25T06:31:50Z",
+      "cleared": "2026-06-25T18:35:39Z"
     },
     {
       "id": 369,
       "title": "ROOT CAUSE for #367 + nonlinear-note gap. (1) _opt_bound (viz/render_claim_space.py) is the bug: it does 'o.maximize(c); if o.check()!=sat: return None; else return model.eval(c)'. But Z3 Optimize on an UNBOUNDED objective returns check()==sat with a finite witness in the model \u2014 so the unbounded direction is read as that witness (a>=3 -> upper=3; free product p=h*w -> [0,0]). The comment 'unbounded Optimize -> None' is false. FIX: capture the handle h=o.maximize(c) and test o.upper(h)/o.lower(h) for a Z3 infinity (oo/is_algebraic infinite); return None/open on +-inf and only stamp 'exact' on a two-sided-finite bound. (2) The nonlinear guard (claim_structure.py:252, 'nonlinear claim \u2014 structure analysis skipped') does NOT fire on view=solution_structure for the explicit unbounded product 'claim t; h,w,p in Int; p=h*w' \u2014 note=None, bounds={h:[0,0],w:[0,0]} computed instead. Bounded 'area=h*w' with 1<=h,w<=10 correctly computes area:[1,100] (good, keep). So either _nonlinear(body) isn't seeing the MUL on this path or structure.note isn't surfaced to the payload. The honest 'nonlinear \u2014 structure analysis skipped' note the team described is absent on the claim boundary path. Both verified via curl localhost:5173/api/analyze.",
       "detail": "viz/render_claim_space.py _opt_bound; viz/claim_structure.py:252",
       "by": "ide-critic-expert",
-      "status": "open",
+      "status": "cleared",
       "task": null,
-      "created": "2026-06-25T06:35:37Z"
+      "created": "2026-06-25T06:35:37Z",
+      "cleared": "2026-06-25T18:35:39Z"
     },
     {
       "id": 370,
       "title": "function_guards INCOMPLETE verdict can mislead on a \u0394+seed-split var. For 'fsm ramp; x \u2208 Int := 0; \u0394x = (_x<5?2:(_x<12?1:0))' (0 dropped, \u0394-ternary is TOTAL), function_guards shows 'x (1 branches)' with '\u26a0 INCOMPLETE \u2014 no branch for _x=12, is_first_tick=False' and tree 'is_first_tick \u2192 0'. It is analyzing only the SEED equation (x=0 guarded by is_first_tick); the non-first-tick case is covered by the separate \u0394x equation, which the guard tree doesn't fold in. So the verdict is technically sound for the seed atom alone but reads as 'your function is incomplete' when the reachable behavior is fully determined. The honest caveat ('checked over DECLARED type domain, not reachable set') is good and present. Suggest: when a var's next-state is split across a seed (is_first_tick) equation + a \u0394/\u00acis_first_tick equation, MERGE them into one decision tree before the completeness check, or label the verdict as 'seed equation only'. Verified live ana-20260625-062726/286-function-guards.png. NOT blocking #286's approval (real decision tree + Z3-decided verdict + witness + no clipping all delivered).",
       "detail": "function_guards seed/\u0394 split",
       "by": "ide-critic-expert",
-      "status": "open",
+      "status": "cleared",
       "task": null,
-      "created": "2026-06-25T06:37:45Z"
+      "created": "2026-06-25T06:37:45Z",
+      "cleared": "2026-06-25T18:35:39Z"
     },
     {
       "id": 371,
@@ -11983,9 +12202,10 @@
       "title": "Query console + invariant checker reject DERIVED variables \u2014 you can only constrain CARRIED vars. For the counter, /api/query predicate 'count = 3 \u2227 done = false' and /api/invariant var=done both return 'unknown carried var done; known: count', yet the witness/counterexample states DISPLAY done:false. So 'done' (= count>=5) is computed and shown but cannot be asserted or queried. A verification engineer wants to check '\u25a1 done \u21d2 count>=5' or '\u2203 done=true' \u2014 table stakes in Alloy/Z3 (assert over any in-scope expr). FIX: let query/invariant/temporal terms reference derived vars (project them into the per-state record before the check; they're already in the displayed state). The carried-var-only restriction leaks the FSM's internal state encoding into the verification interface.",
       "detail": "/api/query, /api/invariant, /api/temporal accept carried vars only",
       "by": "ide-critic-expert",
-      "status": "open",
+      "status": "cleared",
       "task": null,
-      "created": "2026-06-25T06:39:09Z"
+      "created": "2026-06-25T06:39:09Z",
+      "cleared": "2026-06-25T18:35:39Z"
     },
     {
       "id": 377,
@@ -12092,18 +12312,128 @@
       "title": "OPAQUE VERDICT VOCABULARY \u2014 the VERDICT panel speaks in domain-expert jargon a target user cannot decode, and the owner themselves can't (their words: 'i don't know what a dodging loop is'). WORST OFFENDER: '\u25b6 replay a dodging loop' (app-structure.js:85). It is a LIVENESS COUNTEREXAMPLE \u2014 a run that loops forever among non-rest states and never reaches the absorbing/terminal set (the witness that NOT every run terminates). 'dodging loop' is internal model-checker slang (the \u00acQ lasso in model_temporal.py) leaked verbatim to the surface; nothing on screen, in the tour, or in the \u2318K glossary defines it. The ONLY explanation is a title= tooltip the user must hover to find. Second offender: '\u26e8 verify soundness' (app-structure.js:94) reads as 'check if my MODEL is sound' but actually cross-checks the TOOL'S OWN abstract Z3 verdict against a brute-force enumeration (soundness_check.py) \u2014 a fabrication self-check of the IDE, not of the user's program; the name points at the wrong subject. Third: '\u25b6 replay path to rest' \u2014 'to rest' is poetic for 'to a terminal/absorbing state'; a first user doesn't connect 'rest' to 'where the FSM stops'. SEVERITY: this is a TRUST defect, not cosmetics \u2014 a verdict you cannot read is a verdict you cannot ACT on, and the cockpit's whole pitch is that it tells you the truth about your model. A truth stated in a private vocabulary is functionally withheld. The systemic cause: these strings were authored by the implementer FOR the implementer (issue-number-tagged: #334/#332/#326) and never re-leveled for a reader. FIX: (a) rename to plain language \u2014 'dodging loop' \u2192 'replay a run that never finishes' / 'never-resting loop'; 'verify soundness' \u2192 'double-check this verdict (brute-force)'; 'replay path to rest' \u2192 'replay a run that finishes'; (b) every Verdict term gets a one-line in-place gloss + a \u2318K-searchable glossary entry (the CONCEPTS table in app-symbols.js already glosses banner words like 'Cyclic'/'Unbounded' \u2014 extend the SAME mechanism to 'Terminates', 'dodging loop', 'fixed point', 'boundary', 'verify soundness'); (c) the help/about (separate task).",
       "detail": "Live: counter sample shows VERDICT '\u2713 Terminates \u00b7 fixed point (count=5) \u00b7 \u228f boundary \u00b7 \u25b6 replay path to rest \u00b7 \u26e8 verify soundness' (nadia-20260625-091929/01-counter-verdict.png). The 'dodging loop' button only appears on a model with both a terminal set AND a non-rest cycle (model_analysis.py:268). Confirmed no help/about exists; the 'how this works' expander is per-sample prose about the difference-equation framing, not a verdict glossary (02-how-this-works.png).",
       "by": "ide-ux-critic",
-      "status": "open",
+      "status": "cleared",
       "task": null,
-      "created": "2026-06-25T09:22:09Z"
+      "created": "2026-06-25T09:22:09Z",
+      "cleared": "2026-06-25T18:32:43Z"
     },
     {
       "id": 438,
       "title": "INTERROGATE PANEL HAS NO STORY \u2014 the owner: 'The user stories and workflows that would use [verify + query] are not clear.' The INTERROGATE section (index.html:65) presents two power-features with ZERO framing of WHEN or WHY you'd reach for them: '\u22a2 verify' (the \u25a1/\u25c7 property checker \u2014 model_query.check_invariant + model_temporal.check_temporal) and '\u22a8? query' (the \u2203 reachable-state search \u2014 model_query.query). What they ARE: 'verify' asserts a property holds on EVERY reachable state (safety \u25a1 var\u22645) or on every run (liveness \u25c7/\u25a1\u25c7/\u2933) and hands back a counterexample TRACE when it fails; 'query' asks whether ANY reachable state matches a conjunction and returns a witness. These are genuinely powerful (the verify counterexample stepper is Alloy/TLA+-grade \u2014 confirmed live: 'x\u22642' on random-walk returned '\u2717 violated \u2014 counterexample x=3,y=2 \u00b7 trace: x=0\u2192\u2026\u2192x=3'). But the panel teaches NEITHER the concept nor the use-case. WHY IT CONFUSES: (1) the labels are bare GLYPHS \u2014 '\u22a2 verify' and '\u22a8? query' \u2014 and \u22a2/\u22a8 are turnstiles a non-logician doesn't read; (2) the placeholder is a SYNTAX cheat-sheet ('safety: var \u2264 5 \u00b7 liveness: \u25c7 var = 5 \u00b7 \u25a1\u25c7 var = 5 \u00b7 P \u2933 Q') that assumes you ALREADY know what safety/liveness/\u25c7/\u25a1\u25c7/\u2933 mean \u2014 it shows HOW to type, never WHAT it does or WHY; (3) the difference between 'verify' (does it ALWAYS hold) and 'query' (does it EVER hold) \u2014 the \u2200 vs \u2203 duality that is the whole point \u2014 is invisible; nothing on screen says 'verify = prove it's always true; query = find one example'. SEVERITY: this is an ADOPTION wall \u2014 the single most valuable verification capability in the cockpit is unreachable to anyone who doesn't already do model checking, which defeats the point of putting a friendly front end on Z3. FIX: (a) add a plain-language sub-label/use-case line under each: verify \u2192 'PROVE a property holds on every reachable state (safety) or every run (liveness) \u2014 get a counterexample trace if it fails'; query \u2192 'FIND one reachable state matching your condition (or prove none exists)'; (b) gloss \u25c7 (eventually), \u25a1\u25c7 (infinitely often / always-eventually), \u2933 (leads-to), safety, liveness in the \u2318K glossary + as hover-cards on the panel labels (CONCEPTS table mechanism); (c) the help/about (separate task) carries the 'when would I use this' user stories.",
       "detail": "Live random-walk: verify 'x \u2264 2' \u2192 '\u2717 violated (x \u2264 2) \u2014 counterexample x=3, y=2 \u00b7 trace: x=0 y=0 \u2192 \u2026 \u2192 x=3 y=2' (03-verify-result.png, randomwalk-snap.yml). query row hidden for a claim, shown for an FSM. Labels confirmed in index.html:68-79; placeholders in app-verify.js are syntax-only.",
       "by": "ide-ux-critic",
+      "status": "cleared",
+      "task": null,
+      "created": "2026-06-25T09:22:29Z",
+      "cleared": "2026-06-25T18:32:43Z"
+    },
+    {
+      "id": 446,
+      "title": "Verdict DOSSIER modal desyncs from the live model \u2014 it shows a SNAPSHOT that can describe a DIFFERENT program than the editor. Reproduced live: (1) rapid sample-switch left the header chip + filename badge on 'traffic.ev / \u21bb Cyclic' while the editor body + banner had loaded collatz ('Driven'). (2) WORSE: with collatz cleanly loaded and the dossier open showing '\u2713 Terminates / fixed point n=1 / n\u2208[1,9232]', clicking the dossier's 'double-check this verdict' button RESET the editor back to the default sample (counter.ev, fsm counter, 1 dropped) \u2014 yet the dossier KEPT asserting collatz's verdict over the now-counter program. A verdict card asserting 'n\u2208[1,9232], fixed point n=1' over a program that is actually the counter is a fabricated claim about the wrong model (Part-4 #4). FIX: (a) the dossier must re-derive from / be invalidated by the current model, never cache a prior one; (b) a dossier action ('double-check', 'replay') must NOT mutate editor content / reload the default sample. Screenshots ana-20260625-182026/10,12,13. The double-check feature ITSELF is excellent ('\u2713 cross-checked \u2014 abstract verdict matches brute-force enumeration') \u2014 the bug is the model-swap + stale card around it.",
+      "detail": "playwright: select collatz, open dossier (correct), click double-check -> editor becomes counter.ev while dossier still shows collatz verdict",
+      "by": "ide-critic-expert",
       "status": "open",
       "task": null,
-      "created": "2026-06-25T09:22:29Z"
+      "created": "2026-06-25T18:32:15Z"
+    },
+    {
+      "id": 447,
+      "title": "STALE VERDICT DOSSIER vouches for a DIFFERENT model than is on screen (BROKEN-class silent betrayal). Reproduced live: editor held 'fsm counter' (vars count, done; 1 dropped constraint; banner 'this model is BROKEN'), yet an open Verdict dossier modal displayed Collatz's verdict \u2014 title 'Verdict \u2014 \u2713 Terminates', '\u25cf fixed point (n=1)', '\u228f boundary n \u2208 [1, 9232]' \u2014 referencing variable n that DOES NOT EXIST in the current source. Worse: the dossier's own '\u26e8 double-check this verdict' affirmed '\u2713 cross-checked \u2014 the abstract verdict matches a brute-force enumeration of THIS MODEL', i.e. the soundness self-check vouched for a verdict about a different program. ROOT DESIGN DECISION: the dossier modal is a detached snapshot with NO lifecycle binding to the model \u2014 a model change (sample switch / edit) neither closes nor refreshes an open dossier, and the chip can even withdraw (BROKEN model \u2192 no .vchip-headline) while its spawned modal lingers with stale content. SEVERITY: this is the deepest trust-break in the cockpit \u2014 a verdict the user reads as 'the truth about my model' is silently about another program, and the tool's own anti-lie self-check rubber-stamps it. SYSTEMIC FIX: bind the dossier (and the verify/query result cards) to a model-revision id; on any recompute, either live-refresh the open dossier to the current model or CLOSE it and mark it stale ('this verdict is for a previous version \u2014 re-open'). Never let a verdict card outlive the model it describes. Screenshots: ide/critics/recordings/nadia-20260625-182038/13-verify-proven-on-broken-model.png and 10-cyclic-dossier.png",
+      "detail": "screenshots 10,13 in nadia-20260625-182038/",
+      "by": "ide-ux-critic",
+      "status": "open",
+      "task": null,
+      "created": "2026-06-25T18:32:59Z"
+    },
+    {
+      "id": 449,
+      "title": "SAMPLE SELECTION SILENTLY SWAPPED \u2014 the program on screen is not the one the user picked (BROKEN-class). Reproduced 3\u00d7 live: selected 'traffic light \u00b7 a cyclic state machine (FSM)' from the sample dropdown; editor briefly showed 'fsm traffic' + chip '\u21bb Cyclic', then ~1\u20132s later the editor SPONTANEOUSLY reverted to 'fsm collatz' + chip '\u2713 Terminates' with NO further interaction \u2014 and localStorage['evident-buffer'] was rewritten back to the Collatz source. Intermittent (one run held traffic-light stable for 2s; three other runs flipped). ROOT DESIGN DECISION: an async sample-load / autosave-restore race with no request-sequence guard \u2014 a slower/stale in-flight load (or a late localStorage restore) resolves last and clobbers the newer explicit selection. SEVERITY: a user can be analyzing, trusting, and even verifying a program they did not choose and did not write, with the dropdown showing 'open sample\u2026' (blank) \u2014 there is zero signal that a swap happened. SYSTEMIC FIX: guard sample/buffer loads with a monotonic request id (ignore any resolution older than the latest user action); make the explicit dropdown selection authoritative over any autosave-restore; and if a restore would overwrite the visible buffer, surface it ('restored your unsaved buffer \u2014 discard?') rather than silently winning. Screenshot: ide/critics/recordings/nadia-20260625-182038/12-sample-reverted-to-collatz.png",
+      "detail": "screenshot 12; localStorage evident-buffer clobbered",
+      "by": "ide-ux-critic",
+      "status": "open",
+      "task": null,
+      "created": "2026-06-25T18:33:18Z"
+    },
+    {
+      "id": 451,
+      "title": "VERIFY PROOF CARD HANDS BACK A CLEAN GREEN '\u2713 proven' ON A MODEL THE TOOL ELSEWHERE DECLARES BROKEN \u2014 no dropped-constraint caveat on the proof itself (MISLEADING). Reproduced live: counter with 'count \u2264 celing' (typo \u2192 1 dropped constraint; banner 'this model is BROKEN'; footer '\u26a0 1 dropped constraint'). Switched to the verify view, checked 'count \u2264 5' \u2192 '\u2713 proven \u2014 count \u2264 5 on all 6 reachable states', styled identically to a proof over a healthy model. The proof is technically true OF THE TRUNCATED MODEL (the dropped bound never participated), but a user who breaks their model, opens verify, and sees green '\u2713 proven' will reasonably believe their model is fine. The honesty rides entirely in the SEPARATE footer/banner; the proof CARD carries no caveat. DESIGN DECISION: the verify result card is decoupled from the dropped-constraint state \u2014 it reports proof status without inheriting the model's BROKEN flag. SYSTEMIC FIX: when dropped>0, the verify card must badge the result ('\u26a0 proven over a BROKEN model \u2014 N constraint(s) were dropped; this proof is about the truncated program, not what you wrote') and ideally de-rate the green to amber. A proof over a model that isn't the one the user wrote is exactly the silent-bug the honesty mandate targets. Screenshot: ide/critics/recordings/nadia-20260625-182038/06-broken-png-title-contradiction.png (verify card visible)",
+      "detail": "screenshot 06,13",
+      "by": "ide-ux-critic",
+      "status": "open",
+      "task": null,
+      "created": "2026-06-25T18:33:36Z"
+    },
+    {
+      "id": 453,
+      "title": "DROPPED-CONSTRAINT BANNER OVER-CLAIMS A CATASTROPHE ITS OWN ANALYSIS CONTRADICTS \u2014 three-way self-contradiction on one screen (MISLEADING / severity mis-calibration, OVER-loud direction). Reproduced live on the counter with the inert dropped 'count \u2264 celing': (1) BANNER (red): 'Under-constrained \u2014 this model is BROKEN, not a real relation (the freed variables fan the state space)' \u2014 asserts the state space FANS; (2) SOLUTION-SPACE PNG title (green badge): 'terminates \u00b7 boundary z3-proven exact' / 'z3-proven INDUCTIVE invariant (the box is closed under the transition)' \u2014 proves count\u2208[0,5] is a CLOSED invariant that does NOT fan; (3) FOOTER: '6 reachable (\u2713 complete) \u00b7 6 transitions' \u2014 small and complete. The banner's 'freed variables fan the state space' is a TEMPLATED string fired purely on dropped>0; here the dropped constraint was INERT (the \u0394 transition already caps count), so nothing fanned \u2014 the tool's own boundary analysis proves the banner wrong. This is crying wolf: a catastrophe message the same screen disproves. It also feeds the #418/#416 picture-vs-banner contradiction. DESIGN DECISION: the BROKEN banner text is generated from the drop count alone, not reconciled against the reachable-set/boundary result. SYSTEMIC FIX: make the banner consequence-aware \u2014 when a constraint is dropped, state the honest fact ('1 constraint you wrote was not applied \u2014 the model on screen is not the model you wrote') WITHOUT asserting 'fans the state space' unless the analysis actually shows broader reach than with the constraint. Distinguish 'dropped + dynamics changed' (truly fanned) from 'dropped + inert' (#419) and say which.",
+      "detail": "screenshots 05,06,07",
+      "by": "ide-ux-critic",
+      "status": "open",
+      "task": null,
+      "created": "2026-06-25T18:33:53Z"
+    },
+    {
+      "id": 455,
+      "title": "QUERY and VERIFY \u2014 the \u2200/\u2203 interrogation pair \u2014 are SCATTERED across two unrelated family tabs with no signal either exists (FRICTION/adoption wall, the 'dead end from removing the Interrogate panel' the redesign risked). Confirmed live on counter/vending: 'query \u00b7 \u2203 reachable' is sub-tab 2 under the 'SOLUTION SPACE' family; 'verify \u00b7 \u25a1 property' is the LAST (9th) sub-tab under the 'STRUCTURE \u00b7 LAW' family, after scatter matrix, parallel coords, chord diagram, and five 'function *' tabs. So the two halves of the same idea (\u2203 find-one vs \u2200 prove-all) are in different families with 7 unrelated tabs between them, and NOTHING at the top level says 'you can verify/query here.' Two problems: (1) DISCOVERABILITY \u2014 a newcomer who finds query gets no hint verify exists, and 'verify' is buried where its label ('structure \u00b7 law') gives no clue a temporal-property checker lives there; (2) MISCATEGORIZATION \u2014 verifying \u25a1/\u25c7 liveness is not 'structure/law' the way function-graph/guards are. The old Interrogate panel at least co-located them under one labeled section. SYSTEMIC FIX: co-locate query + verify in ONE family ('interrogate' / 'ask \u00b7 prove') so the \u2203/\u2200 duality is taught by adjacency, OR surface a persistent top-level 'ask a question (query) / prove a property (verify)' affordance that jumps to them. The plain-language inline framing on each (now good) is wasted if the user never finds the tab.",
+      "detail": "tab inventory: solution-space family = {solution space, query\u00b7\u2203}; structure\u00b7law family = {scatter matrix, parallel coords, chord diagram, function graph/residual/guards/behavior/complexity, verify\u00b7\u25a1}",
+      "by": "ide-ux-critic",
+      "status": "open",
+      "task": null,
+      "created": "2026-06-25T18:34:13Z"
+    },
+    {
+      "id": 457,
+      "title": "RE TASK #359 (worker_done, 1 approval from ide-critic): do NOT close \u2014 the editor/sample desync is STILL live. I reproduced it 3\u00d7 this round on a plain dropdown\u2192dropdown path (selected 'traffic light', it spontaneously reverted to 'fsm collatz' ~1-2s later with no user action; localStorage['evident-buffer'] rewritten to Collatz). The #359 fix note only claims to cover 'the out-of-band-setValue race' via a _loadV debounce token; the path I hit (autosave-restore / stale async sample-fetch winning) is not covered. See concern #449 + screenshot nadia-20260625-182038/12. Asking ide-critic/ide-critic-expert/ide-critic-newcomer to REOPEN #359 (I'm ide-ux-critic and can't).",
+      "detail": "ties #359 to live repro #449; needs a reopen by an approving critic",
+      "by": "ide-ux-critic",
+      "status": "open",
+      "task": null,
+      "created": "2026-06-25T18:35:06Z"
+    },
+    {
+      "id": 458,
+      "title": "Editor/model desync is STILL reproducible \u2014 not via the setValue-vs-loader race this task names, but via a DOSSIER action: with collatz loaded and the verdict dossier open, clicking 'double-check this verdict' reset the editor to the DEFAULT sample (counter.ev) while the dossier kept asserting collatz's verdict (n\u2208[1,9232], fixed point n=1). Also: rapid sample-switching left the header chip+filename on the PRIOR program. The buffer-vs-rendered guard may be in place for the typed path, but a verdict-card interaction must not swap the editor program, and the chip/badge must not lag the editor. See concern #446 + screenshots ana-20260625-182026/10,12,13.",
+      "detail": "",
+      "by": "ide-critic-expert",
+      "status": "open",
+      "task": 359,
+      "created": "2026-06-25T18:36:02Z"
+    },
+    {
+      "id": 459,
+      "title": "MINOR coherence: switching from the query/verify interactive view to a PNG view and back PRESERVES the typed input but CLEARS the result. Live: typed 'count = 3' \u2192 '\u2713 reachable \u2014 count=3 done=false (1 of 6)', clicked to solution-space PNG, clicked back to query \u2192 input still 'count = 3' but result blank; must re-click 'find'. The half-preserved state (question kept, answer dropped) is mildly confusing \u2014 a user reasonably expects either both kept or both cleared. It's the SAFE direction (no stale answer shown), so FRICTION not a trust-break. Fix (low priority): either re-run the preserved query on tab-return, or grey the stale result with a 're-run' hint, rather than silently blanking it while the question lingers.",
+      "detail": "query/verify tab state persistence",
+      "by": "ide-ux-critic",
+      "status": "open",
+      "task": null,
+      "created": "2026-06-25T18:36:10Z"
+    },
+    {
+      "id": 460,
+      "title": "Residual honesty gap (was #369 part 2, NOT blocking \u2014 the dangerous false-bounds half is FIXED): the claim solution-structure path no longer fabricates bounds for unbounded/nonlinear claims (verified: a\u22653, a\u22647, b=2a, p=h*w all return bounds={} + 'unbounded' card), BUT it still does not SURFACE the honest 'nonlinear \u2014 structure analysis skipped' note the team described. For 'claim t; h,w,p\u2208Int; p=h*w' the payload has note=None. So the user sees a blank/unbounded card without learning WHY (nonlinearity vs unboundedness). Add the nonlinear note to the payload so the card can distinguish 'unbounded' from 'nonlinear, not analyzed'. Low priority \u2014 no longer a soundness bug.",
+      "detail": "curl /api/analyze view=solution_structure on p=h*w returns note=None",
+      "by": "ide-critic-expert",
+      "status": "open",
+      "task": null,
+      "created": "2026-06-25T18:36:27Z"
+    },
+    {
+      "id": 461,
+      "title": "Verdict VOCABULARY incoherence across the three header/banner surfaces: for the SAME program, the verdict CHIP, the model-shape BANNER, and the structure.verdict field use different words. collatz: chip='\u2713 Terminates', banner='Driven', (stale)dossier='Cyclic'. 2-var swap cycle: banner='Cyclic \u2014 variables co-determine in a loop', structure.verdict='settles'. Each word is individually defensible, but a verification user reads three labels for one system and can't tell if they're three facts or one. Pick ONE verdict taxonomy and render it consistently on chip, banner, and dossier (a program can be both 'driven' AND 'terminating' \u2014 say so in one phrase, don't split across surfaces). Verified ana-20260625-182026/11,12.",
+      "detail": "screenshots show chip Terminates + banner Driven simultaneously for collatz",
+      "by": "ide-critic-expert",
+      "status": "open",
+      "task": null,
+      "created": "2026-06-25T18:36:27Z"
+    },
+    {
+      "id": 468,
+      "title": "UPDATE to #357 (occupancy partially improved, basin/morse still fail): re-verified live this round on the same rotation program. occupancy_heatmap NO LONGER emits an N/A card \u2014 it now renders a real 1-D occupancy histogram ('1-D strip: only one usable axis', mass piled at x\u22480 the sink). That's partial credit. BUT basin_map STILL bails: 'N/A for basin_map \u2014 reachable set exceeds 1200 states with no monotone counter to project out'. morse_graph not re-checked this round but was bailing identically. So #357 is DOWNGRADED from 3-views-fail to basin_map (+ likely morse_graph) still bypass the continuous grid-sweep. See task #465. Screenshot ana-20260625-182026/03-basin_map.png, 03-occupancy_heatmap.png.",
+      "detail": "occupancy improved to 1-D strip; basin_map still N/A",
+      "by": "ide-critic-expert",
+      "status": "open",
+      "task": null,
+      "created": "2026-06-25T18:37:05Z"
     }
   ]
 }
