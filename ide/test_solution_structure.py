@@ -10,6 +10,7 @@ Run from repo root: python3 ide/test_solution_structure.py
 """
 import sys
 import tempfile
+import time
 
 sys.path.insert(0, "ide/web")
 sys.path.insert(0, "viz")
@@ -160,6 +161,20 @@ def _check_richer_basis(fails):
             fails.append(f"#350 no-flood: #337 claim must stay at 2 minimal relations, got {[r['eq'] for r in rels]}")
 
 
+def _check_nonlinear(fails):
+    # NIA (`area = h * w`): Z3 nonlinear integer arithmetic is undecidable and hangs; the structure
+    # analysis must SKIP it (fast + a 'nonlinear' note), not spin 25s+ and crash the server.
+    with tempfile.TemporaryDirectory() as w:
+        ok, prefix, *_ = _export("type rect\n    height ∈ Int\n    width ∈ Int\n    height > 0\n    width > 0\n\n"
+                                 "claim cuber\n    area ∈ Int\n    cube ∈ rect\n    area = cube.height * cube.width", w)
+        t0 = time.time()
+        r = solution_structure(prefix + ".smt2", prefix + ".schema.json")
+        if time.time() - t0 > 10:
+            fails.append(f"#NIA: nonlinear claim should skip fast, took {time.time() - t0:.1f}s")
+        if "nonlinear" not in (r.get("note") or ""):
+            fails.append(f"#NIA: expected a 'nonlinear' note, got {r.get('note')!r}")
+
+
 def main():
     fails = []
     for name, src, want_bb, want_free, want_eqs in CASES:
@@ -205,6 +220,7 @@ def main():
         if not any(c["what"] == "a = b" and "pins" in c["cert"] for c in fc):
             fails.append(f"#348: a=b equality should carry a Motzkin certificate, got {fc}")
 
+    _check_nonlinear(fails)
     _check_relations(fails)
     _check_inequality_forced(fails)       # #348 — Farkas/Motzkin certificate for inequality-forced relations
     _check_richer_basis(fails)            # #350 — lattice surfaces minimal relations the sparse basis misses

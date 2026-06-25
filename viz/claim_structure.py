@@ -15,6 +15,7 @@ import z3
 
 from farkas import lattice_relations, motzkin_certificate
 from render_claim_space import _load_claim, _opt_bound
+from z3_budget import _tsolver, _nonlinear
 
 _SCALAR = ("int", "real", "bool", "enum")
 
@@ -63,7 +64,7 @@ def _verify_core(body, relation_expr, rhs):
     constraints that FORCE the relation (#341, the interrogable proof). assert_and_track each body conjunct
     + the negated relation; the core's tracked constraints are the forcing ones, made PROVABLY MINIMAL by
     a deletion pass (#344). None if not UNSAT."""
-    s = z3.Solver()
+    s = _tsolver()
     tracked = {}
     for k, c in enumerate(conjuncts(body)):
         p = z3.Bool(f"__c{k}"); tracked[p.get_id()] = c
@@ -78,7 +79,7 @@ def _verify_core(body, relation_expr, rhs):
     # constraint the proof cites is load-bearing (matching Z3's own minimize-on-cores idiom).
     i = 0
     while i < len(core):
-        s2 = z3.Solver(); s2.add(relation_expr != rhs)
+        s2 = _tsolver(); s2.add(relation_expr != rhs)
         for c in core[:i] + core[i + 1:]:
             s2.add(c)
         if s2.check() == z3.unsat:
@@ -192,7 +193,7 @@ def _nonpairwise(body, consts, names, is_real):
     and VERIFY each via Z3 (body ∧ relation≠const UNSAT) so a sampling/lattice coincidence is never
     reported. Handles int + real vars (#339). Skips pure pairwise (the equalities pass owns a=b). Returns
     {"eq", "core", "combo"/"motzkin", "smtlib"} dicts — the relation + its interrogable proof (#341)."""
-    sol = z3.Solver(); sol.add(body)
+    sol = _tsolver(); sol.add(body)
     pts = []
     for _ in range(len(names) + 4):
         if sol.check() != z3.sat:
@@ -239,17 +240,26 @@ def solution_structure(smt2_path, schema_path):
     sch, body, consts = _load_claim(smt2_path, schema_path)
     vars_ = [v for v in sch.get("vars", [])
              if v["name"] in consts and v["kind"] in _SCALAR]
-    sol = z3.Solver(); sol.add(body)
-    if sol.check() != z3.sat:
+    sol = _tsolver(); sol.add(body)
+    chk = sol.check()
+    if chk == z3.unknown:                                  # solver timed out (nonlinear / undecidable)
+        return {"sat": True, "backbone": [], "free": [], "equalities": [], "inequalities": [],
+                "relations": [], "forced_certs": [],
+                "note": "structure undetermined — the solver timed out (likely nonlinear arithmetic)"}
+    if chk != z3.sat:
         return {"sat": False, "backbone": [], "free": [], "equalities": [], "inequalities": [],
                 "relations": [], "forced_certs": []}
+    if _nonlinear(body):                                  # NIA — backbone / range / relation solves all hang
+        return {"sat": True, "backbone": [], "free": [], "equalities": [], "inequalities": [],
+                "relations": [], "forced_certs": [],
+                "note": "nonlinear claim — structure analysis skipped (Z3 nonlinear arithmetic is undecidable)"}
     mdl = sol.model()
 
     backbone, free, forced_certs = [], [], []
     for v in vars_:
         c = consts[v["name"]]
         v0 = mdl.eval(c, model_completion=True)
-        s = z3.Solver(); s.add(body); s.add(c != v0)
+        s = _tsolver(); s.add(body); s.add(c != v0)
         if s.check() == z3.unsat:
             backbone.append((v["name"], str(v0)))
             if z3.is_int_value(v0):                             # #348: INEQUALITIES pin the value → show the cert
@@ -269,7 +279,7 @@ def solution_structure(smt2_path, schema_path):
             if freev[i]["kind"] != freev[j]["kind"]:
                 continue
             ci, cj = consts[freev[i]["name"]], consts[freev[j]["name"]]
-            s = z3.Solver(); s.add(body); s.add(ci != cj)
+            s = _tsolver(); s.add(body); s.add(ci != cj)
             if s.check() == z3.unsat:
                 eqs.append((freev[i]["name"], freev[j]["name"]))
                 ec = _ineq_cert(body, consts, [freev[i]["name"], freev[j]["name"]], [1, -1], 0,
@@ -277,7 +287,7 @@ def solution_structure(smt2_path, schema_path):
                 if ec:
                     forced_certs.append({"what": f"{freev[i]['name'].split('.')[-1]} = {freev[j]['name'].split('.')[-1]}", "cert": ec})
                 continue
-            s2 = z3.Solver(); s2.add(body); s2.add(ci == cj)   # forced DIFFERENT in every solution
+            s2 = _tsolver(); s2.add(body); s2.add(ci == cj)   # forced DIFFERENT in every solution
             if s2.check() == z3.unsat:
                 ineqs.append((freev[i]["name"], freev[j]["name"]))
     free_num = [v["name"] for v in freev if v["kind"] in ("int", "real")]

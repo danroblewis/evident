@@ -75,7 +75,9 @@ def _na(out_path, title, msg):
 
 def _opt_bound(body, c, maximize):
     """Exact sup/inf of constant c over the constraint, or None if unbounded/unsat."""
+    from model_const import SOLVE_TIMEOUT_MS
     o = z3.Optimize()
+    o.set("timeout", SOLVE_TIMEOUT_MS)                     # bounded: an unbounded / nonlinear Optimize → None
     o.add(body)
     o.maximize(c) if maximize else o.minimize(c)
     if o.check() != z3.sat:
