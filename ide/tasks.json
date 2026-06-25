@@ -1,5 +1,5 @@
 {
-  "seq": 396,
+  "seq": 397,
   "tasks": [
     {
       "id": 1,
@@ -10255,6 +10255,37 @@
         }
       ],
       "addresses_concern": 371
+    },
+    {
+      "id": 397,
+      "title": "EXPLAIN_FSM_PREAMBLE (shared across all FSM samples) hardcodes count/_count/\u0394count, so a random-walk sample is taught with a variable it doesn't have \u2014 rewrite with a generic carried var x",
+      "detail": "",
+      "status": "worker_done",
+      "created_by": "worker",
+      "created": "2026-06-25T06:58:26Z",
+      "worker_done": true,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [],
+      "log": [
+        {
+          "at": "2026-06-25T06:58:26Z",
+          "by": "worker",
+          "act": "created to address concern #385"
+        },
+        {
+          "at": "2026-06-25T06:58:27Z",
+          "by": "worker",
+          "act": "started"
+        },
+        {
+          "at": "2026-06-25T06:58:27Z",
+          "by": "worker",
+          "act": "done",
+          "note": "Preamble now teaches 'for any carried variable x: x = \u2026 writes this tick, _x reads the previous; x \u2208 Int := 0 seeds; \u0394x = x \u2212 _x'. Generic, correct for every FSM sample. Addresses #102 reopen + #385."
+        }
+      ],
+      "addresses_concern": 385
     }
   ],
   "concerns": [

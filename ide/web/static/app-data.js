@@ -511,12 +511,12 @@ fsm timing
 const EXPLAIN_FSM_PREAMBLE =
   "An <b>fsm</b> is a state machine written as a <i>difference equation</i>: instead of "
   + "looping in your head, you state how each variable RELATES from one tick to the next, and "
-  + "the solver replays it. <code>_count</code> reads the value on the <i>previous</i> tick; "
-  + "<code>count = …</code> writes <i>this</i> tick, <code>_count</code> reads the PREVIOUS tick. "
+  + "the solver replays it. For any carried variable <code>x</code>: <code>x = …</code> writes "
+  + "<i>this</i> tick's value, and <code>_x</code> reads the value on the <i>previous</i> tick. "
   + "You SEED the start value with <code>:=</code> on the declaration "
-  + "(<code>count ∈ Int := 0</code> — sugar for \"on tick 0, count = 0\") since there's no previous tick. "
-  + "<code>Δcount</code> is shorthand for <code>count − _count</code> — the <i>change</i> each "
-  + "tick — so <code>Δcount = 1</code> literally says \"count rises by one every tick\".";
+  + "(<code>x ∈ Int := 0</code> — sugar for \"on tick 0, x = 0\") since there's no previous tick. "
+  + "<code>Δx</code> is shorthand for <code>x − _x</code> — the <i>change</i> each tick — so "
+  + "<code>Δx = 1</code> literally says \"x rises by one every tick\".";
 
 const EXPLAINERS = {
   "counter · a terminating clock (FSM)": {
