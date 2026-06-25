@@ -82,6 +82,12 @@ let preferredView = null;
 // backend auto-picks. A different axis-view has its own (usually empty) entry, so switching views echoes
 // that view's defaults rather than forcing the last view's axes onto it.
 let axisOverride = {};
+// #436: the active INTERACTIVE view (web-ide-shell.md §R.5), or null when a normal PNG view is showing.
+// An interactive view renders an input+result cell into #view instead of a PNG; while one is active, an
+// edit re-renders IT (re-runs against the new model) rather than snapping back to a PNG. Cleared when a
+// normal view chip is clicked (run() with an explicit view).
+let activeInteractive = null;
+let lastViews = [], lastClaim = false;   // #436: the last model's available views + claim flag (so an interactive view can re-render the strip)
 window.addEventListener("keydown", (e) => { if (e.key === "Escape" && _analyzeCtrl) _analyzeCtrl.abort(); });  // Esc cancels an in-flight analyze (#149); guard avoids stealing Esc from modals
 
 // The #structure panel + the interactive diagram overlay (renderStructure / fmtState /
@@ -182,6 +188,7 @@ function paint(data, ms) {
   renderQuerySuggestions(data);                            // example-query chips (Sam #248)
   updateVerifyPlaceholder(data);                           // concrete ⊢verify hint from the model's own vars (#155)
   activeView = data.view;
+  lastViews = (data.views || []).slice(); lastClaim = !!data.claim;   // #436: for re-rendering the strip when an interactive view is active
 
   renderViewTabs(data, activeView, run);             // the view tab strip (app-history.js)
 
@@ -275,6 +282,11 @@ async function run(view) {
   // a debounced re-analyze that setValue/edits just scheduled — that run() carries no view and would
   // re-recommend over it. Cancel the pending timer so the explicit view is the one that lands.
   if (view !== undefined) clearTimeout(timer);
+  // #436: an explicit normal-view selection leaves any interactive view (restore its borrowed controls
+  // to the interrogate panel); a no-view edit while an interactive view is open re-renders IT (re-runs
+  // against the freshly-edited model) instead of fetching a PNG — so the query view stays open + live.
+  if (view !== undefined && activeInteractive) { activeInteractive = null; _restoreInterrogate(); }
+  else if (view === undefined && activeInteractive) { openInteractiveView(activeInteractive); return; }
   // STICKY VIEW: an explicit selection becomes the preferred view; a no-view edit re-uses it so the
   // rendered view survives the edit. Pass it on the request — the backend renders it if available for
   // the new model, else falls back to the recommended view (and reports which via data.view).
@@ -526,6 +538,48 @@ function _applyAxes() {
 }
 $("#axes-x").addEventListener("change", _applyAxes);
 $("#axes-y").addEventListener("change", _applyAxes);
+
+// #436 INTERACTIVE VIEWS (web-ide-shell.md §R.5) — a gallery view that renders an input+result cell
+// in the VIEW region instead of a PNG. The query view re-parents the EXISTING query controls
+// (#query-row/#query-stack/#query-suggest) + the trace scrubber (#inv-trace) into the cell, so the
+// working /api/query + assert-stack + showTrace logic is reused verbatim (no fork, no backend touch).
+// Leaving the view moves them back to the interrogate panel (the bottom-panel query stays functional
+// whenever you're not in this view). Step 2 (#437) will retire the bottom panel once verify also moves.
+const _interrogateHome = {};   // remembers each relocated element's original parent for restore-on-leave
+function _stash(id) { const el = $("#" + id); if (el && !_interrogateHome[id]) _interrogateHome[id] = el.parentNode; return el; }
+function _restoreInterrogate() {
+  // move any relocated controls back to the interrogate region (their original parent), in DOM order
+  ["query-row", "query-stack", "query-suggest", "inv-trace"].forEach((id) => {
+    const el = $("#" + id), home = _interrogateHome[id];
+    if (el && home && el.parentNode !== home) home.appendChild(el);
+  });
+}
+
+function openInteractiveView(v) {
+  if (v !== "query") return;
+  activeInteractive = v;
+  const view = $("#view");
+  view.classList.remove("recomputing", "stale", "grabbing");
+  _restoreInterrogate();    // move any borrowed controls home BEFORE wiping #view, so innerHTML= can't orphan them
+  view.innerHTML =
+    `<div id="qview" class="iview">
+       <div class="iview-head">⊨? ∃ a reachable state satisfying your condition — a conjunction (Enter or assert ⊢+ stacks it)</div>
+       <div id="qview-slot" class="iview-slot"></div>
+       <div id="qview-trace" class="iview-trace"></div>
+     </div>`;
+  // relocate the live query controls + the trace scrubber into the cell (reuse, don't duplicate)
+  const slot = $("#qview-slot"), traceSlot = $("#qview-trace");
+  const qrow = _stash("query-row"), qstack = _stash("query-stack"), qsug = _stash("query-suggest"), qtrace = _stash("inv-trace");
+  if (qrow) { qrow.hidden = false; slot.appendChild(qrow); }
+  if (qstack) slot.appendChild(qstack);          // visibility managed by renderAssumptions (hidden when empty)
+  if (qsug) slot.appendChild(qsug);
+  if (qtrace) traceSlot.appendChild(qtrace);     // showTrace renders the init→witness path here
+  // highlight the query chip + sync Family A; caption under the cell
+  renderViewTabs({ views: lastViews, claim: lastClaim }, "query", run);
+  $("#view-caption").textContent = "the reachable state(s) satisfying your query — a witness + the path that reaches one";
+  $("#axes-ctl").hidden = true; $("#allcond-ctl").hidden = true;
+  const inp = $("#query-prop"); if (inp) inp.focus();
+}
 
 // Entry picker (#290): choosing a different top-level fsm/claim re-renders THAT entry. Re-analyze
 // with no explicit view so the server re-recommends the lead view for the newly-selected entry.

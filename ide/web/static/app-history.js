@@ -319,7 +319,7 @@ function exitCompareModes() {
 // claim analog of solution_space. Any view NOT listed here still renders — it falls into a trailing
 // "other" group (never vanishes).
 const VIEW_FAMILIES = [
-  ["solution space", ["claim_space", "solution_space", "solution_structure"]],
+  ["solution space", ["claim_space", "solution_space", "solution_structure", "query"]],
   ["terminal · end-state", ["terminal_map", "reachable_region", "fixedpoint_map", "basin_map", "morse_graph"]],
   ["dynamics over time", ["state_graph", "reachability_tree", "time_series", "value_heatmap", "timing_diagram", "space_time",
     "transition_matrix", "phase_portrait", "nullcline_field", "cobweb", "orbit_scatter", "occupancy_heatmap"]],
@@ -327,6 +327,14 @@ const VIEW_FAMILIES = [
     "function_residual", "function_guards", "function_behavior", "function_complexity"]],
 ];
 const VIEW_FAMILY = (() => { const m = {}; VIEW_FAMILIES.forEach(([fam, vs]) => vs.forEach(v => { m[v] = fam; })); return m; })();
+
+// #436: INTERACTIVE views (web-ide-shell.md §R.5) — gallery members that render an INPUT affordance +
+// a result region in the VIEW region instead of fetching a PNG. "query" is the first: ∃ a reachable
+// state satisfying a user conjunction. They're frontend-driven (no /api/analyze PNG); the chip click
+// routes to their own renderer (openInteractiveView) rather than onRun(). Only offered for FSM models
+// with a reachable set (gated the same as the bottom-panel query — not a raw claim).
+const INTERACTIVE_VIEWS = new Set(["query"]);
+const INTERACTIVE_LABEL = { query: "query · ∃ reachable" };
 
 // Each view's BEST-CASE rigor class — mirrors render.py's partition (_ALWAYS_PROVEN / _BOUND_VIEWS /
 // _ENUMERATE_VIEWS). This is the KIND of view (a per-chip hint); the ACTIVE render's true, capping-aware
@@ -337,6 +345,7 @@ const _ENUMERATE_VIEWS = new Set(["state_graph", "basin_map", "fixedpoint_map", 
   "timing_diagram", "time_series", "value_heatmap", "reachability_tree", "orbit_scatter"]);
 function viewBaseRigor(v) {
   if (v === "claim_space" || v === "solution_structure" || v.startsWith("function_")) return "proven";
+  if (v === "query") return "exhaustive";   // #436: a witness search is exhaustive over the reachable set
   if (_BOUND_VIEWS.has(v)) return "proven";
   if (_ENUMERATE_VIEWS.has(v)) return "exhaustive";
   return "sampled";
@@ -358,7 +367,10 @@ let browsedFamily = null;
 // instead of the whole 25-chip wall, so the figure (6c) gets the bulk of the region.
 function renderViewTabs(data, activeView, onRun) {
   const tabs = $("#tabs");
-  const avail = data.views || [];
+  const avail = (data.views || []).slice();
+  // #436: offer the interactive "query" view for FSM models with a reachable set (same gate as the
+  // bottom-panel query — not a raw claim). It's frontend-driven, so it's not in data.views; inject it.
+  if (avail.length && !data.claim && !avail.includes("query")) avail.push("query");
   // available families in A→D order; any unmapped views go in a trailing "other" so nothing vanishes
   const fams = VIEW_FAMILIES.map(([fam, vs]) => [fam, vs.filter(v => avail.includes(v))]).filter(([, vs]) => vs.length);
   const other = avail.filter(v => !VIEW_FAMILY[v]);
@@ -396,9 +408,10 @@ function renderViewTabs(data, activeView, onRun) {
     row2.className = "tab-chip-row";
     const chips = (fams.find(([fam]) => fam === browsedFamily) || [, []])[1];
     chips.forEach((v, i) => {
+      const interactive = INTERACTIVE_VIEWS.has(v);
       const el = document.createElement("div");
-      el.className = "tab" + (v === activeView ? " on" : "");
-      el.textContent = v.replace(/_/g, " ");
+      el.className = "tab" + (v === activeView ? " on" : "") + (interactive ? " tab-interactive" : "");
+      el.textContent = interactive ? (INTERACTIVE_LABEL[v] || v) : v.replace(/_/g, " ");
       const rig = viewBaseRigor(v);
       const dot = document.createElement("span");
       dot.className = "tab-rigor rigor-" + rig;
@@ -408,9 +421,11 @@ function renderViewTabs(data, activeView, onRun) {
       el.setAttribute("aria-selected", v === activeView ? "true" : "false");
       el.tabIndex = v === activeView ? 0 : -1;
       if (VIEW_CAPTIONS[v]) el.dataset.gloss = VIEW_CAPTIONS[v];   // hover a tab → its caption
-      el.onclick = () => onRun(v);
+      // #436: an interactive view renders its own input+result cell (no PNG fetch); a normal view onRun()s.
+      const activate = interactive ? () => openInteractiveView(v) : () => onRun(v);
+      el.onclick = activate;
       el.onkeydown = (e) => {                     // roving ←/→ within the browsed family's chips
-        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onRun(v); }
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); activate(); }
         else if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
           e.preventDefault();
           const els = [...row2.querySelectorAll(".tab")];
