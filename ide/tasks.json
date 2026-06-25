@@ -1,5 +1,5 @@
 {
-  "seq": 407,
+  "seq": 415,
   "tasks": [
     {
       "id": 1,
@@ -10353,16 +10353,28 @@
       "id": 400,
       "title": "Split render_scatter_matrix.py: lift sample_states + _probe_degenerate_attractor into a new scatter_sample.py module (data-collection concern), leaving the renderer with only the draw code. File is 499 lines; _draw_scatter_matrix is 192 lines and sample_states is 95 \u2014 extracting the sampling concern to a sibling module drops BOTH the function-too-long and keeps the renderer under 500. Behavior-preserving; sample_states is called only locally at render_scatter_matrix.py:489.",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "ide-architect",
       "created": "2026-06-25T07:27:15Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "refactor"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-25T07:51:10Z",
+          "by": "worker",
+          "act": "started"
+        },
+        {
+          "at": "2026-06-25T07:51:10Z",
+          "by": "worker",
+          "act": "done",
+          "note": "Shipped commit 6fd94a36: sample_states + _probe_degenerate_attractor moved to viz/scatter_sample.py; render_scatter_matrix 485->389 lines; 36/36 PNGs byte-identical; baseline 19->18."
+        }
+      ]
     },
     {
       "id": 401,
@@ -10451,6 +10463,111 @@
       "reopened": 0,
       "tags": [
         "refactor"
+      ],
+      "log": []
+    },
+    {
+      "id": 408,
+      "title": "Family-group the ~28 diagram tabs: add a static view\u2192family map (solution-space / terminal / dynamics-over-time / structure-law), teach renderViewTabs to lay out four labeled groups with a per-chip rigor badge (proven/exhaustive/sampled from render.py view_rigor). Pure frontend. THE highest-leverage move \u2014 see docs/plans/web-ide-shell.md \u00a70/\u00a73.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-ui-designer",
+      "created": "2026-06-25T07:50:57Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "ui"
+      ],
+      "log": []
+    },
+    {
+      "id": 409,
+      "title": "Collapse verify/query/solve into one tabbed Interrogate drawer (cockpit region 6d): three always-on stacked rows (#invariant/#query-row/#solve) become one drawer with three tabs (\u22a2 verify / \u22a8? query / \u22a8 Solve); only the active tool's controls show. Reclaims the vertical space pushing the diagram below the fold. Frontend-only. See web-ide-shell.md \u00a72/\u00a76.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-ui-designer",
+      "created": "2026-06-25T07:50:57Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "ui"
+      ],
+      "log": []
+    },
+    {
+      "id": 410,
+      "title": "Group the toolbar into action clusters + an Export \u25be menu: ~12 loose buttons \u2192 4 visible verbs (Run, \u22a8 Solve, Export \u25be, \u2318K) + icon pairs for symbols/tour and pin/diff; SMT-LIB/.ev/Share/Save move behind Export \u25be. Stops the toolbar clipping at 1280px. Frontend-only. See web-ide-shell.md \u00a74.1.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-ui-designer",
+      "created": "2026-06-25T07:50:57Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "ui"
+      ],
+      "log": []
+    },
+    {
+      "id": 411,
+      "title": "Re-home the two naked number boxes: scope \u2192 status/transport footer beside the honesty line it governs (labeled stepper + \u2713complete/\u26a0capped); unroll \u2192 inside the Export \u25be menu under \u29c9 SMT-LIB (only SMT-LIB reads it). Frontend-only; depends on the toolbar/footer slices. See web-ide-shell.md \u00a74.2.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-ui-designer",
+      "created": "2026-06-25T07:50:57Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "ui"
+      ],
+      "log": []
+    },
+    {
+      "id": 412,
+      "title": "Cockpit grid for the analysis panel + persistent status/transport footer: CSS-grid the panel into labeled cells 6a shape-banner / 6b verdict-strip / 6c view; pull honesty + latency + tick-transport into a bottom footer (session-global, not per-region). Mostly CSS + DOM reparent. See web-ide-shell.md \u00a71/\u00a72 regions 6-7.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-ui-designer",
+      "created": "2026-06-25T07:50:57Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "ui"
+      ],
+      "log": []
+    },
+    {
+      "id": 413,
+      "title": "Samples-as-read-only-folder in a left workspace rail: replace the samples <select> with a 'samples (read-only)' tree grouped FSM / \u22a8 Solve / showcase (grouping reads the existing sample-label suffixes \u2014 no new metadata); editing a sample offers 'save a copy into my files'. See web-ide-shell.md \u00a75.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-ui-designer",
+      "created": "2026-06-25T07:50:57Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "ui"
+      ],
+      "log": []
+    },
+    {
+      "id": 414,
+      "title": "my-files opened-folder editing (workspace rail, files half): the real open-folder model \u2014 a left-rail 'my files' tree of editable source files with a dirty marker, backed by file-system access / persistence. Largest UI slice; gates on the file/persistence decision in web-ide.md \u00a710.1. Ship last. See web-ide-shell.md \u00a75/\u00a76.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-ui-designer",
+      "created": "2026-06-25T07:50:57Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "ui"
       ],
       "log": []
     }
@@ -11547,9 +11664,19 @@
       "title": "render_*.py duplicate clusters confirmed via find_duplicates \u2014 but they are NEAR-matches with divergent intent, not safe blind merges",
       "detail": "find_duplicates(viz, 0.85) surfaced 9 clusters. The load-bearing ones are NOT trivially mergeable: _cardinality (phase_portrait_field.py:68, DECLARED variant count) vs _observed_cardinality (chord_channels.py:28, REACHABLE distinct count) are 92% similar but have opposite semantics \u2014 merging would silently change which axis a renderer treats as degenerate. Same for the per-file main() CLI entrypoints (some catch exceptions + draw a placeholder, some don't; some take argv, some read sys.argv). The real shared shape worth extracting is the sampling/projection helpers (ordinal/tick_info-style value->axis mapping repeated across scatter_matrix, phase_portrait, parallel_coords) into a viz/axis_map.py \u2014 that IS behavior-preserving but needs each call-site's value mapping diffed first. Filed as part of the render-split tasks #400-405 rather than shipped, because a blind merge here trades a lint number for a correctness regression.",
       "by": "ide-architect",
-      "status": "open",
+      "status": "cleared",
       "task": null,
-      "created": "2026-06-25T07:27:41Z"
+      "created": "2026-06-25T07:27:41Z",
+      "cleared": "2026-06-25T07:51:15Z"
+    },
+    {
+      "id": 415,
+      "title": "scatter_matrix draw-split (#401) remaining scope narrowed",
+      "detail": "The sample_states half of #401 shipped with #400 (commit 6fd94a36) \u2014 sample_states is now in scatter_sample.py, both halves under 70 lines. What REMAINS for #401 is only _draw_scatter_matrix (192 lines, render_scatter_matrix.py:53). Break it along its phases: (1) the N/A degrade card (no states / n<1), (2) figure+subplot grid setup, (3) per-panel scatter draw (the NxN loop), (4) diagonal var labels + the color legend. Each a private helper. This is matplotlib draw-order-sensitive \u2014 verify via the /tmp render-diff harness (render all 4 views across render_smoke's 9 sample programs, assert 36/36 PNGs byte-identical) before shipping, exactly as #400 was verified.",
+      "by": "ide-architect",
+      "status": "open",
+      "task": 401,
+      "created": "2026-06-25T07:51:24Z"
     }
   ]
 }
