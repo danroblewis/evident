@@ -33,6 +33,7 @@ from cobweb_sample import (
     _depends_on_held, _reachable_count, _sample_map, _staircase, _seed_for,
     _from_ord,
 )
+from axis_select import resolve_axes, write_axes
 
 
 # --------------------------------------------------------------------------
@@ -185,13 +186,20 @@ def _render_faceted(m, out_path, var, mode, base, grid, bounded, facet, groups, 
     plt.close(fig)
 
 
-def render(smt2, schema, out_path):
+def render(smt2, schema, out_path, x_var=None, y_var=None):
     m = load(smt2, schema)
     var, mode = _pick_primary(m)
 
     if var is None:
         _na_card(out_path, m.fsm, "N/A: no state var to cobweb")
         return
+    # #445: a cobweb is 1-D (x_n → x_{n+1} of ONE scalar), so only x_var applies — honor it when it
+    # names a real numeric var, else keep _pick_primary's auto-pick. The view's y axis IS x (the same
+    # scalar one tick later), so echo y = x; y_var is ignored.
+    if x_var:
+        var, _y, axinfo = resolve_axes(m, x_var, None, var, var)
+        axinfo["y"] = axinfo["x"]
+        write_axes(out_path, axinfo)
 
     resolved = _resolve_grid(m, out_path, var, mode)
     if resolved is None:

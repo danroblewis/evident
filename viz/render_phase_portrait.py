@@ -62,6 +62,7 @@ from phase_portrait_extent import (
 # regime's reachable states (never the vector-field grid arrows). Un-faceted
 # panels save PLAIN (figure_fraction); faceted panels save TIGHT (tight_fraction).
 from overlay_points import write_points, figure_fraction, tight_fraction
+from axis_select import resolve_axes, write_axes
 
 
 # ----- channel assignment: axes (numeric-first) + a facet categorical -------
@@ -140,9 +141,19 @@ def _facet_values(m, facet_var):
 
 
 # ----- top-level orchestration ----------------------------------------------
-def render(smt2_path, schema_path, out_path):
+def render(smt2_path, schema_path, out_path, x_var=None, y_var=None):
     m = load(smt2_path, schema_path)
     axx, axy, facet_var, regime = plan_channels(m)
+
+    # #445: honor an explicit axis request, falling back to plan_channels' auto-pick. Only swaps
+    # in a requested name that's a real numeric carried leaf — defaults are unchanged otherwise.
+    # Skip on the degenerate regime (no axes to override) and when there aren't 2 numeric axes.
+    if regime != "degenerate" and axx is not None and axy is not None:
+        axx, axy, _axinfo = resolve_axes(m, x_var, y_var, axx, axy)
+        write_axes(out_path, _axinfo)
+    else:
+        write_axes(out_path, {"x": None, "y": None,
+                              "requested": {"x": x_var, "y": y_var}, "fell_back": bool(x_var or y_var)})
 
     if regime == "degenerate":
         fig, ax = plt.subplots(figsize=(8.5, 7.5))

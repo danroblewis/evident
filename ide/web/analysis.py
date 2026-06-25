@@ -308,7 +308,7 @@ def _dynamics_response(req, prefix, dropped, msg):
     from config import effective_scope
     from evident_viz import load as load_model
     from render import (
-        FUNCTION_VIEWS, RENDERERS, VIEWS, _function_response, _render_png)
+        FUNCTION_VIEWS, RENDERERS, VIEWS, _function_response, _read_axes, _render_png)
 
     m = load_model(prefix + ".smt2", prefix + ".schema.json")
     if getattr(req, "verify_soundness", False):       # #332: on-demand cross-check, no render needed
@@ -345,15 +345,19 @@ def _dynamics_response(req, prefix, dropped, msg):
         if cand in RENDERERS:
             try:
                 png, points = _render_png(cand, prefix, all_conditions=req.all_conditions,
-                                          k=getattr(req, "k", None))   # #327: k-induction depth
+                                          k=getattr(req, "k", None),    # #327: k-induction depth
+                                          x_var=getattr(req, "x_var", None),   # #445: explicit
+                                          y_var=getattr(req, "y_var", None))   # projection axes
                 view = cand
                 break
             except Exception as _re:
                 print(f"[server] render {cand} failed: {type(_re).__name__}: {_re}",
                       file=sys.stderr)
-    return _analyze_payload(
+    payload = _analyze_payload(
         req, m, dropped, msg, structure, view, png, points, scope, global_dynamics,
         states, n_states, n_edges, max_branch, recurrent, capped)
+    payload["axes"] = _read_axes(prefix, view)   # #445: echo the projection axes actually used
+    return payload
 
 
 def _analyze_payload(req, m, dropped, msg, structure, view, png, points, scope,

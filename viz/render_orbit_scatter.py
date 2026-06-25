@@ -38,6 +38,7 @@ from orbit_scatter_build import (
     fallback_orbits, is_delay_embed, basins_separable, _offset_collisions,
 )
 from overlay_points import write_points, tight_fraction
+from axis_select import resolve_axes, write_axes
 
 
 def _na_card(out_path, title, msg, fontsize=13):
@@ -142,7 +143,7 @@ def _set_limits(model, ax, pts, xvar, yvar, delay):
 
 
 # ---- main render -------------------------------------------------------------
-def render(smt2_path, schema_path, out_path):
+def render(smt2_path, schema_path, out_path, x_var=None, y_var=None):
     model = load(smt2_path, schema_path)
     title = f"{model.fsm} — orbit_scatter"
 
@@ -150,6 +151,12 @@ def render(smt2_path, schema_path, out_path):
     if xvar is None:
         _na_card(out_path, title, "N/A for state: no state variables", 14)
         return "orbit_scatter: N/A (no state variables)"
+    # #445: honor an explicit axis request, falling back to _select_channels' auto-pick. A
+    # single-numeric system delay-embeds (x_t vs x_{t+1}); overriding makes sense only when 2
+    # numeric axes exist, so resolve against them and leave the delay case to the auto-pick.
+    if yvar is not None:
+        xvar, yvar, axinfo = resolve_axes(model, x_var, y_var, xvar, yvar)
+        write_axes(out_path, axinfo)
 
     delay = is_delay_embed(xvar, yvar)
 

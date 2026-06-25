@@ -48,6 +48,7 @@ from evident_viz import load
 # Recurrent-extent + sign-grid analysis (the data layer) lives in the sibling
 # module; this file keeps the drawing + dispatch.
 from nullcline_analysis import axis_extent, _sign_grid, MIN_FIELD_POINTS
+from axis_select import resolve_axes, write_axes
 
 VIZ = "nullcline_field"
 GRID = 41            # samples per numeric axis
@@ -383,12 +384,7 @@ def render_faceted(m, out_path, xv, facet, yv):
 
 
 # --------------------------------------------------------------------------- #
-def main():
-    if len(sys.argv) != 4:
-        print("usage: render_nullcline_field.py <smt2> <schema> <out_path>",
-              file=sys.stderr)
-        sys.exit(2)
-    smt2, schema, out = sys.argv[1], sys.argv[2], sys.argv[3]
+def render(smt2, schema, out, x_var=None, y_var=None):
     m = load(smt2, schema)
 
     nums = m.numeric_vars
@@ -400,8 +396,11 @@ def main():
     facet = m.facet_var(max_card=6, max_change=0.25) if len(nums) == 1 else None
 
     if len(nums) >= 2:
-        # canonical two-axis sign-field on the top two numeric vars.
-        render_numeric(m, out, nums[0], nums[1])
+        # canonical two-axis sign-field on the top two numeric vars — #445: honor an explicit
+        # axis request, falling back to the top-two auto-pick for any unknown/non-numeric name.
+        xv, yv2, axinfo = resolve_axes(m, x_var, y_var, nums[0], nums[1])
+        write_axes(out, axinfo)
+        render_numeric(m, out, xv, yv2)
     elif len(nums) == 1 and facet is not None:
         # MIXED: facet by a suitable ~static categorical; a second categorical
         # (if any, and distinct from the facet) becomes the ordinal Y axis.
@@ -412,7 +411,15 @@ def main():
                   if not nums else
                   f"{len(nums)} numeric var(s) and no suitable facet variable")
         placeholder(m, out, reason)
-    print(f"wrote {out}")
+
+
+def main():
+    if len(sys.argv) != 4:
+        print("usage: render_nullcline_field.py <smt2> <schema> <out_path>",
+              file=sys.stderr)
+        sys.exit(2)
+    render(sys.argv[1], sys.argv[2], sys.argv[3])
+    print(f"wrote {sys.argv[3]}")
 
 
 if __name__ == "__main__":

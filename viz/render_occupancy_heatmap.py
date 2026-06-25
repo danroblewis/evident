@@ -44,6 +44,7 @@ from occupancy_collect import (  # noqa: E402
     numeric_degeneracy, numeric_extent, _clip_to_extent, occupancy_smear,
     pick_axes, nbins, MIN_DISTINCT,
 )
+from axis_select import resolve_axes, write_axes  # noqa: E402
 
 
 def draw_heatmap(fig, ax, m, a0, a1, xs, ys, vmax=None, title=None,
@@ -89,7 +90,7 @@ def placeholder(ax, m, reason):
     ax.set_yticks([])
 
 
-def render(smt2, schema, out):
+def render(smt2, schema, out, x_var=None, y_var=None):
     m = load(smt2, schema)
     title = f"{m.fsm} — {VIZ_TYPE}"
 
@@ -105,6 +106,14 @@ def render(smt2, schema, out):
         if facet is not None and facet["name"] in {a0_pre["name"], a1_pre["name"]}:
             facet = None
     a0, a1 = pick_axes(m, exclude=({facet["name"]} if facet else ()))
+    # #445: honor an explicit axis request, falling back to pick_axes' auto-pick. Only when both
+    # axes exist (a 2-D occupancy); the single-axis strip below keeps its auto-pick. occupancy bins
+    # ordinals too, so the candidate pool is any NON-Seq carried var (numeric or discrete), not just
+    # numeric (unlike phase_portrait, whose continuous field needs metric axes).
+    if a0 is not None and a1 is not None:
+        cand = [v for v in m.carried if v["kind"] != "seq"]
+        a0, a1, axinfo = resolve_axes(m, x_var, y_var, a0, a1, candidates=cand)
+        write_axes(out, axinfo)
 
     # --- no axes at all ---
     if a0 is None:

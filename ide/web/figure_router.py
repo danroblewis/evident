@@ -41,6 +41,8 @@ class Source(BaseModel):
     entry: str | None = None        # which top-level fsm/claim to render — the entry picker (#290)
     verify_soundness: bool = False  # #332: on-demand abstract-vs-brute-force cross-check (no render)
     k: int | None = None            # #327: k-induction depth for reachable_region (deepen the unrolling)
+    x_var: str | None = None        # #445/#421: explicit projection axes for the axis-taking views
+    y_var: str | None = None        # (phase_portrait/nullcline/scatter/orbit/occupancy/cobweb); None → auto-pick
 
 
 @router.post("/api/analyze")

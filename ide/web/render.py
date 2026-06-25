@@ -36,10 +36,21 @@ ALL_VIEWS = (
 )
 
 
+def _takes_axes(fn):
+    """True iff the renderer's render() accepts explicit x_var/y_var projection-axis kwargs
+    (#445). The axis-taking views (phase_portrait/nullcline/scatter/orbit/occupancy/cobweb)
+    declare them; the rest don't, so the adapter only threads axes to the ones that asked."""
+    try:
+        params = inspect.signature(fn).parameters
+    except (TypeError, ValueError):
+        return False
+    return "x_var" in params and "y_var" in params
+
+
 def _render_via_main(mod):
     """A renderer that only ships a CLI main(smt2 schema out via argv): patch argv around
     the call (serialized by _LOCK, so the global mutation is safe)."""
-    def render(smt2, schema, out_path):
+    def render(smt2, schema, out_path, x_var=None, y_var=None):
         saved = sys.argv
         sys.argv = ["render", smt2, schema, out_path]
         try:
@@ -51,20 +62,28 @@ def _render_via_main(mod):
 
 def _render_via_model(fn):
     """A renderer whose render() takes a loaded Model + out_path, not file paths."""
-    def render(smt2, schema, out_path):
+    def render(smt2, schema, out_path, x_var=None, y_var=None):
         fn(load_model(smt2, schema), out_path)
     return render
 
 
 def _adapt(mod):
-    """Normalize a renderer to render(smt2, schema, out_path), whatever shape it ships:
-    render(smt2, schema, out) · render(model, out) · or a CLI main()."""
+    """Normalize a renderer to render(smt2, schema, out_path, x_var=None, y_var=None), whatever
+    shape it ships: render(smt2, schema, out[, x_var, y_var]) · render(model, out) · CLI main().
+    Axis kwargs are threaded ONLY to renderers whose render() declares them (#445); for every
+    other shape the wrapper accepts-and-ignores x_var/y_var, so the call site is uniform."""
     if hasattr(mod, "render"):
         try:
             n = len(inspect.signature(mod.render).parameters)
         except (TypeError, ValueError):
             n = 3
-        return mod.render if n >= 3 else _render_via_model(mod.render)
+        if n < 3:
+            return _render_via_model(mod.render)
+        if _takes_axes(mod.render):
+            return mod.render                       # already (smt2, schema, out, x_var=, y_var=)
+        def render(smt2, schema, out_path, x_var=None, y_var=None):
+            return mod.render(smt2, schema, out_path)   # axis-agnostic: drop the kwargs
+        return render
     if hasattr(mod, "main"):
         return _render_via_main(mod)
     return None
@@ -150,18 +169,18 @@ def _k_depth(view, k):
         RRR.K_DEPTH = saved
 
 
-def _render_png(view, prefix, all_conditions=False, k=None):
+def _render_png(view, prefix, all_conditions=False, k=None, x_var=None, y_var=None):
     """Render the view PNG and return (bytes, points). `points` is the interactive
     hover-overlay sidecar (`<out>.points.json`, written by renderers that support it —
     currently solution_space): a list of {fx, fy, state}; [] when no sidecar exists.
 
     `all_conditions` requests state_graph's GLOBAL-dynamics graph (every initial
-    condition); `k` requests reachable_region's k-induction depth (#327). Threaded via
-    the renderer module flag under the server's render _LOCK (the renderers ship a fixed
-    3-arg signature), then restored so they never leak."""
+    condition); `k` requests reachable_region's k-induction depth (#327). `x_var`/`y_var`
+    request explicit projection axes for the axis-taking views (#445) — the adapter only
+    forwards them to renderers that declare them, so this call stays uniform across views."""
     out = prefix + f".{view}.png"
     with _all_conditions(view, all_conditions), _k_depth(view, k):
-        RENDERERS[view](prefix + ".smt2", prefix + ".schema.json", out)
+        RENDERERS[view](prefix + ".smt2", prefix + ".schema.json", out, x_var=x_var, y_var=y_var)
     with open(out, "rb") as f:
         png = f.read()
     points = []
@@ -173,6 +192,17 @@ def _render_png(view, prefix, all_conditions=False, k=None):
     except (OSError, ValueError):
         pass
     return png, points
+
+
+def _read_axes(prefix, view):
+    """#445: the projection axes a renderer actually USED, from its `<out>.axes.json` sidecar —
+    {x, y, requested, fell_back}, or None when the view wrote no sidecar (not an axis-taking view).
+    Lets the analyze response echo the active x/y selection and flag a rejected request."""
+    try:
+        with open(f"{prefix}.{view}.png.axes.json") as af:
+            return json.load(af)
+    except (OSError, ValueError):
+        return None
 
 
 def _render_svg(view, prefix):
