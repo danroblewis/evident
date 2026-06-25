@@ -216,6 +216,43 @@ def _analyze_banner(m, dropped, max_branch, recurrent, states, n_states, global_
     return shape
 
 
+# Views whose PRIMARY gate is structural — they draw a dead N/A card for a model that lacks what
+# they need, so we DON'T OFFER them there (the frontend builds tabs off the returned `views`, so
+# an un-offered view simply has no tab — no N/A card). Each predicate(m, n_numeric, has_seq)
+# returns True iff the view can structurally apply.
+#
+# We gate ONLY on the CHEAP, CERTAIN structural minimum (kinds of the carried leaves), NOT on a
+# model-specific degenerate RUN. A view that needs two numeric POSITION axes draws its OWN honest
+# N/A when an axis happens to be constant on the reachable set (life's `pop`); we don't try to
+# predict that cheaply, because the same "looks flat from init" shape is exactly what a continuous
+# oscillator (vanderpol/pendulum: 2 Int axes, a 1-state from-init reachable set) shows BEFORE its
+# renderer grids the proven bounds into a full phase portrait — so a varying-count gate would
+# wrongly hide the views that DO render. The structural floor (≥2 numeric) is the safe, correct cut.
+_NEEDS_TWO_NUMERIC = lambda m, nn, hs: nn >= 2     # noqa: E731 (a gate predicate, not a def)
+_OFFER_GATES = {
+    # space_time rasters a Seq-carried state; with no Seq it N/As every model (the whole corpus
+    # has none) — value_heatmap is the general view, so only offer space_time for a real Seq.
+    "space_time": lambda m, nn, hs: hs,
+    # value_heatmap is one ROW per carried leaf — it needs ≥2 leaves (a Seq flattens to ≥2
+    # element-rows, so a single Seq qualifies); a lone scalar/enum has nothing to raster.
+    "value_heatmap": lambda m, nn, hs: len(m.interface_vars) >= 2 or hs,
+    "phase_portrait": _NEEDS_TWO_NUMERIC,
+    "nullcline_field": _NEEDS_TWO_NUMERIC,
+    "occupancy_heatmap": _NEEDS_TWO_NUMERIC,
+}
+
+
+def _offered_views(m, states, views):
+    """The per-model subset of `views` to OFFER — drop the views whose primary structural gate
+    can't be met for THIS model, so they never show as a dead N/A tab (#428). Cheap: reads only
+    the carried-var kinds (no solve; `states` kept for signature symmetry with the analyze flow).
+    Views with no gate are always offered (they have an honest in-view fallback or always apply)."""
+    n_numeric = sum(1 for v in m.interface_vars if v["kind"] in ("int", "real"))
+    has_seq = any(v.get("kind") == "seq" for v in m.carried)
+    return [v for v in views
+            if _OFFER_GATES.get(v) is None or _OFFER_GATES[v](m, n_numeric, has_seq)]
+
+
 def _recommend(m, n_states, max_branch, discrete, views):
     """Pick the lead view from the model's shape:
       - a SMALL DISCRETE machine → state_graph: it draws the whole structure at once —
@@ -295,7 +332,12 @@ def _dynamics_response(req, prefix, dropped, msg):
                                 # green "Terminates" card under the red "under-constrained"
                                 # banner (Marek #94). The dropped-constraint surface stands.
     discrete = m.is_discrete()
-    view = req.view if (req.view in VIEWS) else _recommend(m, n_states, max_branch, discrete, VIEWS)
+    # #428: only OFFER the views whose structural gate this model can meet — an un-offered view
+    # has no tab (the frontend drives tabs off the returned `views`), so no dead N/A card. The
+    # lead-view recommendation is drawn from the offered set too. FUNCTION_VIEWS stay (opt-in,
+    # never auto-recommended; their fast path renders from the cheap decomposition).
+    offered = _offered_views(m, states, VIEWS)
+    view = req.view if (req.view in VIEWS) else _recommend(m, n_states, max_branch, discrete, offered)
     # Resilient render: a single buggy renderer must never sink the whole analysis.
     # Try the chosen view, then fall back to dependable ones; report what rendered.
     png, points = b"", []
@@ -352,7 +394,8 @@ def _analyze_payload(req, m, dropped, msg, structure, view, png, points, scope,
                 + [v["name"].split(".")[-1] for v in getattr(m, "derived", [])],
         "view": view, "rigor": rigor,   # #285/#327: proven/exhaustive/sampled (k-aware for reachable_region)
         "k": k_depth,                    # #327: the active k-induction depth (None until the knob is used)
-        "views": VIEWS,
+        "views": _offered_views(m, states, VIEWS),   # #428: per-model offered subset — no dead N/A tabs
+
         "all_conditions": bool(req.all_conditions) and view == "state_graph",  # global dynamics vs from-init (diagram #1)
         "png": base64.b64encode(png).decode() if png else None,
         "points": points,        # interactive hover overlay (solution_space); [] otherwise
