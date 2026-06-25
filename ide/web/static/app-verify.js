@@ -469,26 +469,33 @@ function _matchPoint(points, stepState) {
   }
   return best;
 }
-// Remove any prior trace-step ring from the live overlay (each scrub step replaces it).
+// Remove any prior trace-step marker from the live overlay (each scrub step replaces it). Covers both
+// the round ring (scatter views) and the full-height vertical cursor (#354 time_series tick views).
 function clearTraceRing() {
   if (lastOverlay && lastOverlay.wrap) {
-    const old = lastOverlay.wrap.querySelector(".trace-ring");
-    if (old) old.remove();
+    lastOverlay.wrap.querySelectorAll(".trace-ring, .trace-cursor").forEach((m) => m.remove());
   }
 }
-// Ring the diagram point matching the current trace step, over the live `.view-wrap`. No-op when
-// there's no live overlay, no points, or no match — the stepper still works regardless. The ring
-// is pointer-events:none (app.css) so it never blocks the underlying .pt-target hover targets.
+// Mark the current trace step on the live `.view-wrap`. No-op when there's no live overlay, no points,
+// or no match — the stepper still works regardless. The marker is pointer-events:none (app.css) so it
+// never blocks the underlying .pt-target hover targets. #354: a matched point carrying a `tick` field
+// (time_series, which plots ticks on the x-axis) gets a full-height VERTICAL CURSOR at its fx instead of
+// a point-ring; everything else (state_graph / phase_portrait / solution_space) keeps the round ring.
 function highlightTraceStep(stepState) {
   clearTraceRing();
   if (!lastOverlay || !lastOverlay.wrap) return;
   const p = _matchPoint(lastOverlay.points, stepState);
   if (!p) return;
-  const ring = document.createElement("div");
-  ring.className = "trace-ring";
-  ring.style.left = (p.fx * 100) + "%";
-  ring.style.top = (p.fy * 100) + "%";
-  lastOverlay.wrap.appendChild(ring);
+  const marker = document.createElement("div");
+  if (p.tick !== undefined) {
+    marker.className = "trace-cursor";
+    marker.style.left = (p.fx * 100) + "%";        // a vertical line at the tick's x-fraction
+  } else {
+    marker.className = "trace-ring";
+    marker.style.left = (p.fx * 100) + "%";
+    marker.style.top = (p.fy * 100) + "%";
+  }
+  lastOverlay.wrap.appendChild(marker);
 }
 
 const _trace = { states: [], i: 0, label: "", kind: "violation", cycleStart: null };

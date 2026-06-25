@@ -544,6 +544,11 @@ tr.g-changed > td, tr.g-changed > td.k { background:#2a210e; }   /* a differing 
   border-radius:50%; border:2px solid var(--accent); background:#58a6ff33; pointer-events:none;
   z-index:25; box-shadow:0 0 0 2px #58a6ff44, 0 0 8px var(--accent);
   animation:solving-pulse 1.1s ease-in-out infinite; }
+/* #354: the time_series trace cursor — a thin full-height vertical line at the current tick's x-fraction.
+   Visible on the dark theme via the accent, with a soft glow; pointer-events:none so it never blocks hovers. */
+.trace-cursor { position:absolute; top:0; bottom:0; width:2px; transform:translateX(-50%);
+  background:var(--accent); pointer-events:none; z-index:25; box-shadow:0 0 6px var(--accent);
+  animation:solving-pulse 1.1s ease-in-out infinite; }
 
 /* run-history strip (#209): a thin row of dim thumbnails of recent analyses — click to look
    back. Subtle and out of the way; collapses to nothing when there's no history. */
