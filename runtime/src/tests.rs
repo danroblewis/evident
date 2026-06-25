@@ -348,6 +348,26 @@ mod parser {
     }
 
     #[test]
+    fn parse_multiline_ternary() {
+        // `cond ?` with its branches on the following indented lines parses to the same Ternary as
+        // the single-line form. Here the branches are CONSTRAINTS (`v = a` / `v = b`), so it lowers
+        // to the guard pair `(cond ⇒ v = a) ∧ (¬cond ⇒ v = b)`.
+        let p = parse("claim t\n    v ∈ Int\n    (v > 0) ?\n        v = 1\n        : v = 0\n").unwrap();
+        let tern = match &p.schemas[0].body[1] {
+            BodyItem::Constraint(e) => e,
+            other => panic!("expected a Constraint, got {:?}", other),
+        };
+        match tern {
+            Expr::Ternary(c, t, e) => {
+                assert!(matches!(c.as_ref(), Expr::Binary(BinOp::Gt, _, _)), "cond: {:?}", c);
+                assert!(matches!(t.as_ref(), Expr::Binary(BinOp::Eq, _, _)), "then: {:?}", t);
+                assert!(matches!(e.as_ref(), Expr::Binary(BinOp::Eq, _, _)), "else: {:?}", e);
+            }
+            other => panic!("expected Ternary, got {:?}", other),
+        }
+    }
+
+    #[test]
     fn parse_chained_membership_two_sided() {
 
         let p = parse("claim t\n    0 < pos_x ∈ Int < 5\n").unwrap();

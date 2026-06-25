@@ -148,19 +148,30 @@ impl Parser {
         Ok(lhs)
     }
 
+    /// Consume any Newline / Indent tokens. Used inside the multi-line ternary so `cond ?` can put
+    /// its then/else branches on the following indented lines (`cond ? \n A \n : B`).
+    fn skip_layout(&mut self) {
+        while matches!(self.peek(), Token::Newline | Token::Indent(_)) {
+            self.bump();
+        }
+    }
+
     fn parse_ternary(&mut self) -> Result<Expr> {
         let cond = self.parse_or()?;
         if !matches!(self.peek(), Token::Question) {
             return Ok(cond);
         }
         self.bump();
+        self.skip_layout();                       // multi-line: `cond ?` then the branches indented below
         let then_branch = self.parse_ternary()?;
+        self.skip_layout();
         match self.bump() {
             Token::Colon => {}
             other => return Err(self.err(format!(
                 "expected `:` after ternary then-branch, got {:?}", other,
             ))),
         }
+        self.skip_layout();
         let else_branch = self.parse_ternary()?;
         Ok(Expr::Ternary(
             Box::new(cond),
