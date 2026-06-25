@@ -25,7 +25,7 @@ CRITICS = ("ide-critic", "ide-critic-newcomer", "ide-critic-expert")
 # reviews; Marek + Sam are paused, brought back occasionally). All three may still approve/reopen,
 # but the close gate is the expert alone — the worker is no longer blocked on a 3-critic quorum.
 REQUIRED_CRITICS = ("ide-critic-expert",)
-ROLES = set(CRITICS) | {"worker", "ide-feature-designer", "ide-architect"}
+ROLES = set(CRITICS) | {"worker", "ide-feature-designer", "ide-architect", "ide-ux-critic", "ide-ui-designer"}
 
 
 def _now():

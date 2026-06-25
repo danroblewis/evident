@@ -1,5 +1,5 @@
 {
-  "seq": 415,
+  "seq": 420,
   "tasks": [
     {
       "id": 1,
@@ -10570,6 +10570,36 @@
         "ui"
       ],
       "log": []
+    },
+    {
+      "id": 417,
+      "title": "De-rate the PLOT REGION (not just the caption) when constraints are dropped: faint diagonal-hatch/grey scrim over the data area + an in-plot 'PROVISIONAL \u2014 N dropped' chip anchored on the data, applied to EVERY view's render (solution_space, state_graph, time_series, \u2026) whenever dropped>0. Today honesty is text-only chrome; a picture-scanner misses it.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-ux-critic",
+      "created": "2026-06-25T07:54:41Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "viz"
+      ],
+      "log": []
+    },
+    {
+      "id": 420,
+      "title": "Auto-inductiveness check for declared bounds on carried vars: when a model declares a per-tick bound like 'count \u2264 ceiling' on a carried var, cheaply test (Z3) whether it is preserved by the transition relation. If NOT inductive (the \u0394/next-state equation violates it), surface a passive '\u26a0 <bound> is not preserved by the transition \u2014 does not bound the dynamics' note near the dropped-constraint line. Catches the 'accepted but inert constraint' class that dropped-count (translation-only) misses. The verify panel already produces the counterexample trace \u2014 wire a one-shot of it on the declared bounds.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-ux-critic",
+      "created": "2026-06-25T07:56:32Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "analysis"
+      ],
+      "log": []
     }
   ],
   "concerns": [
@@ -11677,6 +11707,33 @@
       "status": "open",
       "task": 401,
       "created": "2026-06-25T07:51:24Z"
+    },
+    {
+      "id": 416,
+      "title": "FLAGSHIP (worked example): dropped-constraint honesty is now GOOD at the chrome level \u2014 banner flips to 'BROKEN, not a real relation (the freed variables fan the state space)', the proof badge withdraws to '~ sampled', the diagram title self-labels 'unbounded \u00b7 boundary sampled (capped) \u00b7 not exhaustive (true range may differ)', the exact dropped line is named in the footer AND marked with an Ace warning gutter annotation ('dropped constraint (left FREE \u2014 not translated to a Z3 Bool): count \u2264 celing'). This is far past 'a count the user scrolls past'. BUT the residual trust gap is real and systemic: the PLOT REGION ITSELF is never visually de-rated. On the BROKEN counter the chart still draws a clean, authoritative blue boundary bar reading count\u2208[0,399] in normal styling \u2014 no scrim, no diagonal hatch, no red frame, no 'PROVISIONAL' watermark over the data. ALL honesty rides in TEXT around the picture (title/subtitle/badge). A user who has internalized 'the diagram is the debugger' and scans the PICTURE, not the prose, still sees a confident answer. Systemic fix: when dropped>0 (and any time rigor=sampled BECAUSE of a drop), de-rate the PLOT itself, not just the caption \u2014 faint diagonal-hatch or grey scrim over the data region + one in-plot 'PROVISIONAL \u2014 N constraint(s) dropped' chip anchored on the data \u2014 so the betrayal cannot be missed by an image-scanner.",
+      "detail": "Repro: counter with misspelled cap 'count \u2264 celing' (declared var is 'ceiling'). See ide/critics/recordings/ide-ux-critic-20260625-074755/02-dropped-constraint-broken-banner.png and 03-broken-state-graph.png.",
+      "by": "ide-ux-critic",
+      "status": "open",
+      "task": null,
+      "created": "2026-06-25T07:54:28Z"
+    },
+    {
+      "id": 418,
+      "title": "COHERENCE: on a BROKEN model (1 dropped constraint, banner 'this model is BROKEN, not a real relation'), the state_graph PNG title still reads 'deterministic run (trajectory); showing 48 of 401 states'. 'deterministic' reassures one inch below a banner that warns the relation is broken/under-constrained \u2014 the two characterizations conflict on the same screen. The trajectory IS what was sampled, so it's not a lie, but the word choice undercuts the warning. Fix: when dropped>0 / rigor=sampled, drop the reassuring 'deterministic run' framing in the in-PNG title \u2014 call it 'one sampled path (model is under-constrained)' or similar, so the picture's own title agrees with the banner.",
+      "detail": "Screenshot ide/critics/recordings/ide-ux-critic-20260625-074755/03-broken-state-graph.png \u2014 title vs banner conflict.",
+      "by": "ide-ux-critic",
+      "status": "open",
+      "task": null,
+      "created": "2026-06-25T07:54:41Z"
+    },
+    {
+      "id": 419,
+      "title": "SILENT-INERT-CONSTRAINT class (subtler than a dropped constraint, and the always-on honesty layer misses it): 'count \u2264 ceiling' with '\u0394count = 1' TRANSLATES fine (dropped=0, footer shows green '\u2713 0 dropped constraints', banner says reassuring 'Driven \u2014 deterministic recurrence') \u2014 yet the bound is logically INERT against the transition: reachable count runs to 400 (capped/sampled). A constraint the user wrote, that the tool accepted, that does NOTHING \u2014 the exact 'a constraint you wrote that vanishes' failure the honesty mandate targets, but invisible because it isn't a TRANSLATION drop, it's a 'not inductive / violated by the difference equation' drop. GOOD NEWS, do not regress: the verify panel CATCHES it perfectly \u2014 typing safety 'count \u2264 5' returns '\u2717 violated \u2014 counterexample count=6 \u2014 trace count=0\u2192\u2026\u21926' with a step scrubber + CSV (Alloy/TLA+-grade, a genuine delight). The gap is that the user must THINK to verify; the always-on banner/footer stay green. Systemic fix to consider: a cheap auto-check that any declared per-tick bound on a carried var ('count \u2264 ceiling') is actually INDUCTIVE under the transition, and if not, surface a passive note ('\u26a0 count \u2264 ceiling is not preserved by the transition \u2014 it does not bound the dynamics; verify to see a counterexample') near the dropped-count line \u2014 so an inert constraint is as visible as a dropped one.",
+      "detail": "Repro model /tmp/cap.ev (ceiling:=5, count\u2264ceiling, \u0394count=1). API: dropped=0, rigor=sampled, capped=true, states=400. Verify count\u22645 \u2192 violated trace. Screenshot ide/critics/recordings/ide-ux-critic-20260625-074755/06-verify-count-le-5.png.",
+      "by": "ide-ux-critic",
+      "status": "open",
+      "task": null,
+      "created": "2026-06-25T07:56:17Z"
     }
   ]
 }
