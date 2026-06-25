@@ -53,9 +53,13 @@ function renderStructure(s) {
 // The compact header treatment (web-ide-shell.md §R.1): a colored headline chip (the verdict class)
 // + up to two evidence chips (boundary, a relations marker) + the ⛨ soundness glyph + the ? help.
 // Each chip opens the dossier. Capped so the header never wraps.
+// #363: signature of the verdict chips currently painted (verdict + the boundary/relations they show).
+// When unchanged across a recompute the chip nodes keep their identity (no flicker / no focus loss); only
+// the live soundness badge (a child span) is left to refresh independently. A changed verdict → rebuild.
+let _vchipsSig = null;
 function renderVerdictHeader(s) {
   const chips = $("#verdict-chips"), helpBtn = $("#verdict-help-btn");
-  if (!s) { chips.hidden = true; chips.innerHTML = ""; if (helpBtn) helpBtn.hidden = true; return; }
+  if (!s) { chips.hidden = true; chips.innerHTML = ""; _vchipsSig = null; if (helpBtn) helpBtn.hidden = true; return; }
   const [icon, name] = VERDICTS[s.verdict] || ["·", s.verdict, ""];
   let html = `<span class="vchip vchip-headline v-${s.verdict}" data-doss="1" title="click for the full verdict — what's true, what's forced, witnesses to replay">${icon} ${name}<span class="snd-badge"></span></span>`;
   // evidence chip 1 — the boundary (compact: just the first var, "+N" for the rest)
@@ -72,9 +76,14 @@ function renderVerdictHeader(s) {
   else if (neq) html += `<span class="vchip vchip-evidence" data-doss="1" title="variables forced equal — click for detail">= ${s.equalities.map(([a,bb])=>`${String(a).split(".").pop()}=${String(bb).split(".").pop()}`).join(", ")}</span>`;
   // ⛨ soundness glyph — the fabrication self-check; paints the headline chip's corner badge
   html += `<button class="vchip vchip-snd" id="vchip-snd" title="double-check this verdict — re-check the abstract answer against a brute-force enumeration of this model">⛨</button>`;
-  chips.innerHTML = html;
   chips.hidden = false;
   if (helpBtn) helpBtn.hidden = false;
+  // #363: the chips' content is determined by `html`; if it's identical to what's already on screen and the
+  // nodes are still there, DON'T tear them down — keep their identity so the header doesn't flicker on every
+  // recompute. The snd-badge is a child span that runSoundness refreshes on its own, untouched by this skip.
+  if (html === _vchipsSig && chips.firstChild) return;
+  chips.innerHTML = html;
+  _vchipsSig = html;
   chips.querySelectorAll("[data-doss]").forEach((c) => { c.onclick = () => openDossier(); });
   const sndBtn = $("#vchip-snd");
   if (sndBtn) sndBtn.onclick = (e) => { e.stopPropagation(); runSoundness(); };

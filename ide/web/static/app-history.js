@@ -360,6 +360,13 @@ const _RIGOR_DOT = { proven: ["⊨", "best case: PROVEN — abstract Z3 over all
 // the active chip is always visible; family-tab clicks change it without re-rendering the figure.
 let browsedFamily = null;
 
+// #363: the STRUCTURAL signature of the tab strip currently in the DOM (the family names + each family's
+// ordered chip list). Recompute churns the whole strip on every analyze; when this signature is unchanged
+// (same model → same available views), the family tabs + chips keep their DOM identity and we patch only
+// the active/browsed highlight in place (no flicker, no focus loss, stable refs). A NEW model → new
+// signature → a real rebuild. null forces the first render to rebuild.
+let _tabsSig = null;
+
 // The view tab strip — COMPACT FAMILY TABS with drill-in (web-ide-shell.md §0 figure-dominant layout):
 //   row 1 = the available families (only those with ≥1 view for this model); the browsed one highlighted.
 //   row 2 = only the BROWSED family's view chips, each with its best-case rigor dot.
@@ -386,7 +393,13 @@ function renderViewTabs(data, activeView, onRun) {
   browsedFamily = (activeFam && famNames.includes(activeFam)) ? activeFam
     : (famNames.includes(browsedFamily) ? browsedFamily : famNames[0]);
 
-  function paint() {
+  // #363: STRUCTURAL signature — the family names + each family's ordered chip list. This is everything
+  // that, when changed, must rebuild the strip; the active/browsed highlight is a separate, cheap patch.
+  const sig = fams.map(([fam, vs]) => fam + ":" + vs.join(",")).join("|");
+
+  // Rebuild the whole strip's DOM (family tabs + the browsed family's chips). Only called when the
+  // structure actually changed (new model → new available views), or on a browse-only family switch.
+  function build() {
     tabs.innerHTML = "";
     tabs.setAttribute("role", "tablist");
     // ROW 1 — the family tabs
@@ -395,6 +408,7 @@ function renderViewTabs(data, activeView, onRun) {
     fams.forEach(([fam, vs]) => {
       const ft = document.createElement("div");
       ft.className = "fam-tab" + (fam === browsedFamily ? " on" : "");
+      ft.dataset.fam = fam;                       // #363: identity key for the in-place highlight patch
       ft.textContent = fam;
       // #427: clicking a family SELECTS + RENDERS its first view (not just browse). If that view is
       // already active, just browse (no pointless re-run). The render re-enters renderViewTabs and the
@@ -402,7 +416,7 @@ function renderViewTabs(data, activeView, onRun) {
       ft.onclick = () => {
         const first = vs[0];
         if (first && first !== activeView) onRun(first);
-        else { browsedFamily = fam; paint(); }
+        else { browsedFamily = fam; build(); }
       };
       row1.appendChild(ft);
     });
@@ -415,6 +429,7 @@ function renderViewTabs(data, activeView, onRun) {
       const interactive = INTERACTIVE_VIEWS.has(v);
       const el = document.createElement("div");
       el.className = "tab" + (v === activeView ? " on" : "") + (interactive ? " tab-interactive" : "");
+      el.dataset.view = v;                        // #363: identity key for the in-place highlight patch
       el.textContent = interactive ? (INTERACTIVE_LABEL[v] || v) : v.replace(/_/g, " ");
       const rig = viewBaseRigor(v);
       const dot = document.createElement("span");
@@ -439,6 +454,32 @@ function renderViewTabs(data, activeView, onRun) {
       row2.appendChild(el);
     });
     tabs.appendChild(row2);
+    _tabsSig = sig;
   }
-  paint();
+
+  // #363: in-place highlight patch — same family structure, the only thing that may differ between
+  // recomputes is WHICH family is browsed / WHICH view is active. If the browsed family is unchanged we
+  // keep every chip node (stable identity → no flicker, no focus loss) and re-point .on / aria-selected /
+  // tabIndex; if the browsed family changed we re-fill ONLY row 2 (the family tabs themselves stay put).
+  function patchHighlight() {
+    const row1 = tabs.querySelector(".tab-fam-row");
+    const row2 = tabs.querySelector(".tab-chip-row");
+    if (!row1 || !row2) { build(); return; }     // strip missing (e.g. cleared on error) → rebuild
+    row1.querySelectorAll(".fam-tab").forEach((ft) => ft.classList.toggle("on", ft.dataset.fam === browsedFamily));
+    const chips = (fams.find(([fam]) => fam === browsedFamily) || [, []])[1];
+    const cur = [...row2.querySelectorAll(".tab")].map((el) => el.dataset.view);
+    const same = cur.length === chips.length && cur.every((v, i) => v === chips[i]);
+    if (!same) { build(); return; }              // browsed family's chip set changed → rebuild row 2
+    row2.querySelectorAll(".tab").forEach((el) => {
+      const on = el.dataset.view === activeView;
+      el.classList.toggle("on", on);
+      el.setAttribute("aria-selected", on ? "true" : "false");
+      el.tabIndex = on ? 0 : -1;
+    });
+  }
+
+  // Same available-view structure AND the strip is present → patch the highlight in place (stable DOM).
+  // Otherwise the model's views genuinely changed → rebuild from scratch.
+  if (sig === _tabsSig && tabs.querySelector(".tab-fam-row")) patchHighlight();
+  else build();
 }
