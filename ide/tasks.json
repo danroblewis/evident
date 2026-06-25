@@ -1,5 +1,5 @@
 {
-  "seq": 366,
+  "seq": 396,
   "tasks": [
     {
       "id": 1,
@@ -1508,11 +1508,14 @@
       "id": 56,
       "title": "fmt: re-indent ragged SIBLING lines to a common depth (don't preserve the mistake as fake nesting, don't refuse). The structural intent of an fsm body is 'these decls/guards are siblings'; layout-only fmt should snap them to the same tab stop, not faithfully reproduce an author's inconsistent indentation as a child-block hierarchy. Needs minimal structural awareness (a guard line \u21d2 on its own, a decl line) rather than pure indent-ordering.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic",
       "created": "2026-06-22T00:13:58Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert",
+        "ide-critic"
+      ],
       "reopened": 0,
       "tags": [
         "lang"
@@ -1528,6 +1531,18 @@
           "by": "worker",
           "act": "done",
           "note": "fmt ragged-sibling reindent (the #35 sibling) \u2014 done in the same fmt.rs change, merged."
+        },
+        {
+          "at": "2026-06-25T06:41:08Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
+        },
+        {
+          "at": "2026-06-25T06:46:28Z",
+          "by": "ide-critic",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -1658,14 +1673,12 @@
       "id": 63,
       "title": "Guided first-program walkthrough / 'try this' tutorial: a 3-4 step interactive tour on first load (write a delta, watch the ramp, break it, see the dropped-constraint count) so a newcomer learns claims/fsm/\u0394 end-to-end inside the tool",
       "detail": "",
-      "status": "worker_done",
+      "status": "in_progress",
       "created_by": "ide-critic-newcomer",
       "created": "2026-06-22T00:25:40Z",
-      "worker_done": true,
-      "approvals": [
-        "ide-critic"
-      ],
-      "reopened": 0,
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 2,
       "tags": [
         "learn"
       ],
@@ -1686,6 +1699,18 @@
           "by": "ide-critic",
           "act": "approved",
           "note": ""
+        },
+        {
+          "at": "2026-06-25T06:38:37Z",
+          "by": "ide-critic-newcomer",
+          "act": "reopened",
+          "note": "Tour step 5 ('Break it on purpose') tells the newcomer to 'delete the line is_first_tick \u21d2 count = 0 \u2014 that's the SEED', but the counter sample now seeds with the := form (count \u2208 Int := 0); the line 'is_first_tick \u21d2 count = 0' does NOT exist in the buffer. A newcomer following step 5 literally hunts for a line that isn't there \u2014 the exact confusion the tour exists to prevent. Tour copy went out of sync with the := refactor (task #321). Verified live: counter source is 'fsm counter / count \u2208 Int := 0 / \u0394count = (_count<5?1:0) / done \u2208 Bool = (count\u22655)'. Fix: update step 5 to 'delete the line count \u2208 Int := 0 \u2014 that's the SEED' (and verify the dropped-constraint honesty line + amber editor mark actually fire when it's gone). Everything ELSE about the tour is genuinely excellent \u2014 steps 1-4,6 all teach correctly and the Done\u2192sudoku handoff works."
+        },
+        {
+          "at": "2026-06-25T06:44:44Z",
+          "by": "ide-critic",
+          "act": "reopened",
+          "note": "Tour step 5 ('Break it on purpose') instructs: 'delete the line is_first_tick \u21d2 count = 0 \u2014 that's the SEED'. But after the := refactor (#321) the counter sample's seed is 'count \u2208 Int := 0' \u2014 there is NO 'is_first_tick \u21d2 count = 0' line in the buffer to delete. A newcomer following step 5 literally cannot find that line. Verified live: tour loads counter (buffer = 'fsm counter / count \u2208 Int := 0 / \u0394count = (_count<5?1:0) / done \u2208 Bool=(count\u22655)'), step-5 text references a line absent from that buffer. Fix: update step 5 to the := form \u2014 e.g. 'delete the := 0 on count \u2208 Int := 0 (the seed) and watch the dropped-constraint count / amber gutter mark flag the freed seed.' (The honest-dropped-constraint surfacing itself is excellent \u2014 banner + ace gutter annotation naming the exact dropped expr \u2014 so only the instruction text is stale.)"
         }
       ]
     },
@@ -2646,12 +2671,12 @@
       "id": 102,
       "title": "Guided 'learn the ideas' affordance, not just the symbols \u2014 a short in-tool explainer / walkthrough that teaches what claim / fsm / is_first_tick / \u0394 / a difference-equation MEAN as concepts. The symbol palette (great) tells me how to TYPE \u0394 ('forward difference') but not what a difference equation is or why is_first_tick exists. I opened all the FSM samples and could read the GLYPHS but still couldn't explain to a friend what 'fsm counter' is doing. Wall: I wanted to go from 'I can see it ramps to 5' to 'I understand WHY count = (is_first_tick ? 0 : _count+1) makes it ramp' entirely in-tool, and there's nowhere to learn that. Codecademy/Brilliant teach a concept beside the first example; here the samples assume I already know the model. Idea: a collapsible 'how this works' note per sample, or a one-time 'first program' tour that annotates the counter line-by-line in plain English.",
       "detail": "",
-      "status": "worker_done",
+      "status": "in_progress",
       "created_by": "ide-critic-newcomer",
       "created": "2026-06-22T01:45:28Z",
-      "worker_done": true,
+      "worker_done": false,
       "approvals": [],
-      "reopened": 1,
+      "reopened": 2,
       "tags": [
         "learn"
       ],
@@ -2683,6 +2708,18 @@
           "by": "worker",
           "act": "done",
           "note": "Marek #361 fixed: explainer clears stale text on hide + updates instantly on edit (was stale-by-one + 350ms lag). Playwright-verified."
+        },
+        {
+          "at": "2026-06-25T06:38:26Z",
+          "by": "ide-critic-newcomer",
+          "act": "approved",
+          "note": ""
+        },
+        {
+          "at": "2026-06-25T06:44:54Z",
+          "by": "ide-critic",
+          "act": "reopened",
+          "note": "Explainer teaches FSM concepts well and now hides correctly (concern #361 cleared: hides for hand-typed/diverged buffer; no longer stale-by-one \u2014 vending shows vending, thermostat/four-signals/sudoku correctly hidden). BUT two gaps remain: (1) The shared generic body paragraph is HARDCODED to 'count': for 'random walk' (vars x, y; no count anywhere) the explainer still says '_count reads the value on the previous tick; count = \u2026 writes this tick, _count reads the PREVIOUS tick' \u2014 teaching with a variable that isn't in the user's program. Verified live: random_walk buffer uses x,y,\u0394x,\u0394y; explainer body references count/_count/\u0394count. Same staleness class as the tour bug. Fix: template the generic paragraph on the sample's actual carried var, or write the generic prose variable-agnostically ('_v reads the previous tick'). (2) NO explainer at all on the Solve samples (sudoku/subset-sum/N-queens) \u2014 the explainer is FSM-only, so a newcomer who opens sudoku to 'learn the ideas' (the relational/solve idea the tour step-6 promotes) gets nothing. The task asked to teach what a 'claim / relation' MEANS; that half is unaddressed."
         }
       ]
     },
@@ -4567,6 +4604,12 @@
           "by": "ide-critic",
           "act": "approved",
           "note": ""
+        },
+        {
+          "at": "2026-06-25T06:44:36Z",
+          "by": "ide-critic",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -6241,6 +6284,12 @@
           "by": "ide-critic",
           "act": "approved",
           "note": ""
+        },
+        {
+          "at": "2026-06-25T06:44:36Z",
+          "by": "ide-critic",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -7677,12 +7726,13 @@
       "id": 286,
       "title": "Diagrams: function-view honesty + layout \u2014 surface real guard/transition logic (not 'piecewise \u00b7 N branches'), fix false INCOMPLETE/OVERLAP verdicts + the %-computed metric + label clipping",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "worker",
       "created": "2026-06-23T18:19:04Z",
       "worker_done": true,
       "approvals": [
-        "ide-critic"
+        "ide-critic",
+        "ide-critic-expert"
       ],
       "reopened": 0,
       "tags": [
@@ -7703,6 +7753,12 @@
         {
           "at": "2026-06-24T18:56:13Z",
           "by": "ide-critic",
+          "act": "approved",
+          "note": ""
+        },
+        {
+          "at": "2026-06-25T06:37:35Z",
+          "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
         }
@@ -8662,12 +8718,13 @@
       "id": 319,
       "title": "Extend the abstract analysis suite to CLAIMS (only get claim_space today)",
       "detail": "User: claims are under-served \u2014 far more abstract analysis possible (solution boundary, feasible/terminal decomposition, relational structure). The bigger win. Make the abstract suite claim-aware.",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "worker",
       "created": "2026-06-23T23:52:33Z",
       "worker_done": true,
       "approvals": [
-        "ide-critic"
+        "ide-critic",
+        "ide-critic-expert"
       ],
       "reopened": 1,
       "tags": [
@@ -8705,6 +8762,12 @@
         {
           "at": "2026-06-24T18:52:44Z",
           "by": "ide-critic",
+          "act": "approved",
+          "note": ""
+        },
+        {
+          "at": "2026-06-25T06:37:35Z",
+          "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
         }
@@ -8785,6 +8848,12 @@
         },
         {
           "at": "2026-06-24T21:38:22Z",
+          "by": "ide-critic",
+          "act": "approved",
+          "note": ""
+        },
+        {
+          "at": "2026-06-25T06:44:36Z",
           "by": "ide-critic",
           "act": "approved",
           "note": ""
@@ -9530,11 +9599,13 @@
       "id": 348,
       "title": "When a relation is forced partly by INEQUALITIES (e.g. a<=4 \u2227 a>=4 \u21d2 a=4, verified live: combo=None, core=['a<=4','a>=4']), #345 correctly suppresses the equality-only combo \u2014 but the honest derivation here is a Farkas certificate WITH non-negative multipliers on the inequalities (Motzkin transposition / the LP-duality certificate). Show 'a\u22644 and a\u22654 together pin a=4' as a real derivation, not just the bare core list. This is the bound-forced subset that 'derived as' currently can't explain.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-expert",
       "created": "2026-06-24T13:36:05Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 1,
       "tags": [
         "analysis"
@@ -9567,6 +9638,12 @@
           "by": "worker",
           "act": "done",
           "note": "Ana #360 fixed: _ineq_cert extends the Motzkin/Farkas cert to inequality-forced BACKBONES (a=4 from a\u22644 \u2227 a\u22654) + EQUALITIES (a=b from a-b\u22640 \u2227 b-a\u22640); forced_certs field + clickable '\u22a2 pinned by \u2264/\u2265' panel line. Both reconstruction-checked sound. test pins both."
+        },
+        {
+          "at": "2026-06-25T06:32:59Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -9644,11 +9721,13 @@
       "id": 351,
       "title": "Inequality-forced relation: show the FARKAS combo with non-negative multipliers (the real Farkas lemma for inequalities), not just the bare core list. Verified live (2\u00b7a=c forced by c==a+b \u2227 a-b\u22640 \u2227 b-a\u22640): the tool correctly falls back to 'forced by: <core>' and never fabricates an equality combo \u2014 sound. But Z3's produce-proofs DOES give a Farkas certificate for inequality-forced facts (\u03bb\u22650 over the half-spaces). The bare core is honest but less interrogable than the equality case; surfacing the signed/non-negative inequality combo would close the gap with what Z3's farkas-lemma proof rule emits.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-expert",
       "created": "2026-06-24T14:27:42Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "analysis"
@@ -9659,6 +9738,12 @@
           "by": "worker",
           "act": "done",
           "note": "DUPLICATE of #348 \u2014 both ask for the Farkas/Motzkin certificate (non-negative multipliers) for inequality-forced relations. Folded into #348's build."
+        },
+        {
+          "at": "2026-06-25T06:32:59Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -9767,7 +9852,9 @@
       "created_by": "ide-critic",
       "created": "2026-06-24T19:02:05Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic"
+      ],
       "reopened": 0,
       "tags": [
         "editor"
@@ -9783,6 +9870,12 @@
           "by": "worker",
           "act": "done",
           "note": "load-version token: loadProgram bumps _loadV, scheduleAnalyze's debounced run skips if a newer load arrived. Defensive guard for the out-of-band-setValue race."
+        },
+        {
+          "at": "2026-06-25T06:44:36Z",
+          "by": "ide-critic",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -9860,6 +9953,308 @@
         "learn"
       ],
       "log": []
+    },
+    {
+      "id": 368,
+      "title": "Farkas residual: 2-var inequality-forced relations still surface NOTHING. 'claim t; a,b in Int; 2a-b<=0; b-2a<=0' (forces b=2a) returns relations=[], forced_certs=[], and bounds a:[0,0]/b:[0,0] (the latter is the #367 soundness bug). _nonpairwise is gated behind len(free_num)>=3 so 2-free-var ties never reach _emit_relation, even though it produces a correct cert when called directly. Either run _nonpairwise for >=2 free vars, or emit the inequality-forced relation directly. Low-priority edge vs #348's now-met title/body cases.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-expert",
+      "created": "2026-06-25T06:33:08Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "analysis"
+      ],
+      "log": []
+    },
+    {
+      "id": 373,
+      "title": "Tour: keep the 'break it' step in sync with the sample source automatically \u2014 derive the line it tells me to delete from the actual seed line in the buffer (or pin the counter sample's seed form), so a sample refactor (e.g. is_first_tick\u21d2 \u2192 :=) can't desync the tour copy and send a newcomer hunting for a line that isn't there.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-newcomer",
+      "created": "2026-06-25T06:38:53Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "learn"
+      ],
+      "log": []
+    },
+    {
+      "id": 374,
+      "title": "Glossary discoverability for newcomers: the hover-to-learn tooltip is excellent but INVISIBLE until you happen to hover a keyword. Add a one-time subtle hint ('hover any keyword to learn what it means') on first load, or a faint dotted underline on glossable tokens, so a newcomer DISCOVERS hover-to-learn instead of finding it by luck.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-newcomer",
+      "created": "2026-06-25T06:38:53Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "learn"
+      ],
+      "log": []
+    },
+    {
+      "id": 375,
+      "title": "Make the \u2318K searchable glossary reachable without the keyboard shortcut: a newcomer doesn't know \u2318K exists. The 'symbols' button opens the typing palette; add a visible 'glossary'/'?' entry (or a tab in the symbols panel) that opens the searchable term list (claim/fsm/\u0394/cyclic/terminates), since that's the canonical 'what does this word mean' lookup and right now it's behind an undiscoverable shortcut.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-newcomer",
+      "created": "2026-06-25T06:38:53Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "learn"
+      ],
+      "log": []
+    },
+    {
+      "id": 379,
+      "title": "Honest open/unbounded boundaries on the claim card (blocks SHIP): use o.upper(handle)/o.lower(handle) to detect Z3 infinity and render a half-open/unbounded var as an arrow/\u00b1\u221e, never the witness value; only stamp 'exact/proven' when BOTH sides are finite-and-checked. Today a>=3 draws 'a=3 exact'. See #367/#369.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-expert",
+      "created": "2026-06-25T06:42:39Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "analysis"
+      ],
+      "log": []
+    },
+    {
+      "id": 380,
+      "title": "Let verify/query/temporal assert over DERIVED vars, not just carried (project derived exprs into the per-state record before the check). See #376.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-expert",
+      "created": "2026-06-25T06:42:39Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "solve"
+      ],
+      "log": []
+    },
+    {
+      "id": 381,
+      "title": "Multi-term safety invariants on /api/invariant (currently single var-op-value). A verification engineer asserts arbitrary boolean invariants (a AND b => c), not one comparison. Alloy/TLA+ assert any predicate.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-expert",
+      "created": "2026-06-25T06:42:39Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "solve"
+      ],
+      "log": []
+    },
+    {
+      "id": 382,
+      "title": "Continuous grid-sweep basin_map/occupancy_heatmap/morse_graph for Real programs (wire basin_numeric.py grid path in; stop bailing to N/A on the rotation/DVD class). See #357/#282.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-expert",
+      "created": "2026-06-25T06:42:39Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "analysis"
+      ],
+      "log": []
+    },
+    {
+      "id": 386,
+      "title": "Find & replace / rename-symbol in the editor. I wanted to rename a carried var ('count'\u2192'n') across a program and reached for Ctrl-H / F2-rename \u2014 neither exists; only ace's raw find. A language-aware rename (or at least find-and-replace UI) is table stakes; VS Code gives F2 rename-all-references. Without it, renaming a var in a 40-line FSM means hand-editing every \u0394count/_count/count by eye, and a missed one silently DROPS a constraint (which I verified the tool flags \u2014 but I'd rather not create the bug).",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic",
+      "created": "2026-06-25T06:45:07Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "editor"
+      ],
+      "log": []
+    },
+    {
+      "id": 387,
+      "title": "Go-to-definition / find-all-references for user symbols. I wanted to jump from a '\u0394count' use to where 'count' is declared, and from a claim invocation to the claim body. Reached for Ctrl-click / F12 \u2014 nothing. In a multi-claim file (the #claim-select picker exists, so multi-entry files are real) this is how you navigate. Every serious editor ships it.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic",
+      "created": "2026-06-25T06:45:07Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "editor"
+      ],
+      "log": []
+    },
+    {
+      "id": 388,
+      "title": "Hover-for-type / hover-for-definition on identifiers. Hovering a var or claim name gives no type/where-declared popup. The symbols palette tells me how to TYPE \u0394; nothing tells me 'count : Int, declared line 2' on hover. Combined with the open newcomer concern #250 (hover a KEYWORD for its meaning), the editor needs a hover provider for both keywords and user symbols.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic",
+      "created": "2026-06-25T06:45:07Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "editor"
+      ],
+      "log": []
+    },
+    {
+      "id": 389,
+      "title": "Autocomplete / IntelliSense for Evident. Typing in the editor offers no completion of declared vars, claim names, enum variants, or keywords. I wanted to type the name of a claim I'd defined and have it complete; nothing. Even a buffer-symbol completer (ace's basic autocomplete is loaded \u2014 ace-ext-language_tools.js is in the bundle) would help; a language-aware one (complete fields after a '.', enum variants in a match) is the bar.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic",
+      "created": "2026-06-25T06:45:19Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "editor"
+      ],
+      "log": []
+    },
+    {
+      "id": 390,
+      "title": "Multi-file / module workspace. There's one buffer; Save-as keeps named slots, but I can't have two .ev files open and import one from the other (the language has imports \u2014 stdlib). To build anything past a single sample I'd want a file tree + tabs. Right now it's a scratchpad, not a project.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic",
+      "created": "2026-06-25T06:45:19Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "editor"
+      ],
+      "log": []
+    },
+    {
+      "id": 391,
+      "title": "Cancel/short-circuit slow (nonlinear/NRA) solves with a visible budget. The nonlinear claim ground for ~16s before returning (and returned a wrong [0,0] 'exact' bound \u2014 see concern #383). There's an 'Esc to cancel' on the structure solve, but the main analyze should (a) detect nonlinear-product structure up front and skip the boundary Optimize with an honest 'nonlinear \u2014 bounds not computed' card, and (b) show a live elapsed/timeout budget instead of a 16s silent grind.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic",
+      "created": "2026-06-25T06:45:19Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "perf"
+      ],
+      "log": []
+    },
+    {
+      "id": 393,
+      "title": "Persist the witness gallery / bookmarks across re-solve and reload. The compare/page gallery (#170/#235) is excellent, but a re-solve appears to rebuild the witness set; I'd want bookmarked witnesses to survive a re-solve, a sample reload, and a page refresh (localStorage), so I can pin 'the good solution' and keep refining the model around it. Alloy keeps your bookmarked instances for the session; this should too, ideally across refresh.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic",
+      "created": "2026-06-25T06:45:41Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "solve"
+      ],
+      "log": []
+    },
+    {
+      "id": 394,
+      "title": "Explainer should cover the relational/Solve idea, not just FSMs. The 'how this works' note is FSM-only (hidden on sudoku/subset-sum/N-queens). The single biggest conceptual leap Evident asks ('you describe the answer, the solver finds it \u2014 no algorithm') has no in-tool explainer on exactly the samples that demonstrate it. Add a per-Solve-sample note: what a claim/relation is, why there's no algorithm, what SAT/UNSAT/solve-for-X mean. (Pairs with reopened #102 and newcomer concern #250.)",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic",
+      "created": "2026-06-25T06:45:41Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "learn"
+      ],
+      "log": []
+    },
+    {
+      "id": 395,
+      "title": "Soundness: _opt_bound reads an UNBOUNDED Optimize witness as a finite bound (a>=3 -> [3,3]) and the render stamps 'z3-solved exact/proven'. Capture the maximize/minimize handle, test upper(h)/lower(h) for Z3 infinity, render open (-inf/+inf) and DON'T label 'exact' on a half-open/unbounded bound. Also skip the claim-space bound computation for nonlinear claims (the cuber grinds 16s + false [0,0]).",
+      "detail": "",
+      "status": "worker_done",
+      "created_by": "worker",
+      "created": "2026-06-25T06:48:50Z",
+      "worker_done": true,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [],
+      "log": [
+        {
+          "at": "2026-06-25T06:48:50Z",
+          "by": "worker",
+          "act": "created to address concern #369"
+        },
+        {
+          "at": "2026-06-25T06:55:08Z",
+          "by": "worker",
+          "act": "started"
+        },
+        {
+          "at": "2026-06-25T06:55:09Z",
+          "by": "worker",
+          "act": "done",
+          "note": "Fixed: _opt_bound reads o.upper(h)/o.lower(h) via _finite_numeric (None on \u00b1\u221e), not the witness; render() early-returns a 'nonlinear claim' N/A; unbounded \u2192 'no finite boundary' N/A. cuber 16s\u21920.03s. Addresses #367/#369/#383."
+        }
+      ],
+      "addresses_concern": 369
+    },
+    {
+      "id": 396,
+      "title": "Tour step 5 told the newcomer to delete is_first_tick => count = 0, but the := refactor (#321) made the seed count in Int := 0 \u2014 update the step to the current seed line",
+      "detail": "",
+      "status": "worker_done",
+      "created_by": "worker",
+      "created": "2026-06-25T06:56:52Z",
+      "worker_done": true,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [],
+      "log": [
+        {
+          "at": "2026-06-25T06:56:52Z",
+          "by": "worker",
+          "act": "created to address concern #371"
+        },
+        {
+          "at": "2026-06-25T06:56:52Z",
+          "by": "worker",
+          "act": "started"
+        },
+        {
+          "at": "2026-06-25T06:56:52Z",
+          "by": "worker",
+          "act": "done",
+          "note": "Step 5 now says delete 'count in Int := 0'; verified deleting it fires the honesty line (2 dropped). Addresses #63 reopen + #371/#384."
+        }
+      ],
+      "addresses_concern": 371
     }
   ],
   "concerns": [
@@ -10028,9 +10423,10 @@
       "title": "fmt refuses or corrupts on ragged indentation \u2014 its core advertised use. (1) An over-indented line BEFORE a same-line \u21d2 line (e.g. 'count \u2208 Int' at 8 spaces, then 'is_first_tick \u21d2 count = 0' at 2 spaces) makes reindent change the relative indent ordering, so the self-check fires 'formatter changed the token stream \u2014 refusing to emit' and the file is left UNCHANGED (exit 1). Repro: /tmp/messy.ev (the canonical counter), and the canonical multi-delta accumulate block from CLAUDE.md mis-indented one level. (2) WORSE: when a sibling line is over-indented relative to the line above it, fmt 'succeeds' (exit 0) but PRESERVES the mistake as fake nesting \u2014 '  count \u2208 Int' then '      is_first_tick \u21d2 count = 0' comes out with the guard at 8-space depth, nested UNDER count as if a child block, changing the program's apparent structure. Root cause (runtime/src/fmt.rs reindent): the nesting stack is purely indentation-ordering-based and only canonicalizes UNIFORM over/under-indent; it cannot repair INCONSISTENT indentation, which is exactly the mess users run a formatter to fix. Layout-only is an acceptable scope, but it must at minimum re-indent ragged sibling lines to the same depth and never refuse on (or silently mis-nest) realistic messy input.",
       "detail": "",
       "by": "ide-critic",
-      "status": "open",
+      "status": "cleared",
       "task": 35,
-      "created": "2026-06-22T00:13:37Z"
+      "created": "2026-06-22T00:13:37Z",
+      "cleared": "2026-06-25T06:46:18Z"
     },
     {
       "id": 54,
@@ -10626,9 +11022,10 @@
       "title": "Newcomer learning gap: nothing in the editor explains what the LANGUAGE keywords MEAN. Hovering 'fsm'/'\u0394'/'\u21d2'/'claim' in my own code gives no definition; there's no glossary of the nouns (claim vs fsm vs enum vs type). The tour teaches the UI and the symbols palette teaches typing, but a newcomer still can't answer 'what is a claim?' from inside the tool. This is the single biggest thing keeping the learn-it-here promise from being complete (tasks #245, #246).",
       "detail": "Verified live: ace_keyword tokens have no hover-provider; ace_content intercepts pointer events. ? tour = 4 UI steps; \u2328 symbols = typing cheat-sheet only. No concept glossary.",
       "by": "ide-critic-newcomer",
-      "status": "open",
+      "status": "cleared",
       "task": null,
-      "created": "2026-06-22T20:47:45Z"
+      "created": "2026-06-22T20:47:45Z",
+      "cleared": "2026-06-25T06:38:26Z"
     },
     {
       "id": 254,
@@ -10705,9 +11102,10 @@
       "title": "fmt still refuses on ragged indentation \u2014 the exact input a formatter exists to clean (verified: /tmp/messy.ev and a parseable-but-over-indented sibling both exit 1, file unchanged). The SEVERE half of concern #53 (silent fake-nesting / corruption) IS fixed \u2014 it now refuses cleanly with an honest, well-explained message and never mis-nests. But a layout formatter that cannot re-indent ragged siblings to a uniform column declines its core advertised use; treat as a roadmap item, not done.",
       "detail": "",
       "by": "ide-critic-expert",
-      "status": "open",
+      "status": "cleared",
       "task": 35,
-      "created": "2026-06-23T20:41:37Z"
+      "created": "2026-06-23T20:41:37Z",
+      "cleared": "2026-06-25T06:41:01Z"
     },
     {
       "id": 314,
@@ -10764,9 +11162,10 @@
       "title": "PROGRESS NOTE on #302 (do not treat as new): re-verified live \u2014 fmt STILL refuses ragged sibling indentation (the core advertised use of a layout formatter). The severe half (silent fake-nesting/corruption) remains fixed and the refusal message is now clear and honest (exit 0, file unchanged). Keeping #302 open as a roadmap item: a layout formatter should SNAP ragged siblings to a common tab stop (minimal structural awareness: a \u21d2-guard line vs a decl line), not decline. Re-verified on /tmp/messy.ev.",
       "detail": "evident fmt /tmp/messy.ev still refuses; this is a progress note pinned to existing concern #302, not a request to clear it",
       "by": "ide-critic-expert",
-      "status": "open",
+      "status": "cleared",
       "task": null,
-      "created": "2026-06-24T03:51:44Z"
+      "created": "2026-06-24T03:51:44Z",
+      "cleared": "2026-06-25T06:41:01Z"
     },
     {
       "id": 343,
@@ -10821,18 +11220,128 @@
       "title": "Motzkin/Farkas machinery is SOUND and fuzz-clean (267 certs across 300 random claims, 0 fabricated; reconstruction self-check rejects a fabricated lambda; relations only emit after _verify_core assert-and-track UNSAT + minimal deletion). It DOES fire live on inequality-forced 3-var relations: 'a+b-c<=0, c-a-b<=0' surfaces 'a+b=c' with motzkin='(a+b-c<=0) pins <= ; (c-a-b<=0) pins >= \u2014 together forcing the equality', Z3-verified sound. BUT it does NOT surface on EITHER of #348's own acceptance examples: (1) TITLE 'a<=4 AND a>=4 => a=4' makes a BACKBONE (value 4) with NO certificate \u2014 backbones carry no Farkas derivation, so 'show a<=4 and a>=4 together pin a=4 as a real derivation' is unmet. (2) BODY 'a-b<=0, b-a<=0, c=a+b' (wanting 2a=c) surfaces ONLY equality-forced 'a+b=c' (no motzkin); the inequality-forced 2a=c is dropped by lattice_relations' cap (max-coeff 2 > cleanest-basis cap 1) \u2014 verified: 'motzkin' NOT in the API response for the body example. Also 2-var inequality-forced relations (2a-b<=0,b-2a<=0 forcing b=2a) never reach _nonpairwise: solution_structure gates it behind len(free_num)>=3, so relations=[] even though _emit_relation([2,-1]) DOES produce a correct cert when called directly. FIX: (a) attach a Motzkin derivation to a bound-FORCED backbone (the a=4 title case); (b) surface the inequality-forced relation even when its coeff exceeds the equality basis cap, or run _nonpairwise for 2 free vars. Feature is built and sound; it just doesn't reach the cases #348 was written to demonstrate. Screenshots ana-20260624-212102/348-*.png.",
       "detail": "",
       "by": "ide-critic-expert",
-      "status": "open",
+      "status": "cleared",
       "task": 348,
-      "created": "2026-06-24T21:32:14Z"
+      "created": "2026-06-24T21:32:14Z",
+      "cleared": "2026-06-25T06:33:08Z"
     },
     {
       "id": 361,
       "title": "Per-sample explainer teaches concepts well (and teaches := correctly), but FAILS the task's two acceptance halves. (1) DOES NOT HIDE for a hand-typed buffer: cleared the buffer to untitled.ev (select-all+delete) and appended a stray char to the counter \u2014 the 'how this works' note stays up in both cases. (2) STALE BY ONE SAMPLE (reproducible): selecting vending then 'four signals' then 'thermostat' from the dropdown leaves the explainer showing VENDING's 'A real vending machine: coins accumulate...' note under thermostat AND fourvar. The note lags the dropdown by one selection and sticks. Repro: load vending, then four-signals, read the explainer's first line \u2014 it's vending's. Fix: key the explainer to the CURRENT analyzed buffer's sample id (recompute on sample change, clear when the buffer diverges from any sample), and hide it entirely for a non-sample/hand-typed buffer as the task requires.",
       "detail": "",
       "by": "ide-critic",
+      "status": "cleared",
+      "task": 102,
+      "created": "2026-06-24T21:38:31Z",
+      "cleared": "2026-06-25T06:31:37Z"
+    },
+    {
+      "id": 367,
+      "title": "SOUNDNESS: claim boundary card fabricates a finite interval for one-sided/unbounded Int vars and labels it 'z3-solved exact / proven'. Verified live via /api/analyze view=solution_structure & claim_space: (1) 'claim t; a in Int; a>=3' => bounds a:[3,3], rigor=proven, PNG titled 'boundaries z3-solved exact' drawing a as a single tick at 3.00 \u2014 but a>=3 admits a=100 (confirmed: pinning a=5 with b=2a is satisfiable). (2) 'a<=7' => a:[0,7] (false lower bound 0). (3) 'b=2a' (both unbounded) => a:[0,0],b:[0,0] \u2014 a fabricated point box; a=5,b=10 is reachable. The free var 'a in Int' alone correctly emits {} (no bound), so the unbounded case IS detectable \u2014 but as soon as one side is bounded or a linear tie exists, Optimize returns the witness value and it's reported as a hard exact boundary. The FSM path is HONEST by contrast (runaway counter => verdict 'unbounded', capped:true, rigor:sampled). Fix: when Optimize returns unbounded/oo on a direction, render that side as open (-inf/+inf or an arrow), NOT the witness value, and do not stamp 'exact/proven' on a half-open or unbounded boundary. This is a fabricated-structure defect (Part-4 #4) made worse by the 'exact' label \u2014 it invites belief in a false fact. Screenshot ana-20260625-062726/bound-soundness-a-ge-3.png.",
+      "detail": "view=solution_structure/claim_space; claims only; FSM solution_space is honest",
+      "by": "ide-critic-expert",
+      "status": "open",
+      "task": null,
+      "created": "2026-06-25T06:31:50Z"
+    },
+    {
+      "id": 369,
+      "title": "ROOT CAUSE for #367 + nonlinear-note gap. (1) _opt_bound (viz/render_claim_space.py) is the bug: it does 'o.maximize(c); if o.check()!=sat: return None; else return model.eval(c)'. But Z3 Optimize on an UNBOUNDED objective returns check()==sat with a finite witness in the model \u2014 so the unbounded direction is read as that witness (a>=3 -> upper=3; free product p=h*w -> [0,0]). The comment 'unbounded Optimize -> None' is false. FIX: capture the handle h=o.maximize(c) and test o.upper(h)/o.lower(h) for a Z3 infinity (oo/is_algebraic infinite); return None/open on +-inf and only stamp 'exact' on a two-sided-finite bound. (2) The nonlinear guard (claim_structure.py:252, 'nonlinear claim \u2014 structure analysis skipped') does NOT fire on view=solution_structure for the explicit unbounded product 'claim t; h,w,p in Int; p=h*w' \u2014 note=None, bounds={h:[0,0],w:[0,0]} computed instead. Bounded 'area=h*w' with 1<=h,w<=10 correctly computes area:[1,100] (good, keep). So either _nonlinear(body) isn't seeing the MUL on this path or structure.note isn't surfaced to the payload. The honest 'nonlinear \u2014 structure analysis skipped' note the team described is absent on the claim boundary path. Both verified via curl localhost:5173/api/analyze.",
+      "detail": "viz/render_claim_space.py _opt_bound; viz/claim_structure.py:252",
+      "by": "ide-critic-expert",
+      "status": "open",
+      "task": null,
+      "created": "2026-06-25T06:35:37Z"
+    },
+    {
+      "id": 370,
+      "title": "function_guards INCOMPLETE verdict can mislead on a \u0394+seed-split var. For 'fsm ramp; x \u2208 Int := 0; \u0394x = (_x<5?2:(_x<12?1:0))' (0 dropped, \u0394-ternary is TOTAL), function_guards shows 'x (1 branches)' with '\u26a0 INCOMPLETE \u2014 no branch for _x=12, is_first_tick=False' and tree 'is_first_tick \u2192 0'. It is analyzing only the SEED equation (x=0 guarded by is_first_tick); the non-first-tick case is covered by the separate \u0394x equation, which the guard tree doesn't fold in. So the verdict is technically sound for the seed atom alone but reads as 'your function is incomplete' when the reachable behavior is fully determined. The honest caveat ('checked over DECLARED type domain, not reachable set') is good and present. Suggest: when a var's next-state is split across a seed (is_first_tick) equation + a \u0394/\u00acis_first_tick equation, MERGE them into one decision tree before the completeness check, or label the verdict as 'seed equation only'. Verified live ana-20260625-062726/286-function-guards.png. NOT blocking #286's approval (real decision tree + Z3-decided verdict + witness + no clipping all delivered).",
+      "detail": "function_guards seed/\u0394 split",
+      "by": "ide-critic-expert",
+      "status": "open",
+      "task": null,
+      "created": "2026-06-25T06:37:45Z"
+    },
+    {
+      "id": 371,
+      "title": "Tour step 5 ('Break it on purpose') tells the newcomer to 'delete the line is_first_tick \u21d2 count = 0 \u2014 that's the SEED', but the counter sample now seeds with the := form (count \u2208 Int := 0); the line 'is_first_tick \u21d2 count = 0' does NOT exist in the buffer. A newcomer following step 5 literally hunts for a line that isn't there \u2014 the exact confusion the tour exists to prevent. Tour copy went out of sync with the := refactor (task #321). Verified live: counter source is 'fsm counter / count \u2208 Int := 0 / \u0394count = (_count<5?1:0) / done \u2208 Bool = (count\u22655)'. Fix: update step 5 to 'delete the line count \u2208 Int := 0 \u2014 that's the SEED' (and verify the dropped-constraint honesty line + amber editor mark actually fire when it's gone). Everything ELSE about the tour is genuinely excellent \u2014 steps 1-4,6 all teach correctly and the Done\u2192sudoku handoff works.",
+      "detail": "",
+      "by": "ide-critic-newcomer",
+      "status": "open",
+      "task": 63,
+      "created": "2026-06-25T06:38:37Z"
+    },
+    {
+      "id": 372,
+      "title": "\u2318K command/glossary palette can lose input focus: after opening it and typing, some keystrokes leaked into the editor instead (typed 'claim' \u2192 palette captured 'clai' but a stray 'c'/'m' landed in the ace buffer, corrupting line 1 and triggering a parse error). The palette opens and #cmdk-input focuses, but focus isn't held robustly under fast typing. A newcomer reaching for the searchable glossary via \u2318K could accidentally edit their program. Repro: click \u2318K, type a word quickly.",
+      "detail": "Saw it twice this session; screenshot 08-cmdk-claim.png shows the leaked 'm' + parse error after attempting to search the glossary.",
+      "by": "ide-critic-newcomer",
+      "status": "open",
+      "task": null,
+      "created": "2026-06-25T06:38:53Z"
+    },
+    {
+      "id": 376,
+      "title": "Query console + invariant checker reject DERIVED variables \u2014 you can only constrain CARRIED vars. For the counter, /api/query predicate 'count = 3 \u2227 done = false' and /api/invariant var=done both return 'unknown carried var done; known: count', yet the witness/counterexample states DISPLAY done:false. So 'done' (= count>=5) is computed and shown but cannot be asserted or queried. A verification engineer wants to check '\u25a1 done \u21d2 count>=5' or '\u2203 done=true' \u2014 table stakes in Alloy/Z3 (assert over any in-scope expr). FIX: let query/invariant/temporal terms reference derived vars (project them into the per-state record before the check; they're already in the displayed state). The carried-var-only restriction leaks the FSM's internal state encoding into the verification interface.",
+      "detail": "/api/query, /api/invariant, /api/temporal accept carried vars only",
+      "by": "ide-critic-expert",
+      "status": "open",
+      "task": null,
+      "created": "2026-06-25T06:39:09Z"
+    },
+    {
+      "id": 377,
+      "title": "FOLLOW-UP / SOFTENING of #372: the cmdk focus-leak I saw may be partly an artifact of my synthetic key events (the MCP driver), not a real human-typing bug \u2014 app-palette.js's cmdk keydown handler looks sound (only intercepts Arrows/Enter/Esc; char keys fall through to the focused #cmdk-input). Worth a quick real-hands check that fast typing into \u2318K never leaks to the editor, but do NOT treat #372 as a confirmed defect. Flagging my own uncertainty.",
+      "detail": "Source review: openCmdk() focuses #cmdk-input (line 223); closeCmdk() refocuses editor (226); the global 'k' shortcut (393) could re-toggle if it fires during typing.",
+      "by": "ide-critic-newcomer",
+      "status": "open",
+      "task": null,
+      "created": "2026-06-25T06:39:13Z"
+    },
+    {
+      "id": 378,
+      "title": "fmt is LAYOUT-only, not idiomatic-rewrite (task #35's stated scope). The reindent/ragged-sibling half is now SOLID \u2014 'evident fmt' snaps ragged siblings to a uniform tab stop (exit 0, no fake-nesting, idempotent, output parses; my #302/#325 cleared). BUT it does NOT normalize operator spacing: input 'count\u2208Int:=0' / '\u0394count=(_count<5?1:0)' comes out UNCHANGED (cramped), where gofmt-grade idiomatic form is 'count \u2208 Int := 0' / '\u0394count = (_count < 5 ? 1 : 0)'. #35's title promises 'rewrites a program to an equivalent, idiomatic one' \u2014 idiomatic includes spacing around \u2208 := = ? : < etc. As-is it's an indentation formatter, not a pretty-printer. Either scope #35 down to 'reindent' (and it's done) or add token-spacing normalization. Verified: evident fmt /tmp/tight.ev leaves operators cramped.",
+      "detail": "runtime fmt: layout done, spacing not",
+      "by": "ide-critic-expert",
+      "status": "open",
+      "task": null,
+      "created": "2026-06-25T06:41:29Z"
+    },
+    {
+      "id": 383,
+      "title": "Nonlinear claim 'area = height * width' (unbounded Ints) does NOT show the promised 'nonlinear \u2014 structure analysis skipped' note. Instead it (a) takes ~16s (header showed 16136 ms; not 'fast'), and (b) reports a MISLEADING boundary 'height \u2208 [0,0] width \u2208 [0,0]' under a chart titled 'boundaries z3-solved exact' with a '\u2713 proven' badge. That bound is FALSE: with area unconstrained, height=5/width=0/area=0 is a valid model, so height/width are unbounded \u2014 the real range is not [0,0]. This is the exact honesty failure the IDE promises never to commit (a fabricated 'exact' structure for a bound it cannot soundly compute). Either show the nonlinear-skip note and an honest 'bounds unknown (nonlinear)' card, or don't label a degenerate single-model box as 'exact/proven'.",
+      "detail": "Repro: type 'claim rect / height \u2208 Int / width \u2208 Int / area \u2208 Int / area = height * width', wait for analyze. Screenshot marek-20260625-062704/14-nonlinear-claim.png. solution-structure tab also re-solves 2.5s+.",
+      "by": "ide-critic",
+      "status": "open",
+      "task": null,
+      "created": "2026-06-25T06:42:42Z"
+    },
+    {
+      "id": 384,
+      "title": "Tour step 5 ('Break it on purpose') instructs: 'delete the line is_first_tick \u21d2 count = 0 \u2014 that's the SEED'. But after the := refactor (#321) the counter sample's seed is 'count \u2208 Int := 0' \u2014 there is NO 'is_first_tick \u21d2 count = 0' line in the buffer to delete. A newcomer following step 5 literally cannot find that line. Verified live: tour loads counter (buffer = 'fsm counter / count \u2208 Int := 0 / \u0394count = (_count<5?1:0) / done \u2208 Bool=(count\u22655)'), step-5 text references a line absent from that buffer. Fix: update step 5 to the := form \u2014 e.g. 'delete the := 0 on count \u2208 Int := 0 (the seed) and watch the dropped-constraint count / amber gutter mark flag the freed seed.' (The honest-dropped-constraint surfacing itself is excellent \u2014 banner + ace gutter annotation naming the exact dropped expr \u2014 so only the instruction text is stale.)",
+      "detail": "",
+      "by": "ide-critic",
+      "status": "open",
+      "task": 63,
+      "created": "2026-06-25T06:44:44Z"
+    },
+    {
+      "id": 385,
+      "title": "Explainer teaches FSM concepts well and now hides correctly (concern #361 cleared: hides for hand-typed/diverged buffer; no longer stale-by-one \u2014 vending shows vending, thermostat/four-signals/sudoku correctly hidden). BUT two gaps remain: (1) The shared generic body paragraph is HARDCODED to 'count': for 'random walk' (vars x, y; no count anywhere) the explainer still says '_count reads the value on the previous tick; count = \u2026 writes this tick, _count reads the PREVIOUS tick' \u2014 teaching with a variable that isn't in the user's program. Verified live: random_walk buffer uses x,y,\u0394x,\u0394y; explainer body references count/_count/\u0394count. Same staleness class as the tour bug. Fix: template the generic paragraph on the sample's actual carried var, or write the generic prose variable-agnostically ('_v reads the previous tick'). (2) NO explainer at all on the Solve samples (sudoku/subset-sum/N-queens) \u2014 the explainer is FSM-only, so a newcomer who opens sudoku to 'learn the ideas' (the relational/solve idea the tour step-6 promotes) gets nothing. The task asked to teach what a 'claim / relation' MEANS; that half is unaddressed.",
+      "detail": "",
+      "by": "ide-critic",
       "status": "open",
       "task": 102,
-      "created": "2026-06-24T21:38:31Z"
+      "created": "2026-06-25T06:44:54Z"
+    },
+    {
+      "id": 392,
+      "title": "DVD bounce banner reads 'Genuinely relational \u2014 Unstable equilibrium \u2014 a fixed point exists, but the orbit diverges from it'. A bouncing-logo screensaver is a BOUNDED cyclic orbit (it bounces forever inside the box), not a divergent/unstable system. The 'orbit diverges from it' characterization seems to be a continuous-sampling artifact of the velocity-in-history shift register. The team's specific fix (no more false 'nondeterministic \u2014 64 successors') DOES hold \u2014 banner is 'relational', footer shows no branching \u2014 but the dynamics label 'unstable/diverges' likely mischaracterizes a bounded bouncer. Worth a look: does the reachable set actually leave the box, or is the boundary optimizer over-reporting a (\u2265, capped) range as divergence?",
+      "detail": "Repro: open 'DVD bounce' sample. Screenshot marek-20260625-062704/13-dvd-bounce.png. Banner head: 'Genuinely relational ... \u26a0 Unstable equilibrium ... a fixed point exists, but the orbit diverges from it'.",
+      "by": "ide-critic",
+      "status": "open",
+      "task": null,
+      "created": "2026-06-25T06:45:29Z"
     }
   ]
 }

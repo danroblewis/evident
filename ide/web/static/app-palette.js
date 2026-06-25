@@ -100,7 +100,7 @@ const TOUR_STEPS = [
       + "it open now." },
   { sel: "#honesty", title: "5 · Break it on purpose",
     body: "Evident never silently ignores a mistake. <b>Try this:</b> delete the line "
-      + "<code>is_first_tick ⇒ count = 0</code> — that's the SEED, the start value. The honesty line "
+      + "<code>count ∈ Int := 0</code> — that's the SEED, the start value. The honesty line "
       + "here, and an amber mark on the editor line, flag any constraint the solver had to DROP. "
       + "That surfaced count is the silent bug, made loud." },
   { sel: "#solve-btn", title: "6 · ⊨ Solve a claim",
