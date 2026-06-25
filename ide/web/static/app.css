@@ -231,6 +231,18 @@ tr.g-changed > td, tr.g-changed > td.k { background:#2a210e; }   /* a differing 
   padding:7px 10px; font:12px/1.5 ui-monospace,Menlo,monospace; box-shadow:0 4px 16px #000a;
   white-space:pre-wrap; }
 
+/* #215: the inline backslash symbol hint — a small popup at the cursor listing `\name → glyph`
+   shortcuts as a `\` token is typed. Same dark/accent language as #gloss; rows are clickable. */
+#bs-hint { position:fixed; z-index:60; min-width:150px; max-height:240px; overflow-y:auto;
+  background:#0b0f14; border:1px solid var(--accent); border-radius:6px; box-shadow:0 4px 16px #000a;
+  font:13px/1.4 ui-monospace,Menlo,monospace; padding:3px; }
+#bs-hint .bs-row { display:flex; align-items:center; gap:10px; padding:3px 8px; border-radius:4px; cursor:pointer; }
+#bs-hint .bs-row.on { background:#16313f; }
+#bs-hint .bs-row:hover { background:#11212b; }
+#bs-hint .bs-glyph { color:var(--accent); font-size:15px; min-width:18px; text-align:center; }
+#bs-hint .bs-name { color:var(--dim); }
+#bs-hint .bs-row.on .bs-name { color:var(--ink); }
+
 /* The analysis cockpit (web-ide-shell.md §6/§R): shape / view (grows) / solve-host / footer. The VERDICT
    band moved to the header (#432) and the INTERROGATE band became gallery views (#437) — query/verify live
    in #interrogate-stash (hidden) and are borrowed into the view cell. #structure (data-carrier) +

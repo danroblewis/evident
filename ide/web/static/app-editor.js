@@ -349,8 +349,10 @@ function initEditorInput() {
   // typable-token input + the debounced analyze, both driven off the one change handler.
   editor.session.on("change", (delta) => {
     applyTokenInput(delta);
+    updateBackslashHint();    // #215: refresh the inline `\name → glyph` hint as the token is typed (app-symhint.js)
     scheduleAnalyze();
   });
+  initSymHint();   // #215: the backslash-hint cursor + keyboard-precedence listeners (app-symhint.js)
 
   // hover-to-learn glossary: resolve the token under the cursor and show its gloss.
   const editorEl = $("#code");
