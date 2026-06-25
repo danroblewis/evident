@@ -69,12 +69,9 @@ function renderExplainer(source) {
 
 // --- the live loop ----------------------------------------------------------------
 let timer = null, activeView = null, lastSource = "", _dimTimer = null, _elapsedTimer = null, _analyzeCtrl = null;
-// STICKY VIEW: the user's last EXPLICITLY-selected view (a chip click, or a sample's headline view).
-// On a source edit (run() with no view) we send this so the rendered view PERSISTS across edits instead
-// of resetting to the recommended lead view. The backend honors it iff it's available for the new model
-// (render.py: `req.view if req.view in VIEWS else _recommend(...)`) and reports the actual view it rendered,
-// so an unavailable preferred view falls back gracefully and the family-sync follows data.view. Null until
-// the first explicit selection ⇒ the first render still uses the recommended view.
+// STICKY VIEW: the last EXPLICITLY-selected view (chip click / sample headline). A source edit sends it
+// so the view PERSISTS across edits; the backend honors it if available for the new model else recommends
+// (render.py) and reports the actual data.view (family-sync follows it). Null ⇒ first render = recommended.
 let preferredView = null;
 // #421 axisOverride + #436 activeInteractive/lastViews live in app-axes.js / app-interactive.js (cross-script globals).
 window.addEventListener("keydown", (e) => { if (e.key === "Escape" && _analyzeCtrl) _analyzeCtrl.abort(); });  // Esc cancels an in-flight analyze (#149); guard avoids stealing Esc from modals
@@ -97,6 +94,7 @@ let scopeBound = null;        // the scope knob's value (#21/#84); null ⇒ serv
 let kDepth = null;            // #327: reachable_region k-induction depth; null ⇒ k=1 (the one-step box)
 let allConditions = false;    // state_graph: GLOBAL dynamics (every initial condition) vs from-init (diagram #1)
 let _loadV = 0;               // #359: load-version token — a debounced analyze checks it so a stale buffer can't clobber a newer load
+let lastDropped = 0;          // #451: the latest model's dropped-constraint count (>0 ⇒ BROKEN); the verify card inherits it
 
 // Push a snapshot onto a newest-first ring buffer, capping length. Pure (returns the
 // array) so it's unit-testable headless; mutates in place for the module array.
@@ -123,6 +121,7 @@ function paint(data, ms) {
   // alike) — the silent bug surfaces AT the line, not just in the console banner. Cleared
   // here too: an empty/absent dropped_locs wipes the previous run's amber markers.
   markDroppedLines(data.dropped_locs, data.warnings);
+  lastDropped = data.dropped || 0;   // #451: the model's BROKEN flag — the verify card must inherit it, not rely on the banner
   const view = $("#view"), warn = $("#warnings");
   $("#view-caption").textContent = "";                   // clear the per-view caption on any result;
                                                          // the OK path below re-sets it for the new view.
@@ -179,13 +178,13 @@ function paint(data, ms) {
   activeView = data.view;
   lastViews = (data.views || []).slice(); lastClaim = !!data.claim;   // #436: for re-rendering the strip when an interactive view is active
 
-  renderViewTabs(data, activeView, run);             // the view tab strip (app-history.js)
+  // #436: while an interactive view is open keep ITS chip highlighted, not the PNG view the backend recommended.
+  renderViewTabs(data, activeInteractive || activeView, run);
 
   // We're back to a live result — leave any read-only "past run" mode.
   pastView = null;
-  // #436: an interactive view (query/verify) owns #view + has borrowed controls re-parented in. A stale
-  // in-flight analyze must not clobber that cell (innerHTML= would destroy the borrowed #inv-prop etc.,
-  // crashing a later loadProgram). Skip the figure render; banner/verdict above already ran.
+  // #436: an interactive view owns #view (borrowed controls re-parented in) — skip the figure render so
+  // innerHTML= can't destroy the borrowed #inv-prop etc.; banner/verdict/#451-dropped above already ran.
   if (activeInteractive) return;
   // the rendered view: single live picture, or — when something is pinned — two-up (#207).
   renderLiveView(view, data);
@@ -274,11 +273,11 @@ async function run(view) {
   // a debounced re-analyze that setValue/edits just scheduled — that run() carries no view and would
   // re-recommend over it. Cancel the pending timer so the explicit view is the one that lands.
   if (view !== undefined) clearTimeout(timer);
-  // #436: an explicit normal-view selection leaves any interactive view (restore its borrowed controls
-  // to the interrogate panel); a no-view edit while an interactive view is open re-renders IT (re-runs
-  // against the freshly-edited model) instead of fetching a PNG — so the query view stays open + live.
+  const _runLoadV = _loadV;   // #449: this run's load generation — a newer load (loadProgram bumps _loadV) invalidates it
+  // #436: an explicit normal-view selection leaves any interactive view (restore its borrowed controls).
+  // A no-view edit while one's open still ANALYZES (so banner/verdict/#451 dropped refresh) — paint's
+  // interactive-guard skips the figure render, keeping the cell open without clobbering its controls.
   if (view !== undefined && activeInteractive) { activeInteractive = null; _restoreInterrogate(); }
-  else if (view === undefined && activeInteractive) { openInteractiveView(activeInteractive); return; }
   // STICKY VIEW: an explicit selection becomes the preferred view; a no-view edit re-uses it so the
   // rendered view survives the edit. Pass it on the request — the backend renders it if available for
   // the new model, else falls back to the recommended view (and reports which via data.view).
@@ -353,6 +352,7 @@ async function run(view) {
     // error would fall through and silently leave the prior picture looking live (Marek #206).
     if (!res.ok) { backendDown(`the solver returned HTTP ${res.status} — it likely crashed on that input`); return; }
     const data = await res.json();
+    if (_runLoadV !== _loadV) return;   // #449: a newer program loaded mid-flight — drop this stale result; the latest load wins
     paint(data, Math.round(performance.now() - t0));
   } catch (e) {
     if (e.name === "AbortError") {            // #149: user pressed Esc — not a backend failure

@@ -398,6 +398,7 @@ tr.g-changed > td, tr.g-changed > td.k { background:#2a210e; }   /* a differing 
   padding:2px 10px; cursor:pointer; font:12px ui-monospace,Menlo,monospace; }
 #inv-btn:hover { background:#1d4255; border-color:var(--accent); }
 #inv-result.good { color:var(--good); } #inv-result.bad { color:var(--bad); }
+#inv-result.broken { color:var(--warn); }   /* #451: a PASS over a BROKEN model — amber, never clean green */
 
 /* ad-hoc query row (⊨? ∃) — the existential dual of ⊢ verify; same shape, distinct tint (Ana #195) */
 #query-row { display:flex; align-items:center; gap:8px; padding:6px 14px;

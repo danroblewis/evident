@@ -149,6 +149,9 @@ function loadProgram(source, slotName, view) {
   $("#query-result").textContent = "";   // the `light = Green` chip must not persist onto `counter`.
   if (typeof clearAssumptions === "function") clearAssumptions();
   clearTrace();
+  // #447: a load is a definitive model change — close any open verdict dossier so it can't show the
+  // previous program's verdict during the gap before the new analyze lands (renderStructure re-binds it).
+  if (typeof closeModal === "function" && !$("#ck-modal").hidden && $("#ck-modal-title").textContent.startsWith("Verdict")) closeModal();
   run(view);                       // a sample jumps to its headline view (run() also refreshes the explainer)
 }
 
@@ -160,6 +163,12 @@ function initBuffer() {
   sel = $("#samples");
   refreshSamplesMenu();
   sel.onchange = () => {
+    // #449: capture the picked value AT EVENT TIME (before the `sel.value=""` reset below) and dispatch on
+    // that captured `v`, so a re-entrant change fired by the reset can never re-read a stale value. The
+    // load itself (loadProgram → editor.setValue) is fully SYNCHRONOUS, so the last selection always wins
+    // the editor — JS runs each change handler to completion before the next; an older pick can't override
+    // a newer one through this path. (The analyze RESULT is separately guarded by the #449 _loadV check in
+    // app.js's run(), so a stale in-flight analysis can't paint the wrong verdict over the new program.)
     const v = sel.value;
     if (v.startsWith("slot:")) {
       const name = v.slice(5), slots = loadSlots();

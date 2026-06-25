@@ -335,6 +335,20 @@ function _fairFlag(raw) {
   const checked = (() => { const el = $("#fair-in"); return !!(el && el.checked); })();
   return m ? { text: m[1].trim(), fair: true } : { text: raw, fair: checked };
 }
+
+// #451: a verify PASS over a BROKEN model (dropped>0) is a proof about the TRUNCATED program, not what
+// the user wrote — so the result card must inherit the BROKEN flag, never read as a clean green proof.
+// Sets the success text, then (when dropped>0) de-rates green→amber and appends the caveat.
+function _verifyGood(out, text) {
+  const dropped = (typeof lastDropped !== "undefined") ? lastDropped : 0;
+  if (dropped > 0) {
+    out.className = "broken";
+    out.textContent = `⚠ ${text.replace(/^✓\s*/, "")} — but over a BROKEN model: ${dropped} constraint(s) dropped; this proof is about the truncated program, not what you wrote.`;
+  } else {
+    out.className = "good";
+    out.textContent = text;
+  }
+}
 async function checkInvariant() {
   const out = $("#inv-result");
   clearTrace();                              // a new check invalidates the old scrubber
@@ -403,9 +417,8 @@ async function checkInvariant() {
         return;
       }
     }
-    out.className = "good";
-    out.textContent = (exhaustive ? "✓ proven" : "✓ holds (bounded)")
-      + ` — ${texts.join(" ∧ ")} on all ${checked} reachable states`;
+    _verifyGood(out, (exhaustive ? "✓ proven" : "✓ holds (bounded)")
+      + ` — ${texts.join(" ∧ ")} on all ${checked} reachable states`);
   } catch (e) { out.className = "bad"; out.textContent = "✕ " + e; }
 }
 // A counterexample run as a compact trace: init → … → the offending state (Ana #173/#175).
@@ -544,14 +557,12 @@ async function runTemporal(out, body) {
       // from every reachable (P-)state. WITHOUT fairness an unfair lasso dodges P forever; every
       // such dodging run that ignores the always-available path to P is excluded. Make it
       // unmistakable that this verdict depended on fairness — it is NOT an unconditional proof.
-      out.className = "good";
-      out.textContent = (d.exhaustive ? "✓ holds UNDER FAIRNESS" : "✓ holds UNDER FAIRNESS (bounded)")
+      _verifyGood(out, (d.exhaustive ? "✓ holds UNDER FAIRNESS" : "✓ holds UNDER FAIRNESS (bounded)")
         + ` — ${d.predicate} on all ${d.checked} reachable states.`
         + " Without fairness an unfair lasso dodges it forever; every dodging run that ignores the"
-        + " always-available path to the goal is excluded.";
+        + " always-available path to the goal is excluded.");
     } else if (d.holds) {
       // (a) — HOLDS even WITHOUT fairness (the lasso search found no dodging run at all).
-      out.className = "good";
       // For ◇ (AF: every run reaches Q at least once), distinguish RECURRENT (□◇ also holds —
       // Q recurs forever) from TRANSIENT (Q reached, then the system can settle into ¬Q forever).
       // The bare "✓ proven" on a transient ◇ invites a false recurrence reading (Ana #260).
@@ -561,8 +572,8 @@ async function runTemporal(out, body) {
           ? " — and recurs (infinitely often)"
           : " — but TRANSIENT: reached, does not recur (the system settles into ¬Q)";
       }
-      out.textContent = (d.exhaustive ? "✓ proven" : "✓ holds (bounded)")
-        + ` — ${d.predicate} on all ${d.checked} reachable states` + note;
+      _verifyGood(out, (d.exhaustive ? "✓ proven" : "✓ holds (bounded)")
+        + ` — ${d.predicate} on all ${d.checked} reachable states` + note);
     } else if (d.trap) {
       // (c) — FAILS even under fairness: a reachable TRAP (a state from which the goal is UNREACHABLE).
       // No escaping cycle to show — the witness is the trap state + the init→trap run.

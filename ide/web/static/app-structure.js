@@ -27,6 +27,11 @@ let lastOverlay = null;
 // gates, stashes `s` for the dossier, and paints the header chips. The full evidence is in the
 // dossier modal (buildDossier), opened by clicking any chip — preserving every #341/#345/#348 proof.
 let lastStructure = null;
+// #447: a verdict card (dossier / header chips) must never outlive the model it describes. Every analyze
+// or load bumps modelRev; the open dossier is stamped with the rev it was built from and LIVE-REFRESHED
+// to the current model on each renderStructure (or closed when the new model has no verdict).
+let modelRev = 0;
+let _dossierRev = -1;
 function renderStructure(s) {
   const el = $("#structure");
   // the invariant checker only makes sense for an FSM with a reachable set — not a raw claim
@@ -34,7 +39,13 @@ function renderStructure(s) {
   $("#query-row").hidden = !s || !!s.claim;            // ad-hoc query shares the verify row's gate
   if ($("#query-row").hidden) { $("#query-stack").hidden = true; $("#query-suggest").hidden = true; }  // hide the chips too
   lastStructure = s || null;
+  modelRev++;                                          // #447: a new model state — invalidate any open verdict card
   renderVerdictHeader(s);
+  // #447: an OPEN dossier must track the live model, never show a previous program's verdict. Re-bind it
+  // to the current structure (or close it when the new model has no FSM verdict — e.g. a claim / error).
+  if (!$("#ck-modal").hidden && $("#ck-modal-title").textContent.startsWith("Verdict")) {
+    if (s && !s.claim) openDossier(); else closeModal();
+  }
   if (!s) { el.hidden = true; return; }
   el.hidden = true;   // #432: the data carrier is never shown; the header chips + dossier present it
 }
@@ -178,12 +189,14 @@ function buildDossier(s) {
   return { icon, name };
 }
 
-// Open the verdict dossier modal from the stashed structure.
+// Open the verdict dossier modal from the stashed structure. Stamped with the model rev it was built
+// from (#447) so a later analyze/load can detect + refresh it rather than leave a stale verdict on screen.
 function openDossier() {
   if (!lastStructure) return;
   const { icon, name } = buildDossier(lastStructure);
   $("#ck-modal-title").textContent = `Verdict — ${icon} ${name}`;
   const help = $("#ck-modal-help"); if (help) { help.hidden = false; help.onclick = openHelp; }
+  _dossierRev = modelRev;
   $("#ck-modal").hidden = false;
 }
 
