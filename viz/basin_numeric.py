@@ -313,13 +313,15 @@ def _exact_graph_route(m, out_path, states, distinct, finite, rcap,
                              f"projecting out the counter(s) "
                              f"{', '.join(sorted(drop))} — basin map N/A")
                 return "too-large after projection (N/A)"
-        # No monotone counter explains the blow-up: a genuinely large/continuous
-        # reachable set. Don't fabricate a grid of basins — honest N/A.
-        _placeholder(out_path, m.fsm,
-                     f"reachable set exceeds {rcap} states with no monotone "
-                     "counter to project out — too large to enumerate; basin "
-                     "map N/A")
-        return "too-large reachable (N/A)"
+        # No monotone counter explains the blow-up: a genuinely CONTINUOUS reachable
+        # set (a spiral sink / limit cycle whose from-init enumeration runs away —
+        # #357/#465). This is NOT a fabrication case: fall through (return None) to the
+        # numeric grid-sweep, which grids the PROVEN-bounds / probed-attractor extent
+        # (numeric_domain) like phase_portrait does — every seed is a real point in the
+        # reachable region, integrated forward to its real attractor. The caller still
+        # routes to an honest N/A if no griddable numeric domain exists (a lone fixed
+        # point with no surrounding attractor).
+        return None
     return None
 
 

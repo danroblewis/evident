@@ -265,27 +265,25 @@ def render(smt2, schema, out_path):
                 labels = lab
                 sub = (f"{G.number_of_nodes()} reachable states, "
                        f"{G.number_of_edges()} transitions  (exact, mixed)")
-            elif len(states) == 1:
-                # reachable() found a single state — either a true fixed point
-                # or the explorer can't unfold a continuous orbit. Try the real
-                # forward orbit from the seed; only that, never a fabricated grid.
+            else:
+                # reachable() either collapsed to ONE state (the encoded seed sits at a fixed
+                # point) OR overflowed the cap (a CONTINUOUS field — a spiral sink / limit cycle —
+                # whose from-init enumeration runs away; #357/#465). Both cases are handled by
+                # walking the REAL forward flow over the proven-bounds grid, not the discrete
+                # enumeration: first the orbit from the seed, then the off-fixed-point seed-scan
+                # (which grids the dynamics' own scale). Every node is still a state the program
+                # really visits — we change the START point, never fabricate off-domain states.
                 G, labels = build_numeric_orbit_graph(m)
                 if G is not None and G.number_of_nodes() > 1:
                     sub = (f"{G.number_of_nodes()} states on the real forward "
-                           f"orbit from the initial condition  (exact orbit)")
+                           f"orbit from the initial condition  (forward flow)")
                 else:
-                    # The encoded seed walks a dead orbit — it may sit at an
-                    # UNSTABLE fixed point (vanderpol's (0,0)) while the real
-                    # dynamics live on a limit cycle off the origin. Probe
-                    # outward with the shared seed-scan and build the recurrence
-                    # graph from the off-origin orbits that come alive.
                     G, labels, nseeds = build_numeric_scan_graph(m)
                     if G is not None and G.number_of_nodes() > 1:
-                        sub = (f"{G.number_of_nodes()} states on real forward "
-                               f"orbits from {nseeds} off-fixed-point seeds — "
-                               f"the encoded seed sits at an unstable equilibrium; "
-                               f"the recurrent set lives off it  (seed-scan)")
-                    else:
+                        sub = (f"{G.number_of_nodes()} states on real forward orbits from "
+                               f"{nseeds} grid seeds over the proven bounds — the continuous "
+                               f"flow's recurrent set  (grid-sweep)")
+                    elif len(states) == 1:
                         # genuine fixed point: plot the one real reachable state.
                         G = nx.DiGraph()
                         keys = [_key(m, s) for s in states]
@@ -294,12 +292,12 @@ def render(smt2, schema, out_path):
                         labels = {keys[0]: _label_for_key(m, keys[0])}
                         sub = ("1 reachable state — the encoded seed is a fixed "
                                "point (no further dynamics)  (exact)")
-            else:
-                draw_na_card(m, out,
-                             "the reachable transition set could not be "
-                             "enumerated for this numeric program — a Morse "
-                             "graph would require fabricating off-domain states.")
-                return
+                    else:
+                        draw_na_card(m, out,
+                                     "the continuous flow has no recurrent set the grid-sweep "
+                                     "could resolve (every probed orbit diverged) — a Morse "
+                                     "graph would require fabricating off-domain states.")
+                        return
         else:
             G, labels = build_discrete_graph(m)
             sub = f"{G.number_of_nodes()} reachable states"
