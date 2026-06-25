@@ -19,6 +19,51 @@ instance attributes Model.__init__ sets: `consts`, `carried`, `two_tick_vars`,
 import z3
 
 
+def _z3_kind(v):
+    """The codec `kind` of a z3 VALUE — for decoding a payload variant's field args (§27)."""
+    s = v.sort()
+    if s == z3.IntSort():
+        return "int"
+    if s == z3.BoolSort():
+        return "bool"
+    if s == z3.RealSort():
+        return "real"
+    if s == z3.StringSort():
+        return "string"
+    return "enum"                                   # nested datatype (rare; recurses in _scalar_read)
+
+
+def _arg_kind(ctor, i):
+    """The codec `kind` of a constructor's i-th field SORT — for re-literalling a pin arg (§27)."""
+    s = ctor.domain(i)
+    if s == z3.IntSort():
+        return "int"
+    if s == z3.BoolSort():
+        return "bool"
+    if s == z3.RealSort():
+        return "real"
+    if s == z3.StringSort():
+        return "string"
+    return "enum"
+
+
+def _parse_arg(s):
+    """Parse one decoded payload-field string back to a Python value for re-literalling a pin.
+    Ints/floats parse; bool literals map; everything else (string/nested) stays a string."""
+    if s in ("True", "true"):
+        return True
+    if s in ("False", "false"):
+        return False
+    try:
+        return int(s)
+    except ValueError:
+        pass
+    try:
+        return float(s)
+    except ValueError:
+        return s
+
+
 class CodecMixin:
     # ---- one scalar value <-> z3 -------------------------------------------
     def _scalar_lit(self, kind, name, value):
@@ -34,8 +79,23 @@ class CodecMixin:
         if kind == "string":
             return z3.StringVal(value)
         if kind == "enum":
-            return self._enum_lit[name][value]
+            if value in self._enum_lit.get(name, {}):
+                return self._enum_lit[name][value]           # a nullary variant (Start, Done)
+            return self._payload_lit(name, value)            # a payload variant "Count(5)" (§27)
         raise ValueError(f"unknown kind {kind}")
+
+    def _payload_lit(self, name, value):
+        """Reconstruct the z3 value for a PAYLOAD-variant string like "Count(5)" — apply the
+        stored constructor to the decoded arg literal(s), so a payload-enum state can be PINNED
+        as a previous-tick value (the BFS/successor path). Mirrors _scalar_read's encoding."""
+        ctor_name, _, rest = str(value).partition("(")
+        ctor = self._enum_ctor.get(name, {}).get(ctor_name)
+        if ctor is None:
+            raise ValueError(f"unknown enum value {value!r} for {name}")
+        arg_strs = [a.strip() for a in rest.rstrip(")").split(",")] if rest.rstrip(")") else []
+        args = [self._scalar_lit(_arg_kind(ctor, i), name, _parse_arg(s))
+                for i, s in enumerate(arg_strs)]
+        return ctor(*args)
 
     def _scalar_read(self, mv, kind):
         """Decode one already-evaluated SCALAR z3 value `mv` of `kind` to Python."""
@@ -60,7 +120,14 @@ class CodecMixin:
         if kind == "string":
             return mv.as_string()
         if kind == "enum":
-            return mv.decl().name()
+            # A PAYLOAD variant (Count(5)) decodes to the distinct string "Count(5)" so successive
+            # payloads stay DISTINCT states (Count(5) ≠ Count(4)) — a bare "Count" would collapse the
+            # whole sequence into one node (§27). Nullary variants decode to just the name.
+            if mv.num_args() == 0:
+                return mv.decl().name()
+            args = ", ".join(str(self._scalar_read(mv.arg(i), _z3_kind(mv.arg(i))))
+                             for i in range(mv.num_args()))
+            return f"{mv.decl().name()}({args})"
         raise ValueError(f"unknown kind {kind}")
 
     # ---- a carried leaf's value <-> z3 (scalar OR seq) ---------------------

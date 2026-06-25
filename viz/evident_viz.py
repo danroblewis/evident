@@ -157,29 +157,27 @@ class Model(CodecMixin, RankingMixin, AnalysisMixin, QueryMixin, TemporalMixin,
         self.second_tick = (self.consts.get(self._second_tick_name)
                             if self._second_tick_name else None)
 
-        # For each enum state var (carried OR derived), map variant-name -> z3 value
-        # (nullary ctor). Derived enums are included so a derived enum track can be
-        # rendered/coerced the same way a carried one is.
-        self.enum_variants = {}            # var name -> [variant names]
-        self._enum_lit = {}                # var name -> {variant: z3 value}
+        # For each enum state var (carried OR derived), map variant-name -> z3 value.
+        # NULLARY variants populate `_enum_lit` (variant name -> the 0-arg z3 value) and
+        # `enum_variants` (the categorical domain the renderers colour/ordinal by). PAYLOAD
+        # variants (Count(Int)) are NOT in that nullary table — they have no single literal —
+        # but their z3 CONSTRUCTOR is kept in `_enum_ctor` so the codec can decode a solved
+        # Count(5) to the distinct string "Count(5)" and reconstruct it for a pin (§27 support).
+        self.enum_variants = {}            # var name -> [nullary variant names] (the categorical domain)
+        self._enum_lit = {}                # var name -> {variant: z3 value}  (nullary only)
+        self._enum_ctor = {}               # var name -> {variant: z3 constructor decl} (ALL variants)
         for v in self.carried + self.derived:
             if v["kind"] == "enum" and v["name"] in self.consts:
                 sort = self.consts[v["name"]].sort()
-                # NULLARY variants only: a PAYLOAD variant (Count(Int)) can't be a categorical here
-                # (ctor() needs args; the ordinal/colormap/_key model assumes nullary). Skip it so a
-                # model that merely MENTIONS such an enum loads; carrying one as STATE is rejected
-                # below. See examples/COUNTEREXAMPLES.md §27.
-                lits = {c.name(): c() for c in (sort.constructor(i)
-                        for i in range(sort.num_constructors())) if c.arity() == 0}
+                lits, ctors = {}, {}
+                for i in range(sort.num_constructors()):
+                    c = sort.constructor(i)
+                    ctors[c.name()] = c
+                    if c.arity() == 0:
+                        lits[c.name()] = c()
                 self.enum_variants[v["name"]] = list(lits)
                 self._enum_lit[v["name"]] = lits
-                if sort.num_constructors() != len(lits) and any(c["name"] == v["name"]
-                                                                for c in self.carried):
-                    raise RuntimeError(
-                        f"payload-enum carried FSM state is not yet supported by the viz layer "
-                        f"({v['name']}: a variant like Count(Int) carries data the categorical state "
-                        "model can't represent without collapsing distinct payloads). "
-                        "See examples/COUNTEREXAMPLES.md §27.")
+                self._enum_ctor[v["name"]] = ctors
 
     # ---- value <-> z3 + pin/block/sort: see CodecMixin (model_codec.py) ------
     def _base(self):

@@ -928,35 +928,30 @@ series (tracks wiggling after the done-tick). This is the intended use of the
 visualizations as a correctness lens — under-constraining is not hidden, it is drawn.
 (Fix if desired: pin `state = _state` once `_done` is true.)
 
-### 27. Payload-enum carried FSM state isn't visualizable (viz codec is nullary-only)
+### 27. Payload-enum carried FSM state — SUPPORTED in the graph views (was a viz gap)
 
 **Where:** `examples/test_02_counter.ev` — `state ∈ CountState` where
-`enum CountState = Start | Count(Int) | Done`. The program RUNS correctly under
-`evident effect-run` (the runtime handles payload variants fine); the gap is in the
-**viz layer** (`viz/`), so it only affects the web-IDE diagrams, not execution.
+`enum CountState = Start | Count(Int) | Done`.
 
-The viz value-codec models an enum state as a **nullary categorical** — a finite set
-of variant NAMES with an ordinal/colormap (`enum_variants`, `_enum_lit`,
-`_scalar_read` → `decl().name()`, `to_ordinal`). A payload variant `Count(5)` has no
-place in that model:
-- decoding it yields the bare name `"Count"`, **collapsing** `Count(5)`, `Count(4)`,
-  … into ONE state — the reachable graph would falsely read as 3 nodes
-  (`Start → Count → Done`), hiding the whole count-down dynamics;
-- re-pinning a `"Count(5)"` value (the BFS prev-pin) has no entry in the nullary
-  `_enum_lit` table, so it would KeyError.
+**Resolved.** The export DOES carry the payload — the smt2 declares
+`(Count (Count_f0 Int))` and the transition reads/writes it via the `Count_f0` accessor
+and `(Count 5)` / `((_ is Count) state)`. So this was a **viz-only** gap, and the fix is
+contained to the value-codec: `_scalar_read` now decodes a payload value to the distinct
+string `"Count(5)"` (so `Count(5) ≠ Count(4)` are distinct states, not a collapsed
+`Count` node), and `_scalar_lit`/`_payload_lit` reconstruct it from the stored
+constructor (`_enum_ctor`) to PIN a previous-tick value in the BFS. The graph-based views
+needed **no change** — `state_graph.color_by_categorical` already appends an
+out-of-domain value to its palette, and `model.label` / `_key` work on the decoded
+string. test_02_counter now renders the full count-down as **7 distinct states**
+(`Start → Count(5) → Count(4) → Count(3) → Count(2) → Count(1) → Done`) in state_graph,
+reachability_tree, transition_matrix, timing_diagram, etc.
 
-Rather than render a **silently wrong** picture (a faithfulness violation) or crash
-deep in a renderer, `Model.__init__` now **fails loudly and identifiably at load**
-(`RuntimeError: payload-enum carried FSM state is not yet supported …`), which the
-`/api/analyze` wrapper surfaces as an honest "analysis failed" message. A payload enum
-that is only *mentioned* (not carried as state) still loads — only the nullary variants
-populate the categorical table.
-
-**Consequence / what a real fix needs (runtime/viz):** a value representation for a
-payload-enum state — `(variant, payload…)` instead of a bare name — threaded through
-the codec (distinct decode `Count(5)≠Count(4)`, literal *reconstruction* for pinning)
-AND every renderer's enum-categorical machinery (`to_ordinal`, the colormaps,
-`color_by_categorical`, `_key`) made robust to a dynamically-discovered value outside
-the declared nullary set. That is a cross-cutting feature, not a codec one-liner; until
-then, model counting state as an `Int` carried var (e.g. `count ∈ Int` with `Δ`) rather
-than an `Int`-payload enum if you want the dynamics visualized.
+**Remaining display caveat (not a crash, a fidelity limit):** the ORDINAL/GRID views key
+their axis off `enum_variants`, which still lists only the **nullary** variants
+(`[Start, Done]`) — a payload value isn't a fixed categorical level. So `time_series` /
+`value_heatmap` place a `Count(n)` on a shared ordinal (the count reads via the cell
+label, not a distinct y-row), and `transition_matrix`'s grid enumerates only the nullary
+axis levels. The labels are faithful and nothing collapses or crashes; only the
+continuous count's *magnitude* isn't an ordinal axis in those two views. If you want the
+count itself plotted as a value, model it as an `Int` carried var (`count ∈ Int` with
+`Δ`) — but the relational/graph picture of the payload enum is now correct.
