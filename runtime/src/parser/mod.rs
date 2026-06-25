@@ -769,6 +769,22 @@ impl Parser {
             }
         }
         let e = self.parse_expr()?;
+        // `<lhs> := v` → `is_first_tick ⇒ lhs = v` (a first-tick-only seed). Allowed when the lhs
+        // type is already known from existing vars: a Δ-expression (`Δx := 3` seeds an initial RATE
+        // — sugar for `_x := x - 3`), a prev-tick ref (`_x := …`), or a field/index. A bare new-var
+        // identifier still needs `∈ Type` (handled in try_parse_chained_membership above).
+        if matches!(self.peek(), Token::ColonEq)
+            && (matches!(&e, Expr::Delta(_) | Expr::Field(..) | Expr::Index(..))
+                || matches!(&e, Expr::Identifier(n) if n.starts_with('_')))
+        {
+            self.bump();
+            let rhs = self.parse_expr()?;
+            return Ok(vec![BodyItem::Constraint(Expr::Binary(
+                BinOp::Implies,
+                Box::new(Expr::Identifier("is_first_tick".to_string())),
+                Box::new(Expr::Binary(BinOp::Eq, Box::new(e), Box::new(rhs))),
+            ))]);
+        }
         Ok(vec![BodyItem::Constraint(e)])
     }
 }

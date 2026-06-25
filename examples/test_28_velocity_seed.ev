@@ -1,10 +1,10 @@
--- 28_velocity_seed — set an initial RATE by seeding the previous tick.
+-- 28_velocity_seed — set an initial RATE directly with `Δx := v`.
 --
--- `_x := x - 3` seeds the previous-tick position, so the first observed change
--- is +3 — an initial velocity, the way it would arrive from I/O. `Δx = Δ_x`
+-- `Δx := 3` seeds the initial change (an initial velocity, the way it would arrive
+-- from I/O). It is `is_first_tick ⇒ Δx = 3` — sugar for `_x := x - 3`. `Δx = Δ_x`
 -- carries that rate forward (constant velocity). The velocity is NOT a separate
 -- variable; it lives in the position history `x - _x`, made available to `Δ_x`
--- by the second-order shift register: `__x(t) = _x(t-1)`, so the seeded `_x(0)`
+-- by the second-order shift register: `__x(t) = _x(t-1)`, so the seed
 -- bootstraps `__x(1)` and `Δ_x` reads the right initial rate from tick 1 on.
 --
 --   0, 3, 6, 9, 12, done at 15
@@ -13,7 +13,7 @@ import "stdlib/runtime.ev"
 
 fsm climb
     x ∈ Int := 0
-    _x ∈ Int := x - 3                  -- seed the previous tick → initial rate +3
+    Δx := 3                            -- seed the initial RATE directly (sugar for _x := x - 3)
     halting ∈ Bool = (x ≥ 15)
     Δx = Δ_x                           -- carry the rate (constant velocity)
 

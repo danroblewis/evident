@@ -124,14 +124,14 @@ fsm thermostat
     (18.0 < _temp ∧ _temp < 22.0) ⇒ mode = _mode`,
   "DVD bounce · 2 vars (velocity in the history)":
 `-- The bouncing-logo screensaver in 2 variables, not 4. The velocity isn't a separate field —
--- it lives in the position HISTORY: Δx = x − _x. Seed it with  _x := x − 3  (initial rate +3),
+-- it lives in the position HISTORY: Δx = x − _x. Seed the rate directly with  Δx := 3  (initial +3),
 -- carry it with  Δx = Δ_x , and flip it at each wall. The second-order shift register
 -- (__x = _x one tick ago) makes Δ_x read the right rate from tick 1, so the bounce is exact.
 fsm dvd
     x ∈ Real := 50.0
     y ∈ Real := 30.0
-    _x ∈ Real := x - 3.0
-    _y ∈ Real := y - 2.0
+    Δx := 3.0
+    Δy := 2.0
     (0.0 < _x < 100.0) ⇒ Δx = Δ_x
     ¬(0.0 < _x < 100.0) ⇒ Δx = 0.0 - Δ_x
     (0.0 < _y < 60.0) ⇒ Δy = Δ_y
