@@ -24,6 +24,7 @@ import os
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__))))
 from evident_viz import load  # noqa: E402
+from axis_map import ordinal_core  # noqa: E402
 
 import z3  # noqa: E402
 import matplotlib  # noqa: E402
@@ -33,18 +34,8 @@ import matplotlib.pyplot as plt  # noqa: E402
 
 def ordinal(m, var, value):
     """Map a state value to a numeric axis coordinate."""
-    k = var["kind"]
-    if k == "int":
-        return float(value)
-    if k == "real":
-        return float(value)
-    if k == "bool":
-        return 1.0 if value else 0.0
-    if k == "enum":
-        return float(m.enum_variants[var["name"]].index(value))
-    if k == "string":
-        return 0.0  # strings get a placeholder axis
-    return 0.0
+    o = ordinal_core(m, var, value)
+    return o if o is not None else 0.0  # strings/unknown get a placeholder axis
 
 
 def tick_info(m, var):

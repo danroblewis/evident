@@ -13,6 +13,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 
 from overlay_points import write_points  # noqa: E402
+from axis_map import ordinal_core  # noqa: E402
 
 
 # A qualitative palette big enough for the terminal sets we see.
@@ -104,17 +105,8 @@ def _choose_facet(m, axes, states):
 
 def _ordinal(m, var, value):
     """Project a state value onto a real number for plotting."""
-    k = var["kind"]
-    if k in ("int", "real"):
-        return float(value)
-    if k == "bool":
-        return 1.0 if value else 0.0
-    if k == "enum":
-        variants = m.enum_variants[var["name"]]
-        return float(variants.index(value))
-    if k == "string":
-        return 0.0
-    return 0.0
+    o = ordinal_core(m, var, value)
+    return o if o is not None else 0.0  # strings/unknown project to 0.0
 
 
 def _axis_label(var):

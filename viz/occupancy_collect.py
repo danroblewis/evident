@@ -9,17 +9,15 @@ binning helper (nbins). Dynamics come ONLY from evident_viz queries.
 """
 import numpy as np
 
+from axis_map import ordinal_core
+
 
 def ordinal(m, var, value):
     """Project a state value to a real number for binning."""
-    k = var["kind"]
-    if k == "int" or k == "real":
-        return float(value)
-    if k == "bool":
-        return 1.0 if value else 0.0
-    if k == "enum":
-        return float(m.enum_variants[var["name"]].index(value))
-    if k == "string":
+    o = ordinal_core(m, var, value)
+    if o is not None:
+        return o
+    if var["kind"] == "string":
         return float(abs(hash(value)) % 997)
     return 0.0
 

@@ -9,6 +9,7 @@ renderer in render_fixedpoint_map.py imports these and draws the result.
 `ordinal` (the value -> float projection) lives here too because the seed
 spread depends on it; the renderer imports it back for its own axis projection.
 """
+from axis_map import ordinal_core
 
 
 # --------------------------------------------------------------------------
@@ -16,14 +17,10 @@ spread depends on it; the renderer imports it back for its own axis projection.
 # --------------------------------------------------------------------------
 def ordinal(model, var, value):
     """Map any value to a float coordinate for plotting."""
-    k = var["kind"]
-    if k in ("int", "real"):
-        return float(value)
-    if k == "bool":
-        return 1.0 if value else 0.0
-    if k == "enum":
-        return float(model.enum_variants[var["name"]].index(value))
-    if k == "string":
+    o = ordinal_core(model, var, value)
+    if o is not None:
+        return o
+    if var["kind"] == "string":
         return float(hash(value) % 997)
     return 0.0
 
