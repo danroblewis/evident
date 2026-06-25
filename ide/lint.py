@@ -56,8 +56,12 @@ MAX_COUPLING = 8
 # Top-level package names that count as "our own modules" for Rule 4.
 OUR_PACKAGES = {"ide", "viz"}
 
-# Non-Python files that still get the line-count check (Rule 1 only).
-JS_EXTRA_FILES = ["ide/web/static/app.js"]
+# Non-Python files that still get the line-count check (Rule 1 only). The WHOLE static-JS
+# family, not just app.js — globbed so a new app-*.js module is covered automatically and
+# can't quietly grow past 500 (app-verify.js had drifted to 917 unchecked while only app.js
+# was line-checked). Relative to the repo root, matching how lint.py is invoked (./test.sh).
+import glob as _glob
+JS_EXTRA_FILES = sorted(_glob.glob("ide/web/static/*.js"))
 
 SUPPRESS_MARKER = "noqa: lint"
 
