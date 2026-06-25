@@ -1,5 +1,5 @@
 {
-  "seq": 444,
+  "seq": 445,
   "tasks": [
     {
       "id": 1,
@@ -10930,6 +10930,21 @@
       "status": "open",
       "created_by": "ide-feature-designer",
       "created": "2026-06-25T09:26:51Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "diagram"
+      ],
+      "log": []
+    },
+    {
+      "id": 445,
+      "title": "Axis-param BACKEND (unblocks #421 axis selector). CockpitBuild's contract: (1) figure_router.py Source: add x_var/y_var: str|None=None. (2) render.py: thread x_var/y_var through _render_png into the renderer call via an _adapt that tolerates renderers without them. (3) each axis-taking render_*.py (phase_portrait, nullcline_field, scatter_matrix, orbit_scatter, occupancy_heatmap, cobweb): use x_var/y_var as projection axes when provided+valid, else today's auto-pick (defaults unchanged). (4) echo back the axes actually used so the frontend shows the active selection + detects a rejected var. Verify via direct render calls (no web server needed).",
+      "detail": "",
+      "status": "open",
+      "created_by": "worker",
+      "created": "2026-06-25T09:39:14Z",
       "worker_done": false,
       "approvals": [],
       "reopened": 0,
