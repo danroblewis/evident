@@ -324,7 +324,7 @@ const VIEW_FAMILIES = [
   ["dynamics over time", ["state_graph", "reachability_tree", "time_series", "value_heatmap", "timing_diagram", "space_time",
     "transition_matrix", "phase_portrait", "nullcline_field", "cobweb", "orbit_scatter", "occupancy_heatmap"]],
   ["structure · law", ["scatter_matrix", "parallel_coords", "chord_diagram", "function_graph",
-    "function_residual", "function_guards", "function_behavior", "function_complexity"]],
+    "function_residual", "function_guards", "function_behavior", "function_complexity", "verify"]],
 ];
 const VIEW_FAMILY = (() => { const m = {}; VIEW_FAMILIES.forEach(([fam, vs]) => vs.forEach(v => { m[v] = fam; })); return m; })();
 
@@ -333,8 +333,8 @@ const VIEW_FAMILY = (() => { const m = {}; VIEW_FAMILIES.forEach(([fam, vs]) => 
 // state satisfying a user conjunction. They're frontend-driven (no /api/analyze PNG); the chip click
 // routes to their own renderer (openInteractiveView) rather than onRun(). Only offered for FSM models
 // with a reachable set (gated the same as the bottom-panel query — not a raw claim).
-const INTERACTIVE_VIEWS = new Set(["query"]);
-const INTERACTIVE_LABEL = { query: "query · ∃ reachable" };
+const INTERACTIVE_VIEWS = new Set(["query", "verify"]);
+const INTERACTIVE_LABEL = { query: "query · ∃ reachable", verify: "verify · □ property" };
 
 // Each view's BEST-CASE rigor class — mirrors render.py's partition (_ALWAYS_PROVEN / _BOUND_VIEWS /
 // _ENUMERATE_VIEWS). This is the KIND of view (a per-chip hint); the ACTIVE render's true, capping-aware
@@ -346,6 +346,7 @@ const _ENUMERATE_VIEWS = new Set(["state_graph", "basin_map", "fixedpoint_map", 
 function viewBaseRigor(v) {
   if (v === "claim_space" || v === "solution_structure" || v.startsWith("function_")) return "proven";
   if (v === "query") return "exhaustive";   // #436: a witness search is exhaustive over the reachable set
+  if (v === "verify") return "proven";       // #437: a property proven over ALL reachable states/runs
   if (_BOUND_VIEWS.has(v)) return "proven";
   if (_ENUMERATE_VIEWS.has(v)) return "exhaustive";
   return "sampled";
@@ -368,9 +369,12 @@ let browsedFamily = null;
 function renderViewTabs(data, activeView, onRun) {
   const tabs = $("#tabs");
   const avail = (data.views || []).slice();
-  // #436: offer the interactive "query" view for FSM models with a reachable set (same gate as the
-  // bottom-panel query — not a raw claim). It's frontend-driven, so it's not in data.views; inject it.
-  if (avail.length && !data.claim && !avail.includes("query")) avail.push("query");
+  // #436/#437: offer the interactive "query" + "verify" views for FSM models with a reachable set (same
+  // gate as the old bottom-panel — not a raw claim). They're frontend-driven, not in data.views; inject.
+  if (avail.length && !data.claim) {
+    if (!avail.includes("query")) avail.push("query");
+    if (!avail.includes("verify")) avail.push("verify");
+  }
   // available families in A→D order; any unmapped views go in a trailing "other" so nothing vanishes
   const fams = VIEW_FAMILIES.map(([fam, vs]) => [fam, vs.filter(v => avail.includes(v))]).filter(([, vs]) => vs.length);
   const other = avail.filter(v => !VIEW_FAMILY[v]);

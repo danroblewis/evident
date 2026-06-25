@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Evident IDE</title>
 <link rel="icon" href="data:,">
-<link rel="stylesheet" href="/static/app.css?v=38">
+<link rel="stylesheet" href="/static/app.css?v=39">
 </head>
 <body>
 <div id="app">
@@ -78,8 +78,10 @@
       <div id="diff-panel" hidden></div>
     </section>
 
-    <!-- 6d INTERROGATE — verify · query · solve -->
-    <section class="ck-region" data-label="interrogate">
+    <!-- #437: the bottom INTERROGATE band is GONE — query + verify are now gallery VIEWS. The query/verify
+         controls live in #interrogate-stash (their off-view home; openInteractiveView borrows them into the
+         #view cell when selected). #solve keeps a thin host so the ⊨ Solve flow still renders. -->
+    <div id="interrogate-stash" hidden>
       <div id="invariant" hidden>
         <span class="inv-label" title="PROVE a property holds on every state/run">⊢ verify</span>
         <input id="inv-prop" placeholder="verify (use your own vars) — safety:  var ≤ 5  ·  0 ≤ var ≤ 10     liveness:  ◇ var = 5  ·  □◇ var = 5  ·  P ⤳ Q">
@@ -101,6 +103,11 @@
       </div>
       <div id="query-suggest" hidden></div>
       <div id="inv-trace" hidden></div>
+    </div>
+
+    <!-- #437: the Solve panel keeps a thin host (no longer inside an INTERROGATE band) — the ⊨ Solve
+         header verb populates it; it stays hidden until a solve runs. -->
+    <div id="solve-host">
       <div id="solve" hidden>
         <div id="solve-head"></div>
         <div id="solve-body"></div>
@@ -117,7 +124,7 @@
           <button id="opt-min" title="minimize this variable over the claim">⤓ min</button>
         </div>
       </div>
-    </section>
+    </div>
 
     <!-- FOOTER — session-global readouts (honesty / warnings + a history-modal launcher) -->
     <footer class="ck-footer" data-label="session">
@@ -162,12 +169,12 @@
 <script src="/static/app-symbols.js?v=12"></script>
 <script src="/static/app-editor.js?v=3"></script>
 <script src="/static/app-buffer.js?v=7"></script>
-<script src="/static/app-history.js?v=11"></script>
-<script src="/static/app-verify.js?v=14"></script>
+<script src="/static/app-history.js?v=12"></script>
+<script src="/static/app-verify.js?v=15"></script>
 <script src="/static/app-gallery.js?v=1"></script>
 <script src="/static/app-palette.js?v=9"></script>
 <script src="/static/app-panzoom.js?v=2"></script>
 <script src="/static/app-structure.js?v=13"></script>
-<script src="/static/app.js?v=32"></script>
+<script src="/static/app.js?v=33"></script>
 </body>
 </html>

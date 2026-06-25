@@ -231,13 +231,15 @@ tr.g-changed > td, tr.g-changed > td.k { background:#2a210e; }   /* a differing 
   padding:7px 10px; font:12px/1.5 ui-monospace,Menlo,monospace; box-shadow:0 4px 16px #000a;
   white-space:pre-wrap; }
 
-/* The analysis cockpit (web-ide-shell.md §6/§R): a fixed grid of labeled regions —
-   shape / view (grows) / interrogate / footer. The VERDICT band (#432) moved to the
-   header, so the body is now four rows; #structure stays as a hidden data-carrier
-   (display:none ⇒ no grid track). Each region keeps its children's own styling. */
+/* The analysis cockpit (web-ide-shell.md §6/§R): shape / view (grows) / solve-host / footer. The VERDICT
+   band moved to the header (#432) and the INTERROGATE band became gallery views (#437) — query/verify live
+   in #interrogate-stash (hidden) and are borrowed into the view cell. #structure (data-carrier) +
+   #interrogate-stash are display:none ⇒ no grid track; #solve-host is auto (only sized when Solve shows). */
 #dynamics { grid-area:dynamics; background:var(--panel); min-width:0; position:relative;
   display:grid; grid-template-rows:auto 1fr auto auto; overflow:hidden; }
-#dynamics > #structure[hidden] { display:none; }   /* the data-carrier never claims a grid row */
+#dynamics > #structure[hidden], #dynamics > #interrogate-stash[hidden] { display:none; }   /* never claim a grid row */
+#solve-host { min-width:0; display:flex; flex-direction:column; }
+#solve-host:empty, #solve-host:not(:has(#solve:not([hidden]))) { display:none; }   /* collapse when no solve panel is open */
 
 /* #432: VERDICT header chips — right of the pin slot. A colored headline chip (the class) + up to
    two compact evidence chips + the ⛨ soundness glyph. Each opens the dossier modal; ellipsis, never wrap. */
@@ -317,8 +319,8 @@ tr.g-changed > td, tr.g-changed > td.k { background:#2a210e; }   /* a differing 
 /* the solve panel sits inside the (auto-sized) interrogate region now, not a fixed-height
    flex parent — its old 46%-of-pane cap resolves to dead space here. Let it size to content;
    #solve-body keeps its own scroll for long witness tables. */
-.ck-region #solve { max-height:none; }
-.ck-region #solve-body { max-height:38vh; }
+.ck-region #solve, #solve-host #solve { max-height:none; }
+.ck-region #solve-body, #solve-host #solve-body { max-height:38vh; }
 /* prominent "solving…" badge centered over the diagram for >0.4s analyses (Marek #202/#132) */
 #solving { position:absolute; top:46%; left:50%; transform:translate(-50%,-50%); z-index:30;
   background:#0b0f14ee; border:1px solid var(--accent); border-radius:8px; padding:10px 20px;
@@ -502,8 +504,14 @@ tr.g-changed > td, tr.g-changed > td.k { background:#2a210e; }   /* a differing 
   gap:8px; padding:10px 14px; overflow:auto; cursor:default; }
 .iview-head { font-size:12px; color:var(--dim); }
 .iview-slot { display:flex; flex-direction:column; gap:6px; }
-.iview-slot #query-row, .iview-slot #query-stack, .iview-slot #query-suggest { border:none; padding:6px 0; }
+.iview-slot #query-row, .iview-slot #query-stack, .iview-slot #query-suggest,
+.iview-slot #invariant { border:none; padding:6px 0; }
 .iview-trace #inv-trace { border:none; padding:0; background:none; }
+/* #437: the verify modality picker row */
+.iview-moderow { display:flex; align-items:center; gap:8px; }
+#vview-modality { background:#1b2129; color:var(--ink); border:1px solid var(--line); border-radius:6px;
+  padding:2px 8px; font:12px ui-monospace,Menlo,monospace; cursor:pointer; }
+#vview-modality:hover { border-color:var(--accent); }
 
 /* #421: axis selector — rides under the figure like the all-initial-conditions toggle. The "axes ▾"
    button reveals two var <select>s; cobweb hides the y select. */

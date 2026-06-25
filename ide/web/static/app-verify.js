@@ -338,7 +338,13 @@ function _fairFlag(raw) {
 async function checkInvariant() {
   const out = $("#inv-result");
   clearTrace();                              // a new check invalidates the old scrubber
-  const rawIn = $("#inv-prop").value.trim();
+  let rawIn = $("#inv-prop").value.trim();
+  // #437: in the verify VIEW, the modality comes from the picker, not a typed glyph — prepend it so the
+  // existing parser below sees ◇/□◇ (safety + leads-to are bare; the user types P ⤳ Q for leads-to).
+  if (typeof activeInteractive !== "undefined" && activeInteractive === "verify" && typeof _verifyModality !== "undefined") {
+    const pfx = { eventually: "◇ ", infinitely_often: "□◇ " }[_verifyModality] || "";
+    if (pfx && rawIn) rawIn = pfx + rawIn;
+  }
   if (!rawIn) { out.textContent = ""; return; }
   // A `WF` / `under fairness` suffix (or the WF checkbox) requests WEAK-FAIRNESS liveness (#269):
   // exclude unfair lassos. Strip the suffix before the modality parse; `fair` rides the temporal body.
