@@ -438,20 +438,36 @@ function _matchPoint(points, stepState) {
   if (!points || !points.length || !stepState) return null;
   const leaf = (o) => {
     const m = {};
-    for (const k of Object.keys(o || {})) m[k.split(".").pop()] = String(o[k]);
+    for (const k of Object.keys(o || {})) m[k.split(".").pop()] = o[k];
     return m;
   };
   const want = leaf(stepState);
-  for (const p of points) {
-    if (typeof p.fx !== "number" || typeof p.fy !== "number") continue;
+  const valid = points.filter((p) => typeof p.fx === "number" && typeof p.fy === "number");
+  // (1) EXACT match on shared leaves — the discrete case (state_graph / integer FSMs). Every shared key
+  // must agree by string value; this is the original behaviour and stays exact for discrete states.
+  for (const p of valid) {
     const have = leaf(p.state);
     let shared = 0, ok = true;
     for (const k of Object.keys(want)) {
-      if (k in have) { shared++; if (have[k] !== want[k]) { ok = false; break; } }
+      if (k in have) { shared++; if (String(have[k]) !== String(want[k])) { ok = false; break; } }
     }
     if (ok && shared > 0) return p;
   }
-  return null;
+  // (2) #354: NEAREST match on shared NUMERIC leaves — the continuous case (phase_portrait / solution_space
+  // over real-valued vars). A trace step's float (s=59.347…) will never string-equal a vector-field sample
+  // point, so ring the closest sample by Euclidean distance over the shared numeric axes. Discrete views
+  // never reach here (they exact-matched above); a view with no numeric overlap returns null (no ring).
+  const numKeys = Object.keys(want).filter((k) => typeof want[k] === "number");
+  let best = null, bestD = Infinity;
+  for (const p of valid) {
+    const have = leaf(p.state);
+    let d = 0, shared = 0;
+    for (const k of numKeys) {
+      if (typeof have[k] === "number") { const dx = have[k] - want[k]; d += dx * dx; shared++; }
+    }
+    if (shared > 0 && d < bestD) { bestD = d; best = p; }
+  }
+  return best;
 }
 // Remove any prior trace-step ring from the live overlay (each scrub step replaces it).
 function clearTraceRing() {
