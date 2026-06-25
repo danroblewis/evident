@@ -44,8 +44,35 @@ import numpy as np
 from evident_viz import load
 from time_series_ensemble import ensemble_inits, step_trajectory
 from time_series_walk import pick_seed, excited_seed, walk, to_ordinal, _flatten_seqs
+from overlay_points import write_points
 
 STEPS = 60
+
+_SHORT = lambda n: n.split(".")[-1]
+
+
+def _write_tick_points(fig, ax, primary, out_path):
+    """#354: the per-TICK sidecar the trace scrubber rings on the diagram. One entry per tick of
+    the PRIMARY (representative) run: `fx` = that tick's x as a figure-CROP fraction (the TIGHT
+    bbox time_series saves under — same x-math as overlay_points.tight_fraction), `fy` = 0.5 (the
+    cursor is a full-height vertical line; y is irrelevant), `state` = that tick's carried-leaf
+    values SHORT-keyed (i/sum — the exact shape _matchPoint matches, like phase_portrait's points),
+    and `tick` = the index (the frontend draws a vertical .trace-cursor at fx, keyed on `tick`)."""
+    fig.canvas.draw()
+    dpi = fig.dpi
+    tb = fig.get_tightbbox(fig.canvas.get_renderer())
+    x0 = tb.x0 * dpi
+    w = tb.width * dpi
+    if w <= 0 or not primary:
+        return write_points(out_path, [])
+    pts = []
+    for t, st in enumerate(primary):
+        px, _ = ax.transData.transform((t, 0))
+        fx = (px - x0) / w
+        if 0.0 <= fx <= 1.0:
+            pts.append({"fx": round(float(fx), 4), "fy": 0.5,
+                        "state": {_SHORT(k): v for k, v in st.items()}, "tick": t})
+    write_points(out_path, pts)
 
 
 def _categorical_yticks(ax, m, var):
@@ -146,6 +173,22 @@ def _draw_track(ax, m, var, mat, ticks, rank):
         ax.grid(True, axis="x", alpha=0.3)
 
 
+def _flatten_ensemble(m, trajs):
+    """Expand seqs per trajectory (each gets the same pseudo-var set; state_vars is shared) and
+    derive the shared tick axis + display order. Returns (trajs, flat_vars, nticks, ticks, ordered)."""
+    flat_vars = m.state_vars
+    flat_trajs = []
+    for tr in trajs:
+        fv, ftr = _flatten_seqs(m.state_vars, tr)
+        flat_vars = fv
+        flat_trajs.append(ftr)
+    trajs = flat_trajs
+    nticks = max(len(tr) for tr in trajs)
+    ticks = list(range(nticks))
+    ordered = _ordered_vars(m, trajs[0][0], flat_vars)
+    return trajs, flat_vars, nticks, ticks, ordered
+
+
 def _render_ensemble(m, out_path, inits, kind, note):
     """Forward-simulate every init, expand seqs, drop constant rows, and draw the per-var
     ensemble + envelope. Returns a one-line render note (string)."""
@@ -156,18 +199,7 @@ def _render_ensemble(m, out_path, inits, kind, note):
         _na_card(m, out_path, f"N/A for {m.fsm}: no trajectories from any initial condition")
         return "ensemble: empty"
 
-    # Expand seqs per trajectory (each gets the same pseudo-var set; state_vars is shared).
-    flat_vars = m.state_vars
-    flat_trajs = []
-    for tr in trajs:
-        fv, ftr = _flatten_seqs(m.state_vars, tr)
-        flat_vars = fv
-        flat_trajs.append(ftr)
-    trajs = flat_trajs
-    nticks = max(len(tr) for tr in trajs)
-    ticks = list(range(nticks))
-
-    ordered = _ordered_vars(m, trajs[0][0], flat_vars)
+    trajs, flat_vars, nticks, ticks, ordered = _flatten_ensemble(m, trajs)
 
     # A var is CONSTANT only if it never moves across the WHOLE ensemble (not just one run) —
     # otherwise the ensemble's whole point (the fan) would be suppressed. Report the held set.
@@ -214,6 +246,9 @@ def _render_ensemble(m, out_path, inits, kind, note):
                  ha="center", va="bottom", fontsize=8, color="#666")
     fig.tight_layout(rect=[0, 0.02 if constants else 0, 1, 0.97])
     fig.savefig(out_path, dpi=120, bbox_inches="tight")
+    # #354: per-tick cursor sidecar from the PRIMARY (first) run — the shared x-axis (axes[-1])
+    # maps each tick to its fraction; trajs[0] carries every leaf per tick (the scrubber's match key).
+    _write_tick_points(fig, axes[-1], trajs[0], out_path)
     plt.close(fig)
     return (f"{kind} ensemble: {len(trajs)} trajectories, {nvars} varying vars")
 
@@ -283,6 +318,9 @@ def _render_single_run(m, out_path, reason):
                  ha="center", va="bottom", fontsize=8, color="#666")
     fig.tight_layout(rect=[0, 0.02 if constants else 0, 1, 0.97])
     fig.savefig(out_path, dpi=120, bbox_inches="tight")
+    # #354: per-tick cursor sidecar — the shared bottom x-axis (axes[-1]) maps each tick to its
+    # crop-fraction; `traj` carries every leaf per tick (the scrubber's match key).
+    _write_tick_points(fig, axes[-1], traj, out_path)
     plt.close(fig)
     return f"single-run (unbounded): {nvars} varying vars"
 
