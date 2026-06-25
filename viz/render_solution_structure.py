@@ -78,6 +78,16 @@ def render(smt2_path, schema_path, out_path):
         for sp in ax.spines.values():
             sp.set_visible(False)
         msg, col = "no solution structure — the claim is unsatisfiable", _GREY
+    elif r.get("note"):
+        # #460: the structure couldn't be DETERMINED (nonlinear arithmetic / solver timeout) — surface the
+        # honest WHY. Without this the empty backbone/free renders as "0 forced · 0 free · 0 relations",
+        # which misreads as "the claim pins nothing down" rather than "the analysis was skipped".
+        ax.text(0.5, 0.5, r["note"], ha="center", va="center", fontsize=13, color=_GREY,
+                transform=ax.transAxes, wrap=True)
+        ax.set_xticks([]); ax.set_yticks([])
+        for sp in ax.spines.values():
+            sp.set_visible(False)
+        msg, col = r["note"], _GREY
     else:
         _draw(ax, r)
         nb, nf = len(r["backbone"]), len(r["free"])
