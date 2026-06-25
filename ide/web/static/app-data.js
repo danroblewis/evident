@@ -122,21 +122,20 @@ fsm thermostat
     (_temp ≥ 22.0) ⇒ mode = Idle
     (_temp ≤ 18.0) ⇒ mode = Heating
     (18.0 < _temp ∧ _temp < 22.0) ⇒ mode = _mode`,
-  "DVD bounce · 4-wall (guard partition)":
-`-- The bouncing-logo screensaver: position drifts, each velocity flips at its two walls. The
--- functionizer compiles 3-branch GUARDED velocity functions (in-bounds vs the two wall conditions)
--- — open function_behavior for the wall-flip partition map.
+  "DVD bounce · 2 vars (velocity in the history)":
+`-- The bouncing-logo screensaver in 2 variables, not 4. The velocity isn't a separate field —
+-- it lives in the position HISTORY: Δx = x − _x. Seed it with  _x := x − 3  (initial rate +3),
+-- carry it with  Δx = Δ_x , and flip it at each wall. The second-order shift register
+-- (__x = _x one tick ago) makes Δ_x read the right rate from tick 1, so the bounce is exact.
 fsm dvd
-    px ∈ Real := 50.0
-    py ∈ Real := 30.0
-    vx ∈ Real := 3.0
-    vy ∈ Real := 2.0
-    Δpx = _vx
-    Δpy = _vy
-    (0.0 < _px ∧ _px < 100.0) ⇒ vx = _vx
-    ((_px ≤ 0.0 ∨ _px ≥ 100.0)) ⇒ vx = 0.0 - _vx
-    (0.0 < _py ∧ _py < 60.0) ⇒ vy = _vy
-    ((_py ≤ 0.0 ∨ _py ≥ 60.0)) ⇒ vy = 0.0 - _vy`,
+    x ∈ Real := 50.0
+    y ∈ Real := 30.0
+    _x ∈ Real := x - 3.0
+    _y ∈ Real := y - 2.0
+    (0.0 < _x < 100.0) ⇒ Δx = Δ_x
+    ¬(0.0 < _x < 100.0) ⇒ Δx = 0.0 - Δ_x
+    (0.0 < _y < 60.0) ⇒ Δy = Δ_y
+    ¬(0.0 < _y < 60.0) ⇒ Δy = 0.0 - Δ_y`,
   "SIR epidemic · 3 coupled compartments":
 `-- The SIR model: susceptibles get infected (the S·I product), infected recover. THREE coupled
 -- functions — a driven cascade S→I→R with one product coupling. Open function_graph.

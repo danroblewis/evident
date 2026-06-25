@@ -212,28 +212,53 @@ class Model(CodecMixin, RankingMixin, AnalysisMixin, QueryMixin, TemporalMixin,
             return None
         return self._read(model, var)
 
-    def _successors_two(self, cur, prev, limit=64):
+    def _successors_two(self, cur, prev, limit=64, second=False):
         """ALL distinct next CURRENT-snapshots from the (cur, prev) pair of a two-tick
-        model: pin `_x = cur` AND `__x = prev`, with is_first_tick = is_second_tick =
-        false. When `prev` is None (the step OUT of the first tick) we pin only `_x =
-        cur` and set is_second_tick = true — the bootstrap tick the model handles
-        without a two-ago value. Returns a list of current-snapshot state dicts."""
+        model: pin `_x = cur`, and `__x = prev` whenever a two-ago value exists. `second`
+        is the tick-1 bootstrap flag (is_second_tick): on the bootstrap step we STILL pin
+        `__x = prev` — the SEEDED tick-0 `_x` (e.g. from `_x := x - 3`), which the runtime's
+        shift register carries into `__x` — so a second-order model stays deterministic
+        instead of fanning out on a free `__x`. Returns current-snapshot state dicts."""
         s = self._base()
         if self.first_tick is not None:
             s.add(self.first_tick == False)  # noqa: E712
         self._pin_prev(s, cur)
-        if prev is None:
-            if self.second_tick is not None:
-                s.add(self.second_tick == True)  # noqa: E712
-        else:
-            if self.second_tick is not None:
-                s.add(self.second_tick == False)  # noqa: E712
+        if self.second_tick is not None:
+            s.add(self.second_tick == (second or prev is None))  # noqa: E712
+        if prev is not None:
             self._pin_prev2(s, prev)
         out = []
         while len(out) < limit and s.check() == z3.sat:
             mod = s.model()
             out.append(self._read_state(mod))
             s.add(self._block_clause(mod))
+        return out
+
+    def _initial_prev(self):
+        """The tick-0 `_var` values, but ONLY when EVERY carried `_x` is UNIQUELY FORCED on
+        tick 0 — a `_x := …` seed, which the runtime's shift register carries into `__x` on
+        tick 1. Returns the full forced prev-state, or None when any `_var` is free (e.g.
+        fib's `_n`, whose tick-1 bootstrap is the existing is_second_tick path — pinning its
+        `__x` to an arbitrary Z3 pick would collapse the reachable graph)."""
+        s = self._base()
+        if self.first_tick is not None:
+            s.add(self.first_tick == True)  # noqa: E712
+        if s.check() != z3.sat:
+            return None
+        mod = s.model()
+        out = {}
+        for v in self.carried:
+            pn = v.get("prev")
+            if not pn or pn not in self.consts or v["kind"] == "seq":
+                return None
+            val = self._read(mod, {"name": pn, "kind": v["kind"]})
+            s.push()
+            s.add(self.consts[pn] != self._lit(v, val))     # forced ⇔ no other tick-0 value
+            forced = (s.check() == z3.unsat)
+            s.pop()
+            if not forced:
+                return None
+            out[v["name"]] = val
         return out
 
     def _reachable_two(self, limit=5000):
@@ -246,16 +271,20 @@ class Model(CodecMixin, RankingMixin, AnalysisMixin, QueryMixin, TemporalMixin,
         init = self.initial_state()
         if init is None:
             return [], []
+        # The seeded tick-0 `_x` (e.g. `_x := x - 3`) is the two-ago value on tick 1 — the
+        # runtime carries it into `__x`. Capture it as the tick-0 node's prev so the bootstrap
+        # step pins `__x` and the second-order transition is deterministic, not a free fan.
+        init_prev = self._initial_prev()
         # The pair-graph: each node carries (cur, prev); states[] holds the cur dicts.
         states = [init]
-        pairs = [(init, None)]                       # tick-0 node: no prev yet
-        pair_index = {(self._key(init), None): 0}
+        pairs = [(init, init_prev)]                  # tick-0 node: prev = the seeded `_x`
+        pair_index = {(self._key(init), self._key(init_prev) if init_prev else None): 0}
         edges = []
         frontier = [0]
         while frontier and len(states) < limit:
             i = frontier.pop()
             cur, prev = pairs[i]
-            for nxt in self._successors_two(cur, prev):
+            for nxt in self._successors_two(cur, prev, second=(i == 0)):
                 pk = (self._key(nxt), self._key(cur))
                 if pk not in pair_index:
                     pair_index[pk] = len(states)
