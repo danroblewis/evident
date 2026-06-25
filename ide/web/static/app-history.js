@@ -306,32 +306,87 @@ function exitCompareModes() {
   if (panel) panel.hidden = true;             // a stale diff must not linger over a changed/dead backend
 }
 
-// The view tab strip — one keyboard-navigable tab per available view (roving tabindex; ←/→ move
-// focus), with a ⚙ seam before the compiled-structure (function_*) group (Marek #278). Extracted from
-// app.js to keep it under the length ratchet; uses the global VIEW_CAPTIONS + the passed-in onRun.
+// The diagram taxonomy (web-ide-shell.md §3): every view slotted into one of four analysis-type
+// FAMILIES — what question the view answers — in A→B→C→D order. The strip groups by family so the
+// ~25-view set reads as a sorted gallery instead of a registry-order wall. Source of truth for the
+// names is render.py's ALL_VIEWS + CLAIM_VIEWS; claim_space (CLAIM_VIEWS-only) leads family A as the
+// claim analog of solution_space. Any view NOT listed here still renders — it falls into a trailing
+// "other" group (never vanishes).
+const VIEW_FAMILIES = [
+  ["solution space", ["claim_space", "solution_space", "solution_structure"]],
+  ["terminal · end-state", ["terminal_map", "reachable_region", "fixedpoint_map", "basin_map", "morse_graph"]],
+  ["dynamics over time", ["state_graph", "reachability_tree", "time_series", "timing_diagram", "space_time",
+    "transition_matrix", "phase_portrait", "nullcline_field", "cobweb", "orbit_scatter", "occupancy_heatmap"]],
+  ["structure · law", ["scatter_matrix", "parallel_coords", "chord_diagram", "function_graph",
+    "function_residual", "function_guards", "function_behavior", "function_complexity"]],
+];
+const VIEW_FAMILY = (() => { const m = {}; VIEW_FAMILIES.forEach(([fam, vs]) => vs.forEach(v => { m[v] = fam; })); return m; })();
+
+// Each view's BEST-CASE rigor class — mirrors render.py's partition (_ALWAYS_PROVEN / _BOUND_VIEWS /
+// _ENUMERATE_VIEWS). This is the KIND of view (a per-chip hint); the ACTIVE render's true, capping-aware
+// rigor still comes from the backend as data.rigor and is shown on the figure (paint()). The chip dot
+// never over-claims a specific render — it classifies the view, the figure badge classifies the result.
+const _BOUND_VIEWS = new Set(["solution_space", "terminal_map", "reachable_region"]);
+const _ENUMERATE_VIEWS = new Set(["state_graph", "basin_map", "fixedpoint_map", "transition_matrix",
+  "timing_diagram", "time_series", "reachability_tree", "orbit_scatter"]);
+function viewBaseRigor(v) {
+  if (v === "claim_space" || v === "solution_structure" || v.startsWith("function_")) return "proven";
+  if (_BOUND_VIEWS.has(v)) return "proven";
+  if (_ENUMERATE_VIEWS.has(v)) return "exhaustive";
+  return "sampled";
+}
+const _RIGOR_DOT = { proven: ["⊨", "best case: PROVEN — abstract Z3 over all conditions"],
+  exhaustive: ["▦", "best case: EXHAUSTIVE — the complete bounded-discrete state graph"],
+  sampled: ["~", "SAMPLED — trajectories / a capped or continuous run, never a proof"] };
+
+// The view tab strip — chips grouped under family headers (web-ide-shell.md §3), each chip carrying its
+// best-case rigor dot. One keyboard-navigable tab per available view (roving tabindex; ←/→ move focus
+// across the flattened order). Only families with ≥1 available view show; unmapped views fall into a
+// trailing "other" group so nothing vanishes. Click + active-highlight behavior is unchanged.
 function renderViewTabs(data, activeView, onRun) {
   const tabs = $("#tabs");
   tabs.innerHTML = "";
   tabs.setAttribute("role", "tablist");
-  (data.views || []).forEach((v, i) => {
-    const el = document.createElement("div");
-    const groupStart = v.startsWith("function_") && !(data.views[i - 1] || "").startsWith("function_");
-    el.className = "tab" + (v === activeView ? " on" : "") + (groupStart ? " group-start" : "");
-    if (groupStart) el.title = "compiled-structure views — how the solver reduced the program to functions";
-    el.textContent = v.replace(/_/g, " ");
-    el.setAttribute("role", "tab");
-    el.setAttribute("aria-selected", v === activeView ? "true" : "false");
-    el.tabIndex = v === activeView ? 0 : -1;
-    if (VIEW_CAPTIONS[v]) el.dataset.gloss = VIEW_CAPTIONS[v];   // hover a tab → its caption
-    el.onclick = () => onRun(v);
-    el.onkeydown = (e) => {
-      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onRun(v); }
-      else if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
-        e.preventDefault();
-        const els = [...tabs.children];
-        els[(i + (e.key === "ArrowRight" ? 1 : els.length - 1)) % els.length].focus();
-      }
-    };
-    tabs.appendChild(el);
+  const avail = data.views || [];
+  // bucket the available views by family, preserving family A→D order; collect any unmapped into "other"
+  const buckets = VIEW_FAMILIES.map(([fam, vs]) => [fam, vs.filter(v => avail.includes(v))]);
+  const other = avail.filter(v => !VIEW_FAMILY[v]);
+  if (other.length) buckets.push(["other", other]);
+  let idx = 0;                                  // flat index across all chips, for roving ←/→ focus
+  buckets.forEach(([fam, vs]) => {
+    if (!vs.length) return;
+    const hdr = document.createElement("div");
+    hdr.className = "tab-family";               // same uppercase register as the cockpit region labels
+    hdr.textContent = fam;
+    tabs.appendChild(hdr);
+    vs.forEach((v) => {
+      const flatIdx = idx++;
+      const el = document.createElement("div");
+      el.className = "tab" + (v === activeView ? " on" : "");
+      el.textContent = v.replace(/_/g, " ");
+      const rig = viewBaseRigor(v);
+      const dot = document.createElement("span");
+      dot.className = "tab-rigor rigor-" + rig;
+      dot.textContent = _RIGOR_DOT[rig][0]; dot.title = _RIGOR_DOT[rig][1];
+      el.appendChild(dot);
+      el.setAttribute("role", "tab");
+      el.setAttribute("aria-selected", v === activeView ? "true" : "false");
+      el.tabIndex = v === activeView ? 0 : -1;
+      if (VIEW_CAPTIONS[v]) el.dataset.gloss = VIEW_CAPTIONS[v];   // hover a tab → its caption
+      el.onclick = () => onRun(v);
+      el.onkeydown = (e) => {
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onRun(v); }
+        else if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+          e.preventDefault();
+          const els = [...tabs.querySelectorAll(".tab")];
+          els[(flatIdx + (e.key === "ArrowRight" ? 1 : els.length - 1)) % els.length].focus();
+        }
+      };
+      tabs.appendChild(el);
+    });
   });
+  // keep the active chip visible in the (capped, scrollable) strip — clicking a far chip
+  // shouldn't scroll its family out of sight on the next render.
+  const onChip = tabs.querySelector(".tab.on");
+  if (onChip) onChip.scrollIntoView({ block: "nearest" });
 }

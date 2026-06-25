@@ -386,19 +386,26 @@ tr.g-changed > td, tr.g-changed > td.k { background:#2a210e; }   /* a differing 
 .trace-state.good { color:var(--good); border-color:var(--good); }
 .trace-state.cycle { color:#e0b050; border-color:#e0b050; }   /* a state on the dodging cycle — liveness lasso (Ana #239) */
 
-#tabs { display:flex; flex-wrap:wrap; gap:5px; padding:8px 12px 4px; }
-/* In the cockpit grid, the tab wall (28 chips, wraps to ~6 rows) must not starve the
-   figure of vertical space — cap it to a few rows and scroll the rest. The family-grouped
-   tab strip (web-ide-shell.md §3) supersedes this later; until then the cap keeps the
-   diagram from collapsing to a sliver. */
-.ck-view #tabs { flex:0 0 auto; max-height:5.5em; overflow-y:auto; }
+#tabs { display:flex; flex-wrap:wrap; gap:5px; padding:8px 12px 4px; align-items:flex-end; }
+/* In the cockpit grid the tab strip mustn't starve the figure. Grouped by family (web-ide-shell.md §3)
+   it's scannable, so the cap relaxes — a few family rows show, the rest scrolls, and the figure keeps
+   the bulk of the 6c region. */
+.ck-view #tabs { flex:0 0 auto; max-height:7.5em; overflow-y:auto; }
+/* a family header — full-width so it forces a line break, the family's chips wrap beneath it.
+   Same uppercase register as the cockpit region labels (.ck-region data-label) for one visual system. */
+#tabs .tab-family { flex:0 0 100%; padding:6px 2px 1px; font-size:10px; letter-spacing:0.12em;
+  text-transform:uppercase; color:var(--dim); opacity:0.7; }
+#tabs .tab-family:first-child { padding-top:0; }
 #tabs .tab { padding:3px 10px; border-radius:6px 6px 0 0; background:#1b2129; color:var(--dim);
-  cursor:pointer; border:1px solid transparent; user-select:none; }
+  cursor:pointer; border:1px solid transparent; user-select:none; display:flex; align-items:center; gap:5px; }
 #tabs .tab:hover { color:var(--ink); }
 #tabs .tab.on { color:#fff; background:var(--bg); border-color:var(--line); border-bottom-color:var(--bg); }
-/* seam before the compiled-structure (function_*) views — a different KIND of view (Marek #278) */
-#tabs .tab.group-start { margin-left:10px; border-left:2px solid var(--line); padding-left:12px; }
-#tabs .tab.group-start::before { content:"⚙"; opacity:0.5; margin-right:5px; font-size:0.85em; }
+/* per-chip best-case rigor dot — proven / exhaustive / sampled (the KIND of view). The active render's
+   true capping-aware rigor is the badge on the figure; this dot classifies the view, not the result. */
+#tabs .tab-rigor { font-size:0.8em; opacity:0.85; }
+#tabs .tab-rigor.rigor-proven { color:var(--good); }
+#tabs .tab-rigor.rigor-exhaustive { color:var(--accent); }
+#tabs .tab-rigor.rigor-sampled { color:var(--warn); }
 /* overflow:hidden so wheel-zoomed content clips cleanly inside the pane (#233) — pan/zoom
    replaces native scrollbars. cursor:grab signals the surface is draggable; .grabbing while held. */
 #view { flex:1; display:flex; align-items:center; justify-content:center; overflow:hidden; padding:8px;
