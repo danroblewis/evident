@@ -257,11 +257,20 @@ def guard_analysis(model, steps, residual):
         sv = z3.Solver(); sv.add(domain); sv.add(z3.Not(z3.Or(guards)))
         res = sv.check()
         complete = res == z3.unsat
+        # A SEED equation (`x ∈ Int := 0` ⇒ is_first_tick ⇒ x=0) is INTENTIONALLY first-tick-only; the
+        # ¬first-tick case is the var's SEPARATE difference equation, which this guarded step doesn't fold
+        # in. If the dispatch becomes complete once is_first_tick is assumed true, the only gap is
+        # ¬is_first_tick — a seed, not an incomplete function (Ana #370).
+        seed_only = False
+        ift = consts.get("is_first_tick")
+        if not complete and ift is not None:
+            sv2 = z3.Solver(); sv2.add(domain); sv2.add(ift); sv2.add(z3.Not(z3.Or(guards)))
+            seed_only = sv2.check() == z3.unsat
         # The Z3 WITNESS is already in hand (Ana #303): the input that hits no branch (gap) / where two
         # branches both fire (overlap). A failed property must yield its counterexample — surface it.
         gap_witness = _witness(sv.model()) if res == z3.sat else None
         out[s["var"]] = {"disjoint": overlap is None, "complete": complete, "overlap": overlap,
-                         "gap_witness": gap_witness, "overlap_witness": overlap_witness}
+                         "gap_witness": gap_witness, "overlap_witness": overlap_witness, "seed_only": seed_only}
     return out
 
 

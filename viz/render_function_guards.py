@@ -72,6 +72,9 @@ def render(smt2, schema, out_path):
         if v is not None:
             if v["complete"] and v["disjoint"]:
                 badge, col = "✓ total & unambiguous (over the declared type domain)", "#3fb950"
+            elif v.get("seed_only"):
+                badge = "✓ seed (first tick only) — the ¬first-tick case is the difference equation Δ"
+                col = "#3fb950"
             elif not v["complete"]:
                 w = v.get("gap_witness")
                 badge = f"⚠ INCOMPLETE — no branch for  {w}" if w else "⚠ INCOMPLETE — some input hits no branch"
