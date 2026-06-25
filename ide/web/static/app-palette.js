@@ -372,6 +372,26 @@ function initPalette() {
   cmdk.addEventListener("mousedown", (e) => { if (e.target === cmdk) closeCmdk(); });  // backdrop click closes
   if ($("#cmdk-hint")) $("#cmdk-hint").onclick = (e) => { e.stopPropagation(); openCmdk(); };
 
+  // #372: while the palette is open, NOTHING may leak into the editor. ⌘K opens via Ace's command, so
+  // there's a focus-transition window where the next fast keystroke can still land in Ace before
+  // #cmdk-input takes focus. A CAPTURE-phase guard closes that window: any keydown whose target isn't the
+  // palette input is stopped before Ace sees it, focus is pulled back to the input, and a printable char is
+  // forwarded INTO the input (so the keystroke is captured, not just dropped). A newcomer reaching for the
+  // glossary can never accidentally edit their program.
+  document.addEventListener("keydown", (e) => {
+    if (!cmdkOpen() || e.target === cmdkInput) return;
+    // let the palette's own modifier chords (⌘K toggle, etc.) be handled by the global handler below
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    e.preventDefault(); e.stopPropagation();          // never reaches Ace
+    cmdkInput.focus();
+    if (e.key && e.key.length === 1) {                // a printable char — capture it into the input
+      const i = cmdkInput.selectionStart ?? cmdkInput.value.length;
+      cmdkInput.value = cmdkInput.value.slice(0, i) + e.key + cmdkInput.value.slice(cmdkInput.selectionEnd ?? i);
+      cmdkInput.setSelectionRange(i + 1, i + 1);
+      cmdkActive = 0; renderCmdk();
+    } else if (e.key === "Escape") { closeCmdk(); }
+  }, true);   // capture phase — beats Ace's own keydown handling
+
   // editor-scoped chords (Ace owns keystrokes while the editor is focused)
   editor.commands.addCommand({
     name: "cmdkPalette", bindKey: { win: "Ctrl-K", mac: "Command-K" },
