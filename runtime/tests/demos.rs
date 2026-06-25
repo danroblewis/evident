@@ -129,6 +129,14 @@ const EXPECTATIONS: &[DemoExpect] = &[
         forbid_exact_lines: &["at (1,0)", "at (1,1)"],
         max_steps: 12, tick_ms: 0, stdin: None,
     },
+    DemoExpect {
+        // Second-order shift register: `_x := x - 3` seeds the rate, `Δx = Δ_x`
+        // carries it. `__x(1) = _x(0)` bootstrap makes `Δ_x` read the right rate.
+        name: "test_28_velocity_seed", exit: 0,
+        must_lines: &["x = 0", "x = 3", "x = 6", "x = 9", "x = 12", "done at 15"],
+        forbid_exact_lines: &["x = 1", "x = 2"],
+        max_steps: 10, tick_ms: 0, stdin: None,
+    },
 ];
 
 #[test]

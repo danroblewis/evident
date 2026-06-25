@@ -290,8 +290,11 @@ fn run_loop(
         // map (1 = previous tick, 2 = two ticks ago). Set `is_first_tick`
         // (tick 0) and `is_second_tick` (tick 1) bootstrap flags.
         if let Some(claim) = rt.get_schema(&fsm.claim_name) {
-            let is_first = prev_values.is_empty();
-            let is_second = !prev_values.is_empty() && prev2_values.is_empty();
+            // Tick index drives the bootstrap flags — NOT prev2 emptiness, since a
+            // seeded `_x` now makes prev2_values non-empty from tick 1 (the __var
+            // shift-register fix below).
+            let is_first = step_count == 0;
+            let is_second = step_count == 1;
             let mut sees_underscore = false;
             for item in &claim.body {
                 if let BodyItem::Membership { name, .. } = item {
@@ -351,7 +354,19 @@ fn run_loop(
             if prev_values.get(k) != Some(v) { values_changed = true; }
             new_prev.insert(k.clone(), v.clone());
         }
-        prev2_values = std::mem::replace(&mut prev_values, new_prev);
+        // `__var(t) = _var(t-1)`: next tick's two-ago snapshot is THIS tick's solved
+        // single-underscore bindings, so a SEEDED `_x` (`_x := x - 3`) bootstraps `__x`
+        // and `Δ_x` reads the right initial rate instead of a free value. Previously
+        // prev2 was the prior input (empty on tick 0), leaving `__x(1)` unconstrained.
+        let mut new_prev2: HashMap<String, Value> = HashMap::new();
+        for (k, v) in r.bindings.iter() {
+            if let Some(base) = k.strip_prefix('_') {
+                if base.starts_with('_') { continue; }   // single-underscore (`_x`), not `__x`
+                new_prev2.insert(base.to_string(), v.clone());
+            }
+        }
+        prev_values = new_prev;
+        prev2_values = new_prev2;
 
         let any_effect = !effects.is_empty();
         last_results = dispatch_all(ctx, &effects);

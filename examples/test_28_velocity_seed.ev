@@ -1,0 +1,58 @@
+-- 28_velocity_seed — set an initial RATE by seeding the previous tick.
+--
+-- `_x := x - 3` seeds the previous-tick position, so the first observed change
+-- is +3 — an initial velocity, the way it would arrive from I/O. `Δx = Δ_x`
+-- carries that rate forward (constant velocity). The velocity is NOT a separate
+-- variable; it lives in the position history `x - _x`, made available to `Δ_x`
+-- by the second-order shift register: `__x(t) = _x(t-1)`, so the seeded `_x(0)`
+-- bootstraps `__x(1)` and `Δ_x` reads the right initial rate from tick 1 on.
+--
+--   0, 3, 6, 9, 12, done at 15
+
+import "stdlib/runtime.ev"
+
+fsm climb
+    x ∈ Int := 0
+    _x ∈ Int := x - 3                  -- seed the previous tick → initial rate +3
+    halting ∈ Bool = (x ≥ 15)
+    Δx = Δ_x                           -- carry the rate (constant velocity)
+
+    effects = (halting ? ⟨Println("done at " ++ to_str(x)), Exit(0)⟩
+               : ⟨Println("x = " ++ to_str(x))⟩)
+
+-- ── Static tests ─────────────────────────────────────────────
+
+-- `Δx = Δ_x` desugars to `x − _x = _x − __x`, i.e. `x = 2·_x − __x` (constant
+-- rate). For _x = 6, __x = 3 (rate 3) the only x is 9.
+claim sat_carries_rate
+    x ∈ Int
+    _x ∈ Int
+    __x ∈ Int
+    is_first_tick ∈ Bool
+    is_second_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+
+    is_first_tick = false
+    is_second_tick = false
+    _x = 6
+    __x = 3
+    climb
+    x = 9                   -- x = 2·_x − __x = 12 − 3  ✓
+
+-- The rate is carried, not reset to zero: _x = 6, __x = 3 forbids x = 6.
+claim unsat_rate_not_zero
+    x ∈ Int
+    _x ∈ Int
+    __x ∈ Int
+    is_first_tick ∈ Bool
+    is_second_tick ∈ Bool
+    last_results ∈ Seq(Result)
+    effects ∈ Seq(Effect)
+
+    is_first_tick = false
+    is_second_tick = false
+    _x = 6
+    __x = 3
+    climb
+    x = 6                   -- would be rate 0  ✗
