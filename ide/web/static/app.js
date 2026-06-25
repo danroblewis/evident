@@ -1,6 +1,5 @@
 "use strict";
 
-
 const $ = (s) => document.querySelector(s);
 
 // --- editor construction ----------------------------------------------------------
@@ -77,17 +76,7 @@ let timer = null, activeView = null, lastSource = "", _dimTimer = null, _elapsed
 // so an unavailable preferred view falls back gracefully and the family-sync follows data.view. Null until
 // the first explicit selection ⇒ the first render still uses the recommended view.
 let preferredView = null;
-// #421 AXIS OVERRIDE: per-view {x, y} the user explicitly picked, keyed by view name. Sent on the
-// request for that view (so editing the code keeps the chosen axes, like preferredView); absent ⇒ the
-// backend auto-picks. A different axis-view has its own (usually empty) entry, so switching views echoes
-// that view's defaults rather than forcing the last view's axes onto it.
-let axisOverride = {};
-// #436: the active INTERACTIVE view (web-ide-shell.md §R.5), or null when a normal PNG view is showing.
-// An interactive view renders an input+result cell into #view instead of a PNG; while one is active, an
-// edit re-renders IT (re-runs against the new model) rather than snapping back to a PNG. Cleared when a
-// normal view chip is clicked (run() with an explicit view).
-let activeInteractive = null;
-let lastViews = [], lastClaim = false;   // #436: the last model's available views + claim flag (so an interactive view can re-render the strip)
+// #421 axisOverride + #436 activeInteractive/lastViews live in app-axes.js / app-interactive.js (cross-script globals).
 window.addEventListener("keydown", (e) => { if (e.key === "Escape" && _analyzeCtrl) _analyzeCtrl.abort(); });  // Esc cancels an in-flight analyze (#149); guard avoids stealing Esc from modals
 
 // The #structure panel + the interactive diagram overlay (renderStructure / fmtState /
@@ -194,6 +183,10 @@ function paint(data, ms) {
 
   // We're back to a live result — leave any read-only "past run" mode.
   pastView = null;
+  // #436: an interactive view (query/verify) owns #view + has borrowed controls re-parented in. A stale
+  // in-flight analyze must not clobber that cell (innerHTML= would destroy the borrowed #inv-prop etc.,
+  // crashing a later loadProgram). Skip the figure render; banner/verdict above already ran.
+  if (activeInteractive) return;
   // the rendered view: single live picture, or — when something is pinned — two-up (#207).
   renderLiveView(view, data);
 
@@ -253,7 +246,6 @@ function paint(data, ms) {
   }
 }
 
-
 // The backend (solver) is unreachable OR returned an error status — it crashed or was stopped.
 // NEVER leave the prior picture/verdict looking live (Ana #202, Marek #206): mark everything stale,
 // hide the verdict, and say so loudly so a stale diagram is never mistaken for the current program's.
@@ -293,7 +285,7 @@ async function run(view) {
   if (view !== undefined) preferredView = view;
   const requestView = view !== undefined ? view : preferredView;
   // #421: the axis override for the view we're about to render (if the user picked one); null ⇒ auto-pick.
-  const ax = (requestView && axisOverride[requestView]) || {};
+  const ax = axisParamsFor(requestView);   // { x_var, y_var } — app-axes.js
   const source = editor.getValue();
   lastSource = source;
   updateClaimPicker(source);   // show the entry-claim dropdown for multi-claim files (#86)
@@ -355,7 +347,7 @@ async function run(view) {
       // view that no longer applies falls back gracefully, and data.view reports what actually rendered.
       // entry: which top-level fsm/claim to render — the picker, else the runtime's last-defined default (#290).
       // x_var/y_var (#421): explicit projection axes for the axis-taking views; null ⇒ the backend auto-picks.
-      body: JSON.stringify({ source, view: requestView || null, scope: scopeBound, k: kDepth, all_conditions: allConditions, entry: pickedEntry(), x_var: ax.x || null, y_var: ax.y || null }),
+      body: JSON.stringify({ source, view: requestView || null, scope: scopeBound, k: kDepth, all_conditions: allConditions, entry: pickedEntry(), x_var: ax.x_var, y_var: ax.y_var }),
     });
     // A 500 RESOLVES the fetch (only a network drop rejects it), so without this check an HTTP
     // error would fall through and silently leave the prior picture looking live (Marek #206).
@@ -459,10 +451,10 @@ initAutocomplete();  // keyword/type/in-scope-var completer (app-editor.js, Mare
 initBuffer();    // save/export/share buttons + #samples menu (app-buffer.js)
 initVerify();    // verify-console listeners (app-verify.js)
 initPalette();
+initAxes();      // #421 axis-selector toggle + x/y select listeners (app-axes.js)
 setupPanZoom();  // wheel-zoom / drag-pan / dbl-click-reset on #view — listeners attached ONCE (#233)
 
-// #433/#440: the help/about overlay — Nadia's verdict+interrogate vocabulary (helpOverlayHtml,
-// app-symbols.js), shown in the shared #ck-modal chrome. Opened by the header ?, the dossier's ?, or ⌘K.
+// #433/#440: the help/about overlay (helpOverlayHtml, app-symbols.js) in the shared #ck-modal chrome.
 function openHelp() {
   $("#ck-modal-body").innerHTML = helpOverlayHtml();
   $("#ck-modal-title").textContent = "Help — what do these mean?";
@@ -495,146 +487,6 @@ $("#allcond-in").addEventListener("change", () => {
   allConditions = $("#allcond-in").checked;
   run("state_graph");
 });
-// #421 AXIS SELECTOR: reflect data.axes onto the control, populated from data.vars. Hidden unless the
-// view is axis-taking (data.axes != null). cobweb is 1-D → hide the y select. A fell_back flag (the
-// requested var wasn't usable) shows a subtle note. The toggle stays open across re-renders if the
-// user opened it. lastAxes holds the active view's name so the onchange handlers know which view to
-// re-run with the override.
-let _axesView = null;
-let _axesOpen = false;
-function renderAxesCtl(data) {
-  const ctl = $("#axes-ctl");
-  if (!ctl) return;
-  if (!data.axes || !data.png) { ctl.hidden = true; _axesView = null; return; }
-  _axesView = data.view;
-  const vars = data.vars || [];
-  const oneD = data.view === "cobweb" || data.axes.y == null || data.axes.y === data.axes.x;
-  const fill = (sel, cur) => {
-    sel.innerHTML = vars.map((v) => `<option value="${v}"${v === cur ? " selected" : ""}>${v}</option>`).join("");
-  };
-  fill($("#axes-x"), data.axes.x);
-  fill($("#axes-y"), data.axes.y);
-  $("#axes-y-wrap").style.display = oneD ? "none" : "";
-  const note = $("#axes-note");
-  if (data.axes.fell_back) { note.hidden = false; note.textContent = "— requested var unavailable; using auto-pick"; }
-  else { note.hidden = true; note.textContent = ""; }
-  ctl.hidden = false;
-  // keep the picker's open/closed state across re-renders (don't snap it shut on every analyze)
-  $("#axes-pick").hidden = !_axesOpen;
-  $("#axes-toggle").textContent = _axesOpen ? "axes ▴" : "axes ▾";
-}
-$("#axes-toggle").addEventListener("click", () => {
-  _axesOpen = !_axesOpen;
-  $("#axes-pick").hidden = !_axesOpen;
-  $("#axes-toggle").textContent = _axesOpen ? "axes ▴" : "axes ▾";
-});
-// pick a new axis var → record the override for THIS view and re-render it (sticky like preferredView)
-function _applyAxes() {
-  if (!_axesView) return;
-  const x = $("#axes-x").value;
-  const y = $("#axes-y-wrap").style.display === "none" ? x : $("#axes-y").value;
-  axisOverride[_axesView] = { x, y };
-  run(_axesView);          // explicit view ⇒ the override for it is sent; sticky across later edits
-}
-$("#axes-x").addEventListener("change", _applyAxes);
-$("#axes-y").addEventListener("change", _applyAxes);
-
-// #436 INTERACTIVE VIEWS (web-ide-shell.md §R.5) — a gallery view that renders an input+result cell
-// in the VIEW region instead of a PNG. The query view re-parents the EXISTING query controls
-// (#query-row/#query-stack/#query-suggest) + the trace scrubber (#inv-trace) into the cell, so the
-// working /api/query + assert-stack + showTrace logic is reused verbatim (no fork, no backend touch).
-// Leaving the view moves them back to the interrogate panel (the bottom-panel query stays functional
-// whenever you're not in this view). Step 2 (#437) will retire the bottom panel once verify also moves.
-const _interrogateHome = {};   // remembers each relocated element's original parent for restore-on-leave
-function _stash(id) { const el = $("#" + id); if (el && !_interrogateHome[id]) _interrogateHome[id] = el.parentNode; return el; }
-function _restoreInterrogate() {
-  // #437: park any borrowed controls back in their off-view home (#interrogate-stash, hidden) — the bottom
-  // INTERROGATE panel is gone, so this is "detach to the stash," not "return to a visible panel."
-  ["invariant", "query-row", "query-stack", "query-suggest", "inv-trace"].forEach((id) => {
-    const el = $("#" + id), home = _interrogateHome[id];
-    if (el && home && el.parentNode !== home) home.appendChild(el);
-  });
-}
-
-function openInteractiveView(v) {
-  if (!INTERACTIVE_VIEWS.has(v)) return;
-  activeInteractive = v;
-  const view = $("#view");
-  view.classList.remove("recomputing", "stale", "grabbing");
-  _restoreInterrogate();    // park any borrowed controls in the stash BEFORE wiping #view, so innerHTML= can't orphan them
-  $("#axes-ctl").hidden = true; $("#allcond-ctl").hidden = true;
-  if (v === "query") _openQueryView(view);
-  else if (v === "verify") _openVerifyView(view);
-  renderViewTabs({ views: lastViews, claim: lastClaim }, v, run);   // highlight the chip + sync its family
-}
-
-function _openQueryView(view) {
-  view.innerHTML =
-    `<div id="qview" class="iview">
-       <div class="iview-head">⊨? ∃ a reachable state satisfying your condition — a conjunction (Enter or assert ⊢+ stacks it)</div>
-       <div id="qview-slot" class="iview-slot"></div>
-       <div id="qview-trace" class="iview-trace"></div>
-     </div>`;
-  const slot = $("#qview-slot"), traceSlot = $("#qview-trace");
-  const qrow = _stash("query-row"), qstack = _stash("query-stack"), qsug = _stash("query-suggest"), qtrace = _stash("inv-trace");
-  if (qrow) { qrow.hidden = false; slot.appendChild(qrow); }
-  if (qstack) slot.appendChild(qstack);          // visibility managed by renderAssumptions (hidden when empty)
-  if (qsug) slot.appendChild(qsug);
-  if (qtrace) traceSlot.appendChild(qtrace);     // showTrace renders the init→witness path here
-  $("#view-caption").textContent = "the reachable state(s) satisfying your query — a witness + the path that reaches one";
-  const inp = $("#query-prop"); if (inp) inp.focus();
-}
-
-// #437: the verify view — the same primitive as query, with a richer modality-picker input (Mira R.2b).
-// Re-parents the live #invariant row (property field + WF toggle) + #inv-trace into the cell, and adds a
-// modality <select> (□ safety / ◇ eventually / □◇ infinitely-often / ⤳ leads-to). On check it prepends the
-// chosen modality to the property and calls the existing checkInvariant() — so /api/invariant + /api/temporal
-// + showTrace are reused verbatim (zero backend change). Result: the proof card OR the counterexample-trace
-// scrubber, both in the cell.
-function _openVerifyView(view) {
-  view.innerHTML =
-    `<div id="vview" class="iview">
-       <div class="iview-head">⊢ verify — PROVE a property holds over EVERY reachable state (□ safety) or EVERY run (liveness). A failure gives a counterexample run you can step through.</div>
-       <div id="vview-moderow" class="iview-moderow">
-         <select id="vview-modality" title="the property shape">
-           <option value="safety">□ safety (always)</option>
-           <option value="eventually">◇ eventually</option>
-           <option value="infinitely_often">□◇ infinitely often</option>
-           <option value="leads_to">⤳ leads-to (P ⤳ Q)</option>
-         </select>
-       </div>
-       <div id="vview-slot" class="iview-slot"></div>
-       <div id="vview-trace" class="iview-trace"></div>
-     </div>`;
-  const slot = $("#vview-slot"), traceSlot = $("#vview-trace");
-  const inv = _stash("invariant"), itrace = _stash("inv-trace");
-  if (inv) { inv.hidden = false; slot.appendChild(inv); }   // the property field + WF + check button, reused
-  if (itrace) traceSlot.appendChild(itrace);                // the counterexample / proof scrubber renders here
-  // the modality picker drives the property placeholder + prepends the modality glyph at check time
-  const modSel = $("#vview-modality");
-  modSel.onchange = () => _applyVerifyModality(modSel.value);
-  _applyVerifyModality(modSel.value);
-  $("#view-caption").textContent = "whether the property holds over ALL runs — a proof card, or a scrubbable counterexample trace";
-  const inp = $("#inv-prop"); if (inp) inp.focus();
-}
-
-// Set the verify property field's placeholder + the modality the check uses. Safety = bare comparison;
-// ◇/□◇ = a conjunction Q; ⤳ = the full "P ⤳ Q" typed in the field. The check (#inv-btn) reads _verifyModality.
-let _verifyModality = "safety";
-function _applyVerifyModality(m) {
-  _verifyModality = m;
-  const inp = $("#inv-prop"); if (!inp) return;
-  const ph = {
-    safety: "always true — a comparison:  count ≤ 5   ·   0 ≤ timer ≤ 6",
-    eventually: "◇ eventually — a conjunction:  done = true   ·   light = Green ∧ timer = 0",
-    infinitely_often: "□◇ infinitely often — a conjunction:  light = Yellow",
-    leads_to: "P ⤳ Q — both conjunctions:  mode = Coining ⤳ mode = Idle",
-  }[m] || "";
-  inp.placeholder = ph;
-  // WF (fairness) only applies to liveness — disable it for safety
-  const wf = $("#fair-ctl"); if (wf) { wf.style.opacity = m === "safety" ? "0.4" : ""; const cb = $("#fair-in"); if (cb) cb.disabled = m === "safety"; }
-}
-
 // Entry picker (#290): choosing a different top-level fsm/claim re-renders THAT entry. Re-analyze
 // with no explicit view so the server re-recommends the lead view for the newly-selected entry.
 $("#claim-select").addEventListener("change", () => run());
