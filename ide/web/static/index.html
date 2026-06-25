@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Evident IDE</title>
 <link rel="icon" href="data:,">
-<link rel="stylesheet" href="/static/app.css?v=34">
+<link rel="stylesheet" href="/static/app.css?v=36">
 </head>
 <body>
 <div id="app">
@@ -25,6 +25,12 @@
     <button id="share-btn" title="Share — copy a share link, a URL that loads this exact program">🔗</button>
     <button id="pin-btn" title="pin this result as 'A' — the next analysis renders beside it. Two uses: change a constraint to see what shifted, OR switch view tabs to put two DIAGRAMS of the same program side-by-side (e.g. phase_portrait | state_graph).">📌</button>
     <button id="diff-btn" title="model-diff — pin a result (📌), change a constraint, then diff: which reachable states appeared / vanished" hidden>⇄ diff</button>
+    <!-- #432: the VERDICT moved here from the cockpit body — a verdict is a property of the whole
+         model (session-level status), so it lives in the frame. Compact chips: headline class +
+         up to 2 evidence chips + the ⛨ soundness glyph + the ? about-this-verdict button. Each chip
+         opens the Verdict dossier modal; renderVerdictHeader (app-structure.js) fills this. -->
+    <span id="verdict-chips" hidden></span>
+    <button id="verdict-help-btn" title="what do these verdict / interrogate terms mean?" hidden>?</button>
     <button id="cmdk-hint" title="command palette — search every action (⌘K / Ctrl-K)">⌘K</button>
     <span class="sp"></span>
     <span id="latency" class="dim"></span>
@@ -48,10 +54,10 @@
       </details>
     </section>
 
-    <!-- 6b VERDICT — claims about the model (terminates / cyclic / boundary) -->
-    <section class="ck-region" data-label="verdict">
-      <div id="structure" hidden></div>
-    </section>
+    <!-- #432: the VERDICT band is gone from the body — it moved to the header (#verdict-chips).
+         #structure stays as a HIDDEN data-carrier: renderStructure still populates it (the dossier
+         + header chips read its content), and app.js's recompute/hide toggles still address it by id. -->
+    <div id="structure" hidden></div>
 
     <!-- 6c VIEW — the diagram + family tabs + caption (this region grows to fill) -->
     <section class="ck-region ck-view" data-label="view">
@@ -103,13 +109,35 @@
       </div>
     </section>
 
-    <!-- FOOTER — session-global readouts (history / honesty / warnings) -->
+    <!-- FOOTER — session-global readouts (honesty / warnings + a history-modal launcher) -->
     <footer class="ck-footer" data-label="session">
-      <div id="history" title="recent analyses — click a thumbnail to look back at a past run"></div>
-      <div id="honesty" class="dim">—</div>
+      <div class="ck-foot-row">
+        <button id="history-btn" title="session history — recent analyses; click to look back at a past run" hidden>🕮 history</button>
+        <div id="honesty" class="dim">—</div>
+      </div>
       <pre id="warnings" hidden></pre>
+      <!-- #426: the thumbnail strip moved into a modal opened by 🕮 history; kept in the DOM (hidden)
+           so app.js's history-render code keeps populating it, now inside the modal. -->
+      <div id="history" hidden title="recent analyses — click a thumbnail to look back at a past run"></div>
     </footer>
   </aside>
+</div>
+
+<!-- #432/#433: the Verdict dossier + the help/about overlay. Both reuse the centered-modal chrome
+     (#ck-modal). Filled by app-structure.js (dossier) / app-symbols.js+app.js (help). -->
+<div id="ck-modal" hidden>
+  <div id="ck-modal-box">
+    <div id="ck-modal-head"><span id="ck-modal-title"></span><button id="ck-modal-help" title="what do these terms mean?" hidden>?</button><button id="ck-modal-close" title="close (Esc)">✕</button></div>
+    <div id="ck-modal-body"></div>
+  </div>
+</div>
+
+<!-- #426: the session-history modal (the footer 🕮 opens it); #history-grid holds the thumbnails. -->
+<div id="hist-modal" hidden>
+  <div id="hist-modal-box">
+    <div id="hist-modal-head"><span>session history</span><button id="hist-modal-close" title="close (Esc)">✕</button></div>
+    <div id="history-grid"></div>
+  </div>
 </div>
 
 <script src="/static/vendor/ace-ace.js"></script>
@@ -121,15 +149,15 @@
      matters only for app-data.js (its DEFAULT_PROGRAM / sharedFromHash are used at app.js
      load time); the rest are cross-referenced at call time. -->
 <script src="/static/app-data.js?v=14"></script>
-<script src="/static/app-symbols.js?v=11"></script>
+<script src="/static/app-symbols.js?v=12"></script>
 <script src="/static/app-editor.js?v=3"></script>
 <script src="/static/app-buffer.js?v=7"></script>
-<script src="/static/app-history.js?v=8"></script>
+<script src="/static/app-history.js?v=10"></script>
 <script src="/static/app-verify.js?v=14"></script>
 <script src="/static/app-gallery.js?v=1"></script>
-<script src="/static/app-palette.js?v=8"></script>
+<script src="/static/app-palette.js?v=9"></script>
 <script src="/static/app-panzoom.js?v=2"></script>
-<script src="/static/app-structure.js?v=12"></script>
-<script src="/static/app.js?v=29"></script>
+<script src="/static/app-structure.js?v=13"></script>
+<script src="/static/app.js?v=30"></script>
 </body>
 </html>

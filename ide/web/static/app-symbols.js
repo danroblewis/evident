@@ -139,6 +139,8 @@ const VIEW_CAPTIONS = {
     "shows the SOLVED boundary of the program, not one run · read it as each variable's full range (left) + the feasible region of the two principal vars (right) · tells you what states are possible at all, with fixed points marked.",
   time_series:
     "shows the ENSEMBLE of trajectories over all initial conditions · read it as every state variable on stacked tracks (numeric=line, bool/enum=step), the shaded band = the reachable value envelope at each tick (real/unbounded models fall back to one seeded run) · tells you how each value CAN evolve from any start, not just one run.",
+  value_heatmap:
+    "shows every carried variable's value over time as a dense raster (the transpose of time_series) · read it as one ROW per carried variable, one COLUMN per tick, cell colour = that variable's value on its own per-row scale (binary=black/white, enum=palette, numeric=viridis); life's 16 grid cells c00..c33 each become a row, so the cellular automaton's evolution falls straight out · tells you the whole trajectory of state at a glance — which variables drift, latch, oscillate, or hold.",
   state_graph:
     "shows the reachable state-transition graph · read it as nodes=states, arrows=transitions of state=f(_state), terminal/absorbing states ringed · tells you every state the machine can enter and how they connect.",
   phase_portrait:
@@ -227,6 +229,49 @@ const VERDICTS = {
   unbounded:        ["→", "Unbounded", "grows without settling"],
   settles:          ["·", "Settles", ""],
 };
+
+// --- help/about content for the cockpit (Nadia's #440) -----------------------------
+// Plain-language def of every VERDICT + INTERROGATE term, each with a "when you'd use it" line.
+// Checked against viz/model_query.py / model_temporal.py / model_analysis.py / terminal_states.py /
+// soundness_check.py. Rendered by helpOverlayHtml() into the ? overlay; also fed to ⌘K so the same
+// definitions are searchable. Each entry: [term, definition, when, [sub-bullets]].
+const HELP_SECTIONS = [
+  ["Verdict — what the tool concluded about your whole model (solved, not simulated)", [
+    ["Terminates", "every run eventually reaches a state it can never leave (a fixed point) and stops there.", "you WANT your machine to finish (a counter, an installer, a protocol that completes)."],
+    ["Cyclic", "the machine loops through a set of states forever; it never settles.", "you EXPECT a loop (a traffic light, a clock) — or you're surprised it never stops."],
+    ["Nondeterministic", "from some state there's more than one legal next state, so the future fans out into many runs.", "your model has a free choice (an input, a coin flip) — or you UNDER-constrained it by accident and it drifted."],
+    ["Unstable", "an equilibrium exists but runs move away from it; the orbit diverges.", "checking whether a controller/feedback loop actually settles."],
+    ["Unbounded", "a variable grows without limit; the reachable set never closes.", "you forgot a bound and a value runs away."],
+    ["fixed point", "a state that maps to itself: reach it and the machine stays. The equilibrium it rests at.", ""],
+    ["boundary", "the exact lowest..highest value each numeric variable can ever take, proven by the solver (not the min/max of one run).", "'can this counter ever exceed 5?' — read it off the boundary."],
+    ["▶ replay a run that finishes", "step through one concrete trajectory from the start state to where it stops, ringing each state on the diagram.", "'HOW does it reach the end, not just that it does.'"],
+    ["▶ replay a run that never finishes", "step through a witnessing run that loops forever among non-final states and never reaches an end state. The PROOF that 'Terminates' isn't guaranteed for EVERY run — some run dodges the finish line.", "the verdict says it can rest, but you need to see the run that DOESN'T."],
+    ["⛨ double-check this verdict", "re-checks the tool's own abstract answer against a brute-force enumeration of your model, and tells you if they disagree. It verifies the IDE, not your program.", "you're about to trust a verdict for something that matters and want a second, independent computation to agree."],
+  ]],
+  ["Interrogate — ask your own questions about the model", [
+    ["verify (⊢)", "PROVE a property holds on EVERY reachable state (safety, e.g. count ≤ 5) or on EVERY run (liveness). If it fails you get a counterexample TRACE you can step through.", "'is balance ALWAYS ≥ 0?' 'does it ALWAYS eventually reach Idle?'", [
+      ["safety (□ / 'always')", "the property is true in every reachable state. Example: count ≤ 5."],
+      ["eventually (◇)", "every run reaches a state where the property holds, at least once. Example: ◇ done = true."],
+      ["infinitely often (□◇)", "every run reaches it again and again, forever (it never gets permanently stuck without it). Example: □◇ light = Green."],
+      ["leads-to (P ⤳ Q)", "whenever P happens, Q eventually follows. Example: mode = Coining ⤳ mode = Idle."],
+      ["WF (weak fairness)", "ignore unrealistic runs that forever refuse an always-available step; check liveness only over fair runs."],
+    ]],
+    ["query (⊨?)", "FIND one reachable state matching a condition (or prove none exists). The mirror image of verify: verify asks 'is it ALWAYS true?', query asks 'is it EVER true?'.", "'CAN the vault ever hold 3 coins while the mode is Vending?' — type mode = Vending ∧ vault = 3."],
+    ["assumptions (assert ⊢+)", "stack conditions and re-ask query under all of them at once, like adding hypotheses.", "narrowing down 'under these conditions, what's still possible?'"],
+  ]],
+];
+
+// Render the #440 help content into the cockpit ? overlay body.
+function helpOverlayHtml() {
+  return HELP_SECTIONS.map(([title, terms]) =>
+    `<div class="help-section"><h3>${title}</h3>` +
+    terms.map(([term, def, when, subs]) =>
+      `<div class="help-term"><b>${term}</b> — ${def}` +
+      (when ? `<span class="help-when">When: ${when}</span>` : "") +
+      (subs ? subs.map(([st, sd]) => `<span class="help-sub"><b>${st}</b> — ${sd}</span>`).join("") : "") +
+      `</div>`).join("") +
+    `</div>`).join("");
+}
 
 // --- typable shortcuts in the ⊢ verify / solve input fields (Sam #212/#160) --------
 // The same \\word / >= expansion as the editor, for plain <input>s. Wired in app.js.

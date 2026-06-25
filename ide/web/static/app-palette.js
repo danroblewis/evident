@@ -179,6 +179,7 @@ function buildCommands() {
   if (pinnedA && pinnedA.source) cmds.push({ label: "⇄ Model-diff — which reachable states appeared / vanished vs pinned A", run: () => runDiff() });
   if ($("#symbols-btn")) cmds.push({ label: "Symbols palette — how to type ∈ ⇒ Δ", run: () => togglePalette(true) });
   if ($("#tour-btn")) cmds.push({ label: "Guided tour", run: () => startTour() });
+  if (typeof openHelp === "function") cmds.push({ label: "help: what do these mean? — verdict + interrogate terms", run: () => openHelp() });
   // one command per live view tab (the #tabs strip is rebuilt by paint())
   $$("#tabs .tab").forEach((tab) => {
     const view = tab.textContent.trim().replace(/ /g, "_");

@@ -129,6 +129,7 @@ function paint(data, ms) {
   if (!data.ok) {
     exitCompareModes();                                // never a two-up / past view over an error or claim
     $("#structure").hidden = true;
+    renderVerdictHeader(null);                          // #432: a stale source has no current verdict — clear the header chips
     $("#invariant").hidden = true;                     // no reachable set → no verify row
     $("#query-row").hidden = true; $("#query-stack").hidden = true; $("#query-suggest").hidden = true;
     $("#inv-result").textContent = "";
@@ -245,6 +246,7 @@ function backendDown(detail) {
   $("#banner").textContent = "⚠ backend unavailable — the solver isn't responding";
   $("#structure").classList.remove("recomputing");      // drop the mid-recompute dim too — mirror #view below
   $("#structure").hidden = true; $("#invariant").hidden = true; $("#query-row").hidden = true; $("#query-stack").hidden = true;
+  renderVerdictHeader(null);                              // #432: drop the stale verdict chips from the header too
   $("#tabs").innerHTML = "";
   $("#view-caption").textContent = "";                   // no live diagram → no caption
   // BLANK the diagram entirely — a greyed-but-plausible picture (with its old title) can still read
@@ -431,6 +433,29 @@ initBuffer();    // save/export/share buttons + #samples menu (app-buffer.js)
 initVerify();    // verify-console listeners (app-verify.js)
 initPalette();
 setupPanZoom();  // wheel-zoom / drag-pan / dbl-click-reset on #view — listeners attached ONCE (#233)
+
+// #433/#440: the help/about overlay — Nadia's verdict+interrogate vocabulary (helpOverlayHtml,
+// app-symbols.js), shown in the shared #ck-modal chrome. Opened by the header ?, the dossier's ?, or ⌘K.
+function openHelp() {
+  $("#ck-modal-body").innerHTML = helpOverlayHtml();
+  $("#ck-modal-title").textContent = "Help — what do these mean?";
+  $("#ck-modal-help").hidden = true;     // already in help; no nested ?
+  $("#ck-modal").hidden = false;
+}
+// #432/#433/#426: wire the cockpit modals (verdict dossier + help + history). closeModal() lives in
+// app-structure.js (the dossier owner); here we attach the close affordances + the launchers.
+if ($("#verdict-help-btn")) $("#verdict-help-btn").onclick = openHelp;
+if ($("#ck-modal-close")) $("#ck-modal-close").onclick = () => closeModal();
+if ($("#ck-modal")) $("#ck-modal").addEventListener("click", (e) => { if (e.target.id === "ck-modal") closeModal(); });
+if ($("#history-btn")) $("#history-btn").onclick = () => { $("#hist-modal").hidden = false; };
+if ($("#hist-modal-close")) $("#hist-modal-close").onclick = () => { $("#hist-modal").hidden = true; };
+if ($("#hist-modal")) $("#hist-modal").addEventListener("click", (e) => { if (e.target.id === "hist-modal") $("#hist-modal").hidden = true; });
+// Esc closes whichever cockpit modal is open (the in-flight-analyze Esc above is guarded by _analyzeCtrl).
+window.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape") return;
+  if (!$("#ck-modal").hidden) { closeModal(); e.stopPropagation(); }
+  else if (!$("#hist-modal").hidden) { $("#hist-modal").hidden = true; e.stopPropagation(); }
+});
 // Scope knob (#21/#84): set the exploration/verification bound, then re-analyze. Empty ⇒ server default.
 $("#scope-in").addEventListener("change", () => {
   const v = parseInt($("#scope-in").value, 10);

@@ -22,101 +22,134 @@ let lastOverlay = null;
 // The SOLVER-computed structure of the whole model (not a single run): a verdict, the
 // rigorous fixed points / equilibria (states the solver proves map to themselves), and the
 // exact boundary of the solution space (min..max each variable spans over the reachable set).
+// #432: the verdict moved to the HEADER as compact chips. renderStructure keeps the data carrier
+// (#structure stays populated for any legacy reader + the recompute toggles), runs the interrogate
+// gates, stashes `s` for the dossier, and paints the header chips. The full evidence is in the
+// dossier modal (buildDossier), opened by clicking any chip — preserving every #341/#345/#348 proof.
+let lastStructure = null;
 function renderStructure(s) {
   const el = $("#structure");
   // the invariant checker only makes sense for an FSM with a reachable set — not a raw claim
   $("#invariant").hidden = !s || !!s.claim;
   $("#query-row").hidden = !s || !!s.claim;            // ad-hoc query shares the verify row's gate
   if ($("#query-row").hidden) { $("#query-stack").hidden = true; $("#query-suggest").hidden = true; }  // hide the chips too
+  lastStructure = s || null;
+  renderVerdictHeader(s);
   if (!s) { el.hidden = true; return; }
-  el.hidden = false;
+  el.hidden = true;   // #432: the data carrier is never shown; the header chips + dossier present it
+}
+
+// The compact header treatment (web-ide-shell.md §R.1): a colored headline chip (the verdict class)
+// + up to two evidence chips (boundary, a relations marker) + the ⛨ soundness glyph + the ? help.
+// Each chip opens the dossier. Capped so the header never wraps.
+function renderVerdictHeader(s) {
+  const chips = $("#verdict-chips"), helpBtn = $("#verdict-help-btn");
+  if (!s) { chips.hidden = true; chips.innerHTML = ""; if (helpBtn) helpBtn.hidden = true; return; }
+  const [icon, name] = VERDICTS[s.verdict] || ["·", s.verdict, ""];
+  let html = `<span class="vchip vchip-headline v-${s.verdict}" data-doss="1" title="click for the full verdict — what's true, what's forced, witnesses to replay">${icon} ${name}<span class="snd-badge"></span></span>`;
+  // evidence chip 1 — the boundary (compact: just the first var, "+N" for the rest)
+  const b = s.bounds || {}, bkeys = Object.keys(b);
+  if (bkeys.length) {
+    const k0 = bkeys[0];
+    const more = bkeys.length > 1 ? ` +${bkeys.length - 1}` : "";
+    html += `<span class="vchip vchip-evidence" data-doss="1" title="the proven boundary of each variable — click for all">⊏ ${k0}∈[${b[k0][0]},${b[k0][1]}]${more}</span>`;
+  }
+  // evidence chip 2 — a single relations marker (implied / forced-equal), if any
+  const nrel = (s.relations || []).length + (s.forced_certs || []).length;
+  const neq = (s.equalities || []).length;
+  if (nrel) html += `<span class="vchip vchip-evidence" data-doss="1" title="relations forced in every solution — click for the proofs">⊢ ${nrel} implied</span>`;
+  else if (neq) html += `<span class="vchip vchip-evidence" data-doss="1" title="variables forced equal — click for detail">= ${s.equalities.map(([a,bb])=>`${String(a).split(".").pop()}=${String(bb).split(".").pop()}`).join(", ")}</span>`;
+  // ⛨ soundness glyph — the fabrication self-check; paints the headline chip's corner badge
+  html += `<button class="vchip vchip-snd" id="vchip-snd" title="double-check this verdict — re-check the abstract answer against a brute-force enumeration of this model">⛨</button>`;
+  chips.innerHTML = html;
+  chips.hidden = false;
+  if (helpBtn) helpBtn.hidden = false;
+  chips.querySelectorAll("[data-doss]").forEach((c) => { c.onclick = () => openDossier(); });
+  const sndBtn = $("#vchip-snd");
+  if (sndBtn) sndBtn.onclick = (e) => { e.stopPropagation(); runSoundness(); };
+}
+
+// #332: the ⛨ soundness self-check — re-checks the abstract verdict against brute-force enumeration,
+// then paints the headline chip's corner badge (✓/✗) so "has this been cross-checked?" is glanceable.
+async function runSoundness() {
+  const badge = $("#verdict-chips .snd-badge");
+  if (badge) badge.innerHTML = ' <span class="dim">…</span>';
+  try {
+    const body = JSON.stringify({ source: editor.getValue(), verify_soundness: true });
+    const d = await (await fetch("/api/analyze", { method: "POST", headers: { "content-type": "application/json" }, body })).json();
+    const snd = d.soundness, txt = _fmtSoundness(snd);
+    const ok = snd && snd.verdict === "sound";
+    const bad = snd && snd.verdict === "mismatch";
+    if (badge) badge.innerHTML = ok ? '<span class="snd-ok">✓</span>' : bad ? '<span class="snd-bad">✗</span>' : "";
+    // surface the full sentence in the dossier's soundness line if it's open
+    const line = $("#doss-snd-line"); if (line) line.textContent = txt;
+  } catch (e) { const line = $("#doss-snd-line"); if (line) line.textContent = "✕ " + e; }
+}
+
+// Build the verdict dossier modal body (web-ide-shell.md §R.1) from the stashed structure: three
+// labeled groups — what's true / what's forced / witnesses you can replay. The relation/cert proofs
+// (#341/#345/#348) are preserved verbatim, just given room. The ▶ replay buttons drive the same
+// showTrace scrubber on the live view.
+function buildDossier(s) {
   const [icon, name, note] = VERDICTS[s.verdict] || ["·", s.verdict, ""];
+  const _sn = (n) => String(n).split(".").pop();
   // title= tooltips teach the verification concepts in place — the words appear in the panel,
-  // not the editor, so the editor glossary can't reach them (Sam #163).
-  const vhelp = "the model's GLOBAL behaviour, solved from the transition relation over the whole "
-    + "reachable set — not one simulated run.";
-  let html = `<span class="verdict v-${s.verdict}" title="${vhelp}">${icon} ${name}</span>`
-    + (note ? `<span class="dim">${note}</span>` : "");
+  const body = $("#ck-modal-body");
+  // GROUP 1 — what's true: the verdict note, fixed points, the boundary
+  let g1 = "";
+  if (note) g1 += `<div class="doss-row"><span class="doss-val dim">${note}</span></div>`;
   if (s.fixed_points && s.fixed_points.length) {
-    const fp = s.fixed_points.slice(0, 3).map(
+    const fp = s.fixed_points.slice(0, 6).map(
       (f) => "(" + Object.entries(f).map(([k, v]) => `${k}=${v}`).join(", ") + ")").join("  ");
-    const more = s.fixed_points.length > 3 ? ` +${s.fixed_points.length - 3}` : "";
+    const more = s.fixed_points.length > 6 ? ` +${s.fixed_points.length - 6}` : "";
     const label = s.verdict === "nondeterministic" ? "rest states" : "fixed point";
-    const fhelp = "a REACHABLE state the system maps to itself — once here it stays. Found by "
-      + "solving T(s,s), then intersected with the reachable set so it's never a phantom.";
-    html += `<span class="struct-fp" title="${fhelp}">● ${label}: ${fp}${more}</span>`;
+    g1 += `<div class="doss-row"><span class="doss-key doss-fp">● ${label}</span><span class="doss-val">${fp}${more}</span></div>`;
   }
   const b = s.bounds || {}, keys = Object.keys(b);
   if (keys.length) {
-    const bstr = keys.map((k) => `${k} ∈ [${b[k][0]}, ${b[k][1]}]`).join("   ");
-    const bhelp = "the exact range each variable spans over the solution space — z3-proven "
-      + "(Optimize over the unrolled transition), not the min/max of one run.";
-    html += `<span class="struct-bounds" title="${bhelp}">⊏ boundary${s.capped ? " (≥, capped)" : ""}: ${bstr}</span>`;
+    const bstr = keys.map((k) => `${k} ∈ [${b[k][0]}, ${b[k][1]}]`).join("\n");
+    g1 += `<div class="doss-row"><span class="doss-key doss-bounds">⊏ boundary${s.capped ? " (≥, capped)" : ""}</span><span class="doss-val">${bstr}</span></div>`;
   }
-  // #338: the pairwise forced-equal / forced-different decomposition as interrogable text beside the
-  // chart (not just baked into the PNG); the relations panel below adds the affine implied ones.
-  const _sn = (n) => String(n).split(".").pop();
-  if (s.equalities && s.equalities.length) {
-    html += `<span class="struct-relations" title="variables forced EQUAL in every solution (claim ∧ a≠b is UNSAT)">= forced equal: ${s.equalities.map(([a, b]) => `${_sn(a)}=${_sn(b)}`).join(", ")}</span>`;
-  }
-  if (s.inequalities && s.inequalities.length) {
-    html += `<span class="struct-relations" title="variables forced DIFFERENT in every solution (claim ∧ a=b is UNSAT)">≠ forced different: ${s.inequalities.map(([a, b]) => `${_sn(a)}≠${_sn(b)}`).join(", ")}</span>`;
-  }
-  // #341: implied relations are CLICKABLE — each reveals its unsat-core PROOF (which claim constraints
-  // force it, "the claim ∧ ¬relation is UNSAT"). Ana's interrogability ask — don't just trust green text.
+  // GROUP 2 — what's forced: forced-equal / forced-different / implied (click-for-proof) / Farkas certs
+  let g2 = "";
+  if (s.equalities && s.equalities.length)
+    g2 += `<div class="doss-row"><span class="doss-key doss-rel">= forced equal</span><span class="doss-val">${s.equalities.map(([a, bb]) => `${_sn(a)}=${_sn(bb)}`).join(", ")}</span></div>`;
+  if (s.inequalities && s.inequalities.length)
+    g2 += `<div class="doss-row"><span class="doss-key doss-rel">≠ forced different</span><span class="doss-val">${s.inequalities.map(([a, bb]) => `${_sn(a)}≠${_sn(bb)}`).join(", ")}</span></div>`;
   if (s.relations && s.relations.length) {
-    const rhelp = "affine relations forced in every solution, implied by the claim's constraints. "
-      + "Click one to see WHICH constraints force it (the Z3 unsat-core proof).";
     const rels = s.relations.map((r, i) =>
       `<span class="struct-rel" data-i="${i}" title="click for the proof — which constraints force this">${r.eq}</span>`).join("  ");
-    html += `<span class="struct-relations" title="${rhelp}">⊢ implied: ${rels}</span><span id="rel-proof" class="dim"></span>`;
+    g2 += `<div class="doss-row"><span class="doss-key doss-rel">⊢ implied</span><span class="doss-val">${rels}  <span class="dim" style="font-size:11px">› click for proof</span></span></div><div id="rel-proof" class="dim" style="padding:2px 0 6px"></div>`;
   }
-  // #348: values/equalities pinned by INEQUALITIES (a sandwich a≤v ∧ a≥v) — each carries the Farkas/
-  // Motzkin λ≥0 certificate, distinct from the equality-derived relations above. Click for the cert.
   if (s.forced_certs && s.forced_certs.length) {
     const fcs = s.forced_certs.map((c, i) =>
       `<span class="struct-rel" data-fc="${i}" title="click for the Farkas/Motzkin certificate — which inequalities pin this">${c.what}</span>`).join("  ");
-    html += `<span class="struct-relations" title="a value or equality pinned by INEQUALITIES — the Farkas/Motzkin λ≥0 certificate (#348)">⊢ pinned by ≤/≥: ${fcs}</span><span id="fc-proof" class="dim"></span>`;
+    g2 += `<div class="doss-row"><span class="doss-key doss-rel">⊢ pinned by ≤/≥</span><span class="doss-val">${fcs}</span></div><div id="fc-proof" class="dim" style="padding:2px 0 6px"></div>`;
   }
-  // #334: a witnessing lasso means NOT every run rests — offer to REPLAY the dodging loop in the step
-  // scrubber (the same one verify/liveness uses), ringing each state on the live view as you step.
+  // GROUP 3 — witnesses you can replay (drive the trace scrubber on the live view) + the soundness audit line
   const lasso = s.rest_cycle && s.rest_cycle.length >= 2 ? s.rest_cycle : null;
-  if (lasso) {
-    html += ` <button id="replay-lasso" class="struct-replay" title="step through a run that loops forever among non-rest states, never reaching the absorbing set — the witness that not every run rests">▶ replay a run that never finishes</button>`;
-  }
-  // #326: a reachable terminal means a run DOES reach rest — REPLAY the path init→terminal (the concrete
-  // witness behind 'TERMINATES at {…}': HOW it gets to rest, not just WHERE).
   const reach = s.reach_path && s.reach_path.length >= 2 ? s.reach_path : null;
-  if (reach) {
-    html += ` <button id="replay-reach" class="struct-replay" title="step through the path from the initial state to where this run comes to rest — the concrete trajectory into the absorbing set">▶ replay a run that finishes</button>`;
-  }
-  // #332: on-demand soundness — cross-check this model's abstract verdict against brute-force enumeration.
-  html += ` <button id="verify-snd" class="struct-replay" title="cross-check the abstract verdict (terminal set / reachable box) against a brute-force enumeration of THIS model — a fabrication self-check (#332/#330)">⛨ double-check this verdict</button><span id="snd-result" class="dim"></span>`;
-  el.innerHTML = html;
-  if (lasso) {
-    const rb = el.querySelector("#replay-lasso");
-    if (rb) rb.onclick = () => showTrace(lasso, "a run looping forever — never resting (#333/#334)", "violation", 0);
-  }
-  if (reach) {
-    const pb = el.querySelector("#replay-reach");
-    if (pb) pb.onclick = () => showTrace(reach, "the path from init to where the run comes to rest (#326)", "info", -1);
-  }
-  const vb = el.querySelector("#verify-snd");
-  if (vb) vb.onclick = async () => {
-    const out = $("#snd-result"); out.textContent = " checking…";
-    try {
-      const body = JSON.stringify({ source: editor.getValue(), verify_soundness: true });
-      const d = await (await fetch("/api/analyze", { method: "POST", headers: { "content-type": "application/json" }, body })).json();
-      out.textContent = " " + _fmtSoundness(d.soundness);
-    } catch (e) { out.textContent = " ✕ " + e; }
-  };
-  // #341/#345/#348: click a relation → show its proof. Prefer the #345 Farkas DERIVATION (how the equality
-  // constraints combine to yield it); when an INEQUALITY does the forcing (no equality combo), show the
-  // #348 Farkas/MOTZKIN certificate — λ≥0 multipliers pinning the relation from both sides (≤ and ≥);
-  // fall back to the #341 unsat-core list (which constraints) when neither is available.
-  el.querySelectorAll(".struct-rel").forEach((sp) => {
+  let g3 = "";
+  if (reach) g3 += `<div class="doss-row"><button id="replay-reach" class="struct-replay" title="step through the path from the initial state to where this run comes to rest">▶ replay a run that finishes</button></div>`;
+  if (lasso) g3 += `<div class="doss-row"><button id="replay-lasso" class="struct-replay" title="step through a run that loops forever among non-rest states, never reaching an end state">▶ replay a run that never finishes</button></div>`;
+  g3 += `<div class="doss-row"><button id="verify-snd" class="struct-replay" title="re-check the abstract verdict against a brute-force enumeration of THIS model — a fabrication self-check">⛨ double-check this verdict</button><span id="doss-snd-line" class="dim"></span></div>`;
+
+  body.innerHTML =
+    `<div class="doss-group"><div class="doss-glabel">what's true</div>${g1 || '<div class="doss-row"><span class="doss-val dim">—</span></div>'}</div>`
+    + (g2 ? `<div class="doss-group"><div class="doss-glabel">what's forced</div>${g2}</div>` : "")
+    + `<div class="doss-group"><div class="doss-glabel">witnesses you can replay</div>${g3}</div>`;
+
+  // wire the witnesses — they close the modal and drive the live-view trace scrubber
+  const rb = body.querySelector("#replay-lasso");
+  if (rb) rb.onclick = () => { closeModal(); showTrace(lasso, "a run looping forever — never resting (#333/#334)", "violation", 0); };
+  const pb = body.querySelector("#replay-reach");
+  if (pb) pb.onclick = () => { closeModal(); showTrace(reach, "the path from init to where the run comes to rest (#326)", "info", -1); };
+  const vb = body.querySelector("#verify-snd");
+  if (vb) vb.onclick = runSoundness;
+  // #341/#345/#348: click a relation → its proof (preserved verbatim from the old strip).
+  body.querySelectorAll(".struct-rel").forEach((sp) => {
     sp.onclick = () => {
-      if (sp.dataset.fc !== undefined) {                        // #348: a forced_cert (backbone/equality), not a relation
+      if (sp.dataset.fc !== undefined) {
         const c = s.forced_certs[+sp.dataset.fc];
         $("#fc-proof").textContent = ` ⊢ ${c.what} — Farkas/Motzkin certificate (λ≥0 over the inequalities):  ${c.cert} `;
         return;
@@ -129,21 +162,32 @@ function renderStructure(s) {
           : `forced by: ${(r.core || []).join("  ∧  ") || "the claim"}`);
       const out = $("#rel-proof");
       out.textContent = ` ⊢ ${r.eq} — ${why}  (Z3-proven: claim ∧ ¬(${r.eq}) is UNSAT) `;
-      // #346/#349: take the certificate OUT of the IDE — copy the derivation + the SMT-LIB proof obligation.
       if (r.smtlib) {
-        const b = document.createElement("button");
-        b.className = "struct-replay"; b.textContent = "⧉ copy proof";
-        b.title = "copy the derivation + the SMT-LIB proof obligation (paste into z3: UNSAT proves it, get-unsat-core names the forcing constraints)";
-        b.onclick = (e) => {
+        const cb = document.createElement("button");
+        cb.className = "struct-replay"; cb.textContent = "⧉ copy proof";
+        cb.title = "copy the derivation + the SMT-LIB proof obligation (paste into z3: UNSAT proves it, get-unsat-core names the forcing constraints)";
+        cb.onclick = (e) => {
           e.stopPropagation();
           navigator.clipboard.writeText(`${r.eq}\n${why}\n\n; SMT-LIB proof obligation — paste into z3:\n${r.smtlib}`);
-          b.textContent = "✓ copied";
+          cb.textContent = "✓ copied";
         };
-        out.appendChild(b);
+        out.appendChild(cb);
       }
     };
   });
+  return { icon, name };
 }
+
+// Open the verdict dossier modal from the stashed structure.
+function openDossier() {
+  if (!lastStructure) return;
+  const { icon, name } = buildDossier(lastStructure);
+  $("#ck-modal-title").textContent = `Verdict — ${icon} ${name}`;
+  const help = $("#ck-modal-help"); if (help) { help.hidden = false; help.onclick = openHelp; }
+  $("#ck-modal").hidden = false;
+}
+
+function closeModal() { $("#ck-modal").hidden = true; }
 
 
 function _fmtSoundness(snd) {

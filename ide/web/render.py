@@ -26,7 +26,7 @@ ALL_VIEWS = (
     "solution_space",                                  # the SOLVED boundary, not a run — lead view
     "terminal_map",                                    # the ABSTRACT end-state map (where it can rest), Z3 over the one-step relation — not a run
     "reachable_region",                                # the ABSTRACT reachable region (k-induction bounding box), bounded-vs-unbounded — not a run
-    "time_series", "state_graph", "phase_portrait", "reachability_tree",
+    "time_series", "value_heatmap", "state_graph", "phase_portrait", "reachability_tree",
     "morse_graph", "occupancy_heatmap", "timing_diagram", "transition_matrix",
     "basin_map", "orbit_scatter", "scatter_matrix", "parallel_coords",
     "chord_diagram", "nullcline_field", "fixedpoint_map", "cobweb", "space_time",
@@ -99,7 +99,7 @@ _ALWAYS_PROVEN = {"claim_space", "solution_structure"}
 # it must agree with the chart, never over-claim (Ana #353; #285's whole point).
 _BOUND_VIEWS = {"solution_space", "terminal_map", "reachable_region"}
 _ENUMERATE_VIEWS = {"state_graph", "basin_map", "fixedpoint_map", "transition_matrix", "timing_diagram",
-                    "time_series", "reachability_tree", "orbit_scatter"}
+                    "time_series", "value_heatmap", "reachability_tree", "orbit_scatter"}
 
 
 def view_rigor(view, capped=False, continuous=False):

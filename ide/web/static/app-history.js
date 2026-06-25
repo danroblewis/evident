@@ -140,22 +140,26 @@ function comparePane(label, caption, body, ghost) {
 
 // The history strip (#209): up to HISTORY_CAP thumbnails, newest first. Click → read-only past
 // view. Empty strip when there's no history. The current past-view thumb (if any) is outlined.
+// #426: the thumbnails render into BOTH the hidden #history carrier AND the #history-grid modal;
+// the 🕮 footer button shows once there's at least one drawable snapshot and opens the modal.
 function renderHistory() {
-  const strip = $("#history");
-  if (!strip) return;
-  strip.innerHTML = "";
-  if (!history.length) return;
+  const drawable = history.filter((s) => s.png);
+  const btn = $("#history-btn");
+  if (btn) btn.hidden = drawable.length === 0;
   const now = Date.now();
-  history.forEach((snap, i) => {
-    if (!snap.png) return;            // skip a snapshot with no picture (degrade gracefully)
-    const age = relativeAge(now - snap.ts);
-    const thumb = document.createElement("img");
-    thumb.className = "hist-thumb" + (pastView === snap ? " on" : "");
-    thumb.src = `data:image/png;base64,${snap.png}`;
-    thumb.alt = snap.view;
-    thumb.title = `${snap.banner}  ·  ${age}`;
-    thumb.onclick = () => viewPastRun(snap);
-    strip.appendChild(thumb);
+  [$("#history"), $("#history-grid")].forEach((host) => {
+    if (!host) return;
+    host.innerHTML = "";
+    drawable.forEach((snap) => {
+      const age = relativeAge(now - snap.ts);
+      const thumb = document.createElement("img");
+      thumb.className = "hist-thumb" + (pastView === snap ? " on" : "");
+      thumb.src = `data:image/png;base64,${snap.png}`;
+      thumb.alt = snap.view;
+      thumb.title = `${snap.banner}  ·  ${age}`;
+      thumb.onclick = () => { if (host.id === "history-grid") $("#hist-modal").hidden = true; viewPastRun(snap); };
+      host.appendChild(thumb);
+    });
   });
 }
 
@@ -188,7 +192,9 @@ function togglePin() {
 function setPinned(snap) {
   pinnedA = snap;
   const btn = $("#pin-btn");
-  if (btn) { btn.classList.toggle("on", !!snap); btn.textContent = snap ? "📌 unpin" : "📌 pin"; }
+  // #424: the pin is an icon-only toolbar button — keep the glyph, move the pinned/unpinned state into
+  // the .on class + the title (don't re-add "📌 pin"/"unpin" text, which broke the icon-only treatment).
+  if (btn) { btn.classList.toggle("on", !!snap); btn.title = snap ? "pinned as A — click to unpin (the live result compares beside it)" : "pin this result as 'A' — the next analysis renders beside it for comparison"; }
   syncDiffBtn();
   // re-render the live view in the new layout, using the freshest history snapshot as B.
   if (!pastView && history.length) renderLiveView($("#view"), history[0]);
@@ -315,7 +321,7 @@ function exitCompareModes() {
 const VIEW_FAMILIES = [
   ["solution space", ["claim_space", "solution_space", "solution_structure"]],
   ["terminal · end-state", ["terminal_map", "reachable_region", "fixedpoint_map", "basin_map", "morse_graph"]],
-  ["dynamics over time", ["state_graph", "reachability_tree", "time_series", "timing_diagram", "space_time",
+  ["dynamics over time", ["state_graph", "reachability_tree", "time_series", "value_heatmap", "timing_diagram", "space_time",
     "transition_matrix", "phase_portrait", "nullcline_field", "cobweb", "orbit_scatter", "occupancy_heatmap"]],
   ["structure · law", ["scatter_matrix", "parallel_coords", "chord_diagram", "function_graph",
     "function_residual", "function_guards", "function_behavior", "function_complexity"]],
@@ -328,7 +334,7 @@ const VIEW_FAMILY = (() => { const m = {}; VIEW_FAMILIES.forEach(([fam, vs]) => 
 // never over-claims a specific render — it classifies the view, the figure badge classifies the result.
 const _BOUND_VIEWS = new Set(["solution_space", "terminal_map", "reachable_region"]);
 const _ENUMERATE_VIEWS = new Set(["state_graph", "basin_map", "fixedpoint_map", "transition_matrix",
-  "timing_diagram", "time_series", "reachability_tree", "orbit_scatter"]);
+  "timing_diagram", "time_series", "value_heatmap", "reachability_tree", "orbit_scatter"]);
 function viewBaseRigor(v) {
   if (v === "claim_space" || v === "solution_structure" || v.startsWith("function_")) return "proven";
   if (_BOUND_VIEWS.has(v)) return "proven";

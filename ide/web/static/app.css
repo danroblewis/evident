@@ -15,9 +15,15 @@ html,body { margin:0; height:100%; background:var(--bg); color:var(--ink);
   transition:background .12s; }
 #splitter:hover, #splitter.dragging { background:var(--accent); }
 
-#top { grid-area:top; display:flex; flex-wrap:wrap; align-items:center; gap:12px; padding:0 14px;
+/* #432 header-wrap fix: one clean row. nowrap stops pin/⌘K dropping to a 2nd line; the samples
+   select shrinks and the verdict chips ellipsis rather than wrapping. The .sp spacer pushes the
+   status cluster right; min-width:0 on the flex children lets them shrink instead of overflowing. */
+#top { grid-area:top; display:flex; flex-wrap:nowrap; align-items:center; gap:9px; padding:0 14px;
   background:var(--panel); border-bottom:1px solid var(--line); }
-#top b { color:#fff; }
+#top > * { flex:0 0 auto; }
+#top #samples { flex:0 1 auto; min-width:90px; }
+#top b { color:#fff; flex:0 0 auto; white-space:nowrap; }
+#top #fname { flex:0 1 auto; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 #samples, #claim-select { background:#1b2129; color:var(--ink); border:1px solid var(--line);
   border-radius:6px; padding:2px 6px; font:12px ui-monospace,Menlo,monospace; cursor:pointer; }
 #samples:hover, #claim-select:hover { border-color:var(--accent); }
@@ -225,12 +231,76 @@ tr.g-changed > td, tr.g-changed > td.k { background:#2a210e; }   /* a differing 
   padding:7px 10px; font:12px/1.5 ui-monospace,Menlo,monospace; box-shadow:0 4px 16px #000a;
   white-space:pre-wrap; }
 
-/* The analysis cockpit (web-ide-shell.md §6): a fixed grid of labeled regions
-   — 6a shape / 6b verdict / 6c view (grows) / 6d interrogate / footer — replacing
-   the old flat vertical stack. Each region keeps its children's own styling; only
-   the layout + a subtle uppercase label per region are new. */
+/* The analysis cockpit (web-ide-shell.md §6/§R): a fixed grid of labeled regions —
+   shape / view (grows) / interrogate / footer. The VERDICT band (#432) moved to the
+   header, so the body is now four rows; #structure stays as a hidden data-carrier
+   (display:none ⇒ no grid track). Each region keeps its children's own styling. */
 #dynamics { grid-area:dynamics; background:var(--panel); min-width:0; position:relative;
-  display:grid; grid-template-rows:auto auto 1fr auto auto; overflow:hidden; }
+  display:grid; grid-template-rows:auto 1fr auto auto; overflow:hidden; }
+#dynamics > #structure[hidden] { display:none; }   /* the data-carrier never claims a grid row */
+
+/* #432: VERDICT header chips — right of the pin slot. A colored headline chip (the class) + up to
+   two compact evidence chips + the ⛨ soundness glyph. Each opens the dossier modal; ellipsis, never wrap. */
+#verdict-chips { display:inline-flex; align-items:center; gap:6px; min-width:0; overflow:hidden; }
+#verdict-chips[hidden], #verdict-help-btn[hidden] { display:none; }
+.vchip { display:inline-flex; align-items:center; gap:4px; padding:2px 9px; border-radius:6px;
+  font:12px ui-monospace,Menlo,monospace; cursor:pointer; border:1px solid var(--line);
+  white-space:nowrap; user-select:none; }
+.vchip:hover { border-color:var(--accent); }
+.vchip-headline { font-weight:bold; position:relative; }              /* the verdict class, colored below */
+.vchip-evidence { color:var(--dim); background:#161b22; max-width:200px; overflow:hidden; text-overflow:ellipsis; }
+.vchip-snd { color:var(--good); }                                     /* the soundness corner badge text */
+/* verdict-class colors mirror the old #structure .v-* palette */
+.vchip-headline.v-terminates { color:var(--good); border-color:#23502f; }
+.vchip-headline.v-cyclic { color:#58a6ff; border-color:#234861; }
+.vchip-headline.v-nondeterministic { color:var(--warn); border-color:#5a4717; }
+.vchip-headline.v-unstable, .vchip-headline.v-unbounded { color:var(--bad); border-color:#5a2420; }
+.vchip-headline .snd-badge { position:absolute; top:-5px; right:-5px; font-size:9px; }
+.vchip-headline .snd-ok { color:var(--good); } .vchip-headline .snd-bad { color:var(--bad); }
+#verdict-help-btn { min-width:24px; }
+
+/* centered-modal chrome (#433/#426) — reused by the verdict dossier + help/about + history modals.
+   Same family as #cmdk (full-screen backdrop, centered box). */
+#ck-modal, #hist-modal { position:fixed; inset:0; z-index:90; background:#0009;
+  display:flex; align-items:flex-start; justify-content:center; }
+#ck-modal[hidden], #hist-modal[hidden] { display:none; }
+#ck-modal-box, #hist-modal-box { margin-top:9vh; width:640px; max-width:calc(100vw - 40px); max-height:80vh;
+  display:flex; flex-direction:column; background:#0b0f14; border:1px solid var(--accent);
+  border-radius:10px; box-shadow:0 16px 48px #000c; overflow:hidden; font:13px/1.55 ui-monospace,Menlo,monospace; }
+#ck-modal-head, #hist-modal-head { display:flex; align-items:center; gap:8px; padding:10px 14px;
+  border-bottom:1px solid var(--line); color:var(--ink); }
+#ck-modal-title { font-weight:bold; flex:1; }
+#hist-modal-head span { flex:1; font-weight:bold; }
+#ck-modal-help, #ck-modal-close, #hist-modal-close { background:#1b2129; color:var(--ink);
+  border:1px solid var(--line); border-radius:6px; padding:2px 8px; cursor:pointer; }
+#ck-modal-help:hover, #ck-modal-close:hover, #hist-modal-close:hover { border-color:var(--accent); }
+#ck-modal-help[hidden] { display:none; }
+#ck-modal-body { overflow:auto; padding:12px 16px; }
+/* dossier groups (#433): what's true / what's forced / witnesses, as labeled rows */
+.doss-group { margin:4px 0 14px; }
+.doss-glabel { font-size:10px; letter-spacing:0.12em; text-transform:uppercase; color:var(--dim);
+  opacity:0.7; border-bottom:1px solid var(--line); padding-bottom:3px; margin-bottom:7px; }
+.doss-row { display:flex; gap:10px; padding:3px 0; align-items:baseline; }
+.doss-key { color:var(--accent); min-width:120px; flex:0 0 auto; }
+.doss-val { color:var(--ink); white-space:pre-wrap; }
+.doss-row .struct-rel { cursor:pointer; border-bottom:1px dotted; }
+.doss-row .struct-rel:hover { text-decoration:underline; }
+.doss-fp { color:#c9a8ff; } .doss-bounds { color:#7ee0c0; } .doss-rel { color:#81c784; }
+/* help/about overlay (#440) — two sections, each entry a definition + a "when" line */
+.help-section { margin:6px 0 16px; }
+.help-section h3 { font-size:11px; letter-spacing:0.08em; text-transform:uppercase; color:var(--accent);
+  margin:0 0 8px; }
+.help-term { margin:7px 0; }
+.help-term b { color:var(--ink); } .help-term .help-when { color:var(--dim); display:block; margin-top:1px; }
+.help-term .help-sub { color:var(--dim); margin-left:14px; display:block; }
+/* history modal grid (#426) — the thumbnails, larger than the old footer strip */
+#history-grid { overflow:auto; padding:12px 16px; display:flex; flex-wrap:wrap; gap:8px; align-content:flex-start; }
+/* footer row holding the 🕮 button + honesty line */
+.ck-foot-row { display:flex; align-items:center; gap:12px; padding:0 2px; }
+#history-btn { background:#1b2129; color:var(--ink); border:1px solid var(--line); border-radius:6px;
+  padding:2px 9px; font-size:12px; cursor:pointer; }
+#history-btn:hover { border-color:var(--accent); }
+#history-btn[hidden] { display:none; }
 
 /* a labeled cockpit region — its data-label renders as a subtle uppercase tag */
 .ck-region, .ck-footer { min-width:0; }
@@ -445,6 +515,7 @@ tr.g-changed > td, tr.g-changed > td.k { background:#2a210e; }   /* a differing 
    back. Subtle and out of the way; collapses to nothing when there's no history. */
 #history { flex:0 0 auto; display:flex; gap:5px; padding:4px 10px 2px; overflow-x:auto; }
 #history:empty { display:none; }
+#history[hidden] { display:none; }   /* #426: now a hidden data carrier — the id-selector display:flex must not beat [hidden] */
 .hist-thumb { height:34px; width:auto; border:1px solid var(--line); border-radius:3px;
   opacity:0.55; cursor:pointer; background:#0b0f14; flex:0 0 auto; transition:opacity .1s; }
 .hist-thumb:hover { opacity:1; border-color:var(--accent); }
