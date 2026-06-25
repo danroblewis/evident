@@ -26,6 +26,39 @@ def pick_seed(m):
     return m.initial_state()
 
 
+def excited_seed(m):
+    """An off-fixed-point seed for an UNBOUNDED OSCILLATOR whose initial_state is the origin fixed
+    point — so a single-run view (time_series single-run / orbit_scatter fallback) traces the real
+    limit cycle instead of falsely reporting 'no dynamics'. Returns a seed state dict, or None when
+    perturbing would be a lie or isn't needed.
+
+    The guard is what keeps this faithful (it's the inverse of the Marek #183 violation, where
+    nudging a BOUNDED var to 2000 plotted a value outside its proven range): we ONLY perturb when
+      (1) the initial state IS a fixed point (successor == itself — otherwise pick_seed's honest
+          init already moves), AND
+      (2) the model has ≥2 numeric carried vars (a true 2-D oscillator shape — pendulum/vanderpol),
+          AND
+      (3) the perturbed seed has a real successor (the transition admits it).
+    Caller contract: only reach for this on the UNBOUNDED path (no finite ensemble box) — an
+    unbounded var has no proven bound to violate, so an off-origin start is honest, not fabricated.
+    On a bounded model the ensemble already excites the dynamics and this must not be used."""
+    init = m.initial_state()
+    if init is None:
+        return None
+    nxt = m.successor(init)
+    if nxt is not None and m._key(nxt) != m._key(init):
+        return None                                 # init already moves — pick_seed's honest seed wins
+    numeric = [v for v in m.state_vars if v["kind"] in ("int", "real")]
+    if len(numeric) < 2:
+        return None                                 # not an oscillator — a flat fixed point is honest
+    # Perturb the FIRST numeric var off the origin (the limit-cycle-from-origin case phase_portrait
+    # already probes); leave the rest at their init so the seed stays minimal.
+    seed = dict(init)
+    v0 = numeric[0]
+    seed[v0["name"]] = 28 if v0["kind"] == "int" else 2.8
+    return seed if m.successor(seed) is not None else None
+
+
 def _advance(m, cur, prefer_change, visited):
     """One step of the walk. For DISCRETE programs (prefer_change), pick a
     successor that actually CHANGES the state — and, when possible, one not yet

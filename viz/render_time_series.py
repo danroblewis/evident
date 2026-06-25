@@ -43,7 +43,7 @@ import numpy as np
 
 from evident_viz import load
 from time_series_ensemble import ensemble_inits, step_trajectory
-from time_series_walk import pick_seed, walk, to_ordinal, _flatten_seqs
+from time_series_walk import pick_seed, excited_seed, walk, to_ordinal, _flatten_seqs
 
 STEPS = 60
 
@@ -227,6 +227,14 @@ def _render_single_run(m, out_path, reason):
         _na_card(m, out_path,
                  f"N/A for {m.fsm}: no initial state\n(transition has no first-tick model)")
         return "single-run: no init"
+    # An unbounded OSCILLATOR (pendulum/vanderpol) whose init is the origin fixed point would plot a
+    # flat 'no dynamics' line; on this unbounded path there's no proven bound to violate, so excite
+    # off the fixed point to trace the real limit cycle (the same off-origin start phase_portrait
+    # probes). Returns None unless it's genuinely a fixed-point oscillator, so bounded/honest-flat
+    # models are untouched (Marek #183).
+    excited = excited_seed(m)
+    if excited is not None:
+        seed, reason = excited, reason + "; excited off the fixed-point origin to trace the orbit"
     traj = walk(m, seed, STEPS)
     flat_vars, traj = _flatten_seqs(m.state_vars, traj)
     ticks = list(range(len(traj)))

@@ -165,13 +165,21 @@ class Model(CodecMixin, RankingMixin, AnalysisMixin, QueryMixin, TemporalMixin,
         for v in self.carried + self.derived:
             if v["kind"] == "enum" and v["name"] in self.consts:
                 sort = self.consts[v["name"]].sort()
-                names, lits = [], {}
-                for i in range(sort.num_constructors()):
-                    ctor = sort.constructor(i)
-                    names.append(ctor.name())
-                    lits[ctor.name()] = ctor()
-                self.enum_variants[v["name"]] = names
+                # NULLARY variants only: a PAYLOAD variant (Count(Int)) can't be a categorical here
+                # (ctor() needs args; the ordinal/colormap/_key model assumes nullary). Skip it so a
+                # model that merely MENTIONS such an enum loads; carrying one as STATE is rejected
+                # below. See examples/COUNTEREXAMPLES.md §27.
+                lits = {c.name(): c() for c in (sort.constructor(i)
+                        for i in range(sort.num_constructors())) if c.arity() == 0}
+                self.enum_variants[v["name"]] = list(lits)
                 self._enum_lit[v["name"]] = lits
+                if sort.num_constructors() != len(lits) and any(c["name"] == v["name"]
+                                                                for c in self.carried):
+                    raise RuntimeError(
+                        f"payload-enum carried FSM state is not yet supported by the viz layer "
+                        f"({v['name']}: a variant like Count(Int) carries data the categorical state "
+                        "model can't represent without collapsing distinct payloads). "
+                        "See examples/COUNTEREXAMPLES.md §27.")
 
     # ---- value <-> z3 + pin/block/sort: see CodecMixin (model_codec.py) ------
     def _base(self):

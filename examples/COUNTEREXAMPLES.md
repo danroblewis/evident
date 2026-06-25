@@ -927,3 +927,36 @@ the post-halt drift is harmless for the result but **plainly visible** in the ti
 series (tracks wiggling after the done-tick). This is the intended use of the
 visualizations as a correctness lens — under-constraining is not hidden, it is drawn.
 (Fix if desired: pin `state = _state` once `_done` is true.)
+
+### 27. Payload-enum carried FSM state isn't visualizable (viz codec is nullary-only)
+
+**Where:** `examples/test_02_counter.ev` — `state ∈ CountState` where
+`enum CountState = Start | Count(Int) | Done`. The program RUNS correctly under
+`evident effect-run` (the runtime handles payload variants fine); the gap is in the
+**viz layer** (`viz/`), so it only affects the web-IDE diagrams, not execution.
+
+The viz value-codec models an enum state as a **nullary categorical** — a finite set
+of variant NAMES with an ordinal/colormap (`enum_variants`, `_enum_lit`,
+`_scalar_read` → `decl().name()`, `to_ordinal`). A payload variant `Count(5)` has no
+place in that model:
+- decoding it yields the bare name `"Count"`, **collapsing** `Count(5)`, `Count(4)`,
+  … into ONE state — the reachable graph would falsely read as 3 nodes
+  (`Start → Count → Done`), hiding the whole count-down dynamics;
+- re-pinning a `"Count(5)"` value (the BFS prev-pin) has no entry in the nullary
+  `_enum_lit` table, so it would KeyError.
+
+Rather than render a **silently wrong** picture (a faithfulness violation) or crash
+deep in a renderer, `Model.__init__` now **fails loudly and identifiably at load**
+(`RuntimeError: payload-enum carried FSM state is not yet supported …`), which the
+`/api/analyze` wrapper surfaces as an honest "analysis failed" message. A payload enum
+that is only *mentioned* (not carried as state) still loads — only the nullary variants
+populate the categorical table.
+
+**Consequence / what a real fix needs (runtime/viz):** a value representation for a
+payload-enum state — `(variant, payload…)` instead of a bare name — threaded through
+the codec (distinct decode `Count(5)≠Count(4)`, literal *reconstruction* for pinning)
+AND every renderer's enum-categorical machinery (`to_ordinal`, the colormaps,
+`color_by_categorical`, `_key`) made robust to a dynamically-discovered value outside
+the declared nullary set. That is a cross-cutting feature, not a codec one-liner; until
+then, model counting state as an `Int` carried var (e.g. `count ∈ Int` with `Δ`) rather
+than an `Int`-payload enum if you want the dynamics visualized.

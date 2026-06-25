@@ -34,7 +34,10 @@ def _draw_bounded(ax, numeric, box, inductive, init):
     hatch = None if inductive else "//"
     if len(numeric) >= 2:
         vx, vy = numeric[0], numeric[1]
-        lox, hix = box[vx["name"]]; loy, hiy = box[vy["name"]]
+        # box is keyed by SHORT name (bounding_box / solved_bounds both key short); init is keyed
+        # by FULL name (initial_state). Mixing them KeyError'd on every model whose var has a
+        # dotted full name — i.e. any state.X carried var (#428: a FALSE crash, not a real N/A).
+        lox, hix = box[_short(vx)]; loy, hiy = box[_short(vy)]
         ax.add_patch(Rectangle((lox, loy), hix - lox or 0.001, hiy - loy or 0.001,
                                facecolor=face, alpha=0.22, edgecolor=face, lw=2, hatch=hatch,
                                zorder=2, label="proven reachable region"))
@@ -45,7 +48,7 @@ def _draw_bounded(ax, numeric, box, inductive, init):
         ax.set_xlabel(_short(vx)); ax.set_ylabel(_short(vy))
         ax.grid(True, alpha=0.25); ax.legend(loc="upper right", fontsize=8)
     else:
-        vx = numeric[0]; lo, hi = box[vx["name"]]
+        vx = numeric[0]; lo, hi = box[_short(vx)]      # box keyed short; see the 2-axis note above
         ax.barh([0], [hi - lo or 0.001], left=lo, height=0.3, color=face, alpha=0.3,
                 edgecolor=face, lw=2, hatch=hatch, zorder=2)
         ax.annotate(f"[{lo}, {hi}]", ((lo + hi) / 2, 0.22), ha="center", fontsize=11,

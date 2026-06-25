@@ -228,7 +228,13 @@ def fallback_orbits(model):
     chain from the initial state, else the reachable set. Returns (orbits, point_time, mode)
     where mode is 'autonomous' | 'reachable'."""
     init = model.initial_state()
-    orb = model.trajectory(start=init, steps=400) if init is not None else []
+    # An unbounded OSCILLATOR (pendulum/vanderpol) whose init is the origin fixed point gives a
+    # length-1 orbit — a false 'settles to a single fixed point' N/A. On this unbounded fallback
+    # path there's no proven bound to violate, so excite off the origin to trace the real limit
+    # cycle (guarded so bounded/honest-flat models are untouched — Marek #183).
+    from time_series_walk import excited_seed
+    seed = excited_seed(model) or init
+    orb = model.trajectory(start=seed, steps=400) if seed is not None else []
     if len(orb) > 2:
         return [orb], [list(range(len(orb)))], "autonomous"
     states, depths = _reachable_with_depth(model)
