@@ -77,6 +77,11 @@ function setupPanZoom() {
     applyPanZoom(w);
   }, { passive: false });
 
+  // Swallow the native image ghost-drag: the <img> inside .view-wrap fires dragstart on mousedown,
+  // hijacking the gesture so the first pan-drag is eaten (user had to release + re-grab). dragstart
+  // bubbles from the img up to #view, so this one listener covers it and pan engages immediately.
+  view.addEventListener("dragstart", (e) => e.preventDefault());
+
   let drag = null;
   view.addEventListener("mousedown", (e) => {
     const w = wrap();

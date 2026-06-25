@@ -70,6 +70,13 @@ function renderExplainer(source) {
 
 // --- the live loop ----------------------------------------------------------------
 let timer = null, activeView = null, lastSource = "", _dimTimer = null, _elapsedTimer = null, _analyzeCtrl = null;
+// STICKY VIEW: the user's last EXPLICITLY-selected view (a chip click, or a sample's headline view).
+// On a source edit (run() with no view) we send this so the rendered view PERSISTS across edits instead
+// of resetting to the recommended lead view. The backend honors it iff it's available for the new model
+// (render.py: `req.view if req.view in VIEWS else _recommend(...)`) and reports the actual view it rendered,
+// so an unavailable preferred view falls back gracefully and the family-sync follows data.view. Null until
+// the first explicit selection ⇒ the first render still uses the recommended view.
+let preferredView = null;
 window.addEventListener("keydown", (e) => { if (e.key === "Escape" && _analyzeCtrl) _analyzeCtrl.abort(); });  // Esc cancels an in-flight analyze (#149); guard avoids stealing Esc from modals
 
 // The #structure panel + the interactive diagram overlay (renderStructure / fmtState /
@@ -254,6 +261,11 @@ async function run(view) {
   // a debounced re-analyze that setValue/edits just scheduled — that run() carries no view and would
   // re-recommend over it. Cancel the pending timer so the explicit view is the one that lands.
   if (view !== undefined) clearTimeout(timer);
+  // STICKY VIEW: an explicit selection becomes the preferred view; a no-view edit re-uses it so the
+  // rendered view survives the edit. Pass it on the request — the backend renders it if available for
+  // the new model, else falls back to the recommended view (and reports which via data.view).
+  if (view !== undefined) preferredView = view;
+  const requestView = view !== undefined ? view : preferredView;
   const source = editor.getValue();
   lastSource = source;
   updateClaimPicker(source);   // show the entry-claim dropdown for multi-claim files (#86)
@@ -309,12 +321,12 @@ async function run(view) {
     const res = await fetch("/api/analyze", {
       method: "POST", headers: { "content-type": "application/json" },
       signal: _analyzeCtrl.signal,
-      // A source edit (run() with no view) sends null so the server RE-RECOMMENDS the
-      // lead view for what was just written — otherwise a tab click pins the view and a
-      // later edit that turns the machine nondeterministic keeps showing a flat line.
-      // A tab click (run("phase_portrait")) passes its view explicitly and is honored.
+      // STICKY VIEW: a tab click passes its view explicitly; a source edit re-uses the last explicit
+      // selection (preferredView) so the rendered view persists across edits. The server renders the
+      // requested view if it's available for the new model, else re-recommends the lead view — so a
+      // view that no longer applies falls back gracefully, and data.view reports what actually rendered.
       // entry: which top-level fsm/claim to render — the picker, else the runtime's last-defined default (#290).
-      body: JSON.stringify({ source, view: view || null, scope: scopeBound, k: kDepth, all_conditions: allConditions, entry: pickedEntry() }),
+      body: JSON.stringify({ source, view: requestView || null, scope: scopeBound, k: kDepth, all_conditions: allConditions, entry: pickedEntry() }),
     });
     // A 500 RESOLVES the fetch (only a network drop rejects it), so without this check an HTTP
     // error would fall through and silently leave the prior picture looking live (Marek #206).

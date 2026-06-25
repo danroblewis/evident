@@ -386,16 +386,20 @@ tr.g-changed > td, tr.g-changed > td.k { background:#2a210e; }   /* a differing 
 .trace-state.good { color:var(--good); border-color:var(--good); }
 .trace-state.cycle { color:#e0b050; border-color:#e0b050; }   /* a state on the dodging cycle — liveness lasso (Ana #239) */
 
-#tabs { display:flex; flex-wrap:wrap; gap:5px; padding:8px 12px 4px; align-items:flex-end; }
-/* In the cockpit grid the tab strip mustn't starve the figure. Grouped by family (web-ide-shell.md §3)
-   it's scannable, so the cap relaxes — a few family rows show, the rest scrolls, and the figure keeps
-   the bulk of the 6c region. */
-.ck-view #tabs { flex:0 0 auto; max-height:7.5em; overflow-y:auto; }
-/* a family header — full-width so it forces a line break, the family's chips wrap beneath it.
-   Same uppercase register as the cockpit region labels (.ck-region data-label) for one visual system. */
-#tabs .tab-family { flex:0 0 100%; padding:6px 2px 1px; font-size:10px; letter-spacing:0.12em;
-  text-transform:uppercase; color:var(--dim); opacity:0.7; }
-#tabs .tab-family:first-child { padding-top:0; }
+/* Compact family tabs with drill-in (web-ide-shell.md §0 figure-dominant layout): two short rows — the
+   family tabs, then only the browsed family's chips — so the figure (6c) gets the bulk of the region.
+   #tabs is flex-column (row1 over row2); flex:0 0 auto keeps it to its content so #view's flex:1 fills. */
+#tabs { display:flex; flex-direction:column; gap:4px; padding:8px 12px 4px; }
+.ck-view #tabs { flex:0 0 auto; }
+/* ROW 1 — the 4 family tabs: a compact, uppercase segmented row (the browsed family highlighted). */
+#tabs .tab-fam-row { display:flex; flex-wrap:wrap; gap:6px; }
+#tabs .fam-tab { padding:2px 9px; border-radius:5px; font-size:10px; letter-spacing:0.1em;
+  text-transform:uppercase; color:var(--dim); background:#161b22; border:1px solid var(--line);
+  cursor:pointer; user-select:none; }
+#tabs .fam-tab:hover { color:var(--ink); border-color:var(--dim); }
+#tabs .fam-tab.on { color:#fff; background:#1d2c3a; border-color:var(--accent); }
+/* ROW 2 — the browsed family's view chips. */
+#tabs .tab-chip-row { display:flex; flex-wrap:wrap; gap:5px; align-items:flex-end; }
 #tabs .tab { padding:3px 10px; border-radius:6px 6px 0 0; background:#1b2129; color:var(--dim);
   cursor:pointer; border:1px solid transparent; user-select:none; display:flex; align-items:center; gap:5px; }
 #tabs .tab:hover { color:var(--ink); }

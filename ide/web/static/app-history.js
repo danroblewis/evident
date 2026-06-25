@@ -339,28 +339,50 @@ const _RIGOR_DOT = { proven: ["⊨", "best case: PROVEN — abstract Z3 over all
   exhaustive: ["▦", "best case: EXHAUSTIVE — the complete bounded-discrete state graph"],
   sampled: ["~", "SAMPLED — trajectories / a capped or continuous run, never a proof"] };
 
-// The view tab strip — chips grouped under family headers (web-ide-shell.md §3), each chip carrying its
-// best-case rigor dot. One keyboard-navigable tab per available view (roving tabindex; ←/→ move focus
-// across the flattened order). Only families with ≥1 available view show; unmapped views fall into a
-// trailing "other" group so nothing vanishes. Click + active-highlight behavior is unchanged.
+// The currently BROWSED family (UI-only state): which family's chips row 2 shows. Distinct from the
+// rendered view (browsing ≠ selecting). Re-synced to the active view's family on every (re)analysis so
+// the active chip is always visible; family-tab clicks change it without re-rendering the figure.
+let browsedFamily = null;
+
+// The view tab strip — COMPACT FAMILY TABS with drill-in (web-ide-shell.md §0 figure-dominant layout):
+//   row 1 = the available families (only those with ≥1 view for this model); the browsed one highlighted.
+//   row 2 = only the BROWSED family's view chips, each with its best-case rigor dot.
+// Clicking a family tab switches the browsed family (row 2 re-renders; figure unchanged). Clicking a chip
+// renders that view (onRun) — which re-enters here and re-syncs the browsed family to it. Two short rows
+// instead of the whole 25-chip wall, so the figure (6c) gets the bulk of the region.
 function renderViewTabs(data, activeView, onRun) {
   const tabs = $("#tabs");
-  tabs.innerHTML = "";
-  tabs.setAttribute("role", "tablist");
   const avail = data.views || [];
-  // bucket the available views by family, preserving family A→D order; collect any unmapped into "other"
-  const buckets = VIEW_FAMILIES.map(([fam, vs]) => [fam, vs.filter(v => avail.includes(v))]);
+  // available families in A→D order; any unmapped views go in a trailing "other" so nothing vanishes
+  const fams = VIEW_FAMILIES.map(([fam, vs]) => [fam, vs.filter(v => avail.includes(v))]).filter(([, vs]) => vs.length);
   const other = avail.filter(v => !VIEW_FAMILY[v]);
-  if (other.length) buckets.push(["other", other]);
-  let idx = 0;                                  // flat index across all chips, for roving ←/→ focus
-  buckets.forEach(([fam, vs]) => {
-    if (!vs.length) return;
-    const hdr = document.createElement("div");
-    hdr.className = "tab-family";               // same uppercase register as the cockpit region labels
-    hdr.textContent = fam;
-    tabs.appendChild(hdr);
-    vs.forEach((v) => {
-      const flatIdx = idx++;
+  if (other.length) fams.push(["other", other]);
+  const famNames = fams.map(([fam]) => fam);
+  // sync: default the browsed family to the active view's family (so its chip is on-screen); fall back to
+  // the first available family if the active view is unmapped or its family has no views this model.
+  const activeFam = VIEW_FAMILY[activeView] || (other.includes(activeView) ? "other" : null);
+  browsedFamily = (activeFam && famNames.includes(activeFam)) ? activeFam
+    : (famNames.includes(browsedFamily) ? browsedFamily : famNames[0]);
+
+  function paint() {
+    tabs.innerHTML = "";
+    tabs.setAttribute("role", "tablist");
+    // ROW 1 — the family tabs
+    const row1 = document.createElement("div");
+    row1.className = "tab-fam-row";
+    fams.forEach(([fam]) => {
+      const ft = document.createElement("div");
+      ft.className = "fam-tab" + (fam === browsedFamily ? " on" : "");
+      ft.textContent = fam;
+      ft.onclick = () => { browsedFamily = fam; paint(); };
+      row1.appendChild(ft);
+    });
+    tabs.appendChild(row1);
+    // ROW 2 — only the browsed family's chips
+    const row2 = document.createElement("div");
+    row2.className = "tab-chip-row";
+    const chips = (fams.find(([fam]) => fam === browsedFamily) || [, []])[1];
+    chips.forEach((v, i) => {
       const el = document.createElement("div");
       el.className = "tab" + (v === activeView ? " on" : "");
       el.textContent = v.replace(/_/g, " ");
@@ -374,19 +396,17 @@ function renderViewTabs(data, activeView, onRun) {
       el.tabIndex = v === activeView ? 0 : -1;
       if (VIEW_CAPTIONS[v]) el.dataset.gloss = VIEW_CAPTIONS[v];   // hover a tab → its caption
       el.onclick = () => onRun(v);
-      el.onkeydown = (e) => {
+      el.onkeydown = (e) => {                     // roving ←/→ within the browsed family's chips
         if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onRun(v); }
         else if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
           e.preventDefault();
-          const els = [...tabs.querySelectorAll(".tab")];
-          els[(flatIdx + (e.key === "ArrowRight" ? 1 : els.length - 1)) % els.length].focus();
+          const els = [...row2.querySelectorAll(".tab")];
+          els[(i + (e.key === "ArrowRight" ? 1 : els.length - 1)) % els.length].focus();
         }
       };
-      tabs.appendChild(el);
+      row2.appendChild(el);
     });
-  });
-  // keep the active chip visible in the (capped, scrollable) strip — clicking a far chip
-  // shouldn't scroll its family out of sight on the next render.
-  const onChip = tabs.querySelector(".tab.on");
-  if (onChip) onChip.scrollIntoView({ block: "nearest" });
+    tabs.appendChild(row2);
+  }
+  paint();
 }
