@@ -272,25 +272,33 @@ def _recommend(m, n_states, max_branch, discrete, views):
       - otherwise the time series: a deterministic numeric ramp/trajectory reads as a clean
         line, faithful and fast for almost everything.
 
-      BUT lead with solution_space whenever there's a numeric variable: the DEFAULT picture
-      should be the BOUNDARY of what the variables can be (the solved range of each var + the
-      feasible set + fixed points), not one trajectory through it. The dynamics views are one
-      tab click away. (Purely categorical machines have no numeric boundary, so they fall
-      through to state_graph below.)"""
+      BUT lead with solution_space for a numeric variable — UNLESS it's a deterministic ≥2-numeric
+      continuous system, which leads with its phase portrait (the orbit IS the global picture, not
+      one trajectory — handled first below). For everything else numeric the DEFAULT picture should
+      be the BOUNDARY of what the variables can be (the solved range of each var + the feasible set
+      + fixed points). The dynamics views are one tab click away. (Purely categorical machines have
+      no numeric boundary, so they fall through to state_graph below.)"""
     # `not discrete` ⟺ ≥1 numeric var, and `n_numeric` counts them — both from interface-var KINDS
     # (cheap), NOT the ranked `numeric_vars`/`state_vars` property, which RE-SAMPLES to order vars by
     # variation and cost ~830ms on a real-valued model. The lead-view pick needs the kinds, not the
     # ranking, so this alone roughly halves real-valued analyze latency (Ana #217). The ranking still
     # happens lazily for renderers that actually need axis order.
     n_numeric = sum(1 for v in m.interface_vars if v["kind"] not in ("bool", "enum", "string"))
+    # A DETERMINISTIC continuous system with EXACTLY 2 numeric vars leads with the phase portrait:
+    # its orbit in the (var₁,var₂) plane IS the global structure (a limit cycle / spiral / fixed-
+    # point basin) — not "one trajectory" — so the boundary-lead rationale below doesn't displace
+    # it here. Exactly-2 (not ≥2) because the phase portrait plots a 2-axis plane: a 3+ numeric
+    # system would hide dimensions, so it keeps solution_space (the full boundary). Gated on
+    # max_branch < 2 so branching numeric systems still go to reachability_tree. Restores the
+    # oscillator's phase portrait to the view it opens on (owner regression report 2026-06-25).
+    if "phase_portrait" in views and not discrete and n_numeric == 2 and max_branch < 2:
+        return "phase_portrait"
     if "solution_space" in views and n_numeric:
         return "solution_space"
     if "state_graph" in views and discrete and n_states <= 30:
         return "state_graph"
     if "reachability_tree" in views and max_branch >= 2:
         return "reachability_tree"
-    if "phase_portrait" in views and not discrete and n_numeric >= 2:
-        return "phase_portrait"
     return "time_series" if "time_series" in views else (views[0] if views else None)
 
 
