@@ -12338,9 +12338,10 @@
       "title": "Verdict DOSSIER modal desyncs from the live model \u2014 it shows a SNAPSHOT that can describe a DIFFERENT program than the editor. Reproduced live: (1) rapid sample-switch left the header chip + filename badge on 'traffic.ev / \u21bb Cyclic' while the editor body + banner had loaded collatz ('Driven'). (2) WORSE: with collatz cleanly loaded and the dossier open showing '\u2713 Terminates / fixed point n=1 / n\u2208[1,9232]', clicking the dossier's 'double-check this verdict' button RESET the editor back to the default sample (counter.ev, fsm counter, 1 dropped) \u2014 yet the dossier KEPT asserting collatz's verdict over the now-counter program. A verdict card asserting 'n\u2208[1,9232], fixed point n=1' over a program that is actually the counter is a fabricated claim about the wrong model (Part-4 #4). FIX: (a) the dossier must re-derive from / be invalidated by the current model, never cache a prior one; (b) a dossier action ('double-check', 'replay') must NOT mutate editor content / reload the default sample. Screenshots ana-20260625-182026/10,12,13. The double-check feature ITSELF is excellent ('\u2713 cross-checked \u2014 abstract verdict matches brute-force enumeration') \u2014 the bug is the model-swap + stale card around it.",
       "detail": "playwright: select collatz, open dossier (correct), click double-check -> editor becomes counter.ev while dossier still shows collatz verdict",
       "by": "ide-critic-expert",
-      "status": "open",
+      "status": "cleared",
       "task": null,
-      "created": "2026-06-25T18:32:15Z"
+      "created": "2026-06-25T18:32:15Z",
+      "cleared": "2026-06-25T20:00:38Z"
     },
     {
       "id": 447,
@@ -12403,9 +12404,10 @@
       "title": "Editor/model desync is STILL reproducible \u2014 not via the setValue-vs-loader race this task names, but via a DOSSIER action: with collatz loaded and the verdict dossier open, clicking 'double-check this verdict' reset the editor to the DEFAULT sample (counter.ev) while the dossier kept asserting collatz's verdict (n\u2208[1,9232], fixed point n=1). Also: rapid sample-switching left the header chip+filename on the PRIOR program. The buffer-vs-rendered guard may be in place for the typed path, but a verdict-card interaction must not swap the editor program, and the chip/badge must not lag the editor. See concern #446 + screenshots ana-20260625-182026/10,12,13.",
       "detail": "",
       "by": "ide-critic-expert",
-      "status": "open",
+      "status": "cleared",
       "task": 359,
-      "created": "2026-06-25T18:36:02Z"
+      "created": "2026-06-25T18:36:02Z",
+      "cleared": "2026-06-25T20:00:31Z"
     },
     {
       "id": 459,
