@@ -82,16 +82,16 @@ function renderStructure(s) {
   // scrubber (the same one verify/liveness uses), ringing each state on the live view as you step.
   const lasso = s.rest_cycle && s.rest_cycle.length >= 2 ? s.rest_cycle : null;
   if (lasso) {
-    html += ` <button id="replay-lasso" class="struct-replay" title="step through a run that loops forever among non-rest states, never reaching the absorbing set — the witness that not every run rests">▶ replay a dodging loop</button>`;
+    html += ` <button id="replay-lasso" class="struct-replay" title="step through a run that loops forever among non-rest states, never reaching the absorbing set — the witness that not every run rests">▶ replay a run that never finishes</button>`;
   }
   // #326: a reachable terminal means a run DOES reach rest — REPLAY the path init→terminal (the concrete
   // witness behind 'TERMINATES at {…}': HOW it gets to rest, not just WHERE).
   const reach = s.reach_path && s.reach_path.length >= 2 ? s.reach_path : null;
   if (reach) {
-    html += ` <button id="replay-reach" class="struct-replay" title="step through the path from the initial state to where this run comes to rest — the concrete trajectory into the absorbing set">▶ replay path to rest</button>`;
+    html += ` <button id="replay-reach" class="struct-replay" title="step through the path from the initial state to where this run comes to rest — the concrete trajectory into the absorbing set">▶ replay a run that finishes</button>`;
   }
   // #332: on-demand soundness — cross-check this model's abstract verdict against brute-force enumeration.
-  html += ` <button id="verify-snd" class="struct-replay" title="cross-check the abstract verdict (terminal set / reachable box) against a brute-force enumeration of THIS model — a fabrication self-check (#332/#330)">⛨ verify soundness</button><span id="snd-result" class="dim"></span>`;
+  html += ` <button id="verify-snd" class="struct-replay" title="cross-check the abstract verdict (terminal set / reachable box) against a brute-force enumeration of THIS model — a fabrication self-check (#332/#330)">⛨ double-check this verdict</button><span id="snd-result" class="dim"></span>`;
   el.innerHTML = html;
   if (lasso) {
     const rb = el.querySelector("#replay-lasso");

@@ -38,6 +38,10 @@ html,body { margin:0; height:100%; background:var(--bg); color:var(--ink);
   background:#1b2129; color:var(--ink); border:1px solid var(--line);
   border-radius:6px; padding:2px 10px; font:12px ui-monospace,Menlo,monospace; cursor:pointer; }
 #tour-btn:hover, #smtlib-btn:hover, #save-btn:hover, #export-btn:hover, #share-btn:hover { border-color:var(--accent); }
+/* #424: icon-only toolbar — the secondary actions dropped their text labels (name now in title=),
+   so give each a consistent square hit-target and center the glyph. Keeps the row tidy + uncrowded. */
+#symbols-btn, #tour-btn, #smtlib-btn, #save-btn, #export-btn, #share-btn, #pin-btn {
+  min-width:30px; text-align:center; padding:2px 7px; }
 
 /* guided first-run walkthrough — coachmark tour (Task #164) */
 #tour-backdrop { position:fixed; inset:0; z-index:80; background:#0009; }

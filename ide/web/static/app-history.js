@@ -370,11 +370,18 @@ function renderViewTabs(data, activeView, onRun) {
     // ROW 1 — the family tabs
     const row1 = document.createElement("div");
     row1.className = "tab-fam-row";
-    fams.forEach(([fam]) => {
+    fams.forEach(([fam, vs]) => {
       const ft = document.createElement("div");
       ft.className = "fam-tab" + (fam === browsedFamily ? " on" : "");
       ft.textContent = fam;
-      ft.onclick = () => { browsedFamily = fam; paint(); };
+      // #427: clicking a family SELECTS + RENDERS its first view (not just browse). If that view is
+      // already active, just browse (no pointless re-run). The render re-enters renderViewTabs and the
+      // sync makes this family browsed with its first chip highlighted.
+      ft.onclick = () => {
+        const first = vs[0];
+        if (first && first !== activeView) onRun(first);
+        else { browsedFamily = fam; paint(); }
+      };
       row1.appendChild(ft);
     });
     tabs.appendChild(row1);

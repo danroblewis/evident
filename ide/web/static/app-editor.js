@@ -334,6 +334,18 @@ function initEditorInput() {
     },
   });
 
+  // #429: ⌘D / Ctrl-D → add the NEXT occurrence of the selection to a multi-cursor (Sublime/VSCode's
+  // selectMore). Ace ships the multiselect machinery (ed.selectMore) but its default keymap doesn't bind
+  // ⌘D to it, and without an explicit binding the browser's native ⌘D (bookmark) hijacks the chord — so
+  // we bind it here. With no selection, selectMore first selects the word at the cursor, then each press
+  // adds the following match. We mark it readOnly:false so it's active in the editable buffer.
+  editor.commands.addCommand({
+    name: "selectNextOccurrence",
+    bindKey: { win: "Ctrl-D", mac: "Command-D" },
+    exec: function (ed) { ed.selectMore(1); },
+    readOnly: false,
+  });
+
   // typable-token input + the debounced analyze, both driven off the one change handler.
   editor.session.on("change", (delta) => {
     applyTokenInput(delta);
