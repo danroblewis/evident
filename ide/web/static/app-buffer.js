@@ -15,6 +15,19 @@
 // The #samples <select>, populated by initBuffer().
 let sel = null;
 
+// #364: the PRISTINE source last loaded (sample / slot / shared link / default), plus how to re-load it
+// (its slot name + headline view). "Revert" re-loads this baseline, discarding any edits since. Set by
+// loadProgram on every load; app.js's editor bootstrap seeds it for the first buffer too.
+let _loadedBaseline = null, _loadedSlot = null, _loadedView = undefined;
+
+// #364: a minimal newcomer starter for "new file" — an empty fsm reads better than a blank buffer (it
+// shows the shape to fill in) without prescribing a model. analyze() on it just nudges "write a constraint".
+const NEW_BUFFER_STUB =
+`fsm machine
+    -- carried state — e.g.  count ∈ Int := 0
+    -- the rule each tick — e.g.  Δcount = 1
+`;
+
 // --- named slots + share-link codecs (pure, no DOM/editor) -------------------------
 const SLOTS_KEY = "evident-slots";
 function loadSlots() {                              // corrupt / missing map → {} (never throw)
@@ -140,6 +153,8 @@ function refreshSamplesMenu() {
 function loadProgram(source, slotName, view) {
   _loadV++;                        // #359: bump the load token so any in-flight debounced analyze skips
   currentSlotName = slotName || null;
+  // #364: remember this load as the revert baseline (the pristine source + how to re-load it).
+  _loadedBaseline = source; _loadedSlot = slotName || null; _loadedView = view;
   editor.setValue(source, -1);
   $("#solve-given").value = "";   // a fresh program must not inherit the last pin…
   $("#solve").hidden = true;       // …nor leave a stale UNSAT/witness over the new program
@@ -155,8 +170,42 @@ function loadProgram(source, slotName, view) {
   run(view);                       // a sample jumps to its headline view (run() also refreshes the explainer)
 }
 
+// #364: REVERT — discard edits and re-load the source we last loaded (sample / slot / shared / default).
+// Destructive (it throws away the current buffer), so confirm first UNLESS there's nothing to lose (the
+// buffer already equals the baseline). Re-loading through loadProgram re-derives #fname/explainer and
+// clears the stale solve/verify/query/trace state, same as opening a sample. No baseline ⇒ clear instead.
+function revertBuffer() {
+  if (_loadedBaseline == null) { newBuffer(); return; }
+  if (editor.getValue() === _loadedBaseline) {       // already pristine — re-running is the most it can do
+    setStatus("already the loaded version — nothing to revert", "dim");
+    return;
+  }
+  if (!window.confirm("Revert to the loaded version? Your edits will be discarded.")) return;
+  loadProgram(_loadedBaseline, _loadedSlot, _loadedView);
+  setStatus("reverted to the loaded version ✓", "ok");
+}
+
+// #364: NEW — clear to a minimal starter stub (an empty fsm — the shape to fill in). Destructive when the
+// buffer holds real work, so confirm unless it's already the stub / empty / pure whitespace. Routes through
+// loadProgram so all the per-program panels reset exactly as a sample load would.
+function newBuffer() {
+  const cur = editor.getValue().trim();
+  const trivial = cur === "" || cur === NEW_BUFFER_STUB.trim();
+  if (!trivial && !window.confirm("Start a new empty file? Your current program will be discarded.")) return;
+  currentSlotName = null;
+  loadProgram(NEW_BUFFER_STUB, null);
+  $("#fname").textContent = "untitled.ev";
+  setStatus("new file ✓ — write a constraint to see the dynamics", "ok");
+}
+
 // --- wiring: save/export/share buttons + the #samples dropdown ---------------------
 function initBuffer() {
+  // #364: the FIRST buffer is loaded by app.js's editor bootstrap (not through loadProgram), so seed the
+  // revert baseline to whatever bootstrapped — a shared link reverts to the shared source, a persisted /
+  // default buffer to what's on screen. initBuffer() runs after the bootstrap, so the editor value is set.
+  if (_loadedBaseline == null && typeof editor !== "undefined") _loadedBaseline = editor.getValue();
+  if ($("#new-btn"))    $("#new-btn").onclick    = () => newBuffer();      // #364
+  if ($("#revert-btn")) $("#revert-btn").onclick = () => revertBuffer();   // #364
   if ($("#save-btn"))   $("#save-btn").onclick   = () => saveAsPrompt();
   if ($("#export-btn")) $("#export-btn").onclick = () => exportEv();
   if ($("#share-btn"))  $("#share-btn").onclick  = () => copyShareLink();
