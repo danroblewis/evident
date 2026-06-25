@@ -301,4 +301,82 @@ summary a `git diff --stat` gives for code — but for dynamics. **Lens:** criti
 already shows state/transition counts; this is the rest of the shape an expert reads at a glance before
 opening any single view, and most of it is one pass over the already-computed reachable graph.
 
-_None yet._
+### Proposed — 2026-06-25 (Iris, space_time generalization · task #442)
+
+**Context / the finding.** `viz/render_space_time.py` gates on `kind=='seq'` in `m.carried` and N/As
+everything else. But the truest space×time models in the corpus carry their spatial dimension as **N
+parallel scalar/enum fields, not a Seq**: `life.ev` is a 4×4 grid as 16 Bool cells `c00..c33`;
+`brackets.ev` is a 4-deep stack as enum slots `s0..s3`. Both render N/A under today's gate even though a
+raster is *exactly* their natural picture. Meanwhile the only sample wired to the view is Rule 90 — so the
+owner is right that, as scoped, it looks like a one-example diagram. The fix is a reframe, not solver work:
+`time_series_walk._flatten_seqs` already explodes a Seq into per-element columns, and the time-series walk
+already collects every scalar over ticks — both halves of "indexed quantity × time" already exist.
+
+### value-heatmap — every multi-variable FSM gets a value-over-time raster   ★   · effort M · depends BE
+Generalize space_time from "Seq-carried only" to **any FSM with ≥2 carried scalar/enum/bool leaves**: one
+ROW per carried variable, one COLUMN per tick, cell color = that variable's value at that tick (the
+transpose of `time_series`, read as a heatmap). **Only-Evident:** the rows are the real reachable
+trajectory the solver steps via `successors`, with each variable's domain (the solved range) setting its
+colormap — under-constraint shows as a row that fans/drifts, not a clean band. **Lens:** steal-from-masters
+(spreadsheet "every consequence in a column" + TLA+ trace, as one image). This is the load-bearing
+generalization: it lights up *every* FSM with state — counter, vending, thermostat, SIR, cruise, elevator,
+pendulum — not just the handful with a Seq. space_time/CA becomes the special case where the rows happen to
+be one Seq's positions; the same renderer, fed columns instead of cells, draws both. Keep the crisp
+0/1 binary colormap and the deterministic-vs-sampled honesty subtitle. **File the two strongest as tasks.**
+
+### grid-state raster — detect an N-cell spatial field across parallel scalar leaves   ★   · effort M · depends BE
+Recognize the case `life`/`brackets` actually are: a set of carried leaves whose names encode a spatial
+index (`c00..c33` ⇒ a 4×4 grid; `s0..s3` ⇒ a length-4 line) and raster them as the field, **including the
+2-D case** (life animates as a stack of 4×4 frames, or a small-multiples filmstrip of generations).
+**Only-Evident:** the spatial layout is inferred from the *carried set* the solver tracks, and every frame
+is a real solved successor — a 2-D CA's evolution falls straight out with no per-cell wiring. **Lens:**
+reify-the-invisible. Name-pattern detection (`<prefix><digits>` or `<prefix><r><c>`) is a cheap heuristic;
+when it fires, offer "treat these N leaves as a grid?" so it's honest, not magic. Turns the two best
+space×time models in the repo from N/A cards into the headline picture.
+
+### record-field raster — a Seq(record) rastered on a chosen field   ⬆   · effort S · depends BE
+When the carried Seq holds records (a roster of agents, a row of particles each with `pos/vel/charge`),
+let the raster encode **one chosen field** as color, with a field-picker dropdown — `Seq(Agent)` over ticks
+becomes "agent index × time, colored by `.energy`". **Only-Evident:** the field domains come from the
+solved model, so the picker only offers real fields and colors by their actual range. **Lens:**
+direct-manipulation. Today a record-element Seq either N/As or shows something arbitrary; this makes the
+common "fixed roster evolving" shape (the kind `coindexed` iterates) first-class in the raster.
+
+### pick-the-index-axis — choose which dimension becomes "space"   ⬆   · effort S · depends FE
+A small control on the raster: **which carried set / which Seq / which name-pattern is the space axis**, and
+which quantity is the color. **Only-Evident:** every candidate axis is a real carried dimension the solver
+tracks, so the menu is generated from the model, never a guess. **Lens:** direct-manipulation. The moment
+space_time generalizes past one Seq, "which thing is space?" becomes a real question — let the user answer
+it in one click instead of the renderer picking the first leaf silently (today it grabs `m.carried[0]`).
+
+### diff two rasters — same model, before/after an edit, as a Δ-raster   ⬆   · effort M · depends BE
+Two runs of the same FSM (or two edits of it) rastered and **subtracted**: cells that changed light up, so
+you see *where in space-time* a constraint edit moved the dynamics. **Only-Evident:** both rasters are real
+solved trajectories keyed on the same carried set (`carried_names` already gates model-diff alignment), so
+the Δ is faithful, not a pixel diff of two screenshots. **Lens:** solver-superpower. Pairs with the existing
+dynamics-diff thread — the raster is the densest substrate to show "this edit changed tick 7, column 3."
+
+### nondeterministic fan in the raster — overlay the branch points   ⬆   · effort M · depends BE
+Today a nondeterministic model raster-follows one sampled run and *says so* in the subtitle. Go further:
+mark the **columns where `successors` returned >1**, and on hover show the alternative next-rows that run
+didn't take. **Only-Evident:** the fan is the solver enumerating real alternative successors, not noise —
+the raster makes "where the freedom lives in time" visible. **Lens:** reify-the-invisible. `randomwalk`,
+`pick`, `vending` are nondeterministic; one sampled raster hides their whole point — show the branch spine.
+
+### raster cell → freeze-frame that state   ⬆   · effort S · depends FE+BE
+Click any cell in the raster → pin that (tick, position) and open the full state at that point in the
+interrogate panel (every carried var, not just the one colored). **Only-Evident:** the cell *is* a solved
+reachable state, so clicking it is "stand here and look at everything," not a tooltip. **Lens:**
+direct-manipulation. The raster is a great overview but flattens a state to one color; let the user drill
+from the bird's-eye into the actual assignment, the way Alloy's instance view lets you click into an atom.
+
+### name the family right — "value raster" in DYNAMICS, CA as one instance   ⬆   · effort S · depends FE
+Reframe the view in the gallery: it's a **heatmap of an indexed/vector quantity over time**, of which the
+1-D CA is one instance. Rename to something like `value_raster` (keep `space_time` as the CA-flavored
+alias/caption), update `VIEW_CAPTIONS` and the DYNAMICS family blurb so a newcomer reads "value of an
+indexed thing over time," not "cellular automaton." **Only-Evident:** n/a (naming) — but it's the change
+that stops the view from *looking* single-purpose. **Lens:** lower-the-floor. Coordinate with Mira's gallery
+redesign: if `value-heatmap` lands as the general view, it should be the DYNAMICS entry and CA a sample of it.
+
+Table stakes, noted: a download-raster-as-PNG/CSV button and a zoom/pan on tall rasters — build when
+convenient, not vision.

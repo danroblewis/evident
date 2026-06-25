@@ -130,8 +130,9 @@ answers" is the trailing **"tells you …"** clause already written in `VIEW_CAP
 | `state_graph` | exhaustive* | the reachable state-transition graph — every state the machine can enter and how they connect. |
 | `reachability_tree` | exhaustive* | the BFS unfolding from all initial conditions — how many steps reach each state. |
 | `time_series` | exhaustive* | every state variable on stacked tracks over ticks, with the reachable-value envelope band. |
+| `value_raster` | exhaustive* | every carried scalar/enum/bool leaf as one row × ticks as columns, cell colour = value — the transpose of `time_series` read as a raster; applies to EVERY multi-variable FSM. **Pair it next to `time_series`** (they are transposes). (Iris #443) |
 | `timing_diagram` | exhaustive* | the same ensemble as EE-style digital/analog waveform lanes. |
-| `space_time` | exhaustive* | a Seq-carried state's evolution as a rows=ticks × cols=positions raster (Rule 90 → Sierpiński). |
+| `space_time` | exhaustive* | a Seq-carried state's evolution as a rows=ticks × cols=positions raster (Rule 90 → Sierpiński) — now ONE INSTANCE of `value_raster` (the indexed/vector flavor), not its own diagram. A 2-D grid-state flavor (#444) renders life.ev / brackets.ev as a field. (Iris #442/#444) |
 | `transition_matrix` | exhaustive* | the transition relation as an adjacency-matrix heatmap — does it stay in a mode (block-diagonal) or switch. |
 | `phase_portrait` | sampled | the difference-equation vector field — which way the dynamics flow across value-space. |
 | `nullcline_field` | sampled | the qualitative sign field + nullclines over two numeric axes; their crossings are fixed points. |
@@ -260,3 +261,318 @@ as a `--tag ui` task.
 
 Slices 1–4 are same-day frontend reshuffles. 5 is CSS-heavy. 6–7 are the genuinely new
 capability and gate on a file/persistence decision (`docs/plans/web-ide.md` §10.1).
+
+---
+---
+
+# Revision — Verdict + Interrogate, where they LIVE (2026-06-25)
+
+Design pass by `ide-ui-designer` (Mira), in response to owner feedback. Companion to
+Nadia's parallel pass on *what the verdict terms mean and why they confuse* — this
+section is the **layout/IA** half: where Verdict, Interrogate, History, and Pin belong
+in the cockpit. It builds on her semantics, doesn't restate them. Surveyed live at
+`http://localhost:5173/` with the cockpit grid (§1) already shipped.
+
+## R.0 The single highest-leverage move
+
+**Dissolve the two heaviest cockpit regions into surfaces that already exist.** The
+Verdict strip and the Interrogate panel are both *permanent real estate* spent on
+things that aren't permanent. Verdict is a set of *claims about the model* — it belongs
+as **header chips next to the title**, where a one-line status always lives in a real
+app. Interrogate is *a diagram computed under extra constraints* — it belongs **in the
+gallery as two new view families**, where every other "render me a picture of the model"
+lives. After this move the cockpit has exactly THREE bands — shape · view · (footer) —
+and every analysis, interrogation included, is reached the same way: pick a view.
+
+That is the reframe the owner reached independently ("verify + query are really a
+visualizer computed under an EXTRA set of constraints"), and it's correct. The win isn't
+cosmetic: it collapses **two distinct interaction models into one**. Today a user learns
+"diagrams are tabs up there, but verification is a console down here" — two mental models
+for the same act of *asking the model a question*. Unifying them means the gallery
+taxonomy (§3) becomes the *complete* index of what you can ask, verify and query
+included.
+
+```
+TODAY                                    PROPOSED
+┌─ banner ──────────────┐                ┌─ HEADER: title  · [✓ chips] [⛨] [?]─┐
+├─ VERDICT strip ███████┤  ← cramped     ├─ banner ────────────────────────────┤
+├─ view (tabs+figure) ──┤     jargon     ├─ view (tabs+figure) ────────────────┤
+├─ INTERROGATE █████████┤  ← big, fixed  │   gallery now includes:             │
+│   verify / query / …  │     distracting│    family E ⊢ verify · family A ⊨?   │
+├─ footer (history…) ───┤                ├─ footer (scope · honesty · 🕮 hist) ─┤
+└───────────────────────┘                └─────────────────────────────────────┘
+   pin = toolbar button                     pin = footer "compare ▸" affordance
+   history = footer thumbnails              history = 🕮 modal
+```
+
+## R.1 Verdict → header chips (right of the pin slot)
+
+The Verdict strip today is one `#structure` row that crams: the verdict word + note,
+fixed points, the boundary, forced-equal / forced-different, implied relations
+(clickable proofs), Farkas certificates, `▶ replay a dodging loop`, `▶ replay path to
+rest`, and `⛨ verify soundness` (read off `app-structure.js:renderStructure`). That's
+**nine kinds of thing on one line** — the cramping the owner feels, and the jargon
+(`dodging loop`, `path to rest`, `verify soundness`) with no in-place definition.
+
+The fix is a hierarchy, not a wrap. A verdict has a *headline* (one word: does it stop?)
+and a *dossier* (the evidence: bounds, fixed points, relations, the replayable
+witnesses). The headline belongs in the header as a glanceable chip; the dossier belongs
+in a modal you open from it.
+
+### The header treatment
+
+```
+┌─[IDENTITY]──────────┬─[verbs]──┬────────────────────[VERDICT chips]──────────────┐
+│ ◆ Evident  pick.ev ●│ ▶ ⊨ ⤓ ⌘K │  📌  │ ✓ Terminates  ⊏ x∈[0,9]  ⑂ free  │ ⛨ ? │
+└─────────────────────┴──────────┴───────────────────────────────────────────────┘
+                                    ↑pin    ↑click any chip → Verdict dossier modal
+```
+
+- **One headline chip** — the verdict, colored by class: `✓ Terminates` /
+  `↻ Cyclic` / `⑂ Nondeterministic` / `· Settles` (the existing `VERDICTS` icon+word,
+  `app-symbols.js:222`). This is the always-glance answer to *"does it stop?"*.
+- **Up to two evidence chips, compact** — the boundary (`⊏ x∈[0,9]`) and, when present,
+  a single relations marker (`⊢ 2 implied` / `= x=y`). Capped at two so the header never
+  wraps; everything else lives in the dossier. Each chip is monochrome, smaller than the
+  headline, no buttons inline.
+- **A `⛨` soundness affordance** — the fabrication self-check, as a lone glyph button
+  (not the verbose `⛨ verify soundness` text). Its result paints the headline chip with a
+  tiny `✓`/`✗` corner badge so "has this been cross-checked?" is glanceable.
+- **A `?` about-this-verdict affordance** — opens the help/about for the vocabulary
+  (Nadia owns the copy). This is where `dodging loop`, `path to rest`, `fixed point`,
+  `boundary` get their one-line definitions — *attached to the thing they describe*, not
+  buried in the global tour.
+
+**Click any chip → the Verdict dossier modal.** A chip is a glance; the dossier is the
+read. It's a centered modal (same chrome as the History modal, §R.3) titled with the
+headline verdict, laying the evidence out as labeled rows instead of a crammed strip:
+
+```
+┌─ Verdict — ✓ Terminates ──────────────────────────────────[?]─[✕]─┐
+│  the orbit converges to a fixed point                              │
+│                                                                    │
+│  ● fixed point      (count = 9)                                    │
+│  ⊏ boundary         count ∈ [0, 9]      x ∈ [0, 9]                 │
+│  ⊢ implied          x = y   ›  click for proof (unsat-core)        │
+│  = forced equal     a = b                                          │
+│                                                                    │
+│  ── witnesses you can replay ────────────────────────────────────  │
+│  ▶ replay path to rest        init → … → (count=9)   [open in view]│
+│  ▶ replay a dodging loop      (only if a lasso exists)             │
+│                                                                    │
+│  ⛨ verify soundness   ✓ cross-checked against brute-force enum     │
+└────────────────────────────────────────────────────────────────────┘
+```
+
+Three labeled groups: **what's true** (verdict + fixed points + boundary), **what's
+forced** (the relations/certs, each still click-for-proof — the #341/#345/#348
+interrogability is preserved, just given room), and **witnesses you can replay** (the two
+`▶ replay` buttons, which drive the existing trace scrubber on the live view; `[open in
+view]` routes the replay onto whatever diagram is showing). The soundness check sits at
+the bottom as the audit line. Nothing is removed — it's the *same* `renderStructure`
+content, re-laid from a one-line pile into a scannable dossier, with the jargon now one
+`?` away from its definition.
+
+**Why header, not a cockpit band:** a verdict is a *property of the whole model*, like a
+filename or a dirty-dot — session-level status, not one of N views. Status lives in the
+frame (header/footer), per the same logic that put honesty + scope in the footer (§2,
+region 7). The header already has the `📌` pin slot the owner named as the anchor; the
+chips sit immediately right of it.
+
+## R.2 Interrogate → two new diagram families (a view that takes extra constraints)
+
+The owner's reframe: verify and query are *"a visualizer computed under an EXTRA set of
+constraints."* That is exactly right, and the machinery already fits it — both
+`/api/query` and `/api/temporal`/`/api/invariant` already return a **trace** that
+`showTrace` renders as a scrubbable path on the live view (`app-verify.js`). They are
+*already* visual; they're just trapped in a console. Promote them to views.
+
+This introduces a new cockpit primitive — **a view with an input affordance** — and two
+new families in the §3 taxonomy.
+
+### The primitive: a diagram cell that takes a user constraint
+
+Most views render the model as-is. An *interrogable* view renders the model **plus a
+predicate the user supplies**, with the predicate input docked into the view region's
+header (not a separate panel). The shape:
+
+```
+┌─[VIEW]───────────────────────────────────────────────────────────┐
+│ [family tabs … ⊨? query  ⊢ verify …]                              │
+│ ┌─ input affordance (only for interrogable views) ──────────────┐ │
+│ │ ⊨?  light = Green ∧ timer = 2          [find]  [assert ⊢+]    │ │  ← the extra
+│ └────────────────────────────────────────────────────────────────┘ │    constraints
+│ ┌────────────────────────────────────────────────────────────┐   │
+│ │   [ the figure: the found values / the counterexample path ]│   │
+│ └────────────────────────────────────────────────────────────┘   │
+│ caption: "the reachable state(s) satisfying your query"            │
+└───────────────────────────────────────────────────────────────────┘
+```
+
+The input row appears **only when an interrogable view is active**, anchored to the view
+header — so the editor isn't permanently shadowed by a console, but the affordance is
+right where the result draws. This is the general answer to the owner's "how does a
+diagram that takes extra user constraints work in the cockpit": *the predicate input is
+part of the view chrome, revealed with the view, the way an axis selector (#421) or the
+`all initial conditions` toggle already rides a specific view.*
+
+### (a) `⊨? query` → a new SOLUTION-SPACE family view
+
+**Family A (Solution space)** is where "what states are possible" lives — query is the
+*interactive* member: "what states are possible **and also satisfy this**." Its figure is
+the found witness state(s) plotted into the solution-space picture — the witness as a
+**marked point in the feasible region**, with its full record shown, and (when the query
+walked a path from init) the `init → witness` trace drawn as the route to it. Multiple
+witnesses (the existing `assert ⊢+` stack / enumerate) plot as a *small set of marked
+points* — literally a scatter of "here's where your condition can hold," which IS a
+solution-space picture. The assumption-stack chips (`#query-stack`) move into the input
+affordance as removable tokens.
+
+| view | family | rigor | input | what it answers |
+|---|---|---|---|---|
+| `query` | A · solution space | exhaustive\* | a conjunction (`light=Green ∧ timer=2`) | the reachable state(s) satisfying your condition — marked in the solution space, with the path that reaches one. |
+
+### (b) `⊢ verify` → a new STRUCTURE/LAW family view (with a custom property UI)
+
+Verify asks *"is this property true over **all** runs?"* — that's a statement about the
+*law* of the system, so it joins **Family D (Structure / law)**. Its figure is the
+**counterexample trace** when the property fails (the scrubbable `init → … → violation`
+path the tool already draws, now as the view's own figure, on a faint render of the state
+graph), or a clean **"✓ holds"** proof card when it passes. The property input is richer
+than query's — it needs the safety/liveness modality vocabulary and the fairness toggle —
+so its input affordance is a small purpose-built row:
+
+```
+┌─ ⊢ verify ── property ─────────────────────────────────────────────┐
+│ [safety ▾]  var ≤ 5            [□ WF]   [check]                     │
+│   modality:  safety □ · eventually ◇ · always-eventually □◇ · P⤳Q  │
+└────────────────────────────────────────────────────────────────────┘
+        figure: ✗ violated — counterexample trace (scrubbable)
+                or ✓ holds — proof card
+```
+
+A modality picker (`safety □` / `◇` / `□◇` / `P ⤳ Q`) replaces the bare-input "you must
+know the symbols" gate; the `WF` fairness toggle rides alongside (it only applies to
+liveness). On failure the counterexample is the figure and the step scrubber is the
+view's transport. On success it's a one-line proof card. This is the "custom UI for
+entering the property + the counterexample-trace UI fitting a diagram cell" the owner
+asked for.
+
+| view | family | rigor | input | what it answers |
+|---|---|---|---|---|
+| `verify` | D · structure/law | proven\* | a property (modality picker + expr + WF) | whether a safety/liveness property holds over ALL runs — a proof card, or a scrubbable counterexample trace. |
+
+\* both degrade to `sampled` on a capped/continuous model, badge follows the chart, same
+rule as every other bound-view (§3).
+
+### Where they sit in the gallery
+
+Two new chips join the family-grouped tab strip from §3 — `⊨? query` as the tail of
+Family A, `⊢ verify` as the tail of Family D — each carrying the `⊨` proven-best badge.
+A user hunting "can it ever reach Green?" finds `query` under *solution space*; "does it
+always stay ≤ 5?" finds `verify` under *structure/law*. The `⊨ Solve` button stays a
+header verb (it's an action that *populates* the witness gallery, not a standing view),
+but the **Interrogate cockpit band is deleted entirely** — its three rows become these
+two views plus the existing Solve flow.
+
+## R.3 History → a modal, off the footer
+
+Session history is a horizontal strip of thumbnails (`#history`) permanently parked in
+the footer. It's a *look-back* affordance — used occasionally, not per-edit — so it
+shouldn't hold standing real estate. Demote it to a **🕮 history button** in the footer
+that opens a modal grid:
+
+```
+footer:  scope [400] ✓complete  ·  ✓ 0 dropped  ·  vars: x        🕮 history (12) ▸
+
+          click 🕮  →
+┌─ Session history ───────────────────────────────────────[✕]─┐
+│  most recent first · click a card to restore that analysis  │
+│  ┌────┐ ┌────┐ ┌────┐ ┌────┐ ┌────┐ ┌────┐                  │
+│  │ ▦  │ │ ▦  │ │ ▦  │ │ ▦  │ │ ▦  │ │ ▦  │   each card:      │
+│  │claim│ │time│ │state│ │phase│ │ … │ │ … │   thumbnail +    │
+│  └────┘ └────┘ └────┘ └────┘ └────┘ └────┘   view name +     │
+│  pick.ev    counter    counter   …            source label    │
+└──────────────────────────────────────────────────────────────┘
+```
+
+The footer keeps only the count + button (`🕮 history (12) ▸`); the grid — larger,
+labeled cards with view name and the source they ran against — opens on demand. Same
+modal chrome as the Verdict dossier and any future modal, so the IDE grows one consistent
+overlay pattern.
+
+## R.4 Pin — where it belongs in the IA (fix tracked separately)
+
+Pin is "freeze result A so the next render lands beside it" (compare two constraints, or
+two diagrams of one program). The owner reports it's **mostly broken** — that's a defect
+for the builder/Nadia to diagnose, not an IA question. The IA answer: **pin belongs as a
+`compare ▸` affordance in the footer**, beside the view, not as a top-toolbar button. It
+acts on *the current view's result*, so it lives with the view/session readouts, not up
+in the authoring verbs. Concretely:
+
+- In the footer (region 7), next to honesty: `compare ▸` — pins the current result as **A**
+  and arms "next render lands beside it as B."
+- Once a pin exists, the view region splits A | B (the existing diff/compare path), and a
+  small `A ✕` token in the footer clears it. The `⇄ diff` model-diff stays auto-revealed
+  only when a pin exists (today's behavior — keep).
+- This frees the top toolbar of `📌 pin` / `⇄ diff` (folding into §4.1's plan), and puts
+  "compare" next to the thing compared.
+
+The pin defect itself is filed for the builder; this section only fixes its *home*.
+
+## R.5 Revised cockpit wireframe (after R.1–R.4)
+
+```
+┌─[IDENTITY]──────────┬─[verbs]──┬───────────────────[VERDICT chips]──────────────┐
+│ ◆ Evident pick.ev ● │ ▶ ⊨ ⤓ ⌘K │ 📌│ ✓ Terminates  ⊏ x∈[0,9]  ⊢ 2 implied │⛨ ? │
+├─────────────────────┴──────────┴─────────────────────────────────────────────────┤
+│┌─[WORKSPACE]───┬─[EDITOR]──────────┬─[ANALYSIS COCKPIT — now 3 bands]────────────┐│
+││ ▾ my files    │ 1 claim pick      │┌─ model shape ────────────────────────────┐││
+││   pick.ev   ● │ 2  x ∈ Int        ││ ◆ a claim — its SOLUTION SPACE, solved   │││
+││ ▾ samples     │ 3  0 ≤ x ≤ 9      │└──────────────────────────────────────────┘││
+││   FSM ▾       │ 4  x ≠ 4          │┌─ view ───────────────────────────────────┐││
+││   ⊨ Solve ▾   │                   ││ [A: space│struct│⊨?query]  [D:…│⊢verify] │││
+││   showcase ▾  │                   ││ ┌ input (interrogable views only) ──────┐│││
+││               │                   ││ │ ⊨? light=Green ∧ timer=2  [find][⊢+] ││││
+││               │                   ││ └───────────────────────────────────────┘│││
+││               │                   ││ ┌──────────────────────────────────────┐ │││
+││               │                   ││ │   [ the figure ]                     │ │││
+││               │                   ││ └──────────────────────────────────────┘ │││
+││               │                   ││ caption + rigor badge                    │││
+│└───────────────┴───────────────────┴──────────────────────────────────────────┘│
+├─[FOOTER]──────────────────────────────────────────────────────────────────────────┤
+│ ⏮◀▶⏭ tick 4/9 │ scope[400]✓ · ✓0 dropped · vars:x │ compare ▸ │ 🕮 history(12) ▸ │
+└────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+The Verdict strip and Interrogate band are GONE from the cockpit. The cockpit is now
+**model shape → view → (footer)**. Verdict rides the header; verify/query are views;
+history and compare are footer affordances that open on demand. Every "ask the model
+something" — render a diagram, query a state, verify a property — is now one gesture:
+pick a view (and, for the two interrogable ones, type into the input that rides it).
+
+## R.6 Migration order for this revision
+
+These slot AFTER the §6 slices (the cockpit grid, taxonomy, and footer must exist first —
+they do). Cheapest first.
+
+1. **Verdict headline chip → header (R.1, glance only).** Move the verdict word+note +
+   one boundary chip into the header right of `📌`; keep the full `#structure` strip as
+   the dossier *content* but render it into a modal opened by the chip. Reuses
+   `renderStructure`'s HTML almost verbatim, re-parented into a modal. Frontend-only.
+2. **Verdict dossier modal + `?` about (R.1).** The labeled-group layout + the
+   vocabulary help/about (Nadia's copy). Preserves the click-for-proof relation handlers.
+3. **History → modal (R.3).** Replace the footer `#history` strip with a `🕮` button +
+   a modal grid reusing the existing thumbnail render. Frontend-only, mechanical.
+4. **`compare ▸` re-home of pin (R.4).** Move `📌`/`⇄ diff` out of the toolbar into a
+   footer `compare ▸` affordance. (The pin *defect* is a separate builder task.)
+5. **Interrogable-view primitive + `⊨? query` view (R.2a).** The bigger slice: a view
+   that carries an input affordance; route `/api/query` results into a solution-space
+   figure (witness points + trace). Deletes the `#query-row`/`#query-stack` band.
+6. **`⊢ verify` view + property UI (R.2b).** The modality picker + WF toggle as the
+   view's input; the counterexample trace becomes the figure; deletes `#invariant`.
+   Largest of the set — depends on 5 (the primitive) landing first.
+
+Slices 1–4 are mechanical reshuffles (a day each). 5–6 are the real work: building the
+"view that takes a constraint" primitive and re-routing two API results into figures —
+but they delete an entire cockpit band and a second interaction model in exchange.

@@ -1,5 +1,5 @@
 {
-  "seq": 420,
+  "seq": 444,
   "tasks": [
     {
       "id": 1,
@@ -10600,6 +10600,343 @@
         "analysis"
       ],
       "log": []
+    },
+    {
+      "id": 421,
+      "title": "Axis selection: let users assign their own variables to diagram axes. Keep the auto-picked defaults, but expose an axis selector that is HIDDEN by default and revealed on demand.",
+      "detail": "",
+      "status": "open",
+      "created_by": "worker",
+      "created": "2026-06-25T09:15:07Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "ui"
+      ],
+      "log": []
+    },
+    {
+      "id": 422,
+      "title": "Reframe verify + query as configurable VISUALIZERS (a viz computed under an extra set of constraints), not a bottom panel. query => a simple new diagram type that shows/plots the found values, labeled. verify => its own diagram type + custom UI. Depends on the Mira/Nadia Verdict+Interrogate redesign.",
+      "detail": "",
+      "status": "open",
+      "created_by": "worker",
+      "created": "2026-06-25T09:15:07Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "ui"
+      ],
+      "log": []
+    },
+    {
+      "id": 423,
+      "title": "Move the Verdict strip (terminates / boundary / deterministic / replay-path-to-rest / verify-soundness / dodging-loop) into the header, right of the pin button; clicking opens a modal or acts. Add a help/about explaining the jargon (what IS a dodging loop, replay path to rest, verify soundness). Depends on the Mira/Nadia redesign.",
+      "detail": "",
+      "status": "open",
+      "created_by": "worker",
+      "created": "2026-06-25T09:15:07Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "ui"
+      ],
+      "log": []
+    },
+    {
+      "id": 424,
+      "title": "Toolbar: drop the text labels on the top-right buttons, keep just the icon (symbols / Save / .ev / Share / pin / SMT-LIB) with tooltips for the names.",
+      "detail": "",
+      "status": "open",
+      "created_by": "worker",
+      "created": "2026-06-25T09:15:07Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "ui"
+      ],
+      "log": []
+    },
+    {
+      "id": 425,
+      "title": "Ask the UI (Mira) + UX (Nadia) agents to reconsider where Verdict (terminates/boundary/deterministic/replay/verify-soundness/dodging-loop) and Interrogate (verify/query) belong. They feel cramped + hard to understand and the user stories/workflows that use them are not clear.",
+      "detail": "",
+      "status": "open",
+      "created_by": "worker",
+      "created": "2026-06-25T09:15:08Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "ui"
+      ],
+      "log": []
+    },
+    {
+      "id": 426,
+      "title": "Session history => a modal (cool idea, does not need a permanent panel). Separately: the pin feature is mostly broken \u2014 diagnose + fix it.",
+      "detail": "",
+      "status": "open",
+      "created_by": "worker",
+      "created": "2026-06-25T09:15:08Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "ui"
+      ],
+      "log": []
+    },
+    {
+      "id": 427,
+      "title": "Clicking a diagram-family group should SELECT + RENDER the first diagram type in that group (change Phase 2b: today browsing a family does not render; the owner wants a family click to render its first view).",
+      "detail": "",
+      "status": "open",
+      "created_by": "worker",
+      "created": "2026-06-25T09:15:08Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "ui"
+      ],
+      "log": []
+    },
+    {
+      "id": 428,
+      "title": "Diagrams falsely show N/A. (a) HIDE genuinely-N/A diagrams from the view options (don't offer a family-chip/tab that only renders an N/A card). (b) FIX the false N/A: many renderers print 'needs at least 2 variables' (and similar) when the model DOES have 2+ variables \u2014 a renderer bug or an unimplemented path, not a real N/A. Audit every render_*.py N/A/bail path: fix the ones that could actually render, hide the ones that genuinely can't from the offered views.",
+      "detail": "",
+      "status": "open",
+      "created_by": "worker",
+      "created": "2026-06-25T09:19:58Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "diagram"
+      ],
+      "log": []
+    },
+    {
+      "id": 429,
+      "title": "Ace editor multiselect broken: \u2318D (Mac) / Ctrl-D should add the next occurrence of the current selection to a multi-cursor selection (Ace's selectMore / 'add to selection'), but neither fires. Fix it \u2014 likely the keybinding is missing/overridden, or \u2318D is being swallowed by the browser bookmark shortcut or the \u2318K palette handler. Verify \u2318D adds the next match and a second \u2318D adds the one after.",
+      "detail": "",
+      "status": "open",
+      "created_by": "worker",
+      "created": "2026-06-25T09:20:45Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "editor"
+      ],
+      "log": []
+    },
+    {
+      "id": 430,
+      "title": "Support negative number literals: allow -5.0 / -5 directly instead of requiring 0.0 - 5.0. Add unary-minus parsing for a numeric literal (and ideally unary negation of an expression). Mind precedence: binary subtraction (a - 5) must still work, while -5, x = -5, (-5, 3.0) in a record literal, and f(-5) all parse as negative. Runtime feature (lexer/parser).",
+      "detail": "",
+      "status": "open",
+      "created_by": "worker",
+      "created": "2026-06-25T09:21:10Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "lang"
+      ],
+      "log": []
+    },
+    {
+      "id": 432,
+      "title": "Verdict headline chip \u2192 header (R.1, glance): move the verdict word+note + ONE boundary chip + a soundness \u26e8 glyph + an about ? into the header right of the \ud83d\udccc pin slot, colored by verdict class (\u2713Terminates/\u21bbCyclic/\u2442Nondeterministic/\u00b7Settles from VERDICTS). Cap at headline + 2 evidence chips so the header never wraps; everything else moves to the dossier modal (next slice). Reuses renderStructure content. Frontend-only. See web-ide-shell.md \u00a7R.1.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-ui-designer",
+      "created": "2026-06-25T09:22:11Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "ui"
+      ],
+      "log": []
+    },
+    {
+      "id": 433,
+      "title": "Verdict dossier modal + ? about-this-verdict (R.1): clicking any header verdict chip opens a centered modal that re-lays the full #structure content as THREE labeled groups \u2014 what's true (verdict/fixed-points/boundary), what's forced (implied relations/Farkas certs, each still click-for-proof, preserving #341/#345/#348), witnesses you can replay (\u25b6 replay path to rest / \u25b6 dodging loop driving the existing trace scrubber, with [open in view]). The ? opens the vocabulary help/about (dodging loop, path to rest, fixed point, boundary \u2014 Nadia owns the copy) attached to the verdict, not in the global tour. Same modal chrome as the history modal. See web-ide-shell.md \u00a7R.1.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-ui-designer",
+      "created": "2026-06-25T09:22:11Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "ui"
+      ],
+      "log": []
+    },
+    {
+      "id": 434,
+      "title": "Session history \u2192 a \ud83d\udd6e modal, off the footer (R.3): replace the permanent footer #history thumbnail strip with a \ud83d\udd6e history(N) \u25b8 button that opens a modal grid of larger labeled cards (thumbnail + view name + source label), most-recent-first, click-to-restore. Footer keeps only the count+button. Reuses the existing thumbnail render + same modal chrome as the Verdict dossier. Frontend-only, mechanical. See web-ide-shell.md \u00a7R.3.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-ui-designer",
+      "created": "2026-06-25T09:22:11Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "ui"
+      ],
+      "log": []
+    },
+    {
+      "id": 435,
+      "title": "Re-home pin as a footer 'compare \u25b8' affordance (R.4): move \ud83d\udccc pin / \u21c4 diff OUT of the top toolbar into a footer compare \u25b8 that pins the current view's result as A and arms 'next render lands beside it as B'; an A \u2715 token in the footer clears it; \u21c4 diff stays auto-revealed only when a pin exists (keep today's behavior). Pin acts on the current RESULT so it belongs with the view/session readouts, not the authoring verbs. (The separate pin DEFECT \u2014 'mostly broken' \u2014 is a builder diagnosis task, not this IA move.) See web-ide-shell.md \u00a7R.4.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-ui-designer",
+      "created": "2026-06-25T09:22:11Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "ui"
+      ],
+      "log": []
+    },
+    {
+      "id": 436,
+      "title": "Interrogable-view primitive + \u22a8? query view (R.2a): build the new cockpit primitive \u2014 a view that carries an INPUT AFFORDANCE docked into the view-region header (revealed only when an interrogable view is active, like the all-initial-conditions toggle rides state_graph). Add 'query' as the tail of Family A (solution space): route /api/query results into a solution-space figure \u2014 found witness as a MARKED POINT in the feasible region with its full record, init\u2192witness trace as the route, multiple witnesses (assert \u22a2+ stack/enumerate) as a small scatter of marked points; the assumption-stack chips become removable tokens in the input row. Deletes the #query-row/#query-stack band. rigor exhaustive*. See web-ide-shell.md \u00a7R.2/\u00a7R.2a.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-ui-designer",
+      "created": "2026-06-25T09:22:21Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "ui"
+      ],
+      "log": []
+    },
+    {
+      "id": 437,
+      "title": "\u22a2 verify view + property UI (R.2b): add 'verify' as the tail of Family D (structure/law), rigor proven*. Its input affordance is a purpose-built row: a MODALITY PICKER (safety \u25a1 \u00b7 eventually \u25c7 \u00b7 always-eventually \u25a1\u25c7 \u00b7 P\u2933Q) + the property expr + a WF fairness toggle (liveness-only) \u2014 replacing the bare 'you must know the symbols' input. On failure the scrubbable counterexample trace (init\u2192\u2026\u2192violation, on a faint state-graph render) IS the figure with the step scrubber as transport; on success a one-line \u2713 holds proof card. Deletes the #invariant band. Depends on the interrogable-view primitive (R.2a) landing first. See web-ide-shell.md \u00a7R.2/\u00a7R.2b.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-ui-designer",
+      "created": "2026-06-25T09:22:21Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "ui"
+      ],
+      "log": []
+    },
+    {
+      "id": 439,
+      "title": "[depends-after] verify-view #437 needs the interrogable-view primitive from #436",
+      "detail": "",
+      "status": "worker_done",
+      "created_by": "ide-ui-designer",
+      "created": "2026-06-25T09:22:29Z",
+      "worker_done": true,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "ui"
+      ],
+      "log": [
+        {
+          "at": "2026-06-25T09:22:43Z",
+          "by": "worker",
+          "act": "done",
+          "note": "Not a real task \u2014 the dependency it records (verify #437 needs the query primitive #436) already lives in #437's body. Disregard; no delete command available."
+        }
+      ]
+    },
+    {
+      "id": 440,
+      "title": "HELP/ABOUT panel for the cockpit (Verdict + Interrogate) \u2014 the owner explicitly asked for 'a help/about thing for this'. Add a discoverable '? help' / '\u24d8 about' affordance (a button in the right-panel header next to VERDICT, AND a \u2318K entry 'help: what do these mean?') that opens an overlay (reuse the tour/symbols overlay chrome) with TWO sections. Every entry is ONE plain-language sentence + a 'When you'd use it' line. CONTENT TO SHIP VERBATIM (edit for tone, keep the meaning \u2014 it is checked against the backend):\n\n=== VERDICT \u2014 what the tool concluded about your whole model (solved, not simulated) ===\n\u2022 Terminates \u2014 every run eventually reaches a state it can never leave (a fixed point) and stops there. When: you WANT your machine to finish (a counter, an installer, a protocol that completes).\n\u2022 Cyclic \u2014 the machine loops through a set of states forever; it never settles. When: you EXPECT a loop (a traffic light, a clock) \u2014 or you're surprised it never stops.\n\u2022 Nondeterministic \u2014 from some state there's more than one legal next state, so the future fans out into many runs. When: your model has a free choice (an input, a coin flip) \u2014 or you UNDER-constrained it by accident and it drifted.\n\u2022 Unstable \u2014 an equilibrium exists but runs move away from it; the orbit diverges. When: checking whether a controller/feedback loop actually settles.\n\u2022 Unbounded \u2014 a variable grows without limit; the reachable set never closes. When: you forgot a bound and a value runs away.\n\u2022 fixed point \u2014 a state that maps to itself: reach it and the machine stays. The equilibrium it rests at.\n\u2022 boundary \u2014 the exact lowest..highest value each numeric variable can ever take, proven by the solver (not the min/max of one run). When: 'can this counter ever exceed 5?' \u2014 read it off the boundary.\n\u2022 \u25b6 replay a run that finishes (was 'replay path to rest') \u2014 step through one concrete trajectory from the start state to where it stops, ringing each state on the diagram. When: 'HOW does it reach the end, not just that it does.'\n\u2022 \u25b6 replay a run that never finishes (was 'replay a dodging loop') \u2014 step through a witnessing run that loops forever among non-final states and never reaches an end state. It's the PROOF that 'Terminates' isn't guaranteed for EVERY run \u2014 some run dodges the finish line. When: the verdict says it can rest, but you need to see the run that DOESN'T.\n\u2022 \u26e8 double-check this verdict (was 'verify soundness') \u2014 re-checks the tool's own abstract answer against a brute-force enumeration of your model, and tells you if they disagree. It verifies the IDE, not your program. When: you're about to trust a verdict for something that matters and want a second, independent computation to agree.\n\n=== INTERROGATE \u2014 ask your own questions about the model ===\n\u2022 verify (\u22a2) \u2014 PROVE a property holds on EVERY reachable state (safety, e.g. count \u2264 5) or on EVERY run (liveness). If it fails you get a counterexample TRACE you can step through. When: 'is balance ALWAYS \u2265 0?' 'does it ALWAYS eventually reach Idle?'\n   - safety (\u25a1 / 'always') \u2014 the property is true in every reachable state. Example: count \u2264 5.\n   - eventually (\u25c7) \u2014 every run reaches a state where the property holds, at least once. Example: \u25c7 done = true.\n   - infinitely often (\u25a1\u25c7) \u2014 every run reaches it again and again, forever (it never gets permanently stuck without it). Example: \u25a1\u25c7 light = Green.\n   - leads-to (P \u2933 Q) \u2014 whenever P happens, Q eventually follows. Example: mode = Coining \u2933 mode = Idle.\n   - WF (weak fairness) \u2014 ignore unrealistic runs that forever refuse an always-available step; check liveness only over fair runs.\n\u2022 query (\u22a8?) \u2014 FIND one reachable state matching a condition (or prove none exists). The mirror image of verify: verify asks 'is it ALWAYS true?', query asks 'is it EVER true?'. When: 'CAN the vault ever hold 3 coins while the mode is Vending?' \u2014 type mode = Vending \u2227 vault = 3.\n\u2022 assumptions (assert \u22a2+) \u2014 stack conditions and re-ask query under all of them at once, like adding hypotheses. When: narrowing down 'under these conditions, what's still possible?'\n\nIMPLEMENTATION: overlay content lives beside the GLOSSARY/CONCEPTS data in app-symbols.js (so \u2318K search hits the same definitions); the open affordance + overlay wiring beside the tour/symbols code in app.js. Cross-check every definition against viz/model_query.py, viz/model_temporal.py, viz/model_analysis.py, viz/terminal_states.py, viz/soundness_check.py before shipping \u2014 the meanings above are derived from those sources.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-ux-critic",
+      "created": "2026-06-25T09:22:57Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "learn"
+      ],
+      "log": []
+    },
+    {
+      "id": 441,
+      "title": "RENAME the 3 opaque Verdict buttons to plain language + extend the \u2318K/hover glossary to the Verdict+Interrogate vocabulary (the in-place half of concerns #431/#438; the help/about overlay is #440). Two surgical changes, no backend touch:\n\n(1) RENAMES in app-structure.js:\n  \u2022 line 85: '\u25b6 replay a dodging loop' \u2192 '\u25b6 replay a run that never finishes' (keep the explanatory title= tooltip).\n  \u2022 line 91: '\u25b6 replay path to rest' \u2192 '\u25b6 replay a run that finishes'.\n  \u2022 line 94: '\u26e8 verify soundness' \u2192 '\u26e8 double-check this verdict' (it cross-checks the IDE's abstract answer vs brute force \u2014 soundness_check.py \u2014 NOT the user's model; the current name points at the wrong subject). Tighten the title= to say 'cross-check the tool's own verdict against a brute-force enumeration of this model'.\n\n(2) GLOSSARY/CONCEPTS extension in app-symbols.js \u2014 the CONCEPTS table already glosses banner words (Cyclic/Unbounded/Unstable/fixed point) and feeds both hover-cards and the \u2318K searchable glossary (glossaryItems()). ADD entries (definitions derived from the backend, keep them one line):\n  \u2022 Terminates \u2014 'every run reaches a state it can never leave (a fixed point) and stops \u2014 the machine completes.'\n  \u2022 boundary \u2014 'the exact lowest..highest value each numeric variable can ever take, solver-proven over the whole solution space (not one run).'\n  \u2022 dodging loop / never-resting loop \u2014 'a run that loops forever among non-final states and never reaches an end state \u2014 the witness that not EVERY run finishes.'\n  \u2022 verify (safety / \u25a1) \u2014 'prove a property holds on every reachable state; a counterexample trace if it fails.'\n  \u2022 query (\u2203 / \u22a8?) \u2014 'find one reachable state matching a condition (or prove none exists) \u2014 the mirror of verify.'\n  \u2022 eventually (\u25c7) \u2014 'every run reaches the property at least once.'\n  \u2022 infinitely often (\u25a1\u25c7) \u2014 'every run reaches the property again and again, forever.'\n  \u2022 leads-to (\u2933) \u2014 'whenever P happens, Q eventually follows.'\n  \u2022 safety / liveness \u2014 'safety: nothing bad ever happens (true in every state). liveness: something good eventually happens (on every run).'\n  \u2022 weak fairness (WF) \u2014 'ignore unrealistic runs that forever refuse an always-available step.'\nAlso add \u25c7/\u25a1\u25c7/\u2933/\u22a2/\u22a8 to the operator GLOSSARY so hovering them in the verify placeholder/labels teaches them.\n\nThis makes the cockpit READABLE without the overlay; #440 adds the deeper 'when would I use this' stories.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-ux-critic",
+      "created": "2026-06-25T09:23:14Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "ux"
+      ],
+      "log": []
+    },
+    {
+      "id": 442,
+      "title": "Generalize (or reframe) the space_time diagram. It was built for the 1D cellular-automata example (space = a fixed-length Seq's index, time = the tick \u2192 a 2D grid). Owner doesn't understand it and questions whether enough models have fixed-length Seq vars to justify it. Brainstorm with the design agents: what does it actually show, what OTHER model shapes could use a space\u00d7time view, and how to generalize it to more models (or reframe what it offers). Output: ranked feature ideas + a recommendation (generalize / reframe / keep-narrow-but-explain).",
+      "detail": "",
+      "status": "open",
+      "created_by": "worker",
+      "created": "2026-06-25T09:23:48Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "diagram"
+      ],
+      "log": []
+    },
+    {
+      "id": 443,
+      "title": "value-heatmap: generalize space_time to any multi-variable FSM \u2014 one row per carried scalar/enum/bool leaf, one column per tick, cell color = value (the transpose of time_series, read as a raster). space_time's Seq case becomes one instance. Reuse the time_series successor-walk; keep the binary 0/1 colormap and the deterministic-vs-sampled honesty subtitle. Today render_space_time.py N/As every model without a Seq-carried var (kind=='seq' gate), so it lights up only Rule 90; this makes it light up counter/vending/thermostat/SIR/cruise/elevator/pendulum \u2014 every FSM with state.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-feature-designer",
+      "created": "2026-06-25T09:26:43Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "diagram"
+      ],
+      "log": []
+    },
+    {
+      "id": 444,
+      "title": "grid-state raster: detect an N-cell spatial field across PARALLEL scalar/enum carried leaves (name-pattern <prefix><digits> \u21d2 a 1-D line; <prefix><r><c> \u21d2 a 2-D grid) and raster it as the field \u2014 including the 2-D case as a small-multiples filmstrip / animated stack of frames. Turns life.ev (16 Bool cells c00..c33, a 2-D CA) and brackets.ev (4 enum stack slots s0..s3) from N/A cards into the headline space-time picture; both are the truest space\u00d7time models in the corpus but fail the current Seq-only gate. Offer 'treat these N leaves as a grid?' so it's honest, not magic.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-feature-designer",
+      "created": "2026-06-25T09:26:51Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "diagram"
+      ],
+      "log": []
     }
   ],
   "concerns": [
@@ -11734,6 +12071,24 @@
       "status": "open",
       "task": null,
       "created": "2026-06-25T07:56:17Z"
+    },
+    {
+      "id": 431,
+      "title": "OPAQUE VERDICT VOCABULARY \u2014 the VERDICT panel speaks in domain-expert jargon a target user cannot decode, and the owner themselves can't (their words: 'i don't know what a dodging loop is'). WORST OFFENDER: '\u25b6 replay a dodging loop' (app-structure.js:85). It is a LIVENESS COUNTEREXAMPLE \u2014 a run that loops forever among non-rest states and never reaches the absorbing/terminal set (the witness that NOT every run terminates). 'dodging loop' is internal model-checker slang (the \u00acQ lasso in model_temporal.py) leaked verbatim to the surface; nothing on screen, in the tour, or in the \u2318K glossary defines it. The ONLY explanation is a title= tooltip the user must hover to find. Second offender: '\u26e8 verify soundness' (app-structure.js:94) reads as 'check if my MODEL is sound' but actually cross-checks the TOOL'S OWN abstract Z3 verdict against a brute-force enumeration (soundness_check.py) \u2014 a fabrication self-check of the IDE, not of the user's program; the name points at the wrong subject. Third: '\u25b6 replay path to rest' \u2014 'to rest' is poetic for 'to a terminal/absorbing state'; a first user doesn't connect 'rest' to 'where the FSM stops'. SEVERITY: this is a TRUST defect, not cosmetics \u2014 a verdict you cannot read is a verdict you cannot ACT on, and the cockpit's whole pitch is that it tells you the truth about your model. A truth stated in a private vocabulary is functionally withheld. The systemic cause: these strings were authored by the implementer FOR the implementer (issue-number-tagged: #334/#332/#326) and never re-leveled for a reader. FIX: (a) rename to plain language \u2014 'dodging loop' \u2192 'replay a run that never finishes' / 'never-resting loop'; 'verify soundness' \u2192 'double-check this verdict (brute-force)'; 'replay path to rest' \u2192 'replay a run that finishes'; (b) every Verdict term gets a one-line in-place gloss + a \u2318K-searchable glossary entry (the CONCEPTS table in app-symbols.js already glosses banner words like 'Cyclic'/'Unbounded' \u2014 extend the SAME mechanism to 'Terminates', 'dodging loop', 'fixed point', 'boundary', 'verify soundness'); (c) the help/about (separate task).",
+      "detail": "Live: counter sample shows VERDICT '\u2713 Terminates \u00b7 fixed point (count=5) \u00b7 \u228f boundary \u00b7 \u25b6 replay path to rest \u00b7 \u26e8 verify soundness' (nadia-20260625-091929/01-counter-verdict.png). The 'dodging loop' button only appears on a model with both a terminal set AND a non-rest cycle (model_analysis.py:268). Confirmed no help/about exists; the 'how this works' expander is per-sample prose about the difference-equation framing, not a verdict glossary (02-how-this-works.png).",
+      "by": "ide-ux-critic",
+      "status": "open",
+      "task": null,
+      "created": "2026-06-25T09:22:09Z"
+    },
+    {
+      "id": 438,
+      "title": "INTERROGATE PANEL HAS NO STORY \u2014 the owner: 'The user stories and workflows that would use [verify + query] are not clear.' The INTERROGATE section (index.html:65) presents two power-features with ZERO framing of WHEN or WHY you'd reach for them: '\u22a2 verify' (the \u25a1/\u25c7 property checker \u2014 model_query.check_invariant + model_temporal.check_temporal) and '\u22a8? query' (the \u2203 reachable-state search \u2014 model_query.query). What they ARE: 'verify' asserts a property holds on EVERY reachable state (safety \u25a1 var\u22645) or on every run (liveness \u25c7/\u25a1\u25c7/\u2933) and hands back a counterexample TRACE when it fails; 'query' asks whether ANY reachable state matches a conjunction and returns a witness. These are genuinely powerful (the verify counterexample stepper is Alloy/TLA+-grade \u2014 confirmed live: 'x\u22642' on random-walk returned '\u2717 violated \u2014 counterexample x=3,y=2 \u00b7 trace: x=0\u2192\u2026\u2192x=3'). But the panel teaches NEITHER the concept nor the use-case. WHY IT CONFUSES: (1) the labels are bare GLYPHS \u2014 '\u22a2 verify' and '\u22a8? query' \u2014 and \u22a2/\u22a8 are turnstiles a non-logician doesn't read; (2) the placeholder is a SYNTAX cheat-sheet ('safety: var \u2264 5 \u00b7 liveness: \u25c7 var = 5 \u00b7 \u25a1\u25c7 var = 5 \u00b7 P \u2933 Q') that assumes you ALREADY know what safety/liveness/\u25c7/\u25a1\u25c7/\u2933 mean \u2014 it shows HOW to type, never WHAT it does or WHY; (3) the difference between 'verify' (does it ALWAYS hold) and 'query' (does it EVER hold) \u2014 the \u2200 vs \u2203 duality that is the whole point \u2014 is invisible; nothing on screen says 'verify = prove it's always true; query = find one example'. SEVERITY: this is an ADOPTION wall \u2014 the single most valuable verification capability in the cockpit is unreachable to anyone who doesn't already do model checking, which defeats the point of putting a friendly front end on Z3. FIX: (a) add a plain-language sub-label/use-case line under each: verify \u2192 'PROVE a property holds on every reachable state (safety) or every run (liveness) \u2014 get a counterexample trace if it fails'; query \u2192 'FIND one reachable state matching your condition (or prove none exists)'; (b) gloss \u25c7 (eventually), \u25a1\u25c7 (infinitely often / always-eventually), \u2933 (leads-to), safety, liveness in the \u2318K glossary + as hover-cards on the panel labels (CONCEPTS table mechanism); (c) the help/about (separate task) carries the 'when would I use this' user stories.",
+      "detail": "Live random-walk: verify 'x \u2264 2' \u2192 '\u2717 violated (x \u2264 2) \u2014 counterexample x=3, y=2 \u00b7 trace: x=0 y=0 \u2192 \u2026 \u2192 x=3 y=2' (03-verify-result.png, randomwalk-snap.yml). query row hidden for a claim, shown for an FSM. Labels confirmed in index.html:68-79; placeholders in app-verify.js are syntax-only.",
+      "by": "ide-ux-critic",
+      "status": "open",
+      "task": null,
+      "created": "2026-06-25T09:22:29Z"
     }
   ]
 }
