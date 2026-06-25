@@ -1,5 +1,5 @@
 {
-  "seq": 398,
+  "seq": 399,
   "tasks": [
     {
       "id": 1,
@@ -10317,6 +10317,37 @@
         }
       ],
       "addresses_concern": 376
+    },
+    {
+      "id": 399,
+      "title": "function_guards reports INCOMPLETE on a \u0394+seed var (analyzes only the seed equation; the \u00acfirst-tick case is the separate \u0394 equation) \u2014 label it 'seed (first tick only)' not a partial function",
+      "detail": "",
+      "status": "worker_done",
+      "created_by": "worker",
+      "created": "2026-06-25T07:16:59Z",
+      "worker_done": true,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [],
+      "log": [
+        {
+          "at": "2026-06-25T07:16:59Z",
+          "by": "worker",
+          "act": "created to address concern #370"
+        },
+        {
+          "at": "2026-06-25T07:16:59Z",
+          "by": "worker",
+          "act": "started"
+        },
+        {
+          "at": "2026-06-25T07:16:59Z",
+          "by": "worker",
+          "act": "done",
+          "note": "guard_analysis re-checks completeness with is_first_tick assumed \u2192 seed_only; render shows '\u2713 seed (first tick only)' not '\u26a0 INCOMPLETE'. test_seed_guard.py. Addresses #370."
+        }
+      ],
+      "addresses_concern": 370
     }
   ],
   "concerns": [
