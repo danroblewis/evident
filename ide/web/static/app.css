@@ -221,7 +221,30 @@ tr.g-changed > td, tr.g-changed > td.k { background:#2a210e; }   /* a differing 
   padding:7px 10px; font:12px/1.5 ui-monospace,Menlo,monospace; box-shadow:0 4px 16px #000a;
   white-space:pre-wrap; }
 
-#dynamics { grid-area:dynamics; background:var(--panel); display:flex; flex-direction:column; min-width:0; position:relative; }
+/* The analysis cockpit (web-ide-shell.md §6): a fixed grid of labeled regions
+   — 6a shape / 6b verdict / 6c view (grows) / 6d interrogate / footer — replacing
+   the old flat vertical stack. Each region keeps its children's own styling; only
+   the layout + a subtle uppercase label per region are new. */
+#dynamics { grid-area:dynamics; background:var(--panel); min-width:0; position:relative;
+  display:grid; grid-template-rows:auto auto 1fr auto auto; overflow:hidden; }
+
+/* a labeled cockpit region — its data-label renders as a subtle uppercase tag */
+.ck-region, .ck-footer { min-width:0; }
+.ck-region { border-bottom:1px solid var(--line); display:flex; flex-direction:column; min-height:0; }
+.ck-region[data-label]::before, .ck-footer[data-label]::before {
+  content:attr(data-label); display:block; padding:4px 14px 0;
+  font-size:10px; letter-spacing:0.12em; text-transform:uppercase;
+  color:var(--dim); opacity:0.7; }
+/* the view region grows to fill; #view (flex:1) takes the leftover height and
+   owns its own overflow (panzoom clips/scrolls the figure inside it) */
+.ck-view { min-height:0; overflow:hidden; }
+/* footer pinned at the bottom, holds the session-global readouts */
+.ck-footer { display:flex; flex-direction:column; min-width:0; }
+/* the solve panel sits inside the (auto-sized) interrogate region now, not a fixed-height
+   flex parent — its old 46%-of-pane cap resolves to dead space here. Let it size to content;
+   #solve-body keeps its own scroll for long witness tables. */
+.ck-region #solve { max-height:none; }
+.ck-region #solve-body { max-height:38vh; }
 /* prominent "solving…" badge centered over the diagram for >0.4s analyses (Marek #202/#132) */
 #solving { position:absolute; top:46%; left:50%; transform:translate(-50%,-50%); z-index:30;
   background:#0b0f14ee; border:1px solid var(--accent); border-radius:8px; padding:10px 20px;
@@ -364,6 +387,11 @@ tr.g-changed > td, tr.g-changed > td.k { background:#2a210e; }   /* a differing 
 .trace-state.cycle { color:#e0b050; border-color:#e0b050; }   /* a state on the dodging cycle — liveness lasso (Ana #239) */
 
 #tabs { display:flex; flex-wrap:wrap; gap:5px; padding:8px 12px 4px; }
+/* In the cockpit grid, the tab wall (28 chips, wraps to ~6 rows) must not starve the
+   figure of vertical space — cap it to a few rows and scroll the rest. The family-grouped
+   tab strip (web-ide-shell.md §3) supersedes this later; until then the cap keeps the
+   diagram from collapsing to a sliver. */
+.ck-view #tabs { flex:0 0 auto; max-height:5.5em; overflow-y:auto; }
 #tabs .tab { padding:3px 10px; border-radius:6px 6px 0 0; background:#1b2129; color:var(--dim);
   cursor:pointer; border:1px solid transparent; user-select:none; }
 #tabs .tab:hover { color:var(--ink); }

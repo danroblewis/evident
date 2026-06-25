@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Evident IDE</title>
 <link rel="icon" href="data:,">
-<link rel="stylesheet" href="/static/app.css?v=26">
+<link rel="stylesheet" href="/static/app.css?v=30">
 </head>
 <body>
 <div id="app">
@@ -39,57 +39,76 @@
   <div id="splitter" role="separator" aria-orientation="vertical" title="drag to resize"></div>
 
   <aside id="dynamics">
-    <div id="banner">▷ write a constraint to see the dynamics</div>
-    <details id="explainer" hidden>
-      <summary>how this works</summary>
-      <div class="ex-body"></div>
-    </details>
-    <div id="structure" hidden></div>
-    <div id="invariant" hidden>
-      <span class="inv-label">⊢ verify</span>
-      <input id="inv-prop" placeholder="verify (use your own vars) — safety:  var ≤ 5  ·  0 ≤ var ≤ 10     liveness:  ◇ var = 5  ·  □◇ var = 5  ·  P ⤳ Q">
-      <label id="fair-ctl" title="WEAK FAIRNESS (liveness only): exclude UNFAIR runs that perpetually ignore an always-available path to the goal. □◇/◇/⤳ then hold iff the goal is reachable from every reachable (P-)state; the only fair counterexample is a TRAP. Or type a 'WF' / 'under fairness' suffix on the property."><input id="fair-in" type="checkbox"> WF</label>
-      <button id="inv-btn">check</button>
-      <span id="inv-result" class="dim"></span>
-    </div>
-    <div id="query-row" hidden>
-      <span class="query-label" title="ad-hoc existential query — find a reachable state satisfying it (the ∃ dual of ⊢ verify's □). 'find' searches the bare conjunction; 'assert ⊢+' (or Enter) stacks it as an assumption and re-queries under the whole stack.">⊨? query</span>
-      <input id="query-prop" placeholder="find a reachable state — a conjunction:  light = Green ∧ timer = 2     (Enter / assert ⊢+ stacks it)">
-      <button id="query-btn" title="one-shot: search the bare conjunction, leave the stack untouched">find</button>
-      <button id="query-assert" title="push this term onto the assumption stack and re-query under the whole stack (Enter does the same)">assert ⊢+</button>
-      <span id="query-result" class="dim"></span>
-    </div>
-    <div id="query-stack" hidden>
-      <span class="assume-label" title="the stacked assumptions — every push/pop re-queries the model under ALL of them (Z3 push/pop)">assumptions:</span>
-      <span id="query-chips"></span>
-      <button id="query-clear" title="retract every assumption">clear all</button>
-    </div>
-    <div id="query-suggest" hidden></div>
-    <div id="inv-trace" hidden></div>
-    <div id="tabs"></div>
-    <div id="view"><div class="ph">no dynamics yet</div></div>
-    <div id="view-caption" class="dim"></div>
-    <label id="allcond-ctl" class="dim" hidden title="state_graph: show the GLOBAL dynamics — the transition graph over EVERY initial condition (both basins of a bistable system), not just the orbit reachable from the seeded init. Falls back to from-init for real-valued / unbounded models."><input id="allcond-in" type="checkbox"> all initial conditions</label>
-    <div id="diff-panel" hidden></div>
-    <div id="history" title="recent analyses — click a thumbnail to look back at a past run"></div>
-    <div id="honesty" class="dim">—</div>
-    <pre id="warnings" hidden></pre>
-    <div id="solve" hidden>
-      <div id="solve-head"></div>
-      <div id="solve-body"></div>
-      <div id="solve-controls">
-        <input id="solve-given" placeholder="solve-for-X — pin e.g.  x=3, y=7">
-        <button id="solve-resolve">re-solve</button>
-        <button id="solve-all" title="enumerate distinct witnesses">all ⊨*</button>
-        <label id="fold-sym-wrap" title="collapse witnesses that differ only by permuting interchangeable enum values (sound — only provable symmetries)"><input type="checkbox" id="fold-sym"> fold symmetric</label>
-        <button id="solve-close" title="close">✕</button>
+    <!-- 6a SHAPE — the one-line model-shape claim -->
+    <section class="ck-region" data-label="model shape">
+      <div id="banner">▷ write a constraint to see the dynamics</div>
+      <details id="explainer" hidden>
+        <summary>how this works</summary>
+        <div class="ex-body"></div>
+      </details>
+    </section>
+
+    <!-- 6b VERDICT — claims about the model (terminates / cyclic / boundary) -->
+    <section class="ck-region" data-label="verdict">
+      <div id="structure" hidden></div>
+    </section>
+
+    <!-- 6c VIEW — the diagram + family tabs + caption (this region grows to fill) -->
+    <section class="ck-region ck-view" data-label="view">
+      <div id="tabs"></div>
+      <div id="view"><div class="ph">no dynamics yet</div></div>
+      <div id="view-caption" class="dim"></div>
+      <label id="allcond-ctl" class="dim" hidden title="state_graph: show the GLOBAL dynamics — the transition graph over EVERY initial condition (both basins of a bistable system), not just the orbit reachable from the seeded init. Falls back to from-init for real-valued / unbounded models."><input id="allcond-in" type="checkbox"> all initial conditions</label>
+      <div id="diff-panel" hidden></div>
+    </section>
+
+    <!-- 6d INTERROGATE — verify · query · solve -->
+    <section class="ck-region" data-label="interrogate">
+      <div id="invariant" hidden>
+        <span class="inv-label">⊢ verify</span>
+        <input id="inv-prop" placeholder="verify (use your own vars) — safety:  var ≤ 5  ·  0 ≤ var ≤ 10     liveness:  ◇ var = 5  ·  □◇ var = 5  ·  P ⤳ Q">
+        <label id="fair-ctl" title="WEAK FAIRNESS (liveness only): exclude UNFAIR runs that perpetually ignore an always-available path to the goal. □◇/◇/⤳ then hold iff the goal is reachable from every reachable (P-)state; the only fair counterexample is a TRAP. Or type a 'WF' / 'under fairness' suffix on the property."><input id="fair-in" type="checkbox"> WF</label>
+        <button id="inv-btn">check</button>
+        <span id="inv-result" class="dim"></span>
       </div>
-      <div id="opt-controls" title="optimize a numeric variable subject to the claim (z3 Optimize)">
-        <input id="opt-var" placeholder="optimize var — e.g.  x">
-        <button id="opt-max" title="maximize this variable over the claim">⤒ max</button>
-        <button id="opt-min" title="minimize this variable over the claim">⤓ min</button>
+      <div id="query-row" hidden>
+        <span class="query-label" title="ad-hoc existential query — find a reachable state satisfying it (the ∃ dual of ⊢ verify's □). 'find' searches the bare conjunction; 'assert ⊢+' (or Enter) stacks it as an assumption and re-queries under the whole stack.">⊨? query</span>
+        <input id="query-prop" placeholder="find a reachable state — a conjunction:  light = Green ∧ timer = 2     (Enter / assert ⊢+ stacks it)">
+        <button id="query-btn" title="one-shot: search the bare conjunction, leave the stack untouched">find</button>
+        <button id="query-assert" title="push this term onto the assumption stack and re-query under the whole stack (Enter does the same)">assert ⊢+</button>
+        <span id="query-result" class="dim"></span>
       </div>
-    </div>
+      <div id="query-stack" hidden>
+        <span class="assume-label" title="the stacked assumptions — every push/pop re-queries the model under ALL of them (Z3 push/pop)">assumptions:</span>
+        <span id="query-chips"></span>
+        <button id="query-clear" title="retract every assumption">clear all</button>
+      </div>
+      <div id="query-suggest" hidden></div>
+      <div id="inv-trace" hidden></div>
+      <div id="solve" hidden>
+        <div id="solve-head"></div>
+        <div id="solve-body"></div>
+        <div id="solve-controls">
+          <input id="solve-given" placeholder="solve-for-X — pin e.g.  x=3, y=7">
+          <button id="solve-resolve">re-solve</button>
+          <button id="solve-all" title="enumerate distinct witnesses">all ⊨*</button>
+          <label id="fold-sym-wrap" title="collapse witnesses that differ only by permuting interchangeable enum values (sound — only provable symmetries)"><input type="checkbox" id="fold-sym"> fold symmetric</label>
+          <button id="solve-close" title="close">✕</button>
+        </div>
+        <div id="opt-controls" title="optimize a numeric variable subject to the claim (z3 Optimize)">
+          <input id="opt-var" placeholder="optimize var — e.g.  x">
+          <button id="opt-max" title="maximize this variable over the claim">⤒ max</button>
+          <button id="opt-min" title="minimize this variable over the claim">⤓ min</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- FOOTER — session-global readouts (history / honesty / warnings) -->
+    <footer class="ck-footer" data-label="session">
+      <div id="history" title="recent analyses — click a thumbnail to look back at a past run"></div>
+      <div id="honesty" class="dim">—</div>
+      <pre id="warnings" hidden></pre>
+    </footer>
   </aside>
 </div>
 
