@@ -1,5 +1,5 @@
 {
-  "seq": 399,
+  "seq": 407,
   "tasks": [
     {
       "id": 1,
@@ -10348,6 +10348,111 @@
         }
       ],
       "addresses_concern": 370
+    },
+    {
+      "id": 400,
+      "title": "Split render_scatter_matrix.py: lift sample_states + _probe_degenerate_attractor into a new scatter_sample.py module (data-collection concern), leaving the renderer with only the draw code. File is 499 lines; _draw_scatter_matrix is 192 lines and sample_states is 95 \u2014 extracting the sampling concern to a sibling module drops BOTH the function-too-long and keeps the renderer under 500. Behavior-preserving; sample_states is called only locally at render_scatter_matrix.py:489.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-architect",
+      "created": "2026-06-25T07:27:15Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "refactor"
+      ],
+      "log": []
+    },
+    {
+      "id": 401,
+      "title": "Break _draw_scatter_matrix (192 lines) along its phases: panel-grid setup, per-panel scatter draw, diagonal labels, and the color-legend. Each is a private helper in the scatter module. Pure matplotlib reorg \u2014 verify the PNG is byte-identical (or visually identical via test.sh --examples screenshot) before/after.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-architect",
+      "created": "2026-06-25T07:27:15Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "refactor"
+      ],
+      "log": []
+    },
+    {
+      "id": 402,
+      "title": "Break the long render/_render_numeric/_render_discrete bodies in the phase-portrait family along phases. Targets: render_phase_portrait.py _render_numeric (85L) + _render_discrete (90L); phase_portrait_field.py render_numeric_panel (107L) + render_discrete_panel (95L); render_basin_map.py _discrete_basins_on (134L). Each splits into compute-the-field vs draw-the-field helpers. Behavior-preserving matplotlib reorg; verify via test.sh --examples screenshots.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-architect",
+      "created": "2026-06-25T07:27:28Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "refactor"
+      ],
+      "log": []
+    },
+    {
+      "id": 403,
+      "title": "Break the Morse-graph draw/render bodies: render_morse_graph.py draw (111L) + render (86L), morse_graph_build.py build_numeric_scan_graph (83L). Split layout-compute from node/edge-draw. Behavior-preserving.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-architect",
+      "created": "2026-06-25T07:27:28Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "refactor"
+      ],
+      "log": []
+    },
+    {
+      "id": 404,
+      "title": "Break remaining single long render bodies, each along its phases (compute vs draw): render_orbit_scatter.py render (178L), render_solution_space.py render (162L), render_chord_diagram.py draw (126L), render_parallel_coords.py render (95L), render_nullcline_field.py render_numeric (76L). One commit per file, each proven green via test.sh --examples + screenshot check.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-architect",
+      "created": "2026-06-25T07:27:28Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "refactor"
+      ],
+      "log": []
+    },
+    {
+      "id": 405,
+      "title": "Break the viz model-layer long methods: model_ranking.py _rank_and_dedup (111L), model_query.py check_invariant (88L), evident_viz.py Model.__init__ (93L). __init__ in particular is a setup-pile that wants its phases (path resolution, z3 load, var extraction, enum registry) in named private helpers. Behavior-preserving; run ./test.sh.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-architect",
+      "created": "2026-06-25T07:27:28Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "refactor"
+      ],
+      "log": []
+    },
+    {
+      "id": 406,
+      "title": "Trim ide/test_all_conditions.py check_phase_portrait_field (73L, just over the 70 cap) \u2014 extract the per-panel assertions into a helper. Low-risk test-code tidy.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-architect",
+      "created": "2026-06-25T07:27:28Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "refactor"
+      ],
+      "log": []
     }
   ],
   "concerns": [
@@ -11265,9 +11370,10 @@
       "title": "ide/web/server.py sits at 11 module-level endpoint functions, one below the Rule-3 lint cap (12). It is not a violation YET, so it carries zero current lint debt \u2014 but it is a latent blocker: the next clean endpoint trips the ratchet, which already forced #332 into a flag-based workaround rather than a new route. The fix (APIRouter split, task #342) is a live-server reorganization that must be smoke-tested against a restarted server, so it was filed rather than shipped blind during this pass.",
       "detail": "ide/web/server.py: 11 module-level functions (cap 12); analyze/solve/optimize/invariant/temporal/query/explore/figure/diff/smtlib/index. See task #342 for the router-split plan.",
       "by": "ide-architect",
-      "status": "open",
+      "status": "cleared",
       "task": null,
-      "created": "2026-06-24T11:45:34Z"
+      "created": "2026-06-24T11:45:34Z",
+      "cleared": "2026-06-25T07:27:57Z"
     },
     {
       "id": 353,
@@ -11435,6 +11541,15 @@
       "status": "open",
       "task": null,
       "created": "2026-06-25T06:45:29Z"
+    },
+    {
+      "id": 407,
+      "title": "render_*.py duplicate clusters confirmed via find_duplicates \u2014 but they are NEAR-matches with divergent intent, not safe blind merges",
+      "detail": "find_duplicates(viz, 0.85) surfaced 9 clusters. The load-bearing ones are NOT trivially mergeable: _cardinality (phase_portrait_field.py:68, DECLARED variant count) vs _observed_cardinality (chord_channels.py:28, REACHABLE distinct count) are 92% similar but have opposite semantics \u2014 merging would silently change which axis a renderer treats as degenerate. Same for the per-file main() CLI entrypoints (some catch exceptions + draw a placeholder, some don't; some take argv, some read sys.argv). The real shared shape worth extracting is the sampling/projection helpers (ordinal/tick_info-style value->axis mapping repeated across scatter_matrix, phase_portrait, parallel_coords) into a viz/axis_map.py \u2014 that IS behavior-preserving but needs each call-site's value mapping diffed first. Filed as part of the render-split tasks #400-405 rather than shipped, because a blind merge here trades a lint number for a correctness regression.",
+      "by": "ide-architect",
+      "status": "open",
+      "task": null,
+      "created": "2026-06-25T07:27:41Z"
     }
   ]
 }
