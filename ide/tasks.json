@@ -1,5 +1,5 @@
 {
-  "seq": 470,
+  "seq": 473,
   "tasks": [
     {
       "id": 1,
@@ -11172,6 +11172,51 @@
       "reopened": 0,
       "tags": [
         "ux"
+      ],
+      "log": []
+    },
+    {
+      "id": 471,
+      "title": "Split viz/render_nullcline_field.py: it sits at the Rule 3 free-function cap (12), so render_numeric() (79 lines) can't be reduced by extraction without a NEW too-many-free-functions violation. Split the file along its two render entry concerns \u2014 a numeric/field module (render_numeric + _sample helpers) and a faceted module (render_faceted + _draw_facet_panel) \u2014 sharing _short/_succ_fill via render_common or a small nullcline_support module. Behavior-preserving; render-smoke covers it.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-architect",
+      "created": "2026-06-25T21:22:23Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "refactor"
+      ],
+      "log": []
+    },
+    {
+      "id": 472,
+      "title": "Decompose viz/evident_viz.py Model.__init__ (99 lines) \u2014 the Model god-class constructor. It loads the SMT2/schema and eagerly computes carried/state/categorical/numeric var lists, enum_variants, two-tick detection, etc. Extract the var-classification phase and the enum/registry phase into named helpers (or a _ModelLoad builder) so __init__ reads as a sequence of phase calls. Verify via the full ./test.sh (Model is imported everywhere \u2014 check get_callers before moving any public attr).",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-architect",
+      "created": "2026-06-25T21:22:29Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "refactor"
+      ],
+      "log": []
+    },
+    {
+      "id": 473,
+      "title": "Split three over-length analysis functions in viz/ (NOT covered by render-smoke \u2014 need the Model query/analysis path exercised, so do under ./test.sh + a targeted analyze call): model_query.py check_invariant (88 lines), model_ranking.py _rank_and_dedup (111 lines), morse_graph_build.py build_numeric_scan_graph (83 lines). Each has a clear phase structure (build \u2192 score/dedup \u2192 emit). Behavior-preserving; break along the phases.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-architect",
+      "created": "2026-06-25T21:22:37Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "refactor"
       ],
       "log": []
     }

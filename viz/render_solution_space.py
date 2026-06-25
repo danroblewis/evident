@@ -46,24 +46,97 @@ def _na(out_path, title, msg):
     return out_path
 
 
-def render(smt2_path, schema_path, out_path):
-    m = load(smt2_path, schema_path)
-    states, edges = m.reachable(limit=400)
-    struct = m.solution_structure(states=states, edges=edges)
-    fps = struct.get("fixed_points", [])
-    verdict = struct.get("verdict", "")
-    n = struct.get("reachable", len(states))
+def _draw_boundary_bars(axL, bounds, numeric, boundtag):
+    """Left panel: each numeric variable's solved boundary as a horizontal range bar."""
+    ys = list(range(len(numeric)))
+    for y, nm in zip(ys, numeric):
+        lo, hi = bounds[nm]
+        axL.plot([lo, hi], [y, y], lw=9, solid_capstyle="round", color="#58a6ff", alpha=0.5)
+        axL.plot([lo, hi], [y, y], "|", color="#0f1419", markersize=16, markeredgewidth=2)
+        axL.text(lo, y + 0.2, f"{lo:g}", ha="left", va="bottom", fontsize=9, color="#7d8590")
+        axL.text(hi, y + 0.2, f"{hi:g}", ha="right", va="bottom", fontsize=9, color="#7d8590")
+    axL.set_yticks(ys); axL.set_yticklabels(numeric)
+    axL.set_ylim(-0.7, len(numeric) - 0.3)
+    axL.set_xlabel("value spanned over the whole solution space")
+    axL.set_title(f"variable boundaries — {boundtag}", fontsize=11)
+    axL.grid(axis="x", alpha=0.2)
 
-    # PROVEN bounds via z3 Optimize over a k-step unrolling of the transition (#134) — NOT the BFS
-    # sample. `exact` means the k-step and 2k-step bounds agree, so the reachable extent has closed
-    # (the user's "compose with itself until 2-run == k-run" fixpoint). Fall back to the BFS bounds
-    # (exact only when the reachable set was finite & fully explored) if Optimize is unavailable.
-    # solved_bounds (z3 Optimize over the unroll) is cheap for DETERMINISTIC systems (counter ~10ms,
-    # oscillator ~20ms) and gives the inductive/horizon proof. For NONDETERMINISTIC ones (vending,
-    # pick — a free input each tick) the Optimize searches every input sequence over the unroll —
-    # ~2s — yet the BFS bounds are ALREADY exact there when the reachable set is finite. So gate the
-    # expensive prover on determinism; nondeterministic systems take the fast exact-by-exhaustion BFS
-    # bounds. (Latency #188: vending 2.5s → ~0.1s, no loss of correctness.)
+
+def _draw_enum_panel(axR, m, states, fps, numeric, enums):
+    """Right panel (enum mode): categorical y (enum variants) × numeric x — the reachable
+    (state, value) pairs, with equilibria starred. Returns the `plotted` hover list."""
+    plotted = []
+    vx, en = numeric[0], enums[0]
+    fxn, fen = _full(m, vx), _full(m, en)
+    variants = m.enum_variants.get(fen) or sorted({s.get(fen) for s in states if s.get(fen) is not None})
+    vidx = {nm: i for i, nm in enumerate(variants)}
+    for s in states:
+        x, e = s.get(fxn), s.get(fen)
+        if isinstance(x, (int, float)) and e in vidx:
+            plotted.append((x, vidx[e], {_SHORT(k): v for k, v in s.items()}))
+    if plotted:
+        axR.scatter([p[0] for p in plotted], [p[1] for p in plotted], s=44, color="#58a6ff",
+                    alpha=0.55, edgecolors="none", label="reachable")
+    for f in fps:                                      # equilibria, if any land on this pair
+        if vx in f and f.get(en) in vidx:
+            axR.scatter([f[vx]], [vidx[f[en]]], marker="*", s=280, color="#c9a8ff",
+                        edgecolors="#0f1419", zorder=5, label="fixed point")
+    handles, labels = axR.get_legend_handles_labels()
+    uniq = dict(zip(labels, handles))
+    if uniq:
+        axR.legend(uniq.values(), uniq.keys(), loc="best", fontsize=9)
+    axR.set_yticks(range(len(variants))); axR.set_yticklabels(variants)
+    axR.set_ylim(-0.6, len(variants) - 0.4)
+    axR.set_xlabel(vx); axR.set_ylabel(en)
+    axR.set_title(f"reachable ({en}, {vx}) pairs — every state×value combination the machine enters",
+                  fontsize=11)
+    axR.grid(axis="x", alpha=0.2)
+    return plotted
+
+
+def _draw_numeric_panel(axR, m, states, fps, bounds, numeric):
+    """Right panel (2-numeric mode): the reachable SET of the top-2 vars + its bounding box +
+    starred equilibria. Returns the `plotted` hover list."""
+    plotted = []
+    vx, vy = numeric[0], numeric[1]
+    fxn, fyn = _full(m, vx), _full(m, vy)
+    for s in states:
+        x, y = s.get(fxn), s.get(fyn)
+        if isinstance(x, (int, float)) and isinstance(y, (int, float)):
+            plotted.append((x, y, {_SHORT(k): v for k, v in s.items()}))
+    if plotted:
+        px = [p[0] for p in plotted]; py = [p[1] for p in plotted]
+        axR.scatter(px, py, s=24, color="#58a6ff", alpha=0.5, edgecolors="none",
+                    label="reachable set")
+    (xlo, xhi), (ylo, yhi) = bounds[vx], bounds[vy]
+    axR.add_patch(Rectangle((xlo, ylo), (xhi - xlo) or 1, (yhi - ylo) or 1, fill=False,
+                            edgecolor="#7ee0c0", lw=1.6, ls="--", label="bounding box"))
+    for f in fps:
+        if vx in f and vy in f:
+            axR.scatter([f[vx]], [f[vy]], marker="*", s=280, color="#c9a8ff",
+                        edgecolors="#0f1419", zorder=5, label="fixed point")
+    handles, labels = axR.get_legend_handles_labels()
+    uniq = dict(zip(labels, handles))
+    if uniq:
+        axR.legend(uniq.values(), uniq.keys(), loc="best", fontsize=9)
+    axR.set_xlabel(vx); axR.set_ylabel(vy)
+    axR.set_title(f"reachable set ({vx}, {vy}) — every reachable combination + its extent",
+                  fontsize=11)
+    axR.grid(alpha=0.2)
+    return plotted
+
+
+def _compute_bounds(m, struct, n):
+    """The SOLVED variable boundary: z3-proven INDUCTIVE bounds when available, else the BFS
+    reachable extent. Returns (bounds, boundtag, all_exact, proven).
+
+    PROVEN bounds via z3 Optimize over a k-step unrolling of the transition (#134) — NOT the BFS
+    sample. solved_bounds (z3 Optimize over the unroll) is cheap for DETERMINISTIC systems (counter
+    ~10ms, oscillator ~20ms) and gives the inductive/horizon proof. For NONDETERMINISTIC ones
+    (vending, pick — a free input each tick) the Optimize searches every input sequence over the
+    unroll — ~2s — yet the BFS bounds are ALREADY exact there when the reachable set is finite. So
+    gate the expensive prover on determinism; nondeterministic systems take the fast
+    exact-by-exhaustion BFS bounds. (Latency #188: vending 2.5s → ~0.1s, no loss of correctness.)"""
     rbounds = struct.get("bounds", {})            # BFS reachable extent — the GROUND TRUTH
     capped = struct.get("capped", False)
     solved = None
@@ -92,12 +165,21 @@ def render(smt2_path, schema_path, out_path):
             rb = rbounds.get(nm)
             bounds[nm] = [min(d["lo"], rb[0]), max(d["hi"], rb[1])] if rb else [d["lo"], d["hi"]]
         boundtag = "exact — z3-proven INDUCTIVE invariant (the box is closed under the transition)"
-        all_exact, proven = True, True
-    else:
-        bounds = rbounds
-        all_exact, proven = (not capped), False
-        boundtag = (f"sampled over {n} reachable states — not exhaustive (true range may differ)"
-                    if capped else f"exact — all {n} reachable states (exhaustively explored)")
+        return bounds, boundtag, True, True
+    boundtag = (f"sampled over {n} reachable states — not exhaustive (true range may differ)"
+                if capped else f"exact — all {n} reachable states (exhaustively explored)")
+    return rbounds, boundtag, (not capped), False
+
+
+def render(smt2_path, schema_path, out_path):
+    m = load(smt2_path, schema_path)
+    states, edges = m.reachable(limit=400)
+    struct = m.solution_structure(states=states, edges=edges)
+    fps = struct.get("fixed_points", [])
+    verdict = struct.get("verdict", "")
+    n = struct.get("reachable", len(states))
+
+    bounds, boundtag, all_exact, proven = _compute_bounds(m, struct, n)
 
     numeric = [_SHORT(v["name"]) for v in m.carried if v.get("kind") in ("int", "real")]
     numeric = [nm for nm in numeric if nm in bounds]
@@ -115,78 +197,17 @@ def render(smt2_path, schema_path, out_path):
                              figsize=(14 if have2d else 8.5, 6.5))
     axL = axes[0] if have2d else axes
 
-    # --- left: each variable's solved boundary as a horizontal range bar ---
-    ys = list(range(len(numeric)))
-    for y, nm in zip(ys, numeric):
-        lo, hi = bounds[nm]
-        axL.plot([lo, hi], [y, y], lw=9, solid_capstyle="round", color="#58a6ff", alpha=0.5)
-        axL.plot([lo, hi], [y, y], "|", color="#0f1419", markersize=16, markeredgewidth=2)
-        axL.text(lo, y + 0.2, f"{lo:g}", ha="left", va="bottom", fontsize=9, color="#7d8590")
-        axL.text(hi, y + 0.2, f"{hi:g}", ha="right", va="bottom", fontsize=9, color="#7d8590")
-    axL.set_yticks(ys); axL.set_yticklabels(numeric)
-    axL.set_ylim(-0.7, len(numeric) - 0.3)
-    axL.set_xlabel("value spanned over the whole solution space")
-    axL.set_title(f"variable boundaries — {boundtag}", fontsize=11)
-    axL.grid(axis="x", alpha=0.2)
+    _draw_boundary_bars(axL, bounds, numeric, boundtag)
 
     # --- right: feasible region of the top-2 vars as a SET (no trajectory) + boundary box ---
     plotted = []   # (data_x, data_y, full_state_dict) for each scatter point — for the hover sidecar
     axR = None
     if pair_mode == "enum":
-        # categorical y (enum variants) × numeric x — the reachable (state, value) pairs.
         axR = axes[1]
-        vx, en = numeric[0], enums[0]
-        fxn, fen = _full(m, vx), _full(m, en)
-        variants = m.enum_variants.get(fen) or sorted({s.get(fen) for s in states if s.get(fen) is not None})
-        vidx = {nm: i for i, nm in enumerate(variants)}
-        for s in states:
-            x, e = s.get(fxn), s.get(fen)
-            if isinstance(x, (int, float)) and e in vidx:
-                plotted.append((x, vidx[e], {_SHORT(k): v for k, v in s.items()}))
-        if plotted:
-            axR.scatter([p[0] for p in plotted], [p[1] for p in plotted], s=44, color="#58a6ff",
-                        alpha=0.55, edgecolors="none", label="reachable")
-        for f in fps:                                      # equilibria, if any land on this pair
-            if vx in f and f.get(en) in vidx:
-                axR.scatter([f[vx]], [vidx[f[en]]], marker="*", s=280, color="#c9a8ff",
-                            edgecolors="#0f1419", zorder=5, label="fixed point")
-        handles, labels = axR.get_legend_handles_labels()
-        uniq = dict(zip(labels, handles))
-        if uniq:
-            axR.legend(uniq.values(), uniq.keys(), loc="best", fontsize=9)
-        axR.set_yticks(range(len(variants))); axR.set_yticklabels(variants)
-        axR.set_ylim(-0.6, len(variants) - 0.4)
-        axR.set_xlabel(vx); axR.set_ylabel(en)
-        axR.set_title(f"reachable ({en}, {vx}) pairs — every state×value combination the machine enters",
-                      fontsize=11)
-        axR.grid(axis="x", alpha=0.2)
+        plotted = _draw_enum_panel(axR, m, states, fps, numeric, enums)
     elif have2d:
         axR = axes[1]
-        vx, vy = numeric[0], numeric[1]
-        fxn, fyn = _full(m, vx), _full(m, vy)
-        for s in states:
-            x, y = s.get(fxn), s.get(fyn)
-            if isinstance(x, (int, float)) and isinstance(y, (int, float)):
-                plotted.append((x, y, {_SHORT(k): v for k, v in s.items()}))
-        if plotted:
-            px = [p[0] for p in plotted]; py = [p[1] for p in plotted]
-            axR.scatter(px, py, s=24, color="#58a6ff", alpha=0.5, edgecolors="none",
-                        label="reachable set")
-        (xlo, xhi), (ylo, yhi) = bounds[vx], bounds[vy]
-        axR.add_patch(Rectangle((xlo, ylo), (xhi - xlo) or 1, (yhi - ylo) or 1, fill=False,
-                                edgecolor="#7ee0c0", lw=1.6, ls="--", label="bounding box"))
-        for f in fps:
-            if vx in f and vy in f:
-                axR.scatter([f[vx]], [f[vy]], marker="*", s=280, color="#c9a8ff",
-                            edgecolors="#0f1419", zorder=5, label="fixed point")
-        handles, labels = axR.get_legend_handles_labels()
-        uniq = dict(zip(labels, handles))
-        if uniq:
-            axR.legend(uniq.values(), uniq.keys(), loc="best", fontsize=9)
-        axR.set_xlabel(vx); axR.set_ylabel(vy)
-        axR.set_title(f"reachable set ({vx}, {vy}) — every reachable combination + its extent",
-                      fontsize=11)
-        axR.grid(alpha=0.2)
+        plotted = _draw_numeric_panel(axR, m, states, fps, bounds, numeric)
 
     framing = ("boundary z3-proven exact" if (proven and all_exact)
                else "boundary z3-proven over horizon" if proven

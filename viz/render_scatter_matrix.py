@@ -50,123 +50,78 @@ def tick_info(m, var):
     return None, None
 
 
-def _draw_scatter_matrix(m, vars_, states, title, subtag, out):
-    """Draw the NxN pairwise scatter matrix over `vars_` for the sampled `states`.
+def _robust_limits(values):
+    """An IQR-robust display extent for a numeric axis: a 3-IQR fence rejects ±1e6 / -1
+    sentinel seeds so the real cluster stays in-frame. None when there's nothing finite."""
+    vals = sorted(v for v in values if v == v)  # drop NaN
+    if not vals:
+        return None
+    n = len(vals)
+    q1, q3 = vals[n // 4], vals[(3 * n) // 4]
+    iqr = q3 - q1
+    if iqr > 0:  # reject ±1e6 / far-out sentinels via a 3-IQR fence
+        lof, hif = q1 - 3 * iqr, q3 + 3 * iqr
+        vals = [v for v in vals if lof <= v <= hif] or vals
+    lo, hi = float(min(vals)), float(max(vals))
+    if lo == hi:
+        return (lo - 1.0, hi + 1.0)
+    pad = (hi - lo) * 0.08
+    return (lo - pad, hi + pad)
 
-    Shared by BOTH the FSM path (states = a reachable/trajectory cloud) and the
-    claim path (states = block-and-resolve witnesses of the constraint). `m` only
-    needs to answer `ordinal`/`tick_info` (via the two module helpers) plus
-    `enum_variants` / `categorical_vars` / `is_discrete()` — an FSM Model and the
-    lightweight ClaimModel below both qualify. `subtag` is the per-cloud caption
-    ("reachable cloud + trajectory" for FSM, "z3 witnesses" for a claim)."""
-    n = len(vars_)
 
-    # Degrade gracefully: nothing to plot, or single var.
-    if not states or n < 1:
-        fig, ax = plt.subplots(figsize=(7, 7))
-        ax.axis("off")
-        ax.text(0.5, 0.5,
-                f"N/A for this state: no sampled states\n({n} vars)",
-                ha="center", va="center", fontsize=14, wrap=True)
-        ax.set_title(title)
-        fig.savefig(out, dpi=120, bbox_inches="tight")
-        return
-
-    if n == 1:
-        # A single var has no pairwise plane: show its 1-D distribution.
-        v = vars_[0]
-        xs = [ordinal(m, v, s[v["name"]]) for s in states]
-        fig, ax = plt.subplots(figsize=(7, 5))
-        ax.hist(xs, bins=20, color="#4060c0", alpha=0.8)
-        ax.set_xlabel(v["name"])
-        t, tl = tick_info(m, v)
-        if t is not None:
-            ax.set_xticks(t)
-            ax.set_xticklabels(tl, rotation=45, ha="right")
-        ax.set_title(title + "\n(single var: 1-D distribution; scatter matrix needs >=2)")
-        fig.savefig(out, dpi=120, bbox_inches="tight")
-        return
-
-    # Precompute ordinal columns once.
+def _ordinal_columns(m, vars_, states):
+    """Precompute the ordinal column per var plus the robust display limits for numeric axes.
+    Returns (cols, axis_limits)."""
     cols = {v["name"]: [ordinal(m, v, s[v["name"]]) for s in states] for v in vars_}
-
-    # Robust per-axis display limits, computed from the PLOTTED points. A numeric
-    # var can carry sentinel seeds (±1e6 fold initializers, -1 'none' markers) that
-    # a single state injects; left to matplotlib autoscale they blow the axis out to
-    # ±1e6 and crush the real cluster to a dot (the csv_stats state.min/state.max
-    # defect). We fence each numeric axis to an IQR-robust extent of its own column
-    # so the sentinel point falls outside the view while every genuine state stays
-    # in-frame (the limit-cycle spread of a continuous orbit is preserved — it has
-    # no sentinel, so the fence is wide). Categorical (bool/enum) axes are left
-    # alone (they keep their ordinal extent).
-    def robust_limits(values):
-        vals = sorted(v for v in values if v == v)  # drop NaN
-        if not vals:
-            return None
-        n = len(vals)
-        q1, q3 = vals[n // 4], vals[(3 * n) // 4]
-        iqr = q3 - q1
-        if iqr > 0:  # reject ±1e6 / far-out sentinels via a 3-IQR fence
-            lof, hif = q1 - 3 * iqr, q3 + 3 * iqr
-            vals = [v for v in vals if lof <= v <= hif] or vals
-        lo, hi = float(min(vals)), float(max(vals))
-        if lo == hi:
-            return (lo - 1.0, hi + 1.0)
-        pad = (hi - lo) * 0.08
-        return (lo - pad, hi + pad)
-
     axis_limits = {}
     for v in vars_:
         if v["kind"] in ("int", "real"):
-            lim = robust_limits(cols[v["name"]])
+            lim = _robust_limits(cols[v["name"]])
             if lim is not None:
                 axis_limits[v["name"]] = lim
+    return cols, axis_limits
 
-    # COLOR channel: hue every point by the top categorical var (enum/bool/string).
-    # This is the classic high-D scatter-matrix coloring — a 3rd dimension carried
-    # on top of every pairwise projection. Falls back to a flat color if the model
-    # has no categorical interface var (e.g. a purely numeric system).
+
+def _color_channel(m, states):
+    """COLOR channel: hue every point by the top categorical var (enum/bool/string) — the
+    classic high-D scatter-matrix coloring. Returns (point_colors, legend_handles,
+    legend_title); legend_handles/legend_title are None for a purely numeric system."""
     cat = m.categorical_vars[0] if m.categorical_vars else None
-    legend_handles = None
-    if cat is not None:
-        cname = cat["name"]
-        # The categories, in a stable order: enum -> variant order, bool -> F/T.
-        if cat["kind"] == "enum":
-            categories = list(m.enum_variants[cname])
-            cat_label = lambda v: v
-        elif cat["kind"] == "bool":
-            categories = [False, True]
-            cat_label = lambda v: "T" if v else "F"
-        else:  # string: discover the distinct values that actually occur
-            categories = sorted({s[cname] for s in states}, key=str)
-            cat_label = str
-        cmap = plt.get_cmap("tab10" if len(categories) <= 10 else "tab20")
-        idx_of = {c: k for k, c in enumerate(categories)}
-        color_of = {c: cmap(k % cmap.N) for k, c in enumerate(categories)}
-        # Only categories that actually occur in the sample get a legend entry.
-        seen = []
-        seen_set = set()
-        point_colors = []
-        for s in states:
-            cv = s[cname]
-            point_colors.append(color_of.get(cv, "#888888"))
-            if cv not in seen_set:
-                seen_set.add(cv)
-                seen.append(cv)
-        order = [c for c in categories if c in seen_set]
-        legend_handles = [
-            plt.Line2D([0], [0], marker="o", linestyle="", markersize=7,
-                       markerfacecolor=color_of[c], markeredgecolor="none",
-                       label=cat_label(c))
-            for c in order
-        ]
-        legend_title = cname
-    else:
-        point_colors = "#2050b0"
+    if cat is None:
+        return "#2050b0", None, None
+    cname = cat["name"]
+    # The categories, in a stable order: enum -> variant order, bool -> F/T.
+    if cat["kind"] == "enum":
+        categories = list(m.enum_variants[cname])
+        cat_label = lambda v: v
+    elif cat["kind"] == "bool":
+        categories = [False, True]
+        cat_label = lambda v: "T" if v else "F"
+    else:  # string: discover the distinct values that actually occur
+        categories = sorted({s[cname] for s in states}, key=str)
+        cat_label = str
+    cmap = plt.get_cmap("tab10" if len(categories) <= 10 else "tab20")
+    color_of = {c: cmap(k % cmap.N) for k, c in enumerate(categories)}
+    # Only categories that actually occur in the sample get a legend entry.
+    seen_set = set()
+    point_colors = []
+    for s in states:
+        cv = s[cname]
+        point_colors.append(color_of.get(cv, "#888888"))
+        seen_set.add(cv)
+    order = [c for c in categories if c in seen_set]
+    legend_handles = [
+        plt.Line2D([0], [0], marker="o", linestyle="", markersize=7,
+                   markerfacecolor=color_of[c], markeredgecolor="none",
+                   label=cat_label(c))
+        for c in order
+    ]
+    return point_colors, legend_handles, cname
 
-    sz = max(2.0, 12.0 / n)
-    fig, axes = plt.subplots(n, n, figsize=(sz * n, sz * n), squeeze=False)
 
+def _draw_panels(axes, m, vars_, cols, axis_limits, point_colors):
+    """Draw the NxN grid of pairwise scatter panels (diagonal = var name + 1-D histogram)."""
+    n = len(vars_)
     for i, vi in enumerate(vars_):       # row -> y axis
         for j, vj in enumerate(vars_):   # col -> x axis
             ax = axes[i][j]
@@ -220,6 +175,55 @@ def _draw_scatter_matrix(m, vars_, states, title, subtag, out):
             if j == 0:
                 ax.set_ylabel(vi["name"], fontsize=max(6, 11 - n))
             ax.grid(True, alpha=0.15)
+
+
+def _draw_scatter_matrix(m, vars_, states, title, subtag, out):
+    """Draw the NxN pairwise scatter matrix over `vars_` for the sampled `states`.
+
+    Shared by BOTH the FSM path (states = a reachable/trajectory cloud) and the
+    claim path (states = block-and-resolve witnesses of the constraint). `m` only
+    needs to answer `ordinal`/`tick_info` (via the two module helpers) plus
+    `enum_variants` / `categorical_vars` / `is_discrete()` — an FSM Model and the
+    lightweight ClaimModel below both qualify. `subtag` is the per-cloud caption
+    ("reachable cloud + trajectory" for FSM, "z3 witnesses" for a claim)."""
+    n = len(vars_)
+
+    # Degrade gracefully: nothing to plot, or single var.
+    if not states or n < 1:
+        fig, ax = plt.subplots(figsize=(7, 7))
+        ax.axis("off")
+        ax.text(0.5, 0.5,
+                f"N/A for this state: no sampled states\n({n} vars)",
+                ha="center", va="center", fontsize=14, wrap=True)
+        ax.set_title(title)
+        fig.savefig(out, dpi=120, bbox_inches="tight")
+        return
+
+    if n == 1:
+        # A single var has no pairwise plane: show its 1-D distribution.
+        v = vars_[0]
+        xs = [ordinal(m, v, s[v["name"]]) for s in states]
+        fig, ax = plt.subplots(figsize=(7, 5))
+        ax.hist(xs, bins=20, color="#4060c0", alpha=0.8)
+        ax.set_xlabel(v["name"])
+        t, tl = tick_info(m, v)
+        if t is not None:
+            ax.set_xticks(t)
+            ax.set_xticklabels(tl, rotation=45, ha="right")
+        ax.set_title(title + "\n(single var: 1-D distribution; scatter matrix needs >=2)")
+        fig.savefig(out, dpi=120, bbox_inches="tight")
+        return
+
+    # Robust per-axis display limits, computed from the PLOTTED points — a numeric var can
+    # carry sentinel seeds (±1e6 fold initializers, -1 'none' markers) that autoscale would
+    # blow the axis out to, crushing the real cluster to a dot. Categorical axes keep their
+    # ordinal extent. Then hue every point by the top categorical var (the 3rd dimension).
+    cols, axis_limits = _ordinal_columns(m, vars_, states)
+    point_colors, legend_handles, legend_title = _color_channel(m, states)
+
+    sz = max(2.0, 12.0 / n)
+    fig, axes = plt.subplots(n, n, figsize=(sz * n, sz * n), squeeze=False)
+    _draw_panels(axes, m, vars_, cols, axis_limits, point_colors)
 
     kind = "discrete" if m.is_discrete() else "numeric/mixed"
     # This view draws its OWN denser cloud (reachable up to 5000 + an attractor trajectory), so its

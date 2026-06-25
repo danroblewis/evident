@@ -142,26 +142,12 @@ def _set_limits(model, ax, pts, xvar, yvar, delay):
         (ax.set_xlim if which == "x" else ax.set_ylim)(lo - pad, hi + pad)
 
 
-# ---- main render -------------------------------------------------------------
-def render(smt2_path, schema_path, out_path, x_var=None, y_var=None):
-    model = load(smt2_path, schema_path)
-    title = f"{model.fsm} — orbit_scatter"
-
-    xvar, yvar, color_var, facet_var = _select_channels(model)
-    if xvar is None:
-        _na_card(out_path, title, "N/A for state: no state variables", 14)
-        return "orbit_scatter: N/A (no state variables)"
-    # #445: honor an explicit axis request, falling back to _select_channels' auto-pick. A
-    # single-numeric system delay-embeds (x_t vs x_{t+1}); overriding makes sense only when 2
-    # numeric axes exist, so resolve against them and leave the delay case to the auto-pick.
-    if yvar is not None:
-        xvar, yvar, axinfo = resolve_axes(model, x_var, y_var, xvar, yvar)
-        write_axes(out_path, axinfo)
-
-    delay = is_delay_embed(xvar, yvar)
-
-    # PRIMARY: the all-initial-conditions ensemble. Falls back only when there is no honest
-    # bounded box to seed (an unbounded carried var) — then the single-orbit construction.
+# ---- orbit construction phase ------------------------------------------------
+def _build_orbits(model, out_path, title, xvar, yvar, delay):
+    """PRIMARY: the all-initial-conditions ensemble. Falls back only when there is no honest
+    bounded box to seed (an unbounded carried var) — then the single-orbit construction.
+    Returns (orbits, tags, mode, pts, n_attractors, na_note); na_note is a string (with the
+    N/A card already written) when no orbit/points exist, in which case the rest is None."""
     ens = _ensemble_orbits(model)
     if ens is not None:
         orbits, tags = ens
@@ -170,25 +156,31 @@ def render(smt2_path, schema_path, out_path, x_var=None, y_var=None):
         n_attractors = len({t for t in tags if t is not None})
     else:
         orbits, point_time, mode = fallback_orbits(model)
+        tags = None
         if not orbits:
             _na_card(out_path, title,
                      "N/A: no orbit produced\n(no initial state and no successor)")
-            return "orbit_scatter: N/A (no orbit)"
+            return None, None, None, None, None, "orbit_scatter: N/A (no orbit)"
         pts = _fallback_points(model, orbits, point_time, xvar, yvar, delay)
         n_attractors = 0
 
     if not pts:
         _na_card(out_path, title, "N/A: orbit produced no plottable points")
-        return "orbit_scatter: N/A (no points)"
+        return None, None, None, None, None, "orbit_scatter: N/A (no points)"
 
     # Record the true (un-jittered) grid coordinate per point.
     for p in pts:
         p["gx"], p["gy"] = p["x"], p["y"]
+    return orbits, tags, mode, pts, n_attractors, None
 
-    # HONEST degenerate-axis guard. The scatter reads from its two axes; if an axis is
-    # CONSTANT over every plotted point the projection collapsed onto a line. For the DELAY
-    # embedding a constant axis means the orbit is genuinely a single fixed point (x_t ==
-    # x_{t+1} everywhere) — still report it, but as a fixed point, not fake dynamics.
+
+# ---- degenerate-axis guard ---------------------------------------------------
+def _degenerate_axis_na(out_path, title, pts, xvar, yvar, delay):
+    """HONEST degenerate-axis guard. The scatter reads from its two axes; if an axis is
+    CONSTANT over every plotted point the projection collapsed onto a line. For the DELAY
+    embedding a constant axis means the orbit is genuinely a single fixed point (x_t ==
+    x_{t+1} everywhere) — still report it, but as a fixed point, not fake dynamics. Returns
+    a note string (and writes the N/A card) when degenerate, else None."""
     x_distinct = len({p["gx"] for p in pts})
     y_distinct = len({p["gy"] for p in pts})
     if x_distinct <= 1 and y_distinct <= 1:
@@ -205,15 +197,57 @@ def render(smt2_path, schema_path, out_path, x_var=None, y_var=None):
                  f"over all {len(pts)} plotted states.\n({flat})\n"
                  "An orbit scatter on these axes would be a misleading flat line.", 12)
         return "orbit_scatter: N/A (collapsed axis)"
+    return None
 
-    yaxis_var = _axis_var(yvar, xvar, delay)
-    discrete = not (xvar["kind"] in ("int", "real")
-                    and yaxis_var["kind"] in ("int", "real"))
-    if discrete:
-        _offset_collisions(pts, xvar, yaxis_var)
 
-    # ---- color: attractor (ensemble multi-basin), categorical, or time gradient ----
-    fig, ax = plt.subplots(figsize=(8, 7))
+# ---- axes / legend / subtitle finalization -----------------------------------
+def _finalize_axes_and_legend(fig, ax, model, pts, xvar, yvar, yaxis_var, delay,
+                              color_legend, color_label, scatter_for_bar,
+                              show_seed_rings, mode, orbits, n_attractors, color_by_attr, title):
+    """Axis labels/ticks/limits, the optional colorbar, the assembled legend, and the
+    mode-specific subtitle — the static framing that's identical regardless of color mode."""
+    ax.set_xlabel(_axis_label(xvar) + (r"   ($x_t$)" if delay else ""))
+    ax.set_ylabel((_axis_label(xvar) + r"   ($x_{t+1}$)") if delay
+                  else _axis_label(yvar))
+    ax.grid(True, linestyle=":", alpha=0.4)
+    _label_axis(model, ax, xvar, "x")
+    _label_axis(model, ax, yaxis_var, "y")
+    _set_limits(model, ax, pts, xvar, yvar, delay)
+
+    # ---- color key ----------------------------------------------------------
+    if scatter_for_bar is not None:
+        cbar = fig.colorbar(scatter_for_bar, ax=ax, pad=0.02)
+        cbar.set_label(color_label)
+
+    legend_bits = list(color_legend)
+    if show_seed_rings:
+        legend_bits.append(Line2D([0], [0], marker="o", color="w", markerfacecolor="none",
+                                  markeredgecolor="red", markersize=11, label="seed / start"))
+    if delay:
+        legend_bits.append(Line2D([0], [0], linestyle="--", color="gray",
+                                  label="x_t = x_{t+1}"))
+    title_color = f"color = {color_label}"
+    ax.legend(handles=legend_bits, loc="best", fontsize=8, framealpha=0.9,
+              title=title_color, title_fontsize=8)
+
+    embed = "delay-embedded (x_t vs x_{t+1})" if delay else "two principal vars"
+    subtitle = {
+        "ensemble": (f"all initial conditions: {len(orbits)} orbits, transients dropped"
+                     + (f" · {n_attractors} basins" if color_by_attr else "")
+                     + f" · {embed}"),
+        "autonomous": f"single autonomous orbit (unbounded — no ensemble box) · {embed}",
+        "reachable": f"{len(pts)} reachable states (unbounded fallback) · {embed}",
+    }[mode]
+    fig.suptitle(f"{title}\n{subtitle}", fontsize=12)
+
+
+# ---- color / scatter-draw phase ---------------------------------------------
+def _draw_colored_scatter(ax, model, pts, mode, orbits, tags, xvar, yvar, delay, color_var):
+    """Pick the coloring strategy and draw the scatter. Returns
+    (color_legend, color_label, scatter_for_bar, color_by_attr). The strategy:
+    ATTRACTOR (a genuine, spatially-separate basin partition — bistable walls),
+    else CATEGORICAL (a color var on the single-orbit fallback), else SEED (the
+    fan of initial conditions for a single-attractor ensemble), else TIME gradient."""
     cmap = plt.get_cmap("viridis")
     color_legend = []
     # Color BY ATTRACTOR only for a genuine, SPATIALLY-SEPARATE basin partition (a bistable's
@@ -269,6 +303,47 @@ def render(smt2_path, schema_path, out_path, x_var=None, y_var=None):
         scatter_for_bar = sc
         color_label = "steps from start" if mode == "reachable" else "tick (time)"
 
+    return color_legend, color_label, scatter_for_bar, color_by_attr
+
+
+# ---- main render -------------------------------------------------------------
+def render(smt2_path, schema_path, out_path, x_var=None, y_var=None):
+    model = load(smt2_path, schema_path)
+    title = f"{model.fsm} — orbit_scatter"
+
+    xvar, yvar, color_var, facet_var = _select_channels(model)
+    if xvar is None:
+        _na_card(out_path, title, "N/A for state: no state variables", 14)
+        return "orbit_scatter: N/A (no state variables)"
+    # #445: honor an explicit axis request, falling back to _select_channels' auto-pick. A
+    # single-numeric system delay-embeds (x_t vs x_{t+1}); overriding makes sense only when 2
+    # numeric axes exist, so resolve against them and leave the delay case to the auto-pick.
+    if yvar is not None:
+        xvar, yvar, axinfo = resolve_axes(model, x_var, y_var, xvar, yvar)
+        write_axes(out_path, axinfo)
+
+    delay = is_delay_embed(xvar, yvar)
+
+    orbits, tags, mode, pts, n_attractors, na = _build_orbits(
+        model, out_path, title, xvar, yvar, delay)
+    if na is not None:
+        return na
+
+    na = _degenerate_axis_na(out_path, title, pts, xvar, yvar, delay)
+    if na is not None:
+        return na
+
+    yaxis_var = _axis_var(yvar, xvar, delay)
+    discrete = not (xvar["kind"] in ("int", "real")
+                    and yaxis_var["kind"] in ("int", "real"))
+    if discrete:
+        _offset_collisions(pts, xvar, yaxis_var)
+
+    # ---- color: attractor (ensemble multi-basin), categorical, or time gradient ----
+    fig, ax = plt.subplots(figsize=(8, 7))
+    color_legend, color_label, scatter_for_bar, color_by_attr = _draw_colored_scatter(
+        ax, model, pts, mode, orbits, tags, xvar, yvar, delay, color_var)
+
     # seed / start rings — only for a SMALL ensemble (a handful of orbits, where marking each
     # start aids reading). Across a dense fan (a chaotic map's 64 orbits) a ring per orbit
     # just carpets the attractor in red, so we drop them and let the scatter speak.
@@ -286,39 +361,9 @@ def render(smt2_path, schema_path, out_path, x_var=None, y_var=None):
         ax.plot([lo, hi], [lo, hi], linestyle="--", color="gray",
                 linewidth=1.0, alpha=0.6, zorder=1)
 
-    ax.set_xlabel(_axis_label(xvar) + (r"   ($x_t$)" if delay else ""))
-    ax.set_ylabel((_axis_label(xvar) + r"   ($x_{t+1}$)") if delay
-                  else _axis_label(yvar))
-    ax.grid(True, linestyle=":", alpha=0.4)
-    _label_axis(model, ax, xvar, "x")
-    _label_axis(model, ax, yaxis_var, "y")
-    _set_limits(model, ax, pts, xvar, yvar, delay)
-
-    # ---- color key ----------------------------------------------------------
-    if scatter_for_bar is not None:
-        cbar = fig.colorbar(scatter_for_bar, ax=ax, pad=0.02)
-        cbar.set_label(color_label)
-
-    legend_bits = list(color_legend)
-    if show_seed_rings:
-        legend_bits.append(Line2D([0], [0], marker="o", color="w", markerfacecolor="none",
-                                  markeredgecolor="red", markersize=11, label="seed / start"))
-    if delay:
-        legend_bits.append(Line2D([0], [0], linestyle="--", color="gray",
-                                  label="x_t = x_{t+1}"))
-    title_color = f"color = {color_label}"
-    ax.legend(handles=legend_bits, loc="best", fontsize=8, framealpha=0.9,
-              title=title_color, title_fontsize=8)
-
-    embed = "delay-embedded (x_t vs x_{t+1})" if delay else "two principal vars"
-    subtitle = {
-        "ensemble": (f"all initial conditions: {len(orbits)} orbits, transients dropped"
-                     + (f" · {n_attractors} basins" if color_by_attr else "")
-                     + f" · {embed}"),
-        "autonomous": f"single autonomous orbit (unbounded — no ensemble box) · {embed}",
-        "reachable": f"{len(pts)} reachable states (unbounded fallback) · {embed}",
-    }[mode]
-    fig.suptitle(f"{title}\n{subtitle}", fontsize=12)
+    _finalize_axes_and_legend(fig, ax, model, pts, xvar, yvar, yaxis_var, delay,
+                              color_legend, color_label, scatter_for_bar,
+                              show_seed_rings, mode, orbits, n_attractors, color_by_attr, title)
 
     overlay = [(ax, p["x"], p["y"], p["st"]) for p in pts]
     points = tight_fraction(fig, overlay)

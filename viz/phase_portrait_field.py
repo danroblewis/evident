@@ -96,39 +96,19 @@ def _robust_span(vals, fallback_lo, fallback_hi, pad=0.06):
     return lo - mrg, hi + mrg
 
 
-def render_numeric_panel(m, ax, axx, axy, pin, draw_colorbar, extent,
-                         fit_to_data=False, overlay=None):
-    """A magnitude-colored vector field over a grid of pinned numeric points.
-
-    `pin` carries the values of every NON-axis var (facet value, off-axis vars);
-    those are fixed while we sweep the two axis vars over a grid. `extent` =
-    (xlo, xhi, ylo, yhi) is the REACHABLE-orbit domain (from `_orbit_extent`) —
-    we grid within it, never a guessed ±3000 box. Seeds for the overlaid
-    trajectories are placed off-origin (the origin is often the fixed point of an
-    oscillator, which a centered seed would never leave).
-
-    `fit_to_data` (bounded/reachable mode): after we have the field + trajectory
-    points, snap the axis limits to the ROBUST extent of what we actually PLOTTED
-    (grid cells with a valid successor, plus the trajectory points), lightly
-    padded — so a small-data program never shows a frame far larger than its data
-    (lru's dwell sits at k0≈1..40, not the full [0,81] grid: an empty upper grid
-    is a framing lie). For the orbit mode (vanderpol) we keep the symmetric box so
-    the limit cycle reads centred."""
+def _sample_vector_field(m, ax, axx, axy, pin, extent, box, draw_colorbar):
+    """Sweep a 21×21 grid over the axis vars (other vars pinned), query the successor at
+    each cell, and draw the magnitude-colored quiver. Returns (GX, GY, q, fixed_x, fixed_y)
+    — the live-cell coords, the quiver handle, and any interior fixed-point cells."""
     nx_, ny_ = axx["name"], axy["name"]
-
     xlo, xhi, ylo, yhi = extent
-    # box-relative geometry: works for a 0-centered orbit box (vanderpol) AND a
-    # one-sided reachable box (lru x∈[0,81]) without flagging boundary cells.
-    xc, yc = 0.5 * (xlo + xhi), 0.5 * (ylo + yhi)
-    xhw, yhw = max(0.5 * (xhi - xlo), 1e-9), max(0.5 * (yhi - ylo), 1e-9)
-
+    xc, yc, xhw, yhw = box
     n = 21
     xs = np.linspace(xlo, xhi, n)
     ys = np.linspace(ylo, yhi, n)
 
     GX, GY, U, V, MAG = [], [], [], [], []
     fixed_x, fixed_y = [], []
-
     for xv in xs:
         for yv in ys:
             state = dict(pin)
@@ -157,9 +137,16 @@ def render_numeric_panel(m, ax, axx, axy, pin, draw_colorbar, extent,
         if draw_colorbar:
             cb = plt.colorbar(q, ax=ax, fraction=0.046, pad=0.04)
             cb.set_label("step magnitude")
+    return GX, GY, q, fixed_x, fixed_y
 
-    # overlaid trajectories from a spread of seeds placed INSIDE the box (the box
-    # may be one-sided, e.g. [0,81], so seed off the centre, not off the origin).
+
+def _draw_trajectories(m, ax, axx, axy, pin, box, overlay):
+    """Overlay forward trajectories from a spread of seeds placed INSIDE the box (the box
+    may be one-sided, e.g. [0,81], so seed off the centre, not off the origin). Returns
+    (traj_x, traj_y) — every plotted trajectory point, for the data-fit framing."""
+    nx_, ny_ = axx["name"], axy["name"]
+    xc, yc, xhw, yhw = box
+
     def _seed(fx, fy):
         return (xc + fx * xhw, yc + fy * yhw)
     seeds = [_seed(0.7, 0.0), _seed(0.1, 0.0), _seed(0.0, 0.7),
@@ -181,6 +168,39 @@ def render_numeric_panel(m, ax, axx, axy, pin, draw_colorbar, extent,
         ax.plot(px[0], py[0], "o", color="white", mec="black", ms=6, zorder=6)
         if overlay is not None:                # orbit states are the hoverable points (#184)
             overlay.extend((ax, px[j], py[j], traj[j]) for j in range(len(traj)))
+    return traj_x, traj_y
+
+
+def render_numeric_panel(m, ax, axx, axy, pin, draw_colorbar, extent,
+                         fit_to_data=False, overlay=None):
+    """A magnitude-colored vector field over a grid of pinned numeric points.
+
+    `pin` carries the values of every NON-axis var (facet value, off-axis vars);
+    those are fixed while we sweep the two axis vars over a grid. `extent` =
+    (xlo, xhi, ylo, yhi) is the REACHABLE-orbit domain (from `_orbit_extent`) —
+    we grid within it, never a guessed ±3000 box. Seeds for the overlaid
+    trajectories are placed off-origin (the origin is often the fixed point of an
+    oscillator, which a centered seed would never leave).
+
+    `fit_to_data` (bounded/reachable mode): after we have the field + trajectory
+    points, snap the axis limits to the ROBUST extent of what we actually PLOTTED
+    (grid cells with a valid successor, plus the trajectory points), lightly
+    padded — so a small-data program never shows a frame far larger than its data
+    (lru's dwell sits at k0≈1..40, not the full [0,81] grid: an empty upper grid
+    is a framing lie). For the orbit mode (vanderpol) we keep the symmetric box so
+    the limit cycle reads centred."""
+    nx_, ny_ = axx["name"], axy["name"]
+
+    xlo, xhi, ylo, yhi = extent
+    # box-relative geometry: works for a 0-centered orbit box (vanderpol) AND a
+    # one-sided reachable box (lru x∈[0,81]) without flagging boundary cells.
+    xc, yc = 0.5 * (xlo + xhi), 0.5 * (ylo + yhi)
+    xhw, yhw = max(0.5 * (xhi - xlo), 1e-9), max(0.5 * (yhi - ylo), 1e-9)
+
+    GX, GY, q, fixed_x, fixed_y = _sample_vector_field(
+        m, ax, axx, axy, pin, extent, (xc, yc, xhw, yhw), draw_colorbar)
+
+    traj_x, traj_y = _draw_trajectories(m, ax, axx, axy, pin, (xc, yc, xhw, yhw), overlay)
 
     if fixed_x:
         ax.plot(fixed_x, fixed_y, "*", color="red", ms=18, mec="black",
@@ -206,19 +226,12 @@ def render_numeric_panel(m, ax, axx, axy, pin, draw_colorbar, extent,
 
 
 # ----- discrete / mixed regime (projected transition graph) -----------------
-def render_discrete_panel(m, ax, axx, axy, states, edges, init_key,
-                          all_xy_bounds=None, overlay=None):
-    """Project a (sub)set of reachable states onto the two axes and draw the
-    real transition arrows. `states` is a list of state dicts; `edges` a list of
-    (i, j) into that list. Absorbing states (only successor is self) are starred.
-    """
+def _place_discrete_nodes(m, axx, axy, states):
+    """Project each state onto the two axes, fanning coincident states out with a small
+    jitter so nodes don't overprint. The jitter is REFLECTED back inside the per-axis
+    reachable [min,max] so a fan never fabricates an off-domain coordinate (an integer
+    balance ∈ {0,1,2,3} must never render at x ≈ -0.12). Returns the placed (x, y) list."""
     nx_, ny_ = axx["name"], axy["name"]
-    if not states:
-        ax.text(0.5, 0.5, "(no states in this panel)",
-                ha="center", va="center", transform=ax.transAxes,
-                fontsize=10, color="gray")
-        return
-
     bucket = {}
     base = []
     for s in states:
@@ -228,11 +241,6 @@ def render_discrete_panel(m, ax, axx, axy, states, edges, init_key,
         bucket[(x, y)] = k + 1
         base.append((x, y, k))
 
-    # Coincident states share a cell; we fan them out with a small jitter so the
-    # nodes don't overprint. The jitter must NOT push a point past the real
-    # min/max of the axis's reachable values (e.g. an integer balance ∈ {0,1,2,3}
-    # must never render at x ≈ -0.12 — that fabricates an off-domain state). We
-    # clamp the jittered coordinate into [min,max] of the plotted data per axis.
     all_x = [b[0] for b in base]
     all_y = [b[1] for b in base]
     xmin, xmax = min(all_x), max(all_x)
@@ -260,7 +268,22 @@ def render_discrete_panel(m, ax, axx, axy, states, edges, init_key,
         jy = _reflect(y + r * np.sin(ang), ymin, ymax)
         return jx, jy
 
-    P = [place(i) for i in range(len(states))]
+    return [place(i) for i in range(len(states))]
+
+
+def render_discrete_panel(m, ax, axx, axy, states, edges, init_key,
+                          all_xy_bounds=None, overlay=None):
+    """Project a (sub)set of reachable states onto the two axes and draw the
+    real transition arrows. `states` is a list of state dicts; `edges` a list of
+    (i, j) into that list. Absorbing states (only successor is self) are starred.
+    """
+    if not states:
+        ax.text(0.5, 0.5, "(no states in this panel)",
+                ha="center", va="center", transform=ax.transAxes,
+                fontsize=10, color="gray")
+        return
+
+    P = _place_discrete_nodes(m, axx, axy, states)
     if overlay is not None:                    # hoverable points (#184): placed coords
         overlay.extend((ax, P[i][0], P[i][1], states[i]) for i in range(len(states)))
 

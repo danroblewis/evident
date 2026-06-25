@@ -278,11 +278,23 @@ def render(smt2, schema, out_path):
     lc = LineCollection(segments, colors=colors, linewidths=1.3, alpha=0.6)
     ax.add_collection(lc)
 
-    # Draw each axis as a vertical line + its category/range ticks.
+    _draw_axes(ax, metas, naxes, xs, norm)
+    _draw_legend(fig, ax, title, n, note, color_note, color_var, legend_handles)
+
+    fig.savefig(out_path, dpi=120, bbox_inches="tight")
+    plt.close(fig)
+    return out_path, n
+
+
+def _draw_axes(ax, metas, naxes, xs, norm):
+    """Each axis as a vertical line + its category/range ticks, then the frame styling
+    (axis labels along the bottom, hidden spines/ticks)."""
     for i, meta in enumerate(metas):
         ax.axvline(i, color="#7d8590", linewidth=1.2, zorder=1)     # #469: dark-page-readable axes
         for raw, lbl in meta["ticks"]:
-            y = norm(meta, _inv_for_tick(meta, raw))
+            # `raw` is already a position-space coord (numeric value or categorical
+            # ordinal); wrap it so norm() uses it directly.
+            y = norm(meta, _OrdinalValue(raw))
             ax.plot([i - 0.04, i + 0.04], [y, y], color="#7d8590", lw=1.0)
             ax.text(i - 0.08, y, lbl, ha="right", va="center",
                     fontsize=8, color="#c9d1d9")
@@ -298,6 +310,10 @@ def render(smt2, schema, out_path):
     ax.spines["bottom"].set_visible(False)
     ax.tick_params(length=0)
 
+
+def _draw_legend(fig, ax, title, n, note, color_note, color_var, legend_handles):
+    """Title + caption, and the color key: a discrete legend (categorical color) or a
+    continuous 'sample order' colorbar (numeric/time fallback)."""
     fig.suptitle(title, fontsize=13, fontweight="bold", y=0.98)
     ax.set_title(f"{n} states · {note} · {color_note}",
                  fontsize=9, color="#555", pad=10)
@@ -315,10 +331,6 @@ def render(smt2, schema, out_path):
         cb.set_label("sample order", fontsize=8)
         cb.ax.tick_params(labelsize=7)
 
-    fig.savefig(out_path, dpi=120, bbox_inches="tight")
-    plt.close(fig)
-    return out_path, n
-
 
 class _OrdinalValue:
     """Sentinel so norm() places a tick at a raw position-space coordinate,
@@ -326,12 +338,6 @@ class _OrdinalValue:
     ticks, whose stored `raw` is already in position space)."""
     def __init__(self, ordinal):
         self.ordinal = ordinal
-
-
-def _inv_for_tick(meta, raw):
-    """Tick `raw` is already a position-space coordinate (a numeric value, or a
-    categorical ordinal). Wrap it so norm() uses it directly."""
-    return _OrdinalValue(raw)
 
 
 def _short(name):

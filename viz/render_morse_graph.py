@@ -114,6 +114,76 @@ def _build_tint_map(C, info, tint_var):
     return out
 
 
+def _draw_morse_nodes_edges(ax, C, info, npos, orig_labels, tint_map):
+    """Draw the condensation DAG: edges as arrows, SCC nodes as role-colored boxes
+    (cycle SCCs get a thick double border; node fill = dominant categorical value)."""
+    # edges first
+    for (u, v) in C.edges():
+        x0, y0 = npos[u]
+        x1, y1 = npos[v]
+        ax.annotate("", xy=(x1, y1), xytext=(x0, y0),
+                    arrowprops=dict(arrowstyle="-|>", color="#888888",
+                                    lw=1.4, shrinkA=22, shrinkB=22,
+                                    connectionstyle="arc3,rad=0.05"))
+
+    # nodes as boxes
+    for n in C.nodes():
+        x, y = npos[n]
+        i = info[n]
+        color = ROLE_COLOR[i["role"]]
+        txt = node_text(i, orig_labels)
+        # cycle nodes get a thicker, double border
+        lw = 3.0 if i["is_cycle"] else 1.6
+        box = FancyBboxPatch((x - 0.001, y - 0.001), 0.002, 0.002,
+                             boxstyle="round,pad=0.5",
+                             linewidth=0, facecolor="none")
+        ax.add_patch(box)
+        fc = tint_map.get(i.get("dom_cat"), "white")
+        bbox = dict(boxstyle="round,pad=0.35",
+                    fc=fc, ec=color, lw=lw)
+        ax.text(x, y, txt, ha="center", va="center", fontsize=8.5,
+                color="#111111", bbox=bbox, zorder=5)
+        # role marker dot above the box
+        ax.scatter([x], [y], s=0)  # keep autoscale honest
+
+
+def _draw_morse_legends(ax, tint_map, tint_var):
+    """The role legend (border color = SCC role, thick = cycle) plus the optional
+    node-fill legend (fill = dominant value of the top categorical var)."""
+    from matplotlib.lines import Line2D
+    legend_elems = [
+        Line2D([0], [0], marker="s", color="w", label=role,
+               markerfacecolor="white", markeredgecolor=col, markeredgewidth=2,
+               markersize=12)
+        for role, col in ROLE_COLOR.items()
+    ]
+    legend_elems.append(
+        Line2D([0], [0], marker="s", color="w",
+               label="cycle SCC (thick border)",
+               markerfacecolor="white", markeredgecolor="#333333",
+               markeredgewidth=3, markersize=12))
+    role_legend = ax.legend(handles=legend_elems, loc="lower center",
+                            bbox_to_anchor=(0.5, -0.06), ncol=5,
+                            frameon=False, fontsize=9)
+    ax.add_artist(role_legend)
+
+    # secondary legend: node FILL = dominant value of the top categorical var
+    # (the added COLOR channel — keeps the border=role encoding intact).
+    if tint_map:
+        from matplotlib.patches import Patch
+        tag = _abbrev(tint_var["name"]) if tint_var else "category"
+        tint_elems = [
+            Patch(facecolor=col, edgecolor="#666666", label=f"{tag}={_fmt_val(val)}")
+            for val, col in tint_map.items()
+        ]
+        # outside the axes (right margin) so it never overlaps a DAG node, which
+        # can sit anywhere in the [0,1] layout box.
+        ax.legend(handles=tint_elems, loc="upper left",
+                  bbox_to_anchor=(1.01, 1.0),
+                  title=f"node fill:\ndominant {tag}", title_fontsize=9,
+                  ncol=1, frameon=True, fontsize=8.5, framealpha=0.95)
+
+
 def draw(C, info, orig_labels, fsm, viz_type, out_path, subtitle="",
          tint_var=None):
     fig, ax = plt.subplots(figsize=(12, 9))
@@ -151,72 +221,13 @@ def draw(C, info, orig_labels, fsm, viz_type, out_path, subtitle="",
 
     npos = {n: norm(p) for n, p in pos.items()}
 
-    # edges first
-    for (u, v) in C.edges():
-        x0, y0 = npos[u]
-        x1, y1 = npos[v]
-        ax.annotate("", xy=(x1, y1), xytext=(x0, y0),
-                    arrowprops=dict(arrowstyle="-|>", color="#888888",
-                                    lw=1.4, shrinkA=22, shrinkB=22,
-                                    connectionstyle="arc3,rad=0.05"))
-
-    # nodes as boxes
-    for n in C.nodes():
-        x, y = npos[n]
-        i = info[n]
-        color = ROLE_COLOR[i["role"]]
-        txt = node_text(i, orig_labels)
-        # cycle nodes get a thicker, double border
-        lw = 3.0 if i["is_cycle"] else 1.6
-        box = FancyBboxPatch((x - 0.001, y - 0.001), 0.002, 0.002,
-                             boxstyle="round,pad=0.5",
-                             linewidth=0, facecolor="none")
-        ax.add_patch(box)
-        fc = tint_map.get(i.get("dom_cat"), "white")
-        bbox = dict(boxstyle="round,pad=0.35",
-                    fc=fc, ec=color, lw=lw)
-        ax.text(x, y, txt, ha="center", va="center", fontsize=8.5,
-                color="#111111", bbox=bbox, zorder=5)
-        # role marker dot above the box
-        ax.scatter([x], [y], s=0)  # keep autoscale honest
+    _draw_morse_nodes_edges(ax, C, info, npos, orig_labels, tint_map)
 
     ax.set_xlim(-0.08, 1.08)
     ax.set_ylim(-0.08, 1.08)
     ax.axis("off")
 
-    # legend
-    from matplotlib.lines import Line2D
-    legend_elems = [
-        Line2D([0], [0], marker="s", color="w", label=role,
-               markerfacecolor="white", markeredgecolor=col, markeredgewidth=2,
-               markersize=12)
-        for role, col in ROLE_COLOR.items()
-    ]
-    legend_elems.append(
-        Line2D([0], [0], marker="s", color="w",
-               label="cycle SCC (thick border)",
-               markerfacecolor="white", markeredgecolor="#333333",
-               markeredgewidth=3, markersize=12))
-    role_legend = ax.legend(handles=legend_elems, loc="lower center",
-                            bbox_to_anchor=(0.5, -0.06), ncol=5,
-                            frameon=False, fontsize=9)
-    ax.add_artist(role_legend)
-
-    # secondary legend: node FILL = dominant value of the top categorical var
-    # (the added COLOR channel — keeps the border=role encoding intact).
-    if tint_map:
-        from matplotlib.patches import Patch
-        tag = _abbrev(tint_var["name"]) if tint_var else "category"
-        tint_elems = [
-            Patch(facecolor=col, edgecolor="#666666", label=f"{tag}={_fmt_val(val)}")
-            for val, col in tint_map.items()
-        ]
-        # outside the axes (right margin) so it never overlaps a DAG node, which
-        # can sit anywhere in the [0,1] layout box.
-        ax.legend(handles=tint_elems, loc="upper left",
-                  bbox_to_anchor=(1.01, 1.0),
-                  title=f"node fill:\ndominant {tag}", title_fontsize=9,
-                  ncol=1, frameon=True, fontsize=8.5, framealpha=0.95)
+    _draw_morse_legends(ax, tint_map, tint_var)
 
     title = f"{fsm} — Morse graph (condensation of reachable transition graph)"
     fig.suptitle(title, fontsize=15, fontweight="bold", y=0.98)
@@ -228,6 +239,66 @@ def draw(C, info, orig_labels, fsm, viz_type, out_path, subtitle="",
 
 
 # ----------------------------------------------------------------------------
+
+def _build_numeric_graph(m, out):
+    """Build the reachable transition graph for a mixed/numeric system. Returns
+    (G, labels, sub), or None when an honest N/A card was drawn (and the caller returns).
+
+    Use the EXACT reachable set (finite mixed systems like vending/wc terminate). If
+    reachable() collapses to a single state, the encoded seed sits at a fixed point — walk the
+    real forward orbit (which may close into a limit cycle). We NEVER invent off-domain grid
+    seeds: every plotted node is a state the program really visits."""
+    try:
+        states, edges = m.reachable(limit=4000)
+    except Exception:
+        states, edges = [], []
+    if len(states) > 1 and len(states) < 2000:
+        G = nx.DiGraph()
+        keys = [_key(m, s) for s in states]
+        lab = {}
+        for s, k in zip(states, keys):
+            G.add_node(k)
+            lab[k] = _label_for_key(m, k)
+        for (i, j) in edges:
+            G.add_edge(keys[i], keys[j])
+        sub = (f"{G.number_of_nodes()} reachable states, "
+               f"{G.number_of_edges()} transitions  (exact, mixed)")
+        return G, lab, sub
+
+    # reachable() either collapsed to ONE state (the encoded seed sits at a fixed
+    # point) OR overflowed the cap (a CONTINUOUS field — a spiral sink / limit cycle —
+    # whose from-init enumeration runs away; #357/#465). Both cases are handled by
+    # walking the REAL forward flow over the proven-bounds grid, not the discrete
+    # enumeration: first the orbit from the seed, then the off-fixed-point seed-scan
+    # (which grids the dynamics' own scale). Every node is still a state the program
+    # really visits — we change the START point, never fabricate off-domain states.
+    G, labels = build_numeric_orbit_graph(m)
+    if G is not None and G.number_of_nodes() > 1:
+        sub = (f"{G.number_of_nodes()} states on the real forward "
+               f"orbit from the initial condition  (forward flow)")
+        return G, labels, sub
+    G, labels, nseeds = build_numeric_scan_graph(m)
+    if G is not None and G.number_of_nodes() > 1:
+        sub = (f"{G.number_of_nodes()} states on real forward orbits from "
+               f"{nseeds} grid seeds over the proven bounds — the continuous "
+               f"flow's recurrent set  (grid-sweep)")
+        return G, labels, sub
+    if len(states) == 1:
+        # genuine fixed point: plot the one real reachable state.
+        G = nx.DiGraph()
+        keys = [_key(m, s) for s in states]
+        G.add_node(keys[0])
+        G.add_edge(keys[0], keys[0])
+        labels = {keys[0]: _label_for_key(m, keys[0])}
+        sub = ("1 reachable state — the encoded seed is a fixed "
+               "point (no further dynamics)  (exact)")
+        return G, labels, sub
+    draw_na_card(m, out,
+                 "the continuous flow has no recurrent set the grid-sweep "
+                 "could resolve (every probed orbit diverged) — a Morse "
+                 "graph would require fabricating off-domain states.")
+    return None
+
 
 def render(smt2, schema, out_path):
     """In-process entry — the server imports this and calls it like every other renderer
@@ -243,61 +314,10 @@ def render(smt2, schema, out_path):
         numeric_vars = [v for v in m.state_vars
                         if v["kind"] in ("int", "real")]
         if numeric_vars:
-            # mixed or pure numeric: use the EXACT reachable set (finite mixed
-            # systems like vending/wc terminate). If reachable() collapses to a
-            # single state, the encoded seed sits at a fixed point — walk the
-            # real forward orbit (which may close into a limit cycle). We NEVER
-            # invent off-domain grid seeds: every plotted node is a state the
-            # program really visits.
-            try:
-                states, edges = m.reachable(limit=4000)
-            except Exception:
-                states, edges = [], []
-            if len(states) > 1 and len(states) < 2000:
-                G = nx.DiGraph()
-                keys = [_key(m, s) for s in states]
-                lab = {}
-                for s, k in zip(states, keys):
-                    G.add_node(k)
-                    lab[k] = _label_for_key(m, k)
-                for (i, j) in edges:
-                    G.add_edge(keys[i], keys[j])
-                labels = lab
-                sub = (f"{G.number_of_nodes()} reachable states, "
-                       f"{G.number_of_edges()} transitions  (exact, mixed)")
-            else:
-                # reachable() either collapsed to ONE state (the encoded seed sits at a fixed
-                # point) OR overflowed the cap (a CONTINUOUS field — a spiral sink / limit cycle —
-                # whose from-init enumeration runs away; #357/#465). Both cases are handled by
-                # walking the REAL forward flow over the proven-bounds grid, not the discrete
-                # enumeration: first the orbit from the seed, then the off-fixed-point seed-scan
-                # (which grids the dynamics' own scale). Every node is still a state the program
-                # really visits — we change the START point, never fabricate off-domain states.
-                G, labels = build_numeric_orbit_graph(m)
-                if G is not None and G.number_of_nodes() > 1:
-                    sub = (f"{G.number_of_nodes()} states on the real forward "
-                           f"orbit from the initial condition  (forward flow)")
-                else:
-                    G, labels, nseeds = build_numeric_scan_graph(m)
-                    if G is not None and G.number_of_nodes() > 1:
-                        sub = (f"{G.number_of_nodes()} states on real forward orbits from "
-                               f"{nseeds} grid seeds over the proven bounds — the continuous "
-                               f"flow's recurrent set  (grid-sweep)")
-                    elif len(states) == 1:
-                        # genuine fixed point: plot the one real reachable state.
-                        G = nx.DiGraph()
-                        keys = [_key(m, s) for s in states]
-                        G.add_node(keys[0])
-                        G.add_edge(keys[0], keys[0])
-                        labels = {keys[0]: _label_for_key(m, keys[0])}
-                        sub = ("1 reachable state — the encoded seed is a fixed "
-                               "point (no further dynamics)  (exact)")
-                    else:
-                        draw_na_card(m, out,
-                                     "the continuous flow has no recurrent set the grid-sweep "
-                                     "could resolve (every probed orbit diverged) — a Morse "
-                                     "graph would require fabricating off-domain states.")
-                        return
+            built = _build_numeric_graph(m, out)
+            if built is None:
+                return
+            G, labels, sub = built
         else:
             G, labels = build_discrete_graph(m)
             sub = f"{G.number_of_nodes()} reachable states"

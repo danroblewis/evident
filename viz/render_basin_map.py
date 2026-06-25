@@ -169,14 +169,6 @@ def _discrete_basins_on(m, out_path, states, edges, projected_out=None,
         _condense_terminals(n, edges)
     nscc = len(sccs)
 
-    def basin_color_idx(node):
-        rt = reach_term[scc_of[node]]
-        if not rt:
-            return -1
-        if len(rt) > 1:        # reaches MULTIPLE terminals — it is NOT in one basin (Ana #76).
-            return -2          # a nondeterministic state can flow to >1 attractor; don't fabricate.
-        return term_index[next(iter(rt))]
-
     # axes (channel API: position is the top-ranked channel)
     axes = _choose_axes(m)
     if len(axes) == 0:
@@ -189,73 +181,107 @@ def _discrete_basins_on(m, out_path, states, edges, projected_out=None,
     # dimension as small multiples instead of clobbering the 2-axis projection.
     facet_var, facet_vals = _choose_facet(m, axes, states)
 
-    # project every state onto the chosen axes + basin color, once.
-    xs = np.array([_ordinal(m, ax_x, st[ax_x["name"]]) for st in states], float)
-    ys = np.array([_ordinal(m, ax_y, st[ax_y["name"]]) if ax_y else 0.0
-                   for st in states], float)
-    cidx = np.array([basin_color_idx(node) for node in range(n)], int)
-    rng = np.random.default_rng(7)
-    jx = (rng.random(n) - 0.5) * 0.22
-    jy = (rng.random(n) - 0.5) * 0.22
+    ctx = _BasinPlot(m, states, eset, sccs, scc_of, term_ids, term_index,
+                     reach_term, ax_x, ax_y, n)
 
-    def basin_label(ci):
+    title_head = f"{m.fsm} — basin_map (discrete, {scope}: {nscc} SCCs, {len(term_ids)} terminal"
+    if facet_var is None:
+        return _render_single_panel(out_path, n, ctx, title_head, scope, nscc, term_ids)
+    return _render_faceted(out_path, m, states, facet_var, facet_vals, ctx,
+                           title_head, scope, n, nscc, term_ids)
+
+
+class _BasinPlot:
+    """Shared projection/coloring state for a discrete basin map: the per-node axis
+    coordinates, jitter, terminal-basin color index, plus the `draw`/`legend_handles`
+    primitives the (faceted and un-faceted) renderers call. Bundling these lets the two
+    render branches live as module functions without an unwieldy parameter list."""
+
+    def __init__(self, m, states, eset, sccs, scc_of, term_ids, term_index,
+                 reach_term, ax_x, ax_y, n):
+        self.m, self.states, self.eset = m, states, eset
+        self.sccs, self.term_ids = sccs, term_ids
+        self.ax_x, self.ax_y = ax_x, ax_y
+        self.overlay = []   # (ax, dot_x, dot_y, full_state) per plotted dot — hover sidecar
+
+        def basin_color_idx(node):
+            rt = reach_term[scc_of[node]]
+            if not rt:
+                return -1
+            if len(rt) > 1:    # reaches MULTIPLE terminals — it is NOT in one basin (Ana #76).
+                return -2      # a nondeterministic state can flow to >1 attractor; don't fabricate.
+            return term_index[next(iter(rt))]
+
+        # project every state onto the chosen axes + basin color, once.
+        self.xs = np.array([_ordinal(m, ax_x, st[ax_x["name"]]) for st in states], float)
+        self.ys = np.array([_ordinal(m, ax_y, st[ax_y["name"]]) if ax_y else 0.0
+                            for st in states], float)
+        self.cidx = np.array([basin_color_idx(node) for node in range(n)], int)
+        rng = np.random.default_rng(7)
+        self.jx = (rng.random(n) - 0.5) * 0.22
+        self.jy = (rng.random(n) - 0.5) * 0.22
+
+    def basin_label(self, ci):
         if ci == -2:           # multi-basin: reaches >1 attractor (nondeterministic) — honest, not faked
             return "#d29922", "→ MULTIPLE attractors (nondeterministic — not a single basin)"
         if ci < 0:
             return "#000000", "no terminal"
         color = PALETTE[ci % len(PALETTE)]
-        rep_scc = term_ids[ci]
-        rep_node = sccs[rep_scc][0]
-        cyc = "cycle" if len(sccs[rep_scc]) > 1 else "fixed pt"
-        return color, f"→ {m.label(states[rep_node])} ({cyc})"
+        rep_scc = self.term_ids[ci]
+        rep_node = self.sccs[rep_scc][0]
+        cyc = "cycle" if len(self.sccs[rep_scc]) > 1 else "fixed pt"
+        return color, f"→ {self.m.label(self.states[rep_node])} ({cyc})"
 
-    overlay = []   # (ax, dot_x, dot_y, full_state) per plotted dot — hover sidecar
-
-    def draw(ax, node_ids):
+    def draw(self, ax, node_ids):
+        xs, ys, jx, jy, cidx = self.xs, self.ys, self.jx, self.jy, self.cidx
         nodeset = set(node_ids)
-        for a, b in eset:
+        for a, b in self.eset:
             if a in nodeset and b in nodeset:
                 ax.plot([xs[a] + jx[a], xs[b] + jx[b]],
                         [ys[a] + jy[a], ys[b] + jy[b]],
                         color="#cccccc", lw=0.5, alpha=0.5, zorder=1)
         for ci in sorted(set(cidx[node_ids])):
             mask = np.array([nd for nd in node_ids if cidx[nd] == ci], int)
-            color, _lbl = basin_label(ci)
+            color, _lbl = self.basin_label(ci)
             ax.scatter(xs[mask] + jx[mask], ys[mask] + jy[mask], s=90,
                        color=color, edgecolors="black", linewidths=0.5,
                        zorder=3)
-        overlay.extend((ax, xs[nd] + jx[nd], ys[nd] + jy[nd], states[nd])
-                       for nd in node_ids)
-        ax.set_xlabel(_axis_label(ax_x))
-        ax.set_ylabel(_axis_label(ax_y) if ax_y else "(single axis)")
-        _decorate_enum_ticks(ax, m, ax_x, ax_y)
+        self.overlay.extend((ax, xs[nd] + jx[nd], ys[nd] + jy[nd], self.states[nd])
+                            for nd in node_ids)
+        ax.set_xlabel(_axis_label(self.ax_x))
+        ax.set_ylabel(_axis_label(self.ax_y) if self.ax_y else "(single axis)")
+        _decorate_enum_ticks(ax, self.m, self.ax_x, self.ax_y)
         ax.grid(True, alpha=0.25)
 
     # one shared legend covering every terminal basin (faceting splits the nodes
     # across panels, so a per-panel legend would only show that panel's basins).
-    def legend_handles():
+    def legend_handles(self):
         h = []
-        for ci in sorted(set(cidx)):
-            color, lbl = basin_label(ci)
+        for ci in sorted(set(self.cidx)):
+            color, lbl = self.basin_label(ci)
             h.append(Patch(facecolor=color, edgecolor="black", label=lbl))
         return h
 
-    if facet_var is None:
-        fig, ax = plt.subplots(figsize=(9, 7))
-        draw(ax, list(range(n)))
-        ax.legend(handles=legend_handles(), loc="center left",
-                  bbox_to_anchor=(1.01, 0.5), fontsize=8,
-                  title="terminal basin", frameon=True)
-        ax.set_title(f"{m.fsm} — basin_map (discrete, {scope}: {nscc} SCCs, "
-                     f"{len(term_ids)} terminal)", fontsize=13, weight="bold")
-        points = tight_fraction(fig, overlay)
-        fig.savefig(out_path, dpi=120, bbox_inches="tight")
-        plt.close(fig)
-        write_points(out_path, points)
-        return (f"discrete {scope}: {n} states, {nscc} SCCs, "
-                f"{len(term_ids)} terminal basins")
 
-    # one panel per facet value
+def _render_single_panel(out_path, n, ctx, title_head, scope, nscc, term_ids):
+    """The un-faceted basin map: one axis covering every node, one legend."""
+    fig, ax = plt.subplots(figsize=(9, 7))
+    ctx.draw(ax, list(range(n)))
+    ax.legend(handles=ctx.legend_handles(), loc="center left",
+              bbox_to_anchor=(1.01, 0.5), fontsize=8,
+              title="terminal basin", frameon=True)
+    ax.set_title(title_head + ")", fontsize=13, weight="bold")
+    points = tight_fraction(fig, ctx.overlay)
+    fig.savefig(out_path, dpi=120, bbox_inches="tight")
+    plt.close(fig)
+    write_points(out_path, points)
+    return (f"discrete {scope}: {n} states, {nscc} SCCs, "
+            f"{len(term_ids)} terminal basins")
+
+
+def _render_faceted(out_path, m, states, facet_var, facet_vals, ctx,
+                    title_head, scope, n, nscc, term_ids):
+    """One small-multiple panel per facet value, sharing axes and a single legend."""
     npan = len(facet_vals)
     fig, axarr = plt.subplots(1, npan, figsize=(5.0 * npan, 5.6),
                               squeeze=False, sharex=True, sharey=True)
@@ -264,16 +290,15 @@ def _discrete_basins_on(m, out_path, states, edges, projected_out=None,
                     if st[facet_var["name"]] == fv]
         disp = fv if facet_var["kind"] != "bool" else ("true" if fv else "false")
         ax = axarr[0][i]
-        draw(ax, node_ids)
+        ctx.draw(ax, node_ids)
         ax.set_title(f"{facet_var['name']} = {disp}  ({len(node_ids)} states)",
                      fontsize=11, weight="bold")
-    leg = fig.legend(handles=legend_handles(), loc="center left",
+    leg = fig.legend(handles=ctx.legend_handles(), loc="center left",
                      bbox_to_anchor=(1.0, 0.5), fontsize=8,
                      title="terminal basin", frameon=True)
-    fig.suptitle(f"{m.fsm} — basin_map (discrete, {scope}: {nscc} SCCs, "
-                 f"{len(term_ids)} terminal; faceted by {facet_var['name']})",
+    fig.suptitle(title_head + f"; faceted by {facet_var['name']})",
                  fontsize=13, weight="bold")
-    points = tight_fraction(fig, overlay)
+    points = tight_fraction(fig, ctx.overlay)
     fig.savefig(out_path, dpi=120, bbox_inches="tight",
                 bbox_extra_artists=(leg,))
     plt.close(fig)

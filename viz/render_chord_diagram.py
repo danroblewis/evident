@@ -50,46 +50,13 @@ from chord_channels import (
 
 # --- draw -----------------------------------------------------------------------
 
-def draw(m, viz_title, out_path):
-    var, labels, proj, mode = pick_primary(m)
-    if mode == "none" or var is None:
-        cats = m.categorical_vars
-        cards = ", ".join(f"{v['name']}={_observed_cardinality(m, v['name'])}"
-                          for v in cats) or "none"
-        return placeholder(
-            m, viz_title, out_path,
-            "no variable forms >= 3 distinct node classes "
-            f"(categoricals: {cards}; no numeric var to bin) — "
-            "a chord diagram needs >= 3 nodes to be meaningful")
-    color = pick_color_var(m, var, proj) if mode in ("enum", "bool", "string") else None
-    labels, flow, numrange, arc_cat, color_labels = gather_flow(
-        m, var, labels, proj, mode, color)
-
-    n = len(labels)
-    if n == 0:
-        if mode == "numeric":
-            orbit = orbit_states(m, var)
-            npts = len({tuple(sorted(s.items())) for s in orbit})
-            return placeholder(
-                m, viz_title, out_path,
-                f"reachable set is {npts} point{'s' if npts != 1 else ''} / degenerate — "
-                f"chord flow over '{var['name']}' not meaningful")
-        return placeholder(m, viz_title, out_path, "no values for primary var")
-
-    # node angles around the circle (top, clockwise)
-    angles = {lab: (math.pi / 2 - 2 * math.pi * i / n) for i, lab in enumerate(labels)}
-    R = 1.0
-    pos = {lab: (R * math.cos(a), R * math.sin(a)) for lab, a in angles.items()}
-
-    fig, ax = plt.subplots(figsize=(8.5, 9))
-    ax.set_aspect("equal")
-    ax.axis("off")
-
+def _draw_arcs(ax, pos, labels, flow, color, color_labels, arc_cat):
+    """Draw the chord arcs. COLOR channel: a discrete hue per color-var category (when a
+    second categorical var exists), else a weight gradient (transition count). Returns
+    (out_tot, max_node, use_cat_color, cat_color) for the node-drawing phase + legend."""
     maxw = max(flow.values()) if flow else 1
-
-    # COLOR channel: discrete hue per color-var category (if a second categorical
-    # var exists), else the weight gradient (derived: transition count).
     use_cat_color = bool(color) and bool(color_labels)
+    cat_color = None
     if use_cat_color:
         qual = plt.get_cmap("tab10")
         cat_color = {lab: qual(i % 10) for i, lab in enumerate(color_labels)}
@@ -130,8 +97,11 @@ def draw(m, viz_title, out_path):
                                    alpha=alpha, capstyle="round"))
             # arrowhead near the destination
             draw_arrowhead(ax, cx, cy, x1, y1, color_rgba, alpha, frac)
+    return out_tot, max_node, use_cat_color, cat_color, maxw
 
-    # draw nodes + labels
+
+def _draw_nodes(ax, labels, pos, angles, out_tot, max_node):
+    """Draw the node circles (sized by outgoing flow) and their outside labels."""
     for lab in labels:
         x, y = pos[lab]
         sz = 0.04 + 0.06 * (out_tot.get(lab, 0) / max_node)
@@ -144,9 +114,11 @@ def draw(m, viz_title, out_path):
         ax.text(lx, ly, str(lab), ha=ha, va="center", fontsize=11,
                 fontweight="bold", color="#222831", zorder=6)
 
-    ax.set_xlim(-1.45, 1.45)
-    ax.set_ylim(-1.45, 1.45)
 
+def _draw_title_legend(fig, ax, m, viz_title, var, mode, numrange, color,
+                       color_labels, use_cat_color, cat_color, maxw):
+    """Title (with the node-var caption), the discrete-hue color legend, and the
+    bottom footer describing the width/size/hue encodings."""
     sub = f"nodes: {var['name']}"
     if mode == "numeric":
         sub += f"  (binned, range [{numrange[0]:.0f}, {numrange[1]:.0f}])"
@@ -173,6 +145,52 @@ def draw(m, viz_title, out_path):
     else:
         legend += ";  arc hue = weight gradient"
     fig.text(0.5, 0.025, legend, ha="center", fontsize=9, color="#9aa3ad")   # #469: readable on dark
+
+
+def draw(m, viz_title, out_path):
+    var, labels, proj, mode = pick_primary(m)
+    if mode == "none" or var is None:
+        cats = m.categorical_vars
+        cards = ", ".join(f"{v['name']}={_observed_cardinality(m, v['name'])}"
+                          for v in cats) or "none"
+        return placeholder(
+            m, viz_title, out_path,
+            "no variable forms >= 3 distinct node classes "
+            f"(categoricals: {cards}; no numeric var to bin) — "
+            "a chord diagram needs >= 3 nodes to be meaningful")
+    color = pick_color_var(m, var, proj) if mode in ("enum", "bool", "string") else None
+    labels, flow, numrange, arc_cat, color_labels = gather_flow(
+        m, var, labels, proj, mode, color)
+
+    n = len(labels)
+    if n == 0:
+        if mode == "numeric":
+            orbit = orbit_states(m, var)
+            npts = len({tuple(sorted(s.items())) for s in orbit})
+            return placeholder(
+                m, viz_title, out_path,
+                f"reachable set is {npts} point{'s' if npts != 1 else ''} / degenerate — "
+                f"chord flow over '{var['name']}' not meaningful")
+        return placeholder(m, viz_title, out_path, "no values for primary var")
+
+    # node angles around the circle (top, clockwise)
+    angles = {lab: (math.pi / 2 - 2 * math.pi * i / n) for i, lab in enumerate(labels)}
+    R = 1.0
+    pos = {lab: (R * math.cos(a), R * math.sin(a)) for lab, a in angles.items()}
+
+    fig, ax = plt.subplots(figsize=(8.5, 9))
+    ax.set_aspect("equal")
+    ax.axis("off")
+
+    out_tot, max_node, use_cat_color, cat_color, maxw = _draw_arcs(
+        ax, pos, labels, flow, color, color_labels, arc_cat)
+    _draw_nodes(ax, labels, pos, angles, out_tot, max_node)
+
+    ax.set_xlim(-1.45, 1.45)
+    ax.set_ylim(-1.45, 1.45)
+
+    _draw_title_legend(fig, ax, m, viz_title, var, mode, numrange, color,
+                       color_labels, use_cat_color, cat_color, maxw)
 
     fig.savefig(out_path, dpi=120, bbox_inches="tight")
     plt.close(fig)

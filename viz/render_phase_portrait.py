@@ -195,31 +195,28 @@ def render(smt2_path, schema_path, out_path, x_var=None, y_var=None):
             _render_numeric(m, axx, axy, facet_var, facet_vals, out_path,
                             extent_mode="orbit")
         else:  # "degenerate": no 2D field (a constant axis, or no orbit)
-            _render_na(m, axx, axy, _na_reason(m, axx, axy), out_path)
+            _render_na(m, axx, axy, out_path)
     else:
         _render_discrete(m, axx, axy, facet_var, facet_vals, regime, out_path)
     return out_path
 
 
-def _na_reason(m, axx, axy):
-    """Why a 2-numeric program has no meaningful phase portrait — a constant axis
-    (one variable never moves over the program's followed trajectory) or a lone
-    fixed point. We judge constancy on the DWELL (the trajectory the program truly
-    visits), not on m.reachable()'s relational fan: that fan can move an axis the
-    real run holds fixed (randomwalk's v3/v4), which would mislabel the reason."""
+def _render_na(m, axx, axy, out_path):
+    """Render the 'no meaningful phase portrait' card, computing its own reason — a
+    constant axis (one variable never moves over the program's followed trajectory) or a
+    lone fixed point. We judge constancy on the DWELL (the trajectory the program truly
+    visits), not on m.reachable()'s relational fan: that fan can move an axis the real run
+    holds fixed (randomwalk's v3/v4), which would mislabel the reason."""
     nx_, ny_ = axx["name"], axy["name"]
     dwell = _dwell_span(m, axx, axy)
+    msg = ("N/A — reachable set is a single fixed point;\n"
+           "no continuum and no orbit for a phase portrait")
     if dwell is not None:
         (xlo, xhi), (ylo, yhi) = dwell
         if xhi - xlo < 1e-9 or yhi - ylo < 1e-9:
             flat = nx_ if xhi - xlo < 1e-9 else ny_
-            return (f"N/A — {flat} is constant across the reachable trajectory;\n"
-                    "a phase portrait needs two varying axes")
-    return ("N/A — reachable set is a single fixed point;\n"
-            "no continuum and no orbit for a phase portrait")
-
-
-def _render_na(m, axx, axy, msg, out_path):
+            msg = (f"N/A — {flat} is constant across the reachable trajectory;\n"
+                   "a phase portrait needs two varying axes")
     fig, ax = plt.subplots(figsize=(8.5, 7.5))
     ax.text(0.5, 0.5, msg, ha="center", va="center",
             transform=ax.transAxes, fontsize=13)
@@ -280,6 +277,12 @@ def _render_numeric(m, axx, axy, facet_var, facet_vals, out_path,
         write_points(out_path, points)
         return
 
+    _render_numeric_faceted(m, axx, axy, facet_var, facet_vals, init, _extent, fit, out_path)
+
+
+def _render_numeric_faceted(m, axx, axy, facet_var, facet_vals, init, _extent, fit, out_path):
+    """Small-multiples numeric phase portrait, one panel per facet value. All panels share
+    one frame (snapped to the union of plotted data in reachable mode) for comparability."""
     rows, cols = _panel_grid(len(facet_vals))
     fig, axes = plt.subplots(rows, cols, figsize=(5.2 * cols, 4.8 * rows),
                              squeeze=False)
@@ -361,10 +364,15 @@ def _render_discrete(m, axx, axy, facet_var, facet_vals, regime, out_path):
         write_points(out_path, points)
         return
 
-    # FACET: one panel per facet value. A state belongs to a panel by its facet
-    # value; an edge stays IN the panel only if both endpoints share it (a
-    # cross-facet edge would need a 3rd axis to draw honestly, so we annotate
-    # the count instead of drawing a misleading in-plane arrow).
+    _render_discrete_faceted(m, axx, axy, facet_var, facet_vals, states, edges,
+                             init_key, bounds, out_path)
+
+
+def _render_discrete_faceted(m, axx, axy, facet_var, facet_vals, states, edges,
+                             init_key, bounds, out_path):
+    """Small-multiples discrete phase portrait. A state belongs to a panel by its facet
+    value; an edge stays IN the panel only if both endpoints share it (a cross-facet edge
+    would need a 3rd axis to draw honestly, so we annotate the count instead)."""
     fname = facet_var["name"]
     # Only facet over values that actually occur in the reachable set. An enum
     # may declare variants the program never reaches (find's s5: Unseen declared
