@@ -1,5 +1,5 @@
 {
-  "seq": 469,
+  "seq": 470,
   "tasks": [
     {
       "id": 1,
@@ -11008,16 +11008,22 @@
       "id": 450,
       "title": "Guard sample/buffer loads with a monotonic request id (ignore resolutions older than the latest user action); make explicit dropdown selection authoritative over autosave-restore; surface (not silently apply) a buffer restore that would overwrite the visible program (fixes #449)",
       "detail": "",
-      "status": "open",
+      "status": "worker_done",
       "created_by": "ide-ux-critic",
       "created": "2026-06-25T18:33:22Z",
-      "worker_done": false,
+      "worker_done": true,
       "approvals": [],
       "reopened": 0,
       "tags": [
         "editor"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-25T19:59:51Z",
+          "by": "worker",
+          "act": "started"
+        }
+      ]
     },
     {
       "id": 452,
@@ -12350,9 +12356,10 @@
       "title": "SAMPLE SELECTION SILENTLY SWAPPED \u2014 the program on screen is not the one the user picked (BROKEN-class). Reproduced 3\u00d7 live: selected 'traffic light \u00b7 a cyclic state machine (FSM)' from the sample dropdown; editor briefly showed 'fsm traffic' + chip '\u21bb Cyclic', then ~1\u20132s later the editor SPONTANEOUSLY reverted to 'fsm collatz' + chip '\u2713 Terminates' with NO further interaction \u2014 and localStorage['evident-buffer'] was rewritten back to the Collatz source. Intermittent (one run held traffic-light stable for 2s; three other runs flipped). ROOT DESIGN DECISION: an async sample-load / autosave-restore race with no request-sequence guard \u2014 a slower/stale in-flight load (or a late localStorage restore) resolves last and clobbers the newer explicit selection. SEVERITY: a user can be analyzing, trusting, and even verifying a program they did not choose and did not write, with the dropdown showing 'open sample\u2026' (blank) \u2014 there is zero signal that a swap happened. SYSTEMIC FIX: guard sample/buffer loads with a monotonic request id (ignore any resolution older than the latest user action); make the explicit dropdown selection authoritative over any autosave-restore; and if a restore would overwrite the visible buffer, surface it ('restored your unsaved buffer \u2014 discard?') rather than silently winning. Screenshot: ide/critics/recordings/nadia-20260625-182038/12-sample-reverted-to-collatz.png",
       "detail": "screenshot 12; localStorage evident-buffer clobbered",
       "by": "ide-ux-critic",
-      "status": "open",
+      "status": "cleared",
       "task": null,
-      "created": "2026-06-25T18:33:18Z"
+      "created": "2026-06-25T18:33:18Z",
+      "cleared": "2026-06-25T19:57:15Z"
     },
     {
       "id": 451,
@@ -12386,9 +12393,10 @@
       "title": "RE TASK #359 (worker_done, 1 approval from ide-critic): do NOT close \u2014 the editor/sample desync is STILL live. I reproduced it 3\u00d7 this round on a plain dropdown\u2192dropdown path (selected 'traffic light', it spontaneously reverted to 'fsm collatz' ~1-2s later with no user action; localStorage['evident-buffer'] rewritten to Collatz). The #359 fix note only claims to cover 'the out-of-band-setValue race' via a _loadV debounce token; the path I hit (autosave-restore / stale async sample-fetch winning) is not covered. See concern #449 + screenshot nadia-20260625-182038/12. Asking ide-critic/ide-critic-expert/ide-critic-newcomer to REOPEN #359 (I'm ide-ux-critic and can't).",
       "detail": "ties #359 to live repro #449; needs a reopen by an approving critic",
       "by": "ide-ux-critic",
-      "status": "open",
+      "status": "cleared",
       "task": null,
-      "created": "2026-06-25T18:35:06Z"
+      "created": "2026-06-25T18:35:06Z",
+      "cleared": "2026-06-25T19:57:21Z"
     },
     {
       "id": 458,
@@ -12434,6 +12442,16 @@
       "status": "open",
       "task": null,
       "created": "2026-06-25T18:37:05Z"
+    },
+    {
+      "id": 470,
+      "title": "RE #449 / #359 \u2014 RE-TESTED on current tree (app v=1782416547, post-e14ff60f). The EDITOR-TEXT flip (traffic\u2192collatz, localStorage rewritten) IS STILL REPRODUCIBLE \u2014 distinct from the verdict-CHIP race CockpitBuild fixed (in flips the chip AND editor agree on collatz, so it is a genuine buffer-TEXT write, not a stale verdict). EXACT MECHANISM (instrumented ace.setValue + localStorage.setItem with stack traces): every editor write comes from loadProgram (app-buffer.js:143 'editor.setValue(source,-1)') via sel.onchange (app-buffer.js:171); every localStorage write comes from scheduleAnalyze (app.js:369) reading the current editor \u2014 so localStorage is a VICTIM that follows the editor, the CAUSE is loadProgram's unguarded editor.setValue. In a flipping trial the setValue order was collatz, traffic, THEN collatz again \u2014 a stale loadProgram(collatz) lands LAST and clobbers the final traffic pick. CockpitBuild's _loadV token guards the debounced ANALYZE response but does NOT serialize/guard loadProgram's own synchronous editor.setValue, and a stale loadProgram re-fires after the newest one. TRIGGER (conditions to reproduce): THREE+ #samples change events within ~40-50ms of each other (rapid impatient dropdown clicking, or a programmatic load \u2014 share-link/autosave-restore \u2014 coinciding with a manual pick). Rates measured: clean double-pick with full settle = 0/8 (safe); triple rapid-pick ending on traffic = 1/6 flipped to collatz; tight back-to-back loop = 3/10; gap-sweep concentrates flips at ~50ms gap (2/4) and near-zero at >=100ms. FIX: version-guard loadProgram's editor write itself \u2014 capture _loadV before editor.setValue and, on any path that could re-enter, drop the write if a newer _loadV exists; OR make loadProgram idempotent/serialized so only the latest selection's setValue is allowed to land. KEEP #449 OPEN.",
+      "detail": "instrumented stacks: ace.setValue<-loadProgram(app-buffer.js:143)<-sel.onchange(:171); ls.setItem<-scheduleAnalyze(app.js:369). flip rates: 0/8 clean, 1/6 triple, 3/10 tight, peak at 50ms gap",
+      "by": "ide-ux-critic",
+      "status": "cleared",
+      "task": null,
+      "created": "2026-06-25T19:49:06Z",
+      "cleared": "2026-06-25T19:57:15Z"
     }
   ]
 }
