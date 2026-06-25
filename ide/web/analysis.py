@@ -208,8 +208,12 @@ def _analyze_banner(m, dropped, max_branch, recurrent, states, n_states, global_
         '{n} states over all initial conditions —' so the banner matches the GLOBAL graph the
         PNG draws (the stats already came from `full_state_graph`), not the from-init orbit."""
     if dropped:
-        return (f"⚠ Under-constrained — {dropped} dropped constraint(s); this model is "
-                f"BROKEN, not a real relation (the freed variables fan the state space)")
+        # #453: state the HONEST consequence, not the templated "fans the state space" — which is
+        # false when the dropped constraint was inert (the Δ-capped count whose boundary the same
+        # screen proves CLOSED). The certain fact for any drop is that the model on screen ≠ what
+        # the user wrote; we don't claim the reachable set broadened unless it actually did.
+        return (f"⚠ Under-constrained — {dropped} constraint(s) you wrote were NOT applied; "
+                f"the model on screen is not the model you wrote")
     shape = _banner(m, max_branch, recurrent, states=states)
     if global_dynamics:
         return f"{n_states} states over all initial conditions — {shape}"
