@@ -67,3 +67,18 @@ def _check_role(by, allowed, what):
 def _maybe_close(t):
     if t["worker_done"] and all(c in t["approvals"] for c in REQUIRED_CRITICS):
         t["status"] = "closed"
+
+
+# ── one-line CLI renderings of a task / concern (used by list + summary) ─────────────
+def _task_line(t):
+    badge = {"open": "○", "in_progress": "◐", "worker_done": "◑", "closed": "●"}.get(t["status"], "?")
+    appr = "".join("✓" if c in t["approvals"] else "·" for c in CRITICS)
+    tags = (" [" + ",".join(t["tags"]) + "]") if t.get("tags") else ""
+    ro = f" reopened×{t['reopened']}" if t["reopened"] else ""
+    return f"  {badge} #{t['id']:<3} [{t['status']:<11}] appr:{appr}{ro}{tags}  {t['title']}"
+
+
+def _concern_line(c):
+    badge = "!" if c["status"] == "open" else "✓"
+    tt = f" (task #{c['task']})" if c.get("task") else ""
+    return f"  {badge} #{c['id']:<3} [{c['status']:<7}] by {c['by']}{tt}  {c['title']}"
