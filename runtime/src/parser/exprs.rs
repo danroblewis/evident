@@ -314,8 +314,17 @@ impl Parser {
         if matches!(self.peek(), Token::Minus) {
             self.bump();
             let e = self.parse_unary()?;
-
-            return Ok(Expr::Binary(BinOp::Sub, Box::new(Expr::Int(0)), Box::new(e)));
+            // Fold a negated numeric LITERAL into a single literal node so a
+            // negative number is structurally identical to a positive one — this
+            // is what lets `-5` flow through every consumer that pattern-matches
+            // a literal leaf (tuple→record coercion, positional pins, …), not
+            // just the arithmetic encoders that fold `0 - 5`. Non-literal
+            // operands (`-x`, `-(a+b)`) keep the `0 - e` desugaring.
+            return Ok(match e {
+                Expr::Int(n)  => Expr::Int(-n),
+                Expr::Real(f) => Expr::Real(-f),
+                other => Expr::Binary(BinOp::Sub, Box::new(Expr::Int(0)), Box::new(other)),
+            });
         }
         if matches!(self.peek(), Token::Hash) {
             self.bump();
