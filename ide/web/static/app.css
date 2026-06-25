@@ -175,6 +175,21 @@ html,body { margin:0; height:100%; background:var(--bg); color:var(--ink);
 .g-chip.cur { color:var(--accent); border-color:var(--accent); background:#16313f; }
 .g-chip.sel { border-color:var(--good); color:var(--good); }
 .g-ab { margin-left:3px; font-weight:bold; color:var(--good); }
+/* #362: the per-chip ◆ pick-target (direct compare affordance) + the persistent A↔B indicator. */
+.g-pick { margin-left:5px; cursor:pointer; color:var(--dim); font-size:12px; }
+.g-pick:hover { color:var(--good); }
+.g-chip.sel .g-pick { color:var(--good); }
+.g-cmpbar { display:flex; flex-wrap:wrap; align-items:center; gap:6px; margin:0 0 8px;
+  padding:5px 9px; background:#10151b; border:1px solid var(--good); border-radius:6px;
+  font:11px ui-monospace,Menlo,monospace; }
+.g-cmplabel { color:var(--dim); }
+.g-cmparrow { color:var(--good); font-weight:bold; }
+.g-slot { padding:1px 7px; border-radius:5px; border:1px solid var(--line); white-space:nowrap; }
+.g-slot.set { color:var(--good); border-color:var(--good); cursor:pointer; }
+.g-slot.set:hover { background:#16313f; }
+.g-slot.empty { color:var(--dim); border-style:dashed; }
+.g-slotx { margin-left:5px; cursor:pointer; color:var(--dim); }
+.g-slotx:hover { color:var(--bad); }
 .g-diffhead { margin:2px 0 8px; }
 .g-clearcmp { margin-left:8px; cursor:pointer; color:var(--dim); }
 .g-clearcmp:hover { color:var(--bad); }

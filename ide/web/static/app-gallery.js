@@ -93,25 +93,59 @@ function _toggleBookmark(i) {
   if (_gallery.bookmarks.has(i)) _gallery.bookmarks.delete(i); else _gallery.bookmarks.add(i);
   renderGallery();
 }
-// Pick a witness into the compare slot (max two). Re-picking a selected one deselects it.
+// #362: A and B are EXPLICIT ordered slots the user sets DIRECTLY (never "current minus picked").
+// `_gallery.selected` is the ordered pick list [A] or [A, B]. Clicking a witness's ◆ pick-target (or
+// shift-clicking its chip) fills the first FREE slot — A then B — so two clicks anywhere in the strip
+// set up a compare. Re-picking an already-picked witness clears ITS slot (so you can swap one side
+// without losing the other). Picking a third when both are full rotates B out (A stays, newest → B).
 function _toggleSelect(i) {
   const s = _gallery.selected, at = s.indexOf(i);
-  if (at >= 0) s.splice(at, 1);
-  else { s.push(i); if (s.length > 2) s.shift(); }
+  if (at >= 0) { s.splice(at, 1); renderGallery(); return; }   // already picked → release that slot
+  if (s.length < 2) s.push(i);                                  // fill A, then B
+  else s[1] = i;                                                // both full → replace B (A is sticky)
+  renderGallery();
+}
+// #362: clear ONE compare slot directly (the ✕ on the A/B indicator chips), leaving the other set.
+function _clearSlot(slot) {
+  if (slot < _gallery.selected.length) _gallery.selected.splice(slot, 1);
   renderGallery();
 }
 
 // --- gallery rendering ------------------------------------------------------------
-// The thumbnail strip: one chip per witness (★ if bookmarked, ◆ if in the compare pick),
-// the current one highlighted. Click flips to it; the ★/◆ glyphs are click targets too.
+// The thumbnail strip: one chip per witness (★ if bookmarked), the current one highlighted.
+// #362: the chip BODY navigates (click flips to it); a per-chip ◆ pick-target (the direct compare
+// affordance) sets this witness into the A/B compare slot WITHOUT navigating first — so two ◆ clicks
+// anywhere set up a side-by-side. Shift-clicking the chip body picks it too (Ana's alternative). The
+// picked side shows its A/B letter and a filled ◆.
 function _galleryStrip() {
   return _gallery.witnesses.map((w, i) => {
     const cur = i === _gallery.shown, bm = _gallery.bookmarks.has(i), sel = _gallery.selected.indexOf(i);
     const cls = "g-chip" + (cur ? " cur" : "") + (sel >= 0 ? " sel" : "");
     const tag = sel === 0 ? "A" : (sel === 1 ? "B" : "");
-    return `<span class="${cls}" data-goto="${i}" title="witness #${i + 1}">`
-      + `${bm ? "★" : ""}#${i + 1}${tag ? `<span class="g-ab">${tag}</span>` : ""}</span>`;
+    const pickGlyph = sel >= 0 ? "◆" : "◇";
+    const pickTitle = sel >= 0 ? `picked as ${tag} — click to release` : "pick for compare (sets A, then B)";
+    return `<span class="${cls}" data-pickchip="${i}" title="witness #${i + 1} — click to view · shift-click to pick for compare">`
+      + `${bm ? "★" : ""}#${i + 1}${tag ? `<span class="g-ab">${tag}</span>` : ""}`
+      + `<span class="g-pick" data-pick="${i}" title="${pickTitle}">${pickGlyph}</span></span>`;
   }).join("");
+}
+
+// #362: the persistent "comparing A ↔ B" indicator — shows BOTH slots at once the moment one is set
+// (so the user always sees the pick state mid-selection, not only after both land). Each filled slot
+// chip has a ✕ to clear just that side; an empty slot reads "—". Hidden entirely when nothing's picked.
+function _compareBar() {
+  if (!_gallery.selected.length) return "";
+  const slot = (n, lbl) => {
+    const i = _gallery.selected[n];
+    if (i === undefined) return `<span class="g-slot empty">${lbl} —</span>`;
+    return `<span class="g-slot set" data-slotgoto="${i}" title="view witness #${i + 1}">${lbl} #${i + 1}`
+      + `<span class="g-slotx" data-clearslot="${n}" title="clear ${lbl}">✕</span></span>`;
+  };
+  const ready = _gallery.selected.length === 2;
+  return `<div class="g-cmpbar"><span class="g-cmplabel">comparing</span>`
+    + slot(0, "◆ A") + `<span class="g-cmparrow">↔</span>` + slot(1, "◆ B")
+    + (ready ? "" : ` <span class="dim">— pick a second witness's ◆ to see the diff</span>`)
+    + `</div>`;
 }
 
 // One witness as its domain picture(s) + raw rows — the same split app-verify uses for a
@@ -141,14 +175,20 @@ function renderGallery() {
     + ` <span class="dim">— browsing #${i + 1} of ${n}</span>`;
   // Two picked → the side-by-side compare/diff replaces the single body; else page one witness.
   const cmp = (_gallery.selected.length === 2) ? _renderCompare() : "";
+  // #362: the per-witness pick button names the slot it will fill (Set A / Set B / picked), so the
+  // button + the strip ◆ + shift-click are three routes to the SAME explicit-slot pick.
+  const selAt = _gallery.selected.indexOf(i);
+  const pickLbl = selAt === 0 ? "◆ picked A" : selAt === 1 ? "◆ picked B"
+    : _gallery.selected.length === 0 ? "⇄ set A" : _gallery.selected.length === 1 ? "⇄ set B" : "⇄ replace B";
   body.innerHTML =
     `<div class="g-bar">`
     + `<button class="g-nav" data-goto="${i - 1}" ${i === 0 ? "disabled" : ""}>◀</button>`
     + `<span class="g-strip">${_galleryStrip()}</span>`
     + `<button class="g-nav" data-goto="${i + 1}" ${i === n - 1 ? "disabled" : ""}>▶</button>`
     + `<button class="g-act" data-bm="${i}" title="bookmark this witness">${_gallery.bookmarks.has(i) ? "★ unbookmark" : "☆ bookmark"}</button>`
-    + `<button class="g-act" data-sel="${i}" title="pick this witness for side-by-side compare (pick two)">⇄ ${_gallery.selected.indexOf(i) >= 0 ? "picked" : "compare"}</button>`
+    + `<button class="g-act" data-sel="${i}" title="pick this witness for side-by-side compare — fills slot A then B">${pickLbl}</button>`
     + `</div>`
+    + _compareBar()
     + (cmp || `<div class="g-one">${_witnessBody(_gallery.witnesses[i], _gallery.source, null)}</div>`);
   _wireGallery();
 }
@@ -182,13 +222,26 @@ function _renderCompare() {
 // Delegate clicks for paging/bookmark/select/clear — re-attached on every render (the strip
 // is rebuilt each time). One listener per control via data-* attrs keeps the markup declarative.
 function _wireGallery() {
-  $("#solve-body").querySelectorAll("[data-goto]").forEach((el) =>
-    el.onclick = () => _galleryGoto(parseInt(el.getAttribute("data-goto"), 10)));
-  $("#solve-body").querySelectorAll("[data-bm]").forEach((el) =>
+  const root = $("#solve-body");
+  // chip body: plain click navigates; SHIFT-click picks into the next free A/B slot (#362).
+  root.querySelectorAll("[data-pickchip]").forEach((el) =>
+    el.onclick = (e) => {
+      const i = parseInt(el.getAttribute("data-pickchip"), 10);
+      if (e.shiftKey) { e.preventDefault(); _toggleSelect(i); } else _galleryGoto(i);
+    });
+  // the per-chip ◆ pick-target: pick directly into A/B without navigating (stop the chip's nav click).
+  root.querySelectorAll("[data-pick]").forEach((el) =>
+    el.onclick = (e) => { e.stopPropagation(); _toggleSelect(parseInt(el.getAttribute("data-pick"), 10)); });
+  // the persistent A↔B indicator: a slot chip navigates to its witness; its ✕ clears just that slot (#362).
+  root.querySelectorAll("[data-slotgoto]").forEach((el) =>
+    el.onclick = () => _galleryGoto(parseInt(el.getAttribute("data-slotgoto"), 10)));
+  root.querySelectorAll("[data-clearslot]").forEach((el) =>
+    el.onclick = (e) => { e.stopPropagation(); _clearSlot(parseInt(el.getAttribute("data-clearslot"), 10)); });
+  root.querySelectorAll("[data-bm]").forEach((el) =>
     el.onclick = () => _toggleBookmark(parseInt(el.getAttribute("data-bm"), 10)));
-  $("#solve-body").querySelectorAll("[data-sel]").forEach((el) =>
+  root.querySelectorAll("[data-sel]").forEach((el) =>
     el.onclick = () => _toggleSelect(parseInt(el.getAttribute("data-sel"), 10)));
-  $("#solve-body").querySelectorAll("[data-clearcmp]").forEach((el) =>
+  root.querySelectorAll("[data-clearcmp]").forEach((el) =>
     el.onclick = () => { _gallery.selected = []; renderGallery(); });
 }
 
