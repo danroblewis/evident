@@ -1,5 +1,5 @@
 {
-  "seq": 397,
+  "seq": 398,
   "tasks": [
     {
       "id": 1,
@@ -10286,6 +10286,37 @@
         }
       ],
       "addresses_concern": 385
+    },
+    {
+      "id": 398,
+      "title": "query/invariant/temporal reject DERIVED vars ('unknown carried var done') though they're shown in every state \u2014 let them assert over derived vars too",
+      "detail": "",
+      "status": "worker_done",
+      "created_by": "worker",
+      "created": "2026-06-25T07:08:03Z",
+      "worker_done": true,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [],
+      "log": [
+        {
+          "at": "2026-06-25T07:08:03Z",
+          "by": "worker",
+          "act": "created to address concern #376"
+        },
+        {
+          "at": "2026-06-25T07:08:03Z",
+          "by": "worker",
+          "act": "started"
+        },
+        {
+          "at": "2026-06-25T07:08:03Z",
+          "by": "worker",
+          "act": "done",
+          "note": "_resolve_carried pools carried + derived; per-state record already carries derived values so the check is non-vacuous. test_derived_query.py. Addresses #376."
+        }
+      ],
+      "addresses_concern": 376
     }
   ],
   "concerns": [
