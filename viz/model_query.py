@@ -98,8 +98,8 @@ class QueryMixin:
         # Resolve the var by full name ("state.balance") or short name ("balance").
         v = self._resolve_carried(var)
         if v is None:
-            known = ", ".join(sorted({w["name"] for w in self.carried}))
-            raise ValueError(f"unknown carried var {var!r}; known: {known}")
+            known = ", ".join(sorted({w["name"] for w in self.carried + self.derived}))
+            raise ValueError(f"unknown var {var!r}; known: {known}")
         name = v["name"]
 
         target = self._coerce_predicate_value(v, value, canon)
@@ -191,8 +191,8 @@ class QueryMixin:
             raise ValueError(f"unknown op {op!r}; use one of <= < >= > = !=")
         v = self._resolve_carried(var)
         if v is None:
-            known = ", ".join(sorted({w["name"] for w in self.carried}))
-            raise ValueError(f"unknown carried var {var!r}; known: {known}")
+            known = ", ".join(sorted({w["name"] for w in self.carried + self.derived}))
+            raise ValueError(f"unknown var {var!r}; known: {known}")
         name = v["name"]
         target = self._coerce_predicate_value(v, value, canon)
         pretty = {"<=": "≤", "<": "<", ">=": "≥", ">": ">", "=": "=", "!=": "≠"}[canon]
@@ -303,10 +303,14 @@ class QueryMixin:
         }
 
     def _resolve_carried(self, var):
-        for w in self.carried:                     # exact full-name match first
+        # Carried vars first, then DERIVED (computed) vars: a derived var like `done = count≥5` is in
+        # every reachable state record (it's read for display), so query/invariant/temporal can assert
+        # over it too. The carried-only restriction leaked the FSM's internal state encoding (#376).
+        pool = self.carried + self.derived
+        for w in pool:                             # exact full-name match first
             if w["name"] == var:
                 return w
-        for w in self.carried:                     # then short-name (leaf) match
+        for w in pool:                             # then short-name (leaf) match
             if w["name"].split(".")[-1] == var:
                 return w
         return None
