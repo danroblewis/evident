@@ -187,6 +187,11 @@ function buildCommands() {
   });
   cmds.push({ label: "Verify — focus the ⊢ property field", run: () => { const f = $("#inv-prop"); if (f) f.focus(); } });
   cmds.push({ label: "Query — find a reachable state (⊨? ∃)", run: () => { const f = $("#query-prop"); if (f) f.focus(); } });
+  cmds.push({ label: "Glossary — what does a keyword mean? (claim / Δ / := / ⇒ …)", run: () => openGlossary() });
+  // #375: every glossary TERM is a searchable command too — typing "delta" / ":=" / "cyclic" surfaces its
+  // definition. Reuses glossaryItems() (app-symbols.js) — the SAME source as hover + the glossary panel.
+  if (typeof glossaryItems === "function") glossaryItems().forEach(({ term, def }) =>
+    cmds.push({ label: `Glossary: ${term}`, detail: def, run: () => openGlossary(term) }));
   return cmds;
 }
 
@@ -444,4 +449,5 @@ function initPalette() {
     if (t) positionTour(t);
   });
   $("#tour-btn").onclick = (e) => { e.stopPropagation(); startTour(); };
+  if (typeof initGlossary === "function") initGlossary();   // #366/#374/#375 glossary panel + hover hint (app-glossary.js)
 }

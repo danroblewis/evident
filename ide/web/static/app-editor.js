@@ -362,7 +362,9 @@ function initEditorInput() {
     const tok = editor.session.getTokenAt(pos.row, pos.column + 1);
     if (tok) {
       const raw = (tok.value || "").trim();
-      const g = glossFor(raw);
+      // #366: a multi-char operator (`:=`, `++`) spanning the cursor wins over its single-char token
+      // (`:`/`=`), which the Ace mode tokenizes apart — so hovering `:=` teaches "seed", not ":".
+      const g = glossAtCursor(editor.session.getLine(pos.row), pos.column) || glossFor(raw);
       // Not a keyword? If it's a user identifier we can resolve, show its declared type + line
       // (hover-for-type, Marek #282). ⌘/Ctrl-click then jumps to the declaration (below).
       const base = stripIdentPrefix(raw);

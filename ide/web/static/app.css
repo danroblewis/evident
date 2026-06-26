@@ -91,6 +91,34 @@ html,body { margin:0; height:100%; background:var(--bg); color:var(--ink);
 .palette-name { color:var(--ink); }
 .palette-mn { font-size:11px; }
 
+/* #375: the visible glossary panel — a searchable term→meaning list, opened by the 📖 glossary button. */
+#glossary { position:fixed; z-index:60; top:38px; left:14px; width:440px; max-height:74vh;
+  overflow:auto; background:#0b0f14; border:1px solid var(--accent); border-radius:8px;
+  box-shadow:0 8px 28px #000b; font:12px/1.5 ui-monospace,Menlo,monospace; }
+#glossary[hidden] { display:none; }
+.gloss-head { padding:7px 12px; border-bottom:1px solid var(--line); color:var(--dim);
+  position:sticky; top:0; background:#0b0f14; }
+#gloss-search { width:calc(100% - 24px); margin:8px 12px; padding:6px 9px; background:#10151b;
+  color:var(--ink); border:1px solid var(--line); border-radius:6px; font:12px ui-monospace,Menlo,monospace; }
+#gloss-search:focus { border-color:var(--accent); outline:none; }
+.gloss-row { padding:6px 12px; border-bottom:1px solid #141a21; }
+.gloss-term { display:inline-block; min-width:54px; color:var(--accent); font-weight:bold; margin-right:8px; }
+.gloss-def { color:var(--ink); }
+.gloss-none { padding:10px 12px; }
+#glossary-btn { background:#1b2129; color:var(--ink); border:1px solid var(--line);
+  border-radius:6px; padding:2px 8px; font:11px ui-monospace,Menlo,monospace; cursor:pointer; }
+#glossary-btn:hover { border-color:var(--accent); color:var(--accent); }
+
+/* #374: the one-time first-load "hover to learn" hint — a subtle toast above the editor. */
+#gloss-hint { position:fixed; z-index:55; left:14px; bottom:14px; max-width:420px;
+  background:#16313f; color:var(--ink); border:1px solid var(--accent); border-radius:8px;
+  box-shadow:0 6px 20px #000a; padding:9px 13px; font:12px/1.5 ui-monospace,Menlo,monospace;
+  animation:gloss-hint-in .3s ease; }
+#gloss-hint b { color:var(--accent); }
+.gloss-hint-x { margin-left:8px; cursor:pointer; color:var(--dim); }
+.gloss-hint-x:hover { color:var(--bad); }
+@keyframes gloss-hint-in { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+
 /* the ⌘K top-bar hint button */
 #cmdk-hint { background:#1b2129; color:var(--dim); border:1px solid var(--line);
   border-radius:6px; padding:2px 8px; font:11px ui-monospace,Menlo,monospace; cursor:pointer; }
@@ -227,6 +255,11 @@ tr.g-changed > td, tr.g-changed > td.k { background:#2a210e; }   /* a differing 
 #code { position:absolute; top:0; left:0; right:0; bottom:0;
   font:14px/1.7 ui-monospace,Menlo,monospace; }
 .ace_editor { font:14px/1.7 ui-monospace,Menlo,monospace; }
+/* #374: hint that language keywords + type names are HOVERABLE for a plain-English definition — a faint
+   dotted underline marks the glossable word-tokens (fsm/claim/type/enum/match/Int/Bool/…). Subtle so it
+   doesn't fight the syntax colors; the hover card (glossFor) teaches the meaning. */
+.ace_keyword, .ace_entity.ace_name.ace_type {
+  text-decoration:underline dotted rgba(125,133,144,0.55); text-underline-offset:3px; cursor:help; }
 #errors { position:absolute; left:0; right:0; bottom:0; max-height:42%; overflow:auto;
   background:#2a1416; border-top:1px solid var(--bad); color:#ffb3ad;
   padding:8px 12px; white-space:pre-wrap; font-size:12px; z-index:5; }

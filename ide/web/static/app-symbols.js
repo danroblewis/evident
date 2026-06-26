@@ -29,6 +29,9 @@ const GLOSSARY = {
   "∀": "∀  for-all — '∀ x ∈ s : P' means P holds for every x in s.   type \\all",
   "∃": "∃  there-exists.   type \\exists",
   "Δ": "Δ  forward difference — 'Δx' = x − _x (this tick minus last). 'Δx = 1' means x rises by 1 each tick.   type \\Delta",
+  ":=": ":=  seed — 'x ∈ Int := 0' sets x's value on the FIRST tick (there's no previous tick to read). Sugar for 'is_first_tick ⇒ x = 0'. Use it to give a carried variable its starting value.",
+  "++": "++  sequence concatenation — 'a ++ b ++ ⟨c⟩' flattens named chunks into one Seq at load time. (A single '+' is addition.)",
+  "⤳": "⤳  leads-to (liveness) — 'P ⤳ Q' means: every state where P holds is eventually followed by Q. Checked by ⊢ verify.",
   "↦": "↦  maps-to / rename, e.g. (slot ↦ value).   type \\mapsto",
   "≤": "≤  less-than-or-equal.   type \\le", "≥": "≥  greater-than-or-equal.   type \\ge",
   "≠": "≠  not-equal.   type \\ne", "¬": "¬  logical not.   type \\neg",
@@ -56,6 +59,23 @@ function glossFor(t) {
   if (t && t.startsWith("__")) return `${t} — two-ticks-ago read: the value of ${t.slice(2)} two ticks back (the history a ΔΔ second-order model carries).`;
   if (t && t[0] === "_") return `${t} — previous-tick read: the value of ${t.slice(1)} on the prior tick.`;
   if (t === "true" || t === "false") return `${t} — Boolean literal (lowercase). Capital True/False is an unbound name — a silent bug.`;
+  return null;
+}
+
+// #366: multi-CHARACTER operators (`:=`, `++`, `□◇`) tokenize as separate single-char tokens in the Ace
+// mode (the operator rule matches one glyph at a time), so a single-token hover never sees them. Given the
+// hovered LINE + column, return the gloss for a multi-char operator that SPANS the cursor — checked before
+// the single-token path so `:=` teaches "seed", not `:`/`=` separately. Longest operators first.
+const _MULTI_OPS = ["□◇", ":=", "++", "<=", ">=", "!=", "=>", "⤳"];
+function glossAtCursor(line, col) {
+  for (const op of _MULTI_OPS) {
+    // does `op` occupy [start, start+len) covering `col`? scan the few placements around the cursor.
+    for (let s = Math.max(0, col - op.length); s <= col; s++) {
+      if (line.slice(s, s + op.length) === op && col >= s && col <= s + op.length) {
+        const g = GLOSSARY[op]; if (g) return g;
+      }
+    }
+  }
   return null;
 }
 
