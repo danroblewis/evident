@@ -334,6 +334,14 @@ function markDroppedLines(locs, warnings) {
 // --- wiring: auto-indent + token-input + hover tooltips + (markers are call-only) --
 // initEditorInput() mirrors the original top-level editor wiring exactly.
 function initEditorInput() {
+  // #386: find & replace — Ace's ext-searchbox isn't in this bundle (its `replace` lazy-loads a 404'd
+  // file), so bind Ctrl-F / Ctrl-H to our own bar (app-findreplace.js), wired to Ace's core search APIs.
+  if (typeof initFindReplace === "function") initFindReplace();
+  editor.commands.addCommand({ name: "evidentFind", bindKey: { win: "Ctrl-F", mac: "Command-F" },
+    exec: () => { if (typeof openFind === "function") openFind(); } });
+  editor.commands.addCommand({ name: "evidentReplace", bindKey: { win: "Ctrl-H", mac: "Command-Option-F" },
+    exec: () => { if (typeof openFindReplace === "function") openFindReplace(true); } });
+
   // auto-indent on Enter: copy the line's leading whitespace, +1 level after a block opener.
   editor.commands.addCommand({
     name: "evidentNewline",

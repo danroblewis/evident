@@ -174,6 +174,14 @@ function buildCommands() {
   cmds.push({ label: "Export .ev — download this buffer as a file", run: () => exportEv() });
   cmds.push({ label: "Copy share link — a URL that loads this program", run: () => copyShareLink() });
   cmds.push({ label: "Solve claim — ⊨ witness or UNSAT", run: () => solve(false) });
+  // #386: find & replace (Ace's searchbox in replace mode) + rename-symbol (the Evident-aware F2) — both
+  // are discoverable here, not just via the Ctrl-H / F2 chords a newcomer won't guess.
+  cmds.push({ label: "Find & replace — search the buffer, replace / replace-all (Ctrl-H)",
+    run: () => { if (typeof openFindReplace === "function") openFindReplace(true); } });
+  cmds.push({ label: "Rename symbol — rename the identifier at the cursor + its _ / Δ forms everywhere (F2)",
+    run: () => { editor.focus(); editor.execCommand("renameSymbol"); } });
+  cmds.push({ label: "Find — search the buffer (Ctrl-F)",
+    run: () => { if (typeof openFind === "function") openFind(); } });
   if ($("#smtlib-btn")) cmds.push({ label: "Copy SMT-LIB encoding", run: () => clickIf("#smtlib-btn") });
   if ($("#pin-btn")) cmds.push({ label: pinnedA ? "Unpin compare (A)" : "Pin this result — compare next beside it", run: () => togglePin() });
   if (pinnedA && pinnedA.source) cmds.push({ label: "⇄ Model-diff — which reachable states appeared / vanished vs pinned A", run: () => runDiff() });

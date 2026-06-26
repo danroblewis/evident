@@ -255,6 +255,19 @@ tr.g-changed > td, tr.g-changed > td.k { background:#2a210e; }   /* a differing 
 #code { position:absolute; top:0; left:0; right:0; bottom:0;
   font:14px/1.7 ui-monospace,Menlo,monospace; }
 .ace_editor { font:14px/1.7 ui-monospace,Menlo,monospace; }
+/* #386: the find & replace bar — floats top-right of the editor pane (Ace's core search APIs). */
+#findreplace { position:absolute; z-index:8; top:6px; right:14px; background:#0b0f14;
+  border:1px solid var(--accent); border-radius:8px; box-shadow:0 6px 20px #000a; padding:6px;
+  font:12px ui-monospace,Menlo,monospace; }
+#findreplace[hidden] { display:none; }
+.fr-row { display:flex; align-items:center; gap:5px; margin:2px 0; }
+#findreplace input { background:#10151b; color:var(--ink); border:1px solid var(--line);
+  border-radius:5px; padding:4px 7px; font:12px ui-monospace,Menlo,monospace; width:170px; }
+#findreplace input:focus { border-color:var(--accent); outline:none; }
+#findreplace button { background:#1b2129; color:var(--ink); border:1px solid var(--line);
+  border-radius:5px; padding:3px 8px; cursor:pointer; font:12px ui-monospace,Menlo,monospace; }
+#findreplace button:hover { border-color:var(--accent); color:var(--accent); }
+#fr-count { min-width:70px; font-size:11px; }
 /* #374: hint that language keywords + type names are HOVERABLE for a plain-English definition — a faint
    dotted underline marks the glossable word-tokens (fsm/claim/type/enum/match/Int/Bool/…). Subtle so it
    doesn't fight the syntax colors; the hover card (glossFor) teaches the meaning. */
