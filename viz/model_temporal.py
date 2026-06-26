@@ -165,6 +165,13 @@ class TemporalMixin:
         □◇/◇ hold iff EVERY reachable state can reach Q; P⤳Q iff every reachable P-state can. The
         only fair counterexample is a TRAP (a reachable state from which Q is unreachable); on a
         trap the verdict carries `trap=True` + the init→trap run (no escaping cycle to show)."""
+        # An unknown modality used to fall through to ◇ (the default arm of _temporal_verdict) — so a
+        # typo'd / wrong modality would silently run a DIFFERENT check than asked and report its verdict
+        # as if it were the requested one. Reject it loudly instead (safety □ lives in check_invariant).
+        if modality not in ("eventually", "leads_to", "infinitely_often"):
+            raise ValueError(
+                f"unknown temporal modality {modality!r}; use 'eventually' (◇), "
+                "'leads_to' (⤳), or 'infinitely_often' (□◇) — safety □ is check_invariant")
         qpred, qfn = self._conj_predicate(terms)
         states, edges = self.reachable(limit=limit)
         n = len(states)
