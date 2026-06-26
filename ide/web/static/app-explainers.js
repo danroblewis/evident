@@ -30,6 +30,17 @@ const EXPLAIN_FSM_PREAMBLE =
   + "<code>Δx</code> is shorthand for <code>x − _x</code> — the <i>change</i> each tick — so "
   + "<code>Δx = 1</code> literally says \"x rises by one every tick\".";
 
+// #394: the shared framing for the SOLVE / claim samples — the paradigm shift Evident is selling.
+// A claim says WHAT a valid answer must satisfy, not HOW to compute it; the solver searches the space.
+const EXPLAIN_CLAIM_PREAMBLE =
+  "A <b>claim</b> is a <i>relation</i>, not a program: you state the PROPERTIES a valid answer must "
+  + "satisfy — the constraints — and press <b>⊨ Solve</b> to have <b>Z3</b> (an SMT solver) search the "
+  + "whole space for an assignment that meets them. <b>There is no algorithm here.</b> In an ordinary "
+  + "language you'd hand-write a backtracking search; in Evident you describe what a correct answer LOOKS "
+  + "LIKE and the solver finds one. <b>SAT</b> means a satisfying assignment exists — the panel shows a "
+  + "<i>witness</i>; <b>UNSAT</b> means the solver PROVED none can exist; <i>solve-for-X</i> pins some "
+  + "variables (e.g. <code>x = 3</code>) and asks the solver to fill in the rest.";
+
 const EXPLAINERS = {
   "counter · a terminating clock (FSM)": {
     what: "A counter that climbs to 5 and then stops — the simplest difference equation.",
@@ -126,6 +137,80 @@ const EXPLAINERS = {
       + "different rates — that's the nondeterminism.",
     tryit: "Widen the choice to <code>1 ≤ step ∈ Int ≤ 5</code>, or pin it with <code>step = 2</code> "
       + "to make the machine deterministic (count always rises by exactly 2).",
+  },
+
+  // --- SOLVE / claim samples (#394): the "describe the answer, the solver finds it" paradigm ---------
+  "N-queens · an algorithm as constraints (⊨ Solve)": {
+    what: "Place 4 queens on a 4×4 board so none attacks another — written as constraints, not a search.",
+    why: EXPLAIN_CLAIM_PREAMBLE
+      + "<br><br><b>Why no backtracking:</b> you never tell it where to put a queen. You state what a "
+      + "valid board IS: <code>col[i]</code> is the column of the queen in row i, every "
+      + "<code>0 ≤ col[i] ≤ 3</code>, no two share a column (<code>col[i] ≠ col[j]</code>), and neither "
+      + "diagonal collides (<code>col[i] − col[j] ≠ i − j</code>). Press <b>⊨ Solve</b> and Z3 returns a "
+      + "board that satisfies all of it — a <b>SAT</b> witness — or proves none exists (<b>UNSAT</b>).",
+    tryit: "Add <code>col[0] = 0</code> to pin the first queen to column 0, then Solve again — the rest "
+      + "rearrange around it (that's solve-for-X). Or shrink to <code>#col = 3</code>: 3 non-attacking "
+      + "queens on a 3×3 board is impossible, so the solver returns <b>UNSAT</b> — a proof, not a guess.",
+  },
+  "4×4 sudoku · fill the grid (⊨ Solve)": {
+    what: "Fill a 4×4 grid 1–4 so every row, column, and 2×2 box has no repeats — by stating the rules.",
+    why: EXPLAIN_CLAIM_PREAMBLE
+      + "<br><br><b>Why it's just the rules:</b> you don't write a solver — you write the THREE sudoku "
+      + "constraints (each row distinct, each column distinct, each 2×2 box distinct) plus the givens, "
+      + "and Z3 finds a grid that obeys them all at once. The board you get back is a <b>SAT</b> witness; "
+      + "if your givens contradict the rules there's no legal grid, so it returns <b>UNSAT</b>.",
+    tryit: "Pin a cell to a value (a 'given'), Solve, and watch the rest fill in consistently — that's "
+      + "solve-for-X. Set two givens that clash in the same row, and the solver proves it <b>UNSAT</b>.",
+  },
+  "subset-sum · pick items hitting a target (⊨ Solve)": {
+    what: "From a set of weighted items, pick a subset that sums to a target — by constraint, not by trying combinations.",
+    why: EXPLAIN_CLAIM_PREAMBLE
+      + "<br><br><b>Why no enumeration:</b> you don't loop over the 2ⁿ subsets. Each item carries a 0/1 "
+      + "<code>take</code> flag, you constrain the selected weights to equal the target, and Z3 searches "
+      + "for a <code>take</code> assignment that hits it. A satisfying pick is a <b>SAT</b> witness; when "
+      + "no subset can reach the target the solver returns <b>UNSAT</b> — it proved it, didn't just give up.",
+    tryit: "Change the target to a value no subset can reach (e.g. larger than the total weight) and "
+      + "Solve — the solver returns <b>UNSAT</b>. Nudge it back to a reachable total to get a witness again.",
+  },
+  "graph coloring · 3-color a map (⊨ Solve)": {
+    what: "Color the regions of a map with 3 colors so no two neighbors share a color — stated as constraints.",
+    why: EXPLAIN_CLAIM_PREAMBLE
+      + "<br><br><b>Why it's relational:</b> each region is a <code>Hue</code> variable; for every shared "
+      + "border you assert the two regions <code>≠</code> each other; Z3 finds a coloring that satisfies "
+      + "every <code>≠</code> at once. That's the whole program — the adjacency constraints ARE the spec. "
+      + "A valid coloring is a <b>SAT</b> witness; a map that needs 4 colors returns <b>UNSAT</b> for 3.",
+    tryit: "Drop the <code>Hue</code> enum to two colors (delete <code>Blue</code>) and Solve — most maps "
+      + "can't be 2-colored, so the solver proves it <b>UNSAT</b>. Add it back for a witness.",
+  },
+  "topo sort · a DAG's linear order (⊨ Solve)": {
+    what: "Order the nodes of a dependency graph so every edge points forward — described, not computed.",
+    why: EXPLAIN_CLAIM_PREAMBLE
+      + "<br><br><b>Why no Kahn's algorithm:</b> you give each node a position <code>pos[i]</code>, force "
+      + "the positions distinct, and for every edge <code>u → v</code> assert <code>pos[u] &lt; pos[v]</code> "
+      + "(the edge points forward). Z3 finds an ordering that satisfies every edge — a <b>SAT</b> witness. "
+      + "Add an edge that makes a cycle and no linear order can satisfy all of them: <b>UNSAT</b>.",
+    tryit: "Add an edge that closes a cycle (e.g. <code>edges[5] = Edge(4, 0)</code> with <code>#edges = 6</code>) "
+      + "and Solve — a cyclic graph has no topological order, so the solver returns <b>UNSAT</b>.",
+  },
+  "sort · output a sorted permutation (⊨ Solve)": {
+    what: "Produce a sorted version of a list — by stating what 'sorted' MEANS, not by writing a sort.",
+    why: EXPLAIN_CLAIM_PREAMBLE
+      + "<br><br><b>Why no sort algorithm:</b> the output must be (1) a PERMUTATION of the input (same "
+      + "multiset) and (2) non-decreasing (each element ≤ the next). You state both properties; Z3 finds the "
+      + "list that satisfies them — which is exactly the sorted order. No bubble/quick/merge sort is written: "
+      + "the DEFINITION of sorted is the program, and the witness is the answer.",
+    tryit: "Change the input list and Solve again — the solver returns its sorted permutation each time, "
+      + "with no algorithm to update. The spec ('a sorted permutation') never changes.",
+  },
+  "sum-pair · solve-for-X (⊨ Solve, pin x=3)": {
+    what: "Find two numbers that sum to 10 — and watch solve-for-X: pin one, the solver gives you the other.",
+    why: EXPLAIN_CLAIM_PREAMBLE
+      + "<br><br><b>Why this shows solve-for-X:</b> the claim is just <code>x + y = 10</code>. With nothing "
+      + "pinned, Z3 returns ANY pair that sums to 10 — a <b>SAT</b> witness. Pin <code>x = 3</code> in the "
+      + "solve-for-X box and Solve: the solver fills in <code>y = 7</code>, the only value that still "
+      + "satisfies the relation. You constrained part of the answer and let the solver complete it.",
+    tryit: "In the <i>solve-for-X</i> box type <code>x=3</code> and Solve → <code>y=7</code>. Try "
+      + "<code>x=3, y=8</code> — that contradicts <code>x + y = 10</code>, so the solver returns <b>UNSAT</b>.",
   },
 };
 
