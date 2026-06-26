@@ -191,6 +191,8 @@ html,body { margin:0; height:100%; background:var(--bg); color:var(--ink);
 .g-slotx { margin-left:5px; cursor:pointer; color:var(--dim); }
 .g-slotx:hover { color:var(--bad); }
 .g-diffhead { margin:2px 0 8px; }
+/* #365: compact pin buttons inside the compare header (copy A/B as Evident pins). */
+.g-act.g-mini { padding:0 6px; font-size:10px; margin-left:6px; }
 .g-clearcmp { margin-left:8px; cursor:pointer; color:var(--dim); }
 .g-clearcmp:hover { color:var(--bad); }
 .g-difftable { border-collapse:collapse; margin-bottom:10px; }

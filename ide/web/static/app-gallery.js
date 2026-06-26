@@ -65,6 +65,34 @@ function compareRows(a, b) {
   }));
 }
 
+// --- witness → Evident pin text / JSON (#365) -------------------------------------
+// Render ONE witness value as the Evident SOURCE expression for it — what you'd paste to pin it:
+//   Int / Bool        → 3        / true            (lowercase bool, Evident's literal)
+//   enum (string)     → Green                      (a bare variant name)
+//   Seq of primitives → ⟨1, 3, 0, 2⟩               (Evident's sequence literal)
+//   Seq of records    → ⟨ (from ↦ 0, to ↦ 1), … ⟩  (named-field record literals)
+//   record (object)   → (field ↦ v, …)
+// Pure — no DOM. The result round-trips into a program body; the scalar subset also parses in the
+// solve-for-X box (parsePins splits `name = value` on commas). String values that AREN'T bare
+// identifiers (rare) are quoted so they stay valid source.
+function _pinValue(v) {
+  if (v === null || v === undefined) return "?";
+  if (typeof v === "boolean") return v ? "true" : "false";
+  if (typeof v === "number") return String(v);
+  if (typeof v === "string") return /^[A-Za-z_]\w*$/.test(v) ? v : JSON.stringify(v);  // bare enum vs quoted string
+  if (Array.isArray(v)) return "⟨" + v.map(_pinValue).join(", ") + "⟩";
+  if (typeof v === "object") return "(" + Object.keys(v).map((k) => `${k} ↦ ${_pinValue(v[k])}`).join(", ") + ")";
+  return String(v);
+}
+// A whole witness as pin CONSTRAINT lines — one `name = <expr>` per variable, in sorted order.
+// This is the exact text to paste into the program (or, for scalars, the solve-for-X box) to pin
+// the assignment and explore around it (#365). The single source of truth for the pin format.
+function witnessToPins(w) {
+  return Object.keys(w || {}).sort().map((k) => `${k} = ${_pinValue(w[k])}`).join("\n");
+}
+// A whole witness as a var→value JSON map (pretty-printed) — the data form for #365's "save json".
+function witnessToJson(w) { return JSON.stringify(w || {}, null, 2); }
+
 // --- gallery state ----------------------------------------------------------------
 // One persistent collection across solves. `claim` + `source` tag the batch so a fresh
 // solve of a DIFFERENT program resets it (stale witnesses must never sit beside live ones).
@@ -187,6 +215,10 @@ function renderGallery() {
     + `<button class="g-nav" data-goto="${i + 1}" ${i === n - 1 ? "disabled" : ""}>▶</button>`
     + `<button class="g-act" data-bm="${i}" title="bookmark this witness">${_gallery.bookmarks.has(i) ? "★ unbookmark" : "☆ bookmark"}</button>`
     + `<button class="g-act" data-sel="${i}" title="pick this witness for side-by-side compare — fills slot A then B">${pickLbl}</button>`
+    // #365: KEEP this witness — copy it as Evident pin constraints (paste back to pin + explore around it),
+    // or save the var→value map as .json. Operate on the currently-shown witness #i.
+    + `<button class="g-act" data-pins="${i}" title="copy this witness as Evident pin constraints — paste into your program (or the solve-for-X box, for scalars) to pin this assignment and explore around it">⧉ pins</button>`
+    + `<button class="g-act" data-json="${i}" title="download this witness as a .json var→value map">↧ json</button>`
     + `</div>`
     + _compareBar()
     + (cmp || `<div class="g-one">${_witnessBody(_gallery.witnesses[i], _gallery.source, null)}</div>`);
@@ -215,8 +247,38 @@ function _renderCompare() {
     + _witnessBody(w, _gallery.source, changed) + `</div>`;
   return `<div class="g-diffhead dim">comparing #${ia + 1} vs #${ib + 1} — `
     + `${nDiff ? nDiff + " variable" + (nDiff === 1 ? "" : "s") + " differ (Δ)" : "identical witnesses"}`
+    // #365: copy either side's witness as Evident pins straight from the compare header.
+    + ` <button class="g-act g-mini" data-pins="${ia}" title="copy witness A (#${ia + 1}) as Evident pin constraints">⧉ pin A</button>`
+    + `<button class="g-act g-mini" data-pins="${ib}" title="copy witness B (#${ib + 1}) as Evident pin constraints">⧉ pin B</button>`
     + ` <span class="g-clearcmp" data-clearcmp="1">✕ clear compare</span></div>`
     + tbl + `<div class="g-cmprow">${pane(a, "A", ia)}${pane(b, "B", ib)}</div>`;
+}
+
+// #365: copy witness #i as Evident pin constraints to the clipboard (fall back to the solve-for-X
+// box where the clipboard is blocked, so the text is still reachable). setStatus lives in app.js.
+async function _copyWitnessPins(i) {
+  const w = _gallery.witnesses[i];
+  if (!w) return;
+  const text = witnessToPins(w);
+  try {
+    await navigator.clipboard.writeText(text);
+    if (typeof setStatus === "function") setStatus(`witness #${i + 1} copied as Evident pins ✓ — paste to pin it`, "ok");
+  } catch (_) {                                   // clipboard blocked → drop the SCALAR pins into solve-for-X
+    const scalars = Object.keys(w).sort().filter((k) => typeof w[k] !== "object")
+      .map((k) => `${k}=${_pinValue(w[k])}`).join(", ");
+    const box = $("#solve-given"); if (box) box.value = scalars;
+    if (typeof setStatus === "function") setStatus("clipboard blocked — scalar pins put in the solve-for-X box", "ok");
+  }
+}
+// #365: download witness #i as a .json var→value map.
+function _saveWitnessJson(i) {
+  const w = _gallery.witnesses[i];
+  if (!w) return;
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([witnessToJson(w)], { type: "application/json" }));
+  a.download = `${(_gallery.claim || "witness").replace(/[^\w.-]+/g, "_")}-witness-${i + 1}.json`;
+  document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(a.href);
+  if (typeof setStatus === "function") setStatus(`witness #${i + 1} saved as .json ✓`, "ok");
 }
 
 // Delegate clicks for paging/bookmark/select/clear — re-attached on every render (the strip
@@ -243,9 +305,14 @@ function _wireGallery() {
     el.onclick = () => _toggleSelect(parseInt(el.getAttribute("data-sel"), 10)));
   root.querySelectorAll("[data-clearcmp]").forEach((el) =>
     el.onclick = () => { _gallery.selected = []; renderGallery(); });
+  // #365: copy-as-pins / save-json — operate on the witness index in the attribute.
+  root.querySelectorAll("[data-pins]").forEach((el) =>
+    el.onclick = (e) => { e.stopPropagation(); _copyWitnessPins(parseInt(el.getAttribute("data-pins"), 10)); });
+  root.querySelectorAll("[data-json]").forEach((el) =>
+    el.onclick = (e) => { e.stopPropagation(); _saveWitnessJson(parseInt(el.getAttribute("data-json"), 10)); });
 }
 
 // node test hook (no-op in the browser, where `module` is undefined).
 if (typeof module !== "undefined" && module.exports) {
-  module.exports = { witnessLeaves, diffWitnesses, seqDiffIndices, compareRows };
+  module.exports = { witnessLeaves, diffWitnesses, seqDiffIndices, compareRows, witnessToPins, witnessToJson };
 }
