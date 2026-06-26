@@ -173,6 +173,27 @@ function parseScopeDecls(text) {
 // Names only (the completer's view), de-duplicated, prefixes stripped.
 function parseScopeIdents(text) { return [...parseScopeDecls(text).keys()]; }
 
+// #389: the NON-variable declared symbols of the buffer — claim/fsm/type/enum NAMES and enum VARIANTS —
+// so the completer offers `count` AND the claim you're calling, the type you're declaring against, and a
+// variant inside a match. A light regex scan of the decl forms (no parser): { claims, types, variants }.
+// Pure (text → {…}) so it's unit-testable headless.
+function parseBufferSymbols(text) {
+  const src = text || "";
+  const grab = (re) => { const out = []; let m; while ((m = re.exec(src)) !== null) out.push(m[1]); return out; };
+  // claim / fsm names (the callable entries + helper claims)
+  const claims = grab(/^\s*(?:claim|fsm|subclaim)\s+([A-Za-z_]\w*)/gm);
+  // type / enum / schema NAMES (the declared types you write `x ∈ Name` against)
+  const types = grab(/^\s*(?:type|enum|schema)\s+([A-Za-z_]\w*)/gm);
+  // enum VARIANTS: scan each `enum E = A | B(Int) | C` and split its RHS on `|`, taking each variant's name.
+  const variants = [];
+  let e; const enumRe = /^\s*enum\s+[A-Za-z_]\w*\s*=\s*([^\n]+)/gm;
+  while ((e = enumRe.exec(src)) !== null) {
+    e[1].split("|").forEach((part) => { const v = (part.match(/\s*([A-Za-z_]\w*)/) || [])[1]; if (v) variants.push(v); });
+  }
+  const uniq = (a) => [...new Set(a)];
+  return { claims: uniq(claims), types: uniq(types), variants: uniq(variants) };
+}
+
 // Cached decls for the hover / go-to-def handlers — the hover fires on every mousemove, so we
 // re-parse only when the buffer text actually changed.
 let _declsCache = { src: null, decls: null };
@@ -187,16 +208,29 @@ function scopeDecls() {
 // (the whole point — typo-defense against the silent Δcountt drop).
 const evidentCompleter = {
   getCompletions(ed, session, pos, prefix, callback) {
+    // #389/#215: a `\name` token belongs to the backslash SYMBOL hint (app-symhint.js), not this
+    // identifier completer — if a backslash sits immediately before the prefix, stand down so the two
+    // never stack at the cursor (the symhint owns `\`-tokens; this completer owns word-tokens).
+    const line = session.getLine(pos.row);
+    if (line.slice(0, pos.column).match(/\\[A-Za-z]*$/)) { callback(null, []); return; }
     const base = stripIdentPrefix(prefix || "");
     const lower = base.toLowerCase();
     const matches = (name) => !lower || name.toLowerCase().startsWith(lower);
-    const items = [];
-    for (const k of COMPLETE_KEYWORDS) if (matches(k)) items.push({ caption: k, value: k, meta: "keyword", score: 900 });
-    for (const t of COMPLETE_TYPES) if (matches(t)) items.push({ caption: t, value: t, meta: "type", score: 800 });
+    const items = [], seen = new Set();
+    const add = (name, meta, score) => {
+      if (name === base || seen.has(name) || !matches(name)) return;
+      seen.add(name); items.push({ caption: name, value: name, meta, score });
+    };
     // in-scope vars score HIGHEST — they're the typo-defense and the most specific to this buffer.
-    for (const v of parseScopeIdents(session.getValue())) {
-      if (v !== base && matches(v)) items.push({ caption: v, value: v, meta: "var", score: 1000 });
-    }
+    for (const v of parseScopeIdents(session.getValue())) add(v, "var", 1000);
+    // #389: the buffer's declared NAMES — claim/fsm names (call them), declared types (∈ them), enum
+    // variants (use them in a match / a literal). Scored just below in-scope vars, above built-ins.
+    const sym = parseBufferSymbols(session.getValue());
+    for (const c of sym.claims) add(c, "claim", 950);
+    for (const t of sym.types) add(t, "type", 940);
+    for (const vv of sym.variants) add(vv, "variant", 930);
+    for (const k of COMPLETE_KEYWORDS) add(k, "keyword", 900);
+    for (const t of COMPLETE_TYPES) add(t, "type", 800);   // built-in Int/Bool/… (deduped against buffer types)
     callback(null, items);
   },
 };
