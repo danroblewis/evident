@@ -15,8 +15,8 @@ import matplotlib.pyplot as plt                          # noqa: E402
 
 from claim_structure import solution_structure           # noqa: E402
 from render_common import (                                # noqa: E402
-    GREEN as _GREEN, BLUE as _BLUE, GREY as _GREY,
-    short as _short, verdict_banner,
+    GREEN as _GREEN, BLUE as _BLUE, GREY as _GREY, ARROW as _ARROW,
+    short as _short, verdict_banner, draw_range_bar, range_extent,
 )
 
 
@@ -27,19 +27,49 @@ def _num(v):
         return None
 
 
+# An open-ended bar (half-bounded numeric) extends this far past its finite end before the arrow,
+# expressed as a fraction of the drawn value span so the arrow reads at any scale.
+_OPEN_FRAC = 0.18
+
+
 def _rows(r):
-    """Unified [(name, kind, lo, hi, forced_val)] — forced first, then free, top-down."""
-    rows = [(n, "forced", None, None, v) for n, v in r["backbone"]]
-    rows += [(n, "free", (rng or (None, None))[0], (rng or (None, None))[1], None)
-             for n, rng in r["free"]]
+    """Unified [(name, kind, lo, hi, numeric, forced_val)] — forced first, then free, top-down.
+
+    `numeric` distinguishes a numeric var unbounded on a side (rng is a 2-tuple with a None end —
+    half-bounded, draws an arrow) from a genuinely non-numeric var (rng is None entirely — bool/enum,
+    no bar at all). The old code collapsed both via `rng or (None, None)`, which mislabelled a
+    half-bounded numeric (a≥3) as 'free (non-numeric)' (#379)."""
+    rows = [(n, "forced", None, None, True, v) for n, v in r["backbone"]]
+    for n, rng in r["free"]:
+        if rng is None:                                   # bool / enum — not a numeric range at all
+            rows.append((n, "free", None, None, False, None))
+        else:
+            rows.append((n, "free", rng[0], rng[1], True, None))
     rows.reverse()
     return rows
 
 
+def _bar_drawer(ax, y):
+    """A `bar(left, width, finite)` callback for render_common.draw_range_bar: this renderer's barh
+    style — a bordered blue bar + '[lo, hi]' label when finite (closed), a borderless stub when open
+    (the arrow itself is drawn by draw_range_bar)."""
+    def bar(left, width, finite):
+        if finite:
+            ax.barh(y, width or 0.25, left=left, height=0.45, color="#90caf9",
+                    edgecolor=_BLUE, lw=1.5, zorder=2)
+            ax.annotate(f"[{left:g}, {left + width:g}]", (left + width, y), xytext=(6, 0),
+                        textcoords="offset points", va="center", fontsize=9, color=_BLUE)
+        else:
+            ax.barh(y, width, left=left, height=0.45, color="#90caf9", edgecolor="none", zorder=2)
+    return bar
+
+
 def _draw(ax, r):
     rows = _rows(r)
-    labels, colors = [], []
-    for y, (n, kind, lo, hi, fv) in enumerate(rows):
+    stub = range_extent([v for (_, _, lo, hi, _, fv) in rows
+                         for v in (lo, hi, _num(fv))]) * _OPEN_FRAC
+    labels, colors, reach = [], [], []
+    for y, (n, kind, lo, hi, numeric, fv) in enumerate(rows):
         labels.append(_short(n))
         if kind == "forced":
             colors.append(_GREEN)
@@ -48,15 +78,16 @@ def _draw(ax, r):
             ax.scatter([x], [y], marker="D", s=130, color=_GREEN, edgecolor="black", zorder=3)
             ax.annotate(f"= {fv}", (x, y), xytext=(9, 0), textcoords="offset points",
                         va="center", color=_GREEN, fontweight="bold", fontsize=10)
-        else:
+        elif not numeric:                                 # genuinely non-numeric (bool / enum)
             colors.append(_BLUE)
-            if lo is not None and hi is not None:
-                ax.barh(y, (hi - lo) or 0.25, left=lo, height=0.45, color="#90caf9",
-                        edgecolor=_BLUE, lw=1.5, zorder=2)
-                ax.annotate(f"[{lo}, {hi}]", (hi, y), xytext=(6, 0), textcoords="offset points",
-                            va="center", fontsize=9, color=_BLUE)
-            else:
-                ax.annotate("free (non-numeric)", (0, y), va="center", fontsize=9, color=_BLUE)
+            ax.annotate("free (non-numeric)", (0, y), va="center", fontsize=9, color=_BLUE)
+        else:                                             # numeric — closed bar OR open-ended arrow (#379)
+            colors.append(_BLUE if (lo is not None and hi is not None) else _ARROW)
+            reach.append(draw_range_bar(ax, y, lo, hi, stub, _bar_drawer(ax, y)))
+    if any(lo is None or hi is None for _, _, lo, hi, num, _ in rows if num):
+        x0, x1 = ax.get_xlim()                            # leave headroom so an open end reads as open
+        ax.set_xlim(min([x0] + [rr[0] for rr in reach]) - stub * 0.5,
+                    max([x1] + [rr[1] for rr in reach]) + stub * 0.5)
     ax.set_yticks(range(len(rows))); ax.set_yticklabels(labels, fontsize=11)
     for tick, c in zip(ax.get_yticklabels(), colors):
         tick.set_color(c)
@@ -100,10 +131,17 @@ def render(smt2_path, schema_path, out_path):
             rels.append("implied: " + "; ".join(x["eq"] for x in r["relations"]))  # relations are {eq, core} (#341)
         nrel = len(r["equalities"]) + len(r.get("inequalities", [])) + len(r.get("relations", []))
         reltxt = (" · " + " · ".join(rels)) if rels else ""
+        # #379: a numeric free var with a None bound-end is half- (or fully-) unbounded. The card must
+        # NOT read as a closed determination — acknowledge the open side(s) so it never implies a finite
+        # boundary it doesn't have.
+        n_open = sum(1 for _, rng in r["free"]
+                     if rng is not None and (rng[0] is None or rng[1] is None))
+        opentxt = (f" · {n_open} var{'' if n_open == 1 else 's'} open-ended (unbounded on a side — see ⟶)"
+                   if n_open else "")
         # "N relations" (not "implied") — the count spans forced-equal + forced-different + implied-affine,
         # each labelled in the prose; "implied" is only the affine subset, so it'd overclaim the count (#340).
         msg = (f"{nb} forced (backbone) · {nf} free · {nrel} relation"
-               f"{'' if nrel == 1 else 's'}{reltxt} — what the claim DETERMINES, solved abstractly (Z3)")
-        col = _GREEN
+               f"{'' if nrel == 1 else 's'}{reltxt}{opentxt} — what the claim DETERMINES, solved abstractly (Z3)")
+        col = _ARROW if n_open else _GREEN
     verdict_banner(fig, ax, out_path, f"{name} — solution structure", msg, col,
                    rect_bottom=0.06)

@@ -30,18 +30,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import z3
 
-_SHORT = lambda n: n.split(".")[-1]
-
-
-def _num(z):
-    try:
-        return z.as_long()
-    except Exception:
-        pass
-    try:
-        return round(float(z.as_fraction()), 3)
-    except Exception:
-        return None
+from render_common import ARROW, draw_range_bar, range_extent, short as _SHORT   # #379 shared bar prims
 
 
 def _load_claim(smt2_path, schema_path):
@@ -279,31 +268,67 @@ def render(smt2_path, schema_path, out_path):
                        "this claim has no numeric variable to bound\n"
                        "(its variables are Seq/enum — press ⊨ Solve for a witness)")
     if not shown:
-        return _na(out_path, f"{name} — solution space",
-                   "the claim's numeric variables are unbounded\n(no finite solution-space boundary)")
+        # No fully-bounded numeric var to anchor a 2D region — but a HALF-bounded one (a≥3) is still
+        # numeric and must render as an arrow, not be dropped to a bare N/A. Only when EVERY numeric var
+        # is unbounded on BOTH sides is there genuinely no boundary to draw.
+        half = [_SHORT(v["name"]) for v in numeric
+                if any(b is not None for b in bounds[_SHORT(v["name"])])]
+        if not half:
+            return _na(out_path, f"{name} — solution space",
+                       "the claim's numeric variables are unbounded\n(no finite solution-space boundary)")
     return _numeric_view(out_path, name, body, consts, numeric, bounds, shown)
 
 
+def _draw_boundary_panel(axL, numeric, bounds):
+    """Left panel: each numeric var's solved range — a closed bar when finite both sides, an arrow off
+    the open side when half- (or fully-) unbounded (#379). Draws EVERY numeric var (a half-bounded one
+    is shown as an arrow, never silently dropped). Returns the list of open-ended var short-names so the
+    caller can downgrade the 'exact' framing. `_bar` is this panel's own bar style (blue line + `|`
+    end-caps when closed; a borderless stub when open — the arrow itself comes from draw_range_bar)."""
+    def _bar(y):
+        def bar(left, width, finite):
+            if finite:
+                hi = left + width
+                axL.plot([left, hi], [y, y], lw=9, solid_capstyle="round", color="#58a6ff", alpha=0.5)
+                axL.plot([left, hi], [y, y], "|", color="#0f1419", markersize=16, markeredgewidth=2)
+                axL.text(left, y + 0.2, f"{left:g}", ha="left", va="bottom", fontsize=9, color="#7d8590")
+                axL.text(hi, y + 0.2, f"{hi:g}", ha="right", va="bottom", fontsize=9, color="#7d8590")
+            else:
+                axL.plot([left, left + width], [y, y], lw=9, solid_capstyle="butt",
+                         color="#58a6ff", alpha=0.45)
+        return bar
+
+    allnames = [_SHORT(v["name"]) for v in numeric]
+    stub = range_extent([b for nm in allnames for b in bounds[nm]]) * 0.18
+    open_vars = [nm for nm in allnames if None in bounds[nm]]
+    ys = list(range(len(allnames)))
+    reach = [draw_range_bar(axL, y, bounds[nm][0], bounds[nm][1], stub, _bar(y))
+             for y, nm in zip(ys, allnames)]
+    if open_vars:                                         # leave headroom so an arrow's open end reads open
+        xs = [v for r in reach for v in r]
+        axL.set_xlim(min(xs) - stub * 0.6, max(xs) + stub * 0.6)
+    axL.set_yticks(ys); axL.set_yticklabels(allnames)
+    for tick, nm in zip(axL.get_yticklabels(), allnames):
+        if nm in open_vars:
+            tick.set_color(ARROW)
+    axL.set_ylim(-0.7, len(allnames) - 0.3)
+    axL.set_xlabel("value")
+    title = ("variable boundaries — exact (z3 Optimize over the constraint)" if not open_vars
+             else "variable boundaries — partially unbounded "
+                  f"({len(open_vars)} var{'' if len(open_vars) == 1 else 's'} open-ended ⟶)")
+    axL.set_title(title, fontsize=11)
+    axL.grid(axis="x", alpha=0.2)
+    return open_vars
+
+
 def _numeric_view(out_path, name, body, consts, numeric, bounds, shown):
-    """Left: each numeric var's exact solved range. Right (≥2 vars): the real
-    feasible region of the two principal vars, solved per cell (not a box)."""
+    """Left: each numeric var's exact solved range (half-bounded vars draw an arrow, #379). Right
+    (≥2 fully-bounded vars): the real feasible region of the two principal vars, solved per cell."""
     have2d = len(shown) >= 2
     fig, axes = plt.subplots(1, 2 if have2d else 1, figsize=(14 if have2d else 8.5, 6.5))
     axL = axes[0] if have2d else axes
 
-    # --- left: each variable's EXACT solved range ---
-    ys = list(range(len(shown)))
-    for y, nm in zip(ys, shown):
-        lo, hi = bounds[nm]
-        axL.plot([lo, hi], [y, y], lw=9, solid_capstyle="round", color="#58a6ff", alpha=0.5)
-        axL.plot([lo, hi], [y, y], "|", color="#0f1419", markersize=16, markeredgewidth=2)
-        axL.text(lo, y + 0.2, f"{lo:g}", ha="left", va="bottom", fontsize=9, color="#7d8590")
-        axL.text(hi, y + 0.2, f"{hi:g}", ha="right", va="bottom", fontsize=9, color="#7d8590")
-    axL.set_yticks(ys); axL.set_yticklabels(shown)
-    axL.set_ylim(-0.7, len(shown) - 0.3)
-    axL.set_xlabel("value")
-    axL.set_title("variable boundaries — exact (z3 Optimize over the constraint)", fontsize=11)
-    axL.grid(axis="x", alpha=0.2)
+    open_vars = _draw_boundary_panel(axL, numeric, bounds)
 
     def _by_short(short):                      # the var dict (full name + kind) for a short name
         return next((v for v in numeric if _SHORT(v["name"]) == short),
@@ -344,8 +369,12 @@ def _numeric_view(out_path, name, body, consts, numeric, bounds, shown):
         if feas_x:
             axR.legend(loc="best", fontsize=9)
 
-    fig.suptitle(f"{name} — solution space (a claim) · boundaries z3-solved exact",
-                 fontsize=13)
+    # #379: only stamp "exact" when EVERY numeric var is finite both sides; downgrade honestly otherwise
+    # so the card never asserts a closed boundary for a var that's open on a side.
+    framing = ("boundaries z3-solved exact" if not open_vars
+               else f"partially unbounded — {len(open_vars)} var"
+                    f"{'' if len(open_vars) == 1 else 's'} open-ended (z3 Optimize: ±∞)")
+    fig.suptitle(f"{name} — solution space (a claim) · {framing}", fontsize=13)
     fig.tight_layout(rect=[0, 0, 1, 0.96])
     fig.savefig(out_path, dpi=120); plt.close(fig)
     return out_path

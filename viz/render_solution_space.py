@@ -181,8 +181,13 @@ def render(smt2_path, schema_path, out_path):
 
     bounds, boundtag, all_exact, proven = _compute_bounds(m, struct, n)
 
-    numeric = [_SHORT(v["name"]) for v in m.carried if v.get("kind") in ("int", "real")]
-    numeric = [nm for nm in numeric if nm in bounds]
+    all_numeric = [_SHORT(v["name"]) for v in m.carried if v.get("kind") in ("int", "real")]
+    numeric = [nm for nm in all_numeric if nm in bounds]
+    # #379: a numeric var the bounds pass dropped is one z3 Optimize proved UNBOUNDED (±∞) over the
+    # unroll. It carries no finite bar, so it's omitted from the left panel — but its presence means the
+    # boundary is NOT closed, so the card must not stamp "exact". (BFS bounds are always finite, so this
+    # only fires on the inductive-solve path where a var is genuinely open-ended.)
+    any_unbounded = len(numeric) < len(all_numeric)
     if not numeric:
         return _na(out_path, f"{m.fsm} — solution space",
                    "solution space needs a numeric variable\n(this program's state is categorical —\nsee state_graph for its boundary)")
@@ -209,7 +214,8 @@ def render(smt2_path, schema_path, out_path):
         axR = axes[1]
         plotted = _draw_numeric_panel(axR, m, states, fps, bounds, numeric)
 
-    framing = ("boundary z3-proven exact" if (proven and all_exact)
+    framing = ("partially unbounded — a numeric var is open-ended (±∞)" if any_unbounded
+               else "boundary z3-proven exact" if (proven and all_exact)
                else "boundary z3-proven over horizon" if proven
                else "boundary exhaustively solved" if all_exact
                else "boundary sampled (capped)")
