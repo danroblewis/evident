@@ -105,6 +105,14 @@ function renderSolve(d, given) {
   }
 
   // single SAT witness
+  const src0 = (typeof editor !== "undefined") ? editor.getValue() : "";
+  // #393: if this model has PERSISTED bookmarks, route the single witness into the GALLERY so the
+  // bookmarked "good solution" is visible + usable (compare/pins) right beside the fresh one — instead of
+  // the bare single-witness view that would hide them. loadGallery merges in the bookmarks + marks them ★.
+  if (typeof _bmFor === "function" && _bmFor(d.claim || "claim").length && d.bindings && typeof loadGallery === "function") {
+    loadGallery([d.bindings], d.claim || "claim", src0, false);
+    return;
+  }
   head.innerHTML = `<span class="sat">⊨ SAT</span> — <b>${d.claim || "claim"}</b> has a witness`
     + (pinned.length ? ` <span class="dim">(pinned: ${pinned.join(", ")})</span>` : "");
   const keys = Object.keys(d.bindings || {}).sort();

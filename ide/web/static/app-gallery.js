@@ -98,17 +98,53 @@ function witnessToJson(w) { return JSON.stringify(w || {}, null, 2); }
 // solve of a DIFFERENT program resets it (stale witnesses must never sit beside live ones).
 const _gallery = { witnesses: [], shown: 0, bookmarks: new Set(), selected: [], claim: "", source: "" };
 
+// --- bookmark PERSISTENCE (#393) --------------------------------------------------
+// Bookmarked witnesses survive a re-solve, a sample reload, AND a page refresh — Alloy-style "keep the
+// good instance for the session". We persist ONLY the explicitly-bookmarked witnesses (the var→value
+// maps), keyed by the MODEL (the claim/fsm name) so counter's bookmarks never bleed onto a different
+// program, capped per model so the store stays bounded. The live `_gallery.bookmarks` index Set is
+// rebuilt from these on every load — the persisted maps are the source of truth.
+const _BM_KEY = "evident-witness-bookmarks";   // localStorage: { modelName: [witness, …] }
+const _BM_CAP = 20;                            // per-model bookmark cap (bounded)
+function _bmStore() {
+  try { const o = JSON.parse(localStorage.getItem(_BM_KEY) || "{}"); return (o && typeof o === "object" && !Array.isArray(o)) ? o : {}; }
+  catch (e) { return {}; }
+}
+function _bmWrite(store) { try { localStorage.setItem(_BM_KEY, JSON.stringify(store)); } catch (e) {} }
+function _bmFor(model) { const s = _bmStore()[model]; return Array.isArray(s) ? s : []; }
+// Add/remove witness `w` to/from `model`'s persisted bookmark list (de-dup by JSON identity, capped).
+function _bmToggle(model, w) {
+  if (!model) return;
+  const store = _bmStore(), list = Array.isArray(store[model]) ? store[model] : [];
+  const k = JSON.stringify(w), at = list.findIndex((x) => JSON.stringify(x) === k);
+  if (at >= 0) list.splice(at, 1);
+  else { list.push(w); if (list.length > _BM_CAP) list.shift(); }   // bounded: drop the oldest past the cap
+  if (list.length) store[model] = list; else delete store[model];
+  _bmWrite(store);
+}
+
 // Load an enumerated batch (or a single witness) into the gallery. A new claim/source
 // REPLACES the collection; the same target APPENDS de-duplicated (so a single Solve after
-// an enumeration keeps witness #1 beside the new one without dupes).
+// an enumeration keeps witness #1 beside the new one without dupes). #393: the model's PERSISTED
+// bookmarks are merged in (so they survive a re-solve / reload / refresh) and the bookmark index Set
+// is rebuilt from them — a restored bookmark sits in the gallery, marked ★, fully usable (compare/pins).
 function loadGallery(witnesses, claim, source, complete) {
   const same = _gallery.claim === claim && _gallery.source === source;
   if (!same) { _gallery.witnesses = []; _gallery.bookmarks = new Set(); _gallery.selected = []; }
   _gallery.claim = claim; _gallery.source = source; _gallery.complete = complete;
   const seen = new Set(_gallery.witnesses.map((w) => JSON.stringify(w)));
-  witnesses.forEach((w) => { const k = JSON.stringify(w); if (!seen.has(k)) { seen.add(k); _gallery.witnesses.push(w); } });
+  const addWitness = (w) => { const k = JSON.stringify(w); if (!seen.has(k)) { seen.add(k); _gallery.witnesses.push(w); } };
+  // #393: bring this model's persisted bookmarks in FIRST (so they lead + survive a fresh solve)…
+  _bmFor(claim).forEach(addWitness);
+  // …then the freshly-solved witnesses (de-duped against the bookmarks + each other).
+  witnesses.forEach(addWitness);
+  // rebuild the live bookmark index Set from the persisted maps (the source of truth).
+  const persisted = new Set(_bmFor(claim).map((w) => JSON.stringify(w)));
+  _gallery.bookmarks = new Set();
+  _gallery.witnesses.forEach((w, i) => { if (persisted.has(JSON.stringify(w))) _gallery.bookmarks.add(i); });
   _gallery.shown = same ? _gallery.shown : 0;
   if (_gallery.shown >= _gallery.witnesses.length) _gallery.shown = _gallery.witnesses.length - 1;
+  if (_gallery.shown < 0) _gallery.shown = 0;
   renderGallery();
 }
 
@@ -117,8 +153,11 @@ function _galleryGoto(i) {
   _gallery.shown = i < 0 ? 0 : (i > n - 1 ? n - 1 : i);
   renderGallery();
 }
+// #393: toggling a bookmark flips the live index Set AND persists/unpersists the witness MAP (keyed by
+// the model) so it survives a re-solve / reload / refresh.
 function _toggleBookmark(i) {
   if (_gallery.bookmarks.has(i)) _gallery.bookmarks.delete(i); else _gallery.bookmarks.add(i);
+  _bmToggle(_gallery.claim, _gallery.witnesses[i]);
   renderGallery();
 }
 // #362: A and B are EXPLICIT ordered slots the user sets DIRECTLY (never "current minus picked").
