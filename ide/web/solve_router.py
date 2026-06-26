@@ -93,24 +93,41 @@ def optimize(req: OptimizeReq):
 
 class InvariantReq(BaseModel):
     source: str
-    var: str
-    op: str
-    value: str | int | float | bool
+    # SINGLE-VAR path (back-compat): var/op/value name one comparison.
+    var: str | None = None
+    op: str | None = None
+    value: str | int | float | bool | None = None
+    # MULTI-TERM path (#381): a CONJUNCTION (`terms`) or an IMPLICATION
+    # (`antecedent` ⇒ `consequent`). Each is a list of [var, op, value] triples.
+    terms: list | None = None
+    antecedent: list | None = None
+    consequent: list | None = None
     scope: int | None = None        # verification bound — the scope knob (#21/#84)
 
 
 @router.post("/api/invariant")
 def invariant(req: InvariantReq):
-    """Assert-and-check a safety invariant over the reachable set: does `var op value` hold on
-    EVERY reachable state? Returns holds + (when finite & fully explored) a proof flag, or the
-    first reachable counterexample state (with the trace that reaches it)."""
+    """Assert-and-check a safety invariant over the reachable set: does the property hold on
+    EVERY reachable state? Three shapes — a single `var op value`, a CONJUNCTION of `terms`, or
+    an IMPLICATION `antecedent ⇒ consequent` (#381). Returns holds + (when finite & fully
+    explored) a proof flag, or the first reachable counterexample state (with its trace). For an
+    implication the counterexample is always a REAL reachable state where the antecedent holds
+    and the consequent fails — never vacuous."""
     with _LOCK, tempfile.TemporaryDirectory() as work:
         ok, prefix, dropped, msg = _export(req.source, work)
         if not ok:
             return {"ok": False, "error": msg}
         try:
             m = load_model(prefix + ".smt2", prefix + ".schema.json")
-            return {"ok": True, **m.check_invariant(req.var, req.op, req.value, limit=effective_scope(req))}
+            scope = effective_scope(req)
+            if req.antecedent is not None or req.consequent is not None:
+                result = m.check_invariant_predicate(
+                    antecedent=req.antecedent, consequent=req.consequent, limit=scope)
+            elif req.terms is not None:
+                result = m.check_invariant_predicate(terms=req.terms, limit=scope)
+            else:
+                result = m.check_invariant(req.var, req.op, req.value, limit=scope)
+            return {"ok": True, **result}
         except Exception as e:
             return {"ok": False, "error": str(e)}
 

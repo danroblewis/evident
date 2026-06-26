@@ -90,20 +90,75 @@ class QueryMixin:
           }
         """
         name, predicate, ok = self._build_invariant_check(var, op, value)
+        return self._scan_invariant(predicate, ok, limit, violating_name=name)
 
+    def _scan_invariant(self, predicate, ok, limit, violating_name=None):
+        """The all-reachable-states scan shared by every safety check (single-var
+        check_invariant AND multi-term check_invariant_predicate): walk the reachable
+        set in BFS-discovery order and return the SAME holds/counterexample/exhaustive
+        contract. `ok(state)->bool` is the per-state predicate; the FIRST state where
+        `ok` is False is the counterexample (BFS order ⇒ deterministic). `violating_name`,
+        when given, names the single leaf to report under `violating_value` (single-var
+        path); for a compound predicate it's None — the full counterexample state carries
+        the witness, and no single leaf is the "violating value"."""
         states, edges = self.reachable(limit=limit)
         exhaustive = len(states) < limit          # BFS stopped on its own, not capped
         checked = 0
         for idx, sv in enumerate(states):          # BFS-discovery order = deterministic
             checked += 1
             if not ok(sv):
+                vv = sv.get(violating_name) if violating_name is not None else None
                 return {"holds": False, "checked": checked, "exhaustive": exhaustive,
-                        "counterexample": dict(sv), "violating_value": sv.get(name),
+                        "counterexample": dict(sv), "violating_value": vv,
                         "trace": self._trace_to(idx, edges, states),  # the path init→violation
                         "predicate": predicate}
         return {"holds": True, "checked": checked, "exhaustive": exhaustive,
                 "counterexample": None, "violating_value": None, "trace": None,
                 "predicate": predicate}
+
+    def check_invariant_predicate(self, terms=None, antecedent=None, consequent=None,
+                                  limit=400):
+        """VERIFY a MULTI-TERM safety property over the reachable set — the compound
+        generalization of `check_invariant`. Two shapes, same all-reachable scan and
+        identical holds/counterexample/exhaustive contract:
+
+          (a) CONJUNCTION — pass `terms` (a list of [var, op, value]); the invariant is
+              `∧terms`, built via `_conj_predicate`. Holds iff every reachable state
+              satisfies every term.
+
+          (b) IMPLICATION — pass `antecedent` AND `consequent` (each a list of terms);
+              the invariant is `(∧antecedent) ⇒ (∧consequent)`, whose per-state predicate
+              is `¬(∧antecedent) ∨ (∧consequent)`. Holds iff no reachable state has the
+              antecedent TRUE while the consequent FALSE.
+
+        SOUNDNESS — the counterexample is the FIRST reachable state where the per-state
+        predicate is FALSE. For an implication, `ok = ¬A ∨ C` is false EXACTLY when
+        `A ∧ ¬C` — so a returned counterexample is ALWAYS a real reachable state where the
+        antecedent HOLDS and the consequent FAILS, never a vacuous state (one that just
+        falsifies the antecedent). The exhaustive/bounded reading is the same as
+        `check_invariant`: exhaustive HOLDS is a genuine proof; a counterexample is always
+        real.
+
+        `violating_value` is None for the compound path (no single leaf is THE violator);
+        the full `counterexample` state is the witness."""
+        if antecedent is not None or consequent is not None:
+            ant = antecedent or []
+            con = consequent or []
+            if not ant:
+                raise ValueError("implication needs a non-empty antecedent")
+            if not con:
+                raise ValueError("implication needs a non-empty consequent")
+            a_pretty, a_fn = self._conj_predicate(ant)
+            c_pretty, c_fn = self._conj_predicate(con)
+            predicate = f"({a_pretty}) ⇒ ({c_pretty})"
+            # per-state: ¬(∧antecedent) ∨ (∧consequent) — false iff A∧¬C (a real, non-vacuous cex)
+            def ok(sv):
+                return (not a_fn(sv)) or c_fn(sv)
+            return self._scan_invariant(predicate, ok, limit)
+        if not terms:
+            raise ValueError("conjunction needs at least one term")
+        predicate, fn = self._conj_predicate(terms)
+        return self._scan_invariant(predicate, fn, limit)
 
     def _build_invariant_check(self, var, op, value):
         """Parse a check_invariant predicate spec into `(name, predicate, ok)`: canonicalize
