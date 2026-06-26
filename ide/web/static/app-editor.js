@@ -134,74 +134,10 @@ const COMPLETE_KEYWORDS = [
 ];
 const COMPLETE_TYPES = ["Int", "Bool", "Nat", "Real", "String", "Seq", "Set"];
 
-// Strip the carried-var read/delta prefixes (ΔΔ, Δ, __, _, ¬) so the BASE name is what we
-// store and match against — `Δcount`, `_count`, `¬done` all reduce to `count`/`done`, and a
-// prefix typed at the call site (`Δcoun`) still completes the declared base (`count`).
-function stripIdentPrefix(name) {
-  return (name || "").replace(/^(?:ΔΔ|Δ|__|_|¬)+/, "");
-}
-
-// Parse the buffer for declared/carried names → {type, line}: the LHS of `name ∈ Type` and
-// chained-membership decls (`0 ≤ count ∈ Int ≤ 5` → count:Int; `x, y, z ∈ Int`; first-line params
-// `type IVec2(x, y ∈ Int)`), plus `name = expr` carried/assignment LHS (type inferred → null).
-// `line` is 1-based. First declaration wins. Pure (text → Map) so it's unit-testable headless.
-function parseScopeDecls(text) {
-  const decls = new Map();
-  const IDENT = "[A-Za-zΔ¬_][A-Za-z0-9_]*";
-  const lineOf = (idx) => text.slice(0, idx).split("\n").length;
-  // (1) `… name(, name)* ∈ Type` — grab the ident run left of ∈ AND the type token right of it
-  //     (an identifier with an optional `(…)` for Seq(Int)/IVec2). Chained `0 ≤ count ∈ Int ≤ 5`
-  //     leaves `count` as the token before ∈ and `Int` as the type after it.
-  const memb = new RegExp("(" + IDENT + "(?:\\s*,\\s*" + IDENT + ")*)\\s*∈\\s*([A-Za-z_]\\w*(?:\\s*\\([^)]*\\))?)", "g");
-  let m;
-  while ((m = memb.exec(text)) !== null) {
-    const ln = lineOf(m.index), type = m[2].replace(/\s+/g, "");
-    for (const raw of m[1].split(",")) {
-      const base = stripIdentPrefix(raw.trim());
-      if (base && !/^[0-9]/.test(base) && !decls.has(base)) decls.set(base, { type, line: ln });
-    }
-  }
-  // (2) `name = expr` assignment / carried LHS (not `==`); type inferred from the RHS → null.
-  const asg = new RegExp("^\\s*(" + IDENT + ")\\s*=(?!=)", "gm");
-  while ((m = asg.exec(text)) !== null) {
-    const base = stripIdentPrefix(m[1]);
-    if (base && !/^[0-9]/.test(base) && !decls.has(base)) decls.set(base, { type: null, line: lineOf(m.index) });
-  }
-  return decls;
-}
-
-// Names only (the completer's view), de-duplicated, prefixes stripped.
-function parseScopeIdents(text) { return [...parseScopeDecls(text).keys()]; }
-
-// #389: the NON-variable declared symbols of the buffer — claim/fsm/type/enum NAMES and enum VARIANTS —
-// so the completer offers `count` AND the claim you're calling, the type you're declaring against, and a
-// variant inside a match. A light regex scan of the decl forms (no parser): { claims, types, variants }.
-// Pure (text → {…}) so it's unit-testable headless.
-function parseBufferSymbols(text) {
-  const src = text || "";
-  const grab = (re) => { const out = []; let m; while ((m = re.exec(src)) !== null) out.push(m[1]); return out; };
-  // claim / fsm names (the callable entries + helper claims)
-  const claims = grab(/^\s*(?:claim|fsm|subclaim)\s+([A-Za-z_]\w*)/gm);
-  // type / enum / schema NAMES (the declared types you write `x ∈ Name` against)
-  const types = grab(/^\s*(?:type|enum|schema)\s+([A-Za-z_]\w*)/gm);
-  // enum VARIANTS: scan each `enum E = A | B(Int) | C` and split its RHS on `|`, taking each variant's name.
-  const variants = [];
-  let e; const enumRe = /^\s*enum\s+[A-Za-z_]\w*\s*=\s*([^\n]+)/gm;
-  while ((e = enumRe.exec(src)) !== null) {
-    e[1].split("|").forEach((part) => { const v = (part.match(/\s*([A-Za-z_]\w*)/) || [])[1]; if (v) variants.push(v); });
-  }
-  const uniq = (a) => [...new Set(a)];
-  return { claims: uniq(claims), types: uniq(types), variants: uniq(variants) };
-}
-
-// Cached decls for the hover / go-to-def handlers — the hover fires on every mousemove, so we
-// re-parse only when the buffer text actually changed.
-let _declsCache = { src: null, decls: null };
-function scopeDecls() {
-  const src = editor.session.getValue();
-  if (src !== _declsCache.src) _declsCache = { src, decls: parseScopeDecls(src) };
-  return _declsCache.decls;
-}
+// The buffer SYMBOL SCAN + resolution (stripIdentPrefix / parseScopeDecls / parseScopeIdents /
+// bufferDecls / parseBufferSymbols / scopeDecls / declAtToken / declHoverHtml / _gotoDecl /
+// gotoDefinitionAtCursor) moved to app-symbols-scan.js (loaded before this file). The completer +
+// the hover + go-to-def wiring below call them at call time.
 
 // The Ace completer. Offers the three groups, prefix-matched. The prefix Ace hands us is the
 // word under the cursor; we ALSO strip its Δ/_/¬ prefix so `Δcoun` matches the declared `count`
@@ -404,19 +340,15 @@ function initEditorInput() {
     const tok = editor.session.getTokenAt(pos.row, pos.column + 1);
     if (tok) {
       const raw = (tok.value || "").trim();
-      // #366: a multi-char operator (`:=`, `++`) spanning the cursor wins over its single-char token
-      // (`:`/`=`), which the Ace mode tokenizes apart — so hovering `:=` teaches "seed", not ":".
-      const g = glossAtCursor(editor.session.getLine(pos.row), pos.column) || glossFor(raw);
-      // Not a keyword? If it's a user identifier we can resolve, show its declared type + line
-      // (hover-for-type, Marek #282). ⌘/Ctrl-click then jumps to the declaration (below).
-      const base = stripIdentPrefix(raw);
-      const d = !g && (tok.type === "identifier" || tok.type === "variable.parameter") ? scopeDecls().get(base) : null;
-      const html = d
-        ? `<b>${base}</b>${d.type ? "  ∈  " + d.type : "  <span style='opacity:.6'>(type inferred)</span>"}`
-          + `<span style="opacity:.6">  ·  line ${d.line}  ·  ⌘-click to jump</span>`
-        : null;
+      // #388: a DECLARED symbol (var/claim/type/enum/variant — incl. its _x/Δx form) shows its kind +
+      // type + decl line, and wins over the generic glossary so `_count` reads "_count : Int — prev-tick
+      // value of count · line 7" (the rich type card), not just the bare "previous-tick read" gloss.
+      const html = declHoverHtml(raw);
+      // #366: otherwise a keyword/operator teaches its MEANING. A multi-char op (`:=`, `++`) spanning the
+      // cursor wins over its single-char token (`:`/`=`), which the Ace mode tokenizes apart.
+      const g = html ? null : (glossAtCursor(editor.session.getLine(pos.row), pos.column) || glossFor(raw));
       if (g || html) {
-        if (g) gloss.textContent = g; else gloss.innerHTML = html;
+        if (html) gloss.innerHTML = html; else gloss.textContent = g;
         gloss.hidden = false;
         gloss.style.left = Math.min(e.clientX + 12, window.innerWidth - 380) + "px";
         gloss.style.top = (e.clientY + 18) + "px";
@@ -427,21 +359,28 @@ function initEditorInput() {
   });
   editorEl.addEventListener("mouseleave", () => { gloss.hidden = true; });
 
-  // ⌘/Ctrl-click a user identifier → jump to its declaration (go-to-definition, Marek #282).
+  // #387: ⌘/Ctrl-click any DECLARED symbol → jump to its declaration line. Covers vars, claim/type/enum
+  // names, and variants (declAtToken resolves the _/Δ form to its base var). Marek #282 + #387.
   editorEl.addEventListener("mousedown", (e) => {
     if (!(e.metaKey || e.ctrlKey)) return;
     const pos = editor.renderer.screenToTextCoordinates(e.clientX, e.clientY);
     if (!pos) return;
     const tok = editor.session.getTokenAt(pos.row, pos.column + 1);
-    if (!tok || (tok.type !== "identifier" && tok.type !== "variable.parameter")) return;
-    const d = scopeDecls().get(stripIdentPrefix((tok.value || "").trim()));
-    if (d) {
-      e.preventDefault(); e.stopPropagation();
-      editor.gotoLine(d.line, 0, true);   // 1-based; flash the decl line so the jump is visible
-      editor.selection.selectLine();
-      gloss.hidden = true;
-    }
+    const r = tok ? declAtToken((tok.value || "").trim()) : null;
+    if (r) { e.preventDefault(); e.stopPropagation(); _gotoDecl(r.decl); }
   }, true);   // capture phase: run BEFORE Ace's own mousedown so stopPropagation pre-empts its caret-place
+
+  // #387: F12 (and the ⌘K "Go to definition") jumps from the identifier AT THE CURSOR to its decl line.
+  editor.commands.addCommand({
+    name: "gotoDefinition", bindKey: { win: "F12", mac: "F12" },
+    exec: function (ed) {
+      const pos = ed.getCursorPosition();
+      const tok = ed.session.getTokenAt(pos.row, pos.column + 1);
+      const r = tok ? declAtToken((tok.value || "").trim()) : null;
+      if (r) _gotoDecl(r.decl);
+      else setStatus("put the cursor on a declared symbol to jump to its definition (F12)", "dim");
+    },
+  });
 
   // concept hover in the banner (Sam #163/#165) — same #gloss tooltip, delegated.
   document.addEventListener("mouseover", (e) => {

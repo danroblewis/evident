@@ -180,6 +180,8 @@ function buildCommands() {
     run: () => { if (typeof openFindReplace === "function") openFindReplace(true); } });
   cmds.push({ label: "Rename symbol — rename the identifier at the cursor + its _ / Δ forms everywhere (F2)",
     run: () => { editor.focus(); editor.execCommand("renameSymbol"); } });
+  cmds.push({ label: "Go to definition — jump to the declaration of the symbol at the cursor (F12)",
+    run: () => { if (typeof gotoDefinitionAtCursor === "function") gotoDefinitionAtCursor(); } });
   cmds.push({ label: "Find — search the buffer (Ctrl-F)",
     run: () => { if (typeof openFind === "function") openFind(); } });
   if ($("#smtlib-btn")) cmds.push({ label: "Copy SMT-LIB encoding", run: () => clickIf("#smtlib-btn") });
