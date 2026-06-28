@@ -480,6 +480,25 @@ pub(in crate::encode) fn encode_bool<'ctx>(
 
             BinOp::Eq | BinOp::Neq => {
 
+                // Tuple = Tuple → componentwise conjunction: (a, b) = (x, y) ≡ a=x ∧ b=y.
+                // Without this, a tuple-set membership `(a, b) ∈ {(1,2), …}` builds `(a,b)=(1,2)`
+                // for each row, every row fails to translate, and the membership collapses to
+                // `false` — a SILENT spurious UNSAT (it makes a status-code/lookup type
+                // uninhabitable). `≠` is the negation of the conjunction.
+                if let (Expr::Tuple(ls), Expr::Tuple(rs)) = (lhs.as_ref(), rhs.as_ref()) {
+                    if ls.len() != rs.len() || ls.is_empty() {
+                        return None; // arity mismatch / empty — not a valid tuple equality
+                    }
+                    let mut parts: Vec<Bool> = Vec::with_capacity(ls.len());
+                    for (l, r) in ls.iter().zip(rs.iter()) {
+                        let eq = Expr::Binary(BinOp::Eq, Box::new(l.clone()), Box::new(r.clone()));
+                        parts.push(encode_bool(&eq, ctx, env, schemas)?);
+                    }
+                    let refs: Vec<&Bool> = parts.iter().collect();
+                    let conj = Bool::and(ctx, &refs);
+                    return Some(if matches!(op, BinOp::Eq) { conj } else { conj.not() });
+                }
+
                 if let Some(b) = encode_cons_chain_eq(lhs, rhs, ctx, env, schemas) {
                     return Some(match op {
                         BinOp::Eq  => b,

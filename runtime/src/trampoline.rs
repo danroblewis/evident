@@ -326,6 +326,20 @@ fn run_loop(
 
         if !r.satisfied {
             eprintln!("[loop] FSM `{}` returned UNSAT on tick {step_count}", fsm.claim_name);
+            // Delta-debug the failing tick: which constraints actually conflict? Only runs on
+            // failure, so a solving program pays nothing for this.
+            if let Some(diag) = rt.diagnose_unsat(&fsm.claim_name, &fsm_view) {
+                if diag.conflicts.is_empty() {
+                    eprintln!("  └─ couldn't isolate a single culprit — the conflict needs several \
+                               constraints together, or lives inside a sub-type's own body.");
+                } else {
+                    eprintln!("  └─ these constraints conflict (relaxing any ONE makes the tick \
+                               solvable):");
+                    for c in &diag.conflicts {
+                        eprintln!("       • {c}");
+                    }
+                }
+            }
             return Ok(LoopResult {
                 steps: step_count,
                 final_state: None,

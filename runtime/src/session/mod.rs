@@ -1,6 +1,7 @@
 use crate::encode::lower;
 mod register_enums;
 mod query;
+mod diagnose;
 
 pub use crate::core::Value;
 #[allow(unused_imports)]
