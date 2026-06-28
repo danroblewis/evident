@@ -1,5 +1,5 @@
 {
-  "seq": 491,
+  "seq": 492,
   "tasks": [
     {
       "id": 1,
@@ -12751,7 +12751,7 @@
       "status": "cleared",
       "task": null,
       "created": "2026-06-25T06:41:29Z",
-      "cleared": "2026-06-28T11:51:31Z"
+      "cleared": "2026-06-28T16:07:04Z"
     },
     {
       "id": 383,
@@ -13091,6 +13091,15 @@
       "status": "open",
       "task": null,
       "created": "2026-06-28T15:14:54Z"
+    },
+    {
+      "id": 492,
+      "title": "occupancy_heatmap emits a FALSE N/A on a contracting spiral \u2014 re-verified live this round on current binary+viz (no fix has landed since #478). Model fsm spiral; x,y\u2208Real; init (1,0); x=_x*0.9-_y*0.1, y=_x*0.1+_y*0.9. PROVEN contracting: |eig|=0.9055<1, trajectory\u2192origin (final r\u22486e-18). 370/401 visited points (92%) dwell within r<0.05 of origin; the origin grid cell is hit 112 times. There IS a dwell concentration. Yet occupancy_heatmap renders 'N/A \u2014 no dwell concentration: the trajectory sweeps the plane without returning (a smear, not occupancy)'. ROOT CAUSE: occupancy_smear() in viz/occupancy_collect.py counts CELLS not VISIT MASS \u2014 20/29 occupied cells are singletons (0.69 > _SMEAR_FRAC 0.6), but those 20 singletons are the brief spiral-in transient while the 9 dense cells hold 372 of 401 visits (incl. the 112-deep sink). A density where 92% of mass piles into one cell is the canonical occupancy heatmap; the tool refuses to draw it. basin_map+morse_graph BOTH correctly show this origin sink on the same model (#465) \u2014 occupancy alone lies. FIX: either (a) route the single-orbit continuous path through the same grid-sweep basin_map uses so the sink accumulates, or (b) make the smear test mass-weighted (e.g. fraction of total VISITS in singleton cells, or a Gini/top-cell-share test) instead of cell-count-weighted \u2014 a contracting sink has low singleton-MASS even with many transient singleton cells. Screenshot /tmp/ana_spiral_occ.png.",
+      "detail": "",
+      "by": "ide-critic-expert",
+      "status": "open",
+      "task": null,
+      "created": "2026-06-28T16:08:36Z"
     }
   ]
 }
