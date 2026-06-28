@@ -17,6 +17,13 @@ from evident_viz import load
 
 _SHORT = lambda n: n.split(".")[-1]
 
+# #491: the two honest "no numeric bar" N/A reasons — unbounded-numeric (z3 Optimize ±∞, e.g. an
+# Euler-divergent continuous model like Lotka-Volterra) vs a genuinely categorical (enum/bool-only) machine.
+_NA_UNBOUNDED = ("the numeric variables are unbounded\n(z3 Optimize: ±∞ over the reachable set —\n"
+                 "no finite solution-space boundary; see phase_portrait / state_graph)")
+_NA_CATEGORICAL = ("solution space needs a numeric variable\n(this program's state is categorical —\n"
+                   "see state_graph for its boundary)")
+
 
 def _write_points(out_path, points):
     """Sidecar for the interactive hover overlay: each plotted scatter point's FRACTIONAL
@@ -188,9 +195,9 @@ def render(smt2_path, schema_path, out_path):
     # boundary is NOT closed, so the card must not stamp "exact". (BFS bounds are always finite, so this
     # only fires on the inductive-solve path where a var is genuinely open-ended.)
     any_unbounded = len(numeric) < len(all_numeric)
-    if not numeric:
+    if not numeric:                                # #491: unbounded-numeric (z3 ±∞) is NOT categorical
         return _na(out_path, f"{m.fsm} — solution space",
-                   "solution space needs a numeric variable\n(this program's state is categorical —\nsee state_graph for its boundary)")
+                   _NA_UNBOUNDED if all_numeric else _NA_CATEGORICAL)
     enums = [_SHORT(v["name"]) for v in m.carried if v.get("kind") == "enum"]
     # The right panel needs a SECOND axis. Prefer a 2nd numeric var; failing that, put an ENUM on a
     # categorical y-axis so an enum+numeric machine (traffic: light × timer) still shows WHICH
