@@ -1,0 +1,73 @@
+-- Conformance tests for two source-syntax niceties:
+--   1. a TRAILING COMMA in a set literal: `{a, b, c,}`
+--   2. MULTI-LINE CONTINUATION: a line ending on an infix arithmetic/logical operator
+--      (`++`, `+`, `-`, `*`, `/`, `∧`, `∨`) continues onto the next line.
+--
+-- The block forms that depend on a trailing newline must be UNAFFECTED: the implies-block
+-- (`cond ⇒` ⏎ <indent>) and the multi-line enum (`enum X =` ⏎ <variants>). `=` and `⇒` are
+-- deliberately NOT continuation operators for exactly this reason.
+--
+-- Run with:
+--     evident test tests/lang_tests/test_syntax_continuation.ev
+
+-- ── trailing comma ──────────────────────────────────────────────
+
+claim sat_trailing_comma_scalar
+    x ∈ Int
+    x ∈ {1, 2, 3,}
+    x = 2
+
+claim sat_trailing_comma_tuple
+    a ∈ Int
+    b ∈ Int
+    (a, b) ∈ {
+        (1, 2),
+        (3, 4),
+    }
+    a = 1
+    b = 2
+
+-- ── multi-line ++ (string concat) ───────────────────────────────
+
+claim sat_multiline_concat
+    s ∈ String = "a" ++
+        "b" ++
+        "c"
+    s = "abc"
+
+-- ── multi-line arithmetic ───────────────────────────────────────
+
+claim sat_multiline_sum
+    n ∈ Int = 1 +
+        2 +
+        3
+    n = 6
+
+-- ── multi-line conjunction ──────────────────────────────────────
+
+claim sat_multiline_and
+    a ∈ Int
+    b ∈ Int
+    a = 1
+    b = 2
+    (a > 0) ∧
+        (b > 0)
+
+-- ── REGRESSION GUARD: the implies-block (⇒ ⏎ indent) is intact ───
+
+claim sat_implies_block_intact
+    x ∈ Int
+    x = 5 ⇒
+        x > 0
+        x < 10
+
+-- ── REGRESSION GUARD: the multi-line enum (= ⏎ variants) is intact ──
+
+enum Color3 =
+    CRed
+    CGreen
+    CBlue
+
+claim sat_multiline_enum_intact
+    c ∈ Color3
+    c = CGreen

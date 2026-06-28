@@ -86,6 +86,24 @@ impl std::fmt::Display for LexError {
 
 impl std::error::Error for LexError {}
 
+/// Does the token stream end on an infix operator that REQUIRES a right operand? If so a
+/// trailing newline is a line CONTINUATION, not a statement terminator — so `… ++` ⏎ `…` lexes
+/// as one expression. Limited to ARITHMETIC and LOGICAL infix operators, which unambiguously
+/// need a right operand and have NO block form. Deliberately EXCLUDED: `=` (and comparisons /
+/// `↦`) — `=` ends the head of a multi-line `enum X =` ⏎ <variants> / `type X =` and a
+/// chained-membership decl, where the trailing newline is load-bearing; `⇒`/`:` have block
+/// forms too (implies-block, ternary). `¬` is prefix, and `,`/brackets are handled by paren
+/// depth — none belong here.
+fn ends_with_continuation_op(tokens: &[Token]) -> bool {
+    matches!(
+        tokens.last(),
+        Some(
+            Token::PlusPlus | Token::Plus | Token::Minus | Token::Star | Token::Slash
+                | Token::MidDot | Token::Times | Token::And | Token::Or
+        )
+    )
+}
+
 /// Tokenize, dropping position info. Thin wrapper over [`tokenize_with_locs`].
 pub fn tokenize(src: &str) -> Result<Vec<Token>, LexError> {
     tokenize_with_locs(src).map(|(toks, _locs)| toks)
@@ -163,7 +181,11 @@ pub fn tokenize_with_locs(src: &str) -> Result<(Vec<Token>, Vec<(usize, usize)>)
             '\n' => {
                 chars.next();
                 line += 1; col = 1;
-                if paren_depth == 0 {
+                // A line ending on an infix operator that REQUIRES a right operand (`++`, `+`,
+                // `∧`, a comparison, …) continues onto the next line — suppress the Newline so a
+                // multi-line `"a" ++ "b" ++` ⏎ `"c"` lexes as one expression. `⇒` is deliberately
+                // NOT in the set: `cond ⇒` ⏎ <indent> is the valid implies-block form.
+                if paren_depth == 0 && !ends_with_continuation_op(&tokens) {
                     tokens.push(Token::Newline);
                     at_line_start = true;
                 }

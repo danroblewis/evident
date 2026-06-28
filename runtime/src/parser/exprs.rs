@@ -512,6 +512,7 @@ impl Parser {
                 let mut items = vec![first];
                 while matches!(self.peek(), Token::Comma) {
                     self.bump();
+                    if matches!(self.peek(), Token::RBrace) { break; } // allow a trailing comma
                     items.push(self.parse_expr()?);
                 }
                 self.eat(&Token::RBrace)?;
