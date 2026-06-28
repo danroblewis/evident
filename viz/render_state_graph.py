@@ -327,6 +327,14 @@ def render(smt2, schema, out_path, all_conditions=None):
     # --- pick the honest finite reachable set ---------------------------------
     G, states, mode = _select_graph(m, all_conditions=all_conditions)
 
+    # #418: on a BROKEN (under-constrained) model the in-PNG title must not REASSURE. A
+    # sampled trajectory is still what was drawn — but "deterministic run" reads as a confident
+    # answer one inch below the "this model is BROKEN" banner. Re-word it so the picture's own
+    # title AGREES: it's ONE sampled path through an under-constrained relation, not THE run.
+    import render_common
+    if render_common._BROKEN and mode and "trajectory" in mode:
+        mode = "one sampled path (model is under-constrained)"
+
     n_nodes = G.number_of_nodes() if G is not None else 0
     n_edges = G.number_of_edges() if G is not None else 0
 

@@ -14,6 +14,7 @@ import inspect
 import json
 import sys
 
+import render_common                                  # #416: broken_render de-rating context
 from evident_viz import load as load_model
 from functionize import function_summary
 
@@ -169,7 +170,7 @@ def _k_depth(view, k):
         RRR.K_DEPTH = saved
 
 
-def _render_png(view, prefix, all_conditions=False, k=None, x_var=None, y_var=None):
+def _render_png(view, prefix, all_conditions=False, k=None, x_var=None, y_var=None, dropped=0):
     """Render the view PNG and return (bytes, points). `points` is the interactive
     hover-overlay sidecar (`<out>.points.json`, written by renderers that support it —
     currently solution_space): a list of {fx, fy, state}; [] when no sidecar exists.
@@ -177,9 +178,13 @@ def _render_png(view, prefix, all_conditions=False, k=None, x_var=None, y_var=No
     `all_conditions` requests state_graph's GLOBAL-dynamics graph (every initial
     condition); `k` requests reachable_region's k-induction depth (#327). `x_var`/`y_var`
     request explicit projection axes for the axis-taking views (#445) — the adapter only
-    forwards them to renderers that declare them, so this call stays uniform across views."""
+    forwards them to renderers that declare them, so this call stays uniform across views.
+    `dropped` (>0) is the BROKEN-model de-rating signal (#416): the render is wrapped in
+    render_common.broken_render so every diagram gets a faint hatch scrim + 'PROVISIONAL' chip
+    over its data region, uniformly — the PICTURE itself, not just the text, says under-constrained."""
     out = prefix + f".{view}.png"
-    with _all_conditions(view, all_conditions), _k_depth(view, k):
+    with _all_conditions(view, all_conditions), _k_depth(view, k), \
+            render_common.broken_render(dropped):
         RENDERERS[view](prefix + ".smt2", prefix + ".schema.json", out, x_var=x_var, y_var=y_var)
     with open(out, "rb") as f:
         png = f.read()
@@ -240,8 +245,7 @@ def _maybe_claim(prefix, dropped, source="", msg="", view="claim_space"):
                     bounds[v["name"].split(".")[-1]] = [lo, hi]
     except Exception as e:
         print(f"[server] claim bounds failed: {type(e).__name__}: {e}", file=sys.stderr)
-    # #341: the implied relations + their forcing-constraint proof cores, for the interrogable structure
-    # panel (shown on either claim tab, independent of the active PNG view).
+    # #341: implied relations + forcing-constraint proof cores for the interrogable structure panel.
     decomp = {}                                    # #338: the FULL backbone/free/equalities/relations decomp
     if feasible:
         try:
@@ -257,13 +261,14 @@ def _maybe_claim(prefix, dropped, source="", msg="", view="claim_space"):
     view = view if view in CLAIM_VIEWS else "claim_space"
     png = b""
     try:
-        if view == "solution_structure":
-            import render_solution_structure as RSS
-            RSS.render(smt2, schema, prefix + "_claim.png")
-        elif view in ("scatter_matrix", "parallel_coords"):
-            RENDERERS[view](smt2, schema, prefix + "_claim.png")   # #356: their claim paths sample the witnesses
-        else:
-            RC.render(smt2, schema, prefix + "_claim.png")
+        with render_common.broken_render(dropped):     # #416: de-rate a BROKEN claim's solved-space PNG too
+            if view == "solution_structure":
+                import render_solution_structure as RSS
+                RSS.render(smt2, schema, prefix + "_claim.png")
+            elif view in ("scatter_matrix", "parallel_coords"):
+                RENDERERS[view](smt2, schema, prefix + "_claim.png")   # #356: their claim paths sample the witnesses
+            else:
+                RC.render(smt2, schema, prefix + "_claim.png")
         png = open(prefix + "_claim.png", "rb").read()
     except Exception as e:
         print(f"[server] claim render failed: {type(e).__name__}: {e}", file=sys.stderr)
@@ -296,7 +301,7 @@ def _function_response(m, view, prefix, dropped, source, msg):
               + (f" · {len(summ['cycles'])} feedback cycle(s)" if summ['cycles'] else ""))
     png, points = b"", []
     try:
-        png, points = _render_png(view, prefix)
+        png, points = _render_png(view, prefix, dropped=dropped)   # #416: de-rate a BROKEN function view too
     except Exception as e:
         print(f"[server] render {view} failed: {type(e).__name__}: {e}", file=sys.stderr)
     return {

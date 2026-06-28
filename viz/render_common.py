@@ -11,6 +11,11 @@ Behavior note: these are byte-for-byte the shapes the renderers used inline — 
 hex colours, same font sizes, same banner geometry — so lifting them changes no PNG.
 """
 
+import contextlib
+
+import matplotlib.figure
+from matplotlib.patches import Rectangle as _Rect
+
 # Shared palette — the verdict/stability colours used across the abstract renderers.
 # #469: the verdict/stability palette, brightened to the page's own colours (app.css --good /
 # --warn / --bad / --accent) so text + region edges read on the DARK IDE page instead of the
@@ -90,6 +95,61 @@ def empty_panel(ax, glyph, sub, color):
         sp.set_visible(False)
 
 
+# --- BROKEN-model de-rating (#416) ----------------------------------------------------
+# A model with dropped constraints (the user wrote a constraint that did NOT translate to a
+# Z3 Bool — a typo'd identifier, a precedence slip) is UNDER-CONSTRAINED: its diagram is a
+# picture of a DIFFERENT, looser relation than the one the source describes. The honesty used
+# to ride only in the TEXT around the plot (banner/badge/footer); the PLOT itself drew clean,
+# authoritative styling. This makes the PICTURE itself say "provisional": a faint diagonal-hatch
+# scrim over the data region + one anchored chip, so an image-scanner (the tool trains the user
+# to read the diagram as the debugger) registers "don't trust this" without the text.
+#
+# It is applied UNIFORMLY across every renderer by patching Figure.savefig (below) to call this
+# on the figure's data axes when `_BROKEN` is set — so no per-renderer change is needed and a new
+# renderer is de-rated for free. The scrim is faint (data stays readable); the chip is the loud part.
+
+_BROKEN = 0          # dropped-constraint count for the in-flight render; 0 = healthy, no de-rating
+
+
+def derate_broken(fig, dropped):
+    """Overlay a faint diagonal-hatch scrim over each data axes of `fig` plus one
+    'PROVISIONAL — N constraint(s) dropped' chip, marking the whole picture as the diagram of an
+    UNDER-CONSTRAINED model (#416). Faint enough that the data stays legible; the chip is the loud
+    signal. A no-op when `dropped` is 0. Drawn on the dark IDE theme — amber hatch + amber chip read
+    over #0f1419. Skips axes with nothing drawn (an empty/off panel) so a legend-only axes isn't hatched."""
+    if not dropped:
+        return
+    data_axes = [ax for ax in fig.axes if ax.get_visible() and ax.axison
+                 and (ax.has_data() or ax.patches or ax.texts)]
+    if not data_axes:
+        data_axes = [ax for ax in fig.axes if ax.get_visible()]
+    for ax in data_axes:
+        # A faint diagonal hatch spanning the axes in axes-fraction coords: low alpha so the
+        # underlying data shows through, but the texture reads "provisional" at a glance.
+        ax.add_patch(_Rect((0, 0), 1, 1, transform=ax.transAxes, zorder=50,
+                           facecolor="none", edgecolor=AMBER, hatch="////",
+                           linewidth=0, alpha=0.22, clip_on=False))
+    # One chip, anchored on the largest data axes (the lead panel), top-left inside the data.
+    lead = max(data_axes, key=lambda a: a.get_position().width * a.get_position().height)
+    lead.text(0.5, 0.97,
+              f"PROVISIONAL — {dropped} constraint(s) dropped",
+              transform=lead.transAxes, ha="center", va="top", zorder=60,
+              fontsize=10, fontweight="bold", color="#0f1419",
+              bbox=dict(boxstyle="round,pad=0.35", facecolor=AMBER, edgecolor="none", alpha=0.95))
+
+
+def _patched_savefig(self, *args, **kwargs):
+    """Figure.savefig wrapper that de-rates the picture (#416) just before saving whenever a
+    BROKEN model is in flight (`_BROKEN > 0`, set by the render layer's broken-context). Uniform
+    across every renderer — they all call `fig.savefig` — so no renderer carries the de-rating logic."""
+    if _BROKEN:
+        try:
+            derate_broken(self, _BROKEN)
+        except Exception:
+            pass          # de-rating must never sink a render — the surrounding text honesty remains
+    return _ORIG_SAVEFIG(self, *args, **kwargs)
+
+
 def verdict_banner(fig, ax, out_path, title, msg, col, rect_bottom=0.07):
     """The common tail of an abstract-analysis render: bold title, a wrapped caption
     pinned to the bottom in the verdict colour, a tight layout reserving room for it,
@@ -101,3 +161,26 @@ def verdict_banner(fig, ax, out_path, title, msg, col, rect_bottom=0.07):
     fig.savefig(out_path, dpi=120)
     import matplotlib.pyplot as plt
     plt.close(fig)
+
+
+# Install the savefig de-rating hook ONCE at import (render_common is imported by every renderer
+# via evident_viz). Idempotent — guarded so a re-import doesn't double-wrap.
+if not getattr(matplotlib.figure.Figure.savefig, "_evident_derated", False):
+    _ORIG_SAVEFIG = matplotlib.figure.Figure.savefig
+    _patched_savefig._evident_derated = True
+    matplotlib.figure.Figure.savefig = _patched_savefig
+
+
+@contextlib.contextmanager
+def broken_render(dropped):
+    """Set the in-flight BROKEN dropped-count for the duration of one render (the render layer
+    wraps each `_render_png` call with this when the model has dropped constraints), then restore.
+    A no-op de-rating when `dropped` is 0 — healthy models render clean (#416). Serialized by the
+    server's render _LOCK, so the module flag never overlaps another request."""
+    global _BROKEN
+    saved = _BROKEN
+    _BROKEN = int(dropped or 0)
+    try:
+        yield
+    finally:
+        _BROKEN = saved

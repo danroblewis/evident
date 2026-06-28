@@ -359,7 +359,8 @@ def _dynamics_response(req, prefix, dropped, msg):
                 png, points = _render_png(cand, prefix, all_conditions=req.all_conditions,
                                           k=getattr(req, "k", None),    # #327: k-induction depth
                                           x_var=getattr(req, "x_var", None),   # #445: explicit
-                                          y_var=getattr(req, "y_var", None))   # projection axes
+                                          y_var=getattr(req, "y_var", None),   # projection axes
+                                          dropped=dropped)              # #416: BROKEN de-rating
                 view = cand
                 break
             except Exception as _re:
