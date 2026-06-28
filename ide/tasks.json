@@ -1,5 +1,5 @@
 {
-  "seq": 473,
+  "seq": 477,
   "tasks": [
     {
       "id": 1,
@@ -1136,12 +1136,12 @@
       "id": 35,
       "title": "evident fmt \u2014 a gofmt-style pretty-printer that rewrites a program to an equivalent, idiomatic one",
       "detail": "User request: a 'gofmt for Evident'. Parse \u2192 AST \u2192 pretty-print a SEMANTICALLY EQUIVALENT program that looks better; must be idempotent (fmt\u2218fmt = fmt) and round-trip (re-parses, ./test.sh stays green). Likely a Rust 'evident fmt <file> [--write]' command reusing the parser + a pretty-printer over core/ast.rs (the AST Display is the seed). Target rules (start with the user's, align with docs/evident-purism.md + the idioms in CLAUDE.md):\n (1) Line length \u2014 wrap long lines (~88 cols) sensibly; consistent indentation.\n (2) Vertical spacing / newlines \u2014 group decls vs constraints; blank line between sections.\n (3) Minimize \u2227 \u2014 rewrite 'A \u21d2 (B \u2227 C)' and conjunction chains into the indented implies-block / one-constraint-per-line-at-same-tab-level form (newline = \u2227).\n (4) Prefer \u0394 in fsm models \u2014 rewrite 'var = _var + step' carries into '\u00acis_first_tick \u21d2 \u0394var = step' (honor the gotchas: decl outside the guard; single-line \u21d2, or an indented block grouping deltas).\n (5) Reduce expression duplication \u2014 factor a repeated subexpression into a named chained-membership binding 'name \u2208 T = expr' and reference it.\n (6) Drop type annotations the inference can recover; use chained-membership (e.g. '0 \u2264 x \u2208 Int \u2264 5'); element-iteration ('\u2200 e \u2208 s') over '\u2200 i \u2208 {0..#s-1}' index loops; coindexed/edges over parallel-seq loops; avoid ternary chains; keep 'type main' compact.\nThe purism doc is the authority on 'good Evident'; the formatter should produce purism-CLEAN output. Open question to settle with the user: exact column width, and how aggressive (5) should be.",
-      "status": "worker_done",
+      "status": "in_progress",
       "created_by": "worker",
       "created": "2026-06-21T23:54:08Z",
-      "worker_done": true,
+      "worker_done": false,
       "approvals": [],
-      "reopened": 2,
+      "reopened": 3,
       "tags": [
         "lang"
       ],
@@ -1180,6 +1180,12 @@
           "by": "worker",
           "act": "done",
           "note": "evident fmt re-indents ragged siblings to a common column instead of refusing/fake-nesting (runtime/src/fmt.rs) \u2014 merged."
+        },
+        {
+          "at": "2026-06-28T10:08:48Z",
+          "by": "ide-critic-expert",
+          "act": "reopened",
+          "note": "Still LAYOUT-only, no operator-spacing normalization (3rd reopen on the same gap; my concern #378). Re-verified live this round: 'evident fmt /tmp/tight.ev' on input 'count\u2208Int:=0' / '\u0394count=(_count<5?1:0)' / 'done\u2208Bool=(count\u22655)' returns those lines BYTE-FOR-BYTE UNCHANGED \u2014 no spaces inserted around \u2208 := = ? : < \u2265. gofmt-grade idiomatic form is 'count \u2208 Int := 0' / '\u0394count = (_count < 5 ? 1 : 0)' / 'done \u2208 Bool = (count \u2265 5)'. The reindent/ragged-sibling half is genuinely DONE and good (idempotent, parses, no fake nesting \u2014 that part I'm satisfied with). Decision for the worker: either (a) ADD token-spacing normalization so fmt earns the 'idiomatic pretty-printer' title #35 promises, or (b) formally SCOPE #35 DOWN to 'reindent' in the title and acceptance \u2014 and then it's done. As long as the title says 'rewrites to an idiomatic one', leaving operators cramped is a half-kept promise."
         }
       ]
     },
@@ -4576,12 +4582,13 @@
       "id": 170,
       "title": "Compare two witnesses / two programs side by side. After Solve I wanted to press 'all \u22a8*' and SEE two sudoku boards next to each other to compare solutions, or diff my over-constrained version against the sample. Currently witnesses replace each other. (Known in-progress as compare-witnesses; filing the newcomer provenance.)",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic-newcomer",
       "created": "2026-06-22T11:02:33Z",
       "worker_done": true,
       "approvals": [
-        "ide-critic"
+        "ide-critic",
+        "ide-critic-expert"
       ],
       "reopened": 0,
       "tags": [
@@ -4608,6 +4615,12 @@
         {
           "at": "2026-06-25T06:44:36Z",
           "by": "ide-critic",
+          "act": "approved",
+          "note": ""
+        },
+        {
+          "at": "2026-06-28T10:03:14Z",
+          "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
         }
@@ -5670,16 +5683,31 @@
       "id": 215,
       "title": "Symbol-typing hint inline at the cursor: the operator hover now teaches '\u2208 \u2026 type \\in' which is great, but I only see it if I happen to hover an EXISTING \u2208. When I'm at an empty spot wanting to type \u2265, I still have to open the symbols palette. A tiny always-visible 'type \\ge for \u2265' affordance near the cursor (or a ghost hint on backslash) would close the last gap.",
       "detail": "",
-      "status": "open",
+      "status": "closed",
       "created_by": "ide-critic-newcomer",
       "created": "2026-06-22T14:26:45Z",
-      "worker_done": false,
-      "approvals": [],
+      "worker_done": true,
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "editor"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-28T09:41:03Z",
+          "by": "worker",
+          "act": "done",
+          "note": "shipped + merged to main this session; team-lead verified (soundness suite for verify-engine items, rendered-PNG for viz, end-to-end for editor)"
+        },
+        {
+          "at": "2026-06-28T09:50:41Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
+        }
+      ]
     },
     {
       "id": 218,
@@ -6256,12 +6284,13 @@
       "id": 235,
       "title": "Saved-witness gallery for solve-for-X / enumerate. 'all \u22a8*' enumerates, but I can't KEEP witness #1 beside #3 and flip between them, or diff two witnesses (which item changed between two subset-sum solutions). Alloy's instance browser lets me page + bookmark instances; here each new solve replaces the board.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-critic",
       "created": "2026-06-22T19:14:31Z",
       "worker_done": true,
       "approvals": [
-        "ide-critic"
+        "ide-critic",
+        "ide-critic-expert"
       ],
       "reopened": 0,
       "tags": [
@@ -6288,6 +6317,12 @@
         {
           "at": "2026-06-25T06:44:36Z",
           "by": "ide-critic",
+          "act": "approved",
+          "note": ""
+        },
+        {
+          "at": "2026-06-28T10:03:14Z",
+          "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
         }
@@ -8081,14 +8116,12 @@
       "id": 296,
       "title": "Maze-solving example: walls + solving player both visible in solution_space + occupancy_heatmap",
       "detail": "Add a maze-solving example (FSM or claim): a player navigates a wall-bounded maze from start to goal, moving only to open adjacent cells (not through walls). Both the static MAZE WALLS and the dynamic SOLVING PLAYER (its path / dwell positions) must be VISIBLE TOGETHER in the solution_space AND the occupancy_heatmap. COMPLETION CRITERIA: (1) example loads + analyzes, 0 dropped constraints; (2) solution_space draws the maze walls (the static structure) WITH the player's feasible positions/path overlaid + distinguishable; (3) occupancy_heatmap shows where the player dwells over the wall layout; (4) it's a genuine maze \u2014 a wall grid + start + goal + open-cell move constraints; (5) added to app-data.js SAMPLES + render_smoke + headlineView; ./test.sh green. LIKELY needs a renderer change to draw a static-wall background under the dynamic player overlay \u2014 call that out if so.",
-      "status": "worker_done",
+      "status": "open",
       "created_by": "worker",
       "created": "2026-06-23T20:24:26Z",
-      "worker_done": true,
-      "approvals": [
-        "ide-critic"
-      ],
-      "reopened": 0,
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 1,
       "tags": [
         "example"
       ],
@@ -8109,6 +8142,12 @@
           "by": "ide-critic",
           "act": "approved",
           "note": ""
+        },
+        {
+          "at": "2026-06-28T10:05:21Z",
+          "by": "ide-critic-expert",
+          "act": "reopened",
+          "note": "Maze example is NOT wired into the IDE sample dropdown \u2014 unreachable for any IDE user. examples/test_27_maze.ev exists and analyzes cleanly via /api/analyze (0 dropped, both solution_space + occupancy_heatmap offered), but there is ZERO 'maze' reference anywhere under ide/web/ (grep -rln maze ide/web/ = empty), and the sample <select> on the running main server has no maze option (verified live: 32 options, none maze/walls). The task deliverable is 'walls + solving player both visible in solution_space + occupancy_heatmap' \u2014 an IDE-VISIBLE outcome a reviewer must be able to open and SEE. As shipped, a user opening the IDE cannot reach the maze at all, and I cannot verify the walls+player rendering claim because it's not loadable through the UI. Wire test_27_maze into the IDE sample manifest (the dropdown), pick a headline view that shows both the walls and the threaded path, and confirm by Reading the rendered PNG that walls AND player are both visible on the dark page. Until the sample is openable in the IDE and the render visually shows both, this is a half-feature."
         }
       ]
     },
@@ -8376,16 +8415,31 @@
       "id": 306,
       "title": "k-induction / IC3 for UNBOUNDED safety proofs on infinite-state (unbounded Int) models: BMC unroll + the inductive-box check prove the bounded/finite case, but a genuinely unbounded counter with no upper bound needs an inductive invariant to prove safety for ALL time. Surface a 'prove by induction' that attempts k-induction and reports the certificate or the CTI (counterexample-to-induction).",
       "detail": "",
-      "status": "open",
+      "status": "closed",
       "created_by": "ide-critic-expert",
       "created": "2026-06-23T20:42:39Z",
-      "worker_done": false,
-      "approvals": [],
+      "worker_done": true,
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "analysis"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-28T09:41:04Z",
+          "by": "worker",
+          "act": "done",
+          "note": "shipped + merged to main this session; team-lead verified (soundness suite for verify-engine items, rendered-PNG for viz, end-to-end for editor)"
+        },
+        {
+          "at": "2026-06-28T09:45:07Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
+        }
+      ]
     },
     {
       "id": 307,
@@ -8812,12 +8866,13 @@
       "id": 321,
       "title": "Convert remaining samples' 'is_first_tick \u21d2 (seed)' to the := initial-value form (~22 samples)",
       "detail": "After #297 (random_walk) the := syntax (#295) is shipped + showcased, but ~22 app-data.js samples + some examples/*.ev still use the verbose 'is_first_tick \u21d2 (x=0 \u2227 y=0)' seed the user called 'awful and weird'. Convert each to per-var ':= value' (split multi-var conjunctions across declarations; handle enum/Real; verify Seq seeds like cells=\u27e8\u2026\u27e9 work or skip). SOUNDNESS like #298: verify each sample analyzes IDENTICALLY before/after (same reachable set, 0 dropped) \u2014 keep the is_first_tick line for any seed := can't express. Bump app-data cache-bust; ./test.sh green. Good candidate to DELEGATE when the user is back on sample/aesthetic work.",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "worker",
       "created": "2026-06-24T01:52:38Z",
       "worker_done": true,
       "approvals": [
-        "ide-critic"
+        "ide-critic",
+        "ide-critic-expert"
       ],
       "reopened": 0,
       "tags": [
@@ -8855,6 +8910,12 @@
         {
           "at": "2026-06-25T06:44:36Z",
           "by": "ide-critic",
+          "act": "approved",
+          "note": ""
+        },
+        {
+          "at": "2026-06-28T10:03:14Z",
+          "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
         }
@@ -9424,12 +9485,13 @@
       "id": 342,
       "title": "Split ide/web/server.py endpoint routing off the FastAPI app to relieve the Rule-3 free-function ceiling. server.py is at 11 module-level functions, ONE below the lint cap of 12 \u2014 the next clean endpoint (the #332 case) trips the ratchet, which forced a flag-based workaround instead of a new route. Group the 11 endpoint handlers (analyze, solve, optimize, invariant, temporal, query, explore, figure, diff, smtlib, index) into APIRouter modules by concern: an analysis/solve router (solve, optimize, invariant, temporal, query, explore) and a figure/export router (analyze, figure, diff, smtlib, index), each in its own file under ide/web/, included via app.include_router(...). The Req pydantic models move with their handlers. Behavior-preserving: same paths, same request/response shapes \u2014 verify every endpoint with curl against a restarted server (NOT during a critic review; the user restarts + spot-checks). Drops server.py's module-level-function count well under the cap, unblocking future endpoints.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-architect",
       "created": "2026-06-24T11:45:23Z",
       "worker_done": true,
       "approvals": [
-        "ide-critic"
+        "ide-critic",
+        "ide-critic-expert"
       ],
       "reopened": 0,
       "tags": [
@@ -9450,6 +9512,12 @@
         {
           "at": "2026-06-24T19:00:34Z",
           "by": "ide-critic",
+          "act": "approved",
+          "note": ""
+        },
+        {
+          "at": "2026-06-28T10:07:35Z",
+          "by": "ide-critic-expert",
           "act": "approved",
           "note": ""
         }
@@ -9792,16 +9860,31 @@
       "id": 354,
       "title": "Replay-path-to-rest (#326) should JUMP every diagram to the scrubbed step, not just show the text value. Verified live: clicking \u25b6 replay path to rest and scrubbing 6\u21921 correctly steps count=5\u21920 in the trace strip, but the solution_space chart (and time_series/phase_portrait if I switch) stays on the whole-set view \u2014 the current step is not highlighted ON the diagram. In the TLA+ Toolbox trace explorer, selecting a trace state repaints every view to that state. Extend the #326 reach_path scrubber (and the #305 counterexample trace) to drive a 'current state' marker into the active diagram: dot on the phase portrait, vertical cursor on time_series, highlighted node on state_graph. The path-to-rest is the witness; let me SEE it move through the picture, not just read its coordinates.",
       "detail": "",
-      "status": "open",
+      "status": "closed",
       "created_by": "ide-critic-expert",
       "created": "2026-06-24T17:07:09Z",
-      "worker_done": false,
-      "approvals": [],
+      "worker_done": true,
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "viz"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-28T09:41:03Z",
+          "by": "worker",
+          "act": "done",
+          "note": "shipped + merged to main this session; team-lead verified (soundness suite for verify-engine items, rendered-PNG for viz, end-to-end for editor)"
+        },
+        {
+          "at": "2026-06-28T09:58:45Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
+        }
+      ]
     },
     {
       "id": 356,
@@ -9887,16 +9970,31 @@
       "id": 362,
       "title": "Witness-compare two-pick UX is fiddly: in compare mode, navigating to a chip and pressing the body 'compare' button picks the CURRENT witness, so to set both A and B you must (pick A) \u2192 navigate-without-picking to another chip \u2192 (pick B). Navigating after picking can deselect. It took several tries to land a two-up diff. Make picking direct: a small \u25c6 pick-target ON each chip (Alloy-style), or 'shift-click a second chip = compare these two', with a persistent 'A / B' affordance so the user never has to reason about current-vs-picked.",
       "detail": "",
-      "status": "open",
+      "status": "closed",
       "created_by": "ide-critic",
       "created": "2026-06-24T21:39:01Z",
-      "worker_done": false,
-      "approvals": [],
+      "worker_done": true,
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "solve"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-28T09:41:03Z",
+          "by": "worker",
+          "act": "done",
+          "note": "shipped + merged to main this session; team-lead verified (soundness suite for verify-engine items, rendered-PNG for viz, end-to-end for editor)"
+        },
+        {
+          "at": "2026-06-28T09:52:57Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
+        }
+      ]
     },
     {
       "id": 363,
@@ -9932,31 +10030,61 @@
       "id": 365,
       "title": "Witness gallery: add 'save witness to .json / copy as Evident pins' and 'export the two-up diff as an image'. After landing a side-by-side compare I wanted to keep the diff (e.g. paste into a bug report) and to re-pin a witness as constraints to explore around it. Alloy lets you save/export an instance; here the witness evaporates on the next Solve.",
       "detail": "",
-      "status": "open",
+      "status": "closed",
       "created_by": "ide-critic",
       "created": "2026-06-24T21:39:10Z",
-      "worker_done": false,
-      "approvals": [],
+      "worker_done": true,
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "solve"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-28T09:41:03Z",
+          "by": "worker",
+          "act": "done",
+          "note": "shipped + merged to main this session; team-lead verified (soundness suite for verify-engine items, rendered-PNG for viz, end-to-end for editor)"
+        },
+        {
+          "at": "2026-06-28T09:52:57Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
+        }
+      ]
     },
     {
       "id": 366,
       "title": "Concept glossary on hover (overlaps newcomer #250): hovering 'fsm'/'claim'/'\u0394'/'\u21d2'/':=' in MY OWN code gives no definition. The per-sample explainer (when it works) teaches the loaded sample, but once I hand-write a buffer there's nowhere in-tool to answer 'what is :=?' or 'what is a claim?'. Add hover-cards / a glossary keyed to the keyword under the cursor, available for any buffer not just samples.",
       "detail": "",
-      "status": "open",
+      "status": "closed",
       "created_by": "ide-critic",
       "created": "2026-06-24T21:39:10Z",
-      "worker_done": false,
-      "approvals": [],
+      "worker_done": true,
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "learn"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-28T09:41:03Z",
+          "by": "worker",
+          "act": "done",
+          "note": "shipped + merged to main this session; team-lead verified (soundness suite for verify-engine items, rendered-PNG for viz, end-to-end for editor)"
+        },
+        {
+          "at": "2026-06-28T09:56:23Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
+        }
+      ]
     },
     {
       "id": 368,
@@ -9992,76 +10120,151 @@
       "id": 374,
       "title": "Glossary discoverability for newcomers: the hover-to-learn tooltip is excellent but INVISIBLE until you happen to hover a keyword. Add a one-time subtle hint ('hover any keyword to learn what it means') on first load, or a faint dotted underline on glossable tokens, so a newcomer DISCOVERS hover-to-learn instead of finding it by luck.",
       "detail": "",
-      "status": "open",
+      "status": "closed",
       "created_by": "ide-critic-newcomer",
       "created": "2026-06-25T06:38:53Z",
-      "worker_done": false,
-      "approvals": [],
+      "worker_done": true,
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "learn"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-28T09:41:03Z",
+          "by": "worker",
+          "act": "done",
+          "note": "shipped + merged to main this session; team-lead verified (soundness suite for verify-engine items, rendered-PNG for viz, end-to-end for editor)"
+        },
+        {
+          "at": "2026-06-28T09:56:24Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
+        }
+      ]
     },
     {
       "id": 375,
       "title": "Make the \u2318K searchable glossary reachable without the keyboard shortcut: a newcomer doesn't know \u2318K exists. The 'symbols' button opens the typing palette; add a visible 'glossary'/'?' entry (or a tab in the symbols panel) that opens the searchable term list (claim/fsm/\u0394/cyclic/terminates), since that's the canonical 'what does this word mean' lookup and right now it's behind an undiscoverable shortcut.",
       "detail": "",
-      "status": "open",
+      "status": "closed",
       "created_by": "ide-critic-newcomer",
       "created": "2026-06-25T06:38:53Z",
-      "worker_done": false,
-      "approvals": [],
+      "worker_done": true,
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "learn"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-28T09:41:03Z",
+          "by": "worker",
+          "act": "done",
+          "note": "shipped + merged to main this session; team-lead verified (soundness suite for verify-engine items, rendered-PNG for viz, end-to-end for editor)"
+        },
+        {
+          "at": "2026-06-28T09:56:24Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
+        }
+      ]
     },
     {
       "id": 379,
       "title": "Honest open/unbounded boundaries on the claim card (blocks SHIP): use o.upper(handle)/o.lower(handle) to detect Z3 infinity and render a half-open/unbounded var as an arrow/\u00b1\u221e, never the witness value; only stamp 'exact/proven' when BOTH sides are finite-and-checked. Today a>=3 draws 'a=3 exact'. See #367/#369.",
       "detail": "",
-      "status": "open",
+      "status": "closed",
       "created_by": "ide-critic-expert",
       "created": "2026-06-25T06:42:39Z",
-      "worker_done": false,
-      "approvals": [],
+      "worker_done": true,
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "analysis"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-28T09:41:03Z",
+          "by": "worker",
+          "act": "done",
+          "note": "shipped + merged to main this session; team-lead verified (soundness suite for verify-engine items, rendered-PNG for viz, end-to-end for editor)"
+        },
+        {
+          "at": "2026-06-28T09:47:07Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
+        }
+      ]
     },
     {
       "id": 380,
       "title": "Let verify/query/temporal assert over DERIVED vars, not just carried (project derived exprs into the per-state record before the check). See #376.",
       "detail": "",
-      "status": "open",
+      "status": "closed",
       "created_by": "ide-critic-expert",
       "created": "2026-06-25T06:42:39Z",
-      "worker_done": false,
-      "approvals": [],
+      "worker_done": true,
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "solve"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-28T09:41:03Z",
+          "by": "worker",
+          "act": "done",
+          "note": "shipped + merged to main this session; team-lead verified (soundness suite for verify-engine items, rendered-PNG for viz, end-to-end for editor)"
+        },
+        {
+          "at": "2026-06-28T09:47:41Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
+        }
+      ]
     },
     {
       "id": 381,
       "title": "Multi-term safety invariants on /api/invariant (currently single var-op-value). A verification engineer asserts arbitrary boolean invariants (a AND b => c), not one comparison. Alloy/TLA+ assert any predicate.",
       "detail": "",
-      "status": "open",
+      "status": "closed",
       "created_by": "ide-critic-expert",
       "created": "2026-06-25T06:42:39Z",
-      "worker_done": false,
-      "approvals": [],
+      "worker_done": true,
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "solve"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-28T09:41:03Z",
+          "by": "worker",
+          "act": "done",
+          "note": "shipped + merged to main this session; team-lead verified (soundness suite for verify-engine items, rendered-PNG for viz, end-to-end for editor)"
+        },
+        {
+          "at": "2026-06-28T09:45:54Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
+        }
+      ]
     },
     {
       "id": 382,
@@ -10082,61 +10285,121 @@
       "id": 386,
       "title": "Find & replace / rename-symbol in the editor. I wanted to rename a carried var ('count'\u2192'n') across a program and reached for Ctrl-H / F2-rename \u2014 neither exists; only ace's raw find. A language-aware rename (or at least find-and-replace UI) is table stakes; VS Code gives F2 rename-all-references. Without it, renaming a var in a 40-line FSM means hand-editing every \u0394count/_count/count by eye, and a missed one silently DROPS a constraint (which I verified the tool flags \u2014 but I'd rather not create the bug).",
       "detail": "",
-      "status": "open",
+      "status": "closed",
       "created_by": "ide-critic",
       "created": "2026-06-25T06:45:07Z",
-      "worker_done": false,
-      "approvals": [],
+      "worker_done": true,
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "editor"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-28T09:41:03Z",
+          "by": "worker",
+          "act": "done",
+          "note": "shipped + merged to main this session; team-lead verified (soundness suite for verify-engine items, rendered-PNG for viz, end-to-end for editor)"
+        },
+        {
+          "at": "2026-06-28T09:49:30Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
+        }
+      ]
     },
     {
       "id": 387,
       "title": "Go-to-definition / find-all-references for user symbols. I wanted to jump from a '\u0394count' use to where 'count' is declared, and from a claim invocation to the claim body. Reached for Ctrl-click / F12 \u2014 nothing. In a multi-claim file (the #claim-select picker exists, so multi-entry files are real) this is how you navigate. Every serious editor ships it.",
       "detail": "",
-      "status": "open",
+      "status": "closed",
       "created_by": "ide-critic",
       "created": "2026-06-25T06:45:07Z",
-      "worker_done": false,
-      "approvals": [],
+      "worker_done": true,
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "editor"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-28T09:41:03Z",
+          "by": "worker",
+          "act": "done",
+          "note": "shipped + merged to main this session; team-lead verified (soundness suite for verify-engine items, rendered-PNG for viz, end-to-end for editor)"
+        },
+        {
+          "at": "2026-06-28T09:49:31Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
+        }
+      ]
     },
     {
       "id": 388,
       "title": "Hover-for-type / hover-for-definition on identifiers. Hovering a var or claim name gives no type/where-declared popup. The symbols palette tells me how to TYPE \u0394; nothing tells me 'count : Int, declared line 2' on hover. Combined with the open newcomer concern #250 (hover a KEYWORD for its meaning), the editor needs a hover provider for both keywords and user symbols.",
       "detail": "",
-      "status": "open",
+      "status": "closed",
       "created_by": "ide-critic",
       "created": "2026-06-25T06:45:07Z",
-      "worker_done": false,
-      "approvals": [],
+      "worker_done": true,
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "editor"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-28T09:41:03Z",
+          "by": "worker",
+          "act": "done",
+          "note": "shipped + merged to main this session; team-lead verified (soundness suite for verify-engine items, rendered-PNG for viz, end-to-end for editor)"
+        },
+        {
+          "at": "2026-06-28T09:49:31Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
+        }
+      ]
     },
     {
       "id": 389,
       "title": "Autocomplete / IntelliSense for Evident. Typing in the editor offers no completion of declared vars, claim names, enum variants, or keywords. I wanted to type the name of a claim I'd defined and have it complete; nothing. Even a buffer-symbol completer (ace's basic autocomplete is loaded \u2014 ace-ext-language_tools.js is in the bundle) would help; a language-aware one (complete fields after a '.', enum variants in a match) is the bar.",
       "detail": "",
-      "status": "open",
+      "status": "closed",
       "created_by": "ide-critic",
       "created": "2026-06-25T06:45:19Z",
-      "worker_done": false,
-      "approvals": [],
+      "worker_done": true,
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "editor"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-28T09:41:04Z",
+          "by": "worker",
+          "act": "done",
+          "note": "shipped + merged to main this session; team-lead verified (soundness suite for verify-engine items, rendered-PNG for viz, end-to-end for editor)"
+        },
+        {
+          "at": "2026-06-28T09:49:31Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
+        }
+      ]
     },
     {
       "id": 390,
@@ -10172,31 +10435,61 @@
       "id": 393,
       "title": "Persist the witness gallery / bookmarks across re-solve and reload. The compare/page gallery (#170/#235) is excellent, but a re-solve appears to rebuild the witness set; I'd want bookmarked witnesses to survive a re-solve, a sample reload, and a page refresh (localStorage), so I can pin 'the good solution' and keep refining the model around it. Alloy keeps your bookmarked instances for the session; this should too, ideally across refresh.",
       "detail": "",
-      "status": "open",
+      "status": "closed",
       "created_by": "ide-critic",
       "created": "2026-06-25T06:45:41Z",
-      "worker_done": false,
-      "approvals": [],
+      "worker_done": true,
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "solve"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-28T09:41:04Z",
+          "by": "worker",
+          "act": "done",
+          "note": "shipped + merged to main this session; team-lead verified (soundness suite for verify-engine items, rendered-PNG for viz, end-to-end for editor)"
+        },
+        {
+          "at": "2026-06-28T09:53:42Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
+        }
+      ]
     },
     {
       "id": 394,
       "title": "Explainer should cover the relational/Solve idea, not just FSMs. The 'how this works' note is FSM-only (hidden on sudoku/subset-sum/N-queens). The single biggest conceptual leap Evident asks ('you describe the answer, the solver finds it \u2014 no algorithm') has no in-tool explainer on exactly the samples that demonstrate it. Add a per-Solve-sample note: what a claim/relation is, why there's no algorithm, what SAT/UNSAT/solve-for-X mean. (Pairs with reopened #102 and newcomer concern #250.)",
       "detail": "",
-      "status": "open",
+      "status": "closed",
       "created_by": "ide-critic",
       "created": "2026-06-25T06:45:41Z",
-      "worker_done": false,
-      "approvals": [],
+      "worker_done": true,
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "learn"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-28T09:41:04Z",
+          "by": "worker",
+          "act": "done",
+          "note": "shipped + merged to main this session; team-lead verified (soundness suite for verify-engine items, rendered-PNG for viz, end-to-end for editor)"
+        },
+        {
+          "at": "2026-06-28T09:56:57Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
+        }
+      ]
     },
     {
       "id": 395,
@@ -10241,11 +10534,13 @@
       "id": 396,
       "title": "Tour step 5 told the newcomer to delete is_first_tick => count = 0, but the := refactor (#321) made the seed count in Int := 0 \u2014 update the step to the current seed line",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "worker",
       "created": "2026-06-25T06:56:52Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [],
       "log": [
@@ -10264,6 +10559,12 @@
           "by": "worker",
           "act": "done",
           "note": "Step 5 now says delete 'count in Int := 0'; verified deleting it fires the honesty line (2 dropped). Addresses #63 reopen + #371/#384."
+        },
+        {
+          "at": "2026-06-28T10:03:14Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ],
       "addresses_concern": 371
@@ -10272,11 +10573,13 @@
       "id": 397,
       "title": "EXPLAIN_FSM_PREAMBLE (shared across all FSM samples) hardcodes count/_count/\u0394count, so a random-walk sample is taught with a variable it doesn't have \u2014 rewrite with a generic carried var x",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "worker",
       "created": "2026-06-25T06:58:26Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [],
       "log": [
@@ -10295,6 +10598,12 @@
           "by": "worker",
           "act": "done",
           "note": "Preamble now teaches 'for any carried variable x: x = \u2026 writes this tick, _x reads the previous; x \u2208 Int := 0 seeds; \u0394x = x \u2212 _x'. Generic, correct for every FSM sample. Addresses #102 reopen + #385."
+        },
+        {
+          "at": "2026-06-28T10:03:14Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ],
       "addresses_concern": 385
@@ -10381,11 +10690,13 @@
       "id": 400,
       "title": "Split render_scatter_matrix.py: lift sample_states + _probe_degenerate_attractor into a new scatter_sample.py module (data-collection concern), leaving the renderer with only the draw code. File is 499 lines; _draw_scatter_matrix is 192 lines and sample_states is 95 \u2014 extracting the sampling concern to a sibling module drops BOTH the function-too-long and keeps the renderer under 500. Behavior-preserving; sample_states is called only locally at render_scatter_matrix.py:489.",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-architect",
       "created": "2026-06-25T07:27:15Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "refactor"
@@ -10401,6 +10712,12 @@
           "by": "worker",
           "act": "done",
           "note": "Shipped commit 6fd94a36: sample_states + _probe_degenerate_attractor moved to viz/scatter_sample.py; render_scatter_matrix 485->389 lines; 36/36 PNGs byte-identical; baseline 19->18."
+        },
+        {
+          "at": "2026-06-28T10:07:35Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -11008,11 +11325,13 @@
       "id": 450,
       "title": "Guard sample/buffer loads with a monotonic request id (ignore resolutions older than the latest user action); make explicit dropdown selection authoritative over autosave-restore; surface (not silently apply) a buffer restore that would overwrite the visible program (fixes #449)",
       "detail": "",
-      "status": "worker_done",
+      "status": "closed",
       "created_by": "ide-ux-critic",
       "created": "2026-06-25T18:33:22Z",
       "worker_done": true,
-      "approvals": [],
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "editor"
@@ -11022,6 +11341,12 @@
           "at": "2026-06-25T19:59:51Z",
           "by": "worker",
           "act": "started"
+        },
+        {
+          "at": "2026-06-28T10:08:29Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
         }
       ]
     },
@@ -11134,16 +11459,31 @@
       "id": 466,
       "title": "Solve-for-X 'given' should accept domain-typed values, not require strings. /api/solve given={'x':3} 400s ('should be a valid string'); given={'x':'3'} works. An Int pin should take an Int. Minor, but it's the kind of leak that bites when the UI box and the API disagree on types.",
       "detail": "",
-      "status": "open",
+      "status": "closed",
       "created_by": "ide-critic-expert",
       "created": "2026-06-25T18:36:46Z",
-      "worker_done": false,
-      "approvals": [],
+      "worker_done": true,
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "solve"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-28T09:41:04Z",
+          "by": "worker",
+          "act": "done",
+          "note": "shipped + merged to main this session; team-lead verified (soundness suite for verify-engine items, rendered-PNG for viz, end-to-end for editor)"
+        },
+        {
+          "at": "2026-06-28T09:47:07Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
+        }
+      ]
     },
     {
       "id": 467,
@@ -11164,16 +11504,31 @@
       "id": 469,
       "title": "Dark/transparent diagram backgrounds: render all diagram PNGs with a TRANSPARENT background (savefig transparent=True / facecolor='none') so they blend with the dark page, AND restyle every drawn element (text, axes, spines, ticks, gridlines, lines, markers, legends, colormaps) to be readable on a dark background \u2014 no black-on-dark. Apply across ALL viz/render_*.py via a shared mpl style/theme, not per-file. Verify each diagram type renders legibly on dark (Read the PNGs).",
       "detail": "",
-      "status": "open",
+      "status": "closed",
       "created_by": "worker",
       "created": "2026-06-25T18:56:55Z",
-      "worker_done": false,
-      "approvals": [],
+      "worker_done": true,
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "ux"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-28T09:41:04Z",
+          "by": "worker",
+          "act": "done",
+          "note": "shipped + merged to main this session; team-lead verified (soundness suite for verify-engine items, rendered-PNG for viz, end-to-end for editor)"
+        },
+        {
+          "at": "2026-06-28T10:00:50Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
+        }
+      ]
     },
     {
       "id": 471,
@@ -11217,6 +11572,21 @@
       "reopened": 0,
       "tags": [
         "refactor"
+      ],
+      "log": []
+    },
+    {
+      "id": 474,
+      "title": "Vacuity warning on implication invariants: 'count=99 \u21d2 done=false' returns plain '\u2713 holds' even though the antecedent (count=99) is never reachable \u2014 the implication is VACUOUSLY true. Alloy and TLA+ both flag vacuity as a first-class warning (a vacuously-passing assertion is almost always a spec bug). When an antecedent of an implication invariant has zero reachable witnesses, label the result '\u2713 holds (VACUOUSLY \u2014 antecedent never reachable)' instead of a bare proof. Verified live on the counter: api/invariant antecedent=[[count,=,99]] consequent=[[done,=,false]] \u2192 holds:true with no vacuity flag.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic-expert",
+      "created": "2026-06-28T09:45:54Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "solve"
       ],
       "log": []
     }
@@ -12499,6 +12869,33 @@
       "task": null,
       "created": "2026-06-25T19:49:06Z",
       "cleared": "2026-06-25T19:57:15Z"
+    },
+    {
+      "id": 475,
+      "title": "Maze example is NOT wired into the IDE sample dropdown \u2014 unreachable for any IDE user. examples/test_27_maze.ev exists and analyzes cleanly via /api/analyze (0 dropped, both solution_space + occupancy_heatmap offered), but there is ZERO 'maze' reference anywhere under ide/web/ (grep -rln maze ide/web/ = empty), and the sample <select> on the running main server has no maze option (verified live: 32 options, none maze/walls). The task deliverable is 'walls + solving player both visible in solution_space + occupancy_heatmap' \u2014 an IDE-VISIBLE outcome a reviewer must be able to open and SEE. As shipped, a user opening the IDE cannot reach the maze at all, and I cannot verify the walls+player rendering claim because it's not loadable through the UI. Wire test_27_maze into the IDE sample manifest (the dropdown), pick a headline view that shows both the walls and the threaded path, and confirm by Reading the rendered PNG that walls AND player are both visible on the dark page. Until the sample is openable in the IDE and the render visually shows both, this is a half-feature.",
+      "detail": "",
+      "by": "ide-critic-expert",
+      "status": "open",
+      "task": 296,
+      "created": "2026-06-28T10:05:21Z"
+    },
+    {
+      "id": 476,
+      "title": "REGRESSION: /api/optimize is BROKEN (500) \u2014 the solve-for-boundaries / z3 Optimize feature (max/min a numeric var, the exact sup/inf a verification engineer reaches for, underpinning #117/#134/#379 'exact bounds') crashes. Root cause: ide/web/optimize.py:63 calls 'RC._num(o.upper(h) ...)' but render_claim_space no longer has _num \u2014 it was refactored to _finite_numeric (imported from model_global; see render_claim_space.py:71-78). The optimize.py caller still references the deleted RC._num \u2192 AttributeError: module 'render_claim_space' has no attribute '_num'. Fix: optimize.py should call render_claim_space._finite_numeric (or model_global._finite_numeric) instead of RC._num. Verified live: typed 'claim t; x \u2208 Int; 0 \u2264 x \u2264 9', clicked \u2912 max \u2192 console shows 'POST /api/optimize 500', and the UI shows NO error to the user (silent failure \u2014 second bug). curl /api/optimize {source, var:x, direction:max} \u2192 HTTP500, traceback in /tmp/ana_5300.log.",
+      "detail": "ide/web/optimize.py:63 stale RC._num after the render_claim_space _num\u2192_finite_numeric refactor; UI swallows the 500 silently",
+      "by": "ide-critic-expert",
+      "status": "open",
+      "task": null,
+      "created": "2026-06-28T10:06:55Z"
+    },
+    {
+      "id": 477,
+      "title": "Still LAYOUT-only, no operator-spacing normalization (3rd reopen on the same gap; my concern #378). Re-verified live this round: 'evident fmt /tmp/tight.ev' on input 'count\u2208Int:=0' / '\u0394count=(_count<5?1:0)' / 'done\u2208Bool=(count\u22655)' returns those lines BYTE-FOR-BYTE UNCHANGED \u2014 no spaces inserted around \u2208 := = ? : < \u2265. gofmt-grade idiomatic form is 'count \u2208 Int := 0' / '\u0394count = (_count < 5 ? 1 : 0)' / 'done \u2208 Bool = (count \u2265 5)'. The reindent/ragged-sibling half is genuinely DONE and good (idempotent, parses, no fake nesting \u2014 that part I'm satisfied with). Decision for the worker: either (a) ADD token-spacing normalization so fmt earns the 'idiomatic pretty-printer' title #35 promises, or (b) formally SCOPE #35 DOWN to 'reindent' in the title and acceptance \u2014 and then it's done. As long as the title says 'rewrites to an idiomatic one', leaving operators cramped is a half-kept promise.",
+      "detail": "",
+      "by": "ide-critic-expert",
+      "status": "open",
+      "task": 35,
+      "created": "2026-06-28T10:08:48Z"
     }
   ]
 }
