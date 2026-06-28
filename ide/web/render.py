@@ -245,8 +245,7 @@ def _maybe_claim(prefix, dropped, source="", msg="", view="claim_space"):
                     bounds[v["name"].split(".")[-1]] = [lo, hi]
     except Exception as e:
         print(f"[server] claim bounds failed: {type(e).__name__}: {e}", file=sys.stderr)
-    # #341: implied relations + forcing-constraint proof cores for the interrogable structure panel.
-    decomp = {}                                    # #338: the FULL backbone/free/equalities/relations decomp
+    decomp = {}    # #341/#338: implied relations + forcing cores + the FULL backbone/free/equalities decomp
     if feasible:
         try:
             from claim_structure import solution_structure
@@ -259,6 +258,7 @@ def _maybe_claim(prefix, dropped, source="", msg="", view="claim_space"):
     if len(bounds) >= 2:                            # #356: ≥2 numeric vars → also the witness-cloud sampling
         CLAIM_VIEWS += ["scatter_matrix", "parallel_coords"]   # views (the #284 claim renderers were dead-ended)
     view = view if view in CLAIM_VIEWS else "claim_space"
+    claim_rigor = "na" if decomp.get("note") else view_rigor(view)   # #480: not "✓ proven" if un-analyzed
     png = b""
     try:
         with render_common.broken_render(dropped):     # #416: de-rate a BROKEN claim's solved-space PNG too
@@ -284,7 +284,7 @@ def _maybe_claim(prefix, dropped, source="", msg="", view="claim_space"):
                       "forced_certs": decomp.get("forced_certs", []),   # #348: inequality-forced backbone/equality certs
                       "reachable": 0, "capped": False, "branching": 1},
         "dropped": dropped, "branching": 1, "states": 0, "edges": 0, "capped": False,
-        "vars": list(bounds.keys()), "view": view, "rigor": view_rigor(view), "views": CLAIM_VIEWS,
+        "vars": list(bounds.keys()), "view": view, "rigor": claim_rigor, "views": CLAIM_VIEWS,
         "png": base64.b64encode(png).decode() if png else None,
         "warnings": msg if dropped else "",
         "dropped_locs": _dropped_locs(source, msg) if dropped else [],

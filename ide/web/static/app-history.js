@@ -57,7 +57,10 @@ function viewPane(data, withOverlay) {
   // full state graph), or SAMPLED (trajectories / a capped fallback)? Never let a sampled cloud read as a proof.
   const R = { proven: ["✓ proven", "abstract Z3 over ALL conditions — a proof, not a sample"],
     exhaustive: ["✓ all states", "the COMPLETE bounded-discrete state graph — every reachable state, not a sample"],
-    sampled: ["~ sampled", "sampled trajectories / a capped or continuous run — NOT exhaustive; don't read it as a proof"] };
+    sampled: ["~ sampled", "sampled trajectories / a capped or continuous run — NOT exhaustive; don't read it as a proof"],
+    // #480: a claim the solver could NOT analyze (nonlinear / Z3 timeout) was neither proven NOR sampled —
+    // never badge it "✓ proven" over a "can't bound it" card. Say so honestly.
+    na: ["⊘ not analyzed", "the claim is nonlinear — Z3 can't soundly bound it; no proof, no sample"] };
   if (data.rigor && R[data.rigor]) {
     const badge = document.createElement("div");
     badge.className = "rigor-badge rigor-" + data.rigor;

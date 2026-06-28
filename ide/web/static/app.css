@@ -452,6 +452,8 @@ tr.g-changed > td, tr.g-changed > td.k { background:#2a210e; }   /* a differing 
   font-weight:600; cursor:help; z-index:4; }
 .rigor-proven, .rigor-exhaustive { background:rgba(46,125,50,0.88); color:#fff; }
 .rigor-sampled { background:rgba(245,166,35,0.9); color:#3a2a00; }
+/* #480: a claim Z3 couldn't analyze (nonlinear / timeout) — neutral grey, NOT the green proven badge. */
+.rigor-na { background:rgba(110,118,129,0.92); color:#fff; }
 /* #327: the k-induction depth knob — bottom-left of the reachable_region pane */
 .k-knob { position:absolute; bottom:8px; left:8px; display:flex; align-items:center; gap:5px; z-index:5;
   background:rgba(15,20,25,0.86); border:1px solid #2a3340; border-radius:6px; padding:3px 7px;
