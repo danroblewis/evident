@@ -76,17 +76,20 @@ def _cardinality(m, var):
 
 
 def _robust_span(m, vals, fallback_lo, fallback_hi, pad=0.06):
-    """Robust [lo, hi] of plotted data on one axis: strip a lone off-domain point by
-    ISOLATION (the same gap-based test axis_bounds/dwell_span use, #465 follow-up), then
-    pad lightly. NOT a 3×IQR quantile fence — that collapsed a SMOOTH decaying transient
-    (a spiral sink's trajectory points dwelling near the sink) to a near-zero span, so the
-    field framed to ~1e-7 instead of the orbit's real [0,1] extent. A dense transient keeps
-    its span; a real sentinel is still peeled. Falls back to the grid box when there's too
-    little data. Never returns an inverted or zero-width span."""
+    """Robust [lo, hi] of plotted data on one axis, trimming BOTH artifact shapes that flatten the
+    field: (1) a DIVERGENT cluster (robust_value_band — an unstable Euler scheme like Lotka-Volterra
+    runs the trajectory out to 1e18, blowing the axis to one line, #484), then (2) a LONE off-domain
+    sentinel (_strip_isolated_sentinels, the #465 isolation test). NOT a 3×IQR quantile fence — that
+    collapsed a SMOOTH decaying transient (a spiral sink dwelling near 0) to ~1e-7. A dense orbit
+    keeps its full span either way. Same band the reported bound uses, so the framed field never
+    shows past the bound. Falls back to the grid box on too-little data. Never inverted/zero-width."""
+    from model_const import robust_value_band
     vals = [v for v in vals if v is not None]
     if len(vals) < 4:
         return fallback_lo, fallback_hi
-    s = m._strip_isolated_sentinels(sorted(vals))
+    blo, bhi = robust_value_band(vals)             # shed a geometric divergence cluster first
+    inb = [v for v in vals if blo <= v <= bhi] or vals
+    s = m._strip_isolated_sentinels(sorted(inb))   # then a lone isolated sentinel
     lo, hi = float(min(s)), float(max(s))
     if hi - lo < 1e-9:
         return lo - 1.0, hi + 1.0
@@ -209,18 +212,44 @@ def render_numeric_panel(m, ax, axx, axy, pin, draw_colorbar, extent,
     # (bounded mode only). The grid covers axis_bounds, but the dynamics may dwell
     # in a sub-region; an empty grid quadrant is a framing lie. Use the union of
     # the live-field cells (a successor exists there) and the trajectory points,
-    # IQR-fenced on each axis to shed a lone off-domain cell, lightly padded.
+    # divergence- and sentinel-trimmed on each axis (#484/#465), lightly padded —
+    # then CLAMP to the field's own `extent` box. The grid+arrows are drawn over
+    # `extent` (the honest reachable domain); a fit wider than it just frames empty
+    # space — and on an Euler-divergent system (LV) the trajectory tail densely
+    # traces a runaway the per-axis band can't fully shed, so the clamp is the
+    # backstop that keeps the axis on the orbit instead of out at 1e4+/1e18.
     if fit_to_data:
         dx_pts = list(GX) + traj_x
         dy_pts = list(GY) + traj_y
-        fx = _robust_span(m, dx_pts, xlo, xhi)
-        fy = _robust_span(m, dy_pts, ylo, yhi)
-        ax.set_xlim(*fx)
-        ax.set_ylim(*fy)
+        fxlo, fxhi = _robust_span(m, dx_pts, xlo, xhi)
+        fylo, fyhi = _robust_span(m, dy_pts, ylo, yhi)
+        ax.set_xlim(max(fxlo, xlo), min(fxhi, xhi))
+        ax.set_ylim(max(fylo, ylo), min(fyhi, yhi))
     else:
         ax.set_xlim(xlo, xhi)
         ax.set_ylim(ylo, yhi)
+    _filter_overlay_to_bound(m, ax, axx, axy, overlay)
     return q
+
+
+def _filter_overlay_to_bound(m, ax, axx, axy, overlay):
+    """Drop hover-sidecar points outside the reported reachable bound (#484, bound ⊇ points).
+    The sidecar is the set of states presented as 'what the machine enters', so a seed placed in
+    the field box beyond the reachable extent — or a divergence-runaway state — would be a hoverable
+    lie the bound excludes. Filter to the per-axis robust_value_band over the reachable set — the
+    SAME band _reachable_bounds reports — so the points are a guaranteed subset of the bound."""
+    if overlay is None:
+        return
+    from model_const import robust_value_band
+    rs, _ = m.reachable(limit=1200)
+
+    def band(v):
+        vals = [s[v["name"]] for s in rs if isinstance(s.get(v["name"]), (int, float))]
+        return robust_value_band(vals or [0.0, 1.0])
+
+    xb, yb = band(axx), band(axy)
+    overlay[:] = [t for t in overlay if t[0] is not ax
+                  or (xb[0] <= t[1] <= xb[1] and yb[0] <= t[2] <= yb[1])]
 
 
 # ----- discrete / mixed regime (projected transition graph) -----------------

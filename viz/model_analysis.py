@@ -307,8 +307,18 @@ class AnalysisMixin:
         return sfp.check() == z3.sat
 
     def _reachable_bounds(self, states):
-        """(solution_structure phase 3) Exact min..max each numeric carried var spans over the
-        reachable set (floats rounded — Marek's #39)."""
+        """(solution_structure phase 3) The min..max each numeric carried var spans over the
+        reachable set, with a DIVERGENT tail trimmed (floats rounded — Marek's #39).
+
+        An unstable explicit-Euler scheme (Lotka-Volterra) makes the reachable BFS collect states
+        that run away to ±1e18 — real per the relation, but numerical artifacts, not the orbit.
+        Reporting their raw min/max either fabricates a bound the real orbit never occupies OR, when
+        the BFS caps before the blowup, reports a bound TIGHTER than states the orbit actually visits
+        — a state outside its own 'bound' (Marek #484, the unsound-bound class). `robust_value_band`
+        sheds the geometric runaway (a multiplicative tail gap) while keeping the full real orbit, so
+        the bound is a true superset of the displayed phase-portrait points, which pass through the
+        SAME band (render_phase_portrait): bound ⊇ points by construction."""
+        from model_const import robust_value_band
         short = lambda n: n.split(".")[-1]
         rnd = lambda x: round(x, 3) if isinstance(x, float) else x
         bounds = {}
@@ -317,7 +327,8 @@ class AnalysisMixin:
                 nums = [s[v["name"]] for s in states
                         if isinstance(s.get(v["name"]), (int, float))]
                 if nums:
-                    bounds[short(v["name"])] = [rnd(min(nums)), rnd(max(nums))]
+                    lo, hi = robust_value_band(nums)
+                    bounds[short(v["name"])] = [rnd(lo), rnd(hi)]
         return bounds
 
     @staticmethod

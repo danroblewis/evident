@@ -27,3 +27,45 @@ CHANNEL_FITNESS = {
     "facet":   {"quant": 0.20, "cat": 0.80},
     "shape":   {"quant": 0.10, "cat": 0.60},
 }
+
+
+def robust_value_band(vals, plo=1.0, phi=99.0, grow=50.0):
+    """The [lo, hi] of a numeric sample with a DIVERGENT tail trimmed off — states whose magnitude
+    runs away GEOMETRICALLY (explicit-Euler overshoot on an unstable scheme: Lotka-Volterra
+    spiralling out to ±1e18). Those states are NUMERICAL ARTIFACTS, not the orbit: left in, they
+    (a) fabricate a reported reachable bound the real orbit never occupies and (b) blow a phase-
+    portrait axis to 1e18, flattening the field to one line (#484). A LONE sentinel is caught by the
+    gap test (_strip_isolated_sentinels); a divergent CLUSTER — even one densely traced by a runaway
+    trajectory — needs this.
+
+    Detector — magnitude relative to the percentile ANCHOR, NOT to the bulk centre. A geometric
+    divergence makes max ≫ p99 by many ORDERS (LV: max 1e18 vs p99 1750); a smooth orbit's max sits
+    within a small multiple of p99 (a spiral SINK decaying 1→0 has p99 ≈ its real peak 0.2, max 1.0
+    — ratio ~5×, NOT a blowup). So fence at p99 + `grow`·|anchor| (and symmetrically below p1): a
+    value past that is a runaway and is dropped. Anchoring on |p99|/|p1| MAGNITUDE — not the inner
+    span — is the crux: a converging orbit's centre is ~0, so a span/IQR/MAD anchor would collapse
+    and clip the real transient (the #465 trap); the percentile MAGNITUDE survives it. A bounded
+    spread (uniform, counter), a decay, a growing-but-finite orbit, and a bimodal set are all
+    returned untouched (band == raw extent); only a true ±1e18-class runaway is shed.
+
+    SOUND-BY-CONSTRUCTION: the band is the SINGLE region both the reported reachable bound AND the
+    plotted/hoverable phase-portrait points pass through, so a displayed state can never fall outside
+    the bound it claims (bound ⊇ points). Returns (lo, hi); raw (min, max) when no runaway is found
+    or there's too little data. Never inverted."""
+    xs = sorted(float(v) for v in vals if isinstance(v, (int, float)) and not isinstance(v, bool))
+    n = len(xs)
+    if n < 8:
+        return (xs[0], xs[-1]) if xs else (0.0, 1.0)
+
+    def pct(p):
+        r = (p / 100.0) * (n - 1)
+        i = int(r)
+        return xs[i] if i + 1 >= n else xs[i] * (1 - (r - i)) + xs[i + 1] * (r - i)
+
+    qlo, qhi = pct(plo), pct(phi)
+    scale = max(abs(qlo), abs(qhi), 1e-12)         # anchor MAGNITUDE — robust to a ~0-centred orbit
+    fence_lo, fence_hi = qlo - grow * scale, qhi + grow * scale
+    kept = [v for v in xs if fence_lo <= v <= fence_hi]
+    if not kept:
+        return (xs[0], xs[-1])
+    return (kept[0], kept[-1])
