@@ -312,7 +312,8 @@ fn emit_write_value<'ctx>(
             .unwrap_or(false);
         if !is_free_var {
             if let Some(zs) = expr.as_string() {
-                if let Some(s) = zs.as_string() {
+                if let Some(raw) = zs.as_string() {
+                    let s = crate::encode::extract::unescape_z3_string(&raw);
                     let (p, l) = intern_str(string_pool, &s);
                     let pv = bcx.ins().iconst(types::I64, p);
                     let lv = bcx.ins().iconst(types::I64, l);
@@ -514,7 +515,8 @@ fn emit_write_value<'ctx>(
                                         .unwrap_or(false);
                                 if is_literal {
                                     if let Some(zs) = arg.as_string() {
-                                        if let Some(s) = zs.as_string() {
+                                        if let Some(raw) = zs.as_string() {
+                                            let s = crate::encode::extract::unescape_z3_string(&raw);
                                             let (p, l) = intern_str(string_pool, &s);
                                             let p_v = bcx.ins().iconst(types::I64, p);
                                             let l_v = bcx.ins().iconst(types::I64, l);

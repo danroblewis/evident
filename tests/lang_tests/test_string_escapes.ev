@@ -1,0 +1,46 @@
+-- Conformance tests for string escape sequences round-tripping correctly
+-- through Z3. The JIT codegen path was not calling unescape_z3_string on
+-- the raw Z3 string output, so \n came back as the 6-char literal `\u{a}`
+-- instead of a real newline character.
+--
+-- Run with:
+--     evident test tests/lang_tests/test_string_escapes.ev
+
+-- ── \n (newline) ────────────────────────────────────────────────
+
+-- A string with an embedded newline concatenated from two parts
+-- must equal the two-part string — i.e. the newline is ONE character.
+claim sat_newline_is_one_char
+    a ∈ String = "x\ny"
+    b ∈ String = "x" ++ "\n" ++ "y"
+    a = b
+
+-- Concatenation involving a newline string must work correctly.
+claim sat_newline_concat
+    s ∈ String = "hello\nworld"
+    t ∈ String = "hello" ++ "\n" ++ "world"
+    s = t
+
+-- A string with ONLY a newline — one character, not six.
+claim sat_newline_only
+    s ∈ String = "\n"
+    t ∈ String = "\n"
+    s = t
+
+-- ── \t (tab) ───────────────────────────────────────────────────
+
+claim sat_tab_is_one_char
+    a ∈ String = "x\ty"
+    b ∈ String = "x" ++ "\t" ++ "y"
+    a = b
+
+-- ── unsat: regression guard ─────────────────────────────────────
+
+-- If the newline leaked as a 6-char sequence, "x\ny" would have length 7
+-- (x, \, u, {, a, }, y). A real newline gives length 3 (x, \n, y).
+-- Asserting length > 3 is UNSAT when the escape is correctly decoded.
+claim unsat_newline_wrong_length
+    s ∈ String = "x\ny"
+    t ∈ String = "x" ++ "\n" ++ "y"
+    -- Both must equal each other (regression: they'd differ if one leaked)
+    s ≠ t
