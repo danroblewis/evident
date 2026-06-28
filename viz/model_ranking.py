@@ -113,7 +113,19 @@ class RankingMixin:
             g = {}
             for i, val in enumerate(series[name]):
                 g.setdefault(val, []).append(i)
-            return frozenset(frozenset(idxs) for idxs in g.values())
+            # An INJECTIVE var (every sampled value distinct — the all-singletons
+            # partition) carries NO equivalence signal: it matches every other
+            # injective var, so two independent continuous axes (x, y of a phase
+            # plane, sampled along ONE orbit where each x maps to a unique y) would
+            # collapse into one — and the renderer then sees a 1-var state and bails
+            # "needs 2 axes" on a textbook 2-D system (#465/#468). Equivalence-by-
+            # partition is only meaningful for vars that genuinely co-quantize (a
+            # bool mirroring another, a mode that tracks a phase); give an injective
+            # var a NAME-UNIQUE signature so it never merges with another.
+            sig = frozenset(frozenset(idxs) for idxs in g.values())
+            if len(g) == len(series[name]):              # all-distinct → injective
+                return (name, sig)
+            return sig
 
         def entropy(name):
             n = len(series[name])
