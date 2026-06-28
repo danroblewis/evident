@@ -52,7 +52,7 @@ fsm predator_prey
     prey ∈ Real := 40.0
     pred ∈ Real := 9.0
     Δprey = _prey * 0.1 - _prey * _pred * 0.01
-    Δpred = _prey * _pred * 0.005 - _pred * 0.1`,
+    Δpred =  prey * _pred * 0.005 - _pred * 0.1`,
   "logistic map · chaos (nonlinear function)":
 `-- The logistic map x' = r·x·(1-x), r = 3.7 — the canonical route to chaos. A single nonlinear
 -- function; open function_behavior for its parabolic transfer map, or cobweb for the dynamics.
