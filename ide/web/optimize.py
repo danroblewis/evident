@@ -40,6 +40,7 @@ def _optimize(source, claim, var, direction, work):
     extremum"). Scoped to numeric extremals — a Seq/enum extremal would need a richer decode."""
     import z3
     import render_claim_space as RC
+    from model_global import _finite_numeric        # #476: the bound-reader (was RC._num)
     ok, prefix, dropped, msg = _export(source, work)
     if not ok:
         return {"ok": False, "error": msg}
@@ -59,8 +60,9 @@ def _optimize(source, claim, var, direction, work):
     if o.check() != z3.sat:                             # unsatisfiable constraint
         return {**base, "satisfied": False}
     # The objective BOUND (not model().eval) is the extremum — and z3 reports `oo`/`-oo` here for an
-    # UNBOUNDED objective even though the model has a finite witness. RC._num returns None for those.
-    extremal = RC._num(o.upper(h) if maximize else o.lower(h))
+    # UNBOUNDED objective even though the model has a finite witness. _finite_numeric returns None for
+    # those (moved to model_global during #379; this caller still said RC._num → /api/optimize 500'd).
+    extremal = _finite_numeric(o.upper(h) if maximize else o.lower(h))
     if extremal is None:                               # unbounded → no finite extremum to report
         return {**base, "satisfied": False}
     return {**base, "satisfied": True, "extremal": extremal,
