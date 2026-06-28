@@ -90,7 +90,31 @@ class QueryMixin:
           }
         """
         name, predicate, ok = self._build_invariant_check(var, op, value)
-        return self._scan_invariant(predicate, ok, limit, violating_name=name)
+        result = self._scan_invariant(predicate, ok, limit, violating_name=name)
+        return self._maybe_prove_inductive(result,
+                                           {"kind": "conj", "terms": [[var, op, value]]})
+
+    def _maybe_prove_inductive(self, result, spec):
+        """UPGRADE a BOUNDED 'holds' to a genuine PROOF via k-induction — but ONLY in the one
+        case where it's both sound and needed: the BFS found NO counterexample (holds=True) AND
+        could NOT exhaust the reachable set (exhaustive=False). For an UNBOUNDED model (a counter
+        that grows forever) the BFS can only ever SAMPLE; k-induction proves P over EVERY reachable
+        state. On success we annotate `proof_method='k-induction'` + `k`, turning the honest
+        "holds (bounded)" into a real proof. We NEVER run induction when:
+          - the BFS already EXHAUSTED (exhaustive=True) — that's already a genuine proof, leave it;
+          - a counterexample was found (holds=False) — a real reachable ce always wins, never
+            override it with anything.
+        If induction is inconclusive (or declines, e.g. a derived var), the verdict is left
+        EXACTLY as the scan returned it. So this can only ever STRENGTHEN a verdict, never weaken
+        one — and it can never fabricate a proof for a false invariant (the prover is UNSAT-only)."""
+        if not (result.get("holds") and not result.get("exhaustive")
+                and result.get("counterexample") is None):
+            return result
+        proof = self.prove_inductive(spec)
+        if proof.get("proven"):
+            result["proof_method"] = "k-induction"
+            result["k"] = proof.get("k")
+        return result
 
     def _scan_invariant(self, predicate, ok, limit, violating_name=None):
         """The all-reachable-states scan shared by every safety check (single-var
@@ -154,11 +178,14 @@ class QueryMixin:
             # per-state: ¬(∧antecedent) ∨ (∧consequent) — false iff A∧¬C (a real, non-vacuous cex)
             def ok(sv):
                 return (not a_fn(sv)) or c_fn(sv)
-            return self._scan_invariant(predicate, ok, limit)
+            result = self._scan_invariant(predicate, ok, limit)
+            return self._maybe_prove_inductive(
+                result, {"kind": "impl", "antecedent": ant, "consequent": con})
         if not terms:
             raise ValueError("conjunction needs at least one term")
         predicate, fn = self._conj_predicate(terms)
-        return self._scan_invariant(predicate, fn, limit)
+        result = self._scan_invariant(predicate, fn, limit)
+        return self._maybe_prove_inductive(result, {"kind": "conj", "terms": terms})
 
     def _build_invariant_check(self, var, op, value):
         """Parse a check_invariant predicate spec into `(name, predicate, ok)`: canonicalize

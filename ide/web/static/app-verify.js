@@ -172,9 +172,21 @@ async function _runSafety(out, body) {
       if (d.trace && d.trace.length >= 2) showTrace(d.trace, d.predicate);
       return;
     }
-    _verifyGood(out, (d.exhaustive ? "✓ proven" : "✓ holds (bounded)")
-      + ` — ${d.predicate} on all ${d.checked} reachable states`);
+    _verifyGood(out, _safetyVerdict(d) + ` — ${d.predicate} on all ${d.checked} reachable states`);
   } catch (e) { out.className = "bad"; out.textContent = "✕ " + e; }
+}
+
+// The leading verdict phrase for a HOLDS safety result, in strength order:
+//   k-induction  — proven over the UNBOUNDED reachable set by induction (a real proof; the BFS
+//                  could only ever sample it): the strongest verdict, stronger than an exhaustive BFS.
+//   exhaustive   — the BFS closed the finite reachable set and tested every state (a genuine proof).
+//   bounded      — the BFS hit its cap and induction was inconclusive (only the sampled states).
+function _safetyVerdict(d) {
+  if (d.proof_method === "k-induction") {
+    return `✓ proven by k-induction (k=${d.k}) — holds initially and is preserved by every step `
+      + "(unbounded — a real proof, not just the sampled states)";
+  }
+  return d.exhaustive ? "✓ proven" : "✓ holds (bounded)";
 }
 
 // The scrubbable counterexample/witness TRACE + its diagram marker (_matchPoint / clearTraceRing /

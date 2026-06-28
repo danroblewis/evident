@@ -36,6 +36,7 @@ from model_query import QueryMixin
 from model_temporal import TemporalMixin
 from model_global import GlobalGraphMixin
 from model_reachable import ReachabilityMixin
+from model_kinduction import KInductionMixin
 
 
 _LOAD_CACHE = {}          # (smt2_path, schema_path, mtime) -> Model
@@ -71,8 +72,8 @@ def load(smt2_path, schema_path):
 
 
 class Model(CodecMixin, RankingMixin, AnalysisMixin, QueryMixin, TemporalMixin,
-            GlobalGraphMixin, ReachabilityMixin):
-    # Methods are inherited from seven mixins, each in its own file:
+            GlobalGraphMixin, ReachabilityMixin, KInductionMixin):
+    # Methods are inherited from eight mixins, each in its own file:
     #   CodecMixin (model_codec.py)            — value <-> z3 codec: decode, pin, block, sorts
     #   RankingMixin (model_ranking.py)        — var ranking/selection, axis bounds, independence
     #   AnalysisMixin (model_analysis.py)      — solver bounds, solution_structure, channel/facet
@@ -80,6 +81,7 @@ class Model(CodecMixin, RankingMixin, AnalysisMixin, QueryMixin, TemporalMixin,
     #   TemporalMixin (model_temporal.py)      — liveness ◇/□◇/⤳ check_temporal + witness lasso
     #   GlobalGraphMixin (model_global.py)     — whole-program graph helpers
     #   ReachabilityMixin (model_reachable.py) — reachable() / closing_depth() BFS + ΔΔ pair-graph
+    #   KInductionMixin (model_kinduction.py)  — prove_inductive: k-induction proof of an UNBOUNDED invariant
     # This file keeps the load/decode core: __init__ (the three load phases below) + the
     # solver builders + _read_state, the single-step initial_state/successor/successors/
     # trajectory primitives, and _key/state_key.
