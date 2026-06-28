@@ -1,5 +1,5 @@
 {
-  "seq": 482,
+  "seq": 489,
   "tasks": [
     {
       "id": 1,
@@ -11619,6 +11619,81 @@
         "editor"
       ],
       "log": []
+    },
+    {
+      "id": 485,
+      "title": "Command palette: 'View: \u2026' commands are scoped to the ACTIVE family only (when STRUCTURE\u00b7LAW is selected, \u2318K 'view' lists scatter/parallel/chord/function*/verify but NOT phase_portrait/state_graph/time_series which live in other families). A power user expects \u2318K to jump to ANY of the 25 gallery views by name regardless of which family tab is active. List all offered views in the palette and switch family+subtab when one is chosen.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic",
+      "created": "2026-06-28T14:12:56Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "viz"
+      ],
+      "log": []
+    },
+    {
+      "id": 486,
+      "title": "Diagram interactivity: the gallery views render as server-side <img> PNGs (matplotlib), so I can pan/zoom (scroll/drag, confirmed) but I cannot CLICK a node/arrow to inspect it, HOVER a point for its state, or click a runaway fan to interrogate it. For 'the diagram is the debugger' to be literal, the state_graph/phase_portrait/reachability_tree need clickable nodes (click \u2192 that state's full assignment; click an edge \u2192 the transition's guard). Today the picture is a (zoomable) poster, not a surface. app-interactive.js exists \u2014 extend its hit-testing to the main gallery PNGs or render those views as SVG/canvas with hit regions.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic",
+      "created": "2026-06-28T14:12:56Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "viz"
+      ],
+      "log": []
+    },
+    {
+      "id": 487,
+      "title": "Compare two results side-by-side: after I edit a constraint I want to see THIS run vs the LAST run of the same diagram (a diff/ghost overlay), and pin two diagrams from different programs next to each other. There's a \ud83d\udccc pin button and a \ud83d\udd6e history \u2014 but I couldn't pin two phase portraits side by side to compare a broken vs fixed model. A real debugger lets me hold the before next to the after.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic",
+      "created": "2026-06-28T14:12:56Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "viz"
+      ],
+      "log": []
+    },
+    {
+      "id": 488,
+      "title": "Multi-file / module support: the IDE is single-buffer (localStorage 'evident-buffer', one program). I cannot split a model into a stdlib claim file + a demo that imports it, keep several named programs, or have an explorer/tabs. Real modeling work (the CLAUDE.md 'engine claim in stdlib + game in demo' split) needs >1 file. Add named files/tabs + an open/save list (the \ud83d\udcbe/\u21a7 exist but it's still one active buffer).",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic",
+      "created": "2026-06-28T14:13:27Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "editor"
+      ],
+      "log": []
+    },
+    {
+      "id": 489,
+      "title": "Stability classifier over-fires 'unstable' on bounded/damped continuous systems: a damped spring (\u0394v = -x*k - v*c, with the -v*c damping that decays to rest) is reported verdict='unstable', and the DVD bouncer (#392) and predator-prey are all 'unstable/diverges' despite being bounded oscillators/cyclers. The 'unstable equilibrium' label should be reserved for genuinely escaping orbits; a decaying or bounded-cyclic reachable set is stable/marginally-stable. Detect contraction (reachable set shrinking tick-over-tick) or boundedness and label accordingly.",
+      "detail": "",
+      "status": "open",
+      "created_by": "ide-critic",
+      "created": "2026-06-28T14:13:27Z",
+      "worker_done": false,
+      "approvals": [],
+      "reopened": 0,
+      "tags": [
+        "analysis"
+      ],
+      "log": []
     }
   ],
   "concerns": [
@@ -12977,6 +13052,24 @@
       "status": "open",
       "task": null,
       "created": "2026-06-28T13:57:41Z"
+    },
+    {
+      "id": 483,
+      "title": "\u22a2 verify field grammar is narrower than the language's and rejects natural forms with a 'wrong shape' error: (1) a bare-Bool antecedent 'done \u21d2 count \u2265 5' is rejected ('write A \u21d2 C e.g. count = 5 \u21d2 done = true') even though 'done' is a Bool var; (2) a value-op-var term '0 \u2264 count' is rejected ('each term must be var op value (bad: 0 \u2264 count)') even though the EDITOR accepts chained '0 \u2264 count \u2264 5'. So the verify box only accepts 'var op value' and 'comparison \u21d2 comparison'. Forms a user naturally types \u2014 'done \u21d2 \u2026', '0 \u2264 count \u2227 \u2026' \u2014 bounce. The error messages are good and corrective, so this is friction not a blocker, but the verify parser should accept the same comparison forms the source language does (flip value-op-var; allow bare-Bool vars as atoms on either side of \u21d2).",
+      "detail": "On unbounded counter, verify view (STRUCTURE\u00b7LAW \u2192 verify \u00b7 \u25a1 property). 'count \u2265 0' \u2192 proven by k-induction (great). 'done \u21d2 count \u2265 5' \u2192 rejected. '0 \u2264 count \u2227 count \u2264 1000' \u2192 rejected; 'count \u2265 0 \u2227 count \u2264 1000' \u2192 holds. screenshots 13-verify-proven.png",
+      "by": "ide-critic",
+      "status": "open",
+      "task": null,
+      "created": "2026-06-28T14:03:07Z"
+    },
+    {
+      "id": 484,
+      "title": "predator-prey (Lotka-Volterra): the reported variable bound is UNSOUND and the phase portrait is distorted/unfaithful. /api/analyze structure.bounds reports prey:[0,178.914] (lower bound 0), but the phase_portrait's own sampled reachable 'points' include states with prey = -2.418 (and many small negatives) \u2014 a reachable state that VIOLATES the reported lower bound. A 'bound' the model's own sampled states fall outside of is a fabricated bound (same honesty class as the old nonlinear [0,0] bug). SEPARATELY: the phase-portrait PNG y-axis renders to 1e18 and collapses all real structure into a single straight diverging line, even though structure.bounds and nearly all sampled points are < 180 \u2014 a few Euler-blown-up outlier states stretch the axis and destroy the picture. A textbook LV phase portrait should show closed-ish orbits/spiral; this shows a line to 1e18. Likely explicit-Euler blowup of a handful of samples. Fixes: (a) make the reported bound sound (don't claim prey\u22650 when a reachable sample is -2.418 \u2014 either clamp the sampler to the proven region or widen the bound to include the negative), (b) robust-scale the phase-portrait axes to the bulk/IQR of reachable points (or to the proven reachable_region) so outliers don't flatten the field.",
+      "detail": "predator_prey sample, DYNAMICS OVER TIME \u2192 phase portrait; /api/analyze view=phase_portrait points[] has prey=-2.418173769289281 while structure.bounds.prey=[0,178.914]; PNG y-axis=1e18 straight line; screenshot 16-function-graph.png",
+      "by": "ide-critic",
+      "status": "open",
+      "task": null,
+      "created": "2026-06-28T14:08:20Z"
     }
   ]
 }
