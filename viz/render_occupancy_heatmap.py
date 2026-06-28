@@ -45,6 +45,8 @@ from occupancy_collect import (  # noqa: E402
     pick_axes, nbins, MIN_DISTINCT,
 )
 from axis_select import resolve_axes, write_axes  # noqa: E402
+import occupancy_data  # noqa: E402
+from render_common import short  # noqa: E402
 
 
 def draw_heatmap(fig, ax, m, a0, a1, xs, ys, vmax=None, title=None,
@@ -123,11 +125,14 @@ def render(smt2, schema, out, x_var=None, y_var=None):
         fig.tight_layout()
         fig.savefig(out, dpi=120)
         plt.close(fig)
+        occupancy_data.write(out, occupancy_data.na(m, None, None, "no state variables"))
         return
 
     # --- single axis -> 1-D strip ---
     if a1 is None:
         _render_strip(m, a0, out, title)
+        occupancy_data.write(out, occupancy_data.na(
+            m, a0, None, "only one usable axis (1-D strip, no 2-D occupancy)"))
         return
 
     both_numeric = a0["kind"] in ("int", "real") and a1["kind"] in ("int", "real")
@@ -136,6 +141,10 @@ def render(smt2, schema, out, x_var=None, y_var=None):
     # --- FACETED small multiples (one heatmap per low-card categorical value) ---
     if facet is not None and discrete_path:
         _render_faceted(m, a0, a1, facet, out, title)
+        # Facets split the occupancy across panels; the .data.json substrate models the SINGLE 2-D
+        # density, so record an honest "faceted" N/A here rather than a misleading merged grid.
+        occupancy_data.write(out, occupancy_data.na(
+            m, a0, a1, f"faceted by {short(facet['name'])} (small multiples — no single grid)"))
         return
 
     # --- single-panel heatmap ---
@@ -263,13 +272,25 @@ def _render_single(m, a0, a1, discrete_path, out, title):
     fig, ax = plt.subplots(figsize=(7.5, 6.5))
     if len(xs) == 0:
         _save_na(fig, ax, m, out, title, "no visited states (transition unsat)")
+        occupancy_data.write(out, occupancy_data.na(
+            m, a0, a1, "no visited states (transition unsat)", status="empty"))
         return
     ex = ey = None
     if not discrete_path:
         guarded = _numeric_guard(m, a0, a1, xs, ys, fig, ax, out, title)
         if guarded is None:
+            # a guard already drew the N/A card; record the same honest N/A (the reason rode the card)
+            occupancy_data.write(out, occupancy_data.na(
+                m, a0, a1, "numeric occupancy guard fired (degenerate / smear / constant axis)"))
             return
         xs, ys, ex, ey = guarded
+
+    # The SAME histogram draw_heatmap rasters — recomputed here (raw counts, not log) to seed the
+    # .data.json grid, so the substrate is exactly the picture's data.
+    bx, by = nbins(m, a0, xs, extent=ex), nbins(m, a1, ys, extent=ey)
+    counts, xedges, yedges = np.histogram2d(xs, ys, bins=[bx, by])
+    occupancy_data.write(out, occupancy_data.build_grid(
+        m, a0, a1, xs, ys, xedges, yedges, counts))
 
     im = draw_heatmap(fig, ax, m, a0, a1, xs, ys, ex=ex, ey=ey)
     if im is not None:

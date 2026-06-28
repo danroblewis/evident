@@ -58,6 +58,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from evident_viz import load
+import transition_matrix_data
 # State-set construction + adjacency-matrix building live in the data module.
 from transition_matrix_build import sample_states, build_matrix, order_states
 
@@ -254,9 +255,17 @@ def _draw_matrix_grid(ax, mat, ids, n):
 def render(m, out_path):
     built = _build_states_matrix(m, out_path)
     if built is None:
+        # _build_states_matrix already emitted a placeholder PNG; still drop an HONEST data
+        # sidecar so the golden suite sees "no matrix" rather than a missing file.
+        transition_matrix_data.write(out_path, transition_matrix_data.build(m, None, "n/a"))
         return
     states, mat, ribbon_var, ribbon_values, mode, sampled_note, _total = built
     n = len(states)
+
+    # ABSTRACT substrate (golden suite): the matrix's structure — shape, mode, transition count,
+    # and per-row out-degree (the branching the matrix captured). Built from the SAME `mat` drawn
+    # below, so the data and the picture agree. Mirrors the PNG; never fails the render.
+    transition_matrix_data.write(out_path, transition_matrix_data.build(m, mat, mode))
 
     # A matrix whose axes are the full state-tuples overprints into illegible
     # text the moment the tuple is more than a couple of fields (brackets,

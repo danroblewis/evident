@@ -41,6 +41,7 @@ from render import VIEWS  # noqa: E402
 
 import figure_router  # noqa: E402
 import solve_router  # noqa: E402
+import run_router  # noqa: E402
 # Re-export for the direct-call unit test (ide/test_all_conditions_stats.py imports these).
 from figure_router import Source, analyze  # noqa: E402,F401
 
@@ -58,6 +59,7 @@ async def _no_cache(request, call_next):
 
 app.include_router(figure_router.router)
 app.include_router(solve_router.router)
+app.include_router(run_router.router)
 
 
 _NOCACHE = {"Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",

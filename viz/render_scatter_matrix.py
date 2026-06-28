@@ -309,32 +309,31 @@ def claim_witnesses(smt2_path, schema_path, limit=600):
     if not feasible or not sample_vars:
         return states, plot_vars, cat_vars, enum_variants, feasible
 
+    def decode(mv, kind):
+        """One z3 model value → python, by the var's declared kind."""
+        if kind == "bool":
+            return z3.is_true(mv)
+        if kind == "enum":
+            return mv.decl().name()
+        try:
+            return mv.as_long()
+        except Exception:
+            try:
+                return round(float(mv.as_fraction()), 6)
+            except Exception:
+                return 0.0
+
     while len(states) < limit and s.check() == z3.sat:
         mod = s.model()
         st, block = {}, []
         for v in sample_vars:
             c = consts[v["name"]]
             mv = mod.eval(c, model_completion=True)
-            st[v["name"]] = _decode(mv, v["kind"])
+            st[v["name"]] = decode(mv, v["kind"])
             block.append(c != mv)              # differ on SOME observed var → distinct
         states.append(st)
         s.add(z3.Or(*block))
     return states, plot_vars, cat_vars, enum_variants, feasible
-
-
-def _decode(mv, kind):
-    """One z3 model value → python, by the var's declared kind."""
-    if kind == "bool":
-        return z3.is_true(mv)
-    if kind == "enum":
-        return mv.decl().name()
-    try:
-        return mv.as_long()
-    except Exception:
-        try:
-            return round(float(mv.as_fraction()), 6)
-        except Exception:
-            return 0.0
 
 
 def _render_claim(smt2, schema, out):
@@ -368,25 +367,34 @@ def _empty(out, title, msg):
     return out
 
 
-def main():
-    if len(sys.argv) != 4:
-        print("usage: render_scatter_matrix.py <smt2> <schema> <out.png>", file=sys.stderr)
-        sys.exit(2)
-    smt2, schema, out = sys.argv[1], sys.argv[2], sys.argv[3]
-
-    # A CLAIM schema (no "fsm" key) has no transition to BFS — sample its SOLUTION SPACE
-    # instead. The FSM path is unchanged.
+def render(smt2, schema, out_path):
+    """The IDE-contract entry (smt2, schema, out_path): draw the scatter matrix AND write the
+    abstract `<out>.data.json` cloud substrate. A CLAIM schema (no "fsm") samples its solution
+    space; an FSM schema samples its reachable/trajectory cloud — same picture, different cloud.
+    Keeping this 3-arg signature lets the IDE adapter call it directly (no _render_via_main)."""
     import json as _json
     sch = _json.load(open(schema))
     if "fsm" not in sch and "claim" in sch:
-        _render_claim(smt2, schema, out)
-        return
+        _render_claim(smt2, schema, out_path)
+        return out_path
 
     m = load(smt2, schema)
     vars_ = m.state_vars
     title = f"{m.fsm} — scatter_matrix"
     states, _ = sample_states(m)
-    _draw_scatter_matrix(m, vars_, states, title, "reachable cloud + trajectory", out)
+    _draw_scatter_matrix(m, vars_, states, title, "reachable cloud + trajectory", out_path)
+    import cloud_data
+    cloud_data.emit_scatter(out_path, m, vars_, states)   # abstract substrate (golden suite)
+    return out_path
+
+
+
+
+def main():
+    if len(sys.argv) != 4:
+        print("usage: render_scatter_matrix.py <smt2> <schema> <out.png>", file=sys.stderr)
+        sys.exit(2)
+    render(sys.argv[1], sys.argv[2], sys.argv[3])
 
 
 if __name__ == "__main__":

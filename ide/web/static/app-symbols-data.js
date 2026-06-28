@@ -39,4 +39,10 @@ const WORD_MNEMONICS = {
   times: "×", cdot: "·", cup: "∪", cap: "∩", subseteq: "⊆", emptyset: "∅",
 };
 // Two-char ASCII operator pairs: convert the instant the 2nd char is typed.
-const OP_PAIRS = { "<=": "≤", ">=": "≥", "!=": "≠", "=>": "⇒" };
+// << / >> are the Evident seq-literal brackets ⟨ / ⟩ (langle/rangle).
+const OP_PAIRS = { "<=": "≤", ">=": "≥", "!=": "≠", "=>": "⇒", "<<": "⟨", ">>": "⟩" };
+
+// PREFIX symbols that bind tightly to the following token (Δx, ¬x) — no trailing space
+// when the mnemonic is word-auto-replaced by a space trigger. The replacement keeps the
+// cursor BEFORE the space so the next keystroke attaches: type "delta x" → "Δx", not "Δ x".
+const PREFIX_SYMBOLS = new Set(["Δ", "¬"]);

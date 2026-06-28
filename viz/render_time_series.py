@@ -45,10 +45,19 @@ from evident_viz import load
 from time_series_ensemble import ensemble_inits, step_trajectory
 from time_series_walk import pick_seed, excited_seed, walk, to_ordinal, _flatten_seqs
 from overlay_points import write_points
+import timeseries_data
 
 STEPS = 60
 
 _SHORT = lambda n: n.split(".")[-1]
+
+
+def _emit_data(m, out_path, trajs, ordered, mode, note):
+    """Write the abstract `<out>.data.json` (the golden-test substrate) from the plotted
+    trajectories. Numeric vars only — spread is what's meaningful for a stochastic time series.
+    Called on EVERY exit path (incl. the N/A / all-constant fallbacks) so the data always exists."""
+    numeric = [v for v in ordered if v.get("kind") in ("int", "real")]
+    timeseries_data.emit(out_path, m, trajs, numeric, mode, note)
 
 
 def _write_tick_points(fig, ax, primary, out_path):
@@ -197,6 +206,7 @@ def _render_ensemble(m, out_path, inits, kind, note):
     trajs = [tr for tr in raw if tr]
     if not trajs:
         _na_card(m, out_path, f"N/A for {m.fsm}: no trajectories from any initial condition")
+        _emit_data(m, out_path, [], m.carried, "ensemble", note)
         return "ensemble: empty"
 
     trajs, flat_vars, nticks, ticks, ordered = _flatten_ensemble(m, trajs)
@@ -224,6 +234,7 @@ def _render_ensemble(m, out_path, inits, kind, note):
         fig.suptitle(f"{m.fsm} — time_series", fontsize=14, fontweight="bold")
         fig.savefig(out_path, dpi=120, bbox_inches="tight")
         plt.close(fig)
+        _emit_data(m, out_path, trajs, ordered, "ensemble", note)
         return f"ensemble: all {len(ordered)} vars constant"
 
     nvars = len(varying)
@@ -250,7 +261,25 @@ def _render_ensemble(m, out_path, inits, kind, note):
     # maps each tick to its fraction; trajs[0] carries every leaf per tick (the scrubber's match key).
     _write_tick_points(fig, axes[-1], trajs[0], out_path)
     plt.close(fig)
+    _emit_data(m, out_path, trajs, ordered, "ensemble", note)
     return (f"{kind} ensemble: {len(trajs)} trajectories, {nvars} varying vars")
+
+
+def _draw_single_track(ax, m, var, rank, ticks, traj):
+    """Plot ONE variable's track in the single-run view: numeric as a line, categorical as a step."""
+    name, kind = var["name"], var["kind"]
+    badge = "derived" if var.get("role") == "derived" else m.var_class(var)
+    ax.set_title(f"#{rank + 1}  {badge}", loc="left", fontsize=8, color="#888", pad=2)
+    if kind in ("int", "real"):
+        ax.plot(ticks, [s[name] for s in traj], marker="o", markersize=3,
+                linewidth=1.4, color="#1f77b4")
+        ax.grid(True, alpha=0.3)
+    else:
+        ys = [to_ordinal(m, var, s[name])[0] for s in traj]
+        ax.step(ticks, ys, where="post", linewidth=1.6, color="#d62728", marker="o", markersize=3)
+        _categorical_yticks(ax, m, var)
+        ax.grid(True, axis="x", alpha=0.3)
+    ax.set_ylabel(name, rotation=0, ha="right", va="center", fontsize=9)
 
 
 def _render_single_run(m, out_path, reason):
@@ -261,6 +290,7 @@ def _render_single_run(m, out_path, reason):
     if seed is None:
         _na_card(m, out_path,
                  f"N/A for {m.fsm}: no initial state\n(transition has no first-tick model)")
+        _emit_data(m, out_path, [], m.carried, "single_run", reason)
         return "single-run: no init"
     # An unbounded OSCILLATOR (pendulum/vanderpol) whose init is the origin fixed point would plot a
     # flat 'no dynamics' line; on this unbounded path there's no proven bound to violate, so excite
@@ -285,6 +315,7 @@ def _render_single_run(m, out_path, reason):
         _na_card(m, out_path,
                  f"N/A — every state variable is constant over the trajectory\n"
                  f"({len(traj)} ticks from seed {m.label(seed)}; no dynamics to plot)")
+        _emit_data(m, out_path, [traj], ordered, "single_run", reason)
         return "single-run: all constant"
 
     nvars = len(varying)
@@ -293,20 +324,7 @@ def _render_single_run(m, out_path, reason):
     if nvars == 1:
         axes = [axes]
     for rank, (ax, var) in enumerate(zip(axes, varying)):
-        name, kind = var["name"], var["kind"]
-        badge = "derived" if var.get("role") == "derived" else m.var_class(var)
-        ax.set_title(f"#{rank + 1}  {badge}", loc="left", fontsize=8, color="#888", pad=2)
-        if kind in ("int", "real"):
-            ax.plot(ticks, [s[name] for s in traj], marker="o", markersize=3,
-                    linewidth=1.4, color="#1f77b4")
-            ax.grid(True, alpha=0.3)
-        else:
-            ys = [to_ordinal(m, var, s[name])[0] for s in traj]
-            ax.step(ticks, ys, where="post", linewidth=1.6, color="#d62728",
-                    marker="o", markersize=3)
-            _categorical_yticks(ax, m, var)
-            ax.grid(True, axis="x", alpha=0.3)
-        ax.set_ylabel(name, rotation=0, ha="right", va="center", fontsize=9)
+        _draw_single_track(ax, m, var, rank, ticks, traj)
     axes[-1].set_xlabel("tick")
     fig.suptitle(
         f"{m.fsm} — time_series  (single run (unbounded init): {reason}; "
@@ -322,6 +340,7 @@ def _render_single_run(m, out_path, reason):
     # crop-fraction; `traj` carries every leaf per tick (the scrubber's match key).
     _write_tick_points(fig, axes[-1], traj, out_path)
     plt.close(fig)
+    _emit_data(m, out_path, [traj], ordered, "single_run", reason)
     return f"single-run (unbounded): {nvars} varying vars"
 
 

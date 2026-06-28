@@ -99,11 +99,18 @@ function applyTokenInput(delta) {
   if (!/[A-Za-z0-9_]/.test(ch)) {
     const wm = before.match(/(^|[^A-Za-z0-9_])([A-Za-z]+)(.)$/);
     if (wm && WORD_MNEMONICS[wm[2]]) {
+      const glyph = WORD_MNEMONICS[wm[2]];
       const wordStart = col - wm[3].length - wm[2].length;   // start of the matched word
       // Replace "word<trigger>" with "<glyph><trigger>" (keep the boundary char and land
       // the cursor AFTER it) — otherwise the cursor sits before the trigger space and the
       // next keystroke wedges between glyph and space (`in `+`Int` → `∈Int `).
-      spliceReplace(row, wordStart, col, WORD_MNEMONICS[wm[2]] + wm[3]);
+      spliceReplace(row, wordStart, col, glyph + wm[3]);
+      // PREFIX symbols (Δ, ¬) attach tightly to the next token — no trailing space.
+      // When the trigger was a space, pull the cursor back before it so the next keystroke
+      // lands immediately after the glyph: "delta x" → "Δx", not "Δ x".
+      if (PREFIX_SYMBOLS.has(glyph) && wm[3] === " ") {
+        editor.moveCursorTo(row, wordStart + glyph.length);
+      }
     }
   }
 }

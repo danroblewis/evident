@@ -42,6 +42,7 @@ from networkx.drawing.nx_pydot import graphviz_layout
 
 sys.path.insert(0, "viz")
 from evident_viz import load
+import state_graph_data
 
 # Interactive node-hover overlay (#184 increment 2): cap the overlay targets so a
 # several-hundred-node graph doesn't paint hundreds of hit-zones over the picture.
@@ -327,10 +328,12 @@ def render(smt2, schema, out_path, all_conditions=None):
     # --- pick the honest finite reachable set ---------------------------------
     G, states, mode = _select_graph(m, all_conditions=all_conditions)
 
-    # #418: on a BROKEN (under-constrained) model the in-PNG title must not REASSURE. A
-    # sampled trajectory is still what was drawn — but "deterministic run" reads as a confident
-    # answer one inch below the "this model is BROKEN" banner. Re-word it so the picture's own
-    # title AGREES: it's ONE sampled path through an under-constrained relation, not THE run.
+    # ABSTRACT substrate (golden suite): the SELECTED graph's structure (counts + out-degree) BEFORE
+    # the layout down-sample — the honest reachable structure. (build/write live in state_graph_data.)
+    state_graph_data.write(out_path, state_graph_data.build(m, G, states, mode))
+
+    # #418: on a BROKEN model, re-word "deterministic run" so the title doesn't read as a confident
+    # answer below the "BROKEN" banner — it's ONE sampled path through an under-constrained relation.
     import render_common
     if render_common._BROKEN and mode and "trajectory" in mode:
         mode = "one sampled path (model is under-constrained)"
@@ -341,14 +344,12 @@ def render(smt2, schema, out_path, all_conditions=None):
     if n_nodes == 0:
         fig, ax = plt.subplots(figsize=(8, 6))
         ax.axis("off")
-        ax.text(0.5, 0.5,
-                f"N/A — not meaningful for {m.fsm}\n"
-                f"(no reachable states to graph)",
+        ax.text(0.5, 0.5, f"N/A — not meaningful for {m.fsm}\n(no reachable states to graph)",
                 ha="center", va="center", fontsize=14, wrap=True)
         ax.set_title(f"{m.fsm} — {title_type}", fontsize=14, fontweight="bold")
         fig.savefig(out_path, dpi=120, bbox_inches="tight")
         plt.close(fig)
-        _write_points(out_path, [])            # no nodes → no overlay targets
+        _write_points(out_path, [])
         return out_path, 0, 0, "n/a"
 
     G, states, pos, terminal, axis_labels, sample_note, n_nodes, n_edges = \

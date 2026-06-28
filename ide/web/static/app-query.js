@@ -68,6 +68,110 @@ function _parseTerms(raw) {
 // A `[var, op, value]` term rendered back to source text (chip label / readable conjunction).
 function _termText(t) { return `${t[0]} ${t[1]} ${t[2]}`; }
 
+// --- grouped-binding display (dotted-prefix grouping) --------------------------------
+// Variables like `request.path`, `response.status.code` group by their outermost prefix:
+// all `request.*` under a "request" header, `response.status.*` under "response.status",
+// bare `x` under a top-level group. Groups are in first-seen order (source ordering).
+// Returns an array of {prefix, vars} where vars is [{full, short, value}].
+function _groupByPrefix(bindings) {
+  const groups = new Map();
+  for (const [full, value] of Object.entries(bindings || {})) {
+    const dot = full.indexOf(".");
+    // All segments except last form the group prefix; last segment is the short display name.
+    // `request.port` → prefix "request", short "port".
+    // `response.status.code` → prefix "response.status", short "code".
+    // `x` → prefix "" (top-level), short "x".
+    const prefix = dot >= 0 ? full.slice(0, full.lastIndexOf(".")) : "";
+    const short = dot >= 0 ? full.slice(full.lastIndexOf(".") + 1) : full;
+    if (!groups.has(prefix)) groups.set(prefix, []);
+    groups.get(prefix).push({ full, short, value });
+  }
+  return [...groups.entries()].map(([prefix, vars]) => ({ prefix, vars }));
+}
+
+// Render a grouped binding table into a DocumentFragment child of `container`.
+// One section per prefix-group: a dim header row (the prefix, e.g. "request") followed by
+// one row per variable. Top-level (no-prefix) vars omit the header.
+function _renderGroupedBindings(bindings, container) {
+  container.innerHTML = "";
+  const groups = _groupByPrefix(bindings);
+  if (!groups.length) return;
+  const table = document.createElement("table");
+  table.className = "qgrp-table";
+  for (const { prefix, vars } of groups) {
+    if (prefix) {
+      const hdr = document.createElement("tr");
+      hdr.className = "qgrp-hdr";
+      const td = document.createElement("td");
+      td.colSpan = 2; td.textContent = prefix;
+      hdr.appendChild(td); table.appendChild(hdr);
+    }
+    for (const { full, short, value } of vars) {
+      const tr = document.createElement("tr");
+      const kd = document.createElement("td"); kd.className = "k";
+      kd.textContent = prefix ? short : full;
+      kd.title = full;       // show the full dotted name on hover
+      const vd = document.createElement("td"); vd.className = "v";
+      vd.textContent = JSON.stringify(value);
+      tr.appendChild(kd); tr.appendChild(vd); table.appendChild(tr);
+    }
+  }
+  container.appendChild(table);
+}
+
+// Show a valid satisfying assignment for the current claim as soon as the query view opens,
+// before the user has typed anything. Calls /api/solve with no pins — the same path as the
+// ⊨ Solve button — and renders the result grouped by dotted prefix into #query-result.
+// Called by the MutationObserver below when #query-row becomes visible.
+async function _showInitialSolution() {
+  const out = $("#query-result");
+  if (!out) return;
+  // Only fill when the result region is genuinely empty (don't stomp a live query result).
+  if (out.textContent.trim() && !out.classList.contains("dim")) return;
+  out.className = "dim"; out.textContent = "⋯ solving…";
+  try {
+    const source = editor.getValue();
+    // Resolve the claim the same way the ⊨ Solve button does: picker wins, else last entry.
+    const entries = (typeof topLevelEntries === "function") ? topLevelEntries(source) : [];
+    const sel = $("#claim-select");
+    const claim = (sel && !sel.hidden && sel.value) ? sel.value
+      : (entries.length ? entries[entries.length - 1] : null);
+    const res = await fetch("/api/solve", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ source, claim, given: {} }),
+    });
+    const d = await res.json();
+    if (!d.ok || d.satisfied === false || !d.bindings) {
+      // UNSAT or error — show a brief note but don't pollute with a full core dump.
+      out.className = "dim";
+      out.textContent = d.satisfied === false ? "(no satisfying assignment — claim is UNSAT)" : "";
+      return;
+    }
+    // Render grouped bindings above a one-line summary.
+    out.className = "good";
+    out.innerHTML = `<span class="qinit-label">a valid assignment (no pins):</span>`;
+    const wrap = document.createElement("div");
+    wrap.className = "qinit-bindings";
+    _renderGroupedBindings(d.bindings, wrap);
+    out.appendChild(wrap);
+  } catch (_) { out.className = "dim"; out.textContent = ""; }
+}
+
+// Observe #query-row: when it transitions from hidden → visible (the query view just opened)
+// AND the result region is empty, auto-populate with a valid solution. This fires without
+// touching app-interactive.js — the MutationObserver detects the re-parent + unhide that
+// _openQueryView performs.
+(function _installQueryViewObserver() {
+  function _maybeInit(el) {
+    if (!el || el.hidden) return;
+    const out = $("#query-result");
+    if (out && !out.textContent.trim()) _showInitialSolution();
+  }
+  const target = document.getElementById("query-row");
+  if (!target) return;
+  new MutationObserver(() => _maybeInit(target)).observe(target, { attributes: true, attributeFilter: ["hidden"] });
+}());
+
 // Run /api/query for `terms` and render the verdict into `out`. `nAssume` ≥ 0 tunes the UNSAT
 // copy to name the assumption stack ("the last one made it unsat"). Shared by one-shot + stack.
 async function _execQuery(out, terms, nAssume) {
@@ -92,10 +196,18 @@ async function _execQuery(out, terms, nAssume) {
         + (d.exhaustive ? ` (searched all ${d.checked} reachable states)` : ` (searched ${d.checked}; capped)`);
       return;
     }
-    const w = Object.entries(d.witness || {}).map(([k, v]) => `${k.split(".").pop()}=${v}`).join(" ");
+    // Render the witness grouped by dotted prefix (request.*, response.status.*, etc.) so the
+    // structure is visible at a glance rather than a flat dump of `name.field=value` tokens.
     out.className = "good";
     const under = nAssume ? `⊨ under ${nAssume} assumption${nAssume === 1 ? "" : "s"} — ` : "";
-    out.textContent = `✓ ${under}reachable — ${w} (${d.count} of ${d.checked} state${d.checked === 1 ? "" : "s"})`;
+    const summary = `✓ ${under}reachable (${d.count} of ${d.checked} state${d.checked === 1 ? "" : "s"})`;
+    out.innerHTML = `<span class="qmatch-summary">${escapeHtml(summary)}</span>`;
+    if (d.witness && Object.keys(d.witness).length) {
+      const wrap = document.createElement("div");
+      wrap.className = "qinit-bindings";
+      _renderGroupedBindings(d.witness, wrap);
+      out.appendChild(wrap);
+    }
     if (d.trace && d.trace.length >= 2) showTrace(d.trace, `a run reaching: ${d.predicate}`, "goal");
     renderMatchWalker(out, d);                 // walk every matching reachable state (Ana #241)
   } catch (e) { out.className = "bad"; out.textContent = "✕ " + e; }

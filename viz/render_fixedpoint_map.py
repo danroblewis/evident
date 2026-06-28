@@ -52,6 +52,7 @@ from fixedpoint_states import (
 # All-conditions seeding + attractor basin coloring (the "which attractor does each
 # state converge to" partition) live in their own sibling module; plotting stays here.
 from fixedpoint_basins import sample_all_conditions, basin_of, scatter_basins
+import fixedpoint_data
 # Interactive hover-overlay sidecar (#184 increment 4). fixedpoint_map ALWAYS
 # saves with bbox_inches="tight", so per-dot/star fractions use the tight-bbox
 # mapping. We emit only for the MAIN state-plot axis (the first/only panel) —
@@ -79,14 +80,13 @@ def render(smt2, schema, out_path):
     states, mode, edges = sample_all_conditions(model)
 
     if not states or xvar is None:
+        fixedpoint_data.emit(out_path, model, mode, states or [], [], [], xvar, yvar)
         fig, ax = plt.subplots(figsize=(9, 8))
         placeholder(ax, title, "no states could be sampled from the transition")
-        finish(fig, out_path)           # overlay=None → write_points([]) (no targets)
+        finish(fig, out_path)
         return out_path
-
-    # attractors are a global property of the dynamics — find them ONCE, then
-    # render them into whichever facet panel each member lands in.
-    fixed, cycles = find_attractors(model, states, mode)
+    fixed, cycles = find_attractors(model, states, mode)            # attractors: a global property
+    fixedpoint_data.emit(out_path, model, mode, states, fixed, cycles, xvar, yvar)  # golden substrate
 
     # Color each state by the attractor (terminal SCC) it converges to — the basin
     # partition. Empty when there's no edge graph (numeric grid scan → plain dots).

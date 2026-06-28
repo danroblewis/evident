@@ -63,6 +63,8 @@ from phase_portrait_extent import (
 # panels save PLAIN (figure_fraction); faceted panels save TIGHT (tight_fraction).
 from overlay_points import write_points, figure_fraction, tight_fraction
 from axis_select import resolve_axes, write_axes
+from render_common import short
+import cloud_data
 
 
 # ----- channel assignment: axes (numeric-first) + a facet categorical -------
@@ -167,10 +169,13 @@ def render(smt2_path, schema_path, out_path, x_var=None, y_var=None):
         fig.savefig(out_path, dpi=120)
         plt.close(fig)
         write_points(out_path, [])           # degenerate → no hoverable points
+        cloud_data.emit_degenerate(out_path, m)   # still emit data so the test sees the N/A honestly
         return out_path
 
     facet_vals = _facet_values(m, facet_var) if facet_var is not None else None
 
+    rendered_na = False
+    regime_detail = regime
     if regime == "numeric":
         # A continuous vector field is only HONEST when the reachable dynamics are
         # genuinely continuous/unbounded — a limit cycle, an open orbit. A
@@ -179,6 +184,7 @@ def render(smt2_path, schema_path, out_path, x_var=None, y_var=None):
         # cycles/basins/fixed-point stars the program never enters (the bug).
         # Classify by the program's OWN reachable set, never a guessed box.
         kind = _numeric_regime(m, axx, axy)
+        regime_detail = f"numeric/{kind}"
         if kind == "finite":
             # finite reachable march -> the honest transition graph, NOT a field
             _render_discrete(m, axx, axy, facet_var, facet_vals, "mixed", out_path)
@@ -196,8 +202,10 @@ def render(smt2_path, schema_path, out_path, x_var=None, y_var=None):
                             extent_mode="orbit")
         else:  # "degenerate": no 2D field (a constant axis, or no orbit)
             _render_na(m, axx, axy, out_path)
+            rendered_na = True
     else:
         _render_discrete(m, axx, axy, facet_var, facet_vals, regime, out_path)
+    cloud_data.emit_phase(out_path, m, axx, axy, regime_detail, rendered_na)  # abstract substrate
     return out_path
 
 

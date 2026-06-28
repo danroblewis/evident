@@ -17,11 +17,31 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt                     # noqa: E402
 from matplotlib.patches import Rectangle            # noqa: E402
 
+from evident_viz import load                          # noqa: E402
 from reachable_region import bounding_box, k_induction_box  # noqa: E402
 from render_common import (                          # noqa: E402
     GREEN as _GREEN, AMBER as _AMBER, GREY as _GREY, BLUE as _BLUE,
     short, model_name as _name, empty_panel, verdict_banner,
 )
+from axis_select import resolve_axes, write_axes      # noqa: E402
+import region_data                                    # noqa: E402
+
+
+def _axes(model, x_var, y_var):
+    """The ordered numeric carried vars to plot, honoring an explicit x_var/y_var request
+    (#445) and falling back to the rank order. Returns (numeric_ordered, info) where info is the
+    axes.json echo. Default is the existing rank order, so the auto-pick path is unchanged."""
+    numeric = [v for v in model.carried if v["kind"] in ("int", "real")]
+    if not numeric:
+        return numeric, {"x": None, "y": None, "requested": {"x": x_var, "y": y_var},
+                         "fell_back": bool(x_var or y_var)}
+    dflt_x = numeric[0]
+    dflt_y = numeric[1] if len(numeric) >= 2 else None
+    x, y, info = resolve_axes(model, x_var, y_var, dflt_x, dflt_y, candidates=numeric)
+    ordered = [x] + ([y] if y is not None else [])
+    # keep any remaining numeric vars after the two plotted axes (1-D box list path reads only [0])
+    ordered += [v for v in numeric if v not in ordered]
+    return ordered, info
 
 
 def _short(v):
@@ -103,15 +123,19 @@ def _banner(verdict, unbounded, inductive, note):
 K_DEPTH = 1   # #327: k-induction depth, threaded by render.py's _k_depth ctx (like state_graph's ALL_CONDITIONS)
 
 
-def _render_k(model, out_path, k):
+def _render_k(model, out_path, k, numeric, axinfo):
     """#327: the reachable box at k-induction depth k — solved_bounds(k) drawn, with an honest CLOSED
     (proven inductive — provably contains every reachable state) vs OPEN (k-step extent only — raise k,
     or it's unbounded) banner. Raise k and watch the box close (a saturating counter) or keep growing
     (a free counter that never closes)."""
     kr = k_induction_box(model, k)
     box, closed = kr["box"], kr["closed"]
-    numeric = [v for v in model.carried if v["kind"] in ("int", "real")]
     init = model.initial_state() or {}
+    region_data.write(out_path, region_data.build(
+        model, {"verdict": "bounded" if closed else "indeterminate", "inductive": closed,
+                "box": {nm: tuple(b) for nm, b in box.items()}, "unbounded": [], "note": kr.get("note")},
+        (axinfo["x"], axinfo["y"])))
+    write_axes(out_path, axinfo)
     fig, ax = plt.subplots(figsize=(8.2, 5.6))
     if box:
         _draw_bounded(ax, numeric, box, closed, init)
@@ -127,12 +151,20 @@ def _render_k(model, out_path, k):
                    f"{_name(model)} — reachable region  ·  k-INDUCTION k={k}", msg, col)
 
 
-def render(model, out_path):
+def render(smt2, schema, out_path, x_var=None, y_var=None):
+    # DUAL CONTRACT: the IDE adapter (ide/web/render.py) calls EVERY renderer as
+    # render(smt2, schema, out, x_var=, y_var=) — so we keep that signature and load the model
+    # INTERNALLY (never take a Model object), while ALSO writing <out>.data.json (the abstract
+    # substrate the golden suite asserts on). Declaring x_var/y_var makes _takes_axes() true, so the
+    # IDE threads explicit projection axes straight through (#445) — no _render_via_model adapter.
+    model = load(smt2, schema)
+    numeric, axinfo = _axes(model, x_var, y_var)       # #445: honor explicit axes, else rank order
     if K_DEPTH and K_DEPTH > 1:
-        return _render_k(model, out_path, K_DEPTH)
+        return _render_k(model, out_path, K_DEPTH, numeric, axinfo)
     r = bounding_box(model)
     verdict, box, unbounded, inductive = r["verdict"], r["box"], r["unbounded"], r["inductive"]
-    numeric = [v for v in model.carried if v["kind"] in ("int", "real")]
+    region_data.write(out_path, region_data.build(model, r, (axinfo["x"], axinfo["y"])))
+    write_axes(out_path, axinfo)
     init = model.initial_state() or {}
     fig, ax = plt.subplots(figsize=(8.2, 5.6))
     if verdict == "bounded" and numeric:

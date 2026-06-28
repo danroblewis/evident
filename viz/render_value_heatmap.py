@@ -41,6 +41,7 @@ import numpy as np
 from matplotlib.colors import ListedColormap, BoundaryNorm, Normalize
 
 from time_series_walk import pick_seed, walk, to_ordinal, _flatten_seqs
+import valueheat_data
 
 VIZ_TYPE = "value_heatmap"
 
@@ -149,8 +150,9 @@ def render(smt2, schema, out_path):
     m = load(smt2, schema)
     seed = pick_seed(m)
     if seed is None:
-        return _na(m, out_path,
-                   "N/A: no initial state (the transition has no first-tick model)")
+        msg = "N/A: no initial state (the transition has no first-tick model)"
+        valueheat_data.write(out_path, valueheat_data.build(m, [], [], False, False, MAX_TICKS, msg))
+        return _na(m, out_path, msg)
 
     traj, nondet, halted = _walk_with_flags(m, seed, MAX_TICKS)
 
@@ -162,6 +164,10 @@ def render(smt2, schema, out_path):
     row_src = list(m.interface_vars) + [v for v in m.derived if v["name"] in traj[0]]
     flat_vars, traj = _flatten_seqs(row_src, traj)
     rows = list(flat_vars)
+    # The abstract substrate (`<out>.data.json`): the raster's MEANING, built from the SAME rows +
+    # sampled trajectory the picture rasters. Emitted on EVERY path (incl. N/A) so the golden suite
+    # always has data — `ticks ≪ max_ticks` or an `n_distinct==1` row is the regression signal.
+    valueheat_data.write(out_path, valueheat_data.build(m, rows, traj, nondet, halted, MAX_TICKS))
     if len(rows) < 2 or len(traj) < 2:
         return _na(m, out_path,
                    "N/A: value_heatmap needs ≥2 carried variables over ≥2 ticks "

@@ -10,7 +10,7 @@ editor.session.setUseWrapMode(true);          // line wrapping on
 editor.session.setTabSize(4);
 editor.session.setUseSoftTabs(true);
 editor.setOptions({
-  fontSize: "14px",
+  fontSize: "12px",
   showPrintMargin: false,
   highlightActiveLine: true,
   useWorker: false,                            // no built-in linter; analyze() is our diagnostics
@@ -368,6 +368,10 @@ async function run(view) {
 function scheduleAnalyze() {
   try { localStorage.setItem("evident-buffer", editor.getValue()); } catch (e) {}
   renderExplainer(editor.getValue());   // #361: hide/update the explainer INSTANTLY on edit, not 350ms later
+  scheduleRunnerIfActive();             // re-run the ▶ run tab at the same 350ms cadence (app-runner.js)
+  // When the run view owns the figure, skip /api/analyze — the user is watching effect-run output,
+  // not diagrams. The banner/tabs stay from the last analysis and refresh on any diagram-view switch.
+  if (activeInteractive === "run") return;
   const v = _loadV;                      // #359: skip this run if a newer program loaded before the debounce fired
   clearTimeout(timer); timer = setTimeout(() => { if (v === _loadV) run(); }, 350);
 }
@@ -453,6 +457,7 @@ initVerify();    // verify-console listeners (app-verify.js)
 initPalette();
 initAxes();      // #421 axis-selector toggle + x/y select listeners (app-axes.js)
 setupPanZoom();  // wheel-zoom / drag-pan / dbl-click-reset on #view — listeners attached ONCE (#233)
+initRunner();    // ▶ run tab: evident effect-run in the browser (app-runner.js)
 
 // #433/#440: the help/about overlay (helpOverlayHtml, app-symbols.js) in the shared #ck-modal chrome.
 function openHelp() {

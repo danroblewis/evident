@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Evident IDE</title>
 <link rel="icon" href="data:,">
-<link rel="stylesheet" href="/static/app.css?v=47">
+<link rel="stylesheet" href="/static/app.css?v=48-qgrp">
 </head>
 <body>
 <div id="app">
@@ -168,7 +168,7 @@
      defers DOM wiring to an initX() that app.js calls once `editor` + the core exist. Order
      matters only for app-data.js (its DEFAULT_PROGRAM / sharedFromHash are used at app.js
      load time); the rest are cross-referenced at call time. -->
-<script src="/static/app-symbols-data.js?v=1"></script> <!-- #364-followup: UNI/WORD_MNEMONICS/OP_PAIRS (split from app-data.js) -->
+<script src="/static/app-symbols-data.js?v=2"></script> <!-- #364-followup: UNI/WORD_MNEMONICS/OP_PAIRS (split from app-data.js); v2: <<→⟨ >>→⟩ op-pairs + PREFIX_SYMBOLS set -->
 <script src="/static/app-data.js?v=16"></script>
 <script src="/static/app-samples.js?v=1"></script>      <!-- #475 SOLVE/claim samples + the maze, Object.assign'd onto SAMPLES (split from app-data.js) -->
 <script src="/static/app-explainers.js?v=2"></script>   <!-- per-sample "how this works" copy (split from app-data.js) -->
@@ -176,13 +176,13 @@
 <script src="/static/app-symhint.js?v=1"></script>     <!-- #215 inline backslash symbol hint (split from app-editor.js) -->
 <script src="/static/app-findreplace.js?v=1"></script> <!-- #386 find & replace bar (Ace core search APIs) -->
 <script src="/static/app-symbols-scan.js?v=1"></script><!-- #387/#388/#389 buffer symbol scan + resolution (split from app-editor.js) -->
-<script src="/static/app-editor.js?v=11"></script>
+<script src="/static/app-editor.js?v=12"></script> <!-- v12: prefix-symbol (Δ/¬) no-trailing-space on bare mnemonic replace -->
 <script src="/static/app-buffer.js?v=10"></script>
 <script src="/static/app-history.js?v=14"></script>
 <script src="/static/app-solve.js?v=2"></script>        <!-- solve/witness result rendering + domain pictures (split from app-verify.js) -->
 <script src="/static/app-trace.js?v=1"></script>        <!-- scrubbable trace + #354 diagram ring/cursor (split from app-verify.js) -->
 <script src="/static/app-verify.js?v=22"></script>
-<script src="/static/app-query.js?v=2"></script>       <!-- ∃ query + assumption stack + explore (split from app-verify.js, #381) -->
+<script src="/static/app-query.js?v=3-qinit"></script>  <!-- ∃ query + assumption stack + explore; v3: initial solution + grouped bindings -->
 <script src="/static/app-gallery.js?v=4"></script>
 <script src="/static/app-palette.js?v=14"></script>
 <script src="/static/app-glossary.js?v=1"></script>     <!-- #366/#374/#375 visible glossary panel + hover-to-learn hint -->
@@ -190,6 +190,7 @@
 <script src="/static/app-structure.js?v=15"></script>
 <script src="/static/app-axes.js?v=1"></script>          <!-- #421 axis selector (split from app.js) -->
 <script src="/static/app-interactive.js?v=2"></script>   <!-- #436/#437 interactive query/verify views (split from app.js) -->
+<script src="/static/app-runner.js?v=1"></script>      <!-- ▶ run tab: evident effect-run in the browser -->
 <script src="/static/app.js?v=37"></script>
 </body>
 </html>

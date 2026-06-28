@@ -44,7 +44,38 @@ from overlay_points import write_points, tight_fraction, OVERLAY_CAP
 # in reachability_forest; this file owns drawing only.
 from reachability_forest import build as _build, ROOT as _ROOT, MAX_NODES, MAX_DEPTH
 
+# The abstract `<out>.data.json` substrate (golden-test ground truth). region_data lives in viz/
+# and its write() mirrors overlay_points (never raises); we reuse only its writer.
+from region_data import write as _write_data
+
 VIZ_TYPE = "reachability_tree"
+
+
+def _tree_data(m, G, states, depth, absorbing, root_k, mode, seed_src, truncated):
+    """The diagram's ABSTRACT MEANING for a golden test (not pixels): the tree the renderer drew.
+
+    A reachability tree is a BFS FAN — each node edges to its newly-discovered successors, so the
+    node BRANCHING FACTOR is the count of distinct non-self successors a state has. For the
+    random_walk king-move FSM that is up to 8 in the tree (9 one-step successors incl. the dropped
+    stay-put self-loop). We export the per-node out-degrees, their max, the node/depth counts, and
+    the ROOT state (which SHOULD be the model's initial condition) so a golden check can assert the
+    fan is 8-wide (not collapsed to 4) AND rooted where the math says (the origin)."""
+    real = [nk for nk in G.nodes() if states.get(nk) is not None]
+    out_degrees = sorted(G.out_degree(nk) for nk in real)
+    return {
+        "view": VIZ_TYPE,
+        "model": m.fsm,
+        "mode": mode,                       # "all-conditions" (closed forest) | "fallback" (capped sample)
+        "seed_source": seed_src,            # which start the tree rooted from ("initial_state" / "grid seed")
+        "n_nodes": len(real),
+        "max_depth": max(depth.values()) if depth else 0,
+        "branching_factors": out_degrees,   # per-node distinct non-self successor count (the FAN width)
+        "max_branching": max(out_degrees) if out_degrees else 0,
+        "distinct_out_degrees": sorted(set(out_degrees)),
+        "n_absorbing": len(absorbing),
+        "root_state": (states.get(root_k) if root_k is not None else None),
+        "truncated": bool(truncated),
+    }
 
 
 def _node_label_field_order(m):
@@ -201,7 +232,11 @@ def render(smt2, schema, out_path):
     (G, states, depth, absorbing, root_k, truncated,
      mode, closing_k, complete, seed_src) = _build(m)
     if G is None:
+        _write_data(out_path, {"view": VIZ_TYPE, "model": m.fsm, "mode": "placeholder",
+                               "n_nodes": 0, "root_state": None, "note": "no init / no seed"})
         return _placeholder(m.fsm, out_path)
+    _write_data(out_path, _tree_data(m, G, states, depth, absorbing, root_k,
+                                     mode, seed_src, truncated))
 
     discrete = m.is_discrete()
     kind = "discrete" if discrete else "numeric/mixed"

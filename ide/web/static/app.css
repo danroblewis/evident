@@ -521,6 +521,18 @@ tr.g-changed > td, tr.g-changed > td.k { background:#2a210e; }   /* a differing 
 #query-assert:hover { background:#1d4255; border-color:var(--accent); }
 .explore-link { color:var(--good); text-decoration:underline; cursor:pointer; margin-left:8px; }
 
+/* grouped-binding display in the query view — initial solution + witness (dotted-prefix groups) */
+.qinit-label { color:var(--dim); font-size:11px; display:block; margin-bottom:2px; }
+.qmatch-summary { display:block; margin-bottom:2px; }
+.qinit-bindings { margin-top:4px; }
+.qgrp-table { border-collapse:collapse; font:12px ui-monospace,Menlo,monospace; }
+.qgrp-table td { padding:1px 6px; }
+.qgrp-hdr td { color:var(--dim); font-size:10px; text-transform:uppercase; letter-spacing:.05em;
+  padding:4px 6px 1px; border-top:1px solid var(--line); }
+.qgrp-hdr:first-child td { border-top:none; padding-top:0; }
+.qgrp-table td.k { color:var(--accent); white-space:nowrap; }
+.qgrp-table td.v { color:var(--ink); white-space:pre-wrap; }
+
 /* scrubbable counterexample trace — a thin panel under the verify row (Ana #198) */
 #inv-trace { padding:6px 14px; background:#0e1a16; border-bottom:1px solid var(--line); font-size:12px; }
 #inv-trace[hidden] { display:none; }
@@ -786,3 +798,13 @@ tr.g-changed > td, tr.g-changed > td.k { background:#2a210e; }   /* a differing 
   #inv-prop, #query-prop { flex-basis:100%; }
   #solve-controls, #opt-controls { flex-wrap:wrap; }
 }
+
+/* ▶ run view — app-runner.js (integrated into the figure slot as an iview) ----- */
+/* #rview lives inside .iview (same wrapper as qview/vview) — reuses iview flex layout */
+.runner-out { flex:1 1 auto; margin:0; overflow:auto; white-space:pre-wrap;
+  word-break:break-word; background:#0a0e13; border:1px solid var(--line); border-radius:6px;
+  padding:8px 10px; font:12px/1.6 ui-monospace,Menlo,monospace; color:var(--ink);
+  min-height:120px; }
+#rview-exit { font:12px ui-monospace,Menlo,monospace; flex:0 0 auto; padding-top:4px; }
+.runner-exit-ok { color:var(--good); }
+.runner-exit-err { color:var(--bad); }

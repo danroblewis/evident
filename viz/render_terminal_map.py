@@ -93,8 +93,24 @@ def _axis_limits(model, var, vals):
     return lo - 0.6, hi + 0.6
 
 
+def _write_data(out_path, model, c):
+    """The abstract `<out>.data.json` substrate (golden test): the terminal-set verdict + how many
+    rest states exist. For a random walk the expert content is verdict='daemon', terminal_count=0 —
+    the walk never comes to rest. Mirrors region_data.write (never raises)."""
+    import json
+    data = {"view": "terminal_map", "model": model.fsm, "verdict": c["verdict"],
+            "terminal_count": len(c.get("states") or []),
+            "must_rest": c.get("must_rest"), "note": c.get("note")}
+    try:
+        with open(out_path + ".data.json", "w") as f:
+            json.dump(data, f, indent=2)
+    except Exception:
+        pass
+
+
 def render(model, out_path):
     c = classify(model)
+    _write_data(out_path, model, c)                   # abstract substrate before drawing
     verdict, states, note = c["verdict"], c["states"], c.get("note")
     must = c.get("must_rest")
     carried = model.carried

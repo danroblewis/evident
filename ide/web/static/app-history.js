@@ -328,6 +328,7 @@ const VIEW_FAMILIES = [
     "transition_matrix", "phase_portrait", "nullcline_field", "cobweb", "orbit_scatter", "occupancy_heatmap"]],
   ["structure · law", ["scatter_matrix", "parallel_coords", "chord_diagram", "function_graph",
     "function_residual", "function_guards", "function_behavior", "function_complexity", "verify"]],
+  ["run", ["run"]],   // effect-run output view (app-runner.js)
 ];
 const VIEW_FAMILY = (() => { const m = {}; VIEW_FAMILIES.forEach(([fam, vs]) => vs.forEach(v => { m[v] = fam; })); return m; })();
 
@@ -336,8 +337,8 @@ const VIEW_FAMILY = (() => { const m = {}; VIEW_FAMILIES.forEach(([fam, vs]) => 
 // state satisfying a user conjunction. They're frontend-driven (no /api/analyze PNG); the chip click
 // routes to their own renderer (openInteractiveView) rather than onRun(). Only offered for FSM models
 // with a reachable set (gated the same as the bottom-panel query — not a raw claim).
-const INTERACTIVE_VIEWS = new Set(["query", "verify"]);
-const INTERACTIVE_LABEL = { query: "query · ∃ reachable", verify: "verify · □ property" };
+const INTERACTIVE_VIEWS = new Set(["query", "verify", "run"]);
+const INTERACTIVE_LABEL = { query: "query · ∃ reachable", verify: "verify · □ property", run: "▶ run · effect-run" };
 
 // Each view's BEST-CASE rigor class — mirrors render.py's partition (_ALWAYS_PROVEN / _BOUND_VIEWS /
 // _ENUMERATE_VIEWS). This is the KIND of view (a per-chip hint); the ACTIVE render's true, capping-aware
@@ -350,6 +351,7 @@ function viewBaseRigor(v) {
   if (v === "claim_space" || v === "solution_structure" || v.startsWith("function_")) return "proven";
   if (v === "query") return "exhaustive";   // #436: a witness search is exhaustive over the reachable set
   if (v === "verify") return "proven";       // #437: a property proven over ALL reachable states/runs
+  if (v === "run") return "sampled";         // effect-run: one execution trace, not a proof
   if (_BOUND_VIEWS.has(v)) return "proven";
   if (_ENUMERATE_VIEWS.has(v)) return "exhaustive";
   return "sampled";
@@ -381,9 +383,11 @@ function renderViewTabs(data, activeView, onRun) {
   const avail = (data.views || []).slice();
   // #436/#437: offer the interactive "query" + "verify" views for FSM models with a reachable set (same
   // gate as the old bottom-panel — not a raw claim). They're frontend-driven, not in data.views; inject.
+  // "run" (effect-run output view) is offered for any FSM model — claim-only programs can't run.
   if (avail.length && !data.claim) {
     if (!avail.includes("query")) avail.push("query");
     if (!avail.includes("verify")) avail.push("verify");
+    if (!avail.includes("run")) avail.push("run");
   }
   // available families in A→D order; any unmapped views go in a trailing "other" so nothing vanishes
   const fams = VIEW_FAMILIES.map(([fam, vs]) => [fam, vs.filter(v => avail.includes(v))]).filter(([, vs]) => vs.length);
@@ -418,8 +422,11 @@ function renderViewTabs(data, activeView, onRun) {
       // sync makes this family browsed with its first chip highlighted.
       ft.onclick = () => {
         const first = vs[0];
-        if (first && first !== activeView) onRun(first);
-        else { browsedFamily = fam; build(); }
+        if (first && first !== activeView) {
+          // #436/#437: interactive views (query/verify/run) dispatch to their own opener
+          if (INTERACTIVE_VIEWS.has(first)) openInteractiveView(first);
+          else onRun(first);
+        } else { browsedFamily = fam; build(); }
       };
       row1.appendChild(ft);
     });

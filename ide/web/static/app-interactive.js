@@ -38,6 +38,7 @@ function openInteractiveView(v) {
   $("#axes-ctl").hidden = true; $("#allcond-ctl").hidden = true;
   if (v === "query") _openQueryView(view);
   else if (v === "verify") _openVerifyView(view);
+  else if (v === "run") initRunnerView(view);   // effect-run output view (app-runner.js)
   renderViewTabs({ views: lastViews, claim: lastClaim }, v, run);   // highlight the chip + sync its family
 }
 
