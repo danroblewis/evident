@@ -29,17 +29,14 @@ editor.renderer.setShowGutter(true);
 const SHARED = sharedFromHash(location.hash);
 const SAVED = (() => { try { return localStorage.getItem("evident-buffer"); } catch (e) { return null; } })();
 editor.setValue(SHARED != null ? SHARED : (SAVED != null ? SAVED : DEFAULT_PROGRAM), -1);   // -1 = cursor to start
-// The buffer is saved on every edit (scheduleAnalyze), but a refresh during the 350ms analyze
-// debounce — or before the first edit — could miss the latest keystrokes; flush on unload too so
-// reload NEVER loses work (Marek #174).
+// Flush on unload too: a refresh during the 350ms debounce could miss the latest keystrokes (Marek #174).
 window.addEventListener("beforeunload", () => {
   try { localStorage.setItem("evident-buffer", editor.getValue()); } catch (e) {}
 });
 
 // --- shared tooltip + solving badge elements --------------------------------------
-// The #gloss tooltip is shared by the editor hover glossary, banner-concept and view-caption
-// tooltips (all wired in app-editor.js via initEditorInput) and by the diagram point overlay
-// (overlayPoints below). The #solving badge is the "still computing" overlay used by run()/paint().
+// The #gloss tooltip is shared by editor hover, banner, and overlay (app-editor.js initEditorInput).
+// The #solving badge is the "still computing" overlay used by run()/paint().
 const gloss = document.createElement("div");
 gloss.id = "gloss"; gloss.hidden = true; document.body.appendChild(gloss);
 // A PROMINENT solving badge centered over the diagram — the top-bar status counter was too easy to
@@ -117,9 +114,8 @@ function paint(data, ms) {
   $("#banner").classList.remove("recomputing");        // analysis returned — undim
   $("#structure").classList.remove("recomputing");
   $("#view").classList.remove("recomputing");
-  // Tint each dropped-constraint line in the editor, on every result (ok / error / claim
-  // alike) — the silent bug surfaces AT the line, not just in the console banner. Cleared
-  // here too: an empty/absent dropped_locs wipes the previous run's amber markers.
+  // Tint dropped-constraint lines in the editor (silent bug AT the line, not just banner);
+  // cleared here too: an empty/absent dropped_locs wipes the previous run's amber markers.
   markDroppedLines(data.dropped_locs, data.warnings);
   lastDropped = data.dropped || 0;   // #451: the model's BROKEN flag — the verify card must inherit it, not rely on the banner
   const view = $("#view"), warn = $("#warnings");
@@ -369,8 +365,7 @@ function scheduleAnalyze() {
   try { localStorage.setItem("evident-buffer", editor.getValue()); } catch (e) {}
   renderExplainer(editor.getValue());   // #361: hide/update the explainer INSTANTLY on edit, not 350ms later
   scheduleRunnerIfActive();             // re-run the ▶ run tab at the same 350ms cadence (app-runner.js)
-  // When the run view owns the figure, skip /api/analyze — the user is watching effect-run output,
-  // not diagrams. The banner/tabs stay from the last analysis and refresh on any diagram-view switch.
+  // When run view owns the figure, skip /api/analyze — user watches effect-run output, not diagrams.
   if (activeInteractive === "run") return;
   const v = _loadV;                      // #359: skip this run if a newer program loaded before the debounce fired
   clearTimeout(timer); timer = setTimeout(() => { if (v === _loadV) run(); }, 350);

@@ -37,7 +37,10 @@ from render_common import short
 
 
 def _span(vals):
-    vals = [v for v in vals if v == v]
+    # Keep only finite numerics; NaN-guard (v == v) AND non-numeric guard (str, list, …) for
+    # models whose carried state is an enum/string/seq — those raw values reach _cloud via
+    # trajectory() and reachable_cloud() and must not be compared with >/< against 0.
+    vals = [v for v in vals if isinstance(v, (int, float)) and v == v]
     return [min(vals), max(vals)] if vals else None
 
 
@@ -69,17 +72,20 @@ def _cloud(points, xn, yn):
 
 def _fills_corners(points, xn, yn):
     """The L∞-square signature: the diagonal extent is occupied — some plotted point has BOTH
-    |x| and |y| near the max radius. An L1-diamond / axis-only cloud never reaches a corner."""
+    |x| and |y| near the max radius. An L1-diamond / axis-only cloud never reaches a corner.
+    Returns False for non-numeric axes (enum/string/seq models whose values aren't comparable)."""
     if not yn:
         return False
-    xs = [abs(p[xn]) for p in points]
-    ys = [abs(p[yn]) for p in points]
-    if not xs or not ys:
+    num_points = [p for p in points
+                  if isinstance(p.get(xn), (int, float)) and isinstance(p.get(yn), (int, float))]
+    if not num_points:
         return False
+    xs = [abs(p[xn]) for p in num_points]
+    ys = [abs(p[yn]) for p in num_points]
     rx, ry = max(xs), max(ys)
     if rx <= 0 or ry <= 0:
         return False
-    return any(abs(p[xn]) >= 0.6 * rx and abs(p[yn]) >= 0.6 * ry for p in points)
+    return any(abs(p[xn]) >= 0.6 * rx and abs(p[yn]) >= 0.6 * ry for p in num_points)
 
 
 def build(model, view, xn, yn, rendered_points, regime=None, rendered_na=False,
