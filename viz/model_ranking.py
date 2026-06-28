@@ -60,6 +60,44 @@ class RankingMixin:
             self._sample_cache = states if len(states) >= 2 else self.trajectory(steps=400)
         return self._sample_cache
 
+    @staticmethod
+    def _strip_isolated_sentinels(vals):
+        """Drop seed/sentinel artifacts (±1e6 fold initializer, lone solver spike) from a
+        SORTED value list by ISOLATION — peel an endpoint only when it sits across a gap to
+        the rest that is huge BOTH relative to the bulk's own spread AND in absolute terms.
+        A dense transient (every adjacent gap small relative to the range) is never peeled,
+        so a spiral's 1→0 decay keeps its full extent. Returns the kept values (never empty)."""
+        if len(vals) < 4:
+            return vals
+        kept = list(vals)
+        # The bulk spread: the inner 50% range (IQR), a scale immune to the very endpoints
+        # we're testing. A sentinel gap dwarfs this; a transient's gaps don't.
+        n = len(kept)
+        bulk = kept[(3 * n) // 4] - kept[n // 4]
+        # Peel up to a couple of artifacts from EACH end (a fold seeds one low + one high).
+        for _ in range(4):
+            if len(kept) < 4:
+                break
+            span = kept[-1] - kept[0]
+            if span <= 0:
+                break
+            gap_hi = kept[-1] - kept[-2]
+            gap_lo = kept[1] - kept[0]
+            # An ISOLATED extreme: the gap to its neighbour vastly exceeds the data's own
+            # bulk spread (so a DENSE transient — every adjacent gap small vs the bulk — is
+            # never peeled), and is a real fraction of the span (so float noise near a flat
+            # core isn't peeled). bulk==0 → a flat core with a lone spike: the gap IS the span.
+            def isolated(gap):
+                return (gap > 1e-9 and gap >= 0.25 * span
+                        and (bulk == 0 or gap >= 50 * bulk))
+            if gap_hi >= gap_lo and isolated(gap_hi):
+                kept = kept[:-1]
+            elif isolated(gap_lo):
+                kept = kept[1:]
+            else:
+                break
+        return kept or list(vals)
+
     def axis_bounds(self, name, pad=0.08):
         """(lo, hi) of a NUMERIC variable over the REACHABLE sample — the real domain a
         renderer should grid / scale / seed within, INSTEAD of a hardcoded ±3000 box
@@ -72,20 +110,20 @@ class RankingMixin:
         seeds — -1 for 'none' (an empty cache slot, no node popped yet) and ±1e6 for a
         fold initializer (max seeded low, min seeded high so the first real value wins).
         A single such point would otherwise blow the axis out to ±1e6 and crush the real
-        data. We (1) reject points outside an IQR fence, killing the ±1e6 sentinels, and
-        (2) floor at 0 when the only remaining sub-zero value is a unit -1 'none' marker
-        — while PRESERVING genuinely-negative data (a balance that really overdrafts,
-        whose bulk sits below 0, keeps its negative range)."""
+        data. We strip a sentinel by ISOLATION, not by quantile: an extreme value that
+        sits across a GAP orders of magnitude larger than the data's own bulk spread is a
+        seed artifact, not data. A smooth transient (a spiral sink decaying 1→0, every
+        value real and densely packed) has no such gap, so its FULL extent is kept — the
+        earlier 3×IQR quantile fence wrongly trimmed it, because a decay spends most ticks
+        near the sink so the IQR collapses to ~0 and the legitimate early extent reads as
+        an outlier (#465 follow-up). We also (2) floor at 0 when the only remaining
+        sub-zero value is a unit -1 'none' marker — while PRESERVING genuinely-negative
+        data (a balance that really overdrafts, whose bulk sits below 0, keeps its range)."""
         states = self._sample_states()
         vals = sorted(s[name] for s in states if type(s.get(name)) in (int, float))
         if not vals:
             return None
-        n = len(vals)
-        q1, q3 = vals[n // 4], vals[(3 * n) // 4]
-        iqr = q3 - q1
-        if iqr > 0:                                  # reject ±1e6 / far-out sentinels
-            lof, hif = q1 - 3 * iqr, q3 + 3 * iqr
-            vals = [v for v in vals if lof <= v <= hif] or vals
+        vals = self._strip_isolated_sentinels(vals)
         lo, hi = float(min(vals)), float(max(vals))
         if lo == hi:
             return (lo - 1.0, hi + 1.0)
