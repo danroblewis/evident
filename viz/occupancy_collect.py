@@ -153,24 +153,19 @@ def numeric_degeneracy(m, ax, ay, xs, ys):
 def numeric_extent(m, var, data):
     """The robust plotted extent for a numeric axis, derived from the points
     ACTUALLY plotted (the reachable set, or the explored attractor for a continuous
-    system). An IQR fence rejects sparse outliers and 'empty slot' sentinels (lru's
-    lone -1) so they can't blow the axis out past the occupied region — but the bulk
-    of the orbit is kept, so a wide-but-real limit cycle (van der Pol's ±3000) is
-    NOT crushed to a hardcoded box. Frames from the data, never from a guessed
-    span."""
+    system). Sheds true sentinels / a divergent runaway (lru's lone -1, an Euler blowup)
+    so they can't blow the axis past the occupied region — but the full orbit is KEPT, so a
+    wide limit cycle (van der Pol's ±3000) is NOT crushed to a box AND a contracting spiral's
+    spiral-IN TRANSIENT survives (the 3×IQR fence used here collapsed the frame to the ~0 sink
+    — most points sit at the sink so the IQR shrinks to ~0 and the transient out to ~1 read as
+    outliers, framing the heatmap at 1e-35; #492/#465 same trap). Frames from the data, never a
+    guessed span."""
+    from model_const import robust_value_band
     d = np.asarray(data, float)
     d = d[np.isfinite(d)]
     if len(d) == 0:
         return None
-    lo, hi = float(d.min()), float(d.max())
-    if len(d) >= 8:
-        q1, q3 = np.percentile(d, 25), np.percentile(d, 75)
-        iqr = q3 - q1
-        if iqr > 0:
-            fl, fh = q1 - 3 * iqr, q3 + 3 * iqr
-            kept = d[(d >= fl) & (d <= fh)]
-            if len(kept):
-                lo, hi = float(kept.min()), float(kept.max())
+    lo, hi = robust_value_band(d.tolist())
     return (lo - 1.0, hi + 1.0) if lo == hi else (lo, hi)
 
 
@@ -186,19 +181,38 @@ def _clip_to_extent(xs, ys, ex, ey):
 # On a LARGE numeric grid, a heatmap is only honest if the system DWELLS — returns
 # to cells repeatedly, concentrating visits. lru sweeps a monotone counter against a
 # spread of key values: each (k0, miss_count) cell is touched ~once, so the picture
-# is a sparse trajectory smear spanning a blown-out key axis, not a density. When
-# most occupied cells are singletons (visited exactly once) on a big grid, there is
-# no occupancy to show -> N/A. A small integer grid (wc's staircase) is exempt: it's
-# a complete, readable lattice where per-cell counts are naturally low.
+# is a sparse trajectory smear spanning a blown-out key axis, not a density.
+#
+# The test must weight by VISIT MASS, not cell COUNT (#492). A contracting SPIRAL into a
+# sink has MANY singleton cells (the brief spiral-in transient — Ana's case: 22/29 occupied
+# cells visited once = 0.76 by cell-count) yet ~all of its VISIT MASS piles into the sink
+# (96% in one cell, only 1.8% in those singletons): that is the CANONICAL occupancy heatmap,
+# not a smear. Counting cells called it a smear and FALSE-N/A'd a real attractor — suppressing
+# a true structure, the same trust-defect class as fabricating one. A GENUINE smear (lru's
+# sweep) spreads its mass EVENLY across the singleton cells, so its singleton MASS is high and
+# it still N/As. So: a smear is "most VISITS land in once-touched cells", not "most CELLS are
+# once-touched". A small integer grid (wc's staircase) is exempt: a readable lattice where
+# per-cell counts are naturally low.
 _BIG_GRID = 100        # cells; below this it's a discrete lattice, not a plane
-_SMEAR_FRAC = 0.6      # >this fraction of occupied cells visited once = a smear
+# >this fraction of total VISIT MASS in singleton cells = a smear. Mass-weighted (#492), so the
+# threshold separates a GENUINE smear (lru's sweep: singleton-mass ≈ 0.57 — mass spread across
+# once-touched cells) from every real-occupancy shape (a sink ≈ 0.02, a limit cycle ≈ 0.01 — mass
+# in revisited cells). The gap is wide; 0.4 sits safely inside it (lru stays a smear, the sink and
+# the cycle render). The old 0.6 was a CELL-count fraction, not comparable.
+_SMEAR_FRAC = 0.4
 
 
 def occupancy_smear(h):
+    """True iff the histogram is a sparse trajectory SMEAR (no dwell concentration) rather than a
+    real density — measured by VISIT MASS, not cell count (#492). A smear spreads its mass evenly
+    across once-touched cells (singleton mass high); a sink/cycle concentrates mass into few cells
+    (singleton mass low) even when the transient leaves many singleton cells behind."""
     occ = h[h > 0]
-    if h.size < _BIG_GRID or len(occ) == 0:
+    total = occ.sum()
+    if h.size < _BIG_GRID or total <= 0:
         return False
-    return float((occ <= 1).sum()) / len(occ) > _SMEAR_FRAC
+    singleton_mass = occ[occ <= 1].sum()
+    return float(singleton_mass) / float(total) > _SMEAR_FRAC
 
 
 def collect_discrete(m, axes, facet_var=None):
