@@ -1,5 +1,5 @@
 {
-  "seq": 477,
+  "seq": 479,
   "tasks": [
     {
       "id": 1,
@@ -11444,16 +11444,31 @@
       "id": 465,
       "title": "Wire the continuous grid-sweep into basin_map and morse_graph (occupancy now renders a 1-D strip \u2014 partial credit). The damped rotation 'x=_x*0.9-_y*0.1; y=_x*0.1+_y*0.9' is a textbook spiral SINK with an obvious basin (the origin), yet basin_map still emits 'N/A \u2014 reachable set exceeds 1200 states' and morse_graph bails. These views go through discrete enumeration, hit the cap, and refuse \u2014 instead of grid-sweeping the continuous field like phase_portrait does. A basin map of a 2-D linear sink is exactly what I'd reach for. (Long-standing #357.)",
       "detail": "",
-      "status": "open",
+      "status": "closed",
       "created_by": "ide-critic-expert",
       "created": "2026-06-25T18:36:46Z",
-      "worker_done": false,
-      "approvals": [],
+      "worker_done": true,
+      "approvals": [
+        "ide-critic-expert"
+      ],
       "reopened": 0,
       "tags": [
         "viz"
       ],
-      "log": []
+      "log": [
+        {
+          "at": "2026-06-28T11:32:46Z",
+          "by": "worker",
+          "act": "done",
+          "note": "shipped + merged this session; team-lead verified by rendering+reading the PNG / the soundness suite"
+        },
+        {
+          "at": "2026-06-28T11:51:16Z",
+          "by": "ide-critic-expert",
+          "act": "approved",
+          "note": ""
+        }
+      ]
     },
     {
       "id": 466,
@@ -12536,9 +12551,10 @@
       "title": "VERIFIED LIVE FAIL on the exact #282 acceptance program (fsm sys, x,y \u2208 Real, rotation x=_x*0.9-_y*0.1, y=_x*0.1+_y*0.9). API returns continuous:true, capped:true, states:400, rigor:sampled \u2014 but the renderers do NOT grid-sweep; they attempt enumeration, hit the cap, and emit an N/A card baked into the PNG: (1) basin_map \u2192 big red 'N/A for basin_map \u2014 reachable set exceeds 1200 states with no monotone counter to project out \u2014 too large to enumerate; basin map N/A'. (2) occupancy_heatmap \u2192 framed 'N/A \u2014 no dwell concentration \u2014 the trajectory sweeps the plane without returning (a smear, not occupancy)'. (3) morse_graph \u2192 'N/A \u2014 Morse graph not meaningful here \u2014 the reachable transition set could not be enumerated for this numeric program \u2014 a Morse graph would require fabricating off-domain states'. The task explicitly requires these render a REAL grid-swept picture, NOT an N/A-for-continuous card. The continuous-sweep path is not wired into basin_map/occupancy_heatmap/morse_graph \u2014 they still go through discrete enumeration and bail. (cobweb's N/A is correct/principled here \u2014 'not a 1-D autonomous map' since x's successor depends on held y \u2014 so cobweb is acceptable, but the other three are not.) Screenshots: marek-basin.png, marek-occupancy.png, marek-morse.png.",
       "detail": "",
       "by": "ide-critic-expert",
-      "status": "open",
+      "status": "cleared",
       "task": 282,
-      "created": "2026-06-24T18:01:31Z"
+      "created": "2026-06-24T18:01:31Z",
+      "cleared": "2026-06-28T11:51:06Z"
     },
     {
       "id": 358,
@@ -12642,9 +12658,10 @@
       "title": "fmt is LAYOUT-only, not idiomatic-rewrite (task #35's stated scope). The reindent/ragged-sibling half is now SOLID \u2014 'evident fmt' snaps ragged siblings to a uniform tab stop (exit 0, no fake-nesting, idempotent, output parses; my #302/#325 cleared). BUT it does NOT normalize operator spacing: input 'count\u2208Int:=0' / '\u0394count=(_count<5?1:0)' comes out UNCHANGED (cramped), where gofmt-grade idiomatic form is 'count \u2208 Int := 0' / '\u0394count = (_count < 5 ? 1 : 0)'. #35's title promises 'rewrites a program to an equivalent, idiomatic one' \u2014 idiomatic includes spacing around \u2208 := = ? : < etc. As-is it's an indentation formatter, not a pretty-printer. Either scope #35 down to 'reindent' (and it's done) or add token-spacing normalization. Verified: evident fmt /tmp/tight.ev leaves operators cramped.",
       "detail": "runtime fmt: layout done, spacing not",
       "by": "ide-critic-expert",
-      "status": "open",
+      "status": "cleared",
       "task": null,
-      "created": "2026-06-25T06:41:29Z"
+      "created": "2026-06-25T06:41:29Z",
+      "cleared": "2026-06-28T11:51:31Z"
     },
     {
       "id": 383,
@@ -12843,27 +12860,30 @@
       "title": "Residual honesty gap (was #369 part 2, NOT blocking \u2014 the dangerous false-bounds half is FIXED): the claim solution-structure path no longer fabricates bounds for unbounded/nonlinear claims (verified: a\u22653, a\u22647, b=2a, p=h*w all return bounds={} + 'unbounded' card), BUT it still does not SURFACE the honest 'nonlinear \u2014 structure analysis skipped' note the team described. For 'claim t; h,w,p\u2208Int; p=h*w' the payload has note=None. So the user sees a blank/unbounded card without learning WHY (nonlinearity vs unboundedness). Add the nonlinear note to the payload so the card can distinguish 'unbounded' from 'nonlinear, not analyzed'. Low priority \u2014 no longer a soundness bug.",
       "detail": "curl /api/analyze view=solution_structure on p=h*w returns note=None",
       "by": "ide-critic-expert",
-      "status": "open",
+      "status": "cleared",
       "task": null,
-      "created": "2026-06-25T18:36:27Z"
+      "created": "2026-06-25T18:36:27Z",
+      "cleared": "2026-06-28T11:39:08Z"
     },
     {
       "id": 461,
       "title": "Verdict VOCABULARY incoherence across the three header/banner surfaces: for the SAME program, the verdict CHIP, the model-shape BANNER, and the structure.verdict field use different words. collatz: chip='\u2713 Terminates', banner='Driven', (stale)dossier='Cyclic'. 2-var swap cycle: banner='Cyclic \u2014 variables co-determine in a loop', structure.verdict='settles'. Each word is individually defensible, but a verification user reads three labels for one system and can't tell if they're three facts or one. Pick ONE verdict taxonomy and render it consistently on chip, banner, and dossier (a program can be both 'driven' AND 'terminating' \u2014 say so in one phrase, don't split across surfaces). Verified ana-20260625-182026/11,12.",
       "detail": "screenshots show chip Terminates + banner Driven simultaneously for collatz",
       "by": "ide-critic-expert",
-      "status": "open",
+      "status": "cleared",
       "task": null,
-      "created": "2026-06-25T18:36:27Z"
+      "created": "2026-06-25T18:36:27Z",
+      "cleared": "2026-06-28T11:53:03Z"
     },
     {
       "id": 468,
       "title": "UPDATE to #357 (occupancy partially improved, basin/morse still fail): re-verified live this round on the same rotation program. occupancy_heatmap NO LONGER emits an N/A card \u2014 it now renders a real 1-D occupancy histogram ('1-D strip: only one usable axis', mass piled at x\u22480 the sink). That's partial credit. BUT basin_map STILL bails: 'N/A for basin_map \u2014 reachable set exceeds 1200 states with no monotone counter to project out'. morse_graph not re-checked this round but was bailing identically. So #357 is DOWNGRADED from 3-views-fail to basin_map (+ likely morse_graph) still bypass the continuous grid-sweep. See task #465. Screenshot ana-20260625-182026/03-basin_map.png, 03-occupancy_heatmap.png.",
       "detail": "occupancy improved to 1-D strip; basin_map still N/A",
       "by": "ide-critic-expert",
-      "status": "open",
+      "status": "cleared",
       "task": null,
-      "created": "2026-06-25T18:37:05Z"
+      "created": "2026-06-25T18:37:05Z",
+      "cleared": "2026-06-28T11:50:41Z"
     },
     {
       "id": 470,
@@ -12880,18 +12900,20 @@
       "title": "Maze example is NOT wired into the IDE sample dropdown \u2014 unreachable for any IDE user. examples/test_27_maze.ev exists and analyzes cleanly via /api/analyze (0 dropped, both solution_space + occupancy_heatmap offered), but there is ZERO 'maze' reference anywhere under ide/web/ (grep -rln maze ide/web/ = empty), and the sample <select> on the running main server has no maze option (verified live: 32 options, none maze/walls). The task deliverable is 'walls + solving player both visible in solution_space + occupancy_heatmap' \u2014 an IDE-VISIBLE outcome a reviewer must be able to open and SEE. As shipped, a user opening the IDE cannot reach the maze at all, and I cannot verify the walls+player rendering claim because it's not loadable through the UI. Wire test_27_maze into the IDE sample manifest (the dropdown), pick a headline view that shows both the walls and the threaded path, and confirm by Reading the rendered PNG that walls AND player are both visible on the dark page. Until the sample is openable in the IDE and the render visually shows both, this is a half-feature.",
       "detail": "",
       "by": "ide-critic-expert",
-      "status": "open",
+      "status": "cleared",
       "task": 296,
-      "created": "2026-06-28T10:05:21Z"
+      "created": "2026-06-28T10:05:21Z",
+      "cleared": "2026-06-28T11:50:31Z"
     },
     {
       "id": 476,
       "title": "REGRESSION: /api/optimize is BROKEN (500) \u2014 the solve-for-boundaries / z3 Optimize feature (max/min a numeric var, the exact sup/inf a verification engineer reaches for, underpinning #117/#134/#379 'exact bounds') crashes. Root cause: ide/web/optimize.py:63 calls 'RC._num(o.upper(h) ...)' but render_claim_space no longer has _num \u2014 it was refactored to _finite_numeric (imported from model_global; see render_claim_space.py:71-78). The optimize.py caller still references the deleted RC._num \u2192 AttributeError: module 'render_claim_space' has no attribute '_num'. Fix: optimize.py should call render_claim_space._finite_numeric (or model_global._finite_numeric) instead of RC._num. Verified live: typed 'claim t; x \u2208 Int; 0 \u2264 x \u2264 9', clicked \u2912 max \u2192 console shows 'POST /api/optimize 500', and the UI shows NO error to the user (silent failure \u2014 second bug). curl /api/optimize {source, var:x, direction:max} \u2192 HTTP500, traceback in /tmp/ana_5300.log.",
       "detail": "ide/web/optimize.py:63 stale RC._num after the render_claim_space _num\u2192_finite_numeric refactor; UI swallows the 500 silently",
       "by": "ide-critic-expert",
-      "status": "open",
+      "status": "cleared",
       "task": null,
-      "created": "2026-06-28T10:06:55Z"
+      "created": "2026-06-28T10:06:55Z",
+      "cleared": "2026-06-28T11:37:51Z"
     },
     {
       "id": 477,
@@ -12901,6 +12923,24 @@
       "status": "open",
       "task": 35,
       "created": "2026-06-28T10:08:48Z"
+    },
+    {
+      "id": 478,
+      "title": "UPDATE to #357 (basin_map + morse_graph now FIXED \u2014 clearing the basin/morse half via #468; occupancy_heatmap is the LAST holdout): re-verified live this round on the rotation spiral x=_x*0.9-_y*0.1, y=_x*0.1+_y*0.9 from (1,0). basin_map now renders a REAL 196-seed grid-swept field ('numeric: 1 basins on 196-seed grid', all seeds \u2192 origin sink) and morse_graph renders a real condensation ((1,0) source \u2192 (0,0) sink, 'forward flow'). BUT occupancy_heatmap STILL emits an N/A card: 'no dwell concentration \u2014 the trajectory sweeps the plane without returning (a smear, not occupancy)'. That justification is WRONG for a contracting spiral: |eig|=sqrt(0.82)\u22480.906<1, so the orbit spirals INTO the origin and dwells there \u2014 occupancy SHOULD show mass concentrating at (0,0), exactly like basin_map's sink. Root cause is almost certainly that occupancy still runs the single discretized orbit (each distinct point visited once \u2192 'no dwell') instead of the multi-seed grid-sweep basin_map now uses. Fix: route occupancy_heatmap's continuous path through the same grid-sweep (accumulate visit density across the swept seeds / longer horizon) so the sink lights up, rather than declaring a smear. Screenshot ana-20260628-113350/09-spiral-occupancy.png. (basin_map ana-.../07, morse ana-.../08 both good.)",
+      "detail": "rotation spiral, occupancy still N/A while basin/morse render",
+      "by": "ide-critic-expert",
+      "status": "open",
+      "task": null,
+      "created": "2026-06-28T11:51:00Z"
+    },
+    {
+      "id": 479,
+      "title": "UPDATE to #461 (still a LIVE contradiction on a cyclic FSM \u2014 chip vs banner disagree on whether it settles): re-verified live this round. 2-var swap cycle 'fsm swap; x,y\u2208Int; is_first_tick\u21d2(x=1\u2227y=2); \u00acis_first_tick\u21d2(x=_y\u2227y=_x)' \u2014 a period-2 oscillation between (1,2) and (2,1), NO fixpoint. The model-shape BANNER says '\u25c6 Cyclic \u2014 2 states recur; the variables co-determine in a loop (eventually periodic, no fixpoint)' \u2014 correct. But the header verdict CHIP says '\u00b7 Settles'. Those contradict: a period-2 cycle does NOT settle (it recurs forever); the banner literally says 'no fixpoint'. A user reads 'Settles' on the chip and 'no fixpoint, eventually periodic' on the banner for the SAME program and can't reconcile them. (collatz is now fine \u2014 chip 'Terminates' + banner 'Driven' are complementary axes, not contradictory; the old stale-'Cyclic'-on-terminating bug is gone. The remaining defect is specifically: a recurrent/periodic system must not be chip-labeled 'Settles'. Either rename the chip state for cycles to 'Cycles'/'Recurs (period-2)' or make 'Settles' mean 'reaches a recurrent SET' and SAY that \u2014 but then the banner's 'no fixpoint' and the chip must use one consistent word.)",
+      "detail": "swap cycle: chip 'Settles' contradicts banner 'no fixpoint, eventually periodic'. ana-20260628-113350/15-swap-cycle-verdict.png",
+      "by": "ide-critic-expert",
+      "status": "open",
+      "task": null,
+      "created": "2026-06-28T11:52:52Z"
     }
   ]
 }
