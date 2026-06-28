@@ -1,0 +1,55 @@
+-- Conformance tests for NESTED TYPE INVARIANTS: a field whose type is itself a user
+-- type inherits THAT type's body constraints, recursively down to the leaves.
+--
+-- `o.inner ∈ Inner` declares o.inner's fields AND applies Inner's `(…) ∈ {…}` invariant
+-- to `o.inner`. Before the recursive inline only the TOP-LEVEL membership got its
+-- invariant applied; a nested one left the value unconstrained — a silent wrong answer
+-- (e.g. a nested status code's `name` came back as garbage instead of being forced).
+--
+-- Run with:
+--     evident test tests/lang_tests/test_nested_type_invariant.ev
+
+type Inner(code ∈ Int, name ∈ String)
+    (code, name) ∈ {(200, "OK"), (404, "NF")}
+
+type Outer
+    inner ∈ Inner
+
+type Deep
+    mid ∈ Outer             -- two levels of nesting
+
+-- ── one level: the invariant reaches o.inner ────────────────────
+
+claim sat_nested_forces_name
+    o ∈ Outer
+    o.inner.code = 200
+    o.inner.name = "OK"
+
+claim unsat_nested_wrong_name
+    o ∈ Outer
+    o.inner.code = 200
+    o.inner.name = "NF"     -- 200 pairs with "OK"
+
+-- ── two levels: the invariant reaches d.mid.inner ───────────────
+
+claim sat_deep_forces_name
+    d ∈ Deep
+    d.mid.inner.code = 404
+    d.mid.inner.name = "NF"
+
+claim unsat_deep_wrong_name
+    d ∈ Deep
+    d.mid.inner.code = 404
+    d.mid.inner.name = "OK" -- 404 pairs with "NF"
+
+-- ── top-level still enforced (didn't regress) ───────────────────
+
+claim sat_toplevel_ok
+    s ∈ Inner
+    s.code = 200
+    s.name = "OK"
+
+claim unsat_toplevel_wrong
+    s ∈ Inner
+    s.code = 200
+    s.name = "NF"

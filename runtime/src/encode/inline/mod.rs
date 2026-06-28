@@ -24,6 +24,47 @@ pub(super) fn inline_body_items(
     inline_body_items_guarded(items, env, solver, schemas, ctx, registry, enums, visited, &None, lenient)
 }
 
+/// Inline a TYPE's body invariants for an instance reachable at `prefix` (e.g. `s` or
+/// `o.inner`): assert the type's own `Constraint` items with idents rewritten to
+/// `prefix.field`, then RECURSE into every field that is itself a user type — so a nested
+/// record's invariants reach the leaves. Without the recursion, `o.inner ∈ Inner` got its
+/// fields declared but `Inner`'s `(code, name) ∈ {…}` was never applied to `o.inner`, leaving
+/// the nested value unconstrained — a silent wrong answer. (Acyclic record types terminate;
+/// a cyclic one is already rejected at declaration.)
+fn inline_type_invariants(
+    prefix: &str,
+    type_name: &str,
+    env: &mut HashMap<String, Var<'static>>,
+    solver: &Solver<'static>,
+    schemas: &HashMap<String, SchemaDecl>,
+    ctx: &'static Context,
+    guard: &Option<Bool<'static>>,
+) {
+    let Some(type_schema) = schemas.get(type_name) else { return; };
+    let field_set: std::collections::HashSet<String> = type_schema.body.iter()
+        .filter_map(|item| match item {
+            BodyItem::Membership { name, .. } => Some(name.clone()),
+            _ => None,
+        })
+        .collect();
+    for item in &type_schema.body {
+        if let BodyItem::Constraint(e) = item {
+            let rewritten = rewrite_idents_with_prefix(e, prefix, &field_set);
+            if let Some(b) = encode_bool(&rewritten, ctx, env, schemas) {
+                solver.assert(&guarded_bool(b, guard));
+            }
+        }
+    }
+    for item in &type_schema.body {
+        if let BodyItem::Membership { name: field, type_name: ftype, .. } = item {
+            if schemas.contains_key(ftype) {
+                inline_type_invariants(&format!("{prefix}.{field}"), ftype,
+                                       env, solver, schemas, ctx, guard);
+            }
+        }
+    }
+}
+
 fn inline_body_items_guarded(
     items: &[BodyItem],
     env: &mut HashMap<String, Var<'static>>,
@@ -113,25 +154,9 @@ fn inline_body_items_guarded(
                     }
                 }
 
-                if let Some(type_schema) = schemas.get(type_name) {
-                    let field_set: std::collections::HashSet<String> = type_schema
-                        .body
-                        .iter()
-                        .filter_map(|item| match item {
-                            BodyItem::Membership { name: n, .. } => Some(n.clone()),
-                            _ => None,
-                        })
-                        .collect();
-                    for item in &type_schema.body {
-                        if let BodyItem::Constraint(e) = item {
-                            let rewritten = rewrite_idents_with_prefix(e, name, &field_set);
-                            if let Some(b) = encode_bool(&rewritten, ctx, env, schemas) {
-                                solver.assert(&guarded_bool(b, guard));
-                            }
-
-                        }
-                    }
-                }
+                // Inline this type's invariants for `name`, recursing into nested type-typed
+                // fields so a nested record's `(…) ∈ {…}` reaches the leaves (#nested-invariants).
+                inline_type_invariants(name, type_name, env, solver, schemas, ctx, guard);
 
                 if let Some(inner) = type_name.strip_prefix("Seq(")
                     .and_then(|s| s.strip_suffix(')'))
