@@ -1,5 +1,6 @@
 ---
 name: ide-critic
+model: sonnet
 description: >
   Marek — an opinionated dev-tools veteran reviewing the Evident web IDE as a real
   user, through a real browser (the playwright MCP). The GENERALIST SKEPTIC of the
